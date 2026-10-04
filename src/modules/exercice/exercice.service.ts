@@ -32,6 +32,8 @@ import {
   LigneTenue,
   lignesReportANouveau,
   rectificationDeLOuverture,
+  confrontationDeLOuverture,
+  LigneRan,
   resultatDesComptesDeGestion,
   SommesRan,
   soldeDuCompte,
@@ -764,7 +766,12 @@ export class ExerciceService {
    * obligation : ni la clôture ni l'affectation ne l'utilisent
    * (`cloture-vocabulaire.spec.ts` le tient pour la clôture).
    */
-  async cloturer(tenantId: string, exerciceId: string, userId: string) {
+  async cloturer(
+    tenantId: string,
+    exerciceId: string,
+    userId: string,
+    options: { ouvertureImportee?: ChoixOuvertureImportee; motifConservation?: string } = {},
+  ) {
     const exercice = await this.trouverExercice(tenantId, exerciceId);
     // Le référentiel ne change RIEN à la mécanique de clôture · les deux
     // textes énoncent le même fonctionnement du compte 13. Il commande les
@@ -969,39 +976,21 @@ export class ExerciceService {
           compteResultatId ? { compteId: compteResultatId, montant: deltaResultat } : null,
         );
 
-        // AU2 · UNE OUVERTURE DÉJÀ PASSÉE DANS N+1 (bilan importé) n'est pas
-        // doublée par le report · voir `rectificationDeLOuverture`. Au
-        // brouillard, elle n'est pas au livre-journal (art. 22, 2°) · la
-        // rectification, validée, y inscrirait en négatif une écriture qui
-        // n'y est pas encore. La clôture demande donc de la valider d'abord ·
-        // geste toujours ouvert (`valider` ne connaît ni gel ni période, et le
-        // double regard écarte les à-nouveaux). Elle ne se supprime pas · un
-        // à-nouveau hors du premier exercice ne se retouche pas depuis le
-        // journal (audit du serveur B3).
+        // AU2 · UNE OUVERTURE DÉJÀ PASSÉE DANS N+1 (bilan importé) n'est
+        // jamais doublée par le report · `issueDeLOuverture` dit ce qui passe.
         const dejaPassee = await ouvertureDejaPassee(tx, tenantId, exerciceSuivant.id);
-        const auBrouillard = dejaPassee.ecritures.filter((e) => e.statut === StatutEcriture.BROUILLARD);
-        if (auBrouillard.length > 0) {
-          throw new BadRequestException(
-            `L'exercice suivant porte déjà un à-nouveau au brouillard (${piecesLisibles(auBrouillard)}) · un bilan d'ouverture qui n'est pas ` +
-              `le report d'OmegaX. Le bilan d'ouverture correspond au bilan de clôture de l'exercice précédent (${articleCorrespondance(referentiel)}), ` +
-              "et clôturer maintenant l'écrirait deux fois. Validez-le (fenêtre Brouillard), puis clôturez · la clôture ne passera que " +
-              "ce qui manque, et là où il diffère du bilan de clôture elle l'inscrira en négatif avant le report exact (AUDCIF art. 20).",
-          );
-        }
-        const rectification =
-          dejaPassee.ecritures.length > 0 ? rectificationDeLOuverture(report, dejaPassee.lignes) : null;
-        const lignesRan = rectification ? rectification.lignes : report;
-        const issueOuverture: string[] = [];
-        if (rectification) {
-          issueOuverture.push(
-            rectification.comptesRectifies.length === 0
-              ? `Le bilan d'ouverture déjà passé dans l'exercice suivant (${piecesLisibles(dejaPassee.ecritures)}) correspond au bilan de clôture, ` +
-                  'compte par compte · aucun report n’est ajouté.'
-              : `Le bilan d'ouverture déjà passé dans l'exercice suivant (${piecesLisibles(dejaPassee.ecritures)}) diffère du bilan de clôture sur ` +
-                  `${rectification.comptesRectifies.length} compte(s) · ses lignes y sont inscrites en négatif et le report exact est passé ` +
-                  `(${articleCorrespondance(referentiel)} ; AUDCIF art. 20). Les autres comptes gardent l'import.`,
-          );
-        }
+        const issue = await issueDeLOuverture(tx, {
+          tenantId,
+          exerciceId,
+          referentiel,
+          report,
+          dejaPassee,
+          choix: options.ouvertureImportee ?? null,
+          motifConservation: options.motifConservation ?? null,
+        });
+        const rectification = issue.rectification;
+        const lignesRan = issue.lignes;
+        const issueOuverture: string[] = issue.message ? [issue.message] : [];
 
         // Le report provisoire éventuel s'efface devant le définitif, et lui
         // laisse son numéro de pièce · la séquence du journal reste continue.
@@ -1071,11 +1060,57 @@ export class ExerciceService {
         ];
         issueOuverture.push(...(await reporterLesTenues(tx, tenantId, tenues, candidates)));
 
-        const clos = await tx.exercice.update({ where: { id: exerciceId }, data: { statut: StatutExercice.CLOTURE } });
+        const clos = await tx.exercice.update({
+          where: { id: exerciceId },
+          // La conservation déclarée s'écrit avec l'acte qui la fige · au
+          // journal d'audit, comme la clôture elle-même.
+          data: { statut: StatutExercice.CLOTURE, ...(issue.motifConservation ? { motifOuvertureSuivanteConservee: issue.motifConservation } : {}) },
+        });
         return { ...clos, issueOuverture };
       },
       "Trop d'opérations simultanées sur cet exercice · veuillez réessayer.",
     );
+  }
+
+  /**
+   * AU2 · LA CONFRONTATION, en lecture seule · le report que la clôture
+   * passerait (le même calcul, `lignesReportANouveau`, sur tout l'exercice)
+   * contre l'ouverture déjà passée dans l'exercice suivant. Rend les comptes
+   * qui diffèrent, et si une déclaration sera demandée (`declarationRequise`).
+   */
+  async confrontationOuvertureSuivante(tenantId: string, exerciceId: string) {
+    const exercice = await this.trouverExercice(tenantId, exerciceId);
+    const vide = { exerciceSuivant: null, pieces: null, auBrouillard: false, exerciceSansEcriture: false, ecarts: [], declarationRequise: false };
+    if (exercice.statut === StatutExercice.CLOTURE) return vide;
+    const suivant = await this.prisma.exercice.findFirst({
+      where: { tenantId, dateDebut: { gt: exercice.dateFin } },
+      orderBy: { dateDebut: 'asc' },
+      select: { id: true, dateDebut: true, dateFin: true },
+    });
+    if (!suivant) return vide;
+    const { referentiel } = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
+    const tx = this.prisma as unknown as Prisma.TransactionClient;
+    const dejaPassee = await ouvertureDejaPassee(tx, tenantId, suivant.id);
+    if (dejaPassee.ecritures.length === 0) return { ...vide, exerciceSuivant: suivant };
+    const comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId });
+    const delta = resultatDesComptesDeGestion(comptes);
+    const resultat =
+      Math.abs(delta) > EPSILON ? { compteId: (await this.trouverCompteResultat(tenantId, tx, delta > 0, referentiel)).id, montant: delta } : null;
+    const ecarts = confrontationDeLOuverture(lignesReportANouveau(comptes, resultat), dejaPassee.lignes);
+    const ecrituresDeN = await this.prisma.ecriture.count({ where: { tenantId, exerciceId, estSoldeDesComptesDeGestion: false } });
+    const plan = await this.prisma.compte.findMany({
+      where: { tenantId, id: { in: ecarts.map((e) => e.compteId) } },
+      select: { id: true, numero: true, intitule: true },
+    });
+    const parId = new Map(plan.map((c) => [c.id, c]));
+    return {
+      exerciceSuivant: suivant,
+      pieces: piecesLisibles(dejaPassee.ecritures),
+      auBrouillard: dejaPassee.ecritures.some((e) => e.statut === StatutEcriture.BROUILLARD),
+      exerciceSansEcriture: ecrituresDeN === 0,
+      ecarts: ecarts.map((e) => ({ ...e, numero: parId.get(e.compteId)?.numero ?? null, intitule: parId.get(e.compteId)?.intitule ?? null })),
+      declarationRequise: ecarts.length > 0 && ecrituresDeN > 0,
+    };
   }
 
   /**
@@ -1149,12 +1184,15 @@ export class ExerciceService {
           resultatCompte = { compteId: compte.id, montant: delta };
         }
         const report = lignesReportANouveau(ran, resultatCompte);
-        // AU2 · même règle que la clôture · une ouverture déjà passée (bilan
-        // importé, validé ou au brouillard) n'est pas doublée, le provisoire
-        // ne porte que la rectification des comptes où elle diffère.
+        // AU2 · une ouverture déjà passée (bilan importé, validé ou au
+        // brouillard) n'est jamais doublée. Le provisoire ne passe RIEN · c'est
+        // la clôture qui confronte l'import au bilan de clôture et fait
+        // déclarer lequel fait foi (`issueDeLOuverture`) ; un provisoire qui
+        // rectifierait d'avance effacerait l'ouverture d'un dossier dont
+        // l'exercice précédent n'est tenu que pour les comparatifs.
         const dejaPassee = await ouvertureDejaPassee(tx, tenantId, exerciceSuivant.id);
-        const rectification = dejaPassee.ecritures.length > 0 ? rectificationDeLOuverture(report, dejaPassee.lignes) : null;
-        const lignes = rectification ? rectification.lignes : report;
+        const ecartsOuverture = dejaPassee.ecritures.length > 0 ? confrontationDeLOuverture(report, dejaPassee.lignes) : null;
+        const lignes = ecartsOuverture ? [] : report;
         const debit = lignes.reduce((t, l) => t + l.debit, 0);
         const credit = lignes.reduce((t, l) => t + l.credit, 0);
         if (Math.abs(debit - credit) > EPSILON) {
@@ -1186,8 +1224,8 @@ export class ExerciceService {
           lignes: lignes.length,
           resultat: delta,
           // Ce que le provisoire a fait d'une ouverture déjà passée · null sans elle.
-          ouvertureDejaPassee: rectification
-            ? { pieces: piecesLisibles(dejaPassee.ecritures), comptesRectifies: rectification.comptesRectifies.length }
+          ouvertureDejaPassee: ecartsOuverture
+            ? { pieces: piecesLisibles(dejaPassee.ecritures), comptesDivergents: ecartsOuverture.length }
             : null,
         };
       },
@@ -1610,6 +1648,134 @@ async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: strin
       rapprochementId: l.rapprochementId,
     })),
   };
+}
+
+/** Ce que le cabinet déclare d'un bilan d'ouverture importé qui diffère du bilan de clôture (AU2). */
+export type ChoixOuvertureImportee = 'RECTIFIER' | 'CONSERVER';
+
+type OuvertureDejaPassee = Awaited<ReturnType<typeof ouvertureDejaPassee>>;
+
+/**
+ * AU2 · CE QUE LA CLÔTURE FAIT D'UNE OUVERTURE DÉJÀ PASSÉE DANS N+1.
+ *
+ * L'art. 34 (SYCEBNL art. 16, 4)) veut l'ouverture de N+1 égale à la clôture
+ * de N. Quand un bilan d'ouverture a déjà été importé dans N+1 ·
+ *
+ *  · AU BROUILLARD, refus · il n'est pas au livre-journal (art. 22, 2°), et
+ *    une rectification validée y inscrirait en négatif une écriture qui n'y
+ *    est pas. Le geste ouvert est de le valider (`valider` ne connaît ni gel
+ *    ni période, le double regard écarte les à-nouveaux) ; il ne se supprime
+ *    pas, un à-nouveau hors du premier exercice ne se retouchant pas depuis le
+ *    journal (audit du serveur B3) ;
+ *  · CONCORDANT, compte par compte · rien n'est ajouté, l'import EST le bilan
+ *    de clôture ;
+ *  · DIVERGENT, et N ne porte aucune écriture · N n'est qu'un exercice vide,
+ *    sa clôture n'a rien à reporter, l'import fait foi (ce que faisait déjà la
+ *    clôture, et ce que la ligne A5 lit) ;
+ *  · DIVERGENT, et N a des écritures · OmegaX ne sait pas lequel des deux
+ *    bilans est faux. Le texte dit seulement qu'ils doivent correspondre ; le
+ *    FAIT qui tranche (les livres légaux de N sont-ils ceux d'OmegaX ?) est au
+ *    cabinet, qui le DÉCLARE. RECTIFIER · le bilan de clôture fait foi, l'import
+ *    est inscrit en négatif là où il diffère et le report exact est passé
+ *    (AUDCIF art. 20, al. 2, `rectificationDeLOuverture`). CONSERVER · N n'est
+ *    tenu dans OmegaX que pour les comparatifs (le cas que la ligne A5 a
+ *    nommé), l'import fait foi, rien n'est passé, et le MOTIF s'écrit sur
+ *    l'exercice, au journal d'audit. Sans déclaration, refus nommé · les deux
+ *    gestes restent ouverts, rien n'est enfermé.
+ */
+async function issueDeLOuverture(
+  tx: Prisma.TransactionClient,
+  p: {
+    tenantId: string;
+    exerciceId: string;
+    referentiel: Referentiel;
+    report: LigneRan[];
+    dejaPassee: OuvertureDejaPassee;
+    choix: ChoixOuvertureImportee | null;
+    motifConservation: string | null;
+  },
+): Promise<{
+  lignes: LigneRan[];
+  rectification: { comptesRectifies: string[] } | null;
+  message: string | null;
+  motifConservation: string | null;
+}> {
+  const { dejaPassee, referentiel } = p;
+  if (dejaPassee.ecritures.length === 0) return { lignes: p.report, rectification: null, message: null, motifConservation: null };
+  const pieces = piecesLisibles(dejaPassee.ecritures);
+  const article = articleCorrespondance(referentiel);
+  const auBrouillard = dejaPassee.ecritures.filter((e) => e.statut === StatutEcriture.BROUILLARD);
+  if (auBrouillard.length > 0) {
+    throw new BadRequestException(
+      `L'exercice suivant porte déjà un à-nouveau au brouillard (${piecesLisibles(auBrouillard)}) · un bilan d'ouverture qui n'est pas ` +
+        `le report d'OmegaX. Le bilan d'ouverture correspond au bilan de clôture de l'exercice précédent (${article}), ` +
+        "et clôturer maintenant l'écrirait deux fois. Validez-le (fenêtre Brouillard), puis clôturez · la clôture le confrontera " +
+        'au bilan de clôture, compte par compte, et ne passera jamais deux fois la même ouverture.',
+    );
+  }
+  const ecarts = confrontationDeLOuverture(p.report, dejaPassee.lignes);
+  if (ecarts.length === 0) {
+    return {
+      lignes: [],
+      rectification: null,
+      message: `Le bilan d'ouverture déjà passé dans l'exercice suivant (${pieces}) correspond au bilan de clôture, compte par compte · aucun report n'est ajouté.`,
+      motifConservation: null,
+    };
+  }
+  const ecrituresDeN = await tx.ecriture.count({ where: { tenantId: p.tenantId, exerciceId: p.exerciceId, estSoldeDesComptesDeGestion: false } });
+  if (ecrituresDeN === 0) {
+    return {
+      lignes: [],
+      rectification: null,
+      message: `Cet exercice ne porte aucune écriture · il n'a rien à reporter, et le bilan d'ouverture déjà passé dans l'exercice suivant (${pieces}) fait foi.`,
+      motifConservation: null,
+    };
+  }
+  const comptes = await tx.compte.findMany({
+    where: { tenantId: p.tenantId, id: { in: ecarts.map((e) => e.compteId) } },
+    select: { id: true, numero: true },
+  });
+  const numero = new Map(comptes.map((c) => [c.id, c.numero]));
+  const detail = ecarts
+    .slice(0, 5)
+    .map((e) => `${numero.get(e.compteId) ?? '?'} (clôture ${e.cloture.toFixed(2)}, ouverture ${e.ouverture.toFixed(2)})`)
+    .join(', ');
+  const enPlus = ecarts.length > 5 ? ` et ${ecarts.length - 5} autre(s)` : '';
+  if (p.choix === 'RECTIFIER') {
+    const rectification = rectificationDeLOuverture(p.report, dejaPassee.lignes);
+    return {
+      lignes: rectification.lignes,
+      rectification,
+      message:
+        `Le bilan d'ouverture déjà passé dans l'exercice suivant (${pieces}) différait du bilan de clôture sur ${ecarts.length} compte(s) · ` +
+        `ses lignes y sont inscrites en négatif et le report exact est passé (${article} ; AUDCIF art. 20). Les autres comptes gardent l'import.`,
+      motifConservation: null,
+    };
+  }
+  if (p.choix === 'CONSERVER') {
+    const motif = (p.motifConservation ?? '').trim();
+    if (motif.length < 3 || motif.length > 500) {
+      throw new BadRequestException(
+        "Conserver le bilan d'ouverture importé exige un motif écrit (3 à 500 caractères) · il dit pourquoi les livres légaux de cet " +
+          "exercice ne sont pas ceux d'OmegaX, et il reste au journal d'audit.",
+      );
+    }
+    return {
+      lignes: [],
+      rectification: null,
+      message:
+        `Le bilan d'ouverture déjà passé dans l'exercice suivant (${pieces}) est conservé, déclaré faire foi · il diffère du bilan de clôture ` +
+        `d'OmegaX sur ${ecarts.length} compte(s) (${detail}${enPlus}), et aucun report n'est passé.`,
+      motifConservation: motif,
+    };
+  }
+  throw new BadRequestException(
+    `L'exercice suivant porte déjà un bilan d'ouverture (${pieces}) qui diffère du bilan de clôture de cet exercice sur ${ecarts.length} ` +
+      `compte(s) · ${detail}${enPlus}. Les deux doivent correspondre (${article}), et OmegaX ne sait pas lequel est faux. Déclarez-le · ` +
+      "« Rectifier l'import » si les livres de cet exercice sont tenus dans OmegaX (l'import est inscrit en négatif là où il diffère, " +
+      "puis le report exact est passé, AUDCIF art. 20), ou « Conserver l'import » avec son motif si cet exercice n'y est tenu que pour " +
+      'les comparatifs (rien n’est passé).',
+  );
 }
 
 /** « pièce OD n° 1 » · ce qui désigne une écriture déjà passée dans un message. */

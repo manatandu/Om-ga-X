@@ -121,8 +121,10 @@ function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre
     creanceDouteuse: { findMany: jest.fn().mockResolvedValue(creancesDouteuses) },
     ecriture: {
       findFirst: jest.fn().mockResolvedValue(provisoire),
-      // AU2 · aucune ouverture déjà passée dans N+1 par défaut.
+      // AU2 · aucune ouverture déjà passée dans N+1 par défaut, et N porte
+      // des écritures.
       findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(4),
       delete: jest.fn().mockResolvedValue({}),
       create: jest.fn().mockResolvedValue({ lignes: [] }),
     },
@@ -271,10 +273,41 @@ describe('AU2 · clôture de N avec un bilan d’ouverture déjà passé dans N+
     expect(r.issueOuverture.join(' ')).toMatch(/correspond au bilan de clôture/);
   });
 
-  it('un import faux sur deux comptes · ses lignes inscrites en NÉGATIF puis le report exact, les autres comptes gardent l’import', async () => {
-    const faux = [ligneImport('i1', '521', 500, 0), ligneImport('i2', '411', 450, 0), ligneImport('i3', '401', 0, 300), ligneImport('i4', '131', 0, 650)];
+  const faux = [ligneImport('i1', '521', 500, 0), ligneImport('i2', '411', 450, 0), ligneImport('i3', '401', 0, 300), ligneImport('i4', '131', 0, 650)];
+
+  it('un import divergent, rien de déclaré · refus qui nomme les comptes, les montants et les deux gestes', async () => {
     const { s, tx } = avecOuverture(IMPORT, faux);
-    await s.cloturer('t', 'n', 'u');
+    (tx.compte as Record<string, unknown>).findMany = jest.fn().mockImplementation((a: { where: { id?: unknown } }) =>
+      a.where.id ? Promise.resolve([{ id: '411', numero: '41110000' }, { id: '131', numero: '13100000' }]) : lectureDuReport(COMPTES).compte.findMany(a as never),
+    );
+    await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(
+      /41110000 \(clôture 300\.00, ouverture 450\.00\).*AUDCIF art\. 34.*Rectifier l'import.*Conserver l'import/,
+    );
+  });
+
+  it('CONSERVER · rien n’est passé, le motif s’écrit sur l’exercice ; sans motif, refus', async () => {
+    const sans = avecOuverture(IMPORT, faux);
+    await expect(sans.s.cloturer('t', 'n', 'u', { ouvertureImportee: 'CONSERVER' })).rejects.toThrow(/motif écrit/);
+    const { s, tx } = avecOuverture(IMPORT, faux);
+    await s.cloturer('t', 'n', 'u', { ouvertureImportee: 'CONSERVER', motifConservation: 'N tenu pour les comparatifs' });
+    expect(tx.ecriture.create).toHaveBeenCalledTimes(1);
+    expect(tx.exercice.update).toHaveBeenCalledWith({
+      where: { id: 'n' },
+      data: { statut: StatutExercice.CLOTURE, motifOuvertureSuivanteConservee: 'N tenu pour les comparatifs' },
+    });
+  });
+
+  it('un exercice SANS écriture · rien à reporter, l’import fait foi sans déclaration', async () => {
+    const { s, tx } = avecOuverture(IMPORT, faux);
+    tx.ecriture.count.mockResolvedValue(0);
+    const r = (await s.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+    expect(tx.ecriture.create).toHaveBeenCalledTimes(1);
+    expect(r.issueOuverture.join(' ')).toMatch(/aucune écriture/);
+  });
+
+  it('RECTIFIER · ses lignes inscrites en NÉGATIF puis le report exact, les autres comptes gardent l’import', async () => {
+    const { s, tx } = avecOuverture(IMPORT, faux);
+    await s.cloturer('t', 'n', 'u', { ouvertureImportee: 'RECTIFIER' });
     const ran = tx.ecriture.create.mock.calls[1][0].data;
     const lignes = ran.lignes.create as { compteId: string; debit: number; credit: number }[];
     // 521 et 401 correspondent · rien n'y est passé.

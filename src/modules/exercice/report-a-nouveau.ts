@@ -273,34 +273,50 @@ export interface LigneOuverturePassee {
  * son report à l'import, chaque compte doublé, la balance bouclée (relevé AU2,
  * reproduit sur vraie base · client 600 000 pour 300 000).
  *
- * Le report de la clôture EST le bilan de clôture · il prime. L'import n'est
- * gardé que là où il lui correspond déjà, compte par compte. Là où il en
- * diffère, l'import est faux, et sa correction suit la seule voie que le texte
- * ouvre dans l'exercice en cours · « exclusivement par inscription en négatif
- * des éléments erronés ; l'enregistrement exact est ensuite opéré » (AUDCIF
- * art. 20, al. 2, non exclu par l'art. 3 du SYCEBNL). Les lignes de l'import
- * sur ce compte sont donc inscrites en négatif, puis les lignes exactes du
- * report sont passées, dans UNE écriture (le négatif et le report d'un même
- * sous-ensemble de comptes ne s'équilibrent qu'ensemble). Jamais d'écart en
- * une ligne · une compensation n'est pas une inscription en négatif. Jamais
- * une écriture validée retirée (art. 22, 2°).
- *
- * Rend les lignes à passer (vide quand l'import correspond partout) et les
- * comptes rectifiés, dans l'ordre où ils apparaissent.
+ * La confrontation se fait COMPTE PAR COMPTE, en francs · le report de la
+ * clôture d'un côté, l'ouverture déjà passée de l'autre. Rend les comptes où
+ * les deux diffèrent, dans l'ordre où ils apparaissent, avec les deux soldes
+ * (débit moins crédit). Vide · l'import EST le bilan de clôture, rien à passer.
+ */
+export function confrontationDeLOuverture(
+  report: LigneRan[],
+  passees: LigneOuverturePassee[],
+): { compteId: string; cloture: number; ouverture: number }[] {
+  const ordre: string[] = [];
+  const parCompte = new Map<string, { cloture: number; ouverture: number }>();
+  const de = (compteId: string) => {
+    if (!parCompte.has(compteId)) {
+      ordre.push(compteId);
+      parCompte.set(compteId, { cloture: 0, ouverture: 0 });
+    }
+    return parCompte.get(compteId)!;
+  };
+  for (const l of report) de(l.compteId).cloture += l.debit - l.credit;
+  for (const l of passees) de(l.compteId).ouverture += l.debit - l.credit;
+  return ordre
+    .map((compteId) => ({ compteId, cloture: arrondi2(parCompte.get(compteId)!.cloture), ouverture: arrondi2(parCompte.get(compteId)!.ouverture) }))
+    .filter((c) => Math.abs(arrondi2(c.cloture - c.ouverture)) > EPSILON);
+}
+
+/**
+ * AU2 · LA RECTIFICATION DE L'IMPORT, quand le cabinet déclare que le bilan
+ * de clôture fait foi (les livres de N sont tenus dans OmegaX). L'import est
+ * alors faux là où il diffère, et sa correction suit la seule voie que le
+ * texte ouvre dans l'exercice en cours · « exclusivement par inscription en
+ * négatif des éléments erronés ; l'enregistrement exact est ensuite opéré »
+ * (AUDCIF art. 20, al. 2, non exclu par l'art. 3 du SYCEBNL). Les lignes de
+ * l'import sur chaque compte divergent sont inscrites en négatif, puis les
+ * lignes exactes du report sont passées, dans UNE écriture (le négatif et le
+ * report d'un même sous-ensemble de comptes ne s'équilibrent qu'ensemble).
+ * Jamais d'écart en une ligne · une compensation n'est pas une inscription en
+ * négatif. Jamais une écriture validée retirée (art. 22, 2°). Les comptes qui
+ * concordent gardent l'import et ne reçoivent rien.
  */
 export function rectificationDeLOuverture(
   report: LigneRan[],
   passees: LigneOuverturePassee[],
 ): { lignes: LigneRan[]; comptesRectifies: string[] } {
-  const ordre: string[] = [];
-  const net = new Map<string, number>();
-  const ajouter = (compteId: string, montant: number) => {
-    if (!net.has(compteId)) ordre.push(compteId);
-    net.set(compteId, (net.get(compteId) ?? 0) + montant);
-  };
-  for (const l of report) ajouter(l.compteId, l.debit - l.credit);
-  for (const l of passees) ajouter(l.compteId, -(l.debit - l.credit));
-  const comptesRectifies = ordre.filter((c) => Math.abs(arrondi2(net.get(c) ?? 0)) > EPSILON);
+  const comptesRectifies = confrontationDeLOuverture(report, passees).map((c) => c.compteId);
   const lignes: LigneRan[] = [];
   for (const compteId of comptesRectifies) {
     for (const l of passees.filter((x) => x.compteId === compteId)) {

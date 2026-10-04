@@ -9,6 +9,7 @@ import { CreerExerciceDto } from './dto/creer-exercice.dto';
 import { ClorePartielleDto, CloreTotaleDto, ClorePeriodeDto } from './dto/cloture.dto';
 import { ArreterComptesDto } from './dto/arrete-comptes.dto';
 import { ANouveauxProvisoiresDto } from './dto/a-nouveaux-provisoires.dto';
+import { CloturerExerciceDto } from './dto/cloturer-exercice.dto';
 import { RoleUtilisateur } from '@prisma/client';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
 
@@ -58,8 +59,19 @@ export class ExerciceController {
   /** Clôture ANNUELLE : solde les charges/produits sur le résultat et génère le report à-nouveau réel. */
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post(':id/cloturer')
-  async cloturer(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.exerciceService.cloturer(user.tenantId, id, user.userId);
+  async cloturer(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: CloturerExerciceDto) {
+    return this.exerciceService.cloturer(user.tenantId, id, user.userId, dto ?? {});
+  }
+
+  /**
+   * AU2 · L'APERÇU AVANT DE FIGER · le bilan d'ouverture déjà passé dans
+   * l'exercice suivant, confronté compte par compte au bilan de clôture de
+   * celui-ci. Lecture seule · l'écran sait avant la clôture s'il faudra
+   * déclarer lequel fait foi.
+   */
+  @Get(':id/ouverture-suivante')
+  async ouvertureSuivante(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.exerciceService.confrontationOuvertureSuivante(user.tenantId, id);
   }
 
   /**

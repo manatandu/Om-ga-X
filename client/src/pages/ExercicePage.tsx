@@ -5,6 +5,7 @@ import { useExercice } from '../lib/exercice';
 import { IconLock, IconCheck } from '../components/chrome/icons';
 import type { Cloture, Compte, GranulariteCloture, Journal, PlanningCloture } from '../lib/types';
 import { Aide } from '../components/chrome/Aide';
+import { montant } from '../lib/montants';
 import { confirmationCloturePeriode } from '../lib/cloture-periode';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
@@ -14,6 +15,15 @@ const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
   TOTALE: 'Totale',
   PERIODE: 'Période',
 };
+
+/** AU2 · l'aperçu servi par `GET /exercices/:id/ouverture-suivante`. */
+interface OuvertureSuivante {
+  pieces: string | null;
+  auBrouillard: boolean;
+  exerciceSansEcriture: boolean;
+  declarationRequise: boolean;
+  ecarts: { compteId: string; numero: string | null; intitule: string | null; cloture: number; ouverture: number }[];
+}
 
 export function ExercicePage() {
   const { estAdmin } = useAuth();
@@ -46,6 +56,13 @@ export function ExercicePage() {
   const [dateLimiteTotale, setDateLimiteTotale] = useState('');
   const [dateLimitePeriode, setDateLimitePeriode] = useState('');
   const [dateArrete, setDateArrete] = useState('');
+
+  // AU2 · le bilan d'ouverture déjà passé dans l'exercice suivant, confronté
+  // au bilan de clôture AVANT la clôture · null tant qu'il n'est pas lu.
+  const [ouverture, setOuverture] = useState<OuvertureSuivante | null>(null);
+  const [erreurOuverture, setErreurOuverture] = useState<string | null>(null);
+  const [choixOuverture, setChoixOuverture] = useState<'' | 'RECTIFIER' | 'CONSERVER'>('');
+  const [motifConservation, setMotifConservation] = useState('');
 
   // Imputation aux capitaux propres d'ouverture · voir imputerOuverture.
   const [imputationOuverte, setImputationOuverte] = useState(false);
@@ -90,6 +107,28 @@ export function ExercicePage() {
     charger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exerciceId]);
+
+  // AU2 · l'aperçu de l'ouverture suivante suit l'exercice choisi (et se
+  // relit après chaque geste) ; une réponse d'un exercice quitté est jetée.
+  useEffect(() => {
+    if (!exerciceId) return;
+    let actif = true;
+    setOuverture(null);
+    setErreurOuverture(null);
+    setChoixOuverture('');
+    setMotifConservation('');
+    api.get<OuvertureSuivante>(`/exercices/${exerciceId}/ouverture-suivante`).then(
+      (o) => {
+        if (actif) setOuverture(o);
+      },
+      (err) => {
+        if (actif) setErreurOuverture(err instanceof ApiError ? err.message : "Bilan d'ouverture de l'exercice suivant illisible");
+      },
+    );
+    return () => {
+      actif = false;
+    };
+  }, [exerciceId, info]);
 
   useEffect(() => {
     if (!estAdmin) return;
@@ -321,16 +360,16 @@ export function ExercicePage() {
         lignes: number;
         brouillardNonRepris: number;
         budgetsReportes: number | null;
-        ouvertureDejaPassee: { pieces: string; comptesRectifies: number } | null;
+        ouvertureDejaPassee: { pieces: string; comptesDivergents: number } | null;
       }>(`/exercices/${exercice.id}/a-nouveaux-provisoires`, { reporterBudgets: reporterBudgetsAussi });
-      // AU2 · un bilan d'ouverture déjà passé n'est pas doublé · le provisoire
-      // ne rectifie que les comptes où il diffère, et l'écran le dit.
-      const ouverture = r.ouvertureDejaPassee;
+      // AU2 · un bilan d'ouverture déjà passé n'est jamais doublé · le
+      // provisoire ne passe rien, et l'écran le dit.
+      const dejaPassee = r.ouvertureDejaPassee;
       setInfo(
-        (ouverture
-          ? ouverture.comptesRectifies === 0
-            ? `Le bilan d'ouverture déjà passé (${ouverture.pieces}) correspond au report · aucun report provisoire n'est ajouté.`
-            : `Le bilan d'ouverture déjà passé (${ouverture.pieces}) diffère du report sur ${ouverture.comptesRectifies} compte(s) · le report provisoire ne porte que leur rectification (${r.lignes} ligne(s)).`
+        (dejaPassee
+          ? dejaPassee.comptesDivergents === 0
+            ? `Le bilan d'ouverture déjà passé (${dejaPassee.pieces}) correspond au report · aucun report provisoire n'est ajouté.`
+            : `Le bilan d'ouverture déjà passé (${dejaPassee.pieces}) diffère du report sur ${dejaPassee.comptesDivergents} compte(s) · aucun report provisoire n'est passé, la clôture vous fera déclarer lequel fait foi.`
           : `Report à-nouveau provisoire passé au brouillard de l'exercice suivant (${r.lignes} ligne(s)).`) +
           (r.budgetsReportes !== null ? ` ${r.budgetsReportes} budget(s) reporté(s).` : '') +
           (r.brouillardNonRepris
@@ -360,7 +399,10 @@ export function ExercicePage() {
     setErreur(null);
     setInfo(null);
     try {
-      const r = await api.post<{ issueOuverture?: string[] }>(`/exercices/${exercice.id}/cloturer`);
+      const r = await api.post<{ issueOuverture?: string[] }>(
+        `/exercices/${exercice.id}/cloturer`,
+        choixOuverture ? { ouvertureImportee: choixOuverture, motifConservation: motifConservation.trim() || undefined } : {},
+      );
       // AU1 et AU2 · ce que la clôture a fait d'un bilan d'ouverture déjà
       // passé et du lettrage du report provisoire se dit, jamais en silence.
       const issue = r?.issueOuverture ?? [];
@@ -723,6 +765,74 @@ export function ExercicePage() {
               Exercice déjà clôturé
             </span>
           ) : estAdmin ? (
+            <>
+            {erreurOuverture && <div className="text-[11.5px] text-danger mb-2">{erreurOuverture}</div>}
+            {ouverture?.pieces && ouverture.auBrouillard && (
+              <div className="text-[11.5px] text-danger mb-2">
+                L'exercice suivant porte un bilan d'ouverture au brouillard ({ouverture.pieces}) · validez-le avant de clôturer.
+              </div>
+            )}
+            {ouverture?.pieces && !ouverture.auBrouillard && !ouverture.declarationRequise && (
+              <div className="text-[11.5px] text-text-dim mb-2">
+                {ouverture.ecarts.length === 0
+                  ? `Bilan d'ouverture déjà passé dans l'exercice suivant (${ouverture.pieces}) · concordant, aucun report ne sera ajouté.`
+                  : `Bilan d'ouverture déjà passé dans l'exercice suivant (${ouverture.pieces}) · cet exercice n'a aucune écriture, l'import fait foi.`}
+              </div>
+            )}
+            {ouverture?.declarationRequise && !ouverture.auBrouillard && (
+              <div className="mb-3 border border-border p-2.5">
+                <div className="text-[11.5px] font-semibold mb-1.5 flex items-center gap-1.5">
+                  Bilan d'ouverture importé ({ouverture.pieces}) différent du bilan de clôture
+                  <Aide
+                    titre="Bilan d'ouverture importé"
+                    texte="Le bilan d'ouverture d'un exercice doit correspondre au bilan de clôture du précédent. Rectifier · les livres de cet exercice sont tenus dans OmegaX, l'import est inscrit en négatif sur les comptes qui diffèrent puis le report exact est passé. Conserver · cet exercice n'est tenu ici que pour les comparatifs, l'import fait foi et rien n'est passé ; le motif reste au journal d'audit."
+                    source="AUDCIF art. 34 et 20 · SYCEBNL art. 16, 4)"
+                  />
+                </div>
+                <table className="w-full text-[11.5px] mb-2">
+                  <thead>
+                    <tr>
+                      <th className="text-left">Compte</th>
+                      <th className="text-right">Clôture</th>
+                      <th className="text-right">Ouverture importée</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ouverture.ecarts.map((e) => (
+                      <tr key={e.compteId}>
+                        <td>
+                          {e.numero ?? '?'} {e.intitule ?? ''}
+                        </td>
+                        <td className="text-right">{montant(e.cloture)}</td>
+                        <td className="text-right">{montant(e.ouverture)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="flex flex-col gap-1 text-[11.5px]">
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" name="choixOuverture" checked={choixOuverture === 'RECTIFIER'} onChange={() => setChoixOuverture('RECTIFIER')} />
+                    Rectifier l'import (les livres de cet exercice sont dans OmegaX)
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" name="choixOuverture" checked={choixOuverture === 'CONSERVER'} onChange={() => setChoixOuverture('CONSERVER')} />
+                    Conserver l'import (exercice tenu ici pour les comparatifs)
+                  </label>
+                  {choixOuverture === 'CONSERVER' && (
+                    <label className="flex flex-col gap-1">
+                      Motif
+                      <textarea
+                        value={motifConservation}
+                        onChange={(e) => setMotifConservation(e.target.value)}
+                        maxLength={500}
+                        rows={2}
+                        className="border border-border-dark px-2 py-1"
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
             <button
               onClick={cloturerExercice}
               disabled={envoi}
@@ -731,6 +841,7 @@ export function ExercicePage() {
               <IconLock width={14} height={14} />
               {envoi ? 'Clôture…' : "Clôturer l'exercice"}
             </button>
+            </>
           ) : (
             <span className="text-[11.5px] text-text-dim">Réservé aux administrateurs du dossier.</span>
           )}

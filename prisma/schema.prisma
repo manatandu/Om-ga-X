@@ -1444,6 +1444,18 @@ model Exercice {
   /// une date que personne n'a décidée.
   dateArreteComptes DateTime?
 
+  /// AU2 · LE BILAN D'OUVERTURE IMPORTÉ DANS L'EXERCICE SUIVANT, CONSERVÉ.
+  /// Quand l'exercice suivant porte déjà un bilan d'ouverture importé qui
+  /// diffère du bilan de clôture de celui-ci, la clôture ne choisit pas seule
+  /// lequel est faux (AUDCIF art. 34 · SYCEBNL art. 16, 4)). Le cabinet le
+  /// DÉCLARE · ou il rectifie l'import (inscription en négatif, AUDCIF
+  /// art. 20, al. 2), ou il le conserve parce que cet exercice n'est tenu dans
+  /// OmegaX que pour les comparatifs, ses livres légaux étant ailleurs. Ce
+  /// champ porte alors le MOTIF de cette déclaration, au journal d'audit.
+  /// Null · rien n'a été déclaré (pas d'import, import concordant, ou
+  /// rectifié).
+  motifOuvertureSuivanteConservee String?
+
   ecritures                    Ecriture[]
   clotures                     Cloture[]
   dotationsAmortissement       DotationAmortissement[]
