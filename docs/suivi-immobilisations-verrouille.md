@@ -133,13 +133,13 @@ ce qui lit sans écrire (états financiers, notes, exports, contrôles).
 **À traiter EN TÊTE de l'audit, défauts de production déjà reproduits sur
 base réelle (gardés pour l'audit par décision de Manasse du 2026-10-03).**
 
-- AU1 · DOSSIER ENFERMÉ · TRAITÉ sur `travail/au1` (2026-10-04) · une ligne
+- AU1 · DOSSIER ENFERMÉ · INTÉGRÉ le 2026-10-04 (trois tours, rejoué sur vraie base) · une ligne
   de l'à-nouveau PROVISOIRE ne se lettre plus par aucun chemin (AUDCIF art. 22,
   2°, `verifierLignes`) ; à la clôture de N, ce qui y était lettré ou pointé
   passe sur la ligne qui la remplace (`apparierTenues`), un groupe figé sans
   équivalent reste partiel et c'est dit. La clôture de période de N+1 n'est
   jamais refusée. Rejoué sur vraie base aux deux référentiels.
-- AU2 · MONTANT FAUSSÉ · TRAITÉ sur `travail/au1` (2026-10-04) · la clôture
+- AU2 · MONTANT FAUSSÉ · INTÉGRÉ le 2026-10-04 · la clôture
   confronte l'ouverture déjà passée dans N+1 au bilan de clôture, compte par
   compte (AUDCIF art. 34 · SYCEBNL art. 16, 4)) · concordante, rien n'est
   ajouté ; N sans écriture, l'import fait foi ; divergente, le cabinet déclare
