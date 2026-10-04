@@ -137,7 +137,7 @@ base réelle (gardés pour l'audit par décision de Manasse du 2026-10-03).**
   de l'à-nouveau PROVISOIRE ne se lettre plus par aucun chemin (AUDCIF art. 22,
   2°, `verifierLignes`) ; à la clôture de N, ce qui y était lettré ou pointé
   passe sur la ligne qui la remplace (`apparierTenues`), un groupe figé sans
-  équivalent est DÉLETTRÉ par la clôture (audité, nommé « à relettrer », relettrage proposé), la TVA du paiement nommée dans la déclaration jusqu.au relettrage ; l.ouverture de N+1 ne lit que l.à-nouveau, le journal d.OD et leurs corrections. La clôture de période de N+1 n'est
+  équivalent est DÉLETTRÉ par la clôture (audité, nommé « à relettrer », relettrage proposé), la TVA du paiement nommée dans la déclaration jusqu'au relettrage ; l'ouverture de N+1 ne lit que l'à-nouveau, le journal d'OD et leurs corrections. La clôture de période de N+1 n'est
   jamais refusée. Rejoué sur vraie base aux deux référentiels.
 - AU2 · MONTANT FAUSSÉ · INTÉGRÉ le 2026-10-04 · la clôture
   confronte l'ouverture déjà passée dans N+1 au bilan de clôture, compte par
