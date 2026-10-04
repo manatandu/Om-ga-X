@@ -13,6 +13,8 @@ serveur, 1 493 client). Ce qui suit n'est PAS fait, ou ne l'est qu'en partie,
 avec son motif. Tout le reste est fait.
 
 **Décisions de l'éditeur à prendre avant de coder**
+
+> **Tranchées par la loi le 2026-10-04** (`docs/decisions-par-la-loi-2026-10-04.md`, textes lus et vigueur vérifiée) · F14-D1, R2-B5, tableau 20B, O1a-D2, R2-A3 / R2-B6 · décisions écrites avec leurs articles, à coder dans l'audit. F8-D1 · report au jour ouvrable acquis pour dimanche et fériés (LPF art. 110 bis al. 2) ; le SAMEDI reste à Manasse (aucun texte ne dit s'il est ouvrable pour un paiement en banque).
 - **F14-D1** · entreprise du portefeuille de l'État (O.-L. n° 13/003, art. 112
   et 113) : un fait déclaré à trois réponses est à créer.
 - **R2-B5** · lignes répétables des notes SYSCOHADA 4, 13, 32 et 33 : migration
