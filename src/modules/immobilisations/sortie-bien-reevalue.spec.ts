@@ -23,6 +23,7 @@ type LigneReev = { id: string; immobilisationId: string; compteEcart: string; ec
 const COMPTES: Record<string, { id: string; numero: string; estActif: boolean; typeCompte: TypeCompteDetailTotal }> = {
   r112: { id: 'r112', numero: '11200000', estActif: true, typeCompte: TypeCompteDetailTotal.DETAIL },
   r118: { id: 'r118', numero: '11810000', estActif: true, typeCompte: TypeCompteDetailTotal.DETAIL },
+  s118: { id: 's118', numero: '11800000', estActif: true, typeCompte: TypeCompteDetailTotal.DETAIL },
   t113: { id: 't113', numero: '111', estActif: true, typeCompte: TypeCompteDetailTotal.TOTAL },
   c485: { id: 'c485', numero: '48520000', estActif: true, typeCompte: TypeCompteDetailTotal.DETAIL },
 };
@@ -80,7 +81,11 @@ function harnais(o: { referentiel?: Referentiel; lignes: LigneReev[]; echecMiseA
       findUnique: jest.fn(({ where }: { where: { tenantId_numero: { numero: string } } }) =>
         Promise.resolve({ id: `n${where.tenantId_numero.numero}`, numero: where.tenantId_numero.numero }),
       ),
-      findFirst: jest.fn(({ where }: { where: { id: string } }) => Promise.resolve(COMPTES[where.id] ?? null)),
+      // LA DOUBLURE HONORE LA REQUÊTE · par identifiant (réserve choisie) ou
+      // par numéro (le 118 imposé au SYCEBNL).
+      findFirst: jest.fn(({ where }: { where: { id?: string; numero?: string } }) =>
+        Promise.resolve(where.id ? (COMPTES[where.id] ?? null) : (Object.values(COMPTES).find((c) => c.numero === where.numero) ?? null)),
+      ),
     },
     dotationAmortissement: { create: jest.fn().mockResolvedValue({ id: 'dot1' }), delete: jest.fn() },
     // LA DOUBLURE HONORE LA REQUÊTE · le bien visé et l'écart non nul.
@@ -196,25 +201,54 @@ describe('A15 · provision spéciale (154)', () => {
     expect(r.ecartReevaluation.repris861).toBe(48_000_000);
   });
 
-  it('mise hors service · rien n’est passé, le reste et son motif sont rendus', async () => {
-    const { svc, postees, lignesMaj } = harnais({ lignes: [l154()] });
-    const r = (await svc.sortir('t1', 'u1', 'i1', sortie({ type: 'MISE_HORS_SERVICE', prixCession: undefined, compteContrepartieId: undefined, natureSortie: 'DESTRUCTION' }) as never)) as unknown as {
-      ecartReevaluation: { nonPasses: Array<{ compteEcart: string; montant: number; motif: string }> };
-    };
-    expect(postees.some((e) => e.libelle.startsWith('Écart de réévaluation'))).toBe(false);
-    expect(lignesMaj).toEqual([]);
-    expect(r.ecartReevaluation.nonPasses).toEqual([{ compteEcart: '15400000', montant: 48_000_000, motif: expect.stringMatching(/ne tranchent pas/) }]);
+  it('A15 bis · mise au rebut après une année de reprise · 18 000 000 − 2 000 000 = 16 000 000 au 861 (fiche 15 ; art. 132 al. 1er)', async () => {
+    const { svc, postees, lignesMaj } = harnais({ lignes: [l154({ ecart: 18_000_000, provisionReprise: 2_000_000 })] });
+    const r = (await svc.sortir(
+      't1',
+      'u1',
+      'i1',
+      sortie({ type: 'MISE_HORS_SERVICE', prixCession: undefined, compteContrepartieId: undefined, natureSortie: 'MISE_AU_REBUT' }) as never,
+    )) as unknown as { ecartReevaluation: { repris861: number; transfereReserve: number; fiscal: string | null } };
+    const ecart = postees.find((e) => e.libelle.startsWith('Écart de réévaluation'))!;
+    expect(ecart.reference).toBe('Acte de vente n° 7');
+    expect(ecart.lignes).toEqual([
+      { compteId: 'n15400000', debit: 16_000_000, credit: 0 },
+      { compteId: 'n86100000', debit: 0, credit: 16_000_000 },
+    ]);
+    // Après la sortie, la ligne est entièrement reprise · 2 000 000 + 16 000 000 = 18 000 000.
+    expect(lignesMaj).toEqual([{ id: 'l154', data: { provisionReprise: { increment: 16_000_000 } } }]);
+    expect(r.ecartReevaluation).toMatchObject({ repris861: 16_000_000, transfereReserve: 0, fiscal: null });
+  });
+
+  it('A15 bis · SYCEBNL, même reprise à la mise hors service', async () => {
+    const { svc, postees } = harnais({ referentiel: Referentiel.SYCEBNL, lignes: [l154({ ecart: 18_000_000, provisionReprise: 2_000_000 })] });
+    await svc.sortir('t1', 'u1', 'i1', sortie({ type: 'MISE_HORS_SERVICE', prixCession: undefined, compteContrepartieId: undefined, natureSortie: 'VOL' }) as never);
+    expect(postees.find((e) => e.libelle.startsWith('Écart de réévaluation'))!.lignes[1]).toEqual({ compteId: 'n86100000', debit: 0, credit: 16_000_000 });
   });
 });
 
-describe('A15 · SYCEBNL, écart au 106 · rien n’est passé, et c’est dit', () => {
-  it('aucune réserve exigée, aucune écriture, le motif rendu', async () => {
-    const { svc, postees } = harnais({ referentiel: Referentiel.SYCEBNL, lignes: [ligne106({ compteEcart: '10611000' })] });
-    const r = (await svc.sortir('t1', 'u1', 'i1', sortie({ compteContrepartieId: 'c485' }) as never)) as unknown as {
-      ecartReevaluation: { nonPasses: Array<{ motif: string }> };
+describe('A15 bis · SYCEBNL, écart au 106 · transfert au 118 imposé, décision du 2026-10-04', () => {
+  it('association · 106 de 10 000 000 · D 10611000 / C 11800000 sans réserve choisie, ligne marquée transférée, aucun avis fiscal', async () => {
+    const { svc, postees, lignesMaj } = harnais({ referentiel: Referentiel.SYCEBNL, lignes: [ligne106({ compteEcart: '10611000', ecart: 10_000_000 })] });
+    const r = (await svc.sortir('t1', 'u1', 'i1', sortie() as never)) as unknown as {
+      ecartReevaluation: { transfereReserve: number; compteReserve: string; fiscal: string | null };
     };
-    expect(postees.some((e) => e.libelle.startsWith('Écart de réévaluation'))).toBe(false);
-    expect(r.ecartReevaluation.nonPasses[0].motif).toMatch(/SYCEBNL ne dit pas/);
+    expect(postees.find((e) => e.libelle.startsWith('Écart de réévaluation'))!.lignes).toEqual([
+      { compteId: 'n10611000', debit: 10_000_000, credit: 0 },
+      { compteId: 's118', debit: 0, credit: 10_000_000 },
+    ]);
+    expect(lignesMaj).toEqual([{ id: 'l106', data: { ecartTransfere: { increment: 10_000_000 } } }]);
+    expect(r.ecartReevaluation).toMatchObject({ transfereReserve: 10_000_000, compteReserve: '11800000', fiscal: null });
+  });
+  it('le 118 envoyé est admis ; le 112 ou un autre compte est refusé en 400 nommé, avant le verrou', async () => {
+    const ok = harnais({ referentiel: Referentiel.SYCEBNL, lignes: [ligne106({ compteEcart: '10611000', ecart: 10_000_000 })] });
+    await ok.svc.sortir('t1', 'u1', 'i1', sortie({ compteReserveEcartId: 's118' }) as never);
+    expect(ok.postees.find((e) => e.libelle.startsWith('Écart de réévaluation'))!.lignes[1].compteId).toBe('s118');
+    const autre = harnais({ referentiel: Referentiel.SYCEBNL, lignes: [ligne106({ compteEcart: '10611000', ecart: 10_000_000 })] });
+    await expect(autre.svc.sortir('t1', 'u1', 'i1', sortie({ compteReserveEcartId: 'r112' }) as never)).rejects.toThrow(
+      /10000000\.00 d'écart de réévaluation au 106 · Le compte 11200000 ne peut pas recevoir l’écart.*11800000 Autres réserves, imposé/,
+    );
+    expect(autre.prisma.immobilisation.updateMany).not.toHaveBeenCalled();
   });
 });
 

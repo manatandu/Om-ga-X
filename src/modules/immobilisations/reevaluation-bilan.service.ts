@@ -34,7 +34,7 @@ import {
   type BienAReevaluer,
   type ResultatBien,
 } from './reevaluation-bilan';
-import { posteDuBien, sortDesEcarts, supplementDeLaDotation, RACINES_RESERVE_NON_DISTRIBUABLE } from './reevaluation-suites';
+import { COMPTE_RESERVE_SYCEBNL, posteDuBien, RACINES_RESERVE_NON_DISTRIBUABLE, sortDesEcarts, supplementDeLaDotation } from './reevaluation-suites';
 import { correspond } from '../etats-financiers/etats-financiers.communs';
 import { NOTES_SYSCOHADA_1 } from '../etats-financiers-syscohada/correspondance-notes-syscohada-1';
 import { NOTES_ASSOCIATIONS } from '../notes-annexes/correspondance-notes-associations';
@@ -575,9 +575,10 @@ export class ReevaluationBilanService {
     // celui du § 6 (« le solde de l'écart de réévaluation d'un bien cédé ou
     // mis hors service doit faire l'objet d'un transfert à un poste de réserve
     // non distribuable ») et de la loi n° 23/053, art. 133 al. 3, que la
-    // SORTIE passe depuis la ligne A15 (reste du 154 repris au 861 à la
-    // cession, `sortDesEcarts`) · le bien est NOMMÉ à part, jamais retiré en
-    // silence, et sa provision restante dite (nulle après une cession).
+    // SORTIE passe depuis la ligne A15 (reste du 154 repris au 861 à toute
+    // sortie depuis A15 bis, `sortDesEcarts`) · le bien est NOMMÉ à part,
+    // jamais retiré en silence, et sa provision restante dite (nulle après la
+    // sortie, sauf pour un bien sorti avant A15 bis).
     const sortiALaCloture = (l: (typeof lignes)[number]) =>
       l.immobilisation.statut !== StatutImmobilisation.EN_SERVICE &&
       (!l.immobilisation.dateSortie || l.immobilisation.dateSortie <= exercice.dateFin);
@@ -588,8 +589,8 @@ export class ReevaluationBilanService {
       resteProvision: centimes(n(l.ecart) - n(l.provisionReprise)),
       motif:
         'Bien sorti · la reprise annuelle ne vise que les éléments d’actif réévalués (AUDCIF Titre VIII ch. 28 § 4.2.4.2) ; ' +
-        'à la cession, le reste de la provision est repris à la sortie du bien (loi n° 23/053, art. 133 al. 3) ; celui d’un ' +
-        'bien mis hors service n’est pas repris, les textes ne le réglant pas.',
+        'le reste de la provision se reprend au 861 à la sortie du bien, quelle qu’elle soit (fiche du compte 15 ; loi ' +
+        'n° 23/053, art. 132 al. 1er et 133 al. 3).',
     }));
     const servies = lues.filter((l) => !sortiALaCloture(l)).map((l) => {
       const reste = centimes(n(l.ecart) - n(l.provisionReprise));
@@ -844,10 +845,18 @@ export class ReevaluationBilanService {
       // (art. 63 ; ch. 28 § 3.2).
       const anterieurs = tri.filter((l) => l.reevaluation.dateReevaluation < exercice.dateDebut).map((l) => n(l.coefficientRetenu));
       const dotation = bien.dotations[0] ? n(bien.dotations[0].montant) : 0;
-      const lignesSortie = bien.ecritureSortieEcartReevaluation?.lignes ?? [];
+      // LA SORTIE N'APPARTIENT À LA NOTE QUE DE SON EXERCICE · la requête garde
+      // aussi les biens sortis APRÈS (encore à l'actif à la clôture montrée),
+      // et leur reprise au 861 ne devient « de l'exercice » qu'à l'exercice
+      // de leur sortie (art. 135). Sans cette borne, la note de l'année de
+      // réévaluation portait la reprise d'une sortie de l'année suivante
+      // (seconde relecture A15 bis) · même garde que la liste des sortis et
+      // que le tableau des amortissements.
+      const sortiDansLExercice = !!bien.dateSortie && bien.dateSortie >= exercice.dateDebut && bien.dateSortie <= exercice.dateFin;
+      const lignesSortie = sortiDansLExercice ? (bien.ecritureSortieEcartReevaluation?.lignes ?? []) : [];
       const reprise861Sortie = centimes(lignesSortie.filter((x) => x.compte.numero.startsWith('86')).reduce((t, x) => t + n(x.credit), 0));
       const transfere = centimes(lignesSortie.filter((x) => x.compte.numero.startsWith('106')).reduce((t, x) => t + n(x.debit), 0));
-      if (bien.dateSortie && bien.dateSortie <= exercice.dateFin) {
+      if (sortiDansLExercice && bien.dateSortie) {
         sortis.push({
           immobilisationId: bien.id,
           designation: bien.designation,
@@ -1046,18 +1055,29 @@ export class ReevaluationBilanService {
   }
 
   /**
-   * LES RÉSERVES NON DISTRIBUABLES QUI PEUVENT RECEVOIR L'ÉCART D'UN BIEN
-   * SORTI (SYSCOHADA seul, ch. 28 § 6) · comptes de détail actifs sous 111,
-   * 112 et 113 (`RACINES_RESERVE_NON_DISTRIBUABLE`). Liste de choix · retenus
-   * ou utilisés (`comptes-proposes.ts`). Au SYCEBNL, vide et dit pourquoi.
+   * LES RÉSERVES QUI PEUVENT RECEVOIR L'ÉCART D'UN BIEN SORTI (ch. 28 § 6).
+   * SYSCOHADA · comptes de détail actifs sous 111, 112 et 1138
+   * (`RACINES_RESERVE_NON_DISTRIBUABLE`), au choix du cabinet, retenus ou
+   * utilisés (`comptes-proposes.ts`). SYCEBNL · le 118 IMPOSÉ
+   * (`COMPTE_RESERVE_SYCEBNL`, décision de Manasse du 2026-10-04, dans le
+   * silence du texte SYCEBNL, par analogie avec l'AUDCIF ch. 28 § 6), servi
+   * seul avec `impose`, pour que l'écran le montre sans liste.
    */
   async comptesReserve(tenantId: string, retenus = false) {
     const tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
     if (tenant.referentiel !== Referentiel.SYSCOHADA) {
+      const c = await this.prisma.compte.findFirst({
+        where: { tenantId, numero: COMPTE_RESERVE_SYCEBNL },
+        select: { id: true, numero: true, intitule: true, estActif: true, typeCompte: true },
+      });
+      const utilisable = !!c && c.estActif && c.typeCompte === TypeCompteDetailTotal.DETAIL;
       return {
-        comptes: [],
+        comptes: utilisable ? [{ id: c.id, numero: c.numero, intitule: c.intitule }] : [],
         nonRetenus: 0,
-        motifVide: 'Au SYCEBNL, le sort de l’écart de réévaluation d’un bien sorti n’est pas écrit · aucune réserve n’est proposée.',
+        impose: true,
+        motifVide: utilisable
+          ? null
+          : `Le compte ${COMPTE_RESERVE_SYCEBNL} Autres réserves, qui reçoit l’écart au SYCEBNL, n’est pas ouvert ou pas actif au plan · ouvrez-le dans Plan comptable.`,
       };
     }
     const plan = await this.prisma.compte.findMany({
@@ -1074,6 +1094,7 @@ export class ReevaluationBilanService {
     return {
       comptes: proposes.map((c) => ({ id: c.id, numero: c.numero, intitule: c.intitule })),
       nonRetenus: ecartes,
+      impose: false,
       motifVide:
         proposes.length > 0
           ? null
@@ -1084,9 +1105,9 @@ export class ReevaluationBilanService {
   }
 
   /**
-   * CE QUE LA SORTIE D'UN BIEN FERA DE SON ÉCART (ligne A15) · lu avant la
-   * sortie, pour que l'écran demande la réserve quand il le faut et dise ce
-   * qui ne sera pas passé, dans les deux cas (cession, mise hors service).
+   * CE QUE LA SORTIE D'UN BIEN FERA DE SON ÉCART (lignes A15 et A15 bis) ·
+   * lu avant la sortie, pour que l'écran demande la réserve quand il le faut.
+   * Toute sortie le traite de même depuis A15 bis, d'où une seule liste.
    * Même règle que la sortie elle-même (`sortDesEcarts`), jamais une seconde.
    */
   async ecartALaSortie(tenantId: string, immobilisationId: string) {
@@ -1100,7 +1121,6 @@ export class ReevaluationBilanService {
       select: { id: true, compteEcart: true, ecart: true, provisionReprise: true, ecartImpute: true, ecartTransfere: true },
       orderBy: { id: 'asc' },
     });
-    const referentiel = tenant.referentiel === Referentiel.SYSCOHADA ? 'SYSCOHADA' : 'SYCEBNL';
     const lues = lignes.map((l) => ({
       id: l.id,
       compteEcart: l.compteEcart,
@@ -1109,9 +1129,6 @@ export class ReevaluationBilanService {
       ecartImpute: n(l.ecartImpute),
       ecartTransfere: n(l.ecartTransfere),
     }));
-    return {
-      cession: sortDesEcarts({ referentiel, cession: true, lignes: lues }),
-      miseHorsService: sortDesEcarts({ referentiel, cession: false, lignes: lues }),
-    };
+    return { referentiel: tenant.referentiel, sorts: sortDesEcarts({ lignes: lues }) };
   }
 }

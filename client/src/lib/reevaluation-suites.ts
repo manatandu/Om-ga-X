@@ -5,6 +5,8 @@
  * tableau des amortissements, jamais recalculé ici.
  */
 
+import { montant } from './montants';
+
 export interface PosteReevalue {
   poste: string;
   biens: number;
@@ -80,13 +82,17 @@ export interface SortDeLEcart {
   ligneId: string;
   compteEcart: string;
   montant: number;
-  traitement: 'RESERVE' | 'REPRISE_861' | 'NON_PASSE';
-  motif: string | null;
+  traitement: 'RESERVE' | 'REPRISE_861';
 }
 
+/**
+ * Ce que la sortie fera de l'écart · la même liste pour toute sortie depuis
+ * la ligne A15 bis (106 vers une réserve, 154 repris au 861, aux deux
+ * référentiels · décisions de Manasse du 2026-10-04).
+ */
 export interface EcartALaSortie {
-  cession: SortDeLEcart[];
-  miseHorsService: SortDeLEcart[];
+  referentiel: 'SYSCOHADA' | 'SYCEBNL';
+  sorts: SortDeLEcart[];
 }
 
 /** Le code de la note qui porte l'encadré, par jeu · la NOTE 3E au SYSCOHADA normal, la 5H des associations. */
@@ -123,16 +129,20 @@ export function natureDeLaReevaluation(r: Pick<NoteReevaluations['reevaluations'
 
 /**
  * LA SORTIE DEMANDE-T-ELLE UNE RÉSERVE ? · seulement quand le serveur annonce
- * un transfert du 106 pour CE type de sortie. Jamais déduit du référentiel ni
- * du compte à l'écran · c'est `sortDesEcarts` qui tranche, une seule règle.
+ * un transfert du 106. Jamais déduit du référentiel ni du compte à l'écran ·
+ * c'est `sortDesEcarts` qui tranche, une seule règle.
  */
-export function sortsDuType(lu: EcartALaSortie | null, type: 'CESSION' | 'MISE_HORS_SERVICE'): SortDeLEcart[] | null {
-  if (!lu) return null;
-  return type === 'CESSION' ? lu.cession : lu.miseHorsService;
-}
-
 export function reserveExigee(sorts: SortDeLEcart[] | null): boolean {
   return (sorts ?? []).some((s) => s.traitement === 'RESERVE');
+}
+
+/** Le message après la sortie · ce qui a été passé, montants au centime (`lib/montants.ts`). */
+export function messageSortieEcart(e: { transfereReserve: number; compteReserve: string | null; repris861: number } | null): string {
+  if (!e) return 'Sortie enregistrée.';
+  const parts: string[] = [];
+  if (e.transfereReserve > 0) parts.push(`${montant(e.transfereReserve)} transféré à la réserve ${e.compteReserve ?? ''}`.trimEnd());
+  if (e.repris861 > 0) parts.push(`${montant(e.repris861)} de provision spéciale repris au 861`);
+  return parts.length > 0 ? `Sortie enregistrée · écart de réévaluation : ${parts.join(', ')}.` : 'Sortie enregistrée.';
 }
 
 /** Un choix unique se présélectionne (§ 9 ter). */

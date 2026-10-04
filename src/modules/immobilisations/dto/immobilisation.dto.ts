@@ -585,10 +585,12 @@ export class SortirImmobilisationDto {
   datePieceSortie!: string;
 
   /**
-   * Ligne A15 · la RÉSERVE NON DISTRIBUABLE qui reçoit le solde de l'écart de
-   * réévaluation (106) du bien sorti (AUDCIF Titre VIII ch. 28 § 6),
-   * SYSCOHADA seul, choisie sous 111, 112 ou 1138 (`reevaluation-suites.ts`).
-   * Exigée seulement quand le bien porte un tel solde.
+   * Lignes A15 et A15 bis · la RÉSERVE qui reçoit le solde de l'écart de
+   * réévaluation (106) du bien sorti (AUDCIF Titre VIII ch. 28 § 6), choisie
+   * sous 111, 112 ou 1138 au SYSCOHADA, et exigée seulement quand le bien
+   * porte un tel solde. Au SYCEBNL, rien à envoyer · le 118 Autres réserves
+   * est IMPOSÉ par le serveur, tout autre compte refusé (décision de Manasse
+   * du 2026-10-04 · `reevaluation-suites.ts`).
    */
   @IsOptional()
   @IsUUID('4')

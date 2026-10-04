@@ -260,7 +260,6 @@ export function ClotureLocationAcquisition({
                 <div className="mt-2">
                   <EcartReevaluationSortie
                     immobilisationId={c.immobilisationId}
-                    type="CESSION"
                     compteReserve={compteReserve}
                     setCompteReserve={setCompteReserve}
                   />

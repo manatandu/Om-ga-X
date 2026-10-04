@@ -207,7 +207,7 @@ export function EchangeImmobilisation({
         </label>
         )}
         {/* L'échange est une cession · le bien donné sort avec son écart. */}
-        <EcartReevaluationSortie immobilisationId={immobilisationId} type="CESSION" compteReserve={compteReserve} setCompteReserve={setCompteReserve} />
+        <EcartReevaluationSortie immobilisationId={immobilisationId} compteReserve={compteReserve} setCompteReserve={setCompteReserve} />
       </div>
       {erreur && <div className="text-[11.5px] text-danger mt-2">{erreur}</div>}
       <div className="flex gap-2 mt-3">

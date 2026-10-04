@@ -97,7 +97,11 @@ const LIGNES = [
   }),
 ];
 
-function monter(tenant: { referentiel: Referentiel; jeuEtatsFinanciersSycebnl?: JeuEtatsFinanciersSycebnl | null; systemeComptableSyscohada?: SystemeComptableSyscohada | null }) {
+function monter(
+  tenant: { referentiel: Referentiel; jeuEtatsFinanciersSycebnl?: JeuEtatsFinanciersSycebnl | null; systemeComptableSyscohada?: SystemeComptableSyscohada | null },
+  o: { lignes?: unknown[]; reprises?: Record<string, Array<{ immobilisationId: string; montant: number }>> } = {},
+) {
+  const lignesLues = o.lignes ?? LIGNES;
   const prisma = {
     exercice: {
       findFirst: jest.fn(({ where }: { where: { id: string; tenantId: string } }) =>
@@ -118,10 +122,15 @@ function monter(tenant: { referentiel: Referentiel; jeuEtatsFinanciersSycebnl?: 
     },
     ligneReevaluationBilan: {
       findMany: jest.fn(({ where }: { where: { tenantId: string; reevaluation: { dateReevaluation: { lte: Date } } } }) =>
-        Promise.resolve(where.tenantId === 'tn' && REEVALUATION.dateReevaluation <= where.reevaluation.dateReevaluation.lte ? LIGNES : []),
+        Promise.resolve(where.tenantId === 'tn' && REEVALUATION.dateReevaluation <= where.reevaluation.dateReevaluation.lte ? lignesLues : []),
       ),
     },
-    repriseProvisionReevaluation: { findFirst: jest.fn().mockResolvedValue(null) },
+    // La reprise annuelle de l'exercice demandé, par bien.
+    repriseProvisionReevaluation: {
+      findFirst: jest.fn(({ where }: { where: { tenantId: string; exerciceId: string } }) =>
+        Promise.resolve(where.tenantId === 'tn' && o.reprises?.[where.exerciceId] ? { detail: o.reprises[where.exerciceId] } : null),
+      ),
+    },
     compte: {
       findMany: jest.fn(({ where }: { where: { OR: Array<{ numero: { startsWith: string } }> } }) => {
         const plan = [
@@ -130,6 +139,14 @@ function monter(tenant: { referentiel: Referentiel; jeuEtatsFinanciersSycebnl?: 
         ];
         return Promise.resolve(plan.filter((c) => where.OR.some((o) => c.numero.startsWith(o.numero.startsWith))));
       }),
+      // LA DOUBLURE HONORE LA REQUÊTE · le 118 du SYCEBNL se lit par son numéro exact.
+      findFirst: jest.fn(({ where }: { where: { tenantId: string; numero: string } }) =>
+        Promise.resolve(
+          where.tenantId === 'tn' && where.numero === '11800000'
+            ? { id: 's118', numero: '11800000', intitule: 'Autres réserves', estActif: true, typeCompte: TypeCompteDetailTotal.DETAIL }
+            : null,
+        ),
+      ),
     },
   } as unknown as PrismaService;
   return new ReevaluationBilanService(prisma, {} as EcritureService);
@@ -183,13 +200,52 @@ describe('A15 · les éléments de la déclaration spéciale (art. 136, 137)', (
   });
 });
 
+describe('A15 bis · la reprise de l’exercice ne compte la sortie qu’à l’exercice de la sortie (seconde relecture)', () => {
+  // Réévaluation au 31/12/2025 avec neutralité · deux biens au 154. Le
+  // bâtiment (reste 9 000 000) sort le 30/06/2026, repris au 861 à sa sortie ;
+  // la machine, restée à l'actif, reprend 1 000 000 à la clôture de 2026.
+  const l154 = (id: string, bien: string, sortie: boolean) => {
+    const l = ligne({ id, bien, numero: '23110000', brutAvant: 100_000_000, amortissementsAvant: 0, valeurReevaluee: 120_000_000, brutApres: 120_000_000, amortissementsApres: 0, ecart: 10_000_000 });
+    return {
+      ...l,
+      compteEcart: '15400000',
+      immobilisation: {
+        ...l.immobilisation,
+        dateSortie: sortie ? D('2026-06-30') : null,
+        natureSortie: sortie ? 'VENTE' : null,
+        ecritureSortieEcartReevaluation: sortie
+          ? {
+              lignes: [
+                { debit: 9_000_000, credit: 0, compte: { numero: '15400000' } },
+                { debit: 0, credit: 9_000_000, compte: { numero: '86100000' } },
+              ],
+            }
+          : null,
+      },
+    };
+  };
+  const lignes = [l154('a', 'bat', true), l154('b', 'mach', false)];
+  const reprises = { ex2026: [{ immobilisationId: 'mach', montant: 1_000_000 }] };
+
+  it('note de 2025 (année de la réévaluation) · reprise 0, aucun bien sorti, la sortie de 2026 n’y entre pas', async () => {
+    const note = await monter({ referentiel: Referentiel.SYSCOHADA }, { lignes, reprises }).noteReevaluations('tn', 'ex2025');
+    expect(note.total).toMatchObject({ repriseExercice: 0 });
+    expect(note.sortis).toEqual([]);
+  });
+  it('note de 2026 · 9 000 000 repris à la sortie + 1 000 000 de reprise annuelle = 10 000 000', async () => {
+    const note = await monter({ referentiel: Referentiel.SYSCOHADA }, { lignes, reprises }).noteReevaluations('tn', 'ex2026');
+    expect(note.total).toMatchObject({ repriseExercice: 10_000_000 });
+    expect(note.sortis).toEqual([expect.objectContaining({ immobilisationId: 'bat', dateSortie: '2026-06-30', reprise861: 9_000_000 })]);
+  });
+});
+
 describe('A15 · les réserves proposées pour l’écart d’un bien sorti', () => {
   it('SYSCOHADA · sous 111, 112, 1138 seulement (le 118 des réserves libres n’est pas lu)', async () => {
     const r = await monter({ referentiel: Referentiel.SYSCOHADA }).comptesReserve('tn');
     expect(r.comptes.map((c) => c.numero)).toEqual(['11100000']);
   });
-  it('SYCEBNL · aucune, et la liste vide dit pourquoi', async () => {
+  it('SYCEBNL · le 118 seul, imposé (A15 bis, décision du 2026-10-04), jamais une liste', async () => {
     const r = await monter({ referentiel: Referentiel.SYCEBNL }).comptesReserve('tn');
-    expect(r).toMatchObject({ comptes: [], motifVide: expect.stringMatching(/n’est pas écrit/) });
+    expect(r).toEqual({ comptes: [{ id: 's118', numero: '11800000', intitule: 'Autres réserves' }], nonRetenus: 0, impose: true, motifVide: null });
   });
 });
