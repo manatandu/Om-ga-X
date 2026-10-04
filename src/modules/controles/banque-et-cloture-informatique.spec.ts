@@ -333,6 +333,12 @@ function monter(options: {
   annulationsContrePassation?: { ecritureId: string; negatifId?: string }[];
   /** Plus de traces que la borne · la vraie au-delà (troisième tour, mineur 3). */
   tracesAuDelaDeLaBorne?: boolean;
+  /** Les contre-passations DÉCLARÉES de l'exercice (A5 ter, relevé (d)) · lues par le contrôle 32. */
+  declarees?: {
+    annulee?: boolean;
+    ecritureEcarts: { lignes: ReturnType<typeof ligne>[] };
+    contrePassationDeclaree: { id: string; lignes: ReturnType<typeof ligne>[] };
+  }[];
 }) {
   const ecritures = options.ecritures ?? [
     ecriture('e1', 'jBQ', 'BQ', [ligne('1', '52110000', 1000), ligne('2', '52670000', 0, 1000)]),
@@ -402,8 +408,19 @@ function monter(options: {
     // Le contrôle 34 lit les contre-passations de réévaluation de l'exercice · aucune ici ; le
     // contrôle 32, les traces des contre-passations annulées (second tour, m3).
     reevaluation: {
-      findMany: jest.fn(async ({ where }: { where: { annulationsContrePassation?: unknown } }) =>
-        where.annulationsContrePassation && options.annulationsContrePassation
+      findMany: jest.fn(async ({ where }: { where: { annulationsContrePassation?: unknown; annuleeLe?: null; contrePassationDeclaree?: { is: { exerciceId: string } } } }) =>
+        where.contrePassationDeclaree && !('OR' in where)
+          ? (options.declarees ?? [])
+              // Le contrôle ne lit que les réévaluations NON annulées (second tour).
+              .filter((d) => !(d.annulee && (where as { annuleeLe?: null }).annuleeLe === null))
+              .map((d) => ({
+                ecritureEcarts: { lignes: d.ecritureEcarts.lignes.map((x) => ({ id: x.id, compteId: x.compte.id, debit: x.debit, credit: x.credit, compte: { numero: x.compte.numero } })) },
+                contrePassationDeclaree: {
+                  id: d.contrePassationDeclaree.id,
+                  lignes: d.contrePassationDeclaree.lignes.map((x) => ({ id: x.id, compteId: x.compte.id, debit: x.debit, credit: x.credit, compte: { numero: x.compte.numero } })),
+                },
+              }))
+          : where.annulationsContrePassation && options.annulationsContrePassation
           ? [
               ...(options.tracesAuDelaDeLaBorne
                 ? Array.from({ length: 50 }, (_, i) => ({ annulationsContrePassation: [{ ecritureId: `autre-${i}` }] }))
@@ -576,6 +593,88 @@ describe('la batterie de contrôles · câblage de la ligne A13', () => {
       const a = await anomalie(m, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE');
       expect(a?.occurrences[0]).toMatchObject({ reference: 'Lecture bornée', detail: expect.stringMatching(/50 réévaluations à contre-passation annulée lues/) });
       expect(a?.occurrences).toHaveLength(2);
+    });
+
+    /**
+     * A5 TER, RELEVÉ (d) D'A5 BIS · une OD d'ouverture faite à la main,
+     * DÉCLARÉE comme contre-passation de la réévaluation, qui inverse AUSSI
+     * l'écart de la banque (comme le module avant A5 bis) · sa ligne de 52 est
+     * une conversion, pas une opération du relevé. Compte USD vidé et fermé
+     * en juin, relevé final nul au 30 juin, OD déclarée datée du 1er juillet ·
+     * la dernière opération reste le 15 juin.
+     */
+    const fermeAvecODDeclaree = () => [
+      ecriture('e1', 'jBQ', 'BQ', [ligne('1', '52110000', 1000), ligne('2', '70110000', 0, 1000)], { date: '2026-05-10' }),
+      ecriture('e2', 'jBQ', 'BQ', [ligne('3', '58500000', 980), ligne('4', '52110000', 0, 980)], { date: '2026-06-15' }),
+      ecriture(
+        'od',
+        'jOD',
+        'OD',
+        [ligne('5', '47910000', 500), ligne('6', '41110000', 0, 500), ligne('7', '77600000', 20), ligne('8', '52110000', 0, 20)],
+        { date: '2026-07-01' },
+      ),
+    ];
+    const ecartsPasses = { lignes: [ligne('a', '41110000', 500), ligne('b', '47910000', 0, 500), ligne('c', '52110000', 20), ligne('d', '77600000', 0, 20)] };
+
+    it('A5 ter (d) · la ligne de banque d’une OD DÉCLARÉE qui inverse exactement l’écart passé n’est pas une opération de banque', async () => {
+      le('2027-01-15');
+      const m = monter({
+        ecritures: fermeAvecODDeclaree(),
+        rapprochements: [{ compteId: 'c-52110000', statut: 'CLOTURE', dateReleve: D('2026-06-30'), soldeReleve: 0 }],
+        declarees: [{ ecritureEcarts: ecartsPasses, contrePassationDeclaree: { id: 'od', lignes: fermeAvecODDeclaree()[2].lignes } }],
+      });
+      expect(await anomalie(m, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE')).toBeUndefined();
+    });
+
+    it('A5 ter (d) · jumeau · la même OD NON déclarée, ou d’un autre montant sur la banque, reste une opération · signalée', async () => {
+      le('2027-01-15');
+      const nonDeclaree = monter({
+        ecritures: fermeAvecODDeclaree(),
+        rapprochements: [{ compteId: 'c-52110000', statut: 'CLOTURE', dateReleve: D('2026-06-30'), soldeReleve: 0 }],
+      });
+      expect((await anomalie(nonDeclaree, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE'))?.occurrences).toHaveLength(1);
+      // Déclarée, mais sa ligne de banque ne vaut pas l'inverse de l'écart passé (25 au lieu de 20) · une vraie opération s'y mêle.
+      const autreMontant = { lignes: [...ecartsPasses.lignes.slice(0, 2), ligne('c', '52110000', 25), ligne('d', '77600000', 0, 25)] };
+      const melee = monter({
+        ecritures: fermeAvecODDeclaree(),
+        rapprochements: [{ compteId: 'c-52110000', statut: 'CLOTURE', dateReleve: D('2026-06-30'), soldeReleve: 0 }],
+        declarees: [{ ecritureEcarts: autreMontant, contrePassationDeclaree: { id: 'od', lignes: fermeAvecODDeclaree()[2].lignes } }],
+      });
+      expect((await anomalie(melee, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE'))?.occurrences).toHaveLength(1);
+    });
+
+    it('A5 ter (d), second tour · LIGNE PAR LIGNE · une vraie opération de banque dans la même OD, sur le même compte, reste une opération', async () => {
+      le('2027-01-15');
+      // L'OD déclarée inverse l'écart (−20) ET porte un virement réel (−30, puis +30 par une autre ligne de la même OD) daté du 1er juillet.
+      const od = [
+        ligne('5', '47910000', 500),
+        ligne('6', '41110000', 0, 500),
+        ligne('7', '77600000', 20),
+        ligne('8', '52110000', 0, 20),
+        ligne('9', '52110000', 0, 30),
+        ligne('10', '58500000', 30),
+      ];
+      const ecritures = [
+        ecriture('e1', 'jBQ', 'BQ', [ligne('1', '52110000', 1000), ligne('2', '70110000', 0, 1000)], { date: '2026-05-10' }),
+        ecriture('e2', 'jBQ', 'BQ', [ligne('3', '58500000', 950), ligne('4', '52110000', 0, 950)], { date: '2026-06-15' }),
+        ecriture('od', 'jOD', 'OD', od, { date: '2026-07-01' }),
+      ];
+      const m = monter({
+        ecritures,
+        rapprochements: [{ compteId: 'c-52110000', statut: 'CLOTURE', dateReleve: D('2026-06-30'), soldeReleve: 0 }],
+        declarees: [{ ecritureEcarts: ecartsPasses, contrePassationDeclaree: { id: 'od', lignes: od } }],
+      });
+      expect((await anomalie(m, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE'))?.occurrences).toHaveLength(1);
+    });
+
+    it('A5 ter (d), second tour · la déclaration d’une réévaluation ANNULÉE n’écarte rien', async () => {
+      le('2027-01-15');
+      const m = monter({
+        ecritures: fermeAvecODDeclaree(),
+        rapprochements: [{ compteId: 'c-52110000', statut: 'CLOTURE', dateReleve: D('2026-06-30'), soldeReleve: 0 }],
+        declarees: [{ annulee: true, ecritureEcarts: ecartsPasses, contrePassationDeclaree: { id: 'od', lignes: fermeAvecODDeclaree()[2].lignes } }],
+      });
+      expect((await anomalie(m, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE'))?.occurrences).toHaveLength(1);
     });
 
     it('jumeau · la même ligne passée à la main, vraie opération de banque après le relevé, reste signalée', async () => {

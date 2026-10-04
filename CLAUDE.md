@@ -498,8 +498,24 @@ réévaluation de l'exercice » l'écartent. Titre VIII
 ch. 22 § 2.3 (« ajustée pour tenir compte des opérations dénouées ») et fiche
 du compte 19 des deux plans · seul l'ÉCART avec la provision en place se
 passe, dotation de la hausse ou reprise de la baisse au compte de SA famille
-(4991 · 6591 / 7591, 4997 · 6791 / 7791, 194 · 6971 / 7971 ; SYCEBNL, 194
-seul). La provision en place se lit sur les écritures des réévaluations
+(4991 · 6591 / 7591, 4997 · 6791 / 7791, 194 · 6971 / 7971 ; au SYCEBNL,
+ligne A5 ter, 4991 · 6591 / 7591, 4998 · 839 / 849 pour les 484 à 488, 599 ·
+6791 / 7791, 194 · 6971 / 7971 pour le seul risque à plus d'un an · sa fiche
+du compte 19 EXCLUT « les provisions correspondant à des risques à moins d'un
+an (utiliser 499 – Provisions pour risques à court terme) », et celle du 59
+cite « exemple : provisions pour pertes de change » ; la règle « 194 seul »
+écrite ici jusqu'au 2026-10-04 était fausse). FINANCIER À COURT TERME aux deux
+(4997 ou 599, par le 6791, repris au 7791) · le 56, le 54, les fournisseurs
+d'investissements (481 aux deux, 404 au SYSCOHADA · ch. 22 § 1.1, « charge ou
+produit financier », comme le réalisé d'A6) et les intérêts courus (276 aux
+deux, 166 et 176 au SYSCOHADA, 186 au SYCEBNL · à moins d'un an, fiche du
+compte 19). Écart au 478 / 479 dans la subdivision du plan AUX DEUX (SYCEBNL,
+Partie 2 ch. 2 · 47811 / 47818, 4782, 47831 / 47838, 4784, symétriques au
+479 ; 481 et 404 aux dettes FINANCIÈRES 4784 / 4794) ; un 54 au 4786 / 4797
+(ch. 22 § 3.2.2) ; titres 274 et 50 (508 compris, lecture d'OmegaX) jamais
+réévalués (§ 1.3), leurs intérêts courus si. La bascule d'un dossier SYCEBNL
+(reprise au 194, dotation au 4991 dans la même réévaluation) est DITE,
+chiffrée, sans écriture de reclassement. La provision en place se lit sur les écritures des réévaluations
 ANTÉRIEURES, jamais sur le solde (le 4991 porte d'autres risques, et N+1
 s'ouvre avant la clôture de N) ; une ligne manuelle de l'exercice sur ces
 comptes est SIGNALÉE, rien retranché. Une réévaluation sans position passe

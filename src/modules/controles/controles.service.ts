@@ -48,6 +48,7 @@ import {
   PLAFOND_REEVALUATIONS_EXAMINEES,
   contrePassationsDeDisponibilites,
   ecrituresDesContrePassationsAnnulees,
+  lignesDeDisponibilitesDesContrePassationsDeclarees,
 } from '../devises/contre-passations-de-disponibilites';
 import {
   comptesBancairesSansRapprochement,
@@ -367,6 +368,9 @@ const SELECT_ECRITURE_CONTROLEE = {
     // bis, B2) n'interroge les lettrages que si une ligne de l'exercice est
     // lettrée, partiel compris · sans elle, aucun groupe ne peut y toucher.
     select: {
+      // Ligne A5 ter · le contrôle 32 écarte une LIGNE de contre-passation
+      // déclarée, jamais toute l'écriture ni tout le compte.
+      id: true,
       debit: true,
       credit: true,
       lettre: true,
@@ -1188,6 +1192,7 @@ export class ControlesService {
       journauxEcrits: Map<string, JournalEcrit>;
       comptesBancaires: Map<string, CompteBancaireMouvemente>;
       contrePassationsAnnuleesTronquees?: boolean;
+      contrePassationsDeclareesTronquees?: boolean;
       virementsInternes: Map<string, CompteDeVirementInterne>;
     },
     maintenant: number,
@@ -1275,6 +1280,16 @@ export class ControlesService {
                     detail:
                       `${PLAFOND_REEVALUATIONS_EXAMINEES} réévaluations à contre-passation annulée lues · une contre-passation annulée ` +
                       "plus ancienne peut avancer la dernière opération d'un compte fermé, et le faire paraître non couvert.",
+                  },
+                ]
+              : []),
+            ...(parcours.contrePassationsDeclareesTronquees
+              ? [
+                  {
+                    reference: 'Lecture bornée',
+                    detail:
+                      `${PLAFOND_REEVALUATIONS_EXAMINEES} contre-passations déclarées lues dans l'exercice · une autre, qui inverse ` +
+                      "l'écart d'une banque, peut avancer la dernière opération d'un compte fermé, et le faire paraître non couvert.",
                   },
                 ]
               : []),
@@ -1412,6 +1427,10 @@ export class ControlesService {
     // banque avançait la dernière ligne d'un compte fermé.
     const tracesAnnulees = await ecrituresDesContrePassationsAnnulees(this.prisma, tenantId);
     const contrePassationsAnnulees = tracesAnnulees.ids;
+    // Ligne A5 ter, relevé (d) d'A5 bis · la ligne de banque d'une OD
+    // DÉCLARÉE comme contre-passation, quand elle inverse exactement l'écart
+    // passé sur ce compte, est une conversion, pas un mouvement du relevé.
+    const declarees = await lignesDeDisponibilitesDesContrePassationsDeclarees(this.prisma, { tenantId, exerciceId });
 
     const seuilAnciennete = new Date(ex.dateFin);
     seuilAnciennete.setDate(seuilAnciennete.getDate() - ControlesService.JOURS_ANCIENNETE_TIERS);
@@ -1455,7 +1474,8 @@ export class ControlesService {
             // (seconde relecture, B-α) · elle compte au solde, jamais à la
             // date de la dernière ligne, sans quoi l'écart du 31/12 d'un
             // compte en devises fermé en juin le rendait non couvert.
-            const mouvementDeBanque = !estEcritureDeConversion(e) && !contrePassationsAnnulees.has(e.id);
+            const mouvementDeBanque =
+              !estEcritureDeConversion(e) && !contrePassationsAnnulees.has(e.id) && !declarees.lignes.has(l.id);
             const vu = comptesBancaires.get(l.compte.id);
             if (vu === undefined) {
               comptesBancaires.set(l.compte.id, {
@@ -1600,6 +1620,7 @@ export class ControlesService {
       // pourrait passer pour une opération de banque · le contrôle 32 le DIT
       // (troisième tour, mineur 3).
       contrePassationsAnnuleesTronquees: tracesAnnulees.tronque,
+      contrePassationsDeclareesTronquees: declarees.tronque,
       virementsInternes,
       // Le solde a été tenu en centimes · il repart ici en francs.
       comptesBancaires: new Map(

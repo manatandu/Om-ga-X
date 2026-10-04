@@ -60,6 +60,11 @@ describe('réévaluation · le périmètre du ch. 22', () => {
     ['21300000', '§ 1.1'],
     ['25100000', '§ 1.2'],
     ['26100000', '§ 1.3'],
+    // A5 ter · le § 1.3 vise « les titres », où que la fiche les range · 274 et 50.
+    ['27410000', '§ 1.3'],
+    ['27480000', '§ 1.3'],
+    ['50220000', '§ 1.3'],
+    ['50330000', '§ 1.3'],
   ])('un %s en USD ne reçoit aucun écart, et le motif le dit (%s)', async (numero, paragraphe) => {
     for (const ref of [Referentiel.SYSCOHADA, Referentiel.SYCEBNL]) {
       const r = await service(ref, numero).calculer('t1', { exerciceId: 'ex1' });
@@ -69,6 +74,22 @@ describe('réévaluation · le périmètre du ch. 22', () => {
       expect(r.positionsNonReevaluees).toEqual([
         expect.objectContaining({ numero, deviseCode: 'USD', montantDevise: 1000, motif: expect.stringContaining(paragraphe) }),
       ]);
+    }
+  });
+
+  it('A5 ter, second tour · le 508 sort avec les titres, part « créances assimilées » comprise, et le motif dit la lecture d’OmegaX', () => {
+    for (const ref of [Referentiel.SYSCOHADA, Referentiel.SYCEBNL]) {
+      expect(seReevalueALaCloture('50800000', ref)).toBe(false);
+      expect(motifHorsReevaluation('50800000', ref)).toMatch(/part « créances assimilées » comprise[\s\S]*§ 1\.3\) · lecture d'OmegaX/);
+    }
+  });
+
+  it('A5 ter · les intérêts courus des titres (506, 276) restent réévalués · ce sont des créances de revenus', () => {
+    for (const ref of [Referentiel.SYSCOHADA, Referentiel.SYCEBNL]) {
+      expect(seReevalueALaCloture('50630000', ref)).toBe(true);
+      expect(seReevalueALaCloture('27640000', ref)).toBe(true);
+      expect(seReevalueALaCloture('50220000', ref)).toBe(false);
+      expect(seReevalueALaCloture('27410000', ref)).toBe(false);
     }
   });
 

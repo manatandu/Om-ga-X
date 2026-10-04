@@ -314,13 +314,17 @@ function monter(p: { lignes: Ligne[]; reeval?: Reeval; reevals?: Reeval[]; cours
       // ne ramène rien · ce n'est pas l'objet de ce spec.
       findMany: jest.fn(async (a: { where?: Record<string, unknown> } = {}) => {
         const w = a.where ?? {};
-        const borne = (w.exercice as { dateFin?: { lt: Date } } | undefined)?.dateFin?.lt;
-        if (!borne) return [];
+        // Deux bornes servies · la fin AVANT une date (portillon), ou le début
+        // AU PLUS TARD une date (écarts en place, cible comprise, A5 ter).
+        const ex = w.exercice as { dateFin?: { lt: Date }; dateDebut?: { lte: Date } } | undefined;
+        const borne = ex?.dateFin?.lt;
+        const debutAuPlusTard = ex?.dateDebut?.lte;
+        if (!borne && !debutAuPlusTard) return [];
         const sauf = (w.exerciceId as { not?: string } | undefined)?.not;
         return reevals
           .filter((r) => r.exerciceId !== sauf)
           .map((r) => reevaluationDe(r.exerciceId)!)
-          .filter((r) => r.exercice.dateFin.getTime() < borne.getTime())
+          .filter((r) => (borne ? r.exercice.dateFin.getTime() < borne.getTime() : r.exercice.dateDebut.getTime() <= debutAuPlusTard!.getTime()))
           .sort((x, y) => y.dateReevaluation.getTime() - x.dateReevaluation.getTime());
       }),
       findFirst: jest.fn(async (a: { where?: Record<string, unknown> } = {}) => {

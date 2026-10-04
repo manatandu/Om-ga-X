@@ -89,8 +89,8 @@ export const LEXIQUE = {
   devises: {
     titre: 'Écarts de conversion',
     texte:
-      "À la clôture, les créances et dettes en devises sont converties au cours du jour. L'écart est LATENT : perte probable au 478, gain probable au 479, et par prudence la perte probable est provisionnée au 194. Les disponibilités en devises suivent une autre règle : leur écart est considéré comme réalisé et va droit au résultat, 676 ou 776. Le texte prend soin de le dire : le 676 ne doit pas être confondu avec le 478, qui n'enregistre que les pertes probables.",
-    source: 'SYCEBNL, Partie 2 ch. 3, comptes 47, 67 et 77',
+      "À la clôture, les créances et dettes en devises sont converties au cours du jour. L'écart est LATENT : perte probable au 478, gain probable au 479, chacun dans la subdivision de la créance ou de la dette. Par prudence la perte probable est provisionnée, et le compte suit l'échéance du risque : 194 « Provisions pour pertes de change » pour un risque à plus d'un an (emprunt, prêt), 4991 pour une créance ou une dette d'exploitation, 4998 pour une opération H.A.O., 599 pour une opération financière à moins d'un an. Les disponibilités en devises suivent une autre règle : leur écart est considéré comme réalisé et va droit au résultat, 676 ou 776. Le texte prend soin de le dire : le 676 ne doit pas être confondu avec le 478, qui n'enregistre que les pertes probables.",
+    source: 'SYCEBNL, Partie 2 ch. 2 (compte 47) et ch. 3, comptes 19, 47, 49, 59, 67 et 77',
   },
   relance: {
     titre: 'Rappel et relevé',
