@@ -27,6 +27,49 @@ l'intégration.
 - Écrans · double-clic balance vers grand livre (Journal, Balance auxiliaire),
   choix du format en select avec bulle Aide.
 
+### Second tour (2026-10-04)
+
+- F5 regelé dans `export-fpm.spec.ts` · exercice CLOS au jeu d'essai (601 à
+  `clotureCredit` 3 000, 13 en face), colonnes C à F de sa ligne et sa feuille ;
+  retirer `+ l.clotureDebit` fait tomber le test.
+- Relevé A · contrôle des tiers contre une lecture INDÉPENDANTE des collectifs
+  (agrégat en base sur le divisionnaire, ou les collectifs pour AUTRES), testé
+  avec un compte sans tiers porteur d'un solde.
+- Relevé B · curseur à plusieurs lots (`lotExport` abaissé dans le test, valeurs
+  du curseur, aucun doublon) ; ligne « Solde à la balance générale » et écart au
+  bas de chaque feuille de compte.
+- Relevé C · `MAX_LIGNES_EXPORT` et `LOT_EXPORT` définis une fois
+  (`classeur-en-flux.ts`) ; banc de 2 000 comptes écrit dans
+  `docs/capacite-mesuree.md` · aucun plafond de feuilles (le nombre de feuilles
+  ne pèse pas) ; RSS hors tas déjà hors marge sur le livre à plat de `main`,
+  relevé OUVERT.
+- Relevé D · mention du brouillard en ligne 7.
+- Relevé E · route bornée `GET /ecritures/grand-livre/:compteId` ; l'écran passe
+  au compte seul quand le livre complet est refusé ; jeton d'ouverture dans
+  l'adresse du double-clic.
+- Relevé F · « Tous » propose la famille à exporter, présélectionnée seule.
+- Relevé G · paragraphe de CLAUDE.md reformulé ; libellé SYSCOHADA « Client »
+  testé.
+- LIASSE (décision de Manasse du 2026-10-04) · BALANCE N et BALANCE N-1 des
+  quatre liasses dans la présentation FPM (`balance-fpm.ts`, en mémoire),
+  CONTROLE BALANCE et CONTROLES repointés sur les rangs écrits, premier
+  contrôle relibellé « Mouvements bruts avant la période » ;
+  `relecture-balances-liasse.ts` rejoue chaque formule (plage = lignes de
+  compte, colonne annoncée, somme refaite à la main, verdict « Equilibre » ou
+  écart d'une balance faussée).
+
+## Notes (second tour)
+
+- Un tiers rattaché à un compte HORS classe 4 (16 emprunts, 27 prêts) n'entre
+  dans aucune famille · AUTRES ne lit que la classe 4. Non tranché, à remonter
+  si un cabinet en tient.
+- La balance de la liasse se lit sur le LIVRE-JOURNAL seul et avant l'écriture
+  qui solde les comptes de gestion, comme les états du classeur ; la balance
+  exportée du même exercice porte ce solde dans ses mouvements (F5). Les deux
+  diffèrent à dessein, la feuille de la liasse le dit en ligne 7.
+- Le report d'un compte lettrable sort BRUT dans la liasse de N+1 (à-nouveau
+  en DÉTAIL · 401 à 200 000 D / 300 000 C, solde net 100 000 C).
+
 ## Décisions
 
 - Unité · `monnaieDuJeuLegal` (loi n° 23/053 art. 141, 1° ; AUDCIF art. 17, 1°).
@@ -50,6 +93,12 @@ l'intégration.
   la bonne ligne, total de chaque grand livre = sa ligne de balance, contrôles
   tiers et grand livre contre la balance générale nuls, brouillard dit,
   format plat servi, « TOUS » refusé en 400.
+
+- Second tour, vraie base · export de N APRÈS sa clôture (52, 60, 70, 13, 40,
+  41 confrontés au calcul à la main) ; liasses de N (clos) et N+1 aux deux
+  référentiels · BALANCE N avant le solde des comptes de gestion, 13 absent,
+  veille de chaque période, plages et verdicts de CONTROLE BALANCE et
+  CONTROLES recalculés (`verifier2.py` du bloc-notes de session), tout juste.
 
 ## Reste
 
