@@ -1979,6 +1979,7 @@ export class DevisesService {
     }
     let avertissementEtat: string | null = null;
     let avertissementPosterieures: string | null = null;
+    let avertissementOuverture: string | null = null;
     // LA CONTRE-PASSATION SUIT L'ÉTAT RÉEL DES COMPTES (cinquième tour,
     // `etatDeLEcart`) · elle ne passe que si le 478, le 479 et le tiers
     // portent l'écart en place ; déjà contre-passé à la main, une ouverture
@@ -2015,6 +2016,21 @@ export class DevisesService {
       // passée avant cette contre-passation garde son écart, mesuré depuis le
       // coût historique ; la contre-passation, datée de l'ouverture, retire
       // celui de N et rien d'autre.
+      // SANS À-NOUVEAU QUI FAIT FOI (ligne A5 ter, relevé (e) d'A5 bis) ·
+      // la contre-passation est juste (Application 84 · « au 01/01/N+1 »),
+      // jugée sur la clôture reconstituée de N, mais le livre de cet exercice
+      // ne porte pas encore l'écart de N au 478 / 479 et au tiers (l'à-nouveau
+      // provisoire ne lit que le livre-journal validé) · la balance de cet
+      // exercice montre la contre-passation seule jusqu'à la clôture de N ou
+      // au bilan d'ouverture. Dit, jamais refusé · refuser imposerait de
+      // clôturer N avant toute contre-passation, que rien n'exige.
+      if (!etat.ouvertureFiableCible) {
+        avertissementOuverture =
+          "L'ouverture de cet exercice n'est pas encore l'à-nouveau de clôture de l'exercice précédent · la contre-passation est " +
+          "passée sur sa clôture reconstituée. Jusqu'à cette clôture (ou au bilan d'ouverture), la balance de cet exercice peut " +
+          'montrer la contre-passation sans l’écart de conversion qu’elle inverse ; elle s’équilibre quand l’à-nouveau de clôture ' +
+          'porte cet écart.';
+      }
       if (etat.posterieures.length > 0) {
         const dates = etat.posterieures.map((r) => `du ${r.dateReevaluation.toISOString().slice(0, 10)}`).join(', ');
         avertissementPosterieures =
@@ -2070,7 +2086,7 @@ export class DevisesService {
       ...enregistree,
       // Le dire dans la réponse (B2, M2) · l'exception n'est jamais tue.
       avertissement:
-        [integrale.code ? AVERTISSEMENT_INTEGRALE[integrale.code] : null, avertissementEtat, avertissementPosterieures]
+        [integrale.code ? AVERTISSEMENT_INTEGRALE[integrale.code] : null, avertissementEtat, avertissementPosterieures, avertissementOuverture]
           .filter((a) => a !== null)
           .join(' ') || null,
     };
@@ -2546,6 +2562,12 @@ export class DevisesService {
        * dites, jamais à annuler.
        */
       posterieures: [] as Array<{ id: string; dateReevaluation: Date }>,
+      /**
+       * La cible s'ouvre-t-elle par un à-nouveau qui fait foi (report de
+       * clôture ou bilan d'ouverture importé) ? Sans lui, l'état est jugé sur
+       * la clôture RECONSTITUÉE de l'exercice précédent (relevé (e) d'A5 bis).
+       */
+      ouvertureFiableCible: false,
       tronque: false,
     };
     if (!cible) return etat;
@@ -2586,6 +2608,7 @@ export class DevisesService {
         })
       ).map((e) => e.exerciceId),
     );
+    etat.ouvertureFiableCible = avecOuverture.has(cible.id);
     const lecture = await this.lireLaFenetreDeLEcart(tenantId, x, fenetre, jusquaLaCible, avecOuverture, idsEcart);
     etat.tronque = etat.tronque || lecture.tronque;
     const lu47 = new Map(ids47.map((c) => [c, lecture.solde.get(c) ?? 0]));

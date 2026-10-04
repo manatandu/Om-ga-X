@@ -43,6 +43,10 @@ d'A5 bis renvoyés vers elle.
   compte fermé (`lignesDeDisponibilitesDesContrePassationsDeclarees`) ; un
   autre montant reste une opération ; lecture bornée dite.
 
+- Relevé (e) · sans à-nouveau qui fait foi dans la cible, la contre-passation
+  passe (jugée sur la clôture reconstituée) et le DIT · avertissement servi
+  par le serveur, ajouté à la confirmation à l'écran (`DevisesPage`).
+
 ## Décisions, avec leur article
 
 1. SYCEBNL, risque de change à moins d'un an · LE TEXTE TRANCHE, la règle
@@ -92,9 +96,13 @@ d'A5 bis renvoyés vers elle.
    (411 = 2 500 000 + 400 000 − 500 000 = 2 400 000, Guide Partie 2 ch. 22,
    Applications 84 et 85). Annuler et réévaluer de nouveau n'ajoutait rien.
 
-## Reste
+7. (e) · la contre-passation se passe « au 01/01/N+1 » (Guide, Partie 2
+   ch. 22, Application 84) ; aucun texte ne l'attache à la clôture de N.
+   Refuser imposerait de clôturer N avant toute contre-passation · dit, non
+   refusé ; la balance de N+1 s'équilibre à la clôture de N (AUDCIF art. 34,
+   correspondance des bilans).
 
-- Relevé (e).
+## Reste
 - Bloc du § 3 complet, scénario sur vraie base aux deux référentiels.
 
 ## Vérification

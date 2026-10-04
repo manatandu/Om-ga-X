@@ -1090,9 +1090,17 @@ describe('A5 ter · une réévaluation postérieure passée avec l’écart en p
     expect(r.avertissement).toMatch(/La réévaluation du 2028-12-31/);
   });
 
-  it('la réévaluation de N+1 annulée (hors de la lecture) · la contre-passation passe', async () => {
+  it('la réévaluation de N+1 annulée (hors de la lecture) · la contre-passation passe, sans rien à dire (à-nouveau de clôture en place)', async () => {
     const { svc, creer } = monter({ ecritures: [...BASE_N, AN_N1] });
-    await svc.extourner('t', 'u', 'r1', 'e27');
+    const r = await svc.extourner('t', 'u', 'r1', 'e27');
     expect(creer).toHaveBeenCalled();
+    expect(r.avertissement).toBeNull();
+  });
+
+  it('A5 ter (e) · sans à-nouveau qui fait foi dans N+1 · la contre-passation passe sur la clôture reconstituée, et le DIT', async () => {
+    const { svc, creer } = monter({ ecritures: [...BASE_N] });
+    const r = await svc.extourner('t', 'u', 'r1', 'e27');
+    expect(creer).toHaveBeenCalled();
+    expect(r.avertissement).toMatch(/passée sur sa clôture reconstituée[\s\S]*montrer la contre-passation sans l’écart de conversion qu’elle inverse/);
   });
 });

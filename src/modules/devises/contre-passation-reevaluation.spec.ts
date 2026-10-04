@@ -261,7 +261,8 @@ describe('A5 bis · la contre-passation ne touche pas les disponibilités (AUDCI
     expect(lignes.map((l) => l.compteId)).not.toContain('c-5712');
     expect(lignes.map((l) => l.compteId)).not.toContain('c-676');
     expect(equilibree(lignes)).toBe(true);
-    expect(r.avertissement).toBeNull();
+    // Aucun à-nouveau de clôture dans N+1 · seul l'état de l'ouverture est dit (A5 ter, relevé (e)).
+    expect(r.avertissement).toMatch(/^L'ouverture de cet exercice n'est pas encore l'à-nouveau de clôture/);
   });
 
   it('les cinq racines de disponibilités et le 776 restent hors de la contre-passation', () => {
