@@ -782,6 +782,27 @@ AVERTISSEMENT, hors de `TIERS_SOLDE_INVERSE` ; impayé d'adhérent (4131, 4133) 
 l'encaissement admis avec avertissement (question D7 du suivi). Chaque correction
 s'éprouve sur VRAIE base à travers une clôture (décision du 2026-10-03).
 
+**TVA à l'encaissement (ligne A7 bis, partie 1, 2026-10-04).** O.-L. n° 10/001,
+art. 25, 2° ; décret n° 011/42, art. 57 ; art. 37 al. 1 et décret art. 96 pour la
+déduction (`TauxTvaService.exigibilite`, `repartirEncaissement`,
+`relierAuxANouveaux`). (1) UNE CRÉANCE NON LETTRÉE N'EST PAS UN ENCAISSEMENT · la
+taxe d'une prestation impayée reste EN ATTENTE ; seul ce qui est réglé dans
+l'écriture (classe 5) ou imputé sur une avance (419, 409) l'est à sa date ; régime
+des débits inchangé. (2) UNE TRANCHE PAR RÈGLEMENT dans un groupe à une seule
+facture (B-2 d'A7, reprise seule) ; plusieurs factures, fraction cumulée, dit.
+(3) La créance de N réglée en N+1 se lit par SA ligne d'à-nouveau (même
+appariement que `paires-a-cheval.ts`), sans deviner · deux candidates, en attente.
+(4) UNE LIQUIDATION GARDE CE QU'ELLE A DÉCLARÉ · `LiquidationTva.tvaEncaissementFigee`
+fige ligne par ligne ; un règlement lettré après coup est REPORTÉ une fois au
+premier jour non liquidé ; un trop-déclaré absorbe les tranches suivantes.
+TRANSITION · une liquidation sans figé (`null`, ancien moteur) est réputée avoir
+déclaré EN ENTIER, à la facture, toute ligne dont aucune ligne de tiers n'était
+lettrée à son instant (`Lettrage.createdAt`) · un groupe défait puis refait après
+coup n'est pas distingué, limite dite. Le figé ne part jamais à l'écran (retiré
+par le contrôleur). Avoirs inchangés (constatation, décret art. 126). Partie 2
+(récupération de l'art. 52 sur créance irrécouvrable, TVA du recouvrement d'une
+créance reclassée) au suivi.
+
 **Procès-verbal de comptage par caisse.** Le PV de campagne (CPCC, étape 2) ne porte
 pas les espèces ; le § VI vise « la caisse SIÈGE, [...] la caisse AGENCE, [...] la
 caisse DE SECOURS » · un PV par caisse. QUATRE REFUS : un 57 seul (un 52 se
