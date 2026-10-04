@@ -142,6 +142,15 @@ d'A5 bis renvoyés vers elle.
 7. Motif du 508 · part « créances assimilées » sortie avec les titres,
    lecture d'OmegaX dite.
 
+Vérification du second tour · vraie base `a5ter_1` rejouée (scénario du
+bloc-notes enrichi) · SYCEBNL · 481 (300 USD) et 186 (intérêts dus) au 4784 et
+au 599 par le 6791, repris au 7791 en N+1 (599 de −75 000 en N à −37 500) ;
+484 seul au 47838 / 4998 ; 276 au 4792 ; SYSCOHADA · 481 (dette de
+2 000 000, clôture N à 2 100) et 166 au 4784 et au 4997 par le 6791
+(105 000), repris au 7791 en N+1 (95 000), aucun 4783 ni 4991 pour eux ;
+toutes les dettes au cours du jour. Test navigateur ajusté (481 financier) ·
+les 20 tests des devises et du règlement en devise passent.
+
 ## Relevés en attente
 
 - À DIRE AUX UTILISATEURS · au SYCEBNL, la réserve « non déclarée » s'impose

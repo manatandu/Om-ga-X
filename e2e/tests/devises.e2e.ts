@@ -982,7 +982,7 @@ test('SYSCOHADA · D6 · réévaluer, annuler, réévaluer · 478, 4991, 656 et 
  * clôture, l'écart est contre-passé à l'ouverture de N+1 et N+1 réévalué ·
  * chaque solde au montant calculé à la main.
  */
-test('SYCEBNL · A5 ter · familles 4991, 4998, 599 et 194, subdivisions du 478, titres hors réévaluation, à travers la clôture', async ({ page }) => {
+test('SYCEBNL · A5 ter · familles 4991, 599 et 194, subdivisions du 478, titres hors réévaluation, à travers la clôture', async ({ page }) => {
   const pannes = surveiller(page);
   const dossier = await creerDossier(page, { referentiel: 'SYCEBNL', nom: 'Devises e2e A5 ter SYCEBNL', montant: 10_000 });
   await seConnecter(page, dossier.email);
@@ -1025,8 +1025,9 @@ test('SYCEBNL · A5 ter · familles 4991, 4998, 599 et 194, subdivisions du 478,
     e194: await solde(exercice.id, '19400000'),
     e502: await solde(exercice.id, '50220000'),
   };
-  // Pertes · dette fournisseur 50 000, dette H.A.O. 30 000, emprunt 200 000, crédit de trésorerie 40 000 ; titre inchangé.
-  expect(n).toEqual({ e47831: 50_000, e47838: 30_000, e4784: 240_000, e4991: -50_000, e4998: -30_000, e599: -40_000, e194: -200_000, e502: 200_000 });
+  // Pertes · dette fournisseur 50 000 (exploitation) ; emprunt 200 000 (long terme) ; crédit de trésorerie 40 000 et
+  // fournisseur d'investissements 30 000, financiers à court terme (second tour · ch. 22 § 1.1, fiche du compte 59) ; titre inchangé.
+  expect(n).toEqual({ e47831: 50_000, e47838: 0, e4784: 270_000, e4991: -50_000, e4998: 0, e599: -70_000, e194: -200_000, e502: 200_000 });
 
   await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: exercice.id, dateLimite: jour(exercice.dateFin) });
   await appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`, {});
@@ -1043,6 +1044,6 @@ test('SYCEBNL · A5 ter · familles 4991, 4998, 599 et 194, subdivisions du 478,
     e194: await solde(suivant.id, '19400000'),
   };
   // Au cours de 2 050, depuis le coût · chaque dette à sa valeur du jour, chaque provision reprise de moitié dans SA famille.
-  expect(n1).toEqual({ e401: -1_025_000, e181: -4_100_000, e4812: -615_000, e561: -820_000, e4991: -25_000, e4998: -15_000, e599: -20_000, e194: -100_000 });
+  expect(n1).toEqual({ e401: -1_025_000, e181: -4_100_000, e4812: -615_000, e561: -820_000, e4991: -25_000, e4998: 0, e599: -35_000, e194: -100_000 });
   expect(pannes).toEqual([]);
 });
