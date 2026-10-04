@@ -1,6 +1,7 @@
 import { NatureMouvementDepreciation, Referentiel, SensDepreciation } from '@prisma/client';
 import {
   compteCiblePropose,
+  dernierTestDeClotureDepuis,
   motifRefusCompteCible,
   porteurDeLaDepreciation,
   propositionTransfert,
@@ -150,13 +151,14 @@ function harnais(o: {
   depreciations?: Array<{ sens: SensDepreciation; montant: number; compte: string; contrepartie: string; dateFin?: string; impute?: number }>;
   plan?: string[];
   echecSecondeEcriture?: boolean;
+  dateMiseEnService?: string;
 }) {
   const ids = (n: string) => `c${n.slice(0, 4)}`;
   const immo = {
     id: 'i1',
     designation: 'Entrepôt',
     dateAcquisition: D('2025-03-01'),
-    dateMiseEnService: null,
+    dateMiseEnService: o.dateMiseEnService ? D(o.dateMiseEnService) : null,
     statut: 'EN_SERVICE',
     valeurOrigine: 10_000_000,
     compteImmobilisationId: 'c2311',
@@ -191,7 +193,12 @@ function harnais(o: {
     immobilisation: { findFirst: jest.fn().mockResolvedValue(immo), update },
     coutEmpruntIncorpore: { aggregate: jest.fn().mockResolvedValue({ _max: { dateFin: null } }) },
     ligneReevaluationBilan: { findFirst: jest.fn().mockResolvedValue(null) },
-    exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e26', statut: 'OUVERT', dateDebut: D('2026-01-01'), dateFin: D('2026-12-31') }) },
+    exercice: {
+      findFirst: jest.fn(({ where }: { where: { id: string } }) => {
+        const an = where.id.slice(1);
+        return Promise.resolve({ id: where.id, statut: 'OUVERT', dateDebut: D(`20${an}-01-01`), dateFin: D(`20${an}-12-31`) });
+      }),
+    },
     compte: {
       findMany: jest.fn(({ where }: { where: { numero: { startsWith: string } } }) =>
         Promise.resolve(plan.filter((c) => c.numero.startsWith(where.numero.startsWith))),
@@ -278,9 +285,64 @@ describe('câblage de la mise en service', () => {
     expect(r.avertissementDepreciation).toMatch(/Système minimal/);
   });
 
-  it('une mise en service datée avant une dépréciation du bien en cours est refusée (jumeau des réévaluations)', async () => {
-    const h = harnais({ depreciations: [{ ...DEPRECIE_N[0], dateFin: '2026-12-31' }] });
-    await expect(h.service.mettreEnService('t1', 'u1', 'i1', MES as never)).rejects.toThrow(/se date après cette clôture/);
+  /*
+    CAS DU VÉRIFICATEUR (seconde relecture) · bien en cours testé au 2939 aux
+    clôtures 2026 (500 000) et 2027 (+100 000) faute de mise en service saisie ;
+    réellement achevé le 2027-06-01. Refuser cette date enfermait le bien (seule
+    une date fausse passait, l'amortissement 2027 perdu, AUDCIF art. 45).
+  */
+  const TESTE_2026_2027 = [
+    { ...DEPRECIE_N[0], montant: 500_000, dateFin: '2026-12-31' },
+    { ...DEPRECIE_N[0], montant: 100_000, dateFin: '2027-12-31' },
+  ];
+
+  it('mise en service au 2027-06-01 ADMISE à sa vraie date, sans transfert, la réponse dit pourquoi et quoi faire', async () => {
+    const h = harnais({ depreciations: TESTE_2026_2027 });
+    const r = await h.service.mettreEnService('t1', 'u1', 'i1', { date: '2027-06-01', exerciceId: 'e27', journalId: 'j1' } as never);
+    expect(h.ecritures).toHaveLength(1);
+    expect(h.ecritures[0].date).toBe('2027-06-01');
+    expect(h.crees).toHaveLength(0);
+    expect(r.dateMiseEnService).toEqual(D('2027-06-01'));
+    expect(r.transfertDepreciation).toBeNull();
+    expect(r.avertissementDepreciation).toMatch(/600000\.00 au 29390000/);
+    expect(r.avertissementDepreciation).toMatch(/clôture du 2027-12-31/);
+    expect(r.avertissementDepreciation).toMatch(/Transférer la dépréciation/);
+  });
+
+  it('l’aperçu le dit avant le geste, à la date saisie', async () => {
+    const h = harnais({ depreciations: TESTE_2026_2027 });
+    const a = await h.service.propositionTransfertDepreciation('t1', 'i1', undefined, '2027-06-01');
+    expect(a).toMatchObject({ etat: 'A_PASSER', montant: 600_000, auPlusTotApres: '2027-12-31' });
+    expect((a as { differe: string }).differe).toMatch(/commence après le 2027-12-31/);
+    const b = await h.service.propositionTransfertDepreciation('t1', 'i1', undefined, '2028-01-01');
+    expect(b).toMatchObject({ differe: null });
+  });
+
+  it('le transfert passe en 2028, au 2028-01-01, pour les 600 000 du 2939 ; refusé dans 2027', async () => {
+    const h = harnais({ depreciations: TESTE_2026_2027, dateMiseEnService: '2027-06-01' });
+    await expect(h.service.transfererDepreciation('t1', 'u1', 'i1', { exerciceId: 'e27', journalId: 'j1' })).rejects.toThrow(
+      /exercice ouvert qui commence après cette clôture/,
+    );
     expect(h.ecritures).toHaveLength(0);
+    const r = await h.service.transfererDepreciation('t1', 'u1', 'i1', { exerciceId: 'e28', journalId: 'j1' });
+    expect(r).toMatchObject({ montant: 600_000, date: '2028-01-01', compteSource: '29390000', compteCible: '29310000' });
+    expect(h.ecritures.map((e) => [e.date, e.lignes])).toEqual([
+      ['2028-01-01', [{ compteId: 'c2939', debit: 600_000, credit: 0 }, { compteId: 'c7914', debit: 0, credit: 600_000 }]],
+      ['2028-01-01', [{ compteId: 'c6914', debit: 600_000, credit: 0 }, { compteId: 'c2931', debit: 0, credit: 600_000 }]],
+    ]);
+    expect(h.crees.map((c) => [c.nature, c.exerciceId, c.montant])).toEqual([
+      [NatureMouvementDepreciation.TRANSFERT_REPRISE, 'e28', 600_000],
+      [NatureMouvementDepreciation.TRANSFERT_DOTATION, 'e28', 600_000],
+    ]);
+  });
+});
+
+describe('le dernier test de clôture au 29x9 au ou après une date', () => {
+  const m = (dateFin: string, numero = '29390000', nature = 'CLOTURE') => ({ nature, exercice: { dateFin: D(dateFin) }, compteDepreciation: { numero } });
+  it('rend la clôture la plus tardive, au ou après la date ; ignore les transferts et les 29 du bien achevé', () => {
+    expect(dernierTestDeClotureDepuis([m('2026-12-31'), m('2027-12-31')], D('2027-06-01'))).toEqual(D('2027-12-31'));
+    expect(dernierTestDeClotureDepuis([m('2026-12-31')], D('2027-06-01'))).toBeNull();
+    expect(dernierTestDeClotureDepuis([m('2027-12-31')], D('2027-12-31'))).toEqual(D('2027-12-31'));
+    expect(dernierTestDeClotureDepuis([m('2028-12-31', '29310000'), m('2028-12-31', '29390000', 'TRANSFERT_REPRISE')], D('2028-01-01'))).toBeNull();
   });
 });

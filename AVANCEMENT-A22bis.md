@@ -32,6 +32,33 @@ au 29 du bien achevé.
   transfert lisait le premier comme une dépréciation postérieure (seuls les
   tests de CLÔTURE sont datés de la fin d'exercice).
 
+## Second tour (BLOQUANT levé)
+- Mise en service d'un bien testé au 29x9 à une clôture postérieure à sa date
+  (tests 2026 et 2027, achevé le 2027-06-01) · ADMISE à sa vraie date (AUDCIF
+  art. 45), aucun transfert automatique, message nommé
+  (`motifTransfertDiffere`). « Transférer la dépréciation » le passe au premier
+  jour d'un exercice ouvert qui commence après le dernier test (art. 22, 4°),
+  pour tout ce que porte le 29x9 (`dernierTestDeClotureDepuis`, tests au 29x9
+  seuls). L'aperçu le dit (`differe`, `auPlusTotApres`, date saisie lue).
+- Rejeu sur vraie base, deux référentiels · mise en service admise, dotation
+  2027 de 277 083,33 (9 500 000 / 20 × 7/12), transfert au 2028-01-01 de
+  600 000 (2939 = 0, 2931 = -600 000, 7914 et 6914 à 600 000), bilan 2028 du
+  poste Bâtiments brut 10 000 000, amort. et dép. 1 333 229,16 · 0 écart.
+
+## Relevés en attente (non traités dans cette ligne)
+- Les chiffres BRUTS des 69 et 79 (6914 / 7914, ou 853 / 863) apparaissent
+  dans la NOTE 28 (SYSCOHADA), la note 5F (associations) et le compte de
+  résultat · conséquence de la décision (reprise et dotation, résultat net
+  inchangé), à expliquer à Manasse.
+- Faux signal préexistant de `DEPRECIATION_IMMO_HORS_MODULE` sur l'à-nouveau
+  (soldes d'ouverture du 29 lus contre les seuls mouvements du module de
+  l'exercice).
+- Le ré-étalement après dépréciation compte les années écoulées en années
+  entières (`anneesEcoulees`) · dotation 2028 du cas du vérificateur
+  9 122 916,67 / 20 = 456 145,83, et non sur les 233 mois restant à courir.
+- `reclasser` réécrit `compteDepreciationId` de TOUS les mouvements du bien,
+  transferts compris · l'historique ne dit plus le 29x9 d'origine.
+
 ## Reste
 - Bloc § 3 complet, intégration sur `main` (hors de cette ligne).
 

@@ -152,6 +152,8 @@ import {
 import { cumulsParCompte29, motifRefusCompte29DuBien } from './depreciation-en-cours';
 import {
   compteCiblePropose,
+  dernierTestDeClotureDepuis,
+  motifTransfertDiffere,
   motifRefusCompteCible,
   porteurDeLaDepreciation,
   propositionTransfert,
@@ -901,22 +903,17 @@ export class ImmobilisationService {
       );
     }
 
-    // LIGNE A22 BIS · UNE MISE EN SERVICE NE REMONTE PAS AVANT UNE
-    // DÉPRÉCIATION CONSTATÉE SUR LE BIEN EN COURS. Cette dépréciation a lu le
-    // bien en cours à la clôture (son 29x9, `depreciation-en-cours.ts`, règle
-    // (4)) ; une mise en service antérieure ferait dire au livre que le bien
-    // était achevé ce jour-là, et le transfert, daté de la mise en service,
-    // reprendrait au 29x9 une dépréciation dotée APRÈS lui. Jumeau des deux
-    // refus ci-dessus (coûts d'emprunt, réévaluation).
-    const depreciationPosterieure = immo.compteEnCoursId
-      ? immo.depreciations.find((d) => d.nature === NatureMouvementDepreciation.CLOTURE && d.exercice.dateFin >= date)
-      : undefined;
-    if (depreciationPosterieure) {
-      throw new BadRequestException(
-        `Ce bien a été déprécié à la clôture du ${depreciationPosterieure.exercice.dateFin.toISOString().slice(0, 10)} alors qu'il ` +
-          "était inscrit en cours · sa mise en service se date après cette clôture (AUDCIF Titre VIII ch. 12 § 2.1 ; fiche du compte 29).",
-      );
-    }
+    // LIGNE A22 BIS · UNE DÉPRÉCIATION TESTÉE AU 29x9 À UNE CLÔTURE POSTÉRIEURE
+    // À LA DATE DE MISE EN SERVICE NE FAIT JAMAIS REFUSER CETTE DATE · le
+    // bien achevé le 2027-06-01, testé en cours aux clôtures 2026 et 2027
+    // faute de mise en service saisie, se met en service à sa vraie date
+    // (AUDCIF art. 45 · refusée, seule une date fausse passait et
+    // l'amortissement 2027 était perdu, sans geste pour défaire le test). Le
+    // transfert, lui, n'est pas passé · daté de ce jour, il reprendrait une
+    // dépréciation dotée après lui. La réponse le dit, et « Transférer la
+    // dépréciation » le passe dans un exercice ouvert postérieur
+    // (`dernierTestDeClotureDepuis`, `motifTransfertDiffere`).
+    const dernierTest = immo.compteEnCoursId ? dernierTestDeClotureDepuis(immo.depreciations, date) : null;
 
     let ecritureId: string | null = null;
     let transfert: TransfertPrepare | null = null;
@@ -937,9 +934,12 @@ export class ImmobilisationService {
       // LIGNE A22 BIS · tout ce qui peut refuser le transfert se lit AVANT la
       // première écriture (compte cible absent ou ambigu, comptes de dotation
       // et de reprise absents du plan).
-      const preparation = await this.preparerTransfert(tenantId, immo, dto.compteDepreciationCibleId);
+      const preparation = await this.preparerTransfert(tenantId, immo, dto.compteDepreciationCibleId, { lectureSeule: !!dernierTest });
       if (preparation.etat === 'ABSTENTION') avertissement = preparation.motif;
-      if (preparation.etat === 'A_PASSER') transfert = preparation;
+      if (preparation.etat === 'A_PASSER') {
+        if (dernierTest) avertissement = motifTransfertDiffere(preparation.numeroSource, preparation.montant, dernierTest);
+        else transfert = preparation;
+      }
       const ecriture = await this.ecritureService.creer(tenantId, userId, {
         exerciceId: exercice.id,
         journalId: dto.journalId,
@@ -1012,11 +1012,23 @@ export class ImmobilisationService {
    * 29x9, montré AVANT le geste (fenêtre de mise en service) · rien n'est
    * écrit. `compteDepreciationCibleId` éprouve un choix du cabinet.
    */
-  async propositionTransfertDepreciation(tenantId: string, id: string, compteDepreciationCibleId?: string) {
+  async propositionTransfertDepreciation(tenantId: string, id: string, compteDepreciationCibleId?: string, date?: string) {
     const immo = await this.chargerPourTransfert(tenantId, id);
     const preparation = await this.preparerTransfert(tenantId, immo, compteDepreciationCibleId, { lectureSeule: true });
     if (preparation.etat !== 'A_PASSER') return { ...preparation, candidats: [] as Array<{ id: string; numero: string; intitule: string }> };
-    return { ...this.resumeTransfert(preparation), etat: preparation.etat, motif: preparation.motifCible, candidats: preparation.candidats };
+    // La date lue est celle de la mise en service posée, sinon celle que la
+    // fenêtre propose · un test de clôture au ou après elle DIFFÈRE le
+    // transfert (`motifTransfertDiffere`), et l'aperçu le dit avant le geste.
+    const reference = immo.dateMiseEnService ?? (date && !Number.isNaN(new Date(date).getTime()) ? new Date(date) : null);
+    const dernierTest = reference ? dernierTestDeClotureDepuis(immo.depreciations, reference) : null;
+    return {
+      ...this.resumeTransfert(preparation),
+      etat: preparation.etat,
+      motif: preparation.motifCible,
+      candidats: preparation.candidats,
+      differe: dernierTest ? motifTransfertDiffere(preparation.numeroSource, preparation.montant, dernierTest) : null,
+      auPlusTotApres: dernierTest ? dernierTest.toISOString().slice(0, 10) : null,
+    };
   }
 
   /**
@@ -1049,13 +1061,15 @@ export class ImmobilisationService {
     // Seuls les tests de clôture sont datés de la fin de leur exercice · un
     // transfert déjà passé est daté de son jour, et ne se lit pas ici
     // (le second transfert se dit « rien à transférer »).
-    const posterieure = immo.depreciations.find(
-      (d) => d.nature === NatureMouvementDepreciation.CLOTURE && d.exercice.dateFin > dateTransfert,
-    );
+    // Même lecteur que la mise en service · un test de clôture au 29x9 daté
+    // au ou après le jour du transfert le ferait reprendre avant la dotation.
+    const posterieureLe = dernierTestDeClotureDepuis(immo.depreciations, dateTransfert);
+    const posterieure = posterieureLe ? { exercice: { dateFin: posterieureLe } } : null;
     if (posterieure) {
       throw new BadRequestException(
-        `Une dépréciation de ce bien est datée du ${posterieure.exercice.dateFin.toISOString().slice(0, 10)}, après le ` +
-          `${dateTransfert.toISOString().slice(0, 10)} · passez le transfert dans l'exercice qui suit cette clôture.`,
+        `Une dépréciation de ce bien a été testée à la clôture du ${posterieure.exercice.dateFin.toISOString().slice(0, 10)}, au ` +
+          `ou après le ${dateTransfert.toISOString().slice(0, 10)} · choisissez un exercice ouvert qui commence après cette ` +
+          'clôture, le transfert est daté de son premier jour (AUDCIF art. 22, 4°).',
       );
     }
     const preparation = await this.preparerTransfert(tenantId, immo, dto.compteDepreciationCibleId);

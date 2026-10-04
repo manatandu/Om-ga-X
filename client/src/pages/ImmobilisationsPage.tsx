@@ -2271,7 +2271,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                       </span>
                     </div>
                     {immo.compteEnCoursId && immo.depreciations.length > 0 && (
-                      <ApercuTransfertDepreciation immobilisationId={immo.id} compteCibleId={msCompteCible} onCompteCible={setMsCompteCible} />
+                      <ApercuTransfertDepreciation immobilisationId={immo.id} compteCibleId={msCompteCible} onCompteCible={setMsCompteCible} date={msDate} />
                     )}
                   </form>
                 )}

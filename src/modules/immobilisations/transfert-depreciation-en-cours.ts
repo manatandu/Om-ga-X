@@ -250,3 +250,38 @@ export function porteurDeLaDepreciation<
   const derniereDotation = dotationsDuPorteur.at(-1) ?? mouvements.filter((m) => m.sens === 'DOTATION').at(-1) ?? null;
   return { compteDepreciationId: porteur, compteContrepartieDotationId: derniereDotation?.compteContrepartieId ?? null };
 }
+
+/**
+ * LE DERNIER TEST DE CLÔTURE PASSÉ AU OU APRÈS UNE DATE · null s'il n'y en a
+ * pas. Cas réel (seconde relecture d'A22 bis) · un bien achevé le 2027-06-01
+ * dont la mise en service n'avait pas été saisie a été testé au 29x9 aux
+ * clôtures 2026 ET 2027. Sa mise en service se pose à sa VRAIE date (AUDCIF
+ * art. 45, l'amortissement court de là), mais le transfert ne peut plus se
+ * dater de ce jour · il reprendrait au 29x9, le 2027-06-01, une dépréciation
+ * dotée le 2027-12-31. Il se passe alors au premier jour d'un exercice ouvert
+ * qui commence APRÈS ce test (art. 22, 4°), pour tout ce que porte le 29x9.
+ */
+export function dernierTestDeClotureDepuis(
+  mouvements: readonly { nature: string; exercice: { dateFin: Date }; compteDepreciation: { numero: string } }[],
+  date: Date,
+): Date | null {
+  let dernier: Date | null = null;
+  for (const m of mouvements) {
+    // Seuls les tests passés AU 29x9 comptent · un test au 29 du bien achevé
+    // ne reprend rien au compte en cours.
+    if (m.nature !== 'CLOTURE' || !estCompteDepreciationEnCours(m.compteDepreciation.numero) || m.exercice.dateFin < date) continue;
+    if (!dernier || m.exercice.dateFin > dernier) dernier = m.exercice.dateFin;
+  }
+  return dernier;
+}
+
+/** Ce que la mise en service et l'aperçu disent quand le transfert attend un exercice postérieur. */
+export function motifTransfertDiffere(numeroSource: string, montant: number, dernierTest: Date): string {
+  const jour = dernierTest.toISOString().slice(0, 10);
+  return (
+    `La dépréciation de ${montant.toFixed(2)} au ${numeroSource} a été testée à la clôture du ${jour}, après la date de mise ` +
+    'en service · elle reste à ce compte, et le transfert ne se passe pas à cette date (il reprendrait une dépréciation dotée ' +
+    `après lui). Transférez-la avec « Transférer la dépréciation » dans un exercice ouvert qui commence après le ${jour} · ` +
+    'le transfert est daté de son premier jour (AUDCIF art. 22, 4°) et porte tout ce que le compte en cours garde pour ce bien.'
+  );
+}

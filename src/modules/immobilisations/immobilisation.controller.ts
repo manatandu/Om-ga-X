@@ -155,8 +155,9 @@ export class ImmobilisationController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Query('compteDepreciationCibleId') compteDepreciationCibleId?: string,
+    @Query('date') date?: string,
   ) {
-    return this.immobilisationService.propositionTransfertDepreciation(user.tenantId, id, compteDepreciationCibleId || undefined);
+    return this.immobilisationService.propositionTransfertDepreciation(user.tenantId, id, compteDepreciationCibleId || undefined, date || undefined);
   }
 
   /**

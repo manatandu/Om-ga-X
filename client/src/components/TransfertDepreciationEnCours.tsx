@@ -16,6 +16,9 @@ interface ApercuTransfert {
   compteReprise?: string | null;
   compteDotation?: string | null;
   candidats: Array<{ id: string; numero: string; intitule: string }>;
+  /** Un test de clôture au 29x9 au ou après la date · le transfert attend un exercice postérieur. */
+  differe?: string | null;
+  auPlusTotApres?: string | null;
 }
 
 const AIDE =
@@ -33,10 +36,13 @@ export function ApercuTransfertDepreciation({
   immobilisationId,
   compteCibleId,
   onCompteCible,
+  date,
 }: {
   immobilisationId: string;
   compteCibleId: string;
   onCompteCible: (id: string) => void;
+  /** La date de mise en service saisie · le serveur dit si un test de clôture la suit. */
+  date?: string;
 }) {
   // null tant que rien n'est lu · un aperçu inconnu ne se lit pas « rien à transférer ».
   const [apercu, setApercu] = useState<ApercuTransfert | null>(null);
@@ -47,16 +53,19 @@ export function ApercuTransfertDepreciation({
     const n = ++jeton.current;
     setApercu(null);
     setErreur(null);
-    const cible = compteCibleId ? `?compteDepreciationCibleId=${compteCibleId}` : '';
+    const parametres = new URLSearchParams();
+    if (compteCibleId) parametres.set('compteDepreciationCibleId', compteCibleId);
+    if (date) parametres.set('date', date);
+    const requete = parametres.toString();
     api
-      .get<ApercuTransfert>(`/immobilisations/${immobilisationId}/transfert-depreciation${cible}`)
+      .get<ApercuTransfert>(`/immobilisations/${immobilisationId}/transfert-depreciation${requete ? `?${requete}` : ''}`)
       .then((r) => {
         if (n === jeton.current) setApercu(r);
       })
       .catch((err) => {
         if (n === jeton.current) setErreur(err instanceof ApiError ? err.message : 'Transfert de la dépréciation illisible');
       });
-  }, [immobilisationId, compteCibleId]);
+  }, [immobilisationId, compteCibleId, date]);
 
   if (erreur) return <div className="mt-2 text-[11.5px] text-danger">{erreur}</div>;
   if (!apercu) return <div className="mt-2 text-[11.5px] text-text-dim">…</div>;
@@ -64,6 +73,7 @@ export function ApercuTransfertDepreciation({
   if (apercu.etat === 'ABSTENTION') return <div className="mt-2 text-[11.5px] text-warning">{apercu.motif}</div>;
   return (
     <div className="mt-2 text-[11.5px]" data-transfert-depreciation>
+      {apercu.differe && <div className="mb-1 text-warning" data-transfert-differe>{apercu.differe}</div>}
       <div className="flex items-center gap-1">
         <span className="font-semibold">Transfert de la dépréciation · {montant(apercu.montant ?? 0)}</span>
         <span className="text-text-dim">
