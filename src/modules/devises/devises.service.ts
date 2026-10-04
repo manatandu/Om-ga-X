@@ -1978,6 +1978,7 @@ export class DevisesService {
       );
     }
     let avertissementEtat: string | null = null;
+    let avertissementPosterieures: string | null = null;
     // LA CONTRE-PASSATION SUIT L'ÉTAT RÉEL DES COMPTES (cinquième tour,
     // `etatDeLEcart`) · elle ne passe que si le 478, le 479 et le tiers
     // portent l'écart en place ; déjà contre-passé à la main, une ouverture
@@ -2010,6 +2011,18 @@ export class DevisesService {
       const deuxieme = etat.jugement?.verdict === 'CONTRE_PASSEE' || etat.jugement?.verdict === 'AMBIGU';
       if (refusEtat && (!reeval.etatAtteste || deuxieme)) throw new BadRequestException(refusEtat);
       if (refusEtat) avertissementEtat = avertissementEtatAtteste(reeval, refusEtat);
+      // DITE, JAMAIS À ANNULER (ligne A5 ter) · la réévaluation de la cible
+      // passée avant cette contre-passation garde son écart, mesuré depuis le
+      // coût historique ; la contre-passation, datée de l'ouverture, retire
+      // celui de N et rien d'autre.
+      if (etat.posterieures.length > 0) {
+        const dates = etat.posterieures.map((r) => `du ${r.dateReevaluation.toISOString().slice(0, 10)}`).join(', ');
+        avertissementPosterieures =
+          `La réévaluation ${dates}, passée dans cet exercice avant cette contre-passation, a mesuré les créances et dettes ` +
+          "depuis leur coût historique · son écart reste juste et en place ; la contre-passation, datée de l'ouverture, ne retire " +
+          'que celui du ' +
+          `${reeval.dateReevaluation.toISOString().slice(0, 10)} (Guide, Partie 2 ch. 22, Applications 84 et 85). Rien n'est à annuler.`;
+      }
     }
 
     const jourReeval = reeval.dateReevaluation.toISOString().slice(0, 10);
@@ -2056,7 +2069,10 @@ export class DevisesService {
     return {
       ...enregistree,
       // Le dire dans la réponse (B2, M2) · l'exception n'est jamais tue.
-      avertissement: [integrale.code ? AVERTISSEMENT_INTEGRALE[integrale.code] : null, avertissementEtat].filter((a) => a !== null).join(' ') || null,
+      avertissement:
+        [integrale.code ? AVERTISSEMENT_INTEGRALE[integrale.code] : null, avertissementEtat, avertissementPosterieures]
+          .filter((a) => a !== null)
+          .join(' ') || null,
     };
   }
 
@@ -2524,14 +2540,12 @@ export class DevisesService {
       autresEcarts: [] as Array<{ numeroPiece: number | null; date: Date }>,
       jugement: null as JugementDeLEtat | null,
       /**
-       * L1 · les réévaluations du MODULE déjà passées dans la cible, alors que
-       * cet écart y était encore en place, sur ses comptes · et le jugement
-       * rejoué sans elles. Quand lui seul rend la contre-passation juste,
-       * l'issue se dit dans l'ordre · annuler la postérieure (D6),
-       * contre-passer, réévaluer de nouveau.
+       * Les réévaluations du MODULE déjà passées DANS LA CIBLE, alors que cet
+       * écart y était encore en place, et qui touchent ses comptes (ligne A5
+       * ter, relevés (a) et (b) d'A5 bis). Elles sont des écarts EN PLACE ·
+       * dites, jamais à annuler.
        */
       posterieures: [] as Array<{ id: string; dateReevaluation: Date }>,
-      jugementSansPosterieures: null as JugementDeLEtat | null,
       tronque: false,
     };
     if (!cible) return etat;
@@ -2579,13 +2593,29 @@ export class DevisesService {
       etat.ouverture = { exercice: lecture.ouvertures[lecture.ouvertures.length - 1], exercices: lecture.ouvertures, ecart: lecture.ecartOuverture };
     }
 
-    // LES ÉCARTS DU MODULE en place dans la cible.
+    // LES ÉCARTS DU MODULE en place dans la cible · ceux des exercices qui la
+    // précèdent ET CEUX DE LA CIBLE ELLE-MÊME (ligne A5 ter, relevés (a) et
+    // (b) d'A5 bis). Une réévaluation de la cible passée avant cette
+    // contre-passation (dossier d'avant A5 bis, ou portillon contourné) a
+    // mesuré ses créances et dettes depuis le COÛT HISTORIQUE (`calculer` ne
+    // lit que les lignes en devise, l'écart de N étant passé sans devise) ·
+    // son écart est le sien, juste et en place, indépendant de celui de N.
+    // Lu hors de l'attendu, il passait pour une écriture qui déplace l'écart
+    // de N, et la voie « L1 » imposait d'annuler la réévaluation de la cible,
+    // de contre-passer, puis de réévaluer de nouveau · trois gestes pour
+    // retrouver les mêmes montants, la contre-passation datée de l'ouverture
+    // rétablissant à elle seule l'ordre des Applications 84 et 85 (Guide,
+    // Partie 2 ch. 22 · 411 = coût + écart de N + écart de N+1 depuis le coût,
+    // moins l'écart de N). Les exercices intermédiaires clôturés étaient déjà
+    // lus · la fenêtre entière l'est désormais, cible comprise.
     const reevaluations = await this.prisma.reevaluation.findMany({
-      where: { tenantId, annuleeLe: null, exercice: { dateFin: { lt: cible.dateDebut } } },
+      where: { tenantId, annuleeLe: null, exercice: { dateDebut: { lte: cible.dateDebut } } },
       orderBy: [{ dateReevaluation: 'desc' }, { id: 'asc' }],
       take: PLAFOND_REEVALUATIONS_EXAMINEES + 1,
       select: {
         id: true,
+        dateReevaluation: true,
+        exerciceId: true,
         ecritureExtourne: { select: { exercice: { select: { dateDebut: true } } } },
         contrePassationDeclaree: { select: { exercice: { select: { dateDebut: true } } } },
         ecritureEcarts: { select: { lignes: { where: { compteId: { in: idsEcart } }, select: { compteId: true, debit: true, credit: true } } } },
@@ -2601,6 +2631,10 @@ export class DevisesService {
         for (const l of r.ecritureEcarts?.lignes ?? []) ecart.set(l.compteId, (ecart.get(l.compteId) ?? 0) + centimesDe(l));
         return { id: r.id, ecart };
       });
+    etat.posterieures = reevaluations
+      .slice(0, PLAFOND_REEVALUATIONS_EXAMINEES)
+      .filter((r) => r.id !== x.id && r.exerciceId === cible.id && ids47.length > 0 && (r.ecritureEcarts?.lignes ?? []).some((l) => ids47.includes(l.compteId)))
+      .map((r) => ({ id: r.id, dateReevaluation: r.dateReevaluation }));
 
     // LES ÉCRITURES HORS MODULE qui touchent le 478 ou le 479 de l'écart
     // depuis la réévaluation. Une paire neutralisée (l'écriture corrigée et
@@ -2705,32 +2739,6 @@ export class DevisesService {
       ecritures: tronqueListe ? null : etat.ecritures,
     };
     etat.jugement = jugerLEtat(entree);
-    // L1 · une réévaluation du module passée dans la cible a lu l'exercice
-    // avec cet écart en place (avant A5 bis, ou par un portillon contourné).
-    // Son écart est dans le solde du 478 / 479, hors de l'attendu · le
-    // jugement le lit comme une écriture qui déplace l'écart. Rejoué sans
-    // elle, il dit si l'ordre canonique (Guide, Partie 2 ch. 22, Applications
-    // 84 et 85 · contre-passation à la réouverture, PUIS réévaluation de
-    // l'exercice) rend la contre-passation juste.
-    if (etat.jugement.verdict !== 'EN_PLACE' && ids47.length > 0) {
-      const posterieures = await this.prisma.reevaluation.findMany({
-        where: { tenantId, annuleeLe: null, exerciceId: cible.id, id: { not: x.id } },
-        orderBy: [{ dateReevaluation: 'asc' }, { id: 'asc' }],
-        take: PLAFOND_REEVALUATIONS_EXAMINEES,
-        select: {
-          id: true,
-          dateReevaluation: true,
-          ecritureEcarts: { select: { lignes: { where: { compteId: { in: ids47 } }, select: { compteId: true, debit: true, credit: true } } } },
-        },
-      });
-      const surLEcart = posterieures.filter((r) => r.id !== x.id && (r.ecritureEcarts?.lignes ?? []).length > 0);
-      if (surLEcart.length > 0) {
-        const sans = new Map(lu47);
-        for (const r of surLEcart) for (const l of r.ecritureEcarts?.lignes ?? []) sans.set(l.compteId, (sans.get(l.compteId) ?? 0) - centimesDe(l));
-        etat.posterieures = surLEcart.map((r) => ({ id: r.id, dateReevaluation: r.dateReevaluation }));
-        etat.jugementSansPosterieures = jugerLEtat({ ...entree, lu47: sans });
-      }
-    }
     return etat;
   }
 
@@ -2838,22 +2846,6 @@ export class DevisesService {
     const issue = j.issue;
     if (issue && issue.gestes.length === 0 && issue.fin === 'CONTRE_PASSER') return null;
     const jour = (d: Date) => d.toISOString().slice(0, 10);
-    // L1 · l'issue DANS L'ORDRE · la réévaluation postérieure a été passée
-    // avec cet écart en place ; sans elle, la contre-passation est juste.
-    // Annuler d'abord (D6, AUDCIF art. 20, al. 2), contre-passer ensuite
-    // (Applications 84 et 85), réévaluer de nouveau enfin.
-    const sansPost = etat.jugementSansPosterieures?.issue;
-    if (etat.posterieures.length > 0 && sansPost && sansPost.gestes.length === 0 && sansPost.fin === 'CONTRE_PASSER') {
-      const dates = etat.posterieures.map((r) => `du ${jour(r.dateReevaluation)}`).join(', ');
-      const exo = `l'exercice du ${jour(etat.cible.dateDebut)} au ${jour(etat.cible.dateFin)}`;
-      return (
-        `L'écart de conversion de la réévaluation du ${jourReevaluation} ne se contre-passe pas en l'état · la réévaluation ${dates} ` +
-        `(${exo}) a été passée alors qu'il y était encore en place, et son écart est dans le solde du 478 ou du 479. Dans l'ordre · ` +
-        `(1) annulez la réévaluation ${dates} (Devises, « Annuler la réévaluation » · inscription en négatif, AUDCIF art. 20, al. 2) ; ` +
-        `(2) contre-passez la réévaluation du ${jourReevaluation} (Devises, « Contre-passer ») ; ` +
-        `(3) réévaluez de nouveau ${exo}.`
-      );
-    }
     const montant = (c: number) => `${(Math.abs(c) / 100).toFixed(2)}${c > 0 ? ' débiteur' : c < 0 ? ' créditeur' : ''}`;
     const pieces = (liste: Array<{ numeroPiece: number | null; date: Date }>) =>
       liste

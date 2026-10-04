@@ -26,6 +26,17 @@ d'A5 bis renvoyés vers elle.
   `provision-change-ajustee`, `reevaluation`, `perimetre-reevaluation`,
   lexique client, CLAUDE.md).
 
+- Point 5 · refus d'annuler sous une version d'ouverture · toutes les
+  versions nommées, issue « retirez, annulez, déclarez de nouveau », jamais
+  « une version nouvelle » (qui laissait l'ancienne et le refus).
+- Relevés (a) et (b) · L1 retiré · les réévaluations du module de la cible
+  sont des écarts EN PLACE (requête des écarts en place bornée au DÉBUT de
+  la cible, `dateDebut <= cible.dateDebut`), dites en avertissement à la
+  contre-passation, jamais à annuler.
+- Relevé (c) · déjà fait par A6 bis (887e46b, sur `main`) ·
+  `avertissementExtourneManquante` filtre `contrePassationDeclareeId: null`,
+  spec `reevaluation-et-ecart-realise.spec.ts` l. 298 et 352. Rien à faire.
+
 ## Décisions, avec leur article
 
 1. SYCEBNL, risque de change à moins d'un an · LE TEXTE TRANCHE, la règle
@@ -63,9 +74,21 @@ d'A5 bis renvoyés vers elle.
    financière » pour la perte latente · la provision reste 6791 / 4997
    (§ 2.3, court terme financier). Le SYCEBNL n'a pas de 54.
 
+5. Annulation sous une version · le refus lit TOUTE version postérieure à
+   la réévaluation ; seule la retirer le lève, et le retrait y est toujours
+   ouvert (une version n'est figée que par une réévaluation non annulée dans
+   sa période, donc postérieure, que le refus précédent nomme). AUDCIF
+   art. 20, al. 2 (l'enregistrement exact suit l'inscription en négatif).
+6. (a), (b) · une réévaluation de N+1 passée avant la contre-passation de N
+   a mesuré la créance depuis son coût historique (`calculer` ne lit que les
+   lignes en devise, l'écart de N étant sans devise) · son écart est juste et
+   en place ; contre-passer N à l'ouverture de N+1 donne le montant juste
+   (411 = 2 500 000 + 400 000 − 500 000 = 2 400 000, Guide Partie 2 ch. 22,
+   Applications 84 et 85). Annuler et réévaluer de nouveau n'ajoutait rien.
+
 ## Reste
 
-- Point 5 (message d'annulation), relevés (a), (b), (c), (d), (e).
+- Relevés (d), (e).
 - Bloc du § 3 complet, scénario sur vraie base aux deux référentiels.
 
 ## Vérification
