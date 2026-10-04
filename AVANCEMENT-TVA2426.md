@@ -37,7 +37,7 @@ n° 10/001 et aux art. 51 à 63 du décret n° 011/42 (lecture seule du
   `ParametresDossierPage.tsx` ; aide du paramètre corrigée (au SYSCOHADA la
   nature lue à la contrepartie commande, repli seulement) ; gelé par
   `client/src/pages/vocabulaire-exigibilite-tva.spec.ts`.
-- Bloc § 3 passé (serveur · tsc, jest 756 suites et 10 789 tests, build ;
+- Bloc § 3 passé (serveur · tsc, jest 756 suites et 10 791 tests, build ;
   client · tsc, vitest 223 fichiers et 1 813 tests, build).
 - Rejeu sur VRAIE base (`scratchpad/tva2426-rejeu.mjs`, grappe 55439, base
   `tva2426_1`, serveur compilé sur 8117), SYSCOHADA et SYCEBNL (ce dernier
