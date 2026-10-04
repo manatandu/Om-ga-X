@@ -32,6 +32,7 @@ function monter(p: {
   annuleeLe?: Date | null;
   posterieure?: { dateReevaluation: Date } | null;
   version?: { compteProvision: string; dateReference: Date } | null;
+  versions?: Array<{ compteProvision: string; dateReference: Date }>;
   declaree?: boolean;
 }) {
   const reeval = {
@@ -64,7 +65,7 @@ function monter(p: {
         where.id ? reeval : (p.posterieure ?? null),
       ),
     },
-    provisionChangeOuverture: { findFirst: jest.fn(async () => p.version ?? null) },
+    provisionChangeOuverture: { findMany: jest.fn(async () => (p.versions ?? (p.version ? [p.version] : []))) },
     verrouProvisionChange: { deleteMany: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'verrou' }) },
     $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   };
@@ -117,8 +118,25 @@ describe('annuler une réévaluation des devises (D6)', () => {
     await expect(posterieure.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/2027-12-31, postérieure, n'est pas annulée/);
     expect(posterieure.prisma.$transaction).not.toHaveBeenCalled();
     const version = monter({ version: { compteProvision: '4991', dateReference: new Date('2027-01-01') } });
-    await expect(version.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/déclarée au 2027-01-01 \(compte 4991\) s'appuie/);
+    await expect(version.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/déclarée au 2027-01-01 \(compte 4991\) s’appuie/);
     expect(version.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('A5 ter · l’issue du refus de version LÈVE le refus · retirer, jamais « une nouvelle version », et toutes nommées', async () => {
+    const deux = monter({
+      versions: [
+        { compteProvision: '4991', dateReference: new Date('2027-01-01') },
+        { compteProvision: '194', dateReference: new Date('2028-01-01') },
+      ],
+    });
+    const refus = deux.service.annulerReevaluation('t', 'u', 'r1', 'm');
+    await expect(refus).rejects.toThrow(/au 2027-01-01 \(compte 4991\), au 2028-01-01 \(compte 194\) s’appuient/);
+    await expect(deux.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/retirez-les \(Devises, « Dossier repris », « Retirer »\), annulez la réévaluation/);
+    await expect(deux.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/Une version nouvelle ne lève pas ce refus/);
+    // Les versions retirées, plus rien ne retient l'annulation (même doublure, liste vide).
+    const apres = monter({ versions: [] });
+    await apres.service.annulerReevaluation('t', 'u', 'r1', 'm');
+    expect(apres.prisma.$transaction).toHaveBeenCalled();
   });
 
   it('troisième tour · contre-passée À LA MAIN et déclarée · refus nommé, l’issue dite (retirer la déclaration, puis corriger l’écriture manuelle), rien écrit', async () => {

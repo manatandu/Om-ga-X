@@ -3302,15 +3302,32 @@ export class DevisesService {
           "celle-ci a passée. On annule de la plus récente à la plus ancienne.",
       );
     }
-    const version = await this.prisma.provisionChangeOuverture.findFirst({
+    // L'ISSUE DOIT LEVER LE REFUS (ligne A5 ter). Le message disait aussi
+    // « corrigez-la par une nouvelle version » · une version NOUVELLE laisse
+    // l'ancienne en place, et le refus, qui lit toute version postérieure à
+    // la réévaluation, revenait tel quel. Seul le RETRAIT le lève, et il est
+    // toujours ouvert ici · une version n'est figée que si une réévaluation
+    // non annulée est passée dans sa période, donc postérieure à celle-ci,
+    // et le refus précédent l'a déjà nommée. Toutes les versions en cause
+    // sont nommées, chacune devant être retirée.
+    const versions = await this.prisma.provisionChangeOuverture.findMany({
       where: { tenantId, dateReference: { gt: reeval.dateReevaluation } },
-      orderBy: { dateReference: 'asc' },
+      orderBy: [{ dateReference: 'asc' }, { compteProvision: 'asc' }],
+      take: 21,
       select: { compteProvision: true, dateReference: true },
     });
-    if (version) {
+    if (versions.length > 0) {
+      const nommees = versions
+        .slice(0, 20)
+        .map((v) => `au ${jour(v.dateReference)} (compte ${v.compteProvision})`)
+        .join(', ');
+      const plus = versions.length > 20 ? ' et d’autres encore' : '';
+      const une = versions.length === 1;
       throw new BadRequestException(
-        `La provision d'ouverture déclarée au ${jour(version.dateReference)} (compte ${version.compteProvision}) s'appuie sur la ` +
-          'provision que cette réévaluation a passée · retirez-la ou corrigez-la par une nouvelle version avant d’annuler.',
+        `${une ? 'La provision d’ouverture déclarée' : 'Les provisions d’ouverture déclarées'} ${nommees}${plus} ` +
+          `${une ? 's’appuie' : 's’appuient'} sur la provision que cette réévaluation a passée · ${une ? 'retirez-la' : 'retirez-les'} ` +
+          '(Devises, « Dossier repris », « Retirer »), annulez la réévaluation, puis déclarez de nouveau ce qui reste vrai. ' +
+          'Une version nouvelle ne lève pas ce refus · l’ancienne resterait en place.',
       );
     }
 
