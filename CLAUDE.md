@@ -2225,6 +2225,27 @@ banc du 2026-09-12, moitié du tas libre), toujours un REFUS. Les tests exigent 
 VALEUR de `numFmt` (jamais `toBeTruthy()` · ExcelJS met d'office un format
 AMÉRICAIN sur une `Date`, « 4/3 » pour un 3 avril) et celle du curseur.
 
+**Balances et grands livres · la présentation du cabinet (ligne FPM,
+2026-10-04, décisions de Manasse).** `exports/export-fpm.service.ts`,
+`presentation-fpm.ts`, tout EN FLUX. Cartouche des lignes 2 à 6, Arial 9,
+en-têtes `FF4F81BD` blanc gras, montants `#\ ##0.00` (espace INSÉCABLE, relu
+dans `xl/styles.xml`, le lecteur d'ExcelJS retirant les barres), dates
+`dd\/mm\/yy`, zéro = cellule VIDE, unité `monnaieDuJeuLegal`, jamais le « $ »
+des modèles. (1) PAR DÉFAUT · le grand livre à plat (sommaire, statut) reste
+sur `format=plat`. (2) La balance porte UNE FEUILLE PAR COMPTE mouvementé, son
+grand livre, liée par `HYPERLINK` (l'écrivain en flux d'ExcelJS perd
+`location` et range tout lien en externe), retour à la ligne exacte ;
+`grandsLivres=non` rend la balance seule, chemin de rechange du refus de
+volume (balance plus grands livres, compté avant le premier octet). (3)
+« Mouvements au <veille> » = colonne du report, « Mouvements » = exercice et
+solde des comptes de gestion (F5), soldes NETS ; totaux bilan (1 à 5),
+gestion (6 à 8), balance ; la classe 9 HORS des totaux, une ligne par division
+nommée par le plan du dossier. (4) Tiers · famille lue sur le NUMÉRO
+(`familles-tiers.ts` · 40, 41, 42, classe 4 rattachée), un classeur par
+famille, « TOUS » refusé, sous-total par collectif à trois chiffres nommé par
+le plan, contrôle contre les collectifs de la balance générale, l'écart DIT.
+Brouillard dit au libellé (F99).
+
 **Comparabilité de la colonne N-1.** « Lorsque l'un des postes chiffrés d'un état
 financier N'EST PAS COMPARABLE à celui de l'exercice précédent, c'est CE DERNIER
 QUI DOIT ÊTRE ADAPTÉ. L'absence de comparabilité ou l'adaptation des chiffres EST

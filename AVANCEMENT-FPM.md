@@ -39,11 +39,23 @@ l'intégration.
   colonne Statut (audit final F99).
 - Totaux de soldes en solde NET (présentation relevée).
 
+## Vérifié
+
+- Bloc § 3 · serveur (tsc, 10 541 tests, build), client (tsc, 1 806 tests,
+  build).
+- Rejeu sur vraie base (PostgreSQL jetable, serveur compilé, API) · SYCEBNL et
+  SYSCOHADA, écritures en N, clôture de N, écritures en N+1 au brouillard,
+  exports de N+1 relus par openpyxl · « Mouvements au » de N+1 = clôture de N
+  compte par compte, chaque lien mène à une feuille existante, chaque retour à
+  la bonne ligne, total de chaque grand livre = sa ligne de balance, contrôles
+  tiers et grand livre contre la balance générale nuls, brouillard dit,
+  format plat servi, « TOUS » refusé en 400.
+
 ## Reste
 
-- Bloc § 3 complet des deux côtés.
-- Rejeu sur vraie base (SYCEBNL et SYSCOHADA, N clôturé, N+1, relecture du
-  classeur).
+- Intégration sur `main` (bloc § 3 et tests navigateur), retrait de la fiche.
+- Relectures des agents du dépôt (`silent-failure-hunter`,
+  `typescript-reviewer`, `react-reviewer`) non lancées par cette session.
 
 ## Vérification
 
