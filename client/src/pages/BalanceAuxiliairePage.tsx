@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
@@ -6,7 +6,14 @@ import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { montantOuVide as montant } from '../lib/montants';
-import { adresseGrandLivreDuCompte, cheminBalanceTiers, cheminGrandLivreTiers } from '../lib/export-livres';
+import {
+  adresseGrandLivreDuCompte,
+  cheminBalanceTiers,
+  cheminGrandLivreTiers,
+  familleExportee,
+  famillesDeLaBalanceTous,
+  type FamilleTiers,
+} from '../lib/export-livres';
 
 /**
  * BALANCE AUXILIAIRE · la balance des comptes de tiers, tiers par tiers.
@@ -93,8 +100,15 @@ export function BalanceAuxiliairePage() {
   const navigate = useNavigate();
   const [balanceSeule, setBalanceSeule] = useState(false);
   // UN CLASSEUR PAR FAMILLE (présentation du cabinet) · « Tous » s'affiche à
-  // l'écran mais ne s'exporte pas, le serveur le refuse aussi.
-  const famille = type === 'TOUS' ? null : type;
+  // l'écran mais ne s'exporte pas tel quel, le serveur le refuse aussi. Sur
+  // « Tous », une liste propose les familles que la balance porte, la seule
+  // présélectionnée (second tour, relevé F).
+  const [choixFamille, setChoixFamille] = useState<FamilleTiers | null>(null);
+  const presentes = useMemo(
+    () => (type === 'TOUS' && donnees ? famillesDeLaBalanceTous(donnees.comptes.map((c) => c.numero)) : []),
+    [type, donnees],
+  );
+  const famille = familleExportee(type, choixFamille, presentes);
   const exporter = () => {
     if (!exerciceCourant || !famille) return;
     void api.telechargerOuSignaler(
@@ -139,6 +153,26 @@ export function BalanceAuxiliairePage() {
               ))}
             </select>
           </label>
+          {type === 'TOUS' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-text-dim">Famille à exporter</span>
+              <select
+                value={famille ?? ''}
+                onChange={(e) => setChoixFamille((e.target.value || null) as FamilleTiers | null)}
+                disabled={presentes.length === 0}
+                className="border border-border-dark bg-surface px-2 py-1 text-[11.5px] min-w-[170px]"
+              >
+                {presentes.length !== 1 && (
+                  <option value="">{presentes.length === 0 ? 'Aucune famille mouvementée' : 'Choisir une famille'}</option>
+                )}
+                {presentes.map((f) => (
+                  <option key={f} value={f}>
+                    {libelle[f]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <select
             value={balanceSeule ? 'seule' : 'avec'}
             onChange={(e) => setBalanceSeule(e.target.value === 'seule')}
@@ -152,7 +186,7 @@ export function BalanceAuxiliairePage() {
             type="button"
             onClick={exporter}
             disabled={!famille}
-            title={famille ? undefined : 'Choisissez un type de tiers · un classeur porte une seule famille'}
+            title={famille ? undefined : 'Choisissez une famille de tiers · un classeur porte une seule famille'}
             className="border border-border-dark bg-surface-alt px-3 py-1 text-[11.5px] font-semibold disabled:opacity-50"
           >
             Exporter en Excel
@@ -161,7 +195,7 @@ export function BalanceAuxiliairePage() {
             type="button"
             onClick={exporterGrandLivre}
             disabled={!famille}
-            title={famille ? undefined : 'Choisissez un type de tiers · un classeur porte une seule famille'}
+            title={famille ? undefined : 'Choisissez une famille de tiers · un classeur porte une seule famille'}
             className="border border-border-dark bg-surface-alt px-3 py-1 text-[11.5px] font-semibold disabled:opacity-50"
           >
             Grand-livre des tiers

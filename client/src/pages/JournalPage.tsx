@@ -10,7 +10,14 @@ import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { Aide } from '../components/chrome/Aide';
 import { mouvementsDuJournal } from '../lib/mouvements-du-journal';
 import { montant, montantOuVide } from '../lib/montants';
-import { cheminBalance, cheminGrandLivre, compteDeLAdresse, type FormatGrandLivre } from '../lib/export-livres';
+import {
+  cheminBalance,
+  cheminGrandLivre,
+  compteDeLAdresse,
+  type FormatGrandLivre,
+  type GrandLivreDuCompte,
+  sectionDuCompteSeul,
+} from '../lib/export-livres';
 
 type Onglet = 'journal' | 'grand-livre' | 'balance';
 
@@ -145,6 +152,8 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const [formatGrandLivre, setFormatGrandLivre] = useState<FormatGrandLivre>('fpm');
   const [balanceSeule, setBalanceSeule] = useState(false);
   const [grandLivre, setGrandLivre] = useState<SectionGrandLivre[] | null>(null);
+  /** Le motif du refus du grand livre COMPLET, quand son volume dépasse une fenêtre. */
+  const [refusGrandLivre, setRefusGrandLivre] = useState<string | null>(null);
 
   // `filtres` est l'état des champs ; `filtresAppliques` ce qui a réellement
   // été envoyé au serveur. Les séparer évite de relancer une requête à
@@ -248,18 +257,55 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     if (!exerciceCourant || onglet !== 'grand-livre') return;
     let annule = false;
     setGrandLivre(null);
+    setRefusGrandLivre(null);
     api.get<SectionGrandLivre[]>(`/ecritures/grand-livre?exerciceId=${exerciceCourant.id}`).then(
       (r) => !annule && setGrandLivre(r),
-      (e) => !annule && setErreur(e.message),
+      (e) => {
+        if (annule) return;
+        // LE LIVRE COMPLET REFUSÉ PAR SON VOLUME (400 nommé) n'arrête pas la
+        // fenêtre · elle passe au grand livre d'UN compte, celui du
+        // double-clic d'une balance (second tour, relevé E). Toute autre
+        // panne reste une erreur.
+        if (e instanceof ApiError && e.status === 400) setRefusGrandLivre(e.message);
+        else setErreur(e instanceof Error ? e.message : 'Chargement impossible');
+      },
     );
     return () => {
       annule = true;
     };
   }, [exerciceCourant?.id, onglet, rechargement]);
 
+  // LE GRAND LIVRE D'UN SEUL COMPTE, lu seulement quand le livre complet est
+  // refusé · route bornée au plafond d'une fenêtre, qui refuse à son tour, en
+  // le disant, un compte trop lourd pour l'écran.
+  const [sectionSeule, setSectionSeule] = useState<SectionGrandLivre | null>(null);
+  const [refusSectionSeule, setRefusSectionSeule] = useState<string | null>(null);
+  useEffect(() => {
+    setSectionSeule(null);
+    setRefusSectionSeule(null);
+    if (!exerciceCourant || onglet !== 'grand-livre' || !refusGrandLivre || !compteGrandLivreId) return;
+    let annule = false;
+    api
+      .get<GrandLivreDuCompte<LigneGrandLivre>>(
+        `/ecritures/grand-livre/${encodeURIComponent(compteGrandLivreId)}?exerciceId=${exerciceCourant.id}`,
+      )
+      .then(
+        (r) => !annule && setSectionSeule(sectionDuCompteSeul(r)),
+        (e) => !annule && setRefusSectionSeule(e instanceof Error ? e.message : 'Chargement impossible'),
+      );
+    return () => {
+      annule = true;
+    };
+  }, [exerciceCourant?.id, onglet, refusGrandLivre, compteGrandLivreId, rechargement]);
+
   const sectionsAffichees = useMemo(
-    () => (grandLivre ?? []).filter((c) => !compteGrandLivreId || c.compte.id === compteGrandLivreId),
-    [grandLivre, compteGrandLivreId],
+    () =>
+      refusGrandLivre
+        ? sectionSeule && sectionSeule.lignes.length > 0
+          ? [sectionSeule]
+          : []
+        : (grandLivre ?? []).filter((c) => !compteGrandLivreId || c.compte.id === compteGrandLivreId),
+    [grandLivre, compteGrandLivreId, refusGrandLivre, sectionSeule],
   );
 
   const filtreActif = useMemo(
@@ -771,14 +817,14 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               onChange={(e) => setCompteGrandLivreId(e.target.value)}
               className="border border-border rounded-[3px] bg-surface px-2 py-[2px] text-[11.5px] font-mono"
             >
-              <option value="">tous les comptes mouvementés</option>
-              {(grandLivre ?? []).map((c) => (
+              <option value="">{refusGrandLivre ? 'aucun compte choisi' : 'tous les comptes mouvementés'}</option>
+              {(refusGrandLivre ? (sectionSeule ? [sectionSeule] : []) : (grandLivre ?? [])).map((c) => (
                 <option key={c.compte.id} value={c.compte.id}>
                   {c.compte.numero} · {c.compte.intitule}
                 </option>
               ))}
             </select>
-            {grandLivre && (
+            {(grandLivre || sectionSeule) && (
               <span className="text-[11px] text-text-dim">
                 {sectionsAffichees.length} compte{sectionsAffichees.length > 1 ? 's' : ''} ·{' '}
                 {sectionsAffichees.reduce((n, c) => n + c.lignes.length, 0)} mouvement
@@ -787,10 +833,22 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             )}
           </div>
 
-          {!grandLivre && <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
-          {grandLivre && sectionsAffichees.length === 0 && (
+          {refusGrandLivre && (
+            <div className="px-3.5 py-2 text-[11.5px] text-warning border-b border-border">
+              {refusGrandLivre}
+              {!compteGrandLivreId && ' Double-cliquez un compte dans la balance pour ouvrir son grand livre.'}
+            </div>
+          )}
+          {refusSectionSeule && (
+            <div className="px-3.5 py-2 text-[11.5px] text-danger border-b border-border">{refusSectionSeule}</div>
+          )}
+          {!grandLivre && !refusGrandLivre && <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {refusGrandLivre && compteGrandLivreId && !sectionSeule && !refusSectionSeule && (
+            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Chargement…</div>
+          )}
+          {((grandLivre && sectionsAffichees.length === 0) || (sectionSeule && sectionSeule.lignes.length === 0)) && (
             <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
-              Aucun mouvement sur cet exercice.
+              {sectionSeule ? 'Aucun mouvement sur ce compte pour cet exercice.' : 'Aucun mouvement sur cet exercice.'}
             </div>
           )}
 
