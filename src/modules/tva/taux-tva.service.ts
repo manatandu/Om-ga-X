@@ -1537,6 +1537,158 @@ export class TauxTvaService {
   }
 
   /**
+   * LE GROUPE DE LETTRAGE À PLUSIEURS FACTURES QUI PORTE TOUTES LES LIGNES DE
+   * TIERS D'UNE FACTURE (ligne TVA 24-26, constat F1), ou `null` · aucune
+   * ligne lettrée, lignes dans plusieurs groupes, groupe sans identifiant, ou
+   * groupe qui ne porte que cette facture (la tranche par règlement de
+   * `datesDuGroupeDeMain` le date déjà).
+   */
+  static groupeAPlusieursFactures<
+    G extends {
+      id?: string;
+      statut: string;
+      solde: unknown;
+      lignes?: Array<{ debit: unknown; credit: unknown; ecriture?: { id?: string; date: Date } | null }>;
+    },
+  >(lignesTiers: ReadonlyArray<{ debit: unknown; credit: unknown; lettrage: G | null }>): {
+    id: string;
+    groupe: G;
+    sensFacture: number;
+    engage: number;
+  } | null {
+    const avecLettrage = lignesTiers.filter((l) => l.lettrage);
+    if (avecLettrage.length === 0) return null;
+    const groupe = avecLettrage[0].lettrage!;
+    const id = groupe.id;
+    if (!id || avecLettrage.some((l) => l.lettrage!.id !== id)) return null;
+    const sensFacture = avecLettrage.reduce((t, l) => t + (Number(l.debit) - Number(l.credit)), 0);
+    if (Math.abs(sensFacture) <= EPSILON) return null;
+    const engage = avecLettrage.reduce((t, l) => t + Math.abs(Number(l.debit) - Number(l.credit)), 0);
+    const factures = (groupe.lignes ?? []).reduce((t, g) => {
+      const sens = Number(g.debit) - Number(g.credit);
+      return Math.abs(sens) > EPSILON && sens > 0 === sensFacture > 0 ? t + Math.abs(sens) : t;
+    }, 0);
+    if (factures <= engage + EPSILON) return null;
+    return { id, groupe, sensFacture, engage };
+  }
+
+  /**
+   * LES FACTURES D'UN GROUPE, par l'écriture qui les porte · les lignes du
+   * groupe dans le sens de la facture. `null` si l'une d'elles n'a pas
+   * d'écriture identifiable (rien ne se confronte alors).
+   */
+  static facturesDuGroupe(
+    lignes: ReadonlyArray<{ debit: unknown; credit: unknown; ecriture?: { id?: string } | null }> | undefined,
+    sensFacture: number,
+  ): Map<string, number> | null {
+    const rendu = new Map<string, number>();
+    for (const g of lignes ?? []) {
+      const sens = Number(g.debit) - Number(g.credit);
+      if (Math.abs(sens) <= EPSILON || sens > 0 !== sensFacture > 0) continue;
+      const id = g.ecriture?.id;
+      if (!id) return null;
+      rendu.set(id, (rendu.get(id) ?? 0) + Math.abs(sens));
+    }
+    return rendu;
+  }
+
+  /**
+   * LA TAXE EXIGIBLE À CHAQUE ENCAISSEMENT D'UN GROUPE À PLUSIEURS FACTURES
+   * NE DÉPEND D'AUCUNE IMPUTATION QUAND TOUTES SES FACTURES ONT LA MÊME
+   * COMPOSITION (ligne TVA 24-26, constat F1).
+   *
+   * L'O.-L. n° 10/001, art. 25, 2°, rend la taxe d'une prestation exigible
+   * « au moment de l'encaissement du prix, des acomptes ou avances », et le
+   * décret n° 011/42, art. 57, définit l'encaissement comme « la perception
+   * des sommes à quelque titre que ce soit » · CHAQUE somme perçue rend
+   * exigible la taxe de ce qu'elle paie. La règle de `main` (fraction
+   * cumulée, `(engagé - reste du groupe) / engagé`) rendait 0 tant que le
+   * reste du groupe dépassait la facture · deux prestations de 1 160 000 TTC,
+   * 500 000 encaissés le 20 décembre, ne déclaraient rien en décembre.
+   *
+   * QUELLE FACTURE UNE SOMME PAIE, AUCUN TEXTE DU CORPUS NE LE DIT · ni la
+   * loi TVA, ni le décret, ni l'AUDCG, ni l'AUS (qui n'impute que la
+   * réalisation d'une sûreté sur la créance qu'elle garantit), et le Code
+   * civil congolais des obligations n'y est pas. OmegaX NE CHOISIT DONC
+   * AUCUNE RÈGLE D'IMPUTATION. Mais quand chaque facture du groupe porte la
+   * même taxe exigible à l'encaissement par franc engagé, au même taux et sur
+   * le même compte (et, côté déduction, la même part exclue par l'art. 41),
+   * toute imputation possible rend la MÊME taxe à chaque encaissement ·
+   * montant perçu × taxe / TTC. La part de chaque facture n'est alors qu'une
+   * répartition d'affichage (la même fraction pour toutes), et la taxe du
+   * groupe se répartit dans le temps comme un tout (`repartirLibresEntreLignes`)
+   * · une facture entrée plus tard dans un groupe ne déplace jamais ce qu'un
+   * mois liquidé a déjà déclaré.
+   *
+   * Hors de ce cas (une facture de biens, exonérée ou d'un autre taux dans le
+   * groupe, un avoir, une écriture non lue), le montant exigible DÉPEND de
+   * l'imputation · la règle de `main` est gardée et le groupe est NOMMÉ dans
+   * la déclaration (`groupesImputationIndeterminee`), jamais deviné.
+   */
+  static fractionsDuGroupe(
+    reglements: ReadonlyArray<{ date: Date; montant: number }>,
+    totalFactures: number,
+    solde: boolean,
+  ): Array<{ date: Date | null; fraction: number }> {
+    if (totalFactures <= EPSILON) return [{ date: null, fraction: 1 }];
+    const ordre = [...reglements].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const tranches: Array<{ date: Date | null; fraction: number }> = [];
+    let regle = 0;
+    for (const r of ordre) {
+      const part = Math.min(r.montant, totalFactures - regle);
+      if (part <= EPSILON) break;
+      regle += part;
+      tranches.push({ date: r.date, fraction: part / totalFactures });
+    }
+    // Un groupe SOLDÉ est réglé en entier · un écart (escompte, arrondi) se
+    // rattache au dernier règlement, comme pour la facture seule.
+    if (solde && regle < totalFactures - EPSILON && tranches.length > 0) {
+      tranches[tranches.length - 1].fraction += (totalFactures - regle) / totalFactures;
+      regle = totalFactures;
+    }
+    if (tranches.length === 0) return [{ date: null, fraction: 1 }];
+    if (regle < totalFactures - EPSILON) tranches.push({ date: null, fraction: 1 - regle / totalFactures });
+    return tranches;
+  }
+
+  /**
+   * CE QUE LA RÉPARTITION DU GROUPE REND LIBRE, RÉPARTI ENTRE SES LIGNES DE
+   * TVA (F1) · au prorata de ce que chacune n'a pas encore déclaré, au
+   * centime, le reste à la plus lourde · la somme rendue vaut celle du
+   * groupe exactement. Ce n'est pas une imputation des paiements · la taxe
+   * du groupe est la même quelle que soit la ligne qui la porte (voir
+   * `fractionsDuGroupe`), et chaque ligne garde ainsi un figé qui ne dépasse
+   * jamais sa taxe.
+   */
+  static repartirLibresEntreLignes(
+    libres: ReadonlyArray<{ date: Date; montant: number; origine: Date }>,
+    capacites: ReadonlyArray<number>,
+  ): Array<Array<{ date: Date; montant: number; origine: Date }>> {
+    const reste = capacites.map((c) => Math.max(0, TauxTvaService.c(c)));
+    const rendu: Array<Array<{ date: Date; montant: number; origine: Date }>> = capacites.map(() => []);
+    for (const x of libres) {
+      const total = reste.reduce((t, c) => t + c, 0);
+      if (total <= EPSILON || x.montant <= EPSILON) continue;
+      const aRepartir = TauxTvaService.c(Math.min(x.montant, total));
+      let cumul = 0;
+      let plusLourde = 0;
+      const parts = reste.map((c, i) => {
+        if (c > reste[plusLourde]) plusLourde = i;
+        const p = TauxTvaService.c(Math.min(c, (aRepartir * c) / total));
+        cumul = TauxTvaService.c(cumul + p);
+        return p;
+      });
+      parts[plusLourde] = TauxTvaService.c(parts[plusLourde] + aRepartir - cumul);
+      parts.forEach((p, i) => {
+        if (p <= EPSILON) return;
+        reste[i] = TauxTvaService.c(reste[i] - p);
+        rendu[i].push({ date: x.date, montant: p, origine: x.origine });
+      });
+    }
+    return rendu;
+  }
+
+  /**
    * CE QUE L'ANCIEN MOTEUR A DÉCLARÉ DANS UNE LIQUIDATION SANS FIGÉ (A7 bis,
    * quatrième reprise ; BLOQUANT 4 de la troisième vérification).
    *
@@ -2883,6 +3035,9 @@ export class TauxTvaService {
           compte: { select: { numero: true } },
           ecriture: {
             select: {
+              // Son identifiant · une facture se retrouve par lui parmi les
+              // lignes de son groupe de lettrage (`resoudreGroupes`, F1).
+              id: true,
               date: true,
               libelle: true,
               // L'instant de SAISIE · une écriture saisie après une liquidation
@@ -2996,6 +3151,10 @@ export class TauxTvaService {
                           credit: true,
                           ecriture: {
                             select: {
+                              // La facture que la ligne porte · un groupe à
+                              // plusieurs factures se confronte facture par
+                              // facture (F1, `resoudreGroupes`).
+                              id: true,
                               date: true,
                               createdAt: true,
                               // Un AVOIR (TVA facturée reprise, ou déduite
@@ -3090,6 +3249,11 @@ export class TauxTvaService {
     // Avoirs sur ventes, constatés ou imputés sur cette déclaration, dont
     // l'écriture ne porte aucune note de crédit (O.-L. art. 52 al. 2).
     let avoirsSansNoteDeCredit = 0;
+    // F1 · groupes à plusieurs factures dont la taxe exigible dépend d'une
+    // imputation des paiements que le corpus ne règle pas.
+    let attenteImputationIndeterminee = 0;
+    const groupesImputationIndeterminee: Array<{ factures: string[]; encaisse: number; motif: string }> = [];
+    let groupesImputationIndetermineeTotal = 0;
 
     /*
       DÉCHÉANCE DU DROIT À DÉDUCTION · article 37, alinéa 2.
@@ -3124,7 +3288,24 @@ export class TauxTvaService {
       // Les prestations dont la créance n'est lettrée dans leur exercice
       // qu'à travers sa ligne d'à-nouveau · traitées une fois le lien lu.
       const aRelier: LigneLue[] = [];
-      const traiter = (l: LigneLue, relie: boolean) => {
+      /*
+        LES GROUPES DE LETTRAGE À PLUSIEURS FACTURES (ligne TVA 24-26, F1) ·
+        une ligne de TVA datée à l'encaissement dont le groupe réunit d'autres
+        factures est mise de côté, et toutes les factures du groupe lues sont
+        décrites (`facturesParGroupe`). Le groupe se juge une fois la lecture
+        finie (`resoudreGroupes`) · même composition, la taxe de chaque
+        encaissement est connue sans imputation ; sinon, règle de `main`, et le
+        groupe est nommé.
+      */
+      type TranchesImposees = {
+        tranches: Array<{ date: Date | null; fraction: number }>;
+        repartition: { parLiquidation: Map<string, number>; libres: Array<{ date: Date; montant: number; origine: Date }> };
+      };
+      type MembreDeGroupe = { l: LigneLue; relie: boolean; montant: number; dateEcriture: Date };
+      type FactureLue = { engage: number; enc: Map<string, number>; art41: string | null; horsRegle: boolean };
+      const membresParGroupe = new Map<string, MembreDeGroupe[]>();
+      const facturesParGroupe = new Map<string, Map<string, FactureLue>>();
+      const traiter = (l: LigneLue, relie: boolean, impose?: TranchesImposees | 'MAIN') => {
           const cumul = l.tauxTvaId ? parTaux.get(l.tauxTvaId) : undefined;
           if (!cumul) return;
           const estCollecte = l.compte.numero.startsWith(RACINE_COLLECTEE);
@@ -3259,6 +3440,40 @@ export class TauxTvaService {
             aRelier.push(l);
             return;
           }
+          // F1 · le groupe à plusieurs factures, décrit puis jugé à la fin.
+          const groupeMulti = impose === undefined ? TauxTvaService.groupeAPlusieursFactures(lignesTiers) : null;
+          if (groupeMulti) {
+            const ecritureId = (l.ecriture as { id?: string }).id;
+            if (ecritureId) {
+              let factures = facturesParGroupe.get(groupeMulti.id);
+              if (!factures) facturesParGroupe.set(groupeMulti.id, (factures = new Map()));
+              let f = factures.get(ecritureId);
+              if (!f) factures.set(ecritureId, (f = { engage: groupeMulti.engage, enc: new Map(), art41: null, horsRegle: false }));
+              // Une facture dont une part est réglée hors du groupe (trésorerie
+              // dans l'écriture, avance, échéance non lettrée) ne se confronte
+              // pas aux autres sur le seul groupe.
+              if (nonLettre.creance > EPSILON || nonLettre.immediat > EPSILON) f.horsRegle = true;
+              if (base === 'ENCAISSEMENT') {
+                const cle = `${l.tauxTvaId}|${l.compteId}`;
+                f.enc.set(cle, (f.enc.get(cle) ?? 0) + montant);
+                if (!estCollecte) {
+                  // La part que l'art. 41 retire du droit à déduction change
+                  // ce qu'une somme versée ouvre · elle fait partie de la
+                  // composition de la facture.
+                  const part = this.partExclueArt41(lignesCharge);
+                  const signature = `${part.exclue.toFixed(6)}|${part.aVerifier.toFixed(6)}|${part.lisible}`;
+                  if (f.art41 !== null && f.art41 !== signature) f.horsRegle = true;
+                  f.art41 = signature;
+                }
+              }
+            }
+            if (base === 'ENCAISSEMENT') {
+              const membres = membresParGroupe.get(groupeMulti.id) ?? [];
+              membres.push({ l, relie, montant, dateEcriture });
+              membresParGroupe.set(groupeMulti.id, membres);
+              return;
+            }
+          }
           if (nature === 'INDETERMINEE' && dansLaPeriode) montantIndetermine += montant;
           if (estCollecte && nature === 'SERVICES' && regimeLigne === 'DEBITS' && dansLaPeriode) {
             collecteServicesDebits += montant;
@@ -3326,7 +3541,9 @@ export class TauxTvaService {
             nature === 'SERVICES' &&
             (estCollecte ? regimeLigne === 'DEBITS' : fournisseur.autorise);
           let tranches: Array<{ date: Date | null; fraction: number; auPaiement?: boolean }> =
-            base === 'FAIT_GENERATEUR'
+            impose && impose !== 'MAIN'
+              ? impose.tranches
+              : base === 'FAIT_GENERATEUR'
               ? auxDebits
                 ? TauxTvaService.tranchesAuxDebits(lignesTiers, dateEcriture)
                 : [{ date: dateEcriture, fraction: 1 }]
@@ -3390,6 +3607,10 @@ export class TauxTvaService {
           if (estCollecte && base === 'ENCAISSEMENT' && dansLaPeriode) {
             const enAttente = tranches.reduce((t, x, i) => (x.date ? t : t + montants[i]), 0);
             cumul.attente = TauxTvaService.c(cumul.attente + enAttente);
+            // F1 · dans un groupe dont l'imputation reste indéterminée, une
+            // part de ce montant peut répondre à une somme DÉJÀ perçue · il
+            // n'est pas « non encaissé », et la déclaration le dit.
+            if (impose === 'MAIN') attenteImputationIndeterminee = TauxTvaService.c(attenteImputationIndeterminee + enAttente);
           }
           /*
             LA FACTURE D'ACHAT DATÉE À SA RÉCEPTION (ligne A21). Son écriture
@@ -3439,7 +3660,7 @@ export class TauxTvaService {
                 if (t.date < limiteDecheance) tvaDeductibleDechue = TauxTvaService.c(tvaDeductibleDechue + t.montant);
               }
             }
-            const repartition = TauxTvaService.repartirEncaissement({
+            const repartition = impose && impose !== 'MAIN' ? impose.repartition : TauxTvaService.repartirEncaissement({
               ligneId: l.id,
               montant,
               dateEcriture,
@@ -3525,6 +3746,122 @@ export class TauxTvaService {
       };
       await lireParLots(lire, (l) => traiter(l, false), LOT_ECRITURES);
       for (const l of await this.relierAuxANouveaux(tenantId, aRelier)) traiter(l, true);
+
+      /*
+        F1 · LES GROUPES À PLUSIEURS FACTURES, JUGÉS UNE FOIS TOUT LU. Voir
+        `fractionsDuGroupe` · même composition partout, la taxe de chaque
+        encaissement se calcule sans imputation et se répartit dans le temps
+        pour le groupe entier (un mois liquidé reste ce qu'il a déclaré, ligne
+        par ligne et en somme) ; sinon, règle de `main`, groupe NOMMÉ.
+      */
+      for (const [groupeId, membres] of membresParGroupe) {
+        const premier = TauxTvaService.groupeAPlusieursFactures(
+          membres[0].l.ecriture.lignes.filter((x) => x.compte?.classe === ClasseCompte.CLASSE_4 && x.lettrage),
+        )!;
+        const groupe = premier.groupe;
+        const factures = TauxTvaService.facturesDuGroupe(groupe.lignes, premier.sensFacture);
+        const decrites = facturesParGroupe.get(groupeId) ?? new Map<string, FactureLue>();
+        const avecAvoir = (groupe.lignes ?? []).some((g) => {
+          const sens = Number(g.debit) - Number(g.credit);
+          const avoirs = (g.ecriture as { _count?: { lignes?: number } } | null | undefined)?._count?.lignes ?? 0;
+          return Math.abs(sens) > EPSILON && sens > 0 !== premier.sensFacture > 0 && avoirs > 0;
+        });
+        const memeComposition = (a: FactureLue, b: FactureLue) => {
+          if (a.art41 !== b.art41 || a.enc.size !== b.enc.size) return false;
+          // Taxe par franc engagé, à deux centimes près sur la plus petite
+          // facture (chaque ligne de taxe est arrondie au centime).
+          const tolerance = 0.02 / Math.max(EPSILON, Math.min(a.engage, b.engage));
+          for (const [cle, m] of a.enc) {
+            const n = b.enc.get(cle);
+            if (n === undefined || Math.abs(m / a.engage - n / b.engage) > tolerance) return false;
+          }
+          return true;
+        };
+        const lues = factures ? [...factures].map(([id, montant]) => ({ montant, f: decrites.get(id) })) : [];
+        const uniforme =
+          !!factures &&
+          !avecAvoir &&
+          lues.length > 1 &&
+          lues.every((x) => x.f && !x.f.horsRegle && Math.abs(x.f.engage - x.montant) <= 0.01 && memeComposition(lues[0].f!, x.f)) &&
+          [...decrites.keys()].every((id) => factures.has(id));
+        const reglements = TauxTvaService.reglementsDuGroupe(groupe.lignes, premier.sensFacture);
+        if (!uniforme) {
+          // La somme perçue dans la période sur ce groupe · c'est elle que
+          // l'imputation, que le corpus ne règle pas, répartirait.
+          const percu = reglements.filter((r) => r.date >= dateDebut && r.date <= dateFin).reduce((t, r) => t + r.montant, 0);
+          if (percu > EPSILON) {
+            groupesImputationIndetermineeTotal++;
+            if (groupesImputationIndeterminee.length < PLAFOND_INCERTAINES) {
+              groupesImputationIndeterminee.push({
+                factures: [...new Set(membres.map((m) => m.l.ecriture.libelle))],
+                encaisse: TauxTvaService.c(percu),
+                motif: avecAvoir
+                  ? 'un avoir dans le groupe'
+                  : !factures
+                    ? 'une ligne du groupe sans écriture lisible'
+                    : 'factures de composition différente (taux, nature, exonération ou part non lettrée)',
+              });
+            }
+          }
+          for (const m of membres) traiter(m.l, m.relie, 'MAIN');
+          continue;
+        }
+        const totalFactures = [...factures!.values()].reduce((t, v) => t + v, 0);
+        const fractions = TauxTvaService.fractionsDuGroupe(reglements, totalFactures, groupe.statut === 'SOLDE');
+        // Une répartition par (taux, compte) · la composition commune garantit
+        // que chaque facture du groupe en porte la même part.
+        const parCle = new Map<string, MembreDeGroupe[]>();
+        for (const m of membres) {
+          const cle = `${m.l.tauxTvaId}|${m.l.compteId}`;
+          parCle.set(cle, [...(parCle.get(cle) ?? []), m]);
+        }
+        for (const [cle, lignesCle] of parCle) {
+          const montantsParLigne = lignesCle.map((m) => TauxTvaService.montantsDesTranches(m.montant, fractions));
+          const datees: Array<{ date: Date; montant: number }> = [];
+          fractions.forEach((t, j) => {
+            if (!t.date) return;
+            const somme = TauxTvaService.c(montantsParLigne.reduce((s, ms) => s + ms[j], 0));
+            if (somme > EPSILON) datees.push({ date: t.date, montant: somme });
+          });
+          // Ce que chaque liquidation a déclaré pour chaque ligne · figé, ou
+          // reconstitué tel que l'ancien moteur l'a déclaré.
+          const declareParLigne = lignesCle.map((m) => {
+            const tiers = m.l.ecriture.lignes.filter((x) => x.compte?.classe === ClasseCompte.CLASSE_4 && x.lettrage);
+            const rendu = new Map<string, number>();
+            for (const liq of liquidationsLues) {
+              rendu.set(
+                liq.id,
+                TauxTvaService.c(
+                  liq.figee
+                    ? Number(liq.figee[m.l.id] ?? 0)
+                    : TauxTvaService.declareParAncienMoteur(tiers, m.montant, m.dateEcriture, liq, m.l.ecriture.createdAt as Date | undefined),
+                ),
+              );
+            }
+            return rendu;
+          });
+          const cleGroupe = `groupe:${groupeId}:${cle}`;
+          const repartitionGroupe = TauxTvaService.repartirEncaissement({
+            ligneId: cleGroupe,
+            montant: lignesCle.reduce((t, m) => t + m.montant, 0),
+            dateEcriture: lignesCle[0].dateEcriture,
+            tranches: datees,
+            liquidations: liquidationsLues.map((liq) => ({
+              ...liq,
+              figee: liq.figee ? { [cleGroupe]: declareParLigne.reduce((t, d) => t + (d.get(liq.id) ?? 0), 0) } : null,
+            })),
+            declareParAncienMoteur: (liq) => declareParLigne.reduce((t, d) => t + (d.get(liq.id) ?? 0), 0),
+          });
+          const capacites = lignesCle.map((m, i) => m.montant - [...declareParLigne[i].values()].reduce((t, v) => t + v, 0));
+          const libresParLigne = TauxTvaService.repartirLibresEntreLignes(repartitionGroupe.libres, capacites);
+          lignesCle.forEach((m, i) =>
+            traiter(m.l, m.relie, {
+              tranches: fractions,
+              repartition: { parLiquidation: declareParLigne[i], libres: libresParLigne[i] },
+            }),
+          );
+        }
+      }
     }
 
     // UN RECOUVREMENT QU'AUCUNE LIGNE DE TVA N'A REÇU EST NOMMÉ (troisième
@@ -3691,6 +4028,9 @@ export class TauxTvaService {
         reconstitutionsIncertainesTotal,
         paiementsARelettrer,
         paiementsARelettrerTotal,
+        groupesImputationIndeterminee,
+        groupesImputationIndetermineeTotal,
+        attenteImputationIndeterminee,
       }),
       /** TVA d'écritures au brouillard datées de la période · hors déclaration. */
       tvaAuBrouillard,
@@ -3699,6 +4039,15 @@ export class TauxTvaService {
       // du service, art. 24, 2°, a eu lieu). Zéro quand aucune ligne n'est
       // datée à l'encaissement.
       tvaEnAttenteEncaissement: enAttente,
+      /**
+       * F1 · la part de `tvaEnAttenteEncaissement` portée par des groupes de
+       * lettrage à plusieurs factures dont l'imputation des sommes perçues
+       * reste indéterminée · une part peut répondre à une somme déjà
+       * encaissée. Les groupes sont nommés (`groupesImputationIndeterminee`).
+       */
+      tvaEnAttenteImputationIndeterminee: attenteImputationIndeterminee,
+      groupesImputationIndeterminee,
+      groupesImputationIndetermineeTotal,
       lignes,
       prorata,
       totalCollecte,
@@ -3795,6 +4144,9 @@ export class TauxTvaService {
    * où l'écran les lirait.
    */
   private mentionExigibilite(e: {
+    groupesImputationIndeterminee?: ReadonlyArray<{ factures: string[]; encaisse: number; motif: string }>;
+    groupesImputationIndetermineeTotal?: number;
+    attenteImputationIndeterminee?: number;
     reconstitutionsIncertaines?: ReadonlyArray<{ facture: string; dateDebut: string; dateFin: string; montantReconstitue: number }>;
     reconstitutionsIncertainesTotal?: number;
     paiementsARelettrer?: ReadonlyArray<{ compte: string; date: string; montant: number; dansLaPeriode: boolean }>;
@@ -3915,7 +4267,31 @@ export class TauxTvaService {
               'déclaration de sa facture l’a déjà comptée (taxe lue à la facture). Issue · relettrer ' +
               'le paiement avec sa facture (Lettrage, pré-lettrage) · la tranche sera alors datée du jour du paiement.',
           ];
+    // F1 · le groupe à plusieurs factures dont la taxe exigible dépend de
+    // l'imputation des sommes perçues · NOMMÉ, jamais deviné.
+    const indetermines = e.groupesImputationIndeterminee ?? [];
+    const totalIndetermines = e.groupesImputationIndetermineeTotal ?? indetermines.length;
+    const phraseIndetermines =
+      indetermines.length === 0
+        ? []
+        : [
+            'ENCAISSEMENT DONT L’IMPUTATION N’EST PAS DÉTERMINÉE · ' +
+              indetermines
+                .slice(0, 8)
+                .map((g) => `factures « ${g.factures.join(' », « ')} », ${fc(g.encaisse)} CDF perçus sur la période (${g.motif})`)
+                .join(' ; ') +
+              (totalIndetermines > 8 ? ` ; et ${totalIndetermines - 8} autre(s)` : '') +
+              '. Chaque somme perçue rend exigible la taxe de ce qu’elle paie (O.-L. n° 10/001, art. 25, 2° ; ' +
+              'décret n° 011/42, art. 57) ; ici, la taxe exigible dépend de la facture que la somme paie, et aucun texte ' +
+              'lu ne dit laquelle une somme partielle paie · OmegaX n’en choisit aucune et garde la fraction cumulée ' +
+              'du groupe, qui peut retarder la taxe' +
+              ((e.attenteImputationIndeterminee ?? 0) > EPSILON
+                ? ` ; ${fc(e.attenteImputationIndeterminee!)} CDF de la TVA restée en attente portent sur ces groupes`
+                : '') +
+              '. Issue · lettrer chaque facture avec le règlement qui la paie, ou déclarer la part exigible pièce par pièce.',
+          ];
     const phrases: string[] = [
+      ...phraseIndetermines,
       ...phraseARelettrer,
       ...phraseIncertaines,
       ...phraseSansFacture,

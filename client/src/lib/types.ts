@@ -814,8 +814,21 @@ export interface DeclarationTva {
   dateFin: string;
   regimeExigibilite: RegimeExigibiliteTva;
   mentionExigibilite: string;
-  /** TVA facturée sur la période mais pas encore encaissée, donc pas due. */
+  /**
+   * TVA facturée sur la période et pas encore EXIGIBLE · née au fait
+   * générateur (O.-L. n° 10/001, art. 24, 2°), exigible à l'encaissement
+   * (art. 25, 2°).
+   */
   tvaEnAttenteEncaissement: number;
+  /**
+   * La part de `tvaEnAttenteEncaissement` portée par des groupes de lettrage à
+   * plusieurs factures dont l'imputation des sommes perçues reste
+   * indéterminée · une part peut répondre à une somme déjà encaissée.
+   */
+  tvaEnAttenteImputationIndeterminee?: number;
+  /** Ces groupes, nommés par le serveur (la phrase est dans `mentionExigibilite`). */
+  groupesImputationIndeterminee?: Array<{ factures: string[]; encaisse: number; motif: string }>;
+  groupesImputationIndetermineeTotal?: number;
   /** TVA d'écritures au brouillard datées de la période · hors déclaration (audit F25). */
   tvaAuBrouillard: { collecte: number; deductible: number; ecritures: number };
   lignes: LigneDeclarationTva[];
