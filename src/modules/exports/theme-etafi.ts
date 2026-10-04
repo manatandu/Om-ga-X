@@ -1,4 +1,7 @@
 import * as ExcelJS from 'exceljs';
+import { type CorpsBalance, ecrireCorpsBalance, type LigneBalanceFpm } from './balance-fpm';
+import type { IdentiteEtat } from './classeur-en-flux';
+import { COLONNES_BALANCE_FPM, entetesBalanceFpm, poserFeuilleFpm } from './presentation-fpm';
 
 /**
  * CHARTE GRAPHIQUE « ETAFI » · port TypeScript de
@@ -850,80 +853,63 @@ export function construireFiche2(
 // Feuilles de balance et CONTROLE BALANCE
 // ---------------------------------------------------------------------------
 
-/** Une ligne de balance à six colonnes de soldes. */
-export interface LigneBalanceLiasse {
-  compte: string;
-  libelle: string;
-  ouvertureDebit: number;
-  ouvertureCredit: number;
-  mouvementDebit: number;
-  mouvementCredit: number;
-  clotureDebit: number;
-  clotureCredit: number;
+/**
+ * LES DEUX FEUILLES DE BALANCE DE LA LIASSE PRENNENT LA PRÉSENTATION FPM
+ * (décision de Manasse du 2026-10-04, « Dans la liasse complète, adapte juste
+ * les 2 balances selon le modèle de FPM. Les autres documents, tu les laisses
+ * tel qu'ils sont. ») · cartouche, en-têtes sur fond 4F81BD, Arial 9, trois
+ * paires de colonnes (mouvements BRUTS avant la période, mouvements de la
+ * période, soldes cumulés NETS), zéro laissé vide, totaux bilan, gestion et
+ * balance. Une seule écriture du corps, celle de la balance exportée
+ * (`balance-fpm.ts`) · le nom des feuilles ne change pas, aucune feuille de
+ * compte ni aucun lien n'y est posé, et les autres feuilles gardent leur
+ * charte ETAFI. Les formules qui visent ces feuilles lisent les rangs que le
+ * corps a écrits (`CorpsBalance`), jamais une position supposée.
+ */
+export interface BalanceLiasse {
+  /** Comptes de détail, avant l'écriture qui solde les comptes de gestion. */
+  lignes: LigneBalanceFpm[];
+  identite: IdentiteEtat;
+  debut: Date;
+  fin: Date;
+  intitulesDivisions: Map<string, string>;
+  mention?: string;
 }
 
-export const ENTETES_BALANCE = [
-  'Compte',
-  'Intitulé',
-  "Solde d'ouverture débit",
-  "Solde d'ouverture crédit",
-  'Mouvement débit',
-  'Mouvement crédit',
-  'Solde de clôture débit',
-  'Solde de clôture crédit',
-];
-
-/** Feuille de balance du modèle : comptes croissants, trois blocs de soldes,
- *  TOTAL GENERAL par bloc et ligne de contrôle d'équilibre. */
-export function ecrireFeuilleBalance(wb: ExcelJS.Workbook, nom: string, lignes: LigneBalanceLiasse[]) {
-  const ws = wb.addWorksheet(nom);
-  const nb = ENTETES_BALANCE.length;
-  for (const [i, h] of ENTETES_BALANCE.entries()) ws.getCell(1, i + 1).value = h;
-  entetesBande(ws, 1, 1, 1, nb);
-  ws.getRow(1).height = 30;
-  const montants = [3, 4, 5, 6, 7, 8];
-  let r = 1;
-  for (const l of [...lignes].sort((a, b) => a.compte.localeCompare(b.compte))) {
-    r += 1;
-    ws.getCell(r, 1).value = l.compte;
-    ws.getCell(r, 2).value = l.libelle;
-    ws.getCell(r, 3).value = arrondi(l.ouvertureDebit);
-    ws.getCell(r, 4).value = arrondi(l.ouvertureCredit);
-    ws.getCell(r, 5).value = arrondi(l.mouvementDebit);
-    ws.getCell(r, 6).value = arrondi(l.mouvementCredit);
-    ws.getCell(r, 7).value = arrondi(l.clotureDebit);
-    ws.getCell(r, 8).value = arrondi(l.clotureCredit);
-    styleLigne(ws, r, 1, nb, 'normal', montants);
-  }
-  const fin = r;
-  r += 1;
-  ws.getCell(r, 2).value = 'TOTAL GENERAL';
-  for (let c = 3; c <= nb; c++) {
-    const lettre = String.fromCharCode(64 + c);
-    ws.getCell(r, c).value = fin >= 2 ? { formula: `SUM(${lettre}2:${lettre}${fin})` } : 0;
-  }
-  styleLigne(ws, r, 1, nb, 'general', montants);
-  ws.getRow(r).height = 20;
-  r += 1;
-  ws.getCell(r, 2).value = "Contrôle d'équilibre par solde (débit - crédit, doit être 0)";
-  for (const c of [3, 5, 7]) {
-    const d = String.fromCharCode(64 + c);
-    const cr = String.fromCharCode(64 + c + 1);
-    ws.getCell(r, c).value = { formula: `${d}${r - 1}-${cr}${r - 1}` };
-  }
-  styleLigne(ws, r, 1, nb, 'inter', montants);
-  largeurs(ws, { A: 12, B: 42, C: 16.5, D: 16.5, E: 16.5, F: 16.5, G: 16.5, H: 16.5 });
-  ws.views = [{ state: 'frozen', ySplit: 1, showGridLines: true }];
-  return ws;
+/** Feuille de balance de la liasse, dans la présentation FPM. */
+export async function ecrireFeuilleBalance(wb: ExcelJS.Workbook, nom: string, b: BalanceLiasse): Promise<CorpsBalance> {
+  const feuille = poserFeuilleFpm(wb, null, {
+    nomFeuille: nom,
+    titre: 'Balance des comptes',
+    sousTitre: 'Complète',
+    identite: b.identite,
+    mention: b.mention,
+    debut: b.debut,
+    fin: b.fin,
+    colonnes: COLONNES_BALANCE_FPM,
+    entetes: entetesBalanceFpm(b.debut, 'Numéro de compte', 'Intitulé des comptes'),
+    lignesEntete: 2,
+  });
+  const lignes = [...b.lignes].sort((x, y) => (x.numero < y.numero ? -1 : x.numero > y.numero ? 1 : 0));
+  const corps = await ecrireCorpsBalance(feuille, lignes, b.intitulesDivisions);
+  feuille.fermer();
+  return corps;
 }
 
-function arrondi(v: number): number {
-  return Math.round((v ?? 0) * 100) / 100;
+/**
+ * La somme d'une colonne sur les seules lignes de COMPTE d'une feuille de
+ * balance (totaux exclus, sans quoi chaque montant compterait deux fois) ·
+ * `0` quand la balance n'a aucun compte, plutôt qu'une plage qui viserait la
+ * ligne des totaux.
+ */
+export function sommeColonneBalance(feuille: string, corps: CorpsBalance, colonne: string): string {
+  if (corps.premiere === null || corps.derniere === null) return '0';
+  return `SUM(${q(feuille)}!${colonne}${corps.premiere}:${colonne}${corps.derniere})`;
 }
 
 /** Feuille CONTROLE BALANCE : totaux des trois blocs de soldes de chaque
  *  balance et verdict Equilibre / Déséquilibre par bloc. */
-export function construireControleBalance(wb: ExcelJS.Workbook, avecN1: boolean, nLignes: number, nLignesN1: number) {
+export function construireControleBalance(wb: ExcelJS.Workbook, corpsN: CorpsBalance, corpsN1: CorpsBalance | null) {
   const ws = wb.addWorksheet('CONTROLE BALANCE');
   masquerQuadrillage(ws);
   largeurs(ws, { A: 22.5, B: 20.7, C: 20.7, D: 20.7, E: 20.7, F: 20.7, G: 20.7 });
@@ -936,20 +922,26 @@ export function construireControleBalance(wb: ExcelJS.Workbook, avecN1: boolean,
   ws.getRow(1).height = 26;
 
   const cols = ['C', 'D', 'E', 'F', 'G', 'H'];
-  const bloc = (r0: number, nom: string, feuille: string, n: number) => {
+  const bloc = (r0: number, nom: string, feuille: string, corps: CorpsBalance) => {
     fusion(ws, r0, 1, r0 + 2, 1);
     let c = ws.getCell(r0, 1);
     c.value = nom;
     c.font = { name: 'Arial', size: 14, bold: true };
     c.fill = fond(C_GRIS);
     c.alignment = AL_CENTRE;
+    // LE PREMIER CONTRÔLE PORTE DÉSORMAIS SUR LES MOUVEMENTS BRUTS AVANT LA
+    // PÉRIODE (colonnes C et D de la présentation FPM), et son intitulé le
+    // dit · la balance ne porte plus de solde d'ouverture net. Brut ou net,
+    // débit et crédit s'égalent sur une balance équilibrée, et le contrôle
+    // reste celui de l'équilibre de l'ouverture. Le troisième lit les soldes
+    // cumulés NETS, la clôture d'avant (G et H).
     const heads: Array<[string, string, boolean]> = [
-      ["Solde d'ouverture Débit", cols[0], true],
-      ["Solde d'ouverture Crédit", cols[1], true],
+      ['Mouvements bruts avant la période Débit', cols[0], true],
+      ['Mouvements bruts avant la période Crédit', cols[1], true],
       ['Mouvements Débit', cols[2], false],
       ['Mouvements Crédit', cols[3], false],
-      ['Solde de clôture Débit', cols[4], true],
-      ['Solde de clôture Crédit', cols[5], true],
+      ['Soldes cumulés Débit', cols[4], true],
+      ['Soldes cumulés Crédit', cols[5], true],
     ];
     for (const [i, [lab, lettre, vert]] of heads.entries()) {
       const cc = 2 + i;
@@ -960,7 +952,7 @@ export function construireControleBalance(wb: ExcelJS.Workbook, avecN1: boolean,
       if (vert) c.fill = fond(C_CTRL_ENT);
       c.border = B_FIN;
       c = ws.getCell(r0 + 1, cc);
-      c.value = { formula: `SUM(${q(feuille)}!${lettre}2:${lettre}${n})` };
+      c.value = { formula: sommeColonneBalance(feuille, corps, lettre) };
       c.font = { name: 'Arial', size: 11, bold: true };
       c.fill = fond(C_GRIS);
       c.numFmt = '#,##0';
@@ -989,8 +981,8 @@ export function construireControleBalance(wb: ExcelJS.Workbook, avecN1: boolean,
     cadre(ws, r0, 1, r0 + 2, 7, MOYEN);
   };
 
-  bloc(2, 'BALANCE N', NOM_BALANCE, Math.max(2, nLignes + 1));
-  if (avecN1) bloc(5, 'BALANCE N-1', NOM_BALANCE_N1, Math.max(2, nLignesN1 + 1));
+  bloc(2, 'BALANCE N', NOM_BALANCE, corpsN);
+  if (corpsN1) bloc(5, 'BALANCE N-1', NOM_BALANCE_N1, corpsN1);
   return ws;
 }
 

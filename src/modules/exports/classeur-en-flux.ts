@@ -38,6 +38,48 @@ import * as ExcelJS from 'exceljs';
  * voir `MAX_LIGNES_EXPORT`.
  */
 
+/**
+ * PLAFOND DES DEUX LIVRES EXPORTÉS, ET CE QU'IL MESURE DÉSORMAIS.
+ *
+ * Il valait 50 000 parce que le classeur était bâti ENTIER EN MÉMOIRE · à ce
+ * volume, le banc du 2026-09-03 relevait 693 Mo pour un tas de 460 Mio, et
+ * 200 000 lignes tuaient le processus. Ce n'était donc pas une borne
+ * comptable mais une borne de construction, et elle refusait un grand livre
+ * parfaitement ordinaire : un dossier à 60 000 lignes n'a rien d'un gros
+ * dossier.
+ *
+ * Le flux a déplacé la borne, il ne l'a pas supprimée. Mesuré en flux, même
+ * banc : 200 000 lignes coûtent 246 Mo, 500 000 en coûtent 443 · c'est-à-dire
+ * PRESQUE TOUT LE TAS. `useStyles: true`, que les formats de cellule rendent
+ * obligatoire, n'y change quasiment rien en mémoire mais double le temps
+ * (37,6 s contre 19,6 s à 500 000). Le plafond est donc porté à 200 000, la
+ * dernière mesure qui laisse la moitié du tas libre.
+ *
+ * LA RÉSERVE EST ÉCRITE PLUTÔT QUE SUPPOSÉE · la mesure porte sur UN export à
+ * la fois. Cloud Run sert 80 requêtes par instance (`--concurrency 80`, § 5
+ * de CLAUDE.md) : deux exports de 200 000 lignes lancés en même temps sur la
+ * même instance ne sont couverts par aucune mesure. Refaire le banc avant de
+ * relever encore ce chiffre, et le refaire à plusieurs exports simultanés.
+ *
+ * ET IL RESTE UN REFUS, JAMAIS UNE TRONCATURE · le journal et le grand livre
+ * sont des livres obligatoires (AUDCIF art. 22, 6°), et « un livre amputé en
+ * silence est un document faux ». Au-delà du plafond, l'export s'arrête et
+ * nomme le chemin de rechange.
+ *
+ * UNE SEULE DÉFINITION (ligne FPM, second tour) · le journal, le grand livre
+ * complet, les balances et les grands livres de la présentation du cabinet
+ * lisent tous ce plafond-ci · deux copies avaient fini par coexister.
+ */
+export const MAX_LIGNES_EXPORT = Number(process.env.EXPORT_MAX_LIGNES ?? 200_000);
+
+/**
+ * Taille d'un lot de lecture des exports en flux · le pendant de
+ * `LOT_LECTURE` des notes annexes. Cinq cents écritures avec leurs lignes
+ * pèsent quelques mégaoctets : l'intérêt n'est pas la vitesse, c'est que la
+ * mémoire ne dépende plus de la taille du dossier.
+ */
+export const LOT_EXPORT = 500;
+
 /** Options mesurées · voir l'en-tête. Ne pas les changer sans refaire le banc. */
 export const OPTIONS_CLASSEUR_EN_FLUX = {
   useSharedStrings: false,

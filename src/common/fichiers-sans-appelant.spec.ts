@@ -17,6 +17,7 @@ const SANS_APPELANT_DE_PRODUCTION: Record<string, string> = {
   'modules/controles/rapprochement-guide-plan.ts': 'rapprochement des guides, en attente du contrôle des schémas d’écriture',
   'modules/controles/schemas-guide-sycebnl.ts': 'table engendrée du guide SYCEBNL, en attente du même contrôle',
   'modules/controles/schemas-guide-syscohada.ts': 'table engendrée du guide SYSCOHADA, en attente du même contrôle',
+  'modules/exports/relecture-balances-liasse.ts': 'outil des deux specs de liasse, qui relit les formules visant BALANCE N et N-1',
   'modules/notes-annexes/notes-sycebnl.commun.ts': 'outil partagé des deux balayages de notes SYCEBNL',
 };
 

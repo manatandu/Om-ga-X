@@ -11,7 +11,16 @@ import { EtatsFinanciersSmtService } from '../etats-financiers/etats-financiers-
 import { NoteAnnexeService } from '../notes-annexes/note-annexe.service';
 import { PrismaService } from '../../common/prisma.service';
 import { ExportService } from './export.service';
-import { NOM_BALANCE } from './theme-etafi';
+import { NOM_BALANCE, NOM_BALANCE_N1 } from './theme-etafi';
+import { FOND_ENTETE_FPM } from './presentation-fpm';
+import {
+  defautsDeFeuilleBalance,
+  defautsDesFormulesDeBalance,
+  estLigneDeCompte,
+  evaluerSomme,
+  sommeAttendue,
+  verdictsControleBalance,
+} from './relecture-balances-liasse';
 import { RENVOI_IMMOBILISATIONS } from '../etats-financiers/correspondance-smt';
 
 // Chaque cas construit la liasse entière puis la relit par ExcelJS · sous une
@@ -427,16 +436,13 @@ describe('liasse complète · le classeur entier du modèle', () => {
     expect(texteFeuille('NOTE 2')).not.toContain('NEANT');
     expect(texteFeuille('NOTE 2')).toContain('A - IDENTITE, ORGANISATION');
 
-    // BALANCE N · l'identité ouverture + mouvements = clôture, ligne à ligne.
-    const bal = wb.getWorksheet(NOM_BALANCE)!;
-    for (let r = 2; r <= 1 + BALANCE_N.length; r++) {
-      const v = (c: number) => Number(bal.getCell(r, c).value ?? 0);
-      expect(v(3) - v(4) + v(5) - v(6)).toBeCloseTo(v(7) - v(8), 2);
-    }
-    // TOTAL GENERAL en formule, sur bleu nuit.
-    const rTotal = 2 + BALANCE_N.length;
-    expect((bal.getCell(rTotal, 3).value as { formula?: string }).formula).toBe(`SUM(C2:C${rTotal - 1})`);
-    expect(fondDe(bal.getCell(rTotal, 2))).toBe('FF000080');
+    // BALANCE N · présentation FPM (décision de Manasse du 2026-10-04),
+    // l'identité « avant + mouvements = solde cumulé » ligne à ligne.
+    const numeros = (l: LigneBalanceStub[]) => l.map((x) => x.numero);
+    expect(defautsDeFeuilleBalance(wb, NOM_BALANCE, numeros(BALANCE_N), 'Mouvements au 31/12/25', FOND_ENTETE_FPM)).toEqual([]);
+    expect(defautsDeFeuilleBalance(wb, NOM_BALANCE_N1, numeros(BALANCE_N1), 'Mouvements au 31/12/24', FOND_ENTETE_FPM)).toEqual(
+      [],
+    );
 
     // Bilan paysage · chaque montant est un LIEN vers la feuille du bilan.
     const paysage = wb.getWorksheet('Bilan paysage')!;
@@ -458,7 +464,7 @@ describe('liasse complète · le classeur entier du modèle', () => {
 
     // CONTROLES · les recoupements croisés du modèle, en formules.
     const ctl = wb.getWorksheet('CONTROLES')!;
-    expect((ctl.getCell(2, 2).value as { formula?: string }).formula).toContain("'BALANCE N'!G2:G");
+    expect((ctl.getCell(2, 2).value as { formula?: string }).formula).toMatch(/^SUM\('BALANCE N'!G10:G\d+\)$/);
     // La trésorerie de clôture lue par CONTROLES est la cellule du MONTANT N
     // de ZG (colonne E depuis la colonne Note, passe R6), jamais la Note vide.
     const tftLiasse = wb.getWorksheet('TFT')!;
@@ -1220,5 +1226,91 @@ describe('S.M.T SYCEBNL · feuilles relues (passe R6)', () => {
     expect(ws.getCell(rangNettes, 3).value).toBe(-300);
     // Dans le bloc des créances, jamais dans celui des dettes.
     expect(rangNettes).toBeLessThan(rangDettes);
+  });
+});
+
+/**
+ * LES FORMULES QUI LISENT LES BALANCES, RELUES DANS LE CLASSEUR PRODUIT
+ * (décision de Manasse du 2026-10-04 · les deux feuilles de balance prennent
+ * la présentation FPM). CONTROLE BALANCE et CONTROLES visaient « C2:C… » ·
+ * laissées telles quelles, elles auraient additionné le cartouche ou une ligne
+ * de total, et un contrôle d'équilibre sur des cellules vides répond
+ * « Equilibre ». Chaque plage doit couvrir exactement les lignes de compte,
+ * dans la colonne que son libellé annonce, son résultat doit égaler la somme
+ * refaite à la main sur la balance du serveur, et le verdict doit dire l'écart
+ * d'une balance faussée.
+ */
+describe('liasses SYCEBNL · formules qui lisent BALANCE N et BALANCE N-1', () => {
+  const jeux: Array<[string, JeuEtatsFinanciersSycebnl, LigneBalanceStub[], LigneBalanceStub[]]> = [
+    ['associations', JeuEtatsFinanciersSycebnl.ASSOCIATIONS_ORDRES_PROFESSIONNELS, BALANCE_N, BALANCE_N1],
+    ['projets', JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, BALANCE_PROJET_N, BALANCE_PROJET_N1],
+    ['SMT', JeuEtatsFinanciersSycebnl.SYSTEME_MINIMAL_TRESORERIE, BALANCE_SMT_N, []],
+  ];
+
+  it.each(jeux)('%s · chaque plage vise les comptes de la bonne colonne, et se recalcule', async (_n, jeu, n, n1) => {
+    const wb = await ouvrir((await fabriquerExport(jeu).liasseCompleteExcel('t1', 'e1')).buffer);
+    const { plages, defauts } = defautsDesFormulesDeBalance(wb);
+    // Une balance N-1 VIDE ne se cite pas · sa somme est un `0` écrit, jamais
+    // une plage qui viserait la ligne des totaux.
+    const nonVides = n1.length > 0 ? 2 : 1;
+    expect(new Set(plages.map((p) => p.feuille)).size).toBe(nonVides);
+    // Six colonnes par balance au CONTROLE BALANCE, deux à CONTROLES.
+    expect(plages.filter((p) => p.feuilleSource === 'CONTROLE BALANCE')).toHaveLength(6 * nonVides);
+    expect(plages.filter((p) => p.feuilleSource === 'CONTROLES').map((p) => p.colonne)).toEqual(['G', 'H']);
+    expect(defauts).toEqual([]);
+    for (const p of plages) {
+      const source = wb.getWorksheet(p.feuilleSource)!.getCell(p.celluleSource);
+      const formule = (source.value as { formula: string }).formula;
+      expect(evaluerSomme(wb, formule)).toBe(sommeAttendue(p.feuille === NOM_BALANCE ? n : n1, p.colonne));
+    }
+    const verdicts = verdictsControleBalance(wb);
+    // Les soldes cumulés de N ne sont jamais tous nuls ici · la plage vise
+    // donc des cellules REMPLIES, pas seulement des lignes de compte.
+    const soldesN = plages.filter((p) => p.feuille === NOM_BALANCE && p.feuilleSource === 'CONTROLES');
+    expect(soldesN.some((p) => sommeAttendue(n, p.colonne) !== 0)).toBe(true);
+    // Un bloc par balance PRÉSENTE (N-1 existe comme exercice dans les trois jeux).
+    expect(verdicts).toHaveLength(6);
+    // LE VERDICT EST CELUI QUE LA MAIN DONNE · le jeu projets de ces tests
+    // n'est pas équilibré en mouvements (702 crédité de 500 000 pour 250 000
+    // de charges), et le contrôle doit le dire, comme il le disait avant la
+    // présentation FPM.
+    const attendu = (lignes: LigneBalanceStub[], a: string, b: string) => {
+      const ecart = Math.round(sommeAttendue(lignes, a) - sommeAttendue(lignes, b));
+      return ecart === 0 ? 'Equilibre' : `Déséquilibre : écart de ${ecart.toLocaleString('en-US')}`;
+    };
+    expect(verdicts.map((v) => v.verdict)).toEqual([
+      attendu(n, 'C', 'D'),
+      attendu(n, 'E', 'F'),
+      attendu(n, 'G', 'H'),
+      attendu(n1, 'C', 'D'),
+      attendu(n1, 'E', 'F'),
+      attendu(n1, 'G', 'H'),
+    ]);
+    if (jeu !== JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT) {
+      for (const v of verdicts) expect(v.verdict).toBe('Equilibre');
+    }
+  });
+
+  it('une balance faussée dit son écart, colonne par colonne', async () => {
+    const wb = await ouvrir((await fabriquerExport().liasseCompleteExcel('t1', 'e1')).buffer);
+    const bal = wb.getWorksheet(NOM_BALANCE)!;
+    let premier = 0;
+    bal.eachRow((_row, r) => {
+      if (!premier && estLigneDeCompte(bal, r)) premier = r;
+    });
+    // 100 de plus au solde cumulé débiteur du premier compte, 250 de plus au
+    // report crédit du même · deux déséquilibres, chacun dans SON bloc.
+    const g = bal.getCell(premier, 7);
+    g.value = Number(g.value ?? 0) + 100;
+    const d = bal.getCell(premier, 4);
+    d.value = Number(d.value ?? 0) + 250;
+    const verdicts = verdictsControleBalance(wb).filter((v) => v.bloc === 'BALANCE N');
+    expect(verdicts.map((v) => v.verdict)).toEqual([
+      'Déséquilibre : écart de -250',
+      'Equilibre',
+      'Déséquilibre : écart de 100',
+    ]);
+    // La balance N-1, intacte, reste équilibrée.
+    for (const v of verdictsControleBalance(wb).filter((x) => x.bloc === 'BALANCE N-1')) expect(v.verdict).toBe('Equilibre');
   });
 });

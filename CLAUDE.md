@@ -2297,6 +2297,40 @@ banc du 2026-09-12, moitié du tas libre), toujours un REFUS. Les tests exigent 
 VALEUR de `numFmt` (jamais `toBeTruthy()` · ExcelJS met d'office un format
 AMÉRICAIN sur une `Date`, « 4/3 » pour un 3 avril) et celle du curseur.
 
+**Balances et grands livres · la présentation du cabinet (ligne FPM,
+2026-10-04, décisions de Manasse).** Les balances et grands livres exportés
+prennent la présentation des modèles FPM du cabinet, écrite UNE fois
+(`exports/presentation-fpm.ts` pour la feuille, `balance-fpm.ts` pour le corps
+de balance) et servie EN FLUX par `export-fpm.service.ts`. Forme · cartouche
+des lignes 2 à 6, mention du brouillard en ligne 7 quand il y en a, en-têtes
+`FF4F81BD` blanc gras, Arial 9, montants `#\ ##0.00` à espace INSÉCABLE (relu
+dans `xl/styles.xml`, le lecteur d'ExcelJS retirant les barres), dates
+`dd\/mm\/yy`, un zéro est une cellule VIDE, l'unité est celle de la tenue
+(`monnaieDuJeuLegal`), jamais le « $ » des modèles. Contenu · (1) le grand
+livre sort dans cette présentation PAR DÉFAUT, le livre à plat (sommaire,
+statut) reste sur `format=plat` ; (2) la balance porte une feuille par compte
+mouvementé avec son grand livre, ouverte par un lien `HYPERLINK` (l'écrivain
+en flux d'ExcelJS perd `location`) et close par « Solde à la balance
+générale » et son écart ; « Balance seule » (`grandsLivres=non`) est le
+chemin de rechange du refus de volume, compté avant le premier octet contre
+`MAX_LIGNES_EXPORT`, défini une seule fois dans `classeur-en-flux.ts` ; (3)
+« Mouvements au <veille> » est le report BRUT, « Mouvements » l'exercice ET le
+solde des comptes de gestion (F5), les soldes cumulés sont NETS ; totaux bilan
+(classes 1 à 5), gestion (6 à 8) et balance, la classe 9 HORS des totaux, une
+ligne par division nommée par le plan du dossier ; (4) tiers · famille lue sur
+le NUMÉRO (`familles-tiers.ts` · 40, 41, 42, autres comptes de classe 4
+rattachés), un classeur par famille (« TOUS » refusé au serveur, la famille
+choisie à l'écran), sous-total par collectif, contrôle contre une lecture
+INDÉPENDANTE des collectifs dans la base, jamais contre la somme des tiers, et
+l'écart DIT. Écran · le double-clic d'une balance ouvre le grand livre du
+compte (adresse neuve à chaque fois) ; si le livre complet est refusé à la
+fenêtre, celui du seul compte, par sa route bornée. LIASSE · seules BALANCE N
+et BALANCE N-1 prennent cette présentation (décision du 2026-10-04), avant
+l'écriture qui solde les comptes de gestion, chacune avec SA veille ; les
+formules de CONTROLE BALANCE et de CONTROLES lisent les rangs écrits, jamais
+une position, et `relecture-balances-liasse.ts` les rejoue dans le classeur
+produit. Les autres feuilles gardent la charte ETAFI.
+
 **Comparabilité de la colonne N-1.** « Lorsque l'un des postes chiffrés d'un état
 financier N'EST PAS COMPARABLE à celui de l'exercice précédent, c'est CE DERNIER
 QUI DOIT ÊTRE ADAPTÉ. L'absence de comparabilité ou l'adaptation des chiffres EST

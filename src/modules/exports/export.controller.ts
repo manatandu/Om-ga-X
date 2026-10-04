@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
 import { criteresOuRefus } from '../comptabilite/recherche-ecritures';
 import type { PerimetreBalanceAgee } from '../comptabilite/ecriture.service';
 import { Referentiel } from '@prisma/client';
@@ -10,6 +10,7 @@ import { ReferentielGuard } from '../../common/guards/referentiel.guard';
 import { ReferentielsAutorises } from '../../common/decorators/referentiels.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ClasseurExporte, ExportService } from './export.service';
+import { ExportFpmService, familleOuRefus } from './export-fpm.service';
 import { lirePaiementsEnInstance } from '../etats-financiers/paiements-en-instance';
 import { EXERCICE_FACULTATIF, EXERCICE_REQUIS } from '../../common/exercice-requis';
 
@@ -94,6 +95,20 @@ function envoyerXlsx(res: Response, classeur: ClasseurExporte) {
   res.send(classeur.buffer);
 }
 
+/** `format` du grand livre · la présentation du cabinet, ou le livre à plat. */
+function formatOuRefus(format: string | undefined): 'fpm' | 'plat' {
+  if (format === undefined || format === '' || format === 'fpm') return 'fpm';
+  if (format === 'plat') return 'plat';
+  throw new BadRequestException('Format du grand livre inconnu · « fpm » (présentation du cabinet) ou « plat ».');
+}
+
+/** `grandsLivres` d'une balance · oui par défaut, « non » pour la balance seule. */
+function grandsLivresOuRefus(valeur: string | undefined): boolean {
+  if (valeur === undefined || valeur === '' || valeur === 'oui') return true;
+  if (valeur === 'non') return false;
+  throw new BadRequestException('Paramètre grandsLivres · « oui » ou « non ».');
+}
+
 // RolesGuard est inclus bien qu'aucune route ne porte `@Roles` · les exports
 // sont des lectures, ouverts à tous les rôles du dossier comme les écrans
 // qu'ils reprennent, sauf le gestionnaire de paie, que JwtAuthGuard arrête
@@ -104,7 +119,10 @@ function envoyerXlsx(res: Response, classeur: ClasseurExporte) {
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard, ReferentielGuard)
 @Controller('exports')
 export class ExportController {
-  constructor(private readonly exportService: ExportService) {}
+  constructor(
+    private readonly exportService: ExportService,
+    private readonly exportFpm: ExportFpmService,
+  ) {}
 
   // L'exercice est FACULTATIF, comme à la fenêtre du journal · sans lui, le
   // classeur se titre « Toutes périodes » (`identiteEtat`) et ne se présente
@@ -152,16 +170,41 @@ export class ExportController {
    * Grand livre complet · tous les comptes mouvementés, un seul classeur.
    * L'exercice est REQUIS (audit final F100) · sans lui, l'appel direct
    * agrégeait tous les exercices, reports compris, sous le titre d'un seul.
+   *
+   * DEUX PRÉSENTATIONS (décision de Manasse du 2026-10-04) · celle du cabinet
+   * par défaut (un bloc par compte, totaux, contrôle contre la balance), et le
+   * livre « à plat », filtrable et pivotable, avec son sommaire, sur
+   * `format=plat`. Un format inconnu est refusé, jamais remplacé.
    */
   @Get('grand-livre')
   async grandLivreComplet(
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('format') format?: string,
   ) {
+    const presentation = formatOuRefus(format);
     await envoyerXlsxEnFlux(res, (ouvrir) =>
-      this.exportService.grandLivreCompletExcelEnFlux(user.tenantId, exerciceId, ouvrir),
+      presentation === 'plat'
+        ? this.exportService.grandLivreCompletExcelEnFlux(user.tenantId, exerciceId, ouvrir)
+        : this.exportFpm.grandLivreEnFlux(user.tenantId, exerciceId, ouvrir),
     );
+  }
+
+  /**
+   * GRAND-LIVRE DES TIERS (ligne FPM) · une famille par classeur
+   * (FOURNISSEURS, CLIENTS, SALARIES, AUTRES). Commun aux deux référentiels,
+   * comme la balance auxiliaire · la famille se lit sur le numéro du compte.
+   */
+  @Get('grand-livre-tiers')
+  async grandLivreTiers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('type') type?: string,
+  ) {
+    const famille = familleOuRefus(type);
+    await envoyerXlsxEnFlux(res, (ouvrir) => this.exportFpm.grandLivreTiersEnFlux(user.tenantId, exerciceId, famille, ouvrir));
   }
 
   @Get('grand-livre/:compteId')
@@ -174,28 +217,43 @@ export class ExportController {
     envoyerXlsx(res, await this.exportService.grandLivreExcel(user.tenantId, compteId, exerciceId));
   }
 
+  /**
+   * BALANCE DES COMPTES, présentation du cabinet, EN FLUX (ligne FPM) · une
+   * feuille par compte mouvementé, son grand livre, que le numéro de la
+   * balance ouvre. `grandsLivres=non` rend la balance seule · le chemin de
+   * rechange d'un dossier au-delà du plafond.
+   */
   @Get('balance')
   async balance(
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('grandsLivres') grandsLivres?: string,
   ) {
-    envoyerXlsx(res, await this.exportService.balanceExcel(user.tenantId, exerciceId));
+    const avec = grandsLivresOuRefus(grandsLivres);
+    await envoyerXlsxEnFlux(res, (ouvrir) => this.exportFpm.balanceGeneraleEnFlux(user.tenantId, exerciceId, avec, ouvrir));
   }
 
   /**
-   * BALANCE AUXILIAIRE · un état par famille de tiers, ou les deux d'un coup.
-   * Pas de `@ReferentielsAutorises` : les comptes 40 et 41 existent dans les
-   * deux plans, seul le libellé du 41 change (voir le service).
+   * BALANCE DES TIERS · une famille par classeur, avec le grand livre de
+   * chaque tiers en feuilles liées. Pas de `@ReferentielsAutorises` : les
+   * comptes de tiers existent dans les deux plans, seul le libellé du 41
+   * change (`sousTitreFamille`). Le type est REQUIS · « TOUS » est refusé en
+   * 400 nommé, un classeur ne portant qu'une famille.
    */
   @Get('balance-auxiliaire')
   async balanceAuxiliaire(
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
-    @Query('type') type?: 'CLIENTS' | 'FOURNISSEURS' | 'TOUS',
+    @Query('type') type?: string,
+    @Query('grandsLivres') grandsLivres?: string,
   ) {
-    envoyerXlsx(res, await this.exportService.balanceAuxiliaireExcel(user.tenantId, exerciceId, type ?? 'TOUS'));
+    const famille = familleOuRefus(type);
+    const avec = grandsLivresOuRefus(grandsLivres);
+    await envoyerXlsxEnFlux(res, (ouvrir) =>
+      this.exportFpm.balanceTiersEnFlux(user.tenantId, exerciceId, famille, avec, ouvrir),
+    );
   }
 
   /** Balance âgée · l'état s'affichait sans pouvoir s'annexer à une circularisation. */

@@ -130,6 +130,46 @@ laisse la moitié du tas libre. La mesure porte sur UN export à la fois : deux
 exports simultanés de cette taille sur une même instance ne sont couverts par
 aucun chiffre de ce document.
 
+## Les exports de la présentation du cabinet (banc du 2026-10-04, ligne FPM)
+
+Une balance de **2 000 comptes** avec la feuille de chacun (son grand livre),
+mesurée contre le grand livre à plat de `main`, sur les MÊMES lignes. Base
+PostgreSQL jetable, serveur compilé lancé avec `--max-old-space-size=460`,
+requêtes HTTP réelles, une à la fois, serveur redémarré avant chaque mesure.
+Pic du tas V8 relevé par `--trace-gc`, pic de mémoire du processus par
+`VmHWM`. Machine de développement à quatre cœurs PARTAGÉE avec d'autres
+sessions (charge 3 à 4) · les durées sont gonflées, les mémoires non.
+
+| export | lignes | durée | pic du tas V8 | pic du processus (RSS) |
+|---|---|---|---|---|
+| balance seule, 2 000 comptes | 2 000 | 0,4 s | · | 218 Mo |
+| grand livre à plat (`main`) | 100 000 | 84 s | 107 Mo | 812 Mo |
+| balance + 2 000 feuilles | 100 000 | 96 s | 117 Mo | 810 Mo |
+| grand livre à plat (`main`) | 200 000 | 269 s | 105 Mo | 1 717 Mo |
+| balance + 2 000 feuilles | 197 000 | 319 s | 126 Mo | 1 593 Mo |
+| grand livre FPM, une feuille | 197 000 | 309 s | 104 Mo | 1 636 Mo |
+| balance + feuilles, 202 000 lignes | · | 0,3 s | 83 Mo | refus 413 avant le premier octet |
+
+Ce que la mesure dit :
+
+- **Le nombre de feuilles ne pèse pas.** À lignes égales, deux mille feuilles
+  coûtent ce que coûte une seule (810 contre 812 Mo, 1 593 contre 1 636 Mo). Un
+  plafond sur le NOMBRE DE FEUILLES ne retirerait rien · il n'a pas été posé.
+  Le plafond reste celui des LIGNES, `MAX_LIGNES_EXPORT`, compté balance
+  comprise et refusé avant le premier octet, avec la « Balance seule » pour
+  chemin de rechange.
+- **Le tas V8 reste sous la moitié des 460 Mio** à 200 000 lignes (126 Mo au
+  plus) · la marge du § 8 bis, telle qu'elle a été posée le 2026-09-12, tient.
+- **LA MÉMOIRE DU PROCESSUS, ELLE, NE TIENT PAS, ET CE N'EST PAS NOUVEAU.** Le
+  grand livre à plat de `main` monte à 812 Mo dès 100 000 lignes et à 1,7 Go à
+  200 000, hors du tas (tampons de l'écrivain en flux et du moteur Prisma),
+  quand le tableau du 2026-09-12 écrit 246 Mo à 200 000. Ce chiffre-là ne se
+  retrouve pas sur ce banc · il mesurait vraisemblablement le tas seul. Sur un
+  conteneur à 512 Mio, un export de 100 000 lignes dépasserait donc la mémoire
+  du conteneur. Relevé ouvert, à trancher hors de la ligne FPM (mesure dans un
+  conteneur borné à 512 Mio, puis plafond de lignes ou d'export concurrent
+  revu) · la ligne FPM n'aggrave rien, elle hérite.
+
 ## Ce qui reste
 
 Deux exports d'UN compte construisent encore leur classeur en mémoire · le

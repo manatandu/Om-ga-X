@@ -6,6 +6,8 @@ import type { PerimetreBalanceAgee } from '../comptabilite/ecriture.service';
 import { perimetreJournal } from '../comptabilite/ecriture.service';
 import type { CriteresRecherche } from '../comptabilite/recherche-ecritures';
 import {
+  LOT_EXPORT,
+  MAX_LIGNES_EXPORT,
   PREMIERE_LIGNE_DONNEES,
   ouvrirFeuilleEnFlux,
   type IdentiteEtat,
@@ -67,13 +69,15 @@ import {
   ecrireFeuilleBalance,
   FMT_MONTANT as FMT_MONTANT_ETAFI,
   fusion,
-  LigneBalanceLiasse,
+  type BalanceLiasse,
   NiveauLigne,
   NOM_BALANCE,
   NOM_BALANCE_N1,
   PartiesNotes,
+  sommeColonneBalance,
   titreNote,
 } from './theme-etafi';
+import { divisionsDeLaClasse9, type LigneBalanceFpm } from './balance-fpm';
 import {
   construireFeuilleEtat,
   NIVEAUX_ETAT_PROJETS,
@@ -247,13 +251,6 @@ export class ExportService {
     return Buffer.from(await classeur.xlsx.writeBuffer());
   }
 
-  /**
-   * Taille d'un lot de lecture pour les exports en flux · le pendant de
-   * `LOT_LECTURE` des notes annexes. Cinq cents écritures avec leurs lignes
-   * pèsent quelques mégaoctets : l'intérêt n'est pas la vitesse, c'est que la
-   * mémoire ne dépende plus de la taille du dossier.
-   */
-  private static readonly LOT_EXPORT = 500;
 
   /**
    * Colonnes du journal · sorties en constante parce que le flux doit les
@@ -301,35 +298,6 @@ export class ExportService {
     { header: 'Validée par', key: 'valideePar', width: 28 },
   ];
 
-  /**
-   * PLAFOND DES DEUX LIVRES EXPORTÉS, ET CE QU'IL MESURE DÉSORMAIS.
-   *
-   * Il valait 50 000 parce que le classeur était bâti ENTIER EN MÉMOIRE · à ce
-   * volume, le banc du 2026-09-03 relevait 693 Mo pour un tas de 460 Mio, et
-   * 200 000 lignes tuaient le processus. Ce n'était donc pas une borne
-   * comptable mais une borne de construction, et elle refusait un grand livre
-   * parfaitement ordinaire : un dossier à 60 000 lignes n'a rien d'un gros
-   * dossier.
-   *
-   * Le flux a déplacé la borne, il ne l'a pas supprimée. Mesuré en flux, même
-   * banc : 200 000 lignes coûtent 246 Mo, 500 000 en coûtent 443 · c'est-à-dire
-   * PRESQUE TOUT LE TAS. `useStyles: true`, que les formats de cellule rendent
-   * obligatoire, n'y change quasiment rien en mémoire mais double le temps
-   * (37,6 s contre 19,6 s à 500 000). Le plafond est donc porté à 200 000, la
-   * dernière mesure qui laisse la moitié du tas libre.
-   *
-   * LA RÉSERVE EST ÉCRITE PLUTÔT QUE SUPPOSÉE · la mesure porte sur UN export à
-   * la fois. Cloud Run sert 80 requêtes par instance (`--concurrency 80`, § 5
-   * de CLAUDE.md) : deux exports de 200 000 lignes lancés en même temps sur la
-   * même instance ne sont couverts par aucune mesure. Refaire le banc avant de
-   * relever encore ce chiffre, et le refaire à plusieurs exports simultanés.
-   *
-   * ET IL RESTE UN REFUS, JAMAIS UNE TRONCATURE · le journal et le grand livre
-   * sont des livres obligatoires (AUDCIF art. 22, 6°), et « un livre amputé en
-   * silence est un document faux ». Au-delà du plafond, l'export s'arrête et
-   * nomme le chemin de rechange.
-   */
-  private static readonly MAX_LIGNES_EXPORT = Number(process.env.EXPORT_MAX_LIGNES ?? 200_000);
 
   /**
    * DEUX EXPORTS D'UN COMPTE RESTENT EN MÉMOIRE (audit final F101) · le grand
@@ -373,10 +341,10 @@ export class ExportService {
    */
   private async verifierVolume(where: Prisma.LigneEcritureWhereInput, quoi: string) {
     const nb = await this.prisma.ligneEcriture.count({ where });
-    if (nb > ExportService.MAX_LIGNES_EXPORT) {
+    if (nb > MAX_LIGNES_EXPORT) {
       throw new PayloadTooLargeException(
         `${quoi} : ${nb.toLocaleString('fr-FR')} lignes à exporter, au-delà de la limite de ` +
-          `${ExportService.MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. Restreignez la période (ou le journal) ` +
+          `${MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. Restreignez la période (ou le journal) ` +
           `et relancez l'export.`,
       );
     }
@@ -536,7 +504,12 @@ export class ExportService {
    * de la période réellement filtrée · un export ne doit pas échouer faute
    * d'exercice.
    */
-  private async identiteEtat(
+  /**
+   * Publique pour `ExportFpmService`, qui pose la même identité sur les
+   * balances et grands livres de la présentation du cabinet · deux lectures
+   * de l'identité d'un état finiraient par diverger.
+   */
+  async identiteEtat(
     tenantId: string,
     periode: { exerciceId?: string; dateDebut?: string; dateFin?: string },
   ): Promise<IdentiteEtat> {
@@ -638,7 +611,7 @@ export class ExportService {
         // cloisonnement lit le CODE, pas la valeur d'une variable, et une borne
         // qu'il ne voit pas est une borne qu'un relecteur ne voit pas non plus.
         where: { ...where, tenantId },
-        take: ExportService.LOT_EXPORT,
+        take: LOT_EXPORT,
         ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
         include: {
           lignes: { include: { compte: true } },
@@ -684,7 +657,7 @@ export class ExportService {
           });
         }
       }
-      if (lot.length < ExportService.LOT_EXPORT) break;
+      if (lot.length < LOT_EXPORT) break;
       curseur = lot[lot.length - 1].id;
     }
 
@@ -909,7 +882,7 @@ export class ExportService {
       const lot = await this.prisma.ligneEcriture.findMany({
         // `tenantId` répété · voir le journal juste au-dessus.
         where: { ecriture: { ...perimetre, tenantId } },
-        take: ExportService.LOT_EXPORT,
+        take: LOT_EXPORT,
         ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
         include: { compte: true, ecriture: { include: { journal: true } } },
         // Ordre TOTAL · à date égale, laisser le plan d'exécution décider ferait
@@ -949,7 +922,7 @@ export class ExportService {
           statut: l.ecriture.statut === 'VALIDEE' ? 'Validée' : 'Brouillard',
         });
       }
-      if (lot.length < ExportService.LOT_EXPORT) break;
+      if (lot.length < LOT_EXPORT) break;
       curseur = lot[lot.length - 1].id;
     }
 
@@ -1003,270 +976,13 @@ export class ExportService {
     return { lignes: nbLignes };
   }
 
-  /** Balance générale · la présentation des dossiers de révision réels. */
-  async balanceExcel(tenantId: string, exerciceId: string): Promise<ClasseurExporte> {
-    const { lignes: balanceBrute } = await this.ecritureService.balance(tenantId, exerciceId);
-    const identiteBalance = await this.identiteEtat(tenantId, { exerciceId });
-
-    const classeur = this.nouveauClasseur();
-    const feuille = classeur.addWorksheet('Balance');
-    /*
-     * BALANCE À SIX COLONNES, format des dossiers de révision réels.
-     *
-     * L'export ne montrait que Total débit / Total crédit / Solde, alors que
-     * le service calcule DÉJÀ la scission report / mouvements. C'était perdre
-     * l'information la plus utile : sur un compte d'immobilisation, le total
-     * englobe le report à-nouveau, et un bâtiment détenu depuis 2020 y est
-     * indiscernable d'une acquisition de l'exercice.
-     *
-     * Les six colonnes, LEURS LIBELLÉS et l'ordre des colonnes reprennent
-     * exactement ceux d'un dossier d'audit congolais réel (balance générale
-     * CARRIGRES au 31/12/2025, ouverte cellule par cellule sur le Drive) :
-     * « Code compte, LIBELLE, Solde débit avant période, Solde crédit avant
-     * période, Débit, Crédit, Débit cumulé, Crédit cumulé, Devise, Société ».
-     * Un réviseur lit cette balance-là.
-     *
-     * AU-DESSUS DU TABLEAU, LE CARTOUCHE DE TOUS LES ÉTATS (`coifferEtat`).
-     * Leur balance commence en ligne 1, sans titre ; le cartouche avait été
-     * retiré des livres pour les suivre, puis rétabli partout, un état envoyé
-     * à un tiers devant se nommer lui-même · ce paragraphe disait encore
-     * « rien au-dessus de la ligne 1 » (audit final F223). Le figeage et
-     * l'autofiltre sont posés sous lui, et les colonnes Devise et Société
-     * restent, comme chez eux. La numérotation et la date qu'exige l'AUDCIF
-     * (art. 22, 7° : « les états périodiques fournis soient numérotés et
-     * datés ») sont au pied de page imprimé.
-     *
-     * Pas de colonne « Type » : elle distinguait les comptes Total, que la
-     * balance ne porte plus. Pas de colonne « Solde » signée : leur balance
-     * générale n'en a pas.
-     *
-     * La ligne de TOTAUX GÉNÉRAUX, elle, reste · elle avait été retirée avec
-     * le reste et c'était une erreur. Ce n'est pas de l'ornement : la balance
-     * est l'état où se VÉRIFIE la partie double, et l'égalité des six colonnes
-     * de montants est le contrôle qu'un réviseur fait en premier. Elle est
-     * posée SOUS le tableau, hors de l'autofiltre, pour ne pas être triée avec
-     * les comptes.
-     */
-    feuille.columns = [
-      { header: 'N° compte', key: 'numero', width: 12 },
-      { header: 'Intitulé', key: 'intitule', width: 36 },
-      { header: 'Solde débit avant période', key: 'reportDebit', width: 24 },
-      { header: 'Solde crédit avant période', key: 'reportCredit', width: 25 },
-      { header: 'Débit', key: 'mouvementDebit', width: 12 },
-      { header: 'Crédit', key: 'mouvementCredit', width: 12 },
-      { header: 'Débit cumulé', key: 'totalDebit', width: 15 },
-      { header: 'Crédit cumulé', key: 'totalCredit', width: 16 },
-      { header: 'Devise', key: 'devise', width: 10 },
-      { header: 'Société', key: 'societe', width: 18 },
-    ];
-
-    // L'écriture qui solde les classes 6 à 8 d'un exercice clos est un
-    // mouvement DU JOURNAL de l'exercice, pas une ouverture (audit final F5) ·
-    // elle se lit avec les mouvements, et « avant période + débit = cumulé »
-    // reste vrai ligne à ligne.
-    const lignes = balanceBrute.map((l) => ({
-      ...l,
-      mouvementDebit: l.mouvementDebit + l.clotureDebit,
-      mouvementCredit: l.mouvementCredit + l.clotureCredit,
-    }));
-    for (const l of lignes) {
-      feuille.addRow({
-        numero: l.numero,
-        intitule: l.intitule,
-        reportDebit: l.reportDebit || null,
-        reportCredit: l.reportCredit || null,
-        mouvementDebit: l.mouvementDebit || null,
-        mouvementCredit: l.mouvementCredit || null,
-        totalDebit: l.totalDebit || null,
-        totalCredit: l.totalCredit || null,
-        devise: identiteBalance.devise,
-        societe: identiteBalance.entite,
-      });
-    }
-
-    const derniereLigneDonnees = feuille.rowCount;
-    const somme = (cle: keyof (typeof lignes)[number]) =>
-      Math.round(lignes.reduce((t, l) => t + (Number(l[cle]) || 0), 0) * 100) / 100;
-    const ligneTotal = feuille.addRow({ intitule: 'TOTAUX GÉNÉRAUX' });
-    // Les six colonnes se totalisent par formule · c'est sur cette ligne que
-    // se vérifie la partie double, et un chiffre figé ne se vérifie pas.
-    const premiereB = this.ligneCoiffee(2);
-    const derniereB = this.ligneCoiffee(derniereLigneDonnees);
-    for (const cle of [
-      'reportDebit',
-      'reportCredit',
-      'mouvementDebit',
-      'mouvementCredit',
-      'totalDebit',
-      'totalCredit',
-    ] as const) {
-      const col = this.colonne(feuille, cle);
-      ligneTotal.getCell(cle).value = this.formule(`SUM(${col}${premiereB}:${col}${derniereB})`, somme(cle));
-    }
-    ligneTotal.font = ENTETE_FONT;
-
-    this.appliquerFormats(feuille, {
-      reportDebit: FORMAT_MONTANT,
-      reportCredit: FORMAT_MONTANT,
-      mouvementDebit: FORMAT_MONTANT,
-      mouvementCredit: FORMAT_MONTANT,
-      totalDebit: FORMAT_MONTANT,
-      totalCredit: FORMAT_MONTANT,
-    });
-    this.piedDePageEtat(feuille, identiteBalance);
-    const enteteBalance = this.coifferEtat(feuille, identiteBalance, 'BALANCE GÉNÉRALE', feuille.columns.length);
-    this.finaliserTableau(feuille, feuille.columns.length, derniereLigneDonnees + 3, enteteBalance);
-
-    return {
-      buffer: await this.versBuffer(classeur),
-      nomFichier: `balance${await this.suffixeExercice(tenantId, exerciceId)}.xlsx`,
-    };
-  }
-
-  /**
-   * BALANCE AUXILIAIRE CLIENTS / FOURNISSEURS · l'état que le logiciel ne
-   * savait pas produire.
-   *
-   * Il produisait la balance ÂGÉE, qui ventile un solde par tranche de retard,
-   * et l'on croyait la balance des tiers couverte. Elle ne l'était pas : un
-   * réviseur qui circularise a besoin des MOUVEMENTS de la période tiers par
-   * tiers et du solde qui en résulte, pas d'un profil d'antériorité. Les deux
-   * états coexistent dans tout dossier de révision réel · ils répondent à deux
-   * questions différentes.
-   *
-   * La présentation reprend celle des balances auxiliaires du dossier de
-   * révision ouvert sur le Drive (« Balance clients-CARRIGRES au 31 12 2025 »
-   * et « Balance auxiliaire fournisseurs-CARRIGRES au 31 12 2025 »), relevées
-   * cellule par cellule :
-   *
-   *  - ligne 1 : l'HORODATAGE d'édition seul, en A1. C'est leur seule
-   *    concession à un en-tête, et elle sert : deux tirages du même état à
-   *    deux heures d'écart ne donnent pas les mêmes soldes tant que
-   *    l'exercice n'est pas clos.
-   *  - ligne 2 : les en-têtes, dont les libellés de montant portent le CODE
-   *    DEVISE (« Solde débit avant période EUR » chez eux, la devise du
-   *    dossier ici).
-   *  - dernière ligne : « SOLDE » et les totaux de chaque colonne.
-   *
-   * Deux colonnes de solde qui s'excluent (« Solde Debit » / « Solde Credit »)
-   * puis une colonne « SOLDE » signée : c'est leur présentation, et elle a une
-   * raison · les deux premières se totalisent pour rapprocher la balance
-   * générale, la troisième se trie pour classer les tiers par exposition.
+  /*
+   * LA BALANCE GÉNÉRALE ET LA BALANCE AUXILIAIRE ont quitté ce service (ligne
+   * FPM, 2026-10-04) · elles s'écrivent EN FLUX, dans la présentation du
+   * cabinet, avec le grand livre de chaque compte en feuilles liées
+   * (`export-fpm.service.ts`). Les deux versions bâties ici en mémoire, à six
+   * colonnes et horodatage en tête, n'ont plus d'appelant.
    */
-  async balanceAuxiliaireExcel(
-    tenantId: string,
-    exerciceId: string,
-    type: 'CLIENTS' | 'FOURNISSEURS' | 'TOUS' = 'TOUS',
-  ): Promise<ClasseurExporte> {
-    const { comptes, totaux } = await this.ecritureService.balanceAuxiliaire(tenantId, { exerciceId, type });
-    const identite = await this.identiteEtat(tenantId, { exerciceId });
-    const tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
-    const dev = identite.devise;
-
-    // Le 41 ne se nomme pas pareil dans les deux plans · « Clients » au
-    // SYSCOHADA (AUDCIF compte 41), « Adhérents et clients-usagers » au
-    // SYCEBNL, dont le 411 est le compte des adhérents. Le 40 est
-    // « Fournisseurs » dans les deux.
-    const nomClients =
-      tenant.referentiel === Referentiel.SYCEBNL ? 'Adhérents et clients-usagers' : 'Clients';
-    const titre =
-      type === 'CLIENTS' ? nomClients : type === 'FOURNISSEURS' ? 'Fournisseurs' : 'Tiers';
-
-    const classeur = this.nouveauClasseur();
-    const feuille = classeur.addWorksheet(titre.slice(0, 31));
-
-    // L'horodatage tient la ligne 1 à lui seul ; les en-têtes suivent en
-    // ligne 2, et c'est sur elle que portent le figeage et l'autofiltre.
-    const maintenant = new Date();
-    feuille.getRow(1).getCell(1).value =
-      `${maintenant.toLocaleDateString('fr-FR')} ${maintenant.getHours()}h${String(maintenant.getMinutes()).padStart(2, '0')}`;
-    feuille.getRow(1).getCell(1).font = { size: 9, italic: true };
-
-    const colonnes: Array<{ header: string; key: string; width: number }> = [
-      { header: 'Code compte', key: 'numero', width: 14 },
-      { header: 'Code tiers', key: 'codeTiers', width: 14 },
-      { header: 'Libellé tiers', key: 'nomTiers', width: 36 },
-      { header: `Solde débit avant période ${dev}`, key: 'reportDebit', width: 26 },
-      { header: `Solde crédit avant période ${dev}`, key: 'reportCredit', width: 27 },
-      { header: `Débit Période ${dev}`, key: 'mouvementDebit', width: 18 },
-      { header: `Crédit Période ${dev}`, key: 'mouvementCredit', width: 18 },
-      { header: `Solde Debit ${dev}`, key: 'soldeDebit', width: 17 },
-      { header: `Solde Credit ${dev}`, key: 'soldeCredit', width: 17 },
-      { header: 'SOLDE', key: 'solde', width: 16 },
-    ];
-    feuille.getRow(2).values = colonnes.map((c) => c.header);
-    colonnes.forEach((c, i) => {
-      feuille.getColumn(i + 1).key = c.key;
-      feuille.getColumn(i + 1).width = c.width;
-    });
-
-    // Première ligne de données : les en-têtes sont en 2, la coiffe les
-    // poussera de trois · les formules visent donc déjà les lignes décalées.
-    const premiereAux = this.ligneCoiffee(3);
-    for (const c of comptes) {
-      feuille.addRow({
-        numero: c.numero,
-        // Un compte de tiers sans tiers rattaché ne se tait pas · il se
-        // nomme, parce que c'est lui qui échappera à la circularisation.
-        codeTiers: c.codeTiers,
-        nomTiers: c.sansTiers ? `${c.intitule} · aucun tiers rattaché` : c.nomTiers,
-        reportDebit: c.reportDebit || null,
-        reportCredit: c.reportCredit || null,
-        mouvementDebit: c.mouvementDebit || null,
-        mouvementCredit: c.mouvementCredit || null,
-        soldeDebit: c.soldeDebit || null,
-        soldeCredit: c.soldeCredit || null,
-      });
-      // Le solde signé n'est pas un troisième chiffre indépendant : c'est la
-      // différence des deux colonnes qui le précèdent, et l'écrire en formule
-      // le dit. Un lecteur qui corrige un montant voit le solde suivre.
-      const ligne = feuille.lastRow!;
-      const cd = this.colonne(feuille, 'soldeDebit');
-      const cc = this.colonne(feuille, 'soldeCredit');
-      ligne.getCell('solde').value = this.formule(`${cd}${ligne.number + 3}-${cc}${ligne.number + 3}`, c.solde);
-    }
-
-    const derniereLigneDonnees = feuille.rowCount;
-    const ligneTotal = feuille.addRow({ numero: 'SOLDE' });
-    const derniereAux = this.ligneCoiffee(derniereLigneDonnees);
-    for (const cle of [
-      'reportDebit',
-      'reportCredit',
-      'mouvementDebit',
-      'mouvementCredit',
-      'soldeDebit',
-      'soldeCredit',
-      'solde',
-    ] as const) {
-      const col = this.colonne(feuille, cle);
-      ligneTotal.getCell(cle).value = this.formule(
-        `SUM(${col}${premiereAux}:${col}${derniereAux})`,
-        totaux[cle],
-      );
-    }
-    ligneTotal.font = ENTETE_FONT;
-
-    this.appliquerFormats(feuille, {
-      reportDebit: FORMAT_MONTANT,
-      reportCredit: FORMAT_MONTANT,
-      mouvementDebit: FORMAT_MONTANT,
-      mouvementCredit: FORMAT_MONTANT,
-      soldeDebit: FORMAT_MONTANT,
-      soldeCredit: FORMAT_MONTANT,
-      solde: FORMAT_MONTANT,
-    });
-    this.piedDePageEtat(feuille, identite);
-    // L'horodatage occupe la ligne 1 et les en-têtes la 2 · le cartouche les
-    // pousse en 4 et 5, et c'est la 5 qui porte figeage et autofiltre.
-    const enteteAux = this.coifferEtat(feuille, identite, `BALANCE AUXILIAIRE · ${titre.toUpperCase()}`, colonnes.length, 2);
-    this.finaliserTableau(feuille, colonnes.length, derniereLigneDonnees + 3, enteteAux);
-
-    const suffixe = type === 'TOUS' ? 'tiers' : type.toLowerCase();
-    return {
-      buffer: await this.versBuffer(classeur),
-      nomFichier: `balance-auxiliaire-${suffixe}${await this.suffixeExercice(tenantId, exerciceId)}.xlsx`,
-    };
-  }
 
   /**
    * BALANCE ÂGÉE · l'état existait à l'écran mais ne s'exportait pas, alors
@@ -4932,26 +4648,60 @@ export class ExportService {
    * Résultat du même classeur les publiait en entier, sans qu'aucun contrôle
    * d'équilibre ne le voie.
    */
-  private async lignesBalanceLiasse(tenantId: string, exerciceId: string): Promise<LigneBalanceLiasse[]> {
-    const balance = await this.ecritureService.balance(tenantId, exerciceId, false);
-    return avantSoldeDesComptesDeGestion(balance.lignes)
+  private async lignesBalanceLiasse(tenantId: string, exerciceId: string): Promise<BalanceLiasse> {
+    const [balance, exercice, identite] = await Promise.all([
+      this.ecritureService.balance(tenantId, exerciceId, false),
+      this.prisma.exercice.findFirstOrThrow({
+        where: { id: exerciceId, tenantId },
+        select: { dateDebut: true, dateFin: true },
+      }),
+      // N-1 porte SA période dans le cartouche, et sa colonne « Mouvements
+      // au <veille> » se lit à la veille de SON début.
+      this.identiteEtat(tenantId, { exerciceId }),
+    ]);
+    const soldeRetire = balance.lignes.some((l) => (l.clotureDebit ?? 0) !== 0 || (l.clotureCredit ?? 0) !== 0);
+    const lignes: LigneBalanceFpm[] = avantSoldeDesComptesDeGestion(balance.lignes)
       // Redondant par construction, gardé contre le double comptage.
       .filter((l) => l.typeCompte !== 'TOTAL')
-      .map((l) => {
-        const ouverture = l.reportDebit - l.reportCredit;
-        return {
-          compte: l.numero,
-          libelle: l.intitule,
-          ouvertureDebit: Math.max(ouverture, 0),
-          ouvertureCredit: Math.max(-ouverture, 0),
-          // La colonne de clôture est retirée plus haut · il ne reste que
-          // l'activité de l'exercice.
-          mouvementDebit: l.mouvementDebit,
-          mouvementCredit: l.mouvementCredit,
-          clotureDebit: Math.max(l.solde, 0),
-          clotureCredit: Math.max(-l.solde, 0),
-        };
-      });
+      .map((l) => ({
+        compteId: l.compteId,
+        numero: l.numero,
+        intitule: l.intitule,
+        classe: l.classe,
+        // BRUTS · la présentation FPM rend les deux colonnes du report, et
+        // c'est sur elles que CONTROLE BALANCE vérifie l'ouverture.
+        avantDebit: l.reportDebit,
+        avantCredit: l.reportCredit,
+        // La colonne de clôture est retirée plus haut · il ne reste que
+        // l'activité de l'exercice.
+        mouvementDebit: l.mouvementDebit,
+        mouvementCredit: l.mouvementCredit,
+        totalDebit: l.totalDebit,
+        totalCredit: l.totalCredit,
+      }));
+    const divisions = divisionsDeLaClasse9(lignes);
+    const intitulesDivisions = divisions.length
+      ? new Map(
+          (
+            await this.prisma.compte.findMany({
+              where: { tenantId, numero: { in: divisions } },
+              select: { numero: true, intitule: true },
+            })
+          ).map((c) => [c.numero, c.intitule]),
+        )
+      : new Map<string, string>();
+    return {
+      lignes,
+      identite,
+      debut: exercice.dateDebut,
+      fin: exercice.dateFin,
+      intitulesDivisions,
+      // La balance de l'exercice CLOS se lit avant l'écriture qui solde les
+      // classes 6 à 8, comme les états du classeur · la balance exportée du
+      // même exercice la porte dans ses mouvements (audit final F5). Les deux
+      // diffèrent donc à dessein, et la feuille le dit.
+      mention: soldeRetire ? "Avant l'écriture qui solde les comptes de gestion · livre-journal seul" : undefined,
+    };
   }
 
   /** Découpage officiel de la fiche récapitulative du jeu projets. */
@@ -4991,13 +4741,13 @@ export class ExportService {
       this.noteAnnexeService.notesProjet(tenantId, exerciceId),
       this.exerciceN1Id(tenantId, exerciceId),
     ]);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     construireCouverture(classeur, ident, 'LIASSE PROJETS DE DEVELOPPEMENT', tenant.pays ?? '');
     construireGarde(classeur, ident, {
@@ -5087,10 +4837,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['Total général actif (BZ)', `'Bilan-Actif'!D${rangsActif.get('BZ')}`, ''],
       ['Total général passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
@@ -5191,13 +4942,13 @@ export class ExportService {
       this.etatsFinanciersSmtService.eligibilite(tenantId, exerciceId),
       this.exerciceN1Id(tenantId, exerciceId),
     ]);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     construireCouverture(classeur, ident, 'LIASSE SMT', tenant.pays ?? '');
     construireGarde(classeur, ident, {
@@ -5271,10 +5022,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['TOTAL ACTIF (GZ)', `'Bilan-Actif'!D${rangsActif.get('GZ')}`, ''],
       ['TOTAL PASSIF (HZ)', `'Bilan-Passif'!D${rangsPassif.get('HZ')}`, ''],
@@ -5379,15 +5131,15 @@ export class ExportService {
       this.noteAnnexeService.notesAssociations(tenantId, exerciceId),
       this.exerciceN1Id(tenantId, exerciceId),
     ]);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
 
     // 1-3 · balances et leur contrôle d'équilibre.
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     // 4-7 · pages d'identification du modèle.
     construireCouverture(classeur, ident, 'LIASSE SYSTEME NORMAL', tenant.pays ?? '');
@@ -5463,10 +5215,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['Total général actif net (BZ)', `'Bilan-Actif'!F${rangsActif.get('BZ')}`, ''],
       ['Total général passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
@@ -6916,15 +6669,15 @@ export class ExportService {
       this.noteAnnexeService.notesSyscohada(tenantId, exerciceId),
       this.exerciceN1Id(tenantId, exerciceId),
     ]);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
 
     // 1-3 · balances et leur contrôle d'équilibre.
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     // 4-7 · pages d'identification · page de garde, Fiche 1 au gabarit ETAFI
     // (le contenu de la fiche R1 de l'AUDCIF, sous d'autres lettres) et
@@ -7047,10 +6800,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['TOTAL GÉNÉRAL actif net (BZ)', `'Bilan-Actif'!F${rangsActif.get('BZ')}`, ''],
       ['TOTAL GÉNÉRAL passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
@@ -7207,13 +6961,13 @@ export class ExportService {
     ]);
     // Les deux journaux de suivi, pièces de base du ch. 1 § 1 (passe R2, C4).
     const suivi = await this.smtSyscohada.journauxDeSuivi(tenantId, exerciceId);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     construireCouverture(classeur, ident, 'LIASSE SMT', tenant.pays ?? '');
     construireGarde(classeur, ident, {
@@ -7290,10 +7044,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['Total actif', `'Bilan-Actif'!C${rangsActif.get('SAZ')}`, ''],
       ['Total passif', `'Bilan-Passif'!C${rangsPassif.get('SPZ')}`, ''],

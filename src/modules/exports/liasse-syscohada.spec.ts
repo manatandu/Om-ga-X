@@ -11,7 +11,15 @@ import { EtatsFinanciersProjetBudgetService } from '../etats-financiers/etats-fi
 import { EtatsFinanciersService } from '../etats-financiers/etats-financiers.service';
 import { PrismaService } from '../../common/prisma.service';
 import { ExportService } from './export.service';
-import { NOM_BALANCE } from './theme-etafi';
+import { NOM_BALANCE, NOM_BALANCE_N1 } from './theme-etafi';
+import { FOND_ENTETE_FPM } from './presentation-fpm';
+import {
+  defautsDeFeuilleBalance,
+  defautsDesFormulesDeBalance,
+  evaluerSomme,
+  sommeAttendue,
+  verdictsControleBalance,
+} from './relecture-balances-liasse';
 
 // Chaque cas construit la liasse entière puis la relit par ExcelJS · sous une
 // suite chargée l'un d'eux a dépassé les cinq secondes par défaut de Jest
@@ -614,15 +622,14 @@ describe('liasse complète · Système normal SYSCOHADA', () => {
     expect(avecNeant).toEqual(expect.arrayContaining(['NOTE 32', 'NOTE 35']));
     expect(sansNeant).toContain('NOTE 2');
 
-    // BALANCE N · l'identité ouverture + mouvements = clôture, ligne à ligne.
-    const bal = wb.getWorksheet(NOM_BALANCE)!;
-    for (let r = 2; r <= 1 + BALANCE_N.length; r++) {
-      const v = (c: number) => Number(bal.getCell(r, c).value ?? 0);
-      expect(v(3) - v(4) + v(5) - v(6)).toBeCloseTo(v(7) - v(8), 2);
-    }
-    const rTotal = 2 + BALANCE_N.length;
-    expect(formuleDe(bal.getCell(rTotal, 3))).toBe(`SUM(C2:C${rTotal - 1})`);
-    expect(fondDe(bal.getCell(rTotal, 2))).toBe('FF000080');
+    // BALANCE N et N-1 · présentation FPM (décision de Manasse du
+    // 2026-10-04), l'identité « avant + mouvements = solde cumulé » ligne à
+    // ligne, chacune avec la veille de SA période.
+    const numeros = (l: LigneBalanceStub[]) => l.map((x) => x.numero);
+    expect(defautsDeFeuilleBalance(wb, NOM_BALANCE, numeros(BALANCE_N), 'Mouvements au 31/12/25', FOND_ENTETE_FPM)).toEqual([]);
+    expect(defautsDeFeuilleBalance(wb, NOM_BALANCE_N1, numeros(BALANCE_N1), 'Mouvements au 31/12/24', FOND_ENTETE_FPM)).toEqual(
+      [],
+    );
 
     // Bilan paysage · chaque montant est un LIEN vers la feuille du bilan,
     // aucune re-saisie (c'est le « Modèle 1 » du ch. 3, mêmes rubriques et
@@ -650,7 +657,7 @@ describe('liasse complète · Système normal SYSCOHADA', () => {
 
     // CONTROLES · les recoupements croisés, en formules.
     const ctl = wb.getWorksheet('CONTROLES')!;
-    expect(formuleDe(ctl.getCell(2, 2))).toContain("'BALANCE N'!G2:G");
+    expect(formuleDe(ctl.getCell(2, 2))).toMatch(/^SUM\('BALANCE N'!G10:G\d+\)$/);
     const libelles: string[] = [];
     ctl.eachRow((row) => libelles.push(String(row.getCell(1).value ?? '')));
     expect(libelles).toContain('Écart de bouclage du TFT (doit être 0)');
@@ -800,19 +807,25 @@ describe('feuille BALANCE de la liasse · exercice clos', () => {
     (service as unknown as { ecritureService: { balance: jest.Mock } }).ecritureService.balance = jest
       .fn()
       .mockResolvedValue({ lignes: [charge, resultat] });
-    const lignes = await (
-      service as unknown as { lignesBalanceLiasse: (t: string, e: string) => Promise<Record<string, number | string>[]> }
-    ).lignesBalanceLiasse('t', 'e1');
-    expect(lignes.map((l) => l.compte)).toEqual(['60110000']);
-    const [l] = lignes as Record<string, number>[];
-    expect(l.ouvertureDebit - l.ouvertureCredit + l.mouvementDebit - l.mouvementCredit).toBe(
-      l.clotureDebit - l.clotureCredit,
-    );
-    expect({ mouvementDebit: l.mouvementDebit, mouvementCredit: l.mouvementCredit, clotureDebit: l.clotureDebit }).toEqual({
-      mouvementDebit: 3000,
-      mouvementCredit: 0,
-      clotureDebit: 3000,
-    });
+    const bal = await (
+      service as unknown as {
+        lignesBalanceLiasse: (t: string, e: string) => Promise<{ lignes: Record<string, number | string>[]; mention?: string }>;
+      }
+    ).lignesBalanceLiasse('t1', 'e1');
+    expect(bal.lignes.map((l) => l.numero)).toEqual(['60110000']);
+    const [l] = bal.lignes as Record<string, number>[];
+    // Présentation FPM · report BRUT, mouvements de l'exercice, solde cumulé
+    // NET par le total · la clôture des classes 6 à 8 n'y entre pas.
+    expect({
+      avantDebit: l.avantDebit,
+      avantCredit: l.avantCredit,
+      mouvementDebit: l.mouvementDebit,
+      mouvementCredit: l.mouvementCredit,
+      solde: l.totalDebit - l.totalCredit,
+    }).toEqual({ avantDebit: 0, avantCredit: 0, mouvementDebit: 3000, mouvementCredit: 0, solde: 3000 });
+    // Et la feuille le dit, la balance exportée du même exercice portant ce
+    // solde dans ses mouvements (audit final F5).
+    expect(bal.mention).toBe("Avant l'écriture qui solde les comptes de gestion · livre-journal seul");
   });
 });
 
@@ -1196,3 +1209,98 @@ describe('Passe R2, A3 et B6 · fiche R2 du Système normal SYSCOHADA', () => {
   });
 });
 
+
+/**
+ * LES FORMULES QUI LISENT LES BALANCES, RELUES DANS LE CLASSEUR PRODUIT
+ * (décision de Manasse du 2026-10-04) · voir `relecture-balances-liasse.ts`.
+ * Chaque plage citée par CONTROLE BALANCE et CONTROLES couvre exactement les
+ * lignes de compte, dans la colonne que son libellé annonce, sa somme égale
+ * celle refaite à la main, et le verdict dit l'écart d'une balance faussée.
+ * Le dernier cas fait de N-1 un exercice CLOS · sa feuille garde les comptes
+ * de gestion avant leur solde, et l'équilibre tient.
+ */
+describe('liasses SYSCOHADA · formules qui lisent BALANCE N et BALANCE N-1', () => {
+  const N1_CLOS: LigneBalanceStub[] = [
+    ...BALANCE_N1.filter((l) => l.numero !== '52110000'),
+    ligne('52110000', 'Banques en monnaie nationale', ClasseCompte.CLASSE_5, 300_000, 0, 0, 3000),
+    {
+      ...ligne('60110000', 'Achats de marchandises dans la Région', ClasseCompte.CLASSE_6, 0, 0, 3000, 0),
+      clotureCredit: 3000,
+      totalCredit: 3000,
+      solde: 0,
+    },
+    {
+      ...ligne('13900000', 'Résultat net : perte', ClasseCompte.CLASSE_1, 0, 0, 0, 0),
+      clotureDebit: 3000,
+      totalDebit: 3000,
+      solde: 3000,
+    },
+  ];
+  // Ce que la feuille doit montrer de N-1 clos · le 13 sort (seule la clôture
+  // l'a mouvementé), le 601 reste avec ses 3 000 au débit.
+  const N1_CLOS_VU: LigneBalanceStub[] = [
+    ...BALANCE_N1.filter((l) => l.numero !== '52110000'),
+    ligne('52110000', 'Banques en monnaie nationale', ClasseCompte.CLASSE_5, 300_000, 0, 0, 3000),
+    ligne('60110000', 'Achats de marchandises dans la Région', ClasseCompte.CLASSE_6, 0, 0, 3000, 0),
+  ];
+
+  const cas: Array<[string, SystemeComptableSyscohada, LigneBalanceStub[], LigneBalanceStub[], LigneBalanceStub[] | null]> = [
+    ['normal', SystemeComptableSyscohada.NORMAL, BALANCE_N, BALANCE_N1, null],
+    ['SMT', SystemeComptableSyscohada.MINIMAL_TRESORERIE, BALANCE_SMT_N, [], null],
+    ['normal, N-1 clos', SystemeComptableSyscohada.NORMAL, BALANCE_N, N1_CLOS_VU, N1_CLOS],
+  ];
+
+  it.each(cas)('%s · chaque plage vise les comptes de la bonne colonne, et se recalcule', async (_n, systeme, n, n1, n1Serveur) => {
+    const service = fabriquerExport(systeme);
+    if (n1Serveur) {
+      (service as unknown as { ecritureService: { balance: jest.Mock } }).ecritureService.balance.mockImplementation(
+        (_t: string, e: string) => {
+          const lignes = e === 'e0' ? n1Serveur : n;
+          return Promise.resolve({
+            lignes,
+            totaux: {
+              debit: lignes.reduce((s, l) => s + l.totalDebit, 0),
+              credit: lignes.reduce((s, l) => s + l.totalCredit, 0),
+            },
+          });
+        },
+      );
+    }
+    const wb = await ouvrir((await service.liasseCompleteExcel('t1', 'e1')).buffer);
+    const { plages, defauts } = defautsDesFormulesDeBalance(wb);
+    const nonVides = n1.length > 0 ? 2 : 1;
+    expect(new Set(plages.map((p) => p.feuille)).size).toBe(nonVides);
+    expect(plages.filter((p) => p.feuilleSource === 'CONTROLE BALANCE')).toHaveLength(6 * nonVides);
+    expect(plages.filter((p) => p.feuilleSource === 'CONTROLES').map((p) => p.colonne)).toEqual(['G', 'H']);
+    expect(defauts).toEqual([]);
+    for (const p of plages) {
+      const formule = formuleDe(wb.getWorksheet(p.feuilleSource)!.getCell(p.celluleSource));
+      expect(evaluerSomme(wb, formule)).toBe(sommeAttendue(p.feuille === NOM_BALANCE ? n : n1, p.colonne));
+    }
+    const verdicts = verdictsControleBalance(wb);
+    expect(verdicts).toHaveLength(6);
+    for (const v of verdicts) expect(v.verdict).toBe('Equilibre');
+    if (n1.length) {
+      expect(
+        defautsDeFeuilleBalance(wb, NOM_BALANCE_N1, n1.map((l) => l.numero), 'Mouvements au 31/12/24', FOND_ENTETE_FPM),
+      ).toEqual([]);
+    }
+  });
+
+  it('une balance faussée dit son écart, colonne par colonne', async () => {
+    const wb = await ouvrir((await fabriquerExport().liasseCompleteExcel('t1', 'e1')).buffer);
+    const bal = wb.getWorksheet(NOM_BALANCE_N1)!;
+    // Le premier compte de N-1 (10130000, ligne 10) · 100 de plus au solde
+    // cumulé CRÉDITEUR, 40 de plus aux mouvements débit.
+    expect(bal.getCell('A10').value).toBe('10130000');
+    bal.getCell('H10').value = Number(bal.getCell('H10').value ?? 0) + 100;
+    bal.getCell('E10').value = Number(bal.getCell('E10').value ?? 0) + 40;
+    const verdicts = verdictsControleBalance(wb);
+    expect(verdicts.filter((v) => v.bloc === 'BALANCE N-1').map((v) => v.verdict)).toEqual([
+      'Equilibre',
+      'Déséquilibre : écart de 40',
+      'Déséquilibre : écart de -100',
+    ]);
+    for (const v of verdicts.filter((x) => x.bloc === 'BALANCE N')) expect(v.verdict).toBe('Equilibre');
+  });
+});

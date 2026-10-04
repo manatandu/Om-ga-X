@@ -26,7 +26,7 @@ describe('Repère H · câblage des portes (audit final F13)', () => {
       reconciliationTresorerieExcel: jest.fn().mockResolvedValue(classeur),
       liasseCompleteExcel: jest.fn().mockResolvedValue(classeur),
     };
-    const ctl = new ExportController(svc as never);
+    const ctl = new ExportController(svc as never, {} as never);
     await ctl.reconciliationTresorerie(user, res(), 'ex', undefined);
     await ctl.liasseComplete(user, res(), 'ex', '');
     await expect(ctl.liasseComplete(user, res(), 'ex', 'mille')).rejects.toThrow(/illisibles/);

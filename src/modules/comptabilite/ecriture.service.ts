@@ -33,6 +33,7 @@ import { transactionJournalisee } from '../../common/audit/transaction-journalis
 import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
 import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements-mise-en-service';
 import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
+import { compteDeLaFamille, type FamilleTiers } from './familles-tiers';
 
 /**
  * Une ligne est au débit si son montant est porté du côté débit · quel que
@@ -3109,13 +3110,28 @@ export class EcritureService {
   }
 
   /** Grand livre d'un compte : ses lignes avec solde progressif. */
-  async grandLivre(tenantId: string, compteId: string, exerciceId?: string) {
+  async grandLivre(tenantId: string, compteId: string, exerciceId?: string, plafond?: number) {
     const compte = await this.prisma.compte.findFirst({ where: { id: compteId, tenantId } });
     if (!compte) {
       throw new BadRequestException('Compte introuvable pour ce tenant');
     }
 
     const perimetreEcriture = { tenantId, ...(exerciceId ? { exerciceId } : {}) };
+
+    // LA FENÊTRE EST BORNÉE (ligne FPM, second tour, relevé E) · le grand
+    // livre d'UN compte s'ouvre à l'écran quand le livre complet y est refusé,
+    // et un compte de banque peut porter à lui seul plus de lignes qu'une
+    // fenêtre n'en tient. Au-delà, un refus qui dit par où passer, jamais une
+    // tranche muette · un livre amputé en silence est faux (CLAUDE.md § 8 bis).
+    if (plafond !== undefined) {
+      const nombre = await this.prisma.ligneEcriture.count({ where: { compteId, ecriture: perimetreEcriture } });
+      if (nombre > plafond) {
+        throw new BadRequestException(
+          `Le grand livre du compte ${compte.numero} porte ${nombre.toLocaleString('fr-FR')} lignes, au-delà de ce ` +
+            `qu'une fenêtre peut afficher (${plafond.toLocaleString('fr-FR')}). Exportez-le en Excel.`,
+        );
+      }
+    }
 
     const [lignes, contreparties] = await Promise.all([
       this.prisma.ligneEcriture.findMany({
@@ -3584,10 +3600,12 @@ export class EcritureService {
    */
   async balanceAuxiliaire(
     tenantId: string,
-    params: { exerciceId: string; type?: 'CLIENTS' | 'FOURNISSEURS' | 'TOUS'; inclureBrouillard?: boolean },
+    params: { exerciceId: string; type?: FamilleTiers | 'TOUS'; inclureBrouillard?: boolean },
   ) {
+    // Les familles de la balance des tiers exportée (`familles-tiers.ts`,
+    // ligne FPM) · l'écran et le classeur lisent le MÊME périmètre. « TOUS »
+    // reste l'écran des 40 et 41 ensemble.
     const type = params.type ?? 'TOUS';
-    const racines = type === 'CLIENTS' ? ['41'] : type === 'FOURNISSEURS' ? ['40'] : ['40', '41'];
 
     const [{ lignes }, rattachements] = await Promise.all([
       this.balance(tenantId, params.exerciceId, params.inclureBrouillard ?? true),
@@ -3600,7 +3618,11 @@ export class EcritureService {
 
     const arrondi = (x: number) => Math.round(x * 100) / 100;
     const comptes = lignes
-      .filter((l) => racines.some((r) => l.numero.startsWith(r)))
+      .filter((l) =>
+        type === 'TOUS'
+          ? l.numero.startsWith('40') || l.numero.startsWith('41')
+          : compteDeLaFamille(type, l.numero, parCompte.has(l.compteId)),
+      )
       .map((l) => {
         const tiers = parCompte.get(l.compteId);
         const solde = arrondi(l.totalDebit - l.totalCredit);

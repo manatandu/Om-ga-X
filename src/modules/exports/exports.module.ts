@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ExportService } from './export.service';
+import { ExportFpmService } from './export-fpm.service';
 import { ExportController } from './export.controller';
 import { RestitutionController } from './restitution/restitution.controller';
 import { RestitutionService } from './restitution/restitution.service';
@@ -42,7 +43,7 @@ import { ControlesModule } from '../controles/controles.module';
   // serait indisponible dans le seul cas où elle sert. Voir
   // restitution.controller.ts.
   controllers: [ExportController, RestitutionController],
-  providers: [ExportService, RestitutionService],
+  providers: [ExportService, ExportFpmService, RestitutionService],
   // Exporté pour GroupeModule : la liasse du groupe en un clic reverse la
   // balance agrégée dans le dossier de combinaison puis fait produire le
   // classeur par CE service · aucun second moteur de liasse.

@@ -16,7 +16,11 @@ import { join } from 'node:path';
  * sur le Drive, et le fait qu'un compte de tiers orphelin ne disparaisse pas.
  */
 
-const service = readFileSync(join(__dirname, 'export.service.ts'), 'utf8');
+// La balance auxiliaire EXPORTÉE est désormais la balance des tiers de la
+// présentation du cabinet (ligne FPM, `export-fpm.service.ts`) · son classeur
+// est relu cellule par cellule dans `export-fpm.spec.ts`. Ce spec garde ce qui
+// tient au CALCUL, que l'écran et l'export partagent.
+const service = readFileSync(join(__dirname, 'export-fpm.service.ts'), 'utf8');
 const ecriture = readFileSync(
   join(__dirname, '..', 'comptabilite', 'ecriture.service.ts'),
   'utf8',
@@ -26,7 +30,7 @@ describe('balance auxiliaire · l’état qui manquait', () => {
   it('existe, et ne se confond pas avec la balance âgée', () => {
     expect(ecriture).toContain('async balanceAuxiliaire(');
     expect(ecriture).toContain('async balanceAgee(');
-    expect(service).toContain('async balanceAuxiliaireExcel(');
+    expect(service).toContain('async balanceTiersEnFlux(');
   });
 
   it('n’écarte pas un compte de tiers sans tiers rattaché', () => {
@@ -38,53 +42,8 @@ describe('balance auxiliaire · l’état qui manquait', () => {
     expect(service).toContain('aucun tiers rattaché');
   });
 
-  it('porte les deux colonnes de solde qui s’excluent, plus le solde signé', () => {
+  it('porte les deux colonnes de solde qui s’excluent', () => {
     expect(ecriture).toContain('soldeDebit: solde > 0 ? solde : 0');
     expect(ecriture).toContain('soldeCredit: solde < 0 ? -solde : 0');
-    expect(service).toContain("{ header: 'SOLDE', key: 'solde'");
-  });
-
-  it('reprend la présentation relevée · horodatage au-dessus des en-têtes', () => {
-    // Chez eux l'horodatage tient la ligne 1 et les en-têtes la 2. Depuis que
-    // la coiffe d'identification est rétablie, elle les pousse en 4 et 5 · ce
-    // qui compte est que le figeage et l'autofiltre suivent les EN-TÊTES et
-    // non l'horodatage, sinon le filtre couvre une ligne de texte libre et le
-    // tri emporte les titres de colonnes.
-    expect(service).toContain('feuille.getRow(2).values = colonnes.map((c) => c.header);');
-    expect(service).toContain(
-      "const enteteAux = this.coifferEtat(feuille, identite, `BALANCE AUXILIAIRE · ${titre.toUpperCase()}`, colonnes.length, 2);",
-    );
-    expect(service).toContain('this.finaliserTableau(feuille, colonnes.length, derniereLigneDonnees + 3, enteteAux)');
-  });
-
-  it('suffixe chaque libellé de montant du code devise du dossier', () => {
-    for (const entete of [
-      'Solde débit avant période ${dev}',
-      'Solde crédit avant période ${dev}',
-      'Débit Période ${dev}',
-      'Crédit Période ${dev}',
-      'Solde Debit ${dev}',
-      'Solde Credit ${dev}',
-    ]) {
-      expect(service).toContain(entete);
-    }
-  });
-
-  it('nomme le 41 selon le référentiel du dossier', () => {
-    // AUDCIF compte 41 « Clients » ; SYCEBNL 411 « Adhérents », 412
-    // « Clients-usagers ». Servir « Clients » à une ASBL est une faute de
-    // référentiel, pas une nuance de vocabulaire.
-    expect(service).toContain("'Adhérents et clients-usagers' : 'Clients'");
-    expect(service).toContain('Referentiel.SYCEBNL');
-  });
-
-  it('se termine sur une ligne SOLDE hors de l’autofiltre, totalisée par formule', () => {
-    // Les totaux triés avec les tiers, c'est un état faux au premier clic.
-    expect(service).toContain("const ligneTotal = feuille.addRow({ numero: 'SOLDE' });");
-    expect(service).toContain('const derniereLigneDonnees = feuille.rowCount;');
-    // Et les totaux sont des SOMMES Excel, pas des chiffres figés · un total
-    // écrit en dur ne se vérifie pas et se désaccorde dès qu'on retire une
-    // ligne du classeur.
-    expect(service).toContain('`SUM(${col}${premiereAux}:${col}${derniereAux})`');
   });
 });

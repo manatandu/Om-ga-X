@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ParseUUIDPipe, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { criteresOuRefus } from './recherche-ecritures';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
@@ -6,7 +6,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { EcritureService } from './ecriture.service';
-import { PERIMETRES_BALANCE_AGEE, type PerimetreBalanceAgee } from './ecriture.service';
+import { estFamilleTiers } from './familles-tiers';
+import { PERIMETRES_BALANCE_AGEE, PLAFOND_LIGNES_GRAND_LIVRE, type PerimetreBalanceAgee } from './ecriture.service';
 import { CreerEcritureDto, ImputationOuvertureDto } from './dto/creer-ecriture.dto';
 import { CorrigerEcritureDto } from './dto/corriger-ecriture.dto';
 import { FusionnerComptesDto, ReimputerDto } from './dto/reimputer.dto';
@@ -252,8 +253,13 @@ export class EcritureController {
   async balanceAuxiliaire(
     @CurrentUser() user: AuthenticatedUser,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
-    @Query('type') type?: 'CLIENTS' | 'FOURNISSEURS' | 'TOUS',
+    @Query('type') type?: string,
   ) {
+    // Une famille inconnue est REFUSÉE, jamais lue « TOUS » en silence · l'écran
+    // montrerait les 40 et 41 sous le nom d'une autre famille.
+    if (type !== undefined && type !== 'TOUS' && !estFamilleTiers(type)) {
+      throw new BadRequestException('Type de tiers inconnu · TOUS, FOURNISSEURS, CLIENTS, SALARIES ou AUTRES.');
+    }
     return this.ecritureService.balanceAuxiliaire(user.tenantId, { exerciceId, type });
   }
 
@@ -316,15 +322,16 @@ export class EcritureController {
     return this.ecritureService.grandLivreComplet(user.tenantId, exerciceId);
   }
 
-  // Aucun écran ne la lit (audit de l'interface, I12) · le grand livre d'un
-  // compte s'ouvre par la route complète et s'exporte par /exports/grand-livre/:compteId.
-  // Exercice requis, même motif que la route complète.
+  // L'écran la lit quand le grand livre COMPLET y est refusé (ligne FPM,
+  // second tour) · le double-clic d'une balance ouvre alors le seul compte.
+  // Bornée au plafond d'une fenêtre, comme la route complète. Exercice
+  // requis, même motif.
   @Get('grand-livre/:compteId')
   async grandLivre(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('compteId') compteId: string,
+    @Param('compteId', ParseUUIDPipe) compteId: string,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
   ) {
-    return this.ecritureService.grandLivre(user.tenantId, compteId, exerciceId);
+    return this.ecritureService.grandLivre(user.tenantId, compteId, exerciceId, PLAFOND_LIGNES_GRAND_LIVRE);
   }
 }
