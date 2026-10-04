@@ -195,3 +195,43 @@ export async function ecrituresDesContrePassationsAnnulees(
   }
   return { ids, tronque: traces.length > PLAFOND_REEVALUATIONS_EXAMINEES };
 }
+
+/**
+ * LES LIGNES DE BANQUE OU DE CAISSE QU'UNE CONTRE-PASSATION DÉCLARÉE INVERSE
+ * (ligne A5 ter, relevé (d) d'A5 bis). Une OD d'ouverture faite à la main,
+ * DÉCLARÉE comme contre-passation d'une réévaluation, qui inverse aussi
+ * l'écart d'une disponibilité (comme le module avant A5 bis) porte sur le 52
+ * une CONVERSION, pas un mouvement du relevé · comptée pour une opération de
+ * banque, elle avançait la dernière ligne d'un compte fermé et le contrôle 32
+ * d'A13 le disait non couvert. Seuls les comptes dont elle inverse EXACTEMENT
+ * l'écart passé (`disponibilitesInversees`) sont rendus · une autre ligne du
+ * même compte dans la même OD, ou un montant qui diffère, reste une opération
+ * du cabinet (l'OD d'ouverture peut grouper de vraies opérations de banque).
+ * Rendu par clé « écriture|compte ». Bornée comme les autres lectures.
+ */
+export async function lignesDeDisponibilitesDesContrePassationsDeclarees(
+  prisma: Lecteur,
+  p: { tenantId: string; exerciceId: string },
+): Promise<{ cles: Set<string>; tronque: boolean }> {
+  const lignesLues = { select: { compteId: true, debit: true, credit: true, compte: { select: { numero: true } } } } as const;
+  const reevaluations = await prisma.reevaluation.findMany({
+    where: { tenantId: p.tenantId, contrePassationDeclaree: { is: { exerciceId: p.exerciceId } } },
+    orderBy: [{ dateReevaluation: 'asc' }, { id: 'asc' }],
+    take: PLAFOND_REEVALUATIONS_EXAMINEES + 1,
+    select: {
+      ecritureEcarts: { select: { lignes: lignesLues } },
+      contrePassationDeclaree: { select: { id: true, lignes: lignesLues } },
+    },
+  });
+  const enLignes = (lignes: { compteId: string; debit: unknown; credit: unknown; compte: { numero: string } }[]) =>
+    lignes.map((l) => ({ compteId: l.compteId, compteNumero: l.compte.numero, debit: Number(l.debit), credit: Number(l.credit) }));
+  const cles = new Set<string>();
+  for (const r of reevaluations.slice(0, PLAFOND_REEVALUATIONS_EXAMINEES)) {
+    const d = r.contrePassationDeclaree;
+    if (!d) continue;
+    for (const compteId of disponibilitesInversees(enLignes(r.ecritureEcarts?.lignes ?? []), enLignes(d.lignes), estDisponibilite)) {
+      cles.add(`${d.id}|${compteId}`);
+    }
+  }
+  return { cles, tronque: reevaluations.length > PLAFOND_REEVALUATIONS_EXAMINEES };
+}

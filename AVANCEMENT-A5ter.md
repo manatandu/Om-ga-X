@@ -37,6 +37,12 @@ d'A5 bis renvoyés vers elle.
   `avertissementExtourneManquante` filtre `contrePassationDeclareeId: null`,
   spec `reevaluation-et-ecart-realise.spec.ts` l. 298 et 352. Rien à faire.
 
+- Relevé (d) · contrôle 32 · la ligne de banque d'une OD DÉCLARÉE comme
+  contre-passation, quand elle inverse EXACTEMENT l'écart passé sur ce compte
+  (`disponibilitesInversees`), n'avance plus la dernière opération d'un
+  compte fermé (`lignesDeDisponibilitesDesContrePassationsDeclarees`) ; un
+  autre montant reste une opération ; lecture bornée dite.
+
 ## Décisions, avec leur article
 
 1. SYCEBNL, risque de change à moins d'un an · LE TEXTE TRANCHE, la règle
@@ -88,7 +94,7 @@ d'A5 bis renvoyés vers elle.
 
 ## Reste
 
-- Relevés (d), (e).
+- Relevé (e).
 - Bloc du § 3 complet, scénario sur vraie base aux deux référentiels.
 
 ## Vérification
