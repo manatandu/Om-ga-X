@@ -61,7 +61,7 @@ for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
     // L'écran montre les comptes divergents et fait choisir.
     await page.goto('/#/exercice');
     await page.locator('select').first().selectOption(exercice.id);
-    await expect(page.getByText("différent du bilan de clôture")).toBeVisible();
+    await expect(page.getByText(/différente du bilan de clôture/)).toBeVisible();
     await expect(page.getByRole('cell', { name: new RegExp(banque.numero) })).toBeVisible();
     await page.getByLabel(/Rectifier l'import/).check();
     page.once('dialog', (d) => d.accept());

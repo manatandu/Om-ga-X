@@ -2637,17 +2637,27 @@ Budgets · jamais écrasés, aucune section dont la convention finit avant. (6) 
 (2026-10-04) · IL NE SE LETTRE PAR AUCUN CHEMIN (`verifierLignes`, art. 22, 2°) ·
 lettré puis figé par une clôture de période de N+1, il enfermait N. La CLÔTURE
 reporte ce qui y était lettré ou pointé (dossiers hérités) sur la ligne qui le
-remplace (`apparierTenues` · compte, montants, échéance, devise), définitive ou
-importée libre ; sans équivalent, refus si pointée ou non figée, groupe figé
-laissé PARTIEL et dit. Jamais refuser la clôture de période (art. 22, 3°). (7) AU2 ·
-UNE OUVERTURE DÉJÀ PASSÉE DANS N+1 (bilan importé, sa correction) n'est JAMAIS
-doublée (`issueDeLOuverture`, AUDCIF art. 34 · SYCEBNL art. 16, 4)) · au
-brouillard, refus (la valider) ; concordante compte par compte, rien ajouté ; N
-sans écriture, l'import fait foi ; divergente, le cabinet DÉCLARE · RECTIFIER
-(négatif de l'import puis report exact, art. 20, al. 2, une écriture) ou CONSERVER
-(N tenu pour les comparatifs, motif sur `Exercice.motifOuvertureSuivanteConservee`,
-journal d'audit). Aperçu `GET /exercices/:id/ouverture-suivante` ; le provisoire ne
-passe rien quand une ouverture existe.
+remplace (`apparierTenues` · exact, puis l'échéance seule relâchée si la candidate
+est UNIQUE, jamais la devise) ; sans équivalent sûr, le groupe est DÉLETTRÉ et le
+pointage défait (le gel est une lecture d'OmegaX, l'art. 22 ne fige que les
+écritures), écrits sur l'exercice (`defaitsParLaCloture`, journal d'audit), lignes
+marquées `aRelettrerDepuis` · le pré-lettrage PROPOSE le relettrage (toléré en
+période close, jamais en exercice clos), et la déclaration de TVA NOMME le paiement
+non rattaché (décret n° 011/42, art. 57 · exigible à sa date, O.-L. n° 10/001,
+art. 25, 2°). Jamais refuser la clôture de période (art. 22, 3°). (7) AU2 · LA
+POSITION D'OUVERTURE DE N+1 · toute écriture datée ou valorisée au premier jour,
+toutes origines (import, négatif, OD), hors provisoire et hors écriture touchant un
+compte de gestion (`ouvertureDejaPassee`), confrontée au report par COMPTE ET PAR
+DEVISE (`issueDeLOuverture`, AUDCIF art. 34 · SYCEBNL art. 16, 4)) · brouillard,
+refus ; nulle, report entier ; concordante, rien ; N sans écriture, elle fait foi ;
+divergente, le cabinet DÉCLARE · RECTIFIER (négatif de toutes ses lignes sur les
+comptes divergents puis report exact, art. 20, al. 2, chaque négatif lettré avec sa
+ligne quand c'est permis) ou CONSERVER (motif et positions sur l'exercice, contrôle
+`OUVERTURE_DIFFERENTE_DE_LA_CLOTURE_DECLAREE` en N+1, ruptures dites par
+`justificatifSolde` et `balanceCumulee`). Aperçu `GET /exercices/:id/ouverture-suivante`,
+borné ; le provisoire ne passe rien quand une ouverture existe. TVA · le fait
+générateur d'une prestation est l'exécution (art. 24, 2°), l'encaissement la rend
+EXIGIBLE (art. 25, 2°) · jamais « due » ni « naît » à l'encaissement.
 
 **Clôture qui fige lettrage et analytique (point 12).** `exercice/gel-cloture.ts`
 · figé si exercice clôturé, si clôture TOTALE du journal datée au plus tard de sa

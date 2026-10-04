@@ -1740,7 +1740,7 @@ async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: strin
   }
   if (nombre === 0) return { ecritures: [] as Array<{ id: string; numeroPiece: number | null; statut: StatutEcriture; journal: { code: string } }>, lignes: [] as LigneDOuverture[] };
   const ecritures = await tx.ecriture.findMany({
-    where: filtre,
+    where: { ...filtre, tenantId },
     select: { id: true, numeroPiece: true, statut: true, journal: { select: { code: true } } },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: PLAFOND_LIGNES_OUVERTURE,

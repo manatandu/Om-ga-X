@@ -26,10 +26,69 @@ Branche de sauvegarde `travail/au1`, partie de `main` d32e22a. Fiche retirée à
 - Vraie base, deux référentiels, à travers N, N+1 et N+2 · AU2 (egal, ecart → RECTIFIER, conserver, vide,
   brouillard puis valider), AU1 (hérité apparié, hérité orphelin figé), provisoire avec import.
 
+- SECOND TOUR (R1 à R10, et R4 révisé).
+  - R1 · périmètre de l'ouverture de N+1 · toute écriture datée ou valorisée au premier jour, toutes origines,
+    hors provisoire et hors écriture touchant un compte de gestion (classes 6 à 8). Pourquoi · l'art. 34 compare
+    des BILANS, une ressaisie par OD en fait partie autant que l'import ; « un bilan ne contient aucun compte de
+    gestion » (règle de l'import). Limite écrite · une opération de trésorerie ou de tiers datée du premier jour
+    (férié légal, ordonnance n° 23-042, art. 1er) se lit comme ouverture · l'aperçu nomme chaque ligne, la
+    redater au lendemain l'en sort. RECTIFIER inscrit en négatif TOUTES les lignes du premier jour des comptes
+    divergents. Vraie base · import 600 000 + négatif lié + OD 300 000 → client 300 000 (jamais 600 000), OD seule
+    → concordant, import faux + OD correctrice → concordant.
+  - R2 · confrontation par (compte, devise), francs ET montant en devise · un import sans devise contre un report
+    en USD est un écart nommé « en USD ». Vraie base · RECTIFIER rend 1 500 USD au client de N+1, et la
+    réévaluation de N+1 passe 300 000 au 479 (1 500 × (2 600 − 2 400)).
+  - R3 · `apparierTenues` · exact, puis échéance relâchée seulement si la candidate est unique (et sans rivale),
+    devise jamais relâchée. Vraie base · deux factures de même montant → délettré, une seule → appariée.
+  - R4 révisé et R5 · sans équivalent sûr, le groupe est DÉLETTRÉ et le pointage défait, dans la transaction de
+    clôture, écrits sur l'exercice (`Exercice.defaitsParLaCloture`, journal d'audit avec motif, suppression du
+    groupe auditée), lignes marquées `LigneEcriture.aRelettrerDepuis`, compte rendu nommé (compte, paiement, date,
+    « à relettrer »). Le pré-lettrage PROPOSE le relettrage (candidates de même montant, même devise, même
+    exercice), confirmé par le comptable, toléré en période close (`estRelettrageDeCloture`), jamais en exercice
+    clos. La déclaration de TVA NOMME le paiement non rattaché tant que son exercice est ouvert
+    (`paiementsARelettrer`, mention « PAIEMENT NON RATTACHÉ À SA FACTURE »).
+  - R6 · RECTIFIER nomme les lignes lettrées ou pointées qu'il inscrit en négatif (aperçu et compte rendu) et
+    lettre chaque négatif avec la ligne libre qu'il annule (groupe `MODULE`, `poserGroupeSoldeDuModule`).
+  - R8 · CONSERVER fige motif ET positions sur l'exercice ; contrôle d'INFORMATION
+    `OUVERTURE_DIFFERENTE_DE_LA_CLOTURE_DECLAREE` dans N+1 ; `justificatifSolde` et `balanceCumulee` rendent
+    `rupturesOuverture`, l'écran du justificatif le dit.
+  - R9 · lectures bornées (50 000 lignes, refus nommé au-delà), écarts servis 200 au plus avec `total` et
+    `tronque`. R10 · aperçu en échec, la déclaration reste proposée avec le motif ; ouverture nulle, report entier.
+  - TVA (demande de Manasse) · cas (a) ligne définitive équivalente · lettrage reporté, 160 000 de TVA de la
+    prestation exigibles en février N+1 (date du paiement). Cas (b) sans équivalent (facture lettrée en N par un
+    avoir après le provisoire) · la TVA de la facture suit l'avoir de N (rien de perdu) ; le règlement de N+1 est
+    délettré, nommé à la déclaration de février, 41110101 créditeur de 1 160 000 à la balance âgée (aucune tranche),
+    rien au relevé ni aux relances (rien de dû) ; reporté en N+2 au détail, il s'y lettre avec la facture F3
+    (201). Cas (b) à facture ouverte (échéance ambiguë) · délettré, NOMMÉ entre les deux gestes, relettré par le
+    pré-lettrage en période close, TVA de 160 000 datée de février (SYSCOHADA). Au SYCEBNL, le 706 n'est pas lu
+    « service » (table des produits au SYSCOHADA seul, passe F3a), la taxe est à la facture (décembre) · la mention
+    le dit (« sauf si la déclaration de sa facture l'a déjà comptée »).
+  - Phrases TVA corrigées en « exigible » · commentaire de `tvaEnAttenteEncaissement`, deux textes de
+    `DeclarationTvaPage.tsx`. Laissées · « TVA due » (montant net à payer) et « TVA d'amont due à des
+    fournisseurs », qui ne parlent pas d'exigibilité ; « le droit à déduction prend naissance » est le mot de
+    l'art. 37, al. 1.
+
 ## Reste
 
-- Intégration sur `main` (appelant), relecture `silent-failure-hunter`, `typescript-reviewer`,
-  `react-reviewer`.
+- Intégration sur `main` (appelant), relectures des agents.
+- Relevés, sans les traiter ·
+  - R4 (ancienne règle, remplacée) · un groupe laissé partiel laissait un reste ouvert de sens contraire jusqu'en
+    N+2 · l'issue proposée à Manasse était « laisser partiel et le dire » ; le coordinateur l'a remplacée par le
+    délettrage.
+  - R7 · la rectification (comme le report définitif) s'écrit au premier jour même s'il est dans une période close,
+    sans date de valeur (AUDCIF art. 22, 4°).
+  - AU3 (reste) · l'IMPORT d'une balance ne porte aucune devise · R2 nomme l'écart à la clôture et RECTIFIER rend la
+    devise, mais un dossier dont N n'est pas tenu dans OmegaX (CONSERVER, ou N vide) garde un import sans devise ·
+    il faut que l'import lise une colonne devise et montant en devise.
+  - Balance âgée · une ligne d'un groupe partiel ou un paiement non lettré créditeur sort en solde sans tranche
+    (`montants: []`).
+  - TVA · un paiement en avance lettré en N+2 avec une facture postérieure est daté par le moteur au mois de la
+    facture, alors que l'art. 26, al. 3 (acompte avant les débits) et l'art. 25, 2° le datent à l'encaissement ·
+    hors périmètre.
+  - `balanceCumulee` · une ressaisie de l'ouverture par OD au premier jour (R1) entre dans les mouvements du cumul
+    pluriannuel et le double · hors périmètre, rare.
+  - La déclaration nomme un paiement à relettrer tant que son exercice est ouvert · une fois clos sans relettrage,
+    c'est son à-nouveau qui se lettre et le nom disparaît.
 
 ## Décisions prises
 
