@@ -248,6 +248,8 @@ export function FiscalitePage() {
     deficitAnterieurSaisi?: number | null;
     natureActivite?: NatureActiviteFiscale | null;
     resultatPeriodeCreationSaisi?: number | null;
+    supplementsPeriodeCreation?: number;
+    deficitAnterieurOrigines?: { dateFin: string; montant: number }[] | null;
   }) => {
     if (!exerciceId) return;
     setEnvoi(true);
@@ -670,7 +672,12 @@ export function FiscalitePage() {
                 <p className="text-[11px] text-text-dim mt-1.5">
                   Calculés :{' '}
                   {resultat.deficitAnterieur.detail
-                    .map((d) => `${nombre(d.montant)} au ${jour(d.dateFin)}${d.simulation ? ' (simulation, avant 2026)' : ''}`)
+                    .map(
+                      (d) =>
+                        `${nombre(d.montant)} au ${jour(d.dateFin)}${d.simulation ? ' (simulation, avant 2026)' : ''}${
+                          d.bornePrudente ? ' (déclaré sans origine, borné par prudence)' : d.declare ? ' (déclaré)' : ''
+                        }`,
+                    )
                     .join(', ')}
                 </p>
               )}
@@ -691,6 +698,18 @@ export function FiscalitePage() {
                 }}
                 className="mt-1.5 w-56 border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] font-mono"
               />
+              {/* L'ORIGINE DU REPORT SAISI · chaque perte garde la fenêtre
+                  de SON exercice (art. 51). Non dite, le rejeu des exercices
+                  suivants la borne par prudence, et le dit. */}
+              {resultat.deficitAnterieur.saisi && (
+                <OrigineDeficits
+                  key={`origines-${resultat.exerciceId}-${JSON.stringify(resultat.deficitAnterieur.origines)}`}
+                  origines={resultat.deficitAnterieur.origines}
+                  envoi={envoi}
+                  lireNombre={lireNombre}
+                  enregistrer={(origines) => modifierDossier({ deficitAnterieurOrigines: origines })}
+                />
+              )}
             </section>
           )}
 
@@ -895,6 +914,34 @@ export function FiscalitePage() {
                     <Ligne libelle="IMPÔT DE L’EXERCICE COMPTABLE" montant={resultat.impotTotalExercice} devise={devise} gras total />
                   </tbody>
                 </table>
+                {resultat.periodeCreation.ecartDeclaration !== null && resultat.periodeCreation.ecartDeclaration !== 0 && (
+                  <div className="mt-1.5 text-[11.5px] font-semibold text-warning">
+                    Écart avec le livre-journal : {nombre(resultat.periodeCreation.ecartDeclaration)} {devise} · à justifier par
+                    les retraitements fiscaux de la période
+                  </div>
+                )}
+                {resultat.periodeCreation.impotDu !== null && (
+                  <div className="mt-1.5 flex items-center gap-2 flex-wrap text-[11px] text-text-dim">
+                    <span>Suppléments établis sur l’impôt de la période :</span>
+                    {!peutEcrire ? (
+                      <span className="font-mono">{nombre(resultat.periodeCreation.supplements)}</span>
+                    ) : (
+                      <input
+                        key={`suppl-periode-${resultat.exerciceId}-${resultat.periodeCreation.supplements}`}
+                        defaultValue={String(resultat.periodeCreation.supplements)}
+                        inputMode="decimal"
+                        disabled={envoi}
+                        onBlur={(e) => {
+                          const n = lireNombre(e.target.value);
+                          if (n !== null && n >= 0 && n !== resultat.periodeCreation?.supplements)
+                            modifierDossier({ supplementsPeriodeCreation: n });
+                        }}
+                        className="w-32 text-right border border-border rounded-[4px] bg-bg px-2 py-0.5 text-[11.5px] font-mono"
+                      />
+                    )}
+                    <span className="font-mono">{devise}</span>
+                  </div>
+                )}
                 {resultat.periodeCreation.acomptesExercice.length > 0 && (
                   <div className="mt-1.5 text-[11px] text-text-dim">
                     Acomptes de l’exercice :{' '}
@@ -976,5 +1023,93 @@ function Ligne({
         {nombre(montant)} {montant !== null ? devise : ''}
       </td>
     </tr>
+  );
+}
+
+/**
+ * L'ORIGINE D'UN REPORT SAISI · une ligne par exercice déficitaire, sa date
+ * de clôture et sa part (loi n° 23/053, art. 51 · chaque perte se reporte
+ * jusqu'au troisième exercice qui suit SON exercice). Le serveur exige que la
+ * somme égale le déficit saisi et refuse en le nommant.
+ */
+function OrigineDeficits({
+  origines,
+  envoi,
+  lireNombre,
+  enregistrer,
+}: {
+  origines: { dateFin: string; montant: number }[] | null;
+  envoi: boolean;
+  lireNombre: (v: string) => number | null;
+  enregistrer: (origines: { dateFin: string; montant: number }[] | null) => void;
+}) {
+  const [lignes, setLignes] = useState<{ dateFin: string; montant: string }[]>(
+    (origines ?? []).map((o) => ({ dateFin: o.dateFin, montant: String(o.montant) })),
+  );
+  const valides = lignes.every((l) => /^\d{4}-\d{2}-\d{2}$/.test(l.dateFin) && (lireNombre(l.montant) ?? 0) > 0);
+  return (
+    <div className="mt-2 text-[11.5px]">
+      <div className="text-[11px] font-semibold text-text-dim flex items-center gap-1.5">
+        Origine des pertes reportées
+        <Aide
+          titre="Origine des pertes"
+          texte="Chaque perte se reporte jusqu’au troisième exercice qui suit l’exercice qui l’a subie. Sans origine, OmegaX borne le report saisi par prudence à la fenêtre la plus courte, et le dit : déclarez la date de clôture de chaque exercice déficitaire et sa part."
+          source="Loi n° 23/053, art. 51"
+        />
+      </div>
+      {origines === null && lignes.length === 0 && (
+        <div className="text-warning mt-1">Origine non déclarée · report borné par prudence</div>
+      )}
+      {lignes.map((l, i) => (
+        <div key={i} className="flex items-center gap-2 mt-1">
+          <input
+            type="date"
+            value={l.dateFin}
+            disabled={envoi}
+            onChange={(e) => setLignes(lignes.map((x, j) => (j === i ? { ...x, dateFin: e.target.value } : x)))}
+            className="border border-border rounded-[4px] bg-bg px-2 py-0.5 text-[11.5px]"
+            aria-label="Clôture de l’exercice déficitaire"
+          />
+          <input
+            value={l.montant}
+            inputMode="decimal"
+            disabled={envoi}
+            onChange={(e) => setLignes(lignes.map((x, j) => (j === i ? { ...x, montant: e.target.value } : x)))}
+            className="w-36 text-right border border-border rounded-[4px] bg-bg px-2 py-0.5 text-[11.5px] font-mono"
+            aria-label="Part de la perte"
+          />
+          <button
+            type="button"
+            disabled={envoi}
+            onClick={() => setLignes(lignes.filter((_, j) => j !== i))}
+            className="text-[11px] text-text-dim hover:text-danger"
+          >
+            Retirer
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-2 mt-1.5">
+        <button
+          type="button"
+          disabled={envoi}
+          onClick={() => setLignes([...lignes, { dateFin: '', montant: '' }])}
+          className="text-[11px] border border-border rounded-[3px] px-2 py-[2px]"
+        >
+          Ajouter un exercice
+        </button>
+        <button
+          type="button"
+          disabled={envoi || !valides}
+          onClick={() =>
+            enregistrer(
+              lignes.length === 0 ? null : lignes.map((l) => ({ dateFin: l.dateFin, montant: lireNombre(l.montant) ?? 0 })),
+            )
+          }
+          className="bg-sel text-white rounded-[3px] px-3 py-[2px] text-[11px] font-semibold disabled:opacity-50"
+        >
+          Enregistrer l’origine
+        </button>
+      </div>
+    </div>
   );
 }

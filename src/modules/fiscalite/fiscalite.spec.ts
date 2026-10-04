@@ -38,7 +38,7 @@ function service(options: {
    * production depuis l'audit final F4 · elle compte donc au livre-journal.
    */
   clotures?: Record<string, Ligne[]>;
-  exercices?: { id: string; dateDebut: Date; dateFin: Date }[];
+  exercices?: { id: string; dateDebut: Date; dateFin: Date; statut?: string }[];
   retraitements?: Record<string, { sens: SensRetraitementFiscal; montant: number }[]>;
   dossier?: {
     acomptesVerses?: number;
@@ -46,7 +46,10 @@ function service(options: {
     deficitAnterieurSaisi?: number | null;
     natureActivite?: 'VENTE' | 'PRESTATIONS' | null;
     resultatPeriodeCreationSaisi?: number | null;
+    supplementsPeriodeCreation?: number;
   };
+  /** Dossier fiscal PAR exercice (B2, P1) · lu par la cible et par le rejeu. */
+  dossiers?: Record<string, Record<string, unknown>>;
 }) {
   const exercices = options.exercices ?? [
     { id: 'N', dateDebut: new Date(Date.UTC(2026, 0, 1)), dateFin: new Date(Date.UTC(2026, 11, 31)) },
@@ -97,8 +100,18 @@ function service(options: {
         (options.brouillards?.[where.exerciceId] ?? []).length > 0 ? 1 : 0,
     },
     dossierFiscalExercice: {
-      findUnique: async () =>
-        options.dossier
+      upsert: async ({ create }: { create: Record<string, unknown> }) => {
+        crees.push(create);
+        return create;
+      },
+      findMany: async ({ where }: { where: { exerciceId: { in: string[] } } }) =>
+        Object.entries(options.dossiers ?? {})
+          .filter(([id]) => where.exerciceId.in.includes(id))
+          .map(([exerciceId, d]) => ({ exerciceId, deficitAnterieurSaisi: null, deficitAnterieurOrigines: null, ...d })),
+      findUnique: async ({ where }: { where: { exerciceId: string } }) =>
+        options.dossiers?.[where.exerciceId]
+          ? { acomptesVerses: 0, supplementsAdministration: 0, deficitAnterieurSaisi: null, natureActivite: null, ...options.dossiers[where.exerciceId] }
+          : options.dossier
           ? {
               acomptesVerses: 0,
               supplementsAdministration: 0,
@@ -1656,13 +1669,21 @@ describe('Cas chiffrés IS · C09 et C10, premier exercice long (art. 12, al. 3)
       impotConstateAu89: 0,
       reintegrationsImpot: 0,
       attestationRegime: undefined,
-      periodeCreation: { dateFin: new Date(Date.UTC(2026, 11, 31)), impotDu: 300_000, minimumApplique: true },
+      periodeCreation: {
+        dateFin: new Date(Date.UTC(2026, 11, 31)),
+        dateFinExercice: new Date(Date.UTC(2027, 11, 31)),
+        impotDu: 300_000,
+        minimumApplique: true,
+      },
     });
     const texte = motifs.join(' ');
     expect(texte).toContain('art. 12, al. 3');
     expect(texte).toContain('89500000');
     expect(texte).toContain('89110000');
-    expect(texte).toMatch(/C 44100000 1\s800\s000,00/u);
+    expect(texte).toMatch(/1\s800\s000,00 au 441/u);
+    // Relevé 2 · chaque ligne porte sa date.
+    expect(texte).toContain('au 2026-12-31 (période de création)');
+    expect(texte).toContain('au 2027-12-31 (premier exercice clos)');
   });
 
   it('le report rejoue la BASE du premier exercice long, période de création déduite', async () => {
@@ -1734,5 +1755,189 @@ describe('Cas chiffrés IS · hypothèses dites (C01-bis, C02, C12a, C15)', () =
     expect(r.impotDu).toBe(900_000);
     expect(r.deficitAnterieur.detail[0].simulation).toBe(true);
     expect(r.observations.join(' ')).toContain("DÉFICIT D'AVANT LA LOI, RECALCULÉ");
+  });
+});
+
+/**
+ * SECOND TOUR DES CAS CHIFFRÉS IS (2026-10-04) · B1, B2, P1 et relevés.
+ */
+describe('Cas chiffrés IS, second tour · le rejeu du report', () => {
+  const an = (id: string, annee: number) => ({
+    id,
+    dateDebut: new Date(Date.UTC(annee, 0, 1)),
+    dateFin: new Date(Date.UTC(annee, 11, 31)),
+  });
+
+  it('B1 · une entreprise individuelle n’a pas de période de création · aucun déficit inventé en 2028', async () => {
+    // Premier exercice du 01/09/2026 au 31/12/2027 · bénéfice 1 000 000 sur
+    // 2026, perte 600 000 en 2027, soit 400 000 sur l'exercice. L'art. 12,
+    // al. 3 relève de l'IS · le rejeu ne doit rien déduire, et 2028 ne voit
+    // aucun déficit.
+    const r = await service({
+      forme: FormeJuridiqueSyscohada.ENTREPRISE_INDIVIDUELLE,
+      exercices: [
+        { id: 'P', dateDebut: new Date(Date.UTC(2026, 8, 1)), dateFin: new Date(Date.UTC(2027, 11, 31)) },
+        an('A2028', 2028),
+      ],
+      balances: { P: [ligne('70110000', -400_000)], A2028: [ligne('70110000', -2_000_000)] },
+      balancesAu: { P: [ligne('70110000', -1_000_000)] },
+      dossier: { natureActivite: 'VENTE' },
+    }).s.resultatFiscal('t1', 'A2028');
+    expect(['deficitAnterieur', r.deficitAnterieur.montant]).toEqual(['deficitAnterieur', 0]);
+  });
+
+  // 2025 · perte recalculée 1 000 000 ; déclarée à l'ouverture de 2026 · 400 000 ;
+  // 2026 · bénéfice 300 000 ; vu de 2027, le reste réel est 100 000.
+  const casB2 = (dossier2026: Record<string, unknown>) =>
+    service({
+      exercices: [an('A2025', 2025), an('A2026', 2026), an('A2027', 2027)],
+      balances: {
+        A2025: [ligne('60410000', 1_000_000)],
+        A2026: [ligne('70110000', -300_000)],
+        A2027: [ligne('70110000', -2_000_000)],
+      },
+      dossiers: { A2026: dossier2026 },
+    }).s.resultatFiscal('t1', 'A2027');
+
+  it('B2 · la saisie à l’ouverture de 2026 fait foi · 2027 voit 100 000, pas 700 000', async () => {
+    const r = await casB2({ deficitAnterieurSaisi: 400_000, deficitAnterieurOrigines: [{ dateFin: '2025-12-31', montant: 400_000 }] });
+    expect(['deficitAnterieur', r.deficitAnterieur.montant]).toEqual(['deficitAnterieur', 100_000]);
+    expect(r.deficitAnterieur.detail[0]).toMatchObject({ declare: true, bornePrudente: false });
+    // La saisie a remplacé le recalcul · plus de simulation à signaler.
+    expect(r.observations.join(' ')).not.toContain("DÉFICIT D'AVANT LA LOI");
+  });
+
+  it('B2 · sans origine dite, la saisie est bornée par prudence et le reste perdu est NOMMÉ', async () => {
+    const r = await casB2({ deficitAnterieurSaisi: 400_000 });
+    expect(r.deficitAnterieur.montant).toBe(0);
+    expect(r.observations.join(' ')).toContain('REPORT PERDU PAR PRUDENCE');
+  });
+
+  it('P1 · dossier repris en 2026 avec 800 000 déclarés, 300 000 de bénéfice · 500 000 restent en 2027', async () => {
+    const r = await service({
+      exercices: [an('A2026', 2026), an('A2027', 2027)],
+      balances: { A2026: [ligne('70110000', -300_000)], A2027: [ligne('70110000', -2_000_000)] },
+      dossiers: {
+        A2026: {
+          deficitAnterieurSaisi: 800_000,
+          deficitAnterieurOrigines: [
+            { dateFin: '2024-12-31', montant: 300_000 },
+            { dateFin: '2025-12-31', montant: 500_000 },
+          ],
+        },
+      },
+    }).s.resultatFiscal('t1', 'A2027');
+    // Le bénéfice de 2026 consomme la perte de 2024, la plus ancienne · reste 500 000 de 2025.
+    expect(r.deficitAnterieur.montant).toBe(500_000);
+    expect(r.deficitImpute).toBe(500_000);
+  });
+
+  it('P1 · sans origine dite, le reste qui demeure imputable est dit borné par prudence', async () => {
+    // Saisie à l'ouverture de 2027 elle-même · reste imputable en 2027, dit.
+    const r = await service({
+      exercices: [an('A2026', 2026), an('A2027', 2027), an('A2028', 2028)],
+      balances: {
+        A2026: [ligne('70110000', -100_000)],
+        A2027: [ligne('70110000', -300_000)],
+        A2028: [ligne('70110000', -2_000_000)],
+      },
+      dossiers: { A2027: { deficitAnterieurSaisi: 800_000 } },
+    }).s.resultatFiscal('t1', 'A2028');
+    expect(r.deficitAnterieur.montant).toBe(0);
+    expect(r.observations.join(' ')).toMatch(/REPORT PERDU PAR PRUDENCE · 500\s000/u);
+  });
+
+  it('C15 · l’avertissement demande le reste à reporter à l’ouverture', async () => {
+    const r = await service({
+      exercices: [an('A2025', 2025), an('N', 2026)],
+      balances: { A2025: [ligne('60410000', 2_000_000)], N: [ligne('70110000', -5_000_000)] },
+    }).s.resultatFiscal('t1', 'N');
+    expect(r.observations.join(' ')).toContain("le reste à reporter à l'ouverture de cet exercice");
+  });
+
+  it('(8) · des exercices non jointifs dans la fenêtre sont nommés', async () => {
+    const r = await service({
+      exercices: [an('A2024', 2024), an('N', 2026)],
+      balances: { A2024: [ligne('60410000', 1_000)], N: [ligne('70110000', -5_000)] },
+    }).s.resultatFiscal('t1', 'N');
+    expect(r.observations.join(' ')).toContain('EXERCICES NON JOINTIFS');
+    expect(r.observations.join(' ')).toContain('du 2025-01-01 au 2025-12-31');
+  });
+});
+
+describe('Cas chiffrés IS, second tour · la période de création', () => {
+  const P = [{ id: 'P', dateDebut: new Date(Date.UTC(2026, 8, 1)), dateFin: new Date(Date.UTC(2027, 11, 31)) }];
+  const balances = { P: [ligne('70110000', -70_000_000), ligne('60410000', 64_900_000)] };
+
+  it('(2) · l’impôt passé au 31/12 ne minore pas la lecture de la période (art. 45)', async () => {
+    const r = await service({
+      exercices: P,
+      balances,
+      balancesAu: { P: [ligne('70110000', -30_000_000), ligne('60410000', 29_900_000), ligne('89500000', 300_000)] },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.periodeCreation!.resultatComptable).toBe(100_000);
+    expect(r.periodeCreation!.impotDu).toBe(300_000);
+    expect(r.periodeCreation!.impotNeutralise).toBe(300_000);
+  });
+
+  it('(1) · un bénéfice déclaré qui s’écarte du livre-journal est signalé avec son écart', async () => {
+    const r = await service({
+      exercices: P,
+      balances,
+      balancesAu: { P: [ligne('70110000', -30_000_000), ligne('60410000', 29_900_000)] },
+      dossier: { resultatPeriodeCreationSaisi: 1_100_000 },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.periodeCreation!.ecartDeclaration).toBe(1_000_000);
+    expect(r.observations.join(' ')).toContain('BÉNÉFICE DÉCLARÉ DE LA PÉRIODE DE CRÉATION');
+  });
+
+  it('(5) · les suppléments sur l’impôt de la période entrent dans la base des acomptes de 2027', async () => {
+    const r = await service({
+      exercices: P,
+      balances,
+      balancesAu: { P: [ligne('70110000', -30_000_000), ligne('60410000', 29_900_000)] },
+      dossier: { supplementsPeriodeCreation: 100_000 },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.periodeCreation!.baseAcomptesExercice).toBe(400_000);
+    expect(r.periodeCreation!.acomptesExercice.map((a) => a.montant)).toEqual([120_000, 120_000, 80_000]);
+  });
+
+  it('(6) · période d’impôt nul · aucune ligne à zéro, l’écriture ordinaire passe', () => {
+    const motifs = motifsRefusConstat({
+      formeJuridique: FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE,
+      regime: 'IMPOT_SOCIETES',
+      impotDu: 1_500_000,
+      minimumApplique: false,
+      simulationAvantLaLoi: false,
+      exerciceClos: false,
+      brouillardGestion: 0,
+      impotDejaConstate: 0,
+      impotConstateAu89: 0,
+      reintegrationsImpot: 0,
+      attestationRegime: undefined,
+      periodeCreation: {
+        dateFin: new Date(Date.UTC(2026, 11, 31)),
+        dateFinExercice: new Date(Date.UTC(2027, 11, 31)),
+        impotDu: 0,
+        minimumApplique: false,
+      },
+    });
+    expect(motifs).toEqual([]);
+  });
+
+  it('(7) · sur un exercice clos, le report déclaré et la période de création ne changent plus', async () => {
+    const { s } = service({
+      exercices: [{ ...P[0], statut: 'CLOTURE' }],
+      balances,
+    });
+    await expect(s.modifierDossier('t1', 'P', { deficitAnterieurSaisi: 10 })).rejects.toThrow('exercice ouvert suivant');
+    await expect(s.modifierDossier('t1', 'P', { resultatPeriodeCreationSaisi: 10 })).rejects.toThrow('clôturé');
+  });
+
+  it('(7) · l’origine d’un déficit doit totaliser la saisie', async () => {
+    const { s } = service({ exercices: P, balances });
+    await expect(
+      s.modifierDossier('t1', 'P', { deficitAnterieurSaisi: 100, deficitAnterieurOrigines: [{ dateFin: '2025-12-31', montant: 90 }] }),
+    ).rejects.toThrow('totalise');
   });
 });

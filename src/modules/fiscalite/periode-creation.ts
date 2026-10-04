@@ -35,6 +35,11 @@ import { ENTREE_EN_VIGUEUR_LOI_23_053 } from '../../common/entree-en-vigueur-loi
  * l'art. 12, al. 3 n'en écarte aucune règle de liquidation. Le minimum joue
  * donc sur la période, au chiffre d'affaires de la période.
  *
+ * L'ART. 55 (« Les éléments déjà imposés au cours d'un exercice sont déduits
+ * du montant des revenus imposables […] en vue d'éviter la double imposition
+ * d'un même revenu ») conforte la déduction des BÉNÉFICES de la période ; il
+ * ne dit rien du chiffre d'affaires.
+ *
  * CE QUE LE TEXTE NE DIT PAS, ET QUI N'EST PAS CODÉ · le chiffre d'affaires du
  * minimum du premier exercice clos. L'art. 12, al. 3 ne fait déduire que les
  * BÉNÉFICES de la période de création, pas son chiffre d'affaires ; le module
@@ -94,4 +99,4 @@ export function deductionPeriodeCreation(resultatPeriode: number): number {
 }
 
 export const OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE =
-  "Art. 12, al. 3 : seuls les BÉNÉFICES de la période de création viennent en déduction du premier exercice clos · le texte ne dit rien de son chiffre d'affaires. Le minimum de l'art. 57 du premier exercice clos est donc calculé sur le chiffre d'affaires de l'exercice ENTIER, période de création comprise, qui a déjà porté son propre minimum. Lecture littérale, que le texte ne tranche pas · à faire confirmer avant la déclaration si le minimum est retenu.";
+  "Art. 12, al. 3 : seuls les BÉNÉFICES de la période de création viennent en déduction du premier exercice clos · le texte ne dit rien de son chiffre d'affaires. Le minimum de l'art. 57 du premier exercice clos est donc calculé sur le chiffre d'affaires de l'exercice ENTIER, période de création comprise, qui a déjà porté son propre minimum. L'art. 55 déduit « les éléments déjà imposés au cours d'un exercice […] du montant des revenus imposables » pour éviter la double imposition d'un même revenu · il vise les REVENUS imposables, non le chiffre d'affaires qui assied le minimum, et ne tranche donc pas davantage. Lecture littérale, que le texte ne tranche pas · à faire confirmer avant la déclaration si le minimum est retenu.";

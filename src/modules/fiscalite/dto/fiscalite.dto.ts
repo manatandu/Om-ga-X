@@ -1,4 +1,5 @@
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength, ValidateIf, ValidateNested } from 'class-validator';
 import { NatureActiviteFiscale, SensRetraitementFiscal } from '@prisma/client';
 
 export class CreerRetraitementDto {
@@ -76,6 +77,33 @@ export class ModifierDossierFiscalDto {
   @ValidateIf((_, v) => v !== null)
   @IsNumber()
   resultatPeriodeCreationSaisi?: number | null;
+
+  /** Suppléments de l'Administration sur l'impôt de la période de création (LPF art. 57 bis). */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  supplementsPeriodeCreation?: number;
+
+  /**
+   * B2, P1 · l'origine du déficit saisi · une ligne par exercice déficitaire,
+   * sa date de clôture et sa part. La somme doit égaler le déficit saisi.
+   * null = origine non dite (bornée par prudence, et dit).
+   */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrigineDeficitDto)
+  deficitAnterieurOrigines?: OrigineDeficitDto[] | null;
+}
+
+export class OrigineDeficitDto {
+  @IsDateString()
+  dateFin!: string;
+
+  @IsNumber()
+  @Min(0.01)
+  montant!: number;
 }
 
 /**

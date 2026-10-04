@@ -50,6 +50,15 @@ export interface ExerciceRejoue {
    * déduction des bénéfices de la période de création.
    */
   base: number;
+  /**
+   * B2, P1 · le report disponible À L'OUVERTURE de cet exercice, DÉCLARÉ par
+   * le cabinet (`deficitAnterieurSaisi`). Il FAIT FOI dans le rejeu · il
+   * remplace le reste calculé à cette date, et la suite du rejeu part de lui.
+   * `origines` · les exercices d'où viennent les pertes (date de clôture et
+   * montant), qui donnent à chacune sa fenêtre de l'art. 51 ; null quand le
+   * cabinet ne les a pas dites.
+   */
+  ouvertureDeclaree?: { montant: number; origines: { dateFin: Date; montant: number }[] | null } | null;
 }
 
 export interface DeficitReportable {
@@ -62,6 +71,20 @@ export interface DeficitReportable {
    * (art. 153). Voir `avertissementDeficitsSimules`.
    */
   simulation: boolean;
+  /** Le reste vient d'un report DÉCLARÉ à l'ouverture d'un exercice antérieur (B2, P1). */
+  declare: boolean;
+  /**
+   * Déclaré SANS origine · borné par prudence à la fenêtre la plus courte
+   * (une perte qui ne s'imputait plus que sur l'exercice de la déclaration).
+   */
+  bornePrudente: boolean;
+}
+
+/** Ce que le rejeu a perdu d'un report déclaré sans origine, et où. */
+export interface ReportPerduParPrudence {
+  exerciceDeclarationId: string;
+  dateDebutDeclaration: Date;
+  montant: number;
 }
 
 const arrondir = (n: number) => Math.round(n * 100) / 100;
@@ -92,15 +115,87 @@ export function deficitsReportables(
   cible: { dateDebut: Date },
   exercicesReport: number,
 ): DeficitReportable[] {
+  return rejouerReport(precedents, cible, exercicesReport).detail;
+}
+
+/**
+ * LA DATE DE CLÔTURE PRUDENTE d'une perte déclarée sans origine · celle de la
+ * perte la plus ancienne encore imputable à l'ouverture de la déclaration,
+ * donc la fenêtre la plus courte (elle ne couvre que l'exercice de la
+ * déclaration, aux exercices civils). Prudence voulue · supposer une perte
+ * plus récente prolongerait un droit qui peut être éteint.
+ */
+export function dateFinPrudente(dateDebutDeclaration: Date, exercicesReport: number): Date {
+  return new Date(
+    Date.UTC(
+      dateDebutDeclaration.getUTCFullYear() - exercicesReport,
+      dateDebutDeclaration.getUTCMonth(),
+      dateDebutDeclaration.getUTCDate(),
+    ),
+  );
+}
+
+/** Le rejeu complet · le détail à l'ouverture de la cible, et ce que la prudence a perdu en route. */
+export function rejouerReport(
+  precedents: ExerciceRejoue[],
+  cible: { dateDebut: Date },
+  exercicesReport: number,
+): { detail: DeficitReportable[]; perdusParPrudence: ReportPerduParPrudence[] } {
   const chronologiques = [...precedents].sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime());
-  const enCours: { exerciceId: string; dateDebut: Date; dateFin: Date; restant: number }[] = [];
+  type EnCours = {
+    exerciceId: string;
+    dateDebut: Date;
+    dateFin: Date;
+    restant: number;
+    simulation: boolean;
+    declare: boolean;
+    bornePrudente: boolean;
+    declarationId: string | null;
+    dateDebutDeclaration: Date | null;
+  };
+  let enCours: EnCours[] = [];
   for (const ex of chronologiques) {
+    if (ex.ouvertureDeclaree) {
+      // LA DÉCLARATION FAIT FOI · elle remplace tout le reste calculé à cette
+      // ouverture. Chaque perte garde la fenêtre de SON exercice d'origine.
+      const o = ex.ouvertureDeclaree;
+      const origines =
+        o.origines && o.origines.length
+          ? o.origines.map((x) => ({ dateFin: x.dateFin, montant: x.montant, prudente: false }))
+          : [{ dateFin: dateFinPrudente(ex.dateDebut, exercicesReport), montant: o.montant, prudente: true }];
+      enCours = origines
+        .filter((x) => x.montant > 0.005)
+        .map((x) => ({
+          exerciceId: ex.exerciceId,
+          dateDebut: x.dateFin,
+          dateFin: x.dateFin,
+          restant: arrondir(x.montant),
+          simulation: false,
+          declare: true,
+          bornePrudente: x.prudente,
+          declarationId: ex.exerciceId,
+          dateDebutDeclaration: ex.dateDebut,
+        }));
+    }
     if (ex.base < 0) {
-      enCours.push({ exerciceId: ex.exerciceId, dateDebut: ex.dateDebut, dateFin: ex.dateFin, restant: -ex.base });
+      enCours.push({
+        exerciceId: ex.exerciceId,
+        dateDebut: ex.dateDebut,
+        dateFin: ex.dateFin,
+        restant: -ex.base,
+        simulation: ex.dateDebut.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime(),
+        declare: false,
+        bornePrudente: false,
+        declarationId: null,
+        dateDebutDeclaration: null,
+      });
       continue;
     }
     let benefice = ex.base;
-    for (const d of enCours) {
+    // Le plus ancien d'abord · l'ordre se lit sur la date de clôture de la
+    // perte, une déclaration pouvant porter des pertes plus anciennes que
+    // celles calculées après elle.
+    for (const d of [...enCours].sort((a, b) => a.dateFin.getTime() - b.dateFin.getTime())) {
       if (benefice <= 0) break;
       // Une perte éteinte ne consomme plus rien · le bénéfice va à la suivante.
       if (d.restant <= 0 || !imputable(d, ex, exercicesReport)) continue;
@@ -109,14 +204,83 @@ export function deficitsReportables(
       benefice = arrondir(benefice - impute);
     }
   }
-  return enCours
+  const perdusParPrudence = enCours
+    .filter((d) => d.bornePrudente && d.restant > 0.005 && !imputable(d, cible, exercicesReport))
+    .map((d) => ({
+      exerciceDeclarationId: d.declarationId!,
+      dateDebutDeclaration: d.dateDebutDeclaration!,
+      montant: arrondir(d.restant),
+    }));
+  const detail = enCours
     .filter((d) => d.restant > 0.005 && imputable(d, cible, exercicesReport))
+    .sort((a, b) => a.dateFin.getTime() - b.dateFin.getTime())
     .map((d) => ({
       exerciceId: d.exerciceId,
       dateFin: d.dateFin,
       montant: arrondir(d.restant),
-      simulation: d.dateDebut.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime(),
+      simulation: d.simulation,
+      declare: d.declare,
+      bornePrudente: d.bornePrudente,
     }));
+  return { detail, perdusParPrudence };
+}
+
+/**
+ * B2, P1 · LE REPORT DÉCLARÉ SANS ORIGINE, borné par prudence et DIT. Une
+ * part encore disponible y est nommée avec la limite qu'on lui a posée ; une
+ * part perdue à cause de cette borne l'est avec son montant, pour que le
+ * cabinet déclare l'origine plutôt que de perdre un droit sans un mot.
+ */
+export function avertissementsReportDeclare(
+  detail: DeficitReportable[],
+  perdus: ReportPerduParPrudence[],
+): string[] {
+  const avertissements: string[] = [];
+  const bornes = detail.filter((d) => d.bornePrudente);
+  if (bornes.length) {
+    avertissements.push(
+      `REPORT DÉCLARÉ SANS ORIGINE · ${bornes.map((d) => d.montant.toLocaleString('fr-FR')).join(', ')} vient d'un report saisi à l'ouverture d'un exercice antérieur sans dire de quels exercices viennent les pertes. ` +
+        "Chacune garde sa fenêtre de l'art. 51 (jusqu'au troisième exercice qui suit l'exercice déficitaire) · faute de la connaître, OmegaX la borne par PRUDENCE à la plus courte, comme si la perte venait du plus ancien exercice encore imputable. Déclarez l'origine des pertes avec le report saisi pour lui rendre sa vraie fenêtre.",
+    );
+  }
+  for (const p of perdus) {
+    avertissements.push(
+      `REPORT PERDU PAR PRUDENCE · ${p.montant.toLocaleString('fr-FR')} du report déclaré à l'ouverture du ${p.dateDebutDeclaration.toISOString().slice(0, 10)} ne s'impute plus ici, sa fenêtre ayant été bornée faute d'origine déclarée. ` +
+        "Si ces pertes viennent d'exercices plus récents, déclarez leur origine sur l'exercice de la saisie · elles retrouvent alors leur fenêtre de l'art. 51.",
+    );
+  }
+  return avertissements;
+}
+
+/**
+ * (8) DES EXERCICES NON JOINTIFS DANS LA FENÊTRE · la fenêtre de l'art. 51 se
+ * compte en date, mais le rejeu n'impute que sur les bénéfices des exercices
+ * TENUS ici · un trou dans la suite des exercices est un bénéfice (ou une
+ * perte) que le rejeu ne voit pas. Nommé, jamais comblé.
+ */
+export function avertissementExercicesNonJointifs(
+  precedents: { dateDebut: Date; dateFin: Date }[],
+  cible: { dateDebut: Date },
+  exercicesReport: number,
+): string | null {
+  const debutFenetre = dateFinPrudente(cible.dateDebut, exercicesReport);
+  const suite = [...precedents, { dateDebut: cible.dateDebut, dateFin: cible.dateDebut }].sort(
+    (a, b) => a.dateDebut.getTime() - b.dateDebut.getTime(),
+  );
+  const trous: string[] = [];
+  for (let i = 1; i < suite.length; i++) {
+    const fin = suite[i - 1].dateFin;
+    const lendemain = new Date(Date.UTC(fin.getUTCFullYear(), fin.getUTCMonth(), fin.getUTCDate() + 1));
+    if (suite[i].dateDebut.getTime() > lendemain.getTime() && suite[i].dateDebut.getTime() > debutFenetre.getTime()) {
+      const veille = new Date(suite[i].dateDebut.getTime() - 86_400_000);
+      trous.push(`du ${lendemain.toISOString().slice(0, 10)} au ${veille.toISOString().slice(0, 10)}`);
+    }
+  }
+  if (!trous.length) return null;
+  return (
+    `EXERCICES NON JOINTIFS DANS LA FENÊTRE DU REPORT · aucune comptabilité n'est tenue ici ${trous.join(', ')}. ` +
+    "Le report de l'art. 51 se compte jusqu'au troisième exercice qui suit l'exercice déficitaire, et un exercice absent du dossier a pu consommer une perte (ou en créer une) que le rejeu ne voit pas · le déficit affiché peut être trop fort ou trop faible. Saisissez le report réellement disponible à l'ouverture de cet exercice."
+  );
 }
 
 /**
@@ -146,7 +310,7 @@ export function avertissementDeficitsSimules(detail: DeficitReportable[], saisi:
     `DÉFICIT D'AVANT LA LOI, RECALCULÉ · ${liste}. L'exercice qui l'a subi ouvre avant le 1er janvier 2026 ; OmegaX l'a ` +
     "recalculé sous la loi n° 23/053, qui ne le régissait pas (art. 153). Ce qui s'impute est la perte CONSTATÉE pour cet " +
     "exercice (art. 51, al. 1er), sous le texte de l'époque, que le dossier ne contient pas ; son imputation suit, elle, " +
-    "l'art. 51 en vigueur. Le montant affiché est une SIMULATION · saisissez le déficit réellement constaté dans « Déficits " +
-    "antérieurs », il prime sur le calcul."
+    "l'art. 51 en vigueur. Le montant affiché est une SIMULATION · saisissez dans « Déficits antérieurs » le reste à " +
+    "reporter à l'ouverture de cet exercice, il prime sur le calcul et fait foi pour les exercices suivants."
   );
 }

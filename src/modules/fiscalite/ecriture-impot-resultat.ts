@@ -152,7 +152,7 @@ export interface EntreeConstatImpot {
    * création (null s'il relève du texte d'avant 2026) et son compte. Absent ou
    * null hors de ce cas.
    */
-  periodeCreation?: { dateFin: Date; impotDu: number | null; minimumApplique: boolean } | null;
+  periodeCreation?: { dateFin: Date; dateFinExercice: Date; impotDu: number | null; minimumApplique: boolean } | null;
 }
 
 /** Le format des montants des messages fiscaux · un seul, pour les motifs et leurs jumeaux d'observation. */
@@ -209,18 +209,25 @@ export function motifsRefusConstat(e: EntreeConstatImpot): string[] {
       `Les 891, 892 et 895 portent ${montantFiscal(e.impotConstateAu89)} au débit du livre-journal et les réintégrations « Impôt sur les sociétés et impôt minimum comptabilisés en charges » valent ${montantFiscal(e.reintegrationsImpot)} · l'impôt n'est pas déductible de son propre calcul (loi n° 23/053, art. 45 et art. 50, 2°), et l'écart de ${montantFiscal(Math.abs(e.impotConstateAu89 - e.reintegrationsImpot))} fausse la base. Ajustez la réintégration pour qu'elle égale ces débits ; un impôt comptabilisé hors du 89 et réintégré à raison se range sous une ligne libre, ou sa charge se reclasse au 89.`,
     );
   }
-  if (e.periodeCreation && e.impotDu !== null) {
+  // RELEVÉ 6 · une période de création dont l'impôt vaut ZÉRO n'appelle
+  // aucune ligne · l'écriture ordinaire de l'impôt du premier exercice clos
+  // passe alors seule, sans refus.
+  if (e.periodeCreation && e.impotDu !== null && (e.periodeCreation.impotDu === null || e.periodeCreation.impotDu > 0.005)) {
     // DEUX IMPOSITIONS, UNE SEULE ÉCRITURE PROPOSÉE · le constat ne porte
     // qu'un impôt et qu'un compte, et la fiche du compte 89 veut au 891 « le
     // montant total de l'impôt dû de l'exercice » · proposer l'impôt du seul
     // premier exercice clos laisserait celui de la période de création hors du
-    // 89 (cas chiffré C09). Le refus nomme les deux lignes à passer.
+    // 89 (cas chiffré C09). Le refus nomme les deux lignes à passer, DATÉES
+    // (relevé 2) · l'impôt de la période au 31 décembre de la création, celui
+    // du premier exercice clos à sa clôture. La lecture de la période neutralise
+    // le 89 (art. 45) · la date au 31 décembre ne minore pas sa propre base.
     const p = e.periodeCreation;
-    const ligneExercice = `D ${compteDeLaCharge(e.minimumApplique)} ${montantFiscal(e.impotDu)} (premier exercice clos)`;
+    const jour = (d: Date) => d.toISOString().slice(0, 10);
+    const ligneExercice = `D ${compteDeLaCharge(e.minimumApplique)} ${montantFiscal(e.impotDu)} au ${jour(p.dateFinExercice)} (premier exercice clos)`;
     motifs.push(
       p.impotDu === null
-        ? `Premier exercice long (loi n° 23/053, art. 12, al. 3) · la période de création, close le ${p.dateFin.toISOString().slice(0, 10)}, est imposée à part sous le texte qui la régissait, que le dossier ne contient pas. L'impôt de l'exercice comptable réunit les deux impositions · passez l'écriture à la main : ${ligneExercice}, plus l'impôt déclaré pour la période de création, au crédit du 441 pour le total.`
-        : `Premier exercice long (loi n° 23/053, art. 12, al. 3) · deux impositions pour un seul exercice comptable, et le compte 891 doit porter « le montant total de l'impôt dû de l'exercice » (fiche du compte 89). Passez l'écriture à la main : D ${compteDeLaCharge(p.minimumApplique)} ${montantFiscal(p.impotDu)} (période de création, close le ${p.dateFin.toISOString().slice(0, 10)}), ${ligneExercice}, C ${COMPTES_IMPOT_RESULTAT.dette} ${montantFiscal(Math.round((p.impotDu + e.impotDu) * 100) / 100)}.`,
+        ? `Premier exercice long (loi n° 23/053, art. 12, al. 3) · la période de création, close le ${jour(p.dateFin)}, est imposée à part sous le texte qui la régissait, que le dossier ne contient pas. L'impôt de l'exercice comptable réunit les deux impositions · passez les écritures à la main : ${ligneExercice} / C ${COMPTES_IMPOT_RESULTAT.dette} du même montant, et l'impôt déclaré pour la période de création au ${jour(p.dateFin)}, au crédit du 441.`
+        : `Premier exercice long (loi n° 23/053, art. 12, al. 3) · deux impositions pour un seul exercice comptable, et le compte 891 doit porter « le montant total de l'impôt dû de l'exercice » (fiche du compte 89). Passez les écritures à la main : D ${compteDeLaCharge(p.minimumApplique)} ${montantFiscal(p.impotDu)} / C ${COMPTES_IMPOT_RESULTAT.dette} au ${jour(p.dateFin)} (période de création), puis ${ligneExercice} / C ${COMPTES_IMPOT_RESULTAT.dette}, soit ${montantFiscal(Math.round((p.impotDu + e.impotDu) * 100) / 100)} au 441 en tout.`,
     );
   }
   if (e.impotDu === null) {

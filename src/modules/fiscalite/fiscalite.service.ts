@@ -3,7 +3,9 @@ import { estCompteDuResultatDeLExercice } from '../etats-financiers/resultat-de-
 import {
   FormeJuridiqueSyscohada,
   NatureActiviteFiscale,
+  Prisma,
   Referentiel,
+  StatutExercice,
   SensRetraitementFiscal,
   StatutEcriture,
   TypeCompteDetailTotal,
@@ -24,7 +26,13 @@ import { qualifierExemptionIs } from './exemption-is-ebnl';
 import { arrondirImpotArt150 } from './arrondi-article-150';
 import { montantFiscal } from './ecriture-impot-resultat';
 import { ENTREE_EN_VIGUEUR_LOI_23_053 } from '../../common/entree-en-vigueur-loi-23-053';
-import { avertissementDeficitsSimules, deficitsReportables, type ExerciceRejoue } from './report-deficitaire';
+import {
+  avertissementDeficitsSimules,
+  avertissementExercicesNonJointifs,
+  avertissementsReportDeclare,
+  rejouerReport,
+  type ExerciceRejoue,
+} from './report-deficitaire';
 import {
   OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE,
   deductionPeriodeCreation,
@@ -1023,7 +1031,11 @@ export class FiscaliteService {
    * dossier se comptent par dizaines au plus (conservation de dix ans, AUDCIF
    * art. 24), et la lecture est bornée au dossier.
    */
-  private async deficitsAnterieursCalcules(tenantId: string, exercice: { id: string; dateDebut: Date }) {
+  private async deficitsAnterieursCalcules(
+    tenantId: string,
+    exercice: { id: string; dateDebut: Date },
+    physique: boolean,
+  ) {
     const precedents = await this.prisma.exercice.findMany({
       where: { tenantId, dateFin: { lt: exercice.dateDebut } },
       orderBy: { dateDebut: 'desc' },
@@ -1032,17 +1044,60 @@ export class FiscaliteService {
     const premierId = precedents.length
       ? [...precedents].sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime())[0].id
       : null;
+    // B2, P1 · LES REPORTS DÉCLARÉS À L'OUVERTURE DES EXERCICES ANTÉRIEURS.
+    // Une saisie de `deficitAnterieurSaisi` dit le report disponible À
+    // L'OUVERTURE de son exercice · elle FAIT FOI dans le rejeu des suivants.
+    // Ignorée, une perte de 2025 recalculée à 1 000 000 et déclarée à 400 000
+    // ressortait à 700 000 en 2027, et un report de 800 000 repris d'un
+    // confrère disparaissait sans un mot l'année d'après.
+    const dossiers = precedents.length
+      ? await this.prisma.dossierFiscalExercice.findMany({
+          where: { tenantId, exerciceId: { in: precedents.map((e) => e.id) } },
+        })
+      : [];
+    const dossierDe = new Map(dossiers.map((d) => [d.exerciceId, d]));
     const rejoues: ExerciceRejoue[] = [];
     for (const ex of precedents) {
+      const d = dossierDe.get(ex.id);
       rejoues.push({
         exerciceId: ex.id,
         dateDebut: ex.dateDebut,
         dateFin: ex.dateFin,
-        base: await this.baseAvantReport(tenantId, ex, ex.id === premierId),
+        base: await this.baseAvantReport(tenantId, ex, ex.id === premierId && !physique, d ?? null),
+        ouvertureDeclaree:
+          d?.deficitAnterieurSaisi === null || d?.deficitAnterieurSaisi === undefined
+            ? null
+            : {
+                montant: Number(d.deficitAnterieurSaisi),
+                origines: FiscaliteService.originesDeclarees(d.deficitAnterieurOrigines),
+              },
       });
     }
-    const detail = deficitsReportables(rejoues, exercice, IMPOT_SOCIETES.exercicesReportDeficit);
-    return { total: arrondir(detail.reduce((s, d) => s + d.montant, 0)), detail };
+    const { detail, perdusParPrudence } = rejouerReport(rejoues, exercice, IMPOT_SOCIETES.exercicesReportDeficit);
+    return {
+      total: arrondir(detail.reduce((s, d) => s + d.montant, 0)),
+      detail,
+      avertissements: [
+        ...avertissementsReportDeclare(detail, perdusParPrudence),
+        ...[avertissementExercicesNonJointifs(precedents, exercice, IMPOT_SOCIETES.exercicesReportDeficit)].filter(
+          (a): a is string => a !== null,
+        ),
+      ],
+    };
+  }
+
+  /** L'origine déclarée d'un report saisi, relue de sa colonne JSON · null si absente ou illisible. */
+  static originesDeclarees(brut: unknown): { dateFin: Date; montant: number }[] | null {
+    if (!Array.isArray(brut) || brut.length === 0) return null;
+    const lues = brut.map((o) => {
+      const x = o as { dateFin?: unknown; montant?: unknown };
+      const date = typeof x.dateFin === 'string' ? new Date(`${x.dateFin.slice(0, 10)}T00:00:00Z`) : null;
+      return { dateFin: date, montant: Number(x.montant) };
+    });
+    // Une origine illisible ne s'invente pas · toute la déclaration retombe
+    // alors sur la borne prudente, qui se dit.
+    if (lues.some((o) => !o.dateFin || Number.isNaN(o.dateFin.getTime()) || !Number.isFinite(o.montant))) return null;
+    return lues as { dateFin: Date; montant: number }[];
   }
 
   /**
@@ -1050,16 +1105,22 @@ export class FiscaliteService {
    * moins, pour le premier exercice long de l'art. 12, al. 3, les bénéfices de
    * la période de création déjà imposés à part. Sans cette déduction, le
    * rejeu du report verrait un bénéfice qui a déjà payé son impôt.
+   *
+   * B1 · `appliquerArticle12` est FAUX pour une personne physique · l'art. 12,
+   * al. 3 relève du Titre II (impôt sur les sociétés), et l'IRPP a son propre
+   * report (art. 101). Sans ce filtre, que le calcul principal posait déjà,
+   * le rejeu déduisait d'une entreprise individuelle un « bénéfice de période
+   * de création » et inventait le déficit correspondant l'année suivante.
    */
   private async baseAvantReport(
     tenantId: string,
     exercice: { id: string; dateDebut: Date; dateFin: Date },
-    premierExerciceDuDossier: boolean,
+    appliquerArticle12: boolean,
+    dossier: { resultatPeriodeCreationSaisi?: unknown } | null,
   ): Promise<number> {
     const brut = (await this.resultatFiscalBrut(tenantId, exercice.id)).resultatFiscalBrut;
-    const periode = periodeDeCreation(exercice, premierExerciceDuDossier);
+    const periode = appliquerArticle12 ? periodeDeCreation(exercice, true) : null;
     if (!periode) return brut;
-    const dossier = await this.prisma.dossierFiscalExercice.findUnique({ where: { exerciceId: exercice.id } });
     const lecture = await this.lirePeriodeCreation(tenantId, exercice.id, periode, dossier?.resultatPeriodeCreationSaisi ?? null);
     return arrondir(brut - deductionPeriodeCreation(lecture.resultatFiscal));
   }
@@ -1078,6 +1139,17 @@ export class FiscaliteService {
    * comptable lu fait foi, et l'observation dit que les retraitements sont
    * tous rattachés au premier exercice clos. Le chiffre d'affaires, lui, est
    * un fait comptable · il se lit toujours.
+   *
+   * L'IMPÔT NE MINORE JAMAIS SA PROPRE BASE (relevé 2) · loi n° 23/053,
+   * art. 45, l'IS et le minimum ne sont pas déductibles. L'impôt de la période
+   * passé au 891 ou au 895 à une date de la période (au 31 décembre, comme le
+   * motif de l'A11 le propose) diminuerait le résultat lu, puis l'impôt
+   * recalculé sur lui · les DÉBITS des 891, 892 et 895 de la période sont
+   * rajoutés, comme la réintégration le fait pour l'exercice entier.
+   *
+   * LA DÉCLARATION SE CONFRONTE À LA LECTURE (relevé 1) · l'écart entre le
+   * bénéfice déclaré et le résultat lu (impôt neutralisé) ne peut venir que
+   * des retraitements fiscaux de la période ; il est servi, et dit.
    */
   private async lirePeriodeCreation(
     tenantId: string,
@@ -1086,12 +1158,15 @@ export class FiscaliteService {
     saisi: unknown,
   ) {
     const lecture = await this.lireBalance(tenantId, exerciceId, periode.dateFin);
+    const resultatComptable = arrondir(lecture.resultatComptable + lecture.impotConstateAu89);
     const declare = saisi === null || saisi === undefined ? null : arrondir(Number(saisi));
     return {
-      resultatComptable: lecture.resultatComptable,
+      resultatComptable,
+      impotNeutralise: lecture.impotConstateAu89,
       chiffreAffaires: lecture.chiffreAffaires,
-      resultatFiscal: declare ?? lecture.resultatComptable,
+      resultatFiscal: declare ?? resultatComptable,
       source: declare === null ? ('LIVRE_JOURNAL' as const) : ('DECLARE' as const),
+      ecartDeclaration: declare === null ? null : arrondir(declare - resultatComptable),
     };
   }
 
@@ -1445,7 +1520,7 @@ export class FiscaliteService {
         acomptes.push(
           impotPeriode === null
             ? `Art. 12, al. 3 et art. 57 bis LPF : les acomptes des 25 juillet, 25 septembre et 25 novembre ${periode.annee + 1} sont assis sur l'impôt déclaré pour la période de création (${periode.annee}), établi sous le texte de l'époque · OmegaX ne le connaît pas et ne les chiffre pas. Ils restent dus · calculez-les sur l'impôt réellement déclaré, et imputez-les sur l'impôt ci-dessous.`
-            : `Art. 12, al. 3 et art. 57 bis LPF : l'impôt de la période de création (${impotPeriode.toLocaleString('fr-FR')}) est l'impôt déclaré de l'exercice précédent · il fonde les acomptes des 25 juillet, 25 septembre et 25 novembre ${periode.annee + 1}, servis dans « Acomptes de l'exercice », imputés sur l'impôt du premier exercice clos (al. 3). Les trois montants « du prochain exercice » sont ceux de ${periode.annee + 2}.`,
+            : `Art. 12, al. 3 et art. 57 bis LPF : l'impôt de la période de création (${impotPeriode.toLocaleString('fr-FR')}) est l'impôt déclaré de l'exercice précédent · augmenté des suppléments établis sur lui, il fonde les acomptes des 25 juillet, 25 septembre et 25 novembre ${periode.annee + 1}, servis dans « Acomptes de l'exercice », imputés sur l'impôt du premier exercice clos (al. 3). Les trois montants « du prochain exercice » sont ceux de ${periode.annee + 2}.`,
         );
       } else if (contexte.sansExerciceAnterieur) {
         acomptes.push(
@@ -1491,6 +1566,7 @@ export class FiscaliteService {
     ]);
     const acomptesVerses = Number(dossier?.acomptesVerses ?? 0);
     const supplementsAdministration = Number(dossier?.supplementsAdministration ?? 0);
+    const supplementsPeriodeCreation = Number(dossier?.supplementsPeriodeCreation ?? 0);
     const deficitSaisi = dossier?.deficitAnterieurSaisi === null || dossier?.deficitAnterieurSaisi === undefined
       ? null
       : Number(dossier.deficitAnterieurSaisi);
@@ -1527,7 +1603,7 @@ export class FiscaliteService {
     const debutImposable = FiscaliteService.debutPeriodeImposable(exercice, periode);
     const simulationAvantLaLoi = debutImposable.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime();
 
-    const calcules = deficitSaisi === null ? await this.deficitsAnterieursCalcules(tenantId, exercice) : null;
+    const calcules = deficitSaisi === null ? await this.deficitsAnterieursCalcules(tenantId, exercice, physique) : null;
     const deficitAnterieur = deficitSaisi ?? calcules!.total;
     // Un déficit ne s'impute que sur un bénéfice, et jamais au-delà.
     const deficitImpute = arrondir(Math.min(deficitAnterieur, Math.max(baseAvantReport, 0)));
@@ -1543,6 +1619,8 @@ export class FiscaliteService {
     // seulement dans celle de l'exercice ancien.
     const deficitsSimules = avertissementDeficitsSimules(calcules?.detail ?? [], deficitSaisi !== null);
     if (deficitsSimules && deficitImpute > 0.005) observations.push(deficitsSimules);
+    // B2, P1 et (8) · report déclaré sans origine, et exercices non jointifs.
+    if (calcules) observations.push(...calcules.avertissements);
     observations.push(...this.avertissementsPerimetreLoi(exercice.dateDebut, periode));
     const reintegrationsImpot = FiscaliteService.reintegrationsImpot(brut.retraitements);
     const ecartImpotNonReintegre = FiscaliteService.observationImpotNonReintegre(brut.impotConstateAu89, reintegrationsImpot);
@@ -1604,6 +1682,19 @@ export class FiscaliteService {
           " Si l'entreprise a été créée avant l'ouverture de ce premier exercice (dossier repris), ce cas ne s'applique pas.",
       );
       observations.push(OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE);
+      if (lecturePeriode.ecartDeclaration !== null && Math.abs(lecturePeriode.ecartDeclaration) >= 0.005) {
+        // RELEVÉ 1 · une déclaration se confronte à ce que le livre dit.
+        observations.push(
+          `BÉNÉFICE DÉCLARÉ DE LA PÉRIODE DE CRÉATION · ${montantFiscal(lecturePeriode.resultatFiscal)} déclarés contre ${montantFiscal(lecturePeriode.resultatComptable)} lus au livre-journal au ${periode.dateFin.toISOString().slice(0, 10)} (impôt sur le résultat neutralisé, art. 45), soit un écart de ${montantFiscal(lecturePeriode.ecartDeclaration)}. ` +
+            `Il ne peut venir que des retraitements fiscaux de la période (réintégrations moins déductions) · ceux saisis sur l'exercice entier valent ${montantFiscal(arrondir(brut.totalReintegrations - brut.totalDeductions))}. ` +
+            "Si l'écart ne s'explique pas par eux, une écriture de la période manque au livre-journal ou la déclaration est à revoir ; la déclaration prime, le calcul ci-dessus la retient.",
+        );
+      }
+      if (lecturePeriode.impotNeutralise > 0.005) {
+        observations.push(
+          `Impôt sur le résultat passé dans la période de création (${montantFiscal(lecturePeriode.impotNeutralise)} au débit des 891, 892 ou 895) · rajouté au résultat lu de la période, l'impôt n'étant pas déductible de sa propre base (loi n° 23/053, art. 45).`,
+        );
+      }
     }
 
     // ALINÉA 2 CONTRE ALINÉA 3 DE L'ART. 57 LPF · l'alinéa 2 range dans les
@@ -1702,7 +1793,20 @@ export class FiscaliteService {
       reintegrationsImpot,
       acomptesAu4492: brut.acomptesAu4492,
       resultatFiscalBrut: brut.resultatFiscalBrut,
-      deficitAnterieur: { montant: deficitAnterieur, saisi: deficitSaisi !== null, detail: calcules?.detail ?? [] },
+      deficitAnterieur: {
+        montant: deficitAnterieur,
+        saisi: deficitSaisi !== null,
+        detail: calcules?.detail ?? [],
+        // L'origine déclarée du report saisi · null tant qu'elle n'est pas
+        // dite (le rejeu des exercices suivants la borne alors par prudence).
+        origines:
+          deficitSaisi === null
+            ? null
+            : (FiscaliteService.originesDeclarees(dossier?.deficitAnterieurOrigines)?.map((o) => ({
+                dateFin: o.dateFin.toISOString().slice(0, 10),
+                montant: o.montant,
+              })) ?? null),
+      },
       // ART. 12, AL. 3 · la période de création, son impôt et les acomptes
       // qu'il fonde pour l'année qui suit (art. 57 bis LPF). Null hors de ce cas.
       periodeCreation:
@@ -1723,13 +1827,25 @@ export class FiscaliteService {
               explication: impotPeriode
                 ? impotPeriode.explication
                 : `Période de création antérieure au 1er janvier 2026 · son impôt relève du texte qui régissait ${periode.annee} (loi n° 23/053, art. 153), que le dossier ne contient pas.`,
+              ecartDeclaration: lecturePeriode.ecartDeclaration,
+              impotNeutralise: lecturePeriode.impotNeutralise,
+              // RELEVÉ 5 · LPF art. 57 bis, al. 1er · la base est l'impôt
+              // déclaré « augmenté des suppléments éventuels établis par
+              // l'Administration », contestés ou non · ceux de l'impôt de la
+              // PÉRIODE DE CRÉATION, saisis à part des suppléments qui fondent
+              // les acomptes du prochain exercice.
+              supplements: supplementsPeriodeCreation,
+              baseAcomptesExercice:
+                impotPeriode?.impotDu === null || impotPeriode?.impotDu === undefined
+                  ? null
+                  : arrondir(impotPeriode.impotDu + supplementsPeriodeCreation),
               acomptesExercice:
                 impotPeriode?.impotDu === null || impotPeriode?.impotDu === undefined
                   ? []
                   : IMPOT_SOCIETES.acomptes.map((a) => ({
                       ...a,
                       annee: periode.annee + 1,
-                      montant: arrondir(a.quotite * impotPeriode.impotDu!),
+                      montant: arrondir(a.quotite * (impotPeriode.impotDu! + supplementsPeriodeCreation)),
                     })),
             }
           : null,
@@ -1991,7 +2107,54 @@ export class FiscaliteService {
 
   async modifierDossier(tenantId: string, exerciceId: string, dto: ModifierDossierFiscalDto) {
     await this.tenantSyscohada(tenantId);
-    await this.exerciceDuDossier(tenantId, exerciceId);
+    const exercice = await this.exerciceDuDossier(tenantId, exerciceId);
+    /*
+      RELEVÉ 7 · CE QUI FONDE LE REPORT ET LA PÉRIODE DE CRÉATION NE SE
+      RETOUCHE PAS SUR UN EXERCICE CLOS. Le report déclaré fait foi dans le
+      rejeu des exercices suivants (B2, P1), le bénéfice de la période de
+      création fonde son impôt et la déduction du premier exercice clos ·
+      changés sur un exercice clos, ils changeraient en silence l'impôt
+      d'exercices déjà déclarés (AUDCIF art. 22, 2° pour l'exercice clos). Le
+      refus n'enferme rien · le report disponible se déclare à l'ouverture de
+      l'exercice OUVERT suivant, et cette déclaration fait foi à son tour. Les
+      autres champs (acomptes, suppléments, nature d'activité) restent ouverts,
+      comme avant, et chaque changement passe au journal d'audit (le modèle
+      est audité).
+    */
+    const touchesReport =
+      dto.deficitAnterieurSaisi !== undefined ||
+      dto.deficitAnterieurOrigines !== undefined ||
+      dto.resultatPeriodeCreationSaisi !== undefined;
+    if (touchesReport && exercice.statut === StatutExercice.CLOTURE) {
+      throw new BadRequestException(
+        "L'exercice est clôturé · le déficit reportable déclaré et le bénéfice de la période de création n'y changent plus, ils fondent l'impôt d'exercices déjà déclarés. Déclarez le report disponible à l'ouverture de l'exercice ouvert suivant (« Déficits antérieurs ») · cette déclaration fait foi pour la suite.",
+      );
+    }
+    if (dto.deficitAnterieurOrigines) {
+      const existant = await this.prisma.dossierFiscalExercice.findUnique({ where: { exerciceId } });
+      const saisi =
+        dto.deficitAnterieurSaisi !== undefined
+          ? dto.deficitAnterieurSaisi
+          : existant?.deficitAnterieurSaisi === null || existant?.deficitAnterieurSaisi === undefined
+            ? null
+            : Number(existant.deficitAnterieurSaisi);
+      if (saisi === null) {
+        throw new BadRequestException("L'origine d'un déficit ne se déclare qu'avec le déficit saisi qu'elle ventile.");
+      }
+      const somme = arrondir(dto.deficitAnterieurOrigines.reduce((t, o) => t + o.montant, 0));
+      if (Math.abs(somme - arrondir(saisi)) >= 0.005) {
+        throw new BadRequestException(
+          `L'origine déclarée totalise ${montantFiscal(somme)} pour un déficit saisi de ${montantFiscal(saisi)} · chaque part se rattache à un exercice déficitaire, et leur somme est le déficit saisi.`,
+        );
+      }
+      for (const o of dto.deficitAnterieurOrigines) {
+        if (new Date(`${o.dateFin.slice(0, 10)}T00:00:00Z`).getTime() >= exercice.dateDebut.getTime()) {
+          throw new BadRequestException(
+            `Une perte reportée à l'ouverture vient d'un exercice clos AVANT elle · le ${o.dateFin.slice(0, 10)} ne précède pas l'ouverture du ${exercice.dateDebut.toISOString().slice(0, 10)}.`,
+          );
+        }
+      }
+    }
     const data = {
       ...(dto.acomptesVerses === undefined ? {} : { acomptesVerses: arrondir(dto.acomptesVerses) }),
       ...(dto.supplementsAdministration === undefined
@@ -2000,6 +2163,20 @@ export class FiscaliteService {
       ...(dto.deficitAnterieurSaisi === undefined
         ? {}
         : { deficitAnterieurSaisi: dto.deficitAnterieurSaisi === null ? null : arrondir(dto.deficitAnterieurSaisi) }),
+      // Un déficit saisi effacé emporte son origine · elle ne ventile plus rien.
+      ...(dto.deficitAnterieurSaisi === null
+        ? { deficitAnterieurOrigines: Prisma.DbNull }
+        : dto.deficitAnterieurOrigines === undefined
+          ? {}
+          : {
+              deficitAnterieurOrigines:
+                dto.deficitAnterieurOrigines === null
+                  ? Prisma.DbNull
+                  : dto.deficitAnterieurOrigines.map((o) => ({ dateFin: o.dateFin.slice(0, 10), montant: arrondir(o.montant) })),
+            }),
+      ...(dto.supplementsPeriodeCreation === undefined
+        ? {}
+        : { supplementsPeriodeCreation: arrondir(dto.supplementsPeriodeCreation) }),
       ...(dto.natureActivite === undefined ? {} : { natureActivite: dto.natureActivite }),
       ...(dto.resultatPeriodeCreationSaisi === undefined
         ? {}

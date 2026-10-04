@@ -3038,7 +3038,18 @@ export interface ResultatFiscal {
     montant: number;
     saisi: boolean;
     /** `simulation` · perte d'un exercice ouvert avant 2026, recalculée sous la loi n° 23/053 (C15). */
-    detail: { exerciceId: string; dateFin: string; montant: number; simulation: boolean }[];
+    detail: {
+      exerciceId: string;
+      dateFin: string;
+      montant: number;
+      simulation: boolean;
+      /** Reste d'un report déclaré à l'ouverture d'un exercice antérieur. */
+      declare: boolean;
+      /** Déclaré sans origine · borné par prudence à la fenêtre la plus courte. */
+      bornePrudente: boolean;
+    }[];
+    /** Origine déclarée du report saisi · null tant qu'elle n'est pas dite. */
+    origines: { dateFin: string; montant: number }[] | null;
   };
   /**
    * PREMIER EXERCICE LONG · loi n° 23/053, art. 12, al. 3. La période de
@@ -3059,6 +3070,11 @@ export interface ResultatFiscal {
     impotDu: number | null;
     minimumApplique: boolean;
     explication: string;
+    /** Bénéfice déclaré moins résultat lu (impôt neutralisé) · null sans déclaration. */
+    ecartDeclaration: number | null;
+    impotNeutralise: number;
+    supplements: number;
+    baseAcomptesExercice: number | null;
     acomptesExercice: { quotite: number; echeance: string; annee: number; montant: number }[];
   } | null;
   deductionPeriodeCreation: number;

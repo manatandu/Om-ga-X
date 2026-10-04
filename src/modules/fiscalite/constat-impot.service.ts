@@ -94,6 +94,7 @@ export class ConstatImpotService {
       periodeCreation: calcul.periodeCreation
         ? {
             dateFin: calcul.periodeCreation.dateFin,
+            dateFinExercice: exercice.dateFin,
             impotDu: calcul.periodeCreation.impotDu,
             minimumApplique: calcul.periodeCreation.minimumApplique,
           }

@@ -1390,11 +1390,18 @@ model DossierFiscalExercice {
   // solde à payer n'a aucun sens sans eux.
   acomptesVerses Decimal @default(0) @db.Decimal(18, 2)
 
-  // Déficit fiscal antérieur reportable, SAISI. Il prime sur le calcul à
-  // partir des exercices précédents · un dossier repris à un confrère porte
+  // Déficit fiscal reportable À L'OUVERTURE de l'exercice, SAISI. Il prime
+  // sur le calcul pour cet exercice ET FAIT FOI dans le rejeu des suivants
+  // (`report-deficitaire.ts`, B2 et P1) · un dossier repris à un confrère porte
   // un report que la comptabilité tenue ici ne connaît pas. Null = OmegaX
-  // calcule lui-même, sur les trois exercices précédents (art. 51).
+  // rejoue lui-même les exercices du dossier depuis le premier (art. 51).
   deficitAnterieurSaisi Decimal? @db.Decimal(18, 2)
+
+  // L'ORIGINE du déficit saisi · [{ "dateFin": "AAAA-MM-JJ", "montant": n }],
+  // la date de clôture de chaque exercice déficitaire, qui donne à sa perte sa
+  // fenêtre de l'art. 51. Null = origine non dite · la perte est bornée par
+  // prudence à la fenêtre la plus courte, et l'écran le dit.
+  deficitAnterieurOrigines Json?
 
   // Suppléments d'impôt établis par l'Administration · art. 57 bis LPF, tel
   // que modifié par la loi de finances n° 25/060. Ils ENTRENT dans la base
@@ -1417,6 +1424,12 @@ model DossierFiscalExercice {
   // résultat comptable de la période sur le livre-journal à cette date, sans
   // retraitement · un retraitement fiscal saisi l'est pour l'exercice entier.
   resultatPeriodeCreationSaisi Decimal? @db.Decimal(18, 2)
+
+  // Suppléments établis par l'Administration sur l'impôt de la PÉRIODE DE
+  // CRÉATION (art. 12, al. 3) · ils entrent dans la base des acomptes de
+  // l'année qui suit la création (LPF art. 57 bis), « que ces sommes fassent
+  // ou non l'objet de contestation ».
+  supplementsPeriodeCreation Decimal @default(0) @db.Decimal(18, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -419,6 +419,86 @@ cas('C15', 'Déficit de l\'exercice 2025 imputé sur 2026', async () => {
   return { fiscal2025: lecture(await fiscal(c, n0)), fiscal2026: lecture(await fiscal(c, n)) };
 });
 
+// --- Second tour (2026-10-04) · B1, B2, P1, sur trois exercices et leurs clôtures
+
+/** Clôture dans l'ordre · un refus est relevé, pas avalé. */
+async function cloturer(c, ids) {
+  const clotures = {};
+  for (const [a, id] of ids) {
+    const r = await c.req('POST', `/exercices/${id}/cloturer`, {});
+    clotures[a] = r.statut < 400 ? 'CLOTURE' : `REFUS ${r.statut} · ${JSON.stringify(r.corps).slice(0, 300)}`;
+  }
+  return clotures;
+}
+
+cas('B1', 'Entreprise individuelle, premier exercice du 01/09/2026 au 31/12/2027 · aucun déficit inventé en 2028', async () => {
+  const c = await dossier('Cas IS B1', 'ENTREPRISE_INDIVIDUELLE', ['2026-09-01', '2027-12-31']);
+  const p = c.exercices.get('2026-09-01');
+  await venteEtCharges(c, p, '2026-11-30', 1_000_000, []);
+  await venteEtCharges(c, p, '2027-06-30', 0, [['60410000', 600_000]]);
+  await valider(c, p, '2027-12-31');
+  const n = await exercice(c, '2028-01-01', '2028-12-31');
+  await venteEtCharges(c, n, '2028-06-30', 2_000_000, []);
+  await valider(c, n, '2028-12-31');
+  const avant = lecture(await fiscal(c, n));
+  const clotures = await cloturer(c, [['2026-2027', p]]);
+  return { avant, clotures, apres: lecture(await fiscal(c, n)) };
+});
+
+cas('B2', 'Perte 2025 recalculée 1 000 000, déclarée 400 000 à l\'ouverture de 2026, bénéfice 2026 300 000 · 2027 voit 100 000', async () => {
+  const c = await dossier('Cas IS B2', 'SOCIETE_RESPONSABILITE_LIMITEE', ['2025-01-01', '2025-12-31']);
+  const a25 = c.exercices.get('2025-01-01');
+  await venteEtCharges(c, a25, '2025-06-30', 0, [['60410000', 1_000_000]]);
+  await valider(c, a25, '2025-12-31');
+  const a26 = await exercice(c, '2026-01-01', '2026-12-31');
+  await venteEtCharges(c, a26, '2026-06-30', 300_000, []);
+  await valider(c, a26, '2026-12-31');
+  const a27 = await exercice(c, '2027-01-01', '2027-12-31');
+  await venteEtCharges(c, a27, '2027-06-30', 2_000_000, []);
+  await valider(c, a27, '2027-12-31');
+  const sansSaisie = lecture(await fiscal(c, a27));
+  await c.ok('PATCH', `/fiscalite/exercices/${a26}/dossier`, { deficitAnterieurSaisi: 400_000 });
+  const saisieSansOrigine = lecture(await fiscal(c, a27));
+  await c.ok('PATCH', `/fiscalite/exercices/${a26}/dossier`, {
+    deficitAnterieurOrigines: [{ dateFin: '2025-12-31', montant: 400_000 }],
+  });
+  const avant = { a2026: lecture(await fiscal(c, a26)), a2027: lecture(await fiscal(c, a27)) };
+  const clotures = await cloturer(c, [['2025', a25], ['2026', a26]]);
+  const refusSurClos = await c.req('PATCH', `/fiscalite/exercices/${a26}/dossier`, { deficitAnterieurSaisi: 1 });
+  return {
+    sansSaisie,
+    saisieSansOrigine,
+    avant,
+    clotures,
+    apres: { a2026: lecture(await fiscal(c, a26)), a2027: lecture(await fiscal(c, a27)) },
+    refusSurClos: { statut: refusSurClos.statut, message: refusSurClos.corps?.message },
+  };
+});
+
+cas('P1', 'Dossier repris en 2026 avec 800 000 de déficit déclaré, bénéfice 2026 300 000 · 500 000 en 2027, et 2028', async () => {
+  const c = await dossier('Cas IS P1', 'SOCIETE_RESPONSABILITE_LIMITEE');
+  const a26 = c.exercices.get('2026-01-01');
+  await venteEtCharges(c, a26, '2026-06-30', 300_000, []);
+  await valider(c, a26, '2026-12-31');
+  await c.ok('PATCH', `/fiscalite/exercices/${a26}/dossier`, {
+    deficitAnterieurSaisi: 800_000,
+    deficitAnterieurOrigines: [{ dateFin: '2025-12-31', montant: 800_000 }],
+  });
+  const a27 = await exercice(c, '2027-01-01', '2027-12-31');
+  await venteEtCharges(c, a27, '2027-06-30', 200_000, []);
+  await valider(c, a27, '2027-12-31');
+  const a28 = await exercice(c, '2028-01-01', '2028-12-31');
+  await venteEtCharges(c, a28, '2028-06-30', 1_000_000, []);
+  await valider(c, a28, '2028-12-31');
+  const avant = { a2026: lecture(await fiscal(c, a26)), a2027: lecture(await fiscal(c, a27)), a2028: lecture(await fiscal(c, a28)) };
+  const clotures = await cloturer(c, [['2026', a26], ['2027', a27]]);
+  return {
+    avant,
+    clotures,
+    apres: { a2026: lecture(await fiscal(c, a26)), a2027: lecture(await fiscal(c, a27)), a2028: lecture(await fiscal(c, a28)) },
+  };
+});
+
 // --- Exécution --------------------------------------------------------------
 
 const resultats = {};
