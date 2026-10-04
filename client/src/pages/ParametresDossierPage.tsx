@@ -1622,14 +1622,17 @@ export function ParametresDossierPage() {
                   </select>
                 </label>
                 {/* RÉGIME D'EXIGIBILITÉ · n'a de sens qu'assujetti. Il ne change
-                    pas le MONTANT de la taxe mais la PÉRIODE où elle est due,
-                    ce qui est la première cause d'écart sur une déclaration. */}
+                    pas le MONTANT de la taxe, née au fait générateur (O.-L.
+                    n° 10/001, art. 24), mais la PÉRIODE où elle devient
+                    exigible (art. 25 et 26), première cause d'écart sur une
+                    déclaration. Au SYSCOHADA la nature lue à la contrepartie
+                    commande, et ce paramètre n'est qu'un REPLI. */}
                 {params.assujettiTva && (
                   <label className="block text-[11.5px]">
                     Exigibilité de la TVA{' '}
                     <Aide
                       titre="Exigibilité de la TVA"
-                      texte="Pour les prestations de services et les travaux immobiliers, le régime de droit commun est celui de l’encaissement : une facture émise en mars et réglée en juin se déclare en juin. Laisser « Livraisons » sur un dossier de services fait verser chaque mois une taxe qui n’a pas encore été encaissée. Le régime des débits ne s’ouvre que sur autorisation écrite du Directeur Général des Impôts, et ne dispense pas de payer à l’encaissement s’il précède la facture."
+                      texte="La taxe naît au fait générateur (la livraison d’un bien, l’exécution d’un service) et devient exigible à une date que la loi fixe : à la livraison pour les biens, à l’encaissement du prix, des acomptes ou avances pour les prestations de services et les travaux immobiliers. Une prestation facturée en mars et réglée en juin se déclare en juin. Au SYSCOHADA, OmegaX lit la nature de chaque opération sur sa contrepartie (ventes de biens, services, travaux) et la date en conséquence, quel que soit ce choix · il ne sert que de repli pour les opérations dont le compte ne dit pas la nature, et la déclaration les annonce avec leur montant. Au SYCEBNL, dont les comptes de TVA et de produits ne disent pas la nature, il date toute la TVA facturée : « Livraisons » y rend exigible à la facture la taxe d’une prestation encore impayée. Le régime des débits ne s’ouvre que sur autorisation écrite du Directeur Général des Impôts, et ne dispense pas de payer à l’encaissement s’il précède la facture."
                       source="O.-L. n° 10/001, art. 25 et 26"
                     />
                     <select
@@ -1638,8 +1641,8 @@ export function ParametresDossierPage() {
                       onChange={(e) => changerRegime({ regimeExigibiliteTva: e.target.value as RegimeExigibiliteTva })}
                       className="mt-1 block w-full max-w-[420px] border border-border rounded-[4px] bg-bg px-2 py-1 text-[11.5px] focus:outline-none focus:border-sel"
                     >
-                      <option value="LIVRAISONS" title="O.-L. n° 10/001, art. 25, 1°">Livraisons · taxe due à la livraison du bien</option>
-                      <option value="ENCAISSEMENTS" title="O.-L. n° 10/001, art. 25, 2°">Encaissements · taxe due au règlement</option>
+                      <option value="LIVRAISONS" title="O.-L. n° 10/001, art. 25, 1°">Livraisons · taxe exigible à la date de la facture</option>
+                      <option value="ENCAISSEMENTS" title="O.-L. n° 10/001, art. 25, 2°">Encaissements · taxe exigible à l’encaissement</option>
                       <option value="DEBITS" title="O.-L. n° 10/001, art. 26">Débits · sur autorisation du DGI</option>
                     </select>
                   </label>

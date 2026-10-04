@@ -4,10 +4,19 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 
 /**
  * LES GROUPES DE LETTRAGE SE LISENT COMME SUR `main` (A7 bis, quatrième
- * reprise, décision du coordinateur). Le prorata entre les factures d'un
- * groupe partiel, convention qu'aucun texte ne fixe, est retiré · pour un
- * dossier sans créance douteuse désignée, chaque groupe rend ce que rendait
- * le moteur de `main` (8315e0c).
+ * reprise, décision du coordinateur), SAUF LE GROUPE À PLUSIEURS FACTURES DE
+ * MÊME COMPOSITION (ligne TVA 24-26, constat F1, 2026-10-04). Le prorata
+ * entre les factures d'un groupe partiel, convention qu'aucun texte ne fixe,
+ * reste retiré · pour un dossier sans créance douteuse désignée, chaque
+ * groupe rend ce que rendait le moteur de `main` (8315e0c), à une exception
+ * près, DITE CAS PAR CAS dans `RENDU_ATTENDU` · quand toutes les factures du
+ * groupe portent la même taxe par franc engagé (même taux, même compte),
+ * chaque somme perçue rend exigible sa taxe (O.-L. n° 10/001, art. 25, 2° ;
+ * décret n° 011/42, art. 57), et toute imputation possible des paiements
+ * donne le même montant · `main` rendait 0 tant que le groupe n'était pas
+ * soldé. Le corpus ne disant pas quelle facture une somme partielle paie,
+ * un groupe de composition DIFFÉRENTE garde la règle de `main`, et il est
+ * NOMMÉ dans la déclaration.
  *
  * LES VALEURS ATTENDUES ONT ÉTÉ RELEVÉES EN FAISANT TOURNER LE MOTEUR DE
  * `main` sur ces mêmes jeux (fichier de `main` copié à côté le temps du
@@ -25,7 +34,8 @@ const mois = (m: string) => {
   return [debut, new Date(Date.UTC(debut.getUTCFullYear(), debut.getUTCMonth() + 1, 0))] as const;
 };
 
-type LigneGroupe = { debit: number; credit: number; date: string; avoir?: boolean };
+/** `ecriture` · l'identifiant de l'écriture qui porte la ligne (la facture, ou le règlement). */
+type LigneGroupe = { debit: number; credit: number; date: string; avoir?: boolean; ecriture?: string };
 
 /** Une ligne de TVA collectée, sa contrepartie de produit et sa ligne client lettrée dans le groupe donné. */
 function vente(p: {
@@ -50,7 +60,7 @@ function vente(p: {
         lignes: p.groupe.lignes.map((g) => ({
           debit: g.debit,
           credit: g.credit,
-          ecriture: { date: jour(g.date), createdAt: jour(g.date), _count: { lignes: g.avoir ? 1 : 0 } },
+          ecriture: { id: g.ecriture, date: jour(g.date), createdAt: jour(g.date), _count: { lignes: g.avoir ? 1 : 0 } },
         })),
       }
     : null;
@@ -62,6 +72,7 @@ function vente(p: {
     debit: 0,
     credit: p.tva,
     ecriture: {
+      id: p.id,
       date: jour(p.date),
       createdAt: jour(p.saisie ?? p.date),
       libelle: `Facture ${p.id}`,
@@ -101,7 +112,9 @@ function prisma(lignes: unknown[], liquidations: unknown[] = [], evenementsAudit
   return {
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't1', regimeExigibiliteTva: 'LIVRAISONS', referentiel: 'SYSCOHADA' }) },
     tauxTva: { findMany: jest.fn().mockResolvedValue([TAUX]) },
-    ecriture: { count: jest.fn().mockResolvedValue(0) },
+    // `findFirst` · une écriture d'à-nouveau existe dans le dossier (garde de
+    // `prolongerParLesANouveaux`).
+    ecriture: { count: jest.fn().mockResolvedValue(0), findFirst: jest.fn().mockResolvedValue({ id: 'an' }) },
     ligneEcriture: {
       findMany: jest.fn(({ where }: { where: { compteId?: { in?: string[] } } }) => Promise.resolve(where.compteId?.in ? [] : lignes)),
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
@@ -111,6 +124,9 @@ function prisma(lignes: unknown[], liquidations: unknown[] = [], evenementsAudit
     creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue(liquidations) },
     evenementAudit: { findMany: jest.fn().mockResolvedValue(evenementsAudit) },
+    // 2026 clôturé, 2027 et 2028 ouverts · la prolongation par les
+    // à-nouveaux ne se lance qu'avec un exercice clos.
+    exercice: { count: jest.fn().mockResolvedValue(3) },
   } as unknown as PrismaService;
 }
 
@@ -131,11 +147,11 @@ const JEUX: Record<string, { lignes: unknown[]; periodes: string[] }> = {
   },
   'groupe avec une facture de biens et une facture de services': (() => {
     const lignesGroupe: LigneGroupe[] = [
-      { debit: 580_000, credit: 0, date: '2026-01-10' },
-      { debit: 1_160_000, credit: 0, date: '2026-01-15' },
-      { debit: 0, credit: 1_000_000, date: '2026-03-12' },
+      { debit: 580_000, credit: 0, date: '2026-01-10', ecriture: 'G' },
+      { debit: 1_160_000, credit: 0, date: '2026-01-15', ecriture: 'S' },
+      { debit: 0, credit: 1_000_000, date: '2026-03-12', ecriture: 'R' },
     ];
-    const groupe = { statut: 'PARTIEL' as const, solde: 740_000, lignes: lignesGroupe };
+    const groupe = { id: 'GBS', statut: 'PARTIEL' as const, solde: 740_000, lignes: lignesGroupe };
     return {
       lignes: [
         vente({ id: 'G', date: '2026-01-10', tva: 80_000, ttc: 580_000, produit: '70110000', compteTva: '44310000', groupe }),
@@ -164,12 +180,13 @@ const JEUX: Record<string, { lignes: unknown[]; periodes: string[] }> = {
   })(),
   'groupe à deux factures (500 000 réglés)': (() => {
     const groupe = {
+      id: 'G2',
       statut: 'PARTIEL' as const,
       solde: 1_820_000,
       lignes: [
-        { debit: 1_160_000, credit: 0, date: '2026-12-10' },
-        { debit: 1_160_000, credit: 0, date: '2026-12-11' },
-        { debit: 0, credit: 500_000, date: '2026-12-20' },
+        { debit: 1_160_000, credit: 0, date: '2026-12-10', ecriture: 'F1' },
+        { debit: 1_160_000, credit: 0, date: '2026-12-11', ecriture: 'F2' },
+        { debit: 0, credit: 500_000, date: '2026-12-20', ecriture: 'R1' },
       ],
     };
     return {
@@ -182,14 +199,16 @@ const JEUX: Record<string, { lignes: unknown[]; periodes: string[] }> = {
   })(),
   'facture B ajoutée au groupe d’un paiement antérieur': (() => {
     // A (janvier) réglée 1 160 000 le 10 février ; B (mars) ajoutée au même
-    // groupe, qui devient partiel · B prend la date du paiement de février.
+    // groupe, qui devient partiel. `main` rendait 0 partout · la taxe de A,
+    // encaissée le 10 février, n'était plus exigible nulle part.
     const groupe = {
+      id: 'GAB',
       statut: 'PARTIEL' as const,
       solde: 1_160_000,
       lignes: [
-        { debit: 1_160_000, credit: 0, date: '2026-01-15' },
-        { debit: 0, credit: 1_160_000, date: '2026-02-10' },
-        { debit: 1_160_000, credit: 0, date: '2026-03-05' },
+        { debit: 1_160_000, credit: 0, date: '2026-01-15', ecriture: 'A' },
+        { debit: 0, credit: 1_160_000, date: '2026-02-10', ecriture: 'RA' },
+        { debit: 1_160_000, credit: 0, date: '2026-03-05', ecriture: 'B' },
       ],
     };
     return {
@@ -224,12 +243,95 @@ const RENDU_DE_MAIN: Record<string, Record<string, [number, number]>> = {
   'facture B ajoutée au groupe d’un paiement antérieur': { '2026-01': [0, 0], '2026-02': [0, 0], '2026-03': [0, 0] },
 };
 
-describe('Sans créance désignée, chaque groupe rend ce que rend main', () => {
+/**
+ * CE QUE REND LA LIGNE TVA 24-26, CAS PAR CAS.
+ *  · groupe à une facture · INCHANGÉ (règle de `main`, tranche unique).
+ *  · biens et services · INCHANGÉ, et NOMMÉ · la facture de biens est
+ *    exigible à sa livraison (art. 25, 1°), celle de services à
+ *    l'encaissement · la taxe exigible le 12 mars dépend de la facture que
+ *    le million paie, que le corpus ne dit pas.
+ *  · avoir dans le groupe · INCHANGÉ (une facture seule).
+ *  · deux factures de services, 500 000 réglés · CHANGÉ, 0 devient
+ *    500 000 × 160 000 / 1 160 000 = 68 965,52 (34 482,76 par facture), la
+ *    même taxe quelle que soit la facture payée.
+ *  · B ajoutée au groupe de A payée · CHANGÉ, février 0 devient 160 000, la
+ *    taxe de A encaissée le 10 février ; mars reste 0.
+ */
+const RENDU_ATTENDU: Record<string, Record<string, [number, number]>> = {
+  ...RENDU_DE_MAIN,
+  'groupe à deux factures (500 000 réglés)': { '2026-12': [68_965.52, 0] },
+  'facture B ajoutée au groupe d’un paiement antérieur': { '2026-01': [0, 0], '2026-02': [160_000, 0], '2026-03': [0, 0] },
+};
+
+describe('Sans créance désignée, chaque groupe rend ce que rend main, sauf le groupe à plusieurs factures de même composition (F1)', () => {
   for (const [nom, jeu] of Object.entries(JEUX)) {
     it(nom, async () => {
-      expect(await rendu(TauxTvaService as never, jeu)).toEqual(RENDU_DE_MAIN[nom]);
+      expect(await rendu(TauxTvaService as never, jeu)).toEqual(RENDU_ATTENDU[nom]);
     });
   }
+
+  it('F1 · deux prestations, 500 000 encaissés · le reste est en attente, rien n’est dit « indéterminé »', async () => {
+    const s = new TauxTvaService(prisma(JEUX['groupe à deux factures (500 000 réglés)'].lignes), {} as EcritureService);
+    const d = await s.declaration('t1', ...mois('2026-12'));
+    expect(d.tvaEnAttenteEncaissement).toBe(251_034.48);
+    expect(d.tvaEnAttenteImputationIndeterminee).toBe(0);
+    expect(d.groupesImputationIndeterminee).toEqual([]);
+  });
+
+  it('F1 · le solde du 15 janvier 2027 rend exigible le reste, 251 034,48, et le total des deux mois vaut 320 000', async () => {
+    const groupe = {
+      id: 'G2',
+      statut: 'SOLDE' as const,
+      solde: 0,
+      lignes: [
+        { debit: 1_160_000, credit: 0, date: '2026-12-10', ecriture: 'F1' },
+        { debit: 1_160_000, credit: 0, date: '2026-12-11', ecriture: 'F2' },
+        { debit: 0, credit: 500_000, date: '2026-12-20', ecriture: 'R1' },
+        { debit: 0, credit: 1_820_000, date: '2027-01-15', ecriture: 'R2' },
+      ],
+    };
+    const lignes = [
+      vente({ id: 'F1', date: '2026-12-10', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe }),
+      vente({ id: 'F2', date: '2026-12-11', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe }),
+    ];
+    const s = new TauxTvaService(prisma(lignes), {} as EcritureService);
+    expect((await s.declaration('t1', ...mois('2026-12'))).totalCollecte).toBe(68_965.52);
+    expect((await s.declaration('t1', ...mois('2027-01'))).totalCollecte).toBe(251_034.48);
+  });
+
+  it('F1 · biens et services · la fraction cumulée est gardée et le groupe est NOMMÉ avec la somme perçue', async () => {
+    const s = new TauxTvaService(prisma(JEUX['groupe avec une facture de biens et une facture de services'].lignes), {} as EcritureService);
+    const d = await s.declaration('t1', ...mois('2026-03'));
+    expect(d.groupesImputationIndeterminee).toEqual([
+      { factures: ['Facture S'], encaisse: 1_000_000, motif: 'factures de composition différente (taux, nature, exonération ou part non lettrée)' },
+    ]);
+    expect(d.groupesImputationIndetermineeTotal).toBe(1);
+    expect(d.tvaEnAttenteImputationIndeterminee).toBe(0);
+    expect(d.mentionExigibilite).toContain('ENCAISSEMENT DONT L’IMPUTATION N’EST PAS DÉTERMINÉE');
+    expect(d.mentionExigibilite).toContain('factures « Facture S », 1');
+  });
+
+  it('F1 · un mois liquidé reste FIGÉ · février liquidé avec A seule (160 000), B entrée en mars · rien de plus en mars ni en avril', async () => {
+    const jeu = JEUX['facture B ajoutée au groupe d’un paiement antérieur'];
+    const [debut, fin] = mois('2026-02');
+    const liq = [{ id: 'liqF', dateDebut: debut, dateFin: fin, createdAt: jour('2026-03-01'), tvaEncaissementFigee: { A: 160_000 } }];
+    const s = new TauxTvaService(prisma(jeu.lignes, liq), {} as EcritureService);
+    expect((await s.declaration('t1', debut, fin)).totalCollecte).toBe(160_000);
+    expect((await s.declaration('t1', ...mois('2026-03'))).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...mois('2026-04'))).totalCollecte).toBe(0);
+  });
+
+  it('F1 · un mois liquidé par l’ancien moteur (aucun figé) reste ce qu’il a déclaré · décembre 0, le reste reporté en janvier', async () => {
+    // L'ancien moteur a déclaré 0 en décembre (fraction cumulée nulle) ; la
+    // taxe de l'encaissement du 20 décembre, jamais déclarée, est reportée
+    // au premier jour non liquidé, une fois.
+    const jeu = JEUX['groupe à deux factures (500 000 réglés)'];
+    const [debut, fin] = mois('2026-12');
+    const liq = [{ id: 'liqD', dateDebut: debut, dateFin: fin, createdAt: jour('2027-01-05'), tvaEncaissementFigee: null }];
+    const s = new TauxTvaService(prisma(jeu.lignes, liq), {} as EcritureService);
+    expect((await s.declaration('t1', debut, fin)).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...mois('2027-01'))).totalCollecte).toBe(68_965.52);
+  });
 
   it('une liquidation de l’ancien moteur se relit telle qu’elle a déclaré · mars reste 57 931,03, avril 0', async () => {
     // Le groupe des biens et des services, mars liquidé par l'ancien moteur
@@ -442,5 +544,322 @@ describe('Cinquième reprise · saisie après la liquidation, reconstitution inc
     expect((await s.declaration('t1', ...mois('2027-02'))).totalCollecte).toBe(160_000);
     const appel = (p.ligneEcriture.findMany as jest.Mock).mock.calls.find((c) => c[0].where.compteId?.in)[0];
     expect(appel.select.lettrage.select.lignes.select.ecriture.select).toMatchObject({ createdAt: true, _count: expect.any(Object) });
+  });
+});
+
+describe('F1 · les briques du groupe à plusieurs factures', () => {
+  it('fractionsDuGroupe · une tranche par encaissement, sur le total des factures du groupe', () => {
+    expect(TauxTvaService.fractionsDuGroupe([{ date: jour('2026-12-20'), montant: 500_000 }], 2_320_000, false)).toEqual([
+      { date: jour('2026-12-20'), fraction: 500_000 / 2_320_000 },
+      { date: null, fraction: 1 - 500_000 / 2_320_000 },
+    ]);
+    // Soldé avec un écart d'arrondi · rattaché au dernier règlement.
+    const soldee = TauxTvaService.fractionsDuGroupe([{ date: jour('2026-12-20'), montant: 2_319_999.99 }], 2_320_000, true);
+    expect(soldee).toHaveLength(1);
+    expect(soldee[0].fraction).toBeCloseTo(1, 12);
+  });
+
+  it('repartirLibresEntreLignes · au centime, la somme rendue vaut celle du groupe, aucune ligne au-delà de sa taxe', () => {
+    const libres = [{ date: jour('2026-12-20'), montant: 68_965.52, origine: jour('2026-12-20') }];
+    const r = TauxTvaService.repartirLibresEntreLignes(libres, [160_000, 160_000]);
+    expect(r.map((x) => x[0].montant).reduce((t, v) => t + v, 0)).toBeCloseTo(68_965.52, 2);
+    const plafonnee = TauxTvaService.repartirLibresEntreLignes([{ date: jour('2026-02-10'), montant: 160_000, origine: jour('2026-02-10') }], [0, 160_000]);
+    expect(plafonnee[0]).toEqual([]);
+    expect(plafonnee[1][0].montant).toBe(160_000);
+  });
+
+  it('groupeAPlusieursFactures · null pour un groupe à une facture ou sans identifiant', () => {
+    const une = { debit: 1_160_000, credit: 0, lettrage: { id: 'G', statut: 'PARTIEL', solde: 1, lignes: [{ debit: 1_160_000, credit: 0 }, { debit: 0, credit: 5, ecriture: { date: jour('2026-01-02') } }] } };
+    expect(TauxTvaService.groupeAPlusieursFactures([une])).toBeNull();
+    const deux = { ...une, lettrage: { ...une.lettrage, lignes: [...une.lettrage.lignes, { debit: 10, credit: 0 }] } };
+    expect(TauxTvaService.groupeAPlusieursFactures([deux])?.id).toBe('G');
+    expect(TauxTvaService.groupeAPlusieursFactures([{ ...deux, lettrage: { ...deux.lettrage, id: undefined as unknown as string } }])).toBeNull();
+  });
+});
+
+describe('F1 à travers la clôture · le groupe partiel de N se poursuit par ses à-nouveaux', () => {
+  // Rejeu sur vraie base (2026-10-04) · F1 et F2 de décembre 2026, 500 000
+  // encaissés le 20/12, groupe PARTIEL à la clôture ; le report Détail
+  // recopie les trois lignes en 2027, lettrées avec le solde de 1 820 000 du
+  // 15/01/2027. Lue sur son seul groupe de 2026, la taxe ne voyait jamais
+  // le solde · 251 034,48 restaient en attente pour toujours.
+  const ligneN = (id: string, debit: number, credit: number, date: string, libelle: string) => ({
+    id: `t-${id}`,
+    compteId: 'c-client',
+    libelle: null,
+    dateEcheance: null,
+    deviseId: null,
+    montantDevise: null,
+    debit,
+    credit,
+    ecriture: { id, libelle, date: jour(date), createdAt: jour(date), estANouveauProvisoire: false, estGenereeParCloture: false, _count: { lignes: 0 } },
+  });
+  const groupeN = {
+    id: 'GN',
+    statut: 'PARTIEL' as const,
+    solde: 1_820_000,
+    soldeAt: null,
+    createdAt: jour('2026-12-20'),
+    lignes: [
+      ligneN('F1', 1_160_000, 0, '2026-12-10', 'Facture F1'),
+      ligneN('F2', 1_160_000, 0, '2026-12-11', 'Facture F2'),
+      ligneN('R1', 0, 500_000, '2026-12-20', 'Règlement partiel'),
+    ],
+  };
+  const ran = (id: string, debit: number, credit: number, libelle: string) => ({
+    id,
+    compteId: 'c-client',
+    libelle: `RAN détail 41110101 · ${libelle}`,
+    dateEcheance: null,
+    deviseId: null,
+    montantDevise: null,
+    debit,
+    credit,
+    ecriture: { id: 'AN27', libelle: 'À-nouveau', date: jour('2027-01-01'), createdAt: jour('2027-01-01'), estANouveauProvisoire: false, estGenereeParCloture: true, exerciceId: 'ex2027', _count: { lignes: 0 } },
+  });
+  const lignesGPrime = [
+    ran('anF1', 1_160_000, 0, 'Facture F1'),
+    ran('anF2', 1_160_000, 0, 'Facture F2'),
+    ran('anR1', 0, 500_000, 'Règlement partiel'),
+    ligneN('R2', 0, 1_820_000, '2027-01-15', 'Solde'),
+  ];
+  const groupePrime = { id: 'G27', statut: 'SOLDE', solde: 0, lignes: lignesGPrime };
+  const aNouveaux = lignesGPrime.slice(0, 3).map((l) => ({ ...l, lettrage: groupePrime }));
+  const ventes = () => [
+    vente({ id: 'F1', date: '2026-12-10', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null }),
+    vente({ id: 'F2', date: '2026-12-11', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null }),
+  ].map((v) => {
+    (v.ecriture.lignes[0] as { lettrage: unknown }).lettrage = groupeN;
+    return v;
+  });
+
+  function base(liquidations: unknown[], ran: unknown[]) {
+    const p = prisma(ventes(), liquidations);
+    (p.ligneEcriture.findMany as jest.Mock).mockImplementation(({ where }: { where: { compteId?: { in?: string[] } } }) =>
+      Promise.resolve(where.compteId?.in ? ran : ventes()),
+    );
+    return p;
+  }
+
+  it('décembre liquidé (figé) · janvier 2027 rend 251 034,48, le total vaut 320 000', async () => {
+    const [debut, fin] = mois('2026-12');
+    const liq = [{ id: 'liqD', dateDebut: debut, dateFin: fin, createdAt: jour('2027-01-05'), tvaEncaissementFigee: { F1: 34_482.76, F2: 34_482.76 } }];
+    const s = new TauxTvaService(base(liq, aNouveaux), {} as EcritureService);
+    expect((await s.declaration('t1', debut, fin)).totalCollecte).toBe(68_965.52);
+    const janvier = await s.declaration('t1', ...mois('2027-01'));
+    expect(janvier.totalCollecte).toBe(251_034.48);
+    expect(janvier.groupesImputationIndeterminee).toEqual([]);
+  });
+
+  it('deux reports candidats dans le même exercice · rien n’est relié (aucune devinette), et les factures sont NOMMÉES', async () => {
+    const doublon = { ...aNouveaux[0], id: 'anF1bis' };
+    const s = new TauxTvaService(base([], [...aNouveaux, doublon]), {} as EcritureService);
+    const d = await s.declaration('t1', ...mois('2027-01'));
+    expect(d.totalCollecte).toBe(0);
+    expect(d.rapprochementsANouveauAbandonnes).toEqual([
+      { facture: 'Facture F1', date: '2026-12-10', tva: 160_000, motif: 'plusieurs à-nouveaux candidats, rapprochement non fait' },
+      { facture: 'Facture F2', date: '2026-12-11', tva: 160_000, motif: 'plusieurs à-nouveaux candidats, rapprochement non fait' },
+    ]);
+    expect(d.rapprochementsANouveauAbandonnesTotal).toBe(2);
+    expect(d.mentionExigibilite).toContain('RAPPROCHEMENT PAR L’À-NOUVEAU NON FAIT · facture « Facture F1 » du 10/12/2026, 160');
+  });
+
+  it('relierAuxANouveaux · une facture non lettrée de N, deux à-nouveaux candidats lettrés en N+1 · NOMMÉE, jamais tue', async () => {
+    const f0 = vente({ id: 'F0', date: '2026-12-10', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null });
+    const groupe = {
+      statut: 'SOLDE',
+      solde: 0,
+      soldeAt: null,
+      createdAt: jour('2027-02-20'),
+      lignes: [{ debit: 0, credit: 1_160_000, ecriture: { date: jour('2027-02-15'), createdAt: jour('2027-02-15'), estANouveauProvisoire: false, estGenereeParCloture: false, _count: { lignes: 0 } } }],
+    };
+    const an = (id: string) => ({
+      id,
+      compteId: 'c-client',
+      debit: 1_160_000,
+      credit: 0,
+      deviseId: null,
+      montantDevise: null,
+      dateEcheance: null,
+      libelle: 'RAN détail 41110101 · Facture F0',
+      ecriture: { date: jour('2027-01-01'), exerciceId: 'ex2027' },
+      lettrage: groupe,
+    });
+    const p = prisma([f0]);
+    (p.ligneEcriture.findMany as jest.Mock).mockImplementation(({ where }: { where: { compteId?: { in?: string[] } } }) =>
+      Promise.resolve(where.compteId?.in ? [an('a1'), an('a2')] : [f0]),
+    );
+    const d = await new TauxTvaService(p, {} as EcritureService).declaration('t1', ...mois('2027-02'));
+    expect(d.totalCollecte).toBe(0);
+    expect(d.rapprochementsANouveauAbandonnes).toEqual([
+      { facture: 'Facture F0', date: '2026-12-10', tva: 160_000, motif: 'plusieurs à-nouveaux candidats, rapprochement non fait' },
+    ]);
+  });
+});
+
+describe('Second tour · l’ancien moteur ne voit jamais la prolongation, la chaîne se suit sur trois exercices', () => {
+  const ligneN = (id: string, debit: number, credit: number, date: string, libelle: string) => ({
+    id: `t-${id}`,
+    compteId: 'c-client',
+    libelle: null,
+    dateEcheance: null,
+    deviseId: null,
+    montantDevise: null,
+    debit,
+    credit,
+    ecriture: { id, libelle, date: jour(date), createdAt: jour(date), estANouveauProvisoire: false, estGenereeParCloture: false, _count: { lignes: 0 } },
+  });
+  const ran = (id: string, debit: number, credit: number, libelle: string, an: string, exercice: string, date: string) => ({
+    id,
+    compteId: 'c-client',
+    libelle: `RAN détail 41110101 · ${libelle}`,
+    dateEcheance: null,
+    deviseId: null,
+    montantDevise: null,
+    debit,
+    credit,
+    ecriture: { id: an, libelle: 'À-nouveau', date: jour(date), createdAt: jour(date), estANouveauProvisoire: false, estGenereeParCloture: true, exerciceId: exercice, _count: { lignes: 0 } },
+  });
+  const vendre = (id: string, date: string, groupe: unknown) => {
+    const v = vente({ id, date, tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null });
+    (v.ecriture.lignes[0] as { lettrage: unknown }).lettrage = groupe;
+    return v;
+  };
+  const base = (ventes: () => unknown[], aNouveaux: unknown[], liquidations: unknown[] = []) => {
+    const p = prisma(ventes(), liquidations);
+    (p.ligneEcriture.findMany as jest.Mock).mockImplementation(({ where }: { where: { compteId?: { in?: string[] } } }) =>
+      Promise.resolve(where.compteId?.in ? aNouveaux : ventes()),
+    );
+    return new TauxTvaService(p, {} as EcritureService);
+  };
+  const rendu = async (s: TauxTvaService, periodes: string[]) => {
+    const r: Record<string, number> = {};
+    for (const m of periodes) r[m] = (await s.declaration('t1', ...mois(m))).totalCollecte;
+    return r;
+  };
+  const liqs = [
+    { id: 'liqD', dateDebut: mois('2026-12')[0], dateFin: mois('2026-12')[1], createdAt: jour('2027-01-05'), tvaEncaissementFigee: null },
+    { id: 'liqJ', dateDebut: mois('2027-01')[0], dateFin: mois('2027-01')[1], createdAt: jour('2027-02-05'), tvaEncaissementFigee: null },
+  ];
+
+  // BLOQUANT 1 · deux factures, décembre et janvier liquidés par l'ancien
+  // moteur (0 et 0). La branche relisait janvier à 320 000, déclarés nulle
+  // part · la prolongation était réputée vue par l'ancien moteur.
+  const groupeDeux = {
+    id: 'GN',
+    statut: 'PARTIEL' as const,
+    solde: 1_820_000,
+    soldeAt: null,
+    createdAt: jour('2026-12-20'),
+    lignes: [ligneN('F1', 1_160_000, 0, '2026-12-10', 'Facture F1'), ligneN('F2', 1_160_000, 0, '2026-12-11', 'Facture F2'), ligneN('R1', 0, 500_000, '2026-12-20', 'Règlement partiel')],
+  };
+  const l27 = [
+    ran('anF1', 1_160_000, 0, 'Facture F1', 'AN27', 'ex2027', '2027-01-01'),
+    ran('anF2', 1_160_000, 0, 'Facture F2', 'AN27', 'ex2027', '2027-01-01'),
+    ran('anR1', 0, 500_000, 'Règlement partiel', 'AN27', 'ex2027', '2027-01-01'),
+    ligneN('R2', 0, 1_820_000, '2027-01-15', 'Solde'),
+  ];
+  const g27 = { id: 'G27', statut: 'SOLDE', solde: 0, lignes: l27 };
+  const ans27 = l27.slice(0, 3).map((l) => ({ ...l, lettrage: g27 }));
+
+  it('deux factures, liquidations de l’ancien moteur · décembre 0 et janvier 0 relus tels que versés, 320 000 au premier mois libre', async () => {
+    const s = base(() => [vendre('F1', '2026-12-10', groupeDeux), vendre('F2', '2026-12-11', groupeDeux)], ans27, liqs);
+    expect(await rendu(s, ['2026-12', '2027-01', '2027-02'])).toEqual({ '2026-12': 0, '2027-01': 0, '2027-02': 320_000 });
+  });
+
+  const groupeUne = {
+    id: 'G1',
+    statut: 'PARTIEL' as const,
+    solde: 660_000,
+    soldeAt: null,
+    createdAt: jour('2026-12-20'),
+    lignes: [ligneN('F1', 1_160_000, 0, '2026-12-10', 'Facture F1'), ligneN('R1', 0, 500_000, '2026-12-20', 'Règlement partiel')],
+  };
+  const u27 = [ran('anF1', 1_160_000, 0, 'Facture F1', 'AN27', 'ex2027', '2027-01-01'), ran('anR1', 0, 500_000, 'Règlement partiel', 'AN27', 'ex2027', '2027-01-01'), ligneN('R2', 0, 660_000, '2027-01-15', 'Solde')];
+  const gu27 = { id: 'G27', statut: 'SOLDE', solde: 0, lignes: u27 };
+  const ansU = u27.slice(0, 2).map((l) => ({ ...l, lettrage: gu27 }));
+
+  it('une facture, liquidations de l’ancien moteur · décembre 68 965,52 (versé), janvier 0 (versé), 91 034,48 en février', async () => {
+    const s = base(() => [vendre('F1', '2026-12-10', groupeUne)], ansU, liqs);
+    expect(await rendu(s, ['2026-12', '2027-01', '2027-02'])).toEqual({ '2026-12': 68_965.52, '2027-01': 0, '2027-02': 91_034.48 });
+  });
+
+  it('une facture, aucune liquidation · décembre 68 965,52, janvier 91 034,48', async () => {
+    const s = base(() => [vendre('F1', '2026-12-10', groupeUne)], ansU);
+    expect(await rendu(s, ['2026-12', '2027-01', '2027-02'])).toEqual({ '2026-12': 68_965.52, '2027-01': 91_034.48, '2027-02': 0 });
+  });
+
+  // BLOQUANT 2 · une facture réglée sur trois exercices. Le report de N+1,
+  // reconnu, était sauté · son propre report de N+2 se recomptait comme une
+  // seconde facture, et la taxe de 2027 et 2028 disparaissait.
+  const c27 = [ran('anF1', 1_160_000, 0, 'Facture F1', 'AN27', 'ex2027', '2027-01-01'), ran('anR1', 0, 500_000, 'Règlement partiel', 'AN27', 'ex2027', '2027-01-01'), ligneN('R2', 0, 300_000, '2027-06-15', 'Acompte 2')];
+  const gc27 = { id: 'G27', statut: 'PARTIEL', solde: 360_000, lignes: c27 };
+  const c28 = [
+    ran('an2F1', 1_160_000, 0, 'RAN détail 41110101 · Facture F1', 'AN28', 'ex2028', '2028-01-01'),
+    ran('an2R1', 0, 500_000, 'RAN détail 41110101 · Règlement partiel', 'AN28', 'ex2028', '2028-01-01'),
+    ran('an2R2', 0, 300_000, 'Acompte 2', 'AN28', 'ex2028', '2028-01-01'),
+    ligneN('R3', 0, 360_000, '2028-01-20', 'Solde'),
+  ];
+  const gc28 = { id: 'G28', statut: 'SOLDE', solde: 0, lignes: c28 };
+  const ansC27 = c27.slice(0, 2).map((l) => ({ ...l, lettrage: gc27 }));
+  const ansC = [...ansC27, ...c28.slice(0, 3).map((l) => ({ ...l, lettrage: gc28 }))];
+
+  it('chaîne N, N+1, N+2 · 68 965,52, 41 379,31, 49 655,17, soit 160 000, et rien n’est nommé', async () => {
+    const s = base(() => [vendre('F1', '2026-12-10', { ...groupeUne, id: 'G26' })], ansC);
+    expect(await rendu(s, ['2026-12', '2027-06', '2028-01'])).toEqual({ '2026-12': 68_965.52, '2027-06': 41_379.31, '2028-01': 49_655.17 });
+    const janvier = await s.declaration('t1', ...mois('2028-01'));
+    expect(janvier.groupesImputationIndeterminee).toEqual([]);
+    expect(janvier.tvaEnAttenteEncaissement).toBe(0);
+  });
+
+  it('chaîne · juin 2027, non liquidé, ne change pas à la saisie de 2028', async () => {
+    const avant = base(() => [vendre('F1', '2026-12-10', { ...groupeUne, id: 'G26' })], ansC27);
+    const apres = base(() => [vendre('F1', '2026-12-10', { ...groupeUne, id: 'G26' })], ansC);
+    expect((await avant.declaration('t1', ...mois('2027-06'))).totalCollecte).toBe(41_379.31);
+    expect((await apres.declaration('t1', ...mois('2027-06'))).totalCollecte).toBe(41_379.31);
+  });
+
+  it('à-nouveau PROVISOIRE, premier exercice non clos · le solde du 15/01/2027 lettré avec lui rend 91 034,48 en janvier', async () => {
+    // Troisième tour · la garde sur l'exercice clos ignorait l'à-nouveau
+    // provisoire, qui se lettre ; janvier, déclaré avant la clôture de 2026,
+    // rendait 0 sans un mot.
+    const provisoire = (l: ReturnType<typeof ran>) => ({ ...l, ecriture: { ...l.ecriture, estANouveauProvisoire: true, estGenereeParCloture: false } });
+    const p27 = [provisoire(u27[0] as ReturnType<typeof ran>), provisoire(u27[1] as ReturnType<typeof ran>), u27[2]];
+    const g = { id: 'G27', statut: 'SOLDE', solde: 0, lignes: p27 };
+    const ventes = () => [vendre('F1', '2026-12-10', groupeUne)];
+    const p = prisma(ventes());
+    (p.ligneEcriture.findMany as jest.Mock).mockImplementation(({ where }: { where: { compteId?: { in?: string[] } } }) =>
+      Promise.resolve(where.compteId?.in ? p27.slice(0, 2).map((l) => ({ ...l, lettrage: g })) : ventes()),
+    );
+    // Aucun exercice clôturé · 2026 est ouvert, 2027 aussi.
+    (p as unknown as { exercice: { count: jest.Mock } }).exercice.count.mockImplementation(({ where }: { where: { statut?: string } }) =>
+      Promise.resolve(where.statut ? 0 : 2),
+    );
+    const s = new TauxTvaService(p, {} as EcritureService);
+    expect(await rendu(s, ['2026-12', '2027-01'])).toEqual({ '2026-12': 68_965.52, '2027-01': 91_034.48 });
+    const d = await s.declaration('t1', ...mois('2027-01'));
+    expect(d.tvaEnAttenteEncaissement).toBe(0);
+  });
+
+  it('la taxe d’un encaissement se calcule sur le groupe, arrondie une fois · 1 000 000 sur deux factures rend 137 931,03', async () => {
+    const g = { ...groupeDeux, id: 'GR', solde: 1_320_000, lignes: [groupeDeux.lignes[0], groupeDeux.lignes[1], ligneN('R1', 0, 1_000_000, '2026-12-20', 'Acompte')] };
+    const s = base(() => [vendre('F1', '2026-12-10', g), vendre('F2', '2026-12-11', g)], []);
+    expect((await s.declaration('t1', ...mois('2026-12'))).totalCollecte).toBe(137_931.03);
+  });
+
+  it('sans écriture d’à-nouveau dans le dossier, aucun report n’est lu', async () => {
+    const p = prisma([vendre('F1', '2026-12-10', groupeUne)]);
+    (p as unknown as { ecriture: { findFirst: jest.Mock } }).ecriture.findFirst.mockResolvedValue(null);
+    await new TauxTvaService(p, {} as EcritureService).declaration('t1', ...mois('2026-12'));
+    expect((p.ligneEcriture.findMany as jest.Mock).mock.calls.some((c) => c[0].where.compteId?.in)).toBe(false);
+  });
+
+  it('un groupe d’à-nouveau au-delà de sa borne de lecture · rien n’est relié, et la facture est NOMMÉE', async () => {
+    const remplissage = Array.from({ length: 501 }, (_, i) => ligneN(`X${i}`, 1, 0, '2027-02-01', `Divers ${i}`));
+    const gTrop = { id: 'G27', statut: 'PARTIEL', solde: 1, lignes: [...u27, ...remplissage] };
+    const s = base(() => [vendre('F1', '2026-12-10', groupeUne)], u27.slice(0, 2).map((l) => ({ ...l, lettrage: gTrop })));
+    const d = await s.declaration('t1', ...mois('2027-01'));
+    expect(d.totalCollecte).toBe(0);
+    expect(d.rapprochementsANouveauAbandonnes.map((a) => a.motif)).toEqual(['groupe de lettrage de plus de 500 lignes, rapprochement non fait']);
   });
 });

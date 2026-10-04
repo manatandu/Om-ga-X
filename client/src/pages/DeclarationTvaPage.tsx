@@ -203,14 +203,20 @@ export function DeclarationTvaPage() {
             <div className="text-[11.5px] text-text-dim leading-[1.45]">{declaration.mentionExigibilite}</div>
             {declaration.tvaEnAttenteEncaissement > 0 && (
               <div className="mt-2 pt-2 border-t border-border font-mono text-[11.5px]">
-                TVA facturée sur la période et pas encore encaissée :{' '}
+                TVA facturée sur la période, pas encore exigible :{' '}
                 <span className="font-semibold text-warning">
                   {montant(declaration.tvaEnAttenteEncaissement)} CDF
-                </span>{' '}
+                </span>
+                {(declaration.tvaEnAttenteImputationIndeterminee ?? 0) > 0 && (
+                  <>
+                    {' '}dont {montant(declaration.tvaEnAttenteImputationIndeterminee ?? 0)} CDF sur des encaissements
+                    à imputer
+                  </>
+                )}{' '}
                 <Aide
-                  titre="TVA pas encore encaissée"
-                  texte="Le fait générateur d’une prestation est l’exécution du service · sa taxe n’est pas encore exigible tant que le client n’a pas réglé, et le devient sur la période de l’encaissement. Elle explique l’écart entre le chiffre d’affaires de la période et la taxe déclarée."
-                  source="Régime d’exigibilité · encaissements"
+                  titre="TVA pas encore exigible"
+                  texte="Le fait générateur d’une prestation est l’exécution du service, qui fait naître la taxe · elle devient exigible à l’encaissement du prix, des acomptes ou avances, et entre dans la déclaration de la période où la somme est perçue. Ce montant explique l’écart entre le chiffre d’affaires de la période et la taxe déclarée. Quand plusieurs factures de compositions différentes sont réglées ensemble, la part exigible dépend de la facture que chaque somme paie · la déclaration nomme ces encaissements à imputer."
+                  source="O.-L. n° 10/001, art. 24 et 25 ; décret n° 011/42, art. 57"
                 />
               </div>
             )}

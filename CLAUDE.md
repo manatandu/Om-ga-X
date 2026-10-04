@@ -806,7 +806,7 @@ déduction (`TauxTvaService.exigibilite`, `repartirEncaissement`,
 taxe d'une prestation impayée reste EN ATTENTE ; seul ce qui est réglé dans
 l'écriture (classe 5) ou imputé sur une avance (419, 409) l'est à sa date ; régime
 des débits inchangé. (2) UNE TRANCHE PAR RÈGLEMENT dans un groupe à une seule
-facture (B-2 d'A7, reprise seule) ; plusieurs factures, fraction cumulée, dit.
+facture (B-2 d'A7, reprise seule) ; plusieurs factures, voir la ligne TVA 24-26 (F1).
 (3) La créance de N réglée en N+1 se lit par SA ligne d'à-nouveau (même
 appariement que `paires-a-cheval.ts`), sans deviner · deux candidates, en attente.
 (4) UNE LIQUIDATION GARDE CE QU'ELLE A DÉCLARÉ · `LiquidationTva.tvaEncaissementFigee`
@@ -840,8 +840,24 @@ de ce qui reste en attente, sans toucher aucun groupe de lettrage, par la même
 mémoire (4) ; AUCUN PRORATA ENTRE FACTURES D'UN GROUPE (décision du 2026-10-04,
 convention qu'aucun texte ne fixe) · sans créance désignée, chaque groupe rend ce
 que rend `main` (`datesDuGroupeDeMain`, gelé par `tva-groupes-comme-main.spec.ts`),
-seules exceptions voulues la créance non lettrée et le groupe à UNE facture
-(tranche par règlement, sauf avoir dans le groupe) ; une facture dont une
+seules exceptions voulues la créance non lettrée, le groupe à UNE facture
+(tranche par règlement, sauf avoir dans le groupe) et, depuis la ligne TVA 24-26
+(F1, 2026-10-04), le groupe à PLUSIEURS factures de MÊME COMPOSITION (même taxe
+par franc engagé, même taux et compte, même part de l'art. 41) · chaque somme
+perçue rend exigible sa taxe (art. 25, 2° ; décret art. 57), la même quelle que
+soit l'imputation, que le corpus ne règle pas (`fractionsDuGroupe`), répartie
+dans le temps pour le GROUPE entier (un mois liquidé reste ce qu'il a déclaré,
+`repartirLibresEntreLignes`) ; de composition différente, règle de `main` et
+groupe NOMMÉ (`groupesImputationIndeterminee`, `tvaEnAttenteImputationIndeterminee`) ;
+un groupe PARTIEL d'un exercice clos se POURSUIT par les groupes de ses lignes
+d'à-nouveau, reports exclus (`prolongerParLesANouveaux`, même appariement que
+`relierAuxANouveaux`, une candidate par exercice), de proche en proche sur
+N+1, N+2… (un report se cherche lui-même plus loin), les lignes ajoutées
+jamais vues par l'ancien moteur (`createdAt` hors de toute liquidation), sans
+quoi le solde encaissé en N+1 ne rendait jamais la taxe exigible (rejeu sur
+vraie base, 2026-10-04) ; plusieurs reports candidats ou un groupe au-delà de
+sa borne de lecture · rien n'est relié et la facture est NOMMÉE
+(`rapprochementsANouveauAbandonnes`, motif) ; une facture dont une
 échéance seulement est lettrée ne date que sa part lettrée (`main` déclarait
 160 000 au paiement d'une échéance de 580 000 sur 1 160 000, 80 000 encaissés) ;
 une PERTE n'encaisse rien (art. 52, partie 2) ; une créance annulée ne désigne
