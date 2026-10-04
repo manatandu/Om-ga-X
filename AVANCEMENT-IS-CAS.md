@@ -57,10 +57,15 @@ Branche de sauvegarde `travail/is-cas`. Constat de départ ·
 - C09, perte de la période de création · « ces bénéfices » seuls viennent en
   déduction · la perte reste dans le premier exercice clos.
 
+- Rejeu sur base jetable (`iscas_1`, port 8119) · seize dossiers à
+  l'attendu ; C04 et C05 lus à travers les clôtures 2026 à 2029. Colonne
+  « OmegaX » de `docs/cas-chiffres/is.md` mise à jour.
+- `prisma migrate diff` contre le schéma · aucune différence.
+
 ## Reste
 
-- Rejeu `scripts/cas-chiffres/rejeu-is.mjs` sur vraie base, colonne
-  « OmegaX » de `docs/cas-chiffres/is.md` à mettre à jour.
+- Relecture (silent-failure-hunter, typescript-reviewer, react-reviewer)
+  par la session principale avant intégration.
 - Relevé en attente · l'écriture A11 à deux lignes pour l'art. 12, al. 3.
 
 ## Vérification

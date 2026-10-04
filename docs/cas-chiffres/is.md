@@ -12,6 +12,14 @@ Rejeu · 2026-10-04, base PostgreSQL 16 jetable, serveur compilé
 (`node dist/main.js`), seize dossiers créés par l'inscription, écritures au
 journal OD, validation, clôtures annuelles 2026 à 2029 traversées au cas 4.
 
+**CORRIGÉ le 2026-10-04 (branche `travail/is-cas`).** Les écarts ci-dessous
+ont été corrigés et le script rejoué sur une base PostgreSQL 16 jetable,
+serveur compilé de la branche · les seize dossiers rendent l'attendu, C04 et
+C05 lus avant ET après les clôtures de 2026 à 2029. La colonne « OmegaX » des
+tableaux porte le rejeu APRÈS correction ; ce qu'OmegaX rendait avant est
+gardé entre parenthèses (« avant : … »). Décisions et questions rendues ·
+section « Après correction » en fin de document.
+
 ## Sources lues
 
 Toutes dans les compétences installées, lues le 2026-10-04 avant d'écrire un
@@ -71,8 +79,8 @@ Rappel des règles lues, une fois pour toutes :
 
 | Cas | Ce qu'OmegaX rend | Attendu | Écart | Cause (fichier:ligne) |
 |---|---|---|---|---|
-| **C05** · report déficitaire au bord de la fenêtre | IS 2030 = **177 000** (déficit imputé 410 000, base 590 000) | **150 000** (déficit 500 000, base 500 000) | **+27 000** d'impôt ; acomptes 2031 surévalués de 8 100, 8 100, 5 400 | `fiscalite.service.ts:979-1008` · la fenêtre de lecture commence au troisième exercice précédent, si bien que le bénéfice de 2028 est réimputé sur le déficit de 2027 alors qu'OmegaX lui-même l'avait imputé sur celui de 2026 en lisant 2029. Voir le cas. |
-| **C09** · premier exercice de plus de douze mois (création le 1er septembre 2026) | IS = **1 530 000** sur 16 mois ; « AUCUN acompte n'est dû » en 2027 | **300 000** (période du 1er septembre au 31 décembre 2026) **+ 1 500 000** (exercice clos le 31 décembre 2027) = **1 800 000** ; acomptes 2027 de **90 000, 90 000, 60 000** | **−270 000** d'impôt ; 240 000 d'acomptes dits non dus (exposition à l'amende de 50 % de l'acompte non versé, LPF art. 98 bis [LPF4]) | `fiscalite.service.ts:1382-1409` (un exercice = une période imposable) et `:1399-1403`, `:1471` (« sans exercice antérieur ») · l'art. 12, al. 3 [T2] n'est appliqué nulle part. |
+| **C05** · report déficitaire au bord de la fenêtre · CORRIGÉ (rejoué depuis le premier exercice, `report-deficitaire.ts`) | IS 2030 = **177 000** (déficit imputé 410 000, base 590 000) | **150 000** (déficit 500 000, base 500 000) | **+27 000** d'impôt ; acomptes 2031 surévalués de 8 100, 8 100, 5 400 | `fiscalite.service.ts:979-1008` · la fenêtre de lecture commence au troisième exercice précédent, si bien que le bénéfice de 2028 est réimputé sur le déficit de 2027 alors qu'OmegaX lui-même l'avait imputé sur celui de 2026 en lisant 2029. Voir le cas. |
+| **C09** · premier exercice de plus de douze mois (création le 1er septembre 2026) · CORRIGÉ (`periode-creation.ts`) | IS = **1 530 000** sur 16 mois ; « AUCUN acompte n'est dû » en 2027 | **300 000** (période du 1er septembre au 31 décembre 2026) **+ 1 500 000** (exercice clos le 31 décembre 2027) = **1 800 000** ; acomptes 2027 de **90 000, 90 000, 60 000** | **−270 000** d'impôt ; 240 000 d'acomptes dits non dus (exposition à l'amende de 50 % de l'acompte non versé, LPF art. 98 bis [LPF4]) | `fiscalite.service.ts:1382-1409` (un exercice = une période imposable) et `:1399-1403`, `:1471` (« sans exercice antérieur ») · l'art. 12, al. 3 [T2] n'est appliqué nulle part. |
 
 ### Montant juste, mais hypothèse non dite à l'utilisateur
 
@@ -181,7 +189,7 @@ validés.
 
 | Grandeur | Attendu | OmegaX | Écart |
 |---|---|---|---|
-| Impôt affiché à l'écran du résultat fiscal | 600 000, ou un avertissement que 8 000 000 de charges sont au brouillard | **3 000 000**, aucune observation sur le brouillard | **+2 400 000 affichés sans réserve** |
+| Impôt affiché à l'écran du résultat fiscal | 600 000, ou un avertissement que 8 000 000 de charges sont au brouillard | 3 000 000, `definitif` faux, « CHIFFRE PROVISOIRE · 1 écriture(s) au brouillard […] changeraient le résultat comptable de −8 000 000 » en tête, bandeau « Calcul provisoire » (avant : aucune observation) | dit |
 | Écriture A11 | refusée tant que la charge n'est pas validée | refusée : « 1 écriture(s) au brouillard touchent les classes 6 à 8 » | 0 |
 
 Montant juste au sens du livre-journal (art. 22, 2°), hypothèse non dite à
@@ -205,7 +213,7 @@ Données · chiffre d'affaires 50 000 000 ; achats 53 000 000.
 | Impôt dû | 500 000 (minimum) | 500 000, `minimumApplique` vrai | 0 |
 | Écriture A11 | D 895 500 000 / C 441 (lecture d'OmegaX · la fiche du compte 89 ouvre 895 « Impôt minimum forfaitaire ») | 89500000 D 500 000 / 44100000 C | 0 |
 | Acomptes 2027 | 150 000 · 150 000 · 100 000 | idem | 0 |
-| Libellé | « chiffre d'affaires déclaré » | « 1 % du chiffre d'affaires déclaré », calculé sur les 701 à 707 sans le dire | H1 non dite |
+| Libellé | « chiffre d'affaires déclaré » | « 1 % du chiffre d'affaires déclaré », et la lecture « comptes 701 à 707 (poste XB) » dite dans chaque branche de l'explication et sur chaque plafond assis sur le chiffre d'affaires (avant : non dite) | dit |
 
 ### C03 · Égalité entre l'impôt au taux et le minimum (SARL)
 
@@ -270,9 +278,9 @@ Déficits · D1 = 100 000 (2026, reportable jusqu'en 2029) ; D2 = 500 000
 |---|---|---|---|
 | 2028 | 600 000 · 100 000 | 600 000 · 100 000 | 0 |
 | 2029 | 540 000 (D1 40 000 + D2 500 000) · 100 000 | 540 000 · 100 000 | 0 |
-| 2030 | **500 000** · **150 000** | **410 000** · **177 000** (base 590 000) | **+27 000 d'impôt** ; acomptes 2031 53 100 · 53 100 · 35 400 au lieu de 45 000 · 45 000 · 30 000 |
+| 2030 | **500 000** · **150 000** | **500 000** · **150 000**, acomptes 2031 45 000 · 45 000 · 30 000 ; identique avant et après les clôtures de 2026 à 2029 (avant : 410 000 · 177 000) | 0 |
 
-Montant faux (H5). OmegaX se contredit d'un exercice à l'autre · en 2029, il
+Corrigé · le report se rejoue du premier exercice du dossier, chaque perte dans sa fenêtre (`report-deficitaire.ts`). Constat d'origine · montant faux (H5). OmegaX se contredisait d'un exercice à l'autre · en 2029, il
 lit 540 000, ce qui suppose que le bénéfice de 2028 a consommé D1 ; en 2030, sa
 fenêtre (2027 à 2029) ne voit plus D1 et fait consommer à ce même bénéfice
 D2, qui tombe à 410 000. Le texte ne fixe pas l'ordre d'imputation ; la règle
@@ -364,13 +372,13 @@ Données · du 1er septembre au 31 décembre 2026 · chiffre d'affaires
 
 | Grandeur | Attendu | OmegaX | Écart |
 |---|---|---|---|
-| Impôt de la période de création | 300 000 | non calculé | **−300 000** |
-| Impôt du premier exercice | 1 500 000 | 1 530 000 (30 % × 5 100 000) | +30 000 |
-| Total | **1 800 000** | **1 530 000** | **−270 000** |
-| Acomptes 2027 | 90 000 · 90 000 · 60 000 | « AUCUN acompte n'est dû au titre de la présente année » | **240 000 dits non dus** |
-| Écriture A11 | deux impôts, chacun dans son exercice fiscal | une proposition de 1 530 000, aucun motif de refus | proposée sur le mauvais montant |
+| Impôt de la période de création | 300 000 | 300 000 (minimum retenu, chiffre d'affaires de la période 30 000 000 ; avant : non calculé) | 0 |
+| Impôt du premier exercice | 1 500 000 | 1 500 000 (5 100 000 − 100 000 ; avant : 1 530 000) | 0 |
+| Total | **1 800 000** | **1 800 000** (`impotTotalExercice` ; avant : 1 530 000) | 0 |
+| Acomptes 2027 | 90 000 · 90 000 · 60 000 | 90 000 · 90 000 · 60 000 au 25 juillet, 25 septembre, 25 novembre 2027 (avant : « AUCUN acompte n'est dû ») | 0 |
+| Écriture A11 | deux impôts, chacun dans son exercice fiscal | refusée avec les deux lignes nommées · D 89500000 300 000, D 89110000 1 500 000, C 44100000 1 800 000 (avant : proposée à 1 530 000) | issue dite ; écriture à deux lignes au relevé en attente |
 
-Montant faux (H3, H4). L'écart vient du minimum de la période de création, qui
+Corrigé (`periode-creation.ts`) · le bénéfice de la période se lit au livre-journal au 31 décembre, ou se DÉCLARE d'après les comptes intermédiaires (`resultatPeriodeCreationSaisi`), qui prime. Constat d'origine · montant faux (H3, H4). L'écart vient du minimum de la période de création, qui
 n'existe que si cette période est imposée à part ; quand les deux périodes sont
 bénéficiaires au-dessus du minimum, le total coïncide, et seul le calendrier
 (déclaration 2027, acomptes 2027) est faux.
@@ -388,12 +396,11 @@ Données · 2025 · chiffre d'affaires 10 000 000, achats 9 000 000 (bénéfice
 
 | Grandeur | Attendu (lecture à confirmer) | OmegaX | Écart |
 |---|---|---|---|
-| Impôt affiché | 1 500 000 pour 2026, la part 2025 sous l'ancien texte | 1 800 000 (30 % × 6 000 000), dit « SIMULATION » | 300 000, dit |
-| Écriture A11 | constat de l'impôt 2026 | refusée : « l'exercice ouvre avant le 1er janvier 2026 […] L'impôt réellement dû se constate à la main » | geste refusé, issue dite (saisie manuelle) |
+| Impôt affiché | 1 500 000 pour 2026, la part 2025 sous l'ancien texte | 1 500 000, sous la loi (`simulationAvantLaLoi` faux) ; période de 2025 lue (bénéfice 1 000 000, déduit), son impôt non chiffré et dit (avant : 1 800 000 dit « SIMULATION ») | 0 |
+| Écriture A11 | constat de l'impôt 2026 | refusée avec issue · D 89110000 1 500 000 plus l'impôt déclaré pour 2025, au crédit du 441 (avant : refusée, « la loi ne régissait pas cet exercice ») | issue dite |
 
-À trancher (le corpus ne dit rien de la transition). Hypothèse dite par OmegaX,
-mais la phrase « la loi n° 23/053 ne régissait pas cet exercice » est
-inexacte pour sa part de 2026 si l'art. 12, al. 3 s'applique.
+Tranché par la loi (art. 12, al. 3 et art. 153) et corrigé · voir « Après
+correction ».
 
 ### C11 · Acomptes versés, imputés, et acomptes suivants avec supplément (SARL)
 
@@ -444,7 +451,7 @@ Conforme.
 | Grandeur | Attendu | OmegaX | Écart |
 |---|---|---|---|
 | (a) Impôt dû | 1 234 600 | 1 234 600 | 0 |
-| (a) Compte de charge | 891 ou 895 selon l'ordre arrondi / comparaison | 89110000, libellé « égaux » | hypothèse non dite (H7) |
+| (a) Compte de charge | 891 ou 895 selon l'ordre arrondi / comparaison | 89110000, libellé « égaux APRÈS l'arrondi de l'art. 150 […] pas avant », valeurs avant arrondi (1 234 566,6 et 1 234 567,89) et lecture inverse (895) dites (avant : « égaux ») | dit |
 | (a) Acomptes | 370 380 · 370 380 · 246 920 | idem | 0 |
 | (b) Impôt dû | 300 100 | 300 100 | 0 |
 
@@ -501,7 +508,7 @@ Données · 2025 · chiffre d'affaires 10 000 000, achats 12 000 000
 |---|---|---|---|
 | Vue 2025 | non applicable (simulation) | impôt 100 000, avertissement « SIMULATION […] Il ne doit servir […] ni de base à un report déficitaire » | dit |
 | Vue 2026 · déficit imputé · impôt | 2 000 000 · 900 000 (sous la supposition) | 2 000 000 · 900 000 | 0 |
-| Vue 2026 · réserve | le déficit vient d'un exercice antérieur à la loi, recalculé | **aucune** (seules les observations génériques des art. 51, al. 2 et 52, 1°) | hypothèse non dite (H6) |
+| Vue 2026 · réserve | le déficit vient d'un exercice antérieur à la loi, recalculé | « DÉFICIT D'AVANT LA LOI, RECALCULÉ · 2 000 000 de l'exercice clos le 2025-12-31 […] » et `simulation` sur la ligne du détail (avant : aucune) | dit |
 
 ---
 
@@ -519,3 +526,57 @@ dropdb -h 127.0.0.1 -p 55439 -U postgres casis_1
 
 Le script imprime un résultat par cas et écrit le détail (montants,
 observations, écriture A11) dans le fichier JSON donné en argument.
+
+---
+
+## Après correction (2026-10-04, branche `travail/is-cas`)
+
+Rejeu · base PostgreSQL 16 jetable `iscas_1`, serveur compilé de la branche
+sur le port 8119, `scripts/cas-chiffres/rejeu-is.mjs`. Les seize dossiers
+rendent l'attendu de ce document. C04 traverse les clôtures de 2026 à 2029 ;
+C05 est lu avant puis après ces quatre clôtures et rend les mêmes chiffres
+(2028 · 600 000 et 100 000 ; 2029 · 540 000 et 100 000 ; 2030 · 500 000 et
+150 000).
+
+### Tranché par la loi (compilation DGI au 19/07/2026, lue le 2026-10-04)
+
+- **C09, minimum sur la période de création** · oui. Art. 12, al. 3,
+  « l'impôt est néanmoins établi sur les bénéfices réalisés au cours de la
+  période » · c'est l'Impôt sur les Sociétés, que le chapitre 3 du Titre II
+  liquide par l'art. 56 et l'art. 57 ; l'art. 57 assujettit « les sociétés »
+  sans exception de période. Le minimum joue au chiffre d'affaires de la
+  période.
+- **C10** · la part de 2026 relève de la loi n° 23/053. Art. 12, al. 3 · la
+  période de création est imposée à part et ses bénéfices « viennent ensuite
+  en déduction des résultats du premier exercice comptable clos » · l'impôt de
+  ce premier exercice clos porte sur 2026, après l'entrée en vigueur du
+  1er janvier 2026 (art. 153). La période de 2025 relève du texte qui la
+  régissait (art. 152, 2°, hors corpus de calcul) · non chiffrée, dite.
+- **C15** · ce qui s'impute en 2026 est la perte CONSTATÉE pour 2025 (art. 51,
+  al. 1er, « les pertes constatées au cours d'un exercice »), sous le texte de
+  l'époque · la loi n'en commande aucun recalcul (art. 153). L'imputation
+  suit l'art. 51 en vigueur. OmegaX garde le montant recalculé, le dit
+  simulation dans la vue 2026 et invite à saisir le déficit constaté.
+- **C12a** · ni l'art. 150 (« le montant de l'Impôt sur les Sociétés, de
+  l'Impôt minimum […] ») ni l'art. 57 ne fixent l'ordre de l'arrondi et de la
+  comparaison · l'ordre actuel est gardé, le libellé dit l'égalité « après
+  l'arrondi » et la lecture inverse.
+
+### Rendu à Manasse (le corpus ne tranche pas) · rien codé
+
+- **C14** · l'art. 57 dit « Les sociétés sont assujetties à un impôt
+  minimum » ; l'art. 1er distingue « les sociétés et autres personnes
+  morales », et l'art. 3, al. 2, 2° soumet à l'IS les « personnes morales de
+  droit public n'ayant pas la forme d'une société commerciale ». Le minimum
+  vise-t-il ces dernières ? OmegaX l'applique toujours (sans effet au cas).
+- **C09, chiffre d'affaires du minimum du premier exercice clos** · l'art. 12,
+  al. 3 ne déduit que les BÉNÉFICES de la période de création · OmegaX garde
+  le chiffre d'affaires de l'exercice entier (lecture littérale d'avant), et
+  le dit à l'écran.
+- **C09, perte de la période de création** · « ces bénéfices » seuls viennent
+  en déduction · une perte reste dans le résultat du premier exercice clos.
+
+### Relevé en attente
+
+- L'écriture A11 ne porte qu'un impôt et qu'un compte · au premier exercice
+  long, elle se refuse en nommant les deux lignes à passer à la main.
