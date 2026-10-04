@@ -13,9 +13,11 @@ import type { EcritureService } from '../comptabilite/ecriture.service';
  * marquée, ou une annulation qui laisse une postérieure partir d'une
  * provision qui n'existe plus.
  */
-type LigneLue = { lettre: string | null; lettrageId: string | null; rapprochementId: string | null };
+type LigneLue = { lettre: string | null; lettrageId: string | null; rapprochementId: string | null; compte?: { numero: string } };
 type Ecr = { id: string; statut: StatutEcriture; numeroPiece: number; exercice: { statut: StatutExercice }; lignes: LigneLue[] };
-const libre: LigneLue = { lettre: null, lettrageId: null, rapprochementId: null };
+const libre: LigneLue = { lettre: null, lettrageId: null, rapprochementId: null, compte: { numero: '65910000' } };
+/** L'écriture de provision par défaut · D 6591 / C 4991 (A5 ter, second tour · les versions se filtrent sur ses comptes). */
+const provisionLignes: LigneLue[] = [libre, { ...libre, compte: { numero: '49910000' } }];
 const ecr = (id: string, statut: StatutEcriture, exercice: StatutExercice = StatutExercice.OUVERT, lignes: LigneLue[] = [libre, libre]): Ecr => ({
   id,
   statut,
@@ -32,6 +34,7 @@ function monter(p: {
   annuleeLe?: Date | null;
   posterieure?: { dateReevaluation: Date } | null;
   version?: { compteProvision: string; dateReference: Date } | null;
+  versions?: Array<{ compteProvision: string; dateReference: Date }>;
   declaree?: boolean;
 }) {
   const reeval = {
@@ -42,7 +45,7 @@ function monter(p: {
     annuleeLe: p.annuleeLe ?? null,
     exercice: { statut: p.exercice ?? StatutExercice.OUVERT, dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') },
     ecritureEcarts: p.ecarts === undefined ? ecr('ecarts', StatutEcriture.VALIDEE) : p.ecarts,
-    ecritureProvision: p.provision === undefined ? ecr('prov', StatutEcriture.BROUILLARD) : p.provision,
+    ecritureProvision: p.provision === undefined ? ecr('prov', StatutEcriture.BROUILLARD, StatutExercice.OUVERT, provisionLignes) : p.provision,
     ecritureExtourne: p.extourne ?? null,
     contrePassationDeclareeId: p.declaree ? 'od' : null,
   };
@@ -64,7 +67,7 @@ function monter(p: {
         where.id ? reeval : (p.posterieure ?? null),
       ),
     },
-    provisionChangeOuverture: { findFirst: jest.fn(async () => p.version ?? null) },
+    provisionChangeOuverture: { findMany: jest.fn(async () => (p.versions ?? (p.version ? [p.version] : []))) },
     verrouProvisionChange: { deleteMany: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'verrou' }) },
     $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   };
@@ -117,8 +120,33 @@ describe('annuler une réévaluation des devises (D6)', () => {
     await expect(posterieure.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/2027-12-31, postérieure, n'est pas annulée/);
     expect(posterieure.prisma.$transaction).not.toHaveBeenCalled();
     const version = monter({ version: { compteProvision: '4991', dateReference: new Date('2027-01-01') } });
-    await expect(version.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/déclarée au 2027-01-01 \(compte 4991\) s'appuie/);
+    await expect(version.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/déclarée au 2027-01-01 \(compte 4991\) s’appuie/);
     expect(version.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('A5 ter · l’issue du refus de version LÈVE le refus · retirer, jamais « une nouvelle version », et toutes nommées', async () => {
+    const deux = monter({
+      versions: [
+        { compteProvision: '4991', dateReference: new Date('2027-01-01') },
+        { compteProvision: '4991', dateReference: new Date('2028-01-01') },
+      ],
+    });
+    const refus = deux.service.annulerReevaluation('t', 'u', 'r1', 'm');
+    await expect(refus).rejects.toThrow(/au 2027-01-01 \(compte 4991\), au 2028-01-01 \(compte 4991\) s’appuient/);
+    await expect(deux.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/retirez-les \(Devises, « Dossier repris », « Retirer »\), annulez la réévaluation/);
+    await expect(deux.service.annulerReevaluation('t', 'u', 'r1', 'm')).rejects.toThrow(/Une version nouvelle ne lève pas ce refus/);
+    // Seules les versions dont le COMPTE a été mouvementé par sa provision (second tour) · un 599 déclaré à zéro pour un litige n'en dépend pas.
+    const litige = monter({ versions: [{ compteProvision: '599', dateReference: new Date('2027-01-01') }] });
+    await litige.service.annulerReevaluation('t', 'u', 'r1', 'm');
+    expect(litige.prisma.$transaction).toHaveBeenCalled();
+    // Une réévaluation sans écriture de provision · aucune version n'en dépend.
+    const sansProvision = monter({ provision: null, versions: [{ compteProvision: '4991', dateReference: new Date('2027-01-01') }] });
+    await sansProvision.service.annulerReevaluation('t', 'u', 'r1', 'm');
+    expect(sansProvision.prisma.$transaction).toHaveBeenCalled();
+    // Les versions retirées, plus rien ne retient l'annulation (même doublure, liste vide).
+    const apres = monter({ versions: [] });
+    await apres.service.annulerReevaluation('t', 'u', 'r1', 'm');
+    expect(apres.prisma.$transaction).toHaveBeenCalled();
   });
 
   it('troisième tour · contre-passée À LA MAIN et déclarée · refus nommé, l’issue dite (retirer la déclaration, puis corriger l’écriture manuelle), rien écrit', async () => {
@@ -164,7 +192,7 @@ describe('annuler une réévaluation des devises (D6)', () => {
     );
     expect(lettree.prisma.$transaction).not.toHaveBeenCalled();
     expect(lettree.inscrire).not.toHaveBeenCalled();
-    const partielle = monter({ provision: ecr('prov', StatutEcriture.BROUILLARD, StatutExercice.OUVERT, [{ lettre: null, lettrageId: 'p', rapprochementId: null }]) });
+    const partielle = monter({ provision: ecr('prov', StatutEcriture.BROUILLARD, StatutExercice.OUVERT, [{ lettre: null, lettrageId: 'p', rapprochementId: null, compte: { numero: '49910000' } }]) });
     await expect(partielle.service.annulerReevaluation('t', 'u', 'r1', 'motif')).rejects.toThrow(/provision n° 7 sont lettrées \(lettrage partiel\)/);
     const pointee = monter({ ecarts: ecr('ecarts', StatutEcriture.VALIDEE, StatutExercice.OUVERT, [{ lettre: null, lettrageId: null, rapprochementId: 'r' }]) });
     await expect(pointee.service.annulerReevaluation('t', 'u', 'r1', 'motif')).rejects.toThrow(/pointées dans un rapprochement bancaire.*puis annulez la réévaluation/);

@@ -34,27 +34,52 @@ import {
 import { CreerDeviseDto, DeclarerVentilationDisponibilitesDto, ModifierDeviseDto, PoserCoursDto, ReevaluerDto } from './dto/devises.dto';
 
 /**
- * Comptes de la réévaluation, par racine du plan SYCEBNL.
- *
- * Le SYCEBNL ne subdivise NI 478 NI 479 (Partie 2 ch. 3, compte 47) et ne
- * connaît qu'un seul couple de provision pour perte de change. Ces racines
- * génériques y résolvent donc sans ambiguïté. Le SYSCOHADA, lui, subdivise
- * les deux comptes en quatre chacun ET fait dépendre le couple de provision
- * de la nature de la position · voir plus bas. Servir ces racines-ci à un
- * dossier SYSCOHADA imputait tout sur la première subdivision venue.
+ * Comptes de change des DISPONIBILITÉS, aux deux plans · l'écart d'une
+ * banque ou d'une caisse est RÉALISÉ (AUDCIF art. 57) et va droit au 676 ou
+ * au 776. Les écarts de conversion des créances et dettes passent par les
+ * subdivisions du 478 et du 479 (`racineEcartDeConversion`).
  */
 const RACINE = {
-  ecartActif: '478', // Écarts de conversion-Actif · perte probable
-  ecartPassif: '479', // Écarts de conversion-Passif · gain probable
-  provision: '194', // Provisions pour pertes de change
-  dotationProvision: '6971', // Dotations aux provisions pour risques et charges (financières)
   perteRealisee: RACINES_CHANGE_DISPONIBILITES.perte, // Pertes de change financières
   gainRealise: RACINES_CHANGE_DISPONIBILITES.gain, // Gains de change financiers
 } as const;
 
 /**
- * Nature d'une position en devise au sens du SYSCOHADA · elle commande À LA
- * FOIS la subdivision de l'écart de conversion et le couple de provision.
+ * LA BASCULE DES DOSSIERS SYCEBNL (ligne A5 ter, second tour). Avant la
+ * ligne, le module portait TOUTE perte probable au 194 par le 6971. La règle
+ * corrigée (fiche SYCEBNL du compte 19, exclusions · « les provisions
+ * correspondant à des risques à moins d'un an (utiliser 499 – Provisions
+ * pour risques à court terme) ») range le court terme au 4991, au 4998 ou au
+ * 599. Le premier ajustement qui suit REPREND alors au 7971 ce que le 194
+ * portait pour ces positions et DOTE la bonne famille · résultat net juste,
+ * mais les soldes intermédiaires de l'exercice de bascule portent le
+ * déplacement (financier contre exploitation ou H.A.O.). Aucune écriture de
+ * reclassement n'est passée, aucun texte n'en imposant · c'est DIT, chiffré,
+ * quand une même réévaluation reprend au 194 et dote une famille à court
+ * terme. `null` sinon.
+ */
+export function avertissementBasculeSycebnl(
+  referentiel: Referentiel,
+  ajustements: Array<{ compteProvision: string; compteDotation: string; compteReprise: string; dotation: number; reprise: number }>,
+): string | null {
+  if (referentiel !== Referentiel.SYCEBNL) return null;
+  const long = ajustements.find((a) => a.compteProvision === '194' && a.reprise > 0.005);
+  const courts = ajustements.filter((a) => a.compteProvision !== '194' && a.dotation > 0.005);
+  if (!long || courts.length === 0) return null;
+  const dotations = courts.map((a) => `${a.dotation.toFixed(2)} au ${a.compteProvision} par le ${a.compteDotation}`).join(', ');
+  return (
+    `Cette réévaluation reprend ${long.reprise.toFixed(2)} au 194 par le ${long.compteReprise} et dote ${dotations}. Si la ` +
+    "provision du 194 couvrait des créances ou des dettes à moins d'un an (le module les y portait toutes jusqu'à la ligne A5 " +
+    "ter), c'est la correction de leur classement · fiche SYCEBNL du compte 19, exclusions, « les provisions correspondant à " +
+    "des risques à moins d'un an (utiliser 499 – Provisions pour risques à court terme) ». Le résultat net n'en dépend pas, " +
+    "mais les soldes intermédiaires de cet exercice portent le déplacement (résultat financier contre exploitation ou H.A.O.) · " +
+    "à dire aux Notes annexes. Aucune écriture de reclassement n'est passée."
+  );
+}
+
+/**
+ * Nature d'une position en devise · elle commande À LA FOIS la subdivision
+ * de l'écart de conversion et le couple de provision.
  *
  * AUDCIF Titre VIII ch. 22 § 2.3 sépare les deux mondes explicitement :
  * « Créances et dettes commerciales → résultat d'exploitation » d'un côté,
@@ -64,30 +89,90 @@ const RACINE = {
  * La nature se lit sur la RACINE du compte réévalué, faute de mieux : la
  * position est un agrégat (compte, devise) et ne porte aucune échéance. Les
  * comptes de tiers de la classe 4 sont d'exploitation ; les emprunts et
- * dettes financières (16, 17, 18) et les immobilisations financières (26, 27)
+ * dettes financières (16, 17, 18) et les immobilisations financières (27)
  * sont financiers. Les disponibilités de la classe 5 ne passent jamais ici :
  * leur écart est RÉALISÉ, pas latent (voir `estTresorerie`).
+ *
+ * H.A.O. · AU SYCEBNL SEUL (ligne A5 ter). Son plan subdivise l'écart des
+ * créances et dettes « d'exploitation et HAO » en deux (Partie 2 ch. 2, compte
+ * 47 · « 4781 diminution des créances d'exploitation et HAO [47811, 47818] »,
+ * « 4783 augmentation des dettes d'exploitation et HAO [47831, 47838] », 479
+ * « symétrique du 478 »), et sa fiche du compte 49 ouvre un 4998 « sur
+ * opérations H.A.O. », doté « par le débit du compte 839 » et repris « par le
+ * crédit du compte 849 ». Le compte 48 « Créances et dettes hors activités
+ * ordinaires » est donc H.A.O. au SYCEBNL, SAUF son 481 (ci-dessous) · y
+ * restent le 484 « Autres dettes H.A.O. », le 485 « Créances sur cessions
+ * d'immobilisations », le 486 « Dettes et créances des legs et dons
+ * d'immobilisations » et le 488 « Autres créances H.A.O. » (fiche SYCEBNL du
+ * compte 48). Le plan SYSCOHADA n'ouvre que 4781 « Diminution des créances
+ * d'exploitation » (Titre VII, compte 47) · ses autres 48 y restent
+ * d'exploitation, comme avant.
+ *
+ * FOURNISSEURS D'INVESTISSEMENTS, FINANCIERS À COURT TERME AUX DEUX PLANS
+ * (A5 ter, second tour). AUDCIF Titre VIII ch. 22 § 1.1 · quand le prix payé
+ * d'une immobilisation diffère du coût initial « par suite de modalités
+ * spéciales de règlement (cas de paiement à terme libellé en devises), la
+ * différence constitue une charge ou un produit FINANCIER ». La ligne A6 range
+ * déjà le 481 (aux deux) et le 404 du SYSCOHADA en FINANCIÈRE au réalisé
+ * (`reglements/ecart-change-realise.ts`, `natureDuCompte`, au 676 / 776) ·
+ * la perte latente sur la même dette ne peut pas être une charge
+ * d'exploitation ou H.A.O. à la clôture, puis financière au règlement. Dette
+ * fournisseur, elle est à moins d'un an · fiche SYCEBNL du compte 59, le 599
+ * reçoit les « pertes probables à moins d'un an ayant leur origine dans une
+ * opération de nature financière ; exemple : provisions pour pertes de
+ * change » ; au SYSCOHADA, le 4997 « sur opérations financières » (fiche du
+ * compte 49 ; § 2.3, « risques à court terme »). Son écart va à la
+ * subdivision des DETTES FINANCIÈRES (4784 / 4794, plans des deux
+ * référentiels, compte 47), lecture d'OmegaX · le plan ne nomme ni 481 ni
+ * 404, et sa seule autre voie, « dettes d'exploitation », contredirait le
+ * § 1.1.
+ *
+ * INTÉRÊTS COURUS, À COURT TERME (A5 ter, second tour). Le 276 (aux deux),
+ * le 166 et le 176 du SYSCOHADA, le 186 du SYCEBNL portent des intérêts dus
+ * à la prochaine échéance, pas le principal durable · la fiche du compte 19
+ * des deux plans ne vise que les risques « à plus d'un an » et renvoie les
+ * autres « à moins d'un an » au 499 (SYCEBNL, exclusions ; AUDCIF, fiche du
+ * compte 19, « → 499 ») ; financiers, ils vont au court terme financier
+ * (4997 au SYSCOHADA, 599 au SYCEBNL). Le classement du principal (16, 17,
+ * 18, 27) ne les suit pas · lecture d'OmegaX, un intérêt couru n'étant pas
+ * dit échu à plus d'un an par aucune fiche.
  */
-type NaturePosition = 'EXPLOITATION' | 'FINANCIER_COURT' | 'FINANCIER_LONG';
+type NaturePosition = 'EXPLOITATION' | 'HAO' | 'FINANCIER_COURT' | 'FINANCIER_LONG';
 
 /**
  * Ressources et emplois DURABLES · classe 1 (emprunts et dettes financières)
- * et immobilisations financières. Ils sont à plus d'un an par construction du
- * plan, d'où le long terme.
+ * et immobilisations financières (27, hors titres immobilisés 274, qui ne se
+ * réévaluent pas · `perimetre-reevaluation.ts`). Ils sont à plus d'un an par
+ * construction du plan, d'où le long terme.
  */
 const RACINES_FINANCIERES_LONGUES = /^(16|17|18|26|27)/;
 
 /**
- * Financier à MOINS d'un an · 50 titres de placement, 54 instruments de
- * trésorerie (SYSCOHADA seulement, le SYCEBNL n'a pas de 54) et 56 banques,
- * crédits de trésorerie et d'escompte, qui est une DETTE bancaire à court
- * terme et non une disponibilité.
+ * Financier à MOINS d'un an · 54 instruments de trésorerie (SYSCOHADA
+ * seulement, le SYCEBNL n'a pas de 54), 506 intérêts courus sur titres de
+ * placement, et 56 banques, crédits de trésorerie et d'escompte, qui est une
+ * DETTE bancaire à court terme et non une disponibilité. Les titres de
+ * placement eux-mêmes (50) ne se réévaluent pas (Titre VIII ch. 22 § 1.3).
  */
 const RACINES_FINANCIERES_COURTES = /^(50|54|56)/;
 
-function naturePosition(numero: string): NaturePosition {
+/** Intérêts courus des emprunts, des dettes de location acquisition et des immobilisations financières, par plan. */
+const INTERETS_COURUS: Record<Referentiel, RegExp> = {
+  [Referentiel.SYSCOHADA]: /^(166|176|276)/,
+  [Referentiel.SYCEBNL]: /^(186|276)/,
+};
+
+/** Fournisseurs d'investissements, par plan (fiches des comptes 40 et 48 ; le SYCEBNL n'ouvre pas de 404). */
+const FOURNISSEURS_D_INVESTISSEMENTS: Record<Referentiel, RegExp> = {
+  [Referentiel.SYSCOHADA]: /^(404|481)/,
+  [Referentiel.SYCEBNL]: /^481/,
+};
+
+function naturePosition(numero: string, referentiel: Referentiel): NaturePosition {
+  if (INTERETS_COURUS[referentiel].test(numero) || FOURNISSEURS_D_INVESTISSEMENTS[referentiel].test(numero)) return 'FINANCIER_COURT';
   if (RACINES_FINANCIERES_LONGUES.test(numero)) return 'FINANCIER_LONG';
   if (RACINES_FINANCIERES_COURTES.test(numero)) return 'FINANCIER_COURT';
+  if (referentiel === Referentiel.SYCEBNL && numero.startsWith('48')) return 'HAO';
   // Tout le reste est d'exploitation, y compris le 51 « Valeurs à encaisser » :
   // un chèque ou un effet reçu d'un client est la queue d'une créance
   // COMMERCIALE, pas une opération financière.
@@ -101,10 +186,12 @@ function naturePosition(numero: string): NaturePosition {
  *                                      4782 diminution des créances financières
  *                                      4783 augmentation des dettes d'exploitation
  *                                      4784 augmentation des dettes financières
+ *                                      4786 différences d'évaluation sur instruments de trésorerie
  *   479 Écarts de conversion-passif  · 4791 augmentation des créances d'exploitation
  *                                      4792 augmentation des créances financières
  *                                      4793 diminution des dettes d'exploitation
  *                                      4794 diminution des dettes financières
+ *                                      4797 différences d'évaluation sur instruments de trésorerie
  *
  * Les intitulés disent le SENS de la position autant que celui de l'écart :
  * une perte sur une CRÉANCE est une diminution de créance, une perte sur une
@@ -112,13 +199,59 @@ function naturePosition(numero: string): NaturePosition {
  * croisées, et c'est ce que faisait perdre la résolution par racine à trois
  * chiffres · elle rendait toujours 4781 et 4791, si bien qu'une dette
  * fournisseur en devise s'imputait sur la subdivision des créances.
+ *
+ * LE 54 VA AU 4786 ET AU 4797 (ligne A5 ter). AUDCIF Titre VIII ch. 22
+ * § 3.2.2 · « Les comptes 4786 Différences d'évaluation sur instruments de
+ * trésorerie – ACTIF et 4797 Différences d'évaluation sur instruments de
+ * trésorerie – PASSIF enregistrent les différences d'évaluation en
+ * contrepartie du compte 54 » (même phrase à la fiche du compte 47, Titre
+ * VII) ; art. 58-2 · les variations de valeur « à l'actif pour une perte
+ * latente, au passif pour un gain latent ». Un 54 en devise s'imputait sur
+ * 4782 ou 4784, subdivisions des créances et dettes financières qu'il n'est
+ * pas. La provision de sa perte reste celle du court terme financier (6791 /
+ * 4997, § 2.3 ; art. 58-2, « constitution d'une provision financière »).
  */
-function racineEcartSyscohada(estCreance: boolean, estPerte: boolean, nature: NaturePosition): string {
+function racineEcartSyscohada(estCreance: boolean, estPerte: boolean, nature: NaturePosition, numero = ''): string {
+  if (numero.startsWith('54')) return estPerte ? '4786' : '4797';
   // Les subdivisions ne distinguent que exploitation / financier · la
   // distinction court terme / long terme ne joue que sur la PROVISION.
-  const exploitation = nature === 'EXPLOITATION';
+  const exploitation = nature === 'EXPLOITATION' || nature === 'HAO';
   if (estPerte) return estCreance ? (exploitation ? '4781' : '4782') : exploitation ? '4783' : '4784';
   return estCreance ? (exploitation ? '4791' : '4792') : exploitation ? '4793' : '4794';
+}
+
+/**
+ * Subdivision de l'écart de conversion SYCEBNL (ligne A5 ter). Le code
+ * servait les racines génériques 478 et 479 « que le SYCEBNL ne subdivise
+ * pas » · or son plan des comptes les subdivise (Partie 2 ch. 2, compte 47) ·
+ * « 478 Écarts de conversion - actif (4781 diminution des créances
+ * d'exploitation et HAO [47811, 47818], 4782 diminution des créances
+ * financières, 4783 augmentation des dettes d'exploitation et HAO [47831,
+ * 47838], 4784 augmentation des dettes financières, 4786 différences
+ * d'évaluation sur instruments de trésorerie, 4788 différences compensées par
+ * couverture de change) » et « 479 Écarts de conversion – passif (4791 à
+ * 4798, symétrique du 478) », semés comme tels (`compte-seed.ts`). Seule la
+ * fiche du compte 47 (Partie 2 ch. 3) n'en dit que « 478 » et « 479 ». La
+ * racine générique rendait la première subdivision venue, 47811000 et
+ * 47911000 · une dette fournisseur en devise s'imputait sur la diminution
+ * des CRÉANCES d'exploitation, un emprunt (18) aussi.
+ */
+function racineEcartSycebnl(estCreance: boolean, estPerte: boolean, nature: NaturePosition): string {
+  if (nature === 'FINANCIER_COURT' || nature === 'FINANCIER_LONG') {
+    if (estPerte) return estCreance ? '4782' : '4784';
+    return estCreance ? '4792' : '4794';
+  }
+  const hao = nature === 'HAO';
+  if (estPerte) return estCreance ? (hao ? '47818' : '47811') : hao ? '47838' : '47831';
+  return estCreance ? (hao ? '47918' : '47911') : hao ? '47938' : '47931';
+}
+
+/** La subdivision de l'écart de conversion d'une position, dans le plan de SON référentiel. */
+export function racineEcartDeConversion(referentiel: Referentiel, numero: string, estCreance: boolean, estPerte: boolean): string {
+  const nature = naturePosition(numero, referentiel);
+  return referentiel === Referentiel.SYSCOHADA
+    ? racineEcartSyscohada(estCreance, estPerte, nature, numero)
+    : racineEcartSycebnl(estCreance, estPerte, nature);
 }
 
 /**
@@ -145,7 +278,7 @@ function racineEcartSyscohada(estCreance: boolean, estPerte: boolean, nature: Na
  * du compte : la classe 1 et les immobilisations financières sont durables
  * par construction du plan, la trésorerie financière ne l'est pas.
  */
-export const PROVISION_SYSCOHADA: Record<NaturePosition, FamilleProvisionChange> = {
+export const PROVISION_SYSCOHADA: Record<Exclude<NaturePosition, 'HAO'>, FamilleProvisionChange> = {
   EXPLOITATION: { dotation: '6591', provision: '4991', reprise: '7591' },
   FINANCIER_COURT: { dotation: '6791', provision: '4997', reprise: '7791' },
   FINANCIER_LONG: { dotation: '6971', provision: '194', reprise: '7971' },
@@ -183,9 +316,32 @@ export const PROVISION_SYSCOHADA: Record<NaturePosition, FamilleProvisionChange>
  * déjà la consolidation (`FAMILLES_PROVISION_CHANGE`). Le texte ne tranche
  * pas · le 759 de la fiche 49 serait l'autre lecture.
  *
- * Au SYCEBNL, un seul couple · 194 « Provisions pour pertes de change » (fiche
- * du compte 19), dotée par le 6971 et reprise par le 7971 (fiches des comptes
- * 69 et 79, mêmes numéros aux deux semis). Le SYCEBNL n'ouvre pas de 4997.
+ * AU SYCEBNL, QUATRE FAMILLES, ET NON LE SEUL 194 (ligne A5 ter). La règle
+ * « SYCEBNL, 194 seul » contredisait la fiche du compte 19 du SYCEBNL (Partie
+ * 2 ch. 3), qui ne vise que les risques « comportant un élément d'incertitude
+ * quant à leur montant ou leur réalisation prévisible à plus d'un an » et
+ * EXCLUT « les provisions correspondant à des risques à moins d'un an
+ * (utiliser 499 – Provisions pour risques à court terme) ». Le texte tranche ·
+ *  · EXPLOITATION · 4991 « sur opérations d'exploitation », crédité « par le
+ *    débit du compte 659 », débité de sa reprise « par le crédit du compte
+ *    759 » (fiche du compte 49) · 6591 « Provisions sur risques à court
+ *    terme », 7591 « Reprises provisions sur risques à court terme » (semis) ;
+ *  · H.A.O. (le 48) · 4998 « sur opérations H.A.O. », par le débit du 839 et
+ *    le crédit du 849 (même fiche) ;
+ *  · FINANCIER À COURT TERME (56) · 599 « Provisions pour risques à court
+ *    terme à caractère financier », que la fiche du compte 59 illustre
+ *    elle-même · « les pertes probables à moins d'un an ayant leur origine
+ *    dans une opération de nature financière ; exemple : provisions pour
+ *    pertes de change », crédité « par le débit du compte 679 », repris « par
+ *    le crédit du compte 779 » · 6791, 7791 (semis). Le SYCEBNL n'ouvre pas
+ *    de 4997 ;
+ *  · FINANCIER À LONG TERME (18, 27) · 194 « Provisions pour pertes de
+ *    change », doté par le 6971, repris par le 7971 (fiches des comptes 19,
+ *    69 et 79).
+ * Une provision qu'une réévaluation antérieure avait passée au 194 pour une
+ * créance d'exploitation n'est ni retouchée ni déclarée · la réévaluation
+ * suivante la REPREND au 7971 (aucune perte requise au 194) et dote la
+ * famille juste, l'ajustement du § 2.3 faisant le reclassement.
  */
 export interface FamilleProvisionChange {
   provision: string;
@@ -193,7 +349,32 @@ export interface FamilleProvisionChange {
   reprise: string;
 }
 
-export const PROVISION_SYCEBNL: FamilleProvisionChange = { dotation: '6971', provision: '194', reprise: '7971' };
+export const PROVISION_SYCEBNL: Record<NaturePosition, FamilleProvisionChange> = {
+  EXPLOITATION: { dotation: '6591', provision: '4991', reprise: '7591' },
+  HAO: { dotation: '839', provision: '4998', reprise: '849' },
+  FINANCIER_COURT: { dotation: '6791', provision: '599', reprise: '7791' },
+  FINANCIER_LONG: { dotation: '6971', provision: '194', reprise: '7971' },
+};
+
+/** Les familles de provision pour pertes de change du référentiel. */
+export function famillesProvisionChange(referentiel: Referentiel): FamilleProvisionChange[] {
+  return referentiel === Referentiel.SYSCOHADA ? Object.values(PROVISION_SYSCOHADA) : Object.values(PROVISION_SYCEBNL);
+}
+
+/** La famille qui provisionne la perte latente d'une position, dans son référentiel. */
+export function familleProvisionDe(referentiel: Referentiel, numero: string): FamilleProvisionChange {
+  const nature = naturePosition(numero, referentiel);
+  if (referentiel === Referentiel.SYCEBNL) return PROVISION_SYCEBNL[nature];
+  return PROVISION_SYSCOHADA[nature === 'HAO' ? 'EXPLOITATION' : nature];
+}
+
+/** La nature d'une famille, dite au libellé de l'écriture de provision. */
+export function natureDeLaFamille(compteProvision: string): string {
+  if (compteProvision === '4991') return 'exploitation';
+  if (compteProvision === '4998') return 'H.A.O.';
+  if (compteProvision === '194') return 'financier, long terme';
+  return 'financier, court terme';
+}
 
 /**
  * Ajustement d'une famille de provision à la réévaluation · AUDCIF Titre VIII
@@ -437,14 +618,12 @@ export function versionEnVigueur<T extends { dateReference: Date }>(versions: T[
 }
 
 /**
- * Comptes de provision qu'une déclaration d'ouverture peut viser · ceux de la
- * famille du référentiel, et eux seuls. Au SYCEBNL, le 194 seul (pas de 4997
- * au semis, et l'unique couple du référentiel est 194 · 6971 / 7971).
+ * Comptes de provision qu'une déclaration d'ouverture peut viser · ceux des
+ * familles du référentiel, et eux seuls. Au SYCEBNL, 4991, 4998, 599 et 194
+ * (ligne A5 ter · aucun 4997 au semis, `PROVISION_SYCEBNL`).
  */
 export function comptesProvisionDeclarables(referentiel: Referentiel): string[] {
-  return referentiel === Referentiel.SYSCOHADA
-    ? Object.values(PROVISION_SYSCOHADA).map((f) => f.provision)
-    : [PROVISION_SYCEBNL.provision];
+  return famillesProvisionChange(referentiel).map((f) => f.provision);
 }
 
 /**
@@ -1063,12 +1242,11 @@ export class DevisesService {
     // La provision requise se range par FAMILLE (le compte de provision que la
     // nature de la position appelle), puis se rapproche de celle que les
     // réévaluations antérieures ont laissée. Seul l'écart se passe.
-    const estSyscohada = tenant.referentiel === Referentiel.SYSCOHADA;
-    const familles = estSyscohada ? Object.values(PROVISION_SYSCOHADA) : [PROVISION_SYCEBNL];
+    const familles = famillesProvisionChange(tenant.referentiel);
     const requiseParFamille = new Map<string, number>();
     for (const p of resultat) {
       if (p.provisionnable <= 0.005) continue;
-      const f = estSyscohada ? PROVISION_SYSCOHADA[naturePosition(p.numero)] : PROVISION_SYCEBNL;
+      const f = familleProvisionDe(tenant.referentiel, p.numero);
       requiseParFamille.set(f.provision, (requiseParFamille.get(f.provision) ?? 0) + p.provisionnable);
     }
     const enPlace = await this.provisionsEnPlace(tenantId, exercice, date, familles);
@@ -1101,7 +1279,7 @@ export class DevisesService {
     const avertissements: string[] = [...enPlace.avertissements, ...reports.reserves, ...avertissementsGroupes];
     for (const p of resultat) {
       if (p.estTresorerie || p.ecart >= 0) continue;
-      if (!RACINES_FINANCIERES_LONGUES.test(p.numero)) continue;
+      if (naturePosition(p.numero, tenant.referentiel) !== 'FINANCIER_LONG') continue;
       avertissements.push(
         `${p.numero} ${p.intitule} (${p.deviseCode}) · perte de change de ` +
           `${Math.abs(p.ecart).toFixed(2)} sur un emprunt, un prêt ou une immobilisation financière. ` +
@@ -1111,6 +1289,8 @@ export class DevisesService {
           'potentiel total dans les Notes annexes.',
       );
     }
+    const bascule = avertissementBasculeSycebnl(tenant.referentiel, ajustementsProvision);
+    if (bascule) avertissements.push(bascule);
 
     return {
       dateReevaluation: date.toISOString().slice(0, 10),
@@ -1371,8 +1551,7 @@ export class DevisesService {
       // la contre-passation » seulement quand les comptes portent l'écart en
       // place ; sinon l'issue que le calcul prouve.
       const attendus = montantsAContrePasser(partage.aContrePasser);
-      referentiel ??=
-        (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { referentiel: true } }))?.referentiel ?? Referentiel.SYSCOHADA;
+      referentiel ??= await this.referentielDuDossier(tenantId);
       const manuelles = this.motifEtatDeLEcart(await this.etatDeLEcart(tenantId, r, attendus), attendus, jour, referentiel);
       manquantes.push({
         jour,
@@ -1633,11 +1812,7 @@ export class DevisesService {
     // Le référentiel du dossier décide des comptes à servir · il ne décide
     // PAS du calcul, qui est identique des deux côtés (l'écart se mesure de
     // la même façon). Seule l'imputation change, et elle change beaucoup.
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { referentiel: true },
-    });
-    const estSyscohada = tenant?.referentiel === Referentiel.SYSCOHADA;
+    const referentiel = await this.referentielDuDossier(tenantId);
 
     // --- Écriture des écarts ------------------------------------------------
     const lignes: { compteId: string; debit?: number; credit?: number; libelle: string }[] = [];
@@ -1648,16 +1823,13 @@ export class DevisesService {
           p.ecart < 0
           ? await compte(RACINE.perteRealisee)
           : await compte(RACINE.gainRealise)
-        : estSyscohada
-          ? // Créance ou dette · le SYSCOHADA veut la subdivision qui croise
-            // le sens de la POSITION (créance = solde débiteur) et celui de
-            // l'ÉCART. `valeurComptable` est un débit moins un crédit : un
-            // solde nul est traité comme une créance, cas sans conséquence
-            // puisqu'une position nulle est écartée en amont.
-            await compte(racineEcartSyscohada(p.valeurComptable >= 0, p.ecart < 0, naturePosition(p.numero)))
-          : p.ecart < 0
-            ? await compte(RACINE.ecartActif)
-            : await compte(RACINE.ecartPassif);
+        : // Créance ou dette · les DEUX plans veulent la subdivision qui
+          // croise le sens de la POSITION (créance = solde débiteur) et celui
+          // de l'ÉCART (ligne A5 ter pour le SYCEBNL). `valeurComptable` est
+          // un débit moins un crédit : un solde nul est traité comme une
+          // créance, cas sans conséquence puisqu'une position nulle est
+          // écartée en amont.
+          await compte(racineEcartDeConversion(referentiel, p.numero, p.valeurComptable >= 0, p.ecart < 0));
       const abs = Math.abs(p.ecart);
       const libelle = `Réévaluation ${p.deviseCode} au ${rapport.dateReevaluation}`;
       if (p.ecart > 0) {
@@ -1683,13 +1855,13 @@ export class DevisesService {
 
     // --- Ajustement de la provision ----------------------------------------
     //
-    // La provision se VENTILE par nature de position en SYSCOHADA : une perte
-    // sur créance client est une charge d'exploitation (6591 / 4991), une
-    // perte sur emprunt en devise une charge financière (6971 / 194). Une
-    // dotation unique, comme le faisait le chemin hérité du SYCEBNL, range
-    // tout au financier et fausse les deux soldes intermédiaires sans qu'un
-    // seul total du compte de résultat ne bouge. En SYCEBNL, toutes les
-    // positions retombent sur l'unique couple du référentiel.
+    // La provision se VENTILE par nature de position, aux deux plans : une
+    // perte sur créance client est une charge d'exploitation (6591 / 4991),
+    // une perte sur emprunt en devise une charge financière (6971 / 194). Une
+    // dotation unique range tout au financier et fausse les soldes
+    // intermédiaires sans qu'un seul total du compte de résultat ne bouge.
+    // Au SYCEBNL aussi depuis la ligne A5 ter (fiche du compte 19,
+    // exclusions · le risque à moins d'un an va au 499 ou au 599).
     //
     // Et seul l'ÉCART avec la provision en place se passe (ch. 22 § 2.3) ·
     // dotation de la hausse, reprise de la baisse, au compte de SA famille.
@@ -1699,7 +1871,7 @@ export class DevisesService {
     const lignesProvision: { compteId: string; debit?: number; credit?: number; libelle: string }[] = [];
     for (const a of rapport.ajustementsProvision) {
       if (a.dotation <= 0.005 && a.reprise <= 0.005) continue;
-      const nature = estSyscohada ? ` (${a.compteProvision === '4991' ? 'exploitation' : 'financier'})` : '';
+      const nature = ` (${natureDeLaFamille(a.compteProvision)})`;
       const provision = await compte(a.compteProvision);
       if (a.dotation > 0.005) {
         const dotation = await compte(a.compteDotation);
@@ -1882,6 +2054,8 @@ export class DevisesService {
       );
     }
     let avertissementEtat: string | null = null;
+    let avertissementPosterieures: string | null = null;
+    let avertissementOuverture: string | null = null;
     // LA CONTRE-PASSATION SUIT L'ÉTAT RÉEL DES COMPTES (cinquième tour,
     // `etatDeLEcart`) · elle ne passe que si le 478, le 479 et le tiers
     // portent l'écart en place ; déjà contre-passé à la main, une ouverture
@@ -1905,7 +2079,7 @@ export class DevisesService {
         etat,
         attendus,
         reeval.dateReevaluation.toISOString().slice(0, 10),
-        tenant?.referentiel ?? Referentiel.SYSCOHADA,
+        await this.referentielDuDossier(tenantId),
       );
       // ÉTAT ATTESTÉ (vérification finale) · le refus devient un
       // avertissement, SAUF quand l'état dit l'écart DÉJÀ contre-passé (ou
@@ -1914,6 +2088,33 @@ export class DevisesService {
       const deuxieme = etat.jugement?.verdict === 'CONTRE_PASSEE' || etat.jugement?.verdict === 'AMBIGU';
       if (refusEtat && (!reeval.etatAtteste || deuxieme)) throw new BadRequestException(refusEtat);
       if (refusEtat) avertissementEtat = avertissementEtatAtteste(reeval, refusEtat);
+      // DITE, JAMAIS À ANNULER (ligne A5 ter) · la réévaluation de la cible
+      // passée avant cette contre-passation garde son écart, mesuré depuis le
+      // coût historique ; la contre-passation, datée de l'ouverture, retire
+      // celui de N et rien d'autre.
+      // SANS À-NOUVEAU QUI FAIT FOI (ligne A5 ter, relevé (e) d'A5 bis) ·
+      // la contre-passation est juste (Application 84 · « au 01/01/N+1 »),
+      // jugée sur la clôture reconstituée de N, mais le livre de cet exercice
+      // ne porte pas encore l'écart de N au 478 / 479 et au tiers (l'à-nouveau
+      // provisoire ne lit que le livre-journal validé) · la balance de cet
+      // exercice montre la contre-passation seule jusqu'à la clôture de N ou
+      // au bilan d'ouverture. Dit, jamais refusé · refuser imposerait de
+      // clôturer N avant toute contre-passation, que rien n'exige.
+      if (!etat.ouvertureFiableCible) {
+        avertissementOuverture =
+          "L'ouverture de cet exercice n'est pas encore l'à-nouveau de clôture de l'exercice précédent · la contre-passation est " +
+          "passée sur sa clôture reconstituée. Jusqu'à cette clôture (ou au bilan d'ouverture), la balance de cet exercice peut " +
+          'montrer la contre-passation sans l’écart de conversion qu’elle inverse ; elle s’équilibre quand l’à-nouveau de clôture ' +
+          'porte cet écart.';
+      }
+      if (etat.posterieures.length > 0) {
+        const dates = etat.posterieures.map((r) => `du ${r.dateReevaluation.toISOString().slice(0, 10)}`).join(', ');
+        avertissementPosterieures =
+          `La réévaluation ${dates}, passée dans cet exercice avant cette contre-passation, a mesuré les créances et dettes ` +
+          "depuis leur coût historique · son écart reste juste et en place ; la contre-passation, datée de l'ouverture, ne retire " +
+          'que celui du ' +
+          `${reeval.dateReevaluation.toISOString().slice(0, 10)} (Guide, Partie 2 ch. 22, Applications 84 et 85). Rien n'est à annuler.`;
+      }
     }
 
     const jourReeval = reeval.dateReevaluation.toISOString().slice(0, 10);
@@ -1960,7 +2161,10 @@ export class DevisesService {
     return {
       ...enregistree,
       // Le dire dans la réponse (B2, M2) · l'exception n'est jamais tue.
-      avertissement: [integrale.code ? AVERTISSEMENT_INTEGRALE[integrale.code] : null, avertissementEtat].filter((a) => a !== null).join(' ') || null,
+      avertissement:
+        [integrale.code ? AVERTISSEMENT_INTEGRALE[integrale.code] : null, avertissementEtat, avertissementPosterieures, avertissementOuverture]
+          .filter((a) => a !== null)
+          .join(' ') || null,
     };
   }
 
@@ -2311,7 +2515,7 @@ export class DevisesService {
       const etat = await this.etatDeLEcart(tenantId, reeval, attendus);
       const verdict = etat.jugement?.verdict;
       if (verdict !== 'CONTRE_PASSEE' && verdict !== 'AMBIGU') {
-        const motifEtat = this.motifEtatDeLEcart(etat, attendus, jour(reeval.dateReevaluation), tenant?.referentiel ?? Referentiel.SYSCOHADA);
+        const motifEtat = this.motifEtatDeLEcart(etat, attendus, jour(reeval.dateReevaluation), await this.referentielDuDossier(tenantId));
         const refusEtat =
           `${Piece} ne se déclare pas · ` +
           (motifEtat
@@ -2428,14 +2632,18 @@ export class DevisesService {
       autresEcarts: [] as Array<{ numeroPiece: number | null; date: Date }>,
       jugement: null as JugementDeLEtat | null,
       /**
-       * L1 · les réévaluations du MODULE déjà passées dans la cible, alors que
-       * cet écart y était encore en place, sur ses comptes · et le jugement
-       * rejoué sans elles. Quand lui seul rend la contre-passation juste,
-       * l'issue se dit dans l'ordre · annuler la postérieure (D6),
-       * contre-passer, réévaluer de nouveau.
+       * Les réévaluations du MODULE déjà passées DANS LA CIBLE, alors que cet
+       * écart y était encore en place, et qui touchent ses comptes (ligne A5
+       * ter, relevés (a) et (b) d'A5 bis). Elles sont des écarts EN PLACE ·
+       * dites, jamais à annuler.
        */
       posterieures: [] as Array<{ id: string; dateReevaluation: Date }>,
-      jugementSansPosterieures: null as JugementDeLEtat | null,
+      /**
+       * La cible s'ouvre-t-elle par un à-nouveau qui fait foi (report de
+       * clôture ou bilan d'ouverture importé) ? Sans lui, l'état est jugé sur
+       * la clôture RECONSTITUÉE de l'exercice précédent (relevé (e) d'A5 bis).
+       */
+      ouvertureFiableCible: false,
       tronque: false,
     };
     if (!cible) return etat;
@@ -2476,6 +2684,7 @@ export class DevisesService {
         })
       ).map((e) => e.exerciceId),
     );
+    etat.ouvertureFiableCible = avecOuverture.has(cible.id);
     const lecture = await this.lireLaFenetreDeLEcart(tenantId, x, fenetre, jusquaLaCible, avecOuverture, idsEcart);
     etat.tronque = etat.tronque || lecture.tronque;
     const lu47 = new Map(ids47.map((c) => [c, lecture.solde.get(c) ?? 0]));
@@ -2483,13 +2692,29 @@ export class DevisesService {
       etat.ouverture = { exercice: lecture.ouvertures[lecture.ouvertures.length - 1], exercices: lecture.ouvertures, ecart: lecture.ecartOuverture };
     }
 
-    // LES ÉCARTS DU MODULE en place dans la cible.
+    // LES ÉCARTS DU MODULE en place dans la cible · ceux des exercices qui la
+    // précèdent ET CEUX DE LA CIBLE ELLE-MÊME (ligne A5 ter, relevés (a) et
+    // (b) d'A5 bis). Une réévaluation de la cible passée avant cette
+    // contre-passation (dossier d'avant A5 bis, ou portillon contourné) a
+    // mesuré ses créances et dettes depuis le COÛT HISTORIQUE (`calculer` ne
+    // lit que les lignes en devise, l'écart de N étant passé sans devise) ·
+    // son écart est le sien, juste et en place, indépendant de celui de N.
+    // Lu hors de l'attendu, il passait pour une écriture qui déplace l'écart
+    // de N, et la voie « L1 » imposait d'annuler la réévaluation de la cible,
+    // de contre-passer, puis de réévaluer de nouveau · trois gestes pour
+    // retrouver les mêmes montants, la contre-passation datée de l'ouverture
+    // rétablissant à elle seule l'ordre des Applications 84 et 85 (Guide,
+    // Partie 2 ch. 22 · 411 = coût + écart de N + écart de N+1 depuis le coût,
+    // moins l'écart de N). Les exercices intermédiaires clôturés étaient déjà
+    // lus · la fenêtre entière l'est désormais, cible comprise.
     const reevaluations = await this.prisma.reevaluation.findMany({
-      where: { tenantId, annuleeLe: null, exercice: { dateFin: { lt: cible.dateDebut } } },
+      where: { tenantId, annuleeLe: null, exercice: { dateDebut: { lte: cible.dateDebut } } },
       orderBy: [{ dateReevaluation: 'desc' }, { id: 'asc' }],
       take: PLAFOND_REEVALUATIONS_EXAMINEES + 1,
       select: {
         id: true,
+        dateReevaluation: true,
+        exerciceId: true,
         ecritureExtourne: { select: { exercice: { select: { dateDebut: true } } } },
         contrePassationDeclaree: { select: { exercice: { select: { dateDebut: true } } } },
         ecritureEcarts: { select: { lignes: { where: { compteId: { in: idsEcart } }, select: { compteId: true, debit: true, credit: true } } } },
@@ -2505,6 +2730,10 @@ export class DevisesService {
         for (const l of r.ecritureEcarts?.lignes ?? []) ecart.set(l.compteId, (ecart.get(l.compteId) ?? 0) + centimesDe(l));
         return { id: r.id, ecart };
       });
+    etat.posterieures = reevaluations
+      .slice(0, PLAFOND_REEVALUATIONS_EXAMINEES)
+      .filter((r) => r.id !== x.id && r.exerciceId === cible.id && ids47.length > 0 && (r.ecritureEcarts?.lignes ?? []).some((l) => ids47.includes(l.compteId)))
+      .map((r) => ({ id: r.id, dateReevaluation: r.dateReevaluation }));
 
     // LES ÉCRITURES HORS MODULE qui touchent le 478 ou le 479 de l'écart
     // depuis la réévaluation. Une paire neutralisée (l'écriture corrigée et
@@ -2609,32 +2838,6 @@ export class DevisesService {
       ecritures: tronqueListe ? null : etat.ecritures,
     };
     etat.jugement = jugerLEtat(entree);
-    // L1 · une réévaluation du module passée dans la cible a lu l'exercice
-    // avec cet écart en place (avant A5 bis, ou par un portillon contourné).
-    // Son écart est dans le solde du 478 / 479, hors de l'attendu · le
-    // jugement le lit comme une écriture qui déplace l'écart. Rejoué sans
-    // elle, il dit si l'ordre canonique (Guide, Partie 2 ch. 22, Applications
-    // 84 et 85 · contre-passation à la réouverture, PUIS réévaluation de
-    // l'exercice) rend la contre-passation juste.
-    if (etat.jugement.verdict !== 'EN_PLACE' && ids47.length > 0) {
-      const posterieures = await this.prisma.reevaluation.findMany({
-        where: { tenantId, annuleeLe: null, exerciceId: cible.id, id: { not: x.id } },
-        orderBy: [{ dateReevaluation: 'asc' }, { id: 'asc' }],
-        take: PLAFOND_REEVALUATIONS_EXAMINEES,
-        select: {
-          id: true,
-          dateReevaluation: true,
-          ecritureEcarts: { select: { lignes: { where: { compteId: { in: ids47 } }, select: { compteId: true, debit: true, credit: true } } } },
-        },
-      });
-      const surLEcart = posterieures.filter((r) => r.id !== x.id && (r.ecritureEcarts?.lignes ?? []).length > 0);
-      if (surLEcart.length > 0) {
-        const sans = new Map(lu47);
-        for (const r of surLEcart) for (const l of r.ecritureEcarts?.lignes ?? []) sans.set(l.compteId, (sans.get(l.compteId) ?? 0) - centimesDe(l));
-        etat.posterieures = surLEcart.map((r) => ({ id: r.id, dateReevaluation: r.dateReevaluation }));
-        etat.jugementSansPosterieures = jugerLEtat({ ...entree, lu47: sans });
-      }
-    }
     return etat;
   }
 
@@ -2742,22 +2945,6 @@ export class DevisesService {
     const issue = j.issue;
     if (issue && issue.gestes.length === 0 && issue.fin === 'CONTRE_PASSER') return null;
     const jour = (d: Date) => d.toISOString().slice(0, 10);
-    // L1 · l'issue DANS L'ORDRE · la réévaluation postérieure a été passée
-    // avec cet écart en place ; sans elle, la contre-passation est juste.
-    // Annuler d'abord (D6, AUDCIF art. 20, al. 2), contre-passer ensuite
-    // (Applications 84 et 85), réévaluer de nouveau enfin.
-    const sansPost = etat.jugementSansPosterieures?.issue;
-    if (etat.posterieures.length > 0 && sansPost && sansPost.gestes.length === 0 && sansPost.fin === 'CONTRE_PASSER') {
-      const dates = etat.posterieures.map((r) => `du ${jour(r.dateReevaluation)}`).join(', ');
-      const exo = `l'exercice du ${jour(etat.cible.dateDebut)} au ${jour(etat.cible.dateFin)}`;
-      return (
-        `L'écart de conversion de la réévaluation du ${jourReevaluation} ne se contre-passe pas en l'état · la réévaluation ${dates} ` +
-        `(${exo}) a été passée alors qu'il y était encore en place, et son écart est dans le solde du 478 ou du 479. Dans l'ordre · ` +
-        `(1) annulez la réévaluation ${dates} (Devises, « Annuler la réévaluation » · inscription en négatif, AUDCIF art. 20, al. 2) ; ` +
-        `(2) contre-passez la réévaluation du ${jourReevaluation} (Devises, « Contre-passer ») ; ` +
-        `(3) réévaluez de nouveau ${exo}.`
-      );
-    }
     const montant = (c: number) => `${(Math.abs(c) / 100).toFixed(2)}${c > 0 ? ' débiteur' : c < 0 ? ' créditeur' : ''}`;
     const pieces = (liste: Array<{ numeroPiece: number | null; date: Date }>) =>
       liste
@@ -2899,7 +3086,7 @@ export class DevisesService {
       motifHorsModule:
         candidates.length > 0 && !reeval.etatAtteste
           ? null
-          : this.motifEtatDeLEcart(etat, attendus, jour(reeval.dateReevaluation), tenant?.referentiel ?? Referentiel.SYSCOHADA),
+          : this.motifEtatDeLEcart(etat, attendus, jour(reeval.dateReevaluation), await this.referentielDuDossier(tenantId)),
       etatAtteste: reeval.etatAtteste,
     };
   }
@@ -3158,7 +3345,7 @@ export class DevisesService {
         statut: true,
         numeroPiece: true,
         exercice: { select: { statut: true } },
-        lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true } },
+        lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true, compte: { select: { numero: true } } } },
       },
     };
     const reeval = await this.prisma.reevaluation.findFirst({
@@ -3206,15 +3393,43 @@ export class DevisesService {
           "celle-ci a passée. On annule de la plus récente à la plus ancienne.",
       );
     }
-    const version = await this.prisma.provisionChangeOuverture.findFirst({
-      where: { tenantId, dateReference: { gt: reeval.dateReevaluation } },
-      orderBy: { dateReference: 'asc' },
-      select: { compteProvision: true, dateReference: true },
-    });
-    if (version) {
+    // L'ISSUE DOIT LEVER LE REFUS (ligne A5 ter). Le message disait aussi
+    // « corrigez-la par une nouvelle version » · une version NOUVELLE laisse
+    // l'ancienne en place, et le refus, qui lit toute version postérieure à
+    // la réévaluation, revenait tel quel. Seul le RETRAIT le lève, et il est
+    // toujours ouvert ici · une version n'est figée que si une réévaluation
+    // non annulée est passée dans sa période, donc postérieure à celle-ci,
+    // et le refus précédent l'a déjà nommée. Toutes les versions en cause
+    // sont nommées, chacune devant être retirée.
+    // SEULES LES VERSIONS QUI EN DÉPENDENT (second tour) · leur PÉRIODE suit
+    // la réévaluation, et leur COMPTE est l'un de ceux que son écriture de
+    // provision a mouvementés · une version à zéro d'un 599 déclarée pour un
+    // litige, sans provision de cette réévaluation sur ce compte, ne s'appuie
+    // sur rien de ce qu'elle a passé, et la nommer imposait un retrait inutile.
+    const comptesTouches = [...new Set((reeval.ecritureProvision?.lignes ?? []).map((l) => l.compte.numero))];
+    const touche = (compteProvision: string) => comptesTouches.some((n) => n.startsWith(compteProvision));
+    const versions = (
+      comptesTouches.length === 0
+        ? []
+        : await this.prisma.provisionChangeOuverture.findMany({
+            where: { tenantId, dateReference: { gt: reeval.dateReevaluation } },
+            orderBy: [{ dateReference: 'asc' }, { compteProvision: 'asc' }],
+            take: 200,
+            select: { compteProvision: true, dateReference: true },
+          })
+    ).filter((v) => touche(v.compteProvision));
+    if (versions.length > 0) {
+      const nommees = versions
+        .slice(0, 20)
+        .map((v) => `au ${jour(v.dateReference)} (compte ${v.compteProvision})`)
+        .join(', ');
+      const plus = versions.length > 20 ? ' et d’autres encore' : '';
+      const une = versions.length === 1;
       throw new BadRequestException(
-        `La provision d'ouverture déclarée au ${jour(version.dateReference)} (compte ${version.compteProvision}) s'appuie sur la ` +
-          'provision que cette réévaluation a passée · retirez-la ou corrigez-la par une nouvelle version avant d’annuler.',
+        `${une ? 'La provision d’ouverture déclarée' : 'Les provisions d’ouverture déclarées'} ${nommees}${plus} ` +
+          `${une ? 's’appuie' : 's’appuient'} sur la provision que cette réévaluation a passée · ${une ? 'retirez-la' : 'retirez-les'} ` +
+          '(Devises, « Dossier repris », « Retirer »), annulez la réévaluation, puis déclarez de nouveau ce qui reste vrai. ' +
+          'Une version nouvelle ne lève pas ce refus · l’ancienne resterait en place.',
       );
     }
 
@@ -4529,6 +4744,18 @@ export class DevisesService {
       parcourus.add(precedent.id);
     }
     return { parCle, reserves: [...new Set(reserves)] };
+  }
+
+  /**
+   * LE RÉFÉRENTIEL DU DOSSIER, SANS REPLI (A5 ter, second tour). Un dossier
+   * introuvable servait le SYSCOHADA par défaut · ses comptes (4997, 4781)
+   * auraient été écrits dans un plan qui ne les ouvre peut-être pas, ou les
+   * messages auraient cité l'AUDCIF à une association. Refus nommé.
+   */
+  private async referentielDuDossier(tenantId: string): Promise<Referentiel> {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { referentiel: true } });
+    if (!tenant) throw new NotFoundException('Dossier introuvable · son référentiel ne se lit pas, rien ne se réévalue.');
+    return tenant.referentiel;
   }
 
   private async compteParRacine(tenantId: string, racine: string) {

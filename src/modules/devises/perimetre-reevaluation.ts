@@ -40,6 +40,25 @@ import { ecartDuGroupe } from '../reglements/ecart-change-realise';
  * dettes assimilées » est une dette (semis des deux plans). Le 27 « Autres
  * immobilisations financières » (prêts, dépôts, cautionnements) est une
  * CRÉANCE aux deux plans et reste réévalué, le 26 (titres) non (§ 1.3).
+ *
+ * LES TITRES NE SE RÉÉVALUENT PAS, OÙ QU'ILS SOIENT RANGÉS (ligne A5 ter).
+ * Le § 1.3 vise « les titres » sans distinguer leur classe · « Ils sont
+ * enregistrés pour le prix d'acquisition, converti au cours du jour de
+ * l'opération. Il en est ainsi que le titre soit ou non entièrement libéré.
+ * La part non libérée, inscrite en contrepartie au passif, constitue une
+ * dette libellée en devises ». Les fiches les rangent en trois endroits · 26
+ * « Titres de participation », 274 « Titres immobilisés » et 50 « Titres de
+ * placement » (la fiche du compte 50 renvoie ses titres de cession difficile
+ * « → 26 (Titres de participation) ou 274 (Titres immobilisés) », AUDCIF
+ * Titre VII, et SYCEBNL Partie 2 ch. 3 pour les mêmes numéros). Le 274 et le
+ * 50 tombaient sous « 27 » et « 5 » et recevaient un écart de conversion au
+ * 478 ou 479, provisionné · une perte de change sur un titre que le texte
+ * maintient au cours historique, et dont la valeur d'inventaire (cours de
+ * bourse, valeur probable de négociation, fiche du compte 50) relève de la
+ * DÉPRÉCIATION (590, 297), pas de l'art. 54. Restent réévalués, parce qu'ils
+ * sont des CRÉANCES de revenus et non des titres · le 506 « Intérêts courus »
+ * des titres de placement et le 276 « Intérêts courus » des immobilisations
+ * financières (fiches des comptes 50 et 27).
  */
 const DETTES_CLASSE_1: Record<Referentiel, RegExp> = {
   [Referentiel.SYSCOHADA]: /^(16|17|18)/,
@@ -49,7 +68,11 @@ const DETTES_CLASSE_1: Record<Referentiel, RegExp> = {
 /** Créances immobilisées (27) et toute la classe 4 (tiers) et 5 (trésorerie). */
 const CREANCES_DETTES_TRESORERIE = /^(27|4|5)/;
 
+/** Titres de la classe 2 et de la classe 5 (§ 1.3), hors leurs intérêts courus (506), qui sont des créances. */
+const TITRES_HORS_CLASSE_26 = /^(274|50(?!6))/;
+
 export function seReevalueALaCloture(numero: string, referentiel: Referentiel): boolean {
+  if (TITRES_HORS_CLASSE_26.test(numero)) return false;
   return CREANCES_DETTES_TRESORERIE.test(numero) || DETTES_CLASSE_1[referentiel].test(numero);
 }
 
@@ -58,7 +81,17 @@ export function motifHorsReevaluation(numero: string, referentiel: Referentiel):
   if (seReevalueALaCloture(numero, referentiel)) return null;
   if (/^25/.test(numero))
     return "avance sur immobilisation · aucun écart de conversion (AUDCIF Titre VIII ch. 22 § 1.2)";
-  if (/^26/.test(numero)) return "titres · maintenus au cours du jour de l'acquisition (AUDCIF Titre VIII ch. 22 § 1.3)";
+  // Le 508 « Autres titres de placement et créances assimilées » se lit en
+  // titre (rangé sous « Titres de placement », fiche du compte 50) · sa part
+  // « créances assimilées » sort avec lui. Lecture d'OmegaX, et le motif le
+  // dit (A5 ter, second tour) · une créance de revenu se suit au 506.
+  if (/^508/.test(numero))
+    return (
+      "autres titres de placement et créances assimilées · lu en TITRE, part « créances assimilées » comprise, maintenu au " +
+      "cours du jour de l'acquisition (AUDCIF Titre VIII ch. 22 § 1.3) · lecture d'OmegaX ; une créance de revenu se porte au 506"
+    );
+  if (/^26/.test(numero) || TITRES_HORS_CLASSE_26.test(numero))
+    return "titres · maintenus au cours du jour de l'acquisition (AUDCIF Titre VIII ch. 22 § 1.3)";
   if (/^2/.test(numero))
     return "immobilisation · maintenue au cours du jour de l'acquisition, écart dégagé à la sortie seulement (AUDCIF Titre VIII ch. 22 § 1.1)";
   if (/^3/.test(numero)) return 'stock · évalué selon le § 1.4 (AUDCIF Titre VIII ch. 22), pas par écart de conversion';

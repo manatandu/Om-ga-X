@@ -280,7 +280,11 @@ export function DevisesPage() {
       });
       // L'exception (contre-passation intégrale, B2 et M2) est servie par le
       // serveur et dite ici, jamais tue.
-      setInfo(r?.avertissement ?? "Écarts de conversion contre-passés à l'ouverture de l'exercice suivant.");
+      // Le geste a abouti · l'avertissement s'ajoute à la confirmation, il ne
+      // la remplace pas (ligne A5 ter · ouverture provisoire, réévaluation
+      // postérieure gardée).
+      const fait = "Écarts de conversion contre-passés à l'ouverture de l'exercice suivant.";
+      setInfo(r?.avertissement ? `${fait} ${r.avertissement}` : fait);
       await charger();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Contre-passation impossible');
