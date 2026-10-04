@@ -90,8 +90,10 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // l'impôt sur le résultat, borné par son tenantId (A11), 148 avec les clés
     // de répartition, leurs lignes et les données du coût de production,
     // chacune bornée par son propre tenantId (A20), 149 avec les comportements
-    // figés d'un exercice clos, bornés de même (A20, seconde relecture).
-    expect(modeles).toHaveLength(149);
+    // figés d'un exercice clos, bornés de même (A20, seconde relecture), 150
+    // avec les factures désignées des créances douteuses, bornées par leur
+    // tenantId (A7 bis).
+    expect(modeles).toHaveLength(150);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

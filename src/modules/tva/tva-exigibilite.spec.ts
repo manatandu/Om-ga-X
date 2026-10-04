@@ -147,7 +147,9 @@ function service(
     },
     // La déclaration rend l'état de liquidation de la période ET relit la
     // dernière liquidation pour le crédit reportable (art. 63) · aucune ici.
-    liquidationTva: { findFirst: jest.fn().mockResolvedValue(null) },
+    factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+    liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   return new TauxTvaService(prisma, {} as EcritureService);
 }
@@ -438,9 +440,10 @@ describe('La date de l’encaissement · le RÈGLEMENT, jamais le lettrage (déc
     expect(mars.tvaEnAttenteEncaissement).toBe(400_000);
   });
 
-  it('le règlement le PLUS RÉCENT du groupe date la part encaissée', async () => {
-    // Deux acomptes sur la même créance · c'est le second qui a porté la
-    // fraction au niveau constaté, et l'art. 57 date chaque perception.
+  it('chaque acompte est exigible à SA date, pour SA part (décret art. 57, ligne A7 bis)', async () => {
+    // Deux acomptes sur la même créance · l'art. 57 date CHAQUE perception.
+    // Le moteur rendait la fraction CUMULÉE à la date du second (120 000 en
+    // juin, avril vide) · avril, une fois déclaré, l'était une seconde fois.
     const s = service('LIVRAISONS', [
       ligneTva({
         compte: '44320000',
@@ -458,8 +461,10 @@ describe('La date de l’encaissement · le RÈGLEMENT, jamais le lettrage (déc
         },
       }),
     ]);
-    expect((await s.declaration('t1', AVRIL, FIN_AVRIL)).totalCollecte).toBe(0);
-    expect((await s.declaration('t1', JUIN, FIN_JUIN)).totalCollecte).toBe(120_000);
+    // 290 000 sur 1 160 000 = 25 % · 40 000 en avril ; 580 000 = 50 % ·
+    // 80 000 en juin ; 25 % restent en attente.
+    expect((await s.declaration('t1', AVRIL, FIN_AVRIL)).totalCollecte).toBe(40_000);
+    expect((await s.declaration('t1', JUIN, FIN_JUIN)).totalCollecte).toBe(80_000);
   });
 
   it('sans aucun règlement identifiable, la date de l’écriture sert de repli · jamais celle du lettrage', async () => {

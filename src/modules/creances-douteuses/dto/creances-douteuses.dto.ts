@@ -46,8 +46,40 @@ class MotifEtPiecesDto {
   pieces!: PieceJustificativeDto[];
 }
 
+/**
+ * Une facture désignée (ligne A7 bis) · la ligne de la facture au compte du
+ * client et la part TTC que la créance en reprend.
+ */
+export class FactureDesigneeDto {
+  @IsUUID('4')
+  ligneEcritureId!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  montant!: number;
+}
+
+/** « Désigner les factures » · après le reclassement, ou avec lui. */
+export class DesignerFacturesDto {
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => FactureDesigneeDto)
+  factures!: FactureDesigneeDto[];
+}
+
 /** Le reclassement d'une créance client au 416 (fiche du compte 41). */
 export class ReclasserCreanceDto extends MotifEtPiecesDto {
+  /**
+   * Les factures que le reclassement reprend (ligne A7 bis) · facultatives
+   * ici, désignables ensuite. Rien n'est lettré (A7 ter).
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => FactureDesigneeDto)
+  factures?: FactureDesigneeDto[];
+
   @IsUUID('4')
   exerciceId!: string;
 
@@ -138,6 +170,9 @@ export class AnnulerRevueDto {
 
 /** L'annulation d'une perte ou d'un recouvrement (K4 · AUDCIF art. 20, al. 2) · même motif. */
 export class AnnulerMouvementDto extends AnnulerRevueDto {}
+
+/** A7 bis · « Retirer la désignation » d'une facture · même motif, au journal d'audit. */
+export class RetirerDesignationDto extends AnnulerRevueDto {}
 
 /** m2 · l'annulation d'un reclassement (AUDCIF art. 20, al. 2). */
 export class AnnulerReclassementDto extends AnnulerRevueDto {}

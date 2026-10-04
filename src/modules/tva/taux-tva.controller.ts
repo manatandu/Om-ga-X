@@ -30,7 +30,15 @@ export class TauxTvaController {
     if (!dateDebut || !dateFin) {
       throw new BadRequestException('dateDebut et dateFin sont requis');
     }
-    return this.tauxTvaService.declaration(user.tenantId, new Date(dateDebut), new Date(dateFin));
+    // Le figé ligne par ligne (ligne A7 bis) ne sert qu'à la liquidation ·
+    // il ne part pas à l'écran, où il pèserait autant que la période.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { figeEncaissement, ...declaration } = await this.tauxTvaService.declaration(
+      user.tenantId,
+      new Date(dateDebut),
+      new Date(dateFin),
+    );
+    return declaration;
   }
 
   /**

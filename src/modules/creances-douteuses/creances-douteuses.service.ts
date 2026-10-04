@@ -46,6 +46,8 @@ import {
   resteFinalDeLaCreance,
   mouvementsSansRevue,
   motifRefusDeclaration,
+  motifRefusDesignation,
+  partageSonLettrage,
   motifRefusMouvement,
   motifRefusReclassement,
   motifRefusRevue,
@@ -58,11 +60,14 @@ import {
   AnnulerReclassementDto,
   AnnulerRevueDto,
   DeclarerCreanceOuvertureDto,
+  DesignerFacturesDto,
+  FactureDesigneeDto,
   Lettrer416Dto,
   PerteCreanceDto,
   PieceJustificativeDto,
   ReclasserCreanceDto,
   RecouvrementCreanceDto,
+  RetirerDesignationDto,
   RevoirDepreciationDto,
 } from './dto/creances-douteuses.dto';
 
@@ -824,6 +829,11 @@ export class CreancesDouteusesService {
       motif += await this.motifSoldeReconstitue(tenantId, ex.id, 'reprenez le reclassement');
     }
     if (motif) throw new BadRequestException(motif);
+    // A7 BIS · les factures désignées avec le reclassement, vérifiées AVANT
+    // toute écriture (même règle que « Désigner les factures »).
+    const factures = dto.factures?.length
+      ? await this.facturesADesigner(tenantId, { id: null, compteCreanceId: source.id, numero: source.numero, montant: centimes(dto.montant) }, dto.factures)
+      : [];
 
     const nature = dto.nature === NatureCreanceDouteuse.LITIGIEUSE ? 'litigieuse' : 'douteuse';
     // LE RECLASSEMENT NE LETTRE PAS LE COMPTE DU CLIENT, et n'exige aucun
@@ -852,8 +862,8 @@ export class CreancesDouteusesService {
           { compteId: source.id, debit: 0, credit: centimes(dto.montant) },
         ],
       },
-      (tx, ecriture) =>
-        tx.creanceDouteuse.create({
+      async (tx, ecriture) => {
+        const creee = await tx.creanceDouteuse.create({
           data: {
             tenantId,
             exerciceId: ex.id,
@@ -868,10 +878,209 @@ export class CreancesDouteusesService {
             ecritureReclassementId: ecriture.id,
             createdBy: userId,
           },
-        }),
+        });
+        // Une à une · le journal d'audit voit chaque désignation.
+        for (const f of factures) {
+          await tx.factureCreanceDouteuse.create({
+            data: { tenantId, creanceId: creee.id, ligneEcritureId: f.ligneEcritureId, montant: f.montant, createdBy: userId },
+          });
+        }
+        return creee;
+      },
     );
     // m9 · méthode des cotisations non déclarée · un avertissement, jamais un refus.
     return { ...ligne, montant: n(ligne.montant), avertissement: avertissementMethodeCotisations(referentiel, source.numero, methodeCotisations ?? null) };
+  }
+
+  /**
+   * « DÉSIGNER LES FACTURES » (ligne A7 bis, partie 1) · les lignes de facture
+   * au compte du client que la créance reprend, et la part de chacune. Le
+   * recouvrement du module en devient l'encaissement pour la TVA (O.-L.
+   * n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57), au prorata de ce qui
+   * est recouvré sur le montant reclassé. Rien n'est lettré (A7 ter · le
+   * reclassement ne lettre pas le compte du client).
+   */
+  designerFactures(tenantId: string, userId: string, id: string, dto: DesignerFacturesDto) {
+    return this.sousVerrou(tenantId, 'DÉSIGNATION DES FACTURES', async () => {
+      const c = await this.creance(tenantId, id);
+      const factures = await this.facturesADesigner(
+        tenantId,
+        { id: c.id, compteCreanceId: c.compteCreanceId, numero: c.compteCreance.numero, montant: n(c.montant) },
+        dto.factures,
+      );
+      await transactionJournalisee(this.prisma, async (tx) => {
+        for (const f of factures) {
+          await tx.factureCreanceDouteuse.create({
+            data: { tenantId, creanceId: c.id, ligneEcritureId: f.ligneEcritureId, montant: f.montant, createdBy: userId },
+          });
+        }
+      });
+      return this.facturesDesignees(tenantId, c.id);
+    });
+  }
+
+  /** Les factures que la créance désigne, avec leur pièce. */
+  async facturesDesignees(tenantId: string, creanceId: string) {
+    const lignes = await this.prisma.factureCreanceDouteuse.findMany({
+      where: { tenantId, creanceId },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+      select: {
+        id: true,
+        montant: true,
+        ligneEcritureId: true,
+        retireeLe: true,
+        motifRetrait: true,
+        ligneEcriture: { select: { debit: true, credit: true, ecriture: { select: { date: true, libelle: true, numeroPiece: true } } } },
+      },
+    });
+    return lignes.map((f) => ({
+      id: f.id,
+      // Une désignation retirée reste listée, avec sa date et son motif.
+      retireeLe: f.retireeLe ? jour(f.retireeLe) : null,
+      motifRetrait: f.motifRetrait,
+      ligneEcritureId: f.ligneEcritureId,
+      montant: n(f.montant),
+      date: jour(f.ligneEcriture.ecriture.date),
+      libelle: f.ligneEcriture.ecriture.libelle,
+      numeroPiece: f.ligneEcriture.ecriture.numeroPiece,
+      montantFacture: n(f.ligneEcriture.debit) - n(f.ligneEcriture.credit),
+    }));
+  }
+
+  /**
+   * Les factures du client qu'on peut désigner · lignes VALIDÉES au débit de
+   * son compte, avec ce qu'elles doivent encore (un groupe de lettrage soldé
+   * ne doit plus rien ; partiel, son reste). Les plus récentes d'abord ; la
+   * liste tronquée le dit.
+   */
+  async facturesCandidates(tenantId: string, id: string) {
+    // UNE CRÉANCE ANNULÉE SE LIT ENCORE · ses désignations passées se listent
+    // (`facturesDesignees`), et aucune facture ne lui est plus proposée.
+    const c = await this.prisma.creanceDouteuse.findFirst({ where: { id, tenantId }, select: { compteCreanceId: true, annuleeLe: true } });
+    if (!c) throw new NotFoundException('Créance douteuse introuvable pour ce dossier.');
+    if (c.annuleeLe) return { tronque: false, annulee: true, factures: [] };
+    const PLAFOND = 200;
+    const lignes = await this.prisma.ligneEcriture.findMany({
+      where: { compteId: c.compteCreanceId, debit: { gt: 0 }, ecriture: { tenantId, statut: StatutEcriture.VALIDEE } },
+      orderBy: [{ ecriture: { date: 'desc' } }, { id: 'asc' }],
+      take: PLAFOND + 1,
+      select: {
+        id: true,
+        debit: true,
+        credit: true,
+        lettrage: { select: { statut: true, solde: true, lignes: { select: { debit: true, credit: true }, take: 500 } } },
+        ecriture: { select: { date: true, libelle: true, numeroPiece: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
+        creancesDouteusesDesignees: { where: { retireeLe: null, creance: { annuleeLe: null } }, select: { creanceId: true }, take: 20 },
+      },
+    });
+    const tronque = lignes.length > PLAFOND;
+    return {
+      tronque,
+      annulee: false,
+      factures: lignes.slice(0, PLAFOND).map((l) => ({
+        ligneEcritureId: l.id,
+        date: jour(l.ecriture.date),
+        libelle: l.ecriture.libelle,
+        numeroPiece: l.ecriture.numeroPiece,
+        montant: n(l.debit) - n(l.credit),
+        ouvert: CreancesDouteusesService.ouvertDeLaLigne(l),
+        aNouveau: l.ecriture.estGenereeParCloture || l.ecriture.estANouveauProvisoire,
+        lettragePartage: partageSonLettrage(l),
+        designeePar: l.creancesDouteusesDesignees.map((d) => d.creanceId),
+      })),
+    };
+  }
+
+  /**
+   * Ce que la ligne doit encore · soldé, rien ; partiel, le reste du groupe
+   * borné par la ligne. Une ligne dont le groupe réunit d'AUTRES factures
+   * n'est pas désignable (`MOTIF_LETTRAGE_PARTAGE`, quatrième reprise) · aucun
+   * texte ne répartit ce reste entre elles.
+   */
+  static ouvertDeLaLigne(l: { debit: unknown; credit: unknown; lettrage: { statut: string; solde: unknown } | null }) {
+    const montant = Number(l.debit) - Number(l.credit);
+    if (!l.lettrage) return montant;
+    if (l.lettrage.statut === 'SOLDE') return 0;
+    return Math.min(montant, Math.abs(Number(l.lettrage.solde)));
+  }
+
+  /**
+   * « RETIRER LA DÉSIGNATION » (A7 bis, troisième reprise) · une désignation
+   * fausse se corrige · MARQUÉE retirée par un `update` unitaire qui porte son
+   * motif au journal d'audit, jamais supprimée. Possible même si l'exercice
+   * de la créance est clos · la désignation ne porte aucune écriture ; ce
+   * qu'une liquidation a déjà figé le reste (`tvaEncaissementFigee`), et la
+   * suite se relit (`TauxTvaService.repartirEncaissement`).
+   */
+  retirerDesignation(tenantId: string, userId: string, id: string, designationId: string, dto: RetirerDesignationDto) {
+    return this.sousVerrou(tenantId, 'RETRAIT DE DÉSIGNATION', async () => {
+      const d = await this.prisma.factureCreanceDouteuse.findFirst({
+        where: { id: designationId, creanceId: id, tenantId },
+        select: { id: true, retireeLe: true },
+      });
+      if (!d) throw new NotFoundException('Désignation introuvable pour cette créance.');
+      if (d.retireeLe) throw new BadRequestException(`Cette désignation est déjà retirée, le ${jour(d.retireeLe)}.`);
+      await this.prisma.factureCreanceDouteuse.update({
+        where: { id: d.id },
+        data: { retireeLe: new Date(), retireePar: userId, motifRetrait: dto.motif.trim() },
+      });
+      return this.facturesDesignees(tenantId, id);
+    });
+  }
+
+  /** Vérifie une désignation, ligne par ligne, et rend ce qui s'écrit. Un refus nomme la ligne. */
+  private async facturesADesigner(
+    tenantId: string,
+    c: { id: string | null; compteCreanceId: string; numero: string; montant: number },
+    factures: FactureDesigneeDto[],
+  ): Promise<Array<{ ligneEcritureId: string; montant: number }>> {
+    const ids = factures.map((f) => f.ligneEcritureId);
+    if (new Set(ids).size !== ids.length) throw new BadRequestException('Une même facture est désignée deux fois.');
+    const [lignes, dejaCreance] = await Promise.all([
+      this.prisma.ligneEcriture.findMany({
+        where: { id: { in: ids }, ecriture: { tenantId } },
+        take: ids.length,
+        select: {
+          id: true,
+          compteId: true,
+          debit: true,
+          credit: true,
+          lettrage: { select: { statut: true, solde: true, lignes: { select: { debit: true, credit: true }, take: 500 } } },
+          ecriture: { select: { statut: true, libelle: true, date: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
+          creancesDouteusesDesignees: { where: { retireeLe: null, creance: { annuleeLe: null } }, select: { creanceId: true }, take: 20 },
+        },
+      }),
+      c.id
+        ? this.prisma.factureCreanceDouteuse.aggregate({ where: { tenantId, creanceId: c.id, retireeLe: null }, _sum: { montant: true } })
+        : Promise.resolve({ _sum: { montant: null } }),
+    ]);
+    let total = n(dejaCreance._sum.montant);
+    const rendu: Array<{ ligneEcritureId: string; montant: number }> = [];
+    for (const f of factures) {
+      const l = lignes.find((x) => x.id === f.ligneEcritureId);
+      if (!l) throw new BadRequestException('Une facture désignée est introuvable pour ce dossier.');
+      const montant = centimes(f.montant);
+      total = centimes(total + montant);
+      const motif = motifRefusDesignation({
+        creanceAnnulee: false,
+        memeCompte: l.compteId === c.compteCreanceId,
+        validee: l.ecriture.statut === StatutEcriture.VALIDEE,
+        sensFacture: n(l.debit) - n(l.credit),
+        montant,
+        ouvert: CreancesDouteusesService.ouvertDeLaLigne(l),
+        designeeAilleurs: l.creancesDouteusesDesignees.some((d) => d.creanceId !== c.id),
+        dejaDesignee: c.id !== null && l.creancesDouteusesDesignees.some((d) => d.creanceId === c.id),
+        aNouveau: l.ecriture.estGenereeParCloture || l.ecriture.estANouveauProvisoire,
+        lettragePartage: partageSonLettrage(l),
+        totalDesigne: total,
+        montantCreance: c.montant,
+        numeroCompte: c.numero,
+      });
+      if (motif) throw new BadRequestException(`Facture « ${l.ecriture.libelle} » du ${jour(l.ecriture.date)} · ${motif}`);
+      rendu.push({ ligneEcritureId: l.id, montant });
+    }
+    return rendu;
   }
 
   /**
