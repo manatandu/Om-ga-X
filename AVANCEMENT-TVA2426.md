@@ -25,11 +25,16 @@ n° 10/001 et aux art. 51 à 63 du décret n° 011/42 (lecture seule du
   `tvaEnAttenteImputationIndeterminee`, phrase de `mentionExigibilite`).
   Écran · « pas encore exigible », plus « pas encore encaissée ».
   `tva-groupes-comme-main.spec.ts` mis à jour cas par cas (`RENDU_ATTENDU`).
+- TU 1 à 7 (`tva-24-26-hypotheses.spec.ts`) · TU 1 livraison datée à sa
+  facture, TU 4 livraison à soi-même, TU 5 location-vente (commentaire
+  corrigé), TU 2 acompte imputé sans sa date · NOMMÉS avec montant dans
+  `mentionExigibilite` ; TU 2 corrigé quand le 419 est lettré (la taxe prend
+  la date de l'acompte, testé), sinon nommé avec l'issue ; TU 3 chèque,
+  virement, affacturage et TU 6 conditions suspensive et résolutoire dans la
+  mention générale (et le hors-scope) ; TU 7 commentaire du repli corrigé.
 
 ## Reste
 
-- F1 · groupe à plusieurs factures.
-- Sept hypothèses tues (TU 1 à 7).
 - Vocabulaire (`FAIT_GENERATEUR`, « pas due », aide du paramètre).
 - Bloc § 3, rejeu sur vraie base à travers la clôture 2026.
 

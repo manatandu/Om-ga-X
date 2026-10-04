@@ -121,7 +121,7 @@ const NATURE_COLLECTEE_SYSCOHADA: ReadonlyArray<readonly [string, NatureOperatio
   // « TVA facturée sur production livrée à soi-même ». L'art. 25, 1° range
   // expressément les livraisons à soi-même au fait générateur (« y compris les
   // livraisons à soi-même »), et le décret n° 011/42, art. 52, y ajoute les
-  // PRESTATIONS à soi-même « à la date d'exécution du service » · dans les
+  // PRESTATIONS à soi-même « à la date de l'exécution du service » · dans les
   // deux cas, jamais l'encaissement, qui n'a pas de sens sans tiers.
   ['4434', 'BIENS'],
 ];
@@ -243,12 +243,19 @@ const NATURE_CONTREPARTIE_CHARGES: ReadonlyArray<readonly [string, NatureOperati
   ['6058', 'INDETERMINEE'], // « travaux, matériels et équipements » · deux sens
   ['61', 'SERVICES'], // Transports · art. 8, « le transport de personnes et de marchandises »
   ['62', 'SERVICES'], // Services extérieurs
-  // 6234 « Location-vente », semé aux DEUX plans (`compte-seed-syscohada.ts`
-  // l. 1086, `compte-seed.ts` l. 837). L'art. 6 de la loi ET l'art. 10 du
-  // décret la rangent expressément parmi les LIVRAISONS DE BIENS, et le
-  // décret l'exclut deux fois de plus de la règle des paiements successifs
-  // (art. 51) en la datant au transfert du pouvoir de disposer (art. 52).
-  // La racine la plus longue l'emporte : '6234' prime '62'.
+  // 6234 « Location-vente », semé aux DEUX plans (`compte-seed-syscohada.ts`,
+  // `compte-seed.ts`). L'art. 6 de la loi ET l'art. 10 du décret la rangent
+  // expressément parmi les LIVRAISONS DE BIENS, et l'art. 24, 9° de la loi
+  // (comme l'art. 51 du décret) l'exclut des décomptes ou paiements
+  // successifs · son exigibilité est celle d'une livraison, le transfert du
+  // pouvoir de disposer du bien comme propriétaire (décret, art. 52), pour la
+  // taxe entière ; seule la location-vente de l'habitat social est exigible à
+  // chaque échéance (art. 25, 7°). CE QUE LE CODE FAIT (ligne TVA 24-26,
+  // TU 5) · la nature BIENS est appliquée (jamais l'encaissement), mais aucune
+  // date de livraison n'est saisie · la taxe est datée à l'écriture qui la
+  // porte, chaque échéance si le cabinet la saisit ainsi, et la déclaration
+  // le NOMME (`tvaLocationVente`). La racine la plus longue l'emporte :
+  // '6234' prime '62'.
   ['6234', 'BIENS'],
   ['63', 'SERVICES'], // Autres services extérieurs
   // IMMOBILISATIONS · délibérément non classées, comme le 4451 · une
@@ -480,6 +487,11 @@ const EXCLUSIONS_ART_41_A_VERIFIER: ReadonlyArray<readonly [string, string]> = [
  *    chaque échéance). Les points 6 et 7 de l'ARTICLE 24 (fait générateur des
  *    opérations des promoteurs immobiliers) sont hors scope pour la même
  *    raison : aucun modèle ne porte la qualité de promoteur immobilier ;
+ *  · LES ARTICLES 53 ET 54 DU DÉCRET N° 011/42 · vente sous condition
+ *    suspensive (fait générateur et exigibilité à la réalisation de la
+ *    condition) ou résolutoire (dès la conclusion du contrat). Aucun modèle
+ *    ne porte la condition · la taxe est datée à l'écriture, et la mention
+ *    générale de la déclaration le dit (ligne TVA 24-26, TU 6) ;
  *  · L'ALINÉA 3 DE L'ARTICLE 26 · l'encaissement antérieur au débit. Il n'est
  *    pas calculé, il est DÉCLARÉ avec son montant sur la déclaration : un
  *    acompte encaissé avant la facture s'enregistre en avance reçue (419),
@@ -1390,8 +1402,11 @@ export class TauxTvaService {
         classe 5) ou imputée sur une avance déjà reçue ou versée (419, 409)
         est exigible à la date de l'écriture. Une avance au 419 ou au 409 a
         été encaissée AVANT la facture, à une date que l'écriture ne porte
-        pas · la dater de la facture la date au plus tard, comme la
-        déclaration le dit déjà (réserve de l'art. 26 al. 3). Côté déduction,
+        pas · la dater de la facture la date au plus tard. La déclaration le
+        NOMME au droit commun comme aux débits (ligne TVA 24-26, TU 2 ·
+        `acomptesImputes`, art. 25, 2° ; réserve de l'art. 26 al. 3 sous
+        autorisation), avec son issue · lettré avec son encaissement, le 419
+        fait dater la taxe du jour de l'acompte. Côté déduction,
         la même règle vaut par l'art. 37 al. 1 (« lorsque la taxe devient
         exigible chez l'assujetti ») et le décret art. 96 (l'assujetti est le
         fournisseur) · un achat de services impayé n'ouvre aucune déduction.
@@ -1600,7 +1615,7 @@ export class TauxTvaService {
    * L'O.-L. n° 10/001, art. 25, 2°, rend la taxe d'une prestation exigible
    * « au moment de l'encaissement du prix, des acomptes ou avances », et le
    * décret n° 011/42, art. 57, définit l'encaissement comme « la perception
-   * des sommes à quelque titre que ce soit » · CHAQUE somme perçue rend
+   * des sommes, à quelque titre que ce soit » · CHAQUE somme perçue rend
    * exigible la taxe de ce qu'elle paie. La règle de `main` (fraction
    * cumulée, `(engagé - reste du groupe) / engagé`) rendait 0 tant que le
    * reste du groupe dépassait la facture · deux prestations de 1 160 000 TTC,
@@ -2745,9 +2760,16 @@ export class TauxTvaService {
     // (2026-09-28, décision de Manasse). O.-L. n° 10/001, art. 26 : le régime
     // des débits naît d'une décision du Directeur Général des Impôts (décret
     // n° 011/42, art. 58, ou son silence de dix jours, art. 59). Une opération
-    // antérieure à cette décision reste au droit commun (art. 25, 2° ·
-    // l'encaissement), faute de quoi la déclaration anticiperait la taxe
-    // d'opérations que l'autorisation ne couvrait pas encore. Sans date
+    // antérieure à cette décision reste au droit commun, faute de quoi la
+    // déclaration anticiperait la taxe d'opérations que l'autorisation ne
+    // couvrait pas encore. Le repli rend le régime LIVRAISONS, et c'est
+    // `baseExigibilite` qui en tire la date (ligne TVA 24-26, TU 7) · une
+    // prestation de nature SERVICES passe à l'encaissement (art. 25, 2°), une
+    // livraison de biens reste au fait générateur (art. 25, 1°), et une ligne
+    // de nature INDÉTERMINÉE reste datée à l'écriture, comme sous le régime
+    // des débits (le paramètre du dossier n'est qu'un repli pour elle, et il
+    // ne dit pas encaissement) · aucun effet sur elle, le repli de nature
+    // étant nommé à part (`montantIndetermine`). Sans date
     // saisie, le régime reste appliqué, et la déclaration le dit non daté ·
     // en retirer d'office changerait des périodes déjà déclarées sans donnée
     // nouvelle (même parti que la fiche du fournisseur).
@@ -3249,6 +3271,14 @@ export class TauxTvaService {
     // Avoirs sur ventes, constatés ou imputés sur cette déclaration, dont
     // l'écriture ne porte aucune note de crédit (O.-L. art. 52 al. 2).
     let avoirsSansNoteDeCredit = 0;
+    // LES HYPOTHÈSES DE DATE, NOMMÉES (ligne TVA 24-26, TU 1, 2, 4, 5) · ce
+    // que la déclaration date à l'écriture faute de la date que le texte vise.
+    let tvaBiensDateeALaFacture = 0;
+    let tvaLivraisonSoiMeme = 0;
+    let tvaLocationVente = 0;
+    const acomptesImputes: Array<{ facture: string; date: string; tva: number; collecte: boolean }> = [];
+    let acomptesImputesTotal = 0;
+    let tvaAcomptesImputes = 0;
     // F1 · groupes à plusieurs factures dont la taxe exigible dépend d'une
     // imputation des paiements que le corpus ne règle pas.
     let attenteImputationIndeterminee = 0;
@@ -3409,6 +3439,10 @@ export class TauxTvaService {
           // créance ou la dette non lettrée, et ce qui a été perçu ou versé
           // dans l'écriture (trésorerie, avance imputée). Voir `exigibilite`.
           const nonLettre = { creance: 0, immediat: 0 };
+          // La part imputée sur une AVANCE non lettrée (419, 409), dans le TTC
+          // de la facture · TU 2.
+          let avanceImputee = 0;
+          let ttcFacture = 0;
           for (const x of l.ecriture.lignes) {
             const classe = x.compte?.classe;
             const numero = x.compte?.numero ?? '';
@@ -3417,14 +3451,17 @@ export class TauxTvaService {
             // (débit sur une vente, crédit sur un achat).
             const sens = estCollecte ? Number(x.debit) - Number(x.credit) : Number(x.credit) - Number(x.debit);
             if (sens <= EPSILON) continue;
+            if (classe === ClasseCompte.CLASSE_5 || (classe === ClasseCompte.CLASSE_4 && !numero.startsWith('44'))) ttcFacture += sens;
             if (classe === ClasseCompte.CLASSE_5) {
               nonLettre.immediat += sens;
             } else if (classe === ClasseCompte.CLASSE_4 && !x.lettrage && !numero.startsWith('44')) {
               // 419 et 409 · avances déjà perçues ou versées, imputées sur la
               // facture (comptes « clients créditeurs » et « fournisseurs
               // débiteurs » des deux plans).
-              if (numero.startsWith(estCollecte ? '419' : '409')) nonLettre.immediat += sens;
-              else nonLettre.creance += sens;
+              if (numero.startsWith(estCollecte ? '419' : '409')) {
+                nonLettre.immediat += sens;
+                avanceImputee += sens;
+              } else nonLettre.creance += sens;
             }
           }
           /*
@@ -3475,6 +3512,48 @@ export class TauxTvaService {
             }
           }
           if (nature === 'INDETERMINEE' && dansLaPeriode) montantIndetermine += montant;
+          /*
+            LES DATES QUE LE TEXTE VISE ET QU'AUCUNE PIÈCE NE PORTE (TU 1, 4, 5)
+            · OmegaX date à l'écriture, et la déclaration le dit, montant par
+            montant. (1) Livraison de biens · le fait générateur est la
+            livraison (O.-L. n° 10/001, art. 24, 1°), le transfert du pouvoir
+            de disposer comme propriétaire (art. 6 ; décret n° 011/42,
+            art. 52) ; aucune date de livraison n'est saisie, la facture en
+            tient lieu. (4) Livraison à soi-même · « la première utilisation
+            ou la première mise en service » (art. 24, 8°), « la date
+            de l'exécution du service » pour une prestation à soi-même (décret,
+            art. 52) ; datée à l'écriture de production immobilisée. (5)
+            Location-vente · une LIVRAISON (art. 6 ; décret, art. 10), hors
+            des décomptes successifs (art. 24, 9°), la taxe entière exigible à
+            la livraison, à chaque échéance pour l'habitat social seul
+            (art. 25, 7°) ; datée à chaque écriture d'échéance.
+          */
+          if (dansLaPeriode && nature === 'BIENS' && base === 'FAIT_GENERATEUR') {
+            if (estCollecte && (l.compte.numero.startsWith('4434') || contreparties.some((n) => n.startsWith('72')))) {
+              tvaLivraisonSoiMeme += montant;
+            } else if (!estCollecte && contreparties.some((n) => n.startsWith('6234'))) {
+              tvaLocationVente += montant;
+            } else {
+              tvaBiensDateeALaFacture += montant;
+            }
+          }
+          /*
+            ACOMPTE IMPUTÉ SANS SA DATE (TU 2) · une prestation imputée sur une
+            avance non lettrée (419 à la vente, 409 à l'achat) l'est à la date
+            de la facture, au plus tard · l'acompte a été encaissé avant (art.
+            25, 2°, « au moment de l'encaissement du prix, des acomptes ou
+            avances »), à une date que l'écriture ne porte pas. Lettré avec son
+            encaissement, le 419 (ou le 409) fait dater la taxe du jour de
+            l'acompte (`datesDuGroupeDeMain`) · c'est l'issue nommée.
+          */
+          if (dansLaPeriode && base === 'ENCAISSEMENT' && avanceImputee > EPSILON && ttcFacture > EPSILON) {
+            const tva = TauxTvaService.c((montant * Math.min(avanceImputee, ttcFacture)) / ttcFacture);
+            tvaAcomptesImputes = TauxTvaService.c(tvaAcomptesImputes + tva);
+            acomptesImputesTotal++;
+            if (acomptesImputes.length < PLAFOND_INCERTAINES) {
+              acomptesImputes.push({ facture: l.ecriture.libelle, date: dateEcriture.toISOString().slice(0, 10), tva, collecte: estCollecte });
+            }
+          }
           if (estCollecte && nature === 'SERVICES' && regimeLigne === 'DEBITS' && dansLaPeriode) {
             collecteServicesDebits += montant;
           }
@@ -4031,6 +4110,12 @@ export class TauxTvaService {
         groupesImputationIndeterminee,
         groupesImputationIndetermineeTotal,
         attenteImputationIndeterminee,
+        tvaBiensDateeALaFacture: TauxTvaService.c(tvaBiensDateeALaFacture),
+        tvaLivraisonSoiMeme: TauxTvaService.c(tvaLivraisonSoiMeme),
+        tvaLocationVente: TauxTvaService.c(tvaLocationVente),
+        acomptesImputes,
+        acomptesImputesTotal,
+        tvaAcomptesImputes,
       }),
       /** TVA d'écritures au brouillard datées de la période · hors déclaration. */
       tvaAuBrouillard,
@@ -4144,6 +4229,12 @@ export class TauxTvaService {
    * où l'écran les lirait.
    */
   private mentionExigibilite(e: {
+    tvaBiensDateeALaFacture?: number;
+    tvaLivraisonSoiMeme?: number;
+    tvaLocationVente?: number;
+    acomptesImputes?: ReadonlyArray<{ facture: string; date: string; tva: number; collecte: boolean }>;
+    acomptesImputesTotal?: number;
+    tvaAcomptesImputes?: number;
     groupesImputationIndeterminee?: ReadonlyArray<{ factures: string[]; encaisse: number; motif: string }>;
     groupesImputationIndetermineeTotal?: number;
     attenteImputationIndeterminee?: number;
@@ -4201,6 +4292,7 @@ export class TauxTvaService {
   }) {
     const { regime, referentiel } = e;
     const fc = (n: number) => n.toLocaleString('fr-FR');
+    const jjmmDe = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
     // Les fournisseurs NOMMÉS · huit au plus, le reste compté, pour qu'une
     // déclaration de cent fournisseurs reste lisible sans en taire aucun.
     const nommes = (noms: readonly string[]) =>
@@ -4290,8 +4382,57 @@ export class TauxTvaService {
                 : '') +
               '. Issue · lettrer chaque facture avec le règlement qui la paie, ou déclarer la part exigible pièce par pièce.',
           ];
+    // TU 1, 2, 4, 5 · les dates que le texte vise et qu'aucune pièce ne porte.
+    const acomptes = e.acomptesImputes ?? [];
+    const totalAcomptes = e.acomptesImputesTotal ?? acomptes.length;
+    const phrasesDates: string[] = [];
+    if (acomptes.length > 0) {
+      phrasesDates.push(
+        `ACOMPTE IMPUTÉ SANS SA DATE · ${fc(e.tvaAcomptesImputes ?? 0)} CDF de TVA sur des prestations imputées sur ` +
+          'une avance non lettrée (419 à la vente, 409 à l’achat) sont datés de la facture · ' +
+          acomptes
+            .slice(0, 8)
+            .map((a) => `« ${a.facture} » du ${jjmmDe(a.date)}, ${fc(a.tva)} CDF${a.collecte ? '' : ' déduits'}`)
+            .join(' ; ') +
+          (totalAcomptes > 8 ? ` ; et ${totalAcomptes - 8} autre(s)` : '') +
+          '. La taxe d’un acompte sur prestation est exigible « au moment de l’encaissement du prix, des acomptes ou ' +
+          'avances » (O.-L. n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57), donc au mois où l’avance a été ' +
+          'perçue (ou versée, chez le fournisseur, art. 37 al. 1), antérieur à la facture et que l’écriture ne porte ' +
+          'pas · déclarée ici, elle l’est au plus tard. Issue · lettrer la ligne d’avance de la facture avec ' +
+          'l’encaissement de l’acompte, OmegaX datant alors la taxe du jour de l’acompte, ou la déclarer au mois de ' +
+          'l’acompte (la facture d’acompte est due, art. 58).',
+      );
+    }
+    if ((e.tvaBiensDateeALaFacture ?? 0) > EPSILON) {
+      phrasesDates.push(
+        `LIVRAISON DATÉE À SA FACTURE · ${fc(e.tvaBiensDateeALaFacture!)} CDF de TVA sur des livraisons de biens sont ` +
+          'datés à l’écriture de la facture · le fait générateur est la livraison (O.-L. n° 10/001, art. 24, 1°), le ' +
+          'transfert du pouvoir de disposer du bien comme propriétaire (art. 6 ; décret n° 011/42, art. 52), et aucune ' +
+          'date de livraison n’est saisie. Une livraison antérieure à sa facture rend la taxe exigible au mois de la ' +
+          'livraison, et c’est elle qui ouvre le délai de l’art. 37 al. 2 · à reprendre pièce par pièce.',
+      );
+    }
+    if ((e.tvaLivraisonSoiMeme ?? 0) > EPSILON) {
+      phrasesDates.push(
+        `LIVRAISON À SOI-MÊME DATÉE À SON ÉCRITURE · ${fc(e.tvaLivraisonSoiMeme!)} CDF de TVA sur une production ` +
+          'livrée à soi-même sont datés à l’écriture de production immobilisée · le fait générateur est « la première ' +
+          'utilisation ou la première mise en service » (O.-L. n° 10/001, art. 24, 8° ; décret n° 011/42, art. 52), ' +
+          'et la date d’exécution pour une prestation à soi-même (décret, art. 52) · à vérifier contre la mise en service.',
+      );
+    }
+    if ((e.tvaLocationVente ?? 0) > EPSILON) {
+      phrasesDates.push(
+        `LOCATION-VENTE DATÉE À CHAQUE ÉCRITURE · ${fc(e.tvaLocationVente!)} CDF de TVA d’amont portés au 6234 sont ` +
+          'datés à l’écriture qui les porte · la location-vente est une LIVRAISON de biens (O.-L. n° 10/001, art. 6 ; ' +
+          'décret n° 011/42, art. 10), exclue des décomptes successifs (art. 24, 9°) · la taxe entière est exigible ' +
+          'chez le fournisseur à la livraison (art. 25, 1° ; décret, art. 52), échéance par échéance seulement dans ' +
+          'l’habitat social (art. 25, 7°). Une taxe portée échéance par échéance est déduite plus tard que sa ' +
+          'naissance, et le délai de l’art. 37 al. 2 court de la livraison.',
+      );
+    }
     const phrases: string[] = [
       ...phraseIndetermines,
+      ...phrasesDates,
       ...phraseARelettrer,
       ...phraseIncertaines,
       ...phraseSansFacture,
@@ -4310,8 +4451,12 @@ export class TauxTvaService {
         'commissions, 7073 locations, 7076 redevances ; 60 achats, 6051/6052/6053 eau, électricité et énergies, ' +
         '6057 études, 61 à 63 transports et services extérieurs), et non au numéro du compte de TVA, qui suit la ' +
         'nomenclature comptable et non la loi fiscale. La date de l’encaissement est celle ' +
-        'de l’ÉCRITURE DE RÈGLEMENT du groupe de lettrage, jamais celle du lettrage lui-même (décret n° 011/42, ' +
-        'art. 57), chaque règlement pour sa part ; une créance ou une dette NON LETTRÉE n’est pas un encaissement, ' +
+        'de l’ÉCRITURE DE RÈGLEMENT du groupe de lettrage, jamais celle du lettrage lui-même, chaque règlement pour ' +
+        'sa part · le décret n° 011/42, art. 57, place l’encaissement à la remise des espèces, à la REMISE du ' +
+        'chèque, à l’inscription au CRÉDIT DU COMPTE DU FOURNISSEUR pour un virement ou un ordre de paiement, et au ' +
+        'paiement effectif du débiteur en cas d’affacturage · un règlement écrit à la date du relevé (chèque) ou, ' +
+        'côté déduction, à la date du débit de l’acheteur (virement) peut décaler la taxe d’une période, réserve à ' +
+        'vérifier pièce par pièce en fin de mois ; une créance ou une dette NON LETTRÉE n’est pas un encaissement, ' +
         'sa taxe reste en attente jusqu’au lettrage de son règlement, seul ce qui est réglé dans l’écriture même ' +
         '(trésorerie, avance imputée) l’étant à sa date. Une période liquidée garde ce qu’elle a déclaré · un ' +
         'règlement lettré après sa liquidation est repris au premier jour non liquidé. DEUX RÉSERVES DU MÊME DÉCRET NE SONT PAS APPLIQUÉES ICI, et elles jouent en sens contraire : ' +
@@ -4319,7 +4464,10 @@ export class TauxTvaService {
         'l’expiration de la période, et non à l’encaissement (art. 55) ; un paiement par EFFET DE COMMERCE est ' +
         'encaissé « à la date de l’échéance de la traite, même si elle a été remise à l’escompte » (art. 57, ' +
         'alinéa 2), quand OmegaX retient la date de l’écriture qui solde le tiers, c’est-à-dire l’acceptation. ' +
-        'À reprendre pièce par pièce si le dossier connaît l’un ou l’autre.',
+        'À reprendre pièce par pièce si le dossier connaît l’un ou l’autre. Ne sont pas lues non plus la vente sous ' +
+        'CONDITION SUSPENSIVE, dont le fait générateur et l’exigibilité interviennent « au moment de la réalisation de ' +
+        'cette condition » (décret n° 011/42, art. 53), ni la vente sous CONDITION RÉSOLUTOIRE, « dès la conclusion du ' +
+        'contrat » (art. 54) · OmegaX date à l’écriture.',
     ];
     if (regime === 'DEBITS') {
       phrases.push(
