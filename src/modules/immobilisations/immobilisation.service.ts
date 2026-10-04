@@ -95,7 +95,7 @@ import {
   motifRefusPlafond,
 } from './couts-emprunt-incorpores';
 import { COMPTE_PROVISION_SPECIALE, COMPTE_REPRISE_PROVISION_SPECIALE, imputationSurEcart, natureReevaluable } from './reevaluation-bilan';
-import { lignesSortDeLEcart, motifRefusCompteReserve, sortDesEcarts, supplementDeLaDotation, vueDeLExercice, type SortDeLEcart } from './reevaluation-suites';
+import { COMPTE_RESERVE_SYCEBNL, lignesSortDeLEcart, motifRefusCompteReserve, sortDesEcarts, supplementDeLaDotation, vueDeLExercice, type SortDeLEcart } from './reevaluation-suites';
 import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
 import { motifRefusContrepartie, racinesContrepartieAcquisition } from './contrepartie-acquisition';
 import { CriteresDeclares, criteresRetenus, estFraisDeveloppement, motifRefusFraisDeveloppement } from './frais-developpement';
@@ -1034,12 +1034,13 @@ export class ImmobilisationService {
   }
 
   /**
-   * LIGNE A15 · CE QUE DEVIENT L'ÉCART DE RÉÉVALUATION D'UN BIEN QUI SORT
-   * (`reevaluation-suites.ts`, `sortDesEcarts`, qui porte les textes). Rend
-   * les lignes de l'écriture à passer, les lignes de réévaluation qu'elle
-   * solde, et ce qui n'est PAS passé, avec son motif. Refuse avant le verrou
-   * la sortie qui doit transférer un 106 sans réserve choisie, ou vers un
-   * compte qui n'en est pas une.
+   * LIGNES A15 ET A15 BIS · CE QUE DEVIENT L'ÉCART DE RÉÉVALUATION D'UN BIEN
+   * QUI SORT, quelle que soit la sortie (`reevaluation-suites.ts`,
+   * `sortDesEcarts`, qui porte les textes) · 106 vers la réserve choisie, 154
+   * repris en entier au 861, aux deux référentiels. Rend les lignes de
+   * l'écriture à passer et les lignes de réévaluation qu'elle solde. Refuse
+   * avant le verrou la sortie qui doit transférer un 106 sans réserve choisie,
+   * ou vers un compte qui n'en est pas une au plan du référentiel.
    */
   private async sortDeLEcartALaSortie(
     tenantId: string,
@@ -1052,11 +1053,10 @@ export class ImmobilisationService {
       select: { id: true, compteEcart: true, ecart: true, provisionReprise: true, ecartImpute: true, ecartTransfere: true },
       orderBy: { id: 'asc' },
     });
-    const vide = { lignes: [] as Array<{ compteId: string; debit: number; credit: number }>, passes: [] as SortDeLEcart[], nonPasses: [] as SortDeLEcart[], restitution: null };
+    const vide = { lignes: [] as Array<{ compteId: string; debit: number; credit: number }>, passes: [] as SortDeLEcart[], restitution: null };
     if (lignesReevaluation.length === 0) return vide;
-    const sorts = sortDesEcarts({
-      referentiel: referentiel === Referentiel.SYSCOHADA ? 'SYSCOHADA' : 'SYCEBNL',
-      cession: dto.type === TypeSortie.CESSION,
+    const ref = referentiel === Referentiel.SYSCOHADA ? 'SYSCOHADA' : 'SYCEBNL';
+    const passes = sortDesEcarts({
       lignes: lignesReevaluation.map((l) => ({
         id: l.id,
         compteEcart: l.compteEcart,
@@ -1066,8 +1066,7 @@ export class ImmobilisationService {
         ecartTransfere: Number(l.ecartTransfere),
       })),
     });
-    const passes = sorts.filter((s) => s.traitement !== 'NON_PASSE');
-    const nonPasses = sorts.filter((s) => s.traitement === 'NON_PASSE');
+    if (passes.length === 0) return vide;
     const { reserve, reprise } = lignesSortDeLEcart(passes);
     const lignes: Array<{ compteId: string; debit: number; credit: number }> = [];
     let compteReserve: { id: string; numero: string } | null = null;
@@ -1080,16 +1079,33 @@ export class ImmobilisationService {
         : null;
       if (dto.compteReserveEcartId && !reserveChoisie) throw new BadRequestException('Réserve introuvable pour ce dossier.');
       const total = reserve.reduce((t, r) => t + r.montant, 0);
-      const refus = motifRefusCompteReserve(reserveChoisie?.numero);
+      const refus = motifRefusCompteReserve(reserveChoisie?.numero, ref);
       if (refus) {
         throw new BadRequestException(
           `Ce bien porte ${total.toFixed(2)} d'écart de réévaluation au 106 · ${refus}`,
         );
       }
-      if (reserveChoisie!.typeCompte !== TypeCompteDetailTotal.DETAIL || !reserveChoisie!.estActif) {
-        throw new BadRequestException(`Le compte ${reserveChoisie!.numero} n'est pas un compte de détail actif · choisissez la réserve où l'écart s'inscrit.`);
+      // AU SYCEBNL, LE 118 EST IMPOSÉ (décision de Manasse du 2026-10-04, dans
+      // le silence du texte SYCEBNL, par analogie avec l'AUDCIF ch. 28 § 6) ·
+      // résolu par son numéro semé, jamais choisi ; un autre compte envoyé a
+      // déjà été refusé ci-dessus, nommé.
+      const reserveRetenue =
+        ref === 'SYCEBNL'
+          ? await this.prisma.compte.findFirst({
+              where: { tenantId, numero: COMPTE_RESERVE_SYCEBNL },
+              select: { id: true, numero: true, estActif: true, typeCompte: true },
+            })
+          : reserveChoisie;
+      if (!reserveRetenue) {
+        throw new BadRequestException(
+          `Ce bien porte ${total.toFixed(2)} d'écart de réévaluation au 106 · le compte ${COMPTE_RESERVE_SYCEBNL} Autres ` +
+            'réserves, qui le reçoit au SYCEBNL, n’est pas ouvert au plan du dossier · ouvrez-le dans Plan comptable.',
+        );
       }
-      compteReserve = { id: reserveChoisie!.id, numero: reserveChoisie!.numero };
+      if (reserveRetenue.typeCompte !== TypeCompteDetailTotal.DETAIL || !reserveRetenue.estActif) {
+        throw new BadRequestException(`Le compte ${reserveRetenue.numero} n'est pas un compte de détail actif · choisissez la réserve où l'écart s'inscrit.`);
+      }
+      compteReserve = { id: reserveRetenue.id, numero: reserveRetenue.numero };
       for (const r of reserve) {
         const compteEcart = await this.compteDeSortie(tenantId, r.compteEcart);
         lignes.push({ compteId: compteEcart.id, debit: r.montant, credit: 0 }, { compteId: compteReserve.id, debit: 0, credit: r.montant });
@@ -1106,16 +1122,16 @@ export class ImmobilisationService {
     return {
       lignes,
       passes,
-      nonPasses,
       restitution: {
         transfereReserve: reserve.reduce((t, r) => Math.round((t + r.montant) * 100) / 100, 0),
         compteReserve: compteReserve?.numero ?? null,
         repris861: reprise,
-        nonPasses: nonPasses.map((s) => ({ compteEcart: s.compteEcart, montant: s.montant, motif: s.motif })),
         // Le résultat FISCAL n'est pas tenu ici · dit, jamais retraité
-        // (`catalogue-retraitements.ts`, le logiciel ne qualifie pas).
+        // (`catalogue-retraitements.ts`, le logiciel ne qualifie pas). La loi
+        // n° 23/053 est celle de l'impôt sur les sociétés · au SYCEBNL, rien
+        // n'est dit (l'exemption de l'EBNL relève du module fiscal).
         fiscal:
-          cession && reserve.length > 0
+          cession && reserve.length > 0 && ref === 'SYSCOHADA'
             ? 'Fiscalement, la loi n° 23/053 veut la réduction de la plus-value compensée par la réintégration du solde ' +
               'de l’écart du bien cédé (art. 133, al. 3), et la plus-value de réévaluation devient imposable quand le bien ' +
               'est aliéné (art. 19) · réintégration au résultat fiscal, non passée par OmegaX.'
@@ -4689,11 +4705,12 @@ export class ImmobilisationService {
         ecritureProduitId = ecritureProduit.id;
       }
 
-      // LIGNE A15 · l'écart de réévaluation sort avec le bien, par une
-      // écriture À PART, sous la même pièce · ch. 28 § 6 (106 vers une réserve
-      // non distribuable) et loi n° 23/053, art. 133 al. 3 (154 repris au 861
-      // à la cession). Jamais mêlée à la sortie de l'actif · elle touche les
-      // capitaux propres, pas le résultat de cession.
+      // LIGNES A15 ET A15 BIS · l'écart de réévaluation sort avec le bien, par
+      // une écriture À PART, sous la même pièce, à toute sortie · ch. 28 § 6
+      // (106 vers une réserve) et fiche du compte 15 avec la loi n° 23/053,
+      // art. 132 al. 1er et 133 al. 3 (154 repris en entier au 861). Jamais
+      // mêlée à la sortie de l'actif · la reprise au 861 est un produit H.A.O.
+      // qui compense la VNC réévaluée portée au 81, pas un produit de cession.
       let ecritureEcartId: string | null = null;
       if (sortEcart.lignes.length > 0) {
         const ecritureEcart = await this.ecritureService.creer(tenantId, userId, {
@@ -4745,9 +4762,8 @@ export class ImmobilisationService {
         sortEcart.passes.length > 0 ? await transactionJournalisee(this.prisma, poserLaSortie) : await poserLaSortie(this.prisma);
       return {
         ...versImmobilisation(immobilisation),
-        // Ce qui a été passé, ce qui ne l'a pas été et pourquoi · un écart
-        // laissé au 106 ou au 154 se DIT, jamais en silence.
-        ecartReevaluation: sortEcart.lignes.length > 0 || sortEcart.nonPasses.length > 0 ? sortEcart.restitution : null,
+        // Ce qui a été passé · transféré à la réserve, repris au 861.
+        ecartReevaluation: sortEcart.lignes.length > 0 ? sortEcart.restitution : null,
       };
     } catch (err) {
       await this.defaireSortie(tenantId, id, immo.designation, ecrituresPosees, dotationPoseeId);

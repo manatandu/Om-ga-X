@@ -130,6 +130,14 @@ function monter(tenant: { referentiel: Referentiel; jeuEtatsFinanciersSycebnl?: 
         ];
         return Promise.resolve(plan.filter((c) => where.OR.some((o) => c.numero.startsWith(o.numero.startsWith))));
       }),
+      // LA DOUBLURE HONORE LA REQUÊTE · le 118 du SYCEBNL se lit par son numéro exact.
+      findFirst: jest.fn(({ where }: { where: { tenantId: string; numero: string } }) =>
+        Promise.resolve(
+          where.tenantId === 'tn' && where.numero === '11800000'
+            ? { id: 's118', numero: '11800000', intitule: 'Autres réserves', estActif: true, typeCompte: TypeCompteDetailTotal.DETAIL }
+            : null,
+        ),
+      ),
     },
   } as unknown as PrismaService;
   return new ReevaluationBilanService(prisma, {} as EcritureService);
@@ -188,8 +196,8 @@ describe('A15 · les réserves proposées pour l’écart d’un bien sorti', ()
     const r = await monter({ referentiel: Referentiel.SYSCOHADA }).comptesReserve('tn');
     expect(r.comptes.map((c) => c.numero)).toEqual(['11100000']);
   });
-  it('SYCEBNL · aucune, et la liste vide dit pourquoi', async () => {
+  it('SYCEBNL · le 118 seul, imposé (A15 bis, décision du 2026-10-04), jamais une liste', async () => {
     const r = await monter({ referentiel: Referentiel.SYCEBNL }).comptesReserve('tn');
-    expect(r).toMatchObject({ comptes: [], motifVide: expect.stringMatching(/n’est pas écrit/) });
+    expect(r).toEqual({ comptes: [{ id: 's118', numero: '11800000', intitule: 'Autres réserves' }], nonRetenus: 0, impose: true, motifVide: null });
   });
 });

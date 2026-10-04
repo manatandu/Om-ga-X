@@ -7,7 +7,8 @@
  *
  * SOURCES LUES · AUDCIF Titre VIII ch. 28 § 4.2.2, § 4.2.4.2, § 6 et § 8 ;
  * Titre IX ch. 6, NOTE 3E ; Titre VII, fiches des comptes 106, 11 et 15 ;
- * SYCEBNL Partie 4 ch. 2, NOTE 5H, et fiches des comptes 10, 11 et 15 ; loi
+ * SYCEBNL Partie 2 ch. 2 (plan), Partie 4 ch. 2, NOTE 5H, et fiches des
+ * comptes 10, 11 et 15 ; loi
  * n° 23/053, art. 19, 129, 132 à 138 (compilation DGI au 19 juillet 2026).
  */
 
@@ -47,49 +48,68 @@ export interface LigneEcartDuBien {
   ecartTransfere: number;
 }
 
-export type TraitementALaSortie = 'RESERVE' | 'REPRISE_861' | 'NON_PASSE';
+export type TraitementALaSortie = 'RESERVE' | 'REPRISE_861';
 
 export interface SortDeLEcart {
   ligneId: string;
   compteEcart: string;
   montant: number;
   traitement: TraitementALaSortie;
-  /** Pourquoi rien n'est passé · présent seulement pour `NON_PASSE`. */
-  motif: string | null;
 }
 
-export const MOTIF_154_HORS_SERVICE =
-  'Bien mis hors service · le reste de la provision spéciale de réévaluation (154) n’est pas repris. La loi ' +
-  'n° 23/053 (art. 133, al. 3) ne règle que la CESSION d’un élément réévalué ; l’AUDCIF (Titre VIII ch. 28 § 6) ' +
-  'fait transférer le solde de l’écart d’un bien mis hors service à une réserve non distribuable, quand la fiche du ' +
-  'compte 15 ne réduit la provision que par les reprises H.A.O. Les textes ne tranchent pas · le cabinet décide ' +
-  'et passe l’écriture lui-même.';
-
-export const MOTIF_106_SYCEBNL =
-  'Le texte du SYCEBNL ne dit pas ce que devient l’écart de réévaluation (106) d’un bien sorti · ni sa fiche du ' +
-  'compte 10, ni la Partie 3 ch. 1 § 2.1.1.3. La règle de l’AUDCIF (Titre VIII ch. 28 § 6, réserve non ' +
-  'distribuable) ne lui est pas prêtée, et le SYCEBNL n’ouvre aucune réserve « non distribuable ». L’écart reste ' +
-  'au 106 · le cabinet décide et passe l’écriture lui-même.';
-
 /**
- * LE SORT DE L'ÉCART QUAND LE BIEN SORT, ligne par ligne.
+ * LE SORT DE L'ÉCART QUAND LE BIEN SORT, ligne par ligne, QUELLE QUE SOIT LA
+ * SORTIE (cession, mise au rebut, destruction, vol, disparition, échange,
+ * remise, restitution, renouvellement d'un composant, option non levée), aux
+ * DEUX référentiels. Décisions de Manasse du 2026-10-04, chacune tranchée par
+ * la loi telle qu'elle se lit (ligne A15 bis).
  *
- * 154 (neutralité) · à la CESSION, le reste non repris se reprend au 861 ·
- * loi n° 23/053, art. 133 al. 3, « la plus-value ou la moins-value est
- * calculée par rapport à la nouvelle valeur comptable, mais le résultat
- * comptable et le résultat fiscal ne doivent pas être modifiés car cette
- * réduction de la plus-value […] doit être exactement compensée par la
- * réintégration du solde de la plus-value de réévaluation se rapportant à
- * l'immobilisation cédée » ; la fiche du compte 15 des DEUX plans fait réduire
- * ou annuler la provision « exclusivement par Reprises H.A.O. » (SYCEBNL ·
- * « par le crédit du compte 86 »). Le 861 est celui de la reprise annuelle du
- * lot 14. Hors cession, rien (`MOTIF_154_HORS_SERVICE`).
+ * 154 · LE RESTE NON REPRIS DU BIEN SE REPREND EN ENTIER AU 861, jamais vers
+ * une réserve. Trois lectures concordent.
+ *  (1) La fiche du compte 15 ne laisse qu'une sortie · AUDCIF Titre VII, les
+ *      provisions réglementées sont « créées ou augmentées exclusivement par
+ *      “Dotations H.A.O.” et réduites ou annulées exclusivement par “Reprises
+ *      H.A.O.” », le compte 15 étant « débité de l'annulation ou de la
+ *      variation en diminution des provisions réglementées, par le crédit du
+ *      compte 86 (Reprises H.A.O.) » ; SYCEBNL Partie 2 ch. 3, fiche du compte
+ *      15, même fonctionnement (« est débité le compte 15 ; par le crédit du
+ *      compte 86 – Reprises H.A.O. »).
+ *  (2) La loi fiscale veut la neutralité jusqu'au bout · loi n° 23/053, art.
+ *      132 al. 1er, « La constatation de l'écart de réévaluation doit rester
+ *      sans influence sur le résultat comptable et fiscal de l'entreprise » ;
+ *      art. 133 al. 2, l'augmentation de l'annuité « ne doit pas entraîner de
+ *      diminution du bénéfice comptable et du bénéfice fiscal » ; art. 133
+ *      al. 3, à la cession, la réduction de la plus-value « doit être
+ *      exactement compensée par la réintégration du solde de la plus-value de
+ *      réévaluation se rapportant à l'immobilisation cédée ».
+ *  (3) Le § 6 de l'AUDCIF (Titre VIII ch. 28, « transfert à un poste de
+ *      réserve non distribuable ») vise l'ÉCART, porté au 1061 ; le 154 est
+ *      une provision réglementée créditée « au lieu du 1061 Écarts de
+ *      réévaluation légale » quand la loi fiscale impose la neutralité
+ *      (§ 4.2.4.1), reprise chaque année « par le biais du compte 861 »
+ *      (§ 4.2.4.2). Ce n'est pas un écart, le § 6 ne le vise pas.
+ * POURQUOI LA MISE HORS SERVICE SUIT LA MÊME REPRISE, alors que l'art. 133
+ * al. 3 ne nomme que la cession · le 81 reçoit la valeur nette RÉÉVALUÉE
+ * (art. 132 al. 2), dont la part due à la réévaluation charge le résultat ;
+ * sans reprise, la réévaluation influerait sur lui, ce que l'art. 132 al. 1er
+ * interdit en toute hypothèse. Un 154 laissé au bilan après le bien n'aurait
+ * plus d'objet (plus aucun supplément d'amortissement à neutraliser, § 4.2.4.2)
+ * et la fiche du compte 15 ne lui ouvre aucune autre issue que le 86.
+ * Le montant · l'écart de la ligne moins ce que le module a déjà repris
+ * (`provisionReprise`, tenu par la reprise annuelle du lot 14 et par la
+ * sortie elle-même).
  *
- * 106 · SYSCOHADA, toute sortie · ch. 28 § 6, « Le solde de l'écart de
- * réévaluation d'un bien cédé ou mis hors service doit faire l'objet d'un
- * transfert à un poste de réserve non distribuable ». Le solde est l'écart
- * de la ligne moins la perte de valeur déjà imputée sur lui (ch. 12 § 2.5) et
- * ce qui a déjà été transféré. SYCEBNL · rien (`MOTIF_106_SYCEBNL`).
+ * 106 · TOUTE SORTIE · ch. 28 § 6, « Le solde de l'écart de réévaluation d'un
+ * bien cédé ou mis hors service doit faire l'objet d'un transfert à un poste
+ * de réserve non distribuable ». Le solde est l'écart de la ligne moins la
+ * perte de valeur déjà imputée sur lui (ch. 12 § 2.5) et ce qui a déjà été
+ * transféré. AU SYCEBNL, MÊME RÈGLE · son texte se tait (ni la fiche du compte
+ * 10, ni la Partie 3 ch. 1 § 2.1.1.3 ne disent ce que devient le 106 d'un bien
+ * sorti) ; décision de Manasse du 2026-10-04, dans le silence du texte
+ * SYCEBNL, par analogie avec l'AUDCIF ch. 28 § 6, vers le 118 Autres réserves
+ * IMPOSÉ (`COMPTE_RESERVE_SYCEBNL`), le 1062 « sur des biens avec droit de
+ * reprise » compris, aucun texte du SYCEBNL n'en disant autre chose. Au
+ * SYSCOHADA, la réserve se choisit (`RACINES_RESERVE_NON_DISTRIBUABLE`).
  *
  * L'art. 133 al. 3 veut AUSSI le résultat comptable inchangé à la cession,
  * ce qu'un transfert du 106 à une réserve ne fait pas · mais le 106 « n'est
@@ -100,53 +120,66 @@ export const MOTIF_106_SYCEBNL =
  * plus-value est imposable ») relèvent alors du résultat FISCAL · dites, jamais
  * retraitées ici (`catalogue-retraitements.ts`, le logiciel ne qualifie pas).
  */
-export function sortDesEcarts(o: { referentiel: Ref; cession: boolean; lignes: LigneEcartDuBien[] }): SortDeLEcart[] {
+export function sortDesEcarts(o: { lignes: LigneEcartDuBien[] }): SortDeLEcart[] {
   const sorts: SortDeLEcart[] = [];
   for (const l of o.lignes) {
     if (!l.compteEcart) continue;
     if (l.compteEcart.startsWith('154')) {
       const reste = centimes(l.ecart - l.provisionReprise);
       if (reste <= EPSILON) continue;
-      sorts.push({
-        ligneId: l.id,
-        compteEcart: l.compteEcart,
-        montant: reste,
-        traitement: o.cession ? 'REPRISE_861' : 'NON_PASSE',
-        motif: o.cession ? null : MOTIF_154_HORS_SERVICE,
-      });
+      sorts.push({ ligneId: l.id, compteEcart: l.compteEcart, montant: reste, traitement: 'REPRISE_861' });
     } else if (l.compteEcart.startsWith('106')) {
       const solde = centimes(l.ecart - l.ecartImpute - l.ecartTransfere);
       if (solde <= EPSILON) continue;
-      const syscohada = o.referentiel === 'SYSCOHADA';
-      sorts.push({
-        ligneId: l.id,
-        compteEcart: l.compteEcart,
-        montant: solde,
-        traitement: syscohada ? 'RESERVE' : 'NON_PASSE',
-        motif: syscohada ? null : MOTIF_106_SYCEBNL,
-      });
+      sorts.push({ ligneId: l.id, compteEcart: l.compteEcart, montant: solde, traitement: 'RESERVE' });
     }
   }
   return sorts;
 }
 
 /**
- * LA RÉSERVE NON DISTRIBUABLE QUI REÇOIT LE 106 (SYSCOHADA seul) · le ch. 28
- * § 6 ne nomme pas le compte. La fiche du compte 11 le circonscrit · « réserves
- * indisponibles (légales, réglementées, statutaires) et réserves libres ou
- * facultatives » · d'où 111 Réserve légale, 112 Réserves statutaires ou
- * contractuelles et, parmi les réglementées, le seul 1138 « Autres réserves
- * réglementées ». Les 1131 à 1134 ont chacun leur objet nommé par la même
- * fiche (plus-values nettes à long terme, attribution gratuite d'actions,
- * subventions d'investissement, valeurs mobilières donnant accès au capital)
- * · y verser un écart de réévaluation le rangerait sous un objet qui n'est pas
- * le sien (seconde relecture A15). Le 118 « Autres réserves » (1181 Réserves
- * facultatives, 1188 Réserves diverses) porte les réserves LIBRES · refusé. Le
- * choix est celui du cabinet (décision des organes, statuts), jamais présumé.
+ * LA RÉSERVE NON DISTRIBUABLE QUI REÇOIT LE 106, par référentiel · le ch. 28
+ * § 6 ne nomme pas le compte.
+ *
+ * SYSCOHADA · la fiche du compte 11 le circonscrit · « réserves indisponibles
+ * (légales, réglementées, statutaires) et réserves libres ou facultatives » ·
+ * d'où 111 Réserve légale, 112 Réserves statutaires ou contractuelles et,
+ * parmi les réglementées, le seul 1138 « Autres réserves réglementées ». Les
+ * 1131 à 1134 ont chacun leur objet nommé par la même fiche (plus-values
+ * nettes à long terme, attribution gratuite d'actions, subventions
+ * d'investissement, valeurs mobilières donnant accès au capital) · y verser un
+ * écart de réévaluation le rangerait sous un objet qui n'est pas le sien
+ * (seconde relecture A15). Le 118 « Autres réserves » (1181 Réserves
+ * facultatives, 1188 Réserves diverses) porte les réserves LIBRES · refusé.
+ *
+ * SYCEBNL · son plan n'ouvre au compte 11 que « 112 Réserves statutaires ou
+ * contractuelles » et « 118 Autres réserves » (Partie 2 ch. 2 ; fiche du
+ * compte 11, mêmes subdivisions), ni 111 ni 113, et ne dit nulle part qu'une
+ * réserve soit « non distribuable ». Le 118 est IMPOSÉ, sans choix · décision
+ * de Manasse du 2026-10-04, dans le silence du texte SYCEBNL, par analogie avec
+ * l'AUDCIF ch. 28 § 6. Le 112 porte ce que les statuts ou un contrat imposent
+ * de mettre en réserve (fiche du compte 11, « l'obligation de constituer des
+ * réserves résulte des dispositions statutaires ») · un écart de réévaluation
+ * n'en vient pas. Le semis SYCEBNL ouvre le 118 sans subdivision, au compte de
+ * détail 11800000 (`compte-seed.ts`), seul admis. Un numéro, deux sens · le 118
+ * refusé au SYSCOHADA (réserves libres) est le compte imposé au SYCEBNL.
+ *
+ * Au SYSCOHADA, le choix est celui du cabinet (décision des organes,
+ * statuts), jamais présumé.
  */
 export const RACINES_RESERVE_NON_DISTRIBUABLE = ['111', '112', '1138'] as const;
+export const COMPTE_RESERVE_SYCEBNL = '11800000';
 
-export function motifRefusCompteReserve(numero: string | null | undefined): string | null {
+export function motifRefusCompteReserve(numero: string | null | undefined, referentiel: Ref = 'SYSCOHADA'): string | null {
+  if (referentiel === 'SYCEBNL') {
+    // Rien de choisi · le serveur impose le 118 (`COMPTE_RESERVE_SYCEBNL`).
+    if (!numero || numero === COMPTE_RESERVE_SYCEBNL) return null;
+    return (
+      `Le compte ${numero} ne peut pas recevoir l’écart · au SYCEBNL, le solde de l’écart de réévaluation d’un bien ` +
+      `sorti va au ${COMPTE_RESERVE_SYCEBNL} Autres réserves, imposé (décision du cabinet éditeur du 2026-10-04, dans ` +
+      'le silence du texte SYCEBNL, par analogie avec l’AUDCIF Titre VIII ch. 28 § 6) · ne choisissez aucune réserve.'
+    );
+  }
   if (!numero) {
     return (
       'Choisissez la réserve non distribuable qui reçoit le solde de l’écart de réévaluation (AUDCIF Titre VIII ' +
@@ -183,7 +216,7 @@ export function lignesSortDeLEcart(
   let reprise = 0;
   for (const s of sorts) {
     if (s.traitement === 'RESERVE') parCompte.set(s.compteEcart, centimes((parCompte.get(s.compteEcart) ?? 0) + s.montant));
-    else if (s.traitement === 'REPRISE_861') reprise = centimes(reprise + s.montant);
+    else reprise = centimes(reprise + s.montant);
   }
   return {
     reserve: [...parCompte.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([compteEcart, montant]) => ({ compteEcart, montant })),

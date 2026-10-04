@@ -1,12 +1,13 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { correspond } from '../etats-financiers/etats-financiers.communs';
 import { NOTES_SYSCOHADA_1 } from '../etats-financiers-syscohada/correspondance-notes-syscohada-1';
 import { NOTES_ASSOCIATIONS } from '../notes-annexes/correspondance-notes-associations';
 import { PLAN_COMPTES_SYSCOHADA as SEMIS_SYSCOHADA } from '../comptes/compte-seed-syscohada';
 import { PLAN_COMPTES_SYCEBNL as SEMIS_SYCEBNL } from '../comptes/compte-seed';
 import {
-  MOTIF_106_SYCEBNL,
-  MOTIF_154_HORS_SERVICE,
   RACINES_RESERVE_NON_DISTRIBUABLE,
+  COMPTE_RESERVE_SYCEBNL,
   lignesSortDeLEcart,
   motifRefusCompteReserve,
   posteDuBien,
@@ -47,40 +48,29 @@ describe('supplementDeLaDotation · ch. 28 § 4.2.2, annuités multipliées par 
   });
 });
 
-describe('sortDesEcarts · ch. 28 § 6 et loi n° 23/053, art. 133 al. 3', () => {
-  it('SYSCOHADA, 106 · le solde (écart moins pertes imputées et déjà transféré) va à la réserve, cession ou non', () => {
+describe('sortDesEcarts · ch. 28 § 6, fiche du compte 15, loi n° 23/053 art. 132 et 133 (A15 bis)', () => {
+  it('106 · le solde (écart moins pertes imputées et déjà transféré) va à la réserve, aux deux référentiels', () => {
     const lignes = [ligne({ id: 'a', compteEcart: '10610000', ecart: 50_000_000, ecartImpute: 2_000_000 })];
-    for (const cession of [true, false]) {
-      expect(sortDesEcarts({ referentiel: 'SYSCOHADA', cession, lignes })).toEqual([
-        { ligneId: 'a', compteEcart: '10610000', montant: 48_000_000, traitement: 'RESERVE', motif: null },
-      ]);
-    }
+    expect(sortDesEcarts({ lignes })).toEqual([{ ligneId: 'a', compteEcart: '10610000', montant: 48_000_000, traitement: 'RESERVE' }]);
   });
-  it('154 à la cession · le reste non repris (écart moins reprises annuelles) au 861', () => {
-    const lignes = [ligne({ id: 'b', compteEcart: '15400000', ecart: 50_000_000, provisionReprise: 2_000_000 })];
-    expect(sortDesEcarts({ referentiel: 'SYSCOHADA', cession: true, lignes })).toEqual([
-      { ligneId: 'b', compteEcart: '15400000', montant: 48_000_000, traitement: 'REPRISE_861', motif: null },
-    ]);
-    // Même règle au SYCEBNL · sa fiche du compte 15 réduit la provision par le 86.
-    expect(sortDesEcarts({ referentiel: 'SYCEBNL', cession: true, lignes })[0].traitement).toBe('REPRISE_861');
+  it('SYCEBNL, association · 106 de 10 000 000 (1061, sans droit de reprise) transféré en entier', () => {
+    const lignes = [ligne({ id: 'c', compteEcart: '10611000', ecart: 10_000_000 })];
+    expect(sortDesEcarts({ lignes })).toEqual([{ ligneId: 'c', compteEcart: '10611000', montant: 10_000_000, traitement: 'RESERVE' }]);
+    // Le 1062 « avec droit de reprise » suit la même règle · aucun texte du SYCEBNL n'en dit autre chose.
+    expect(sortDesEcarts({ lignes: [ligne({ id: 'd', compteEcart: '10621000', ecart: 3_000 })] })[0].traitement).toBe('RESERVE');
   });
-  it('154 hors cession · NON PASSÉ, motif dit (les textes ne tranchent pas)', () => {
-    const lignes = [ligne({ id: 'b', compteEcart: '15400000', ecart: 1_000 })];
-    expect(sortDesEcarts({ referentiel: 'SYSCOHADA', cession: false, lignes })).toEqual([
-      { ligneId: 'b', compteEcart: '15400000', montant: 1_000, traitement: 'NON_PASSE', motif: MOTIF_154_HORS_SERVICE },
-    ]);
+  it('154 · mise au rebut après une année de reprise · 18 000 000 − 2 000 000 = 16 000 000 au 861, à toute sortie', () => {
+    const lignes = [ligne({ id: 'b', compteEcart: '15400000', ecart: 18_000_000, provisionReprise: 2_000_000 })];
+    expect(sortDesEcarts({ lignes })).toEqual([{ ligneId: 'b', compteEcart: '15400000', montant: 16_000_000, traitement: 'REPRISE_861' }]);
+    expect(lignesSortDeLEcart(sortDesEcarts({ lignes }))).toEqual({ reserve: [], reprise: 16_000_000 });
   });
-  it('SYCEBNL, 106 · NON PASSÉ (le § 6 de l’AUDCIF ne lui est pas prêté)', () => {
-    const lignes = [ligne({ id: 'c', compteEcart: '10621000', ecart: 3_000 })];
-    expect(sortDesEcarts({ referentiel: 'SYCEBNL', cession: true, lignes })).toEqual([
-      { ligneId: 'c', compteEcart: '10621000', montant: 3_000, traitement: 'NON_PASSE', motif: MOTIF_106_SYCEBNL },
-    ]);
+  it('plus aucun « non passé » · ni motif ni traitement de ce nom dans la source', () => {
+    const source = readFileSync(join(__dirname, 'reevaluation-suites.ts'), 'utf8');
+    expect(source).toMatch(/export type TraitementALaSortie = 'RESERVE' \| 'REPRISE_861';/);
   });
   it('un écart déjà soldé, ou une ligne sans écart, ne sort rien', () => {
     expect(
       sortDesEcarts({
-        referentiel: 'SYSCOHADA',
-        cession: true,
         lignes: [
           ligne({ id: 'a', compteEcart: '10610000', ecart: 100, ecartTransfere: 100 }),
           ligne({ id: 'b', compteEcart: '15400000', ecart: 100, provisionReprise: 100 }),
@@ -91,8 +81,6 @@ describe('sortDesEcarts · ch. 28 § 6 et loi n° 23/053, art. 133 al. 3', () =>
   });
   it('les lignes de l’écriture · une paire par compte du 106, la reprise d’un seul tenant', () => {
     const sorts = sortDesEcarts({
-      referentiel: 'SYSCOHADA',
-      cession: true,
       lignes: [
         ligne({ id: 'a', compteEcart: '10610000', ecart: 100 }),
         ligne({ id: 'b', compteEcart: '10610000', ecart: 50 }),
@@ -110,8 +98,8 @@ describe('sortDesEcarts · ch. 28 § 6 et loi n° 23/053, art. 133 al. 3', () =>
   });
 });
 
-describe('la réserve non distribuable · fiche du compte 11', () => {
-  it('111, 112 et 1138 admises ; 1131 à 1134 (objet propre), 118 (réserves libres) et un autre compte refusés ; l’absence est nommée', () => {
+describe('la réserve · fiche du compte 11 de chaque plan', () => {
+  it('SYSCOHADA · 111, 112 et 1138 admises ; 1131 à 1134 (objet propre), 118 (réserves libres) et un autre compte refusés ; l’absence est nommée', () => {
     expect(motifRefusCompteReserve('11100000')).toBeNull();
     expect(motifRefusCompteReserve('11200000')).toBeNull();
     expect(motifRefusCompteReserve('11380000')).toBeNull();
@@ -123,6 +111,13 @@ describe('la réserve non distribuable · fiche du compte 11', () => {
     expect(motifRefusCompteReserve('12100000')).toMatch(/n’est pas une réserve non distribuable/);
     expect(motifRefusCompteReserve(null)).toMatch(/Choisissez la réserve non distribuable/);
   });
+  it('SYCEBNL · le 118 imposé (décision du 2026-10-04) · rien de choisi admis, tout autre compte refusé, le 112 compris', () => {
+    expect(COMPTE_RESERVE_SYCEBNL).toBe('11800000');
+    expect(motifRefusCompteReserve(null, 'SYCEBNL')).toBeNull();
+    expect(motifRefusCompteReserve('11800000', 'SYCEBNL')).toBeNull();
+    expect(motifRefusCompteReserve('11200000', 'SYCEBNL')).toMatch(/ne peut pas recevoir l’écart.*11800000 Autres réserves, imposé/);
+    expect(motifRefusCompteReserve('12100000', 'SYCEBNL')).toMatch(/ne choisissez aucune réserve/);
+  });
   it('chaque racine est ouverte au plan SYSCOHADA semé, sous l’intitulé que la fiche lui donne', () => {
     const intitules: Record<string, RegExp> = { '111': /Réserve légale/, '112': /Réserves statutaires/, '1138': /Autres réserves réglementées/ };
     for (const r of RACINES_RESERVE_NON_DISTRIBUABLE) {
@@ -132,7 +127,12 @@ describe('la réserve non distribuable · fiche du compte 11', () => {
     // Le 118 est bien celui des réserves LIBRES (« Réserves facultatives »).
     expect(SEMIS_SYSCOHADA.find((x) => x.numero === '11810000')?.intitule).toMatch(/facultatives/);
   });
-  it('le 861 et le 154 sont ouverts aux deux semis (la reprise de la cession)', () => {
+  it('le 118 du SYCEBNL est semé en compte de détail, sans subdivision, sous « Autres réserves » ; ni 111 ni 113 au plan', () => {
+    expect(SEMIS_SYCEBNL.find((x) => x.numero === COMPTE_RESERVE_SYCEBNL)?.intitule).toBe('Autres réserves');
+    expect(SEMIS_SYCEBNL.filter((x) => x.numero.startsWith('118')).map((x) => x.numero)).toEqual([COMPTE_RESERVE_SYCEBNL]);
+    expect(SEMIS_SYCEBNL.some((x) => x.numero.startsWith('111') || x.numero.startsWith('113'))).toBe(false);
+  });
+  it('le 861 et le 154 sont ouverts aux deux semis (la reprise à la sortie)', () => {
     for (const semis of [SEMIS_SYSCOHADA, SEMIS_SYCEBNL]) {
       expect(semis.some((c) => c.numero === '86100000')).toBe(true);
       expect(semis.some((c) => c.numero === '15400000')).toBe(true);

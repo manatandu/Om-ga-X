@@ -28,7 +28,7 @@ import { EchangeImmobilisation } from '../components/EchangeImmobilisation';
 import { EcartReevaluationSortie } from '../components/EcartReevaluationSortie';
 import { DeclarationSpecialeImprimee } from '../components/DeclarationSpeciale';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
-import type { DeclarationSpeciale } from '../lib/reevaluation-suites';
+import { messageSortieEcart, type DeclarationSpeciale } from '../lib/reevaluation-suites';
 import { corpsCreation, saisieInitiale } from '../lib/location-acquisition';
 import type { Compte, FamilleImmobilisation, Immobilisation, Journal, LieuBien, TypeComposant } from '../lib/types';
 import { montant } from '../lib/montants';
@@ -659,7 +659,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
     setEnvoi(true);
     try {
       const resultat = await api.post<{
-        ecartReevaluation?: { transfereReserve: number; repris861: number; nonPasses: Array<{ compteEcart: string; montant: number; motif: string | null }> } | null;
+        ecartReevaluation?: { transfereReserve: number; compteReserve: string | null; repris861: number } | null;
       }>(`/immobilisations/${immoId}/sortie`, {
         dateSortie: sDateSortie,
         type: sType,
@@ -685,13 +685,9 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
       setSNature('');
       setSRefPiece('');
       setSDatePiece('');
-      // Un écart laissé au 106 ou au 154 se DIT après la sortie, jamais en silence.
-      const nonPasses = resultat?.ecartReevaluation?.nonPasses ?? [];
-      setInfo(
-        nonPasses.length > 0
-          ? `Sortie enregistrée · écart de réévaluation non passé : ${nonPasses.map((x) => `${x.compteEcart} ${montant(x.montant)}`).join(', ')}.`
-          : 'Sortie enregistrée.',
-      );
+      // Ce que la sortie a fait de l'écart de réévaluation se DIT · 106 vers la
+      // réserve choisie, 154 repris au 861 (lignes A15 et A15 bis).
+      setInfo(messageSortieEcart(resultat?.ecartReevaluation ?? null));
       await charger();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Impossible de sortir cette immobilisation');
@@ -2107,7 +2103,6 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                       {/* L'ancien composant sort en mise hors service, avec son écart. */}
                       <EcartReevaluationSortie
                         immobilisationId={immo.id}
-                        type="MISE_HORS_SERVICE"
                         compteReserve={sCompteReserve}
                         setCompteReserve={setSCompteReserve}
                       />
@@ -2387,7 +2382,6 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                       )}
                       <EcartReevaluationSortie
                         immobilisationId={immo.id}
-                        type={sType}
                         compteReserve={sCompteReserve}
                         setCompteReserve={setSCompteReserve}
                       />

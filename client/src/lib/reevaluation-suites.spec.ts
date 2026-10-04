@@ -6,10 +6,11 @@ import {
   natureDeLaReevaluation,
   reserveExigee,
   reservePreselectionnee,
-  sortsDuType,
+  messageSortieEcart,
   type EcartALaSortie,
   type NoteReevaluations,
 } from './reevaluation-suites';
+import { montant } from './montants';
 
 /**
  * LIGNE A15 · les suites d'une réévaluation à l'écran · aucune règle n'y est
@@ -68,20 +69,31 @@ describe('la nature de la réévaluation, telle que la décision la nomme', () =
 });
 
 describe('la réserve à la sortie · demandée quand le serveur l’exige, jamais devinée', () => {
-  const lu: EcartALaSortie = {
-    cession: [{ ligneId: 'a', compteEcart: '10610000', montant: 10, traitement: 'RESERVE', motif: null }],
-    miseHorsService: [{ ligneId: 'b', compteEcart: '15400000', montant: 5, traitement: 'NON_PASSE', motif: 'ne tranchent pas' }],
-  };
-  it('selon le type de sortie choisi', () => {
-    expect(reserveExigee(sortsDuType(lu, 'CESSION'))).toBe(true);
-    expect(reserveExigee(sortsDuType(lu, 'MISE_HORS_SERVICE'))).toBe(false);
-    expect(sortsDuType(null, 'CESSION')).toBeNull();
+  it('une liste pour toute sortie · réserve exigée dès qu’un 106 est transféré, jamais pour le seul 154', () => {
+    const avec106: EcartALaSortie = {
+      referentiel: 'SYCEBNL',
+      sorts: [{ ligneId: 'a', compteEcart: '10611000', montant: 10_000_000, traitement: 'RESERVE' }],
+    };
+    const seul154: EcartALaSortie = {
+      referentiel: 'SYSCOHADA',
+      sorts: [{ ligneId: 'b', compteEcart: '15400000', montant: 16_000_000, traitement: 'REPRISE_861' }],
+    };
+    expect(reserveExigee(avec106.sorts)).toBe(true);
+    expect(reserveExigee(seul154.sorts)).toBe(false);
     expect(reserveExigee(null)).toBe(false);
   });
   it('un choix unique se présélectionne, jamais plusieurs', () => {
     expect(reservePreselectionnee([{ id: 'x' }])).toBe('x');
     expect(reservePreselectionnee([{ id: 'x' }, { id: 'y' }])).toBeNull();
     expect(reservePreselectionnee(null)).toBeNull();
+  });
+  it('le message après la sortie dit ce qui a été passé, au centime', () => {
+    expect(messageSortieEcart(null)).toBe('Sortie enregistrée.');
+    const m = messageSortieEcart({ transfereReserve: 10_000_000, compteReserve: '11800000', repris861: 16_000_000 });
+    expect(m).toMatch(/transféré à la réserve 11800000/);
+    expect(m).toMatch(/repris au 861/);
+    expect(m).toContain(montant(16_000_000));
+    expect(messageSortieEcart({ transfereReserve: 0, compteReserve: null, repris861: 0 })).toBe('Sortie enregistrée.');
   });
 });
 

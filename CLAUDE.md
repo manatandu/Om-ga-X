@@ -1957,14 +1957,26 @@ hausse du cumul de l'exercice de réévaluation passée à sa clôture, jamais a
 cumul d'ouverture ; réévaluations postérieures retranchées) et dit la part de
 l'annuité due à la réévaluation et la reprise de l'exercice sur l'écart (loi
 n° 23/053, art. 135) ; déclaration spéciale ÉDITÉE par catégorie (art. 136,
-137), modèle CPCC hors corpus dit, jamais dite déposée. À LA SORTIE · 106 au
-SYSCOHADA transféré à une réserve non distribuable CHOISIE sous 111, 112 ou 1138
-(ch. 28 § 6 ; fiche du compte 11, le 118 des réserves libres refusé), toute
-sortie ; 154 repris au 861 à la CESSION seule (art. 133 al. 3 ; fiche du compte
-15) ; 154 hors service et 106 du SYCEBNL NON PASSÉS, motif rendu (textes en
-tension, ou muets) ; écriture à part sous la pièce, RETENUE
-(`ecritureSortieEcartReevaluationId`) ; le fiscal (art. 133 al. 3, art. 19) dit,
-jamais retraité.
+137), modèle CPCC hors corpus dit, jamais dite déposée. À LA SORTIE, TOUTE
+SORTIE (cession, rebut, destruction, vol, disparition, échange, remise,
+restitution, renouvellement d'un composant, option non levée), AUX DEUX
+RÉFÉRENTIELS (ligne A15 bis, décisions de Manasse du 2026-10-04, tranchées
+par la loi) · 154 · le reste non repris DU BIEN (`provisionReprise`) repris EN
+ENTIER, D 154 / C 861, jamais vers une réserve (fiche du compte 15 des deux
+plans, « réduites ou annulées exclusivement par “Reprises H.A.O.” » ; loi
+n° 23/053, art. 132 al. 1er, « sans influence sur le résultat comptable et
+fiscal », et 133 al. 2 et 3 ; le § 6 vise l'ÉCART, le 154 étant crédité « au
+lieu du 1061 », § 4.2.4.1) ; hors service aussi, le 81 portant la VNC
+réévaluée et un 154 sans bien n'ayant plus d'objet. 106 · au SYSCOHADA vers
+une réserve non distribuable CHOISIE sous 111, 112 ou 1138 (ch. 28 § 6 ; fiche
+du compte 11, le 118 des réserves libres refusé) ; au SYCEBNL vers le 118
+« Autres réserves » IMPOSÉ (11800000, semé sans subdivision), décision de
+Manasse du 2026-10-04, dans le silence du texte SYCEBNL, par analogie avec
+l'AUDCIF ch. 28 § 6 · aucun choix à l'écran, tout autre compte envoyé refusé
+en 400 nommé (`COMPTE_RESERVE_SYCEBNL`), 1061 et 1062 de même, aucun texte
+lu ne disant autre chose du 1062 ; plus rien de « non passé ». Écriture à part
+sous la pièce, RETENUE (`ecritureSortieEcartReevaluationId`) ; le fiscal
+(art. 133 al. 3, art. 19) dit au SYSCOHADA, jamais retraité.
 
 **Approche par composants.** Un composant est une immobilisation à part entière
 rattachée à son principal (`Immobilisation.immobilisationPrincipaleId`), avec son
