@@ -1444,6 +1444,29 @@ model Exercice {
   /// une date que personne n'a décidée.
   dateArreteComptes DateTime?
 
+  /// AU2 · LE BILAN D'OUVERTURE IMPORTÉ DANS L'EXERCICE SUIVANT, CONSERVÉ.
+  /// Quand l'exercice suivant porte déjà un bilan d'ouverture importé qui
+  /// diffère du bilan de clôture de celui-ci, la clôture ne choisit pas seule
+  /// lequel est faux (AUDCIF art. 34 · SYCEBNL art. 16, 4)). Le cabinet le
+  /// DÉCLARE · ou il rectifie l'import (inscription en négatif, AUDCIF
+  /// art. 20, al. 2), ou il le conserve parce que cet exercice n'est tenu dans
+  /// OmegaX que pour les comparatifs, ses livres légaux étant ailleurs. Ce
+  /// champ porte alors le MOTIF de cette déclaration, au journal d'audit.
+  /// Null · rien n'a été déclaré (pas d'import, import concordant, ou
+  /// rectifié).
+  motifOuvertureSuivanteConservee String?
+  /// Les positions qui diffèrent, figées à la déclaration (second tour, R8) ·
+  /// `{ total, tronque, ecarts: [{ numero, devise, cloture, ouverture,
+  /// clotureDevise, ouvertureDevise }] }`, deux cents au plus. Le contrôle
+  /// d'information de l'exercice suivant les cite.
+  ecartsOuvertureSuivanteConservee Json?
+  /// AU1, second tour (R4, R5) · les lettrages et pointages que la clôture
+  /// de CET exercice a défaits dans l'exercice suivant, parce que la ligne
+  /// d'à-nouveau provisoire qu'ils portaient a disparu sans équivalent ·
+  /// `[{ type, compte, groupe, lignes: [{ date, montant }], motif }]`. Écrit
+  /// avec l'acte de clôture, donc au journal d'audit avec son motif.
+  defaitsParLaCloture Json?
+
   ecritures                    Ecriture[]
   clotures                     Cloture[]
   dotationsAmortissement       DotationAmortissement[]
@@ -1825,6 +1848,13 @@ model LigneEcriture {
   // lignes d'un coup.
   lettre     String?
   lettrageId String?
+  /// AU1, second tour (R4) · la clôture de l'exercice précédent a DÉLETTRÉ
+  /// cette ligne (son groupe portait une ligne d'à-nouveau provisoire disparue
+  /// sans équivalent) · date de ce délettrage. Tant qu'elle n'est pas
+  /// relettrée, la déclaration de TVA la NOMME (un paiement non lettré reste
+  /// un encaissement, décret n° 011/42, art. 57), et le pré-lettrage propose
+  /// son relettrage. Null sur toute autre ligne.
+  aRelettrerDepuis DateTime?
   lettrage   Lettrage? @relation(fields: [lettrageId], references: [id])
 
   // Taux de TVA appliqué à CETTE ligne (la ligne de TVA elle-même, pas la

@@ -210,6 +210,8 @@ function base(comptes: Cpt[], lignes: Lgn[]) {
       ),
     },
     ligneEcriture: {
+      // AU2 · aucune ligne au premier jour de N+1 (`ouvertureDejaPassee`).
+      count: jest.fn().mockResolvedValue(0),
       fields: { credit: { modelName: 'LigneEcriture', name: 'credit' }, debit: { modelName: 'LigneEcriture', name: 'debit' } },
       groupBy: jest.fn(async (a: { by: string[]; where: unknown; _sum: Record<string, true> }) => {
         const groupes = new Map<string, Record<string, unknown>>();
@@ -240,7 +242,7 @@ function base(comptes: Cpt[], lignes: Lgn[]) {
     },
     journal: { findFirst: jest.fn().mockResolvedValue({ id: 'od', code: 'OD' }) },
     exercice: { findFirst: jest.fn().mockResolvedValue(N1), create: jest.fn(), update: jest.fn().mockResolvedValue({ ...N, statut: 'CLOTURE' }) },
-    ecriture: { findFirst: jest.fn().mockResolvedValue(null), delete: jest.fn(), create: jest.fn().mockResolvedValue({}) },
+    ecriture: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), delete: jest.fn(), create: jest.fn().mockResolvedValue({ lignes: [] }) },
   };
   const prisma = {
     exercice: {

@@ -347,7 +347,22 @@ export interface PropositionPreLettrage {
   solde: number;
 }
 
+/** Une ligne d'un relettrage proposé (AU1, second tour). */
+export interface LigneRelettrage {
+  ligneId: string;
+  date: string;
+  libelle: string;
+  debit: number;
+  credit: number;
+}
+
 export interface EtatPreLettrage {
+  /**
+   * AU1, second tour · les lignes que la clôture de l'exercice précédent a
+   * DÉLETTRÉES, chacune avec ses candidates · rien n'est coché, le comptable
+   * choisit et confirme. Absent d'un serveur antérieur.
+   */
+  relettrages?: { ligne: LigneRelettrage; candidates: LigneRelettrage[] }[];
   propositions: PropositionPreLettrage[];
   /** Ce que le logiciel n'a PAS su rapprocher · la moitié utile de l'état. */
   nonProposees: number;

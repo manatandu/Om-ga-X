@@ -110,10 +110,13 @@ function service(
     exercice: { findFirst: jest.fn().mockResolvedValue(N1), create: jest.fn() },
     ecriture: {
       findFirst: jest.fn().mockResolvedValue(provisoire),
+      // AU2 · aucune ouverture déjà passée dans N+1 par défaut.
+      findMany: jest.fn().mockResolvedValue([]),
       delete: jest.fn().mockResolvedValue({}),
-      create: jest.fn().mockResolvedValue({}),
+      create: jest.fn().mockResolvedValue({ lignes: [] }),
     },
-    ligneEcriture: { ...lecture.ligneEcriture, deleteMany: jest.fn().mockResolvedValue({}) },
+    // AU2 · aucune ligne au premier jour de N+1 par défaut (`ouvertureDejaPassee`).
+    ligneEcriture: { ...lecture.ligneEcriture, count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn().mockResolvedValue({}) },
   };
   const prisma = {
     exercice: { findFirst: jest.fn().mockResolvedValue(N) },

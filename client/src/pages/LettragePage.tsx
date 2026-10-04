@@ -119,6 +119,9 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
   // conservée : quitter le panneau la jette, la rouvrir la recalcule. Rien à
   // rafraîchir, donc rien à périmer.
   const [preLettrage, setPreLettrage] = useState<EtatPreLettrage | null>(null);
+  // AU1, second tour · le relettrage de ce que la clôture a défait · la
+  // candidate CHOISIE par ligne à relettrer, aucune d'office.
+  const [relettrageChoisi, setRelettrageChoisi] = useState<Record<string, string>>({});
   // Les groupes retenus, par indice de proposition. VIDE au départ, et c'est
   // délibéré : un panneau dont les cases arriveraient cochées transformerait
   // la confirmation en acquiescement, alors que c'est justement l'examen qui
@@ -307,6 +310,7 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
       const r = await api.get<EtatPreLettrage>(`/comptes/${compteId}/lettrage/pre-lettrage`);
       setPreLettrage(r);
       setRetenus(new Set());
+      setRelettrageChoisi({});
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Pré-lettrage impossible');
     } finally {
@@ -327,6 +331,17 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
       setPreLettrage(null);
       setRetenus(new Set());
       return `${r.groupes} groupe(s) confirmé(s) et lettré(s) : ${r.lettres.join(', ')}.`;
+    });
+
+  const confirmerRelettrage = (ligneId: string) =>
+    executer(async () => {
+      const candidate = relettrageChoisi[ligneId];
+      const r = await api.post<{ groupes: number; lettres: string[] }>(`/comptes/${compteId}/lettrage/pre-lettrage/confirmer`, {
+        groupes: [{ ligneIds: [ligneId, candidate], origine: 'AUTOMATIQUE_MONTANT' }],
+      });
+      setPreLettrage(null);
+      setRelettrageChoisi({});
+      return `Relettré : ${r.lettres.join(', ')} · la TVA d'une prestation est datée du jour du paiement.`;
     });
 
   const lancerLettrageAuto = () =>
@@ -453,6 +468,55 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
           </div>
 
           <p className="px-3.5 py-2 text-[11.5px] text-text-dim border-b border-border/60">{preLettrage.avertissement}</p>
+
+          {(preLettrage.relettrages ?? []).length > 0 && (
+            <div className="border-b border-border-dark">
+              <div className="px-3.5 py-1.5 text-[11.5px] font-semibold flex items-center gap-1.5">
+                À relettrer · défait par la clôture de l'exercice précédent
+                <Aide
+                  titre="Relettrage après la clôture"
+                  texte="La clôture a remplacé une ligne d'à-nouveau provisoire lettrée sans trouver d'équivalent sûr · elle a délettré son groupe. Choisissez la ligne qui règle ce paiement, puis confirmez. Tant qu'il n'est pas relettré, la déclaration de TVA le nomme · un paiement non lettré reste un encaissement, et la TVA d'une prestation est devenue exigible à sa date."
+                  source="Décret n° 011/42, art. 57 · O.-L. n° 10/001, art. 25, 2°"
+                />
+              </div>
+              {preLettrage.relettrages!.map((r) => (
+                <div key={r.ligne.ligneId} className="px-3.5 py-1.5 text-[11.5px] flex items-center gap-2 flex-wrap border-t border-border/60">
+                  <span className="font-mono text-[11px] text-text-dim">{new Date(r.ligne.date).toLocaleDateString('fr-FR')}</span>
+                  <span className="truncate max-w-[240px]">{r.ligne.libelle}</span>
+                  <span className="font-semibold">{montant(r.ligne.debit || r.ligne.credit)}</span>
+                  {r.candidates.length === 0 ? (
+                    <span className="text-text-dim">Aucune ligne de même montant · lettrez-le à la main quand sa facture sera connue.</span>
+                  ) : (
+                    <>
+                      <select
+                        aria-label="Ligne à relettrer"
+                        value={relettrageChoisi[r.ligne.ligneId] ?? ''}
+                        onChange={(e) => setRelettrageChoisi((prev) => ({ ...prev, [r.ligne.ligneId]: e.target.value }))}
+                        className="border border-border-dark px-2 py-0.5"
+                      >
+                        <option value="">Choisir la ligne…</option>
+                        {r.candidates.map((c) => (
+                          <option key={c.ligneId} value={c.ligneId}>
+                            {new Date(c.date).toLocaleDateString('fr-FR')} · {c.libelle} · {montant(c.debit || c.credit)}
+                          </option>
+                        ))}
+                      </select>
+                      {peutEcrire && (
+                        <button
+                          type="button"
+                          onClick={() => confirmerRelettrage(r.ligne.ligneId)}
+                          disabled={envoi || !relettrageChoisi[r.ligne.ligneId]}
+                          className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1 disabled:opacity-40"
+                        >
+                          Relettrer
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {preLettrage.propositions.length === 0 ? (
             <div className="px-3.5 py-2 text-[11.5px] text-text-dim">

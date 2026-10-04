@@ -133,21 +133,20 @@ ce qui lit sans écrire (états financiers, notes, exports, contrôles).
 **À traiter EN TÊTE de l'audit, défauts de production déjà reproduits sur
 base réelle (gardés pour l'audit par décision de Manasse du 2026-10-03).**
 
-- AU1 · DOSSIER ENFERMÉ · une ligne de l'à-nouveau PROVISOIRE de N+1
-  lettrée à la main, puis une clôture de période de N+1 qui couvre le
-  1er janvier · la clôture de N est refusée (« délettrez-les ») et le
-  délettrage aussi (ligne figée) · N ne se clôture plus jamais. Reproduit
-  sur un 411 seul (relecture adverse d'A7 ter, second tour, script
-  `generique.mjs`). A6 bis n'écarte l'à-nouveau provisoire que du Règlement
-  des tiers. Issues à trancher · refuser le lettrage d'une ligne
-  `estANouveauProvisoire`, ou exempter l'à-nouveau provisoire du gel (il
-  n'est jamais au livre-journal), ou reporter le lettrage sur l'à-nouveau
-  définitif à la clôture. JAMAIS refuser la clôture de période de N+1 (AUDCIF
-  art. 22, 3° l'impose au moins tous les trois mois).
-- AU2 · MONTANT FAUSSÉ · clôturer N après l'import d'un bilan d'ouverture
-  dans N+1 AJOUTE le report d'OmegaX à l'import · deux à-nouveaux dans N+1
-  (411 à 4 500 000 dans le scénario de la vérification d'A5 bis, troisième
-  tour). Vague 2, clôture et report à nouveau.
+- AU1 · DOSSIER ENFERMÉ · TRAITÉ sur `travail/au1` (2026-10-04) · une ligne
+  de l'à-nouveau PROVISOIRE ne se lettre plus par aucun chemin (AUDCIF art. 22,
+  2°, `verifierLignes`) ; à la clôture de N, ce qui y était lettré ou pointé
+  passe sur la ligne qui la remplace (`apparierTenues`), un groupe figé sans
+  équivalent reste partiel et c'est dit. La clôture de période de N+1 n'est
+  jamais refusée. Rejoué sur vraie base aux deux référentiels.
+- AU2 · MONTANT FAUSSÉ · TRAITÉ sur `travail/au1` (2026-10-04) · la clôture
+  confronte l'ouverture déjà passée dans N+1 au bilan de clôture, compte par
+  compte (AUDCIF art. 34 · SYCEBNL art. 16, 4)) · concordante, rien n'est
+  ajouté ; N sans écriture, l'import fait foi ; divergente, le cabinet déclare
+  RECTIFIER (inscription en négatif puis report exact, AUDCIF art. 20, al. 2)
+  ou CONSERVER (motif au journal d'audit) ; au brouillard, la clôture demande
+  de la valider. Rejoué sur vraie base aux deux référentiels, à travers N et
+  N+1.
 - AU3 · une balance importée perd la devise · l'ancienne créance n'est
   jamais réévaluée (3 200 000 au lieu de 1 500 USD au cours de 2 400, soit
   3 600 000).

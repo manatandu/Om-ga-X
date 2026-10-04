@@ -3006,8 +3006,14 @@ export class EcritureService {
     // annoncer un écart serait une fausse alerte.
     const arreteALaCloture = arret.getTime() === exercice.dateFin.getTime();
 
+    // AU2, second tour (R8) · une ouverture CONSERVÉE à la clôture d'un
+    // exercice antérieur rompt l'enchaînement · le cumul de ce justificatif
+    // (à-nouveaux des exercices suivants exclus) diffère alors de la balance
+    // de l'exercice, et le recoupement doit dire pourquoi.
+    const ruptures = await this.rupturesDOuverture(tenantId, exercice.dateDebut, compte.numero);
     return {
       compte,
+      rupturesOuverture: ruptures,
       dateArret: arret.toISOString().slice(0, 10),
       masquerLettrees: params.masquerLettrees ?? false,
       lignes: detail,
@@ -3485,6 +3491,34 @@ export class EcritureService {
    * `inclureBrouillard` vaut FAUX par défaut, à l'inverse de `balance()` : le
    * seul appelant est un état financier.
    */
+  /**
+   * AU2, second tour (R8) · les exercices clos AVANT `avant` dont la clôture a
+   * CONSERVÉ l'ouverture de l'exercice suivant, différente de leur bilan de
+   * clôture (motif déclaré, AUDCIF art. 34 · SYCEBNL art. 16, 4)). Un cumul
+   * pluriannuel ne s'y enchaîne pas · le lecteur doit le savoir. `numero`
+   * borne les positions à un compte (justificatif), null les rend toutes.
+   */
+  private async rupturesDOuverture(tenantId: string, avant: Date, numero: string | null) {
+    const conserves = await this.prisma.exercice.findMany({
+      where: { tenantId, dateDebut: { lte: avant }, dateFin: { lt: avant }, motifOuvertureSuivanteConservee: { not: null } },
+      orderBy: { dateFin: 'asc' },
+      select: { dateDebut: true, dateFin: true, motifOuvertureSuivanteConservee: true, ecartsOuvertureSuivanteConservee: true },
+      take: 20,
+    });
+    type Garde = { numero: string | null; devise: string | null; cloture: number; ouverture: number };
+    // Le motif se relit · seul un motif écrit fait une rupture déclarée.
+    return conserves.filter((e) => e.motifOuvertureSuivanteConservee && e.dateFin < avant).map((e) => {
+      const positions = ((e.ecartsOuvertureSuivanteConservee as { ecarts?: Garde[] } | null)?.ecarts ?? []).filter(
+        (p) => numero === null || p.numero === numero,
+      );
+      return {
+        exerciceClos: { dateDebut: e.dateDebut, dateFin: e.dateFin },
+        motif: e.motifOuvertureSuivanteConservee!,
+        positions,
+      };
+    });
+  }
+
   async balanceCumulee(tenantId: string, exerciceId: string, inclureBrouillard = false) {
     // 404 nommé, jamais l'erreur brute de Prisma servie en 500 (jumeau de
     // l'audit final F222) · la Note 9 et les colonnes cumulées du tableau
@@ -3573,7 +3607,14 @@ export class EcritureService {
       })
       .filter((l) => l.totalDebit !== 0 || l.totalCredit !== 0);
 
-    return { lignes, totaux: { debit: lignes.reduce((s, l) => s + l.totalDebit, 0), credit: lignes.reduce((s, l) => s + l.totalCredit, 0) } };
+    // AU2, second tour (R8) · les cumuls ne s'enchaînent pas à travers une
+    // ouverture conservée à la clôture d'un exercice de la fenêtre · dit.
+    const rupturesOuverture = await this.rupturesDOuverture(tenantId, exercice.dateDebut, null);
+    return {
+      lignes,
+      totaux: { debit: lignes.reduce((s, l) => s + l.totalDebit, 0), credit: lignes.reduce((s, l) => s + l.totalCredit, 0) },
+      rupturesOuverture,
+    };
   }
 
   /**

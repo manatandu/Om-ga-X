@@ -111,6 +111,88 @@ function lettreVersIndex(lettre: string): number {
  * (`lettrages-a-cheval.ts`), et l'écart de change réalisé d'un tel groupe,
  * figé compris, le complète par sa seule ligne (`completer`, `groupeTolere`).
  */
+/**
+ * LE CODE SUIVANT D'UN COMPTE, hors du service · la règle de
+ * `LettrageService.prochaineLettre`, pour un appelant qui pose un groupe dans
+ * sa propre transaction (la clôture, AU2 second tour, R6).
+ */
+export async function prochaineLettreDuCompte(tx: Prisma.TransactionClient, tenantId: string, compteId: string): Promise<() => string> {
+  const [groupes, lignes] = await Promise.all([
+    tx.lettrage.findMany({ where: { compteId, tenantId }, select: { code: true } }),
+    tx.ligneEcriture.findMany({ where: { compteId, lettre: { not: null }, ecriture: { tenantId } }, select: { lettre: true }, distinct: ['lettre'] }),
+  ]);
+  const codes = [...groupes.map((g) => g.code), ...lignes.map((l) => l.lettre!)];
+  let index = codes.reduce((max, c) => Math.max(max, lettreVersIndex(c)), 0) + 1;
+  return () => indexVersLettre(index++);
+}
+
+/**
+ * UN GROUPE SOLDÉ D'ORIGINE `MODULE`, posé dans la transaction de l'appelant
+ * sur des lignes que l'appelant a vérifiées (libres, non figées, compte
+ * lettrable). Les lignes sont relues LIBRES au moment d'écrire, comme
+ * `creerGroupe` · une ligne prise entre-temps fait tout échouer. Rend null,
+ * sans rien poser, si les lignes ne soldent pas.
+ */
+export async function poserGroupeSoldeDuModule(
+  tx: Prisma.TransactionClient,
+  p: { tenantId: string; compteId: string; ligneIds: string[]; userId: string; code: string },
+): Promise<string | null> {
+  const lignes = await tx.ligneEcriture.findMany({
+    where: { id: { in: p.ligneIds }, compteId: p.compteId, lettrageId: null, ecriture: { tenantId: p.tenantId } },
+    select: { id: true, debit: true, credit: true },
+  });
+  if (lignes.length !== new Set(p.ligneIds).size) throw lignesPrisesEntreTemps();
+  const solde = lignes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0);
+  if (Math.abs(solde) > EPSILON) return null;
+  const groupe = await tx.lettrage.create({
+    data: {
+      tenantId: p.tenantId,
+      compteId: p.compteId,
+      code: p.code,
+      statut: StatutLettrage.SOLDE,
+      solde: 0,
+      origine: OrigineLettrage.MODULE,
+      createdBy: p.userId,
+      soldeAt: new Date(),
+    },
+  });
+  const { count } = await tx.ligneEcriture.updateMany({ where: { id: { in: p.ligneIds }, lettrageId: null }, data: { lettrageId: groupe.id, lettre: p.code } });
+  if (count !== lignes.length) throw lignesPrisesEntreTemps();
+  return p.code;
+}
+
+/**
+ * AU1, second tour · un groupe qui RELETTRE ce que la clôture a défait · au
+ * moins une ligne marquée « à relettrer » (`aRelettrerDepuis`), et toutes les
+ * autres sont soit marquées, soit des lignes d'à-nouveau DÉFINITIF (le report
+ * que la clôture vient de passer, souvent dans une période déjà close). Seul
+ * ce groupe-là passe outre le gel · la clôture l'a défait, elle en rend le
+ * geste. Une facture ordinaire d'une période close reste figée.
+ */
+export function estRelettrageDeCloture(
+  lignes: Array<{ aRelettrerDepuis?: Date | null; ecriture: { estANouveauProvisoire: boolean; estGenereeParCloture?: boolean; estSoldeDesComptesDeGestion?: boolean } }>,
+): boolean {
+  const marquees = lignes.filter((l) => l.aRelettrerDepuis);
+  if (marquees.length === 0) return false;
+  return lignes.every(
+    (l) => l.aRelettrerDepuis || (l.ecriture.estGenereeParCloture === true && !l.ecriture.estANouveauProvisoire && l.ecriture.estSoldeDesComptesDeGestion !== true),
+  );
+}
+
+/**
+ * Le refus de lettrer une ligne d'à-nouveau PROVISOIRE (AU1) · il nomme la
+ * raison et le geste qui reste ouvert, comme celui du Règlement des tiers.
+ */
+export function motifLettrageANouveauProvisoire(): string {
+  return (
+    "La ligne choisie appartient au report à-nouveau PROVISOIRE · l'exercice précédent n'est pas clôturé, et ce report n'est " +
+    "jamais validé, donc jamais au livre-journal (AUDCIF art. 22, 2°) · sa clôture le remplace par le report définitif. " +
+    "Lettré, il serait figé par la prochaine clôture de période et la clôture de l'exercice précédent n'aurait plus d'issue. " +
+    "Clôturez l'exercice précédent, puis lettrez avec la ligne d'à-nouveau définitif, avant la clôture de la période qui porte " +
+    "le règlement (elle figerait aussi le règlement)."
+  );
+}
+
 /** Une ligne du groupe a été lettrée par un autre geste entre le calcul et l'écriture. */
 function lignesPrisesEntreTemps() {
   return new ConflictException(
@@ -442,7 +524,14 @@ export class LettrageService {
 
   /** Contrôles communs à toute pose de lettrage sur une sélection de lignes. */
   private verifierLignes(
-    lignes: Array<{ compteId: string; lettre: string | null; lettrageId: string | null; ecriture: { tenantId: string; date: Date } }>,
+    lignes: Array<{
+      compteId: string;
+      lettre: string | null;
+      lettrageId: string | null;
+      // EXIGÉ par le type (AU1) · un appelant qui ne le lirait pas laisserait
+      // passer l'à-nouveau provisoire sans que rien ne le dise.
+      ecriture: { tenantId: string; date: Date; estANouveauProvisoire: boolean };
+    }>,
     attendu: { compteId: string; tenantId: string; nombre: number },
   ) {
     if (lignes.length !== attendu.nombre) {
@@ -451,6 +540,17 @@ export class LettrageService {
     for (const l of lignes) {
       if (l.compteId !== attendu.compteId || l.ecriture.tenantId !== attendu.tenantId) {
         throw new BadRequestException('Toutes les lignes doivent appartenir au compte et au tenant indiqués');
+      }
+      // AU1 · L'À-NOUVEAU PROVISOIRE NE SE LETTRE PAS, par aucun chemin
+      // (manuel, complément, pré-lettrage confirmé, module). Il n'est jamais
+      // validé, donc jamais au livre-journal (AUDCIF art. 22, 2°), et la
+      // clôture de l'exercice précédent le remplace. Lettré puis figé par une
+      // clôture de période de N+1 (que l'art. 22, 3° impose au moins chaque
+      // trimestre), il enfermait N · clôture refusée, délettrage refusé. Le
+      // Règlement des tiers l'écartait déjà (A6 bis, m6), le lettrage
+      // automatique et le pré-lettrage ne le proposaient pas (A6 bis, m1).
+      if (l.ecriture.estANouveauProvisoire) {
+        throw new BadRequestException(motifLettrageANouveauProvisoire());
       }
       if (l.lettrageId) {
         const jour = l.ecriture.date.toISOString().slice(0, 10);
@@ -1258,7 +1358,43 @@ export class LettrageService {
       };
     };
 
+    // AU1, second tour · ce que la clôture a DÉLETTRÉ se propose à part,
+    // ligne par ligne, avec ses candidates (même compte, même montant de sens
+    // contraire, même devise, même exercice, libres) · jamais posé d'office,
+    // le comptable choisit et confirme (« l'une propose, l'autre confirme »).
+    const aRelettrer = await this.prisma.ligneEcriture.findMany({
+      where: { compteId, lettrageId: null, aRelettrerDepuis: { not: null }, ecriture: { tenantId } },
+      select: { id: true, debit: true, credit: true, deviseId: true, libelle: true, ecriture: { select: { date: true, exerciceId: true, libelle: true } } },
+      orderBy: { id: 'asc' },
+      take: 200,
+    });
+    const relettrages = [];
+    for (const l of aRelettrer) {
+      const candidates = await this.prisma.ligneEcriture.findMany({
+        where: {
+          compteId,
+          lettrageId: null,
+          id: { not: l.id },
+          debit: l.credit,
+          credit: l.debit,
+          deviseId: l.deviseId,
+          ecriture: { tenantId, exerciceId: l.ecriture.exerciceId, estANouveauProvisoire: false },
+        },
+        select: { id: true, debit: true, credit: true, libelle: true, dateEcheance: true, ecriture: { select: { date: true, libelle: true } } },
+        take: 20,
+      });
+      const decrireLigne = (x: { id: string; debit: unknown; credit: unknown; libelle: string | null; ecriture: { date: Date; libelle: string } }) => ({
+        ligneId: x.id,
+        date: x.ecriture.date.toISOString().slice(0, 10),
+        libelle: x.libelle ?? x.ecriture.libelle,
+        debit: Number(x.debit),
+        credit: Number(x.credit),
+      });
+      relettrages.push({ ligne: decrireLigne(l), candidates: candidates.map(decrireLigne) });
+    }
+
     return {
+      relettrages,
       propositions: [
         ...parPiece.map((g) => decrire(g, OrigineLettrage.AUTOMATIQUE_PIECE)),
         ...parMontant.map((g) => decrire(g, OrigineLettrage.AUTOMATIQUE_MONTANT)),
@@ -1334,7 +1470,19 @@ export class LettrageService {
         for (const g of groupes) {
           const lignes = await tx.ligneEcriture.findMany({
             where: { id: { in: g.ligneIds } },
-            include: { ecriture: { select: { tenantId: true, date: true, exerciceId: true } } },
+            include: {
+              ecriture: {
+                select: {
+                  tenantId: true,
+                  date: true,
+                  exerciceId: true,
+                  estANouveauProvisoire: true,
+                  estGenereeParCloture: true,
+                  estSoldeDesComptesDeGestion: true,
+                  exercice: { select: { statut: true } },
+                },
+              },
+            },
           });
           this.verifierLignes(lignes, { compteId, tenantId, nombre: g.ligneIds.length });
           await refuserLignesDuCompteClientReclasse(tx, tenantId, g.ligneIds);
@@ -1344,7 +1492,14 @@ export class LettrageService {
           if (aCheval) throw new BadRequestException(aCheval);
           // Une clôture peut être intervenue entre la proposition et la
           // confirmation · la proposition ne se croit pas, elle se rejoue.
-          await refuserSiLignesFigees(tx, tenantId, g.ligneIds, 'lettrer');
+          // SAUF le RELETTRAGE de ce que la clôture a défait (AU1, second
+          // tour) · une ligne marquée « à relettrer » avec une ligne
+          // d'à-nouveau définitif · la clôture, qui a défait le groupe en
+          // période close, rend le geste qui le refait.
+          // Jamais dans un exercice CLÔTURÉ · la tolérance ne lève que le gel
+          // d'une période close, pas celui d'un exercice.
+          const relettrage = estRelettrageDeCloture(lignes) && lignes.every((l) => l.ecriture.exercice?.statut !== StatutExercice.CLOTURE);
+          if (!relettrage) await refuserSiLignesFigees(tx, tenantId, g.ligneIds, 'lettrer');
           const solde = lignes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0);
           if (Math.abs(solde) > EPSILON) {
             throw new BadRequestException(
