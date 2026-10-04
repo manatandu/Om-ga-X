@@ -248,6 +248,144 @@ export function lignesReportANouveau(
 }
 
 /**
+ * UNE OUVERTURE DÉJÀ PASSÉE · une ligne d'un à-nouveau de l'exercice suivant
+ * qui n'est PAS le report provisoire d'OmegaX (bilan d'ouverture importé, ou
+ * sa correction par inscription en négatif), lue avant de passer le report.
+ */
+export interface LigneOuverturePassee {
+  compteId: string;
+  debit: number;
+  credit: number;
+  libelle: string | null;
+  dateEcheance: Date | null;
+  deviseId: string | null;
+  montantDevise: number | null;
+  coursApplique: number | null;
+}
+
+/**
+ * AU2 · LE BILAN D'OUVERTURE NE S'ÉCRIT QU'UNE FOIS.
+ *
+ * « Le bilan d'ouverture d'un exercice doit correspondre au bilan de clôture
+ * de l'exercice précédent » (AUDCIF art. 34 ; SYCEBNL art. 16, 4), l'art. 34
+ * étant exclu par l'art. 3 du SYCEBNL). Un bilan d'ouverture importé dans N+1,
+ * puis la clôture de N, écrivaient l'ouverture DEUX fois · la clôture ajoutait
+ * son report à l'import, chaque compte doublé, la balance bouclée (relevé AU2,
+ * reproduit sur vraie base · client 600 000 pour 300 000).
+ *
+ * Le report de la clôture EST le bilan de clôture · il prime. L'import n'est
+ * gardé que là où il lui correspond déjà, compte par compte. Là où il en
+ * diffère, l'import est faux, et sa correction suit la seule voie que le texte
+ * ouvre dans l'exercice en cours · « exclusivement par inscription en négatif
+ * des éléments erronés ; l'enregistrement exact est ensuite opéré » (AUDCIF
+ * art. 20, al. 2, non exclu par l'art. 3 du SYCEBNL). Les lignes de l'import
+ * sur ce compte sont donc inscrites en négatif, puis les lignes exactes du
+ * report sont passées, dans UNE écriture (le négatif et le report d'un même
+ * sous-ensemble de comptes ne s'équilibrent qu'ensemble). Jamais d'écart en
+ * une ligne · une compensation n'est pas une inscription en négatif. Jamais
+ * une écriture validée retirée (art. 22, 2°).
+ *
+ * Rend les lignes à passer (vide quand l'import correspond partout) et les
+ * comptes rectifiés, dans l'ordre où ils apparaissent.
+ */
+export function rectificationDeLOuverture(
+  report: LigneRan[],
+  passees: LigneOuverturePassee[],
+): { lignes: LigneRan[]; comptesRectifies: string[] } {
+  const ordre: string[] = [];
+  const net = new Map<string, number>();
+  const ajouter = (compteId: string, montant: number) => {
+    if (!net.has(compteId)) ordre.push(compteId);
+    net.set(compteId, (net.get(compteId) ?? 0) + montant);
+  };
+  for (const l of report) ajouter(l.compteId, l.debit - l.credit);
+  for (const l of passees) ajouter(l.compteId, -(l.debit - l.credit));
+  const comptesRectifies = ordre.filter((c) => Math.abs(arrondi2(net.get(c) ?? 0)) > EPSILON);
+  const lignes: LigneRan[] = [];
+  for (const compteId of comptesRectifies) {
+    for (const l of passees.filter((x) => x.compteId === compteId)) {
+      lignes.push({
+        compteId,
+        debit: arrondi2(-l.debit),
+        credit: arrondi2(-l.credit),
+        libelle: `Inscription en négatif · ${l.libelle ?? 'bilan d’ouverture'}`.slice(0, 250),
+        dateEcheance: l.dateEcheance,
+        ...(l.deviseId && l.montantDevise
+          ? { deviseId: l.deviseId, montantDevise: l.montantDevise, ...(l.coursApplique ? { coursApplique: l.coursApplique } : {}) }
+          : {}),
+      });
+    }
+    lignes.push(...report.filter((x) => x.compteId === compteId));
+  }
+  return { lignes, comptesRectifies };
+}
+
+/** Une ligne du report provisoire lettrée ou pointée, lue avant son retrait. */
+export interface LigneTenue {
+  compteId: string;
+  debit: number;
+  credit: number;
+  dateEcheance: Date | null;
+  deviseId: string | null;
+  montantDevise: number | null;
+  lettre: string | null;
+  lettrageId: string | null;
+  rapprochementId: string | null;
+  ligneReleveId: string | null;
+}
+
+/** Une ligne qui peut la recevoir · du report définitif, ou d'une ouverture déjà passée encore libre. */
+export interface LigneCandidate {
+  id: string;
+  compteId: string;
+  debit: number;
+  credit: number;
+  dateEcheance: Date | null;
+  deviseId: string | null;
+  montantDevise: number | null;
+}
+
+/**
+ * AU1 · CE QUI ÉTAIT LETTRÉ SUR LE PROVISOIRE PASSE SUR LE DÉFINITIF.
+ *
+ * Le report provisoire et le définitif sortent du même calcul sur le même
+ * livre (`lignesReportANouveau`) · la ligne définitive qui remplace une ligne
+ * provisoire a son compte, ses montants, son échéance et sa devise. Le groupe
+ * de lettrage (ou le pointage) suit donc la ligne qui la remplace, au même
+ * montant · son solde ne bouge pas, et la clôture n'a plus à le défaire. Une
+ * ligne qu'une période close de N+1 avait figée reste lettrée avec le même
+ * règlement · le gel n'est pas rompu, il est porté par la ligne qui fait foi.
+ *
+ * Appariement exact d'abord (compte, débit, crédit, échéance, devise et
+ * montant en devise), puis sur compte et montants seuls. Chaque candidate sert
+ * une fois. Rend, pour chaque tenue, l'identifiant de la ligne qui la reçoit,
+ * ou null quand aucune ne lui correspond (le livre de N a changé depuis le
+ * provisoire) · le service décide alors.
+ */
+export function apparierTenues(tenues: LigneTenue[], candidates: LigneCandidate[]): (string | null)[] {
+  const prises = new Set<string>();
+  const memesMontants = (t: LigneTenue, c: LigneCandidate) =>
+    c.compteId === t.compteId && Math.abs(c.debit - t.debit) <= EPSILON && Math.abs(c.credit - t.credit) <= EPSILON;
+  const exacte = (t: LigneTenue, c: LigneCandidate) =>
+    memesMontants(t, c) &&
+    (c.dateEcheance?.getTime() ?? null) === (t.dateEcheance?.getTime() ?? null) &&
+    (c.deviseId ?? null) === (t.deviseId ?? null) &&
+    Math.abs((c.montantDevise ?? 0) - (t.montantDevise ?? 0)) <= EPSILON;
+  const resultat: (string | null)[] = tenues.map(() => null);
+  for (const critere of [exacte, memesMontants]) {
+    tenues.forEach((t, i) => {
+      if (resultat[i] !== null) return;
+      const c = candidates.find((x) => !prises.has(x.id) && critere(t, x));
+      if (c) {
+        prises.add(c.id);
+        resultat[i] = c.id;
+      }
+    });
+  }
+  return resultat;
+}
+
+/**
  * REPORT DES BUDGETS · Sage i7 : « demander le report des budgets sur le
  * nouvel exercice ». Un budget déjà saisi sur l'exercice suivant n'est JAMAIS
  * écrasé · il a été décidé, le report n'en est qu'une proposition. Une

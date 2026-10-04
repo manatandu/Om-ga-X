@@ -317,12 +317,21 @@ export function ExercicePage() {
     setErreur(null);
     setInfo(null);
     try {
-      const r = await api.post<{ lignes: number; brouillardNonRepris: number; budgetsReportes: number | null }>(
-        `/exercices/${exercice.id}/a-nouveaux-provisoires`,
-        { reporterBudgets: reporterBudgetsAussi },
-      );
+      const r = await api.post<{
+        lignes: number;
+        brouillardNonRepris: number;
+        budgetsReportes: number | null;
+        ouvertureDejaPassee: { pieces: string; comptesRectifies: number } | null;
+      }>(`/exercices/${exercice.id}/a-nouveaux-provisoires`, { reporterBudgets: reporterBudgetsAussi });
+      // AU2 · un bilan d'ouverture déjà passé n'est pas doublé · le provisoire
+      // ne rectifie que les comptes où il diffère, et l'écran le dit.
+      const ouverture = r.ouvertureDejaPassee;
       setInfo(
-        `Report à-nouveau provisoire passé au brouillard de l'exercice suivant (${r.lignes} ligne(s)).` +
+        (ouverture
+          ? ouverture.comptesRectifies === 0
+            ? `Le bilan d'ouverture déjà passé (${ouverture.pieces}) correspond au report · aucun report provisoire n'est ajouté.`
+            : `Le bilan d'ouverture déjà passé (${ouverture.pieces}) diffère du report sur ${ouverture.comptesRectifies} compte(s) · le report provisoire ne porte que leur rectification (${r.lignes} ligne(s)).`
+          : `Report à-nouveau provisoire passé au brouillard de l'exercice suivant (${r.lignes} ligne(s)).`) +
           (r.budgetsReportes !== null ? ` ${r.budgetsReportes} budget(s) reporté(s).` : '') +
           (r.brouillardNonRepris
             ? ` ${r.brouillardNonRepris} écriture(s) encore au brouillard n'y sont pas : validez-les puis relancez.`
@@ -351,8 +360,11 @@ export function ExercicePage() {
     setErreur(null);
     setInfo(null);
     try {
-      await api.post(`/exercices/${exercice.id}/cloturer`);
-      setInfo("Exercice clôturé · report à-nouveau généré dans l'exercice suivant.");
+      const r = await api.post<{ issueOuverture?: string[] }>(`/exercices/${exercice.id}/cloturer`);
+      // AU1 et AU2 · ce que la clôture a fait d'un bilan d'ouverture déjà
+      // passé et du lettrage du report provisoire se dit, jamais en silence.
+      const issue = r?.issueOuverture ?? [];
+      setInfo(["Exercice clôturé · report à-nouveau généré dans l'exercice suivant.", ...issue].join(' '));
       await rechargerExercices();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : "Impossible de clôturer cet exercice");

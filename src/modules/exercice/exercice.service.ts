@@ -10,7 +10,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
-import { GranulariteCloture, ModeReportANouveau, Prisma, Referentiel, StatutEcriture, StatutExercice, TypeJournal } from '@prisma/client';
+import { GranulariteCloture, ModeReportANouveau, Prisma, Referentiel, StatutEcriture, StatutExercice, StatutLettrage, TypeJournal } from '@prisma/client';
 import { CreerExerciceDto } from './dto/creer-exercice.dto';
 import { ClorePartielleDto, CloreTotaleDto, ClorePeriodeDto } from './dto/cloture.dto';
 import { ArreterComptesDto } from './dto/arrete-comptes.dto';
@@ -23,15 +23,21 @@ import { echeanceDepassee, jourDeKinshasa } from '../../common/echeance';
 import { reporterAuJourOuvrable } from '../retenues/jour-ouvrable';
 import { premierJourNonCloture } from './report-periode-close';
 import {
+  apparierTenues,
   budgetsAReporter,
   CompteRan,
+  LigneCandidate,
   LigneLueRan,
+  LigneOuverturePassee,
+  LigneTenue,
   lignesReportANouveau,
+  rectificationDeLOuverture,
   resultatDesComptesDeGestion,
   SommesRan,
   soldeDuCompte,
 } from './report-a-nouveau';
 import { estTenueParUnLettrage } from '../lettrage/ligne-lettree';
+import { lignesFigees } from './gel-cloture';
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { libelleExercice } from '../../common/libelle-exercice';
 import { formeApplicable } from '../tenant/forme-applicable';
@@ -958,14 +964,53 @@ export class ExerciceService {
 
         // Le calcul vit dans report-a-nouveau.ts, partagé avec le report
         // PROVISOIRE · les deux doivent rendre le même report sur le même livre.
-        const lignesRan = lignesReportANouveau(
+        const report = lignesReportANouveau(
           comptes,
           compteResultatId ? { compteId: compteResultatId, montant: deltaResultat } : null,
         );
+
+        // AU2 · UNE OUVERTURE DÉJÀ PASSÉE DANS N+1 (bilan importé) n'est pas
+        // doublée par le report · voir `rectificationDeLOuverture`. Au
+        // brouillard, elle n'est pas au livre-journal (art. 22, 2°) · la
+        // rectification, validée, y inscrirait en négatif une écriture qui
+        // n'y est pas encore. La clôture demande donc de la valider d'abord ·
+        // geste toujours ouvert (`valider` ne connaît ni gel ni période, et le
+        // double regard écarte les à-nouveaux). Elle ne se supprime pas · un
+        // à-nouveau hors du premier exercice ne se retouche pas depuis le
+        // journal (audit du serveur B3).
+        const dejaPassee = await ouvertureDejaPassee(tx, tenantId, exerciceSuivant.id);
+        const auBrouillard = dejaPassee.ecritures.filter((e) => e.statut === StatutEcriture.BROUILLARD);
+        if (auBrouillard.length > 0) {
+          throw new BadRequestException(
+            `L'exercice suivant porte déjà un à-nouveau au brouillard (${piecesLisibles(auBrouillard)}) · un bilan d'ouverture qui n'est pas ` +
+              `le report d'OmegaX. Le bilan d'ouverture correspond au bilan de clôture de l'exercice précédent (${articleCorrespondance(referentiel)}), ` +
+              "et clôturer maintenant l'écrirait deux fois. Validez-le (fenêtre Brouillard), puis clôturez · la clôture ne passera que " +
+              "ce qui manque, et là où il diffère du bilan de clôture elle l'inscrira en négatif avant le report exact (AUDCIF art. 20).",
+          );
+        }
+        const rectification =
+          dejaPassee.ecritures.length > 0 ? rectificationDeLOuverture(report, dejaPassee.lignes) : null;
+        const lignesRan = rectification ? rectification.lignes : report;
+        const issueOuverture: string[] = [];
+        if (rectification) {
+          issueOuverture.push(
+            rectification.comptesRectifies.length === 0
+              ? `Le bilan d'ouverture déjà passé dans l'exercice suivant (${piecesLisibles(dejaPassee.ecritures)}) correspond au bilan de clôture, ` +
+                  'compte par compte · aucun report n’est ajouté.'
+              : `Le bilan d'ouverture déjà passé dans l'exercice suivant (${piecesLisibles(dejaPassee.ecritures)}) diffère du bilan de clôture sur ` +
+                  `${rectification.comptesRectifies.length} compte(s) · ses lignes y sont inscrites en négatif et le report exact est passé ` +
+                  `(${articleCorrespondance(referentiel)} ; AUDCIF art. 20). Les autres comptes gardent l'import.`,
+          );
+        }
+
         // Le report provisoire éventuel s'efface devant le définitif, et lui
         // laisse son numéro de pièce · la séquence du journal reste continue.
-        const numeroProvisoire = await retirerANouveauProvisoire(tx, tenantId, exerciceSuivant.id);
+        // Ce qui y était lettré ou pointé passe sur le définitif (AU1).
+        const { numeroPiece: numeroProvisoire, tenues } = await retirerANouveauProvisoire(tx, tenantId, exerciceSuivant.id, {
+          reporterLesTenues: true,
+        });
 
+        let lignesCreees: LigneCandidate[] = [];
         if (lignesRan.length > 0) {
           const totalDebit = lignesRan.reduce((s, l) => s + l.debit, 0);
           const totalCredit = lignesRan.reduce((s, l) => s + l.credit, 0);
@@ -977,26 +1022,57 @@ export class ExerciceService {
           const numeroPieceRan =
             numeroProvisoire ??
             (await this.journalService.prochainNumeroPiece(tenantId, journal, exerciceSuivant.id, exerciceSuivant.dateDebut, tx));
-          await tx.ecriture.create({
+          const creee = await tx.ecriture.create({
             data: {
               tenantId,
               exerciceId: exerciceSuivant.id,
               journalId: journal.id,
               numeroPiece: numeroPieceRan,
               date: exerciceSuivant.dateDebut,
-              libelle: `Report à-nouveau · ouverture exercice ${libelleExercice(exerciceSuivant)}`,
+              libelle: rectification
+                ? `Report à-nouveau · ouverture exercice ${libelleExercice(exerciceSuivant)} · rectifie ${piecesLisibles(dejaPassee.ecritures)}`.slice(0, 250)
+                : `Report à-nouveau · ouverture exercice ${libelleExercice(exerciceSuivant)}`,
               createdBy: userId,
               estGenereeParCloture: true,
+              // La rectification d'un import est une correction d'erreur ·
+              // son motif s'écrit, comme celui de toute inscription en négatif.
+              ...(rectification
+                ? {
+                    motifCorrection:
+                      `Bilan d'ouverture importé (${piecesLisibles(dejaPassee.ecritures)}) différent du bilan de clôture · ` +
+                      `${articleCorrespondance(referentiel)}, AUDCIF art. 20.`,
+                  }
+                : {}),
               // Validé comme l'écriture de solde, et pour la même raison · il
               // se calcule sur des soldes validés, et resté au brouillard il
               // manquerait au bilan d'ouverture de tous les états légaux.
               ...validationParLaCloture(userId),
               lignes: { create: lignesRan },
             },
+            select: { lignes: { select: { id: true, compteId: true, debit: true, credit: true, dateEcheance: true, deviseId: true, montantDevise: true } } },
           });
+          lignesCreees = creee.lignes.map((l) => ({
+            id: l.id,
+            compteId: l.compteId,
+            debit: Number(l.debit),
+            credit: Number(l.credit),
+            dateEcheance: l.dateEcheance,
+            deviseId: l.deviseId,
+            montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+          }));
         }
+        // Les lignes inscrites en négatif ne reçoivent rien · seules les
+        // lignes positives du report, puis les lignes libres de l'import.
+        const candidates: LigneCandidate[] = [
+          ...lignesCreees.filter((l) => l.debit >= 0 && l.credit >= 0),
+          ...dejaPassee.lignes
+            .filter((l) => l.lettrageId === null && l.rapprochementId === null && !rectification?.comptesRectifies.includes(l.compteId))
+            .map((l) => ({ id: l.id, compteId: l.compteId, debit: l.debit, credit: l.credit, dateEcheance: l.dateEcheance, deviseId: l.deviseId, montantDevise: l.montantDevise })),
+        ];
+        issueOuverture.push(...(await reporterLesTenues(tx, tenantId, tenues, candidates)));
 
-        return tx.exercice.update({ where: { id: exerciceId }, data: { statut: StatutExercice.CLOTURE } });
+        const clos = await tx.exercice.update({ where: { id: exerciceId }, data: { statut: StatutExercice.CLOTURE } });
+        return { ...clos, issueOuverture };
       },
       "Trop d'opérations simultanées sur cet exercice · veuillez réessayer.",
     );
@@ -1072,14 +1148,20 @@ export class ExerciceService {
           const compte = await this.trouverCompteResultat(tenantId, tx, delta > 0, referentiel);
           resultatCompte = { compteId: compte.id, montant: delta };
         }
-        const lignes = lignesReportANouveau(ran, resultatCompte);
+        const report = lignesReportANouveau(ran, resultatCompte);
+        // AU2 · même règle que la clôture · une ouverture déjà passée (bilan
+        // importé, validé ou au brouillard) n'est pas doublée, le provisoire
+        // ne porte que la rectification des comptes où elle diffère.
+        const dejaPassee = await ouvertureDejaPassee(tx, tenantId, exerciceSuivant.id);
+        const rectification = dejaPassee.ecritures.length > 0 ? rectificationDeLOuverture(report, dejaPassee.lignes) : null;
+        const lignes = rectification ? rectification.lignes : report;
         const debit = lignes.reduce((t, l) => t + l.debit, 0);
         const credit = lignes.reduce((t, l) => t + l.credit, 0);
         if (Math.abs(debit - credit) > EPSILON) {
           throw new InternalServerErrorException('Report à-nouveau provisoire déséquilibré · anomalie interne, rien n’a été passé.');
         }
 
-        const numeroProvisoire = await retirerANouveauProvisoire(tx, tenantId, exerciceSuivant.id);
+        const { numeroPiece: numeroProvisoire } = await retirerANouveauProvisoire(tx, tenantId, exerciceSuivant.id);
         if (lignes.length > 0) {
           const numeroPiece =
             numeroProvisoire ??
@@ -1099,7 +1181,15 @@ export class ExerciceService {
             },
           });
         }
-        return { exerciceSuivantId: exerciceSuivant.id, lignes: lignes.length, resultat: delta };
+        return {
+          exerciceSuivantId: exerciceSuivant.id,
+          lignes: lignes.length,
+          resultat: delta,
+          // Ce que le provisoire a fait d'une ouverture déjà passée · null sans elle.
+          ouvertureDejaPassee: rectification
+            ? { pieces: piecesLisibles(dejaPassee.ecritures), comptesRectifies: rectification.comptesRectifies.length }
+            : null,
+        };
       },
       "Trop d'opérations simultanées sur cet exercice · veuillez réessayer.",
     );
@@ -1315,29 +1405,221 @@ async function lireComptesDuReport(
 
 /**
  * Retire le report PROVISOIRE d'un exercice et rend son numéro de pièce, pour
- * que le report suivant le reprenne. Refuse s'il a été lettré ou pointé : le
- * remplacer effacerait ce travail sans le dire.
+ * que le report suivant le reprenne.
+ *
+ * À LA RELANCE (`reporterLesTenues` faux), il refuse s'il a été lettré ou
+ * pointé · le remplacer par un autre provisoire effacerait ce travail sans le
+ * dire, et « cette correction sera effectuée uniquement sur des écritures non
+ * lettrées » (Sage i7). La relance n'est jamais nécessaire · la clôture, elle,
+ * l'est.
+ *
+ * À LA CLÔTURE (`reporterLesTenues` vrai, AU1), il ne refuse plus · il rend
+ * les lignes lettrées ou pointées, que la clôture reporte sur la ligne
+ * définitive qui les remplace (`reporterLesTenues`). Le refus enfermait N dès
+ * qu'une clôture de période de N+1 avait figé le lettrage · délettrage refusé
+ * (ligne figée), clôture refusée (« délettrez-les »), et l'art. 22, 3°
+ * impose cette clôture de période au moins chaque trimestre.
  */
 async function retirerANouveauProvisoire(
   tx: Prisma.TransactionClient,
   tenantId: string,
   exerciceId: string,
-): Promise<number | null> {
+  options: { reporterLesTenues?: boolean } = {},
+): Promise<{ numeroPiece: number | null; tenues: LigneTenue[] }> {
   const provisoire = await tx.ecriture.findFirst({
     where: { tenantId, exerciceId, estANouveauProvisoire: true },
-    include: { lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true } } },
+    include: {
+      lignes: {
+        select: {
+          compteId: true,
+          debit: true,
+          credit: true,
+          dateEcheance: true,
+          deviseId: true,
+          montantDevise: true,
+          lettre: true,
+          lettrageId: true,
+          rapprochementId: true,
+          ligneReleveId: true,
+        },
+      },
+    },
   });
-  if (!provisoire) return null;
+  if (!provisoire) return { numeroPiece: null, tenues: [] };
   // Soldé OU partiel (audit final F50, lettrage/ligne-lettree.ts).
-  if (provisoire.lignes.some((l) => estTenueParUnLettrage(l) || l.rapprochementId)) {
+  const tenues = provisoire.lignes.filter((l) => estTenueParUnLettrage(l) || l.rapprochementId);
+  if (tenues.length > 0 && !options.reporterLesTenues) {
     throw new BadRequestException(
       "Des lignes du report à-nouveau provisoire ont été lettrées ou pointées sur le nouvel exercice · délettrez-les " +
-        "(ou dépointez-les) avant de relancer le report. Le remplacer effacerait ce travail sans le dire.",
+        "(ou dépointez-les) avant de relancer le report. Le remplacer effacerait ce travail sans le dire. " +
+        "La clôture de l'exercice précédent, elle, reporte ce lettrage sur l'à-nouveau définitif.",
     );
   }
   await tx.ligneEcriture.deleteMany({ where: { ecritureId: provisoire.id } });
   await tx.ecriture.delete({ where: { id: provisoire.id } });
-  return provisoire.numeroPiece;
+  return {
+    numeroPiece: provisoire.numeroPiece,
+    tenues: tenues.map((l) => ({
+      compteId: l.compteId,
+      debit: Number(l.debit),
+      credit: Number(l.credit),
+      dateEcheance: l.dateEcheance,
+      deviseId: l.deviseId,
+      montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+      lettre: l.lettre,
+      lettrageId: l.lettrageId,
+      rapprochementId: l.rapprochementId,
+      ligneReleveId: l.ligneReleveId,
+    })),
+  };
+}
+
+/**
+ * AU1 · LE LETTRAGE ET LE POINTAGE DU PROVISOIRE PASSENT SUR LE DÉFINITIF
+ * (`apparierTenues`). Candidates · les lignes du report définitif qui vient
+ * d'être passé, puis les lignes LIBRES d'une ouverture déjà passée (AU2 · un
+ * compte où le bilan importé correspond au bilan de clôture ne reçoit aucune
+ * ligne du report, et c'est la ligne importée qui fait foi).
+ *
+ * Une tenue sans équivalent (le livre de N a changé depuis le provisoire) ·
+ *  · POINTÉE, refus · un relevé rapproché perdrait une ligne en silence ;
+ *  · LETTRÉE dans un groupe que rien ne fige, refus · « délettrez-la », qui
+ *    est alors un geste ouvert ;
+ *  · LETTRÉE dans un groupe FIGÉ par une clôture, le groupe reste avec ses
+ *    autres lignes, PARTIEL, au reste qu'elles portent · le refuser enfermait
+ *    N (AU1), et rien ne peut plus lettrer la ligne qui disparaît. C'est dit
+ *    dans la réponse de la clôture.
+ */
+async function reporterLesTenues(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  tenues: LigneTenue[],
+  candidates: LigneCandidate[],
+): Promise<string[]> {
+  if (tenues.length === 0) return [];
+  const messages: string[] = [];
+  const cibles = apparierTenues(tenues, candidates);
+  const orphelins = new Map<string, LigneTenue[]>();
+  for (let i = 0; i < tenues.length; i++) {
+    const t = tenues[i];
+    const cible = cibles[i];
+    if (cible) {
+      await tx.ligneEcriture.update({
+        where: { id: cible },
+        data: { lettre: t.lettre, lettrageId: t.lettrageId, rapprochementId: t.rapprochementId, ligneReleveId: t.ligneReleveId },
+      });
+      continue;
+    }
+    if (t.rapprochementId) {
+      throw new BadRequestException(
+        `Une ligne pointée du report à-nouveau provisoire (${montantLisible(t)}) n'a pas d'équivalent dans le report définitif · ` +
+          "le livre de l'exercice a changé depuis le report provisoire. Dépointez-la avant de clôturer, le rapprochement perdrait sinon une ligne sans le dire.",
+      );
+    }
+    if (t.lettrageId) orphelins.set(t.lettrageId, [...(orphelins.get(t.lettrageId) ?? []), t]);
+  }
+  if (cibles.some((c) => c !== null)) {
+    messages.push(
+      `${cibles.filter((c) => c !== null).length} ligne(s) lettrée(s) ou pointée(s) du report provisoire ont été reportées sur l'à-nouveau définitif, ` +
+        'au même montant · leurs lettrages sont inchangés.',
+    );
+  }
+  for (const [lettrageId, lignes] of orphelins) {
+    const restantes = await tx.ligneEcriture.findMany({
+      where: { lettrageId, ecriture: { tenantId } },
+      select: { id: true, debit: true, credit: true },
+    });
+    const groupe = await tx.lettrage.findFirst({ where: { id: lettrageId, tenantId }, select: { code: true, compte: { select: { numero: true } } } });
+    const figees = await lignesFigees(tx, tenantId, restantes.map((l) => l.id));
+    if (figees.size === 0) {
+      throw new BadRequestException(
+        `Le lettrage ${groupe?.code ?? ''} du compte ${groupe?.compte.numero ?? ''} porte une ligne du report à-nouveau provisoire (${montantLisible(lignes[0])}) ` +
+          "qui n'a pas d'équivalent dans le report définitif · le livre de l'exercice a changé depuis le report provisoire. " +
+          'Délettrez-le avant de clôturer, puis lettrez le règlement avec la ligne d’à-nouveau définitif.',
+      );
+    }
+    const solde = auCentime(restantes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0));
+    const soldeNul = Math.abs(solde) <= EPSILON;
+    await tx.lettrage.update({
+      where: { id: lettrageId },
+      data: soldeNul ? { solde: 0 } : { statut: StatutLettrage.PARTIEL, solde, soldeAt: null },
+    });
+    if (!soldeNul) await tx.ligneEcriture.updateMany({ where: { lettrageId, ecriture: { tenantId } }, data: { lettre: null } });
+    messages.push(
+      `Le lettrage ${groupe?.code ?? ''} du compte ${groupe?.compte.numero ?? ''} perd sa ligne d'à-nouveau provisoire (${montantLisible(lignes[0])}), ` +
+        "sans équivalent dans le report définitif · figé par une clôture, il reste avec ses autres lignes" +
+        (soldeNul ? '.' : `, partiel, au reste de ${solde.toFixed(2)}.`),
+    );
+  }
+  return messages;
+}
+
+function montantLisible(t: { debit: number; credit: number }): string {
+  return t.debit > 0 ? `débit ${t.debit.toFixed(2)}` : `crédit ${t.credit.toFixed(2)}`;
+}
+
+/**
+ * AU2 · LES À-NOUVEAUX DÉJÀ PASSÉS DANS L'EXERCICE SUIVANT, hors report
+ * provisoire d'OmegaX · un bilan d'ouverture importé (`ImportService`,
+ * `estGenereeParCloture`) et les écritures qui le corrigent par inscription
+ * en négatif (`corrigeEcritureId`), qui ne portent pas le drapeau. L'écriture
+ * de solde des comptes de gestion n'ouvre rien et n'en est pas.
+ */
+async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: string, exerciceId: string) {
+  const ecritures = await tx.ecriture.findMany({
+    where: { tenantId, exerciceId, estGenereeParCloture: true, estANouveauProvisoire: false, estSoldeDesComptesDeGestion: false },
+    select: { id: true, numeroPiece: true, statut: true, libelle: true, journal: { select: { code: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (ecritures.length === 0) return { ecritures, lignes: [] as Array<LigneOuverturePassee & { id: string; lettrageId: string | null; rapprochementId: string | null }> };
+  const corrections = await tx.ecriture.findMany({
+    where: { tenantId, exerciceId, corrigeEcritureId: { in: ecritures.map((e) => e.id) } },
+    select: { id: true, numeroPiece: true, statut: true, libelle: true, journal: { select: { code: true } } },
+  });
+  const toutes = [...ecritures, ...corrections];
+  const lignes = await tx.ligneEcriture.findMany({
+    where: { ecritureId: { in: toutes.map((e) => e.id) }, ecriture: { tenantId } },
+    select: {
+      id: true,
+      compteId: true,
+      debit: true,
+      credit: true,
+      libelle: true,
+      dateEcheance: true,
+      deviseId: true,
+      montantDevise: true,
+      coursApplique: true,
+      lettrageId: true,
+      rapprochementId: true,
+    },
+    orderBy: { id: 'asc' },
+  });
+  return {
+    ecritures: toutes,
+    lignes: lignes.map((l) => ({
+      id: l.id,
+      compteId: l.compteId,
+      debit: Number(l.debit),
+      credit: Number(l.credit),
+      libelle: l.libelle,
+      dateEcheance: l.dateEcheance,
+      deviseId: l.deviseId,
+      montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+      coursApplique: l.coursApplique === null ? null : Number(l.coursApplique),
+      lettrageId: l.lettrageId,
+      rapprochementId: l.rapprochementId,
+    })),
+  };
+}
+
+/** « pièce OD n° 1 » · ce qui désigne une écriture déjà passée dans un message. */
+function piecesLisibles(ecritures: Array<{ numeroPiece: number | null; journal: { code: string } }>): string {
+  return ecritures.map((e) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`).join(', ');
+}
+
+/** L'article qui fait correspondre les deux bilans, selon le référentiel (l'art. 34 est exclu par l'art. 3 du SYCEBNL). */
+function articleCorrespondance(referentiel: Referentiel): string {
+  return referentiel === Referentiel.SYCEBNL ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34';
 }
 
 /**

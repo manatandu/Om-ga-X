@@ -121,8 +121,10 @@ function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre
     creanceDouteuse: { findMany: jest.fn().mockResolvedValue(creancesDouteuses) },
     ecriture: {
       findFirst: jest.fn().mockResolvedValue(provisoire),
+      // AU2 · aucune ouverture déjà passée dans N+1 par défaut.
+      findMany: jest.fn().mockResolvedValue([]),
       delete: jest.fn().mockResolvedValue({}),
-      create: jest.fn().mockResolvedValue({}),
+      create: jest.fn().mockResolvedValue({ lignes: [] }),
     },
     ligneEcriture: { ...lecture.ligneEcriture, deleteMany: jest.fn().mockResolvedValue({}) },
   };
@@ -231,6 +233,123 @@ describe('Clôture annuelle', () => {
     const { s } = service(null);
     (s as any).prisma.ecriture.count.mockResolvedValue(1);
     await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(/brouillard/);
+  });
+});
+
+/**
+ * AU2 · un bilan d'ouverture IMPORTÉ dans N+1, puis la clôture de N · la
+ * clôture AJOUTAIT son report à l'import, chaque compte doublé dans N+1, la
+ * balance bouclée (reproduit sur vraie base · client 600 000 pour 300 000).
+ * AUDCIF art. 34 · SYCEBNL art. 16, 4) · AUDCIF art. 20, al. 2.
+ */
+describe('AU2 · clôture de N avec un bilan d’ouverture déjà passé dans N+1', () => {
+  const IMPORT = { id: 'imp', numeroPiece: 1, statut: 'VALIDEE', libelle: "Bilan d'ouverture", journal: { code: 'OD' } };
+  const ligneImport = (id: string, compteId: string, debit: number, credit: number) => ({
+    id, compteId, debit, credit, libelle: 'Import', dateEcheance: null, deviseId: null, montantDevise: null, coursApplique: null, lettrageId: null, rapprochementId: null,
+  });
+  function avecOuverture(ecriture: Record<string, unknown>, lignes: unknown[]) {
+    const { s, tx } = service(null);
+    tx.ecriture.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(where.corrigeEcritureId ? [] : [ecriture]),
+    );
+    const lecture = tx.ligneEcriture.findMany.getMockImplementation()!;
+    tx.ligneEcriture.findMany.mockImplementation(((a: { where: Record<string, unknown> }) =>
+      a.where.ecritureId ? Promise.resolve(lignes) : lecture(a as never)) as never);
+    return { s, tx };
+  }
+  // Le report de la clôture · 521 D 500, 411 D 300 (détail), 401 C 300, 131 C 500.
+  const importExact = [
+    ligneImport('i1', '521', 500, 0), ligneImport('i2', '411', 300, 0), ligneImport('i3', '401', 0, 300), ligneImport('i4', '131', 0, 500),
+  ];
+
+  it('un import qui correspond au bilan de clôture, compte par compte · aucun report ajouté, et c’est dit', async () => {
+    const { s, tx } = avecOuverture(IMPORT, importExact);
+    const r = (await s.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+    // Seule l'écriture de solde des comptes de gestion est passée.
+    expect(tx.ecriture.create).toHaveBeenCalledTimes(1);
+    expect(tx.ecriture.create.mock.calls[0][0].data.estSoldeDesComptesDeGestion).toBe(true);
+    expect(r.issueOuverture.join(' ')).toMatch(/correspond au bilan de clôture/);
+  });
+
+  it('un import faux sur deux comptes · ses lignes inscrites en NÉGATIF puis le report exact, les autres comptes gardent l’import', async () => {
+    const faux = [ligneImport('i1', '521', 500, 0), ligneImport('i2', '411', 450, 0), ligneImport('i3', '401', 0, 300), ligneImport('i4', '131', 0, 650)];
+    const { s, tx } = avecOuverture(IMPORT, faux);
+    await s.cloturer('t', 'n', 'u');
+    const ran = tx.ecriture.create.mock.calls[1][0].data;
+    const lignes = ran.lignes.create as { compteId: string; debit: number; credit: number }[];
+    // 521 et 401 correspondent · rien n'y est passé.
+    expect(lignes.filter((l) => l.compteId === '521' || l.compteId === '401')).toHaveLength(0);
+    expect(lignes.filter((l) => l.compteId === '411')).toEqual([
+      expect.objectContaining({ debit: -450, credit: -0 }),
+      expect.objectContaining({ debit: 300, credit: 0 }),
+    ]);
+    expect(lignes.filter((l) => l.compteId === '131')).toEqual([
+      expect.objectContaining({ debit: -0, credit: -650 }),
+      expect.objectContaining({ debit: 0, credit: 500 }),
+    ]);
+    // Équilibrée, validée, motivée · et l'ouverture de N+1 vaut le bilan de clôture.
+    expect(lignes.reduce((t, l) => t + l.debit - l.credit, 0)).toBe(0);
+    expect(ran.statut).toBe('VALIDEE');
+    expect(ran.motifCorrection).toMatch(/AUDCIF art\. 34.*art\. 20/);
+    const ouverture = (c: string) =>
+      [...faux, ...lignes].filter((l) => l.compteId === c).reduce((t, l) => t + l.debit - l.credit, 0);
+    expect([ouverture('521'), ouverture('411'), ouverture('401'), ouverture('131')]).toEqual([500, 300, -300, -500]);
+  });
+
+  it('un import AU BROUILLARD · la clôture est refusée, le geste ouvert (le valider) est nommé', async () => {
+    const { s } = avecOuverture({ ...IMPORT, statut: 'BROUILLARD' }, importExact);
+    await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(/au brouillard \(OD n° 1\).*Validez-le/);
+  });
+
+  it('une ligne provisoire lettrée sur un compte où l’import fait foi · le lettrage passe sur la ligne importée', async () => {
+    const { s, tx } = avecOuverture(IMPORT, importExact);
+    tx.ecriture.findFirst.mockResolvedValue({
+      id: 'p',
+      numeroPiece: 2,
+      lignes: [{ compteId: '411', debit: 300, credit: 0, dateEcheance: null, deviseId: null, montantDevise: null, lettre: 'A', lettrageId: 'g', rapprochementId: null, ligneReleveId: null }],
+    });
+    (tx.ligneEcriture as Record<string, unknown>).update = jest.fn().mockResolvedValue({});
+    await s.cloturer('t', 'n', 'u');
+    expect((tx.ligneEcriture as unknown as { update: jest.Mock }).update).toHaveBeenCalledWith({
+      where: { id: 'i2' },
+      data: { lettre: 'A', lettrageId: 'g', rapprochementId: null, ligneReleveId: null },
+    });
+  });
+});
+
+/**
+ * AU1 · une ligne du report PROVISOIRE de N+1 lettrée, puis figée par une
+ * clôture de période de N+1 · la clôture de N refusait (« délettrez-les ») et
+ * le délettrage aussi (ligne figée) · N ne se clôturait plus jamais.
+ */
+describe('AU1 · la clôture reporte le lettrage du provisoire sur le définitif', () => {
+  const tenue = { compteId: '411', debit: 300, credit: 0, dateEcheance: null, deviseId: null, montantDevise: null, lettre: 'A', lettrageId: 'g', rapprochementId: null, ligneReleveId: null };
+
+  it('la clôture passe, et la ligne définitive de même compte et montant reçoit le groupe', async () => {
+    const { s, tx } = service({ id: 'p', numeroPiece: 3, lignes: [tenue] as never });
+    tx.ecriture.create.mockImplementation(({ data }: { data: { exerciceId: string } }) =>
+      Promise.resolve({
+        lignes: data.exerciceId === 'n1'
+          ? [
+              { id: 'd521', compteId: '521', debit: 500, credit: 0, dateEcheance: null, deviseId: null, montantDevise: null },
+              { id: 'd411', compteId: '411', debit: 300, credit: 0, dateEcheance: null, deviseId: null, montantDevise: null },
+            ]
+          : [],
+      }),
+    );
+    (tx.ligneEcriture as Record<string, unknown>).update = jest.fn().mockResolvedValue({});
+    const r = (await s.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+    expect((tx.ligneEcriture as unknown as { update: jest.Mock }).update).toHaveBeenCalledWith({
+      where: { id: 'd411' },
+      data: { lettre: 'A', lettrageId: 'g', rapprochementId: null, ligneReleveId: null },
+    });
+    expect(tx.ecriture.delete).toHaveBeenCalledWith({ where: { id: 'p' } });
+    expect(r.issueOuverture.join(' ')).toMatch(/reportées sur l'à-nouveau définitif/);
+  });
+
+  it('une ligne POINTÉE sans équivalent dans le définitif · refus nommé, jamais une ligne perdue en silence', async () => {
+    const { s } = service({ id: 'p', numeroPiece: 3, lignes: [{ ...tenue, debit: 999, lettre: null, lettrageId: null, rapprochementId: 'r' }] as never });
+    await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(/pointée du report à-nouveau provisoire.*Dépointez/);
   });
 });
 

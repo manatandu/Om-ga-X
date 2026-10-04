@@ -1,4 +1,12 @@
-import { budgetsAReporter, CompteRan, lignesReportANouveau, resultatDesComptesDeGestion } from './report-a-nouveau';
+import {
+  apparierTenues,
+  budgetsAReporter,
+  CompteRan,
+  LigneTenue,
+  lignesReportANouveau,
+  rectificationDeLOuverture,
+  resultatDesComptesDeGestion,
+} from './report-a-nouveau';
 
 const l = (debit: number, credit: number, lettre: string | null = null) => ({
   debit,
@@ -43,5 +51,68 @@ describe('Report à-nouveau · un seul calcul pour la clôture et le provisoire'
       new Set(['b']),
     );
     expect(r).toEqual([{ sectionId: 'c', mois: 3, montant: 30 }]);
+  });
+});
+
+/**
+ * AU2 · le bilan d'ouverture ne s'écrit qu'une fois (AUDCIF art. 34 ; SYCEBNL
+ * art. 16, 4)) · un import déjà passé n'est corrigé que là où il diffère, par
+ * inscription en négatif puis l'enregistrement exact (AUDCIF art. 20, al. 2).
+ */
+describe('AU2 · rectificationDeLOuverture', () => {
+  const passee = (compteId: string, debit: number, credit: number) => ({
+    compteId, debit, credit, libelle: 'Import', dateEcheance: null, deviseId: null, montantDevise: null, coursApplique: null,
+  });
+  const report = lignesReportANouveau(comptes, { compteId: '131', montant: -500 });
+
+  it('un import égal au report, compte par compte · rien à passer', () => {
+    const r = rectificationDeLOuverture(report, [passee('521', 500, 0), passee('411', 300, 0), passee('401', 0, 300), passee('131', 0, 500)]);
+    expect(r).toEqual({ lignes: [], comptesRectifies: [] });
+  });
+
+  it('un import faux · négatif de ses lignes PUIS report exact, compte par compte, l’ensemble équilibré', () => {
+    const r = rectificationDeLOuverture(report, [passee('521', 500, 0), passee('411', 450, 0), passee('401', 0, 300), passee('131', 0, 650)]);
+    expect(r.comptesRectifies).toEqual(['131', '411']);
+    expect(r.lignes.map((x) => [x.compteId, x.debit, x.credit])).toEqual([
+      ['131', -0, -650],
+      ['131', 0, 500],
+      ['411', -450, -0],
+      ['411', 300, 0],
+    ]);
+    expect(r.lignes.reduce((t, x) => t + x.debit - x.credit, 0)).toBe(0);
+  });
+
+  it('un compte absent de l’import est passé entier ; un compte importé que la clôture laisse à zéro est inscrit en négatif', () => {
+    const r = rectificationDeLOuverture(report, [passee('521', 500, 0), passee('411', 300, 0), passee('131', 0, 500), passee('471', 0, 300)]);
+    expect(r.comptesRectifies.sort()).toEqual(['401', '471']);
+    expect(r.lignes.find((x) => x.compteId === '471')).toMatchObject({ debit: -0, credit: -300 });
+    expect(r.lignes.find((x) => x.compteId === '401')).toMatchObject({ debit: 0, credit: 300 });
+  });
+});
+
+/**
+ * AU1 · ce qui était lettré ou pointé sur le report PROVISOIRE passe sur la
+ * ligne du définitif qui le remplace · même compte, mêmes montants.
+ */
+describe('AU1 · apparierTenues', () => {
+  const tenue = (compteId: string, debit: number, credit: number, extra: Partial<LigneTenue> = {}): LigneTenue => ({
+    compteId, debit, credit, dateEcheance: null, deviseId: null, montantDevise: null, lettre: 'A', lettrageId: 'g', rapprochementId: null, ligneReleveId: null, ...extra,
+  });
+  const candidate = (id: string, compteId: string, debit: number, credit: number, extra: Record<string, unknown> = {}) => ({
+    id, compteId, debit, credit, dateEcheance: null, deviseId: null, montantDevise: null, ...extra,
+  });
+
+  it('chaque candidate sert une fois, l’appariement exact (échéance) passe avant le seul montant', () => {
+    const e1 = new Date('2027-02-01');
+    const r = apparierTenues(
+      [tenue('411', 300, 0), tenue('411', 300, 0, { dateEcheance: e1 })],
+      [candidate('a', '411', 300, 0), candidate('b', '411', 300, 0, { dateEcheance: e1 })],
+    );
+    expect(r).toEqual(['a', 'b']);
+  });
+
+  it('ni le compte ni le montant ne se devinent · sans équivalent, null', () => {
+    expect(apparierTenues([tenue('411', 300, 0)], [candidate('a', '401', 300, 0), candidate('b', '411', 299, 0)])).toEqual([null]);
+    expect(apparierTenues([tenue('411', 300, 0), tenue('411', 300, 0)], [candidate('a', '411', 300, 0)])).toEqual(['a', null]);
   });
 });

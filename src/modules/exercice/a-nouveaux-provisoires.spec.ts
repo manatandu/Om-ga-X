@@ -110,8 +110,10 @@ function service(
     exercice: { findFirst: jest.fn().mockResolvedValue(N1), create: jest.fn() },
     ecriture: {
       findFirst: jest.fn().mockResolvedValue(provisoire),
+      // AU2 · aucune ouverture déjà passée dans N+1 par défaut.
+      findMany: jest.fn().mockResolvedValue([]),
       delete: jest.fn().mockResolvedValue({}),
-      create: jest.fn().mockResolvedValue({}),
+      create: jest.fn().mockResolvedValue({ lignes: [] }),
     },
     ligneEcriture: { ...lecture.ligneEcriture, deleteMany: jest.fn().mockResolvedValue({}) },
   };

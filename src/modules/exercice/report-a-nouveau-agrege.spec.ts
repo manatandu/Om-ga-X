@@ -240,7 +240,7 @@ function base(comptes: Cpt[], lignes: Lgn[]) {
     },
     journal: { findFirst: jest.fn().mockResolvedValue({ id: 'od', code: 'OD' }) },
     exercice: { findFirst: jest.fn().mockResolvedValue(N1), create: jest.fn(), update: jest.fn().mockResolvedValue({ ...N, statut: 'CLOTURE' }) },
-    ecriture: { findFirst: jest.fn().mockResolvedValue(null), delete: jest.fn(), create: jest.fn().mockResolvedValue({}) },
+    ecriture: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), delete: jest.fn(), create: jest.fn().mockResolvedValue({ lignes: [] }) },
   };
   const prisma = {
     exercice: {

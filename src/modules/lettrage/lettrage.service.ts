@@ -111,6 +111,20 @@ function lettreVersIndex(lettre: string): number {
  * (`lettrages-a-cheval.ts`), et l'écart de change réalisé d'un tel groupe,
  * figé compris, le complète par sa seule ligne (`completer`, `groupeTolere`).
  */
+/**
+ * Le refus de lettrer une ligne d'à-nouveau PROVISOIRE (AU1) · il nomme la
+ * raison et le geste qui reste ouvert, comme celui du Règlement des tiers.
+ */
+export function motifLettrageANouveauProvisoire(): string {
+  return (
+    "La ligne choisie appartient au report à-nouveau PROVISOIRE · l'exercice précédent n'est pas clôturé, et ce report n'est " +
+    "jamais validé, donc jamais au livre-journal (AUDCIF art. 22, 2°) · sa clôture le remplace par le report définitif. " +
+    "Lettré, il serait figé par la prochaine clôture de période et la clôture de l'exercice précédent n'aurait plus d'issue. " +
+    "Clôturez l'exercice précédent, puis lettrez avec la ligne d'à-nouveau définitif, avant la clôture de la période qui porte " +
+    "le règlement (elle figerait aussi le règlement)."
+  );
+}
+
 /** Une ligne du groupe a été lettrée par un autre geste entre le calcul et l'écriture. */
 function lignesPrisesEntreTemps() {
   return new ConflictException(
@@ -442,7 +456,14 @@ export class LettrageService {
 
   /** Contrôles communs à toute pose de lettrage sur une sélection de lignes. */
   private verifierLignes(
-    lignes: Array<{ compteId: string; lettre: string | null; lettrageId: string | null; ecriture: { tenantId: string; date: Date } }>,
+    lignes: Array<{
+      compteId: string;
+      lettre: string | null;
+      lettrageId: string | null;
+      // EXIGÉ par le type (AU1) · un appelant qui ne le lirait pas laisserait
+      // passer l'à-nouveau provisoire sans que rien ne le dise.
+      ecriture: { tenantId: string; date: Date; estANouveauProvisoire: boolean };
+    }>,
     attendu: { compteId: string; tenantId: string; nombre: number },
   ) {
     if (lignes.length !== attendu.nombre) {
@@ -451,6 +472,17 @@ export class LettrageService {
     for (const l of lignes) {
       if (l.compteId !== attendu.compteId || l.ecriture.tenantId !== attendu.tenantId) {
         throw new BadRequestException('Toutes les lignes doivent appartenir au compte et au tenant indiqués');
+      }
+      // AU1 · L'À-NOUVEAU PROVISOIRE NE SE LETTRE PAS, par aucun chemin
+      // (manuel, complément, pré-lettrage confirmé, module). Il n'est jamais
+      // validé, donc jamais au livre-journal (AUDCIF art. 22, 2°), et la
+      // clôture de l'exercice précédent le remplace. Lettré puis figé par une
+      // clôture de période de N+1 (que l'art. 22, 3° impose au moins chaque
+      // trimestre), il enfermait N · clôture refusée, délettrage refusé. Le
+      // Règlement des tiers l'écartait déjà (A6 bis, m6), le lettrage
+      // automatique et le pré-lettrage ne le proposaient pas (A6 bis, m1).
+      if (l.ecriture.estANouveauProvisoire) {
+        throw new BadRequestException(motifLettrageANouveauProvisoire());
       }
       if (l.lettrageId) {
         const jour = l.ecriture.date.toISOString().slice(0, 10);
@@ -1334,7 +1366,7 @@ export class LettrageService {
         for (const g of groupes) {
           const lignes = await tx.ligneEcriture.findMany({
             where: { id: { in: g.ligneIds } },
-            include: { ecriture: { select: { tenantId: true, date: true, exerciceId: true } } },
+            include: { ecriture: { select: { tenantId: true, date: true, exerciceId: true, estANouveauProvisoire: true } } },
           });
           this.verifierLignes(lignes, { compteId, tenantId, nombre: g.ligneIds.length });
           await refuserLignesDuCompteClientReclasse(tx, tenantId, g.ligneIds);
