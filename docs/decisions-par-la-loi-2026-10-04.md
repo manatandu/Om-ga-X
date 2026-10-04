@@ -271,3 +271,8 @@ Le corpus ne dit pas si la DGI de RDC reçoit cette fiche telle quelle ou un gab
 - Le caractère ouvrable du samedi pour un paiement en banque.
 - Le corpus rapporte un communiqué DGI qui reporte le premier acompte de 2026 au lundi 27 juillet 2026 (`lois-de-finances-annuelles/references/lf-2026-mesures-fiscales.md`, l. 48). Le texte de ce communiqué n'est pas au corpus, et l'al. 3 ne donne à l'Administration que le pouvoir d'**avancer** l'échéance. C'est une corroboration, pas une source : elle ne fonde aucune règle.
 - Si Manasse veut suivre ce report, c'est une décision **hors du texte**, à écrire comme telle. C'est le seul point des six qui remonte à Manasse.
+
+
+## Décision de Manasse du 2026-10-04 · le samedi des échéances de pur paiement
+
+« Le texte dit au plus tard le 25, donc il faut s'arranger pour payer avant cette date. En RDC, les banques travaillent samedi jusqu'à 12h. » · pour une échéance de PUR PAIEMENT (paiement en banque, sans dépôt au guichet), le SAMEDI EST OUVRABLE · une échéance qui tombe un samedi n'est PAS reportée au lundi (le 25 juillet 2026 reste le 25). Le dimanche et les jours fériés restent reportés (LPF art. 110 bis al. 2). L'exclusion du samedi tirée du décret n° 24/09 (horaire des services publics) ne vaut que pour une obligation qui s'exécute au GUICHET de l'Administration (dépôt d'une déclaration). Le communiqué de la DGI reportant au 27 juillet n'est pas suivi.
