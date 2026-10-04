@@ -24,6 +24,7 @@ import { corpsCriteres, criteresVides } from '../lib/criteres-frais-developpemen
 import { ParametresDemantelement, ProvisionDemantelement } from '../components/Demantelement';
 import { ReevaluationImmobilisations } from '../components/ReevaluationImmobilisations';
 import { PlafondRepriseDepreciation } from '../components/PlafondRepriseDepreciation';
+import { ApercuTransfertDepreciation, TransfertDepreciationBien } from '../components/TransfertDepreciationEnCours';
 import { EchangeImmobilisation } from '../components/EchangeImmobilisation';
 import { EcartReevaluationSortie } from '../components/EcartReevaluationSortie';
 import { DeclarationSpecialeImprimee } from '../components/DeclarationSpeciale';
@@ -58,7 +59,7 @@ import {
   numerosNonProposesPourNature,
 } from '../lib/bareme-fiscal';
 import { contrepartieCessionProposee } from '../lib/contrepartie-cession';
-import { compte29EnPlace } from '../lib/depreciation-en-cours';
+import { compte29EnPlace, depreciationEnCoursATransferer } from '../lib/depreciation-en-cours';
 import { compteUnique, motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
 import {
@@ -230,6 +231,9 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [miseEnServiceOuvertePour, setMiseEnServiceOuvertePour] = useState<string | null>(null);
   const [msDate, setMsDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [msJournalId, setMsJournalId] = useState('');
+  // Ligne A22 bis · le 29 du bien achevé, quand le plan en ouvre plusieurs.
+  const [msCompteCible, setMsCompteCible] = useState('');
+  const [transfertOuvertPour, setTransfertOuvertPour] = useState<string | null>(null);
   // Nature du barème fiscal (arrêté n° 013/2025, art. 2) · elle PROPOSE la
   // durée, ne l'impose jamais, et l'écart se signale sans refuser.
   const [iNatureFiscale, setINatureFiscale] = useState('');
@@ -634,14 +638,22 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
     setInfo(null);
     setEnvoi(true);
     try {
-      const r = await api.patch<{ avertissementDepreciation?: string | null }>(`/immobilisations/${immo.id}/mise-en-service`, {
+      const r = await api.patch<{
+        avertissementDepreciation?: string | null;
+        transfertDepreciation?: { montant: number; compteSource: string; compteCible: string | null } | null;
+      }>(`/immobilisations/${immo.id}/mise-en-service`, {
         date: msDate,
-        ...(immo.compteEnCoursId ? { exerciceId: exerciceCourant?.id, journalId: msJournalId } : {}),
+        ...(immo.compteEnCoursId
+          ? { exerciceId: exerciceCourant?.id, journalId: msJournalId, ...(msCompteCible ? { compteDepreciationCibleId: msCompteCible } : {}) }
+          : {}),
       });
       setMiseEnServiceOuvertePour(null);
-      // Ligne A22 · la dépréciation laissée au 29x9 est dite, jamais virée.
+      setMsCompteCible('');
+      // Ligne A22 bis · le transfert passé est dit, comme l'abstention.
+      const transfert = r?.transfertDepreciation;
       setInfo(
         `${immo.designation} mis en service au ${msDate.split('-').reverse().join('/')}.` +
+          (transfert ? ` Dépréciation de ${montant(transfert.montant)} transférée du ${transfert.compteSource} au ${transfert.compteCible}.` : '') +
           (r?.avertissementDepreciation ? ` ${r.avertissementDepreciation}` : ''),
       );
       await charger();
@@ -1684,6 +1696,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                           <button
                             onClick={() => {
                               setMsDate(new Date().toISOString().slice(0, 10));
+                              setMsCompteCible('');
                               setMiseEnServiceOuvertePour(miseEnServiceOuvertePour === immo.id ? null : immo.id);
                             }}
                             title="Poser la date de mise en service · une fois, jamais avant l'acquisition (AUDCIF art. 45)"
@@ -1800,6 +1813,15 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                         >
                           Reclasser
                         </button>
+                        {immo.dateMiseEnService && depreciationEnCoursATransferer(immo.depreciations, comptes29 ?? []) && (
+                          <button
+                            onClick={() => setTransfertOuvertPour(transfertOuvertPour === immo.id ? null : immo.id)}
+                            title="La dépréciation constatée pendant les travaux est restée au compte de l’en-cours · la reprendre et la doter au 29 du bien achevé"
+                            className="text-[11px] text-sel hover:underline"
+                          >
+                            Transférer la dépréciation
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setDepreciationOuvertePour(depreciationOuvertePour === immo.id ? null : immo.id);
@@ -2243,7 +2265,23 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                         </button>
                       </span>
                     </div>
+                    {immo.compteEnCoursId && immo.depreciations.length > 0 && (
+                      <ApercuTransfertDepreciation immobilisationId={immo.id} compteCibleId={msCompteCible} onCompteCible={setMsCompteCible} date={msDate} />
+                    )}
                   </form>
+                )}
+                {transfertOuvertPour === immo.id && exerciceCourant && (
+                  <TransfertDepreciationBien
+                    immobilisationId={immo.id}
+                    exerciceId={exerciceCourant.id}
+                    journaux={journaux}
+                    onFait={(message) => {
+                      setTransfertOuvertPour(null);
+                      setInfo(message);
+                      void charger();
+                    }}
+                    onAnnuler={() => setTransfertOuvertPour(null)}
+                  />
                 )}
                 {sortieOuvertePour === immo.id && (() => {
                   const naturesOffertes = naturesSortieOffertes({

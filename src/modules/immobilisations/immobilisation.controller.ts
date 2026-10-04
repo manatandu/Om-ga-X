@@ -19,6 +19,7 @@ import {
   ReclasserImmobilisationDto,
   RenouvelerComposantDto,
   MiseEnServiceDto,
+  TransfertDepreciationDto,
   RecevoirLegsDto,
   AcquerirAPrixGlobalDto,
   RemplacerPartieDto,
@@ -142,6 +143,35 @@ export class ImmobilisationController {
   @Patch(':id/mise-en-service')
   async mettreEnService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: MiseEnServiceDto) {
     return this.immobilisationService.mettreEnService(user.tenantId, user.userId, id, dto);
+  }
+
+  /**
+   * Ligne A22 bis · ce que la mise en service fera de la dépréciation portée
+   * par le 29x9 (reprise, puis dotation au 29 du bien achevé), montré avant le
+   * geste. Lecture seule.
+   */
+  @Get(':id/transfert-depreciation')
+  async propositionTransfertDepreciation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query('compteDepreciationCibleId') compteDepreciationCibleId?: string,
+    @Query('date') date?: string,
+  ) {
+    return this.immobilisationService.propositionTransfertDepreciation(user.tenantId, id, compteDepreciationCibleId || undefined, date || undefined);
+  }
+
+  /**
+   * Ligne A22 bis · le transfert d'un bien déjà mis en service dont la
+   * dépréciation est restée au 29x9 · même geste que la mise en service.
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @Post(':id/transfert-depreciation')
+  async transfererDepreciation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: TransfertDepreciationDto,
+  ) {
+    return this.immobilisationService.transfererDepreciation(user.tenantId, user.userId, id, dto);
   }
 
   /**

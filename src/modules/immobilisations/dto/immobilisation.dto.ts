@@ -758,6 +758,32 @@ export class MiseEnServiceDto {
   @IsOptional()
   @IsUUID('4')
   journalId?: string;
+
+  /**
+   * Ligne A22 bis · le 29 du bien achevé qui reçoit la dépréciation constatée
+   * pendant les travaux. Facultatif · à défaut, le compte que le plan ouvre
+   * seul sous la division du compte définitif (2931 pour un 231) ; plusieurs
+   * ou aucun, la mise en service le demande.
+   */
+  @IsOptional()
+  @IsUUID('4')
+  compteDepreciationCibleId?: string;
+}
+
+/**
+ * Ligne A22 bis · le transfert, pour un bien déjà mis en service dont la
+ * dépréciation est restée sur son 29x9.
+ */
+export class TransfertDepreciationDto {
+  @IsUUID('4')
+  exerciceId!: string;
+
+  @IsUUID('4')
+  journalId!: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  compteDepreciationCibleId?: string;
 }
 
 /** Porter un bien à un lieu, ou le retirer de tout lieu (`null`). */
