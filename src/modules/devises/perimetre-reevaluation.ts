@@ -81,6 +81,15 @@ export function motifHorsReevaluation(numero: string, referentiel: Referentiel):
   if (seReevalueALaCloture(numero, referentiel)) return null;
   if (/^25/.test(numero))
     return "avance sur immobilisation · aucun écart de conversion (AUDCIF Titre VIII ch. 22 § 1.2)";
+  // Le 508 « Autres titres de placement et créances assimilées » se lit en
+  // titre (rangé sous « Titres de placement », fiche du compte 50) · sa part
+  // « créances assimilées » sort avec lui. Lecture d'OmegaX, et le motif le
+  // dit (A5 ter, second tour) · une créance de revenu se suit au 506.
+  if (/^508/.test(numero))
+    return (
+      "autres titres de placement et créances assimilées · lu en TITRE, part « créances assimilées » comprise, maintenu au " +
+      "cours du jour de l'acquisition (AUDCIF Titre VIII ch. 22 § 1.3) · lecture d'OmegaX ; une créance de revenu se porte au 506"
+    );
   if (/^26/.test(numero) || TITRES_HORS_CLASSE_26.test(numero))
     return "titres · maintenus au cours du jour de l'acquisition (AUDCIF Titre VIII ch. 22 § 1.3)";
   if (/^2/.test(numero))

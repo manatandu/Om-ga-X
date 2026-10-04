@@ -368,6 +368,9 @@ const SELECT_ECRITURE_CONTROLEE = {
     // bis, B2) n'interroge les lettrages que si une ligne de l'exercice est
     // lettrée, partiel compris · sans elle, aucun groupe ne peut y toucher.
     select: {
+      // Ligne A5 ter · le contrôle 32 écarte une LIGNE de contre-passation
+      // déclarée, jamais toute l'écriture ni tout le compte.
+      id: true,
       debit: true,
       credit: true,
       lettre: true,
@@ -1472,7 +1475,7 @@ export class ControlesService {
             // date de la dernière ligne, sans quoi l'écart du 31/12 d'un
             // compte en devises fermé en juin le rendait non couvert.
             const mouvementDeBanque =
-              !estEcritureDeConversion(e) && !contrePassationsAnnulees.has(e.id) && !declarees.cles.has(`${e.id}|${l.compte.id}`);
+              !estEcritureDeConversion(e) && !contrePassationsAnnulees.has(e.id) && !declarees.lignes.has(l.id);
             const vu = comptesBancaires.get(l.compte.id);
             if (vu === undefined) {
               comptesBancaires.set(l.compte.id, {

@@ -404,9 +404,17 @@ describe('imputation des écritures de réévaluation · SYCEBNL, subdivisions d
   it('dette fournisseur qui s’allège · 47931', async () => {
     expect(await ecartDe(FOURNISSEUR, 0, 2_800_000, 2500)).toEqual(['47931']);
   });
-  it('dette H.A.O. (48) · 47838 et 47938', async () => {
-    expect(await ecartDe('48120000', 0, 2_500_000, 2800)).toEqual(['47838']);
-    expect(await ecartDe('48120000', 0, 2_800_000, 2500)).toEqual(['47938']);
+  it('autre dette H.A.O. (484) · 47838 et 47938', async () => {
+    expect(await ecartDe('48400000', 0, 2_500_000, 2800)).toEqual(['47838']);
+    expect(await ecartDe('48400000', 0, 2_800_000, 2500)).toEqual(['47938']);
+  });
+  it('second tour · fournisseur d’investissements (481) · dette FINANCIÈRE, 4784 et 4794 (§ 1.1, comme le réalisé d’A6)', async () => {
+    expect(await ecartDe('48120000', 0, 2_500_000, 2800)).toEqual(['4784']);
+    expect(await ecartDe('48120000', 0, 2_800_000, 2500)).toEqual(['4794']);
+  });
+  it('second tour · intérêts courus (186, 276) · 4784 et 4782, financiers', async () => {
+    expect(await ecartDe('18620000', 0, 2_500_000, 2800)).toEqual(['4784']);
+    expect(await ecartDe('27610000', 2_800_000, 0, 2500)).toEqual(['4782']);
   });
   it('emprunt (18) et crédit de trésorerie (56) · 4784 et 4794, dettes FINANCIÈRES', async () => {
     expect(await ecartDe('18100000', 0, 2_500_000, 2800)).toEqual(['4784']);
@@ -564,5 +572,18 @@ describe('les TROIS couples de provision du texte sont servis', () => {
     const debits = provision.lignes.reduce((s, l) => s + (l.debit ?? 0), 0);
     const credits = provision.lignes.reduce((s, l) => s + (l.credit ?? 0), 0);
     expect(Math.round(debits * 100)).toBe(Math.round(credits * 100));
+  });
+});
+
+describe('A5 ter, second tour · un dossier introuvable ne prend jamais le SYSCOHADA par défaut', () => {
+  it('reevaluer · refus nommé, aucune écriture', async () => {
+    const { svc, ecrites } = serviceEcritures(
+      [{ compteNumero: CLIENT, deviseCode: 'USD', debit: 2_800_000, credit: 0, montantDevise: 1000 }],
+      2500,
+      'SYCEBNL',
+    );
+    (svc as unknown as { prisma: { tenant: { findUnique: jest.Mock } } }).prisma.tenant.findUnique.mockResolvedValue(null);
+    await expect(svc.reevaluer('t1', 'u1', { exerciceId: 'ex1' })).rejects.toThrow(/Dossier introuvable/);
+    expect(ecrites).toEqual([]);
   });
 });

@@ -45,6 +45,39 @@ const RACINE = {
 } as const;
 
 /**
+ * LA BASCULE DES DOSSIERS SYCEBNL (ligne A5 ter, second tour). Avant la
+ * ligne, le module portait TOUTE perte probable au 194 par le 6971. La règle
+ * corrigée (fiche SYCEBNL du compte 19, exclusions · « les provisions
+ * correspondant à des risques à moins d'un an (utiliser 499 – Provisions
+ * pour risques à court terme) ») range le court terme au 4991, au 4998 ou au
+ * 599. Le premier ajustement qui suit REPREND alors au 7971 ce que le 194
+ * portait pour ces positions et DOTE la bonne famille · résultat net juste,
+ * mais les soldes intermédiaires de l'exercice de bascule portent le
+ * déplacement (financier contre exploitation ou H.A.O.). Aucune écriture de
+ * reclassement n'est passée, aucun texte n'en imposant · c'est DIT, chiffré,
+ * quand une même réévaluation reprend au 194 et dote une famille à court
+ * terme. `null` sinon.
+ */
+export function avertissementBasculeSycebnl(
+  referentiel: Referentiel,
+  ajustements: Array<{ compteProvision: string; compteDotation: string; compteReprise: string; dotation: number; reprise: number }>,
+): string | null {
+  if (referentiel !== Referentiel.SYCEBNL) return null;
+  const long = ajustements.find((a) => a.compteProvision === '194' && a.reprise > 0.005);
+  const courts = ajustements.filter((a) => a.compteProvision !== '194' && a.dotation > 0.005);
+  if (!long || courts.length === 0) return null;
+  const dotations = courts.map((a) => `${a.dotation.toFixed(2)} au ${a.compteProvision} par le ${a.compteDotation}`).join(', ');
+  return (
+    `Cette réévaluation reprend ${long.reprise.toFixed(2)} au 194 par le ${long.compteReprise} et dote ${dotations}. Si la ` +
+    "provision du 194 couvrait des créances ou des dettes à moins d'un an (le module les y portait toutes jusqu'à la ligne A5 " +
+    "ter), c'est la correction de leur classement · fiche SYCEBNL du compte 19, exclusions, « les provisions correspondant à " +
+    "des risques à moins d'un an (utiliser 499 – Provisions pour risques à court terme) ». Le résultat net n'en dépend pas, " +
+    "mais les soldes intermédiaires de cet exercice portent le déplacement (résultat financier contre exploitation ou H.A.O.) · " +
+    "à dire aux Notes annexes. Aucune écriture de reclassement n'est passée."
+  );
+}
+
+/**
  * Nature d'une position en devise · elle commande À LA FOIS la subdivision
  * de l'écart de conversion et le couple de provision.
  *
@@ -67,9 +100,42 @@ const RACINE = {
  * « symétrique du 478 »), et sa fiche du compte 49 ouvre un 4998 « sur
  * opérations H.A.O. », doté « par le débit du compte 839 » et repris « par le
  * crédit du compte 849 ». Le compte 48 « Créances et dettes hors activités
- * ordinaires » est donc H.A.O. au SYCEBNL. Le plan SYSCOHADA n'ouvre que 4781
- * « Diminution des créances d'exploitation » (Titre VII, compte 47) · le 48 y
- * reste d'exploitation, comme avant.
+ * ordinaires » est donc H.A.O. au SYCEBNL, SAUF son 481 (ci-dessous) · y
+ * restent le 484 « Autres dettes H.A.O. », le 485 « Créances sur cessions
+ * d'immobilisations », le 486 « Dettes et créances des legs et dons
+ * d'immobilisations » et le 488 « Autres créances H.A.O. » (fiche SYCEBNL du
+ * compte 48). Le plan SYSCOHADA n'ouvre que 4781 « Diminution des créances
+ * d'exploitation » (Titre VII, compte 47) · ses autres 48 y restent
+ * d'exploitation, comme avant.
+ *
+ * FOURNISSEURS D'INVESTISSEMENTS, FINANCIERS À COURT TERME AUX DEUX PLANS
+ * (A5 ter, second tour). AUDCIF Titre VIII ch. 22 § 1.1 · quand le prix payé
+ * d'une immobilisation diffère du coût initial « par suite de modalités
+ * spéciales de règlement (cas de paiement à terme libellé en devises), la
+ * différence constitue une charge ou un produit FINANCIER ». La ligne A6 range
+ * déjà le 481 (aux deux) et le 404 du SYSCOHADA en FINANCIÈRE au réalisé
+ * (`reglements/ecart-change-realise.ts`, `natureDuCompte`, au 676 / 776) ·
+ * la perte latente sur la même dette ne peut pas être une charge
+ * d'exploitation ou H.A.O. à la clôture, puis financière au règlement. Dette
+ * fournisseur, elle est à moins d'un an · fiche SYCEBNL du compte 59, le 599
+ * reçoit les « pertes probables à moins d'un an ayant leur origine dans une
+ * opération de nature financière ; exemple : provisions pour pertes de
+ * change » ; au SYSCOHADA, le 4997 « sur opérations financières » (fiche du
+ * compte 49 ; § 2.3, « risques à court terme »). Son écart va à la
+ * subdivision des DETTES FINANCIÈRES (4784 / 4794, plans des deux
+ * référentiels, compte 47), lecture d'OmegaX · le plan ne nomme ni 481 ni
+ * 404, et sa seule autre voie, « dettes d'exploitation », contredirait le
+ * § 1.1.
+ *
+ * INTÉRÊTS COURUS, À COURT TERME (A5 ter, second tour). Le 276 (aux deux),
+ * le 166 et le 176 du SYSCOHADA, le 186 du SYCEBNL portent des intérêts dus
+ * à la prochaine échéance, pas le principal durable · la fiche du compte 19
+ * des deux plans ne vise que les risques « à plus d'un an » et renvoie les
+ * autres « à moins d'un an » au 499 (SYCEBNL, exclusions ; AUDCIF, fiche du
+ * compte 19, « → 499 ») ; financiers, ils vont au court terme financier
+ * (4997 au SYSCOHADA, 599 au SYCEBNL). Le classement du principal (16, 17,
+ * 18, 27) ne les suit pas · lecture d'OmegaX, un intérêt couru n'étant pas
+ * dit échu à plus d'un an par aucune fiche.
  */
 type NaturePosition = 'EXPLOITATION' | 'HAO' | 'FINANCIER_COURT' | 'FINANCIER_LONG';
 
@@ -90,7 +156,20 @@ const RACINES_FINANCIERES_LONGUES = /^(16|17|18|26|27)/;
  */
 const RACINES_FINANCIERES_COURTES = /^(50|54|56)/;
 
-function naturePosition(numero: string, referentiel: Referentiel = Referentiel.SYSCOHADA): NaturePosition {
+/** Intérêts courus des emprunts, des dettes de location acquisition et des immobilisations financières, par plan. */
+const INTERETS_COURUS: Record<Referentiel, RegExp> = {
+  [Referentiel.SYSCOHADA]: /^(166|176|276)/,
+  [Referentiel.SYCEBNL]: /^(186|276)/,
+};
+
+/** Fournisseurs d'investissements, par plan (fiches des comptes 40 et 48 ; le SYCEBNL n'ouvre pas de 404). */
+const FOURNISSEURS_D_INVESTISSEMENTS: Record<Referentiel, RegExp> = {
+  [Referentiel.SYSCOHADA]: /^(404|481)/,
+  [Referentiel.SYCEBNL]: /^481/,
+};
+
+function naturePosition(numero: string, referentiel: Referentiel): NaturePosition {
+  if (INTERETS_COURUS[referentiel].test(numero) || FOURNISSEURS_D_INVESTISSEMENTS[referentiel].test(numero)) return 'FINANCIER_COURT';
   if (RACINES_FINANCIERES_LONGUES.test(numero)) return 'FINANCIER_LONG';
   if (RACINES_FINANCIERES_COURTES.test(numero)) return 'FINANCIER_COURT';
   if (referentiel === Referentiel.SYCEBNL && numero.startsWith('48')) return 'HAO';
@@ -1200,7 +1279,7 @@ export class DevisesService {
     const avertissements: string[] = [...enPlace.avertissements, ...reports.reserves, ...avertissementsGroupes];
     for (const p of resultat) {
       if (p.estTresorerie || p.ecart >= 0) continue;
-      if (!RACINES_FINANCIERES_LONGUES.test(p.numero)) continue;
+      if (naturePosition(p.numero, tenant.referentiel) !== 'FINANCIER_LONG') continue;
       avertissements.push(
         `${p.numero} ${p.intitule} (${p.deviseCode}) · perte de change de ` +
           `${Math.abs(p.ecart).toFixed(2)} sur un emprunt, un prêt ou une immobilisation financière. ` +
@@ -1210,6 +1289,8 @@ export class DevisesService {
           'potentiel total dans les Notes annexes.',
       );
     }
+    const bascule = avertissementBasculeSycebnl(tenant.referentiel, ajustementsProvision);
+    if (bascule) avertissements.push(bascule);
 
     return {
       dateReevaluation: date.toISOString().slice(0, 10),
@@ -1470,8 +1551,7 @@ export class DevisesService {
       // la contre-passation » seulement quand les comptes portent l'écart en
       // place ; sinon l'issue que le calcul prouve.
       const attendus = montantsAContrePasser(partage.aContrePasser);
-      referentiel ??=
-        (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { referentiel: true } }))?.referentiel ?? Referentiel.SYSCOHADA;
+      referentiel ??= await this.referentielDuDossier(tenantId);
       const manuelles = this.motifEtatDeLEcart(await this.etatDeLEcart(tenantId, r, attendus), attendus, jour, referentiel);
       manquantes.push({
         jour,
@@ -1732,11 +1812,7 @@ export class DevisesService {
     // Le référentiel du dossier décide des comptes à servir · il ne décide
     // PAS du calcul, qui est identique des deux côtés (l'écart se mesure de
     // la même façon). Seule l'imputation change, et elle change beaucoup.
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { referentiel: true },
-    });
-    const referentiel = tenant?.referentiel ?? Referentiel.SYSCOHADA;
+    const referentiel = await this.referentielDuDossier(tenantId);
 
     // --- Écriture des écarts ------------------------------------------------
     const lignes: { compteId: string; debit?: number; credit?: number; libelle: string }[] = [];
@@ -2003,7 +2079,7 @@ export class DevisesService {
         etat,
         attendus,
         reeval.dateReevaluation.toISOString().slice(0, 10),
-        tenant?.referentiel ?? Referentiel.SYSCOHADA,
+        await this.referentielDuDossier(tenantId),
       );
       // ÉTAT ATTESTÉ (vérification finale) · le refus devient un
       // avertissement, SAUF quand l'état dit l'écart DÉJÀ contre-passé (ou
@@ -2439,7 +2515,7 @@ export class DevisesService {
       const etat = await this.etatDeLEcart(tenantId, reeval, attendus);
       const verdict = etat.jugement?.verdict;
       if (verdict !== 'CONTRE_PASSEE' && verdict !== 'AMBIGU') {
-        const motifEtat = this.motifEtatDeLEcart(etat, attendus, jour(reeval.dateReevaluation), tenant?.referentiel ?? Referentiel.SYSCOHADA);
+        const motifEtat = this.motifEtatDeLEcart(etat, attendus, jour(reeval.dateReevaluation), await this.referentielDuDossier(tenantId));
         const refusEtat =
           `${Piece} ne se déclare pas · ` +
           (motifEtat
@@ -3010,7 +3086,7 @@ export class DevisesService {
       motifHorsModule:
         candidates.length > 0 && !reeval.etatAtteste
           ? null
-          : this.motifEtatDeLEcart(etat, attendus, jour(reeval.dateReevaluation), tenant?.referentiel ?? Referentiel.SYSCOHADA),
+          : this.motifEtatDeLEcart(etat, attendus, jour(reeval.dateReevaluation), await this.referentielDuDossier(tenantId)),
       etatAtteste: reeval.etatAtteste,
     };
   }
@@ -3269,7 +3345,7 @@ export class DevisesService {
         statut: true,
         numeroPiece: true,
         exercice: { select: { statut: true } },
-        lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true } },
+        lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true, compte: { select: { numero: true } } } },
       },
     };
     const reeval = await this.prisma.reevaluation.findFirst({
@@ -3325,12 +3401,23 @@ export class DevisesService {
     // non annulée est passée dans sa période, donc postérieure à celle-ci,
     // et le refus précédent l'a déjà nommée. Toutes les versions en cause
     // sont nommées, chacune devant être retirée.
-    const versions = await this.prisma.provisionChangeOuverture.findMany({
-      where: { tenantId, dateReference: { gt: reeval.dateReevaluation } },
-      orderBy: [{ dateReference: 'asc' }, { compteProvision: 'asc' }],
-      take: 21,
-      select: { compteProvision: true, dateReference: true },
-    });
+    // SEULES LES VERSIONS QUI EN DÉPENDENT (second tour) · leur PÉRIODE suit
+    // la réévaluation, et leur COMPTE est l'un de ceux que son écriture de
+    // provision a mouvementés · une version à zéro d'un 599 déclarée pour un
+    // litige, sans provision de cette réévaluation sur ce compte, ne s'appuie
+    // sur rien de ce qu'elle a passé, et la nommer imposait un retrait inutile.
+    const comptesTouches = [...new Set((reeval.ecritureProvision?.lignes ?? []).map((l) => l.compte.numero))];
+    const touche = (compteProvision: string) => comptesTouches.some((n) => n.startsWith(compteProvision));
+    const versions = (
+      comptesTouches.length === 0
+        ? []
+        : await this.prisma.provisionChangeOuverture.findMany({
+            where: { tenantId, dateReference: { gt: reeval.dateReevaluation } },
+            orderBy: [{ dateReference: 'asc' }, { compteProvision: 'asc' }],
+            take: 200,
+            select: { compteProvision: true, dateReference: true },
+          })
+    ).filter((v) => touche(v.compteProvision));
     if (versions.length > 0) {
       const nommees = versions
         .slice(0, 20)
@@ -4657,6 +4744,18 @@ export class DevisesService {
       parcourus.add(precedent.id);
     }
     return { parCle, reserves: [...new Set(reserves)] };
+  }
+
+  /**
+   * LE RÉFÉRENTIEL DU DOSSIER, SANS REPLI (A5 ter, second tour). Un dossier
+   * introuvable servait le SYSCOHADA par défaut · ses comptes (4997, 4781)
+   * auraient été écrits dans un plan qui ne les ouvre peut-être pas, ou les
+   * messages auraient cité l'AUDCIF à une association. Refus nommé.
+   */
+  private async referentielDuDossier(tenantId: string): Promise<Referentiel> {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { referentiel: true } });
+    if (!tenant) throw new NotFoundException('Dossier introuvable · son référentiel ne se lit pas, rien ne se réévalue.');
+    return tenant.referentiel;
   }
 
   private async compteParRacine(tenantId: string, racine: string) {

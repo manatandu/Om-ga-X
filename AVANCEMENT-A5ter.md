@@ -115,6 +115,46 @@ d'A5 bis renvoyés vers elle.
    refusé ; la balance de N+1 s'équilibre à la clôture de N (AUDCIF art. 34,
    correspondance des bilans).
 
+## Second tour (coordinateur, 2026-10-04)
+
+1. BLOQUANT · 481 (aux deux) et 404 (SYSCOHADA) en FINANCIER COURT ·
+   SYCEBNL 6791 / 599 / 7791, SYSCOHADA 6791 / 4997 / 7791 ; écart aux
+   DETTES FINANCIÈRES 4784 / 4794 (lecture d'OmegaX · le plan ne nomme pas le
+   481, « dettes d'exploitation » contredirait le § 1.1). Le H.A.O. du
+   SYCEBNL garde 484, 485, 486, 488 (fiche du compte 48) · famille gardée.
+   Gelé · dette de 1 000 USD à 2 000 000, clôture N à 2 100 · dotation
+   financière en N, reprise financière en N+1, aux deux.
+2. Intérêts courus (276 aux deux, 166 et 176 SYSCOHADA, 186 SYCEBNL) au court
+   terme financier · fiche du compte 19 des deux plans (« à plus d'un an » ;
+   exclusions → 499), fiche AUDCIF du 49 (« dette probable à moins d'un an »).
+   Le 166, le 176 et le 186 ajoutés par la même règle (jumeau). L'étalement de
+   l'art. 56 ne vise plus que le long terme.
+3. Bascule SYCEBNL · `avertissementBasculeSycebnl` · reprise au 194 et
+   dotation à court terme dans une même réévaluation, montants nommés, cause
+   (fiche du compte 19), aucune écriture de reclassement.
+4. Contrôle 32 · ligne par ligne (inverse exact au centime d'un écart passé,
+   une ligne par écart), réévaluations non annulées seules. D6 refuse bien
+   l'annulation tant qu'une contre-passation déclarée existe
+   (`annulerSousVerrou`, refus « retirez la déclaration »).
+5. Annulation · seules les versions dont le compte a été mouvementé par
+   l'écriture de provision de la réévaluation, et de période postérieure.
+6. Référentiel sans repli · `referentielDuDossier`, 404 nommé.
+7. Motif du 508 · part « créances assimilées » sortie avec les titres,
+   lecture d'OmegaX dite.
+
+## Relevés en attente
+
+- À DIRE AUX UTILISATEURS · au SYCEBNL, la réserve « non déclarée » s'impose
+  désormais aux 4991, 4998 et 599 · un dossier qui y porte d'autres risques
+  (un litige) déclare sa provision de change d'ouverture avant de réévaluer.
+- QUESTION POUR MANASSE · le 54 de COUVERTURE (ch. 22 § 3.2.2, qui cite
+  l'art. 57-3 ; le texte de l'Acte transcrit par la compétence numérote
+  58-1 à 58-4 · numérotation divergente du corpus, signalée) se rapporte
+  symétriquement à l'élément couvert, et la provision ne vaut que pour le
+  risque non couvert ; l'or et les métaux précieux du 545 et les positions
+  ouvertes isolées (§ 3.2.5, art. 57-4 · 6791 / 594 à la fiche du 54). Le module ne connaît pas la qualification et
+  provisionne toute perte latente du 54 au 4997.
+
 ## Reste
 
 - Relectures `silent-failure-hunter` et `typescript-reviewer` (§ 11) à

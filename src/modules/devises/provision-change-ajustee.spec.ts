@@ -576,12 +576,57 @@ describe('A5 ter · SYCEBNL, la famille suit la nature de la position (fiches de
     expect(d.provisionDe('n1')!.lignes.map((l) => l.compte)).toEqual(['599', '7791']);
   });
 
-  it('dette H.A.O. (48) · 4998 par le 839, repris au 849', async () => {
+  it('autre dette H.A.O. (484) · 4998 par le 839, repris au 849', async () => {
     const d = dossier('SYCEBNL');
-    d.positions.n = [{ compte: '48120000', debit: 0, credit: 2_000_000, usd: 1000 }];
+    d.positions.n = [{ compte: '48400000', debit: 0, credit: 2_000_000, usd: 1000 }];
     d.cours['2026-12-31'] = 2100;
     await d.svc.reevaluer('t', 'u', { exerciceId: 'n' });
     expect(d.provisionDe('n')!.lignes.map((l) => l.compte)).toEqual(['839', '4998']);
+  });
+
+  /**
+   * SECOND TOUR · LE FOURNISSEUR D'INVESTISSEMENTS EST FINANCIER, AUX DEUX
+   * PLANS. AUDCIF Titre VIII ch. 22 § 1.1 (paiement à terme d'une
+   * immobilisation en devises · « charge ou produit financier ») ; fiche
+   * SYCEBNL du compte 59 (« pertes probables à moins d'un an ayant leur
+   * origine dans une opération de nature financière ; exemple : provisions
+   * pour pertes de change ») ; réalisé au 676 par A6. Dette de 1 000 USD
+   * inscrite à 2 000 000, clôture de N à 2 100 · perte probable de 100 000.
+   */
+  it.each([
+    ['SYCEBNL', '48120000', ['6791', '599'], ['599', '7791']],
+    ['SYSCOHADA', '48120000', ['6791', '4997'], ['4997', '7791']],
+    ['SYSCOHADA', '40420000', ['6791', '4997'], ['4997', '7791']],
+  ] as const)('%s · fournisseur d’investissements %s · dotation financière en N, reprise financière en N+1', async (ref, compte, dotN, repN1) => {
+    const d = dossier(ref);
+    const dette = { compte, debit: 0, credit: 2_000_000, usd: 1000 };
+    d.positions.n = [dette];
+    d.cours['2026-12-31'] = 2100;
+    await d.svc.reevaluer('t', 'u', { exerciceId: 'n' });
+    expect(d.provisionDe('n')!.lignes.map((l) => [l.compte, l.debit ?? 0, l.credit ?? 0])).toEqual([
+      [dotN[0], 100_000, 0],
+      [dotN[1], 0, 100_000],
+    ]);
+    // N+1 · la dette réglée (réalisé au 676 par A6), plus de position · la provision est reprise, au compte financier.
+    await d.svc.reevaluer('t', 'u', { exerciceId: 'n1' });
+    expect(d.provisionDe('n1')!.lignes.map((l) => [l.compte, l.debit ?? 0, l.credit ?? 0])).toEqual([
+      [repN1[0], 100_000, 0],
+      [repN1[1], 0, 100_000],
+    ]);
+  });
+
+  it.each([
+    ['SYCEBNL', '27610000', '599'],
+    ['SYCEBNL', '18620000', '599'],
+    ['SYSCOHADA', '27610000', '4997'],
+    ['SYSCOHADA', '16620000', '4997'],
+  ] as const)('second tour · %s · intérêts courus %s · court terme financier (%s), jamais le 194 (fiche du compte 19)', async (ref, compte, provision) => {
+    const d = dossier(ref);
+    const creance = compte.startsWith('27');
+    d.positions.n = [{ compte, debit: creance ? 2_000_000 : 0, credit: creance ? 0 : 2_000_000, usd: 1000 }];
+    d.cours['2026-12-31'] = creance ? 1900 : 2100;
+    await d.svc.reevaluer('t', 'u', { exerciceId: 'n' });
+    expect(d.provisionDe('n')!.lignes.map((l) => l.compte)).toEqual(['6791', provision]);
   });
 
   it('une provision passée au 194 avant la ligne pour une créance est REPRISE au 7971, la juste dotée au 6591', async () => {
@@ -598,6 +643,23 @@ describe('A5 ter · SYCEBNL, la famille suit la nature de la position (fiches de
       ['194', 100_000, 0],
       ['7971', 0, 100_000],
     ]);
+  });
+
+  it('second tour · la bascule est DITE, chiffrée, sans écriture de reclassement', async () => {
+    const d = dossier('SYCEBNL');
+    d.ecrites.push({ id: 'p', exerciceId: 'n', libelle: 'Provision', lignes: [{ compte: '6971', debit: 100_000 }, { compte: '194', credit: 100_000 }] });
+    d.reevaluations.push({ id: 'p', exerciceId: 'n', dateReevaluation: new Date('2026-12-31'), ecritureProvisionId: 'p' });
+    d.positions.n1 = [{ ...CREANCE, compte: '41200000' }];
+    d.cours['2027-12-31'] = 1900;
+    const r = await d.svc.calculer('t', { exerciceId: 'n1' });
+    const dit = r.avertissements.find((a) => a.startsWith('Cette réévaluation reprend'));
+    expect(dit).toMatch(/reprend 100000\.00 au 194 par le 7971 et dote 100000\.00 au 4991 par le 6591/);
+    expect(dit).toMatch(/fiche SYCEBNL du compte 19, exclusions[\s\S]*Aucune écriture de reclassement n'est passée/);
+    // Rien de dit quand seule une famille bouge.
+    const seule = dossier('SYCEBNL');
+    seule.positions.n = [{ ...CREANCE, compte: '41200000' }];
+    seule.cours['2026-12-31'] = 1900;
+    expect((await seule.svc.calculer('t', { exerciceId: 'n' })).avertissements.some((a) => a.startsWith('Cette réévaluation reprend'))).toBe(false);
   });
 });
 

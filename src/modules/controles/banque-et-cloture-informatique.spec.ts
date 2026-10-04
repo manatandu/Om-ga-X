@@ -334,7 +334,11 @@ function monter(options: {
   /** Plus de traces que la borne · la vraie au-delà (troisième tour, mineur 3). */
   tracesAuDelaDeLaBorne?: boolean;
   /** Les contre-passations DÉCLARÉES de l'exercice (A5 ter, relevé (d)) · lues par le contrôle 32. */
-  declarees?: { ecritureEcarts: { lignes: ReturnType<typeof ligne>[] }; contrePassationDeclaree: { id: string; lignes: ReturnType<typeof ligne>[] } }[];
+  declarees?: {
+    annulee?: boolean;
+    ecritureEcarts: { lignes: ReturnType<typeof ligne>[] };
+    contrePassationDeclaree: { id: string; lignes: ReturnType<typeof ligne>[] };
+  }[];
 }) {
   const ecritures = options.ecritures ?? [
     ecriture('e1', 'jBQ', 'BQ', [ligne('1', '52110000', 1000), ligne('2', '52670000', 0, 1000)]),
@@ -404,15 +408,18 @@ function monter(options: {
     // Le contrôle 34 lit les contre-passations de réévaluation de l'exercice · aucune ici ; le
     // contrôle 32, les traces des contre-passations annulées (second tour, m3).
     reevaluation: {
-      findMany: jest.fn(async ({ where }: { where: { annulationsContrePassation?: unknown; contrePassationDeclaree?: { is: { exerciceId: string } } } }) =>
+      findMany: jest.fn(async ({ where }: { where: { annulationsContrePassation?: unknown; annuleeLe?: null; contrePassationDeclaree?: { is: { exerciceId: string } } } }) =>
         where.contrePassationDeclaree && !('OR' in where)
-          ? (options.declarees ?? []).map((d) => ({
-              ecritureEcarts: { lignes: d.ecritureEcarts.lignes.map((x) => ({ compteId: x.compte.id, debit: x.debit, credit: x.credit, compte: { numero: x.compte.numero } })) },
-              contrePassationDeclaree: {
-                id: d.contrePassationDeclaree.id,
-                lignes: d.contrePassationDeclaree.lignes.map((x) => ({ compteId: x.compte.id, debit: x.debit, credit: x.credit, compte: { numero: x.compte.numero } })),
-              },
-            }))
+          ? (options.declarees ?? [])
+              // Le contrôle ne lit que les réévaluations NON annulées (second tour).
+              .filter((d) => !(d.annulee && (where as { annuleeLe?: null }).annuleeLe === null))
+              .map((d) => ({
+                ecritureEcarts: { lignes: d.ecritureEcarts.lignes.map((x) => ({ id: x.id, compteId: x.compte.id, debit: x.debit, credit: x.credit, compte: { numero: x.compte.numero } })) },
+                contrePassationDeclaree: {
+                  id: d.contrePassationDeclaree.id,
+                  lignes: d.contrePassationDeclaree.lignes.map((x) => ({ id: x.id, compteId: x.compte.id, debit: x.debit, credit: x.credit, compte: { numero: x.compte.numero } })),
+                },
+              }))
           : where.annulationsContrePassation && options.annulationsContrePassation
           ? [
               ...(options.tracesAuDelaDeLaBorne
@@ -634,6 +641,40 @@ describe('la batterie de contrôles · câblage de la ligne A13', () => {
         declarees: [{ ecritureEcarts: autreMontant, contrePassationDeclaree: { id: 'od', lignes: fermeAvecODDeclaree()[2].lignes } }],
       });
       expect((await anomalie(melee, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE'))?.occurrences).toHaveLength(1);
+    });
+
+    it('A5 ter (d), second tour · LIGNE PAR LIGNE · une vraie opération de banque dans la même OD, sur le même compte, reste une opération', async () => {
+      le('2027-01-15');
+      // L'OD déclarée inverse l'écart (−20) ET porte un virement réel (−30, puis +30 par une autre ligne de la même OD) daté du 1er juillet.
+      const od = [
+        ligne('5', '47910000', 500),
+        ligne('6', '41110000', 0, 500),
+        ligne('7', '77600000', 20),
+        ligne('8', '52110000', 0, 20),
+        ligne('9', '52110000', 0, 30),
+        ligne('10', '58500000', 30),
+      ];
+      const ecritures = [
+        ecriture('e1', 'jBQ', 'BQ', [ligne('1', '52110000', 1000), ligne('2', '70110000', 0, 1000)], { date: '2026-05-10' }),
+        ecriture('e2', 'jBQ', 'BQ', [ligne('3', '58500000', 950), ligne('4', '52110000', 0, 950)], { date: '2026-06-15' }),
+        ecriture('od', 'jOD', 'OD', od, { date: '2026-07-01' }),
+      ];
+      const m = monter({
+        ecritures,
+        rapprochements: [{ compteId: 'c-52110000', statut: 'CLOTURE', dateReleve: D('2026-06-30'), soldeReleve: 0 }],
+        declarees: [{ ecritureEcarts: ecartsPasses, contrePassationDeclaree: { id: 'od', lignes: od } }],
+      });
+      expect((await anomalie(m, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE'))?.occurrences).toHaveLength(1);
+    });
+
+    it('A5 ter (d), second tour · la déclaration d’une réévaluation ANNULÉE n’écarte rien', async () => {
+      le('2027-01-15');
+      const m = monter({
+        ecritures: fermeAvecODDeclaree(),
+        rapprochements: [{ compteId: 'c-52110000', statut: 'CLOTURE', dateReleve: D('2026-06-30'), soldeReleve: 0 }],
+        declarees: [{ annulee: true, ecritureEcarts: ecartsPasses, contrePassationDeclaree: { id: 'od', lignes: fermeAvecODDeclaree()[2].lignes } }],
+      });
+      expect((await anomalie(m, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE'))?.occurrences).toHaveLength(1);
     });
 
     it('jumeau · la même ligne passée à la main, vraie opération de banque après le relevé, reste signalée', async () => {

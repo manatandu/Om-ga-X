@@ -77,6 +77,13 @@ describe('réévaluation · le périmètre du ch. 22', () => {
     }
   });
 
+  it('A5 ter, second tour · le 508 sort avec les titres, part « créances assimilées » comprise, et le motif dit la lecture d’OmegaX', () => {
+    for (const ref of [Referentiel.SYSCOHADA, Referentiel.SYCEBNL]) {
+      expect(seReevalueALaCloture('50800000', ref)).toBe(false);
+      expect(motifHorsReevaluation('50800000', ref)).toMatch(/part « créances assimilées » comprise[\s\S]*§ 1\.3\) · lecture d'OmegaX/);
+    }
+  });
+
   it('A5 ter · les intérêts courus des titres (506, 276) restent réévalués · ce sont des créances de revenus', () => {
     for (const ref of [Referentiel.SYSCOHADA, Referentiel.SYCEBNL]) {
       expect(seReevalueALaCloture('50630000', ref)).toBe(true);

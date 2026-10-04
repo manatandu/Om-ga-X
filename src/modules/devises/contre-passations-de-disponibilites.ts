@@ -203,19 +203,24 @@ export async function ecrituresDesContrePassationsAnnulees(
  * l'écart d'une disponibilité (comme le module avant A5 bis) porte sur le 52
  * une CONVERSION, pas un mouvement du relevé · comptée pour une opération de
  * banque, elle avançait la dernière ligne d'un compte fermé et le contrôle 32
- * d'A13 le disait non couvert. Seuls les comptes dont elle inverse EXACTEMENT
- * l'écart passé (`disponibilitesInversees`) sont rendus · une autre ligne du
- * même compte dans la même OD, ou un montant qui diffère, reste une opération
- * du cabinet (l'OD d'ouverture peut grouper de vraies opérations de banque).
- * Rendu par clé « écriture|compte ». Bornée comme les autres lectures.
+ * d'A13 le disait non couvert.
+ *
+ * LIGNE PAR LIGNE (second tour) · seule une ligne dont le montant (débit moins
+ * crédit) est l'INVERSE EXACT, au centime, de l'écart passé sur ce compte est
+ * rendue, et une seule par écart · une autre ligne du même compte dans la
+ * même OD (l'OD d'ouverture peut grouper de vraies opérations de banque)
+ * reste une opération. Réévaluations NON ANNULÉES seules · une réévaluation
+ * annulée ne garde pas de déclaration (D6 refuse l'annulation tant qu'une
+ * contre-passation déclarée existe, `annulerSousVerrou`), le filtre le tient
+ * quand même. Rendu par identifiant de ligne. Bornée comme les autres.
  */
 export async function lignesDeDisponibilitesDesContrePassationsDeclarees(
   prisma: Lecteur,
   p: { tenantId: string; exerciceId: string },
-): Promise<{ cles: Set<string>; tronque: boolean }> {
-  const lignesLues = { select: { compteId: true, debit: true, credit: true, compte: { select: { numero: true } } } } as const;
+): Promise<{ lignes: Set<string>; tronque: boolean }> {
+  const lignesLues = { select: { id: true, compteId: true, debit: true, credit: true, compte: { select: { numero: true } } } } as const;
   const reevaluations = await prisma.reevaluation.findMany({
-    where: { tenantId: p.tenantId, contrePassationDeclaree: { is: { exerciceId: p.exerciceId } } },
+    where: { tenantId: p.tenantId, annuleeLe: null, contrePassationDeclaree: { is: { exerciceId: p.exerciceId } } },
     orderBy: [{ dateReevaluation: 'asc' }, { id: 'asc' }],
     take: PLAFOND_REEVALUATIONS_EXAMINEES + 1,
     select: {
@@ -223,15 +228,17 @@ export async function lignesDeDisponibilitesDesContrePassationsDeclarees(
       contrePassationDeclaree: { select: { id: true, lignes: lignesLues } },
     },
   });
-  const enLignes = (lignes: { compteId: string; debit: unknown; credit: unknown; compte: { numero: string } }[]) =>
-    lignes.map((l) => ({ compteId: l.compteId, compteNumero: l.compte.numero, debit: Number(l.debit), credit: Number(l.credit) }));
-  const cles = new Set<string>();
+  const centimes = (l: { debit: unknown; credit: unknown }) => Math.round(Number(l.debit) * 100) - Math.round(Number(l.credit) * 100);
+  const lignes = new Set<string>();
   for (const r of reevaluations.slice(0, PLAFOND_REEVALUATIONS_EXAMINEES)) {
     const d = r.contrePassationDeclaree;
     if (!d) continue;
-    for (const compteId of disponibilitesInversees(enLignes(r.ecritureEcarts?.lignes ?? []), enLignes(d.lignes), estDisponibilite)) {
-      cles.add(`${d.id}|${compteId}`);
+    for (const e of (r.ecritureEcarts?.lignes ?? []).filter((l) => estDisponibilite(l.compte.numero))) {
+      const inverse = -centimes(e);
+      if (inverse === 0) continue;
+      const trouvee = d.lignes.find((l) => l.compteId === e.compteId && centimes(l) === inverse && !lignes.has(l.id));
+      if (trouvee) lignes.add(trouvee.id);
     }
   }
-  return { cles, tronque: reevaluations.length > PLAFOND_REEVALUATIONS_EXAMINEES };
+  return { lignes, tronque: reevaluations.length > PLAFOND_REEVALUATIONS_EXAMINEES };
 }
