@@ -100,6 +100,9 @@ l'intégration.
   veille de chaque période, plages et verdicts de CONTROLE BALANCE et
   CONTROLES recalculés (`verifier2.py` du bloc-notes de session), tout juste.
 
+- Bloc § 3 après la fusion de `main` (6aa6368) · serveur tsc, 10 742 tests
+  (754 suites), build ; client tsc, 1 811 tests, build.
+
 ## Reste
 
 - Intégration sur `main` (bloc § 3 et tests navigateur), retrait de la fiche.
