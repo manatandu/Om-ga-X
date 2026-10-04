@@ -12,5 +12,7 @@ ALTER TABLE "depreciations_immobilisation"
 
 DROP INDEX "depreciations_immobilisation_immobilisationId_exerciceId_key";
 
-CREATE UNIQUE INDEX "depreciations_immobilisation_immobilisationId_exerciceId_nature_key"
+-- Le nom est celui que Prisma attend, tronqué à 63 caractères (limite de
+-- PostgreSQL) · `prisma migrate diff` ne détecte alors aucune dérive.
+CREATE UNIQUE INDEX "depreciations_immobilisation_immobilisationId_exerciceId_na_key"
   ON "depreciations_immobilisation"("immobilisationId", "exerciceId", "nature");
