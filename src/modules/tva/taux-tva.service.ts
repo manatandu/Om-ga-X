@@ -1953,7 +1953,8 @@ export class TauxTvaService {
    * sans quoi une liquidation de l'ancien moteur changeait à la relecture.
    * Un groupe lu au-delà de sa borne (`PLAFOND_LIGNES_GROUPE`) ou plusieurs
    * reports candidats dans un même exercice · rien n'est relié, la facture
-   * est NOMMÉE. Sans exercice clôturé, rien n'est lu.
+   * est NOMMÉE. Sans écriture d'à-nouveau (provisoire ou de clôture) dans le
+   * dossier, rien n'est lu.
    */
   private async prolongerParLesANouveaux<
     T extends {
@@ -1997,8 +1998,14 @@ export class TauxTvaService {
     const comptes = new Set<string>();
     for (const l of lignes) for (const g of groupeDe(l)?.lignes ?? []) if (g.compteId) comptes.add(g.compteId);
     if (comptes.size === 0) return lignes;
-    // Sans exercice clôturé, aucune ligne n'a été reportée · rien à lire.
-    if ((await this.prisma.exercice.count({ where: { tenantId, statut: StatutExercice.CLOTURE } })) === 0) return lignes;
+    // Sans écriture d'à-nouveau dans le dossier, aucune ligne n'a été
+    // reportée · rien à lire. PROVISOIRE COMPRIS (troisième tour) · l'à-nouveau
+    // provisoire se lettre, et le solde encaissé en N+1 avant la clôture de N
+    // se lettre avec lui · une garde sur l'exercice CLOS rendait 0 en janvier,
+    // sans un mot, pour un mois déclaré avant cette clôture. Même filtre que
+    // la lecture des reports (`ECRITURE_D_A_NOUVEAU`).
+    const aNouveau = await this.prisma.ecriture.findFirst({ where: { tenantId, OR: ECRITURE_D_A_NOUVEAU }, select: { id: true } });
+    if (!aNouveau) return lignes;
 
     type ANouveau = LigneDeGroupe & {
       id: string;

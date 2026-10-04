@@ -108,8 +108,10 @@ npx tsc --noEmit && npx jest --maxWorkers=2 src/modules/tva
   facture dont le groupe porte un report non retrouvé (motif propre).
 - Relevés · lignes des groupes lues jusqu'à `PLAFOND_LIGNES_GROUPE` (500),
   au-delà rien n'est relié et la facture est nommée (`MOTIF_GROUPE_TROP_LONG`,
-  aux deux passes) ; prolongation lancée seulement s'il existe un exercice
-  clôturé. Gelés dans `tva-groupes-comme-main.spec.ts` (« Second tour »).
+  aux deux passes) ; prolongation lancée seulement s'il existe une écriture
+  d'à-nouveau, PROVISOIRE OU DE CLÔTURE (troisième tour · la garde sur
+  l'exercice clos rendait 0 en janvier pour un dossier hérité qui avait
+  lettré le solde avec l'à-nouveau provisoire). Gelés dans `tva-groupes-comme-main.spec.ts` (« Second tour »).
 - RELEVÉ HÉRITÉ, NON CORRIGÉ ICI · un avoir sans ligne de TVA ou un escompte
   accordé (673) lettré dans le groupe est compté comme un règlement (une
   perception) par `reglementsDuGroupe` · défaut antérieur à la ligne.
@@ -125,3 +127,16 @@ npx tsc --noEmit && npx jest --maxWorkers=2 src/modules/tva
   soldé (640 000 au total), rien de nommé. Les rejeux précédents repassent.
 - Bloc § 3 · serveur 756 suites, 10 800 tests ; client 223 fichiers, 1 813
   tests ; tsc et build des deux côtés.
+
+## Troisième tour
+
+- Garde de `prolongerParLesANouveaux` · existence d'une écriture d'à-nouveau
+  (`ECRITURE_D_A_NOUVEAU`, provisoire comprise), plus l'exercice clos. Gelé
+  (« à-nouveau PROVISOIRE, premier exercice non clos », tombe sur l'ancienne
+  garde). Rejoué sur vraie base (`scratchpad/tva2426-provisoire.mjs`, base
+  `tva2426_4` supprimée), SYSCOHADA et SYCEBNL · 2027 ouvert par les
+  à-nouveaux provisoires avant la clôture de 2026 ; le lettrage avec le
+  provisoire étant refusé depuis AU1, le lettrage d'un dossier HÉRITÉ est
+  posé en base · janvier 2027 91 034,48 avant ET après la clôture de 2026,
+  décembre 68 965,52 relu. Les autres rejeux repassent. Bloc § 3 · serveur
+  756 suites, 10 801 tests ; client 223 fichiers, 1 813 tests ; tsc, build.

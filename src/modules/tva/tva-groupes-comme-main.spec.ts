@@ -112,7 +112,9 @@ function prisma(lignes: unknown[], liquidations: unknown[] = [], evenementsAudit
   return {
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't1', regimeExigibiliteTva: 'LIVRAISONS', referentiel: 'SYSCOHADA' }) },
     tauxTva: { findMany: jest.fn().mockResolvedValue([TAUX]) },
-    ecriture: { count: jest.fn().mockResolvedValue(0) },
+    // `findFirst` · une écriture d'à-nouveau existe dans le dossier (garde de
+    // `prolongerParLesANouveaux`).
+    ecriture: { count: jest.fn().mockResolvedValue(0), findFirst: jest.fn().mockResolvedValue({ id: 'an' }) },
     ligneEcriture: {
       findMany: jest.fn(({ where }: { where: { compteId?: { in?: string[] } } }) => Promise.resolve(where.compteId?.in ? [] : lignes)),
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
@@ -817,15 +819,37 @@ describe('Second tour · l’ancien moteur ne voit jamais la prolongation, la ch
     expect((await apres.declaration('t1', ...mois('2027-06'))).totalCollecte).toBe(41_379.31);
   });
 
+  it('à-nouveau PROVISOIRE, premier exercice non clos · le solde du 15/01/2027 lettré avec lui rend 91 034,48 en janvier', async () => {
+    // Troisième tour · la garde sur l'exercice clos ignorait l'à-nouveau
+    // provisoire, qui se lettre ; janvier, déclaré avant la clôture de 2026,
+    // rendait 0 sans un mot.
+    const provisoire = (l: ReturnType<typeof ran>) => ({ ...l, ecriture: { ...l.ecriture, estANouveauProvisoire: true, estGenereeParCloture: false } });
+    const p27 = [provisoire(u27[0] as ReturnType<typeof ran>), provisoire(u27[1] as ReturnType<typeof ran>), u27[2]];
+    const g = { id: 'G27', statut: 'SOLDE', solde: 0, lignes: p27 };
+    const ventes = () => [vendre('F1', '2026-12-10', groupeUne)];
+    const p = prisma(ventes());
+    (p.ligneEcriture.findMany as jest.Mock).mockImplementation(({ where }: { where: { compteId?: { in?: string[] } } }) =>
+      Promise.resolve(where.compteId?.in ? p27.slice(0, 2).map((l) => ({ ...l, lettrage: g })) : ventes()),
+    );
+    // Aucun exercice clôturé · 2026 est ouvert, 2027 aussi.
+    (p as unknown as { exercice: { count: jest.Mock } }).exercice.count.mockImplementation(({ where }: { where: { statut?: string } }) =>
+      Promise.resolve(where.statut ? 0 : 2),
+    );
+    const s = new TauxTvaService(p, {} as EcritureService);
+    expect(await rendu(s, ['2026-12', '2027-01'])).toEqual({ '2026-12': 68_965.52, '2027-01': 91_034.48 });
+    const d = await s.declaration('t1', ...mois('2027-01'));
+    expect(d.tvaEnAttenteEncaissement).toBe(0);
+  });
+
   it('la taxe d’un encaissement se calcule sur le groupe, arrondie une fois · 1 000 000 sur deux factures rend 137 931,03', async () => {
     const g = { ...groupeDeux, id: 'GR', solde: 1_320_000, lignes: [groupeDeux.lignes[0], groupeDeux.lignes[1], ligneN('R1', 0, 1_000_000, '2026-12-20', 'Acompte')] };
     const s = base(() => [vendre('F1', '2026-12-10', g), vendre('F2', '2026-12-11', g)], []);
     expect((await s.declaration('t1', ...mois('2026-12'))).totalCollecte).toBe(137_931.03);
   });
 
-  it('sans exercice clôturé, aucun à-nouveau n’est lu', async () => {
+  it('sans écriture d’à-nouveau dans le dossier, aucun report n’est lu', async () => {
     const p = prisma([vendre('F1', '2026-12-10', groupeUne)]);
-    (p as unknown as { exercice: { count: jest.Mock } }).exercice.count.mockResolvedValue(0);
+    (p as unknown as { ecriture: { findFirst: jest.Mock } }).ecriture.findFirst.mockResolvedValue(null);
     await new TauxTvaService(p, {} as EcritureService).declaration('t1', ...mois('2026-12'));
     expect((p.ligneEcriture.findMany as jest.Mock).mock.calls.some((c) => c[0].where.compteId?.in)).toBe(false);
   });
