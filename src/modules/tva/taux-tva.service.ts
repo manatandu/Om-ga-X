@@ -704,6 +704,10 @@ export function repartirAuCentime(total: number, bruts: ReadonlyMap<string, numb
  */
 /** Motif servi quand un rapprochement par l'à-nouveau est abandonné. */
 export const MOTIF_A_NOUVEAU_AMBIGU = 'plusieurs à-nouveaux candidats, rapprochement non fait';
+/** Motif servi quand un groupe lu dépasse la borne de lecture de ses lignes. */
+export const MOTIF_GROUPE_TROP_LONG = `groupe de lettrage de plus de ${500} lignes, rapprochement non fait`;
+/** Borne de lecture des lignes d'un groupe de lettrage atteint par un à-nouveau. */
+const PLAFOND_LIGNES_GROUPE = 500;
 
 export type LiquidationEncaissement = {
   id: string;
@@ -1939,8 +1943,17 @@ export class TauxTvaService {
    * du 20 décembre), s'ajoutent au groupe. Une ligne d'à-nouveau qui ne
    * reporte aucune ligne du groupe (la facture d'un autre groupe de N) y
    * reste · c'est une autre facture, que la confrontation de `resoudreGroupes`
-   * ne sait pas décrire, et le groupe est alors nommé, jamais deviné. Les
-   * exercices suivants se suivent de la même façon, un report après l'autre.
+   * ne sait pas décrire, et le groupe est alors nommé, jamais deviné.
+   *
+   * LA CHAÎNE SE SUIT DE PROCHE EN PROCHE (second tour) · un report reconnu
+   * est lui-même cherché dans l'exercice qui suit (N, N+1, N+2…), sans autre
+   * borne que le nombre d'exercices du dossier. LES LIGNES AJOUTÉES NE SONT
+   * JAMAIS VUES PAR L'ANCIEN MOTEUR (second tour) · réputées saisies après
+   * toute liquidation, comme le groupe reconstitué de `relierAuxANouveaux`,
+   * sans quoi une liquidation de l'ancien moteur changeait à la relecture.
+   * Un groupe lu au-delà de sa borne (`PLAFOND_LIGNES_GROUPE`) ou plusieurs
+   * reports candidats dans un même exercice · rien n'est relié, la facture
+   * est NOMMÉE. Sans exercice clôturé, rien n'est lu.
    */
   private async prolongerParLesANouveaux<
     T extends {
@@ -1953,7 +1966,7 @@ export class TauxTvaService {
         }>;
       };
     },
-  >(tenantId: string, lignes: T[], signalerAmbigu: (l: T) => void = () => undefined): Promise<T[]> {
+  >(tenantId: string, lignes: T[], signalerAmbigu: (l: T, motif: string) => void = () => undefined): Promise<T[]> {
     if (lignes.length === 0) return lignes;
     type LigneDeGroupe = {
       id?: string;
@@ -1964,7 +1977,14 @@ export class TauxTvaService {
       montantDevise?: unknown;
       debit: unknown;
       credit: unknown;
-      ecriture?: { id?: string; libelle?: string; date: Date; estANouveauProvisoire?: boolean; estGenereeParCloture?: boolean } | null;
+      ecriture?: {
+        id?: string;
+        libelle?: string;
+        date: Date;
+        createdAt?: Date;
+        estANouveauProvisoire?: boolean;
+        estGenereeParCloture?: boolean;
+      } | null;
     };
     type Groupe = { id?: string; statut: string; solde: unknown; lignes?: LigneDeGroupe[] };
     const groupeDe = (l: T): Groupe | null => {
@@ -1977,6 +1997,8 @@ export class TauxTvaService {
     const comptes = new Set<string>();
     for (const l of lignes) for (const g of groupeDe(l)?.lignes ?? []) if (g.compteId) comptes.add(g.compteId);
     if (comptes.size === 0) return lignes;
+    // Sans exercice clôturé, aucune ligne n'a été reportée · rien à lire.
+    if ((await this.prisma.exercice.count({ where: { tenantId, statut: StatutExercice.CLOTURE } })) === 0) return lignes;
 
     type ANouveau = LigneDeGroupe & {
       id: string;
@@ -2023,7 +2045,7 @@ export class TauxTvaService {
                       },
                     },
                   },
-                  take: 500,
+                  take: PLAFOND_LIGNES_GROUPE + 1,
                 },
               },
             },
@@ -2046,17 +2068,41 @@ export class TauxTvaService {
         (a.libelle ?? '').endsWith(libelle)
       );
     };
-    const prolonges = new Map<string, Groupe | 'AMBIGU' | null>();
-    const prolonger = (g: Groupe): Groupe | 'AMBIGU' | null => {
+    // Le nombre d'exercices du dossier borne la chaîne des reports · un report
+    // par exercice au plus, jamais une boucle.
+    const nombreExercices = await this.prisma.exercice.count({ where: { tenantId } });
+    // Une ligne ajoutée par la prolongation n'a jamais été vue par l'ancien
+    // moteur · comme le groupe reconstitué de `relierAuxANouveaux`, elle est
+    // réputée saisie après toute liquidation (`declareParAncienMoteur` ne la
+    // compte pas), et la taxe qu'elle rend exigible est reportée au premier
+    // jour non liquidé si son mois l'est (`repartirEncaissement`).
+    const JAMAIS_VUE = new Date(8.64e15);
+    type Issue = Groupe | 'AMBIGU' | 'TROP_LONG' | null;
+    const prolonges = new Map<string, Issue>();
+    const prolonger = (g: Groupe): Issue => {
+      // Les reports reconnus, par leur identifiant · chacun ne reporte qu'une ligne.
       const reports = new Set<string>();
+      const traitees = new Set<LigneDeGroupe>();
       const vus = new Set<string>([g.id!]);
+      const origine = new Set<LigneDeGroupe>(g.lignes ?? []);
       const reunies: LigneDeGroupe[] = [...(g.lignes ?? [])];
       let front: LigneDeGroupe[] = [...(g.lignes ?? [])];
-      for (let tour = 0; tour < 12 && front.length > 0; tour++) {
+      /*
+        LA CHAÎNE SE SUIT DE PROCHE EN PROCHE. Une ligne de N se reporte en
+        N+1 ; ce report, s'il reste ouvert à la clôture de N+1, se reporte à
+        son tour en N+2 (« RAN détail · RAN détail · … »), et ainsi de suite.
+        Un report reconnu est donc lui-même cherché dans l'exercice qui suit ·
+        le sauter laissait son report de N+2 dans le groupe, où il passait
+        pour une seconde facture (une facture réglée en trois fois sur trois
+        exercices perdait ses deux derniers encaissements).
+      */
+      for (let tour = 0; tour <= nombreExercices && front.length > 0; tour++) {
         const suivantes: LigneDeGroupe[] = [];
         for (const x of front) {
-          if (!x.compteId || (x.id && reports.has(x.id))) continue;
-          const candidates = (parCompte.get(x.compteId) ?? []).filter((a) => !reports.has(a.id) && memeLigne(x, a));
+          if (traitees.has(x)) continue;
+          traitees.add(x);
+          if (!x.compteId) continue;
+          const candidates = (parCompte.get(x.compteId) ?? []).filter((a) => a.id !== x.id && !reports.has(a.id) && memeLigne(x, a));
           if (candidates.length === 0) continue;
           // Le report de l'exercice qui suit · le plus proche, et seul de son exercice.
           const premier = candidates.reduce((m, a) => (a.ecriture.date < m.ecriture.date ? a : m));
@@ -2067,16 +2113,23 @@ export class TauxTvaService {
           if (memeExercice.length > 1) return memeExercice.some((a) => a.lettrage) ? 'AMBIGU' : null;
           reports.add(premier.id);
           const suivant = premier.lettrage;
+          if (suivant && (suivant.lignes?.length ?? 0) > PLAFOND_LIGNES_GROUPE) return 'TROP_LONG';
           if (suivant?.id && !vus.has(suivant.id)) {
             vus.add(suivant.id);
             suivantes.push(...(suivant.lignes ?? []));
+          } else if (!suivant) {
+            // Report resté ouvert et non lettré · il se reporte peut-être
+            // lui-même plus loin, la chaîne continue par lui.
+            suivantes.push(premier);
           }
         }
-        reunies.push(...suivantes);
+        reunies.push(...suivantes.filter((x) => !reunies.includes(x)));
         front = suivantes;
       }
       if (reports.size === 0) return null;
-      const lignesReunies = reunies.filter((x) => !(x.id && reports.has(x.id)));
+      const lignesReunies = reunies
+        .filter((x) => !(x.id && reports.has(x.id)))
+        .map((x) => (origine.has(x) || !x.ecriture ? x : { ...x, ecriture: { ...x.ecriture, createdAt: JAMAIS_VUE } }));
       // Le reste du groupe prolongé, dans le sens de ses factures.
       const sensDe = (x: LigneDeGroupe) => Number(x.debit) - Number(x.credit);
       const premiere = (g.lignes ?? []).find((x) => Math.abs(sensDe(x)) > EPSILON);
@@ -2096,8 +2149,9 @@ export class TauxTvaService {
       if (!g) return l;
       if (!prolonges.has(g.id!)) prolonges.set(g.id!, prolonger(g));
       const p = prolonges.get(g.id!);
-      if (p === 'AMBIGU') signalerAmbigu(l);
-      if (!p || p === 'AMBIGU') return l;
+      if (p === 'AMBIGU') signalerAmbigu(l, MOTIF_A_NOUVEAU_AMBIGU);
+      if (p === 'TROP_LONG') signalerAmbigu(l, MOTIF_GROUPE_TROP_LONG);
+      if (!p || p === 'AMBIGU' || p === 'TROP_LONG') return l;
       return {
         ...l,
         ecriture: {
@@ -2152,7 +2206,7 @@ export class TauxTvaService {
       };
       compte: { numero: string };
     },
-  >(tenantId: string, lignes: T[], signalerAmbigu: (l: T) => void = () => undefined): Promise<T[]> {
+  >(tenantId: string, lignes: T[], signalerAmbigu: (l: T, motif: string) => void = () => undefined): Promise<T[]> {
     if (lignes.length === 0) return lignes;
     const centimes = (x: unknown) => Math.round(Number(x ?? 0) * 100);
     const estCollecteDe = (l: T) => l.compte.numero.startsWith(RACINE_COLLECTEE);
@@ -2243,7 +2297,7 @@ export class TauxTvaService {
                       },
                     },
                   },
-                  take: 500,
+                  take: PLAFOND_LIGNES_GROUPE + 1,
                 },
               },
             },
@@ -2292,7 +2346,13 @@ export class TauxTvaService {
         // factures) · rien n'est relié, et si l'un d'eux est lettré (un
         // encaissement a pu avoir lieu) la facture est NOMMÉE dans la
         // déclaration, jamais laissée en attente sans un mot (§ 10 bis).
-        if (cs.some((a) => a.lettrage)) signalerAmbigu(l);
+        if (cs.some((a) => a.lettrage)) signalerAmbigu(l, MOTIF_A_NOUVEAU_AMBIGU);
+        cs = [];
+      }
+      // UN GROUPE LU AU-DELÀ DE SA BORNE n'est pas lu à moitié · rien n'est
+      // relié, et la facture est NOMMÉE.
+      if (cs.some((a) => (a.lettrage?.lignes.length ?? 0) > PLAFOND_LIGNES_GROUPE)) {
+        signalerAmbigu(l, MOTIF_GROUPE_TROP_LONG);
         cs = [];
       }
       /*
@@ -4076,7 +4136,7 @@ export class TauxTvaService {
           });
       };
       await lireParLots(lire, (l) => traiter(l, false), LOT_ECRITURES);
-      const signalerAmbigu = (l: LigneLue) => {
+      const signalerAmbigu = (l: LigneLue, motif: string) => {
         if (ambigusVus.has(l.id)) return;
         ambigusVus.add(l.id);
         rapprochementsANouveauAbandonnesTotal++;
@@ -4086,7 +4146,7 @@ export class TauxTvaService {
             facture: l.ecriture.libelle,
             date: (l.ecriture.date as Date).toISOString().slice(0, 10),
             tva: TauxTvaService.c(Number(estCollecte ? l.credit : l.debit)),
-            motif: MOTIF_A_NOUVEAU_AMBIGU,
+            motif,
           });
         }
       };
@@ -4131,6 +4191,14 @@ export class TauxTvaService {
           lues.every((x) => x.f && !x.f.horsRegle && Math.abs(x.f.engage - x.montant) <= 0.01 && memeComposition(lues[0].f!, x.f)) &&
           [...decrites.keys()].every((id) => factures.has(id));
         const reglements = TauxTvaService.reglementsDuGroupe(groupe.lignes, premier.sensFacture);
+        // Une « facture » du groupe qui n'est qu'un report d'à-nouveau · ce
+        // n'est pas une composition différente, c'est une facture que la
+        // prolongation n'a pas retrouvée, et le motif le dit.
+        const aNouveauSansFacture = (groupe.lignes ?? []).some((g) => {
+          const sens = Number(g.debit) - Number(g.credit);
+          const e = g.ecriture as { estGenereeParCloture?: boolean; estANouveauProvisoire?: boolean } | null | undefined;
+          return Math.abs(sens) > EPSILON && sens > 0 === premier.sensFacture > 0 && !!(e?.estGenereeParCloture || e?.estANouveauProvisoire);
+        });
         if (!uniforme) {
           // La somme perçue dans la période sur ce groupe · c'est elle que
           // l'imputation, que le corpus ne règle pas, répartirait.
@@ -4145,7 +4213,9 @@ export class TauxTvaService {
                   ? 'un avoir dans le groupe'
                   : !factures
                     ? 'une ligne du groupe sans écriture lisible'
-                    : 'factures de composition différente (taux, nature, exonération ou part non lettrée)',
+                    : aNouveauSansFacture
+                      ? 'une ligne d’à-nouveau du groupe dont la facture n’est pas retrouvée'
+                      : 'factures de composition différente (taux, nature, exonération ou part non lettrée)',
               });
             }
           }

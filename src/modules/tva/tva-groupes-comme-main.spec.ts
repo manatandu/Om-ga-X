@@ -122,6 +122,9 @@ function prisma(lignes: unknown[], liquidations: unknown[] = [], evenementsAudit
     creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue(liquidations) },
     evenementAudit: { findMany: jest.fn().mockResolvedValue(evenementsAudit) },
+    // 2026 clôturé, 2027 et 2028 ouverts · la prolongation par les
+    // à-nouveaux ne se lance qu'avec un exercice clos.
+    exercice: { count: jest.fn().mockResolvedValue(3) },
   } as unknown as PrismaService;
 }
 
@@ -689,5 +692,144 @@ describe('F1 à travers la clôture · le groupe partiel de N se poursuit par se
     expect(d.rapprochementsANouveauAbandonnes).toEqual([
       { facture: 'Facture F0', date: '2026-12-10', tva: 160_000, motif: 'plusieurs à-nouveaux candidats, rapprochement non fait' },
     ]);
+  });
+});
+
+describe('Second tour · l’ancien moteur ne voit jamais la prolongation, la chaîne se suit sur trois exercices', () => {
+  const ligneN = (id: string, debit: number, credit: number, date: string, libelle: string) => ({
+    id: `t-${id}`,
+    compteId: 'c-client',
+    libelle: null,
+    dateEcheance: null,
+    deviseId: null,
+    montantDevise: null,
+    debit,
+    credit,
+    ecriture: { id, libelle, date: jour(date), createdAt: jour(date), estANouveauProvisoire: false, estGenereeParCloture: false, _count: { lignes: 0 } },
+  });
+  const ran = (id: string, debit: number, credit: number, libelle: string, an: string, exercice: string, date: string) => ({
+    id,
+    compteId: 'c-client',
+    libelle: `RAN détail 41110101 · ${libelle}`,
+    dateEcheance: null,
+    deviseId: null,
+    montantDevise: null,
+    debit,
+    credit,
+    ecriture: { id: an, libelle: 'À-nouveau', date: jour(date), createdAt: jour(date), estANouveauProvisoire: false, estGenereeParCloture: true, exerciceId: exercice, _count: { lignes: 0 } },
+  });
+  const vendre = (id: string, date: string, groupe: unknown) => {
+    const v = vente({ id, date, tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null });
+    (v.ecriture.lignes[0] as { lettrage: unknown }).lettrage = groupe;
+    return v;
+  };
+  const base = (ventes: () => unknown[], aNouveaux: unknown[], liquidations: unknown[] = []) => {
+    const p = prisma(ventes(), liquidations);
+    (p.ligneEcriture.findMany as jest.Mock).mockImplementation(({ where }: { where: { compteId?: { in?: string[] } } }) =>
+      Promise.resolve(where.compteId?.in ? aNouveaux : ventes()),
+    );
+    return new TauxTvaService(p, {} as EcritureService);
+  };
+  const rendu = async (s: TauxTvaService, periodes: string[]) => {
+    const r: Record<string, number> = {};
+    for (const m of periodes) r[m] = (await s.declaration('t1', ...mois(m))).totalCollecte;
+    return r;
+  };
+  const liqs = [
+    { id: 'liqD', dateDebut: mois('2026-12')[0], dateFin: mois('2026-12')[1], createdAt: jour('2027-01-05'), tvaEncaissementFigee: null },
+    { id: 'liqJ', dateDebut: mois('2027-01')[0], dateFin: mois('2027-01')[1], createdAt: jour('2027-02-05'), tvaEncaissementFigee: null },
+  ];
+
+  // BLOQUANT 1 · deux factures, décembre et janvier liquidés par l'ancien
+  // moteur (0 et 0). La branche relisait janvier à 320 000, déclarés nulle
+  // part · la prolongation était réputée vue par l'ancien moteur.
+  const groupeDeux = {
+    id: 'GN',
+    statut: 'PARTIEL' as const,
+    solde: 1_820_000,
+    soldeAt: null,
+    createdAt: jour('2026-12-20'),
+    lignes: [ligneN('F1', 1_160_000, 0, '2026-12-10', 'Facture F1'), ligneN('F2', 1_160_000, 0, '2026-12-11', 'Facture F2'), ligneN('R1', 0, 500_000, '2026-12-20', 'Règlement partiel')],
+  };
+  const l27 = [
+    ran('anF1', 1_160_000, 0, 'Facture F1', 'AN27', 'ex2027', '2027-01-01'),
+    ran('anF2', 1_160_000, 0, 'Facture F2', 'AN27', 'ex2027', '2027-01-01'),
+    ran('anR1', 0, 500_000, 'Règlement partiel', 'AN27', 'ex2027', '2027-01-01'),
+    ligneN('R2', 0, 1_820_000, '2027-01-15', 'Solde'),
+  ];
+  const g27 = { id: 'G27', statut: 'SOLDE', solde: 0, lignes: l27 };
+  const ans27 = l27.slice(0, 3).map((l) => ({ ...l, lettrage: g27 }));
+
+  it('deux factures, liquidations de l’ancien moteur · décembre 0 et janvier 0 relus tels que versés, 320 000 au premier mois libre', async () => {
+    const s = base(() => [vendre('F1', '2026-12-10', groupeDeux), vendre('F2', '2026-12-11', groupeDeux)], ans27, liqs);
+    expect(await rendu(s, ['2026-12', '2027-01', '2027-02'])).toEqual({ '2026-12': 0, '2027-01': 0, '2027-02': 320_000 });
+  });
+
+  const groupeUne = {
+    id: 'G1',
+    statut: 'PARTIEL' as const,
+    solde: 660_000,
+    soldeAt: null,
+    createdAt: jour('2026-12-20'),
+    lignes: [ligneN('F1', 1_160_000, 0, '2026-12-10', 'Facture F1'), ligneN('R1', 0, 500_000, '2026-12-20', 'Règlement partiel')],
+  };
+  const u27 = [ran('anF1', 1_160_000, 0, 'Facture F1', 'AN27', 'ex2027', '2027-01-01'), ran('anR1', 0, 500_000, 'Règlement partiel', 'AN27', 'ex2027', '2027-01-01'), ligneN('R2', 0, 660_000, '2027-01-15', 'Solde')];
+  const gu27 = { id: 'G27', statut: 'SOLDE', solde: 0, lignes: u27 };
+  const ansU = u27.slice(0, 2).map((l) => ({ ...l, lettrage: gu27 }));
+
+  it('une facture, liquidations de l’ancien moteur · décembre 68 965,52 (versé), janvier 0 (versé), 91 034,48 en février', async () => {
+    const s = base(() => [vendre('F1', '2026-12-10', groupeUne)], ansU, liqs);
+    expect(await rendu(s, ['2026-12', '2027-01', '2027-02'])).toEqual({ '2026-12': 68_965.52, '2027-01': 0, '2027-02': 91_034.48 });
+  });
+
+  it('une facture, aucune liquidation · décembre 68 965,52, janvier 91 034,48', async () => {
+    const s = base(() => [vendre('F1', '2026-12-10', groupeUne)], ansU);
+    expect(await rendu(s, ['2026-12', '2027-01', '2027-02'])).toEqual({ '2026-12': 68_965.52, '2027-01': 91_034.48, '2027-02': 0 });
+  });
+
+  // BLOQUANT 2 · une facture réglée sur trois exercices. Le report de N+1,
+  // reconnu, était sauté · son propre report de N+2 se recomptait comme une
+  // seconde facture, et la taxe de 2027 et 2028 disparaissait.
+  const c27 = [ran('anF1', 1_160_000, 0, 'Facture F1', 'AN27', 'ex2027', '2027-01-01'), ran('anR1', 0, 500_000, 'Règlement partiel', 'AN27', 'ex2027', '2027-01-01'), ligneN('R2', 0, 300_000, '2027-06-15', 'Acompte 2')];
+  const gc27 = { id: 'G27', statut: 'PARTIEL', solde: 360_000, lignes: c27 };
+  const c28 = [
+    ran('an2F1', 1_160_000, 0, 'RAN détail 41110101 · Facture F1', 'AN28', 'ex2028', '2028-01-01'),
+    ran('an2R1', 0, 500_000, 'RAN détail 41110101 · Règlement partiel', 'AN28', 'ex2028', '2028-01-01'),
+    ran('an2R2', 0, 300_000, 'Acompte 2', 'AN28', 'ex2028', '2028-01-01'),
+    ligneN('R3', 0, 360_000, '2028-01-20', 'Solde'),
+  ];
+  const gc28 = { id: 'G28', statut: 'SOLDE', solde: 0, lignes: c28 };
+  const ansC27 = c27.slice(0, 2).map((l) => ({ ...l, lettrage: gc27 }));
+  const ansC = [...ansC27, ...c28.slice(0, 3).map((l) => ({ ...l, lettrage: gc28 }))];
+
+  it('chaîne N, N+1, N+2 · 68 965,52, 41 379,31, 49 655,17, soit 160 000, et rien n’est nommé', async () => {
+    const s = base(() => [vendre('F1', '2026-12-10', { ...groupeUne, id: 'G26' })], ansC);
+    expect(await rendu(s, ['2026-12', '2027-06', '2028-01'])).toEqual({ '2026-12': 68_965.52, '2027-06': 41_379.31, '2028-01': 49_655.17 });
+    const janvier = await s.declaration('t1', ...mois('2028-01'));
+    expect(janvier.groupesImputationIndeterminee).toEqual([]);
+    expect(janvier.tvaEnAttenteEncaissement).toBe(0);
+  });
+
+  it('chaîne · juin 2027, non liquidé, ne change pas à la saisie de 2028', async () => {
+    const avant = base(() => [vendre('F1', '2026-12-10', { ...groupeUne, id: 'G26' })], ansC27);
+    const apres = base(() => [vendre('F1', '2026-12-10', { ...groupeUne, id: 'G26' })], ansC);
+    expect((await avant.declaration('t1', ...mois('2027-06'))).totalCollecte).toBe(41_379.31);
+    expect((await apres.declaration('t1', ...mois('2027-06'))).totalCollecte).toBe(41_379.31);
+  });
+
+  it('sans exercice clôturé, aucun à-nouveau n’est lu', async () => {
+    const p = prisma([vendre('F1', '2026-12-10', groupeUne)]);
+    (p as unknown as { exercice: { count: jest.Mock } }).exercice.count.mockResolvedValue(0);
+    await new TauxTvaService(p, {} as EcritureService).declaration('t1', ...mois('2026-12'));
+    expect((p.ligneEcriture.findMany as jest.Mock).mock.calls.some((c) => c[0].where.compteId?.in)).toBe(false);
+  });
+
+  it('un groupe d’à-nouveau au-delà de sa borne de lecture · rien n’est relié, et la facture est NOMMÉE', async () => {
+    const remplissage = Array.from({ length: 501 }, (_, i) => ligneN(`X${i}`, 1, 0, '2027-02-01', `Divers ${i}`));
+    const gTrop = { id: 'G27', statut: 'PARTIEL', solde: 1, lignes: [...u27, ...remplissage] };
+    const s = base(() => [vendre('F1', '2026-12-10', groupeUne)], u27.slice(0, 2).map((l) => ({ ...l, lettrage: gTrop })));
+    const d = await s.declaration('t1', ...mois('2027-01'));
+    expect(d.totalCollecte).toBe(0);
+    expect(d.rapprochementsANouveauAbandonnes.map((a) => a.motif)).toEqual(['groupe de lettrage de plus de 500 lignes, rapprochement non fait']);
   });
 });

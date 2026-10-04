@@ -51,7 +51,8 @@ n° 10/001 et aux art. 51 à 63 du décret n° 011/42 (lecture seule du
 
 ## Reste
 
-- Relecture (silent-failure-hunter, typescript-reviewer, react-reviewer).
+- Relecture (silent-failure-hunter, typescript-reviewer, react-reviewer) ·
+  remplacée par la vérification indépendante du coordinateur.
 
 ## Décisions
 
@@ -91,3 +92,24 @@ npx tsc --noEmit && npx jest --maxWorkers=2 src/modules/tva
 - Rejoué sur vraie base (`scratchpad/tva2426-ambigu.mjs`, base `tva2426_2`
   supprimée), SYSCOHADA et SYCEBNL · décembre 160 000, janvier 2027 0 et
   quatre factures nommées à 160 000 de TVA chacune.
+
+## Second tour (vérification indépendante, deux BLOQUANTS)
+
+- B1 · l'ancien moteur se reconstitue sur le groupe d'ORIGINE · les lignes
+  ajoutées par la prolongation portent un `createdAt` hors de toute
+  liquidation (convention de `relierAuxANouveaux`) ; la taxe que l'ancien
+  moteur n'a pas déclarée va au mois de son encaissement ou au premier mois
+  non liquidé. Deux factures, décembre et janvier liquidés par l'ancien
+  moteur (0, 0) · relus 0 et 0, 320 000 en février.
+- B2 · chaîne N, N+1, N+2 suivie de proche en proche (un report se cherche
+  lui-même dans l'exercice suivant), bornée par le nombre d'exercices du
+  dossier. 68 965,52, 41 379,31, 49 655,17 ; juin 2027 inchangé à la saisie
+  de 2028. Le motif « composition différente » n'est plus servi à une
+  facture dont le groupe porte un report non retrouvé (motif propre).
+- Relevés · lignes des groupes lues jusqu'à `PLAFOND_LIGNES_GROUPE` (500),
+  au-delà rien n'est relié et la facture est nommée (`MOTIF_GROUPE_TROP_LONG`,
+  aux deux passes) ; prolongation lancée seulement s'il existe un exercice
+  clôturé. Gelés dans `tva-groupes-comme-main.spec.ts` (« Second tour »).
+- RELEVÉ HÉRITÉ, NON CORRIGÉ ICI · un avoir sans ligne de TVA ou un escompte
+  accordé (673) lettré dans le groupe est compté comme un règlement (une
+  perception) par `reglementsDuGroupe` · défaut antérieur à la ligne.

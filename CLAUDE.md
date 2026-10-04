@@ -851,8 +851,13 @@ dans le temps pour le GROUPE entier (un mois liquidé reste ce qu'il a déclaré
 groupe NOMMÉ (`groupesImputationIndeterminee`, `tvaEnAttenteImputationIndeterminee`) ;
 un groupe PARTIEL d'un exercice clos se POURSUIT par les groupes de ses lignes
 d'à-nouveau, reports exclus (`prolongerParLesANouveaux`, même appariement que
-`relierAuxANouveaux`, une candidate par exercice), sans quoi le solde encaissé
-en N+1 ne rendait jamais la taxe exigible (rejeu sur vraie base, 2026-10-04) ; une facture dont une
+`relierAuxANouveaux`, une candidate par exercice), de proche en proche sur
+N+1, N+2… (un report se cherche lui-même plus loin), les lignes ajoutées
+jamais vues par l'ancien moteur (`createdAt` hors de toute liquidation), sans
+quoi le solde encaissé en N+1 ne rendait jamais la taxe exigible (rejeu sur
+vraie base, 2026-10-04) ; plusieurs reports candidats ou un groupe au-delà de
+sa borne de lecture · rien n'est relié et la facture est NOMMÉE
+(`rapprochementsANouveauAbandonnes`, motif) ; une facture dont une
 échéance seulement est lettrée ne date que sa part lettrée (`main` déclarait
 160 000 au paiement d'une échéance de 580 000 sur 1 160 000, 80 000 encaissés) ;
 une PERTE n'encaisse rien (art. 52, partie 2) ; une créance annulée ne désigne
