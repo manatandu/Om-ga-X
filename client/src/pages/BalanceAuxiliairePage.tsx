@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { montantOuVide as montant } from '../lib/montants';
+import { adresseGrandLivreDuCompte, cheminBalanceTiers, cheminGrandLivreTiers } from '../lib/export-livres';
 
 /**
  * BALANCE AUXILIAIRE · la balance des comptes de tiers, tiers par tiers.
@@ -42,7 +44,7 @@ interface BalanceAuxiliaire {
   totaux: Omit<LigneAuxiliaire, 'compteId' | 'numero' | 'intitule' | 'codeTiers' | 'nomTiers' | 'sansTiers'>;
 }
 
-type TypeTiers = 'TOUS' | 'CLIENTS' | 'FOURNISSEURS';
+type TypeTiers = 'TOUS' | 'CLIENTS' | 'FOURNISSEURS' | 'SALARIES' | 'AUTRES';
 
 /**
  * Le compte 41 porte le même NUMÉRO dans les deux plans et pas le même
@@ -53,12 +55,16 @@ const LIBELLE_SYCEBNL: Record<TypeTiers, string> = {
   TOUS: 'Tous les tiers (40 et 41)',
   CLIENTS: 'Adhérents, clients-usagers (41)',
   FOURNISSEURS: 'Fournisseurs (40)',
+  SALARIES: 'Personnel (42)',
+  AUTRES: 'Autres tiers rattachés (classe 4)',
 };
 
 const LIBELLE_SYSCOHADA: Record<TypeTiers, string> = {
   TOUS: 'Tous les tiers (40 et 41)',
   CLIENTS: 'Clients et comptes rattachés (41)',
   FOURNISSEURS: 'Fournisseurs (40)',
+  SALARIES: 'Personnel (42)',
+  AUTRES: 'Autres tiers rattachés (classe 4)',
 };
 
 export function BalanceAuxiliairePage() {
@@ -84,11 +90,24 @@ export function BalanceAuxiliairePage() {
     };
   }, [exerciceCourant?.id, type]);
 
+  const navigate = useNavigate();
+  const [balanceSeule, setBalanceSeule] = useState(false);
+  // UN CLASSEUR PAR FAMILLE (présentation du cabinet) · « Tous » s'affiche à
+  // l'écran mais ne s'exporte pas, le serveur le refuse aussi.
+  const famille = type === 'TOUS' ? null : type;
   const exporter = () => {
-    if (!exerciceCourant) return;
+    if (!exerciceCourant || !famille) return;
     void api.telechargerOuSignaler(
-      `/exports/balance-auxiliaire?exerciceId=${exerciceCourant.id}&type=${type}`,
-      `balance-auxiliaire-${type.toLowerCase()}.xlsx`,
+      cheminBalanceTiers(exerciceCourant.id, famille, balanceSeule),
+      `balance-tiers-${famille.toLowerCase()}.xlsx`,
+      setErreur,
+    );
+  };
+  const exporterGrandLivre = () => {
+    if (!exerciceCourant || !famille) return;
+    void api.telechargerOuSignaler(
+      cheminGrandLivreTiers(exerciceCourant.id, famille),
+      `grand-livre-tiers-${famille.toLowerCase()}.xlsx`,
       setErreur,
     );
   };
@@ -120,18 +139,38 @@ export function BalanceAuxiliairePage() {
               ))}
             </select>
           </label>
+          <select
+            value={balanceSeule ? 'seule' : 'avec'}
+            onChange={(e) => setBalanceSeule(e.target.value === 'seule')}
+            aria-label="Contenu de la balance exportée"
+            className="border border-border-dark bg-surface px-2 py-1 text-[11.5px]"
+          >
+            <option value="avec">Avec le grand livre de chaque tiers</option>
+            <option value="seule">Balance seule</option>
+          </select>
           <button
             type="button"
             onClick={exporter}
-            className="border border-border-dark bg-surface-alt px-3 py-1 text-[11.5px] font-semibold"
+            disabled={!famille}
+            title={famille ? undefined : 'Choisissez un type de tiers · un classeur porte une seule famille'}
+            className="border border-border-dark bg-surface-alt px-3 py-1 text-[11.5px] font-semibold disabled:opacity-50"
           >
             Exporter en Excel
+          </button>
+          <button
+            type="button"
+            onClick={exporterGrandLivre}
+            disabled={!famille}
+            title={famille ? undefined : 'Choisissez un type de tiers · un classeur porte une seule famille'}
+            className="border border-border-dark bg-surface-alt px-3 py-1 text-[11.5px] font-semibold disabled:opacity-50"
+          >
+            Grand-livre des tiers
           </button>
           <span className="pb-1">
             <Aide
               titre="Lecture de la balance auxiliaire"
-              texte="Les colonnes « solde débit » et « solde crédit » s'excluent : un compte est débiteur ou créditeur, jamais les deux. Leur somme se rapproche de la balance générale. Un compte de tiers sans tiers rattaché reste affiché · c'est lui qui échappera à la circularisation."
-              source="Balance auxiliaire"
+              texte="Les colonnes « solde débit » et « solde crédit » s'excluent : un compte est débiteur ou créditeur, jamais les deux. Leur somme se rapproche de la balance générale. Un compte de tiers sans tiers rattaché reste affiché · c'est lui qui échappera à la circularisation. L'export porte une seule famille de tiers : la balance, un sous-total par compte collectif, le total général et son contrôle contre la balance générale, puis une feuille par tiers avec son grand livre, ouverte par le numéro de compte (« Balance seule » ne porte que la balance). Double-cliquez une ligne pour ouvrir le grand livre du tiers à l'écran."
+              source="Présentation des balances du cabinet"
             />
           </span>
         </div>
@@ -165,7 +204,11 @@ export function BalanceAuxiliairePage() {
         {donnees?.comptes.map((c) => (
           <div
             key={c.compteId}
-            className={`${grille} px-3.5 py-[4px] items-center border-b border-border/50 text-[11.5px]`}
+            // DOUBLE-CLIC · le grand livre du tiers, onglet Grand livre de la
+            // fenêtre Journal filtré sur son compte.
+            onDoubleClick={() => navigate(adresseGrandLivreDuCompte(c.compteId))}
+            title="Double-cliquer pour ouvrir le grand livre du tiers"
+            className={`${grille} px-3.5 py-[4px] items-center border-b border-border/50 text-[11.5px] cursor-pointer hover:bg-surface-alt`}
           >
             <span className="font-mono">{c.numero}</span>
             <span className="font-mono text-text-dim">{c.codeTiers}</span>

@@ -28,6 +28,8 @@ import { join } from 'node:path';
 
 const service = readFileSync(join(__dirname, 'export.service.ts'), 'utf8');
 const flux = readFileSync(join(__dirname, 'classeur-en-flux.ts'), 'utf8');
+const fpm = readFileSync(join(__dirname, 'presentation-fpm.ts'), 'utf8');
+const fpmService = readFileSync(join(__dirname, 'export-fpm.service.ts'), 'utf8');
 
 describe('exports périodiques · identification de l’état', () => {
   it('porte l’identification en pied de page sur les trois livres obligatoires', () => {
@@ -44,7 +46,12 @@ describe('exports périodiques · identification de l’état', () => {
       // Et chacun passe une identité résolue par `identiteEtat`.
       expect(service).toContain('const identite = await this.identiteEtat(');
     }
-    expect(service).toContain('this.piedDePageEtat(feuille, identiteBalance);');
+    // Les balances et le grand livre de la présentation du cabinet (ligne
+    // FPM) posent le même pied et la même identité, à la création de chaque
+    // feuille · voir `presentation-fpm.ts` et `export-fpm.spec.ts`.
+    expect(fpm).toContain('oddFooter:');
+    expect(fpm).toContain('Page &P / &N');
+    expect(fpmService).toContain('this.exportService.identiteEtat(tenantId, { exerciceId })');
     // Chaque pose passe une identité résolue par `identiteEtat`, jamais un
     // littéral bricolé sur place · une nouvelle feuille exportable doit être
     // identifiée de la même façon que les trois autres. Le compte n'est pas
@@ -63,8 +70,6 @@ describe('exports périodiques · identification de l’état', () => {
     for (const titre of [
       "'JOURNAL'",
       "'GRAND LIVRE'",
-      "'BALANCE GÉNÉRALE'",
-      'BALANCE AUXILIAIRE',
       "'BALANCE ÂGÉE'",
       'JUSTIFICATIF DE SOLDE',
       "'ÉVOLUTION DES SOLDES'",
@@ -115,7 +120,7 @@ describe('exports périodiques · identification de l’état', () => {
     // `identiteLiasse` lève si l'exercice n'existe pas (findFirstOrThrow) ; un
     // export filtré par dates libres n'en a pas, et ne doit pas échouer pour
     // autant. D'où une variante qui se contente du dossier.
-    expect(service).toContain('private async identiteEtat(');
+    expect(service).toContain('async identiteEtat(');
     expect(service).toContain("'Toutes périodes'");
     // Le tenant, lui, existe toujours : findUniqueOrThrow est légitime.
     expect(service).toContain('this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } })');

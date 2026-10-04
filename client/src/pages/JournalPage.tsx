@@ -10,6 +10,7 @@ import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { Aide } from '../components/chrome/Aide';
 import { mouvementsDuJournal } from '../lib/mouvements-du-journal';
 import { montant, montantOuVide } from '../lib/montants';
+import { cheminBalance, cheminGrandLivre, compteDeLAdresse, type FormatGrandLivre } from '../lib/export-livres';
 
 type Onglet = 'journal' | 'grand-livre' | 'balance';
 
@@ -125,6 +126,10 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const [onglet, setOnglet] = useState<Onglet>(() => ongletDe(adresse));
   useEffect(() => {
     setOnglet(ongletDe(adresse));
+    // `?compte=…` · la balance des tiers ouvre ici le grand livre d'un tiers
+    // (double-clic sur sa ligne). Sans compte demandé, le filtre reste tel quel.
+    const compte = compteDeLAdresse(adresse);
+    if (compte) setCompteGrandLivreId(compte);
   }, [adresse]);
   const [ecritures, setEcritures] = useState<Ecriture[]>([]);
   const [totaux, setTotaux] = useState({ debit: 0, credit: 0 });
@@ -134,7 +139,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   // Balance générale façon Sage · les tiers fondus sur leur compte collectif.
   const [regrouperTiers, setRegrouperTiers] = useState(false);
   const [journaux, setJournaux] = useState<Journal[]>([]);
-  const [compteGrandLivreId, setCompteGrandLivreId] = useState('');
+  const [compteGrandLivreId, setCompteGrandLivreId] = useState(() => compteDeLAdresse(adresse) ?? '');
+  // Présentation du grand livre exporté et contenu de la balance exportée ·
+  // la présentation du cabinet et les feuilles par compte PAR DÉFAUT.
+  const [formatGrandLivre, setFormatGrandLivre] = useState<FormatGrandLivre>('fpm');
+  const [balanceSeule, setBalanceSeule] = useState(false);
   const [grandLivre, setGrandLivre] = useState<SectionGrandLivre[] | null>(null);
 
   // `filtres` est l'état des champs ; `filtresAppliques` ce qui a réellement
@@ -285,7 +294,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   };
   const exporterBalance = () => {
     if (!exerciceCourant) return;
-    lancerExport(`/exports/balance?exerciceId=${exerciceCourant.id}`, 'balance.xlsx');
+    lancerExport(cheminBalance(exerciceCourant.id, balanceSeule), 'balance.xlsx');
   };
   const exporterGrandLivreDuCompte = () => {
     if (!exerciceCourant || !compteGrandLivreId) return;
@@ -293,7 +302,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   };
   const exporterGrandLivreComplet = () => {
     if (!exerciceCourant) return;
-    lancerExport(`/exports/grand-livre?exerciceId=${exerciceCourant.id}`, 'grand-livre-complet.xlsx');
+    lancerExport(cheminGrandLivre(exerciceCourant.id, formatGrandLivre), 'grand-livre.xlsx');
   };
 
   const lignesJournal = useMemo(() => ecritures.flatMap((e) =>
@@ -441,10 +450,42 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             </button>
           )}
           {onglet === 'journal' && boutonExport('Exporter Excel', exporterJournal)}
-          {onglet === 'balance' && boutonExport('Exporter Excel', exporterBalance)}
+          {onglet === 'balance' && (
+            <>
+              <select
+                value={balanceSeule ? 'seule' : 'avec'}
+                onChange={(e) => setBalanceSeule(e.target.value === 'seule')}
+                aria-label="Contenu de la balance exportée"
+                className="border border-border bg-surface px-2 py-1.5 text-[11.5px]"
+              >
+                <option value="avec">Avec le grand livre de chaque compte</option>
+                <option value="seule">Balance seule</option>
+              </select>
+              <Aide
+                titre="Balance exportée"
+                texte="Par défaut, le classeur porte la balance puis une feuille par compte mouvementé : son grand livre complet. Le numéro de compte de la balance ouvre sa feuille, et « Retour à la balance » ramène à la ligne du compte. « Balance seule » ne porte que la balance · c'est le choix à faire quand le dossier dépasse le volume qu'un export peut porter. Double-cliquez une ligne pour ouvrir le grand livre du compte à l'écran."
+                source="Présentation des balances du cabinet"
+              />
+              {boutonExport('Exporter Excel', exporterBalance)}
+            </>
+          )}
           {onglet === 'grand-livre' && (
             <>
               {compteGrandLivreId && boutonExport('Exporter ce compte', exporterGrandLivreDuCompte, false)}
+              <select
+                value={formatGrandLivre}
+                onChange={(e) => setFormatGrandLivre(e.target.value as FormatGrandLivre)}
+                aria-label="Présentation du grand livre exporté"
+                className="border border-border bg-surface px-2 py-1.5 text-[11.5px]"
+              >
+                <option value="fpm">Présentation du cabinet</option>
+                <option value="plat">À plat, filtrable</option>
+              </select>
+              <Aide
+                titre="Présentation du grand livre exporté"
+                texte="« Présentation du cabinet » · un bloc par compte, ses lignes et son solde progressif, « Total du compte », puis les totaux et leur contrôle contre la balance générale. « À plat, filtrable » · une ligne par mouvement, numéro et intitulé du compte répétés, prête à filtrer ou à croiser, avec une feuille Sommaire par compte et le statut de chaque ligne."
+                source="Présentation des grands livres du cabinet"
+              />
               {boutonExport('Exporter tout le grand livre', exporterGrandLivreComplet)}
             </>
           )}
@@ -862,7 +903,21 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           {balance.map((l) => (
             <div
               key={l.compteId}
-              className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 py-[3px] items-center border-b border-border/50 text-[11.5px]`}
+              // DOUBLE-CLIC · le grand livre du compte, comme la balance de
+              // Sage. Une ligne regroupée sur son collectif n'en a pas à elle ·
+              // ses mouvements sont sur les comptes individuels qu'elle fond.
+              onDoubleClick={
+                l.regroupe
+                  ? undefined
+                  : () => {
+                      setCompteGrandLivreId(l.compteId);
+                      setOnglet('grand-livre');
+                    }
+              }
+              title={l.regroupe ? undefined : 'Double-cliquer pour ouvrir le grand livre du compte'}
+              className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 py-[3px] items-center border-b border-border/50 text-[11.5px] ${
+                l.regroupe ? '' : 'cursor-pointer hover:bg-surface-alt'
+              }`}
             >
               <span className="font-mono">{l.numero}</span>
               <span className="truncate" title={l.intitule}>

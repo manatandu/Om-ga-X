@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { criteresOuRefus } from './recherche-ecritures';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
@@ -6,6 +6,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { EcritureService } from './ecriture.service';
+import { estFamilleTiers } from './familles-tiers';
 import { PERIMETRES_BALANCE_AGEE, type PerimetreBalanceAgee } from './ecriture.service';
 import { CreerEcritureDto, ImputationOuvertureDto } from './dto/creer-ecriture.dto';
 import { CorrigerEcritureDto } from './dto/corriger-ecriture.dto';
@@ -252,8 +253,13 @@ export class EcritureController {
   async balanceAuxiliaire(
     @CurrentUser() user: AuthenticatedUser,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
-    @Query('type') type?: 'CLIENTS' | 'FOURNISSEURS' | 'TOUS',
+    @Query('type') type?: string,
   ) {
+    // Une famille inconnue est REFUSÉE, jamais lue « TOUS » en silence · l'écran
+    // montrerait les 40 et 41 sous le nom d'une autre famille.
+    if (type !== undefined && type !== 'TOUS' && !estFamilleTiers(type)) {
+      throw new BadRequestException('Type de tiers inconnu · TOUS, FOURNISSEURS, CLIENTS, SALARIES ou AUTRES.');
+    }
     return this.ecritureService.balanceAuxiliaire(user.tenantId, { exerciceId, type });
   }
 

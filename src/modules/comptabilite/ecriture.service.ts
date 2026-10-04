@@ -33,6 +33,7 @@ import { transactionJournalisee } from '../../common/audit/transaction-journalis
 import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
 import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements-mise-en-service';
 import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
+import { compteDeLaFamille, type FamilleTiers } from './familles-tiers';
 
 /**
  * Une ligne est au débit si son montant est porté du côté débit · quel que
@@ -3584,10 +3585,12 @@ export class EcritureService {
    */
   async balanceAuxiliaire(
     tenantId: string,
-    params: { exerciceId: string; type?: 'CLIENTS' | 'FOURNISSEURS' | 'TOUS'; inclureBrouillard?: boolean },
+    params: { exerciceId: string; type?: FamilleTiers | 'TOUS'; inclureBrouillard?: boolean },
   ) {
+    // Les familles de la balance des tiers exportée (`familles-tiers.ts`,
+    // ligne FPM) · l'écran et le classeur lisent le MÊME périmètre. « TOUS »
+    // reste l'écran des 40 et 41 ensemble.
     const type = params.type ?? 'TOUS';
-    const racines = type === 'CLIENTS' ? ['41'] : type === 'FOURNISSEURS' ? ['40'] : ['40', '41'];
 
     const [{ lignes }, rattachements] = await Promise.all([
       this.balance(tenantId, params.exerciceId, params.inclureBrouillard ?? true),
@@ -3600,7 +3603,11 @@ export class EcritureService {
 
     const arrondi = (x: number) => Math.round(x * 100) / 100;
     const comptes = lignes
-      .filter((l) => racines.some((r) => l.numero.startsWith(r)))
+      .filter((l) =>
+        type === 'TOUS'
+          ? l.numero.startsWith('40') || l.numero.startsWith('41')
+          : compteDeLaFamille(type, l.numero, parCompte.has(l.compteId)),
+      )
       .map((l) => {
         const tiers = parCompte.get(l.compteId);
         const solde = arrondi(l.totalDebit - l.totalCredit);
