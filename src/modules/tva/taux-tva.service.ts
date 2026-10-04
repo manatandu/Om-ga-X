@@ -1914,6 +1914,193 @@ export class TauxTvaService {
   }
 
   /**
+   * LE GROUPE PARTIEL D'UN EXERCICE CLOS SE POURSUIT DANS LE SUIVANT (ligne
+   * TVA 24-26, défaut trouvé au rejeu sur vraie base à travers la clôture de
+   * 2026).
+   *
+   * Deux prestations de 1 160 000 TTC, 500 000 encaissés le 20 décembre ·
+   * le groupe reste PARTIEL à la clôture, et le report Détail recopie chacune
+   * de ses lignes ouvertes en à-nouveau (« RAN détail <compte> · <libellé> »).
+   * Le solde de 1 820 000, encaissé le 15 janvier, se lettre avec ces
+   * lignes d'à-nouveau, jamais avec les factures · lue sur son seul groupe de
+   * N, la taxe des factures ne voyait JAMAIS cet encaissement, et 251 034,48
+   * de TVA devenue exigible en janvier (O.-L. n° 10/001, art. 25, 2° ; décret
+   * n° 011/42, art. 57) restait en attente pour toujours, sans un mot.
+   *
+   * Le groupe est donc PROLONGÉ · chaque ligne du groupe de N est appariée à
+   * la ligne d'à-nouveau qui la reporte (même lecture que
+   * `relierAuxANouveaux` · compte, montants, devise, échéance, libellé
+   * recopié, une seule candidate par exercice, sinon rien n'est relié), et
+   * les lignes des groupes de ces à-nouveaux, hors les reports eux-mêmes
+   * (qui recopient le groupe de N, et compteraient deux fois l'encaissement
+   * du 20 décembre), s'ajoutent au groupe. Une ligne d'à-nouveau qui ne
+   * reporte aucune ligne du groupe (la facture d'un autre groupe de N) y
+   * reste · c'est une autre facture, que la confrontation de `resoudreGroupes`
+   * ne sait pas décrire, et le groupe est alors nommé, jamais deviné. Les
+   * exercices suivants se suivent de la même façon, un report après l'autre.
+   */
+  private async prolongerParLesANouveaux<
+    T extends {
+      ecriture: {
+        lignes: Array<{
+          debit: unknown;
+          credit: unknown;
+          compte: { classe: ClasseCompte } | null;
+          lettrage: unknown;
+        }>;
+      };
+    },
+  >(tenantId: string, lignes: T[]): Promise<T[]> {
+    if (lignes.length === 0) return lignes;
+    type LigneDeGroupe = {
+      id?: string;
+      compteId?: string;
+      libelle?: string | null;
+      dateEcheance?: Date | null;
+      deviseId?: string | null;
+      montantDevise?: unknown;
+      debit: unknown;
+      credit: unknown;
+      ecriture?: { id?: string; libelle?: string; date: Date; estANouveauProvisoire?: boolean; estGenereeParCloture?: boolean } | null;
+    };
+    type Groupe = { id?: string; statut: string; solde: unknown; lignes?: LigneDeGroupe[] };
+    const groupeDe = (l: T): Groupe | null => {
+      const groupes = l.ecriture.lignes
+        .filter((x) => x.compte?.classe === ClasseCompte.CLASSE_4 && x.lettrage)
+        .map((x) => x.lettrage as Groupe);
+      const ids = new Set(groupes.map((g) => g.id));
+      return groupes.length > 0 && ids.size === 1 && groupes[0].id && groupes[0].statut === 'PARTIEL' ? groupes[0] : null;
+    };
+    const comptes = new Set<string>();
+    for (const l of lignes) for (const g of groupeDe(l)?.lignes ?? []) if (g.compteId) comptes.add(g.compteId);
+    if (comptes.size === 0) return lignes;
+
+    type ANouveau = LigneDeGroupe & {
+      id: string;
+      compteId: string;
+      ecriture: { id: string; date: Date; exerciceId: string };
+      lettrage: Groupe | null;
+    };
+    const parCompte = new Map<string, ANouveau[]>();
+    const selectLigne = {
+      id: true,
+      compteId: true,
+      libelle: true,
+      dateEcheance: true,
+      deviseId: true,
+      montantDevise: true,
+      debit: true,
+      credit: true,
+    } as const;
+    await lireParLots(
+      (curseur) =>
+        this.prisma.ligneEcriture.findMany({
+          ...pageApres(curseur, LOT_LECTURE),
+          where: { compteId: { in: [...comptes] }, ecriture: { tenantId, OR: ECRITURE_D_A_NOUVEAU } },
+          select: {
+            ...selectLigne,
+            ecriture: { select: { id: true, date: true, exerciceId: true } },
+            lettrage: {
+              select: {
+                id: true,
+                statut: true,
+                solde: true,
+                lignes: {
+                  select: {
+                    ...selectLigne,
+                    ecriture: {
+                      select: {
+                        id: true,
+                        libelle: true,
+                        date: true,
+                        createdAt: true,
+                        estANouveauProvisoire: true,
+                        estGenereeParCloture: true,
+                        _count: { select: { lignes: { where: FILTRE_LIGNES_D_AVOIR } } },
+                      },
+                    },
+                  },
+                  take: 500,
+                },
+              },
+            },
+          },
+        }) as unknown as Promise<ANouveau[]>,
+      (a) => parCompte.set(a.compteId, [...(parCompte.get(a.compteId) ?? []), a]),
+    );
+    const centimes = (x: unknown) => Math.round(Number(x ?? 0) * 100);
+    const memeLigne = (x: LigneDeGroupe, a: ANouveau) => {
+      const libelle = x.libelle ?? x.ecriture?.libelle ?? '';
+      return (
+        !!x.ecriture &&
+        a.ecriture.date > x.ecriture.date &&
+        centimes(a.debit) === centimes(x.debit) &&
+        centimes(a.credit) === centimes(x.credit) &&
+        (a.deviseId ?? null) === (x.deviseId ?? null) &&
+        (a.montantDevise == null ? null : centimes(a.montantDevise)) === (x.montantDevise == null ? null : centimes(x.montantDevise)) &&
+        (a.dateEcheance?.getTime() ?? null) === (x.dateEcheance?.getTime() ?? null) &&
+        libelle !== '' &&
+        (a.libelle ?? '').endsWith(libelle)
+      );
+    };
+    const prolonges = new Map<string, Groupe | null>();
+    const prolonger = (g: Groupe): Groupe | null => {
+      const reports = new Set<string>();
+      const vus = new Set<string>([g.id!]);
+      const reunies: LigneDeGroupe[] = [...(g.lignes ?? [])];
+      let front: LigneDeGroupe[] = [...(g.lignes ?? [])];
+      for (let tour = 0; tour < 12 && front.length > 0; tour++) {
+        const suivantes: LigneDeGroupe[] = [];
+        for (const x of front) {
+          if (!x.compteId || (x.id && reports.has(x.id))) continue;
+          const candidates = (parCompte.get(x.compteId) ?? []).filter((a) => !reports.has(a.id) && memeLigne(x, a));
+          if (candidates.length === 0) continue;
+          // Le report de l'exercice qui suit · le plus proche, et seul de son exercice.
+          const premier = candidates.reduce((m, a) => (a.ecriture.date < m.ecriture.date ? a : m));
+          if (candidates.filter((a) => a.ecriture.exerciceId === premier.ecriture.exerciceId).length > 1) return null;
+          reports.add(premier.id);
+          const suivant = premier.lettrage;
+          if (suivant?.id && !vus.has(suivant.id)) {
+            vus.add(suivant.id);
+            suivantes.push(...(suivant.lignes ?? []));
+          }
+        }
+        reunies.push(...suivantes);
+        front = suivantes;
+      }
+      if (reports.size === 0) return null;
+      const lignesReunies = reunies.filter((x) => !(x.id && reports.has(x.id)));
+      // Le reste du groupe prolongé, dans le sens de ses factures.
+      const sensDe = (x: LigneDeGroupe) => Number(x.debit) - Number(x.credit);
+      const premiere = (g.lignes ?? []).find((x) => Math.abs(sensDe(x)) > EPSILON);
+      if (!premiere) return null;
+      const debiteur = (g.lignes ?? []).reduce((t, x) => t + sensDe(x), 0) >= 0;
+      const net = lignesReunies.reduce((t, x) => t + sensDe(x), 0);
+      const reste = Math.abs(net) <= EPSILON ? 0 : net;
+      return {
+        ...g,
+        statut: Math.abs(reste) <= EPSILON || reste > 0 !== debiteur ? 'SOLDE' : 'PARTIEL',
+        solde: reste,
+        lignes: lignesReunies,
+      };
+    };
+    return lignes.map((l) => {
+      const g = groupeDe(l);
+      if (!g) return l;
+      if (!prolonges.has(g.id!)) prolonges.set(g.id!, prolonger(g));
+      const p = prolonges.get(g.id!);
+      if (!p) return l;
+      return {
+        ...l,
+        ecriture: {
+          ...l.ecriture,
+          lignes: l.ecriture.lignes.map((x) => ((x.lettrage as Groupe | null)?.id === g.id ? { ...x, lettrage: p } : x)),
+        },
+      };
+    });
+  }
+
+  /**
    * LE RÈGLEMENT D'UNE CRÉANCE D'UN EXERCICE CLOS, LU À TRAVERS SA LIGNE
    * D'À-NOUVEAU (ligne A7 bis ; constat d'A6 bis, second tour, m3).
    *
@@ -3186,6 +3373,16 @@ export class TauxTvaService {
                         // reconstitue le groupe tel que l'ancien moteur l'a lu
                         // (`declareParAncienMoteur`).
                         select: {
+                          // De quoi retrouver la ligne d'à-nouveau qui reporte
+                          // une ligne d'un groupe PARTIEL d'un exercice clos
+                          // (`prolongerParLesANouveaux`) · même appariement
+                          // que `relierAuxANouveaux`.
+                          id: true,
+                          compteId: true,
+                          libelle: true,
+                          dateEcheance: true,
+                          deviseId: true,
+                          montantDevise: true,
                           debit: true,
                           credit: true,
                           ecriture: {
@@ -3194,6 +3391,9 @@ export class TauxTvaService {
                               // plusieurs factures se confronte facture par
                               // facture (F1, `resoudreGroupes`).
                               id: true,
+                              libelle: true,
+                              estANouveauProvisoire: true,
+                              estGenereeParCloture: true,
                               date: true,
                               createdAt: true,
                               // Un AVOIR (TVA facturée reprise, ou déduite
@@ -3348,11 +3548,12 @@ export class TauxTvaService {
         tranches: Array<{ date: Date | null; fraction: number }>;
         repartition: { parLiquidation: Map<string, number>; libres: Array<{ date: Date; montant: number; origine: Date }> };
       };
-      type MembreDeGroupe = { l: LigneLue; relie: boolean; montant: number; dateEcriture: Date };
+      type MembreDeGroupe = { l: LigneLue; relie: boolean; prolonge: boolean; montant: number; dateEcriture: Date };
       type FactureLue = { engage: number; enc: Map<string, number>; art41: string | null; horsRegle: boolean };
       const membresParGroupe = new Map<string, MembreDeGroupe[]>();
       const facturesParGroupe = new Map<string, Map<string, FactureLue>>();
-      const traiter = (l: LigneLue, relie: boolean, impose?: TranchesImposees | 'MAIN') => {
+      const aProlonger: LigneLue[] = [];
+      const traiter = (l: LigneLue, relie: boolean, impose?: TranchesImposees | 'MAIN', prolonge = false) => {
           const cumul = l.tauxTvaId ? parTaux.get(l.tauxTvaId) : undefined;
           if (!cumul) return;
           const estCollecte = l.compte.numero.startsWith(RACINE_COLLECTEE);
@@ -3494,6 +3695,20 @@ export class TauxTvaService {
             aRelier.push(l);
             return;
           }
+          /*
+            LE GROUPE PARTIEL D'UN EXERCICE CLOS SE POURSUIT PAR SES
+            À-NOUVEAUX (ligne TVA 24-26, rejeu à travers la clôture de 2026) ·
+            mis de côté, prolongé par `prolongerParLesANouveaux`, puis traité.
+          */
+          if (
+            impose === undefined &&
+            !prolonge &&
+            base === 'ENCAISSEMENT' &&
+            lignesTiers.some((x) => (x.lettrage as { statut?: string } | null)?.statut === 'PARTIEL')
+          ) {
+            aProlonger.push(l);
+            return;
+          }
           // F1 · le groupe à plusieurs factures, décrit puis jugé à la fin.
           const groupeMulti = impose === undefined ? TauxTvaService.groupeAPlusieursFactures(lignesTiers) : null;
           if (groupeMulti) {
@@ -3523,7 +3738,7 @@ export class TauxTvaService {
             }
             if (base === 'ENCAISSEMENT') {
               const membres = membresParGroupe.get(groupeMulti.id) ?? [];
-              membres.push({ l, relie, montant, dateEcriture });
+              membres.push({ l, relie, prolonge, montant, dateEcriture });
               membresParGroupe.set(groupeMulti.id, membres);
               return;
             }
@@ -3842,6 +4057,7 @@ export class TauxTvaService {
       };
       await lireParLots(lire, (l) => traiter(l, false), LOT_ECRITURES);
       for (const l of await this.relierAuxANouveaux(tenantId, aRelier)) traiter(l, true);
+      for (const l of await this.prolongerParLesANouveaux(tenantId, aProlonger)) traiter(l, false, undefined, true);
 
       /*
         F1 · LES GROUPES À PLUSIEURS FACTURES, JUGÉS UNE FOIS TOUT LU. Voir
@@ -3899,7 +4115,7 @@ export class TauxTvaService {
               });
             }
           }
-          for (const m of membres) traiter(m.l, m.relie, 'MAIN');
+          for (const m of membres) traiter(m.l, m.relie, 'MAIN', m.prolonge);
           continue;
         }
         const totalFactures = [...factures!.values()].reduce((t, v) => t + v, 0);
@@ -3951,10 +4167,12 @@ export class TauxTvaService {
           const capacites = lignesCle.map((m, i) => m.montant - [...declareParLigne[i].values()].reduce((t, v) => t + v, 0));
           const libresParLigne = TauxTvaService.repartirLibresEntreLignes(repartitionGroupe.libres, capacites);
           lignesCle.forEach((m, i) =>
-            traiter(m.l, m.relie, {
-              tranches: fractions,
-              repartition: { parLiquidation: declareParLigne[i], libres: libresParLigne[i] },
-            }),
+            traiter(
+              m.l,
+              m.relie,
+              { tranches: fractions, repartition: { parLiquidation: declareParLigne[i], libres: libresParLigne[i] } },
+              m.prolonge,
+            ),
           );
         }
       }

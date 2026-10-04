@@ -37,10 +37,21 @@ n° 10/001 et aux art. 51 à 63 du décret n° 011/42 (lecture seule du
   `ParametresDossierPage.tsx` ; aide du paramètre corrigée (au SYSCOHADA la
   nature lue à la contrepartie commande, repli seulement) ; gelé par
   `client/src/pages/vocabulaire-exigibilite-tva.spec.ts`.
+- Bloc § 3 passé (serveur · tsc, jest 756 suites et 10 789 tests, build ;
+  client · tsc, vitest 223 fichiers et 1 813 tests, build).
+- Rejeu sur VRAIE base (`scratchpad/tva2426-rejeu.mjs`, grappe 55439, base
+  `tva2426_1`, serveur compilé sur 8117), SYSCOHADA et SYCEBNL (ce dernier
+  aux encaissements), à travers la clôture de 2026 · novembre 160 000
+  (acompte lettré), décembre 68 965,52 (F1), attente 251 034,48, report au
+  443 de -251 034,48, janvier 2027 331 034,48 (solde F1 F2 251 034,48 +
+  acompte non lettré 80 000, nommé), 443 soldé, décembre relu 68 965,52.
+  DÉFAUT TROUVÉ ET CORRIGÉ · le groupe partiel de 2026 ne voyait pas le
+  solde de 2027, lettré avec les lignes d'à-nouveau (janvier rendait 80 000)
+  · `prolongerParLesANouveaux`, gelé dans `tva-groupes-comme-main.spec.ts`.
 
 ## Reste
 
-- Bloc § 3, rejeu sur vraie base à travers la clôture 2026.
+- Relecture (silent-failure-hunter, typescript-reviewer, react-reviewer).
 
 ## Décisions
 

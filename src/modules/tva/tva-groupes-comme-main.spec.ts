@@ -571,3 +571,84 @@ describe('F1 · les briques du groupe à plusieurs factures', () => {
     expect(TauxTvaService.groupeAPlusieursFactures([{ ...deux, lettrage: { ...deux.lettrage, id: undefined as unknown as string } }])).toBeNull();
   });
 });
+
+describe('F1 à travers la clôture · le groupe partiel de N se poursuit par ses à-nouveaux', () => {
+  // Rejeu sur vraie base (2026-10-04) · F1 et F2 de décembre 2026, 500 000
+  // encaissés le 20/12, groupe PARTIEL à la clôture ; le report Détail
+  // recopie les trois lignes en 2027, lettrées avec le solde de 1 820 000 du
+  // 15/01/2027. Lue sur son seul groupe de 2026, la taxe ne voyait jamais
+  // le solde · 251 034,48 restaient en attente pour toujours.
+  const ligneN = (id: string, debit: number, credit: number, date: string, libelle: string) => ({
+    id: `t-${id}`,
+    compteId: 'c-client',
+    libelle: null,
+    dateEcheance: null,
+    deviseId: null,
+    montantDevise: null,
+    debit,
+    credit,
+    ecriture: { id, libelle, date: jour(date), createdAt: jour(date), estANouveauProvisoire: false, estGenereeParCloture: false, _count: { lignes: 0 } },
+  });
+  const groupeN = {
+    id: 'GN',
+    statut: 'PARTIEL' as const,
+    solde: 1_820_000,
+    soldeAt: null,
+    createdAt: jour('2026-12-20'),
+    lignes: [
+      ligneN('F1', 1_160_000, 0, '2026-12-10', 'Facture F1'),
+      ligneN('F2', 1_160_000, 0, '2026-12-11', 'Facture F2'),
+      ligneN('R1', 0, 500_000, '2026-12-20', 'Règlement partiel'),
+    ],
+  };
+  const ran = (id: string, debit: number, credit: number, libelle: string) => ({
+    id,
+    compteId: 'c-client',
+    libelle: `RAN détail 41110101 · ${libelle}`,
+    dateEcheance: null,
+    deviseId: null,
+    montantDevise: null,
+    debit,
+    credit,
+    ecriture: { id: 'AN27', libelle: 'À-nouveau', date: jour('2027-01-01'), createdAt: jour('2027-01-01'), estANouveauProvisoire: false, estGenereeParCloture: true, exerciceId: 'ex2027', _count: { lignes: 0 } },
+  });
+  const lignesGPrime = [
+    ran('anF1', 1_160_000, 0, 'Facture F1'),
+    ran('anF2', 1_160_000, 0, 'Facture F2'),
+    ran('anR1', 0, 500_000, 'Règlement partiel'),
+    ligneN('R2', 0, 1_820_000, '2027-01-15', 'Solde'),
+  ];
+  const groupePrime = { id: 'G27', statut: 'SOLDE', solde: 0, lignes: lignesGPrime };
+  const aNouveaux = lignesGPrime.slice(0, 3).map((l) => ({ ...l, lettrage: groupePrime }));
+  const ventes = () => [
+    vente({ id: 'F1', date: '2026-12-10', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null }),
+    vente({ id: 'F2', date: '2026-12-11', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null }),
+  ].map((v) => {
+    (v.ecriture.lignes[0] as { lettrage: unknown }).lettrage = groupeN;
+    return v;
+  });
+
+  function base(liquidations: unknown[], ran: unknown[]) {
+    const p = prisma(ventes(), liquidations);
+    (p.ligneEcriture.findMany as jest.Mock).mockImplementation(({ where }: { where: { compteId?: { in?: string[] } } }) =>
+      Promise.resolve(where.compteId?.in ? ran : ventes()),
+    );
+    return p;
+  }
+
+  it('décembre liquidé (figé) · janvier 2027 rend 251 034,48, le total vaut 320 000', async () => {
+    const [debut, fin] = mois('2026-12');
+    const liq = [{ id: 'liqD', dateDebut: debut, dateFin: fin, createdAt: jour('2027-01-05'), tvaEncaissementFigee: { F1: 34_482.76, F2: 34_482.76 } }];
+    const s = new TauxTvaService(base(liq, aNouveaux), {} as EcritureService);
+    expect((await s.declaration('t1', debut, fin)).totalCollecte).toBe(68_965.52);
+    const janvier = await s.declaration('t1', ...mois('2027-01'));
+    expect(janvier.totalCollecte).toBe(251_034.48);
+    expect(janvier.groupesImputationIndeterminee).toEqual([]);
+  });
+
+  it('deux reports candidats dans le même exercice · rien n’est relié (aucune devinette)', async () => {
+    const doublon = { ...aNouveaux[0], id: 'anF1bis' };
+    const s = new TauxTvaService(base([], [...aNouveaux, doublon]), {} as EcritureService);
+    expect((await s.declaration('t1', ...mois('2027-01'))).totalCollecte).toBe(0);
+  });
+});

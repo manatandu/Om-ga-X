@@ -848,7 +848,11 @@ perçue rend exigible sa taxe (art. 25, 2° ; décret art. 57), la même quelle 
 soit l'imputation, que le corpus ne règle pas (`fractionsDuGroupe`), répartie
 dans le temps pour le GROUPE entier (un mois liquidé reste ce qu'il a déclaré,
 `repartirLibresEntreLignes`) ; de composition différente, règle de `main` et
-groupe NOMMÉ (`groupesImputationIndeterminee`, `tvaEnAttenteImputationIndeterminee`) ; une facture dont une
+groupe NOMMÉ (`groupesImputationIndeterminee`, `tvaEnAttenteImputationIndeterminee`) ;
+un groupe PARTIEL d'un exercice clos se POURSUIT par les groupes de ses lignes
+d'à-nouveau, reports exclus (`prolongerParLesANouveaux`, même appariement que
+`relierAuxANouveaux`, une candidate par exercice), sans quoi le solde encaissé
+en N+1 ne rendait jamais la taxe exigible (rejeu sur vraie base, 2026-10-04) ; une facture dont une
 échéance seulement est lettrée ne date que sa part lettrée (`main` déclarait
 160 000 au paiement d'une échéance de 580 000 sur 1 160 000, 80 000 encaissés) ;
 une PERTE n'encaisse rien (art. 52, partie 2) ; une créance annulée ne désigne
