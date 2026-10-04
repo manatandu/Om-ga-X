@@ -845,10 +845,18 @@ export class ReevaluationBilanService {
       // (art. 63 ; ch. 28 § 3.2).
       const anterieurs = tri.filter((l) => l.reevaluation.dateReevaluation < exercice.dateDebut).map((l) => n(l.coefficientRetenu));
       const dotation = bien.dotations[0] ? n(bien.dotations[0].montant) : 0;
-      const lignesSortie = bien.ecritureSortieEcartReevaluation?.lignes ?? [];
+      // LA SORTIE N'APPARTIENT À LA NOTE QUE DE SON EXERCICE · la requête garde
+      // aussi les biens sortis APRÈS (encore à l'actif à la clôture montrée),
+      // et leur reprise au 861 ne devient « de l'exercice » qu'à l'exercice
+      // de leur sortie (art. 135). Sans cette borne, la note de l'année de
+      // réévaluation portait la reprise d'une sortie de l'année suivante
+      // (seconde relecture A15 bis) · même garde que la liste des sortis et
+      // que le tableau des amortissements.
+      const sortiDansLExercice = !!bien.dateSortie && bien.dateSortie >= exercice.dateDebut && bien.dateSortie <= exercice.dateFin;
+      const lignesSortie = sortiDansLExercice ? (bien.ecritureSortieEcartReevaluation?.lignes ?? []) : [];
       const reprise861Sortie = centimes(lignesSortie.filter((x) => x.compte.numero.startsWith('86')).reduce((t, x) => t + n(x.credit), 0));
       const transfere = centimes(lignesSortie.filter((x) => x.compte.numero.startsWith('106')).reduce((t, x) => t + n(x.debit), 0));
-      if (bien.dateSortie && bien.dateSortie <= exercice.dateFin) {
+      if (sortiDansLExercice && bien.dateSortie) {
         sortis.push({
           immobilisationId: bien.id,
           designation: bien.designation,

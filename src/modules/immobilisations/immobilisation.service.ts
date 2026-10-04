@@ -1103,7 +1103,14 @@ export class ImmobilisationService {
         );
       }
       if (reserveRetenue.typeCompte !== TypeCompteDetailTotal.DETAIL || !reserveRetenue.estActif) {
-        throw new BadRequestException(`Le compte ${reserveRetenue.numero} n'est pas un compte de détail actif · choisissez la réserve où l'écart s'inscrit.`);
+        // Au SYCEBNL rien ne se choisit · l'issue est de rouvrir le 118, comme
+        // le dit la liste servie à l'écran (`comptesReserve`).
+        throw new BadRequestException(
+          ref === 'SYCEBNL'
+            ? `Ce bien porte ${total.toFixed(2)} d'écart de réévaluation au 106 · le compte ${COMPTE_RESERVE_SYCEBNL} Autres ` +
+                'réserves, qui le reçoit au SYCEBNL, n’est pas un compte de détail actif · réactivez-le dans Plan comptable.'
+            : `Le compte ${reserveRetenue.numero} n'est pas un compte de détail actif · choisissez la réserve où l'écart s'inscrit.`,
+        );
       }
       compteReserve = { id: reserveRetenue.id, numero: reserveRetenue.numero };
       for (const r of reserve) {

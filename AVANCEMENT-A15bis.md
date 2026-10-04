@@ -23,6 +23,18 @@
   `impose: true` (11800000 seul) ; 112 envoyé refusé en 400 nommé ; 10611000 report C 10 000 000, D 10 000 000,
   solde 0 ; 11800000 C 10 000 000 ; 812 D 28 000 000 (70 000 000 − 42 000 000).
 
+## Second tour (relecture)
+- BLOQUANT corrigé · la note 3E / 5H comptait dans la « reprise de l'exercice » la reprise au 861 d'une sortie
+  d'un exercice POSTÉRIEUR (requête qui garde les biens sortis après l'ouverture) · reprise de sortie comptée
+  seulement si la date de sortie tombe dans l'exercice montré (`sortiDansLExercice`), même garde que la liste
+  des sortis. Spec · réévaluation au 31/12/2025, sortie au 30/06/2026 · note 2025 reprise 0, note 2026
+  9 000 000 + 1 000 000 = 10 000 000.
+- Au SYCEBNL, un 11800000 inactif ou non détail · le refus dit de le réactiver, jamais « choisissez ».
+- Commentaire du DTO de sortie · le 118 imposé au SYCEBNL.
+
+## Relevés en attente
+- Préexistant, hors ligne · une dotation d'exercice entier datée après la sortie n'est pas réduite.
+
 ## Reste
 - Rien dans le périmètre de la ligne.
 
