@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, PayloadTooLargeException } from '@nestjs/common';
-import { ClasseCompte, Prisma, Referentiel, StatutEcriture } from '@prisma/client';
+import { Prisma, Referentiel, StatutEcriture } from '@prisma/client';
 import type { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../common/prisma.service';
@@ -23,6 +23,19 @@ import {
   poserFeuilleFpm,
   soldeEnDeuxColonnes,
 } from './presentation-fpm';
+import {
+  arrondi,
+  divisionsDeLaClasse9,
+  ecartBalance,
+  ecrireCorpsBalance,
+  ecrireLigneDeCompte,
+  ecrireTotal,
+  estNulBalance,
+  type LigneBalanceFpm,
+  plageBalance,
+  totauxBalance,
+  type TotauxBalance,
+} from './balance-fpm';
 
 /**
  * LES BALANCES ET LES GRANDS LIVRES DANS LA PRÉSENTATION DU CABINET (ligne
@@ -51,40 +64,6 @@ import {
  * MÊMES lignes · sa somme rend sa ligne de balance, et le contrôle de fin de
  * livre le vérifie au lieu de le supposer.
  */
-
-/** Une ligne de balance, dans les colonnes de la présentation. */
-interface LigneBalanceFpm {
-  compteId: string;
-  numero: string;
-  intitule: string;
-  classe: ClasseCompte;
-  avantDebit: number;
-  avantCredit: number;
-  mouvementDebit: number;
-  mouvementCredit: number;
-  totalDebit: number;
-  totalCredit: number;
-}
-
-/** Les six colonnes de montants d'une ligne de total, avec leurs formules. */
-interface Totaux {
-  avantDebit: number;
-  avantCredit: number;
-  mouvementDebit: number;
-  mouvementCredit: number;
-  solde: number;
-}
-
-const CLASSES_BILAN = new Set<ClasseCompte>([
-  ClasseCompte.CLASSE_1,
-  ClasseCompte.CLASSE_2,
-  ClasseCompte.CLASSE_3,
-  ClasseCompte.CLASSE_4,
-  ClasseCompte.CLASSE_5,
-]);
-const CLASSES_GESTION = new Set<ClasseCompte>([ClasseCompte.CLASSE_6, ClasseCompte.CLASSE_7, ClasseCompte.CLASSE_8]);
-
-const arrondi = (n: number) => Math.round(n * 100) / 100;
 
 /** Le nom de la feuille qui porte la balance · réservé, aucun compte ne le prend. */
 const FEUILLE_BALANCE = 'Balance';
@@ -281,111 +260,6 @@ export class ExportFpmService {
   // Écriture d'une balance
   // -------------------------------------------------------------------------
 
-  /** Une ligne de compte · le numéro est le lien vers sa feuille, s'il en a une. */
-  private async ecrireLigneDeCompte(
-    feuille: FeuilleFpm,
-    l: LigneBalanceFpm,
-    libelle: string,
-    feuilleDuCompte: string | undefined,
-  ): Promise<number> {
-    const solde = soldeEnDeuxColonnes(l.totalDebit - l.totalCredit);
-    return feuille.ajouter(
-      {
-        numero: l.numero,
-        intitule: libelle,
-        avantDebit: montantFpm(l.avantDebit),
-        avantCredit: montantFpm(l.avantCredit),
-        mouvementDebit: montantFpm(l.mouvementDebit),
-        mouvementCredit: montantFpm(l.mouvementCredit),
-        soldeDebit: solde.debit,
-        soldeCredit: solde.credit,
-      },
-      feuilleDuCompte ? { lien: { colonne: 1, valeur: formuleLien(feuilleDuCompte, 'A1', l.numero) } } : {},
-    );
-  }
-
-  /**
-   * UNE LIGNE DE TOTAL · les quatre colonnes de mouvements en SOMME, les deux
-   * de solde en solde NET dans la seule colonne de son sens (présentation
-   * relevée · « Totaux comptes de bilan » ne porte que le solde net). Chaque
-   * montant est une FORMULE (un total écrit en dur ne se vérifie pas), son
-   * résultat joint pour qui lit sans moteur de calcul. Un total nul reste une
-   * cellule vide, comme tout zéro de la présentation.
-   *
-   * `plages` · les plages additionnées, ou les cellules de totaux déjà posés.
-   */
-  private async ecrireTotal(
-    feuille: FeuilleFpm,
-    libelle: string,
-    t: Totaux,
-    references: (col: string) => string,
-    options: { colonneLibelle?: string } = {},
-  ): Promise<number> {
-    const f = (col: string, valeur: number): ExcelJS.CellFormulaValue | null => {
-      const v = montantFpm(valeur);
-      return v === null ? null : { formula: references(col), result: v };
-    };
-    const solde = soldeEnDeuxColonnes(t.solde);
-    const net = (sens: 'D' | 'C'): ExcelJS.CellFormulaValue | null => {
-      const v = sens === 'D' ? solde.debit : solde.credit;
-      if (v === null) return null;
-      const [a, b] = sens === 'D' ? ['G', 'H'] : ['H', 'G'];
-      return { formula: `MAX(0,${references(a)}-(${references(b)}))`, result: v };
-    };
-    return feuille.ajouter(
-      {
-        [options.colonneLibelle ?? 'intitule']: libelle,
-        avantDebit: f('C', t.avantDebit),
-        avantCredit: f('D', t.avantCredit),
-        mouvementDebit: f('E', t.mouvementDebit),
-        mouvementCredit: f('F', t.mouvementCredit),
-        soldeDebit: net('D'),
-        soldeCredit: net('C'),
-      },
-      { gras: true, filetHaut: true },
-    );
-  }
-
-  private static totaux(lignes: readonly LigneBalanceFpm[]): Totaux {
-    const s = (f: (l: LigneBalanceFpm) => number) => arrondi(lignes.reduce((t, l) => t + f(l), 0));
-    return {
-      avantDebit: s((l) => l.avantDebit),
-      avantCredit: s((l) => l.avantCredit),
-      mouvementDebit: s((l) => l.mouvementDebit),
-      mouvementCredit: s((l) => l.mouvementCredit),
-      solde: s((l) => l.totalDebit - l.totalCredit),
-    };
-  }
-
-  private static somme(a: Totaux, b: Totaux): Totaux {
-    return {
-      avantDebit: arrondi(a.avantDebit + b.avantDebit),
-      avantCredit: arrondi(a.avantCredit + b.avantCredit),
-      mouvementDebit: arrondi(a.mouvementDebit + b.mouvementDebit),
-      mouvementCredit: arrondi(a.mouvementCredit + b.mouvementCredit),
-      solde: arrondi(a.solde + b.solde),
-    };
-  }
-
-  private static ecart(a: Totaux, b: Totaux): Totaux {
-    return {
-      avantDebit: arrondi(a.avantDebit - b.avantDebit),
-      avantCredit: arrondi(a.avantCredit - b.avantCredit),
-      mouvementDebit: arrondi(a.mouvementDebit - b.mouvementDebit),
-      mouvementCredit: arrondi(a.mouvementCredit - b.mouvementCredit),
-      solde: arrondi(a.solde - b.solde),
-    };
-  }
-
-  private static estNul(t: Totaux): boolean {
-    return [t.avantDebit, t.avantCredit, t.mouvementDebit, t.mouvementCredit, t.solde].every((v) => arrondi(v) === 0);
-  }
-
-  /** Une plage de lignes d'une colonne · `SUM(C10:C42)`. */
-  private static plage(premiere: number, derniere: number) {
-    return (col: string) => `SUM(${col}${premiere}:${col}${derniere})`;
-  }
-
   // -------------------------------------------------------------------------
   // Le grand livre d'une feuille · blocs de compte, total, contrôle
   // -------------------------------------------------------------------------
@@ -536,9 +410,7 @@ export class ExportFpmService {
         "Exportez la balance seule (choix « Balance seule » à l'écran), puis le grand livre compte par compte.",
       );
     }
-    const classe9 = lignes.filter((l) => l.classe === ClasseCompte.CLASSE_9);
-    const divisions9 = [...new Set(classe9.map((l) => l.numero.slice(0, 2)))];
-    const intitulesDivisions = await this.intitulesDesDivisions(tenantId, divisions9);
+    const intitulesDivisions = await this.intitulesDesDivisions(tenantId, divisionsDeLaClasse9(lignes));
 
     const noms = avecGrandsLivres ? nomsDeFeuilles(lignes.map((l) => l.numero), [FEUILLE_BALANCE]) : [];
     const feuilleDe = new Map(lignes.map((l, i) => [l.compteId, noms[i]]));
@@ -558,49 +430,7 @@ export class ExportFpmService {
       lignesEntete: 2,
     });
 
-    const ligneDuCompte = new Map<string, number>();
-    const rangs = { bilan: [] as number[], gestion: [] as number[] };
-    const rangsDivision = new Map<string, number[]>();
-    for (const l of lignes) {
-      const r = await this.ecrireLigneDeCompte(feuille, l, l.intitule, feuilleDe.get(l.compteId));
-      ligneDuCompte.set(l.compteId, r);
-      if (CLASSES_BILAN.has(l.classe)) rangs.bilan.push(r);
-      else if (CLASSES_GESTION.has(l.classe)) rangs.gestion.push(r);
-      else {
-        const d = l.numero.slice(0, 2);
-        rangsDivision.set(d, [...(rangsDivision.get(d) ?? []), r]);
-      }
-    }
-
-    // LES PLAGES SE LISENT SUR LES RANGS ÉCRITS, jamais supposées contiguës ·
-    // la base trie les numéros comme du texte, et une plage `SUM(C9:C40)` qui
-    // franchirait une ligne d'une autre classe l'additionnerait en silence.
-    const formuleDesRangs = (r: number[]) => (col: string) =>
-      r.length === 0 ? '0' : `SUM(${r.map((x) => `${col}${x}`).join(',')})`;
-    const plagesOuRangs = (r: number[]) =>
-      r.length > 0 && r[r.length - 1] - r[0] === r.length - 1
-        ? ExportFpmService.plage(r[0], r[r.length - 1])
-        : formuleDesRangs(r);
-
-    const tBilan = ExportFpmService.totaux(lignes.filter((l) => CLASSES_BILAN.has(l.classe)));
-    const tGestion = ExportFpmService.totaux(lignes.filter((l) => CLASSES_GESTION.has(l.classe)));
-    const rBilan = await this.ecrireTotal(feuille, 'Totaux comptes de bilan', tBilan, plagesOuRangs(rangs.bilan));
-    const rGestion = await this.ecrireTotal(feuille, 'Totaux comptes de gestion', tGestion, plagesOuRangs(rangs.gestion));
-    await this.ecrireTotal(
-      feuille,
-      'Totaux de la balance',
-      ExportFpmService.somme(tBilan, tGestion),
-      (col) => `${col}${rBilan}+${col}${rGestion}`,
-    );
-    for (const d of divisions9) {
-      const r = rangsDivision.get(d) ?? [];
-      await this.ecrireTotal(
-        feuille,
-        `Totaux ${intitulesDivisions.get(d) ?? d}`,
-        ExportFpmService.totaux(classe9.filter((l) => l.numero.startsWith(d))),
-        plagesOuRangs(r),
-      );
-    }
+    const { ligneDuCompte } = await ecrireCorpsBalance(feuille, lignes, intitulesDivisions, feuilleDe);
     feuille.fermer();
 
     let lignesEcrites = lignes.length;
@@ -728,7 +558,7 @@ export class ExportFpmService {
     exerciceId: string,
     famille: FamilleTiers,
     racines: string[],
-  ): Promise<Totaux> {
+  ): Promise<TotauxBalance> {
     const prefixes = famille === 'AUTRES' ? racines : [divisionnaireDeLaFamille(famille)];
     if (prefixes.length === 0) return { avantDebit: 0, avantCredit: 0, mouvementDebit: 0, mouvementCredit: 0, solde: 0 };
     const filtres = filtresDesTroisColonnes({ tenantId, exerciceId });
@@ -803,25 +633,25 @@ export class ExportFpmService {
       const groupe = retenues.filter((l) => l.numero.startsWith(racine));
       const rangs: number[] = [];
       for (const l of groupe) {
-        const r = await this.ecrireLigneDeCompte(feuille, l, l.nom, feuilleDe.get(l.compteId));
+        const r = await ecrireLigneDeCompte(feuille, l, l.nom, feuilleDe.get(l.compteId));
         ligneDuCompte.set(l.compteId, r);
         rangs.push(r);
       }
       rangsSousTotaux.push(
-        await this.ecrireTotal(
+        await ecrireTotal(
           feuille,
           `Total ${intitules.get(racine) ?? racine}`,
-          ExportFpmService.totaux(groupe),
-          ExportFpmService.plage(rangs[0], rangs[rangs.length - 1]),
+          totauxBalance(groupe),
+          plageBalance(rangs[0], rangs[rangs.length - 1]),
         ),
       );
     }
-    const tGeneral = ExportFpmService.totaux(retenues);
-    await this.ecrireTotal(feuille, 'Total général', tGeneral, (col) =>
+    const tGeneral = totauxBalance(retenues);
+    await ecrireTotal(feuille, 'Total général', tGeneral, (col) =>
       rangsSousTotaux.length === 0 ? '0' : rangsSousTotaux.map((r) => `${col}${r}`).join('+'),
     );
     const tBalance = await this.soldesDesCollectifs(tenantId, exerciceId, famille, racines);
-    await this.ecrireControle(feuille, tBalance, ExportFpmService.ecart(tGeneral, tBalance));
+    await this.ecrireControle(feuille, tBalance, ecartBalance(tGeneral, tBalance));
     feuille.fermer();
 
     let lignesEcrites = retenues.length;
@@ -850,8 +680,8 @@ export class ExportFpmService {
    * calculé et nul. Valeurs et non formules · la balance générale n'est pas
    * dans ce classeur.
    */
-  private async ecrireControle(feuille: FeuilleFpm, balance: Totaux, ecart: Totaux): Promise<void> {
-    const valeurs = (t: Totaux) => {
+  private async ecrireControle(feuille: FeuilleFpm, balance: TotauxBalance, ecart: TotauxBalance): Promise<void> {
+    const valeurs = (t: TotauxBalance) => {
       const s = soldeEnDeuxColonnes(t.solde);
       return {
         avantDebit: montantFpm(t.avantDebit),
@@ -863,7 +693,7 @@ export class ExportFpmService {
       };
     };
     await feuille.ajouter({ intitule: 'Solde à la balance générale', ...valeurs(balance) }, { filetHaut: true });
-    const nul = ExportFpmService.estNul(ecart);
+    const nul = estNulBalance(ecart);
     // L'écart des colonnes de mouvements est une DIFFÉRENCE, signée · il peut
     // être négatif, et le format l'imprime avec son signe.
     await feuille.ajouter(
@@ -888,7 +718,7 @@ export class ExportFpmService {
 
   /**
    * LE GRAND LIVRE DES COMPTES, présentation du cabinet · une feuille, un bloc
-   * par compte mouvementé, « Total du compte », « Totaux », contrôle contre la
+   * par compte mouvementé, « Total du compte », « TotauxBalance », contrôle contre la
    * balance générale.
    */
   async grandLivreEnFlux(
@@ -924,7 +754,7 @@ export class ExportFpmService {
 
   /**
    * LE GRAND-LIVRE DES TIERS, une famille par classeur (n'existait pas) · un
-   * bloc par compte de tiers, « Total du tiers », « Totaux », contrôle contre
+   * bloc par compte de tiers, « Total du tiers », « TotauxBalance », contrôle contre
    * les collectifs de la balance générale.
    */
   async grandLivreTiersEnFlux(
