@@ -62,11 +62,37 @@ Branche de sauvegarde `travail/is-cas`. Constat de départ ·
   « OmegaX » de `docs/cas-chiffres/is.md` mise à jour.
 - `prisma migrate diff` contre le schéma · aucune différence.
 
+## Second tour (2026-10-04)
+
+- B1 · `baseAvantReport` n'applique l'art. 12, al. 3 qu'à l'IS (filtre
+  `physique`, comme le calcul principal) · test et rejeu.
+- B2, P1 · `deficitAnterieurSaisi` fait foi dans le rejeu des exercices
+  suivants (`rejouerReport`), chaque perte avec la fenêtre de son exercice
+  d'origine, déclarée (`deficitAnterieurOrigines`, liste à l'écran, somme
+  égale à la saisie) ou bornée par prudence à la fenêtre la plus courte, et
+  dite (« REPORT DÉCLARÉ SANS ORIGINE », « REPORT PERDU PAR PRUDENCE »).
+  Avertissement C15 · « le reste à reporter à l'ouverture de cet exercice ».
+- Relevés 1, 2, 3, 5, 6, 7, 8, 10 corrigés (voir `docs/cas-chiffres/is.md`,
+  « Second tour »). Relevé 7 · règle prudente · refus nommé sur exercice clos
+  pour le report déclaré, son origine et la période de création ; les autres
+  champs restent ouverts, au journal d'audit comme avant.
+- Rejeu sur vraie base (`iscas_2`) · seize cas inchangés, B1, B2, P1 sur
+  trois exercices à travers leurs clôtures, à l'attendu.
+
+## Relevés en attente
+
+- (4) La perte de la période de création de 2025 (C10) reste dans la base de
+  2026 · « ces bénéfices » seuls viennent en déduction (art. 12, al. 3) ; son
+  sort sous le texte antérieur n'est pas tranché.
+- (9) La date de valeur de l'art. 22, 4° de l'AUDCIF · une écriture d'impôt
+  de la période de création passée après la clôture d'une période devra
+  porter sa date de valeur distinctement.
+- L'écriture A11 à deux lignes pour l'art. 12, al. 3.
+
 ## Reste
 
 - Relecture (silent-failure-hunter, typescript-reviewer, react-reviewer)
   par la session principale avant intégration.
-- Relevé en attente · l'écriture A11 à deux lignes pour l'art. 12, al. 3.
 
 ## Vérification
 

@@ -580,3 +580,33 @@ C05 est lu avant puis après ces quatre clôtures et rend les mêmes chiffres
 
 - L'écriture A11 ne porte qu'un impôt et qu'un compte · au premier exercice
   long, elle se refuse en nommant les deux lignes à passer à la main.
+
+---
+
+## Second tour (2026-10-04) · B1, B2, P1 et relevés
+
+Rejeu · base PostgreSQL 16 jetable `iscas_2`, serveur compilé de la branche
+(port 8119), les seize dossiers plus trois. Les seize rendent les mêmes
+chiffres qu'au premier tour (comparés champ à champ · déficit, imputation,
+impôt, impôt de l'exercice comptable, période de création), C04 et C05 à
+travers les clôtures de 2026 à 2029.
+
+| Cas | Données | Attendu | OmegaX | Écart |
+|---|---|---|---|---|
+| **B1** · entreprise individuelle, premier exercice du 01/09/2026 au 31/12/2027 | bénéfice 1 000 000 sur 2026, perte 600 000 en 2027 ; 2028 bénéficiaire | aucun déficit en 2028 · l'art. 12, al. 3 relève de l'IS (Titre II), l'IRPP a son report propre (art. 101) | 0 avant et après la clôture de 2026-2027 (avant correction : 600 000 inventés) | 0 |
+| **B2** · perte 2025 recalculée 1 000 000, déclarée 400 000 à l'ouverture de 2026 (origine · 2025), bénéfice 2026 300 000, 2027 bénéfice 2 000 000 | | 2027 · reste 100 000, impôt 30 % × 1 900 000 = 570 000 (art. 51, 56) | 100 000 · 570 000, avant et après les clôtures de 2025 et 2026 (sans saisie · 700 000 · 390 000 ; avant correction, 700 000 malgré la saisie) | 0 |
+| **B2** sans origine déclarée | idem, origine non dite | report borné par prudence et le reste perdu NOMMÉ | 0 · 600 000, « REPORT PERDU PAR PRUDENCE · 100 000 […] » | dit |
+| **B2** · retouche de la saisie sur 2026 clos | | refus nommé, issue dite | 400 · « L'exercice est clôturé […] Déclarez le report disponible à l'ouverture de l'exercice ouvert suivant » | 0 |
+| **P1** · dossier repris en 2026, 800 000 déclarés (origine · 2025), bénéfices 2026 300 000, 2027 200 000, 2028 1 000 000 | | 2027 · 500 000 disponibles, 200 000 imputés, minimum 2 000 ; 2028 · 300 000 imputés, impôt 210 000 | 500 000 · 2 000 ; 300 000 · 210 000, avant et après les clôtures de 2026 et 2027 (avant correction : reste perdu sans un mot) | 0 |
+
+Relevés du second tour, corrigés · (1) un bénéfice DÉCLARÉ de la période de
+création est confronté au livre-journal, l'écart servi et dit ; (2) les
+débits des 891, 892 et 895 de la période sont rajoutés à sa lecture (art. 45)
+et le refus de l'A11 date ses deux lignes ; (3) l'art. 55, lu, est cité dans
+la question rendue sur le chiffre d'affaires du minimum (il vise les
+revenus imposables, non le chiffre d'affaires) ; (5) les suppléments établis
+sur l'impôt de la période de création entrent dans la base des acomptes de
+l'année qui suit (LPF art. 57 bis) ; (6) une période d'impôt nul n'arrête
+pas l'A11 ; (7) report déclaré et bénéfice de la période figés sur un
+exercice clos, refus nommé ; (8) exercices non jointifs dans la fenêtre du
+report nommés.
