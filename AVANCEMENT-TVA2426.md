@@ -32,10 +32,14 @@ n° 10/001 et aux art. 51 à 63 du décret n° 011/42 (lecture seule du
   la date de l'acompte, testé), sinon nommé avec l'issue ; TU 3 chèque,
   virement, affacturage et TU 6 conditions suspensive et résolutoire dans la
   mention générale (et le hors-scope) ; TU 7 commentaire du repli corrigé.
+- Vocabulaire · `FAIT_GENERATEUR` devient `DATE_ECRITURE` (commentaire art.
+  24, 25, 26) ; « due » devient « exigible » dans `DeclarationTvaPage.tsx` et
+  `ParametresDossierPage.tsx` ; aide du paramètre corrigée (au SYSCOHADA la
+  nature lue à la contrepartie commande, repli seulement) ; gelé par
+  `client/src/pages/vocabulaire-exigibilite-tva.spec.ts`.
 
 ## Reste
 
-- Vocabulaire (`FAIT_GENERATEUR`, « pas due », aide du paramètre).
 - Bloc § 3, rejeu sur vraie base à travers la clôture 2026.
 
 ## Décisions

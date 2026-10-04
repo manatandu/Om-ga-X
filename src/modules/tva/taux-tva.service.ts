@@ -2522,8 +2522,25 @@ export class TauxTvaService {
   }
 
   /**
-   * SUR QUOI SE DATE UNE LIGNE · fait générateur (date de l'écriture) ou
-   * encaissement (date du règlement de la contrepartie de tiers).
+   * SUR QUOI SE DATE UNE LIGNE · la date de l'ÉCRITURE (`DATE_ECRITURE`) ou
+   * l'ENCAISSEMENT (date du règlement de la contrepartie de tiers).
+   *
+   * LE MOT A UN SENS, ET CE N'ÉTAIT PAS CELUI-LÀ (ligne TVA 24-26). Cette base
+   * s'appelait `FAIT_GENERATEUR`, et elle n'en est pas un. Le fait générateur
+   * est « l'événement qui donne naissance à la créance fiscale » (O.-L.
+   * n° 10/001, art. 24) · la livraison pour un bien (1°), l'EXÉCUTION pour
+   * un service (2°). L'exigibilité est autre chose · « le droit dont
+   * disposent les services de l'Administration des Impôts de réclamer du
+   * redevable le paiement de la taxe à partir d'une date donnée » (art. 25),
+   * au fait générateur pour les biens (1°), à l'encaissement pour les
+   * services (2°), à « l'inscription au débit du compte du client » sous
+   * autorisation (art. 26). `DATE_ECRITURE` couvre trois cas, et dit ce que
+   * le code lit · une livraison de biens datée à sa facture (art. 25, 1°,
+   * faute de date de livraison, nommé dans la déclaration), un service aux
+   * débits daté à son inscription au débit (art. 26 ; décret n° 011/42,
+   * art. 61), et le repli d'une nature indéterminée. Un service exécuté et
+   * non encaissé porte une taxe NÉE et pas encore EXIGIBLE, jamais « pas
+   * due ».
    *
    * COLLECTE · art. 25. Les biens au fait générateur (1°), les services et
    * travaux à l'encaissement (2°). Le paramètre du dossier ne peut plus
@@ -2560,7 +2577,7 @@ export class TauxTvaService {
    * LE RÈGLEMENT ANTÉRIEUR AU DÉBIT EST VENTILÉ QUAND IL EST LETTRÉ. L'art. 26
    * in fine et le décret art. 62 (l. 1797-1800) réservent le cas où le prix
    * ou l'acompte est encaissé AVANT le débit : la taxe est alors exigible chez
-   * le fournisseur dès cet encaissement. La base reste FAIT_GENERATEUR ici ;
+   * le fournisseur dès cet encaissement. La base reste DATE_ECRITURE ici ;
    * c'est la déclaration qui découpe la taxe en tranches
    * (`tranchesAuxDebits`) quand un règlement lettré à la facture la précède.
    * Un acompte que rien ne relie à la facture reste daté au débit, donc au
@@ -2578,20 +2595,20 @@ export class TauxTvaService {
     estCollecte: boolean,
     fournisseurAuxDebits: boolean,
     contreparties: readonly string[] = [],
-  ): { base: 'FAIT_GENERATEUR' | 'ENCAISSEMENT'; nature: NatureOperationTva } {
+  ): { base: 'DATE_ECRITURE' | 'ENCAISSEMENT'; nature: NatureOperationTva } {
     const nature = this.natureOperation(referentiel, numeroCompte, estCollecte, contreparties);
-    if (nature === 'BIENS') return { base: 'FAIT_GENERATEUR', nature };
+    if (nature === 'BIENS') return { base: 'DATE_ECRITURE', nature };
     if (nature === 'SERVICES') {
       // COLLECTE · l'art. 26 vise la taxe que le redevable ACQUITTE, donc
       // l'autorisation DU DOSSIER · jamais celle d'un de ses tiers.
-      if (estCollecte) return { base: regime === 'DEBITS' ? 'FAIT_GENERATEUR' : 'ENCAISSEMENT', nature };
+      if (estCollecte) return { base: regime === 'DEBITS' ? 'DATE_ECRITURE' : 'ENCAISSEMENT', nature };
       // DÉDUCTION · la date se juge chez le fournisseur (art. 37 al. 1, décret
       // art. 96) ; autorisé aux débits, sa taxe est exigible à la facture
       // (décret art. 61). FAUX couvre aussi « non renseigné » · droit commun.
-      return { base: fournisseurAuxDebits ? 'FAIT_GENERATEUR' : 'ENCAISSEMENT', nature };
+      return { base: fournisseurAuxDebits ? 'DATE_ECRITURE' : 'ENCAISSEMENT', nature };
     }
     // Nature indéterminée · le paramètre du dossier sert de repli DÉCLARÉ.
-    return { base: regime === 'ENCAISSEMENTS' ? 'ENCAISSEMENT' : 'FAIT_GENERATEUR', nature };
+    return { base: regime === 'ENCAISSEMENTS' ? 'ENCAISSEMENT' : 'DATE_ECRITURE', nature };
   }
 
   /**
@@ -3528,7 +3545,7 @@ export class TauxTvaService {
             la livraison, à chaque échéance pour l'habitat social seul
             (art. 25, 7°) ; datée à chaque écriture d'échéance.
           */
-          if (dansLaPeriode && nature === 'BIENS' && base === 'FAIT_GENERATEUR') {
+          if (dansLaPeriode && nature === 'BIENS' && base === 'DATE_ECRITURE') {
             if (estCollecte && (l.compte.numero.startsWith('4434') || contreparties.some((n) => n.startsWith('72')))) {
               tvaLivraisonSoiMeme += montant;
             } else if (!estCollecte && contreparties.some((n) => n.startsWith('6234'))) {
@@ -3616,13 +3633,13 @@ export class TauxTvaService {
             `tranchesAuxDebits`.
           */
           const auxDebits =
-            base === 'FAIT_GENERATEUR' &&
+            base === 'DATE_ECRITURE' &&
             nature === 'SERVICES' &&
             (estCollecte ? regimeLigne === 'DEBITS' : fournisseur.autorise);
           let tranches: Array<{ date: Date | null; fraction: number; auPaiement?: boolean }> =
             impose && impose !== 'MAIN'
               ? impose.tranches
-              : base === 'FAIT_GENERATEUR'
+              : base === 'DATE_ECRITURE'
               ? auxDebits
                 ? TauxTvaService.tranchesAuxDebits(lignesTiers, dateEcriture)
                 : [{ date: dateEcriture, fraction: 1 }]
@@ -3706,7 +3723,7 @@ export class TauxTvaService {
             « s'entend du fournisseur de biens ou du prestataire de services »
             (décret, art. 96). Le délai ne court donc PAS de la réception · le
             mesurer sur la date de l'écriture l'allongerait d'autant que la
-            facture a mis à arriver. Pour une taxe datée au fait générateur ou
+            facture a mis à arriver. Pour une taxe exigible à la livraison ou
             au débit (chez le fournisseur, art. 25, 1° et art. 26), la date de
             la FACTURE est le jalon le plus ancien que le dossier tienne · c'est
             elle qui borne le délai, et une taxe déchue n'entre plus dans la
@@ -3716,7 +3733,7 @@ export class TauxTvaService {
             réception (pièce d'avant A21), rien ne change.
           */
           const factureRecue =
-            !estCollecte && base === 'FAIT_GENERATEUR' && l.ecriture.facture?.sens === SensFacture.ACHAT && l.ecriture.facture.dateReception
+            !estCollecte && base === 'DATE_ECRITURE' && l.ecriture.facture?.sens === SensFacture.ACHAT && l.ecriture.facture.dateReception
               ? l.ecriture.facture
               : null;
           /*
@@ -4445,7 +4462,8 @@ export class TauxTvaService {
           ]
         : []),
       "Exigibilité datée OPÉRATION PAR OPÉRATION (article 25 de l'ordonnance-loi n° 10/001) : les LIVRAISONS DE " +
-        'BIENS au fait générateur (art. 25, 1°), les PRESTATIONS DE SERVICES et TRAVAUX IMMOBILIERS à ' +
+        'BIENS au fait générateur, la livraison (art. 24, 1° et 25, 1°), les PRESTATIONS DE SERVICES et TRAVAUX ' +
+        'IMMOBILIERS, dont la taxe naît à l’exécution (art. 24, 2°), à ' +
         "l'encaissement du prix, des acomptes ou avances (art. 25, 2°). La nature est lue à la CONTREPARTIE de " +
         'l’écriture, que les art. 6 et 8 qualifient (701 à 704 ventes de biens, 705/706 travaux et services, 7072 ' +
         'commissions, 7073 locations, 7076 redevances ; 60 achats, 6051/6052/6053 eau, électricité et énergies, ' +
@@ -4474,7 +4492,8 @@ export class TauxTvaService {
         "Ce dossier est autorisé à acquitter la taxe d'après les DÉBITS (art. 26, sur décision du Directeur " +
           "Général des Impôts) : sa TVA sur services et travaux est exigible à l'inscription au débit du compte " +
           'du client, donc à la date de la facture. Cette autorisation ne change rien aux ventes de biens, déjà ' +
-          'exigibles au fait générateur, ni à la TVA déductible, qui se juge chez le fournisseur.',
+          'exigibles au fait générateur, la livraison (datée à la facture, voir plus haut), ni à la TVA ' +
+          'déductible, qui se juge chez le fournisseur.',
       );
       if (e.autorisationDossierNonDatee) {
         phrases.push(

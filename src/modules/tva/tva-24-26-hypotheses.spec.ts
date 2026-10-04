@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TauxTvaService } from './taux-tva.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -185,5 +187,20 @@ describe('TU 3 et 6 · les réserves générales de la mention', () => {
     expect(d.mentionExigibilite).toContain('affacturage');
     expect(d.mentionExigibilite).toContain('« au moment de la réalisation de cette condition »');
     expect(d.mentionExigibilite).toContain('« dès la conclusion du contrat »');
+  });
+});
+
+describe('Vocabulaire · la base de date dit ce qu’elle lit (art. 24, 25 et 26)', () => {
+  const source = readFileSync(join(__dirname, 'taux-tva.service.ts'), 'utf8');
+
+  it('la base s’appelle DATE_ECRITURE, et son commentaire distingue fait générateur et exigibilité', () => {
+    expect(source).toContain("base: 'DATE_ECRITURE' | 'ENCAISSEMENT'");
+    expect(source).toContain('`DATE_ECRITURE` couvre trois cas');
+    expect(source).toContain('NÉE et pas encore EXIGIBLE');
+  });
+
+  it('la mention générale dit que la taxe d’une prestation naît à l’exécution (art. 24, 2°)', async () => {
+    const d = await declarer([], '2026-08');
+    expect(d.mentionExigibilite).toContain('dont la taxe naît à l’exécution (art. 24, 2°)');
   });
 });
