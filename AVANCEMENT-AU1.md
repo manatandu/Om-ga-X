@@ -68,6 +68,16 @@ Branche de sauvegarde `travail/au1`, partie de `main` d32e22a. Fiche retirée à
     fournisseurs », qui ne parlent pas d'exigibilité ; « le droit à déduction prend naissance » est le mot de
     l'art. 37, al. 1.
 
+- TROISIÈME TOUR (décision du coordinateur, limite de R1) · le périmètre de l'ouverture de N+1 se borne aux
+  écritures du premier jour passées en À-NOUVEAU ou au journal d'OPÉRATIONS DIVERSES (type général), et à ce qui
+  les corrige (`corrigeEcritureId`), hors provisoire et hors classes 6 à 8 (`ESTUNE_OUVERTURE`). Une ouverture de
+  bilan ne passe jamais par un journal d'achats, de ventes ou de trésorerie (AUDCIF art. 34 · on compare des
+  BILANS d'ouverture). Gelé par `cloture-annuelle.spec.ts`. Vraie base, deux référentiels · import faux + encaissement
+  de banque du 1er janvier · la banque n'est ni confrontée ni inscrite en négatif, banque 100 000, client 200 000.
+- Seconde question RÉGLÉE (coordinateur) · la mention « paiement non rattaché » disparaît de la déclaration une fois
+  l'exercice du paiement clos · acceptable, car la déclaration du mois de l'encaissement l'a nommé tant que son
+  exercice était ouvert.
+
 ## Reste
 
 - Intégration sur `main` (appelant), relectures des agents.
@@ -87,8 +97,6 @@ Branche de sauvegarde `travail/au1`, partie de `main` d32e22a. Fiche retirée à
     hors périmètre.
   - `balanceCumulee` · une ressaisie de l'ouverture par OD au premier jour (R1) entre dans les mouvements du cumul
     pluriannuel et le double · hors périmètre, rare.
-  - La déclaration nomme un paiement à relettrer tant que son exercice est ouvert · une fois clos sans relettrage,
-    c'est son à-nouveau qui se lettre et le nom disparaît.
 
 ## Décisions prises
 

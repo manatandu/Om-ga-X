@@ -1702,8 +1702,10 @@ interface LigneDOuverture extends LigneOuverturePassee {
  *
  * PÉRIMÈTRE RETENU · toute écriture de N+1 DATÉE du premier jour, ou dont la
  * DATE DE VALEUR est le premier jour (un négatif reporté au premier jour
- * ouvert, AUDCIF art. 22, 4°), quelle que soit son origine (bilan importé,
- * négatif lié, ressaisie à la main par OD), SAUF · le report provisoire
+ * ouvert, AUDCIF art. 22, 4°), passée en À-NOUVEAU ou au journal d'OPÉRATIONS
+ * DIVERSES (bilan importé, ressaisie à la main par OD), ou qui corrige l'une
+ * d'elles (négatif lié), JAMAIS une écriture d'un journal d'achats, de ventes
+ * ou de trésorerie (une opération de l'exercice), SAUF · le report provisoire
  * d'OmegaX (que la clôture remplace), l'écriture de solde des comptes de
  * gestion, et toute écriture qui touche un compte de GESTION (classes 6 à 8).
  *
@@ -1716,18 +1718,34 @@ interface LigneDOuverture extends LigneOuverturePassee {
  * POURQUOI SANS LES COMPTES DE GESTION · « un bilan ne contient aucun compte
  * de gestion » (la règle de l'import, `ImportService`, sur le même art. 34) ·
  * une écriture du premier jour qui touche un 6, un 7 ou un 8 est une
- * opération de l'exercice, pas une ouverture. LIMITE ÉCRITE · une opération
- * de trésorerie ou de tiers datée du premier jour (férié légal, ordonnance
- * n° 23-042, art. 1er) se lit comme une ouverture · l'aperçu nomme chaque
- * ligne avant la clôture, et la redater au lendemain la sort du périmètre.
+ * opération de l'exercice, pas une ouverture. POURQUOI SANS LES JOURNAUX
+ * D'ACHATS, DE VENTES ET DE TRÉSORERIE · l'art. 34 compare des BILANS
+ * d'ouverture, et un bilan d'ouverture ne se passe jamais par eux · une
+ * opération de banque du 1er janvier n'est ni comptée ni inscrite en
+ * négatif. LIMITE ÉCRITE · une OD ordinaire datée du premier jour, sur des
+ * comptes de bilan, se lit comme une ouverture · l'aperçu la nomme, et la
+ * redater au lendemain la sort du périmètre.
  */
+/** Une écriture qui peut porter une ouverture · un à-nouveau, ou une écriture du journal d'opérations diverses. */
+const ESTUNE_OUVERTURE: Prisma.EcritureWhereInput = { OR: [{ estGenereeParCloture: true }, { journal: { type: TypeJournal.GENERAL } }] };
+
 async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: string, exercice: { id: string; dateDebut: Date }) {
   const filtre: Prisma.EcritureWhereInput = {
     tenantId,
     exerciceId: exercice.id,
     estANouveauProvisoire: false,
     estSoldeDesComptesDeGestion: false,
-    OR: [{ date: exercice.dateDebut }, { dateValeur: exercice.dateDebut }],
+    AND: [
+      { OR: [{ date: exercice.dateDebut }, { dateValeur: exercice.dateDebut }] },
+      // Une ouverture de bilan ne passe JAMAIS par un journal d'achats, de
+      // ventes ou de trésorerie (décision du coordinateur, troisième tour) ·
+      // une écriture de ces journaux au premier jour est une opération de
+      // l'exercice, que RECTIFIER ne doit jamais inscrire en négatif. Restent
+      // l'à-nouveau (quel que soit son journal), le journal d'opérations
+      // diverses (type général), et ce qui corrige l'un d'eux (lien
+      // `corrigeEcritureId`).
+      { OR: [ESTUNE_OUVERTURE, { corrigeEcriture: { is: ESTUNE_OUVERTURE } }] },
+    ],
     lignes: { none: { compte: { classe: { in: [ClasseCompte.CLASSE_6, ClasseCompte.CLASSE_7, ClasseCompte.CLASSE_8] } } } },
   };
   const nombre = await tx.ligneEcriture.count({ where: { ecriture: filtre } });

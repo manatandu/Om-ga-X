@@ -2646,8 +2646,9 @@ période close, jamais en exercice clos), et la déclaration de TVA NOMME le pai
 non rattaché (décret n° 011/42, art. 57 · exigible à sa date, O.-L. n° 10/001,
 art. 25, 2°). Jamais refuser la clôture de période (art. 22, 3°). (7) AU2 · LA
 POSITION D'OUVERTURE DE N+1 · toute écriture datée ou valorisée au premier jour,
-toutes origines (import, négatif, OD), hors provisoire et hors écriture touchant un
-compte de gestion (`ouvertureDejaPassee`), confrontée au report par COMPTE ET PAR
+en à-nouveau ou au journal d'opérations diverses, et ce qui les corrige, JAMAIS un
+journal d'achats, de ventes ou de trésorerie, hors provisoire et hors écriture touchant
+un compte de gestion (`ouvertureDejaPassee`), confrontée au report par COMPTE ET PAR
 DEVISE (`issueDeLOuverture`, AUDCIF art. 34 · SYCEBNL art. 16, 4)) · brouillard,
 refus ; nulle, report entier ; concordante, rien ; N sans écriture, elle fait foi ;
 divergente, le cabinet DÉCLARE · RECTIFIER (négatif de toutes ses lignes sur les

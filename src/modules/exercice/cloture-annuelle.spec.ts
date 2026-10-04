@@ -269,8 +269,8 @@ describe('AU2 · clôture de N avec une ouverture déjà passée dans N+1', () =
     const { s, tx } = service(null);
     tx.ecriture.findMany.mockResolvedValue(ecritures);
     const parDefaut = tx.ligneEcriture.findMany.getMockImplementation()!;
-    tx.ligneEcriture.findMany.mockImplementation(((a: { where: { ecriture?: { OR?: unknown } }; cursor?: unknown }) =>
-      a.where.ecriture?.OR ? Promise.resolve(a.cursor ? [] : lignes) : parDefaut(a as never)) as never);
+    tx.ligneEcriture.findMany.mockImplementation(((a: { where: { ecriture?: { AND?: unknown } }; cursor?: unknown }) =>
+      a.where.ecriture?.AND ? Promise.resolve(a.cursor ? [] : lignes) : parDefaut(a as never)) as never);
     tx.ligneEcriture.count.mockResolvedValue(lignes.length);
     const lecturePlan = tx.compte.findMany.getMockImplementation()!;
     // Comptes nommés par leur identifiant · aucun lettrable (R6 rejoué sur vraie base).
@@ -302,9 +302,21 @@ describe('AU2 · clôture de N avec une ouverture déjà passée dans N+1', () =
       exerciceId: 'n1',
       estANouveauProvisoire: false,
       estSoldeDesComptesDeGestion: false,
-      OR: [{ date: N1.dateDebut }, { dateValeur: N1.dateDebut }],
+      AND: [
+        { OR: [{ date: N1.dateDebut }, { dateValeur: N1.dateDebut }] },
+        {
+          OR: [
+            { OR: [{ estGenereeParCloture: true }, { journal: { type: 'GENERAL' } }] },
+            { corrigeEcriture: { is: { OR: [{ estGenereeParCloture: true }, { journal: { type: 'GENERAL' } }] } } },
+          ],
+        },
+      ],
       lignes: { none: { compte: { classe: { in: ['CLASSE_6', 'CLASSE_7', 'CLASSE_8'] } } } },
     });
+    // Troisième tour · un journal d'achats, de ventes ou de trésorerie n'y
+    // entre jamais · une opération de banque du 1er janvier n'est ni comptée
+    // ni inscrite en négatif.
+    expect(JSON.stringify(where)).not.toMatch(/TRESORERIE|ACHATS|VENTES/);
     // Aucun drapeau d'origine n'est exigé · une ressaisie par OD en fait partie.
     expect(where.estGenereeParCloture).toBeUndefined();
   });
