@@ -56,6 +56,17 @@ const EPSILON = 0.005;
  */
 const RACINE_COLLECTEE = '443';
 const RACINE_RECUPERABLE = '445';
+/**
+ * Les lignes qui font d'une écriture un AVOIR · TVA facturée reprise (443 au
+ * débit) ou TVA déduite reprise (445 au crédit). Une seule définition, pour
+ * les deux lectures de groupe (déclaration et à-nouveau).
+ */
+const FILTRE_LIGNES_D_AVOIR: Prisma.LigneEcritureWhereInput = {
+  OR: [
+    { debit: { gt: 0 }, compte: { numero: { startsWith: RACINE_COLLECTEE } } },
+    { credit: { gt: 0 }, compte: { numero: { startsWith: RACINE_RECUPERABLE } } },
+  ],
+};
 
 /**
  * LA NATURE DE L'OPÉRATION SE LIT AU COMPTE · et c'est elle, non le dossier,
@@ -1558,8 +1569,15 @@ export class TauxTvaService {
     montant: number,
     dateEcriture: Date,
     liquidation: LiquidationEncaissement,
+    ecritureSaisieLe?: Date,
   ): number {
     const T = liquidation.createdAt;
+    // L'ÉCRITURE DE LA TAXE SAISIE APRÈS LA LIQUIDATION (cinquième reprise,
+    // BLOQUANT) · l'ancien moteur ne l'a jamais lue · rien n'a été déclaré
+    // pour elle, quelle que soit sa date (facture du 20 mars saisie le 15
+    // avril, mars liquidé le 1er avril · déclarée au règlement, en mai). Une
+    // écriture importée après la liquidation suit la même règle.
+    if (ecritureSaisieLe && ecritureSaisieLe > T) return 0;
     const vues = lignesTiers.filter((x) => x.lettrage && (!x.lettrage.createdAt || x.lettrage.createdAt <= T));
     let date: Date = dateEcriture;
     let fraction = 1;
@@ -1812,7 +1830,13 @@ export class TauxTvaService {
         lignes: Array<{
           debit: unknown;
           credit: unknown;
-          ecriture: { date: Date; estANouveauProvisoire: boolean; estGenereeParCloture: boolean };
+          ecriture: {
+            date: Date;
+            createdAt?: Date;
+            estANouveauProvisoire: boolean;
+            estGenereeParCloture: boolean;
+            _count?: { lignes?: number };
+          };
         }>;
       } | null;
     };
@@ -1839,10 +1863,22 @@ export class TauxTvaService {
                 soldeAt: true,
                 createdAt: true,
                 lignes: {
+                  // ALIGNÉ SUR LA LECTURE DES GROUPES DE LA DÉCLARATION
+                  // (cinquième reprise) · l'instant de saisie (transition) et
+                  // le décompte des lignes d'AVOIR, sans lequel un avoir du
+                  // groupe de l'à-nouveau passait pour un règlement.
                   select: {
                     debit: true,
                     credit: true,
-                    ecriture: { select: { date: true, estANouveauProvisoire: true, estGenereeParCloture: true } },
+                    ecriture: {
+                      select: {
+                        date: true,
+                        createdAt: true,
+                        estANouveauProvisoire: true,
+                        estGenereeParCloture: true,
+                        _count: { select: { lignes: { where: FILTRE_LIGNES_D_AVOIR } } },
+                      },
+                    },
                   },
                   take: 500,
                 },
@@ -2590,6 +2626,56 @@ export class TauxTvaService {
     }));
     const liquidationExacte =
       liquidationsLues.find((l) => l.dateDebut.getTime() === dateDebut.getTime() && l.dateFin.getTime() === dateFin.getTime()) ?? null;
+    /*
+      CE QUE LES DONNÉES NE PERMETTENT PAS DE RECONSTITUER EST NOMMÉ
+      (cinquième reprise). Aucune colonne ne date l'entrée d'une ligne dans un
+      groupe de lettrage, ni sa sortie · un paiement saisi avant une
+      liquidation de l'ancien moteur et lettré APRÈS elle (« compléter »), ou
+      délettré après elle, change le groupe que l'ancien moteur a lu sans que
+      `declareParAncienMoteur` le voie. Le SEUL signal fiable du schéma est le
+      journal d'audit, qui garde tout acte sur un `Lettrage` (MODELES_AUDITES)
+      · une MODIFICATION qui change le reste (`solde`) d'un groupe lu, ou la
+      SUPPRESSION d'un groupe né avant la liquidation sur le compte du tiers,
+      postérieures à la liquidation, rendent la reconstitution INCERTAINE.
+      Elle n'est pas corrigée, elle est NOMMÉE, montant reconstitué compris,
+      à vérifier contre la déclaration déposée.
+    */
+    const modificationsDeGroupe = new Map<string, Date[]>();
+    const suppressionsParCompte = new Map<string, Array<{ le: Date; creeLe: Date | null }>>();
+    const anciennes = liquidationsLues.filter((l) => !l.figee);
+    if (anciennes.length > 0) {
+      const depuis = new Date(Math.min(...anciennes.map((l) => l.createdAt.getTime())));
+      await lireParLots(
+        (curseur) =>
+          this.prisma.evenementAudit.findMany({
+            ...pageApres(curseur, LOT_LECTURE),
+            where: { tenantId, entite: 'Lettrage', action: { in: ['MODIFICATION', 'SUPPRESSION'] }, horodatage: { gt: depuis } },
+            select: { id: true, action: true, entiteId: true, horodatage: true, avant: true, apres: true },
+          }),
+        (e) => {
+          const avant = (e.avant ?? null) as { solde?: unknown; compteId?: string; createdAt?: string } | null;
+          const apres = (e.apres ?? null) as { solde?: unknown; filtre?: { id?: string } } | null;
+          if (e.action === 'SUPPRESSION') {
+            if (!avant?.compteId) return;
+            const liste = suppressionsParCompte.get(avant.compteId) ?? [];
+            liste.push({ le: e.horodatage, creeLe: avant.createdAt ? new Date(avant.createdAt) : null });
+            suppressionsParCompte.set(avant.compteId, liste);
+            return;
+          }
+          // Opération de masse (`updateMany`) · le groupe se lit dans le filtre.
+          const groupeId = e.entiteId ?? apres?.filtre?.id ?? null;
+          if (!groupeId) return;
+          // Seul un changement du RESTE dit qu'une ligne est entrée ou sortie ·
+          // un verrou posé ne touche pas au solde. Sans état avant, incertain.
+          if (avant && apres && 'solde' in apres && Number(avant.solde) === Number(apres.solde)) return;
+          modificationsDeGroupe.set(groupeId, [...(modificationsDeGroupe.get(groupeId) ?? []), e.horodatage]);
+        },
+      );
+    }
+    const PLAFOND_INCERTAINES = 100;
+    const reconstitutionsIncertaines: Array<{ facture: string; dateDebut: string; dateFin: string; montantReconstitue: number }> = [];
+    let reconstitutionsIncertainesTotal = 0;
+    const incertainesVues = new Set<string>();
     // Ce que CETTE période déclare à l'encaissement, ligne par ligne · la
     // liquidation le fige (`comptabiliserLiquidation`).
     const figeEncaissement: Record<string, number> = {};
@@ -2798,6 +2884,9 @@ export class TauxTvaService {
             select: {
               date: true,
               libelle: true,
+              // L'instant de SAISIE · une écriture saisie après une liquidation
+              // de l'ancien moteur n'a pas été déclarée par elle.
+              createdAt: true,
               // LA PIÈCE RATTACHÉE À L'ÉCRITURE, lue pour deux questions.
               // Sa NATURE justifie un avoir sur vente (décret n° 011/42,
               // art. 127) · une note de crédit est la pièce que le texte
@@ -2888,6 +2977,8 @@ export class TauxTvaService {
                   // date l'encaissement (décret art. 57).
                   lettrage: {
                     select: {
+                      // Son identifiant · les actes du journal d'audit le désignent.
+                      id: true,
                       statut: true,
                       solde: true,
                       soldeAt: true,
@@ -2908,18 +2999,7 @@ export class TauxTvaService {
                               createdAt: true,
                               // Un AVOIR (TVA facturée reprise, ou déduite
                               // reprise) · jamais une perception.
-                              _count: {
-                                select: {
-                                  lignes: {
-                                    where: {
-                                      OR: [
-                                        { debit: { gt: 0 }, compte: { numero: { startsWith: RACINE_COLLECTEE } } },
-                                        { credit: { gt: 0 }, compte: { numero: { startsWith: RACINE_RECUPERABLE } } },
-                                      ],
-                                    },
-                                  },
-                                },
-                              },
+                              _count: { select: { lignes: { where: FILTRE_LIGNES_D_AVOIR } } },
                             },
                           },
                         },
@@ -3364,8 +3444,38 @@ export class TauxTvaService {
               dateEcriture,
               tranches: datees,
               liquidations: liquidationsLues,
-              declareParAncienMoteur: (liq) => TauxTvaService.declareParAncienMoteur(lignesTiers, montant, dateEcriture, liq),
+              declareParAncienMoteur: (liq) =>
+                TauxTvaService.declareParAncienMoteur(lignesTiers, montant, dateEcriture, liq, l.ecriture.createdAt as Date | undefined),
             });
+            // Les reconstitutions incertaines de l'ancien moteur, NOMMÉES.
+            for (const liq of anciennes) {
+              const T = liq.createdAt;
+              const saisie = l.ecriture.createdAt as Date | undefined;
+              if (dateEcriture > liq.dateFin || (saisie && saisie > T)) continue;
+              const groupeTouche = lignesTiers.some((x) => {
+                const g = x.lettrage as { id?: string; createdAt?: Date } | null;
+                if (!g?.id || (g.createdAt && g.createdAt > T)) return false;
+                return (modificationsDeGroupe.get(g.id) ?? []).some((d) => d > T);
+              });
+              const groupeSupprime = l.ecriture.lignes.some(
+                (x) =>
+                  x.compte?.classe === ClasseCompte.CLASSE_4 &&
+                  (suppressionsParCompte.get(x.compteId) ?? []).some((sup) => sup.le > T && (!sup.creeLe || sup.creeLe <= T)),
+              );
+              if (!groupeTouche && !groupeSupprime) continue;
+              const cle = `${l.id}|${liq.id}`;
+              if (incertainesVues.has(cle)) continue;
+              incertainesVues.add(cle);
+              reconstitutionsIncertainesTotal++;
+              if (reconstitutionsIncertaines.length < PLAFOND_INCERTAINES) {
+                reconstitutionsIncertaines.push({
+                  facture: l.ecriture.libelle,
+                  dateDebut: liq.dateDebut.toISOString().slice(0, 10),
+                  dateFin: liq.dateFin.toISOString().slice(0, 10),
+                  montantReconstitue: repartition.parLiquidation.get(liq.id) ?? 0,
+                });
+              }
+            }
             const parts = liquidationExacte
               ? [{ date: dateDebut, montant: repartition.parLiquidation.get(liquidationExacte.id) ?? 0, origine: dateDebut }]
               : repartition.libres.filter((x) => x.date >= dateDebut && x.date <= dateFin);
@@ -3535,6 +3645,8 @@ export class TauxTvaService {
         recettesNonQualifiees: prorata.recettesNonQualifiees,
         tvaAuBrouillard,
         recouvrementsSansFactureDesignee,
+        reconstitutionsIncertaines,
+        reconstitutionsIncertainesTotal,
       }),
       /** TVA d'écritures au brouillard datées de la période · hors déclaration. */
       tvaAuBrouillard,
@@ -3580,6 +3692,13 @@ export class TauxTvaService {
       /** Créances recouvrées dans la période · la liste ci-dessus en lit 200 au plus (§ 8 bis). */
       creancesRecouvreesTotal,
       recouvrementsSansFactureTronque,
+      /**
+       * Liquidations de l'ancien moteur dont la reconstitution est INCERTAINE
+       * pour une facture (lettrage modifié ou défait après elles, journal
+       * d'audit) · à vérifier contre la déclaration déposée. 100 au plus.
+       */
+      reconstitutionsIncertaines,
+      reconstitutionsIncertainesTotal,
       /** Net de la seule période, avant report du crédit antérieur. */
       netAvantImputation,
       /** Crédit de TVA venu de la dernière liquidation (art. 63). */
@@ -3622,6 +3741,8 @@ export class TauxTvaService {
    * où l'écran les lirait.
    */
   private mentionExigibilite(e: {
+    reconstitutionsIncertaines?: ReadonlyArray<{ facture: string; dateDebut: string; dateFin: string; montantReconstitue: number }>;
+    reconstitutionsIncertainesTotal?: number;
     recouvrementsSansFactureDesignee?: ReadonlyArray<{ compte: string; dateReclassement: string; recouvre: number; recouvreSansFacture: number; motifs?: string[] }>;
     regime: string;
     referentiel: Referentiel | undefined;
@@ -3700,7 +3821,28 @@ export class TauxTvaService {
               'n° 011/42, art. 57) · si elle porte une prestation de services, TVA à déclarer par le cabinet faute de ' +
               'facture désignée. Issue · désigner les factures de la créance (Créances douteuses ou litigieuses).',
           ];
+    const incertaines = e.reconstitutionsIncertaines ?? [];
+    const phraseIncertaines =
+      incertaines.length === 0
+        ? []
+        : [
+            'RECONSTITUTION INCERTAINE · ' +
+              incertaines
+                .slice(0, 8)
+                .map(
+                  (r) =>
+                    `reconstitution incertaine pour la facture « ${r.facture} », liquidation du ${r.dateDebut} au ${r.dateFin} ` +
+                    `(${fc(r.montantReconstitue)} CDF reconstitués), à vérifier contre la déclaration déposée`,
+                )
+                .join(' ; ') +
+              ((e.reconstitutionsIncertainesTotal ?? incertaines.length) > 8
+                ? ` ; et ${(e.reconstitutionsIncertainesTotal ?? incertaines.length) - 8} autre(s)`
+                : '') +
+              '. Un lettrage modifié ou défait après une liquidation antérieure à cette version (journal d’audit) · ce que ' +
+              'l’ancien moteur a lu ne se reconstitue pas avec certitude.',
+          ];
     const phrases: string[] = [
+      ...phraseIncertaines,
       ...phraseSansFacture,
       ...(brouillard && brouillard.ecritures > 0
         ? [

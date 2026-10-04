@@ -80,7 +80,21 @@ sur créance irrécouvrable) hors de cette passe.
   lettrée · règle de la branche gardée, `main` faussait le montant (160 000
   déclarés au paiement d'une échéance de 580 000, 80 000 encaissés).
 
+- CINQUIÈME REPRISE · (1) `declareParAncienMoteur` lit l'instant de saisie
+  de l'écriture de la taxe · saisie après la liquidation, 0 (facture du 20
+  mars saisie le 15 avril · mars 0, mai 160 000, comme main) ; (2) faute de
+  colonne datant un lettrage, le journal d'audit (Lettrage, MODELES_AUDITES)
+  sert de signal · reste modifié ou groupe supprimé après une liquidation de
+  l'ancien moteur, reconstitution INCERTAINE nommée avec son montant ; (3)
+  lecture des groupes de l'à-nouveau alignée (instant de saisie, avoirs via
+  `FILTRE_LIGNES_D_AVOIR`).
+
 ## Relevés en attente
+
+- Signal d'incertitude · un journal d'audit dont un maillon a manqué (échec
+  avalé par conception) taira la modification ; un délettrage suivi d'un
+  relettrage avant la liquidation suivante est nommé pour chaque liquidation
+  de l'ancien moteur postérieure à la suppression du groupe né avant elle.
 
 - Recouvrement plafonné en silence (la part qui dépasse ce qui reste en
   attente n'est pas nommée, vers le rattachement des recouvrements).

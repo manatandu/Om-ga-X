@@ -129,6 +129,8 @@ function service(
     },
     factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue(creances.designations ?? []) },
     creanceDouteuse: { findMany: jest.fn().mockResolvedValue(creances.sansFacture ?? []), count: jest.fn().mockResolvedValue((creances.sansFacture ?? []).length) },
+    // Lu seulement en présence d'une liquidation de l'ancien moteur · aucun acte ici.
+    evenementAudit: { findMany: jest.fn().mockResolvedValue([]) },
     liquidationTva: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue(

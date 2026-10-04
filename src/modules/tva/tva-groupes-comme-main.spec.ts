@@ -35,11 +35,14 @@ function vente(p: {
   ttc: number;
   produit: string;
   compteTva?: string;
-  groupe: { statut: 'PARTIEL' | 'SOLDE'; solde: number; createdAt?: string; lignes: LigneGroupe[] } | null;
+  groupe: { id?: string; statut: 'PARTIEL' | 'SOLDE'; solde: number; createdAt?: string; lignes: LigneGroupe[] } | null;
   numeroClient?: string;
+  /** Jour de SAISIE de l'écriture, s'il diffère de sa date. */
+  saisie?: string;
 }) {
   const groupe = p.groupe
     ? {
+        id: p.groupe.id,
         statut: p.groupe.statut,
         solde: p.groupe.solde,
         soldeAt: null,
@@ -60,6 +63,7 @@ function vente(p: {
     credit: p.tva,
     ecriture: {
       date: jour(p.date),
+      createdAt: jour(p.saisie ?? p.date),
       libelle: `Facture ${p.id}`,
       facture: null,
       lignes: [
@@ -93,7 +97,7 @@ function avoir(p: { id: string; date: string; tva: number; ttc: number }) {
   };
 }
 
-function prisma(lignes: unknown[], liquidations: unknown[] = []) {
+function prisma(lignes: unknown[], liquidations: unknown[] = [], evenementsAudit: unknown[] = []) {
   return {
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't1', regimeExigibiliteTva: 'LIVRAISONS', referentiel: 'SYSCOHADA' }) },
     tauxTva: { findMany: jest.fn().mockResolvedValue([TAUX]) },
@@ -106,6 +110,7 @@ function prisma(lignes: unknown[], liquidations: unknown[] = []) {
     factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
     creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue(liquidations) },
+    evenementAudit: { findMany: jest.fn().mockResolvedValue(evenementsAudit) },
   } as unknown as PrismaService;
 }
 
@@ -322,5 +327,120 @@ describe('BLOQUANT 4 · l’ancien moteur se reconstitue tel qu’il a déclaré
     const tiers = ligne.ecriture.lignes.filter((x) => (x as { lettrage?: unknown }).lettrage) as never;
     expect(TauxTvaService.declareParAncienMoteur(tiers, 160_000, jour('2026-01-15'), liquidations[0] as never)).toBe(32_000);
     expect(TauxTvaService.declareParAncienMoteur(tiers, 160_000, jour('2026-01-15'), liquidations[1] as never)).toBe(64_000);
+  });
+});
+
+describe('Cinquième reprise · saisie après la liquidation, reconstitution incertaine nommée, avoir dans le groupe de l’à-nouveau', () => {
+  it('BLOQUANT · facture du 20 mars SAISIE le 15 avril, mars liquidé le 1er avril par l’ancien moteur · mars 0, mai 160 000 (comme main)', async () => {
+    const ligne = vente({
+      id: 'F',
+      date: '2026-03-20',
+      saisie: '2026-04-15',
+      tva: 160_000,
+      ttc: 1_160_000,
+      produit: '70610000',
+      groupe: {
+        statut: 'SOLDE',
+        solde: 0,
+        createdAt: '2026-05-10',
+        lignes: [{ debit: 1_160_000, credit: 0, date: '2026-03-20' }, { debit: 0, credit: 1_160_000, date: '2026-05-10' }],
+      },
+    });
+    const liq = [{ id: 'liqM', dateDebut: mois('2026-03')[0], dateFin: mois('2026-03')[1], createdAt: jour('2026-04-01'), tvaEncaissementFigee: null }];
+    const s = new TauxTvaService(prisma([ligne], liq), {} as EcritureService);
+    expect((await s.declaration('t1', ...mois('2026-03'))).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...mois('2026-05'))).totalCollecte).toBe(160_000);
+    expect(TauxTvaService.declareParAncienMoteur([], 160_000, jour('2026-03-20'), liq[0] as never, jour('2026-04-15'))).toBe(0);
+  });
+
+  it('un groupe lu par l’ancien moteur et COMPLÉTÉ après la liquidation (journal d’audit) · reconstitution incertaine NOMMÉE, montant compris', async () => {
+    // Février liquidé le 1er mars par l'ancien moteur ; le groupe G1 (né le
+    // 10 février) voit son reste changer le 5 mars · un paiement de février
+    // y est entré après la liquidation.
+    const ligne = vente({
+      id: 'F',
+      date: '2026-01-15',
+      tva: 160_000,
+      ttc: 1_160_000,
+      produit: '70610000',
+      groupe: {
+        id: 'G1',
+        statut: 'PARTIEL',
+        solde: 696_000,
+        createdAt: '2026-02-10',
+        lignes: [
+          { debit: 1_160_000, credit: 0, date: '2026-01-15' },
+          { debit: 0, credit: 232_000, date: '2026-02-10' },
+          { debit: 0, credit: 232_000, date: '2026-02-20' },
+        ],
+      },
+    });
+    const liq = [{ id: 'liqF', dateDebut: mois('2026-02')[0], dateFin: mois('2026-02')[1], createdAt: jour('2026-03-01'), tvaEncaissementFigee: null }];
+    const audit = [
+      { id: 'e1', action: 'MODIFICATION', entiteId: 'G1', horodatage: jour('2026-03-05'), avant: { solde: 928_000 }, apres: { solde: 696_000 } },
+      // Un verrou posé ne change pas le reste · ignoré.
+      { id: 'e2', action: 'MODIFICATION', entiteId: 'G9', horodatage: jour('2026-03-06'), avant: { solde: 10 }, apres: { solde: 10 } },
+    ];
+    const s = new TauxTvaService(prisma([ligne], liq, audit), {} as EcritureService);
+    const d = await s.declaration('t1', ...mois('2026-04'));
+    expect(d.reconstitutionsIncertaines).toEqual([{ facture: 'Facture F', dateDebut: '2026-02-01', dateFin: '2026-02-28', montantReconstitue: 64_000 }]);
+    expect(d.reconstitutionsIncertainesTotal).toBe(1);
+    expect(d.mentionExigibilite).toContain('reconstitution incertaine pour la facture « Facture F »');
+    expect(d.mentionExigibilite).toContain('à vérifier contre la déclaration déposée');
+  });
+
+  it('un paiement DÉLETTRÉ après la liquidation (groupe né avant elle supprimé) · reconstitution incertaine nommée', async () => {
+    const ligne = vente({ id: 'F', date: '2026-01-15', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null });
+    const liq = [{ id: 'liqF', dateDebut: mois('2026-02')[0], dateFin: mois('2026-02')[1], createdAt: jour('2026-03-01'), tvaEncaissementFigee: null }];
+    const audit = [{ id: 'e1', action: 'SUPPRESSION', entiteId: 'G1', horodatage: jour('2026-03-05'), avant: { compteId: 'c-client', createdAt: '2026-02-10T00:00:00.000Z' }, apres: null }];
+    const s = new TauxTvaService(prisma([ligne], liq, audit), {} as EcritureService);
+    const d = await s.declaration('t1', ...mois('2026-04'));
+    expect(d.reconstitutionsIncertaines.map((r) => r.facture)).toEqual(['Facture F']);
+  });
+
+  it('sans ancienne liquidation, le journal d’audit n’est pas lu', async () => {
+    const p = prisma(JEUX['avoir dans le groupe'].lignes);
+    await new TauxTvaService(p, {} as EcritureService).declaration('t1', ...mois('2026-03'));
+    expect((p as unknown as { evenementAudit: { findMany: jest.Mock } }).evenementAudit.findMany).not.toHaveBeenCalled();
+  });
+
+  it('un AVOIR dans le groupe de l’à-nouveau n’est pas un règlement · F0 entière au paiement, comme main', async () => {
+    // F0 (décembre N), son à-nouveau lettré en N+1 avec un avoir de 116 000
+    // (20 janvier) et un paiement de 1 044 000 (15 février). Lu comme un
+    // règlement, l'avoir aurait sa tranche de 16 000 en janvier.
+    const groupeN1 = {
+      statut: 'SOLDE',
+      solde: 0,
+      soldeAt: null,
+      createdAt: jour('2027-02-20'),
+      lignes: [
+        { debit: 1_160_000, credit: 0, ecriture: { date: jour('2027-01-01'), createdAt: jour('2027-01-01'), estANouveauProvisoire: false, estGenereeParCloture: true, _count: { lignes: 0 } } },
+        { debit: 0, credit: 116_000, ecriture: { date: jour('2027-01-20'), createdAt: jour('2027-01-20'), estANouveauProvisoire: false, estGenereeParCloture: false, _count: { lignes: 1 } } },
+        { debit: 0, credit: 1_044_000, ecriture: { date: jour('2027-02-15'), createdAt: jour('2027-02-15'), estANouveauProvisoire: false, estGenereeParCloture: false, _count: { lignes: 0 } } },
+      ],
+    };
+    const f0 = vente({ id: 'F0', date: '2026-12-10', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null });
+    const aNouveau = {
+      id: 'an0',
+      compteId: 'c-client',
+      debit: 1_160_000,
+      credit: 0,
+      deviseId: null,
+      montantDevise: null,
+      dateEcheance: null,
+      libelle: 'RAN détail 41110101 · Facture F0',
+      ecriture: { date: jour('2027-01-01'), exerciceId: 'ex2027' },
+      lettrage: groupeN1,
+    };
+    const p = prisma([f0]);
+    (p.ligneEcriture.findMany as jest.Mock).mockImplementation(({ where }: { where: { compteId?: { in?: string[] } } }) =>
+      Promise.resolve(where.compteId?.in ? [aNouveau] : [f0]),
+    );
+    // La lecture de l'à-nouveau demande le décompte des avoirs et l'instant de saisie.
+    const s = new TauxTvaService(p, {} as EcritureService);
+    expect((await s.declaration('t1', ...mois('2027-01'))).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...mois('2027-02'))).totalCollecte).toBe(160_000);
+    const appel = (p.ligneEcriture.findMany as jest.Mock).mock.calls.find((c) => c[0].where.compteId?.in)[0];
+    expect(appel.select.lettrage.select.lignes.select.ecriture.select).toMatchObject({ createdAt: true, _count: expect.any(Object) });
   });
 });

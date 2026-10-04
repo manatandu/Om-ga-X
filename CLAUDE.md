@@ -801,8 +801,13 @@ que l'ancien moteur l'a réellement déclarée (`declareParAncienMoteur`) · gro
 reconstitué à l'instant de la liquidation (`Lettrage.createdAt`, saisie des
 écritures du groupe), comptant à la facture sans groupe, sinon fraction CUMULÉE à
 la date du dernier règlement vu (232 000 puis 232 000 sur 1 160 000 · 32 000 puis
-64 000 versés, le reste 64 000) · un groupe défait puis refait, ou une ligne
-complétée après coup, n'est pas distingué, limite dite. Le figé ne part jamais à l'écran (retiré
+64 000 versés, le reste 64 000) ; une écriture SAISIE (ou importée) après la
+liquidation compte 0 pour elle (`createdAt` de l'écriture de la taxe). Aucune
+colonne ne date l'entrée d'une ligne dans un groupe · un groupe lu dont le reste
+a changé, ou un groupe né avant supprimé sur le compte du tiers, APRÈS la
+liquidation (journal d'audit, seul signal fiable) rend la reconstitution
+INCERTAINE, NOMMÉE avec son montant (`reconstitutionsIncertaines`, « à vérifier
+contre la déclaration déposée »), jamais corrigée en silence. Le figé ne part jamais à l'écran (retiré
 par le contrôleur). Avoirs inchangés (constatation, décret art. 126). (5) LE
 RECOUVREMENT D'UNE CRÉANCE DOUTEUSE EST L'ENCAISSEMENT DE SES FACTURES DÉSIGNÉES
 (second tour) · au reclassement ou ensuite (« Désigner les factures »,
