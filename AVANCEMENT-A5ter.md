@@ -47,6 +47,19 @@ d'A5 bis renvoyés vers elle.
   passe (jugée sur la clôture reconstituée) et le DIT · avertissement servi
   par le serveur, ajouté à la confirmation à l'écran (`DevisesPage`).
 
+- Bloc du § 3 passé · serveur (typage, 750 suites, 10636 tests,
+  `--maxWorkers=3`, construction), client (typage, 221 fichiers, 1802 tests,
+  construction). Aucune migration.
+- Vraie base (`a5ter_1`, serveur compilé sur 8114, script
+  `scenario.mjs` du bloc-notes) · SYCEBNL et SYSCOHADA, N réévalué, validé,
+  clôturé, N+1 contre-passé puis réévalué · 70 soldes lus contre le calcul
+  à la main, tous concordants (détail au compte rendu) ; relevé (e) rejoué ·
+  contre-passation avant la clôture de N, dite, 4791 de N+1 à +100 000
+  avant la clôture puis soldé après.
+- Test navigateur ajouté (`e2e/tests/devises.e2e.ts`, SYCEBNL A5 ter) ·
+  les 19 tests des devises, la clôture et le règlement en devise passent
+  sous Chromium contre le serveur compilé.
+
 ## Décisions, avec leur article
 
 1. SYCEBNL, risque de change à moins d'un an · LE TEXTE TRANCHE, la règle
@@ -103,6 +116,9 @@ d'A5 bis renvoyés vers elle.
    correspondance des bilans).
 
 ## Reste
+
+- Relectures `silent-failure-hunter` et `typescript-reviewer` (§ 11) à
+  l'intégration ; react-reviewer pour la ligne de `DevisesPage`.
 - Bloc du § 3 complet, scénario sur vraie base aux deux référentiels.
 
 ## Vérification

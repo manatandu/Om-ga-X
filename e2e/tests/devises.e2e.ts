@@ -969,3 +969,80 @@ test('SYSCOHADA · D6 · réévaluer, annuler, réévaluer · 478, 4991, 656 et 
   });
   expect(pannes).toEqual([]);
 });
+
+/**
+ * LIGNE A5 TER · AU SYCEBNL, LE RISQUE DE CHANGE À MOINS D'UN AN N'EST PAS
+ * AU 194, ET L'ÉCART VA À LA SUBDIVISION DU 478 OU DU 479. Fiche SYCEBNL du
+ * compte 19, exclusions · « les provisions correspondant à des risques à
+ * moins d'un an (utiliser 499 – Provisions pour risques à court terme) » ;
+ * fiches des comptes 49 (4991 par le 659, 4998 par le 839) et 59 (599 par le
+ * 679, « exemple : provisions pour pertes de change ») ; plan SYCEBNL, compte
+ * 47 (4781 [47811, 47818], 4782, 4783 [47831, 47838], 4784). Les titres de
+ * placement ne se réévaluent pas (AUDCIF Titre VIII ch. 22 § 1.3). Puis N se
+ * clôture, l'écart est contre-passé à l'ouverture de N+1 et N+1 réévalué ·
+ * chaque solde au montant calculé à la main.
+ */
+test('SYCEBNL · A5 ter · familles 4991, 4998, 599 et 194, subdivisions du 478, titres hors réévaluation, à travers la clôture', async ({ page }) => {
+  const pannes = surveiller(page);
+  const dossier = await creerDossier(page, { referentiel: 'SYCEBNL', nom: 'Devises e2e A5 ter SYCEBNL', montant: 10_000 });
+  await seConnecter(page, dossier.email);
+  const [exercice] = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).filter((e) => e.id === dossier.exerciceId);
+  const debut = lendemain(exercice.dateFin);
+  const suivant = await appelApi<Exercice>(page, 'POST', '/exercices', { dateDebut: debut, dateFin: `${debut.slice(0, 4)}-12-31` });
+  const comptes = await appelApi<Compte[]>(page, 'GET', '/comptes?typeCompte=DETAIL');
+  const journaux = await appelApi<Journal[]>(page, 'GET', '/journaux');
+  const compte = (numero: string) => comptes.find((c) => c.numero === numero)!;
+  const journal = journaux.find((j) => j.code === 'OD') ?? journaux.find((j) => j.type === 'GENERAL')!;
+  const usd = await appelApi<{ id: string }>(page, 'POST', '/devises', { code: 'USD', intitule: 'Dollar américain' });
+  const milieu = new Date((Date.parse(exercice.dateDebut) + Date.parse(exercice.dateFin)) / 2).toISOString().slice(0, 10);
+  await appelApi(page, 'POST', `/devises/${usd.id}/cours`, { date: milieu, cours: 2000, source: 'e2e' });
+  await appelApi(page, 'POST', `/devises/${usd.id}/cours`, { date: jour(exercice.dateFin), cours: 2100, source: 'e2e' });
+  await appelApi(page, 'POST', `/devises/${usd.id}/cours`, { date: jour(suivant.dateFin), cours: 2050, source: 'e2e' });
+  const enDevise = (numero: string, debit: number, credit: number, montantDevise: number) => ({
+    compteId: compte(numero).id, libelle: numero, debit, credit, deviseId: usd.id, montantDevise, coursApplique: 2000,
+  });
+  const francs = (numero: string, debit: number, credit: number) => ({ compteId: compte(numero).id, libelle: numero, debit, credit });
+  const passer = (libelle: string, lignes: unknown[]) =>
+    appelApi(page, 'POST', '/ecritures', { exerciceId: exercice.id, journalId: journal.id, date: milieu, libelle, lignes });
+  await passer('Achat USD', [francs('60110000', 1_000_000, 0), enDevise('40110000', 0, 1_000_000, 500)]);
+  await passer('Emprunt USD', [francs('52110000', 4_000_000, 0), enDevise('18100000', 0, 4_000_000, 2000)]);
+  await passer('Investissement USD', [francs('24410000', 600_000, 0), enDevise('48120000', 0, 600_000, 300)]);
+  await passer('Crédit de trésorerie USD', [francs('52110000', 800_000, 0), enDevise('56100000', 0, 800_000, 400)]);
+  await passer('Titre de placement USD', [enDevise('50220000', 200_000, 0, 100), francs('52110000', 0, 200_000)]);
+
+  const solde = async (exerciceId: string, numero: string) => {
+    const { lignes } = await appelApi<{ lignes: (LigneBalance & { solde: number })[] }>(page, 'GET', `/ecritures/balance?exerciceId=${exerciceId}`);
+    return lignes.filter((l) => l.numero === numero).reduce((t, l) => t + l.solde, 0);
+  };
+  await appelApi(page, 'POST', '/devises/reevaluation', { exerciceId: exercice.id });
+  const n = {
+    e47831: await solde(exercice.id, '47831000'),
+    e47838: await solde(exercice.id, '47838000'),
+    e4784: await solde(exercice.id, '47840000'),
+    e4991: await solde(exercice.id, '49910000'),
+    e4998: await solde(exercice.id, '49980000'),
+    e599: await solde(exercice.id, '59900000'),
+    e194: await solde(exercice.id, '19400000'),
+    e502: await solde(exercice.id, '50220000'),
+  };
+  // Pertes · dette fournisseur 50 000, dette H.A.O. 30 000, emprunt 200 000, crédit de trésorerie 40 000 ; titre inchangé.
+  expect(n).toEqual({ e47831: 50_000, e47838: 30_000, e4784: 240_000, e4991: -50_000, e4998: -30_000, e599: -40_000, e194: -200_000, e502: 200_000 });
+
+  await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: exercice.id, dateLimite: jour(exercice.dateFin) });
+  await appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`, {});
+  await contrePasser(page, exercice.id, suivant.id);
+  await appelApi(page, 'POST', '/devises/reevaluation', { exerciceId: suivant.id });
+  const n1 = {
+    e401: await solde(suivant.id, '40110000'),
+    e181: await solde(suivant.id, '18100000'),
+    e4812: await solde(suivant.id, '48120000'),
+    e561: await solde(suivant.id, '56100000'),
+    e4991: await solde(suivant.id, '49910000'),
+    e4998: await solde(suivant.id, '49980000'),
+    e599: await solde(suivant.id, '59900000'),
+    e194: await solde(suivant.id, '19400000'),
+  };
+  // Au cours de 2 050, depuis le coût · chaque dette à sa valeur du jour, chaque provision reprise de moitié dans SA famille.
+  expect(n1).toEqual({ e401: -1_025_000, e181: -4_100_000, e4812: -615_000, e561: -820_000, e4991: -25_000, e4998: -15_000, e599: -20_000, e194: -100_000 });
+  expect(pannes).toEqual([]);
+});
