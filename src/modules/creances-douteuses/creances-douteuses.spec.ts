@@ -34,6 +34,9 @@ import {
   piecesLisibles,
   resteDeLaCreance,
   revueAFaire,
+  motifRefusDesignation,
+  partageSonLettrage,
+  MOTIF_LETTRAGE_PARTAGE,
 } from './creances-douteuses';
 import { CreancesDouteusesService, PLAFOND_COMPTES_416_491 } from './creances-douteuses.service';
 import { CreancesDouteusesController } from './creances-douteuses.controller';
@@ -2150,5 +2153,100 @@ describe('créances douteuses · A7 ter, m3 · le 651 du débiteur au SYCEBNL (f
     expect(motifRefus651Croise(Referentiel.SYCEBNL, '41380000', '65110000')).toBeNull();
     expect(motifRefus651Croise(Referentiel.SYCEBNL, '41300000', '65150000')).toBeNull();
     expect(motifRefus651Croise(Referentiel.SYSCOHADA, '41110001', '65150000')).toBeNull();
+  });
+});
+
+describe('A7 bis · « Désigner les factures » · rien n’est deviné, chaque refus dit pourquoi', () => {
+  const base = {
+    creanceAnnulee: false,
+    memeCompte: true,
+    validee: true,
+    sensFacture: 1_160_000,
+    montant: 1_160_000,
+    ouvert: 1_160_000,
+    designeeAilleurs: false,
+    dejaDesignee: false,
+    totalDesigne: 1_160_000,
+    montantCreance: 1_160_000,
+    numeroCompte: '41110101',
+  };
+  it('la facture ouverte du client, dans la limite du reclassé, se désigne', () => {
+    expect(motifRefusDesignation(base)).toBeNull();
+  });
+  it('refusée · autre compte client, brouillard, ligne non débitrice, report à-nouveau', () => {
+    expect(motifRefusDesignation({ ...base, memeCompte: false })).toMatch(/pas au compte 41110101/);
+    expect(motifRefusDesignation({ ...base, validee: false })).toMatch(/brouillard/);
+    expect(motifRefusDesignation({ ...base, sensFacture: -10 })).toMatch(/ne débite pas le client/);
+    expect(motifRefusDesignation({ ...base, aNouveau: true })).toMatch(/facture d’origine/);
+  });
+  it('refusée · au-delà de ce que la facture doit encore, ou du montant reclassé', () => {
+    expect(motifRefusDesignation({ ...base, ouvert: 696_000 })).toMatch(/dépasse ce que la facture doit encore \(696/);
+    expect(motifRefusDesignation({ ...base, totalDesigne: 1_200_000 })).toMatch(/dépassent le montant reclassé/);
+  });
+  it('refusée · déjà désignée par une autre créance non annulée, ou par celle-ci', () => {
+    expect(motifRefusDesignation({ ...base, designeeAilleurs: true })).toMatch(/autre créance non annulée/);
+    expect(motifRefusDesignation({ ...base, dejaDesignee: true })).toMatch(/déjà désignée par cette créance/);
+  });
+  it('refusée · créance annulée', () => {
+    expect(motifRefusDesignation({ ...base, creanceAnnulee: true })).toMatch(/annulé/);
+  });
+});
+
+describe('A7 bis, troisième reprise · encours d’une facture d’un groupe partagé, retrait d’une désignation', () => {
+  it('une facture dont le lettrage réunit d’AUTRES factures n’est pas désignable · refus nommé (quatrième reprise)', () => {
+    // F1 et F2 de 1 160 000 et un règlement de 500 000 dans un même groupe partiel.
+    const f1 = {
+      debit: 1_160_000,
+      credit: 0,
+      lettrage: { lignes: [{ debit: 1_160_000, credit: 0 }, { debit: 1_160_000, credit: 0 }, { debit: 0, credit: 500_000 }] },
+    };
+    expect(partageSonLettrage(f1)).toBe(true);
+    expect(partageSonLettrage({ debit: 1_160_000, credit: 0, lettrage: { lignes: [{ debit: 1_160_000, credit: 0 }, { debit: 0, credit: 464_000 }] } })).toBe(false);
+    expect(partageSonLettrage({ debit: 1_160_000, credit: 0, lettrage: null })).toBe(false);
+    expect(
+      motifRefusDesignation({
+        creanceAnnulee: false,
+        memeCompte: true,
+        validee: true,
+        sensFacture: 1_160_000,
+        montant: 910_000,
+        ouvert: 1_160_000,
+        designeeAilleurs: false,
+        dejaDesignee: false,
+        lettragePartage: true,
+        totalDesigne: 910_000,
+        montantCreance: 1_820_000,
+        numeroCompte: '41110101',
+      }),
+    ).toBe(`Désignation refusée · ${MOTIF_LETTRAGE_PARTAGE}.`);
+    expect(MOTIF_LETTRAGE_PARTAGE).toBe(
+      'cette facture partage son lettrage avec d’autres ; le recouvrement sera listé parmi les recouvrements sans facture désignée, TVA à déclarer par le cabinet',
+    );
+  });
+
+  it('un retrait MARQUE la désignation (motif au journal d’audit), même exercice clos, et ne se refait pas', async () => {
+    const update = jest.fn().mockResolvedValue({});
+    let retiree: Date | null = null;
+    const prisma = {
+      verrouCreancesDouteuses: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn().mockResolvedValue({ id: 'v' }),
+      },
+      factureCreanceDouteuse: {
+        findFirst: jest.fn(async () => ({ id: 'd1', retireeLe: retiree })),
+        update,
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const s = new CreancesDouteusesService(prisma as never, {} as never, {} as never);
+    await s.retirerDesignation('t1', 'u1', 'cr1', 'd1', { motif: '  Mauvaise facture  ' });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'd1' },
+      data: { retireeLe: expect.any(Date), retireePar: 'u1', motifRetrait: 'Mauvaise facture' },
+    });
+    // Aucune lecture de l'exercice · un exercice clos ne bloque pas le retrait.
+    expect(Object.keys(prisma)).not.toContain('exercice');
+    retiree = new Date('2027-04-01');
+    await expect(s.retirerDesignation('t1', 'u1', 'cr1', 'd1', { motif: 'Encore' })).rejects.toThrow(/déjà retirée/);
   });
 });

@@ -32,6 +32,7 @@ function monter(options: { autreDetenteur?: boolean } = {}) {
     },
     ligneEcriture: { deleteMany: jest.fn().mockImplementation(async () => ordre.push('lignes')) },
     liquidationTva: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockImplementation(async () => marqueur),
       count: jest.fn().mockImplementation(async () => (marqueur ? 1 : 0)),
       delete: jest.fn().mockImplementation(async () => {

@@ -218,3 +218,59 @@ export function messageLettrage416(issue: IssueLettrage416): string | null {
   if (!issue) return null;
   return issue.pose ? `Créance éteinte · ses lignes du 416 sont lettrées (${issue.code}).` : issue.motif;
 }
+
+/**
+ * « DÉSIGNER LES FACTURES » (ligne A7 bis) · les factures du client que la
+ * créance reprend. Le recouvrement du module en devient l'encaissement pour
+ * la TVA (O.-L. n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57). Le
+ * serveur borne tout (facture ouverte, montant reclassé, autre créance).
+ */
+export interface FactureCandidate {
+  ligneEcritureId: string;
+  date: string;
+  libelle: string;
+  numeroPiece: number | null;
+  montant: number;
+  ouvert: number;
+  aNouveau: boolean;
+  /** Son lettrage réunit d'autres factures · non désignable (quatrième reprise). */
+  lettragePartage: boolean;
+  designeePar: string[];
+}
+export interface FactureDesignee {
+  id: string;
+  /** Retirée (« Retirer la désignation ») · date et motif, toujours listée. */
+  retireeLe: string | null;
+  motifRetrait: string | null;
+  ligneEcritureId: string;
+  montant: number;
+  date: string;
+  libelle: string;
+  numeroPiece: number | null;
+  montantFacture: number;
+}
+export interface FacturesDeLaCreance {
+  tronque: boolean;
+  /** Créance annulée · ses désignations passées se lisent, aucune facture n'est proposée. */
+  annulee: boolean;
+  factures: FactureCandidate[];
+  designees: FactureDesignee[];
+}
+
+/**
+ * Les parts saisies, prêtes à partir · une part vide est ignorée, une part
+ * illisible ou nulle se dit (jamais lue comme zéro).
+ */
+export function partsADesigner(parts: Record<string, string>, lireMontant: (t: string) => number | null):
+  | { factures: Array<{ ligneEcritureId: string; montant: number }>; erreur: null }
+  | { factures: null; erreur: string } {
+  const factures: Array<{ ligneEcritureId: string; montant: number }> = [];
+  for (const [ligneEcritureId, texte] of Object.entries(parts)) {
+    if (texte.trim() === '') continue;
+    const m = lireMontant(texte);
+    if (m === null || !(m > 0)) return { factures: null, erreur: `Part illisible ou nulle · « ${texte} ».` };
+    factures.push({ ligneEcritureId, montant: Math.round(m * 100) / 100 });
+  }
+  if (factures.length === 0) return { factures: null, erreur: 'Saisissez la part d’au moins une facture.' };
+  return { factures, erreur: null };
+}

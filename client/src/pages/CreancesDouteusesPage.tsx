@@ -23,6 +23,8 @@ import {
   racine491,
   LIBELLE_NATURE,
   montantPourChamp,
+  partsADesigner,
+  type FacturesDeLaCreance,
   motifAnnulationValide,
   motifListe651Vide,
   mouvementAAnnulerParDefaut,
@@ -186,7 +188,17 @@ export function CreancesDouteusesPage() {
     choisies: Set<string>;
     erreur: string | null;
   } | null>(null);
-  useGardeFermeture(form || annulation ? 'Un geste sur une créance douteuse est en cours de saisie · il serait perdu.' : null);
+  // A7 bis · « Désigner les factures » · le recouvrement en devient l'encaissement pour la TVA.
+  const [designation, setDesignation] = useState<{
+    creance: CreanceDouteuse;
+    liste: FacturesDeLaCreance | null;
+    parts: Record<string, string>;
+    erreur: string | null;
+    /** « Retirer la désignation » en cours de saisie · motif exigé. */
+    retrait: { id: string; motif: string } | null;
+  } | null>(null);
+  const refDesignation = useRef<HTMLFormElement | null>(null);
+  useGardeFermeture(form || annulation || designation ? 'Un geste sur une créance douteuse est en cours de saisie · il serait perdu.' : null);
 
   // UNE RÉPONSE PÉRIMÉE NE REMPLIT JAMAIS UN FORMULAIRE (relecture « écran »,
   // 5) · chaque ouverture prend un jeton, et une lecture partie pour un autre
@@ -203,6 +215,7 @@ export function CreancesDouteusesPage() {
   const formOuvert = form !== null;
   const annulationOuverte = annulation !== null;
   const lettrageOuvert = lettrage416 !== null;
+  const designationOuverte = designation !== null;
 
   // CHANGER D'EXERCICE VIDE LA LISTE (relecture « écran », 4) · l'ancienne ne
   // reste jamais affichée sous le nouvel exercice, et sa réponse, si elle
@@ -231,6 +244,7 @@ export function CreancesDouteusesPage() {
     setForm(null);
     setAnnulation(null);
     setLettrage416(null);
+    setDesignation(null);
     setInfo(null);
   }, [exerciceId]);
 
@@ -258,10 +272,13 @@ export function CreancesDouteusesPage() {
   // consommée, la fenêtre dessous ne se ferme pas ; pendant l'envoi elle ne
   // ferme rien, la réponse du serveur reste à lire.
   useEffect(() => {
-    if (!formOuvert && !annulationOuverte && !lettrageOuvert) return;
+    if (!formOuvert && !annulationOuverte && !lettrageOuvert && !designationOuverte) return;
     return ecouterEchap(() => {
       if (envoiEnCours.current) return true;
-      if (lettrageOuvert) {
+      if (designationOuverte) {
+        jeton.current++;
+        setDesignation(null);
+      } else if (lettrageOuvert) {
         jeton.current++;
         setLettrage416(null);
       } else if (annulationOuverte) setAnnulation(null);
@@ -271,7 +288,73 @@ export function CreancesDouteusesPage() {
       }
       return true;
     });
-  }, [formOuvert, annulationOuverte, lettrageOuvert]);
+  }, [formOuvert, annulationOuverte, lettrageOuvert, designationOuverte]);
+  useEffect(() => {
+    if (designationOuverte) (premierChamp(refDesignation.current) ?? refDesignation.current?.querySelector<HTMLElement>('button'))?.focus({ preventScroll: true });
+  }, [designationOuverte, designation?.liste]);
+
+  /** A7 bis · ouvre « Désigner les factures » et lit la liste du serveur · une réponse périmée est jetée. */
+  function ouvrirDesignation(c: CreanceDouteuse) {
+    const j = ++jeton.current;
+    setDesignation({ creance: c, liste: null, parts: {}, erreur: null, retrait: null });
+    api.get<FacturesDeLaCreance>(`/creances-douteuses/${c.id}/factures`).then(
+      (l) => {
+        if (jeton.current === j) setDesignation((d) => (d ? { ...d, liste: l } : d));
+      },
+      (e) => {
+        if (jeton.current === j) setDesignation((d) => (d ? { ...d, erreur: messageDe(e) } : d));
+      },
+    );
+  }
+  function fermerDesignation() {
+    if (envoi) return;
+    jeton.current++;
+    setDesignation(null);
+  }
+  /** A7 bis · retire une désignation fausse, motif exigé · la liste relue vient du serveur. */
+  async function oterDesignation() {
+    if (!designation?.retrait || envoi) return;
+    const { id: designationId, motif } = designation.retrait;
+    if (!motifAnnulationValide(motif)) {
+      setDesignation((d) => (d ? { ...d, erreur: 'Le motif du retrait compte de 3 à 500 caractères.' } : d));
+      return;
+    }
+    setEnvoi(true);
+    try {
+      const designees = await api.post<FacturesDeLaCreance['designees']>(
+        `/creances-douteuses/${designation.creance.id}/factures/${designationId}/retirer`,
+        { motif },
+      );
+      setDesignation((d) => (d && d.liste ? { ...d, erreur: null, retrait: null, liste: { ...d.liste, designees } } : d));
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setDesignation((d) => (d ? { ...d, erreur: messageDe(e) } : d));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+  async function designer(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!designation?.liste || envoi) return;
+    const lu = partsADesigner(designation.parts, montantSaisi);
+    if (lu.erreur !== null) {
+      setDesignation((d) => (d ? { ...d, erreur: lu.erreur } : d));
+      return;
+    }
+    setEnvoi(true);
+    setDesignation((d) => (d ? { ...d, erreur: null } : d));
+    try {
+      await api.post(`/creances-douteuses/${designation.creance.id}/factures`, { factures: lu.factures });
+      setInfo(`${lu.factures.length} facture(s) désignée(s) pour la créance du compte ${designation.creance.compteCreance.numero}.`);
+      jeton.current++;
+      setDesignation(null);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setDesignation((d) => (d ? { ...d, erreur: messageDe(e) } : d));
+    } finally {
+      setEnvoi(false);
+    }
+  }
 
   useEffect(() => {
     if (formOuvert) premierChamp(refFormulaire.current)?.focus({ preventScroll: true });
@@ -679,6 +762,9 @@ export function CreancesDouteusesPage() {
                                 Revoir
                               </button>
                             )}
+                            <button type="button" className="text-sel hover:underline" onClick={() => ouvrirDesignation(c)}>
+                              Désigner les factures
+                            </button>
                             {ouvert && c.resteALaCloture > 0 && (
                               <button type="button" className="text-sel hover:underline" onClick={() => ouvrir('recouvrement', c)}>
                                 Recouvrement
@@ -1386,6 +1472,147 @@ export function CreancesDouteusesPage() {
                     className="bg-sel text-white rounded-full px-3 py-[3px] font-semibold disabled:opacity-50"
                   >
                     Lettrer
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </PortailModale>
+      )}
+      {peutEcrire && designation && (
+        <PortailModale>
+          <div className="anim-voile fixed inset-0 z-40 bg-black/35 flex items-center justify-center p-4">
+            <form
+              ref={refDesignation}
+              onSubmit={designer}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={id('titre-designation')}
+              className="anim-modale w-full max-w-[640px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto"
+            >
+              <div className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]">
+                <span id={id('titre-designation')}>Désigner les factures</span>
+                <button
+                  type="button"
+                  aria-label="Fermer"
+                  disabled={envoi}
+                  onClick={fermerDesignation}
+                  className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c] disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-4 text-[11.5px] space-y-2">
+                {designation.erreur && <div className="border border-rouge/40 bg-rouge/5 text-rouge rounded-[3px] px-2 py-1 whitespace-pre-wrap">{designation.erreur}</div>}
+                <div className="flex items-center gap-1.5">
+                  {designation.creance.compteCreance.numero} · {designation.creance.tiers ?? designation.creance.compteCreance.intitule} · reclassé {montant(designation.creance.montant)}
+                  <Aide
+                    titre="Factures de la créance"
+                    texte="Le recouvrement de la créance est l'encaissement des factures qu'elle reprend. Désignez chaque facture et la part (TTC) reprise · la TVA d'une prestation devient exigible à chaque recouvrement, au prorata de ce qui est recouvré sur le montant reclassé. Une perte n'encaisse rien. Rien n'est lettré : le reclassement ne lettre pas le compte du client. Désignez la facture d'origine, jamais sa ligne d'à-nouveau. Une facture dont le lettrage réunit d'autres factures ne se désigne pas : son recouvrement est listé à la déclaration, TVA à déclarer par le cabinet."
+                    source="O.-L. n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57"
+                  />
+                </div>
+                {!designation.liste && !designation.erreur && <div className="text-text-dim">Lecture…</div>}
+                {designation.liste && designation.liste.designees.length > 0 && (
+                  <table className="w-full">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="text-left px-1.5">Facture désignée</th>
+                        <th scope="col" className="text-right px-1.5">Part</th>
+                        <th scope="col" className="text-left px-1.5">État</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {designation.liste.designees.map((f) => (
+                        <tr key={f.id}>
+                          <td className="px-1.5">
+                            {jour(f.date)} {f.libelle}
+                          </td>
+                          <td className="px-1.5 text-right tabular-nums">{montant(f.montant)}</td>
+                          <td className="px-1.5">
+                            {f.retireeLe ? (
+                              <span className="text-text-dim">Retirée le {jour(f.retireeLe)} · {f.motifRetrait}</span>
+                            ) : designation.retrait?.id === f.id ? (
+                              <span className="flex items-center gap-1">
+                                <input
+                                  className="border border-bord rounded-[3px] px-1 w-[180px]"
+                                  aria-label="Motif du retrait"
+                                  value={designation.retrait.motif}
+                                  onChange={(e) => setDesignation((d) => (d && d.retrait ? { ...d, retrait: { ...d.retrait, motif: e.target.value } } : d))}
+                                />
+                                <button type="button" disabled={envoi} className="text-rouge hover:underline disabled:opacity-50" onClick={oterDesignation}>
+                                  Retirer
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-sel hover:underline"
+                                onClick={() => setDesignation((d) => (d ? { ...d, retrait: { id: f.id, motif: '' } } : d))}
+                              >
+                                Retirer la désignation
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {designation.liste?.annulee && <div className="text-text-dim">Reclassement annulé · aucune facture ne se désigne plus.</div>}
+                {designation.liste && !designation.liste.annulee && designation.liste.factures.length === 0 && (
+                  <div className="text-text-dim">Aucune facture validée au débit du compte {designation.creance.compteCreance.numero} · validez la facture d'abord.</div>
+                )}
+                {designation.liste && designation.liste.factures.length > 0 && (
+                  <table className="w-full">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="text-left px-1.5">Date</th>
+                        <th scope="col" className="text-left px-1.5">Pièce</th>
+                        <th scope="col" className="text-left px-1.5">Libellé</th>
+                        <th scope="col" className="text-right px-1.5">Montant</th>
+                        <th scope="col" className="text-right px-1.5">Ouvert</th>
+                        <th scope="col" className="text-right px-1.5">Part reprise</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {designation.liste.factures.map((f) => {
+                        const indisponible = f.aNouveau || f.lettragePartage || f.ouvert <= 0 || f.designeePar.length > 0;
+                        return (
+                          <tr key={f.ligneEcritureId}>
+                            <td className="px-1.5">{jour(f.date)}</td>
+                            <td className="px-1.5">{f.numeroPiece ?? '·'}</td>
+                            <td className="px-1.5">{f.libelle}</td>
+                            <td className="px-1.5 text-right tabular-nums">{montant(f.montant)}</td>
+                            <td className="px-1.5 text-right tabular-nums">{montant(f.ouvert)}</td>
+                            <td className="px-1.5 text-right">
+                              {indisponible ? (
+                                <span className="text-text-dim">{f.aNouveau ? 'À-nouveau' : f.lettragePartage ? 'Lettrage partagé' : f.designeePar.length > 0 ? 'Déjà désignée' : 'Soldée'}</span>
+                              ) : (
+                                <input
+                                  className="w-[110px] text-right border border-bord rounded-[3px] px-1"
+                                  inputMode="decimal"
+                                  aria-label={`Part reprise de la facture ${f.libelle}`}
+                                  value={designation.parts[f.ligneEcritureId] ?? ''}
+                                  onChange={(e) =>
+                                    setDesignation((d) => (d ? { ...d, parts: { ...d.parts, [f.ligneEcritureId]: e.target.value } } : d))
+                                  }
+                                />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+                {designation.liste?.tronque && <div className="text-text-dim">Liste tronquée aux factures les plus récentes du compte.</div>}
+                <div className="flex justify-end gap-2">
+                  <button type="button" disabled={envoi} onClick={fermerDesignation} className="border border-bord rounded-[3px] px-3 py-[3px] disabled:opacity-50">
+                    Fermer
+                  </button>
+                  <button type="submit" disabled={envoi || !designation.liste} className="bg-sel text-white rounded-full px-3 py-[3px] font-semibold disabled:opacity-50">
+                    Désigner
                   </button>
                 </div>
               </div>

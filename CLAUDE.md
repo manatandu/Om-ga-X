@@ -714,7 +714,8 @@ PASSE AU TTC ENTIER, D 651 / C 416, TOUJOURS · aucune ligne 443, aucune
 définitivement irrécouvrable se récupère par imputation (O.-L. n° 10/001, art. 52 ;
 décret n° 011/42, art. 126 et 127, duplicata surchargé) et que le cabinet la déclare
 lui-même pour l'instant. Aucune vente d'origine n'est gardée (elles ne servaient
-qu'à la TVA ; le 4161 / 4162 se lit sur le compte du client). LE RECLASSEMENT NE
+qu'à la TVA ; le 4161 / 4162 se lit sur le compte du client) · A7 bis y ajoute la
+DÉSIGNATION facultative des factures, qui ne sert qu'à l'exigibilité du recouvrement. LE RECLASSEMENT NE
 LETTRE PAS LE 411 et n'exige aucun lettrage · lettré avec la facture, le moteur de
 la TVA le lirait comme un ENCAISSEMENT (décret n° 011/42, art. 57), et la TVA d'une
 prestation deviendrait exigible au reclassement (art. 25, 2°) · dit en commentaire
@@ -781,6 +782,61 @@ compte d'origine BORNÉ à son solde net (m-d), `COMPTE_CREANCE_RECLASSEE_CREDIT
 AVERTISSEMENT, hors de `TIERS_SOLDE_INVERSE` ; impayé d'adhérent (4131, 4133) sous
 l'encaissement admis avec avertissement (question D7 du suivi). Chaque correction
 s'éprouve sur VRAIE base à travers une clôture (décision du 2026-10-03).
+
+**TVA à l'encaissement (ligne A7 bis, partie 1, 2026-10-04).** O.-L. n° 10/001,
+art. 25, 2° ; décret n° 011/42, art. 57 ; art. 37 al. 1 et décret art. 96 pour la
+déduction (`TauxTvaService.exigibilite`, `repartirEncaissement`,
+`relierAuxANouveaux`). (1) UNE CRÉANCE NON LETTRÉE N'EST PAS UN ENCAISSEMENT · la
+taxe d'une prestation impayée reste EN ATTENTE ; seul ce qui est réglé dans
+l'écriture (classe 5) ou imputé sur une avance (419, 409) l'est à sa date ; régime
+des débits inchangé. (2) UNE TRANCHE PAR RÈGLEMENT dans un groupe à une seule
+facture (B-2 d'A7, reprise seule) ; plusieurs factures, fraction cumulée, dit.
+(3) La créance de N réglée en N+1 se lit par SA ligne d'à-nouveau (même
+appariement que `paires-a-cheval.ts`), sans deviner · deux candidates, en attente.
+(4) UNE LIQUIDATION GARDE CE QU'ELLE A DÉCLARÉ · `LiquidationTva.tvaEncaissementFigee`
+fige ligne par ligne ; un règlement lettré après coup est REPORTÉ une fois au
+premier jour non liquidé ; un trop-déclaré absorbe les tranches suivantes.
+TRANSITION · une liquidation sans figé (`null`, ancien moteur) est relue telle
+que l'ancien moteur l'a réellement déclarée (`declareParAncienMoteur`) · groupe
+reconstitué à l'instant de la liquidation (`Lettrage.createdAt`, saisie des
+écritures du groupe), comptant à la facture sans groupe, sinon fraction CUMULÉE à
+la date du dernier règlement vu (232 000 puis 232 000 sur 1 160 000 · 32 000 puis
+64 000 versés, le reste 64 000) ; une écriture SAISIE (ou importée) après la
+liquidation compte 0 pour elle (`createdAt` de l'écriture de la taxe). Aucune
+colonne ne date l'entrée d'une ligne dans un groupe · un groupe lu dont le reste
+a changé, ou un groupe né avant supprimé sur le compte du tiers, APRÈS la
+liquidation (journal d'audit, seul signal fiable) rend la reconstitution
+INCERTAINE, NOMMÉE avec son montant (`reconstitutionsIncertaines`, « à vérifier
+contre la déclaration déposée »), jamais corrigée en silence. Le figé ne part jamais à l'écran (retiré
+par le contrôleur). Avoirs inchangés (constatation, décret art. 126). (5) LE
+RECOUVREMENT D'UNE CRÉANCE DOUTEUSE EST L'ENCAISSEMENT DE SES FACTURES DÉSIGNÉES
+(second tour) · au reclassement ou ensuite (« Désigner les factures »,
+`FactureCreanceDouteuse`, `motifRefusDesignation`), le cabinet désigne la ligne de
+la facture d'origine au compte du client et sa part TTC, jamais lettrée (A7 ter) ;
+refus · autre compte, brouillard, à-nouveau, au-delà de l'ouvert ou du reclassé,
+ligne d'une autre créance non annulée, ligne dont le lettrage réunit d'AUTRES
+factures (`MOTIF_LETTRAGE_PARTAGE`, quatrième reprise ; entrée plus tard dans un
+tel groupe, ses recouvrements sont nommés, jamais rattachés). Chaque
+recouvrement non annulé et validé encaisse la part désignée au prorata recouvré /
+reclassé, une tranche à sa date, rattachée par l'IDENTIFIANT de chaque ligne
+désignée (deux échéances comprises), sur le TTC de la facture et dans la limite
+de ce qui reste en attente, sans toucher aucun groupe de lettrage, par la même
+mémoire (4) ; AUCUN PRORATA ENTRE FACTURES D'UN GROUPE (décision du 2026-10-04,
+convention qu'aucun texte ne fixe) · sans créance désignée, chaque groupe rend ce
+que rend `main` (`datesDuGroupeDeMain`, gelé par `tva-groupes-comme-main.spec.ts`),
+seules exceptions voulues la créance non lettrée et le groupe à UNE facture
+(tranche par règlement, sauf avoir dans le groupe) ; une facture dont une
+échéance seulement est lettrée ne date que sa part lettrée (`main` déclarait
+160 000 au paiement d'une échéance de 580 000 sur 1 160 000, 80 000 encaissés) ;
+une PERTE n'encaisse rien (art. 52, partie 2) ; une créance annulée ne désigne
+plus rien. UN RECOUVREMENT NE DISPARAÎT JAMAIS · sans facture désignée, ou désigné
+sur une ligne qu'aucune ligne de TVA lue ne reçoit, il est NOMMÉ
+(`recouvrementsSansFactureDesignee`, borné à 200 avec `creancesRecouvreesTotal`
+et `recouvrementsSansFactureTronque`, « TVA à déclarer par le cabinet faute de
+facture désignée »). « Retirer la désignation » · motif exigé, `update` unitaire
+au journal d'audit, possible exercice clos ; ce qu'une liquidation a figé le reste,
+la suite se relit. Partie 2 (récupération de
+l'art. 52 sur créance irrécouvrable) au suivi.
 
 **Procès-verbal de comptage par caisse.** Le PV de campagne (CPCC, étape 2) ne porte
 pas les espèces ; le § VI vise « la caisse SIÈGE, [...] la caisse AGENCE, [...] la

@@ -4,8 +4,24 @@ import { LOT_ECRITURES, LOT_LECTURE, lireParLots, pageApres } from '../../common
 import { PrismaService } from '../../common/prisma.service';
 import { CreerTauxTvaDto, ModifierTauxTvaDto } from './dto/taux-tva.dto';
 import { tauxTvaDefaut } from './taux-tva-seed';
-import { Prisma, ClasseCompte, Referentiel, TypeJournal, NatureFacture, SensFacture, StatutEcriture } from '@prisma/client';
+import {
+  Prisma,
+  ClasseCompte,
+  Referentiel,
+  TypeJournal,
+  NatureFacture,
+  SensFacture,
+  StatutEcriture,
+  TypeMouvementCreanceDouteuse,
+} from '@prisma/client';
 import { DETENTEUR_LIQUIDATION_TVA, EcritureService } from '../comptabilite/ecriture.service';
+import { ECRITURE_D_A_NOUVEAU } from '../lettrage/paires-a-cheval';
+import {
+  MOTIF_LETTRAGE_PARTAGE,
+  MOTIF_SANS_FACTURE_DESIGNEE,
+  MOTIF_SANS_LIGNE_DE_TVA,
+  partageSonLettrage,
+} from '../creances-douteuses/creances-douteuses';
 import { FicheAutorisationDebits, situationAutorisationDebits } from '../tiers/periode-autorisation-debits';
 
 const EPSILON = 0.005;
@@ -40,6 +56,17 @@ const EPSILON = 0.005;
  */
 const RACINE_COLLECTEE = '443';
 const RACINE_RECUPERABLE = '445';
+/**
+ * Les lignes qui font d'une écriture un AVOIR · TVA facturée reprise (443 au
+ * débit) ou TVA déduite reprise (445 au crédit). Une seule définition, pour
+ * les deux lectures de groupe (déclaration et à-nouveau).
+ */
+const FILTRE_LIGNES_D_AVOIR: Prisma.LigneEcritureWhereInput = {
+  OR: [
+    { debit: { gt: 0 }, compte: { numero: { startsWith: RACINE_COLLECTEE } } },
+    { credit: { gt: 0 }, compte: { numero: { startsWith: RACINE_RECUPERABLE } } },
+  ],
+};
 
 /**
  * LA NATURE DE L'OPÉRATION SE LIT AU COMPTE · et c'est elle, non le dossier,
@@ -655,6 +682,20 @@ export function repartirAuCentime(total: number, bruts: ReadonlyMap<string, numb
   if (plusLourd !== null && Math.abs(reste) > 0) rendu.set(plusLourd, Math.round((rendu.get(plusLourd)! + reste) * 100) / 100);
   return rendu;
 }
+
+/**
+ * Une liquidation telle que la répartition à l'encaissement la lit · ses
+ * bornes, l'instant où elle a été passée, et ce qu'elle a figé ligne de TVA
+ * par ligne de TVA (`null` · liquidation antérieure à la règle, voir
+ * `repartirEncaissement`).
+ */
+export type LiquidationEncaissement = {
+  id: string;
+  dateDebut: Date;
+  dateFin: Date;
+  createdAt: Date;
+  figee: Record<string, number> | null;
+};
 
 @Injectable()
 export class TauxTvaService {
@@ -1325,13 +1366,88 @@ export class TauxTvaService {
       } | null;
     }>,
     dateEcriture: Date,
-  ): { date: Date | null; fraction: number } {
-    // Aucune contrepartie de tiers lettrable : rien ne dit quand l'argent est
-    // entré. On s'en tient à la date de l'écriture · c'est le cas d'une vente
-    // au comptant, où encaissement et écriture coïncident de toute façon.
+    nonLettre: { creance: number; immediat: number } = { creance: 0, immediat: 0 },
+  ): Array<{ date: Date | null; fraction: number }> {
     const avecLettrage = lignesTiers.filter((l) => l.lettrage);
-    if (avecLettrage.length === 0) return { date: dateEcriture, fraction: 1 };
+    if (avecLettrage.length === 0) {
+      /*
+        AUCUNE LIGNE DE TIERS LETTRÉE (ligne A7 bis, défaut (1) du moteur).
 
+        Le moteur lisait ce cas comme un COMPTANT, exigible à la facture. C'est
+        vrai d'une prestation réglée dans la même écriture (D 57 / C 706 /
+        C 443) · encaissement et écriture coïncident. C'est FAUX d'une
+        prestation dont la créance du client (ou la dette envers le
+        fournisseur) est inscrite et attend son règlement · l'O.-L. n° 10/001,
+        art. 25, 2°, rend la taxe exigible « au moment de l'encaissement du
+        prix, des acomptes ou avances », et le décret n° 011/42, art. 57,
+        définit l'encaissement comme « la perception des sommes ». Une créance
+        inscrite n'est pas une somme perçue · la taxe restait déclarée au mois
+        de la facture d'une prestation impayée.
+
+        Désormais · la part portée par une CRÉANCE NON LETTRÉE reste EN
+        ATTENTE (sans date), la part réglée dans l'écriture même (trésorerie,
+        classe 5) ou imputée sur une avance déjà reçue ou versée (419, 409)
+        est exigible à la date de l'écriture. Une avance au 419 ou au 409 a
+        été encaissée AVANT la facture, à une date que l'écriture ne porte
+        pas · la dater de la facture la date au plus tard, comme la
+        déclaration le dit déjà (réserve de l'art. 26 al. 3). Côté déduction,
+        la même règle vaut par l'art. 37 al. 1 (« lorsque la taxe devient
+        exigible chez l'assujetti ») et le décret art. 96 (l'assujetti est le
+        fournisseur) · un achat de services impayé n'ouvre aucune déduction.
+      */
+      if (nonLettre.creance <= EPSILON) return [{ date: dateEcriture, fraction: 1 }];
+      const total = nonLettre.creance + nonLettre.immediat;
+      const fraction = Math.min(1, Math.max(0, nonLettre.immediat / total));
+      if (fraction <= EPSILON) return [{ date: null, fraction: 1 }];
+      return [
+        { date: dateEcriture, fraction },
+        { date: null, fraction: 1 - fraction },
+      ];
+    }
+
+    /*
+      UNE FACTURE À PLUSIEURS LIGNES DE TIERS DONT UNE PARTIE SEULEMENT EST
+      LETTRÉE (A7 bis, troisième reprise) · le groupe ne date que la part
+      lettrée ; la part encore due (créance non lettrée) reste en attente, la
+      part réglée dans l'écriture est exigible à sa date. Lire le groupe pour
+      toute la facture déclarait d'un coup la taxe d'une échéance impayée.
+    */
+    const lettre = avecLettrage.reduce((t, l) => t + Math.abs(Number(l.debit) - Number(l.credit)), 0);
+    const totalFacture = lettre + nonLettre.creance + nonLettre.immediat;
+    const partLettree = TauxTvaService.datesDuGroupeDeMain(avecLettrage, dateEcriture);
+    if (totalFacture <= lettre + EPSILON) return partLettree;
+    const k = lettre / totalFacture;
+    const tranches: Array<{ date: Date | null; fraction: number }> = partLettree
+      .filter((t) => t.date)
+      .map((t) => ({ date: t.date, fraction: t.fraction * k }));
+    if (nonLettre.immediat > EPSILON) tranches.push({ date: dateEcriture, fraction: nonLettre.immediat / totalFacture });
+    const date = tranches.reduce((t, x) => t + x.fraction, 0);
+    if (1 - date > EPSILON) tranches.push({ date: null, fraction: 1 - date });
+    return tranches;
+  }
+
+  /**
+   * La part lettrée d'une facture, datée par son groupe, PAR LA RÈGLE DE
+   * `main` (A7 bis, quatrième reprise, décision du coordinateur) · aucun
+   * prorata entre les factures d'un groupe partiel, convention qu'aucun texte
+   * ne fixe et qui changeait à la relecture des mois déjà liquidés de dossiers
+   * sans créance douteuse. Seule exception, voulue et citée · un groupe à UNE
+   * facture rend une tranche par règlement (décret n° 011/42, art. 57, B-2).
+   * `tva-groupes-comme-main.spec.ts` gèle ce que rend `main` sur les cas de groupe.
+   */
+  private static datesDuGroupeDeMain(
+    avecLettrage: Array<{
+      debit: unknown;
+      credit: unknown;
+      lettrage: {
+        statut: string;
+        solde: unknown;
+        soldeAt: Date | null;
+        lignes?: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date } | null }>;
+      } | null;
+    }>,
+    dateEcriture: Date,
+  ): Array<{ date: Date | null; fraction: number }> {
     const groupe = avecLettrage[0].lettrage!;
     // Sens de la FACTURE sur le compte de tiers · une vente débite le 411, un
     // achat crédite le 401. Le règlement est, par construction, ce qui va dans
@@ -1339,6 +1455,60 @@ export class TauxTvaService {
     // groupe, un règlement d'une autre facture.
     const sensFacture = avecLettrage.reduce((t, l) => t + (Number(l.debit) - Number(l.credit)), 0);
     const dateReglement = TauxTvaService.dateDernierReglement(groupe.lignes, sensFacture);
+    const engage = avecLettrage.reduce((t, l) => t + Math.abs(Number(l.debit) - Number(l.credit)), 0);
+    const reglements = TauxTvaService.reglementsDuGroupe(groupe.lignes, sensFacture);
+    const factures = (groupe.lignes ?? []).reduce((t, g) => {
+      const sens = Number(g.debit) - Number(g.credit);
+      return Math.abs(sens) > EPSILON && sens > 0 === sensFacture > 0 ? t + Math.abs(sens) : t;
+    }, 0);
+
+    /*
+      UNE TRANCHE PAR ENCAISSEMENT (ligne A7 bis, défaut (2) du moteur ;
+      correction B-2 de la troisième relecture d'A7, reprise seule). Le
+      décret n° 011/42, art. 57, date CHAQUE perception · « l'encaissement
+      s'entend de la perception des sommes, à quelque titre que ce soit,
+      notamment avances, acomptes et règlement pour solde ». Rendre une seule
+      date et la fraction CUMULÉE faisait déclarer, à la date du dernier
+      règlement, la part déjà exigible à celle du premier · 40 % en mars et
+      60 % en mai portaient 100 % en mai, et mars, déjà déclaré, l'était une
+      seconde fois.
+
+      La découpe ne vaut que là où elle ne devine rien · un groupe qui ne
+      porte QUE cette facture (aucune autre ligne de son sens). Un groupe qui
+      réunit plusieurs factures garde la date du dernier règlement et la
+      fraction cumulée · l'imputation des règlements entre ces factures n'est
+      pas connue, et c'est dit plus haut.
+    */
+    const seule = engage > EPSILON && factures <= engage + EPSILON;
+    // UN AVOIR DANS LE GROUPE n'est pas une perception (quatrième reprise) ·
+    // compté comme un règlement, il aurait sa tranche à sa date. Le groupe se
+    // lit alors comme sur `main` (fraction cumulée, date du dernier règlement),
+    // et l'avoir reste constaté à sa date par sa propre ligne de TVA.
+    const avecAvoir = (groupe.lignes ?? []).some((g) => {
+      const sens = Number(g.debit) - Number(g.credit);
+      const avoirs = (g.ecriture as { _count?: { lignes?: number } } | null | undefined)?._count?.lignes ?? 0;
+      return Math.abs(sens) > EPSILON && sens > 0 !== sensFacture > 0 && avoirs > 0;
+    });
+    if (seule && !avecAvoir && reglements.length > 0) {
+      const ordre = [...reglements].sort((a, b) => a.date.getTime() - b.date.getTime());
+      const tranches: Array<{ date: Date | null; fraction: number }> = [];
+      let regle = 0;
+      for (const r of ordre) {
+        const part = Math.min(r.montant, engage - regle);
+        if (part <= EPSILON) break;
+        regle += part;
+        tranches.push({ date: r.date, fraction: part / engage });
+      }
+      // Un groupe SOLDÉ est réglé en entier · un écart (escompte, arrondi) se
+      // rattache au dernier règlement, comme avant.
+      if (groupe.statut === 'SOLDE' && regle < engage - EPSILON && tranches.length > 0) {
+        tranches[tranches.length - 1].fraction += (engage - regle) / engage;
+        regle = engage;
+      }
+      if (tranches.length === 0) return [{ date: null, fraction: 1 }];
+      if (regle < engage - EPSILON) tranches.push({ date: null, fraction: 1 - regle / engage });
+      return tranches;
+    }
 
     if (groupe.statut === 'SOLDE') {
       // Dénoué : exigible en totalité, à la date du DERNIER règlement · c'est
@@ -1347,19 +1517,459 @@ export class TauxTvaService {
       // dont les lignes ne sont pas chargées), la date de l'écriture sert de
       // repli : elle date au plus tôt, ce qui fait déclarer d'avance et non en
       // retard, quand `soldeAt` datait au plus tard.
-      return { date: dateReglement ?? dateEcriture, fraction: 1 };
+      return [{ date: dateReglement ?? dateEcriture, fraction: 1 }];
     }
     // Groupe PARTIEL · une part est encaissée. `solde` est le reste à solder,
-    // signé ; la part réglée est donc (engagé - |reste|) / engagé.
-    const engage = avecLettrage.reduce((t, l) => t + Math.abs(Number(l.debit) - Number(l.credit)), 0);
+    // signé ; la part réglée est donc (engagé - |reste|) / engagé (règle de
+    // `main`, y compris pour un groupe à plusieurs factures).
     const reste = Math.abs(Number(groupe.solde));
-    if (engage <= EPSILON) return { date: null, fraction: 0 };
+    if (engage <= EPSILON) return [{ date: null, fraction: 1 }];
     const fraction = Math.min(1, Math.max(0, (engage - reste) / engage));
-    if (fraction <= EPSILON) return { date: null, fraction: 0 };
+    if (fraction <= EPSILON) return [{ date: null, fraction: 1 }];
     // La part encaissée l'a été à la date du règlement le plus récent du
     // groupe · l'acompte de l'art. 57 rend la taxe exigible ce jour-là, et non
     // au jour de la facture ni au jour du lettrage.
-    return { date: dateReglement ?? dateEcriture, fraction };
+    return [
+      { date: dateReglement ?? dateEcriture, fraction },
+      { date: null, fraction: 1 - fraction },
+    ];
+  }
+
+  /**
+   * CE QUE L'ANCIEN MOTEUR A DÉCLARÉ DANS UNE LIQUIDATION SANS FIGÉ (A7 bis,
+   * quatrième reprise ; BLOQUANT 4 de la troisième vérification).
+   *
+   * Lu dans l'historique (`exigibilite` de `main`, inchangée depuis le premier
+   * état du fichier, 7f79a3a, jusqu'à 8315e0c) · aucune ligne de tiers lettrée,
+   * la taxe entière à la date de l'écriture ; sinon le PREMIER groupe des
+   * lignes lettrées · SOLDÉ, la taxe entière à la date du DERNIER règlement ;
+   * PARTIEL, la fraction CUMULÉE (engagé - reste) / engagé, à la date du
+   * dernier règlement ; une seule tranche, `c(montant × fraction)`. Elle
+   * entrait dans la période qui contient cette date. Deux acomptes de 232 000
+   * en février et en mars faisaient donc déclarer 32 000 en février PUIS
+   * 64 000 en mars (la fraction cumulée), 96 000 pour 64 000 encaissés · c'est
+   * ce que la liquidation a versé, et ce que la suite doit compter.
+   *
+   * L'ÉTAT DU LETTRAGE À L'INSTANT DE LA LIQUIDATION est reconstitué · un
+   * groupe né après elle n'existait pas (comptant), une ligne de groupe dont
+   * l'écriture est saisie après elle n'y était pas. LIMITE DITE · une ligne
+   * saisie avant et lettrée après (« compléter ») est réputée vue.
+   */
+  static declareParAncienMoteur(
+    lignesTiers: ReadonlyArray<{
+      debit: unknown;
+      credit: unknown;
+      lettrage?: {
+        statut: string;
+        solde: unknown;
+        createdAt?: Date;
+        lignes?: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date; createdAt?: Date } | null }>;
+      } | null;
+    }>,
+    montant: number,
+    dateEcriture: Date,
+    liquidation: LiquidationEncaissement,
+    ecritureSaisieLe?: Date,
+  ): number {
+    const T = liquidation.createdAt;
+    // L'ÉCRITURE DE LA TAXE SAISIE APRÈS LA LIQUIDATION (cinquième reprise,
+    // BLOQUANT) · l'ancien moteur ne l'a jamais lue · rien n'a été déclaré
+    // pour elle, quelle que soit sa date (facture du 20 mars saisie le 15
+    // avril, mars liquidé le 1er avril · déclarée au règlement, en mai). Une
+    // écriture importée après la liquidation suit la même règle.
+    if (ecritureSaisieLe && ecritureSaisieLe > T) return 0;
+    const vues = lignesTiers.filter((x) => x.lettrage && (!x.lettrage.createdAt || x.lettrage.createdAt <= T));
+    let date: Date = dateEcriture;
+    let fraction = 1;
+    if (vues.length > 0) {
+      const groupe = vues[0].lettrage!;
+      const sensFacture = vues.reduce((t, x) => t + (Number(x.debit) - Number(x.credit)), 0);
+      const engage = vues.reduce((t, x) => t + Math.abs(Number(x.debit) - Number(x.credit)), 0);
+      let factures = 0;
+      let paye = 0;
+      let dernier: Date | null = null;
+      for (const g of groupe.lignes ?? []) {
+        const cree = g.ecriture?.createdAt;
+        if (cree && cree > T) continue;
+        const sens = Number(g.debit) - Number(g.credit);
+        if (Math.abs(sens) <= EPSILON) continue;
+        if (sens > 0 === sensFacture > 0) {
+          factures += Math.abs(sens);
+          continue;
+        }
+        paye += Math.abs(sens);
+        const d = g.ecriture?.date;
+        if (d && (!dernier || d > dernier)) dernier = d;
+      }
+      const reste = Math.max(0, factures - paye);
+      date = dernier ?? dateEcriture;
+      if (reste > EPSILON) {
+        if (engage <= EPSILON) return 0;
+        fraction = Math.min(1, Math.max(0, (engage - reste) / engage));
+        if (fraction <= EPSILON) return 0;
+      }
+    }
+    const dansLaLiquidation = liquidation.dateDebut <= date && date <= liquidation.dateFin;
+    return dansLaLiquidation ? TauxTvaService.c(montant * fraction) : 0;
+  }
+
+  /**
+   * Les règlements d'un groupe de lettrage, avec leur date d'ÉCRITURE (décret
+   * n° 011/42, art. 57) · les lignes de sens OPPOSÉ à la facture.
+   */
+  private static reglementsDuGroupe(
+    lignes: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date } | null }> | undefined,
+    sensFacture: number,
+  ): Array<{ date: Date; montant: number }> {
+    if (!lignes || lignes.length === 0 || Math.abs(sensFacture) <= EPSILON) return [];
+    const reglements: Array<{ date: Date; montant: number }> = [];
+    for (const l of lignes) {
+      const sens = Number(l.debit) - Number(l.credit);
+      if (Math.abs(sens) <= EPSILON) continue;
+      if (sens > 0 === sensFacture > 0) continue;
+      const date = l.ecriture?.date;
+      if (!date) continue;
+      reglements.push({ date, montant: Math.abs(sens) });
+    }
+    return reglements;
+  }
+
+  /**
+   * CE QU'UNE LIQUIDATION A DÉCLARÉ RESTE DÉCLARÉ, ET RIEN NE L'EST DEUX FOIS
+   * (ligne A7 bis, partie 1 · leçons B1 et B3 de la cinquième relecture d'A7).
+   *
+   * La taxe d'une ligne datée à l'encaissement (O.-L. n° 10/001, art. 25, 2°)
+   * change de période quand un règlement est lettré APRÈS coup · un virement
+   * du 10 février lettré le 5 mars, février déjà liquidé le 1er mars. Relue
+   * sans mémoire, sa tranche tomberait dans une période close et ne serait
+   * plus déclarée nulle part (taxe perdue), ou, à l'inverse, une taxe que la
+   * liquidation d'un mois a déjà portée serait portée une seconde fois au
+   * mois du règlement (taxe versée deux fois). Les deux se font sur une
+   * écriture équilibrée, sans que rien ne le montre (§ 10 bis).
+   *
+   * D'OÙ UNE MÉMOIRE · chaque liquidation FIGE, ligne de TVA par ligne de
+   * TVA, ce qu'elle a déclaré à l'encaissement
+   * (`LiquidationTva.tvaEncaissementFigee`). Une liquidation antérieure à
+   * cette règle n'a pas de figé (`null`) · on reconstitue ce que l'ANCIEN
+   * moteur lui a fait déclarer (TRANSITION) · une ligne dont aucune ligne de
+   * tiers n'était lettrée à l'instant de la liquidation était lue au
+   * comptant et déclarée EN ENTIER à la date de la facture ; sinon elle
+   * l'était aux dates de ses règlements, comme aujourd'hui.
+   *
+   * La répartition parcourt le temps · une tranche datée dans une période
+   * liquidée est réputée portée par cette liquidation à hauteur de ce
+   * qu'elle a déclaré ; ce qu'elle n'a pas porté (lettrage tardif) est
+   * REPORTÉ au premier jour qu'aucune liquidation ne couvre, une seule fois,
+   * et la liquidation qui couvrira ce jour le figera à son tour ; ce qu'elle
+   * a porté EN TROP (facture déclarée en entier sous l'ancienne règle)
+   * s'impute sur les tranches suivantes, qui ne se déclarent plus. Le total
+   * réparti ne dépasse jamais la taxe exigible moins ce que les liquidations
+   * ont déjà déclaré.
+   */
+  static repartirEncaissement(p: {
+    ligneId: string;
+    montant: number;
+    dateEcriture: Date;
+    tranches: ReadonlyArray<{ date: Date; montant: number }>;
+    liquidations: ReadonlyArray<LiquidationEncaissement>;
+    /**
+     * Ce que l'ANCIEN moteur a déclaré pour cette ligne dans une liquidation
+     * sans figé (`TauxTvaService.declareParAncienMoteur`).
+     */
+    declareParAncienMoteur: (liquidation: LiquidationEncaissement) => number;
+  }): { parLiquidation: Map<string, number>; libres: Array<{ date: Date; montant: number; origine: Date }> } {
+    const liquidations = [...p.liquidations].sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime());
+    const couvrante = (d: Date) => liquidations.find((l) => l.dateDebut <= d && d <= l.dateFin);
+    // Le jour qui suit une liquidation · ses bornes sont des JOURS (la
+    // borne de fin est le dernier jour, inclus, à minuit ou à 23 h 59), et
+    // un report daté d'une milliseconde après minuit resterait dans le
+    // dernier jour liquidé, hors de toute période libre.
+    const lendemain = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
+    const premierJourLibre = (d: Date): Date => {
+      let x = lendemain(d);
+      for (let l = couvrante(x); l; l = couvrante(x)) x = lendemain(l.dateFin);
+      return x;
+    };
+    const dansL = (l: LiquidationEncaissement, d: Date) => l.dateDebut <= d && d <= l.dateFin;
+
+    const parLiquidation = new Map<string, number>();
+    for (const l of liquidations) {
+      let declare: number;
+      if (l.figee) {
+        declare = Number(l.figee[p.ligneId] ?? 0);
+      } else {
+        // TRANSITION · ce que l'ancien moteur a RÉELLEMENT déclaré, reconstitué.
+        declare = p.declareParAncienMoteur(l);
+      }
+      parLiquidation.set(l.id, TauxTvaService.c(declare));
+    }
+
+    const totalTranches = p.tranches.reduce((s, t) => s + t.montant, 0);
+    const totalDeclare = [...parLiquidation.values()].reduce((s, v) => s + v, 0);
+    let plafond = TauxTvaService.c(totalTranches - totalDeclare);
+    let report = 0;
+
+    type Evenement = { date: Date; montant: number; origine: Date } | { date: Date; liquidation: LiquidationEncaissement };
+    const evenements: Evenement[] = [];
+    for (const t of p.tranches) {
+      if (!couvrante(t.date)) evenements.push({ date: t.date, montant: t.montant, origine: t.date });
+    }
+    for (const l of liquidations) evenements.push({ date: l.dateDebut, liquidation: l });
+    const ordonner = () => evenements.sort((a, b) => a.date.getTime() - b.date.getTime() || ('liquidation' in a ? -1 : 1));
+    ordonner();
+
+    const libres: Array<{ date: Date; montant: number; origine: Date }> = [];
+    while (evenements.length > 0) {
+      const e = evenements.shift()!;
+      if ('liquidation' in e) {
+        const attendu = p.tranches.filter((t) => dansL(e.liquidation, t.date)).reduce((s, t) => s + t.montant, 0);
+        report = TauxTvaService.c(report + attendu - (parLiquidation.get(e.liquidation.id) ?? 0));
+        if (report > EPSILON) {
+          evenements.push({ date: premierJourLibre(e.liquidation.dateFin), montant: report, origine: e.liquidation.dateFin });
+          report = 0;
+          ordonner();
+        }
+        continue;
+      }
+      const du = TauxTvaService.c(e.montant + report);
+      if (du <= EPSILON) {
+        report = du;
+        continue;
+      }
+      report = 0;
+      const part = TauxTvaService.c(Math.min(du, plafond));
+      if (part <= EPSILON) continue;
+      plafond = TauxTvaService.c(plafond - part);
+      libres.push({ date: e.date, montant: part, origine: e.origine });
+    }
+    return { parLiquidation, libres };
+  }
+
+  /**
+   * LE RÈGLEMENT D'UNE CRÉANCE D'UN EXERCICE CLOS, LU À TRAVERS SA LIGNE
+   * D'À-NOUVEAU (ligne A7 bis ; constat d'A6 bis, second tour, m3).
+   *
+   * Au mode Détail, la facture de N n'est jamais lettrée avec un règlement de
+   * N+1 · c'est la ligne d'à-nouveau qui la reporte qui l'est
+   * (`lettrages-a-cheval.ts`, règle 2). Aucun lien en base ne relie les deux ;
+   * le report recopie compte, montants, devise, échéance et libellé (« RAN
+   * détail <compte> · <libellé> », `report-a-nouveau.ts`), et c'est par eux
+   * que `paires-a-cheval.ts` les apparie déjà. La même lecture sert ici · les
+   * règlements des groupes de ces lignes d'à-nouveau (un par exercice qui la
+   * reporte) sont les encaissements de la facture (décret n° 011/42, art. 57).
+   *
+   * RIEN N'EST DEVINÉ · deux lignes d'à-nouveau candidates dans un même
+   * exercice, ou une même ligne d'à-nouveau que deux factures pourraient
+   * revendiquer, et le lien n'est pas posé · la taxe reste en attente, comme
+   * le dit la déclaration. Une ligne d'à-nouveau n'est jamais elle-même un
+   * règlement (son report, au même exercice, recopierait l'acompte une
+   * seconde fois).
+   *
+   * LE GROUPE RECONSTITUÉ N'EST LETTRÉ À AUCUNE LIQUIDATION DE L'ANCIEN
+   * MOTEUR · la facture elle-même ne l'a jamais été, et l'ancien moteur l'a
+   * lue au comptant (`repartirEncaissement`, transition).
+   */
+  private async relierAuxANouveaux<
+    T extends {
+      ecriture: {
+        date: Date;
+        libelle: string;
+        lignes: Array<{
+          id: string;
+          debit: unknown;
+          credit: unknown;
+          compteId: string;
+          deviseId: string | null;
+          montantDevise: unknown;
+          dateEcheance: Date | null;
+          libelle: string | null;
+          compte: { numero: string; classe: ClasseCompte } | null;
+          lettrage: unknown;
+        }>;
+      };
+      compte: { numero: string };
+    },
+  >(tenantId: string, lignes: T[]): Promise<T[]> {
+    if (lignes.length === 0) return lignes;
+    const centimes = (x: unknown) => Math.round(Number(x ?? 0) * 100);
+    const estCollecteDe = (l: T) => l.compte.numero.startsWith(RACINE_COLLECTEE);
+    // La créance de chaque ligne de TVA · une seule, sinon rien n'est relié.
+    const creanceDe = (l: T) => {
+      const collecte = estCollecteDe(l);
+      const creances = l.ecriture.lignes.filter((x) => {
+        const numero = x.compte?.numero ?? '';
+        const sens = collecte ? Number(x.debit) - Number(x.credit) : Number(x.credit) - Number(x.debit);
+        return (
+          x.compte?.classe === ClasseCompte.CLASSE_4 &&
+          !x.lettrage &&
+          sens > EPSILON &&
+          !numero.startsWith('44') &&
+          !numero.startsWith(collecte ? '419' : '409')
+        );
+      });
+      return creances.length === 1 ? creances[0] : null;
+    };
+    const comptes = [...new Set(lignes.map(creanceDe).filter((c) => c).map((c) => c!.compteId))];
+    if (comptes.length === 0) return lignes;
+
+    type ANouveau = {
+      id: string;
+      compteId: string;
+      debit: unknown;
+      credit: unknown;
+      deviseId: string | null;
+      montantDevise: unknown;
+      dateEcheance: Date | null;
+      libelle: string | null;
+      ecriture: { date: Date; exerciceId: string };
+      lettrage: {
+        statut: string;
+        solde: unknown;
+        soldeAt: Date | null;
+        createdAt: Date;
+        lignes: Array<{
+          debit: unknown;
+          credit: unknown;
+          ecriture: {
+            date: Date;
+            createdAt?: Date;
+            estANouveauProvisoire: boolean;
+            estGenereeParCloture: boolean;
+            _count?: { lignes?: number };
+          };
+        }>;
+      } | null;
+    };
+    const parCompte = new Map<string, ANouveau[]>();
+    await lireParLots(
+      (curseur) =>
+        this.prisma.ligneEcriture.findMany({
+          ...pageApres(curseur, LOT_LECTURE),
+          where: { compteId: { in: comptes }, ecriture: { tenantId, OR: ECRITURE_D_A_NOUVEAU } },
+          select: {
+            id: true,
+            compteId: true,
+            debit: true,
+            credit: true,
+            deviseId: true,
+            montantDevise: true,
+            dateEcheance: true,
+            libelle: true,
+            ecriture: { select: { date: true, exerciceId: true } },
+            lettrage: {
+              select: {
+                statut: true,
+                solde: true,
+                soldeAt: true,
+                createdAt: true,
+                lignes: {
+                  // ALIGNÉ SUR LA LECTURE DES GROUPES DE LA DÉCLARATION
+                  // (cinquième reprise) · l'instant de saisie (transition) et
+                  // le décompte des lignes d'AVOIR, sans lequel un avoir du
+                  // groupe de l'à-nouveau passait pour un règlement.
+                  select: {
+                    debit: true,
+                    credit: true,
+                    ecriture: {
+                      select: {
+                        date: true,
+                        createdAt: true,
+                        estANouveauProvisoire: true,
+                        estGenereeParCloture: true,
+                        _count: { select: { lignes: { where: FILTRE_LIGNES_D_AVOIR } } },
+                      },
+                    },
+                  },
+                  take: 500,
+                },
+              },
+            },
+          },
+        }) as Promise<ANouveau[]>,
+      (a) => parCompte.set(a.compteId, [...(parCompte.get(a.compteId) ?? []), a]),
+    );
+
+    const candidatsDe = (l: T) => {
+      const c = creanceDe(l);
+      if (!c) return null;
+      const libelle = c.libelle ?? l.ecriture.libelle;
+      return (parCompte.get(c.compteId) ?? []).filter(
+        (a) =>
+          a.ecriture.date > l.ecriture.date &&
+          centimes(a.debit) === centimes(c.debit) &&
+          centimes(a.credit) === centimes(c.credit) &&
+          (a.deviseId ?? null) === (c.deviseId ?? null) &&
+          (a.montantDevise === null || a.montantDevise === undefined ? null : centimes(a.montantDevise)) ===
+            (c.montantDevise === null || c.montantDevise === undefined ? null : centimes(c.montantDevise)) &&
+          (a.dateEcheance?.getTime() ?? null) === (c.dateEcheance?.getTime() ?? null) &&
+          (a.libelle ?? '').endsWith(libelle),
+      );
+    };
+    // Une ligne d'à-nouveau que deux factures revendiquent n'appartient à
+    // aucune des deux.
+    const revendications = new Map<string, number>();
+    const candidats = new Map<T, ANouveau[]>();
+    for (const l of lignes) {
+      const cs = candidatsDe(l);
+      if (!cs) continue;
+      candidats.set(l, cs);
+      for (const a of cs) revendications.set(a.id, (revendications.get(a.id) ?? 0) + 1);
+    }
+
+    return lignes.map((l) => {
+      const c = creanceDe(l);
+      if (!c) return l;
+      const sensFacture = Number(c.debit) - Number(c.credit);
+      const engage = Math.abs(sensFacture);
+      let cs = candidats.get(l) ?? [];
+      const parExercice = new Map<string, number>();
+      for (const a of cs) parExercice.set(a.ecriture.exerciceId, (parExercice.get(a.ecriture.exerciceId) ?? 0) + 1);
+      if ([...parExercice.values()].some((n) => n > 1) || cs.some((a) => (revendications.get(a.id) ?? 0) > 1)) cs = [];
+      /*
+        UNE SEULE LIGNE D'À-NOUVEAU LETTRÉE · son groupe RÉEL est lu, tel que
+        `main` lirait celui d'une facture de l'exercice (quatrième reprise) ·
+        un groupe qui réunit aussi la facture F1 de N+1 se lit par la règle
+        de `main`, et le règlement n'est jamais compté deux fois (une fois
+        pour F0 par un groupe reconstitué, une fois pour F1 par le groupe
+        réel). La facture de N, elle, n'a jamais été lettrée · son groupe est
+        réputé né après toute liquidation (transition).
+      */
+      const lettrees = cs.filter((a) => a.lettrage);
+      if (lettrees.length === 1) {
+        const g = lettrees[0].lettrage!;
+        const groupeReel = { statut: g.statut, solde: g.solde, soldeAt: g.soldeAt, createdAt: new Date(8.64e15), lignes: g.lignes };
+        return {
+          ...l,
+          ecriture: { ...l.ecriture, lignes: l.ecriture.lignes.map((x) => (x === c ? { ...x, lettrage: groupeReel } : x)) },
+        };
+      }
+      // Plusieurs exercices de report lettrés · reconstitués ensemble, et
+      // seulement si aucun de leurs groupes ne réunit d'autres factures.
+      if (lettrees.some((a) => partageSonLettrage({ debit: a.debit, credit: a.credit, lettrage: a.lettrage }))) return l;
+      const reglements = [
+        ...cs.flatMap((a) =>
+          (a.lettrage?.lignes ?? []).filter((g) => {
+            const sens = Number(g.debit) - Number(g.credit);
+            const aNouveau = g.ecriture.estANouveauProvisoire || g.ecriture.estGenereeParCloture;
+            return Math.abs(sens) > EPSILON && sens > 0 !== sensFacture > 0 && !aNouveau;
+          }),
+        ),
+      ];
+      if (reglements.length === 0) return l;
+      const paye = reglements.reduce((t, g) => t + Math.abs(Number(g.debit) - Number(g.credit)), 0);
+      const reste = Math.max(0, engage - paye);
+      const groupe = {
+        statut: reste <= EPSILON ? 'SOLDE' : 'PARTIEL',
+        solde: sensFacture > 0 ? reste : -reste,
+        soldeAt: null,
+        createdAt: new Date(8.64e15),
+        lignes: [{ debit: c.debit, credit: c.credit, ecriture: { date: l.ecriture.date } }, ...reglements],
+      };
+      return {
+        ...l,
+        ecriture: { ...l.ecriture, lignes: l.ecriture.lignes.map((x) => (x === c ? { ...x, lettrage: groupe } : x)) },
+      };
+    });
   }
 
   /**
@@ -1997,6 +2607,212 @@ export class TauxTvaService {
     // Une seule lecture pour deux usages · le crédit reportable de l'art. 63
     // et la fenêtre de report des avoirs de l'art. 52 partent tous deux de la
     // dernière liquidation comptabilisée avant la période.
+    // LES LIQUIDATIONS DU DOSSIER ET CE QU'ELLES ONT FIGÉ (ligne A7 bis) ·
+    // lues une fois, pour la répartition à l'encaissement
+    // (`repartirEncaissement`). Bornées par le dossier ; une liquidation par
+    // période au plus, jamais deux sur le même jour.
+    const liquidationsLues: LiquidationEncaissement[] = (
+      await this.prisma.liquidationTva.findMany({
+        where: { tenantId },
+        select: { id: true, dateDebut: true, dateFin: true, createdAt: true, tvaEncaissementFigee: true },
+        orderBy: { dateDebut: 'asc' },
+      })
+    ).map((l) => ({
+      id: l.id,
+      dateDebut: l.dateDebut,
+      dateFin: l.dateFin,
+      createdAt: l.createdAt,
+      figee: (l.tvaEncaissementFigee as Record<string, number> | null) ?? null,
+    }));
+    const liquidationExacte =
+      liquidationsLues.find((l) => l.dateDebut.getTime() === dateDebut.getTime() && l.dateFin.getTime() === dateFin.getTime()) ?? null;
+    /*
+      CE QUE LES DONNÉES NE PERMETTENT PAS DE RECONSTITUER EST NOMMÉ
+      (cinquième reprise). Aucune colonne ne date l'entrée d'une ligne dans un
+      groupe de lettrage, ni sa sortie · un paiement saisi avant une
+      liquidation de l'ancien moteur et lettré APRÈS elle (« compléter »), ou
+      délettré après elle, change le groupe que l'ancien moteur a lu sans que
+      `declareParAncienMoteur` le voie. Le SEUL signal fiable du schéma est le
+      journal d'audit, qui garde tout acte sur un `Lettrage` (MODELES_AUDITES)
+      · une MODIFICATION qui change le reste (`solde`) d'un groupe lu, ou la
+      SUPPRESSION d'un groupe né avant la liquidation sur le compte du tiers,
+      postérieures à la liquidation, rendent la reconstitution INCERTAINE.
+      Elle n'est pas corrigée, elle est NOMMÉE, montant reconstitué compris,
+      à vérifier contre la déclaration déposée.
+    */
+    const modificationsDeGroupe = new Map<string, Date[]>();
+    const suppressionsParCompte = new Map<string, Array<{ le: Date; creeLe: Date | null }>>();
+    const anciennes = liquidationsLues.filter((l) => !l.figee);
+    if (anciennes.length > 0) {
+      const depuis = new Date(Math.min(...anciennes.map((l) => l.createdAt.getTime())));
+      await lireParLots(
+        (curseur) =>
+          this.prisma.evenementAudit.findMany({
+            ...pageApres(curseur, LOT_LECTURE),
+            where: { tenantId, entite: 'Lettrage', action: { in: ['MODIFICATION', 'SUPPRESSION'] }, horodatage: { gt: depuis } },
+            select: { id: true, action: true, entiteId: true, horodatage: true, avant: true, apres: true },
+          }),
+        (e) => {
+          const avant = (e.avant ?? null) as { solde?: unknown; compteId?: string; createdAt?: string } | null;
+          const apres = (e.apres ?? null) as { solde?: unknown; filtre?: { id?: string } } | null;
+          if (e.action === 'SUPPRESSION') {
+            if (!avant?.compteId) return;
+            const liste = suppressionsParCompte.get(avant.compteId) ?? [];
+            liste.push({ le: e.horodatage, creeLe: avant.createdAt ? new Date(avant.createdAt) : null });
+            suppressionsParCompte.set(avant.compteId, liste);
+            return;
+          }
+          // Opération de masse (`updateMany`) · le groupe se lit dans le filtre.
+          const groupeId = e.entiteId ?? apres?.filtre?.id ?? null;
+          if (!groupeId) return;
+          // Seul un changement du RESTE dit qu'une ligne est entrée ou sortie ·
+          // un verrou posé ne touche pas au solde. Sans état avant, incertain.
+          if (avant && apres && 'solde' in apres && Number(avant.solde) === Number(apres.solde)) return;
+          modificationsDeGroupe.set(groupeId, [...(modificationsDeGroupe.get(groupeId) ?? []), e.horodatage]);
+        },
+      );
+    }
+    const PLAFOND_INCERTAINES = 100;
+    const reconstitutionsIncertaines: Array<{ facture: string; dateDebut: string; dateFin: string; montantReconstitue: number }> = [];
+    let reconstitutionsIncertainesTotal = 0;
+    const incertainesVues = new Set<string>();
+    // Ce que CETTE période déclare à l'encaissement, ligne par ligne · la
+    // liquidation le fige (`comptabiliserLiquidation`).
+    const figeEncaissement: Record<string, number> = {};
+
+    /*
+      LE RECOUVREMENT D'UNE CRÉANCE DOUTEUSE EST L'ENCAISSEMENT DE SES FACTURES
+      DÉSIGNÉES (ligne A7 bis, partie 1). O.-L. n° 10/001, art. 25, 2° ; décret
+      n° 011/42, art. 57, « l'encaissement s'entend de la perception des
+      sommes, à quelque titre que ce soit ». Le reclassement ne lettre pas le
+      compte du client (A7 ter) · c'est la désignation du cabinet
+      (`FactureCreanceDouteuse`) qui relie la facture au recouvrement du
+      module (D trésorerie / C 416). Chaque recouvrement NON ANNULÉ et VALIDÉ
+      (F25) encaisse la part désignée au prorata de ce qu'il recouvre sur le
+      montant reclassé, à sa date · une tranche par recouvrement. Une PERTE
+      (D 651 / C 416) n'est pas un encaissement · la taxe reste en attente, et
+      sa récupération relève de l'art. 52 (partie 2 de la ligne). Une créance
+      annulée ne désigne plus rien.
+    */
+    const recouvrementsParLigne = new Map<string, Array<{ date: Date; montant: number }>>();
+    const filtreRecouvrement = {
+      type: TypeMouvementCreanceDouteuse.RECOUVREMENT,
+      annuleeLe: null,
+      ecriture: { statut: StatutEcriture.VALIDEE },
+    };
+    // Chaque désignation ACTIVE, avec sa créance · pour rattacher ses
+    // recouvrements à la facture, et NOMMER ceux qu'aucune ligne de TVA lue ne
+    // reçoit (un recouvrement ne disparaît jamais en silence).
+    type DesignationLue = {
+      ligneEcritureId: string;
+      montant: number;
+      creanceId: string;
+      compte: string;
+      dateReclassement: string;
+      reclasse: number;
+      recouvrements: Array<{ date: Date; montant: number }>;
+    };
+    const designationsLues: DesignationLue[] = [];
+    // Une créance ne porte jamais des centaines de recouvrements · la borne
+    // tient la lecture (§ 8 bis), et l'atteindre est dit (`tronque`).
+    const PLAFOND_RECOUVREMENTS = 500;
+    let recouvrementsTronques = false;
+    await lireParLots(
+      (curseur) =>
+        this.prisma.factureCreanceDouteuse.findMany({
+          ...pageApres(curseur, LOT_LECTURE),
+          where: { tenantId, retireeLe: null, creance: { annuleeLe: null } },
+          select: {
+            id: true,
+            ligneEcritureId: true,
+            montant: true,
+            creance: {
+              select: {
+                id: true,
+                montant: true,
+                dateReclassement: true,
+                compteCreance: { select: { numero: true, intitule: true } },
+                mouvements: { where: filtreRecouvrement, select: { date: true, montant: true }, orderBy: { date: 'asc' }, take: PLAFOND_RECOUVREMENTS },
+              },
+            },
+          },
+        }),
+      (f) => {
+        const reclasse = Number(f.creance.montant);
+        if (reclasse <= EPSILON) return;
+        if (f.creance.mouvements.length >= PLAFOND_RECOUVREMENTS) recouvrementsTronques = true;
+        const parts = f.creance.mouvements.map((m) => ({
+          date: m.date,
+          montant: TauxTvaService.c((Number(f.montant) * Number(m.montant)) / reclasse),
+        }));
+        designationsLues.push({
+          ligneEcritureId: f.ligneEcritureId,
+          montant: Number(f.montant),
+          creanceId: f.creance.id,
+          compte: `${f.creance.compteCreance.numero} ${f.creance.compteCreance.intitule}`,
+          dateReclassement: f.creance.dateReclassement.toISOString().slice(0, 10),
+          reclasse,
+          recouvrements: parts,
+        });
+        if (parts.length > 0) recouvrementsParLigne.set(f.ligneEcritureId, [...(recouvrementsParLigne.get(f.ligneEcritureId) ?? []), ...parts]);
+      },
+    );
+    // Les lignes désignées qu'une ligne de TVA lue a reçues · posé par
+    // `traiter`, lu après lui.
+    const lignesRattachees = new Set<string>();
+    // Les lignes désignées dont le groupe de lettrage réunit d'autres factures.
+    const lignesPartagees = new Set<string>();
+    // Les recouvrements de la période qu'aucune facture désignée ne porte ·
+    // NOMMÉS, jamais tus (§ 10 bis). Bornés, et le total le dit (§ 8 bis).
+    const PLAFOND_SANS_FACTURE = 200;
+    const filtreCreanceRecouvree = {
+      annuleeLe: null,
+      mouvements: { some: { ...filtreRecouvrement, date: { gte: dateDebut, lte: dateFin } } },
+    };
+    const [creancesRecouvrees, creancesRecouvreesTotal] = await Promise.all([
+      this.prisma.creanceDouteuse.findMany({
+        where: { tenantId, ...filtreCreanceRecouvree },
+        orderBy: { dateReclassement: 'asc' },
+        take: PLAFOND_SANS_FACTURE,
+        select: {
+          id: true,
+          dateReclassement: true,
+          montant: true,
+          compteCreance: { select: { numero: true, intitule: true } },
+          factures: { where: { retireeLe: null }, select: { montant: true }, take: 200 },
+          mouvements: {
+            where: { ...filtreRecouvrement, date: { gte: dateDebut, lte: dateFin } },
+            select: { montant: true },
+            take: PLAFOND_RECOUVREMENTS,
+          },
+        },
+      }),
+      this.prisma.creanceDouteuse.count({ where: { tenantId, ...filtreCreanceRecouvree } }),
+    ]);
+    type SansFacture = {
+      creanceId: string;
+      compte: string;
+      dateReclassement: string;
+      recouvre: number;
+      recouvreSansFacture: number;
+      /** Pourquoi la TVA n'est pas rattachée · dit, jamais deviné. */
+      motifs: string[];
+    };
+    const sansFacture = new Map<string, SansFacture>();
+    for (const c of creancesRecouvrees) {
+      const reclasse = Number(c.montant);
+      const designe = c.factures.reduce((t, f) => t + Number(f.montant), 0);
+      const recouvre = TauxTvaService.c(c.mouvements.reduce((t, m) => t + Number(m.montant), 0));
+      const nonDesigne = reclasse > EPSILON ? TauxTvaService.c((recouvre * Math.max(0, reclasse - designe)) / reclasse) : 0;
+      sansFacture.set(c.id, {
+        creanceId: c.id,
+        compte: `${c.compteCreance.numero} ${c.compteCreance.intitule}`,
+        dateReclassement: c.dateReclassement.toISOString().slice(0, 10),
+        recouvre,
+        recouvreSansFacture: nonDesigne,
+        motifs: nonDesigne > EPSILON ? [MOTIF_SANS_FACTURE_DESIGNEE] : [],
+      });
+    }
     const derniereLiquidation = await this.prisma.liquidationTva.findFirst({
       where: { tenantId, dateFin: { lt: dateDebut } },
       orderBy: { dateFin: 'desc' },
@@ -2067,6 +2883,10 @@ export class TauxTvaService {
           ecriture: {
             select: {
               date: true,
+              libelle: true,
+              // L'instant de SAISIE · une écriture saisie après une liquidation
+              // de l'ancien moteur n'a pas été déclarée par elle.
+              createdAt: true,
               // LA PIÈCE RATTACHÉE À L'ÉCRITURE, lue pour deux questions.
               // Sa NATURE justifie un avoir sur vente (décret n° 011/42,
               // art. 127) · une note de crédit est la pièce que le texte
@@ -2091,6 +2911,13 @@ export class TauxTvaService {
                   OR: [
                     { compte: { classe: ClasseCompte.CLASSE_4 }, lettrageId: { not: null } },
                     { compte: { classe: ClasseCompte.CLASSE_4, tiersCompte: { isNot: null } } },
+                    // CRÉANCE OU DETTE NON LETTRÉE ET TRÉSORERIE (ligne A7
+                    // bis) · elles disent si une prestation a été réglée dans
+                    // l'écriture même ou attend son règlement (art. 25, 2°) ;
+                    // un 411 collectif sans tiers rattaché compte aussi. Les
+                    // 44 (taxes, État) n'en disent rien.
+                    { compte: { classe: ClasseCompte.CLASSE_4, NOT: { numero: { startsWith: '44' } } } },
+                    { compte: { classe: ClasseCompte.CLASSE_5 } },
                     { compte: { classe: ClasseCompte.CLASSE_6 } },
                     // CONTREPARTIES DE PRODUIT ET D'IMMOBILISATION · elles ne
                     // servent qu'à une seule question, mais elle est lourde :
@@ -2103,8 +2930,18 @@ export class TauxTvaService {
                   ],
                 },
                 select: {
+                  id: true,
                   debit: true,
                   credit: true,
+                  // De quoi retrouver la ligne d'à-nouveau qui reporte une
+                  // créance non lettrée (`relierAuxANouveaux`) · le report
+                  // Détail recopie compte, montants, devise, échéance et
+                  // libellé.
+                  compteId: true,
+                  deviseId: true,
+                  montantDevise: true,
+                  dateEcheance: true,
+                  libelle: true,
                   compte: {
                     select: {
                       numero: true,
@@ -2140,11 +2977,32 @@ export class TauxTvaService {
                   // date l'encaissement (décret art. 57).
                   lettrage: {
                     select: {
+                      // Son identifiant · les actes du journal d'audit le désignent.
+                      id: true,
                       statut: true,
                       solde: true,
                       soldeAt: true,
+                      // L'instant où le groupe est né · la transition le
+                      // confronte à celui d'une liquidation de l'ancien
+                      // moteur (`repartirEncaissement`).
+                      createdAt: true,
                       lignes: {
-                        select: { debit: true, credit: true, ecriture: { select: { date: true } } },
+                        // L'instant de SAISIE de chaque ligne · la transition
+                        // reconstitue le groupe tel que l'ancien moteur l'a lu
+                        // (`declareParAncienMoteur`).
+                        select: {
+                          debit: true,
+                          credit: true,
+                          ecriture: {
+                            select: {
+                              date: true,
+                              createdAt: true,
+                              // Un AVOIR (TVA facturée reprise, ou déduite
+                              // reprise) · jamais une perception.
+                              _count: { select: { lignes: { where: FILTRE_LIGNES_D_AVOIR } } },
+                            },
+                          },
+                        },
                       },
                     },
                   },
@@ -2261,9 +3119,11 @@ export class TauxTvaService {
     // CHAQUE LIGNE TRAITÉE À SON ARRIVÉE, puis oubliée (audit final F188) ·
     // seuls les cumuls survivent à la tranche qui les a nourris.
     if (taux.length > 0) {
-      await lireParLots(
-        lire,
-        (l) => {
+      type LigneLue = Awaited<ReturnType<typeof lire>>[number];
+      // Les prestations dont la créance n'est lettrée dans leur exercice
+      // qu'à travers sa ligne d'à-nouveau · traitées une fois le lien lu.
+      const aRelier: LigneLue[] = [];
+      const traiter = (l: LigneLue, relie: boolean) => {
           const cumul = l.tauxTvaId ? parTaux.get(l.tauxTvaId) : undefined;
           if (!cumul) return;
           const estCollecte = l.compte.numero.startsWith(RACINE_COLLECTEE);
@@ -2363,6 +3223,41 @@ export class TauxTvaService {
             fournisseur.autorise,
             contreparties,
           );
+          // CE QUI RESTE À RÉGLER DANS L'ÉCRITURE MÊME (ligne A7 bis) · la
+          // créance ou la dette non lettrée, et ce qui a été perçu ou versé
+          // dans l'écriture (trésorerie, avance imputée). Voir `exigibilite`.
+          const nonLettre = { creance: 0, immediat: 0 };
+          for (const x of l.ecriture.lignes) {
+            const classe = x.compte?.classe;
+            const numero = x.compte?.numero ?? '';
+            // Dans le sens de la facture · débit chez le client, crédit chez
+            // le fournisseur ; la trésorerie, dans le sens de l'encaissement
+            // (débit sur une vente, crédit sur un achat).
+            const sens = estCollecte ? Number(x.debit) - Number(x.credit) : Number(x.credit) - Number(x.debit);
+            if (sens <= EPSILON) continue;
+            if (classe === ClasseCompte.CLASSE_5) {
+              nonLettre.immediat += sens;
+            } else if (classe === ClasseCompte.CLASSE_4 && !x.lettrage && !numero.startsWith('44')) {
+              // 419 et 409 · avances déjà perçues ou versées, imputées sur la
+              // facture (comptes « clients créditeurs » et « fournisseurs
+              // débiteurs » des deux plans).
+              if (numero.startsWith(estCollecte ? '419' : '409')) nonLettre.immediat += sens;
+              else nonLettre.creance += sens;
+            }
+          }
+          /*
+            LA CRÉANCE D'UN EXERCICE CLOS SE RÈGLE PAR SA LIGNE D'À-NOUVEAU
+            (constat d'A6 bis repris en A7 bis) · au mode Détail, un règlement
+            de N+1 se lettre avec la ligne de report de la facture de N, jamais
+            avec la facture (`lettrages-a-cheval.ts`, règle 2). La facture
+            reste non lettrée dans N · lue seule, sa taxe attendrait un
+            encaissement déjà reçu. Elle est mise de côté et traitée une fois
+            son à-nouveau relu (`relierAuxANouveaux`).
+          */
+          if (base === 'ENCAISSEMENT' && !relie && lignesTiers.length === 0 && nonLettre.creance > EPSILON) {
+            aRelier.push(l);
+            return;
+          }
           if (nature === 'INDETERMINEE' && dansLaPeriode) montantIndetermine += montant;
           if (estCollecte && nature === 'SERVICES' && regimeLigne === 'DEBITS' && dansLaPeriode) {
             collecteServicesDebits += montant;
@@ -2429,23 +3324,72 @@ export class TauxTvaService {
             base === 'FAIT_GENERATEUR' &&
             nature === 'SERVICES' &&
             (estCollecte ? regimeLigne === 'DEBITS' : fournisseur.autorise);
-          const tranches: Array<{ date: Date | null; fraction: number; auPaiement?: boolean }> =
+          let tranches: Array<{ date: Date | null; fraction: number; auPaiement?: boolean }> =
             base === 'FAIT_GENERATEUR'
               ? auxDebits
                 ? TauxTvaService.tranchesAuxDebits(lignesTiers, dateEcriture)
                 : [{ date: dateEcriture, fraction: 1 }]
-              : [this.exigibilite(l, lignesTiers, l.ecriture.date)];
-
-          // Part facturée sur la période et pas encore exigible · c'est le chiffre
-          // qui explique l'écart entre le chiffre d'affaires et la déclaration, et
-          // sans lequel le régime paraît perdre de la TVA.
-          if (estCollecte && base === 'ENCAISSEMENT' && dansLaPeriode) {
-            cumul.attente = TauxTvaService.c(cumul.attente + montant * (1 - tranches[0].fraction));
+              : this.exigibilite(l, lignesTiers, l.ecriture.date, nonLettre);
+          /*
+            LES RECOUVREMENTS DES LIGNES DÉSIGNÉES (A7 bis, troisième reprise)
+            · rattachés par l'IDENTIFIANT de chaque ligne désignée de
+            l'écriture, quel qu'en soit le nombre (deux échéances) et quel que
+            soit leur lettrage (groupe partagé par plusieurs factures). Chaque
+            recouvrement prend, à sa date, sa part sur le TTC de la facture,
+            dans la limite de ce qui reste en attente · la taxe ne passe jamais
+            100 %. Lus après le lettrage, ils n'en modifient aucun groupe.
+          */
+          /*
+            UNE LIGNE DÉSIGNÉE QUI PARTAGE SON LETTRAGE AVEC D'AUTRES FACTURES
+            (quatrième reprise, décision du coordinateur) · aucun texte ne dit
+            comment un groupe partiel se répartit entre ses factures, et OmegaX
+            ne le devine pas · ses recouvrements ne sont PAS rattachés, ils
+            sont NOMMÉS (`recouvrementsSansFactureDesignee`, motif dit), TVA à
+            déclarer par le cabinet. Le lettrage, lui, n'est jamais refusé.
+          */
+          const designees = l.ecriture.lignes.filter((x) => {
+            if (!recouvrementsParLigne.has(x.id)) return false;
+            if (partageSonLettrage(x)) {
+              lignesPartagees.add(x.id);
+              return false;
+            }
+            return true;
+          });
+          for (const x of designees) lignesRattachees.add(x.id);
+          if (base === 'ENCAISSEMENT' && designees.length > 0) {
+            const ttc = l.ecriture.lignes.reduce((t, x) => {
+              const numero = x.compte?.numero ?? '';
+              const sens = estCollecte ? Number(x.debit) - Number(x.credit) : Number(x.credit) - Number(x.debit);
+              const tiersOuTresorerie =
+                (x.compte?.classe === ClasseCompte.CLASSE_4 && !numero.startsWith('44')) || x.compte?.classe === ClasseCompte.CLASSE_5;
+              return tiersOuTresorerie && sens > EPSILON ? t + sens : t;
+            }, 0);
+            let disponible = tranches.filter((t) => !t.date).reduce((t, x) => t + x.fraction, 0);
+            const recouvrements = designees.flatMap((x) => recouvrementsParLigne.get(x.id) ?? []).sort((a, b) => a.date.getTime() - b.date.getTime());
+            if (ttc > EPSILON && disponible > EPSILON) {
+              const datees = tranches.filter((t) => t.date);
+              for (const r of recouvrements) {
+                const f = Math.min(r.montant / ttc, disponible);
+                if (f <= EPSILON) continue;
+                disponible -= f;
+                datees.push({ date: r.date, fraction: f });
+              }
+              tranches = disponible > EPSILON ? [...datees, { date: null, fraction: disponible }] : datees;
+            }
           }
+
           // Une tranche unique garde l'arrondi d'avant ; plusieurs tranches se
           // répartissent au centime, la dernière recevant le reste, pour que la
           // somme des parts rende la taxe de la ligne exactement.
           const montants = TauxTvaService.montantsDesTranches(montant, tranches);
+          // Part facturée sur la période et pas encore exigible · c'est le chiffre
+          // qui explique l'écart entre le chiffre d'affaires et la déclaration, et
+          // sans lequel le régime paraît perdre de la TVA. Une prestation dont la
+          // créance n'est réglée par rien y figure EN ENTIER (art. 25, 2°).
+          if (estCollecte && base === 'ENCAISSEMENT' && dansLaPeriode) {
+            const enAttente = tranches.reduce((t, x, i) => (x.date ? t : t + montants[i]), 0);
+            cumul.attente = TauxTvaService.c(cumul.attente + enAttente);
+          }
           /*
             LA FACTURE D'ACHAT DATÉE À SA RÉCEPTION (ligne A21). Son écriture
             prend la date de réception (AUDCIF art. 16, al. 2) · la taxe y est
@@ -2474,12 +3418,84 @@ export class TauxTvaService {
             !estCollecte && base === 'FAIT_GENERATEUR' && l.ecriture.facture?.sens === SensFacture.ACHAT && l.ecriture.facture.dateReception
               ? l.ecriture.facture
               : null;
-          tranches.forEach(({ date, auPaiement }, i) => {
-            const exigible = montants[i];
-            const dateDuDelai = date && factureRecue && !auPaiement && factureRecue.dateFacture < date ? factureRecue.dateFacture : date;
-            if (!estCollecte && dateDuDelai && dateDuDelai < limiteDecheance) {
-              tvaDeductibleDechue = TauxTvaService.c(tvaDeductibleDechue + exigible);
-              if (dateDuDelai !== date) return;
+          /*
+            DATÉE À L'ENCAISSEMENT, LA TAXE PASSE PAR LA RÉPARTITION (ligne A7
+            bis) · ce qu'une liquidation a déclaré reste déclaré, ce qu'elle
+            n'a pas porté est reporté une fois, et rien ne l'est deux fois.
+            Voir `repartirEncaissement`. Une période qui EST une liquidation
+            montre ce qu'elle a liquidé.
+          */
+          type AImputer = { date: Date | null; exigible: number; auPaiement?: boolean; reparti?: boolean };
+          let aImputer: AImputer[];
+          if (base === 'ENCAISSEMENT') {
+            const datees = tranches
+              .map((t, i) => ({ date: t.date, montant: montants[i] }))
+              .filter((t): t is { date: Date; montant: number } => !!t.date && t.montant > EPSILON);
+            // La déchéance de l'art. 37 al. 2 se compte, comme avant, sur la
+            // date RÉELLE de l'exigibilité · un report ne la rajeunit pas.
+            if (!estCollecte) {
+              for (const t of datees) {
+                if (t.date < limiteDecheance) tvaDeductibleDechue = TauxTvaService.c(tvaDeductibleDechue + t.montant);
+              }
+            }
+            const repartition = TauxTvaService.repartirEncaissement({
+              ligneId: l.id,
+              montant,
+              dateEcriture,
+              tranches: datees,
+              liquidations: liquidationsLues,
+              declareParAncienMoteur: (liq) =>
+                TauxTvaService.declareParAncienMoteur(lignesTiers, montant, dateEcriture, liq, l.ecriture.createdAt as Date | undefined),
+            });
+            // Les reconstitutions incertaines de l'ancien moteur, NOMMÉES.
+            for (const liq of anciennes) {
+              const T = liq.createdAt;
+              const saisie = l.ecriture.createdAt as Date | undefined;
+              if (dateEcriture > liq.dateFin || (saisie && saisie > T)) continue;
+              const groupeTouche = lignesTiers.some((x) => {
+                const g = x.lettrage as { id?: string; createdAt?: Date } | null;
+                if (!g?.id || (g.createdAt && g.createdAt > T)) return false;
+                return (modificationsDeGroupe.get(g.id) ?? []).some((d) => d > T);
+              });
+              const groupeSupprime = l.ecriture.lignes.some(
+                (x) =>
+                  x.compte?.classe === ClasseCompte.CLASSE_4 &&
+                  (suppressionsParCompte.get(x.compteId) ?? []).some((sup) => sup.le > T && (!sup.creeLe || sup.creeLe <= T)),
+              );
+              if (!groupeTouche && !groupeSupprime) continue;
+              const cle = `${l.id}|${liq.id}`;
+              if (incertainesVues.has(cle)) continue;
+              incertainesVues.add(cle);
+              reconstitutionsIncertainesTotal++;
+              if (reconstitutionsIncertaines.length < PLAFOND_INCERTAINES) {
+                reconstitutionsIncertaines.push({
+                  facture: l.ecriture.libelle,
+                  dateDebut: liq.dateDebut.toISOString().slice(0, 10),
+                  dateFin: liq.dateFin.toISOString().slice(0, 10),
+                  montantReconstitue: repartition.parLiquidation.get(liq.id) ?? 0,
+                });
+              }
+            }
+            const parts = liquidationExacte
+              ? [{ date: dateDebut, montant: repartition.parLiquidation.get(liquidationExacte.id) ?? 0, origine: dateDebut }]
+              : repartition.libres.filter((x) => x.date >= dateDebut && x.date <= dateFin);
+            aImputer = [];
+            for (const x of parts) {
+              if (x.montant <= EPSILON) continue;
+              if (!estCollecte && !liquidationExacte && x.origine < limiteDecheance) continue;
+              if (!liquidationExacte) figeEncaissement[l.id] = TauxTvaService.c((figeEncaissement[l.id] ?? 0) + x.montant);
+              aImputer.push({ date: x.date, exigible: x.montant, reparti: true });
+            }
+          } else {
+            aImputer = tranches.map((t, i) => ({ date: t.date, exigible: montants[i], auPaiement: t.auPaiement }));
+          }
+          aImputer.forEach(({ date, exigible, auPaiement, reparti }) => {
+            if (!reparti) {
+              const dateDuDelai = date && factureRecue && !auPaiement && factureRecue.dateFacture < date ? factureRecue.dateFacture : date;
+              if (!estCollecte && dateDuDelai && dateDuDelai < limiteDecheance) {
+                tvaDeductibleDechue = TauxTvaService.c(tvaDeductibleDechue + exigible);
+                if (dateDuDelai !== date) return;
+              }
             }
             if (!date || date < dateDebut || date > dateFin) return;
             if (auPaiement) {
@@ -2505,10 +3521,33 @@ export class TauxTvaService {
             const v = suivi(l.tauxTvaId!, l.compteId);
             v.deductible = TauxTvaService.c(v.deductible + exigible - exclu);
           });
-        },
-        LOT_ECRITURES,
-      );
+      };
+      await lireParLots(lire, (l) => traiter(l, false), LOT_ECRITURES);
+      for (const l of await this.relierAuxANouveaux(tenantId, aRelier)) traiter(l, true);
     }
+
+    // UN RECOUVREMENT QU'AUCUNE LIGNE DE TVA N'A REÇU EST NOMMÉ (troisième
+    // reprise) · facture sans TVA lue, ou rattachement impossible. Il rejoint
+    // la liste des recouvrements sans facture, pour sa part de la période.
+    const horsListe = new Set<string>();
+    for (const d of designationsLues) {
+      if (lignesRattachees.has(d.ligneEcritureId)) continue;
+      const dansPeriode = d.recouvrements.filter((r) => r.date >= dateDebut && r.date <= dateFin).reduce((t, r) => t + r.montant, 0);
+      if (dansPeriode <= EPSILON) continue;
+      // Une créance hors de la liste lue (bornée) · son recouvré se cumule ici.
+      if (!sansFacture.has(d.creanceId)) {
+        horsListe.add(d.creanceId);
+        sansFacture.set(d.creanceId, { creanceId: d.creanceId, compte: d.compte, dateReclassement: d.dateReclassement, recouvre: 0, recouvreSansFacture: 0, motifs: [] });
+      }
+      const e = sansFacture.get(d.creanceId)!;
+      if (horsListe.has(d.creanceId)) e.recouvre = TauxTvaService.c(e.recouvre + dansPeriode);
+      e.recouvreSansFacture = TauxTvaService.c(e.recouvreSansFacture + dansPeriode);
+      const motif = lignesPartagees.has(d.ligneEcritureId) ? MOTIF_LETTRAGE_PARTAGE : MOTIF_SANS_LIGNE_DE_TVA;
+      if (!e.motifs.includes(motif)) e.motifs.push(motif);
+      sansFacture.set(d.creanceId, e);
+    }
+    const recouvrementsSansFactureDesignee = [...sansFacture.values()].filter((c) => c.recouvreSansFacture > EPSILON);
+    const recouvrementsSansFactureTronque = recouvrementsTronques || creancesRecouvreesTotal > PLAFOND_SANS_FACTURE;
 
     const lignes = [];
     let enAttente = 0;
@@ -2605,6 +3644,9 @@ export class TauxTvaService {
         tvaDeductibleDechue,
         recettesNonQualifiees: prorata.recettesNonQualifiees,
         tvaAuBrouillard,
+        recouvrementsSansFactureDesignee,
+        reconstitutionsIncertaines,
+        reconstitutionsIncertainesTotal,
       }),
       /** TVA d'écritures au brouillard datées de la période · hors déclaration. */
       tvaAuBrouillard,
@@ -2635,6 +3677,28 @@ export class TauxTvaService {
       tvaNatureDepenseIllisible,
       /** TVA d'amont dont le délai de déduction est expiré (art. 37 al. 2). */
       tvaDeductibleDechue,
+      /**
+       * Ce que la période déclare à l'encaissement, ligne de TVA par ligne de
+       * TVA (ligne A7 bis) · figé par la liquidation, retiré par le contrôleur
+       * (il ne dirait rien à l'écran et pèserait autant que la période).
+       */
+      figeEncaissement,
+      /**
+       * Recouvrements de créances douteuses de la période qu'aucune facture
+       * désignée ne porte (ligne A7 bis) · leur TVA, si elle est exigible à
+       * l'encaissement, est à déclarer par le cabinet.
+       */
+      recouvrementsSansFactureDesignee,
+      /** Créances recouvrées dans la période · la liste ci-dessus en lit 200 au plus (§ 8 bis). */
+      creancesRecouvreesTotal,
+      recouvrementsSansFactureTronque,
+      /**
+       * Liquidations de l'ancien moteur dont la reconstitution est INCERTAINE
+       * pour une facture (lettrage modifié ou défait après elles, journal
+       * d'audit) · à vérifier contre la déclaration déposée. 100 au plus.
+       */
+      reconstitutionsIncertaines,
+      reconstitutionsIncertainesTotal,
       /** Net de la seule période, avant report du crédit antérieur. */
       netAvantImputation,
       /** Crédit de TVA venu de la dernière liquidation (art. 63). */
@@ -2677,6 +3741,9 @@ export class TauxTvaService {
    * où l'écran les lirait.
    */
   private mentionExigibilite(e: {
+    reconstitutionsIncertaines?: ReadonlyArray<{ facture: string; dateDebut: string; dateFin: string; montantReconstitue: number }>;
+    reconstitutionsIncertainesTotal?: number;
+    recouvrementsSansFactureDesignee?: ReadonlyArray<{ compte: string; dateReclassement: string; recouvre: number; recouvreSansFacture: number; motifs?: string[] }>;
     regime: string;
     referentiel: Referentiel | undefined;
     montantIndetermine: number;
@@ -2731,7 +3798,52 @@ export class TauxTvaService {
     const nommes = (noms: readonly string[]) =>
       noms.length <= 8 ? noms.join(', ') : `${noms.slice(0, 8).join(', ')} et ${noms.length - 8} autre(s)`;
     const brouillard = e.tvaAuBrouillard;
+    // A7 BIS · un recouvrement de créance douteuse sans facture désignée ·
+    // OmegaX ne sait pas quelle vente il encaisse, il le DIT, créance par
+    // créance (§ 10 bis), avec l'issue.
+    const sansFacture = e.recouvrementsSansFactureDesignee ?? [];
+    const phraseSansFacture =
+      sansFacture.length === 0
+        ? []
+        : [
+            'RECOUVREMENT DE CRÉANCE DOUTEUSE SANS FACTURE DÉSIGNÉE · ' +
+              sansFacture
+                .slice(0, 8)
+                .map(
+                  (c) =>
+                    `compte ${c.compte}, créance reclassée le ${c.dateReclassement}, ${fc(c.recouvre)} CDF recouvrés dont ` +
+                    `${fc(c.recouvreSansFacture)} CDF sans facture désignée` +
+                    (c.motifs && c.motifs.length > 0 ? ` (${c.motifs.join(' ; ')})` : ''),
+                )
+                .join(' ; ') +
+              (sansFacture.length > 8 ? ` ; et ${sansFacture.length - 8} autre(s)` : '') +
+              '. Le recouvrement est l’encaissement de la facture reprise (O.-L. n° 10/001, art. 25, 2° ; décret ' +
+              'n° 011/42, art. 57) · si elle porte une prestation de services, TVA à déclarer par le cabinet faute de ' +
+              'facture désignée. Issue · désigner les factures de la créance (Créances douteuses ou litigieuses).',
+          ];
+    const incertaines = e.reconstitutionsIncertaines ?? [];
+    const phraseIncertaines =
+      incertaines.length === 0
+        ? []
+        : [
+            'RECONSTITUTION INCERTAINE · ' +
+              incertaines
+                .slice(0, 8)
+                .map(
+                  (r) =>
+                    `reconstitution incertaine pour la facture « ${r.facture} », liquidation du ${r.dateDebut} au ${r.dateFin} ` +
+                    `(${fc(r.montantReconstitue)} CDF reconstitués), à vérifier contre la déclaration déposée`,
+                )
+                .join(' ; ') +
+              ((e.reconstitutionsIncertainesTotal ?? incertaines.length) > 8
+                ? ` ; et ${(e.reconstitutionsIncertainesTotal ?? incertaines.length) - 8} autre(s)`
+                : '') +
+              '. Un lettrage modifié ou défait après une liquidation antérieure à cette version (journal d’audit) · ce que ' +
+              'l’ancien moteur a lu ne se reconstitue pas avec certitude.',
+          ];
     const phrases: string[] = [
+      ...phraseIncertaines,
+      ...phraseSansFacture,
       ...(brouillard && brouillard.ecritures > 0
         ? [
             `TVA RESTÉE AU BROUILLARD, HORS DE CETTE DÉCLARATION · ${brouillard.ecritures} écriture(s) datée(s) de la ` +
@@ -2748,7 +3860,10 @@ export class TauxTvaService {
         '6057 études, 61 à 63 transports et services extérieurs), et non au numéro du compte de TVA, qui suit la ' +
         'nomenclature comptable et non la loi fiscale. La date de l’encaissement est celle ' +
         'de l’ÉCRITURE DE RÈGLEMENT du groupe de lettrage, jamais celle du lettrage lui-même (décret n° 011/42, ' +
-        'art. 57). DEUX RÉSERVES DU MÊME DÉCRET NE SONT PAS APPLIQUÉES ICI, et elles jouent en sens contraire : ' +
+        'art. 57), chaque règlement pour sa part ; une créance ou une dette NON LETTRÉE n’est pas un encaissement, ' +
+        'sa taxe reste en attente jusqu’au lettrage de son règlement, seul ce qui est réglé dans l’écriture même ' +
+        '(trésorerie, avance imputée) l’étant à sa date. Une période liquidée garde ce qu’elle a déclaré · un ' +
+        'règlement lettré après sa liquidation est repris au premier jour non liquidé. DEUX RÉSERVES DU MÊME DÉCRET NE SONT PAS APPLIQUÉES ICI, et elles jouent en sens contraire : ' +
         'une fourniture sous CONTRAT D’ABONNEMENT à décomptes proportionnels à la consommation est exigible à ' +
         'l’expiration de la période, et non à l’encaissement (art. 55) ; un paiement par EFFET DE COMMERCE est ' +
         'encaissé « à la date de l’échéance de la traite, même si elle a été remise à l’escompte » (art. 57, ' +
@@ -3275,6 +4390,11 @@ export class TauxTvaService {
           ecritureId: ecriture.id,
           net: decl.net,
           prorataApplique: decl.prorata.pourcentage,
+          // CE QUE LA PÉRIODE A DÉCLARÉ À L'ENCAISSEMENT (ligne A7 bis) ·
+          // jamais `null` pour une liquidation passée sous la règle, même
+          // vide, sans quoi elle serait relue comme une liquidation de
+          // l'ancien moteur (transition, voir `repartirEncaissement`).
+          tvaEncaissementFigee: decl.figeEncaissement ?? {},
           createdBy: userId,
         },
       });
@@ -3285,7 +4405,10 @@ export class TauxTvaService {
       throw e;
     }
 
-    return { ecriture, declaration: decl };
+    // Le figé reste au serveur, comme pour la lecture de la déclaration.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { figeEncaissement, ...declaration } = decl;
+    return { ecriture, declaration };
   }
 
   /**
