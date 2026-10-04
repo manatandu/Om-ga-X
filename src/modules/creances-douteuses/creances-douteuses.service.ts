@@ -66,6 +66,7 @@ import {
   PieceJustificativeDto,
   ReclasserCreanceDto,
   RecouvrementCreanceDto,
+  RetirerDesignationDto,
   RevoirDepreciationDto,
 } from './dto/creances-douteuses.dto';
 
@@ -927,11 +928,16 @@ export class CreancesDouteusesService {
         id: true,
         montant: true,
         ligneEcritureId: true,
+        retireeLe: true,
+        motifRetrait: true,
         ligneEcriture: { select: { debit: true, credit: true, ecriture: { select: { date: true, libelle: true, numeroPiece: true } } } },
       },
     });
     return lignes.map((f) => ({
       id: f.id,
+      // Une désignation retirée reste listée, avec sa date et son motif.
+      retireeLe: f.retireeLe ? jour(f.retireeLe) : null,
+      motifRetrait: f.motifRetrait,
       ligneEcritureId: f.ligneEcritureId,
       montant: n(f.montant),
       date: jour(f.ligneEcriture.ecriture.date),
@@ -948,7 +954,11 @@ export class CreancesDouteusesService {
    * liste tronquée le dit.
    */
   async facturesCandidates(tenantId: string, id: string) {
-    const c = await this.creance(tenantId, id);
+    // UNE CRÉANCE ANNULÉE SE LIT ENCORE · ses désignations passées se listent
+    // (`facturesDesignees`), et aucune facture ne lui est plus proposée.
+    const c = await this.prisma.creanceDouteuse.findFirst({ where: { id, tenantId }, select: { compteCreanceId: true, annuleeLe: true } });
+    if (!c) throw new NotFoundException('Créance douteuse introuvable pour ce dossier.');
+    if (c.annuleeLe) return { tronque: false, annulee: true, factures: [] };
     const PLAFOND = 200;
     const lignes = await this.prisma.ligneEcriture.findMany({
       where: { compteId: c.compteCreanceId, debit: { gt: 0 }, ecriture: { tenantId, statut: StatutEcriture.VALIDEE } },
@@ -958,14 +968,15 @@ export class CreancesDouteusesService {
         id: true,
         debit: true,
         credit: true,
-        lettrage: { select: { statut: true, solde: true } },
+        lettrage: { select: { statut: true, solde: true, lignes: { select: { debit: true, credit: true }, take: 500 } } },
         ecriture: { select: { date: true, libelle: true, numeroPiece: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
-        creancesDouteusesDesignees: { where: { creance: { annuleeLe: null } }, select: { creanceId: true } },
+        creancesDouteusesDesignees: { where: { retireeLe: null, creance: { annuleeLe: null } }, select: { creanceId: true }, take: 20 },
       },
     });
     const tronque = lignes.length > PLAFOND;
     return {
       tronque,
+      annulee: false,
       factures: lignes.slice(0, PLAFOND).map((l) => ({
         ligneEcritureId: l.id,
         date: jour(l.ecriture.date),
@@ -979,12 +990,52 @@ export class CreancesDouteusesService {
     };
   }
 
-  /** Ce que la ligne doit encore · soldé, rien ; partiel, son reste borné par la ligne. */
-  private static ouvertDeLaLigne(l: { debit: unknown; credit: unknown; lettrage: { statut: string; solde: unknown } | null }) {
+  /**
+   * Ce que la ligne doit encore · soldé, rien ; partiel, sa PART du reste du
+   * groupe. Un groupe qui réunit plusieurs factures partage ses règlements au
+   * prorata des factures, comme le moteur de la TVA (A7 bis, troisième
+   * reprise) · le reste du groupe entier, pris pour l'encours de CHAQUE
+   * facture, laissait désigner deux fois la même somme.
+   */
+  static ouvertDeLaLigne(l: {
+    debit: unknown;
+    credit: unknown;
+    lettrage: { statut: string; solde: unknown; lignes?: Array<{ debit: unknown; credit: unknown }> } | null;
+  }) {
     const montant = Number(l.debit) - Number(l.credit);
     if (!l.lettrage) return montant;
     if (l.lettrage.statut === 'SOLDE') return 0;
-    return Math.min(montant, Math.abs(Number(l.lettrage.solde)));
+    const reste = Math.abs(Number(l.lettrage.solde));
+    const factures = (l.lettrage.lignes ?? []).reduce((t, g) => {
+      const sens = Number(g.debit) - Number(g.credit);
+      return sens > 0 === montant > 0 && Math.abs(sens) > 0.005 ? t + Math.abs(sens) : t;
+    }, 0);
+    if (factures > Math.abs(montant) + 0.005) return centimes((montant * reste) / factures);
+    return Math.min(montant, reste);
+  }
+
+  /**
+   * « RETIRER LA DÉSIGNATION » (A7 bis, troisième reprise) · une désignation
+   * fausse se corrige · MARQUÉE retirée par un `update` unitaire qui porte son
+   * motif au journal d'audit, jamais supprimée. Possible même si l'exercice
+   * de la créance est clos · la désignation ne porte aucune écriture ; ce
+   * qu'une liquidation a déjà figé le reste (`tvaEncaissementFigee`), et la
+   * suite se relit (`TauxTvaService.repartirEncaissement`).
+   */
+  retirerDesignation(tenantId: string, userId: string, id: string, designationId: string, dto: RetirerDesignationDto) {
+    return this.sousVerrou(tenantId, 'RETRAIT DE DÉSIGNATION', async () => {
+      const d = await this.prisma.factureCreanceDouteuse.findFirst({
+        where: { id: designationId, creanceId: id, tenantId },
+        select: { id: true, retireeLe: true },
+      });
+      if (!d) throw new NotFoundException('Désignation introuvable pour cette créance.');
+      if (d.retireeLe) throw new BadRequestException(`Cette désignation est déjà retirée, le ${jour(d.retireeLe)}.`);
+      await this.prisma.factureCreanceDouteuse.update({
+        where: { id: d.id },
+        data: { retireeLe: new Date(), retireePar: userId, motifRetrait: dto.motif.trim() },
+      });
+      return this.facturesDesignees(tenantId, id);
+    });
   }
 
   /** Vérifie une désignation, ligne par ligne, et rend ce qui s'écrit. Un refus nomme la ligne. */
@@ -1004,13 +1055,13 @@ export class CreancesDouteusesService {
           compteId: true,
           debit: true,
           credit: true,
-          lettrage: { select: { statut: true, solde: true } },
+          lettrage: { select: { statut: true, solde: true, lignes: { select: { debit: true, credit: true }, take: 500 } } },
           ecriture: { select: { statut: true, libelle: true, date: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
-          creancesDouteusesDesignees: { where: { creance: { annuleeLe: null } }, select: { creanceId: true } },
+          creancesDouteusesDesignees: { where: { retireeLe: null, creance: { annuleeLe: null } }, select: { creanceId: true }, take: 20 },
         },
       }),
       c.id
-        ? this.prisma.factureCreanceDouteuse.aggregate({ where: { tenantId, creanceId: c.id }, _sum: { montant: true } })
+        ? this.prisma.factureCreanceDouteuse.aggregate({ where: { tenantId, creanceId: c.id, retireeLe: null }, _sum: { montant: true } })
         : Promise.resolve({ _sum: { montant: null } }),
     ]);
     let total = n(dejaCreance._sum.montant);

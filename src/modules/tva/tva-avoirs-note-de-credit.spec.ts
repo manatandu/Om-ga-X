@@ -60,7 +60,7 @@ function service(lignes: LigneFausse[], derniere: { dateDebut: Date; dateFin: Da
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
     },
     factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
-    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     liquidationTva: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) => {

@@ -77,7 +77,7 @@ function service(opts: {
       }),
     },
     factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
-    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     liquidationTva: {
       findMany: jest.fn().mockResolvedValue(
         opts.liquidations.map((l, i) => ({

@@ -806,12 +806,21 @@ RECOUVREMENT D'UNE CRÉANCE DOUTEUSE EST L'ENCAISSEMENT DE SES FACTURES DÉSIGN�
 `FactureCreanceDouteuse`, `motifRefusDesignation`), le cabinet désigne la ligne de
 la facture d'origine au compte du client et sa part TTC, jamais lettrée (A7 ter) ;
 refus · autre compte, brouillard, à-nouveau, au-delà de l'ouvert ou du reclassé,
-ligne d'une autre créance non annulée. Chaque recouvrement non annulé et validé
-encaisse la part désignée au prorata recouvré / reclassé, une tranche à sa date,
-par la même mémoire (4) ; une PERTE n'encaisse rien (art. 52, partie 2) ; une
-créance annulée ne désigne plus rien. Un recouvrement de la période SANS facture
-désignée est NOMMÉ (`recouvrementsSansFactureDesignee`, « TVA à déclarer par le
-cabinet faute de facture désignée »), jamais tu. Partie 2 (récupération de
+ligne d'une autre créance non annulée ; l'encours d'une facture d'un groupe
+partagé est SA part du reste (prorata des factures, `ouvertDeLaLigne`). Chaque
+recouvrement non annulé et validé encaisse la part désignée au prorata recouvré /
+reclassé, une tranche à sa date, rattachée par l'IDENTIFIANT de chaque ligne
+désignée (deux échéances comprises), sur le TTC de la facture et dans la limite
+de ce qui reste en attente, sans toucher aucun groupe de lettrage, par la même
+mémoire (4) ; un groupe à plusieurs factures partage ses règlements au prorata ;
+une PERTE n'encaisse rien (art. 52, partie 2) ; une créance annulée ne désigne
+plus rien. UN RECOUVREMENT NE DISPARAÎT JAMAIS · sans facture désignée, ou désigné
+sur une ligne qu'aucune ligne de TVA lue ne reçoit, il est NOMMÉ
+(`recouvrementsSansFactureDesignee`, borné à 200 avec `creancesRecouvreesTotal`
+et `recouvrementsSansFactureTronque`, « TVA à déclarer par le cabinet faute de
+facture désignée »). « Retirer la désignation » · motif exigé, `update` unitaire
+au journal d'audit, possible exercice clos ; ce qu'une liquidation a figé le reste,
+la suite se relit. Partie 2 (récupération de
 l'art. 52 sur créance irrécouvrable) au suivi.
 
 **Procès-verbal de comptage par caisse.** Le PV de campagne (CPCC, étape 2) ne porte

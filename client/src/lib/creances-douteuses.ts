@@ -237,6 +237,9 @@ export interface FactureCandidate {
 }
 export interface FactureDesignee {
   id: string;
+  /** Retirée (« Retirer la désignation ») · date et motif, toujours listée. */
+  retireeLe: string | null;
+  motifRetrait: string | null;
   ligneEcritureId: string;
   montant: number;
   date: string;
@@ -246,6 +249,8 @@ export interface FactureDesignee {
 }
 export interface FacturesDeLaCreance {
   tronque: boolean;
+  /** Créance annulée · ses désignations passées se lisent, aucune facture n'est proposée. */
+  annulee: boolean;
   factures: FactureCandidate[];
   designees: FactureDesignee[];
 }

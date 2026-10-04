@@ -9404,10 +9404,20 @@ model FactureCreanceDouteuse {
   /// La part TTC de cette ligne que la créance reprend.
   montant Decimal @db.Decimal(18, 2)
 
+  /// LE RETRAIT (« Retirer la désignation ») · la désignation est MARQUÉE,
+  /// jamais supprimée, par un `update` unitaire qui porte son motif au journal
+  /// d'audit. Retirée, elle ne relie plus rien · ce qu'une liquidation a déjà
+  /// figé le reste, la suite se relit. Aucune clé unique (créance, ligne) · une
+  /// désignation retirée se refait avec la bonne part ; le service refuse deux
+  /// désignations ACTIVES d'une même ligne, sous le verrou du dossier.
+  retireeLe    DateTime?
+  retireePar   String?
+  motifRetrait String?
+
   createdAt DateTime @default(now())
   createdBy String
 
-  @@unique([creanceId, ligneEcritureId])
+  @@index([creanceId])
   @@index([tenantId])
   @@index([ligneEcritureId])
   @@map("factures_creances_douteuses")

@@ -175,3 +175,68 @@ test('SYSCOHADA · le recouvrement d’une créance douteuse encaisse ses factur
   expect(mars.mentionExigibilite).toContain('TVA à déclarer par le cabinet faute de facture désignée');
   expect(pannes).toEqual([]);
 });
+
+test('SYSCOHADA · une facture à deux échéances, les deux désignées, est encaissée par le recouvrement · une désignation se retire', async ({ page }) => {
+  const pannes = surveiller(page);
+  const dossier = await creerDossier(page, { referentiel: 'SYSCOHADA', nom: 'TVA échéances e2e', montant: 10_000 });
+  await seConnecter(page, dossier.email);
+  await appelApi(page, 'PATCH', '/dossier/regime', { assujettiTva: true });
+  const [ex] = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).filter((e) => e.id === dossier.exerciceId);
+  const annee = Number(ex.dateDebut.slice(0, 4));
+  const comptes = await appelApi<Compte[]>(page, 'GET', '/comptes?typeCompte=DETAIL');
+  const detail = (racine: string) => comptes.find((c) => c.typeCompte === 'DETAIL' && c.numero.startsWith(racine))!;
+  const journaux = await appelApi<Array<{ id: string; type: string; compteTresorerieId: string | null }>>(page, 'GET', '/journaux');
+  const od = journaux.find((j) => j.type === 'GENERAL')!;
+  const bq = journaux.find((j) => j.type === 'TRESORERIE' && j.compteTresorerieId)!;
+  const taux = (await appelApi<Array<{ id: string; taux: number }>>(page, 'GET', '/taux-tva')).find((t) => Number(t.taux) === 16)!;
+  const client = await appelApi<Compte>(page, 'POST', '/comptes', { numero: '41110101', intitule: 'Client Mbuyi', typeCompte: 'DETAIL', lettrable: true, modeReportANouveau: 'DETAIL' });
+  await appelApi(page, 'POST', '/ecritures', {
+    exerciceId: ex.id,
+    journalId: od.id,
+    date: `${annee}-12-12`,
+    libelle: 'Prestation en deux échéances',
+    lignes: [
+      { compteId: client.id, debit: 580_000, credit: 0, dateEcheance: `${annee + 1}-01-12` },
+      { compteId: client.id, debit: 580_000, credit: 0, dateEcheance: `${annee + 1}-02-12` },
+      { compteId: detail('706').id, debit: 0, credit: 1_000_000 },
+      { compteId: detail('4432').id, debit: 0, credit: 160_000, tauxTvaId: taux.id },
+    ],
+  });
+  await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: ex.id, dateLimite: ex.dateFin.slice(0, 10) });
+  const echeances = (await appelApi<{ lignes: Ligne[] }>(page, 'GET', `/comptes/${client.id}/lettrage`)).lignes.filter((l) => l.debit === 580_000);
+  const pieces = [{ nature: 'Mise en demeure', reference: 'MD-1' }];
+  const creance = await appelApi<{ id: string }>(page, 'POST', '/creances-douteuses', {
+    exerciceId: ex.id,
+    journalId: od.id,
+    date: `${annee}-12-28`,
+    compteCreanceId: client.id,
+    nature: 'DOUTEUSE',
+    montant: 1_160_000,
+    motif: 'Client défaillant',
+    pieces,
+    factures: [{ ligneEcritureId: echeances[0].id, montant: 290_000 }],
+  });
+  // La part saisie est fausse · retirée, puis les deux échéances désignées en entier.
+  const lues = await appelApi<{ designees: Array<{ id: string }> }>(page, 'GET', `/creances-douteuses/${creance.id}/factures`);
+  await appelApi(page, 'POST', `/creances-douteuses/${creance.id}/factures/${lues.designees[0].id}/retirer`, { motif: 'Part saisie fausse' });
+  await appelApi(page, 'POST', `/creances-douteuses/${creance.id}/factures`, {
+    factures: echeances.map((l) => ({ ligneEcritureId: l.id, montant: 580_000 })),
+  });
+  await appelApi(page, 'POST', `/creances-douteuses/${creance.id}/recouvrement`, {
+    exerciceId: ex.id,
+    journalId: bq.id,
+    date: `${annee}-12-30`,
+    montant: 1_160_000,
+    motif: 'Versement du client',
+    pieces,
+  });
+  await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: ex.id, dateLimite: ex.dateFin.slice(0, 10) });
+  const decembre = await appelApi<Declaration & { recouvrementsSansFactureDesignee: unknown[] }>(
+    page,
+    'GET',
+    `/taux-tva/declaration?dateDebut=${annee}-12-01&dateFin=${annee}-12-31`,
+  );
+  expect(decembre.totalCollecte).toBe(160_000);
+  expect(decembre.recouvrementsSansFactureDesignee).toEqual([]);
+  expect(pannes).toEqual([]);
+});

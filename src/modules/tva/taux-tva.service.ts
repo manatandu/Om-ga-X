@@ -1388,6 +1388,41 @@ export class TauxTvaService {
       ];
     }
 
+    /*
+      UNE FACTURE À PLUSIEURS LIGNES DE TIERS DONT UNE PARTIE SEULEMENT EST
+      LETTRÉE (A7 bis, troisième reprise) · le groupe ne date que la part
+      lettrée ; la part encore due (créance non lettrée) reste en attente, la
+      part réglée dans l'écriture est exigible à sa date. Lire le groupe pour
+      toute la facture déclarait d'un coup la taxe d'une échéance impayée.
+    */
+    const lettre = avecLettrage.reduce((t, l) => t + Math.abs(Number(l.debit) - Number(l.credit)), 0);
+    const totalFacture = lettre + nonLettre.creance + nonLettre.immediat;
+    const partLettree = this.exigibiliteDuGroupe(avecLettrage, dateEcriture);
+    if (totalFacture <= lettre + EPSILON) return partLettree;
+    const k = lettre / totalFacture;
+    const tranches: Array<{ date: Date | null; fraction: number }> = partLettree
+      .filter((t) => t.date)
+      .map((t) => ({ date: t.date, fraction: t.fraction * k }));
+    if (nonLettre.immediat > EPSILON) tranches.push({ date: dateEcriture, fraction: nonLettre.immediat / totalFacture });
+    const date = tranches.reduce((t, x) => t + x.fraction, 0);
+    if (1 - date > EPSILON) tranches.push({ date: null, fraction: 1 - date });
+    return tranches;
+  }
+
+  /** La part lettrée d'une facture, datée par son groupe · voir `exigibilite`. */
+  private exigibiliteDuGroupe(
+    avecLettrage: Array<{
+      debit: unknown;
+      credit: unknown;
+      lettrage: {
+        statut: string;
+        solde: unknown;
+        soldeAt: Date | null;
+        lignes?: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date } | null }>;
+      } | null;
+    }>,
+    dateEcriture: Date,
+  ): Array<{ date: Date | null; fraction: number }> {
     const groupe = avecLettrage[0].lettrage!;
     // Sens de la FACTURE sur le compte de tiers · une vente débite le 411, un
     // achat crédite le 401. Le règlement est, par construction, ce qui va dans
@@ -1451,10 +1486,15 @@ export class TauxTvaService {
       return [{ date: dateReglement ?? dateEcriture, fraction: 1 }];
     }
     // Groupe PARTIEL · une part est encaissée. `solde` est le reste à solder,
-    // signé ; la part réglée est donc (engagé - |reste|) / engagé.
+    // signé ; la part réglée est donc (engagé - |reste|) / engagé. Un groupe
+    // qui réunit PLUSIEURS factures partage ses règlements AU PRORATA des
+    // factures (A7 bis, troisième reprise) · rapporter le reste du groupe
+    // entier à une seule facture donnait une fraction nulle, et la taxe de
+    // 500 000 réglés sur deux factures n'était jamais exigible.
     const reste = Math.abs(Number(groupe.solde));
     if (engage <= EPSILON) return [{ date: null, fraction: 1 }];
-    const fraction = Math.min(1, Math.max(0, (engage - reste) / engage));
+    const base = factures > engage + EPSILON ? factures : engage;
+    const fraction = Math.min(1, Math.max(0, (base - reste) / base));
     if (fraction <= EPSILON) return [{ date: null, fraction: 1 }];
     // La part encaissée l'a été à la date du règlement le plus récent du
     // groupe · l'acompte de l'art. 57 rend la taxe exigible ce jour-là, et non
@@ -1597,32 +1637,6 @@ export class TauxTvaService {
   }
 
   /**
-   * Le groupe de lettrage d'une facture désignée, augmenté de ses
-   * recouvrements de créance douteuse, lus comme des règlements (ligne A7 bis ;
-   * décret n° 011/42, art. 57). Le reste à solder baisse d'autant.
-   */
-  static groupeAvecRecouvrements<
-    G extends { statut: string; solde: unknown; lignes?: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date } | null }> },
-  >(facture: { debit: unknown; credit: unknown }, groupe: G, recouvrements: ReadonlyArray<{ date: Date; montant: number }>): G {
-    const sens = Number(facture.debit) - Number(facture.credit);
-    const total = recouvrements.reduce((t, r) => t + r.montant, 0);
-    const reste = Math.max(0, Math.abs(Number(groupe.solde)) - total);
-    return {
-      ...groupe,
-      statut: reste <= EPSILON ? 'SOLDE' : 'PARTIEL',
-      solde: sens > 0 ? reste : -reste,
-      lignes: [
-        ...(groupe.lignes ?? []),
-        ...recouvrements.map((r) => ({
-          debit: sens > 0 ? 0 : r.montant,
-          credit: sens > 0 ? r.montant : 0,
-          ecriture: { date: r.date },
-        })),
-      ],
-    };
-  }
-
-  /**
    * LE RÈGLEMENT D'UNE CRÉANCE D'UN EXERCICE CLOS, LU À TRAVERS SA LIGNE
    * D'À-NOUVEAU (ligne A7 bis ; constat d'A6 bis, second tour, m3).
    *
@@ -1666,11 +1680,7 @@ export class TauxTvaService {
       };
       compte: { numero: string };
     },
-  >(
-    tenantId: string,
-    lignes: T[],
-    recouvrementsParLigne: ReadonlyMap<string, ReadonlyArray<{ date: Date; montant: number }>> = new Map(),
-  ): Promise<T[]> {
+  >(tenantId: string, lignes: T[]): Promise<T[]> {
     if (lignes.length === 0) return lignes;
     const centimes = (x: unknown) => Math.round(Number(x ?? 0) * 100);
     const estCollecteDe = (l: T) => l.compte.numero.startsWith(RACINE_COLLECTEE);
@@ -1777,13 +1787,6 @@ export class TauxTvaService {
       if (!c) return l;
       const sensFacture = Number(c.debit) - Number(c.credit);
       const engage = Math.abs(sensFacture);
-      // Les recouvrements de créance douteuse des factures désignées (ligne
-      // A7 bis) · des encaissements, à leur date, sans lettrage.
-      const recouvrements = (recouvrementsParLigne.get(c.id) ?? []).map((r) => ({
-        debit: sensFacture > 0 ? 0 : r.montant,
-        credit: sensFacture > 0 ? r.montant : 0,
-        ecriture: { date: r.date, estANouveauProvisoire: false, estGenereeParCloture: false },
-      }));
       let cs = candidats.get(l) ?? [];
       const parExercice = new Map<string, number>();
       for (const a of cs) parExercice.set(a.ecriture.exerciceId, (parExercice.get(a.ecriture.exerciceId) ?? 0) + 1);
@@ -1796,7 +1799,6 @@ export class TauxTvaService {
             return Math.abs(sens) > EPSILON && sens > 0 !== sensFacture > 0 && !aNouveau;
           }),
         ),
-        ...recouvrements,
       ];
       if (reglements.length === 0) return l;
       const paye = reglements.reduce((t, g) => t + Math.abs(Number(g.debit) - Number(g.credit)), 0);
@@ -2493,63 +2495,114 @@ export class TauxTvaService {
       annuleeLe: null,
       ecriture: { statut: StatutEcriture.VALIDEE },
     };
+    // Chaque désignation ACTIVE, avec sa créance · pour rattacher ses
+    // recouvrements à la facture, et NOMMER ceux qu'aucune ligne de TVA lue ne
+    // reçoit (un recouvrement ne disparaît jamais en silence).
+    type DesignationLue = {
+      ligneEcritureId: string;
+      montant: number;
+      creanceId: string;
+      compte: string;
+      dateReclassement: string;
+      reclasse: number;
+      recouvrements: Array<{ date: Date; montant: number }>;
+    };
+    const designationsLues: DesignationLue[] = [];
+    // Une créance ne porte jamais des centaines de recouvrements · la borne
+    // tient la lecture (§ 8 bis), et l'atteindre est dit (`tronque`).
+    const PLAFOND_RECOUVREMENTS = 500;
+    let recouvrementsTronques = false;
     await lireParLots(
       (curseur) =>
         this.prisma.factureCreanceDouteuse.findMany({
           ...pageApres(curseur, LOT_LECTURE),
-          where: { tenantId, creance: { annuleeLe: null } },
+          where: { tenantId, retireeLe: null, creance: { annuleeLe: null } },
           select: {
             id: true,
             ligneEcritureId: true,
             montant: true,
-            creance: { select: { montant: true, mouvements: { where: filtreRecouvrement, select: { date: true, montant: true } } } },
+            creance: {
+              select: {
+                id: true,
+                montant: true,
+                dateReclassement: true,
+                compteCreance: { select: { numero: true, intitule: true } },
+                mouvements: { where: filtreRecouvrement, select: { date: true, montant: true }, orderBy: { date: 'asc' }, take: PLAFOND_RECOUVREMENTS },
+              },
+            },
           },
         }),
       (f) => {
         const reclasse = Number(f.creance.montant);
         if (reclasse <= EPSILON) return;
+        if (f.creance.mouvements.length >= PLAFOND_RECOUVREMENTS) recouvrementsTronques = true;
         const parts = f.creance.mouvements.map((m) => ({
           date: m.date,
           montant: TauxTvaService.c((Number(f.montant) * Number(m.montant)) / reclasse),
         }));
+        designationsLues.push({
+          ligneEcritureId: f.ligneEcritureId,
+          montant: Number(f.montant),
+          creanceId: f.creance.id,
+          compte: `${f.creance.compteCreance.numero} ${f.creance.compteCreance.intitule}`,
+          dateReclassement: f.creance.dateReclassement.toISOString().slice(0, 10),
+          reclasse,
+          recouvrements: parts,
+        });
         if (parts.length > 0) recouvrementsParLigne.set(f.ligneEcritureId, [...(recouvrementsParLigne.get(f.ligneEcritureId) ?? []), ...parts]);
       },
     );
+    // Les lignes désignées qu'une ligne de TVA lue a reçues · posé par
+    // `traiter`, lu après lui.
+    const lignesRattachees = new Set<string>();
     // Les recouvrements de la période qu'aucune facture désignée ne porte ·
-    // NOMMÉS, jamais tus (§ 10 bis).
-    const recouvrementsSansFactureDesignee = (
-      await this.prisma.creanceDouteuse.findMany({
-        where: {
-          tenantId,
-          annuleeLe: null,
-          mouvements: { some: { ...filtreRecouvrement, date: { gte: dateDebut, lte: dateFin } } },
-        },
+    // NOMMÉS, jamais tus (§ 10 bis). Bornés, et le total le dit (§ 8 bis).
+    const PLAFOND_SANS_FACTURE = 200;
+    const filtreCreanceRecouvree = {
+      annuleeLe: null,
+      mouvements: { some: { ...filtreRecouvrement, date: { gte: dateDebut, lte: dateFin } } },
+    };
+    const [creancesRecouvrees, creancesRecouvreesTotal] = await Promise.all([
+      this.prisma.creanceDouteuse.findMany({
+        where: { tenantId, ...filtreCreanceRecouvree },
         orderBy: { dateReclassement: 'asc' },
-        take: 200,
+        take: PLAFOND_SANS_FACTURE,
         select: {
           id: true,
           dateReclassement: true,
           montant: true,
           compteCreance: { select: { numero: true, intitule: true } },
-          factures: { select: { montant: true } },
-          mouvements: { where: { ...filtreRecouvrement, date: { gte: dateDebut, lte: dateFin } }, select: { montant: true } },
+          factures: { where: { retireeLe: null }, select: { montant: true }, take: 200 },
+          mouvements: {
+            where: { ...filtreRecouvrement, date: { gte: dateDebut, lte: dateFin } },
+            select: { montant: true },
+            take: PLAFOND_RECOUVREMENTS,
+          },
         },
-      })
-    )
-      .map((c) => {
-        const reclasse = Number(c.montant);
-        const designe = c.factures.reduce((t, f) => t + Number(f.montant), 0);
-        const recouvre = TauxTvaService.c(c.mouvements.reduce((t, m) => t + Number(m.montant), 0));
-        const nonDesigne = reclasse > EPSILON ? TauxTvaService.c((recouvre * Math.max(0, reclasse - designe)) / reclasse) : 0;
-        return {
-          creanceId: c.id,
-          compte: `${c.compteCreance.numero} ${c.compteCreance.intitule}`,
-          dateReclassement: c.dateReclassement.toISOString().slice(0, 10),
-          recouvre,
-          recouvreSansFacture: nonDesigne,
-        };
-      })
-      .filter((c) => c.recouvreSansFacture > EPSILON);
+      }),
+      this.prisma.creanceDouteuse.count({ where: { tenantId, ...filtreCreanceRecouvree } }),
+    ]);
+    type SansFacture = {
+      creanceId: string;
+      compte: string;
+      dateReclassement: string;
+      recouvre: number;
+      recouvreSansFacture: number;
+    };
+    const sansFacture = new Map<string, SansFacture>();
+    for (const c of creancesRecouvrees) {
+      const reclasse = Number(c.montant);
+      const designe = c.factures.reduce((t, f) => t + Number(f.montant), 0);
+      const recouvre = TauxTvaService.c(c.mouvements.reduce((t, m) => t + Number(m.montant), 0));
+      const nonDesigne = reclasse > EPSILON ? TauxTvaService.c((recouvre * Math.max(0, reclasse - designe)) / reclasse) : 0;
+      sansFacture.set(c.id, {
+        creanceId: c.id,
+        compte: `${c.compteCreance.numero} ${c.compteCreance.intitule}`,
+        dateReclassement: c.dateReclassement.toISOString().slice(0, 10),
+        recouvre,
+        recouvreSansFacture: nonDesigne,
+      });
+    }
     const derniereLiquidation = await this.prisma.liquidationTva.findFirst({
       where: { tenantId, dateFin: { lt: dateDebut } },
       orderBy: { dateFin: 'desc' },
@@ -2907,22 +2960,6 @@ export class TauxTvaService {
           const montant = estCollecte ? Number(l.credit) : Number(l.debit);
           if (montant <= EPSILON) return;
 
-          // UNE FACTURE DÉSIGNÉE DÉJÀ LETTRÉE EN PARTIE (règlement avant le
-          // reclassement) · ses recouvrements rejoignent son groupe comme des
-          // règlements. Non lettrée, elle passe par `relierAuxANouveaux`.
-          if (!relie && recouvrementsParLigne.size > 0) {
-            l = {
-              ...l,
-              ecriture: {
-                ...l.ecriture,
-                lignes: l.ecriture.lignes.map((x) =>
-                  x.lettrage && recouvrementsParLigne.has(x.id)
-                    ? { ...x, lettrage: TauxTvaService.groupeAvecRecouvrements(x, x.lettrage, recouvrementsParLigne.get(x.id)!) }
-                    : x,
-                ),
-              },
-            };
-          }
           const lignesTiers = l.ecriture.lignes.filter((x) => x.compte?.classe === ClasseCompte.CLASSE_4 && x.lettrage);
           const lignesCharge = l.ecriture.lignes.filter((x) => x.compte?.classe === ClasseCompte.CLASSE_6);
 
@@ -3057,12 +3094,44 @@ export class TauxTvaService {
             base === 'FAIT_GENERATEUR' &&
             nature === 'SERVICES' &&
             (estCollecte ? regimeLigne === 'DEBITS' : fournisseur.autorise);
-          const tranches: Array<{ date: Date | null; fraction: number; auPaiement?: boolean }> =
+          let tranches: Array<{ date: Date | null; fraction: number; auPaiement?: boolean }> =
             base === 'FAIT_GENERATEUR'
               ? auxDebits
                 ? TauxTvaService.tranchesAuxDebits(lignesTiers, dateEcriture)
                 : [{ date: dateEcriture, fraction: 1 }]
               : this.exigibilite(l, lignesTiers, l.ecriture.date, nonLettre);
+          /*
+            LES RECOUVREMENTS DES LIGNES DÉSIGNÉES (A7 bis, troisième reprise)
+            · rattachés par l'IDENTIFIANT de chaque ligne désignée de
+            l'écriture, quel qu'en soit le nombre (deux échéances) et quel que
+            soit leur lettrage (groupe partagé par plusieurs factures). Chaque
+            recouvrement prend, à sa date, sa part sur le TTC de la facture,
+            dans la limite de ce qui reste en attente · la taxe ne passe jamais
+            100 %. Lus après le lettrage, ils n'en modifient aucun groupe.
+          */
+          const designees = l.ecriture.lignes.filter((x) => recouvrementsParLigne.has(x.id));
+          for (const x of designees) lignesRattachees.add(x.id);
+          if (base === 'ENCAISSEMENT' && designees.length > 0) {
+            const ttc = l.ecriture.lignes.reduce((t, x) => {
+              const numero = x.compte?.numero ?? '';
+              const sens = estCollecte ? Number(x.debit) - Number(x.credit) : Number(x.credit) - Number(x.debit);
+              const tiersOuTresorerie =
+                (x.compte?.classe === ClasseCompte.CLASSE_4 && !numero.startsWith('44')) || x.compte?.classe === ClasseCompte.CLASSE_5;
+              return tiersOuTresorerie && sens > EPSILON ? t + sens : t;
+            }, 0);
+            let disponible = tranches.filter((t) => !t.date).reduce((t, x) => t + x.fraction, 0);
+            const recouvrements = designees.flatMap((x) => recouvrementsParLigne.get(x.id) ?? []).sort((a, b) => a.date.getTime() - b.date.getTime());
+            if (ttc > EPSILON && disponible > EPSILON) {
+              const datees = tranches.filter((t) => t.date);
+              for (const r of recouvrements) {
+                const f = Math.min(r.montant / ttc, disponible);
+                if (f <= EPSILON) continue;
+                disponible -= f;
+                datees.push({ date: r.date, fraction: f });
+              }
+              tranches = disponible > EPSILON ? [...datees, { date: null, fraction: disponible }] : datees;
+            }
+          }
 
           // Une tranche unique garde l'arrondi d'avant ; plusieurs tranches se
           // répartissent au centime, la dernière recevant le reste, pour que la
@@ -3185,8 +3254,28 @@ export class TauxTvaService {
           });
       };
       await lireParLots(lire, (l) => traiter(l, false), LOT_ECRITURES);
-      for (const l of await this.relierAuxANouveaux(tenantId, aRelier, recouvrementsParLigne)) traiter(l, true);
+      for (const l of await this.relierAuxANouveaux(tenantId, aRelier)) traiter(l, true);
     }
+
+    // UN RECOUVREMENT QU'AUCUNE LIGNE DE TVA N'A REÇU EST NOMMÉ (troisième
+    // reprise) · facture sans TVA lue, ou rattachement impossible. Il rejoint
+    // la liste des recouvrements sans facture, pour sa part de la période.
+    for (const d of designationsLues) {
+      if (lignesRattachees.has(d.ligneEcritureId)) continue;
+      const dansPeriode = d.recouvrements.filter((r) => r.date >= dateDebut && r.date <= dateFin).reduce((t, r) => t + r.montant, 0);
+      if (dansPeriode <= EPSILON) continue;
+      const e = sansFacture.get(d.creanceId) ?? {
+        creanceId: d.creanceId,
+        compte: d.compte,
+        dateReclassement: d.dateReclassement,
+        recouvre: TauxTvaService.c(dansPeriode),
+        recouvreSansFacture: 0,
+      };
+      e.recouvreSansFacture = TauxTvaService.c(e.recouvreSansFacture + dansPeriode);
+      sansFacture.set(d.creanceId, e);
+    }
+    const recouvrementsSansFactureDesignee = [...sansFacture.values()].filter((c) => c.recouvreSansFacture > EPSILON);
+    const recouvrementsSansFactureTronque = recouvrementsTronques || creancesRecouvreesTotal > PLAFOND_SANS_FACTURE;
 
     const lignes = [];
     let enAttente = 0;
@@ -3326,6 +3415,9 @@ export class TauxTvaService {
        * l'encaissement, est à déclarer par le cabinet.
        */
       recouvrementsSansFactureDesignee,
+      /** Créances recouvrées dans la période · la liste ci-dessus en lit 200 au plus (§ 8 bis). */
+      creancesRecouvreesTotal,
+      recouvrementsSansFactureTronque,
       /** Net de la seule période, avant report du crédit antérieur. */
       netAvantImputation,
       /** Crédit de TVA venu de la dernière liquidation (art. 63). */

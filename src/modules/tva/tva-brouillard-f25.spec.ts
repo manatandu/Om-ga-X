@@ -92,7 +92,7 @@ function service(lignes: LigneTva[]) {
       }),
     },
     factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
-    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     liquidationTva: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),

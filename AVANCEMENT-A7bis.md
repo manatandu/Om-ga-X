@@ -47,6 +47,36 @@ sur créance irrécouvrable) hors de cette passe.
   la liquidation de mars reportée une fois en avril (40 000), mai 0 ;
   4432 −120 000, 4441 −200 000 en N+1.
 
+- TROISIÈME REPRISE (trois BLOQUANTs de la vérification indépendante) ·
+  (1) groupe à plusieurs factures · règlements au prorata des factures
+  (`exigibiliteDuGroupe`), recouvrements rattachés par identifiant de ligne
+  hors de tout groupe (`groupeAvecRecouvrements` retiré), encours propre
+  (`ouvertDeLaLigne`) ; (2) facture à deux échéances · même rattachement,
+  et une facture lettrée en partie seulement ne date plus que sa part
+  lettrée ; tout recouvrement non reçu par une ligne de TVA est NOMMÉ ;
+  (3) « Retirer la désignation » (POST `:id/factures/:designationId/retirer`,
+  motif, `update` unitaire, exercice clos admis ; colonnes `retireeLe`,
+  `retireePar`, `motifRetrait`, clé unique retirée, migration
+  20270139000000 réécrite, jamais appliquée hors de cette branche, diff
+  vide). Relevés · liste sans facture bornée avec total et `tronque`,
+  `take` sur les relations imbriquées, `ParseUUIDPipe`, GET d'une créance
+  annulée qui liste ses désignations passées. Vraie base · décembre N
+  68 965,52 ; mars N+1 451 034,48 (251 034,48 + 160 000 + 40 000), seul
+  Lusamba nommé (290 000) ; retrait au journal d'audit avec son motif,
+  avril 40 000 reporté une fois, mai 0 ; 4432 nul, 4441 −560 000 en N+1.
+
+## Relevés en attente
+
+- Une facture dont une échéance est lettrée et l'autre non se lit par
+  prorata TTC (part lettrée datée par son groupe) · si le groupe porte en
+  plus d'autres factures, le prorata du groupe s'applique à la part lettrée
+  seulement, convention écrite.
+- Un recouvrement au-delà de ce qui reste en attente (facture déjà
+  déclarée à l'ancien moteur, par exemple) n'est pas nommé · la taxe est
+  entièrement exigible, rien n'est perdu.
+- La liste des factures candidates prend les 200 lignes les plus récentes
+  du compte, `tronque` le dit.
+
 ## Reste (hors partie 1)
 
 - Partie 2 · art. 52 sur créance irrécouvrable ; groupes

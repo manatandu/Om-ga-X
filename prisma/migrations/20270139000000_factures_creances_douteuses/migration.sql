@@ -7,6 +7,9 @@ CREATE TABLE "factures_creances_douteuses" (
     "creanceId" TEXT NOT NULL,
     "ligneEcritureId" TEXT NOT NULL,
     "montant" DECIMAL(18,2) NOT NULL,
+    "retireeLe" TIMESTAMP(3),
+    "retireePar" TEXT,
+    "motifRetrait" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdBy" TEXT NOT NULL,
 
@@ -15,7 +18,7 @@ CREATE TABLE "factures_creances_douteuses" (
 
 CREATE INDEX "factures_creances_douteuses_tenantId_idx" ON "factures_creances_douteuses"("tenantId");
 CREATE INDEX "factures_creances_douteuses_ligneEcritureId_idx" ON "factures_creances_douteuses"("ligneEcritureId");
-CREATE UNIQUE INDEX "factures_creances_douteuses_creanceId_ligneEcritureId_key" ON "factures_creances_douteuses"("creanceId", "ligneEcritureId");
+CREATE INDEX "factures_creances_douteuses_creanceId_idx" ON "factures_creances_douteuses"("creanceId");
 
 ALTER TABLE "factures_creances_douteuses" ADD CONSTRAINT "factures_creances_douteuses_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "factures_creances_douteuses" ADD CONSTRAINT "factures_creances_douteuses_creanceId_fkey" FOREIGN KEY ("creanceId") REFERENCES "creances_douteuses"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

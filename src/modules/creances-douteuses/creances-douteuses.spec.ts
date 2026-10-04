@@ -2189,3 +2189,53 @@ describe('A7 bis · « Désigner les factures » · rien n’est deviné, chaque
     expect(motifRefusDesignation({ ...base, creanceAnnulee: true })).toMatch(/annulé/);
   });
 });
+
+describe('A7 bis, troisième reprise · encours d’une facture d’un groupe partagé, retrait d’une désignation', () => {
+  it('l’encours d’une facture d’un groupe à deux factures est SA part du reste, jamais le reste entier', () => {
+    // F1 et F2 de 1 160 000 et un règlement de 500 000 · reste 1 820 000, 910 000 chacune.
+    const groupe = {
+      statut: 'PARTIEL',
+      solde: 1_820_000,
+      lignes: [
+        { debit: 1_160_000, credit: 0 },
+        { debit: 1_160_000, credit: 0 },
+        { debit: 0, credit: 500_000 },
+      ],
+    };
+    expect(CreancesDouteusesService.ouvertDeLaLigne({ debit: 1_160_000, credit: 0, lettrage: groupe })).toBe(910_000);
+    // Une seule facture · le reste, borné par la ligne.
+    expect(
+      CreancesDouteusesService.ouvertDeLaLigne({
+        debit: 1_160_000,
+        credit: 0,
+        lettrage: { statut: 'PARTIEL', solde: 696_000, lignes: [{ debit: 1_160_000, credit: 0 }, { debit: 0, credit: 464_000 }] },
+      }),
+    ).toBe(696_000);
+  });
+
+  it('un retrait MARQUE la désignation (motif au journal d’audit), même exercice clos, et ne se refait pas', async () => {
+    const update = jest.fn().mockResolvedValue({});
+    let retiree: Date | null = null;
+    const prisma = {
+      verrouCreancesDouteuses: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn().mockResolvedValue({ id: 'v' }),
+      },
+      factureCreanceDouteuse: {
+        findFirst: jest.fn(async () => ({ id: 'd1', retireeLe: retiree })),
+        update,
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const s = new CreancesDouteusesService(prisma as never, {} as never, {} as never);
+    await s.retirerDesignation('t1', 'u1', 'cr1', 'd1', { motif: '  Mauvaise facture  ' });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'd1' },
+      data: { retireeLe: expect.any(Date), retireePar: 'u1', motifRetrait: 'Mauvaise facture' },
+    });
+    // Aucune lecture de l'exercice · un exercice clos ne bloque pas le retrait.
+    expect(Object.keys(prisma)).not.toContain('exercice');
+    retiree = new Date('2027-04-01');
+    await expect(s.retirerDesignation('t1', 'u1', 'cr1', 'd1', { motif: 'Encore' })).rejects.toThrow(/déjà retirée/);
+  });
+});

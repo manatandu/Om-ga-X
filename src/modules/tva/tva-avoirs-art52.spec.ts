@@ -94,7 +94,7 @@ function service(lignes: LigneFausse[], derniere: Liquidation | null = null) {
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
     },
     factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
-    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     liquidationTva: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) => {
@@ -255,7 +255,7 @@ describe('Comptabilisation · la récupération solde le 443 et l’écriture re
       compte: { findFirst: jest.fn(({ where }: { where: { numero: string } }) => Promise.resolve({ id: `c-${where.numero}`, numero: where.numero })) },
       journal: { findFirst: jest.fn().mockResolvedValue({ id: 'j-od', code: 'OD' }) },
       factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
-      creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+      creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
       liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaService;
     const ecritureService = {

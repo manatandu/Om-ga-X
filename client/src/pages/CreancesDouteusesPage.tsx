@@ -194,6 +194,8 @@ export function CreancesDouteusesPage() {
     liste: FacturesDeLaCreance | null;
     parts: Record<string, string>;
     erreur: string | null;
+    /** « Retirer la désignation » en cours de saisie · motif exigé. */
+    retrait: { id: string; motif: string } | null;
   } | null>(null);
   const refDesignation = useRef<HTMLFormElement | null>(null);
   useGardeFermeture(form || annulation || designation ? 'Un geste sur une créance douteuse est en cours de saisie · il serait perdu.' : null);
@@ -294,7 +296,7 @@ export function CreancesDouteusesPage() {
   /** A7 bis · ouvre « Désigner les factures » et lit la liste du serveur · une réponse périmée est jetée. */
   function ouvrirDesignation(c: CreanceDouteuse) {
     const j = ++jeton.current;
-    setDesignation({ creance: c, liste: null, parts: {}, erreur: null });
+    setDesignation({ creance: c, liste: null, parts: {}, erreur: null, retrait: null });
     api.get<FacturesDeLaCreance>(`/creances-douteuses/${c.id}/factures`).then(
       (l) => {
         if (jeton.current === j) setDesignation((d) => (d ? { ...d, liste: l } : d));
@@ -308,6 +310,28 @@ export function CreancesDouteusesPage() {
     if (envoi) return;
     jeton.current++;
     setDesignation(null);
+  }
+  /** A7 bis · retire une désignation fausse, motif exigé · la liste relue vient du serveur. */
+  async function oterDesignation() {
+    if (!designation?.retrait || envoi) return;
+    const { id: designationId, motif } = designation.retrait;
+    if (!motifAnnulationValide(motif)) {
+      setDesignation((d) => (d ? { ...d, erreur: 'Le motif du retrait compte de 3 à 500 caractères.' } : d));
+      return;
+    }
+    setEnvoi(true);
+    try {
+      const designees = await api.post<FacturesDeLaCreance['designees']>(
+        `/creances-douteuses/${designation.creance.id}/factures/${designationId}/retirer`,
+        { motif },
+      );
+      setDesignation((d) => (d && d.liste ? { ...d, erreur: null, retrait: null, liste: { ...d.liste, designees } } : d));
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setDesignation((d) => (d ? { ...d, erreur: messageDe(e) } : d));
+    } finally {
+      setEnvoi(false);
+    }
   }
   async function designer(ev: React.FormEvent) {
     ev.preventDefault();
@@ -1490,12 +1514,53 @@ export function CreancesDouteusesPage() {
                 </div>
                 {!designation.liste && !designation.erreur && <div className="text-text-dim">Lecture…</div>}
                 {designation.liste && designation.liste.designees.length > 0 && (
-                  <div>
-                    Déjà désignées ·{' '}
-                    {designation.liste.designees.map((f) => `${f.date} ${f.libelle} (${montant(f.montant)})`).join(' ; ')}
-                  </div>
+                  <table className="w-full">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="text-left px-1.5">Facture désignée</th>
+                        <th scope="col" className="text-right px-1.5">Part</th>
+                        <th scope="col" className="text-left px-1.5">État</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {designation.liste.designees.map((f) => (
+                        <tr key={f.id}>
+                          <td className="px-1.5">
+                            {jour(f.date)} {f.libelle}
+                          </td>
+                          <td className="px-1.5 text-right tabular-nums">{montant(f.montant)}</td>
+                          <td className="px-1.5">
+                            {f.retireeLe ? (
+                              <span className="text-text-dim">Retirée le {jour(f.retireeLe)} · {f.motifRetrait}</span>
+                            ) : designation.retrait?.id === f.id ? (
+                              <span className="flex items-center gap-1">
+                                <input
+                                  className="border border-bord rounded-[3px] px-1 w-[180px]"
+                                  aria-label="Motif du retrait"
+                                  value={designation.retrait.motif}
+                                  onChange={(e) => setDesignation((d) => (d && d.retrait ? { ...d, retrait: { ...d.retrait, motif: e.target.value } } : d))}
+                                />
+                                <button type="button" disabled={envoi} className="text-rouge hover:underline disabled:opacity-50" onClick={oterDesignation}>
+                                  Retirer
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-sel hover:underline"
+                                onClick={() => setDesignation((d) => (d ? { ...d, retrait: { id: f.id, motif: '' } } : d))}
+                              >
+                                Retirer la désignation
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
-                {designation.liste && designation.liste.factures.length === 0 && (
+                {designation.liste?.annulee && <div className="text-text-dim">Reclassement annulé · aucune facture ne se désigne plus.</div>}
+                {designation.liste && !designation.liste.annulee && designation.liste.factures.length === 0 && (
                   <div className="text-text-dim">Aucune facture validée au débit du compte {designation.creance.compteCreance.numero} · validez la facture d'abord.</div>
                 )}
                 {designation.liste && designation.liste.factures.length > 0 && (

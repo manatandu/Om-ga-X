@@ -111,7 +111,7 @@ function harnais(options: { liquidationExistante?: { dateDebut: string; dateFin:
     },
     journal: { findFirst: jest.fn().mockResolvedValue({ id: 'j-od', code: 'OD' }) },
     factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
-    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     liquidationTva: { findFirst, create, findMany: jest.fn().mockResolvedValue([]) },
     ecriture: { delete: jest.fn().mockResolvedValue({}), count: jest.fn().mockResolvedValue(0) },
   } as unknown as PrismaService;

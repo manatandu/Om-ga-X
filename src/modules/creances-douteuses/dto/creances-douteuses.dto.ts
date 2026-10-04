@@ -171,6 +171,9 @@ export class AnnulerRevueDto {
 /** L'annulation d'une perte ou d'un recouvrement (K4 · AUDCIF art. 20, al. 2) · même motif. */
 export class AnnulerMouvementDto extends AnnulerRevueDto {}
 
+/** A7 bis · « Retirer la désignation » d'une facture · même motif, au journal d'audit. */
+export class RetirerDesignationDto extends AnnulerRevueDto {}
+
 /** m2 · l'annulation d'un reclassement (AUDCIF art. 20, al. 2). */
 export class AnnulerReclassementDto extends AnnulerRevueDto {}
 
