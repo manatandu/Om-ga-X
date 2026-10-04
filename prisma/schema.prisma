@@ -3865,6 +3865,17 @@ model LiquidationTva {
   /// Prorata effectivement appliqué, pour retrouver la base d'une régularisation.
   prorataApplique Decimal @db.Decimal(5, 2)
 
+  /// CE QUE LA LIQUIDATION A DÉCLARÉ À L'ENCAISSEMENT, ligne de TVA par
+  /// ligne de TVA (identifiant de la ligne · montant), ligne A7 bis. La taxe
+  /// d'une prestation (O.-L. n° 10/001, art. 25, 2°) change de période quand
+  /// un règlement est lettré après coup · sans cette mémoire, une période
+  /// liquidée la perdrait ou une autre la déclarerait une seconde fois.
+  /// `null` · liquidation passée sous l'ancien moteur, que la déclaration
+  /// reconstitue (TauxTvaService.repartirEncaissement, transition). Les
+  /// lignes de TVA visées sont VALIDÉES, donc indélébiles (AUDCIF art. 22,
+  /// 2°) · aucune clé étrangère n'est utile.
+  tvaEncaissementFigee Json?
+
   createdAt DateTime @default(now())
   createdBy String
 

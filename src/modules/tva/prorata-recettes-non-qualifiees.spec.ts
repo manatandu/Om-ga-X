@@ -69,7 +69,7 @@ function service(taxees: number, nonQualifiees: number) {
         return Promise.resolve({ _sum: { credit: recettesTotales } });
       }),
     },
-    liquidationTva: { findFirst: jest.fn().mockResolvedValue(null) },
+    liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   return new TauxTvaService(prisma, {} as EcritureService);
 }

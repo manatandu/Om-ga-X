@@ -103,7 +103,7 @@ function service(lignesTva: ReturnType<typeof achat>[]) {
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
       groupBy: jest.fn().mockResolvedValue([]),
     },
-    liquidationTva: { findFirst: jest.fn().mockResolvedValue(null) },
+    liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   return { s: new TauxTvaService(prisma, {} as EcritureService), findMany };
 }

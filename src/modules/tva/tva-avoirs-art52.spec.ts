@@ -94,6 +94,7 @@ function service(lignes: LigneFausse[], derniere: Liquidation | null = null) {
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
     },
     liquidationTva: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) => {
         // Deux lectures distinctes : le VERROU cherche une liquidation qui
         // chevauche la période (`dateFin: { gte }`), le report des avoirs et le
@@ -251,7 +252,7 @@ describe('Comptabilisation · la récupération solde le 443 et l’écriture re
       tenant: { findUnique: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
       compte: { findFirst: jest.fn(({ where }: { where: { numero: string } }) => Promise.resolve({ id: `c-${where.numero}`, numero: where.numero })) },
       journal: { findFirst: jest.fn().mockResolvedValue({ id: 'j-od', code: 'OD' }) },
-      liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
+      liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({}) },
     } as unknown as PrismaService;
     const ecritureService = {
       creer: jest.fn((_t: string, _u: string, dto: { lignes: typeof ecrites[number] }) => {

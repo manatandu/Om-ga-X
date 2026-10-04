@@ -52,6 +52,7 @@ function service(net: number, referentiel: 'SYCEBNL' | 'SYSCOHADA', creditAnteri
     // Le verrou anti-double-liquidation interroge ce marqueur avant tout · ici
     // aucune période n'est liquidée.
     liquidationTva: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn((args: Record<string, unknown>) => {
         traces.push(args.data as Record<string, unknown>);
@@ -239,6 +240,7 @@ function declarant(precedente: { dateDebut: string; dateFin: string; net: number
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
     },
     liquidationTva: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) => {
         // `dateFin.lt` identifie la recherche du crédit reportable · le verrou
         // de chevauchement, lui, demande un intervalle qui recouvre.

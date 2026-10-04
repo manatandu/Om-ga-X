@@ -99,7 +99,7 @@ function service(lignes: LigneTva[]) {
       }),
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
     },
-    liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
+    liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({}) },
     compte: {
       findFirst: jest.fn(({ where }: { where: { numero: string } }) => Promise.resolve({ id: `c${where.numero.slice(0, 4)}`, numero: where.numero })),
     },
