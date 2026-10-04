@@ -12,6 +12,7 @@ import {
   NatureFacture,
   SensFacture,
   StatutEcriture,
+  StatutExercice,
   TypeMouvementCreanceDouteuse,
 } from '@prisma/client';
 import { DETENTEUR_LIQUIDATION_TVA, EcritureService } from '../comptabilite/ecriture.service';
@@ -3547,6 +3548,47 @@ export class TauxTvaService {
       sansFacture.set(d.creanceId, e);
     }
     const recouvrementsSansFactureDesignee = [...sansFacture.values()].filter((c) => c.recouvreSansFacture > EPSILON);
+
+    /*
+      AU1, SECOND TOUR · LES PAIEMENTS QUE LA CLÔTURE A DÉLETTRÉS. Un paiement
+      non lettré reste un ENCAISSEMENT (« la perception des sommes, à quelque
+      titre que ce soit », décret n° 011/42, art. 57) · s'il règle une
+      prestation, la taxe est devenue EXIGIBLE à sa date (O.-L. n° 10/001,
+      art. 25, 2°), le fait générateur étant l'exécution du service (art. 24,
+      2°). Le lettrage n'est que le moyen dont OmegaX dispose pour savoir
+      quelle facture il règle · défait par la clôture (ligne d'à-nouveau
+      provisoire disparue sans équivalent), il laisserait la TVA de la facture
+      en attente SANS LE DIRE. Tant qu'il n'est pas relettré, il est NOMMÉ
+      dans toute déclaration dont la période s'achève après sa date · relettré,
+      le moteur le date au jour du paiement.
+    */
+    const filtreARelettrer = {
+      aRelettrerDepuis: { not: null },
+      lettrageId: null,
+      // Son exercice OUVERT seulement · une fois clos, la ligne ne se relettre
+      // plus (c'est son à-nouveau qui le sera), et la nommer à chaque
+      // déclaration suivante ne dirait plus rien d'utile.
+      ecriture: { tenantId, statut: StatutEcriture.VALIDEE, date: { lte: dateFin }, exercice: { statut: StatutExercice.OUVERT } },
+    } satisfies Prisma.LigneEcritureWhereInput;
+    // UNE lecture, bornée · le total exact au-delà du plafond n'apporterait
+    // rien à la phrase (« et N autre(s) »), le plafond atteint se dit. Le
+    // filtre est rejoué ligne à ligne · une doublure qui rend ce qu'on lui
+    // donne ne doit jamais faire nommer une ligne qui ne l'est pas.
+    const lusARelettrer = (
+      await this.prisma.ligneEcriture.findMany({
+        where: filtreARelettrer,
+        select: { aRelettrerDepuis: true, lettrageId: true, debit: true, credit: true, compte: { select: { numero: true } }, ecriture: { select: { date: true } } },
+        orderBy: { id: 'asc' },
+        take: PLAFOND_SANS_FACTURE + 1,
+      })
+    ).filter((l) => l.aRelettrerDepuis && !l.lettrageId && l.ecriture?.date && l.ecriture.date <= dateFin);
+    const paiementsARelettrerTotal = lusARelettrer.length;
+    const paiementsARelettrer = lusARelettrer.slice(0, PLAFOND_SANS_FACTURE).map((l) => ({
+      compte: l.compte.numero,
+      date: l.ecriture.date.toISOString().slice(0, 10),
+      montant: TauxTvaService.c(Math.abs(Number(l.debit) - Number(l.credit))),
+      dansLaPeriode: l.ecriture.date >= dateDebut,
+    }));
     const recouvrementsSansFactureTronque = recouvrementsTronques || creancesRecouvreesTotal > PLAFOND_SANS_FACTURE;
 
     const lignes = [];
@@ -3647,11 +3689,15 @@ export class TauxTvaService {
         recouvrementsSansFactureDesignee,
         reconstitutionsIncertaines,
         reconstitutionsIncertainesTotal,
+        paiementsARelettrer,
+        paiementsARelettrerTotal,
       }),
       /** TVA d'écritures au brouillard datées de la période · hors déclaration. */
       tvaAuBrouillard,
       // TVA facturée sur la période mais pas encore encaissée, donc pas encore
-      // due. Zéro quand aucune ligne n'est datée à l'encaissement.
+      // EXIGIBLE (O.-L. n° 10/001, art. 25, 2° · le fait générateur, l'exécution
+      // du service, art. 24, 2°, a eu lieu). Zéro quand aucune ligne n'est
+      // datée à l'encaissement.
       tvaEnAttenteEncaissement: enAttente,
       lignes,
       prorata,
@@ -3699,6 +3745,14 @@ export class TauxTvaService {
        */
       reconstitutionsIncertaines,
       reconstitutionsIncertainesTotal,
+      /**
+       * Paiements DÉLETTRÉS par la clôture de l'exercice précédent, non
+       * relettrés, datés au plus tard de la fin de période (AU1, second tour)
+       * · encaissements qu'OmegaX ne rattache plus à leur facture, TVA
+       * exigible à leur date à déclarer par le cabinet. 200 au plus.
+       */
+      paiementsARelettrer,
+      paiementsARelettrerTotal,
       /** Net de la seule période, avant report du crédit antérieur. */
       netAvantImputation,
       /** Crédit de TVA venu de la dernière liquidation (art. 63). */
@@ -3743,6 +3797,8 @@ export class TauxTvaService {
   private mentionExigibilite(e: {
     reconstitutionsIncertaines?: ReadonlyArray<{ facture: string; dateDebut: string; dateFin: string; montantReconstitue: number }>;
     reconstitutionsIncertainesTotal?: number;
+    paiementsARelettrer?: ReadonlyArray<{ compte: string; date: string; montant: number; dansLaPeriode: boolean }>;
+    paiementsARelettrerTotal?: number;
     recouvrementsSansFactureDesignee?: ReadonlyArray<{ compte: string; dateReclassement: string; recouvre: number; recouvreSansFacture: number; motifs?: string[] }>;
     regime: string;
     referentiel: Referentiel | undefined;
@@ -3841,7 +3897,26 @@ export class TauxTvaService {
               '. Un lettrage modifié ou défait après une liquidation antérieure à cette version (journal d’audit) · ce que ' +
               'l’ancien moteur a lu ne se reconstitue pas avec certitude.',
           ];
+    const aRelettrer = e.paiementsARelettrer ?? [];
+    const jjmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+    const phraseARelettrer =
+      aRelettrer.length === 0
+        ? []
+        : [
+            'PAIEMENT NON RATTACHÉ À SA FACTURE · ' +
+              aRelettrer
+                .slice(0, 8)
+                .map((p) => `compte ${p.compte}, paiement encaissé le ${jjmm(p.date)} (${fc(p.montant)} CDF)${p.dansLaPeriode ? '' : ', antérieur à la période'}`)
+                .join(' ; ') +
+              ((e.paiementsARelettrerTotal ?? aRelettrer.length) > 8 ? ` ; et ${(e.paiementsARelettrerTotal ?? aRelettrer.length) - 8} autre(s)` : '') +
+              '. Délettré par la clôture de l’exercice précédent (sa ligne d’à-nouveau provisoire a disparu sans équivalent) · ' +
+              'un paiement non lettré reste un encaissement (décret n° 011/42, art. 57) · s’il règle une prestation de services, ' +
+              'la TVA est devenue exigible à cette date (O.-L. n° 10/001, art. 25, 2°), à déclarer par le cabinet, sauf si la ' +
+              'déclaration de sa facture l’a déjà comptée (taxe lue à la facture). Issue · relettrer ' +
+              'le paiement avec sa facture (Lettrage, pré-lettrage) · la tranche sera alors datée du jour du paiement.',
+          ];
     const phrases: string[] = [
+      ...phraseARelettrer,
       ...phraseIncertaines,
       ...phraseSansFacture,
       ...(brouillard && brouillard.ecritures > 0

@@ -1077,7 +1077,8 @@ export class ExerciceService {
             .filter((l) => l.lettrageId === null && l.rapprochementId === null && !rectification?.comptesRectifies.includes(l.compteId))
             .map((l) => ({ id: l.id, compteId: l.compteId, debit: l.debit, credit: l.credit, dateEcheance: l.dateEcheance, deviseId: l.deviseId, montantDevise: l.montantDevise })),
         ];
-        issueOuverture.push(...(await reporterLesTenues(tx, tenantId, tenues, candidates)));
+        const reporte = await reporterLesTenues(tx, tenantId, exerciceSuivant.id, tenues, candidates);
+        issueOuverture.push(...reporte.messages);
 
         const clos = await tx.exercice.update({
           where: { id: exerciceId },
@@ -1085,6 +1086,7 @@ export class ExerciceService {
           // journal d'audit, comme la clôture elle-même.
           data: {
             statut: StatutExercice.CLOTURE,
+            ...(reporte.defaits.length > 0 ? { defaitsParLaCloture: reporte.defaits } : {}),
             ...(issue.conservation
               ? { motifOuvertureSuivanteConservee: issue.conservation.motif, ecartsOuvertureSuivanteConservee: issue.conservation.ecarts }
               : {}),
@@ -1565,34 +1567,43 @@ async function retirerANouveauProvisoire(
  * compte qu'elle porte juste (AU2 · un compte concordant ne reçoit aucune
  * ligne du report, et c'est sa ligne d'ouverture qui fait foi).
  *
- * Une tenue sans équivalent (le livre de N a changé depuis le provisoire, ou
- * l'appariement aurait été une devinette, R3) ·
- *  · POINTÉE, rapprochement EN COURS et ligne non figée, refus · le dépointage
- *    est un geste ouvert ; sinon (rapprochement clos, ou ligne figée) le
- *    rapprochement est laissé tel quel et perd cette ligne, et c'est DIT · le
- *    refus enfermait N (second tour, R5) ;
- *  · LETTRÉE dans un groupe que rien ne fige, refus · « délettrez-le » ;
- *  · LETTRÉE dans un groupe FIGÉ, le groupe reste avec ses autres lignes,
- *    PARTIEL, au reste qu'elles portent, et c'est DIT.
+ * UNE TENUE SANS ÉQUIVALENT SÛR (le livre de N a changé depuis le provisoire,
+ * ou l'appariement serait une devinette, R3) · son lettrage ou son pointage
+ * est DÉFAIT (second tour, décision du coordinateur sur R4 et R5). Le
+ * laisser partiel, ou refuser la clôture, enfermait N ou laissait un
+ * règlement rattaché à rien. C'est permis · le gel du lettrage par une
+ * clôture de période est une lecture d'OmegaX (les manuels Sage ne disent
+ * non modifiables que les JOURNAUX), l'AUDCIF art. 22, 2° rend irréversibles
+ * les ÉCRITURES validées et non le lettrage, et la ligne provisoire n'a jamais
+ * été au livre-journal. Le délettrage ne vise QUE le groupe qui portait la
+ * ligne disparue, se fait dans la transaction de clôture, est écrit sur
+ * l'exercice (`defaitsParLaCloture`, journal d'audit, avec son motif) comme
+ * la suppression du groupe, et les lignes défaites sont marquées « à
+ * relettrer » (`aRelettrerDepuis`) · le pré-lettrage PROPOSE leur relettrage,
+ * jamais posé d'office, et la déclaration de TVA les NOMME tant qu'elles ne
+ * le sont pas. Un pointage défait · la ligne quitte son rapprochement, nommée.
  */
 async function reporterLesTenues(
   tx: Prisma.TransactionClient,
   tenantId: string,
+  exerciceSuivantId: string,
   tenues: LigneTenue[],
   candidates: LigneCandidate[],
-): Promise<string[]> {
-  if (tenues.length === 0) return [];
+): Promise<{ messages: string[]; defaits: Prisma.InputJsonValue[] }> {
+  if (tenues.length === 0) return { messages: [], defaits: [] };
   const messages: string[] = [];
+  const defaits: Prisma.InputJsonValue[] = [];
   const cibles = apparierTenues(tenues, candidates);
   const orphelins = new Map<string, LigneTenue[]>();
   const pointees = tenues.filter((t, i) => cibles[i] === null && t.rapprochementId);
   const rapprochements = pointees.length
     ? await tx.rapprochementBancaire.findMany({
         where: { tenantId, id: { in: pointees.map((t) => t.rapprochementId!) } },
-        select: { id: true, statut: true, dateReleve: true },
+        select: { id: true, statut: true, dateReleve: true, compte: { select: { numero: true } } },
       })
     : [];
   const rapprochement = new Map(rapprochements.map((r) => [r.id, r]));
+  const MOTIF = "ligne d'à-nouveau provisoire remplacée par la clôture sans équivalent sûr dans le report définitif";
   for (let i = 0; i < tenues.length; i++) {
     const t = tenues[i];
     const cible = cibles[i];
@@ -1606,17 +1617,10 @@ async function reporterLesTenues(
     if (t.rapprochementId) {
       const r = rapprochement.get(t.rapprochementId);
       const releve = r ? ` du relevé du ${r.dateReleve.toISOString().slice(0, 10)}` : '';
-      if (r?.statut !== StatutRapprochement.CLOTURE && !t.figee) {
-        throw new BadRequestException(
-          `Une ligne pointée du report à-nouveau provisoire (${montantLisible(t)}) n'a pas d'équivalent sûr dans le report définitif · ` +
-            `le livre de l'exercice a changé depuis le report provisoire. Dépointez-la du rapprochement${releve} avant de clôturer, ` +
-            'il perdrait sinon une ligne sans le dire.',
-        );
-      }
+      defaits.push({ type: 'POINTAGE', compte: r?.compte.numero ?? null, releve: r?.dateReleve.toISOString().slice(0, 10) ?? null, montant: t.debit - t.credit, motif: MOTIF });
       messages.push(
-        `Une ligne pointée du report provisoire (${montantLisible(t)}) n'a pas d'équivalent sûr dans le report définitif · ` +
-          `${r?.statut === StatutRapprochement.CLOTURE ? `le rapprochement${releve} est clos` : 'une clôture la fige'}, il est laissé tel quel et ` +
-          'perd cette ligne · son pointage ne peut plus être refait.',
+        `Pointage défait · la ligne d'à-nouveau provisoire (${montantLisible(t)}) quitte le rapprochement${releve}` +
+          `${r?.statut === StatutRapprochement.CLOTURE ? ' (clos)' : ''}, sans équivalent sûr dans le report définitif · pointez la ligne d'à-nouveau définitif s'il y a lieu.`,
       );
     }
     if (t.lettrageId) orphelins.set(t.lettrageId, [...(orphelins.get(t.lettrageId) ?? []), t]);
@@ -1627,34 +1631,52 @@ async function reporterLesTenues(
         'au même montant · leurs lettrages sont inchangés.',
     );
   }
+  const maintenant = new Date();
   for (const [lettrageId, lignes] of orphelins) {
+    const groupe = await tx.lettrage.findFirst({
+      where: { id: lettrageId, tenantId },
+      select: { code: true, compteId: true, compte: { select: { numero: true, intitule: true } } },
+    });
     const restantes = await tx.ligneEcriture.findMany({
       where: { lettrageId, ecriture: { tenantId } },
-      select: { id: true, debit: true, credit: true },
+      select: { id: true, debit: true, credit: true, deviseId: true, montantDevise: true, ecriture: { select: { date: true } } },
     });
-    const groupe = await tx.lettrage.findFirst({ where: { id: lettrageId, tenantId }, select: { code: true, compte: { select: { numero: true } } } });
-    const figees = await lignesFigees(tx, tenantId, restantes.map((l) => l.id));
-    if (figees.size === 0) {
-      throw new BadRequestException(
-        `Le lettrage ${groupe?.code ?? ''} du compte ${groupe?.compte.numero ?? ''} porte une ligne du report à-nouveau provisoire (${montantLisible(lignes[0])}) ` +
-          "qui n'a pas d'équivalent sûr dans le report définitif (le livre de l'exercice a changé, ou plusieurs lignes de même montant " +
-          "diffèrent par l'échéance). Délettrez-le avant de clôturer, puis lettrez le règlement avec la bonne ligne d’à-nouveau définitif.",
-      );
+    await tx.ligneEcriture.updateMany({
+      where: { lettrageId, ecriture: { tenantId } },
+      data: { lettre: null, lettrageId: null, aRelettrerDepuis: maintenant },
+    });
+    // Supprimé comme le fait `LettrageService.delettrer` · au journal d'audit.
+    if (groupe) await tx.lettrage.delete({ where: { id: lettrageId } });
+    const decrites = restantes.map((l) => ({ date: l.ecriture.date.toISOString().slice(0, 10), montant: auCentime(Number(l.debit) - Number(l.credit)) }));
+    defaits.push({ type: 'LETTRAGE', compte: groupe?.compte.numero ?? null, groupe: groupe?.code ?? null, ligneProvisoire: lignes[0].debit - lignes[0].credit, lignes: decrites, motif: MOTIF });
+    // Le relettrage se PROPOSE · une ligne de même montant et même devise,
+    // de sens contraire, encore libre dans l'exercice suivant.
+    let candidatesRelettrage = 0;
+    for (const l of restantes) {
+      const d = Number(l.debit);
+      const c = Number(l.credit);
+      candidatesRelettrage += await tx.ligneEcriture.count({
+        where: {
+          compteId: groupe?.compteId,
+          lettrageId: null,
+          id: { notIn: restantes.map((x) => x.id) },
+          debit: c,
+          credit: d,
+          deviseId: l.deviseId,
+          ecriture: { tenantId, exerciceId: exerciceSuivantId, estANouveauProvisoire: false },
+        },
+      });
     }
-    const solde = auCentime(restantes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0));
-    const soldeNul = Math.abs(solde) <= EPSILON;
-    await tx.lettrage.update({
-      where: { id: lettrageId },
-      data: soldeNul ? { solde: 0 } : { statut: StatutLettrage.PARTIEL, solde, soldeAt: null },
-    });
-    if (!soldeNul) await tx.ligneEcriture.updateMany({ where: { lettrageId, ecriture: { tenantId } }, data: { lettre: null } });
     messages.push(
-      `Le lettrage ${groupe?.code ?? ''} du compte ${groupe?.compte.numero ?? ''} perd sa ligne d'à-nouveau provisoire (${montantLisible(lignes[0])}), ` +
-        "sans équivalent sûr dans le report définitif · figé par une clôture, il reste avec ses autres lignes" +
-        (soldeNul ? '.' : `, partiel, au reste de ${solde.toFixed(2)}.`),
+      `Lettrage ${groupe?.code ?? ''} DÉLETTRÉ par la clôture · compte ${groupe?.compte.numero ?? ''} ${groupe?.compte.intitule ?? ''}, ` +
+        decrites.map((l) => `${l.montant < 0 ? 'paiement' : 'ligne'} du ${l.date} (${Math.abs(l.montant).toFixed(2)})`).join(', ') +
+        ` · sa ligne d'à-nouveau provisoire (${montantLisible(lignes[0])}) n'a pas d'équivalent sûr dans le report définitif. À relettrer · ` +
+        (candidatesRelettrage > 0
+          ? `${candidatesRelettrage} ligne(s) de même montant proposée(s) au pré-lettrage, à confirmer.`
+          : 'aucune ligne de même montant dans l’exercice suivant, lettrez-le à la main quand sa facture sera connue.'),
     );
   }
-  return messages;
+  return { messages, defaits };
 }
 
 function montantLisible(t: { debit: number; credit: number }): string {

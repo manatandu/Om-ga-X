@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { OrigineLettrage } from '@prisma/client';
-import { LettrageService } from './lettrage.service';
+import { estRelettrageDeCloture, LettrageService } from './lettrage.service';
 import { PrismaService } from '../../common/prisma.service';
 
 /**
@@ -1024,5 +1024,20 @@ describe('AU1 · l’à-nouveau provisoire ne se lettre par aucun chemin', () =>
     const { service: s, groupes } = service(lignes);
     await s.lettrerManuel('t1', 'c1', ['r', 'f'], 'u1', { autoriserPartiel: true });
     await expect(s.completer('t1', groupes[0].id, ['ran'])).rejects.toThrow(/PROVISOIRE/);
+  });
+});
+
+describe('AU1 second tour · seul le relettrage de ce que la clôture a défait passe outre le gel', () => {
+  const ligneDe = (ecriture: Record<string, boolean>, aRelettrerDepuis: Date | null = null) => ({
+    aRelettrerDepuis,
+    ecriture: { estANouveauProvisoire: false, estGenereeParCloture: false, estSoldeDesComptesDeGestion: false, ...ecriture },
+  });
+  it('paiement marqué et ligne d’à-nouveau définitif · toléré', () => {
+    expect(estRelettrageDeCloture([ligneDe({}, new Date()), ligneDe({ estGenereeParCloture: true })])).toBe(true);
+  });
+  it('une facture ordinaire, ou aucune ligne marquée, ou le provisoire · jamais', () => {
+    expect(estRelettrageDeCloture([ligneDe({}, new Date()), ligneDe({})])).toBe(false);
+    expect(estRelettrageDeCloture([ligneDe({}), ligneDe({ estGenereeParCloture: true })])).toBe(false);
+    expect(estRelettrageDeCloture([ligneDe({}, new Date()), ligneDe({ estGenereeParCloture: true, estANouveauProvisoire: true })])).toBe(false);
   });
 });

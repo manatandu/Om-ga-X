@@ -436,15 +436,34 @@ describe('AU1 · la clôture reporte le lettrage du provisoire sur le définitif
     expect(r.issueOuverture.join(' ')).toMatch(/reportées sur l'à-nouveau définitif/);
   });
 
-  it('R3 · deux lignes de même montant aux échéances différentes de la tenue · aucune devinette, orpheline et refus nommé', async () => {
-    const { s, tx } = service({ id: 'p', numeroPiece: 3, lignes: [{ ...tenue, dateEcheance: new Date('2027-02-01') }] as never });
+  it('R3 et R4 · deux lignes de même montant aux échéances différentes · aucune devinette, le groupe est DÉLETTRÉ, écrit sur l’exercice, nommé, à relettrer', async () => {
+    const { s: sv, tx } = service({ id: 'p', numeroPiece: 3, lignes: [{ ...tenue, dateEcheance: new Date('2027-02-01') }] as never });
     tx.ecriture.create.mockImplementation(
       definitif([d('x', '411', 300, { dateEcheance: new Date('2027-03-01') }), d('y', '411', 300, { dateEcheance: new Date('2027-04-01') })]) as never,
     );
     (tx.ligneEcriture as Record<string, unknown>).update = jest.fn().mockResolvedValue({});
-    (tx as Record<string, unknown>).lettrage = { findFirst: jest.fn().mockResolvedValue({ code: 'A', compte: { numero: '41110000' } }) };
-    await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(/pas d'équivalent sûr.*Délettrez-le/);
+    const parDefaut = tx.ligneEcriture.findMany.getMockImplementation()!;
+    tx.ligneEcriture.findMany.mockImplementation(((a: { where: Record<string, unknown> }) =>
+      a.where.lettrageId === 'g'
+        ? Promise.resolve([{ id: 'reg', debit: 0, credit: 300, deviseId: null, montantDevise: null, ecriture: { date: new Date('2027-01-20') } }])
+        : parDefaut(a as never)) as never);
+    (tx.ligneEcriture as Record<string, unknown>).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    tx.ligneEcriture.count.mockResolvedValue(2);
+    (tx as Record<string, unknown>).lettrage = {
+      findFirst: jest.fn().mockResolvedValue({ code: 'A', compteId: '411', compte: { numero: '41110000', intitule: 'Clients' } }),
+      delete: jest.fn().mockResolvedValue({}),
+    };
+    const r = (await sv.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
     expect((tx.ligneEcriture as unknown as { update: jest.Mock }).update).not.toHaveBeenCalled();
+    expect((tx.ligneEcriture as unknown as { updateMany: jest.Mock }).updateMany).toHaveBeenCalledWith({
+      where: { lettrageId: 'g', ecriture: { tenantId: 't' } },
+      data: { lettre: null, lettrageId: null, aRelettrerDepuis: expect.any(Date) },
+    });
+    expect((tx as unknown as { lettrage: { delete: jest.Mock } }).lettrage.delete).toHaveBeenCalledWith({ where: { id: 'g' } });
+    expect(tx.exercice.update.mock.calls[0][0].data.defaitsParLaCloture).toEqual([
+      expect.objectContaining({ type: 'LETTRAGE', compte: '41110000', groupe: 'A', lignes: [{ date: '2027-01-20', montant: -300 }] }),
+    ]);
+    expect(r.issueOuverture.join(' ')).toMatch(/Lettrage A DÉLETTRÉ.*paiement du 2027-01-20.*À relettrer · 2 ligne\(s\) de même montant proposée\(s\)/);
   });
 
   it('R3 · une seule candidate à une autre échéance · appariée ; la devise ne se relâche jamais', async () => {
@@ -455,16 +474,16 @@ describe('AU1 · la clôture reporte le lettrage du provisoire sur le définitif
     expect((tx.ligneEcriture as unknown as { update: jest.Mock }).update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'x' } }));
   });
 
-  it('une ligne POINTÉE sans équivalent, rapprochement EN COURS et non figée · refus nommé', async () => {
-    const { s } = service({ id: 'p', numeroPiece: 3, lignes: [{ ...tenue, debit: 999, lettre: null, lettrageId: null, rapprochementId: 'r' }] as never });
-    await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(/pointée du report à-nouveau provisoire.*Dépointez/);
-  });
-
-  it('R5 · une ligne POINTÉE sans équivalent, rapprochement CLOS · la clôture passe, le rapprochement est laissé tel quel et c’est dit', async () => {
-    const { s, tx } = service({ id: 'p', numeroPiece: 3, lignes: [{ ...tenue, debit: 999, lettre: null, lettrageId: null, rapprochementId: 'r' }] as never });
-    tx.rapprochementBancaire.findMany.mockResolvedValue([{ id: 'r', statut: 'CLOTURE', dateReleve: new Date('2027-01-31') }]);
-    const r = (await s.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
-    expect(r.issueOuverture.join(' ')).toMatch(/relevé du 2027-01-31 est clos, il est laissé tel quel/);
+  it('R5 · une ligne POINTÉE sans équivalent · le pointage est défait et nommé, jamais un refus (rapprochement en cours ou clos)', async () => {
+    for (const statut of ['EN_COURS', 'CLOTURE']) {
+      const { s: sv, tx } = service({ id: 'p', numeroPiece: 3, lignes: [{ ...tenue, debit: 999, lettre: null, lettrageId: null, rapprochementId: 'r' }] as never });
+      tx.rapprochementBancaire.findMany.mockResolvedValue([{ id: 'r', statut, dateReleve: new Date('2027-01-31'), compte: { numero: '52110000' } }]);
+      const r = (await sv.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+      expect(r.issueOuverture.join(' ')).toMatch(/Pointage défait · la ligne d'à-nouveau provisoire \(débit 999\.00\) quitte le rapprochement du relevé du 2027-01-31/);
+      expect(tx.exercice.update.mock.calls[0][0].data.defaitsParLaCloture).toEqual([
+        expect.objectContaining({ type: 'POINTAGE', compte: '52110000', releve: '2027-01-31', montant: 999 }),
+      ]);
+    }
   });
 });
 

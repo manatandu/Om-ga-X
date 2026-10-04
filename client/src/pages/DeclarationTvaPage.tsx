@@ -182,7 +182,7 @@ export function DeclarationTvaPage() {
           )}
           {/* RÉGIME D'EXIGIBILITÉ · un total de TVA ne se vérifie pas sans lui.
               Le même chiffre d'affaires donne deux déclarations différentes
-              selon que la taxe est due à la facture ou au règlement. */}
+              selon que la taxe est exigible à la facture ou au règlement. */}
           <div className="border border-border bg-surface-alt max-w-[780px] mb-3 px-3.5 py-2">
             <div className="flex items-center gap-2 mb-1">
               <span className="font-mono text-[11px] font-bold text-text-dim">Exigibilité</span>
@@ -209,7 +209,7 @@ export function DeclarationTvaPage() {
                 </span>{' '}
                 <Aide
                   titre="TVA pas encore encaissée"
-                  texte="Elle n’est pas due tant que le client n’a pas réglé, et deviendra exigible sur la période de l’encaissement. Elle explique l’écart entre le chiffre d’affaires de la période et la taxe déclarée."
+                  texte="Le fait générateur d’une prestation est l’exécution du service · sa taxe n’est pas encore exigible tant que le client n’a pas réglé, et le devient sur la période de l’encaissement. Elle explique l’écart entre le chiffre d’affaires de la période et la taxe déclarée."
                   source="Régime d’exigibilité · encaissements"
                 />
               </div>

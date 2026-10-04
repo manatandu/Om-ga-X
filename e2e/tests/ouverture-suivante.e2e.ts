@@ -53,7 +53,7 @@ for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
     });
 
     // Au brouillard, la clôture le refuse et nomme le geste ouvert.
-    await expect(appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`, {})).rejects.toThrow(/au brouillard.*Validez-le/);
+    await expect(appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`, {})).rejects.toThrow(/au premier jour des écritures au brouillard/);
     await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: suivant.id, dateLimite: debut });
     // Validé et divergent · refus sans déclaration.
     await expect(appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`, {})).rejects.toThrow(/qui diffère du bilan de clôture/);
@@ -114,3 +114,42 @@ test('SYSCOHADA · AU1 · une ligne d’à-nouveau provisoire ne se lettre pas',
   await appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`, {});
   expect(pannes).toEqual([]);
 });
+
+/**
+ * R1 (second tour) · une ouverture SAISIE À LA MAIN par OD au premier jour de
+ * N+1, sans import · la clôture la lisait pas, et le report la doublait. Le
+ * périmètre est désormais le premier jour, toutes origines.
+ */
+for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
+  test(`${referentiel} · R1 · une ouverture saisie par OD au premier jour n'est jamais doublée par la clôture`, async ({ page }) => {
+    const pannes = surveiller(page);
+    const dossier = await creerDossier(page, { referentiel, nom: `R1 e2e ${referentiel}`, montant: MONTANT });
+    await seConnecter(page, dossier.email);
+    const [exercice] = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).filter((e) => e.id === dossier.exerciceId);
+    await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: exercice.id, dateLimite: jour(exercice.dateFin) });
+    const debut = lendemain(exercice.dateFin);
+    const suivant = await appelApi<Exercice>(page, 'POST', '/exercices', { dateDebut: debut, dateFin: `${debut.slice(0, 4)}-12-31` });
+    const comptes = await appelApi<Compte[]>(page, 'GET', '/comptes?typeCompte=DETAIL');
+    const banque = comptes.find((c) => c.numero.startsWith('52'))!;
+    const resultat = comptes.find((c) => c.numero.startsWith('131'))!;
+    const journaux = await appelApi<Array<{ id: string; type: string }>>(page, 'GET', '/journaux');
+    const od = journaux.find((j) => j.type === 'GENERAL') ?? journaux[0];
+    await appelApi(page, 'POST', '/ecritures', {
+      exerciceId: suivant.id, journalId: od.id, date: debut, libelle: 'Ouverture saisie à la main',
+      lignes: [{ compteId: banque.id, debit: MONTANT, credit: 0 }, { compteId: resultat.id, debit: 0, credit: MONTANT }],
+    });
+    await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: suivant.id, dateLimite: debut });
+
+    await page.goto('/#/exercice');
+    await page.locator('select').first().selectOption(exercice.id);
+    await expect(page.getByText(/concordante, aucun report ne sera ajouté/)).toBeVisible();
+    page.once('dialog', (d) => d.accept());
+    await page.getByRole('button', { name: "Clôturer l'exercice" }).click();
+    await expect(page.getByText(/correspond au bilan de clôture, par compte et par devise/)).toBeVisible();
+
+    const { lignes } = await appelApi<{ lignes: { numero: string; solde: number }[] }>(page, 'GET', `/ecritures/balance?exerciceId=${suivant.id}`);
+    const solde = (n: string) => lignes.filter((l) => l.numero === n).reduce((t, l) => t + Number(l.solde), 0);
+    expect({ banque: solde(banque.numero), resultat: solde(resultat.numero) }).toEqual({ banque: MONTANT, resultat: -MONTANT });
+    expect(pannes).toEqual([]);
+  });
+}

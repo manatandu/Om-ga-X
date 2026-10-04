@@ -162,6 +162,24 @@ export async function poserGroupeSoldeDuModule(
 }
 
 /**
+ * AU1, second tour · un groupe qui RELETTRE ce que la clôture a défait · au
+ * moins une ligne marquée « à relettrer » (`aRelettrerDepuis`), et toutes les
+ * autres sont soit marquées, soit des lignes d'à-nouveau DÉFINITIF (le report
+ * que la clôture vient de passer, souvent dans une période déjà close). Seul
+ * ce groupe-là passe outre le gel · la clôture l'a défait, elle en rend le
+ * geste. Une facture ordinaire d'une période close reste figée.
+ */
+export function estRelettrageDeCloture(
+  lignes: Array<{ aRelettrerDepuis?: Date | null; ecriture: { estANouveauProvisoire: boolean; estGenereeParCloture?: boolean; estSoldeDesComptesDeGestion?: boolean } }>,
+): boolean {
+  const marquees = lignes.filter((l) => l.aRelettrerDepuis);
+  if (marquees.length === 0) return false;
+  return lignes.every(
+    (l) => l.aRelettrerDepuis || (l.ecriture.estGenereeParCloture === true && !l.ecriture.estANouveauProvisoire && l.ecriture.estSoldeDesComptesDeGestion !== true),
+  );
+}
+
+/**
  * Le refus de lettrer une ligne d'à-nouveau PROVISOIRE (AU1) · il nomme la
  * raison et le geste qui reste ouvert, comme celui du Règlement des tiers.
  */
@@ -1340,7 +1358,43 @@ export class LettrageService {
       };
     };
 
+    // AU1, second tour · ce que la clôture a DÉLETTRÉ se propose à part,
+    // ligne par ligne, avec ses candidates (même compte, même montant de sens
+    // contraire, même devise, même exercice, libres) · jamais posé d'office,
+    // le comptable choisit et confirme (« l'une propose, l'autre confirme »).
+    const aRelettrer = await this.prisma.ligneEcriture.findMany({
+      where: { compteId, lettrageId: null, aRelettrerDepuis: { not: null }, ecriture: { tenantId } },
+      select: { id: true, debit: true, credit: true, deviseId: true, libelle: true, ecriture: { select: { date: true, exerciceId: true, libelle: true } } },
+      orderBy: { id: 'asc' },
+      take: 200,
+    });
+    const relettrages = [];
+    for (const l of aRelettrer) {
+      const candidates = await this.prisma.ligneEcriture.findMany({
+        where: {
+          compteId,
+          lettrageId: null,
+          id: { not: l.id },
+          debit: l.credit,
+          credit: l.debit,
+          deviseId: l.deviseId,
+          ecriture: { tenantId, exerciceId: l.ecriture.exerciceId, estANouveauProvisoire: false },
+        },
+        select: { id: true, debit: true, credit: true, libelle: true, dateEcheance: true, ecriture: { select: { date: true, libelle: true } } },
+        take: 20,
+      });
+      const decrireLigne = (x: { id: string; debit: unknown; credit: unknown; libelle: string | null; ecriture: { date: Date; libelle: string } }) => ({
+        ligneId: x.id,
+        date: x.ecriture.date.toISOString().slice(0, 10),
+        libelle: x.libelle ?? x.ecriture.libelle,
+        debit: Number(x.debit),
+        credit: Number(x.credit),
+      });
+      relettrages.push({ ligne: decrireLigne(l), candidates: candidates.map(decrireLigne) });
+    }
+
     return {
+      relettrages,
       propositions: [
         ...parPiece.map((g) => decrire(g, OrigineLettrage.AUTOMATIQUE_PIECE)),
         ...parMontant.map((g) => decrire(g, OrigineLettrage.AUTOMATIQUE_MONTANT)),
@@ -1416,7 +1470,19 @@ export class LettrageService {
         for (const g of groupes) {
           const lignes = await tx.ligneEcriture.findMany({
             where: { id: { in: g.ligneIds } },
-            include: { ecriture: { select: { tenantId: true, date: true, exerciceId: true, estANouveauProvisoire: true } } },
+            include: {
+              ecriture: {
+                select: {
+                  tenantId: true,
+                  date: true,
+                  exerciceId: true,
+                  estANouveauProvisoire: true,
+                  estGenereeParCloture: true,
+                  estSoldeDesComptesDeGestion: true,
+                  exercice: { select: { statut: true } },
+                },
+              },
+            },
           });
           this.verifierLignes(lignes, { compteId, tenantId, nombre: g.ligneIds.length });
           await refuserLignesDuCompteClientReclasse(tx, tenantId, g.ligneIds);
@@ -1426,7 +1492,14 @@ export class LettrageService {
           if (aCheval) throw new BadRequestException(aCheval);
           // Une clôture peut être intervenue entre la proposition et la
           // confirmation · la proposition ne se croit pas, elle se rejoue.
-          await refuserSiLignesFigees(tx, tenantId, g.ligneIds, 'lettrer');
+          // SAUF le RELETTRAGE de ce que la clôture a défait (AU1, second
+          // tour) · une ligne marquée « à relettrer » avec une ligne
+          // d'à-nouveau définitif · la clôture, qui a défait le groupe en
+          // période close, rend le geste qui le refait.
+          // Jamais dans un exercice CLÔTURÉ · la tolérance ne lève que le gel
+          // d'une période close, pas celui d'un exercice.
+          const relettrage = estRelettrageDeCloture(lignes) && lignes.every((l) => l.ecriture.exercice?.statut !== StatutExercice.CLOTURE);
+          if (!relettrage) await refuserSiLignesFigees(tx, tenantId, g.ligneIds, 'lettrer');
           const solde = lignes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0);
           if (Math.abs(solde) > EPSILON) {
             throw new BadRequestException(
