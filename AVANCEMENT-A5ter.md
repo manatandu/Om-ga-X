@@ -151,6 +151,13 @@ au 599 par le 6791, repris au 7791 en N+1 (599 de −75 000 en N à −37 500) ;
 toutes les dettes au cours du jour. Test navigateur ajusté (481 financier) ·
 les 20 tests des devises et du règlement en devise passent.
 
+Bloc du § 3 du second tour · serveur (typage, 750 suites, 10 650 tests en
+`--maxWorkers=2` sur ses PROPRES `node_modules`, construction) ; client
+(typage, 1 802 tests, construction). Le lien vers les `node_modules` de la
+racine est abandonné · leur client Prisma, régénéré par une autre ligne,
+portait un modèle étranger (`FactureCreanceDouteuse`) et faisait tomber
+`classement-modeles.spec.ts`.
+
 ## Relevés en attente
 
 - À DIRE AUX UTILISATEURS · au SYCEBNL, la réserve « non déclarée » s'impose
