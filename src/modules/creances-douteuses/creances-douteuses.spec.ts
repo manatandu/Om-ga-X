@@ -35,6 +35,8 @@ import {
   resteDeLaCreance,
   revueAFaire,
   motifRefusDesignation,
+  partageSonLettrage,
+  MOTIF_LETTRAGE_PARTAGE,
 } from './creances-douteuses';
 import { CreancesDouteusesService, PLAFOND_COMPTES_416_491 } from './creances-douteuses.service';
 import { CreancesDouteusesController } from './creances-douteuses.controller';
@@ -2191,26 +2193,35 @@ describe('A7 bis · « Désigner les factures » · rien n’est deviné, chaque
 });
 
 describe('A7 bis, troisième reprise · encours d’une facture d’un groupe partagé, retrait d’une désignation', () => {
-  it('l’encours d’une facture d’un groupe à deux factures est SA part du reste, jamais le reste entier', () => {
-    // F1 et F2 de 1 160 000 et un règlement de 500 000 · reste 1 820 000, 910 000 chacune.
-    const groupe = {
-      statut: 'PARTIEL',
-      solde: 1_820_000,
-      lignes: [
-        { debit: 1_160_000, credit: 0 },
-        { debit: 1_160_000, credit: 0 },
-        { debit: 0, credit: 500_000 },
-      ],
+  it('une facture dont le lettrage réunit d’AUTRES factures n’est pas désignable · refus nommé (quatrième reprise)', () => {
+    // F1 et F2 de 1 160 000 et un règlement de 500 000 dans un même groupe partiel.
+    const f1 = {
+      debit: 1_160_000,
+      credit: 0,
+      lettrage: { lignes: [{ debit: 1_160_000, credit: 0 }, { debit: 1_160_000, credit: 0 }, { debit: 0, credit: 500_000 }] },
     };
-    expect(CreancesDouteusesService.ouvertDeLaLigne({ debit: 1_160_000, credit: 0, lettrage: groupe })).toBe(910_000);
-    // Une seule facture · le reste, borné par la ligne.
+    expect(partageSonLettrage(f1)).toBe(true);
+    expect(partageSonLettrage({ debit: 1_160_000, credit: 0, lettrage: { lignes: [{ debit: 1_160_000, credit: 0 }, { debit: 0, credit: 464_000 }] } })).toBe(false);
+    expect(partageSonLettrage({ debit: 1_160_000, credit: 0, lettrage: null })).toBe(false);
     expect(
-      CreancesDouteusesService.ouvertDeLaLigne({
-        debit: 1_160_000,
-        credit: 0,
-        lettrage: { statut: 'PARTIEL', solde: 696_000, lignes: [{ debit: 1_160_000, credit: 0 }, { debit: 0, credit: 464_000 }] },
+      motifRefusDesignation({
+        creanceAnnulee: false,
+        memeCompte: true,
+        validee: true,
+        sensFacture: 1_160_000,
+        montant: 910_000,
+        ouvert: 1_160_000,
+        designeeAilleurs: false,
+        dejaDesignee: false,
+        lettragePartage: true,
+        totalDesigne: 910_000,
+        montantCreance: 1_820_000,
+        numeroCompte: '41110101',
       }),
-    ).toBe(696_000);
+    ).toBe(`Désignation refusée · ${MOTIF_LETTRAGE_PARTAGE}.`);
+    expect(MOTIF_LETTRAGE_PARTAGE).toBe(
+      'cette facture partage son lettrage avec d’autres ; le recouvrement sera listé parmi les recouvrements sans facture désignée, TVA à déclarer par le cabinet',
+    );
   });
 
   it('un retrait MARQUE la désignation (motif au journal d’audit), même exercice clos, et ne se refait pas', async () => {

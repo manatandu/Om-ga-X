@@ -933,6 +933,35 @@ export function mouvementsSansRevue(p: { revueDeLExercice: boolean; mouvementsDe
  * (A7 ter), le moteur de la TVA ne savait pas de quelle facture il s'agit ·
  * le cabinet la DÉSIGNE. Rien n'est deviné, et chaque refus dit pourquoi.
  */
+/**
+ * UNE FACTURE QUI PARTAGE SON LETTRAGE AVEC D'AUTRES (A7 bis, quatrième
+ * reprise, décision du coordinateur) · aucun texte ne répartit un groupe
+ * partiel entre ses factures ; OmegaX ne désigne pas une telle ligne et, si
+ * elle entre plus tard dans un tel groupe, nomme ses recouvrements au lieu de
+ * les rattacher. Le même message aux deux endroits.
+ */
+export const MOTIF_LETTRAGE_PARTAGE =
+  'cette facture partage son lettrage avec d’autres ; le recouvrement sera listé parmi les recouvrements sans facture désignée, TVA à déclarer par le cabinet';
+/** Le groupe de lettrage de cette ligne réunit-il d'AUTRES factures (lignes de son sens) ? */
+export function partageSonLettrage(x: {
+  debit: unknown;
+  credit: unknown;
+  lettrage?: { lignes?: Array<{ debit: unknown; credit: unknown }> } | null;
+}): boolean {
+  if (!x.lettrage) return false;
+  const sens = Number(x.debit) - Number(x.credit);
+  const memeSens = (x.lettrage.lignes ?? []).reduce((t, g) => {
+    const v = Number(g.debit) - Number(g.credit);
+    return Math.abs(v) > 0.005 && v > 0 === sens > 0 ? t + Math.abs(v) : t;
+  }, 0);
+  return memeSens > Math.abs(sens) + 0.005;
+}
+
+/** Le motif d'un recouvrement sans facture désignée. */
+export const MOTIF_SANS_FACTURE_DESIGNEE = 'aucune facture désignée';
+/** Le motif d'une désignation qu'aucune ligne de TVA lue ne reçoit. */
+export const MOTIF_SANS_LIGNE_DE_TVA = 'la facture désignée ne porte aucune ligne de TVA lue';
+
 export function motifRefusDesignation(p: {
   creanceAnnulee: boolean;
   /** Le compte de la ligne désignée est-il celui du client de la créance ? */
@@ -950,6 +979,8 @@ export function motifRefusDesignation(p: {
   dejaDesignee: boolean;
   /** La ligne est-elle un report à-nouveau ? */
   aNouveau?: boolean;
+  /** Son groupe de lettrage réunit-il d'autres factures ? */
+  lettragePartage?: boolean;
   /** Le total désigné de la créance, cette ligne comprise. */
   totalDesigne: number;
   montantCreance: number;
@@ -965,6 +996,7 @@ export function motifRefusDesignation(p: {
     return 'Cette ligne est un report à-nouveau · désignez la facture d’origine, qui porte la TVA.';
   }
   if (p.sensFacture <= 0.005) return 'Cette ligne ne débite pas le client · ce n’est pas une facture.';
+  if (p.lettragePartage) return `Désignation refusée · ${MOTIF_LETTRAGE_PARTAGE}.`;
   if (!(p.montant > 0)) return 'La part désignée doit être positive.';
   if (p.dejaDesignee) return 'Cette facture est déjà désignée par cette créance.';
   if (p.designeeAilleurs) {

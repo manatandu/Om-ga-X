@@ -233,6 +233,8 @@ export interface FactureCandidate {
   montant: number;
   ouvert: number;
   aNouveau: boolean;
+  /** Son lettrage réunit d'autres factures · non désignable (quatrième reprise). */
+  lettragePartage: boolean;
   designeePar: string[];
 }
 export interface FactureDesignee {

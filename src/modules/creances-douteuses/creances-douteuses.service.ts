@@ -47,6 +47,7 @@ import {
   mouvementsSansRevue,
   motifRefusDeclaration,
   motifRefusDesignation,
+  partageSonLettrage,
   motifRefusMouvement,
   motifRefusReclassement,
   motifRefusRevue,
@@ -985,33 +986,23 @@ export class CreancesDouteusesService {
         montant: n(l.debit) - n(l.credit),
         ouvert: CreancesDouteusesService.ouvertDeLaLigne(l),
         aNouveau: l.ecriture.estGenereeParCloture || l.ecriture.estANouveauProvisoire,
+        lettragePartage: partageSonLettrage(l),
         designeePar: l.creancesDouteusesDesignees.map((d) => d.creanceId),
       })),
     };
   }
 
   /**
-   * Ce que la ligne doit encore · soldé, rien ; partiel, sa PART du reste du
-   * groupe. Un groupe qui réunit plusieurs factures partage ses règlements au
-   * prorata des factures, comme le moteur de la TVA (A7 bis, troisième
-   * reprise) · le reste du groupe entier, pris pour l'encours de CHAQUE
-   * facture, laissait désigner deux fois la même somme.
+   * Ce que la ligne doit encore · soldé, rien ; partiel, le reste du groupe
+   * borné par la ligne. Une ligne dont le groupe réunit d'AUTRES factures
+   * n'est pas désignable (`MOTIF_LETTRAGE_PARTAGE`, quatrième reprise) · aucun
+   * texte ne répartit ce reste entre elles.
    */
-  static ouvertDeLaLigne(l: {
-    debit: unknown;
-    credit: unknown;
-    lettrage: { statut: string; solde: unknown; lignes?: Array<{ debit: unknown; credit: unknown }> } | null;
-  }) {
+  static ouvertDeLaLigne(l: { debit: unknown; credit: unknown; lettrage: { statut: string; solde: unknown } | null }) {
     const montant = Number(l.debit) - Number(l.credit);
     if (!l.lettrage) return montant;
     if (l.lettrage.statut === 'SOLDE') return 0;
-    const reste = Math.abs(Number(l.lettrage.solde));
-    const factures = (l.lettrage.lignes ?? []).reduce((t, g) => {
-      const sens = Number(g.debit) - Number(g.credit);
-      return sens > 0 === montant > 0 && Math.abs(sens) > 0.005 ? t + Math.abs(sens) : t;
-    }, 0);
-    if (factures > Math.abs(montant) + 0.005) return centimes((montant * reste) / factures);
-    return Math.min(montant, reste);
+    return Math.min(montant, Math.abs(Number(l.lettrage.solde)));
   }
 
   /**
@@ -1081,6 +1072,7 @@ export class CreancesDouteusesService {
         designeeAilleurs: l.creancesDouteusesDesignees.some((d) => d.creanceId !== c.id),
         dejaDesignee: c.id !== null && l.creancesDouteusesDesignees.some((d) => d.creanceId === c.id),
         aNouveau: l.ecriture.estGenereeParCloture || l.ecriture.estANouveauProvisoire,
+        lettragePartage: partageSonLettrage(l),
         totalDesigne: total,
         montantCreance: c.montant,
         numeroCompte: c.numero,

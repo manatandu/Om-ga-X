@@ -1,4 +1,5 @@
 import { TauxTvaService, LiquidationEncaissement } from './taux-tva.service';
+import { MOTIF_LETTRAGE_PARTAGE } from '../creances-douteuses/creances-douteuses';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 
@@ -76,8 +77,10 @@ function ecriture(opts: {
             soldeAt: null,
             createdAt: g.createdAt,
             lignes: [
-              { ...facture(opts.tiers.montant), ecriture: { date: new Date(opts.date) } },
-              ...g.reglements.map((r) => ({ ...reglement(r.montant), ecriture: { date: new Date(r.date) } })),
+              // Chaque écriture est SAISIE le jour de sa date · la transition relit
+              // le groupe tel qu'il était à l'instant d'une liquidation.
+              { ...facture(opts.tiers.montant), ecriture: { date: new Date(opts.date), createdAt: new Date(opts.date) } },
+              ...g.reglements.map((r) => ({ ...reglement(r.montant), ecriture: { date: new Date(r.date), createdAt: new Date(r.date) } })),
             ],
           }
         : null,
@@ -324,7 +327,7 @@ describe('Transition · ce qu’une liquidation a déclaré reste déclaré, une
 });
 
 describe('repartirEncaissement · la règle seule', () => {
-  const base = { ligneId: 'L', montant: 160_000, dateEcriture: jour('2026-01-15'), lettreeA: () => true };
+  const base = { ligneId: 'L', montant: 160_000, dateEcriture: jour('2026-01-15'), declareParAncienMoteur: () => 0 };
 
   it('sans liquidation, chaque tranche reste à sa date', () => {
     const r = TauxTvaService.repartirEncaissement({
@@ -341,7 +344,7 @@ describe('repartirEncaissement · la règle seule', () => {
   it('un trop-déclaré de l’ancien moteur absorbe les tranches suivantes, jamais au-delà', () => {
     const r = TauxTvaService.repartirEncaissement({
       ...base,
-      lettreeA: () => false,
+      declareParAncienMoteur: () => 160_000,
       tranches: [
         { date: jour('2026-03-12'), montant: 64_000 },
         { date: jour('2026-05-20'), montant: 96_000 },
@@ -523,7 +526,14 @@ describe('Recouvrement d’une créance douteuse · l’encaissement de ses fact
     });
     const d = await s.declaration('t1', ...MARS_N1);
     expect(d.recouvrementsSansFactureDesignee).toEqual([
-      { creanceId: 'cr1', compte: '41110101 Client Kasa', dateReclassement: '2026-12-31', recouvre: 580_000, recouvreSansFacture: 580_000 },
+      {
+        creanceId: 'cr1',
+        compte: '41110101 Client Kasa',
+        dateReclassement: '2026-12-31',
+        recouvre: 580_000,
+        recouvreSansFacture: 580_000,
+        motifs: ['aucune facture désignée'],
+      },
     ]);
     expect(d.mentionExigibilite).toContain('TVA à déclarer par le cabinet faute de facture désignée');
     expect(d.mentionExigibilite).toContain('41110101 Client Kasa');
@@ -545,33 +555,42 @@ describe('A7 bis, troisième reprise · factures partagées, échéances multipl
     },
   });
 
-  it('F1 et F2 dans UN groupe partiel (500 000 réglés), 1 820 000 reclassés, désignées à 910 000, recouvrées en entier · 320 000', async () => {
-    // Le groupe porte F1 (1 160 000), F2 (1 160 000) et le règlement de
-    // 500 000 · reste 1 820 000. Les 500 000 se partagent au prorata (250 000
-    // chacune, 34 482,76 de TVA), le recouvrement de 910 000 par facture
-    // porte le reste · 160 000 chacune, 320 000 au total, rien en attente.
-    const groupe = (date: string) => ({
-      statut: 'PARTIEL' as const,
-      solde: 1_820_000,
-      reglements: [{ date: '2026-12-20', montant: 500_000 }],
-      autreFacture: date,
-    });
+  it('F1 et F2 dans UN groupe partiel partagé (quatrième reprise) · règle de main, recouvrements NOMMÉS avec le motif, jamais rattachés', async () => {
+    // Le groupe porte F1, F2 (1 160 000 chacune) et 500 000 réglés · reste
+    // 1 820 000. Règle de main · (1 160 000 - 1 820 000) / 1 160 000, ramenée
+    // à zéro, rien d'exigible pour aucune des deux. Désignées (désignation
+    // posée avant que le groupe ne devienne partagé), leurs recouvrements ne
+    // sont pas répartis · ils sont NOMMÉS, TVA à déclarer par le cabinet.
     const avecAutreFacture = (id: string) => {
-      const e = ecriture({ compteTva: '44320000', contrepartie: '70610000', date: '2026-12-10', tva: 160_000, id, tiers: { montant: 1_160_000, groupe: groupe('2026-12-10') } });
+      const e = ecriture({
+        compteTva: '44320000',
+        contrepartie: '70610000',
+        date: '2026-12-10',
+        tva: 160_000,
+        id,
+        tiers: { montant: 1_160_000, groupe: { statut: 'PARTIEL', solde: 1_820_000, reglements: [{ date: '2026-12-20', montant: 500_000 }] } },
+      });
       const tiers = (e.ecriture.lignes as Array<{ lettrage: { lignes: unknown[] } | null }>)[0];
-      // L'autre facture du groupe, de même sens.
-      tiers.lettrage!.lignes.push({ debit: 1_160_000, credit: 0, ecriture: { date: jour('2026-12-11') } });
+      tiers.lettrage!.lignes.push({ debit: 1_160_000, credit: 0, ecriture: { date: jour('2026-12-11'), createdAt: jour('2026-12-11') } });
       return e;
     };
     const s = service([avecAutreFacture('F1'), avecAutreFacture('F2')], [], [], {
       designations: [designation('tiers-F1', 910_000, 1_820_000, 1_820_000), designation('tiers-F2', 910_000, 1_820_000, 1_820_000)],
     });
-    const decembre = await s.declaration('t1', ...mois('2026-12'));
+    expect((await s.declaration('t1', ...mois('2026-12'))).totalCollecte).toBe(0);
     const mars = await s.declaration('t1', ...MARS_N1);
-    expect(TauxTvaService['c'](decembre.totalCollecte + mars.totalCollecte)).toBe(320_000);
-    expect(decembre.totalCollecte).toBe(68_965.52);
-    expect(mars.totalCollecte).toBe(251_034.48);
-    expect(mars.recouvrementsSansFactureDesignee).toEqual([]);
+    expect(mars.totalCollecte).toBe(0);
+    expect(mars.recouvrementsSansFactureDesignee).toEqual([
+      {
+        creanceId: 'cr-commune',
+        compte: '41110101 Client Kasa',
+        dateReclassement: '2026-12-28',
+        recouvre: 1_820_000,
+        recouvreSansFacture: 1_820_000,
+        motifs: [MOTIF_LETTRAGE_PARTAGE],
+      },
+    ]);
+    expect(mars.mentionExigibilite).toContain('partage son lettrage');
   });
 
   it('une facture à DEUX lignes client (deux échéances), les deux désignées, recouvrée en entier · 160 000 en mars', async () => {
@@ -591,7 +610,14 @@ describe('A7 bis, troisième reprise · factures partagées, échéances multipl
     const s = service([], [], [], { designations: [designation('ligne-sans-tva', 580_000, 580_000, 290_000)] });
     const mars = await s.declaration('t1', ...MARS_N1);
     expect(mars.recouvrementsSansFactureDesignee).toEqual([
-      { creanceId: 'cr-commune', compte: '41110101 Client Kasa', dateReclassement: '2026-12-28', recouvre: 290_000, recouvreSansFacture: 290_000 },
+      {
+        creanceId: 'cr-commune',
+        compte: '41110101 Client Kasa',
+        dateReclassement: '2026-12-28',
+        recouvre: 290_000,
+        recouvreSansFacture: 290_000,
+        motifs: ['la facture désignée ne porte aucune ligne de TVA lue'],
+      },
     ]);
     expect(mars.mentionExigibilite).toContain('TVA à déclarer par le cabinet faute de facture désignée');
   });

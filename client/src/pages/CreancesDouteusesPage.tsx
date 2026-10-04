@@ -1508,7 +1508,7 @@ export function CreancesDouteusesPage() {
                   {designation.creance.compteCreance.numero} · {designation.creance.tiers ?? designation.creance.compteCreance.intitule} · reclassé {montant(designation.creance.montant)}
                   <Aide
                     titre="Factures de la créance"
-                    texte="Le recouvrement de la créance est l'encaissement des factures qu'elle reprend. Désignez chaque facture et la part (TTC) reprise · la TVA d'une prestation devient exigible à chaque recouvrement, au prorata de ce qui est recouvré sur le montant reclassé. Une perte n'encaisse rien. Rien n'est lettré : le reclassement ne lettre pas le compte du client. Désignez la facture d'origine, jamais sa ligne d'à-nouveau."
+                    texte="Le recouvrement de la créance est l'encaissement des factures qu'elle reprend. Désignez chaque facture et la part (TTC) reprise · la TVA d'une prestation devient exigible à chaque recouvrement, au prorata de ce qui est recouvré sur le montant reclassé. Une perte n'encaisse rien. Rien n'est lettré : le reclassement ne lettre pas le compte du client. Désignez la facture d'origine, jamais sa ligne d'à-nouveau. Une facture dont le lettrage réunit d'autres factures ne se désigne pas : son recouvrement est listé à la déclaration, TVA à déclarer par le cabinet."
                     source="O.-L. n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57"
                   />
                 </div>
@@ -1577,7 +1577,7 @@ export function CreancesDouteusesPage() {
                     </thead>
                     <tbody>
                       {designation.liste.factures.map((f) => {
-                        const indisponible = f.aNouveau || f.ouvert <= 0 || f.designeePar.length > 0;
+                        const indisponible = f.aNouveau || f.lettragePartage || f.ouvert <= 0 || f.designeePar.length > 0;
                         return (
                           <tr key={f.ligneEcritureId}>
                             <td className="px-1.5">{jour(f.date)}</td>
@@ -1587,7 +1587,7 @@ export function CreancesDouteusesPage() {
                             <td className="px-1.5 text-right tabular-nums">{montant(f.ouvert)}</td>
                             <td className="px-1.5 text-right">
                               {indisponible ? (
-                                <span className="text-text-dim">{f.aNouveau ? 'À-nouveau' : f.designeePar.length > 0 ? 'Déjà désignée' : 'Soldée'}</span>
+                                <span className="text-text-dim">{f.aNouveau ? 'À-nouveau' : f.lettragePartage ? 'Lettrage partagé' : f.designeePar.length > 0 ? 'Déjà désignée' : 'Soldée'}</span>
                               ) : (
                                 <input
                                   className="w-[110px] text-right border border-bord rounded-[3px] px-1"

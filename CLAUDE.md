@@ -796,23 +796,33 @@ appariement que `paires-a-cheval.ts`), sans deviner · deux candidates, en atten
 (4) UNE LIQUIDATION GARDE CE QU'ELLE A DÉCLARÉ · `LiquidationTva.tvaEncaissementFigee`
 fige ligne par ligne ; un règlement lettré après coup est REPORTÉ une fois au
 premier jour non liquidé ; un trop-déclaré absorbe les tranches suivantes.
-TRANSITION · une liquidation sans figé (`null`, ancien moteur) est réputée avoir
-déclaré EN ENTIER, à la facture, toute ligne dont aucune ligne de tiers n'était
-lettrée à son instant (`Lettrage.createdAt`) · un groupe défait puis refait après
-coup n'est pas distingué, limite dite. Le figé ne part jamais à l'écran (retiré
+TRANSITION · une liquidation sans figé (`null`, ancien moteur) est relue telle
+que l'ancien moteur l'a réellement déclarée (`declareParAncienMoteur`) · groupe
+reconstitué à l'instant de la liquidation (`Lettrage.createdAt`, saisie des
+écritures du groupe), comptant à la facture sans groupe, sinon fraction CUMULÉE à
+la date du dernier règlement vu (232 000 puis 232 000 sur 1 160 000 · 32 000 puis
+64 000 versés, le reste 64 000) · un groupe défait puis refait, ou une ligne
+complétée après coup, n'est pas distingué, limite dite. Le figé ne part jamais à l'écran (retiré
 par le contrôleur). Avoirs inchangés (constatation, décret art. 126). (5) LE
 RECOUVREMENT D'UNE CRÉANCE DOUTEUSE EST L'ENCAISSEMENT DE SES FACTURES DÉSIGNÉES
 (second tour) · au reclassement ou ensuite (« Désigner les factures »,
 `FactureCreanceDouteuse`, `motifRefusDesignation`), le cabinet désigne la ligne de
 la facture d'origine au compte du client et sa part TTC, jamais lettrée (A7 ter) ;
 refus · autre compte, brouillard, à-nouveau, au-delà de l'ouvert ou du reclassé,
-ligne d'une autre créance non annulée ; l'encours d'une facture d'un groupe
-partagé est SA part du reste (prorata des factures, `ouvertDeLaLigne`). Chaque
+ligne d'une autre créance non annulée, ligne dont le lettrage réunit d'AUTRES
+factures (`MOTIF_LETTRAGE_PARTAGE`, quatrième reprise ; entrée plus tard dans un
+tel groupe, ses recouvrements sont nommés, jamais rattachés). Chaque
 recouvrement non annulé et validé encaisse la part désignée au prorata recouvré /
 reclassé, une tranche à sa date, rattachée par l'IDENTIFIANT de chaque ligne
 désignée (deux échéances comprises), sur le TTC de la facture et dans la limite
 de ce qui reste en attente, sans toucher aucun groupe de lettrage, par la même
-mémoire (4) ; un groupe à plusieurs factures partage ses règlements au prorata ;
+mémoire (4) ; AUCUN PRORATA ENTRE FACTURES D'UN GROUPE (décision du 2026-10-04,
+convention qu'aucun texte ne fixe) · sans créance désignée, chaque groupe rend ce
+que rend `main` (`datesDuGroupeDeMain`, gelé par `tva-groupes-comme-main.spec.ts`),
+seules exceptions voulues la créance non lettrée et le groupe à UNE facture
+(tranche par règlement, sauf avoir dans le groupe) ; une facture dont une
+échéance seulement est lettrée ne date que sa part lettrée (`main` déclarait
+160 000 au paiement d'une échéance de 580 000 sur 1 160 000, 80 000 encaissés) ;
 une PERTE n'encaisse rien (art. 52, partie 2) ; une créance annulée ne désigne
 plus rien. UN RECOUVREMENT NE DISPARAÎT JAMAIS · sans facture désignée, ou désigné
 sur une ligne qu'aucune ligne de TVA lue ne reçoit, il est NOMMÉ

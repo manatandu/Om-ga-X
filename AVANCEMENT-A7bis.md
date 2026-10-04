@@ -65,17 +65,40 @@ sur créance irrécouvrable) hors de cette passe.
   Lusamba nommé (290 000) ; retrait au journal d'audit avec son motif,
   avril 40 000 reporté une fois, mai 0 ; 4432 nul, 4441 −560 000 en N+1.
 
+- QUATRIÈME REPRISE (décision · aucun prorata entre factures d'un groupe) ·
+  prorata retiré, groupes lus par la règle de `main` (`datesDuGroupeDeMain`),
+  gelé par `tva-groupes-comme-main.spec.ts` contre les valeurs relevées en
+  faisant tourner le moteur de `main` (partiel à une facture, biens et
+  services, avoir dans le groupe, deux factures, facture B ajoutée, liquidation
+  ancienne relue, à-nouveau F0 + F1 sans double compte) ; avoir dans un groupe
+  à une facture · lu comme `main` (pas une perception) ; désignation d'une
+  ligne au lettrage partagé REFUSÉE avec le motif fixé, et une ligne désignée
+  entrée ensuite dans un tel groupe voit ses recouvrements NOMMÉS (`motifs`) ;
+  BLOQUANT 4 · `declareParAncienMoteur` reconstitue l'ancien moteur (fraction
+  cumulée au dernier règlement vu à l'instant de la liquidation) · 32 000,
+  64 000, puis 64 000 en mai, 160 000 au total. Deux échéances dont une seule
+  lettrée · règle de la branche gardée, `main` faussait le montant (160 000
+  déclarés au paiement d'une échéance de 580 000, 80 000 encaissés).
+
 ## Relevés en attente
 
+- Recouvrement plafonné en silence (la part qui dépasse ce qui reste en
+  attente n'est pas nommée, vers le rattachement des recouvrements).
+- Désignation retirée après une liquidation figée · la TVA figée reste
+  sans mention.
+- `ouvertDeLaLigne` ignore les paiements de N+1 portés sur l'à-nouveau.
+- Recouvrement annulé après liquidation · non nommé.
+- Facture sur le compte collectif contre créance sur le compte individuel ·
+  refus « pas au compte » sans issue.
 - Une facture dont une échéance est lettrée et l'autre non se lit par
-  prorata TTC (part lettrée datée par son groupe) · si le groupe porte en
-  plus d'autres factures, le prorata du groupe s'applique à la part lettrée
-  seulement, convention écrite.
-- Un recouvrement au-delà de ce qui reste en attente (facture déjà
-  déclarée à l'ancien moteur, par exemple) n'est pas nommé · la taxe est
-  entièrement exigible, rien n'est perdu.
+  prorata TTC (part lettrée datée par son groupe).
 - La liste des factures candidates prend les 200 lignes les plus récentes
   du compte, `tronque` le dit.
+- Plusieurs exercices de report lettrés pour une même facture (chaîne N,
+  N+1, N+2) · reconstitués ensemble seulement si aucun groupe n'est
+  partagé, sinon la taxe reste en attente sans être nommée.
+- Transition · une ligne saisie avant une liquidation de l'ancien moteur et
+  lettrée après (« compléter ») est réputée vue par elle.
 
 ## Reste (hors partie 1)
 
