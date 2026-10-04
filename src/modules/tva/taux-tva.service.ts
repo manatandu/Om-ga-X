@@ -4232,12 +4232,16 @@ export class TauxTvaService {
           parCle.set(cle, [...(parCle.get(cle) ?? []), m]);
         }
         for (const [cle, lignesCle] of parCle) {
-          const montantsParLigne = lignesCle.map((m) => TauxTvaService.montantsDesTranches(m.montant, fractions));
+          // La taxe de chaque encaissement se calcule sur la taxe du GROUPE,
+          // arrondie une fois · arrondie ligne par ligne, deux factures
+          // rendaient 137 931,04 pour 1 000 000 × 16 / 116 = 137 931,03.
+          const montantsDuGroupe = TauxTvaService.montantsDesTranches(
+            lignesCle.reduce((t, m) => t + m.montant, 0),
+            fractions,
+          );
           const datees: Array<{ date: Date; montant: number }> = [];
           fractions.forEach((t, j) => {
-            if (!t.date) return;
-            const somme = TauxTvaService.c(montantsParLigne.reduce((s, ms) => s + ms[j], 0));
-            if (somme > EPSILON) datees.push({ date: t.date, montant: somme });
+            if (t.date && montantsDuGroupe[j] > EPSILON) datees.push({ date: t.date, montant: montantsDuGroupe[j] });
           });
           // Ce que chaque liquidation a déclaré pour chaque ligne · figé, ou
           // reconstitué tel que l'ancien moteur l'a déclaré.

@@ -817,6 +817,12 @@ describe('Second tour · l’ancien moteur ne voit jamais la prolongation, la ch
     expect((await apres.declaration('t1', ...mois('2027-06'))).totalCollecte).toBe(41_379.31);
   });
 
+  it('la taxe d’un encaissement se calcule sur le groupe, arrondie une fois · 1 000 000 sur deux factures rend 137 931,03', async () => {
+    const g = { ...groupeDeux, id: 'GR', solde: 1_320_000, lignes: [groupeDeux.lignes[0], groupeDeux.lignes[1], ligneN('R1', 0, 1_000_000, '2026-12-20', 'Acompte')] };
+    const s = base(() => [vendre('F1', '2026-12-10', g), vendre('F2', '2026-12-11', g)], []);
+    expect((await s.declaration('t1', ...mois('2026-12'))).totalCollecte).toBe(137_931.03);
+  });
+
   it('sans exercice clôturé, aucun à-nouveau n’est lu', async () => {
     const p = prisma([vendre('F1', '2026-12-10', groupeUne)]);
     (p as unknown as { exercice: { count: jest.Mock } }).exercice.count.mockResolvedValue(0);

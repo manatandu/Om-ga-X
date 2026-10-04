@@ -113,3 +113,15 @@ npx tsc --noEmit && npx jest --maxWorkers=2 src/modules/tva
 - RELEVÉ HÉRITÉ, NON CORRIGÉ ICI · un avoir sans ligne de TVA ou un escompte
   accordé (673) lettré dans le groupe est compté comme un règlement (une
   perception) par `reglementsDuGroupe` · défaut antérieur à la ligne.
+- Arrondi · la taxe d'un encaissement se calcule sur la taxe du GROUPE,
+  arrondie une fois (1 000 000 sur deux factures · 137 931,03, et non
+  137 931,04 ligne par ligne), trouvé au rejeu, gelé.
+- Rejeu sur vraie base à travers DEUX clôtures (`scratchpad/
+  tva2426-deux-clotures.mjs`, base `tva2426_3` supprimée), SYSCOHADA et
+  SYCEBNL · deux factures (500 000, 1 000 000, 820 000), une facture en
+  chaîne (500 000, 300 000, 360 000), une facture simple (500 000, 660 000) ·
+  décembre 2026 206 896,56, janvier 2027 91 034,48, juin 2027 179 310,34,
+  janvier 2028 162 758,62, juin 2027 et décembre 2026 relus inchangés, 443
+  soldé (640 000 au total), rien de nommé. Les rejeux précédents repassent.
+- Bloc § 3 · serveur 756 suites, 10 800 tests ; client 223 fichiers, 1 813
+  tests ; tsc et build des deux côtés.
