@@ -43,6 +43,8 @@ function service() {
         return Promise.resolve({ _sum: { credit: TAXEES + NON_QUALIFIEES + cloture } });
       }),
     },
+    factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
     liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   return new TauxTvaService(prisma, {} as EcritureService);

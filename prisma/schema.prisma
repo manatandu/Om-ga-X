@@ -798,6 +798,7 @@ model Tenant {
   creancesDouteuses            CreanceDouteuse[]
   ajustementsCreancesDouteuses AjustementCreanceDouteuse[]
   mouvementsCreancesDouteuses  MouvementCreanceDouteuse[]
+  facturesCreancesDouteuses    FactureCreanceDouteuse[]
   verrouCreancesDouteuses      VerrouCreancesDouteuses?
   constatsImpotResultat        ConstatImpotResultat[]
 
@@ -1895,6 +1896,9 @@ model LigneEcriture {
 
   // Ventilation analytique (projet, bailleur) · voir PlanAnalytique.
   ventilations VentilationAnalytique[]
+
+  // Les créances douteuses qui désignent cette ligne de facture (A7 bis).
+  creancesDouteusesDesignees FactureCreanceDouteuse[]
 
   // Multidevise · `debit`/`credit` restent TOUJOURS exprimés dans la monnaie
   // de tenue du dossier, seule monnaie dans laquelle la comptabilité est
@@ -9319,6 +9323,7 @@ model CreanceDouteuse {
 
   ajustements AjustementCreanceDouteuse[]
   mouvements  MouvementCreanceDouteuse[]
+  factures    FactureCreanceDouteuse[]
 
   createdAt DateTime @default(now())
   createdBy String
@@ -9373,6 +9378,39 @@ model AjustementCreanceDouteuse {
   @@index([tenantId])
   @@index([exerciceId])
   @@map("ajustements_creances_douteuses")
+}
+
+/// LES FACTURES QU'UNE CRÉANCE DOUTEUSE REPREND (ligne A7 bis, partie 1).
+/// Le reclassement ne lettre pas le compte du client (A7 ter) · sans ce
+/// lien, le RECOUVREMENT du module (D trésorerie / C 416), qui EST
+/// l'encaissement de la facture (O.-L. n° 10/001, art. 25, 2° ; décret
+/// n° 011/42, art. 57, « la perception des sommes »), n'atteignait aucune
+/// vente, et la TVA d'une prestation recouvrée n'entrait dans aucune
+/// déclaration. Le cabinet DÉSIGNE la ligne de la facture au compte du client
+/// et la part (TTC) que la créance en reprend ; rien n'est lettré.
+model FactureCreanceDouteuse {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  creanceId String
+  creance   CreanceDouteuse @relation(fields: [creanceId], references: [id], onDelete: Restrict)
+
+  /// La ligne de la facture au compte du client · VALIDÉE à la désignation,
+  /// donc indélébile (AUDCIF art. 22, 2°). RESTRICT déclaré.
+  ligneEcritureId String
+  ligneEcriture   LigneEcriture @relation(fields: [ligneEcritureId], references: [id], onDelete: Restrict)
+
+  /// La part TTC de cette ligne que la créance reprend.
+  montant Decimal @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+  createdBy String
+
+  @@unique([creanceId, ligneEcritureId])
+  @@index([tenantId])
+  @@index([ligneEcritureId])
+  @@map("factures_creances_douteuses")
 }
 
 model MouvementCreanceDouteuse {

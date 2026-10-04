@@ -4,7 +4,16 @@ import { LOT_ECRITURES, LOT_LECTURE, lireParLots, pageApres } from '../../common
 import { PrismaService } from '../../common/prisma.service';
 import { CreerTauxTvaDto, ModifierTauxTvaDto } from './dto/taux-tva.dto';
 import { tauxTvaDefaut } from './taux-tva-seed';
-import { Prisma, ClasseCompte, Referentiel, TypeJournal, NatureFacture, SensFacture, StatutEcriture } from '@prisma/client';
+import {
+  Prisma,
+  ClasseCompte,
+  Referentiel,
+  TypeJournal,
+  NatureFacture,
+  SensFacture,
+  StatutEcriture,
+  TypeMouvementCreanceDouteuse,
+} from '@prisma/client';
 import { DETENTEUR_LIQUIDATION_TVA, EcritureService } from '../comptabilite/ecriture.service';
 import { ECRITURE_D_A_NOUVEAU } from '../lettrage/paires-a-cheval';
 import { FicheAutorisationDebits, situationAutorisationDebits } from '../tiers/periode-autorisation-debits';
@@ -1588,6 +1597,32 @@ export class TauxTvaService {
   }
 
   /**
+   * Le groupe de lettrage d'une facture désignée, augmenté de ses
+   * recouvrements de créance douteuse, lus comme des règlements (ligne A7 bis ;
+   * décret n° 011/42, art. 57). Le reste à solder baisse d'autant.
+   */
+  static groupeAvecRecouvrements<
+    G extends { statut: string; solde: unknown; lignes?: Array<{ debit: unknown; credit: unknown; ecriture?: { date: Date } | null }> },
+  >(facture: { debit: unknown; credit: unknown }, groupe: G, recouvrements: ReadonlyArray<{ date: Date; montant: number }>): G {
+    const sens = Number(facture.debit) - Number(facture.credit);
+    const total = recouvrements.reduce((t, r) => t + r.montant, 0);
+    const reste = Math.max(0, Math.abs(Number(groupe.solde)) - total);
+    return {
+      ...groupe,
+      statut: reste <= EPSILON ? 'SOLDE' : 'PARTIEL',
+      solde: sens > 0 ? reste : -reste,
+      lignes: [
+        ...(groupe.lignes ?? []),
+        ...recouvrements.map((r) => ({
+          debit: sens > 0 ? 0 : r.montant,
+          credit: sens > 0 ? r.montant : 0,
+          ecriture: { date: r.date },
+        })),
+      ],
+    };
+  }
+
+  /**
    * LE RÈGLEMENT D'UNE CRÉANCE D'UN EXERCICE CLOS, LU À TRAVERS SA LIGNE
    * D'À-NOUVEAU (ligne A7 bis ; constat d'A6 bis, second tour, m3).
    *
@@ -1617,6 +1652,7 @@ export class TauxTvaService {
         date: Date;
         libelle: string;
         lignes: Array<{
+          id: string;
           debit: unknown;
           credit: unknown;
           compteId: string;
@@ -1630,7 +1666,11 @@ export class TauxTvaService {
       };
       compte: { numero: string };
     },
-  >(tenantId: string, lignes: T[]): Promise<T[]> {
+  >(
+    tenantId: string,
+    lignes: T[],
+    recouvrementsParLigne: ReadonlyMap<string, ReadonlyArray<{ date: Date; montant: number }>> = new Map(),
+  ): Promise<T[]> {
     if (lignes.length === 0) return lignes;
     const centimes = (x: unknown) => Math.round(Number(x ?? 0) * 100);
     const estCollecteDe = (l: T) => l.compte.numero.startsWith(RACINE_COLLECTEE);
@@ -1733,22 +1773,31 @@ export class TauxTvaService {
     }
 
     return lignes.map((l) => {
-      const cs = candidats.get(l);
       const c = creanceDe(l);
-      if (!cs || !c || cs.length === 0) return l;
-      const parExercice = new Map<string, number>();
-      for (const a of cs) parExercice.set(a.ecriture.exerciceId, (parExercice.get(a.ecriture.exerciceId) ?? 0) + 1);
-      if ([...parExercice.values()].some((n) => n > 1)) return l;
-      if (cs.some((a) => (revendications.get(a.id) ?? 0) > 1)) return l;
+      if (!c) return l;
       const sensFacture = Number(c.debit) - Number(c.credit);
       const engage = Math.abs(sensFacture);
-      const reglements = cs.flatMap((a) =>
-        (a.lettrage?.lignes ?? []).filter((g) => {
-          const sens = Number(g.debit) - Number(g.credit);
-          const aNouveau = g.ecriture.estANouveauProvisoire || g.ecriture.estGenereeParCloture;
-          return Math.abs(sens) > EPSILON && sens > 0 !== sensFacture > 0 && !aNouveau;
-        }),
-      );
+      // Les recouvrements de créance douteuse des factures désignées (ligne
+      // A7 bis) · des encaissements, à leur date, sans lettrage.
+      const recouvrements = (recouvrementsParLigne.get(c.id) ?? []).map((r) => ({
+        debit: sensFacture > 0 ? 0 : r.montant,
+        credit: sensFacture > 0 ? r.montant : 0,
+        ecriture: { date: r.date, estANouveauProvisoire: false, estGenereeParCloture: false },
+      }));
+      let cs = candidats.get(l) ?? [];
+      const parExercice = new Map<string, number>();
+      for (const a of cs) parExercice.set(a.ecriture.exerciceId, (parExercice.get(a.ecriture.exerciceId) ?? 0) + 1);
+      if ([...parExercice.values()].some((n) => n > 1) || cs.some((a) => (revendications.get(a.id) ?? 0) > 1)) cs = [];
+      const reglements = [
+        ...cs.flatMap((a) =>
+          (a.lettrage?.lignes ?? []).filter((g) => {
+            const sens = Number(g.debit) - Number(g.credit);
+            const aNouveau = g.ecriture.estANouveauProvisoire || g.ecriture.estGenereeParCloture;
+            return Math.abs(sens) > EPSILON && sens > 0 !== sensFacture > 0 && !aNouveau;
+          }),
+        ),
+        ...recouvrements,
+      ];
       if (reglements.length === 0) return l;
       const paye = reglements.reduce((t, g) => t + Math.abs(Number(g.debit) - Number(g.credit)), 0);
       const reste = Math.max(0, engage - paye);
@@ -2423,6 +2472,84 @@ export class TauxTvaService {
     // Ce que CETTE période déclare à l'encaissement, ligne par ligne · la
     // liquidation le fige (`comptabiliserLiquidation`).
     const figeEncaissement: Record<string, number> = {};
+
+    /*
+      LE RECOUVREMENT D'UNE CRÉANCE DOUTEUSE EST L'ENCAISSEMENT DE SES FACTURES
+      DÉSIGNÉES (ligne A7 bis, partie 1). O.-L. n° 10/001, art. 25, 2° ; décret
+      n° 011/42, art. 57, « l'encaissement s'entend de la perception des
+      sommes, à quelque titre que ce soit ». Le reclassement ne lettre pas le
+      compte du client (A7 ter) · c'est la désignation du cabinet
+      (`FactureCreanceDouteuse`) qui relie la facture au recouvrement du
+      module (D trésorerie / C 416). Chaque recouvrement NON ANNULÉ et VALIDÉ
+      (F25) encaisse la part désignée au prorata de ce qu'il recouvre sur le
+      montant reclassé, à sa date · une tranche par recouvrement. Une PERTE
+      (D 651 / C 416) n'est pas un encaissement · la taxe reste en attente, et
+      sa récupération relève de l'art. 52 (partie 2 de la ligne). Une créance
+      annulée ne désigne plus rien.
+    */
+    const recouvrementsParLigne = new Map<string, Array<{ date: Date; montant: number }>>();
+    const filtreRecouvrement = {
+      type: TypeMouvementCreanceDouteuse.RECOUVREMENT,
+      annuleeLe: null,
+      ecriture: { statut: StatutEcriture.VALIDEE },
+    };
+    await lireParLots(
+      (curseur) =>
+        this.prisma.factureCreanceDouteuse.findMany({
+          ...pageApres(curseur, LOT_LECTURE),
+          where: { tenantId, creance: { annuleeLe: null } },
+          select: {
+            id: true,
+            ligneEcritureId: true,
+            montant: true,
+            creance: { select: { montant: true, mouvements: { where: filtreRecouvrement, select: { date: true, montant: true } } } },
+          },
+        }),
+      (f) => {
+        const reclasse = Number(f.creance.montant);
+        if (reclasse <= EPSILON) return;
+        const parts = f.creance.mouvements.map((m) => ({
+          date: m.date,
+          montant: TauxTvaService.c((Number(f.montant) * Number(m.montant)) / reclasse),
+        }));
+        if (parts.length > 0) recouvrementsParLigne.set(f.ligneEcritureId, [...(recouvrementsParLigne.get(f.ligneEcritureId) ?? []), ...parts]);
+      },
+    );
+    // Les recouvrements de la période qu'aucune facture désignée ne porte ·
+    // NOMMÉS, jamais tus (§ 10 bis).
+    const recouvrementsSansFactureDesignee = (
+      await this.prisma.creanceDouteuse.findMany({
+        where: {
+          tenantId,
+          annuleeLe: null,
+          mouvements: { some: { ...filtreRecouvrement, date: { gte: dateDebut, lte: dateFin } } },
+        },
+        orderBy: { dateReclassement: 'asc' },
+        take: 200,
+        select: {
+          id: true,
+          dateReclassement: true,
+          montant: true,
+          compteCreance: { select: { numero: true, intitule: true } },
+          factures: { select: { montant: true } },
+          mouvements: { where: { ...filtreRecouvrement, date: { gte: dateDebut, lte: dateFin } }, select: { montant: true } },
+        },
+      })
+    )
+      .map((c) => {
+        const reclasse = Number(c.montant);
+        const designe = c.factures.reduce((t, f) => t + Number(f.montant), 0);
+        const recouvre = TauxTvaService.c(c.mouvements.reduce((t, m) => t + Number(m.montant), 0));
+        const nonDesigne = reclasse > EPSILON ? TauxTvaService.c((recouvre * Math.max(0, reclasse - designe)) / reclasse) : 0;
+        return {
+          creanceId: c.id,
+          compte: `${c.compteCreance.numero} ${c.compteCreance.intitule}`,
+          dateReclassement: c.dateReclassement.toISOString().slice(0, 10),
+          recouvre,
+          recouvreSansFacture: nonDesigne,
+        };
+      })
+      .filter((c) => c.recouvreSansFacture > EPSILON);
     const derniereLiquidation = await this.prisma.liquidationTva.findFirst({
       where: { tenantId, dateFin: { lt: dateDebut } },
       orderBy: { dateFin: 'desc' },
@@ -2537,6 +2664,7 @@ export class TauxTvaService {
                   ],
                 },
                 select: {
+                  id: true,
                   debit: true,
                   credit: true,
                   // De quoi retrouver la ligne d'à-nouveau qui reporte une
@@ -2779,6 +2907,22 @@ export class TauxTvaService {
           const montant = estCollecte ? Number(l.credit) : Number(l.debit);
           if (montant <= EPSILON) return;
 
+          // UNE FACTURE DÉSIGNÉE DÉJÀ LETTRÉE EN PARTIE (règlement avant le
+          // reclassement) · ses recouvrements rejoignent son groupe comme des
+          // règlements. Non lettrée, elle passe par `relierAuxANouveaux`.
+          if (!relie && recouvrementsParLigne.size > 0) {
+            l = {
+              ...l,
+              ecriture: {
+                ...l.ecriture,
+                lignes: l.ecriture.lignes.map((x) =>
+                  x.lettrage && recouvrementsParLigne.has(x.id)
+                    ? { ...x, lettrage: TauxTvaService.groupeAvecRecouvrements(x, x.lettrage, recouvrementsParLigne.get(x.id)!) }
+                    : x,
+                ),
+              },
+            };
+          }
           const lignesTiers = l.ecriture.lignes.filter((x) => x.compte?.classe === ClasseCompte.CLASSE_4 && x.lettrage);
           const lignesCharge = l.ecriture.lignes.filter((x) => x.compte?.classe === ClasseCompte.CLASSE_6);
 
@@ -3041,7 +3185,7 @@ export class TauxTvaService {
           });
       };
       await lireParLots(lire, (l) => traiter(l, false), LOT_ECRITURES);
-      for (const l of await this.relierAuxANouveaux(tenantId, aRelier)) traiter(l, true);
+      for (const l of await this.relierAuxANouveaux(tenantId, aRelier, recouvrementsParLigne)) traiter(l, true);
     }
 
     const lignes = [];
@@ -3139,6 +3283,7 @@ export class TauxTvaService {
         tvaDeductibleDechue,
         recettesNonQualifiees: prorata.recettesNonQualifiees,
         tvaAuBrouillard,
+        recouvrementsSansFactureDesignee,
       }),
       /** TVA d'écritures au brouillard datées de la période · hors déclaration. */
       tvaAuBrouillard,
@@ -3175,6 +3320,12 @@ export class TauxTvaService {
        * (il ne dirait rien à l'écran et pèserait autant que la période).
        */
       figeEncaissement,
+      /**
+       * Recouvrements de créances douteuses de la période qu'aucune facture
+       * désignée ne porte (ligne A7 bis) · leur TVA, si elle est exigible à
+       * l'encaissement, est à déclarer par le cabinet.
+       */
+      recouvrementsSansFactureDesignee,
       /** Net de la seule période, avant report du crédit antérieur. */
       netAvantImputation,
       /** Crédit de TVA venu de la dernière liquidation (art. 63). */
@@ -3217,6 +3368,7 @@ export class TauxTvaService {
    * où l'écran les lirait.
    */
   private mentionExigibilite(e: {
+    recouvrementsSansFactureDesignee?: ReadonlyArray<{ compte: string; dateReclassement: string; recouvre: number; recouvreSansFacture: number }>;
     regime: string;
     referentiel: Referentiel | undefined;
     montantIndetermine: number;
@@ -3271,7 +3423,30 @@ export class TauxTvaService {
     const nommes = (noms: readonly string[]) =>
       noms.length <= 8 ? noms.join(', ') : `${noms.slice(0, 8).join(', ')} et ${noms.length - 8} autre(s)`;
     const brouillard = e.tvaAuBrouillard;
+    // A7 BIS · un recouvrement de créance douteuse sans facture désignée ·
+    // OmegaX ne sait pas quelle vente il encaisse, il le DIT, créance par
+    // créance (§ 10 bis), avec l'issue.
+    const sansFacture = e.recouvrementsSansFactureDesignee ?? [];
+    const phraseSansFacture =
+      sansFacture.length === 0
+        ? []
+        : [
+            'RECOUVREMENT DE CRÉANCE DOUTEUSE SANS FACTURE DÉSIGNÉE · ' +
+              sansFacture
+                .slice(0, 8)
+                .map(
+                  (c) =>
+                    `compte ${c.compte}, créance reclassée le ${c.dateReclassement}, ${fc(c.recouvre)} CDF recouvrés dont ` +
+                    `${fc(c.recouvreSansFacture)} CDF sans facture désignée`,
+                )
+                .join(' ; ') +
+              (sansFacture.length > 8 ? ` ; et ${sansFacture.length - 8} autre(s)` : '') +
+              '. Le recouvrement est l’encaissement de la facture reprise (O.-L. n° 10/001, art. 25, 2° ; décret ' +
+              'n° 011/42, art. 57) · si elle porte une prestation de services, TVA à déclarer par le cabinet faute de ' +
+              'facture désignée. Issue · désigner les factures de la créance (Créances douteuses ou litigieuses).',
+          ];
     const phrases: string[] = [
+      ...phraseSansFacture,
       ...(brouillard && brouillard.ecritures > 0
         ? [
             `TVA RESTÉE AU BROUILLARD, HORS DE CETTE DÉCLARATION · ${brouillard.ecritures} écriture(s) datée(s) de la ` +

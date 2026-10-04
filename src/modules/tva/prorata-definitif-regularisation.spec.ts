@@ -76,6 +76,8 @@ function service(opts: {
         return Promise.resolve({ _sum: { credit: opts.recettes } });
       }),
     },
+    factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
     liquidationTva: {
       findMany: jest.fn().mockResolvedValue(
         opts.liquidations.map((l, i) => ({

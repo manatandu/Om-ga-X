@@ -100,3 +100,78 @@ test('SYSCOHADA · la TVA d’une prestation est exigible à chaque encaissement
   expect(balance.find((l) => l.numero === '44410000')?.solde).toBe(-320_000);
   expect(pannes).toEqual([]);
 });
+
+test('SYSCOHADA · le recouvrement d’une créance douteuse encaisse ses factures désignées, et celui d’une créance sans facture est nommé', async ({ page }) => {
+  const pannes = surveiller(page);
+  const dossier = await creerDossier(page, { referentiel: 'SYSCOHADA', nom: 'TVA créances douteuses e2e', montant: 10_000 });
+  await seConnecter(page, dossier.email);
+  await appelApi(page, 'PATCH', '/dossier/regime', { assujettiTva: true });
+  const [ex] = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).filter((e) => e.id === dossier.exerciceId);
+  const annee = Number(ex.dateDebut.slice(0, 4));
+  const comptes = await appelApi<Compte[]>(page, 'GET', '/comptes?typeCompte=DETAIL');
+  const detail = (racine: string) => comptes.find((c) => c.typeCompte === 'DETAIL' && c.numero.startsWith(racine))!;
+  const journaux = await appelApi<Array<{ id: string; type: string; compteTresorerieId: string | null }>>(page, 'GET', '/journaux');
+  const od = journaux.find((j) => j.type === 'GENERAL')!;
+  const bq = journaux.find((j) => j.type === 'TRESORERIE' && j.compteTresorerieId)!;
+  const taux = (await appelApi<Array<{ id: string; taux: number }>>(page, 'GET', '/taux-tva')).find((t) => Number(t.taux) === 16)!;
+  const nouveau = (numero: string) =>
+    appelApi<Compte>(page, 'POST', '/comptes', { numero, intitule: `Client ${numero}`, typeCompte: 'DETAIL', lettrable: true, modeReportANouveau: 'DETAIL' });
+  const [k1, k2] = [await nouveau('41110101'), await nouveau('41110102')];
+  const prestation = (client: Compte, ttc: number, tva: number) =>
+    appelApi(page, 'POST', '/ecritures', {
+      exerciceId: ex.id,
+      journalId: od.id,
+      date: `${annee}-12-10`,
+      libelle: `Prestation ${client.numero}`,
+      lignes: [
+        { compteId: client.id, debit: ttc, credit: 0 },
+        { compteId: detail('706').id, debit: 0, credit: ttc - tva },
+        { compteId: detail('4432').id, debit: 0, credit: tva, tauxTvaId: taux.id },
+      ],
+    });
+  await prestation(k1, 1_160_000, 160_000);
+  await prestation(k2, 580_000, 80_000);
+  const valider = (e: Exercice) => appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: e.id, dateLimite: e.dateFin.slice(0, 10) });
+  await valider(ex);
+  const ligneF = (await appelApi<{ lignes: Ligne[] }>(page, 'GET', `/comptes/${k1.id}/lettrage`)).lignes.find((l) => l.debit === 1_160_000)!;
+  const pieces = [{ nature: 'Mise en demeure', reference: 'MD-1' }];
+  const reclasser = (client: Compte, montant: number, factures?: unknown[]) =>
+    appelApi<{ id: string }>(page, 'POST', '/creances-douteuses', {
+      exerciceId: ex.id,
+      journalId: od.id,
+      date: `${annee}-12-28`,
+      compteCreanceId: client.id,
+      nature: 'DOUTEUSE',
+      montant,
+      motif: 'Client défaillant',
+      pieces,
+      ...(factures ? { factures } : {}),
+    });
+  const cr1 = await reclasser(k1, 1_160_000, [{ ligneEcritureId: ligneF.id, montant: 1_160_000 }]);
+  const cr2 = await reclasser(k2, 580_000);
+  await valider(ex);
+  const suivant = await appelApi<Exercice>(page, 'POST', '/exercices', { dateDebut: `${annee + 1}-01-01`, dateFin: `${annee + 1}-12-31` });
+  await appelApi(page, 'POST', `/exercices/${ex.id}/cloturer`);
+  const recouvrer = (cr: { id: string }, montant: number) =>
+    appelApi(page, 'POST', `/creances-douteuses/${cr.id}/recouvrement`, {
+      exerciceId: suivant.id,
+      journalId: bq.id,
+      date: `${annee + 1}-03-10`,
+      montant,
+      motif: 'Versement du client',
+      pieces,
+    });
+  await recouvrer(cr1, 580_000);
+  await recouvrer(cr2, 290_000);
+  await valider(suivant);
+  const mars = await appelApi<Declaration & { recouvrementsSansFactureDesignee: Array<{ recouvreSansFacture: number }>; mentionExigibilite: string }>(
+    page,
+    'GET',
+    `/taux-tva/declaration?dateDebut=${annee + 1}-03-01&dateFin=${annee + 1}-03-31`,
+  );
+  // 50 % de la créance recouvrés · 80 000 des 160 000 de TVA de la facture désignée.
+  expect(mars.totalCollecte).toBe(80_000);
+  expect(mars.recouvrementsSansFactureDesignee.map((c) => c.recouvreSansFacture)).toEqual([290_000]);
+  expect(mars.mentionExigibilite).toContain('TVA à déclarer par le cabinet faute de facture désignée');
+  expect(pannes).toEqual([]);
+});

@@ -35,12 +35,23 @@ sur créance irrécouvrable) hors de cette passe.
 - Vraie base `a7bis_1`, serveur compilé, clôture 2026 traversée · tous les
   montants attendus retrouvés (voir rapport).
 
+- SECOND TOUR (BLOQUANT du coordinateur) · le recouvrement d'une créance
+  douteuse est l'encaissement de ses factures DÉSIGNÉES · table
+  `FactureCreanceDouteuse` (migration 20270139000000, diff vide), geste
+  « Désigner les factures » (POST/GET `/creances-douteuses/:id/factures`,
+  et `factures` facultatif au reclassement), `motifRefusDesignation` ;
+  moteur · tranche par recouvrement non annulé et validé, au prorata
+  recouvré / reclassé ; perte sans effet ; recouvrement sans facture
+  désignée NOMMÉ. Vraie base · 80 000 en mars N+1 (50 % de F2), 290 000
+  sans facture nommés, recouvrement d'avril annulé = 0, F4 désignée après
+  la liquidation de mars reportée une fois en avril (40 000), mai 0 ;
+  4432 −120 000, 4441 −200 000 en N+1.
+
 ## Reste (hors partie 1)
 
-- Partie 2 · art. 52 sur créance irrécouvrable ; TVA du recouvrement d'une
-  créance reclassée (D trésorerie / C 416, lettré à aucune facture, reste
-  en attente) ; groupes facture-reclassement déjà posés (le reclassement y
-  est lu comme un règlement).
+- Partie 2 · art. 52 sur créance irrécouvrable ; groupes
+  facture-reclassement déjà posés (le reclassement y est lu comme un
+  règlement).
 - Limites dites · compte au mode SOLDE réglé après la clôture (aucun lien
   facture / à-nouveau) ; groupe défait puis refait après une liquidation
   de l'ancien moteur ; ligne ajoutée par « compléter » à un groupe né avant

@@ -921,3 +921,60 @@ export function motifRefusAnnulationMouvement(p: {
 export function mouvementsSansRevue(p: { revueDeLExercice: boolean; mouvementsDeLExercice: number }): number {
   return p.revueDeLExercice ? 0 : p.mouvementsDeLExercice;
 }
+
+/**
+ * LA DÉSIGNATION DES FACTURES D'UNE CRÉANCE DOUTEUSE (ligne A7 bis, partie 1).
+ *
+ * Le recouvrement du module (D trésorerie / C 416) EST l'encaissement des
+ * factures reprises · O.-L. n° 10/001, art. 25, 2° (« au moment de
+ * l'encaissement du prix, des acomptes ou avances ») ; décret n° 011/42,
+ * art. 57 (« l'encaissement s'entend de la perception des sommes, à quelque
+ * titre que ce soit »). Le reclassement ne lettrant pas le compte du client
+ * (A7 ter), le moteur de la TVA ne savait pas de quelle facture il s'agit ·
+ * le cabinet la DÉSIGNE. Rien n'est deviné, et chaque refus dit pourquoi.
+ */
+export function motifRefusDesignation(p: {
+  creanceAnnulee: boolean;
+  /** Le compte de la ligne désignée est-il celui du client de la créance ? */
+  memeCompte: boolean;
+  /** La ligne est-elle validée (livre-journal, AUDCIF art. 22, 2°) ? */
+  validee: boolean;
+  /** Débit de la ligne moins crédit · une facture de vente débite le client. */
+  sensFacture: number;
+  montant: number;
+  /** Ce que la facture doit encore (hors lettrage soldé). */
+  ouvert: number;
+  /** Une autre créance non annulée désigne-t-elle déjà cette ligne ? */
+  designeeAilleurs: boolean;
+  /** Cette créance la désigne-t-elle déjà ? */
+  dejaDesignee: boolean;
+  /** La ligne est-elle un report à-nouveau ? */
+  aNouveau?: boolean;
+  /** Le total désigné de la créance, cette ligne comprise. */
+  totalDesigne: number;
+  montantCreance: number;
+  numeroCompte: string;
+}): string | null {
+  const fc = (x: number) => x.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (p.creanceAnnulee) return 'Le reclassement de cette créance est annulé · aucune facture ne se désigne.';
+  if (!p.memeCompte) return `Cette ligne n'est pas au compte ${p.numeroCompte} du client de la créance.`;
+  if (!p.validee) return 'Cette facture est encore au brouillard · validez-la avant de la désigner.';
+  if (p.aNouveau) {
+    // Le report ne porte pas la TVA · c'est la facture d'origine que le
+    // moteur de la TVA rattache à l'encaissement.
+    return 'Cette ligne est un report à-nouveau · désignez la facture d’origine, qui porte la TVA.';
+  }
+  if (p.sensFacture <= 0.005) return 'Cette ligne ne débite pas le client · ce n’est pas une facture.';
+  if (!(p.montant > 0)) return 'La part désignée doit être positive.';
+  if (p.dejaDesignee) return 'Cette facture est déjà désignée par cette créance.';
+  if (p.designeeAilleurs) {
+    return 'Cette facture est déjà désignée par une autre créance non annulée · une facture n’est reprise que par une créance.';
+  }
+  if (p.montant > p.ouvert + 0.005) {
+    return `La part désignée (${fc(p.montant)}) dépasse ce que la facture doit encore (${fc(p.ouvert)}).`;
+  }
+  if (p.totalDesigne > p.montantCreance + 0.005) {
+    return `Les factures désignées (${fc(p.totalDesigne)}) dépassent le montant reclassé (${fc(p.montantCreance)}).`;
+  }
+  return null;
+}

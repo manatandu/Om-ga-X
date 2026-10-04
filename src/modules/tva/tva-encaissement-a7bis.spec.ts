@@ -62,6 +62,7 @@ function ecriture(opts: {
     const g = opts.tiers.groupe;
     lignes.push({
       ...facture(opts.tiers.montant),
+      id: `tiers-${opts.id ?? opts.date}`,
       compteId: 'c-tiers',
       deviseId: null,
       montantDevise: null,
@@ -103,7 +104,12 @@ function ecriture(opts: {
   };
 }
 
-function service(lignes: unknown[], liquidations: LiquidationEncaissement[] = [], aNouveaux: unknown[] = []) {
+function service(
+  lignes: unknown[],
+  liquidations: LiquidationEncaissement[] = [],
+  aNouveaux: unknown[] = [],
+  creances: { designations?: unknown[]; sansFacture?: unknown[] } = {},
+) {
   const prisma = {
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't1', regimeExigibiliteTva: 'LIVRAISONS', referentiel: 'SYSCOHADA' }) },
     tauxTva: { findMany: jest.fn().mockResolvedValue([TAUX]) },
@@ -118,6 +124,8 @@ function service(lignes: unknown[], liquidations: LiquidationEncaissement[] = []
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
       groupBy: jest.fn().mockResolvedValue([]),
     },
+    factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue(creances.designations ?? []) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue(creances.sansFacture ?? []) },
     liquidationTva: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue(
@@ -411,5 +419,107 @@ describe('Créance de N réglée en N+1 par sa ligne d’à-nouveau (constat d�
     );
     expect((await s.declaration('t1', ...DECEMBRE)).totalCollecte).toBe(160_000);
     expect((await s.declaration('t1', ...FEVRIER_N1)).totalCollecte).toBe(0);
+  });
+});
+
+describe('Recouvrement d’une créance douteuse · l’encaissement de ses factures désignées (art. 25, 2° ; décret art. 57)', () => {
+  // Prestation de décembre N, TVA 160 000, TTC 1 160 000, reclassée en entier
+  // au 416 (le 411 n'est pas lettré, A7 ter), facture désignée pour 1 160 000.
+  const facture = ecriture({
+    compteTva: '44320000',
+    contrepartie: '70610000',
+    date: '2026-12-10',
+    tva: 160_000,
+    id: 'F2',
+    tiers: { montant: 1_160_000, groupe: null },
+  });
+  const designee = (recouvrements: Array<{ date: string; montant: number }>, ligne = 'tiers-F2', part = 1_160_000, reclasse = 1_160_000) => ({
+    id: `d-${ligne}`,
+    ligneEcritureId: ligne,
+    montant: part,
+    creance: { montant: reclasse, mouvements: recouvrements.map((r) => ({ date: jour(r.date), montant: r.montant })) },
+  });
+  const DECEMBRE = mois('2026-12');
+  const MARS_N1 = mois('2027-03');
+
+  it('recouvrée à 50 % en mars N+1 · 80 000 exigibles en mars, 80 000 en attente, rien en décembre', async () => {
+    const s = service([facture], [], [], { designations: [designee([{ date: '2027-03-10', montant: 580_000 }])] });
+    expect((await s.declaration('t1', ...DECEMBRE)).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...DECEMBRE)).tvaEnAttenteEncaissement).toBe(80_000);
+    expect((await s.declaration('t1', ...MARS_N1)).totalCollecte).toBe(80_000);
+  });
+
+  it('deux recouvrements · une tranche chacun, à sa date', async () => {
+    const s = service([facture], [], [], {
+      designations: [designee([{ date: '2027-03-10', montant: 290_000 }, { date: '2027-04-05', montant: 580_000 }])],
+    });
+    expect((await s.declaration('t1', ...MARS_N1)).totalCollecte).toBe(40_000);
+    expect((await s.declaration('t1', ...mois('2027-04'))).totalCollecte).toBe(80_000);
+  });
+
+  it('une PERTE n’est pas un encaissement · sans recouvrement, rien n’est exigible', async () => {
+    const s = service([facture], [], [], { designations: [designee([])] });
+    expect((await s.declaration('t1', ...MARS_N1)).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...DECEMBRE)).tvaEnAttenteEncaissement).toBe(160_000);
+  });
+
+  it('la lecture ne retient que les recouvrements NON ANNULÉS et VALIDÉS d’une créance non annulée', async () => {
+    const s = service([facture]);
+    await s.declaration('t1', ...MARS_N1);
+    const prisma = (s as unknown as { prisma: { factureCreanceDouteuse: { findMany: jest.Mock } } }).prisma;
+    const where = prisma.factureCreanceDouteuse.findMany.mock.calls[0][0];
+    expect(where.where).toMatchObject({ creance: { annuleeLe: null } });
+    expect(where.select.creance.select.mouvements.where).toEqual({
+      type: 'RECOUVREMENT',
+      annuleeLe: null,
+      ecriture: { statut: 'VALIDEE' },
+    });
+  });
+
+  it('facture lettrée en partie avant le reclassement · le recouvrement rejoint son groupe', async () => {
+    // 464 000 réglés et lettrés (40 %), le reste 696 000 reclassé et désigné,
+    // 348 000 recouvrés · 30 % de la facture, 48 000 de TVA.
+    const partielle = ecriture({
+      compteTva: '44320000',
+      contrepartie: '70610000',
+      date: '2026-12-10',
+      tva: 160_000,
+      id: 'F3',
+      tiers: { montant: 1_160_000, groupe: { statut: 'PARTIEL', solde: 696_000, reglements: [{ date: '2026-12-20', montant: 464_000 }] } },
+    });
+    const s = service([partielle], [], [], { designations: [designee([{ date: '2027-03-10', montant: 348_000 }], 'tiers-F3', 696_000, 696_000)] });
+    expect((await s.declaration('t1', ...DECEMBRE)).totalCollecte).toBe(64_000);
+    expect((await s.declaration('t1', ...MARS_N1)).totalCollecte).toBe(48_000);
+  });
+
+  it('TRANSITION · décembre liquidé par l’ancien moteur l’a déclarée en entier · le recouvrement n’ajoute rien', async () => {
+    const s = service(
+      [facture],
+      [{ id: 'liqD', dateDebut: DECEMBRE[0], dateFin: DECEMBRE[1], createdAt: new Date('2027-01-10'), figee: null }],
+      [],
+      { designations: [designee([{ date: '2027-03-10', montant: 580_000 }])] },
+    );
+    expect((await s.declaration('t1', ...MARS_N1)).totalCollecte).toBe(0);
+  });
+
+  it('un recouvrement SANS facture désignée est NOMMÉ, avec le montant et l’issue', async () => {
+    const s = service([], [], [], {
+      sansFacture: [
+        {
+          id: 'cr1',
+          dateReclassement: jour('2026-12-31'),
+          montant: 1_160_000,
+          compteCreance: { numero: '41110101', intitule: 'Client Kasa' },
+          factures: [],
+          mouvements: [{ montant: 580_000 }],
+        },
+      ],
+    });
+    const d = await s.declaration('t1', ...MARS_N1);
+    expect(d.recouvrementsSansFactureDesignee).toEqual([
+      { creanceId: 'cr1', compte: '41110101 Client Kasa', dateReclassement: '2026-12-31', recouvre: 580_000, recouvreSansFacture: 580_000 },
+    ]);
+    expect(d.mentionExigibilite).toContain('TVA à déclarer par le cabinet faute de facture désignée');
+    expect(d.mentionExigibilite).toContain('41110101 Client Kasa');
   });
 });

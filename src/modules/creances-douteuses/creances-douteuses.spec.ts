@@ -34,6 +34,7 @@ import {
   piecesLisibles,
   resteDeLaCreance,
   revueAFaire,
+  motifRefusDesignation,
 } from './creances-douteuses';
 import { CreancesDouteusesService, PLAFOND_COMPTES_416_491 } from './creances-douteuses.service';
 import { CreancesDouteusesController } from './creances-douteuses.controller';
@@ -2150,5 +2151,41 @@ describe('créances douteuses · A7 ter, m3 · le 651 du débiteur au SYCEBNL (f
     expect(motifRefus651Croise(Referentiel.SYCEBNL, '41380000', '65110000')).toBeNull();
     expect(motifRefus651Croise(Referentiel.SYCEBNL, '41300000', '65150000')).toBeNull();
     expect(motifRefus651Croise(Referentiel.SYSCOHADA, '41110001', '65150000')).toBeNull();
+  });
+});
+
+describe('A7 bis · « Désigner les factures » · rien n’est deviné, chaque refus dit pourquoi', () => {
+  const base = {
+    creanceAnnulee: false,
+    memeCompte: true,
+    validee: true,
+    sensFacture: 1_160_000,
+    montant: 1_160_000,
+    ouvert: 1_160_000,
+    designeeAilleurs: false,
+    dejaDesignee: false,
+    totalDesigne: 1_160_000,
+    montantCreance: 1_160_000,
+    numeroCompte: '41110101',
+  };
+  it('la facture ouverte du client, dans la limite du reclassé, se désigne', () => {
+    expect(motifRefusDesignation(base)).toBeNull();
+  });
+  it('refusée · autre compte client, brouillard, ligne non débitrice, report à-nouveau', () => {
+    expect(motifRefusDesignation({ ...base, memeCompte: false })).toMatch(/pas au compte 41110101/);
+    expect(motifRefusDesignation({ ...base, validee: false })).toMatch(/brouillard/);
+    expect(motifRefusDesignation({ ...base, sensFacture: -10 })).toMatch(/ne débite pas le client/);
+    expect(motifRefusDesignation({ ...base, aNouveau: true })).toMatch(/facture d’origine/);
+  });
+  it('refusée · au-delà de ce que la facture doit encore, ou du montant reclassé', () => {
+    expect(motifRefusDesignation({ ...base, ouvert: 696_000 })).toMatch(/dépasse ce que la facture doit encore \(696/);
+    expect(motifRefusDesignation({ ...base, totalDesigne: 1_200_000 })).toMatch(/dépassent le montant reclassé/);
+  });
+  it('refusée · déjà désignée par une autre créance non annulée, ou par celle-ci', () => {
+    expect(motifRefusDesignation({ ...base, designeeAilleurs: true })).toMatch(/autre créance non annulée/);
+    expect(motifRefusDesignation({ ...base, dejaDesignee: true })).toMatch(/déjà désignée par cette créance/);
+  });
+  it('refusée · créance annulée', () => {
+    expect(motifRefusDesignation({ ...base, creanceAnnulee: true })).toMatch(/annulé/);
   });
 });

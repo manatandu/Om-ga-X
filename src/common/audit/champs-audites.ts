@@ -147,6 +147,7 @@ export const MODELES_AUDITES = new Set<string>([
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',
+  'FactureCreanceDouteuse',
   // L'impôt sur le résultat constaté (ligne A11) · le montant figé au clic,
   // l'attestation qui fonde l'assujettissement et l'annulation avec son motif.
   // Retouchés après coup, le constat dirait un impôt que l'écriture ne porte pas.

@@ -13,6 +13,7 @@ import {
   AnnulerReclassementDto,
   AnnulerRevueDto,
   DeclarerCreanceOuvertureDto,
+  DesignerFacturesDto,
   Lettrer416Dto,
   PerteCreanceDto,
   ReclasserCreanceDto,
@@ -106,6 +107,23 @@ export class CreancesDouteusesController {
   @Post(':id/lettrage-416')
   lettrer416(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: Lettrer416Dto) {
     return this.service.lettrer416(user.tenantId, user.userId, id, dto);
+  }
+
+  /** Les factures du client désignables, et celles que la créance désigne (A7 bis). */
+  @Get(':id/factures')
+  async factures(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    const [candidates, designees] = await Promise.all([
+      this.service.facturesCandidates(user.tenantId, id),
+      this.service.facturesDesignees(user.tenantId, id),
+    ]);
+    return { ...candidates, designees };
+  }
+
+  /** « Désigner les factures » · le recouvrement en devient l'encaissement pour la TVA (A7 bis). */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @Post(':id/factures')
+  async designerFactures(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: DesignerFacturesDto) {
+    return this.service.designerFactures(user.tenantId, user.userId, id, dto);
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)

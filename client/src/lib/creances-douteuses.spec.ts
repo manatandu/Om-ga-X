@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  partsADesigner,
   annonceRevue,
   bornesExercice,
   ecartsRapprochement,
@@ -143,10 +144,13 @@ describe('créances douteuses · écran (ligne A7)', () => {
   });
 
   it('1, 6 · modales en dialogue, Échap par la couche, envoi unique et fermeture tenue pendant l’envoi', () => {
-    // Trois modales · le geste, l'annulation, et « Lettrer au 416 » (second tour, B-1).
-    expect(page.match(/role="dialog"/g)).toHaveLength(3);
-    expect(page.match(/aria-modal="true"/g)).toHaveLength(3);
-    expect(page.match(/aria-label="Fermer"/g)).toHaveLength(3);
+    // Quatre modales · le geste, l'annulation, « Lettrer au 416 » (second tour,
+    // B-1) et « Désigner les factures » (A7 bis).
+    expect(page.match(/role="dialog"/g)).toHaveLength(4);
+    expect(page.match(/aria-modal="true"/g)).toHaveLength(4);
+    expect(page.match(/aria-label="Fermer"/g)).toHaveLength(4);
+    const designer = page.slice(page.indexOf('async function designer'), page.indexOf('function ouvrirLettrage416'));
+    expect(designer).toMatch(/ev\.preventDefault\(\);\s*if \(!designation\?\.liste \|\| envoi\) return;/);
     const lettrer = page.slice(page.indexOf('async function lettrer'), page.indexOf('async function envoyer'));
     expect(lettrer).toMatch(/ev\.preventDefault\(\);\s*if \(!lettrage416\?\.proposition \|\| envoi\) return;/);
     expect(page).toContain('return ecouterEchap(() => {');
@@ -294,5 +298,16 @@ describe('créances douteuses · « Lettrer au 416 » (second tour, B-1)', () =>
     expect(page).toContain('Lettrer au 416');
     expect(page).toContain('/lettrage-416');
     expect(page).not.toMatch(/lettrez-l[ae]s? à la main/i);
+  });
+});
+
+describe('A7 bis · « Désigner les factures » · les parts saisies', () => {
+  it('une part vide est ignorée, une part lue au centime', () => {
+    expect(partsADesigner({ a: '1 160 000', b: '' }, montantSaisi)).toEqual({ factures: [{ ligneEcritureId: 'a', montant: 1_160_000 }], erreur: null });
+  });
+  it('une part illisible ou nulle se dit, jamais lue comme zéro', () => {
+    expect(partsADesigner({ a: 'abc' }, montantSaisi).erreur).toMatch(/illisible/);
+    expect(partsADesigner({ a: '0' }, montantSaisi).erreur).toMatch(/illisible ou nulle/);
+    expect(partsADesigner({}, montantSaisi).erreur).toMatch(/au moins une facture/);
   });
 });

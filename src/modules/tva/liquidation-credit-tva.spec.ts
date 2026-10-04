@@ -51,6 +51,8 @@ function service(net: number, referentiel: 'SYCEBNL' | 'SYSCOHADA', creditAnteri
     journal: { findFirst: jest.fn().mockResolvedValue({ id: 'j-od', code: 'OD' }) },
     // Le verrou anti-double-liquidation interroge ce marqueur avant tout · ici
     // aucune période n'est liquidée.
+    factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
     liquidationTva: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -239,6 +241,8 @@ function declarant(precedente: { dateDebut: string; dateFin: string; net: number
       ]),
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
     },
+    factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
     liquidationTva: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockImplementation(({ where }: { where: Record<string, unknown> }) => {

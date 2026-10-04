@@ -714,7 +714,8 @@ PASSE AU TTC ENTIER, D 651 / C 416, TOUJOURS · aucune ligne 443, aucune
 définitivement irrécouvrable se récupère par imputation (O.-L. n° 10/001, art. 52 ;
 décret n° 011/42, art. 126 et 127, duplicata surchargé) et que le cabinet la déclare
 lui-même pour l'instant. Aucune vente d'origine n'est gardée (elles ne servaient
-qu'à la TVA ; le 4161 / 4162 se lit sur le compte du client). LE RECLASSEMENT NE
+qu'à la TVA ; le 4161 / 4162 se lit sur le compte du client) · A7 bis y ajoute la
+DÉSIGNATION facultative des factures, qui ne sert qu'à l'exigibilité du recouvrement. LE RECLASSEMENT NE
 LETTRE PAS LE 411 et n'exige aucun lettrage · lettré avec la facture, le moteur de
 la TVA le lirait comme un ENCAISSEMENT (décret n° 011/42, art. 57), et la TVA d'une
 prestation deviendrait exigible au reclassement (art. 25, 2°) · dit en commentaire
@@ -799,9 +800,19 @@ TRANSITION · une liquidation sans figé (`null`, ancien moteur) est réputée a
 déclaré EN ENTIER, à la facture, toute ligne dont aucune ligne de tiers n'était
 lettrée à son instant (`Lettrage.createdAt`) · un groupe défait puis refait après
 coup n'est pas distingué, limite dite. Le figé ne part jamais à l'écran (retiré
-par le contrôleur). Avoirs inchangés (constatation, décret art. 126). Partie 2
-(récupération de l'art. 52 sur créance irrécouvrable, TVA du recouvrement d'une
-créance reclassée) au suivi.
+par le contrôleur). Avoirs inchangés (constatation, décret art. 126). (5) LE
+RECOUVREMENT D'UNE CRÉANCE DOUTEUSE EST L'ENCAISSEMENT DE SES FACTURES DÉSIGNÉES
+(second tour) · au reclassement ou ensuite (« Désigner les factures »,
+`FactureCreanceDouteuse`, `motifRefusDesignation`), le cabinet désigne la ligne de
+la facture d'origine au compte du client et sa part TTC, jamais lettrée (A7 ter) ;
+refus · autre compte, brouillard, à-nouveau, au-delà de l'ouvert ou du reclassé,
+ligne d'une autre créance non annulée. Chaque recouvrement non annulé et validé
+encaisse la part désignée au prorata recouvré / reclassé, une tranche à sa date,
+par la même mémoire (4) ; une PERTE n'encaisse rien (art. 52, partie 2) ; une
+créance annulée ne désigne plus rien. Un recouvrement de la période SANS facture
+désignée est NOMMÉ (`recouvrementsSansFactureDesignee`, « TVA à déclarer par le
+cabinet faute de facture désignée »), jamais tu. Partie 2 (récupération de
+l'art. 52 sur créance irrécouvrable) au suivi.
 
 **Procès-verbal de comptage par caisse.** Le PV de campagne (CPCC, étape 2) ne porte
 pas les espèces ; le § VI vise « la caisse SIÈGE, [...] la caisse AGENCE, [...] la
