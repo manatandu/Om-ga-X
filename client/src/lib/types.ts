@@ -829,6 +829,9 @@ export interface DeclarationTva {
   /** Ces groupes, nommés par le serveur (la phrase est dans `mentionExigibilite`). */
   groupesImputationIndeterminee?: Array<{ factures: string[]; encaisse: number; motif: string }>;
   groupesImputationIndetermineeTotal?: number;
+  /** Factures dont le rapprochement par l'à-nouveau est abandonné (plusieurs candidats), nommées par le serveur. */
+  rapprochementsANouveauAbandonnes?: Array<{ facture: string; date: string; tva: number; motif: string }>;
+  rapprochementsANouveauAbandonnesTotal?: number;
   /** TVA d'écritures au brouillard datées de la période · hors déclaration (audit F25). */
   tvaAuBrouillard: { collecte: number; deductible: number; ecritures: number };
   lignes: LigneDeclarationTva[];

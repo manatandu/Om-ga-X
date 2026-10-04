@@ -646,9 +646,48 @@ describe('F1 à travers la clôture · le groupe partiel de N se poursuit par se
     expect(janvier.groupesImputationIndeterminee).toEqual([]);
   });
 
-  it('deux reports candidats dans le même exercice · rien n’est relié (aucune devinette)', async () => {
+  it('deux reports candidats dans le même exercice · rien n’est relié (aucune devinette), et les factures sont NOMMÉES', async () => {
     const doublon = { ...aNouveaux[0], id: 'anF1bis' };
     const s = new TauxTvaService(base([], [...aNouveaux, doublon]), {} as EcritureService);
-    expect((await s.declaration('t1', ...mois('2027-01'))).totalCollecte).toBe(0);
+    const d = await s.declaration('t1', ...mois('2027-01'));
+    expect(d.totalCollecte).toBe(0);
+    expect(d.rapprochementsANouveauAbandonnes).toEqual([
+      { facture: 'Facture F1', date: '2026-12-10', tva: 160_000, motif: 'plusieurs à-nouveaux candidats, rapprochement non fait' },
+      { facture: 'Facture F2', date: '2026-12-11', tva: 160_000, motif: 'plusieurs à-nouveaux candidats, rapprochement non fait' },
+    ]);
+    expect(d.rapprochementsANouveauAbandonnesTotal).toBe(2);
+    expect(d.mentionExigibilite).toContain('RAPPROCHEMENT PAR L’À-NOUVEAU NON FAIT · facture « Facture F1 » du 10/12/2026, 160');
+  });
+
+  it('relierAuxANouveaux · une facture non lettrée de N, deux à-nouveaux candidats lettrés en N+1 · NOMMÉE, jamais tue', async () => {
+    const f0 = vente({ id: 'F0', date: '2026-12-10', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: null });
+    const groupe = {
+      statut: 'SOLDE',
+      solde: 0,
+      soldeAt: null,
+      createdAt: jour('2027-02-20'),
+      lignes: [{ debit: 0, credit: 1_160_000, ecriture: { date: jour('2027-02-15'), createdAt: jour('2027-02-15'), estANouveauProvisoire: false, estGenereeParCloture: false, _count: { lignes: 0 } } }],
+    };
+    const an = (id: string) => ({
+      id,
+      compteId: 'c-client',
+      debit: 1_160_000,
+      credit: 0,
+      deviseId: null,
+      montantDevise: null,
+      dateEcheance: null,
+      libelle: 'RAN détail 41110101 · Facture F0',
+      ecriture: { date: jour('2027-01-01'), exerciceId: 'ex2027' },
+      lettrage: groupe,
+    });
+    const p = prisma([f0]);
+    (p.ligneEcriture.findMany as jest.Mock).mockImplementation(({ where }: { where: { compteId?: { in?: string[] } } }) =>
+      Promise.resolve(where.compteId?.in ? [an('a1'), an('a2')] : [f0]),
+    );
+    const d = await new TauxTvaService(p, {} as EcritureService).declaration('t1', ...mois('2027-02'));
+    expect(d.totalCollecte).toBe(0);
+    expect(d.rapprochementsANouveauAbandonnes).toEqual([
+      { facture: 'Facture F0', date: '2026-12-10', tva: 160_000, motif: 'plusieurs à-nouveaux candidats, rapprochement non fait' },
+    ]);
   });
 });

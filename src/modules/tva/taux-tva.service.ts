@@ -702,6 +702,9 @@ export function repartirAuCentime(total: number, bruts: ReadonlyMap<string, numb
  * par ligne de TVA (`null` · liquidation antérieure à la règle, voir
  * `repartirEncaissement`).
  */
+/** Motif servi quand un rapprochement par l'à-nouveau est abandonné. */
+export const MOTIF_A_NOUVEAU_AMBIGU = 'plusieurs à-nouveaux candidats, rapprochement non fait';
+
 export type LiquidationEncaissement = {
   id: string;
   dateDebut: Date;
@@ -1950,7 +1953,7 @@ export class TauxTvaService {
         }>;
       };
     },
-  >(tenantId: string, lignes: T[]): Promise<T[]> {
+  >(tenantId: string, lignes: T[], signalerAmbigu: (l: T) => void = () => undefined): Promise<T[]> {
     if (lignes.length === 0) return lignes;
     type LigneDeGroupe = {
       id?: string;
@@ -2043,8 +2046,8 @@ export class TauxTvaService {
         (a.libelle ?? '').endsWith(libelle)
       );
     };
-    const prolonges = new Map<string, Groupe | null>();
-    const prolonger = (g: Groupe): Groupe | null => {
+    const prolonges = new Map<string, Groupe | 'AMBIGU' | null>();
+    const prolonger = (g: Groupe): Groupe | 'AMBIGU' | null => {
       const reports = new Set<string>();
       const vus = new Set<string>([g.id!]);
       const reunies: LigneDeGroupe[] = [...(g.lignes ?? [])];
@@ -2057,7 +2060,11 @@ export class TauxTvaService {
           if (candidates.length === 0) continue;
           // Le report de l'exercice qui suit · le plus proche, et seul de son exercice.
           const premier = candidates.reduce((m, a) => (a.ecriture.date < m.ecriture.date ? a : m));
-          if (candidates.filter((a) => a.ecriture.exerciceId === premier.ecriture.exerciceId).length > 1) return null;
+          // PLUSIEURS REPORTS CANDIDATS · rien n'est relié, et la facture est
+          // NOMMÉE dans la déclaration si l'un d'eux est lettré (un
+          // encaissement a pu avoir lieu), jamais laissée en attente sans un mot.
+          const memeExercice = candidates.filter((a) => a.ecriture.exerciceId === premier.ecriture.exerciceId);
+          if (memeExercice.length > 1) return memeExercice.some((a) => a.lettrage) ? 'AMBIGU' : null;
           reports.add(premier.id);
           const suivant = premier.lettrage;
           if (suivant?.id && !vus.has(suivant.id)) {
@@ -2089,7 +2096,8 @@ export class TauxTvaService {
       if (!g) return l;
       if (!prolonges.has(g.id!)) prolonges.set(g.id!, prolonger(g));
       const p = prolonges.get(g.id!);
-      if (!p) return l;
+      if (p === 'AMBIGU') signalerAmbigu(l);
+      if (!p || p === 'AMBIGU') return l;
       return {
         ...l,
         ecriture: {
@@ -2144,7 +2152,7 @@ export class TauxTvaService {
       };
       compte: { numero: string };
     },
-  >(tenantId: string, lignes: T[]): Promise<T[]> {
+  >(tenantId: string, lignes: T[], signalerAmbigu: (l: T) => void = () => undefined): Promise<T[]> {
     if (lignes.length === 0) return lignes;
     const centimes = (x: unknown) => Math.round(Number(x ?? 0) * 100);
     const estCollecteDe = (l: T) => l.compte.numero.startsWith(RACINE_COLLECTEE);
@@ -2279,7 +2287,14 @@ export class TauxTvaService {
       let cs = candidats.get(l) ?? [];
       const parExercice = new Map<string, number>();
       for (const a of cs) parExercice.set(a.ecriture.exerciceId, (parExercice.get(a.ecriture.exerciceId) ?? 0) + 1);
-      if ([...parExercice.values()].some((n) => n > 1) || cs.some((a) => (revendications.get(a.id) ?? 0) > 1)) cs = [];
+      if ([...parExercice.values()].some((n) => n > 1) || cs.some((a) => (revendications.get(a.id) ?? 0) > 1)) {
+        // PLUSIEURS À-NOUVEAUX CANDIDATS (ou un report revendiqué par deux
+        // factures) · rien n'est relié, et si l'un d'eux est lettré (un
+        // encaissement a pu avoir lieu) la facture est NOMMÉE dans la
+        // déclaration, jamais laissée en attente sans un mot (§ 10 bis).
+        if (cs.some((a) => a.lettrage)) signalerAmbigu(l);
+        cs = [];
+      }
       /*
         UNE SEULE LIGNE D'À-NOUVEAU LETTRÉE · son groupe RÉEL est lu, tel que
         `main` lirait celui d'une facture de l'exercice (quatrième reprise) ·
@@ -3501,6 +3516,11 @@ export class TauxTvaService {
     let attenteImputationIndeterminee = 0;
     const groupesImputationIndeterminee: Array<{ factures: string[]; encaisse: number; motif: string }> = [];
     let groupesImputationIndetermineeTotal = 0;
+    // Rapprochements par l'à-nouveau abandonnés faute de candidat unique ·
+    // la taxe de la facture reste en attente, et elle est NOMMÉE.
+    const rapprochementsANouveauAbandonnes: Array<{ facture: string; date: string; tva: number; motif: string }> = [];
+    let rapprochementsANouveauAbandonnesTotal = 0;
+    const ambigusVus = new Set<string>();
 
     /*
       DÉCHÉANCE DU DROIT À DÉDUCTION · article 37, alinéa 2.
@@ -4056,8 +4076,22 @@ export class TauxTvaService {
           });
       };
       await lireParLots(lire, (l) => traiter(l, false), LOT_ECRITURES);
-      for (const l of await this.relierAuxANouveaux(tenantId, aRelier)) traiter(l, true);
-      for (const l of await this.prolongerParLesANouveaux(tenantId, aProlonger)) traiter(l, false, undefined, true);
+      const signalerAmbigu = (l: LigneLue) => {
+        if (ambigusVus.has(l.id)) return;
+        ambigusVus.add(l.id);
+        rapprochementsANouveauAbandonnesTotal++;
+        if (rapprochementsANouveauAbandonnes.length < PLAFOND_INCERTAINES) {
+          const estCollecte = l.compte.numero.startsWith(RACINE_COLLECTEE);
+          rapprochementsANouveauAbandonnes.push({
+            facture: l.ecriture.libelle,
+            date: (l.ecriture.date as Date).toISOString().slice(0, 10),
+            tva: TauxTvaService.c(Number(estCollecte ? l.credit : l.debit)),
+            motif: MOTIF_A_NOUVEAU_AMBIGU,
+          });
+        }
+      };
+      for (const l of await this.relierAuxANouveaux(tenantId, aRelier, signalerAmbigu)) traiter(l, true);
+      for (const l of await this.prolongerParLesANouveaux(tenantId, aProlonger, signalerAmbigu)) traiter(l, false, undefined, true);
 
       /*
         F1 · LES GROUPES À PLUSIEURS FACTURES, JUGÉS UNE FOIS TOUT LU. Voir
@@ -4345,6 +4379,8 @@ export class TauxTvaService {
         groupesImputationIndeterminee,
         groupesImputationIndetermineeTotal,
         attenteImputationIndeterminee,
+        rapprochementsANouveauAbandonnes,
+        rapprochementsANouveauAbandonnesTotal,
         tvaBiensDateeALaFacture: TauxTvaService.c(tvaBiensDateeALaFacture),
         tvaLivraisonSoiMeme: TauxTvaService.c(tvaLivraisonSoiMeme),
         tvaLocationVente: TauxTvaService.c(tvaLocationVente),
@@ -4368,6 +4404,9 @@ export class TauxTvaService {
       tvaEnAttenteImputationIndeterminee: attenteImputationIndeterminee,
       groupesImputationIndeterminee,
       groupesImputationIndetermineeTotal,
+      /** Factures dont le rapprochement par l'à-nouveau est abandonné (plusieurs candidats) · taxe en attente, nommée. */
+      rapprochementsANouveauAbandonnes,
+      rapprochementsANouveauAbandonnesTotal,
       lignes,
       prorata,
       totalCollecte,
@@ -4464,6 +4503,8 @@ export class TauxTvaService {
    * où l'écran les lirait.
    */
   private mentionExigibilite(e: {
+    rapprochementsANouveauAbandonnes?: ReadonlyArray<{ facture: string; date: string; tva: number; motif: string }>;
+    rapprochementsANouveauAbandonnesTotal?: number;
     tvaBiensDateeALaFacture?: number;
     tvaLivraisonSoiMeme?: number;
     tvaLocationVente?: number;
@@ -4665,7 +4706,25 @@ export class TauxTvaService {
           'naissance, et le délai de l’art. 37 al. 2 court de la livraison.',
       );
     }
+    const abandonnes = e.rapprochementsANouveauAbandonnes ?? [];
+    const totalAbandonnes = e.rapprochementsANouveauAbandonnesTotal ?? abandonnes.length;
+    const phraseAbandonnes =
+      abandonnes.length === 0
+        ? []
+        : [
+            'RAPPROCHEMENT PAR L’À-NOUVEAU NON FAIT · ' +
+              abandonnes
+                .slice(0, 8)
+                .map((a) => `facture « ${a.facture} » du ${jjmmDe(a.date)}, ${fc(a.tva)} CDF de TVA (${a.motif})`)
+                .join(' ; ') +
+              (totalAbandonnes > 8 ? ` ; et ${totalAbandonnes - 8} autre(s)` : '') +
+              '. Un règlement lettré avec une ligne d’à-nouveau est l’encaissement de la facture qu’elle reporte ' +
+              '(O.-L. n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57), mais plusieurs reports peuvent être celui ' +
+              'de cette facture · OmegaX n’en choisit aucun, et sa taxe reste en attente. Issue · déclarer la part ' +
+              'exigible pièce par pièce, ou distinguer les reports (libellé, échéance).',
+          ];
     const phrases: string[] = [
+      ...phraseAbandonnes,
       ...phraseIndetermines,
       ...phrasesDates,
       ...phraseARelettrer,
