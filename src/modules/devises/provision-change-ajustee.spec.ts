@@ -526,18 +526,78 @@ describe('A5 · les trois familles SYSCOHADA s’ajustent chacune dans la sienne
   });
 });
 
-describe('A5 · SYCEBNL, un seul couple · 194 doté au 6971, repris au 7971', () => {
-  it('perte puis gain sur une créance', async () => {
+/**
+ * LIGNE A5 TER · AU SYCEBNL, LE RISQUE À MOINS D'UN AN N'EST PAS AU 194.
+ * Fiche SYCEBNL du compte 19, exclusions · « les provisions correspondant à
+ * des risques à moins d'un an (utiliser 499 – Provisions pour risques à court
+ * terme) » ; fiche du compte 49 · 4991 « sur opérations d'exploitation », par
+ * le 659, repris par le 759 ; 4998 « sur opérations H.A.O. », par le 839 et le
+ * 849 ; fiche du compte 59 · le 599 « Provisions pour risques à court terme à
+ * caractère financier », « exemple : provisions pour pertes de change », par
+ * le 679 et le 779. Le module portait TOUT au 194 par le 6971 · une perte
+ * probable sur une créance client devenait une charge financière à long
+ * terme, écriture équilibrée, balance bouclée.
+ */
+describe('A5 ter · SYCEBNL, la famille suit la nature de la position (fiches des comptes 19, 49 et 59)', () => {
+  it('créance client · 4991 doté au 6591, repris au 7591, jamais le 194', async () => {
     const d = dossier('SYCEBNL');
     d.positions.n = [{ ...CREANCE, compte: '41200000' }];
     d.cours['2026-12-31'] = 1900;
     await d.svc.reevaluer('t', 'u', { exerciceId: 'n' });
-    expect(d.provisionDe('n')!.lignes.map((l) => l.compte)).toEqual(['6971', '194']);
+    expect(d.provisionDe('n')!.lignes.map((l) => l.compte)).toEqual(['6591', '4991']);
     d.positions.n1 = [{ ...CREANCE, compte: '41200000' }];
     d.cours['2027-12-31'] = 2100;
     await d.svc.reevaluer('t', 'u', { exerciceId: 'n1' });
-    expect(d.provisionDe('n1')!.lignes.map((l) => l.compte)).toEqual(['194', '7971']);
+    expect(d.provisionDe('n1')!.lignes.map((l) => l.compte)).toEqual(['4991', '7591']);
+    expect(d.solde('4991')).toBe(0);
     expect(d.solde('194')).toBe(0);
+  });
+
+  it('emprunt (18) · 194 par le 6971, le seul risque à plus d’un an', async () => {
+    const d = dossier('SYCEBNL');
+    d.positions.n = [{ ...EMPRUNT, compte: '18100000' }];
+    d.cours['2026-12-31'] = 2100; // la dette s'alourdit de 100 000
+    await d.svc.reevaluer('t', 'u', { exerciceId: 'n' });
+    expect(d.provisionDe('n')!.lignes.map((l) => [l.compte, l.debit ?? 0, l.credit ?? 0])).toEqual([
+      ['6971', 100_000, 0],
+      ['194', 0, 100_000],
+    ]);
+  });
+
+  it('crédit de trésorerie (56) · 599 par le 6791, repris au 7791 (fiche du compte 59)', async () => {
+    const d = dossier('SYCEBNL');
+    d.positions.n = [CREDIT_TRESORERIE];
+    d.cours['2026-12-31'] = 2100;
+    await d.svc.reevaluer('t', 'u', { exerciceId: 'n' });
+    expect(d.provisionDe('n')!.lignes.map((l) => l.compte)).toEqual(['6791', '599']);
+    d.positions.n1 = [CREDIT_TRESORERIE];
+    d.cours['2027-12-31'] = 2000;
+    await d.svc.reevaluer('t', 'u', { exerciceId: 'n1' });
+    expect(d.provisionDe('n1')!.lignes.map((l) => l.compte)).toEqual(['599', '7791']);
+  });
+
+  it('dette H.A.O. (48) · 4998 par le 839, repris au 849', async () => {
+    const d = dossier('SYCEBNL');
+    d.positions.n = [{ compte: '48120000', debit: 0, credit: 2_000_000, usd: 1000 }];
+    d.cours['2026-12-31'] = 2100;
+    await d.svc.reevaluer('t', 'u', { exerciceId: 'n' });
+    expect(d.provisionDe('n')!.lignes.map((l) => l.compte)).toEqual(['839', '4998']);
+  });
+
+  it('une provision passée au 194 avant la ligne pour une créance est REPRISE au 7971, la juste dotée au 6591', async () => {
+    const d = dossier('SYCEBNL');
+    // Réévaluation de N passée sous l'ancienne règle · 100 000 au 194.
+    d.ecrites.push({ id: 'p', exerciceId: 'n', libelle: 'Provision', lignes: [{ compte: '6971', debit: 100_000 }, { compte: '194', credit: 100_000 }] });
+    d.reevaluations.push({ id: 'p', exerciceId: 'n', dateReevaluation: new Date('2026-12-31'), ecritureProvisionId: 'p' });
+    d.positions.n1 = [{ ...CREANCE, compte: '41200000' }];
+    d.cours['2027-12-31'] = 1900;
+    await d.svc.reevaluer('t', 'u', { exerciceId: 'n1' });
+    expect(d.provisionDe('n1')!.lignes.map((l) => [l.compte, l.debit ?? 0, l.credit ?? 0])).toEqual([
+      ['6591', 100_000, 0],
+      ['4991', 0, 100_000],
+      ['194', 100_000, 0],
+      ['7971', 0, 100_000],
+    ]);
   });
 });
 
@@ -614,12 +674,13 @@ describe('A5 · le moteur pur et ses tables', () => {
     for (const f of Object.values(PROVISION_SYSCOHADA)) {
       for (const n of [f.provision, f.dotation, f.reprise]) expect([n, ouvert(PLAN_COMPTES_SYSCOHADA, n)]).toEqual([n, true]);
     }
-    for (const n of [PROVISION_SYCEBNL.provision, PROVISION_SYCEBNL.dotation, PROVISION_SYCEBNL.reprise]) {
-      expect([n, ouvert(PLAN_COMPTES_SYCEBNL, n)]).toEqual([n, true]);
+    for (const f of Object.values(PROVISION_SYCEBNL)) {
+      for (const n of [f.provision, f.dotation, f.reprise]) expect([n, ouvert(PLAN_COMPTES_SYCEBNL, n)]).toEqual([n, true]);
     }
     // Un numéro, deux sens · le SYCEBNL n'ouvre pas de 4997, et c'est
-    // pourquoi son unique couple reste le 194.
+    // pourquoi son financier à court terme va au 599 (fiche du compte 59).
     expect(PLAN_COMPTES_SYCEBNL.some((c) => c.numero.startsWith('4997'))).toBe(false);
+    expect(PROVISION_SYCEBNL.FINANCIER_COURT.provision).toBe('599');
   });
 });
 
@@ -1722,19 +1783,19 @@ describe('A5 · huitième relecture · une version se lit entre un PLANCHER et u
     expect(d.solde('4991')).toBe(70_000);
   });
 
-  it('SYCEBNL · la même règle au 194 · version périmée refusée, corrigée, SOLDE FINAL juste', async () => {
+  it('SYCEBNL · la même règle au 4991 (A5 ter) · version périmée refusée, corrigée, SOLDE FINAL juste', async () => {
     const aNouveau: Partial<Record<'n' | 'n1' | 'n2', ANouveau>> = { n1: { statut: 'BROUILLARD', soldes: {}, provisoire: true } };
     const d = dossier('SYCEBNL', { aNouveau });
     d.positions.n = [CREANCE];
     d.positions.n1 = [CREANCE];
     d.cours['2026-12-31'] = 1900;
     d.cours['2027-12-31'] = 1930;
-    await d.svc.declarerProvisionOuverture('t', 'u', { compteProvision: '194', montant: 0, dateReference: '2027-01-01', source: 's' });
+    await d.svc.declarerProvisionOuverture('t', 'u', { compteProvision: '4991', montant: 0, dateReference: '2027-01-01', source: 's' });
     await d.svc.reevaluer('t', 'u', { exerciceId: 'n' });
-    await expect(d.svc.reevaluer('t', 'u', { exerciceId: 'n1' })).rejects.toThrow(/194 · 0\.00 sous la provision/);
-    await d.svc.declarerProvisionOuverture('t', 'u', { compteProvision: '194', montant: 100_000, dateReference: '2027-01-01', source: 's' });
+    await expect(d.svc.reevaluer('t', 'u', { exerciceId: 'n1' })).rejects.toThrow(/4991 · 0\.00 sous la provision/);
+    await d.svc.declarerProvisionOuverture('t', 'u', { compteProvision: '4991', montant: 100_000, dateReference: '2027-01-01', source: 's' });
     await d.svc.reevaluer('t', 'u', { exerciceId: 'n1' });
-    expect(d.solde('194')).toBe(70_000);
+    expect(d.solde('4991')).toBe(70_000);
   });
 });
 
@@ -1766,10 +1827,10 @@ describe('A5 · troisième relecture · points 1, 2 et 4', () => {
 });
 
 describe('A5 · la déclaration d’ouverture, ses refus', () => {
-  it('compte hors de la famille du référentiel refusé · le 4997 au SYCEBNL, le 4991 aussi', () => {
+  it('compte hors de la famille du référentiel refusé · le 4997 au SYCEBNL ; ses 4991, 4998, 599 et 194 admis (A5 ter)', () => {
     const base = { montant: 1, dateReference: '2026-01-01', source: 'Balance d’ouverture' };
-    expect(motifRefusDeclarationOuverture('SYCEBNL' as never, { ...base, compteProvision: '4997' })).toMatch(/comptes admis : 194\./);
-    expect(motifRefusDeclarationOuverture('SYCEBNL' as never, { ...base, compteProvision: '4991' })).toMatch(/ne porte pas/);
+    expect(motifRefusDeclarationOuverture('SYCEBNL' as never, { ...base, compteProvision: '4997' })).toMatch(/comptes admis : 4991, 4998, 599, 194\./);
+    for (const c of ['4991', '4998', '599']) expect(motifRefusDeclarationOuverture('SYCEBNL' as never, { ...base, compteProvision: c })).toBeNull();
     expect(motifRefusDeclarationOuverture('SYSCOHADA' as never, { ...base, compteProvision: '6591' })).toMatch(/4991, 4997, 194/);
     expect(motifRefusDeclarationOuverture('SYSCOHADA' as never, { ...base, compteProvision: '4997' })).toBeNull();
     expect(motifRefusDeclarationOuverture('SYCEBNL' as never, { ...base, compteProvision: '194' })).toBeNull();

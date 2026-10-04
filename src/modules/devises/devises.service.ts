@@ -34,27 +34,19 @@ import {
 import { CreerDeviseDto, DeclarerVentilationDisponibilitesDto, ModifierDeviseDto, PoserCoursDto, ReevaluerDto } from './dto/devises.dto';
 
 /**
- * Comptes de la réévaluation, par racine du plan SYCEBNL.
- *
- * Le SYCEBNL ne subdivise NI 478 NI 479 (Partie 2 ch. 3, compte 47) et ne
- * connaît qu'un seul couple de provision pour perte de change. Ces racines
- * génériques y résolvent donc sans ambiguïté. Le SYSCOHADA, lui, subdivise
- * les deux comptes en quatre chacun ET fait dépendre le couple de provision
- * de la nature de la position · voir plus bas. Servir ces racines-ci à un
- * dossier SYSCOHADA imputait tout sur la première subdivision venue.
+ * Comptes de change des DISPONIBILITÉS, aux deux plans · l'écart d'une
+ * banque ou d'une caisse est RÉALISÉ (AUDCIF art. 57) et va droit au 676 ou
+ * au 776. Les écarts de conversion des créances et dettes passent par les
+ * subdivisions du 478 et du 479 (`racineEcartDeConversion`).
  */
 const RACINE = {
-  ecartActif: '478', // Écarts de conversion-Actif · perte probable
-  ecartPassif: '479', // Écarts de conversion-Passif · gain probable
-  provision: '194', // Provisions pour pertes de change
-  dotationProvision: '6971', // Dotations aux provisions pour risques et charges (financières)
   perteRealisee: RACINES_CHANGE_DISPONIBILITES.perte, // Pertes de change financières
   gainRealise: RACINES_CHANGE_DISPONIBILITES.gain, // Gains de change financiers
 } as const;
 
 /**
- * Nature d'une position en devise au sens du SYSCOHADA · elle commande À LA
- * FOIS la subdivision de l'écart de conversion et le couple de provision.
+ * Nature d'une position en devise · elle commande À LA FOIS la subdivision
+ * de l'écart de conversion et le couple de provision.
  *
  * AUDCIF Titre VIII ch. 22 § 2.3 sépare les deux mondes explicitement :
  * « Créances et dettes commerciales → résultat d'exploitation » d'un côté,
@@ -64,30 +56,44 @@ const RACINE = {
  * La nature se lit sur la RACINE du compte réévalué, faute de mieux : la
  * position est un agrégat (compte, devise) et ne porte aucune échéance. Les
  * comptes de tiers de la classe 4 sont d'exploitation ; les emprunts et
- * dettes financières (16, 17, 18) et les immobilisations financières (26, 27)
+ * dettes financières (16, 17, 18) et les immobilisations financières (27)
  * sont financiers. Les disponibilités de la classe 5 ne passent jamais ici :
  * leur écart est RÉALISÉ, pas latent (voir `estTresorerie`).
+ *
+ * H.A.O. · AU SYCEBNL SEUL (ligne A5 ter). Son plan subdivise l'écart des
+ * créances et dettes « d'exploitation et HAO » en deux (Partie 2 ch. 2, compte
+ * 47 · « 4781 diminution des créances d'exploitation et HAO [47811, 47818] »,
+ * « 4783 augmentation des dettes d'exploitation et HAO [47831, 47838] », 479
+ * « symétrique du 478 »), et sa fiche du compte 49 ouvre un 4998 « sur
+ * opérations H.A.O. », doté « par le débit du compte 839 » et repris « par le
+ * crédit du compte 849 ». Le compte 48 « Créances et dettes hors activités
+ * ordinaires » est donc H.A.O. au SYCEBNL. Le plan SYSCOHADA n'ouvre que 4781
+ * « Diminution des créances d'exploitation » (Titre VII, compte 47) · le 48 y
+ * reste d'exploitation, comme avant.
  */
-type NaturePosition = 'EXPLOITATION' | 'FINANCIER_COURT' | 'FINANCIER_LONG';
+type NaturePosition = 'EXPLOITATION' | 'HAO' | 'FINANCIER_COURT' | 'FINANCIER_LONG';
 
 /**
  * Ressources et emplois DURABLES · classe 1 (emprunts et dettes financières)
- * et immobilisations financières. Ils sont à plus d'un an par construction du
- * plan, d'où le long terme.
+ * et immobilisations financières (27, hors titres immobilisés 274, qui ne se
+ * réévaluent pas · `perimetre-reevaluation.ts`). Ils sont à plus d'un an par
+ * construction du plan, d'où le long terme.
  */
 const RACINES_FINANCIERES_LONGUES = /^(16|17|18|26|27)/;
 
 /**
- * Financier à MOINS d'un an · 50 titres de placement, 54 instruments de
- * trésorerie (SYSCOHADA seulement, le SYCEBNL n'a pas de 54) et 56 banques,
- * crédits de trésorerie et d'escompte, qui est une DETTE bancaire à court
- * terme et non une disponibilité.
+ * Financier à MOINS d'un an · 54 instruments de trésorerie (SYSCOHADA
+ * seulement, le SYCEBNL n'a pas de 54), 506 intérêts courus sur titres de
+ * placement, et 56 banques, crédits de trésorerie et d'escompte, qui est une
+ * DETTE bancaire à court terme et non une disponibilité. Les titres de
+ * placement eux-mêmes (50) ne se réévaluent pas (Titre VIII ch. 22 § 1.3).
  */
 const RACINES_FINANCIERES_COURTES = /^(50|54|56)/;
 
-function naturePosition(numero: string): NaturePosition {
+function naturePosition(numero: string, referentiel: Referentiel = Referentiel.SYSCOHADA): NaturePosition {
   if (RACINES_FINANCIERES_LONGUES.test(numero)) return 'FINANCIER_LONG';
   if (RACINES_FINANCIERES_COURTES.test(numero)) return 'FINANCIER_COURT';
+  if (referentiel === Referentiel.SYCEBNL && numero.startsWith('48')) return 'HAO';
   // Tout le reste est d'exploitation, y compris le 51 « Valeurs à encaisser » :
   // un chèque ou un effet reçu d'un client est la queue d'une créance
   // COMMERCIALE, pas une opération financière.
@@ -101,10 +107,12 @@ function naturePosition(numero: string): NaturePosition {
  *                                      4782 diminution des créances financières
  *                                      4783 augmentation des dettes d'exploitation
  *                                      4784 augmentation des dettes financières
+ *                                      4786 différences d'évaluation sur instruments de trésorerie
  *   479 Écarts de conversion-passif  · 4791 augmentation des créances d'exploitation
  *                                      4792 augmentation des créances financières
  *                                      4793 diminution des dettes d'exploitation
  *                                      4794 diminution des dettes financières
+ *                                      4797 différences d'évaluation sur instruments de trésorerie
  *
  * Les intitulés disent le SENS de la position autant que celui de l'écart :
  * une perte sur une CRÉANCE est une diminution de créance, une perte sur une
@@ -112,13 +120,59 @@ function naturePosition(numero: string): NaturePosition {
  * croisées, et c'est ce que faisait perdre la résolution par racine à trois
  * chiffres · elle rendait toujours 4781 et 4791, si bien qu'une dette
  * fournisseur en devise s'imputait sur la subdivision des créances.
+ *
+ * LE 54 VA AU 4786 ET AU 4797 (ligne A5 ter). AUDCIF Titre VIII ch. 22
+ * § 3.2.2 · « Les comptes 4786 Différences d'évaluation sur instruments de
+ * trésorerie – ACTIF et 4797 Différences d'évaluation sur instruments de
+ * trésorerie – PASSIF enregistrent les différences d'évaluation en
+ * contrepartie du compte 54 » (même phrase à la fiche du compte 47, Titre
+ * VII) ; art. 58-2 · les variations de valeur « à l'actif pour une perte
+ * latente, au passif pour un gain latent ». Un 54 en devise s'imputait sur
+ * 4782 ou 4784, subdivisions des créances et dettes financières qu'il n'est
+ * pas. La provision de sa perte reste celle du court terme financier (6791 /
+ * 4997, § 2.3 ; art. 58-2, « constitution d'une provision financière »).
  */
-function racineEcartSyscohada(estCreance: boolean, estPerte: boolean, nature: NaturePosition): string {
+function racineEcartSyscohada(estCreance: boolean, estPerte: boolean, nature: NaturePosition, numero = ''): string {
+  if (numero.startsWith('54')) return estPerte ? '4786' : '4797';
   // Les subdivisions ne distinguent que exploitation / financier · la
   // distinction court terme / long terme ne joue que sur la PROVISION.
-  const exploitation = nature === 'EXPLOITATION';
+  const exploitation = nature === 'EXPLOITATION' || nature === 'HAO';
   if (estPerte) return estCreance ? (exploitation ? '4781' : '4782') : exploitation ? '4783' : '4784';
   return estCreance ? (exploitation ? '4791' : '4792') : exploitation ? '4793' : '4794';
+}
+
+/**
+ * Subdivision de l'écart de conversion SYCEBNL (ligne A5 ter). Le code
+ * servait les racines génériques 478 et 479 « que le SYCEBNL ne subdivise
+ * pas » · or son plan des comptes les subdivise (Partie 2 ch. 2, compte 47) ·
+ * « 478 Écarts de conversion - actif (4781 diminution des créances
+ * d'exploitation et HAO [47811, 47818], 4782 diminution des créances
+ * financières, 4783 augmentation des dettes d'exploitation et HAO [47831,
+ * 47838], 4784 augmentation des dettes financières, 4786 différences
+ * d'évaluation sur instruments de trésorerie, 4788 différences compensées par
+ * couverture de change) » et « 479 Écarts de conversion – passif (4791 à
+ * 4798, symétrique du 478) », semés comme tels (`compte-seed.ts`). Seule la
+ * fiche du compte 47 (Partie 2 ch. 3) n'en dit que « 478 » et « 479 ». La
+ * racine générique rendait la première subdivision venue, 47811000 et
+ * 47911000 · une dette fournisseur en devise s'imputait sur la diminution
+ * des CRÉANCES d'exploitation, un emprunt (18) aussi.
+ */
+function racineEcartSycebnl(estCreance: boolean, estPerte: boolean, nature: NaturePosition): string {
+  if (nature === 'FINANCIER_COURT' || nature === 'FINANCIER_LONG') {
+    if (estPerte) return estCreance ? '4782' : '4784';
+    return estCreance ? '4792' : '4794';
+  }
+  const hao = nature === 'HAO';
+  if (estPerte) return estCreance ? (hao ? '47818' : '47811') : hao ? '47838' : '47831';
+  return estCreance ? (hao ? '47918' : '47911') : hao ? '47938' : '47931';
+}
+
+/** La subdivision de l'écart de conversion d'une position, dans le plan de SON référentiel. */
+export function racineEcartDeConversion(referentiel: Referentiel, numero: string, estCreance: boolean, estPerte: boolean): string {
+  const nature = naturePosition(numero, referentiel);
+  return referentiel === Referentiel.SYSCOHADA
+    ? racineEcartSyscohada(estCreance, estPerte, nature, numero)
+    : racineEcartSycebnl(estCreance, estPerte, nature);
 }
 
 /**
@@ -145,7 +199,7 @@ function racineEcartSyscohada(estCreance: boolean, estPerte: boolean, nature: Na
  * du compte : la classe 1 et les immobilisations financières sont durables
  * par construction du plan, la trésorerie financière ne l'est pas.
  */
-export const PROVISION_SYSCOHADA: Record<NaturePosition, FamilleProvisionChange> = {
+export const PROVISION_SYSCOHADA: Record<Exclude<NaturePosition, 'HAO'>, FamilleProvisionChange> = {
   EXPLOITATION: { dotation: '6591', provision: '4991', reprise: '7591' },
   FINANCIER_COURT: { dotation: '6791', provision: '4997', reprise: '7791' },
   FINANCIER_LONG: { dotation: '6971', provision: '194', reprise: '7971' },
@@ -183,9 +237,32 @@ export const PROVISION_SYSCOHADA: Record<NaturePosition, FamilleProvisionChange>
  * déjà la consolidation (`FAMILLES_PROVISION_CHANGE`). Le texte ne tranche
  * pas · le 759 de la fiche 49 serait l'autre lecture.
  *
- * Au SYCEBNL, un seul couple · 194 « Provisions pour pertes de change » (fiche
- * du compte 19), dotée par le 6971 et reprise par le 7971 (fiches des comptes
- * 69 et 79, mêmes numéros aux deux semis). Le SYCEBNL n'ouvre pas de 4997.
+ * AU SYCEBNL, QUATRE FAMILLES, ET NON LE SEUL 194 (ligne A5 ter). La règle
+ * « SYCEBNL, 194 seul » contredisait la fiche du compte 19 du SYCEBNL (Partie
+ * 2 ch. 3), qui ne vise que les risques « comportant un élément d'incertitude
+ * quant à leur montant ou leur réalisation prévisible à plus d'un an » et
+ * EXCLUT « les provisions correspondant à des risques à moins d'un an
+ * (utiliser 499 – Provisions pour risques à court terme) ». Le texte tranche ·
+ *  · EXPLOITATION · 4991 « sur opérations d'exploitation », crédité « par le
+ *    débit du compte 659 », débité de sa reprise « par le crédit du compte
+ *    759 » (fiche du compte 49) · 6591 « Provisions sur risques à court
+ *    terme », 7591 « Reprises provisions sur risques à court terme » (semis) ;
+ *  · H.A.O. (le 48) · 4998 « sur opérations H.A.O. », par le débit du 839 et
+ *    le crédit du 849 (même fiche) ;
+ *  · FINANCIER À COURT TERME (56) · 599 « Provisions pour risques à court
+ *    terme à caractère financier », que la fiche du compte 59 illustre
+ *    elle-même · « les pertes probables à moins d'un an ayant leur origine
+ *    dans une opération de nature financière ; exemple : provisions pour
+ *    pertes de change », crédité « par le débit du compte 679 », repris « par
+ *    le crédit du compte 779 » · 6791, 7791 (semis). Le SYCEBNL n'ouvre pas
+ *    de 4997 ;
+ *  · FINANCIER À LONG TERME (18, 27) · 194 « Provisions pour pertes de
+ *    change », doté par le 6971, repris par le 7971 (fiches des comptes 19,
+ *    69 et 79).
+ * Une provision qu'une réévaluation antérieure avait passée au 194 pour une
+ * créance d'exploitation n'est ni retouchée ni déclarée · la réévaluation
+ * suivante la REPREND au 7971 (aucune perte requise au 194) et dote la
+ * famille juste, l'ajustement du § 2.3 faisant le reclassement.
  */
 export interface FamilleProvisionChange {
   provision: string;
@@ -193,7 +270,32 @@ export interface FamilleProvisionChange {
   reprise: string;
 }
 
-export const PROVISION_SYCEBNL: FamilleProvisionChange = { dotation: '6971', provision: '194', reprise: '7971' };
+export const PROVISION_SYCEBNL: Record<NaturePosition, FamilleProvisionChange> = {
+  EXPLOITATION: { dotation: '6591', provision: '4991', reprise: '7591' },
+  HAO: { dotation: '839', provision: '4998', reprise: '849' },
+  FINANCIER_COURT: { dotation: '6791', provision: '599', reprise: '7791' },
+  FINANCIER_LONG: { dotation: '6971', provision: '194', reprise: '7971' },
+};
+
+/** Les familles de provision pour pertes de change du référentiel. */
+export function famillesProvisionChange(referentiel: Referentiel): FamilleProvisionChange[] {
+  return referentiel === Referentiel.SYSCOHADA ? Object.values(PROVISION_SYSCOHADA) : Object.values(PROVISION_SYCEBNL);
+}
+
+/** La famille qui provisionne la perte latente d'une position, dans son référentiel. */
+export function familleProvisionDe(referentiel: Referentiel, numero: string): FamilleProvisionChange {
+  const nature = naturePosition(numero, referentiel);
+  if (referentiel === Referentiel.SYCEBNL) return PROVISION_SYCEBNL[nature];
+  return PROVISION_SYSCOHADA[nature === 'HAO' ? 'EXPLOITATION' : nature];
+}
+
+/** La nature d'une famille, dite au libellé de l'écriture de provision. */
+export function natureDeLaFamille(compteProvision: string): string {
+  if (compteProvision === '4991') return 'exploitation';
+  if (compteProvision === '4998') return 'H.A.O.';
+  if (compteProvision === '194') return 'financier, long terme';
+  return 'financier, court terme';
+}
 
 /**
  * Ajustement d'une famille de provision à la réévaluation · AUDCIF Titre VIII
@@ -437,14 +539,12 @@ export function versionEnVigueur<T extends { dateReference: Date }>(versions: T[
 }
 
 /**
- * Comptes de provision qu'une déclaration d'ouverture peut viser · ceux de la
- * famille du référentiel, et eux seuls. Au SYCEBNL, le 194 seul (pas de 4997
- * au semis, et l'unique couple du référentiel est 194 · 6971 / 7971).
+ * Comptes de provision qu'une déclaration d'ouverture peut viser · ceux des
+ * familles du référentiel, et eux seuls. Au SYCEBNL, 4991, 4998, 599 et 194
+ * (ligne A5 ter · aucun 4997 au semis, `PROVISION_SYCEBNL`).
  */
 export function comptesProvisionDeclarables(referentiel: Referentiel): string[] {
-  return referentiel === Referentiel.SYSCOHADA
-    ? Object.values(PROVISION_SYSCOHADA).map((f) => f.provision)
-    : [PROVISION_SYCEBNL.provision];
+  return famillesProvisionChange(referentiel).map((f) => f.provision);
 }
 
 /**
@@ -1063,12 +1163,11 @@ export class DevisesService {
     // La provision requise se range par FAMILLE (le compte de provision que la
     // nature de la position appelle), puis se rapproche de celle que les
     // réévaluations antérieures ont laissée. Seul l'écart se passe.
-    const estSyscohada = tenant.referentiel === Referentiel.SYSCOHADA;
-    const familles = estSyscohada ? Object.values(PROVISION_SYSCOHADA) : [PROVISION_SYCEBNL];
+    const familles = famillesProvisionChange(tenant.referentiel);
     const requiseParFamille = new Map<string, number>();
     for (const p of resultat) {
       if (p.provisionnable <= 0.005) continue;
-      const f = estSyscohada ? PROVISION_SYSCOHADA[naturePosition(p.numero)] : PROVISION_SYCEBNL;
+      const f = familleProvisionDe(tenant.referentiel, p.numero);
       requiseParFamille.set(f.provision, (requiseParFamille.get(f.provision) ?? 0) + p.provisionnable);
     }
     const enPlace = await this.provisionsEnPlace(tenantId, exercice, date, familles);
@@ -1637,7 +1736,7 @@ export class DevisesService {
       where: { id: tenantId },
       select: { referentiel: true },
     });
-    const estSyscohada = tenant?.referentiel === Referentiel.SYSCOHADA;
+    const referentiel = tenant?.referentiel ?? Referentiel.SYSCOHADA;
 
     // --- Écriture des écarts ------------------------------------------------
     const lignes: { compteId: string; debit?: number; credit?: number; libelle: string }[] = [];
@@ -1648,16 +1747,13 @@ export class DevisesService {
           p.ecart < 0
           ? await compte(RACINE.perteRealisee)
           : await compte(RACINE.gainRealise)
-        : estSyscohada
-          ? // Créance ou dette · le SYSCOHADA veut la subdivision qui croise
-            // le sens de la POSITION (créance = solde débiteur) et celui de
-            // l'ÉCART. `valeurComptable` est un débit moins un crédit : un
-            // solde nul est traité comme une créance, cas sans conséquence
-            // puisqu'une position nulle est écartée en amont.
-            await compte(racineEcartSyscohada(p.valeurComptable >= 0, p.ecart < 0, naturePosition(p.numero)))
-          : p.ecart < 0
-            ? await compte(RACINE.ecartActif)
-            : await compte(RACINE.ecartPassif);
+        : // Créance ou dette · les DEUX plans veulent la subdivision qui
+          // croise le sens de la POSITION (créance = solde débiteur) et celui
+          // de l'ÉCART (ligne A5 ter pour le SYCEBNL). `valeurComptable` est
+          // un débit moins un crédit : un solde nul est traité comme une
+          // créance, cas sans conséquence puisqu'une position nulle est
+          // écartée en amont.
+          await compte(racineEcartDeConversion(referentiel, p.numero, p.valeurComptable >= 0, p.ecart < 0));
       const abs = Math.abs(p.ecart);
       const libelle = `Réévaluation ${p.deviseCode} au ${rapport.dateReevaluation}`;
       if (p.ecart > 0) {
@@ -1683,13 +1779,13 @@ export class DevisesService {
 
     // --- Ajustement de la provision ----------------------------------------
     //
-    // La provision se VENTILE par nature de position en SYSCOHADA : une perte
-    // sur créance client est une charge d'exploitation (6591 / 4991), une
-    // perte sur emprunt en devise une charge financière (6971 / 194). Une
-    // dotation unique, comme le faisait le chemin hérité du SYCEBNL, range
-    // tout au financier et fausse les deux soldes intermédiaires sans qu'un
-    // seul total du compte de résultat ne bouge. En SYCEBNL, toutes les
-    // positions retombent sur l'unique couple du référentiel.
+    // La provision se VENTILE par nature de position, aux deux plans : une
+    // perte sur créance client est une charge d'exploitation (6591 / 4991),
+    // une perte sur emprunt en devise une charge financière (6971 / 194). Une
+    // dotation unique range tout au financier et fausse les soldes
+    // intermédiaires sans qu'un seul total du compte de résultat ne bouge.
+    // Au SYCEBNL aussi depuis la ligne A5 ter (fiche du compte 19,
+    // exclusions · le risque à moins d'un an va au 499 ou au 599).
     //
     // Et seul l'ÉCART avec la provision en place se passe (ch. 22 § 2.3) ·
     // dotation de la hausse, reprise de la baisse, au compte de SA famille.
@@ -1699,7 +1795,7 @@ export class DevisesService {
     const lignesProvision: { compteId: string; debit?: number; credit?: number; libelle: string }[] = [];
     for (const a of rapport.ajustementsProvision) {
       if (a.dotation <= 0.005 && a.reprise <= 0.005) continue;
-      const nature = estSyscohada ? ` (${a.compteProvision === '4991' ? 'exploitation' : 'financier'})` : '';
+      const nature = ` (${natureDeLaFamille(a.compteProvision)})`;
       const provision = await compte(a.compteProvision);
       if (a.dotation > 0.005) {
         const dotation = await compte(a.compteDotation);

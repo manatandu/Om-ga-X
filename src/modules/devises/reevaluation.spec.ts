@@ -378,20 +378,46 @@ describe('imputation des écritures de réévaluation · SYSCOHADA', () => {
   });
 });
 
-describe('imputation des écritures de réévaluation · SYCEBNL inchangé', () => {
-  it('garde les racines génériques 478 / 479, que son plan ne subdivise pas', async () => {
-    const { svc, ecrites } = serviceEcritures(
-      [{ compteNumero: FOURNISSEUR, deviseCode: 'USD', debit: 0, credit: 2_500_000, montantDevise: 1000 }],
-      2800,
-      'SYCEBNL',
-    );
+/**
+ * LIGNE A5 TER · LE SYCEBNL SUBDIVISE LE 478 ET LE 479. Son plan des comptes
+ * (Partie 2 ch. 2, compte 47) · « 4781 diminution des créances d'exploitation
+ * et HAO [47811, 47818], 4782 diminution des créances financières, 4783
+ * augmentation des dettes d'exploitation et HAO [47831, 47838], 4784
+ * augmentation des dettes financières » et « 479 (4791 à 4798, symétrique du
+ * 478) ». La racine générique « 478 » rendait 47811000 pour toute perte · une
+ * dette fournisseur s'imputait sur la diminution des CRÉANCES.
+ */
+describe('imputation des écritures de réévaluation · SYCEBNL, subdivisions du 478 et du 479 (A5 ter)', () => {
+  const ecartDe = async (compteNumero: string, debit: number, credit: number, cours: number) => {
+    const { svc, ecrites } = serviceEcritures([{ compteNumero, deviseCode: 'USD', debit, credit, montantDevise: 1000 }], cours, 'SYCEBNL');
     await svc.reevaluer('t1', 'u1', { exerciceId: 'ex1' });
-    const ecarts = ecrites[0].lignes.map((l) => l.numero);
-    expect(ecarts).toContain('478');
-    expect(ecarts).not.toContain('4783');
+    return ecrites[0].lignes.map((l) => l.numero).filter((n) => n.startsWith('47'));
+  };
+
+  it('dette fournisseur qui s’alourdit · 47831, augmentation des dettes d’exploitation', async () => {
+    expect(await ecartDe(FOURNISSEUR, 0, 2_500_000, 2800)).toEqual(['47831']);
+  });
+  it('créance client qui baisse · 47811 ; qui monte · 47911', async () => {
+    expect(await ecartDe(CLIENT, 2_800_000, 0, 2500)).toEqual(['47811']);
+    expect(await ecartDe(CLIENT, 2_500_000, 0, 2800)).toEqual(['47911']);
+  });
+  it('dette fournisseur qui s’allège · 47931', async () => {
+    expect(await ecartDe(FOURNISSEUR, 0, 2_800_000, 2500)).toEqual(['47931']);
+  });
+  it('dette H.A.O. (48) · 47838 et 47938', async () => {
+    expect(await ecartDe('48120000', 0, 2_500_000, 2800)).toEqual(['47838']);
+    expect(await ecartDe('48120000', 0, 2_800_000, 2500)).toEqual(['47938']);
+  });
+  it('emprunt (18) et crédit de trésorerie (56) · 4784 et 4794, dettes FINANCIÈRES', async () => {
+    expect(await ecartDe('18100000', 0, 2_500_000, 2800)).toEqual(['4784']);
+    expect(await ecartDe('56100000', 0, 2_800_000, 2500)).toEqual(['4794']);
+  });
+  it('prêt (27) · 4782 et 4792, créances FINANCIÈRES', async () => {
+    expect(await ecartDe('27100000', 2_800_000, 0, 2500)).toEqual(['4782']);
+    expect(await ecartDe('27100000', 2_500_000, 0, 2800)).toEqual(['4792']);
   });
 
-  it('garde son unique couple de provision 6971 / 194', async () => {
+  it('créance client · provision au 4991 par le 6591, jamais le 194 (fiche du compte 19, exclusions)', async () => {
     const { svc, ecrites } = serviceEcritures(
       [{ compteNumero: CLIENT, deviseCode: 'USD', debit: 2_800_000, credit: 0, montantDevise: 1000 }],
       2500,
@@ -399,7 +425,44 @@ describe('imputation des écritures de réévaluation · SYCEBNL inchangé', () 
     );
     await svc.reevaluer('t1', 'u1', { exerciceId: 'ex1' });
     const provision = ecrites.find((e) => e.libelle.startsWith('Provision'));
-    expect(provision!.lignes.map((l) => l.numero)).toEqual(['6971', '194']);
+    expect(provision!.lignes.map((l) => l.numero)).toEqual(['6591', '4991']);
+  });
+
+  it('chaque subdivision servie est ouverte en DÉTAIL au semis SYCEBNL', () => {
+    const { PLAN_COMPTES_SYCEBNL } = jest.requireActual('../comptes/compte-seed') as { PLAN_COMPTES_SYCEBNL: { numero: string; typeCompte?: string }[] };
+    for (const r of ['47811', '47818', '4782', '47831', '47838', '4784', '47911', '47918', '4792', '47931', '47938', '4794']) {
+      expect([r, PLAN_COMPTES_SYCEBNL.some((c) => c.numero === r.padEnd(8, '0') && c.typeCompte !== 'TOTAL')]).toEqual([r, true]);
+    }
+  });
+});
+
+/**
+ * LIGNE A5 TER · LE 54 VA AU 4786 ET AU 4797. AUDCIF Titre VIII ch. 22 § 3.2.2 ·
+ * « Les comptes 4786 Différences d'évaluation sur instruments de trésorerie –
+ * ACTIF et 4797 Différences d'évaluation sur instruments de trésorerie –
+ * PASSIF enregistrent les différences d'évaluation en contrepartie du compte
+ * 54 » ; art. 58-2, « à l'actif pour une perte latente, au passif pour un gain
+ * latent ».
+ */
+describe('SYSCOHADA · un instrument de trésorerie (54) en devise · 4786 / 4797 (A5 ter)', () => {
+  const ecartDe = async (debit: number, credit: number, cours: number) => {
+    const { svc, ecrites } = serviceEcritures(
+      [{ compteNumero: '54200000', deviseCode: 'USD', debit, credit, montantDevise: 1000 }],
+      cours,
+      'SYSCOHADA',
+    );
+    await svc.reevaluer('t1', 'u1', { exerciceId: 'ex1' });
+    return ecrites;
+  };
+  it('perte latente · 4786, jamais 4782', async () => {
+    const ecrites = await ecartDe(2_800_000, 0, 2500);
+    expect(ecrites[0].lignes.map((l) => l.numero)).toEqual(['4786', '54200000']);
+    // La provision de la perte · court terme financier (art. 58-2, « provision financière » ; § 2.3).
+    expect(ecrites.find((e) => e.libelle.startsWith('Provision'))!.lignes.map((l) => l.numero)).toEqual(['6791', '4997']);
+  });
+  it('gain latent · 4797, jamais 4792', async () => {
+    const ecrites = await ecartDe(2_500_000, 0, 2800);
+    expect(ecrites[0].lignes.map((l) => l.numero)).toEqual(['54200000', '4797']);
   });
 });
 
@@ -437,13 +500,14 @@ describe('disponibilités contre trésorerie financière', () => {
     expect(r.provision).toBe(300_000);
   });
 
-  it('un TITRE DE PLACEMENT en devise donne lui aussi un écart latent', async () => {
+  it('un TITRE DE PLACEMENT en devise n’est ni une disponibilité ni une créance · aucun écart (§ 1.3, A5 ter)', async () => {
     const r = await service(
       [{ compteNumero: PLACEMENT, deviseCode: 'USD', debit: 2_800_000, credit: 0, montantDevise: 1000 }],
       2500,
     ).calculer('t1', { exerciceId: 'ex1' });
-    expect(r.perteLatente).toBe(300_000);
+    expect(r.perteLatente).toBe(0);
     expect(r.perteRealisee).toBe(0);
+    expect(r.positionsNonReevaluees).toEqual([expect.objectContaining({ numero: PLACEMENT, motif: expect.stringContaining('§ 1.3') })]);
   });
 
   it('une BANQUE, elle, reste une disponibilité · écart réalisé, aucune provision', async () => {
