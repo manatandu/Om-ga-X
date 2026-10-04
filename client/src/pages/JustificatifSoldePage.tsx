@@ -43,6 +43,8 @@ interface Justificatif {
   lignes: LigneJustificatif[];
   totaux: { debit: number; credit: number; solde: number };
   recoupement: { applicable: boolean; soldeBalance: number; ecart: number; concordant: boolean };
+  /** AU2 (R8) · ouvertures conservées à la clôture d'un exercice antérieur · le cumul ne s'y enchaîne pas. */
+  rupturesOuverture?: { exerciceClos: { dateDebut: string; dateFin: string }; motif: string; positions: { cloture: number; ouverture: number }[] }[];
 }
 
 interface LigneBalance {
@@ -194,6 +196,15 @@ export function JustificatifSoldePage() {
                 : `Écart avec la balance de ${montant(donnees.recoupement.ecart)} · le justificatif ne couvre pas tout le solde du compte (balance : ${montant(donnees.recoupement.soldeBalance)}).`}
             </div>
           )}
+
+          {(donnees.rupturesOuverture ?? []).map((r) => (
+            <div key={r.exerciceClos.dateFin} className="text-[11.5px] border px-3 py-2 mb-2.5 text-text-dim bg-surface-alt border-border">
+              Ouverture conservée à la clôture de l'exercice au {new Date(r.exerciceClos.dateFin).toLocaleDateString('fr-FR')} · « {r.motif} »
+              {r.positions.length > 0
+                ? ` · sur ce compte, clôture ${montant(r.positions[0].cloture)} contre ouverture ${montant(r.positions[0].ouverture)}, le cumul de cet état en diffère d'autant.`
+                : '.'}
+            </div>
+          ))}
 
           <div className="border border-border bg-surface shadow-posee overflow-x-auto">
             <div className="px-3.5 py-1.5 text-[11.5px] font-bold border-b border-border-dark">

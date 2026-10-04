@@ -1,6 +1,8 @@
 import {
   apparierTenues,
   budgetsAReporter,
+  confrontationDeLOuverture,
+  ouvertureNulle,
   CompteRan,
   LigneTenue,
   lignesReportANouveau,
@@ -67,7 +69,7 @@ describe('AU2 · rectificationDeLOuverture', () => {
 
   it('un import égal au report, compte par compte · rien à passer', () => {
     const r = rectificationDeLOuverture(report, [passee('521', 500, 0), passee('411', 300, 0), passee('401', 0, 300), passee('131', 0, 500)]);
-    expect(r).toEqual({ lignes: [], comptesRectifies: [] });
+    expect(r).toEqual({ lignes: [], comptesRectifies: [], negatifs: [] });
   });
 
   it('un import faux · négatif de ses lignes PUIS report exact, compte par compte, l’ensemble équilibré', () => {
@@ -114,5 +116,36 @@ describe('AU1 · apparierTenues', () => {
   it('ni le compte ni le montant ne se devinent · sans équivalent, null', () => {
     expect(apparierTenues([tenue('411', 300, 0)], [candidate('a', '401', 300, 0), candidate('b', '411', 299, 0)])).toEqual([null]);
     expect(apparierTenues([tenue('411', 300, 0), tenue('411', 300, 0)], [candidate('a', '411', 300, 0)])).toEqual(['a', null]);
+  });
+});
+
+describe('AU2 second tour · par compte ET par devise (R2), sans devinette (R3)', () => {
+  const passee = (compteId: string, debit: number, credit: number, deviseId: string | null = null, montantDevise: number | null = null) => ({
+    compteId, debit, credit, libelle: 'Import', dateEcheance: null, deviseId, montantDevise, coursApplique: null,
+  });
+  const ran = (compteId: string, debit: number, credit: number, deviseId?: string, montantDevise?: number) => ({
+    compteId, debit, credit, libelle: 'RAN', ...(deviseId ? { deviseId, montantDevise } : {}),
+  });
+
+  it('R2 · le report en dollars contre un import en francs seuls, mêmes francs · deux positions divergentes, jamais concordant', () => {
+    const e = confrontationDeLOuverture([ran('411', 3_600_000, 0, 'usd', 1500)], [passee('411', 3_600_000, 0)]);
+    expect(e).toEqual([
+      { compteId: '411', deviseId: 'usd', cloture: 3_600_000, ouverture: 0, clotureDevise: 1500, ouvertureDevise: 0 },
+      { compteId: '411', deviseId: null, cloture: 0, ouverture: 3_600_000, clotureDevise: null, ouvertureDevise: null },
+    ]);
+  });
+
+  it('R2 · mêmes francs, même devise, autre montant en devise · divergent', () => {
+    expect(confrontationDeLOuverture([ran('411', 3_600_000, 0, 'usd', 1500)], [passee('411', 3_600_000, 0, 'usd', 1400)])).toHaveLength(1);
+  });
+
+  it('R10 · une ouverture annulée par son négatif est nulle', () => {
+    expect(ouvertureNulle([passee('411', 600, 0), passee('411', -600, 0), passee('131', 0, 600), passee('131', 0, -600)])).toBe(true);
+    expect(ouvertureNulle([passee('411', 600, 0), passee('131', 0, 600)])).toBe(false);
+  });
+
+  it('R3 · la devise ne se relâche jamais', () => {
+    const t = { compteId: '411', debit: 300, credit: 0, dateEcheance: null, deviseId: 'usd', montantDevise: 1, lettre: 'A', lettrageId: 'g', rapprochementId: null, ligneReleveId: null };
+    expect(apparierTenues([t], [{ id: 'a', compteId: '411', debit: 300, credit: 0, dateEcheance: null, deviseId: null, montantDevise: null }])).toEqual([null]);
   });
 });

@@ -210,6 +210,8 @@ function base(comptes: Cpt[], lignes: Lgn[]) {
       ),
     },
     ligneEcriture: {
+      // AU2 · aucune ligne au premier jour de N+1 (`ouvertureDejaPassee`).
+      count: jest.fn().mockResolvedValue(0),
       fields: { credit: { modelName: 'LigneEcriture', name: 'credit' }, debit: { modelName: 'LigneEcriture', name: 'debit' } },
       groupBy: jest.fn(async (a: { by: string[]; where: unknown; _sum: Record<string, true> }) => {
         const groupes = new Map<string, Record<string, unknown>>();

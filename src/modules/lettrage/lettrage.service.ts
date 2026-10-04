@@ -112,6 +112,56 @@ function lettreVersIndex(lettre: string): number {
  * figé compris, le complète par sa seule ligne (`completer`, `groupeTolere`).
  */
 /**
+ * LE CODE SUIVANT D'UN COMPTE, hors du service · la règle de
+ * `LettrageService.prochaineLettre`, pour un appelant qui pose un groupe dans
+ * sa propre transaction (la clôture, AU2 second tour, R6).
+ */
+export async function prochaineLettreDuCompte(tx: Prisma.TransactionClient, tenantId: string, compteId: string): Promise<() => string> {
+  const [groupes, lignes] = await Promise.all([
+    tx.lettrage.findMany({ where: { compteId, tenantId }, select: { code: true } }),
+    tx.ligneEcriture.findMany({ where: { compteId, lettre: { not: null }, ecriture: { tenantId } }, select: { lettre: true }, distinct: ['lettre'] }),
+  ]);
+  const codes = [...groupes.map((g) => g.code), ...lignes.map((l) => l.lettre!)];
+  let index = codes.reduce((max, c) => Math.max(max, lettreVersIndex(c)), 0) + 1;
+  return () => indexVersLettre(index++);
+}
+
+/**
+ * UN GROUPE SOLDÉ D'ORIGINE `MODULE`, posé dans la transaction de l'appelant
+ * sur des lignes que l'appelant a vérifiées (libres, non figées, compte
+ * lettrable). Les lignes sont relues LIBRES au moment d'écrire, comme
+ * `creerGroupe` · une ligne prise entre-temps fait tout échouer. Rend null,
+ * sans rien poser, si les lignes ne soldent pas.
+ */
+export async function poserGroupeSoldeDuModule(
+  tx: Prisma.TransactionClient,
+  p: { tenantId: string; compteId: string; ligneIds: string[]; userId: string; code: string },
+): Promise<string | null> {
+  const lignes = await tx.ligneEcriture.findMany({
+    where: { id: { in: p.ligneIds }, compteId: p.compteId, lettrageId: null, ecriture: { tenantId: p.tenantId } },
+    select: { id: true, debit: true, credit: true },
+  });
+  if (lignes.length !== new Set(p.ligneIds).size) throw lignesPrisesEntreTemps();
+  const solde = lignes.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0);
+  if (Math.abs(solde) > EPSILON) return null;
+  const groupe = await tx.lettrage.create({
+    data: {
+      tenantId: p.tenantId,
+      compteId: p.compteId,
+      code: p.code,
+      statut: StatutLettrage.SOLDE,
+      solde: 0,
+      origine: OrigineLettrage.MODULE,
+      createdBy: p.userId,
+      soldeAt: new Date(),
+    },
+  });
+  const { count } = await tx.ligneEcriture.updateMany({ where: { id: { in: p.ligneIds }, lettrageId: null }, data: { lettrageId: groupe.id, lettre: p.code } });
+  if (count !== lignes.length) throw lignesPrisesEntreTemps();
+  return p.code;
+}
+
+/**
  * Le refus de lettrer une ligne d'à-nouveau PROVISOIRE (AU1) · il nomme la
  * raison et le geste qui reste ouvert, comme celui du Règlement des tiers.
  */

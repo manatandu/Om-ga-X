@@ -20,9 +20,23 @@ const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
 interface OuvertureSuivante {
   pieces: string | null;
   auBrouillard: boolean;
+  ouvertureNulle: boolean;
   exerciceSansEcriture: boolean;
   declarationRequise: boolean;
-  ecarts: { compteId: string; numero: string | null; intitule: string | null; cloture: number; ouverture: number }[];
+  /** Bornée (R9) · `total` dit toujours le nombre de positions. */
+  ecarts: {
+    compteId: string;
+    numero: string | null;
+    intitule: string | null;
+    devise: string | null;
+    cloture: number;
+    ouverture: number;
+    clotureDevise: number | null;
+    ouvertureDevise: number | null;
+  }[];
+  total: number;
+  tronque: boolean;
+  lignesTenues: { numero: string; piece: string; debit: number; credit: number; lettree: boolean; pointee: boolean }[];
 }
 
 export function ExercicePage() {
@@ -369,7 +383,7 @@ export function ExercicePage() {
         (dejaPassee
           ? dejaPassee.comptesDivergents === 0
             ? `Le bilan d'ouverture déjà passé (${dejaPassee.pieces}) correspond au report · aucun report provisoire n'est ajouté.`
-            : `Le bilan d'ouverture déjà passé (${dejaPassee.pieces}) diffère du report sur ${dejaPassee.comptesDivergents} compte(s) · aucun report provisoire n'est passé, la clôture vous fera déclarer lequel fait foi.`
+            : `Le bilan d'ouverture déjà passé (${dejaPassee.pieces}) diffère du report sur ${dejaPassee.comptesDivergents} position(s) · aucun report provisoire n'est passé, la clôture vous fera déclarer lequel fait foi.`
           : `Report à-nouveau provisoire passé au brouillard de l'exercice suivant (${r.lignes} ligne(s)).`) +
           (r.budgetsReportes !== null ? ` ${r.budgetsReportes} budget(s) reporté(s).` : '') +
           (r.brouillardNonRepris
@@ -774,41 +788,71 @@ export function ExercicePage() {
             )}
             {ouverture?.pieces && !ouverture.auBrouillard && !ouverture.declarationRequise && (
               <div className="text-[11.5px] text-text-dim mb-2">
-                {ouverture.ecarts.length === 0
-                  ? `Bilan d'ouverture déjà passé dans l'exercice suivant (${ouverture.pieces}) · concordant, aucun report ne sera ajouté.`
-                  : `Bilan d'ouverture déjà passé dans l'exercice suivant (${ouverture.pieces}) · cet exercice n'a aucune écriture, l'import fait foi.`}
+                {ouverture.ouvertureNulle
+                  ? `Écritures du premier jour de l'exercice suivant (${ouverture.pieces}) soldées à zéro · le report entier sera passé.`
+                  : ouverture.total === 0
+                    ? `Ouverture déjà passée dans l'exercice suivant (${ouverture.pieces}) · concordante, aucun report ne sera ajouté.`
+                    : `Ouverture déjà passée dans l'exercice suivant (${ouverture.pieces}) · cet exercice n'a aucune écriture, elle fait foi.`}
               </div>
             )}
-            {ouverture?.declarationRequise && !ouverture.auBrouillard && (
+            {/* R10 · l'aperçu illisible n'empêche pas de déclarer · le serveur rejoue la confrontation et refuse ce qui ne convient pas. */}
+            {(erreurOuverture || (ouverture?.declarationRequise && !ouverture.auBrouillard)) && (
               <div className="mb-3 border border-border p-2.5">
                 <div className="text-[11.5px] font-semibold mb-1.5 flex items-center gap-1.5">
-                  Bilan d'ouverture importé ({ouverture.pieces}) différent du bilan de clôture
+                  {ouverture ? `Ouverture déjà passée (${ouverture.pieces}) différente du bilan de clôture` : "Ouverture de l'exercice suivant"}
                   <Aide
                     titre="Bilan d'ouverture importé"
                     texte="Le bilan d'ouverture d'un exercice doit correspondre au bilan de clôture du précédent. Rectifier · les livres de cet exercice sont tenus dans OmegaX, l'import est inscrit en négatif sur les comptes qui diffèrent puis le report exact est passé. Conserver · cet exercice n'est tenu ici que pour les comparatifs, l'import fait foi et rien n'est passé ; le motif reste au journal d'audit."
                     source="AUDCIF art. 34 et 20 · SYCEBNL art. 16, 4)"
                   />
                 </div>
-                <table className="w-full text-[11.5px] mb-2">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Compte</th>
-                      <th className="text-right">Clôture</th>
-                      <th className="text-right">Ouverture importée</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ouverture.ecarts.map((e) => (
-                      <tr key={e.compteId}>
-                        <td>
-                          {e.numero ?? '?'} {e.intitule ?? ''}
-                        </td>
-                        <td className="text-right">{montant(e.cloture)}</td>
-                        <td className="text-right">{montant(e.ouverture)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {ouverture && (
+                  <>
+                    {ouverture.tronque && (
+                      <div className="text-[11.5px] text-text-dim mb-1">
+                        {ouverture.total} positions divergentes · {ouverture.ecarts.length} affichées.
+                      </div>
+                    )}
+                    <table className="w-full text-[11.5px] mb-2">
+                      <thead>
+                        <tr>
+                          <th className="text-left">Compte</th>
+                          <th className="text-left">Devise</th>
+                          <th className="text-right">Clôture</th>
+                          <th className="text-right">Ouverture</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ouverture.ecarts.map((e) => (
+                          <tr key={`${e.compteId}|${e.devise ?? ''}`}>
+                            <td>
+                              {e.numero ?? '?'} {e.intitule ?? ''}
+                            </td>
+                            <td>{e.devise ?? ''}</td>
+                            <td className="text-right">
+                              {montant(e.cloture)}
+                              {e.devise ? ` (${montant(e.clotureDevise)} ${e.devise})` : ''}
+                            </td>
+                            <td className="text-right">
+                              {montant(e.ouverture)}
+                              {e.devise ? ` (${montant(e.ouvertureDevise)} ${e.devise})` : ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {ouverture.lignesTenues.length > 0 && (
+                      <div className="text-[11.5px] text-text-dim mb-2">
+                        Rectifier inscrira en négatif des lignes lettrées ou pointées, qui le resteront ·{' '}
+                        {ouverture.lignesTenues
+                          .slice(0, 5)
+                          .map((t) => `${t.numero} ${t.piece} ${montant(t.debit - t.credit)}${t.lettree ? ' lettrée' : ''}${t.pointee ? ' pointée' : ''}`)
+                          .join(', ')}
+                        {ouverture.lignesTenues.length > 5 ? ` et ${ouverture.lignesTenues.length - 5} autre(s)` : ''}.
+                      </div>
+                    )}
+                  </>
+                )}
                 <div className="flex flex-col gap-1 text-[11.5px]">
                   <label className="flex items-center gap-1.5">
                     <input type="radio" name="choixOuverture" checked={choixOuverture === 'RECTIFIER'} onChange={() => setChoixOuverture('RECTIFIER')} />

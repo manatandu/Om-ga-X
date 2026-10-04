@@ -248,11 +248,14 @@ export function lignesReportANouveau(
 }
 
 /**
- * UNE OUVERTURE DÉJÀ PASSÉE · une ligne d'un à-nouveau de l'exercice suivant
- * qui n'est PAS le report provisoire d'OmegaX (bilan d'ouverture importé, ou
- * sa correction par inscription en négatif), lue avant de passer le report.
+ * UNE OUVERTURE DÉJÀ PASSÉE · une ligne d'une écriture de N+1 qui fait partie
+ * de sa position d'ouverture (voir `ouvertureDejaPassee`, exercice.service.ts,
+ * pour le périmètre · toute écriture datée ou valorisée au premier jour qui ne
+ * touche aucun compte de gestion, hors report provisoire).
  */
 export interface LigneOuverturePassee {
+  /** Identifiant de la ligne · absent dans les calculs purs qui n'en ont pas besoin. */
+  id?: string;
   compteId: string;
   debit: number;
   credit: number;
@@ -263,77 +266,125 @@ export interface LigneOuverturePassee {
   coursApplique: number | null;
 }
 
+/** Une position d'ouverture · un compte et une devise (null = francs seuls). */
+export interface EcartOuverture {
+  compteId: string;
+  deviseId: string | null;
+  /** Francs, débit moins crédit. */
+  cloture: number;
+  ouverture: number;
+  /** Montant en devise, signé par le sens des lignes · null pour les francs seuls. */
+  clotureDevise: number | null;
+  ouvertureDevise: number | null;
+}
+
+/** La devise qu'une ligne porte réellement · nommée ET montant non nul (même règle que `sommesDesLignes`). */
+function deviseDe(l: { deviseId?: string | null; montantDevise?: number | null }): string | null {
+  return l.deviseId && l.montantDevise ? l.deviseId : null;
+}
+
 /**
  * AU2 · LE BILAN D'OUVERTURE NE S'ÉCRIT QU'UNE FOIS.
  *
  * « Le bilan d'ouverture d'un exercice doit correspondre au bilan de clôture
  * de l'exercice précédent » (AUDCIF art. 34 ; SYCEBNL art. 16, 4), l'art. 34
- * étant exclu par l'art. 3 du SYCEBNL). Un bilan d'ouverture importé dans N+1,
- * puis la clôture de N, écrivaient l'ouverture DEUX fois · la clôture ajoutait
- * son report à l'import, chaque compte doublé, la balance bouclée (relevé AU2,
- * reproduit sur vraie base · client 600 000 pour 300 000).
+ * de l'AUDCIF étant exclu par l'art. 3 du SYCEBNL). Un bilan d'ouverture
+ * importé dans N+1, puis la clôture de N, écrivaient l'ouverture DEUX fois
+ * (relevé AU2, reproduit sur vraie base · client 600 000 pour 300 000).
  *
- * La confrontation se fait COMPTE PAR COMPTE, en francs · le report de la
- * clôture d'un côté, l'ouverture déjà passée de l'autre. Rend les comptes où
- * les deux diffèrent, dans l'ordre où ils apparaissent, avec les deux soldes
- * (débit moins crédit). Vide · l'import EST le bilan de clôture, rien à passer.
+ * La confrontation se fait par COMPTE ET PAR DEVISE (second tour, R2) · le
+ * report de la clôture d'un côté, la position d'ouverture déjà passée de
+ * l'autre, en francs et en devise. Une ligne importée SANS devise sur un
+ * compte que le report porte en dollars n'est jamais « concordante » · la
+ * position en devise sortirait de N+1, et la réévaluation (AUDCIF art. 54,
+ * ligne A5) ne la verrait plus. Rend les positions qui diffèrent, dans
+ * l'ordre où elles apparaissent. Vide · l'ouverture EST le bilan de clôture.
  */
-export function confrontationDeLOuverture(
-  report: LigneRan[],
-  passees: LigneOuverturePassee[],
-): { compteId: string; cloture: number; ouverture: number }[] {
+export function confrontationDeLOuverture(report: LigneRan[], passees: LigneOuverturePassee[]): EcartOuverture[] {
   const ordre: string[] = [];
-  const parCompte = new Map<string, { cloture: number; ouverture: number }>();
-  const de = (compteId: string) => {
-    if (!parCompte.has(compteId)) {
-      ordre.push(compteId);
-      parCompte.set(compteId, { cloture: 0, ouverture: 0 });
+  const parCle = new Map<string, EcartOuverture>();
+  const de = (compteId: string, deviseId: string | null) => {
+    const cle = `${compteId}|${deviseId ?? ''}`;
+    if (!parCle.has(cle)) {
+      ordre.push(cle);
+      parCle.set(cle, { compteId, deviseId, cloture: 0, ouverture: 0, clotureDevise: deviseId ? 0 : null, ouvertureDevise: deviseId ? 0 : null });
     }
-    return parCompte.get(compteId)!;
+    return parCle.get(cle)!;
   };
-  for (const l of report) de(l.compteId).cloture += l.debit - l.credit;
-  for (const l of passees) de(l.compteId).ouverture += l.debit - l.credit;
+  const sens = (l: { debit: number; credit: number }) => (l.debit - l.credit >= 0 ? 1 : -1);
+  for (const l of report) {
+    const p = de(l.compteId, deviseDe(l));
+    p.cloture += l.debit - l.credit;
+    if (p.clotureDevise !== null) p.clotureDevise += sens(l) * (l.montantDevise ?? 0);
+  }
+  for (const l of passees) {
+    const p = de(l.compteId, deviseDe(l));
+    p.ouverture += l.debit - l.credit;
+    if (p.ouvertureDevise !== null) p.ouvertureDevise += sens(l) * (l.montantDevise ?? 0);
+  }
+  const arr = (x: number | null) => (x === null ? null : arrondi2(x));
   return ordre
-    .map((compteId) => ({ compteId, cloture: arrondi2(parCompte.get(compteId)!.cloture), ouverture: arrondi2(parCompte.get(compteId)!.ouverture) }))
-    .filter((c) => Math.abs(arrondi2(c.cloture - c.ouverture)) > EPSILON);
+    .map((cle) => {
+      const p = parCle.get(cle)!;
+      return { ...p, cloture: arrondi2(p.cloture), ouverture: arrondi2(p.ouverture), clotureDevise: arr(p.clotureDevise), ouvertureDevise: arr(p.ouvertureDevise) };
+    })
+    .filter(
+      (p) =>
+        Math.abs(arrondi2(p.cloture - p.ouverture)) > EPSILON ||
+        (p.deviseId !== null && Math.abs(arrondi2((p.clotureDevise ?? 0) - (p.ouvertureDevise ?? 0))) > EPSILON),
+    );
 }
 
 /**
- * AU2 · LA RECTIFICATION DE L'IMPORT, quand le cabinet déclare que le bilan
- * de clôture fait foi (les livres de N sont tenus dans OmegaX). L'import est
- * alors faux là où il diffère, et sa correction suit la seule voie que le
- * texte ouvre dans l'exercice en cours · « exclusivement par inscription en
- * négatif des éléments erronés ; l'enregistrement exact est ensuite opéré »
- * (AUDCIF art. 20, al. 2, non exclu par l'art. 3 du SYCEBNL). Les lignes de
- * l'import sur chaque compte divergent sont inscrites en négatif, puis les
- * lignes exactes du report sont passées, dans UNE écriture (le négatif et le
- * report d'un même sous-ensemble de comptes ne s'équilibrent qu'ensemble).
- * Jamais d'écart en une ligne · une compensation n'est pas une inscription en
- * négatif. Jamais une écriture validée retirée (art. 22, 2°). Les comptes qui
- * concordent gardent l'import et ne reçoivent rien.
+ * Une ouverture entièrement annulée (import et son négatif lié, par exemple)
+ * n'est plus une ouverture · elle ne réclame aucune déclaration (second tour,
+ * R10), et le report se passe comme s'il n'y en avait pas.
+ */
+export function ouvertureNulle(passees: LigneOuverturePassee[]): boolean {
+  return confrontationDeLOuverture([], passees).length === 0;
+}
+
+/**
+ * AU2 · LA RECTIFICATION, quand le cabinet déclare que le bilan de clôture
+ * fait foi (les livres de N sont tenus dans OmegaX). L'ouverture déjà passée
+ * est alors fausse sur chaque compte où une position diffère, et sa
+ * correction suit la seule voie que le texte ouvre dans l'exercice en cours ·
+ * « exclusivement par inscription en négatif des éléments erronés ;
+ * l'enregistrement exact est ensuite opéré » (AUDCIF art. 20, al. 2, non
+ * exclu par l'art. 3 du SYCEBNL). TOUTES les lignes de l'ouverture sur ce
+ * compte sont inscrites en négatif (import, son négatif lié, une ressaisie à
+ * la main · second tour, R1), puis les lignes exactes du report, dans UNE
+ * écriture (le négatif et le report d'un même sous-ensemble de comptes ne
+ * s'équilibrent qu'ensemble). Jamais d'écart en une ligne · une compensation
+ * n'est pas une inscription en négatif. Jamais une écriture validée retirée
+ * (art. 22, 2°). Les comptes qui concordent gardent leur ouverture.
+ *
+ * `negatifs` dit, pour chaque ligne inscrite en négatif, la ligne qu'elle
+ * annule (son rang dans `lignes`), pour que la clôture puisse les lettrer
+ * ensemble (second tour, R6).
  */
 export function rectificationDeLOuverture(
   report: LigneRan[],
   passees: LigneOuverturePassee[],
-): { lignes: LigneRan[]; comptesRectifies: string[] } {
-  const comptesRectifies = confrontationDeLOuverture(report, passees).map((c) => c.compteId);
+): { lignes: LigneRan[]; comptesRectifies: string[]; negatifs: { rang: number; origine: LigneOuverturePassee }[] } {
+  const comptesRectifies = [...new Set(confrontationDeLOuverture(report, passees).map((c) => c.compteId))];
   const lignes: LigneRan[] = [];
+  const negatifs: { rang: number; origine: LigneOuverturePassee }[] = [];
   for (const compteId of comptesRectifies) {
     for (const l of passees.filter((x) => x.compteId === compteId)) {
+      negatifs.push({ rang: lignes.length, origine: l });
       lignes.push({
         compteId,
         debit: arrondi2(-l.debit),
         credit: arrondi2(-l.credit),
         libelle: `Inscription en négatif · ${l.libelle ?? 'bilan d’ouverture'}`.slice(0, 250),
         dateEcheance: l.dateEcheance,
-        ...(l.deviseId && l.montantDevise
-          ? { deviseId: l.deviseId, montantDevise: l.montantDevise, ...(l.coursApplique ? { coursApplique: l.coursApplique } : {}) }
-          : {}),
+        ...(deviseDe(l) ? { deviseId: l.deviseId!, montantDevise: l.montantDevise!, ...(l.coursApplique ? { coursApplique: l.coursApplique } : {}) } : {}),
       });
     }
     lignes.push(...report.filter((x) => x.compteId === compteId));
   }
-  return { lignes, comptesRectifies };
+  return { lignes, comptesRectifies, negatifs };
 }
 
 /** Une ligne du report provisoire lettrée ou pointée, lue avant son retrait. */
@@ -348,6 +399,8 @@ export interface LigneTenue {
   lettrageId: string | null;
   rapprochementId: string | null;
   ligneReleveId: string | null;
+  /** Figée par une clôture avant son retrait · son pointage ne se défait plus (R5). */
+  figee?: boolean;
 }
 
 /** Une ligne qui peut la recevoir · du report définitif, ou d'une ouverture déjà passée encore libre. */
@@ -368,36 +421,44 @@ export interface LigneCandidate {
  * livre (`lignesReportANouveau`) · la ligne définitive qui remplace une ligne
  * provisoire a son compte, ses montants, son échéance et sa devise. Le groupe
  * de lettrage (ou le pointage) suit donc la ligne qui la remplace, au même
- * montant · son solde ne bouge pas, et la clôture n'a plus à le défaire. Une
- * ligne qu'une période close de N+1 avait figée reste lettrée avec le même
- * règlement · le gel n'est pas rompu, il est porté par la ligne qui fait foi.
+ * montant · son solde ne bouge pas.
  *
- * Appariement exact d'abord (compte, débit, crédit, échéance, devise et
- * montant en devise), puis sur compte et montants seuls. Chaque candidate sert
- * une fois. Rend, pour chaque tenue, l'identifiant de la ligne qui la reçoit,
- * ou null quand aucune ne lui correspond (le livre de N a changé depuis le
- * provisoire) · le service décide alors.
+ * DEUX PASSES, ET AUCUNE DEVINETTE (second tour, R3) · l'appariement exact
+ * d'abord (compte, débit, crédit, échéance, devise, montant en devise). Puis,
+ * l'échéance seule relâchée, et seulement quand UNE candidate et une seule
+ * convient · deux factures de même montant à des échéances différentes, le
+ * règlement porté sur la mauvaise fausserait la balance âgée. La devise ne se
+ * relâche JAMAIS · une ligne en dollars ne se porte pas sur une ligne en
+ * francs. Chaque candidate sert une fois. Rend, pour chaque tenue, la ligne
+ * qui la reçoit, ou null · le service la traite alors en orpheline.
  */
 export function apparierTenues(tenues: LigneTenue[], candidates: LigneCandidate[]): (string | null)[] {
   const prises = new Set<string>();
-  const memesMontants = (t: LigneTenue, c: LigneCandidate) =>
-    c.compteId === t.compteId && Math.abs(c.debit - t.debit) <= EPSILON && Math.abs(c.credit - t.credit) <= EPSILON;
-  const exacte = (t: LigneTenue, c: LigneCandidate) =>
-    memesMontants(t, c) &&
-    (c.dateEcheance?.getTime() ?? null) === (t.dateEcheance?.getTime() ?? null) &&
-    (c.deviseId ?? null) === (t.deviseId ?? null) &&
+  const memeDevise = (t: LigneTenue, c: LigneCandidate) =>
+    c.compteId === t.compteId &&
+    Math.abs(c.debit - t.debit) <= EPSILON &&
+    Math.abs(c.credit - t.credit) <= EPSILON &&
+    (deviseDe(c) ?? null) === (deviseDe(t) ?? null) &&
     Math.abs((c.montantDevise ?? 0) - (t.montantDevise ?? 0)) <= EPSILON;
+  const exacte = (t: LigneTenue, c: LigneCandidate) =>
+    memeDevise(t, c) && (c.dateEcheance?.getTime() ?? null) === (t.dateEcheance?.getTime() ?? null);
   const resultat: (string | null)[] = tenues.map(() => null);
-  for (const critere of [exacte, memesMontants]) {
-    tenues.forEach((t, i) => {
-      if (resultat[i] !== null) return;
-      const c = candidates.find((x) => !prises.has(x.id) && critere(t, x));
-      if (c) {
-        prises.add(c.id);
-        resultat[i] = c.id;
-      }
-    });
-  }
+  tenues.forEach((t, i) => {
+    const c = candidates.find((x) => !prises.has(x.id) && exacte(t, x));
+    if (c) {
+      prises.add(c.id);
+      resultat[i] = c.id;
+    }
+  });
+  tenues.forEach((t, i) => {
+    if (resultat[i] !== null) return;
+    const possibles = candidates.filter((x) => !prises.has(x.id) && memeDevise(t, x));
+    const rivales = tenues.filter((u, j) => j !== i && resultat[j] === null && possibles.some((x) => memeDevise(u, x)));
+    if (possibles.length === 1 && rivales.length === 0) {
+      prises.add(possibles[0].id);
+      resultat[i] = possibles[0].id;
+    }
+  });
   return resultat;
 }
 

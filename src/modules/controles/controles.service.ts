@@ -2963,8 +2963,9 @@ export class ControlesService {
       where: { tenantId, dateFin: { lt: ex.dateDebut } },
       orderBy: { dateFin: 'desc' },
       // `dateDebut` sert au contrôle 27 · la comparabilité se lit sur la DURÉE
-      // des deux exercices, pas sur leur seule date de clôture.
-      select: { id: true, dateDebut: true, dateFin: true },
+      // des deux exercices, pas sur leur seule date de clôture. La
+      // conservation déclarée d'une ouverture sert au contrôle 22 bis (AU2).
+      select: { id: true, dateDebut: true, dateFin: true, motifOuvertureSuivanteConservee: true, ecartsOuvertureSuivanteConservee: true },
     });
     // Le faux Prisma des tests rend l'exercice courant pour toute recherche ·
     // sans cette garde, le contrôle se comparerait à lui-même.
@@ -3470,6 +3471,41 @@ export class ControlesService {
           detail: `Pièce ${l.ecriture.numeroPiece} · ${l.ecriture.libelle}`,
           montant: Math.round((Number(l.debit) - Number(l.credit)) * 100) / 100,
           date: l.ecriture.date.toISOString().slice(0, 10),
+        })),
+      });
+    }
+
+    // --- 22 bis. Ouverture conservée, différente de la clôture précédente ---
+    //
+    // AU2, second tour (R8). À la clôture de l'exercice précédent, le cabinet
+    // a DÉCLARÉ conserver l'ouverture déjà passée dans celui-ci (l'exercice
+    // précédent n'étant tenu dans OmegaX que pour les comparatifs) · le bilan
+    // d'ouverture de cet exercice s'écarte donc, dans OmegaX, du bilan de
+    // clôture du précédent (AUDCIF art. 34 · SYCEBNL art. 16, 4)). Ce n'est
+    // pas une faute, c'est une déclaration motivée · INFORMATION, qui porte le
+    // motif, les comptes et les montants figés à la déclaration, pour que
+    // l'écart ne se lise jamais comme une erreur de report.
+    if (exercicePrecedent && exercicePrecedent.dateFin < ex.dateDebut && exercicePrecedent.motifOuvertureSuivanteConservee) {
+      type Garde = { numero: string | null; devise: string | null; cloture: number; ouverture: number };
+      const gardes = (exercicePrecedent.ecartsOuvertureSuivanteConservee ?? null) as { total?: number; ecarts?: Garde[] } | null;
+      const positions = gardes?.ecarts ?? [];
+      anomalies.push({
+        code: 'OUVERTURE_DIFFERENTE_DE_LA_CLOTURE_DECLAREE',
+        gravite: 'INFORMATION',
+        libelle: 'Ouverture conservée, différente du bilan de clôture de l’exercice précédent',
+        consequence:
+          `Le bilan d’ouverture d’un exercice correspond au bilan de clôture du précédent (${
+            tenant.referentiel === Referentiel.SYCEBNL ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34'
+          }). À la clôture de l’exercice précédent, l’ouverture déjà passée dans celui-ci a été déclarée faire foi · ` +
+          `motif · « ${exercicePrecedent.motifOuvertureSuivanteConservee} ». Dans OmegaX, les deux bilans diffèrent sur ` +
+          `${gardes?.total ?? positions.length} position(s) · les colonnes N-1 et les cumuls pluriannuels ne s’enchaînent pas sur ces comptes.`,
+        action:
+          'Rien à corriger si la déclaration est exacte · gardez le motif et ses pièces au dossier, et dites l’écart en Notes annexes ' +
+          '(comparabilité de la colonne N-1).',
+        occurrences: positions.slice(0, 200).map((p) => ({
+          reference: `${p.numero ?? '?'}${p.devise ? ` (${p.devise})` : ''}`,
+          detail: `Clôture précédente ${p.cloture.toFixed(2)} · ouverture conservée ${p.ouverture.toFixed(2)}`,
+          montant: Math.round((p.ouverture - p.cloture) * 100) / 100,
         })),
       });
     }

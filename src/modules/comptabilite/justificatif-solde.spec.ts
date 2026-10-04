@@ -70,6 +70,8 @@ function harnais(lignes: ReturnType<typeof ligne>[], soldeBalance = { debit: 0, 
           where.id === 'ex2025' ? { id: 'ex2025', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31') } : null,
         );
       }),
+      // AU2 (R8) · aucune ouverture conservée à la clôture d'un exercice antérieur.
+      findMany: jest.fn().mockResolvedValue([]),
     },
     ligneEcriture: {
       findMany,

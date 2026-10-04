@@ -1455,6 +1455,11 @@ model Exercice {
   /// Null · rien n'a été déclaré (pas d'import, import concordant, ou
   /// rectifié).
   motifOuvertureSuivanteConservee String?
+  /// Les positions qui diffèrent, figées à la déclaration (second tour, R8) ·
+  /// `{ total, tronque, ecarts: [{ numero, devise, cloture, ouverture,
+  /// clotureDevise, ouvertureDevise }] }`, deux cents au plus. Le contrôle
+  /// d'information de l'exercice suivant les cite.
+  ecartsOuvertureSuivanteConservee Json?
 
   ecritures                    Ecriture[]
   clotures                     Cloture[]
