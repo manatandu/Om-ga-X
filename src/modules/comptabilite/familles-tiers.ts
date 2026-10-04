@@ -36,6 +36,11 @@ const DIVISIONNAIRE: Record<Exclude<FamilleTiers, 'AUTRES'>, string> = {
   SALARIES: '42',
 };
 
+/** Le divisionnaire à deux chiffres d'une famille qui en a un. */
+export function divisionnaireDeLaFamille(famille: Exclude<FamilleTiers, 'AUTRES'>): string {
+  return DIVISIONNAIRE[famille];
+}
+
 export function estFamilleTiers(v: unknown): v is FamilleTiers {
   return typeof v === 'string' && (FAMILLES_TIERS as readonly string[]).includes(v);
 }

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, PayloadTooLargeException } from '@nestjs/common';
-import { ClasseCompte, Prisma, Referentiel } from '@prisma/client';
+import { ClasseCompte, Prisma, Referentiel, StatutEcriture } from '@prisma/client';
 import type { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../common/prisma.service';
@@ -7,8 +7,9 @@ import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
 import { pageApres } from '../../common/lecture-par-lots';
 import { libelleExercice } from '../../common/libelle-exercice';
 import { EcritureService } from '../comptabilite/ecriture.service';
-import { compteDeLaFamille, estFamilleTiers, type FamilleTiers, sousTitreFamille } from '../comptabilite/familles-tiers';
-import { OPTIONS_CLASSEUR_EN_FLUX, type IdentiteEtat } from './classeur-en-flux';
+import { filtresDesTroisColonnes } from '../comptabilite/balance-trois-colonnes';
+import { compteDeLaFamille, divisionnaireDeLaFamille, estFamilleTiers, type FamilleTiers, sousTitreFamille } from '../comptabilite/familles-tiers';
+import { LOT_EXPORT, MAX_LIGNES_EXPORT, OPTIONS_CLASSEUR_EN_FLUX, type IdentiteEtat } from './classeur-en-flux';
 import { ExportService } from './export.service';
 import {
   COLONNES_BALANCE_FPM,
@@ -103,6 +104,8 @@ interface Contexte {
   debut: Date;
   fin: Date;
   suffixe: string;
+  /** La mention du brouillard sous le cartouche, ou rien quand tout est validé. */
+  mention?: string;
 }
 
 /** Une ligne de grand livre, telle que la lecture par lots la rend. */
@@ -119,13 +122,13 @@ export class ExportFpmService {
   ) {}
 
   /**
-   * LE PLAFOND DES LIVRES EN FLUX, le même que le journal et le grand livre
-   * complet (`ExportService.MAX_LIGNES_EXPORT`, banc du 2026-09-12) · une
-   * balance qui porte le grand livre de chaque compte EST un grand livre
-   * complet, plus sa propre feuille.
+   * LA TAILLE DE LOT, lisible et réglable par un test qui doit forcer
+   * plusieurs tranches (curseur, `skip: 1`) sur un petit jeu d'essai. Le
+   * plafond de volume est celui de tous les livres en flux
+   * (`MAX_LIGNES_EXPORT`, `classeur-en-flux.ts`) · une balance qui porte le
+   * grand livre de chaque compte EST un grand livre complet, plus sa feuille.
    */
-  private static readonly MAX_LIGNES_EXPORT = Number(process.env.EXPORT_MAX_LIGNES ?? 200_000);
-  private static readonly LOT_EXPORT = 500;
+  lotExport = LOT_EXPORT;
 
   // -------------------------------------------------------------------------
   // Lectures communes
@@ -138,9 +141,10 @@ export class ExportFpmService {
         select: { dateDebut: true, dateFin: true },
       }),
     );
-    const [tenant, identite] = await Promise.all([
+    const [tenant, identite, auBrouillard] = await Promise.all([
       this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } }),
       this.exportService.identiteEtat(tenantId, { exerciceId }),
+      this.prisma.ecriture.count({ where: { tenantId, exerciceId, statut: { not: StatutEcriture.VALIDEE } } }),
     ]);
     return {
       identite,
@@ -148,6 +152,14 @@ export class ExportFpmService {
       debut: exercice.dateDebut,
       fin: exercice.dateFin,
       suffixe: `-${libelleExercice(exercice)}`,
+      // LE BROUILLARD SE DIT EN TÊTE (second tour, relevé D) · la balance, comme
+      // les livres, se lit brouillard compris (`EcritureService.balance`), et
+      // une pièce encore modifiable n'est pas au livre-journal (AUDCIF art. 22,
+      // 2°). Une balance qui la porte sans le dire se lirait comme définitive.
+      mention:
+        auBrouillard > 0
+          ? `Brouillard compris · ${auBrouillard.toLocaleString('fr-FR')} écriture${auBrouillard > 1 ? 's' : ''} non validée${auBrouillard > 1 ? 's' : ''}`
+          : undefined,
     };
   }
 
@@ -187,10 +199,10 @@ export class ExportFpmService {
       where: { ecriture: { tenantId, exerciceId }, ...(compteIds ? { compteId: { in: compteIds } } : {}) },
     });
     const total = lignesDeBalance + lignesDeGrandLivre;
-    if (total > ExportFpmService.MAX_LIGNES_EXPORT) {
+    if (total > MAX_LIGNES_EXPORT) {
       throw new PayloadTooLargeException(
         `${quoi} : ${total.toLocaleString('fr-FR')} lignes à exporter, au-delà de la limite de ` +
-          `${ExportFpmService.MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. ${rechange}`,
+          `${MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. ${rechange}`,
       );
     }
   }
@@ -216,7 +228,7 @@ export class ExportFpmService {
           compte: { select: { id: true, numero: true, intitule: true } },
           ecriture: { include: { journal: { select: { code: true } } } },
         },
-        ...pageApres(curseur, ExportFpmService.LOT_EXPORT),
+        ...pageApres(curseur, this.lotExport),
         orderBy: [
           { compte: { numero: 'asc' } },
           { ecriture: { date: 'asc' } },
@@ -227,7 +239,7 @@ export class ExportFpmService {
         ],
       });
       for (const l of lot) if (compteIds.has(l.compteId)) await traiter(l);
-      if (lot.length < ExportFpmService.LOT_EXPORT) return;
+      if (lot.length < this.lotExport) return;
       curseur = lot[lot.length - 1].id;
     }
   }
@@ -431,10 +443,8 @@ export class ExportFpmService {
   }
 
   /**
-   * LA FIN D'UN GRAND LIVRE SUR UNE SEULE FEUILLE · « Totaux », puis la ligne
-   * de contrôle « Solde à la balance générale » lue sur la balance du dépôt,
-   * puis l'ÉCART. Un écart non nul se DIT, chiffré · il ne se maquille pas, et
-   * « aucun » ne s'écrit que sur un écart calculé et nul.
+   * LA FIN D'UN GRAND LIVRE SUR UNE SEULE FEUILLE · « Totaux », puis le
+   * contrôle contre la balance générale.
    */
   private async ecrireFinDeLivre(
     feuille: FeuilleFpm,
@@ -442,11 +452,32 @@ export class ExportFpmService {
     balance: { debit: number; credit: number },
     precision: string,
   ): Promise<void> {
-    const solde = (d: number, c: number) => montantFpm(d - c);
     await feuille.ajouter(
-      { libelle: 'Totaux', debit: montantFpm(livre.debit), credit: montantFpm(livre.credit), solde: solde(livre.debit, livre.credit) },
+      {
+        libelle: 'Totaux',
+        debit: montantFpm(livre.debit),
+        credit: montantFpm(livre.credit),
+        solde: montantFpm(livre.debit - livre.credit),
+      },
       { gras: true, filetHaut: true },
     );
+    await this.ecrireControleLivre(feuille, livre, balance, precision);
+  }
+
+  /**
+   * LE CONTRÔLE D'UN GRAND LIVRE · « Solde à la balance générale », lu sur une
+   * AUTRE lecture que les lignes du livre, puis l'ÉCART. Un écart non nul se
+   * DIT, chiffré et en gras · il ne se maquille pas, et « aucun » ne s'écrit
+   * que sur un écart calculé et nul. Posé en bas du grand livre en une
+   * feuille ET en bas de chaque feuille de compte (second tour, relevé B).
+   */
+  private async ecrireControleLivre(
+    feuille: FeuilleFpm,
+    livre: { debit: number; credit: number },
+    balance: { debit: number; credit: number },
+    precision: string,
+  ): Promise<void> {
+    const solde = (d: number, c: number) => montantFpm(d - c);
     await feuille.ajouter({
       libelle: 'Solde à la balance générale',
       debit: montantFpm(balance.debit),
@@ -519,6 +550,7 @@ export class ExportFpmService {
       titre: 'Balance des comptes',
       sousTitre: 'Complète',
       identite: ctx.identite,
+      mention: ctx.mention,
       debut: ctx.debut,
       fin: ctx.fin,
       colonnes: COLONNES_BALANCE_FPM,
@@ -579,7 +611,7 @@ export class ExportFpmService {
         tenantId,
         exerciceId,
         ctx,
-        lignes.map((l) => ({ compteId: l.compteId, nom: l.intitule })),
+        lignes.map((l) => ({ compteId: l.compteId, nom: l.intitule, totalDebit: l.totalDebit, totalCredit: l.totalCredit })),
         null,
         feuilleDe,
         ligneDuCompte,
@@ -612,19 +644,25 @@ export class ExportFpmService {
     tenantId: string,
     exerciceId: string,
     ctx: Contexte,
-    comptes: Array<{ compteId: string; nom: string }>,
+    comptes: Array<{ compteId: string; nom: string; totalDebit: number; totalCredit: number }>,
     filtreComptes: string[] | null,
     feuilleDe: Map<string, string | undefined>,
     ligneDuCompte: Map<string, number>,
     textes: { titre: string; sousTitre: string; totalBloc: string },
   ): Promise<number> {
     const nomDe = new Map(comptes.map((c) => [c.compteId, c.nom]));
+    const balanceDe = new Map(comptes.map((c) => [c.compteId, { debit: arrondi(c.totalDebit), credit: arrondi(c.totalCredit) }]));
     let courante: FeuilleFpm | null = null;
     let compteCourant: string | null = null;
     let redacteur: ReturnType<ExportFpmService['redacteur']> | null = null;
     let nb = 0;
     const fermer = async () => {
-      if (redacteur) await redacteur.fermer();
+      if (redacteur && courante && compteCourant) {
+        await redacteur.fermer();
+        // La feuille se contrôle elle-même contre SA ligne de balance · le
+        // lecteur qui n'ouvre qu'un compte voit que le livre la rend.
+        await this.ecrireControleLivre(courante, redacteur.totaux(), balanceDe.get(compteCourant)!, '');
+      }
       courante?.fermer();
     };
     await this.parcourirGrandLivre(tenantId, exerciceId, new Set(nomDe.keys()), filtreComptes, async (l) => {
@@ -636,6 +674,7 @@ export class ExportFpmService {
           titre: textes.titre,
           sousTitre: textes.sousTitre,
           identite: ctx.identite,
+          mention: ctx.mention,
           debut: ctx.debut,
           fin: ctx.fin,
           colonnes: COLONNES_GRAND_LIVRE_FPM,
@@ -670,12 +709,45 @@ export class ExportFpmService {
         return { ...l, nom: tiers ? tiers.nom : `${l.intitule} · aucun tiers rattaché` };
       });
     const racines = [...new Set(retenues.map((l) => l.numero.slice(0, 3)))];
-    // LE CONTRÔLE SE LIT SUR LES COLLECTIFS ENTIERS de la balance générale ·
-    // pour 40, 41 et 42 la famille les couvre tous et l'écart est nul ; pour
-    // les autres tiers, un compte du même collectif sans tiers rattaché reste
-    // à la balance générale, et l'écart le montre au lieu de l'absorber.
-    const generale = lignes.filter((l) => racines.some((r) => l.numero.startsWith(r)));
-    return { retenues, racines, generale };
+    return { retenues, racines };
+  }
+
+  /**
+   * LE CONTRÔLE D'UNE FAMILLE SE LIT AILLEURS QUE LA FAMILLE (second tour,
+   * relevé A) · comparer le total des comptes retenus au total des MÊMES
+   * lignes de la même balance ne pourrait jamais rien montrer. La base somme
+   * donc elle-même, par trois agrégats, toutes les lignes de l'exercice dont
+   * le compte commence par le divisionnaire de la famille (40, 41, 42), tous
+   * comptes compris, rattachés ou non, détail ou non · pour les autres tiers,
+   * par les collectifs à trois chiffres qu'ils occupent, où un compte sans
+   * tiers reste et fait l'écart. Mêmes trois colonnes que la balance
+   * (`filtresDesTroisColonnes`), brouillard compris comme elle.
+   */
+  private async soldesDesCollectifs(
+    tenantId: string,
+    exerciceId: string,
+    famille: FamilleTiers,
+    racines: string[],
+  ): Promise<Totaux> {
+    const prefixes = famille === 'AUTRES' ? racines : [divisionnaireDeLaFamille(famille)];
+    if (prefixes.length === 0) return { avantDebit: 0, avantCredit: 0, mouvementDebit: 0, mouvementCredit: 0, solde: 0 };
+    const filtres = filtresDesTroisColonnes({ tenantId, exerciceId });
+    const compte = { OR: prefixes.map((p) => ({ numero: { startsWith: p } })) };
+    const somme = (ecriture: Prisma.EcritureWhereInput) =>
+      this.prisma.ligneEcriture.aggregate({ where: { ecriture, compte }, _sum: { debit: true, credit: true } });
+    const [r, m, c] = await Promise.all([somme(filtres.reports), somme(filtres.mouvements), somme(filtres.clotures)]);
+    const n = (v: unknown) => Number(v ?? 0);
+    const avantDebit = n(r._sum.debit);
+    const avantCredit = n(r._sum.credit);
+    const mouvementDebit = n(m._sum.debit) + n(c._sum.debit);
+    const mouvementCredit = n(m._sum.credit) + n(c._sum.credit);
+    return {
+      avantDebit: arrondi(avantDebit),
+      avantCredit: arrondi(avantCredit),
+      mouvementDebit: arrondi(mouvementDebit),
+      mouvementCredit: arrondi(mouvementCredit),
+      solde: arrondi(avantDebit + mouvementDebit - avantCredit - mouvementCredit),
+    };
   }
 
   /**
@@ -693,7 +765,7 @@ export class ExportFpmService {
     ouvrir: (nomFichier: string) => Writable,
   ): Promise<{ lignes: number }> {
     const ctx = await this.contexte(tenantId, exerciceId);
-    const { retenues, racines, generale } = await this.perimetreTiers(tenantId, exerciceId, famille);
+    const { retenues, racines } = await this.perimetreTiers(tenantId, exerciceId, famille);
     const ids = retenues.map((l) => l.compteId);
     if (avecGrandsLivres) {
       await this.verifierVolume(
@@ -717,6 +789,7 @@ export class ExportFpmService {
       titre: 'Balance des tiers',
       sousTitre,
       identite: ctx.identite,
+      mention: ctx.mention,
       debut: ctx.debut,
       fin: ctx.fin,
       colonnes: COLONNES_BALANCE_FPM,
@@ -747,7 +820,7 @@ export class ExportFpmService {
     await this.ecrireTotal(feuille, 'Total général', tGeneral, (col) =>
       rangsSousTotaux.length === 0 ? '0' : rangsSousTotaux.map((r) => `${col}${r}`).join('+'),
     );
-    const tBalance = ExportFpmService.totaux(generale);
+    const tBalance = await this.soldesDesCollectifs(tenantId, exerciceId, famille, racines);
     await this.ecrireControle(feuille, tBalance, ExportFpmService.ecart(tGeneral, tBalance));
     feuille.fermer();
 
@@ -759,7 +832,7 @@ export class ExportFpmService {
         tenantId,
         exerciceId,
         ctx,
-        retenues.map((l) => ({ compteId: l.compteId, nom: l.nom })),
+        retenues.map((l) => ({ compteId: l.compteId, nom: l.nom, totalDebit: l.totalDebit, totalCredit: l.totalCredit })),
         ids,
         feuilleDe,
         ligneDuCompte,
@@ -861,7 +934,7 @@ export class ExportFpmService {
     ouvrir: (nomFichier: string) => Writable,
   ): Promise<{ lignes: number }> {
     const ctx = await this.contexte(tenantId, exerciceId);
-    const { retenues, generale } = await this.perimetreTiers(tenantId, exerciceId, famille);
+    const { retenues, racines } = await this.perimetreTiers(tenantId, exerciceId, famille);
     const ids = retenues.map((l) => l.compteId);
     await this.verifierVolume(
       tenantId,
@@ -871,9 +944,10 @@ export class ExportFpmService {
       'Grand-livre des tiers',
       'Exportez la balance des tiers seule, puis le grand livre tiers par tiers.',
     );
+    const collectifs = await this.soldesDesCollectifs(tenantId, exerciceId, famille, racines);
     const balance = {
-      debit: arrondi(generale.reduce((s, l) => s + l.totalDebit, 0)),
-      credit: arrondi(generale.reduce((s, l) => s + l.totalCredit, 0)),
+      debit: arrondi(collectifs.avantDebit + collectifs.mouvementDebit),
+      credit: arrondi(collectifs.avantCredit + collectifs.mouvementCredit),
     };
     return this.grandLivreSurUneFeuille(
       tenantId,
@@ -913,6 +987,7 @@ export class ExportFpmService {
       titre: textes.titre,
       sousTitre: textes.sousTitre,
       identite: ctx.identite,
+      mention: ctx.mention,
       debut: ctx.debut,
       fin: ctx.fin,
       colonnes: COLONNES_GRAND_LIVRE_FPM,

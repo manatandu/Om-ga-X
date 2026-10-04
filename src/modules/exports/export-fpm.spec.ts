@@ -27,7 +27,9 @@ const TENANT = { id: 't1', nom: 'Association Essai', numeroImpot: 'A1', devise: 
 type C = { id: string; numero: string; intitule: string; classe: ClasseCompte };
 const COMPTES: Record<string, C> = {
   c101: { id: 'c101', numero: '10100000', intitule: 'Dotation', classe: ClasseCompte.CLASSE_1 },
+  c131: { id: 'c131', numero: '13100000', intitule: 'Résultat', classe: ClasseCompte.CLASSE_1 },
   c401: { id: 'c401', numero: '40110001', intitule: 'Fournisseur', classe: ClasseCompte.CLASSE_4 },
+  c4019: { id: 'c4019', numero: '40190000', intitule: 'Fournisseurs divers', classe: ClasseCompte.CLASSE_4 },
   c4711: { id: 'c4711', numero: '47110001', intitule: 'Débiteur divers', classe: ClasseCompte.CLASSE_4 },
   c4712: { id: 'c4712', numero: '47120000', intitule: 'Créditeurs divers', classe: ClasseCompte.CLASSE_4 },
   c521: { id: 'c521', numero: '52110000', intitule: 'Banque', classe: ClasseCompte.CLASSE_5 },
@@ -43,13 +45,19 @@ const PLAN = [
   { numero: '91', intitule: 'Contributions volontaires en nature' },
 ];
 
-const AN = { date: new Date('2026-01-01T00:00:00Z'), numeroPiece: 1, libelle: 'À-nouveau', statut: 'VALIDEE', journal: { code: 'AN' } };
-const ACHAT = { date: new Date('2026-02-03T00:00:00Z'), numeroPiece: 7, libelle: 'Facture REGIDESO', statut: 'VALIDEE', journal: { code: 'AC' } };
-const REGLEMENT = { date: new Date('2026-03-04T00:00:00Z'), numeroPiece: 2, libelle: 'Règlement', statut: 'BROUILLARD', journal: { code: 'BQ' } };
-const CVN = { date: new Date('2026-04-05T00:00:00Z'), numeroPiece: 3, libelle: 'Bénévolat', statut: 'VALIDEE', journal: { code: 'OD' } };
-const DIVERS = { date: new Date('2026-05-06T00:00:00Z'), numeroPiece: 4, libelle: 'Divers', statut: 'VALIDEE', journal: { code: 'OD' } };
+/** Les drapeaux d'écriture que lisent les trois colonnes de la balance. */
+const ORDINAIRE = { estGenereeParCloture: false, estSoldeDesComptesDeGestion: false };
+const AN = { date: new Date('2026-01-01T00:00:00Z'), numeroPiece: 1, libelle: 'À-nouveau', statut: 'VALIDEE', journal: { code: 'AN' }, estGenereeParCloture: true, estSoldeDesComptesDeGestion: false };
+const ACHAT = { date: new Date('2026-02-03T00:00:00Z'), numeroPiece: 7, libelle: 'Facture REGIDESO', statut: 'VALIDEE', journal: { code: 'AC' }, ...ORDINAIRE };
+const REGLEMENT = { date: new Date('2026-03-04T00:00:00Z'), numeroPiece: 2, libelle: 'Règlement', statut: 'BROUILLARD', journal: { code: 'BQ' }, ...ORDINAIRE };
+const CVN = { date: new Date('2026-04-05T00:00:00Z'), numeroPiece: 3, libelle: 'Bénévolat', statut: 'VALIDEE', journal: { code: 'OD' }, ...ORDINAIRE };
+const DIVERS = { date: new Date('2026-05-06T00:00:00Z'), numeroPiece: 4, libelle: 'Divers', statut: 'VALIDEE', journal: { code: 'OD' }, ...ORDINAIRE };
+const DIVERS2 = { date: new Date('2026-05-07T00:00:00Z'), numeroPiece: 5, libelle: 'Fournisseur sans fiche', statut: 'VALIDEE', journal: { code: 'AC' }, ...ORDINAIRE };
+/** L'écriture qui solde les comptes de gestion d'un exercice CLÔTURÉ (audit final F4, F5). */
+const CLOTURE = { date: new Date('2026-12-31T00:00:00Z'), numeroPiece: 9, libelle: 'Solde des comptes de gestion', statut: 'VALIDEE', journal: { code: 'CL' }, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true };
 
-const ligne = (id: string, compte: keyof typeof COMPTES, debit: number, credit: number, ecriture: object, lettre: string | null = null) => ({
+type Ecr = typeof AN;
+const ligne = (id: string, compte: keyof typeof COMPTES, debit: number, credit: number, ecriture: Ecr, lettre: string | null = null) => ({
   id,
   compteId: compte,
   debit,
@@ -59,6 +67,7 @@ const ligne = (id: string, compte: keyof typeof COMPTES, debit: number, credit: 
   compte: COMPTES[compte],
   ecriture,
 });
+type Ligne = ReturnType<typeof ligne>;
 
 /** Dans l'ordre que la requête demande · numéro, date, à-nouveau en tête. */
 const LIGNES = [
@@ -74,12 +83,36 @@ const LIGNES = [
   ligne('l8', 'c910', 0, 50, CVN),
 ];
 
+/**
+ * UN EXERCICE CLÔTURÉ (second tour, relevé bloquant) · un achat de 3 000, et
+ * l'écriture de clôture qui solde le 601 sur le 13. Sa colonne de clôture
+ * doit se lire avec les mouvements, jamais avant la période (audit final F5).
+ */
+const LIGNES_CLOS = [
+  ligne('k4', 'c131', 3000, 0, CLOTURE),
+  ligne('k2', 'c401', 0, 3000, ACHAT),
+  ligne('k1', 'c601', 3000, 0, ACHAT),
+  ligne('k3', 'c601', 0, 3000, CLOTURE),
+];
+
+/** Un compte de fournisseurs SANS tiers qui porte un solde (relevé A). */
+const LIGNES_SANS_TIERS = [
+  ...LIGNES.slice(0, 3),
+  ligne('m1', 'c4019', 0, 100, DIVERS2),
+  ...LIGNES.slice(3, 8),
+  ligne('m2', 'c601', 100, 0, DIVERS2),
+  ...LIGNES.slice(8),
+];
+
 /** La balance du dépôt, telle que `EcritureService.balance` la rendrait sur ces lignes. */
-function balance() {
-  const parCompte = new Map<string, { rD: number; rC: number; mD: number; mC: number }>();
-  for (const l of LIGNES) {
-    const a = parCompte.get(l.compteId) ?? { rD: 0, rC: 0, mD: 0, mC: 0 };
-    if (l.ecriture === AN) {
+function balance(lignes: Ligne[]) {
+  const parCompte = new Map<string, { rD: number; rC: number; mD: number; mC: number; cD: number; cC: number }>();
+  for (const l of lignes) {
+    const a = parCompte.get(l.compteId) ?? { rD: 0, rC: 0, mD: 0, mC: 0, cD: 0, cC: 0 };
+    if (l.ecriture.estSoldeDesComptesDeGestion) {
+      a.cD += l.debit;
+      a.cC += l.credit;
+    } else if (l.ecriture.estGenereeParCloture) {
       a.rD += l.debit;
       a.rC += l.credit;
     } else {
@@ -90,6 +123,7 @@ function balance() {
   }
   return Object.values(COMPTES)
     .sort((a, b) => a.numero.localeCompare(b.numero))
+    .filter((c) => parCompte.has(c.id))
     .map((c) => {
       const a = parCompte.get(c.id)!;
       return {
@@ -102,30 +136,53 @@ function balance() {
         reportCredit: a.rC,
         mouvementDebit: a.mD,
         mouvementCredit: a.mC,
-        clotureDebit: 0,
-        clotureCredit: 0,
-        totalDebit: a.rD + a.mD,
-        totalCredit: a.rC + a.mC,
-        solde: a.rD + a.mD - a.rC - a.mC,
+        clotureDebit: a.cD,
+        clotureCredit: a.cC,
+        totalDebit: a.rD + a.mD + a.cD,
+        totalCredit: a.rC + a.mC + a.cC,
+        solde: a.rD + a.mD + a.cD - a.rC - a.mC - a.cC,
       };
     });
 }
 
-function service(options: { compte?: number } = {}) {
+/** Une ligne répond-elle au filtre d'écriture d'un agrégat (drapeaux, dossier, exercice) ? */
+function repond(l: Ligne, where: any): boolean {
+  if (where.tenantId !== 't1' || where.exerciceId !== 'ex') return false;
+  for (const cle of ['estGenereeParCloture', 'estSoldeDesComptesDeGestion'] as const) {
+    if (cle in where && l.ecriture[cle] !== where[cle]) return false;
+  }
+  return true;
+}
+
+function service(options: { compte?: number; lignes?: Ligne[]; balanceSans?: string; referentiel?: string } = {}) {
+  const lignes = options.lignes ?? LIGNES;
   const prisma = {
-    tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue(TENANT) },
+    tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ ...TENANT, referentiel: options.referentiel ?? TENANT.referentiel }) },
     exercice: { findFirst: jest.fn(async ({ where }: any) => (where.id === 'ex' && where.tenantId === 't1' ? EXERCICE : null)) },
+    ecriture: {
+      count: jest.fn(async ({ where }: any) => {
+        expect(where).toMatchObject({ tenantId: 't1', exerciceId: 'ex', statut: { not: 'VALIDEE' } });
+        return new Set(lignes.filter((l) => l.ecriture.statut !== 'VALIDEE').map((l) => l.ecriture)).size;
+      }),
+    },
     ligneEcriture: {
       // La doublure HONORE la requête · borne du dossier, filtre de comptes,
       // curseur, `skip` et taille de lot (CLAUDE.md, passe F4b).
       count: jest.fn(async ({ where }: any) =>
-        options.compte ?? LIGNES.filter((l) => !where.compteId || where.compteId.in.includes(l.compteId)).length,
+        options.compte ?? lignes.filter((l) => !where.compteId || where.compteId.in.includes(l.compteId)).length,
       ),
       findMany: jest.fn(async ({ where, take, cursor, skip }: any) => {
         expect(where.ecriture).toEqual({ tenantId: 't1', exerciceId: 'ex' });
-        const filtrees = LIGNES.filter((l) => !where.compteId || where.compteId.in.includes(l.compteId));
+        const filtrees = lignes.filter((l) => !where.compteId || where.compteId.in.includes(l.compteId));
         const depart = cursor ? filtrees.findIndex((l) => l.id === cursor.id) + (skip ?? 0) : 0;
         return filtrees.slice(depart, depart + take);
+      }),
+      // L'agrégat INDÉPENDANT du contrôle des tiers · il somme les lignes, il
+      // ne relit pas la balance.
+      aggregate: jest.fn(async ({ where }: any) => {
+        const prefixes: string[] = where.compte.OR.map((o: any) => o.numero.startsWith);
+        const retenues = lignes.filter((l) => repond(l, where.ecriture) && prefixes.some((p) => l.compte.numero.startsWith(p)));
+        return { _sum: { debit: retenues.reduce((t, l) => t + l.debit, 0), credit: retenues.reduce((t, l) => t + l.credit, 0) } };
       }),
     },
     compte: {
@@ -140,7 +197,9 @@ function service(options: { compte?: number } = {}) {
       ]),
     },
   };
-  const ecriture = { balance: jest.fn(async () => ({ lignes: balance() })) } as unknown as EcritureService;
+  const ecriture = {
+    balance: jest.fn(async () => ({ lignes: balance(lignes).filter((l) => l.compteId !== options.balanceSans) })),
+  } as unknown as EcritureService;
   const p = prisma as unknown as PrismaService;
   const vide = {} as never;
   const exports = new ExportService(p, ecriture, vide, vide, vide, vide, vide, vide, vide, vide);
@@ -471,5 +530,93 @@ describe('les routes', () => {
     await ctl.balance(user, res(), 'ex');
     expect(fpm.balanceGeneraleEnFlux.mock.calls.map((c) => c[2])).toEqual([false, true]);
     await expect(ctl.balance(user, res(), 'ex', 'peut-être')).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('second tour · exercice clôturé, contrôle indépendant, lots, brouillard', () => {
+  it('F5 · le solde des comptes de gestion d’un exercice CLOS se lit avec les mouvements, jamais avant la période', async () => {
+    const c = await lire((ouvrir) => service({ lignes: LIGNES_CLOS }).fpm.balanceGeneraleEnFlux('t1', 'ex', true, ouvrir));
+    const f = c.getWorksheet('Balance')!;
+    const achats = ligneDe(f, 'Achats');
+    // Débit 3 000 de l'achat, crédit 3 000 de la clôture · rien avant la période, solde nul.
+    expect(['C', 'D', 'E', 'F', 'G', 'H'].map((x) => achats.getCell(x).value)).toEqual([null, null, 3000, 3000, null, null]);
+    const resultat = ligneDe(f, 'Résultat');
+    // Le 13 n'a que la clôture, au DÉBIT · `+ l.clotureDebit` retiré, E tomberait à vide.
+    expect(['C', 'D', 'E', 'F', 'G', 'H'].map((x) => resultat.getCell(x).value)).toEqual([null, null, 3000, null, 3000, null]);
+    const gl = c.getWorksheet('60110000')!;
+    expect(['D10', 'F10', 'H10'].map((a) => gl.getCell(a).value)).toEqual(['Facture REGIDESO', 3000, 3000]);
+    expect(['D11', 'G11', 'H11'].map((a) => gl.getCell(a).value)).toEqual(['Solde des comptes de gestion', 3000, null]);
+    expect(['F', 'G', 'H'].map((x) => ligneDe(gl, 'Total du compte').getCell(x).value)).toEqual([3000, 3000, null]);
+    expect(['F', 'G'].map((x) => ligneDe(gl, 'Solde à la balance générale').getCell(x).value)).toEqual([3000, 3000]);
+    ligneDe(gl, 'Écart : aucun');
+    // Tout est validé · aucune mention de brouillard.
+    expect(f.getCell('A7').value).toBeNull();
+  });
+
+  it('relevé A · un compte de fournisseurs SANS tiers est listé, et le contrôle lit les 40 par un agrégat à part', async () => {
+    const { fpm, prisma } = service({ lignes: LIGNES_SANS_TIERS });
+    const c = await lire((ouvrir) => fpm.balanceTiersEnFlux('t1', 'ex', 'FOURNISSEURS', false, ouvrir));
+    const f = c.getWorksheet('Balance')!;
+    expect(ligneDe(f, 'Fournisseurs divers · aucun tiers rattaché').getCell('F').value).toBe(100);
+    ligneDe(f, 'Écart : aucun');
+    // L'agrégat vise le divisionnaire entier, rattaché ou non.
+    expect(prisma.ligneEcriture.aggregate.mock.calls.map((x: any[]) => x[0].where.compte)).toEqual(
+      Array(3).fill({ OR: [{ numero: { startsWith: '40' } }] }),
+    );
+  });
+
+  it('relevé A · une balance qui perdrait le compte sans tiers fait apparaître l’écart, chiffré', async () => {
+    const options = { lignes: LIGNES_SANS_TIERS, balanceSans: 'c4019' };
+    const c = await lire((ouvrir) => service(options).fpm.balanceTiersEnFlux('t1', 'ex', 'FOURNISSEURS', false, ouvrir));
+    const ecart = ligneDe(c.getWorksheet('Balance')!, 'Écart avec la balance générale');
+    expect(['E', 'F', 'G', 'H'].map((x) => ecart.getCell(x).value)).toEqual([null, -100, 100, null]);
+    const g = await lire((ouvrir) => service(options).fpm.grandLivreTiersEnFlux('t1', 'ex', 'FOURNISSEURS', ouvrir));
+    expect(['F', 'G'].map((x) => ligneDe(g.worksheets[0], 'Écart').getCell(x).value)).toEqual([null, -100]);
+  });
+
+  it('relevé B · la lecture par lots avance par le curseur, `skip: 1`, sans doublon ni oubli', async () => {
+    const { fpm, prisma } = service();
+    fpm.lotExport = 3;
+    const c = await lire((ouvrir) => fpm.grandLivreEnFlux('t1', 'ex', ouvrir));
+    const appels = prisma.ligneEcriture.findMany.mock.calls.map((x: any[]) => x[0]);
+    expect(appels.map((a: any) => [a.take, a.cursor?.id, a.skip])).toEqual([
+      [3, undefined, undefined],
+      [3, 'l5', 1],
+      [3, 'l2', 1],
+      [3, 'l7', 1],
+    ]);
+    // Une ligne de livre par ligne d'écriture, chacune une fois.
+    const f = c.worksheets[0];
+    const datees: string[] = [];
+    f.eachRow((r, n) => {
+      if (n > 8 && r.getCell('A').value instanceof Date) datees.push(`${r.getCell('D').value}|${r.getCell('F').value}|${r.getCell('G').value}`);
+    });
+    const attendues = LIGNES.map(
+      (l) => `${l.ecriture.libelle}${l.ecriture.statut === 'VALIDEE' ? '' : ' · brouillard'}|${l.debit || null}|${l.credit || null}`,
+    );
+    expect([...datees].sort()).toEqual([...attendues].sort());
+    expect(['F', 'G'].map((x) => ligneDe(f, 'Totaux').getCell(x).value)).toEqual([1950, 1950]);
+  });
+
+  it('relevé B · chaque feuille de compte se contrôle contre SA ligne de balance', async () => {
+    const c = await lire((ouvrir) => service().fpm.balanceGeneraleEnFlux('t1', 'ex', true, ouvrir));
+    for (const nom of ['40110001', '52110000']) {
+      const g = c.getWorksheet(nom)!;
+      const total = ligneDe(g, 'Total du compte');
+      const balanceDuCompte = ligneDe(g, 'Solde à la balance générale');
+      expect(balanceDuCompte.number).toBe(total.number + 1);
+      expect(['F', 'G'].map((x) => balanceDuCompte.getCell(x).value)).toEqual(['F', 'G'].map((x) => total.getCell(x).value));
+      expect(ligneDe(g, 'Écart : aucun').number).toBe(total.number + 2);
+    }
+  });
+
+  it('relevé D · la balance DIT qu’elle porte le brouillard, sous le cartouche', async () => {
+    const f = (await lire((ouvrir) => service().fpm.balanceGeneraleEnFlux('t1', 'ex', false, ouvrir))).getWorksheet('Balance')!;
+    expect(f.getCell('A7').value).toBe('Brouillard compris · 1 écriture non validée');
+  });
+
+  it('relevé G · les clients du SYSCOHADA s’intitulent « Client »', async () => {
+    const c = await lire((ouvrir) => service({ referentiel: 'SYSCOHADA' }).fpm.balanceTiersEnFlux('t1', 'ex', 'CLIENTS', false, ouvrir));
+    expect(c.getWorksheet('Balance')!.getCell('D4').value).toBe('Client');
   });
 });

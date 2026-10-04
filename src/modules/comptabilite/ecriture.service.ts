@@ -3110,13 +3110,28 @@ export class EcritureService {
   }
 
   /** Grand livre d'un compte : ses lignes avec solde progressif. */
-  async grandLivre(tenantId: string, compteId: string, exerciceId?: string) {
+  async grandLivre(tenantId: string, compteId: string, exerciceId?: string, plafond?: number) {
     const compte = await this.prisma.compte.findFirst({ where: { id: compteId, tenantId } });
     if (!compte) {
       throw new BadRequestException('Compte introuvable pour ce tenant');
     }
 
     const perimetreEcriture = { tenantId, ...(exerciceId ? { exerciceId } : {}) };
+
+    // LA FENÊTRE EST BORNÉE (ligne FPM, second tour, relevé E) · le grand
+    // livre d'UN compte s'ouvre à l'écran quand le livre complet y est refusé,
+    // et un compte de banque peut porter à lui seul plus de lignes qu'une
+    // fenêtre n'en tient. Au-delà, un refus qui dit par où passer, jamais une
+    // tranche muette · un livre amputé en silence est faux (CLAUDE.md § 8 bis).
+    if (plafond !== undefined) {
+      const nombre = await this.prisma.ligneEcriture.count({ where: { compteId, ecriture: perimetreEcriture } });
+      if (nombre > plafond) {
+        throw new BadRequestException(
+          `Le grand livre du compte ${compte.numero} porte ${nombre.toLocaleString('fr-FR')} lignes, au-delà de ce ` +
+            `qu'une fenêtre peut afficher (${plafond.toLocaleString('fr-FR')}). Exportez-le en Excel.`,
+        );
+      }
+    }
 
     const [lignes, contreparties] = await Promise.all([
       this.prisma.ligneEcriture.findMany({

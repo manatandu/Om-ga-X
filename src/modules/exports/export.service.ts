@@ -6,6 +6,8 @@ import type { PerimetreBalanceAgee } from '../comptabilite/ecriture.service';
 import { perimetreJournal } from '../comptabilite/ecriture.service';
 import type { CriteresRecherche } from '../comptabilite/recherche-ecritures';
 import {
+  LOT_EXPORT,
+  MAX_LIGNES_EXPORT,
   PREMIERE_LIGNE_DONNEES,
   ouvrirFeuilleEnFlux,
   type IdentiteEtat,
@@ -247,13 +249,6 @@ export class ExportService {
     return Buffer.from(await classeur.xlsx.writeBuffer());
   }
 
-  /**
-   * Taille d'un lot de lecture pour les exports en flux · le pendant de
-   * `LOT_LECTURE` des notes annexes. Cinq cents écritures avec leurs lignes
-   * pèsent quelques mégaoctets : l'intérêt n'est pas la vitesse, c'est que la
-   * mémoire ne dépende plus de la taille du dossier.
-   */
-  private static readonly LOT_EXPORT = 500;
 
   /**
    * Colonnes du journal · sorties en constante parce que le flux doit les
@@ -301,35 +296,6 @@ export class ExportService {
     { header: 'Validée par', key: 'valideePar', width: 28 },
   ];
 
-  /**
-   * PLAFOND DES DEUX LIVRES EXPORTÉS, ET CE QU'IL MESURE DÉSORMAIS.
-   *
-   * Il valait 50 000 parce que le classeur était bâti ENTIER EN MÉMOIRE · à ce
-   * volume, le banc du 2026-09-03 relevait 693 Mo pour un tas de 460 Mio, et
-   * 200 000 lignes tuaient le processus. Ce n'était donc pas une borne
-   * comptable mais une borne de construction, et elle refusait un grand livre
-   * parfaitement ordinaire : un dossier à 60 000 lignes n'a rien d'un gros
-   * dossier.
-   *
-   * Le flux a déplacé la borne, il ne l'a pas supprimée. Mesuré en flux, même
-   * banc : 200 000 lignes coûtent 246 Mo, 500 000 en coûtent 443 · c'est-à-dire
-   * PRESQUE TOUT LE TAS. `useStyles: true`, que les formats de cellule rendent
-   * obligatoire, n'y change quasiment rien en mémoire mais double le temps
-   * (37,6 s contre 19,6 s à 500 000). Le plafond est donc porté à 200 000, la
-   * dernière mesure qui laisse la moitié du tas libre.
-   *
-   * LA RÉSERVE EST ÉCRITE PLUTÔT QUE SUPPOSÉE · la mesure porte sur UN export à
-   * la fois. Cloud Run sert 80 requêtes par instance (`--concurrency 80`, § 5
-   * de CLAUDE.md) : deux exports de 200 000 lignes lancés en même temps sur la
-   * même instance ne sont couverts par aucune mesure. Refaire le banc avant de
-   * relever encore ce chiffre, et le refaire à plusieurs exports simultanés.
-   *
-   * ET IL RESTE UN REFUS, JAMAIS UNE TRONCATURE · le journal et le grand livre
-   * sont des livres obligatoires (AUDCIF art. 22, 6°), et « un livre amputé en
-   * silence est un document faux ». Au-delà du plafond, l'export s'arrête et
-   * nomme le chemin de rechange.
-   */
-  private static readonly MAX_LIGNES_EXPORT = Number(process.env.EXPORT_MAX_LIGNES ?? 200_000);
 
   /**
    * DEUX EXPORTS D'UN COMPTE RESTENT EN MÉMOIRE (audit final F101) · le grand
@@ -373,10 +339,10 @@ export class ExportService {
    */
   private async verifierVolume(where: Prisma.LigneEcritureWhereInput, quoi: string) {
     const nb = await this.prisma.ligneEcriture.count({ where });
-    if (nb > ExportService.MAX_LIGNES_EXPORT) {
+    if (nb > MAX_LIGNES_EXPORT) {
       throw new PayloadTooLargeException(
         `${quoi} : ${nb.toLocaleString('fr-FR')} lignes à exporter, au-delà de la limite de ` +
-          `${ExportService.MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. Restreignez la période (ou le journal) ` +
+          `${MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. Restreignez la période (ou le journal) ` +
           `et relancez l'export.`,
       );
     }
@@ -643,7 +609,7 @@ export class ExportService {
         // cloisonnement lit le CODE, pas la valeur d'une variable, et une borne
         // qu'il ne voit pas est une borne qu'un relecteur ne voit pas non plus.
         where: { ...where, tenantId },
-        take: ExportService.LOT_EXPORT,
+        take: LOT_EXPORT,
         ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
         include: {
           lignes: { include: { compte: true } },
@@ -689,7 +655,7 @@ export class ExportService {
           });
         }
       }
-      if (lot.length < ExportService.LOT_EXPORT) break;
+      if (lot.length < LOT_EXPORT) break;
       curseur = lot[lot.length - 1].id;
     }
 
@@ -914,7 +880,7 @@ export class ExportService {
       const lot = await this.prisma.ligneEcriture.findMany({
         // `tenantId` répété · voir le journal juste au-dessus.
         where: { ecriture: { ...perimetre, tenantId } },
-        take: ExportService.LOT_EXPORT,
+        take: LOT_EXPORT,
         ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
         include: { compte: true, ecriture: { include: { journal: true } } },
         // Ordre TOTAL · à date égale, laisser le plan d'exécution décider ferait
@@ -954,7 +920,7 @@ export class ExportService {
           statut: l.ecriture.statut === 'VALIDEE' ? 'Validée' : 'Brouillard',
         });
       }
-      if (lot.length < ExportService.LOT_EXPORT) break;
+      if (lot.length < LOT_EXPORT) break;
       curseur = lot[lot.length - 1].id;
     }
 

@@ -171,6 +171,8 @@ export interface ParametresFeuilleFpm {
   lignesEntete: 1 | 2;
   /** Ligne 1 · le lien « Retour à la balance », s'il y en a un. */
   retour?: ExcelJS.CellFormulaValue;
+  /** Ligne 7 · une mention sous le cartouche (le brouillard), s'il y en a une. */
+  mention?: string;
 }
 
 /**
@@ -268,7 +270,9 @@ export function poserFeuilleFpm(
   poser(l6, avantDerniere, 'Page :', { alignment: { horizontal: 'right' } });
   poser(l6, n, 1, { numFmt: '0', alignment: aGauche });
   l6.commit();
-  feuille.getRow(7).commit();
+  const l7 = feuille.getRow(7);
+  if (p.mention) poser(l7, 1, p.mention, { font: { ...POLICE, italic: true, bold: true } });
+  l7.commit();
 
   // EN-TÊTES · fond plein, blanc gras, centrés et renvoyés à la ligne. Toutes
   // les cellules des lignes d'en-tête reçoivent le fond, fusionnées ou non,
