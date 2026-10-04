@@ -69,13 +69,15 @@ import {
   ecrireFeuilleBalance,
   FMT_MONTANT as FMT_MONTANT_ETAFI,
   fusion,
-  LigneBalanceLiasse,
+  type BalanceLiasse,
   NiveauLigne,
   NOM_BALANCE,
   NOM_BALANCE_N1,
   PartiesNotes,
+  sommeColonneBalance,
   titreNote,
 } from './theme-etafi';
+import { divisionsDeLaClasse9, type LigneBalanceFpm } from './balance-fpm';
 import {
   construireFeuilleEtat,
   NIVEAUX_ETAT_PROJETS,
@@ -4646,26 +4648,60 @@ export class ExportService {
    * Résultat du même classeur les publiait en entier, sans qu'aucun contrôle
    * d'équilibre ne le voie.
    */
-  private async lignesBalanceLiasse(tenantId: string, exerciceId: string): Promise<LigneBalanceLiasse[]> {
-    const balance = await this.ecritureService.balance(tenantId, exerciceId, false);
-    return avantSoldeDesComptesDeGestion(balance.lignes)
+  private async lignesBalanceLiasse(tenantId: string, exerciceId: string): Promise<BalanceLiasse> {
+    const [balance, exercice, identite] = await Promise.all([
+      this.ecritureService.balance(tenantId, exerciceId, false),
+      this.prisma.exercice.findFirstOrThrow({
+        where: { id: exerciceId, tenantId },
+        select: { dateDebut: true, dateFin: true },
+      }),
+      // N-1 porte SA période dans le cartouche, et sa colonne « Mouvements
+      // au <veille> » se lit à la veille de SON début.
+      this.identiteEtat(tenantId, { exerciceId }),
+    ]);
+    const soldeRetire = balance.lignes.some((l) => (l.clotureDebit ?? 0) !== 0 || (l.clotureCredit ?? 0) !== 0);
+    const lignes: LigneBalanceFpm[] = avantSoldeDesComptesDeGestion(balance.lignes)
       // Redondant par construction, gardé contre le double comptage.
       .filter((l) => l.typeCompte !== 'TOTAL')
-      .map((l) => {
-        const ouverture = l.reportDebit - l.reportCredit;
-        return {
-          compte: l.numero,
-          libelle: l.intitule,
-          ouvertureDebit: Math.max(ouverture, 0),
-          ouvertureCredit: Math.max(-ouverture, 0),
-          // La colonne de clôture est retirée plus haut · il ne reste que
-          // l'activité de l'exercice.
-          mouvementDebit: l.mouvementDebit,
-          mouvementCredit: l.mouvementCredit,
-          clotureDebit: Math.max(l.solde, 0),
-          clotureCredit: Math.max(-l.solde, 0),
-        };
-      });
+      .map((l) => ({
+        compteId: l.compteId,
+        numero: l.numero,
+        intitule: l.intitule,
+        classe: l.classe,
+        // BRUTS · la présentation FPM rend les deux colonnes du report, et
+        // c'est sur elles que CONTROLE BALANCE vérifie l'ouverture.
+        avantDebit: l.reportDebit,
+        avantCredit: l.reportCredit,
+        // La colonne de clôture est retirée plus haut · il ne reste que
+        // l'activité de l'exercice.
+        mouvementDebit: l.mouvementDebit,
+        mouvementCredit: l.mouvementCredit,
+        totalDebit: l.totalDebit,
+        totalCredit: l.totalCredit,
+      }));
+    const divisions = divisionsDeLaClasse9(lignes);
+    const intitulesDivisions = divisions.length
+      ? new Map(
+          (
+            await this.prisma.compte.findMany({
+              where: { tenantId, numero: { in: divisions } },
+              select: { numero: true, intitule: true },
+            })
+          ).map((c) => [c.numero, c.intitule]),
+        )
+      : new Map<string, string>();
+    return {
+      lignes,
+      identite,
+      debut: exercice.dateDebut,
+      fin: exercice.dateFin,
+      intitulesDivisions,
+      // La balance de l'exercice CLOS se lit avant l'écriture qui solde les
+      // classes 6 à 8, comme les états du classeur · la balance exportée du
+      // même exercice la porte dans ses mouvements (audit final F5). Les deux
+      // diffèrent donc à dessein, et la feuille le dit.
+      mention: soldeRetire ? "Avant l'écriture qui solde les comptes de gestion · livre-journal seul" : undefined,
+    };
   }
 
   /** Découpage officiel de la fiche récapitulative du jeu projets. */
@@ -4705,13 +4741,13 @@ export class ExportService {
       this.noteAnnexeService.notesProjet(tenantId, exerciceId),
       this.exerciceN1Id(tenantId, exerciceId),
     ]);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     construireCouverture(classeur, ident, 'LIASSE PROJETS DE DEVELOPPEMENT', tenant.pays ?? '');
     construireGarde(classeur, ident, {
@@ -4801,10 +4837,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['Total général actif (BZ)', `'Bilan-Actif'!D${rangsActif.get('BZ')}`, ''],
       ['Total général passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
@@ -4905,13 +4942,13 @@ export class ExportService {
       this.etatsFinanciersSmtService.eligibilite(tenantId, exerciceId),
       this.exerciceN1Id(tenantId, exerciceId),
     ]);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     construireCouverture(classeur, ident, 'LIASSE SMT', tenant.pays ?? '');
     construireGarde(classeur, ident, {
@@ -4985,10 +5022,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['TOTAL ACTIF (GZ)', `'Bilan-Actif'!D${rangsActif.get('GZ')}`, ''],
       ['TOTAL PASSIF (HZ)', `'Bilan-Passif'!D${rangsPassif.get('HZ')}`, ''],
@@ -5093,15 +5131,15 @@ export class ExportService {
       this.noteAnnexeService.notesAssociations(tenantId, exerciceId),
       this.exerciceN1Id(tenantId, exerciceId),
     ]);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
 
     // 1-3 · balances et leur contrôle d'équilibre.
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     // 4-7 · pages d'identification du modèle.
     construireCouverture(classeur, ident, 'LIASSE SYSTEME NORMAL', tenant.pays ?? '');
@@ -5177,10 +5215,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['Total général actif net (BZ)', `'Bilan-Actif'!F${rangsActif.get('BZ')}`, ''],
       ['Total général passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
@@ -6630,15 +6669,15 @@ export class ExportService {
       this.noteAnnexeService.notesSyscohada(tenantId, exerciceId),
       this.exerciceN1Id(tenantId, exerciceId),
     ]);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
 
     // 1-3 · balances et leur contrôle d'équilibre.
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     // 4-7 · pages d'identification · page de garde, Fiche 1 au gabarit ETAFI
     // (le contenu de la fiche R1 de l'AUDCIF, sous d'autres lettres) et
@@ -6761,10 +6800,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['TOTAL GÉNÉRAL actif net (BZ)', `'Bilan-Actif'!F${rangsActif.get('BZ')}`, ''],
       ['TOTAL GÉNÉRAL passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
@@ -6921,13 +6961,13 @@ export class ExportService {
     ]);
     // Les deux journaux de suivi, pièces de base du ch. 1 § 1 (passe R2, C4).
     const suivi = await this.smtSyscohada.journauxDeSuivi(tenantId, exerciceId);
-    const lignesBalN = await this.lignesBalanceLiasse(tenantId, exerciceId);
-    const lignesBalN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : [];
+    const balN = await this.lignesBalanceLiasse(tenantId, exerciceId);
+    const balN1 = exerciceN1Id ? await this.lignesBalanceLiasse(tenantId, exerciceN1Id) : null;
 
     const classeur = this.nouveauClasseur();
-    ecrireFeuilleBalance(classeur, NOM_BALANCE, lignesBalN);
-    if (exerciceN1Id) ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, lignesBalN1);
-    construireControleBalance(classeur, Boolean(exerciceN1Id), lignesBalN.length, lignesBalN1.length);
+    const corpsN = await ecrireFeuilleBalance(classeur, NOM_BALANCE, balN);
+    const corpsN1 = balN1 ? await ecrireFeuilleBalance(classeur, NOM_BALANCE_N1, balN1) : null;
+    construireControleBalance(classeur, corpsN, corpsN1);
 
     construireCouverture(classeur, ident, 'LIASSE SMT', tenant.pays ?? '');
     construireGarde(classeur, ident, {
@@ -7004,10 +7044,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const n = Math.max(lignesBalN.length, 1);
     const controles: Array<[string, string | number, string | number]> = [
-      ['Total solde de clôture débit balance', `SUM('${NOM_BALANCE}'!G2:G${n + 1})`, ''],
-      ['Total solde de clôture crédit balance', `SUM('${NOM_BALANCE}'!H2:H${n + 1})`, ''],
+      // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
+      // lignes de compte.
+      ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
+      ['Total solde de clôture crédit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'H'), ''],
       ['Écart balance (doit être 0)', 'B2-B3', 0],
       ['Total actif', `'Bilan-Actif'!C${rangsActif.get('SAZ')}`, ''],
       ['Total passif', `'Bilan-Passif'!C${rangsPassif.get('SPZ')}`, ''],

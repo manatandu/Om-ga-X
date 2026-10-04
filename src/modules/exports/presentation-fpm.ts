@@ -176,13 +176,17 @@ export interface ParametresFeuilleFpm {
 }
 
 /**
- * Pose une feuille FPM dans un classeur en flux · cartouche des lignes 2 à 6,
- * en-têtes en ligne 8 (et 9), pied de page imprimé. Une feuille ne s'ouvre
- * qu'une fois la précédente commise · en flux, ses lignes sont déjà parties.
+ * Pose une feuille FPM · cartouche des lignes 2 à 6, en-têtes en ligne 8 (et
+ * 9), pied de page imprimé. En FLUX (`sortie` donnée), une feuille ne s'ouvre
+ * qu'une fois la précédente commise, ses lignes étant déjà parties. EN MÉMOIRE
+ * (liasse, `sortie` nulle), `commit` d'une ligne ne fait rien et la feuille
+ * n'a pas de `commit` · les feuilles BALANCE N et BALANCE N-1 de la liasse
+ * prennent ainsi la même présentation que la balance exportée (décision de
+ * Manasse du 2026-10-04), sans seconde écriture.
  */
 export function poserFeuilleFpm(
-  classeur: ExcelJS.stream.xlsx.WorkbookWriter,
-  sortie: Writable,
+  classeur: ExcelJS.stream.xlsx.WorkbookWriter | ExcelJS.Workbook,
+  sortie: Writable | null,
   p: ParametresFeuilleFpm,
 ) {
   const n = p.colonnes.length;
@@ -320,7 +324,7 @@ export function poserFeuilleFpm(
     }
     ligne.commit();
     derniere = ligne.number;
-    await attendreLeTuyau(sortie);
+    if (sortie) await attendreLeTuyau(sortie);
     return ligne.number;
   };
 
@@ -329,7 +333,12 @@ export function poserFeuilleFpm(
     ajouter,
     derniereLigne: () => derniere,
     premiereLigneDonnees: derniereEntete + 1,
-    fermer: () => feuille.commit(),
+    // En mémoire, une feuille ne se commet pas (la méthode n'existe que sur
+    // la feuille d'un classeur en flux).
+    fermer: () => {
+      const enFlux = feuille as unknown as { commit?: () => void };
+      if (typeof enFlux.commit === 'function') enFlux.commit();
+    },
   };
 }
 
