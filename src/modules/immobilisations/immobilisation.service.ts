@@ -10,6 +10,7 @@ import {
   JeuEtatsFinanciersSycebnl,
   Referentiel,
   SensDepreciation,
+  NatureMouvementDepreciation,
   StatutImmobilisation,
   SystemeComptableSyscohada,
   FondementDureeDixAns,
@@ -65,6 +66,7 @@ import {
   SortieImmobilisation,
   TypeSortie,
   MiseEnServiceDto,
+  TransfertDepreciationDto,
   RecevoirLegsDto,
   AcquerirAPrixGlobalDto,
   AcquerirAPrixAleatoireDto,
@@ -147,7 +149,14 @@ import {
   motifRefusTantQueEnCours,
   motifSansEnCours,
 } from './immobilisation-en-cours';
-import { avertissementDepreciationEnCours, cumulsParCompte29, motifRefusCompte29DuBien } from './depreciation-en-cours';
+import { cumulsParCompte29, motifRefusCompte29DuBien } from './depreciation-en-cours';
+import {
+  compteCiblePropose,
+  motifRefusCompteCible,
+  porteurDeLaDepreciation,
+  propositionTransfert,
+  type MouvementLu,
+} from './transfert-depreciation-en-cours';
 import { amortissementsHorsDotations, detacherPartieRemplacee } from './partie-remplacee';
 import {
   annuiteDegressive,
@@ -158,6 +167,45 @@ import {
 } from './revision-plan-amortissement';
 
 const EPSILON = 0.005;
+
+/**
+ * Ligne A22 bis · ce qu'il faut lire d'un mouvement de dépréciation pour
+ * proposer son transfert à la mise en service (`transfert-depreciation-en-cours.ts`).
+ */
+const CHAMPS_DEPRECIATION_TRANSFERT = {
+  sens: true,
+  montant: true,
+  montantImputeEcart: true,
+  compteDepreciationId: true,
+  compteDepreciation: { select: { numero: true } },
+  compteContrepartie: { select: { numero: true } },
+  exercice: { select: { dateFin: true } },
+} satisfies Prisma.DepreciationImmobilisationSelect;
+
+type DepreciationPourTransfert = Prisma.DepreciationImmobilisationGetPayload<{ select: typeof CHAMPS_DEPRECIATION_TRANSFERT }>;
+
+function versMouvementLu(d: DepreciationPourTransfert): MouvementLu {
+  return {
+    sens: d.sens,
+    montant: Number(d.montant),
+    compteDepreciationId: d.compteDepreciationId,
+    numeroCompteDepreciation: d.compteDepreciation.numero,
+    numeroContrepartie: d.compteContrepartie.numero,
+    montantImputeEcart: Number(d.montantImputeEcart),
+  };
+}
+
+/** Le transfert prêt à écrire · les comptes `cible`, `reprise` et `dotation` ne sont nuls qu'en aperçu. */
+interface TransfertPrepare {
+  etat: 'A_PASSER';
+  montant: number;
+  niveau: 'EXPLOITATION' | 'HAO';
+  numeroSource: string;
+  source: { id: string; numero: string };
+  cible: { id: string; numero: string } | null;
+  reprise: { id: string; numero: string } | null;
+  dotation: { id: string; numero: string } | null;
+}
 
 /** Une ligne du tableau des immobilisations · les colonnes du modèle, plus les dépréciations. */
 export interface LigneTableauImmo {
@@ -803,8 +851,10 @@ export class ImmobilisationService {
         valeurOrigine: true,
         compteImmobilisationId: true,
         compteEnCoursId: true,
-        // Ligne A22 · la dépréciation constatée pendant les travaux, pour la dire.
-        depreciations: { select: { sens: true, montant: true, compteDepreciationId: true, compteDepreciation: { select: { numero: true } } } },
+        compteImmobilisation: { select: { numero: true } },
+        // Lignes A22 et A22 bis · la dépréciation constatée pendant les
+        // travaux, pour la transférer au 29 du bien achevé.
+        depreciations: { select: CHAMPS_DEPRECIATION_TRANSFERT },
       },
     });
     if (!immo) throw new NotFoundException('Immobilisation introuvable');
@@ -850,7 +900,26 @@ export class ImmobilisationService {
       );
     }
 
+    // LIGNE A22 BIS · UNE MISE EN SERVICE NE REMONTE PAS AVANT UNE
+    // DÉPRÉCIATION CONSTATÉE SUR LE BIEN EN COURS. Cette dépréciation a lu le
+    // bien en cours à la clôture (son 29x9, `depreciation-en-cours.ts`, règle
+    // (4)) ; une mise en service antérieure ferait dire au livre que le bien
+    // était achevé ce jour-là, et le transfert, daté de la mise en service,
+    // reprendrait au 29x9 une dépréciation dotée APRÈS lui. Jumeau des deux
+    // refus ci-dessus (coûts d'emprunt, réévaluation).
+    const depreciationPosterieure = immo.compteEnCoursId
+      ? immo.depreciations.find((d) => d.exercice.dateFin >= date)
+      : undefined;
+    if (depreciationPosterieure) {
+      throw new BadRequestException(
+        `Ce bien a été déprécié à la clôture du ${depreciationPosterieure.exercice.dateFin.toISOString().slice(0, 10)} alors qu'il ` +
+          "était inscrit en cours · sa mise en service se date après cette clôture (AUDCIF Titre VIII ch. 12 § 2.1 ; fiche du compte 29).",
+      );
+    }
+
     let ecritureId: string | null = null;
+    let transfert: TransfertPrepare | null = null;
+    let avertissement: string | null = null;
     if (immo.compteEnCoursId) {
       if (!dto.exerciceId || !dto.journalId) {
         throw new BadRequestException(
@@ -864,6 +933,12 @@ export class ImmobilisationService {
         throw new BadRequestException("La date de mise en service doit se situer dans l'exercice indiqué.");
       }
       const montantEnCours = Number(immo.valeurOrigine);
+      // LIGNE A22 BIS · tout ce qui peut refuser le transfert se lit AVANT la
+      // première écriture (compte cible absent ou ambigu, comptes de dotation
+      // et de reprise absents du plan).
+      const preparation = await this.preparerTransfert(tenantId, immo, dto.compteDepreciationCibleId);
+      if (preparation.etat === 'ABSTENTION') avertissement = preparation.motif;
+      if (preparation.etat === 'A_PASSER') transfert = preparation;
       const ecriture = await this.ecritureService.creer(tenantId, userId, {
         exerciceId: exercice.id,
         journalId: dto.journalId,
@@ -875,34 +950,326 @@ export class ImmobilisationService {
         ],
       });
       ecritureId = ecriture.id;
+    } else if (immo.depreciations.length > 0) {
+      // Un bien porté d'emblée à son compte définitif ne passe aucune écriture
+      // de mise en service, et n'a donc ni exercice ni journal où dater un
+      // transfert · une dépréciation laissée sur un 29x9 (SYCEBNL, que la
+      // division ne borne pas) reste dite, et se transfère depuis la fiche.
+      const preparation = await this.preparerTransfert(tenantId, immo, undefined, { lectureSeule: true });
+      if (preparation.etat !== 'SANS_OBJET') {
+        avertissement =
+          preparation.etat === 'ABSTENTION'
+            ? preparation.motif
+            : `La dépréciation de ${preparation.montant.toFixed(2)} au ${preparation.numeroSource} reste à ce compte · ce bien n'était pas inscrit en cours, sa mise en service ne passe aucune écriture. Transférez-la depuis la fiche du bien.`;
+      }
     }
-    // LIGNE A22 · la dépréciation passée au 29x9 pendant les travaux RESTE où
-    // elle est · aucun texte ne la vire (fiches du compte 29, dotation et
-    // reprise seulement), et refuser la mise en service enfermerait le bien
-    // (une dépréciation par exercice, reprise et dotation à la clôture
-    // seulement). La réponse le DIT, montant et compte nommés
-    // (`depreciation-en-cours.ts`).
-    const avertissement = avertissementDepreciationEnCours(
-      cumulsParCompte29(
-        immo.depreciations.map((d) => ({ sens: d.sens, montant: Number(d.montant), compteDepreciationId: d.compteDepreciationId })),
-      ),
-      new Map(immo.depreciations.map((d) => [d.compteDepreciationId, d.compteDepreciation.numero])),
-    );
+
+    const ecrituresPassees: string[] = [];
     try {
-      const misEnService = await this.prisma.immobilisation.update({
-        where: { id, tenantId, dateMiseEnService: null },
-        data: { dateMiseEnService: date, ...(ecritureId ? { ecritureMiseEnServiceId: ecritureId } : {}) },
-        select: { id: true, dateMiseEnService: true, ecritureMiseEnServiceId: true },
-      });
-      return { ...misEnService, avertissementDepreciation: avertissement };
+      if (ecritureId) ecrituresPassees.push(ecritureId);
+      if (transfert) {
+        await this.ecrireTransfert(tenantId, userId, immo, transfert, {
+          exerciceId: dto.exerciceId!,
+          journalId: dto.journalId!,
+          date: dto.date.slice(0, 10),
+        }, ecrituresPassees);
+      }
+      const poser = (client: Prisma.TransactionClient | PrismaService) =>
+        client.immobilisation.update({
+          where: { id, tenantId, dateMiseEnService: null },
+          data: { dateMiseEnService: date, ...(ecritureId ? { ecritureMiseEnServiceId: ecritureId } : {}) },
+          select: { id: true, dateMiseEnService: true, ecritureMiseEnServiceId: true },
+        });
+      // La fiche et les deux mouvements du transfert ensemble, ou rien · un
+      // transfert enregistré sans mise en service (course perdue) laisserait
+      // la dépréciation au 2931 d'un bien encore en cours.
+      const t = transfert;
+      const misEnService = t
+        ? await transactionJournalisee(this.prisma, async (tx) => {
+            const fiche = await poser(tx);
+            await this.enregistrerTransfert(tx, userId, id, dto.exerciceId!, t, ecrituresPassees.slice(-2));
+            return fiche;
+          })
+        : await poser(this.prisma);
+      return {
+        ...misEnService,
+        transfertDepreciation: transfert ? this.resumeTransfert(transfert) : null,
+        avertissementDepreciation: avertissement,
+      };
     } catch (err) {
-      // L'écriture de CETTE requête ne reste pas au journal sans le bien qui la porte.
-      if (ecritureId) await this.annulerEcritureOrpheline(ecritureId);
+      // Les écritures de CETTE requête ne restent pas au journal sans le bien qui les porte.
+      for (const e of [...ecrituresPassees].reverse()) await this.annulerEcritureOrpheline(e);
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
         throw new ConflictException("Ce bien vient d'être mis en service depuis un autre poste · rechargez la liste.");
       }
       throw err;
     }
+  }
+
+  /**
+   * LIGNE A22 BIS · CE QUE LA MISE EN SERVICE FERAIT DE LA DÉPRÉCIATION DU
+   * 29x9, montré AVANT le geste (fenêtre de mise en service) · rien n'est
+   * écrit. `compteDepreciationCibleId` éprouve un choix du cabinet.
+   */
+  async propositionTransfertDepreciation(tenantId: string, id: string, compteDepreciationCibleId?: string) {
+    const immo = await this.chargerPourTransfert(tenantId, id);
+    const preparation = await this.preparerTransfert(tenantId, immo, compteDepreciationCibleId, { lectureSeule: true });
+    if (preparation.etat !== 'A_PASSER') return { ...preparation, candidats: [] as Array<{ id: string; numero: string; intitule: string }> };
+    return { ...this.resumeTransfert(preparation), etat: preparation.etat, motif: preparation.motifCible, candidats: preparation.candidats };
+  }
+
+  /**
+   * LIGNE A22 BIS · LE TRANSFERT D'UN BIEN DÉJÀ MIS EN SERVICE · un bien mis en
+   * service avant cette ligne, ou porté d'emblée à son compte définitif, dont
+   * la dépréciation est restée au 29x9. Daté de la mise en service si elle
+   * tombe dans l'exercice choisi ; si elle tombe dans une période antérieure,
+   * au premier jour de l'exercice choisi, sans jamais réécrire une période
+   * close (AUDCIF art. 22, 4°, « enregistrée au premier jour de la période
+   * non encore clôturée »).
+   */
+  async transfererDepreciation(tenantId: string, userId: string, id: string, dto: TransfertDepreciationDto) {
+    const immo = await this.chargerPourTransfert(tenantId, id);
+    if (immo.statut !== StatutImmobilisation.EN_SERVICE) {
+      throw new BadRequestException("Ce bien est sorti de l'actif · sa dépréciation est soldée avec lui.");
+    }
+    if (!immo.dateMiseEnService) {
+      throw new BadRequestException("Ce bien n'est pas encore mis en service · le transfert se passe avec sa mise en service.");
+    }
+    const exercice = await this.prisma.exercice.findFirst({ where: { id: dto.exerciceId, tenantId } });
+    if (!exercice) throw new BadRequestException('Exercice introuvable pour ce dossier');
+    if (exercice.statut === StatutExercice.CLOTURE) throw new BadRequestException('Cet exercice est clôturé.');
+    if (immo.dateMiseEnService > exercice.dateFin) {
+      throw new BadRequestException("Ce bien est mis en service après la fin de cet exercice · choisissez l'exercice de sa mise en service.");
+    }
+    const dateTransfert = immo.dateMiseEnService >= exercice.dateDebut ? immo.dateMiseEnService : exercice.dateDebut;
+    // La dépréciation transférée est celle qui existe au jour du transfert ·
+    // une dépréciation au 29x9 datée après lui serait reprise avant d'avoir
+    // été dotée.
+    const posterieure = immo.depreciations.find((d) => d.exercice.dateFin > dateTransfert);
+    if (posterieure) {
+      throw new BadRequestException(
+        `Une dépréciation de ce bien est datée du ${posterieure.exercice.dateFin.toISOString().slice(0, 10)}, après le ` +
+          `${dateTransfert.toISOString().slice(0, 10)} · passez le transfert dans l'exercice qui suit cette clôture.`,
+      );
+    }
+    const preparation = await this.preparerTransfert(tenantId, immo, dto.compteDepreciationCibleId);
+    if (preparation.etat === 'SANS_OBJET') {
+      throw new BadRequestException("Aucune dépréciation de ce bien n'est portée par un compte 29x9 · rien à transférer.");
+    }
+    if (preparation.etat === 'ABSTENTION') throw new BadRequestException(preparation.motif);
+    const ecrituresPassees: string[] = [];
+    try {
+      await this.ecrireTransfert(tenantId, userId, immo, preparation, {
+        exerciceId: exercice.id,
+        journalId: dto.journalId,
+        date: dateTransfert.toISOString().slice(0, 10),
+      }, ecrituresPassees);
+      await transactionJournalisee(this.prisma, (tx) =>
+        this.enregistrerTransfert(tx, userId, id, exercice.id, preparation, ecrituresPassees),
+      );
+      return { ...this.resumeTransfert(preparation), date: dateTransfert.toISOString().slice(0, 10) };
+    } catch (err) {
+      for (const e of [...ecrituresPassees].reverse()) await this.annulerEcritureOrpheline(e);
+      if (estConflitUnicite(err)) {
+        throw new ConflictException('Un transfert de dépréciation est déjà enregistré pour ce bien sur cet exercice.');
+      }
+      throw err;
+    }
+  }
+
+  private async chargerPourTransfert(tenantId: string, id: string) {
+    const immo = await this.prisma.immobilisation.findFirst({
+      where: { id, tenantId },
+      select: {
+        id: true,
+        designation: true,
+        statut: true,
+        dateMiseEnService: true,
+        compteImmobilisation: { select: { numero: true } },
+        depreciations: { select: CHAMPS_DEPRECIATION_TRANSFERT },
+      },
+    });
+    if (!immo) throw new NotFoundException('Immobilisation introuvable');
+    return immo;
+  }
+
+  /**
+   * LIGNE A22 BIS · la proposition (`transfert-depreciation-en-cours.ts`),
+   * puis les comptes du dossier · le 29 du bien achevé (choisi, ou proposé
+   * quand le plan n'en ouvre qu'un sous sa division), le 79 ou 863 et le 69
+   * ou 853. Tout manque refuse ici, avant toute écriture · `lectureSeule`
+   * rend le manque au lieu de le lever, pour l'aperçu.
+   */
+  private async preparerTransfert(
+    tenantId: string,
+    immo: { designation: string; compteImmobilisation: { numero: string }; depreciations: DepreciationPourTransfert[] },
+    compteDepreciationCibleId: string | undefined,
+    opts: { lectureSeule?: boolean } = {},
+  ): Promise<
+    | { etat: 'SANS_OBJET' }
+    | { etat: 'ABSTENTION'; motif: string }
+    | (TransfertPrepare & { motifCible: string | null; candidats: Array<{ id: string; numero: string; intitule: string }> })
+  > {
+    if (immo.depreciations.length === 0) return { etat: 'SANS_OBJET' };
+    const mouvements = immo.depreciations.map(versMouvementLu);
+    // Le régime n'est lu que s'il y a quelque chose à transférer · une mise en
+    // service sans dépréciation ne fait aucune lecture de plus.
+    if (propositionTransfert({ smt: false, numeroCompteDefinitif: immo.compteImmobilisation.numero, mouvements }).etat === 'SANS_OBJET') {
+      return { etat: 'SANS_OBJET' };
+    }
+    const regime = await this.regimeComptable(tenantId);
+    const proposition = propositionTransfert({
+      smt: estSystemeMinimal(regime),
+      numeroCompteDefinitif: immo.compteImmobilisation.numero,
+      mouvements,
+    });
+    if (proposition.etat !== 'A_PASSER') return proposition;
+    const echouer = (motif: string): never => {
+      throw new BadRequestException(motif);
+    };
+    const [candidats, reprise, dotation] = await Promise.all([
+      this.prisma.compte.findMany({
+        where: { tenantId, numero: { startsWith: proposition.racineCible.slice(0, 3) }, typeCompte: TypeCompteDetailTotal.DETAIL },
+        select: { id: true, numero: true, intitule: true },
+        orderBy: { numero: 'asc' },
+        take: 200,
+      }),
+      this.prisma.compte.findFirst({ where: { tenantId, numero: proposition.numeroReprise }, select: { id: true, numero: true } }),
+      this.prisma.compte.findFirst({ where: { tenantId, numero: proposition.numeroDotation }, select: { id: true, numero: true } }),
+    ]);
+    const admissibles = candidats.filter((c) => motifRefusCompteCible(c.numero, proposition.racineCible) === null);
+    let cible: { id: string; numero: string } | null = null;
+    let motifCible: string | null = null;
+    if (compteDepreciationCibleId) {
+      const choisi = await this.prisma.compte.findFirst({
+        where: { id: compteDepreciationCibleId, tenantId },
+        select: { id: true, numero: true, typeCompte: true },
+      });
+      if (!choisi) motifCible = 'Compte de dépréciation introuvable pour ce dossier.';
+      else if (choisi.typeCompte !== TypeCompteDetailTotal.DETAIL) motifCible = `Le compte ${choisi.numero} est un compte de regroupement · choisissez un compte de détail.`;
+      else motifCible = motifRefusCompteCible(choisi.numero, proposition.racineCible);
+      if (choisi && !motifCible) cible = choisi;
+    } else {
+      cible = compteCiblePropose(proposition.racineCible, admissibles);
+      if (!cible) {
+        motifCible =
+          admissibles.length === 0
+            ? `Le plan du dossier n'ouvre aucun compte ${proposition.racineCible} ni autre compte ${proposition.racineCible.slice(0, 3)} hors en-cours · ` +
+              'ouvrez-le dans Plan comptable, il reçoit la dépréciation du bien achevé.'
+            : `Plusieurs comptes ${proposition.racineCible.slice(0, 3)} peuvent recevoir la dépréciation du bien achevé · choisissez-le.`;
+      }
+    }
+    const manque =
+      motifCible ??
+      (!reprise ? `Compte ${proposition.numeroReprise} absent du plan du dossier · il reçoit la reprise du transfert (fiche du compte 79).` : null) ??
+      (!dotation ? `Compte ${proposition.numeroDotation} absent du plan du dossier · il porte la dotation du transfert (fiche du compte 69).` : null);
+    if (manque && !opts.lectureSeule) echouer(`La dépréciation de ce bien en cours se transfère à sa mise en service · ${manque}`);
+    return {
+      etat: 'A_PASSER',
+      montant: proposition.montant,
+      niveau: proposition.niveau,
+      source: { id: proposition.compteSourceId, numero: proposition.numeroSource },
+      cible,
+      reprise,
+      dotation,
+      numeroSource: proposition.numeroSource,
+      motifCible: manque,
+      candidats: admissibles,
+    };
+  }
+
+  /**
+   * Les deux écritures, l'une après l'autre, au brouillard · (1) D 29x9 / C
+   * 79 ou 863, (2) D 69 ou 853 / C 29 du bien achevé. Chaque identifiant est
+   * poussé dans `passees` dès sa création, pour que l'appelant retire tout
+   * en cas d'échec.
+   */
+  private async ecrireTransfert(
+    tenantId: string,
+    userId: string,
+    immo: { designation: string },
+    t: TransfertPrepare,
+    ou: { exerciceId: string; journalId: string; date: string },
+    passees: string[],
+  ): Promise<[string, string]> {
+    const reprise = await this.ecritureService.creer(tenantId, userId, {
+      exerciceId: ou.exerciceId,
+      journalId: ou.journalId,
+      date: ou.date,
+      libelle: `Reprise de dépréciation à la mise en service · ${immo.designation}`.slice(0, 190),
+      lignes: [
+        { compteId: t.source.id, debit: t.montant, credit: 0 },
+        { compteId: t.reprise!.id, debit: 0, credit: t.montant },
+      ],
+    });
+    passees.push(reprise.id);
+    const dotation = await this.ecritureService.creer(tenantId, userId, {
+      exerciceId: ou.exerciceId,
+      journalId: ou.journalId,
+      date: ou.date,
+      libelle: `Dotation de dépréciation du bien achevé · ${immo.designation}`.slice(0, 190),
+      lignes: [
+        { compteId: t.dotation!.id, debit: t.montant, credit: 0 },
+        { compteId: t.cible!.id, debit: 0, credit: t.montant },
+      ],
+    });
+    passees.push(dotation.id);
+    return [reprise.id, dotation.id];
+  }
+
+  /** Les deux mouvements du module, chacun RETENANT son écriture (`detenteurs-ecriture.ts`). */
+  private async enregistrerTransfert(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    immobilisationId: string,
+    exerciceId: string,
+    t: TransfertPrepare,
+    ecritures: string[],
+  ) {
+    const [ecritureReprise, ecritureDotation] = ecritures.slice(-2);
+    const indice =
+      'Transfert à la mise en service · la dépréciation constatée pendant les travaux est reprise sur le compte en cours ' +
+      'et dotée de nouveau sur le bien achevé (décision de l’éditeur du 2026-10-04 ; fiches des comptes 29, 69 et 79).';
+    await tx.depreciationImmobilisation.create({
+      data: {
+        immobilisationId,
+        exerciceId,
+        nature: NatureMouvementDepreciation.TRANSFERT_REPRISE,
+        sens: SensDepreciation.REPRISE,
+        montant: t.montant,
+        compteDepreciationId: t.source.id,
+        compteContrepartieId: t.reprise!.id,
+        indice,
+        ecritureId: ecritureReprise,
+        createdBy: userId,
+      },
+    });
+    await tx.depreciationImmobilisation.create({
+      data: {
+        immobilisationId,
+        exerciceId,
+        nature: NatureMouvementDepreciation.TRANSFERT_DOTATION,
+        sens: SensDepreciation.DOTATION,
+        montant: t.montant,
+        compteDepreciationId: t.cible!.id,
+        compteContrepartieId: t.dotation!.id,
+        indice,
+        ecritureId: ecritureDotation,
+        createdBy: userId,
+      },
+    });
+  }
+
+  private resumeTransfert(t: TransfertPrepare) {
+    return {
+      montant: t.montant,
+      niveau: t.niveau,
+      compteSource: t.source.numero,
+      compteCible: t.cible?.numero ?? null,
+      compteCibleId: t.cible?.id ?? null,
+      compteReprise: t.reprise?.numero ?? null,
+      compteDotation: t.dotation?.numero ?? null,
+    };
   }
 
   /** Un lieu d'un autre dossier n'existe pas, pour celui-ci. */
@@ -1144,7 +1511,13 @@ export class ImmobilisationService {
         // 29, et le 29x9 d'un bien en cours se reconnaît à son numéro.
         depreciations: {
           orderBy: { exercice: { dateDebut: 'asc' } },
-          include: { exercice: true, compteDepreciation: { select: { numero: true } } },
+          include: {
+            exercice: true,
+            compteDepreciation: { select: { numero: true } },
+            // Ligne A22 bis · le niveau de la dotation d'origine (691 ou 853)
+            // décide du niveau du transfert à la mise en service.
+            compteContrepartie: { select: { numero: true } },
+          },
         },
       },
     });
@@ -4048,7 +4421,10 @@ export class ImmobilisationService {
     const cumulDepreciation = this.cumulDepreciation(
       immo.depreciations.map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
     );
-    const derniereDepreciation = immo.depreciations.at(-1) ?? null;
+    // Ligne A22 bis · le compte qui porte le cumul, jamais le dernier mouvement lu.
+    const porteurReclassement = porteurDeLaDepreciation(
+      immo.depreciations.map((d) => ({ sens: d.sens, montant: Number(d.montant), compteDepreciationId: d.compteDepreciationId, compteContrepartieId: d.compteContrepartieId })),
+    );
 
     // LE 29 DE DESTINATION EST CHOISI, JAMAIS DEVINÉ · même raison qu'à la
     // dotation de dépréciation : le module ne connaît pas la subdivision que le
@@ -4090,8 +4466,8 @@ export class ImmobilisationService {
       lignes.push({ compteId: immo.compteAmortissementId, debit: cumulAmorti, credit: 0 });
       lignes.push({ compteId: nouvelleFamille.compteAmortissementId, debit: 0, credit: cumulAmorti });
     }
-    if (cumulDepreciation > EPSILON && derniereDepreciation && nouveauCompteDepreciation) {
-      lignes.push({ compteId: derniereDepreciation.compteDepreciationId, debit: cumulDepreciation, credit: 0 });
+    if (cumulDepreciation > EPSILON && porteurReclassement && nouveauCompteDepreciation) {
+      lignes.push({ compteId: porteurReclassement.compteDepreciationId, debit: cumulDepreciation, credit: 0 });
       lignes.push({ compteId: nouveauCompteDepreciation.id, debit: 0, credit: cumulDepreciation });
     }
 
@@ -4484,8 +4860,13 @@ export class ImmobilisationService {
     const cumulDepreciation = this.cumulDepreciation(
       immo.depreciations.map((d) => ({ sens: d.sens, montant: Number(d.montant) })),
     );
-    const derniereDepreciation = immo.depreciations.at(-1) ?? null;
-    const compteDepreciationSortie = derniereDepreciation?.compteDepreciationId ?? null;
+    // Ligne A22 bis · le compte qui PORTE le cumul, et le niveau de la
+    // dernière DOTATION · après un transfert, le dernier mouvement lu peut être
+    // la reprise du 29x9 (`porteurDeLaDepreciation`).
+    const porteur = porteurDeLaDepreciation(
+      immo.depreciations.map((d) => ({ sens: d.sens, montant: Number(d.montant), compteDepreciationId: d.compteDepreciationId, compteContrepartieId: d.compteContrepartieId })),
+    );
+    const compteDepreciationSortie = porteur?.compteDepreciationId ?? null;
 
     // Valeur d'entrée MOINS LES SEULS AMORTISSEMENTS · fiche du COMPTE 81,
     // « Contenu », dans les deux référentiels.
@@ -4567,7 +4948,7 @@ export class ImmobilisationService {
         tenantId,
         referentiel,
         nature,
-        derniereDepreciation?.compteContrepartieId ?? null,
+        porteur?.compteContrepartieDotationId ?? null,
       );
       lignesSortie.push({ compteId: compteDepreciationSortie, debit: cumulDepreciation, credit: 0 });
       lignesSortie.push({ compteId: compteReprise.id, debit: 0, credit: cumulDepreciation });

@@ -18,29 +18,17 @@
  *    par la dotation (691, 697, 853 ; SYCEBNL 69 ou 853), débit par la
  *    reprise (791, 797, 863 ; SYCEBNL 79 ou 863). AUCUN virement de 29 à 29.
  *
- * DÉCISION, PRISE PAR LES TEXTES (§ 1 du règlement intérieur, « une question
- * de fond se tranche par la loi »).
- *  (1) AUCUN VIREMENT n'est inventé · la mise en service ne touche pas au
- *      29x9, faute de texte qui le fasse, et le relevé du lot 1 (« non
- *      comblé · virement de la dépréciation 29x9 à l'achèvement ») reste
- *      vrai.
- *  (2) LA MISE EN SERVICE N'EST PAS REFUSÉE. Le refus « reprenez d'abord la
- *      dépréciation, puis refaites-la sur le compte définitif » enfermerait le
- *      bien · une seule dépréciation par bien et par exercice
- *      (`@@unique([immobilisationId, exerciceId])`), et la fiche du compte 29
- *      ne place reprise et dotation qu'« à la clôture de l'exercice » · la
- *      reprise et la dotation nouvelle tomberaient sur la même clôture, la
- *      seconde serait refusée, et une reprise sans recouvrement de valeur
- *      serait une écriture que le ch. 12 § 2.4.2 ne justifie pas. La
- *      dépréciation RESTE au 29x9 et la mise en service le DIT, montant et
- *      compte nommés, avec sa conséquence · le bilan lit le 29x9 par sa
- *      propre correspondance (au SYSCOHADA, « 2939p » rangé en AL par
- *      `correspondance-bilan-syscohada.ts`), si bien que le net du poste du
- *      bien achevé peut en être faussé jusqu'à la reprise. Comment placer
- *      cette dépréciation sous le poste du bien achevé (virement, que nul
- *      texte n'écrit, ou reprise et dotation à la même clôture, que le
- *      module n'admet pas) est une question que le corpus ne tranche pas ·
- *      remontée à Manasse (AVANCEMENT-A22.md).
+ * DÉCISION. A22 avait tranché par les textes · AUCUN VIREMENT n'est inventé,
+ * la mise en service n'est pas refusée, la dépréciation reste au 29x9 et la
+ * réponse le dit, la question du placement sous le poste du bien achevé
+ * remontant à Manasse. SA DÉCISION (2026-10-04, ligne A22 bis) · à la mise en
+ * service, la dépréciation est REPRISE sur le 29x9 et DOTÉE DE NOUVEAU au 29
+ * du bien achevé, avec les deux seuls mouvements que les fiches du compte 29
+ * connaissent (`transfert-depreciation-en-cours.ts`, ses trois abstentions et
+ * la tension avec « à la clôture de l'exercice », écrite là-bas). La clé
+ * « un mouvement par bien et par exercice » s'élargit à la NATURE du
+ * mouvement (`NatureMouvementDepreciation`), le test de la clôture restant
+ * unique.
  *  (3) UN BIEN, UN COMPTE 29 · tant qu'une dépréciation est en place, ses
  *      dotations et reprises suivantes s'inscrivent au compte qui la porte.
  *      Sans cela, une reprise au 2931 d'une dépréciation dotée au 2939 rend le
@@ -115,7 +103,7 @@ export function motifRefusCompte29DuBien(o: {
       "qu'elle n'est pas reprise en entier, sans quoi ce compte resterait créditeur et l'autre deviendrait débiteur " +
       '(fiche du compte 29).' +
       (enCours
-        ? " Elle a été constatée quand le bien était en cours · aucun texte ne la vire au compte du bien achevé (les fiches du compte 29 ne connaissent que la dotation et la reprise), elle reste donc à ce compte."
+        ? " Elle a été constatée quand le bien était en cours et n'a pas été transférée au 29 du bien achevé · transférez-la depuis la fiche du bien (reprise au 29x9, dotation au 29 du bien achevé, même montant), puis passez ce mouvement."
         : '')
     );
   }
@@ -135,23 +123,4 @@ export function motifRefusCompte29DuBien(o: {
     );
   }
   return null;
-}
-
-/**
- * Ce que la mise en service dit d'une dépréciation laissée au 29x9 · null
- * sans rien à dire. Rien n'est passé (décision (1) et (2) ci-dessus).
- */
-export function avertissementDepreciationEnCours(
-  cumuls: ReadonlyMap<string, number>,
-  numeros: ReadonlyMap<string, string>,
-): string | null {
-  const enCours = [...cumuls.entries()].filter(([id, c]) => c > EPSILON && estCompteDepreciationEnCours(numeros.get(id) ?? ''));
-  if (enCours.length === 0) return null;
-  const liste = enCours.map(([id, c]) => `${c.toFixed(2)} au ${numeros.get(id)}`).join(', ');
-  return (
-    `La dépréciation constatée pendant les travaux (${liste}) reste à ce compte · aucun texte ne la vire au compte ` +
-    "du bien achevé, les fiches du compte 29 ne connaissant que la dotation et la reprise. Elle s'ajuste à la " +
-    'clôture sur ce même compte, le plan du bien se ré-étale sur la valeur nette, et le bilan la range sous le ' +
-    'poste de ce compte, qui n’est pas forcément celui du bien achevé, tant qu’elle n’est pas reprise.'
-  );
 }

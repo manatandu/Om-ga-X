@@ -1,6 +1,5 @@
 import { Referentiel, SensDepreciation } from '@prisma/client';
 import {
-  avertissementDepreciationEnCours,
   cumulsParCompte29,
   estCompteDepreciationEnCours,
   motifRefusCompte29DuBien,
@@ -54,7 +53,7 @@ describe('un bien, un compte 29', () => {
       inscritEnCours: false,
     });
     expect(motif).toMatch(/inscrite au 29390000 \(500000\.00\)/);
-    expect(motif).toMatch(/aucun texte ne la vire/);
+    expect(motif).toMatch(/n'a pas été transférée au 29 du bien achevé/);
   });
 
   it('le compte qui porte la dépréciation reste admis, même après la mise en service (le 2939 d’un bien achevé)', () => {
@@ -119,23 +118,10 @@ describe('la première dotation suit le compte où le bien est inscrit (SYSCOHAD
   });
 });
 
-describe('ce que la mise en service dit', () => {
-  it('une dépréciation au 29x9 est nommée, montant et compte, sans rien passer', () => {
-    const texte = avertissementDepreciationEnCours(new Map([['c', 750_000]]), new Map([['c', '29390000']]));
-    expect(texte).toMatch(/750000\.00 au 29390000/);
-    expect(texte).toMatch(/aucun texte ne la vire/);
-  });
-
-  it('rien à dire sans dépréciation, ou quand elle est au compte du bien achevé', () => {
-    expect(avertissementDepreciationEnCours(new Map(), new Map())).toBeNull();
-    expect(avertissementDepreciationEnCours(new Map([['c', 750_000]]), new Map([['c', '29310000']]))).toBeNull();
-  });
-});
-
 /*
   LE CÂBLAGE (F4a) · la porte de la dépréciation lit le cumul par compte et
-  le compte où le bien est inscrit à la clôture ; la mise en service rend
-  l'avertissement. Le passage de la porte se prouve par l'étape qui la suit
+  le compte où le bien est inscrit à la clôture. La mise en service et son
+  transfert (ligne A22 bis) sont éprouvés par `transfert-depreciation-en-cours.spec.ts`. Le passage de la porte se prouve par l'étape qui la suit
   (la lecture des réévaluations du bien), interrompue par une sentinelle.
 */
 function harnais(o: {
@@ -202,41 +188,5 @@ describe('câblage de la porte de la dépréciation', () => {
     await expect(
       harnais({ compte29: '29310000', enCours: true, dateMiseEnService: D('2026-06-01'), depreciations }).enregistrerDepreciation('t1', 'u1', 'i1', reprise as never),
     ).rejects.toThrow(/inscrite au 29390000/);
-  });
-});
-
-describe('câblage de la mise en service', () => {
-  function harnaisMes(depreciations: { sens: SensDepreciation; montant: number; compteDepreciationId: string; compteDepreciation: { numero: string } }[]) {
-    const prisma = {
-      immobilisation: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: 'i1',
-          designation: 'Entrepôt',
-          dateAcquisition: D('2025-03-01'),
-          dateMiseEnService: null,
-          statut: 'EN_SERVICE',
-          valeurOrigine: 10_000_000,
-          compteImmobilisationId: 'c231',
-          compteEnCoursId: null,
-          depreciations,
-        }),
-        update: jest.fn(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'i1', ...data })),
-      },
-      coutEmpruntIncorpore: { aggregate: jest.fn().mockResolvedValue({ _max: { dateFin: null } }) },
-      ligneReevaluationBilan: { findFirst: jest.fn().mockResolvedValue(null) },
-    };
-    return new ImmobilisationService(prisma as unknown as PrismaService, {} as EcritureService);
-  }
-
-  it('la dépréciation du 2939 reste et la réponse le dit', async () => {
-    const r = await harnaisMes([
-      { sens: SensDepreciation.DOTATION, montant: 400_000, compteDepreciationId: 'c2939', compteDepreciation: { numero: '29390000' } },
-    ]).mettreEnService('t1', 'u1', 'i1', { date: '2026-06-01' } as never);
-    expect(r.avertissementDepreciation).toMatch(/400000\.00 au 29390000/);
-  });
-
-  it('sans dépréciation, rien n’est dit', async () => {
-    const r = await harnaisMes([]).mettreEnService('t1', 'u1', 'i1', { date: '2026-06-01' } as never);
-    expect(r.avertissementDepreciation).toBeNull();
   });
 });

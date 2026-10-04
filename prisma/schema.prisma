@@ -4568,6 +4568,17 @@ enum SensDepreciation {
   REPRISE
 }
 
+/// Ligne A22 bis · la NATURE d'un mouvement de dépréciation. CLOTURE · le test
+/// de la clôture (ch. 12 § 2.1), un par bien et par exercice. TRANSFERT_* · à
+/// la mise en service d'un bien en cours, la dépréciation du 29x9 est reprise
+/// puis dotée de nouveau au 29 du bien achevé (décision de Manasse du
+/// 2026-10-04), deux mouvements du même jour qui ne sont pas un test.
+enum NatureMouvementDepreciation {
+  CLOTURE
+  TRANSFERT_REPRISE
+  TRANSFERT_DOTATION
+}
+
 //
 // RECLASSEMENT D'UNE IMMOBILISATION · le changement d'utilisation que le
 // module ne savait pas faire.
@@ -4665,7 +4676,12 @@ model DepreciationImmobilisation {
   createdAt  DateTime @default(now())
   createdBy  String
 
-  @@unique([immobilisationId, exerciceId])
+  /// Ligne A22 bis · la nature entre dans la clé, et elle seule · un test par
+  /// bien et par exercice reste la règle (CLOTURE), le transfert de la mise
+  /// en service ajoute au plus une reprise et une dotation à côté de lui.
+  nature NatureMouvementDepreciation @default(CLOTURE)
+
+  @@unique([immobilisationId, exerciceId, nature])
   @@index([exerciceId])
   @@map("depreciations_immobilisation")
 }
