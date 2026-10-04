@@ -24,6 +24,13 @@ import { qualifierExemptionIs } from './exemption-is-ebnl';
 import { arrondirImpotArt150 } from './arrondi-article-150';
 import { montantFiscal } from './ecriture-impot-resultat';
 import { ENTREE_EN_VIGUEUR_LOI_23_053 } from '../../common/entree-en-vigueur-loi-23-053';
+import { avertissementDeficitsSimules, deficitsReportables, type ExerciceRejoue } from './report-deficitaire';
+import {
+  OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE,
+  deductionPeriodeCreation,
+  periodeDeCreation,
+  type PeriodeCreation,
+} from './periode-creation';
 // Le chiffre d'affaires n'est plus écrit ici : il se DÉRIVE du poste XB du
 // modèle du ch. 4 (voir correspondance-compte-resultat-syscohada.ts). Une
 // liste officielle recopiée dans deux modules est une divergence en attente.
@@ -132,6 +139,19 @@ export const OBSERVATIONS_PHYSIQUE_PASSE_F5 = {
  */
 export const OBSERVATION_UNIPERSONNELLE_PASSE_F5 =
   "Société unipersonnelle à associé ou actionnaire unique personne physique : le Titre 2, art. 3 la soumet à l'impôt sur les sociétés « même unipersonnelle », quand l'art. 63, al. 2, 1° soumet cet associé personnellement à l'IRPP, par renvoi au régime des sociétés de personnes qui n'ont pas opté pour l'IS. Aucune source lue n'articule les deux textes · le calcul reste à l'IS, et le point est à faire trancher.";
+
+/**
+ * C02 · LE CHIFFRE D'AFFAIRES QUE LE MODULE LIT, DIT À CHAQUE ENDROIT OÙ IL
+ * SERT. L'art. 57 assied le minimum sur le chiffre d'affaires « déclaré »,
+ * l'art. 44 le plafond des dons sur le « chiffre d'affaires de l'exercice »,
+ * les art. 43 et 49, 1° leurs plafonds sur le chiffre d'affaires « hors
+ * taxes » · aucun article du Titre Ier ne le définit. OmegaX lit le poste XB
+ * du compte de résultat (comptes 701 à 707), et ne le disait que dans la
+ * branche « déficit et chiffre d'affaires nul » (cas chiffré C02,
+ * `docs/cas-chiffres/is.md`). Le montant ne change pas · l'hypothèse se dit.
+ */
+export const LECTURE_CHIFFRE_AFFAIRES =
+  "Chiffre d'affaires lu sur les comptes 701 à 707 (poste XB du compte de résultat), mouvements du livre-journal, rabais compris · la loi n° 23/053 vise le chiffre d'affaires « déclaré » (art. 57) ou « hors taxes » (art. 43 et 49) sans le définir ; si celui que le dossier déclare diffère de ces comptes, l'impôt minimum et les plafonds affichés diffèrent d'autant.";
 
 @Injectable()
 export class FiscaliteService {
@@ -413,14 +433,21 @@ export class FiscaliteService {
     );
   }
 
-  private async lireBalance(tenantId: string, exerciceId: string) {
+  /**
+   * `arreteAu` · lecture à une date à l'intérieur de l'exercice, pour les
+   * comptes intermédiaires de l'art. 12, al. 3 (période de création arrêtée
+   * au 31 décembre). `inclureBrouillard` ne sert qu'à MESURER ce que le
+   * brouillard changerait (cas chiffré C01-bis) · jamais au calcul de
+   * l'impôt.
+   */
+  private async lireBalance(tenantId: string, exerciceId: string, arreteAu?: Date, inclureBrouillard = false) {
     // LE LIVRE-JOURNAL SEUL (audit du serveur du 2026-09-27, F6). Un résultat
     // fiscal, un impôt et un minimum de perception engagent le dossier devant
     // l'Administration · ils ne se calculent pas sur une écriture restée au
     // brouillard, qui n'est pas entrée en comptabilité (AUDCIF art. 22, 2°).
     // `propositionsRetraitements` lit déjà ainsi, et les deux lectures d'un
     // même exercice ne doivent pas rendre deux chiffres d'affaires.
-    const balance = await this.ecritureService.balance(tenantId, exerciceId, false);
+    const balance = await this.ecritureService.balance(tenantId, exerciceId, inclureBrouillard, arreteAu);
     // GARDE-FOU CONSERVÉ, ET REDONDANT PAR CONSTRUCTION · la balance ne rend
     // plus que des comptes de détail depuis qu'elle a cessé de sous-totaliser
     // par compte principal. Le filtre reste parce qu'un agrégat compté en plus
@@ -690,6 +717,9 @@ export class FiscaliteService {
                     ? `${plafond.enonce} · plafond commun à ${cumulNature!.toLocaleString('fr-FR')} de charges de cette nature, réparti au prorata`
                     : plafond.enonce,
                 conditionFermee ? this.enonceConditionFermee(l.definition.code, brut, cumulNature ?? 0) : null,
+                // C02 · le plafond est assis sur un chiffre d'affaires que le
+                // module LIT · dit sur la ligne même où il sert.
+                plafond.assiette === 'CHIFFRE_AFFAIRES' ? LECTURE_CHIFFRE_AFFAIRES : null,
               ]
                 .filter(Boolean)
                 .join(' · '),
@@ -918,11 +948,37 @@ export class FiscaliteService {
    * mot. Aucune donnée du modèle ne porte la source d'un produit ni le lieu
    * d'une exploitation.
    */
-  private avertissementsPerimetreLoi(dateDebutExercice: Date): string[] {
+  /**
+   * C10 · LE PREMIER EXERCICE LONG À CHEVAL SUR LE 1er JANVIER 2026, tranché
+   * par la loi (lue le 2026-10-04). Art. 12, al. 3 · la période de création
+   * est imposée À PART, sur les comptes intermédiaires du 31 décembre de
+   * l'année de création, et ses bénéfices « viennent ensuite en déduction des
+   * résultats du premier exercice comptable clos ». L'impôt du premier
+   * exercice clos porte donc sur ce qui suit le 31 décembre de l'année de
+   * création · créée en 2025, la société est imposée pour 2026 sous la loi
+   * n° 23/053, en vigueur depuis le 1er janvier 2026 (art. 153), et pour sa
+   * période de 2025 sous le texte qui régissait 2025 (art. 152, 2° · titres
+   * III et IV de l'O.-L. n° 69/009 abrogés, hors du corpus de calcul). Dire
+   * de tout l'exercice que « la loi ne le régissait pas » était faux pour sa
+   * part de 2026 · l'avertissement de SIMULATION ne vise plus que la période
+   * de création, et l'impôt du premier exercice clos est un impôt réel.
+   *
+   * `debutPeriodeImposable` · l'ouverture de l'exercice, ou le lendemain de la
+   * période de création quand l'art. 12, al. 3 la commande.
+   */
+  static debutPeriodeImposable(exercice: { dateDebut: Date }, periode: PeriodeCreation | null): Date {
+    return periode ? new Date(Date.UTC(periode.annee + 1, 0, 1)) : exercice.dateDebut;
+  }
+
+  private avertissementsPerimetreLoi(dateDebutExercice: Date, periode: PeriodeCreation | null = null): string[] {
     const avertissements = [
       "PÉRIMÈTRE TERRITORIAL NON DÉCOUPÉ (art. 7 et art. 51, alinéa 3). Le résultat fiscal calculé ici part du résultat COMPTABLE de la balance, dans son entier. OmegaX ne porte ni la source d'un produit ni le lieu d'une exploitation, et LE SENS DE LA CORRECTION DÉPEND DU RÉSULTAT DE L'EXPLOITATION ÉTRANGÈRE · les deux articles jouent en sens inverse. Si elle est BÉNÉFICIAIRE, l'article 7 ne retient « uniquement » que les bénéfices réalisés dans les entreprises exploitées ou sur les opérations réalisées en République Démocratique du Congo, plus ceux qu'une convention de double imposition attribue à la RDC : la base affichée est TROP LARGE, à retrancher par une déduction. Si elle est DÉFICITAIRE, l'article 51, alinéa 3 dispose que « les pertes subies dans les entreprises exploitées hors de la République Démocratique du Congo ne sont pas déductibles du bénéfice imposable des entreprises exploitées en République Démocratique du Congo » : la perte étrangère est déjà entrée dans le résultat comptable, la base est alors TROP ÉTROITE, et il faut la RÉINTÉGRER. Dans les deux cas, pièce à l'appui.",
     ];
-    if (dateDebutExercice.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime()) {
+    if (periode && !periode.sousLaLoi) {
+      avertissements.push(
+        `PREMIER EXERCICE LONG OUVERT AVANT LA LOI (art. 12, al. 3 et art. 153). La période de création, du ${periode.dateDebut.toISOString().slice(0, 10)} au ${periode.dateFin.toISOString().slice(0, 10)}, est imposée à part et relève du texte qui régissait ${periode.annee}, que le dossier ne contient pas · son impôt n'est PAS calculé ici, et ses bénéfices, lus au livre-journal ou déclarés, viennent seulement en déduction du premier exercice clos. L'impôt affiché est celui du premier exercice clos, période imposable ${periode.annee + 1}, sous la loi n° 23/053 en vigueur depuis le 1er janvier 2026.`,
+      );
+    } else if (!periode && dateDebutExercice.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime()) {
       avertissements.push(
         `EXERCICE ANTÉRIEUR À L'ENTRÉE EN VIGUEUR DE LA LOI. Cet exercice ouvre le ${dateDebutExercice.toISOString().slice(0, 10)}, avant le 1er janvier 2026, date à laquelle la loi n° 23/053 du 30 novembre 2023 est entrée en vigueur. Tout ce qui est calculé ci-dessous en vient : l'assiette, le catalogue des retraitements, le taux, le minimum de perception et le report déficitaire. Le texte applicable à cet exercice n'est PAS celui-ci et n'est pas dans OmegaX · ce chiffre est une SIMULATION sous la loi de 2026, pas le résultat fiscal de l'exercice. Il ne doit servir ni de déclaration, ni de base à un report déficitaire imputé sur un exercice postérieur, ni de BASE AUX ACOMPTES PROVISIONNELS de l'exercice suivant · l'art. 57 bis LPF les assied sur « l'impôt déclaré au titre de l'exercice précédent », c'est-à-dire sur l'impôt effectivement déclaré pour cet exercice-ci, sous le texte qui le régissait.`,
       );
@@ -949,67 +1005,94 @@ export class FiscaliteService {
   }
 
   /**
-   * Déficits reportables des exercices précédents, art. 51 · une perte est
-   * déductible de l'exercice suivant puis reportable, dans la limite de
-   * TROIS exercices après celui qui l'a subie. Chaque déficit s'impute sur
-   * les bénéfices intermédiaires avant d'arriver ici, dans l'ordre des
-   * exercices, le plus ancien d'abord · un déficit non consommé dans sa
-   * fenêtre est perdu, pas reporté plus loin.
+   * Déficits reportables des exercices précédents, art. 51 · rejoués du
+   * PREMIER exercice du dossier à celui qui précède la cible, dans l'ordre,
+   * chaque perte sur les premiers bénéfices qui la suivent et dans sa propre
+   * fenêtre de trois exercices (`report-deficitaire.ts`, cas chiffré C05).
+   *
+   * POURQUOI TOUT L'HISTORIQUE ET NON PLUS TROIS EXERCICES. La fenêtre bornée
+   * à l'exercice lu (`take: 3` et borne de date, passe F4b) rendait un report
+   * qui dépendait de l'année d'où l'on regardait · ce qui reste d'un déficit
+   * dépend des bénéfices qui l'ont suivi, que des déficits plus anciens, sortis
+   * de la fenêtre, avaient pu consommer d'abord. Le rejeu part donc toujours du
+   * même point, et la borne de DATE de la passe F4b vit désormais perte par
+   * perte (`finDeFenetre`) · un dossier qui tient 2020, 2021 puis 2026 ne
+   * réimpute toujours pas en 2026 la perte de 2020.
+   *
+   * Le coût est d'une balance par exercice antérieur · les exercices d'un
+   * dossier se comptent par dizaines au plus (conservation de dix ans, AUDCIF
+   * art. 24), et la lecture est bornée au dossier.
    */
   private async deficitsAnterieursCalcules(tenantId: string, exercice: { id: string; dateDebut: Date }) {
-    /*
-      LA FENÊTRE SE COMPTE EN EXERCICES DE LA VIE DE L'ENTREPRISE, PAS EN
-      LIGNES PRÉSENTES DANS LE DOSSIER.
-
-      L'art. 51, alinéa 1er reporte le déficit « sur les exercices suivants
-      JUSQU'AU TROISIÈME EXERCICE QUI SUIT l'exercice déficitaire ». C'est une
-      borne de DATE. Le `take: 3` ne comptait, lui, que trois ENREGISTREMENTS,
-      et rien n'oblige les exercices d'un dossier à être jointifs · `validerArticle7`
-      ne vérifie que la fin au 31 décembre et l'unicité de la période, et un
-      dossier repris d'un confrère est précisément le cas où l'on ne saisit que
-      les exercices dont on dispose.
-
-      Un dossier qui tient 2020, 2021 puis 2026 se voyait imputer en 2026 le
-      déficit de 2020, dont le droit s'est éteint au 31 décembre 2023. L'impôt
-      sortait minoré, sans qu'aucun total ne bouge.
-
-      LA BORNE DE DATE DOUBLE DONC LE `take`, et ne le remplace pas : le `take`
-      protège des dossiers à très longue histoire, la date dit le droit.
-    */
-    const bornePlusAncienne = new Date(
-      Date.UTC(
-        exercice.dateDebut.getUTCFullYear() - IMPOT_SOCIETES.exercicesReportDeficit,
-        exercice.dateDebut.getUTCMonth(),
-        exercice.dateDebut.getUTCDate(),
-      ),
-    );
     const precedents = await this.prisma.exercice.findMany({
-      where: { tenantId, dateFin: { lt: exercice.dateDebut, gte: bornePlusAncienne } },
+      where: { tenantId, dateFin: { lt: exercice.dateDebut } },
       orderBy: { dateDebut: 'desc' },
-      take: IMPOT_SOCIETES.exercicesReportDeficit,
+      select: { id: true, dateDebut: true, dateFin: true },
     });
-    // Du plus ancien au plus récent, pour consommer chaque déficit sur les
-    // bénéfices qui l'ont suivi.
-    const chronologiques = [...precedents].reverse();
-    const fenetre: { exerciceId: string; dateFin: Date; restant: number }[] = [];
-    for (const ex of chronologiques) {
-      const brut = (await this.resultatFiscalBrut(tenantId, ex.id)).resultatFiscalBrut;
-      if (brut < 0) {
-        fenetre.push({ exerciceId: ex.id, dateFin: ex.dateFin, restant: -brut });
-        continue;
-      }
-      let benefice = brut;
-      for (const d of fenetre) {
-        const impute = Math.min(d.restant, benefice);
-        d.restant -= impute;
-        benefice -= impute;
-        if (benefice <= 0) break;
-      }
+    const premierId = precedents.length
+      ? [...precedents].sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime())[0].id
+      : null;
+    const rejoues: ExerciceRejoue[] = [];
+    for (const ex of precedents) {
+      rejoues.push({
+        exerciceId: ex.id,
+        dateDebut: ex.dateDebut,
+        dateFin: ex.dateFin,
+        base: await this.baseAvantReport(tenantId, ex, ex.id === premierId),
+      });
     }
-    const detail = fenetre
-      .filter((d) => d.restant > 0.005)
-      .map((d) => ({ exerciceId: d.exerciceId, dateFin: d.dateFin, montant: arrondir(d.restant) }));
+    const detail = deficitsReportables(rejoues, exercice, IMPOT_SOCIETES.exercicesReportDeficit);
     return { total: arrondir(detail.reduce((s, d) => s + d.montant, 0)), detail };
+  }
+
+  /**
+   * La base d'un exercice au sens de l'art. 52, 2° · résultat fiscal brut,
+   * moins, pour le premier exercice long de l'art. 12, al. 3, les bénéfices de
+   * la période de création déjà imposés à part. Sans cette déduction, le
+   * rejeu du report verrait un bénéfice qui a déjà payé son impôt.
+   */
+  private async baseAvantReport(
+    tenantId: string,
+    exercice: { id: string; dateDebut: Date; dateFin: Date },
+    premierExerciceDuDossier: boolean,
+  ): Promise<number> {
+    const brut = (await this.resultatFiscalBrut(tenantId, exercice.id)).resultatFiscalBrut;
+    const periode = periodeDeCreation(exercice, premierExerciceDuDossier);
+    if (!periode) return brut;
+    const dossier = await this.prisma.dossierFiscalExercice.findUnique({ where: { exerciceId: exercice.id } });
+    const lecture = await this.lirePeriodeCreation(tenantId, exercice.id, periode, dossier?.resultatPeriodeCreationSaisi ?? null);
+    return arrondir(brut - deductionPeriodeCreation(lecture.resultatFiscal));
+  }
+
+  /**
+   * LES COMPTES INTERMÉDIAIRES DE LA PÉRIODE DE CRÉATION · art. 12, al. 3,
+   * « ces bénéfices sont déterminés d'après les comptes intermédiaires arrêtés
+   * à la date du 31 décembre de l'année de création ».
+   *
+   * LUS SUR LE LIVRE-JOURNAL À CETTE DATE, ou DÉCLARÉS. Le livre-journal dit
+   * le résultat COMPTABLE de la période, régularisations datées au plus tard
+   * du 31 décembre comprises ; il ne sait pas à quelle période rattacher un
+   * retraitement fiscal, saisi pour l'exercice entier. Le cabinet qui a arrêté
+   * ses comptes intermédiaires DÉCLARE donc le bénéfice fiscal de la période
+   * (`resultatPeriodeCreationSaisi`), qui prime ; à défaut, le résultat
+   * comptable lu fait foi, et l'observation dit que les retraitements sont
+   * tous rattachés au premier exercice clos. Le chiffre d'affaires, lui, est
+   * un fait comptable · il se lit toujours.
+   */
+  private async lirePeriodeCreation(
+    tenantId: string,
+    exerciceId: string,
+    periode: PeriodeCreation,
+    saisi: unknown,
+  ) {
+    const lecture = await this.lireBalance(tenantId, exerciceId, periode.dateFin);
+    const declare = saisi === null || saisi === undefined ? null : arrondir(Number(saisi));
+    return {
+      resultatComptable: lecture.resultatComptable,
+      chiffreAffaires: lecture.chiffreAffaires,
+      resultatFiscal: declare ?? lecture.resultatComptable,
+      source: declare === null ? ('LIVRE_JOURNAL' as const) : ('DECLARE' as const),
+    };
   }
 
   /**
@@ -1331,7 +1414,13 @@ export class FiscaliteService {
   private observationsCalendrierPaiement(
     regime: RegimeImposition,
     impotDu: number | null,
-    contexte: { acomptesDus: boolean; sansExerciceAnterieur: boolean; simulationAvantLaLoi: boolean },
+    contexte: {
+      acomptesDus: boolean;
+      sansExerciceAnterieur: boolean;
+      simulationAvantLaLoi: boolean;
+      /** Art. 12, al. 3 · la période de création et son impôt, null s'il n'est pas calculé. */
+      periodeCreation?: { periode: PeriodeCreation; impotDu: number | null } | null;
+    },
   ): string[] {
     // LES DEUX BRANCHES D'ASSIETTE QUE LE MODULE NE SERT PAS · art. 57 bis,
     // al. 1er, dans sa rédaction issue de la L.F. n° 25/060 du 29 décembre
@@ -1344,7 +1433,21 @@ export class FiscaliteService {
     // inventer la base d'un acompte, c'est inventer un versement.
     const acomptes: string[] = [];
     if (contexte.acomptesDus && impotDu !== null) {
-      if (contexte.sansExerciceAnterieur) {
+      if (contexte.periodeCreation) {
+        // ART. 12, AL. 3 ET ART. 57 BIS LPF · la période de création EST
+        // l'exercice précédent de l'année qui suit · l'impôt établi sur elle,
+        // déclaré au plus tard le 30 avril (LPF art. 12), fonde les trois
+        // acomptes de cette année-là, « de l'année de réalisation des revenus
+        // imposables », qui s'imputent sur l'impôt du premier exercice clos
+        // (art. 57 bis, al. 3). Dire « AUCUN acompte n'est dû » exposait à
+        // l'amende de 50 % de l'art. 98 bis (cas chiffré C09).
+        const { periode, impotDu: impotPeriode } = contexte.periodeCreation;
+        acomptes.push(
+          impotPeriode === null
+            ? `Art. 12, al. 3 et art. 57 bis LPF : les acomptes des 25 juillet, 25 septembre et 25 novembre ${periode.annee + 1} sont assis sur l'impôt déclaré pour la période de création (${periode.annee}), établi sous le texte de l'époque · OmegaX ne le connaît pas et ne les chiffre pas. Ils restent dus · calculez-les sur l'impôt réellement déclaré, et imputez-les sur l'impôt ci-dessous.`
+            : `Art. 12, al. 3 et art. 57 bis LPF : l'impôt de la période de création (${impotPeriode.toLocaleString('fr-FR')}) est l'impôt déclaré de l'exercice précédent · il fonde les acomptes des 25 juillet, 25 septembre et 25 novembre ${periode.annee + 1}, servis dans « Acomptes de l'exercice », imputés sur l'impôt du premier exercice clos (al. 3). Les trois montants « du prochain exercice » sont ceux de ${periode.annee + 2}.`,
+        );
+      } else if (contexte.sansExerciceAnterieur) {
         acomptes.push(
           "Art. 57 bis, al. 1er : les acomptes sont « calculés sur base de l'impôt déclaré au titre de l'exercice précédent ». Aucun exercice antérieur n'est tenu dans ce dossier · à défaut d'exercice précédent, cette base n'existe pas et AUCUN acompte n'est dû au titre de la présente année. Les trois montants ci-dessous sont ceux du PROCHAIN exercice. Si l'entreprise était suivie ailleurs, l'exercice précédent existe hors du dossier et ses acomptes restent dus : le vérifier avant de conclure. La fenêtre Retenues et déclarations présente pour sa part les trois échéances d'acompte à tout dossier SYSCOHADA, sans montant · ce sont des dates de calendrier, pas une somme à verser.",
         );
@@ -1402,12 +1505,6 @@ export class FiscaliteService {
       take: 1,
     });
 
-    const calcules = deficitSaisi === null ? await this.deficitsAnterieursCalcules(tenantId, exercice) : null;
-    const deficitAnterieur = deficitSaisi ?? calcules!.total;
-    // Un déficit ne s'impute que sur un bénéfice, et jamais au-delà.
-    const deficitImpute = arrondir(Math.min(deficitAnterieur, Math.max(brut.resultatFiscalBrut, 0)));
-    const resultatFiscal = arrondir(brut.resultatFiscalBrut - deficitImpute);
-
     // ART. 113 · le régime d'une personne physique ne se lit pas dans le seul
     // chiffre d'affaires de l'exercice. La lecture des exercices antérieurs
     // coûte une balance chacun : elle n'est faite que pour les formes qui en
@@ -1415,6 +1512,26 @@ export class FiscaliteService {
     // soit son chiffre d'affaires.
     const physique =
       tenant.formeJuridiqueSyscohada !== null && FORMES_PERSONNES_PHYSIQUES.includes(tenant.formeJuridiqueSyscohada);
+
+    // ART. 12, AL. 3 · LE PREMIER EXERCICE LONG (cas chiffrés C09 et C10). La
+    // période de création est imposée à part sur ses comptes intermédiaires,
+    // et ses bénéfices viennent en déduction du premier exercice clos. Article
+    // du Titre II (impôt sur les sociétés) · une personne physique n'est pas
+    // concernée.
+    const periode = physique ? null : periodeDeCreation(exercice, anterieurs.length === 0);
+    const lecturePeriode = periode
+      ? await this.lirePeriodeCreation(tenantId, exerciceId, periode, dossier?.resultatPeriodeCreationSaisi ?? null)
+      : null;
+    const deductionCreation = lecturePeriode ? deductionPeriodeCreation(lecturePeriode.resultatFiscal) : 0;
+    const baseAvantReport = arrondir(brut.resultatFiscalBrut - deductionCreation);
+    const debutImposable = FiscaliteService.debutPeriodeImposable(exercice, periode);
+    const simulationAvantLaLoi = debutImposable.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime();
+
+    const calcules = deficitSaisi === null ? await this.deficitsAnterieursCalcules(tenantId, exercice) : null;
+    const deficitAnterieur = deficitSaisi ?? calcules!.total;
+    // Un déficit ne s'impute que sur un bénéfice, et jamais au-delà.
+    const deficitImpute = arrondir(Math.min(deficitAnterieur, Math.max(baseAvantReport, 0)));
+    const resultatFiscal = arrondir(baseAvantReport - deficitImpute);
     const chiffresAffairesAnterieurs = physique ? await this.chiffresAffairesAnterieurs(tenantId, exercice) : [];
     const { regime, observations } = this.regimeSelonForme(
       tenant.formeJuridiqueSyscohada,
@@ -1422,7 +1539,11 @@ export class FiscaliteService {
       chiffresAffairesAnterieurs,
     );
     observations.push(...this.avertissementsReportDeficitaire(deficitAnterieur));
-    observations.push(...this.avertissementsPerimetreLoi(exercice.dateDebut));
+    // C15 · le déficit d'avant la loi se dit dans la vue qui l'IMPUTE, pas
+    // seulement dans celle de l'exercice ancien.
+    const deficitsSimules = avertissementDeficitsSimules(calcules?.detail ?? [], deficitSaisi !== null);
+    if (deficitsSimules && deficitImpute > 0.005) observations.push(deficitsSimules);
+    observations.push(...this.avertissementsPerimetreLoi(exercice.dateDebut, periode));
     const reintegrationsImpot = FiscaliteService.reintegrationsImpot(brut.retraitements);
     const ecartImpotNonReintegre = FiscaliteService.observationImpotNonReintegre(brut.impotConstateAu89, reintegrationsImpot);
     if (ecartImpotNonReintegre) observations.push(ecartImpotNonReintegre);
@@ -1442,7 +1563,14 @@ export class FiscaliteService {
         code: r.code,
         // La condition est jointe à l'énoncé · c'est le seul champ que la
         // page de saisie affiche aujourd'hui (« Plafond : … »).
-        enonce: condition.enonce ? `${r.plafond!.enonce} · ${condition.enonce}` : r.plafond!.enonce,
+        // C02 · un plafond assis sur le chiffre d'affaires dit lequel il lit.
+        enonce: [
+          r.plafond!.enonce,
+          condition.enonce,
+          r.plafond!.assiette === 'CHIFFRE_AFFAIRES' ? LECTURE_CHIFFRE_AFFAIRES : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
         assiette: r.plafond!.assiette,
         part: r.plafond!.part,
         montantAdmis:
@@ -1457,6 +1585,26 @@ export class FiscaliteService {
     });
 
     const impot = this.calculerImpot(regime, resultatFiscal, brut.chiffreAffaires, dossier?.natureActivite ?? null);
+    // L'IMPÔT DE LA PÉRIODE DE CRÉATION · même liquidation (art. 56 et 57,
+    // minimum compris, voir `periode-creation.ts`), sur le résultat et le
+    // chiffre d'affaires de la période. Avant 2026, le texte de l'époque ·
+    // non calculé, `null`, jamais zéro.
+    const impotPeriode =
+      periode && lecturePeriode && periode.sousLaLoi
+        ? this.calculerImpot('IMPOT_SOCIETES', lecturePeriode.resultatFiscal, lecturePeriode.chiffreAffaires, null)
+        : null;
+    if (periode && lecturePeriode) {
+      observations.push(
+        `PREMIER EXERCICE LONG · art. 12, al. 3. Entreprise tenue pour créée le ${periode.dateDebut.toISOString().slice(0, 10)} (ouverture du premier exercice du dossier) · la période de création, jusqu'au ${periode.dateFin.toISOString().slice(0, 10)}, est imposée À PART sur ses comptes intermédiaires ` +
+          `(${lecturePeriode.source === 'DECLARE' ? 'bénéfice fiscal DÉCLARÉ par le cabinet' : 'résultat COMPTABLE lu au livre-journal à cette date'} : ${lecturePeriode.resultatFiscal.toLocaleString('fr-FR')}), ` +
+          `et ses bénéfices (${deductionCreation.toLocaleString('fr-FR')}) viennent en déduction du premier exercice clos. L'impôt dû ci-dessous est celui du premier exercice clos ; celui de la période de création est servi à part.` +
+          (lecturePeriode.source === 'LIVRE_JOURNAL'
+            ? " Les retraitements saisis valent pour l'exercice ENTIER et sont donc tous rattachés au premier exercice clos · si l'un d'eux concerne la période de création, déclarez le bénéfice fiscal de la période arrêté au 31 décembre, il prime sur la lecture."
+            : '') +
+          " Si l'entreprise a été créée avant l'ouverture de ce premier exercice (dossier repris), ce cas ne s'applique pas.",
+      );
+      observations.push(OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE);
+    }
 
     // ALINÉA 2 CONTRE ALINÉA 3 DE L'ART. 57 LPF · l'alinéa 2 range dans les
     // acomptes provisionnels « l'Impôt sur les Sociétés et l'Impôt sur le
@@ -1469,9 +1617,54 @@ export class FiscaliteService {
       ...this.observationsCalendrierPaiement(regime, impot.impotDu, {
         acomptesDus,
         sansExerciceAnterieur: anterieurs.length === 0,
-        simulationAvantLaLoi: exercice.dateDebut.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime(),
+        simulationAvantLaLoi,
+        periodeCreation: periode ? { periode, impotDu: impotPeriode?.impotDu ?? null } : null,
       }),
     );
+
+    // C01-bis · LE BROUILLARD SE DIT SUR L'ÉCRAN DU CALCUL, et le chiffre ne se
+    // présente jamais comme définitif tant qu'il en reste. Le calcul ne lit que
+    // le livre-journal (AUDCIF art. 22, 2°) · c'est juste, mais une charge
+    // saisie et non validée disparaissait de l'impôt sans un mot (seule
+    // l'écriture A11 le disait, en refusant). Même compte que le refus de
+    // l'A11 (`constat-impot.service.ts`) · écritures au brouillard dont une
+    // ligne touche les classes 6 à 8.
+    const ecrituresAuBrouillard = await this.prisma.ecriture.count({
+      where: {
+        tenantId,
+        exerciceId,
+        statut: StatutEcriture.BROUILLARD,
+        lignes: {
+          some: {
+            OR: [
+              { compte: { numero: { startsWith: '6' } } },
+              { compte: { numero: { startsWith: '7' } } },
+              { compte: { numero: { startsWith: '8' } } },
+            ],
+          },
+        },
+      },
+    });
+    let brouillard = { ecritures: ecrituresAuBrouillard, effetSurResultat: 0, effetSurChiffreAffaires: 0 };
+    if (ecrituresAuBrouillard > 0) {
+      // Ce que le brouillard CHANGERAIT, validé tel quel · une seconde lecture,
+      // brouillard compris, qui ne sert qu'à le chiffrer.
+      const avec = await this.lireBalance(tenantId, exerciceId, undefined, true);
+      brouillard = {
+        ecritures: ecrituresAuBrouillard,
+        effetSurResultat: arrondir(avec.resultatComptable - brut.resultatComptable),
+        effetSurChiffreAffaires: arrondir(avec.chiffreAffaires - brut.chiffreAffaires),
+      };
+      observations.unshift(
+        `CHIFFRE PROVISOIRE · ${ecrituresAuBrouillard} écriture(s) au brouillard touchent les classes 6 à 8 de l'exercice. ` +
+          "Le résultat fiscal et l'impôt ne lisent que le livre-journal (AUDCIF art. 22, 2°) · validées telles quelles, " +
+          `elles changeraient le résultat comptable de ${montantFiscal(brouillard.effetSurResultat)}` +
+          (Math.abs(brouillard.effetSurChiffreAffaires) >= 0.005
+            ? ` et le chiffre d'affaires de ${montantFiscal(brouillard.effetSurChiffreAffaires)}`
+            : '') +
+          ". L'impôt affiché n'est pas définitif tant qu'elles ne sont ni validées ni retirées.",
+      );
+    }
 
     return {
       exerciceId,
@@ -1482,6 +1675,10 @@ export class FiscaliteService {
       devise: tenant.devise ?? 'CDF',
       regime,
       observations,
+      // C01-bis · faux tant qu'une écriture au brouillard touche la gestion.
+      definitif: ecrituresAuBrouillard === 0,
+      brouillard,
+      simulationAvantLaLoi,
       natureActivite: dossier?.natureActivite ?? null,
       resultatComptable: brut.resultatComptable,
       sourceResultat: brut.sourceResultat,
@@ -1506,12 +1703,53 @@ export class FiscaliteService {
       acomptesAu4492: brut.acomptesAu4492,
       resultatFiscalBrut: brut.resultatFiscalBrut,
       deficitAnterieur: { montant: deficitAnterieur, saisi: deficitSaisi !== null, detail: calcules?.detail ?? [] },
+      // ART. 12, AL. 3 · la période de création, son impôt et les acomptes
+      // qu'il fonde pour l'année qui suit (art. 57 bis LPF). Null hors de ce cas.
+      periodeCreation:
+        periode && lecturePeriode
+          ? {
+              dateDebut: periode.dateDebut,
+              dateFin: periode.dateFin,
+              sousLaLoi: periode.sousLaLoi,
+              source: lecturePeriode.source,
+              resultatComptable: lecturePeriode.resultatComptable,
+              chiffreAffaires: lecturePeriode.chiffreAffaires,
+              resultatFiscal: lecturePeriode.resultatFiscal,
+              deduction: deductionCreation,
+              impotTheorique: impotPeriode?.impotTheorique ?? null,
+              impotMinimum: impotPeriode?.impotMinimum ?? null,
+              impotDu: impotPeriode?.impotDu ?? null,
+              minimumApplique: impotPeriode?.minimumApplique ?? false,
+              explication: impotPeriode
+                ? impotPeriode.explication
+                : `Période de création antérieure au 1er janvier 2026 · son impôt relève du texte qui régissait ${periode.annee} (loi n° 23/053, art. 153), que le dossier ne contient pas.`,
+              acomptesExercice:
+                impotPeriode?.impotDu === null || impotPeriode?.impotDu === undefined
+                  ? []
+                  : IMPOT_SOCIETES.acomptes.map((a) => ({
+                      ...a,
+                      annee: periode.annee + 1,
+                      montant: arrondir(a.quotite * impotPeriode.impotDu!),
+                    })),
+            }
+          : null,
+      deductionPeriodeCreation: deductionCreation,
       deficitImpute,
       resultatFiscal,
       plafonds,
       ...impot,
       acomptesVerses,
       soldeAPayer: impot.impotDu === null ? null : arrondir(impot.impotDu - acomptesVerses),
+      // Les deux impositions de l'exercice comptable, période de création
+      // comprise · null si l'une n'est pas chiffrée (jamais un zéro).
+      impotTotalExercice:
+        impot.impotDu === null
+          ? null
+          : !periode
+            ? impot.impotDu
+            : impotPeriode?.impotDu === null || impotPeriode?.impotDu === undefined
+              ? null
+              : arrondir(impot.impotDu + impotPeriode.impotDu),
       // SUIVI DES ACOMPTES · le rapprochement que rien ne faisait.
       suiviAcomptes: FiscaliteService.suiviAcomptes({
         acomptesDus,
@@ -1586,9 +1824,24 @@ export class FiscaliteService {
         // ART. 150 · l'arrondi légal s'applique aux montants d'impôt
         // eux-mêmes, DONC AVANT la comparaison de l'art. 57 : c'est le
         // montant arrondi qui est dû, et c'est lui qui doit être comparé.
-        const theorique = arrondirImpotArt150(is.taux * Math.max(resultatFiscal, 0));
-        const minimum = arrondirImpotArt150(is.tauxMinimum * chiffreAffaires);
+        const theoriqueAvantArrondi = is.taux * Math.max(resultatFiscal, 0);
+        const minimumAvantArrondi = is.tauxMinimum * chiffreAffaires;
+        const theorique = arrondirImpotArt150(theoriqueAvantArrondi);
+        const minimum = arrondirImpotArt150(minimumAvantArrondi);
         const minimumApplique = minimum > theorique;
+        /*
+          C12a · L'ARRONDI QUI REND ÉGAUX DEUX IMPÔTS QUI NE L'ÉTAIENT PAS.
+          L'art. 150 arrondit « le montant de l'Impôt sur les Sociétés, de
+          l'Impôt minimum » ; l'art. 57 compare une « imposition » au minimum.
+          Aucun des deux ne dit si l'arrondi précède la comparaison (lus le
+          2026-10-04) · l'ordre actuel est gardé (arrondi d'abord), le
+          montant dû est le même dans les deux lectures, mais le COMPTE de la
+          charge en dépend (891 au taux, 895 au minimum, fiche du compte 89),
+          et dire « égaux » sans la réserve affirmait une égalité que les
+          montants calculés n'avaient pas.
+        */
+        const egauxParArrondi =
+          minimum === theorique && Math.abs(minimumAvantArrondi - theoriqueAvantArrondi) >= 0.005;
         /*
           TROIS CAS, ET NON DEUX · la comparaison est stricte, l'ÉGALITÉ
           tombait donc dans la branche qui affirme le contraire.
@@ -1610,13 +1863,19 @@ export class FiscaliteService {
           donner lieu à une imposition inférieure à ce montant. »
         */
         const deficitaire = resultatFiscal < 0;
-        const explication = minimumApplique
+        const avantArrondi = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+        const explicationSeule = minimumApplique
           ? `L'impôt minimum de ${is.tauxMinimum * 100} % du chiffre d'affaires déclaré (loi n° 23/053, art. 57) est supérieur à l'impôt sur le bénéfice : c'est lui qui est dû.`
           : minimum === theorique
             ? deficitaire
-              ? `RÉSULTAT DÉFICITAIRE ET CHIFFRE D'AFFAIRES NUL. L'article 57 assujettit les sociétés à l'impôt minimum de ${is.tauxMinimum * 100} % du chiffre d'affaires déclaré « lorsque les résultats sont déficitaires » : il s'applique bien ici, mais son assiette est nulle, d'où un impôt de zéro. Le chiffre d'affaires retenu ne lit que les comptes 701 à 707 · si le dossier a des produits ailleurs (77 financiers, 84 hors activités ordinaires), le chiffre d'affaires DÉCLARÉ à l'administration peut ne pas être celui-ci.`
-              : `Les deux impôts sont ÉGAUX : ${is.taux * 100} % du bénéfice net imposable (loi n° 23/053, art. 56) et ${is.tauxMinimum * 100} % du chiffre d'affaires (même loi, art. 57) donnent le même montant. L'article 57 ne joue que si l'imposition serait INFÉRIEURE au minimum · ce n'est pas le cas.`
+              ? `RÉSULTAT DÉFICITAIRE ET CHIFFRE D'AFFAIRES NUL. L'article 57 assujettit les sociétés à l'impôt minimum de ${is.tauxMinimum * 100} % du chiffre d'affaires déclaré « lorsque les résultats sont déficitaires » : il s'applique bien ici, mais son assiette est nulle, d'où un impôt de zéro. Si le dossier a des produits ailleurs (77 financiers, 84 hors activités ordinaires), le chiffre d'affaires DÉCLARÉ à l'administration peut ne pas être celui-ci.`
+              : egauxParArrondi
+                ? `Les deux impôts sont égaux APRÈS l'arrondi de l'art. 150 de la loi n° 23/053, pas avant : ${is.taux * 100} % du bénéfice net imposable (art. 56) donne ${avantArrondi(theoriqueAvantArrondi)}, ${is.tauxMinimum * 100} % du chiffre d'affaires (art. 57) donne ${avantArrondi(minimumAvantArrondi)}, et tous deux s'arrondissent à ${theorique.toLocaleString('fr-FR')}. Ni l'art. 150 ni l'art. 57 ne disent si l'arrondi précède la comparaison · OmegaX arrondit d'abord, compare ensuite, et l'impôt est retenu AU TAUX (compte 891). Comparé avant l'arrondi, ${minimumAvantArrondi > theoriqueAvantArrondi ? "le minimum serait retenu (compte 895)" : "l'impôt au taux resterait retenu"} · le montant dû est le même dans les deux lectures.`
+                : `Les deux impôts sont ÉGAUX : ${is.taux * 100} % du bénéfice net imposable (loi n° 23/053, art. 56) et ${is.tauxMinimum * 100} % du chiffre d'affaires (même loi, art. 57) donnent le même montant. L'article 57 ne joue que si l'imposition serait INFÉRIEURE au minimum · ce n'est pas le cas.`
             : `Impôt sur le bénéfice net imposable au taux de ${is.taux * 100} % (loi n° 23/053, art. 56), supérieur à l'impôt minimum de ${is.tauxMinimum * 100} % du chiffre d'affaires (même loi, art. 57).`;
+        // C02 · le chiffre d'affaires du minimum est dit dans TOUTES les
+        // branches, pas seulement quand il est nul.
+        const explication = `${explicationSeule} ${LECTURE_CHIFFRE_AFFAIRES}`;
         return {
           impotTheorique: theorique,
           impotMinimum: minimum,
@@ -1742,6 +2001,12 @@ export class FiscaliteService {
         ? {}
         : { deficitAnterieurSaisi: dto.deficitAnterieurSaisi === null ? null : arrondir(dto.deficitAnterieurSaisi) }),
       ...(dto.natureActivite === undefined ? {} : { natureActivite: dto.natureActivite }),
+      ...(dto.resultatPeriodeCreationSaisi === undefined
+        ? {}
+        : {
+            resultatPeriodeCreationSaisi:
+              dto.resultatPeriodeCreationSaisi === null ? null : arrondir(dto.resultatPeriodeCreationSaisi),
+          }),
     };
     await this.prisma.dossierFiscalExercice.upsert({
       where: { exerciceId },

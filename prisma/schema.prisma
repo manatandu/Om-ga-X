@@ -1410,6 +1410,14 @@ model DossierFiscalExercice {
   // ne se devine pas.
   natureActivite NatureActiviteFiscale?
 
+  // PREMIER EXERCICE LONG · loi n° 23/053, art. 12, al. 3. Bénéfice FISCAL de
+  // la période de création (du jour de la création au 31 décembre de la même
+  // année), tel que le cabinet l'a déterminé « d'après les comptes
+  // intermédiaires arrêtés à la date du 31 décembre ». Null = OmegaX lit le
+  // résultat comptable de la période sur le livre-journal à cette date, sans
+  // retraitement · un retraitement fiscal saisi l'est pour l'exercice entier.
+  resultatPeriodeCreationSaisi Decimal? @db.Decimal(18, 2)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -155,6 +155,22 @@ function lecture(f) {
     soldeAPayer: f.soldeAPayer,
     baseAcomptes: f.baseAcomptes,
     acomptesProchainExercice: (f.acomptesProchainExercice ?? []).map((a) => a.montant),
+    definitif: f.definitif,
+    brouillard: f.brouillard,
+    simulationAvantLaLoi: f.simulationAvantLaLoi,
+    deficitDetail: (f.deficitAnterieur?.detail ?? []).map((d) => ({ dateFin: d.dateFin?.slice(0, 10), montant: d.montant, simulation: d.simulation })),
+    periodeCreation: f.periodeCreation
+      ? {
+          source: f.periodeCreation.source,
+          resultatFiscal: f.periodeCreation.resultatFiscal,
+          chiffreAffaires: f.periodeCreation.chiffreAffaires,
+          impotDu: f.periodeCreation.impotDu,
+          minimumApplique: f.periodeCreation.minimumApplique,
+          acomptesExercice: f.periodeCreation.acomptesExercice.map((a) => `${a.montant} au ${a.echeance} ${a.annee}`),
+        }
+      : null,
+    impotTotalExercice: f.impotTotalExercice,
+    plafondDons: (f.plafonds ?? []).find((p) => p.code === 'DONS_EXCEDENT')?.enonce,
     explication: f.explication,
     observations: f.observations,
   };
@@ -262,9 +278,18 @@ cas('C05', 'Ordre d\'imputation des déficits (le plus ancien d\'abord) au bord 
     await venteEtCharges(c, ids[a], `${a}-06-30`, ca, [['60410000', ch]]);
     await valider(c, ids[a], `${a}-12-31`);
   }
+  // Lu AVANT puis APRÈS les clôtures de 2026 à 2029 · le report rejoué dans
+  // l'ordre doit rendre le même chiffre de part et d'autre (CLAUDE.md § 10).
+  const avantClotures = {};
+  for (const [a] of annees) avantClotures[a] = lecture(await fiscal(c, ids[a]));
+  const clotures = {};
+  for (const a of ['2026', '2027', '2028', '2029']) {
+    const r = await c.req('POST', `/exercices/${ids[a]}/cloturer`, {});
+    clotures[a] = r.statut < 400 ? 'CLOTURE' : `REFUS ${r.statut} · ${JSON.stringify(r.corps).slice(0, 400)}`;
+  }
   const lectures = {};
   for (const [a] of annees) lectures[a] = lecture(await fiscal(c, ids[a]));
-  return { lectures };
+  return { clotures, avantClotures, lectures };
 });
 
 cas('C06', 'Dons au-delà du plafond de l\'art. 44 et amende (art. 50, 3°)', async () => {

@@ -3017,6 +3017,15 @@ export interface ResultatFiscal {
   devise: string;
   regime: RegimeImposition;
   observations: string[];
+  /**
+   * Faux tant qu'une écriture au brouillard touche les classes 6 à 8 · le
+   * calcul ne lit que le livre-journal (AUDCIF art. 22, 2°), et l'écran ne le
+   * présente jamais comme définitif (cas chiffré C01-bis).
+   */
+  definitif: boolean;
+  brouillard: { ecritures: number; effetSurResultat: number; effetSurChiffreAffaires: number };
+  /** La période imposable ouvre avant le 1er janvier 2026 · l'impôt est une simulation. */
+  simulationAvantLaLoi: boolean;
   natureActivite: NatureActiviteFiscale | null;
   resultatComptable: number;
   sourceResultat: 'CLASSES_6_7_8' | 'COMPTE_13';
@@ -3025,7 +3034,36 @@ export interface ResultatFiscal {
   totalReintegrations: number;
   totalDeductions: number;
   resultatFiscalBrut: number;
-  deficitAnterieur: { montant: number; saisi: boolean; detail: { exerciceId: string; dateFin: string; montant: number }[] };
+  deficitAnterieur: {
+    montant: number;
+    saisi: boolean;
+    /** `simulation` · perte d'un exercice ouvert avant 2026, recalculée sous la loi n° 23/053 (C15). */
+    detail: { exerciceId: string; dateFin: string; montant: number; simulation: boolean }[];
+  };
+  /**
+   * PREMIER EXERCICE LONG · loi n° 23/053, art. 12, al. 3. La période de
+   * création, imposée à part, et les acomptes qu'elle fonde pour l'année qui
+   * suit (art. 57 bis LPF). Null hors de ce cas.
+   */
+  periodeCreation: {
+    dateDebut: string;
+    dateFin: string;
+    sousLaLoi: boolean;
+    source: 'LIVRE_JOURNAL' | 'DECLARE';
+    resultatComptable: number;
+    chiffreAffaires: number;
+    resultatFiscal: number;
+    deduction: number;
+    impotTheorique: number | null;
+    impotMinimum: number | null;
+    impotDu: number | null;
+    minimumApplique: boolean;
+    explication: string;
+    acomptesExercice: { quotite: number; echeance: string; annee: number; montant: number }[];
+  } | null;
+  deductionPeriodeCreation: number;
+  /** Les deux impositions de l'exercice comptable · null si l'une n'est pas chiffrée. */
+  impotTotalExercice: number | null;
   deficitImpute: number;
   resultatFiscal: number;
   plafonds: { code: string; enonce: string; assiette: 'CHIFFRE_AFFAIRES' | 'CHARGE'; part: number; montantAdmis: number | null }[];

@@ -247,6 +247,7 @@ export function FiscalitePage() {
     supplementsAdministration?: number;
     deficitAnterieurSaisi?: number | null;
     natureActivite?: NatureActiviteFiscale | null;
+    resultatPeriodeCreationSaisi?: number | null;
   }) => {
     if (!exerciceId) return;
     setEnvoi(true);
@@ -354,6 +355,18 @@ export function FiscalitePage() {
                 <Ligne libelle="Réintégrations" montant={resultat.totalReintegrations} devise={devise} signe="+" />
                 <Ligne libelle="Déductions" montant={resultat.totalDeductions} devise={devise} signe="−" />
                 <Ligne libelle="Résultat fiscal avant report" montant={resultat.resultatFiscalBrut} devise={devise} gras />
+                {/* PREMIER EXERCICE LONG · les bénéfices de la période de
+                    création, imposés à part, viennent en déduction du premier
+                    exercice clos (loi n° 23/053, art. 12, al. 3). */}
+                {resultat.periodeCreation && (
+                  <Ligne
+                    libelle="Bénéfices de la période de création"
+                    montant={resultat.deductionPeriodeCreation}
+                    devise={devise}
+                    signe="−"
+                    note={`imposés à part, jusqu’au ${jour(resultat.periodeCreation.dateFin)}`}
+                  />
+                )}
                 <Ligne
                   libelle={`Déficits antérieurs imputés${resultat.deficitAnterieur.saisi ? ' (montant saisi)' : ''}`}
                   montant={resultat.deficitImpute}
@@ -649,14 +662,16 @@ export function FiscalitePage() {
                 Déficits antérieurs
                 <Aide
                   titre="Déficits antérieurs"
-                  texte="OmegaX calcule les déficits reportables depuis les trois exercices précédents tenus ici. Un dossier repris à un confrère porte un report que cette comptabilité ne connaît pas : saisissez-le ici, il prime sur le calcul. Videz le champ pour revenir au calcul."
+                  texte="OmegaX rejoue les déficits depuis le premier exercice tenu ici, dans l’ordre · chaque perte s’impute sur les premiers bénéfices qui la suivent, jusqu’au troisième exercice qui suit, et un bénéfice déjà imputé ne se réimpute pas. Un dossier repris à un confrère porte un report que cette comptabilité ne connaît pas : saisissez-le ici, il prime sur le calcul. Videz le champ pour revenir au calcul."
                   source="Loi n° 23/053, art. 51"
                 />
               </div>
               {resultat.deficitAnterieur.detail.length > 0 && (
                 <p className="text-[11px] text-text-dim mt-1.5">
                   Calculés :{' '}
-                  {resultat.deficitAnterieur.detail.map((d) => `${nombre(d.montant)} au ${jour(d.dateFin)}`).join(', ')}
+                  {resultat.deficitAnterieur.detail
+                    .map((d) => `${nombre(d.montant)} au ${jour(d.dateFin)}${d.simulation ? ' (simulation, avant 2026)' : ''}`)
+                    .join(', ')}
                 </p>
               )}
               <input
@@ -682,6 +697,17 @@ export function FiscalitePage() {
           {/* IMPÔT */}
           <section className="border border-border rounded-[4px] overflow-hidden">
             <div className="px-3 pt-3">
+              {/* LE CHIFFRE N'EST JAMAIS PRÉSENTÉ COMME DÉFINITIF tant qu'une
+                  écriture au brouillard touche la gestion · le calcul ne lit
+                  que le livre-journal (AUDCIF art. 22, 2°), et une charge non
+                  validée disparaissait de l'impôt sans un mot (cas chiffré
+                  C01-bis). Le serveur compte et chiffre, l'écran le dit. */}
+              {!resultat.definitif && (
+                <div className="mb-2 text-[11.5px] font-semibold text-warning">
+                  Calcul provisoire · {resultat.brouillard.ecritures} écriture(s) au brouillard, effet sur le résultat{' '}
+                  {nombre(resultat.brouillard.effetSurResultat)} {devise}
+                </div>
+              )}
               <div className="text-[11px] font-semibold text-text-dim leading-none">Impôt</div>
               <div className="text-[11.5px] mt-1">{resultat.baseImpot}</div>
               <p className="text-[11.5px] text-text-dim mt-1 leading-[1.55]">{resultat.explication}</p>
@@ -695,7 +721,13 @@ export function FiscalitePage() {
                   <Ligne libelle="Impôt minimum (1 % du chiffre d’affaires)" montant={resultat.impotMinimum} devise={devise}
                     note={resultat.minimumApplique ? 'retenu · supérieur à l’impôt sur le bénéfice' : undefined} />
                 )}
-                <Ligne libelle="IMPÔT DÛ" montant={resultat.impotDu} devise={devise} gras total />
+                <Ligne
+                  libelle={resultat.periodeCreation ? 'IMPÔT DÛ · premier exercice clos' : 'IMPÔT DÛ'}
+                  montant={resultat.impotDu}
+                  devise={devise}
+                  gras
+                  total
+                />
                 {/* LE CALENDRIER SUIT LE RÉGIME · l'art. 57 bis ne vise que
                     l'alinéa 2 de l'art. 57, donc l'IS et l'IRPP au régime réel.
                     Cette mention était écrite en dur ici, hors de toute
@@ -822,6 +854,77 @@ export function FiscalitePage() {
                     {q.reserve && <div className="text-warning mt-0.5">{q.reserve}</div>}
                   </div>
                 ))}
+              </div>
+            )}
+            {/* LA PÉRIODE DE CRÉATION · imposée à part (loi n° 23/053,
+                art. 12, al. 3), son impôt fonde les acomptes de l'année qui
+                suit (art. 57 bis LPF). Son bénéfice se lit au livre-journal au
+                31 décembre, ou se DÉCLARE d'après les comptes intermédiaires
+                arrêtés, retraitements compris · la déclaration prime. */}
+            {resultat.periodeCreation && (
+              <div className="px-3 pb-3 pt-2 text-[11.5px] border-t border-border">
+                <div className="text-[11px] font-semibold text-text-dim leading-none flex items-center gap-1.5">
+                  Période de création · du {jour(resultat.periodeCreation.dateDebut)} au {jour(resultat.periodeCreation.dateFin)}
+                  <Aide
+                    titre="Période de création"
+                    texte="Une entreprise créée après le 30 juin arrête son premier exercice au 31 décembre de l’année suivante, mais l’impôt est établi à part sur la période allant de sa création au 31 décembre de la même année, d’après des comptes intermédiaires. Ces bénéfices viennent ensuite en déduction du premier exercice clos. L’impôt de cette période fonde les acomptes de l’année suivante."
+                    source="Loi n° 23/053, art. 12, al. 3 · LPF, art. 57 bis"
+                  />
+                </div>
+                <table className="w-full mt-1.5">
+                  <tbody>
+                    <Ligne
+                      libelle={resultat.periodeCreation.source === 'DECLARE' ? 'Bénéfice fiscal déclaré' : 'Résultat lu au livre-journal'}
+                      montant={resultat.periodeCreation.resultatFiscal}
+                      devise={devise}
+                    />
+                    <Ligne libelle="Chiffre d’affaires de la période" montant={resultat.periodeCreation.chiffreAffaires} devise={devise} />
+                    <Ligne
+                      libelle="Impôt de la période de création"
+                      montant={resultat.periodeCreation.impotDu}
+                      devise={devise}
+                      gras
+                      note={
+                        resultat.periodeCreation.impotDu === null
+                          ? 'non calculé · texte antérieur au 1er janvier 2026'
+                          : resultat.periodeCreation.minimumApplique
+                            ? 'impôt minimum retenu'
+                            : undefined
+                      }
+                    />
+                    <Ligne libelle="IMPÔT DE L’EXERCICE COMPTABLE" montant={resultat.impotTotalExercice} devise={devise} gras total />
+                  </tbody>
+                </table>
+                {resultat.periodeCreation.acomptesExercice.length > 0 && (
+                  <div className="mt-1.5 text-[11px] text-text-dim">
+                    Acomptes de l’exercice :{' '}
+                    {resultat.periodeCreation.acomptesExercice
+                      .map((a) => `${nombre(a.montant)} ${devise} au plus tard le ${a.echeance} ${a.annee}`)
+                      .join(' · ')}
+                  </div>
+                )}
+                {peutEcrire && (
+                  <label className="mt-1.5 flex items-center gap-2 text-[11.5px] flex-wrap">
+                    Bénéfice fiscal de la période, d’après les comptes intermédiaires
+                    <input
+                      key={`periode-${resultat.exerciceId}-${resultat.periodeCreation.source}-${resultat.periodeCreation.resultatFiscal}`}
+                      defaultValue={resultat.periodeCreation.source === 'DECLARE' ? String(resultat.periodeCreation.resultatFiscal) : ''}
+                      inputMode="decimal"
+                      disabled={envoi}
+                      placeholder="Lu au livre-journal"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v === '' && resultat.periodeCreation?.source === 'DECLARE') modifierDossier({ resultatPeriodeCreationSaisi: null });
+                        else if (v !== '') {
+                          const n = lireNombre(v);
+                          if (n !== null && (resultat.periodeCreation?.source !== 'DECLARE' || n !== resultat.periodeCreation.resultatFiscal))
+                            modifierDossier({ resultatPeriodeCreationSaisi: n });
+                        }
+                      }}
+                      className="w-40 text-right border border-border rounded-[4px] bg-bg px-2 py-0.5 text-[11.5px] font-mono"
+                    />
+                  </label>
+                )}
               </div>
             )}
           </section>

@@ -27,6 +27,12 @@ function service(options: {
   /** Écritures ordinaires restées au BROUILLARD, par exercice. */
   brouillards?: Record<string, Ligne[]>;
   /**
+   * Comptes intermédiaires · la balance lue à une date à l'intérieur de
+   * l'exercice (`arreteAu`, art. 12, al. 3), par exercice. La doublure ne rend
+   * ces lignes QUE lorsque la date est demandée.
+   */
+  balancesAu?: Record<string, Ligne[]>;
+  /**
    * Écriture de CLÔTURE qui solde les classes 6 à 8 sur le 13
    * (`estSoldeDesComptesDeGestion`), par exercice. VALIDÉE, comme en
    * production depuis l'audit final F4 · elle compte donc au livre-journal.
@@ -39,6 +45,7 @@ function service(options: {
     supplementsAdministration?: number;
     deficitAnterieurSaisi?: number | null;
     natureActivite?: 'VENTE' | 'PRESTATIONS' | null;
+    resultatPeriodeCreationSaisi?: number | null;
   };
 }) {
   const exercices = options.exercices ?? [
@@ -82,6 +89,13 @@ function service(options: {
         return data;
       },
     },
+    // LE COMPTE DES ÉCRITURES AU BROUILLARD (C01-bis) · une écriture par
+    // exercice qui porte des lignes au brouillard, comme la requête de
+    // production qui compte les écritures, pas les lignes.
+    ecriture: {
+      count: async ({ where }: { where: { exerciceId: string } }) =>
+        (options.brouillards?.[where.exerciceId] ?? []).length > 0 ? 1 : 0,
+    },
     dossierFiscalExercice: {
       findUnique: async () =>
         options.dossier
@@ -90,6 +104,7 @@ function service(options: {
               supplementsAdministration: 0,
               deficitAnterieurSaisi: null,
               natureActivite: null,
+              resultatPeriodeCreationSaisi: null,
               ...options.dossier,
             }
           : null,
@@ -109,7 +124,7 @@ function service(options: {
     clotureDebit: number; clotureCredit: number;
   };
   const ecritures = {
-    balance: async (_t: string, exerciceId: string, inclureBrouillard = true) => {
+    balance: async (_t: string, exerciceId: string, inclureBrouillard = true, arreteAu?: Date) => {
       const parNumero = new Map<string, LigneBalance>();
       const verser = (lignes: Ligne[] | undefined, estCloture: boolean) => {
         for (const l of lignes ?? []) {
@@ -133,6 +148,10 @@ function service(options: {
           parNumero.set(l.numero, a);
         }
       };
+      if (arreteAu) {
+        verser(options.balancesAu?.[exerciceId], false);
+        return { lignes: [...parNumero.values()], totaux: { debit: 0, credit: 0 } };
+      }
       verser(options.balances[exerciceId], false);
       verser(options.clotures?.[exerciceId], true);
       if (inclureBrouillard) verser(options.brouillards?.[exerciceId], false);
@@ -329,20 +348,30 @@ describe('Report des déficits · art. 51 et 52', () => {
     expect(r.resultatFiscal).toBe(0);
   });
 
+  /**
+   * CE TEST GELAIT LE DÉFAUT DU CAS CHIFFRÉ C05 (`docs/cas-chiffres/is.md`),
+   * corrigé le 2026-10-04. Il attendait 11 000 · le bénéfice de 2024 consommait
+   * la perte de 2023, parce que la perte de 2022, hors de la fenêtre de 2026,
+   * n'était pas lue. Or en 2024 la perte de 2022 était imputable (troisième
+   * exercice qui suit, art. 51) et la plus ancienne · c'est elle que ce
+   * bénéfice a consommée, vu de 2024 comme de 2025. Rejoué dans l'ordre depuis
+   * le premier exercice, le report de 2026 est 10 000 (2023, intacte) plus
+   * 5 000 (2025) ; la perte de 2022 reste perdue au-delà de sa fenêtre.
+   */
   it('consomme les déficits dans l’ordre sur les bénéfices intermédiaires, et perd ce qui a plus de trois exercices', async () => {
     const { s } = service({
       exercices: [ex('N-4', 2022), ex('N-3', 2023), ex('N-2', 2024), ex('N-1', 2025), ex('N', 2026)],
       balances: {
-        'N-4': [ligne('60110000', 100_000)], // perte hors fenêtre · perdue
+        'N-4': [ligne('60110000', 100_000)], // perte de 2022 · imputable jusqu'en 2025, puis perdue
         'N-3': [ligne('60110000', 10_000)], // perte 10 000
-        'N-2': [ligne('70110000', -4_000)], // bénéfice 4 000 · consomme 4 000 de N-3
+        'N-2': [ligne('70110000', -4_000)], // bénéfice 4 000 · consomme 4 000 de 2022, la plus ancienne
         'N-1': [ligne('60110000', 5_000)], // perte 5 000
         N: [ligne('70110000', -1_000)],
       },
     });
     const r = await s.resultatFiscal('t1', 'N');
-    expect(r.deficitAnterieur.montant).toBe(11_000);
-    expect(r.deficitAnterieur.detail.map((d) => d.montant)).toEqual([6_000, 5_000]);
+    expect(r.deficitAnterieur.montant).toBe(15_000);
+    expect(r.deficitAnterieur.detail.map((d) => d.montant)).toEqual([10_000, 5_000]);
   });
 
   /**
@@ -1500,5 +1529,210 @@ describe('Ligne A11 · le 899 lu à part de l’impôt constaté', () => {
     const r = await s.resultatFiscal('t1', 'N');
     expect(r.impotConstateAu89).toBe(300_000);
     expect(r.observations.join(' ')).toMatch(/IMPÔT NON RÉINTÉGRÉ/);
+  });
+});
+
+/**
+ * CAS CHIFFRÉS DE L'IS (`docs/cas-chiffres/is.md`, 2026-10-04) · chaque écart
+ * relevé au rejeu sur vraie base, gelé avec le montant calculé à la main.
+ */
+describe('Cas chiffrés IS · C05, report rejoué dans l’ordre (art. 51)', () => {
+  const ex = (id: string, annee: number) => ({
+    id,
+    dateDebut: new Date(Date.UTC(annee, 0, 1)),
+    dateFin: new Date(Date.UTC(annee, 11, 31)),
+  });
+  const exercices = [ex('A2026', 2026), ex('A2027', 2027), ex('A2028', 2028), ex('A2029', 2029), ex('A2030', 2030)];
+  const balances = {
+    A2026: [ligne('70110000', -10_000_000), ligne('60410000', 10_100_000)], // perte 100 000
+    A2027: [ligne('70110000', -10_000_000), ligne('60410000', 10_500_000)], // perte 500 000
+    A2028: [ligne('70110000', -10_000_000), ligne('60410000', 9_940_000)], // bénéfice 60 000
+    A2029: [ligne('70110000', -10_000_000), ligne('60410000', 9_970_000)], // bénéfice 30 000
+    A2030: [ligne('70110000', -10_000_000), ligne('60410000', 9_000_000)], // bénéfice 1 000 000
+  };
+
+  it('2030 · déficit imputé 500 000, impôt 150 000 (OmegaX rendait 410 000 et 177 000)', async () => {
+    const r = await service({ exercices, balances }).s.resultatFiscal('t1', 'A2030');
+    expect(['deficitImpute', r.deficitImpute]).toEqual(['deficitImpute', 500_000]);
+    expect(['impotDu', r.impotDu]).toEqual(['impotDu', 150_000]);
+    expect(r.acomptesProchainExercice.map((a) => a.montant)).toEqual([45_000, 45_000, 30_000]);
+  });
+
+  it('le même bénéfice ne se réimpute pas · vu de 2029, 540 000 restent, dont 40 000 de 2026', async () => {
+    const r = await service({ exercices, balances }).s.resultatFiscal('t1', 'A2029');
+    expect(r.deficitAnterieur.montant).toBe(540_000);
+    expect(r.deficitAnterieur.detail.map((d) => d.montant)).toEqual([40_000, 500_000]);
+    expect(r.impotDu).toBe(100_000);
+  });
+});
+
+describe('Cas chiffrés IS · C09 et C10, premier exercice long (art. 12, al. 3)', () => {
+  const premier = (debut: [number, number, number], fin: [number, number, number]) => [
+    { id: 'P', dateDebut: new Date(Date.UTC(...debut)), dateFin: new Date(Date.UTC(...fin)) },
+  ];
+
+  it('C09 · période de création 300 000 (minimum), premier exercice clos 1 500 000, acomptes 2027 de 90 000, 90 000, 60 000', async () => {
+    const r = await service({
+      exercices: premier([2026, 8, 1], [2027, 11, 31]),
+      balances: { P: [ligne('70110000', -70_000_000), ligne('60410000', 64_900_000)] },
+      balancesAu: { P: [ligne('70110000', -30_000_000), ligne('60410000', 29_900_000)] },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.periodeCreation).not.toBeNull();
+    expect(r.periodeCreation!.resultatFiscal).toBe(100_000);
+    expect(r.periodeCreation!.impotDu).toBe(300_000);
+    expect(r.periodeCreation!.minimumApplique).toBe(true);
+    expect(r.periodeCreation!.acomptesExercice.map((a) => [a.montant, a.annee])).toEqual([
+      [90_000, 2027],
+      [90_000, 2027],
+      [60_000, 2027],
+    ]);
+    expect(['resultatFiscal', r.resultatFiscal]).toEqual(['resultatFiscal', 5_000_000]);
+    expect(['impotDu', r.impotDu]).toEqual(['impotDu', 1_500_000]);
+    expect(['impotTotalExercice', r.impotTotalExercice]).toEqual(['impotTotalExercice', 1_800_000]);
+    expect(r.simulationAvantLaLoi).toBe(false);
+    // « AUCUN acompte n'est dû » était faux · l'impôt de la période EST la base.
+    expect(r.observations.join(' ')).not.toContain("AUCUN acompte n'est dû");
+    expect(r.observations.join(' ')).toContain('Art. 12, al. 3 et art. 57 bis LPF');
+  });
+
+  it('C09 · un bénéfice fiscal DÉCLARÉ pour la période prime sur la lecture du livre-journal', async () => {
+    const r = await service({
+      exercices: premier([2026, 8, 1], [2027, 11, 31]),
+      balances: { P: [ligne('70110000', -70_000_000), ligne('60410000', 64_900_000)] },
+      balancesAu: { P: [ligne('70110000', -30_000_000), ligne('60410000', 29_900_000)] },
+      dossier: { resultatPeriodeCreationSaisi: 1_100_000 },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.periodeCreation!.source).toBe('DECLARE');
+    expect(r.periodeCreation!.impotDu).toBe(330_000);
+    expect(r.resultatFiscal).toBe(4_000_000);
+  });
+
+  it('une perte de la période de création ne vient pas en déduction (« ces bénéfices »)', async () => {
+    const r = await service({
+      exercices: premier([2026, 8, 1], [2027, 11, 31]),
+      balances: { P: [ligne('70110000', -70_000_000), ligne('60410000', 66_000_000)] },
+      balancesAu: { P: [ligne('70110000', -30_000_000), ligne('60410000', 31_000_000)] },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.periodeCreation!.deduction).toBe(0);
+    expect(r.resultatFiscal).toBe(4_000_000);
+  });
+
+  it('un premier exercice ouvert au premier semestre n’est pas le cas de l’art. 12, al. 3', async () => {
+    const r = await service({
+      exercices: premier([2026, 2, 1], [2026, 11, 31]),
+      balances: { P: [ligne('70110000', -40_000_000), ligne('60410000', 38_000_000)] },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.periodeCreation).toBeNull();
+    expect(r.impotDu).toBe(600_000);
+  });
+
+  it('C10 · créée en 2025 · impôt du premier exercice clos 1 500 000 sous la loi, période de 2025 non chiffrée', async () => {
+    const r = await service({
+      exercices: premier([2025, 8, 1], [2026, 11, 31]),
+      balances: { P: [ligne('70110000', -60_000_000), ligne('60410000', 54_000_000)] },
+      balancesAu: { P: [ligne('70110000', -10_000_000), ligne('60410000', 9_000_000)] },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.simulationAvantLaLoi).toBe(false);
+    expect(r.periodeCreation!.sousLaLoi).toBe(false);
+    expect(r.periodeCreation!.impotDu).toBeNull();
+    expect(r.periodeCreation!.acomptesExercice).toEqual([]);
+    expect(r.impotDu).toBe(1_500_000);
+    expect(r.impotTotalExercice).toBeNull();
+    const texte = r.observations.join(' ');
+    expect(texte).toContain('PREMIER EXERCICE LONG OUVERT AVANT LA LOI');
+    expect(texte).not.toContain("EXERCICE ANTÉRIEUR À L'ENTRÉE EN VIGUEUR");
+  });
+
+  it('A11 · deux impositions, l’écriture se refuse en nommant les deux lignes', () => {
+    const motifs = motifsRefusConstat({
+      formeJuridique: FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE,
+      regime: 'IMPOT_SOCIETES',
+      impotDu: 1_500_000,
+      minimumApplique: false,
+      simulationAvantLaLoi: false,
+      exerciceClos: false,
+      brouillardGestion: 0,
+      impotDejaConstate: 0,
+      impotConstateAu89: 0,
+      reintegrationsImpot: 0,
+      attestationRegime: undefined,
+      periodeCreation: { dateFin: new Date(Date.UTC(2026, 11, 31)), impotDu: 300_000, minimumApplique: true },
+    });
+    const texte = motifs.join(' ');
+    expect(texte).toContain('art. 12, al. 3');
+    expect(texte).toContain('89500000');
+    expect(texte).toContain('89110000');
+    expect(texte).toMatch(/C 44100000 1\s800\s000,00/u);
+  });
+
+  it('le report rejoue la BASE du premier exercice long, période de création déduite', async () => {
+    // Période de création 2026 : bénéfice 2 000 000, imposé à part. Exercice
+    // 2026-2027 entier : perte 1 000 000 · le premier exercice clos perd donc
+    // 3 000 000, que 2028 impute.
+    const r = await service({
+      exercices: [
+        { id: 'P', dateDebut: new Date(Date.UTC(2026, 8, 1)), dateFin: new Date(Date.UTC(2027, 11, 31)) },
+        { id: 'A2028', dateDebut: new Date(Date.UTC(2028, 0, 1)), dateFin: new Date(Date.UTC(2028, 11, 31)) },
+      ],
+      balances: { P: [ligne('60410000', 1_000_000)], A2028: [ligne('70110000', -5_000_000)] },
+      balancesAu: { P: [ligne('70110000', -2_000_000)] },
+    }).s.resultatFiscal('t1', 'A2028');
+    expect(r.periodeCreation).toBeNull();
+    expect(r.deficitAnterieur.montant).toBe(3_000_000);
+  });
+});
+
+describe('Cas chiffrés IS · hypothèses dites (C01-bis, C02, C12a, C15)', () => {
+  it('C01-bis · le brouillard est dit, chiffré, et le calcul n’est pas définitif', async () => {
+    const r = await service({
+      balances: { N: [ligne('70110000', -10_000_000)] },
+      brouillards: { N: [ligne('60410000', 8_000_000)] },
+    }).s.resultatFiscal('t1', 'N');
+    expect(r.impotDu).toBe(3_000_000); // montant inchangé · livre-journal seul
+    expect(r.definitif).toBe(false);
+    expect(r.brouillard).toEqual({ ecritures: 1, effetSurResultat: -8_000_000, effetSurChiffreAffaires: 0 });
+    expect(r.observations[0]).toContain('CHIFFRE PROVISOIRE');
+  });
+
+  it('C01-bis · sans brouillard, le calcul est dit définitif et rien n’est annoncé', async () => {
+    const r = await service({ balances: { N: [ligne('70110000', -10_000_000)] } }).s.resultatFiscal('t1', 'N');
+    expect(r.definitif).toBe(true);
+    expect(r.observations.join(' ')).not.toContain('CHIFFRE PROVISOIRE');
+  });
+
+  it('C02 · le chiffre d’affaires lu est dit dans toutes les branches et sur les plafonds', async () => {
+    const r = await service({
+      balances: { N: [ligne('70110000', -100_000_000), ligne('60410000', 60_000_000)] },
+    }).s.resultatFiscal('t1', 'N');
+    expect(r.explication).toContain('701 à 707');
+    const plafondDons = r.plafonds.find((p) => p.assiette === 'CHIFFRE_AFFAIRES');
+    expect(plafondDons?.enonce).toContain('701 à 707');
+  });
+
+  it('C12a · égaux après arrondi seulement · le libellé le dit, le montant et le compte ne bougent pas', async () => {
+    const r = await service({
+      balances: { N: [ligne('70110000', -123_456_789), ligne('60410000', 119_341_567)] },
+    }).s.resultatFiscal('t1', 'N');
+    expect(r.impotDu).toBe(1_234_600);
+    expect(r.minimumApplique).toBe(false);
+    expect(r.explication).toContain("APRÈS l'arrondi de l'art. 150");
+    expect(r.explication).toContain('compte 895');
+  });
+
+  it('C15 · un déficit d’avant 2026 imputé porte son avertissement dans la vue 2026', async () => {
+    const r = await service({
+      exercices: [
+        { id: 'A2025', dateDebut: new Date(Date.UTC(2025, 0, 1)), dateFin: new Date(Date.UTC(2025, 11, 31)) },
+        { id: 'N', dateDebut: new Date(Date.UTC(2026, 0, 1)), dateFin: new Date(Date.UTC(2026, 11, 31)) },
+      ],
+      balances: {
+        A2025: [ligne('70110000', -10_000_000), ligne('60410000', 12_000_000)],
+        N: [ligne('70110000', -30_000_000), ligne('60410000', 25_000_000)],
+      },
+    }).s.resultatFiscal('t1', 'N');
+    expect(r.deficitImpute).toBe(2_000_000); // montant inchangé
+    expect(r.impotDu).toBe(900_000);
+    expect(r.deficitAnterieur.detail[0].simulation).toBe(true);
+    expect(r.observations.join(' ')).toContain("DÉFICIT D'AVANT LA LOI, RECALCULÉ");
   });
 });

@@ -4,7 +4,6 @@ import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
-import { ENTREE_EN_VIGUEUR_LOI_23_053 } from '../../common/entree-en-vigueur-loi-23-053';
 import { FiscaliteService } from './fiscalite.service';
 import {
   CONDITIONS_A_DECLARER,
@@ -89,7 +88,16 @@ export class ConstatImpotService {
       regime: calcul.regime,
       impotDu: calcul.impotDu,
       minimumApplique: calcul.minimumApplique,
-      simulationAvantLaLoi: exercice.dateDebut.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime(),
+      // C10 · la SIMULATION se lit sur la période imposable que le calcul a
+      // retenue (art. 12, al. 3), jamais sur la seule ouverture de l'exercice.
+      simulationAvantLaLoi: calcul.simulationAvantLaLoi,
+      periodeCreation: calcul.periodeCreation
+        ? {
+            dateFin: calcul.periodeCreation.dateFin,
+            impotDu: calcul.periodeCreation.impotDu,
+            minimumApplique: calcul.periodeCreation.minimumApplique,
+          }
+        : null,
       exerciceClos: exercice.statut === StatutExercice.CLOTURE,
       brouillardGestion,
       impotDejaConstate: calcul.impotExerciceAu89,

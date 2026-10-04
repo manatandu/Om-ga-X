@@ -65,6 +65,17 @@ export class ModifierDossierFiscalDto {
   @ValidateIf((_, v) => v !== null)
   @IsEnum(NatureActiviteFiscale)
   natureActivite?: NatureActiviteFiscale | null;
+
+  /**
+   * Premier exercice long (loi n° 23/053, art. 12, al. 3) · bénéfice FISCAL de
+   * la période de création, d'après les comptes intermédiaires arrêtés au
+   * 31 décembre. Négatif admis (une perte se déclare aussi) ; null = OmegaX
+   * lit le résultat comptable de la période sur le livre-journal.
+   */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsNumber()
+  resultatPeriodeCreationSaisi?: number | null;
 }
 
 /**
