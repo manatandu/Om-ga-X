@@ -2632,8 +2632,22 @@ sens ; DÉTAIL non lettré par tranches ; `report-a-nouveau-agrege.spec.ts`). (2
 Sur le livre-journal, résultat au 13, brouillard DIT. (3) Jamais validé
 (`Ecriture.estANouveauProvisoire`) · `valider` refuse, `validerJusqua` écarte. (4)
 Relancer ou clôturer reprend son NUMÉRO DE PIÈCE ; une ligne lettrée ou pointée
-REFUSE le remplacement (« uniquement sur des écritures non lettrées », Sage). (5)
-Budgets · jamais écrasés, aucune section dont la convention finit avant.
+REFUSE la RELANCE (« uniquement sur des écritures non lettrées », Sage). (5)
+Budgets · jamais écrasés, aucune section dont la convention finit avant. (6) AU1
+(2026-10-04) · IL NE SE LETTRE PAR AUCUN CHEMIN (`verifierLignes`, art. 22, 2°) ·
+lettré puis figé par une clôture de période de N+1, il enfermait N. La CLÔTURE
+reporte ce qui y était lettré ou pointé (dossiers hérités) sur la ligne qui le
+remplace (`apparierTenues` · compte, montants, échéance, devise), définitive ou
+importée libre ; sans équivalent, refus si pointée ou non figée, groupe figé
+laissé PARTIEL et dit. Jamais refuser la clôture de période (art. 22, 3°). (7) AU2 ·
+UNE OUVERTURE DÉJÀ PASSÉE DANS N+1 (bilan importé, sa correction) n'est JAMAIS
+doublée (`issueDeLOuverture`, AUDCIF art. 34 · SYCEBNL art. 16, 4)) · au
+brouillard, refus (la valider) ; concordante compte par compte, rien ajouté ; N
+sans écriture, l'import fait foi ; divergente, le cabinet DÉCLARE · RECTIFIER
+(négatif de l'import puis report exact, art. 20, al. 2, une écriture) ou CONSERVER
+(N tenu pour les comparatifs, motif sur `Exercice.motifOuvertureSuivanteConservee`,
+journal d'audit). Aperçu `GET /exercices/:id/ouverture-suivante` ; le provisoire ne
+passe rien quand une ouverture existe.
 
 **Clôture qui fige lettrage et analytique (point 12).** `exercice/gel-cloture.ts`
 · figé si exercice clôturé, si clôture TOTALE du journal datée au plus tard de sa

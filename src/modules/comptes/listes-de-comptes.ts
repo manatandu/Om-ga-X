@@ -122,6 +122,7 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
   // choix · vues par la détection STRUCTURELLE de `comptes-proposes.spec.ts`,
   // qui ne dépend pas du nom de la route.
   '/ecritures/balance': 'balance, tout le plan ; un compte qu’elle rend est mouvementé, donc utilisé',
+  '/exercices/:id/ouverture-suivante': "confrontation du bilan d'ouverture importé au report de la clôture (AU2), tout le plan, aucun compte à choisir",
   '/ecritures/evolution-soldes': 'évolution des soldes sur plusieurs exercices, tout le plan',
   '/controles': 'contrôles du dossier, tout le plan',
   '/controles/dossier-revision': 'dossier de révision, tout le plan',

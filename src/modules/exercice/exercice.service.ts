@@ -1658,8 +1658,8 @@ type OuvertureDejaPassee = Awaited<ReturnType<typeof ouvertureDejaPassee>>;
 /**
  * AU2 · CE QUE LA CLÔTURE FAIT D'UNE OUVERTURE DÉJÀ PASSÉE DANS N+1.
  *
- * L'art. 34 (SYCEBNL art. 16, 4)) veut l'ouverture de N+1 égale à la clôture
- * de N. Quand un bilan d'ouverture a déjà été importé dans N+1 ·
+ * L'art. 34 de l'AUDCIF (au SYCEBNL, son art. 16, 4)) veut l'ouverture de N+1
+ * égale à la clôture de N. Quand un bilan d'ouverture a déjà été importé dans N+1 ·
  *
  *  · AU BROUILLARD, refus · il n'est pas au livre-journal (art. 22, 2°), et
  *    une rectification validée y inscrirait en négatif une écriture qui n'y
@@ -1783,7 +1783,7 @@ function piecesLisibles(ecritures: Array<{ numeroPiece: number | null; journal: 
   return ecritures.map((e) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`).join(', ');
 }
 
-/** L'article qui fait correspondre les deux bilans, selon le référentiel (l'art. 34 est exclu par l'art. 3 du SYCEBNL). */
+/** L'article qui fait correspondre les deux bilans, selon le référentiel · l'art. 34 de l'AUDCIF est exclu par l'art. 3 du SYCEBNL, qui porte la règle à son art. 16, 4). */
 function articleCorrespondance(referentiel: Referentiel): string {
   return referentiel === Referentiel.SYCEBNL ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34';
 }
