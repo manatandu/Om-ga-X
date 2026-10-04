@@ -24,10 +24,16 @@ au 29 du bien achevé.
 - Sortie et reclassement lisent le compte qui PORTE le cumul
   (`porteurDeLaDepreciation`), plus le dernier mouvement.
 
+- Écran · aperçu dans la fenêtre de mise en service (`ApercuTransfertDepreciation`),
+  bouton « Transférer la dépréciation » pour un bien déjà mis en service.
+- Rejeu sur vraie base (API compilée, PostgreSQL 16 jetable, N, N+1, N+2, N+3,
+  clôtures comprises), SYSCOHADA et SYCEBNL · 0 écart (script
+  `a22bis.mjs` du bloc-notes de session). Défaut trouvé et corrigé · un second
+  transfert lisait le premier comme une dépréciation postérieure (seuls les
+  tests de CLÔTURE sont datés de la fin d'exercice).
+
 ## Reste
-- Écran · aperçu dans la fenêtre de mise en service, bouton de transfert.
-- Rejeu sur vraie base à travers une clôture, deux référentiels.
-- Bloc § 3 complet.
+- Bloc § 3 complet, intégration sur `main` (hors de cette ligne).
 
 ## Vérification
 `npx jest src/modules/immobilisations --maxWorkers=2`

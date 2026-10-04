@@ -174,6 +174,7 @@ const EPSILON = 0.005;
  */
 const CHAMPS_DEPRECIATION_TRANSFERT = {
   sens: true,
+  nature: true,
   montant: true,
   montantImputeEcart: true,
   compteDepreciationId: true,
@@ -908,7 +909,7 @@ export class ImmobilisationService {
     // reprendrait au 29x9 une dépréciation dotée APRÈS lui. Jumeau des deux
     // refus ci-dessus (coûts d'emprunt, réévaluation).
     const depreciationPosterieure = immo.compteEnCoursId
-      ? immo.depreciations.find((d) => d.exercice.dateFin >= date)
+      ? immo.depreciations.find((d) => d.nature === NatureMouvementDepreciation.CLOTURE && d.exercice.dateFin >= date)
       : undefined;
     if (depreciationPosterieure) {
       throw new BadRequestException(
@@ -1045,7 +1046,12 @@ export class ImmobilisationService {
     // La dépréciation transférée est celle qui existe au jour du transfert ·
     // une dépréciation au 29x9 datée après lui serait reprise avant d'avoir
     // été dotée.
-    const posterieure = immo.depreciations.find((d) => d.exercice.dateFin > dateTransfert);
+    // Seuls les tests de clôture sont datés de la fin de leur exercice · un
+    // transfert déjà passé est daté de son jour, et ne se lit pas ici
+    // (le second transfert se dit « rien à transférer »).
+    const posterieure = immo.depreciations.find(
+      (d) => d.nature === NatureMouvementDepreciation.CLOTURE && d.exercice.dateFin > dateTransfert,
+    );
     if (posterieure) {
       throw new BadRequestException(
         `Une dépréciation de ce bien est datée du ${posterieure.exercice.dateFin.toISOString().slice(0, 10)}, après le ` +

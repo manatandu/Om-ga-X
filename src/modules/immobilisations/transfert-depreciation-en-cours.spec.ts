@@ -163,6 +163,7 @@ function harnais(o: {
     compteEnCoursId: 'c2391',
     compteImmobilisation: { numero: '23110000' },
     depreciations: (o.depreciations ?? []).map((d) => ({
+      nature: NatureMouvementDepreciation.CLOTURE,
       sens: d.sens,
       montant: d.montant,
       montantImputeEcart: d.impute ?? 0,
