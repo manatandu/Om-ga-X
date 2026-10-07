@@ -351,6 +351,13 @@ rattachement s'excluent. Règle lue à la CELLULE (passe O3) : la colonne LIBRE
 (`cellules-libres-en-saisie.ts` · sûretés réelles de la NOTE 1, nature du contrat,
 régime fiscal, échéances) ; une colonne LIBRE laissée vide est dans une liste FERMÉE
 avec motif. Les lignes en saisie se présentent même note non applicable (§ 1.4).
+LIGNES RÉPÉTABLES (décision par la loi du 2026-10-04, point 2) · une ligne par
+apporteur, filiale, produit ou matière (notes SYSCOHADA 4, 13, 32, 33) est une
+OCCURRENCE de la rubrique (`RubriqueNote.repetable`, `SaisieNote.rang`, refusé
+ailleurs), jamais une rubrique créée (Titre IX ch. 6 § 1.2) ; lignes finales à leur
+place ; TOTAL de la note 13 confronté aux apporteurs en INFORMATION. NOTES 20B ET
+29B · seize colonnes « ventilées M / F » ; une saisie à huit colonnes n'est JAMAIS
+scindée, gardée hors contexture (rang de colonne 100 + k) et dite à part.
 
 **Note 33.** Vingt-quatre indicateurs (`indicateurs-note-33.ts`), verrouillés.
 « + Fonds propres et assimilés » vaut **CZ**, pas CK (sinon CONTRÔLE tombe chez toute
@@ -1769,7 +1776,31 @@ le nomme à l'écran et au classeur ; OmegaX ne ventile pas (4811 contre 4812).
 d'activité de la NOTE 36 (six chiffres, 44 groupes), sans table de passage
 (`Tenant.codeActivitePrincipale`, SYSCOHADA seul, hors liste avec avertissement,
 case ZI de la Fiche 1, gabarit ETAFI) · jamais une lettre sans sa fiche (R1, R2) ;
-R2 non produite (passe R2).
+R2 non produite (passe R2). FICHE R2, cases ZN à ZS (décision par la loi du
+2026-10-04, point 5) · DÉCLARÉES par exercice (`Exercice.nombreEtablissementsPays`,
+`…HorsPays`, `premiereAnneeExercicePays`, `controleEntreprise`), route SYSCOHADA
+seule, « Non renseignée » à défaut, deux « ZQ » imprimés, jamais un ZR ; rien n'est
+tiré du dossier (ni cellules du groupe, ni premier exercice tenu).
+
+**Entreprise du portefeuille de l'État (décision par la loi du 2026-10-04, point
+1).** O.-L. n° 13/003, art. 112 et 113 ; loi n° 08/010, art. 3 ·
+`Tenant.entreprisePortefeuilleEtat`, oui / non / pas encore dit, SYSCOHADA seul,
+jamais déduit de la forme. Sur « oui » (`exercice/portefeuille-etat.ts`) ·
+assemblée au 31 MARS pour un exercice clos au 31 décembre (autre clôture · rien
+calculé, dit), 45 jours avant pour les commissaires, RCCM un mois après ; PV à
+l'Administration des recettes non fiscales dix jours CALENDAIRES après l'assemblée
+DÉCLARÉE, affectation soixante jours après le dépôt DÉCLARÉ · sans la date,
+`echeance: null` (« Non calculée »). Dividende prioritaire minier NON servi (LF 2026
+lue en résumé seulement).
+
+**Liquidation d'une société commerciale (décision par la loi du 2026-10-04, point
+4).** AUDCIF art. 7 al. 2 et 4 · situations annuelles à la CLÔTURE de chaque
+exercice, aucun anniversaire de la dissolution. Faits à côté de la dissolution
+(`dateNominationLiquidateur`, `regimeLiquidation`, `associeUniquePersonneMorale`) ;
+art. 201 al. 4 refuse la liquidation à l'associé unique personne morale.
+`exercice/liquidation-societe.ts` · chapitre 1 (bilan avant liquidation, art. 266,
+216, 217, 219) pour toute société hors procédure collective (art. 203, dite) ;
+art. 228, 232, 233 dans les SEULS cas de l'art. 223.
 
 **Compte de résultat · RQP, TQP, XE (2026-09-27, audit final F89).** Postes du
 ch. 33 imprimés non nuls seulement, sans code REF ; une référence de formule est

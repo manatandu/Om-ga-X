@@ -2645,6 +2645,16 @@ export class ExportService {
       if (note.renvoiOfficiel) commentaires.push(note.renvoiOfficiel);
       if (note.precisionEditeur) commentaires.push(`Précision d'OmegaX (pas du texte officiel) : ${note.precisionEditeur}`);
       if (note.commentaire) commentaires.push(`Commentaire officiel : ${note.commentaire}`);
+      // Confrontations d'information (TOTAL de la note 13) et saisie gardée au
+      // format à huit colonnes (notes 20B et 29B) · écrites, jamais tues.
+      for (const m of note.informations ?? []) commentaires.push(m);
+      if (note.saisiesFormatAnterieur?.length) {
+        commentaires.push(
+          'Saisie antérieure au format à huit colonnes « (M / F) », non répartie entre M et F, à reporter : ' +
+            note.saisiesFormatAnterieur.map((g) => `${g.rubrique} · ${g.colonneAnterieure} · ${g.valeur}`).join(' ; ') +
+            '.',
+        );
+      }
       if (!note.applicable) {
         commentaires.push(
           "NEANT : aucune rubrique de cette note n'est chiffrée ni renseignée sur l'exercice. La note est jointe à la liasse et " +

@@ -40,8 +40,8 @@ describe('Entreprise du portefeuille de l’État · O.-L. n° 13/003', () => {
     expect(pv.detail).toContain('déclarez la date de l’assemblée');
     const aff = r.find((j) => j.libelle.startsWith('Affectation des résultats'))!;
     expect(aff.echeance).toBeNull();
-    // Le dépôt au RCCM n'est pas touché.
-    expect(iso(r.find((j) => j.etape === 24)!.echeance)).toBe('2027-07-31');
+    // Le dépôt au RCCM suit l'assemblée d'un mois (AUSCGIE art. 269) · 30 avril, pas fin juillet.
+    expect(iso(r.find((j) => j.etape === 24)!.echeance)).toBe('2027-04-30');
   });
 
   it('année bissextile · 15 février ; dix jours calendaires de l’assemblée, soixante du dépôt', () => {

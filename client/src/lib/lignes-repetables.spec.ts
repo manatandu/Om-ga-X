@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest';
 import { lignesAvecAjouts } from './lignes-repetables';
 import type { LigneNoteCalculee } from './types';
 

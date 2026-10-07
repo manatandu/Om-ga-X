@@ -62,6 +62,11 @@ export interface JalonServi {
 
 const JOUR_MS = 86_400_000;
 const plusJours = (d: Date, n: number) => new Date(d.getTime() + n * JOUR_MS);
+/** Un mois DATE À DATE, ramené au dernier jour du mois d'arrivée (31 mars · 30 avril). */
+function plusUnMois(d: Date): Date {
+  const dernier = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 2, 0)).getUTCDate();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, Math.min(d.getUTCDate(), dernier)));
+}
 
 /** L'exercice est-il clos au 31 décembre, seul cas que vise l'art. 112 ? */
 export function closAu31Decembre(dateFin: Date): boolean {
@@ -113,6 +118,21 @@ export function appliquerPortefeuilleEtat(
         detail:
           `${j.detail} ENTREPRISE DU PORTEFEUILLE DE L’ÉTAT · l’échéance est comptée à rebours de ` +
           (faits.dateAssembleeGenerale ? 'l’assemblée déclarée' : 'la date limite du 31 mars (art. 112)') + '.',
+        source: `${j.source} ; ${SOURCE_112}`,
+        echeance,
+        enRetard: enRetard(echeance, j),
+      };
+    }
+    // Étape 24 · le dépôt au RCCM « dans le mois qui suit » l'approbation
+    // (AUSCGIE art. 269) · laissé au septième mois, il dirait « dans les
+    // délais » une société du portefeuille dont l'assemblée est au 31 mars.
+    if (j.etape === 24) {
+      const echeance = plusUnMois(assembleeDeReference);
+      return {
+        ...j,
+        detail:
+          `${j.detail} ENTREPRISE DU PORTEFEUILLE DE L’ÉTAT · le mois se compte depuis ` +
+          (faits.dateAssembleeGenerale ? 'l’assemblée déclarée.' : 'la date limite du 31 mars (art. 112).'),
         source: `${j.source} ; ${SOURCE_112}`,
         echeance,
         enRetard: enRetard(echeance, j),

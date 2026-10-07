@@ -1407,6 +1407,9 @@ export class NoteAnnexeService {
           ...g,
           rubrique: n.lignes.find((l) => l.cle === g.cleRubrique)?.libelle ?? g.cleRubrique,
         }));
+        // La note PORTE une information (saisie non encore reportée) · la dire
+        // « NEANT » ferait imprimer qu'aucun effectif n'a jamais été déclaré.
+        n.applicable = true;
       }
     }
     await this.injecterDateArrete(notes, tenantId, exerciceId);

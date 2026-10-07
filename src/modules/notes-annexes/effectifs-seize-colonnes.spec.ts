@@ -112,6 +112,8 @@ describe('Notes 20B et 29B · personnel propre à seize colonnes', () => {
         valeur: '3 / 2',
       },
     ]);
+    // La note porte une information non reportée · jamais « NEANT ».
+    expect(propre.applicable).toBe(true);
     // Le personnel extérieur ne reçoit rien.
     const exterieur = notes.find((n) => n.code === '29B' && n.sousTableau === 'PERSONNEL EXTERIEUR ET BENEVOLE')!;
     expect(exterieur.saisiesFormatAnterieur).toBeUndefined();
