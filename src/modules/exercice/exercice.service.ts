@@ -28,6 +28,7 @@ import { ArreterComptesDto } from './dto/arrete-comptes.dto';
 import { FicheR2Dto } from './dto/fiche-r2.dto';
 import { DatesPortefeuilleDto } from './dto/dates-portefeuille.dto';
 import { appliquerPortefeuilleEtat, JalonServi } from './portefeuille-etat';
+import { jalonsLiquidation } from './liquidation-societe';
 import { JournalService } from '../journaux/journal.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { DERNIERE_VERIFICATION, dateJalon, jalonsApplicables } from './planning-cloture';
@@ -466,8 +467,21 @@ export class ExerciceService {
     // « oui », et au SYSCOHADA seul (une ASBL n'est ni « entreprise » de
     // l'art. 112 ni « société » de la loi n° 08/010).
     const portefeuille = tenant.referentiel === Referentiel.SYSCOHADA ? tenant.entreprisePortefeuilleEtat : null;
-    const avecPortefeuille = (jalons: JalonServi[]) =>
-      portefeuille === true
+    // LIQUIDATION D'UNE SOCIÉTÉ COMMERCIALE (décision par la loi du
+    // 2026-10-04, point 4) · ses jalons suivent ceux de l'exercice, sur les
+    // seuls exercices qui finissent après la dissolution déclarée.
+    const liquidation = jalonsLiquidation(
+      {
+        forme: formeDeLExercice,
+        dateDissolution: tenant.dateDissolution,
+        dateNominationLiquidateur: tenant.dateNominationLiquidateur,
+        regimeLiquidation: tenant.regimeLiquidation,
+      },
+      exercice,
+      aujourdHui,
+    );
+    const avecPortefeuille = (jalons: JalonServi[]) => [
+      ...(portefeuille === true
         ? appliquerPortefeuilleEtat(
             jalons,
             {
@@ -477,7 +491,9 @@ export class ExerciceService {
             },
             aujourdHui,
           )
-        : jalons;
+        : jalons),
+      ...liquidation,
+    ];
     return {
       exerciceId: exercice.id,
       dateDebut: exercice.dateDebut,

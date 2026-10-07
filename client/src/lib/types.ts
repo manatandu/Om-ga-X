@@ -1622,6 +1622,10 @@ export interface ParametresDossier {
   associeUniqueSas: boolean | null;
   /** O.-L. n° 13/003, art. 112 et 113 · null = pas encore dit. */
   entreprisePortefeuilleEtat?: boolean | null;
+  /** Liquidation d'une société commerciale (AUSCGIE art. 201, 223, 228, 266) · null = pas encore dit. */
+  dateNominationLiquidateur?: string | null;
+  regimeLiquidation?: 'AMIABLE_STATUTAIRE' | 'ARTICLE_223_1' | 'ARTICLE_223_2_JUDICIAIRE' | 'PROCEDURE_COLLECTIVE' | null;
+  associeUniquePersonneMorale?: boolean | null;
   /**
    * AUSCGIE art. 203 et 204 (cinq sociétés commerciales), AUSCOOP art. 183
    * (coopérative) · dissolution déclarée et liquidateurs, null tant que rien

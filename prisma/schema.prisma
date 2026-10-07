@@ -459,6 +459,19 @@ model Tenant {
   // 20261225000000_mentions_cooperative · un seul fait, une seule place.
   dateDissolution                   DateTime?
   liquidateurs                      String?
+  // LA LIQUIDATION D'UNE SOCIÉTÉ COMMERCIALE (décision par la loi du
+  // 2026-10-04, point 4) · faits DÉCLARÉS à côté de la dissolution, jamais
+  // déduits. La date de NOMINATION du liquidateur fait courir la publication
+  // (AUSCGIE art. 266, un mois) et le rapport de l'art. 228 (six mois). Le
+  // RÉGIME dit si le chapitre 2 (art. 224 à 241) s'applique · il ne vaut
+  // « que » dans les deux cas de l'art. 223 ; une procédure collective sort
+  // du chapitre 1 (art. 203).
+  dateNominationLiquidateur         DateTime?
+  regimeLiquidation                 RegimeLiquidation?
+  // AUSCGIE art. 201 al. 4 et 5 · tous les titres détenus par un seul associé
+  // PERSONNE MORALE · la dissolution transmet le patrimoine « sans qu'il y ait
+  // lieu à liquidation ». null = pas encore dit.
+  associeUniquePersonneMorale       Boolean?
   // AUSCGIE art. 182 et 183 · une TRANSFORMATION prend effet au jour de la
   // décision, « ne peut avoir d'effet rétroactif », et seul l'exercice au cours
   // duquel elle intervient suit la nouvelle forme. La forme d'avant et la date
@@ -1443,6 +1456,18 @@ model DossierFiscalExercice {
 
   @@index([tenantId])
   @@map("dossiers_fiscaux_exercice")
+}
+
+/// Régime de la liquidation d'une société commerciale (AUSCGIE art. 203 et
+/// 223) · amiable selon les statuts ou l'accord des associés (chapitre 1
+/// seul), amiable à défaut de clauses ou par convention renvoyant aux
+/// art. 224 à 241 (art. 223, 1°), judiciaire (art. 223, 2°), ou dans une
+/// procédure collective (art. 203 al. 2 · hors chapitre 1).
+enum RegimeLiquidation {
+  AMIABLE_STATUTAIRE
+  ARTICLE_223_1
+  ARTICLE_223_2_JUDICIAIRE
+  PROCEDURE_COLLECTIVE
 }
 
 /// Fiche R2 de l'AUDCIF (Titre IX ch. 2) · contrôle de l'entreprise, codes

@@ -165,6 +165,9 @@ export class TenantService {
       entreprisePortefeuilleEtat: tenant.entreprisePortefeuilleEtat,
       dateDissolution: tenant.dateDissolution,
       liquidateurs: tenant.liquidateurs,
+      dateNominationLiquidateur: tenant.dateNominationLiquidateur,
+      regimeLiquidation: tenant.regimeLiquidation,
+      associeUniquePersonneMorale: tenant.associeUniquePersonneMorale,
       // AUSCGIE art. 182 et 183 · la transformation déclarée, et la forme que
       // gardent les exercices clos avant elle.
       formeJuridiqueSyscohadaAnterieure: tenant.formeJuridiqueSyscohadaAnterieure,
@@ -470,6 +473,9 @@ export class TenantService {
       entreprisePortefeuilleEtat?: ReponseFait;
       dateDissolution?: string;
       liquidateurs?: string;
+      dateNominationLiquidateur?: string;
+      regimeLiquidation?: 'AMIABLE_STATUTAIRE' | 'ARTICLE_223_1' | 'ARTICLE_223_2_JUDICIAIRE' | 'PROCEDURE_COLLECTIVE' | 'PAS_ENCORE_DIT';
+      associeUniquePersonneMorale?: ReponseFait;
       actePersonnaliteJuridique?: string;
       dateActePersonnalite?: string;
       numeroEnregistrementSecteur?: string;
@@ -583,6 +589,53 @@ export class TenantService {
           '(AUSCGIE art. 203 et 204) ou d’une coopérative (AUSCOOP art. 183) · aucun texte lu ne les étend à cette forme.',
       );
     }
+    // LA LIQUIDATION DE L'AUSCGIE (décision par la loi du 2026-10-04,
+    // point 4) · nomination, régime et associé unique personne morale ne
+    // concernent qu'une société commerciale.
+    const nomination = dateSaisieOuEffacement(dto.dateNominationLiquidateur);
+    const societeCommerciale = !!forme && FORMES_SOCIETES_COMMERCIALES.includes(forme);
+    if (
+      !societeCommerciale &&
+      (nomination ||
+        (dto.regimeLiquidation !== undefined && dto.regimeLiquidation !== 'PAS_ENCORE_DIT') ||
+        dto.associeUniquePersonneMorale === 'OUI' ||
+        dto.associeUniquePersonneMorale === 'NON')
+    ) {
+      throw new BadRequestException(
+        'La nomination du liquidateur, le régime de la liquidation et l’associé unique personne morale sont ceux ' +
+          'd’une société commerciale (AUSCGIE art. 201, 203 et 223).',
+      );
+    }
+    // Art. 201 al. 4 · la dissolution d'une société dont TOUS les titres sont
+    // détenus par un associé unique personne MORALE transmet le patrimoine
+    // « sans qu'il y ait lieu à liquidation ». Lu sur l'état qui résultera de
+    // l'enregistrement (ce qui est envoyé, sinon ce qui est en base).
+    const associePmApres =
+      dto.associeUniquePersonneMorale === undefined
+        ? tenant.associeUniquePersonneMorale
+        : dto.associeUniquePersonneMorale === 'OUI'
+          ? true
+          : dto.associeUniquePersonneMorale === 'NON'
+            ? false
+            : null;
+    const dissolutionApres = dissolution === undefined ? tenant.dateDissolution : dissolution;
+    const nominationApres = nomination === undefined ? tenant.dateNominationLiquidateur : nomination;
+    if (associePmApres === true && (dissolutionApres || nominationApres || renseigne(dto.liquidateurs))) {
+      throw new BadRequestException(
+        'La dissolution d’une société dont tous les titres sont détenus par un seul associé personne morale ' +
+          'entraîne la transmission universelle du patrimoine à cet associé, « sans qu’il y ait lieu à ' +
+          'liquidation » (AUSCGIE art. 201 al. 4) · ni dissolution en liquidation ni liquidateur ne se déclarent.',
+      );
+    }
+    if (nominationApres && dissolutionApres && nominationApres < dissolutionApres) {
+      throw new BadRequestException(
+        'Le liquidateur est nommé une fois la société dissoute · « La société est en liquidation dès l’instant ' +
+          'de sa dissolution » (AUSCGIE art. 204).',
+      );
+    }
+    if (nomination && nomination > new Date()) {
+      throw new BadRequestException('Une nomination à venir ne se déclare pas · déclarez-la une fois intervenue.');
+    }
     if (dissolution && dissolution > new Date()) {
       throw new BadRequestException(
         '« La société est en liquidation dès l’instant de sa dissolution » (AUSCGIE art. 204) · une dissolution à ' +
@@ -634,6 +687,16 @@ export class TenantService {
             }),
         dateDissolution: dissolution,
         liquidateurs: normaliser(dto.liquidateurs),
+        dateNominationLiquidateur: nomination,
+        ...(dto.regimeLiquidation === undefined
+          ? {}
+          : { regimeLiquidation: dto.regimeLiquidation === 'PAS_ENCORE_DIT' ? null : dto.regimeLiquidation }),
+        ...(dto.associeUniquePersonneMorale === undefined
+          ? {}
+          : {
+              associeUniquePersonneMorale:
+                dto.associeUniquePersonneMorale === 'OUI' ? true : dto.associeUniquePersonneMorale === 'NON' ? false : null,
+            }),
         actePersonnaliteJuridique: normaliser(dto.actePersonnaliteJuridique),
         // Date vide = pas d'arrêté encore obtenu (autorisation provisoire de
         // l'art. 5) · c'est un état légitime, pas une saisie incomplète. Lue

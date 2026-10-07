@@ -220,6 +220,29 @@ export class ModifierIdentiteDto {
   @MaxLength(300)
   liquidateurs?: string;
 
+  // Liquidation d'une société commerciale (décision par la loi du 2026-10-04,
+  // point 4) · nomination du liquidateur (AUSCGIE art. 228 et 266), la chaîne
+  // vide l'efface ; régime (art. 203 et 223), PAS_ENCORE_DIT l'efface ;
+  // associé unique personne morale (art. 201 al. 4).
+  @IsOptional()
+  @ValidateIf((o: ModifierIdentiteDto) => o.dateNominationLiquidateur !== '')
+  @IsDateString()
+  dateNominationLiquidateur?: string;
+
+  @IsOptional()
+  @IsIn(['AMIABLE_STATUTAIRE', 'ARTICLE_223_1', 'ARTICLE_223_2_JUDICIAIRE', 'PROCEDURE_COLLECTIVE', 'PAS_ENCORE_DIT'], {
+    message:
+      'Le régime de la liquidation se déclare AMIABLE_STATUTAIRE, ARTICLE_223_1, ARTICLE_223_2_JUDICIAIRE, ' +
+      'PROCEDURE_COLLECTIVE ou PAS_ENCORE_DIT.',
+  })
+  regimeLiquidation?: 'AMIABLE_STATUTAIRE' | 'ARTICLE_223_1' | 'ARTICLE_223_2_JUDICIAIRE' | 'PROCEDURE_COLLECTIVE' | 'PAS_ENCORE_DIT';
+
+  @IsOptional()
+  @IsIn(['OUI', 'NON', 'PAS_ENCORE_DIT'], {
+    message: 'L’associé unique personne morale se déclare OUI, NON ou PAS_ENCORE_DIT.',
+  })
+  associeUniquePersonneMorale?: ReponseFait;
+
   // --- Propres aux entités à but non lucratif -----------------------------
   // Arrêté du Ministre de la Justice (loi 004/2001, art. 3) ou décret
   // présidentiel pour une entité de droit étranger (art. 30) · plus long

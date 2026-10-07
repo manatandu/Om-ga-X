@@ -57,13 +57,23 @@ export function faitsDeLaForme(forme: FormeJuridiqueSyscohada | null | undefined
   modeAdministration: boolean;
   associeUnique: boolean;
   dissolution: boolean;
+  /** Nomination, régime, associé unique personne morale · AUSCGIE art. 201, 223, 266 (sociétés commerciales). */
+  liquidation: boolean;
 } {
   return {
     modeAdministration: forme === 'SOCIETE_ANONYME',
     associeUnique: forme === 'SOCIETE_PAR_ACTIONS_SIMPLIFIEE',
     dissolution: estSocieteCommerciale(forme) || estCooperative(forme),
+    liquidation: estSocieteCommerciale(forme),
   };
 }
+
+export type RegimeLiquidationSaisi =
+  | 'AMIABLE_STATUTAIRE'
+  | 'ARTICLE_223_1'
+  | 'ARTICLE_223_2_JUDICIAIRE'
+  | 'PROCEDURE_COLLECTIVE'
+  | 'PAS_ENCORE_DIT';
 
 export type ModeAdministrationSaisi = 'CONSEIL_ADMINISTRATION' | 'ADMINISTRATEUR_GENERAL' | 'PAS_ENCORE_DIT';
 export type ReponseFaitSaisie = 'OUI' | 'NON' | 'PAS_ENCORE_DIT';
@@ -76,13 +86,29 @@ export type ReponseFaitSaisie = 'OUI' | 'NON' | 'PAS_ENCORE_DIT';
  */
 export function faitsDeLaFormeAEnvoyer(
   forme: FormeJuridiqueSyscohada | null | undefined,
-  saisie: { modeAdministrationSa: ModeAdministrationSaisi; associeUniqueSas: ReponseFaitSaisie; dateDissolution: string; liquidateurs: string },
+  saisie: {
+    modeAdministrationSa: ModeAdministrationSaisi;
+    associeUniqueSas: ReponseFaitSaisie;
+    dateDissolution: string;
+    liquidateurs: string;
+    dateNominationLiquidateur?: string;
+    regimeLiquidation?: RegimeLiquidationSaisi;
+    associeUniquePersonneMorale?: ReponseFaitSaisie;
+  },
 ): Record<string, string> {
   const faits = faitsDeLaForme(forme);
   return {
     ...(faits.modeAdministration ? { modeAdministrationSa: saisie.modeAdministrationSa } : {}),
     ...(faits.associeUnique ? { associeUniqueSas: saisie.associeUniqueSas } : {}),
     ...(faits.dissolution ? { dateDissolution: saisie.dateDissolution, liquidateurs: saisie.liquidateurs } : {}),
+    // La liquidation de l'AUSCGIE · sociétés commerciales seules, la coopérative en est exclue.
+    ...(faits.liquidation && saisie.dateNominationLiquidateur !== undefined
+      ? { dateNominationLiquidateur: saisie.dateNominationLiquidateur }
+      : {}),
+    ...(faits.liquidation && saisie.regimeLiquidation !== undefined ? { regimeLiquidation: saisie.regimeLiquidation } : {}),
+    ...(faits.liquidation && saisie.associeUniquePersonneMorale !== undefined
+      ? { associeUniquePersonneMorale: saisie.associeUniquePersonneMorale }
+      : {}),
   };
 }
 

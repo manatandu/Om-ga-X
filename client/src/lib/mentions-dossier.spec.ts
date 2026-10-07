@@ -209,3 +209,30 @@ describe('Paramètres du dossier · le numéro CNSS de l’employeur sous ses de
     expect(aide).toContain('source="Code du travail, art. 212, point 2 · arrêté n° 146/2018, art. 7"');
   });
 });
+
+describe('Paramètres du dossier · la liquidation d’une société commerciale (décision du 2026-10-04, point 4)', () => {
+  const saisie = {
+    modeAdministrationSa: 'PAS_ENCORE_DIT' as const,
+    associeUniqueSas: 'PAS_ENCORE_DIT' as const,
+    dateDissolution: '2026-05-31',
+    liquidateurs: 'M. Liquidateur',
+    dateNominationLiquidateur: '2026-06-15',
+    regimeLiquidation: 'ARTICLE_223_1' as const,
+    associeUniquePersonneMorale: 'NON' as const,
+  };
+
+  it('nomination, régime et associé unique personne morale ne partent qu’à une société commerciale', () => {
+    expect(faitsDeLaFormeAEnvoyer('SOCIETE_RESPONSABILITE_LIMITEE', saisie)).toEqual({
+      dateDissolution: '2026-05-31',
+      liquidateurs: 'M. Liquidateur',
+      dateNominationLiquidateur: '2026-06-15',
+      regimeLiquidation: 'ARTICLE_223_1',
+      associeUniquePersonneMorale: 'NON',
+    });
+    // La coopérative garde sa dissolution (AUSCOOP art. 183), pas la liquidation de l'AUSCGIE.
+    expect(faitsDeLaFormeAEnvoyer('SOCIETE_COOPERATIVE', saisie)).toEqual({
+      dateDissolution: '2026-05-31',
+      liquidateurs: 'M. Liquidateur',
+    });
+  });
+});

@@ -16,6 +16,7 @@ import {
   proposeCapitalVariable,
   transformationDatable,
   type ModeAdministrationSaisi,
+  type RegimeLiquidationSaisi,
   type ReponseFaitSaisie,
 } from '../lib/mentions-dossier';
 import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImpression';
@@ -188,6 +189,10 @@ export function ParametresDossierPage() {
   const [varianteCoop, setVarianteCoop] = useState<'SCOOPS' | 'COOP_CA' | 'PAS_ENCORE_DIT'>('PAS_ENCORE_DIT');
   const [dateDissolution, setDateDissolution] = useState('');
   const [liquidateurs, setLiquidateurs] = useState('');
+  // Liquidation d'une société commerciale (AUSCGIE art. 201, 223, 228, 266).
+  const [dateNomination, setDateNomination] = useState('');
+  const [regimeLiquidation, setRegimeLiquidation] = useState<RegimeLiquidationSaisi>('PAS_ENCORE_DIT');
+  const [associePm, setAssociePm] = useState<ReponseFaitSaisie>('PAS_ENCORE_DIT');
   // AUSCGIE art. 386 et 414 (SA), 853-2 (SAS) · faits de la dénomination.
   const [modeAdministration, setModeAdministration] = useState<ModeAdministrationSaisi>('PAS_ENCORE_DIT');
   const [associeUnique, setAssocieUnique] = useState<ReponseFaitSaisie>('PAS_ENCORE_DIT');
@@ -239,6 +244,11 @@ export function ParametresDossierPage() {
       setVarianteCoop(p.varianteCooperative ?? 'PAS_ENCORE_DIT');
       setDateDissolution(p.dateDissolution ? p.dateDissolution.slice(0, 10) : '');
       setLiquidateurs(p.liquidateurs ?? '');
+      setDateNomination(p.dateNominationLiquidateur ? p.dateNominationLiquidateur.slice(0, 10) : '');
+      setRegimeLiquidation(p.regimeLiquidation ?? 'PAS_ENCORE_DIT');
+      setAssociePm(
+        p.associeUniquePersonneMorale === true ? 'OUI' : p.associeUniquePersonneMorale === false ? 'NON' : 'PAS_ENCORE_DIT',
+      );
       setModeAdministration(p.modeAdministrationSa ?? 'PAS_ENCORE_DIT');
       setAssocieUnique(p.associeUniqueSas === true ? 'OUI' : p.associeUniqueSas === false ? 'NON' : 'PAS_ENCORE_DIT');
       setPortefeuille(
@@ -572,6 +582,7 @@ export function ParametresDossierPage() {
                     ? [
                         { label: 'Dissoute le', valeur: dateDissolution, set: setDateDissolution, exemple: '', date: true },
                         { label: 'Liquidateur(s)', valeur: liquidateurs, set: setLiquidateurs, exemple: '' },
+                        { label: 'Liquidateur nommé le', valeur: dateNomination, set: setDateNomination, exemple: '', date: true },
                       ]
                     : []),
                 ]),
@@ -747,6 +758,9 @@ export function ParametresDossierPage() {
                       associeUniqueSas: associeUnique,
                       dateDissolution,
                       liquidateurs,
+                      dateNominationLiquidateur: dateNomination,
+                      regimeLiquidation,
+                      associeUniquePersonneMorale: associePm,
                     }),
                   }
                 : {
@@ -757,6 +771,9 @@ export function ParametresDossierPage() {
                       associeUniqueSas: associeUnique,
                       dateDissolution,
                       liquidateurs,
+                      dateNominationLiquidateur: dateNomination,
+                      regimeLiquidation,
+                      associeUniquePersonneMorale: associePm,
                     }),
                   }
             : {}),
@@ -1234,6 +1251,40 @@ export function ParametresDossierPage() {
                         <option value="ADMINISTRATEUR_GENERAL">Avec administrateur général</option>
                       </select>
                     </Ligne>
+                  )}
+                  {!estSycebnl && faitsDeLaForme(params?.formeJuridiqueSyscohada).liquidation && (
+                    <>
+                      <Ligne label="Régime de la liquidation">
+                        <select
+                          value={regimeLiquidation}
+                          onChange={(e) => setRegimeLiquidation(e.target.value as RegimeLiquidationSaisi)}
+                          disabled={!estAdmin || envoi}
+                          aria-label="Régime de la liquidation"
+                          title="AUSCGIE art. 203 et 223 · les articles 224 à 241 ne s’appliquent que dans les deux cas de l’article 223"
+                          className={champSage}
+                        >
+                          <option value="PAS_ENCORE_DIT">Pas encore dit</option>
+                          <option value="AMIABLE_STATUTAIRE">Amiable, selon les statuts ou l’accord des associés</option>
+                          <option value="ARTICLE_223_1">Amiable, à défaut de clauses (art. 223, 1°)</option>
+                          <option value="ARTICLE_223_2_JUDICIAIRE">Judiciaire (art. 223, 2°)</option>
+                          <option value="PROCEDURE_COLLECTIVE">Dans une procédure collective</option>
+                        </select>
+                      </Ligne>
+                      <Ligne label="Associé unique personne morale">
+                        <select
+                          value={associePm}
+                          onChange={(e) => setAssociePm(e.target.value as ReponseFaitSaisie)}
+                          disabled={!estAdmin || envoi}
+                          aria-label="Associé unique personne morale"
+                          title="AUSCGIE art. 201 al. 4 · la dissolution transmet le patrimoine à l’associé unique personne morale, sans liquidation"
+                          className={champSage}
+                        >
+                          <option value="PAS_ENCORE_DIT">Pas encore dit</option>
+                          <option value="OUI">Oui · tous les titres détenus par une personne morale</option>
+                          <option value="NON">Non</option>
+                        </select>
+                      </Ligne>
+                    </>
                   )}
                   {!estSycebnl && faitsDeLaForme(params?.formeJuridiqueSyscohada).associeUnique && (
                     <Ligne label="Associé unique (SASU)">

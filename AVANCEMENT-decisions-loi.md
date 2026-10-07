@@ -52,9 +52,19 @@ Manasse du 2026-10-04 sur le samedi).
   `note-annexe.service.spec.ts`, `liasse-syscohada.spec.ts` (trois apporteurs
   sortent trois), `lignes-repetables.spec.ts`.
 
+- **O1a-D2 · liquidation d'une société** · `Tenant.dateNominationLiquidateur`,
+  `regimeLiquidation` (enum `RegimeLiquidation`), `associeUniquePersonneMorale`
+  (migration `20270146000000_liquidation_societe`), refus art. 201 al. 4 et
+  nomination avant dissolution (art. 204), `exercice/liquidation-societe.ts`
+  (étape 27 · bilan avant liquidation, publication à un mois, clôture à trois
+  ans, situation provisoire au 31 décembre hors art. 223 ; rapport à six mois,
+  états à trois mois, assemblée à six mois de chaque clôture dans les cas de
+  l'art. 223 ; procédure collective dite, rien calculé). Écran · Paramètres du
+  dossier. Tests · `liquidation-societe.spec.ts`, `mentions-dossier.spec.ts`.
+
 ## Reste
 
-- O1a-D2 · liquidation.
+- Bloc complet du § 3, scénario sur base jetable, relecture adverse.
 
 ## Décisions prises
 
@@ -76,6 +86,13 @@ Manasse du 2026-10-04 sur le samedi).
 - 20B / 29B · personnel extérieur et bénévole laissé à sa colonne unique (texte
   muet, à lire au J.O. OHADA). Contrôle Total = somme des zones NON codé (« peut »).
   Les saisies antérieures ne sont pas imprimées dans la liasse Excel (écran seul).
+
+- O1a-D2 · la dissolution vivait déjà sur le DOSSIER (`Tenant.dateDissolution`,
+  « un seul fait, une seule place ») · nomination et régime l'y rejoignent, au lieu
+  de l'exercice que la décision évoquait ; le drapeau est la date de dissolution.
+  Non tranché (corpus muet) · sort de la période du 1er janvier à la dissolution ;
+  liquidation d'une association ou ONG (non servie) ; date de publication de la
+  clôture (radiation art. 220 non calculée, non stockée).
 
 ## Vérification
 
