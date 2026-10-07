@@ -20,8 +20,10 @@ import { Response } from 'express';
  * compris · l'API est à la même origine ici, et le site publié l'appelle lui
  * aussi sous la sienne depuis le relais `/api` du 2026-09-26. La politique du
  * site portait jusqu'au 2026-09-28 l'adresse de Cloud Run, que celle-ci
- * retirait (audit final F264) ; `configuration-a-jour.spec.ts` tient les deux
- * égales.
+ * retirait (audit final F264). Depuis le 2026-10-07, celle du site ouvre EN
+ * PLUS les deux hôtes UE de la télémétrie (Sentry, PostHog) ; celle-ci, non ·
+ * rien ne part d'une installation sur site. `configuration-a-jour.spec.ts`
+ * tient les deux égales à cet écart près.
  */
 export const POLITIQUE_INTERFACE =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; " +

@@ -196,6 +196,24 @@ ou redéclenché sans que la ligne suive fait tomber le test.
 | `surveillance.yml` | horaire, toutes les quinze minutes ; à la main | interroge le service, le relais `/api` du site et le site ; après trois échecs, ouvre l'issue « Panne de production », refermée au retour |
 | `paquet-sur-site.yml` | à la main seulement | paquet d'installation Windows (`OmegaX-installation-<date>-<commit>.exe`) |
 
+**TÉLÉMÉTRIE, TROIS SECRETS, TOUS FACULTATIFS** (décision de Manasse du
+2026-10-07). `API_SENTRY_DSN` · le serveur le reçoit en `SENTRY_DSN` par le
+fichier de variables de `deploy-cloud-run.yml`, posé seulement s'il existe.
+`CLIENT_SENTRY_DSN` et `CLIENT_POSTHOG_CLE` · l'interface les reçoit en
+`VITE_SENTRY_DSN` et `VITE_POSTHOG_CLE` à la construction, dans
+`firebase-hosting-merge.yml` et `firebase-hosting-pull-request.yml` (aperçu
+marqué `apercu`, Dependabot déjà écarté). Secret absent = variable vide =
+télémétrie éteinte, jamais un échec. `paquet-sur-site.yml`,
+`tests-navigateur.yml` et le portillon `verifier` n'en reçoivent AUCUN
+(`chaine-de-livraison.spec.ts`). Région UE seule · une clé Sentry hors
+`*.ingest.de.sentry.io` laisse Sentry éteint, la politique de sécurité du site
+n'ouvre que `https://*.ingest.de.sentry.io` et `https://eu.i.posthog.com`, et
+celle du poste sur site aucun hôte. Le serveur écrit au démarrage son RÉGIME
+(« Sentry · actif », « Sentry · inactif (aucune clé) », « Sentry · inactif
+(installation sur site) »), jamais la clé. À poser par Manasse dans les deux
+services · le refus de conserver l'adresse IP (la page de confidentialité le
+dit en attente).
+
 **DEUX chaînes de connexion, et elles ne s'échangent pas.**
 `API_DATABASE_URL` est l'endpoint DIRECT · migrations (`prisma migrate
 deploy`) et `pg_dump`, qui tiennent une session longue, des verrous et du DDL.
@@ -4005,6 +4023,28 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   où l'entité vit réellement et commande un SECOND jeu de documents, à côté du
   jeu légal et sans valeur légale · aucun texte lu ne le régit, c'est une
   décision d'OmegaX et le document doit le dire.
+- **Télémétrie · JAMAIS de données du dossier, RIEN sur site** (2026-10-07,
+  `src/common/telemetrie/`, `client/src/lib/telemetrie.ts`). Sentry reçoit les
+  PANNES (exceptions non gérées, réponses 5xx par `FiltrePannes`, erreurs des
+  barrières de fenêtre ; un 4xx est un refus, jamais signalé), PostHog les
+  PAGES VUES de l'interface. Aucun montant, nom, courriel, contenu saisi,
+  corps, cookie, en-tête ni chaîne de requête · chaque événement est REBÂTI
+  sur une liste fermée par le module pur `nettoyage-telemetrie.ts`, écrit une
+  fois pour les deux côtés et testé sur des événements chargés de données ;
+  chemins normalisés (tout segment qui n'est pas un mot de route devient
+  `:id`) ; le MESSAGE d'une erreur ne part que pour un type en liste fermée
+  (erreurs du moteur, de Prisma, exceptions HTTP de Nest), réduit à sa première
+  ligne sans nombres, adresses, textes cités ni noms propres, tout autre type
+  part en `[message]` (un libellé en minuscules traversait le nettoyage). Sentry
+  v11 n'a plus `sendDefaultPii` · `dataCollection` (qui collecte TOUT quand il
+  est absent) est posé tout à faux, intégrations par défaut coupées, aucun
+  `tracesSampleRate` (posé, même à 0, il monte le traçage), aucun rejeu ; une
+  spec fait tourner le vrai SDK et relit l'enveloppe émise. PostHog par
+  `posthog-js/no-external` (aucun script tiers), `$pageview` manuel seul,
+  autocapture et enregistrement coupés, aucun `identify` (rôle et référentiel
+  seulement), `$geoip_disable`, stockage local ou mémoire, jamais de cookie. Les SDK se chargent
+  À LA DEMANDE et seulement actifs · sur site (`MODE_INSTALLATION=SUR_SITE`,
+  ou interface construite en `meme-origine`), ils ne sont jamais chargés.
 - **Restitution du dossier** (`src/modules/exports/restitution/`) · une
   archive ZIP d'un CSV par table, sur son PROPRE contrôleur, sans
   `LicenceGuard` : derrière lui elle serait indisponible dans le seul cas où

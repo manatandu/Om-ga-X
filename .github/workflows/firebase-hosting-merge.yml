@@ -32,8 +32,16 @@ jobs:
       - name: Tests du client
         run: npm test
         working-directory: client
+      # TÉLÉMÉTRIE · les deux clés publiques de l'interface (Sentry pour les
+      # pannes, PostHog pour les pages vues, région UE) entrent à la
+      # construction. Secret absent, la variable est vide et rien ne démarre ·
+      # jamais un échec. Le paquet sur site ne les reçoit pas (rien ne part
+      # d'une installation sur site, client/src/lib/telemetrie.ts).
       - run: npm run build
         working-directory: client
+        env:
+          VITE_SENTRY_DSN: ${{ secrets.CLIENT_SENTRY_DSN }}
+          VITE_POSTHOG_CLE: ${{ secrets.CLIENT_POSTHOG_CLE }}
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

@@ -1,4 +1,6 @@
-import { Navigate, Route, HashRouter, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Navigate, Route, HashRouter, Routes, useLocation } from 'react-router-dom';
+import { pageVue } from './lib/telemetrie';
 import { AuthProvider, useAuth } from './lib/auth';
 import { ExerciceProvider } from './lib/exercice';
 import { FenetresProvider } from './lib/fenetres';
@@ -60,10 +62,27 @@ function Routage() {
   );
 }
 
+/**
+ * PAGES VUES · une par changement de route (HashRouter, `#/comptes/…`), le
+ * chemin seul, normalisé par lib/telemetrie.ts. Le rôle et le référentiel
+ * sont lus au moment de la vue · les mettre en dépendance doublerait la
+ * vue à l'arrivée de la session.
+ */
+function SuiviDesPages() {
+  const { pathname } = useLocation();
+  const { utilisateur } = useAuth();
+  useEffect(() => {
+    pageVue(pathname, utilisateur?.role, utilisateur?.tenant.referentiel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+  return null;
+}
+
 export function App() {
   return (
     <HashRouter>
       <AuthProvider>
+        <SuiviDesPages />
         <Routage />
       </AuthProvider>
     </HashRouter>
