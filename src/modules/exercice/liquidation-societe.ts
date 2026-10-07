@@ -104,6 +104,36 @@ export function jalonsLiquidation(
   });
   const exerciceDeDissolution = dansLExercice(dissolution, exercice);
 
+  // LA PROCÉDURE COLLECTIVE PASSE AVANT L'ASSOCIÉ UNIQUE (décision par la loi
+  // du 2026-10-07, point 1). Jugement de liquidation des biens (AUSCGIE
+  // art. 200, 6°) · le patrimoine est sous le dessaisissement de l'AUPCAP
+  // (art. 53), réalisé par le syndic pour les créanciers · la transmission
+  // universelle de l'art. 201 al. 4 ne joue pas, même à un associé unique
+  // personne morale, et les art. 203 à 241 ne s'appliquent pas (art. 203 al. 2).
+  if (faits.regimeLiquidation === RegimeLiquidation.PROCEDURE_COLLECTIVE) {
+    return [
+      jalon({
+        libelle: 'Liquidation dans une procédure collective',
+        detail:
+          'La liquidation intervient dans le cadre de l’Acte uniforme portant organisation des procédures ' +
+          'collectives d’apurement du passif · les dispositions générales de la liquidation des sociétés ne ' +
+          's’appliquent pas, et aucun jalon n’est calculé ici. La décision qui prononce la liquidation des biens ' +
+          'emporte dessaisissement du débiteur, ses actes étant accomplis par le syndic' +
+          (faits.associeUniquePersonneMorale === true
+            ? ' · la transmission universelle du patrimoine à l’associé unique personne morale ne joue pas.'
+            : '.'),
+        nature: 'LEGALE',
+        source:
+          faits.associeUniquePersonneMorale === true
+            ? 'AUSCGIE, art. 200, 6°, 201 al. 4 et 203 al. 2 ; AUPCAP, art. 53'
+            : 'AUSCGIE, art. 203 al. 2 ; AUPCAP, art. 53',
+        debut: dissolution,
+        echeance: null,
+        observation: { libelle: 'Hors des articles 203 à 241 de l’AUSCGIE', satisfait: true },
+      }),
+    ];
+  }
+
   // Art. 201 al. 4 · aucune liquidation · le planning le dit, sans rien dater.
   if (faits.associeUniquePersonneMorale === true) {
     return exerciceDeDissolution
@@ -124,23 +154,6 @@ export function jalonsLiquidation(
           }),
         ]
       : [];
-  }
-
-  if (faits.regimeLiquidation === RegimeLiquidation.PROCEDURE_COLLECTIVE) {
-    return [
-      jalon({
-        libelle: 'Liquidation dans une procédure collective',
-        detail:
-          'La liquidation intervient dans le cadre de l’Acte uniforme portant organisation des procédures ' +
-          'collectives d’apurement du passif · les dispositions générales de la liquidation des sociétés ne ' +
-          's’appliquent pas, et aucun jalon n’est calculé ici.',
-        nature: 'LEGALE',
-        source: 'AUSCGIE, art. 203 al. 2',
-        debut: dissolution,
-        echeance: null,
-        observation: { libelle: 'Hors des articles 203 à 241 de l’AUSCGIE', satisfait: true },
-      }),
-    ];
   }
 
   const jalons: JalonServi[] = [];

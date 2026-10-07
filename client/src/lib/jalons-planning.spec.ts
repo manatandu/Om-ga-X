@@ -1,4 +1,4 @@
-import { classeObservation, estNonCalcule, libelleEcheance, lignesJalonsAccueil } from './jalons-planning';
+import { classeObservation, estNonCalcule, libelleEcheance, libelleMontant, lignesJalonsAccueil, montantNonCalcule } from './jalons-planning';
 import type { JalonCloture } from './types';
 
 // Aucun import de « vitest » (globales) · convention du dépôt.
@@ -78,6 +78,31 @@ describe('jalons du planning · une échéance non calculée n’est jamais favo
     expect(estNonCalcule(attente)).toBe(false);
     expect(libelleEcheance(attente)).toBe('En attente du dépôt');
     expect(lignesJalonsAccueil([attente], AUJOURDHUI).retard).toEqual({ valeur: 'Aucun jalon en retard', bon: true });
+  });
+
+  it('le montant d’un jalon · non calculé se dit, jamais lu comme zéro ; un zéro servi est une réponse ; absent, rien', () => {
+    expect(libelleMontant(jalon({ libelle: 'Assemblée' }))).toBeNull();
+    expect(libelleMontant(jalon({ libelle: 'Dividende', montant: null }))).toBe('Montant non calculé');
+    expect(libelleMontant(jalon({ libelle: 'Dividende', montant: 200000 }))).toMatch(/^Montant · 200\s000,00$/);
+    expect(libelleMontant(jalon({ libelle: 'Dividende', montant: 0 }))).toBe('Montant · 0,00');
+    expect(libelleMontant(jalon({ libelle: 'Dividende', montant: 200000, montantProvisoire: true }))).toMatch(
+      /^Montant provisoire · 200\s000,00$/,
+    );
+    expect(
+      libelleMontant(jalon({ libelle: 'Dividende', montant: null, montantEnAttente: true, enAttente: 'En attente du résultat de l’exercice' })),
+    ).toBe('Montant en attente du résultat');
+  });
+
+  it('un montant non calculé est un manque · compté, jamais vert à l’accueil ; en attente ou levé, il ne l’est pas', () => {
+    const sansQuote = jalon({ libelle: 'Déclaration du dividende', montant: null, echeance: '2027-05-15T00:00:00.000Z' });
+    expect(montantNonCalcule(sansQuote)).toBe(true);
+    expect(montantNonCalcule(jalon({ libelle: 'D', montant: null, montantEnAttente: true, enAttente: 'En attente du résultat' }))).toBe(false);
+    expect(montantNonCalcule(jalon({ libelle: 'D', montant: null, observation: { libelle: 'Déclaré', satisfait: true } }))).toBe(false);
+    expect(montantNonCalcule(jalon({ libelle: 'D', montant: 0 }))).toBe(false);
+    expect(montantNonCalcule(jalon({ libelle: 'D' }))).toBe(false);
+    const l = lignesJalonsAccueil([sansQuote], AUJOURDHUI);
+    expect(l.retard).toEqual({ valeur: 'Montant non calculé · Déclaration du dividende', bon: false });
+    expect(l.prochaine.bon).toBe(false);
   });
 
   it('un fait déclaré hors délai s’affiche en ambre, jamais en vert muet', () => {

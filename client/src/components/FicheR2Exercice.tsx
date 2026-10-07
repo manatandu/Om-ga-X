@@ -13,13 +13,23 @@ import type { ControleEntreprise, Exercice } from '../lib/types';
  * Relecture 1 · la liasse du Système minimal de trésorerie ne porte pas de
  * fiche R2 · l'écran ne la montre pas et le serveur la refuse. Mêmes rôles
  * que l'arrêté des comptes (administrateur du dossier) · les autres lisent.
+ *
+ * DÉCISION PAR LA LOI DU 2026-10-07, POINT 4 · ZN compte le SIÈGE (AUDCIF
+ * Titre VIII ch. 34, section 3, « le siège étant considéré lui-même comme un
+ * établissement ») et les divisions à comptabilité autonome (section 1) ; ZQ à
+ * ZS se lisent par l'art. 78 (bulles). Le contrôle public est PROPOSÉ quand la
+ * quote-part déclarée de l'État dépasse la moitié du capital · un clic remplit
+ * la case, l'enregistrement reste au cabinet, jamais une substitution.
  */
 export function FicheR2Exercice({
   exercice,
   apresEnregistrement,
+  quotePartEtatCapital = null,
 }: {
   exercice: Exercice;
   apresEnregistrement: () => Promise<void> | void;
+  /** Quote-part de l'État DÉCLARÉE (entreprise du portefeuille), en pourcentage · null sinon. */
+  quotePartEtatCapital?: number | null;
 }) {
   // Le droit se LIT dans le contexte de session · la route est réservée à
   // l'administrateur du dossier, comme l'arrêté des comptes.
@@ -28,6 +38,9 @@ export function FicheR2Exercice({
   const [zo, setZo] = useState('');
   const [zp, setZp] = useState('');
   const [controle, setControle] = useState<'' | ControleEntreprise>('');
+  // Le focus va à la case remplie par « Reprendre la proposition » · sans
+  // quoi il tombait sur un bouton qui disparaît.
+  const caseControle = useRef<HTMLSelectElement>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -109,7 +122,14 @@ export function FicheR2Exercice({
       </div>
       <div className="flex items-end gap-3 flex-wrap">
         <label className="text-[11.5px] font-semibold text-text-dim">
-          Établissements dans le pays
+          <span className="flex items-center gap-1.5">
+            Établissements dans le pays
+            <Aide
+              titre="Établissements dans le pays"
+              texte="Le siège compte : il est considéré lui-même comme un établissement. Les autres établissements sont les divisions de l’entité qui disposent d’une comptabilité autonome (succursales, usines, ateliers…), rattachée à celle du siège par un compte de liaison."
+              source="AUDCIF Titre VIII ch. 34, sections 1 et 3 · Titre VII, compte 18"
+            />
+          </span>
           <input type="number" min={0} step={1} value={zn} disabled={!peutDeclarer} placeholder={vide} onChange={changer(setZn)} className={`${champ} w-28`} />
         </label>
         <label className="text-[11.5px] font-semibold text-text-dim">
@@ -121,8 +141,16 @@ export function FicheR2Exercice({
           <input type="number" min={1000} max={9999} step={1} value={zp} disabled={!peutDeclarer} placeholder={vide} onChange={changer(setZp)} className={`${champ} w-28`} />
         </label>
         <label className="text-[11.5px] font-semibold text-text-dim">
-          Contrôle de l’entreprise
+          <span className="flex items-center gap-1.5">
+            Contrôle de l’entreprise
+            <Aide
+              titre="Contrôle de l’entreprise"
+              texte="Le contrôle se lit par la seule définition de l’Acte : il résulte soit de la détention directe ou indirecte de la majorité des droits de vote ; soit de la désignation, pendant deux exercices successifs, de la majorité des membres des organes d’administration ou de direction, présumée au-delà de 40 % des droits de vote quand aucun autre associé n’en détient davantage ; soit du droit d’exercer une influence dominante en vertu d’un contrat ou de clauses statutaires. Contrôle public : l’État ou une personne morale de droit public contrôle, comme dans l’entreprise publique où l’État détient la totalité ou la majorité absolue des actions. Contrôle privé national ou étranger : selon la nationalité de la personne qui contrôle. Un contrôle conjoint, ou l’absence de détenteur du contrôle, n’est rangé par aucun texte : la case reste au cabinet."
+              source="AUDCIF art. 78 · loi n° 08/010, art. 3"
+            />
+          </span>
           <select
+            ref={caseControle}
             value={controle}
             disabled={!peutDeclarer}
             onChange={(e) => {
@@ -143,6 +171,24 @@ export function FicheR2Exercice({
           </button>
         )}
       </div>
+      {/* PROPOSÉ, jamais coché d'office · la quote-part du capital n'établit
+          pas seule la majorité des droits de vote (art. 78). */}
+      {peutDeclarer && controle === '' && quotePartEtatCapital !== null && quotePartEtatCapital > 50 && (
+        <div className="mt-2 text-[11.5px] flex items-center gap-2 flex-wrap">
+          <span>Quote-part de l’État déclarée · {String(quotePartEtatCapital).replace('.', ',')} % · contrôle public proposé</span>
+          <button
+            type="button"
+            onClick={() => {
+              setControle('PUBLIC');
+              setInfo(null);
+              caseControle.current?.focus();
+            }}
+            className="border border-border-dark px-2 py-0.5 text-[11.5px] font-semibold hover:bg-surface-alt"
+          >
+            Reprendre la proposition
+          </button>
+        </div>
+      )}
       {erreur && <div className="mt-2 text-[11.5px] text-danger">{erreur}</div>}
       {info && <div className="mt-2 text-[11.5px] text-positive">{info}</div>}
     </form>

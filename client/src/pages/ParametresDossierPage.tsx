@@ -1,5 +1,5 @@
 import { MODULES, versReponse, type ModuleOptionnel, type ReponseFait } from '../lib/profil-dossier';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
@@ -13,6 +13,8 @@ import {
   faitsDeLaForme,
   faitsDeLaFormeAEnvoyer,
   libelleAdresse,
+  lireQuotePart,
+  portefeuilleAEnvoyer,
   proposeCapitalVariable,
   transformationDatable,
   type ModeAdministrationSaisi,
@@ -198,6 +200,15 @@ export function ParametresDossierPage() {
   const [associeUnique, setAssocieUnique] = useState<ReponseFaitSaisie>('PAS_ENCORE_DIT');
   // O.-L. n° 13/003, art. 112 et 113 · entreprise du portefeuille de l'État (SYSCOHADA).
   const [portefeuille, setPortefeuille] = useState<ReponseFaitSaisie>('PAS_ENCORE_DIT');
+  // Entreprise MINIÈRE du portefeuille et quote-part de l'État (arrêté
+  // interministériel du 10 décembre 2025, art. 1er et 3 · point 3).
+  const [secteurMinier, setSecteurMinier] = useState<ReponseFaitSaisie>('PAS_ENCORE_DIT');
+  const [quotePart, setQuotePart] = useState('');
+  const [sourceQuotePart, setSourceQuotePart] = useState('');
+  // Une quote-part illisible se dit SOUS le champ, qui reçoit le focus ·
+  // jamais envoyée (lireQuotePart).
+  const [erreurQuotePart, setErreurQuotePart] = useState<string | null>(null);
+  const champQuotePart = useRef<HTMLInputElement>(null);
   // AUSCGIE art. 181 et 182 · date de la décision de transformation, saisie
   // AVANT de choisir la nouvelle forme ; vide, le changement est une correction.
   const [dateEffetTransformation, setDateEffetTransformation] = useState('');
@@ -254,6 +265,15 @@ export function ParametresDossierPage() {
       setPortefeuille(
         p.entreprisePortefeuilleEtat === true ? 'OUI' : p.entreprisePortefeuilleEtat === false ? 'NON' : 'PAS_ENCORE_DIT',
       );
+      setSecteurMinier(
+        p.portefeuilleSecteurMinier === true ? 'OUI' : p.portefeuilleSecteurMinier === false ? 'NON' : 'PAS_ENCORE_DIT',
+      );
+      setQuotePart(
+        p.quotePartEtatCapital === null || p.quotePartEtatCapital === undefined
+          ? ''
+          : String(p.quotePartEtatCapital).replace('.', ','),
+      );
+      setSourceQuotePart(p.sourceQuotePartEtat ?? '');
       setActePersonnalite(p.actePersonnaliteJuridique ?? '');
       setDateActe(p.dateActePersonnalite ? p.dateActePersonnalite.slice(0, 10) : '');
       setEnregistrementSecteur(p.numeroEnregistrementSecteur ?? '');
@@ -734,6 +754,16 @@ export function ParametresDossierPage() {
 
   const enregistrerIdentite = async (e: FormEvent) => {
     e.preventDefault();
+    // Une quote-part illisible n'est JAMAIS envoyée · JSON écrirait NaN en
+    // null, et la saisie fausse effacerait la quote-part déclarée.
+    const quoteLue = lireQuotePart(quotePart);
+    if (portefeuille === 'OUI' && quoteLue === undefined) {
+      setInfo(null);
+      setErreurQuotePart('La quote-part de l’État est un pourcentage de 0 à 100, à quatre décimales au plus (par exemple 20 ou 33,3333).');
+      champQuotePart.current?.focus();
+      return;
+    }
+    setErreurQuotePart(null);
     setEnvoi(true);
     setErreur(null);
     setInfo(null);
@@ -780,7 +810,7 @@ export function ParametresDossierPage() {
           // Fait de l'actionnariat d'une SOCIÉTÉ (loi n° 08/010, art. 3) · envoyé
           // pour les cinq sociétés commerciales seules, où l'écran le propose.
           ...(params?.referentiel === 'SYSCOHADA' && estSocieteCommerciale(params.formeJuridiqueSyscohada)
-            ? { entreprisePortefeuilleEtat: portefeuille }
+            ? portefeuilleAEnvoyer({ portefeuille, secteurMinier, quotePart: quoteLue ?? null, sourceQuotePart })
             : {}),
           ...(params?.referentiel === 'SYCEBNL'
             ? {
@@ -1337,6 +1367,65 @@ export function ParametresDossierPage() {
                         <option value="NON">Non</option>
                       </select>
                     </Ligne>
+                  )}
+                  {/* Sous le portefeuille seulement · le serveur refuse secteur
+                      et quote-part hors de lui (arrêté du 10 décembre 2025). */}
+                  {!estSycebnl && estSocieteCommerciale(params?.formeJuridiqueSyscohada) && portefeuille === 'OUI' && (
+                    <>
+                      <Ligne label="Secteur minier">
+                        <select
+                          value={secteurMinier}
+                          onChange={(e) => setSecteurMinier(e.target.value as ReponseFaitSaisie)}
+                          disabled={!estAdmin || envoi}
+                          aria-label="Secteur minier"
+                          title="Arrêté interministériel du 10 décembre 2025, art. 2 et 3 · le dividende de l’État est prioritaire et déclaré au plus tard le 15 mai"
+                          className={champSage}
+                        >
+                          <option value="PAS_ENCORE_DIT">Pas encore dit</option>
+                          <option value="OUI">Oui · entreprise du portefeuille du secteur minier</option>
+                          <option value="NON">Non</option>
+                        </select>
+                      </Ligne>
+                      <Ligne label="Quote-part de l’État (%)">
+                        <input
+                          ref={champQuotePart}
+                          type="text"
+                          inputMode="decimal"
+                          value={quotePart}
+                          onChange={(e) => {
+                            setQuotePart(e.target.value);
+                            setErreurQuotePart(null);
+                          }}
+                          disabled={!estAdmin || envoi}
+                          placeholder="Non déclarée"
+                          aria-label="Quote-part de l’État (%)"
+                          aria-invalid={erreurQuotePart !== null}
+                          aria-describedby={erreurQuotePart !== null ? 'erreur-quote-part' : undefined}
+                          title="Arrêté interministériel du 10 décembre 2025, art. 1er, point 2 · le dividende correspond à la quote-part de l’État"
+                          className={champSage}
+                        />
+                        {erreurQuotePart !== null && (
+                          <div id="erreur-quote-part" className="text-[11.5px] text-danger mt-1">
+                            {erreurQuotePart}
+                          </div>
+                        )}
+                      </Ligne>
+                      {/* La source se déclare AVEC la quote-part qu'elle établit ·
+                          sans quote-part, le champ est grisé (le serveur refuse
+                          une source seule, jamais effacée sans un mot). */}
+                      <Ligne label="Source de la quote-part">
+                        <input
+                          type="text"
+                          value={sourceQuotePart}
+                          onChange={(e) => setSourceQuotePart(e.target.value)}
+                          disabled={!estAdmin || envoi || quotePart.trim() === ''}
+                          maxLength={300}
+                          placeholder={quotePart.trim() === '' ? 'Déclarez d’abord la quote-part' : 'Statuts, registre des titres, arrêté de cession'}
+                          aria-label="Source de la quote-part"
+                          className={champSage}
+                        />
+                      </Ligne>
+                    </>
                   )}
                   {!estSycebnl && !estEntreprenant && (
                     <Ligne label="Location-gérance du fonds">

@@ -28,4 +28,24 @@ export class DatesPortefeuilleDto {
   )
   @IsDateString()
   dateTransmissionPvPortefeuille?: string | null;
+
+  /**
+   * Dividende prioritaire d'une entreprise MINIÈRE du portefeuille (arrêté
+   * interministériel du 10 décembre 2025, art. 2) · déclaration, réception
+   * de la note de perception (elle fait courir les huit jours) et paiement.
+   */
+  @IsOptional()
+  @ValidateIf((o: DatesPortefeuilleDto) => o.dateDeclarationDividendeEtat !== '' && o.dateDeclarationDividendeEtat !== null)
+  @IsDateString()
+  dateDeclarationDividendeEtat?: string | null;
+
+  @IsOptional()
+  @ValidateIf((o: DatesPortefeuilleDto) => o.dateNotePerceptionDividende !== '' && o.dateNotePerceptionDividende !== null)
+  @IsDateString()
+  dateNotePerceptionDividende?: string | null;
+
+  @IsOptional()
+  @ValidateIf((o: DatesPortefeuilleDto) => o.datePaiementDividendeEtat !== '' && o.datePaiementDividendeEtat !== null)
+  @IsDateString()
+  datePaiementDividendeEtat?: string | null;
 }

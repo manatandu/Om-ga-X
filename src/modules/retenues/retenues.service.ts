@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Referentiel, StatutEcriture } from '@prisma/client';
+import { FormeJuridiqueSyscohada, Referentiel, StatutEcriture } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import {
   AVERTISSEMENT_REDEVABLE,
@@ -22,6 +22,28 @@ import { echeanceDeReversement, reporterAuJourOuvrable } from './jour-ouvrable';
 import { echeanceDepassee, jourDeKinshasa, jourUtc } from '../../common/echeance';
 import { FORMES_SOCIETES_COMMERCIALES } from '../tenant/mentions-societe';
 import { closAu31Decembre } from '../exercice/portefeuille-etat';
+import { commissaireCouvreLExercice } from '../mandat-auditeur/duree-mandat';
+import { formeApplicable } from '../tenant/forme-applicable';
+
+/**
+ * Société anonyme sans mandat enregistré · le commissaire existe par la loi
+ * (AUSCGIE art. 694 et 702), le procès-verbal reste servi et le dit.
+ */
+export const PV_A_CONFIRMER_SANS_MANDAT = 'à confirmer · mandat de commissaire non enregistré';
+
+/** Forme non renseignée et aucun mandat · la société peut être une SA, le procès-verbal reste servi. */
+export const PV_A_CONFIRMER_SANS_FORME = 'à confirmer · forme et mandat de commissaire non renseignés';
+
+/**
+ * Ce que l'échéancier dit quand il ne sert pas le procès-verbal de la LPF
+ * art. 13 bis · aucun mandat de commissaire aux comptes ne couvre l'exercice.
+ */
+export const AVERTISSEMENT_PV_SANS_COMMISSAIRE =
+  'Procès-verbal de l’assemblée à l’Administration des impôts non présenté comme dû · il se dépose « dans les dix ' +
+  'jours de la tenue de l’Assemblée générale ordinaire approuvant les états financiers certifiés par les ' +
+  'commissaires aux comptes » (loi de procédures fiscales, art. 13 bis), et aucun mandat de commissaire aux ' +
+  'comptes enregistré ne couvre cet exercice. Enregistrez le mandat dans la fenêtre du contrôleur des comptes s’il ' +
+  'en existe un.';
 
 /**
  * Le report à-nouveau · une écriture de clôture qui n'est pas celle qui solde
@@ -651,13 +673,76 @@ export class RetenuesService {
     // dix jours de la tenue de l'Assemblée générale ordinaire ») · compté
     // depuis l'assemblée DÉCLARÉE sur l'exercice quand elle l'est, au lieu du
     // repère du 10 juillet.
-    const [exerciceLu, faitsDossier] = await Promise.all([
+    const [exerciceLu, faitsDossier, mandats] = await Promise.all([
       this.prisma.exercice.findFirst({
         where: { id: params.exerciceId, tenantId },
         select: { dateAssembleeGenerale: true, dateFin: true },
       }),
-      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { entreprisePortefeuilleEtat: true } }),
+      this.prisma.tenant.findUniqueOrThrow({
+        where: { id: tenantId },
+        select: {
+          entreprisePortefeuilleEtat: true,
+          formeJuridiqueSyscohada: true,
+          formeJuridiqueSyscohadaAnterieure: true,
+          dateTransformationForme: true,
+        },
+      }),
+      // LE PROCÈS-VERBAL DE L'ART. 13 BIS SUPPOSE UN COMMISSAIRE AUX COMPTES
+      // (décision par la loi du 2026-10-07, constat final) · lu sur la table
+      // des mandats, même règle que le planning et le contrôle 28.
+      // Les mandats terminés par anticipation aussi · ils couvrent encore les
+      // exercices clos avant leur fin (`commissaireCouvreLExercice`).
+      this.prisma.mandatAuditeur.findMany({
+        where: { tenantId },
+        orderBy: { premierExercice: 'desc' },
+        select: { premierExercice: true, nombreExercices: true, refusDeProrogation: true, finAnticipeeLe: true },
+      }),
     ]);
+    // LA FORME DE L'EXERCICE, PAS CELLE DU JOUR (AUSCGIE art. 182 et 183 ;
+    // `formeApplicable`, comme le planning) · une SARL devenue SA en 2027 ne
+    // se voit pas lire 2026 comme une SA.
+    const forme =
+      registre.referentiel === Referentiel.SYSCOHADA && exerciceLu
+        ? formeApplicable(
+            {
+              formeJuridiqueSyscohada: faitsDossier.formeJuridiqueSyscohada ?? null,
+              formeJuridiqueSyscohadaAnterieure: faitsDossier.formeJuridiqueSyscohadaAnterieure ?? null,
+              dateTransformationForme: faitsDossier.dateTransformationForme ?? null,
+            },
+            exerciceLu.dateFin,
+          )
+        : (registre.formeJuridiqueSyscohada ?? null);
+    /*
+      PÉRIMÈTRE DU TEXTE (CLAUDE.md § 10 bis) · « dans les dix jours de la
+      tenue de l'Assemblée générale ordinaire approuvant les états financiers
+      CERTIFIÉS PAR LES COMMISSAIRES AUX COMPTES » (LPF art. 13 bis) · sans
+      commissaire qui couvre l'exercice, il n'y a pas d'états certifiés, et
+      l'échéancier ne présente pas le procès-verbal comme dû. Il le DIT, sans
+      quoi son absence se lirait comme un oubli · et un mandat enregistré plus
+      tard le fait revenir.
+    */
+    const commissaire =
+      !!exerciceLu &&
+      commissaireCouvreLExercice(
+        mandats ?? [],
+        exerciceLu.dateFin.getUTCFullYear(),
+        registre.referentiel,
+        forme,
+        exerciceLu.dateFin,
+      );
+    // LA SOCIÉTÉ ANONYME A TOUJOURS UN COMMISSAIRE · « le contrôle est exercé,
+    // dans chaque société anonyme, par un ou plusieurs commissaires aux
+    // comptes » (AUSCGIE art. 694) ; elle « est tenue de désigner un
+    // commissaire aux comptes et un suppléant » (art. 702). Aucun mandat
+    // enregistré n'y vaut pas absence de commissaire · le procès-verbal reste
+    // servi, « à confirmer ». UNE FORME NON RENSEIGNÉE se lit de même · la
+    // société peut être une SA, et taire le procès-verbal ferait disparaître
+    // une obligation due sur un fait non dit (relecture du 2026-10-07).
+    const formeNonDite = forme === null || forme === undefined;
+    const saSansMandatEnregistre =
+      !commissaire &&
+      registre.referentiel === Referentiel.SYSCOHADA &&
+      (forme === FormeJuridiqueSyscohada.SOCIETE_ANONYME || formeNonDite);
     const assemblee = exerciceLu?.dateAssembleeGenerale ?? null;
     // UNE DATE ÉCHUE N'EST PAS LA PROCHAINE (relecture 2) · comptée depuis
     // l'assemblée déclarée, l'échéance n'est servie que tant qu'elle n'est
@@ -677,17 +762,23 @@ export class RetenuesService {
     const portefeuille =
       faitsDossier.entreprisePortefeuilleEtat === true &&
       registre.referentiel === Referentiel.SYSCOHADA &&
-      !!registre.formeJuridiqueSyscohada &&
-      FORMES_SOCIETES_COMMERCIALES.includes(registre.formeJuridiqueSyscohada) &&
+      !!forme &&
+      FORMES_SOCIETES_COMMERCIALES.includes(forme) &&
       !!exerciceLu &&
       closAu31Decembre(exerciceLu.dateFin);
     const pvPortefeuille = (o: ObligationDeclarative) =>
       o.cle === 'procesVerbalAssemblee' && !pvDepuisAssemblee(o) && portefeuille;
-    const declarations = obligationsDeclarativesApplicables(
+    const applicables = obligationsDeclarativesApplicables(
       registre.referentiel,
-      registre.formeJuridiqueSyscohada,
+      forme,
       { venteBiensServices: registre.venteBiensServices },
-    ).map((o) => ({
+    );
+    const pvSansCommissaire =
+      !commissaire && !saSansMandatEnregistre && applicables.some((o) => o.cle === 'procesVerbalAssemblee');
+    const pvAConfirmer = (o: { cle: string }) => o.cle === 'procesVerbalAssemblee' && saSansMandatEnregistre;
+    const declarations = applicables
+      .filter((o) => o.cle !== 'procesVerbalAssemblee' || commissaire || saSansMandatEnregistre)
+      .map((o) => ({
       cle: o.cle,
       libelle: o.libelle,
       genre: 'DECLARATION' as const,
@@ -696,11 +787,12 @@ export class RetenuesService {
       date: pvDepuisAssemblee(o)
         ? pvAssemblee!
         : this.prochaineEcheanceDeclarative(pvPortefeuille(o) ? { ...o, moisEcheance: 4, jourEcheance: 10 } : o, registre.dateReference),
-      echeance: pvDepuisAssemblee(o)
-        ? `${o.echeance} · assemblée déclarée tenue le ${assemblee!.toISOString().slice(0, 10).split('-').reverse().join('/')}`
-        : pvPortefeuille(o)
-          ? `${o.echeance} · entreprise du portefeuille de l’État, assemblée au plus tard le 31 mars (ordonnance-loi n° 13/003, art. 112)`
-          : o.echeance,
+      echeance:
+        (pvDepuisAssemblee(o)
+          ? `${o.echeance} · assemblée déclarée tenue le ${assemblee!.toISOString().slice(0, 10).split('-').reverse().join('/')}`
+          : pvPortefeuille(o)
+            ? `${o.echeance} · entreprise du portefeuille de l’État, assemblée au plus tard le 31 mars (ordonnance-loi n° 13/003, art. 112)`
+            : o.echeance) + (pvAConfirmer(o) ? ` · ${formeNonDite ? PV_A_CONFIRMER_SANS_FORME : PV_A_CONFIRMER_SANS_MANDAT}` : ''),
       baseLegale: o.baseLegale,
       reserve: o.reserve,
       montantDu: 0,
@@ -722,7 +814,7 @@ export class RetenuesService {
       derniereVerificationEcheances: registre.derniereVerificationEcheances,
       echeances,
       totalDu: registre.totalDu,
-      avertissements: registre.avertissements,
+      avertissements: [...registre.avertissements, ...(pvSansCommissaire ? [AVERTISSEMENT_PV_SANS_COMMISSAIRE] : [])],
     };
   }
 }

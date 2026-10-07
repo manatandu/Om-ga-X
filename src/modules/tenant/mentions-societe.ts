@@ -1,4 +1,4 @@
-import { FormeJuridiqueEbnl, FormeJuridiqueSyscohada, Prisma, Referentiel, VarianteCooperative } from '@prisma/client';
+import { FormeJuridiqueEbnl, FormeJuridiqueSyscohada, Prisma, Referentiel, RegimeLiquidation, VarianteCooperative } from '@prisma/client';
 import { FORMES_PERSONNES_PHYSIQUES } from '../retenues/correspondance-retenues';
 import { mentionImmatriculation } from './mentions-immatriculation';
 
@@ -136,6 +136,11 @@ export interface IdentiteSociete {
    * transmet le patrimoine sans liquidation · aucune mention de l'art. 204.
    */
   associeUniquePersonneMorale?: boolean | null;
+  /**
+   * AUSCGIE art. 203 al. 2 · une liquidation conduite dans une procédure
+   * collective sort du chapitre qui porte l'art. 204 · aucune mention.
+   */
+  regimeLiquidation?: RegimeLiquidation | null;
 }
 
 /**
@@ -169,6 +174,7 @@ export const SELECT_IDENTITE_SOCIETE = {
   dateDissolution: true,
   liquidateurs: true,
   associeUniquePersonneMorale: true,
+  regimeLiquidation: true,
 } as const satisfies Prisma.TenantSelect & Record<keyof IdentiteSociete, true>;
 
 export interface MentionsSociete {
@@ -369,7 +375,13 @@ export function mentionLiquidation(t: IdentiteSociete, datePiece: Date = new Dat
     !FORMES_SOCIETES_COMMERCIALES.includes(t.formeJuridiqueSyscohada) ||
     // Art. 201 al. 4 · « sans qu'il y ait lieu à liquidation » · la société
     // dissoute n'est pas « en liquidation », et la mention serait fausse.
-    t.associeUniquePersonneMorale === true
+    (t.associeUniquePersonneMorale === true && t.regimeLiquidation !== RegimeLiquidation.PROCEDURE_COLLECTIVE) ||
+    // Art. 203 al. 2 (décision par la loi du 2026-10-07, point 1) · « elles ne
+    // s'appliquent pas lorsque la liquidation intervient dans le cadre » de
+    // l'AUPCAP · le chapitre qui porte l'art. 204 est écarté, et sa mention
+    // avec lui. OmegaX n'en sert aucune autre · celles de l'AUPCAP n'ont pas
+    // été lues pour ce point.
+    t.regimeLiquidation === RegimeLiquidation.PROCEDURE_COLLECTIVE
   ) {
     return { ligne: null, manquantes: [] };
   }

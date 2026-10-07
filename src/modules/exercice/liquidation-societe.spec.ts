@@ -107,6 +107,25 @@ describe('Liquidation d’une société commerciale au planning', () => {
     expect(jalonsLiquidation(faits, EX_2027, AUJOURDHUI)).toEqual([]);
   });
 
+  it('associé unique personne morale SOUS PROCÉDURE COLLECTIVE · la procédure collective prime (AUPCAP art. 53)', () => {
+    // Décision par la loi du 2026-10-07, point 1 · le jugement de liquidation
+    // des biens (AUSCGIE art. 200, 6°) dessaisit le débiteur · la transmission
+    // universelle de l'art. 201 al. 4 ne joue pas.
+    const faits = {
+      ...base,
+      dateNominationLiquidateur: null,
+      associeUniquePersonneMorale: true,
+      regimeLiquidation: RegimeLiquidation.PROCEDURE_COLLECTIVE,
+    };
+    const j = jalonsLiquidation(faits, EX_2026, AUJOURDHUI);
+    expect(j).toHaveLength(1);
+    expect(j[0].libelle).toBe('Liquidation dans une procédure collective');
+    expect(j[0].detail).toContain('ne joue pas');
+    expect(j[0].source).toContain('art. 200, 6°');
+    expect(j[0].echeance).toBeNull();
+    expect(j[0].enRetard).toBe(false);
+  });
+
   it('art. 223 · rapport à six mois de la nomination, états à trois mois et assemblée à six mois de CHAQUE clôture', () => {
     const faits = { ...base, regimeLiquidation: RegimeLiquidation.ARTICLE_223_2_JUDICIAIRE };
     const j2026 = parLibelle(jalonsLiquidation(faits, EX_2026, AUJOURDHUI));
@@ -137,7 +156,8 @@ describe('Liquidation d’une société commerciale au planning', () => {
   it('procédure collective · rien de l’AUSCGIE n’est calculé, et c’est dit ; exercice antérieur, coopérative · rien', () => {
     const pc = jalonsLiquidation({ ...base, regimeLiquidation: RegimeLiquidation.PROCEDURE_COLLECTIVE }, EX_2026, AUJOURDHUI);
     expect(pc).toHaveLength(1);
-    expect(pc[0].source).toBe('AUSCGIE, art. 203 al. 2');
+    expect(pc[0].source).toContain('AUSCGIE, art. 203 al. 2');
+    expect(pc[0].source).toContain('AUPCAP, art. 53');
     expect(pc[0].echeance).toBeNull();
     expect(jalonsLiquidation(base, EX_2025, AUJOURDHUI)).toEqual([]);
     expect(jalonsLiquidation({ ...base, forme: FormeJuridiqueSyscohada.SOCIETE_COOPERATIVE }, EX_2026, AUJOURDHUI)).toEqual([]);
@@ -215,6 +235,29 @@ describe('Liquidation · faits déclarés au dossier', () => {
     await expect(
       service({ ...sa, regimeLiquidation: 'ARTICLE_223_1' }).modifierIdentite('t1', { associeUniquePersonneMorale: 'OUI' }),
     ).rejects.toThrow('art. 201 al. 4');
+    await expect(
+      service({ ...sa, associeUniquePersonneMorale: true }).modifierIdentite('t1', { regimeLiquidation: 'ARTICLE_223_2_JUDICIAIRE' }),
+    ).rejects.toThrow('art. 201 al. 4');
+    // LA PROCÉDURE COLLECTIVE EST ADMISE (décision par la loi du 2026-10-07,
+    // point 1 · AUSCGIE art. 200, 6° et 203 al. 2 ; AUPCAP art. 53), dans les
+    // deux ordres de saisie, la nomination d'un liquidateur restant refusée.
+    const pc: { data?: Record<string, unknown> } = {};
+    await service({ ...sa, associeUniquePersonneMorale: true }, pc).modifierIdentite('t1', {
+      dateDissolution: '2026-05-31',
+      regimeLiquidation: 'PROCEDURE_COLLECTIVE',
+    });
+    expect(pc.data).toMatchObject({ regimeLiquidation: 'PROCEDURE_COLLECTIVE' });
+    const pc2: { data?: Record<string, unknown> } = {};
+    await service({ ...sa, regimeLiquidation: 'PROCEDURE_COLLECTIVE' }, pc2).modifierIdentite('t1', {
+      associeUniquePersonneMorale: 'OUI',
+    });
+    expect(pc2.data).toMatchObject({ associeUniquePersonneMorale: true });
+    await expect(
+      service({ ...sa, associeUniquePersonneMorale: true, regimeLiquidation: 'PROCEDURE_COLLECTIVE' }).modifierIdentite('t1', {
+        dateDissolution: '2026-05-31',
+        dateNominationLiquidateur: '2026-06-15',
+      }),
+    ).rejects.toThrow('art. 201 al. 4');
     const capture: { data?: Record<string, unknown> } = {};
     await service(sa, capture).modifierIdentite('t1', {
       dateDissolution: '2026-05-31',
@@ -261,6 +304,22 @@ describe('Liquidation · mention de l’art. 204 sur les pièces', () => {
   };
   it('société dissoute · « Société en liquidation » et le nom du liquidateur', () => {
     expect(mentionLiquidation(societe as never, new Date(Date.UTC(2026, 6, 1))).ligne).toContain('Société en liquidation');
+  });
+  it('procédure collective · aucune mention de l’art. 204, l’art. 203 al. 2 écartant son chapitre', () => {
+    for (const associe of [null, false, true]) {
+      const m = mentionLiquidation(
+        { ...societe, regimeLiquidation: RegimeLiquidation.PROCEDURE_COLLECTIVE, associeUniquePersonneMorale: associe } as never,
+        new Date(Date.UTC(2026, 6, 1)),
+      );
+      expect(m.ligne).toBeNull();
+      expect(m.manquantes).toEqual([]);
+    }
+    // Hors procédure collective, la mention reste servie.
+    const amiable = mentionLiquidation(
+      { ...societe, regimeLiquidation: RegimeLiquidation.AMIABLE_STATUTAIRE } as never,
+      new Date(Date.UTC(2026, 6, 1)),
+    );
+    expect(amiable.ligne).toContain('Société en liquidation');
   });
   it('associé unique personne morale · aucune mention, la société n’étant pas en liquidation (art. 201 al. 4)', () => {
     const m = mentionLiquidation({ ...societe, associeUniquePersonneMorale: true } as never, new Date(Date.UTC(2026, 6, 1)));

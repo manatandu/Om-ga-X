@@ -11,7 +11,7 @@ import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
 import { FicheR2Exercice } from '../components/FicheR2Exercice';
 import { DatesPortefeuilleExercice } from '../components/DatesPortefeuilleExercice';
-import { classeObservation, estNonCalcule, libelleEcheance } from '../lib/jalons-planning';
+import { classeObservation, estNonCalcule, libelleEcheance, libelleMontant, montantNonCalcule } from '../lib/jalons-planning';
 import { estSocieteCommerciale } from '../lib/mentions-dossier';
 
 const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
@@ -591,7 +591,15 @@ export function ExercicePage() {
       {exercice &&
         utilisateur?.tenant.referentiel === 'SYSCOHADA' &&
         utilisateur.tenant.systemeComptableSyscohada !== 'MINIMAL_TRESORERIE' && (
-          <FicheR2Exercice exercice={exercice} apresEnregistrement={rechargerExercices} />
+          <FicheR2Exercice
+            exercice={exercice}
+            apresEnregistrement={rechargerExercices}
+            quotePartEtatCapital={
+              planning?.exerciceId === exercice.id && planning.entreprisePortefeuilleEtat === true
+                ? (planning.quotePartEtatCapital ?? null)
+                : null
+            }
+          />
         )}
       {/* Assemblée de l'exercice · toute société commerciale du SYSCOHADA (le
           procès-verbal fiscal en court) ; dépôt et procès-verbal au
@@ -606,6 +614,10 @@ export function ExercicePage() {
             dateAssembleeGenerale={planning.dateAssembleeGenerale ?? null}
             dateDepotEtatsPortefeuille={planning.dateDepotEtatsPortefeuille ?? null}
             dateTransmissionPvPortefeuille={planning.dateTransmissionPvPortefeuille ?? null}
+            secteurMinier={planning.portefeuilleSecteurMinier === true}
+            dateDeclarationDividendeEtat={planning.dateDeclarationDividendeEtat ?? null}
+            dateNotePerceptionDividende={planning.dateNotePerceptionDividende ?? null}
+            datePaiementDividendeEtat={planning.datePaiementDividendeEtat ?? null}
             apresEnregistrement={charger}
           />
         )}
@@ -716,6 +728,7 @@ export function ExercicePage() {
             <span className="font-mono text-[11.5px] font-semibold text-text-dim">
               PLANNING DE CLÔTURE · {planning.jalons.filter((j) => j.enRetard).length} jalon(s) en retard ·{' '}
               {planning.jalons.filter(estNonCalcule).length} non calculé(s)
+              {planning.jalons.some(montantNonCalcule) && ` · ${planning.jalons.filter(montantNonCalcule).length} montant(s) non calculé(s)`}
             </span>
             <span className="text-[11.5px] text-text-dim">{planningOuvert ? 'Réduire' : 'Déployer'}</span>
           </button>
@@ -747,6 +760,9 @@ export function ExercicePage() {
                             l'omission qui est punie, quelle qu'ait été la date. */}
                         {j.sanction && (
                           <div className="text-[11px] text-danger mt-1 leading-[1.5]">{j.sanction}</div>
+                        )}
+                        {libelleMontant(j) !== null && (
+                          <div className={`text-[11px] mt-1 ${montantNonCalcule(j) ? 'text-danger' : ''}`}>{libelleMontant(j)}</div>
                         )}
                       </td>
                       <td className={`px-3 py-2 font-mono ${j.enRetard ? 'text-danger font-bold' : ''}`}>

@@ -6,6 +6,8 @@ import {
   faitsDeLaForme,
   faitsDeLaFormeAEnvoyer,
   libelleAdresse,
+  lireQuotePart,
+  portefeuilleAEnvoyer,
   proposeCapitalVariable,
   transformationDatable,
 } from './mentions-dossier';
@@ -80,7 +82,7 @@ describe('Paramètres du dossier · la coopérative et les mentions', () => {
     const garde = page.lastIndexOf('{!estSycebnl', ligne);
     expect(page.slice(garde, ligne)).toMatch(/^\{!estSycebnl && estSocieteCommerciale\(params\?\.formeJuridiqueSyscohada\) && \(/);
     expect(page).toMatch(
-      /params\?\.referentiel === 'SYSCOHADA' && estSocieteCommerciale\(params\.formeJuridiqueSyscohada\)\s*\?\s*\{ entreprisePortefeuilleEtat: portefeuille \}/,
+      /params\?\.referentiel === 'SYSCOHADA' && estSocieteCommerciale\(params\.formeJuridiqueSyscohada\)\s*\?\s*portefeuilleAEnvoyer\(\{ portefeuille,/,
     );
   });
 
@@ -175,6 +177,7 @@ describe('Paramètres du dossier · les faits de la dénomination, forme par for
     expect(faitsDeLaFormeAEnvoyer('GROUPEMENT_INTERET_ECONOMIQUE', saisie)).toEqual({});
   });
 
+
   it('la dissolution est proposée aux cinq sociétés du serveur et à la coopérative, rien d’autre', () => {
     const serveur = readFileSync(join(__dirname, '../../../src/modules/tenant/mentions-societe.ts'), 'utf8');
     const bloc = serveur.match(/export const FORMES_SOCIETES_COMMERCIALES[^=]*=\s*\[([\s\S]*?)\];/);
@@ -246,5 +249,89 @@ describe('Paramètres du dossier · la liquidation d’une société commerciale
       dateDissolution: '2026-05-31',
       liquidateurs: 'M. Liquidateur',
     });
+  });
+});
+
+/**
+ * ENTREPRISE MINIÈRE DU PORTEFEUILLE (décision par la loi du 2026-10-07,
+ * point 3) · secteur et quote-part sous la qualité seulement, la quote-part
+ * jamais envoyée illisible (JSON écrirait `NaN` en `null` et l'effacerait).
+ */
+describe('Paramètres du dossier · portefeuille de l’État, secteur minier et quote-part', () => {
+  it('la quote-part se lit en pourcentage, virgule comprise ; vide efface ; illisible ou hors de 0 à 100 n’est jamais envoyée', () => {
+    expect(lireQuotePart('')).toBeNull();
+    expect(lireQuotePart('  ')).toBeNull();
+    expect(lireQuotePart('20')).toBe(20);
+    expect(lireQuotePart('33,3333')).toBe(33.3333);
+    expect(lireQuotePart('100')).toBe(100);
+    expect(lireQuotePart('100,5')).toBeUndefined();
+    expect(lireQuotePart('-3')).toBeUndefined();
+    expect(lireQuotePart('vingt')).toBeUndefined();
+    expect(lireQuotePart('12,34567')).toBeUndefined();
+  });
+
+  it('secteur et quote-part ne partent que sous « oui » ; la source s’efface avec la quote-part', () => {
+    const saisie = { secteurMinier: 'OUI' as const, quotePart: 51, sourceQuotePart: 'Statuts' };
+    expect(portefeuilleAEnvoyer({ portefeuille: 'OUI', ...saisie })).toEqual({
+      entreprisePortefeuilleEtat: 'OUI',
+      portefeuilleSecteurMinier: 'OUI',
+      quotePartEtatCapital: 51,
+      sourceQuotePartEtat: 'Statuts',
+    });
+    expect(portefeuilleAEnvoyer({ portefeuille: 'NON', ...saisie })).toEqual({ entreprisePortefeuilleEtat: 'NON' });
+    expect(portefeuilleAEnvoyer({ portefeuille: 'OUI', ...saisie, quotePart: null })).toEqual({
+      entreprisePortefeuilleEtat: 'OUI',
+      portefeuilleSecteurMinier: 'OUI',
+      quotePartEtatCapital: null,
+      sourceQuotePartEtat: null,
+    });
+  });
+
+  /*
+    PAR STRUCTURE, JAMAIS PAR LIGNE EXACTE (CLAUDE.md § 10) · le corps de la
+    fonction d'enregistrement, et l'élément <input> que chaque <Ligne> porte.
+  */
+  const page = readFileSync(join(__dirname, '../pages/ParametresDossierPage.tsx'), 'utf8');
+  /** Le corps de `const nom = async (…) => { … };`, accolades équilibrées. */
+  const corpsDe = (nom: string) => {
+    const debut = page.indexOf(`const ${nom} = async`);
+    expect(debut).toBeGreaterThan(-1);
+    const ouvre = page.indexOf('{', page.indexOf('=>', debut));
+    let profondeur = 0;
+    for (let i = ouvre; i < page.length; i++) {
+      if (page[i] === '{') profondeur++;
+      if (page[i] === '}' && --profondeur === 0) return page.slice(ouvre, i + 1);
+    }
+    throw new Error(`corps de ${nom} introuvable`);
+  };
+  /** Le premier élément <input …/> ou <select …> sous la <Ligne> de ce libellé. */
+  const champDeLaLigne = (libelle: string) => {
+    const ligne = page.indexOf(`<Ligne label="${libelle}">`);
+    expect(ligne).toBeGreaterThan(-1);
+    const ouvre = page.indexOf('<', ligne + 1);
+    return page.slice(ouvre, page.indexOf('/>', ouvre) + 2);
+  };
+
+  it('l’enregistrement refuse une quote-part illisible AVANT l’envoi, la dit sous le champ, et envoie par la règle commune', () => {
+    const envoi = corpsDe('enregistrerIdentite');
+    const refus = envoi.indexOf('quoteLue === undefined');
+    expect(refus).toBeGreaterThan(-1);
+    expect(refus).toBeLessThan(envoi.indexOf('api.patch'));
+    const blocRefus = envoi.slice(refus, envoi.indexOf('return;', refus));
+    expect(blocRefus).toContain('setInfo(null);');
+    expect(blocRefus).toContain('setErreurQuotePart(');
+    expect(blocRefus).toContain('champQuotePart.current?.focus();');
+    expect(envoi).toContain('portefeuilleAEnvoyer({ portefeuille, secteurMinier, quotePart: quoteLue ?? null, sourceQuotePart })');
+  });
+
+  it('chaque champ du portefeuille porte le libellé de sa ligne ; la quote-part dit son erreur ; la source est grisée sans elle', () => {
+    for (const libelle of ['Secteur minier', 'Quote-part de l’État (%)', 'Source de la quote-part']) {
+      expect(champDeLaLigne(libelle)).toContain(`aria-label="${libelle}"`);
+    }
+    const quote = champDeLaLigne('Quote-part de l’État (%)');
+    expect(quote).toContain('aria-invalid={erreurQuotePart !== null}');
+    expect(quote).toContain("aria-describedby={erreurQuotePart !== null ? 'erreur-quote-part' : undefined}");
+    expect(page).toContain('id="erreur-quote-part"');
+    expect(champDeLaLigne('Source de la quote-part')).toContain("quotePart.trim() === ''");
   });
 });

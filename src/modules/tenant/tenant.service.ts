@@ -23,7 +23,7 @@ import { jourDeKinshasa } from '../../common/echeance';
 import { normaliserModules } from './modules-optionnels';
 import { Prisma, ModuleOptionnel, FormeJuridiqueEbnl,
   FormeJuridiqueSyscohada, JeuEtatsFinanciersSycebnl, MethodeCotisations, Referentiel, RegimeExigibiliteTva, SystemeComptableSyscohada, TypeLicence,
-  MethodeInventaireStocks,
+  MethodeInventaireStocks, RegimeLiquidation,
 } from '@prisma/client';
 
 /**
@@ -169,6 +169,10 @@ export class TenantService {
       dateNominationLiquidateur: tenant.dateNominationLiquidateur,
       regimeLiquidation: tenant.regimeLiquidation,
       associeUniquePersonneMorale: tenant.associeUniquePersonneMorale,
+      // Décision par la loi du 2026-10-07, point 3 · entreprise minière du portefeuille.
+      portefeuilleSecteurMinier: tenant.portefeuilleSecteurMinier,
+      quotePartEtatCapital: tenant.quotePartEtatCapital === null ? null : Number(tenant.quotePartEtatCapital),
+      sourceQuotePartEtat: tenant.sourceQuotePartEtat,
       // AUSCGIE art. 182 et 183 · la transformation déclarée, et la forme que
       // gardent les exercices clos avant elle.
       formeJuridiqueSyscohadaAnterieure: tenant.formeJuridiqueSyscohadaAnterieure,
@@ -477,6 +481,9 @@ export class TenantService {
       dateNominationLiquidateur?: string;
       regimeLiquidation?: 'AMIABLE_STATUTAIRE' | 'ARTICLE_223_1' | 'ARTICLE_223_2_JUDICIAIRE' | 'PROCEDURE_COLLECTIVE' | 'PAS_ENCORE_DIT';
       associeUniquePersonneMorale?: ReponseFait;
+      portefeuilleSecteurMinier?: ReponseFait;
+      quotePartEtatCapital?: number | null;
+      sourceQuotePartEtat?: string | null;
       actePersonnaliteJuridique?: string;
       dateActePersonnalite?: string;
       numeroEnregistrementSecteur?: string;
@@ -626,6 +633,17 @@ export class TenantService {
     // liquidation et les pièces ne portent pas la mention de l'art. 204. Lu sur
     // l'état qui résultera de l'enregistrement (ce qui est envoyé, sinon ce qui
     // est en base), et borné aux sociétés commerciales, seules visées.
+    //
+    // LA PROCÉDURE COLLECTIVE RESTE OUVERTE (décision par la loi du
+    // 2026-10-07, point 1). La transmission universelle de l'art. 201 al. 4
+    // suppose une dissolution HORS procédure collective · quand la société
+    // prend fin « par l'effet d'un jugement ordonnant la liquidation des
+    // biens » (art. 200, 6°), le patrimoine est sous le dessaisissement de
+    // l'AUPCAP, art. 53 (« par le syndic agissant seul »), et ne peut pas
+    // passer à l'associé. L'art. 203 al. 2 renvoie lui-même à l'AUPCAP · les
+    // deux textes se succèdent, ils ne se contredisent pas. Seuls la
+    // nomination d'un liquidateur et les régimes amiable ou judiciaire de
+    // l'AUSCGIE restent refusés.
     const associePmApres =
       dto.associeUniquePersonneMorale === undefined
         ? tenant.associeUniquePersonneMorale
@@ -642,12 +660,14 @@ export class TenantService {
         : dto.regimeLiquidation === 'PAS_ENCORE_DIT'
           ? null
           : dto.regimeLiquidation;
-    if (societeCommerciale && associePmApres === true && (nominationApres || regimeApres)) {
+    const regimeAuscgie = !!regimeApres && regimeApres !== RegimeLiquidation.PROCEDURE_COLLECTIVE;
+    if (societeCommerciale && associePmApres === true && (nominationApres || regimeAuscgie)) {
       throw new BadRequestException(
         'La dissolution d’une société dont tous les titres sont détenus par un seul associé personne morale ' +
           'entraîne la transmission universelle du patrimoine à cet associé, « sans qu’il y ait lieu à ' +
           'liquidation » (AUSCGIE art. 201 al. 4) · la dissolution se déclare, mais ni nomination de liquidateur ' +
-          'ni régime de liquidation.',
+          'ni liquidation amiable ou judiciaire. Seule la liquidation des biens prononcée dans une procédure ' +
+          'collective reste possible (AUSCGIE art. 200, 6° et 203 al. 2 ; AUPCAP art. 53).',
       );
     }
     if (societeCommerciale && nominationApres && dissolutionApres && nominationApres < dissolutionApres) {
@@ -666,6 +686,51 @@ export class TenantService {
       throw new BadRequestException(
         '« La société est en liquidation dès l’instant de sa dissolution » (AUSCGIE art. 204) · une dissolution à ' +
           'venir ne se déclare pas.',
+      );
+    }
+
+    // L'ENTREPRISE MINIÈRE DU PORTEFEUILLE (décision par la loi du 2026-10-07,
+    // point 3) · deux faits SOUS le portefeuille (arrêté interministériel du
+    // 10 décembre 2025, art. 3 · « Entreprises du Portefeuille du secteur
+    // minier »), refusés hors de lui ; la quote-part de l'État se déclare AVEC
+    // sa source (art. 1er, point 2 · « Montant correspondant à la quote-part de
+    // l'État »), jamais présumée. L'effacer efface sa source ; une source sans
+    // quote-part est refusée, jamais effacée sans un mot.
+    const portefeuilleApres =
+      dto.entreprisePortefeuilleEtat === undefined
+        ? tenant.entreprisePortefeuilleEtat
+        : dto.entreprisePortefeuilleEtat === 'OUI'
+          ? true
+          : dto.entreprisePortefeuilleEtat === 'NON'
+            ? false
+            : null;
+    const secteurDeclare = dto.portefeuilleSecteurMinier === 'OUI' || dto.portefeuilleSecteurMinier === 'NON';
+    const quoteDeclaree = dto.quotePartEtatCapital !== undefined && dto.quotePartEtatCapital !== null;
+    if ((secteurDeclare || quoteDeclaree) && portefeuilleApres !== true) {
+      throw new BadRequestException(
+        'Le secteur minier et la quote-part de l’État se déclarent pour une entreprise du portefeuille de l’État · ' +
+          'déclarez d’abord cette qualité.',
+      );
+    }
+    const quoteApres =
+      dto.quotePartEtatCapital === undefined
+        ? tenant.quotePartEtatCapital === null || tenant.quotePartEtatCapital === undefined
+          ? null
+          : Number(tenant.quotePartEtatCapital)
+        : dto.quotePartEtatCapital;
+    const sourceSaisie = dto.sourceQuotePartEtat === undefined ? undefined : normaliser(dto.sourceQuotePartEtat);
+    if (quoteApres === null && sourceSaisie) {
+      throw new BadRequestException(
+        'La source se déclare avec la quote-part de l’État qu’elle établit · déclarez d’abord la quote-part, ou ' +
+          'laissez la source vide.',
+      );
+    }
+    const sourceApres =
+      quoteApres === null ? null : sourceSaisie === undefined ? tenant.sourceQuotePartEtat : sourceSaisie;
+    if (quoteApres !== null && !(sourceApres && sourceApres.trim())) {
+      throw new BadRequestException(
+        'La quote-part de l’État dans le capital se déclare avec sa source (statuts, registre des titres, arrêté de ' +
+          'cession) · elle fait le montant du dividende prioritaire.',
       );
     }
     if (tenant.referentiel === Referentiel.SYSCOHADA) {
@@ -723,6 +788,16 @@ export class TenantService {
               associeUniquePersonneMorale:
                 dto.associeUniquePersonneMorale === 'OUI' ? true : dto.associeUniquePersonneMorale === 'NON' ? false : null,
             }),
+        ...(dto.portefeuilleSecteurMinier === undefined
+          ? {}
+          : {
+              portefeuilleSecteurMinier:
+                dto.portefeuilleSecteurMinier === 'OUI' ? true : dto.portefeuilleSecteurMinier === 'NON' ? false : null,
+            }),
+        ...(dto.quotePartEtatCapital === undefined ? {} : { quotePartEtatCapital: dto.quotePartEtatCapital }),
+        ...(dto.quotePartEtatCapital === undefined && dto.sourceQuotePartEtat === undefined
+          ? {}
+          : { sourceQuotePartEtat: sourceApres }),
         actePersonnaliteJuridique: normaliser(dto.actePersonnaliteJuridique),
         // Date vide = pas d'arrêté encore obtenu (autorisation provisoire de
         // l'art. 5) · c'est un état légitime, pas une saisie incomplète. Lue

@@ -195,6 +195,28 @@ function montantNoteTexte(n: number): string {
   return FORMAT_MONTANT_NOTE.format(Math.round(n * 100) / 100);
 }
 
+/**
+ * Le PORTEFEUILLE DE L'ÉTAT déclaré au dossier · sert DEUX propositions de la
+ * fiche R2 (décision par la loi du 2026-10-07, points 4 et 5), jamais une
+ * valeur imprimée comme déclarée :
+ *  - ZK · une SA du portefeuille est une « Société Anonyme (SA) à
+ *    participation publique » (NOTE 36, table 1, code 00 ; loi n° 08/010,
+ *    art. 3, « une participation ») · 00 proposé, 10 sous agrément
+ *    prioritaire (renvoi (1)), fait qu'OmegaX ne porte pas. JAMAIS LU À
+ *    REBOURS · la NOTE 36 ne dit pas quelle personne publique (un État
+ *    étranger donne aussi 00), le code ne fait pas la qualité. Pour une
+ *    autre forme, la table n'a pas de code « à participation publique ».
+ *  - ZQ (contrôle public) · proposé quand la quote-part DÉCLARÉE de l'État
+ *    dépasse la moitié du capital · le contrôle se lit par l'AUDCIF art. 78
+ *    (majorité des droits de vote, désignation des organes, influence
+ *    dominante), que la quote-part du capital n'établit pas seule ; la case
+ *    reste au cabinet.
+ */
+type PortefeuilleFicheR2 = {
+  entreprisePortefeuilleEtat: boolean | null;
+  quotePartEtatCapital: number | null;
+};
+
 /** Cases ZN à ZS de la fiche R2, déclarées sur l'exercice (`FicheR2Dto`). */
 type DeclarationsFicheR2 = {
   nombreEtablissementsPays?: number | null;
@@ -6581,7 +6603,9 @@ export class ExportService {
    *    second chiffre seulement, le premier passant à 1 « si l'entité
    *    bénéficie d'un agrément prioritaire » (renvoi (1)), fait que le dossier
    *    ne porte pas. Le code est donc PROPOSÉ en clair, jamais imprimé comme
-   *    déclaré ; la SA (00 ou 01) et les autres formes restent à déclarer ;
+   *    déclaré ; la SA (00 ou 01) et les autres formes restent à déclarer,
+   *    sauf la SA DÉCLARÉE du portefeuille de l'État, à qui 00 est proposé
+   *    (`PortefeuilleFicheR2`, décision par la loi du 2026-10-07, point 5) ;
    *  - ZL et ZM non saisis · « Non renseigné », jamais déduits du dossier
    *    (ZM ne se lit pas dans l'adresse, voir `CODES_PAYS_OHADA_SYSCOHADA`) ;
    *  - ZN à ZS · DÉCLARÉS sur l'exercice (fenêtre Exercices, décision par
@@ -6606,6 +6630,7 @@ export class ExportService {
     forme: string | null | undefined,
     notes: { notes: NoteCalculee[] },
     declare: DeclarationsFicheR2 | null,
+    portefeuille: PortefeuilleFicheR2 = { entreprisePortefeuilleEtat: null, quotePartEtatCapital: null },
   ) {
     const NB = 10;
     const ws = classeur.addWorksheet('Fiche R2');
@@ -6626,12 +6651,21 @@ export class ExportService {
       return v === null || v === undefined || String(v).trim() === '' ? null : String(v).trim();
     };
     const zk = saisi('1-code-forme-juridique-1');
-    const proposition = forme ? CODE_FORME_UNIVOQUE_FICHE_R2[forme] : undefined;
+    const saDuPortefeuille = forme === 'SOCIETE_ANONYME' && portefeuille.entreprisePortefeuilleEtat === true;
+    const proposition = saDuPortefeuille ? '00' : forme ? CODE_FORME_UNIVOQUE_FICHE_R2[forme] : undefined;
     const valeurZk =
       zk ??
       (proposition
-        ? `Non renseigné · la NOTE 36 donne ${proposition} (1${proposition.slice(1)} avec agrément prioritaire)`
+        ? `Non renseigné · la NOTE 36 donne ${proposition} (1${proposition.slice(1)} avec agrément prioritaire)` +
+          (saDuPortefeuille ? ' · SA à participation publique, entreprise du portefeuille de l’État déclarée' : '')
         : 'Non renseigné · à déclarer à la NOTE 36');
+    // ZQ « contrôle public » · PROPOSÉ, jamais coché, sur la quote-part
+    // déclarée de l'État au-delà de la moitié du capital (point 4).
+    const quote = portefeuille.entreprisePortefeuilleEtat === true ? portefeuille.quotePartEtatCapital : null;
+    const zqPublic =
+      (declare?.controleEntreprise ?? null) === null && quote !== null && quote > 50
+        ? `Non renseignée · contrôle public proposé (quote-part de l’État déclarée · ${quote} %)`
+        : caseControleR2(declare, 'PUBLIC');
     const lignes: Array<[string, string, string]> = [
       ['ZK', 'Forme juridique (1)', valeurZk],
       ['ZL', 'Régime fiscal (1)', saisi('2-code-regime-fiscal') ?? 'Non renseigné · à déclarer à la NOTE 36'],
@@ -6643,7 +6677,7 @@ export class ExportService {
         nombreR2(declare?.nombreEtablissementsHorsPays),
       ],
       ['ZP', "Première année d'exercice dans le pays", nombreR2(declare?.premiereAnneeExercicePays)],
-      ['ZQ', "Contrôle de l'entreprise : entreprise sous contrôle public", caseControleR2(declare, 'PUBLIC')],
+      ['ZQ', "Contrôle de l'entreprise : entreprise sous contrôle public", zqPublic],
       // [texte officiel] Le code ZQ est employé deux fois, ZR n'apparaît pas ·
       // transcrit tel quel, sans créer de ZR.
       [
@@ -6798,7 +6832,13 @@ export class ExportService {
         controleEntreprise: true,
       },
     });
-    this.feuilleFicheR2Syscohada(classeur, ident, tenant.formeJuridiqueSyscohada, notes, declarationsR2);
+    this.feuilleFicheR2Syscohada(classeur, ident, tenant.formeJuridiqueSyscohada, notes, declarationsR2, {
+      entreprisePortefeuilleEtat: tenant.entreprisePortefeuilleEtat ?? null,
+      quotePartEtatCapital:
+        tenant.quotePartEtatCapital === null || tenant.quotePartEtatCapital === undefined
+          ? null
+          : Number(tenant.quotePartEtatCapital),
+    });
     // Fiche R3 · dirigeants ET membres du conseil d'administration (passe R2, A4).
     construireFiche2(classeur, ident, 'DIRIGEANTS (1)', [], 'FICHE 2', 20, true);
 

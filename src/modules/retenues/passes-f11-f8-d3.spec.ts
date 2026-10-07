@@ -34,6 +34,7 @@ function service(tenant: Record<string, unknown>) {
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue(tenant) },
     ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
     exercice: { findFirst: jest.fn().mockResolvedValue(null) },
+    mandatAuditeur: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   return new RetenuesService(prisma);
 }

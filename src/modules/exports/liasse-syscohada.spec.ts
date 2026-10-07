@@ -1235,6 +1235,61 @@ describe('Passe R2, A3 et B6 · fiche R2 du Système normal SYSCOHADA', () => {
     expect(caseR2(wb, 'ZK')).toBe('Non renseigné · à déclarer à la NOTE 36');
   });
 
+  it('SA du portefeuille DÉCLARÉE · 00 proposé en clair (jamais imprimé comme déclaré) ; ZQ public proposé au-delà de 50 % de quote-part', async () => {
+    // Décision par la loi du 2026-10-07, points 4 et 5 · NOTE 36 table 1
+    // (« SA à participation publique ») ; loi n° 08/010, art. 3 ; AUDCIF art. 78.
+    const avec = async (tenant: Record<string, unknown>, controleEntreprise: string | null = null) => {
+      const e = fabriquerExport();
+      const prisma = (e as unknown as { prisma: { tenant: { findUniqueOrThrow: jest.Mock }; exercice: { findFirst: jest.Mock } } })
+        .prisma;
+      prisma.tenant.findUniqueOrThrow.mockResolvedValue({ ...TENANT, ...tenant });
+      const origine = prisma.exercice.findFirst.getMockImplementation()!;
+      prisma.exercice.findFirst.mockImplementation((args: { select?: Record<string, unknown> }) =>
+        args?.select && 'controleEntreprise' in args.select ? Promise.resolve({ controleEntreprise }) : origine(args),
+      );
+      return ouvrir((await e.liasseCompleteExcel('t1', 'e1')).buffer);
+    };
+    const zq = (wb: ExcelJS.Workbook) => {
+      const v: string[] = [];
+      wb.getWorksheet('Fiche R2')!.eachRow((row) => {
+        if (row.getCell(1).value === 'ZQ') v.push(String(row.getCell(7).value ?? ''));
+      });
+      return v;
+    };
+    const sa = await avec({ formeJuridiqueSyscohada: 'SOCIETE_ANONYME', entreprisePortefeuilleEtat: true, quotePartEtatCapital: '60' });
+    expect(caseR2(sa, 'ZK')).toBe(
+      'Non renseigné · la NOTE 36 donne 00 (10 avec agrément prioritaire) · SA à participation publique, entreprise du portefeuille de l’État déclarée',
+    );
+    expect(zq(sa)).toEqual(['Non renseignée · contrôle public proposé (quote-part de l’État déclarée · 60 %)', 'Non renseignée']);
+    // Une autre forme du portefeuille garde le code de sa forme (aucun « à
+    // participation publique » dans la table) ; une quote-part de 50 % ne
+    // propose rien ; une réponse déclarée l'emporte toujours.
+    const sarl = await avec({
+      formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE',
+      entreprisePortefeuilleEtat: true,
+      quotePartEtatCapital: '50',
+    });
+    expect(caseR2(sarl, 'ZK')).toBe('Non renseigné · la NOTE 36 donne 02 (12 avec agrément prioritaire)');
+    expect(zq(sarl)).toEqual(['Non renseignée', 'Non renseignée']);
+    const declare = await avec(
+      { formeJuridiqueSyscohada: 'SOCIETE_ANONYME', entreprisePortefeuilleEtat: true, quotePartEtatCapital: '80' },
+      'PRIVE_ETRANGER',
+    );
+    expect(zq(declare)).toEqual(['', '']);
+    expect(caseR2(declare, 'ZS')).toBe('X');
+    // Portefeuille non déclaré · la SA reste à déclarer, la quote-part restée en base ne propose rien.
+    const nonDit = await avec({ formeJuridiqueSyscohada: 'SOCIETE_ANONYME', entreprisePortefeuilleEtat: null, quotePartEtatCapital: '80' });
+    expect(caseR2(nonDit, 'ZK')).toBe('Non renseigné · à déclarer à la NOTE 36');
+    expect(zq(nonDit)).toEqual(['Non renseignée', 'Non renseignée']);
+    // Le code saisi à la NOTE 36 l'emporte · jamais lu à rebours pour la qualité.
+    const saisi = fabriquerExport(SystemeComptableSyscohada.NORMAL, [
+      { exerciceId: 'e1', codeNote: '36', cleRubrique: '1-code-forme-juridique-1', colonne: 0, valeurTexte: '01' },
+    ]);
+    const p = (saisi as unknown as { prisma: { tenant: { findUniqueOrThrow: jest.Mock } } }).prisma;
+    p.tenant.findUniqueOrThrow.mockResolvedValue({ ...TENANT, formeJuridiqueSyscohada: 'SOCIETE_ANONYME', entreprisePortefeuilleEtat: true });
+    expect(caseR2(await ouvrir((await saisi.liasseCompleteExcel('t1', 'e1')).buffer), 'ZK')).toBe('01');
+  });
+
   it('le CA HT et la VA de la liasse sont relus sur la feuille Résultat, par leur code REF', async () => {
     const wb = await ouvrir((await fabriquerExport().liasseCompleteExcel('t1', 'e1')).buffer);
     const ws = wb.getWorksheet('Fiche R2')!;

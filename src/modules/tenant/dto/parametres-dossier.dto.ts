@@ -243,6 +243,28 @@ export class ModifierIdentiteDto {
   })
   associeUniquePersonneMorale?: ReponseFait;
 
+  // Entreprise MINIÈRE du portefeuille (décision par la loi du 2026-10-07,
+  // point 3 · arrêté interministériel du 10 décembre 2025, art. 2 et 3) ·
+  // secteur déclaré, quote-part de l'État dans le capital (0 à 100, `null`
+  // l'efface) et sa source, exigée avec elle.
+  @IsOptional()
+  @IsIn(['OUI', 'NON', 'PAS_ENCORE_DIT'], {
+    message: 'Le secteur minier se déclare OUI, NON ou PAS_ENCORE_DIT.',
+  })
+  portefeuilleSecteurMinier?: ReponseFait;
+
+  @IsOptional()
+  @ValidateIf((o: ModifierIdentiteDto) => o.quotePartEtatCapital !== null)
+  @IsNumber({ maxDecimalPlaces: 4 }, { message: 'La quote-part de l’État est un pourcentage, à quatre décimales au plus.' })
+  @Min(0, { message: 'La quote-part de l’État est un pourcentage de 0 à 100.' })
+  @Max(100, { message: 'La quote-part de l’État est un pourcentage de 0 à 100.' })
+  quotePartEtatCapital?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  sourceQuotePartEtat?: string | null;
+
   // --- Propres aux entités à but non lucratif -----------------------------
   // Arrêté du Ministre de la Justice (loi 004/2001, art. 3) ou décret
   // présidentiel pour une entité de droit étranger (art. 30) · plus long

@@ -113,6 +113,45 @@ export function faitsDeLaFormeAEnvoyer(
 }
 
 /**
+ * La QUOTE-PART DE L'ÉTAT saisie (décision par la loi du 2026-10-07, point 3 ·
+ * arrêté interministériel du 10 décembre 2025, art. 1er, point 2) · un
+ * pourcentage de 0 à 100, virgule ou point, quatre décimales au plus. Vide ·
+ * `null`, l'effacement. Illisible · `undefined`, jamais envoyé · JSON.stringify
+ * écrit `NaN` en `null`, et une saisie fausse EFFACERAIT la quote-part.
+ */
+export function lireQuotePart(texte: string): number | null | undefined {
+  const t = texte.trim().replace(/\s/g, '').replace(',', '.');
+  if (t === '') return null;
+  if (!/^\d{1,3}(\.\d{1,4})?$/.test(t)) return undefined;
+  const n = Number(t);
+  return n >= 0 && n <= 100 ? n : undefined;
+}
+
+/**
+ * Le corps du PORTEFEUILLE DE L'ÉTAT · la qualité, et sous elle seulement le
+ * secteur minier et la quote-part avec sa source (le serveur les refuse hors
+ * du portefeuille déclaré). Hors « oui », rien de plus n'est envoyé · ce qui
+ * reste en base n'est lu nulle part tant que la qualité n'est pas « oui ».
+ */
+export function portefeuilleAEnvoyer(saisie: {
+  portefeuille: ReponseFaitSaisie;
+  secteurMinier: ReponseFaitSaisie;
+  quotePart: number | null;
+  sourceQuotePart: string;
+}): Record<string, string | number | null> {
+  return {
+    entreprisePortefeuilleEtat: saisie.portefeuille,
+    ...(saisie.portefeuille === 'OUI'
+      ? {
+          portefeuilleSecteurMinier: saisie.secteurMinier,
+          quotePartEtatCapital: saisie.quotePart,
+          sourceQuotePartEtat: saisie.quotePart === null ? null : saisie.sourceQuotePart,
+        }
+      : {}),
+  };
+}
+
+/**
  * Une TRANSFORMATION au sens de l'AUSCGIE art. 181 change une société
  * commerciale en une autre · miroir de `motifRefusTransformation`. Ailleurs,
  * le changement de forme ne se date pas (une correction vaut pour tous les

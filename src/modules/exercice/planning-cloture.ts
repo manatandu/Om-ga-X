@@ -903,13 +903,16 @@ export const JALONS_CLOTURE: DefinitionJalon[] = [
     etape: 17,
     libelle: 'États financiers et rapport de gestion aux commissaires aux comptes',
     detail:
-      'Envoi aux commissaires aux comptes des états financiers de synthèse annuels et du rapport de gestion, QUARANTE-CINQ JOURS AU MOINS avant la date de l’assemblée générale ordinaire. Le délai se compte à rebours de l’assemblée, pas de la clôture : une assemblée tenue au dernier jour du sixième mois impose l’envoi au plus tard vers le 16 du cinquième mois. L’échéance portée ici suppose cette assemblée, OmegaX n’en connaissant pas la date réelle. La désignation d’un commissaire aux comptes est obligatoire dans toute société anonyme (art. 702) et, dans la SARL comme dans la SAS, dès que deux des trois critères de taille sont dépassés à la clôture (total du bilan, chiffre d’affaires annuel, effectif permanent au-delà de cinquante personnes) · les deux premiers montants sont donnés par les articles cités, l’écran Paramètres du dossier les reprend.',
+      'Envoi aux commissaires aux comptes des états financiers de synthèse annuels et du rapport de gestion, QUARANTE-CINQ JOURS AU MOINS avant la date de l’assemblée générale ordinaire. Le délai se compte à rebours de l’assemblée, pas de la clôture : une assemblée tenue au dernier jour du sixième mois impose l’envoi au plus tard le 15 du cinquième mois, quarante-cinq jours francs avant (un jour plus tard si le délai n’est pas franc). L’échéance portée ici suppose cette assemblée, OmegaX n’en connaissant pas la date réelle. La désignation d’un commissaire aux comptes est obligatoire dans toute société anonyme (art. 702) et, dans la SARL comme dans la SAS, dès que deux des trois critères de taille sont dépassés à la clôture (total du bilan, chiffre d’affaires annuel, effectif permanent au-delà de cinquante personnes) · les deux premiers montants sont donnés par les articles cités, l’écran Paramètres du dossier les reprend.',
     nature: 'LEGALE',
     debut: { moisApres: 3, jour: 15 },
-    // Quarante-cinq jours avant le 30 juin tombent le 16 mai · « fin du
-    // quatrième mois » devançait de seize jours le délai de l'art. 140, et le
-    // planning mettait une société « en retard » dès le 1er mai (passe O1a,
-    // C2). Même échéance que le pendant SYCEBNL et l'étape 18.
+    // Quarante-cinq jours FRANCS avant le 30 juin tombent le 15 mai (décision
+    // par la loi du 2026-10-07, point 6 · ni le jour de l'envoi ni celui de
+    // l'assemblée ne comptent, la date qui satisfait les deux lectures) ·
+    // « fin du quatrième mois » devançait de quinze jours le délai de
+    // l'art. 140, et le planning mettait une société « en retard » dès le
+    // 1er mai (passe O1a, C2). Même échéance que le pendant SYCEBNL et
+    // l'étape 18.
     echeance: { moisApres: 5, jour: 15 },
     source: 'AUSCGIE, art. 140 al. 1 ; art. 702 (SA) ; art. 376 (SARL) ; art. 853-13 (SAS)',
     referentiels: [Referentiel.SYSCOHADA],
@@ -964,7 +967,7 @@ export const JALONS_CLOTURE: DefinitionJalon[] = [
     etape: 18,
     libelle: 'Mise à disposition du commissaire aux comptes',
     detail:
-      'Remise du projet d’états financiers, du rapport de gestion et, le cas échéant, du bilan social au commissaire aux comptes, QUARANTE-CINQ JOURS AU MOINS avant la date de l’assemblée générale ordinaire. Le commissaire aux comptes émet une opinion sur la régularité, la sincérité et l’image fidèle des comptes, et se prononce sur la concordance avec les états financiers des informations données dans le rapport de gestion. Sa désignation est obligatoire dans toute société anonyme, dans la SARL comme dans la SAS au-delà de deux des trois critères de taille, et dans la SNC et la SCS au-delà de deux des trois critères de l’art. 289-1 (seuils plus élevés).',
+      'Remise du projet d’états financiers, du rapport de gestion et, le cas échéant, du bilan social au commissaire aux comptes, QUARANTE-CINQ JOURS AU MOINS avant la date de l’assemblée générale ordinaire · le 15 du cinquième mois compte quarante-cinq jours francs avant une assemblée au dernier jour du sixième, un jour plus tard si le délai n’est pas franc. Le commissaire aux comptes émet une opinion sur la régularité, la sincérité et l’image fidèle des comptes, et se prononce sur la concordance avec les états financiers des informations données dans le rapport de gestion. Sa désignation est obligatoire dans toute société anonyme, dans la SARL comme dans la SAS au-delà de deux des trois critères de taille, et dans la SNC et la SCS au-delà de deux des trois critères de l’art. 289-1 (seuils plus élevés).',
     nature: 'INTERNE',
     debut: { moisApres: 3, jour: 1 },
     echeance: { moisApres: 5, jour: 15 },
@@ -1367,7 +1370,10 @@ export const OBLIGATIONS_EVENEMENTIELLES: ObligationEvenementielle[] = [
   },
   {
     cle: 'proceValAssembleeGenerale',
-    evenement: 'Tenue de l’assemblée générale approuvant les états financiers certifiés',
+    // « approuvant les états financiers CERTIFIÉS PAR LES COMMISSAIRES AUX
+    // COMPTES » · sans commissaire, rien n'est dû (décision par la loi du
+    // 2026-10-07, constat final ; l'échéancier lit la table des mandats).
+    evenement: 'Tenue de l’assemblée générale approuvant les états financiers certifiés par les commissaires aux comptes',
     libelle: 'Transmission du procès-verbal de l’assemblée générale',
     delai: 'Dans les dix jours de la tenue de l’assemblée',
     destinataire: 'Direction générale des impôts',

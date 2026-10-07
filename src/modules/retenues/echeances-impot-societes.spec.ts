@@ -1,5 +1,5 @@
 import { FormeJuridiqueSyscohada, Referentiel } from '@prisma/client';
-import { RetenuesService } from './retenues.service';
+import { AVERTISSEMENT_PV_SANS_COMMISSAIRE, PV_A_CONFIRMER_SANS_FORME, PV_A_CONFIRMER_SANS_MANDAT, RetenuesService } from './retenues.service';
 import { PrismaService } from '../../common/prisma.service';
 import { obligationsDeclarativesApplicables } from './correspondance-retenues';
 
@@ -45,6 +45,12 @@ function service(referentiel: 'SYCEBNL' | 'SYSCOHADA') {
     // alors sur le livre-journal, vide ici.
     ecriture: { findFirst: jest.fn().mockResolvedValue(null) },
     compte: { findMany: jest.fn().mockResolvedValue([]) },
+    // Un mandat de commissaire aux comptes qui couvre 2026 · sans lui, le
+    // procès-verbal de la LPF art. 13 bis n'est pas servi (décision par la
+    // loi du 2026-10-07, constat final ; voir le bloc qui lui est consacré).
+    mandatAuditeur: {
+      findMany: jest.fn().mockResolvedValue([{ premierExercice: 2026, nombreExercices: 3, refusDeProrogation: false }]),
+    },
   } as unknown as PrismaService;
   return new RetenuesService(prisma);
 }
@@ -278,5 +284,102 @@ describe('Procès-verbal de l’assemblée à la DGI (LPF art. 13 bis)', () => {
       (e) => e.cle === 'procesVerbalAssemblee',
     )!;
     expect(ordinaire.date.toISOString().slice(0, 10)).toBe('2027-07-12');
+  });
+});
+
+describe('Procès-verbal de la LPF art. 13 bis · seulement sous commissaire aux comptes', () => {
+  /*
+    Décision par la loi du 2026-10-07 (constat final) · « dans les dix jours
+    de la tenue de l'Assemblée générale ordinaire approuvant les états
+    financiers CERTIFIÉS PAR LES COMMISSAIRES AUX COMPTES » · sans mandat qui
+    couvre l'exercice, rien n'est présenté comme dû, et c'est dit.
+  */
+  const avecMandats = (mandats: Array<Record<string, unknown>>, tenant: Record<string, unknown> = { referentiel: 'SYSCOHADA' }) => {
+    const svc = service('SYSCOHADA');
+    const prisma = (svc as unknown as {
+      prisma: { mandatAuditeur: { findMany: jest.Mock }; tenant: { findUniqueOrThrow: jest.Mock } };
+    }).prisma;
+    prisma.mandatAuditeur.findMany.mockResolvedValue(mandats);
+    prisma.tenant.findUniqueOrThrow.mockResolvedValue(tenant);
+    return svc.echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2027-03-01' });
+  };
+
+  it('aucun mandat, SARL · le procès-verbal n’est pas servi, et l’avertissement dit pourquoi', async () => {
+    const r = await avecMandats([], { referentiel: 'SYSCOHADA', formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    expect(r.echeances.find((e) => e.cle === 'procesVerbalAssemblee')).toBeUndefined();
+    expect(r.avertissements).toContain(AVERTISSEMENT_PV_SANS_COMMISSAIRE);
+    expect(AVERTISSEMENT_PV_SANS_COMMISSAIRE).toContain('certifiés par les commissaires aux comptes');
+    // Les autres déclarations de la société restent servies.
+    expect(r.echeances.find((e) => e.cle === 'declarationImpotSocietes')).toBeDefined();
+  });
+
+  it('aucun mandat, forme non renseignée · le procès-verbal reste servi « à confirmer » (la société peut être une SA)', async () => {
+    const r = await avecMandats([]);
+    const pv = r.echeances.find((e) => e.cle === 'procesVerbalAssemblee');
+    expect(pv).toBeDefined();
+    expect(pv!.echeance).toContain(PV_A_CONFIRMER_SANS_FORME);
+    expect(r.avertissements).not.toContain(AVERTISSEMENT_PV_SANS_COMMISSAIRE);
+  });
+
+  it('un mandat échu en 2025 ne couvre pas 2026, sauf prorogation de la SA (AUSCGIE art. 709)', async () => {
+    const echu = [{ premierExercice: 2023, nombreExercices: 3, refusDeProrogation: false }];
+    const sarl = await avecMandats(echu, { referentiel: 'SYSCOHADA', formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    expect(sarl.echeances.find((e) => e.cle === 'procesVerbalAssemblee')).toBeUndefined();
+    const sa = await avecMandats(echu, { referentiel: 'SYSCOHADA', formeJuridiqueSyscohada: 'SOCIETE_ANONYME' });
+    expect(sa.echeances.find((e) => e.cle === 'procesVerbalAssemblee')).toBeDefined();
+    expect(sa.avertissements).not.toContain(AVERTISSEMENT_PV_SANS_COMMISSAIRE);
+    // Refus exprès du commissaire · pas de prorogation, mais une SA a TOUJOURS
+    // un commissaire (AUSCGIE art. 694 et 702) · le procès-verbal reste servi,
+    // « à confirmer ».
+    const refus = await avecMandats([{ ...echu[0], refusDeProrogation: true }], {
+      referentiel: 'SYSCOHADA',
+      formeJuridiqueSyscohada: 'SOCIETE_ANONYME',
+    });
+    expect(refus.echeances.find((e) => e.cle === 'procesVerbalAssemblee')?.echeance).toContain(PV_A_CONFIRMER_SANS_MANDAT);
+  });
+
+  it('SA sans mandat enregistré · le commissaire existe par la loi (art. 694, 702), le procès-verbal reste servi « à confirmer »', async () => {
+    const sa = await avecMandats([], { referentiel: 'SYSCOHADA', formeJuridiqueSyscohada: 'SOCIETE_ANONYME' });
+    const pv = sa.echeances.find((e) => e.cle === 'procesVerbalAssemblee');
+    expect(pv?.echeance).toContain('à confirmer · mandat de commissaire non enregistré');
+    expect(sa.avertissements).not.toContain(AVERTISSEMENT_PV_SANS_COMMISSAIRE);
+    // Avec un mandat qui couvre l'exercice, rien n'est « à confirmer ».
+    const couvert = await avecMandats([{ premierExercice: 2026, nombreExercices: 6, refusDeProrogation: false }], {
+      referentiel: 'SYSCOHADA',
+      formeJuridiqueSyscohada: 'SOCIETE_ANONYME',
+    });
+    expect(couvert.echeances.find((e) => e.cle === 'procesVerbalAssemblee')?.echeance).not.toContain(PV_A_CONFIRMER_SANS_MANDAT);
+  });
+
+  it('un mandat terminé par anticipation couvre encore l’exercice clos avant sa fin, jamais celui clos après', async () => {
+    const sarl = { referentiel: 'SYSCOHADA', formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' };
+    const mandat = { premierExercice: 2025, nombreExercices: 3, refusDeProrogation: false };
+    // L'exercice de la doublure se clôt le 31/12/2026.
+    const finApres = await avecMandats([{ ...mandat, finAnticipeeLe: new Date(Date.UTC(2027, 5, 30)) }], sarl);
+    expect(finApres.echeances.find((e) => e.cle === 'procesVerbalAssemblee')).toBeDefined();
+    const finAvant = await avecMandats([{ ...mandat, finAnticipeeLe: new Date(Date.UTC(2026, 5, 30)) }], sarl);
+    expect(finAvant.echeances.find((e) => e.cle === 'procesVerbalAssemblee')).toBeUndefined();
+    expect(finAvant.avertissements).toContain(AVERTISSEMENT_PV_SANS_COMMISSAIRE);
+  });
+
+  it('la forme de l’EXERCICE décide (formeApplicable) · une SARL devenue SA en 2027 reste lue SARL pour 2026', async () => {
+    const r = await avecMandats([], {
+      referentiel: 'SYSCOHADA',
+      formeJuridiqueSyscohada: 'SOCIETE_ANONYME',
+      formeJuridiqueSyscohadaAnterieure: 'SOCIETE_RESPONSABILITE_LIMITEE',
+      dateTransformationForme: new Date(Date.UTC(2027, 1, 1)),
+    });
+    // SARL sans commissaire · pas de procès-verbal, l'avertissement le dit.
+    expect(r.echeances.find((e) => e.cle === 'procesVerbalAssemblee')).toBeUndefined();
+    expect(r.avertissements).toContain(AVERTISSEMENT_PV_SANS_COMMISSAIRE);
+  });
+
+  it('une association n’a ni procès-verbal ni avertissement · l’obligation ne la vise pas', async () => {
+    const svc = service('SYCEBNL');
+    const prisma = (svc as unknown as { prisma: { mandatAuditeur: { findMany: jest.Mock } } }).prisma;
+    prisma.mandatAuditeur.findMany.mockResolvedValue([]);
+    const r = await svc.echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2027-03-01' });
+    expect(r.echeances.find((e) => e.cle === 'procesVerbalAssemblee')).toBeUndefined();
+    expect(r.avertissements).not.toContain(AVERTISSEMENT_PV_SANS_COMMISSAIRE);
   });
 });

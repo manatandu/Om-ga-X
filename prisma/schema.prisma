@@ -472,6 +472,17 @@ model Tenant {
   // PERSONNE MORALE · la dissolution transmet le patrimoine « sans qu'il y ait
   // lieu à liquidation ». null = pas encore dit.
   associeUniquePersonneMorale       Boolean?
+  // ENTREPRISE MINIÈRE DU PORTEFEUILLE (décision par la loi du 2026-10-07,
+  // point 3) · arrêté interministériel n° 005/CAB/MIN/PF/2025 et
+  // n° 159bis/CAB/MIN/FINANCES/2025 du 10 décembre 2025, art. 2 et 3 ·
+  // dividende prioritaire de l'État, déclaré au plus tard le 15 mai. Sous le
+  // portefeuille, SYSCOHADA seul. Le secteur se DÉCLARE (null = pas encore
+  // dit) ; la quote-part de l'État dans le capital se DÉCLARE avec sa source,
+  // en pourcentage de 0 à 100, null par défaut, jamais présumée · sans elle,
+  // le montant du dividende n'est pas calculé.
+  portefeuilleSecteurMinier         Boolean?
+  quotePartEtatCapital              Decimal?  @db.Decimal(7, 4)
+  sourceQuotePartEtat               String?
   // AUSCGIE art. 182 et 183 · une TRANSFORMATION prend effet au jour de la
   // décision, « ne peut avoir d'effet rétroactif », et seul l'exercice au cours
   // duquel elle intervient suit la nouvelle forme. La forme d'avant et la date
@@ -1563,6 +1574,16 @@ model Exercice {
   /// l'Administration des recettes non fiscales (art. 112) · déclarée, elle
   /// lève le jalon, qui sans elle resterait rouge pour toujours.
   dateTransmissionPvPortefeuille DateTime?
+
+  /// DIVIDENDE PRIORITAIRE DES ENTREPRISES MINIÈRES DU PORTEFEUILLE
+  /// (arrêté interministériel du 10 décembre 2025, art. 2 ; décision par la
+  /// loi du 2026-10-07, point 3) · trois dates DÉCLARÉES de l'exercice. La
+  /// déclaration lève le jalon du 15 mai ; la RÉCEPTION de la note de
+  /// perception fait courir les huit jours du paiement, sans elle non
+  /// calculé ; le paiement lève ce second jalon.
+  dateDeclarationDividendeEtat   DateTime?
+  dateNotePerceptionDividende    DateTime?
+  datePaiementDividendeEtat      DateTime?
 
   ecritures                    Ecriture[]
   clotures                     Cloture[]

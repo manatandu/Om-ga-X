@@ -57,6 +57,9 @@ function service(lignes: ReturnType<typeof ligne>[], referentiel = 'SYCEBNL') {
     // éprouvé par `retenues-ouverture-f26.spec.ts`, dont la doublure honore
     // les dates.
     exercice: { findFirst: jest.fn().mockResolvedValue(null) },
+    // Aucun mandat de commissaire · le procès-verbal de la LPF art. 13 bis
+    // n'est pas servi (décision par la loi du 2026-10-07).
+    mandatAuditeur: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   return new RetenuesService(prisma);
 }

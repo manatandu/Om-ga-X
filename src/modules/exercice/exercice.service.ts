@@ -29,10 +29,10 @@ import { ArreterComptesDto } from './dto/arrete-comptes.dto';
 import { FicheR2Dto } from './dto/fiche-r2.dto';
 import { jourSaisiOuEffacement } from '../tenant/date-effacable';
 import { DatesPortefeuilleDto } from './dto/dates-portefeuille.dto';
-import { appliquerPortefeuilleEtat, inviterADeclarerPortefeuille, JalonServi } from './portefeuille-etat';
+import { appliquerPortefeuilleEtat, inviterADeclarerPortefeuille, JalonServi, jourFr } from './portefeuille-etat';
 import { FORMES_SOCIETES_COMMERCIALES } from '../tenant/mentions-societe';
 import { jalonsLiquidation } from './liquidation-societe';
-import { dernierExerciceCouvert, estDansLaProrogation, mandatCouvrant, regleDeProrogation } from '../mandat-auditeur/duree-mandat';
+import { commissaireCouvreLExercice } from '../mandat-auditeur/duree-mandat';
 import { JournalService } from '../journaux/journal.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { DERNIERE_VERIFICATION, dateJalon, jalonsApplicables } from './planning-cloture';
@@ -491,19 +491,69 @@ export class ExerciceService {
     // sans refus exprès. Rien d'enregistré · `null`, jamais « aucun ».
     let commissaireDesigne: boolean | null = null;
     if (portefeuille === true) {
+      // Un mandat terminé par anticipation est lu aussi · il couvre encore les
+      // exercices clos avant sa fin (`commissaireCouvreLExercice`).
       const mandats = await this.prisma.mandatAuditeur.findMany({
-        where: { tenantId, finAnticipeeLe: null },
+        where: { tenantId },
         orderBy: { premierExercice: 'desc' },
-        select: { premierExercice: true, nombreExercices: true, refusDeProrogation: true },
+        select: { premierExercice: true, nombreExercices: true, refusDeProrogation: true, finAnticipeeLe: true },
       });
-      const annee = exercice.dateFin.getUTCFullYear();
-      const echu = mandats.find((m) => dernierExerciceCouvert(m.premierExercice, m.nombreExercices) < annee);
-      const proroge =
-        !!echu &&
-        !echu.refusDeProrogation &&
-        regleDeProrogation(tenant.referentiel, formeDeLExercice) !== null &&
-        estDansLaProrogation(echu.premierExercice, echu.nombreExercices, annee);
-      if (mandatCouvrant(mandats, annee) || proroge) commissaireDesigne = true;
+      if (
+        commissaireCouvreLExercice(
+          mandats,
+          exercice.dateFin.getUTCFullYear(),
+          tenant.referentiel,
+          formeDeLExercice,
+          exercice.dateFin,
+        )
+      ) {
+        commissaireDesigne = true;
+      }
+    }
+    // LE BÉNÉFICE NET COMPTABLE d'une entreprise MINIÈRE du portefeuille
+    // (arrêté du 10 décembre 2025, art. 2) · lu sur le livre-journal (écritures
+    // VALIDÉES), classes 6 à 8, AVANT l'écriture qui solde les comptes de
+    // gestion (CLAUDE.md, « un drapeau, deux sens ») · sans quoi un exercice
+    // clos rendrait un résultat nul. Une somme, demandée à la base.
+    const secteurMinier = portefeuille === true ? (tenant.portefeuilleSecteurMinier ?? null) : null;
+    const quotePartEtat =
+      tenant.quotePartEtatCapital === null || tenant.quotePartEtatCapital === undefined
+        ? null
+        : Number(tenant.quotePartEtatCapital);
+    let resultatNet: number | null = null;
+    let capitauxPropres: { capital: number; capitauxPropres: number; reportANouveau: number } | null = null;
+    if (secteurMinier === true) {
+      const livreJournal = { tenantId, exerciceId, statut: StatutEcriture.VALIDEE, estSoldeDesComptesDeGestion: false };
+      // Le solde créditeur (crédit moins débit) d'un ensemble de comptes.
+      const solde = async (compte: Prisma.CompteWhereInput) => {
+        const s = await this.prisma.ligneEcriture.aggregate({
+          where: { compte: { tenantId, ...compte }, ecriture: livreJournal },
+          _sum: { debit: true, credit: true },
+        });
+        return Math.round((Number(s._sum.credit ?? 0) - Number(s._sum.debit ?? 0)) * 100) / 100;
+      };
+      const parRacines = (racines: string[]): Prisma.CompteWhereInput => ({
+        OR: racines.map((r) => ({ numero: { startsWith: r } })),
+      });
+      // LES CAPITAUX PROPRES DU BILAN (postes CA à CM, `correspondance-bilan-
+      // syscohada.ts`) · capital 101 à 104 (CA), apporteurs non appelé 109
+      // (CB, débiteur), primes 105, écarts de réévaluation 106, réserves 111
+      // à 118, report à nouveau 12, subventions 14, provisions réglementées
+      // 15, le 13 (résultat N-1 reporté à l'à-nouveau tant que son
+      // affectation n'est pas validée · l'affectation passe au brouillard,
+      // `AffectationService`) et le résultat de l'exercice (CJ). Lus avant
+      // le solde des comptes de gestion · la ligne du 13 que la clôture pose
+      // est dans cette écriture, déjà écartée par `livreJournal`. Sans le 13,
+      // un bénéfice N-1 non affecté disparaissait et l'avertissement de
+      // l'AUSCGIE art. 143 sortait à tort (relecture du 2026-10-07).
+      const [resultat, capital, reportANouveau, autres] = await Promise.all([
+        solde({ classe: { in: [ClasseCompte.CLASSE_6, ClasseCompte.CLASSE_7, ClasseCompte.CLASSE_8] } }),
+        solde(parRacines(['101', '102', '103', '104'])),
+        solde(parRacines(['12'])),
+        solde(parRacines(['10', '11', '12', '13', '14', '15'])),
+      ]);
+      resultatNet = resultat;
+      capitauxPropres = { capital, reportANouveau, capitauxPropres: Math.round((autres + resultat) * 100) / 100 };
     }
     // LIQUIDATION D'UNE SOCIÉTÉ COMMERCIALE (décision par la loi du
     // 2026-10-04, point 4) · ses jalons suivent ceux de l'exercice, sur les
@@ -528,10 +578,20 @@ export class ExerciceService {
               forme: formeDeLExercice!,
               commissaireDesigne,
               exerciceClos: exercice.statut === StatutExercice.CLOTURE,
+              dateArreteComptes: exercice.dateArreteComptes,
               dateAssembleeGenerale: exercice.dateAssembleeGenerale,
               dateDepotEtatsPortefeuille: exercice.dateDepotEtatsPortefeuille,
               dateTransmissionPvPortefeuille: exercice.dateTransmissionPvPortefeuille,
               dateDecisionAffectation: affectation?.dateDecision ?? null,
+              secteurMinier,
+              quotePartEtat,
+              sourceQuotePartEtat: tenant.sourceQuotePartEtat,
+              resultatNet,
+              dateDeclarationDividendeEtat: exercice.dateDeclarationDividendeEtat,
+              dateNotePerceptionDividende: exercice.dateNotePerceptionDividende,
+              datePaiementDividendeEtat: exercice.datePaiementDividendeEtat,
+              dateDissolution: tenant.dateDissolution,
+              capitauxPropres,
             },
             aujourdHui,
           )
@@ -557,6 +617,14 @@ export class ExerciceService {
       dateAssembleeGenerale: exercice.dateAssembleeGenerale,
       dateDepotEtatsPortefeuille: exercice.dateDepotEtatsPortefeuille,
       dateTransmissionPvPortefeuille: exercice.dateTransmissionPvPortefeuille,
+      // Entreprise MINIÈRE du portefeuille (décision par la loi du 2026-10-07,
+      // points 3 et 4) · faits du dossier et dates du dividende ; la quote-part
+      // sert aussi la proposition de la case ZQ de la fiche R2.
+      portefeuilleSecteurMinier: secteurMinier,
+      quotePartEtatCapital: portefeuille === true ? quotePartEtat : null,
+      dateDeclarationDividendeEtat: exercice.dateDeclarationDividendeEtat,
+      dateNotePerceptionDividende: exercice.dateNotePerceptionDividende,
+      datePaiementDividendeEtat: exercice.datePaiementDividendeEtat,
       jalons: avecPortefeuille(jalonsApplicables({
         referentiel: tenant.referentiel,
         formeJuridique: tenant.formeJuridique,
@@ -694,6 +762,25 @@ export class ExerciceService {
     const assemblee = jourSaisiOuEffacement(dto.dateAssembleeGenerale);
     const depot = jourSaisiOuEffacement(dto.dateDepotEtatsPortefeuille);
     const transmission = jourSaisiOuEffacement(dto.dateTransmissionPvPortefeuille);
+    const declarationDividende = jourSaisiOuEffacement(dto.dateDeclarationDividendeEtat);
+    const notePerception = jourSaisiOuEffacement(dto.dateNotePerceptionDividende);
+    const paiementDividende = jourSaisiOuEffacement(dto.datePaiementDividendeEtat);
+    // LE DIVIDENDE PRIORITAIRE NE VAUT QUE POUR UNE ENTREPRISE MINIÈRE DU
+    // PORTEFEUILLE DÉCLARÉE (arrêté du 10 décembre 2025, art. 3) · ses dates
+    // se refusent ailleurs, mais s'effacent toujours (un dossier qui cesse de
+    // l'être n'est jamais enfermé avec elles).
+    if (declarationDividende || notePerception || paiementDividende) {
+      const dossier = await this.prisma.tenant.findUniqueOrThrow({
+        where: { id: tenantId },
+        select: { entreprisePortefeuilleEtat: true, portefeuilleSecteurMinier: true },
+      });
+      if (dossier.entreprisePortefeuilleEtat !== true || dossier.portefeuilleSecteurMinier !== true) {
+        throw new BadRequestException(
+          'Le dividende prioritaire de l’État ne vise que les entreprises du portefeuille du secteur minier ' +
+            '(arrêté interministériel du 10 décembre 2025, art. 3) · déclarez d’abord ces deux faits dans Paramètres du dossier.',
+        );
+      }
+    }
     // UN DÉPÔT OU UNE COMMUNICATION À VENIR NE SE DÉCLARE PAS (relecture 2),
     // comme la nomination du liquidateur · un fait déclaré lève un jalon, et
     // un fait futur le lèverait avant d'avoir eu lieu. L'assemblée future,
@@ -703,6 +790,9 @@ export class ExerciceService {
     for (const [date, quoi] of [
       [depot, 'Le dépôt des états financiers au ministère du Portefeuille'],
       [transmission, 'La communication du procès-verbal à l’Administration des recettes non fiscales'],
+      [declarationDividende, 'La déclaration du dividende prioritaire'],
+      [notePerception, 'La réception de la note de perception'],
+      [paiementDividende, 'Le paiement du dividende prioritaire'],
     ] as const) {
       if (date && date > aujourdHui) {
         throw new BadRequestException(`${quoi} à venir ne se déclare pas · déclarez-le une fois intervenu.`);
@@ -717,6 +807,21 @@ export class ExerciceService {
         throw new BadRequestException(`${quoi} · la date ne peut pas précéder la clôture de l'exercice (O.-L. n° 13/003, art. 112 et 113).`);
       }
     }
+    // Le dividende naît du « bénéfice net comptable » de l'exercice (art. 2) ·
+    // ni sa déclaration, ni sa note de perception, ni son paiement ne
+    // précèdent la clôture.
+    for (const [date, quoi] of [
+      [declarationDividende, 'La déclaration du dividende prioritaire'],
+      [notePerception, 'La note de perception du dividende prioritaire'],
+      [paiementDividende, 'Le paiement du dividende prioritaire'],
+    ] as const) {
+      if (date && date < exercice.dateFin) {
+        throw new BadRequestException(
+          `${quoi} porte sur le bénéfice net comptable de l’exercice · la date ne peut pas précéder sa clôture ` +
+            '(arrêté interministériel du 10 décembre 2025, art. 2).',
+        );
+      }
+    }
     const assembleeApres = assemblee === undefined ? exercice.dateAssembleeGenerale : assemblee;
     const transmissionApres = transmission === undefined ? exercice.dateTransmissionPvPortefeuille : transmission;
     if (assembleeApres && transmissionApres && transmissionApres < assembleeApres) {
@@ -729,6 +834,27 @@ export class ExerciceService {
     if (assemblee !== undefined) data.dateAssembleeGenerale = assemblee;
     if (depot !== undefined) data.dateDepotEtatsPortefeuille = depot;
     if (transmission !== undefined) data.dateTransmissionPvPortefeuille = transmission;
+    // L'ORDRE DES DATES (arrêté du 10 décembre 2025, art. 2) · le paiement
+    // court de « la réception de la note de perception » et ne la précède
+    // pas · lu sur l'état qui résultera de l'enregistrement, refus nommé.
+    // UNE NOTE AVANT LA DÉCLARATION EST ADMISE · l'Administration des recettes
+    // non fiscales peut taxer d'office le débiteur qui n'a pas déclaré dans le
+    // délai (O.-L. n° 13/003, art. 29, « ordonnancement d'office », et art. 89)
+    // · refuser cet ordre, que l'arrêté n'écrit pas, perdait le contrôle des
+    // huit jours (relecture du 2026-10-07).
+    const noteApres = notePerception === undefined ? (exercice.dateNotePerceptionDividende ?? null) : notePerception;
+    const paiementApres =
+      paiementDividende === undefined ? (exercice.datePaiementDividendeEtat ?? null) : paiementDividende;
+    if (noteApres && paiementApres && paiementApres < noteApres) {
+      throw new BadRequestException(
+        `Le paiement du dividende (${jourFr(paiementApres)}) ne peut pas précéder la réception de la note de ` +
+          `perception (${jourFr(noteApres)}) · il se fait « dans les huit jours de la réception de la note de ` +
+          'perception » (arrêté interministériel du 10 décembre 2025, art. 2).',
+      );
+    }
+    if (declarationDividende !== undefined) data.dateDeclarationDividendeEtat = declarationDividende;
+    if (notePerception !== undefined) data.dateNotePerceptionDividende = notePerception;
+    if (paiementDividende !== undefined) data.datePaiementDividendeEtat = paiementDividende;
     return this.prisma.exercice.update({ where: { id: exercice.id }, data });
   }
 

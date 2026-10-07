@@ -165,4 +165,51 @@ describe('entreprise du portefeuille de l’État · O.-L. n° 13/003, art. 112 
       );
     }
   });
+
+  // Décision par la loi du 2026-10-07, point 3 · arrêté interministériel du
+  // 10 décembre 2025, art. 1er (point 2) et 3.
+  it('secteur minier et quote-part · sous le portefeuille seulement, la quote-part avec sa source', async () => {
+    const sa = (faits: Record<string, unknown>, capture: { data?: Record<string, unknown> } = {}) => {
+      const t = { id: 't1', referentiel: Referentiel.SYSCOHADA, formeJuridiqueSyscohada: 'SOCIETE_ANONYME', ...faits };
+      return new TenantService({
+        tenant: {
+          findUnique: async () => t,
+          findUniqueOrThrow: async () => t,
+          update: async ({ data }: { data: Record<string, unknown> }) => {
+            capture.data = data;
+            return { id: 't1' };
+          },
+        },
+        exercice: { findFirst: async () => null, count: async () => 0 },
+        ecriture: { count: async () => 0 },
+        compte: { findMany: async () => [] },
+      } as never);
+    };
+    const nonDit = { entreprisePortefeuilleEtat: null, quotePartEtatCapital: null, sourceQuotePartEtat: null };
+    await expect(sa(nonDit).modifierIdentite('t1', { portefeuilleSecteurMinier: 'OUI' })).rejects.toThrow(
+      'déclarez d’abord cette qualité',
+    );
+    await expect(sa(nonDit).modifierIdentite('t1', { quotePartEtatCapital: 20, sourceQuotePartEtat: 'Statuts' })).rejects.toThrow(
+      'déclarez d’abord cette qualité',
+    );
+    const oui = { entreprisePortefeuilleEtat: true, quotePartEtatCapital: null, sourceQuotePartEtat: null };
+    await expect(sa(oui).modifierIdentite('t1', { quotePartEtatCapital: 20 })).rejects.toThrow('se déclare avec sa source');
+    // Une source sans quote-part est refusée, jamais effacée sans un mot.
+    await expect(sa(oui).modifierIdentite('t1', { sourceQuotePartEtat: 'Statuts' })).rejects.toThrow(
+      'déclarez d’abord la quote-part',
+    );
+    const capture: { data?: Record<string, unknown> } = {};
+    await sa(oui, capture).modifierIdentite('t1', {
+      portefeuilleSecteurMinier: 'OUI',
+      quotePartEtatCapital: 60,
+      sourceQuotePartEtat: '  Statuts, art. 6 ',
+    });
+    expect(capture.data).toMatchObject({ portefeuilleSecteurMinier: true, quotePartEtatCapital: 60, sourceQuotePartEtat: 'Statuts, art. 6' });
+    // Effacer la quote-part efface sa source.
+    const efface: { data?: Record<string, unknown> } = {};
+    await sa({ ...oui, quotePartEtatCapital: '60', sourceQuotePartEtat: 'Statuts' }, efface).modifierIdentite('t1', {
+      quotePartEtatCapital: null,
+    });
+    expect(efface.data).toMatchObject({ quotePartEtatCapital: null, sourceQuotePartEtat: null });
+  });
 });

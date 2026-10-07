@@ -28,6 +28,8 @@ Chaque décision cite le texte lu ; ce qu'aucun texte ne dit est écrit comme te
 
 ## 2. La période du 1er janvier à la date de dissolution
 
+**Non codé dans cette ligne** · sorti le 2026-10-07 après le premier tour de relecture, repris sur la branche `travail/dissolution` avec les constats et les questions de droit restées ouvertes (`docs/dissolution-a-reprendre.md`). Le comportement de `main` (ligne F32) reste celui du dossier.
+
 **Texte lu**
 - AUDCIF, art. 7 (`SK/audcif-acte-uniforme/references/titre-1-ch1-3-champ-organisation-etats.md`) · « L'exercice coïncide avec l'année civile. » Al. 4 · « En cas de cessation d'activité, pour quelque cause que ce soit, la durée des opérations de liquidation est comptée pour un seul exercice, sous réserve de l'établissement de situations annuelles provisoires. »
 - AUDCIF, Titre VIII ch. 40 § 2.1 · « le début de la liquidation : inventaire du patrimoine, solde des amortissements et des provisions existants, établissement du bilan avant liquidation ».
@@ -58,12 +60,14 @@ Chaque décision cite le texte lu ; ce qu'aucun texte ne dit est écrit comme te
   - Art. 3 · redevables · toutes les entreprises du portefeuille du secteur minier, « y compris celles réputées avoir cédé à l'État des parts/actions en vertu des art. 71d, 82h et 104 du Code Minier ».
   - Art. 1er, point 2 · montant du dividende d'une entreprise du portefeuille · « correspondant à la quote-part de l'État ».
   - Art. 5 · procès-verbaux d'AGO et de CA transmis au Secrétariat Général du Portefeuille ET à la DGRAD dans les dix jours de leur tenue ; point 11 du barème · astreinte de 100 USD par jour de retard.
-- Concordent sur le 15 mai et les huit jours · LF n° 24/011 (2025), art. 73 (insère l'art. 112 quater à l'O.-L. n° 13/003, quote-part de l'État, `SK/rgcp-comptabilite-publique/finances-publiques/references/lf-2025.md`) et les deux résumés de la LF n° 25/060 (2026).
+- Concordent sur le 15 mai et les huit jours · les deux résumés de la LF n° 25/060 (2026) seuls (`SK/rgcp-comptabilite-publique/finances-publiques/references/lf-2026.md`, art. 63-64 ; `SK/fiscalite-rdc/lois-de-finances-annuelles/references/lf-2026-mesures-fiscales.md`, art. 52).
+- La LF n° 24/011 (2025), art. 73, résumée (`SK/rgcp-comptabilite-publique/finances-publiques/references/lf-2025.md`), insère l'art. 112 quater à l'O.-L. n° 13/003 · elle porte la PRIORITÉ (« prioritaire et intangible », « avant toute autre affectation ») et la quote-part (« taux égal à la quote-part de l'État dans le capital »), ni le 15 mai ni les huit jours (correction du premier tour de relecture).
 
 **Décision**
-- Le 15 mai n'est plus une corroboration · il est écrit dans un arrêté en vigueur, lu, que deux lois de finances résumées confirment. La décision du 2026-10-04 (« à confirmer sur le texte même de la LF 2026 ») est levée par ce texte.
+- Le 15 mai n'est plus une corroboration · il est écrit dans un arrêté en vigueur, lu, que les deux résumés d'une même loi de finances (n° 25/060) confirment. La décision du 2026-10-04 (« à confirmer sur le texte même de la LF 2026 ») est levée par ce texte.
 - Le jalon vaut pour une entreprise du portefeuille DU SECTEUR MINIER (fait déclaré, oui, non, pas encore dit), qui a réalisé un bénéfice net comptable · déclaration au plus tard le 15 mai de l'année qui suit l'exercice, quelle que soit la date de l'assemblée.
-- Montant · bénéfice net comptable × quote-part de l'État dans le capital, la quote-part DÉCLARÉE avec sa source, jamais présumée. Sans quote-part, le montant n'est pas calculé et le dit.
+- Montant · bénéfice net comptable × quote-part de l'État dans le capital, la quote-part DÉCLARÉE avec sa source, jamais présumée. Sans quote-part, le montant n'est pas calculé et le dit. C'est une LECTURE de l'arrêté (art. 1er, point 2) et du résumé de la LF n° 24/011 (art. 73) · aucun texte lu n'écrit la formule, et le jalon le dit. La distribution reste soumise à l'AUSCGIE, art. 143 (capitaux propres jamais rendus inférieurs au capital augmenté des réserves indisponibles) et 144 (dividende fictif) · le jalon avertit d'un report à nouveau débiteur ou de capitaux propres sous le capital.
+- Après la dissolution déclarée, aucun dividende prioritaire · ce que l'État reçoit est un boni ou produit de liquidation (arrêté, art. 1er, point 4 ; loi n° 08/010, art. 7).
 - Paiement · dans les huit jours de la réception de la note de perception, date déclarée ; sans elle, non calculé.
 - Le procès-verbal d'AGO et celui du conseil d'administration vont aussi au Secrétariat Général du Portefeuille, dans les mêmes dix jours (art. 5), astreinte de 100 USD par jour dite, jamais calculée (monnaie hors tenue).
 
@@ -129,4 +133,6 @@ Chaque décision cite le texte lu ; ce qu'aucun texte ne dit est écrit comme te
 ## Constat relevé à la lecture · LPF, art. 13 bis
 
 - Texte · « Les sociétés et les autres personnes morales soumises à l'impôt sur les sociétés sont tenues de déposer auprès de l'Administration des impôts, dans les dix jours de la tenue de l'Assemblée générale ordinaire approuvant les états financiers CERTIFIÉS PAR LES COMMISSAIRES AUX COMPTES, le procès-verbal de l'Assemblée générale. »
-- Décision (périmètre du texte, CLAUDE.md § 10 bis) · le jalon ne vaut que si un commissaire aux comptes certifie les états de l'exercice (mandat enregistré qui couvre l'exercice). Sans mandat, OmegaX ne le présente pas comme dû et dit pourquoi.
+- Décision (périmètre du texte, CLAUDE.md § 10 bis) · le jalon ne vaut que si un commissaire aux comptes certifie les états de l'exercice (mandat enregistré qui couvre l'exercice, y compris un mandat terminé par anticipation après la clôture de cet exercice). Sans mandat, OmegaX ne le présente pas comme dû et dit pourquoi.
+- Exception, la société anonyme (premier tour de relecture) · le commissaire y est OBLIGATOIRE (AUSCGIE, art. 694, « Le contrôle est exercé, dans chaque société anonyme, par un ou plusieurs commissaires aux comptes » ; art. 702, « Les sociétés anonymes ne faisant pas publiquement appel à l'épargne sont tenues de designer un commissaire aux comptes et un suppléant »). Sans mandat enregistré, le jalon reste servi, « à confirmer · mandat de commissaire non enregistré », sans quoi l'absence d'une saisie ferait disparaître une obligation.
+- La forme lue est celle qui s'applique à l'exercice (`formeApplicable`), jamais celle du jour.

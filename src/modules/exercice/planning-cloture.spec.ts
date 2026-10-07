@@ -99,7 +99,11 @@ describe('planning de clôture', () => {
     // taux financier susceptible de changer à chaque loi de finances. Sans
     // cette nuance, la règle interdirait de citer la loi elle-même.
     const texte = JALONS_CLOTURE.map((j) => `${j.libelle} ${j.detail} ${j.source}`).join(' ');
-    expect(texte).not.toMatch(/\bFC\b|FCFA|\bCDF\b|franc/i);
+    // Le JOUR FRANC n'est pas une monnaie (décision par la loi du 2026-10-07,
+    // point 6) · seules ses deux tournures exactes sortent du balayage, le mot
+    // reste interdit partout ailleurs.
+    const sansJourFranc = texte.replace(/jours francs|délai n’est pas franc/g, '');
+    expect(sansJourFranc).not.toMatch(/\bFC\b|FCFA|\bCDF\b|franc/i);
     expect(texte).not.toMatch(/\d[\d\s.]*,\d{2}\b/);
     for (const j of JALONS_CLOTURE) {
       if (/%/.test(`${j.libelle} ${j.detail}`)) {
@@ -865,7 +869,10 @@ describe('recensement · planning de clôture confronté aux textes', () => {
   it('O1a C2 · l’envoi aux commissaires se date quarante-cinq jours avant une assemblée de fin de sixième mois', () => {
     const j = JALONS_CLOTURE.find((x) => x.libelle === 'États financiers et rapport de gestion aux commissaires aux comptes')!;
     expect(iso(dateJalon(new Date(Date.UTC(2026, 11, 31)), j.echeance))).toBe('2027-05-15');
-    expect(j.detail).toContain('vers le 16 du cinquième mois');
+    // Décision par la loi du 2026-10-07, point 6 · quarante-cinq jours FRANCS
+    // (30 juin moins 46 jours), l'autre lecture dite.
+    expect(j.detail).toContain('le 15 du cinquième mois, quarante-cinq jours francs avant');
+    expect(j.detail).toContain('un jour plus tard si le délai n’est pas franc');
   });
 
   it('O1a E4 et O6 B4 · la SNC, la SCS et la coopérative reçoivent l’approbation sous leur propre article', () => {

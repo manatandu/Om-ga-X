@@ -1,4 +1,5 @@
 import type { JalonCloture } from './types';
+import { montant } from './montants';
 
 /**
  * LES JALONS DU PLANNING DE CLÔTURE, LUS PAR L'ÉCRAN (relecture 1 des
@@ -35,6 +36,30 @@ export function libelleEcheance(j: JalonCloture): string {
   return 'Non calculée';
 }
 
+/**
+ * Le MONTANT d'un jalon qui en porte un (dividende prioritaire) · `null` sur
+ * les autres. Quatre lectures, jamais confondues · EN ATTENTE du résultat
+ * (exercice ouvert, résultat nul ou négatif), NON CALCULÉ (quote-part de
+ * l'État non déclarée), PROVISOIRE (exercice ouvert), arrêté · et un zéro servi
+ * est une RÉPONSE (aucun bénéfice), jamais un manque.
+ */
+export function libelleMontant(j: JalonCloture): string | null {
+  if (j.montant === undefined) return null;
+  if (j.montantEnAttente) return 'Montant en attente du résultat';
+  if (j.montant === null) return 'Montant non calculé';
+  return `${j.montantProvisoire ? 'Montant provisoire' : 'Montant'} · ${montant(j.montant)}`;
+}
+
+/**
+ * Un montant NON CALCULÉ est un manque du dossier (la quote-part de l'État
+ * n'est pas déclarée), compté comme une échéance non calculée · ni le montant
+ * qui attend le résultat, ni celui d'un jalon en attente ou levé. Sans lui,
+ * l'accueil disait vert alors que la quote-part manquait.
+ */
+export function montantNonCalcule(j: JalonCloture): boolean {
+  return j.montant === null && !j.enAttente && !(j.observation?.satisfait ?? false);
+}
+
 type JalonDate = JalonCloture & { echeance: string };
 const aUneEcheance = (j: JalonCloture): j is JalonDate => j.echeance !== null;
 
@@ -48,6 +73,8 @@ const dateCourte = (iso: string) =>
 
 const nonCalculeesDites = (nonCalcules: JalonCloture[]) =>
   `Non calculée · ${nonCalcules[0].libelle}${nonCalcules.length > 1 ? ` (et ${nonCalcules.length - 1} autre(s))` : ''}`;
+const montantsDits = (montants: JalonCloture[]) =>
+  `Montant non calculé · ${montants[0].libelle}${montants.length > 1 ? ` (et ${montants.length - 1} autre(s))` : ''}`;
 
 /**
  * Les deux lignes du tableau de bord. `jalons` vaut null tant que le planning
@@ -64,18 +91,23 @@ export function lignesJalonsAccueil(
   }
   const enRetard = jalons.filter((j) => j.enRetard);
   const nonCalcules = jalons.filter(estNonCalcule);
+  const montants = jalons.filter(montantNonCalcule);
   const retard: LigneAccueil =
     enRetard.length > 0
       ? { valeur: `${enRetard.length} en retard · ${enRetard[0].libelle}`, bon: false }
       : nonCalcules.length > 0
         ? { valeur: nonCalculeesDites(nonCalcules), bon: false }
-        : { valeur: 'Aucun jalon en retard', bon: true };
+        : montants.length > 0
+          ? { valeur: montantsDits(montants), bon: false }
+          : { valeur: 'Aucun jalon en retard', bon: true };
   const prochain = jalons.filter(aUneEcheance).find((j) => !j.enRetard && new Date(j.echeance).getTime() >= aujourdHui) ?? null;
   const prochaine: LigneAccueil = prochain
-    ? { valeur: `${dateCourte(prochain.echeance)} · ${prochain.libelle}`, bon: nonCalcules.length === 0 }
+    ? { valeur: `${dateCourte(prochain.echeance)} · ${prochain.libelle}`, bon: nonCalcules.length === 0 && montants.length === 0 }
     : nonCalcules.length > 0
       ? { valeur: nonCalculeesDites(nonCalcules), bon: false }
-      : { valeur: 'Rien à venir', bon: true };
+      : montants.length > 0
+        ? { valeur: montantsDits(montants), bon: false }
+        : { valeur: 'Rien à venir', bon: true };
   return { retard, prochaine };
 }
 

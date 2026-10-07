@@ -1638,6 +1638,14 @@ export interface ParametresDossier {
   regimeLiquidation?: 'AMIABLE_STATUTAIRE' | 'ARTICLE_223_1' | 'ARTICLE_223_2_JUDICIAIRE' | 'PROCEDURE_COLLECTIVE' | null;
   associeUniquePersonneMorale?: boolean | null;
   /**
+   * Décision par la loi du 2026-10-07, point 3 · secteur minier et quote-part
+   * de l'État sous le portefeuille (arrêté interministériel du 10 décembre
+   * 2025, art. 1er et 3).
+   */
+  portefeuilleSecteurMinier?: boolean | null;
+  quotePartEtatCapital?: number | null;
+  sourceQuotePartEtat?: string | null;
+  /**
    * AUSCGIE art. 203 et 204 (cinq sociétés commerciales), AUSCOOP art. 183
    * (coopérative) · dissolution déclarée et liquidateurs, null tant que rien
    * n'est dit.
@@ -2875,6 +2883,17 @@ export interface JalonCloture {
    * place de l'échéance, jamais compté comme non calculé.
    */
   enAttente?: string;
+  /**
+   * Le montant que le jalon fait payer quand le texte le chiffre (dividende
+   * prioritaire d'une entreprise minière du portefeuille) · `null` NON
+   * CALCULÉ (quote-part de l'État non déclarée), jamais un zéro ; absent sur
+   * les jalons qui ne portent pas de montant.
+   */
+  montant?: number | null;
+  /** Calculé sur le résultat d'un exercice NON clôturé · il peut encore changer. */
+  montantProvisoire?: true;
+  /** Le montant attend le résultat (exercice ouvert, résultat provisoire nul ou négatif). */
+  montantEnAttente?: true;
   enRetard: boolean;
   /**
    * Ce que les dirigeants encourent si le travail du jalon n'est pas fait du
@@ -2906,6 +2925,16 @@ export interface PlanningCloture {
   dateDepotEtatsPortefeuille?: string | null;
   /** Procès-verbal communiqué à l'Administration des recettes non fiscales (art. 112). */
   dateTransmissionPvPortefeuille?: string | null;
+  /**
+   * Entreprise MINIÈRE du portefeuille (arrêté du 10 décembre 2025, art. 3) ·
+   * null non dit ; quote-part de l'État déclarée, en pourcentage (décision par
+   * la loi du 2026-10-07, points 3 et 4).
+   */
+  portefeuilleSecteurMinier?: boolean | null;
+  quotePartEtatCapital?: number | null;
+  dateDeclarationDividendeEtat?: string | null;
+  dateNotePerceptionDividende?: string | null;
+  datePaiementDividendeEtat?: string | null;
   jalons: JalonCloture[];
 }
 

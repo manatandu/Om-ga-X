@@ -1790,14 +1790,47 @@ assemblée au 31 MARS pour un exercice clos au 31 décembre (autre clôture · r
 calculé, dit), 45 jours avant pour les commissaires, RCCM un mois après ; PV à
 l'Administration des recettes non fiscales dix jours CALENDAIRES après l'assemblée
 DÉCLARÉE, affectation soixante jours après le dépôt DÉCLARÉ · sans la date,
-`echeance: null` (« Non calculée »). Dividende prioritaire minier NON servi (LF 2026
-lue en résumé seulement).
+`echeance: null` (« Non calculée »). DÉCISIONS DU 2026-10-07
+(`docs/decisions-par-la-loi-2026-10-07.md`) · (1) réservé aux CINQ sociétés
+commerciales (loi n° 08/010, art. 3 et 4). (2) DÉLAIS FRANCS · « 45 jours au
+moins avant » servi à l'assemblée MOINS 46 (13 février, 14 en année
+bissextile), « 15 jours au moins avant » (art. 288, 306) moins 16, l'art. 345
+(« durant les quinze jours précédant ») moins 15 · l'AUSCGIE ne dit pas compter,
+la date sert les deux lectures, l'autre dite au détail. (3) DIVIDENDE
+PRIORITAIRE MINIER (arrêté interministériel du 10 décembre 2025, art. 2, 3 et
+5, OCR non revérifié mot à mot) · faits déclarés `portefeuilleSecteurMinier`
+et `quotePartEtatCapital` avec sa source (jamais présumée) ; déclaration au
+15 MAI de l'année qui suit, paiement dans les huit jours CALENDAIRES de la
+note de perception déclarée ; montant = bénéfice net comptable (VALIDÉ,
+classes 6 à 8, avant le solde de la gestion) × quote-part, une LECTURE · sans
+quote-part `null`, compté non calculé ; PROVISOIRE tant que l'exercice n'est
+ni clôturé ni ARRÊTÉ (`dateArreteComptes`), et des comptes arrêtés en perte ne
+font naître aucun dividende ; aucun après une dissolution déclarée (boni ou
+produit de liquidation). L'AUSCGIE PRIME SUR L'ARRÊTÉ (AUDCIF Titre VI, entrée
+« Acte uniforme ») · pertes antérieures et réserve légale (art. 143 al. 1er,
+346, 546 2°) dites, capitaux propres sous le capital avertis (art. 143), le
+13 compris (affectation au brouillard) ; le plafond distribuable n'est pas
+encore chiffré. Une note de perception AVANT la déclaration est admise
+(taxation d'office, O.-L. n° 13/003, art. 29 et 89), jamais un paiement avant
+la note. PV d'AGO et du CA aussi au Secrétariat Général du Portefeuille
+(art. 5), astreinte de 100 USD par jour dite, jamais calculée. (4) PV de la LPF
+art. 13 bis · dû sous un commissaire aux comptes (« états financiers certifiés
+par les commissaires aux comptes ») ; SA, ou forme non renseignée, sans mandat
+enregistré · servi « à confirmer » (AUSCGIE art. 694, 702). (5) Fiche R2 ·
+le SIÈGE compte en ZN (AUDCIF Titre VIII ch. 34 § 3), le CONTRÔLE se lit à
+l'art. 78 ; ZQ « public » PROPOSÉ au-delà de 50 % de quote-part, ZK 00 (10 sous
+agrément prioritaire) PROPOSÉ à une SA du portefeuille, jamais imposés ni lus à
+rebours.
 
 **Liquidation d'une société commerciale (décision par la loi du 2026-10-04, point
 4).** AUDCIF art. 7 al. 2 et 4 · situations annuelles à la CLÔTURE de chaque
 exercice, aucun anniversaire de la dissolution. Faits à côté de la dissolution
 (`dateNominationLiquidateur`, `regimeLiquidation`, `associeUniquePersonneMorale`) ;
-art. 201 al. 4 refuse la liquidation à l'associé unique personne morale.
+art. 201 al. 4 refuse la liquidation à l'associé unique personne morale, mais la
+PROCÉDURE COLLECTIVE lui reste ouverte (AUPCAP art. 53 ; AUSCGIE art. 200, 6° et
+203 al. 2, décision du 2026-10-07), sans mention de l'art. 204. L'EXERCICE ARRÊTÉ
+À LA DISSOLUTION n'est PAS servi · ligne à part (`docs/dissolution-a-reprendre.md`,
+branche `travail/dissolution`), seize constats et sept questions ouverts.
 `exercice/liquidation-societe.ts` · chapitre 1 (bilan avant liquidation, art. 266,
 216, 217, 219) pour toute société hors procédure collective (art. 203, dite) ;
 art. 228, 232, 233 dans les SEULS cas de l'art. 223.

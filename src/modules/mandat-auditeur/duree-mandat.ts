@@ -469,3 +469,49 @@ export function mandatCouvrant<T extends { premierExercice: number; nombreExerci
   );
 }
 
+
+/**
+ * UN COMMISSAIRE AUX COMPTES COUVRE-T-IL L'EXERCICE ? · un mandat dont la
+ * période contient l'année de clôture (`mandatCouvrant`), ou le plus récent
+ * mandat échu, PROROGÉ par le texte du dossier (`regleDeProrogation`) sans
+ * refus exprès, dans l'exercice qui suit son dernier (`estDansLaProrogation`).
+ * Même lecture que le contrôle 28 · UNE règle pour le planning (délais de
+ * l'AUSCGIE art. 140 et de l'AUDCIF art. 71, « s'ils existent ») et pour
+ * l'échéancier (procès-verbal de la LPF art. 13 bis, assemblée « approuvant
+ * les états financiers certifiés par les commissaires aux comptes »,
+ * décision par la loi du 2026-10-07, constat final). Les mandats arrivent
+ * triés par premier exercice décroissant.
+ *
+ * UN MANDAT TERMINÉ PAR ANTICIPATION COUVRE ENCORE L'EXERCICE QU'IL A COUVERT
+ * (premier tour de relecture) · il compte pour un exercice clos AVANT sa fin
+ * anticipée, jamais pour un exercice clos après, et il n'est jamais prorogé
+ * (la prorogation suppose un mandat arrivé à son terme sans renouvellement).
+ * Un mandat terminé sans que la date de clôture de l'exercice soit connue ne
+ * couvre rien.
+ */
+export function commissaireCouvreLExercice(
+  mandats: readonly {
+    premierExercice: number;
+    nombreExercices: number;
+    refusDeProrogation: boolean;
+    finAnticipeeLe?: Date | null;
+  }[],
+  anneeExercice: number,
+  referentiel: Referentiel,
+  formeJuridique: FormeJuridiqueSyscohada | null,
+  dateFinExercice?: Date,
+): boolean {
+  const enFonction = mandats.filter(
+    (m) => !m.finAnticipeeLe || (dateFinExercice !== undefined && m.finAnticipeeLe.getTime() > dateFinExercice.getTime()),
+  );
+  if (mandatCouvrant(enFonction, anneeExercice)) return true;
+  const echu = mandats
+    .filter((m) => !m.finAnticipeeLe)
+    .find((m) => dernierExerciceCouvert(m.premierExercice, m.nombreExercices) < anneeExercice);
+  return (
+    !!echu &&
+    !echu.refusDeProrogation &&
+    regleDeProrogation(referentiel, formeJuridique) !== null &&
+    estDansLaProrogation(echu.premierExercice, echu.nombreExercices, anneeExercice)
+  );
+}
