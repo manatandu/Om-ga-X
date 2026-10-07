@@ -103,6 +103,18 @@ interface CreanceDouteuse {
   mouvementsSansRevue: number;
   /** m6 · la règle du retrait, servie par le serveur, jamais recalculée ici. */
   retirable: boolean;
+  /** M9 · la correction par le résultat qui a sorti la créance du module, s'il y en a une. */
+  correction?: { ecritureId: string; date: string; piece: string; motif: string | null; le: string | null; effective: boolean } | null;
+  /** M9 · « Corriger par le résultat » offert · servi par le serveur. */
+  correctionOfferte?: boolean;
+}
+/** M9 · les écritures qui peuvent corriger la créance par le résultat · lues sur le serveur. */
+interface CandidatesCorrection {
+  reste: number;
+  comptes: { compte416: string; compte491: string };
+  total: number;
+  tronque: boolean;
+  ecritures: { id: string; date: string; piece: string; libelle: string; credit416: number; debit491: number; depreciationEnPlace: number }[];
 }
 interface Mouvement {
   id: string;
@@ -126,6 +138,10 @@ interface PropositionRevue {
   resteALaCloture: number;
   dateRevue: string;
   comptes: ComptesRevue;
+  /** M8 · la dotation refusée d'un impayé d'adhérent reclassé sous l'encaissement · la reprise reste ouverte. */
+  dotationRefuseeImpaye?: string | null;
+  /** M8 · la méthode du jour du reclassement est inconnue · rien n'est refusé, et c'est dit. */
+  avertissementMethode?: string | null;
 }
 
 type Geste = 'reclasser' | 'declarer' | 'revue' | 'perte' | 'recouvrement';
@@ -198,7 +214,18 @@ export function CreancesDouteusesPage() {
     retrait: { id: string; motif: string } | null;
   } | null>(null);
   const refDesignation = useRef<HTMLFormElement | null>(null);
-  useGardeFermeture(form || annulation || designation ? 'Un geste sur une créance douteuse est en cours de saisie · il serait perdu.' : null);
+  // M9 · « Corriger par le résultat » · l'écriture du cabinet, choisie parmi celles que le serveur sert, et le motif.
+  const [correction, setCorrection] = useState<{
+    creance: CreanceDouteuse;
+    candidates: CandidatesCorrection | null;
+    ecritureId: string;
+    motif: string;
+    erreur: string | null;
+  } | null>(null);
+  const refCorrection = useRef<HTMLFormElement | null>(null);
+  useGardeFermeture(
+    form || annulation || designation || correction ? 'Un geste sur une créance douteuse est en cours de saisie · il serait perdu.' : null,
+  );
 
   // UNE RÉPONSE PÉRIMÉE NE REMPLIT JAMAIS UN FORMULAIRE (relecture « écran »,
   // 5) · chaque ouverture prend un jeton, et une lecture partie pour un autre
@@ -216,6 +243,7 @@ export function CreancesDouteusesPage() {
   const annulationOuverte = annulation !== null;
   const lettrageOuvert = lettrage416 !== null;
   const designationOuverte = designation !== null;
+  const correctionOuverte = correction !== null;
 
   // CHANGER D'EXERCICE VIDE LA LISTE (relecture « écran », 4) · l'ancienne ne
   // reste jamais affichée sous le nouvel exercice, et sa réponse, si elle
@@ -245,6 +273,7 @@ export function CreancesDouteusesPage() {
     setAnnulation(null);
     setLettrage416(null);
     setDesignation(null);
+    setCorrection(null);
     setInfo(null);
   }, [exerciceId]);
 
@@ -272,10 +301,13 @@ export function CreancesDouteusesPage() {
   // consommée, la fenêtre dessous ne se ferme pas ; pendant l'envoi elle ne
   // ferme rien, la réponse du serveur reste à lire.
   useEffect(() => {
-    if (!formOuvert && !annulationOuverte && !lettrageOuvert && !designationOuverte) return;
+    if (!formOuvert && !annulationOuverte && !lettrageOuvert && !designationOuverte && !correctionOuverte) return;
     return ecouterEchap(() => {
       if (envoiEnCours.current) return true;
-      if (designationOuverte) {
+      if (correctionOuverte) {
+        jeton.current++;
+        setCorrection(null);
+      } else if (designationOuverte) {
         jeton.current++;
         setDesignation(null);
       } else if (lettrageOuvert) {
@@ -288,7 +320,52 @@ export function CreancesDouteusesPage() {
       }
       return true;
     });
-  }, [formOuvert, annulationOuverte, lettrageOuvert, designationOuverte]);
+  }, [formOuvert, annulationOuverte, lettrageOuvert, designationOuverte, correctionOuverte]);
+  useEffect(() => {
+    if (correctionOuverte) (premierChamp(refCorrection.current) ?? refCorrection.current?.querySelector<HTMLElement>('button'))?.focus({ preventScroll: true });
+  }, [correctionOuverte, correction?.candidates]);
+
+  /** M9 · ouvre « Corriger par le résultat » et lit les écritures candidates · une réponse périmée est jetée. */
+  function ouvrirCorrection(c: CreanceDouteuse) {
+    const j = ++jeton.current;
+    setCorrection({ creance: c, candidates: null, ecritureId: '', motif: '', erreur: null });
+    api.get<CandidatesCorrection>(`/creances-douteuses/${c.id}/correction-resultat`).then(
+      (l) => {
+        if (jeton.current === j) {
+          // Un choix unique se présélectionne (CLAUDE.md § 9 ter).
+          setCorrection((x) => (x ? { ...x, candidates: l, ecritureId: l.ecritures.length === 1 ? l.ecritures[0].id : x.ecritureId } : x));
+        }
+      },
+      (e) => {
+        if (jeton.current === j) setCorrection((x) => (x ? { ...x, erreur: messageDe(e) } : x));
+      },
+    );
+  }
+  function fermerCorrection() {
+    if (envoi) return;
+    jeton.current++;
+    setCorrection(null);
+  }
+  async function corriger(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!correction || envoi || !correction.ecritureId) return;
+    setEnvoi(true);
+    setCorrection((x) => (x ? { ...x, erreur: null } : x));
+    try {
+      const r = await api.post<{ avertissement?: string | null }>(`/creances-douteuses/${correction.creance.id}/correction-resultat`, {
+        ecritureId: correction.ecritureId,
+        motif: correction.motif,
+      });
+      setInfo(r?.avertissement ?? 'Créance corrigée par le résultat · elle est sortie du module à la date de l’écriture.');
+      jeton.current++;
+      setCorrection(null);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setCorrection((x) => (x ? { ...x, erreur: messageDe(e) } : x));
+    } finally {
+      setEnvoi(false);
+    }
+  }
   useEffect(() => {
     if (designationOuverte) (premierChamp(refDesignation.current) ?? refDesignation.current?.querySelector<HTMLElement>('button'))?.focus({ preventScroll: true });
   }, [designationOuverte, designation?.liste]);
@@ -539,16 +616,18 @@ export function CreancesDouteusesPage() {
         });
         setInfo(r?.avertissement ?? null);
       } else if (form.geste === 'revue') {
-        await api.post(`/creances-douteuses/${form.creance!.id}/revue`, { ...commun, depreciationNecessaire: necessaire });
+        // M8 · la méthode du jour du reclassement inconnue se dit, jamais ne refuse.
+        const r = await api.post<{ avertissement?: string | null }>(`/creances-douteuses/${form.creance!.id}/revue`, { ...commun, depreciationNecessaire: necessaire });
+        setInfo(r?.avertissement ?? null);
       } else if (form.geste === 'perte') {
         // AU TTC ENTIER, D 651 / C 416 · aucune ligne de TVA (A7 scindée).
-        const r = await api.post<{ lettrage416?: IssueLettrage416 }>(`/creances-douteuses/${form.creance!.id}/perte`, {
+        const r = await api.post<{ lettrage416?: IssueLettrage416; avertissement?: string | null }>(`/creances-douteuses/${form.creance!.id}/perte`, {
           ...commun,
           date: form.date,
           montant: valeur,
           comptePerteId: form.comptePerteId || undefined,
         });
-        setInfo(messageLettrage416(r?.lettrage416));
+        setInfo([messageLettrage416(r?.lettrage416), r?.avertissement].filter(Boolean).join(' ') || null);
       } else {
         const r = await api.post<{ lettrage416?: IssueLettrage416 }>(`/creances-douteuses/${form.creance!.id}/recouvrement`, {
           ...commun,
@@ -745,6 +824,8 @@ export function CreancesDouteusesPage() {
                         <td className="px-1.5 text-right tabular-nums">{montant(c.depreciationOuverture)}</td>
                         <td className="px-1.5 text-right tabular-nums font-semibold">{montant(c.depreciationALaCloture)}</td>
                         <td className="px-1.5">
+                          {c.correction?.effective && <div>Corrigée par le résultat · {c.correction.piece} du {jour(c.correction.date)}</div>}
+                          {c.correction && !c.correction.effective && <div className="text-text-dim">Corrigée le {jour(c.correction.date)}, exercice suivant</div>}
                           {c.revue ? 'Faite' : c.revueAFaire ? 'À faire' : '·'}
                           {c.mouvementsSansRevue > 0 && <div className="text-text-dim">{c.mouvementsSansRevue} mouvement(s) sans revue</div>}
                           {c.mouvementsAnnules.length > 0 && <div className="text-text-dim">{c.mouvementsAnnules.length} mouvement(s) annulé(s)</div>}
@@ -755,8 +836,14 @@ export function CreancesDouteusesPage() {
                             {deplie ? 'Masquer' : 'Voir'}
                           </button>
                         </td>
-                        {peutEcrire && (
+                        {peutEcrire && c.correction && <td className="px-1.5 text-text-dim">Sortie du module</td>}
+                        {peutEcrire && !c.correction && (
                           <td className="px-1.5 space-x-2">
+                            {peutValider && ouvert && c.correctionOfferte && (
+                              <button type="button" className="text-sel hover:underline" onClick={() => ouvrirCorrection(c)}>
+                                Corriger par le résultat
+                              </button>
+                            )}
                             {peutValider && ouvert && !c.revue && (
                               <button type="button" className="text-sel hover:underline" onClick={() => ouvrir('revue', c)}>
                                 Revoir
@@ -852,6 +939,12 @@ export function CreancesDouteusesPage() {
                                 <>
                                   <dt className="text-text-dim">Motif de la revue</dt>
                                   <dd>{c.revue.motif}</dd>
+                                </>
+                              )}
+                              {c.correction && (
+                                <>
+                                  <dt className="text-text-dim">Correction par le résultat ({c.correction.piece})</dt>
+                                  <dd>{c.correction.motif ?? '·'}</dd>
                                 </>
                               )}
                               {c.revuesAnnulees.map((a) => (
@@ -1078,6 +1171,18 @@ export function CreancesDouteusesPage() {
                           ? `${montant(proposition.depreciationEnPlace)} en place · ${montant(proposition.resteALaCloture)} au 416 au ${jour(proposition.dateRevue)}`
                           : 'Lecture…'}
                       </span>
+                      {proposition?.dotationRefuseeImpaye && (
+                        <>
+                          <span />
+                          <span className="text-warning whitespace-pre-wrap">Dotation refusée · {proposition.dotationRefuseeImpaye}</span>
+                        </>
+                      )}
+                      {proposition?.avertissementMethode && (
+                        <>
+                          <span />
+                          <span className="text-warning">{proposition.avertissementMethode}</span>
+                        </>
+                      )}
                     </>
                   )}
                   {form.geste === 'declarer' && (
@@ -1264,6 +1369,112 @@ export function CreancesDouteusesPage() {
                   </button>
                   <button type="submit" disabled={envoi} className="bg-sel text-white rounded-full px-3 py-[3px] font-semibold disabled:opacity-50">
                     {form.geste === 'declarer' ? 'Déclarer' : "Passer l'écriture"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </PortailModale>
+      )}
+
+      {peutValider && correction && (
+        <PortailModale>
+          <div className="anim-voile fixed inset-0 z-40 bg-black/35 flex items-center justify-center p-4">
+            <form
+              ref={refCorrection}
+              onSubmit={corriger}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={id('titre-correction')}
+              className="anim-modale w-full max-w-[620px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto"
+            >
+              <div className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]">
+                <span id={id('titre-correction')}>Corriger par le résultat</span>
+                <button
+                  type="button"
+                  aria-label="Fermer"
+                  disabled={envoi}
+                  onClick={fermerCorrection}
+                  className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c] disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-4 text-[11.5px] space-y-2">
+                {correction.erreur && <div role="alert" className="border border-rouge/40 bg-rouge/5 text-rouge rounded-[3px] px-2 py-1 whitespace-pre-wrap">{correction.erreur}</div>}
+                <div className="flex items-center gap-1.5">
+                  {correction.creance.compteCreance.numero} · {correction.creance.tiers ?? correction.creance.compteCreance.intitule}
+                  <Aide
+                    titre="Correction par le résultat"
+                    texte="Un impayé d'adhérent reclassé au 416 sous l'encaissement, dans un exercice clôturé, ne s'annule plus par ce module. Passez vous-même la correction dans l'exercice en cours, sur le compte de résultat que vous choisissez (aucun texte ne le nomme) : crédit du 416 de la créance pour tout son reste, débit du 491 pour la dépréciation en place, et le reste sur des comptes de gestion, jamais sur les capitaux propres. Validez-la, puis désignez-la ici avec son motif. La créance sort alors du module à la date de l'écriture."
+                    source="Cadre conceptuel du SYCEBNL, § 3.3.1.2.4 ; § 5.4.2.1"
+                  />
+                </div>
+                {!correction.candidates && !correction.erreur && <div className="text-text-dim">Lecture…</div>}
+                {correction.candidates && (
+                  <>
+                    <div>
+                      Reste au {correction.candidates.comptes.compte416} · <span className="tabular-nums font-semibold">{montant(correction.candidates.reste)}</span>
+                    </div>
+                    {correction.candidates.ecritures.length === 0 ? (
+                      <div className="text-text-dim">
+                        Aucune écriture validée d'un exercice ouvert postérieur ne crédite le {correction.candidates.comptes.compte416} · passez et validez
+                        d'abord l'écriture de correction.
+                      </div>
+                    ) : (
+                      <fieldset className="space-y-1">
+                        <legend className="mb-1">Écriture de correction</legend>
+                        {correction.candidates.ecritures.map((e) => (
+                          <label key={e.id} htmlFor={id(`ecriture-correction-${e.id}`)} className="flex items-start gap-1.5">
+                            <input
+                              id={id(`ecriture-correction-${e.id}`)}
+                              type="radio"
+                              name={id('ecriture-correction')}
+                              value={e.id}
+                              checked={correction.ecritureId === e.id}
+                              onChange={() => setCorrection((x) => (x ? { ...x, ecritureId: e.id } : x))}
+                            />
+                            <span>
+                              {e.piece} du {jour(e.date)} · {e.libelle}
+                              <span className="block text-text-dim tabular-nums">
+                                {montant(e.credit416)} au crédit du {correction.candidates!.comptes.compte416} · {montant(e.debit491)} au débit du{' '}
+                                {correction.candidates!.comptes.compte491} (en place · {montant(e.depreciationEnPlace)})
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                        {correction.candidates.tronque && (
+                          <div className="text-text-dim">
+                            {correction.candidates.ecritures.length} écritures montrées sur {correction.candidates.total} · les plus récentes.
+                          </div>
+                        )}
+                      </fieldset>
+                    )}
+                  </>
+                )}
+                <label htmlFor={id('motif-correction')} className="block">
+                  Motif :
+                </label>
+                <textarea
+                  id={id('motif-correction')}
+                  required
+                  rows={3}
+                  minLength={3}
+                  maxLength={500}
+                  value={correction.motif}
+                  onChange={(e) => setCorrection((x) => (x ? { ...x, motif: e.target.value } : x))}
+                  className="w-full border border-border-dark px-2 py-1"
+                />
+                <div className="flex justify-end gap-2">
+                  <button type="button" disabled={envoi} onClick={fermerCorrection} className="border border-bord rounded-[3px] px-3 py-[3px] disabled:opacity-50">
+                    Fermer
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={envoi || !correction.ecritureId || !motifAnnulationValide(correction.motif)}
+                    className="bg-sel text-white rounded-full px-3 py-[3px] font-semibold disabled:opacity-50"
+                  >
+                    Désigner la correction
                   </button>
                 </div>
               </div>
@@ -1508,8 +1719,8 @@ export function CreancesDouteusesPage() {
                   {designation.creance.compteCreance.numero} · {designation.creance.tiers ?? designation.creance.compteCreance.intitule} · reclassé {montant(designation.creance.montant)}
                   <Aide
                     titre="Factures de la créance"
-                    texte="Le recouvrement de la créance est l'encaissement des factures qu'elle reprend. Désignez chaque facture et la part (TTC) reprise · la TVA d'une prestation devient exigible à chaque recouvrement, au prorata de ce qui est recouvré sur le montant reclassé. Une perte n'encaisse rien. Rien n'est lettré : le reclassement ne lettre pas le compte du client. Désignez la facture d'origine, jamais sa ligne d'à-nouveau. Une facture dont le lettrage réunit d'autres factures ne se désigne pas : son recouvrement est listé à la déclaration, TVA à déclarer par le cabinet."
-                    source="O.-L. n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57"
+                    texte="Le recouvrement de la créance est l'encaissement des factures qu'elle reprend. Désignez chaque facture et la part (TTC) reprise · la TVA d'une prestation devient exigible à chaque recouvrement, sur la part désignée de ce qui est recouvré. Entre plusieurs factures désignées, le recouvrement paie la plus ancienne d'abord, au prorata seulement entre factures de même date (Code civil, Livre III, art. 154). Une perte n'encaisse rien. Rien n'est lettré : le reclassement ne lettre pas le compte du client. Désignez la facture d'origine, jamais sa ligne d'à-nouveau. Une facture dont le lettrage réunit d'autres factures ne se désigne pas : son recouvrement est listé à la déclaration, TVA à déclarer par le cabinet."
+                    source="O.-L. n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57 ; Code civil, Livre III, art. 151 à 154"
                   />
                 </div>
                 {!designation.liste && !designation.erreur && <div className="text-text-dim">Lecture…</div>}

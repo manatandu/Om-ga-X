@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsBoolean,
   IsArray,
@@ -11,9 +12,20 @@ import {
   IsUUID,
   IsPositive,
   MaxLength,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { FacultatifNonNul } from '../../common/facultatif-non-nul';
+
+/** La part d'une facture dans un règlement fournisseur imputé (Code civil, Livre III, art. 151). */
+export class PartFactureReglementDto {
+  @IsUUID('4')
+  ligneId!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  montant!: number;
+}
 
 export class ReglementTiersDto {
   /** Compte de tiers (40 ou 41) que le règlement solde. */
@@ -71,6 +83,34 @@ export class ReglementTiersDto {
   @FacultatifNonNul("Omettez le compte d'écart de change quand le texte le donne.")
   @IsUUID('4')
   compteEcartChangeId?: string;
+
+  /**
+   * L'IMPUTATION DÉCLARÉE PAR LE DOSSIER QUI PAIE (fournisseur seulement ;
+   * Code civil, Livre III, art. 151 ; décision par la loi du 2026-10-07,
+   * point 4, jumeau 3) · la part de CHAQUE facture choisie, dont la somme est
+   * le montant réglé. Absente, un règlement partiel de plusieurs factures suit
+   * l'imputation légale (art. 154). Voir `motifRefusImputationReglement`.
+   */
+  @FacultatifNonNul('Omettez l’imputation pour un règlement sans parts désignées.')
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => PartFactureReglementDto)
+  imputation?: PartFactureReglementDto[];
+
+  /**
+   * LA PIÈCE QUI NOTIFIE L'IMPUTATION AU FOURNISSEUR (lettre, courriel,
+   * bordereau), quand aucun ordre de virement ne la porte · le débiteur
+   * déclare « lorsqu'il paye » (Code civil, Livre III, art. 151) · une
+   * imputation que le créancier n'a jamais reçue ne l'engage pas (relecture
+   * du 2026-10-07, M6).
+   */
+  @FacultatifNonNul('Omettez la pièce de l’imputation quand l’ordre de virement la porte.')
+  @IsString()
+  @MinLength(3)
+  @MaxLength(120)
+  pieceImputation?: string;
 }
 
 export class EnregistrerReglementsDto {

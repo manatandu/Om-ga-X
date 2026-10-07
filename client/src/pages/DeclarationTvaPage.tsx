@@ -201,6 +201,45 @@ export function DeclarationTvaPage() {
               </span>
             </div>
             <div className="text-[11.5px] text-text-dim leading-[1.45]">{declaration.mentionExigibilite}</div>
+            {/* L'IMPUTATION DES PAIEMENTS · la phrase du serveur dit factures,
+                sommes et fondement ; le droit vit dans la bulle (relecture du
+                2026-10-07). La part déclarée NON RETENUE est un avertissement
+                à part · elle demande un geste du cabinet. */}
+            {(declaration.imputationsDesPaiements ?? []).length > 0 && (
+              <div className="mt-2 pt-2 border-t border-border text-[11.5px] text-text-dim">
+                Imputation des paiements ·{' '}
+                {declaration.imputationsDesPaiementsTotal ?? (declaration.imputationsDesPaiements ?? []).length} groupe(s) de lettrage à
+                plusieurs factures{' '}
+                <Aide
+                  titre="Imputation des paiements"
+                  texte="Quand un groupe de lettrage réunit des factures de composition différente, chaque somme perçue est imputée sur la facture qu’elle paie, et la taxe de cette facture devient exigible à la date de la somme. L’imputation est celle que le débiteur déclare en payant, ou celle de la quittance qu’il a acceptée ; à défaut, les factures échues d’abord, puis la plus ancienne par la date de la facture, au prorata à date égale. Le lettrage posé par le créancier ne fixe pas l’imputation."
+                  source="Code civil, Livre III, art. 151 à 154 ; O.-L. n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57"
+                />
+              </div>
+            )}
+            {(declaration.imputationsDesPaiements ?? []).some((g) => (g.declareNonRetenu ?? 0) > 0) && (
+              <div role="alert" className="mt-2 text-[11.5px] text-warning bg-warning-soft border border-warning/30 px-2.5 py-1.5">
+                Imputation déclarée non retenue ·{' '}
+                {(declaration.imputationsDesPaiements ?? [])
+                  .filter((g) => (g.declareNonRetenu ?? 0) > 0)
+                  .map((g) => `${g.factures.join(', ')} : ${montant(g.declareNonRetenu)} CDF`)
+                  .join(' ; ')}{' '}
+                · au-delà de ce que la facture laissait à payer, ou sur une facture sortie du groupe · à vérifier contre la pièce de
+                la déclaration.
+              </div>
+            )}
+            {/* UNE DÉCLARATION QU'UN GROUPE LU EN BLOC N'A PAS LUE SE DIT
+                (relecture du 2026-10-07, second tour, M-b) · le motif du
+                groupe est la phrase du serveur. */}
+            {(declaration.groupesImputationIndeterminee ?? []).some((g) => (g.declarationsNonLues ?? 0) > 0) && (
+              <div role="alert" className="mt-2 text-[11.5px] text-warning bg-warning-soft border border-warning/30 px-2.5 py-1.5">
+                Imputation déclarée non lue ·{' '}
+                {(declaration.groupesImputationIndeterminee ?? [])
+                  .filter((g) => (g.declarationsNonLues ?? 0) > 0)
+                  .map((g) => `${g.factures.join(', ')} : ${montant(g.declarationsNonLues ?? 0)} CDF (${g.motif})`)
+                  .join(' ; ')}
+              </div>
+            )}
             {declaration.tvaEnAttenteEncaissement > 0 && (
               <div className="mt-2 pt-2 border-t border-border font-mono text-[11.5px]">
                 TVA facturée sur la période, pas encore exigible :{' '}
@@ -209,14 +248,14 @@ export function DeclarationTvaPage() {
                 </span>
                 {(declaration.tvaEnAttenteImputationIndeterminee ?? 0) > 0 && (
                   <>
-                    {' '}dont {montant(declaration.tvaEnAttenteImputationIndeterminee ?? 0)} CDF sur des encaissements
-                    à imputer
+                    {' '}dont {montant(declaration.tvaEnAttenteImputationIndeterminee ?? 0)} CDF sur des groupes de
+                    lettrage lus en bloc
                   </>
                 )}{' '}
                 <Aide
                   titre="TVA pas encore exigible"
-                  texte="Le fait générateur d’une prestation est l’exécution du service, qui fait naître la taxe · elle devient exigible à l’encaissement du prix, des acomptes ou avances, et entre dans la déclaration de la période où la somme est perçue. Ce montant explique l’écart entre le chiffre d’affaires de la période et la taxe déclarée. Quand plusieurs factures de compositions différentes sont réglées ensemble, la part exigible dépend de la facture que chaque somme paie · la déclaration nomme ces encaissements à imputer."
-                  source="O.-L. n° 10/001, art. 24 et 25 ; décret n° 011/42, art. 57"
+                  texte="Le fait générateur d’une prestation est l’exécution du service, qui fait naître la taxe · elle devient exigible à l’encaissement du prix, des acomptes ou avances, et entre dans la déclaration de la période où la somme est perçue. Ce montant explique l’écart entre le chiffre d’affaires de la période et la taxe déclarée. Quand plusieurs factures de compositions différentes sont réglées ensemble, chaque somme est imputée sur la facture qu’elle paie · celle que le débiteur a déclarée, sinon les factures échues d’abord, puis la plus ancienne, au prorata à date égale. Un groupe qui porte un avoir ou une ligne illisible est lu en bloc, et nommé."
+                  source="O.-L. n° 10/001, art. 24 et 25 ; décret n° 011/42, art. 57 ; Code civil, Livre III, art. 151 à 154"
                 />
               </div>
             )}

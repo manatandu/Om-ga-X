@@ -92,8 +92,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // chacune bornée par son propre tenantId (A20), 149 avec les comportements
     // figés d'un exercice clos, bornés de même (A20, seconde relecture), 150
     // avec les factures désignées des créances douteuses, bornées par leur
-    // tenantId (A7 bis).
-    expect(modeles).toHaveLength(150);
+    // tenantId (A7 bis), 151 avec les imputations déclarées des paiements,
+    // bornées par leur tenantId (décision par la loi du 2026-10-07, point 4).
+    expect(modeles).toHaveLength(151);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

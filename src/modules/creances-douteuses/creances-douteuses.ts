@@ -1,4 +1,15 @@
-import { NatureCreanceDouteuse, Referentiel, TypeMouvementCreanceDouteuse } from '@prisma/client';
+import { NatureCreanceDouteuse, Prisma, Referentiel, TypeMouvementCreanceDouteuse } from '@prisma/client';
+
+/**
+ * M9 · UNE CRÉANCE CORRIGÉE PAR LE RÉSULTAT sort du module à la DATE de son
+ * écriture de correction · avant, elle est au 416 comme au module ; à partir
+ * de cette date, la correction l'a soldée au livre-journal, et le module ne
+ * la compte plus (rapprochement, bornes, clôture, contrôle, règlement). Le
+ * filtre de créance qui le dit, date incluse.
+ */
+export function nonCorrigeeAu(au: Date): Prisma.CreanceDouteuseWhereInput {
+  return { NOT: { ecritureCorrectionResultat: { is: { date: { lte: au } } } } };
+}
 
 /**
  * CRÉANCES DOUTEUSES OU LITIGIEUSES · la règle, sans base de données (ligne
@@ -185,16 +196,36 @@ const FICHE_41_IMPAYES =
   'fiche SYCEBNL du compte 41, « Les chèques, effets à payer et autres valeurs revenus impayés doivent être enregistrés dans le ' +
   'compte 413 Adhérents, clients-usagers chèques, et autres valeurs impayés pour un meilleur suivi des incidents de paiements »';
 
+/** La fiche SYCEBNL du compte 51, sur ce qu'est l'encaissement d'une valeur remise (Contenu, Fonctionnement). */
+const FICHE_51_ENCAISSEMENT =
+  'fiche SYCEBNL du compte 51, « Les valeurs à encaisser sont les effets, chèques et autres valeurs transmis à la banque et dont ' +
+  'l’entité attend l’encaissement à l’échéance », le compte se soldant « lors de la réception de l’avis de crédit »';
+
 /**
- * A7 ter, mineur 8 · UN IMPAYÉ D'ADHÉRENT (4131 chèques, 4133 autres valeurs)
- * sous la méthode de l'ENCAISSEMENT · le corpus ne tranche pas. La fiche du
- * compte 41 impose le 413 pour les valeurs revenues impayées ; le § 5.4.2.1
- * dit que la cotisation se comptabilise « lors de son encaissement
- * effectif ». Un chèque remis puis rejeté a-t-il été encaissé ? Aucun texte
- * lu ne le dit · rien tranché n'est pas bloqué, le reclassement passe avec
- * cet avertissement, et la question est remontée à Manasse (suivi, A7 bis).
+ * UN IMPAYÉ D'ADHÉRENT (4131 chèques, 4133 autres valeurs) SOUS LA MÉTHODE DE
+ * L'ENCAISSEMENT N'EST PAS UNE CRÉANCE (D7, tranchée par la loi le
+ * 2026-10-07, `docs/decisions-par-la-loi-2026-10-07-bis.md`, point 5).
+ *  - Cadre conceptuel du SYCEBNL, § 5.4.2.1 · sous l'encaissement, la
+ *    cotisation et le droit d'entrée n'ont pas d'autre fait générateur que
+ *    leur « encaissement effectif ».
+ *  - Fiche SYCEBNL du compte 51 · le chèque remis est une valeur « à
+ *    encaisser », dont l'entité « attend l'encaissement », et l'encaissement
+ *    se constate à l'avis de crédit. Une valeur « revenue impayée » (fiche du
+ *    compte 41) n'a donc jamais été encaissée · la cotisation n'a pas de fait
+ *    générateur, et le 4131 ou le 4133 ne porte aucune créance de cotisation.
+ *  - Fiche SYCEBNL du compte 41 · les créances d'adhérents sont celles « liées
+ *    aux appels de cotisations », et le transfert au 4161 suit un APPEL
+ *    (Partie 3, ch. 5, § 1.2 ; Guide, Application 13).
+ * Rien à reclasser au 4161, rien à déprécier au 491, rien à passer en perte au
+ * 6512. Le 413 garde son rôle de suivi des incidents · l'impayé y est
+ * enregistré puis soldé contre le produit constaté à tort à la remise ; d'un
+ * exercice à l'autre, la correction passe par le résultat de l'exercice de
+ * l'impayé (§ 3.3.1.2.4). Jusqu'au 2026-10-07 le reclassement était admis
+ * avec un avertissement (A7 ter, mineur 8) · les créances déjà passées ainsi
+ * sont SIGNALÉES par le contrôle `CREANCE_ADHERENT_RECLASSEE_SOUS_ENCAISSEMENT`,
+ * jamais défaites d'office.
  */
-function estImpayeAdherent(numeroSource: string): boolean {
+export function estImpayeAdherent(numeroSource: string): boolean {
   return numeroSource.startsWith('4131') || numeroSource.startsWith('4133');
 }
 
@@ -207,13 +238,150 @@ function estImpayeAdherent(numeroSource: string): boolean {
 const METHODE_DU_JOUR = 'méthode déclarée aujourd’hui dans Paramètres du dossier, qui ne garde pas l’historique de ses changements';
 
 /**
+ * LA PERTE ET LA DÉPRÉCIATION SE JUGENT SUR LA MÉTHODE DU JOUR DU
+ * RECLASSEMENT (relecture du 2026-10-07, M8) · une créance née sous l'APPEL
+ * est une créance, et le reste quand le dossier déclare ensuite
+ * l'encaissement. Figée au geste (`methodeCotisationsReclassement`), ou
+ * reconstituée sur le journal d'audit des changements de
+ * `Tenant.methodeCotisations` (`methodeAuReclassement`), sinon INCONNUE · rien
+ * n'est alors refusé, et c'est dit.
+ */
+const METHODE_AU_RECLASSEMENT = 'méthode en vigueur au jour du reclassement de la créance';
+
+/** Ce que l'on sait de la méthode au jour du reclassement. */
+export type MethodeAuReclassement = { connue: true; methode: MethodeCotisationsDeclaree } | { connue: false; motif: string };
+
+/**
+ * Un maillon du journal d'audit qui porte la fiche du dossier
+ * (`entite: 'Tenant'`) · la méthode AVANT et APRÈS l'acte, `undefined` quand
+ * le maillon ne la porte pas (pré-image illisible, opération de masse).
+ */
+export interface EtatDeLaMethodeLu {
+  le: Date;
+  avant: MethodeCotisationsDeclaree | undefined;
+  apres: MethodeCotisationsDeclaree | undefined;
+}
+
+/**
+ * La méthode qu'un état du journal d'audit porte (`avant` ou `apres`), ou
+ * `undefined` · une valeur hors des trois admises n'est jamais lue comme une
+ * méthode.
+ */
+export function methodeLueDansLeJournal(etat: unknown): MethodeCotisationsDeclaree | undefined {
+  if (!etat || typeof etat !== 'object' || !('methodeCotisations' in etat)) return undefined;
+  const v = (etat as { methodeCotisations: unknown }).methodeCotisations;
+  return v === 'APPEL' || v === 'ENCAISSEMENT' || v === null ? v : undefined;
+}
+
+/** L'avertissement d'une méthode inconnue au jour du reclassement · rien n'est refusé. */
+export function avertissementMethodeInconnue(motif: string): string {
+  return (
+    `Méthode des cotisations au jour du reclassement inconnue (${motif}) · la perte et la dépréciation de cet impayé ` +
+    'd’adhérent ne sont pas refusées ; vérifiez que l’entité justifiait alors d’un droit d’agir en recouvrement (cadre ' +
+    'conceptuel du SYCEBNL, § 5.4.2.1).'
+  );
+}
+
+/**
+ * LA MÉTHODE AU JOUR DU RECLASSEMENT (M8) · figée au geste, elle fait foi.
+ * Sinon (créance passée avant la relecture du 2026-10-07), le journal d'audit
+ * du dossier, qui garde chaque acte sur sa fiche avec son état avant et après
+ * · l'état APRÈS le dernier maillon de la fiche au plus tard à l'instant du
+ * geste, sinon l'état AVANT le premier maillon postérieur, sinon, aucun
+ * maillon de la fiche n'ayant été écrit, la méthode actuelle. Le tout à la
+ * condition que le journal du dossier commence au plus tard à l'instant du
+ * geste (un changement antérieur à son premier maillon ne s'y lit pas). Un
+ * maillon qui ne porte pas la méthode rend la méthode INCONNUE, jamais
+ * devinée. Réserve · le journal détecte la retouche d'un maillon, pas
+ * l'absence d'un maillon jamais écrit (`extension-audit.ts`).
+ */
+export function methodeAuReclassement(e: {
+  figee: 'APPEL' | 'ENCAISSEMENT' | 'NON_DECLAREE' | null;
+  /** L'instant du geste (création de la créance), jamais sa date comptable. */
+  geste: Date;
+  actuelle: MethodeCotisationsDeclaree;
+  journal: { debut: Date | null; dernierAvant: EtatDeLaMethodeLu | null; premierApres: EtatDeLaMethodeLu | null } | null;
+}): MethodeAuReclassement {
+  if (e.figee !== null) return { connue: true, methode: e.figee === 'NON_DECLAREE' ? null : e.figee };
+  if (!e.journal) return { connue: false, motif: 'journal d’audit non lu' };
+  if (!e.journal.debut || e.geste.getTime() < e.journal.debut.getTime()) {
+    return { connue: false, motif: 'reclassement antérieur au journal d’audit du dossier' };
+  }
+  if (e.journal.dernierAvant) {
+    const m = e.journal.dernierAvant.apres;
+    return m === undefined ? { connue: false, motif: 'le journal d’audit ne porte pas la méthode à cette date' } : { connue: true, methode: m };
+  }
+  if (e.journal.premierApres) {
+    const m = e.journal.premierApres.avant;
+    return m === undefined ? { connue: false, motif: 'le journal d’audit ne porte pas la méthode à cette date' } : { connue: true, methode: m };
+  }
+  return { connue: true, methode: e.actuelle };
+}
+
+/**
+ * LES ISSUES D'UN IMPAYÉ D'ADHÉRENT DÉJÀ RECLASSÉ SOUS L'ENCAISSEMENT (M8,
+ * M9) · la méthode qui juge est celle du jour du reclassement, et déclarer
+ * l'APPEL aujourd'hui n'y change rien. Exercice du reclassement ouvert · le
+ * module annule ; clôturé · la correction passe par le résultat de l'exercice
+ * en cours (cadre conceptuel du SYCEBNL, § 3.3.1.2.4, « Ces corrections
+ * doivent transiter par le compte de résultat du nouvel exercice »), geste
+ * « Corriger par le résultat ».
+ */
+export const ISSUES_IMPAYE_RECLASSE =
+  'Annulez, du plus récent au plus ancien, les pertes ou recouvrements puis la revue de la dépréciation qui portent sur la ' +
+  'créance, puis le reclassement (« Annuler le reclassement »), et soldez l’impayé contre le produit ou le droit d’entrée ' +
+  'constaté à la remise de la valeur. Reclassement d’un exercice clôturé · passez la correction par le résultat de ' +
+  'l’exercice en cours, sur le compte que le cabinet choisit, et désignez-la (« Corriger par le résultat », cadre ' +
+  'conceptuel § 3.3.1.2.4).'
+
+/**
+ * LA DOTATION D'UN IMPAYÉ D'ADHÉRENT SOUS L'ENCAISSEMENT EST REFUSÉE (M8 ·
+ * D7) · fiche SYCEBNL du compte 49, la dépréciation vise un « élément
+ * d'actif » individualisé, et l'impayé d'adhérent sous l'encaissement n'en
+ * porte aucun. La reprise et le maintien restent ouverts · ils défont ce qui
+ * a été passé.
+ */
+export function motifRefusDotationImpayeAdherent(
+  referentiel: Referentiel | undefined,
+  numeroSource: string | undefined,
+  methodeAuReclassementConnue: MethodeCotisationsDeclaree | undefined,
+): string | null {
+  if (referentiel !== Referentiel.SYCEBNL || methodeAuReclassementConnue !== 'ENCAISSEMENT' || !numeroSource) return null;
+  if (!estImpayeAdherent(numeroSource)) return null;
+  return (
+    `La cotisation était comptabilisée à son ENCAISSEMENT (${METHODE_AU_RECLASSEMENT}) · ${PARAGRAPHE_5421}. Le compte ` +
+    `${numeroSource} est un impayé d'adhérent · ${FICHE_51_ENCAISSEMENT} ; il ne porte aucune créance, et rien ne se déprécie ` +
+    "au 491 (fiche SYCEBNL du compte 49, « La dépréciation doit être certaine quant à sa nature et l'élément d'actif en cause " +
+    `doit être individualisé »). Seules la reprise et le maintien restent ouverts. ${ISSUES_IMPAYE_RECLASSE}`
+  );
+}
+
+/** Les deux issues d'un impayé d'adhérent sous l'encaissement (D7). */
+export const ISSUES_IMPAYE_ADHERENT =
+  'Deux issues · soldez l’impayé contre le produit ou le droit d’entrée constaté à la remise de la valeur (dans le même ' +
+  'exercice, la contre-passation de cette écriture ; d’un exercice à l’autre, par le résultat de l’exercice de l’impayé, cadre ' +
+  'conceptuel § 3.3.1.2.4) ; ou, si l’entité justifie en réalité d’un droit d’agir en recouvrement, déclarez la méthode de ' +
+  'l’APPEL dans Paramètres du dossier.';
+
+/** Le refus nommé d'un impayé d'adhérent sous l'encaissement · reclassement, déclaration (D7). */
+export function motifImpayeAdherentSousEncaissement(numeroSource: string): string {
+  return (
+    `Le dossier comptabilise les cotisations à leur ENCAISSEMENT (${METHODE_DU_JOUR}) · ${PARAGRAPHE_5421}. Le compte ` +
+    `${numeroSource} est un impayé d'adhérent · ${FICHE_41_IMPAYES} ; ${FICHE_51_ENCAISSEMENT}. Une valeur revenue impayée n'a ` +
+    'jamais été encaissée · la cotisation n’a pas de fait générateur, le compte ne porte aucune créance, et rien ne se reclasse ' +
+    `au 4161, ne se déprécie au 491 ni ne passe en perte au 6512. ${ISSUES_IMPAYE_ADHERENT}`
+  );
+}
+
+/**
  * UNE COTISATION COMPTABILISÉE À L'ENCAISSEMENT N'EST PAS UNE CRÉANCE (ligne
  * A7 ter, m9). Au SYCEBNL, le 4161 reçoit les « Adhérents cotisations
  * litigieuses ou douteuses » (fiche du compte 41), et la cotisation n'est une
  * créance que si elle a été APPELÉE (§ 5.4.2.1, « le fait générateur [...] est
  * l'appel de cotisation »). Le dossier qui a DÉCLARÉ l'encaissement ne peut
  * justifier d'un droit d'agir · une cotisation impayée n'y est pas
- * comptabilisée, et rien ne se reclasse au 4161 (refus). Méthode non
+ * comptabilisée, et rien ne se reclasse au 4161 (refus), qu'elle soit au 411
+ * ou, revenue impayée, au 4131 ou au 4133 (D7, 2026-10-07). Méthode non
  * déclarée · AVERTISSEMENT seulement, comme `METHODE_COTISATIONS_NON_PRECISEE`
  * (rien tranché n'est pas bloqué).
  */
@@ -224,14 +392,64 @@ export function motifRefusCotisationsEncaissement(
 ): string | null {
   if (referentiel !== Referentiel.SYCEBNL || methode !== 'ENCAISSEMENT') return null;
   if (debiteurSycebnl(numeroSource) !== 'ADHERENT') return null;
-  // Mineur 8 · un impayé d'adhérent (4131, 4133) n'est pas refusé · le corpus ne tranche pas (avertissement).
-  if (estImpayeAdherent(numeroSource)) return null;
+  if (estImpayeAdherent(numeroSource)) return motifImpayeAdherentSousEncaissement(numeroSource);
   return (
     `Le dossier comptabilise les cotisations à leur ENCAISSEMENT (${METHODE_DU_JOUR}) · ${PARAGRAPHE_5421}. Une cotisation ` +
     `non encaissée n'y est pas une créance, et ne se reclasse pas au 4161 · si le compte ${numeroSource} porte une créance, c'est ` +
     "la méthode déclarée ou l'écriture d'appel qui est à revoir."
   );
 }
+
+/**
+ * LA PERTE AU 6512 D'UN IMPAYÉ D'ADHÉRENT SOUS L'ENCAISSEMENT EST REFUSÉE (D7) ·
+ * la fiche SYCEBNL du compte 65 n'inscrit au 651 qu'une créance
+ * « irrécouvrable », et l'impayé d'adhérent sous l'encaissement n'en porte
+ * aucune. La créance est déjà au 416 (reclassée avant le 2026-10-07, ou sous
+ * une autre méthode) · l'issue dit de défaire ce que le module a passé, dans
+ * l'ordre inverse de ses gestes, avant de solder l'impayé. Seul l'impayé est
+ * visé, comme la décision le dit · un 411 reclassé sous l'APPEL ne se voit
+ * rien refuser ici.
+ */
+export function motifRefusPerteImpayeAdherent(
+  referentiel: Referentiel | undefined,
+  numeroSource: string | undefined,
+  methode: MethodeCotisationsDeclaree | undefined,
+): string | null {
+  if (referentiel !== Referentiel.SYCEBNL || methode !== 'ENCAISSEMENT' || !numeroSource) return null;
+  if (!estImpayeAdherent(numeroSource)) return null;
+  return (
+    `La cotisation était comptabilisée à son ENCAISSEMENT (${METHODE_AU_RECLASSEMENT}) · ${PARAGRAPHE_5421}. Le compte ` +
+    `${numeroSource} est un impayé d'adhérent · ${FICHE_41_IMPAYES} ; ${FICHE_51_ENCAISSEMENT}. Une valeur revenue impayée n'a ` +
+    'jamais été encaissée · elle ne porte aucune créance, et rien ne passe en perte au 6512 (fiche du compte 65, « Les créances ' +
+    `des adhérents, clients et autres débiteurs irrécouvrables sont enregistrées au débit du compte 651 »). ${ISSUES_IMPAYE_RECLASSE}`
+  );
+}
+
+/**
+ * LES RECLASSEMENTS DÉJÀ PASSÉS (D7) · un impayé d'adhérent reclassé au 4161
+ * sous l'encaissement, quand le module l'admettait encore avec un
+ * avertissement (A7 ter, mineur 8), est SIGNALÉ, jamais défait d'office
+ * (AUDCIF art. 20, al. 2 · la correction est un acte du cabinet). Le texte du
+ * contrôle vit ici, avec la règle, pour que refus et signalement disent la
+ * même chose. INFORMATION · rien n'est bloqué, la clôture comprise.
+ */
+export const CONTROLE_CREANCE_ADHERENT_SOUS_ENCAISSEMENT = {
+  libelle: "Impayé d'adhérent reclassé au 4161 sous la méthode de l'encaissement",
+  consequence:
+    `Le dossier comptabilise les cotisations à leur ENCAISSEMENT (${METHODE_DU_JOUR}) · ${PARAGRAPHE_5421}. ` +
+    `Un impayé d'adhérent (4131, 4133) n'y porte aucune créance · ${FICHE_51_ENCAISSEMENT} ; une valeur revenue impayée ` +
+    "n'a donc jamais été encaissée. Le 4161 et, s'il y a lieu, le 491 portent une créance qui n'existe pas, et le produit " +
+    'constaté à la remise de la valeur est surévalué.',
+  action:
+    'Dans « Créances douteuses ou litigieuses », annulez, du plus récent au plus ancien, les pertes ou recouvrements puis la ' +
+    'revue de la dépréciation qui portent sur la créance, puis le reclassement ; soldez ensuite l’impayé contre le produit ou ' +
+    'le droit d’entrée constaté à la remise (dans le même exercice, la contre-passation ; d’un exercice à l’autre, par le ' +
+    'résultat de l’exercice de l’impayé, cadre conceptuel § 3.3.1.2.4). Le module n’annule pas un reclassement d’un exercice ' +
+    'clôturé · sa correction passe alors par le résultat de l’exercice en cours (même paragraphe), par une écriture du ' +
+    'cabinet sur le compte qu’il choisit, aucune fiche lue ne le nommant, puis « Corriger par le résultat » la désigne et ' +
+    'sort la créance du module. La méthode qui juge est celle du jour du reclassement · déclarer l’APPEL aujourd’hui ne ' +
+    'change rien à une créance reclassée sous l’encaissement.',
+} as const;
 
 export function avertissementMethodeCotisations(
   referentiel: Referentiel,
@@ -240,13 +458,6 @@ export function avertissementMethodeCotisations(
 ): string | null {
   if (referentiel !== Referentiel.SYCEBNL) return null;
   if (debiteurSycebnl(numeroSource) !== 'ADHERENT') return null;
-  if (methode === 'ENCAISSEMENT' && estImpayeAdherent(numeroSource)) {
-    return (
-      `Le dossier comptabilise les cotisations à leur ENCAISSEMENT (${METHODE_DU_JOUR}) et le compte ${numeroSource} est un ` +
-      `impayé d'adhérent · ${FICHE_41_IMPAYES} ; ${PARAGRAPHE_5421}. Aucun texte lu ne dit si une valeur remise puis revenue ` +
-      'impayée a été encaissée · le reclassement au 4161 est admis, vérifiez que l’entité peut en poursuivre le recouvrement.'
-    );
-  }
   if (methode !== null) return null;
   return (
     'La méthode de comptabilisation des cotisations n’est pas déclarée (Paramètres du dossier) · le reclassement au 4161 suppose ' +
@@ -437,6 +648,8 @@ export interface EntreeRevue {
   anterieursSansRevue: string[];
   /** Refus du Système minimal de trésorerie pour une DOTATION. */
   refusSmt: string | null;
+  /** M8 · refus de la DOTATION d'un impayé d'adhérent sous l'encaissement (méthode au jour du reclassement). */
+  refusImpaye?: string | null;
   journalGeneral: boolean;
 }
 
@@ -468,6 +681,7 @@ export function motifRefusRevue(e: EntreeRevue): string | null {
   const manque = motifEtPieces(e.motif, e.pieces);
   if (manque) return manque;
   if (ecartDeDepreciation(e.enPlace, e.necessaire) > 0 && e.refusSmt) return e.refusSmt;
+  if (ecartDeDepreciation(e.enPlace, e.necessaire) > 0 && e.refusImpaye) return e.refusImpaye;
   return null;
 }
 
@@ -496,6 +710,11 @@ export interface EntreeMouvement {
   /** m3 · le plan et le compte d'origine, qui disent le 651 du débiteur au SYCEBNL. */
   referentiel?: Referentiel;
   numeroSource?: string;
+  /**
+   * D7 et M8 · la méthode des cotisations AU JOUR DU RECLASSEMENT (SYCEBNL) ·
+   * absente (inconnue), rien n'est vérifié, et le geste le dit.
+   */
+  methodeCotisations?: MethodeCotisationsDeclaree;
 }
 
 export function motifRefusMouvement(e: EntreeMouvement): string | null {
@@ -526,6 +745,9 @@ export function motifRefusMouvement(e: EntreeMouvement): string | null {
     );
   }
   if (e.type === TypeMouvementCreanceDouteuse.PERTE) {
+    // D7 · avant le compte choisi · aucun 651 ne convient à ce qui n'est pas une créance.
+    const impaye = motifRefusPerteImpayeAdherent(e.referentiel, e.numeroSource, e.methodeCotisations);
+    if (impaye) return impaye;
     if (!e.numeroPerte) {
       return 'Choisissez le compte de perte sous le 651 · le compte du client ne dit pas si le débiteur est un adhérent ou un client-usager.';
     }
@@ -1007,6 +1229,143 @@ export function motifRefusDesignation(p: {
   }
   if (p.totalDesigne > p.montantCreance + 0.005) {
     return `Les factures désignées (${fc(p.totalDesigne)}) dépassent le montant reclassé (${fc(p.montantCreance)}).`;
+  }
+  return null;
+}
+
+/**
+ * « CORRIGER PAR LE RÉSULTAT » (relecture du 2026-10-07, M9) · un impayé
+ * d'adhérent (4131, 4133) reclassé au 416 sous l'encaissement dans un
+ * exercice CLÔTURÉ ne s'annule plus par le module, qui n'inscrit rien dans un
+ * exercice clos. Cadre conceptuel du SYCEBNL, § 3.3.1.2.4 · on ne peut
+ * imputer directement sur les capitaux propres ni les changements de méthode
+ * ni « les produits et les charges relatifs à des exercices précédents qui
+ * auraient été omis », et « ces corrections doivent transiter par le compte
+ * de résultat du nouvel exercice ».
+ *
+ * Le cabinet passe la correction lui-même, sur le compte de résultat qu'il
+ * choisit (aucune fiche lue ne le nomme), la VALIDE, puis la DÉSIGNE · le
+ * module vérifie qu'elle solde exactement la créance (son reste au 416 et sa
+ * dépréciation en place au 491), que ses autres lignes sont des comptes de
+ * gestion (classes 6, 7, 8), et qu'elle tombe dans un exercice OUVERT
+ * postérieur au reclassement. La créance sort alors du reste du module, de
+ * ses bornes, de la clôture et du contrôle, et l'écriture est retenue.
+ *
+ * Une créance DÉCLARÉE à l'ouverture d'un dossier repris porte un
+ * reclassement d'avant l'exercice de sa déclaration · l'exercice de la
+ * déclaration est donc déjà le « nouvel exercice ».
+ */
+export interface EntreeCorrectionParResultat {
+  referentiel: Referentiel;
+  numeroSource: string;
+  methode: MethodeAuReclassement;
+  /** La méthode déclarée aujourd'hui (Paramètres du dossier). */
+  actuelle: MethodeCotisationsDeclaree;
+  declareeOuverture: boolean;
+  /** L'exercice de la créance (reclassement ou déclaration) est-il clôturé ? */
+  exerciceCreanceClos: boolean;
+  /** L'exercice de l'écriture suit-il celui de la créance (strictement pour un reclassement) ? */
+  exerciceEcritureApres: boolean;
+  exerciceEcritureOuvert: boolean;
+  ecritureValidee: boolean;
+  /** Les modules qui tiennent déjà l'écriture. */
+  detenteurs: readonly string[];
+  /** Ce que l'écriture porte au 416 de la créance (crédit moins débit). */
+  credit416: number;
+  /** Ce que l'écriture porte au 491 de la créance (débit moins crédit). */
+  debit491: number;
+  /** Les autres lignes de l'écriture, par compte. */
+  autres: readonly { numero: string; gestion: boolean }[];
+  /** Le reste de la créance après tous ses mouvements non annulés. */
+  reste: number;
+  /** La dépréciation en place à la date de l'écriture (module). */
+  enPlace: number;
+  /** Un mouvement non annulé daté après l'écriture. */
+  mouvementApres: string | null;
+  /** Une revue non annulée à une clôture postérieure ou égale à la date de l'écriture. */
+  revueApres: string | null;
+  motif: string | null | undefined;
+}
+
+export function motifRefusCorrectionParResultat(e: EntreeCorrectionParResultat): string | null {
+  const fc = (x: number) => centimes(x).toFixed(2);
+  if (e.referentiel !== Referentiel.SYCEBNL || !estImpayeAdherent(e.numeroSource)) {
+    return (
+      `La correction par le résultat ne vise qu'un impayé d'adhérent (4131, 4133) reclassé sous l'encaissement · le compte ` +
+      `${e.numeroSource} porte une créance, qui se recouvre, se perd ou s'annule dans ce module.`
+    );
+  }
+  if (e.methode.connue && e.methode.methode === 'APPEL') {
+    return (
+      'La créance a été reclassée sous la méthode de l’APPEL · c’est une créance (cadre conceptuel du SYCEBNL, § 5.4.2.1), ' +
+      'qui se recouvre ou se perd ; elle ne se corrige pas par le résultat.'
+    );
+  }
+  if (e.actuelle !== 'ENCAISSEMENT' && !(e.methode.connue && e.methode.methode === 'ENCAISSEMENT')) {
+    return (
+      'Rien ne dit que cette cotisation était comptabilisée à son encaissement · ' +
+      (e.methode.connue ? 'aucune méthode n’était déclarée au jour du reclassement' : `méthode au jour du reclassement inconnue (${e.methode.motif})`) +
+      ', et le dossier ne déclare pas l’encaissement aujourd’hui. Déclarez la méthode dans Paramètres du dossier.'
+    );
+  }
+  if (!e.declareeOuverture && !e.exerciceCreanceClos) {
+    return (
+      "L'exercice du reclassement est ouvert · le module l'annule lui-même (« Annuler le reclassement », AUDCIF art. 20, " +
+      'al. 2), puis l’impayé se solde contre le produit constaté à la remise de la valeur.'
+    );
+  }
+  if (!e.ecritureValidee) {
+    return 'L’écriture de correction est encore au brouillard · validez-la avant de la désigner (AUDCIF art. 22, 2°).';
+  }
+  if (!e.exerciceEcritureOuvert) return 'L’écriture de correction tombe dans un exercice clôturé.';
+  if (!e.exerciceEcritureApres) {
+    return (
+      'L’écriture de correction doit tomber dans un exercice postérieur au reclassement · « ces corrections doivent ' +
+      'transiter par le compte de résultat du nouvel exercice » (cadre conceptuel § 3.3.1.2.4).'
+    );
+  }
+  if (e.detenteurs.length > 0) {
+    return `Cette écriture est déjà la contrepartie de ${e.detenteurs.join(' et ')} · désignez l’écriture de la correction.`;
+  }
+  if (e.mouvementApres) {
+    return `Un mouvement de la créance est daté du ${e.mouvementApres}, après l’écriture de correction · annulez-le, ou datez la correction après lui.`;
+  }
+  if (e.revueApres) {
+    return (
+      `La dépréciation est revue à la clôture du ${e.revueApres}, après la date de l’écriture de correction · annulez cette ` +
+      'revue, puis désignez la correction.'
+    );
+  }
+  if (e.reste < -0.005) {
+    return `Le reste de la créance après tous ses mouvements est négatif (${fc(e.reste)}) · annulez d’abord le mouvement en trop.`;
+  }
+  if (!(e.reste > 0.005) && !(e.enPlace > 0.005)) {
+    return 'La créance ne porte plus rien au 416 ni au 491 · il n’y a rien à corriger.';
+  }
+  if (Math.abs(centimes(e.credit416) - centimes(e.reste)) > 0.005) {
+    return (
+      `L’écriture porte ${fc(e.credit416)} au crédit du 416 de la créance, qui en garde ${fc(e.reste)} · la correction solde ` +
+      'exactement le reste de la créance, ni plus ni moins.'
+    );
+  }
+  if (Math.abs(centimes(e.debit491) - centimes(e.enPlace)) > 0.005) {
+    return (
+      `L’écriture porte ${fc(e.debit491)} au débit du 491 de la créance, dont la dépréciation en place est de ${fc(e.enPlace)} · ` +
+      'la correction reprend exactement cette dépréciation, sans quoi elle resterait au 491 sans créance.'
+    );
+  }
+  const horsGestion = e.autres.filter((a) => !a.gestion);
+  if (horsGestion.length > 0) {
+    return (
+      `L’écriture touche ${horsGestion.map((a) => a.numero).join(', ')} · une correction par le résultat ne porte, hors le ` +
+      '416 et le 491 de la créance, que des comptes de gestion (classes 6, 7 et 8) ; « on ne peut imputer directement sur les ' +
+      'capitaux propres » (cadre conceptuel § 3.3.1.2.4).'
+    );
+  }
+  if (e.autres.length === 0) return 'L’écriture ne porte aucun compte de résultat · la correction transite par le compte de résultat.';
+  const motif = (e.motif ?? '').trim();
+  if (motif.length < MOTIF_ANNULATION_MIN || motif.length > MOTIF_ANNULATION_MAX) {
+    return `Le motif de la correction est obligatoire (${MOTIF_ANNULATION_MIN} à ${MOTIF_ANNULATION_MAX} caractères).`;
   }
   return null;
 }

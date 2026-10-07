@@ -148,6 +148,9 @@ export const MODELES_AUDITES = new Set<string>([
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',
   'FactureCreanceDouteuse',
+  // L'imputation déclarée d'un paiement (Code civil, Livre III, art. 151 et
+  // 153) · elle date la TVA à l'encaissement, sa pièce et son retrait motivé.
+  'ImputationPaiement',
   // L'impôt sur le résultat constaté (ligne A11) · le montant figé au clic,
   // l'attestation qui fonde l'assujettissement et l'annulation avec son motif.
   // Retouchés après coup, le constat dirait un impôt que l'écriture ne porte pas.

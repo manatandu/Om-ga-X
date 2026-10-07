@@ -178,6 +178,15 @@ export class RetirerDesignationDto extends AnnulerRevueDto {}
 export class AnnulerReclassementDto extends AnnulerRevueDto {}
 
 /**
+ * M9 · « Corriger par le résultat » · l'écriture de correction du cabinet,
+ * VALIDÉE, et le motif (3 à 500 caractères), au journal d'audit.
+ */
+export class CorrigerParResultatDto extends AnnulerRevueDto {
+  @IsUUID('4')
+  ecritureId!: string;
+}
+
+/**
  * Second tour d'A7 ter, B-1 · LE LETTRAGE AU 416 D'UNE CRÉANCE ÉTEINTE, posé
  * par le module · `ligneIds`, les lignes d'À-NOUVEAU du 416 que le cabinet
  * désigne (aucune liaison ne les relie au reclassement d'un exercice

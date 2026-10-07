@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, StatutLettrage, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -29,7 +29,11 @@ import {
   motifHorsEcheance,
   motifReglementAuDelaDuNet,
   lignesDuReglement,
+  lignesDuReglementImpute,
+  libellesDesParts,
+  imputationImprimee,
   montantDu,
+  motifRefusImputationReglement,
   motifRefusMontant,
   type SensReglement,
 } from './reglement-tiers';
@@ -46,6 +50,8 @@ import {
  */
 @Injectable()
 export class ReglementsService {
+  private readonly journalServeur = new Logger(ReglementsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ecritures: EcritureService,
@@ -205,7 +211,9 @@ export class ReglementsService {
   private async creancesReclasseesDesComptes(tenantId: string, comptes: string[]) {
     if (comptes.length === 0) return [];
     const creances = await this.prisma.creanceDouteuse.findMany({
-      where: { tenantId, annuleeLe: null, compteCreanceId: { in: comptes } },
+      // M9 · une créance corrigée par le résultat n'est plus au 416 · rien ne
+      // s'y recouvre, et le compte du client se règle comme les autres.
+      where: { tenantId, annuleeLe: null, corrigeeParResultatLe: null, compteCreanceId: { in: comptes } },
       select: { compteCreanceId: true, dateReclassement: true, compte416: { select: { numero: true } } },
       orderBy: { dateReclassement: 'desc' },
     });
@@ -252,7 +260,17 @@ export class ReglementsService {
           select: { numero: true, intitule: true, lettrable: true, tiersCompte: { select: { tiers: { select: { nom: true } } } } },
         },
         ecriture: {
-          select: { exerciceId: true, date: true, estANouveauProvisoire: true, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true },
+          select: {
+            exerciceId: true,
+            date: true,
+            estANouveauProvisoire: true,
+            estGenereeParCloture: true,
+            estSoldeDesComptesDeGestion: true,
+            // La référence de la facture sur la ligne qui la paie, quand le
+            // dossier désigne la part de chacune (jumeau 3 du point 4).
+            numeroPiece: true,
+            libelle: true,
+          },
         },
       },
     });
@@ -338,10 +356,32 @@ export class ReglementsService {
       montant: number;
       enDevise: ReglementEnDevise | null;
       reduite: boolean;
+      /** Les parts désignées par le dossier (jumeau 3 du point 4), une ligne au tiers chacune. */
+      parts: Array<{ ligneId: string; montant: number; du: number; libelle: string; reference: string }> | null;
     }> = [];
+    const avertissementsImputation: string[] = [];
     for (const p of plan) {
       const numero = p.compte.numero;
-      if (!p.siennes.some((l) => (l.deviseId ?? null) !== null)) {
+      const dus = new Map(p.siennes.map((l) => [l.id, montantDu({ debit: Number(l.debit), credit: Number(l.credit) }, dto.sens)]));
+      const enDeviseP = p.siennes.some((l) => (l.deviseId ?? null) !== null);
+      // L'IMPUTATION DU RÈGLEMENT (Code civil, Livre III, art. 151 à 154) ·
+      // désignée par le dossier qui paie son fournisseur, sinon légale.
+      if (p.r.imputation !== undefined) {
+        const motif = motifRefusImputationReglement({
+          sens: dto.sens,
+          parts: p.r.imputation,
+          dus,
+          montant: enDeviseP ? 0 : p.r.montant === undefined ? p.du : p.r.montant,
+          enDevise: enDeviseP,
+          reduite: p.reduite,
+          ordreVirement: dto.ordreVirement === true,
+          pieceImputation: p.r.pieceImputation ?? null,
+        });
+        if (motif) throw new BadRequestException(`${numero} · ${motif}`);
+      } else if (p.r.pieceImputation !== undefined) {
+        throw new BadRequestException(`${numero} · la pièce de l’imputation n’a d’objet qu’avec la part désignée de chaque facture.`);
+      }
+      if (!enDeviseP) {
         if (p.r.montantDevise !== undefined || p.r.coursReglement !== undefined || p.r.compteEcartChangeId !== undefined) {
           throw new BadRequestException(
             `${numero} · les factures choisies sont en francs · ni montant en devise, ni cours, ni compte d'écart de change.`,
@@ -352,14 +392,47 @@ export class ReglementsService {
         const montant = p.r.montant === undefined ? p.du : p.r.montant;
         const refus = motifRefusMontant(montant, p.du);
         if (refus) throw new BadRequestException(`${numero} · ${refus}`);
-        prepares.push({ r: p.r, compte: p.compte, du: p.du, montant, enDevise: null, reduite: p.reduite });
+        let parts: (typeof prepares)[number]['parts'] = null;
+        if (p.r.imputation !== undefined) {
+          const libelles = libellesDesParts(
+            `Règlement ${p.compte.tiersCompte?.tiers.nom ?? p.compte.intitule}`,
+            p.r.imputation.map((x) => {
+              const l = p.siennes.find((s) => s.id === x.ligneId)!;
+              return { id: x.ligneId, reference: l.ecriture.numeroPiece ? `pièce ${l.ecriture.numeroPiece}` : l.ecriture.libelle || 'facture' };
+            }),
+          );
+          const referenceDe = (id: string) => {
+            const l = p.siennes.find((s) => s.id === id)!;
+            return l.ecriture.numeroPiece ? `pièce ${l.ecriture.numeroPiece}` : l.ecriture.libelle || 'facture';
+          };
+          parts = p.r.imputation.map((x) => ({
+            ligneId: x.ligneId,
+            montant: x.montant,
+            du: dus.get(x.ligneId)!,
+            libelle: libelles.get(x.ligneId)!,
+            reference: referenceDe(x.ligneId),
+          }));
+        } else if (p.siennes.length > 1 && Math.round(montant * 100) < Math.round(p.du * 100)) {
+          // UN RÈGLEMENT PARTIEL DE PLUSIEURS FACTURES SANS PARTS · l'art. 154
+          // l'impute (la plus ancienne d'abord) · DIT, jamais tu.
+          avertissementsImputation.push(
+            dto.sens === 'FOURNISSEUR'
+              ? `${numero} · règlement partiel de ${p.siennes.length} factures sans part désignée · la déduction de leur TVA suit ` +
+                  'l’imputation légale (Code civil, Livre III, art. 154 · les échues d’abord, la plus ancienne, au prorata à date ' +
+                  'égale). Désignez la part de chaque facture pour la fixer (art. 151).'
+              : `${numero} · règlement partiel de ${p.siennes.length} factures · la TVA exigible suit l’imputation déclarée par le ` +
+                  'client (art. 151) ou la quittance qu’il a acceptée (art. 153), à déclarer avec sa pièce une fois le règlement ' +
+                  'validé, sinon l’imputation légale (art. 154 · les échues d’abord, la plus ancienne, au prorata à date égale).',
+          );
+        }
+        prepares.push({ r: p.r, compte: p.compte, du: p.du, montant, enDevise: null, reduite: p.reduite, parts });
         continue;
       }
       if (referentiel === null) referentiel = await referentielDuDossier(this.prisma, tenantId);
       const enDevise = await this.preparerEnDevise(tenantId, dto.exerciceId, referentiel, dto.sens, p.r, numero, p.siennes, [
         ...(paires?.absorbees ?? []),
       ]);
-      prepares.push({ r: p.r, compte: p.compte, du: p.du, montant: enDevise.francsPayes, enDevise, reduite: p.reduite });
+      prepares.push({ r: p.r, compte: p.compte, du: p.du, montant: enDevise.francsPayes, enDevise, reduite: p.reduite, parts: null });
     }
 
     // LA DEVISE DU MOYEN DE PAIEMENT (ligne A6) · déclarée, jamais prise sur
@@ -397,7 +470,7 @@ export class ReglementsService {
     // (relecture adverse, bloquant 1) · la réévaluation de l'exercice qui l'a
     // lue a porté son écart au 478 et en provision ; le 656 du règlement
     // recompterait la perte. Refus avant la première pièce.
-    const avertissements: string[] = [...avertissementsPaires];
+    const avertissements: string[] = [...avertissementsPaires, ...avertissementsImputation];
     // A7 ter, mineur 1 · le compte d'une créance reclassée en vigueur se dit ·
     // son encaissement est le « Recouvrement » du module. Second tour, m-d ·
     // le règlement se BORNE au solde net du compte (toutes ses lignes de
@@ -454,14 +527,16 @@ export class ReglementsService {
 
     const resultats = [];
     const aOrdonner: LigneAOrdonner[] = [];
-    for (const { r, compte, du, montant, enDevise, reduite } of prepares) {
+    for (const { r, compte, du, montant, enDevise, reduite, parts } of prepares) {
       const libelle = `Règlement ${compte.tiersCompte?.tiers.nom ?? compte.intitule}`.slice(0, 190);
       const ecriture = await this.ecritures.creer(tenantId, userId, {
         exerciceId: dto.exerciceId,
         journalId: dto.journalId,
         date: dto.date,
         libelle,
-        reference: r.reference || undefined,
+        // La pièce qui a notifié l'imputation au fournisseur (M6) suit la
+        // référence du règlement, et se lit sur la pièce comptable.
+        reference: [r.reference, parts && r.pieceImputation ? `imputation notifiée · ${r.pieceImputation.trim()}` : null].filter(Boolean).join(' · ') || undefined,
         lignes: enDevise
           ? lignesDuReglementEnDevise({
               sens: dto.sens,
@@ -476,8 +551,51 @@ export class ReglementsService {
               tresorerieEnDevise: dto.tresorerieEnDevise === true,
               libelle,
             })
-          : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle }),
+          : parts
+            ? lignesDuReglementImpute({ compteTiersId: r.compteId, compteTresorerieId, parts, libelle })
+            : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle }),
       });
+      if (parts) {
+        // UNE FACTURE, UNE LIGNE QUI LA PAIE, UN GROUPE · l'imputation
+        // désignée par le dossier (art. 151) devient le lettrage même, et le
+        // moteur de la TVA date chaque déduction sans imputer. Un lettrage
+        // refusé défait les groupes déjà posés et retire la pièce (F56).
+        const poses: string[] = [];
+        try {
+          for (const part of parts) {
+            const ligneTiersPart = ecriture.lignes.find((l) => l.compteId === r.compteId && l.libelle === part.libelle);
+            if (!ligneTiersPart) throw new ConflictException(`La ligne du règlement de « ${part.libelle} » est introuvable dans sa pièce.`);
+            const l = await this.lettrage.lettrerManuel(tenantId, r.compteId, [part.ligneId, ligneTiersPart.id], userId, {
+              autoriserPartiel: Math.round(part.montant * 100) < Math.round(part.du * 100),
+            });
+            poses.push(l.lettre);
+          }
+        } catch (e) {
+          // Le nettoyage manqué est CONSIGNÉ avec l'identifiant de la pièce, et
+          // l'erreur d'origine remonte toujours · jamais l'une pour l'autre.
+          try {
+            for (const code of poses) await this.lettrage.delettrer(tenantId, r.compteId, code);
+            await this.ecritures.retirerCompensation(tenantId, ecriture.id);
+          } catch (nettoyage) {
+            this.journalServeur.error(
+              `Règlement ${ecriture.id} du dossier ${tenantId} resté au brouillard avec ${poses.length} lettrage(s) · son retrait après l'échec du lettrage a échoué`,
+              nettoyage instanceof Error ? nettoyage.stack : String(nettoyage),
+            );
+          }
+          throw e;
+        }
+        resultats.push({ compte: compte.numero, ecritureId: ecriture.id, montant, partiel: Math.round(montant * 100) < Math.round(du * 100), lettre: poses.join(', ') });
+        aOrdonner.push({
+          compteId: r.compteId,
+          montant,
+          reference: r.reference || null,
+          ecritureId: ecriture.id,
+          pieceReglement: [journal.code, ecriture.numeroPiece].filter((v) => v !== null && v !== undefined).join(' '),
+          // L'ordre IMPRIME l'imputation déclarée (art. 151, M6).
+          imputationDeclaree: imputationImprimee(parts),
+        });
+        continue;
+      }
       const ligneTiers = ecriture.lignes.find((l) => l.compteId === r.compteId)!;
       // En devise, le partiel se lit DANS LA DEVISE · la contrevaleur payée au
       // cours du jour peut dépasser le dû en francs sans solder la facture.

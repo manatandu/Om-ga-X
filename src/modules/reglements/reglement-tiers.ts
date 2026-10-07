@@ -156,3 +156,125 @@ export function motifRefusMontant(montant: number, du: number): string | null {
   }
   return null;
 }
+
+/**
+ * L'IMPUTATION QUE LE DOSSIER DÉCLARE EN PAYANT SON FOURNISSEUR (Code civil,
+ * Livre III, art. 151 ; décision par la loi du 2026-10-07, point 4, jumeau
+ * 3). « Le débiteur de plusieurs dettes a le droit de déclarer, lorsqu'il
+ * paye, quelle dette il entend acquitter » · côté achats, le dossier est ce
+ * débiteur, et la part qu'il désigne pour chaque facture date la déduction de
+ * sa TVA (décret n° 011/42, art. 96, la taxe devenant exigible chez le
+ * prestataire à l'encaissement). La pièce porte alors UNE ligne au tiers par
+ * facture, lettrée avec elle seule · chaque groupe ne réunit qu'une facture
+ * et la somme qui la paie, et le moteur de la TVA la date sans imputer.
+ *
+ * Côté client, l'imputation est celle du CLIENT (art. 151) ou de la quittance
+ * qu'il a acceptée (art. 153), jamais celle du cabinet qui encaisse · elle se
+ * déclare, sa pièce à l'appui (`POST /imputations-paiements`). En devise, le
+ * règlement porte une seule ligne au tiers et son écart réalisé · les
+ * factures se règlent alors une à une. Une ligne réglée en partie par un
+ * lettrage à cheval se règle seule.
+ */
+export function motifRefusImputationReglement(e: {
+  sens: SensReglement;
+  parts: ReadonlyArray<{ ligneId: string; montant: number }>;
+  /** Le dû de chaque facture choisie, par identifiant de ligne. */
+  dus: ReadonlyMap<string, number>;
+  /** Le montant réglé (le dû entier quand il n'est pas saisi). */
+  montant: number;
+  enDevise: boolean;
+  reduite: boolean;
+  /** L'ordre de virement de ce règlement est préparé · il imprime l'imputation (M6). */
+  ordreVirement: boolean;
+  /** La pièce qui a notifié l'imputation au fournisseur, sans ordre de virement (M6). */
+  pieceImputation?: string | null;
+}): string | null {
+  const c = (x: number) => Math.round(x * 100) / 100;
+  if (e.sens === 'CLIENT') {
+    return (
+      'Côté client, l’imputation est celle que le client déclare en payant (Code civil, Livre III, art. 151) ou celle de la ' +
+      'quittance qu’il a acceptée (art. 153), jamais celle du cabinet qui encaisse · déclarez-la, sa pièce à l’appui, une fois ' +
+      'le règlement validé (imputation déclarée d’un paiement).'
+    );
+  }
+  if (e.enDevise) {
+    return 'Un règlement en devise porte une seule ligne au tiers avec son écart réalisé · réglez ces factures une à une pour désigner la part de chacune.';
+  }
+  if (e.reduite) {
+    return 'Une ligne d’à-nouveau réglée en partie par un lettrage à cheval se règle seule · retirez-la de ce règlement pour désigner les parts des autres.';
+  }
+  const vues = new Set<string>();
+  let total = 0;
+  for (const p of e.parts) {
+    if (vues.has(p.ligneId)) return 'Une même facture reçoit deux parts.';
+    vues.add(p.ligneId);
+    const du = e.dus.get(p.ligneId);
+    if (du === undefined) return 'Une part désigne une facture qui n’est pas choisie dans ce règlement.';
+    if (!(p.montant > 0)) return 'Une part réglée est un montant strictement positif · retirez la facture si elle n’est pas payée.';
+    if (c(p.montant) > c(du)) return `Une part (${c(p.montant).toFixed(2)}) dépasse le dû de sa facture (${c(du).toFixed(2)}).`;
+    total = c(total + p.montant);
+  }
+  for (const id of e.dus.keys()) {
+    if (!vues.has(id)) return 'Une facture choisie ne reçoit aucune part · donnez sa part, ou retirez-la du règlement.';
+  }
+  if (Math.round(total * 100) !== Math.round(e.montant * 100)) {
+    return `La somme des parts (${total.toFixed(2)}) diffère du montant réglé (${c(e.montant).toFixed(2)}).`;
+  }
+  // L'IMPUTATION SE DÉCLARE AU CRÉANCIER, « LORSQU'IL PAYE » (art. 151 ;
+  // relecture du 2026-10-07, M6) · l'ordre de virement l'imprime, sinon une
+  // pièce qui la lui a notifiée est exigée. Une imputation que le fournisseur
+  // n'a jamais reçue ne l'engage pas, et la déduction ne s'y fonde pas.
+  if (!e.ordreVirement && (e.pieceImputation ?? '').trim().length < 3) {
+    return (
+      'L’imputation que le dossier déclare se fait au fournisseur lorsqu’il paye (Code civil, Livre III, art. 151) · ' +
+      'préparez l’ordre de virement, qui imprime chaque facture et sa part, ou donnez la référence de la pièce qui la ' +
+      'lui a notifiée (lettre, courriel, bordereau).'
+    );
+  }
+  return null;
+}
+
+/**
+ * L'IMPUTATION, TELLE QUE L'ORDRE DE VIREMENT L'IMPRIME (M6) · chaque
+ * facture (sa référence) et sa part, dans l'ordre des parts.
+ */
+export function imputationImprimee(parts: ReadonlyArray<{ reference: string; montant: number }>): string {
+  const fmt = (x: number) =>
+    (Math.round(x * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `Factures payées · ${parts.map((p) => `${p.reference} : ${fmt(p.montant)}`).join(' ; ')}`;
+}
+
+/**
+ * Le libellé de la ligne du tiers qui paie CHAQUE facture · la base et la
+ * référence de la facture, rendu UNIQUE dans la pièce (une ligne retrouvée
+ * par son libellé, jamais par son rang, que la lecture ne garantit pas).
+ */
+export function libellesDesParts(base: string, factures: ReadonlyArray<{ id: string; reference: string }>): Map<string, string> {
+  const rendus = new Map<string, string>();
+  const pris = new Set<string>();
+  for (const f of factures) {
+    const tete = `${base.slice(0, 140)} · ${f.reference.slice(0, 36)}`;
+    let libelle = tete;
+    for (let n = 2; pris.has(libelle); n++) libelle = `${tete} (${n})`;
+    pris.add(libelle);
+    rendus.set(f.id, libelle);
+  }
+  return rendus;
+}
+
+/**
+ * LES LIGNES DU RÈGLEMENT IMPUTÉ · fournisseur seulement · un débit du 40 par
+ * facture, à sa part, puis le crédit de la trésorerie pour le total.
+ */
+export function lignesDuReglementImpute(params: {
+  compteTiersId: string;
+  compteTresorerieId: string;
+  parts: ReadonlyArray<{ montant: number; libelle: string }>;
+  libelle: string;
+}): LigneReglement[] {
+  const total = Math.round(params.parts.reduce((t, p) => t + p.montant, 0) * 100) / 100;
+  return [
+    ...params.parts.map((p) => ({ compteId: params.compteTiersId, debit: Math.round(p.montant * 100) / 100, libelle: p.libelle })),
+    { compteId: params.compteTresorerieId, credit: total, libelle: params.libelle },
+  ];
+}

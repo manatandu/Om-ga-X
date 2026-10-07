@@ -35,18 +35,43 @@ import { ENTREE_EN_VIGUEUR_LOI_23_053 } from '../../common/entree-en-vigueur-loi
  * l'art. 12, al. 3 n'en écarte aucune règle de liquidation. Le minimum joue
  * donc sur la période, au chiffre d'affaires de la période.
  *
- * L'ART. 55 (« Les éléments déjà imposés au cours d'un exercice sont déduits
- * du montant des revenus imposables […] en vue d'éviter la double imposition
- * d'un même revenu ») conforte la déduction des BÉNÉFICES de la période ; il
- * ne dit rien du chiffre d'affaires.
+ * LE CHIFFRE D'AFFAIRES DU MINIMUM DU PREMIER EXERCICE CLOS · tranché par la
+ * loi le 2026-10-07 (`docs/decisions-par-la-loi-2026-10-07-bis.md`, point 2,
+ * sources relues le 2026-10-07). C'est celui de l'année qui suit la création,
+ * SANS celui de la période de création · le chiffre d'affaires de l'exercice
+ * MOINS celui de la période (`chiffreAffairesMinimumPremierExercice`).
+ *  1. L'impôt est ANNUEL · « établi chaque année sur les bénéfices réalisés
+ *     l'exercice précédent » (art. 12, al. 1), « l'assiette de l'impôt dû au
+ *     titre de ladite année » (al. 4) ; l'al. 3 découpe le premier exercice
+ *     long en deux impositions, celle de la période, puis celle du premier
+ *     exercice clos.
+ *  2. Le chiffre d'affaires de l'art. 57 est « déclaré », et la déclaration
+ *     est annuelle, souscrite « au plus tard le 30 avril de l'année qui suit
+ *     celle de la réalisation des revenus » (LPF, art. 12), son relevé
+ *     portant sur « les ventes réelles effectuées au cours de l'année de
+ *     réalisation des revenus » (LPF, art. 13, al. 3 ; loi n° 23/053,
+ *     art. 151) · celui de la période a porté son propre minimum dans la
+ *     première déclaration. Le compter deux fois serait la double imposition
+ *     d'un même élément que l'art. 55 écarte dans son principe.
+ *  3. Pour une période de création de 2025, le minimum de la loi n° 23/053
+ *     porterait sinon sur des ventes antérieures à son entrée en vigueur
+ *     (art. 153 ; Constitution, art. 174, al. 1) · la même règle valant pour
+ *     les deux cas (C09, C10), elle ne retient que l'année qui suit.
+ * LA MÊME SOURCE QUE LA PÉRIODE · le chiffre d'affaires retranché est celui
+ * qui a porté le minimum de la période, lu au livre-journal au 31 décembre de
+ * l'année de création (un fait comptable, même quand le bénéfice de la
+ * période est DÉCLARÉ) · ainsi chaque vente compte une fois et une seule.
  *
- * CE QUE LE TEXTE NE DIT PAS, ET QUI N'EST PAS CODÉ · le chiffre d'affaires du
- * minimum du premier exercice clos. L'art. 12, al. 3 ne fait déduire que les
- * BÉNÉFICES de la période de création, pas son chiffre d'affaires ; le module
- * garde donc le chiffre d'affaires de l'exercice entier (lecture littérale,
- * celle d'avant) et le dit (`OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE`).
- * Une perte de la période de création n'est pas davantage visée (« ces
- * bénéfices ») · elle reste dans le résultat du premier exercice clos.
+ * LA PERTE DE LA PÉRIODE DE CRÉATION · tranché par la loi le même jour. Elle
+ * n'est ni déduite à part ni reportée à part · l'al. 3 ne fait venir en
+ * déduction que « ces bénéfices », et l'art. 51 ne reporte que « les pertes
+ * constatées au cours d'un exercice », or la période n'est pas un exercice
+ * (le premier exercice comptable est l'exercice long). Elle reste dans « les
+ * résultats du premier exercice comptable clos » et en diminue la base. Si
+ * celui-ci est déficitaire, c'est SA perte qui se reporte (art. 51), son
+ * caractère s'appréciant « par référence au résultat fiscal » (art. 52, 2°).
+ * L'impôt minimum payé sur la période ne s'impute sur rien · les art. 51 et
+ * 52 n'en prévoient pas l'imputation.
  */
 
 export interface PeriodeCreation {
@@ -91,12 +116,43 @@ export function periodeDeCreation(
 
 /**
  * Le bénéfice de la période qui vient « en déduction des résultats du premier
- * exercice comptable clos » · les BÉNÉFICES seuls, une perte n'est pas visée
- * par l'art. 12, al. 3 et reste dans le résultat de l'exercice.
+ * exercice comptable clos » · les BÉNÉFICES seuls (art. 12, al. 3, « ces
+ * bénéfices »). Une perte n'est ni déduite ni reportée à part (art. 51, « les
+ * pertes constatées au cours d'un exercice ») · elle reste dans le résultat du
+ * premier exercice clos.
  */
 export function deductionPeriodeCreation(resultatPeriode: number): number {
   return Math.max(resultatPeriode, 0);
 }
 
+/**
+ * Le chiffre d'affaires du minimum (art. 57) du premier exercice clos · celui
+ * de l'exercice MOINS celui de la période de création (décision par la loi du
+ * 2026-10-07, point 2). Jamais négatif · une année qui suit la création dont
+ * les avoirs dépasseraient les ventes n'a pas de chiffre d'affaires à imposer.
+ */
+export function chiffreAffairesMinimumPremierExercice(chiffreAffairesExercice: number, chiffreAffairesPeriode: number): number {
+  return Math.max(0, Math.round((chiffreAffairesExercice - chiffreAffairesPeriode) * 100) / 100);
+}
+
 export const OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE =
-  "Art. 12, al. 3 : seuls les BÉNÉFICES de la période de création viennent en déduction du premier exercice clos · le texte ne dit rien de son chiffre d'affaires. Le minimum de l'art. 57 du premier exercice clos est donc calculé sur le chiffre d'affaires de l'exercice ENTIER, période de création comprise, qui a déjà porté son propre minimum. L'art. 55 déduit « les éléments déjà imposés au cours d'un exercice […] du montant des revenus imposables » pour éviter la double imposition d'un même revenu · il vise les REVENUS imposables, non le chiffre d'affaires qui assied le minimum, et ne tranche donc pas davantage. Lecture littérale, que le texte ne tranche pas · à faire confirmer avant la déclaration si le minimum est retenu.";
+  "CHIFFRE D'AFFAIRES DU MINIMUM DU PREMIER EXERCICE CLOS · l'impôt est établi chaque année (loi n° 23/053, art. 12, al. 1 et 4), et l'art. 12, al. 3 découpe le premier exercice long en deux impositions. Le minimum de l'art. 57, assis sur le chiffre d'affaires « déclaré », se calcule donc pour le premier exercice clos sur le chiffre d'affaires de l'année qui suit la création · celui de l'exercice MOINS celui de la période de création, qui a porté son propre minimum dans la déclaration de l'année de création (LPF, art. 12 et 13, al. 3 ; loi n° 23/053, art. 151). Le compter deux fois serait la double imposition que l'art. 55 écarte, et, pour une période de création antérieure au 1er janvier 2026, ferait porter le minimum sur des ventes d'avant l'entrée en vigueur de la loi (art. 153).";
+
+/**
+ * D'OÙ VIENT LE CHIFFRE D'AFFAIRES RETRANCHÉ (relecture du 2026-10-07,
+ * mineur C09) · déclaré par le cabinet avec le bénéfice de la période, ou lu
+ * au livre-journal au 31 décembre de l'année de création · et, bénéfice
+ * déclaré sans son chiffre d'affaires, la lecture est dite.
+ */
+export function sourceChiffreAffairesPeriode(e: { chiffreAffairesDeclare: boolean; beneficeDeclare: boolean }): string {
+  if (e.chiffreAffairesDeclare) return "Le chiffre d'affaires retranché est celui que le cabinet DÉCLARE pour la période, d'après ses comptes intermédiaires.";
+  return (
+    "Le chiffre d'affaires retranché est celui de la période, lu au livre-journal au 31 décembre de l'année de création" +
+    (e.beneficeDeclare
+      ? " · le bénéfice de la période est déclaré, son chiffre d'affaires ne l'est pas · déclarez-le s'il diffère de cette lecture."
+      : '.')
+  );
+}
+
+export const OBSERVATION_PERTE_PERIODE_CREATION =
+  "PERTE DE LA PÉRIODE DE CRÉATION · elle n'est ni déduite ni reportée à part · l'art. 12, al. 3 ne fait venir en déduction que « ces bénéfices », et l'art. 51 ne reporte que « les pertes constatées au cours d'un exercice », la période n'en étant pas un. Elle reste dans les résultats du premier exercice clos et en diminue la base. Si celui-ci est déficitaire, c'est sa perte qui se reporte (art. 51), son caractère s'appréciant sur son résultat fiscal (art. 52, 2°) ; l'impôt minimum payé sur la période ne s'impute sur rien (art. 51 et 52).";

@@ -143,6 +143,8 @@ function lecture(f) {
     resultatComptable: f.resultatComptable,
     sourceResultat: f.sourceResultat,
     chiffreAffaires: f.chiffreAffaires,
+    // C09 (décision par la loi du 2026-10-07, point 2) · l'assiette du minimum.
+    chiffreAffairesMinimum: f.chiffreAffairesMinimum,
     totalReintegrations: f.totalReintegrations,
     totalDeductions: f.totalDeductions,
     resultatFiscalBrut: f.resultatFiscalBrut,
@@ -357,6 +359,30 @@ cas('C10', 'Premier exercice ouvert le 1er septembre 2025 et clos le 31 décembr
   await venteEtCharges(c, n, '2026-06-30', 50_000_000, [['60410000', 45_000_000]]);
   await valider(c, n, '2026-12-31');
   return { fiscal: lecture(await fiscal(c, n)), a11: lectureA11(await etatImpot(c, n)) };
+});
+
+/*
+  C09 BIS (décision par la loi du 2026-10-07, point 2) · L'ÉCART CHANGE L'IMPÔT.
+  Période de création à fort chiffre d'affaires (80 000 000, bénéfice 500 000,
+  minimum 800 000 dû), premier exercice clos à faible bénéfice (chiffre
+  d'affaires de 2027 · 20 000 000, bénéfice 500 000 après déduction de la
+  période) · minimum 200 000 et non 1 000 000. Rejoué À TRAVERS LA CLÔTURE ·
+  l'exercice long clos, l'impôt se relit inchangé, et 2028 lit sa base
+  d'acomptes sur l'impôt du premier exercice clos.
+*/
+cas('C09-bis', 'Premier exercice long, période de création à fort chiffre d\'affaires · le minimum du premier exercice clos sans elle', async () => {
+  const c = await dossier('Cas IS 09 bis', 'SOCIETE_RESPONSABILITE_LIMITEE', ['2026-09-01', '2027-12-31']);
+  const p = c.exercices.get('2026-09-01');
+  await venteEtCharges(c, p, '2026-11-30', 80_000_000, [['60410000', 79_500_000]]);
+  await venteEtCharges(c, p, '2027-06-30', 20_000_000, [['60410000', 19_500_000]]);
+  await valider(c, p, '2027-12-31');
+  const avant = lecture(await fiscal(c, p));
+  const a11 = lectureA11(await etatImpot(c, p));
+  const a28 = await exercice(c, '2028-01-01', '2028-12-31');
+  await venteEtCharges(c, a28, '2028-06-30', 1_000_000, []);
+  await valider(c, a28, '2028-12-31');
+  const clotures = await cloturer(c, [['2026-2027', p]]);
+  return { avant, a11, clotures, apres: { p: lecture(await fiscal(c, p)), a2028: lecture(await fiscal(c, a28)) } };
 });
 
 cas('C11', 'Acomptes versés, imputés, et acomptes de l\'exercice suivant avec supplément', async () => {

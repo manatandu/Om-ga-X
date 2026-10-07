@@ -144,11 +144,16 @@ describe('créances douteuses · écran (ligne A7)', () => {
   });
 
   it('1, 6 · modales en dialogue, Échap par la couche, envoi unique et fermeture tenue pendant l’envoi', () => {
-    // Quatre modales · le geste, l'annulation, « Lettrer au 416 » (second tour,
-    // B-1) et « Désigner les factures » (A7 bis).
-    expect(page.match(/role="dialog"/g)).toHaveLength(4);
-    expect(page.match(/aria-modal="true"/g)).toHaveLength(4);
-    expect(page.match(/aria-label="Fermer"/g)).toHaveLength(4);
+    // Cinq modales · le geste, l'annulation, « Lettrer au 416 » (second tour,
+    // B-1), « Désigner les factures » (A7 bis) et « Corriger par le résultat »
+    // (relecture du 2026-10-07, M9).
+    expect(page.match(/role="dialog"/g)).toHaveLength(5);
+    expect(page.match(/aria-modal="true"/g)).toHaveLength(5);
+    expect(page.match(/aria-label="Fermer"/g)).toHaveLength(5);
+    const corriger = page.slice(page.indexOf('async function corriger'));
+    expect(corriger).toMatch(/ev\.preventDefault\(\);\s*if \(!correction \|\| envoi \|\| !correction\.ecritureId\) return;/);
+    const fermerCorrection = page.slice(page.indexOf('function fermerCorrection'), page.indexOf('async function corriger'));
+    expect(fermerCorrection).toContain('if (envoi) return;');
     const designer = page.slice(page.indexOf('async function designer'), page.indexOf('function ouvrirLettrage416'));
     expect(designer).toMatch(/ev\.preventDefault\(\);\s*if \(!designation\?\.liste \|\| envoi\) return;/);
     const lettrer = page.slice(page.indexOf('async function lettrer'), page.indexOf('async function envoyer'));
@@ -246,6 +251,28 @@ describe('créances douteuses · cinquième relecture à l’écran (m2, m3, m5)
   });
 });
 
+describe('relecture du 2026-10-07 · M8 et M9 à l’écran', () => {
+  it('M9 · « Corriger par le résultat » est offert par le SERVEUR, au comptable, dans un exercice ouvert, et désigne l’écriture choisie', () => {
+    expect(page).toContain('{peutValider && ouvert && c.correctionOfferte && (');
+    const corps = page.slice(page.indexOf('async function corriger'));
+    expect(corps).toContain('`/creances-douteuses/${correction.creance.id}/correction-resultat`');
+    expect(corps).toContain('ecritureId: correction.ecritureId,');
+    // Les candidates sont lues sur le serveur, jamais recalculées ; un choix unique se présélectionne.
+    expect(page).toContain('api.get<CandidatesCorrection>(`/creances-douteuses/${c.id}/correction-resultat`)');
+    expect(page).toContain('l.ecritures.length === 1 ? l.ecritures[0].id : x.ecritureId');
+  });
+
+  it('M9 · une créance corrigée le dit et ne propose plus aucun geste', () => {
+    expect(page).toContain('Corrigée par le résultat · {c.correction.piece} du {jour(c.correction.date)}');
+    expect(page).toContain('{peutEcrire && !c.correction && (');
+  });
+
+  it('M8 · la dotation refusée d’un impayé reclassé sous l’encaissement et la méthode inconnue se disent dans la revue', () => {
+    expect(page).toContain('Dotation refusée · {proposition.dotationRefuseeImpaye}');
+    expect(page).toContain('{proposition.avertissementMethode}');
+  });
+});
+
 describe('A7 ter · le rapprochement et le lettrage de la créance éteinte, dits à l’écran', () => {
   const r = { provisoire: false, solde416: 1_160_000, resteModule: 1_160_000, solde491: 550_000, depreciationModule: 400_000 };
 
@@ -269,7 +296,9 @@ describe('A7 ter · le rapprochement et le lettrage de la créance éteinte, dit
     expect(messageLettrage416({ pose: true, code: 'C' })).toBe('Créance éteinte · ses lignes du 416 sont lettrées (C).');
     expect(messageLettrage416({ pose: false, motif: 'Créance éteinte · deux exercices.' })).toBe('Créance éteinte · deux exercices.');
     const envoyer = page.slice(page.indexOf('async function envoyer'), page.indexOf('async function annuler'));
-    expect(envoyer.match(/setInfo\(messageLettrage416\(r\?\.lettrage416\)\)/g)).toHaveLength(2);
+    expect(envoyer.match(/setInfo\(messageLettrage416\(r\?\.lettrage416\)\)/g)).toHaveLength(1);
+    // M8 · la perte dit aussi la méthode inconnue au jour du reclassement.
+    expect(envoyer).toContain('setInfo([messageLettrage416(r?.lettrage416), r?.avertissement].filter(Boolean).join(\' \') || null);');
     expect(envoyer).toContain('setInfo(r?.avertissement ?? null)');
   });
 });

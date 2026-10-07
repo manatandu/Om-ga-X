@@ -12,6 +12,7 @@ import {
   AnnulerMouvementDto,
   AnnulerReclassementDto,
   AnnulerRevueDto,
+  CorrigerParResultatDto,
   DeclarerCreanceOuvertureDto,
   DesignerFacturesDto,
   Lettrer416Dto,
@@ -162,6 +163,24 @@ export class CreancesDouteusesController {
     @Body() dto: AnnulerRevueDto,
   ) {
     return this.service.annulerRevue(user.tenantId, user.userId, id, revueId, dto);
+  }
+
+  /** M9 · les écritures qui peuvent corriger la créance par le résultat · lecture. */
+  @Get(':id/correction-resultat')
+  candidatesCorrection(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.candidatesCorrection(user.tenantId, id);
+  }
+
+  /**
+   * M9 · « Corriger par le résultat » (cadre conceptuel du SYCEBNL,
+   * § 3.3.1.2.4) · réservée au comptable, comme l'annulation qu'elle remplace
+   * dans un exercice clôturé.
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReserveAuComptable()
+  @Post(':id/correction-resultat')
+  corrigerParResultat(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CorrigerParResultatDto) {
+    return this.service.corrigerParResultat(user.tenantId, user.userId, id, dto);
   }
 
   /** L'annulation d'un reclassement (m2 · AUDCIF art. 20, al. 2) · réservée au comptable, comme la revue. */

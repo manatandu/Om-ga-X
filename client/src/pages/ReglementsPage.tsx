@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { sousFonctionServie } from '../lib/profil-dossier';
@@ -8,6 +8,16 @@ import { Aide } from '../components/chrome/Aide';
 import { OrdresVirement } from '../components/OrdresVirement';
 import { lignesDepuisSelection, rappelerLot, type LotVirement } from '../lib/lots-virement';
 import { montant as fmt } from '../lib/montants';
+import {
+  imputationDuReglement,
+  montantRegle,
+  motifDePart,
+  motifPieceImputation,
+  nomDeFacture,
+  partsServies,
+  reprendreLesParts,
+  sommeDesParts,
+} from '../lib/imputation-reglement';
 import { jourFr } from '../lib/jour-fr';
 import { coursPropose, devisesEtrangeres, type DeviseDuDossier } from '../lib/ligne-en-devise';
 import { comptesProposablesEcart, corpsReglementEnDevise, ecartEstime, libelleEcartRealise, natureDuCompte, nombreSaisi, type Referentiel } from '../lib/ecart-change';
@@ -67,6 +77,16 @@ export function ReglementsPage() {
   const [cochees, setCochees] = useState<Set<string>>(new Set());
   const [montants, setMontants] = useState<Record<string, string>>({});
   const [references, setReferences] = useState<Record<string, string>>({});
+  // La part de chaque facture d'un règlement fournisseur, par ligne (Code
+  // civil, Livre III, art. 151 · le dossier qui paie déclare ce qu'il acquitte).
+  const [parts, setParts] = useState<Record<string, string>>({});
+  // La pièce qui a notifié l'imputation au fournisseur, par tiers, quand
+  // aucun ordre de virement ne l'imprime (art. 151, relecture M6).
+  const [piecesImputation, setPiecesImputation] = useState<Record<string, string>>({});
+  // Ce que l'écran a fait d'une part saisie (reprise dans « Réglé », retirée),
+  // et le motif d'un règlement refusé avant l'envoi · par tiers, sous lui.
+  const [constatsParts, setConstatsParts] = useState<Record<string, string>>({});
+  const [motifsTiers, setMotifsTiers] = useState<Record<string, string>>({});
   // RÈGLEMENT EN DEVISE (ligne A6) · montant en devise, cours du jour et, au
   // SYCEBNL, compte d'écart de change, par tiers. Vides, le dû entier en
   // devise et le cours coté proposé.
@@ -142,23 +162,34 @@ export function ReglementsPage() {
       });
   }, [referentiel]);
 
+  // UNE RÉPONSE PÉRIMÉE EST JETÉE (relecture du 2026-10-07, mineur écran) ·
+  // changer de sens ou de date relance la lecture, et la réponse d'une
+  // lecture plus ancienne, arrivée après, ne remplace jamais la dernière.
+  const jetonLecture = useRef(0);
   const charger = async () => {
     if (!exerciceCourant) return;
+    const jeton = ++jetonLecture.current;
     setErreur(null);
     try {
       const g = await api.get<GroupeTiers[]>(
         `/reglements/echeances?exerciceId=${exerciceCourant.id}&sens=${sens}&jusquau=${jusquau}`,
       );
+      if (jeton !== jetonLecture.current) return;
       setGroupes(g);
       setConstatsLot([]);
       setCochees(new Set());
       setMontants({});
+      setParts({});
+      setPiecesImputation({});
+      setConstatsParts({});
+      setMotifsTiers({});
       setReferences({});
       setMontantsDevise({});
       setCoursSaisis({});
       setFrancsSaisis({});
       setComptesEcart({});
     } catch (err) {
+      if (jeton !== jetonLecture.current) return;
       setErreur(err instanceof ApiError ? err.message : 'Impossible de lire les échéances');
     }
   };
@@ -176,13 +207,38 @@ export function ReglementsPage() {
     return m;
   }, [groupes, cochees]);
 
-  const basculer = (id: string) =>
-    setCochees((prev) => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
+  /**
+   * Cocher ou décocher une facture · une part saisie ne disparaît pas sans un
+   * mot (`reprendreLesParts`) · reprise dans « Réglé » ou retirée, et dit.
+   */
+  const basculer = (g: GroupeTiers, id: string) => {
+    const n = new Set(cochees);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
+    setCochees(n);
+    const r = reprendreLesParts({
+      lignes: g.lignes,
+      restantes: g.lignes.filter((l) => n.has(l.id)),
+      parts,
+      montantSaisi: montants[g.compteId],
     });
+    setParts(r.parts);
+    if (r.montantSaisi !== montants[g.compteId]) setMontants((m) => ({ ...m, [g.compteId]: r.montantSaisi ?? '' }));
+    setConstatsParts((c) => {
+      const suite = { ...c };
+      if (r.constat) suite[g.compteId] = r.constat;
+      else delete suite[g.compteId];
+      return suite;
+    });
+    setMotifsTiers((m) => {
+      const suite = { ...m };
+      delete suite[g.compteId];
+      return suite;
+    });
+  };
+  /** Les factures cochées d'un tiers. */
+  const cocheesDu = (g: GroupeTiers) => g.lignes.filter((l) => cochees.has(l.id));
+  const ordreVirementDemande = avecOrdre && ordresServis && sens === 'FOURNISSEUR';
 
   const aRegler = (groupes ?? []).filter((g) => (duParCompte.get(g.compteId) ?? 0) > 0);
   /** La devise des factures cochées d'un tiers, ou `null` s'il se règle en francs. */
@@ -214,11 +270,26 @@ export function ReglementsPage() {
       francsPayes: francsDuGroupe(g, deviseId),
     });
   const devisesDuLot = [...new Map(aRegler.flatMap((g) => (deviseDuGroupe(g) ? [deviseDuGroupe(g)!] : [])).map((d) => [d.id, d])).values()];
+  /**
+   * LE RÈGLEMENT D'UN TIERS EN FRANCS, LU PAR LA MÊME RÈGLE POUR LE TOTAL ET
+   * L'ENVOI · parts servies (`partsServies`), parts lues
+   * (`imputationDuReglement`), « Réglé » lu (`montantRegle`).
+   */
+  const reglementEnFrancs = (g: GroupeTiers) => {
+    const coches = cocheesDu(g);
+    const servies = partsServies({ sens, cochees: coches });
+    const imputation = servies.servies ? imputationDuReglement({ lignes: coches, parts, montantSaisi: montants[g.compteId] }) : {};
+    if (imputation.motif) return { motif: imputation.motif };
+    if (imputation.imputation) return { montant: imputation.montant!, imputation: imputation.imputation };
+    const regle = montantRegle(montants[g.compteId]);
+    if (regle.motif) return { motif: regle.motif };
+    return { montant: regle.montant, du: duParCompte.get(g.compteId) ?? 0 };
+  };
   const total = aRegler.reduce((s, g) => {
     const devise = deviseDuGroupe(g);
     if (devise) return s + francsDuGroupe(g, devise.id);
-    const saisi = montants[g.compteId];
-    return s + (saisi ? Number(saisi.replace(',', '.')) || 0 : duParCompte.get(g.compteId) ?? 0);
+    const r = reglementEnFrancs(g);
+    return s + (r.montant ?? ('du' in r ? r.du ?? 0 : 0));
   }, 0);
 
   const enregistrer = async () => {
@@ -228,16 +299,38 @@ export function ReglementsPage() {
     setAvertissements([]);
     // Les tiers en devise se vérifient AVANT l'envoi · un cours manquant
     // est dit sur le tiers, plutôt qu'au retour du serveur.
+    // Une case cochée avant le chargement du dossier n'émet aucun ordre.
+    const ordreVirement = avecOrdre && ordresServis && sens === 'FOURNISSEUR';
     const corps: Record<string, unknown>[] = [];
+    // Le motif d'un tiers se DIT SOUS LUI, et le bandeau le rappelle.
+    const refuser = (g: GroupeTiers, motif: string) => {
+      setMotifsTiers({ [g.compteId]: motif });
+      setErreur(`${g.numero} · ${motif}`);
+    };
+    setMotifsTiers({});
     for (const g of aRegler) {
-      const ligneIds = g.lignes.filter((l) => cochees.has(l.id)).map((l) => l.id);
+      const ligneIds = cocheesDu(g).map((l) => l.id);
       const devise = deviseDuGroupe(g);
       if (!devise) {
-        const saisi = montants[g.compteId];
+        const r = reglementEnFrancs(g);
+        if (r.motif) return refuser(g, r.motif);
+        const motifPiece =
+          'imputation' in r && r.imputation
+            ? motifPieceImputation({ avecParts: true, ordreVirement, pieceImputation: piecesImputation[g.compteId] })
+            : null;
+        if (motifPiece) return refuser(g, motifPiece);
         corps.push({
           compteId: g.compteId,
           ligneIds,
-          ...(saisi ? { montant: Number(saisi.replace(',', '.')) } : {}),
+          ...('imputation' in r && r.imputation
+            ? {
+                montant: r.montant,
+                imputation: r.imputation,
+                ...(!ordreVirement ? { pieceImputation: piecesImputation[g.compteId].trim() } : {}),
+              }
+            : r.montant !== undefined
+              ? { montant: r.montant }
+              : {}),
           ...(references[g.compteId] ? { reference: references[g.compteId] } : {}),
         });
         continue;
@@ -251,10 +344,7 @@ export function ReglementsPage() {
         compteEcartChangeId: comptesEcart[g.compteId],
         reference: references[g.compteId],
       });
-      if (!r.corps) {
-        setErreur(`${g.numero} · ${r.motif}`);
-        return;
-      }
+      if (!r.corps) return refuser(g, r.motif ?? 'Règlement en devise incomplet.');
       corps.push(r.corps);
     }
     const enDeviseCoche = tresorerieEnDevise && devisesDuLot.length > 0;
@@ -269,7 +359,6 @@ export function ReglementsPage() {
     }
     setEnvoi(true);
     try {
-      const ordreVirement = avecOrdre && ordresServis && sens === 'FOURNISSEUR';
       const r = await api.post<{
         reglements: { compte: string; montant: number; partiel: boolean; lettre: string; ecartChange?: number }[];
         ordre: { id: string; numero: number } | null;
@@ -315,6 +404,11 @@ export function ReglementsPage() {
     const r = rappelerLot(lot, groupes);
     setCochees(new Set(r.cochees));
     setMontants(r.montants);
+    // Les parts d'un rappel précédent ne valent pas pour ce lot.
+    setParts({});
+    setPiecesImputation({});
+    setConstatsParts({});
+    setMotifsTiers({});
     setConstatsLot(r.constats);
     setAvecOrdre(true);
     if (lot.journalId && journaux.some((j) => j.id === lot.journalId)) setJournalId(lot.journalId);
@@ -480,8 +574,8 @@ export function ReglementsPage() {
         )}
         <Aide
           titre="Règlement des tiers"
-          texte="Cochez les factures à régler. OmegaX passe une pièce par tiers au journal de trésorerie choisi (40 contre 52 pour un fournisseur, 52 contre 41 pour un client) et lettre aussitôt chaque facture avec son règlement. Un montant inférieur au dû donne un règlement partiel et un lettrage partiel ; un montant supérieur est refusé, l'excédent étant une avance ou un trop-perçu. Les factures non parvenues, produits à recevoir et avances (408, 409, 418, 419) ne se règlent pas ici. Une facture en devise se règle dans sa devise, au cours du jour du règlement · le tiers est soldé à sa valeur d'origine, et la différence avec ce qui est payé est la perte ou le gain de change réalisé, sur sa propre ligne (656 ou 756 au SYSCOHADA ; au SYCEBNL, qui n'ouvre ni 656 ni 756, 658 Charges diverses ou 7588 Autres produits divers, résidu de ses fiches 65 et 75)."
-          source="Guide d'application SYSCOHADA, Partie 1 ch. 4 · SYCEBNL, fiches des comptes 40 et 41 · AUDCIF art. 55 et Titre VIII ch. 22 § 2.3 · Sage 100 i7, règlement des tiers"
+          texte="Cochez les factures à régler. OmegaX passe une pièce par tiers au journal de trésorerie choisi (40 contre 52 pour un fournisseur, 52 contre 41 pour un client) et lettre aussitôt chaque facture avec son règlement. Un montant inférieur au dû donne un règlement partiel et un lettrage partiel ; un montant supérieur est refusé, l'excédent étant une avance ou un trop-perçu. Pour un fournisseur, la part de chaque facture cochée se déclare (Code civil, Livre III, art. 151) · chaque facture est alors lettrée avec sa seule part, qui date la déduction de sa TVA ; sans parts, un règlement partiel de plusieurs factures suit l'imputation légale (art. 154 · les échues d'abord, la plus ancienne, au prorata à date égale). Les factures non parvenues, produits à recevoir et avances (408, 409, 418, 419) ne se règlent pas ici. Une facture en devise se règle dans sa devise, au cours du jour du règlement · le tiers est soldé à sa valeur d'origine, et la différence avec ce qui est payé est la perte ou le gain de change réalisé, sur sa propre ligne (656 ou 756 au SYSCOHADA ; au SYCEBNL, qui n'ouvre ni 656 ni 756, 658 Charges diverses ou 7588 Autres produits divers, résidu de ses fiches 65 et 75)."
+          source="Guide d'application SYSCOHADA, Partie 1 ch. 4 · SYCEBNL, fiches des comptes 40 et 41 · Code civil, Livre III, art. 151 à 154 · AUDCIF art. 55 et Titre VIII ch. 22 § 2.3 · Sage 100 i7, règlement des tiers"
         />
       </div>
 
@@ -554,6 +648,12 @@ export function ReglementsPage() {
                 sansComptePrescrit && sensEcart !== null
                   ? motifAucunCompteRetenu(proposables, sensEcart === 'PERTE' ? "de change (656, 658 ou 676)" : "de change (756, 7588 ou 776)")
                   : null;
+              // Le champ « Part », la somme des parts et la pièce de
+              // l'imputation · une seule règle (`partsServies`).
+              const coches = cocheesDu(g);
+              const servies = partsServies({ sens, cochees: coches });
+              const somme = servies.servies ? sommeDesParts(coches, parts) : null;
+              const motifRegle = montantRegle(montants[g.compteId]).motif ?? null;
               return (
                 <tbody key={g.compteId}>
                   <tr className="bg-[var(--a-50)]">
@@ -623,12 +723,28 @@ export function ReglementsPage() {
                             <>
                               <span className="text-text-dim">Réglé</span>
                               <input
+                                aria-label={`Montant réglé · ${g.numero}`}
+                                aria-invalid={motifRegle ? true : undefined}
+                                title={motifRegle ?? undefined}
                                 inputMode="decimal"
                                 placeholder={fmt(du)}
                                 value={montants[g.compteId] ?? ''}
                                 onChange={(e) => setMontants((m) => ({ ...m, [g.compteId]: e.target.value }))}
                                 className="w-[110px] border border-border px-1.5 py-[1px] text-right"
                               />
+                              {somme !== null && <span className="text-text-dim">Parts · {fmt(somme)}</span>}
+                              {somme !== null && !ordreVirementDemande && (
+                                <>
+                                  <span className="text-text-dim">Pièce qui notifie l'imputation</span>
+                                  <input
+                                    aria-label={`Pièce qui notifie l'imputation au fournisseur · ${g.numero}`}
+                                    value={piecesImputation[g.compteId] ?? ''}
+                                    onChange={(e) => setPiecesImputation((m) => ({ ...m, [g.compteId]: e.target.value }))}
+                                    title="Lettre, courriel ou bordereau qui a dit au fournisseur quelle facture ce règlement paie · l'ordre de virement, s'il est préparé, l'imprime à sa place"
+                                    className="w-[150px] border border-border px-1.5 py-[1px]"
+                                  />
+                                </>
+                              )}
                             </>
                           )}
                           <span className="text-text-dim">N° chèque ou virement</span>
@@ -649,6 +765,19 @@ export function ReglementsPage() {
                       ) : null}
                     </td>
                   </tr>
+                  {(motifsTiers[g.compteId] || servies.motif || constatsParts[g.compteId]) && (
+                    <tr>
+                      <td colSpan={5} className="px-2 py-1 text-[11.5px]">
+                        {motifsTiers[g.compteId] && (
+                          <div role="alert" className="text-danger">
+                            {motifsTiers[g.compteId]}
+                          </div>
+                        )}
+                        {servies.motif && <div className="text-warning">{servies.motif}</div>}
+                        {constatsParts[g.compteId] && <div className="text-text-dim">{constatsParts[g.compteId]}</div>}
+                      </td>
+                    </tr>
+                  )}
                   {(g.aNouveauProvisoireEcartees ?? 0) > 0 && (
                     <tr>
                       <td colSpan={5} className="px-2 py-1 text-warning">
@@ -673,7 +802,7 @@ export function ReglementsPage() {
                           aria-label="Régler cette facture"
                           disabled={!peutEcrire}
                           checked={cochees.has(l.id)}
-                          onChange={() => basculer(l.id)}
+                          onChange={() => basculer(g, l.id)}
                         />
                       </td>
                       <td className="px-2 py-1">{jourFr(l.echeance)}</td>
@@ -686,6 +815,33 @@ export function ReglementsPage() {
                       </td>
                       <td className="px-2 py-1 text-right">
                         {fmt(l.montant)}
+                        {peutEcrire && servies.servies && cochees.has(l.id)
+                          ? (() => {
+                              // Chaque part se confronte à SON dû avant l'envoi,
+                              // la facture nommée (même règle que l'envoi).
+                              const motif = motifDePart(l, parts[l.id]);
+                              return (
+                                <div>
+                                  <input
+                                    aria-label={`Part réglée de ${nomDeFacture(l)}`}
+                                    aria-invalid={motif ? true : undefined}
+                                    aria-describedby={motif ? `part-${l.id}` : undefined}
+                                    inputMode="decimal"
+                                    placeholder="Part"
+                                    value={parts[l.id] ?? ''}
+                                    onChange={(e) => setParts((m) => ({ ...m, [l.id]: e.target.value }))}
+                                    title="Part réglée de cette facture · le dossier qui paie déclare ce qu'il acquitte (Code civil, Livre III, art. 151). Vide pour toutes · imputation légale (art. 154)"
+                                    className="w-[100px] border border-border px-1.5 py-[1px] text-right"
+                                  />
+                                  {motif && (
+                                    <div id={`part-${l.id}`} className="text-danger text-left">
+                                      {motif}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()
+                          : null}
                         {l.deviseId && l.montantDevise !== null && l.montantDevise !== undefined ? (
                           <div className="text-text-dim">
                             {fmt(l.montantDevise)} {l.deviseCode}

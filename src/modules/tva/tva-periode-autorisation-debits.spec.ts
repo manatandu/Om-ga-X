@@ -165,7 +165,9 @@ function service(lignesTva: LigneTva[], regime = 'LIVRAISONS', dateAutorisationD
   const prisma = {
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't1', regimeExigibiliteTva: regime, referentiel: 'SYSCOHADA', dateAutorisationDebitsTva }) },
     tauxTva: { findMany: jest.fn().mockResolvedValue([TAUX]) },
-    ecriture: { count: jest.fn().mockResolvedValue(0) },
+    // Aucune écriture d'à-nouveau dans ce dossier d'un seul exercice · la
+    // lecture d'un groupe (`traduireLesReports`) n'a aucune chaîne à suivre.
+    ecriture: { count: jest.fn().mockResolvedValue(0), findFirst: jest.fn().mockResolvedValue(null) },
     ligneEcriture: {
       findMany,
       aggregate: jest.fn().mockResolvedValue({ _sum: { credit: 0, debit: 0 } }),
@@ -174,6 +176,7 @@ function service(lignesTva: LigneTva[], regime = 'LIVRAISONS', dateAutorisationD
     factureCreanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
     creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     liquidationTva: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+    imputationPaiement: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   return { s: new TauxTvaService(prisma, {} as EcritureService), findMany };
 }
@@ -398,6 +401,94 @@ describe('art. 62 · le règlement antérieur au débit avance l’exigibilité'
     const mars = await service(lignes).s.declaration('t1', MARS, FIN_MARS);
     expect(mars.totalDeductible).toBe(160_000);
     expect(mars.mentionExigibilite).not.toContain('RÈGLEMENT ANTÉRIEUR AU DÉBIT');
+  });
+});
+
+/**
+ * RELECTURE DU 2026-10-07, M7 · le groupe à PLUSIEURS FACTURES aux débits.
+ * Deux ventes de services d'un dossier aux DÉBITS, F1 du 10 avril (taxe
+ * 160 000, TTC 1 160 000) et F2 du 15 avril (taxe 80 000, TTC 580 000),
+ * lettrées dans UN groupe avec un encaissement du 20 mars. Le groupe était
+ * daté au débit en silence (mars 0). L'encaissement s'impute (Code civil,
+ * Livre III, art. 154 · antérieur à toute facture, sur la première qui naît,
+ * F1) · la taxe de F1 est exigible en MARS (décret n° 011/42, art. 62), celle
+ * de F2 au débit, en avril.
+ */
+function groupeAuxDebits(reglement: { date: string; montant: number; avoir?: boolean }) {
+  const f1 = { id: 'g-f1', debit: 1_160_000, credit: 0, ecriture: { id: 'e-f1', date: new Date('2026-04-10'), libelle: 'Facture F1' } };
+  const f2 = { id: 'g-f2', debit: 580_000, credit: 0, ecriture: { id: 'e-f2', date: new Date('2026-04-15'), libelle: 'Facture F2' } };
+  const r = {
+    id: 'g-r',
+    debit: 0,
+    credit: reglement.montant,
+    ecriture: {
+      id: 'e-r',
+      date: new Date(reglement.date),
+      libelle: reglement.avoir ? 'Avoir' : 'Encaissement',
+      _count: { lignes: reglement.avoir ? 1 : 0 },
+    },
+  };
+  const lettrage = { id: 'G1', statut: 'PARTIEL', solde: 1_740_000 - reglement.montant, soldeAt: null, lignes: [f1, f2, r] };
+  const vente = (f: typeof f1, tva: number) => ({
+    id: `tva-${f.id}`,
+    tauxTvaId: TAUX.id,
+    compteId: 'c4432',
+    compte: { numero: '44320000' },
+    debit: 0,
+    credit: tva,
+    piece: null,
+    fiche: null,
+    ecriture: {
+      id: f.ecriture.id,
+      date: f.ecriture.date,
+      libelle: f.ecriture.libelle,
+      lignes: [
+        { id: f.id, debit: f.debit, credit: 0, compte: { numero: '41110001', classe: 'CLASSE_4' }, lettrage },
+        { debit: 0, credit: tva * 6.25, compte: { numero: '70610000', classe: 'CLASSE_7', tiersCompte: null }, lettrage: null },
+      ],
+    },
+  });
+  return [vente(f1, 160_000), vente(f2, 80_000)] as unknown as LigneTva[];
+}
+
+describe('M7 · aux débits, le groupe à plusieurs factures impute son règlement antérieur (décret art. 62)', () => {
+  it('l’encaissement du 20 mars paie F1 (art. 154) · sa taxe en MARS, celle de F2 au débit, en avril', async () => {
+    const lignes = groupeAuxDebits({ date: '2026-03-20', montant: 1_160_000 });
+    const mars = await service(lignes, 'DEBITS').s.declaration('t1', MARS, FIN_MARS);
+    expect(mars.totalCollecte).toBe(160_000);
+    expect(mars.imputationsDesPaiements).toEqual([
+      expect.objectContaining({ factures: ['Facture F1', 'Facture F2'], encaisse: 1_160_000, fondement: 'LEGALE' }),
+    ]);
+    const avril = await service(lignes, 'DEBITS').s.declaration('t1', AVRIL, FIN_AVRIL);
+    expect(avril.totalCollecte).toBe(80_000);
+  });
+
+  it('un groupe que le moteur ne décompose pas (un avoir) reste au débit, NOMMÉ avec la somme perçue avant le débit', async () => {
+    const lignes = groupeAuxDebits({ date: '2026-03-20', montant: 1_160_000, avoir: true });
+    const mars = await service(lignes, 'DEBITS').s.declaration('t1', MARS, FIN_MARS);
+    expect(mars.totalCollecte).toBe(0);
+    expect(mars.groupesImputationIndeterminee).toEqual([
+      { factures: ['Facture F1', 'Facture F2'], encaisse: 1_160_000, motif: 'régime des débits, taxe datée au débit · un avoir dans le groupe' },
+    ]);
+    const avril = await service(lignes, 'DEBITS').s.declaration('t1', AVRIL, FIN_AVRIL);
+    expect(avril.totalCollecte).toBe(240_000);
+  });
+
+  it('règle pure · la part payée avant le débit à sa date, le reste (même jour ou après, ou non payé) au débit', () => {
+    const debit = new Date('2026-04-10');
+    expect(
+      TauxTvaService.tranchesAuxDebitsImputees(
+        [
+          { date: new Date('2026-03-20'), fraction: 0.25 },
+          { date: new Date('2026-04-10'), fraction: 0.25 },
+          { date: null, fraction: 0.5 },
+        ],
+        debit,
+      ),
+    ).toEqual([
+      { date: new Date('2026-03-20'), fraction: 0.25, auPaiement: true },
+      { date: debit, fraction: 0.75 },
+    ]);
   });
 });
 

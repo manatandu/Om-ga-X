@@ -204,6 +204,8 @@ function controles(ecritures: ReturnType<typeof ecriture>[], methodeCotisations:
     rapprochementBancaire: { findMany: jest.fn().mockResolvedValue([]) },
     // Ligne A13 · les clôtures de période et totales que lit le contrôle 33.
     cloture: { findMany: jest.fn().mockResolvedValue([]) },
+    // D7 · les impayés d'adhérent reclassés sous l'encaissement (contrôle 6 ter) · aucun ici.
+    creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   return new ControlesService(prisma);
 }

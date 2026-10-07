@@ -14,9 +14,18 @@ import { EcritureService } from '../comptabilite/ecriture.service';
  * chaque somme perçue rend exigible sa taxe (O.-L. n° 10/001, art. 25, 2° ;
  * décret n° 011/42, art. 57), et toute imputation possible des paiements
  * donne le même montant · `main` rendait 0 tant que le groupe n'était pas
- * soldé. Le corpus ne disant pas quelle facture une somme partielle paie,
- * un groupe de composition DIFFÉRENTE garde la règle de `main`, et il est
- * NOMMÉ dans la déclaration.
+ * soldé.
+ *
+ * GROUPE DE COMPOSITION DIFFÉRENTE · REVU LE 2026-10-07 (décision par la loi,
+ * point 4). Le Code civil, Livre III, art. 151 à 154, dit quelle facture une
+ * somme paie · la déclaration du débiteur ou la quittance qu'il a acceptée,
+ * sinon l'ordre légal (échues d'abord, la plus ancienne, au prorata à date
+ * égale). La règle de `main` n'est plus gardée pour ces groupes ; elle ne
+ * reste qu'au groupe qui porte un avoir, une ligne illisible ou un à-nouveau
+ * dont la facture n'est pas retrouvée, NOMMÉ pour ce motif. Le jeu « biens et
+ * services » rend la même chose que `main` (la facture de biens, la plus
+ * ancienne, est payée la première) ; le jeu « services et facture sans taxe »
+ * dit l'écart.
  *
  * LES VALEURS ATTENDUES ONT ÉTÉ RELEVÉES EN FAISANT TOURNER LE MOTEUR DE
  * `main` sur ces mêmes jeux (fichier de `main` copié à côté le temps du
@@ -34,8 +43,11 @@ const mois = (m: string) => {
   return [debut, new Date(Date.UTC(debut.getUTCFullYear(), debut.getUTCMonth() + 1, 0))] as const;
 };
 
-/** `ecriture` · l'identifiant de l'écriture qui porte la ligne (la facture, ou le règlement). */
-type LigneGroupe = { debit: number; credit: number; date: string; avoir?: boolean; ecriture?: string };
+/**
+ * `ecriture` · l'identifiant de l'écriture qui porte la ligne (la facture, ou
+ * le règlement) ; `echeance` · l'échéance de la ligne (art. 154, dette échue).
+ */
+type LigneGroupe = { debit: number; credit: number; date: string; avoir?: boolean; ecriture?: string; echeance?: string; corrige?: string };
 
 /** Une ligne de TVA collectée, sa contrepartie de produit et sa ligne client lettrée dans le groupe donné. */
 function vente(p: {
@@ -57,10 +69,19 @@ function vente(p: {
         solde: p.groupe.solde,
         soldeAt: null,
         createdAt: p.groupe.createdAt ? jour(p.groupe.createdAt) : undefined,
-        lignes: p.groupe.lignes.map((g) => ({
+        lignes: p.groupe.lignes.map((g, i) => ({
+          id: g.ecriture ? `g-${g.ecriture}-${i}` : undefined,
           debit: g.debit,
           credit: g.credit,
-          ecriture: { id: g.ecriture, date: jour(g.date), createdAt: jour(g.date), _count: { lignes: g.avoir ? 1 : 0 } },
+          dateEcheance: g.echeance ? jour(g.echeance) : null,
+          ecriture: {
+            id: g.ecriture,
+            libelle: g.ecriture ? `Facture ${g.ecriture}` : undefined,
+            corrigeEcritureId: g.corrige ?? null,
+            date: jour(g.date),
+            createdAt: jour(g.date),
+            _count: { lignes: g.avoir ? 1 : 0 },
+          },
         })),
       }
     : null;
@@ -108,8 +129,27 @@ function avoir(p: { id: string; date: string; tva: number; ttc: number }) {
   };
 }
 
-function prisma(lignes: unknown[], liquidations: unknown[] = [], evenementsAudit: unknown[] = []) {
+/** Une imputation déclarée (Code civil, Livre III, art. 151 et 153), telle que la base la garde. */
+type Declaree = { ligneReglementId: string; ligneFactureId: string; montant: number; retireeLe?: Date | null; tenantId?: string };
+
+function prisma(lignes: unknown[], liquidations: unknown[] = [], evenementsAudit: unknown[] = [], declarees: Declaree[] = []) {
   return {
+    // LA DOUBLURE HONORE LA REQUÊTE · dossier, déclarations actives, paiements
+    // demandés · une lecture qui oublierait l'un des trois rendrait ici ce
+    // qu'elle ne doit pas.
+    imputationPaiement: {
+      findMany: jest.fn(({ where }: { where: { tenantId: string; retireeLe: null; ligneReglementId: { in: string[] } } }) =>
+        Promise.resolve(
+          declarees.filter(
+            (d) =>
+              (d.tenantId ?? 't1') === where.tenantId &&
+              where.retireeLe === null &&
+              !d.retireeLe &&
+              where.ligneReglementId.in.includes(d.ligneReglementId),
+          ),
+        ),
+      ),
+    },
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't1', regimeExigibiliteTva: 'LIVRAISONS', referentiel: 'SYSCOHADA' }) },
     tauxTva: { findMany: jest.fn().mockResolvedValue([TAUX]) },
     // `findFirst` · une écriture d'à-nouveau existe dans le dossier (garde de
@@ -299,16 +339,19 @@ describe('Sans créance désignée, chaque groupe rend ce que rend main, sauf le
     expect((await s.declaration('t1', ...mois('2027-01'))).totalCollecte).toBe(251_034.48);
   });
 
-  it('F1 · biens et services · la fraction cumulée est gardée et le groupe est NOMMÉ avec la somme perçue', async () => {
+  it('point 4 · biens et services · le million du 12 mars est IMPUTÉ (art. 154) · G (10 janvier) d’abord, S reçoit 420 000 · 57 931,03, rien de « non déterminé »', async () => {
     const s = new TauxTvaService(prisma(JEUX['groupe avec une facture de biens et une facture de services'].lignes), {} as EcritureService);
     const d = await s.declaration('t1', ...mois('2026-03'));
-    expect(d.groupesImputationIndeterminee).toEqual([
-      { factures: ['Facture S'], encaisse: 1_000_000, motif: 'factures de composition différente (taux, nature, exonération ou part non lettrée)' },
-    ]);
-    expect(d.groupesImputationIndetermineeTotal).toBe(1);
+    // 420 000 × 160 000 / 1 160 000 = 57 931,03.
+    expect(d.totalCollecte).toBe(57_931.03);
+    expect(d.groupesImputationIndeterminee).toEqual([]);
+    expect(d.groupesImputationIndetermineeTotal).toBe(0);
     expect(d.tvaEnAttenteImputationIndeterminee).toBe(0);
-    expect(d.mentionExigibilite).toContain('ENCAISSEMENT DONT L’IMPUTATION N’EST PAS DÉTERMINÉE');
-    expect(d.mentionExigibilite).toContain('factures « Facture S », 1');
+    expect(d.imputationsDesPaiements).toEqual([{ factures: ['Facture G', 'Facture S'], encaisse: 1_000_000, fondement: 'LEGALE' }]);
+    expect(d.mentionExigibilite).not.toContain('IMPUTATION N’EST PAS DÉTERMINÉE');
+    expect(d.mentionExigibilite).toContain('IMPUTATION DES PAIEMENTS · factures « Facture G », « Facture S », 1');
+    expect(d.mentionExigibilite).toContain('imputation légale, Code civil, Livre III, art. 154');
+    expect(d.mentionExigibilite).toContain('ni intérêt, ni pénalité, ni sûreté');
   });
 
   it('F1 · un mois liquidé reste FIGÉ · février liquidé avec A seule (160 000), B entrée en mars · rien de plus en mars ni en avril', async () => {
@@ -863,3 +906,190 @@ describe('Second tour · l’ancien moteur ne voit jamais la prolongation, la ch
     expect(d.rapprochementsANouveauAbandonnes.map((a) => a.motif)).toEqual(['groupe de lettrage de plus de 500 lignes, rapprochement non fait']);
   });
 });
+
+/**
+ * DÉCISION PAR LA LOI DU 2026-10-07, POINT 4 · L'IMPUTATION DES PAIEMENTS
+ * (Code civil, Livre III, art. 151 à 154) DATE LA TAXE D'UN GROUPE DE
+ * COMPOSITION DIFFÉRENTE. Jeu · S, prestation de 1 160 000 TTC (TVA 160 000)
+ * du 10 janvier 2026 ; X, facture sans taxe de 1 000 000 du 20 janvier ; un
+ * paiement de 1 160 000 le 15 février. L'imputation légale (art. 154) paie S,
+ * la plus ancienne · 160 000 exigibles en février. La règle de `main` (fraction
+ * cumulée du groupe) rendait (1 160 000 - 1 000 000) / 1 160 000 × 160 000 =
+ * 22 068,97, et le reste attendait le solde du groupe.
+ */
+describe('point 4 · l’imputation des paiements date la taxe d’un groupe de composition différente', () => {
+  const groupeSX = (lignes: LigneGroupe[], statut: 'PARTIEL' | 'SOLDE' = 'PARTIEL', solde = 1_000_000) => ({ id: 'GSX', statut, solde, lignes });
+  const sansEcheance: LigneGroupe[] = [
+    { debit: 1_160_000, credit: 0, date: '2026-01-10', ecriture: 'S' },
+    { debit: 1_000_000, credit: 0, date: '2026-01-20', ecriture: 'X' },
+    { debit: 0, credit: 1_160_000, date: '2026-02-15', ecriture: 'R' },
+  ];
+  const lignesS = (lignes: LigneGroupe[], statut?: 'PARTIEL' | 'SOLDE', solde?: number) => [
+    vente({ id: 'S', date: '2026-01-10', tva: 160_000, ttc: 1_160_000, produit: '70610000', groupe: groupeSX(lignes, statut, solde) }),
+  ];
+
+  it('S, la plus ancienne, est payée la première · février 160 000 (main rendait 22 068,97)', async () => {
+    const s = new TauxTvaService(prisma(lignesS(sansEcheance)), {} as EcritureService);
+    const fevrier = await s.declaration('t1', ...mois('2026-02'));
+    expect(fevrier.totalCollecte).toBe(160_000);
+    expect(fevrier.imputationsDesPaiements).toEqual([{ factures: ['Facture S', 'Facture X'], encaisse: 1_160_000, fondement: 'LEGALE' }]);
+    expect(fevrier.groupesImputationIndeterminee).toEqual([]);
+    expect((await s.declaration('t1', ...mois('2026-01'))).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...mois('2026-03'))).totalCollecte).toBe(0);
+  });
+
+  it('l’échue avant la non échue · S à échéance du 30 juin, X échue · le paiement va d’abord à X, S reçoit 160 000 · 22 068,97', async () => {
+    const lignes: LigneGroupe[] = [
+      { debit: 1_160_000, credit: 0, date: '2026-01-10', ecriture: 'S', echeance: '2026-06-30' },
+      { debit: 1_000_000, credit: 0, date: '2026-01-20', ecriture: 'X', echeance: '2026-01-20' },
+      { debit: 0, credit: 1_160_000, date: '2026-02-15', ecriture: 'R' },
+    ];
+    const s = new TauxTvaService(prisma(lignesS(lignes)), {} as EcritureService);
+    // 160 000 × 160 000 / 1 160 000 = 22 068,97.
+    expect((await s.declaration('t1', ...mois('2026-02'))).totalCollecte).toBe(22_068.97);
+  });
+
+  it('février liquidé par l’ancien moteur (22 068,97 versés) reste ce qu’il a déclaré · l’écart, 137 931,03, au 1er mars', async () => {
+    const [debut, fin] = mois('2026-02');
+    const liq = [{ id: 'liqF', dateDebut: debut, dateFin: fin, createdAt: jour('2026-03-02'), tvaEncaissementFigee: null }];
+    const s = new TauxTvaService(prisma(lignesS(sansEcheance), liq), {} as EcritureService);
+    expect((await s.declaration('t1', debut, fin)).totalCollecte).toBe(22_068.97);
+    expect((await s.declaration('t1', ...mois('2026-03'))).totalCollecte).toBe(137_931.03);
+    expect((await s.declaration('t1', ...mois('2026-04'))).totalCollecte).toBe(0);
+  });
+
+  it('février liquidé et FIGÉ à 22 068,97 · même report au premier jour non liquidé, rien deux fois', async () => {
+    const [debut, fin] = mois('2026-02');
+    const liq = [{ id: 'liqF', dateDebut: debut, dateFin: fin, createdAt: jour('2026-03-02'), tvaEncaissementFigee: { S: 22_068.97 } }];
+    const s = new TauxTvaService(prisma(lignesS(sansEcheance), liq), {} as EcritureService);
+    expect((await s.declaration('t1', debut, fin)).totalCollecte).toBe(22_068.97);
+    expect((await s.declaration('t1', ...mois('2026-03'))).totalCollecte).toBe(137_931.03);
+  });
+
+  it('le solde du groupe paie X ensuite · rien de plus pour S (déjà payée)', async () => {
+    const lignes: LigneGroupe[] = [...sansEcheance, { debit: 0, credit: 1_000_000, date: '2026-03-20', ecriture: 'R2' }];
+    const s = new TauxTvaService(prisma(lignesS(lignes, 'SOLDE', 0)), {} as EcritureService);
+    expect((await s.declaration('t1', ...mois('2026-02'))).totalCollecte).toBe(160_000);
+    expect((await s.declaration('t1', ...mois('2026-03'))).totalCollecte).toBe(0);
+  });
+
+  it('un avoir dans le groupe garde la fraction cumulée, et le groupe est NOMMÉ pour ce motif', async () => {
+    const lignes: LigneGroupe[] = [...sansEcheance, { debit: 0, credit: 100_000, date: '2026-02-20', ecriture: 'AV', avoir: true }];
+    const s = new TauxTvaService(prisma(lignesS(lignes, 'PARTIEL', 900_000)), {} as EcritureService);
+    const d = await s.declaration('t1', ...mois('2026-02'));
+    expect(d.imputationsDesPaiements).toEqual([]);
+    expect(d.groupesImputationIndeterminee).toEqual([{ factures: ['Facture S'], encaisse: 1_260_000, motif: 'un avoir dans le groupe' }]);
+    expect(d.mentionExigibilite).toContain('GROUPE DE LETTRAGE LU EN BLOC');
+  });
+
+  /*
+    L'IMPUTATION DÉCLARÉE PRIME (art. 151 et 153) · les lignes du groupe sont
+    `g-S-0` (S), `g-X-1` (X) et `g-R-2` (le paiement R).
+  */
+  it('le débiteur déclare payer X d’abord (1 000 000), S ne reçoit que 160 000 · 22 068,97, fondement DÉCLARÉ', async () => {
+    const declarees: Declaree[] = [
+      { ligneReglementId: 'g-R-2', ligneFactureId: 'g-X-1', montant: 1_000_000 },
+      { ligneReglementId: 'g-R-2', ligneFactureId: 'g-S-0', montant: 160_000 },
+    ];
+    const s = new TauxTvaService(prisma(lignesS(sansEcheance), [], [], declarees), {} as EcritureService);
+    const fevrier = await s.declaration('t1', ...mois('2026-02'));
+    expect(fevrier.totalCollecte).toBe(22_068.97);
+    expect(fevrier.imputationsDesPaiements).toEqual([{ factures: ['Facture S', 'Facture X'], encaisse: 1_160_000, fondement: 'DECLAREE' }]);
+  });
+
+  it('une déclaration EN PARTIE · 500 000 déclarés sur X, le reste suit l’art. 154 et paie S (660 000) · 91 034,48', async () => {
+    const declarees: Declaree[] = [{ ligneReglementId: 'g-R-2', ligneFactureId: 'g-X-1', montant: 500_000 }];
+    const s = new TauxTvaService(prisma(lignesS(sansEcheance), [], [], declarees), {} as EcritureService);
+    const fevrier = await s.declaration('t1', ...mois('2026-02'));
+    // 660 000 × 160 000 / 1 160 000 = 91 034,48.
+    expect(fevrier.totalCollecte).toBe(91_034.48);
+    expect(fevrier.imputationsDesPaiements[0].fondement).toBe('DECLAREE_EN_PARTIE');
+  });
+
+  it('une part déclarée au-delà du reste de la facture est DITE à part (avertissement), jamais mêlée à l’imputation', async () => {
+    // 1 160 000 déclarés sur X, qui n'engage que 1 000 000 · 160 000 non retenus, imputés par l'art. 154 sur S.
+    const declarees: Declaree[] = [{ ligneReglementId: 'g-R-2', ligneFactureId: 'g-X-1', montant: 1_160_000 }];
+    const s = new TauxTvaService(prisma(lignesS(sansEcheance), [], [], declarees), {} as EcritureService);
+    const fevrier = await s.declaration('t1', ...mois('2026-02'));
+    expect(fevrier.imputationsDesPaiements[0].declareNonRetenu).toBe(160_000);
+    expect(fevrier.mentionExigibilite).toContain('IMPUTATION DÉCLARÉE NON RETENUE · factures « Facture S », « Facture X », 160');
+    // La phrase de l'imputation ne porte plus que factures, sommes et fondement.
+    const imputation = fevrier.mentionExigibilite.slice(fevrier.mentionExigibilite.indexOf('IMPUTATION DES PAIEMENTS'));
+    expect(imputation.slice(0, imputation.indexOf('Lectures d’OmegaX'))).not.toContain('non retenu');
+  });
+
+  it('une déclaration RETIRÉE ou d’un autre dossier ne compte pas · l’imputation légale revient, 160 000', async () => {
+    const declarees: Declaree[] = [
+      { ligneReglementId: 'g-R-2', ligneFactureId: 'g-X-1', montant: 1_000_000, retireeLe: jour('2026-03-01') },
+      { ligneReglementId: 'g-R-2', ligneFactureId: 'g-X-1', montant: 1_000_000, tenantId: 'autre' },
+    ];
+    const p = prisma(lignesS(sansEcheance), [], [], declarees);
+    const fevrier = await new TauxTvaService(p, {} as EcritureService).declaration('t1', ...mois('2026-02'));
+    expect(fevrier.totalCollecte).toBe(160_000);
+    expect(fevrier.imputationsDesPaiements[0].fondement).toBe('LEGALE');
+    // La lecture est bornée au dossier, aux déclarations actives et aux lignes du groupe.
+    const appel = (p as unknown as { imputationPaiement: { findMany: jest.Mock } }).imputationPaiement.findMany.mock.calls[0][0];
+    expect(appel.where).toEqual({ tenantId: 't1', retireeLe: null, ligneReglementId: { in: ['g-S-0', 'g-X-1', 'g-R-2'] } });
+  });
+
+  it('février liquidé (figé à 160 000) puis déclaration posée en mars · le mois liquidé reste, le trop-déclaré absorbe la suite', async () => {
+    const [debut, fin] = mois('2026-02');
+    const liq = [{ id: 'liqF', dateDebut: debut, dateFin: fin, createdAt: jour('2026-03-02'), tvaEncaissementFigee: { S: 160_000 } }];
+    const declarees: Declaree[] = [
+      { ligneReglementId: 'g-R-2', ligneFactureId: 'g-X-1', montant: 1_000_000 },
+      { ligneReglementId: 'g-R-2', ligneFactureId: 'g-S-0', montant: 160_000 },
+    ];
+    const s = new TauxTvaService(prisma(lignesS(sansEcheance), liq, [], declarees), {} as EcritureService);
+    expect((await s.declaration('t1', debut, fin)).totalCollecte).toBe(160_000);
+    // Un mois liquidé garde ce qu'il a déclaré · rien n'est déclaré deux fois,
+    // et le trop-déclaré absorbe ce que la suite rendrait.
+    expect((await s.declaration('t1', ...mois('2026-03'))).totalCollecte).toBe(0);
+  });
+
+  /*
+    M1 (relecture du 2026-10-07) · UNE INSCRIPTION EN NÉGATIF ANNULE SA LIGNE
+    (AUDCIF art. 20, al. 2). S (prestation, 10 janvier) et X (sans taxe,
+    20 janvier) ; P1 de 500 000 le 15 février, ANNULÉ le 10 mars par
+    inscription en négatif (crédit de -500 000, pièce corrigée P1) ; P2 de
+    500 000 le 15 avril. Février · rien (P1 annulé) ; avril · S, la plus
+    ancienne, reçoit P2 · 500 000 × 160 000 / 1 160 000 = 68 965,52. Classée
+    par son sens, l'annulation passait pour une facture et la taxe se datait
+    en février.
+  */
+  it('M1 · un paiement annulé par inscription en négatif ne date rien · février 0, avril 68 965,52', async () => {
+    const lignes: LigneGroupe[] = [
+      { debit: 1_160_000, credit: 0, date: '2026-01-10', ecriture: 'S' },
+      { debit: 1_000_000, credit: 0, date: '2026-01-20', ecriture: 'X' },
+      { debit: 0, credit: 500_000, date: '2026-02-15', ecriture: 'P1' },
+      { debit: 0, credit: -500_000, date: '2026-03-10', ecriture: 'N1', corrige: 'P1' },
+      { debit: 0, credit: 500_000, date: '2026-04-15', ecriture: 'P2' },
+    ];
+    const s = new TauxTvaService(prisma(lignesS(lignes, 'PARTIEL', 1_660_000)), {} as EcritureService);
+    expect((await s.declaration('t1', ...mois('2026-02'))).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...mois('2026-03'))).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...mois('2026-04'))).totalCollecte).toBe(68_965.52);
+  });
+
+  it('M1 · une inscription en négatif sans la ligne qu’elle annule · le groupe se lit en bloc, NOMMÉ', async () => {
+    const lignes: LigneGroupe[] = [
+      ...sansEcheance,
+      { debit: 0, credit: -300_000, date: '2026-02-20', ecriture: 'N9', corrige: 'Z' },
+    ];
+    const s = new TauxTvaService(prisma(lignesS(lignes, 'PARTIEL', 1_300_000)), {} as EcritureService);
+    const d = await s.declaration('t1', ...mois('2026-02'));
+    expect(d.groupesImputationIndeterminee.map((g) => g.motif)).toEqual(['une inscription en négatif dans le groupe sans la ligne qu’elle annule']);
+  });
+
+  it('M1 · neutraliserLesNegatifs · la liaison d’abord, sinon le même compte au montant opposé ; la facture annulée sort aussi', () => {
+    const l = (id: string, debit: number, credit: number, corrige: string | null = null) => ({ compteId: 'c', debit, credit, ecriture: { id, corrigeEcritureId: corrige } });
+    const a = l('A', 0, 100);
+    const b = l('B', 0, 100);
+    const n = l('N', 0, -100, 'B');
+    expect(TauxTvaService.neutraliserLesNegatifs([a, b, n])).toEqual([a]);
+    const f = l('F', 500, 0);
+    const nf = l('NF', -500, 0);
+    expect(TauxTvaService.neutraliserLesNegatifs([f, nf, a])).toEqual([a]);
+    expect(TauxTvaService.neutraliserLesNegatifs([a, l('N2', 0, -50)])).toBeNull();
+  });
+});
+

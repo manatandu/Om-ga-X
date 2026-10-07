@@ -26,10 +26,15 @@ import { ENTREE_EN_VIGUEUR_LOI_23_053 } from '../../common/entree-en-vigueur-loi
  * des déficits plus anciens, et ainsi de suite. Le rejeu part donc du PREMIER
  * exercice du dossier, toujours le même, quel que soit l'exercice lu.
  *
- * L'ORDRE D'IMPUTATION ENTRE PLUSIEURS DÉFICITS · le texte ne le fixe pas.
- * OmegaX impute le plus ancien d'abord (premier à s'éteindre), règle déjà
- * écrite et servie par ce module · ce qui ne se peut pas, c'est de l'appliquer
- * en 2029 et une autre en 2030.
+ * L'ORDRE D'IMPUTATION ENTRE PLUSIEURS DÉFICITS · LE PLUS ANCIEN D'ABORD,
+ * tranché par la loi le 2026-10-07 (`docs/decisions-par-la-loi-2026-10-07-ter.md`,
+ * point 1). Aucun article ne l'écrit mot pour mot · la STRUCTURE de l'art. 51
+ * (chaque perte a sa fenêtre, toutes de même longueur, la plus ancienne
+ * s'éteint la première · tout autre ordre peut faire perdre une déduction que
+ * la loi accorde), l'ANALOGIE du Code civil, Livre III, art. 154 (« sur la
+ * plus ancienne ») et la LPF, art. 43, al. 3 (chaque déficit s'impute sur le
+ * premier exercice bénéficiaire) le commandent. Ce qui ne se peut pas, c'est
+ * de l'appliquer en 2029 et une autre règle en 2030.
  *
  * LA FENÊTRE DE CHAQUE PERTE · même borne de date que la lecture d'avant
  * (passe F4b) · la perte d'un exercice clos le 31 décembre de l'année A

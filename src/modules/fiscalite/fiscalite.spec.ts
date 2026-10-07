@@ -4,6 +4,7 @@ import { FormeJuridiqueSyscohada, Prisma, Referentiel, SensRetraitementFiscal, T
 import { FiscaliteService, arrondirImpotArt150 } from './fiscalite.service';
 import { CATALOGUE_RETRAITEMENTS, CODE_LIBRE } from './catalogue-retraitements';
 import { motifsRefusConstat } from './ecriture-impot-resultat';
+import { chiffreAffairesMinimumPremierExercice } from './periode-creation';
 
 /**
  * RÉSULTAT FISCAL · ce qui casserait en silence.
@@ -52,6 +53,7 @@ function service(options: {
     deficitAnterieurSaisi?: number | null;
     natureActivite?: 'VENTE' | 'PRESTATIONS' | null;
     resultatPeriodeCreationSaisi?: number | null;
+    chiffreAffairesPeriodeCreationSaisi?: number | null;
     supplementsPeriodeCreation?: number;
   };
   /** Dossier fiscal PAR exercice (B2, P1) · lu par la cible et par le rejeu. */
@@ -1613,6 +1615,18 @@ describe('Cas chiffrés IS · C09 et C10, premier exercice long (art. 12, al. 3)
     expect(['resultatFiscal', r.resultatFiscal]).toEqual(['resultatFiscal', 5_000_000]);
     expect(['impotDu', r.impotDu]).toEqual(['impotDu', 1_500_000]);
     expect(['impotTotalExercice', r.impotTotalExercice]).toEqual(['impotTotalExercice', 1_800_000]);
+    // DÉCISION PAR LA LOI DU 2026-10-07, POINT 2 · le minimum du premier
+    // exercice clos se calcule SANS le chiffre d'affaires de la période
+    // (70 000 000 - 30 000 000 = 40 000 000, minimum 400 000 et non 700 000) ·
+    // l'impôt dû reste au taux.
+    expect(r.chiffreAffaires).toBe(70_000_000);
+    expect(['chiffreAffairesMinimum', r.chiffreAffairesMinimum]).toEqual(['chiffreAffairesMinimum', 40_000_000]);
+    expect(['impotMinimum', r.impotMinimum]).toEqual(['impotMinimum', 400_000]);
+    expect(r.minimumApplique).toBe(false);
+    expect(r.observations.join(' ')).toMatch(
+      /Ici · 70\s000\s000,00 pour l'exercice, 30\s000\s000,00 pour la période, 40\s000\s000,00 retenus pour le minimum du premier exercice clos\./u,
+    );
+    expect(r.observations.join(' ')).not.toContain('à faire confirmer');
     expect(r.simulationAvantLaLoi).toBe(false);
     // « AUCUN acompte n'est dû » était faux · l'impôt de la période EST la base.
     expect(r.observations.join(' ')).not.toContain("AUCUN acompte n'est dû");
@@ -1629,9 +1643,40 @@ describe('Cas chiffrés IS · C09 et C10, premier exercice long (art. 12, al. 3)
     expect(r.periodeCreation!.source).toBe('DECLARE');
     expect(r.periodeCreation!.impotDu).toBe(330_000);
     expect(r.resultatFiscal).toBe(4_000_000);
+    // Bénéfice déclaré sans son chiffre d'affaires · la lecture est DITE (mineur C09).
+    expect(r.periodeCreation!.sourceChiffreAffaires).toBe('LIVRE_JOURNAL');
+    expect(r.observations.join(' ')).toContain(
+      "lu au livre-journal au 31 décembre de l'année de création · le bénéfice de la période est déclaré, son chiffre d'affaires ne l'est pas",
+    );
   });
 
-  it('une perte de la période de création ne vient pas en déduction (« ces bénéfices »)', async () => {
+  it('mineur C09 · le chiffre d’affaires DÉCLARÉ avec le bénéfice assied le minimum de la période et se retranche du premier exercice clos', async () => {
+    const r = await service({
+      exercices: premier([2026, 8, 1], [2027, 11, 31]),
+      balances: { P: [ligne('70110000', -70_000_000), ligne('60410000', 64_900_000)] },
+      balancesAu: { P: [ligne('70110000', -30_000_000), ligne('60410000', 29_900_000)] },
+      dossier: { resultatPeriodeCreationSaisi: 100_000, chiffreAffairesPeriodeCreationSaisi: 25_000_000 },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.periodeCreation!.sourceChiffreAffaires).toBe('DECLARE');
+    expect(r.periodeCreation!.chiffreAffaires).toBe(25_000_000);
+    expect(r.periodeCreation!.chiffreAffairesLu).toBe(30_000_000);
+    // Minimum de la période · 1 % de 25 000 000 = 250 000 ; premier exercice clos · 70 000 000 - 25 000 000.
+    expect(r.periodeCreation!.impotMinimum).toBe(250_000);
+    expect(r.chiffreAffairesMinimum).toBe(45_000_000);
+    expect(r.observations.join(' ')).toContain("celui que le cabinet DÉCLARE pour la période");
+  });
+
+  it('mineur C09 · un chiffre d’affaires sans bénéfice déclaré est refusé ; le bénéfice retiré emporte le chiffre d’affaires', async () => {
+    const { s } = service({ exercices: premier([2026, 8, 1], [2027, 11, 31]), balances: { P: [] }, dossier: {} });
+    await expect(s.modifierDossier('t1', 'P', { chiffreAffairesPeriodeCreationSaisi: 25_000_000 })).rejects.toThrow(
+      "se déclare avec son bénéfice fiscal",
+    );
+    const t = service({ exercices: premier([2026, 8, 1], [2027, 11, 31]), balances: { P: [] }, dossier: {} });
+    await t.s.modifierDossier('t1', 'P', { resultatPeriodeCreationSaisi: null });
+    expect(t.crees[0]).toEqual(expect.objectContaining({ resultatPeriodeCreationSaisi: null, chiffreAffairesPeriodeCreationSaisi: null }));
+  });
+
+  it('une perte de la période de création ne vient pas en déduction (« ces bénéfices »), et la règle se dit avec ses articles', async () => {
     const r = await service({
       exercices: premier([2026, 8, 1], [2027, 11, 31]),
       balances: { P: [ligne('70110000', -70_000_000), ligne('60410000', 66_000_000)] },
@@ -1639,6 +1684,61 @@ describe('Cas chiffrés IS · C09 et C10, premier exercice long (art. 12, al. 3)
     }).s.resultatFiscal('t1', 'P');
     expect(r.periodeCreation!.deduction).toBe(0);
     expect(r.resultatFiscal).toBe(4_000_000);
+    // Décision par la loi du 2026-10-07, point 2 · la règle citée, plus « non visée ».
+    const texte = r.observations.join(' ');
+    expect(texte).toContain("PERTE DE LA PÉRIODE DE CRÉATION · elle n'est ni déduite ni reportée à part");
+    expect(texte).toMatch(/art\. 12, al\. 3.*« ces bénéfices ».*art\. 51.*« les pertes constatées au cours d'un exercice ».*art\. 52, 2°/);
+  });
+
+  it('une période BÉNÉFICIAIRE ne fait pas dire la règle de la perte', async () => {
+    const r = await service({
+      exercices: premier([2026, 8, 1], [2027, 11, 31]),
+      balances: { P: [ligne('70110000', -70_000_000), ligne('60410000', 64_900_000)] },
+      balancesAu: { P: [ligne('70110000', -30_000_000), ligne('60410000', 29_900_000)] },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.observations.join(' ')).not.toContain('PERTE DE LA PÉRIODE DE CRÉATION');
+  });
+
+  // C09 BIS (décision par la loi du 2026-10-07, point 2) · L'ÉCART CHANGE
+  // L'IMPÔT. Créée le 1er septembre 2026, close le 31 décembre 2027. Période
+  // · chiffre d'affaires 80 000 000, bénéfice 500 000, impôt au taux 150 000,
+  // minimum 800 000 · dû 800 000. Exercice entier · chiffre d'affaires
+  // 100 000 000, bénéfice 1 000 000, période déduite 500 000, base 500 000,
+  // au taux 150 000. Minimum sur 2027 seul · 1 % de 20 000 000 = 200 000, dû
+  // 200 000 ; sur l'exercice entier il valait 1 000 000 (écart 800 000, le
+  // minimum de la période payé deux fois). Calcul à la main dans
+  // `docs/cas-chiffres/is.md`, cas C09 bis.
+  it('C09 bis · minimum du premier exercice clos 200 000 sur 20 000 000 (1 000 000 avant), total 1 000 000, acomptes rejoués', async () => {
+    const r = await service({
+      exercices: premier([2026, 8, 1], [2027, 11, 31]),
+      balances: { P: [ligne('70110000', -100_000_000), ligne('60410000', 99_000_000)] },
+      balancesAu: { P: [ligne('70110000', -80_000_000), ligne('60410000', 79_500_000)] },
+    }).s.resultatFiscal('t1', 'P');
+    expect(r.periodeCreation!.resultatFiscal).toBe(500_000);
+    expect(r.periodeCreation!.impotTheorique).toBe(150_000);
+    expect(r.periodeCreation!.impotMinimum).toBe(800_000);
+    expect(r.periodeCreation!.impotDu).toBe(800_000);
+    expect(r.periodeCreation!.minimumApplique).toBe(true);
+    expect(r.periodeCreation!.acomptesExercice.map((a) => [a.montant, a.annee])).toEqual([
+      [240_000, 2027],
+      [240_000, 2027],
+      [160_000, 2027],
+    ]);
+    expect(r.resultatFiscal).toBe(500_000);
+    expect(r.chiffreAffairesMinimum).toBe(20_000_000);
+    expect(r.impotTheorique).toBe(150_000);
+    expect(['impotMinimum', r.impotMinimum]).toEqual(['impotMinimum', 200_000]);
+    expect(['impotDu', r.impotDu]).toEqual(['impotDu', 200_000]);
+    expect(r.minimumApplique).toBe(true);
+    expect(['impotTotalExercice', r.impotTotalExercice]).toEqual(['impotTotalExercice', 1_000_000]);
+    // La base des acomptes de 2028 est l'impôt du premier exercice clos.
+    expect(r.acomptesProchainExercice.map((a) => a.montant)).toEqual([60_000, 60_000, 40_000]);
+  });
+
+  it('la règle du chiffre d’affaires du minimum · retranchée, jamais négative', () => {
+    expect(chiffreAffairesMinimumPremierExercice(70_000_000, 30_000_000)).toBe(40_000_000);
+    expect(chiffreAffairesMinimumPremierExercice(100_000_000.55, 80_000_000.3)).toBe(20_000_000.25);
+    expect(chiffreAffairesMinimumPremierExercice(10_000_000, 12_000_000)).toBe(0);
   });
 
   it('un premier exercice ouvert au premier semestre n’est pas le cas de l’art. 12, al. 3', async () => {
@@ -1661,6 +1761,10 @@ describe('Cas chiffrés IS · C09 et C10, premier exercice long (art. 12, al. 3)
     expect(r.periodeCreation!.impotDu).toBeNull();
     expect(r.periodeCreation!.acomptesExercice).toEqual([]);
     expect(r.impotDu).toBe(1_500_000);
+    // Le minimum du premier exercice clos porte sur 2026 seul (art. 153) ·
+    // 1 % de 50 000 000, comme le calcul à la main.
+    expect(r.chiffreAffairesMinimum).toBe(50_000_000);
+    expect(r.impotMinimum).toBe(500_000);
     expect(r.impotTotalExercice).toBeNull();
     const texte = r.observations.join(' ');
     expect(texte).toContain('PREMIER EXERCICE LONG OUVERT AVANT LA LOI');

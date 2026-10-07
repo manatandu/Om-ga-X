@@ -4,8 +4,9 @@ Point 2 des décisions par la loi du 2026-10-07 (`docs/decisions-par-la-loi-2026
 l'exercice à la date de dissolution, exercice de liquidation unique, cotisations spéciales. Codé sur la
 branche `travail/decisions-loi-2` jusqu'au commit 4ef1bee, puis SORTI de cette ligne au premier tour de
 relecture (six bloquants et des questions de droit ouvertes). Tout le travail est gardé sur la branche
-`travail/dissolution` (même point de départ, 4ef1bee). Il deviendra une ligne à part, précédée d'une analyse
-de droit qui tranche les questions ci-dessous.
+`travail/dissolution` (même point de départ, 4ef1bee). Il deviendra une ligne à part. L'analyse de droit qui
+devait la précéder est faite · les sept questions ci-dessous sont tranchées par la loi
+(`docs/decisions-par-la-loi-2026-10-07-quater.md`, points 1 à 7).
 
 Le comportement de `main` pour la dissolution (ligne F32, décision du 2026-10-04, point 4) reste en vigueur
 tant que cette ligne n'est pas reprise.
@@ -56,29 +57,43 @@ Chaque constat est à corriger, ou à trancher par la loi, avant toute intégrat
 16. **Coopérative** · le comportement a changé pour elle, contrairement à ce que disait la fiche
     d'avancement (« comportement d'avant inchangé »).
 
-## Questions non tranchées par le texte
+## Questions de droit, tranchées par la loi
 
-À trancher par une analyse de droit, texte lu, avant de reprendre le code.
+Laissées ouvertes au premier tour, tranchées le 2026-10-07, texte lu, dans
+`docs/decisions-par-la-loi-2026-10-07-quater.md` (points 1 à 7). La ligne se reprend sur ces décisions.
 
 1. **Écriture validée datée après la dissolution.** La rattacher à l'exercice de liquidation, date et contenu
    inchangés, est-il compatible avec l'irréversibilité de l'AUDCIF art. 22, 2° (« interdise toute
    suppression, addition ou modification ultérieure ») ?
+   **Tranchée, voir quater point 1** · compatible · l'irréversibilité protège origine, contenu et imputation
+   (art. 22, 1°), l'écriture suit sa date (art. 59), date, numéro et lignes inchangés, au journal d'audit.
 2. **Art. 12 al. 4 et art. 13 al. 1 et 3 de la loi n° 23/053.** La totalisation des bilans successifs de
    l'année et la cotisation spéciale « d'après les résultats de la période pendant laquelle l'activité a été
    exercée », « rattachée à l'exercice désigné par le millésime de l'année de la dissolution » · comment
    s'articulent-elles (une assiette totalisée, ou deux) ?
+   **Tranchée, voir quater point 2** · une assiette, celle de l'année de la dissolution (art. 11, 1° ; 12 al. 4 ;
+   13 al. 3), payée en deux cotisations · la seconde = impôt totalisé moins ce qui est déjà réglé.
 3. **Acomptes de la LPF art. 57 bis pendant la liquidation.** Une société en liquidation verse-t-elle encore
    les acomptes calculés sur l'impôt de l'exercice précédent ?
+   **Tranchée, voir quater point 3** · oui dans l'année de la dissolution, jusqu'à l'échéance de la dernière
+   cotisation, imputés sur elle ; jamais au-delà.
 4. **Déclaration annuelle pendant une liquidation de plusieurs années.** Entre la cotisation de la période
    d'activité et celle du dernier bilan de liquidation, une déclaration annuelle est-elle due au titre des
    années intermédiaires (art. 11, 1°, bénéfices de la liquidation imposables) ?
+   **Tranchée, voir quater point 4** · non · LPF art. 16 déroge à l'art. 12, et tout le bénéfice de la liquidation
+   entre dans la seconde cotisation.
 5. **« Dans le mois » de la LPF art. 16** · date à date (30 juillet pour une dissolution au 30 juin) ou mois
    civil qui suit ?
+   **Tranchée, voir quater point 5** · de date à date, même quantième (AUPSRVE art. 1-14 par analogie), report au
+   jour ouvrable (LPF art. 110 bis).
 6. **AUSCGIE art. 232 et « la clôture de chaque exercice ».** Dans un exercice de liquidation unique (AUDCIF
    art. 7 al. 4), à quelles dates courent les trois mois de l'art. 232 et les six mois de l'art. 233 · chaque
    31 décembre (situations annuelles provisoires) ou la seule clôture de la liquidation ?
+   **Tranchée, voir quater point 6** · de chaque 31 décembre compris dans la liquidation (31 mars, 30 juin).
 7. **Coopérative et « société » de l'art. 13.** La cotisation spéciale vise « une société » · s'applique-t-elle
    à la société coopérative (AUSCOOP), que l'AUSCGIE ne régit pas ?
+   **Tranchée, voir quater point 7** · oui, la loi fiscale range « les sociétés coopératives » parmi ses redevables
+   (art. 3), sauf l'exemption de l'art. 5, 2°.
 
 ## Ce que la branche `travail/dissolution` contient
 

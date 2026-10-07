@@ -37,6 +37,9 @@ import {
 } from './report-deficitaire';
 import {
   OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE,
+  sourceChiffreAffairesPeriode,
+  OBSERVATION_PERTE_PERIODE_CREATION,
+  chiffreAffairesMinimumPremierExercice,
   deductionPeriodeCreation,
   periodeDeCreation,
   type PeriodeCreation,
@@ -1169,7 +1172,7 @@ export class FiscaliteService {
     tenantId: string,
     exercice: { id: string; dateDebut: Date; dateFin: Date },
     appliquerArticle12: boolean,
-    dossier: { resultatPeriodeCreationSaisi?: unknown } | null,
+    dossier: { resultatPeriodeCreationSaisi?: unknown; chiffreAffairesPeriodeCreationSaisi?: unknown } | null,
   ): Promise<{ base: number; debutImposable: Date }> {
     const brut = (await this.resultatFiscalBrut(tenantId, exercice.id)).resultatFiscalBrut;
     const periode = appliquerArticle12 ? periodeDeCreation(exercice, true) : null;
@@ -1178,7 +1181,7 @@ export class FiscaliteService {
     // lit le drapeau `simulation` d'une perte.
     const debutImposable = FiscaliteService.debutPeriodeImposable(exercice, periode);
     if (!periode) return { base: brut, debutImposable };
-    const lecture = await this.lirePeriodeCreation(tenantId, exercice.id, periode, dossier?.resultatPeriodeCreationSaisi ?? null);
+    const lecture = await this.lirePeriodeCreation(tenantId, exercice.id, periode, dossier);
     return { base: arrondir(brut - deductionPeriodeCreation(lecture.resultatFiscal)), debutImposable };
   }
 
@@ -1212,15 +1215,22 @@ export class FiscaliteService {
     tenantId: string,
     exerciceId: string,
     periode: PeriodeCreation,
-    saisi: unknown,
+    dossier: { resultatPeriodeCreationSaisi?: unknown; chiffreAffairesPeriodeCreationSaisi?: unknown } | null,
   ) {
     const lecture = await this.lireBalance(tenantId, exerciceId, periode.dateFin);
     const resultatComptable = arrondir(lecture.resultatComptable + lecture.impotConstateAu89);
+    const saisi = dossier?.resultatPeriodeCreationSaisi;
     const declare = saisi === null || saisi === undefined ? null : arrondir(Number(saisi));
+    // Le chiffre d'affaires DÉCLARÉ avec le bénéfice (mineur C09) prime sur la
+    // lecture ; seul, sans bénéfice déclaré, il ne compte pas (refusé à la porte).
+    const caSaisi = dossier?.chiffreAffairesPeriodeCreationSaisi;
+    const caDeclare = declare === null || caSaisi === null || caSaisi === undefined ? null : arrondir(Number(caSaisi));
     return {
       resultatComptable,
       impotNeutralise: lecture.impotConstateAu89,
-      chiffreAffaires: lecture.chiffreAffaires,
+      chiffreAffaires: caDeclare ?? lecture.chiffreAffaires,
+      chiffreAffairesLu: lecture.chiffreAffaires,
+      sourceChiffreAffaires: caDeclare === null ? ('LIVRE_JOURNAL' as const) : ('DECLARE' as const),
       resultatFiscal: declare ?? resultatComptable,
       source: declare === null ? ('LIVRE_JOURNAL' as const) : ('DECLARE' as const),
       ecartDeclaration: declare === null ? null : arrondir(declare - resultatComptable),
@@ -1653,7 +1663,7 @@ export class FiscaliteService {
     // concernée.
     const periode = physique ? null : periodeDeCreation(exercice, anterieurs.length === 0);
     const lecturePeriode = periode
-      ? await this.lirePeriodeCreation(tenantId, exerciceId, periode, dossier?.resultatPeriodeCreationSaisi ?? null)
+      ? await this.lirePeriodeCreation(tenantId, exerciceId, periode, dossier)
       : null;
     const deductionCreation = lecturePeriode ? deductionPeriodeCreation(lecturePeriode.resultatFiscal) : 0;
     const baseAvantReport = arrondir(brut.resultatFiscalBrut - deductionCreation);
@@ -1745,7 +1755,18 @@ export class FiscaliteService {
       };
     });
 
-    const impot = this.calculerImpot(regime, resultatFiscal, brut.chiffreAffaires, dossier?.natureActivite ?? null);
+    // C09 · LE MINIMUM DU PREMIER EXERCICE CLOS NE COMPTE PAS LE CHIFFRE
+    // D'AFFAIRES DE LA PÉRIODE DE CRÉATION (décision par la loi du
+    // 2026-10-07, point 2 · art. 12, al. 1, 3 et 4 ; art. 57 ; LPF, art. 12
+    // et 13 ; art. 153) · il a porté son propre minimum dans la déclaration de
+    // l'année de création. Même source que la période (`lirePeriodeCreation`),
+    // si bien que chaque vente compte une fois. Les plafonds assis sur le
+    // chiffre d'affaires gardent celui de l'exercice · la décision ne vise que
+    // le minimum.
+    const chiffreAffairesMinimum = lecturePeriode
+      ? chiffreAffairesMinimumPremierExercice(brut.chiffreAffaires, lecturePeriode.chiffreAffaires)
+      : brut.chiffreAffaires;
+    const impot = this.calculerImpot(regime, resultatFiscal, chiffreAffairesMinimum, dossier?.natureActivite ?? null);
     // L'IMPÔT DE LA PÉRIODE DE CRÉATION · même liquidation (art. 56 et 57,
     // minimum compris, voir `periode-creation.ts`), sur le résultat et le
     // chiffre d'affaires de la période. Avant 2026, le texte de l'époque ·
@@ -1764,7 +1785,16 @@ export class FiscaliteService {
             : '') +
           " Si l'entreprise a été créée avant l'ouverture de ce premier exercice (dossier repris), ce cas ne s'applique pas.",
       );
-      observations.push(OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE);
+      observations.push(
+        `${OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE} ${sourceChiffreAffairesPeriode({
+          chiffreAffairesDeclare: lecturePeriode.sourceChiffreAffaires === 'DECLARE',
+          beneficeDeclare: lecturePeriode.source === 'DECLARE',
+        })} Ici · ${montantFiscal(brut.chiffreAffaires)} pour l'exercice, ` +
+          `${montantFiscal(lecturePeriode.chiffreAffaires)} pour la période, ${montantFiscal(chiffreAffairesMinimum)} retenus pour le minimum du premier exercice clos.`,
+      );
+      // LA PERTE DE LA PÉRIODE · la règle citée (art. 12, al. 3 ; art. 51 ;
+      // art. 52, 2°), dite seulement quand la période est déficitaire.
+      if (lecturePeriode.resultatFiscal < 0) observations.push(OBSERVATION_PERTE_PERIODE_CREATION);
       if (lecturePeriode.ecartDeclaration !== null && Math.abs(lecturePeriode.ecartDeclaration) >= 0.005) {
         // RELEVÉ 1 · une déclaration se confronte à ce que le livre dit.
         observations.push(
@@ -1857,6 +1887,9 @@ export class FiscaliteService {
       resultatComptable: brut.resultatComptable,
       sourceResultat: brut.sourceResultat,
       chiffreAffaires: brut.chiffreAffaires,
+      // C09 · le chiffre d'affaires qui assied le minimum (art. 57) · celui de
+      // l'exercice, sauf au premier exercice long, période de création retranchée.
+      chiffreAffairesMinimum,
       retraitements: brut.retraitements.map((r) => ({
         id: r.id,
         code: r.code,
@@ -1904,6 +1937,8 @@ export class FiscaliteService {
               source: lecturePeriode.source,
               resultatComptable: lecturePeriode.resultatComptable,
               chiffreAffaires: lecturePeriode.chiffreAffaires,
+              chiffreAffairesLu: lecturePeriode.chiffreAffairesLu,
+              sourceChiffreAffaires: lecturePeriode.sourceChiffreAffaires,
               resultatFiscal: lecturePeriode.resultatFiscal,
               deduction: deductionCreation,
               impotTheorique: impotPeriode?.impotTheorique ?? null,
@@ -2210,11 +2245,27 @@ export class FiscaliteService {
     const touchesReport =
       dto.deficitAnterieurSaisi !== undefined ||
       dto.deficitAnterieurOrigines !== undefined ||
-      dto.resultatPeriodeCreationSaisi !== undefined;
+      dto.resultatPeriodeCreationSaisi !== undefined ||
+      dto.chiffreAffairesPeriodeCreationSaisi !== undefined;
     if (touchesReport && exercice.statut === StatutExercice.CLOTURE) {
       throw new BadRequestException(
         "L'exercice est clôturé · le déficit reportable déclaré et le bénéfice de la période de création n'y changent plus, ils fondent l'impôt d'exercices déjà déclarés. Déclarez le report disponible à l'ouverture de l'exercice ouvert suivant (« Déficits antérieurs ») · cette déclaration fait foi pour la suite.",
       );
+    }
+    // LE CHIFFRE D'AFFAIRES DE LA PÉRIODE SE DÉCLARE AVEC SON BÉNÉFICE (mineur
+    // C09) · les deux viennent des mêmes comptes intermédiaires (art. 12,
+    // al. 3) ; sans bénéfice déclaré, les deux se lisent au livre-journal.
+    if (dto.chiffreAffairesPeriodeCreationSaisi !== undefined && dto.chiffreAffairesPeriodeCreationSaisi !== null) {
+      const beneficeApres =
+        dto.resultatPeriodeCreationSaisi !== undefined
+          ? dto.resultatPeriodeCreationSaisi
+          : ((await this.prisma.dossierFiscalExercice.findUnique({ where: { exerciceId }, select: { resultatPeriodeCreationSaisi: true } }))
+              ?.resultatPeriodeCreationSaisi ?? null);
+      if (beneficeApres === null) {
+        throw new BadRequestException(
+          "Le chiffre d'affaires de la période de création se déclare avec son bénéfice fiscal, d'après les mêmes comptes intermédiaires (loi n° 23/053, art. 12, al. 3) · déclarez d'abord le bénéfice ; sans lui, les deux se lisent au livre-journal.",
+        );
+      }
     }
     if (dto.deficitAnterieurOrigines) {
       const existant = await this.prisma.dossierFiscalExercice.findUnique({ where: { exerciceId } });
@@ -2297,6 +2348,15 @@ export class FiscaliteService {
         : {
             resultatPeriodeCreationSaisi:
               dto.resultatPeriodeCreationSaisi === null ? null : arrondir(dto.resultatPeriodeCreationSaisi),
+            // Le bénéfice retiré emporte le chiffre d'affaires déclaré avec lui ·
+            // les deux se relisent au livre-journal (mineur C09).
+            ...(dto.resultatPeriodeCreationSaisi === null ? { chiffreAffairesPeriodeCreationSaisi: null } : {}),
+          }),
+      ...(dto.chiffreAffairesPeriodeCreationSaisi === undefined || dto.resultatPeriodeCreationSaisi === null
+        ? {}
+        : {
+            chiffreAffairesPeriodeCreationSaisi:
+              dto.chiffreAffairesPeriodeCreationSaisi === null ? null : arrondir(dto.chiffreAffairesPeriodeCreationSaisi),
           }),
     };
     await this.prisma.dossierFiscalExercice.upsert({

@@ -37,6 +37,12 @@ import {
   motifRefusDesignation,
   partageSonLettrage,
   MOTIF_LETTRAGE_PARTAGE,
+  avertissementMethodeCotisations,
+  motifRefusCotisationsEncaissement,
+  motifRefusPerteImpayeAdherent,
+  motifRefusCorrectionParResultat,
+  methodeAuReclassement,
+  methodeLueDansLeJournal,
 } from './creances-douteuses';
 import { CreancesDouteusesService, PLAFOND_COMPTES_416_491 } from './creances-douteuses.service';
 import { CreancesDouteusesController } from './creances-douteuses.controller';
@@ -439,6 +445,13 @@ describe('créances douteuses · service', () => {
       mouvement?: Record<string, unknown> | null;
       /** M1 · le statut relu DANS la transaction · par défaut celui de l'écriture lue avant. */
       statutRelu?: string;
+      /**
+       * M8 · le journal d'audit du dossier · la doublure HONORE la requête
+       * (dossier, fiche, borne de date, ordre par rang). Absent, vide.
+       */
+      journalAudit?: Array<{ rang: number; horodatage: Date; entite: string; avant?: unknown; apres?: unknown }>;
+      /** M9 · les modules qui tiennent l'écriture désignée. */
+      detenteurs?: string[];
     } = {},
   ) {
     let rang = 0;
@@ -619,6 +632,20 @@ describe('créances douteuses · service', () => {
         count: jest.fn().mockResolvedValue(0),
         aggregate: jest.fn().mockResolvedValue({ _sum: { montant: 0 } }),
       },
+      evenementAudit: {
+        findFirst: jest.fn().mockImplementation(({ where, orderBy }: any) => {
+          const lus = (options.journalAudit ?? [])
+            .filter(
+              (e) =>
+                where.tenantId === 't' &&
+                (!where.entite || (e.entite === where.entite && where.entiteId === 't')) &&
+                (!where.horodatage?.lte || e.horodatage <= where.horodatage.lte) &&
+                (!where.horodatage?.gt || e.horodatage > where.horodatage.gt),
+            )
+            .sort((a, b) => (orderBy.rang === 'desc' ? b.rang - a.rang : a.rang - b.rang));
+          return Promise.resolve(lus[0] ?? null);
+        }),
+      },
       $transaction: (f: (tx: unknown) => unknown) => f(prisma),
     };
     // B2 · le service de lettrage, que le module appelle à l'extinction et à l'annulation.
@@ -634,7 +661,12 @@ describe('créances douteuses · service', () => {
       const ecriture = await creer(t, u, dto);
       return { ecriture, suite: await suite(prisma, ecriture) };
     });
-    const service = new CreancesDouteusesService(prisma, { creer, creerAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation } as any, lettrage as any);
+    const detenteursDeLEcriture = jest.fn().mockResolvedValue(options.detenteurs ?? []);
+    const service = new CreancesDouteusesService(
+      prisma,
+      { creer, creerAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, detenteursDeLEcriture } as any,
+      lettrage as any,
+    );
     return { service, prisma, creer, creerAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, lettrage };
   }
 
@@ -1986,6 +2018,8 @@ describe('créances douteuses · service', () => {
         estGenereeParCloture: false,
         estANouveauProvisoire: false,
         ajustementCreanceDouteuse: { is: null },
+        // M9 · la correction par le résultat reprend la dépréciation du module.
+        creanceDouteuseCorrection: { is: null },
         NOT: { corrigeEcriture: { is: { ajustementCreanceDouteuse: { isNot: null } } } },
       },
     });
@@ -2035,23 +2069,315 @@ describe('créances douteuses · service', () => {
     expect(creer).toHaveBeenCalledTimes(1);
   });
 
-  // A7 TER, MINEUR 8 · sous l'ENCAISSEMENT, un impayé d'adhérent (4131, 4133)
-  // n'est pas refusé · la fiche du compte 41 impose le 413 aux valeurs revenues
-  // impayées, le § 5.4.2.1 compte la cotisation à son encaissement effectif, et
-  // aucun texte lu ne dit si un chèque rejeté a été encaissé. Rien tranché
-  // n'est pas bloqué · avertissement qui cite les deux textes.
-  it('mineur 8 · ENCAISSEMENT · un chèque d’adhérent impayé (4131) se reclasse, avec un avertissement qui cite les deux textes', async () => {
+  // D7 (décision par la loi du 2026-10-07, point 5) · sous l'ENCAISSEMENT, un
+  // impayé d'adhérent (4131, 4133) n'est PAS une créance · une valeur revenue
+  // impayée n'a jamais été encaissée (fiche SYCEBNL du compte 51, l'encaissement
+  // se constate à l'avis de crédit), la cotisation n'a pas de fait générateur
+  // (§ 5.4.2.1). Le reclassement au 4161, la déclaration et la perte au 6512
+  // sont REFUSÉS, avec les deux issues ; l'avertissement de mineur 8 est retiré.
+  it('D7 · ENCAISSEMENT · un chèque d’adhérent impayé (4131) ne se reclasse pas · refus nommé, § 5.4.2.1, fiches 41 et 51, deux issues', async () => {
     const { service, creer } = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: 'ENCAISSEMENT' } });
-    const r: any = await service.reclasser('t', 'u', { ...dtoReclassement, compteCreanceId: 'imp' });
-    expect(creer).toHaveBeenCalledTimes(1);
-    // Le débiteur est un adhérent · le 4161.
-    expect(creer.mock.calls[0][2].lignes[0]).toMatchObject({ compteId: 'c4161' });
-    expect(r.avertissement).toMatch(/impayé d'adhérent · fiche SYCEBNL du compte 41, « Les chèques, effets à payer et autres valeurs revenus impayés/);
-    expect(r.avertissement).toMatch(/§ 5\.4\.2\.1.*Aucun texte lu ne dit si une valeur remise puis revenue impayée a été encaissée/);
-    // La méthode lue est celle du jour · le refus du 411 le dit.
+    const refus = service.reclasser('t', 'u', { ...dtoReclassement, compteCreanceId: 'imp' });
+    await expect(refus).rejects.toThrow(/impayé d'adhérent · fiche SYCEBNL du compte 41, « Les chèques, effets à payer et autres valeurs revenus impayés/);
+    await expect(service.reclasser('t', 'u', { ...dtoReclassement, compteCreanceId: 'imp' })).rejects.toThrow(
+      /§ 5\.4\.2\.1.*fiche SYCEBNL du compte 51, « Les valeurs à encaisser.*avis de crédit/,
+    );
+    await expect(service.reclasser('t', 'u', { ...dtoReclassement, compteCreanceId: 'imp' })).rejects.toThrow(
+      /Deux issues · soldez l’impayé contre le produit.*déclarez la méthode de l’APPEL/,
+    );
+    expect(creer).not.toHaveBeenCalled();
+    // La méthode lue est celle du jour · le refus du 411 le dit, comme avant.
     await expect(service.reclasser('t', 'u', { ...dtoReclassement, compteCreanceId: 'adh' })).rejects.toThrow(
       /méthode déclarée aujourd’hui dans Paramètres du dossier, qui ne garde pas l’historique/,
     );
+  });
+
+  it('D7 · la même règle sert la liste des comptes · refus servi, aucun avertissement d’impayé sous l’encaissement', () => {
+    expect(motifRefusCotisationsEncaissement(Referentiel.SYCEBNL, '41330001', 'ENCAISSEMENT')).toMatch(/41330001 est un impayé d'adhérent/);
+    expect(motifRefusCotisationsEncaissement(Referentiel.SYCEBNL, '41310003', 'ENCAISSEMENT')).toMatch(/ne se déprécie au 491 ni ne passe en perte au 6512/);
+    // Sous l'APPEL, l'impayé suit le 4161 (Partie 3, ch. 5, § 1.2 ; Application 13).
+    expect(motifRefusCotisationsEncaissement(Referentiel.SYCEBNL, '41310003', 'APPEL')).toBeNull();
+    // Un client-usager (4132, 4138) n'est pas une cotisation.
+    expect(motifRefusCotisationsEncaissement(Referentiel.SYCEBNL, '41320001', 'ENCAISSEMENT')).toBeNull();
+    // Le SYSCOHADA ne connaît pas l'adhérent.
+    expect(motifRefusCotisationsEncaissement(Referentiel.SYSCOHADA, '41310003', 'ENCAISSEMENT')).toBeNull();
+    // L'avertissement ne parle plus que de la méthode NON déclarée.
+    expect(avertissementMethodeCotisations(Referentiel.SYCEBNL, '41310003', 'ENCAISSEMENT')).toBeNull();
+    expect(avertissementMethodeCotisations(Referentiel.SYCEBNL, '41310003', null)).toMatch(/n’est pas déclarée/);
+  });
+
+  it('D7 · la déclaration d’ouverture d’un impayé d’adhérent sous l’encaissement est refusée de même', async () => {
+    const { service, prisma } = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: 'ENCAISSEMENT' } });
+    await expect(
+      service.declarer('t', 'u', {
+        exerciceId: 'ex-26',
+        compteCreanceId: 'imp',
+        compte416Id: 'c4161',
+        nature: NatureCreanceDouteuse.DOUTEUSE,
+        montant: 200_000,
+        depreciationOuverture: 0,
+        source: 'Balance de reprise',
+      }),
+    ).rejects.toThrow(/impayé d'adhérent/);
+    expect(prisma.creanceDouteuse.create).not.toHaveBeenCalled();
+  });
+
+  it('D7 et M8 · la perte au 6512 d’un impayé d’adhérent est jugée sur la méthode du JOUR DU RECLASSEMENT, issue nommée', async () => {
+    const dto = { exerciceId: 'ex-26', journalId: 'od', date: '2026-12-20', montant: 160_000, motif: 'Adhérent radié', pieces: [{ nature: 'PV', reference: 'AG-3' }] };
+    const impaye = (methode: string | null) =>
+      creance([], [], {
+        compteCreance: { id: 'imp', numero: '41310003', intitule: 'Adhérent Mbuyi, chèque impayé', tiersCompte: null },
+        createdAt: new Date('2026-11-15T09:00:00Z'),
+        methodeCotisationsReclassement: methode,
+      });
+    const sousEncaissement = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: 'ENCAISSEMENT' }, creance: impaye('ENCAISSEMENT') });
+    await expect(sousEncaissement.service.perte('t', 'u', 'cd-1', { ...dto, comptePerteId: 'c6512' })).rejects.toThrow(
+      /impayé d'adhérent.*rien ne passe en perte au 6512 \(fiche du compte 65.*puis le reclassement \(« Annuler le reclassement »\).*« Corriger par le résultat »/,
+    );
+    expect(sousEncaissement.creer).not.toHaveBeenCalled();
+    // Le recouvrement reste ouvert · l'encaissement réel de la valeur est le fait générateur.
+    await sousEncaissement.service.recouvrement('t', 'u', 'cd-1', { ...dto, journalId: 'bq' });
+    expect(sousEncaissement.creer).toHaveBeenCalledTimes(1);
+    // M8 · déclarer l'APPEL aujourd'hui ne change rien à une créance reclassée sous l'encaissement.
+    const appelDuJour = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: 'APPEL' }, creance: impaye('ENCAISSEMENT') });
+    await expect(appelDuJour.service.perte('t', 'u', 'cd-1', { ...dto, comptePerteId: 'c6512' })).rejects.toThrow(/ENCAISSEMENT \(méthode en vigueur au jour du reclassement/);
+    // M8 · née sous l'APPEL, c'est une créance · la perte passe même si le dossier déclare l'encaissement aujourd'hui.
+    const sousAppel = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: 'ENCAISSEMENT' }, creance: impaye('APPEL') });
+    await sousAppel.service.perte('t', 'u', 'cd-1', { ...dto, comptePerteId: 'c6512' });
+    expect(sousAppel.creer.mock.calls[0][2].lignes[0].compteId).toBe('c6512');
+    // Un 411 sous l'encaissement n'est pas visé par ce refus (la décision ne vise que l'impayé).
+    const adhEncaissement = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: 'ENCAISSEMENT' }, creance: creance() });
+    await adhEncaissement.service.perte('t', 'u', 'cd-1', { ...dto, comptePerteId: 'c6512' });
+    expect(adhEncaissement.creer).toHaveBeenCalledTimes(1);
+  });
+
+  it('D7 · la règle pure de la perte · SYCEBNL, ENCAISSEMENT et impayé d’adhérent, rien d’autre', () => {
+    expect(motifRefusPerteImpayeAdherent(Referentiel.SYCEBNL, '41330002', 'ENCAISSEMENT')).toMatch(/41330002 est un impayé d'adhérent/);
+    expect(motifRefusPerteImpayeAdherent(Referentiel.SYCEBNL, '41330002', 'APPEL')).toBeNull();
+    expect(motifRefusPerteImpayeAdherent(Referentiel.SYCEBNL, '41330002', null)).toBeNull();
+    expect(motifRefusPerteImpayeAdherent(Referentiel.SYCEBNL, '41100002', 'ENCAISSEMENT')).toBeNull();
+    expect(motifRefusPerteImpayeAdherent(Referentiel.SYSCOHADA, '41310003', 'ENCAISSEMENT')).toBeNull();
+    expect(motifRefusPerteImpayeAdherent(undefined, undefined, undefined)).toBeNull();
+  });
+
+  it('M8 · le reclassement et la déclaration FIGENT la méthode du jour ; NON_DECLAREE sans méthode, rien au SYSCOHADA', async () => {
+    const appel = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: 'APPEL' } });
+    await appel.service.reclasser('t', 'u', { ...dtoReclassement, compteCreanceId: 'adh' });
+    expect(appel.prisma.creanceDouteuse.create.mock.calls[0][0].data.methodeCotisationsReclassement).toBe('APPEL');
+    const sans = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: null } });
+    await sans.service.reclasser('t', 'u', { ...dtoReclassement, compteCreanceId: 'adh' });
+    expect(sans.prisma.creanceDouteuse.create.mock.calls[0][0].data.methodeCotisationsReclassement).toBe('NON_DECLAREE');
+    const syscohada = monter();
+    await syscohada.service.reclasser('t', 'u', dtoReclassement);
+    expect(syscohada.prisma.creanceDouteuse.create.mock.calls[0][0].data.methodeCotisationsReclassement).toBeNull();
+  });
+
+  describe('M8 · une créance passée avant la relecture · la méthode se reconstitue sur le journal d’audit', () => {
+    const dto = { exerciceId: 'ex-26', journalId: 'od', date: '2026-12-20', montant: 160_000, motif: 'Adhérent radié', pieces: [{ nature: 'PV', reference: 'AG-3' }] };
+    const ancienne = creance([], [], {
+      compteCreance: { id: 'imp', numero: '41310003', intitule: 'Adhérent Mbuyi, chèque impayé', tiersCompte: null },
+      createdAt: new Date('2026-06-10T09:00:00Z'),
+      methodeCotisationsReclassement: null,
+    });
+    const fiche = (rang: number, jourIso: string, avant: string | null, apres: string | null) => ({
+      rang,
+      horodatage: new Date(jourIso),
+      entite: 'Tenant',
+      avant: { methodeCotisations: avant },
+      apres: { methodeCotisations: apres },
+    });
+
+    it('ENCAISSEMENT au jour du reclassement, APPEL déclaré depuis · la perte est refusée', async () => {
+      const { service, creer } = monter({
+        referentiel: Referentiel.SYCEBNL,
+        regime: { methodeCotisations: 'APPEL' },
+        creance: ancienne,
+        journalAudit: [fiche(1, '2026-01-02T00:00:00Z', null, 'ENCAISSEMENT'), fiche(9, '2026-09-01T00:00:00Z', 'ENCAISSEMENT', 'APPEL')],
+      });
+      await expect(service.perte('t', 'u', 'cd-1', { ...dto, comptePerteId: 'c6512' })).rejects.toThrow(/rien ne passe en perte au 6512/);
+      expect(creer).not.toHaveBeenCalled();
+    });
+
+    it('APPEL au jour du reclassement, ENCAISSEMENT déclaré depuis · la perte passe, l’état AVANT du premier maillon postérieur faisant foi', async () => {
+      const { service, creer } = monter({
+        referentiel: Referentiel.SYCEBNL,
+        regime: { methodeCotisations: 'ENCAISSEMENT' },
+        creance: ancienne,
+        journalAudit: [{ rang: 1, horodatage: new Date('2026-01-02T00:00:00Z'), entite: 'User' }, fiche(9, '2026-09-01T00:00:00Z', 'APPEL', 'ENCAISSEMENT')],
+      });
+      const r: any = await service.perte('t', 'u', 'cd-1', { ...dto, comptePerteId: 'c6512' });
+      expect(creer).toHaveBeenCalledTimes(1);
+      expect(r.avertissement).toBeNull();
+    });
+
+    it('un reclassement antérieur au journal du dossier · méthode INCONNUE, la perte passe et le dit', async () => {
+      const { service, creer } = monter({
+        referentiel: Referentiel.SYCEBNL,
+        regime: { methodeCotisations: 'ENCAISSEMENT' },
+        creance: ancienne,
+        journalAudit: [fiche(1, '2026-08-01T00:00:00Z', null, 'ENCAISSEMENT')],
+      });
+      const r: any = await service.perte('t', 'u', 'cd-1', { ...dto, comptePerteId: 'c6512' });
+      expect(creer).toHaveBeenCalledTimes(1);
+      expect(r.avertissement).toMatch(/au jour du reclassement inconnue \(reclassement antérieur au journal d’audit du dossier\).*ne sont pas refusées/);
+    });
+
+    it('la revue · DOTATION refusée d’un impayé reclassé sous l’encaissement, REPRISE ouverte', async () => {
+      const journalAudit = [fiche(1, '2026-01-02T00:00:00Z', null, 'ENCAISSEMENT')];
+      const dotation = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: 'ENCAISSEMENT' }, creance: ancienne, journalAudit });
+      await expect(dotation.service.revoir('t', 'u', 'cd-1', dtoRevue)).rejects.toThrow(/rien ne se déprécie au 491.*Seules la reprise et le maintien/);
+      expect(dotation.creer).not.toHaveBeenCalled();
+      const p: any = await dotation.service.propositionRevue('t', 'cd-1', 'ex-26');
+      expect(p.dotationRefuseeImpaye).toMatch(/impayé d'adhérent/);
+      // Une dépréciation déjà en place (revue de 2026) se reprend en 2027.
+      const avecRevue = { ...ancienne, ajustements: [revue26] };
+      const reprise = monter({ referentiel: Referentiel.SYCEBNL, regime: { methodeCotisations: 'ENCAISSEMENT' }, creance: avecRevue, journalAudit });
+      await reprise.service.revoir('t', 'u', 'cd-1', { ...dtoRevue, exerciceId: 'ex-27', depreciationNecessaire: 0 });
+      expect(reprise.creer.mock.calls[0][2].lignes[1]).toEqual({ compteId: 'c7594', debit: 0, credit: 400_000 });
+    });
+  });
+
+  describe('M9 · « Corriger par le résultat » (cadre conceptuel du SYCEBNL, § 3.3.1.2.4)', () => {
+    // Un chèque d'adhérent de 1 160 000 reclassé au 4161 en 2026 (exercice
+    // CLÔTURÉ), déprécié de 400 000 à la clôture de 2026. Correction en 2027 ·
+    // C 4161 1 160 000, D 4912 400 000, D 7011 760 000 (le produit constaté à
+    // tort à la remise, compte de résultat choisi par le cabinet).
+    const impaye = creance([revue26], [], {
+      compteCreance: { id: 'imp', numero: '41310003', intitule: 'Adhérent Mbuyi, chèque impayé', tiersCompte: null },
+      createdAt: new Date('2026-11-15T09:00:00Z'),
+      methodeCotisationsReclassement: 'NON_DECLAREE',
+      corrigeeParResultatLe: null,
+    });
+    const ligne = (compteId: string, numero: string, classe: string, debit: number, credit: number) => ({ compteId, debit, credit, compte: { numero, classe } });
+    const ecritureCorrection = (lignes = [
+      ligne('c4161', '41610000', 'CLASSE_4', 0, 1_160_000),
+      ligne('c4912', '49120000', 'CLASSE_4', 400_000, 0),
+      ligne('c7011', '70110000', 'CLASSE_7', 760_000, 0),
+    ], extra: Record<string, unknown> = {}) => ({
+      id: 'e-corr',
+      date: new Date('2027-03-31'),
+      statut: 'VALIDEE',
+      exercice: { dateDebut: exercices[1].dateDebut, dateFin: exercices[1].dateFin, statut: StatutExercice.OUVERT },
+      lignes,
+      ...extra,
+    });
+    const monterCorrection = (o: { creance?: Record<string, unknown>; ecriture?: unknown; methode?: string | null; exerciceCreanceClos?: boolean; detenteurs?: string[] } = {}) => {
+      const m = monter({
+        referentiel: Referentiel.SYCEBNL,
+        regime: { methodeCotisations: o.methode === undefined ? 'ENCAISSEMENT' : o.methode },
+        creance: o.creance ?? impaye,
+        detenteurs: o.detenteurs,
+      });
+      // L'exercice de la créance (2026) est clôturé · celui de la correction (2027) ouvert.
+      m.prisma.exercice.findFirst = jest.fn().mockImplementation(({ where }: any) => {
+        const e = exercices.find((x) => x.id === where.id);
+        return Promise.resolve(e ? { ...e, statut: e.id === 'ex-26' && o.exerciceCreanceClos !== false ? StatutExercice.CLOTURE : e.statut } : null);
+      });
+      m.prisma.ecriture.findFirst = jest.fn().mockResolvedValue(o.ecriture === undefined ? ecritureCorrection() : o.ecriture);
+      return m;
+    };
+    const dto = { ecritureId: '0f0e0d0c-0b0a-4908-8706-050403020100', motif: 'Chèque impayé de 2026, cotisation à l’encaissement' };
+
+    it('désigne l’écriture du cabinet qui solde le 416 et le 491 de la créance · update unitaire, rien n’est écrit', async () => {
+      const { service, prisma, creer } = monterCorrection();
+      prisma.creanceDouteuse.update = jest.fn().mockResolvedValue({ id: 'cd-1', corrigeeParResultatLe: new Date(), ecritureCorrectionResultatId: 'e-corr', motifCorrectionResultat: dto.motif });
+      const r: any = await service.corrigerParResultat('t', 'u', 'cd-1', dto);
+      expect(r.ecritureCorrectionResultatId).toBe('e-corr');
+      expect(prisma.creanceDouteuse.update.mock.calls[0][0]).toMatchObject({
+        where: { id: 'cd-1', tenantId: 't', annuleeLe: null, corrigeeParResultatLe: null },
+        data: { corrigeeParResultatPar: 'u', motifCorrectionResultat: dto.motif, ecritureCorrectionResultatId: 'e-corr' },
+      });
+      expect(creer).not.toHaveBeenCalled();
+    });
+
+    it('refuse, le motif nommé · exercice du reclassement ouvert, écriture au brouillard, 416 ou 491 inexacts, capitaux propres, écriture tenue', async () => {
+      const refus = async (o: Parameters<typeof monterCorrection>[0], attendu: RegExp) => {
+        const { service, prisma } = monterCorrection(o);
+        await expect(service.corrigerParResultat('t', 'u', 'cd-1', dto)).rejects.toThrow(attendu);
+        expect(prisma.creanceDouteuse.update).not.toHaveBeenCalled();
+      };
+      await refus({ exerciceCreanceClos: false }, /exercice du reclassement est ouvert.*Annuler le reclassement/);
+      await refus({ ecriture: ecritureCorrection(undefined, { statut: 'BROUILLARD' }) }, /encore au brouillard/);
+      await refus(
+        { ecriture: ecritureCorrection([ligne('c4161', '41610000', 'CLASSE_4', 0, 1_000_000), ligne('c4912', '49120000', 'CLASSE_4', 400_000, 0), ligne('c7011', '70110000', 'CLASSE_7', 600_000, 0)]) },
+        /porte 1000000\.00 au crédit du 416 de la créance, qui en garde 1160000\.00/,
+      );
+      await refus(
+        { ecriture: ecritureCorrection([ligne('c4161', '41610000', 'CLASSE_4', 0, 1_160_000), ligne('c7011', '70110000', 'CLASSE_7', 1_160_000, 0)]) },
+        /porte 0\.00 au débit du 491.*en place est de 400000\.00/,
+      );
+      await refus(
+        { ecriture: ecritureCorrection([ligne('c4161', '41610000', 'CLASSE_4', 0, 1_160_000), ligne('c4912', '49120000', 'CLASSE_4', 400_000, 0), ligne('c121', '12100000', 'CLASSE_1', 760_000, 0)]) },
+        /touche 12100000.*« on ne peut imputer directement sur les capitaux propres »/,
+      );
+      await refus({ detenteurs: ['une liquidation de TVA'] }, /déjà la contrepartie de une liquidation de TVA/);
+      await refus({ ecriture: null }, /Écriture introuvable/);
+    });
+
+    it('refuse une créance née sous l’APPEL, et un compte qui n’est pas un impayé d’adhérent', async () => {
+      const { service } = monterCorrection({ creance: { ...impaye, methodeCotisationsReclassement: 'APPEL' } });
+      await expect(service.corrigerParResultat('t', 'u', 'cd-1', dto)).rejects.toThrow(/reclassée sous la méthode de l’APPEL/);
+      const adh = monterCorrection({ creance: creance([revue26], [], { createdAt: new Date('2026-11-15T09:00:00Z'), methodeCotisationsReclassement: 'NON_DECLAREE' }) });
+      await expect(adh.service.corrigerParResultat('t', 'u', 'cd-1', dto)).rejects.toThrow(/ne vise qu'un impayé d'adhérent \(4131, 4133\)/);
+    });
+
+    it('corrigée, la créance n’admet plus aucun geste, ni l’annulation d’un de ses actes', async () => {
+      const corrigee = { ...impaye, corrigeeParResultatLe: new Date('2027-04-01'), ecritureCorrectionResultat: { id: 'e-corr', date: new Date('2027-03-31'), numeroPiece: 4, journal: { code: 'OD' } } };
+      const { service, prisma } = monter({ referentiel: Referentiel.SYCEBNL, creance: corrigee, mouvement: { id: 'mv-1', annuleeLe: null, exercice: { statut: StatutExercice.OUVERT }, ecriture: null } });
+      await expect(service.perte('t', 'u', 'cd-1', { exerciceId: 'ex-27', journalId: 'od', date: '2027-04-10', montant: 1, motif: 'x', pieces: [{ nature: 'PV', reference: '1' }] })).rejects.toThrow(
+        /corrigée par le résultat de l'exercice \(écriture du 2027-03-31\)/,
+      );
+      prisma.creanceDouteuse.findFirst = jest.fn().mockResolvedValue({ corrigeeParResultatLe: new Date('2027-04-01') });
+      await expect(service.annulerMouvement('t', 'u', 'cd-1', 'mv-1', { motif: 'Erreur de saisie' })).rejects.toThrow(/ses actes ne se défont plus/);
+    });
+
+    it('la règle pure · méthode inconnue admise quand le dossier déclare l’encaissement, refusée sinon ; mouvement ou revue postérieurs ; motif', () => {
+      const base = {
+        referentiel: Referentiel.SYCEBNL,
+        numeroSource: '41330001',
+        methode: { connue: false as const, motif: 'reclassement antérieur au journal d’audit du dossier' },
+        actuelle: 'ENCAISSEMENT' as const,
+        declareeOuverture: false,
+        exerciceCreanceClos: true,
+        exerciceEcritureApres: true,
+        exerciceEcritureOuvert: true,
+        ecritureValidee: true,
+        detenteurs: [],
+        credit416: 500,
+        debit491: 0,
+        autres: [{ numero: '70110000', gestion: true }],
+        reste: 500,
+        enPlace: 0,
+        mouvementApres: null,
+        revueApres: null,
+        motif: 'Correction',
+      };
+      expect(motifRefusCorrectionParResultat(base)).toBeNull();
+      expect(motifRefusCorrectionParResultat({ ...base, actuelle: 'APPEL' })).toMatch(/méthode au jour du reclassement inconnue/);
+      // Une créance DÉCLARÉE à l'ouverture se corrige dans l'exercice même de sa déclaration.
+      expect(motifRefusCorrectionParResultat({ ...base, declareeOuverture: true, exerciceCreanceClos: false })).toBeNull();
+      expect(motifRefusCorrectionParResultat({ ...base, exerciceEcritureApres: false })).toMatch(/exercice postérieur au reclassement/);
+      expect(motifRefusCorrectionParResultat({ ...base, mouvementApres: '2027-05-02' })).toMatch(/daté du 2027-05-02, après l’écriture/);
+      expect(motifRefusCorrectionParResultat({ ...base, revueApres: '2027-12-31' })).toMatch(/revue à la clôture du 2027-12-31/);
+      expect(motifRefusCorrectionParResultat({ ...base, autres: [] })).toMatch(/aucun compte de résultat/);
+      expect(motifRefusCorrectionParResultat({ ...base, reste: 0, credit416: 0 })).toMatch(/rien à corriger/);
+      expect(motifRefusCorrectionParResultat({ ...base, motif: ' ' })).toMatch(/motif de la correction est obligatoire/);
+    });
+  });
+
+  it('M8 · la méthode au jour du reclassement · figée d’abord, sinon le journal, l’état manquant se dit', () => {
+    const geste = new Date('2026-06-10T09:00:00Z');
+    expect(methodeAuReclassement({ figee: 'NON_DECLAREE', geste, actuelle: 'APPEL', journal: null })).toEqual({ connue: true, methode: null });
+    expect(methodeAuReclassement({ figee: null, geste, actuelle: 'APPEL', journal: null })).toMatchObject({ connue: false });
+    const journal = (dernierAvant: unknown, premierApres: unknown) => ({ debut: new Date('2026-01-01'), dernierAvant: dernierAvant as never, premierApres: premierApres as never });
+    expect(methodeAuReclassement({ figee: null, geste, actuelle: 'APPEL', journal: journal(null, null) })).toEqual({ connue: true, methode: 'APPEL' });
+    expect(
+      methodeAuReclassement({ figee: null, geste, actuelle: 'APPEL', journal: journal({ le: geste, avant: undefined, apres: undefined }, null) }),
+    ).toEqual({ connue: false, motif: 'le journal d’audit ne porte pas la méthode à cette date' });
+    // Une valeur hors des trois admises n'est jamais lue comme une méthode.
+    expect(methodeLueDansLeJournal({ methodeCotisations: 'AUTRE' })).toBeUndefined();
+    expect(methodeLueDansLeJournal({ methodeCotisations: null })).toBeNull();
+    expect(methodeLueDansLeJournal({ operation: 'updateMany' })).toBeUndefined();
   });
 
   it('m9 · méthode non déclarée · le reclassement passe avec un AVERTISSEMENT, servi aussi à la liste des comptes', async () => {
@@ -2079,7 +2405,12 @@ describe('créances douteuses · service', () => {
       tenantId: 't',
       annuleeLe: null,
       date: { lte: exercices[0].dateFin },
-      creance: { dateReclassement: { lte: exercices[0].dateFin }, annuleeLe: null },
+      // M9 · une créance corrigée par le résultat au plus tard à la clôture ne compte plus.
+      creance: {
+        dateReclassement: { lte: exercices[0].dateFin },
+        annuleeLe: null,
+        NOT: { ecritureCorrectionResultat: { is: { date: { lte: exercices[0].dateFin } } } },
+      },
     });
   });
 });

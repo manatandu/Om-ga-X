@@ -830,13 +830,26 @@ export interface DeclarationTva {
   tvaEnAttenteEncaissement: number;
   /**
    * La part de `tvaEnAttenteEncaissement` portée par des groupes de lettrage à
-   * plusieurs factures dont l'imputation des sommes perçues reste
-   * indéterminée · une part peut répondre à une somme déjà encaissée.
+   * plusieurs factures lus en bloc (un avoir, une ligne illisible, un
+   * à-nouveau dont la facture n'est pas retrouvée) · une part peut répondre à
+   * une somme déjà encaissée.
    */
   tvaEnAttenteImputationIndeterminee?: number;
-  /** Ces groupes, nommés par le serveur (la phrase est dans `mentionExigibilite`). */
-  groupesImputationIndeterminee?: Array<{ factures: string[]; encaisse: number; motif: string }>;
+  /** Ces groupes, nommés par le serveur avec leur motif (la phrase est dans `mentionExigibilite`). */
+  /**
+   * `declarationsNonLues` · les imputations déclarées sur des paiements de la
+   * période que le groupe, lu en bloc, n'a pas lues (relecture du 2026-10-07,
+   * second tour, M-b) · dites, jamais écartées sans un mot.
+   */
+  groupesImputationIndeterminee?: Array<{ factures: string[]; encaisse: number; motif: string; declarationsNonLues?: number }>;
   groupesImputationIndetermineeTotal?: number;
+  /**
+   * Les groupes de composition différente dont les sommes perçues dans la
+   * période sont imputées (Code civil, Livre III, art. 151 à 154), avec le
+   * fondement de l'imputation retenue.
+   */
+  imputationsDesPaiements?: Array<{ factures: string[]; encaisse: number; fondement: 'LEGALE' | 'DECLAREE' | 'DECLAREE_EN_PARTIE'; declareNonRetenu?: number }>;
+  imputationsDesPaiementsTotal?: number;
   /** Factures dont le rapprochement par l'à-nouveau est abandonné (plusieurs candidats), nommées par le serveur. */
   rapprochementsANouveauAbandonnes?: Array<{ facture: string; date: string; tva: number; motif: string }>;
   rapprochementsANouveauAbandonnesTotal?: number;
@@ -3115,6 +3128,12 @@ export interface ResultatFiscal {
   resultatComptable: number;
   sourceResultat: 'CLASSES_6_7_8' | 'COMPTE_13';
   chiffreAffaires: number;
+  /**
+   * C09 · le chiffre d'affaires qui assied le minimum (art. 57) · celui de
+   * l'exercice, sauf au premier exercice long, où celui de la période de
+   * création est retranché (décision par la loi du 2026-10-07).
+   */
+  chiffreAffairesMinimum?: number;
   retraitements: RetraitementFiscal[];
   totalReintegrations: number;
   totalDeductions: number;
@@ -3150,6 +3169,9 @@ export interface ResultatFiscal {
     source: 'LIVRE_JOURNAL' | 'DECLARE';
     resultatComptable: number;
     chiffreAffaires: number;
+    /** Mineur C09 · le chiffre d'affaires de la période, déclaré avec le bénéfice ou lu · absent d'un serveur antérieur. */
+    sourceChiffreAffaires?: 'LIVRE_JOURNAL' | 'DECLARE';
+    chiffreAffairesLu?: number;
     resultatFiscal: number;
     deduction: number;
     impotTheorique: number | null;

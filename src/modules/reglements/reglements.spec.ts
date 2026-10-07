@@ -123,13 +123,14 @@ function monter(
     return { id: 'e' + n, lignes: dto.lignes.map((l, i) => ({ ...l, id: `p${n}-${i}` })) };
   });
   const retirerCompensation = jest.fn(async () => undefined);
+  const delettrer = jest.fn(async () => undefined);
   const service = new ReglementsService(
     prisma,
     { creer, retirerCompensation } as unknown as EcritureService,
-    { lettrerManuel } as unknown as LettrageService,
+    { lettrerManuel, delettrer } as unknown as LettrageService,
     ordres as unknown as OrdresVirementService,
   );
-  return { service, creer, lettrerManuel, lignes, ordres, ordre, retirerCompensation };
+  return { service, creer, lettrerManuel, delettrer, lignes, ordres, ordre, retirerCompensation };
 }
 
 const base = { sens: 'FOURNISSEUR' as const, exerciceId: 'ex', journalId: 'bq', date: '2026-09-25' };
@@ -516,5 +517,93 @@ describe('les échéances et le règlement · la paire à cheval se compense (A6
     expect(g!.lignes).toEqual([
       expect.objectContaining({ id: 'ran', montant: 940_800, montantDevise: 560, regleParLettrageACheval: { groupe: 'A', montant: 1_008_000 } }),
     ]);
+  });
+});
+
+/**
+ * JUMEAU 3 DU POINT 4 (décision par la loi du 2026-10-07) · côté achats, le
+ * dossier est le débiteur · la part qu'il désigne pour chaque facture en
+ * payant (Code civil, Livre III, art. 151) devient une ligne au 40 lettrée
+ * avec sa seule facture, et date la déduction. f1 (600) et f2 (400) du
+ * fournisseur A, 500 payés · 400 sur f2, 100 sur f1.
+ */
+describe('règlement fournisseur imputé par le dossier (art. 151)', () => {
+  const avecPieces = () => {
+    const m = monter();
+    for (const l of m.lignes) Object.assign(l.ecriture, { numeroPiece: l.id === 'f1' ? 'ACH-12' : 'ACH-15', libelle: `Facture ${l.id}` });
+    return m;
+  };
+  // `null` · aucune pièce d'imputation (l'ordre de virement la porte, ou le refus).
+  const impute = (imputation: Array<{ ligneId: string; montant: number }>, montant = 500, pieceImputation: string | null = 'Lettre L-14') => ({
+    ...base,
+    reglements: [{ compteId: 'c401', ligneIds: ['f1', 'f2'], montant, imputation, ...(pieceImputation !== null ? { pieceImputation } : {}) }],
+  });
+
+  it('une ligne au 40 par facture, à sa part, puis la trésorerie · chacune lettrée avec SA facture', async () => {
+    const { service, creer, lettrerManuel } = avecPieces();
+    lettrerManuel.mockResolvedValueOnce({ lettre: 'A' }).mockResolvedValueOnce({ lettre: 'b' });
+    const r = await service.enregistrer('t', 'u', impute([{ ligneId: 'f2', montant: 400 }, { ligneId: 'f1', montant: 100 }]));
+    expect(creer.mock.calls[0][2].lignes).toEqual([
+      { compteId: 'c401', debit: 400, libelle: 'Règlement Fournisseur A · pièce ACH-15' },
+      { compteId: 'c401', debit: 100, libelle: 'Règlement Fournisseur A · pièce ACH-12' },
+      { compteId: 'c521', credit: 500, libelle: 'Règlement Fournisseur A' },
+    ]);
+    expect(lettrerManuel).toHaveBeenNthCalledWith(1, 't', 'c401', ['f2', 'p1-0'], 'u', { autoriserPartiel: false });
+    expect(lettrerManuel).toHaveBeenNthCalledWith(2, 't', 'c401', ['f1', 'p1-1'], 'u', { autoriserPartiel: true });
+    expect(r.reglements).toEqual([expect.objectContaining({ compte: '40110000', montant: 500, partiel: true, lettre: 'A, b' })]);
+    expect(r.avertissements).toEqual([]);
+    // La pièce qui a notifié l'imputation au fournisseur se lit sur la pièce comptable (M6).
+    expect((creer.mock.calls[0][2] as { reference?: string }).reference).toBe('imputation notifiée · Lettre L-14');
+  });
+
+  it('M6 · sans ordre de virement ni pièce qui la notifie, l’imputation est refusée AVANT toute pièce (art. 151)', async () => {
+    const { service, creer } = avecPieces();
+    await expect(service.enregistrer('t', 'u', impute([{ ligneId: 'f2', montant: 400 }, { ligneId: 'f1', montant: 100 }], 500, null))).rejects.toThrow(
+      'préparez l’ordre de virement, qui imprime chaque facture et sa part, ou donnez la référence de la pièce',
+    );
+    // Une pièce d'imputation sans parts n'a pas d'objet.
+    await expect(
+      service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], pieceImputation: 'Lettre L-14' }] }),
+    ).rejects.toThrow('n’a d’objet qu’avec la part désignée');
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('M6 · avec l’ordre de virement, l’imputation (factures et parts) est recopiée pour être IMPRIMÉE', async () => {
+    const { service, ordres } = avecPieces();
+    await service.enregistrer('t', 'u', { ...impute([{ ligneId: 'f2', montant: 400 }, { ligneId: 'f1', montant: 100 }], 500, null), ordreVirement: true });
+    const lignes = (ordres.creer.mock.calls[0] as unknown[])[5] as Array<{ imputationDeclaree: string }>;
+    expect(lignes[0].imputationDeclaree).toBe('Factures payées · pièce ACH-15 : 400,00 ; pièce ACH-12 : 100,00');
+  });
+
+  it('refus nommés AVANT toute pièce · somme différente du montant, part au-delà du dû, facture sans part, côté client', async () => {
+    const { service, creer } = avecPieces();
+    await expect(service.enregistrer('t', 'u', impute([{ ligneId: 'f2', montant: 400 }, { ligneId: 'f1', montant: 50 }]))).rejects.toThrow(
+      'La somme des parts (450.00) diffère du montant réglé (500.00)',
+    );
+    await expect(service.enregistrer('t', 'u', impute([{ ligneId: 'f2', montant: 450 }, { ligneId: 'f1', montant: 50 }]))).rejects.toThrow(
+      'dépasse le dû de sa facture (400.00)',
+    );
+    await expect(service.enregistrer('t', 'u', impute([{ ligneId: 'f2', montant: 400 }], 400))).rejects.toThrow('ne reçoit aucune part');
+    await expect(
+      service.enregistrer('t', 'u', { ...base, sens: 'CLIENT', reglements: [{ compteId: 'c411', ligneIds: ['k1'], imputation: [{ ligneId: 'k1', montant: 500 }] }] }),
+    ).rejects.toThrow('jamais celle du cabinet qui encaisse');
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('le second lettrage refusé · le premier groupe est défait, la pièce retirée, l’erreur d’origine remonte', async () => {
+    const { service, lettrerManuel, delettrer, retirerCompensation } = avecPieces();
+    lettrerManuel.mockResolvedValueOnce({ lettre: 'A' }).mockRejectedValueOnce(new Error('Une des lignes a été lettrée entre-temps'));
+    await expect(service.enregistrer('t', 'u', impute([{ ligneId: 'f2', montant: 400 }, { ligneId: 'f1', montant: 100 }]))).rejects.toThrow(
+      /entre-temps/,
+    );
+    expect(delettrer).toHaveBeenCalledWith('t', 'c401', 'A');
+    expect(retirerCompensation).toHaveBeenCalledWith('t', 'e1');
+  });
+
+  it('sans parts, un règlement partiel de plusieurs factures suit l’art. 154, et c’est DIT', async () => {
+    const { service, lettrerManuel } = avecPieces();
+    const r = await service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1', 'f2'], montant: 500 }] });
+    expect(lettrerManuel).toHaveBeenCalledWith('t', 'c401', ['f1', 'f2', 'p1-0'], 'u', { autoriserPartiel: true });
+    expect(r.avertissements).toEqual([expect.stringContaining('la déduction de leur TVA suit l’imputation légale (Code civil, Livre III, art. 154')]);
   });
 });

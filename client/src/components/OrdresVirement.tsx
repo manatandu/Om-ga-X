@@ -33,6 +33,8 @@ interface LigneOrdre {
   montant: string | number;
   reference: string | null;
   pieceReglement: string;
+  /** Les factures et la part de chacune, quand le dossier les désigne (Code civil, Livre III, art. 151) · imprimées. */
+  imputationDeclaree?: string | null;
   ecritureId: string | null;
 }
 
@@ -264,7 +266,10 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                     <td className="px-2 py-1">
                       {l.banque} · {l.coordonnees}
                     </td>
-                    <td className="px-2 py-1 text-text-dim">{l.pieceReglement}</td>
+                    <td className="px-2 py-1 text-text-dim">
+                      {l.pieceReglement}
+                      {l.imputationDeclaree && <div>{l.imputationDeclaree}</div>}
+                    </td>
                     <td className="px-2 py-1 text-right">{fmt(l.montant)}</td>
                   </tr>
                 ))}
@@ -333,7 +338,11 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                     {l.coordonnees}
                     {l.codeBic && ` · BIC ${l.codeBic}`}
                   </td>
-                  <td className="border border-black px-1.5 py-1">{l.reference ?? ''}</td>
+                  <td className="border border-black px-1.5 py-1">
+                    {l.reference ?? ''}
+                    {/* L'imputation que le dossier déclare en payant (art. 151) voyage avec le virement. */}
+                    {l.imputationDeclaree && <div>{l.imputationDeclaree}</div>}
+                  </td>
                   <td className="border border-black px-1.5 py-1 text-right">{fmt(l.montant)}</td>
                 </tr>
               ))}

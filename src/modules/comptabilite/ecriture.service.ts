@@ -304,6 +304,7 @@ export const DETENTEUR_PAIE_DU_MOIS: DetenteurEcriture = 'la paie du mois (bulle
 export const DETENTEUR_RECLASSEMENT_CREANCE: DetenteurEcriture = 'une créance douteuse (reclassement au 416)';
 export const DETENTEUR_REVUE_CREANCE: DetenteurEcriture = 'une créance douteuse (revue de la dépréciation)';
 export const DETENTEUR_MOUVEMENT_CREANCE: DetenteurEcriture = 'une créance douteuse (perte ou recouvrement)';
+export const DETENTEUR_CORRECTION_CREANCE: DetenteurEcriture = 'une créance douteuse (correction par le résultat)';
 export const DETENTEUR_IMPOT_RESULTAT: DetenteurEcriture = "l'écriture de l'impôt sur le résultat (fenêtre Résultat fiscal)";
 
 /**
@@ -1282,6 +1283,11 @@ export class EcritureService {
       // Un mouvement annulé (K4) ne retient plus · son écriture validée est
       // neutralisée par l'inscription en négatif, celle du brouillard est partie.
       [DETENTEUR_MOUVEMENT_CREANCE, this.prisma.mouvementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      // La correction par le résultat d'une créance (M9) · retirée, réimputée
+      // ou corrigée seule, l'écriture laisserait la créance sortie du module
+      // sans ce qui la soldait au 416 et au 491. Aucun geste ne défait la
+      // désignation · l'écriture, validée, ne se retire de toute façon pas.
+      [DETENTEUR_CORRECTION_CREANCE, this.prisma.creanceDouteuse.count({ where: { tenantId, ecritureCorrectionResultatId: ecritureId } })],
       // L'impôt sur le résultat constaté depuis la fenêtre Résultat fiscal
       // (ligne A11) · retirée seule, l'écriture laisserait l'exercice se dire
       // constaté, et la proposition ne reviendrait plus. Un constat ANNULÉ ne
@@ -1313,6 +1319,16 @@ export class EcritureService {
     ];
     const resultats = await Promise.all(detenteursPossibles.map(([, p]) => p));
     return detenteursPossibles.filter((_, i) => resultats[i] > 0).map(([nom]) => nom);
+  }
+
+  /**
+   * LES MODULES QUI TIENNENT UNE ÉCRITURE, lus de dehors (M9) · un geste qui
+   * DÉSIGNE une écriture existante (la correction d'une créance par le
+   * résultat) refuse celle qu'un autre module tient déjà. Même liste que le
+   * refus, jamais une copie.
+   */
+  async detenteursDeLEcriture(tenantId: string, ecritureId: string): Promise<DetenteurEcriture[]> {
+    return this.detenteursDe(tenantId, [ecritureId]);
   }
 
   /**

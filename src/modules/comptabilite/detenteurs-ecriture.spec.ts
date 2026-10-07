@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { COLONNES_QUI_RETIENNENT, ECRITURE_LAISSEE_PARTIR } from './detenteurs-ecriture';
+import { COLONNES_QUI_RETIENNENT, ECRITURE_LAISSEE_PARTIR, RELATIONS_VERS_UNE_LIGNE } from './detenteurs-ecriture';
 
 /**
  * TOUTE RELATION VERS UNE ÉCRITURE EST UNE DÉCISION (CLAUDE.md § 10 bis, audit
@@ -76,6 +76,27 @@ describe('détenteurs d’une écriture · la décision est prise pour chaque re
 
   it('un mouvement de magasin ANNULÉ ne tient plus son écriture (audit final F133)', () => {
     expect(corpsDetenteursDe()).toContain('this.prisma.mouvementStock.count({ where: { tenantId, ecritureId, annuleLe: null } })');
+  });
+
+  it('toute relation vers une LIGNE d’écriture est décidée, avec la règle que le schéma déclare (mineur du 2026-10-07)', () => {
+    const schema = readFileSync(join(RACINE, 'prisma/schema.prisma'), 'utf8');
+    const lues = new Map<string, string>();
+    let modele = '';
+    for (const ligne of schema.split('\n')) {
+      const tete = ligne.match(/^model (\w+) \{/);
+      if (tete) modele = tete[1];
+      const champ = ligne.match(/^\s+\w+\s+LigneEcriture\??\s+@relation\(([^)]*)\)/);
+      if (!champ) continue;
+      const colonne = champ[1].match(/fields: \[(\w+)\]/)?.[1];
+      const regle = champ[1].match(/onDelete: (\w+)/)?.[1] ?? 'MUETTE';
+      if (colonne) lues.set(`${modele}.${colonne}`, regle.toUpperCase());
+    }
+    expect(lues.size).toBeGreaterThanOrEqual(4);
+    const decidees = Object.keys(RELATIONS_VERS_UNE_LIGNE);
+    expect([...lues.keys()].filter((r) => !decidees.includes(r))).toEqual([]);
+    expect(decidees.filter((r) => !lues.has(r))).toEqual([]);
+    const discordantes = decidees.filter((r) => !RELATIONS_VERS_UNE_LIGNE[r].startsWith(`${lues.get(r)} · `));
+    expect(discordantes).toEqual([]);
   });
 
   it('toute relation vers une écriture déclare son onDelete (audit du serveur I3)', () => {

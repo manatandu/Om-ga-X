@@ -70,6 +70,9 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   ReglementsController: FonctionMetier.TRESORERIE,
   OrdresVirementController: FonctionMetier.TRESORERIE,
   LotsVirementController: FonctionMetier.TRESORERIE,
+  // L'imputation déclarée d'un paiement (Code civil, Livre III, art. 151 et
+  // 153) · elle dit quelle facture le règlement paie.
+  ImputationsPaiementsController: FonctionMetier.TRESORERIE,
   RelancesController: FonctionMetier.RELANCES,
   CourrierController: FonctionMetier.RELANCES,
   ImmobilisationController: FonctionMetier.IMMOBILISATIONS,

@@ -802,9 +802,28 @@ refusés, lettrage automatique en UNE passe qui écarte la ligne. Position en de
 jugée NETTE par compte et par devise ; part du 491 « hors module » lue sur l'EXERCICE
 seul ; 416 hors du Règlement des tiers (« Recouvrement » du module), règlement d'un
 compte d'origine BORNÉ à son solde net (m-d), `COMPTE_CREANCE_RECLASSEE_CREDITEUR` en
-AVERTISSEMENT, hors de `TIERS_SOLDE_INVERSE` ; impayé d'adhérent (4131, 4133) sous
-l'encaissement admis avec avertissement (question D7 du suivi). Chaque correction
-s'éprouve sur VRAIE base à travers une clôture (décision du 2026-10-03).
+AVERTISSEMENT, hors de `TIERS_SOLDE_INVERSE`. D7 (décision par la loi du 2026-10-07)
+· sous l'ENCAISSEMENT, un impayé d'adhérent (4131, 4133) n'est PAS une créance · une
+valeur revenue impayée n'a jamais été encaissée (fiche SYCEBNL du compte 51, avis de
+crédit ; § 5.4.2.1) · reclassement, déclaration et perte au 6512 REFUSÉS comme le
+411, deux issues nommées (solder l'impayé contre le produit constaté à la remise, ou
+déclarer l'APPEL) ; les reclassements déjà passés sont SIGNALÉS
+(`CREANCE_ADHERENT_RECLASSEE_SOUS_ENCAISSEMENT`, information, liste bornée qui dit
+son total), jamais défaits d'office. M8 (relecture du 2026-10-07) · LA MÉTHODE QUI
+JUGE la perte, la DOTATION (refusée, la reprise ouverte) et le contrôle est celle du
+JOUR DU RECLASSEMENT · figée au geste (`methodeCotisationsReclassement`), sinon
+reconstituée sur le journal d'audit de la fiche du dossier
+(`lireMethodeAuReclassement`), sinon dite INCONNUE, sans refus ; déclarer l'APPEL
+ensuite ne change rien à une créance née sous l'encaissement (le contrôle, lui, ne
+lit que le dossier qui déclare l'encaissement aujourd'hui, limite écrite). M9 · reclassée dans un
+exercice CLÔTURÉ, elle se corrige par le résultat de l'exercice en cours (cadre
+conceptuel § 3.3.1.2.4) · le cabinet passe et VALIDE l'écriture sur le compte qu'il
+choisit, « Corriger par le résultat » la DÉSIGNE avec son motif (`update` unitaire,
+écriture retenue) si elle solde exactement le reste au 416 et la dépréciation en
+place au 491, sans autre ligne que de gestion ; la créance sort du module à la date
+de l'écriture (`nonCorrigeeAu` · rapprochement, bornes, clôture, contrôle,
+règlement), et ses actes ne se défont plus. Chaque correction s'éprouve sur VRAIE
+base à travers une clôture (décision du 2026-10-03).
 
 **TVA à l'encaissement (ligne A7 bis, partie 1, 2026-10-04).** O.-L. n° 10/001,
 art. 25, 2° ; décret n° 011/42, art. 57 ; art. 37 al. 1 et décret art. 96 pour la
@@ -840,22 +859,74 @@ refus · autre compte, brouillard, à-nouveau, au-delà de l'ouvert ou du reclas
 ligne d'une autre créance non annulée, ligne dont le lettrage réunit d'AUTRES
 factures (`MOTIF_LETTRAGE_PARTAGE`, quatrième reprise ; entrée plus tard dans un
 tel groupe, ses recouvrements sont nommés, jamais rattachés). Chaque
-recouvrement non annulé et validé encaisse la part désignée au prorata recouvré /
-reclassé, une tranche à sa date, rattachée par l'IDENTIFIANT de chaque ligne
+recouvrement non annulé et validé encaisse la part désignée de ce qu'il recouvre
+(recouvré × désigné / reclassé), imputée entre les factures désignées par l'art. 154
+(la plus ancienne d'abord, au prorata à date égale ; la part NON désignée, sans date,
+garde sa part et reste nommée), une tranche à sa date, rattachée par l'IDENTIFIANT de chaque ligne
 désignée (deux échéances comprises), sur le TTC de la facture et dans la limite
 de ce qui reste en attente, sans toucher aucun groupe de lettrage, par la même
-mémoire (4) ; AUCUN PRORATA ENTRE FACTURES D'UN GROUPE (décision du 2026-10-04,
-convention qu'aucun texte ne fixe) · sans créance désignée, chaque groupe rend ce
-que rend `main` (`datesDuGroupeDeMain`, gelé par `tva-groupes-comme-main.spec.ts`),
-seules exceptions voulues la créance non lettrée, le groupe à UNE facture
-(tranche par règlement, sauf avoir dans le groupe) et, depuis la ligne TVA 24-26
-(F1, 2026-10-04), le groupe à PLUSIEURS factures de MÊME COMPOSITION (même taxe
-par franc engagé, même taux et compte, même part de l'art. 41) · chaque somme
-perçue rend exigible sa taxe (art. 25, 2° ; décret art. 57), la même quelle que
-soit l'imputation, que le corpus ne règle pas (`fractionsDuGroupe`), répartie
-dans le temps pour le GROUPE entier (un mois liquidé reste ce qu'il a déclaré,
-`repartirLibresEntreLignes`) ; de composition différente, règle de `main` et
-groupe NOMMÉ (`groupesImputationIndeterminee`, `tvaEnAttenteImputationIndeterminee`) ;
+mémoire (4) ; L'IMPUTATION DES PAIEMENTS SUIT LE CODE CIVIL, LIVRE III, ART. 151
+À 154 (décision par la loi du 2026-10-07, point 4, qui remplace la convention
+« aucun prorata entre factures d'un groupe » du 2026-10-04 ; `imputation-paiements.ts`)
+· la déclaration du débiteur (art. 151) ou la quittance qu'il a acceptée (art. 153)
+prime (`ImputationPaiement`, `POST /imputations-paiements`, `@ReserveAuComptable()` · un
+paiement VALIDÉ au 40 ou au 41, lettré avec ses factures, pièce exigée ET DATÉE · la
+déclaration du débiteur jamais postérieure au paiement (art. 151, « lorsqu'il paye »),
+la quittance jamais antérieure et avec la PREUVE de son acceptation (art. 153) ; chaque
+part bornée par ce que la facture a déjà reçu des paiements ANTÉRIEURS du groupe
+(déclarés ou par l'art. 154) et des déclarations actives des POSTÉRIEURS, ceux-ci
+nommés (pièce, date), une déclaration d'un paiement sorti du groupe ne retenant rien ;
+relue sous verrous du paiement, des factures et du groupe, dans un ordre fixe ; au
+journal d'audit, retirée par un `update` unitaire avec motif, jamais dans un exercice
+clôturé ; un geste sur un paiement d'une période LIQUIDÉE dit la taxe portée au premier
+jour non liquidé, lue sur le moteur avant et après, « non calculé » plutôt qu'un zéro ;
+relecture du 2026-10-07, M3 et M4 ; une part qui ne peut plus être retenue est DITE
+avec son montant), sinon l'ordre légal (art. 154) · factures ÉCHUES à la date du paiement
+d'abord (sans échéance, échue dès sa facture), puis la plus ANCIENNE par la date
+de la facture (l'échéance la plus ancienne en réserve dite), au PRORATA à date
+égale ; intérêts et pénalités non lus, dettes d'égale nature, dit ; un lettrage
+posé par le créancier ne fixe pas l'imputation. Sans créance désignée, le groupe à
+UNE facture garde sa tranche par règlement (sauf avoir), la créance non lettrée
+reste en attente, et le groupe à PLUSIEURS factures de MÊME COMPOSITION (même taxe
+par franc engagé, même taux et compte, même part de l'art. 41, ligne TVA 24-26, F1)
+rend la même taxe quelle que soit l'imputation (`fractionsDuGroupe`), répartie
+dans le temps pour le GROUPE entier (`repartirLibresEntreLignes`) ; de composition
+DIFFÉRENTE, chaque somme est IMPUTÉE (`imputerLeGroupe`) et la taxe de chaque
+facture devient exigible aux dates des sommes qui la paient, chaque ligne gardant
+sa répartition (un mois liquidé reste ce qu'il a déclaré, l'écart au premier jour
+non liquidé), la déclaration disant l'imputation retenue et son fondement
+(`imputationsDesPaiements`) ; seuls l'AVOIR dans le groupe, la ligne illisible et
+l'à-nouveau dont la facture n'est pas retrouvée gardent la règle de `main`
+(`datesDuGroupeDeMain`, gelé par `tva-groupes-comme-main.spec.ts`), NOMMÉS pour
+leur motif (`groupesImputationIndeterminee`, `tvaEnAttenteImputationIndeterminee`) ;
+CHAQUE REPORT D'À-NOUVEAU d'un groupe (sens de la facture) est remplacé par la
+facture qu'il reporte (`traduireLesReports`, relecture du 2026-10-07, B1 · même
+appariement que la prolongation, une seule candidate ; facture d'origine lettrée en
+N, son groupe entre aussi), sans quoi « la plus ancienne » se lisait au 1er janvier
+et le groupe d'un paiement de N+1 réunissant deux à-nouveaux retombait sur la
+fraction cumulée SANS être nommé (défaut présent sur `main` aussi) ; une imputation
+déclarée sur un report vise sa facture (`reportsVers`, B2) ; UNE SEULE LECTURE DU
+GROUPE (second tour, B-1 et B-2) · le groupe lu est TOUTE LA CHAÎNE DES REPORTS,
+dans les deux sens (`traduireLesReports` · d'un report à sa pièce d'origine,
+`chercherOrigines`, d'une pièce à ses reports, `chercherReports`, de groupe en
+groupe), et TOUT REPORT DONT LA PIÈCE D'ORIGINE Y EST EN SORT, paiement compris
+(`paiementsReportes`) · le report de l'acompte P0 de N, lettré en N+1 avec celui
+de sa facture, comptait P0 une seconde fois au 1er janvier (février 88 275,86 au
+lieu de 68 965,52) ; un groupe qui porte une ligne d'à-nouveau se lit ainsi même à
+une seule facture (`groupeAPlusieursFactures`) ; deux clés qui lisent les mêmes
+lignes (le groupe de N prolongé, celui de N+1) sont FONDUES, l'imputation dite une
+fois ; un report de paiement dont la pièce d'origine n'est pas retrouvée fait lire
+le groupe en bloc, nommé ; le MOTEUR, la PORTE de la déclaration et sa FENÊTRE lisent
+par les mêmes fonctions (`traduireLesReports`, `lectureDuGroupe`) · la porte qui
+lisait les reports bruts, nés le même jour, refusait au prorata une imputation que
+le moteur admettait ; un groupe lu en bloc (avoir, décret n° 011/42, art. 126 ;
+ligne illisible ; à-nouveau non retrouvé) ne reçoit aucune déclaration, la
+fenêtre le dit (`nonServi`), et la déclaration de TVA nomme celles qu'il n'a pas
+lues (`declarationsNonLues`, M-b) ; une déclaration posée sur un REPORT de paiement
+est refusée, le paiement d'origine nommé (art. 151, « lorsqu'il paye »), et un
+paiement d'un exercice clôturé ne se déclare pas plus qu'il ne se retire
+(`motifPaiementExerciceClos`, M-a) ; le paiement non rattaché date chaque report
+par sa facture d'origine (M-d) ;
 un groupe PARTIEL d'un exercice clos se POURSUIT par les groupes de ses lignes
 d'à-nouveau, reports exclus (`prolongerParLesANouveaux`, même appariement que
 `relierAuxANouveaux`, une candidate par exercice), de proche en proche sur
@@ -2650,7 +2721,18 @@ lettrage et ventilation.
 lettrage MANUEL aussitôt. (1) TIERS ET TRÉSORERIE SEULS (guide SYSCOHADA Partie 1
 ch. 4 § 1, fiches des comptes 40 et 41). (2) 408, 409, 418, 419 ne se règlent pas.
 (3) Moins que le dû = partiel ; plus = REFUSÉ. (4) TOUT SE VÉRIFIE AVANT LA
-PREMIÈRE PIÈCE. L'ordre de virement ne bloque pas la validation.
+PREMIÈRE PIÈCE. L'ordre de virement ne bloque pas la validation. (5) LE DOSSIER QUI
+PAIE SON FOURNISSEUR DÉCLARE CE QU'IL ACQUITTE (Code civil, Livre III, art. 151 ;
+décision par la loi du 2026-10-07, point 4, jumeau 3) · la part de CHAQUE facture
+(`imputation`, `motifRefusImputationReglement`, somme égale au montant réglé, aucune
+au-delà de son dû, aucune facture cochée sans part) donne UNE ligne au 40 par
+facture, lettrée avec elle seule, qui date la déduction ; refusée côté client
+(l'imputation est celle du client, art. 151 et 153), en devise et sur une ligne
+réglée en partie à cheval ; sans parts, un partiel de plusieurs factures suit
+l'art. 154, et c'est DIT. L'imputation se déclare AU FOURNISSEUR « lorsqu'il paye »
+(relecture du 2026-10-07, M6) · l'ordre de virement l'IMPRIME (factures et parts,
+`LigneOrdreVirement.imputationDeclaree`), sinon la référence de la pièce qui la lui a
+notifiée est exigée (`pieceImputation`, recopiée à la référence de la pièce).
 
 **Nouvelle immobilisation (2026-09-28, relevé par Manasse).** (1) CONTREPARTIE EN
 LISTE FERMÉE (`immobilisations/contrepartie-acquisition.ts`, fiches 21 à 24) ·
@@ -3297,7 +3379,10 @@ même règle pour la collecte, bornée par `Tenant.dateAutorisationDebitsTva`. (
 signaux, aucune date · mention sous une fiche non autorisée ou hors période, fiche
 autorisée dont la facture omet la mention (art. 60). (3) Art. 62 · un règlement
 LETTRÉ antérieur au débit rend exigible SA part, le reste au débit
-(`tranchesAuxDebits`) ; un groupe portant d'autres factures reste au débit. (4) La
+(`tranchesAuxDebits`) ; un groupe portant d'autres factures IMPUTE ses règlements
+(Code civil, Livre III, art. 151 à 154, `tranchesAuxDebitsImputees`, relecture du
+2026-10-07, M7), et celui qui ne se décompose pas reste au débit, NOMMÉ avec la
+somme perçue avant le débit. (4) La
 requête lit aussi la facture postérieure dont un règlement lettré tombe dans la
 période.
 

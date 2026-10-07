@@ -97,10 +97,36 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   'CreanceDouteuse.ecritureReclassementId',
   'AjustementCreanceDouteuse.ecritureId',
   'MouvementCreanceDouteuse.ecritureId',
+  // La correction par le résultat d'une créance (relecture du 2026-10-07,
+  // M9) · retirée, réimputée ou corrigée seule, l'écriture laisserait la
+  // créance sortie du module sans la pièce qui la solde au 416 et au 491.
+  'CreanceDouteuse.ecritureCorrectionResultatId',
   // L'impôt sur le résultat (ligne A11) · retirée seule, l'écriture laisserait
   // l'exercice se dire constaté sans la pièce qui porte le 89 et le 441.
   'ConstatImpotResultat.ecritureId',
 ];
+
+/**
+ * LES RELATIONS VERS UNE LIGNE D'ÉCRITURE · même décision, colonne par colonne
+ * (relecture du 2026-10-07, mineur serveur). Une ligne ne part qu'avec son
+ * écriture AU BROUILLARD (`EcritureService.modifier` la remplace,
+ * `supprimer` la retire) ; validée, elle est indélébile (AUDCIF art. 22, 2°).
+ * Le motif commence par la règle de la clé (CASCADE ou RESTRICT), que
+ * `detenteurs-ecriture.spec.ts` confronte au schéma.
+ */
+export const RELATIONS_VERS_UNE_LIGNE: Readonly<Record<string, string>> = {
+  'VentilationAnalytique.ligneEcritureId':
+    'CASCADE · la ventilation analytique suit sa ligne · retirée ou remplacée au brouillard, la ligne emporte sa ventilation, ' +
+    'que la saisie repose avec la ligne nouvelle',
+  'FactureCreanceDouteuse.ligneEcritureId':
+    'RESTRICT · seule une facture VALIDÉE se désigne (`motifRefusDesignation`), donc une ligne indélébile · un chemin qui ' +
+    'viendrait à la supprimer est refusé par la base au lieu de dénouer la désignation, et le recouvrement de perdre sa TVA',
+  'ImputationPaiement.ligneReglementId':
+    'RESTRICT · seul un paiement VALIDÉ se déclare (`motifRefusDeclaration`), donc une ligne indélébile · un chemin qui ' +
+    'viendrait à la supprimer est refusé par la base au lieu de faire disparaître l’imputation de la déclaration de TVA',
+  'ImputationPaiement.ligneFactureId':
+    'RESTRICT · seule une facture VALIDÉE se désigne dans une imputation (`motifRefusDeclaration`) · même raison que le paiement',
+};
 
 /** Colonnes dont l'écriture peut partir, avec le motif de la décision. */
 export const ECRITURE_LAISSEE_PARTIR: Readonly<Record<string, string>> = {

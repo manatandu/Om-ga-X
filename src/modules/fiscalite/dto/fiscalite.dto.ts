@@ -120,6 +120,17 @@ export class ModifierDossierFiscalDto {
   @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
   resultatPeriodeCreationSaisi?: number | null;
 
+  /**
+   * Le chiffre d'affaires de la période de création, déclaré avec son
+   * bénéfice (mineur C09) · null = lu au livre-journal au 31 décembre.
+   */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsNumber()
+  @Min(0)
+  @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
+  chiffreAffairesPeriodeCreationSaisi?: number | null;
+
   /** Suppléments de l'Administration sur l'impôt de la période de création (LPF art. 57 bis). */
   @FacultatifNonNul(nonNul('Le montant des suppléments sur la période de création'))
   @IsNumber()

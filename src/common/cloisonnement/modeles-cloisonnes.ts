@@ -60,6 +60,8 @@ export const MODELES_CLOISONNES = new Set<string>([
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',
   'FactureCreanceDouteuse',
+  // L'imputation déclarée d'un paiement (décision par la loi du 2026-10-07, point 4).
+  'ImputationPaiement',
   'ConstatImpotResultat',
   // Comptabilité de gestion (ligne A20) · clés, leurs lignes et données du
   // coût de production, chacune portant son tenantId.

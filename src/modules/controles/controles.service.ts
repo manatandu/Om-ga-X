@@ -68,6 +68,13 @@ import {
   type JournalEcrit,
 } from './banque-et-cloture-informatique';
 import { jourDeKinshasa } from '../../common/echeance';
+import {
+  CONTROLE_CREANCE_ADHERENT_SOUS_ENCAISSEMENT,
+  MethodeCotisationsDeclaree,
+  nonCorrigeeAu,
+  resteFinalDeLaCreance,
+} from '../creances-douteuses/creances-douteuses';
+import { lireMethodeAuReclassement } from '../creances-douteuses/methode-au-reclassement';
 
 /**
  * SEUILS DE DÉSIGNATION DU CONTRÔLEUR DES COMPTES · ils ne sont PLUS ici.
@@ -524,6 +531,94 @@ export class ControlesService {
     const ex = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId } });
     if (!ex) throw new BadRequestException('Exercice introuvable pour ce dossier');
     return ex;
+  }
+
+  /**
+   * D7 · LES IMPAYÉS D'ADHÉRENT (4131, 4133) RECLASSÉS AU 4161, non annulés,
+   * reclassés (ou déclarés) au plus tard à la clôture de l'exercice examiné.
+   * Ne sont gardés que ceux qui portent encore un reste après tous leurs
+   * mouvements non annulés, ou qui sont nés dans l'exercice · une créance
+   * soldée par un recouvrement réel d'un exercice antérieur n'a plus rien
+   * à corriger, et la signaler à chaque exercice ferait un contrôle qu'on
+   * apprend à ignorer (§ 10 bis). Lu par tranches, la liste dit son total.
+   *
+   * M8 · LA MÉTHODE QUI JUGE EST CELLE DU JOUR DU RECLASSEMENT (figée, ou
+   * reconstituée sur le journal d'audit, `lireMethodeAuReclassement`), la même
+   * que le module lit pour refuser la perte et la dotation · signalée, une
+   * créance reclassée sous l'encaissement ; reclassée sans méthode déclarée,
+   * ou sous une méthode inconnue, quand le dossier déclare l'encaissement
+   * aujourd'hui, et le détail le dit ; jamais une créance reclassée sous
+   * l'APPEL. M9 · une créance corrigée par le résultat au plus tard à la
+   * clôture est sortie du module.
+   */
+  private async impayesAdherentReclasses(
+    tenantId: string,
+    ex: { dateDebut: Date; dateFin: Date },
+    actuelle: MethodeCotisationsDeclaree,
+  ) {
+    const impayes = new Collecte<{ reference: string; detail: string; date: string; montant: number }>(PLAFOND_OCCURRENCES);
+    // Les candidates d'abord, la méthode ensuite · `lireParLots` n'attend pas
+    // un traitement asynchrone, et une lecture du journal d'audit lancée
+    // sans être attendue tomberait en silence (§ 10 bis).
+    const candidates: Array<{
+      reference: string;
+      detail: string;
+      date: string;
+      montant: number;
+      createdAt: Date;
+      figee: 'APPEL' | 'ENCAISSEMENT' | 'NON_DECLAREE' | null;
+    }> = [];
+    await lireParLots(
+      (curseur) =>
+        this.prisma.creanceDouteuse.findMany({
+          where: {
+            tenantId,
+            annuleeLe: null,
+            dateReclassement: { lte: ex.dateFin },
+            ...nonCorrigeeAu(ex.dateFin),
+            compteCreance: { tenantId, OR: [{ numero: { startsWith: '4131' } }, { numero: { startsWith: '4133' } }] },
+          },
+          select: {
+            id: true,
+            dateReclassement: true,
+            montant: true,
+            declareeOuverture: true,
+            createdAt: true,
+            methodeCotisationsReclassement: true,
+            compteCreance: { select: { numero: true, intitule: true } },
+            compte416: { select: { numero: true } },
+            mouvements: { where: { annuleeLe: null }, select: { montant: true } },
+          },
+          ...pageApres(curseur, LOT_LECTURE),
+        }),
+      (c) => {
+        const montant = Number(c.montant);
+        const reste = resteFinalDeLaCreance(montant, c.mouvements.map((m) => ({ montant: Number(m.montant) })));
+        const neeDansLExercice = c.dateReclassement.getTime() >= ex.dateDebut.getTime();
+        if (!(reste > 0.005) && !neeDansLExercice) return;
+        candidates.push({
+          reference: `${c.compteCreance.numero} ${c.compteCreance.intitule}`,
+          detail:
+            `${c.declareeOuverture ? 'Déclarée à l’ouverture' : 'Reclassée'} au ${c.compte416.numero} · reste au 416 après ` +
+            `tous ses mouvements ${reste.toFixed(2)}`,
+          date: c.dateReclassement.toISOString().slice(0, 10),
+          montant,
+          createdAt: c.createdAt,
+          figee: c.methodeCotisationsReclassement ?? null,
+        });
+      },
+      LOT_LECTURE,
+    );
+    for (const c of candidates) {
+      const methode = await lireMethodeAuReclassement(this.prisma, { tenantId, figee: c.figee, geste: c.createdAt, actuelle });
+      let mention: string;
+      if (methode.connue && methode.methode === 'APPEL') continue;
+      if (methode.connue && methode.methode === 'ENCAISSEMENT') mention = 'reclassée sous l’encaissement';
+      else if (actuelle !== 'ENCAISSEMENT') continue;
+      else mention = methode.connue ? 'aucune méthode déclarée au reclassement' : `méthode au reclassement inconnue (${methode.motif})`;
+      impayes.ajouter({ reference: c.reference, detail: `${c.detail} · ${mention}`, date: c.date, montant: c.montant });
+    }
+    return impayes;
   }
 
   /**
@@ -2023,7 +2118,7 @@ export class ControlesService {
       }
     }
 
-    // --- 6 bis. Méthode de comptabilisation des cotisations non précisée ----
+    // --- 6 quater. Méthode de comptabilisation des cotisations non précisée -
     // Cadre conceptuel SYCEBNL § 5.4.2.1 : « Le fait générateur de la
     // comptabilisation des cotisations et du droit d'entrée est l'appel [...]
     // Toutefois, si l'entité ne peut justifier d'un droit d'agir en
@@ -2059,6 +2154,31 @@ export class ControlesService {
             detail: `${e.libelle} · cotisations ou droit d'entrée mouvementés`,
             date: e.date.toISOString().slice(0, 10),
           })),
+        });
+      }
+    }
+
+    // --- 6 quinquies. Impayé d'adhérent reclassé au 4161 sous l'encaissement
+    // D7, tranchée par la loi le 2026-10-07 (cadre conceptuel § 5.4.2.1 ;
+    // fiches SYCEBNL des comptes 41 et 51) · le module REFUSE désormais ce
+    // reclassement ; ceux qu'il admettait avec un avertissement (A7 ter,
+    // mineur 8) sont SIGNALÉS ici, jamais défaits d'office. M8 · jugés sur la
+    // méthode du jour du RECLASSEMENT · une créance née sous l'APPEL se tait.
+    // LIMITE ÉCRITE · seul le dossier qui déclare l'encaissement AUJOURD'HUI
+    // est lu ; une créance reclassée sous l'encaissement dans un dossier
+    // revenu depuis à l'APPEL n'est pas signalée ici, mais sa perte et sa
+    // dotation sont refusées au geste, avec leurs issues (`creances-douteuses`).
+    if (tenant.referentiel === Referentiel.SYCEBNL && tenant.methodeCotisations === 'ENCAISSEMENT') {
+      const impayes = await this.impayesAdherentReclasses(tenantId, ex, 'ENCAISSEMENT');
+      if (impayes.nombre > 0) {
+        anomalies.push({
+          code: 'CREANCE_ADHERENT_RECLASSEE_SOUS_ENCAISSEMENT',
+          gravite: 'INFORMATION',
+          libelle: CONTROLE_CREANCE_ADHERENT_SOUS_ENCAISSEMENT.libelle,
+          consequence: CONTROLE_CREANCE_ADHERENT_SOUS_ENCAISSEMENT.consequence,
+          action: CONTROLE_CREANCE_ADHERENT_SOUS_ENCAISSEMENT.action,
+          ...nombreSiTronque(impayes),
+          occurrences: impayes.elements,
         });
       }
     }

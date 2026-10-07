@@ -260,6 +260,7 @@ export function FiscalitePage() {
     deficitAnterieurSaisi?: number | null;
     natureActivite?: NatureActiviteFiscale | null;
     resultatPeriodeCreationSaisi?: number | null;
+    chiffreAffairesPeriodeCreationSaisi?: number | null;
     supplementsPeriodeCreation?: number;
     deficitAnterieurOrigines?: { dateFin: string; montant: number }[] | null;
   }) => {
@@ -405,7 +406,22 @@ export function FiscalitePage() {
                   }
                 />
                 <Ligne libelle="RÉSULTAT FISCAL" montant={resultat.resultatFiscal} devise={devise} gras total />
-                <Ligne libelle="Chiffre d’affaires de l’exercice" montant={resultat.chiffreAffaires} devise={devise} note="comptes 701 à 707 · assiette des plafonds et de l’impôt minimum" />
+                {resultat.periodeCreation ? (
+                  <>
+                    <Ligne libelle="Chiffre d’affaires de l’exercice" montant={resultat.chiffreAffaires} devise={devise} note="comptes 701 à 707 · assiette des plafonds" />
+                    {/* Absent d'une réponse qui ne le porte pas · la ligne se tait plutôt que d'écrire « · ». */}
+                    {resultat.chiffreAffairesMinimum !== undefined && (
+                      <Ligne
+                        libelle="Chiffre d’affaires du minimum"
+                        montant={resultat.chiffreAffairesMinimum}
+                        devise={devise}
+                        note="sans celui de la période de création, imposé avec elle"
+                      />
+                    )}
+                  </>
+                ) : (
+                  <Ligne libelle="Chiffre d’affaires de l’exercice" montant={resultat.chiffreAffaires} devise={devise} note="comptes 701 à 707 · assiette des plafonds et de l’impôt minimum" />
+                )}
               </tbody>
             </table>
           </section>
@@ -997,6 +1013,32 @@ export function FiscalitePage() {
                           if (n === null) montantIllisible('Bénéfice fiscal de la période');
                           else if (resultat.periodeCreation?.source !== 'DECLARE' || n !== resultat.periodeCreation.resultatFiscal)
                             modifierDossier({ resultatPeriodeCreationSaisi: n });
+                        }
+                      }}
+                      className="w-40 text-right border border-border rounded-[4px] bg-bg px-2 py-0.5 text-[11.5px] font-mono"
+                    />
+                  </label>
+                )}
+                {/* Le chiffre d'affaires de la période se déclare AVEC son bénéfice (mineur C09) ·
+                    sans lui, les deux se lisent au livre-journal. */}
+                {peutEcrire && resultat.periodeCreation.source === 'DECLARE' && resultat.periodeCreation.sourceChiffreAffaires !== undefined && (
+                  <label className="mt-1.5 flex items-center gap-2 text-[11.5px] flex-wrap">
+                    Chiffre d’affaires de la période, d’après les mêmes comptes
+                    <input
+                      key={`periode-ca-${resultat.exerciceId}-${resultat.periodeCreation.sourceChiffreAffaires}-${resultat.periodeCreation.chiffreAffaires}`}
+                      aria-label="Chiffre d’affaires de la période de création"
+                      defaultValue={resultat.periodeCreation.sourceChiffreAffaires === 'DECLARE' ? String(resultat.periodeCreation.chiffreAffaires) : ''}
+                      inputMode="decimal"
+                      disabled={envoi || exerciceClos}
+                      placeholder={`Lu au livre-journal · ${nombre(resultat.periodeCreation.chiffreAffairesLu ?? resultat.periodeCreation.chiffreAffaires)}`}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v === '' && resultat.periodeCreation?.sourceChiffreAffaires === 'DECLARE') modifierDossier({ chiffreAffairesPeriodeCreationSaisi: null });
+                        else if (v !== '') {
+                          const n = lireNombre(v);
+                          if (n === null || n < 0) montantIllisible('Chiffre d’affaires de la période, nombre positif attendu');
+                          else if (resultat.periodeCreation?.sourceChiffreAffaires !== 'DECLARE' || n !== resultat.periodeCreation.chiffreAffaires)
+                            modifierDossier({ chiffreAffairesPeriodeCreationSaisi: n });
                         }
                       }}
                       className="w-40 text-right border border-border rounded-[4px] bg-bg px-2 py-0.5 text-[11.5px] font-mono"

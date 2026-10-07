@@ -830,6 +830,7 @@ model Tenant {
   ajustementsCreancesDouteuses AjustementCreanceDouteuse[]
   mouvementsCreancesDouteuses  MouvementCreanceDouteuse[]
   facturesCreancesDouteuses    FactureCreanceDouteuse[]
+  imputationsPaiements         ImputationPaiement[]
   verrouCreancesDouteuses      VerrouCreancesDouteuses?
   constatsImpotResultat        ConstatImpotResultat[]
 
@@ -1456,6 +1457,13 @@ model DossierFiscalExercice {
   // retraitement · un retraitement fiscal saisi l'est pour l'exercice entier.
   resultatPeriodeCreationSaisi Decimal? @db.Decimal(18, 2)
 
+  // Le CHIFFRE D'AFFAIRES de la même période, déclaré avec son bénéfice
+  // (relecture du 2026-10-07, mineur C09) · il assied le minimum de la période
+  // et se retranche de celui du premier exercice clos (art. 57). Null = lu au
+  // livre-journal au 31 décembre, et l'observation le dit. Ne se déclare
+  // qu'avec le bénéfice déclaré · sans lui, les deux se lisent.
+  chiffreAffairesPeriodeCreationSaisi Decimal? @db.Decimal(18, 2)
+
   // Suppléments établis par l'Administration sur l'impôt de la PÉRIODE DE
   // CRÉATION (art. 12, al. 3) · ils entrent dans la base des acomptes de
   // l'année qui suit la création (LPF art. 57 bis), « que ces sommes fassent
@@ -1685,6 +1693,7 @@ model Ecriture {
   repriseProvisionReeval      RepriseProvisionReevaluation?
   mouvementDemantelement      MouvementDemantelement?
   creanceDouteuseReclassement CreanceDouteuse?                   @relation("CreanceDouteuseReclassement")
+  creanceDouteuseCorrection   CreanceDouteuse?                   @relation("CreanceDouteuseCorrectionResultat")
   ajustementCreanceDouteuse   AjustementCreanceDouteuse?
   mouvementCreanceDouteuse    MouvementCreanceDouteuse?
   constatImpotResultat        ConstatImpotResultat?
@@ -2047,6 +2056,12 @@ model LigneEcriture {
 
   // Les créances douteuses qui désignent cette ligne de facture (A7 bis).
   creancesDouteusesDesignees FactureCreanceDouteuse[]
+
+  // L'imputation DÉCLARÉE d'un paiement (Code civil, Livre III, art. 151 et
+  // 153 ; décision par la loi du 2026-10-07, point 4) · la ligne du paiement,
+  // et la ligne de la facture qu'il paie.
+  imputationsDuPaiement ImputationPaiement[] @relation("ImputationPaiementReglement")
+  imputationsSurFacture ImputationPaiement[] @relation("ImputationPaiementFacture")
 
   // Multidevise · `debit`/`credit` restent TOUJOURS exprimés dans la monnaie
   // de tenue du dossier, seule monnaie dans laquelle la comptabilité est
@@ -8768,6 +8783,11 @@ model LigneOrdreVirement {
   /// Journal et numéro de la pièce de règlement, recopiés · l'ordre annulé
   /// libère la pièce (ecritureId à null) sans perdre ce qu'il exécutait.
   pieceReglement String
+  /// L'IMPUTATION QUE LE DOSSIER DÉCLARE EN PAYANT (Code civil, Livre III,
+  /// art. 151 · « lorsqu'il paye »), recopiée et IMPRIMÉE sur l'ordre · les
+  /// factures et la part de chacune (relecture du 2026-10-07, M6). `null` ·
+  /// règlement sans parts désignées.
+  imputationDeclaree String?
   ecritureId     String?
   ecriture       Ecriture?     @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
 
@@ -9433,6 +9453,16 @@ enum MotifRepriseDemantelement {
 // cette table qui garde le compte d'origine.
 // ---------------------------------------------------------------------------
 
+/// LA MÉTHODE DES COTISATIONS AU JOUR DU RECLASSEMENT (relecture du
+/// 2026-10-07, M8) · figée au geste, une créance née sous l'APPEL ne devient
+/// pas un impayé sans créance parce que le dossier a déclaré l'encaissement
+/// ensuite. `NON_DECLAREE` · le dossier n'avait déclaré aucune méthode.
+enum MethodeCotisationsAuReclassement {
+  APPEL
+  ENCAISSEMENT
+  NON_DECLAREE
+}
+
 enum NatureCreanceDouteuse {
   LITIGIEUSE
   DOUTEUSE
@@ -9496,6 +9526,25 @@ model CreanceDouteuse {
   annuleePar      String?
   motifAnnulation String?
   annulation      Json?
+
+  /// LA MÉTHODE DES COTISATIONS AU JOUR DU RECLASSEMENT (M8) · figée au
+  /// geste ; nulle pour une créance antérieure à la relecture du 2026-10-07,
+  /// dont la méthode se reconstitue sur le journal d'audit du dossier, ou se
+  /// dit inconnue.
+  methodeCotisationsReclassement MethodeCotisationsAuReclassement?
+
+  /// CORRIGÉE PAR LE RÉSULTAT DE L'EXERCICE (M9 · SYCEBNL, cadre conceptuel
+  /// § 3.3.1.2.4) · un impayé d'adhérent reclassé dans un exercice CLÔTURÉ
+  /// sous l'encaissement ne s'annule plus par le module ; le cabinet passe la
+  /// correction par le résultat de l'exercice en cours, sur le compte qu'il
+  /// choisit (aucune fiche lue ne le nomme), et la DÉSIGNE ici avec son
+  /// motif. La créance sort alors du reste du module, de ses bornes, de la
+  /// clôture et du contrôle. L'écriture, VALIDÉE, est retenue (RESTRICT).
+  corrigeeParResultatLe        DateTime?
+  corrigeeParResultatPar       String?
+  motifCorrectionResultat      String?
+  ecritureCorrectionResultatId String?   @unique
+  ecritureCorrectionResultat   Ecriture? @relation("CreanceDouteuseCorrectionResultat", fields: [ecritureCorrectionResultatId], references: [id], onDelete: Restrict)
 
   ajustements AjustementCreanceDouteuse[]
   mouvements  MouvementCreanceDouteuse[]
@@ -9597,6 +9646,68 @@ model FactureCreanceDouteuse {
   @@index([tenantId])
   @@index([ligneEcritureId])
   @@map("factures_creances_douteuses")
+}
+
+/// D'où vient l'imputation déclarée d'un paiement · Code civil, Livre III.
+enum FondementImputationPaiement {
+  /// Art. 151 · « Le débiteur de plusieurs dettes a le droit de déclarer,
+  /// lorsqu'il paye, quelle dette il entend acquitter. » Côté achats, le
+  /// dossier est ce débiteur.
+  DECLARATION_DU_DEBITEUR
+  /// Art. 153 · la quittance du créancier, acceptée par le débiteur, qui
+  /// impute ce qu'il a reçu « sur l'une de ces dettes spécialement ».
+  QUITTANCE_ACCEPTEE
+}
+
+/// L'IMPUTATION DÉCLARÉE D'UN PAIEMENT (décision par la loi du 2026-10-07,
+/// point 4) · une ligne par facture que le paiement paie, avec la part. Elle
+/// PRIME sur l'imputation légale de l'art. 154 dans le moteur de la TVA à
+/// l'encaissement (O.-L. n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57),
+/// qui la lit dans le groupe de lettrage réunissant le paiement et ses
+/// factures. La pièce qui la prouve est exigée. Au journal d'audit.
+model ImputationPaiement {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// La ligne du paiement au compte du tiers · VALIDÉE, donc indélébile
+  /// (AUDCIF art. 22, 2°). RESTRICT déclaré.
+  ligneReglementId String
+  ligneReglement   LigneEcriture @relation("ImputationPaiementReglement", fields: [ligneReglementId], references: [id], onDelete: Restrict)
+  /// La ligne de la facture que le paiement paie, au même compte. RESTRICT.
+  ligneFactureId   String
+  ligneFacture     LigneEcriture @relation("ImputationPaiementFacture", fields: [ligneFactureId], references: [id], onDelete: Restrict)
+
+  /// La part du paiement imputée sur cette facture.
+  montant Decimal @db.Decimal(18, 2)
+
+  fondement      FondementImputationPaiement
+  /// La pièce · ordre de virement ou lettre qui cite la facture, quittance
+  /// acceptée. Exigée · une déclaration sans pièce ne se vérifie pas.
+  pieceReference String
+  /// Sa date, exigée (relecture du 2026-10-07, M3) · la déclaration de
+  /// l'art. 151 se fait « lorsqu'il paye », jamais après le paiement ; la
+  /// quittance de l'art. 153 constate ce que le créancier « a reçu ».
+  pieceDate      DateTime @db.Date
+  /// La preuve que le débiteur a ACCEPTÉ la quittance (art. 153) · exigée
+  /// pour ce fondement, nulle pour la déclaration du débiteur.
+  preuveAcceptation String?
+
+  /// LE RETRAIT · marqué par un `update` unitaire qui porte son motif au
+  /// journal d'audit, jamais supprimé. Retirée, elle ne compte plus · ce
+  /// qu'une liquidation a figé le reste (`tvaEncaissementFigee`), l'écart se
+  /// reporte au premier jour non liquidé.
+  retireeLe    DateTime?
+  retireePar   String?
+  motifRetrait String?
+
+  createdAt DateTime @default(now())
+  createdBy String
+
+  @@index([tenantId])
+  @@index([ligneReglementId])
+  @@index([ligneFactureId])
+  @@map("imputations_paiements")
 }
 
 model MouvementCreanceDouteuse {

@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
+  ClasseCompte,
+  MethodeCotisationsAuReclassement,
   NatureCreanceDouteuse,
   OrigineLettrage,
   Prisma,
@@ -19,6 +21,7 @@ import {
   DETENTEUR_RECLASSEMENT_CREANCE,
   EcritureService,
 } from '../comptabilite/ecriture.service';
+import { lireMethodeAuReclassement } from './methode-au-reclassement';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { LettrageService } from '../lettrage/lettrage.service';
 import { lignesFigees } from '../exercice/gel-cloture';
@@ -26,6 +29,12 @@ import {
   COMPTES_CREANCES_DOUTEUSES,
   RACINES_CREANCE_SOURCE,
   avertissementMethodeCotisations,
+  avertissementMethodeInconnue,
+  estImpayeAdherent,
+  MethodeCotisationsDeclaree,
+  motifRefusCorrectionParResultat,
+  motifRefusDotationImpayeAdherent,
+  nonCorrigeeAu,
   centimes,
   compte416Propose,
   compte491,
@@ -59,6 +68,7 @@ import {
   AnnulerMouvementDto,
   AnnulerReclassementDto,
   AnnulerRevueDto,
+  CorrigerParResultatDto,
   DeclarerCreanceOuvertureDto,
   DesignerFacturesDto,
   FactureDesigneeDto,
@@ -72,10 +82,26 @@ import {
 } from './dto/creances-douteuses.dto';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => Number(v ?? 0);
+
+/**
+ * M8 · LA MÉTHODE FIGÉE AU GESTE · au SYCEBNL seul (le SYSCOHADA n'a pas de
+ * cotisations à appeler), `NON_DECLAREE` quand le dossier n'en déclarait
+ * aucune · jamais présumée.
+ */
+function methodeFigee(referentiel: Referentiel, methode: MethodeCotisationsDeclaree): MethodeCotisationsAuReclassement | null {
+  if (referentiel !== Referentiel.SYCEBNL) return null;
+  if (methode === 'APPEL') return MethodeCotisationsAuReclassement.APPEL;
+  if (methode === 'ENCAISSEMENT') return MethodeCotisationsAuReclassement.ENCAISSEMENT;
+  return MethodeCotisationsAuReclassement.NON_DECLAREE;
+}
 const jour = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Borne de la liste servie · au-delà, la liste le dit (`tronque`). */
 export const PLAFOND_CREANCES_LISTEES = 500;
+/** M9 · borne des écritures proposées à la correction par le résultat · au-delà, la liste le dit. */
+export const PLAFOND_CANDIDATES_CORRECTION = 50;
+/** M9 · « par le compte de résultat » · les comptes de gestion des deux plans. */
+const CLASSES_DE_GESTION: ReadonlySet<ClasseCompte> = new Set([ClasseCompte.CLASSE_6, ClasseCompte.CLASSE_7, ClasseCompte.CLASSE_8]);
 const PLAFOND_COMPTES_CANDIDATS = 1000;
 /**
  * m5 · borne des listes de 416 et de 491 de détail · au-delà, la liste le dit
@@ -130,9 +156,12 @@ const INCLURE_CREANCE = {
     where: { annuleeLe: null },
     orderBy: { date: 'asc' as const },
   },
+  // M9 · l'écriture qui a corrigé la créance par le résultat, s'il y en a une.
+  ecritureCorrectionResultat: { select: { id: true, date: true, numeroPiece: true, journal: { select: { code: true } } } },
 } satisfies Prisma.CreanceDouteuseInclude;
 
 type Creance = Prisma.CreanceDouteuseGetPayload<{ include: typeof INCLURE_CREANCE }>;
+
 
 /**
  * La lecture de la LISTE · ce qui décide aussi du retrait (m6), servi à
@@ -386,7 +415,51 @@ export class CreancesDouteusesService {
     if (!c) throw new NotFoundException('Créance douteuse introuvable pour ce dossier.');
     // Un reclassement ANNULÉ (m2) n'admet plus aucun geste · il ne porte plus rien au 416.
     if (c.annuleeLe) throw new BadRequestException(`Le reclassement de cette créance est annulé, le ${jour(c.annuleeLe)}.`);
+    // M9 · une créance corrigée par le résultat est sortie du module · plus aucun geste.
+    if (c.corrigeeParResultatLe) {
+      throw new BadRequestException(
+        `Cette créance est corrigée par le résultat de l'exercice (écriture du ${jour(c.ecritureCorrectionResultat?.date ?? c.corrigeeParResultatLe)}) · elle est sortie du module.`,
+      );
+    }
     return c;
+  }
+
+  /**
+   * M9 · LES ACTES D'UNE CRÉANCE CORRIGÉE PAR LE RÉSULTAT NE SE DÉFONT PLUS ·
+   * la correction a soldé exactement ce qu'ils laissaient au 416 et au 491 ;
+   * annuler un mouvement ou une revue après elle laisserait le 416 ou le 491
+   * de la créance non soldé, sans créance au module pour le dire.
+   */
+  private async refuserSiCorrigee(tenantId: string, id: string) {
+    const c = await this.prisma.creanceDouteuse.findFirst({ where: { id, tenantId }, select: { corrigeeParResultatLe: true } });
+    if (c?.corrigeeParResultatLe) {
+      throw new BadRequestException(
+        "Cette créance est corrigée par le résultat de l'exercice · ses actes ne se défont plus, la correction ayant soldé " +
+          'exactement ce qu’ils laissaient au 416 et au 491.',
+      );
+    }
+  }
+
+  /**
+   * M8 · LA MÉTHODE DES COTISATIONS AU JOUR DU RECLASSEMENT, pour un impayé
+   * d'adhérent au SYCEBNL seul (ailleurs, la perte et la dotation ne la lisent
+   * pas) · `methode` vaut `undefined` quand elle est sans objet ou inconnue,
+   * et l'inconnue se DIT (`avertissement`), jamais ne refuse.
+   */
+  private async methodeDeLaCreance(
+    tenantId: string,
+    c: { createdAt: Date; methodeCotisationsReclassement: MethodeCotisationsAuReclassement | null; compteCreance: { numero: string } },
+    referentiel: Referentiel,
+    actuelle: MethodeCotisationsDeclaree,
+  ): Promise<{ methode: MethodeCotisationsDeclaree | undefined; avertissement: string | null }> {
+    if (referentiel !== Referentiel.SYCEBNL || !estImpayeAdherent(c.compteCreance.numero)) return { methode: undefined, avertissement: null };
+    const m = await lireMethodeAuReclassement(this.prisma, {
+      tenantId,
+      figee: c.methodeCotisationsReclassement,
+      geste: c.createdAt,
+      actuelle,
+    });
+    return m.connue ? { methode: m.methode, avertissement: null } : { methode: undefined, avertissement: avertissementMethodeInconnue(m.motif) };
   }
 
   private enPlace(c: Creance, avant: Date) {
@@ -631,7 +704,9 @@ export class CreancesDouteusesService {
    * module, ni l'inscription en négatif d'une revue · l'écart n'est plus nu.
    */
   private async rapprochementDuModule(tenantId: string, ex: { id: string; dateDebut: Date; dateFin: Date }) {
-    const enVigueur = { dateReclassement: { lte: ex.dateFin }, annuleeLe: null };
+    // M9 · une créance corrigée par le résultat au plus tard à la clôture ne
+    // compte plus · son écriture de correction a soldé son 416 et son 491.
+    const enVigueur = { dateReclassement: { lte: ex.dateFin }, annuleeLe: null, ...nonCorrigeeAu(ex.dateFin) };
     const base = { tenantId, ...enVigueur };
     const [montants, declarees, mouvements, ecarts, par416, par491, chaine] = await Promise.all([
       this.prisma.creanceDouteuse.aggregate({ where: { ...base, tenantId }, _sum: { montant: true } }),
@@ -703,6 +778,8 @@ export class CreancesDouteusesService {
           estGenereeParCloture: false,
           ...HORS_REPORT_PROVISOIRE,
           ajustementCreanceDouteuse: { is: null },
+          // M9 · la correction par le résultat reprend la dépréciation du module.
+          creanceDouteuseCorrection: { is: null },
           NOT: { corrigeEcriture: { is: { ajustementCreanceDouteuse: { isNot: null } } } },
         },
       },
@@ -712,10 +789,32 @@ export class CreancesDouteusesService {
   }
 
   private presenter(c: Creance, ex: { id: string; dateDebut: Date; dateFin: Date }, referentiel: Referentiel) {
+    // M9 · corrigée par le résultat au plus tard à la clôture · plus rien au
+    // module, et l'écran le dit avec l'écriture.
+    const corrigee = !!c.ecritureCorrectionResultat && c.ecritureCorrectionResultat.date.getTime() <= ex.dateFin.getTime();
     const enPlaceOuverture = this.enPlace(c, ex.dateDebut);
-    const reste = this.reste(c, ex.dateFin);
+    const reste = corrigee ? 0 : this.reste(c, ex.dateFin);
     const revue = c.ajustements.find((a) => a.exerciceId === ex.id) ?? null;
     return {
+      correction: c.ecritureCorrectionResultat
+        ? {
+            ecritureId: c.ecritureCorrectionResultat.id,
+            date: c.ecritureCorrectionResultat.date,
+            piece: `${c.ecritureCorrectionResultat.journal.code} n° ${c.ecritureCorrectionResultat.numeroPiece ?? '·'}`,
+            motif: c.motifCorrectionResultat,
+            le: c.corrigeeParResultatLe,
+            effective: corrigee,
+          }
+        : null,
+      // M9 · le geste « Corriger par le résultat » est-il offert ? Servi, jamais
+      // recalculé à l'écran · un impayé d'adhérent au SYCEBNL, reclassé avant
+      // cet exercice (ou déclaré à son ouverture), pas encore corrigé. Le geste
+      // rejoue toutes les règles (`motifRefusCorrectionParResultat`).
+      correctionOfferte:
+        referentiel === Referentiel.SYCEBNL &&
+        estImpayeAdherent(c.compteCreance.numero) &&
+        !c.ecritureCorrectionResultat &&
+        (c.declareeOuverture || c.dateReclassement.getTime() < ex.dateDebut.getTime()),
       id: c.id,
       nature: c.nature,
       compteCreance: { id: c.compteCreance.id, numero: c.compteCreance.numero, intitule: c.compteCreance.intitule },
@@ -731,8 +830,8 @@ export class CreancesDouteusesService {
       ecritureReclassementId: c.ecritureReclassementId,
       resteALaCloture: reste,
       depreciationOuverture: enPlaceOuverture,
-      depreciationALaCloture: centimes(revue ? n(revue.depreciationNecessaire) : enPlaceOuverture),
-      revueAFaire: revueAFaire({ revueDeLExercice: !!revue, enPlace: enPlaceOuverture, reste, aucuneRevue: c.ajustements.length === 0 }),
+      depreciationALaCloture: corrigee ? 0 : centimes(revue ? n(revue.depreciationNecessaire) : enPlaceOuverture),
+      revueAFaire: !corrigee && revueAFaire({ revueDeLExercice: !!revue, enPlace: enPlaceOuverture, reste, aucuneRevue: c.ajustements.length === 0 }),
       // M-c · une INFORMATION, jamais un refus.
       mouvementsSansRevue: mouvementsSansRevue({
         revueDeLExercice: !!revue,
@@ -876,6 +975,8 @@ export class CreancesDouteusesService {
             motif: dto.motif.trim(),
             pieces: pieces as unknown as Prisma.InputJsonValue,
             ecritureReclassementId: ecriture.id,
+            // M8 · la méthode des cotisations au jour du geste, figée.
+            methodeCotisationsReclassement: methodeFigee(referentiel, methodeCotisations ?? null),
             createdBy: userId,
           },
         });
@@ -896,9 +997,12 @@ export class CreancesDouteusesService {
    * « DÉSIGNER LES FACTURES » (ligne A7 bis, partie 1) · les lignes de facture
    * au compte du client que la créance reprend, et la part de chacune. Le
    * recouvrement du module en devient l'encaissement pour la TVA (O.-L.
-   * n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57), au prorata de ce qui
-   * est recouvré sur le montant reclassé. Rien n'est lettré (A7 ter · le
-   * reclassement ne lettre pas le compte du client).
+   * n° 10/001, art. 25, 2° ; décret n° 011/42, art. 57), sur la part
+   * désignée de ce qui est recouvré (recouvré × désigné / reclassé), imputée
+   * entre les factures désignées par l'art. 154 du Code civil, Livre III (la
+   * plus ancienne d'abord, au prorata à date égale ; décision par la loi du
+   * 2026-10-07, point 4, jumeau 1 · `TauxTvaService.declaration`). Rien n'est
+   * lettré (A7 ter · le reclassement ne lettre pas le compte du client).
    */
   designerFactures(tenantId: string, userId: string, id: string, dto: DesignerFacturesDto) {
     return this.sousVerrou(tenantId, 'DÉSIGNATION DES FACTURES', async () => {
@@ -1157,6 +1261,8 @@ export class CreancesDouteusesService {
           declareeOuverture: true,
           sourceDeclaration: dto.source.trim(),
           depreciationOuverture: centimes(dto.depreciationOuverture),
+          // M8 · la méthode des cotisations au jour du geste, figée.
+          methodeCotisationsReclassement: methodeFigee(referentiel, methodeCotisations ?? null),
           createdBy: userId,
         },
       }),
@@ -1294,6 +1400,8 @@ export class CreancesDouteusesService {
           where: {
             tenantId,
             annuleeLe: null,
+            // M9 · corrigée avant l'ouverture, elle n'est plus dans l'à-nouveau.
+            ...nonCorrigeeAu(veille),
             AND: [
               { OR: [{ compte416Id }, { compte491Id }] },
               {
@@ -1326,6 +1434,8 @@ export class CreancesDouteusesService {
    */
   private async entreeRevue(tenantId: string, id: string, exerciceId: string) {
     const [c, ex, regime] = await Promise.all([this.creance(tenantId, id), this.exercice(tenantId, exerciceId), this.regime(tenantId)]);
+    // M8 · la méthode du jour du RECLASSEMENT juge la dotation ; inconnue, rien n'est refusé, et c'est dit.
+    const methode = await this.methodeDeLaCreance(tenantId, c, regime.referentiel, regime.methodeCotisations ?? null);
     const enPlace = this.enPlace(c, ex.dateDebut);
     const reste = this.reste(c, ex.dateFin);
     // B-α · un reste négatif (mouvement antidaté passé avant la borne) se dit
@@ -1354,6 +1464,8 @@ export class CreancesDouteusesService {
       posterieure,
       anterieursSansRevue: anterieurs.filter((e) => !revus.has(e.id)).map((e) => `l'exercice clos le ${jour(e.dateFin)}`),
       refusSmt: motifRefusDepreciationSmt(regime),
+      refusImpaye: motifRefusDotationImpayeAdherent(regime.referentiel, c.compteCreance.numero, methode.methode),
+      avertissementMethode: methode.avertissement,
     };
   }
 
@@ -1386,6 +1498,7 @@ export class CreancesDouteusesService {
       revuePosterieure: e.posterieure ? jour(e.posterieure.date) : null,
       anterieursSansRevue: e.anterieursSansRevue,
       refusSmt: e.refusSmt,
+      refusImpaye: e.refusImpaye,
       journalGeneral: journal.type === TypeJournal.GENERAL,
     });
     if (motif) throw new BadRequestException(motif);
@@ -1431,7 +1544,13 @@ export class CreancesDouteusesService {
           },
         }),
       );
-      return { ...ligne, depreciationNecessaire: n(ligne.depreciationNecessaire), depreciationEnPlace: n(ligne.depreciationEnPlace), ecart: n(ligne.ecart) };
+      return {
+        ...ligne,
+        depreciationNecessaire: n(ligne.depreciationNecessaire),
+        depreciationEnPlace: n(ligne.depreciationEnPlace),
+        ecart: n(ligne.ecart),
+        avertissement: e.avertissementMethode,
+      };
     } catch (err) {
       if (ecritureId) await this.compenser(tenantId, ecritureId);
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -1461,6 +1580,9 @@ export class CreancesDouteusesService {
       revuePosterieure: e.posterieure ? jour(e.posterieure.date) : null,
       anterieursSansRevue: e.anterieursSansRevue,
       dotationRefuseeSmt: e.refusSmt,
+      // M8 · la dotation d'un impayé d'adhérent reclassé sous l'encaissement.
+      dotationRefuseeImpaye: e.refusImpaye,
+      avertissementMethode: e.avertissementMethode,
     };
   }
 
@@ -1489,6 +1611,7 @@ export class CreancesDouteusesService {
       },
     });
     if (!revue) throw new NotFoundException('Revue introuvable pour cette créance.');
+    await this.refuserSiCorrigee(tenantId, id);
     const posterieure = await this.prisma.ajustementCreanceDouteuse.findFirst({
       where: { tenantId, creanceId: id, annuleeLe: null, date: { gt: revue.date } },
       orderBy: { date: 'asc' },
@@ -1559,7 +1682,7 @@ export class CreancesDouteusesService {
     type: TypeMouvementCreanceDouteuse,
     dto: PerteCreanceDto | RecouvrementCreanceDto,
   ) {
-    const [c, ex, journal, { referentiel }] = await Promise.all([
+    const [c, ex, journal, { referentiel, methodeCotisations }] = await Promise.all([
       this.creance(tenantId, id),
       this.exercice(tenantId, dto.exerciceId),
       this.journal(tenantId, dto.journalId),
@@ -1569,6 +1692,10 @@ export class CreancesDouteusesService {
     const pieces = this.pieces(dto.pieces);
     const reste = this.reste(c, date);
     const revueApres = c.ajustements.find((a) => a.exercice.dateFin.getTime() >= date.getTime()) ?? null;
+    const methode =
+      type === TypeMouvementCreanceDouteuse.PERTE
+        ? await this.methodeDeLaCreance(tenantId, c, referentiel, methodeCotisations ?? null)
+        : { methode: undefined, avertissement: null };
 
     let comptePerte: { id: string; numero: string; estDetail: boolean } | null = null;
     if (type === TypeMouvementCreanceDouteuse.PERTE) {
@@ -1606,6 +1733,9 @@ export class CreancesDouteusesService {
       // m3 · au SYCEBNL, le 651 du débiteur (fiche du compte 65).
       referentiel,
       numeroSource: c.compteCreance.numero,
+      // D7 et M8 · la perte d'un impayé d'adhérent est jugée sur la méthode du
+      // jour de son RECLASSEMENT ; inconnue, rien n'est refusé, et c'est dit.
+      methodeCotisations: methode.methode,
     });
     if (motif) throw new BadRequestException(motif);
 
@@ -1653,7 +1783,7 @@ export class CreancesDouteusesService {
     // B2 · la créance éteinte se lettre au 416 · le geste a réussi, l'issue
     // du lettrage se DIT, jamais ne le défait.
     const lettrage416 = await this.lettrerSiEteinteSansEchec(tenantId, userId, c.id);
-    return { ...ligne, montant: n(ligne.montant), lettrage416 };
+    return { ...ligne, montant: n(ligne.montant), lettrage416, avertissement: methode.avertissement };
   }
 
   /**
@@ -1938,6 +2068,162 @@ export class CreancesDouteusesService {
    * 22, 2°). On ne retire que le DERNIER acte · une revue ou un mouvement
    * comptés ailleurs resteraient faux. Une revue s'ANNULE (`annulerRevue`).
    */
+  /**
+   * M9 · LES ÉCRITURES QUI PEUVENT CORRIGER LA CRÉANCE PAR LE RÉSULTAT · les
+   * écritures VALIDÉES d'un exercice OUVERT postérieur à la créance, qui
+   * créditent son 416, et qu'aucun geste du module ne tient déjà. Une liste
+   * bornée, qui dit son total ; le geste rejoue toutes les règles
+   * (`motifRefusCorrectionParResultat`).
+   */
+  async candidatesCorrection(tenantId: string, id: string) {
+    const c = await this.creance(tenantId, id);
+    const exCreance = await this.exercice(tenantId, c.exerciceId);
+    // Le dossier est posé à chaque appel, en toutes lettres (balayage du
+    // cloisonnement, `cloisonnement.spec.ts`).
+    const filtre: Prisma.EcritureWhereInput = {
+      statut: StatutEcriture.VALIDEE,
+      exercice: {
+        statut: StatutExercice.OUVERT,
+        dateDebut: c.declareeOuverture ? { gte: exCreance.dateDebut } : { gt: exCreance.dateFin },
+      },
+      creanceDouteuseCorrection: { is: null },
+      creanceDouteuseReclassement: { is: null },
+      mouvementCreanceDouteuse: { is: null },
+      ajustementCreanceDouteuse: { is: null },
+      lignes: { some: { compteId: c.compte416.id, credit: { gt: 0 } } },
+    };
+    const [total, ecritures] = await Promise.all([
+      this.prisma.ecriture.count({ where: { ...filtre, tenantId } }),
+      this.prisma.ecriture.findMany({
+        where: { ...filtre, tenantId },
+        select: {
+          id: true,
+          date: true,
+          numeroPiece: true,
+          libelle: true,
+          journal: { select: { code: true } },
+          lignes: { select: { compteId: true, debit: true, credit: true } },
+        },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        take: PLAFOND_CANDIDATES_CORRECTION,
+      }),
+    ]);
+    return {
+      reste: this.resteFinal(c),
+      comptes: { compte416: c.compte416.numero, compte491: c.compte491.numero },
+      total,
+      tronque: total > ecritures.length,
+      ecritures: ecritures.map((e) => ({
+        id: e.id,
+        date: jour(e.date),
+        piece: `${e.journal.code} n° ${e.numeroPiece ?? '·'}`,
+        libelle: e.libelle,
+        credit416: centimes(e.lignes.filter((l) => l.compteId === c.compte416.id).reduce((s, l) => s + n(l.credit) - n(l.debit), 0)),
+        debit491: centimes(e.lignes.filter((l) => l.compteId === c.compte491.id).reduce((s, l) => s + n(l.debit) - n(l.credit), 0)),
+        // La dépréciation en place à la date de l'écriture · ce que la correction reprend.
+        depreciationEnPlace: this.enPlace(c, e.date),
+      })),
+    };
+  }
+
+  /**
+   * M9 · « CORRIGER PAR LE RÉSULTAT » · la règle est dans
+   * `motifRefusCorrectionParResultat` (cadre conceptuel du SYCEBNL,
+   * § 3.3.1.2.4). Le cabinet a passé et VALIDÉ l'écriture de correction sur
+   * le compte de résultat qu'il choisit ; le geste la DÉSIGNE, avec son motif,
+   * par un `update` unitaire (journal d'audit), et l'écriture est retenue
+   * (`detenteurs-ecriture.ts`). La créance sort du module à la date de
+   * l'écriture · rien n'est écrit par le module, aucune écriture n'est
+   * retouchée.
+   */
+  corrigerParResultat(tenantId: string, userId: string, id: string, dto: CorrigerParResultatDto) {
+    return this.sousVerrou(tenantId, 'CORRECTION PAR LE RÉSULTAT', () => this.corrigerParResultatSousVerrou(tenantId, userId, id, dto));
+  }
+
+  private async corrigerParResultatSousVerrou(tenantId: string, userId: string, id: string, dto: CorrigerParResultatDto) {
+    const [c, regime] = await Promise.all([this.creance(tenantId, id), this.regime(tenantId)]);
+    const [exCreance, ecriture] = await Promise.all([
+      this.exercice(tenantId, c.exerciceId),
+      this.prisma.ecriture.findFirst({
+        where: { id: dto.ecritureId, tenantId },
+        select: {
+          id: true,
+          date: true,
+          statut: true,
+          exercice: { select: { dateDebut: true, dateFin: true, statut: true } },
+          lignes: { select: { compteId: true, debit: true, credit: true, compte: { select: { numero: true, classe: true } } } },
+        },
+      }),
+    ]);
+    if (!ecriture) throw new NotFoundException('Écriture introuvable pour ce dossier.');
+    const [methode, detenteurs] = await Promise.all([
+      lireMethodeAuReclassement(this.prisma, {
+        tenantId,
+        figee: c.methodeCotisationsReclassement,
+        geste: c.createdAt,
+        actuelle: regime.methodeCotisations ?? null,
+      }),
+      this.ecritures.detenteursDeLEcriture(tenantId, ecriture.id),
+    ]);
+    let credit416 = 0;
+    let debit491 = 0;
+    const autres = new Map<string, boolean>();
+    for (const l of ecriture.lignes) {
+      if (l.compteId === c.compte416.id) credit416 += n(l.credit) - n(l.debit);
+      else if (l.compteId === c.compte491.id) debit491 += n(l.debit) - n(l.credit);
+      else autres.set(l.compte.numero, CLASSES_DE_GESTION.has(l.compte.classe));
+    }
+    const date = ecriture.date;
+    const mouvementApres = c.mouvements.find((m) => m.date.getTime() > date.getTime()) ?? null;
+    const revueApres = c.ajustements.find((a) => a.exercice.dateFin.getTime() >= date.getTime()) ?? null;
+    const motif = motifRefusCorrectionParResultat({
+      referentiel: regime.referentiel,
+      numeroSource: c.compteCreance.numero,
+      methode,
+      actuelle: regime.methodeCotisations ?? null,
+      declareeOuverture: c.declareeOuverture,
+      exerciceCreanceClos: exCreance.statut === StatutExercice.CLOTURE,
+      exerciceEcritureApres: c.declareeOuverture
+        ? ecriture.exercice.dateDebut.getTime() >= exCreance.dateDebut.getTime()
+        : ecriture.exercice.dateDebut.getTime() > exCreance.dateFin.getTime(),
+      exerciceEcritureOuvert: ecriture.exercice.statut === StatutExercice.OUVERT,
+      ecritureValidee: ecriture.statut === StatutEcriture.VALIDEE,
+      detenteurs,
+      credit416,
+      debit491,
+      autres: [...autres.entries()].map(([numero, gestion]) => ({ numero, gestion })),
+      reste: this.resteFinal(c),
+      enPlace: this.enPlace(c, date),
+      mouvementApres: mouvementApres ? jour(mouvementApres.date) : null,
+      revueApres: revueApres ? jour(revueApres.date) : null,
+      motif: dto.motif,
+    });
+    if (motif) throw new BadRequestException(motif);
+    try {
+      const corrigee = await transactionJournalisee(this.prisma, (tx) =>
+        tx.creanceDouteuse.update({
+          where: { id: c.id, tenantId, annuleeLe: null, corrigeeParResultatLe: null },
+          data: {
+            corrigeeParResultatLe: new Date(),
+            corrigeeParResultatPar: userId,
+            motifCorrectionResultat: dto.motif.trim(),
+            ecritureCorrectionResultatId: ecriture.id,
+          },
+          select: { id: true, corrigeeParResultatLe: true, ecritureCorrectionResultatId: true, motifCorrectionResultat: true },
+        }),
+      );
+      return { ...corrigee, avertissement: methode.connue ? null : avertissementMethodeInconnue(methode.motif) };
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Cette écriture corrige déjà une autre créance · une écriture de correction par créance.');
+      }
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        throw new ConflictException('La créance a été annulée ou corrigée pendant le geste · relisez-la.');
+      }
+      throw err;
+    }
+  }
+
   retirerCreance(tenantId: string, id: string) {
     return this.sousVerrou(tenantId, 'RETRAIT', async () => {
       const c = await this.creance(tenantId, id);
@@ -2144,6 +2430,7 @@ export class CreancesDouteusesService {
       },
     });
     if (!mv) throw new NotFoundException('Mouvement introuvable pour cette créance.');
+    await this.refuserSiCorrigee(tenantId, id);
     // B2 · le lettrage que le module a posé à l'extinction se DÉFAIT avec le
     // mouvement (dans la transaction ci-dessous) · il ne refuse pas
     // l'annulation. B2b · figé par une clôture, il RESTE EN PLACE, toléré, et

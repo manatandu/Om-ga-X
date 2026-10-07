@@ -21,6 +21,8 @@ export interface LigneAOrdonner {
   reference: string | null;
   ecritureId: string;
   pieceReglement: string;
+  /** Les factures et la part de chacune, quand le dossier les désigne (art. 151, M6). */
+  imputationDeclaree?: string | null;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -135,6 +137,7 @@ export class OrdresVirementService {
                   montant: round2(l.montant),
                   reference: l.reference,
                   pieceReglement: l.pieceReglement,
+                  imputationDeclaree: l.imputationDeclaree ?? null,
                   ecritureId: l.ecritureId,
                 };
               }),

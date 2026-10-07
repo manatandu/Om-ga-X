@@ -14,6 +14,7 @@ import { useAuth } from '../lib/auth';
 import { montant } from '../lib/montants';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { comptesProposablesEcart, libelleEcartRealise, type NatureCreanceDette } from '../lib/ecart-change';
+import { ImputationPaiementModale } from '../components/ImputationPaiementModale';
 
 /**
  * L'écart de change PROPOSÉ d'un groupe soldé dans sa devise et non en francs
@@ -138,6 +139,9 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
   const [journalEcart, setJournalEcart] = useState('');
   const [dateEcart, setDateEcart] = useState('');
   const [compteEcart, setCompteEcart] = useState('');
+  // M2 (relecture du 2026-10-07) · l'imputation déclarée d'un paiement, lue sur
+  // le groupe de la ligne · la fenêtre lit et décide tout au serveur.
+  const [imputationLigne, setImputationLigne] = useState<string | null>(null);
   // AUDCIF art. 22, 4° · une demande expresse, jamais d'office.
   const [reporterEcart, setReporterEcart] = useState(false);
 
@@ -713,6 +717,18 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
                           {l.codeLettrage}
                         </span>
                         {groupe?.verrouille && <span title="Lettrage verrouillé">🔒</span>}
+                        {/* M2 · un groupe de factures et de paiements au 40 ou au 41 ·
+                            l'imputation de chaque paiement (Code civil, Livre III, art. 151 à 154). */}
+                        {l.lettrageId && compte && /^4[01]/.test(compte.numero) && (
+                          <button
+                            type="button"
+                            className="text-[11px] text-sel hover:underline"
+                            title="Imputation des paiements du groupe"
+                            onClick={() => setImputationLigne(l.id)}
+                          >
+                            Imputation
+                          </button>
+                        )}
                       </>
                     )}
                   </span>
@@ -958,6 +974,7 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
           )}
         </div>
       )}
+      {imputationLigne && <ImputationPaiementModale ligneId={imputationLigne} onFermer={() => setImputationLigne(null)} />}
     </div>
   );
 }

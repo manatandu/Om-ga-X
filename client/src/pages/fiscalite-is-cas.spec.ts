@@ -26,10 +26,11 @@ describe('Impôt · saisies de la période de création et des suppléments', ()
     expect(s).toMatch(/const montantIllisible = \(quoi: string\) =>\s*setErreur\(/);
   });
 
-  it('report, origine et bénéfice de la période sont désactivés sur un exercice clôturé', () => {
+  it('report, origine, bénéfice et chiffre d’affaires de la période sont désactivés sur un exercice clôturé', () => {
     const s = page();
     expect(s).toContain("statut === 'CLOTURE'");
-    expect(s.match(/disabled=\{envoi \|\| exerciceClos\}/g)?.length).toBe(2);
+    // Le bénéfice de la période et son chiffre d'affaires (mineur C09).
+    expect(s.match(/disabled=\{envoi \|\| exerciceClos\}/g)?.length).toBe(3);
     expect(s).toContain('envoi={envoi || exerciceClos}');
   });
 

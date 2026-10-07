@@ -366,7 +366,7 @@ Données · du 1er septembre au 31 décembre 2026 · chiffre d'affaires
 | Impôt de la période de création | bénéfice des comptes intermédiaires au 31 décembre 2026 · 100 000 · taux 30 000 · minimum 1 % × 30 000 000 = 300 000 · **dû 300 000** | art. 12, al. 3 ; art. 56, 57 |
 | Déclaration | au plus tard le 30 avril 2027 | LPF art. 12 [LPF1] |
 | Acomptes 2027 | base 300 000 · **90 000** (25 juillet) · **90 000** (25 septembre) · **60 000** (25 novembre) | LPF art. 57 bis |
-| Premier exercice clos | 5 100 000 − 100 000 déjà imposés = 5 000 000 · 30 % = **1 500 000** (minimum 700 000 ou 400 000, sans effet) | art. 12, al. 3 (« viennent ensuite en déduction ») ; art. 56, 57 |
+| Premier exercice clos | 5 100 000 − 100 000 déjà imposés = 5 000 000 · 30 % = **1 500 000** ; minimum 1 % × (70 000 000 − 30 000 000) = **400 000**, sans effet (le chiffre d'affaires de la période a porté son propre minimum · décision par la loi du 2026-10-07, point 2) | art. 12, al. 1, 3 et 4 ; art. 56, 57 ; LPF art. 12 et 13, al. 3 |
 | Solde à la déclaration de 2028 | 1 500 000 − 240 000 d'acomptes = 1 260 000 | LPF art. 57 bis, al. 3 |
 | Total d'impôt | **1 800 000** | |
 
@@ -374,6 +374,7 @@ Données · du 1er septembre au 31 décembre 2026 · chiffre d'affaires
 |---|---|---|---|
 | Impôt de la période de création | 300 000 | 300 000 (minimum retenu, chiffre d'affaires de la période 30 000 000 ; avant : non calculé) | 0 |
 | Impôt du premier exercice | 1 500 000 | 1 500 000 (5 100 000 − 100 000 ; avant : 1 530 000) | 0 |
+| Minimum du premier exercice | 400 000 sur 40 000 000 | 400 000, `chiffreAffairesMinimum` 40 000 000 (avant le 2026-10-07 : 700 000 sur 70 000 000, sans effet sur l'impôt dû) | 0 |
 | Total | **1 800 000** | **1 800 000** (`impotTotalExercice` ; avant : 1 530 000) | 0 |
 | Acomptes 2027 | 90 000 · 90 000 · 60 000 | 90 000 · 90 000 · 60 000 au 25 juillet, 25 septembre, 25 novembre 2027 (avant : « AUCUN acompte n'est dû ») | 0 |
 | Écriture A11 | deux impôts, chacun dans son exercice fiscal | refusée avec les deux lignes nommées · D 89500000 300 000, D 89110000 1 500 000, C 44100000 1 800 000 (avant : proposée à 1 530 000) | issue dite ; écriture à deux lignes au relevé en attente |
@@ -382,6 +383,37 @@ Corrigé (`periode-creation.ts`) · le bénéfice de la période se lit au livre
 n'existe que si cette période est imposée à part ; quand les deux périodes sont
 bénéficiaires au-dessus du minimum, le total coïncide, et seul le calendrier
 (déclaration 2027, acomptes 2027) est faux.
+
+### C09 bis · Premier exercice long dont la période de création porte l'essentiel du chiffre d'affaires (création le 1er septembre 2026, clôture le 31 décembre 2027)
+
+Ajouté le 2026-10-07 (décision par la loi, point 2) · le cas où retrancher le
+chiffre d'affaires de la période CHANGE l'impôt. Données · du 1er septembre
+au 31 décembre 2026 · chiffre d'affaires 80 000 000, achats 79 500 000
+(bénéfice 500 000). Du 1er janvier au 31 décembre 2027 · chiffre d'affaires
+20 000 000, achats 19 500 000 (bénéfice 500 000). Exercice entier · chiffre
+d'affaires 100 000 000, résultat 1 000 000.
+
+| Ligne | Calcul | Article |
+|---|---|---|
+| Impôt de la période de création | bénéfice 500 000 · taux 30 % × 500 000 = 150 000 · minimum 1 % × 80 000 000 = 800 000 · **dû 800 000** (minimum) | art. 12, al. 3 ; art. 56, 57 |
+| Acomptes 2027 | base 800 000 · **240 000** (25 juillet) · **240 000** (25 septembre) · **160 000** (25 novembre) | LPF art. 57 bis |
+| Base du premier exercice clos | 1 000 000 − 500 000 déjà imposés = **500 000** · taux 30 % = **150 000** | art. 12, al. 3 ; art. 56 |
+| Minimum du premier exercice clos | chiffre d'affaires déclaré de 2027 · 100 000 000 − 80 000 000 = 20 000 000 · 1 % = **200 000** > 150 000 · **dû 200 000** (minimum) | art. 12, al. 1, 3 et 4 ; art. 57 ; LPF art. 12 et 13, al. 3 |
+| Total d'impôt | 800 000 + 200 000 = **1 000 000** | |
+| Acomptes 2028 | base 200 000 · **60 000** · **60 000** · **40 000** | LPF art. 57 bis |
+
+Sur l'exercice entier (lecture d'avant le 2026-10-07), le minimum du premier
+exercice clos valait 1 % × 100 000 000 = 1 000 000 · dû 1 000 000, total
+1 800 000 · les 80 000 000 de la période portaient deux minimums, 800 000 de
+trop (art. 55 dans son principe ; art. 12, al. 1 et 4 ; LPF art. 12 et 13).
+Arrondi de l'art. 150 sans effet (montants ronds à la centaine).
+
+| Grandeur | Attendu | OmegaX | Écart |
+|---|---|---|---|
+| Impôt de la période de création | 800 000 (minimum) | 800 000 (rejeu du 2026-10-07) | 0 |
+| Minimum et impôt du premier exercice clos | 200 000 sur 20 000 000 | 200 000 sur 20 000 000 | 0 |
+| Total | 1 000 000 | 1 000 000 | 0 |
+| Acomptes 2027 et 2028 | 240 000 · 240 000 · 160 000 ; 60 000 · 60 000 · 40 000 | idem | 0 |
 
 ### C10 · Premier exercice ouvert en 2025 et clos en 2026 (1er septembre 2025 au 31 décembre 2026)
 
@@ -575,12 +607,17 @@ C05 est lu avant puis après ces quatre clôtures et rend les mêmes chiffres
   morales », et l'art. 3, al. 2, 2° soumet à l'IS les « personnes morales de
   droit public n'ayant pas la forme d'une société commerciale ». Le minimum
   vise-t-il ces dernières ? OmegaX l'applique toujours (sans effet au cas).
-- **C09, chiffre d'affaires du minimum du premier exercice clos** · l'art. 12,
-  al. 3 ne déduit que les BÉNÉFICES de la période de création · OmegaX garde
-  le chiffre d'affaires de l'exercice entier (lecture littérale d'avant), et
-  le dit à l'écran.
-- **C09, perte de la période de création** · « ces bénéfices » seuls viennent
-  en déduction · une perte reste dans le résultat du premier exercice clos.
+- **C09, chiffre d'affaires du minimum du premier exercice clos** · TRANCHÉ
+  PAR LA LOI le 2026-10-07 et CODÉ sur `travail/decisions-loi-3` · le chiffre
+  d'affaires de l'exercice MOINS celui de la période de création, lu à la même
+  source (livre-journal au 31 décembre de l'année de création) · art. 12,
+  al. 1, 3 et 4 ; art. 57 ; LPF, art. 12 et 13, al. 3 ; loi n° 23/053,
+  art. 151 et 153 (`chiffreAffairesMinimumPremierExercice`,
+  `OBSERVATION_CHIFFRE_AFFAIRES_PREMIER_EXERCICE`, sans « à faire confirmer »).
+- **C09, perte de la période de création** · TRANCHÉ PAR LA LOI le 2026-10-07 ·
+  ni déduite ni reportée à part (art. 12, al. 3, « ces bénéfices » ; art. 51,
+  « les pertes constatées au cours d'un exercice » ; art. 52, 2°), dite à
+  l'écran quand la période est déficitaire (`OBSERVATION_PERTE_PERIODE_CREATION`).
 
 ### Relevé en attente
 
@@ -702,3 +739,31 @@ adverse »), chacun en échec sur le code d'avant la correction.
   si l'affectation est passée).
 - **Ordre d'imputation entre pertes** · le texte ne le fixe pas ; OmegaX
   impute la plus ancienne d'abord (déjà écrit au premier tour).
+
+---
+
+## Quatrième tour (2026-10-07, branche `travail/decisions-loi-3`) · C09 codé
+
+Décision par la loi du 2026-10-07 (`docs/decisions-par-la-loi-2026-10-07-bis.md`,
+point 2), sources relues le même jour (loi n° 23/053, art. 12, 51, 52, 55,
+57, 151, 153 ; LPF, art. 12 et 13 ; Constitution, art. 174). Le minimum du
+premier exercice clos se calcule sur le chiffre d'affaires de l'exercice
+MOINS celui de la période de création, lu à la même source que la période
+(livre-journal au 31 décembre de l'année de création) ; la perte de la
+période est dite par sa règle (`OBSERVATION_PERTE_PERIODE_CREATION`). Rejeu
+sur vraie base · `rejeu-is.mjs`, serveur compilé de la branche, base jetable
+`decisions3` (cluster local), le 2026-10-07. Tous les cas rejoués ; ceux que la
+décision touche :
+
+| Cas | Grandeur | Attendu | OmegaX | Écart |
+|---|---|---|---|---|
+| C09 | Chiffre d'affaires du minimum du premier exercice clos | 70 000 000 − 30 000 000 = 40 000 000 | 40 000 000 | 0 |
+| C09 | Minimum du premier exercice clos | 1 % × 40 000 000 = 400 000 | 400 000 (impôt dû 1 500 000, le bénéfice primant) | 0 |
+| C09 | Période de création | minimum 300 000, acomptes 90 000 · 90 000 · 60 000 | idem | 0 |
+| C10 | Minimum de 2026 | 1 % × (60 000 000 − 10 000 000) = 500 000 | 500 000 | 0 |
+| C09 bis | Minimum et impôt du premier exercice clos | 1 % × 20 000 000 = 200 000, dû (150 000 au taux) | 200 000, minimum appliqué | 0 |
+| C09 bis | Période de création | 800 000 (minimum), acomptes 240 000 · 240 000 · 160 000 | idem | 0 |
+| C09 bis | Total | 1 000 000 | 1 000 000 | 0 |
+| C09 bis | Acomptes 2028 (base 200 000) | 60 000 · 60 000 · 40 000 | idem | 0 |
+| C09 bis | Après la clôture du premier exercice | inchangé | inchangé (minimum 200 000, total 1 000 000) | 0 |
+| C09 bis | Écriture A11 | refusée avec issue (deux impositions) | refusée · D 89500000 800 000 au 31/12/2026 puis 200 000 au 31/12/2027 / C 44100000 | issue dite |

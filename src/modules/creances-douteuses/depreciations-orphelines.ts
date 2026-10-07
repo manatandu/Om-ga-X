@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { LOT_ECRITURES, lireParLots, pageApres } from '../../common/lecture-par-lots';
-import { DepreciationOrpheline, enPlaceAvant, resteDeLaCreance, resteFinalDeLaCreance } from './creances-douteuses';
+import { DepreciationOrpheline, enPlaceAvant, nonCorrigeeAu, resteDeLaCreance, resteFinalDeLaCreance } from './creances-douteuses';
 
 type Lecteur = Pick<Prisma.TransactionClient, 'exercice' | 'creanceDouteuse'>;
 
@@ -33,7 +33,9 @@ export async function depreciationsOrphelines(
   await lireParLots(
     (curseur) =>
       prisma.creanceDouteuse.findMany({
-        where: { tenantId: p.tenantId, dateReclassement: { lte: ex.dateFin }, annuleeLe: null },
+        // M9 · une créance corrigée par le résultat au plus tard à la clôture
+        // est sortie du module · sa correction a repris sa dépréciation.
+        where: { tenantId: p.tenantId, dateReclassement: { lte: ex.dateFin }, annuleeLe: null, ...nonCorrigeeAu(ex.dateFin) },
         select: {
           id: true,
           montant: true,

@@ -442,6 +442,7 @@ describe('Recouvrement d’une créance douteuse · l’encaissement de ses fact
     id: `d-${ligne}`,
     ligneEcritureId: ligne,
     montant: part,
+    ligneEcriture: { ecriture: { date: jour('2026-12-10') } },
     creance: {
       id: `cr-${ligne}`,
       montant: reclasse,
@@ -544,10 +545,11 @@ describe('Recouvrement d’une créance douteuse · l’encaissement de ses fact
 
 describe('A7 bis, troisième reprise · factures partagées, échéances multiples, recouvrement non rattaché', () => {
   const MARS_N1 = mois('2027-03');
-  const designation = (ligne: string, part: number, reclasse: number, recouvre: number) => ({
+  const designation = (ligne: string, part: number, reclasse: number, recouvre: number, dateFacture = '2026-12-10') => ({
     id: `d-${ligne}`,
     ligneEcritureId: ligne,
     montant: part,
+    ligneEcriture: { ecriture: { date: jour(dateFacture) } },
     creance: {
       id: 'cr-commune',
       montant: reclasse,
@@ -605,6 +607,60 @@ describe('A7 bis, troisième reprise · factures partagées, échéances multipl
     const mars = await s.declaration('t1', ...MARS_N1);
     expect(mars.totalCollecte).toBe(160_000);
     expect(mars.recouvrementsSansFactureDesignee).toEqual([]);
+  });
+
+  /*
+    JUMEAU 1 DU POINT 4 (décision par la loi du 2026-10-07) · entre factures
+    désignées, l'art. 154 paie la plus ancienne d'abord. F1, vente de BIENS du
+    10 novembre (580 000 TTC, TVA 80 000 exigible à la livraison), F2,
+    prestation du 10 décembre (1 160 000 TTC, TVA 160 000), reclassées
+    ensemble (1 740 000), toutes deux désignées.
+  */
+  const biensEtServices = () => [
+    ecriture({ compteTva: '44310000', contrepartie: '70110000', date: '2026-11-10', tva: 80_000, id: 'F1', tiers: { montant: 580_000, groupe: null } }),
+    ecriture({ compteTva: '44320000', contrepartie: '70610000', date: '2026-12-10', tva: 160_000, id: 'F2', tiers: { montant: 1_160_000, groupe: null } }),
+  ];
+  const deuxDesignees = (mouvements: Array<{ date: string; montant: number }>) =>
+    [
+      ['tiers-F1', 580_000, '2026-11-10'],
+      ['tiers-F2', 1_160_000, '2026-12-10'],
+    ].map(([ligne, part, date]) => ({
+      ...designation(ligne as string, part as number, 1_740_000, 0, date as string),
+      creance: {
+        ...designation(ligne as string, part as number, 1_740_000, 0).creance,
+        mouvements: mouvements.map((m) => ({ date: jour(m.date), montant: m.montant })),
+      },
+    }));
+
+  it('jumeau 1 · 580 000 recouvrés en mars paient F1, la plus ancienne · rien d’exigible en mars (le prorata rendait 53 333,33)', async () => {
+    const s = service(biensEtServices(), [], [], { designations: deuxDesignees([{ date: '2027-03-10', montant: 580_000 }]) });
+    expect((await s.declaration('t1', ...MARS_N1)).totalCollecte).toBe(0);
+    // La vente de biens reste déclarée à sa livraison, en novembre.
+    expect((await s.declaration('t1', ...mois('2026-11'))).totalCollecte).toBe(80_000);
+  });
+
+  it('jumeau 1 · le second recouvrement (580 000 en avril) va à F2 · 80 000 exigibles en avril', async () => {
+    const s = service(biensEtServices(), [], [], {
+      designations: deuxDesignees([
+        { date: '2027-03-10', montant: 580_000 },
+        { date: '2027-04-10', montant: 580_000 },
+      ]),
+    });
+    expect((await s.declaration('t1', ...MARS_N1)).totalCollecte).toBe(0);
+    // 580 000 × 160 000 / 1 160 000 = 80 000.
+    expect((await s.declaration('t1', ...mois('2027-04'))).totalCollecte).toBe(80_000);
+  });
+
+  it('jumeau 1 · l’ÉCHÉANCE de la ligne désignée est lue · F1 non échue en mars cède le pas à F2 échue · 80 000 en mars', async () => {
+    // Relecture du 2026-10-07, mineur serveur · F1, la plus ancienne, est à
+    // échéance du 30 juin 2027 · au recouvrement de mars elle n'est pas échue,
+    // et l'art. 154 paie d'abord la dette échue (F2). 580 000 × 160 000 /
+    // 1 160 000 = 80 000 exigibles en mars ; lue sans échéance, F1 prenait
+    // tout et rien n'était exigible.
+    const designees = deuxDesignees([{ date: '2027-03-10', montant: 580_000 }]);
+    designees[0].ligneEcriture = { ...designees[0].ligneEcriture, dateEcheance: jour('2027-06-30') } as typeof designees[0]['ligneEcriture'];
+    const s = service(biensEtServices(), [], [], { designations: designees });
+    expect((await s.declaration('t1', ...MARS_N1)).totalCollecte).toBe(80_000);
   });
 
   it('un recouvrement qu’aucune ligne de TVA ne reçoit est NOMMÉ, jamais perdu', async () => {
