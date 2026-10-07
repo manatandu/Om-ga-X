@@ -47,9 +47,12 @@ export function DatesPortefeuilleExercice({
   // s'affiche pas · le numéro d'envoi change à chaque envoi et à chaque
   // changement d'exercice.
   const envoiCourant = useRef(0);
+  // L'exercice affiché · comparé à celui de l'envoi avant tout message.
+  const exerciceAffiche = useRef(exerciceId);
 
   // Changer d'exercice efface les messages et périme l'envoi en cours.
   useEffect(() => {
+    exerciceAffiche.current = exerciceId;
     envoiCourant.current += 1;
     setErreur(null);
     setInfo(null);
@@ -67,6 +70,8 @@ export function DatesPortefeuilleExercice({
   const enregistrer = async (e: FormEvent) => {
     e.preventDefault();
     const moi = ++envoiCourant.current;
+    const pour = exerciceId;
+    const valable = () => moi === envoiCourant.current && exerciceAffiche.current === pour;
     setEnvoi(true);
     setErreur(null);
     setInfo(null);
@@ -81,11 +86,11 @@ export function DatesPortefeuilleExercice({
           : {}),
       });
       await apresEnregistrement();
-      if (moi === envoiCourant.current) setInfo('Dates enregistrées.');
+      if (valable()) setInfo('Dates enregistrées.');
     } catch (err) {
-      if (moi === envoiCourant.current) setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
+      if (valable()) setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
     } finally {
-      if (moi === envoiCourant.current) setEnvoi(false);
+      if (valable()) setEnvoi(false);
     }
   };
 

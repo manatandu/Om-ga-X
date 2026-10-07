@@ -95,20 +95,33 @@ function NotesSyscohadaSystemeNormal() {
   // une note d'avant · une ligne répétable ajoutée y prenait le rang d'une
   // ligne déjà enregistrée.
   const jeton = useRef(0);
+  // L'EXERCICE AFFICHÉ (relecture 2) · le jeton protège l'ORDRE des réponses,
+  // pas l'exercice visé · toute réponse compare l'exercice qu'elle vise à
+  // celui-ci avant d'écrire à l'écran.
+  const exerciceVise = useRef<string | null>(null);
   const charger = () => {
     if (!exerciceCourant) return;
+    // Relecture demandée par un geste d'un exercice quitté · rien à relire.
+    if (exerciceVise.current !== exerciceCourant.id) return;
+    const pour = exerciceCourant.id;
     const mien = ++jeton.current;
-    api.get<ResultatNotesJeu>(`/etats-financiers-syscohada/notes?exerciceId=${exerciceCourant.id}`).then(
+    api.get<ResultatNotesJeu>(`/etats-financiers-syscohada/notes?exerciceId=${pour}`).then(
       (r) => {
-        if (mien === jeton.current) setResultat(r);
+        if (mien === jeton.current && exerciceVise.current === pour) setResultat(r);
       },
       (e) => {
-        if (mien === jeton.current) setErreur(e instanceof Error ? e.message : String(e));
+        if (mien === jeton.current && exerciceVise.current === pour) setErreur(e instanceof Error ? e.message : String(e));
       },
     );
   };
 
   useEffect(() => {
+    const nouveau = exerciceCourant?.id ?? null;
+    if (exerciceVise.current !== nouveau) {
+      exerciceVise.current = nouveau;
+      setResultat(null);
+      setErreur(null);
+    }
     charger();
     // Un échec se DIT (audit final F221) · avalé, il laissait le formulaire
     // de rattachement avec une liste de comptes vide et sans un mot, lu
@@ -218,12 +231,13 @@ function NotesSyscohadaSystemeNormal() {
    * le serveur, une cellule remplie peut la faire basculer.
    */
   const enregistrerSaisie = async (codeNote: string, cleRubrique: string, colonne: number, valeur: string, rang?: number) => {
-    if (!exerciceCourant) return;
+    if (!exerciceCourant) return false;
+    const pour = exerciceCourant.id;
     setErreur(null);
     setEnCours(`${codeNote}::${cleRubrique}::${colonne}`);
     try {
       await api.post('/notes-annexes/saisies', {
-        exerciceId: exerciceCourant.id,
+        exerciceId: pour,
         jeu: 'SYSCOHADA_SYSTEME_NORMAL',
         codeNote,
         cleRubrique,
@@ -233,8 +247,10 @@ function NotesSyscohadaSystemeNormal() {
         ...(rang !== undefined ? { rang } : {}),
       });
       charger();
+      return true;
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "Impossible d'enregistrer cette saisie");
+      if (exerciceVise.current === pour) setErreur(e instanceof ApiError ? e.message : "Impossible d'enregistrer cette saisie");
+      return false;
     } finally {
       setEnCours(null);
     }
@@ -242,7 +258,8 @@ function NotesSyscohadaSystemeNormal() {
 
   // LECTURE_SEULE n'écrit rien · le serveur le refuserait (`@Roles`), et un
   // champ ouvert qui rend un 403 est une promesse fausse.
-  const saisie: SaisieNotes | undefined = peutEcrire ? { enCours, enregistrer: enregistrerSaisie } : undefined;
+  const saisie: SaisieNotes | undefined =
+    peutEcrire && exerciceCourant ? { exerciceId: exerciceCourant.id, enCours, enregistrer: enregistrerSaisie } : undefined;
 
   const rattachement: RattachementNotes = {
     estAdmin,

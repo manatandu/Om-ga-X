@@ -110,25 +110,38 @@ export function ExercicePage() {
   // récente, est jetée · sans quoi le planning d'un exercice s'affichait sous
   // un autre (relecture 1 des décisions par la loi du 2026-10-04).
   const jetonCharger = useRef(0);
+  // L'EXERCICE AFFICHÉ (relecture 2) · le jeton protège l'ORDRE des
+  // réponses, pas l'exercice visé · un enregistrement lancé sur un exercice
+  // et relu après en avoir changé remettait son planning sous l'autre.
+  const exerciceVise = useRef<string>('');
   const charger = async () => {
     if (!exerciceId) return;
+    // Relecture demandée par un geste d'un exercice quitté · rien à relire.
+    if (exerciceVise.current !== exerciceId) return;
+    const pour = exerciceId;
     const jeton = ++jetonCharger.current;
     try {
       const [c, p] = await Promise.all([
-        api.get<Cloture[]>(`/exercices/${exerciceId}/clotures`),
-        api.get<PlanningCloture>(`/exercices/${exerciceId}/planning-cloture`),
+        api.get<Cloture[]>(`/exercices/${pour}/clotures`),
+        api.get<PlanningCloture>(`/exercices/${pour}/planning-cloture`),
       ]);
-      if (jeton !== jetonCharger.current) return;
+      if (jeton !== jetonCharger.current || exerciceVise.current !== pour) return;
       setClotures(c);
       setPlanning(p);
       setErreur(null);
     } catch (err) {
-      if (jeton !== jetonCharger.current) return;
+      if (jeton !== jetonCharger.current || exerciceVise.current !== pour) return;
       setErreur(err instanceof ApiError ? err.message : 'Impossible de charger les clôtures');
     }
   };
 
   useEffect(() => {
+    // Le planning d'un autre exercice ne reste pas affiché pendant la lecture.
+    if (exerciceVise.current !== exerciceId) {
+      exerciceVise.current = exerciceId;
+      setPlanning(null);
+      setClotures(null);
+    }
     charger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exerciceId]);

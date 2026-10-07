@@ -51,16 +51,30 @@ describe('fiche R2 et dates de l’assemblée à l’écran', () => {
     expect(exercice).toMatch(/<FicheR2Exercice exercice=\{exercice\} apresEnregistrement=\{rechargerExercices\} \/>/);
   });
 
-  it('une réponse d’un exercice quitté ou d’un envoi dépassé ne s’affiche pas', () => {
+  it('une réponse d’un exercice quitté ou d’un envoi dépassé ne s’affiche pas · l’exercice visé est comparé (relecture 2)', () => {
     for (const source of [ficheR2, dates]) {
       const envoi = corps(source, 'enregistrer');
       expect(envoi).toContain('const moi = ++envoiCourant.current;');
-      expect(envoi).toMatch(/if \(moi === envoiCourant\.current\) setInfo\(/);
-      expect(envoi).toMatch(/if \(moi === envoiCourant\.current\) setErreur\(/);
+      expect(envoi).toContain('const valable = () => moi === envoiCourant.current && exerciceAffiche.current === pour;');
+      expect(envoi).toMatch(/if \(valable\(\)\) setInfo\(/);
+      expect(envoi).toMatch(/if \(valable\(\)\) setErreur\(/);
     }
     const lecture = corps(exercice, 'charger');
+    expect(lecture).toContain('if (exerciceVise.current !== exerciceId) return;');
     expect(lecture).toContain('const jeton = ++jetonCharger.current;');
-    expect(lecture.match(/if \(jeton !== jetonCharger\.current\) return;/g)).toHaveLength(2);
+    expect(lecture.match(/if \(jeton !== jetonCharger\.current \|\| exerciceVise\.current !== pour\) return;/g)).toHaveLength(2);
+    // Le planning d'un autre exercice ne reste pas affiché.
+    expect(exercice).toContain('setPlanning(null);');
+  });
+
+  it('les notes · même garde de l’exercice, dans les deux écrans', () => {
+    for (const page of ['pages/NotesAnnexesPage.tsx', 'pages/NotesAnnexesSyscohadaPage.tsx']) {
+      const source = lire(page);
+      expect(source).toContain('const exerciceVise = useRef<string | null>(null);');
+      expect(source).toMatch(/if \(mien === jeton\.current && exerciceVise\.current === pour\) setResultat\(r\);/);
+      expect(source).toContain('setResultat(null);');
+      expect(source).toContain('exerciceId: exerciceCourant.id, enCours');
+    }
   });
 
   it('le planning montre en ambre un fait déclaré hors délai, et dit un jalon en attente', () => {

@@ -1,4 +1,4 @@
-import { lignesAvecAjouts, rangSuivant } from './lignes-repetables';
+import { ligneVideeApres, lignesAvecAjouts, rangSuivant, sansDemande } from './lignes-repetables';
 import type { LigneNoteCalculee } from './types';
 
 /**
@@ -53,5 +53,22 @@ describe('lignes répétables à l’écran', () => {
 
   it('une rubrique non répétable (sans rang) ne reçoit pas de bouton', () => {
     expect(lignesAvecAjouts([ligne('autre', 'Autre', undefined, [null])], 1, {})).toHaveLength(1);
+  });
+
+  it('une ligne demandée puis entièrement vidée sort des lignes demandées (relecture 2)', () => {
+    // Vider la dernière cellule remplie · la ligne est vide, la demande tombe.
+    expect(ligneVideeApres(['A', null, ''], 0, '')).toBe(true);
+    // Une autre cellule reste remplie · la ligne demeure.
+    expect(ligneVideeApres(['A', '12', null], 0, '  ')).toBe(false);
+    // Une valeur saisie n'est jamais un vidage.
+    expect(ligneVideeApres([null, null], 1, 'B')).toBe(false);
+    expect(sansDemande({ apporteurs: [3, 4], filiales: [1] }, 'apporteurs', 3)).toEqual({ apporteurs: [4], filiales: [1] });
+    expect(sansDemande({ apporteurs: [3] }, 'apporteurs', 3)).toEqual({});
+    // Une fois sortie, la ligne n'est plus montrée vide au même rang.
+    const servies = [ligne('apporteurs', 'Apporteurs', 0, ['A', null])];
+    expect(lignesAvecAjouts(servies, 2, sansDemande({ apporteurs: [1] }, 'apporteurs', 1)).map(etiquette)).toEqual([
+      'Apporteurs:0:A',
+      '+apporteurs',
+    ]);
   });
 });

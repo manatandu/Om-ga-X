@@ -57,4 +57,11 @@ describe('rendu des notes · grille et gestes', () => {
     expect(bloc.match(/<th scope="col"/g)).toHaveLength(3);
     expect(bloc).toContain('<thead>');
   });
+
+  it('le motif du retrait ne se vide qu’au succès ; les lignes demandées se gardent par exercice et sortent vidées', () => {
+    expect(source).toContain("if (await saisie.retirerFormatAnterieur!(note.code, motifRetrait.trim())) setMotifRetrait('');");
+    expect(source).toContain("const tableau = `${saisie?.exerciceId ?? ''}::${note.code}::${note.sousTableau ?? ''}`;");
+    expect(source).toContain('if (ok && rang !== undefined && ligneVideeApres(l.saisie, colonne, valeur)) {');
+    expect(source).toContain('saisie={saisiePour(l)}');
+  });
 });

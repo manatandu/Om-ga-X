@@ -35,9 +35,12 @@ export function FicheR2Exercice({
   // s'affiche pas · le numéro d'envoi change à chaque envoi et à chaque
   // changement d'exercice.
   const envoiCourant = useRef(0);
+  // L'exercice affiché · comparé à celui de l'envoi avant tout message.
+  const exerciceAffiche = useRef(exercice.id);
 
   // Changer d'exercice efface les messages et périme l'envoi en cours.
   useEffect(() => {
+    exerciceAffiche.current = exercice.id;
     envoiCourant.current += 1;
     setErreur(null);
     setInfo(null);
@@ -66,6 +69,8 @@ export function FicheR2Exercice({
   const enregistrer = async (e: FormEvent) => {
     e.preventDefault();
     const moi = ++envoiCourant.current;
+    const pour = exercice.id;
+    const valable = () => moi === envoiCourant.current && exerciceAffiche.current === pour;
     setEnvoi(true);
     setErreur(null);
     setInfo(null);
@@ -77,11 +82,11 @@ export function FicheR2Exercice({
         controleEntreprise: controle === '' ? null : controle,
       });
       await apresEnregistrement();
-      if (moi === envoiCourant.current) setInfo('Fiche R2 enregistrée.');
+      if (valable()) setInfo('Fiche R2 enregistrée.');
     } catch (err) {
-      if (moi === envoiCourant.current) setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
+      if (valable()) setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.');
     } finally {
-      if (moi === envoiCourant.current) setEnvoi(false);
+      if (valable()) setEnvoi(false);
     }
   };
 

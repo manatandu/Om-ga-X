@@ -45,3 +45,22 @@ export function rangSuivant(lignes: LigneNoteCalculee[], cle: string, demandes: 
   const rangs = [...lignes.filter((x) => x.cle === cle).map((x) => x.rang ?? 0), ...(demandes[cle] ?? [])];
   return rangs.length === 0 ? 0 : Math.max(...rangs) + 1;
 }
+
+/**
+ * UNE LIGNE DEMANDÉE PUIS ENTIÈREMENT VIDÉE SORT DES LIGNES DEMANDÉES
+ * (relecture 2) · le serveur la retire dès que sa dernière cellule est vidée,
+ * et la demande gardée la refaisait apparaître vide au même rang. Vrai quand
+ * la valeur envoyée est vide et que toutes les AUTRES cellules de la ligne le
+ * sont déjà.
+ */
+export function ligneVideeApres(saisieLigne: (string | number | null)[] | undefined, colonne: number, valeur: string): boolean {
+  if (valeur.trim() !== '') return false;
+  return (saisieLigne ?? []).every((v, k) => k === colonne || v === null || String(v).trim() === '');
+}
+
+/** Les demandes, sans ce rang de cette rubrique. */
+export function sansDemande(demandes: RangsDemandes, cle: string, rang: number): RangsDemandes {
+  const restants = (demandes[cle] ?? []).filter((r) => r !== rang);
+  const autres = Object.fromEntries(Object.entries(demandes).filter(([k]) => k !== cle));
+  return restants.length > 0 ? { ...autres, [cle]: restants } : autres;
+}

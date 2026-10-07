@@ -7,7 +7,7 @@ import { montant } from '../lib/montants';
 import { gabaritGrilleNote } from '../lib/grille-note';
 import { celluleLibreSaisissable, texteCelluleLibre } from '../lib/cellules-notes';
 import { sousTitreDuTableau } from '../lib/titre-note';
-import { lignesAvecAjouts, rangSuivant, type RangsDemandes } from '../lib/lignes-repetables';
+import { ligneVideeApres, lignesAvecAjouts, rangSuivant, sansDemande, type RangsDemandes } from '../lib/lignes-repetables';
 import { texteEcartSaisie, type EcartSaisieNote } from '../lib/ecarts-saisie-notes';
 
 /**
@@ -84,15 +84,26 @@ export interface RattachementNotes {
  * portent pas d'exercice modifiable, et du rôle LECTURE_SEULE.
  */
 export interface SaisieNotes {
+  /**
+   * L'exercice dont les saisies s'écrivent · les lignes demandées d'un
+   * tableau se mémorisent PAR EXERCICE, jamais gardées d'un exercice à
+   * l'autre (relecture 2).
+   */
+  exerciceId: string;
   /** `codeNote::cleRubrique::colonne` en cours d'envoi, ou null. */
   enCours: string | null;
-  /** `rang` · ligne d'une rubrique répétable (absent = la ligne unique). */
-  enregistrer: (codeNote: string, cleRubrique: string, colonne: number, valeur: string, rang?: number) => void;
+  /**
+   * `rang` · ligne d'une rubrique répétable (absent = la ligne unique). Rend
+   * VRAI quand le serveur a enregistré · un geste qui suit le succès (retirer
+   * une ligne demandée vidée) attend la réponse.
+   */
+  enregistrer: (codeNote: string, cleRubrique: string, colonne: number, valeur: string, rang?: number) => Promise<boolean>;
   /**
    * Notes 20B et 29B · « Retirer la saisie au format antérieur », motif exigé.
-   * Absent sur un écran qui ne porte pas ces notes.
+   * Rend VRAI au succès · le motif n'est vidé qu'alors. Absent sur un écran
+   * qui ne porte pas ces notes.
    */
-  retirerFormatAnterieur?: (codeNote: string, motif: string) => void;
+  retirerFormatAnterieur?: (codeNote: string, motif: string) => Promise<boolean>;
 }
 
 /**
@@ -294,10 +305,28 @@ export function BlocTableauNote({
   // réelles, sans doublon. Mémorisées pour CE tableau (code et sous-tableau)
   // et non effacées à chaque relecture · un effet sur `note` jetait la ligne
   // demandée pendant l'enregistrement d'une autre cellule.
-  const tableau = `${note.code}::${note.sousTableau ?? ''}`;
+  // La clé porte l'EXERCICE · une ligne demandée sur 2026 ne réapparaît
+  // jamais vide sous 2027 (relecture 2).
+  const tableau = `${saisie?.exerciceId ?? ''}::${note.code}::${note.sousTableau ?? ''}`;
   const [demandes, setDemandes] = useState<{ tableau: string; rangs: RangsDemandes }>({ tableau, rangs: {} });
   const rangsDemandes = demandes.tableau === tableau ? demandes.rangs : {};
   const [motifRetrait, setMotifRetrait] = useState('');
+  // Une ligne répétable DEMANDÉE puis entièrement vidée sort des demandes,
+  // une fois le vidage enregistré · le serveur l'a retirée, et la demande
+  // gardée la refaisait apparaître vide au même rang (relecture 2).
+  const saisiePour = (l: LigneNoteCalculee): SaisieNotes | undefined =>
+    saisie && l.cle !== undefined && l.rang !== undefined && (rangsDemandes[l.cle] ?? []).includes(l.rang)
+      ? {
+          ...saisie,
+          enregistrer: async (codeNote, cleRubrique, colonne, valeur, rang) => {
+            const ok = await saisie.enregistrer(codeNote, cleRubrique, colonne, valeur, rang);
+            if (ok && rang !== undefined && ligneVideeApres(l.saisie, colonne, valeur)) {
+              setDemandes((d) => (d.tableau === tableau ? { tableau, rangs: sansDemande(d.rangs, cleRubrique, rang) } : d));
+            }
+            return ok;
+          },
+        }
+      : saisie;
 
   return (
     <div className="border border-border bg-surface mb-4">
@@ -376,7 +405,7 @@ export function BlocTableauNote({
                 </div>
               ) : null
             ) : (
-              <LigneTableauNote key={`${l.cle ?? l.libelle}-${l.rang ?? 0}-${i}`} note={note} ligne={l} saisie={saisie} />
+              <LigneTableauNote key={`${l.cle ?? l.libelle}-${l.rang ?? 0}-${i}`} note={note} ligne={l} saisie={saisiePour(l)} />
             ),
           )}
         </div>
@@ -452,9 +481,10 @@ export function BlocTableauNote({
               <button
                 type="button"
                 disabled={saisie.enCours !== null || motifRetrait.trim().length < 3}
-                onClick={() => {
-                  saisie.retirerFormatAnterieur!(note.code, motifRetrait.trim());
-                  setMotifRetrait('');
+                onClick={async () => {
+                  // Le motif ne se vide qu'AU SUCCÈS · un refus le laisse
+                  // à corriger, jamais à retaper.
+                  if (await saisie.retirerFormatAnterieur!(note.code, motifRetrait.trim())) setMotifRetrait('');
                 }}
                 className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1 disabled:opacity-50"
               >

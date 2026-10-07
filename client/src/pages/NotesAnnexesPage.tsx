@@ -90,21 +90,36 @@ function NotesAnnexesSycebnlPage() {
   // une note d'avant · une ligne répétable ajoutée y prenait le rang d'une
   // ligne déjà enregistrée.
   const jeton = useRef(0);
+  // L'EXERCICE AFFICHÉ (relecture 2) · le jeton protège l'ORDRE des réponses,
+  // pas l'exercice visé · un geste lancé sur 2026 et relu après le passage à
+  // 2027 remettait les notes de 2026 sous l'exercice 2027. Toute réponse
+  // compare l'exercice qu'elle vise à celui-ci avant d'écrire à l'écran.
+  const exerciceVise = useRef<string | null>(null);
   const charger = () => {
     if (jeuSmt) return; // aucun catalogue de notes du Système normal à charger
     if (!exerciceCourant || !utilisateur) return; // même garde qu'EtatsFinanciersPage : utilisateur null au tout premier rendu.
+    // Relecture demandée par un geste d'un exercice quitté · rien à relire.
+    if (exerciceVise.current !== exerciceCourant.id) return;
+    const pour = exerciceCourant.id;
     const mien = ++jeton.current;
-    api.get<ResultatNotesJeu>(`/notes-annexes/${chemin}?exerciceId=${exerciceCourant.id}`).then(
+    api.get<ResultatNotesJeu>(`/notes-annexes/${chemin}?exerciceId=${pour}`).then(
       (r) => {
-        if (mien === jeton.current) setResultat(r);
+        if (mien === jeton.current && exerciceVise.current === pour) setResultat(r);
       },
       (e) => {
-        if (mien === jeton.current) setErreur(e instanceof Error ? e.message : String(e));
+        if (mien === jeton.current && exerciceVise.current === pour) setErreur(e instanceof Error ? e.message : String(e));
       },
     );
   };
 
   useEffect(() => {
+    const nouveau = exerciceCourant?.id ?? null;
+    if (exerciceVise.current !== nouveau) {
+      // Les notes d'un autre exercice ne restent pas affichées pendant la lecture.
+      exerciceVise.current = nouveau;
+      setResultat(null);
+      setErreur(null);
+    }
     charger();
     // LISTE DE CHOIX · comptes retenus ou utilisés (`lib/comptes-proposes.ts`) ;
     // un compte déjà rattaché est utilisé, il y reste et se détache. Un échec
@@ -205,12 +220,13 @@ function NotesAnnexesSycebnlPage() {
    * règle et la ferait diverger.
    */
   const enregistrerSaisie = async (codeNote: string, cleRubrique: string, colonne: number, valeur: string, rang?: number) => {
-    if (!exerciceCourant) return;
+    if (!exerciceCourant) return false;
+    const pour = exerciceCourant.id;
     setErreur(null);
     setEnCours(`${codeNote}::${cleRubrique}::${colonne}`);
     try {
       await api.post('/notes-annexes/saisies', {
-        exerciceId: exerciceCourant.id,
+        exerciceId: pour,
         jeu: jeuRattachement,
         codeNote,
         cleRubrique,
@@ -220,8 +236,10 @@ function NotesAnnexesSycebnlPage() {
         ...(rang !== undefined ? { rang } : {}),
       });
       charger();
+      return true;
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "Impossible d'enregistrer cette saisie");
+      if (exerciceVise.current === pour) setErreur(e instanceof ApiError ? e.message : "Impossible d'enregistrer cette saisie");
+      return false;
     } finally {
       setEnCours(null);
     }
@@ -234,27 +252,33 @@ function NotesAnnexesSycebnlPage() {
    * reportée. Motif exigé, au journal d'audit (serveur).
    */
   const retirerFormatAnterieur = async (codeNote: string, motif: string) => {
-    if (!exerciceCourant) return;
+    if (!exerciceCourant) return false;
+    const pour = exerciceCourant.id;
     setErreur(null);
     setEnCours(`${codeNote}::format-anterieur`);
     try {
       await api.post('/notes-annexes/saisies/format-anterieur/retirer', {
-        exerciceId: exerciceCourant.id,
+        exerciceId: pour,
         jeu: jeuRattachement,
         codeNote,
         motif,
       });
       charger();
+      return true;
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : 'Impossible de retirer la saisie au format antérieur');
+      if (exerciceVise.current === pour) {
+        setErreur(e instanceof ApiError ? e.message : 'Impossible de retirer la saisie au format antérieur');
+      }
+      return false;
     } finally {
       setEnCours(null);
     }
   };
 
-  const saisie: SaisieNotes | undefined = peutEcrire
-    ? { enCours, enregistrer: enregistrerSaisie, retirerFormatAnterieur }
-    : undefined;
+  const saisie: SaisieNotes | undefined =
+    peutEcrire && exerciceCourant
+      ? { exerciceId: exerciceCourant.id, enCours, enregistrer: enregistrerSaisie, retirerFormatAnterieur }
+      : undefined;
 
   // Rattachement des sous-comptes du dossier · l'état vit ici (c'est cet
   // écran qui appelle le serveur), le rendu est celui de NotesAnnexesRendu.
