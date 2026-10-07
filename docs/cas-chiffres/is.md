@@ -568,6 +568,8 @@ C05 est lu avant puis après ces quatre clôtures et rend les mêmes chiffres
 
 ### Rendu à Manasse (le corpus ne tranche pas) · rien codé
 
+> **Relu le 2026-10-07 (`docs/decisions-par-la-loi-2026-10-07-bis.md`).** C14 et les deux points de C09 sont TRANCHÉS PAR LA LOI · le minimum de l'art. 57 vaut pour tout redevable de l'IS (art. 3, 7, 8, 20, 45 et 57 ; Constitution, art. 174, al. 3) ; le minimum du premier exercice clos se calcule sans le chiffre d'affaires de la période de création (art. 12, al. 1, 3 et 4 ; LPF, art. 12 et 13 ; art. 153), changement de code à venir ; la perte de la période de création reste dans le premier exercice clos (art. 12, al. 3 ; art. 51 ; art. 52, 2°). L'ordre d'imputation entre plusieurs pertes reste seul rendu (art. 51 muet).
+
 - **C14** · l'art. 57 dit « Les sociétés sont assujetties à un impôt
   minimum » ; l'art. 1er distingue « les sociétés et autres personnes
   morales », et l'art. 3, al. 2, 2° soumet à l'IS les « personnes morales de
