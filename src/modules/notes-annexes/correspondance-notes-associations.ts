@@ -1,3 +1,4 @@
+import { colonnesEffectifsSycebnl } from './effectifs-seize-colonnes';
 import { SpecificationNote } from './note-annexe.types';
 
 /**
@@ -2156,16 +2157,9 @@ export const NOTES_ASSOCIATIONS: SpecificationNote[] = [
     // note 29A · c'est un contrôle à offrir plus tard, pas un calcul à
     // inventer ici, la ventilation par sexe et par zone n'existant nulle part
     // en comptabilité.
-    colonnes: [
-      { type: 'LIBRE' as const, libelle: 'EFFECTIFS · Nationaux (M / F)' },
-      { type: 'LIBRE' as const, libelle: 'EFFECTIFS · Autres Etats de la Région (M / F)' },
-      { type: 'LIBRE' as const, libelle: 'EFFECTIFS · Hors Région (M / F)' },
-      { type: 'LIBRE' as const, libelle: 'EFFECTIFS · Total (M / F)' },
-      { type: 'LIBRE' as const, libelle: 'MASSE SALARIALE · Nationaux (M / F)' },
-      { type: 'LIBRE' as const, libelle: 'MASSE SALARIALE · Autres Etats de la Région (M / F)' },
-      { type: 'LIBRE' as const, libelle: 'MASSE SALARIALE · Hors Région (M / F)' },
-      { type: 'LIBRE' as const, libelle: 'MASSE SALARIALE · Total (M / F)' },
-    ],
+    // Seize colonnes, « ventilées M / F » (décision par la loi du 2026-10-04,
+    // point 3) · voir `effectifs-seize-colonnes.ts`.
+    colonnes: colonnesEffectifsSycebnl(),
     rubriques: [
       { cle: 'ya-1-cadres-superieurs', libelle: 'YA. 1. Cadres supérieurs', saisie: true },
       { cle: 'yb-2-techniciens-superieurs-et-cadres-moyens', libelle: 'YB. 2. Techniciens supérieurs et cadres moyens', saisie: true },

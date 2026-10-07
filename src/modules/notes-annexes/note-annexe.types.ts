@@ -451,4 +451,10 @@ export interface NoteCalculee {
   applicable: boolean;
   /** Rubriques que ce dossier ne peut pas alimenter faute de sous-comptes. */
   rubriquesEnAttente: RubriqueEnAttente[];
+  /**
+   * Notes 20B et 29B (personnel propre) · valeurs saisies au format à huit
+   * colonnes « (M / F) », gardées à part et jamais scindées entre M et F
+   * (`effectifs-seize-colonnes.ts`). Absent quand il n'y en a pas.
+   */
+  saisiesFormatAnterieur?: Array<{ cleRubrique: string; rubrique: string; colonneAnterieure: string; valeur: string | number }>;
 }

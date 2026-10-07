@@ -1224,6 +1224,11 @@ export interface NoteCalculee {
   exerciceN1Disponible: boolean;
   applicable: boolean;
   rubriquesEnAttente: RubriqueEnAttente[];
+  /**
+   * Notes 20B et 29B · valeurs saisies au format à huit colonnes « (M / F) »,
+   * gardées à part, jamais scindées entre M et F. Absent sinon.
+   */
+  saisiesFormatAnterieur?: { cleRubrique: string; rubrique: string; colonneAnterieure: string; valeur: string | number }[];
 }
 
 export interface LigneFicheRecapitulative {

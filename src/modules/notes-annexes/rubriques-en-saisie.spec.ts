@@ -51,7 +51,8 @@ const COLONNES_GELEES: Record<JeuNotesAnnexes, Record<string, number>> = {
     '3': 1,
     '4': 1,
     '5H': 4,
-    '29B|PERSONNEL PROPRE': 8,
+    // Seize colonnes ventilées M / F depuis la migration 20270144000000 (décision par la loi du 2026-10-04, point 3).
+    '29B|PERSONNEL PROPRE': 16,
     '29B|PERSONNEL EXTERIEUR ET BENEVOLE': 1,
     '33': 4,
     '34': 1,
@@ -63,7 +64,8 @@ const COLONNES_GELEES: Record<JeuNotesAnnexes, Record<string, number>> = {
     '10': 5,
     '2': 1,
     '9': 1,
-    '20B|PERSONNEL PROPRE': 8,
+    // Seize colonnes ventilées M / F depuis la migration 20270144000000.
+    '20B|PERSONNEL PROPRE': 16,
     '20B|PERSONNEL EXTERIEUR ET BENEVOLE': 1,
     '22': 1,
     '24': 8,

@@ -338,6 +338,32 @@ export function BlocTableauNote({
         </div>
       )}
 
+      {/* Notes 20B et 29B · la saisie d'avant les seize colonnes, gardée à
+          part et jamais répartie entre M et F (le serveur ne la scinde pas). */}
+      {note.saisiesFormatAnterieur && note.saisiesFormatAnterieur.length > 0 && (
+        <div className="border-t border-border px-4 py-3">
+          <div className="text-[11px] font-bold text-text-dim mb-2 flex items-center gap-1.5">
+            Saisie antérieure à reporter
+            <Aide
+              titre="Saisie antérieure à reporter"
+              texte="Ces valeurs ont été saisies quand le tableau portait huit colonnes « (M / F) ». Le modèle ventile chaque colonne entre M et F : le logiciel ne les répartit pas à votre place. Reportez-les dans les seize colonnes ; elles restent affichées ici et n’entrent dans aucune cellule."
+              source="Modèle de la note, ventilé M (Masculin) / F (Féminin)"
+            />
+          </div>
+          <table className="text-[11px] border-collapse">
+            <tbody>
+              {note.saisiesFormatAnterieur.map((s, i) => (
+                <tr key={`${s.cleRubrique}-${s.colonneAnterieure}-${i}`}>
+                  <td className="pr-3 py-0.5">{s.rubrique}</td>
+                  <td className="pr-3 py-0.5 text-text-dim">{s.colonneAnterieure}</td>
+                  <td className="py-0.5">{String(s.valeur)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* --- Rattachement : rubriques en attente + comptes déjà rattachés --- */}
       {(note.rubriquesEnAttente.length > 0 || rattachees.length > 0) && (
         <div className="border-t border-border px-4 py-3 bg-surface-alt">

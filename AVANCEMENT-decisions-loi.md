@@ -34,9 +34,15 @@ Manasse du 2026-10-04 sur le samedi).
   Paramètres du dossier (select), Exercices (`DatesPortefeuilleExercice`). Tests ·
   `portefeuille-etat.spec.ts`, `identifiants-referentiel.spec.ts`.
 
+- **20B / 29B à seize colonnes** · `notes-annexes/effectifs-seize-colonnes.ts`
+  (`colonnesEffectifsSycebnl`, zones du texte SYCEBNL, M/F), migration
+  `20270144000000_effectifs_seize_colonnes` (ancien rang k au rang 100 + k, rien
+  supprimé, jamais scindé), `chargerSaisies` les écarte des cellules et les sert en
+  `saisiesFormatAnterieur`, bloc « Saisie antérieure à reporter » à l'écran. Gel
+  de `rubriques-en-saisie.spec.ts` passé à 16. Tests · `effectifs-seize-colonnes.spec.ts`.
+
 ## Reste
 
-- 20B / 29B à seize colonnes.
 - R2-B5 · lignes répétables des notes 4, 13, 32, 33.
 - O1a-D2 · liquidation.
 
@@ -56,6 +62,10 @@ Manasse du 2026-10-04 sur le samedi).
   « à confirmer sur le texte même de la LF 2026 », que le corpus ne donne qu'en résumé
   sous deux numéros. Le lien « entreprise publique » et case ZQ public n'est pas proposé
   (facultatif). Jours calendaires (O.-L. n° 13/003 sans règle d'ouvrable).
+
+- 20B / 29B · personnel extérieur et bénévole laissé à sa colonne unique (texte
+  muet, à lire au J.O. OHADA). Contrôle Total = somme des zones NON codé (« peut »).
+  Les saisies antérieures ne sont pas imprimées dans la liasse Excel (écran seul).
 
 ## Vérification
 

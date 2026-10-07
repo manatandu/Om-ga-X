@@ -1,3 +1,8 @@
+import {
+  LIBELLES_FORMAT_HUIT_COLONNES,
+  RANG_FORMAT_ANTERIEUR,
+  SaisieFormatAnterieur,
+} from './effectifs-seize-colonnes';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { LOT_LECTURE, lireParLots } from '../../common/lecture-par-lots';
 import { JeuNotesAnnexes, Prisma, Referentiel, StatutEcriture, StatutProvision } from '@prisma/client';
@@ -1097,19 +1102,40 @@ export class NoteAnnexeService {
     tenantId: string,
     exerciceId: string,
     jeu: JeuNotesAnnexes,
-  ): Promise<Map<string, (string | number | null)[]>> {
+  ): Promise<{
+    parRubrique: Map<string, (string | number | null)[]>;
+    formatAnterieur: Map<string, SaisieFormatAnterieur[]>;
+  }> {
     const lignes = await this.prisma.saisieNote.findMany({
       where: { tenantId, exerciceId, jeu },
       select: { codeNote: true, cleRubrique: true, colonne: true, valeurTexte: true, valeurNombre: true },
     });
     const parRubrique = new Map<string, (string | number | null)[]>();
+    // Les saisies conservées HORS de la contexture (notes 20B et 29B passées à
+    // seize colonnes, `effectifs-seize-colonnes.ts`) · jamais lues comme une
+    // cellule, montrées à part par code de note.
+    const formatAnterieur = new Map<string, SaisieFormatAnterieur[]>();
     for (const l of lignes) {
+      const valeur = l.valeurNombre !== null ? Number(l.valeurNombre) : l.valeurTexte;
+      if (l.colonne >= RANG_FORMAT_ANTERIEUR) {
+        if (valeur === null) continue;
+        const rang = l.colonne - RANG_FORMAT_ANTERIEUR;
+        formatAnterieur.set(l.codeNote, [
+          ...(formatAnterieur.get(l.codeNote) ?? []),
+          {
+            cleRubrique: l.cleRubrique,
+            colonneAnterieure: LIBELLES_FORMAT_HUIT_COLONNES[rang] ?? `Colonne n° ${rang + 1}`,
+            valeur,
+          },
+        ]);
+        continue;
+      }
       const cle = `${l.codeNote}::${l.cleRubrique}`;
       const cellules = parRubrique.get(cle) ?? [];
-      cellules[l.colonne] = l.valeurNombre !== null ? Number(l.valeurNombre) : l.valeurTexte;
+      cellules[l.colonne] = valeur;
       parRubrique.set(cle, cellules);
     }
-    return parRubrique;
+    return { parRubrique, formatAnterieur };
   }
 
   /**
@@ -1261,7 +1287,7 @@ export class NoteAnnexeService {
       { parRubrique: rattachements, sansRubrique: rattachementsSansRubrique },
       echeances,
       ventilation,
-      saisies,
+      { parRubrique: saisies, formatAnterieur },
       virements,
       reevaluations,
     ] = await Promise.all([
@@ -1286,6 +1312,17 @@ export class NoteAnnexeService {
     // en repli, comme avant la passe R6 (jeu SYSCOHADA).
     for (const n of notes) {
       n.titreNote = titreDeLaNote(jeu, n.code, notes.find((x) => x.code === n.code)!.titre);
+    }
+    // Notes 20B et 29B · la saisie d'avant les seize colonnes, gardée à part
+    // sur le tableau du personnel propre, jamais scindée.
+    for (const n of notes) {
+      const gardees = formatAnterieur.get(n.code);
+      if (gardees && n.colonnes.length === 16 && n.lignes.some((l) => gardees.some((g) => g.cleRubrique === l.cle))) {
+        n.saisiesFormatAnterieur = gardees.map((g) => ({
+          ...g,
+          rubrique: n.lignes.find((l) => l.cle === g.cleRubrique)?.libelle ?? g.cleRubrique,
+        }));
+      }
     }
     await this.injecterDateArrete(notes, tenantId, exerciceId);
     await this.injecterExecutionBudgetaire(notes, tenantId, exerciceId, jeu);
