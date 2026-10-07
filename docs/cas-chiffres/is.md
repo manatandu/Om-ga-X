@@ -524,6 +524,10 @@ OMEGAX_API=http://localhost:8118 node scripts/cas-chiffres/rejeu-is.mjs rejeu-is
 dropdb -h 127.0.0.1 -p 55439 -U postgres casis_1
 ```
 
+`OMEGAX_BASE_JETABLE` (adresse de la même base jetable, lue par `psql`,
+jamais imprimée) ouvre le cas V5 ; `OMEGAX_CAS=V3,V6` ne rejoue que les cas
+nommés.
+
 Le script imprime un résultat par cas et écrit le détail (montants,
 observations, écriture A11) dans le fichier JSON donné en argument.
 
@@ -610,3 +614,89 @@ l'année qui suit (LPF art. 57 bis) ; (6) une période d'impôt nul n'arrête
 pas l'A11 ; (7) report déclaré et bénéfice de la période figés sur un
 exercice clos, refus nommé ; (8) exercices non jointifs dans la fenêtre du
 report nommés.
+
+---
+
+## Troisième tour (2026-10-07) · la fenêtre de l'art. 51 pour une origine déclarée
+
+Correction vérifiée · commit `de793bf`. Une origine de report DÉCLARÉE dont la
+fenêtre est close à l'ouverture de l'exercice était encore imputée (perte de
+2021 déclarée en 2026 · impôt 150 000 au lieu de 300 000, sans un mot).
+
+**Texte relu** · art. 51, al. 1er [T2] · « il est procédé à un report
+déficitaire sur les exercices suivants jusqu'au troisième exercice qui suit
+l'exercice déficitaire ». Aux exercices civils de l'art. 12, al. 2, la perte
+de l'exercice clos le 31 décembre de l'année A s'impute sur A + 1, A + 2 et
+A + 3, jamais sur A + 4 · en 2026, la perte de 2023 (N-3) s'impute, celle de
+2022 (N-4) est éteinte au 31 décembre 2025. La correction suit le texte · la
+porte refuse l'origine hors fenêtre en citant l'art. 51 et la date
+d'extinction ; une ligne enregistrée avant ce refus n'est imputée que pour
+sa part couverte, l'autre nommée (« PERTE DÉCLARÉE HORS FENÊTRE »), par la
+même fonction `imputable` que le rejeu des exercices suivants.
+
+**Rejeu** · base PostgreSQL 16 jetable `iscas_5`, serveur compilé de la
+branche (port 8133), `scripts/cas-chiffres/rejeu-is.mjs` avec
+`OMEGAX_BASE_JETABLE` (cas V5). Les seize dossiers, B1, B2 et P1 rendent les
+mêmes chiffres qu'au second tour, comparés champ à champ (déficit
+disponible, imputé, base, impôt au taux, minimum, impôt dû, acomptes, période
+de création), C04, C05, B2 et P1 à travers leurs clôtures.
+
+| Cas | Attendu (calcul à la main) | OmegaX | Écart |
+|---|---|---|---|
+| C01 | impôt 12 000 000 ; acomptes 3 600 000 · 3 600 000 · 2 400 000 ; constat 891 | idem | 0 |
+| C01-bis | 600 000 après validation, ou le brouillard dit | 3 000 000, `definitif` faux, « CHIFFRE PROVISOIRE » | dit |
+| C02 | minimum 500 000 au 895 | idem | 0 |
+| C03 | 300 000 au taux, 891 | idem | 0 |
+| C04 | 2026 à 2030 · 50 000, 200 000, 200 000, 200 000, 300 000 | idem après quatre clôtures | 0 |
+| C05 | 2030 · déficit 500 000, impôt 150 000 | idem avant et après quatre clôtures | 0 |
+| C06 | base 15 500 000, impôt 4 650 000 | idem | 0 |
+| C07 | 2026 · 200 000 ; 2027 · imputé 200 000, impôt 240 000 | idem | 0 |
+| C08 | 600 000 ; acomptes 2027 180 000 · 180 000 · 120 000 | idem | 0 |
+| C09 | période 300 000 + premier exercice 1 500 000 = 1 800 000 ; acomptes 2027 90 000 · 90 000 · 60 000 | idem, A11 refusée avec ses deux lignes | 0 |
+| C10 | 1 500 000 sous la loi, période 2025 non chiffrée | idem | 0 |
+| C11 | solde 2 100 000 ; base des acomptes 3 500 000 | idem | 0 |
+| C12 | (a) 1 234 600 ; (b) 300 100 | idem | 0 |
+| C13 | IRPP, régime réel ; minimum de l'art. 122 4 000 000 | idem | 0 |
+| C14 | 600 000, A11 refusée sans attestation | idem | 0 |
+| C15 | 2026 · déficit 2 000 000, impôt 900 000, simulation dite | idem | 0 |
+| B1 | 2028 · aucun déficit | 0 avant et après la clôture | 0 |
+| B2 | 2027 · reste 100 000, impôt 570 000 | idem avant et après deux clôtures | 0 |
+| P1 | 2027 · 500 000 disponibles, minimum 2 000 ; 2028 · 300 000 imputés, 210 000 | idem avant et après deux clôtures | 0 |
+| **V2** · saisie 2026 de 500 000, origine 2021 | refus (art. 51, éteinte le 31/12/2024) ; impôt 30 % × 1 000 000 = 300 000 | 400 « Loi n° 23/053, art. 51 […] ne s'imputait plus après le 2024-12-31 » ; 300 000 | 0 |
+| **V3** · pertes calculées 2026 (100 000, N-4) et 2027 (200 000, N-3) ; 2028 et 2029 soldés à zéro ; 2030 bénéfice 1 000 000 | 2029 · 300 000 disponibles ; 2030 · la perte de 2026 éteinte au 31/12/2029, celle de 2027 imputée · 200 000, base 800 000, impôt 240 000 (minimum 20 000) ; acomptes 2031 72 000 · 72 000 · 48 000 | idem avant ET après les clôtures de 2026 à 2029 (avant correction, après clôtures · 2028 et 2029 lus à -300 000, 2030 · 800 000 imputés, impôt **60 000**) | 0 |
+| **V4** · report 2026 · origines 2022 (500 000) et 2023 (300 000) | refus nommé (2022 éteinte le 31/12/2025) ; avec la seule origine 2023 · 2026 imputé 100 000, minimum 1 000 ; 2027 · rien (2023 éteinte le 31/12/2026), impôt 300 000 | 400 « […] 2022-12-31 ne s'imputait plus après le 2025-12-31 » ; 1 000 ; 2027 · 0 et 300 000, avant et après la clôture de 2026 | 0 |
+| **V5** · déclaration d'avant le refus (posée par psql) · 800 000, origines 2022 (500 000) et 2023 (300 000) ; bénéfice 2026 1 000 000 | imputé 300 000, base 700 000, impôt 210 000 ; 500 000 nommés hors fenêtre | 300 000 · 210 000, « PERTE DÉCLARÉE HORS FENÊTRE · 500 000,00 […] report éteint le 2025-12-31 », montant saisi 800 000 rendu à part | 0 |
+| **V6** · report 2026 de 800 000 (origine 2025) ramené à 600 000 par la saisie seule ; bénéfices 300 000, 200 000, 1 000 000 | l'origine caduque tombe, la borne prudente se dit (2028 · 300 000 perdus, impôt 300 000) ; redéclarée à 600 000 · 2027 imputé 200 000 (minimum 2 000), 2028 imputé 100 000, impôt 270 000 | origine `null`, « REPORT PERDU PAR PRUDENCE · 300 000 » ; puis 2 000 et 270 000 après les clôtures de 2026 et 2027 | 0 |
+
+### Relecture adverse · deux défauts BLOQUANTS, corrigés
+
+- **Résultat nul lu sur l'à-nouveau du 13 (V3)**, antérieur à la ligne. Un
+  exercice dont la gestion se solde à zéro basculait sur le compte 13, qui
+  porte après la clôture le résultat non affecté reporté à l'ouverture (131
+  ou 139, colonne report) · perte fantôme de 300 000 deux années de suite,
+  impôt de 2030 à 60 000 au lieu de 240 000. Règle (`resultatFiscalBrut`) ·
+  une gestion qui porte un solde sur un seul compte n'est pas soldée, son net
+  (même nul) est le résultat ; un 13 sans mouvement propre ne fait pas de
+  résultat ; le 13 lu sous un à-nouveau rendant un résultat non nul le dit
+  (« RÉSULTAT LU SUR LE COMPTE 13 »). Fiche du compte 13, AUDCIF Titre VII.
+- **Origine caduque après une saisie changée seule (V6)**, du second tour.
+  L'écran n'envoie que le montant ; l'origine gardée à l'ancien total faisait
+  foi dans le rejeu (200 000 de trop en N+1, sans un mot). La porte la retire
+  quand elle ne totalise plus la saisie, et la lecture ne la tient plus pour
+  dite (borne prudente, dite).
+
+Specs · sept cas ajoutés (`fiscalite.spec.ts`, « troisième tour · relecture
+adverse »), chacun en échec sur le code d'avant la correction.
+
+### Relevés en attente
+
+- **Jumeau aux états financiers** · `etats-financiers-syscohada.service.ts`,
+  `calculerCJ`, bascule aussi sur le 13 quand le net des classes 6 à 8 est
+  nul. Au bilan, le 13 doit porter l'à-nouveau non affecté (sans quoi le
+  bilan ne boucle plus) · l'effet sur le poste CJ d'un exercice à résultat
+  nul n'est pas tranché ici, à relire par la ligne des états.
+- **Gestion soldée à la main sous un à-nouveau non affecté** · le 13 lu
+  contient le résultat antérieur ; dit, non retranché (la balance ne dit pas
+  si l'affectation est passée).
+- **Ordre d'imputation entre pertes** · le texte ne le fixe pas ; OmegaX
+  impute la plus ancienne d'abord (déjà écrit au premier tour).

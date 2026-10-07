@@ -96,7 +96,18 @@ Branche de sauvegarde `travail/is-cas`. Constat de départ ·
   solde à zéro (ventes 1 000 000, achats 1 000 000) lit son résultat sur le
   13, qui porte après la clôture l'à-nouveau des pertes non affectées ·
   2028 et 2029 lus à -300 000, 2030 impute 800 000 et rend 60 000 au lieu de
-  240 000. Correction en cours.
+  240 000. CORRIGÉ (`resultatFiscalBrut` · une gestion qui porte un solde
+  n'est pas soldée ; un 13 sans mouvement propre ne fait pas de résultat ;
+  l'à-nouveau du 13 lu est dit). Fiche du compte 13, AUDCIF Titre VII.
+- DÉFAUT DU SECOND TOUR TROUVÉ EN RELECTURE · une saisie de report changée
+  seule (l'écran n'envoie que le montant) gardait une origine à l'ancien
+  total, qui faisait foi dans le rejeu (V6). CORRIGÉ · la porte retire
+  l'origine caduque, la lecture ne tient plus pour dite une origine qui ne
+  totalise pas la saisie (borne prudente, dite).
+- Rejeu final sur `iscas_5` (port 8133) · seize cas, B1, B2, P1, V2 à V6 à
+  l'attendu ; détail dans `docs/cas-chiffres/is.md`, « Troisième tour ».
+- Bloc final · `tsc` serveur et client propres, Jest 754 suites / 10 809
+  tests, Vitest 222 fichiers / 1 811 tests.
 
 ## Relevés en attente
 
@@ -108,10 +119,18 @@ Branche de sauvegarde `travail/is-cas`. Constat de départ ·
   porter sa date de valeur distinctement.
 - L'écriture A11 à deux lignes pour l'art. 12, al. 3.
 
+- Jumeau aux états financiers (`calculerCJ`, bascule sur le 13 au net nul
+  des classes 6 à 8) · effet sur le bilan non tranché, à relire par la ligne
+  des états.
+- Gestion soldée à la main sous un à-nouveau non affecté · dit, non retranché.
+
 ## Reste
 
 - Relecture (silent-failure-hunter, typescript-reviewer, react-reviewer)
   par la session principale avant intégration.
+- La branche part de `8f6f003` · `main` a avancé de quinze commits (TVA 24-26,
+  plans du courrier) · rebaser, rejouer le bloc du § 3 et les tests navigateur
+  avant l'intégration.
 
 ## Vérification
 
