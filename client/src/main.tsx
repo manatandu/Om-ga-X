@@ -2,14 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { autoriserRechargement } from './lib/rechargement-chunk';
-import { demarrerTelemetrieInterface } from './lib/telemetrie';
-
-/*
- * TÉLÉMÉTRIE · Sentry et PostHog ne démarrent que si leur clé a été posée à
- * la construction, jamais sur site (lib/telemetrie.ts). Sans clé, rien
- * n'est chargé ni envoyé.
- */
-demarrerTelemetrieInterface();
 
 /*
  * DÉPLOIEMENT PENDANT UNE SESSION OUVERTE · les pages sont chargées à la

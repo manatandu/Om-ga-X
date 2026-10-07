@@ -30,14 +30,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # Même télémétrie que le site, marquée « apercu » · le job écarte déjà
-      # Dependabot, qui ne reçoit pas les secrets.
       - run: npm ci && npm run build
         working-directory: client
-        env:
-          VITE_SENTRY_DSN: ${{ secrets.CLIENT_SENTRY_DSN }}
-          VITE_POSTHOG_CLE: ${{ secrets.CLIENT_POSTHOG_CLE }}
-          VITE_ENVIRONNEMENT: apercu
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

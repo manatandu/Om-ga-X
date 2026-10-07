@@ -1,7 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { POLITIQUE_INTERFACE } from './modules/sur-site/interface-sur-site';
-import { HOTES_TELEMETRIE_UE } from './common/telemetrie/nettoyage-telemetrie';
 
 /**
  * LA CONFIGURATION DIT CE QUI EST · audit final F264 (le renvoi de la clé
@@ -57,22 +56,16 @@ describe('la politique de sécurité du site ne s’ouvre qu’à sa propre orig
     .flatMap((r) => r.headers)
     .find((h) => h.key === 'Content-Security-Policy')!.value;
 
-  it('connect-src vaut self et les deux hôtes UE de la télémétrie, rien d’autre · l’API est servie sous /api depuis le 2026-09-26', () => {
+  it('connect-src vaut self et rien d’autre · l’API est servie sous /api depuis le 2026-09-26', () => {
     const connexion = csp
       .split(';')
       .map((d) => d.trim())
       .filter((d) => d.startsWith('connect-src'));
-    // Sentry et PostHog, région UE seulement (décision de Manasse du
-    // 2026-10-07) · une clé d'une autre région serait refusée par le navigateur.
-    expect(connexion).toEqual([`connect-src 'self' ${HOTES_TELEMETRIE_UE.join(' ')}`]);
-    expect(HOTES_TELEMETRIE_UE).toEqual(['https://*.ingest.de.sentry.io', 'https://eu.i.posthog.com']);
+    expect(connexion).toEqual(["connect-src 'self'"]);
   });
 
-  it('elle est celle de l’interface servie sur site, la télémétrie en plus · le poste n’ouvre aucun hôte extérieur', () => {
-    // Sur site, rien ne part · la politique servie par le poste garde
-    // `connect-src 'self'`, second verrou après l'absence de clé.
-    expect(csp).toBe(POLITIQUE_INTERFACE.replace("connect-src 'self';", `connect-src 'self' ${HOTES_TELEMETRIE_UE.join(' ')};`));
-    expect(POLITIQUE_INTERFACE).toContain("connect-src 'self';");
+  it('elle est celle de l’interface servie sur site · une seule politique pour un seul client', () => {
+    expect(csp).toBe(POLITIQUE_INTERFACE);
   });
 });
 

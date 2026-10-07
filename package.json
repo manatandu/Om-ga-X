@@ -42,7 +42,6 @@
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^5.19.0",
-    "@sentry/node": "11.5.0",
     "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",

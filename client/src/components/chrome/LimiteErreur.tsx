@@ -1,5 +1,4 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { signalerErreurInterface } from '../../lib/telemetrie';
 
 /**
  * BARRIÈRE D'ERREUR · une par fenêtre.
@@ -33,10 +32,6 @@ export class LimiteErreur extends Component<
     // La console reste la trace la plus utile pour diagnostiquer : on n'avale
     // pas l'erreur silencieusement sous prétexte qu'elle est affichée.
     console.error(`[OmegaX] fenêtre « ${this.props.titreFenetre} » :`, erreur, infos.componentStack);
-    // Rattrapée ici, elle ne remonte à aucun gestionnaire global · elle est
-    // signalée à Sentry s'il est actif, sans le titre de la fenêtre (qui
-    // peut nommer un compte), nettoyée comme toute erreur (lib/telemetrie.ts).
-    signalerErreurInterface(erreur);
   }
 
   render() {

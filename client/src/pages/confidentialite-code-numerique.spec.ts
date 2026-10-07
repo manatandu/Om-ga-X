@@ -149,24 +149,3 @@ describe('la politique décrit le logiciel tel qu’il est (passe D4)', () => {
     expect(deplie).toContain('les modalités de la gestion de vos données personnelles après votre mort (article 208)');
   });
 });
-
-describe('la politique dit la télémétrie telle qu’elle est (2026-10-07)', () => {
-  it('nomme les deux services, leur région, ce qui part et ce qui ne part jamais', () => {
-    expect(deplie).toContain('<strong>Sentry</strong>, dans sa région de données de l’<strong>Union européenne</strong>');
-    expect(deplie).toContain('<strong>PostHog</strong>, dans sa région de données de l’<strong>Union européenne</strong>');
-    expect(deplie).toContain('reçoit les erreurs techniques du serveur et de l’interface');
-    expect(deplie).toContain('reçoit les pages vues de l’interface, de façon anonyme');
-    expect(deplie).toContain('Ni Sentry ni PostHog ne reçoivent <strong>jamais</strong> de donnée de vos dossiers : aucun montant, aucun nom, aucune adresse de courriel, aucun contenu saisi');
-    expect(deplie).toContain('Sept prestataires interviennent');
-    expect(deplie).toContain('le fil des dernières requêtes réduit à leur méthode, leur adresse sans identifiants ni paramètres et leur statut, les écrans ouverts juste avant, et la version publiée du logiciel');
-    expect(deplie).toContain('le système d’exploitation, le fuseau horaire, le type d’appareil, l’adresse du site et des identifiants de session tirés au hasard');
-    // Les hôtes nommés par la page sont ceux que le code ouvre.
-    expect(serveur('src/common/telemetrie/nettoyage-telemetrie.ts')).toContain("'https://*.ingest.de.sentry.io', 'https://eu.i.posthog.com'");
-  });
-
-  it('sur site, dit que rien ne part, et ne prétend plus à l’absence de mesure en ligne', () => {
-    expect(deplie).toContain('Aucune erreur technique ni aucune page vue ne quitte cette installation');
-    expect(deplie).toContain('Il mesure la fréquentation de son interface de façon anonyme');
-    expect(deplie).toContain('un identifiant tiré au hasard, sans lien avec votre compte ni avec votre dossier');
-  });
-});

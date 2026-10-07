@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { FiltrePannes } from './common/telemetrie/filtre-pannes';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditContexteInterceptor } from './common/audit/audit-contexte.interceptor';
 import { JournalAuditModule } from './common/audit/journal-audit.module';
 import { ConfigModule } from '@nestjs/config';
@@ -155,10 +154,6 @@ import { SurSiteModule } from './modules/sur-site/sur-site.module';
     // GLOBAL, à dessein · le journal d'audit ne saurait pas qui agit si un
     // seul contrôleur oubliait de poser le contexte.
     { provide: APP_INTERCEPTOR, useClass: AuditContexteInterceptor },
-    // TÉLÉMÉTRIE · signale les seules pannes (5xx) à Sentry quand il est
-    // actif, puis répond exactement comme le filtre de base de Nest
-    // (common/telemetrie/filtre-pannes.ts).
-    { provide: APP_FILTER, useClass: FiltrePannes },
   ],
 })
 export class AppModule {}
