@@ -72,6 +72,18 @@ describe('la liste des formes · réserves et citations', () => {
 describe('Paramètres du dossier · la coopérative et les mentions', () => {
   const page = readFileSync(join(__dirname, '../pages/ParametresDossierPage.tsx'), 'utf8');
 
+  it('le portefeuille de l’État ne se propose et ne s’envoie qu’aux cinq sociétés commerciales (loi n° 08/010, art. 3)', () => {
+    // Le serveur refuse « oui » ailleurs, entreprenant compris · l'écran ne le
+    // propose pas, et ne l'envoie pas d'une forme qui ne le porte pas.
+    const ligne = page.indexOf('<Ligne label="Portefeuille de l’État">');
+    expect(ligne).toBeGreaterThan(-1);
+    const garde = page.lastIndexOf('{!estSycebnl', ligne);
+    expect(page.slice(garde, ligne)).toMatch(/^\{!estSycebnl && estSocieteCommerciale\(params\?\.formeJuridiqueSyscohada\) && \(/);
+    expect(page).toMatch(
+      /params\?\.referentiel === 'SYSCOHADA' && estSocieteCommerciale\(params\.formeJuridiqueSyscohada\)\s*\?\s*\{ entreprisePortefeuilleEtat: portefeuille \}/,
+    );
+  });
+
   it('la coopérative reçoit le champ du Registre des Sociétés Coopératives, et c’est lui qui part, jamais un RCCM', () => {
     const champs = page.slice(page.indexOf('const champsImmatriculation'), page.indexOf("label: 'RCCM'"));
     expect(champs).toContain(": estCoop\n");

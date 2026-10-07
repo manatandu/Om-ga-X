@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
@@ -11,6 +11,8 @@ import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
 import { FicheR2Exercice } from '../components/FicheR2Exercice';
 import { DatesPortefeuilleExercice } from '../components/DatesPortefeuilleExercice';
+import { estNonCalcule, libelleEcheance } from '../lib/jalons-planning';
+import { estSocieteCommerciale } from '../lib/mentions-dossier';
 
 const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
   PARTIELLE: 'Partielle',
@@ -42,7 +44,7 @@ interface OuvertureSuivante {
 }
 
 export function ExercicePage() {
-  const { estAdmin, peutEcrire, utilisateur } = useAuth();
+  const { estAdmin, utilisateur } = useAuth();
   const {
     exercices,
     chargement: chargementExercices,
@@ -104,17 +106,24 @@ export function ExercicePage() {
     setDateArrete(exercice?.dateArreteComptes ? exercice.dateArreteComptes.slice(0, 10) : '');
   }, [exercice?.id, exercice?.dateArreteComptes]);
 
+  // Une réponse d'un exercice quitté, ou dépassée par une relecture plus
+  // récente, est jetée · sans quoi le planning d'un exercice s'affichait sous
+  // un autre (relecture 1 des décisions par la loi du 2026-10-04).
+  const jetonCharger = useRef(0);
   const charger = async () => {
     if (!exerciceId) return;
+    const jeton = ++jetonCharger.current;
     try {
       const [c, p] = await Promise.all([
         api.get<Cloture[]>(`/exercices/${exerciceId}/clotures`),
         api.get<PlanningCloture>(`/exercices/${exerciceId}/planning-cloture`),
       ]);
+      if (jeton !== jetonCharger.current) return;
       setClotures(c);
       setPlanning(p);
       setErreur(null);
     } catch (err) {
+      if (jeton !== jetonCharger.current) return;
       setErreur(err instanceof ApiError ? err.message : 'Impossible de charger les clôtures');
     }
   };
@@ -563,20 +572,30 @@ export function ExercicePage() {
         </form>
       )}
 
-      {/* Fiche R2 (cases ZN à ZS) · SYSCOHADA seul, la route se refusant au
+      {/* Fiche R2 (cases ZN à ZS) · SYSCOHADA seul, Système minimal de
+          trésorerie excepté (sa liasse n'en porte pas), la route se refusant au
           serveur ailleurs (décision par la loi du 2026-10-04, point 5). */}
-      {exercice && utilisateur?.tenant.referentiel === 'SYSCOHADA' && (
-        <FicheR2Exercice exercice={exercice} peutEcrire={peutEcrire} apresEnregistrement={rechargerExercices} />
-      )}
-      {exercice && planning?.exerciceId === exercice.id && planning.entreprisePortefeuilleEtat === true && (
-        <DatesPortefeuilleExercice
-          exerciceId={exercice.id}
-          dateAssembleeGenerale={planning.dateAssembleeGenerale ?? null}
-          dateDepotEtatsPortefeuille={planning.dateDepotEtatsPortefeuille ?? null}
-          peutEcrire={peutEcrire}
-          apresEnregistrement={charger}
-        />
-      )}
+      {exercice &&
+        utilisateur?.tenant.referentiel === 'SYSCOHADA' &&
+        utilisateur.tenant.systemeComptableSyscohada !== 'MINIMAL_TRESORERIE' && (
+          <FicheR2Exercice exercice={exercice} apresEnregistrement={rechargerExercices} />
+        )}
+      {/* Assemblée de l'exercice · toute société commerciale du SYSCOHADA (le
+          procès-verbal fiscal en court) ; dépôt et procès-verbal au
+          Portefeuille sur la seule réponse « oui ». */}
+      {exercice &&
+        planning?.exerciceId === exercice.id &&
+        utilisateur?.tenant.referentiel === 'SYSCOHADA' &&
+        estSocieteCommerciale(planning.formeJuridiqueSyscohada) && (
+          <DatesPortefeuilleExercice
+            exerciceId={exercice.id}
+            portefeuille={planning.entreprisePortefeuilleEtat === true}
+            dateAssembleeGenerale={planning.dateAssembleeGenerale ?? null}
+            dateDepotEtatsPortefeuille={planning.dateDepotEtatsPortefeuille ?? null}
+            dateTransmissionPvPortefeuille={planning.dateTransmissionPvPortefeuille ?? null}
+            apresEnregistrement={charger}
+          />
+        )}
 
       {/*
         LES DEUX SEULES EXCEPTIONS À LA CORRESPONDANCE BILAN DE CLÔTURE /
@@ -682,7 +701,8 @@ export function ExercicePage() {
             className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-surface-alt"
           >
             <span className="font-mono text-[11.5px] font-semibold text-text-dim">
-              PLANNING DE CLÔTURE · {planning.jalons.filter((j) => j.enRetard).length} jalon(s) en retard
+              PLANNING DE CLÔTURE · {planning.jalons.filter((j) => j.enRetard).length} jalon(s) en retard ·{' '}
+              {planning.jalons.filter(estNonCalcule).length} non calculé(s)
             </span>
             <span className="text-[11.5px] text-text-dim">{planningOuvert ? 'Réduire' : 'Déployer'}</span>
           </button>
@@ -717,10 +737,13 @@ export function ExercicePage() {
                         )}
                       </td>
                       <td className={`px-3 py-2 font-mono ${j.enRetard ? 'text-danger font-bold' : ''}`}>
+                        {/* Non calculée (une date déclarée manque), aucun délai au
+                            texte, ou levée · trois sens d'une échéance nulle,
+                            jamais confondus (`lib/jalons-planning.ts`). */}
                         {j.echeance === null ? (
-                          <span className="text-text-dim">Non calculée</span>
+                          <span className={estNonCalcule(j) ? 'text-danger' : 'text-text-dim'}>{libelleEcheance(j)}</span>
                         ) : (
-                          new Date(j.echeance).toLocaleDateString('fr-FR')
+                          libelleEcheance(j)
                         )}
                       </td>
                       <td className="px-3 py-2">

@@ -12,6 +12,7 @@ import { cheminAuMenu } from '../lib/profil-dossier';
 import { tachesDuRole } from '../lib/accueil-par-metier';
 import { cleDemarragePasse, demarrageInacheve, ouvrirAuChargement, type EtatDemarrage } from '../lib/demarrage-guide';
 import { DemarrageGuide } from '../components/DemarrageGuide';
+import { lignesJalonsAccueil } from '../lib/jalons-planning';
 import {
   IconBalance,
   IconBanque,
@@ -263,12 +264,10 @@ export function AccueilPage() {
   // disent que sur une liste LUE, jamais sur une absence de réponse (audit
   // final F254).
   const jalons = planning?.jalons ?? null;
-  const enRetard = jalons?.filter((j) => j.enRetard) ?? [];
-  const aujourdHui = Date.now();
   // Une échéance non calculée (null, faute de la date déclarée qui la fait
-  // courir) n'est jamais « la prochaine » · elle n'a pas de date.
-  const prochain =
-    jalons?.find((j) => !j.enRetard && j.echeance !== null && new Date(j.echeance).getTime() >= aujourdHui) ?? null;
+  // courir) n'est jamais « la prochaine » ni jamais verte · elle se compte à
+  // part et se dit (`lib/jalons-planning.ts`).
+  const lignesJalons = lignesJalonsAccueil(jalons, Date.now());
   const brouillard = jalons?.find((j) => j.libelle === 'Balance de vérification')?.observation ?? null;
 
   // Les anomalies bloquantes passent avant tout : une écriture déséquilibrée
@@ -306,9 +305,6 @@ export function AccueilPage() {
   const tachesVisibles = metier.taches
     .filter((t) => !t.admin || estAdmin)
     .filter((t) => cheminAuMenu(t.chemin, utilisateur?.tenant));
-
-  const dateCourte = (iso: string) =>
-    new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const toutesTuiles = GROUPES.flatMap((g) => tuilesVisibles(g));
   const tuilesFavorites = favoris.map((c) => toutesTuiles.find((t) => t.chemin === c)).filter((t): t is TuileDef => !!t);
@@ -524,27 +520,15 @@ export function AccueilPage() {
                     />
                     <LigneEtat
                       titre="Jalons de clôture en retard"
-                      valeur={
-                        jalons === null
-                          ? 'Non déterminé'
-                          : enRetard.length === 0
-                            ? 'Aucun jalon en retard'
-                            : `${enRetard.length} en retard · ${enRetard[0].libelle}`
-                      }
-                      bon={jalons !== null && enRetard.length === 0}
+                      valeur={lignesJalons.retard.valeur}
+                      bon={lignesJalons.retard.bon}
                       chemin="/exercice"
                       navigate={navigate}
                     />
                     <LigneEtat
                       titre="Prochaine échéance"
-                      valeur={
-                        jalons === null
-                          ? 'Non déterminé'
-                          : prochain
-                            ? `${dateCourte(prochain.echeance ?? '')} · ${prochain.libelle}`
-                            : 'Rien à venir'
-                      }
-                      bon={jalons !== null}
+                      valeur={lignesJalons.prochaine.valeur}
+                      bon={lignesJalons.prochaine.bon}
                       chemin="/exercice"
                       navigate={navigate}
                     />

@@ -777,8 +777,11 @@ export function ParametresDossierPage() {
                     }),
                   }
             : {}),
-          // Fait de l'actionnariat, non de la forme · envoyé pour tout dossier SYSCOHADA.
-          ...(params?.referentiel === 'SYSCOHADA' ? { entreprisePortefeuilleEtat: portefeuille } : {}),
+          // Fait de l'actionnariat d'une SOCIÉTÉ (loi n° 08/010, art. 3) · envoyé
+          // pour les cinq sociétés commerciales seules, où l'écran le propose.
+          ...(params?.referentiel === 'SYSCOHADA' && estSocieteCommerciale(params.formeJuridiqueSyscohada)
+            ? { entreprisePortefeuilleEtat: portefeuille }
+            : {}),
           ...(params?.referentiel === 'SYCEBNL'
             ? {
                 actePersonnaliteJuridique: actePersonnalite,
@@ -1264,10 +1267,24 @@ export function ParametresDossierPage() {
                           className={champSage}
                         >
                           <option value="PAS_ENCORE_DIT">Pas encore dit</option>
-                          <option value="AMIABLE_STATUTAIRE">Amiable, selon les statuts ou l’accord des associés</option>
-                          <option value="ARTICLE_223_1">Amiable, à défaut de clauses (art. 223, 1°)</option>
-                          <option value="ARTICLE_223_2_JUDICIAIRE">Judiciaire (art. 223, 2°)</option>
-                          <option value="PROCEDURE_COLLECTIVE">Dans une procédure collective</option>
+                          <option
+                            value="AMIABLE_STATUTAIRE"
+                            title="AUSCGIE art. 203 et 223 · clauses statutaires ou conventionnelles expresses des associés"
+                          >
+                            Amiable, selon les clauses des statuts ou d’une convention
+                          </option>
+                          <option
+                            value="ARTICLE_223_1"
+                            title="AUSCGIE art. 223, 1° · à défaut de clauses statutaires ou conventionnelles expresses, ou en présence d’une convention entre les associés prévoyant l’application des articles 224 à 241"
+                          >
+                            Amiable, sans clauses ou par convention appliquant le régime légal
+                          </option>
+                          <option value="ARTICLE_223_2_JUDICIAIRE" title="AUSCGIE art. 223, 2° · décision de la juridiction compétente">
+                            Organisée par décision de justice
+                          </option>
+                          <option value="PROCEDURE_COLLECTIVE" title="AUSCGIE art. 203 al. 2">
+                            Dans une procédure collective
+                          </option>
                         </select>
                       </Ligne>
                       <Ligne label="Associé unique personne morale">
@@ -1302,7 +1319,10 @@ export function ParametresDossierPage() {
                       </select>
                     </Ligne>
                   )}
-                  {!estSycebnl && (
+                  {/* Le portefeuille de l'État regroupe des SOCIÉTÉS (loi n° 08/010,
+                      art. 3) · les cinq sociétés commerciales seules, et le
+                      serveur refuse « oui » ailleurs (entreprenant compris). */}
+                  {!estSycebnl && estSocieteCommerciale(params?.formeJuridiqueSyscohada) && (
                     <Ligne label="Portefeuille de l’État">
                       <select
                         value={portefeuille}

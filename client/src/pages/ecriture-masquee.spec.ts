@@ -56,6 +56,9 @@ const ADMIN_SEULEMENT: Record<string, string> = {
   'pages/PlanComptesPage.tsx': "ouverture et modification des comptes du plan, réservées à l'administrateur",
   'pages/PlansAnalytiquesPage.tsx': "structure analytique (sections, budgets, mise en sommeil), réservée à l'administrateur",
   'pages/TauxTvaPage.tsx': "paramétrage des taux de taxe, fenêtre réservée à l'administrateur",
+  'components/FicheR2Exercice.tsx': "fiche R2 (cases ZN à ZS), route réservée à l'administrateur comme l'arrêté des comptes",
+  'components/DatesPortefeuilleExercice.tsx':
+    "assemblée, dépôt et procès-verbal de l'exercice, route réservée à l'administrateur comme l'arrêté des comptes",
   'components/VoletRibsTiers.tsx': "coordonnées bancaires des tiers, structure du tiers réservée à l'administrateur (un RIB changé détourne un paiement)",
   'pages/TiersPage.tsx': "plan des tiers · structure (création, fusion, comptes, modèles de règlement) réservée à l'administrateur, fenêtre ouverte en consultation ; les documents suivent peutEcrire dans leur volet",
 };

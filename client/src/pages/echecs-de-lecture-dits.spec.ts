@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { lignesJalonsAccueil } from '../lib/jalons-planning';
 
 // Aucun import de « vitest » (globales) · convention du dépôt.
 
@@ -108,14 +109,18 @@ describe('accueil · une absence de réponse n’est jamais favorable (F254)', (
 
   it('« aucun jalon en retard » et « rien à venir » ne se disent que sur un planning lu', () => {
     expect(source).toContain('const jalons = planning?.jalons ?? null;');
+    // Les deux lignes viennent d'une seule règle, éprouvée par son
+    // comportement (`lib/jalons-planning.spec.ts`), et non recopiée.
+    expect(source).toContain('lignesJalonsAccueil(jalons, Date.now())');
     const debut = source.indexOf('titre="Jalons de clôture en retard"');
     const ligne = source.slice(debut, source.indexOf('/>', debut));
-    expect(ligne).toMatch(/jalons === null\s*\?\s*'Non déterminé'\s*:\s*enRetard\.length === 0\s*\?\s*'Aucun jalon en retard'/);
-    expect(ligne).toContain('bon={jalons !== null && enRetard.length === 0}');
+    expect(ligne).toContain('bon={lignesJalons.retard.bon}');
     const debutProchaine = source.indexOf('titre="Prochaine échéance"');
     const prochaine = source.slice(debutProchaine, source.indexOf('/>', debutProchaine));
-    expect(prochaine).toMatch(/jalons === null\s*\?\s*'Non déterminé'/);
-    expect(prochaine).toContain('bon={jalons !== null}');
+    expect(prochaine).toContain('bon={lignesJalons.prochaine.bon}');
+    const nonLu = lignesJalonsAccueil(null, Date.now());
+    expect(nonLu.retard).toEqual({ valeur: 'Non déterminé', bon: false });
+    expect(nonLu.prochaine).toEqual({ valeur: 'Non déterminé', bon: false });
   });
 
   it('sans exercice, le chargement se referme au lieu de rester ouvert', () => {

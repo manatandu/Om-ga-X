@@ -2860,8 +2860,14 @@ export interface JalonCloture {
   nature: NatureJalon;
   source: string;
   debut: string | null;
-  /** null · échéance NON CALCULÉE, faute de la date déclarée qui la fait courir. */
+  /**
+   * null · échéance NON CALCULÉE, faute de la date déclarée qui la fait
+   * courir, SAUF si `sansDelai` (aucun délai au texte) ou si l'observation
+   * est satisfaite (jalon levé) · voir `lib/jalons-planning.ts`.
+   */
   echeance: string | null;
+  /** Le texte impose le travail sans fixer de délai · la date reste dans `debut`. */
+  sansDelai?: true;
   enRetard: boolean;
   /**
    * Ce que les dirigeants encourent si le travail du jalon n'est pas fait du
@@ -2888,6 +2894,8 @@ export interface PlanningCloture {
   entreprisePortefeuilleEtat?: boolean | null;
   dateAssembleeGenerale?: string | null;
   dateDepotEtatsPortefeuille?: string | null;
+  /** Procès-verbal communiqué à l'Administration des recettes non fiscales (art. 112). */
+  dateTransmissionPvPortefeuille?: string | null;
   jalons: JalonCloture[];
 }
 

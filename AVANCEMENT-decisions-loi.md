@@ -124,6 +124,20 @@ Manasse du 2026-10-04 sur le samedi).
     quotité en PAIEMENT ; `prochaineEcheanceDeclarative` compare la date reportée
     (30 avril 2028 → 2 mai) ; réserve du samedi « décision de l'éditeur » ; tests
     en `Date.UTC`.
+- **Écran, majeurs 2, 5 et 11, mineurs** ·
+  - M2 · `lib/jalons-planning.ts` sépare les trois sens d'une échéance nulle
+    (non calculée, aucun délai au texte, levée) ; l'accueil ne passe jamais au vert
+    tant qu'un jalon est non calculé et le dit (« Non calculée · libellé ») ; le
+    planning compte les non calculés dans son en-tête ;
+  - M5 · « Portefeuille de l'État » proposé et envoyé aux cinq sociétés seules ;
+  - M11 · choix du régime sans article visible (infobulle), second cas du 1°
+    (convention appliquant les art. 224 à 241), `option` relu par
+    `titres-formels-pages-m-z.spec.ts` ;
+  - fiche R2 masquée au S.M.T, les deux formulaires réservés à l'administrateur
+    (droit lu dans la session), réponses périmées jetées (numéro d'envoi, jeton de
+    `charger`), « Non renseignée » en lecture, message de succès des dates ;
+    l'assemblée se déclare pour toute société commerciale (PV DGI), dépôt et
+    procès-verbal pour le seul portefeuille.
 
 ## Reste
 

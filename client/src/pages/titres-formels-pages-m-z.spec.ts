@@ -16,7 +16,7 @@ import { join } from 'node:path';
  * bloc (`titre=`, `titre:`), les étiquettes de groupe d'options, les en-têtes
  * de tableau, les titres h1 à h4 et les légendes, le texte des boutons (les
  * onglets en sont), le texte des étiquettes de champ et de case à cocher
- * (`<label>`), les intitulés posés en classe `etiquette`, et les libellés des
+ * (`<label>`), le texte des choix d'une liste (`<option>`), les intitulés posés en classe `etiquette`, et les libellés des
  * tables d'onglets.
  *
  * CE QUI N'EST PAS RELU, et c'est voulu · `title=` (c'est l'infobulle, là où
@@ -161,9 +161,10 @@ function fautes(source: string): string[] {
   // Étiquettes de groupe d'options.
   for (const m of s.matchAll(/<optgroup\b[^>]*?\blabel\s*=\s*(["'])((?:(?!\1).)*)\1/g)) noter('optgroup', m[2]);
 
-  // En-têtes de tableau, titres, légendes, boutons (les onglets en sont) et
-  // étiquettes de champ.
-  for (const tag of ['th', 'h1', 'h2', 'h3', 'h4', 'legend', 'button', 'label', 'SectionTitre']) {
+  // En-têtes de tableau, titres, légendes, boutons (les onglets en sont),
+  // étiquettes de champ et choix d'une liste (relecture 1 des décisions par la
+  // loi du 2026-10-04 · « Judiciaire (art. 223, 2°) » était un choix visible).
+  for (const tag of ['th', 'h1', 'h2', 'h3', 'h4', 'legend', 'button', 'label', 'option', 'SectionTitre']) {
     for (const e of elements(s, tag)) noter(tag, texteSansBalises(sansNotes(e.contenu)));
   }
 
@@ -207,8 +208,10 @@ describe('Titres formels · pages M à Z et lib/', () => {
     const onglet = `<button type="button" onClick={() => setOnglet(o)}>{o === 'x' ? 'Article 212' : 'Registre'}</button>`;
     const etiquette = `<div className={etiquette}>Assiette fiscale nette (art. 70)</div>`;
     const infobulle = `<label><input type="checkbox" /><span title="Code du travail, art. 44">Constaté par écrit</span></label>`;
+    const choix = `<option value="ARTICLE_223_2_JUDICIAIRE">Judiciaire (art. 223, 2°)</option>`;
     expect(fautes(onglet)).toHaveLength(1);
     expect(fautes(etiquette)).toHaveLength(1);
+    expect(fautes(choix)).toHaveLength(1);
     expect(fautes(infobulle)).toEqual([]);
   });
 });
@@ -246,6 +249,13 @@ describe('Titres formels · la référence reste à portée', () => {
   it('« Mentions légales » garde l’AUSCGIE art. 17', () => {
     expect(parametres).toContain('<Ligne label="Mentions légales" large>');
     expect(parametres).toContain('title="AUSCGIE art. 17 · mentions des actes et documents destinés aux tiers"');
+  });
+
+  it('les régimes de la liquidation gardent l’art. 223 en infobulle, second cas du 1° compris', () => {
+    expect(parametres).toContain(
+      'title="AUSCGIE art. 223, 1° · à défaut de clauses statutaires ou conventionnelles expresses, ou en présence d’une convention entre les associés prévoyant l’application des articles 224 à 241"',
+    );
+    expect(parametres).toContain('title="AUSCGIE art. 223, 2° · décision de la juridiction compétente"');
   });
 
   it('le seuil et les faits de consolidation gardent leurs articles', () => {
