@@ -1053,12 +1053,12 @@ function OrigineDeficits({
         Origine des pertes reportées
         <Aide
           titre="Origine des pertes"
-          texte="Chaque perte se reporte jusqu’au troisième exercice qui suit l’exercice qui l’a subie. Sans origine, OmegaX borne le report saisi par prudence à la fenêtre la plus courte, et le dit : déclarez la date de clôture de chaque exercice déficitaire et sa part."
+          texte="Chaque perte se reporte jusqu’au troisième exercice qui suit l’exercice qui l’a subie. Sans origine, le report saisi s’impute en entier dans cet exercice ; dans les exercices suivants, OmegaX le borne par prudence à la fenêtre la plus courte, et le dit : déclarez la date de clôture de chaque exercice déficitaire et sa part."
           source="Loi n° 23/053, art. 51"
         />
       </div>
       {origines === null && lignes.length === 0 && (
-        <div className="text-warning mt-1">Origine non déclarée · report borné par prudence</div>
+        <div className="text-warning mt-1">Origine non déclarée · report borné par prudence dans les exercices suivants</div>
       )}
       {lignes.map((l, i) => (
         <div key={i} className="flex items-center gap-2 mt-1">
