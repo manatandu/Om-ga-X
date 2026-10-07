@@ -1712,6 +1712,25 @@ describe('Cas chiffrés IS · C09 et C10, premier exercice long (art. 12, al. 3)
     expect(r.periodeCreation).toBeNull();
     expect(r.deficitAnterieur.montant).toBe(3_000_000);
   });
+
+  it('C10 · la perte du premier exercice long ouvert en 2025 n’est pas une simulation · aucun avertissement en 2027', async () => {
+    // Premier exercice du 01/09/2025 au 31/12/2026, perte 600 000 · imposé
+    // pour 2026 sous la loi (art. 12, al. 3 et art. 153). Le drapeau
+    // `simulation` se lisait sur l'ouverture de l'exercice (2025) · 2027
+    // annonçait « déficit d'avant la loi, simulation » sur une perte de 2026.
+    const r = await service({
+      exercices: [
+        { id: 'P', dateDebut: new Date(Date.UTC(2025, 8, 1)), dateFin: new Date(Date.UTC(2026, 11, 31)) },
+        { id: 'A2027', dateDebut: new Date(Date.UTC(2027, 0, 1)), dateFin: new Date(Date.UTC(2027, 11, 31)) },
+      ],
+      balances: { P: [ligne('60410000', 600_000)], A2027: [ligne('70110000', -5_000_000)] },
+      balancesAu: { P: [] },
+    }).s.resultatFiscal('t1', 'A2027');
+    expect(r.deficitAnterieur.montant).toBe(600_000);
+    expect(r.deficitAnterieur.detail[0].simulation).toBe(false);
+    expect(r.deficitImpute).toBe(600_000);
+    expect(r.observations.join(' ')).not.toContain("DÉFICIT D'AVANT LA LOI");
+  });
 });
 
 describe('Cas chiffrés IS · hypothèses dites (C01-bis, C02, C12a, C15)', () => {

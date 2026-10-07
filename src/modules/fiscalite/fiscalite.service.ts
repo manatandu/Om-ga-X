@@ -1095,11 +1095,13 @@ export class FiscaliteService {
     const rejoues: ExerciceRejoue[] = [];
     for (const ex of precedents) {
       const d = dossierDe.get(ex.id);
+      const { base, debutImposable } = await this.baseAvantReport(tenantId, ex, ex.id === premierId && !physique, d ?? null);
       rejoues.push({
         exerciceId: ex.id,
         dateDebut: ex.dateDebut,
         dateFin: ex.dateFin,
-        base: await this.baseAvantReport(tenantId, ex, ex.id === premierId && !physique, d ?? null),
+        base,
+        debutImposable,
         ouvertureDeclaree:
           d?.deficitAnterieurSaisi === null || d?.deficitAnterieurSaisi === undefined
             ? null
@@ -1168,12 +1170,16 @@ export class FiscaliteService {
     exercice: { id: string; dateDebut: Date; dateFin: Date },
     appliquerArticle12: boolean,
     dossier: { resultatPeriodeCreationSaisi?: unknown } | null,
-  ): Promise<number> {
+  ): Promise<{ base: number; debutImposable: Date }> {
     const brut = (await this.resultatFiscalBrut(tenantId, exercice.id)).resultatFiscalBrut;
     const periode = appliquerArticle12 ? periodeDeCreation(exercice, true) : null;
-    if (!periode) return brut;
+    // Le début de la période imposable suit la MÊME règle que l'impôt (fil
+    // C10) · c'est sur lui, pas sur l'ouverture de l'exercice, que le rejeu
+    // lit le drapeau `simulation` d'une perte.
+    const debutImposable = FiscaliteService.debutPeriodeImposable(exercice, periode);
+    if (!periode) return { base: brut, debutImposable };
     const lecture = await this.lirePeriodeCreation(tenantId, exercice.id, periode, dossier?.resultatPeriodeCreationSaisi ?? null);
-    return arrondir(brut - deductionPeriodeCreation(lecture.resultatFiscal));
+    return { base: arrondir(brut - deductionPeriodeCreation(lecture.resultatFiscal)), debutImposable };
   }
 
   /**

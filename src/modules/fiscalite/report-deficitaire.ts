@@ -51,6 +51,17 @@ export interface ExerciceRejoue {
    */
   base: number;
   /**
+   * Début de la PÉRIODE IMPOSABLE de l'exercice · son ouverture, ou le
+   * lendemain de la période de création quand l'art. 12, al. 3 la commande
+   * (`FiscaliteService.debutPeriodeImposable`). Le drapeau `simulation` de sa
+   * perte se lit sur elle, MÊME RÈGLE QUE L'IMPÔT (fil C10) · un premier
+   * exercice long ouvert le 1er septembre 2025 et clos le 31 décembre 2026
+   * est imposé pour 2026 sous la loi n° 23/053 (art. 12, al. 3 et art. 153),
+   * et sa perte, constatée pour 2026, n'est pas une simulation. Absent, on
+   * lit l'ouverture de l'exercice.
+   */
+  debutImposable?: Date;
+  /**
    * B2, P1 · le report disponible À L'OUVERTURE de cet exercice, DÉCLARÉ par
    * le cabinet (`deficitAnterieurSaisi`). Il FAIT FOI dans le rejeu · il
    * remplace le reste calculé à cette date, et la suite du rejeu part de lui.
@@ -183,7 +194,7 @@ export function rejouerReport(
         dateDebut: ex.dateDebut,
         dateFin: ex.dateFin,
         restant: -ex.base,
-        simulation: ex.dateDebut.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime(),
+        simulation: (ex.debutImposable ?? ex.dateDebut).getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime(),
         declare: false,
         bornePrudente: false,
         declarationId: null,
