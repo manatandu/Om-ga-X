@@ -188,6 +188,30 @@ const CODE_FORME_UNIVOQUE_FICHE_R2: Record<string, string> = {
   SOCIETE_PAR_ACTIONS_SIMPLIFIEE: '08',
 };
 
+/** Cases ZN à ZS de la fiche R2, déclarées sur l'exercice (`FicheR2Dto`). */
+type DeclarationsFicheR2 = {
+  nombreEtablissementsPays?: number | null;
+  nombreEtablissementsHorsPays?: number | null;
+  premiereAnneeExercicePays?: number | null;
+  controleEntreprise?: string | null;
+};
+
+/** Un nombre déclaré, ou « Non renseignée » · null n'est jamais zéro. */
+function nombreR2(v: number | null | undefined): string {
+  return v === null || v === undefined ? 'Non renseignée' : String(v);
+}
+
+/**
+ * Une case de contrôle (ZQ, ZQ, ZS) · « X » sur celle que la réponse nomme,
+ * vide sur les deux autres ; sans réponse, les trois disent « Non renseignée »
+ * plutôt que de laisser croire qu'aucune ne s'applique.
+ */
+function caseControleR2(declare: DeclarationsFicheR2 | null, valeur: string): string {
+  const reponse = declare?.controleEntreprise ?? null;
+  if (reponse === null) return 'Non renseignée';
+  return reponse === valeur ? 'X' : '';
+}
+
 @Injectable()
 export class ExportService {
   constructor(
@@ -6536,7 +6560,11 @@ export class ExportService {
    *    déclaré ; la SA (00 ou 01) et les autres formes restent à déclarer ;
    *  - ZL et ZM non saisis · « Non renseigné », jamais déduits du dossier
    *    (ZM ne se lit pas dans l'adresse, voir `CODES_PAYS_OHADA_SYSCOHADA`) ;
-   *  - ZN à ZS · aucun champ du dossier ne les porte, cases à compléter.
+   *  - ZN à ZS · DÉCLARÉS sur l'exercice (fenêtre Exercices, décision par
+   *    la loi du 2026-10-04, point 5), « Non renseignée » à défaut, jamais
+   *    tirés du dossier (ni du nombre de cellules du groupe, ni du premier
+   *    exercice tenu dans OmegaX). Le contrôle est UNE réponse, cochée sur la
+   *    case qu'elle nomme ; les deux autres restent vides.
    * Les codes ZK à ZS sont ceux de l'AUDCIF · la Fiche 1 de cette liasse,
    * au gabarit ETAFI, emploie les mêmes lettres pour d'autres cases, et la
    * fiche le dit (Titre IX ch. 2, l'ambiguïté se lève par l'état).
@@ -6553,6 +6581,7 @@ export class ExportService {
     ident: IdentiteLiasse,
     forme: string | null | undefined,
     notes: { notes: NoteCalculee[] },
+    declare: DeclarationsFicheR2 | null,
   ) {
     const NB = 10;
     const ws = classeur.addWorksheet('Fiche R2');
@@ -6583,14 +6612,22 @@ export class ExportService {
       ['ZK', 'Forme juridique (1)', valeurZk],
       ['ZL', 'Régime fiscal (1)', saisi('2-code-regime-fiscal') ?? 'Non renseigné · à déclarer à la NOTE 36'],
       ['ZM', 'Pays du siège social (1)', saisi('3-code-pays-du-siege-social-2') ?? 'Non renseigné · à déclarer à la NOTE 36'],
-      ['ZN', "Nombre d'établissements dans le pays", ''],
-      ['ZO', "Nombre d'établissements hors du pays pour lesquels une comptabilité distincte est tenue", ''],
-      ['ZP', "Première année d'exercice dans le pays", ''],
-      ['ZQ', "Contrôle de l'entreprise : entreprise sous contrôle public", ''],
+      ['ZN', "Nombre d'établissements dans le pays", nombreR2(declare?.nombreEtablissementsPays)],
+      [
+        'ZO',
+        "Nombre d'établissements hors du pays pour lesquels une comptabilité distincte est tenue",
+        nombreR2(declare?.nombreEtablissementsHorsPays),
+      ],
+      ['ZP', "Première année d'exercice dans le pays", nombreR2(declare?.premiereAnneeExercicePays)],
+      ['ZQ', "Contrôle de l'entreprise : entreprise sous contrôle public", caseControleR2(declare, 'PUBLIC')],
       // [texte officiel] Le code ZQ est employé deux fois, ZR n'apparaît pas ·
       // transcrit tel quel, sans créer de ZR.
-      ['ZQ', "Contrôle de l'entreprise : entreprise sous contrôle privé national [texte officiel : code ZQ employé deux fois]", ''],
-      ['ZS', "Contrôle de l'entreprise : entreprise sous contrôle privé étranger", ''],
+      [
+        'ZQ',
+        "Contrôle de l'entreprise : entreprise sous contrôle privé national [texte officiel : code ZQ employé deux fois]",
+        caseControleR2(declare, 'PRIVE_NATIONAL'),
+      ],
+      ['ZS', "Contrôle de l'entreprise : entreprise sous contrôle privé étranger", caseControleR2(declare, 'PRIVE_ETRANGER')],
     ];
     let r = 9;
     for (const [code, lab, val] of lignes) {
@@ -6728,7 +6765,16 @@ export class ExportService {
       ZW: await this.domiciliationsBancaires(tenantId),
     });
     // Fiche R2 de l'AUDCIF, après la Fiche 1 (passe R2, A3 et B6).
-    this.feuilleFicheR2Syscohada(classeur, ident, tenant.formeJuridiqueSyscohada, notes);
+    const declarationsR2 = await this.prisma.exercice.findFirst({
+      where: { id: exerciceId, tenantId },
+      select: {
+        nombreEtablissementsPays: true,
+        nombreEtablissementsHorsPays: true,
+        premiereAnneeExercicePays: true,
+        controleEntreprise: true,
+      },
+    });
+    this.feuilleFicheR2Syscohada(classeur, ident, tenant.formeJuridiqueSyscohada, notes, declarationsR2);
     // Fiche R3 · dirigeants ET membres du conseil d'administration (passe R2, A4).
     construireFiche2(classeur, ident, 'DIRIGEANTS (1)', [], 'FICHE 2', 20, true);
 

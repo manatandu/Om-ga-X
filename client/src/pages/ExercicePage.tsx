@@ -9,6 +9,7 @@ import { montant } from '../lib/montants';
 import { confirmationCloturePeriode } from '../lib/cloture-periode';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
+import { FicheR2Exercice } from '../components/FicheR2Exercice';
 
 const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
   PARTIELLE: 'Partielle',
@@ -40,7 +41,7 @@ interface OuvertureSuivante {
 }
 
 export function ExercicePage() {
-  const { estAdmin } = useAuth();
+  const { estAdmin, peutEcrire, utilisateur } = useAuth();
   const {
     exercices,
     chargement: chargementExercices,
@@ -559,6 +560,12 @@ export function ExercicePage() {
             )}
           </div>
         </form>
+      )}
+
+      {/* Fiche R2 (cases ZN à ZS) · SYSCOHADA seul, la route se refusant au
+          serveur ailleurs (décision par la loi du 2026-10-04, point 5). */}
+      {exercice && utilisateur?.tenant.referentiel === 'SYSCOHADA' && (
+        <FicheR2Exercice exercice={exercice} peutEcrire={peutEcrire} apresEnregistrement={rechargerExercices} />
       )}
 
       {/*

@@ -181,7 +181,15 @@ export interface Exercice {
    * décidée.
    */
   dateArreteComptes: string | null;
+  /** Fiche R2 (SYSCOHADA), cases ZN à ZS · déclarées, null = non renseignée. */
+  nombreEtablissementsPays?: number | null;
+  nombreEtablissementsHorsPays?: number | null;
+  premiereAnneeExercicePays?: number | null;
+  controleEntreprise?: ControleEntreprise | null;
 }
+
+/** Fiche R2 · contrôle de l'entreprise (ZQ public, ZQ privé national, ZS privé étranger). */
+export type ControleEntreprise = 'PUBLIC' | 'PRIVE_NATIONAL' | 'PRIVE_ETRANGER';
 
 export type GranulariteCloture = 'PARTIELLE' | 'TOTALE' | 'PERIODE';
 

@@ -25,6 +25,7 @@ import {
 import { CreerExerciceDto } from './dto/creer-exercice.dto';
 import { ClorePartielleDto, CloreTotaleDto, ClorePeriodeDto } from './dto/cloture.dto';
 import { ArreterComptesDto } from './dto/arrete-comptes.dto';
+import { FicheR2Dto } from './dto/fiche-r2.dto';
 import { JournalService } from '../journaux/journal.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { DERNIERE_VERIFICATION, dateJalon, jalonsApplicables } from './planning-cloture';
@@ -546,6 +547,36 @@ export class ExerciceService {
       where: { id: exerciceId },
       data: { dateArreteComptes: date },
     });
+  }
+
+  /**
+   * FICHE R2, cases ZN à ZS (AUDCIF Titre IX ch. 2) · faits DÉCLARÉS de
+   * l'exercice, jamais déduits (décision par la loi du 2026-10-04, point 5).
+   * La route est cloisonnée au SYSCOHADA (`@ReferentielsAutorises`).
+   *
+   * Un seul refus au-delà de la forme · une « première année d'exercice dans
+   * le pays » POSTÉRIEURE à l'année de clôture de l'exercice déclaré, qui
+   * dirait que l'entité n'exerçait pas encore pendant l'exercice qu'elle
+   * présente (lecture d'OmegaX, le texte ne bornant pas la case).
+   */
+  async declarerFicheR2(tenantId: string, exerciceId: string, dto: FicheR2Dto) {
+    const exercice = await this.trouverExercice(tenantId, exerciceId);
+    const annee = dto.premiereAnneeExercicePays;
+    const anneeDeCloture = exercice.dateFin.getUTCFullYear();
+    if (annee !== undefined && annee !== null && annee > anneeDeCloture) {
+      throw new BadRequestException(
+        `La première année d'exercice dans le pays (${annee}) ne peut pas suivre l'année où se clôt ` +
+          `l'exercice déclaré (${anneeDeCloture}) · fiche R2, case ZP.`,
+      );
+    }
+    const data: Prisma.ExerciceUpdateInput = {};
+    if (dto.nombreEtablissementsPays !== undefined) data.nombreEtablissementsPays = dto.nombreEtablissementsPays;
+    if (dto.nombreEtablissementsHorsPays !== undefined) {
+      data.nombreEtablissementsHorsPays = dto.nombreEtablissementsHorsPays;
+    }
+    if (dto.premiereAnneeExercicePays !== undefined) data.premiereAnneeExercicePays = dto.premiereAnneeExercicePays;
+    if (dto.controleEntreprise !== undefined) data.controleEntreprise = dto.controleEntreprise;
+    return this.prisma.exercice.update({ where: { id: exercice.id }, data });
   }
 
   private async trouverExercice(tenantId: string, exerciceId: string) {

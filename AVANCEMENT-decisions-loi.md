@@ -14,9 +14,17 @@ Manasse du 2026-10-04 sur le samedi).
   `report-jour-ouvrable.spec.ts`, `echeances-impot-societes.spec.ts` (le
   25 juillet 2026 reste le 25), `passes-f11-f8-d3.spec.ts`.
 
+- **R2-A3 / R2-B6 · cases ZN à ZS** · `Exercice` porte
+  `nombreEtablissementsPays`, `nombreEtablissementsHorsPays`,
+  `premiereAnneeExercicePays`, `controleEntreprise` (enum `ControleEntreprise`),
+  migration `20270142000000_fiche_r2_exercice`, route
+  `POST /exercices/:id/fiche-r2` (`@ReferentielsAutorises(SYSCOHADA)`),
+  feuille « Fiche R2 » de la liasse (« Non renseignée » à défaut, « X » sur la
+  case du contrôle, deux ZQ), écran `FicheR2Exercice` dans Exercices. Tests ·
+  `exercice/fiche-r2.spec.ts`, `liasse-syscohada.spec.ts`.
+
 ## Reste
 
-- R2-A3 / R2-B6 · cases ZN à ZS.
 - F14-D1 · entreprise du portefeuille de l'État.
 - 20B / 29B à seize colonnes.
 - R2-B5 · lignes répétables des notes 4, 13, 32, 33.
@@ -30,7 +38,18 @@ Manasse du 2026-10-04 sur le samedi).
   paiement · les reversements de retenues se déclarent au guichet avec le
   paiement, laissés en DÉCLARATION faute de texte qui les dise « sans dépôt ».
 
+- R2 · par EXERCICE (la décision le permet). ZP postérieure à l'année de
+  clôture refusée (lecture d'OmegaX). Le nombre de cellules du groupe n'est
+  PAS montré à côté de ZN/ZO (« peut être », facultatif).
+
 ## Vérification
+
+```bash
+npx prisma migrate diff --from-migrations prisma/migrations \
+  --to-schema-datamodel prisma/schema.prisma \
+  --shadow-database-url <base jetable> --exit-code
+```
+
 
 ```bash
 npx tsc --noEmit

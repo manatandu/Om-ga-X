@@ -1175,6 +1175,38 @@ describe('Passe R2, A3 et B6 · fiche R2 du Système normal SYSCOHADA', () => {
     expect(texte).toContain('(3) Rayer la mention inutile (utiliser de préférence la VA).');
   });
 
+  it('ZN à ZS · déclarés sur l’exercice, imprimés tels quels ; non déclarés, « Non renseignée », jamais zéro', async () => {
+    // Décision par la loi du 2026-10-04, point 5 · rien n'est tiré du dossier.
+    const vides = await ouvrir((await fabriquerExport().liasseCompleteExcel('t1', 'e1')).buffer);
+    for (const code of ['ZN', 'ZO', 'ZP', 'ZQ', 'ZS']) expect(caseR2(vides, code)).toBe('Non renseignée');
+
+    const e = fabriquerExport();
+    const prisma = (e as unknown as { prisma: { exercice: { findFirst: jest.Mock } } }).prisma;
+    const origine = prisma.exercice.findFirst.getMockImplementation()!;
+    prisma.exercice.findFirst.mockImplementation((args: { select?: Record<string, unknown> }) =>
+      args?.select && 'controleEntreprise' in args.select
+        ? Promise.resolve({
+            nombreEtablissementsPays: 0,
+            nombreEtablissementsHorsPays: 2,
+            premiereAnneeExercicePays: 1998,
+            controleEntreprise: 'PRIVE_NATIONAL',
+          })
+        : origine(args),
+    );
+    const wb = await ouvrir((await e.liasseCompleteExcel('t1', 'e1')).buffer);
+    expect(caseR2(wb, 'ZN')).toBe('0');
+    expect(caseR2(wb, 'ZO')).toBe('2');
+    expect(caseR2(wb, 'ZP')).toBe('1998');
+    // Deux lignes « ZQ » (texte officiel), la seconde cochée · pas de ZR.
+    const zq: string[] = [];
+    wb.getWorksheet('Fiche R2')!.eachRow((row) => {
+      if (row.getCell(1).value === 'ZQ') zq.push(String(row.getCell(7).value ?? ''));
+    });
+    expect(zq).toEqual(['', 'X']);
+    expect(caseR2(wb, 'ZS')).toBe('');
+    expect(caseR2(wb, 'ZR')).toBe('');
+  });
+
   it('une SA n’est jamais codée d’office · 00 ou 01 dépend d’une participation publique que le dossier ne porte pas', async () => {
     const e = fabriquerExport();
     const prisma = (e as unknown as { prisma: { tenant: { findUniqueOrThrow: jest.Mock } } }).prisma;

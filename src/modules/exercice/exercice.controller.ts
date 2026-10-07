@@ -10,10 +10,13 @@ import { ClorePartielleDto, CloreTotaleDto, ClorePeriodeDto } from './dto/clotur
 import { ArreterComptesDto } from './dto/arrete-comptes.dto';
 import { ANouveauxProvisoiresDto } from './dto/a-nouveaux-provisoires.dto';
 import { CloturerExerciceDto } from './dto/cloturer-exercice.dto';
-import { RoleUtilisateur } from '@prisma/client';
+import { Referentiel, RoleUtilisateur } from '@prisma/client';
+import { ReferentielGuard } from '../../common/guards/referentiel.guard';
+import { ReferentielsAutorises } from '../../common/decorators/referentiels.decorator';
+import { FicheR2Dto } from './dto/fiche-r2.dto';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
 
-@UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard, ReferentielGuard)
 @Controller('exercices')
 export class ExerciceController {
   constructor(private readonly exerciceService: ExerciceService) {}
@@ -91,6 +94,18 @@ export class ExerciceController {
     @Body() dto: ArreterComptesDto,
   ) {
     return this.exerciceService.arreterComptes(user.tenantId, id, dto);
+  }
+
+  /**
+   * FICHE R2, cases ZN à ZS (AUDCIF Titre IX ch. 2) · faits déclarés par
+   * exercice. SYSCOHADA seul · le SYCEBNL ne porte pas de fiche R2, et la
+   * route se refuse au serveur, pas seulement à l'écran.
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReferentielsAutorises(Referentiel.SYSCOHADA)
+  @Post(':id/fiche-r2')
+  async declarerFicheR2(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: FicheR2Dto) {
+    return this.exerciceService.declarerFicheR2(user.tenantId, id, dto);
   }
 
   @Get(':id/planning-cloture')

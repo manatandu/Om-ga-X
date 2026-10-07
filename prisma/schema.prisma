@@ -1438,6 +1438,15 @@ model DossierFiscalExercice {
   @@map("dossiers_fiscaux_exercice")
 }
 
+/// Fiche R2 de l'AUDCIF (Titre IX ch. 2) · contrôle de l'entreprise, codes
+/// ZQ (public), ZQ (privé national, code employé deux fois au texte
+/// officiel) et ZS (privé étranger).
+enum ControleEntreprise {
+  PUBLIC
+  PRIVE_NATIONAL
+  PRIVE_ETRANGER
+}
+
 model Exercice {
   id                         String                     @id @default(uuid())
   tenantId                   String
@@ -1487,6 +1496,25 @@ model Exercice {
   /// `[{ type, compte, groupe, lignes: [{ date, montant }], motif }]`. Écrit
   /// avec l'acte de clôture, donc au journal d'audit avec son motif.
   defaitsParLaCloture Json?
+
+  /// FICHE R2 · cases ZN à ZS (AUDCIF Titre IX ch. 2 ; décision par la loi
+  /// du 2026-10-04, point 5). SYSCOHADA seul. Toutes DÉCLARÉES, nullables
+  /// sans défaut · une case non déclarée s'imprime « non renseignée », rien
+  /// n'est tiré du dossier.
+  /// ZN · « Nombre d'établissements dans le pays » (le texte ne dit pas si le
+  /// siège compte).
+  nombreEtablissementsPays     Int?
+  /// ZO · « Nombre d'établissements hors du pays pour lesquels une
+  /// comptabilité distincte est tenue ».
+  nombreEtablissementsHorsPays Int?
+  /// ZP · « Première année d'exercice dans le pays ». Jamais tirée du premier
+  /// exercice du dossier · un dossier repris n'a pas commencé son activité
+  /// avec OmegaX.
+  premiereAnneeExercicePays    Int?
+  /// ZQ, ZQ, ZS · une seule réponse (partition public / privé national /
+  /// privé étranger, lecture d'OmegaX, le texte ne disant pas que les cases
+  /// s'excluent). Null = pas encore dit.
+  controleEntreprise           ControleEntreprise?
 
   ecritures                    Ecriture[]
   clotures                     Cloture[]
