@@ -239,4 +239,44 @@ describe('Procès-verbal de l’assemblée à la DGI (LPF art. 13 bis)', () => {
     const sans = (await echeances('SYSCOHADA', '2027-03-01')).find((e) => e.cle === 'procesVerbalAssemblee')!;
     expect(sans.date.toISOString().slice(0, 10)).toBe('2027-07-12');
   });
+
+  it('ÉCHUE, elle n’est plus servie · le 07/10/2027, le 30/03/2027 cède la place à la prochaine occurrence', async () => {
+    const svc = service('SYSCOHADA');
+    const prisma = (svc as unknown as { prisma: { exercice: { findFirst: jest.Mock } } }).prisma;
+    prisma.exercice.findFirst.mockResolvedValue({
+      id: 'e1',
+      dateDebut: new Date('2026-01-01'),
+      dateFin: new Date('2026-12-31'),
+      dateAssembleeGenerale: new Date(Date.UTC(2027, 2, 20)),
+    });
+    const pv = (await svc.echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2027-10-07' })).echeances.find(
+      (e) => e.cle === 'procesVerbalAssemblee',
+    )!;
+    // Le repère suivant (10 juillet 2028, lundi), jamais une date passée en tête de liste.
+    expect(pv.date.toISOString().slice(0, 10)).toBe('2028-07-10');
+    expect(pv.echeance).not.toContain('assemblée déclarée');
+    expect(pv.date.getTime()).toBeGreaterThanOrEqual(Date.UTC(2027, 9, 7));
+  });
+
+  it('entreprise du portefeuille sans assemblée déclarée · repère au 31 mars plus dix jours (10 avril), reporté', async () => {
+    const svc = service('SYSCOHADA');
+    const prisma = (svc as unknown as { prisma: { tenant: { findUniqueOrThrow: jest.Mock } } }).prisma;
+    prisma.tenant.findUniqueOrThrow.mockResolvedValue({
+      referentiel: 'SYSCOHADA',
+      formeJuridiqueSyscohada: 'SOCIETE_ANONYME',
+      entreprisePortefeuilleEtat: true,
+    });
+    const pv = (await svc.echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2027-03-01' })).echeances.find(
+      (e) => e.cle === 'procesVerbalAssemblee',
+    )!;
+    // Samedi 10 avril 2027 · reporté au lundi 12 (déclaration, LPF art. 110 bis).
+    expect(pv.date.toISOString().slice(0, 10)).toBe('2027-04-12');
+    expect(pv.echeance).toContain('portefeuille de l’État');
+    // Hors portefeuille, le 10 juillet demeure.
+    prisma.tenant.findUniqueOrThrow.mockResolvedValue({ referentiel: 'SYSCOHADA', formeJuridiqueSyscohada: 'SOCIETE_ANONYME', entreprisePortefeuilleEtat: false });
+    const ordinaire = (await svc.echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2027-03-01' })).echeances.find(
+      (e) => e.cle === 'procesVerbalAssemblee',
+    )!;
+    expect(ordinaire.date.toISOString().slice(0, 10)).toBe('2027-07-12');
+  });
 });

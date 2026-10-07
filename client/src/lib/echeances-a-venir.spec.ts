@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { echeancesAVenir, joursEntre, HORIZON_JOURS } from './echeances-a-venir';
+import { echeancesAVenir, joursEntre, HORIZON_JOURS, libelleDelai } from './echeances-a-venir';
 import type { EcheancierFiscal } from './types';
 
 type Echeance = EcheancierFiscal['echeances'][number];
@@ -94,6 +94,15 @@ describe('Prochaines échéances au tableau de bord', () => {
     const lointaine = echeancesAVenir(echeancier(echeances, '2026-08-20'));
     expect(lointaine.proches).toHaveLength(0);
     expect(lointaine.auDela).toBe(1);
+  });
+
+  it('« aujourd’hui » le jour même SEULEMENT · une date échue se dit passée (relecture 2)', () => {
+    expect(libelleDelai({ joursRestants: 0, date: '2027-10-07' })).toBe("aujourd'hui");
+    expect(libelleDelai({ joursRestants: 3, date: '2027-10-10' })).toBe('dans 3 j');
+    expect(libelleDelai({ joursRestants: -191, date: '2027-03-30' })).toBe('échéance passée (30/03/2027)');
+    const dashboard = readFileSync(join(__dirname, '../pages/DashboardPage.tsx'), 'utf8');
+    expect(dashboard).toContain('{libelleDelai(e)}');
+    expect(dashboard).not.toMatch(/joursRestants <= 0/);
   });
 
   it('compte les jours en CALENDAIRE, sans traîner d’heures', () => {

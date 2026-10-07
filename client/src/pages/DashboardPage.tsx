@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth';
 import { IconNew } from '../components/chrome/icons';
 import { Aide } from '../components/chrome/Aide';
 import type { EcheancierFiscal, Ecriture, LigneBalance } from '../lib/types';
-import { echeancesAVenir } from '../lib/echeances-a-venir';
+import { echeancesAVenir, libelleDelai } from '../lib/echeances-a-venir';
 import { indicateursTableauDeBord } from '../lib/indicateurs-tableau-de-bord';
 import { montant } from '../lib/montants';
 import { useCompteur } from '../lib/compteur';
@@ -185,10 +185,9 @@ export function DashboardPage() {
                       été déposée. */}
                   {e.retardConstate ? (
                     <span className="text-danger font-bold">{e.moisEnRetard} mois de retard</span>
-                  ) : e.joursRestants <= 0 ? (
-                    <span className="text-text-dim">aujourd'hui</span>
                   ) : (
-                    <span className="text-text-dim">dans {e.joursRestants} j</span>
+                    // « aujourd'hui » le jour même seulement · une date passée se dit passée.
+                    <span className="text-text-dim">{libelleDelai(e)}</span>
                   )}
                 </span>
                 <span className="font-mono font-semibold text-right">

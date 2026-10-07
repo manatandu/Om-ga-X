@@ -102,3 +102,17 @@ export function echeancesAVenir(
     horizonJours,
   };
 }
+
+/**
+ * Le délai écrit à côté d'une échéance non constatée en retard · « aujourd'hui »
+ * pour le jour même SEULEMENT (relecture 2 · une date échue sortait
+ * « aujourd'hui », et un procès-verbal du 30 mars se lisait encore dû le jour
+ * même en octobre). Une date passée se dit passée, sans jamais conclure au
+ * manquement d'une déclaration, que les livres ne montrent pas.
+ */
+export function libelleDelai(e: Pick<EcheanceProche, 'joursRestants' | 'date'>): string {
+  if (e.joursRestants === 0) return "aujourd'hui";
+  if (e.joursRestants > 0) return `dans ${e.joursRestants} j`;
+  const d = new Date(e.date);
+  return `échéance passée (${d.toLocaleDateString('fr-FR', { timeZone: 'UTC' })})`;
+}

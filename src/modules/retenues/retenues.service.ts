@@ -20,6 +20,8 @@ import {
 } from './correspondance-retenues';
 import { echeanceDeReversement, reporterAuJourOuvrable } from './jour-ouvrable';
 import { echeanceDepassee, jourDeKinshasa, jourUtc } from '../../common/echeance';
+import { FORMES_SOCIETES_COMMERCIALES } from '../tenant/mentions-societe';
+import { closAu31Decembre } from '../exercice/portefeuille-etat';
 
 /**
  * Le report à-nouveau · une écriture de clôture qui n'est pas celle qui solde
@@ -649,12 +651,38 @@ export class RetenuesService {
     // dix jours de la tenue de l'Assemblée générale ordinaire ») · compté
     // depuis l'assemblée DÉCLARÉE sur l'exercice quand elle l'est, au lieu du
     // repère du 10 juillet.
-    const exerciceLu = await this.prisma.exercice.findFirst({
-      where: { id: params.exerciceId, tenantId },
-      select: { dateAssembleeGenerale: true },
-    });
+    const [exerciceLu, faitsDossier] = await Promise.all([
+      this.prisma.exercice.findFirst({
+        where: { id: params.exerciceId, tenantId },
+        select: { dateAssembleeGenerale: true, dateFin: true },
+      }),
+      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { entreprisePortefeuilleEtat: true } }),
+    ]);
     const assemblee = exerciceLu?.dateAssembleeGenerale ?? null;
-    const pvDepuisAssemblee = (o: { cle: string }) => o.cle === 'procesVerbalAssemblee' && assemblee !== null;
+    // UNE DATE ÉCHUE N'EST PAS LA PROCHAINE (relecture 2) · comptée depuis
+    // l'assemblée déclarée, l'échéance n'est servie que tant qu'elle n'est
+    // pas dépassée à la référence · le 07/10/2027, le 30/03/2027 sortait en
+    // tête de liste, et le tableau de bord écrivait « aujourd'hui ». Échue,
+    // l'obligation revient à sa prochaine occurrence, comme toutes les autres.
+    const pvAssemblee = assemblee
+      ? reporterAuJourOuvrable(new Date(assemblee.getTime() + 10 * 86_400_000), 'DECLARATION')
+      : null;
+    const pvDepuisAssemblee = (o: { cle: string }) =>
+      o.cle === 'procesVerbalAssemblee' && pvAssemblee !== null && !echeanceDepassee(pvAssemblee, registre.dateReference);
+    // ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT sans assemblée déclarée · son
+    // assemblée se tient au plus tard le 31 mars (O.-L. n° 13/003, art. 112)
+    // pour un exercice clos au 31 décembre, aux cinq sociétés commerciales ·
+    // le repère est ce plafond plus dix jours (10 avril), reporté au jour
+    // ouvrable, au lieu du 10 juillet que suppose une assemblée au 30 juin.
+    const portefeuille =
+      faitsDossier.entreprisePortefeuilleEtat === true &&
+      registre.referentiel === Referentiel.SYSCOHADA &&
+      !!registre.formeJuridiqueSyscohada &&
+      FORMES_SOCIETES_COMMERCIALES.includes(registre.formeJuridiqueSyscohada) &&
+      !!exerciceLu &&
+      closAu31Decembre(exerciceLu.dateFin);
+    const pvPortefeuille = (o: ObligationDeclarative) =>
+      o.cle === 'procesVerbalAssemblee' && !pvDepuisAssemblee(o) && portefeuille;
     const declarations = obligationsDeclarativesApplicables(
       registre.referentiel,
       registre.formeJuridiqueSyscohada,
@@ -666,11 +694,13 @@ export class RetenuesService {
       periodicite: o.periodicite,
       beneficiaire: 'ETAT' as const,
       date: pvDepuisAssemblee(o)
-        ? reporterAuJourOuvrable(new Date(assemblee!.getTime() + 10 * 86_400_000), 'DECLARATION')
-        : this.prochaineEcheanceDeclarative(o, registre.dateReference),
+        ? pvAssemblee!
+        : this.prochaineEcheanceDeclarative(pvPortefeuille(o) ? { ...o, moisEcheance: 4, jourEcheance: 10 } : o, registre.dateReference),
       echeance: pvDepuisAssemblee(o)
         ? `${o.echeance} · assemblée déclarée tenue le ${assemblee!.toISOString().slice(0, 10).split('-').reverse().join('/')}`
-        : o.echeance,
+        : pvPortefeuille(o)
+          ? `${o.echeance} · entreprise du portefeuille de l’État, assemblée au plus tard le 31 mars (ordonnance-loi n° 13/003, art. 112)`
+          : o.echeance,
       baseLegale: o.baseLegale,
       reserve: o.reserve,
       montantDu: 0,
@@ -680,7 +710,9 @@ export class RetenuesService {
       sanction: o.sanction ?? null,
       sourceDonnees: pvDepuisAssemblee(o)
         ? "Date de l'assemblée déclarée dans la fenêtre Exercices, plus dix jours, reportée au jour ouvrable (LPF art. 110 bis, al. 2)."
-        : o.sourceDonnees ?? null,
+        : pvPortefeuille(o)
+          ? "Faute de date d'assemblée déclarée, repère au plus tard · le 31 mars de l'ordonnance-loi n° 13/003, art. 112, plus dix jours, reporté au jour ouvrable (LPF art. 110 bis, al. 2)."
+          : o.sourceDonnees ?? null,
     }));
 
     const echeances = [...reversements, ...declarations].sort((a, b) => a.date.getTime() - b.date.getTime());
