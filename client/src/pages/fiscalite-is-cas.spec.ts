@@ -41,3 +41,28 @@ describe('Impôt · saisies de la période de création et des suppléments', ()
     expect(bandeau).toContain('sur le chiffre d’affaires');
   });
 });
+
+describe('Impôt · changement d’exercice pendant un chargement (second tour de relecture)', () => {
+  // Structure, jamais distance : on découpe le corps de chaque fonction.
+  const corps = (s: string, debut: string) => {
+    const i = s.indexOf(debut);
+    return s.slice(i, s.indexOf('\n  };', i));
+  };
+
+  it('une réponse d’un autre exercice que celui attendu est jetée', () => {
+    const c = corps(page(), 'const charger = (id: string) =>');
+    expect(c).toContain('exerciceAttendu.current = id;');
+    expect(c.match(/if \(exerciceAttendu\.current === id\)/g)?.length).toBe(2);
+  });
+
+  it('le dossier s’enregistre sur l’exercice AFFICHÉ, et seulement s’il est encore celui du sélecteur', () => {
+    const c = corps(page(), 'const modifierDossier = async');
+    expect(c).toContain('const cible = resultat?.exerciceId;');
+    expect(c).toContain('if (!cible || cible !== exerciceId) return;');
+    expect(c).toContain('`/fiscalite/exercices/${cible}/dossier`');
+  });
+
+  it('un déficit antérieur illisible au blur se dit', () => {
+    expect(page()).toContain("montantIllisible('Déficits antérieurs, nombre positif attendu')");
+  });
+});

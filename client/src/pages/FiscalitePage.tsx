@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
@@ -108,11 +108,23 @@ export function FiscalitePage() {
     api.get<CatalogueRetraitements>('/fiscalite/catalogue').then(setCatalogue, () => undefined);
   }, []);
 
+  // UNE RÉPONSE PÉRIMÉE SE JETTE · changer d'exercice pendant un chargement
+  // affichait le résultat de l'ancien sous le sélecteur du nouveau, et un blur
+  // enregistrait alors la valeur d'un exercice dans l'autre, sans un mot.
+  const exerciceAttendu = useRef<string | null>(null);
   const charger = (id: string) => {
     setErreur(null);
+    exerciceAttendu.current = id;
     api
       .get<ResultatFiscal>(`/fiscalite/resultat-fiscal?exerciceId=${encodeURIComponent(id)}`)
-      .then(setResultat, (e: Error) => setErreur(e.message));
+      .then(
+        (r) => {
+          if (exerciceAttendu.current === id) setResultat(r);
+        },
+        (e: Error) => {
+          if (exerciceAttendu.current === id) setErreur(e.message);
+        },
+      );
     chargerPropositions(id);
   };
 
@@ -251,11 +263,15 @@ export function FiscalitePage() {
     supplementsPeriodeCreation?: number;
     deficitAnterieurOrigines?: { dateFin: string; montant: number }[] | null;
   }) => {
-    if (!exerciceId) return;
+    // La cible est l'exercice AFFICHÉ, celui dont la valeur a été lue, et
+    // seulement s'il est encore celui du sélecteur.
+    const cible = resultat?.exerciceId;
+    if (!cible || cible !== exerciceId) return;
     setEnvoi(true);
     setErreur(null);
     try {
-      setResultat(await api.patch<ResultatFiscal>(`/fiscalite/exercices/${exerciceId}/dossier`, dto));
+      const r = await api.patch<ResultatFiscal>(`/fiscalite/exercices/${cible}/dossier`, dto);
+      if (exerciceAttendu.current === cible) setResultat(r);
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Modification impossible');
     } finally {
@@ -700,7 +716,8 @@ export function FiscalitePage() {
                   if (v === '' && resultat.deficitAnterieur.saisi) modifierDossier({ deficitAnterieurSaisi: null });
                   else if (v !== '') {
                     const n = lireNombre(v);
-                    if (n !== null && n >= 0 && (!resultat.deficitAnterieur.saisi || n !== resultat.deficitAnterieur.montantSaisi))
+                    if (n === null || n < 0) montantIllisible('Déficits antérieurs, nombre positif attendu');
+                    else if (!resultat.deficitAnterieur.saisi || n !== resultat.deficitAnterieur.montantSaisi)
                       modifierDossier({ deficitAnterieurSaisi: n });
                   }
                 }}
