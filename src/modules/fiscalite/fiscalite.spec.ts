@@ -2049,6 +2049,15 @@ describe('Cas chiffrés IS, troisième tour · relecture adverse', () => {
     expect(r.observations.join(' ')).toContain('RÉSULTAT LU SUR LE COMPTE 13');
   });
 
+  it('exercice sans gestion dont l’affectation solde l’à-nouveau du 13 · résultat nul, rien à dire', async () => {
+    const r = await service({
+      balances: { N: [ligne('13900000', -300_000)] },
+      reports: { N: [ligne('13900000', 300_000)] },
+    }).s.resultatFiscal('t1', 'N');
+    expect(['resultatComptable', r.resultatComptable]).toEqual(['resultatComptable', 0]);
+    expect(r.observations.join(' ')).not.toContain('RÉSULTAT LU SUR LE COMPTE 13');
+  });
+
   it('V3 · 2030 n’impute que la perte de 2027 (N-3), celle de 2026 (N-4) étant éteinte · impôt 240 000', async () => {
     const zero = [ligne('70110000', -1_000_000), ligne('60410000', 1_000_000)];
     const { s } = service({

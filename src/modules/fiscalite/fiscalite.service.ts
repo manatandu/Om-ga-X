@@ -581,8 +581,10 @@ export class FiscaliteService {
     return {
       resultatComptable: arrondir(avantCloture ? resultatClasses678 : resultatCompte13),
       sourceResultat: avantCloture ? ('CLASSES_6_7_8' as const) : ('COMPTE_13' as const),
-      // L'à-nouveau que porte le 13 quand il est lu · nul hors de ce cas.
-      reportAuCompte13: avantCloture ? 0 : arrondir(reportAuCompte13),
+      // L'à-nouveau que porte le 13 quand il est lu et rend un résultat · nul
+      // hors de ce cas. Un 13 lu à zéro sous un à-nouveau non nul est celui
+      // d'une affectation passée en entier · rien à dire.
+      reportAuCompte13: avantCloture || Math.abs(resultatCompte13) <= 0.005 ? 0 : arrondir(reportAuCompte13),
       chiffreAffaires: arrondir(chiffreAffaires),
       acomptesAu4492: arrondir(acomptesAu4492),
       impotConstateAu89: arrondir(impotConstateAu89),
@@ -1693,7 +1695,7 @@ export class FiscaliteService {
     // balance ne disant pas si son affectation est passée.
     if (Math.abs(brut.reportAuCompte13) > 0.005) {
       observations.push(
-        `RÉSULTAT LU SUR LE COMPTE 13 · les comptes de gestion sont soldés dans l'exercice, et le 13 porte aussi ${montantFiscal(brut.reportAuCompte13)} reportés à l'ouverture, résultat d'un exercice antérieur. ` +
+        `RÉSULTAT LU SUR LE COMPTE 13 · aucun compte de gestion ne porte de solde dans l'exercice, et le 13 porte aussi ${montantFiscal(brut.reportAuCompte13)} reportés à l'ouverture, résultat d'un exercice antérieur. ` +
           "Si son affectation n'est pas passée dans cet exercice, le résultat lu ici le contient et l'impôt est faux d'autant · passez l'affectation, ou corrigez le résultat par un retraitement motivé.",
       );
     }
