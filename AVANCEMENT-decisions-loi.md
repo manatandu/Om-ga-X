@@ -17,7 +17,7 @@ Manasse du 2026-10-04 sur le samedi).
 - **R2-A3 / R2-B6 · cases ZN à ZS** · `Exercice` porte
   `nombreEtablissementsPays`, `nombreEtablissementsHorsPays`,
   `premiereAnneeExercicePays`, `controleEntreprise` (enum `ControleEntreprise`),
-  migration `20270142000000_fiche_r2_exercice`, route
+  migration `20270147000000_fiche_r2_exercice`, route
   `POST /exercices/:id/fiche-r2` (`@ReferentielsAutorises(SYSCOHADA)`),
   feuille « Fiche R2 » de la liasse (« Non renseignée » à défaut, « X » sur la
   case du contrôle, deux ZQ), écran `FicheR2Exercice` dans Exercices. Tests ·
@@ -25,7 +25,7 @@ Manasse du 2026-10-04 sur le samedi).
 
 - **F14-D1 · entreprise du portefeuille de l'État** · `Tenant.entreprisePortefeuilleEtat`
   (oui, non, pas encore dit ; « oui » refusé hors SYSCOHADA), `Exercice.dateAssembleeGenerale`
-  et `dateDepotEtatsPortefeuille` (migration `20270143000000_portefeuille_etat`, route
+  et `dateDepotEtatsPortefeuille` (migration `20270148000000_portefeuille_etat`, route
   `POST /exercices/:id/dates-portefeuille`, SYSCOHADA), `exercice/portefeuille-etat.ts`
   appliqué au planning (31 mars au lieu de six mois pour les étapes 21 et 23 d'un exercice
   clos au 31 décembre, étape 17 à 45 jours avant l'assemblée, PV à l'Administration des
@@ -36,13 +36,13 @@ Manasse du 2026-10-04 sur le samedi).
 
 - **20B / 29B à seize colonnes** · `notes-annexes/effectifs-seize-colonnes.ts`
   (`colonnesEffectifsSycebnl`, zones du texte SYCEBNL, M/F), migration
-  `20270144000000_effectifs_seize_colonnes` (ancien rang k au rang 100 + k, rien
+  `20270149000000_effectifs_seize_colonnes` (ancien rang k au rang 100 + k, rien
   supprimé, jamais scindé), `chargerSaisies` les écarte des cellules et les sert en
   `saisiesFormatAnterieur`, bloc « Saisie antérieure à reporter » à l'écran. Gel
   de `rubriques-en-saisie.spec.ts` passé à 16. Tests · `effectifs-seize-colonnes.spec.ts`.
 
 - **R2-B5 · lignes répétables** · `SaisieNote.rang` (migration
-  `20270145000000_saisies_notes_rang`, unicité recréée, existant au rang 0),
+  `20270150000000_saisies_notes_rang`, unicité recréée, existant au rang 0),
   `RubriqueNote.repetable` (note 4 filiales, note 13 apporteurs, nouvelles
   occurrences « Produit » en 32 et « Matière ou produit » en 33 avant NON
   VENTILÉ(S) et TOTAL), moteur `etendues` (une ligne par rang), rang refusé
@@ -54,7 +54,7 @@ Manasse du 2026-10-04 sur le samedi).
 
 - **O1a-D2 · liquidation d'une société** · `Tenant.dateNominationLiquidateur`,
   `regimeLiquidation` (enum `RegimeLiquidation`), `associeUniquePersonneMorale`
-  (migration `20270146000000_liquidation_societe`), refus art. 201 al. 4 et
+  (migration `20270151000000_liquidation_societe`), refus art. 201 al. 4 et
   nomination avant dissolution (art. 204), `exercice/liquidation-societe.ts`
   (étape 27 · bilan avant liquidation, publication à un mois, clôture à trois
   ans, situation provisoire au 31 décembre hors art. 223 ; rapport à six mois,

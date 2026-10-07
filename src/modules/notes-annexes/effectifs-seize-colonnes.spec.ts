@@ -49,7 +49,7 @@ describe('Notes 20B et 29B · personnel propre à seize colonnes', () => {
 
   it('la migration porte l’ancien rang k au rang 100 + k, sur les seules rubriques du personnel propre, sans rien supprimer', () => {
     const sql = readFileSync(
-      join(__dirname, '../../../prisma/migrations/20270144000000_effectifs_seize_colonnes/migration.sql'),
+      join(__dirname, '../../../prisma/migrations/20270149000000_effectifs_seize_colonnes/migration.sql'),
       'utf8',
     );
     expect(RANG_FORMAT_ANTERIEUR).toBe(100);

@@ -20,7 +20,7 @@ import type { ColonneNote } from './note-annexe.types';
  * ne se transpose pas · à lire sur le PDF du J.O. OHADA, comme E5.
  *
  * UNE SAISIE ANCIENNE N'EST JAMAIS SCINDÉE · la découper reviendrait à deviner
- * la répartition par sexe. La migration `20270144000000_effectifs_seize_colonnes`
+ * la répartition par sexe. La migration `20270149000000_effectifs_seize_colonnes`
  * porte l'ancien rang k au rang `RANG_FORMAT_ANTERIEUR + k`, hors de la
  * contexture · aucune cellule nouvelle ne la lit, la note la montre à part
  * comme saisie au format à huit colonnes, et les seize cellules restent vides
