@@ -109,6 +109,20 @@ Branche de sauvegarde `travail/is-cas`. Constat de départ ·
 - Bloc final · `tsc` serveur et client propres, Jest 754 suites / 10 809
   tests, Vitest 222 fichiers / 1 811 tests.
 
+## Mineurs des deux relectures (2026-10-07)
+
+- Drapeau `simulation` d'une perte lu sur `debutPeriodeImposable` (même règle
+  que l'impôt, fil C10) · premier exercice long 01/09/2025 au 31/12/2026,
+  perte 600 000, aucun « déficit d'avant la loi » en 2027.
+- Report sans origine · la borne de prudence est dite jouer « dans les
+  exercices suivants ».
+- DTO · `@FacultatifNonNul` sur acomptes, suppléments et suppléments de la
+  période (null s'écrivait 0) ; `MONTANT_FISCAL_MAX` (10^15 - 1, sous la
+  limite de Decimal(18, 2)) sur tous les montants ; origine bornée à 20 parts.
+- Écran · montant illisible dit au blur ; report, origine et bénéfice de la
+  période désactivés sur exercice clos ; effet du brouillard sur le chiffre
+  d'affaires au bandeau « Calcul provisoire ».
+
 ## Relevés en attente
 
 - (4) La perte de la période de création de 2025 (C10) reste dans la base de
@@ -123,6 +137,16 @@ Branche de sauvegarde `travail/is-cas`. Constat de départ ·
   des classes 6 à 8) · effet sur le bilan non tranché, à relire par la ligne
   des états.
 - Gestion soldée à la main sous un à-nouveau non affecté · dit, non retranché.
+- Lectures en parallèle · le rejeu lit une balance par exercice antérieur en
+  série (`deficitsAnterieursCalcules`) ; à paralléliser si le temps le
+  demande.
+- Dossier repris sur un premier exercice long · la période de création n'est
+  appliquée qu'au premier exercice TENU dans OmegaX ; un dossier repris dont
+  le premier exercice tenu n'est pas le premier de la société n'est pas
+  distingué.
+- Signal décalé · certains avertissements du report (prudence, perte hors
+  fenêtre) ne se voient que dans l'exercice qui impute, pas dans celui de la
+  saisie.
 
 ## Reste
 
