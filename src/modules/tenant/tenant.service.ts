@@ -574,8 +574,12 @@ export class TenantService {
     // ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT (O.-L. n° 13/003, art. 112 et
     // 113) · « toute SOCIÉTÉ dans laquelle l'État ou toute personne morale de
     // droit public détient la totalité des actions ou une participation » (loi
-    // n° 08/010, art. 3) · les cinq sociétés commerciales, et elles seules ·
-    // ni l'entité à but non lucratif, ni l'entreprenant, ni l'entreprise
+    // n° 08/010, art. 3), et ces entreprises « sont régies par le droit commun
+    // et prennent l'une des formes [...] sur les sociétés commerciales » (même
+    // loi, art. 4, qui renvoie au décret du 27 février 1887 · lecture
+    // d'OmegaX, ce sont aujourd'hui les formes de sociétés commerciales de
+    // l'AUSCGIE) · les cinq sociétés commerciales, et elles seules · ni
+    // l'entité à but non lucratif, ni l'entreprenant, ni l'entreprise
     // individuelle, ni les autres formes.
     const societeCommerciale = !!forme && FORMES_SOCIETES_COMMERCIALES.includes(forme);
     if (dto.entreprisePortefeuilleEtat === 'OUI' && (tenant.referentiel !== Referentiel.SYSCOHADA || !societeCommerciale)) {

@@ -191,21 +191,39 @@ export function jalonsLiquidation(
       }),
     );
   }
+  // DEUX JALONS, DEUX RÉGIMES (relecture 2) · le délai de trois ans (art.
+  // 216) n'est assorti d'aucune sanction pénale · à défaut, le ministère
+  // public ou tout intéressé saisit le juge (al. 2). L'art. 902, 2° et 3°
+  // punit l'absence de CONVOCATION de fin de liquidation et de DÉPÔT des
+  // comptes définitifs (art. 217 et 219), qui n'ont pas de date au texte.
   const cloture = plusMois(dissolution, 36);
   jalons.push(
     jalon({
       libelle: 'Clôture de la liquidation',
       detail:
-        'La clôture intervient dans les trois ans de la dissolution. En fin de liquidation, les associés statuent ' +
-        'sur les comptes définitifs, le quitus et la décharge du liquidateur, et constatent la clôture ; les ' +
-        'comptes définitifs sont déposés au registre du commerce et du crédit mobilier avec cette décision. Le ' +
-        'liquidateur demande la radiation dans le mois de la publication de la clôture · délai non calculé, ' +
-        'la date de cette publication n’étant pas déclarée.',
+        'La clôture de la liquidation intervient dans un délai de trois ans à compter de la dissolution. À défaut, ' +
+        'le ministère public ou tout intéressé peut saisir la juridiction compétente du siège afin qu’il soit ' +
+        'procédé à la liquidation ou à son achèvement.',
       nature: 'LEGALE',
-      source: 'AUSCGIE, art. 216, 217, 219 et 220',
-      sanction: SANCTION_902_2_3,
+      source: 'AUSCGIE, art. 216',
       debut: dissolution,
       echeance: cloture,
+    }),
+    jalon({
+      libelle: 'Comptes définitifs, assemblée de clôture et dépôt au registre',
+      detail:
+        'En fin de liquidation, les associés sont convoqués pour statuer sur les comptes définitifs, le quitus et ' +
+        'la décharge du liquidateur, et constater la clôture ; les comptes définitifs sont déposés au registre du ' +
+        'commerce et du crédit mobilier avec cette décision, ou avec la décision de justice qui en tient lieu. Le ' +
+        'texte ne fixe aucun délai pour ces actes, sinon la clôture dans les trois ans. Le liquidateur demande la ' +
+        'radiation dans le mois de la publication de la clôture · délai non calculé, la date de cette publication ' +
+        'n’étant pas déclarée.',
+      nature: 'LEGALE',
+      source: 'AUSCGIE, art. 217, 218, 219 et 220',
+      sanction: SANCTION_902_2_3,
+      debut: null,
+      echeance: null,
+      sansDelai: true,
     }),
   );
 

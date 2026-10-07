@@ -139,6 +139,54 @@ Manasse du 2026-10-04 sur le samedi).
     l'assemblée se déclare pour toute société commerciale (PV DGI), dépôt et
     procès-verbal pour le seul portefeuille.
 
+## Relecture 2 (2026-10-07)
+
+- **B1 · saisie au format antérieur rendue TELLE QU'ELLE A ÉTÉ SAISIE** · ces
+  colonnes étaient libres, gardées en texte ; « 150.000 » sortait « 150,00 ». Le
+  service sert le texte, l'écran et la liasse l'écrivent tel quel (tests serveur
+  avec le classeur relu, test client).
+- **M2** · première piste `minmax(11rem, 1.6fr)` (`lib/grille-note.ts`), gelée.
+- **M3 · délais à rebours de l'assemblée forme par forme** (`delaisAvantAssemblee`)
+  · art. 140 pour SA, SAS et SARL avec commissaire ; AUDCIF art. 71 avec
+  commissaire (toute forme) ; SNC et SCS · quinze jours (art. 288, 306) ; SARL sans
+  commissaire · quinze jours (art. 345). Commissaire lu sur la table des mandats
+  (mandat couvrant ou prorogé) · sans mandat, jalon EN ATTENTE (« Sans commissaire
+  enregistré »), aucun retard fabriqué. SOURCE LUE ET À DIRE · l'AUDCIF art. 71
+  impose aussi les quarante-cinq jours à la SNC et à la SCS qui ONT un commissaire
+  (« s'ils existent ») · servi ainsi, la demande « sans les 45 jours » ne valant que
+  sans commissaire.
+- **M4 · une règle pour les faits déclarés** (`observationDuFait`) · tenu (lève),
+  après l'échéance (lève, « après l'échéance du », `horsDelai`, ambre à l'écran),
+  futur (« prévu », ne lève rien) ; dépôt et communication futurs refusés en 400.
+- **M5** · PV à la DGI depuis l'assemblée servi tant qu'il n'est pas échu, sinon
+  la prochaine occurrence ; le tableau de bord n'écrit « aujourd'hui » que le jour
+  même (« échéance passée (JJ/MM/AAAA) »).
+- **M6** · affectation « En attente du dépôt » (`enAttente`, hors du compte des
+  non calculées) tant que l'exercice n'est pas clôturé et le 31 mars (sinon les six
+  mois de l'AUDCIF art. 72) non passé.
+- **M7** · le jalon d'une autre clôture porte `sansDelai`.
+- Mineurs · motif vidé au succès seul ; exercice visé comparé avant tout `set`
+  (Exercices, deux pages de notes, fiche R2, dates), planning et notes remis à
+  `null` au changement ; lignes demandées par exercice, sorties une fois vidées ;
+  transaction du retrait `{ maxWait: 10_000, timeout: delaiSelonVolume(2n) }` ;
+  `jourSaisiOuEffacement` n'admet que AAAA-MM-JJ (refus nommé
+  `MOTIF_JOUR_AAAA_MM_JJ`, l'écran n'envoie que cette forme) ; bulle hors
+  portefeuille (l'échéancier lit l'assemblée) ; manifeste de la restitution
+  (migration 20270149) ; commentaire de la loi n° 08/010 art. 4 ; art. 216 scindé
+  de l'art. 902, 2° et 3° (jalon « Comptes définitifs, assemblée de clôture et
+  dépôt au registre », sans délai au texte) ; repère du PV DGI d'une société du
+  portefeuille au 10 avril reporté ; `thead` et `scope="col"`.
+
+## Relevés en attente (relecture 2, non codés)
+
+- Associé unique personne morale ET procédure collective · le corpus ne concilie
+  pas l'art. 201 al. 4 (transmission sans liquidation) et l'art. 203 al. 2
+  (procédure collective) · question à Manasse, rien de codé.
+- Recalage des étapes 17 et 18 et du dépôt au RCCM (étape 24) par l'assemblée
+  DÉCLARÉE hors portefeuille · le planning de base reste sur l'assemblée au sixième
+  mois ; seule l'échéancier fiscal lit l'assemblée hors portefeuille.
+- Jalon RCCM (étape 24) sans geste qui le lève · comportement antérieur, inchangé.
+
 ## Reste
 
 - Intégration sur `main` (non faite, à la demande).

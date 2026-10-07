@@ -46,6 +46,7 @@ Les constats d'origine sont dans `docs/recensement-corrections-restantes.md` (F1
    - La **date de dépôt est déclarée** sur l'exercice.
    - L'échéance n'est calculée qu'une fois cette date posée, sans elle rien n'est calculé.
 4. **Conséquence arithmétique de l'art. 140 AUSCGIE, à servir en information :** pour une assemblée au 31 mars, les états doivent parvenir aux commissaires aux comptes au plus tard le 14 février (le 15 février en année bissextile).
+   - **Forme par forme (relecture 2)** : l'art. 140 ne vise que « les sociétés anonymes, les sociétés par actions simplifiées et, le cas échéant, [...] les sociétés à responsabilité limitée » ; l'AUDCIF art. 71 l'envoi aux commissaires « s'ils existent ». La SNC et la SCS communiquent leurs documents aux associés quinze jours avant l'assemblée (AUSCGIE art. 288 et 306), l'associé de SARL exerce son droit de communication durant les quinze jours qui la précèdent (art. 345). Seule la date de l'assemblée change ; un commissaire se lit sur la table des mandats, et sans mandat enregistré le délai qui le suppose n'est pas calculé (jalon en attente, aucun retard fabriqué).
 5. **Entreprise minière du portefeuille :** dividende prioritaire déclaré au plus tard le 15 mai, sans attendre l'assemblée.
    - Cela n'est servi que sur un **second fait déclaré** (entreprise minière).
    - Ce point est **à confirmer sur le texte même de la LF 2026**, que le corpus ne donne qu'en résumé, avec des numéros divergents.

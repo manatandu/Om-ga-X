@@ -1,4 +1,5 @@
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { delaiSelonVolume } from '../../common/prisma-retry.util';
 import {
   estTableauEffectifsSeizeColonnes,
   LIBELLES_FORMAT_HUIT_COLONNES,
@@ -1372,12 +1373,18 @@ export class NoteAnnexeService {
     if (lignes.length === 0) {
       throw new NotFoundException(`La note ${codeNote} ne porte plus de saisie au format antérieur sur cet exercice.`);
     }
-    await transactionJournalisee(this.prisma, async (tx) => {
-      for (const l of lignes) {
-        await tx.saisieNote.update({ where: { id: l.id }, data: { motifRetrait: texte, updatedBy: userId } });
-        await tx.saisieNote.delete({ where: { id: l.id } });
-      }
-    });
+    // Deux écritures par ligne, chacune au journal d'audit · le délai suit le
+    // volume, selon la convention du dépôt (`delaiSelonVolume`).
+    await transactionJournalisee(
+      this.prisma,
+      async (tx) => {
+        for (const l of lignes) {
+          await tx.saisieNote.update({ where: { id: l.id }, data: { motifRetrait: texte, updatedBy: userId } });
+          await tx.saisieNote.delete({ where: { id: l.id } });
+        }
+      },
+      { maxWait: 10_000, timeout: delaiSelonVolume(2 * lignes.length) },
+    );
     return { retirees: lignes.length };
   }
 

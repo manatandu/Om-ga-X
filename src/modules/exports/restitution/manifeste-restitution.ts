@@ -112,6 +112,14 @@ archive :
 
 ${nonAuditees.map((t) => `- ${t} · ${NON_AUDITES_MOTIVES[t] ?? 'motif non classé'}`).join('\n')}
 
+**Une migration a déplacé des lignes hors du journal d'audit.** La migration
+\`20270149000000_effectifs_seize_colonnes\` (notes 20B et 29B passées à seize
+colonnes ventilées M / F) a porté les saisies du personnel propre faites au
+format à huit colonnes à la colonne 100 + k, k étant leur ancienne colonne,
+par une instruction SQL qui ne laisse aucun maillon. Elles se lisent dans
+\`${fichierDeLaTable('SaisieNote')}\`, colonne 100 et au-delà, telles qu'elles
+avaient été saisies ; leur retrait, lui, est journalisé avec son motif.
+
 ## Décisions d'OmegaX, et non règles de droit
 
 Aucun texte lu n'impose la restitution d'un dossier complet, n'en fixe le

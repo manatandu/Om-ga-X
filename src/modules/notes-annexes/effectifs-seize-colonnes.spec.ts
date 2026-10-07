@@ -19,6 +19,7 @@ import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import * as ExcelJS from 'exceljs';
 import { ExportService } from '../exports/export.service';
+import { delaiSelonVolume } from '../../common/prisma-retry.util';
 
 function serviceAvec(saisies: Array<Record<string, unknown>>) {
   const ecriture = {
@@ -206,7 +207,7 @@ describe('Retirer la saisie au format antérieur (notes 20B et 29B)', () => {
       tenant: { findUnique: jest.fn().mockResolvedValue({ referentiel: 'SYCEBNL' }) },
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', statut: 'CLOTURE' }) },
       saisieNote: { findMany: jest.fn().mockResolvedValue(lignes) },
-      $transaction: jest.fn().mockImplementation((fn: (t: unknown) => Promise<unknown>) => fn(tx)),
+      $transaction: jest.fn().mockImplementation((fn: (t: unknown) => Promise<unknown>, _options?: unknown) => fn(tx)),
     };
     const service = new NoteAnnexeService({} as never, {} as never, prisma as never, {} as never, {} as never);
     return { service, prisma, tx, appels };
@@ -223,6 +224,8 @@ describe('Retirer la saisie au format antérieur (notes 20B et 29B)', () => {
       'delete s2',
     ]);
     expect(tx.saisieNote.deleteMany).not.toHaveBeenCalled();
+    // Le délai de la transaction suit le volume (deux écritures par ligne).
+    expect(prisma.$transaction.mock.calls[0][1]).toEqual({ maxWait: 10_000, timeout: delaiSelonVolume(4) });
     // Ne vise que les lignes gardées hors de la contexture.
     expect(prisma.saisieNote.findMany.mock.calls[0][0].where).toEqual({
       tenantId: 't',

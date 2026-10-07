@@ -285,6 +285,14 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
     expect(deplie).toContain('Sa qualification comme preuve revient à un juriste.');
   });
 
+  it('dit que la migration 20270149 a déplacé des saisies hors du journal d’audit (relecture 2)', () => {
+    const deplie = manifeste.replace(/\s+/g, ' ');
+    expect(deplie).toContain("Une migration a déplacé des lignes hors du journal d'audit.");
+    expect(deplie).toContain('20270149000000_effectifs_seize_colonnes');
+    expect(deplie).toContain('à la colonne 100 + k, k étant leur ancienne colonne');
+    expect(deplie).toContain('saisie-note.csv');
+  });
+
   it('fonde le maillon EXTRACTION aussi sur l’art. 219, 14° du Code du numérique', () => {
     // D4-C3 · « aucun texte lu n'impose de journaliser une extraction » était
     // une lacune déclarée à tort · une restitution copie des données à

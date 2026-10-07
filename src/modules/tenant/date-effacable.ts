@@ -47,23 +47,31 @@ function jourDuCalendrier(valeur: string): boolean {
   return d.getUTCFullYear() === annee && d.getUTCMonth() === mois - 1 && d.getUTCDate() === jour;
 }
 
+/** Le refus nommé d'un jour qui n'est pas écrit AAAA-MM-JJ. */
+export const MOTIF_JOUR_AAAA_MM_JJ =
+  'Un jour se déclare au format AAAA-MM-JJ, sans heure ni fuseau · « 2026-10-06T23:30:00Z » est déjà le 7 à ' +
+  'Kinshasa, et sa lecture donnait le 6.';
+
 /**
- * LE JOUR SAISI, à minuit UTC · même lecture que `dateSaisieOuEffacement`
- * (absent, effacement, refus d'une date illisible ou absente du calendrier),
- * puis le JOUR ÉCRIT en tête (AAAA-MM-JJ) quand il y en a un · une heure
- * portant un fuseau (« 2027-03-20T23:30:00-05:00 ») ne fait jamais glisser la
- * date au lendemain. Sans jour écrit en tête, le jour UTC de l'instant lu.
- * Sert les dates de faits déclarés (assemblée, dépôt, dissolution,
- * nomination), qui sont des JOURS (`common/echeance.ts`).
+ * LE JOUR SAISI, à minuit UTC · absent = inchangé, vide ou `null` =
+ * effacement, sinon un JOUR écrit AAAA-MM-JJ, et rien d'autre (relecture 2) ·
+ * une heure avec fuseau ne se lit pas sans choisir un fuseau, et le jour UTC
+ * de « 2026-10-06T23:30:00Z » est le 6 quand Kinshasa est déjà le 7. Refus
+ * nommé (`MOTIF_JOUR_AAAA_MM_JJ`) ; un jour absent du calendrier
+ * (« 2026-02-30 ») est refusé par la règle commune. L'écran n'envoie que
+ * cette forme (champs `type="date"`, dates servies coupées à dix
+ * caractères). Sert les dates de faits déclarés (assemblée, dépôt,
+ * communication, dissolution, nomination), qui sont des JOURS
+ * (`common/echeance.ts`).
  */
 export function jourSaisiOuEffacement(valeur: string | null | undefined): Date | null | undefined {
-  const lue = dateSaisieOuEffacement(valeur);
-  if (lue === undefined || lue === null) return lue;
-  const tete = /^(\d{4})-(\d{2})-(\d{2})/.exec(valeur!.trim());
-  if (tete) {
-    const d = new Date(0);
-    d.setUTCFullYear(Number(tete[1]), Number(tete[2]) - 1, Number(tete[3]));
-    return d;
-  }
-  return new Date(Date.UTC(lue.getUTCFullYear(), lue.getUTCMonth(), lue.getUTCDate()));
+  if (valeur === undefined) return undefined;
+  if (valeur === null || valeur.trim() === '') return null;
+  const tete = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valeur.trim());
+  if (!tete) throw new BadRequestException(MOTIF_JOUR_AAAA_MM_JJ);
+  // Jour absent du calendrier · même refus que partout ailleurs.
+  dateSaisieOuEffacement(valeur.trim());
+  const d = new Date(0);
+  d.setUTCFullYear(Number(tete[1]), Number(tete[2]) - 1, Number(tete[3]));
+  return d;
 }

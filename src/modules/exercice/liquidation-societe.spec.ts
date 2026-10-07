@@ -78,7 +78,15 @@ describe('Liquidation d’une société commerciale au planning', () => {
       jalonsLiquidation({ ...base, regimeLiquidation: RegimeLiquidation.ARTICLE_223_1 }, EX_2026, AUJOURDHUI),
     );
     expect(amiable.get('Publication de la nomination du liquidateur')!.sanction).toContain('Article 902, 1°');
-    expect(amiable.get('Clôture de la liquidation')!.sanction).toContain('Article 902, 2° et 3°');
+    // Les trois ans de l'art. 216 n'ont pas de sanction pénale (saisine du juge, al. 2) ·
+    // l'art. 902, 2° et 3° vise la convocation et le dépôt, jalon à part, sans délai au texte.
+    expect(amiable.get('Clôture de la liquidation')!.sanction).toBeNull();
+    expect(amiable.get('Clôture de la liquidation')!.detail).toContain('saisir la juridiction compétente');
+    const depot = amiable.get('Comptes définitifs, assemblée de clôture et dépôt au registre')!;
+    expect(depot.sanction).toContain('Article 902, 2° et 3°');
+    expect(depot.echeance).toBeNull();
+    expect(depot.sansDelai).toBe(true);
+    expect(depot.enRetard).toBe(false);
     expect(amiable.get('Rapport du liquidateur à l’assemblée des associés')!.sanction).toBeNull();
     expect(amiable.get('États financiers annuels et rapport écrit du liquidateur')!.sanction).toBeNull();
     const judiciaire = parLibelle(
@@ -217,12 +225,19 @@ describe('Liquidation · faits déclarés au dossier', () => {
     expect(capture.data).toMatchObject({ regimeLiquidation: 'ARTICLE_223_1', associeUniquePersonneMorale: false });
   });
 
-  it('une date absente du calendrier est refusée, nommée ; une heure à fuseau ne fait pas glisser le jour', async () => {
+  it('une date absente du calendrier est refusée, nommée ; un jour se déclare AAAA-MM-JJ, jamais avec heure et fuseau', async () => {
     const sarl = { formeJuridiqueSyscohada: FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE };
     await expect(service(sarl).modifierIdentite('t1', { dateDissolution: '2026-02-30' })).rejects.toThrow('absente du calendrier');
+    // « 2026-05-31T23:30:00-05:00 » est le 1er juin à Kinshasa · aucun fuseau n'est choisi en silence.
+    await expect(service(sarl).modifierIdentite('t1', { dateDissolution: '2026-05-31T23:30:00-05:00' })).rejects.toThrow(
+      'format AAAA-MM-JJ',
+    );
+    await expect(service(sarl).modifierIdentite('t1', { dateNominationLiquidateur: '2026-06-15T00:00:00Z' })).rejects.toThrow(
+      'format AAAA-MM-JJ',
+    );
     const capture: { data?: Record<string, unknown> } = {};
-    await service(sarl, capture).modifierIdentite('t1', { dateDissolution: '2026-05-31T23:30:00-05:00' });
-    expect((capture.data!.dateDissolution as Date).toISOString().slice(0, 10)).toBe('2026-05-31');
+    await service(sarl, capture).modifierIdentite('t1', { dateDissolution: '2026-05-31' });
+    expect((capture.data!.dateDissolution as Date).toISOString()).toBe('2026-05-31T00:00:00.000Z');
   });
 
   it('nomination avant la dissolution refusée ; régime refusé hors société commerciale', async () => {

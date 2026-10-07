@@ -124,7 +124,7 @@ export function DatesPortefeuilleExercice({
           texte={
             portefeuille
               ? 'L’assemblée générale ordinaire statuant sur l’exercice clos au 31 décembre se tient au plus tard le 31 mars, et son procès-verbal part à l’Administration des recettes non fiscales dans les dix jours. L’affectation des résultats intervient dans les soixante jours du dépôt des états financiers au ministère du Portefeuille. Ces dates ne sont dans aucun livre : déclarez-les pour que le planning calcule les échéances et lève les jalons accomplis. La date de l’assemblée fait aussi courir le procès-verbal à transmettre à l’Administration des impôts.'
-              : 'La date de l’assemblée générale ordinaire qui statue sur l’exercice fait courir le délai du procès-verbal à transmettre à l’Administration des impôts. Elle n’est dans aucun livre : déclarez-la. Sans elle, le planning retient la date limite de l’assemblée.'
+              : 'La date de l’assemblée générale ordinaire qui statue sur l’exercice fait courir le délai du procès-verbal à transmettre à l’Administration des impôts, dix jours après la tenue. C’est l’échéancier fiscal qui la lit, pas le planning de clôture. Elle n’est dans aucun livre : déclarez-la. Sans elle, l’échéancier retient un repère, à corriger sur la date réelle.'
           }
           source={portefeuille ? 'Ordonnance-loi n° 13/003, art. 112 et 113 ; loi de procédures fiscales, art. 13 bis' : 'Loi de procédures fiscales, art. 13 bis'}
         />

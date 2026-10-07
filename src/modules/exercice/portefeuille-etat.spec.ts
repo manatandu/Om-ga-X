@@ -257,7 +257,7 @@ describe('Entreprise du portefeuille de l’État · O.-L. n° 13/003', () => {
     expect(roles('arreterComptes')).toEqual([RoleUtilisateur.ADMIN_CABINET]);
   });
 
-  it('les dates · un JOUR lu par la règle commune · avant la clôture, hors calendrier, illisible refusés ; fuseau sans glissement', async () => {
+  it('les dates · un JOUR lu par la règle commune · avant la clôture, hors calendrier, illisible, avec heure refusés', async () => {
     const prisma = {
       exercice: {
         findFirst: jest.fn().mockResolvedValue({
@@ -307,8 +307,13 @@ describe('Entreprise du portefeuille de l’État · O.-L. n° 13/003', () => {
       s.declarerDatesPortefeuille('t1', 'e1', { dateTransmissionPvPortefeuille: '2099-01-10' }),
     ).rejects.toThrow('à venir ne se déclare pas');
     await s.declarerDatesPortefeuille('t1', 'e1', { dateAssembleeGenerale: '2099-03-20' });
+    // Un jour s'écrit AAAA-MM-JJ · une heure à fuseau est refusée, nommée
+    // (« 2026-10-06T23:30:00Z » est déjà le 7 à Kinshasa).
+    for (const heure of ['2027-03-20T23:30:00-05:00', '2026-10-06T23:30:00Z']) {
+      await expect(s.declarerDatesPortefeuille('t1', 'e1', { dateAssembleeGenerale: heure })).rejects.toThrow('format AAAA-MM-JJ');
+    }
     await s.declarerDatesPortefeuille('t1', 'e1', {
-      dateAssembleeGenerale: '2027-03-20T23:30:00-05:00',
+      dateAssembleeGenerale: '2027-03-20',
       dateDepotEtatsPortefeuille: null,
       dateTransmissionPvPortefeuille: '',
     });
