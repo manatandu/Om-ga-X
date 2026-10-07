@@ -512,15 +512,22 @@ du compte 19 EXCLUT « les provisions correspondant à des risques à moins d'un
 an (utiliser 499 – Provisions pour risques à court terme) », et celle du 59
 cite « exemple : provisions pour pertes de change » ; la règle « 194 seul »
 écrite ici jusqu'au 2026-10-04 était fausse). FINANCIER À COURT TERME aux deux
-(4997 ou 599, par le 6791, repris au 7791) · le 56, le 54, les fournisseurs
+(4997 ou 599, par le 6791, repris au 7791) · le 56, les fournisseurs
 d'investissements (481 aux deux, 404 au SYSCOHADA · ch. 22 § 1.1, « charge ou
 produit financier », comme le réalisé d'A6) et les intérêts courus (276 aux
 deux, 166 et 176 au SYSCOHADA, 186 au SYCEBNL · à moins d'un an, fiche du
 compte 19). Écart au 478 / 479 dans la subdivision du plan AUX DEUX (SYCEBNL,
 Partie 2 ch. 2 · 47811 / 47818, 4782, 47831 / 47838, 4784, symétriques au
-479 ; 481 et 404 aux dettes FINANCIÈRES 4784 / 4794) ; un 54 au 4786 / 4797
-(ch. 22 § 3.2.2) ; titres 274 et 50 (508 compris, lecture d'OmegaX) jamais
-réévalués (§ 1.3), leurs intérêts courus si. La bascule d'un dossier SYCEBNL
+479 ; 481 et 404 aux dettes FINANCIÈRES 4784 / 4794) ; titres 274 et 50 (508
+compris, lecture d'OmegaX) jamais réévalués (§ 1.3), leurs intérêts courus si ;
+le 54 non plus (décision par la loi du 2026-10-07, quatrième lot, point 8 ·
+art. 54, « créances et dettes » ; Titre VII, compte 54, prix du marché ou coût
+historique, nominaux hors bilan, ch. 22 § 3.1), nommé avec son motif · les
+4786 et 4797 portent la variation de VALEUR de l'instrument (§ 3.2.2 ;
+art. 58-2), jamais un écart de conversion. Aucune couverture n'est connue du
+calcul · la bulle dit qu'une position couverte se traite à la main (art. 58-3,
+58-4) et sort de la position globale (§ 2.2.3) ; la déclaration des couvertures
+est une ligne à part du suivi. La bascule d'un dossier SYCEBNL
 (reprise au 194, dotation au 4991 dans la même réévaluation) est DITE,
 chiffrée, sans écriture de reclassement. La provision en place se lit sur les écritures des réévaluations
 ANTÉRIEURES, jamais sur le solde (le 4991 porte d'autres risques, et N+1
@@ -1980,12 +1987,52 @@ exercice, aucun anniversaire de la dissolution. Faits à côté de la dissolutio
 (`dateNominationLiquidateur`, `regimeLiquidation`, `associeUniquePersonneMorale`) ;
 art. 201 al. 4 refuse la liquidation à l'associé unique personne morale, mais la
 PROCÉDURE COLLECTIVE lui reste ouverte (AUPCAP art. 53 ; AUSCGIE art. 200, 6° et
-203 al. 2, décision du 2026-10-07), sans mention de l'art. 204. L'EXERCICE ARRÊTÉ
-À LA DISSOLUTION n'est PAS servi · ligne à part (`docs/dissolution-a-reprendre.md`,
-branche `travail/dissolution`), seize constats et sept questions ouverts.
+203 al. 2, décision du 2026-10-07), sans mention de l'art. 204.
 `exercice/liquidation-societe.ts` · chapitre 1 (bilan avant liquidation, art. 266,
 216, 217, 219) pour toute société hors procédure collective (art. 203, dite) ;
-art. 228, 232, 233 dans les SEULS cas de l'art. 223.
+art. 228, 232, 233 dans les SEULS cas de l'art. 223. L'EXERCICE ARRÊTÉ À LA
+DISSOLUTION (décisions par la loi du 2026-10-07, quatrième lot, points 1 à 7,
+`docs/decisions-par-la-loi-2026-10-07-quater.md`) · (1) l'arrêt
+(`arret-dissolution.ts`, `arreterALaDissolution`, administrateur) fait passer à
+l'exercice de liquidation, né du lendemain, les écritures datées après la
+dissolution SANS RIEN CHANGER d'elles (date, numéro, lignes, statut · AUDCIF
+art. 7, 22 et 59), mises à jour UNITAIRES au journal d'audit ; les actes de
+module qui portent l'exercice suivent leur écriture (table écrite à la main), un
+conflit d'unicité nommé avec son issue ; un acte dont le MONTANT se calcule sur
+la période (dotation, dérogatoire, reprise de subvention, démantèlement, impôt
+constaté, réévaluations de clôture · `ACTES_DE_LA_PERIODE`, art. 59) NE SUIT
+PAS · déplacé, la dotation de l'année entière s'ajoutait à celle de l'exercice
+arrêté (1 200 000 puis 600 000) ; l'arrêt, son annulation et le rattachement le
+NOMMENT et refusent, et le retirent sur l'accord du cabinet
+(`retirerActesDeLaPeriode`, jamais d'office · au brouillard avec son écriture,
+validée par inscription en négatif), à refaire sur chaque exercice ; OD
+analytique et engagement suivent leur date, relevé d'unités d'œuvre nommé ;
+SANS LIQUIDATION (art. 201 al. 4) rien ne suit l'exercice arrêté · un
+postérieur vide est retiré, occupé il est nommé, et sa clôture suit la branche
+de fin (aucun report, comptes encore soldés nommés) ; les clôtures suivent leurs dates ;
+l'analyse des journaux nomme les numéros partis. Un seul exercice postérieur
+est re-daté (son à-nouveau provisoire retiré), deux sont refusés avec l'issue ;
+l'arrêt s'ANNULE (« Annuler l'arrêt »), et tant qu'il tient la dissolution ne
+change pas ; aucun exercice civil ne s'ouvre après la dissolution ; un exercice
+repris se RATTACHE à la liquidation ; la liquidation ne se clôture qu'à la
+clôture déclarée, sans exercice suivant ; l'exercice est relu dans la
+transaction de l'écriture ; le bouton d'arrêt lit le refus du serveur
+(`motifRefusArret`). (2) UNE ASSIETTE, DEUX COTISATIONS (loi n° 23/053, art. 11,
+1°, 12 al. 4, 13 al. 3) · la seconde est l'impôt calculé une fois sur le TOTAL
+(report et minimum de l'art. 57 sur le chiffre d'affaires total) moins la
+première et les acomptes (`bilansSuccessifs`) ; un réglé au-delà est DIT, sans
+suite. (3) Acomptes de l'année de la dissolution dus avant l'échéance de la
+dernière cotisation, aucun ensuite (LPF art. 57 bis), au registre comme au
+résultat fiscal (`echeancierDissolution().retenir`, une règle). (4) Aucune déclaration
+annuelle de l'IS pour l'année de la dissolution ni les suivantes (LPF art. 16,
+règle spéciale). (5) « Dans le mois » de DATE À DATE (AUPSRVE art. 1-14 par
+analogie), reporté au jour ouvrable, la lecture du CPC art. 195 dite quand elle
+diffère. (6) États et assemblée des art. 232 et 233 à chaque 31 décembre
+strictement entre la dissolution et la clôture déclarée ; la coopérative par
+l'AUSCOOP, art. 196, sans sanction de l'AUSCGIE. (7) La coopérative et la
+procédure collective doivent les cotisations ; la coopérative agricole de forme
+civile exemptée (art. 5, 2°) n'a aucun champ, réserve dite. Le planning d'une
+clôture en cours de mois compte ses délais de date à date.
 
 **Compte de résultat · RQP, TQP, XE (2026-09-27, audit final F89).** Postes du
 ch. 33 imprimés non nuls seulement, sans code REF ; une référence de formule est

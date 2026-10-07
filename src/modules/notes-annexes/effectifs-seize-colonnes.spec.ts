@@ -33,6 +33,8 @@ function serviceAvec(saisies: Array<Record<string, unknown>>) {
   } as unknown as ExerciceService;
   const prisma = {
     rattachementNote: { findMany: jest.fn().mockResolvedValue([]) },
+    // Le transfert de dépréciation à la mise en service (quatrième lot, point 9) · aucun ici.
+    depreciationImmobilisation: { findMany: jest.fn().mockResolvedValue([]) },
     provisionRisqueCharge: { findMany: jest.fn().mockResolvedValue([]) },
     saisieNote: { findMany: jest.fn().mockResolvedValue(saisies) },
     exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', dateFin: new Date('2026-12-31T00:00:00Z') }) },
@@ -123,6 +125,8 @@ describe('Notes 20B et 29B · personnel propre à seize colonnes', () => {
     } as unknown as ExerciceService;
     const prisma = {
       rattachementNote: { findMany: jest.fn().mockResolvedValue([]) },
+      // Le transfert de dépréciation à la mise en service (quatrième lot, point 9) · aucun ici.
+      depreciationImmobilisation: { findMany: jest.fn().mockResolvedValue([]) },
       provisionRisqueCharge: { findMany: jest.fn().mockResolvedValue([]) },
       saisieNote: {
         findMany: jest.fn().mockResolvedValue([

@@ -14,6 +14,7 @@ import {
   StatutExercice,
   TypeCompteDetailTotal,
 } from '@prisma/client';
+import { lignesEnNegatif } from './lignes-en-negatif';
 import { CriteresRecherche, filtreRecherche } from './recherche-ecritures';
 import { CreerEcritureDto, ImputationOuvertureDto, LigneEcritureDto } from './dto/creer-ecriture.dto';
 import { CorrigerEcritureDto } from './dto/corriger-ecriture.dto';
@@ -358,6 +359,31 @@ export interface PieceEntree {
    * restent joués.
    */
   exigerVentilationObligatoire?: boolean;
+}
+
+/**
+ * L'EXERCICE SE RELIT DANS LA TRANSACTION QUI ÉCRIT (constat 10 de la
+ * relecture de la dissolution) · lu avant, il pouvait être arrêté à la
+ * dissolution entre la lecture et l'écriture, et l'écriture entrait datée
+ * hors de son exercice (CLAUDE.md § 10 bis). Lu ici, sous isolation
+ * sérialisable, l'arrêt et la saisie se rejouent l'un après l'autre.
+ */
+async function relireLExerciceDansLaTransaction(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  exerciceId: string,
+  date: Date,
+): Promise<void> {
+  const exercice = await tx.exercice.findFirst({
+    where: { id: exerciceId, tenantId },
+    select: { dateDebut: true, dateFin: true, statut: true },
+  });
+  if (!exercice) throw new BadRequestException('Exercice introuvable pour ce tenant');
+  if (exercice.statut === StatutExercice.CLOTURE) {
+    throw new ForbiddenException("Impossible d'enregistrer une écriture sur un exercice clôturé");
+  }
+  const horsExercice = motifDateHorsExercice(date, exercice);
+  if (horsExercice) throw new BadRequestException(horsExercice);
 }
 
 /**
@@ -825,6 +851,7 @@ export class EcritureService {
     return avecRetrySerialisable(
       this.prisma,
       async (tx) => {
+        await relireLExerciceDansLaTransaction(tx, tenantId, dto.exerciceId, date);
         const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, journal, dto.exerciceId, date, tx);
         const ecriture = await tx.ecriture.create({
           data: {
@@ -1062,6 +1089,11 @@ export class EcritureService {
     return avecRetrySerialisable(
       this.prisma,
       async (tx) => {
+        // L'écriture a pu changer d'exercice depuis la lecture (arrêt à la
+        // dissolution) · son exercice se relit ici, avec la date.
+        const tenue = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { exerciceId: true } });
+        if (!tenue) throw new NotFoundException('Écriture introuvable');
+        await relireLExerciceDansLaTransaction(tx, tenantId, tenue.exerciceId, date);
         if (dto.lignes) {
           // Les ventilations analytiques suivent leurs lignes (onDelete: Cascade
           // sur VentilationAnalytique.ligne) : remplacer les lignes remplace
@@ -3728,44 +3760,4 @@ export class EcritureService {
   }
 }
 
-/**
- * LES LIGNES D'UNE INSCRIPTION EN NÉGATIF · AUDCIF art. 20, al. 2. Les MÊMES
- * comptes, dans les MÊMES sens, au signe près ; ni lettre ni pointage, qui
- * appartiennent à la ligne d'origine. Une seule écriture de la règle, servie
- * à la correction d'une écriture et à l'annulation d'une réévaluation des
- * devises (ligne A6, D6).
- */
-export function lignesEnNegatif(lignes: Array<Prisma.LigneEcritureGetPayload<{ include: { ventilations: true } }>>) {
-  return lignes.map((l) => ({
-    compteId: l.compteId,
-    libelle: l.libelle,
-    debit: l.debit.negated(),
-    credit: l.credit.negated(),
-    tauxTvaId: l.tauxTvaId,
-    dateEcheance: l.dateEcheance,
-    // La contre-passation reprend les deux dates de l'origine · une
-    // inscription en négatif annule une opération, elle ne la
-    // redate pas. La retenue contre-passée doit sortir du registre
-    // par le MÊME mois qu'elle y est entrée, sans quoi elle
-    // creuserait un mois et en gonflerait un autre.
-    dateVersement: l.dateVersement,
-    // LA DEVISE ET L'ANALYTIQUE SUIVENT (audit final F1). Sans
-    // elles, le grand livre revenait à zéro pendant que le réalisé
-    // par section et la position en devise gardaient l'opération
-    // annulée. Le montant en devise se recopie SANS SIGNE, comme
-    // il est stocké : c'est le sens de la ligne qui le donne
-    // (lettrage, réévaluation). Les ventilations, elles, portent
-    // leur propre débit et crédit, et passent en négatif.
-    deviseId: l.deviseId,
-    montantDevise: l.montantDevise,
-    coursApplique: l.coursApplique,
-    ventilations: {
-      create: l.ventilations.map((v) => ({
-        sectionId: v.sectionId,
-        planId: v.planId,
-        debit: v.debit.negated(),
-        credit: v.credit.negated(),
-      })),
-    },
-  }));
-}
+export { lignesEnNegatif };

@@ -71,8 +71,24 @@ const CREANCES_DETTES_TRESORERIE = /^(27|4|5)/;
 /** Titres de la classe 2 et de la classe 5 (§ 1.3), hors leurs intérêts courus (506), qui sont des créances. */
 const TITRES_HORS_CLASSE_26 = /^(274|50(?!6))/;
 
+/**
+ * LE 54 NE SE RÉÉVALUE PAS AU COURS DE CLÔTURE (décision par la loi du
+ * 2026-10-07, quatrième lot, point 8). L'AUDCIF, art. 54, vise « les créances
+ * et dettes libellées en monnaies étrangères » ; l'instrument de trésorerie a
+ * sa propre règle de valeur (Titre VII, compte 54 · « au prix du marché » sur
+ * les marchés organisés, « au coût historique » sur les autres ; les montants
+ * nominaux « ne sont pas comptabilisés au bilan », ch. 22 § 3.1). Les
+ * « différences d'évaluation » des 4786 et 4797 (ch. 22 § 3.2.2 ; art. 58-2)
+ * sont les variations de VALEUR de l'instrument, une donnée de marché, jamais
+ * la conversion d'un solde par un cours · la conversion du 54 par ce module
+ * (ligne A5 ter) posait un montant sans texte au 4786 ou au 4797, et sa
+ * provision au 4997. Le SYCEBNL n'ouvre aucun 54 · la règle vaut aux deux.
+ */
+const INSTRUMENTS_DE_TRESORERIE = /^54/;
+
 export function seReevalueALaCloture(numero: string, referentiel: Referentiel): boolean {
   if (TITRES_HORS_CLASSE_26.test(numero)) return false;
+  if (INSTRUMENTS_DE_TRESORERIE.test(numero)) return false;
   return CREANCES_DETTES_TRESORERIE.test(numero) || DETTES_CLASSE_1[referentiel].test(numero);
 }
 
@@ -89,6 +105,12 @@ export function motifHorsReevaluation(numero: string, referentiel: Referentiel):
     return (
       "autres titres de placement et créances assimilées · lu en TITRE, part « créances assimilées » comprise, maintenu au " +
       "cours du jour de l'acquisition (AUDCIF Titre VIII ch. 22 § 1.3) · lecture d'OmegaX ; une créance de revenu se porte au 506"
+    );
+  if (INSTRUMENTS_DE_TRESORERIE.test(numero))
+    return (
+      'instrument de trésorerie · évalué au prix du marché ou au coût historique, nominal hors bilan, jamais converti au ' +
+      'cours de clôture (AUDCIF art. 54 ; Titre VII, compte 54 ; Titre VIII ch. 22 § 3.1 et § 3.2.2) · sa variation de ' +
+      'valeur et une couverture se passent à la main (art. 58-1 à 58-4)'
     );
   if (/^26/.test(numero) || TITRES_HORS_CLASSE_26.test(numero))
     return "titres · maintenus au cours du jour de l'acquisition (AUDCIF Titre VIII ch. 22 § 1.3)";

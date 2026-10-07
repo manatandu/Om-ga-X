@@ -46,7 +46,11 @@ describe('premier jour de la période non encore clôturée', () => {
 /* Le câblage · écrit en même temps que la règle, pas après (passe F4a). */
 function service(premier: Date) {
   const cree = jest.fn().mockImplementation(({ data }: { data: unknown }) => Promise.resolve(data));
-  const tx = { ecriture: { create: cree } };
+  // La transaction RELIT l'exercice (constat 10 de la relecture de la dissolution).
+  const tx = {
+    ecriture: { create: cree },
+    exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: J('2026-01-01'), dateFin: J('2026-12-31'), statut: 'OUVERT' }) },
+  };
   const prisma = {
     exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: J('2026-01-01'), dateFin: J('2026-12-31'), statut: 'OUVERT' }) },
     compte: {

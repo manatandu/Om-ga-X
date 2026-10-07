@@ -110,10 +110,59 @@ describe('fiche R2 et dates de l’assemblée à l’écran', () => {
 });
 
 /**
- * DÉCISIONS PAR LA LOI DU 2026-10-07 · dividende prioritaire (point 3), fiche
- * R2 (point 4) · ce que l'écran FAIT, lu dans le corps des fonctions.
+ * DÉCISIONS PAR LA LOI DU 2026-10-07 · dissolution (point 2), dividende
+ * prioritaire (point 3), fiche R2 (point 4) · ce que l'écran FAIT, lu dans le
+ * corps des fonctions.
  */
-describe('dividende prioritaire et fiche R2 à l’écran', () => {
+describe('dissolution, dividende prioritaire et fiche R2 à l’écran', () => {
+  it('l’arrêt et la fin de liquidation · routes du serveur, gestes de l’administrateur, réponse d’un exercice quitté jetée', () => {
+    const arret = corps(exercice, 'arreterALaDissolution');
+    expect(arret).toContain('`/exercices/${pour}/arreter-a-la-dissolution`');
+    expect(arret).toContain('if (valable()) setErreur(');
+    const fin = corps(exercice, 'reporterFinLiquidation');
+    expect(fin).toContain('`/exercices/${pour}/fin-de-liquidation`, { dateFin: fin }');
+    expect(fin).toContain('if (valable()) setErreur(');
+    expect(exercice).toContain('{estAdmin && planning.dissolution.arretPropose && (');
+    expect(exercice).toContain("{estAdmin && planning.dissolution.exerciceDeLiquidation && exercice.statut === 'OUVERT' && (");
+  });
+
+  it('la bulle de la dissolution dit l’impôt totalisé, l’arrêt qui déplace les écritures sans les changer, et la fin des acomptes', () => {
+    const debut = exercice.indexOf('titre="Dissolution et liquidation"');
+    const aide = exercice.slice(debut, exercice.indexOf('/>', debut));
+    // Quatrième lot, point 2 · le calcul est fait, la bulle ne le renvoie plus au cabinet.
+    expect(aide).toContain('se calcule une fois sur le total des deux résultats, moins la première cotisation et les acomptes');
+    expect(aide).toContain('sans rien changer d’elles (ni date, ni numéro, ni lignes)');
+    expect(aide).toContain('aucun acompte après l’échéance de la dernière cotisation');
+    expect(aide).toContain('Loi n° 23/053, art. 11, 12 et 13 · LPF, art. 16, 57 bis et 110 bis');
+  });
+
+  it('quatrième lot · annuler l’arrêt et rattacher un exercice repris, routes du serveur, motif du refus montré, clés de jalon uniques', () => {
+    const geste = corps(exercice, 'gesteDissolution');
+    expect(geste).toContain('`/exercices/${pour}/${route}`');
+    expect(geste).toContain('if (valable()) setErreur(');
+    expect(exercice).toContain("'annuler-arret-dissolution',");
+    expect(exercice).toContain("'rattacher-a-la-liquidation',");
+    expect(exercice).toContain('{estAdmin && planning.dissolution.annulationProposee && (');
+    expect(exercice).toContain('{estAdmin && planning.dissolution.rattachementPropose && (');
+    // Constat 15 · le refus que le serveur opposerait se lit avant le clic.
+    expect(exercice).toContain('{planning.dissolution.motifArret}');
+    // Constat 14 · plusieurs situations annuelles partagent étape et libellé.
+    expect(exercice).toContain('key={`${j.etape}-${j.libelle}-${j.debut ?? \'\'}`}');
+  });
+
+  it('impôt de l’année de la dissolution · montants servis par le serveur, écrits par lib/montants, l’excédent dit en rouge', () => {
+    const fiscalite = lire('pages/FiscalitePage.tsx');
+    const debut = fiscalite.indexOf('{resultat.bilansSuccessifs?.totalisation && (');
+    expect(debut).toBeGreaterThan(-1);
+    const bloc = fiscalite.slice(debut, fiscalite.indexOf('</table>', debut));
+    for (const champ of ['totalisation.total', 'totalisation.impotTotal', 'premiereCotisation', 'totalisation.acomptesImputes', 'totalisation.secondeCotisation']) {
+      expect(bloc).toContain(champ);
+    }
+    expect(bloc).toContain('{nombre(valeur)}');
+    expect(bloc).toContain('totalisation.excedent > 0.005');
+    expect(fiscalite).toContain('{resultat.bilansSuccessifs.motif}');
+  });
+
   it('les dates du dividende ne partent qu’avec l’entreprise minière déclarée', () => {
     expect(dates).toContain('const dividende = portefeuille && secteurMinier;');
     for (const libelle of ['Dividende déclaré le', 'Note de perception reçue le', 'Dividende payé le']) {

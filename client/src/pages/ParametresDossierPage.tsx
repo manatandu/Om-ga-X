@@ -195,6 +195,11 @@ export function ParametresDossierPage() {
   const [dateNomination, setDateNomination] = useState('');
   const [regimeLiquidation, setRegimeLiquidation] = useState<RegimeLiquidationSaisi>('PAS_ENCORE_DIT');
   const [associePm, setAssociePm] = useState<ReponseFaitSaisie>('PAS_ENCORE_DIT');
+  // Clôture de la liquidation et deux cotisations spéciales (loi n° 23/053,
+  // art. 13 ; LPF art. 16 · décision par la loi du 2026-10-07, point 2).
+  const [dateClotureLiquidation, setDateClotureLiquidation] = useState('');
+  const [dateDeclActivite, setDateDeclActivite] = useState('');
+  const [dateDeclLiquidation, setDateDeclLiquidation] = useState('');
   // AUSCGIE art. 386 et 414 (SA), 853-2 (SAS) · faits de la dénomination.
   const [modeAdministration, setModeAdministration] = useState<ModeAdministrationSaisi>('PAS_ENCORE_DIT');
   const [associeUnique, setAssocieUnique] = useState<ReponseFaitSaisie>('PAS_ENCORE_DIT');
@@ -264,6 +269,11 @@ export function ParametresDossierPage() {
       setAssocieUnique(p.associeUniqueSas === true ? 'OUI' : p.associeUniqueSas === false ? 'NON' : 'PAS_ENCORE_DIT');
       setPortefeuille(
         p.entreprisePortefeuilleEtat === true ? 'OUI' : p.entreprisePortefeuilleEtat === false ? 'NON' : 'PAS_ENCORE_DIT',
+      );
+      setDateClotureLiquidation(p.dateClotureLiquidation ? p.dateClotureLiquidation.slice(0, 10) : '');
+      setDateDeclActivite(p.dateDeclarationCotisationActivite ? p.dateDeclarationCotisationActivite.slice(0, 10) : '');
+      setDateDeclLiquidation(
+        p.dateDeclarationCotisationLiquidation ? p.dateDeclarationCotisationLiquidation.slice(0, 10) : '',
       );
       setSecteurMinier(
         p.portefeuilleSecteurMinier === true ? 'OUI' : p.portefeuilleSecteurMinier === false ? 'NON' : 'PAS_ENCORE_DIT',
@@ -594,6 +604,19 @@ export function ParametresDossierPage() {
                   { label: 'N° Registre des Sociétés Coopératives', valeur: numeroRsc, set: setNumeroRsc, exemple: '' },
                   { label: 'Dissoute le', valeur: dateDissolution, set: setDateDissolution, exemple: '', date: true },
                   { label: 'Liquidateur(s)', valeur: liquidateurs, set: setLiquidateurs, exemple: '' },
+                  // AUSCOOP art. 185 et 196 ; loi n° 23/053, art. 3 et 13 · la
+                  // coopérative déclare la nomination, la clôture et ses deux
+                  // cotisations spéciales (décision du 2026-10-07, quater, point 7).
+                  { label: 'Liquidateur nommé le', valeur: dateNomination, set: setDateNomination, exemple: '', date: true },
+                  { label: 'Liquidation clôturée le', valeur: dateClotureLiquidation, set: setDateClotureLiquidation, exemple: '', date: true },
+                  { label: 'Cotisation spéciale (activité) déclarée le', valeur: dateDeclActivite, set: setDateDeclActivite, exemple: '', date: true },
+                  {
+                    label: 'Cotisation spéciale (liquidation) déclarée le',
+                    valeur: dateDeclLiquidation,
+                    set: setDateDeclLiquidation,
+                    exemple: '',
+                    date: true,
+                  },
                 ]
               : [
                   { label: 'RCCM', valeur: rccm, set: setRccm, exemple: 'CD/KIN/RCCM/23-B-01234' },
@@ -603,6 +626,21 @@ export function ParametresDossierPage() {
                         { label: 'Dissoute le', valeur: dateDissolution, set: setDateDissolution, exemple: '', date: true },
                         { label: 'Liquidateur(s)', valeur: liquidateurs, set: setLiquidateurs, exemple: '' },
                         { label: 'Liquidateur nommé le', valeur: dateNomination, set: setDateNomination, exemple: '', date: true },
+                        { label: 'Liquidation clôturée le', valeur: dateClotureLiquidation, set: setDateClotureLiquidation, exemple: '', date: true },
+                        {
+                          label: 'Cotisation spéciale (activité) déclarée le',
+                          valeur: dateDeclActivite,
+                          set: setDateDeclActivite,
+                          exemple: '',
+                          date: true,
+                        },
+                        {
+                          label: 'Cotisation spéciale (liquidation) déclarée le',
+                          valeur: dateDeclLiquidation,
+                          set: setDateDeclLiquidation,
+                          exemple: '',
+                          date: true,
+                        },
                       ]
                     : []),
                 ]),
@@ -791,6 +829,9 @@ export function ParametresDossierPage() {
                       dateNominationLiquidateur: dateNomination,
                       regimeLiquidation,
                       associeUniquePersonneMorale: associePm,
+                      dateClotureLiquidation,
+                      dateDeclarationCotisationActivite: dateDeclActivite,
+                      dateDeclarationCotisationLiquidation: dateDeclLiquidation,
                     }),
                   }
                 : {
@@ -804,6 +845,9 @@ export function ParametresDossierPage() {
                       dateNominationLiquidateur: dateNomination,
                       regimeLiquidation,
                       associeUniquePersonneMorale: associePm,
+                      dateClotureLiquidation,
+                      dateDeclarationCotisationActivite: dateDeclActivite,
+                      dateDeclarationCotisationLiquidation: dateDeclLiquidation,
                     }),
                   }
             : {}),
@@ -1221,7 +1265,7 @@ export function ParametresDossierPage() {
                         : estCoop
                           ? 'La société coopérative est immatriculée au Registre des Sociétés Coopératives, pas au RCCM, et ne peut l’être à plusieurs registres. Sa dénomination figure sur ses lettres et factures, suivie de sa forme (« Société Coopérative Simplifiée » · SCOOPS, ou « Société Coopérative avec Conseil d’Administration » · COOP-CA), de l’adresse de son siège et de son numéro à ce registre. Dissoute, elle y ajoute « société en liquidation » et le nom du ou des liquidateurs.'
                           : estSocieteCommerciale(params?.formeJuridiqueSyscohada)
-                            ? 'Le numéro d’impôt est porté en tête de chaque page imprimée. Le RCCM s’imprime sur les livres de commerce, les pièces émises et la correspondance ; un locataire-gérant y ajoute sa qualité. La forme sociale suit la dénomination : la société anonyme y joint son mode d’administration, la SAS à associé unique se désigne « société par actions simplifiée unipersonnelle ». Dissoute, la société est en liquidation dès l’instant de sa dissolution, et ses pièces portent « société en liquidation » et le nom du ou des liquidateurs.'
+                            ? 'Le numéro d’impôt est porté en tête de chaque page imprimée. Le RCCM s’imprime sur les livres de commerce, les pièces émises et la correspondance ; un locataire-gérant y ajoute sa qualité. La forme sociale suit la dénomination : la société anonyme y joint son mode d’administration, la SAS à associé unique se désigne « société par actions simplifiée unipersonnelle ». Dissoute, la société est en liquidation dès l’instant de sa dissolution, et ses pièces portent « société en liquidation » et le nom du ou des liquidateurs. La clôture de la liquidation et le dépôt des deux déclarations de cotisation spéciale (période d’activité, puis dernier bilan de liquidation) se déclarent ici ; le planning de clôture en tire leurs échéances, un mois après la dissolution puis un mois après la clôture de la liquidation.'
                             : 'Le numéro d’impôt est porté en tête de chaque page imprimée. Le RCCM s’imprime sur les livres de commerce, les pièces émises et la correspondance ; un locataire-gérant y ajoute sa qualité.'
                   }
                   source={
@@ -1232,7 +1276,7 @@ export function ParametresDossierPage() {
                         : estCoop
                           ? 'AUSCOOP, art. 19, 74, 77, 183, 205 et 268'
                           : estSocieteCommerciale(params?.formeJuridiqueSyscohada)
-                            ? 'AUDCG, art. 14, 59 et 140 · AUSCGIE, art. 17, 203, 204, 386, 414 et 853-2'
+                            ? 'AUDCG, art. 14, 59 et 140 · AUSCGIE, art. 17, 203, 204, 386, 414 et 853-2 · loi n° 23/053, art. 13 · LPF, art. 16'
                             : 'AUDCG, art. 14, 59 et 140'
                   }
                 />
@@ -1317,6 +1361,7 @@ export function ParametresDossierPage() {
                           </option>
                         </select>
                       </Ligne>
+                      {faitsDeLaForme(params?.formeJuridiqueSyscohada).associeUniquePm && (
                       <Ligne label="Associé unique personne morale">
                         <select
                           value={associePm}
@@ -1331,6 +1376,7 @@ export function ParametresDossierPage() {
                           <option value="NON">Non</option>
                         </select>
                       </Ligne>
+                      )}
                     </>
                   )}
                   {!estSycebnl && faitsDeLaForme(params?.formeJuridiqueSyscohada).associeUnique && (

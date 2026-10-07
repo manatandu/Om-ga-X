@@ -12,7 +12,7 @@ import {
 } from './effectifs-seize-colonnes';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { LOT_LECTURE, lireParLots } from '../../common/lecture-par-lots';
-import { JeuNotesAnnexes, Prisma, Referentiel, StatutEcriture, StatutProvision } from '@prisma/client';
+import { JeuNotesAnnexes, NatureMouvementDepreciation, Prisma, Referentiel, StatutEcriture, StatutProvision } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
@@ -46,6 +46,7 @@ import {
 } from './indicateurs-note-34-syscohada';
 import { EtatsFinanciersSyscohadaService } from '../etats-financiers-syscohada/etats-financiers-syscohada.service';
 import { TABLEAU_PASSIFS_EVENTUELS, lignesPassifsEventuels } from './passifs-eventuels-en-note';
+import { NOTE_DU_TRANSFERT, phrasesTransfertDepreciation, rubriqueQuiLit } from './transfert-depreciation-note';
 import {
   NOMBRE_NOTES_SYSCOHADA,
   NOTES_SYSCOHADA,
@@ -1492,6 +1493,7 @@ export class NoteAnnexeService {
       notes, tenantId, exerciceId, jeu, lignesN, lignesN1, exerciceN1Id !== null, ecriture,
     );
     await this.injecterPassifsEventuels(notes, tenantId, exerciceId, jeu);
+    await this.injecterTransfertDepreciation(notes, specs, tenantId, exerciceId, jeu);
 
     return {
       notes,
@@ -1878,6 +1880,54 @@ export class NoteAnnexeService {
     // Un passif éventuel décrit DOCUMENTE la note · sans quoi elle sortirait
     // N/A et NEANT en portant des lignes (passe R2, B1).
     note.applicable = true;
+  }
+
+  /**
+   * LE TRANSFERT DE DÉPRÉCIATION À LA MISE EN SERVICE (décision par la loi du
+   * 2026-10-07, quatrième lot, point 9) · les colonnes restent BRUTES, la
+   * phrase répond au commentaire officiel (`transfert-depreciation-note.ts`).
+   * Lu par la NATURE des mouvements du module, sur l'exercice, jamais par les
+   * numéros de compte.
+   */
+  private async injecterTransfertDepreciation(
+    notes: NoteCalculee[],
+    specs: SpecificationNote[],
+    tenantId: string,
+    exerciceId: string,
+    jeu: JeuNotesAnnexes,
+  ) {
+    const code = NOTE_DU_TRANSFERT[jeu];
+    if (!code) return;
+    const note = notes.find((n) => n.code === code);
+    const spec = specs.find((n) => n.code === code);
+    if (!note || !spec) return;
+    const lus = await this.prisma.depreciationImmobilisation.findMany({
+      // Porté par son bien · borné par la relation (lecture bornée).
+      where: {
+        exerciceId,
+        immobilisation: { tenantId },
+        nature: { in: [NatureMouvementDepreciation.TRANSFERT_REPRISE, NatureMouvementDepreciation.TRANSFERT_DOTATION] },
+      },
+      select: {
+        nature: true,
+        montant: true,
+        compteDepreciation: { select: { numero: true } },
+        compteContrepartie: { select: { numero: true } },
+        ecriture: { select: { statut: true } },
+      },
+    });
+    if (lus.length === 0) return;
+    const phrases = phrasesTransfertDepreciation(
+      lus.map((m) => ({
+        nature: m.nature as 'TRANSFERT_REPRISE' | 'TRANSFERT_DOTATION',
+        montant: Number(m.montant),
+        numeroCompteDepreciation: m.compteDepreciation.numero,
+        numeroContrepartie: m.compteContrepartie.numero,
+        valide: m.ecriture.statut === StatutEcriture.VALIDEE,
+      })),
+      (numero) => rubriqueQuiLit(numero, spec.rubriques, note.lignes),
+    );
+    if (phrases.length > 0) note.commentaireServi = [...(note.commentaireServi ?? []), ...phrases];
   }
 
   /** Notes annexes du jeu « associations et ordres professionnels ». */

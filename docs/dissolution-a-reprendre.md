@@ -11,6 +11,29 @@ devait la précéder est faite · les sept questions ci-dessous sont tranchées 
 Le comportement de `main` pour la dissolution (ligne F32, décision du 2026-10-04, point 4) reste en vigueur
 tant que cette ligne n'est pas reprise.
 
+## Reprise (branche `travail/decisions-quater-code`, 2026-10-07)
+
+La ligne est reprise sur la décision par la loi du quatrième lot. Sort des seize constats ·
+
+| Constat | Sort |
+|---|---|
+| 1 | Corrigé · un exercice postérieur unique est re-daté (son à-nouveau provisoire retiré), deux sont refusés avec l'issue. Les deux autres cas sont SANS OBJET par le point 1 · aucune écriture ne se supprime, elle suit sa date. |
+| 2 | Corrigé · « Annuler l'arrêt », et la dissolution ne change pas tant qu'un exercice s'y arrête. |
+| 3 | Sans objet · aucun exercice civil ne s'ouvre plus après la dissolution (points 3 et 4), rien ne peut suivre l'exercice de liquidation. |
+| 4 | Corrigé · délais de date à date pour une clôture en cours de mois. |
+| 5 | Corrigé · cotisations servies à la coopérative et sous procédure collective (point 7) ; l'IS annuel cède aux cotisations (point 4). |
+| 6 | Corrigé · la clôture de la liquidation n'ouvre aucun exercice suivant. |
+| 7 | Corrigé · la liquidation ne se clôture qu'à la clôture déclarée. |
+| 8 | Corrigé · l'exercice qui porte la seconde cotisation se lit sur tous les exercices. |
+| 9 | Corrigé · échéancier · cotisations, acomptes bornés, déclaration annuelle retirée. |
+| 10 | Corrigé · exercice relu dans la transaction de l'écriture. |
+| 11 | Corrigé · les clôtures de journal et de période suivent leurs dates. |
+| 12 | Corrigé · impôt totalisé calculé (point 2). |
+| 13 | Corrigé · « Faire de cet exercice l'exercice de liquidation ». |
+| 14 | Corrigé · clé de jalon avec son début. |
+| 15 | Corrigé · le bouton lit le refus du serveur (`motifRefusArret`). |
+| 16 | Corrigé par le point 7 · la coopérative est servie par l'AUSCOOP, art. 196, et doit les cotisations. |
+
 ## Constats de la relecture (premier tour)
 
 Chaque constat est à corriger, ou à trancher par la loi, avant toute intégration.

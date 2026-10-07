@@ -90,3 +90,39 @@ export function trousDeLaSequence(numeros: number[]): Array<{ de: number; a: num
 export function compterManquants(trous: Array<{ de: number; a: number }>): number {
   return trous.reduce((t, i) => t + (i.a - i.de + 1), 0);
 }
+
+/**
+ * LES NUMÉROS PARTIS AVEC L'ARRÊT À LA DISSOLUTION (décision par la loi du
+ * 2026-10-07, quatrième lot, point 1) · une écriture datée après la
+ * dissolution suit sa date dans l'exercice de liquidation en gardant son
+ * numéro, et l'exercice arrêté, comme celui de liquidation, voit une séquence
+ * percée de numéros qui EXISTENT dans l'autre. Ce n'est pas une pièce
+ * supprimée · ces numéros sont retirés des trous et comptés à part, nommés,
+ * jamais tus. Les numéros de l'exercice jumeau ne bouchent que les trous où
+ * ils tombent, au même périmètre (journal, mois, dossier).
+ */
+export function trousHorsNumerosRattaches(
+  trous: Array<{ de: number; a: number }>,
+  ailleurs: Iterable<number>,
+): { trous: Array<{ de: number; a: number }>; rattaches: number } {
+  const presents = new Set(ailleurs);
+  if (presents.size === 0) return { trous, rattaches: 0 };
+  const restants: Array<{ de: number; a: number }> = [];
+  let rattaches = 0;
+  for (const t of trous) {
+    let debut: number | null = null;
+    for (let n = t.de; n <= t.a; n++) {
+      if (presents.has(n)) {
+        rattaches++;
+        if (debut !== null) {
+          restants.push({ de: debut, a: n - 1 });
+          debut = null;
+        }
+      } else if (debut === null) {
+        debut = n;
+      }
+    }
+    if (debut !== null) restants.push({ de: debut, a: t.a });
+  }
+  return { trous: restants, rattaches };
+}

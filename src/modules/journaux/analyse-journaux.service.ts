@@ -10,6 +10,7 @@ import {
   compterManquants,
   perimetreDeLaSequence,
   trousDeLaSequence,
+  trousHorsNumerosRattaches,
 } from './sequence-pieces';
 
 /**
@@ -66,6 +67,12 @@ export interface LigneAnalyseJournal {
     /** `null` quand le périmètre est AUCUN ou DOSSIER_EXERCICE · voir l'explication. */
     manquants: number | null;
     trous: Array<{ de: number; a: number }>;
+    /**
+     * Numéros absents de la séquence parce qu'ils sont dans l'exercice JUMEAU
+     * de l'arrêt à la dissolution (exercice arrêté et exercice de liquidation)
+     * · nommés, jamais comptés comme manquants.
+     */
+    rattachesALArret?: { nombre: number; explication: string };
   };
 }
 
@@ -201,6 +208,7 @@ export class AnalyseJournauxService {
       explication: string;
       manquants: number;
       trous: Array<{ de: number; a: number }>;
+      rattachesALArret?: { nombre: number; explication: string };
     };
   }> {
     const journaux = await this.prisma.journal.findMany({ where: { tenantId }, orderBy: { code: 'asc' } });
@@ -275,9 +283,41 @@ export class AnalyseJournauxService {
       LOT_ECRITURES,
     );
 
+    // L'EXERCICE JUMEAU DE L'ARRÊT À LA DISSOLUTION (quatrième lot, point 1) ·
+    // l'exercice arrêté et l'exercice de liquidation se partagent une séquence,
+    // les écritures datées après la dissolution ayant suivi leur date avec
+    // leur numéro. Ses numéros, journal par journal et mois par mois, sont lus
+    // pour nommer ceux qui manquent ici.
+    const jumeau = await this.exerciceJumeauDeLArret(tenantId, params.exerciceId);
+    const ailleurs = new Map<string, { numeros: Set<number>; parMois: Map<string, Set<number>> }>();
+    if (jumeau) {
+      await lireParLots(
+        (curseur) =>
+          this.prisma.ecriture.findMany({
+            where: { tenantId, exerciceId: jumeau.id, numeroPiece: { not: null } },
+            select: { id: true, journalId: true, date: true, numeroPiece: true },
+            ...pageApres(curseur, LOT_ECRITURES),
+          }),
+        (e) => {
+          const a = ailleurs.get(e.journalId) ?? { numeros: new Set<number>(), parMois: new Map<string, Set<number>>() };
+          a.numeros.add(e.numeroPiece!);
+          const cle = `${e.date.getUTCFullYear()}-${e.date.getUTCMonth()}`;
+          const m = a.parMois.get(cle) ?? new Set<number>();
+          m.add(e.numeroPiece!);
+          a.parMois.set(cle, m);
+          ailleurs.set(e.journalId, a);
+        },
+        LOT_ECRITURES,
+      );
+    }
+    const explicationArret = jumeau
+      ? `Numéros portés par l'exercice ${jumeau.role === 'LIQUIDATION' ? 'de liquidation' : 'arrêté à la dissolution'} du ${jumeau.dateDebut.toISOString().slice(0, 10)} au ${jumeau.dateFin.toISOString().slice(0, 10)} · les écritures datées après la dissolution y ont suivi leur date avec leur numéro (AUDCIF art. 22 et 59 ; décision par la loi du 2026-10-07, quatrième lot, point 1). Ce ne sont pas des pièces supprimées.`
+      : '';
+
     const lignes: LigneAnalyseJournal[] = journaux.map((j) => {
       const c = parJournal.get(j.id);
       const perimetre = perimetreDeLaSequence(j.numerotation);
+      let rattaches = 0;
 
       // La séquence n'est cherchée QUE sur le périmètre où elle est continue.
       // Sur DOSSIER_EXERCICE elle se lit tous journaux confondus, plus bas ;
@@ -285,15 +325,19 @@ export class AnalyseJournauxService {
       let trous: Array<{ de: number; a: number }> = [];
       let manquants: number | null = null;
       if (perimetre === 'JOURNAL_EXERCICE') {
-        trous = trousDeLaSequence(c?.numeros ?? []);
+        const lus = trousHorsNumerosRattaches(trousDeLaSequence(c?.numeros ?? []), ailleurs.get(j.id)?.numeros ?? []);
+        trous = lus.trous;
+        rattaches = lus.rattaches;
         manquants = compterManquants(trous);
       } else if (perimetre === 'JOURNAL_MOIS') {
         // Mois par mois, et jamais sur l'exercice · la séquence repart de 1 à
         // chaque mois civil, si bien que les numéros d'un mois BOUCHERAIENT les
         // manques d'un autre. Lue à l'année, elle ne crie pas à tort · elle se
         // tait à tort, et c'est le sens d'erreur qu'aucun écran ne rattrape.
-        for (const numeros of (c?.numerosParMois ?? new Map<string, number[]>()).values()) {
-          trous.push(...trousDeLaSequence(numeros));
+        for (const [mois, numeros] of (c?.numerosParMois ?? new Map<string, number[]>()).entries()) {
+          const lus = trousHorsNumerosRattaches(trousDeLaSequence(numeros), ailleurs.get(j.id)?.parMois.get(mois) ?? []);
+          trous.push(...lus.trous);
+          rattaches += lus.rattaches;
         }
         manquants = compterManquants(trous);
       }
@@ -314,7 +358,13 @@ export class AnalyseJournauxService {
         deCloture: c?.deCloture ?? 0,
         premiereDate: jour(c?.premiere),
         derniereDate: jour(c?.derniere),
-        sequence: { perimetre, explication: EXPLICATION_PERIMETRE[perimetre], manquants, trous },
+        sequence: {
+          perimetre,
+          explication: EXPLICATION_PERIMETRE[perimetre],
+          manquants,
+          trous,
+          ...(rattaches > 0 ? { rattachesALArret: { nombre: rattaches, explication: explicationArret } } : {}),
+        },
       };
     });
 
@@ -325,7 +375,11 @@ export class AnalyseJournauxService {
     // séquence du dossier illisible.
     const journauxFichier = journauxDeLaSequenceDuFichier(journaux);
     const numerosDossier = journauxFichier.flatMap((j) => parJournal.get(j.id)?.numeros ?? []);
-    const trousDossier = journauxFichier.length > 0 ? trousDeLaSequence(numerosDossier) : [];
+    const lusDossier = trousHorsNumerosRattaches(
+      journauxFichier.length > 0 ? trousDeLaSequence(numerosDossier) : [],
+      journauxFichier.flatMap((j) => [...(ailleurs.get(j.id)?.numeros ?? [])]),
+    );
+    const trousDossier = lusDossier.trous;
 
     return {
       lignes,
@@ -337,8 +391,33 @@ export class AnalyseJournauxService {
             : "Aucun journal de ce dossier n'est en numérotation continue sur le fichier : il n'y a pas de séquence au niveau du dossier.",
         manquants: compterManquants(trousDossier),
         trous: trousDossier,
+        ...(lusDossier.rattaches > 0 ? { rattachesALArret: { nombre: lusDossier.rattaches, explication: explicationArret } } : {}),
       },
     };
+  }
+
+  /**
+   * L'exercice jumeau de l'arrêt à la dissolution, ou `null` · pour l'exercice
+   * arrêté (fin à la dissolution), celui de liquidation (début au lendemain),
+   * et réciproquement.
+   */
+  private async exerciceJumeauDeLArret(tenantId: string, exerciceId: string) {
+    const [exercice, dossier] = await Promise.all([
+      this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { dateDebut: true, dateFin: true } }),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { dateDissolution: true } }),
+    ]);
+    const d = dossier?.dateDissolution ?? null;
+    if (!exercice || !d) return null;
+    const lendemain = new Date(d.getTime() + 86_400_000);
+    if (exercice.dateFin.getTime() === d.getTime()) {
+      const l = await this.prisma.exercice.findFirst({ where: { tenantId, dateDebut: lendemain }, select: { id: true, dateDebut: true, dateFin: true } });
+      return l ? { ...l, role: 'LIQUIDATION' as const } : null;
+    }
+    if (exercice.dateDebut.getTime() === lendemain.getTime()) {
+      const a = await this.prisma.exercice.findFirst({ where: { tenantId, dateFin: d }, select: { id: true, dateDebut: true, dateFin: true } });
+      return a ? { ...a, role: 'ARRETE' as const } : null;
+    }
+    return null;
   }
 
   /**

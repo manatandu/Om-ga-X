@@ -14,6 +14,9 @@ import { DatesPortefeuilleExercice } from '../components/DatesPortefeuilleExerci
 import { classeObservation, estNonCalcule, libelleEcheance, libelleMontant, montantNonCalcule } from '../lib/jalons-planning';
 import { estSocieteCommerciale } from '../lib/mentions-dossier';
 
+/** Le marqueur du refus que le serveur lève quand le geste peut retirer les actes de la période (`issueActeDeLaPeriode`). */
+const ACCORD_RETRAIT_ACTES = 'en acceptant de retirer les actes de la période';
+
 const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
   PARTIELLE: 'Partielle',
   TOTALE: 'Totale',
@@ -422,6 +425,138 @@ export function ExercicePage() {
     }
   };
 
+  // LA DISSOLUTION DÉCLARÉE (décision par la loi du 2026-10-07, point 2) ·
+  // l'exercice qui la contient s'arrête à sa date, puis UN exercice de
+  // liquidation court du lendemain à la clôture de la liquidation, dont la fin
+  // se reporte tant qu'elle n'est pas connue. Le serveur refuse tout le reste.
+  const [finLiquidation, setFinLiquidation] = useState('');
+  useEffect(() => {
+    setFinLiquidation(exercice ? exercice.dateFin.slice(0, 10) : '');
+  }, [exercice?.id, exercice?.dateFin]);
+  const arreterALaDissolution = async () => {
+    if (!exercice || !planning?.dissolution) return;
+    const jour = new Date(planning.dissolution.date).toLocaleDateString('fr-FR');
+    // LES ACTES CALCULÉS SUR LA PÉRIODE (bloquant 1) · nommés dans la
+    // confirmation, retirés seulement avec cet accord, à refaire ensuite sur
+    // chaque exercice. Jamais d'office.
+    const actes = planning.dissolution.actesDeLaPeriodeARetirer ?? [];
+    const retrait = actes.length
+      ? `\n\n${actes.length} acte(s) calculé(s) sur la période de l'exercice seront retirés (au brouillard, avec leur écriture ; validés, par inscription en négatif), à refaire ensuite sur chaque exercice :\n· ${actes.slice(0, 8).join('\n· ')}${actes.length > 8 ? '\n· …' : ''}`
+      : '';
+    if (!confirm(`Arrêter l'exercice au ${jour}, date de la dissolution déclarée ?\n\nL'exercice de liquidation courra du lendemain.${retrait}`)) {
+      return;
+    }
+    // Une réponse arrivée après un changement d'exercice ne s'affiche pas
+    // sous un autre · même garde que la lecture du planning.
+    const pour = exercice.id;
+    const valable = () => exerciceVise.current === pour;
+    setEnvoi(true);
+    setErreur(null);
+    setInfo(null);
+    try {
+      const r = await api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(
+        `/exercices/${pour}/arreter-a-la-dissolution`,
+        actes.length ? { retirerActesDeLaPeriode: true } : {},
+      );
+      await rechargerExercices();
+      await charger();
+      const suites = [
+        ...(r.actesRetires ?? []).map((a) => `${a} · à refaire sur chaque exercice`),
+        ...(r.relevesARevoir ?? []),
+      ];
+      if (valable()) {
+        setInfo(
+          `Exercice arrêté au ${jour} · les écritures datées après la dissolution suivent leur date dans l'exercice de liquidation.` +
+            (suites.length ? ` ${suites.join(' ; ')}.` : ''),
+        );
+      }
+    } catch (err) {
+      if (valable()) setErreur(err instanceof ApiError ? err.message : "Arrêt de l'exercice impossible");
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  // L'ARRÊT S'ANNULE (constat 2 de la relecture) · l'exercice reprend sa fin
+  // d'origine et les écritures postérieures à la dissolution y reviennent ;
+  // le serveur dit ce qui l'empêche. Rattacher un exercice repris en fait
+  // l'exercice de liquidation (constat 13). Même garde de réponse périmée.
+  const gesteDissolution = async (route: string, question: string, reussite: string, echec: string) => {
+    if (!exercice) return;
+    if (!confirm(question)) return;
+    const pour = exercice.id;
+    const valable = () => exerciceVise.current === pour;
+    setEnvoi(true);
+    setErreur(null);
+    setInfo(null);
+    // LES ACTES CALCULÉS SUR LA PÉRIODE (bloquant 1) · le serveur les nomme
+    // au refus ; ceux qu'il peut retirer le disent (`ACCORD_RETRAIT_ACTES`),
+    // et le geste se relance avec l'accord du cabinet, jamais sans.
+    const envoyer = (corps: Record<string, unknown>) =>
+      api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(`/exercices/${pour}/${route}`, corps);
+    try {
+      let r: { actesRetires?: string[]; relevesARevoir?: string[] };
+      try {
+        r = await envoyer({});
+      } catch (err) {
+        if (!(err instanceof ApiError) || !err.message.includes(ACCORD_RETRAIT_ACTES)) throw err;
+        if (!confirm(`${err.message}\n\nRetirer ces actes et relancer ?`)) throw err;
+        r = await envoyer({ retirerActesDeLaPeriode: true });
+      }
+      await rechargerExercices();
+      await charger();
+      const suites = [...(r.actesRetires ?? []).map((a) => `${a} · à refaire sur chaque exercice`), ...(r.relevesARevoir ?? [])];
+      if (valable()) setInfo(reussite + (suites.length ? ` ${suites.join(' ; ')}.` : ''));
+    } catch (err) {
+      if (valable()) setErreur(err instanceof ApiError ? err.message : echec);
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  const annulerArret = () =>
+    gesteDissolution(
+      'annuler-arret-dissolution',
+      "Annuler l'arrêt de l'exercice à la dissolution ?\n\nL'exercice reprend sa fin d'origine, et les écritures datées après la dissolution y reviennent.",
+      "Arrêt annulé · l'exercice a repris sa fin d'origine.",
+      "Annulation de l'arrêt impossible",
+    );
+  const rattacherALaLiquidation = () =>
+    gesteDissolution(
+      'rattacher-a-la-liquidation',
+      "Faire de cet exercice l'exercice de liquidation ?\n\nIl commencera le lendemain de la dissolution.",
+      "L'exercice est devenu l'exercice de liquidation.",
+      'Rattachement à la liquidation impossible',
+    );
+  const reporterFinLiquidation = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!exercice) return;
+    const pour = exercice.id;
+    const valable = () => exerciceVise.current === pour;
+    const fin = finLiquidation;
+    setEnvoi(true);
+    setErreur(null);
+    setInfo(null);
+    try {
+      await api.post(`/exercices/${pour}/fin-de-liquidation`, { dateFin: fin });
+      await rechargerExercices();
+      await charger();
+      if (valable()) setInfo(`Fin de l'exercice de liquidation portée au ${new Date(fin).toLocaleDateString('fr-FR')}.`);
+    } catch (err) {
+      if (valable()) setErreur(err instanceof ApiError ? err.message : 'Report de la fin de liquidation impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  // L'exercice de liquidation se prépare depuis l'exercice ARRÊTÉ · début au
+  // lendemain de la dissolution, case cochée ; la fin reste à saisir.
+  const preparerExerciceDeLiquidation = () => {
+    if (!planning?.dissolution) return;
+    const lendemain = new Date(new Date(planning.dissolution.date).getTime() + 86_400_000);
+    setNDebut(lendemain.toISOString().slice(0, 10));
+    setNFin('');
+    setNLiquidation(true);
+    setCreationOuverte(true);
+  };
+
   const cloturerExercice = async () => {
     if (!exercice) return;
     if (
@@ -583,6 +718,99 @@ export function ExercicePage() {
             )}
           </div>
         </form>
+      )}
+
+      {/* LA DISSOLUTION · l'arrêt de l'exercice qui la contient et la fin de
+          l'exercice de liquidation, à l'administrateur (@Roles ADMIN_CABINET
+          sur les deux routes). */}
+      {exercice && planning?.exerciceId === exercice.id && planning.dissolution && (
+        <div className="mb-4 border border-border bg-surface px-4 py-3 max-w-[720px]">
+          <div className="font-mono text-[11.5px] font-semibold text-text-dim mb-2 flex items-center gap-1.5">
+            Dissolution et liquidation
+            <Aide
+              titre="Dissolution et liquidation"
+              texte="La période qui précède la dissolution forme un exercice arrêté à la date de la dissolution : son bilan est le bilan avant liquidation, et une cotisation spéciale se déclare sur ses résultats dans le mois de la dissolution, compté de date à date, et avant que le dirigeant ne quitte le pays. L’arrêt fait passer à l’exercice de liquidation les écritures datées après la dissolution, sans rien changer d’elles (ni date, ni numéro, ni lignes), avec les actes qui en dépendent ; il s’annule tant que rien ne s’y oppose. La liquidation forme ensuite un seul exercice, du lendemain de la dissolution à la clôture de la liquidation, quelle que soit sa durée, avec une situation provisoire à chaque fin d’année civile ; sa fin se reporte tant que la clôture n’est pas connue, et il ne se clôture qu’à la clôture déclarée. Une seconde cotisation spéciale se déclare sur le dernier bilan de liquidation, dans le mois de la clôture : l’impôt de l’année de la dissolution se calcule une fois sur le total des deux résultats, moins la première cotisation et les acomptes. Aucune déclaration annuelle de l’impôt sur les sociétés n’est due pour cette année ni pour les suivantes, et aucun acompte après l’échéance de la dernière cotisation."
+              source="Loi n° 23/053, art. 11, 12 et 13 · LPF, art. 16, 57 bis et 110 bis · AUDCIF, art. 7 al. 4, art. 22 et 59, Titre VIII ch. 40 § 2.1 · AUPSRVE, art. 1-14"
+            />
+          </div>
+          <div className="text-[11.5px] mb-2">
+            Dissolution déclarée le {new Date(planning.dissolution.date).toLocaleDateString('fr-FR')}
+            {planning.dissolution.exerciceDeLiquidation ? ' · exercice de liquidation' : ''}
+            {planning.dissolution.dateClotureLiquidation
+              ? ` · liquidation clôturée le ${new Date(planning.dissolution.dateClotureLiquidation).toLocaleDateString('fr-FR')}`
+              : ''}
+          </div>
+          {estAdmin && planning.dissolution.arretPropose && (
+            <button
+              type="button"
+              onClick={arreterALaDissolution}
+              disabled={envoi}
+              className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1.5 disabled:opacity-50"
+            >
+              {envoi ? '…' : `Arrêter l’exercice au ${new Date(planning.dissolution.date).toLocaleDateString('fr-FR')}`}
+            </button>
+          )}
+          {estAdmin && !planning.dissolution.arretPropose && planning.dissolution.motifArret && (
+            <div className="text-[11.5px] text-danger mb-2" role="status">
+              {planning.dissolution.motifArret}
+            </div>
+          )}
+          {estAdmin && planning.dissolution.annulationProposee && (
+            <button
+              type="button"
+              onClick={annulerArret}
+              disabled={envoi}
+              className="border border-border-dark bg-surface text-[11.5px] font-semibold px-3 py-1.5 mr-2 disabled:opacity-50"
+            >
+              {envoi ? '…' : 'Annuler l’arrêt'}
+            </button>
+          )}
+          {estAdmin && planning.dissolution.rattachementPropose && (
+            <button
+              type="button"
+              onClick={rattacherALaLiquidation}
+              disabled={envoi}
+              className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1.5 mr-2 disabled:opacity-50"
+            >
+              {envoi ? '…' : 'Faire de cet exercice l’exercice de liquidation'}
+            </button>
+          )}
+          {estAdmin &&
+            exercice.dateFin.slice(0, 10) === planning.dissolution.date.slice(0, 10) &&
+            !exercices.some((e) => e.dateDebut.slice(0, 10) > planning.dissolution!.date.slice(0, 10)) && (
+              <button
+                type="button"
+                onClick={preparerExerciceDeLiquidation}
+                disabled={envoi}
+                className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1.5 disabled:opacity-50"
+              >
+                Préparer l’exercice de liquidation
+              </button>
+            )}
+          {estAdmin && planning.dissolution.exerciceDeLiquidation && exercice.statut === 'OUVERT' && (
+            <form onSubmit={reporterFinLiquidation} className="flex items-end gap-2 flex-wrap">
+              <label className="text-[11.5px] font-semibold text-text-dim">
+                Fin de l’exercice de liquidation
+                <input
+                  type="date"
+                  required
+                  value={finLiquidation}
+                  min={exercice.dateDebut.slice(0, 10)}
+                  onChange={(e) => setFinLiquidation(e.target.value)}
+                  aria-label="Fin de l’exercice de liquidation"
+                  className="mt-1 block border border-border-dark px-2 py-1 text-[11.5px] font-mono"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={envoi || !finLiquidation || finLiquidation === exercice.dateFin.slice(0, 10)}
+                className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1.5 disabled:opacity-50"
+              >
+                {envoi ? '…' : 'Enregistrer'}
+              </button>
+            </form>
+          )}
+        </div>
       )}
 
       {/* Fiche R2 (cases ZN à ZS) · SYSCOHADA seul, Système minimal de
@@ -747,7 +975,7 @@ export function ExercicePage() {
                 </thead>
                 <tbody>
                   {planning.jalons.map((j) => (
-                    <tr key={`${j.etape}-${j.libelle}`} className="border-t border-border align-top">
+                    <tr key={`${j.etape}-${j.libelle}-${j.debut ?? ''}`} className="border-t border-border align-top">
                       <td className="px-3 py-2 font-mono text-text-dim">{j.etape}</td>
                       <td className="px-3 py-2">
                         <div className="font-semibold flex items-center gap-1.5">

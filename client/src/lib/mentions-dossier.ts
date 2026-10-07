@@ -57,14 +57,23 @@ export function faitsDeLaForme(forme: FormeJuridiqueSyscohada | null | undefined
   modeAdministration: boolean;
   associeUnique: boolean;
   dissolution: boolean;
-  /** Nomination, régime, associé unique personne morale · AUSCGIE art. 201, 223, 266 (sociétés commerciales). */
+  /**
+   * Nomination, régime, clôture de la liquidation et cotisations spéciales ·
+   * AUSCGIE art. 203, 216, 223 et 266 pour les sociétés commerciales ; AUSCOOP
+   * art. 182, 185 et 196 pour la coopérative, et loi n° 23/053, art. 3 et 13,
+   * qui range les coopératives parmi les sociétés redevables (décision par la
+   * loi du 2026-10-07, quatrième lot, points 6 et 7).
+   */
   liquidation: boolean;
+  /** L'associé unique personne morale · AUSCGIE art. 201 al. 4, sociétés commerciales seules. */
+  associeUniquePm: boolean;
 } {
   return {
     modeAdministration: forme === 'SOCIETE_ANONYME',
     associeUnique: forme === 'SOCIETE_PAR_ACTIONS_SIMPLIFIEE',
     dissolution: estSocieteCommerciale(forme) || estCooperative(forme),
-    liquidation: estSocieteCommerciale(forme),
+    liquidation: estSocieteCommerciale(forme) || estCooperative(forme),
+    associeUniquePm: estSocieteCommerciale(forme),
   };
 }
 
@@ -94,6 +103,14 @@ export function faitsDeLaFormeAEnvoyer(
     dateNominationLiquidateur?: string;
     regimeLiquidation?: RegimeLiquidationSaisi;
     associeUniquePersonneMorale?: ReponseFaitSaisie;
+    /**
+     * Clôture de la liquidation et dépôt des deux cotisations spéciales
+     * (décision par la loi du 2026-10-07, point 2 · loi n° 23/053, art. 13 ;
+     * LPF art. 16) · la chaîne vide efface.
+     */
+    dateClotureLiquidation?: string;
+    dateDeclarationCotisationActivite?: string;
+    dateDeclarationCotisationLiquidation?: string;
   },
 ): Record<string, string> {
   const faits = faitsDeLaForme(forme);
@@ -101,13 +118,23 @@ export function faitsDeLaFormeAEnvoyer(
     ...(faits.modeAdministration ? { modeAdministrationSa: saisie.modeAdministrationSa } : {}),
     ...(faits.associeUnique ? { associeUniqueSas: saisie.associeUniqueSas } : {}),
     ...(faits.dissolution ? { dateDissolution: saisie.dateDissolution, liquidateurs: saisie.liquidateurs } : {}),
-    // La liquidation de l'AUSCGIE · sociétés commerciales seules, la coopérative en est exclue.
+    // La liquidation · sociétés commerciales et coopérative ; l'associé unique
+    // personne morale, sociétés commerciales seules (art. 201 al. 4).
     ...(faits.liquidation && saisie.dateNominationLiquidateur !== undefined
       ? { dateNominationLiquidateur: saisie.dateNominationLiquidateur }
       : {}),
     ...(faits.liquidation && saisie.regimeLiquidation !== undefined ? { regimeLiquidation: saisie.regimeLiquidation } : {}),
-    ...(faits.liquidation && saisie.associeUniquePersonneMorale !== undefined
+    ...(faits.associeUniquePm && saisie.associeUniquePersonneMorale !== undefined
       ? { associeUniquePersonneMorale: saisie.associeUniquePersonneMorale }
+      : {}),
+    ...(faits.liquidation && saisie.dateClotureLiquidation !== undefined
+      ? { dateClotureLiquidation: saisie.dateClotureLiquidation }
+      : {}),
+    ...(faits.liquidation && saisie.dateDeclarationCotisationActivite !== undefined
+      ? { dateDeclarationCotisationActivite: saisie.dateDeclarationCotisationActivite }
+      : {}),
+    ...(faits.liquidation && saisie.dateDeclarationCotisationLiquidation !== undefined
+      ? { dateDeclarationCotisationLiquidation: saisie.dateDeclarationCotisationLiquidation }
       : {}),
   };
 }

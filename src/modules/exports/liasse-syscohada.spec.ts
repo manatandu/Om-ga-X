@@ -264,6 +264,8 @@ function fabriquerExport(
     // La doublure honore l'exercice demandé · une saisie d'un autre exercice
     // ne doit pas sortir dans la liasse de celui-ci.
     // Registre des provisions vide · aucun passif éventuel à porter à la 16C / 18B (passe R2, B2).
+    // Le transfert de dépréciation à la mise en service (quatrième lot, point 9) · aucun ici.
+    depreciationImmobilisation: { findMany: jest.fn().mockResolvedValue([]) },
     provisionRisqueCharge: { findMany: jest.fn().mockResolvedValue([]) },
     saisieNote: {
       findMany: jest.fn().mockImplementation(({ where }: { where: { exerciceId: string } }) =>

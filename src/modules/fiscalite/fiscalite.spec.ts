@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FormeJuridiqueSyscohada, Prisma, Referentiel, SensRetraitementFiscal, TypeCompteDetailTotal } from '@prisma/client';
-import { FiscaliteService, arrondirImpotArt150 } from './fiscalite.service';
+import { FiscaliteService, arrondirImpotArt150, observationBilansSuccessifs } from './fiscalite.service';
 import { CATALOGUE_RETRAITEMENTS, CODE_LIBRE } from './catalogue-retraitements';
 import { motifsRefusConstat } from './ecriture-impot-resultat';
 import { chiffreAffairesMinimumPremierExercice } from './periode-creation';
@@ -58,6 +58,8 @@ function service(options: {
   };
   /** Dossier fiscal PAR exercice (B2, P1) · lu par la cible et par le rejeu. */
   dossiers?: Record<string, Record<string, unknown>>;
+  /** Faits du dossier en plus (dissolution, liquidation). */
+  tenant?: Record<string, unknown>;
 }) {
   const exercices = options.exercices ?? [
     { id: 'N', dateDebut: new Date(Date.UTC(2026, 0, 1)), dateFin: new Date(Date.UTC(2026, 11, 31)) },
@@ -69,6 +71,7 @@ function service(options: {
         id: 't1',
         referentiel: options.referentiel ?? Referentiel.SYSCOHADA,
         formeJuridiqueSyscohada: options.forme === undefined ? FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE : options.forme,
+        ...(options.tenant ?? {}),
       }),
     },
     exercice: {
@@ -350,6 +353,41 @@ describe('Base des acomptes provisionnels · art. 57 bis LPF', () => {
     const { s } = dossierRedresse(0);
     const r = await s.resultatFiscal('t1', 'N');
     expect(r.acomptesProchainExercice.map((a) => a.echeance)).toEqual(['25 juillet', '25 septembre', '25 novembre']);
+  });
+});
+
+describe('Acomptes de l’année de la dissolution · bornés comme l’échéancier (relecture du 2026-10-07, mineur 7)', () => {
+  // L'exercice 2025, clos avant la dissolution du 15/05/2026, sert ses
+  // acomptes en 2026 · ceux qui échoient après la dernière cotisation
+  // spéciale ne sont plus dus (loi n° 23/053, art. 13 al. 3), comme dans
+  // l'échéancier des retenues (`echeancierDissolution().retenir`).
+  const exercice2025 = [{ id: 'N', dateDebut: new Date(Date.UTC(2025, 0, 1)), dateFin: new Date(Date.UTC(2025, 11, 31)) }];
+  const dossierDissous = (tenant: Record<string, unknown>) =>
+    service({
+      balances: { N: [ligne('70110000', -1_000_000), ligne('60110000', 1_200_000)] },
+      exercices: exercice2025,
+      tenant: { dateDissolution: new Date(Date.UTC(2026, 4, 15)), regimeLiquidation: null, associeUniquePersonneMorale: null, ...tenant },
+    });
+
+  it('liquidation close le 10/08/2026 · seul l’acompte du 25 juillet reste dû', async () => {
+    const { s } = dossierDissous({ dateClotureLiquidation: new Date(Date.UTC(2026, 7, 10)) });
+    const r = await s.resultatFiscal('t1', 'N');
+    expect(r.acomptesProchainExercice.map((a) => a.echeance)).toEqual(['25 juillet']);
+    expect(r.baseAcomptes).toBe(10_000);
+    expect(r.observations.some((o: string) => o.startsWith('ACOMPTES APRÈS LA DISSOLUTION · 2 acompte(s) de 2026'))).toBe(true);
+  });
+
+  it('sans liquidation, la cotisation de juin est la dernière · aucun acompte de 2026', async () => {
+    const { s } = dossierDissous({ associeUniquePersonneMorale: true });
+    const r = await s.resultatFiscal('t1', 'N');
+    expect(r.acomptesProchainExercice).toEqual([]);
+    expect(r.baseAcomptes).toBeNull();
+  });
+
+  it('liquidation dont la clôture n’est pas déclarée · les trois restent servis, rien ne les borne encore', async () => {
+    const { s } = dossierDissous({});
+    const r = await s.resultatFiscal('t1', 'N');
+    expect(r.acomptesProchainExercice).toHaveLength(3);
   });
 });
 
@@ -2234,5 +2272,37 @@ describe('Cas chiffrés IS, troisième tour · relecture adverse', () => {
     expect(['deficitImpute', r.deficitImpute]).toEqual(['deficitImpute', 0]);
     expect(['impotDu', r.impotDu]).toEqual(['impotDu', 600_000]);
     expect(r.observations.join(' ')).toContain('REPORT PERDU PAR PRUDENCE');
+  });
+});
+
+describe('loi n° 23/053, art. 12 al. 4 · bilans successifs DITS, jamais totalisés (décision par la loi du 2026-10-07, point 2)', () => {
+  const j = (a: number, m: number, d: number) => new Date(Date.UTC(a, m - 1, d));
+  const exercices = [
+    { id: 'A', dateDebut: j(2026, 1, 1), dateFin: j(2026, 6, 30) },
+    { id: 'L', dateDebut: j(2026, 7, 1), dateFin: j(2026, 12, 31) },
+    { id: 'C', dateDebut: j(2027, 1, 1), dateFin: j(2027, 12, 31) },
+  ];
+  const balances = {
+    A: [ligne('70110000', -1000), ligne('60110000', 400)],
+    L: [ligne('70110000', -500), ligne('60110000', 100)],
+    C: [ligne('70110000', -500), ligne('60110000', 100)],
+  };
+
+  it('l’exercice arrêté hors du 31 décembre et celui qui le suit la même année le disent, chacun calculé seul', async () => {
+    const { s } = service({ exercices, balances });
+    const rA = await s.resultatFiscal('t1', 'A');
+    expect(rA.observations).toContain(observationBilansSuccessifs(j(2026, 6, 30)));
+    // Aucun impôt nouveau · le résultat est celui de l'exercice seul.
+    expect(rA.resultatComptable).toBe(600);
+    const rL = await s.resultatFiscal('t1', 'L');
+    expect(rL.observations).toContain(observationBilansSuccessifs(j(2026, 12, 31)));
+    expect(rL.resultatComptable).toBe(400);
+    expect(observationBilansSuccessifs(j(2026, 6, 30))).toContain('art. 12 al. 4');
+  });
+
+  it('un exercice civil ordinaire ne dit rien', async () => {
+    const { s } = service({ exercices, balances });
+    const rC = await s.resultatFiscal('t1', 'C');
+    expect(rC.observations.join(' ')).not.toContain('BILANS SUCCESSIFS');
   });
 });

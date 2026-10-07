@@ -24,12 +24,19 @@ import { ExerciceService, exerciceSuivantApres } from './exercice.service';
  * Les deux tests ci-dessous partent du texte, pas du code.
  */
 
+/**
+ * Le dossier de la doublure · une association par défaut, que la décision du
+ * 2026-10-07 (point 2) ne vise pas · la liquidation y garde le régime d'avant.
+ */
+const ASSOCIATION = { referentiel: 'SYCEBNL', formeJuridiqueSyscohada: null, dateDissolution: null };
+
 const service = (
   nombreDExercicesExistants: number,
   // Ce que rend la recherche d'un exercice qui couvre déjà la période · `null`
   // par défaut, le chevauchement ayant son propre spec.
   dejaCouvert: unknown = null,
   espion?: { where?: unknown },
+  dossier: Record<string, unknown> = ASSOCIATION,
 ) =>
   new ExerciceService(
     {
@@ -41,6 +48,7 @@ const service = (
         },
         create: async (a: unknown) => a,
       },
+      tenant: { findUnique: async () => dossier },
     } as never,
     {} as never,
   );
@@ -115,6 +123,50 @@ describe('article 7 · la création d’exercice', () => {
     // un seul exercice ». Déclaré explicitement, jamais toléré par défaut.
     await expect(creer(4, '2026-03-15', '2028-06-30', true)).resolves.toBeDefined();
     await expect(creer(4, '2026-03-15', '2028-06-30')).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('article 7 al. 4 · l’exercice de liquidation d’une société dissoute (décision par la loi du 2026-10-07, point 2)', () => {
+  const SARL_DISSOUTE = {
+    referentiel: 'SYSCOHADA',
+    formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE',
+    dateDissolution: new Date(Date.UTC(2026, 5, 30)),
+  };
+
+  it('court du LENDEMAIN de la dissolution, sans plafond de durée ni fin au 31 décembre', async () => {
+    await expect(
+      service(1, null, undefined, SARL_DISSOUTE).creer('t1', { dateDebut: '2026-07-01', dateFin: '2029-03-31', liquidation: true }),
+    ).resolves.toBeDefined();
+    await expect(
+      service(1, null, undefined, SARL_DISSOUTE).creer('t1', { dateDebut: '2026-08-01', dateFin: '2027-03-31', liquidation: true }),
+    ).rejects.toThrow('le 01/07/2026');
+  });
+
+  it('SEUL sur sa période · l’unicité vaut aussi contre un exercice OUVERT, et l’issue est nommée', async () => {
+    const ouvert2026 = { dateDebut: new Date(Date.UTC(2026, 0, 1)), dateFin: new Date(Date.UTC(2026, 11, 31)) };
+    const espion: { where?: { statut?: unknown } } = {};
+    await expect(
+      service(1, ouvert2026, espion as never, SARL_DISSOUTE).creer('t1', {
+        dateDebut: '2026-07-01',
+        dateFin: '2027-03-31',
+        liquidation: true,
+      }),
+    ).rejects.toThrow('arrêtez-le d');
+    // Aucun filtre de statut · un exercice ouvert compte.
+    expect(espion.where?.statut).toBeUndefined();
+  });
+
+  it('une société sans dissolution déclarée la déclare d’abord ; l’association garde le régime d’avant', async () => {
+    await expect(
+      service(1, null, undefined, { ...SARL_DISSOUTE, dateDissolution: null }).creer('t1', {
+        dateDebut: '2026-07-01',
+        dateFin: '2027-03-31',
+        liquidation: true,
+      }),
+    ).rejects.toThrow('Déclarez d’abord la date de dissolution');
+    await expect(
+      service(1).creer('t1', { dateDebut: '2026-07-01', dateFin: '2027-03-31', liquidation: true }),
+    ).resolves.toBeDefined();
   });
 });
 

@@ -243,6 +243,29 @@ export class ModifierIdentiteDto {
   })
   associeUniquePersonneMorale?: ReponseFait;
 
+  // La dissolution et ses deux cotisations spéciales (décision par la loi du
+  // 2026-10-07, point 2 · loi n° 23/053, art. 13 ; LPF art. 16) · clôture de
+  // la liquidation et dates de dépôt des deux déclarations, faits DÉCLARÉS,
+  // la chaîne vide ou `null` les efface. Lues par `jourSaisiOuEffacement`.
+  @IsOptional()
+  @ValidateIf((o: ModifierIdentiteDto) => o.dateClotureLiquidation !== '' && o.dateClotureLiquidation !== null)
+  @IsDateString()
+  dateClotureLiquidation?: string | null;
+
+  @IsOptional()
+  @ValidateIf(
+    (o: ModifierIdentiteDto) => o.dateDeclarationCotisationActivite !== '' && o.dateDeclarationCotisationActivite !== null,
+  )
+  @IsDateString()
+  dateDeclarationCotisationActivite?: string | null;
+
+  @IsOptional()
+  @ValidateIf(
+    (o: ModifierIdentiteDto) => o.dateDeclarationCotisationLiquidation !== '' && o.dateDeclarationCotisationLiquidation !== null,
+  )
+  @IsDateString()
+  dateDeclarationCotisationLiquidation?: string | null;
+
   // Entreprise MINIÈRE du portefeuille (décision par la loi du 2026-10-07,
   // point 3 · arrêté interministériel du 10 décembre 2025, art. 2 et 3) ·
   // secteur déclaré, quote-part de l'État dans le capital (0 à 100, `null`

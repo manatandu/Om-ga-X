@@ -445,32 +445,40 @@ describe('imputation des écritures de réévaluation · SYCEBNL, subdivisions d
 });
 
 /**
- * LIGNE A5 TER · LE 54 VA AU 4786 ET AU 4797. AUDCIF Titre VIII ch. 22 § 3.2.2 ·
- * « Les comptes 4786 Différences d'évaluation sur instruments de trésorerie –
- * ACTIF et 4797 Différences d'évaluation sur instruments de trésorerie –
- * PASSIF enregistrent les différences d'évaluation en contrepartie du compte
- * 54 » ; art. 58-2, « à l'actif pour une perte latente, au passif pour un gain
- * latent ».
+ * LE 54 NE SE RÉÉVALUE PAS (décision par la loi du 2026-10-07, quatrième lot,
+ * point 8). AUDCIF art. 54 · « les créances et dettes » ; Titre VII, compte 54
+ * · prix du marché ou coût historique, nominaux hors bilan (ch. 22 § 3.1). La
+ * ligne A5 ter le convertissait au cours de clôture, écart au 4786 ou au 4797
+ * et provision au 4997 · un montant sans texte. Il est désormais NOMMÉ parmi
+ * les positions non réévaluées, avec son motif, et aucune écriture ne le touche.
  */
-describe('SYSCOHADA · un instrument de trésorerie (54) en devise · 4786 / 4797 (A5 ter)', () => {
-  const ecartDe = async (debit: number, credit: number, cours: number) => {
+describe('SYSCOHADA · un instrument de trésorerie (54) en devise · hors réévaluation (quatrième lot, point 8)', () => {
+  it('aucun écart ni provision, le 54 nommé avec son motif ; un 54 au bilan reste inchangé', async () => {
+    const r = await service(
+      [{ compteNumero: '54200000', deviseCode: 'USD', debit: 2_800_000, credit: 0, montantDevise: 1000 }],
+      2500,
+    ).calculer('t1', { exerciceId: 'ex1' });
+    expect([r.perteLatente, r.gainLatent, r.perteRealisee, r.provision]).toEqual([0, 0, 0, 0]);
+    expect(r.positionsNonReevaluees).toEqual([
+      expect.objectContaining({ numero: '54200000', motif: expect.stringContaining('Titre VII, compte 54') }),
+    ]);
     const { svc, ecrites } = serviceEcritures(
-      [{ compteNumero: '54200000', deviseCode: 'USD', debit, credit, montantDevise: 1000 }],
-      cours,
+      [{ compteNumero: '54200000', deviseCode: 'USD', debit: 2_800_000, credit: 0, montantDevise: 1000 }],
+      2500,
       'SYSCOHADA',
     );
-    await svc.reevaluer('t1', 'u1', { exerciceId: 'ex1' });
-    return ecrites;
-  };
-  it('perte latente · 4786, jamais 4782', async () => {
-    const ecrites = await ecartDe(2_800_000, 0, 2500);
-    expect(ecrites[0].lignes.map((l) => l.numero)).toEqual(['4786', '54200000']);
-    // La provision de la perte · court terme financier (art. 58-2, « provision financière » ; § 2.3).
-    expect(ecrites.find((e) => e.libelle.startsWith('Provision'))!.lignes.map((l) => l.numero)).toEqual(['6791', '4997']);
+    await svc.reevaluer('t1', 'u1', { exerciceId: 'ex1' }).catch(() => undefined);
+    expect(ecrites.flatMap((e) => e.lignes.map((l) => l.numero)).filter((n) => /^(54|4786|4797|4997)/.test(n))).toEqual([]);
   });
-  it('gain latent · 4797, jamais 4792', async () => {
-    const ecrites = await ecartDe(2_500_000, 0, 2800);
-    expect(ecrites[0].lignes.map((l) => l.numero)).toEqual(['54200000', '4797']);
+
+  it('le motif vaut aux deux référentiels, et 4786 / 4797 ne sont plus servis par la subdivision de l’écart', () => {
+    const { motifHorsReevaluation, seReevalueALaCloture } = jest.requireActual('./perimetre-reevaluation');
+    expect(seReevalueALaCloture('54200000', 'SYSCOHADA')).toBe(false);
+    expect(seReevalueALaCloture('54200000', 'SYCEBNL')).toBe(false);
+    expect(motifHorsReevaluation('54400000', 'SYSCOHADA')).toContain('art. 58-1 à 58-4');
+    const { racineEcartDeConversion } = jest.requireActual('./devises.service');
+    expect(racineEcartDeConversion('SYSCOHADA', '54200000', true, true)).not.toBe('4786');
+    expect(racineEcartDeConversion('SYSCOHADA', '54200000', true, false)).not.toBe('4797');
   });
 });
 

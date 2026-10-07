@@ -106,6 +106,8 @@ function prismaAvec(
   provisions: Array<Record<string, unknown> & { tenantId: string; exerciceId: string; statut: string }> = [],
 ) {
   return {
+    // Le transfert de dépréciation à la mise en service (quatrième lot, point 9) · aucun ici.
+    depreciationImmobilisation: { findMany: jest.fn().mockResolvedValue([]) },
     // La doublure honore dossier, exercice et statut · une doublure qui ne
     // filtre pas validerait une injection qui lirait le registre entier.
     provisionRisqueCharge: {
@@ -2636,5 +2638,48 @@ describe('notes des immobilisations brutes · réévaluation du module (lot 14)'
       DIMINUTIONS: 0,
       CLOTURE: 169_750_000,
     });
+  });
+});
+
+/**
+ * QUATRIÈME LOT, POINT 9 · la NOTE 28 et la note 5F reçoivent la phrase du
+ * transfert de dépréciation à la mise en service, lue par la NATURE des
+ * mouvements du module sur l'exercice ; les colonnes restent brutes.
+ */
+describe('NOTE 28 et 5F · transfert de dépréciation à la mise en service', () => {
+  const mouvements = [
+    { exerciceId: 'e1', tenantId: 't', nature: 'TRANSFERT_REPRISE', montant: 1_400_000, compteDepreciation: { numero: '29190000' }, compteContrepartie: { numero: '79130000' }, ecriture: { statut: 'VALIDEE' } },
+    { exerciceId: 'e1', tenantId: 't', nature: 'TRANSFERT_DOTATION', montant: 1_400_000, compteDepreciation: { numero: '29130000' }, compteContrepartie: { numero: '69130000' }, ecriture: { statut: 'VALIDEE' } },
+    // Un autre exercice et un autre dossier · jamais lus.
+    { exerciceId: 'e0', tenantId: 't', nature: 'TRANSFERT_REPRISE', montant: 9, compteDepreciation: { numero: '29190000' }, compteContrepartie: { numero: '79130000' }, ecriture: { statut: 'VALIDEE' } },
+    { exerciceId: 'e1', tenantId: 'autre', nature: 'TRANSFERT_DOTATION', montant: 7, compteDepreciation: { numero: '29130000' }, compteContrepartie: { numero: '69130000' }, ecriture: { statut: 'VALIDEE' } },
+  ];
+  const avecTransferts = (referentiel: Referentiel) => {
+    const prisma = prismaAvec([], [], [], [], referentiel) as any;
+    prisma.depreciationImmobilisation.findMany = jest.fn().mockImplementation(({ where }: any) =>
+      Promise.resolve(
+        mouvements.filter(
+          (m) => m.exerciceId === where.exerciceId && m.tenantId === where.immobilisation.tenantId && where.nature.in.includes(m.nature),
+        ),
+      ),
+    );
+    return prisma;
+  };
+  const fr = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  it('5F · la phrase nomme les deux lignes, chiffrée sur l’exercice et le dossier seuls', async () => {
+    const r = await service({ e1: [] }, [], avecTransferts(Referentiel.SYCEBNL)).notesAssociations('t', 'e1');
+    const [phrase] = note(r, '5F').commentaireServi;
+    expect(phrase).toContain(`${fr(1_400_000)} en reprise sur la ligne « Autres immobilisations incorporelles »`);
+    expect(phrase).toContain(`${fr(1_400_000)} en dotation sur la ligne « Logiciels et sites internet » (exploitation)`);
+  });
+
+  it('NOTE 28 · une ligne, la phrase sans ligne nommée ; aucune autre note ne la reçoit', async () => {
+    const r = await service({ e1: [] }, [], avecTransferts(Referentiel.SYSCOHADA)).notesSyscohada('t', 'e1');
+    expect(note(r, '28').commentaireServi).toEqual([
+      `Dont transfert à la mise en service · ${fr(1_400_000)} en reprise et ${fr(1_400_000)} en dotation (exploitation), ` +
+        "dépréciation déjà constatée sur l'immobilisation en cours, portée au compte du bien achevé, sans perte de valeur nouvelle.",
+    ]);
+    expect(r.notes.filter((n: any) => n.commentaireServi).map((n: any) => n.code)).toEqual(['28']);
   });
 });

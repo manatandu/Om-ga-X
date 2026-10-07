@@ -687,8 +687,12 @@ export function DevisesPage() {
                     utilisateur?.tenant.referentiel === 'SYSCOHADA'
                       ? "l'AUDCIF sépare (art. 54 et 57)"
                       : 'le SYCEBNL sépare'
-                  } : l'écart d'une créance ou d'une dette est LATENT et va au 478 ou au 479, celui d'une disponibilité est RÉALISÉ et va droit au résultat en 676 ou 776.`}
-                  source={utilisateur?.tenant.referentiel === 'SYSCOHADA' ? 'AUDCIF, art. 54 et 57' : 'SYCEBNL'}
+                  } : l'écart d'une créance ou d'une dette est LATENT et va au 478 ou au 479, celui d'une disponibilité est RÉALISÉ et va droit au résultat en 676 ou 776. Un instrument de trésorerie (54) n'est jamais converti au cours de clôture : il s'évalue au prix du marché ou au coût historique, nominal hors bilan, et sa variation de valeur se passe à la main. Une position COUVERTE se traite à la main aussi : la couverture qui fixe le cours met la part couverte au cours de couverture, sans écart ni provision ; celle qui ne le fixe pas laisse l'écart entier, mais la provision ne porte que sur le risque non couvert. Le calcul ci-dessous ne connaît aucune couverture et traite chaque position comme nue.`}
+                  source={
+                    utilisateur?.tenant.referentiel === 'SYSCOHADA'
+                      ? 'AUDCIF, art. 54, 57 et 58-1 à 58-4 · Titre VII, compte 54 · Titre VIII ch. 22 § 3.1 et § 3.2.2'
+                      : 'SYCEBNL · AUDCIF, art. 54, 57 et 58-1 à 58-4'
+                  }
                 />
               </span>
               <span className="flex items-center gap-2">
@@ -702,7 +706,7 @@ export function DevisesPage() {
                 />
                 <label
                   className="flex items-center gap-1.5 text-[11.5px]"
-                  title="AUDCIF art. 58 · la dotation est limitée à l'excédent des pertes probables sur les gains latents, devise par devise. Le texte la subordonne à une justification par l'entité, et elle ne vaut qu'entre éléments dont l'échéance tombe dans le même exercice."
+                  title="AUDCIF art. 58 · la dotation est limitée à l'excédent des pertes probables sur les gains latents, devise par devise. Le texte la subordonne à une justification par l'entité, et elle ne vaut qu'entre éléments dont l'échéance tombe dans le même exercice. Les opérations de couverture et la part couverte des éléments couverts sont exclues de cette position (Titre VIII ch. 22 § 2.2.3) · le calcul ne les connaît pas, retirez-les à la main."
                 >
                   <input
                     type="checkbox"

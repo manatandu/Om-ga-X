@@ -177,6 +177,28 @@ describe('Paramètres du dossier · les faits de la dénomination, forme par for
     expect(faitsDeLaFormeAEnvoyer('GROUPEMENT_INTERET_ECONOMIQUE', saisie)).toEqual({});
   });
 
+  it('clôture de la liquidation et cotisations spéciales · aux cinq sociétés et à la coopérative (décision du 2026-10-07, point 2, et quatrième lot, point 7)', () => {
+    const dates = {
+      ...saisie,
+      dateClotureLiquidation: '2027-09-30',
+      dateDeclarationCotisationActivite: '2026-07-20',
+      dateDeclarationCotisationLiquidation: '',
+    };
+    expect(faitsDeLaFormeAEnvoyer('SOCIETE_RESPONSABILITE_LIMITEE', dates)).toEqual({
+      dateDissolution: '2026-06-30',
+      liquidateurs: 'M. Liquidateur',
+      dateClotureLiquidation: '2027-09-30',
+      dateDeclarationCotisationActivite: '2026-07-20',
+      dateDeclarationCotisationLiquidation: '',
+    });
+    expect(faitsDeLaFormeAEnvoyer('SOCIETE_COOPERATIVE', dates)).toEqual({
+      dateDissolution: '2026-06-30',
+      liquidateurs: 'M. Liquidateur',
+      dateClotureLiquidation: '2027-09-30',
+      dateDeclarationCotisationActivite: '2026-07-20',
+      dateDeclarationCotisationLiquidation: '',
+    });
+  });
 
   it('la dissolution est proposée aux cinq sociétés du serveur et à la coopérative, rien d’autre', () => {
     const serveur = readFileSync(join(__dirname, '../../../src/modules/tenant/mentions-societe.ts'), 'utf8');
@@ -236,7 +258,7 @@ describe('Paramètres du dossier · la liquidation d’une société commerciale
     associeUniquePersonneMorale: 'NON' as const,
   };
 
-  it('nomination, régime et associé unique personne morale ne partent qu’à une société commerciale', () => {
+  it('nomination et régime partent aussi à la coopérative (AUSCOOP art. 185 et 196) · l’associé unique personne morale, à une société commerciale seule', () => {
     expect(faitsDeLaFormeAEnvoyer('SOCIETE_RESPONSABILITE_LIMITEE', saisie)).toEqual({
       dateDissolution: '2026-05-31',
       liquidateurs: 'M. Liquidateur',
@@ -244,10 +266,13 @@ describe('Paramètres du dossier · la liquidation d’une société commerciale
       regimeLiquidation: 'ARTICLE_223_1',
       associeUniquePersonneMorale: 'NON',
     });
-    // La coopérative garde sa dissolution (AUSCOOP art. 183), pas la liquidation de l'AUSCGIE.
+    // Quatrième lot, points 6 et 7 · la coopérative déclare nomination et
+    // régime ; l'art. 201 al. 4 ne vise que la société commerciale.
     expect(faitsDeLaFormeAEnvoyer('SOCIETE_COOPERATIVE', saisie)).toEqual({
       dateDissolution: '2026-05-31',
       liquidateurs: 'M. Liquidateur',
+      dateNominationLiquidateur: '2026-06-15',
+      regimeLiquidation: 'ARTICLE_223_1',
     });
   });
 });

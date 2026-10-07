@@ -27,10 +27,12 @@ type Onglet = 'echeancier' | 'registre';
  * trimestrielles et annuelles. Afficher le rythme évite de lire une échéance
  * annuelle comme si elle revenait chaque mois.
  */
-const RYTHME: Record<'MENSUELLE' | 'TRIMESTRIELLE' | 'ANNUELLE', string> = {
+const RYTHME: Record<'MENSUELLE' | 'TRIMESTRIELLE' | 'ANNUELLE' | 'PONCTUELLE', string> = {
   MENSUELLE: 'Mensuel',
   TRIMESTRIELLE: 'Trimestriel',
   ANNUELLE: 'Annuel',
+  // Les cotisations spéciales d'une société dissoute · une fois chacune.
+  PONCTUELLE: 'Ponctuel',
 };
 
 /**

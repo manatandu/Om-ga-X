@@ -15,6 +15,8 @@ import { ReferentielGuard } from '../../common/guards/referentiel.guard';
 import { ReferentielsAutorises } from '../../common/decorators/referentiels.decorator';
 import { FicheR2Dto } from './dto/fiche-r2.dto';
 import { DatesPortefeuilleDto } from './dto/dates-portefeuille.dto';
+import { FinLiquidationDto } from './dto/fin-liquidation.dto';
+import { GesteDissolutionDto } from './dto/geste-dissolution.dto';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
 
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard, ReferentielGuard)
@@ -127,6 +129,51 @@ export class ExerciceController {
     @Body() dto: DatesPortefeuilleDto,
   ) {
     return this.exerciceService.declarerDatesPortefeuille(user.tenantId, id, dto);
+  }
+
+  /**
+   * ARRÊTER L'EXERCICE À LA DATE DE DISSOLUTION DÉCLARÉE (décision par la loi
+   * du 2026-10-07, point 2 · loi n° 23/053, art. 12 al. 1 ; AUDCIF Titre VIII
+   * ch. 40 § 2.1). ADMIN_CABINET · un acte sur les dates de l'exercice, comme
+   * sa création. Ouvert aux deux référentiels, le service exigeant la
+   * dissolution déclarée, qu'une société ou une coopérative seules portent.
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  @Post(':id/arreter-a-la-dissolution')
+  async arreterALaDissolution(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: GesteDissolutionDto) {
+    return this.exerciceService.arreterALaDissolution(user.tenantId, id, { retirerActesDeLaPeriode: dto.retirerActesDeLaPeriode === true, userId: user.userId });
+  }
+
+  /**
+   * Annuler l'arrêt (constat 2 de la relecture · une dissolution mal datée
+   * enfermait le dossier) · l'exercice retrouve son 31 décembre, les écritures
+   * de la période lui reviennent. Même rôle que l'arrêt.
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  @Post(':id/annuler-arret-dissolution')
+  async annulerArretDissolution(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: GesteDissolutionDto) {
+    return this.exerciceService.annulerArretDissolution(user.tenantId, id, { retirerActesDeLaPeriode: dto.retirerActesDeLaPeriode === true, userId: user.userId });
+  }
+
+  /**
+   * L'exercice ouvert qui suit une dissolution antérieure au premier exercice
+   * tenu devient l'exercice de liquidation (constat 13, dossier repris).
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  @Post(':id/rattacher-a-la-liquidation')
+  async rattacherALaLiquidation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: GesteDissolutionDto) {
+    return this.exerciceService.rattacherALaLiquidation(user.tenantId, id, { retirerActesDeLaPeriode: dto.retirerActesDeLaPeriode === true, userId: user.userId });
+  }
+
+  /** La fin de l'exercice de liquidation, reportée ou avancée tant qu'il est ouvert (AUDCIF art. 7 al. 4). */
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  @Post(':id/fin-de-liquidation')
+  async modifierFinDeLiquidation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: FinLiquidationDto,
+  ) {
+    return this.exerciceService.modifierFinDeLiquidation(user.tenantId, id, dto);
   }
 
   @Get(':id/planning-cloture')

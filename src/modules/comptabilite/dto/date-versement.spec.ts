@@ -106,8 +106,12 @@ describe('ligne d’écriture · date du versement', () => {
  * gonflerait, et le total resterait juste. Invisible.
  */
 describe('La date de versement est PERSISTÉE, pas seulement acceptée', () => {
+  // Les lignes d'une inscription en négatif vivent dans `lignes-en-negatif.ts`,
+  // sorti du service pour que l'arrêt à la dissolution les serve sans
+  // l'importer · la contre-passation reste l'un des trois constructeurs.
   const source = () =>
-    readFileSync(join(__dirname, '..', 'ecriture.service.ts'), 'utf8');
+    readFileSync(join(__dirname, '..', 'ecriture.service.ts'), 'utf8') +
+    readFileSync(join(__dirname, '..', 'lignes-en-negatif.ts'), 'utf8');
 
   it('range la date aux trois constructeurs d’où une ligne d’écriture naît', () => {
     const s = source();

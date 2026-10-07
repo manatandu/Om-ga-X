@@ -464,6 +464,14 @@ export interface NoteCalculee {
   colonnes: ColonneNote[];
   lignes: LigneNoteCalculee[];
   commentaire?: string;
+  /**
+   * Phrases servies par le serveur EN RÉPONSE au commentaire officiel, à
+   * partir des données du dossier · la NOTE 28 et la note 5F disent le
+   * transfert de dépréciation à la mise en service (décision par la loi du
+   * 2026-10-07, quatrième lot, point 9, `transfert-depreciation-note.ts`).
+   * Absent quand rien n'est à dire.
+   */
+  commentaireServi?: string[];
   renvoiOfficiel?: string;
   precisionEditeur?: string;
   renvoyeeDepuis?: string[];

@@ -1,3 +1,4 @@
+import { ACTES_DE_LA_PERIODE } from './arret-dissolution';
 import { FormeJuridiqueSyscohada, Referentiel, RegimeLiquidation } from '@prisma/client';
 import { jalonsLiquidation } from './liquidation-societe';
 import { TenantService } from '../tenant/tenant.service';
@@ -153,15 +154,26 @@ describe('Liquidation d’une société commerciale au planning', () => {
     expect(j.get('Rapport du liquidateur à l’assemblée des associés')!.echeance).toBeNull();
   });
 
-  it('procédure collective · rien de l’AUSCGIE n’est calculé, et c’est dit ; exercice antérieur, coopérative · rien', () => {
+  it('procédure collective · rien de l’AUSCGIE n’est calculé, et c’est dit ; exercice antérieur · rien', () => {
     const pc = jalonsLiquidation({ ...base, regimeLiquidation: RegimeLiquidation.PROCEDURE_COLLECTIVE }, EX_2026, AUJOURDHUI);
     expect(pc).toHaveLength(1);
     expect(pc[0].source).toContain('AUSCGIE, art. 203 al. 2');
     expect(pc[0].source).toContain('AUPCAP, art. 53');
     expect(pc[0].echeance).toBeNull();
     expect(jalonsLiquidation(base, EX_2025, AUJOURDHUI)).toEqual([]);
-    expect(jalonsLiquidation({ ...base, forme: FormeJuridiqueSyscohada.SOCIETE_COOPERATIVE }, EX_2026, AUJOURDHUI)).toEqual([]);
     expect(jalonsLiquidation({ ...base, dateDissolution: null }, EX_2026, AUJOURDHUI)).toEqual([]);
+  });
+
+  it('coopérative (décision du 2026-10-07, quater, points 6 et 7) · servie par l’AUSCOOP, art. 196 pour les art. 228 à 233, sans sanction pénale de l’AUSCGIE', () => {
+    const coop = { ...base, forme: FormeJuridiqueSyscohada.SOCIETE_COOPERATIVE, regimeLiquidation: RegimeLiquidation.ARTICLE_223_1 };
+    const j = jalonsLiquidation(coop, EX_2026, AUJOURDHUI);
+    expect(j.length).toBeGreaterThan(0);
+    expect(j.find((x) => x.libelle === 'Clôture de la liquidation')!.source).toContain('AUSCOOP, art. 191');
+    const etats = j.find((x) => x.libelle === 'États financiers annuels et rapport écrit du liquidateur')!;
+    expect(etats.source).toContain('AUSCOOP, art. 196');
+    expect(iso(etats.echeance)).toBe('2027-03-31');
+    // Aucune sanction pénale de l'AUSCGIE ne s'applique à une coopérative.
+    expect(j.every((x) => !x.sanction)).toBe(true);
   });
 });
 
@@ -169,7 +181,10 @@ describe('Liquidation · câblée au planning de clôture', () => {
   it('le planning de l’exercice de dissolution sert les jalons de la liquidation, après ceux de l’exercice', async () => {
     const exercice = { id: 'e1', tenantId: 't1', ...EX_2026, statut: 'OUVERT', dateAssembleeGenerale: null, dateDepotEtatsPortefeuille: null };
     const prisma = {
-      exercice: { findFirst: jest.fn().mockResolvedValue(exercice) },
+      exercice: {
+        findFirst: jest.fn().mockResolvedValue(exercice),
+        findMany: jest.fn().mockResolvedValue([{ id: 'e1', dateDebut: EX_2026.dateDebut, dateFin: EX_2026.dateFin, statut: 'OUVERT' }]),
+      },
       tenant: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
           referentiel: Referentiel.SYSCOHADA,
@@ -184,10 +199,12 @@ describe('Liquidation · câblée au planning de clôture', () => {
           associeUniquePersonneMorale: null,
         }),
       },
-      ecriture: { count: jest.fn().mockResolvedValue(0) },
+      ecriture: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
       transcriptionInventaire: { count: jest.fn().mockResolvedValue(0) },
       rapportActivite: { count: jest.fn().mockResolvedValue(0) },
       donation: { findMany: jest.fn().mockResolvedValue([]) },
+      // Les actes calculés sur la période, lus par l'arrêt (bloquant 1) · aucun ici.
+      ...Object.fromEntries(ACTES_DE_LA_PERIODE.map((a) => [a.modele, { findMany: jest.fn().mockResolvedValue([]) }])),
     };
     const p = await new ExerciceService(prisma as never, {} as never).planningCloture('t1', 'e1');
     const libelles = p.jalons.map((j: { libelle: string }) => j.libelle);

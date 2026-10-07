@@ -20,6 +20,7 @@ import {
 import { GROUPES_ACTIVITES_SYSCOHADA } from '../etats-financiers-syscohada/correspondance-notes-syscohada-3';
 import { dateSaisieOuEffacement, jourSaisiOuEffacement } from './date-effacable';
 import { jourDeKinshasa } from '../../common/echeance';
+import { jourFr } from '../exercice/portefeuille-etat';
 import { normaliserModules } from './modules-optionnels';
 import { Prisma, ModuleOptionnel, FormeJuridiqueEbnl,
   FormeJuridiqueSyscohada, JeuEtatsFinanciersSycebnl, MethodeCotisations, Referentiel, RegimeExigibiliteTva, SystemeComptableSyscohada, TypeLicence,
@@ -169,7 +170,11 @@ export class TenantService {
       dateNominationLiquidateur: tenant.dateNominationLiquidateur,
       regimeLiquidation: tenant.regimeLiquidation,
       associeUniquePersonneMorale: tenant.associeUniquePersonneMorale,
-      // Décision par la loi du 2026-10-07, point 3 · entreprise minière du portefeuille.
+      // Décisions par la loi du 2026-10-07 · dissolution (point 2) et entreprise
+      // minière du portefeuille (point 3).
+      dateClotureLiquidation: tenant.dateClotureLiquidation,
+      dateDeclarationCotisationActivite: tenant.dateDeclarationCotisationActivite,
+      dateDeclarationCotisationLiquidation: tenant.dateDeclarationCotisationLiquidation,
       portefeuilleSecteurMinier: tenant.portefeuilleSecteurMinier,
       quotePartEtatCapital: tenant.quotePartEtatCapital === null ? null : Number(tenant.quotePartEtatCapital),
       sourceQuotePartEtat: tenant.sourceQuotePartEtat,
@@ -481,6 +486,9 @@ export class TenantService {
       dateNominationLiquidateur?: string;
       regimeLiquidation?: 'AMIABLE_STATUTAIRE' | 'ARTICLE_223_1' | 'ARTICLE_223_2_JUDICIAIRE' | 'PROCEDURE_COLLECTIVE' | 'PAS_ENCORE_DIT';
       associeUniquePersonneMorale?: ReponseFait;
+      dateClotureLiquidation?: string | null;
+      dateDeclarationCotisationActivite?: string | null;
+      dateDeclarationCotisationLiquidation?: string | null;
       portefeuilleSecteurMinier?: ReponseFait;
       quotePartEtatCapital?: number | null;
       sourceQuotePartEtat?: string | null;
@@ -609,19 +617,25 @@ export class TenantService {
       );
     }
     // LA LIQUIDATION DE L'AUSCGIE (décision par la loi du 2026-10-04,
-    // point 4) · nomination, régime et associé unique personne morale ne
-    // concernent qu'une société commerciale.
+    // point 4) · l'associé unique personne morale ne concerne qu'une société
+    // commerciale (art. 201 al. 4). LA COOPÉRATIVE (décision par la loi du
+    // 2026-10-07, quatrième lot, points 6 et 7) · elle déclare aussi la
+    // nomination de son liquidateur (AUSCOOP art. 185) et son régime · selon
+    // les statuts (art. 182), ou à défaut de clauses statutaires par les
+    // art. 203 à 241 de l'AUSCGIE (art. 196), dont l'art. 223.
     const nomination = jourSaisiOuEffacement(dto.dateNominationLiquidateur);
     if (
-      !societeCommerciale &&
-      (nomination ||
-        (dto.regimeLiquidation !== undefined && dto.regimeLiquidation !== 'PAS_ENCORE_DIT') ||
-        dto.associeUniquePersonneMorale === 'OUI' ||
-        dto.associeUniquePersonneMorale === 'NON')
+      !(societeCommerciale || cooperative) &&
+      (nomination || (dto.regimeLiquidation !== undefined && dto.regimeLiquidation !== 'PAS_ENCORE_DIT'))
     ) {
       throw new BadRequestException(
-        'La nomination du liquidateur, le régime de la liquidation et l’associé unique personne morale sont ceux ' +
-          'd’une société commerciale (AUSCGIE art. 201, 203 et 223).',
+        'La nomination du liquidateur et le régime de la liquidation sont ceux d’une société commerciale (AUSCGIE ' +
+          'art. 203 et 223) ou d’une coopérative (AUSCOOP art. 182, 185 et 196).',
+      );
+    }
+    if (!societeCommerciale && (dto.associeUniquePersonneMorale === 'OUI' || dto.associeUniquePersonneMorale === 'NON')) {
+      throw new BadRequestException(
+        'L’associé unique personne morale est celui d’une société commerciale (AUSCGIE art. 201 al. 4).',
       );
     }
     // Art. 201 al. 4 · la dissolution d'une société dont TOUS les titres sont
@@ -653,6 +667,29 @@ export class TenantService {
             ? false
             : null;
     const dissolutionApres = dissolution === undefined ? tenant.dateDissolution : dissolution;
+    // UNE DISSOLUTION QUI BORNE UN EXERCICE NE CHANGE PLUS SEULE (constat 2 de
+    // la relecture) · l'exercice arrêté à sa date finirait un jour quelconque
+    // sans dissolution, l'exercice de liquidation commencerait sans elle, et
+    // le dossier n'aurait plus d'exercice possible pour cette période. Le
+    // geste inverse existe · « Annuler l'arrêt » (fenêtre Exercices).
+    if (
+      dissolution !== undefined &&
+      tenant.dateDissolution &&
+      (dissolutionApres?.getTime() ?? null) !== tenant.dateDissolution.getTime() &&
+      !(tenant.dateDissolution.getUTCMonth() === 11 && tenant.dateDissolution.getUTCDate() === 31)
+    ) {
+      const arrete = await this.prisma.exercice.findFirst({
+        where: { tenantId, dateFin: tenant.dateDissolution },
+        select: { dateDebut: true, dateFin: true },
+      });
+      if (arrete) {
+        throw new BadRequestException(
+          `L'exercice du ${jourFr(arrete.dateDebut)} au ${jourFr(arrete.dateFin)} est arrêté à la dissolution du ` +
+            `${jourFr(tenant.dateDissolution)} · annulez d'abord l'arrêt (fenêtre Exercices, « Annuler l'arrêt »), puis ` +
+            'modifiez la date de dissolution.',
+        );
+      }
+    }
     const nominationApres = nomination === undefined ? tenant.dateNominationLiquidateur : nomination;
     const regimeApres =
       dto.regimeLiquidation === undefined
@@ -670,7 +707,7 @@ export class TenantService {
           'collective reste possible (AUSCGIE art. 200, 6° et 203 al. 2 ; AUPCAP art. 53).',
       );
     }
-    if (societeCommerciale && nominationApres && dissolutionApres && nominationApres < dissolutionApres) {
+    if ((societeCommerciale || cooperative) && nominationApres && dissolutionApres && nominationApres < dissolutionApres) {
       throw new BadRequestException(
         'Le liquidateur est nommé une fois la société dissoute · « La société est en liquidation dès l’instant ' +
           'de sa dissolution » (AUSCGIE art. 204).',
@@ -686,6 +723,66 @@ export class TenantService {
       throw new BadRequestException(
         '« La société est en liquidation dès l’instant de sa dissolution » (AUSCGIE art. 204) · une dissolution à ' +
           'venir ne se déclare pas.',
+      );
+    }
+
+    // LA CLÔTURE DE LA LIQUIDATION ET LES DEUX COTISATIONS SPÉCIALES (décision
+    // par la loi du 2026-10-07, point 2 · loi n° 23/053, art. 13 ; LPF
+    // art. 16) · faits DÉCLARÉS d'une société commerciale dissoute, jamais
+    // futurs, jamais antérieurs à la dissolution ; la seconde déclaration suit
+    // la clôture, qui n'existe pas sans liquidation (associé unique personne
+    // morale hors procédure collective, AUSCGIE art. 201 al. 4). Lus sur
+    // l'état qui résultera de l'enregistrement.
+    const clotureL = jourSaisiOuEffacement(dto.dateClotureLiquidation);
+    const declActivite = jourSaisiOuEffacement(dto.dateDeclarationCotisationActivite);
+    const declLiquidation = jourSaisiOuEffacement(dto.dateDeclarationCotisationLiquidation);
+    const clotureApres = clotureL === undefined ? tenant.dateClotureLiquidation : clotureL;
+    const declActiviteApres = declActivite === undefined ? tenant.dateDeclarationCotisationActivite : declActivite;
+    const declLiquidationApres = declLiquidation === undefined ? tenant.dateDeclarationCotisationLiquidation : declLiquidation;
+    if ((clotureL || declActivite || declLiquidation) && !(societeCommerciale || cooperative)) {
+      throw new BadRequestException(
+        'La clôture de la liquidation et les cotisations spéciales de la dissolution se déclarent pour une société ' +
+          'commerciale ou une coopérative (AUSCGIE art. 216 ; AUSCOOP art. 191 ; loi n° 23/053, art. 3 et 13).',
+      );
+    }
+    for (const [date, quoi] of [
+      [clotureL, 'Une clôture de liquidation à venir ne se déclare pas · déclarez-la une fois intervenue.'],
+      [declActivite, 'Une déclaration à venir ne se déclare pas · déclarez-la une fois déposée.'],
+      [declLiquidation, 'Une déclaration à venir ne se déclare pas · déclarez-la une fois déposée.'],
+    ] as const) {
+      if (date && date > aujourdHui) throw new BadRequestException(quoi);
+    }
+    if ((clotureApres || declActiviteApres || declLiquidationApres) && !dissolutionApres) {
+      throw new BadRequestException(
+        'Déclarez d’abord la date de dissolution · la clôture de la liquidation et les cotisations spéciales la suivent.',
+      );
+    }
+    if (dissolutionApres) {
+      for (const [date, quoi] of [
+        [clotureApres, 'La clôture de la liquidation'],
+        [declActiviteApres, 'La déclaration de la cotisation spéciale de la période d’activité'],
+      ] as const) {
+        if (date && date < dissolutionApres) {
+          throw new BadRequestException(`${quoi} ne peut pas précéder la dissolution du ${jourFr(dissolutionApres)}.`);
+        }
+      }
+    }
+    if ((clotureApres || declLiquidationApres) && associePmApres === true && regimeApres !== RegimeLiquidation.PROCEDURE_COLLECTIVE) {
+      throw new BadRequestException(
+        'Sans liquidation, il n’y a ni clôture de liquidation ni dernier bilan de liquidation · la dissolution d’une ' +
+          'société dont tous les titres sont détenus par un seul associé personne morale se fait « sans qu’il y ait ' +
+          'lieu à liquidation » (AUSCGIE art. 201 al. 4).',
+      );
+    }
+    if (declLiquidationApres && !clotureApres) {
+      throw new BadRequestException(
+        'La cotisation spéciale du dernier bilan de liquidation se déclare après la clôture · déclarez d’abord la date ' +
+          'de clôture de la liquidation.',
+      );
+    }
+    if (declLiquidationApres && clotureApres && declLiquidationApres < clotureApres) {
+      throw new BadRequestException(
+        `La cotisation spéciale du dernier bilan de liquidation se déclare après la clôture du ${jourFr(clotureApres)}.`,
       );
     }
 
@@ -788,6 +885,9 @@ export class TenantService {
               associeUniquePersonneMorale:
                 dto.associeUniquePersonneMorale === 'OUI' ? true : dto.associeUniquePersonneMorale === 'NON' ? false : null,
             }),
+        dateClotureLiquidation: clotureL,
+        dateDeclarationCotisationActivite: declActivite,
+        dateDeclarationCotisationLiquidation: declLiquidation,
         ...(dto.portefeuilleSecteurMinier === undefined
           ? {}
           : {

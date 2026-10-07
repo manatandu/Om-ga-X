@@ -2674,6 +2674,9 @@ export class ExportService {
       if (note.renvoiOfficiel) commentaires.push(note.renvoiOfficiel);
       if (note.precisionEditeur) commentaires.push(`Précision d'OmegaX (pas du texte officiel) : ${note.precisionEditeur}`);
       if (note.commentaire) commentaires.push(`Commentaire officiel : ${note.commentaire}`);
+      // La réponse du dossier au commentaire officiel (NOTE 28, note 5F ·
+      // transfert de dépréciation à la mise en service, quatrième lot, point 9).
+      for (const phrase of note.commentaireServi ?? []) commentaires.push(phrase);
       // Confrontations d'information (TOTAL de la note 13) et saisie gardée au
       // format à huit colonnes (notes 20B et 29B) · écrites, jamais tues.
       for (const c of note.confrontations ?? []) {

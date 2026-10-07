@@ -27,8 +27,43 @@ function service(options: {
   groupes?: Array<{ compteId: string; debit: number; credit: number; lignes: number }>;
   journaux?: Array<{ id: string; code: string; intitule: string; type: string; numerotation: NumerotationPiece }>;
   ecritures?: EcritureStub[];
+  /** L'arrêt à la dissolution · l'exercice lu (e1), la dissolution et l'exercice jumeau (e2). */
+  arret?: {
+    exercice: { dateDebut: Date; dateFin: Date };
+    dissolution: Date;
+    jumeau: { dateDebut: Date; dateFin: Date };
+    ecrituresJumeau: EcritureStub[];
+  };
 }) {
+  const versLigne = (e: EcritureStub) => ({
+    id: e.id,
+    journalId: e.journalId,
+    date: e.date,
+    numeroPiece: e.numeroPiece,
+    statut: e.statut ?? StatutEcriture.VALIDEE,
+    estGenereeParCloture: e.estGenereeParCloture ?? false,
+    _count: { lignes: e.lignes.length },
+    lignes: e.lignes,
+  });
   const prisma = {
+    // La doublure HONORE la requête (§ 10 bis) · l'exercice lu par son
+    // identifiant, l'exercice jumeau par sa date de début ou de fin.
+    exercice: {
+      findFirst: jest.fn(({ where }: any) => {
+        const a = options.arret;
+        if (where.id === 'e1') {
+          return Promise.resolve(a ? a.exercice : { dateDebut: new Date(Date.UTC(2026, 0, 1)), dateFin: new Date(Date.UTC(2026, 11, 31)) });
+        }
+        if (!a) return Promise.resolve(null);
+        const j = { id: 'e2', ...a.jumeau };
+        if (where.dateDebut && where.dateDebut.getTime() === a.jumeau.dateDebut.getTime()) return Promise.resolve(j);
+        if (where.dateFin && where.dateFin.getTime() === a.jumeau.dateFin.getTime()) return Promise.resolve(j);
+        return Promise.resolve(null);
+      }),
+    },
+    tenant: {
+      findUnique: jest.fn(() => Promise.resolve({ dateDissolution: options.arret?.dissolution ?? null })),
+    },
     compte: {
       findMany: jest.fn(({ where }: any) =>
         Promise.resolve(
@@ -55,17 +90,12 @@ function service(options: {
     },
     journal: { findMany: jest.fn().mockResolvedValue(options.journaux ?? []) },
     ecriture: {
-      findMany: jest.fn().mockResolvedValue(
-        (options.ecritures ?? []).map((e) => ({
-          id: e.id,
-          journalId: e.journalId,
-          date: e.date,
-          numeroPiece: e.numeroPiece,
-          statut: e.statut ?? StatutEcriture.VALIDEE,
-          estGenereeParCloture: e.estGenereeParCloture ?? false,
-          _count: { lignes: e.lignes.length },
-          lignes: e.lignes,
-        })),
+      findMany: jest.fn(({ where, cursor }: any) =>
+        Promise.resolve(
+          cursor
+            ? []
+            : (where?.exerciceId === 'e2' ? options.arret?.ecrituresJumeau ?? [] : options.ecritures ?? []).map(versLigne),
+        ),
       ),
     },
   } as unknown as PrismaService;
@@ -157,6 +187,28 @@ describe('Analyse des journaux', () => {
     numeroPiece,
     lignes: [{ debit: 100, credit: 0 }, { debit: 0, credit: 100 }],
     ...extra,
+  });
+
+  it('NOMME les numéros partis avec l’arrêt à la dissolution, sans les compter manquants', async () => {
+    // Dissolution au 30 juin 2026 · la pièce 3, datée du 2 juillet, a suivi sa
+    // date dans l'exercice de liquidation avec son numéro (décision par la loi
+    // du 2026-10-07, quatrième lot, point 1). Le 4 manque vraiment.
+    const dissolution = new Date(Date.UTC(2026, 5, 30));
+    const { service: s } = service({
+      journaux: [journal('ACH', NumerotationPiece.CONTINUE_JOURNAL)],
+      ecritures: [ecr('ACH', 1), ecr('ACH', 2), ecr('ACH', 5)],
+      arret: {
+        exercice: { dateDebut: new Date(Date.UTC(2026, 0, 1)), dateFin: dissolution },
+        dissolution,
+        jumeau: { dateDebut: new Date(Date.UTC(2026, 6, 1)), dateFin: new Date(Date.UTC(2026, 11, 31)) },
+        ecrituresJumeau: [ecr('ACH', 3, 6), ecr('ACH', 6, 7)],
+      },
+    });
+    const a = await s.analyseJournaux('t1', { exerciceId: 'e1' });
+    expect(a.lignes[0].sequence.trous).toEqual([{ de: 4, a: 4 }]);
+    expect(a.lignes[0].sequence.manquants).toBe(1);
+    expect(a.lignes[0].sequence.rattachesALArret?.nombre).toBe(1);
+    expect(a.lignes[0].sequence.rattachesALArret?.explication).toContain('exercice de liquidation');
   });
 
   it('TROUVE LE TROU d’une numérotation continue par journal', async () => {

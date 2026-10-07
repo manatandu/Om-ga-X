@@ -472,6 +472,15 @@ model Tenant {
   // PERSONNE MORALE · la dissolution transmet le patrimoine « sans qu'il y ait
   // lieu à liquidation ». null = pas encore dit.
   associeUniquePersonneMorale       Boolean?
+  // LA DISSOLUTION ET SES DEUX COTISATIONS SPÉCIALES (décision par la loi du
+  // 2026-10-07, point 2) · loi n° 23/053, art. 13 al. 1 et 2 ; LPF art. 16
+  // (« dans le mois »). Faits DÉCLARÉS, nullables sans défaut, jamais futurs ·
+  // la date de CLÔTURE de la liquidation fait courir la seconde déclaration
+  // (dernier bilan de liquidation) ; les deux dates de DÉCLARATION lèvent les
+  // jalons du planning, qui sans elles resteraient rouges à vie.
+  dateClotureLiquidation            DateTime?
+  dateDeclarationCotisationActivite DateTime?
+  dateDeclarationCotisationLiquidation DateTime?
   // ENTREPRISE MINIÈRE DU PORTEFEUILLE (décision par la loi du 2026-10-07,
   // point 3) · arrêté interministériel n° 005/CAB/MIN/PF/2025 et
   // n° 159bis/CAB/MIN/FINANCES/2025 du 10 décembre 2025, art. 2 et 3 ·

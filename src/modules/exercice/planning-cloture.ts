@@ -173,6 +173,12 @@ export interface DefinitionJalon {
    */
   echeanceFiscale?: true;
   /**
+   * La déclaration ANNUELLE de l'impôt sur les sociétés · sur l'exercice d'une
+   * société dissoute, la cotisation spéciale la remplace (loi n° 23/053,
+   * art. 13 ; LPF art. 16, « dans le mois » ; `cotisationsSpeciales`).
+   */
+  declarationAnnuelleImpotSocietes?: true;
+  /**
    * Formes juridiques concernées · absent = toutes. C'est ce champ qui évite
    * de servir à une ONG le circuit d'une entreprise commerciale, et
    * réciproquement.
@@ -801,6 +807,7 @@ export const JALONS_CLOTURE: DefinitionJalon[] = [
     source:
       'Loi n° 004/2003 portant réforme des procédures fiscales, art. 12 (échéance), modifié par la loi n° 23/052 et par la loi de finances n° 25/060, et 13 (états joints), modifié par la loi n° 23/052 ; art. 14 (certification ONEC), modifié par la loi de finances n° 22/071 du 28 décembre 2022 ; art. 15 (déclaration en cas de perte) et 16 (dans le mois en cas de dissolution, de liquidation ou de cessation) ; arrêté ministériel n° 014 du 16 mai 2023 (certification des états financiers), art. 5, 7, 14, 15 et 28 ; art. 57 bis LPF tel que modifié par la loi de finances n° 25/060 du 29 décembre 2025 ; loi n° 23/053, art. 141, 2° (mention du comptable)',
     echeanceFiscale: true,
+    declarationAnnuelleImpotSocietes: true,
     referentiels: [Referentiel.SYSCOHADA],
     formesSyscohadaExclues: FORMES_PERSONNES_PHYSIQUES,
   },
@@ -1522,9 +1529,39 @@ export function jalonsApplicables(contexte: {
 export function dateJalon(dateFinExercice: Date, decalage: Decalage): Date {
   const annee = dateFinExercice.getUTCFullYear();
   const mois = dateFinExercice.getUTCMonth() + decalage.moisApres;
-  if (decalage.jour === 'FIN') {
-    // Jour 0 du mois suivant = dernier jour du mois visé.
-    return new Date(Date.UTC(annee, mois + 1, 0));
+  if (estFinDeMois(dateFinExercice)) {
+    if (decalage.jour === 'FIN') {
+      // Jour 0 du mois suivant = dernier jour du mois visé.
+      return new Date(Date.UTC(annee, mois + 1, 0));
+    }
+    return new Date(Date.UTC(annee, mois, decalage.jour));
   }
-  return new Date(Date.UTC(annee, mois, decalage.jour));
+  /*
+    UNE CLÔTURE EN COURS DE MOIS SE COMPTE DE DATE À DATE (constat 4 de la
+    relecture de la dissolution · exercice arrêté à la dissolution, exercice de
+    liquidation). Les décalages sont écrits pour une clôture de fin de mois,
+    où « N mois » et « fin du N-ième mois » coïncident · en cours de mois, la
+    fin de mois servait une assemblée au 31 mars pour une dissolution au
+    17 septembre, au lieu du 17 mars, et ce qui se compte à rebours d'elle
+    (45 jours francs) au 15 février au lieu du 30 janvier. « FIN » devient le
+    même quantième N mois plus tard, à défaut le dernier jour du mois
+    (AUPSRVE, art. 1-14, al. 2, par analogie, comme les délais de la
+    dissolution · décision par la loi du 2026-10-07, quatrième lot, point 5) ;
+    un jour fixe J du mois N devient N - 1 mois plus J jours. Une clôture de
+    FIN de mois garde la règle d'avant · elle coïncide avec la lecture du Code
+    de procédure civile (art. 195, « de quantième à veille de quantième »).
+  */
+  const cible = (n: number) => {
+    const premier = new Date(Date.UTC(annee, dateFinExercice.getUTCMonth() + n, 1));
+    const dernier = new Date(Date.UTC(premier.getUTCFullYear(), premier.getUTCMonth() + 1, 0)).getUTCDate();
+    return new Date(Date.UTC(premier.getUTCFullYear(), premier.getUTCMonth(), Math.min(dateFinExercice.getUTCDate(), dernier)));
+  };
+  if (decalage.jour === 'FIN') return cible(decalage.moisApres);
+  const base = cible(decalage.moisApres - 1);
+  return new Date(base.getTime() + decalage.jour * 86_400_000);
+}
+
+/** Le dernier jour du mois · la clôture pour laquelle les décalages sont écrits. */
+function estFinDeMois(d: Date): boolean {
+  return new Date(d.getTime() + 86_400_000).getUTCDate() === 1;
 }

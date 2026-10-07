@@ -424,13 +424,20 @@ export function BlocTableauNote({
         </div>
       )}
 
-      {(note.commentaire || note.renvoiOfficiel || note.precisionEditeur) && (
+      {(note.commentaire || note.renvoiOfficiel || note.precisionEditeur || (note.commentaireServi?.length ?? 0) > 0) && (
         <div className="px-4 py-2 text-[11px] text-text-dim border-t border-border italic">
           {note.renvoiOfficiel && <div className="mb-1">{note.renvoiOfficiel}</div>}
           {note.precisionEditeur && (
             <div className="mb-1 not-italic">Précision d’OmegaX (pas du texte officiel) : {note.precisionEditeur}</div>
           )}
           {note.commentaire && <div>Commentaire officiel : {note.commentaire}</div>}
+          {/* La réponse du dossier au commentaire, servie par le serveur
+              (transfert de dépréciation à la mise en service, NOTE 28 et 5F). */}
+          {note.commentaireServi?.map((phrase) => (
+            <div key={phrase} className="mt-1 not-italic text-text">
+              {phrase}
+            </div>
+          ))}
         </div>
       )}
 

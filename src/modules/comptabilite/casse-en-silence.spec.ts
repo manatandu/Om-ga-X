@@ -149,6 +149,21 @@ describe('1 · la date de l’écriture tombe dans son exercice', () => {
     ).rejects.toThrow(/sort de l'exercice/i);
   });
 
+  it('relit l’exercice DANS la transaction · un arrêt passé entre la lecture et l’écriture refuse la date (constat 10)', async () => {
+    // Décision par la loi du 2026-10-07, quater, point 1 · l'exercice arrêté
+    // à la dissolution du 15 mai ne contient plus le 1er juillet. Lu avant la
+    // transaction seulement, la pièce entrait dans l'exercice arrêté.
+    const svc = serviceEcriture();
+    const prisma = (svc as unknown as { prisma: { exercice: { findFirst: jest.Mock } } }).prisma;
+    const arrete = { ...EXERCICE, dateFin: new Date('2026-05-15') };
+    let lectures = 0;
+    prisma.exercice.findFirst.mockImplementation(() => Promise.resolve(lectures++ === 0 ? EXERCICE : arrete));
+    await expect(svc.creer('t1', 'u1', { ...ECRITURE, date: '2026-07-01' } as never)).rejects.toThrow(
+      /sort de l'exercice/i,
+    );
+    expect(lectures).toBeGreaterThan(1);
+  });
+
   it('accepte une date dans l’exercice', async () => {
     const svc = serviceEcriture();
     // Le refus tombe avant la transaction · si la date passe, on va plus loin
@@ -431,6 +446,8 @@ describe('4 · une période n’est couverte que par un seul exercice', () => {
           findFirst: async () => existant,
           create: async (a: unknown) => a,
         },
+        // Un dossier sans dissolution · aucun exercice n'y est refusé pour elle.
+        tenant: { findUnique: async () => ({ referentiel: 'SYSCOHADA', formeJuridiqueSyscohada: null, dateDissolution: null }) },
       } as never,
       {} as never,
     );

@@ -25,6 +25,7 @@ import { FORMES_SOCIETES_COMMERCIALES } from '../tenant/mentions-societe';
 import { closAu31Decembre } from '../exercice/portefeuille-etat';
 import { commissaireCouvreLExercice } from '../mandat-auditeur/duree-mandat';
 import { formeApplicable } from '../tenant/forme-applicable';
+import { echeancierDissolution } from '../exercice/liquidation-societe';
 
 /**
  * Société anonyme sans mandat enregistré · le commissaire existe par la loi
@@ -734,6 +735,14 @@ export class RetenuesService {
           formeJuridiqueSyscohada: true,
           formeJuridiqueSyscohadaAnterieure: true,
           dateTransformationForme: true,
+          // La dissolution et ses deux cotisations spéciales (décision par la
+          // loi du 2026-10-07, quatrième lot, points 3 à 5 ; constat 9).
+          dateDissolution: true,
+          dateClotureLiquidation: true,
+          regimeLiquidation: true,
+          associeUniquePersonneMorale: true,
+          dateDeclarationCotisationActivite: true,
+          dateDeclarationCotisationLiquidation: true,
         },
       }),
       // LE PROCÈS-VERBAL DE L'ART. 13 BIS SUPPOSE UN COMMISSAIRE AUX COMPTES
@@ -825,8 +834,34 @@ export class RetenuesService {
     const pvSansCommissaire =
       !commissaire && !saSansMandatEnregistre && applicables.some((o) => o.cle === 'procesVerbalAssemblee');
     const pvAConfirmer = (o: { cle: string }) => o.cle === 'procesVerbalAssemblee' && saSansMandatEnregistre;
+    /*
+      UNE SOCIÉTÉ DISSOUTE (décision par la loi du 2026-10-07, quatrième lot,
+      points 3, 4 et 5 ; constat 9 de la relecture) · ni déclaration annuelle
+      de l'IS pour l'année de la dissolution et les suivantes (LPF art. 16,
+      règle spéciale), ni acompte d'une année suivante ou échu après la
+      dernière cotisation (art. 57 bis ; loi n° 23/053, art. 13 al. 3) ; les
+      deux déclarations de cotisation spéciale prennent leur place.
+    */
+    const dissolution =
+      registre.referentiel === Referentiel.SYSCOHADA
+        ? echeancierDissolution(
+            {
+              forme: forme ?? null,
+              dateDissolution: faitsDossier.dateDissolution ?? null,
+              dateNominationLiquidateur: null,
+              regimeLiquidation: faitsDossier.regimeLiquidation ?? null,
+              associeUniquePersonneMorale: faitsDossier.associeUniquePersonneMorale ?? null,
+              dateClotureLiquidation: faitsDossier.dateClotureLiquidation ?? null,
+              dateDeclarationCotisationActivite: faitsDossier.dateDeclarationCotisationActivite ?? null,
+              dateDeclarationCotisationLiquidation: faitsDossier.dateDeclarationCotisationLiquidation ?? null,
+            },
+            registre.dateReference,
+          )
+        : null;
+    const estAcompte = (cle: string) => /^(premier|deuxieme|troisieme)AcompteIs$/.test(cle);
     const declarations = applicables
       .filter((o) => o.cle !== 'procesVerbalAssemblee' || commissaire || saSansMandatEnregistre)
+      .filter((o) => !dissolution || o.periodicite !== 'ANNUELLE' || dissolution.retenir(o.cle, this.prochaineEcheanceDeclarative(o, registre.dateReference)))
       .map((o) => ({
       cle: o.cle,
       libelle: o.libelle,
@@ -843,7 +878,10 @@ export class RetenuesService {
             ? `${o.echeance} · entreprise du portefeuille de l’État, assemblée au plus tard le 31 mars (ordonnance-loi n° 13/003, art. 112)`
             : o.echeance) + (pvAConfirmer(o) ? ` · ${formeNonDite ? PV_A_CONFIRMER_SANS_FORME : PV_A_CONFIRMER_SANS_MANDAT}` : ''),
       baseLegale: o.baseLegale,
-      reserve: o.reserve,
+      reserve:
+        dissolution?.mentionAcompte && estAcompte(o.cle) && dissolution.cotisationsDues
+          ? [o.reserve, dissolution.mentionAcompte].filter(Boolean).join(' ')
+          : o.reserve,
       montantDu: 0,
       moisEnRetard: 0,
       imprime: null as string | null,
@@ -856,14 +894,36 @@ export class RetenuesService {
           : o.sourceDonnees ?? null,
     }));
 
-    const echeances = [...reversements, ...declarations].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const cotisations = (dissolution?.cotisations ?? []).map((c) => ({
+      cle: c.cle as string,
+      libelle: c.libelle,
+      genre: 'DECLARATION' as const,
+      periodicite: 'PONCTUELLE' as const,
+      beneficiaire: 'ETAT' as const,
+      date: c.date,
+      echeance: c.echeance,
+      baseLegale: c.baseLegale,
+      reserve: c.reserve,
+      montantDu: 0,
+      moisEnRetard: 0,
+      imprime: null as string | null,
+      contenu: null as string | null,
+      sanction: null as string | null,
+      sourceDonnees:
+        'Date de dissolution ou de clôture de la liquidation déclarée dans Paramètres du dossier, plus un mois de date à date, reportée au jour ouvrable (LPF art. 16 et 110 bis, al. 2).' as string | null,
+    }));
+    const echeances = [...reversements, ...declarations, ...cotisations].sort((a, b) => a.date.getTime() - b.date.getTime());
 
     return {
       dateReference: registre.dateReference,
       derniereVerificationEcheances: registre.derniereVerificationEcheances,
       echeances,
       totalDu: registre.totalDu,
-      avertissements: [...registre.avertissements, ...(pvSansCommissaire ? [AVERTISSEMENT_PV_SANS_COMMISSAIRE] : [])],
+      avertissements: [
+        ...registre.avertissements,
+        ...(pvSansCommissaire ? [AVERTISSEMENT_PV_SANS_COMMISSAIRE] : []),
+        ...(dissolution?.avertissements ?? []),
+      ],
     };
   }
 }

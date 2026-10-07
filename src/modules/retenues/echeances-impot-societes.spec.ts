@@ -383,3 +383,49 @@ describe('Procès-verbal de la LPF art. 13 bis · seulement sous commissaire aux
     expect(r.avertissements).not.toContain(AVERTISSEMENT_PV_SANS_COMMISSAIRE);
   });
 });
+
+/**
+ * UNE SOCIÉTÉ DISSOUTE (décision par la loi du 2026-10-07, quatrième lot,
+ * points 3, 4 et 5 ; constat 9) · le câblage de l'échéancier, testé avec la
+ * règle. Dissolution le 15 mai 2026, clôture de la liquidation le 10 septembre
+ * 2026, échéancier lu le 1er juin 2026.
+ */
+describe('Échéancier d’une société dissoute', () => {
+  function serviceDissoute() {
+    const tenant = {
+      referentiel: Referentiel.SYSCOHADA,
+      formeJuridiqueSyscohada: FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE,
+      dateDissolution: new Date('2026-05-15'),
+      dateClotureLiquidation: new Date('2026-09-10'),
+      regimeLiquidation: 'AMIABLE_STATUTAIRE',
+      associeUniquePersonneMorale: false,
+      dateDeclarationCotisationActivite: null,
+      dateDeclarationCotisationLiquidation: null,
+    };
+    const prisma = {
+      exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-05-15') }) },
+      tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue(tenant) },
+      ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
+      ecriture: { findFirst: jest.fn().mockResolvedValue(null) },
+      compte: { findMany: jest.fn().mockResolvedValue([]) },
+      mandatAuditeur: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+    return new RetenuesService(prisma);
+  }
+
+  it('ni déclaration annuelle de 2026, ni acompte après la dernière cotisation · les deux cotisations à leur place', async () => {
+    const { echeances: liste } = await serviceDissoute().echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2026-06-01' });
+    const parCle = new Map(liste.map((e) => [e.cle, e]));
+    // Le 30 avril 2027 vise les revenus de 2026, l'année de la dissolution.
+    expect(parCle.has('declarationImpotSocietes')).toBe(false);
+    expect(parCle.get('premierAcompteIs')!.reserve).toContain('57 bis');
+    expect(parCle.has('deuxiemeAcompteIs')).toBe(true);
+    // 25 novembre 2026, après l'échéance de la seconde cotisation (12 octobre).
+    expect(parCle.has('troisiemeAcompteIs')).toBe(false);
+    const activite = parCle.get('cotisationSpecialeActivite')!;
+    const liquidation = parCle.get('cotisationSpecialeLiquidation')!;
+    expect([activite.periodicite, activite.genre]).toEqual(['PONCTUELLE', 'DECLARATION']);
+    expect(activite.date.toISOString().slice(0, 10)).toBe('2026-06-15');
+    expect(liquidation.date.toISOString().slice(0, 10)).toBe('2026-10-12');
+  });
+});

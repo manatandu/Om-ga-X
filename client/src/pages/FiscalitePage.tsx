@@ -899,6 +899,48 @@ export function FiscalitePage() {
                 </div>
               </div>
             )}
+            {/* LES BILANS SUCCESSIFS DE L'ANNÉE DE LA DISSOLUTION (loi n° 23/053,
+                art. 12 al. 4 et 13 al. 3 ; décision par la loi du 2026-10-07,
+                quatrième lot, point 2) · servis par le serveur, jamais recalculés
+                ici. Un montant non calculé reste « · » (lib/montants), jamais zéro. */}
+            {resultat.bilansSuccessifs?.totalisation && (
+              <table className="w-full max-w-[560px] mx-3 mb-3 text-[11.5px]" aria-label="Impôt de l’année de la dissolution">
+                <thead>
+                  <tr>
+                    <th className="text-left px-2 py-1">Impôt de l’année {resultat.bilansSuccessifs.anneeDissolution}</th>
+                    <th className="text-right px-2 py-1">Montant ({devise})</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(
+                    [
+                      ['Résultat de la période d’activité', resultat.bilansSuccessifs.totalisation.periodeActivite.resultatFiscalAvantReport],
+                      ['Résultat de la liquidation', resultat.bilansSuccessifs.totalisation.liquidation.resultatFiscalAvantReport],
+                      ['Total', resultat.bilansSuccessifs.totalisation.total],
+                      ['Report déficitaire imputé', resultat.bilansSuccessifs.totalisation.deficitImpute],
+                      ['Impôt de l’année', resultat.bilansSuccessifs.totalisation.impotTotal],
+                      ['Première cotisation', resultat.bilansSuccessifs.premiereCotisation],
+                      ['Acomptes imputés', resultat.bilansSuccessifs.totalisation.acomptesImputes],
+                      ['Seconde cotisation', resultat.bilansSuccessifs.totalisation.secondeCotisation],
+                    ] as Array<[string, number | null]>
+                  ).map(([libelle, valeur]) => (
+                    <tr key={libelle} className="border-t border-border">
+                      <td className="px-2 py-1">{libelle}</td>
+                      <td className="px-2 py-1 text-right font-mono">{nombre(valeur)}</td>
+                    </tr>
+                  ))}
+                  {resultat.bilansSuccessifs.totalisation.excedent > 0.005 && (
+                    <tr className="border-t border-border">
+                      <td className="px-2 py-1 text-danger">Réglé au-delà de l’impôt de l’année</td>
+                      <td className="px-2 py-1 text-right font-mono text-danger">{nombre(resultat.bilansSuccessifs.totalisation.excedent)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+            {resultat.bilansSuccessifs && !resultat.bilansSuccessifs.calculable && resultat.bilansSuccessifs.motif && (
+              <div className="mx-3 mb-3 text-[11.5px] text-danger">{resultat.bilansSuccessifs.motif}</div>
+            )}
             {/* LES DEUX QUOTITÉS DE LA PETITE ENTREPRISE · art. 57, al. 3 et
                 57 quater LPF. Ce n'est PAS un acompte sur l'exercice suivant :
                 c'est le paiement de l'impôt de CET exercice, fractionné en

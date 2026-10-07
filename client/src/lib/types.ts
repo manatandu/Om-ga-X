@@ -1231,6 +1231,12 @@ export interface NoteCalculee {
   colonnes: ColonneNote[];
   lignes: LigneNoteCalculee[];
   commentaire?: string;
+  /**
+   * Phrases servies par le serveur en réponse au commentaire officiel (NOTE 28,
+   * note 5F · transfert de dépréciation à la mise en service, décision par la
+   * loi du 2026-10-07, quatrième lot, point 9).
+   */
+  commentaireServi?: string[];
   renvoiOfficiel?: string;
   /** Précision d'OmegaX, jamais du texte officiel. */
   precisionEditeur?: string;
@@ -1651,10 +1657,14 @@ export interface ParametresDossier {
   regimeLiquidation?: 'AMIABLE_STATUTAIRE' | 'ARTICLE_223_1' | 'ARTICLE_223_2_JUDICIAIRE' | 'PROCEDURE_COLLECTIVE' | null;
   associeUniquePersonneMorale?: boolean | null;
   /**
-   * Décision par la loi du 2026-10-07, point 3 · secteur minier et quote-part
-   * de l'État sous le portefeuille (arrêté interministériel du 10 décembre
-   * 2025, art. 1er et 3).
+   * Décision par la loi du 2026-10-07 · point 2, clôture de la liquidation et
+   * dépôt des deux cotisations spéciales (loi n° 23/053, art. 13 ; LPF
+   * art. 16) ; point 3, secteur minier et quote-part de l'État sous le
+   * portefeuille (arrêté interministériel du 10 décembre 2025, art. 1er et 3).
    */
+  dateClotureLiquidation?: string | null;
+  dateDeclarationCotisationActivite?: string | null;
+  dateDeclarationCotisationLiquidation?: string | null;
   portefeuilleSecteurMinier?: boolean | null;
   quotePartEtatCapital?: number | null;
   sourceQuotePartEtat?: string | null;
@@ -2841,7 +2851,12 @@ export interface EcheancierFiscal {
      * de finances n° 25/060 sont de ce genre, et sanctionnées comme telles.
      */
     genre: 'REVERSEMENT' | 'DECLARATION';
-    periodicite: 'MENSUELLE' | 'TRIMESTRIELLE' | 'ANNUELLE';
+    /**
+     * PONCTUELLE · une échéance qui ne revient pas, les deux déclarations de
+     * cotisation spéciale d'une société dissoute (loi n° 23/053, art. 13 ;
+     * LPF art. 16 ; décision par la loi du 2026-10-07, quatrième lot).
+     */
+    periodicite: 'MENSUELLE' | 'TRIMESTRIELLE' | 'ANNUELLE' | 'PONCTUELLE';
     beneficiaire: 'ETAT' | 'ORGANISME_SOCIAL' | 'PROVINCE';
     date: string;
     echeance: string;
@@ -2948,6 +2963,28 @@ export interface PlanningCloture {
   dateDeclarationDividendeEtat?: string | null;
   dateNotePerceptionDividende?: string | null;
   datePaiementDividendeEtat?: string | null;
+  /**
+   * La dissolution déclarée (décision par la loi du 2026-10-07, point 2, et
+   * quatrième lot, point 1) · `arretPropose`, l'exercice ouvert qui la
+   * contient peut s'arrêter à sa date ; `motifArret`, le refus que le serveur
+   * opposerait, lu par la MÊME règle (constat 15) ; `annulationProposee`,
+   * l'exercice arrêté peut reprendre sa fin d'origine ; `rattachementPropose`,
+   * un exercice repris peut devenir l'exercice de liquidation (constat 13) ;
+   * `exerciceDeLiquidation`, cet exercice court du lendemain ;
+   * `actesDeLaPeriodeARetirer`, les actes calculés sur la période que
+   * l'arrêt retire avec l'accord du cabinet (relecture du 2026-10-07,
+   * bloquant 1), nommés dans la confirmation.
+   */
+  dissolution?: {
+    date: string;
+    arretPropose: boolean;
+    motifArret?: string | null;
+    annulationProposee?: boolean;
+    rattachementPropose?: boolean;
+    exerciceDeLiquidation: boolean;
+    dateClotureLiquidation: string | null;
+    actesDeLaPeriodeARetirer?: string[];
+  } | null;
   jalons: JalonCloture[];
 }
 
@@ -3219,6 +3256,33 @@ export interface ResultatFiscal {
   /** Impôt dû + suppléments · la base sur laquelle les trois acomptes sont assis. */
   baseAcomptes: number | null;
   acomptesProchainExercice: { quotite: number; echeance: string; montant: number }[];
+  /**
+   * LES BILANS SUCCESSIFS DE L'ANNÉE DE LA DISSOLUTION (loi n° 23/053,
+   * art. 11, 1°, 12 al. 4 et 13 al. 3 ; décision par la loi du 2026-10-07,
+   * quatrième lot, point 2) · null hors dissolution. Une assiette, deux
+   * cotisations · l'exercice arrêté porte la première, l'exercice de
+   * liquidation la seconde, calculée sur le TOTAL moins ce qui est réglé.
+   */
+  bilansSuccessifs?: {
+    role: 'PREMIERE_COTISATION' | 'COTISATION_UNIQUE' | 'SECONDE_COTISATION' | 'NON_CALCULEE';
+    anneeDissolution: number;
+    calculable: boolean;
+    motif: string | null;
+    premiereCotisation: number | null;
+    totalisation: {
+      periodeActivite: { resultatFiscalAvantReport: number; chiffreAffaires: number };
+      liquidation: { resultatFiscalAvantReport: number; chiffreAffaires: number };
+      total: number;
+      deficitImpute: number;
+      resultatFiscal: number;
+      chiffreAffaires: number;
+      impotTotal: number | null;
+      acomptesImputes: number;
+      dejaRegle: number | null;
+      secondeCotisation: number | null;
+      excedent: number;
+    } | null;
+  } | null;
   /**
    * ART. 57, AL. 3 ET 57 QUATER LPF · les deux quotités de 60 % et 40 % par
    * lesquelles une PETITE ENTREPRISE acquitte l'impôt DE CET EXERCICE. Ce

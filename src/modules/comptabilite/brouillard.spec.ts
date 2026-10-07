@@ -135,7 +135,13 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
   function monde(tenus: Record<string, number> = {}) {
     const update = jest.fn().mockResolvedValue({ id: 'e1' });
     const deleteMany = jest.fn().mockResolvedValue({});
-    const tx = { ligneEcriture: { deleteMany }, ecriture: { update } };
+    // La transaction RELIT l'écriture et son exercice (constat 10 de la
+    // relecture de la dissolution) · la doublure les rend.
+    const tx = {
+      ligneEcriture: { deleteMany },
+      ecriture: { update, findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1' }) },
+      exercice: { findFirst: jest.fn().mockResolvedValue(exerciceOuvert) },
+    };
     const tauxTva = { findMany: jest.fn().mockImplementation(({ where }: { where: { tenantId: string } }) =>
       Promise.resolve(where.tenantId === 't1' ? [] : [{ id: 'tva-voisin' }])) };
     const prisma = {

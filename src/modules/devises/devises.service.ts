@@ -148,13 +148,14 @@ type NaturePosition = 'EXPLOITATION' | 'HAO' | 'FINANCIER_COURT' | 'FINANCIER_LO
 const RACINES_FINANCIERES_LONGUES = /^(16|17|18|26|27)/;
 
 /**
- * Financier à MOINS d'un an · 54 instruments de trésorerie (SYSCOHADA
- * seulement, le SYCEBNL n'a pas de 54), 506 intérêts courus sur titres de
- * placement, et 56 banques, crédits de trésorerie et d'escompte, qui est une
- * DETTE bancaire à court terme et non une disponibilité. Les titres de
- * placement eux-mêmes (50) ne se réévaluent pas (Titre VIII ch. 22 § 1.3).
+ * Financier à MOINS d'un an · 506 intérêts courus sur titres de placement, et
+ * 56 banques, crédits de trésorerie et d'escompte, qui est une DETTE bancaire
+ * à court terme et non une disponibilité. Les titres de placement eux-mêmes
+ * (50) ne se réévaluent pas (Titre VIII ch. 22 § 1.3), le 54 non plus
+ * (décision par la loi du 2026-10-07, quatrième lot, point 8,
+ * `perimetre-reevaluation.ts`) · il n'a plus de nature ici.
  */
-const RACINES_FINANCIERES_COURTES = /^(50|54|56)/;
+const RACINES_FINANCIERES_COURTES = /^(50|56)/;
 
 /** Intérêts courus des emprunts, des dettes de location acquisition et des immobilisations financières, par plan. */
 const INTERETS_COURUS: Record<Referentiel, RegExp> = {
@@ -200,19 +201,14 @@ function naturePosition(numero: string, referentiel: Referentiel): NaturePositio
  * chiffres · elle rendait toujours 4781 et 4791, si bien qu'une dette
  * fournisseur en devise s'imputait sur la subdivision des créances.
  *
- * LE 54 VA AU 4786 ET AU 4797 (ligne A5 ter). AUDCIF Titre VIII ch. 22
- * § 3.2.2 · « Les comptes 4786 Différences d'évaluation sur instruments de
- * trésorerie – ACTIF et 4797 Différences d'évaluation sur instruments de
- * trésorerie – PASSIF enregistrent les différences d'évaluation en
- * contrepartie du compte 54 » (même phrase à la fiche du compte 47, Titre
- * VII) ; art. 58-2 · les variations de valeur « à l'actif pour une perte
- * latente, au passif pour un gain latent ». Un 54 en devise s'imputait sur
- * 4782 ou 4784, subdivisions des créances et dettes financières qu'il n'est
- * pas. La provision de sa perte reste celle du court terme financier (6791 /
- * 4997, § 2.3 ; art. 58-2, « constitution d'une provision financière »).
+ * LE 4786 ET LE 4797 NE SONT PAS SERVIS ICI (décision par la loi du
+ * 2026-10-07, quatrième lot, point 8). Ils portent les « différences
+ * d'évaluation en contrepartie du compte 54 » (ch. 22 § 3.2.2), variations de
+ * VALEUR de l'instrument (art. 58-2), jamais un écart de conversion · le 54
+ * sort du périmètre de la réévaluation (`perimetre-reevaluation.ts`), et le
+ * branchement de la ligne A5 ter qui l'y imputait est retiré.
  */
-function racineEcartSyscohada(estCreance: boolean, estPerte: boolean, nature: NaturePosition, numero = ''): string {
-  if (numero.startsWith('54')) return estPerte ? '4786' : '4797';
+function racineEcartSyscohada(estCreance: boolean, estPerte: boolean, nature: NaturePosition): string {
   // Les subdivisions ne distinguent que exploitation / financier · la
   // distinction court terme / long terme ne joue que sur la PROVISION.
   const exploitation = nature === 'EXPLOITATION' || nature === 'HAO';
@@ -250,7 +246,7 @@ function racineEcartSycebnl(estCreance: boolean, estPerte: boolean, nature: Natu
 export function racineEcartDeConversion(referentiel: Referentiel, numero: string, estCreance: boolean, estPerte: boolean): string {
   const nature = naturePosition(numero, referentiel);
   return referentiel === Referentiel.SYSCOHADA
-    ? racineEcartSyscohada(estCreance, estPerte, nature, numero)
+    ? racineEcartSyscohada(estCreance, estPerte, nature)
     : racineEcartSycebnl(estCreance, estPerte, nature);
 }
 

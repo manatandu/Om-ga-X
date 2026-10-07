@@ -5,6 +5,7 @@ import {
   NatureActiviteFiscale,
   Prisma,
   Referentiel,
+  RegimeLiquidation,
   StatutExercice,
   SensRetraitementFiscal,
   StatutEcriture,
@@ -49,6 +50,7 @@ import {
 // liste officielle recopiée dans deux modules est une divergence en attente.
 import { PREFIXES_CHIFFRE_AFFAIRES_SYSCOHADA as PREFIXES_CHIFFRE_AFFAIRES } from '../etats-financiers-syscohada/correspondance-compte-resultat-syscohada';
 import { FORMES_PERSONNES_PHYSIQUES } from '../retenues/correspondance-retenues';
+import { cotisationsDues, echeancierDissolution, estExerciceDeLiquidation, sansLiquidation } from '../exercice/liquidation-societe';
 
 /**
  * DÉTERMINATION DU RÉSULTAT FISCAL ET DE L'IMPÔT SUR LES BÉNÉFICES ·
@@ -165,6 +167,52 @@ export const OBSERVATION_UNIPERSONNELLE_PASSE_F5 =
  */
 export const LECTURE_CHIFFRE_AFFAIRES =
   "Chiffre d'affaires lu sur les comptes 701 à 707 (poste XB du compte de résultat), mouvements du livre-journal, rabais compris · la loi n° 23/053 vise le chiffre d'affaires « déclaré » (art. 57) ou « hors taxes » (art. 43 et 49) sans le définir ; si celui que le dossier déclare diffère de ces comptes, l'impôt minimum et les plafonds affichés diffèrent d'autant.";
+
+/**
+ * LOI N° 23/053, ART. 12 AL. 4 · « Lorsqu'il est dressé des bilans successifs
+ * au cours d'une même année, les résultats en sont totalisés pour l'assiette
+ * de l'impôt dû au titre de ladite année. » DITE, jamais calculée (décision
+ * par la loi du 2026-10-07, point 2) · ni le minimum de l'art. 57 ni le
+ * report déficitaire ne sont rejoués sur l'année totalisée.
+ */
+export function observationBilansSuccessifs(dateFin: Date): string {
+  const annee = dateFin.getUTCFullYear();
+  return (
+    `BILANS SUCCESSIFS EN ${annee} · « lorsqu'il est dressé des bilans successifs au cours d'une même année, les ` +
+    "résultats en sont totalisés pour l'assiette de l'impôt dû au titre de ladite année » (loi n° 23/053, art. 12 " +
+    "al. 4). Le calcul ci-dessous porte sur cet exercice seul, impôt minimum et report déficitaire compris · la " +
+    `totalisation des résultats de ${annee}, et l'impôt qui en résulte, restent à établir par le cabinet. En cas de ` +
+    "dissolution, la cotisation spéciale est rattachée à l'exercice désigné par le millésime de l'année de la " +
+    'dissolution (art. 13 al. 3).'
+  );
+}
+
+/** Les bilans successifs de l'année de la dissolution, servis au résultat fiscal. */
+export interface BilansSuccessifs {
+  role: 'PREMIERE_COTISATION' | 'COTISATION_UNIQUE' | 'SECONDE_COTISATION' | 'NON_CALCULEE';
+  anneeDissolution: number;
+  calculable: boolean;
+  motif: string | null;
+  premiereCotisation: number | null;
+  totalisation: {
+    periodeActivite: { exerciceId: string; dateDebut: Date; dateFin: Date; resultatFiscalAvantReport: number; chiffreAffaires: number };
+    liquidation: { resultatFiscalAvantReport: number; chiffreAffaires: number };
+    total: number;
+    deficitDisponible: number;
+    deficitImpute: number;
+    resultatFiscal: number;
+    chiffreAffaires: number;
+    impotTheorique: number | null;
+    impotMinimum: number | null;
+    impotTotal: number | null;
+    minimumApplique: boolean;
+    acomptesImputes: number;
+    dejaRegle: number | null;
+    secondeCotisation: number | null;
+    excedent: number;
+  } | null;
+  observation: string;
+}
 
 @Injectable()
 export class FiscaliteService {
@@ -1707,6 +1755,56 @@ export class FiscaliteService {
       );
     }
     observations.push(...this.avertissementsPerimetreLoi(exercice.dateDebut, periode));
+    // LOI N° 23/053, ART. 12 AL. 4, DITE ET NON CALCULÉE (décision par la loi
+    // du 2026-10-07, point 2) · un exercice arrêté hors du 31 décembre
+    // (dissolution, liquidation), ou qui suit un exercice clos la même année,
+    // fait des « bilans successifs au cours d'une même année », dont les
+    // résultats « sont totalisés pour l'assiette de l'impôt dû au titre de
+    // ladite année ». Le calcul ci-dessous reste celui de l'exercice seul ·
+    // aucun impôt nouveau n'est calculé, la totalisation est dite.
+    const finHorsDecembre = !(exercice.dateFin.getUTCMonth() === 11 && exercice.dateFin.getUTCDate() === 31);
+    const precedentMemeAnnee =
+      anterieurs.length > 0 && anterieurs[0].dateFin.getUTCFullYear() === exercice.dateFin.getUTCFullYear();
+    // UNE SOCIÉTÉ DISSOUTE · la totalisation est CALCULÉE (décision par la loi
+    // du 2026-10-07, quatrième lot, point 2 ; constat 12), plus seulement dite.
+    const dissoute =
+      !!tenant.dateDissolution &&
+      cotisationsDues({ forme: tenant.formeJuridiqueSyscohada, dateDissolution: tenant.dateDissolution }) &&
+      exercice.dateFin.getTime() >= tenant.dateDissolution.getTime();
+    if (!dissoute && (finHorsDecembre || precedentMemeAnnee)) observations.push(observationBilansSuccessifs(exercice.dateFin));
+    // LES ACOMPTES DE L'ANNÉE DE LA DISSOLUTION SONT BORNÉS COMME L'ÉCHÉANCIER
+    // (relecture du 2026-10-07, mineur 7 · `echeancierDissolution().retenir`,
+    // une seule règle) · l'exercice clos avant la dissolution sert ses
+    // acomptes l'année qui suit (art. 57 bis LPF), et ceux qui échoient après
+    // la dernière cotisation spéciale ne sont plus dus (loi n° 23/053, art. 13
+    // al. 3) · servis ici, le dossier les aurait versés en trop.
+    const bornage = echeancierDissolution(
+      {
+        forme: tenant.formeJuridiqueSyscohada,
+        dateDissolution: tenant.dateDissolution,
+        dateNominationLiquidateur: null,
+        regimeLiquidation: tenant.regimeLiquidation,
+        associeUniquePersonneMorale: tenant.associeUniquePersonneMorale,
+        dateClotureLiquidation: tenant.dateClotureLiquidation,
+      },
+      new Date(),
+    );
+    const anneeDesAcomptes = exercice.dateFin.getUTCFullYear() + 1;
+    const CLES_ACOMPTES = ['premierAcompteIs', 'deuxiemeAcompteIs', 'troisiemeAcompteIs'];
+    const MOIS_ACOMPTES: Record<string, number> = { juillet: 6, septembre: 8, novembre: 10 };
+    const acomptesRetenus = IMPOT_SOCIETES.acomptes.filter((a, i) => {
+      const [jourDuMois, mois] = a.echeance.split(' ');
+      // Une échéance illisible est un défaut du paramètre, jamais un acompte retenu ou écarté en silence.
+      if (!(mois in MOIS_ACOMPTES)) throw new Error(`Échéance d'acompte illisible · ${a.echeance}`);
+      return bornage.retenir(CLES_ACOMPTES[i], new Date(Date.UTC(anneeDesAcomptes, MOIS_ACOMPTES[mois], Number(jourDuMois))));
+    });
+    if (!dissoute && acomptesRetenus.length < IMPOT_SOCIETES.acomptes.length) {
+      observations.push(
+        `ACOMPTES APRÈS LA DISSOLUTION · ${IMPOT_SOCIETES.acomptes.length - acomptesRetenus.length} acompte(s) de ${anneeDesAcomptes} ` +
+          'échoient après la dernière cotisation spéciale, ou après l’année de la dissolution · ils ne sont plus dus ' +
+          '(LPF art. 57 bis ; loi n° 23/053, art. 13 al. 3) et ne sont pas servis.',
+      );
+    }
     // V3 · le 13 lu porte aussi l'à-nouveau d'un résultat antérieur · dit, la
     // balance ne disant pas si son affectation est passée.
     if (Math.abs(brut.reportAuCompte13) > 0.005) {
@@ -1825,6 +1923,21 @@ export class FiscaliteService {
         periodeCreation: periode ? { periode, impotDu: impotPeriode?.impotDu ?? null } : null,
       }),
     );
+
+    // LES BILANS SUCCESSIFS DE L'ANNÉE DE LA DISSOLUTION (point 2) · une
+    // assiette, deux cotisations. Aucun acompte pour les années qui suivent
+    // (point 3) · la base des acomptes du « prochain exercice » n'est pas servie.
+    const bilansSuccessifs: BilansSuccessifs | null = dissoute
+      ? await this.bilansSuccessifsDe(tenantId, tenant, exercice, {
+          base: baseAvantReport,
+          chiffreAffaires: chiffreAffairesMinimum,
+          impotDu: impot.impotDu,
+          acomptesVerses,
+          regime,
+          natureActivite: dossier?.natureActivite ?? null,
+        })
+      : null;
+    if (bilansSuccessifs) observations.push(bilansSuccessifs.observation);
 
     // C01-bis · LE BROUILLARD SE DIT SUR L'ÉCRAN DU CALCUL, et le chiffre ne se
     // présente jamais comme définitif tant qu'il en reste. Le calcul ne lit que
@@ -2005,16 +2118,20 @@ export class FiscaliteService {
       // l'insuffisance de versement se paie même quand le redressement est
       // contesté.
       supplementsAdministration,
-      baseAcomptes: acomptesDus && impot.impotDu !== null ? arrondir(impot.impotDu + supplementsAdministration) : null,
+      baseAcomptes:
+        !dissoute && acomptesDus && impot.impotDu !== null && acomptesRetenus.length > 0
+          ? arrondir(impot.impotDu + supplementsAdministration)
+          : null,
+      bilansSuccessifs,
       // LES ACOMPTES NE SONT PAS SERVIS À TOUT LE MONDE · art. 57 bis LPF,
       // « les acomptes provisionnels visés à l'article 57, ALINÉA 2 ». Cet
       // alinéa 2 vise l'impôt sur les sociétés et l'IRPP au RÉGIME RÉEL, et
       // eux seuls. Une petite entreprise relève de l'alinéa 3 : elle paie en
       // deux quotités, ci-dessous, et le tableau des acomptes reste vide.
       acomptesProchainExercice:
-        !acomptesDus || impot.impotDu === null
+        dissoute || !acomptesDus || impot.impotDu === null
           ? []
-          : IMPOT_SOCIETES.acomptes.map((a) => ({
+          : acomptesRetenus.map((a) => ({
               ...a,
               montant: arrondir(a.quotite * (impot.impotDu! + supplementsAdministration)),
             })),
@@ -2033,6 +2150,148 @@ export class FiscaliteService {
               reserve: q.reserve,
               montant: arrondir(q.quotite * impot.impotDu!),
             })),
+    };
+  }
+
+  /**
+   * LES BILANS SUCCESSIFS DE L'ANNÉE DE LA DISSOLUTION (décision par la loi du
+   * 2026-10-07, quatrième lot, point 2 ; constat 12 de la relecture) · UNE
+   * assiette, celle de l'année de la dissolution, payée en DEUX cotisations.
+   * Loi n° 23/053, art. 11, 1° (« sans distinguer » l'activité continuée des
+   * opérations de liquidation), art. 12, al. 4 (« les résultats en sont
+   * totalisés pour l'assiette de l'impôt dû au titre de ladite année ») et
+   * art. 13, al. 3 (« cette cotisation est rattachée à l'exercice désigné par
+   * le millésime de l'année de la dissolution »).
+   *
+   * · L'exercice ARRÊTÉ à la dissolution porte la première cotisation · son
+   *   impôt seul, calculé ci-dessus (bilan avant liquidation).
+   * · L'exercice de LIQUIDATION porte la seconde · l'impôt calculé une fois sur
+   *   le TOTAL des deux résultats (report déficitaire disponible à l'ouverture
+   *   de l'année, impôt minimum de l'art. 57 sur le chiffre d'affaires TOTAL),
+   *   moins la première cotisation et les acomptes de l'année qui ne s'y sont
+   *   pas imputés (ceux portés par l'exercice de liquidation, LPF art. 57 bis,
+   *   al. 3 · déduits de la cotisation dont la déclaration les suit).
+   * · Sans liquidation (AUSCGIE art. 201 al. 4), la cotisation de l'exercice
+   *   arrêté est la seule.
+   * Un réglé supérieur à l'impôt totalisé se DIT, avec son montant, sans en
+   * tirer ni remboursement ni imputation · aucun texte lu ne le règle (LPF
+   * art. 57 ter ne vise que les acomptes, art. 104 la réclamation).
+   */
+  private async bilansSuccessifsDe(
+    tenantId: string,
+    tenant: { dateDissolution: Date | null; formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null; regimeLiquidation: RegimeLiquidation | null; associeUniquePersonneMorale: boolean | null },
+    exercice: { id: string; dateDebut: Date; dateFin: Date },
+    courant: { base: number; chiffreAffaires: number; impotDu: number | null; acomptesVerses: number; regime: RegimeImposition; natureActivite: NatureActiviteFiscale | null },
+  ): Promise<BilansSuccessifs> {
+    const d = tenant.dateDissolution!;
+    const annee = d.getUTCFullYear();
+    const jour = (x: Date) => x.toISOString().slice(0, 10).split('-').reverse().join('/');
+    const sans = sansLiquidation({ forme: tenant.formeJuridiqueSyscohada, regimeLiquidation: tenant.regimeLiquidation, associeUniquePersonneMorale: tenant.associeUniquePersonneMorale });
+    if (exercice.dateFin.getTime() === d.getTime()) {
+      return {
+        role: sans ? ('COTISATION_UNIQUE' as const) : ('PREMIERE_COTISATION' as const),
+        anneeDissolution: annee,
+        calculable: true,
+        motif: null as string | null,
+        premiereCotisation: courant.impotDu,
+        totalisation: null,
+        observation:
+          `DISSOLUTION DU ${jour(d)} · l'impôt ci-dessus est ${sans ? 'la cotisation spéciale UNIQUE' : 'la PREMIÈRE cotisation spéciale'} de l'année ${annee}, sur les résultats de la période d'activité (loi n° 23/053, art. 13, al. 1), ` +
+          (sans
+            ? "la société étant dissoute sans liquidation (AUSCGIE art. 201 al. 4)."
+            : "à déduire de la seconde, qui se calcule sur le total des résultats de l'année de la dissolution (art. 12, al. 4 ; art. 13, al. 3) · servie sur l'exercice de liquidation.") +
+          " Aucun acompte n'est dû pour les années qui suivent celle de la dissolution (LPF art. 57 bis ; décision par la loi du 2026-10-07, quatrième lot, point 3).",
+      };
+    }
+    if (!estExerciceDeLiquidation(exercice, d) || sans) {
+      return {
+        role: 'NON_CALCULEE' as const,
+        anneeDissolution: annee,
+        calculable: false,
+        motif:
+          exercice.dateDebut.getTime() <= d.getTime()
+            ? `L'exercice n'est pas arrêté à la dissolution du ${jour(d)} · la période d'activité et la liquidation y sont mêlées, et les deux cotisations ne se séparent pas. Arrêtez-le dans la fenêtre Exercices (loi n° 23/053, art. 12, al. 1).`
+            : `Cet exercice suit la dissolution du ${jour(d)} sans être l'exercice de liquidation · tous les résultats de la liquidation sont rattachés à l'année ${annee} (art. 13, al. 3), et aucun impôt annuel propre n'est dû.`,
+        premiereCotisation: null,
+        totalisation: null,
+        observation: `DISSOLUTION DU ${jour(d)} · totalisation non calculée sur cet exercice.`,
+      };
+    }
+    const arrete = await this.prisma.exercice.findFirst({
+      where: { tenantId, dateFin: d },
+      select: { id: true, dateDebut: true, dateFin: true },
+    });
+    if (!arrete) {
+      return {
+        role: 'SECONDE_COTISATION' as const,
+        anneeDissolution: annee,
+        calculable: false,
+        motif:
+          `Aucun exercice n'est arrêté à la dissolution du ${jour(d)} dans le dossier · la première cotisation ne s'y lit pas, et l'impôt totalisé de l'année ${annee} ne se calcule pas ici. ` +
+          "Le calcul ci-dessus porte sur l'exercice de liquidation seul.",
+        premiereCotisation: null,
+        totalisation: null,
+        observation: `DISSOLUTION DU ${jour(d)} · totalisation de l'année ${annee} non calculée, faute d'exercice arrêté à la dissolution.`,
+      };
+    }
+    const premier: {
+      resultatFiscal: number;
+      deficitImpute: number;
+      deficitAnterieur: { montant: number };
+      chiffreAffairesMinimum: number;
+      impotDu: number | null;
+    } = await this.resultatFiscal(tenantId, arrete.id);
+    const baseActivite = arrondir(premier.resultatFiscal + premier.deficitImpute);
+    const deficitDisponible = premier.deficitAnterieur.montant;
+    const total = arrondir(baseActivite + courant.base);
+    const deficitImpute = arrondir(Math.min(deficitDisponible, Math.max(total, 0)));
+    const resultatFiscal = arrondir(total - deficitImpute);
+    const chiffreAffaires = arrondir(premier.chiffreAffairesMinimum + courant.chiffreAffaires);
+    const impot = this.calculerImpot(courant.regime, resultatFiscal, chiffreAffaires, courant.natureActivite);
+    const premiereCotisation = premier.impotDu;
+    const dejaRegle =
+      premiereCotisation === null ? null : arrondir(premiereCotisation + courant.acomptesVerses);
+    const reste = impot.impotDu === null || dejaRegle === null ? null : arrondir(impot.impotDu - dejaRegle);
+    const totalisation = {
+      periodeActivite: {
+        exerciceId: arrete.id,
+        dateDebut: arrete.dateDebut,
+        dateFin: arrete.dateFin,
+        resultatFiscalAvantReport: baseActivite,
+        chiffreAffaires: premier.chiffreAffairesMinimum,
+      },
+      liquidation: { resultatFiscalAvantReport: courant.base, chiffreAffaires: courant.chiffreAffaires },
+      total,
+      deficitDisponible,
+      deficitImpute,
+      resultatFiscal,
+      chiffreAffaires,
+      impotTheorique: impot.impotTheorique,
+      impotMinimum: impot.impotMinimum,
+      impotTotal: impot.impotDu,
+      minimumApplique: impot.minimumApplique,
+      acomptesImputes: courant.acomptesVerses,
+      dejaRegle,
+      secondeCotisation: reste === null ? null : Math.max(reste, 0),
+      excedent: reste !== null && reste < 0 ? -reste : 0,
+    };
+    const montant = (n: number | null) => (n === null ? 'non calculé' : montantFiscal(n));
+    return {
+      role: 'SECONDE_COTISATION' as const,
+      anneeDissolution: annee,
+      calculable: true,
+      motif: null as string | null,
+      premiereCotisation,
+      totalisation,
+      observation:
+        `BILANS SUCCESSIFS DE ${annee} · une assiette, deux cotisations (loi n° 23/053, art. 11, 1°, 12, al. 4, et 13, al. 3). ` +
+        `Période d'activité ${montant(baseActivite)}, liquidation ${montant(courant.base)}, total ${montant(total)}` +
+        (deficitImpute > 0.005 ? `, report déficitaire imputé ${montant(deficitImpute)}` : '') +
+        `, chiffre d'affaires total ${montant(chiffreAffaires)} · impôt de l'année ${montant(impot.impotDu)}, ` +
+        `première cotisation ${montant(premiereCotisation)}, acomptes imputés ${montant(courant.acomptesVerses)}, ` +
+        (totalisation.excedent > 0.005
+          ? `seconde cotisation 0 · ce qui est réglé dépasse l'impôt totalisé de ${montant(totalisation.excedent)}, et aucun texte lu ne dit s'il se rembourse, s'impute ou se réclame.`
+          : `seconde cotisation ${montant(totalisation.secondeCotisation)}.`),
     };
   }
 

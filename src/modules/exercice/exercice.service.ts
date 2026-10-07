@@ -12,12 +12,15 @@ import {
 import { PrismaService } from '../../common/prisma.service';
 import {
   ClasseCompte,
+  FormeJuridiqueSyscohada,
+  RegimeLiquidation,
   GranulariteCloture,
   ModeReportANouveau,
   Prisma,
   Referentiel,
   StatutEcriture,
   StatutExercice,
+  StatutImmobilisation,
   StatutLettrage,
   StatutRapprochement,
   SystemeComptableSyscohada,
@@ -29,13 +32,42 @@ import { ArreterComptesDto } from './dto/arrete-comptes.dto';
 import { FicheR2Dto } from './dto/fiche-r2.dto';
 import { jourSaisiOuEffacement } from '../tenant/date-effacable';
 import { DatesPortefeuilleDto } from './dto/dates-portefeuille.dto';
+import { FinLiquidationDto } from './dto/fin-liquidation.dto';
 import { appliquerPortefeuilleEtat, inviterADeclarerPortefeuille, JalonServi, jourFr } from './portefeuille-etat';
 import { FORMES_SOCIETES_COMMERCIALES } from '../tenant/mentions-societe';
-import { jalonsLiquidation } from './liquidation-societe';
+import {
+  cotisationsSpeciales,
+  estExerciceDeLiquidation,
+  exercicePorteurSecondeCotisation,
+  formeEnLiquidation,
+  impotAnnuelCedeAuxCotisations,
+  jalonsLiquidation,
+  estFinSansLiquidation,
+  lendemainDe,
+  sansLiquidation,
+} from './liquidation-societe';
 import { commissaireCouvreLExercice } from '../mandat-auditeur/duree-mandat';
+import {
+  ACTES_DE_LA_PERIODE,
+  ACTES_QUI_SUIVENT_LEUR_ECRITURE,
+  ActeDeLaPeriodeLu,
+  ACTES_DATES_QUI_SUIVENT_LEUR_DATE,
+  EtatAvantArret,
+  finDOrigineDeLExerciceArrete,
+  issueActeDeLaPeriode,
+  motifActeQuiNePeutSuivre,
+  motifActesDeLaPeriode,
+  motifRefusArret,
+} from './arret-dissolution';
+import { lignesEnNegatif } from '../comptabilite/lignes-en-negatif';
+import { motifLignesTenues } from '../comptabilite/lignes-tenues';
+import { libelleReference, referencesVers } from '../../common/suppression/references';
 import { JournalService } from '../journaux/journal.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
-import { DERNIERE_VERIFICATION, dateJalon, jalonsApplicables } from './planning-cloture';
+import { DERNIERE_VERIFICATION, dateJalon, DefinitionJalon, jalonsApplicables } from './planning-cloture';
+
+/** Marque la place de la déclaration annuelle de l'IS que les cotisations spéciales prennent. */
+const REMPLACEE_PAR_LES_COTISATIONS = Symbol('cotisations spéciales');
 import { filtreBrouillardAValider } from '../comptabilite/centralisation-brouillard';
 import { refuserSiExerciceBudgetaireClos } from '../analytique/exercice-budgetaire-clos';
 import { echeanceDepassee, jourDeKinshasa } from '../../common/echeance';
@@ -153,6 +185,29 @@ export function exerciceSuivantApres(dateFinClos: Date): { dateDebut: Date; date
   dateDebut.setUTCDate(dateDebut.getUTCDate() + 1);
   const dateFin = new Date(Date.UTC(dateDebut.getUTCFullYear(), 11, 31));
   return { dateDebut, dateFin };
+}
+
+/**
+ * APRÈS UN EXERCICE ARRÊTÉ À LA DISSOLUTION, LE SUIVANT EST L'EXERCICE DE
+ * LIQUIDATION (décision par la loi du 2026-10-07, point 2 ; AUDCIF art. 7
+ * al. 4) · jamais une année civile créée d'office par la clôture ou le report
+ * provisoire, qui occuperait la période de la liquidation et empêcherait de
+ * créer l'exercice unique qu'elle forme. Le refus nomme le geste. L'associé
+ * unique personne morale, hors procédure collective, n'a pas de liquidation
+ * (AUSCGIE art. 201 al. 4) · rien n'est refusé.
+ */
+export function refuserSuivantCivilApresDissolution(
+  exercice: { dateFin: Date },
+  dossier: { dateDissolution: Date | null; regimeLiquidation?: string | null; associeUniquePersonneMorale?: boolean | null },
+): void {
+  const d = dossier.dateDissolution ?? null;
+  if (!d || exercice.dateFin.getTime() !== d.getTime()) return;
+  if (dossier.associeUniquePersonneMorale === true && dossier.regimeLiquidation !== 'PROCEDURE_COLLECTIVE') return;
+  throw new BadRequestException(
+    `Cet exercice s'arrête à la dissolution du ${jourFr(d)} · l'exercice suivant est l'exercice de liquidation, du ` +
+      `${jourFr(lendemainDe(d))} à la clôture de la liquidation (AUDCIF art. 7 al. 4). Créez-le d'abord dans la ` +
+      'fenêtre Exercices (« Exercice de liquidation ») · il reçoit le report à-nouveau.',
+  );
 }
 
 /**
@@ -279,6 +334,64 @@ export class ExerciceService {
     // Refuser là bloquerait la liquidation sans issue · ce cas est signalé au
     // relevé de manques et attend un arbitrage, il n'est pas tranché ici.
     if (liquidation) {
+      // LA DISSOLUTION DÉCLARÉE FIXE L'EXERCICE DE LIQUIDATION (décision par
+      // la loi du 2026-10-07, point 2) · il court du LENDEMAIN de la
+      // dissolution à la clôture de la liquidation, sans plafond de durée
+      // (AUDCIF art. 7 al. 4), et il est SEUL sur sa période · l'exercice qui
+      // contient la dissolution s'arrête d'abord à cette date
+      // (`arreterALaDissolution`), et l'unicité de la période (CLAUDE.md
+      // § 10 bis) vaut alors entière, exercices ouverts compris.
+      const tenant = await client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { referentiel: true, formeJuridiqueSyscohada: true, dateDissolution: true },
+      });
+      const dissolution = tenant?.dateDissolution ?? null;
+      if (dissolution) {
+        const lendemain = lendemainDe(dissolution);
+        if (dateDebut.getTime() !== lendemain.getTime()) {
+          throw new BadRequestException(
+            `L'exercice de liquidation court du lendemain de la dissolution, le ${jourFr(lendemain)}, à la clôture ` +
+              'de la liquidation · la durée des opérations de liquidation est comptée pour un seul exercice (AUDCIF ' +
+              'art. 7 al. 4).',
+          );
+        }
+        const chevauche = await client.exercice.findFirst({
+          where: { tenantId, dateDebut: { lte: dateFin }, dateFin: { gte: dateDebut } },
+          orderBy: { dateDebut: 'asc' },
+          select: { dateDebut: true, dateFin: true },
+        });
+        if (chevauche) {
+          const contientDissolution =
+            chevauche.dateDebut.getTime() <= dissolution.getTime() && chevauche.dateFin.getTime() >= dissolution.getTime();
+          throw new BadRequestException(
+            contientDissolution
+              ? `L'exercice du ${jourFr(chevauche.dateDebut)} au ${jourFr(chevauche.dateFin)} couvre encore la période ` +
+                  `qui suit la dissolution du ${jourFr(dissolution)} · arrêtez-le d'abord à cette date (fenêtre ` +
+                  'Exercices), puis créez l’exercice de liquidation.'
+              : `L'exercice du ${jourFr(chevauche.dateDebut)} au ${jourFr(chevauche.dateFin)} couvre déjà une partie ` +
+                  'de cette période · une période n’est couverte que par un seul exercice, et la liquidation n’en ' +
+                  'forme qu’un (AUDCIF art. 7 al. 4).',
+          );
+        }
+        return;
+      }
+      // UNE SOCIÉTÉ OU UNE COOPÉRATIVE DÉCLARE SA DISSOLUTION D'ABORD · c'est
+      // elle qui fixe le premier jour de la liquidation (AUSCGIE art. 204 ;
+      // AUSCOOP art. 183).
+      const forme = tenant?.formeJuridiqueSyscohada ?? null;
+      if (
+        tenant?.referentiel === Referentiel.SYSCOHADA &&
+        forme !== null &&
+        (FORMES_SOCIETES_COMMERCIALES.includes(forme) || forme === FormeJuridiqueSyscohada.SOCIETE_COOPERATIVE)
+      ) {
+        throw new BadRequestException(
+          'Déclarez d’abord la date de dissolution dans Paramètres du dossier · l’exercice de liquidation court du ' +
+            'lendemain de la dissolution à la clôture de la liquidation (AUDCIF art. 7 al. 4).',
+        );
+      }
+      // HORS DU PÉRIMÈTRE DE LA DÉCISION (liquidation d'une association ou
+      // d'une ONG, loi n° 004/2001, non relue pour ce point) · le régime
+      // d'avant demeure, seul l'exercice CLÔTURÉ étant opposé.
       const closDejaCouvert = await client.exercice.findFirst({
         where: {
           tenantId,
@@ -297,6 +410,32 @@ export class ExerciceService {
         );
       }
       return;
+    }
+
+    // APRÈS LA DISSOLUTION, AUCUN EXERCICE CIVIL (constats 3 et 6 de la
+    // relecture ; quatrième lot, point 1) · la liquidation forme UN exercice,
+    // du lendemain de la dissolution à sa clôture (AUDCIF art. 7 al. 4), et la
+    // personnalité morale ne subsiste « que pour les besoins de la liquidation
+    // et jusqu'à la publication de la clôture de celle-ci » (AUSCGIE art. 205 ;
+    // AUSCOOP art. 184) · un exercice civil ouvert après elle occuperait la
+    // période de la liquidation, ou servirait planning, IS et acomptes à une
+    // société éteinte. Sans liquidation (AUSCGIE art. 201 al. 4), le patrimoine
+    // passe à l'associé · aucun exercice ne suit non plus.
+    const dossierDissous = await client.tenant.findUnique({
+      where: { id: tenantId },
+      select: { referentiel: true, formeJuridiqueSyscohada: true, dateDissolution: true },
+    });
+    if (
+      dossierDissous?.referentiel === Referentiel.SYSCOHADA &&
+      dossierDissous.dateDissolution &&
+      formeEnLiquidation(dossierDissous.formeJuridiqueSyscohada) &&
+      dateDebut.getTime() > dossierDissous.dateDissolution.getTime()
+    ) {
+      throw new BadRequestException(
+        `La société est dissoute le ${jourFr(dossierDissous.dateDissolution)} · la liquidation forme un seul exercice, du ` +
+          `${jourFr(lendemainDe(dossierDissous.dateDissolution))} à sa clôture (AUDCIF art. 7 al. 4), et aucun exercice ` +
+          'civil ne s’ouvre après. Créez l’exercice de liquidation (case « Exercice de liquidation »), ou reportez sa fin.',
+      );
     }
 
     const finLe31Decembre = dateFin.getUTCMonth() === 11 && dateFin.getUTCDate() === 31;
@@ -558,17 +697,96 @@ export class ExerciceService {
     // LIQUIDATION D'UNE SOCIÉTÉ COMMERCIALE (décision par la loi du
     // 2026-10-04, point 4) · ses jalons suivent ceux de l'exercice, sur les
     // seuls exercices qui finissent après la dissolution déclarée.
-    const liquidation = jalonsLiquidation(
-      {
-        forme: formeDeLExercice,
-        dateDissolution: tenant.dateDissolution,
-        dateNominationLiquidateur: tenant.dateNominationLiquidateur,
-        regimeLiquidation: tenant.regimeLiquidation,
-        associeUniquePersonneMorale: tenant.associeUniquePersonneMorale,
-      },
-      exercice,
+    const faitsLiquidation = {
+      forme: formeDeLExercice,
+      dateDissolution: tenant.dateDissolution,
+      dateNominationLiquidateur: tenant.dateNominationLiquidateur,
+      regimeLiquidation: tenant.regimeLiquidation,
+      associeUniquePersonneMorale: tenant.associeUniquePersonneMorale,
+      dateClotureLiquidation: tenant.dateClotureLiquidation,
+      dateDeclarationCotisationActivite: tenant.dateDeclarationCotisationActivite,
+      dateDeclarationCotisationLiquidation: tenant.dateDeclarationCotisationLiquidation,
+    };
+    const liquidation = jalonsLiquidation(faitsLiquidation, exercice, aujourdHui);
+    // LES COTISATIONS SPÉCIALES REMPLACENT LA DÉCLARATION ANNUELLE de l'impôt
+    // sur les sociétés (décisions par la loi du 2026-10-07, point 2, et
+    // quatrième lot, point 4 · loi n° 23/053, art. 13 ; LPF art. 16, règle
+    // spéciale sur l'art. 12) · aucune déclaration annuelle pour l'année de la
+    // dissolution ni pour les suivantes. La seconde cotisation va à l'exercice
+    // qui la porte, lu sur tous les exercices du dossier (constat 8).
+    const exercicesDuDossier = tenant.dateDissolution
+      ? await this.prisma.exercice.findMany({
+          where: { tenantId },
+          select: { id: true, dateDebut: true, dateFin: true, statut: true },
+        })
+      : [];
+    const cotisations = cotisationsSpeciales(
+      faitsLiquidation,
+      { dateDebut: exercice.dateDebut, dateFin: exercice.dateFin, clos: exercice.statut === StatutExercice.CLOTURE },
       aujourdHui,
+      tenant.dateDissolution
+        ? { porteurSeconde: exercicePorteurSecondeCotisation(exercicesDuDossier, faitsLiquidation) === exercice.id }
+        : {},
     );
+    const impotAnnuelCede = impotAnnuelCedeAuxCotisations(faitsLiquidation, exercice);
+    // La déclaration annuelle de l'IS cède sa place aux cotisations · un
+    // dossier sans elle (forme non sociétaire) les reçoit en fin d'étape 15.
+    const avecCotisations = (definitions: DefinitionJalon[]): Array<DefinitionJalon | typeof REMPLACEE_PAR_LES_COTISATIONS> => {
+      if (!impotAnnuelCede && cotisations.length === 0) return definitions;
+      const index = definitions.findIndex((d) => d.declarationAnnuelleImpotSocietes);
+      if (index >= 0) return definitions.map((d, i) => (i === index ? REMPLACEE_PAR_LES_COTISATIONS : d));
+      const apres = definitions.findIndex((d) => d.etape > 15);
+      return apres < 0
+        ? [...definitions, REMPLACEE_PAR_LES_COTISATIONS]
+        : [...definitions.slice(0, apres), REMPLACEE_PAR_LES_COTISATIONS, ...definitions.slice(apres)];
+    };
+    // LES GESTES DE LA DISSOLUTION (quatrième lot, point 1 ; constats 2, 13 et
+    // 15) · l'écran propose ce que le serveur admettra, par la MÊME règle
+    // (`motifRefusArret`), et dit le refus quand l'arrêt est le geste attendu.
+    let gestesDissolution: {
+      date: Date;
+      arretPropose: boolean;
+      motifArret: string | null;
+      annulationProposee: boolean;
+      rattachementPropose: boolean;
+      exerciceDeLiquidation: boolean;
+      dateClotureLiquidation: Date | null;
+      /** Actes de la période que l'arrêt retirera avec l'accord du cabinet (bloquant 1). */
+      actesDeLaPeriodeARetirer: string[];
+    } | null = null;
+    if (tenant.dateDissolution) {
+      const d = tenant.dateDissolution;
+      const ouvert = exercice.statut === StatutExercice.OUVERT;
+      const contient = exercice.dateDebut.getTime() <= d.getTime() && d.getTime() < exercice.dateFin.getTime();
+      // Les actes que l'arrêt peut retirer ne refusent pas le bouton · l'écran
+      // les nomme dans sa confirmation et porte l'accord (bloquant 1).
+      const lu = contient
+        ? (await lireEtatAvantArret(this.prisma, tenantId, exercice, { ...tenant, formeJuridiqueSyscohada: formeDeLExercice })).etat
+        : null;
+      const motifArret = lu ? motifRefusArret({ ...lu, actesDeLaPeriode: lu.actesDeLaPeriode.filter((a) => !a.retirable) }) : null;
+      const actesDeLaPeriodeARetirer = lu ? lu.actesDeLaPeriode.filter((a) => a.retirable).map((a) => `${a.libelle} (${a.piece})`) : [];
+      const avecLiquidation =
+        formeEnLiquidation(formeDeLExercice) &&
+        !sansLiquidation({ forme: formeDeLExercice, regimeLiquidation: tenant.regimeLiquidation, associeUniquePersonneMorale: tenant.associeUniquePersonneMorale });
+      const lendemain = lendemainDe(d);
+      gestesDissolution = {
+        date: d,
+        arretPropose: contient && ouvert && motifArret === null,
+        motifArret: contient && ouvert ? motifArret : null,
+        annulationProposee:
+          ouvert && exercice.dateFin.getTime() === d.getTime() && !(d.getUTCMonth() === 11 && d.getUTCDate() === 31),
+        rattachementPropose:
+          avecLiquidation &&
+          ouvert &&
+          exercice.dateDebut.getTime() > lendemain.getTime() &&
+          !exercicesDuDossier.some(
+            (e) => e.id !== exercice.id && (e.dateFin.getTime() >= lendemain.getTime() || e.statut === StatutExercice.OUVERT),
+          ),
+        exerciceDeLiquidation: estExerciceDeLiquidation(exercice, d),
+        dateClotureLiquidation: tenant.dateClotureLiquidation,
+        actesDeLaPeriodeARetirer,
+      };
+    }
     const avecPortefeuille = (jalons: JalonServi[]) => [
       ...(portefeuille === true
         ? appliquerPortefeuilleEtat(
@@ -625,13 +843,18 @@ export class ExerciceService {
       dateDeclarationDividendeEtat: exercice.dateDeclarationDividendeEtat,
       dateNotePerceptionDividende: exercice.dateNotePerceptionDividende,
       datePaiementDividendeEtat: exercice.datePaiementDividendeEtat,
-      jalons: avecPortefeuille(jalonsApplicables({
+      // LA DISSOLUTION DÉCLARÉE (décision par la loi du 2026-10-07, point 2) ·
+      // l'écran propose l'arrêt de l'exercice qui la contient et le report de
+      // la fin de l'exercice de liquidation ; le serveur refuse tout le reste.
+      dissolution: gestesDissolution,
+      jalons: avecPortefeuille(avecCotisations(jalonsApplicables({
         referentiel: tenant.referentiel,
         formeJuridique: tenant.formeJuridique,
         formeJuridiqueSyscohada: formeDeLExercice,
         droitEtranger: tenant.droitEtranger,
         associeUniqueSas: tenant.associeUniqueSas,
-      }).map((j) => {
+      })).flatMap((j): JalonServi[] => {
+        if (j === REMPLACEE_PAR_LES_COTISATIONS) return cotisations;
         // Une échéance FISCALE tombant un jour non ouvrable est reportée au
         // premier jour ouvrable qui suit (LPF art. 110 bis, al. 2), comme au
         // registre des retenues · les autres jalons n'ont aucun texte qui les
@@ -639,7 +862,7 @@ export class ExerciceService {
         const brute = dateJalon(exercice.dateFin, j.echeance);
         const echeance = j.echeanceFiscale ? reporterAuJourOuvrable(brute) : brute;
         const observation = j.observation ? observations[j.observation] : undefined;
-        return {
+        return [{
           etape: j.etape,
           libelle: j.libelle,
           detail: j.detail,
@@ -655,7 +878,7 @@ export class ExerciceService {
           // étape faite reste faite, même après la date.
           enRetard: echeanceDepassee(echeance, aujourdHui) && !(observation?.satisfait ?? false),
           observation,
-        };
+        }];
       })),
     };
   }
@@ -858,6 +1081,384 @@ export class ExerciceService {
     return this.prisma.exercice.update({ where: { id: exercice.id }, data });
   }
 
+  /**
+   * ARRÊTER L'EXERCICE À LA DATE DE DISSOLUTION (décisions par la loi du
+   * 2026-10-07, point 2, et quatrième lot, point 1). La période du 1er janvier
+   * à la dissolution est un exercice ARRÊTÉ à cette date · « Les contribuables
+   * sont tenus d'arrêter chaque année leurs comptes à la date du 31 décembre,
+   * sauf en cas de cession ou de cessation d'activité en cours d'année » (loi
+   * n° 23/053, art. 12 al. 1), une cotisation spéciale se règle sur « les
+   * résultats de la période pendant laquelle l'activité a été exercée »
+   * (art. 13 al. 1), et son bilan est le « bilan avant liquidation » (AUDCIF
+   * Titre VIII ch. 40 § 2.1). Le refus de toute fin autre qu'au 31 décembre
+   * (`validerArticle7`) cède ici, et ici seulement, à la dissolution DÉCLARÉE.
+   *
+   * DANS UNE SEULE TRANSACTION (quatrième lot, point 1, `arret-dissolution.ts`)
+   * · l'exercice de liquidation est créé du lendemain de la dissolution, ou
+   * l'exercice qui suit déjà devient lui (constat 1 · ouvrir N+1 avant de
+   * clôturer N est la règle, et OmegaX ne retire pas un exercice) ; chaque
+   * écriture datée après la dissolution, au brouillard ou validée, y est
+   * rattachée SANS QUE RIEN D'ELLE NE CHANGE (art. 22 · l'exercice n'est pas
+   * une donnée protégée, la date l'est) ; les actes de module qui portent
+   * l'exercice suivent leur écriture, les clôtures posées sur ces dates
+   * suivent leurs dates (constat 11). Chaque mise à jour est unitaire, au
+   * journal d'audit. Sérialisable · une écriture passée pendant l'arrêt
+   * rejoue le geste ; `EcritureService` relit l'exercice dans sa propre
+   * transaction (constat 10).
+   */
+  async arreterALaDissolution(
+    tenantId: string,
+    exerciceId: string,
+    options: { retirerActesDeLaPeriode?: boolean; userId?: string } = {},
+  ) {
+    const dossier = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: {
+        dateDissolution: true,
+        dateClotureLiquidation: true,
+        regimeLiquidation: true,
+        associeUniquePersonneMorale: true,
+        formeJuridiqueSyscohada: true,
+      },
+    });
+    await this.trouverExercice(tenantId, exerciceId);
+    const operations = dossier.dateDissolution
+      ? await this.prisma.ecriture.count({ where: { tenantId, exerciceId, date: { gt: dossier.dateDissolution } } })
+      : 0;
+    return avecRetrySerialisable(
+      this.prisma,
+      async (tx) => {
+        const exercice = await tx.exercice.findFirstOrThrow({ where: { id: exerciceId, tenantId } });
+        let etat = await lireEtatAvantArret(tx, tenantId, exercice, dossier);
+        // LES ACTES DE LA PÉRIODE SE RETIRENT À LA DEMANDE, JAMAIS D'OFFICE
+        // (bloquant 1) · avant la règle, qui relit ensuite l'état sans eux.
+        // Une écriture négative datée après la dissolution suit sa date avec
+        // celle qu'elle annule.
+        let actesRetires: string[] = [];
+        if (options.retirerActesDeLaPeriode && motifRefusArret({ ...etat.etat, actesDeLaPeriode: [] }) === null) {
+          actesRetires = await this.retirerActesDeLaPeriode(tx, tenantId, options.userId ?? 'arret-dissolution', etat.actes);
+          if (actesRetires.length) etat = await lireEtatAvantArret(tx, tenantId, exercice, dossier);
+        }
+        const motif = motifRefusArret(etat.etat);
+        if (motif) throw new BadRequestException(motif);
+        const dissolution = dossier.dateDissolution!;
+        const relevesARevoir = await relevesUnitesOeuvre(tx, tenantId, [exercice.id, ...(etat.posterieurs.length === 1 ? [etat.posterieurs[0].id] : [])]);
+        if (etat.etat.sansLiquidation) {
+          // AUSCGIE art. 201 al. 4 · aucune liquidation, aucun exercice qui
+          // suive (majeur 2) · un exercice postérieur VIDE est retiré, son
+          // report provisoire avec lui (un exercice occupé a refusé plus haut).
+          for (const p of etat.posterieurs) {
+            await retirerANouveauProvisoire(tx, tenantId, p.id);
+            await tx.exercice.delete({ where: { id: p.id } });
+          }
+          const arrete = await tx.exercice.update({ where: { id: exercice.id }, data: { dateFin: dissolution } });
+          return {
+            exercice: arrete,
+            exerciceDeLiquidation: null,
+            exercicesRetires: etat.posterieurs.map((p) => periodeLisible(p)),
+            ecrituresRattachees: 0,
+            actesRattaches: 0,
+            cloturesRattachees: 0,
+            actesRetires,
+            relevesARevoir,
+          };
+        }
+        const lendemain = lendemainDe(dissolution);
+        let liquidation: { id: string; dateDebut: Date; dateFin: Date };
+        if (etat.posterieurs.length === 1) {
+          // L'EXERCICE QUI SUIT DEVIENT L'EXERCICE DE LIQUIDATION (constat 1).
+          // Son ouverture provisoire, calculée sur la fin d'avant, se retire
+          // (la clôture de l'exercice arrêté la reposera au lendemain de la
+          // dissolution) ; une ouverture passée par le cabinet au premier jour
+          // ne se déplace pas d'office · nommée, avec son issue.
+          const suivant = etat.posterieurs[0];
+          const passee = await ouvertureDejaPassee(tx, tenantId, suivant);
+          if (passee.ecritures.length > 0) {
+            throw new BadRequestException(
+              `L'exercice du ${jourFr(suivant.dateDebut)} au ${jourFr(suivant.dateFin)} devient l'exercice de liquidation, ` +
+                `et son ouverture passée au ${jourFr(suivant.dateDebut)} (${piecesLisibles(passee.ecritures)}) ne serait plus ` +
+                'celle de son premier jour · au brouillard, supprimez-la ; validée, inscrivez-la en négatif (AUDCIF art. 20, ' +
+                'al. 2). La clôture de l’exercice arrêté reportera ensuite ses soldes au lendemain de la dissolution.',
+            );
+          }
+          await retirerANouveauProvisoire(tx, tenantId, suivant.id);
+          liquidation = await tx.exercice.update({ where: { id: suivant.id }, data: { dateDebut: lendemain } });
+        } else {
+          // Fin provisoire · la clôture déclarée, sinon la fin d'origine,
+          // jamais avant la dernière écriture rattachée · elle se reporte
+          // ensuite (`modifierFinDeLiquidation`).
+          const derniere = etat.aDeplacer.length ? etat.aDeplacer[etat.aDeplacer.length - 1].date : null;
+          let fin =
+            dossier.dateClotureLiquidation && dossier.dateClotureLiquidation.getTime() > dissolution.getTime()
+              ? dossier.dateClotureLiquidation
+              : exercice.dateFin;
+          if (derniere && derniere.getTime() > fin.getTime()) fin = derniere;
+          liquidation = await tx.exercice.create({ data: { tenantId, dateDebut: lendemain, dateFin: fin } });
+        }
+        const arrete = await tx.exercice.update({ where: { id: exercice.id }, data: { dateFin: dissolution } });
+        const rattachement = await rattacherALExercice(tx, tenantId, {
+          depuis: exercice.id,
+          vers: liquidation.id,
+          ecritures: etat.aDeplacer,
+          clotures: { dateLimite: { gt: dissolution } },
+          dates: { gt: dissolution },
+        });
+        return { exercice: arrete, exerciceDeLiquidation: liquidation, ...rattachement, actesRetires, relevesARevoir };
+      },
+      "Un autre geste a modifié l'exercice pendant l'arrêt · relancez-le.",
+      { operations },
+    );
+  }
+
+  /**
+   * ANNULER L'ARRÊT (constat 2 de la relecture · une dissolution mal datée
+   * enfermait le dossier, l'arrêt n'ayant pas d'issue). L'exercice arrêté
+   * retrouve le 31 décembre de son année (AUDCIF art. 7 al. 2) ; les
+   * écritures de l'exercice de liquidation datées jusque-là lui reviennent,
+   * leurs actes et leurs clôtures avec elles, rien d'elles ne changeant
+   * (quatrième lot, point 1). L'exercice de liquidation recommence au
+   * 1er janvier suivant s'il va au-delà, et n'existe plus s'il ne le dépasse
+   * pas · il ne porte alors plus rien, et toute autre référence le nomme au
+   * refus. Les deux exercices doivent être ouverts.
+   */
+  async annulerArretDissolution(
+    tenantId: string,
+    exerciceId: string,
+    options: { retirerActesDeLaPeriode?: boolean; userId?: string } = {},
+  ) {
+    const exercice = await this.trouverExercice(tenantId, exerciceId);
+    const { dateDissolution: dissolution } = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { dateDissolution: true },
+    });
+    if (!dissolution || exercice.dateFin.getTime() !== dissolution.getTime()) {
+      throw new BadRequestException('Cet exercice n’est pas arrêté à la date de dissolution déclarée · rien à annuler.');
+    }
+    const finOrigine = finDOrigineDeLExerciceArrete(dissolution);
+    if (finOrigine.getTime() === dissolution.getTime()) {
+      throw new BadRequestException('La dissolution tombe un 31 décembre · l’exercice finit à sa date ordinaire, rien à annuler.');
+    }
+    if (exercice.statut === StatutExercice.CLOTURE) {
+      throw new BadRequestException('Cet exercice est clôturé · ses dates ne changent plus.');
+    }
+    const operations = await this.prisma.ecriture.count({
+      where: { tenantId, exercice: { dateDebut: lendemainDe(dissolution) }, date: { lte: finOrigine } },
+    });
+    return avecRetrySerialisable(
+      this.prisma,
+      async (tx) => {
+        const liquidation = await tx.exercice.findFirst({ where: { tenantId, dateDebut: lendemainDe(dissolution) } });
+        const autre = await tx.exercice.findFirst({
+          where: {
+            tenantId,
+            id: { notIn: [exercice.id, ...(liquidation ? [liquidation.id] : [])] },
+            dateDebut: { lte: finOrigine },
+            dateFin: { gt: dissolution },
+          },
+          select: { dateDebut: true, dateFin: true },
+        });
+        if (autre) {
+          throw new BadRequestException(
+            `L'exercice du ${jourFr(autre.dateDebut)} au ${jourFr(autre.dateFin)} couvre une partie de la période à rendre · ` +
+              'une période n’est couverte que par un seul exercice.',
+          );
+        }
+        // LES DEUX PÉRIODES CHANGENT (bloquant 1) · l'exercice arrêté retrouve
+        // son année, l'exercice de liquidation la perd ou disparaît · leurs
+        // actes calculés sur la période ne suivent pas, ils sont nommés.
+        const actesRetires = await this.actesDeLaPeriodeLevesOuRefuses(
+          tx,
+          tenantId,
+          [exercice, ...(liquidation ? [liquidation] : [])],
+          options,
+        );
+        if (!liquidation) {
+          const arrete = await tx.exercice.update({ where: { id: exercice.id }, data: { dateFin: finOrigine } });
+          return { exercice: arrete, exerciceDeLiquidation: null, ecrituresRattachees: 0, actesRattaches: 0, cloturesRattachees: 0, actesRetires };
+        }
+        if (liquidation.statut === StatutExercice.CLOTURE) {
+          throw new BadRequestException('L’exercice de liquidation est clôturé · l’arrêt ne s’annule plus.');
+        }
+        const auDela = liquidation.dateFin.getTime() > finOrigine.getTime();
+        const finCivileSuivante = new Date(Date.UTC(finOrigine.getUTCFullYear() + 1, 11, 31));
+        if (auDela && liquidation.dateFin.getTime() !== finCivileSuivante.getTime()) {
+          throw new BadRequestException(
+            `L'exercice de liquidation finit le ${jourFr(liquidation.dateFin)} · rendu à l'année civile, il commencerait le ` +
+              `${jourFr(lendemainDe(finOrigine))} et devrait finir le ${jourFr(finCivileSuivante)} (AUDCIF art. 7 al. 2). ` +
+              'Portez d’abord sa fin à cette date, puis annulez l’arrêt.',
+          );
+        }
+        const passee = await ouvertureDejaPassee(tx, tenantId, liquidation);
+        if (passee.ecritures.length > 0) {
+          throw new BadRequestException(
+            `L'ouverture passée au ${jourFr(liquidation.dateDebut)} dans l'exercice de liquidation (${piecesLisibles(passee.ecritures)}) ` +
+              'tomberait au milieu de l’exercice rendu · au brouillard, supprimez-la ; validée, inscrivez-la en négatif ' +
+              '(AUDCIF art. 20, al. 2), puis annulez l’arrêt.',
+          );
+        }
+        await retirerANouveauProvisoire(tx, tenantId, liquidation.id);
+        const aRendre = await tx.ecriture.findMany({
+          where: { tenantId, exerciceId: liquidation.id, date: { lte: finOrigine } },
+          select: { id: true, date: true, numeroPiece: true, journal: { select: { code: true } } },
+          orderBy: [{ date: 'asc' }, { id: 'asc' }],
+        });
+        const arrete = await tx.exercice.update({ where: { id: exercice.id }, data: { dateFin: finOrigine } });
+        const rattachement = await rattacherALExercice(tx, tenantId, {
+          depuis: liquidation.id,
+          vers: exercice.id,
+          ecritures: aRendre,
+          clotures: { dateLimite: { lte: finOrigine } },
+          dates: { lte: finOrigine },
+        });
+        if (auDela) {
+          const suivant = await tx.exercice.update({ where: { id: liquidation.id }, data: { dateDebut: lendemainDe(finOrigine) } });
+          return { exercice: arrete, exerciceDeLiquidation: null, exerciceSuivant: suivant, ...rattachement, actesRetires };
+        }
+        const references = await referencesVers(tx, 'Exercice', liquidation.id, tenantId);
+        if (references.length > 0) {
+          throw new BadRequestException(
+            `L'exercice de liquidation ne porte plus aucune écriture mais reste utilisé (${references.map(libelleReference).join(', ')}) · ` +
+              'retirez ces éléments, puis annulez l’arrêt.',
+          );
+        }
+        await tx.exercice.delete({ where: { id: liquidation.id } });
+        return { exercice: arrete, exerciceDeLiquidation: null, ...rattachement, actesRetires };
+      },
+      "Un autre geste a modifié l'exercice pendant l'annulation de l'arrêt · relancez-la.",
+      { operations },
+    );
+  }
+
+  /**
+   * DONNER SON EXERCICE DE LIQUIDATION AU DOSSIER REPRIS (constat 13 · la
+   * dissolution précède le premier exercice tenu dans OmegaX, et aucun chemin
+   * ne lui donnait son exercice unique). L'exercice OUVERT qui suit la
+   * dissolution, et lui seul, commence au lendemain de celle-ci (AUDCIF art. 7
+   * al. 4) · aucune écriture ne bouge, sa date de début seule change. Refus
+   * nommés · un exercice qui contient la dissolution (l'arrêt est le geste),
+   * un autre exercice sur la période ou après lui (la liquidation n'en forme
+   * qu'un), un exercice antérieur encore ouvert (sa clôture reporterait au
+   * nouveau premier jour, à côté de l'ouverture déjà passée).
+   */
+  async rattacherALaLiquidation(
+    tenantId: string,
+    exerciceId: string,
+    options: { retirerActesDeLaPeriode?: boolean; userId?: string } = {},
+  ) {
+    const exercice = await this.trouverExercice(tenantId, exerciceId);
+    const dossier = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { dateDissolution: true, regimeLiquidation: true, associeUniquePersonneMorale: true, formeJuridiqueSyscohada: true },
+    });
+    const dissolution = dossier.dateDissolution;
+    if (!dissolution || !formeEnLiquidation(dossier.formeJuridiqueSyscohada) || sansLiquidation({ forme: dossier.formeJuridiqueSyscohada, regimeLiquidation: dossier.regimeLiquidation, associeUniquePersonneMorale: dossier.associeUniquePersonneMorale })) {
+      throw new BadRequestException(
+        'Aucune liquidation n’est déclarée · déclarez la dissolution d’une société ou d’une coopérative dans Paramètres du dossier.',
+      );
+    }
+    const lendemain = lendemainDe(dissolution);
+    if (exercice.statut === StatutExercice.CLOTURE) {
+      throw new BadRequestException('Cet exercice est clôturé · ses dates ne changent plus.');
+    }
+    if (exercice.dateDebut.getTime() <= lendemain.getTime()) {
+      throw new BadRequestException(
+        exercice.dateDebut.getTime() === lendemain.getTime()
+          ? 'Cet exercice est déjà l’exercice de liquidation.'
+          : `Cet exercice contient la dissolution du ${jourFr(dissolution)} · arrêtez-le à cette date (« Arrêter l’exercice »).`,
+      );
+    }
+    return avecRetrySerialisable(
+      this.prisma,
+      async (tx) => {
+        const autre = await tx.exercice.findFirst({
+          where: { tenantId, id: { not: exercice.id }, OR: [{ dateFin: { gte: lendemain } }, { statut: StatutExercice.OUVERT }] },
+          orderBy: { dateDebut: 'asc' },
+          select: { dateDebut: true, dateFin: true, statut: true },
+        });
+        if (autre) {
+          throw new BadRequestException(
+            autre.dateFin.getTime() >= lendemain.getTime()
+              ? `L'exercice du ${jourFr(autre.dateDebut)} au ${jourFr(autre.dateFin)} couvre aussi la période de la liquidation · ` +
+                  'elle ne forme qu’un exercice (AUDCIF art. 7 al. 4).'
+              : `L'exercice du ${jourFr(autre.dateDebut)} au ${jourFr(autre.dateFin)} est encore ouvert · clôturez-le d’abord, ` +
+                  'sa clôture reportant ses soldes au premier jour de l’exercice qui suit.',
+          );
+        }
+        // UNE OUVERTURE PASSÉE PAR LE CABINET NE SE DÉPLACE PAS D'OFFICE
+        // (relecture du 2026-10-07, mineur 5) · même refus que l'arrêt, qui
+        // fait de l'exercice suivant l'exercice de liquidation · au nouveau
+        // premier jour, elle ne serait plus celle de son premier jour (AU2).
+        const passee = await ouvertureDejaPassee(tx, tenantId, exercice);
+        if (passee.ecritures.length > 0) {
+          throw new BadRequestException(
+            `L'ouverture passée au ${jourFr(exercice.dateDebut)} (${piecesLisibles(passee.ecritures)}) ne serait plus celle du ` +
+              `premier jour de l'exercice de liquidation, le ${jourFr(lendemain)} · au brouillard, supprimez-la ; validée, ` +
+              'inscrivez-la en négatif (AUDCIF art. 20, al. 2), puis repassez le bilan d’ouverture à cette date.',
+          );
+        }
+        const actesRetires = await this.actesDeLaPeriodeLevesOuRefuses(tx, tenantId, [exercice], options);
+        await retirerANouveauProvisoire(tx, tenantId, exercice.id);
+        const rattache = await tx.exercice.update({ where: { id: exercice.id }, data: { dateDebut: lendemain } });
+        return { ...rattache, actesRetires, relevesARevoir: await relevesUnitesOeuvre(tx, tenantId, [exercice.id]) };
+      },
+      "Un autre geste a modifié l'exercice · relancez-le.",
+    );
+  }
+
+  /**
+   * LA FIN DE L'EXERCICE DE LIQUIDATION (décision par la loi du 2026-10-07,
+   * point 2) · il court jusqu'à la clôture de la liquidation, « quelle que
+   * soit sa durée » (AUDCIF art. 7 al. 4), date que nul ne connaît à
+   * l'ouverture. Sa fin se REPORTE ou s'AVANCE tant qu'il est ouvert · sans
+   * ce geste, une liquidation plus longue que prévu enfermait le dossier
+   * (aucune écriture possible au-delà, aucun autre exercice admis sur la
+   * période). Mêmes refus que l'arrêt · ni chevauchement d'un autre
+   * exercice, ni écriture au-delà de la nouvelle fin.
+   */
+  async modifierFinDeLiquidation(tenantId: string, exerciceId: string, dto: FinLiquidationDto) {
+    const exercice = await this.trouverExercice(tenantId, exerciceId);
+    const { dateDissolution } = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { dateDissolution: true },
+    });
+    if (!estExerciceDeLiquidation(exercice, dateDissolution)) {
+      throw new BadRequestException(
+        'Seul l’exercice de liquidation, ouvert le lendemain de la dissolution déclarée, voit sa fin reportée ou ' +
+          'avancée · tout autre exercice coïncide avec l’année civile (AUDCIF art. 7).',
+      );
+    }
+    if (exercice.statut === StatutExercice.CLOTURE) {
+      throw new BadRequestException('Cet exercice est clôturé · ses dates ne changent plus.');
+    }
+    const fin = jourSaisiOuEffacement(dto.dateFin);
+    if (!fin) throw new BadRequestException('La date de fin de l’exercice de liquidation est requise.');
+    if (fin.getTime() < exercice.dateDebut.getTime()) {
+      throw new BadRequestException(
+        `La fin de l'exercice de liquidation ne peut pas précéder son début, le ${jourFr(exercice.dateDebut)}.`,
+      );
+    }
+    return avecRetrySerialisable(this.prisma, async (tx) => {
+      const chevauche = await tx.exercice.findFirst({
+        where: { tenantId, id: { not: exercice.id }, dateDebut: { lte: fin }, dateFin: { gte: exercice.dateDebut } },
+        select: { dateDebut: true, dateFin: true },
+      });
+      if (chevauche) {
+        throw new BadRequestException(
+          `L'exercice du ${jourFr(chevauche.dateDebut)} au ${jourFr(chevauche.dateFin)} couvre déjà une partie de ` +
+            'cette période · une période n’est couverte que par un seul exercice.',
+        );
+      }
+      const apres = await tx.ecriture.count({ where: { tenantId, exerciceId: exercice.id, date: { gt: fin } } });
+      if (apres > 0) {
+        throw new BadRequestException(
+          `${apres} écriture(s) de l'exercice sont datées après le ${jourFr(fin)} · la fin ne peut pas les laisser ` +
+            'hors de leur exercice.',
+        );
+      }
+      return tx.exercice.update({ where: { id: exercice.id }, data: { dateFin: fin } });
+    }, "Un autre geste a modifié l'exercice pendant le report de sa fin · relancez-le.");
+  }
+
   private async trouverExercice(tenantId: string, exerciceId: string) {
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId } });
     if (!exercice) {
@@ -992,6 +1593,116 @@ export class ExerciceService {
    * report (`EcritureService.controlesDEntree`), lui seul connaissant
    * l'exercice (audit final F209).
    */
+  /**
+   * Les actes de la période d'exercices dont la période change · retirés à
+   * la demande (`retirerActesDeLaPeriode`), puis nommés au refus s'il en reste
+   * (bloquant 1, `motifActesDeLaPeriode`). Rend ce qui a été retiré.
+   */
+  private async actesDeLaPeriodeLevesOuRefuses(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    exercices: Array<{ id: string; dateDebut: Date; dateFin: Date }>,
+    options: { retirerActesDeLaPeriode?: boolean; userId?: string },
+  ): Promise<string[]> {
+    let actes = await lireActesDeLaPeriode(tx, tenantId, exercices);
+    let retires: string[] = [];
+    if (options.retirerActesDeLaPeriode && actes.some((a) => a.retirable)) {
+      retires = await this.retirerActesDeLaPeriode(tx, tenantId, options.userId ?? 'arret-dissolution', actes);
+      actes = await lireActesDeLaPeriode(tx, tenantId, exercices);
+    }
+    const motif = motifActesDeLaPeriode(actes);
+    if (motif) throw new BadRequestException(motif);
+    return retires;
+  }
+
+  /**
+   * RETIRER LES ACTES DE LA PÉRIODE, à la demande du cabinet (relecture du
+   * 2026-10-07, bloquant 1 · AUDCIF art. 59). Seuls ceux qu'aucun geste de
+   * leur module n'annule et dont le bien n'est pas sorti (`retirable`) ·
+   * l'acte part, et son écriture avec lui · AU BROUILLARD elle se supprime
+   * (art. 22, 2°, rien n'est entré au livre-journal, relu dans la
+   * transaction) ; VALIDÉE, elle s'inscrit en négatif, validée, à sa date ou
+   * au premier jour non clôturé de son journal dans l'exercice (art. 20,
+   * al. 2 ; art. 22, 4°), jamais lettrée ni pointée (`motifLignesTenues`).
+   * Le cabinet refait ensuite l'acte sur chaque exercice, à sa période.
+   */
+  private async retirerActesDeLaPeriode(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    userId: string,
+    actes: ActeDeLaPeriodeLu[],
+  ): Promise<string[]> {
+    const delegues = tx as unknown as Record<string, { delete: (a: unknown) => Promise<unknown> }>;
+    const faits: string[] = [];
+    for (const a of actes.filter((x) => x.retirable)) {
+      const origine = a.ecritureId
+        ? await tx.ecriture.findFirst({
+            where: { id: a.ecritureId, tenantId },
+            include: { lignes: { include: { ventilations: true } }, journal: true, exercice: true, correction: { select: { id: true } } },
+          })
+        : null;
+      if (origine && origine.statut !== StatutEcriture.BROUILLARD) {
+        const tenues = motifLignesTenues(origine.lignes, `l'écriture ${a.piece}`, 'annuler');
+        if (tenues) throw new BadRequestException(`${a.libelle} · ${tenues}`);
+        if (origine.correction) {
+          throw new BadRequestException(`L'écriture ${a.piece} de la ${a.libelle} est déjà inscrite en négatif · retirez l'acte de son module.`);
+        }
+      }
+      await delegues[a.modele].delete({ where: { id: a.id } });
+      if (!origine) {
+        faits.push(`${a.libelle} (${a.piece}) retirée`);
+        continue;
+      }
+      if (origine.statut === StatutEcriture.BROUILLARD) {
+        await tx.ligneEcriture.deleteMany({ where: { ecritureId: origine.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+        const { count } = await tx.ecriture.deleteMany({ where: { id: origine.id, tenantId, statut: StatutEcriture.BROUILLARD } });
+        if (count !== 1) {
+          throw new ConflictException(`L'écriture ${a.piece} a été validée pendant le retrait · relancez le geste.`);
+        }
+        faits.push(`${a.libelle} (${a.piece}) retirée avec son écriture au brouillard`);
+        continue;
+      }
+      let date = origine.date;
+      let dateValeur: Date | null = null;
+      const premier = await this.premierJourOuvert(tenantId, origine.journalId, date);
+      if (premier.getTime() !== date.getTime()) {
+        if (premier > origine.exercice.dateFin) {
+          throw new BadRequestException(
+            `Le journal ${origine.journal.code} est clôturé jusqu'à la fin de l'exercice · l'écriture ${a.piece} de la ${a.libelle} ` +
+              'ne s’y inscrit plus en négatif (AUDCIF art. 22, 4°).',
+          );
+        }
+        dateValeur = date;
+        date = premier;
+      }
+      const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, origine.journal, origine.exerciceId, date, tx);
+      const maintenant = new Date();
+      const negatif = await tx.ecriture.create({
+        data: {
+          tenantId,
+          exerciceId: origine.exerciceId,
+          journalId: origine.journalId,
+          numeroPiece,
+          date,
+          dateValeur,
+          libelle: `Annulation (inscription en négatif) · ${origine.libelle}`.slice(0, 250),
+          reference: origine.reference,
+          createdBy: userId,
+          corrigeEcritureId: origine.id,
+          motifCorrection:
+            'Arrêt de l’exercice à la dissolution · acte calculé sur la période de l’exercice, à refaire sur chaque exercice (AUDCIF art. 59).',
+          statut: StatutEcriture.VALIDEE,
+          valideeBy: userId,
+          valideeAt: maintenant,
+          lignes: { create: lignesEnNegatif(origine.lignes) },
+        },
+        select: { numeroPiece: true },
+      });
+      faits.push(`${a.libelle} (${a.piece}) annulée par inscription en négatif (${origine.journal.code} n° ${negatif.numeroPiece ?? '·'})`);
+    }
+    return faits;
+  }
+
   async premierJourOuvert(tenantId: string, journalId: string, date: Date): Promise<Date> {
     return premierJourNonCloture(await this.cloturesApplicables(tenantId, journalId), journalId, date);
   }
@@ -1099,13 +1810,44 @@ export class ExerciceService {
     // Le référentiel ne change RIEN à la mécanique de clôture · les deux
     // textes énoncent le même fonctionnement du compte 13. Il commande les
     // seuls intitulés, qui s'impriment au livre-journal.
-    const { referentiel } = await this.prisma.tenant.findUniqueOrThrow({
+    const dossier = await this.prisma.tenant.findUniqueOrThrow({
       where: { id: tenantId },
-      select: { referentiel: true },
+      select: {
+        referentiel: true,
+        dateDissolution: true,
+        regimeLiquidation: true,
+        associeUniquePersonneMorale: true,
+        dateClotureLiquidation: true,
+        formeJuridiqueSyscohada: true,
+      },
     });
+    const { referentiel } = dossier;
     const mots = libellesResultat(referentiel);
     if (exercice.statut === StatutExercice.CLOTURE) {
       throw new ForbiddenException('Cet exercice est déjà clôturé');
+    }
+    // L'EXERCICE DE LIQUIDATION SE CLÔTURE À LA CLÔTURE DE LA LIQUIDATION, ET
+    // À ELLE SEULE (constat 7 · « la durée des opérations de liquidation est
+    // comptée pour un seul exercice », AUDCIF art. 7 al. 4 ; une clôture au
+    // 31 décembre « par habitude » en ferait deux). La date déclarée doit être
+    // sa fin · les 31 décembre qu'il traverse sont des situations annuelles
+    // provisoires, servies par la situation intermédiaire.
+    const finDeLiquidation = estExerciceDeLiquidation(exercice, dossier.dateDissolution);
+    // SANS LIQUIDATION, L'EXERCICE ARRÊTÉ EST LE DERNIER (majeur 2) · même
+    // branche de fin, sans la clôture de liquidation à déclarer.
+    const finSansLiquidation = estFinSansLiquidation(exercice, dossier);
+    if (finDeLiquidation) {
+      const cloture = dossier.dateClotureLiquidation;
+      if (!cloture || cloture.getTime() !== exercice.dateFin.getTime()) {
+        throw new BadRequestException(
+          (cloture
+            ? `La clôture de la liquidation est déclarée au ${jourFr(cloture)} et l'exercice de liquidation finit le ${jourFr(exercice.dateFin)} · `
+            : `L'exercice de liquidation finit le ${jourFr(exercice.dateFin)} sans clôture de la liquidation déclarée · `) +
+            'il ne se clôture qu’à la clôture de la liquidation (AUDCIF art. 7 al. 4), les 31 décembre qu’il traverse ' +
+            'étant des situations annuelles provisoires. Déclarez la date de clôture dans Paramètres du dossier et ' +
+            'portez la fin de l’exercice à cette date.',
+        );
+      }
     }
 
     // LES EXERCICES SE CLÔTURENT DANS L'ORDRE (audit final F6). Clore 2026
@@ -1264,12 +2006,50 @@ export class ExerciceService {
           });
         }
 
+        // LA LIQUIDATION CLÔTURÉE N'A NI EXERCICE SUIVANT NI REPORT (constat 6)
+        // · la personnalité morale « subsiste pour les besoins de la
+        // liquidation et jusqu'à la publication de la clôture de celle-ci »
+        // (AUSCGIE art. 205 ; AUSCOOP art. 184), et « après l'écriture du
+        // règlement des associés, tous les comptes de la société sont soldés »
+        // (AUDCIF Titre VIII ch. 40 § 2.2.2.3). Un compte encore soldé se DIT,
+        // il ne s'efface pas · aucun exercice civil « fantôme » ne le reçoit.
+        if (finDeLiquidation || finSansLiquidation) {
+          const soldes = new Map<string, { numero: string; solde: number }>();
+          for (const c of comptes) {
+            if (c.modeReportANouveau === ModeReportANouveau.AUCUN) continue;
+            soldes.set(c.id, { numero: c.numero, solde: solde(c) });
+          }
+          if (compteResultatId && Math.abs(deltaResultat) > EPSILON) {
+            const r = soldes.get(compteResultatId);
+            if (r) r.solde = auCentime(r.solde + deltaResultat);
+            else soldes.set(compteResultatId, { numero: 'résultat', solde: deltaResultat });
+          }
+          const nonSoldes = [...soldes.values()].filter((c) => Math.abs(c.solde) > EPSILON).map((c) => c.numero).sort();
+          const clos = await tx.exercice.update({ where: { id: exerciceId }, data: { statut: StatutExercice.CLOTURE } });
+          const liste = `${nonSoldes.slice(0, 20).join(', ')}${nonSoldes.length > 20 ? '…' : ''}`;
+          return {
+            ...clos,
+            issueOuverture: [
+              finSansLiquidation
+                ? `Dernier exercice de la société, dissoute sans liquidation le ${jourFr(exercice.dateFin)} · son patrimoine est transmis universellement à l'associé unique personne morale (AUSCGIE art. 201 al. 4) ; aucun exercice ne suit et aucun report à-nouveau n'est passé.` +
+                  (nonSoldes.length
+                    ? ` ${nonSoldes.length} compte(s) de bilan restent soldés (${liste}) · ils disent ce que la transmission du patrimoine n'a pas encore porté à l'associé, dans la comptabilité duquel ils se reprennent ; aucun texte lu ne fixe l'écriture de la transmission, que le cabinet passe lui-même.`
+                    : ' Tous les comptes de bilan sont soldés.')
+                : `Liquidation clôturée le ${jourFr(exercice.dateFin)} · aucun exercice ne suit et aucun report à-nouveau n'est passé (AUDCIF art. 7 al. 4 ; AUSCGIE art. 205).` +
+                  (nonSoldes.length
+                    ? ` ${nonSoldes.length} compte(s) de bilan restent soldés (${liste}) · après le règlement des associés, tous les comptes de la société sont soldés (AUDCIF Titre VIII ch. 40 § 2.2.2.3).`
+                    : ' Tous les comptes de bilan sont soldés.'),
+            ],
+          };
+        }
+
         // --- 2. Report à-nouveau dans l'exercice suivant, selon le mode de chaque compte ---
         let exerciceSuivant = await tx.exercice.findFirst({
           where: { tenantId, dateDebut: { gt: exercice.dateFin } },
           orderBy: { dateDebut: 'asc' },
         });
         if (!exerciceSuivant) {
+          refuserSuivantCivilApresDissolution(exercice, dossier);
           /*
             L'EXERCICE SUIVANT EST UNE ANNÉE CIVILE, PAS UNE DURÉE RECOPIÉE.
             La version précédente reportait la durée de l'exercice clos en
@@ -1494,10 +2274,28 @@ export class ExerciceService {
         "Cet exercice est clôturé · son report à-nouveau est DÉFINITIF et a été passé par la clôture.",
       );
     }
-    const { referentiel } = await this.prisma.tenant.findUniqueOrThrow({
+    const dossier = await this.prisma.tenant.findUniqueOrThrow({
       where: { id: tenantId },
-      select: { referentiel: true },
+      select: { referentiel: true, dateDissolution: true, regimeLiquidation: true, associeUniquePersonneMorale: true, formeJuridiqueSyscohada: true },
     });
+    const { referentiel } = dossier;
+    // SANS LIQUIDATION, L'EXERCICE ARRÊTÉ N'A PAS D'EXERCICE SUIVANT (majeur 2).
+    if (estFinSansLiquidation(exercice, dossier)) {
+      throw new BadRequestException(
+        'Cet exercice est le dernier de la société, dissoute sans liquidation · son patrimoine est transmis à l’associé ' +
+          'unique personne morale (AUSCGIE art. 201 al. 4), aucun exercice ne suit et aucun report à-nouveau n’est dû.',
+      );
+    }
+    // L'EXERCICE DE LIQUIDATION N'A PAS D'EXERCICE SUIVANT (constat 6) · la
+    // société s'éteint à la clôture de la liquidation (AUSCGIE art. 205 ;
+    // AUDCIF Titre VIII ch. 40 § 2.2.2.3, « tous les comptes de la société
+    // sont soldés »).
+    if (estExerciceDeLiquidation(exercice, dossier.dateDissolution)) {
+      throw new BadRequestException(
+        'L’exercice de liquidation n’a pas d’exercice suivant · la société s’éteint à la clôture de la liquidation, ' +
+          'et aucun report à-nouveau n’est dû.',
+      );
+    }
     const brouillardNonRepris = await this.prisma.ecriture.count({
       where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD },
     });
@@ -1520,6 +2318,7 @@ export class ExerciceService {
           orderBy: { dateDebut: 'asc' },
         });
         if (!exerciceSuivant) {
+          refuserSuivantCivilApresDissolution(exercice, dossier);
           // Même règle que la clôture · l'exercice suivant est une année civile.
           const { dateDebut, dateFin } = exerciceSuivantApres(exercice.dateFin);
           exerciceSuivant = await tx.exercice.create({ data: { tenantId, dateDebut, dateFin } });
@@ -2393,4 +3192,248 @@ export function refuserSiPeriodeClose(
       );
     }
   }
+}
+
+/**
+ * Ce que l'arrêt lit avant d'écrire · les exercices qui suivent, les
+ * écritures datées après la dissolution, et le fait qui décide s'il y a une
+ * liquidation. Lu DANS la transaction sérialisable de l'arrêt, et par le
+ * planning pour proposer (ou non) le bouton (constat 15).
+ */
+async function lireEtatAvantArret(
+  client: Prisma.TransactionClient,
+  tenantId: string,
+  exercice: { id: string; dateDebut: Date; dateFin: Date; statut: StatutExercice },
+  dossier: {
+    dateDissolution: Date | null;
+    regimeLiquidation: RegimeLiquidation | null;
+    associeUniquePersonneMorale: boolean | null;
+    formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null;
+  },
+) {
+  const dissolution = dossier.dateDissolution;
+  const sans = sansLiquidation({
+    forme: dossier.formeJuridiqueSyscohada,
+    regimeLiquidation: dossier.regimeLiquidation,
+    associeUniquePersonneMorale: dossier.associeUniquePersonneMorale,
+  });
+  const [posterieurs, aDeplacer] = await Promise.all([
+    client.exercice.findMany({
+      where: { tenantId, dateDebut: { gt: exercice.dateFin } },
+      orderBy: { dateDebut: 'asc' },
+      select: { id: true, dateDebut: true, dateFin: true, statut: true },
+    }),
+    dissolution
+      ? client.ecriture.findMany({
+          where: { tenantId, exerciceId: exercice.id, date: { gt: dissolution } },
+          select: { id: true, date: true, numeroPiece: true, journal: { select: { code: true } } },
+          orderBy: [{ date: 'asc' }, { id: 'asc' }],
+        })
+      : Promise.resolve([] as Array<{ id: string; date: Date; numeroPiece: number | null; journal: { code: string } }>),
+  ]);
+  // LES EXERCICES DONT LA PÉRIODE CHANGE · celui qu'on arrête, et celui qui
+  // le suit quand il devient l'exercice de liquidation (son début recule au
+  // lendemain de la dissolution). Sans liquidation, l'exercice qui suit
+  // n'existe plus (majeur 2) · il ne porte aucun acte à refaire, il se nomme.
+  const changent = [exercice, ...(!sans && posterieurs.length === 1 ? [posterieurs[0]] : [])];
+  const actes = await lireActesDeLaPeriode(client, tenantId, changent);
+  const occupations = sans ? await Promise.all(posterieurs.map((p) => usagesDeLExercice(client, tenantId, p.id))) : [];
+  const etat: EtatAvantArret = {
+    exercice: { dateDebut: exercice.dateDebut, dateFin: exercice.dateFin, clos: exercice.statut === StatutExercice.CLOTURE },
+    dissolution,
+    posterieurs: posterieurs.map((p, i) => ({
+      dateDebut: p.dateDebut,
+      dateFin: p.dateFin,
+      clos: p.statut === StatutExercice.CLOTURE,
+      usages: occupations[i] ?? null,
+    })),
+    sansLiquidation: sans,
+    ecrituresApres: aDeplacer.length,
+    actesDeLaPeriode: actes,
+  };
+  return { etat, posterieurs, aDeplacer, actes };
+}
+
+/**
+ * CE QUI OCCUPE UN EXERCICE, hors son report à-nouveau PROVISOIRE (qui se
+ * retire et se recalcule) · lu dans le schéma (`referencesVers`), jamais une
+ * liste écrite à la main. `null` s'il ne porte rien · il peut alors
+ * disparaître sans rien emporter.
+ */
+async function usagesDeLExercice(client: Prisma.TransactionClient, tenantId: string, exerciceId: string): Promise<string | null> {
+  const [references, provisoires] = await Promise.all([
+    referencesVers(client, 'Exercice', exerciceId, tenantId),
+    client.ecriture.count({ where: { tenantId, exerciceId, estANouveauProvisoire: true } }),
+  ]);
+  const reelles = references
+    .map((r) => (r.modele === 'Ecriture' && r.champ === 'exerciceId' ? { ...r, nombre: r.nombre - provisoires } : r))
+    .filter((r) => r.nombre > 0);
+  return reelles.length ? reelles.map(libelleReference).join(', ') : null;
+}
+
+/**
+ * LES RELEVÉS D'UNITÉS D'ŒUVRE À REVOIR (mineur 3) · un relevé n'a pas de
+ * date, il porte les unités consommées sur la période de son exercice. Il ne
+ * suit rien et ne refuse rien (sa saisie se refait, `saisirConsommation`) ·
+ * il est NOMMÉ au résultat du geste, la dotation qui le lit étant, elle,
+ * refusée tant qu'elle existe (`ACTES_DE_LA_PERIODE`).
+ */
+async function relevesUnitesOeuvre(client: Prisma.TransactionClient, tenantId: string, exerciceIds: string[]): Promise<string[]> {
+  const releves = await client.consommationUniteOeuvre.findMany({
+    where: { tenantId, exerciceId: { in: exerciceIds } },
+    select: { unitesConsommees: true, immobilisation: { select: { designation: true } }, exercice: { select: { dateDebut: true, dateFin: true } } },
+    orderBy: { id: 'asc' },
+    take: 200,
+  });
+  return releves.map(
+    (r) =>
+      `${r.immobilisation.designation} · ${Number(r.unitesConsommees)} unités relevées sur l'exercice ${periodeLisible(r.exercice)}, ` +
+      'à ressaisir pour sa période nouvelle',
+  );
+}
+
+/**
+ * LES ACTES DONT LE MONTANT DÉPEND DE LA PÉRIODE (relecture du 2026-10-07,
+ * bloquant 1, `ACTES_DE_LA_PERIODE`) · lus sur les exercices dont la période
+ * change, chacun nommé avec sa pièce, son exercice et son issue.
+ */
+async function lireActesDeLaPeriode(
+  client: Prisma.TransactionClient,
+  tenantId: string,
+  exercices: Array<{ id: string; dateDebut: Date; dateFin: Date }>,
+): Promise<ActeDeLaPeriodeLu[]> {
+  const delegues = client as unknown as Record<string, { findMany: (a: unknown) => Promise<Array<Record<string, unknown> & { id: string }>> }>;
+  const periodes = new Map(exercices.map((e) => [e.id, periodeLisible(e)]));
+  const ids = exercices.map((e) => e.id);
+  const lus: Array<{ acte: (typeof ACTES_DE_LA_PERIODE)[number]; ligne: Record<string, unknown> & { id: string } }> = [];
+  for (const acte of ACTES_DE_LA_PERIODE) {
+    const borne = acte.parLeBien ? { immobilisation: { tenantId } } : { tenantId };
+    const lignes = await delegues[acte.modele].findMany({
+      where: { ...borne, exerciceId: { in: ids }, ...(acte.actif ?? {}) },
+      orderBy: { id: 'asc' },
+    });
+    for (const ligne of lignes) lus.push({ acte, ligne });
+  }
+  if (lus.length === 0) return [];
+  const ecritureIds = [...new Set(lus.map((l) => l.ligne[l.acte.colonne]).filter((v): v is string => typeof v === 'string'))];
+  const bienIds = [...new Set(lus.map((l) => l.ligne.immobilisationId).filter((v): v is string => typeof v === 'string'))];
+  const [ecritures, biens] = await Promise.all([
+    ecritureIds.length
+      ? client.ecriture.findMany({
+          where: { tenantId, id: { in: ecritureIds } },
+          select: { id: true, statut: true, numeroPiece: true, journal: { select: { code: true } } },
+        })
+      : Promise.resolve([] as Array<{ id: string; statut: StatutEcriture; numeroPiece: number | null; journal: { code: string } }>),
+    bienIds.length
+      ? client.immobilisation.findMany({ where: { tenantId, id: { in: bienIds } }, select: { id: true, statut: true } })
+      : Promise.resolve([] as Array<{ id: string; statut: StatutImmobilisation }>),
+  ]);
+  const parEcriture = new Map(ecritures.map((e) => [e.id, e]));
+  const sortis = new Set(biens.filter((b) => b.statut !== StatutImmobilisation.EN_SERVICE).map((b) => b.id));
+  return lus.map(({ acte, ligne }) => {
+    const ecritureId = typeof ligne[acte.colonne] === 'string' ? (ligne[acte.colonne] as string) : null;
+    const e = ecritureId ? parEcriture.get(ecritureId) : undefined;
+    const bienSorti = typeof ligne.immobilisationId === 'string' && sortis.has(ligne.immobilisationId);
+    const auBrouillard = !e || e.statut === StatutEcriture.BROUILLARD;
+    return {
+      modele: acte.modele,
+      id: ligne.id,
+      libelle: acte.libelle,
+      piece: e ? `${e.journal.code} n° ${e.numeroPiece ?? '·'}` : 'sans écriture',
+      periode: periodes.get(String(ligne.exerciceId)) ?? '·',
+      retirable: !!acte.retirable && !bienSorti,
+      ecritureId,
+      issue: issueActeDeLaPeriode(acte, { auBrouillard, bienSorti }),
+    };
+  });
+}
+
+/**
+ * RATTACHER À UN AUTRE EXERCICE · les écritures nommées, les actes de module
+ * qui portent l'exercice et suivent leur écriture (`ACTES_QUI_SUIVENT_LEUR_ECRITURE`),
+ * les clôtures de journal et de période posées sur ces dates (constat 11).
+ * Rien d'autre ne change · ni date, ni numéro de pièce, ni lignes, ni statut,
+ * ni auteurs (quatrième lot, point 1). Mises à jour UNITAIRES, au journal
+ * d'audit · la liste des écritures rattachées s'y lit pièce par pièce.
+ */
+async function rattacherALExercice(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  r: {
+    depuis: string;
+    vers: string;
+    ecritures: Array<{ id: string; numeroPiece: number | null; journal: { code: string } }>;
+    clotures: Prisma.ClotureWhereInput;
+    /** Les dates qui passent d'un exercice à l'autre (actes datés sans écriture). */
+    dates: Prisma.DateTimeFilter;
+  },
+): Promise<{ ecrituresRattachees: number; actesRattaches: number; cloturesRattachees: number }> {
+  for (const e of r.ecritures) {
+    await tx.ecriture.update({ where: { id: e.id }, data: { exerciceId: r.vers } });
+  }
+  const piece = new Map(r.ecritures.map((e) => [e.id, `${e.journal.code} n° ${e.numeroPiece ?? '·'}`]));
+  const ids = r.ecritures.map((e) => e.id);
+  let actes = 0;
+  const client = tx as unknown as Record<
+    string,
+    {
+      findMany: (a: unknown) => Promise<Array<Record<string, unknown> & { id: string }>>;
+      findFirst: (a: unknown) => Promise<{ id: string } | null>;
+      update: (a: unknown) => Promise<unknown>;
+    }
+  >;
+  // Par tranches de mille identifiants · une liste sans borne dépasserait le
+  // nombre de paramètres d'une requête.
+  for (let i = 0; i < ids.length; i += 1000) {
+    const tranche = ids.slice(i, i + 1000);
+    for (const acte of ACTES_QUI_SUIVENT_LEUR_ECRITURE) {
+      const delegue = client[acte.modele];
+      const borne = acte.parLeBien ? { immobilisation: { tenantId } } : { tenantId };
+      const lignes = await delegue.findMany({ where: { ...borne, exerciceId: r.depuis, [acte.colonne]: { in: tranche } } });
+      for (const ligne of lignes) {
+        if (acte.unicite) {
+          const deja = await delegue.findFirst({
+            where: { ...borne, exerciceId: r.vers, ...Object.fromEntries(acte.unicite.map((c) => [c, ligne[c]])) },
+            select: { id: true },
+          });
+          if (deja) {
+            throw new BadRequestException(motifActeQuiNePeutSuivre(acte, piece.get(String(ligne[acte.colonne])) ?? '·'));
+          }
+        }
+        await delegue.update({ where: { id: ligne.id }, data: { exerciceId: r.vers } });
+        actes++;
+      }
+    }
+  }
+  // LES ACTES DATÉS SANS ÉCRITURE suivent leur date (mineur 3,
+  // `ACTES_DATES_QUI_SUIVENT_LEUR_DATE`) · même borne de dates que les
+  // écritures, mises à jour unitaires.
+  for (const acte of ACTES_DATES_QUI_SUIVENT_LEUR_DATE) {
+    const delegue = client[acte.modele];
+    const lignes = await delegue.findMany({ where: { tenantId, exerciceId: r.depuis, [acte.colonne]: r.dates } });
+    for (const ligne of lignes) {
+      if (acte.unicite) {
+        const deja = await delegue.findFirst({
+          where: { tenantId, exerciceId: r.vers, ...Object.fromEntries(acte.unicite.map((c) => [c, ligne[c]])) },
+          select: { id: true },
+        });
+        if (deja) {
+          throw new BadRequestException(
+            `L'${acte.libelle} « ${String(ligne.reference ?? '·')} » du ${jourFr(ligne[acte.colonne] as Date)} doit suivre sa ` +
+              'date dans l’autre exercice, qui en porte déjà un sous la même référence · renommez l’un des deux, puis relancez.',
+          );
+        }
+      }
+      await delegue.update({ where: { id: ligne.id }, data: { exerciceId: r.vers } });
+      actes++;
+    }
+  }
+  const clotures = await tx.cloture.findMany({
+    where: { tenantId, exerciceId: r.depuis, ...r.clotures },
+    select: { id: true },
+  });
+  for (const c of clotures) {
+    await tx.cloture.update({ where: { id: c.id }, data: { exerciceId: r.vers } });
+  }
+  return { ecrituresRattachees: r.ecritures.length, actesRattaches: actes, cloturesRattachees: clotures.length };
 }
