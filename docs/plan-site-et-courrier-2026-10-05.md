@@ -12,9 +12,14 @@ fixe ce qu'on construit, dans quel ordre, et ce qui reste à trancher.
   désactivé. Test de réception réussi.
 - Envoi : domaine vérifié chez Resend (DKIM, SPF par les CNAME `send` et
   `rsend`, DMARC `p=none`). Envoi depuis Gmail en tant que admin@ réussi.
-- Secret GitHub `API_RESEND_CLE` posé par Manasse, jamais montré à une session.
-  Aucune référence à Resend dans le code à cette date : les courriels d'OmegaX
-  restent « en file » (`SANS_TRANSPORT`), et c'est dit à l'écran.
+- CORRECTION du 2026-10-07 · le TRANSPORT EXISTE DÉJÀ (`courrier/transport-courriel.ts`,
+  nodemailer, en SMTP). Il attend cinq secrets, transmis par `deploy-cloud-run.yml` ·
+  `API_SMTP_HOST`, `API_SMTP_PORT`, `API_SMTP_USER`, `API_SMTP_PASS`,
+  `API_COURRIER_EXPEDITEUR` (`API_SMTP_SECURE` facultatif sur le port 465), tout ou
+  rien. Le secret `API_RESEND_CLE` posé le 2026-10-05 sur la parole de la session
+  n'est lu par RIEN · erreur de la session (une recherche du mot « Resend » au lieu
+  du transport), à retirer, et la clé Resend correspondante à révoquer. Tant que
+  les cinq secrets manquent, les courriels restent « en file » (`SANS_TRANSPORT`).
 
 ## 2. Décisions
 
@@ -36,7 +41,7 @@ fixe ce qu'on construit, dans quel ordre, et ce qui reste à trancher.
 
 - Le serveur lit son adresse d'expédition et sa clé **dans la configuration de
   l'installation**, jamais dans le code, les journaux ou les sauvegardes.
-- **En ligne** : la clé `API_RESEND_CLE` de l'éditeur. Les courriels de l'éditeur
+- **En ligne** : le compte SMTP de l'éditeur (Resend, secrets `API_SMTP_*`). Les courriels de l'éditeur
   (licence, facture d'abonnement, sécurité) partent de `admin@vmgconsulting.net`.
   Ceux d'un cabinet à ses propres clients partent avec le NOM du cabinet affiché
   et son adresse en « Répondre à » ; sans adresse de réponse renseignée, l'envoi
@@ -55,10 +60,13 @@ fixe ce qu'on construit, dans quel ordre, et ce qui reste à trancher.
 
 ## 4. Ordre de construction
 
-1. **Envoi réel** par Resend, lecture de la configuration, déclaration du secret
-   dans le workflow de déploiement (Cloud Run reçoit ses variables par le seul
-   workflow), repli « en file » si la clé manque. Scénario sur vraie base, envoi
-   d'essai vers l'éditeur.
+1. **Envoi réel, SANS CODE** · Manasse pose les cinq secrets SMTP (Resend ·
+   `smtp.resend.com`, port 465, utilisateur `resend`, mot de passe = une clé
+   Resend neuve, expéditeur `admin@vmgconsulting.net`, valeurs déjà éprouvées
+   par l'envoi depuis Gmail), puis un déploiement les transmet ; relire le
+   déploiement et faire un envoi d'essai vers l'éditeur. Reste à vérifier dans
+   le code · nom du cabinet affiché et « Répondre à » pour les courriels d'un
+   cabinet à ses clients (§ 3).
 2. **Écran « Courrier »** des cabinets (adresse de réponse, clé propre sur site).
 3. **Vitrine** statique, Cloudflare Pages, sur `vmgconsulting.net` : présentation,
    formules et prix, formulaire de demande relié à la messagerie. Les
