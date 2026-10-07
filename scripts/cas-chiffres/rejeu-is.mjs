@@ -19,6 +19,7 @@
  *
  *   OMEGAX_API=http://localhost:8118 node scripts/cas-chiffres/rejeu-is.mjs [sortie.json]
  */
+import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
 const BASE = process.env.OMEGAX_API ?? 'http://localhost:8118';
@@ -509,6 +510,107 @@ cas('V2', 'Saisie 2026 de 500 000 d\'origine 2021-12-31, fenêtre close en 2024 
     deficitAnterieurOrigines: [{ dateFin: '2021-12-31', montant: 500_000 }],
   });
   return { exerciceId: n, refus: { statut: refus.statut, message: refus.corps?.message }, fiscal: lecture(await fiscal(c, n)) };
+});
+
+// --- Troisième tour (2026-10-07) · la fenêtre de l'art. 51, N-4 contre N-3 ---
+
+cas('V3', 'Pertes calculées de 2026 (N-4) et 2027 (N-3), 2028 et 2029 à zéro · 2030 n\'impute que 2027 (clôtures traversées)', async () => {
+  const c = await dossier('Cas IS V3', 'SOCIETE_RESPONSABILITE_LIMITEE');
+  const annees = [
+    ['2026', 1_000_000, 1_100_000],
+    ['2027', 1_000_000, 1_200_000],
+    ['2028', 1_000_000, 1_000_000],
+    ['2029', 1_000_000, 1_000_000],
+    ['2030', 2_000_000, 1_000_000],
+  ];
+  const ids = {};
+  for (const [a, ca, ch] of annees) {
+    ids[a] = await exercice(c, `${a}-01-01`, `${a}-12-31`);
+    await venteEtCharges(c, ids[a], `${a}-06-30`, ca, [['60410000', ch]]);
+    await valider(c, ids[a], `${a}-12-31`);
+  }
+  const avantClotures = {};
+  for (const [a] of annees) avantClotures[a] = lecture(await fiscal(c, ids[a]));
+  const clotures = await cloturer(c, [['2026', ids['2026']], ['2027', ids['2027']], ['2028', ids['2028']], ['2029', ids['2029']]]);
+  const lectures = {};
+  for (const [a] of annees) lectures[a] = lecture(await fiscal(c, ids[a]));
+  return { clotures, avantClotures, lectures };
+});
+
+cas('V4', 'Report déclaré en 2026 · origine 2022 (N-4) refusée, origine 2023 (N-3) imputée, éteinte en 2027', async () => {
+  const c = await dossier('Cas IS V4', 'SOCIETE_RESPONSABILITE_LIMITEE');
+  const a26 = c.exercices.get('2026-01-01');
+  await venteEtCharges(c, a26, '2026-06-30', 100_000, []);
+  await valider(c, a26, '2026-12-31');
+  const refusN4 = await c.req('PATCH', `/fiscalite/exercices/${a26}/dossier`, {
+    deficitAnterieurSaisi: 800_000,
+    deficitAnterieurOrigines: [
+      { dateFin: '2022-12-31', montant: 500_000 },
+      { dateFin: '2023-12-31', montant: 300_000 },
+    ],
+  });
+  await c.ok('PATCH', `/fiscalite/exercices/${a26}/dossier`, {
+    deficitAnterieurSaisi: 300_000,
+    deficitAnterieurOrigines: [{ dateFin: '2023-12-31', montant: 300_000 }],
+  });
+  const a27 = await exercice(c, '2027-01-01', '2027-12-31');
+  await venteEtCharges(c, a27, '2027-06-30', 1_000_000, []);
+  await valider(c, a27, '2027-12-31');
+  const avant = { a2026: lecture(await fiscal(c, a26)), a2027: lecture(await fiscal(c, a27)) };
+  const clotures = await cloturer(c, [['2026', a26]]);
+  return {
+    refusN4: { statut: refusN4.statut, message: refusN4.corps?.message },
+    avant,
+    clotures,
+    apres: { a2026: lecture(await fiscal(c, a26)), a2027: lecture(await fiscal(c, a27)) },
+  };
+});
+
+/*
+  V5 · UNE DÉCLARATION D'AVANT LE TROISIÈME TOUR. La porte refuse désormais une
+  origine hors fenêtre (V2, V4) · une ligne enregistrée avant ce refus ne
+  passe plus par elle. Le cas la POSE dans la base jetable (psql, adresse lue
+  dans OMEGAX_BASE_JETABLE, jamais imprimée) pour éprouver la LECTURE · seule
+  la part de 2023 s'impute en 2026, et la part de 2022 est nommée. Sans la
+  variable, le cas est sauté et le dit.
+*/
+cas('V5', 'Déclaration enregistrée avant le troisième tour · 500 000 de 2022 (N-4) et 300 000 de 2023 (N-3) · 2026 n\'impute que 300 000', async () => {
+  if (!process.env.OMEGAX_BASE_JETABLE) return { saute: 'OMEGAX_BASE_JETABLE absente · cas non rejoué' };
+  const c = await dossier('Cas IS V5', 'SOCIETE_RESPONSABILITE_LIMITEE');
+  const a26 = c.exercices.get('2026-01-01');
+  await venteEtCharges(c, a26, '2026-06-30', 1_000_000, []);
+  await valider(c, a26, '2026-12-31');
+  await c.ok('PATCH', `/fiscalite/exercices/${a26}/dossier`, {
+    deficitAnterieurSaisi: 800_000,
+    deficitAnterieurOrigines: [
+      { dateFin: '2023-12-31', montant: 500_000 },
+      { dateFin: '2024-12-31', montant: 300_000 },
+    ],
+  });
+  if (!/^[0-9a-f-]{36}$/i.test(a26)) throw new Error(`Identifiant d'exercice inattendu · ${a26}`);
+  const origines = JSON.stringify([
+    { dateFin: '2022-12-31', montant: 500_000 },
+    { dateFin: '2023-12-31', montant: 300_000 },
+  ]);
+  execFileSync(
+    'psql',
+    [
+      process.env.OMEGAX_BASE_JETABLE,
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-qc',
+      `UPDATE dossiers_fiscaux_exercice SET "deficitAnterieurOrigines" = '${origines}'::jsonb WHERE "exerciceId" = '${a26}'`,
+    ],
+    { stdio: ['ignore', 'ignore', 'inherit'] },
+  );
+  const a27 = await exercice(c, '2027-01-01', '2027-12-31');
+  await venteEtCharges(c, a27, '2027-06-30', 1_000_000, []);
+  await valider(c, a27, '2027-12-31');
+  const brut = await fiscal(c, a26);
+  return {
+    a2026: { ...lecture(brut), montantSaisi: brut.deficitAnterieur?.montantSaisi, origines: brut.deficitAnterieur?.origines },
+    a2027: lecture(await fiscal(c, a27)),
+  };
 });
 
 // --- Exécution --------------------------------------------------------------

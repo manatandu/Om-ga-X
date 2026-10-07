@@ -79,6 +79,25 @@ Branche de sauvegarde `travail/is-cas`. Constat de départ ·
 - Rejeu sur vraie base (`iscas_2`) · seize cas inchangés, B1, B2, P1 sur
   trois exercices à travers leurs clôtures, à l'attendu.
 
+## Troisième tour, vérification (2026-10-07)
+
+- Art. 51 relu (compilation DGI au 19/07/2026, `04-loi23-053-titre2-impot-societes.md`) ·
+  « jusqu'au troisième exercice qui suit l'exercice déficitaire ». La correction
+  de793bf suit le texte · une origine déclarée dont la fenêtre est close à
+  l'ouverture est refusée à la saisie, et une ligne enregistrée avant ce refus
+  n'est imputée que pour sa part couverte (`partImputableDeLaSaisie`).
+- Bloc de contrôle sur de793bf · `tsc` serveur et client propres, Jest 754
+  suites / 10 802 tests, Vitest 222 fichiers / 1 811 tests.
+- Rejeu sur base jetable `iscas_3` (PostgreSQL 16, port 55491, serveur
+  compilé sur 8131) · seize cas, B1, B2, P1, V2 à l'attendu. Cas ajoutés ·
+  V3 (pertes calculées N-4 et N-3), V4 (origine N-4 refusée, N-3 imputée,
+  éteinte en N+1), V5 (déclaration d'avant le refus, posée par psql).
+- DÉFAUT TROUVÉ PAR V3, antérieur à la ligne · un exercice dont la gestion se
+  solde à zéro (ventes 1 000 000, achats 1 000 000) lit son résultat sur le
+  13, qui porte après la clôture l'à-nouveau des pertes non affectées ·
+  2028 et 2029 lus à -300 000, 2030 impute 800 000 et rend 60 000 au lieu de
+  240 000. Correction en cours.
+
 ## Relevés en attente
 
 - (4) La perte de la période de création de 2025 (C10) reste dans la base de
