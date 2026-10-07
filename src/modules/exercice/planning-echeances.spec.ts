@@ -97,8 +97,8 @@ describe('F81 · une échéance se lit au jour, et l’échéance fiscale se rep
 
   it('reporte la déclaration fiscale au premier jour ouvrable, et elle seule', async () => {
     const p = await aLInstant('2028-04-20T10:00:00.000Z');
-    expect(fiscal(p).echeance.toISOString().slice(0, 10)).toBe('2028-05-02');
-    expect(nonFiscal(p).echeance.toISOString().slice(0, 10)).toBe('2028-04-30');
+    expect(fiscal(p).echeance!.toISOString().slice(0, 10)).toBe('2028-05-02');
+    expect(nonFiscal(p).echeance!.toISOString().slice(0, 10)).toBe('2028-04-30');
   });
 
   it('n’est pas en retard le jour même de l’échéance', async () => {

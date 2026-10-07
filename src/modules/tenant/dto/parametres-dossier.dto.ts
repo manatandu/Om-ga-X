@@ -199,6 +199,14 @@ export class ModifierIdentiteDto {
   @IsIn(['OUI', 'NON', 'PAS_ENCORE_DIT'], { message: 'L’associé unique se déclare OUI, NON ou PAS_ENCORE_DIT.' })
   associeUniqueSas?: ReponseFait;
 
+  // O.-L. n° 13/003, art. 112 et 113 · entreprise relevant du portefeuille
+  // de l'État (loi n° 08/010, art. 3). SYSCOHADA seul.
+  @IsOptional()
+  @IsIn(['OUI', 'NON', 'PAS_ENCORE_DIT'], {
+    message: 'La qualité d’entreprise du portefeuille de l’État se déclare OUI, NON ou PAS_ENCORE_DIT.',
+  })
+  entreprisePortefeuilleEtat?: ReponseFait;
+
   // Dissolution déclarée (AUSCOOP art. 183 · AUSCGIE art. 203 et 204) ; la
   // chaîne vide l'efface.
   @IsOptional()

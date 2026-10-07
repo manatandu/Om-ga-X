@@ -442,6 +442,13 @@ model Tenant {
   // désignée « société par actions simplifiée unipersonnelle » ou « SASU ».
   // null = pas encore dit ; propre à la SAS.
   associeUniqueSas                  Boolean?
+  // ENTREPRISE RELEVANT DU PORTEFEUILLE DE L'ÉTAT · O.-L. n° 13/003, art. 112
+  // et 113 ; loi n° 08/010, art. 3 (« toute société dans laquelle l'État ou
+  // toute personne morale de droit public détient la totalité des actions ou
+  // une participation »). La qualité tient à l'actionnariat · elle ne se
+  // déduit ni de la forme ni du référentiel. Fait DÉCLARÉ, SYSCOHADA seul,
+  // null = pas encore dit (décision par la loi du 2026-10-04, point 1).
+  entreprisePortefeuilleEtat        Boolean?
   // AUSCGIE art. 203 et 204 · « La société est en liquidation dès l'instant de
   // sa dissolution », et la mention « société en liquidation » ainsi que le nom
   // du ou des liquidateurs figurent sur tous ses actes et documents destinés
@@ -1515,6 +1522,18 @@ model Exercice {
   /// privé étranger, lecture d'OmegaX, le texte ne disant pas que les cases
   /// s'excluent). Null = pas encore dit.
   controleEntreprise           ControleEntreprise?
+
+  /// ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT (O.-L. n° 13/003, art. 112 et 113 ;
+  /// décision par la loi du 2026-10-04, point 1) · deux dates DÉCLARÉES, qui
+  /// font courir les délais du texte et qu'aucun livre ne porte.
+  /// Date de l'assemblée générale ordinaire statuant sur les résultats · son
+  /// procès-verbal part à l'Administration des recettes non fiscales « dans
+  /// les dix (10) jours qui suivent » (art. 112).
+  dateAssembleeGenerale        DateTime?
+  /// Date de dépôt des états financiers à l'administration du ministère du
+  /// Portefeuille · l'affectation intervient « endéans soixante (60) jours »
+  /// à compter de ce dépôt (art. 113).
+  dateDepotEtatsPortefeuille   DateTime?
 
   ecritures                    Ecriture[]
   clotures                     Cloture[]

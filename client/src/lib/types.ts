@@ -1611,6 +1611,8 @@ export interface ParametresDossier {
   modeAdministrationSa: 'CONSEIL_ADMINISTRATION' | 'ADMINISTRATEUR_GENERAL' | null;
   /** AUSCGIE art. 853-2 · SAS seule, null tant que rien n'est dit. */
   associeUniqueSas: boolean | null;
+  /** O.-L. n° 13/003, art. 112 et 113 · null = pas encore dit. */
+  entreprisePortefeuilleEtat?: boolean | null;
   /**
    * AUSCGIE art. 203 et 204 (cinq sociétés commerciales), AUSCOOP art. 183
    * (coopérative) · dissolution déclarée et liquidateurs, null tant que rien
@@ -2834,8 +2836,9 @@ export interface JalonCloture {
   detail: string;
   nature: NatureJalon;
   source: string;
-  debut: string;
-  echeance: string;
+  debut: string | null;
+  /** null · échéance NON CALCULÉE, faute de la date déclarée qui la fait courir. */
+  echeance: string | null;
   enRetard: boolean;
   /**
    * Ce que les dirigeants encourent si le travail du jalon n'est pas fait du
@@ -2858,6 +2861,10 @@ export interface PlanningCloture {
   formeJuridique: FormeJuridiqueEbnl;
   formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null;
   droitEtranger: boolean;
+  /** O.-L. n° 13/003 · fait déclaré du dossier (SYSCOHADA), null hors SYSCOHADA ou non dit. */
+  entreprisePortefeuilleEtat?: boolean | null;
+  dateAssembleeGenerale?: string | null;
+  dateDepotEtatsPortefeuille?: string | null;
   jalons: JalonCloture[];
 }
 

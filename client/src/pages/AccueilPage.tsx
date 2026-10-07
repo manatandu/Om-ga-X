@@ -265,7 +265,10 @@ export function AccueilPage() {
   const jalons = planning?.jalons ?? null;
   const enRetard = jalons?.filter((j) => j.enRetard) ?? [];
   const aujourdHui = Date.now();
-  const prochain = jalons?.find((j) => !j.enRetard && new Date(j.echeance).getTime() >= aujourdHui) ?? null;
+  // Une échéance non calculée (null, faute de la date déclarée qui la fait
+  // courir) n'est jamais « la prochaine » · elle n'a pas de date.
+  const prochain =
+    jalons?.find((j) => !j.enRetard && j.echeance !== null && new Date(j.echeance).getTime() >= aujourdHui) ?? null;
   const brouillard = jalons?.find((j) => j.libelle === 'Balance de vérification')?.observation ?? null;
 
   // Les anomalies bloquantes passent avant tout : une écriture déséquilibrée
@@ -538,7 +541,7 @@ export function AccueilPage() {
                         jalons === null
                           ? 'Non déterminé'
                           : prochain
-                            ? `${dateCourte(prochain.echeance)} · ${prochain.libelle}`
+                            ? `${dateCourte(prochain.echeance ?? '')} · ${prochain.libelle}`
                             : 'Rien à venir'
                       }
                       bon={jalons !== null}

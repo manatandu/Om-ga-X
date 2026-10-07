@@ -162,6 +162,7 @@ export class TenantService {
       // AUSCGIE art. 386 et 414, 853-2, 203 et 204 · faits de la dénomination.
       modeAdministrationSa: tenant.modeAdministrationSa,
       associeUniqueSas: tenant.associeUniqueSas,
+      entreprisePortefeuilleEtat: tenant.entreprisePortefeuilleEtat,
       dateDissolution: tenant.dateDissolution,
       liquidateurs: tenant.liquidateurs,
       // AUSCGIE art. 182 et 183 · la transformation déclarée, et la forme que
@@ -466,6 +467,7 @@ export class TenantService {
       varianteCooperative?: 'SCOOPS' | 'COOP_CA' | 'PAS_ENCORE_DIT';
       modeAdministrationSa?: 'CONSEIL_ADMINISTRATION' | 'ADMINISTRATEUR_GENERAL' | 'PAS_ENCORE_DIT';
       associeUniqueSas?: ReponseFait;
+      entreprisePortefeuilleEtat?: ReponseFait;
       dateDissolution?: string;
       liquidateurs?: string;
       actePersonnaliteJuridique?: string;
@@ -562,6 +564,15 @@ export class TenantService {
         'La désignation « société par actions simplifiée unipersonnelle » est propre à la SAS (AUSCGIE art. 853-2).',
       );
     }
+    // ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT (O.-L. n° 13/003, art. 112 et
+    // 113) · « entreprises » et « sociétés » (loi n° 08/010, art. 3) · une
+    // entité à but non lucratif n'est pas concernée.
+    if (dto.entreprisePortefeuilleEtat === 'OUI' && tenant.referentiel !== Referentiel.SYSCOHADA) {
+      throw new BadRequestException(
+        'Le portefeuille de l’État regroupe des sociétés (loi n° 08/010, art. 3 ; ordonnance-loi n° 13/003, ' +
+          'art. 112) · une entité à but non lucratif n’en relève pas.',
+      );
+    }
     const dissolution = dateSaisieOuEffacement(dto.dateDissolution);
     // La liquidation se déclare pour une société commerciale (AUSCGIE art. 203
     // et 204) et pour une coopérative (AUSCOOP art. 183), qui écrivent la même
@@ -615,6 +626,12 @@ export class TenantService {
         ...(dto.associeUniqueSas === undefined
           ? {}
           : { associeUniqueSas: dto.associeUniqueSas === 'OUI' ? true : dto.associeUniqueSas === 'NON' ? false : null }),
+        ...(dto.entreprisePortefeuilleEtat === undefined
+          ? {}
+          : {
+              entreprisePortefeuilleEtat:
+                dto.entreprisePortefeuilleEtat === 'OUI' ? true : dto.entreprisePortefeuilleEtat === 'NON' ? false : null,
+            }),
         dateDissolution: dissolution,
         liquidateurs: normaliser(dto.liquidateurs),
         actePersonnaliteJuridique: normaliser(dto.actePersonnaliteJuridique),

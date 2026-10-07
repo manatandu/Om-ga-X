@@ -26,6 +26,8 @@ import { CreerExerciceDto } from './dto/creer-exercice.dto';
 import { ClorePartielleDto, CloreTotaleDto, ClorePeriodeDto } from './dto/cloture.dto';
 import { ArreterComptesDto } from './dto/arrete-comptes.dto';
 import { FicheR2Dto } from './dto/fiche-r2.dto';
+import { DatesPortefeuilleDto } from './dto/dates-portefeuille.dto';
+import { appliquerPortefeuilleEtat, JalonServi } from './portefeuille-etat';
 import { JournalService } from '../journaux/journal.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { DERNIERE_VERIFICATION, dateJalon, jalonsApplicables } from './planning-cloture';
@@ -460,6 +462,22 @@ export class ExerciceService {
     // LE JOUR DE KINSHASA, PAS L'INSTANT (audit final F81) · un jalon n'est en
     // retard qu'au lendemain de son échéance.
     const aujourdHui = jourDeKinshasa(new Date());
+    // ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT · servie sur la seule réponse
+    // « oui », et au SYSCOHADA seul (une ASBL n'est ni « entreprise » de
+    // l'art. 112 ni « société » de la loi n° 08/010).
+    const portefeuille = tenant.referentiel === Referentiel.SYSCOHADA ? tenant.entreprisePortefeuilleEtat : null;
+    const avecPortefeuille = (jalons: JalonServi[]) =>
+      portefeuille === true
+        ? appliquerPortefeuilleEtat(
+            jalons,
+            {
+              dateFin: exercice.dateFin,
+              dateAssembleeGenerale: exercice.dateAssembleeGenerale,
+              dateDepotEtatsPortefeuille: exercice.dateDepotEtatsPortefeuille,
+            },
+            aujourdHui,
+          )
+        : jalons;
     return {
       exerciceId: exercice.id,
       dateDebut: exercice.dateDebut,
@@ -471,7 +489,12 @@ export class ExerciceService {
       formeJuridique: tenant.formeJuridique,
       formeJuridiqueSyscohada: formeDeLExercice,
       droitEtranger: tenant.droitEtranger,
-      jalons: jalonsApplicables({
+      // O.-L. n° 13/003, art. 112 et 113 · fait déclaré du dossier et dates
+      // déclarées de l'exercice (décision par la loi du 2026-10-04, point 1).
+      entreprisePortefeuilleEtat: portefeuille,
+      dateAssembleeGenerale: exercice.dateAssembleeGenerale,
+      dateDepotEtatsPortefeuille: exercice.dateDepotEtatsPortefeuille,
+      jalons: avecPortefeuille(jalonsApplicables({
         referentiel: tenant.referentiel,
         formeJuridique: tenant.formeJuridique,
         formeJuridiqueSyscohada: formeDeLExercice,
@@ -502,7 +525,7 @@ export class ExerciceService {
           enRetard: echeanceDepassee(echeance, aujourdHui) && !(observation?.satisfait ?? false),
           observation,
         };
-      }),
+      })),
     };
   }
 
@@ -576,6 +599,34 @@ export class ExerciceService {
     }
     if (dto.premiereAnneeExercicePays !== undefined) data.premiereAnneeExercicePays = dto.premiereAnneeExercicePays;
     if (dto.controleEntreprise !== undefined) data.controleEntreprise = dto.controleEntreprise;
+    return this.prisma.exercice.update({ where: { id: exercice.id }, data });
+  }
+
+  /**
+   * ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT · les deux dates qui font courir les
+   * délais de l'O.-L. n° 13/003 (art. 112 · dix jours de l'assemblée ;
+   * art. 113 · soixante jours du dépôt au ministère du Portefeuille). Elles
+   * ne sont dans aucun livre · DÉCLARÉES, jamais supposées. Un champ absent
+   * reste tel quel, `null` efface. Une date antérieure à la clôture est
+   * refusée · l'assemblée statue sur un exercice clos, et ses états ne se
+   * déposent qu'une fois arrêtés.
+   */
+  async declarerDatesPortefeuille(tenantId: string, exerciceId: string, dto: DatesPortefeuilleDto) {
+    const exercice = await this.trouverExercice(tenantId, exerciceId);
+    const lire = (v: string | null | undefined) => (v === undefined ? undefined : v === null ? null : new Date(v));
+    const assemblee = lire(dto.dateAssembleeGenerale);
+    const depot = lire(dto.dateDepotEtatsPortefeuille);
+    for (const [date, quoi] of [
+      [assemblee, 'L’assemblée générale ordinaire statue sur les résultats d’un exercice clos'],
+      [depot, 'Les états financiers se déposent une fois l’exercice clos'],
+    ] as const) {
+      if (date && date < exercice.dateFin) {
+        throw new BadRequestException(`${quoi} · la date ne peut pas précéder la clôture de l'exercice (O.-L. n° 13/003, art. 112 et 113).`);
+      }
+    }
+    const data: Prisma.ExerciceUpdateInput = {};
+    if (assemblee !== undefined) data.dateAssembleeGenerale = assemblee;
+    if (depot !== undefined) data.dateDepotEtatsPortefeuille = depot;
     return this.prisma.exercice.update({ where: { id: exercice.id }, data });
   }
 

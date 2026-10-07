@@ -10,6 +10,7 @@ import { confirmationCloturePeriode } from '../lib/cloture-periode';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
 import { FicheR2Exercice } from '../components/FicheR2Exercice';
+import { DatesPortefeuilleExercice } from '../components/DatesPortefeuilleExercice';
 
 const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
   PARTIELLE: 'Partielle',
@@ -567,6 +568,15 @@ export function ExercicePage() {
       {exercice && utilisateur?.tenant.referentiel === 'SYSCOHADA' && (
         <FicheR2Exercice exercice={exercice} peutEcrire={peutEcrire} apresEnregistrement={rechargerExercices} />
       )}
+      {exercice && planning?.exerciceId === exercice.id && planning.entreprisePortefeuilleEtat === true && (
+        <DatesPortefeuilleExercice
+          exerciceId={exercice.id}
+          dateAssembleeGenerale={planning.dateAssembleeGenerale ?? null}
+          dateDepotEtatsPortefeuille={planning.dateDepotEtatsPortefeuille ?? null}
+          peutEcrire={peutEcrire}
+          apresEnregistrement={charger}
+        />
+      )}
 
       {/*
         LES DEUX SEULES EXCEPTIONS À LA CORRESPONDANCE BILAN DE CLÔTURE /
@@ -691,7 +701,7 @@ export function ExercicePage() {
                 </thead>
                 <tbody>
                   {planning.jalons.map((j) => (
-                    <tr key={j.etape} className="border-t border-border align-top">
+                    <tr key={`${j.etape}-${j.libelle}`} className="border-t border-border align-top">
                       <td className="px-3 py-2 font-mono text-text-dim">{j.etape}</td>
                       <td className="px-3 py-2">
                         <div className="font-semibold flex items-center gap-1.5">
@@ -707,7 +717,11 @@ export function ExercicePage() {
                         )}
                       </td>
                       <td className={`px-3 py-2 font-mono ${j.enRetard ? 'text-danger font-bold' : ''}`}>
-                        {new Date(j.echeance).toLocaleDateString('fr-FR')}
+                        {j.echeance === null ? (
+                          <span className="text-text-dim">Non calculée</span>
+                        ) : (
+                          new Date(j.echeance).toLocaleDateString('fr-FR')
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <span

@@ -118,3 +118,19 @@ describe('module groupe · les deux référentiels, sauf le canevas', () => {
     expect(bloc).toContain('FENÊTRE COMMUNE AUX DEUX RÉFÉRENTIELS');
   });
 });
+
+describe('entreprise du portefeuille de l’État · O.-L. n° 13/003, art. 112 et 113', () => {
+  it('se déclare oui, non, pas encore dit au SYSCOHADA · refusée « oui » à une entité à but non lucratif', async () => {
+    const capture: { data?: Record<string, unknown> } = {};
+    await service(Referentiel.SYSCOHADA, capture).modifierIdentite('t1', { entreprisePortefeuilleEtat: 'OUI' });
+    expect(capture.data?.entreprisePortefeuilleEtat).toBe(true);
+    await service(Referentiel.SYSCOHADA, capture).modifierIdentite('t1', { entreprisePortefeuilleEtat: 'PAS_ENCORE_DIT' });
+    expect(capture.data?.entreprisePortefeuilleEtat).toBeNull();
+    const rien: { data?: Record<string, unknown> } = {};
+    await service(Referentiel.SYSCOHADA, rien).modifierIdentite('t1', {});
+    expect(rien.data && 'entreprisePortefeuilleEtat' in rien.data).toBe(false);
+    await expect(
+      service(Referentiel.SYCEBNL).modifierIdentite('t1', { entreprisePortefeuilleEtat: 'OUI' }),
+    ).rejects.toThrow('loi n° 08/010');
+  });
+});

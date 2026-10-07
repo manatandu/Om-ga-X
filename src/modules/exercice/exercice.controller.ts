@@ -14,6 +14,7 @@ import { Referentiel, RoleUtilisateur } from '@prisma/client';
 import { ReferentielGuard } from '../../common/guards/referentiel.guard';
 import { ReferentielsAutorises } from '../../common/decorators/referentiels.decorator';
 import { FicheR2Dto } from './dto/fiche-r2.dto';
+import { DatesPortefeuilleDto } from './dto/dates-portefeuille.dto';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
 
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard, ReferentielGuard)
@@ -106,6 +107,22 @@ export class ExerciceController {
   @Post(':id/fiche-r2')
   async declarerFicheR2(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: FicheR2Dto) {
     return this.exerciceService.declarerFicheR2(user.tenantId, id, dto);
+  }
+
+  /**
+   * ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT · date de l'assemblée et date de
+   * dépôt des états au ministère du Portefeuille (O.-L. n° 13/003, art. 112
+   * et 113). SYSCOHADA seul, refusé au serveur ailleurs.
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReferentielsAutorises(Referentiel.SYSCOHADA)
+  @Post(':id/dates-portefeuille')
+  async declarerDatesPortefeuille(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: DatesPortefeuilleDto,
+  ) {
+    return this.exerciceService.declarerDatesPortefeuille(user.tenantId, id, dto);
   }
 
   @Get(':id/planning-cloture')

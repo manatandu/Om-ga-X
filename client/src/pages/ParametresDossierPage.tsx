@@ -191,6 +191,8 @@ export function ParametresDossierPage() {
   // AUSCGIE art. 386 et 414 (SA), 853-2 (SAS) · faits de la dénomination.
   const [modeAdministration, setModeAdministration] = useState<ModeAdministrationSaisi>('PAS_ENCORE_DIT');
   const [associeUnique, setAssocieUnique] = useState<ReponseFaitSaisie>('PAS_ENCORE_DIT');
+  // O.-L. n° 13/003, art. 112 et 113 · entreprise du portefeuille de l'État (SYSCOHADA).
+  const [portefeuille, setPortefeuille] = useState<ReponseFaitSaisie>('PAS_ENCORE_DIT');
   // AUSCGIE art. 181 et 182 · date de la décision de transformation, saisie
   // AVANT de choisir la nouvelle forme ; vide, le changement est une correction.
   const [dateEffetTransformation, setDateEffetTransformation] = useState('');
@@ -239,6 +241,9 @@ export function ParametresDossierPage() {
       setLiquidateurs(p.liquidateurs ?? '');
       setModeAdministration(p.modeAdministrationSa ?? 'PAS_ENCORE_DIT');
       setAssocieUnique(p.associeUniqueSas === true ? 'OUI' : p.associeUniqueSas === false ? 'NON' : 'PAS_ENCORE_DIT');
+      setPortefeuille(
+        p.entreprisePortefeuilleEtat === true ? 'OUI' : p.entreprisePortefeuilleEtat === false ? 'NON' : 'PAS_ENCORE_DIT',
+      );
       setActePersonnalite(p.actePersonnaliteJuridique ?? '');
       setDateActe(p.dateActePersonnalite ? p.dateActePersonnalite.slice(0, 10) : '');
       setEnregistrementSecteur(p.numeroEnregistrementSecteur ?? '');
@@ -755,6 +760,8 @@ export function ParametresDossierPage() {
                     }),
                   }
             : {}),
+          // Fait de l'actionnariat, non de la forme · envoyé pour tout dossier SYSCOHADA.
+          ...(params?.referentiel === 'SYSCOHADA' ? { entreprisePortefeuilleEtat: portefeuille } : {}),
           ...(params?.referentiel === 'SYCEBNL'
             ? {
                 actePersonnaliteJuridique: actePersonnalite,
@@ -1240,6 +1247,22 @@ export function ParametresDossierPage() {
                       >
                         <option value="PAS_ENCORE_DIT">Pas encore dit</option>
                         <option value="OUI">Oui · un seul associé</option>
+                        <option value="NON">Non</option>
+                      </select>
+                    </Ligne>
+                  )}
+                  {!estSycebnl && (
+                    <Ligne label="Portefeuille de l’État">
+                      <select
+                        value={portefeuille}
+                        onChange={(e) => setPortefeuille(e.target.value as ReponseFaitSaisie)}
+                        disabled={!estAdmin || envoi}
+                        aria-label="Portefeuille de l’État"
+                        title="Ordonnance-loi n° 13/003, art. 112 et 113 ; loi n° 08/010, art. 3 · l’État ou une personne morale de droit public détient tout ou partie du capital"
+                        className={champSage}
+                      >
+                        <option value="PAS_ENCORE_DIT">Pas encore dit</option>
+                        <option value="OUI">Oui · l’État ou une personne publique est actionnaire</option>
                         <option value="NON">Non</option>
                       </select>
                     </Ligne>
