@@ -440,6 +440,16 @@ export interface RubriqueEnAttente {
   attendu: string;
 }
 
+/** Une ligne chiffrée par la balance confrontée à la somme de lignes saisies. */
+export interface ConfrontationSaisies {
+  /** La ligne lue en balance (« TOTAL »). */
+  ligne: string;
+  /** La colonne additionnée (« Montant total »). */
+  colonne: string;
+  sommeSaisie: number;
+  montantBalance: number;
+}
+
 export interface NoteCalculee {
   code: string;
   /** Voir `SpecificationNote.sousTableau`. */
@@ -470,11 +480,20 @@ export interface NoteCalculee {
   /** Rubriques que ce dossier ne peut pas alimenter faute de sous-comptes. */
   rubriquesEnAttente: RubriqueEnAttente[];
   /**
+   * Confrontations d'INFORMATION (`RubriqueNote.confronteSaisiesDe` · TOTAL de
+   * la note 13 contre les apporteurs saisis), en nombres · jamais un refus.
+   */
+  confrontations?: ConfrontationSaisies[];
+  /**
    * Notes 20B et 29B (personnel propre) · valeurs saisies au format à huit
    * colonnes « (M / F) », gardées à part et jamais scindées entre M et F
    * (`effectifs-seize-colonnes.ts`). Absent quand il n'y en a pas.
    */
-  /** Confrontations d'information (`RubriqueNote.confronteSaisiesDe`) · jamais un refus. */
-  informations?: string[];
-  saisiesFormatAnterieur?: Array<{ cleRubrique: string; rubrique: string; colonneAnterieure: string; valeur: string | number }>;
+  saisiesFormatAnterieur?: Array<{
+    cleRubrique: string;
+    rubrique: string;
+    colonneAnterieure: string;
+    nature: 'EFFECTIF' | 'MASSE_SALARIALE';
+    valeur: string | number;
+  }>;
 }

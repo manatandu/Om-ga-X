@@ -1,5 +1,7 @@
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsEnum, IsInt, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateIf, IsOptional } from 'class-validator';
 import { JeuNotesAnnexes } from '@prisma/client';
+import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
+import { MOTIF_RETRAIT_MAX, MOTIF_RETRAIT_MIN } from '../effectifs-seize-colonnes';
 
 /**
  * Une CELLULE d'une rubrique de note renseignée hors comptabilité.
@@ -37,7 +39,9 @@ export class SaisirNoteDto {
    * entité, par produit), à partir de 0 · absent = 0. Refusé au-delà de 0 sur
    * une rubrique à ligne unique.
    */
-  @IsOptional()
+  // FACULTATIF NE VEUT PAS DIRE NULLABLE · la colonne est NOT NULL, et un
+  // `null` lu `?? 0` écraserait la première ligne de la liste.
+  @FacultatifNonNul('Le rang de ligne se donne par un entier à partir de 0, ou s’omet pour la ligne unique · jamais null.')
   @IsInt()
   @Min(0)
   @Max(999)
@@ -52,4 +56,26 @@ export class SaisirNoteDto {
   @ValidateIf((_, v) => v !== null)
   @IsString()
   valeur?: string | null;
+}
+
+/**
+ * RETRAIT D'UNE SAISIE AU FORMAT ANTÉRIEUR (notes 20B et 29B) · toute la
+ * saisie à huit colonnes « (M / F) » de la note, une fois reportée dans les
+ * seize colonnes. Le motif est exigé et part au journal d'audit.
+ */
+export class RetirerFormatAnterieurDto {
+  @IsUUID()
+  exerciceId!: string;
+
+  @IsEnum(JeuNotesAnnexes)
+  jeu!: JeuNotesAnnexes;
+
+  @IsString()
+  @MinLength(1)
+  codeNote!: string;
+
+  @IsString()
+  @MinLength(MOTIF_RETRAIT_MIN, { message: `Le motif du retrait compte ${MOTIF_RETRAIT_MIN} caractères au moins.` })
+  @MaxLength(MOTIF_RETRAIT_MAX, { message: `Le motif du retrait compte ${MOTIF_RETRAIT_MAX} caractères au plus.` })
+  motif!: string;
 }

@@ -74,6 +74,29 @@ Manasse du 2026-10-04 sur le samedi).
   refus SYCEBNL (portefeuille 400, fiche R2 403). 41 vérifications, 0 échec.
   Script · scratchpad de la session (non versionné).
 
+## Relecture 1 (2026-10-07, sur eeb9e98, migrations 20270147 à 20270152)
+
+- **B1 · retrait de la saisie au format antérieur** · `POST
+  /notes-annexes/saisies/format-anterieur/retirer` (mêmes `@Roles` que la saisie),
+  motif 3 à 500, `SaisieNote.motifRetrait` posé par `update` unitaire puis `delete`
+  par identifiant, dans `transactionJournalisee` (migration `20270152000000`) ;
+  exercice clos admis comme la saisie ; note forcée applicable tant qu'il en
+  reste ; rattachement par jeu, code et sous-tableau, rubrique disparue nommée ;
+  nature (effectif, masse salariale) servie. Écran · motif et bouton sous
+  `peutEcrire`. Docs · `restitution-du-dossier.md` dit que la migration 20270149
+  déplace hors du journal d'audit.
+- **M10 · `rang: null`** refusé en 400 nommé (`@FacultatifNonNul`).
+- **M12 · grille** · `gabaritGrilleNote` (`minmax(108px, 1fr)`) pour l'en-tête et
+  les lignes, champs `w-full min-w-0`, `aria-label` et `title` « ligne · colonne »
+  (« · ligne k » sur une liste).
+- Mineurs faits avec · confrontation de la note 13 servie en nombres
+  (`confrontations`, lue par `nombreSaisi`, mise en forme par `montant()` et à la
+  liasse), jetons des relectures des deux pages de notes, lignes demandées
+  mémorisées PAR RANG pour le tableau (plus d'effet sur `note`), bouton « Ajouter
+  une ligne » au `mousedown` retenu, `aria-label` par rubrique, bulle (vider une
+  ligne la retire), commentaires de types réalignés, tests de la migration 20270149
+  par propriété (une seule instruction UPDATE, liste exacte des clés).
+
 ## Reste
 
 - Intégration sur `main` (non faite, à la demande).
@@ -97,7 +120,8 @@ Manasse du 2026-10-04 sur le samedi).
 
 - 20B / 29B · personnel extérieur et bénévole laissé à sa colonne unique (texte
   muet, à lire au J.O. OHADA). Contrôle Total = somme des zones NON codé (« peut »).
-  Les saisies antérieures ne sont pas imprimées dans la liasse Excel (écran seul).
+  Les saisies antérieures sont DITES à l'écran ET dans la liasse (commentaire de la
+  note), et se RETIRENT par « Retirer la saisie au format antérieur » (relecture 1).
 
 - O1a-D2 · la dissolution vivait déjà sur le DOSSIER (`Tenant.dateDissolution`,
   « un seul fait, une seule place ») · nomination et régime l'y rejoignent, au lieu

@@ -9,7 +9,7 @@ import { ReferentielsAutorises } from '../../common/decorators/referentiels.deco
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { NoteAnnexeService } from './note-annexe.service';
 import { RattacherDto } from './dto/rattachement.dto';
-import { SaisirNoteDto } from './dto/saisie-note.dto';
+import { RetirerFormatAnterieurDto, SaisirNoteDto } from './dto/saisie-note.dto';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
 
 // PAS de @ReferentielsAutorises au niveau de la CLASSE · il était ici tant
@@ -113,6 +113,24 @@ export class NoteAnnexeController {
       dto.colonne,
       dto.valeur ?? null,
       dto.rang ?? 0,
+    );
+  }
+
+  /**
+   * NOTES 20B ET 29B · « Retirer la saisie au format antérieur », une fois
+   * ses valeurs reportées dans les seize colonnes. Mêmes rôles que la saisie
+   * des notes, motif exigé, au journal d'audit.
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @Post('saisies/format-anterieur/retirer')
+  async retirerFormatAnterieur(@CurrentUser() user: AuthenticatedUser, @Body() dto: RetirerFormatAnterieurDto) {
+    return this.noteAnnexeService.retirerSaisieFormatAnterieur(
+      user.tenantId,
+      user.userId,
+      dto.exerciceId,
+      dto.jeu,
+      dto.codeNote,
+      dto.motif,
     );
   }
 }

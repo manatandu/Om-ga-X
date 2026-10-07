@@ -2693,6 +2693,12 @@ model SaisieNote {
 
   updatedAt DateTime @updatedAt
   updatedBy String
+  /// MOTIF DU RETRAIT d'une saisie conservée au format à huit colonnes des
+  /// notes 20B et 29B (`effectifs-seize-colonnes.ts`) · écrit par une mise à
+  /// jour UNITAIRE juste avant la suppression par identifiant, pour que le
+  /// journal d'audit garde la raison du retrait avec la valeur retirée.
+  /// Toujours nul sur une saisie vivante.
+  motifRetrait String?
 
   @@unique([tenantId, exerciceId, jeu, codeNote, cleRubrique, rang, colonne])
   @@index([tenantId, exerciceId, jeu])

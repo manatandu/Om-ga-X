@@ -1227,12 +1227,22 @@ export interface NoteCalculee {
   applicable: boolean;
   rubriquesEnAttente: RubriqueEnAttente[];
   /**
+   * Confrontations d'information du serveur, en NOMBRES (TOTAL de la note 13
+   * contre la somme des apporteurs saisis) · mises en forme par l'écran,
+   * jamais un refus.
+   */
+  confrontations?: { ligne: string; colonne: string; sommeSaisie: number; montantBalance: number }[];
+  /**
    * Notes 20B et 29B · valeurs saisies au format à huit colonnes « (M / F) »,
    * gardées à part, jamais scindées entre M et F. Absent sinon.
    */
-  /** Confrontations d'information du serveur (TOTAL de la note 13 contre les apporteurs) · jamais un refus. */
-  informations?: string[];
-  saisiesFormatAnterieur?: { cleRubrique: string; rubrique: string; colonneAnterieure: string; valeur: string | number }[];
+  saisiesFormatAnterieur?: {
+    cleRubrique: string;
+    rubrique: string;
+    colonneAnterieure: string;
+    nature: 'EFFECTIF' | 'MASSE_SALARIALE';
+    valeur: string | number;
+  }[];
 }
 
 export interface LigneFicheRecapitulative {

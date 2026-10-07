@@ -57,10 +57,31 @@ export const NOTES_EFFECTIFS_SEIZE_COLONNES: ReadonlyArray<{ jeu: JeuNotesAnnexe
   { jeu: JeuNotesAnnexes.PROJETS_DEVELOPPEMENT, code: '20B' },
 ];
 
+/** Sous-tableau du personnel propre, seul passé à seize colonnes. */
+export const SOUS_TABLEAU_PERSONNEL_PROPRE = 'PERSONNEL PROPRE';
+
+/** Le tableau (jeu, code, sous-tableau) est-il un tableau d'effectifs passé à seize colonnes ? */
+export function estTableauEffectifsSeizeColonnes(jeu: JeuNotesAnnexes, code: string, sousTableau?: string): boolean {
+  return (
+    sousTableau === SOUS_TABLEAU_PERSONNEL_PROPRE && NOTES_EFFECTIFS_SEIZE_COLONNES.some((n) => n.jeu === jeu && n.code === code)
+  );
+}
+
+/** Les quatre premiers rangs anciens sont des EFFECTIFS, les quatre suivants la MASSE SALARIALE. */
+export function natureColonneAnterieure(rang: number): 'EFFECTIF' | 'MASSE_SALARIALE' {
+  return rang < 4 ? 'EFFECTIF' : 'MASSE_SALARIALE';
+}
+
+/** Motif du retrait d'une saisie au format antérieur · 3 à 500 caractères. */
+export const MOTIF_RETRAIT_MIN = 3;
+export const MOTIF_RETRAIT_MAX = 500;
+
 /** Une valeur saisie au format à huit colonnes, montrée à part. */
 export interface SaisieFormatAnterieur {
   cleRubrique: string;
   /** L'intitulé de l'ancienne colonne (« EFFECTIFS · Nationaux (M / F) »). */
   colonneAnterieure: string;
+  /** Effectif ou masse salariale · l'écran met la seconde en forme de montant. */
+  nature: 'EFFECTIF' | 'MASSE_SALARIALE';
   valeur: string | number;
 }

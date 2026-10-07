@@ -93,3 +93,16 @@ Le navigateur bufferise l'archive entière (`api.telecharger` fait
 requête par défaut · aucun `--timeout` n'est passé au déploiement. Sur un très
 gros dossier, l'extraction peut donc buter sur ce plafond avant d'aboutir. Rien
 ne le masque : l'écran prévient que l'opération est longue.
+
+## Saisies de notes déplacées par une migration, hors du journal d'audit
+
+La migration `20270149000000_effectifs_seize_colonnes` (notes 20B des projets et
+29B des associations passées à seize colonnes M / F, décision par la loi du
+2026-10-04, point 3) déplace les saisies à huit colonnes au rang de colonne
+100 + k par une instruction SQL. Le journal d'audit est posé sur le client
+Prisma (`src/common/audit/`) · une migration ne passe pas par lui, et ce
+déplacement n'y laisse AUCUN maillon. La valeur, elle, n'est ni modifiée ni
+supprimée · la restitution (`tables/saisie-note.csv`) la porte à son nouveau rang.
+Son RETRAIT, ensuite, est un geste de l'application (« Retirer la saisie au
+format antérieur ») · motif écrit par une mise à jour unitaire puis suppression
+par identifiant, les deux au journal d'audit.

@@ -1,3 +1,4 @@
+import { nombreSaisi } from '../notes-annexes/controles-saisie-notes';
 import { Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { immatriculationDesLivres, numeroRegistreLiasse } from '../tenant/mentions-immatriculation';
 import { REFS_DE_SOLDE } from '../etats-financiers/correspondance-projet-emplois-ressources';
@@ -187,6 +188,12 @@ const CODE_FORME_UNIVOQUE_FICHE_R2: Record<string, string> = {
   GROUPEMENT_INTERET_ECONOMIQUE: '06',
   SOCIETE_PAR_ACTIONS_SIMPLIFIEE: '08',
 };
+
+/** Un montant d'une note, écrit en français au centime (« 1 000 000,00 »). */
+const FORMAT_MONTANT_NOTE = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function montantNoteTexte(n: number): string {
+  return FORMAT_MONTANT_NOTE.format(Math.round(n * 100) / 100);
+}
 
 /** Cases ZN à ZS de la fiche R2, déclarées sur l'exercice (`FicheR2Dto`). */
 type DeclarationsFicheR2 = {
@@ -2647,11 +2654,20 @@ export class ExportService {
       if (note.commentaire) commentaires.push(`Commentaire officiel : ${note.commentaire}`);
       // Confrontations d'information (TOTAL de la note 13) et saisie gardée au
       // format à huit colonnes (notes 20B et 29B) · écrites, jamais tues.
-      for (const m of note.informations ?? []) commentaires.push(m);
+      for (const c of note.confrontations ?? []) {
+        commentaires.push(
+          `La somme des lignes saisies (« ${c.colonne} », ${montantNoteTexte(c.sommeSaisie)}) diffère de la ligne ` +
+            `« ${c.ligne} » lue en balance (${montantNoteTexte(c.montantBalance)}) · à rapprocher, rien n'est corrigé.`,
+        );
+      }
       if (note.saisiesFormatAnterieur?.length) {
+        const valeur = (g: { nature: string; valeur: string | number }) => {
+          const n = g.nature === 'MASSE_SALARIALE' ? nombreSaisi(g.valeur) : null;
+          return n !== null && !Number.isNaN(n) ? montantNoteTexte(n) : String(g.valeur);
+        };
         commentaires.push(
           'Saisie antérieure au format à huit colonnes « (M / F) », non répartie entre M et F, à reporter : ' +
-            note.saisiesFormatAnterieur.map((g) => `${g.rubrique} · ${g.colonneAnterieure} · ${g.valeur}`).join(' ; ') +
+            note.saisiesFormatAnterieur.map((g) => `${g.rubrique} · ${g.colonneAnterieure} · ${valeur(g)}`).join(' ; ') +
             '.',
         );
       }

@@ -1,5 +1,11 @@
+import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import {
+  estTableauEffectifsSeizeColonnes,
   LIBELLES_FORMAT_HUIT_COLONNES,
+  MOTIF_RETRAIT_MAX,
+  MOTIF_RETRAIT_MIN,
+  SOUS_TABLEAU_PERSONNEL_PROPRE,
+  natureColonneAnterieure,
   RANG_FORMAT_ANTERIEUR,
   SaisieFormatAnterieur,
 } from './effectifs-seize-colonnes';
@@ -19,6 +25,7 @@ import {
 import { LigneBalancePourEtat, chargerLignes, correspond, trouverExerciceN1 } from '../etats-financiers/etats-financiers.communs';
 import {
   CompteDeRubrique,
+  ConfrontationSaisies,
   LigneNoteCalculee,
   NoteCalculee,
   RubriqueEnAttente,
@@ -30,7 +37,7 @@ import { CLE_DATE_ARRETE_NOTE_3, NOTES_ASSOCIATIONS } from './correspondance-not
 import { intituleSurLaFiche, titreDeLaNote } from './intitules-notes-sycebnl';
 import { NOTES_PROJETS } from './correspondance-notes-projets';
 import { celluleLibreEnSaisie, colonneLibreEnSaisie } from './cellules-libres-en-saisie';
-import { ecartsDesSaisies } from './controles-saisie-notes';
+import { ecartsDesSaisies, nombreSaisi } from './controles-saisie-notes';
 import {
   INDICATEURS_NOTE_34_LAISSES_EN_SAISIE,
   PRECISION_NOTE_34,
@@ -854,26 +861,27 @@ export class NoteAnnexeService {
 
     // Confrontation d'INFORMATION (TOTAL de la note 13 contre le « Montant
     // total » des apporteurs) · dite, jamais un refus ; rien n'est dit tant
-    // qu'aucun montant n'est saisi.
-    const informations: string[] = [];
+    // qu'aucun montant n'est saisi, et un texte qui n'est pas un nombre
+    // suspend la confrontation (`nombreSaisi`, même lecture que les totaux en
+    // saisie). Servie en NOMBRES · l'écran et la liasse les mettent en forme.
+    const confrontations: ConfrontationSaisies[] = [];
     spec.rubriques.forEach((r, i) => {
       if (!r.confronteSaisiesDe) return;
       const { cleRubrique, colonne } = r.confronteSaisiesDe;
-      const valeurs = etendues
+      const nombres = etendues
         .filter((l) => l.cle === cleRubrique)
-        .map((l) => l.saisie?.[colonne] ?? null)
-        .filter((v) => v !== null && v !== '');
-      if (valeurs.length === 0) return;
-      const nombres = valeurs.map((v) => (typeof v === 'number' ? v : Number(String(v).replace(/\s/g, '').replace(',', '.'))));
-      if (nombres.some((n) => !Number.isFinite(n))) return;
-      const somme = Math.round(nombres.reduce((a, b) => a + b, 0) * 100) / 100;
-      const attendu = toutes[i].montantN;
-      if (Math.abs(somme - attendu) > 0.005) {
-        const libelleColonne = spec.colonnes[colonne]?.libelle ?? `colonne ${colonne + 1}`;
-        informations.push(
-          `La somme des lignes saisies (« ${libelleColonne} », ${somme.toFixed(2)}) diffère de la ligne ` +
-            `« ${r.libelle} » lue en balance (${attendu.toFixed(2)}) · à rapprocher, rien n'est corrigé.`,
-        );
+        .map((l) => nombreSaisi(l.saisie?.[colonne] ?? null))
+        .filter((n): n is number => n !== null);
+      if (nombres.length === 0 || nombres.some((n) => Number.isNaN(n))) return;
+      const sommeSaisie = Math.round(nombres.reduce((a, b) => a + b, 0) * 100) / 100;
+      const montantBalance = toutes[i].montantN;
+      if (Math.abs(sommeSaisie - montantBalance) > 0.005) {
+        confrontations.push({
+          ligne: r.libelle,
+          colonne: spec.colonnes[colonne]?.libelle ?? `Colonne n° ${colonne + 1}`,
+          sommeSaisie,
+          montantBalance,
+        });
       }
     });
 
@@ -956,7 +964,7 @@ export class NoteAnnexeService {
       horsBalance: spec.horsBalance ?? false,
       exerciceN1Disponible,
       applicable,
-      ...(informations.length > 0 ? { informations } : {}),
+      ...(confrontations.length > 0 ? { confrontations } : {}),
       rubriquesEnAttente: spec.rubriques.flatMap<RubriqueEnAttente>((r, i) =>
         r.subdivisionAttendue && !toutes[i].rattachementDuDossier
           ? [{ cle: r.cle!, libelle: r.libelle, attendu: r.subdivisionAttendue }]
@@ -1182,6 +1190,7 @@ export class NoteAnnexeService {
           {
             cleRubrique: l.cleRubrique,
             colonneAnterieure: LIBELLES_FORMAT_HUIT_COLONNES[rang] ?? `Colonne n° ${rang + 1}`,
+            nature: natureColonneAnterieure(rang),
             valeur,
           },
         ]);
@@ -1317,6 +1326,57 @@ export class NoteAnnexeService {
   }
 
   /**
+   * « RETIRER LA SAISIE AU FORMAT ANTÉRIEUR » (notes 20B et 29B) · la saisie à
+   * huit colonnes « (M / F) », gardée hors de la contexture par la migration
+   * des seize colonnes (rang de colonne 100 + k), se retire une fois reportée,
+   * sans quoi elle resterait à l'écran et dans la liasse pour toujours.
+   *
+   * Ligne par ligne, PAR SON IDENTIFIANT (audit final F87) · le motif est
+   * d'abord écrit sur la ligne par une mise à jour unitaire, puis la ligne est
+   * supprimée, les deux au journal d'audit, dans une seule transaction. Même
+   * règle que la saisie des notes pour l'exercice clos · celle-ci n'en pose
+   * aucune, le retrait non plus.
+   */
+  async retirerSaisieFormatAnterieur(
+    tenantId: string,
+    userId: string,
+    exerciceId: string,
+    jeu: JeuNotesAnnexes,
+    codeNote: string,
+    motif: string,
+  ) {
+    await this.verifierJeuDuDossier(tenantId, jeu);
+    const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId } });
+    if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
+    if (!estTableauEffectifsSeizeColonnes(jeu, codeNote, SOUS_TABLEAU_PERSONNEL_PROPRE)) {
+      throw new BadRequestException(
+        `La note ${codeNote} ne porte pas de saisie au format antérieur · seules les notes 20B (projets) et 29B ` +
+          '(associations) sont passées à seize colonnes.',
+      );
+    }
+    const texte = motif.trim();
+    if (texte.length < MOTIF_RETRAIT_MIN || texte.length > MOTIF_RETRAIT_MAX) {
+      throw new BadRequestException(
+        `Le motif du retrait compte de ${MOTIF_RETRAIT_MIN} à ${MOTIF_RETRAIT_MAX} caractères.`,
+      );
+    }
+    const lignes = await this.prisma.saisieNote.findMany({
+      where: { tenantId, exerciceId, jeu, codeNote, colonne: { gte: RANG_FORMAT_ANTERIEUR } },
+      select: { id: true },
+    });
+    if (lignes.length === 0) {
+      throw new NotFoundException(`La note ${codeNote} ne porte plus de saisie au format antérieur sur cet exercice.`);
+    }
+    await transactionJournalisee(this.prisma, async (tx) => {
+      for (const l of lignes) {
+        await tx.saisieNote.update({ where: { id: l.id }, data: { motifRetrait: texte, updatedBy: userId } });
+        await tx.saisieNote.delete({ where: { id: l.id } });
+      }
+    });
+    return { retirees: lignes.length };
+  }
+
+  /**
    * UNE CELLULE SE RÉÉCRIT PAR SON IDENTIFIANT (audit final F87). Un `upsert`
    * sur la clé composée donnait au journal d'audit un filtre que sa lecture de
    * l'état antérieur ne sait pas lire · la valeur remplacée était perdue, y
@@ -1399,18 +1459,20 @@ export class NoteAnnexeService {
       n.titreNote = titreDeLaNote(jeu, n.code, notes.find((x) => x.code === n.code)!.titre);
     }
     // Notes 20B et 29B · la saisie d'avant les seize colonnes, gardée à part
-    // sur le tableau du personnel propre, jamais scindée.
+    // sur le tableau du PERSONNEL PROPRE du jeu, jamais scindée. Rattachée par
+    // jeu, code et sous-tableau ; une ligne dont la rubrique n'existe plus est
+    // NOMMÉE par sa clé, jamais tue.
     for (const n of notes) {
       const gardees = formatAnterieur.get(n.code);
-      if (gardees && n.colonnes.length === 16 && n.lignes.some((l) => gardees.some((g) => g.cleRubrique === l.cle))) {
-        n.saisiesFormatAnterieur = gardees.map((g) => ({
-          ...g,
-          rubrique: n.lignes.find((l) => l.cle === g.cleRubrique)?.libelle ?? g.cleRubrique,
-        }));
-        // La note PORTE une information (saisie non encore reportée) · la dire
-        // « NEANT » ferait imprimer qu'aucun effectif n'a jamais été déclaré.
-        n.applicable = true;
-      }
+      if (!gardees || !estTableauEffectifsSeizeColonnes(jeu, n.code, n.sousTableau)) continue;
+      n.saisiesFormatAnterieur = gardees.map((g) => ({
+        ...g,
+        rubrique: n.lignes.find((l) => l.cle === g.cleRubrique)?.libelle ?? `Rubrique inconnue · ${g.cleRubrique}`,
+      }));
+      // La note PORTE une information tant qu'il en reste (saisie non encore
+      // reportée) · la dire « NEANT » ferait imprimer qu'aucun effectif n'a
+      // jamais été déclaré.
+      n.applicable = true;
     }
     await this.injecterDateArrete(notes, tenantId, exerciceId);
     await this.injecterExecutionBudgetaire(notes, tenantId, exerciceId, jeu);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { Compte, LigneFicheRecapitulative, LigneNoteCalculee, NoteCalculee } from '../lib/types';
 import { Aide } from './chrome/Aide';
@@ -6,7 +6,7 @@ import { motifAucunCompteRetenu } from '../lib/comptes-proposes';
 import { montant } from '../lib/montants';
 import { celluleLibreSaisissable, texteCelluleLibre } from '../lib/cellules-notes';
 import { sousTitreDuTableau } from '../lib/titre-note';
-import { lignesAvecAjouts } from '../lib/lignes-repetables';
+import { lignesAvecAjouts, rangSuivant, type RangsDemandes } from '../lib/lignes-repetables';
 import { texteEcartSaisie, type EcartSaisieNote } from '../lib/ecarts-saisie-notes';
 
 /**
@@ -87,7 +87,19 @@ export interface SaisieNotes {
   enCours: string | null;
   /** `rang` · ligne d'une rubrique répétable (absent = la ligne unique). */
   enregistrer: (codeNote: string, cleRubrique: string, colonne: number, valeur: string, rang?: number) => void;
+  /**
+   * Notes 20B et 29B · « Retirer la saisie au format antérieur », motif exigé.
+   * Absent sur un écran qui ne porte pas ces notes.
+   */
+  retirerFormatAnterieur?: (codeNote: string, motif: string) => void;
 }
+
+/**
+ * UNE SEULE GRILLE pour l'en-tête et les lignes · deux gabarits différents
+ * (108 px d'un côté, 1fr de l'autre) faisaient glisser les seize colonnes
+ * M / F, et un M se saisissait sous l'en-tête F.
+ */
+export const gabaritGrilleNote = (nbColonnes: number) => `1.6fr repeat(${nbColonnes}, minmax(108px, 1fr))`;
 
 /**
  * Ce que l'écran dit d'une note que l'exercice ne chiffre pas. Le texte par
@@ -138,7 +150,7 @@ function LigneTableauNote({
     <div
       title={ligne.comptes.length > 0 ? `Comptes : ${ligne.comptes.map((c) => c.numero).join(', ')}` : undefined}
       className={`grid gap-2 px-4 py-1 text-[11.5px] ${ligne.estTotal ? 'font-bold bg-surface-alt border-y border-border' : ''}`}
-      style={{ gridTemplateColumns: `1.6fr repeat(${note.colonnes.length}, ${cellules ? '1fr' : '108px'})` }}
+      style={{ gridTemplateColumns: gabaritGrilleNote(note.colonnes.length) }}
     >
       <span className={ligne.enAttenteDeRattachement ? 'text-danger italic' : ''}>
         {ligne.libelle}
@@ -169,6 +181,9 @@ function LigneTableauNote({
             );
           }
           const ancre = `${note.code}::${ligne.cle}::${ligne.rang ?? 0}::${ci}`;
+          // « ligne · colonne », et le rang de la ligne d'une liste · seize
+          // champs côte à côte ne se distinguent pas autrement à la lecture.
+          const nom = `${ligne.libelle} · ${c.libelle}${ligne.rang ? ` · ligne ${ligne.rang + 1}` : ''}`;
           return (
             <input
               key={`${ancre}-${texte}`}
@@ -181,7 +196,9 @@ function LigneTableauNote({
               }}
               disabled={saisie.enCours !== null}
               placeholder={c.type === 'LIBRE' ? '' : '0,00'}
-              className={`border border-border bg-surface px-1 py-0.5 text-[11.5px] disabled:opacity-50 ${
+              aria-label={nom}
+              title={nom}
+              className={`w-full min-w-0 border border-border bg-surface px-1 py-0.5 text-[11.5px] disabled:opacity-50 ${
                 c.type === 'LIBRE' ? '' : 'font-mono text-right'
               }`}
             />
@@ -209,8 +226,9 @@ function LigneTableauNote({
                 if (e.target.value !== texte) saisie.enregistrer(note.code, ligne.cle!, ci, e.target.value);
               }}
               disabled={saisie.enCours !== null}
-              title={c.libelle}
-              className="border border-border bg-surface px-1 py-0.5 text-[11.5px] disabled:opacity-50"
+              title={`${ligne.libelle} · ${c.libelle}`}
+              aria-label={`${ligne.libelle} · ${c.libelle}`}
+              className="w-full min-w-0 border border-border bg-surface px-1 py-0.5 text-[11.5px] disabled:opacity-50"
             />
           );
         }
@@ -276,11 +294,16 @@ export function BlocTableauNote({
   // une rubrique `subdivisionAttendue`, le plan officiel ne lui donne aucun
   // compte propre, donc tout `l.comptes` vient du rattachement.
   const rattachees = note.lignes.filter((l) => l.cle && l.rattachementDuDossier);
-  // Lignes VIDES ajoutées à l'écran sur une rubrique répétable, par clé ·
-  // elles n'existent en base qu'une fois une cellule saisie. Remises à zéro
-  // quand la note change (le serveur relu les rend comme lignes réelles).
-  const [ajoutees, setAjoutees] = useState<Record<string, number>>({});
-  useEffect(() => setAjoutees({}), [note]);
+  // Lignes VIDES demandées à l'écran sur une rubrique répétable, par clé et
+  // par RANG (`lib/lignes-repetables.ts`) · elles n'existent en base qu'une
+  // fois une cellule saisie, et le serveur relu les rend alors comme lignes
+  // réelles, sans doublon. Mémorisées pour CE tableau (code et sous-tableau)
+  // et non effacées à chaque relecture · un effet sur `note` jetait la ligne
+  // demandée pendant l'enregistrement d'une autre cellule.
+  const tableau = `${note.code}::${note.sousTableau ?? ''}`;
+  const [demandes, setDemandes] = useState<{ tableau: string; rangs: RangsDemandes }>({ tableau, rangs: {} });
+  const rangsDemandes = demandes.tableau === tableau ? demandes.rangs : {};
+  const [motifRetrait, setMotifRetrait] = useState('');
 
   return (
     <div className="border border-border bg-surface mb-4">
@@ -321,7 +344,7 @@ export function BlocTableauNote({
         <div className="overflow-x-auto">
           <div
             className="grid gap-2 px-4 py-1.5 bg-chrome border-b border-border text-[11px] font-bold text-text-dim"
-            style={{ gridTemplateColumns: `1.6fr repeat(${note.colonnes.length}, 108px)` }}
+            style={{ gridTemplateColumns: gabaritGrilleNote(note.colonnes.length) }}
           >
             <span>LIBELLÉ</span>
             {note.colonnes.map((c, i) => (
@@ -330,18 +353,32 @@ export function BlocTableauNote({
               </span>
             ))}
           </div>
-          {lignesAvecAjouts(note.lignes, note.colonnes.length, ajoutees).map((l, i) =>
+          {lignesAvecAjouts(note.lignes, note.colonnes.length, rangsDemandes).map((l, i) =>
             'ajouterApres' in l ? (
               saisie ? (
-                <div key={`ajout-${l.ajouterApres}`} className="px-4 py-1 border-b border-border">
+                <div key={`ajout-${l.ajouterApres}`} className="px-4 py-1 border-b border-border flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setAjoutees((v) => ({ ...v, [l.ajouterApres]: (v[l.ajouterApres] ?? 0) + 1 }))}
-                    disabled={saisie.enCours !== null}
-                    className="text-[11px] font-semibold text-sel disabled:opacity-50"
+                    // Le clic part au MOUSEDOWN retenu · sans cela, la sortie du
+                    // champ en cours lançait son enregistrement, le bouton se
+                    // grisait, et le premier clic était perdu. Ajouter une
+                    // ligne vide n'écrit rien : rien à attendre du serveur.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      const cle = l.ajouterApres;
+                      const rang = rangSuivant(note.lignes, cle, rangsDemandes);
+                      setDemandes({ tableau, rangs: { ...rangsDemandes, [cle]: [...(rangsDemandes[cle] ?? []), rang] } });
+                    }}
+                    aria-label={`Ajouter une ligne · ${l.libelle}`}
+                    className="text-[11px] font-semibold text-sel"
                   >
                     + Ajouter une ligne
                   </button>
+                  <Aide
+                    titre="Ajouter une ligne"
+                    texte="Une ligne par élément de la liste. La ligne ajoutée s’enregistre dès qu’une de ses cellules est remplie ; vider toutes ses cellules la retire."
+                    source="Notes annexes · lignes répétables"
+                  />
                 </div>
               ) : null
             ) : (
@@ -351,11 +388,15 @@ export function BlocTableauNote({
         </div>
       )}
 
-      {/* Confrontations d'information servies par le serveur · jamais un refus. */}
-      {note.informations && note.informations.length > 0 && (
+      {/* Confrontations d'information servies par le serveur, en nombres ·
+          mises en forme ici (`lib/montants.ts`), jamais un refus. */}
+      {note.confrontations && note.confrontations.length > 0 && (
         <div className="px-4 py-2 text-[11px] text-warning border-t border-border">
-          {note.informations.map((m, i) => (
-            <div key={i}>{m}</div>
+          {note.confrontations.map((c, i) => (
+            <div key={i}>
+              La somme des lignes saisies (« {c.colonne} », {montant(c.sommeSaisie)}) diffère de la ligne « {c.ligne} »
+              lue en balance ({montant(c.montantBalance)}) · à rapprocher, rien n’est corrigé.
+            </div>
           ))}
         </div>
       )}
@@ -384,15 +425,45 @@ export function BlocTableauNote({
           </div>
           <table className="text-[11px] border-collapse">
             <tbody>
-              {note.saisiesFormatAnterieur.map((s, i) => (
-                <tr key={`${s.cleRubrique}-${s.colonneAnterieure}-${i}`}>
-                  <td className="pr-3 py-0.5">{s.rubrique}</td>
-                  <td className="pr-3 py-0.5 text-text-dim">{s.colonneAnterieure}</td>
-                  <td className="py-0.5">{String(s.valeur)}</td>
+              <tr className="text-text-dim">
+                <th className="pr-3 py-0.5 text-left font-semibold">Rubrique</th>
+                <th className="pr-3 py-0.5 text-left font-semibold">Colonne d’origine</th>
+                <th className="py-0.5 text-left font-semibold">Valeur saisie</th>
+              </tr>
+              {note.saisiesFormatAnterieur.map((g, i) => (
+                <tr key={`${g.cleRubrique}-${g.colonneAnterieure}-${i}`}>
+                  <td className="pr-3 py-0.5">{g.rubrique}</td>
+                  <td className="pr-3 py-0.5 text-text-dim">{g.colonneAnterieure}</td>
+                  {/* La masse salariale est un montant ; un effectif, un texte
+                      tel qu'il a été saisi (« 3 / 2 »). Nature servie par le serveur. */}
+                  <td className="py-0.5">{g.nature === 'MASSE_SALARIALE' ? montant(g.valeur, String(g.valeur)) : String(g.valeur)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {saisie?.retirerFormatAnterieur && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                value={motifRetrait}
+                onChange={(e) => setMotifRetrait(e.target.value)}
+                maxLength={500}
+                placeholder="Motif du retrait"
+                aria-label={`Motif du retrait de la saisie au format antérieur · note ${note.code}`}
+                className="border border-border-dark px-2 py-1 text-[11.5px] min-w-0 w-72 max-w-full"
+              />
+              <button
+                type="button"
+                disabled={saisie.enCours !== null || motifRetrait.trim().length < 3}
+                onClick={() => {
+                  saisie.retirerFormatAnterieur!(note.code, motifRetrait.trim());
+                  setMotifRetrait('');
+                }}
+                className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1 disabled:opacity-50"
+              >
+                Retirer la saisie au format antérieur
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import { RattachementsSansRubrique } from '../components/RattachementsSansRubrique';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
 import { CoutsEmpruntEnNote } from '../components/CoutsEmpruntEnNote';
@@ -90,11 +90,22 @@ function NotesSyscohadaSystemeNormal() {
   const [compteChoisi, setCompteChoisi] = useState<Record<string, string>>({});
   const [enCours, setEnCours] = useState<string | null>(null); // "codeNote::cle::compteId" en cours d'envoi
 
+  // RÉPONSE PÉRIMÉE JETÉE · deux relectures se croisent (une saisie, puis
+  // une autre), et la plus ancienne arrivée la dernière remettait à l'écran
+  // une note d'avant · une ligne répétable ajoutée y prenait le rang d'une
+  // ligne déjà enregistrée.
+  const jeton = useRef(0);
   const charger = () => {
     if (!exerciceCourant) return;
-    api
-      .get<ResultatNotesJeu>(`/etats-financiers-syscohada/notes?exerciceId=${exerciceCourant.id}`)
-      .then(setResultat, (e) => setErreur(e instanceof Error ? e.message : String(e)));
+    const mien = ++jeton.current;
+    api.get<ResultatNotesJeu>(`/etats-financiers-syscohada/notes?exerciceId=${exerciceCourant.id}`).then(
+      (r) => {
+        if (mien === jeton.current) setResultat(r);
+      },
+      (e) => {
+        if (mien === jeton.current) setErreur(e instanceof Error ? e.message : String(e));
+      },
+    );
   };
 
   useEffect(() => {

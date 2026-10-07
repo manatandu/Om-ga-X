@@ -1469,9 +1469,10 @@ describe('rubriques en saisie · ce que le dossier écrit lui-même', () => {
       ['TOTAL', null],
     ]);
     // 950 000 saisis contre 1 000 000 de capital · dit en information, rien corrigé.
-    expect(n.informations).toHaveLength(1);
-    expect(n.informations[0]).toContain('950000.00');
-    expect(n.informations[0]).toContain('1000000.00');
+    // Servie en NOMBRES · l'écran et la liasse la mettent en forme.
+    expect(n.confrontations).toEqual([
+      { ligne: 'TOTAL', colonne: 'Montant total', sommeSaisie: 950_000, montantBalance: 1_000_000 },
+    ]);
   });
 
   it('LIGNES RÉPÉTABLES · une somme égale au capital ne dit rien ; un rang de ligne est refusé hors d’une rubrique répétable', async () => {
@@ -1484,7 +1485,7 @@ describe('rubriques en saisie · ce que le dossier écrit lui-même', () => {
         { codeNote: '13', cleRubrique: A, rang: 1, colonne: 4, valeurNombre: 600_000 },
       ]),
     );
-    expect(note(await s.notesSyscohada('t', 'e1'), '13').informations).toBeUndefined();
+    expect(note(await s.notesSyscohada('t', 'e1'), '13').confrontations).toBeUndefined();
 
     const prisma = prismaAvec([], [], [], [], Referentiel.SYSCOHADA);
     const ecrit = service({ e1: [] }, [], prisma);

@@ -1,5 +1,5 @@
 import { RattachementsSansRubrique } from '../components/RattachementsSansRubrique';
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState, useRef } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
 import { CoutsEmpruntEnNote } from '../components/CoutsEmpruntEnNote';
@@ -85,12 +85,23 @@ function NotesAnnexesSycebnlPage() {
     ? 'PROJETS_DEVELOPPEMENT'
     : 'ASSOCIATIONS_ORDRES_PROFESSIONNELS';
 
+  // RÉPONSE PÉRIMÉE JETÉE · deux relectures se croisent (une saisie, puis
+  // une autre), et la plus ancienne arrivée la dernière remettait à l'écran
+  // une note d'avant · une ligne répétable ajoutée y prenait le rang d'une
+  // ligne déjà enregistrée.
+  const jeton = useRef(0);
   const charger = () => {
     if (jeuSmt) return; // aucun catalogue de notes du Système normal à charger
     if (!exerciceCourant || !utilisateur) return; // même garde qu'EtatsFinanciersPage : utilisateur null au tout premier rendu.
-    api
-      .get<ResultatNotesJeu>(`/notes-annexes/${chemin}?exerciceId=${exerciceCourant.id}`)
-      .then(setResultat, (e) => setErreur(e instanceof Error ? e.message : String(e)));
+    const mien = ++jeton.current;
+    api.get<ResultatNotesJeu>(`/notes-annexes/${chemin}?exerciceId=${exerciceCourant.id}`).then(
+      (r) => {
+        if (mien === jeton.current) setResultat(r);
+      },
+      (e) => {
+        if (mien === jeton.current) setErreur(e instanceof Error ? e.message : String(e));
+      },
+    );
   };
 
   useEffect(() => {
@@ -218,7 +229,32 @@ function NotesAnnexesSycebnlPage() {
 
   // LECTURE_SEULE n'écrit rien · le serveur le refuserait de toute façon
   // (`@Roles`), mais un champ ouvert qui rend un 403 est une promesse fausse.
-  const saisie: SaisieNotes | undefined = peutEcrire ? { enCours, enregistrer: enregistrerSaisie } : undefined;
+  /**
+   * Notes 20B et 29B · retire la saisie au format à huit colonnes, une fois
+   * reportée. Motif exigé, au journal d'audit (serveur).
+   */
+  const retirerFormatAnterieur = async (codeNote: string, motif: string) => {
+    if (!exerciceCourant) return;
+    setErreur(null);
+    setEnCours(`${codeNote}::format-anterieur`);
+    try {
+      await api.post('/notes-annexes/saisies/format-anterieur/retirer', {
+        exerciceId: exerciceCourant.id,
+        jeu: jeuRattachement,
+        codeNote,
+        motif,
+      });
+      charger();
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'Impossible de retirer la saisie au format antérieur');
+    } finally {
+      setEnCours(null);
+    }
+  };
+
+  const saisie: SaisieNotes | undefined = peutEcrire
+    ? { enCours, enregistrer: enregistrerSaisie, retirerFormatAnterieur }
+    : undefined;
 
   // Rattachement des sous-comptes du dossier · l'état vit ici (c'est cet
   // écran qui appelle le serveur), le rendu est celui de NotesAnnexesRendu.
