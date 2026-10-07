@@ -1241,7 +1241,8 @@ export interface NoteCalculee {
     rubrique: string;
     colonneAnterieure: string;
     nature: 'EFFECTIF' | 'MASSE_SALARIALE';
-    valeur: string | number;
+    /** Telle qu'elle a été saisie, jamais relue en nombre. */
+    valeur: string;
   }[];
 }
 

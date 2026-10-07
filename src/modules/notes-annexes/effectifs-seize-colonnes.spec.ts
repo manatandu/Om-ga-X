@@ -17,6 +17,8 @@ import { RetirerFormatAnterieurDto, SaisirNoteDto } from './dto/saisie-note.dto'
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
+import * as ExcelJS from 'exceljs';
+import { ExportService } from '../exports/export.service';
 
 function serviceAvec(saisies: Array<Record<string, unknown>>) {
   const ecriture = {
@@ -264,5 +266,56 @@ describe('Retirer la saisie au format antérieur (notes 20B et 29B)', () => {
     ]);
     expect(await proprietes(SaisirNoteDto, saisie)).toEqual([]);
     expect(await proprietes(SaisirNoteDto, { ...saisie, rang: 2 })).toEqual([]);
+  });
+});
+
+/**
+ * RELECTURE 2, BLOQUANT · la saisie au format antérieur se rend TELLE QU'ELLE
+ * A ÉTÉ SAISIE. Ces colonnes étaient LIBRES sur main, gardées en texte ·
+ * relue en nombre, « 150.000 » (150 000 FC, point des milliers) sortait
+ * « 150,00 » à l'écran et dans la liasse, et le cabinet reportait la valeur
+ * fausse avant de retirer l'original.
+ */
+describe('Saisie au format antérieur · rendue telle qu’elle a été saisie', () => {
+  const ANCIENNES = [
+    // Ancien rang 4 « MASSE SALARIALE · Nationaux (M / F) », gardé au rang 104.
+    { codeNote: '29B', cleRubrique: 'ya-1-cadres-superieurs', colonne: 104, valeurTexte: '150.000', valeurNombre: null },
+    { codeNote: '29B', cleRubrique: 'yb-2-techniciens-superieurs-et-cadres-moyens', colonne: 104, valeurTexte: '1.500', valeurNombre: null },
+  ];
+
+  it('le service sert le texte saisi, jamais un nombre relu', async () => {
+    const { notes } = await serviceAvec(ANCIENNES).notesAssociations('t', 'e1');
+    const propre = notes.find((n) => n.code === '29B' && n.sousTableau === 'PERSONNEL PROPRE')!;
+    expect(propre.saisiesFormatAnterieur!.map((g) => [g.nature, g.valeur])).toEqual([
+      ['MASSE_SALARIALE', '150.000'],
+      ['MASSE_SALARIALE', '1.500'],
+    ]);
+  });
+
+  it('le classeur des notes l’écrit tel quel · « 150.000 » et « 1.500 », jamais « 150,00 » ni « 1,50 »', async () => {
+    const prisma = {
+      tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 't', nom: 'ASBL ESSAI', ville: 'Kinshasa', pays: 'RD Congo' }) },
+      exercice: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'e1',
+          tenantId: 't',
+          dateDebut: new Date('2026-01-01T00:00:00Z'),
+          dateFin: new Date('2026-12-31T00:00:00Z'),
+          dateArreteComptes: null,
+        }),
+      },
+    } as unknown as PrismaService;
+    const vide = {} as never;
+    const exports = new ExportService(prisma, vide, vide, vide, vide, vide, serviceAvec(ANCIENNES), vide, vide, vide);
+    const { buffer } = await exports.notesAssociationsExcel('t', 'e1');
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    const feuille = wb.worksheets.find((w) => /^NOTE 29B/.test(w.name))!;
+    const textes: string[] = [];
+    feuille.eachRow((row) => row.eachCell((c) => textes.push(String(c.value ?? ''))));
+    const mention = textes.find((t) => t.includes('Saisie antérieure au format à huit colonnes'))!;
+    expect(mention).toContain('MASSE SALARIALE · Nationaux (M / F) · 150.000');
+    expect(mention).toContain('MASSE SALARIALE · Nationaux (M / F) · 1.500');
+    expect(mention).not.toMatch(/150,00|1,50\b/);
   });
 });

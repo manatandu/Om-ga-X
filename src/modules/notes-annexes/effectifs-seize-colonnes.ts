@@ -81,7 +81,12 @@ export interface SaisieFormatAnterieur {
   cleRubrique: string;
   /** L'intitulé de l'ancienne colonne (« EFFECTIFS · Nationaux (M / F) »). */
   colonneAnterieure: string;
-  /** Effectif ou masse salariale · l'écran met la seconde en forme de montant. */
+  /** Effectif ou masse salariale · dit la nature, ne met rien en forme. */
   nature: 'EFFECTIF' | 'MASSE_SALARIALE';
-  valeur: string | number;
+  /**
+   * La valeur TELLE QU'ELLE A ÉTÉ SAISIE, en texte, jamais relue en nombre ·
+   * « 150.000 » reste « 150.000 » (règle de `LigneTableauNote` · une cellule
+   * saisie se rend telle qu'elle a été écrite).
+   */
+  valeur: string;
 }

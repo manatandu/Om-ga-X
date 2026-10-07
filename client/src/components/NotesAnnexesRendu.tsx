@@ -424,19 +424,23 @@ export function BlocTableauNote({
             />
           </div>
           <table className="text-[11px] border-collapse">
-            <tbody>
+            <thead>
               <tr className="text-text-dim">
-                <th className="pr-3 py-0.5 text-left font-semibold">Rubrique</th>
-                <th className="pr-3 py-0.5 text-left font-semibold">Colonne d’origine</th>
-                <th className="py-0.5 text-left font-semibold">Valeur saisie</th>
+                <th scope="col" className="pr-3 py-0.5 text-left font-semibold">Rubrique</th>
+                <th scope="col" className="pr-3 py-0.5 text-left font-semibold">Colonne d’origine</th>
+                <th scope="col" className="py-0.5 text-left font-semibold">Valeur saisie</th>
               </tr>
+            </thead>
+            <tbody>
               {note.saisiesFormatAnterieur.map((g, i) => (
                 <tr key={`${g.cleRubrique}-${g.colonneAnterieure}-${i}`}>
                   <td className="pr-3 py-0.5">{g.rubrique}</td>
                   <td className="pr-3 py-0.5 text-text-dim">{g.colonneAnterieure}</td>
-                  {/* La masse salariale est un montant ; un effectif, un texte
-                      tel qu'il a été saisi (« 3 / 2 »). Nature servie par le serveur. */}
-                  <td className="py-0.5">{g.nature === 'MASSE_SALARIALE' ? montant(g.valeur, String(g.valeur)) : String(g.valeur)}</td>
+                  {/* TELLE QU'ELLE A ÉTÉ SAISIE, quelle que soit la nature · ces
+                      colonnes étaient LIBRES, gardées en texte, et « 150.000 »
+                      (150 000 FC) relu par montant() sortait « 150,00 ». Même
+                      règle que LigneTableauNote. */}
+                  <td className="py-0.5">{g.valeur}</td>
                 </tr>
               ))}
             </tbody>

@@ -2661,13 +2661,11 @@ export class ExportService {
         );
       }
       if (note.saisiesFormatAnterieur?.length) {
-        const valeur = (g: { nature: string; valeur: string | number }) => {
-          const n = g.nature === 'MASSE_SALARIALE' ? nombreSaisi(g.valeur) : null;
-          return n !== null && !Number.isNaN(n) ? montantNoteTexte(n) : String(g.valeur);
-        };
+        // TELLE QU'ELLE A ÉTÉ SAISIE · une colonne LIBRE gardée en texte ne se
+        // relit pas en nombre (« 150.000 » donnait 150,00 · relecture 2).
         commentaires.push(
           'Saisie antérieure au format à huit colonnes « (M / F) », non répartie entre M et F, à reporter : ' +
-            note.saisiesFormatAnterieur.map((g) => `${g.rubrique} · ${g.colonneAnterieure} · ${valeur(g)}`).join(' ; ') +
+            note.saisiesFormatAnterieur.map((g) => `${g.rubrique} · ${g.colonneAnterieure} · ${g.valeur}`).join(' ; ') +
             '.',
         );
       }

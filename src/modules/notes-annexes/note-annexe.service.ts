@@ -1183,7 +1183,12 @@ export class NoteAnnexeService {
     for (const l of lignes) {
       const valeur = l.valeurNombre !== null ? Number(l.valeurNombre) : l.valeurTexte;
       if (l.colonne >= RANG_FORMAT_ANTERIEUR) {
-        if (valeur === null) continue;
+        // TELLE QU'ELLE A ÉTÉ SAISIE (relecture 2, bloquant) · ces colonnes
+        // étaient LIBRES, gardées en texte. Relue en nombre, « 150.000 »
+        // (150 000 FC, point des milliers) sortait « 150,00 » · le cabinet
+        // reportait la valeur fausse puis retirait l'original.
+        const telleQueSaisie = l.valeurTexte ?? (l.valeurNombre !== null ? String(l.valeurNombre) : null);
+        if (telleQueSaisie === null) continue;
         const rang = l.colonne - RANG_FORMAT_ANTERIEUR;
         formatAnterieur.set(l.codeNote, [
           ...(formatAnterieur.get(l.codeNote) ?? []),
@@ -1191,7 +1196,7 @@ export class NoteAnnexeService {
             cleRubrique: l.cleRubrique,
             colonneAnterieure: LIBELLES_FORMAT_HUIT_COLONNES[rang] ?? `Colonne n° ${rang + 1}`,
             nature: natureColonneAnterieure(rang),
-            valeur,
+            valeur: telleQueSaisie,
           },
         ]);
         continue;

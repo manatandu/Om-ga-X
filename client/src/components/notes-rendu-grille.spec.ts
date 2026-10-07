@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { montant } from '../lib/montants';
 
 /**
  * NOTES ANNEXES · UNE SEULE GRILLE (relecture du 2026-10-07) · l'en-tête
@@ -28,5 +29,27 @@ describe('rendu des notes · grille et gestes', () => {
     const debut = source.indexOf('{saisie?.retirerFormatAnterieur && (');
     expect(debut).toBeGreaterThan(0);
     expect(source.slice(debut, debut + 1500)).toContain('Retirer la saisie au format antérieur');
+  });
+
+  /**
+   * RELECTURE 2, BLOQUANT · la saisie au format antérieur des notes 20B et
+   * 29B se rend TELLE QU'ELLE A ÉTÉ SAISIE. Ces colonnes étaient LIBRES,
+   * gardées en texte · passée par montant(), « 150.000 » (150 000 FC, point
+   * des milliers) devenait « 150,00 » et « 1.500 » « 1,50 ».
+   */
+  it('la saisie au format antérieur s’écrit telle qu’elle a été saisie, jamais par montant()', () => {
+    // Le piège, éprouvé · un point des milliers lu comme un point décimal.
+    expect(montant(Number('150.000'))).toBe(montant(150));
+    expect(montant(Number('1.500'))).toBe(montant(1.5));
+    const debut = source.indexOf('Saisie antérieure à reporter');
+    const fin = source.indexOf('{saisie?.retirerFormatAnterieur && (', debut);
+    expect(debut).toBeGreaterThan(0);
+    // Le code seul · un commentaire qui explique le piège le nomme.
+    const bloc = source.slice(debut, fin).replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+    expect(bloc).toContain('<td className="py-0.5">{g.valeur}</td>');
+    expect(bloc).not.toMatch(/montant\(|Number\(|nombreSaisi/);
+    // En-têtes de colonne dans un thead, portée déclarée.
+    expect(bloc.match(/<th scope="col"/g)).toHaveLength(3);
+    expect(bloc).toContain('<thead>');
   });
 });
