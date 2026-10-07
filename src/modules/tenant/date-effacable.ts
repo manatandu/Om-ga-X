@@ -46,3 +46,24 @@ function jourDuCalendrier(valeur: string): boolean {
   d.setUTCFullYear(annee, mois - 1, jour);
   return d.getUTCFullYear() === annee && d.getUTCMonth() === mois - 1 && d.getUTCDate() === jour;
 }
+
+/**
+ * LE JOUR SAISI, à minuit UTC · même lecture que `dateSaisieOuEffacement`
+ * (absent, effacement, refus d'une date illisible ou absente du calendrier),
+ * puis le JOUR ÉCRIT en tête (AAAA-MM-JJ) quand il y en a un · une heure
+ * portant un fuseau (« 2027-03-20T23:30:00-05:00 ») ne fait jamais glisser la
+ * date au lendemain. Sans jour écrit en tête, le jour UTC de l'instant lu.
+ * Sert les dates de faits déclarés (assemblée, dépôt, dissolution,
+ * nomination), qui sont des JOURS (`common/echeance.ts`).
+ */
+export function jourSaisiOuEffacement(valeur: string | null | undefined): Date | null | undefined {
+  const lue = dateSaisieOuEffacement(valeur);
+  if (lue === undefined || lue === null) return lue;
+  const tete = /^(\d{4})-(\d{2})-(\d{2})/.exec(valeur!.trim());
+  if (tete) {
+    const d = new Date(0);
+    d.setUTCFullYear(Number(tete[1]), Number(tete[2]) - 1, Number(tete[3]));
+    return d;
+  }
+  return new Date(Date.UTC(lue.getUTCFullYear(), lue.getUTCMonth(), lue.getUTCDate()));
+}

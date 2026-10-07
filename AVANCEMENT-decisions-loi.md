@@ -96,6 +96,34 @@ Manasse du 2026-10-04 sur le samedi).
   une ligne » au `mousedown` retenu, `aria-label` par rubrique, bulle (vider une
   ligne la retire), commentaires de types réalignés, tests de la migration 20270149
   par propriété (une seule instruction UPDATE, liste exacte des clés).
+- **Serveur, majeurs 3 à 9 et 13** (migration `20270153000000`,
+  `Exercice.dateTransmissionPvPortefeuille`) ·
+  - M3 · bilan avant liquidation et situation annuelle provisoire sans échéance
+    (`sansDelai`, « aucun délai au texte »), date dans `debut`, jamais en retard ;
+  - M4 · 1384 servi, le « 1374 » du ch. 40 signalé sur place (compétence
+    `syscohada` : « le guide définit 1374 mais utilise 1384 ») ; décision corrigée ;
+  - M5 · portefeuille de l'État refusé hors des cinq sociétés commerciales
+    (`FORMES_SOCIETES_COMMERCIALES`, aussi dans `liquidation-societe.ts`) ;
+  - M6 · assemblée déclarée au plus tard le 31 mars · étapes 21 et 23 satisfaites ;
+    PV (transmission déclarée) et affectation (décision d'affectation) levables ;
+  - M7 · étapes 17 et 18 à l'assemblée moins 45 jours, 13 et 16 bornées à cette
+    date, débuts recalculés (17, 21, 23, 24) ;
+  - M8 · PV DGI (LPF art. 13 bis) compté depuis l'assemblée déclarée, reporté au
+    jour ouvrable ;
+  - M9 · dates de faits par `jourSaisiOuEffacement` (jour écrit en tête, refus du
+    jour absent du calendrier), nomination et dissolution aussi, comparées à
+    `jourDeKinshasa` ;
+  - M13 · régime non déclaré · jalon « Régime de la liquidation à déclarer », rien
+    d'autre ; associé unique personne morale · dissolution ADMISE, nomination et
+    régime refusés (art. 201 al. 4), une ligne satisfaite au planning, aucune
+    mention de l'art. 204 ; contrôles bornés aux sociétés commerciales.
+  - Mineurs · fiche R2 refusée au S.M.T, rôles des deux routes alignés sur
+    `dateArreteComptes` (administrateur) ; sanctions 902 1° à 3° et 903 1° et 2°
+    (judiciaire seule) ; PV DGRAD sans assemblée au 31 mars plus 10 jours « au plus
+    tard » ; portefeuille « pas encore dit » dit aux étapes 21 et 23 ; seconde
+    quotité en PAIEMENT ; `prochaineEcheanceDeclarative` compare la date reportée
+    (30 avril 2028 → 2 mai) ; réserve du samedi « décision de l'éditeur » ; tests
+    en `Date.UTC`.
 
 ## Reste
 

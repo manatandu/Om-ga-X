@@ -18,7 +18,8 @@ import {
   normaliserCodeActivite,
 } from './code-activite-principale';
 import { GROUPES_ACTIVITES_SYSCOHADA } from '../etats-financiers-syscohada/correspondance-notes-syscohada-3';
-import { dateSaisieOuEffacement } from './date-effacable';
+import { dateSaisieOuEffacement, jourSaisiOuEffacement } from './date-effacable';
+import { jourDeKinshasa } from '../../common/echeance';
 import { normaliserModules } from './modules-optionnels';
 import { Prisma, ModuleOptionnel, FormeJuridiqueEbnl,
   FormeJuridiqueSyscohada, JeuEtatsFinanciersSycebnl, MethodeCotisations, Referentiel, RegimeExigibiliteTva, SystemeComptableSyscohada, TypeLicence,
@@ -571,15 +572,22 @@ export class TenantService {
       );
     }
     // ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT (O.-L. n° 13/003, art. 112 et
-    // 113) · « entreprises » et « sociétés » (loi n° 08/010, art. 3) · une
-    // entité à but non lucratif n'est pas concernée.
-    if (dto.entreprisePortefeuilleEtat === 'OUI' && tenant.referentiel !== Referentiel.SYSCOHADA) {
+    // 113) · « toute SOCIÉTÉ dans laquelle l'État ou toute personne morale de
+    // droit public détient la totalité des actions ou une participation » (loi
+    // n° 08/010, art. 3) · les cinq sociétés commerciales, et elles seules ·
+    // ni l'entité à but non lucratif, ni l'entreprenant, ni l'entreprise
+    // individuelle, ni les autres formes.
+    const societeCommerciale = !!forme && FORMES_SOCIETES_COMMERCIALES.includes(forme);
+    if (dto.entreprisePortefeuilleEtat === 'OUI' && (tenant.referentiel !== Referentiel.SYSCOHADA || !societeCommerciale)) {
       throw new BadRequestException(
-        'Le portefeuille de l’État regroupe des sociétés (loi n° 08/010, art. 3 ; ordonnance-loi n° 13/003, ' +
-          'art. 112) · une entité à but non lucratif n’en relève pas.',
+        'Le portefeuille de l’État regroupe des sociétés · « toute société dans laquelle l’État ou toute personne ' +
+          'morale de droit public détient la totalité des actions ou une participation » (loi n° 08/010, art. 3) · ' +
+          'seules les cinq sociétés commerciales (SA, SAS, SARL, SNC, SCS) se déclarent.',
       );
     }
-    const dissolution = dateSaisieOuEffacement(dto.dateDissolution);
+    // UN JOUR, lu par la règle commune · une heure avec fuseau ne fait pas
+    // glisser la date, un jour absent du calendrier est refusé.
+    const dissolution = jourSaisiOuEffacement(dto.dateDissolution);
     // La liquidation se déclare pour une société commerciale (AUSCGIE art. 203
     // et 204) et pour une coopérative (AUSCOOP art. 183), qui écrivent la même
     // règle · les deux lots qui l'ont posée ont été fusionnés sur ces colonnes.
@@ -592,8 +600,7 @@ export class TenantService {
     // LA LIQUIDATION DE L'AUSCGIE (décision par la loi du 2026-10-04,
     // point 4) · nomination, régime et associé unique personne morale ne
     // concernent qu'une société commerciale.
-    const nomination = dateSaisieOuEffacement(dto.dateNominationLiquidateur);
-    const societeCommerciale = !!forme && FORMES_SOCIETES_COMMERCIALES.includes(forme);
+    const nomination = jourSaisiOuEffacement(dto.dateNominationLiquidateur);
     if (
       !societeCommerciale &&
       (nomination ||
@@ -608,8 +615,13 @@ export class TenantService {
     }
     // Art. 201 al. 4 · la dissolution d'une société dont TOUS les titres sont
     // détenus par un associé unique personne MORALE transmet le patrimoine
-    // « sans qu'il y ait lieu à liquidation ». Lu sur l'état qui résultera de
-    // l'enregistrement (ce qui est envoyé, sinon ce qui est en base).
+    // « sans qu'il y ait lieu à liquidation ». Elle SUPPRIME LA LIQUIDATION,
+    // PAS LA DISSOLUTION (art. 201 et 202 · la dissolution se publie) · la date
+    // de dissolution est admise, seuls la nomination d'un liquidateur et le
+    // régime de la liquidation sont refusés ; le planning ne sert aucun jalon de
+    // liquidation et les pièces ne portent pas la mention de l'art. 204. Lu sur
+    // l'état qui résultera de l'enregistrement (ce qui est envoyé, sinon ce qui
+    // est en base), et borné aux sociétés commerciales, seules visées.
     const associePmApres =
       dto.associeUniquePersonneMorale === undefined
         ? tenant.associeUniquePersonneMorale
@@ -620,23 +632,33 @@ export class TenantService {
             : null;
     const dissolutionApres = dissolution === undefined ? tenant.dateDissolution : dissolution;
     const nominationApres = nomination === undefined ? tenant.dateNominationLiquidateur : nomination;
-    if (associePmApres === true && (dissolutionApres || nominationApres || renseigne(dto.liquidateurs))) {
+    const regimeApres =
+      dto.regimeLiquidation === undefined
+        ? tenant.regimeLiquidation
+        : dto.regimeLiquidation === 'PAS_ENCORE_DIT'
+          ? null
+          : dto.regimeLiquidation;
+    if (societeCommerciale && associePmApres === true && (nominationApres || regimeApres)) {
       throw new BadRequestException(
         'La dissolution d’une société dont tous les titres sont détenus par un seul associé personne morale ' +
           'entraîne la transmission universelle du patrimoine à cet associé, « sans qu’il y ait lieu à ' +
-          'liquidation » (AUSCGIE art. 201 al. 4) · ni dissolution en liquidation ni liquidateur ne se déclarent.',
+          'liquidation » (AUSCGIE art. 201 al. 4) · la dissolution se déclare, mais ni nomination de liquidateur ' +
+          'ni régime de liquidation.',
       );
     }
-    if (nominationApres && dissolutionApres && nominationApres < dissolutionApres) {
+    if (societeCommerciale && nominationApres && dissolutionApres && nominationApres < dissolutionApres) {
       throw new BadRequestException(
         'Le liquidateur est nommé une fois la société dissoute · « La société est en liquidation dès l’instant ' +
           'de sa dissolution » (AUSCGIE art. 204).',
       );
     }
-    if (nomination && nomination > new Date()) {
+    // Comparées au JOUR DE KINSHASA · une date est un jour à minuit UTC, et le
+    // jour même se déclare (`common/echeance.ts`).
+    const aujourdHui = jourDeKinshasa(new Date());
+    if (nomination && nomination > aujourdHui) {
       throw new BadRequestException('Une nomination à venir ne se déclare pas · déclarez-la une fois intervenue.');
     }
-    if (dissolution && dissolution > new Date()) {
+    if (dissolution && dissolution > aujourdHui) {
       throw new BadRequestException(
         '« La société est en liquidation dès l’instant de sa dissolution » (AUSCGIE art. 204) · une dissolution à ' +
           'venir ne se déclare pas.',

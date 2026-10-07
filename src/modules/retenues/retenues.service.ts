@@ -240,12 +240,13 @@ export class RetenuesService {
     }
     const mois = (obligation.moisEcheance ?? 3) - 1;
     const jour = obligation.jourEcheance ?? 31;
-    const echeance = new Date(Date.UTC(reference.getUTCFullYear(), mois, jour));
-    if (echeanceDepassee(echeance, reference)) echeance.setUTCFullYear(echeance.getUTCFullYear() + 1);
-    // Art. 110 bis, al. 2, comme sur les deux périodicités précédentes. Le
-    // report vient APRÈS le choix de l'année, pour la même raison qu'au
-    // mensuel : il peut franchir le 31 décembre.
-    return reporter(echeance);
+    // Art. 110 bis, al. 2 · c'est la date REPORTÉE qui se compare à la
+    // référence, comme aux deux périodicités précédentes · le 30 avril 2028
+    // est un dimanche (et le 1er mai férié) : l'échéance tient jusqu'au 2 mai,
+    // et la comparer brute la faisait sauter d'un an dès le 1er mai.
+    const cetteAnnee = reporter(new Date(Date.UTC(reference.getUTCFullYear(), mois, jour)));
+    if (!echeanceDepassee(cetteAnnee, reference)) return cetteAnnee;
+    return reporter(new Date(Date.UTC(reference.getUTCFullYear() + 1, mois, jour)));
   }
 
   /**
@@ -644,6 +645,16 @@ export class RetenuesService {
     // amende (la grille graduée de `SANCTION_ARTICLE_94`) à une société
     // commerciale privée. La liste des clients de l'art. 47 bis tombe, elle,
     // sur un dossier qui a déclaré ne rien vendre (passe F8).
+    // LE PROCÈS-VERBAL DE L'ASSEMBLÉE À LA DGI (LPF art. 13 bis, « dans les
+    // dix jours de la tenue de l'Assemblée générale ordinaire ») · compté
+    // depuis l'assemblée DÉCLARÉE sur l'exercice quand elle l'est, au lieu du
+    // repère du 10 juillet.
+    const exerciceLu = await this.prisma.exercice.findFirst({
+      where: { id: params.exerciceId, tenantId },
+      select: { dateAssembleeGenerale: true },
+    });
+    const assemblee = exerciceLu?.dateAssembleeGenerale ?? null;
+    const pvDepuisAssemblee = (o: { cle: string }) => o.cle === 'procesVerbalAssemblee' && assemblee !== null;
     const declarations = obligationsDeclarativesApplicables(
       registre.referentiel,
       registre.formeJuridiqueSyscohada,
@@ -654,8 +665,12 @@ export class RetenuesService {
       genre: 'DECLARATION' as const,
       periodicite: o.periodicite,
       beneficiaire: 'ETAT' as const,
-      date: this.prochaineEcheanceDeclarative(o, registre.dateReference),
-      echeance: o.echeance,
+      date: pvDepuisAssemblee(o)
+        ? reporterAuJourOuvrable(new Date(assemblee!.getTime() + 10 * 86_400_000), 'DECLARATION')
+        : this.prochaineEcheanceDeclarative(o, registre.dateReference),
+      echeance: pvDepuisAssemblee(o)
+        ? `${o.echeance} · assemblée déclarée tenue le ${assemblee!.toISOString().slice(0, 10).split('-').reverse().join('/')}`
+        : o.echeance,
       baseLegale: o.baseLegale,
       reserve: o.reserve,
       montantDu: 0,
@@ -663,7 +678,9 @@ export class RetenuesService {
       imprime: null as string | null,
       contenu: o.contenu,
       sanction: o.sanction ?? null,
-      sourceDonnees: o.sourceDonnees ?? null,
+      sourceDonnees: pvDepuisAssemblee(o)
+        ? "Date de l'assemblée déclarée dans la fenêtre Exercices, plus dix jours, reportée au jour ouvrable (LPF art. 110 bis, al. 2)."
+        : o.sourceDonnees ?? null,
     }));
 
     const echeances = [...reversements, ...declarations].sort((a, b) => a.date.getTime() - b.date.getTime());

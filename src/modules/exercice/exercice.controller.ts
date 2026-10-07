@@ -102,7 +102,9 @@ export class ExerciceController {
    * exercice. SYSCOHADA seul · le SYCEBNL ne porte pas de fiche R2, et la
    * route se refuse au serveur, pas seulement à l'écran.
    */
-  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  // Mêmes rôles que l'arrêté des comptes · un fait des organes de l'entité,
+  // déclaré par l'administrateur du dossier, pas une saisie comptable.
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
   @ReferentielsAutorises(Referentiel.SYSCOHADA)
   @Post(':id/fiche-r2')
   async declarerFicheR2(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: FicheR2Dto) {
@@ -114,7 +116,9 @@ export class ExerciceController {
    * dépôt des états au ministère du Portefeuille (O.-L. n° 13/003, art. 112
    * et 113). SYSCOHADA seul, refusé au serveur ailleurs.
    */
-  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  // Mêmes rôles que l'arrêté des comptes · un fait des organes de l'entité,
+  // déclaré par l'administrateur du dossier, pas une saisie comptable.
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
   @ReferentielsAutorises(Referentiel.SYSCOHADA)
   @Post(':id/dates-portefeuille')
   async declarerDatesPortefeuille(

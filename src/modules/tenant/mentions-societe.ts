@@ -131,6 +131,11 @@ export interface IdentiteSociete {
   /** AUSCGIE art. 203 et 204, AUSCOOP art. 183 · null tant qu'aucune dissolution n'est déclarée. */
   dateDissolution?: Date | null;
   liquidateurs?: string | null;
+  /**
+   * AUSCGIE art. 201 al. 4 · associé unique personne morale · la dissolution
+   * transmet le patrimoine sans liquidation · aucune mention de l'art. 204.
+   */
+  associeUniquePersonneMorale?: boolean | null;
 }
 
 /**
@@ -163,6 +168,7 @@ export const SELECT_IDENTITE_SOCIETE = {
   associeUniqueSas: true,
   dateDissolution: true,
   liquidateurs: true,
+  associeUniquePersonneMorale: true,
 } as const satisfies Prisma.TenantSelect & Record<keyof IdentiteSociete, true>;
 
 export interface MentionsSociete {
@@ -360,7 +366,10 @@ export function mentionLiquidation(t: IdentiteSociete, datePiece: Date = new Dat
     !t.dateDissolution ||
     t.dateDissolution.getTime() > datePiece.getTime() ||
     !t.formeJuridiqueSyscohada ||
-    !FORMES_SOCIETES_COMMERCIALES.includes(t.formeJuridiqueSyscohada)
+    !FORMES_SOCIETES_COMMERCIALES.includes(t.formeJuridiqueSyscohada) ||
+    // Art. 201 al. 4 · « sans qu'il y ait lieu à liquidation » · la société
+    // dissoute n'est pas « en liquidation », et la mention serait fausse.
+    t.associeUniquePersonneMorale === true
   ) {
     return { ligne: null, manquantes: [] };
   }

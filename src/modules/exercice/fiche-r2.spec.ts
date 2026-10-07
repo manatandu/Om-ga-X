@@ -14,12 +14,13 @@ import { REFERENTIELS_KEY } from '../../common/decorators/referentiels.decorator
 describe('Fiche R2 · cases ZN à ZS déclarées sur l’exercice', () => {
   const exercice = { id: 'e1', tenantId: 't1', dateFin: new Date(Date.UTC(2026, 11, 31)) };
 
-  function service() {
+  function service(systemeComptableSyscohada: string = 'NORMAL') {
     const prisma = {
       exercice: {
         findFirst: jest.fn().mockResolvedValue(exercice),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...exercice, ...data })),
       },
+      tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ systemeComptableSyscohada }) },
     };
     return { s: new ExerciceService(prisma as never, {} as never), prisma };
   }
@@ -36,6 +37,12 @@ describe('Fiche R2 · cases ZN à ZS déclarées sur l’exercice', () => {
       where: { id: 'e1' },
       data: { nombreEtablissementsPays: 3, controleEntreprise: null },
     });
+  });
+
+  it('au Système minimal de trésorerie, refusée au serveur avec son motif · la liasse du S.M.T ne porte pas de fiche R2', async () => {
+    const { s, prisma } = service('MINIMAL_TRESORERIE');
+    await expect(s.declarerFicheR2('t1', 'e1', { nombreEtablissementsPays: 1 })).rejects.toThrow('Système minimal de trésorerie');
+    expect(prisma.exercice.update).not.toHaveBeenCalled();
   });
 
   it('ZP postérieure à l’année de clôture est refusée, nommée', async () => {

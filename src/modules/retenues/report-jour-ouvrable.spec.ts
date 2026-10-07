@@ -80,16 +80,37 @@ describe('Report au premier jour ouvrable · art. 110 bis, alinéa 2', () => {
       // « Le texte dit au plus tard le 25 [...] les banques travaillent samedi
       // jusqu'à 12h. » Le samedi n'est exclu que pour un dépôt au guichet
       // (décret n° 24/09) · le 25 juillet 2026 reste le 25 pour un acompte.
-      expect(estJourOuvrable(new Date(2026, 6, 25), 'PAIEMENT')).toBe(true);
-      expect(reporterAuJourOuvrable(new Date(2026, 6, 25), 'PAIEMENT')).toEqual(new Date(2026, 6, 25));
+      // Des JOURS à minuit UTC (`common/echeance.ts`) · jamais une date locale.
+      const j = (a: number, m: number, d: number) => new Date(Date.UTC(a, m, d));
+      expect(estJourOuvrable(j(2026, 6, 25), 'PAIEMENT')).toBe(true);
+      expect(reporterAuJourOuvrable(j(2026, 6, 25), 'PAIEMENT')).toEqual(j(2026, 6, 25));
       // Le dimanche et les fériés d'un pur paiement restent reportés.
-      expect(reporterAuJourOuvrable(new Date(2026, 6, 26), 'PAIEMENT')).toEqual(new Date(2026, 6, 27));
+      expect(reporterAuJourOuvrable(j(2026, 6, 26), 'PAIEMENT')).toEqual(j(2026, 6, 27));
       // 25 décembre 2027, samedi FÉRIÉ · reporté au lundi 27 (le dimanche 26 suit).
-      expect(new Date(2027, 11, 25).getDay()).toBe(6);
-      expect(reporterAuJourOuvrable(new Date(2027, 11, 25), 'PAIEMENT')).toEqual(new Date(2027, 11, 27));
+      expect(j(2027, 11, 25).getUTCDay()).toBe(6);
+      expect(reporterAuJourOuvrable(j(2027, 11, 25), 'PAIEMENT')).toEqual(j(2027, 11, 27));
       // La nature par défaut reste la DÉCLARATION · l'oubli d'un appelant ne
       // retire jamais un report fondé.
-      expect(reporterAuJourOuvrable(new Date(2026, 6, 25))).toEqual(new Date(2026, 6, 27));
+      expect(reporterAuJourOuvrable(j(2026, 6, 25))).toEqual(j(2026, 6, 27));
+      // La réserve dit que le samedi d'un paiement est une décision de l'éditeur.
+      expect(RESERVE_JOUR_OUVRABLE).toContain("décision de l'éditeur du 2026-10-04 qu'aucun texte lu ne fonde");
+    });
+
+    it('la seconde quotité de la petite entreprise, « acquittée à l’aide d’un bordereau de versement », est un PUR PAIEMENT', () => {
+      expect(OBLIGATIONS_DECLARATIVES.find((o) => o.cle === 'secondeQuotitePetiteEntreprise')!.natureEcheance).toBe('PAIEMENT');
+    });
+
+    it('une échéance annuelle se compare REPORTÉE · le 30 avril 2028 (dimanche, 1er mai férié) tient jusqu’au 2 mai', () => {
+      const declaration = OBLIGATIONS_DECLARATIVES.find((o) => o.cle === 'declarationImpotSocietes')!;
+      const svc = service([]) as unknown as { prochaineEcheanceDeclarative: (o: unknown, r: Date) => Date };
+      expect(new Date(Date.UTC(2028, 3, 30)).getUTCDay()).toBe(0);
+      expect(svc.prochaineEcheanceDeclarative(declaration, new Date(Date.UTC(2028, 4, 1))).toISOString().slice(0, 10)).toBe(
+        '2028-05-02',
+      );
+      // Le lendemain du dernier jour, l'année suivante.
+      expect(svc.prochaineEcheanceDeclarative(declaration, new Date(Date.UTC(2028, 4, 3))).toISOString().slice(0, 10)).toBe(
+        '2029-04-30',
+      );
     });
 
     it("les trois acomptes de l'art. 57 bis sont des PURS PAIEMENTS, et l'échéancier sert le samedi 25 juillet 2026", () => {

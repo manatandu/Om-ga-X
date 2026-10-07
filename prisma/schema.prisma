@@ -1559,6 +1559,10 @@ model Exercice {
   /// Portefeuille · l'affectation intervient « endéans soixante (60) jours »
   /// à compter de ce dépôt (art. 113).
   dateDepotEtatsPortefeuille   DateTime?
+  /// Date à laquelle le procès-verbal de l'assemblée a été COMMUNIQUÉ à
+  /// l'Administration des recettes non fiscales (art. 112) · déclarée, elle
+  /// lève le jalon, qui sans elle resterait rouge pour toujours.
+  dateTransmissionPvPortefeuille DateTime?
 
   ecritures                    Ecriture[]
   clotures                     Cloture[]

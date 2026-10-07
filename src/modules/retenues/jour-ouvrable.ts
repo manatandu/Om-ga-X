@@ -359,8 +359,9 @@ export const RESERVE_JOUR_OUVRABLE =
   'banques et autres établissements de crédit agréés, ou à la Banque Centrale du Congo (décret n° 20/019 du ' +
   '21 août 2020, art. 1er et 2 ; circulaire ministérielle n° 002 du 1er octobre 2020, III.2.2), dont le décret ' +
   "n° 24/09 ne fixe pas les jours. Pour une échéance de PUR PAIEMENT, sans dépôt de déclaration, comme les trois " +
-  'acomptes provisionnels versés sur bordereau à la banque, le SAMEDI est donc tenu pour OUVRABLE (les banques y ' +
-  "travaillent) et l'échéance n'est PAS reportée au lundi : le samedi 25 juillet 2026 reste le 25 juillet. Le " +
+  'acomptes provisionnels versés sur bordereau à la banque, le SAMEDI est tenu pour OUVRABLE, par décision de ' +
+  "l'éditeur du 2026-10-04 qu'aucun texte lu ne fonde, et l'échéance n'est PAS reportée au lundi : le samedi " +
+  '25 juillet 2026 reste le 25 juillet. Le ' +
   'dimanche et les jours fériés d\u2019un pur paiement restent reportés (art. 110 bis, alinéa 2). Le report au ' +
   "lundi 27 juillet 2026 annoncé par un communiqué de la DGI n'est pas suivi : son texte n'est pas au corpus, et " +
   "l'alinéa 3 ne permet à l'Administration que d'AVANCER une échéance.";

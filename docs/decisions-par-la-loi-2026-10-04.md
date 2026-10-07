@@ -134,7 +134,7 @@ Les constats d'origine sont dans `docs/recensement-corrections-restantes.md` (F1
 - AUDCIF, art. 39 : continuité d'exploitation. En cas de liquidation, « l'évaluation de ses biens doit être reconsidérée ».
 - AUDCIF, Titre VIII ch. 40 (`titre-8-ch31-41-…/10-chapitre-40-liquidation.md`) :
   - quatre étapes : inventaire et **bilan avant liquidation**, opérations, compte définitif sous forme de bilan (boni, mali ou insuffisance d'actif), clôture ;
-  - comptes 837, 847, 1374 et 4619 ;
+  - comptes 837, 847, 1374 et 4619 · le « 1374 » est une ANOMALIE DU TEXTE (relecture 1) : le Titre VII, compte 13, n'ouvre que 1384 « Résultat de liquidation » sous 138, le 137 n'étant pas subdivisé ; la compétence `syscohada` le note (« le guide définit 1374 mais utilise 1384 ») et le plan semé porte 13840000. Le code sert le 1384 et signale l'anomalie sur place ;
   - entité individuelle : états financiers à l'ouverture de la liquidation.
 - AUSCGIE, art. 200 à 241 (`partie1-livre7-dissolution-liquidation.md`) et art. 266 (`partie1-livre9-10-…md`). Les articles utiles :
   - Art. 201 al. 4 et 5 : associé unique personne morale, transmission universelle **sans liquidation**.
@@ -171,7 +171,7 @@ Les constats d'origine sont dans `docs/recensement-corrections-restantes.md` (F1
    - le **régime** : amiable statutaire, ou art. 223 1°, ou art. 223 2° judiciaire. Le cas des procédures collectives est exclu (art. 203) et doit être dit.
    - Rien n'est déduit.
 2. **Jalons pour toutes les sociétés commerciales** (chapitre 1) :
-   - bilan avant liquidation à la date de dissolution ;
+   - bilan avant liquidation à la date de dissolution · le texte ne fixe aucun délai, la date reste en début de jalon et aucune échéance n'est calculée (relecture 1) ;
    - publication de la nomination dans 1 mois (art. 266) ;
    - clôture au plus tard 3 ans après la dissolution (art. 216) ;
    - comptes définitifs, assemblée de clôture et dépôt au RCCM (art. 217 et 219) ;
@@ -179,12 +179,14 @@ Les constats d'origine sont dans `docs/recensement-corrections-restantes.md` (F1
 3. **Jalons supplémentaires seulement dans les cas de l'art. 223**, déclarés :
    - rapport à l'assemblée dans les 6 mois de la nomination (art. 228) ;
    - chaque 31 décembre : états annuels et rapport du liquidateur dans les 3 mois (art. 232), puis assemblée dans les 6 mois, ou à défaut dépôt du rapport au RCCM (art. 233).
-   - **Hors art. 223**, seule la situation annuelle provisoire de l'AUDCIF est due au 31 décembre. Elle se produit par la situation intermédiaire existante.
+   - **Hors art. 223**, seule la situation annuelle provisoire de l'AUDCIF est due au 31 décembre. Elle se produit par la situation intermédiaire existante. Aucun délai au texte · aucune échéance (relecture 1).
+   - **Régime non déclaré** : un jalon visible « Régime de la liquidation à déclarer », non calculé, et aucun autre jalon de régime (relecture 1).
+   - **Sanctions** : art. 902, 1° à 3° sur toute liquidation ; art. 903, 1° et 2° sur la seule liquidation judiciaire (relecture 1).
 4. **Pièces imprimées** : mention « société en liquidation » et nom du liquidateur (art. 204).
 5. **Comptes et évaluation** :
-   - comptes 837, 847, 1374 et 4619 (ch. 40) ;
+   - comptes 837, 847, 1384 et 4619 (le ch. 40 écrit « 1374 », anomalie du texte, voir ci-dessus) ;
    - rappel de l'art. 39 sur l'évaluation, à la clôture de l'exercice de dissolution.
-6. **Associé unique personne morale** : aucune liquidation (art. 201 al. 4). Le drapeau est alors refusé, avec ce motif.
+6. **Associé unique personne morale** : aucune liquidation (art. 201 al. 4). L'alinéa supprime la LIQUIDATION, pas la DISSOLUTION (art. 201 et 202, la dissolution se publie) · relecture 1 : la date de dissolution est admise, seuls la nomination d'un liquidateur et le régime sont refusés, avec ce motif ; le planning sert une ligne satisfaite « Dissolution sans liquidation », aucun jalon de liquidation, et les pièces ne portent pas la mention de l'art. 204. Ces contrôles sont bornés aux sociétés commerciales.
 
 **Ce que le corpus ne tranche pas**
 - Le sort de la période qui va du 1er janvier à la date de dissolution : exercice clos à cette date, ou simple bilan avant liquidation. L'art. 7 ne le dit pas, le ch. 40 parle seulement d'un « bilan avant liquidation ».

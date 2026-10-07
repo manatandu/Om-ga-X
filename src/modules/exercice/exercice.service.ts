@@ -20,14 +20,17 @@ import {
   StatutExercice,
   StatutLettrage,
   StatutRapprochement,
+  SystemeComptableSyscohada,
   TypeJournal,
 } from '@prisma/client';
 import { CreerExerciceDto } from './dto/creer-exercice.dto';
 import { ClorePartielleDto, CloreTotaleDto, ClorePeriodeDto } from './dto/cloture.dto';
 import { ArreterComptesDto } from './dto/arrete-comptes.dto';
 import { FicheR2Dto } from './dto/fiche-r2.dto';
+import { jourSaisiOuEffacement } from '../tenant/date-effacable';
 import { DatesPortefeuilleDto } from './dto/dates-portefeuille.dto';
-import { appliquerPortefeuilleEtat, JalonServi } from './portefeuille-etat';
+import { appliquerPortefeuilleEtat, inviterADeclarerPortefeuille, JalonServi } from './portefeuille-etat';
+import { FORMES_SOCIETES_COMMERCIALES } from '../tenant/mentions-societe';
 import { jalonsLiquidation } from './liquidation-societe';
 import { JournalService } from '../journaux/journal.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
@@ -463,10 +466,23 @@ export class ExerciceService {
     // LE JOUR DE KINSHASA, PAS L'INSTANT (audit final F81) · un jalon n'est en
     // retard qu'au lendemain de son échéance.
     const aujourdHui = jourDeKinshasa(new Date());
-    // ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT · servie sur la seule réponse
-    // « oui », et au SYSCOHADA seul (une ASBL n'est ni « entreprise » de
-    // l'art. 112 ni « société » de la loi n° 08/010).
-    const portefeuille = tenant.referentiel === Referentiel.SYSCOHADA ? tenant.entreprisePortefeuilleEtat : null;
+    // ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT · « toute société dans laquelle
+    // l'État [...] détient la totalité des actions ou une participation » (loi
+    // n° 08/010, art. 3) · servie sur la seule réponse « oui », aux cinq
+    // sociétés commerciales de la forme de l'exercice, jamais ailleurs.
+    const societe =
+      tenant.referentiel === Referentiel.SYSCOHADA &&
+      formeDeLExercice !== null &&
+      FORMES_SOCIETES_COMMERCIALES.includes(formeDeLExercice);
+    const portefeuille = societe ? tenant.entreprisePortefeuilleEtat : null;
+    // La décision d'affectation enregistrée lève le jalon de l'art. 113.
+    const affectation =
+      portefeuille === true
+        ? await this.prisma.affectationResultat.findFirst({
+            where: { tenantId, exerciceId },
+            select: { dateDecision: true },
+          })
+        : null;
     // LIQUIDATION D'UNE SOCIÉTÉ COMMERCIALE (décision par la loi du
     // 2026-10-04, point 4) · ses jalons suivent ceux de l'exercice, sur les
     // seuls exercices qui finissent après la dissolution déclarée.
@@ -476,6 +492,7 @@ export class ExerciceService {
         dateDissolution: tenant.dateDissolution,
         dateNominationLiquidateur: tenant.dateNominationLiquidateur,
         regimeLiquidation: tenant.regimeLiquidation,
+        associeUniquePersonneMorale: tenant.associeUniquePersonneMorale,
       },
       exercice,
       aujourdHui,
@@ -488,10 +505,14 @@ export class ExerciceService {
               dateFin: exercice.dateFin,
               dateAssembleeGenerale: exercice.dateAssembleeGenerale,
               dateDepotEtatsPortefeuille: exercice.dateDepotEtatsPortefeuille,
+              dateTransmissionPvPortefeuille: exercice.dateTransmissionPvPortefeuille,
+              dateDecisionAffectation: affectation?.dateDecision ?? null,
             },
             aujourdHui,
           )
-        : jalons),
+        : societe && portefeuille === null
+          ? inviterADeclarerPortefeuille(jalons)
+          : jalons),
       ...liquidation,
     ];
     return {
@@ -510,6 +531,7 @@ export class ExerciceService {
       entreprisePortefeuilleEtat: portefeuille,
       dateAssembleeGenerale: exercice.dateAssembleeGenerale,
       dateDepotEtatsPortefeuille: exercice.dateDepotEtatsPortefeuille,
+      dateTransmissionPvPortefeuille: exercice.dateTransmissionPvPortefeuille,
       jalons: avecPortefeuille(jalonsApplicables({
         referentiel: tenant.referentiel,
         formeJuridique: tenant.formeJuridique,
@@ -600,6 +622,18 @@ export class ExerciceService {
    */
   async declarerFicheR2(tenantId: string, exerciceId: string, dto: FicheR2Dto) {
     const exercice = await this.trouverExercice(tenantId, exerciceId);
+    // LE SYSTÈME MINIMAL N'A PAS DE FICHE R2 · le Titre X n'en porte aucune, et
+    // la liasse du S.M.T ne l'imprime pas · une case déclarée là n'irait nulle part.
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { systemeComptableSyscohada: true },
+    });
+    if (tenant.systemeComptableSyscohada === SystemeComptableSyscohada.MINIMAL_TRESORERIE) {
+      throw new BadRequestException(
+        'La fiche R2 (cases ZN à ZS) est celle du Système normal · le Système minimal de trésorerie n’en porte ' +
+          'pas (AUDCIF, Titre X), et sa liasse ne l’imprime pas.',
+      );
+    }
     const annee = dto.premiereAnneeExercicePays;
     const anneeDeCloture = exercice.dateFin.getUTCFullYear();
     if (annee !== undefined && annee !== null && annee > anneeDeCloture) {
@@ -629,20 +663,33 @@ export class ExerciceService {
    */
   async declarerDatesPortefeuille(tenantId: string, exerciceId: string, dto: DatesPortefeuilleDto) {
     const exercice = await this.trouverExercice(tenantId, exerciceId);
-    const lire = (v: string | null | undefined) => (v === undefined ? undefined : v === null ? null : new Date(v));
-    const assemblee = lire(dto.dateAssembleeGenerale);
-    const depot = lire(dto.dateDepotEtatsPortefeuille);
+    // UN JOUR, LU PAR LA RÈGLE COMMUNE (`jourSaisiOuEffacement`) · « 2026-02-30 »
+    // devenait le 2 mars, « 20270101 » un 500, et une heure avec fuseau
+    // décalait le jour.
+    const assemblee = jourSaisiOuEffacement(dto.dateAssembleeGenerale);
+    const depot = jourSaisiOuEffacement(dto.dateDepotEtatsPortefeuille);
+    const transmission = jourSaisiOuEffacement(dto.dateTransmissionPvPortefeuille);
     for (const [date, quoi] of [
       [assemblee, 'L’assemblée générale ordinaire statue sur les résultats d’un exercice clos'],
       [depot, 'Les états financiers se déposent une fois l’exercice clos'],
+      [transmission, 'Le procès-verbal se communique après l’assemblée d’un exercice clos'],
     ] as const) {
       if (date && date < exercice.dateFin) {
         throw new BadRequestException(`${quoi} · la date ne peut pas précéder la clôture de l'exercice (O.-L. n° 13/003, art. 112 et 113).`);
       }
     }
+    const assembleeApres = assemblee === undefined ? exercice.dateAssembleeGenerale : assemblee;
+    const transmissionApres = transmission === undefined ? exercice.dateTransmissionPvPortefeuille : transmission;
+    if (assembleeApres && transmissionApres && transmissionApres < assembleeApres) {
+      throw new BadRequestException(
+        'Le procès-verbal se communique « dans les dix (10) jours qui suivent la tenue » de l’assemblée · sa date ne ' +
+          'peut pas précéder celle de l’assemblée (O.-L. n° 13/003, art. 112).',
+      );
+    }
     const data: Prisma.ExerciceUpdateInput = {};
     if (assemblee !== undefined) data.dateAssembleeGenerale = assemblee;
     if (depot !== undefined) data.dateDepotEtatsPortefeuille = depot;
+    if (transmission !== undefined) data.dateTransmissionPvPortefeuille = transmission;
     return this.prisma.exercice.update({ where: { id: exercice.id }, data });
   }
 

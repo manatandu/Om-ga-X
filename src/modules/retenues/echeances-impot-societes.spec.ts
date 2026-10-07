@@ -218,3 +218,25 @@ describe('Calendrier de paiement de l’impôt · art. 57, al. 2 et 3', () => {
     expect(seconde.baseLegale).toContain('57 quater');
   });
 });
+
+describe('Procès-verbal de l’assemblée à la DGI (LPF art. 13 bis)', () => {
+  it('compté depuis l’assemblée DÉCLARÉE sur l’exercice · dix jours, reportés au jour ouvrable', async () => {
+    const svc = service('SYSCOHADA');
+    const prisma = (svc as unknown as { prisma: { exercice: { findFirst: jest.Mock } } }).prisma;
+    prisma.exercice.findFirst.mockResolvedValue({
+      id: 'e1',
+      dateDebut: new Date('2026-01-01'),
+      dateFin: new Date('2026-12-31'),
+      // Samedi 20 mars 2027 · plus dix jours, mardi 30 mars 2027.
+      dateAssembleeGenerale: new Date(Date.UTC(2027, 2, 20)),
+    });
+    const pv = (await svc.echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2027-03-01' })).echeances.find(
+      (e) => e.cle === 'procesVerbalAssemblee',
+    )!;
+    expect(pv.date.toISOString().slice(0, 10)).toBe('2027-03-30');
+    expect(pv.echeance).toContain('assemblée déclarée tenue le 20/03/2027');
+    // Sans assemblée déclarée, le repère du 10 juillet demeure (samedi en 2027, reporté au lundi 12).
+    const sans = (await echeances('SYSCOHADA', '2027-03-01')).find((e) => e.cle === 'procesVerbalAssemblee')!;
+    expect(sans.date.toISOString().slice(0, 10)).toBe('2027-07-12');
+  });
+});

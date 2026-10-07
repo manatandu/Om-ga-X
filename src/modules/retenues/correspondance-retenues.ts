@@ -1265,6 +1265,9 @@ export const OBLIGATIONS_DECLARATIVES: ObligationDeclarative[] = [
     moisEcheance: 4,
     jourEcheance: 30,
     echeance: 'Au plus tard le 30 avril',
+    // PUR PAIEMENT · « acquittée à l'aide d'un bordereau de versement » (art. 57
+    // quater, al. 3), sans dépôt · samedi ouvrable (décision du 2026-10-04).
+    natureEcheance: 'PAIEMENT',
     baseLegale:
       'Article 57, alinéa 3, et article 57 quater, alinéa 3, de la loi de procédures fiscales n° 004/2003.',
     contenu:

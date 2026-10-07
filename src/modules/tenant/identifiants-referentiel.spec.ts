@@ -120,17 +120,49 @@ describe('module groupe · les deux référentiels, sauf le canevas', () => {
 });
 
 describe('entreprise du portefeuille de l’État · O.-L. n° 13/003, art. 112 et 113', () => {
-  it('se déclare oui, non, pas encore dit au SYSCOHADA · refusée « oui » à une entité à but non lucratif', async () => {
+  // « toute SOCIÉTÉ dans laquelle l'État [...] » (loi n° 08/010, art. 3) · les
+  // cinq sociétés commerciales, et elles seules.
+  function avecForme(referentiel: Referentiel, forme: string | null, capture: { data?: Record<string, unknown> } = {}) {
+    const t = { id: 't1', referentiel, formeJuridiqueSyscohada: forme };
+    return new TenantService({
+      tenant: {
+        findUnique: async () => t,
+        findUniqueOrThrow: async () => t,
+        update: async ({ data }: { data: Record<string, unknown> }) => {
+          capture.data = data;
+          return { id: 't1' };
+        },
+      },
+      exercice: { findFirst: async () => null, count: async () => 0 },
+      ecriture: { count: async () => 0 },
+      compte: { findMany: async () => [] },
+    } as never);
+  }
+
+  it('se déclare oui, non, pas encore dit pour une société commerciale', async () => {
     const capture: { data?: Record<string, unknown> } = {};
-    await service(Referentiel.SYSCOHADA, capture).modifierIdentite('t1', { entreprisePortefeuilleEtat: 'OUI' });
+    await avecForme(Referentiel.SYSCOHADA, 'SOCIETE_ANONYME', capture).modifierIdentite('t1', { entreprisePortefeuilleEtat: 'OUI' });
     expect(capture.data?.entreprisePortefeuilleEtat).toBe(true);
-    await service(Referentiel.SYSCOHADA, capture).modifierIdentite('t1', { entreprisePortefeuilleEtat: 'PAS_ENCORE_DIT' });
+    await avecForme(Referentiel.SYSCOHADA, 'SOCIETE_ANONYME', capture).modifierIdentite('t1', {
+      entreprisePortefeuilleEtat: 'PAS_ENCORE_DIT',
+    });
     expect(capture.data?.entreprisePortefeuilleEtat).toBeNull();
     const rien: { data?: Record<string, unknown> } = {};
-    await service(Referentiel.SYSCOHADA, rien).modifierIdentite('t1', {});
+    await avecForme(Referentiel.SYSCOHADA, 'SOCIETE_ANONYME', rien).modifierIdentite('t1', {});
     expect(rien.data && 'entreprisePortefeuilleEtat' in rien.data).toBe(false);
-    await expect(
-      service(Referentiel.SYCEBNL).modifierIdentite('t1', { entreprisePortefeuilleEtat: 'OUI' }),
-    ).rejects.toThrow('loi n° 08/010');
+  });
+
+  it('« oui » refusé, nommé, hors des cinq sociétés commerciales · association, entreprenant, entité publique, forme non dite', async () => {
+    for (const [referentiel, forme] of [
+      [Referentiel.SYCEBNL, null],
+      [Referentiel.SYSCOHADA, 'ENTREPRENANT'],
+      [Referentiel.SYSCOHADA, 'ENTREPRISE_INDIVIDUELLE'],
+      [Referentiel.SYSCOHADA, 'ENTITE_PUBLIQUE'],
+      [Referentiel.SYSCOHADA, null],
+    ] as const) {
+      await expect(avecForme(referentiel, forme).modifierIdentite('t1', { entreprisePortefeuilleEtat: 'OUI' })).rejects.toThrow(
+        'loi n° 08/010, art. 3',
+      );
+    }
   });
 });
