@@ -222,23 +222,25 @@ Manasse du 2026-10-04 sur le samedi).
 
 ## Vérification
 
-Dernier passage (2026-10-07, relecture 1) · serveur `tsc` propre, jest 766 suites,
-10 927 tests (un dépassement de 5 s sous charge dans
-`groupe/operations-reciproques-agregat.spec.ts`, vert relancé seul), `nest build`
-propre ; client `tsc` propre, vitest 228 fichiers, 1 842 tests, `vite build`
-propre ; `prisma migrate diff` sans différence (migrations jusqu'à 20270153).
+Dernier passage (2026-10-07, relecture 2) · serveur `tsc` propre, jest 766 suites,
+10 944 tests, 0 échec (une citation de commentaire ambiguë relevée par
+`citations-articles.spec.ts`, corrigée, suite relancée verte), `nest build`
+propre ; client `tsc` propre, vitest 228 fichiers, 1 850 tests, `vite build`
+propre ; `prisma migrate diff` sans différence (schéma inchangé en relecture 2,
+migrations jusqu'à 20270153).
 
-Scénario sur base jetable (PostgreSQL 16 local), serveur compilé, 56 vérifications,
-0 échec (`scenario-r1.mjs` du bloc-notes) · SARL du portefeuille en liquidation à
-travers la clôture de 2026 vers 2027 (« 2027-02-30 » et « 2026-02-30 » refusées,
-heure à fuseau qui garde le jour, AG du 20 mars qui satisfait 21 et 23, étape 17 au
-3 février, PV DGRAD au 30 mars, PV DGI au 30 mars depuis l'AG, bilan avant
-liquidation sans échéance, 1384) ; SA de 2025 aux échéances passées, rouges puis
-levées par l'AG et la transmission déclarées, gardées après clôture ; SA à associé
-unique personne morale (dissolution admise, une ligne satisfaite, nomination et
-régime refusés) ; entreprenant refusé au portefeuille ; association · saisie 29B au
-format antérieur retirée sur exercice CLOS, motif court refusé, ligne supprimée,
-deux maillons au journal d'audit, `rang: null` refusé en 400 nommé.
+Scénario sur base jetable (PostgreSQL 16 local), serveur compilé, 75 vérifications,
+0 échec (`scenario-r2.mjs` du bloc-notes) · SARL du portefeuille en liquidation à
+travers la clôture de 2026 vers 2027 (heure à fuseau refusée, assemblée FUTURE
+« prévue » sans rien lever, transmission et dépôt futurs refusés, étape 17 en
+attente puis au 3 février une fois le mandat de commissaire enregistré, états
+bornés au 5 mars sans commissaire, affectation en attente puis non calculée après
+clôture, art. 216 et 902 scindés) ; SA de 2025 · assemblée du 15 avril levée
+« après l'échéance », PV DGI échu non servi au 2027-10-07, affectation au 4 juin
+depuis le dépôt ; SNC du portefeuille sans étape 17, étape 18 en attente, états au
+16 mars (art. 288) ; SA à associé unique personne morale ; association · « 150.000 »
+relu tel quel par l'API et dans la liasse, puis les deux saisies antérieures
+retirées sur exercice clos.
 
 ```bash
 npx prisma migrate diff --from-migrations prisma/migrations \

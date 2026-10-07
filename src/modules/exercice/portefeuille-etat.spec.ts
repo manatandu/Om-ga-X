@@ -176,7 +176,7 @@ describe('Entreprise du portefeuille de l’État · O.-L. n° 13/003', () => {
     expect(iso(par(snc, 16).echeance)).toBe('2027-03-16');
     expect(par(snc, 16).source).toContain('art. 288 et 306');
     expect(par(snc, 16).source).not.toContain('art. 140');
-    // SCS avec commissaire · l'AUDCIF art. 71 (« s'ils existent »), jamais l'art. 140.
+    // SCS avec commissaire · l'AUDCIF art. 71 (« s'ils existent »), jamais l'AUSCGIE art. 140.
     const scs = appliquerPortefeuilleEtat(
       BASE,
       { ...avecAg, forme: FormeJuridiqueSyscohada.SOCIETE_COMMANDITE_SIMPLE, commissaireDesigne: true },
