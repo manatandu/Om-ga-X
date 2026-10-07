@@ -1,6 +1,38 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength, ValidateIf, ValidateNested } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
 import { NatureActiviteFiscale, SensRetraitementFiscal } from '@prisma/client';
+import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
+
+/**
+ * LA BORNE HAUTE D'UN MONTANT FISCAL · les colonnes sont en Decimal(18, 2),
+ * soit moins de 10^16. Un montant au-delà était reçu, puis refusé par la base
+ * en 500 sans motif. La borne est posée à 10^15 - 1, un ordre de grandeur
+ * sous la limite de la colonne · l'arrondi au centime d'un nombre JSON de
+ * cette taille ne peut jamais la franchir. Refus 400 nommé.
+ */
+export const MONTANT_FISCAL_MAX = 999_999_999_999_999;
+const MOTIF_MONTANT_MAX = `Montant hors des bornes · au plus ${MONTANT_FISCAL_MAX.toLocaleString('fr-FR')} en valeur absolue.`;
+
+/** Les parts de l'origine d'un report · une par exercice déficitaire, trois à cinq en pratique (art. 51). */
+export const ORIGINES_DEFICIT_MAX = 20;
+
+const nonNul = (champ: string) =>
+  `${champ} ne s'efface pas · la colonne n'admet pas de valeur vide. Omettez le champ pour le laisser inchangé, ou envoyez 0.`;
 
 export class CreerRetraitementDto {
   @IsString()
@@ -20,6 +52,7 @@ export class CreerRetraitementDto {
   /** Toujours positif · le sens donne la direction. */
   @IsNumber()
   @Min(0.01)
+  @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
   montant!: number;
 
   @IsOptional()
@@ -32,6 +65,7 @@ export class ModifierRetraitementDto {
   @IsOptional()
   @IsNumber()
   @Min(0.01)
+  @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
   montant?: number;
 
   @IsOptional()
@@ -41,18 +75,23 @@ export class ModifierRetraitementDto {
 }
 
 export class ModifierDossierFiscalDto {
-  @IsOptional()
+  // FACULTATIF NE VEUT PAS DIRE NULLABLE (CLAUDE.md § 9) · `null` passait
+  // `@IsOptional()`, puis `arrondir(null)` l'écrivait 0 · des acomptes
+  // déclarés effacés en silence.
+  @FacultatifNonNul(nonNul('Le montant des acomptes versés'))
   @IsNumber()
   @Min(0)
+  @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
   acomptesVerses?: number;
 
   /**
    * Suppléments d'impôt établis par l'Administration · art. 57 bis LPF. Ils
    * entrent dans la base des acomptes du prochain exercice, contestés ou non.
    */
-  @IsOptional()
+  @FacultatifNonNul(nonNul("Le montant des suppléments de l'Administration"))
   @IsNumber()
   @Min(0)
+  @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
   supplementsAdministration?: number;
 
   /** null = OmegaX recalcule depuis les exercices précédents. */
@@ -60,6 +99,7 @@ export class ModifierDossierFiscalDto {
   @ValidateIf((_, v) => v !== null)
   @IsNumber()
   @Min(0)
+  @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
   deficitAnterieurSaisi?: number | null;
 
   @IsOptional()
@@ -76,12 +116,15 @@ export class ModifierDossierFiscalDto {
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
   @IsNumber()
+  @Min(-MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
+  @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
   resultatPeriodeCreationSaisi?: number | null;
 
   /** Suppléments de l'Administration sur l'impôt de la période de création (LPF art. 57 bis). */
-  @IsOptional()
+  @FacultatifNonNul(nonNul('Le montant des suppléments sur la période de création'))
   @IsNumber()
   @Min(0)
+  @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
   supplementsPeriodeCreation?: number;
 
   /**
@@ -92,6 +135,9 @@ export class ModifierDossierFiscalDto {
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
   @IsArray()
+  @ArrayMaxSize(ORIGINES_DEFICIT_MAX, {
+    message: `L'origine du report se déclare en ${ORIGINES_DEFICIT_MAX} parts au plus · une par exercice déficitaire encore imputable.`,
+  })
   @ValidateNested({ each: true })
   @Type(() => OrigineDeficitDto)
   deficitAnterieurOrigines?: OrigineDeficitDto[] | null;
@@ -103,6 +149,7 @@ export class OrigineDeficitDto {
 
   @IsNumber()
   @Min(0.01)
+  @Max(MONTANT_FISCAL_MAX, { message: MOTIF_MONTANT_MAX })
   montant!: number;
 }
 
