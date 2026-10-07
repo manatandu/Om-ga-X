@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { montant } from '../lib/montants';
+import { gabaritGrilleNote } from '../lib/grille-note';
 
 /**
  * NOTES ANNEXES · UNE SEULE GRILLE (relecture du 2026-10-07) · l'en-tête
@@ -16,7 +17,11 @@ describe('rendu des notes · grille et gestes', () => {
     const usages = [...source.matchAll(/gridTemplateColumns:\s*([^}]+)\}/g)].map((m) => m[1].trim());
     expect(usages.length).toBeGreaterThanOrEqual(2);
     for (const u of usages) expect(u.startsWith('gabaritGrilleNote(')).toBe(true);
-    expect(source).toContain('export const gabaritGrilleNote = (nbColonnes: number) => `1.6fr repeat(${nbColonnes}, minmax(108px, 1fr))`;');
+    expect(source).toContain("import { gabaritGrilleNote } from '../lib/grille-note';");
+    // La première piste a un MINIMUM FIXE · un `1.6fr` nu (minimum `auto`)
+    // se réduisait au mot le plus long de chaque ligne, et la grille glissait.
+    expect(gabaritGrilleNote(16)).toBe('minmax(11rem, 1.6fr) repeat(16, minmax(108px, 1fr))');
+    expect(gabaritGrilleNote(16).split(' repeat(')[0]).toMatch(/^minmax\(\d+(\.\d+)?(rem|px), 1\.6fr\)$/);
   });
 
   it('chaque champ saisi se nomme « ligne · colonne » et prend toute sa cellule', () => {

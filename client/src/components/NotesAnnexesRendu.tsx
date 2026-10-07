@@ -4,6 +4,7 @@ import type { Compte, LigneFicheRecapitulative, LigneNoteCalculee, NoteCalculee 
 import { Aide } from './chrome/Aide';
 import { motifAucunCompteRetenu } from '../lib/comptes-proposes';
 import { montant } from '../lib/montants';
+import { gabaritGrilleNote } from '../lib/grille-note';
 import { celluleLibreSaisissable, texteCelluleLibre } from '../lib/cellules-notes';
 import { sousTitreDuTableau } from '../lib/titre-note';
 import { lignesAvecAjouts, rangSuivant, type RangsDemandes } from '../lib/lignes-repetables';
@@ -93,13 +94,6 @@ export interface SaisieNotes {
    */
   retirerFormatAnterieur?: (codeNote: string, motif: string) => void;
 }
-
-/**
- * UNE SEULE GRILLE pour l'en-tête et les lignes · deux gabarits différents
- * (108 px d'un côté, 1fr de l'autre) faisaient glisser les seize colonnes
- * M / F, et un M se saisissait sous l'en-tête F.
- */
-export const gabaritGrilleNote = (nbColonnes: number) => `1.6fr repeat(${nbColonnes}, minmax(108px, 1fr))`;
 
 /**
  * Ce que l'écran dit d'une note que l'exercice ne chiffre pas. Le texte par
