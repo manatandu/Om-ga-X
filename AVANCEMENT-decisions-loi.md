@@ -174,9 +174,23 @@ Manasse du 2026-10-04 sur le samedi).
 
 ## Vérification
 
-Dernier passage (2026-10-07) · serveur `tsc` propre, jest 761 suites, 10 836 tests,
-0 échec, `nest build` propre ; client `tsc` propre, vitest 224 fichiers, 1 819 tests,
-`vite build` propre ; `prisma migrate diff` sans différence.
+Dernier passage (2026-10-07, relecture 1) · serveur `tsc` propre, jest 766 suites,
+10 927 tests (un dépassement de 5 s sous charge dans
+`groupe/operations-reciproques-agregat.spec.ts`, vert relancé seul), `nest build`
+propre ; client `tsc` propre, vitest 228 fichiers, 1 842 tests, `vite build`
+propre ; `prisma migrate diff` sans différence (migrations jusqu'à 20270153).
+
+Scénario sur base jetable (PostgreSQL 16 local), serveur compilé, 56 vérifications,
+0 échec (`scenario-r1.mjs` du bloc-notes) · SARL du portefeuille en liquidation à
+travers la clôture de 2026 vers 2027 (« 2027-02-30 » et « 2026-02-30 » refusées,
+heure à fuseau qui garde le jour, AG du 20 mars qui satisfait 21 et 23, étape 17 au
+3 février, PV DGRAD au 30 mars, PV DGI au 30 mars depuis l'AG, bilan avant
+liquidation sans échéance, 1384) ; SA de 2025 aux échéances passées, rouges puis
+levées par l'AG et la transmission déclarées, gardées après clôture ; SA à associé
+unique personne morale (dissolution admise, une ligne satisfaite, nomination et
+régime refusés) ; entreprenant refusé au portefeuille ; association · saisie 29B au
+format antérieur retirée sur exercice CLOS, motif court refusé, ligne supprimée,
+deux maillons au journal d'audit, `rang: null` refusé en 400 nommé.
 
 ```bash
 npx prisma migrate diff --from-migrations prisma/migrations \
