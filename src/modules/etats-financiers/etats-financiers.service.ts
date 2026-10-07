@@ -6,8 +6,12 @@ import { ExerciceService } from '../exercice/exercice.service';
 import {
   CompteDuPoste,
   LigneBalancePourEtat,
+  MOTIF_RESULTAT_N1_NON_TENU,
   chargerLignes,
+  comparatifDuBilan,
   correspond,
+  lireOuverturePasseeEnOd,
+  ouvertureTenue,
   trouverExerciceN1,
 } from './etats-financiers.communs';
 import { estCompteDuResultatDeLExercice } from './resultat-de-l-exercice';
@@ -275,13 +279,21 @@ export class EtatsFinanciersService {
       this.chargerLignes(tenantId, exerciceN1Id),
     ]);
 
+    // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
+    // est le bilan d'ouverture du dossier (SYCEBNL Partie 4 ch. 1 § 1.4,
+    // `comparatifDuBilan`), jamais une colonne vide pour un dossier repris.
+    // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
+    // report, une ouverture saisie en OD au premier jour n'est lue ni comme
+    // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYCEBNL');
     const { parRef: parRefN, resultatClasses678, resultatCompte13 } = this.resoudreTousLesPostesBilan(lignesN);
-    const { parRef: parRefN1 } = this.resoudreTousLesPostesBilan(lignesN1);
+    const { parRef: parRefN1 } = this.resoudreTousLesPostesBilan(comparatif.lignes);
 
     const refsTotaux = new Set([...TOTAUX_ACTIF, ...TOTAUX_PASSIF].map((t) => t.ref));
     const fusionnerN1 = (ref: string): PosteCalcule => {
       const n = parRefN.get(ref)!;
-      const n1 = exerciceN1Id ? parRefN1.get(ref) : undefined;
+      const n1 = comparatif.provenance ? parRefN1.get(ref) : undefined;
       return {
         ...n,
         estTotal: refsTotaux.has(ref),
@@ -326,8 +338,8 @@ export class EtatsFinanciersService {
 
     const totalActif = parRefN.get('BZ')!.montant;
     const totalPassif = parRefN.get('DZ')!.montant;
-    const totalActifN1 = exerciceN1Id ? parRefN1.get('BZ')!.montant : undefined;
-    const totalPassifN1 = exerciceN1Id ? parRefN1.get('DZ')!.montant : undefined;
+    const totalActifN1 = comparatif.provenance ? parRefN1.get('BZ')!.montant : undefined;
+    const totalPassifN1 = comparatif.provenance ? parRefN1.get('DZ')!.montant : undefined;
 
     return {
       actif,
@@ -337,6 +349,8 @@ export class EtatsFinanciersService {
       totalActifN1,
       totalPassifN1,
       exerciceN1Disponible: exerciceN1Id !== null,
+      comparatif: comparatif.provenance,
+      mentionComparatif: comparatif.mention,
       // Tolérance d'arrondi ; un écart réel signale un bug du moteur
       // d'écritures OU un compte non rattaché (voir comptesNonRattaches),
       // pas un défaut de cette répartition.
@@ -492,6 +506,8 @@ export class EtatsFinanciersService {
       resultatNet, // XE
       resultatNetN1,
       exerciceN1Disponible: exerciceN1Id !== null,
+      // Q3 · le compte de résultat N-1 ne se tire pas d'un bilan d'ouverture.
+      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(lignesN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       comptesNonRattaches: resN.comptesNonRattaches,
       controle: {
         resultatToutesClassesDeGestion: resN.resultatToutesClassesDeGestion,

@@ -26,6 +26,8 @@ function serviceAvec(saisies: Array<Record<string, unknown>>) {
     balance: jest.fn(() => Promise.resolve({ lignes: [], totaux: { debit: 0, credit: 0 } })),
     virementsDeMiseEnService: jest.fn().mockResolvedValue(new Map()),
     mouvementsDeCoutsEmpruntIncorpores: jest.fn().mockResolvedValue(new Map()),
+    // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
+    ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
     mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
   } as unknown as EcritureService;
   const exercice = {
@@ -118,6 +120,8 @@ describe('Notes 20B et 29B · personnel propre à seize colonnes', () => {
       balance: jest.fn(() => Promise.resolve({ lignes: [], totaux: { debit: 0, credit: 0 } })),
       virementsDeMiseEnService: jest.fn().mockResolvedValue(new Map()),
       mouvementsDeCoutsEmpruntIncorpores: jest.fn().mockResolvedValue(new Map()),
+      // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
+      ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
       mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
     } as unknown as EcritureService;
     const exercice = {

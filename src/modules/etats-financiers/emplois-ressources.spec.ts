@@ -51,6 +51,8 @@ function service(
     cumulFin?: ReturnType<typeof ligne>[];
     cumulDebut?: ReturnType<typeof ligne>[];
     exercicePrecedentId?: string;
+    /** Comptes déclarés porter la contrepartie de l'État (Q2 des cas chiffrés de la clôture). */
+    contrepartieEtat?: string[];
   } = {},
 ) {
   const ecritureService = {
@@ -82,7 +84,11 @@ function service(
     compte: {
       findMany: jest.fn().mockImplementation(({ where }: any) =>
         Promise.resolve(
-          // Deux formes d'appel : par identifiants (bilan, compte
+          // Troisième forme · les comptes déclarés porter la contrepartie de
+          // l'État, filtre honoré.
+          where.porteFondsContrepartieEtat === true
+            ? (options.contrepartieEtat ?? []).map((id) => ({ id }))
+            : // Deux formes d'appel : par identifiants (bilan, compte
           // d'exploitation) et par « tous les comptes rattachés à un
           // bailleur » (tableau emplois-ressources, qui lit les
           // rattachements une fois pour ses trois colonnes).
@@ -245,12 +251,36 @@ describe('Tableau emplois-ressources · projets de développement', () => {
     expect(er.totalEmplois).toBe(300_000);
   });
 
-  it('déclare que la contrepartie État ne peut pas être isolée, au lieu de répartir au jugé', async () => {
-    const s = service([ligne('52110000', ClasseCompte.CLASSE_5, { debit: 500_000 })]);
+  // CAS CHIFFRÉS DE LA CLÔTURE, Q2 ET N7 (2026-10-07) · aucun texte ne
+  // désigne le compte qui porte la contrepartie de l'État (Application 21,
+  // « comptes 51, 52, 53, 55, 57 » pour les trois natures) · le cabinet le
+  // DÉCLARE, jamais deviné, et l'état le lit.
+  it('sans compte déclaré, la contrepartie de l’État reçue reste en FZ, et c’est dit', async () => {
+    const s = service([
+      ligne('57100000', ClasseCompte.CLASSE_5, { debit: 500_000 }),
+      ligne('46300000', ClasseCompte.CLASSE_4, { credit: 500_000 }),
+    ]);
     const er = await s.tableauEmploisRessources('t1', 'e1');
     expect(poste(er, 'FY').montant).toBe(0);
     expect(poste(er, 'FZ').montant).toBe(500_000);
     expect(er.avertissements.some((a) => a.includes('contrepartie État'))).toBe(true);
+  });
+
+  it('le compte DÉCLARÉ porter la contrepartie de l’État va en FV et FY, sans avertissement', async () => {
+    const s = service(
+      [ligne('57100000', ClasseCompte.CLASSE_5, { debit: 500_000 }), ligne('46300000', ClasseCompte.CLASSE_4, { credit: 500_000 })],
+      { contrepartieEtat: ['id-57100000'] },
+    );
+    const er = await s.tableauEmploisRessources('t1', 'e1');
+    expect({ fy: poste(er, 'FY').montant, fz: poste(er, 'FZ').montant }).toEqual({ fy: 500_000, fz: 0 });
+    expect(er.avertissements.some((a) => a.includes('contrepartie État'))).toBe(false);
+  });
+
+  it('sans fonds de l’État, rien à dire', async () => {
+    const s = service([ligne('52110000', ClasseCompte.CLASSE_5, { debit: 500_000 })]);
+    const er = await s.tableauEmploisRessources('t1', 'e1');
+    expect(poste(er, 'FZ').montant).toBe(500_000);
+    expect(er.avertissements.some((a) => a.includes('contrepartie État'))).toBe(false);
   });
   /*
    * LES TROIS COLONNES DE LA MAQUETTE OFFICIELLE.
@@ -388,5 +418,73 @@ describe('Tableau emplois-ressources · projets de développement', () => {
       expect(er.controle.cumulFin.boucle).toBe(true);
       expect(er.controle.cumulDebut.boucle).toBe(true);
     });
+  });
+});
+
+/**
+ * CONSTAT B4 DES CAS CHIFFRÉS DE LA CLÔTURE (2026-10-07) · la variation du
+ * 401 va à chaque poste pour la dette de SES pièces (renvoi (4), « compte 401
+ * concerné »). La lecture des pièces est gelée par `dettes-rattachees.spec.ts`
+ * · ici, le partage qu'en fait la colonne, la lecture remplacée par ses
+ * résultats.
+ */
+describe('Emplois-ressources · la dette concernée, jamais un prorata (B4)', () => {
+  const C10_2026 = [
+    ligne('60110000', ClasseCompte.CLASSE_6, { debit: 2_000_000 }),
+    ligne('61810000', ClasseCompte.CLASSE_6, { debit: 400_000 }),
+    ligne('63270000', ClasseCompte.CLASSE_6, { debit: 1_000_000 }),
+    ligne('40110000', ClasseCompte.CLASSE_4, { debit: 1_500_000, credit: 2_000_000 }),
+    ligne('46200000', ClasseCompte.CLASSE_4, { credit: 3_400_000 }),
+    ligne('52110000', ClasseCompte.CLASSE_5, { debit: 3_400_000, credit: 2_900_000 }),
+  ];
+  const avec = (s: EtatsFinanciersProjetService, fin: Map<string, number>, debut = new Map<string, number>()) =>
+    jest.spyOn(s as never, 'dettesRattacheesDesColonnes' as never).mockResolvedValue({
+      exercice: new Map([['401::', { debut: { parRef: debut, nonRattache: 0 }, fin: { parRef: fin, nonRattache: 0 } }]]),
+      cumulFin: new Map([['401::', { fin: { parRef: fin, nonRattache: 0 } }]]),
+      cumulDebut: new Map([['401::', { fin: undefined }]]),
+    } as never);
+
+  it('C10, 2026 · la facture B de fournitures due au 31 décembre ne diminue que les achats', async () => {
+    const s = service(C10_2026);
+    avec(s, new Map([['FM', 500_000]]));
+    const er = await s.tableauEmploisRessources('t1', 'e1');
+    expect([poste(er, 'FM').montant, poste(er, 'FN').montant, poste(er, 'FO').montant]).toEqual([1_500_000, 400_000, 1_000_000]);
+    expect(er.avertissements.some((a: string) => a.includes('ne se rattache à aucune facture'))).toBe(false);
+    // Les totaux ne bougent pas · seule la répartition change.
+    expect(er.controle.boucle).toBe(true);
+  });
+
+  it('la part non rattachée seule se répartit au prorata du brut, et elle est NOMMÉE', async () => {
+    const s = service(C10_2026);
+    avec(s, new Map([['FM', 300_000]]));
+    const er = await s.tableauEmploisRessources('t1', 'e1');
+    const fm = poste(er, 'FM') as { montant: number; correctionNonRattachee?: number };
+    // −300 000 rattachés aux achats, −200 000 répartis sur 3 400 000 de brut.
+    expect(fm.correctionNonRattachee).toBeCloseTo((-200_000 * 2_000_000) / 3_400_000, 2);
+    expect(fm.montant).toBeCloseTo(2_000_000 - 300_000 - (200_000 * 2_000_000) / 3_400_000, 2);
+    expect(er.avertissements.find((a: string) => a.includes('ne se rattache à aucune facture'))).toContain('-200000.00');
+    const total = ['FM', 'FN', 'FO'].reduce((t, r) => t + poste(er, r).montant, 0);
+    expect(total).toBeCloseTo(2_900_000, 2);
+  });
+
+  it('une dette qui passe d’un poste à l’autre corrige les deux, même à variation totale nulle', async () => {
+    const s = service([
+      ligne('60110000', ClasseCompte.CLASSE_6, { debit: 1_000 }),
+      ligne('61810000', ClasseCompte.CLASSE_6, { debit: 1_000 }),
+      ligne('40110000', ClasseCompte.CLASSE_4, { debit: 1_000, credit: 1_000 }, { credit: 100 }),
+      ligne('52110000', ClasseCompte.CLASSE_5, { credit: 1_000 }, { debit: 5_000 }),
+    ]);
+    avec(s, new Map([['FN', 100]]), new Map([['FM', 100]]));
+    const er = await s.tableauEmploisRessources('t1', 'e1');
+    expect(poste(er, 'FM').montant).toBe(1_100);
+    expect(poste(er, 'FN').montant).toBe(900);
+  });
+
+  it('sans pièce lisible, la colonne garde l’ancien prorata et le dit', async () => {
+    const s = service(C10_2026);
+    avec(s, new Map());
+    const er = await s.tableauEmploisRessources('t1', 'e1');
+    expect(poste(er, 'FM').montant).toBeCloseTo(2_000_000 - (500_000 * 2_000_000) / 3_400_000, 2);
+    expect(er.avertissements.some((a: string) => a.includes('FM, FN, FO'))).toBe(true);
   });
 });

@@ -55,8 +55,10 @@ import { ClasseCompte, ModeReportANouveau, TypeCompteDetailTotal } from '@prisma
  * tiers nécessitant un suivi fin par lettrage (classe 4, divisions 40/41/45/
  * 46/47 · fournisseurs, adhérents-clients, fondateurs-apporteurs, bailleurs,
  * débiteurs-créditeurs divers) ; AUCUN pour les comptes de gestion soldés à
- * la clôture (classes 6, 7, 8) ; SOLDE pour les comptes hors bilan/résultat
- * de la classe 9 (90/91, mémoire des contributions volontaires en nature).
+ * la clôture (classes 6, 7, 8) ; AUCUN aussi pour la classe 9 (90/91,
+ * mémoire des contributions volontaires en nature), qui n'est pas au bilan
+ * de clôture et ne se reporte donc pas (constat N5 des cas chiffrés de la
+ * clôture, `horsDuReport`).
  *
  * Anomalies du texte source, non corrigées silencieusement (voir le skill) :
  * - Classe 1 (§ tableau de synthèse vs plan détaillé) : numérotation 16/17/18
@@ -1173,12 +1175,18 @@ const classe8: LigneSeed[] = c(ClasseCompte.CLASSE_8, AUCUN, [
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────
-// CLASSE 9 · CONTRIBUTIONS VOLONTAIRES EN NATURE (mémoire, report SOLDE)
+// CLASSE 9 · CONTRIBUTIONS VOLONTAIRES EN NATURE (mémoire, sans report)
 // Seuls les comptes 90/91 (contributions volontaires en nature) sont repris :
 // les comptes 92 à 99 (comptabilité analytique de gestion) ne sont PAS
 // subdivisés dans le texte officiel ("libre usage") · ne pas les inventer.
 // ─────────────────────────────────────────────────────────────────────────
-const classe9: LigneSeed[] = c(ClasseCompte.CLASSE_9, SOLDE, [
+// SANS REPORT (cas chiffrés de la clôture, constat N5) · ni actif ni passif
+// (Partie 2 ch. 1), elles ne sont pas au bilan de clôture que l'à-nouveau
+// reprend (AUDCIF art. 34). Le calcul du report les écarte quel que soit le
+// mode (`horsDuReport`) ; le semis le dit aussi. AUCUN n'en fait pas des
+// comptes de gestion · `resultatDesComptesDeGestion` ne les voit pas, le
+// report les ayant écartées avant.
+const classe9: LigneSeed[] = c(ClasseCompte.CLASSE_9, AUCUN, [
   ['90000000', 'Emplois des contributions volontaires en nature · secours en nature'],
   ['90100000', 'Emplois des contributions volontaires en nature · mises à disposition gratuite de biens'],
   ['90200000', 'Emplois des contributions volontaires en nature · prestations en nature'],
@@ -1298,8 +1306,9 @@ const totauxClasse8: LigneSeed[] = [
 // aucun compte Détail n'est semé dessous (§ en-tête de fichier, « libre
 // usage »), un en-tête sans enfant n'aurait rien à regrouper.
 const totauxClasse9: LigneSeed[] = [
-  total('90', 'Emplois des contributions volontaires en nature', ClasseCompte.CLASSE_9, SOLDE),
-  total('91', 'Contributions volontaires en nature', ClasseCompte.CLASSE_9, SOLDE),
+  // Sans report, comme leurs comptes de détail (constat N5, `horsDuReport`).
+  total('90', 'Emplois des contributions volontaires en nature', ClasseCompte.CLASSE_9, AUCUN),
+  total('91', 'Contributions volontaires en nature', ClasseCompte.CLASSE_9, AUCUN),
   // COMPTABILITÉ ANALYTIQUE DE GESTION · la seconde « CLASSE 9 » du plan
   // officiel (p. 105) énumère 92 à 99 sans jamais les développer : le texte
   // les laisse au « libre usage » de l'entité. Ils sont donc semés comme

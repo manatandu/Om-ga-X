@@ -539,7 +539,21 @@ export interface PosteFluxTresorerieSyscohada {
    * affichée, jamais approximée par une clé inventée. Ne pas lire cette
    * liste comme « ces comptes sont exclus du poste » : le motif seul le dit.
    */
-  nonDeterminables?: { comptes: string[]; motif: string }[];
+  nonDeterminables?: {
+    comptes: string[];
+    motif: string;
+    /**
+     * Ce qui, EN PLUS d'un mouvement des `comptes`, fait naître la réserve
+     * (cas chiffrés de la clôture, constat N2, 2026-10-07). Sans lui, la
+     * réserve « réévaluation passée hors du module » naissait de toute
+     * dotation au 28, donc à chaque exercice d'une entité qui amortit ·
+     * le contrôle FABRIQUAIT une anomalie (CLAUDE.md § 10 bis). Une
+     * réévaluation passée à la main CRÉDITE le 1061 ou le 154 (Titre VIII
+     * ch. 28 § 4.2.4.1), une dotation jamais. Le mouvement lié au module
+     * reste neutralisé, comme pour les `comptes`.
+     */
+    declencheur?: { comptes: string[]; sens: 'DEBIT' | 'CREDIT' };
+  }[];
   /** Commentaire de rattachement reproduit dans l'état. */
   note?: string;
 }
@@ -917,6 +931,7 @@ export const POSTES_INVESTISSEMENT_SYSCOHADA: PosteFluxTresorerieSyscohada[] = [
       },
       {
         comptes: ['28'],
+        declencheur: { comptes: ['106', '154'], sens: 'CREDIT' },
         motif:
           "Réévaluation passée HORS du module (celle du module est neutralisée par sa liaison) · part « amortissements » " +
           "de l'écart de réévaluation d'un bien amortissable (Titre VIII ch. 28 § 4.2.4.1 : " +
@@ -1343,7 +1358,10 @@ export function comptesCitesParLeTftSyscohada(): { ref: string; prefixe: string 
       for (const prefixe of t.comptes?.prefixes ?? []) cites.push({ ref: p.ref, prefixe });
       for (const prefixe of t.comptes?.exclusions ?? []) cites.push({ ref: p.ref, prefixe });
     }
-    for (const nd of p.nonDeterminables ?? []) for (const prefixe of nd.comptes) cites.push({ ref: p.ref, prefixe });
+    for (const nd of p.nonDeterminables ?? []) {
+      for (const prefixe of nd.comptes) cites.push({ ref: p.ref, prefixe });
+      for (const prefixe of nd.declencheur?.comptes ?? []) cites.push({ ref: p.ref, prefixe });
+    }
   }
   return cites;
 }

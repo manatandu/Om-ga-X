@@ -5,6 +5,8 @@ import { lacuneEcheancesNote3 } from '../lib/note3-echeances-smt';
 import { useExercice } from '../lib/exercice';
 import { IconCheck, IconExport } from '../components/chrome/icons';
 import { Aide } from '../components/chrome/Aide';
+import { ReglementsNonRattaches } from '../components/ReglementsNonRattaches';
+import { ComparatifN1 } from '../components/ComparatifN1';
 import { BlocCertification, EnteteImpression } from '../components/chrome/EnteteImpression';
 import type {
   BilanSmt,
@@ -329,6 +331,12 @@ export function EtatsSmtPage() {
             {bilan.passif.map(ligneBilan)}
           </div>
 
+          <ComparatifN1
+            exerciceN1Disponible={bilan.exerciceN1Disponible}
+            mention={bilan.mentionComparatif}
+            className="text-[11px] text-text-dim mb-3"
+          />
+
           <div
             className={`flex items-center gap-2 px-3.5 py-2.5 border ${
               bilan.equilibre ? 'border-positive/30 bg-positive-soft' : 'border-danger/30 bg-danger-soft'
@@ -370,18 +378,25 @@ export function EtatsSmtPage() {
             {ligneTotal('KZC', "RÉSULTAT NET DE L'EXERCICE", cr.resultatNet, cr.resultatNetN1)}
           </div>
 
-          {/* Les deux chemins vers le résultat doivent coïncider, une fois
-              retirés les flux que la maquette officielle ne reprend nulle
-              part. C'est le seul contrôle qui atteste que la reconstruction
-              de trésorerie est complète. */}
+          <ComparatifN1
+            exerciceN1Disponible={cr.exerciceN1Disponible}
+            motif={cr.motifComparatifAbsent}
+            className="text-[11px] text-text-dim mb-3"
+          />
+
+          {/* Les deux chemins vers le résultat doivent coïncider. Les flux
+              hors exploitation ne sont plus dans KX ni JX (constat B2 des
+              cas chiffrés de la clôture) · ils sont montrés à part. */}
+          <ReglementsNonRattaches reglements={cr.reglementsNonRattaches} poste="JF" />
+
           {Math.abs(cr.controle.fluxHorsExploitation) > 0.005 && (
             <div className="border border-border bg-surface px-3.5 py-2.5 mb-2">
               <div className="text-[11.5px] font-bold mb-1 flex items-center gap-1.5">
                 Flux de trésorerie hors exploitation : {montant(cr.controle.fluxHorsExploitation)}
                 <Aide
                   titre="Flux de trésorerie hors exploitation"
-                  texte="Encaissements et décaissements qui ne sont ni un produit ni une charge (apport en dotation, emprunt, acquisition ou cession d'immobilisation, règlement d'un fournisseur d'investissements 481, que la variation des dettes d'exploitation VC ne reprend pas). Ils entrent dans le solde de caisse KZ mais pas dans le résultat, et la maquette officielle du Système minimal de trésorerie n'ouvre aucune ligne pour les reprendre. Le montant est donc calculé ici plutôt que laissé en écart inexpliqué."
-                  source="SYCEBNL · maquette du Système minimal de trésorerie"
+                  texte="Encaissements et décaissements qui ne sont ni un produit ni une charge (apport en dotation, emprunt, acquisition ou cession d'immobilisation, règlement d'un fournisseur d'investissements 481). Ce ne sont pas des recettes ni des dépenses « sur activités » · ils n'entrent ni dans KX, ni dans JX, ni dans le résultat (« hors nouveaux apports et retraits d'apports »), et le matériel acheté passe en charge par sa dotation (JG). Ils expliquent l'écart entre le solde KZ et la variation de la caisse."
+                  source="SYCEBNL · maquette du Système minimal de trésorerie ; fiche du compte 13"
                 />
               </div>
               {cr.controle.comptesHorsExploitation.map((c) => (
@@ -402,10 +417,10 @@ export function EtatsSmtPage() {
           >
             <span className="text-[11.5px]">
               {cr.controle.concordant
-                ? `Résultat net (KZC ${montant(cr.resultatNet)}), une fois retirés les flux hors exploitation, concorde avec le résultat du bilan (HB ${montant(cr.controle.resultatBilan)}).`
+                ? `Résultat net (KZC ${montant(cr.resultatNet)}) concorde avec le résultat du bilan (HB ${montant(cr.controle.resultatBilan)}).`
                 : `Écart de ${montant(cr.controle.ecart)} entre le résultat reconstitué et le résultat du bilan (HB ${montant(
                     cr.controle.resultatBilan,
-                  )}), flux hors exploitation déjà retirés. Une opération de trésorerie a une contrepartie qu'aucun poste ne capte, ou une charge sans décaissement n'est pas une dotation aux amortissements.`}
+                  )}). Une opération de trésorerie a une contrepartie qu'aucun poste ne capte, ou une charge sans décaissement n'est pas une dotation aux amortissements.`}
             </span>
           </div>
         </div>

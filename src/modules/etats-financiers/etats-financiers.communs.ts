@@ -87,6 +87,134 @@ export async function trouverExerciceN1(
 }
 
 /**
+ * LE COMPARATIF D'UN DOSSIER QUI N'A PAS SON EXERCICE N-1 · tranché par la
+ * loi le 2026-10-07 (cas chiffrés de la clôture, question Q3, constats B1 et
+ * N1).
+ *
+ * « Le bilan d'ouverture d'un exercice doit correspondre au bilan de clôture
+ * de l'exercice précédent » et « chacun des postes des états financiers
+ * comporte l'indication du chiffre relatif au poste correspondant de
+ * l'exercice précédent » (AUDCIF art. 34, premier et quatrième tirets) ;
+ * « Pour chaque poste et rubrique, les chiffres correspondants de l'exercice
+ * précédent doivent être mentionnés » (SYCEBNL Partie 4 ch. 1 § 1.4). Le
+ * bilan de clôture N-1 EST donc, par la loi, le bilan d'ouverture de N · un
+ * dossier repris qui a importé son bilan d'ouverture tient son comparatif de
+ * bilan, et ce n'était pas lu (colonne N-1 vide, ZA du tableau des flux à
+ * zéro pour un dossier qui ouvrait avec 200 000 en banque).
+ *
+ * L'ouverture se lit sur la colonne REPORT de la balance du livre-journal
+ * (`filtresDesTroisColonnes` · bilan d'ouverture importé ou report validé).
+ * L'à-nouveau PROVISOIRE n'y entre jamais · il n'est jamais validé, et il
+ * n'existe que derrière un exercice N-1 tenu dans OmegaX, qui sert alors.
+ * Sans report du tout, l'ouverture est nulle · c'est la société qui naît.
+ *
+ * Le COMPTE DE RÉSULTAT N-1 ne se tire pas d'un bilan · sa colonne reste
+ * vide, et le motif dit l'issue (`MOTIF_RESULTAT_N1_NON_TENU`).
+ */
+export type ProvenanceComparatif = 'EXERCICE_N1' | 'BILAN_D_OUVERTURE';
+
+/** Les mêmes lignes ramenées à l'OUVERTURE · le report tient lieu de solde, les mouvements sont mis de côté. */
+export function lignesALOuverture<L extends LigneBalancePourEtat>(lignes: readonly L[]): L[] {
+  return lignes.map((l) => ({
+    ...l,
+    totalDebit: l.reportDebit,
+    totalCredit: l.reportCredit,
+    mouvementDebit: 0,
+    mouvementCredit: 0,
+    solde: l.reportDebit - l.reportCredit,
+  }));
+}
+
+/** Le dossier a-t-il un bilan d'ouverture au livre-journal (un report non nul) ? */
+export function ouvertureTenue(lignes: readonly LigneBalancePourEtat[]): boolean {
+  return lignes.some((l) => Math.abs(l.reportDebit) > 0.005 || Math.abs(l.reportCredit) > 0.005);
+}
+
+/**
+ * UNE OUVERTURE SAISIE EN OD AU PREMIER JOUR NE SE LIT PAS SANS DOUTE
+ * (relecture du 2026-10-07, bloquant 2). Sans exercice précédent ni report,
+ * une position de bilan passée au premier jour par le journal d'opérations
+ * diverses (le périmètre de la clôture, AU2) peut être la REPRISE d'un
+ * dossier (son bilan d'ouverture, art. 34) ou la NAISSANCE de l'entité
+ * (l'apport du premier jour), et rien ne les distingue. Lue comme flux, la
+ * reprise sortait en acquisitions et en apports et ZA valait zéro, sans un
+ * mot ; lue comme ouverture, l'apport disparaîtrait des flux. Elle n'est lue
+ * ni l'un ni l'autre · la colonne N-1 n'est pas servie, les postes du tableau
+ * des flux qui lisent l'ouverture restent vides, et le motif nomme les
+ * pièces et les deux issues.
+ */
+export interface OuverturePasseeEnOd {
+  nombre: number;
+  pieces: string[];
+}
+
+/** Lue seulement quand elle compte · aucun exercice précédent, aucun report. */
+export async function lireOuverturePasseeEnOd(
+  ecritureService: EcritureService,
+  tenantId: string,
+  exerciceId: string,
+  exerciceN1Id: string | null,
+  lignesN: readonly LigneBalancePourEtat[],
+): Promise<OuverturePasseeEnOd | null> {
+  if (exerciceN1Id || ouvertureTenue(lignesN)) return null;
+  return ecritureService.ouverturePasseeAuPremierJour(tenantId, exerciceId);
+}
+
+/** Le motif d'une ouverture saisie en OD, qui n'est lue ni comme flux ni comme ouverture. */
+export function motifOuverturePasseeEnOd(o: OuverturePasseeEnOd, referentiel: 'SYSCOHADA' | 'SYCEBNL'): string {
+  const article = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34';
+  const pieces = o.pieces.join(', ') + (o.nombre > o.pieces.length ? ` et ${o.nombre - o.pieces.length} autre(s)` : '');
+  return (
+    `Le premier jour de l'exercice porte une position de bilan passée en opérations diverses (${pieces}), ` +
+    "sans exercice précédent ni à-nouveau dans le dossier · elle peut être le bilan d'ouverture d'un dossier repris " +
+    `(${article}) ou l'apport qui fait naître l'entité, et rien ne les distingue. Ni la colonne N-1 ni les postes qui lisent ` +
+    "l'ouverture ne sont servis. Si c'est un bilan d'ouverture, passez-le en à-nouveau (import du bilan d'ouverture) ; " +
+    "si c'est une opération de l'exercice, passez-la par le journal qui l'encaisse ou datez-la du lendemain."
+  );
+}
+
+/** L'ouverture présumée nulle d'une entité qui naît · dite, jamais tue. */
+export function mentionOuverturePresumeeNulle(referentiel: 'SYSCOHADA' | 'SYCEBNL'): string {
+  return referentiel === 'SYCEBNL'
+    ? "Aucun exercice précédent ni bilan d'ouverture dans le dossier · l'ouverture est présumée nulle, celle d'une entité qui naît (SYCEBNL art. 16, 4) ; cadre conceptuel § 3.3.1.2.4). Un dossier repris importe son bilan d'ouverture en à-nouveau."
+    : "Aucun exercice précédent ni bilan d'ouverture dans le dossier · l'ouverture est présumée nulle, celle d'une entité qui naît (AUDCIF art. 34). Un dossier repris importe son bilan d'ouverture en à-nouveau.";
+}
+
+/**
+ * Le comparatif d'un BILAN · les lignes de N-1 quand l'exercice existe,
+ * sinon celles de l'ouverture de N quand le dossier en a une, sinon rien
+ * (premier exercice d'une entité qui naît · aucun exercice précédent, aucune
+ * colonne à remplir de zéros). La mention dit toujours d'où vient la colonne
+ * ou pourquoi elle manque.
+ */
+export function comparatifDuBilan(
+  exerciceN1Id: string | null,
+  lignesN1: LigneBalancePourEtat[],
+  lignesN: LigneBalancePourEtat[],
+  ouverturePassee: OuverturePasseeEnOd | null,
+  referentiel: 'SYSCOHADA' | 'SYCEBNL',
+): { provenance: ProvenanceComparatif | null; lignes: LigneBalancePourEtat[]; mention: string | null } {
+  if (exerciceN1Id) return { provenance: 'EXERCICE_N1', lignes: lignesN1, mention: null };
+  if (ouvertureTenue(lignesN)) {
+    return { provenance: 'BILAN_D_OUVERTURE', lignes: lignesALOuverture(lignesN), mention: mentionComparatifSurOuverture(referentiel) };
+  }
+  if (ouverturePassee) return { provenance: null, lignes: [], mention: motifOuverturePasseeEnOd(ouverturePassee, referentiel) };
+  return { provenance: null, lignes: [], mention: mentionOuverturePresumeeNulle(referentiel) };
+}
+
+/** La mention imprimée au-dessus d'une colonne N-1 lue sur l'ouverture · un texte par référentiel. */
+export function mentionComparatifSurOuverture(referentiel: 'SYSCOHADA' | 'SYCEBNL'): string {
+  return referentiel === 'SYCEBNL'
+    ? "Colonne N-1 lue sur le bilan d'ouverture du dossier, l'exercice précédent n'étant pas tenu dans OmegaX (SYCEBNL, Partie 4 ch. 1 § 1.4 ; cadre conceptuel § 3.3.1.2.4)."
+    : "Colonne N-1 lue sur le bilan d'ouverture du dossier, l'exercice précédent n'étant pas tenu dans OmegaX (AUDCIF art. 34).";
+}
+
+/** Le compte de résultat N-1 d'un dossier repris · vide, avec l'issue. */
+export const MOTIF_RESULTAT_N1_NON_TENU =
+  "Exercice précédent non tenu dans OmegaX : son compte de résultat ne se tire pas du bilan d'ouverture. " +
+  "Pour servir le comparatif, ouvrez l'exercice précédent, importez-y sa balance de clôture, puis clôturez-le.";
+
+/**
  * LIGNES DE BALANCE CUMULÉES DEPUIS L'ORIGINE, arrêtées à la fin d'un
  * exercice · voir `EcritureService.balanceCumulee` pour les deux règles de
  * lecture (report à-nouveau exclu, bilan d'ouverture conservé). Même filtre

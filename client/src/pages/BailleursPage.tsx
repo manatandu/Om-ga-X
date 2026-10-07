@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 import type { Bailleur, Compte } from '../lib/types';
 import { Aide } from '../components/chrome/Aide';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
+import { comptesDeFondsProjet } from '../lib/contrepartie-etat';
 
 /**
  * Bailleurs / sous-projets (comptabilité analytique par projet/bailleur,
@@ -54,7 +55,9 @@ export function BailleursPage() {
       ]);
       setBailleurs(b);
       const ids = new Set(proposes.map((c) => c.id));
-      setComptes(plan.filter((c) => ids.has(c.id) || !!c.bailleurId));
+      // Un compte DÉCLARÉ porter la contrepartie de l'État reste montré même
+      // non retenu · sa déclaration doit rester visible pour être retirée.
+      setComptes(plan.filter((c) => ids.has(c.id) || !!c.bailleurId || !!c.porteFondsContrepartieEtat));
       setEligiblesAuPlan(plan.filter((c) => PREFIXES.some((p) => c.numero.startsWith(p))).length);
     } catch (err) {
       setErreur(`Lecture impossible · ${err instanceof ApiError ? err.message : 'serveur injoignable'}`);
@@ -103,6 +106,26 @@ export function BailleursPage() {
       setErreur(err instanceof ApiError ? err.message : 'Impossible de rattacher ce compte');
     }
   };
+
+  /*
+    CONTREPARTIE DE L'ÉTAT (cas chiffrés de la clôture, Q2) · déclarée sur le
+    compte de trésorerie, administrateur seul (PATCH /comptes/:id est
+    @Roles(ADMIN_CABINET)). Un geste à la fois · la réponse relit tout.
+  */
+  const [declarationEnCours, setDeclarationEnCours] = useState<string | null>(null);
+  const declarerContrepartieEtat = async (c: Compte, porte: boolean) => {
+    setErreur(null);
+    setDeclarationEnCours(c.id);
+    try {
+      await api.patch(`/comptes/${c.id}`, { porteFondsContrepartieEtat: porte });
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Impossible de modifier ce compte');
+    } finally {
+      setDeclarationEnCours(null);
+    }
+  };
+  const comptesDeFonds = comptesDeFondsProjet(comptes ?? []);
 
   // Comptes éligibles au rattachement · 162-164 (Fonds d'investissement) et
   // 462-464 (Fonds d'administration), les deux seules familles que la
@@ -253,6 +276,49 @@ export function BailleursPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {jeuProjet && comptes && (
+        <>
+          <h2 className="text-[12px] font-bold mt-4 mb-1.5 flex items-center gap-1.5">
+            Contrepartie de l'État
+            <Aide
+              titre="Fonds de contrepartie de l'État"
+              texte="Au tableau emplois-ressources, les fonds de début et de fin d'exercice se lisent sur les comptes 51, 52, 53, 55 et 57, répartis entre le bailleur (FU, FX), la contrepartie de l'État (FV, FY) et les autres fonds (FW, FZ). Aucun texte ne dit quel compte porte la contrepartie de l'État · c'est une convention d'OmegaX, déclarée ici par le cabinet, compte par compte. Un compte rattaché à un bailleur ne peut pas la porter. Sans déclaration, la contrepartie de l'État est comprise dans les autres fonds, et l'état le dit."
+              source="SYCEBNL, guide d'application, Application 21"
+            />
+          </h2>
+          <div className="border border-border bg-surface max-w-[720px] overflow-x-auto">
+            <div className="grid grid-cols-[90px_1fr_200px] min-w-[500px] gap-3 px-4 py-1.5 bg-chrome border-b border-border text-[11px] font-bold text-text-dim">
+              <span>N°</span>
+              <span>Libellé</span>
+              <span>Contrepartie de l'État</span>
+            </div>
+            {comptesDeFonds.length === 0 && (
+              <div className="px-4 py-3 text-[11.5px] text-warning">
+                {motifAucunCompteRetenu(comptesDeFonds, 'de trésorerie 51, 52, 53, 55 ou 57')}
+              </div>
+            )}
+            {comptesDeFonds.map((c, i) => (
+              <div
+                key={c.id}
+                className={`grid grid-cols-[90px_1fr_200px] min-w-[500px] gap-3 items-center px-4 py-1.5 border-b border-border last:border-b-0 ${i % 2 === 0 ? 'bg-surface' : 'bg-surface-alt'}`}
+              >
+                <span className="font-mono text-[11.5px]">{c.numero}</span>
+                <span className="text-[11.5px]">{c.intitule}</span>
+                <label className="text-[11.5px] flex items-center gap-1.5" title={c.bailleurId ? 'Compte rattaché à un bailleur' : undefined}>
+                  <input
+                    type="checkbox"
+                    checked={!!c.porteFondsContrepartieEtat}
+                    onChange={(e) => declarerContrepartieEtat(c, e.target.checked)}
+                    disabled={!estAdmin || !!c.bailleurId || declarationEnCours !== null}
+                  />
+                  {c.bailleurId ? 'fonds du bailleur' : c.porteFondsContrepartieEtat ? 'porte la contrepartie' : 'non'}
+                </label>
               </div>
             ))}
           </div>

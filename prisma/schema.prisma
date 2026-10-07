@@ -1219,6 +1219,15 @@ model Compte {
   bailleurId String?
   bailleur   Bailleur? @relation(fields: [bailleurId], references: [id])
 
+  /// Compte de trésorerie qui porte les fonds de contrepartie de l'État,
+  /// au tableau emplois-ressources d'un projet (FV, FY). CONVENTION
+  /// D'OMEGAX, déclarée par le cabinet · le guide (SYCEBNL, Application 21)
+  /// ne dit que « comptes 51, 52, 53, 55, 57 » pour les trois natures de
+  /// fonds, aucun texte ne désigne le compte (cas chiffrés de la clôture,
+  /// Q2). Faux · le compte n'est pas déclaré, ses fonds vont en FW et FZ
+  /// (ou en FU et FX s'il est rattaché à un bailleur).
+  porteFondsContrepartieEtat Boolean @default(false)
+
   lignesEcriture                LigneEcriture[]
   odAnalytiques                 OdAnalytique[]
   journauxTresorerie            Journal[] // journaux de type TRESORERIE dont ce compte est la contrepartie

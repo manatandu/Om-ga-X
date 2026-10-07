@@ -275,23 +275,44 @@ export const POSTES_RECETTES: PosteFluxSmt[] = [
     libelle: 'Revenus encaissés',
     sens: 'RECETTE',
     note: '4',
-    comptes: ['70'],
+    // 70, et les créances d'adhérents et de clients-usagers (41) · leur
+    // encaissement EST le revenu encaissé (constat N4 des cas chiffrés de la
+    // clôture). « Encaissements au cours de l'exercice N = Revenus (N) +
+    // Créances (N – 1) – Créances (N) » ; « Cotisations des adhérents
+    // encaissées en N = Cotisations des adhérents de l'exercice N + Créances
+    // adhérents de N-1 - Créances adhérents de N » (Partie 4 ch. 1,
+    // section 4) ; fiche du COMPTE 41 · cotisations des adhérents et clients
+    // « auxquels l'entité vend les biens ou services, objet de son activité ».
+    // Le 4186 (intérêts courus), le 4194 (consignations) et le 4198 (avoirs à
+    // accorder) ne naissent pas d'un revenu d'activité · ils restent en KB.
+    comptes: ['70', '411', '412', '413', '416', '4181', '4182', '4191', '4192'],
     fondement:
-      "Compte 70 « Revenus » (Partie 2, ch. 3, COMPTE 70), subdivisions 701 à 708 : cotisations, générosité du public, ventes, manifestations. Les subventions d'exploitation en sont exclues par la fiche du compte, qui les renvoie au 71, donc en KB. La ventilation des recettes de la Note 4 découpe autrement : sa colonne « Cotisations » ne lit que le 701, sa colonne « Subventions » les 71 et 88 · les deux découpages ne se recoupent pas.",
+      "Compte 70 « Revenus » (Partie 2, ch. 3, COMPTE 70), subdivisions 701 à 708 : cotisations, générosité du public, ventes, manifestations. Et le recouvrement des créances d'adhérents et de clients-usagers (411 à 416, 4181, 4182, 4191, 4192), revenu encaissé au sens de la comptabilité de trésorerie (Partie 4 ch. 1, section 4 : « Cotisations des adhérents encaissées en N = Cotisations des adhérents de l'exercice N + Créances adhérents de N-1 - Créances adhérents de N »). Les subventions d'exploitation en sont exclues par la fiche du compte, qui les renvoie au 71, donc en KB. La ventilation des recettes de la Note 4 découpe autrement : sa colonne « Cotisations » ne lit que le 701, sa colonne « Subventions » les 71 et 88 · les deux découpages ne se recoupent pas.",
   },
   {
     ref: 'KB',
     libelle: 'Autres recettes sur activités',
     sens: 'RECETTE',
     note: '4',
-    // Tout encaissement dont la contrepartie n'est pas le compte 70 :
-    // subventions (71), autres produits (75, 77, 78, 79), produits H.A.O.
-    // (82, 84, 86, 88) et règlements de créances (classe 4) ou apports
-    // (classe 1). Défini par exclusion pour ne rien laisser tomber.
-    comptes: ['1', '2', '3', '4', '6', '7', '8'],
-    exclusions: ['70'],
+    // Tout encaissement SUR ACTIVITÉS dont la contrepartie n'est pas le
+    // compte 70 : subventions (71), autres produits (75, 77, 78, 79),
+    // produits H.A.O. (82, 84, 86, 88) et règlements de créances (classe 4).
+    //
+    // NI LA CLASSE 1 NI LA CLASSE 2, NI LE 481 (cas chiffrés de la clôture,
+    // constat B2, 2026-10-07). Une dotation encaissée (1011) ou une
+    // immobilisation cédée n'est pas une recette « sur activités », et KZC
+    // est le « RESULTAT NET DE L'EXERCICE » · le résultat se mesure « hors
+    // nouveaux apports et retraits d'apports » (fiche du COMPTE 13). Lus ici,
+    // une dotation de 1 000 000 et un matériel de 600 000 faisaient KZC
+    // 1 450 000 pour un résultat de 1 050 000. Ces flux restent servis à part
+    // (`fluxHorsExploitation`), comme au S.M.T du SYSCOHADA.
+    comptes: ['3', '4', '6', '7', '8'],
+    // 481 · `DETTES_HORS_EXPLOITATION` (déclaré plus bas, recopié ici, un
+    // spec tient les deux listes ensemble). Les créances que KA lit (constat
+    // N4) en sont exclues comme le 70.
+    exclusions: ['70', '411', '412', '413', '416', '4181', '4182', '4191', '4192', '481'],
     fondement:
-      "Toute autre contrepartie d'un encaissement : subventions (71), autres produits (75, 77, 78), produits H.A.O. (82, 84, 88), mais aussi le recouvrement d'une créance (classe 4) ou un apport en dotation (classe 1), qui sont des recettes au sens de la comptabilité de trésorerie même s'ils ne sont pas des produits. Défini par exclusion de KA pour qu'aucun encaissement ne disparaisse.",
+      "Toute autre contrepartie d'un encaissement sur activités : subventions (71), autres produits (75, 77, 78), produits H.A.O. (82, 84, 88), et le recouvrement d'une créance (classe 4). Ni un apport (classe 1), ni une immobilisation (classe 2), ni le 481 · le résultat se mesure « hors nouveaux apports et retraits d'apports » (fiche du COMPTE 13), et ces flux sont présentés à part.",
   },
 ];
 
@@ -347,13 +368,17 @@ export const POSTES_DEPENSES: PosteFluxSmt[] = [
     libelle: 'Autres dépenses sur activités',
     sens: 'DEPENSE',
     note: '4',
-    // Défini par exclusion, comme KB : tout décaissement qui n'est ni achat,
-    // ni loyer, ni salaire, ni impôt, ni intérêt. Y compris les règlements de
-    // dettes (classe 4) et les acquisitions d'immobilisations (classe 2).
-    comptes: ['1', '2', '3', '4', '6', '7', '8'],
-    exclusions: ['60', '61', '622', '64', '66', '67'],
+    // Défini par exclusion, comme KB : tout décaissement SUR ACTIVITÉS qui
+    // n'est ni achat, ni loyer, ni salaire, ni impôt, ni intérêt. Y compris
+    // les règlements de dettes d'exploitation (classe 4).
+    //
+    // NI LA CLASSE 1 NI LA CLASSE 2, NI LE 481 (constat B2, voir KB) · le
+    // matériel acheté passe en charge par sa DOTATION (JG) ; compté aussi
+    // ici, il passait deux fois en charge.
+    comptes: ['3', '4', '6', '7', '8'],
+    exclusions: ['60', '61', '622', '64', '66', '67', '481'],
     fondement:
-      "Tout autre décaissement : services extérieurs hors loyers (62 restant, 63), autres charges (65), charges H.A.O. (83), mais aussi l'acquisition d'une immobilisation (classe 2) et le règlement d'une dette (classe 4), qui sont des dépenses au sens de la comptabilité de trésorerie. Défini par exclusion pour qu'aucun décaissement ne disparaisse.",
+      "Tout autre décaissement sur activités : services extérieurs hors loyers (62 restant, 63), autres charges (65), charges H.A.O. (83), et le règlement d'une dette d'exploitation (classe 4). Ni un retrait d'apport ou un remboursement (classe 1), ni une acquisition d'immobilisation (classe 2) ou son règlement (481) · l'usure du bien entre par JG « DOTATIONS AUX AMORTISSEMENTS », et ces flux sont présentés à part.",
   },
 ];
 

@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useExercice } from '../lib/exercice';
 import { IconCheck, IconExport } from '../components/chrome/icons';
 import { Aide } from '../components/chrome/Aide';
+import { ReglementsNonRattaches } from '../components/ReglementsNonRattaches';
 import { BlocCertification, EnteteImpression } from '../components/chrome/EnteteImpression';
 import type {
   BilanSmtSyscohada,
@@ -17,6 +18,7 @@ import type {
 } from '../lib/types';
 import { montant } from '../lib/montants';
 import { libelleExercice } from '../lib/libelle-exercice';
+import { ComparatifN1 } from '../components/ComparatifN1';
 
 /**
  * ÉTATS FINANCIERS DU SYSTÈME MINIMAL DE TRÉSORERIE · SYSCOHADA RÉVISÉ
@@ -424,12 +426,12 @@ export function EtatsSmtSyscohadaPage() {
             {bilan.passif.map(ligneBilan)}
           </div>
 
-          {!bilan.exerciceN1Disponible && (
-            <p className="text-[11px] text-text-dim mb-3">
-              Premier exercice du dossier : la colonne « Exercice N-1 » de la maquette officielle reste vide, elle n'est
-              pas servie à zéro.
-            </p>
-          )}
+          <ComparatifN1
+            exerciceN1Disponible={bilan.exerciceN1Disponible}
+            mention={bilan.mentionComparatif}
+            defaut="Premier exercice du dossier : la colonne « Exercice N-1 » de la maquette officielle reste vide, elle n'est pas servie à zéro."
+            className="text-[11px] text-text-dim mb-3"
+          />
 
           <div
             className={`flex items-start gap-2 px-3.5 py-2.5 border mb-2 ${
@@ -500,6 +502,13 @@ export function EtatsSmtSyscohadaPage() {
             {cr.lignes.map(ligneResultat)}
           </div>
 
+          <ComparatifN1
+            exerciceN1Disponible={cr.exerciceN1Disponible}
+            motif={cr.motifComparatifAbsent}
+            defaut="Premier exercice du dossier : la colonne « Exercice N-1 » de la maquette officielle reste vide, elle n'est pas servie à zéro."
+            className="text-[11px] text-text-dim mb-3"
+          />
+
           {/*
             LES LETTRES D ET E · anomalie du texte officiel, signalée et non
             corrigée. La maquette du ch. 2 § 2 étiquette A, B, C, F et G,
@@ -568,6 +577,8 @@ export function EtatsSmtSyscohadaPage() {
                 ))}
             </div>
           )}
+
+          <ReglementsNonRattaches reglements={cr.reglementsNonRattaches} poste="SD6" />
 
           {cr.contrepartiesNonRattachees.length > 0 && (
             <div className="border border-warning/40 bg-warning-soft px-3.5 py-2.5 mb-2">

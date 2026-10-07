@@ -75,6 +75,7 @@ import { reporterAuJourOuvrable } from '../retenues/jour-ouvrable';
 import { premierJourNonCloture } from './report-periode-close';
 import {
   apparierTenues,
+  horsDuReport,
   budgetsAReporter,
   CompteRan,
   LigneCandidate,
@@ -96,6 +97,7 @@ import { poserGroupeSoldeDuModule, prochaineLettreDuCompte } from '../lettrage/l
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { libelleExercice } from '../../common/libelle-exercice';
 import { formeApplicable } from '../tenant/forme-applicable';
+import { filtreOuverturePasseeAuPremierJour } from './ouverture-passee';
 
 /**
  * Ce que le refus dit de la voie que le texte ouvre · AUDCIF art. 22, 4°. Le
@@ -1917,7 +1919,7 @@ export class ExerciceService {
         // Tout l'exercice · le brouillard vient d'être refusé plus haut. Les
         // comptes au SOLDE et de gestion sont lus en sommes, ceux au DÉTAIL
         // ligne à ligne (audit final F185, `lireComptesDuReport`).
-        const comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId });
+        const comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId }, referentiel);
         const solde = (c: CompteRan) => auCentime(soldeDuCompte(c));
 
         // Journal support des écritures générées · on réutilise le journal
@@ -2226,7 +2228,7 @@ export class ExerciceService {
       auBrouillard: dejaPassee.ecritures.some((e) => e.statut === StatutEcriture.BROUILLARD),
     };
     if (ouvertureNulle(dejaPassee.lignes)) return { ...base, ouvertureNulle: true };
-    const comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId });
+    const comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId }, referentiel);
     const delta = resultatDesComptesDeGestion(comptes);
     const resultat =
       Math.abs(delta) > EPSILON ? { compteId: (await this.trouverCompteResultat(tenantId, tx, delta > 0, referentiel)).id, montant: delta } : null;
@@ -2305,7 +2307,7 @@ export class ExerciceService {
         // Le livre-journal seul · ce qui reste au brouillard est compté à
         // part (`brouillardNonRepris`), jamais lu. Même lecture que la clôture
         // (audit final F185, `lireComptesDuReport`).
-        const ran = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId, statut: StatutEcriture.VALIDEE });
+        const ran = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId, statut: StatutEcriture.VALIDEE }, referentiel);
         const journal =
           (await tx.journal.findFirst({ where: { tenantId, code: 'OD' } })) ??
           (await tx.journal.findFirst({ where: { tenantId, type: TypeJournal.GENERAL } }));
@@ -2502,6 +2504,10 @@ async function lireComptesDuReport(
   tx: Prisma.TransactionClient,
   tenantId: string,
   ecriture: Prisma.EcritureWhereInput & { tenantId: string; exerciceId: string },
+  // Constat N5 des cas chiffrés de la clôture · au SYCEBNL, les
+  // contributions volontaires en nature (90, 91) ne se reportent jamais
+  // (`horsDuReport`), quel que soit le mode du compte.
+  referentiel: 'SYSCOHADA' | 'SYCEBNL',
 ): Promise<CompteRan[]> {
   // « Non nul » en deux bornes strictes plutôt qu'un NOT · une comparaison
   // à NULL n'est ni vraie ni fausse en SQL, et c'est ce que `gt` et `lt`
@@ -2586,7 +2592,7 @@ async function lireComptesDuReport(
     LOT_LECTURE,
   );
 
-  return plan.map((c) =>
+  return plan.filter((c) => !horsDuReport(c.numero, referentiel)).map((c) =>
     c.modeReportANouveau === ModeReportANouveau.DETAIL
       ? { ...c, lignes: lignes.get(c.id) ?? [] }
       : { ...c, sommes: sommes.get(c.id) ?? { debit: 0, credit: 0, enDevise: [] } },
@@ -2835,28 +2841,8 @@ interface LigneDOuverture extends LigneOuverturePassee {
  * comptes de bilan, se lit comme une ouverture · l'aperçu la nomme, et la
  * redater au lendemain la sort du périmètre.
  */
-/** Une écriture qui peut porter une ouverture · un à-nouveau, ou une écriture du journal d'opérations diverses. */
-const ESTUNE_OUVERTURE: Prisma.EcritureWhereInput = { OR: [{ estGenereeParCloture: true }, { journal: { type: TypeJournal.GENERAL } }] };
-
 async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: string, exercice: { id: string; dateDebut: Date }) {
-  const filtre: Prisma.EcritureWhereInput = {
-    tenantId,
-    exerciceId: exercice.id,
-    estANouveauProvisoire: false,
-    estSoldeDesComptesDeGestion: false,
-    AND: [
-      { OR: [{ date: exercice.dateDebut }, { dateValeur: exercice.dateDebut }] },
-      // Une ouverture de bilan ne passe JAMAIS par un journal d'achats, de
-      // ventes ou de trésorerie (décision du coordinateur, troisième tour) ·
-      // une écriture de ces journaux au premier jour est une opération de
-      // l'exercice, que RECTIFIER ne doit jamais inscrire en négatif. Restent
-      // l'à-nouveau (quel que soit son journal), le journal d'opérations
-      // diverses (type général), et ce qui corrige l'un d'eux (lien
-      // `corrigeEcritureId`).
-      { OR: [ESTUNE_OUVERTURE, { corrigeEcriture: { is: ESTUNE_OUVERTURE } }] },
-    ],
-    lignes: { none: { compte: { classe: { in: [ClasseCompte.CLASSE_6, ClasseCompte.CLASSE_7, ClasseCompte.CLASSE_8] } } } },
-  };
+  const filtre = filtreOuverturePasseeAuPremierJour(tenantId, exercice);
   const nombre = await tx.ligneEcriture.count({ where: { ecriture: filtre } });
   if (nombre > PLAFOND_LIGNES_OUVERTURE) {
     throw new BadRequestException(

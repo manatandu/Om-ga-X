@@ -140,10 +140,21 @@
  *    aucune ligne H.A.O., hormis le 88 que le libellé de FB réunit
  *    expressément ; 843 « dons en numéraire non récurrents » est pourtant
  *    encaissable.
- * 11. **FP vise « emprunts et autres dettes financières »** alors que le
- *    bilan range le 16 (fonds affectés) en CW, dans CZ, hors des dettes
- *    financières (DD) `[texte officiel]`. Faute de correspondance poste →
- *    comptes pour cet état, la réception du 165 reste en FP.
+ * 11. **Le 16 (fonds affectés) est un fonds PROPRE, en FM et FO** · TRANCHÉ
+ *    PAR LA LOI le 2026-10-07 (cas chiffrés de la clôture, question Q1). Le
+ *    modèle n'a pas de table poste → comptes, et le 165 était lu en FP
+ *    « emprunts et autres dettes financières ». Le texte le range ailleurs ·
+ *    « Les Fonds affectés sont constitués par des APPORTS » (Partie 3 ch. 2
+ *    § 1.1) ; « Un passif est composé des ressources propres et assimilées
+ *    et du passif externe (dette) » (cadre conceptuel § 4.1.1.2.1), les fonds
+ *    propres étant formés « des apports » (§ 4.1.1.2.4) ; le bilan totalise
+ *    CW en CZ « TOTAL RESSOURCES PROPRES ET ASSIMILEES », hors de DD ; le
+ *    financement se partage entre « capitaux propres » et « capitaux
+ *    étrangers » (Partie 4 ch. 1 section 4), ZD « fonds propres » et ZE
+ *    « fonds étrangers ». Et « Les subventions d'exploitation reçues ne sont
+ *    ni des dotations ni des fonds affectés » (définitions) · pas de FB.
+ *    Réception en FM, restitution au financeur en FO ; FP et FQ ne gardent
+ *    que le 18.
  *
  * ## Mouvements que la balance ne sait pas qualifier (passe R6)
  *
@@ -407,9 +418,9 @@ export const POSTES_INVESTISSEMENT: PosteFluxTresorerie[] = [
     // Un legs que l'entité CONSERVE, lui, n'est PAS au compte 20 : il est
     // porté en classe 2 ordinaire (2313, 2441, 2442, 2451) contre le 167
     // (Guide d'application, App. 5 ; fiche du COMPTE 16). Il gonfle donc FI
-    // comme une acquisition décaissée ET FP comme un fonds reçu, du même
+    // comme une acquisition décaissée ET FM comme un fonds reçu (anomalie n° 11), du même
     // montant : ZF n'en est pas faussé, la ventilation l'est. Les deux postes
-    // sont à corriger ENSEMBLE, jamais FP seul, qui ouvrirait un écart.
+    // sont à corriger ENSEMBLE, jamais FM seul, qui ouvrirait un écart.
     comptesFlux: ['21', '22', '23', '24', '25'],
     // 481 « Fournisseurs d'investissements » · la dette qui décale le
     // paiement de l'immobilisation. C'est le pendant exact du renvoi (1) de
@@ -527,7 +538,12 @@ export const POSTES_FONDS_PROPRES: PosteFluxTresorerie[] = [
     // LIMITE (passe R6) : les incorporations à la dotation (crédit du 10 par
     // le débit du 11, du 12 ou du 131) sont lues ici comme des encaissements ·
     // voir « Mouvements que la balance ne sait pas qualifier » en tête.
-    comptesFlux: ['10'],
+    //
+    // 16 Fonds affectés · un APPORT, rangé dans les ressources propres et
+    // assimilées (anomalie n° 11, tranchée par la loi le 2026-10-07) · sa
+    // réception (D 52 / C 165, fiche du COMPTE 16) est un encaissement de
+    // fonds propres.
+    comptesFlux: ['10', '16'],
     exclusionsFlux: ['106', '1049'],
     // 45 Fondateurs, apporteurs · la créance sur l'apporteur qui a souscrit
     // sans avoir encore libéré (Partie 3, ch. 1 : souscription puis libération).
@@ -582,8 +598,28 @@ export const POSTES_FONDS_PROPRES: PosteFluxTresorerie[] = [
     //
     // LIMITE : l'absorption d'un déficit par la dotation (débit du 10 par le
     // crédit du 12 ou du 139) reste lue ici · voir l'en-tête.
-    comptesFlux: ['10'],
-    exclusionsFlux: ['106', '1049'],
+    //
+    // 16 Fonds affectés · leur restitution au financeur (anomalie n° 11). Passe
+    // R6, reprise de FQ telle quelle · la fiche du COMPTE 16 ne décrit AUCUN
+    // débit du 16 contre la trésorerie. Ses seuls débits sont les reprises au
+    // 792 (« est débité le compte 167 […] par le crédit du compte 7923 » ; le
+    // 165 « repris au fur et à mesure de la consommation par le biais du
+    // compte 7925 ») et le 1679 contre le 192. Lus ici sans correction, ils
+    // sortaient en décaissements fictifs, sans pendant.
+    //  - 1679 EXCLU : son seul débit décrit est « par le crédit du compte 192 ».
+    //  - Les crédits du 792 sont RETRANCHÉS : la fiche du COMPTE 79 le dit
+    //    crédité « par le débit : du compte 16 ».
+    // Un débit résiduel du 16 (une restitution au bailleur, que le texte ne
+    // décrit pas) reste en FO.
+    comptesFlux: ['10', '16'],
+    exclusionsFlux: ['106', '1049', '1679'],
+    creditsARetrancher: [
+      {
+        comptes: ['792'],
+        fondement:
+          "Fiche du COMPTE 79 : « est crédité le compte 792 · REPRISES DE FONDS AFFECTES ET PROVENANT DES DONS ET LEGS D'IMMOBILISATIONS […] par le débit : du compte 16 » ; fiche du COMPTE 16 : 165 repris par le 7925, 167 par le 7923.",
+      },
+    ],
   },
 ];
 
@@ -594,10 +630,11 @@ export const POSTES_FONDS_ETRANGERS: PosteFluxTresorerie[] = [
     libelle: 'Encaissement provenant des emprunts et des autres dettes financières',
     sens: 'ENCAISSEMENT',
     lectureFlux: 'CREDIT_SEUL',
-    // 16 Fonds affectés et 18 Emprunts. 186 « intérêts courus » EXCLU : la
+    // 18 Emprunts et dettes assimilées · le 16 (fonds affectés) est un fonds
+    // PROPRE, lu en FM (anomalie n° 11). 186 « intérêts courus » EXCLU : la
     // charge d'intérêt est décaissée en FH (compte 67), l'y compter aussi
     // doublerait le flux.
-    comptesFlux: ['16', '18'],
+    comptesFlux: ['18'],
     exclusionsFlux: ['186'],
   },
   {
@@ -605,26 +642,10 @@ export const POSTES_FONDS_ETRANGERS: PosteFluxTresorerie[] = [
     libelle: 'Remboursements des emprunts et autres dettes financières',
     sens: 'DECAISSEMENT',
     lectureFlux: 'DEBIT_SEUL',
-    comptesFlux: ['16', '18'],
-    // Passe R6 · la fiche du COMPTE 16 ne décrit AUCUN débit du 16 contre la
-    // trésorerie. Ses seuls débits sont les reprises au 792 (« est débité le
-    // compte 167 […] par le crédit du compte 7923 » ; le 165 « repris au fur
-    // et à mesure de la consommation par le biais du compte 7925 ») et le
-    // 1679 contre le 192. Lus ici, ils sortaient en remboursements fictifs,
-    // sans pendant, et le tableau ne bouclait plus.
-    //  - 1679 EXCLU : son seul débit décrit est « par le crédit du compte 192 ».
-    //  - Les crédits du 792 sont RETRANCHÉS : la fiche du COMPTE 79 le dit
-    //    crédité « par le débit : du compte 16 ».
-    // Un débit résiduel du 16 (une restitution au bailleur, que le texte ne
-    // décrit pas) reste en FQ.
-    exclusionsFlux: ['186', '1679'],
-    creditsARetrancher: [
-      {
-        comptes: ['792'],
-        fondement:
-          "Fiche du COMPTE 79 : « est crédité le compte 792 · REPRISES DE FONDS AFFECTES ET PROVENANT DES DONS ET LEGS D'IMMOBILISATIONS […] par le débit : du compte 16 » ; fiche du COMPTE 16 : 165 repris par le 7925, 167 par le 7923.",
-      },
-    ],
+    // 18 seul · les débits du 16 (reprises au 792, 1679, restitution) sont
+    // lus en FO (anomalie n° 11).
+    comptesFlux: ['18'],
+    exclusionsFlux: ['186'],
   },
 ];
 
@@ -754,6 +775,11 @@ export function trouvePosteFlux(ref: string): PosteFluxTresorerie | undefined {
  * `exclusionsContrepartie` des postes ci-dessus.
  */
 export const COMPTES_SANS_TRESORERIE: { numero: string; motif: string }[] = [
+  {
+    numero: '9',
+    motif:
+      "Classe 9 · contributions volontaires en nature (900 à 904 par le crédit des 910 à 914) et comptabilité analytique (92 à 99), « ne répond pas à la définition [...] d'un actif ou d'un passif » (Partie 2 ch. 1) · aucune trésorerie (cas chiffrés de la clôture, constat N5).",
+  },
   { numero: '654', motif: 'Dons en nature courants reçus à distribuer (Partie 3 ch. 4 § 1.1) · aucune trésorerie.' },
   { numero: '754', motif: 'Dons en nature courants (7542 reçus à distribuer) · aucune trésorerie.' },
   { numero: '832', motif: 'Dons en nature H.A.O. reçus à distribuer (Partie 3 ch. 4 § 1.1) · aucune trésorerie.' },

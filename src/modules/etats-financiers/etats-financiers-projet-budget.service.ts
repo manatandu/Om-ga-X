@@ -9,6 +9,7 @@ import { totalDesFeuilles, valeurDeLaLigne } from '../analytique/rubriques-budge
 import { COMPTES_TRESORERIE_PROJET } from './correspondance-projet-emplois-ressources';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
 import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
+import { resteDuALaDate, suiteEnNDesDettes } from './engagements-anterieurs';
 
 /**
  * TABLEAU D'EXÉCUTION BUDGÉTAIRE et TABLEAU DE RÉCONCILIATION DE TRÉSORERIE
@@ -180,7 +181,7 @@ export class EtatsFinanciersProjetBudgetService {
     // que la note 35 (24) rattrape pour se replier en saisie, si bien qu'un
     // exercice inconnu y aurait servi une grille vierge au lieu d'un 404.
     const exercice = exerciceDuDossierOuRefus(
-      await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { dateFin: true } }),
+      await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { dateDebut: true, dateFin: true } }),
     );
     const plan = planId
       ? await this.prisma.planAnalytique.findFirst({ where: { id: planId, tenantId } })
@@ -230,6 +231,7 @@ export class EtatsFinanciersProjetBudgetService {
          sur tout l'exercice, mais parmi les seules candidates de la tranche
          (`lignesOuvertesParmi`) · même règle, même réponse pour chacune.
     */
+    const engagementsIllisibles = { nombre: 0, montant: 0 };
     const parcours = lireParLots(
       async (curseur) => {
         const lot = await this.prisma.ecriture.findMany({
@@ -245,6 +247,9 @@ export class EtatsFinanciersProjetBudgetService {
             lignes: {
               select: {
                 id: true,
+                debit: true,
+                credit: true,
+                lettrageId: true,
                 compte: { select: { numero: true } },
                 ventilations: {
                   where: { planId: plan.id },
@@ -261,27 +266,201 @@ export class EtatsFinanciersProjetBudgetService {
           .filter((e) => !toucheTresorerie(e.lignes))
           .flatMap((e) => e.lignes.filter((l) => estFournisseurQuiEngage(l.compte.numero)).map((l) => l.id));
         const ouvertes = await this.lignesOuvertesParmi(tenantId, exerciceId, exercice.dateFin, candidates);
-        return lot.map((e) => ({
-          id: e.id,
-          lignes: e.lignes,
-          engagee:
-            !toucheTresorerie(e.lignes) &&
-            e.lignes.some((l) => estFournisseurQuiEngage(l.compte.numero) && ouvertes.has(l.id)),
-        }));
+        const resultat: Array<{ id: string; lignes: typeof lot[number]['lignes']; partEngagee: number | null }> = [];
+        for (const e of lot) {
+          const engagee =
+            !toucheTresorerie(e.lignes) && e.lignes.some((l) => estFournisseurQuiEngage(l.compte.numero) && ouvertes.has(l.id));
+          if (!engagee) {
+            resultat.push({ id: e.id, lignes: e.lignes, partEngagee: 0 });
+            continue;
+          }
+          // SEUL LE RESTE DÛ EST ENGAGÉ (relecture du 2026-10-07, bloquant
+          // 1 · Application 22, règles (c) et (d)) · une facture de
+          // 1 000 000 réglée de 400 000 dans l'exercice (lettrage partiel)
+          // est décaissée de 400 000 et engagée de 600 000, le « solde
+          // créditeur balance N » du 40. Le reste se lit sur le groupe de la
+          // ligne à la clôture ; un groupe qui réunit deux factures ne le
+          // dit pas · nommé (`partEngagee` nul).
+          let dette = 0;
+          let reste = 0;
+          let lisible = true;
+          for (const l of e.lignes) {
+            if (!estFournisseurQuiEngage(l.compte.numero)) continue;
+            dette += Number(l.credit) - Number(l.debit);
+            if (!ouvertes.has(l.id)) continue;
+            const r = await resteDuALaDate(this.prisma, tenantId, l, exercice.dateFin);
+            if (r === null) lisible = false;
+            else reste += r / 100;
+          }
+          resultat.push({ id: e.id, lignes: e.lignes, partEngagee: lisible && dette > 0.005 ? Math.min(1, reste / dette) : null });
+        }
+        return resultat;
       },
       (e) => {
-        const cible = e.engagee ? engageParSection : decaisseParSection;
+        if (e.partEngagee === null) {
+          let montant = 0;
+          for (const l of e.lignes) for (const v of l.ventilations) if (v.planId === plan.id) montant += Number(v.debit) - Number(v.credit);
+          engagementsIllisibles.nombre += 1;
+          engagementsIllisibles.montant += montant;
+          return;
+        }
         for (const l of e.lignes) {
           for (const v of l.ventilations) {
             if (v.planId !== plan.id) continue;
             const montant = Number(v.debit) - Number(v.credit);
             if (Math.abs(montant) < 0.005) continue;
-            cible.set(v.sectionId, (cible.get(v.sectionId) ?? 0) + montant);
+            const engage = Math.round(montant * e.partEngagee * 100) / 100;
+            const decaisse = Math.round((montant - engage) * 100) / 100;
+            if (Math.abs(engage) >= 0.005) engageParSection.set(v.sectionId, (engageParSection.get(v.sectionId) ?? 0) + engage);
+            if (Math.abs(decaisse) >= 0.005) decaisseParSection.set(v.sectionId, (decaisseParSection.get(v.sectionId) ?? 0) + decaisse);
           }
         }
       },
       LOT_ECRITURES,
     );
+
+    /*
+      B3 · LES DÉPENSES ENGAGÉES À LA CLÔTURE DE N-1, SUIVIES EN N (cas
+      chiffrés de la clôture, 2026-10-07 ; Application 22, règles (c) et (d)).
+      Le parcours de N ne lit que les écritures de N · la facture de N-1 due
+      au 31 décembre, engagée en N-1, et réglée en N par une écriture sans
+      ventilation, n'était comptée nulle part. Elle est relue ici, par
+      tranches comme N, sur les seules écritures de N-1 ventilées sur le plan
+      et ENGAGÉES à leur clôture (même critère que N), et suivie en N
+      (`engagements-anterieurs.ts`) · réglée, décaissement de N ; encore due,
+      engagement de N ; introuvable, nommée, comptée nulle part.
+    */
+    const nonSuivis = { nombre: 0, montant: 0 };
+    const parcoursAnterieur = (async () => {
+      const precedent = await this.prisma.exercice.findFirst({
+        where: { tenantId, dateFin: { lt: exercice.dateDebut } },
+        orderBy: { dateFin: 'desc' },
+        select: { id: true, dateFin: true },
+      });
+      if (!precedent) return;
+      await lireParLots(
+        async (curseur) => {
+          const lot = await this.prisma.ecriture.findMany({
+            where: {
+              tenantId,
+              exerciceId: precedent.id,
+              statut: StatutEcriture.VALIDEE,
+              estGenereeParCloture: false,
+              lignes: { some: { ventilations: { some: { planId: plan.id } } } },
+            },
+            select: {
+              id: true,
+              libelle: true,
+              lignes: {
+                select: {
+                  id: true,
+                  compteId: true,
+                  debit: true,
+                  credit: true,
+                  dateEcheance: true,
+                  libelle: true,
+                  lettrageId: true,
+                  compte: { select: { numero: true } },
+                  ventilations: {
+                    where: { planId: plan.id },
+                    select: { planId: true, sectionId: true, debit: true, credit: true },
+                  },
+                },
+              },
+            },
+            ...pageApres(curseur, LOT_ECRITURES),
+          });
+          const candidates = lot
+            .filter((e) => !toucheTresorerie(e.lignes))
+            .flatMap((e) => e.lignes.filter((l) => estFournisseurQuiEngage(l.compte.numero)).map((l) => ({ e, l })));
+          const ouvertesN1 = await this.lignesOuvertesParmi(
+            tenantId,
+            precedent.id,
+            precedent.dateFin,
+            candidates.map((c) => c.l.id),
+          );
+          const suite = await suiteEnNDesDettes(
+            this.prisma,
+            tenantId,
+            precedent,
+            { id: exerciceId, dateFin: exercice.dateFin },
+            candidates
+              .filter((c) => ouvertesN1.has(c.l.id))
+              .map((c) => ({
+                id: c.l.id,
+                compteId: c.l.compteId,
+                numero: c.l.compte.numero,
+                debit: c.l.debit,
+                credit: c.l.credit,
+                dateEcheance: c.l.dateEcheance,
+                lettrageId: c.l.lettrageId,
+                libelle: c.l.libelle ?? c.e.libelle,
+              })),
+          );
+          return lot.map((e) => {
+            // La dette de l'écriture · ses lignes fournisseur qui engagent,
+            // ouvertes ou non à la clôture de N-1. Ce qui en est décaissé ou
+            // engagé en N se porte AU PRORATA de ses ventilations · la
+            // facture de 1 000 000 réglée de 400 000 en N-1 ne pèse en N que
+            // pour ses 600 000 (Application 22, règle (c)).
+            let dette = 0;
+            let decaisse = 0;
+            let engage = 0;
+            let suivie = false;
+            let inconnue = false;
+            for (const l of e.lignes) {
+              if (!estFournisseurQuiEngage(l.compte.numero)) continue;
+              dette += Number(l.credit) - Number(l.debit);
+              const s = suite.get(l.id);
+              if (s === undefined) continue;
+              suivie = true;
+              if (s === 'INCONNUE') inconnue = true;
+              else {
+                decaisse += s.decaisseEnN;
+                engage += s.engageEnN;
+              }
+            }
+            // Une dette nulle ou débitrice (avoir) ne donne pas de prorata · nommée.
+            if (suivie && !inconnue && dette <= 0.005) inconnue = true;
+            return {
+              id: e.id,
+              lignes: e.lignes,
+              suivie,
+              inconnue,
+              partDecaissee: suivie && !inconnue ? decaisse / dette : 0,
+              partEngagee: suivie && !inconnue ? engage / dette : 0,
+            };
+          });
+        },
+        (e) => {
+          // Décaissée en N-1 · rien en N.
+          if (!e.suivie) return;
+          let montant = 0;
+          for (const l of e.lignes) for (const v of l.ventilations) if (v.planId === plan.id) montant += Number(v.debit) - Number(v.credit);
+          if (e.inconnue) {
+            nonSuivis.nombre += 1;
+            nonSuivis.montant += montant;
+            return;
+          }
+          for (const l of e.lignes) {
+            for (const v of l.ventilations) {
+              if (v.planId !== plan.id) continue;
+              const m = Number(v.debit) - Number(v.credit);
+              if (Math.abs(m) < 0.005) continue;
+              for (const [cible, part] of [
+                [decaisseParSection, e.partDecaissee],
+                [engageParSection, e.partEngagee],
+              ] as const) {
+                const porte = Math.round(m * part * 100) / 100;
+                if (Math.abs(porte) < 0.005) continue;
+                cible.set(v.sectionId, (cible.get(v.sectionId) ?? 0) + porte);
+              }
+            }
+          }
+        },
+        LOT_ECRITURES,
+      );
+    })();
 
     const [sections, budgets, resteEngageParSection, nombreOd] = await Promise.all([
       this.prisma.sectionAnalytique.findMany({
@@ -296,6 +475,7 @@ export class EtatsFinanciersProjetBudgetService {
       this.engagementService.resteParSection(tenantId, exerciceId),
       this.prisma.odAnalytique.count({ where: { tenantId, exerciceId, planId: plan.id } }),
       parcours,
+      parcoursAnterieur,
     ]);
 
     const budgetParSection = new Map<string, number>();
@@ -397,6 +577,20 @@ export class EtatsFinanciersProjetBudgetService {
       odAnalytiquesNonReprises:
         nombreOd > 0
           ? `${nombreOd} OD analytique(s) de ce plan ne sont pas reprises · ce tableau est établi sur la comptabilité, et une OD ne dit pas si le montant qu'elle déplace a été payé ou engagé. Pour qu'une correction y pèse, corrigez la ventilation de l'écriture d'origine.`
+          : null,
+      // B3 · une dépense engagée à la clôture de N-1 dont la suite en N ne se
+      // lit pas (report au solde, exercice précédent non clôturé, lignes
+      // d'à-nouveau identiques) n'est comptée nulle part, et c'est DIT.
+      engagementsAnterieursNonSuivis:
+        nonSuivis.nombre > 0
+          ? `${nonSuivis.nombre} dépense(s) engagée(s) à la clôture de l'exercice précédent, pour ${nonSuivis.montant.toFixed(2)}, ne se suivent pas dans cet exercice · ni un lettrage qui les solde ni une ligne d'à-nouveau unique (report au détail, exercice précédent clôturé) ne se retrouvent. Elles ne sont comptées ni en décaissement ni en engagement.`
+          : null,
+      // Une dépense engagée dont le groupe de lettrage réunit plusieurs
+      // factures · le reste dû de chacune ne se lit pas, la dépense n'est
+      // comptée ni en décaissement ni en engagement, et c'est DIT.
+      engagementsReglesSansImputation:
+        engagementsIllisibles.nombre > 0
+          ? `${engagementsIllisibles.nombre} dépense(s) passée(s) en compte fournisseur, pour ${engagementsIllisibles.montant.toFixed(2)}, sont réglées par un lettrage qui réunit plusieurs factures · la part encore due de chacune ne se lit pas (imputation des paiements, Code civil, Livre III, art. 151 à 154). Elles ne sont comptées ni en décaissement ni en engagement.`
           : null,
       engagementsHorsComptabilite:
         "La colonne Engagement réunit les trois termes du guide (ch. 7, APPLICATION 22, règle (d)) : le solde créditeur des comptes fournisseurs d'exploitation (40) et d'investissement (481), les bons de commande remis aux fournisseurs non exécutés, et les contrats signés non exécutés. Les deux derniers ne sont pas des écritures : ils viennent du registre des engagements, pour leur RESTE À EXÉCUTER. Un engagement qui n'y est pas saisi ne pèse pas sur ce tableau.",

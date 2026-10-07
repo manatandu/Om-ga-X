@@ -3,8 +3,20 @@ import { ClasseCompte } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
-import { CompteDuPoste, LigneBalancePourEtat, chargerLignes, chargerLignesCumulees, correspond, trouverExerciceN1 } from './etats-financiers.communs';
+import {
+  CompteDuPoste,
+  LigneBalancePourEtat,
+  MOTIF_RESULTAT_N1_NON_TENU,
+  chargerLignes,
+  chargerLignesCumulees,
+  comparatifDuBilan,
+  correspond,
+  lireOuverturePasseeEnOd,
+  ouvertureTenue,
+  trouverExerciceN1,
+} from './etats-financiers.communs';
 import { estCompteDuResultatDeLExercice } from './resultat-de-l-exercice';
+import { DettesParPoste, dettesALaCloture, dettesALOuverture, dettesParPoste } from './dettes-rattachees';
 import { PosteCalcule } from './etats-financiers.service';
 import { POSTES_CHARGES, POSTES_REVENUS, PosteCompteExploitation, posteDuCompte } from './correspondance-projet-compte-exploitation';
 import {
@@ -28,6 +40,17 @@ import {
   TOTAUX_ACTIF,
   TOTAUX_PASSIF,
 } from './correspondance-projet-bilan';
+
+/**
+ * Les dettes rattachées à leurs pièces, par CLÉ de déduction partagée (même
+ * clé que `calculerEmplois`), à l'ouverture et à la clôture de la fenêtre
+ * d'une colonne · `undefined` à une borne qui n'a rien de rattachable (le
+ * bilan d'ouverture du dossier, sans pièce).
+ */
+type RattachementDesDettes = Map<string, { debut?: DettesParPoste; fin?: DettesParPoste }>;
+
+/** La clé d'une déduction, celle qui regroupe les postes qui la partagent. */
+const cleDeDeduction = (d: { comptes: string[]; exclusions?: string[] }) => `${d.comptes.join('|')}::${(d.exclusions ?? []).join('|')}`;
 
 /**
  * BILAN et COMPTE D'EXPLOITATION du jeu SYCEBNL « projets de développement
@@ -162,13 +185,21 @@ export class EtatsFinanciersProjetService {
       this.chargerLignes(tenantId, exerciceN1Id),
     ]);
 
+    // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
+    // est le bilan d'ouverture du dossier (SYCEBNL Partie 4 ch. 1 § 1.4,
+    // `comparatifDuBilan`), jamais une colonne vide pour un dossier repris.
+    // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
+    // report, une ouverture saisie en OD au premier jour n'est lue ni comme
+    // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYCEBNL');
     const parRefN = this.resoudreTousLesPostesBilan(lignesN);
-    const parRefN1 = this.resoudreTousLesPostesBilan(lignesN1);
+    const parRefN1 = this.resoudreTousLesPostesBilan(comparatif.lignes);
 
     const refsTotaux = new Set([...TOTAUX_ACTIF, ...TOTAUX_PASSIF].map((t) => t.ref));
     const fusionnerN1 = (ref: string): PosteCalcule => {
       const n = parRefN.get(ref)!;
-      const n1 = exerciceN1Id ? parRefN1.get(ref) : undefined;
+      const n1 = comparatif.provenance ? parRefN1.get(ref) : undefined;
       return { ...n, estTotal: refsTotaux.has(ref), montantN1: n1?.montant };
     };
     const actif = ORDRE_AFFICHAGE_ACTIF.map(fusionnerN1);
@@ -202,8 +233,8 @@ export class EtatsFinanciersProjetService {
 
     const totalActif = parRefN.get('BZ')!.montant;
     const totalPassif = parRefN.get('DZ')!.montant;
-    const totalActifN1 = exerciceN1Id ? parRefN1.get('BZ')!.montant : undefined;
-    const totalPassifN1 = exerciceN1Id ? parRefN1.get('DZ')!.montant : undefined;
+    const totalActifN1 = comparatif.provenance ? parRefN1.get('BZ')!.montant : undefined;
+    const totalPassifN1 = comparatif.provenance ? parRefN1.get('DZ')!.montant : undefined;
 
     return {
       actif,
@@ -213,6 +244,8 @@ export class EtatsFinanciersProjetService {
       totalActifN1,
       totalPassifN1,
       exerciceN1Disponible: exerciceN1Id !== null,
+      comparatif: comparatif.provenance,
+      mentionComparatif: comparatif.mention,
       equilibre: Math.abs(totalActif - totalPassif) < 0.01,
       comptesNonRattaches,
     };
@@ -312,6 +345,8 @@ export class EtatsFinanciersProjetService {
       solde, // XC
       soldeN1,
       exerciceN1Disponible: exerciceN1Id !== null,
+      // Q3 · le compte d'exploitation N-1 ne se tire pas d'un bilan d'ouverture.
+      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(lignesN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       comptesNonRattaches: resN.comptesNonRattaches,
       controle: {
         // XC doit valoir 0 en régime normal (voir note de tête de fichier) ·
@@ -575,14 +610,17 @@ export class EtatsFinanciersProjetService {
    *    explicitement nommée. Aucun montant n'est perdu ni fusionné en silence.
    *
    * 2. **Les déductions partagées.** Le renvoi (2) parle du « compte 481
-   *    CONCERNÉ », c'est-à-dire d'un sous-compte propre à chaque nature
-   *    d'immobilisation ; le renvoi (4) fait de même pour le 401 face aux
-   *    charges. Un dossier qui n'a pas cette granularité laisse la variation
-   *    globale sans affectation. Elle est alors répartie AU PRORATA du
-   *    mouvement brut des postes concernés : c'est la seule répartition qui
-   *    préserve à la fois le sous-total, le poids relatif de chaque poste et
-   *    le déterminisme. Chaque poste expose la part qui lui a été imputée
-   *    (`deduction`), pour que le lecteur puisse la refaire.
+   *    CONCERNÉ », le renvoi (4) du « compte 401 concerné » · la dette qui
+   *    concerne un poste est celle qui est NÉE de ses charges (ou de ses
+   *    immobilisations). Chaque poste reçoit donc la variation des dettes
+   *    rattachées à SES pièces (`dettes-rattachees.ts`, constat B4 des cas
+   *    chiffrés de la clôture · le prorata du brut faisait porter aux
+   *    transports la dette d'une facture de fournitures). Seule la part qui
+   *    ne se rattache à aucune pièce (report au solde, bilan d'ouverture,
+   *    règlement non lettré) reste répartie au prorata du mouvement brut, et
+   *    l'état la NOMME. Chaque poste expose sa correction (`correction`) et
+   *    la part non rattachée qu'il porte (`correctionNonRattachee`), pour
+   *    que le lecteur puisse la refaire.
    */
   /**
    * ## TROIS COLONNES, ET LA MAQUETTE OFFICIELLE EN DEMANDE TROIS
@@ -617,7 +655,8 @@ export class EtatsFinanciersProjetService {
    */
   async tableauEmploisRessources(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
-    const [lignes, lignesCumulFin, lignesCumulDebut, bailleurs, comptesBailleur] = await Promise.all([
+    const dettesRattachees = await this.dettesRattacheesDesColonnes(tenantId, exerciceId, exerciceN1Id);
+    const [lignes, lignesCumulFin, lignesCumulDebut, bailleurs, comptesBailleur, comptesEtat] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       chargerLignesCumulees(this.ecritureService, tenantId, exerciceId),
       // Pas d'exercice précédent · le dossier commence avec N, le cumul de
@@ -628,6 +667,10 @@ export class EtatsFinanciersProjetService {
       // pas de la période, et les relire par colonne ferait trois requêtes
       // pour la même réponse.
       this.prisma.compte.findMany({ where: { tenantId, bailleurId: { not: null } }, select: { id: true, bailleurId: true } }),
+      // Les comptes de trésorerie DÉCLARÉS porter la contrepartie de l'État ·
+      // convention d'OmegaX (cas chiffrés de la clôture, Q2,
+      // `fonds-contrepartie-etat.ts`).
+      this.prisma.compte.findMany({ where: { tenantId, porteFondsContrepartieEtat: true }, select: { id: true } }),
     ]);
 
     const compteIdsParBailleur = new Map<string, Set<string>>();
@@ -637,13 +680,18 @@ export class EtatsFinanciersProjetService {
       compteIdsParBailleur.set(c.bailleurId!, ids);
     }
     const tresorerieBailleur = new Set(comptesBailleur.map((c) => c.id));
+    const tresorerieEtat = new Set(comptesEtat.map((c) => c.id));
 
-    const colonne = (jeu: LigneBalancePourEtat[]) =>
-      this.construireColonne(jeu, bailleurs, compteIdsParBailleur, tresorerieBailleur);
+    const colonne = (jeu: LigneBalancePourEtat[], dettes: RattachementDesDettes) =>
+      this.construireColonne(jeu, bailleurs, compteIdsParBailleur, tresorerieBailleur, tresorerieEtat, dettes);
 
-    const exercice = colonne(lignes);
-    const cumulFin = colonne(lignesCumulFin);
-    const cumulDebut = colonne(lignesCumulDebut);
+    // B4 · chaque colonne lit la dette à ses DEUX bornes · l'exercice, de son
+    // ouverture à sa clôture ; les colonnes cumulées, de l'ORIGINE du dossier
+    // (bilan d'ouverture, sans pièce · rien de rattaché) à la clôture de N ou
+    // de N-1.
+    const exercice = colonne(lignes, dettesRattachees.exercice);
+    const cumulFin = colonne(lignesCumulFin, dettesRattachees.cumulFin);
+    const cumulDebut = colonne(lignesCumulDebut, dettesRattachees.cumulDebut);
 
     // Les montants des trois colonnes se rejoignent par leur CLÉ, jamais par
     // leur rang : les lignes de bailleurs sont dynamiques, un bailleur entré
@@ -722,6 +770,58 @@ export class EtatsFinanciersProjetService {
   }
 
   /**
+   * B4 · LES DETTES DE CHAQUE BORNE, rattachées à leurs pièces, pour chaque
+   * déduction PARTAGÉE (renvoi (2), 481 ; renvoi (4), 401). Lues une fois
+   * pour les trois colonnes · l'ouverture et la clôture de N, la clôture de
+   * N-1. Une déduction propre à un seul poste n'a rien à rattacher.
+   */
+  private async dettesRattacheesDesColonnes(
+    tenantId: string,
+    exerciceId: string,
+    exerciceN1Id: string | null,
+  ): Promise<{ exercice: RattachementDesDettes; cumulFin: RattachementDesDettes; cumulDebut: RattachementDesDettes }> {
+    const exercices = await this.exerciceService.lister(tenantId);
+    const courant = exercices.find((e) => e.id === exerciceId)!;
+    const precedent = exerciceN1Id ? exercices.find((e) => e.id === exerciceN1Id) ?? null : null;
+
+    const partagees = new Map<string, { comptes: string[]; exclusions?: string[]; postes: PosteEmploisRessources[] }>();
+    for (const p of [...POSTES_ER_IMMOBILISATIONS, ...POSTES_ER_CHARGES]) {
+      for (const d of p.deductions ?? []) {
+        if (d.operation !== 'AJOUTER_VARIATION') continue;
+        const cle = cleDeDeduction(d);
+        const e = partagees.get(cle) ?? { comptes: d.comptes, exclusions: d.exclusions, postes: [] };
+        e.postes.push(p);
+        partagees.set(cle, e);
+      }
+    }
+
+    const rendu = { exercice: new Map(), cumulFin: new Map(), cumulDebut: new Map() } as {
+      exercice: RattachementDesDettes;
+      cumulFin: RattachementDesDettes;
+      cumulDebut: RattachementDesDettes;
+    };
+    for (const [cle, d] of partagees) {
+      if (d.postes.length < 2) continue;
+      const postes = d.postes.map((p) => ({ ref: p.ref, comptes: p.comptes, exclusions: p.exclusions }));
+      const comptes = { comptes: d.comptes, exclusions: d.exclusions };
+      const [ouverture, cloture, clotureN1] = await Promise.all([
+        dettesALOuverture(this.prisma, tenantId, exerciceId, comptes),
+        dettesALaCloture(this.prisma, tenantId, courant, comptes),
+        precedent ? dettesALaCloture(this.prisma, tenantId, precedent, comptes) : Promise.resolve(null),
+      ]);
+      const [debutN, finN, finN1] = await Promise.all([
+        dettesParPoste(this.prisma, tenantId, ouverture, postes),
+        dettesParPoste(this.prisma, tenantId, cloture, postes),
+        clotureN1 ? dettesParPoste(this.prisma, tenantId, clotureN1, postes) : Promise.resolve(undefined),
+      ]);
+      rendu.exercice.set(cle, { debut: debutN, fin: finN });
+      rendu.cumulFin.set(cle, { fin: finN });
+      rendu.cumulDebut.set(cle, { fin: finN1 });
+    }
+    return rendu;
+  }
+
+  /**
    * UNE COLONNE DU TABLEAU EMPLOIS RESSOURCES, à partir d'un jeu de lignes de
    * balance. Purement calculatoire et sans accès à la base : c'est ce qui
    * permet d'en produire trois sur trois périodes sans écrire trois fois le
@@ -732,6 +832,13 @@ export class EtatsFinanciersProjetService {
     bailleurs: Array<{ id: string; nom: string }>,
     compteIdsParBailleur: Map<string, Set<string>>,
     tresorerieBailleur: Set<string>,
+    // Q2 des cas chiffrés de la clôture · les comptes déclarés porter la
+    // contrepartie de l'État. Vide par défaut · comportement d'avant.
+    tresorerieEtat: Set<string> = new Set(),
+    // B4 des cas chiffrés de la clôture · les dettes rattachées à leurs
+    // pièces, par déduction partagée. Vide · tout au prorata du brut, comme
+    // avant, et dit.
+    dettesRattachees: RattachementDesDettes = new Map(),
   ) {
     const parRef = new Map<string, PosteCalcule>();
     const parCle = new Map<string, PosteCalcule>();
@@ -789,7 +896,10 @@ export class EtatsFinanciersProjetService {
     }
 
     // --- EMPLOIS · brut, puis déductions ----------------------------------
-    type PosteAvecDeduction = PosteCalcule & { brut: number; correction: number };
+    type PosteAvecDeduction = PosteCalcule & { brut: number; correction: number; correctionNonRattachee?: number };
+    // La part de chaque déduction partagée qui ne se rattache à aucune pièce ·
+    // répartie au prorata du brut, et NOMMÉE (constat B4).
+    const nonRattachees: Array<{ refs: string[]; montant: number }> = [];
     const calculerEmplois = (definitions: PosteEmploisRessources[]): PosteAvecDeduction[] => {
       const bruts = definitions.map((d) => ({ definition: d, ...this.brutEmploi(d, lignes) }));
 
@@ -802,7 +912,7 @@ export class EtatsFinanciersProjetService {
       >();
       for (const b of bruts) {
         for (const d of b.definition.deductions ?? []) {
-          const cle = `${d.comptes.join('|')}::${(d.exclusions ?? []).join('|')}`;
+          const cle = cleDeDeduction(d);
           const existante =
             deductionsParCle.get(cle) ?? { comptes: d.comptes, exclusions: d.exclusions, operation: d.operation, refs: [] };
           existante.refs.push(b.definition.ref);
@@ -811,7 +921,8 @@ export class EtatsFinanciersProjetService {
       }
 
       const deductionParRef = new Map<string, number>();
-      for (const [, d] of deductionsParCle) {
+      const nonRattacheeParRef = new Map<string, number>();
+      for (const [cle, d] of deductionsParCle) {
         // Le signe est porté par l'opération, pas par le calcul · voir
         // OperationCorrection dans le fichier de correspondance. Une variation
         // de dettes s'AJOUTE (charge + dette N-1 − dette N), un mouvement du
@@ -822,20 +933,43 @@ export class EtatsFinanciersProjetService {
               // matériel (249) exclut celui du transport (2495), lu par FJ.
               -lignes.filter((l) => correspond(l.numero, d.comptes, d.exclusions)).reduce((s, l) => s + l.mouvementCredit, 0)
             : this.variationDettes(lignes, d.comptes, d.exclusions);
-        if (Math.abs(montant) < 0.005) continue;
 
         const concernes = bruts.filter((b) => d.refs.includes(b.definition.ref));
+        // B4 · LA DETTE CONCERNÉE. Une variation partagée entre plusieurs
+        // postes va d'abord à chacun pour ce que ses PIÈCES portaient à
+        // l'ouverture moins ce qu'elles portent à la clôture (renvois (2) et
+        // (4), « compte … concerné »). Elle peut être nulle au total et non
+        // nulle par poste (une dette qui passe des achats aux transports).
+        const rattachement = d.operation === 'AJOUTER_VARIATION' && concernes.length > 1 ? dettesRattachees.get(cle) : undefined;
+        const parts = new Map<string, number>();
+        if (rattachement) {
+          for (const b of concernes) {
+            const ref = b.definition.ref;
+            const part = (rattachement.debut?.parRef.get(ref) ?? 0) - (rattachement.fin?.parRef.get(ref) ?? 0);
+            if (Math.abs(part) > 0.005) parts.set(ref, part);
+          }
+        }
+        const rattache = [...parts.values()].reduce((s, x) => s + x, 0);
+        // Le reste, seul, se répartit au prorata · arrondi au centime pour
+        // ne pas nommer une poussière de flottant.
+        const reste = Math.round((montant - rattache) * 100) / 100;
+        for (const [ref, part] of parts) deductionParRef.set(ref, (deductionParRef.get(ref) ?? 0) + part);
+        if (Math.abs(reste) < 0.005) continue;
+        if (rattachement) nonRattachees.push({ refs: concernes.map((b) => b.definition.ref), montant: reste });
+
         const totalBrut = concernes.reduce((s, b) => s + b.montant, 0);
         for (const b of concernes) {
           // Prorata du brut ; à brut total nul, la déduction est portée
           // entièrement par le premier poste concerné plutôt que perdue.
-          const part = totalBrut > 0.005 ? (b.montant / totalBrut) * montant : b === concernes[0] ? montant : 0;
+          const part = totalBrut > 0.005 ? (b.montant / totalBrut) * reste : b === concernes[0] ? reste : 0;
           deductionParRef.set(b.definition.ref, (deductionParRef.get(b.definition.ref) ?? 0) + part);
+          if (rattachement) nonRattacheeParRef.set(b.definition.ref, (nonRattacheeParRef.get(b.definition.ref) ?? 0) + part);
         }
       }
 
       return bruts.map((b) => {
         const correction = deductionParRef.get(b.definition.ref) ?? 0;
+        const nonRattachee = nonRattacheeParRef.get(b.definition.ref);
         return {
           ref: b.definition.ref,
           libelle: b.definition.libelle,
@@ -844,6 +978,7 @@ export class EtatsFinanciersProjetService {
           montant: b.montant + correction,
           brut: b.montant,
           correction,
+          ...(nonRattachee !== undefined && Math.abs(nonRattachee) > 0.005 ? { correctionNonRattachee: nonRattachee } : {}),
           comptes: b.comptes,
         };
       });
@@ -879,14 +1014,18 @@ export class EtatsFinanciersProjetService {
       parRef.set(ref, calc);
     };
 
+    // FV et FY · les comptes que le cabinet DÉCLARE porter la contrepartie de
+    // l'État (convention d'OmegaX, Q2 · le guide ne nomme que « comptes 51,
+    // 52, 53, 55, 57 »). Un compte ne porte qu'une nature de fonds
+    // (`motifRefusFondsContrepartieEtat`) · bailleur d'abord, par prudence.
+    const estEtat = (l: LigneBalancePourEtat) => !tresorerieBailleur.has(l.compteId) && tresorerieEtat.has(l.compteId);
+    const estAutre = (l: LigneBalancePourEtat) => !tresorerieBailleur.has(l.compteId) && !tresorerieEtat.has(l.compteId);
     fonds('FU', (l) => tresorerieBailleur.has(l.compteId), 'OUVERTURE');
-    // FV · aucun modèle ne désigne le compte de contrepartie État, le poste
-    // reste donc à zéro et l'état le déclare (voir `avertissements`).
-    fonds('FV', () => false, 'OUVERTURE');
-    fonds('FW', (l) => !tresorerieBailleur.has(l.compteId), 'OUVERTURE');
+    fonds('FV', estEtat, 'OUVERTURE');
+    fonds('FW', estAutre, 'OUVERTURE');
     fonds('FX', (l) => tresorerieBailleur.has(l.compteId), 'CLOTURE');
-    fonds('FY', () => false, 'CLOTURE');
-    fonds('FZ', (l) => !tresorerieBailleur.has(l.compteId), 'CLOTURE');
+    fonds('FY', estEtat, 'CLOTURE');
+    fonds('FZ', estAutre, 'CLOTURE');
 
     for (const p of lignesBailleurs) {
       // FA et FB peuvent être répétés : les totaux les additionnent par REF.
@@ -948,9 +1087,21 @@ export class EtatsFinanciersProjetService {
         "Aucun bailleur n'est enregistré dans ce dossier : les fonds reçus tiennent sur une seule ligne. Créez les bailleurs et rattachez-leur les sous-comptes 161, 162 et 462 pour obtenir une ligne par bailleur, comme la maquette le prévoit.",
       );
     }
-    avertissements.push(
-      "Postes FV et FY (fonds de contrepartie État) : aucun modèle du logiciel ne désigne le compte de trésorerie portant la contrepartie de l'État. Ces deux lignes restent donc à zéro et leur montant est compris dans « Autres fonds » (FW et FZ). Les totaux GW et GY, eux, sont exacts, et c'est sur eux que porte le contrôle GZ.",
-    );
+    // Q2 des cas chiffrés de la clôture · l'avertissement ne parle plus que
+    // quand l'État a apporté des fonds (FC, comptes 163 et 463) et qu'aucun
+    // compte de trésorerie n'est déclaré les porter.
+    if (tresorerieEtat.size === 0 && Math.abs(parRef.get('FC')?.montant ?? 0) > 0.005) {
+      avertissements.push(
+        "Postes FV et FY (fonds de contrepartie État) : aucun compte de trésorerie n'est déclaré porter la contrepartie de l'État (Structure, Bailleurs de fonds). Leur montant est compris dans « Autres fonds » (FW et FZ). Les totaux GW et GY, eux, sont exacts, et c'est sur eux que porte le contrôle GZ.",
+      );
+    }
+    // B4 · la part des dettes qui ne se rattache à aucune pièce est NOMMÉE,
+    // avec les postes qui la portent au prorata.
+    for (const n of nonRattachees) {
+      avertissements.push(
+        `Correction des dettes de ${n.refs.join(', ')} : ${n.montant.toFixed(2)} ne se rattache à aucune facture (report au solde, bilan d'ouverture, règlement non lettré, pièce sans ligne de ces postes) et reste réparti au prorata du mouvement brut, convention d'OmegaX. Le reste de la variation suit la dette de chaque poste, née de ses propres pièces.`,
+      );
+    }
     avertissements.push(
       "Colonnes cumulées : elles couvrent le dossier DEPUIS SON ORIGINE, écritures de report à-nouveau exclues et bilan d'ouverture compris. Elles suivent la convention de financement, pas l'exercice comptable · un projet financé sur trois ans se lit sur elles, et le contrôle VII (TOTAL V = TOTAL VI) est vérifié sur chacune.",
     );

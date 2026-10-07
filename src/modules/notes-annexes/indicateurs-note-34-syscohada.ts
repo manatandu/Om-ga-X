@@ -74,6 +74,8 @@ export interface EtatsSyscohadaPourNote34 {
     lignes: Array<PosteLu | { section: string }>;
     exerciceN1Disponible: boolean;
     postesNonCalculables: Array<{ ref: string }>;
+    /** Les postes laissés vides, servis par le tableau (cas chiffrés de la clôture, B1). */
+    postesVides?: string[];
   };
 }
 
@@ -96,6 +98,12 @@ const REFS_CHARGES = new Set(POSTES_CHARGES_SYSCOHADA.map((p) => p.ref));
  * (`resoudreFluxPourExercice`).
  */
 function fluxVidesEnN(flux: EtatsSyscohadaPourNote34['fluxTresorerie']): Set<string> {
+  // Le tableau sert ses postes vides depuis les cas chiffrés de la clôture
+  // (B1, N1, Q3) · sans exercice N-1, ses positions N-1 se lisent sur
+  // l'ouverture et presque rien ne reste vide. Les réserves de
+  // `postesNonCalculables` portent aussi des postes CHIFFRÉS · les lire comme
+  // vides blanchirait une CAFG juste.
+  if (flux.postesVides) return new Set(flux.postesVides);
   const vides = new Set<string>();
   if (flux.exerciceN1Disponible) return vides;
   for (const p of flux.postesNonCalculables) vides.add(p.ref);

@@ -21,6 +21,7 @@ import {
 } from '../lib/types';
 import { montant } from '../lib/montants';
 import { libelleExercice } from '../lib/libelle-exercice';
+import { ComparatifN1 } from '../components/ComparatifN1';
 
 /**
  * ÉTATS FINANCIERS DU SYSCOHADA RÉVISÉ · Système normal.
@@ -530,11 +531,7 @@ function EtatsSyscohadaSystemeNormal() {
           {!bilan && <div className="border border-border px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
           {bilan && (
             <div className="max-w-[1180px]">
-              {!bilan.exerciceN1Disponible && (
-                <p className="text-[11px] text-text-dim mb-1.5">
-                  Aucun exercice antérieur dans ce dossier : la colonne N-1 reste vide, ce n'est pas un zéro.
-                </p>
-              )}
+              <ComparatifN1 exerciceN1Disponible={bilan.exerciceN1Disponible} mention={bilan.mentionComparatif} />
 
               {/* Conteneur défilant · en dessous de 700 px l'actif ne tient
                   pas en sept colonnes, et un tableau comptable ne se replie
@@ -658,11 +655,7 @@ function EtatsSyscohadaSystemeNormal() {
           {!cr && <div className="border border-border px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
           {cr && (
             <div className="max-w-[900px]">
-              {!cr.exerciceN1Disponible && (
-                <p className="text-[11px] text-text-dim mb-1.5">
-                  Aucun exercice antérieur dans ce dossier : la colonne N-1 reste vide, ce n'est pas un zéro.
-                </p>
-              )}
+              <ComparatifN1 exerciceN1Disponible={cr.exerciceN1Disponible} motif={cr.motifComparatifAbsent} />
 
               <div className="overflow-x-auto border border-border bg-surface shadow-posee">
                 <div className="min-w-[600px]">
@@ -739,6 +732,7 @@ function EtatsSyscohadaSystemeNormal() {
           {!tft && <div className="border border-border px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
           {tft && (
             <div className="max-w-[900px]">
+              {tft.mentionOuverture && <p className="text-[11px] text-text-dim mb-1.5">{tft.mentionOuverture}</p>}
               {!tft.exerciceN1Disponible && (
                 <p className="flex items-center gap-1.5 text-[11px] text-text-dim mb-1.5">
                   Aucun exercice antérieur dans ce dossier : la colonne N-1 reste vide, ce n'est pas un zéro.

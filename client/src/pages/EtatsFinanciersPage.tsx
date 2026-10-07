@@ -34,6 +34,7 @@ import type {
 import { parametrePaiementsEnInstance } from '../lib/paiements-en-instance';
 import { montant } from '../lib/montants';
 import { libelleExercice } from '../lib/libelle-exercice';
+import { ComparatifN1 } from '../components/ComparatifN1';
 
 /**
  * Onglets du jeu « associations et ordres professionnels » (Partie 4, ch. 2)
@@ -475,11 +476,7 @@ function EtatsSystemeNormalPage() {
           {!bilan && <div className="border border-border px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
           {bilan && (
             <div className="max-w-[1180px] overflow-x-auto">
-              {!bilan.exerciceN1Disponible && (
-                <p className="text-[11px] text-text-dim mb-1.5">
-                  Aucun exercice antérieur dans ce dossier : la colonne N-1 reste vide, ce n'est pas un zéro.
-                </p>
-              )}
+              <ComparatifN1 exerciceN1Disponible={bilan.exerciceN1Disponible} mention={bilan.mentionComparatif} />
 
               <div className="border border-border bg-surface mb-3">
                 <div className="grid grid-cols-[42px_1.4fr_100px_120px_100px_100px] gap-2 px-4 py-1.5 bg-surface-alt border-b border-border text-[11px] font-bold text-text-dim">
@@ -557,11 +554,7 @@ function EtatsSystemeNormalPage() {
               // qui emportait alors titre, onglets et boutons hors de l'écran.
               className="max-w-[900px] overflow-x-auto"
             >
-              {!cr.exerciceN1Disponible && (
-                <p className="text-[11px] text-text-dim mb-1.5">
-                  Aucun exercice antérieur dans ce dossier : la colonne N-1 reste vide, ce n'est pas un zéro.
-                </p>
-              )}
+              <ComparatifN1 exerciceN1Disponible={cr.exerciceN1Disponible} motif={cr.motifComparatifAbsent} />
 
               <div className="border border-border bg-surface shadow-posee">
                 <div className="grid grid-cols-[46px_1fr_120px_120px] min-w-[500px] gap-2 px-4 py-1.5 bg-surface-alt border-b border-border text-[11px] font-bold text-text-dim">
@@ -711,11 +704,7 @@ function EtatsSystemeNormalPage() {
           {!bilanProjet && <div className="border border-border px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
           {bilanProjet && (
             <div className="max-w-[1180px] overflow-x-auto">
-              {!bilanProjet.exerciceN1Disponible && (
-                <p className="text-[11px] text-text-dim mb-1.5">
-                  Aucun exercice antérieur dans ce dossier : la colonne N-1 reste vide, ce n'est pas un zéro.
-                </p>
-              )}
+              <ComparatifN1 exerciceN1Disponible={bilanProjet.exerciceN1Disponible} mention={bilanProjet.mentionComparatif} />
 
               {/* DEUX colonnes de valeur, pas quatre : le texte officiel de ce
                   jeu ne prévoit ni Brut ni Amortissements côté actif · voir
@@ -779,11 +768,7 @@ function EtatsSystemeNormalPage() {
           {!ceProjet && <div className="border border-border px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
           {ceProjet && (
             <div className="max-w-[900px] overflow-x-auto">
-              {!ceProjet.exerciceN1Disponible && (
-                <p className="text-[11px] text-text-dim mb-1.5">
-                  Aucun exercice antérieur dans ce dossier : la colonne N-1 reste vide, ce n'est pas un zéro.
-                </p>
-              )}
+              <ComparatifN1 exerciceN1Disponible={ceProjet.exerciceN1Disponible} motif={ceProjet.motifComparatifAbsent} />
 
               <div className="border border-border bg-surface shadow-posee">
                 <div className="grid grid-cols-[46px_1fr_120px_120px] min-w-[500px] gap-2 px-4 py-1.5 bg-surface-alt border-b border-border text-[11px] font-bold text-text-dim">
@@ -891,7 +876,16 @@ function EtatsSystemeNormalPage() {
                     }`}
                   >
                     <span className="font-mono text-[11px] text-text-dim">{l.ref}</span>
-                    <span>{l.libelle}</span>
+                    <span className="flex items-center gap-1">
+                      {l.libelle}
+                      {(l.ref === 'FV' || l.ref === 'FY') && (
+                        <Aide
+                          titre="Fonds de contrepartie de l'État"
+                          texte="Désignation déclarée par le cabinet sur le compte de trésorerie (Structure, Bailleurs de fonds). Le guide ne nomme que les comptes 51, 52, 53, 55 et 57 pour les trois natures de fonds · aucun texte ne dit lequel porte la contrepartie de l'État."
+                          source="SYCEBNL, guide d'application, Application 21"
+                        />
+                      )}
+                    </span>
                     {/* Le brut et la correction ne sont affichés que là où le
                         guide en prévoit une : les lire ailleurs n'aurait pas
                         de sens. */}
@@ -1046,6 +1040,12 @@ function EtatsSystemeNormalPage() {
               <p className="text-[11px] text-text-dim max-w-[900px]">{executionBudget.engagementsHorsComptabilite}</p>
               {executionBudget.odAnalytiquesNonReprises && (
                 <p className="text-[11px] text-warning max-w-[900px]">{executionBudget.odAnalytiquesNonReprises}</p>
+              )}
+              {executionBudget.engagementsAnterieursNonSuivis && (
+                <p className="text-[11px] text-warning max-w-[900px]">{executionBudget.engagementsAnterieursNonSuivis}</p>
+              )}
+              {executionBudget.engagementsReglesSansImputation && (
+                <p className="text-[11px] text-warning max-w-[900px]">{executionBudget.engagementsReglesSansImputation}</p>
               )}
             </div>
           )}

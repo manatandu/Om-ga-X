@@ -7,8 +7,17 @@ import {
   CompteDuPoste,
   LigneBalancePourEtat,
   MOTIF_EXERCICE_INTROUVABLE,
+  MOTIF_RESULTAT_N1_NON_TENU,
+  ProvenanceComparatif,
   chargerLignes,
+  comparatifDuBilan,
   correspond,
+  lignesALOuverture,
+  lireOuverturePasseeEnOd,
+  mentionComparatifSurOuverture,
+  mentionOuverturePresumeeNulle,
+  motifOuverturePasseeEnOd,
+  ouvertureTenue,
   trouverExerciceN1,
 } from '../etats-financiers/etats-financiers.communs';
 import {
@@ -174,6 +183,14 @@ export interface BilanSyscohada {
   totalActifN1?: number;
   totalPassifN1?: number;
   exerciceN1Disponible: boolean;
+  /**
+   * D'où vient la colonne N-1 (cas chiffrés de la clôture, Q3) · l'exercice
+   * précédent, ou le bilan d'ouverture du dossier quand l'exercice précédent
+   * n'est pas tenu dans OmegaX (AUDCIF art. 34). `null` · aucune colonne.
+   */
+  comparatif: ProvenanceComparatif | null;
+  /** La mention à imprimer au-dessus de la colonne N-1 lue sur l'ouverture. */
+  mentionComparatif: string | null;
   equilibre: boolean;
   comptesNonRattaches: CompteDuPoste[];
   /**
@@ -250,6 +267,11 @@ export interface CompteResultatSyscohada {
   /** La date jusqu'à laquelle cette colonne comparative court. */
   memePeriodeN1JusquAu?: string;
   exerciceN1Disponible: boolean;
+  /**
+   * Colonne N-1 vide d'un dossier qui a un bilan d'ouverture sans exercice
+   * précédent tenu · le motif et l'issue (cas chiffrés de la clôture, Q3).
+   */
+  motifComparatifAbsent: string | null;
   comptesNonRattaches: CompteDuPoste[];
   controle: {
     resultatToutesClassesDeGestion: number;
@@ -325,6 +347,16 @@ export interface TableauFluxTresorerieSyscohada {
    */
   comptesTropAgreges: CompteTropAgrege[];
   postesNonCalculables: PosteNonCalculable[];
+  /**
+   * Les postes de la colonne N laissés VIDES (et les totaux qui en
+   * dépendent), à distinguer des réserves de `postesNonCalculables`, qui
+   * portent aussi les postes chiffrés sous réserve · depuis les cas chiffrés
+   * de la clôture (B1, N1, Q3), seul un terme qui lirait le compte de
+   * résultat N-1 sans exercice N-1 tenu en laisse un.
+   */
+  postesVides: string[];
+  /** La provenance des positions d'ouverture quand l'exercice précédent n'est pas tenu (bloquant 2). */
+  mentionOuverture: string | null;
   /** Ceux de la colonne N-1, laissés vides pour la même raison (audit final F14). */
   postesNonCalculablesN1: PosteNonCalculable[];
   controle: {
@@ -805,8 +837,16 @@ export class EtatsFinanciersSyscohadaService {
       this.chargerLignes(tenantId, exerciceN1Id),
     ]);
 
+    // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
+    // est le bilan d'ouverture du dossier (AUDCIF art. 34), jamais une
+    // colonne vide pour un dossier repris (`comparatifDuBilan`).
+    // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
+    // report, une ouverture saisie en OD au premier jour n'est lue ni comme
+    // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYSCOHADA');
     const resolutionN = this.resoudreTousLesPostesBilan(lignesN);
-    const resolutionN1 = this.resoudreTousLesPostesBilan(lignesN1);
+    const resolutionN1 = this.resoudreTousLesPostesBilan(comparatif.lignes);
 
     const refsTotaux = new Set([...TOTAUX_ACTIF_SYSCOHADA, ...TOTAUX_PASSIF_SYSCOHADA].map((t) => t.ref));
     const metadonnees = new Map<string, { note?: string; renvoi?: string }>();
@@ -819,7 +859,7 @@ export class EtatsFinanciersSyscohadaService {
 
     const enLigne = (ref: string): LigneBilanSyscohada => {
       const n = resolutionN.parRef.get(ref)!;
-      const n1 = exerciceN1Id ? resolutionN1.parRef.get(ref) : undefined;
+      const n1 = comparatif.provenance ? resolutionN1.parRef.get(ref) : undefined;
       const estTotal = refsTotaux.has(ref);
       const meta = metadonnees.get(ref) ?? {};
       return {
@@ -851,9 +891,11 @@ export class EtatsFinanciersSyscohadaService {
       passif,
       totalActif,
       totalPassif,
-      totalActifN1: exerciceN1Id ? resolutionN1.parRef.get('BZ')!.montant : undefined,
-      totalPassifN1: exerciceN1Id ? resolutionN1.parRef.get('DZ')!.montant : undefined,
+      totalActifN1: comparatif.provenance ? resolutionN1.parRef.get('BZ')!.montant : undefined,
+      totalPassifN1: comparatif.provenance ? resolutionN1.parRef.get('DZ')!.montant : undefined,
       exerciceN1Disponible: exerciceN1Id !== null,
+      comparatif: comparatif.provenance,
+      mentionComparatif: comparatif.mention,
       // Tolérance d'arrondi ; un écart réel signale un compte non rattaché ou
       // un défaut du moteur d'écritures, pas un défaut de cette répartition.
       equilibre: Math.abs(totalActif - totalPassif) < 0.01,
@@ -1038,6 +1080,9 @@ export class EtatsFinanciersSyscohadaService {
       // l'écran ne pourrait pas titrer la colonne, et une colonne dont on ne
       // sait pas ce qu'elle couvre ne se compare à rien.
       memePeriodeN1JusquAu: borneMemePeriodeN1 ? borneMemePeriodeN1.toISOString().slice(0, 10) : undefined,
+      // Q3 · le compte de résultat N-1 ne se tire pas d'un bilan d'ouverture ·
+      // vide, et l'issue dite.
+      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(lignesN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       comptesNonRattaches: resN.comptesNonRattaches,
       controle: {
         resultatToutesClassesDeGestion: resN.resultatToutesClassesDeGestion,
@@ -1176,17 +1221,34 @@ export class EtatsFinanciersSyscohadaService {
   }
 
   /**
-   * Un poste exige-t-il un exercice antérieur ? `besoinsDuPoste` (la table) ne
-   * regarde que les postes de BILAN lus sur N-1 ou en variation, parce
-   * qu'aucun terme du modèle ne lit le compte de résultat autrement que sur N.
-   * On élargit ici au compte de résultat pour qu'un terme ajouté demain à la
-   * table produise un signalement plutôt qu'un faux zéro silencieux.
+   * Un poste exige-t-il le COMPTE DE RÉSULTAT d'un exercice antérieur tenu ?
+   *
+   * Les postes de BILAN lus sur N-1 ou en variation (`besoinsDuPoste`) ne
+   * l'exigent plus (cas chiffrés de la clôture, B1, N1 et Q3, 2026-10-07) ·
+   * sans exercice N-1 tenu, leurs positions N-1 se lisent sur l'OUVERTURE de
+   * N, qui est le bilan de clôture N-1 par l'AUDCIF art. 34, et qui est nulle
+   * pour une société qui naît (ZA « Trésorerie actif N-1 – Trésorerie passif
+   * N-1 » vaut zéro). Les laisser vides rendait le tableau du premier
+   * exercice incohérent (ZH par les flux contre ZH par le bilan) et celui
+   * d'un dossier repris faux de toute sa trésorerie d'ouverture.
+   *
+   * Un compte de résultat, lui, ne se tire pas d'un bilan. Aucun terme du
+   * modèle ne le lit autrement que sur N ; la garde reste pour qu'un terme
+   * ajouté demain produise un signalement plutôt qu'un faux zéro silencieux.
    */
-  private exigeExerciceAnterieur(poste: PosteFluxTresorerieSyscohada): boolean {
-    return (
-      besoinsDuPoste(poste).exerciceN1 ||
-      poste.termes.some((t) => t.poste?.etat === 'COMPTE_RESULTAT' && t.poste.lecture !== 'N')
-    );
+  /**
+   * Un poste lit-il l'ouverture (bilan N-1, soldes antérieurs) ou les
+   * mouvements de l'exercice ? Une ouverture saisie en OD au premier jour se
+   * trouve dans les MOUVEMENTS (bloquant 2 de la relecture du 2026-10-07) ·
+   * un tel poste ne se chiffre pas tant que sa nature n'est pas dite.
+   */
+  private litLOuvertureOuLesMouvements(poste: PosteFluxTresorerieSyscohada): boolean {
+    const b = besoinsDuPoste(poste);
+    return b.exerciceN1 || b.soldesAnterieurs || b.mouvements || this.exigeCompteDeResultatAnterieur(poste);
+  }
+
+  private exigeCompteDeResultatAnterieur(poste: PosteFluxTresorerieSyscohada): boolean {
+    return poste.termes.some((t) => t.poste?.etat === 'COMPTE_RESULTAT' && t.poste.lecture !== 'N');
   }
 
   /**
@@ -1323,6 +1385,10 @@ export class EtatsFinanciersSyscohadaService {
     lignesAnterieur: LigneBalancePourEtat[],
     exerciceAnterieurDisponible: boolean,
     reevaluations: VirementsParCompte = AUCUN_VIREMENT,
+    // Bloquant 2 de la relecture du 2026-10-07 · une ouverture saisie en OD
+    // au premier jour, sans exercice précédent ni report · ni flux ni
+    // ouverture, les postes qui lisent l'une ou l'autre restent vides.
+    motifOuvertureIncertaine: string | null = null,
   ): {
     parRef: Map<string, { libelle: string; montant: number; comptes: CompteDuPoste[] }>;
     postesNonCalculables: PosteNonCalculable[];
@@ -1353,22 +1419,24 @@ export class EtatsFinanciersSyscohadaService {
     const nonCalcules = new Set<string>();
 
     for (const poste of TOUS_LES_POSTES_FLUX_SYSCOHADA) {
-      if (!exerciceAnterieurDisponible && this.exigeExerciceAnterieur(poste)) {
-        // Poste laissé VIDE, et dit vide. Le chiffrer sur un exercice
-        // antérieur inexistant reviendrait à présenter la situation de
-        // clôture comme une variation de l'exercice · le modèle demande une
-        // variation, la balance ne la porte pas, on ne l'invente pas. Un
-        // dossier repris en cours de vie peut porter son ouverture en report
-        // à-nouveau sans exercice N-1 saisi : la table a tranché que le report
-        // n'est un équivalent que pour une variation de COMPTES, pas pour une
-        // variation de POSTE (voir `besoinsDuPoste`).
+      if (motifOuvertureIncertaine && this.litLOuvertureOuLesMouvements(poste)) {
+        parRef.set(poste.ref, { libelle: poste.libelle, montant: 0, comptes: [] });
+        nonCalcules.add(poste.ref);
+        postesNonCalculables.push({ ref: poste.ref, raison: motifOuvertureIncertaine });
+        continue;
+      }
+      if (!exerciceAnterieurDisponible && this.exigeCompteDeResultatAnterieur(poste)) {
+        // Poste laissé VIDE, et dit vide · un compte de résultat N-1 ne se
+        // tire pas du bilan d'ouverture (voir `exigeCompteDeResultatAnterieur`).
+        // Les positions de BILAN N-1, elles, sont celles de l'ouverture
+        // (`lignesAnterieur`, cas chiffrés de la clôture, B1 et N1).
         parRef.set(poste.ref, { libelle: poste.libelle, montant: 0, comptes: [] });
         nonCalcules.add(poste.ref);
         postesNonCalculables.push({
           ref: poste.ref,
           raison:
-            "Aucun exercice antérieur dans le dossier : ce poste est une variation ou une lecture de l'exercice " +
-            'N-1, que la balance ne permet pas de reconstituer. Poste laissé vide, non chiffré à zéro.',
+            "Aucun exercice antérieur tenu dans le dossier : ce poste lit le compte de résultat de l'exercice " +
+            "N-1, qui ne se tire pas du bilan d'ouverture. Poste laissé vide, non chiffré à zéro.",
         });
         continue;
       }
@@ -1385,13 +1453,18 @@ export class EtatsFinanciersSyscohadaService {
       // passée à la main (anomalies n° 11 et 21). Le reste du mouvement
       // (une dotation au 28, un 106 passé à la main) les fait toujours naître.
       for (const nd of poste.nonDeterminables ?? []) {
-        const concerne = lignesCourant.some((l) => {
-          if (!correspond(l.numero, nd.comptes)) return false;
-          const lie = ctx.reevaluations.get(l.compteId);
-          return (
-            Math.abs(l.mouvementDebit - (lie?.debit ?? 0)) > EPSILON || Math.abs(l.mouvementCredit - (lie?.credit ?? 0)) > EPSILON
-          );
-        });
+        const mouvementHorsModule = (comptes: string[], sens?: 'DEBIT' | 'CREDIT') =>
+          lignesCourant.some((l) => {
+            if (!correspond(l.numero, comptes)) return false;
+            const lie = ctx.reevaluations.get(l.compteId);
+            const debit = Math.abs(l.mouvementDebit - (lie?.debit ?? 0)) > EPSILON;
+            const credit = Math.abs(l.mouvementCredit - (lie?.credit ?? 0)) > EPSILON;
+            return sens === 'DEBIT' ? debit : sens === 'CREDIT' ? credit : debit || credit;
+          });
+        // Constat N2 des cas chiffrés de la clôture · un déclencheur déclaré
+        // s'ajoute au mouvement des comptes, il ne le remplace pas.
+        const concerne =
+          mouvementHorsModule(nd.comptes) && (!nd.declencheur || mouvementHorsModule(nd.declencheur.comptes, nd.declencheur.sens));
         if (concerne) postesNonCalculables.push({ ref: poste.ref, raison: nd.motif });
       }
     }
@@ -1439,10 +1512,39 @@ export class EtatsFinanciersSyscohadaService {
       this.ecritureService.mouvementsDeReevaluation(tenantId, exerciceN1Id),
     ]);
 
-    const resN = this.resoudreFluxPourExercice(lignesN, lignesN1, exerciceN1Id !== null, reevaluationsN);
+    // POSITIONS N-1 · la clôture de l'exercice précédent quand il est tenu,
+    // sinon l'OUVERTURE de l'exercice, qui est cette clôture (AUDCIF art. 34 ;
+    // cas chiffrés de la clôture, B1, N1 et Q3) · bilan d'ouverture importé
+    // d'un dossier repris, ou rien du tout pour une société qui naît, dont
+    // la trésorerie d'ouverture (ZA) est nulle.
+    // Bloquant 2 de la relecture du 2026-10-07 · une ouverture saisie en OD
+    // au premier jour, sans exercice précédent ni report, n'est lue ni comme
+    // flux ni comme ouverture ; sans elle, l'ouverture présumée nulle est
+    // DITE. Même règle pour la colonne N-1 quand N-2 manque.
+    const [ouverturePasseeN, ouverturePasseeN1] = await Promise.all([
+      lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN),
+      exerciceN1Id ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, exerciceN2Id, lignesN1) : Promise.resolve(null),
+    ]);
+    const resN = this.resoudreFluxPourExercice(
+      lignesN,
+      exerciceN1Id ? lignesN1 : lignesALOuverture(lignesN),
+      exerciceN1Id !== null,
+      reevaluationsN,
+      ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA') : null,
+    );
     // Colonne N-1 seulement si l'exercice existe · jamais un faux zéro pour un
     // dossier à son premier exercice (même discipline que partout ailleurs).
-    const resN1 = exerciceN1Id ? this.resoudreFluxPourExercice(lignesN1, lignesN2, exerciceN2Id !== null, reevaluationsN1) : null;
+    // Ses propres positions N-1 suivent la même règle (N-2, sinon l'ouverture
+    // de N-1).
+    const resN1 = exerciceN1Id
+      ? this.resoudreFluxPourExercice(
+          lignesN1,
+          exerciceN2Id ? lignesN2 : lignesALOuverture(lignesN1),
+          exerciceN2Id !== null,
+          reevaluationsN1,
+          ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYSCOHADA') : null,
+        )
+      : null;
 
     const refsTotaux = new Map(TOTAUX_FLUX_SYSCOHADA.map((t) => [t.ref, t]));
     const lignes: Array<LigneFluxSyscohada | SectionFluxSyscohada> = ORDRE_AFFICHAGE_FLUX_SYSCOHADA.map((entree) => {
@@ -1492,6 +1594,17 @@ export class EtatsFinanciersSyscohadaService {
         .map((l) => ({ numero: l.numero, intitule: l.intitule, montant: l.solde, subdivisions: subdivisionsLuesParLeTft(l.numero) }))
         .filter((c) => c.subdivisions.length > 0),
       postesNonCalculables: resN.postesNonCalculables,
+      postesVides: [...resN.nonCalcules],
+      // D'où viennent les positions d'ouverture quand l'exercice précédent
+      // n'est pas tenu · le report (dossier repris), rien (présumée nulle,
+      // dit), ou une OD du premier jour (motif, postes vides).
+      mentionOuverture: exerciceN1Id
+        ? null
+        : ouverturePasseeN
+          ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA')
+          : ouvertureTenue(lignesN)
+            ? mentionComparatifSurOuverture('SYSCOHADA')
+            : mentionOuverturePresumeeNulle('SYSCOHADA'),
       postesNonCalculablesN1: resN1?.postesNonCalculables ?? [],
       controle: {
         tresorerieOuverture: resN.parRef.get('ZA')!.montant,

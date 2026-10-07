@@ -546,11 +546,11 @@ describe('exports SYSCOHADA individuels · charte ETAFI, état seul en valeurs',
     );
     expect(formuleDe(ws.getCell(r.get('ZF')!, 4))).toBe(`D${r.get('ZD')}+D${r.get('ZE')}`);
     expect(formuleDe(ws.getCell(r.get('ZH')!, 4))).toBe(`D${r.get('ZG')}+D${r.get('ZA')}`);
-    // AUDIT FINAL F14 · e0 n'a pas d'exercice antérieur : ZA et les totaux
-    // qui en dépendent restent VIDES en N-1, ni zéro ni formule qui lirait
-    // la cellule vide comme zéro. FA, calculable, garde sa valeur.
-    expect([ws.getCell(r.get('ZA')!, 5).value, ws.getCell(r.get('ZH')!, 5).value]).toEqual([null, null]);
-    expect(typeof ws.getCell(r.get('FA')!, 5).value).toBe('number');
+    // CAS CHIFFRÉS DE LA CLÔTURE, B1 (2026-10-07) · e0 n'a pas d'exercice
+    // antérieur, et ses positions N-1 se lisent sur son OUVERTURE (AUDCIF
+    // art. 34) · ZA et ZH de la colonne N-1 sont chiffrés (ils restaient
+    // vides depuis l'audit final F14).
+    expect([typeof ws.getCell(r.get('ZA')!, 5).value, typeof ws.getCell(r.get('FA')!, 5).value]).toEqual(['number', 'number']);
     // Lignes clefs (ouverture, variation, clôture) sur le bleu 003366.
     expect(fondDe(ws.getCell(r.get('ZH')!, 2))).toBe('FF003366');
     // Intitulés de rubrique intercalés, sur bande grise et sans code REF.
@@ -676,11 +676,13 @@ describe('liasse complète · Système normal SYSCOHADA', () => {
     expect(gravites).not.toContain('BLOQUANT');
     expect(gravites).not.toContain('A_TRAITER');
     expect(gravites).toContain('INFO');
-    // AUDIT FINAL F14 · les cellules N-1 du TFT laissées vides y ont leur
-    // motif, sous l'état et la colonne qui les portent.
+    // CAS CHIFFRÉS DE LA CLÔTURE, B1 · plus aucune cellule N-1 du TFT
+    // laissée vide pour défaut d'exercice antérieur, donc plus de motif
+    // « colonne N-1 » (audit final F14) · les positions N-1 se lisent sur
+    // l'ouverture.
     const etats: string[] = [];
     wb.getWorksheet('ANOMALIES')!.eachRow((row) => etats.push(String(row.getCell(3).value ?? '')));
-    expect(etats).toContain('Tableau des flux · colonne N-1');
+    expect(etats).not.toContain('Tableau des flux · colonne N-1');
 
     // Pages porteuses de cartouche numérotées en continu.
     expect(fiche1.getCell('A1').value).toMatch(/^- \d+ -$/);
@@ -1411,5 +1413,39 @@ describe('liasses SYSCOHADA · formules qui lisent BALANCE N et BALANCE N-1', ()
       'Déséquilibre : écart de -100',
     ]);
     for (const v of verdicts.filter((x) => x.bloc === 'BALANCE N')) expect(v.verdict).toBe('Equilibre');
+  });
+});
+
+/**
+ * MINEUR 5 DE LA RELECTURE DU 2026-10-07 · la provenance de la colonne N-1
+ * est dite dans la feuille ANOMALIES de chaque liasse, en INFO · bilan
+ * d'ouverture, ouverture présumée nulle ou saisie en OD, et le compte de
+ * résultat N-1 vide avec son issue.
+ */
+describe('liasse · la provenance de la colonne N-1, dite', () => {
+  const provenance = (ExportService.prototype as unknown as {
+    provenanceDuComparatif: (
+      b: { mentionComparatif?: string | null },
+      r: { motifComparatifAbsent?: string | null },
+      t?: { mentionOuverture?: string | null },
+    ) => string[][];
+  }).provenanceDuComparatif;
+
+  it('écrit la mention du bilan, le motif du compte de résultat et l’ouverture du tableau des flux quand elle diffère', () => {
+    const lignes = provenance(
+      { mentionComparatif: 'Colonne N-1 lue sur le bilan d’ouverture' },
+      { motifComparatifAbsent: 'Exercice précédent non tenu' },
+      { mentionOuverture: 'Ouverture présumée nulle' },
+    );
+    expect(lignes.map((l) => [l[0], l[2], l[3]])).toEqual([
+      ['INFO', 'Bilan · colonne N-1', 'Colonne N-1 lue sur le bilan d’ouverture'],
+      ['INFO', 'Compte de résultat · colonne N-1', 'Exercice précédent non tenu'],
+      ['INFO', 'Tableau des flux · ouverture', 'Ouverture présumée nulle'],
+    ]);
+  });
+
+  it('exercice précédent tenu · rien à dire, et la même mention n’est pas répétée', () => {
+    expect(provenance({ mentionComparatif: null }, { motifComparatifAbsent: null })).toEqual([]);
+    expect(provenance({ mentionComparatif: 'M' }, {}, { mentionOuverture: 'M' })).toHaveLength(1);
   });
 });

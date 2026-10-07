@@ -11,6 +11,7 @@ import { AnalyserImportDto, ExecuterImportDto, TypeImport } from './dto/import.d
 import { lireDate, lireFichier, lireMontant, type Tableau } from './lecture-fichier';
 import { classeDuNumero } from '../comptes/classe-du-numero';
 import { coursDeLaLigne } from '../comptabilite/ligne-en-devise';
+import { horsDuReport } from '../exercice/report-a-nouveau';
 
 /**
  * Tranches des insertions groupées de l'import · une requête PostgreSQL porte
@@ -269,9 +270,20 @@ export interface RapportImport {
  * bilan d'ouverture ne correspondait plus au bilan de clôture · ce que la
  * convention de correspondance bilan clôture / bilan ouverture interdit.
  */
-export function modeReportPourClasse(classe: ClasseCompte): ModeReportANouveau {
+export function modeReportPourClasse(
+  classe: ClasseCompte,
+  numero: string,
+  referentiel: Referentiel,
+): ModeReportANouveau {
   const soldeesSurLeResultat: ClasseCompte[] = [ClasseCompte.CLASSE_6, ClasseCompte.CLASSE_7, ClasseCompte.CLASSE_8];
-  return soldeesSurLeResultat.includes(classe) ? ModeReportANouveau.AUCUN : ModeReportANouveau.SOLDE;
+  if (soldeesSurLeResultat.includes(classe)) return ModeReportANouveau.AUCUN;
+  // Les contributions volontaires en nature du SYCEBNL (90, 91) ne sont ni
+  // actif ni passif (Partie 2 ch. 1) et ne se reportent pas (cas chiffrés de
+  // la clôture, constat N5) · le semis les pose en AUCUN, l'import doit dire
+  // la même chose, sans quoi un 90 reçu d'une balance externe naissait en
+  // SOLDE. Une seule règle, celle du calcul du report (`horsDuReport`).
+  if (horsDuReport(numero, referentiel)) return ModeReportANouveau.AUCUN;
+  return ModeReportANouveau.SOLDE;
 }
 
 @Injectable()
@@ -432,7 +444,7 @@ export class ImportService {
         intitule,
         classe,
         typeCompte,
-        modeReportANouveau: modeReportPourClasse(classe),
+        modeReportANouveau: modeReportPourClasse(classe, numero, tenant.referentiel),
       });
     });
 
@@ -542,7 +554,7 @@ export class ImportService {
           numero,
           intitule: this.valeur(ligne, iIntitule) || `Compte ${numero}`,
           classe,
-          modeReportANouveau: modeReportPourClasse(classe),
+          modeReportANouveau: modeReportPourClasse(classe, numero, tenant.referentiel),
         });
       } else if (compte.typeCompte === TypeCompteDetailTotal.TOTAL) {
         // Une balance exportée porte souvent ses lignes de totalisation : les

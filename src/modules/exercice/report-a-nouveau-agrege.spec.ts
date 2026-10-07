@@ -191,7 +191,7 @@ function projeter(r: Record<string, unknown>, select: Record<string, unknown> | 
 const N = { id: 'n', tenantId: 't', statut: StatutExercice.OUVERT, dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') };
 const N1 = { id: 'n1', tenantId: 't', statut: StatutExercice.OUVERT, dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31') };
 
-function base(comptes: Cpt[], lignes: Lgn[]) {
+function base(comptes: Cpt[], lignes: Lgn[], referentiel: 'SYSCOHADA' | 'SYCEBNL' = 'SYSCOHADA') {
   const lus: Lgn[][] = [];
   const tx = {
     // Relues DANS la transaction de clôture (A7, M2).
@@ -248,7 +248,7 @@ function base(comptes: Cpt[], lignes: Lgn[]) {
     exercice: {
       findFirst: jest.fn(({ where }: { where: Record<string, unknown> }) => Promise.resolve(where.dateFin || where.dateDebut ? null : N)),
     },
-    tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
+    tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel }) },
     ecriture: { count: jest.fn().mockResolvedValue(0) },
     // Aucun lettrage dénoué en souffrance (décision D3, `ecartsRealisesNonConstates`).
     ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
@@ -456,6 +456,46 @@ describe('F185 · le report se lit en sommes, et rend le report de la lecture li
     const tranches = tx.ligneEcriture.findMany.mock.calls.map((c) => c[0]);
     expect(tranches).toHaveLength(2);
     expect(tranches[1].cursor).toEqual({ id: [...factures].sort((a, b) => (a.id < b.id ? -1 : 1))[LOT_LECTURE - 1].id });
+  });
+});
+
+/**
+ * CAS CHIFFRÉS DE LA CLÔTURE, CONSTAT N5 (2026-10-07) · au SYCEBNL, les
+ * contributions volontaires en nature (90, 91) ne sont ni au bilan ni au
+ * résultat (Partie 2 ch. 1) · elles ne se reportent pas, quel que soit le
+ * mode du compte, et la clôture ne les solde pas sur le résultat. Au
+ * SYSCOHADA, les 90 et 91 sont des engagements, reportés comme avant.
+ */
+describe('N5 · la classe 9 du SYCEBNL ne se reporte pas', () => {
+  const COMPTES9 = [...COMPTES, compte('904', '90400000', 'SOLDE'), compte('914', '91400000', 'AUCUN')];
+  for (const c of COMPTES9) parId.set(c.id, c);
+  const JEU9 = [ligne('521', 1000, 0), ligne('701', 0, 1000), ligne('904', 1_000_000, 0), ligne('914', 0, 1_000_000)];
+
+  it('ni au report définitif, ni à l’écriture qui solde les comptes de gestion', async () => {
+    const { service, tx } = base(COMPTES9, JEU9, 'SYCEBNL');
+    await service.cloturer('t', 'n', 'u');
+    const [cloture, ran] = tx.ecriture.create.mock.calls.map((c) => c[0].data);
+    const comptesTouches = [...cloture.lignes.create, ...ran.lignes.create].map((l: { compteId: string }) => l.compteId);
+    expect(comptesTouches).not.toContain('904');
+    expect(comptesTouches).not.toContain('914');
+    // Le résultat reste celui des classes 6 à 8 · 1 000 de produit.
+    expect(ran.lignes.create.find((l: { compteId: string }) => l.compteId === '131')).toMatchObject({ credit: 1000 });
+  });
+
+  it('ni au report provisoire', async () => {
+    const { service, tx } = base(COMPTES9, JEU9, 'SYCEBNL');
+    await service.genererANouveauxProvisoires('t', 'n', 'u');
+    const comptesTouches = tx.ecriture.create.mock.calls[0][0].data.lignes.create.map((l: { compteId: string }) => l.compteId);
+    expect(comptesTouches).not.toContain('904');
+  });
+
+  it('au SYSCOHADA, un 90 et un 91 au SOLDE (engagements) se reportent comme avant', async () => {
+    const comptes = COMPTES9.map((c) => (c.id === '914' ? { ...c, modeReportANouveau: 'SOLDE' } : c));
+    const jeu = JEU9.map((l) => (l.compteId === '914' ? { ...l, compte: comptes.find((c) => c.id === '914')! } : l));
+    const { service, tx } = base(comptes, jeu, 'SYSCOHADA');
+    await service.genererANouveauxProvisoires('t', 'n', 'u');
+    const comptesTouches = tx.ecriture.create.mock.calls[0][0].data.lignes.create.map((l: { compteId: string }) => l.compteId);
+    expect(comptesTouches).toContain('904');
   });
 });
 

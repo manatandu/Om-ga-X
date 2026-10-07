@@ -9,10 +9,24 @@ import {
   CompteDuPoste,
   LigneBalancePourEtat,
   MOTIF_EXERCICE_INTROUVABLE,
+  MOTIF_RESULTAT_N1_NON_TENU,
   chargerLignes,
+  comparatifDuBilan,
   correspond,
+  lignesALOuverture,
+  lireOuverturePasseeEnOd,
+  ouvertureTenue,
   trouverExerciceN1,
 } from './etats-financiers.communs';
+import {
+  DETTES_FOURNISSEURS_RATTACHEES,
+  NaturesDesReglements,
+  ReglementARattacher,
+  depensesRattachees,
+  estDetteFournisseurRattachee,
+  naturesDesReglementsFournisseurs,
+} from './reglements-de-tresorerie';
+import { dettesFournisseursNeesDImmobilisations } from './dettes-rattachees';
 import { chargerCampagneStocks, lignesNoteStocks, motifQuantitesNote2 } from './stocks-depuis-inventaire';
 import { estCompteDuResultatDeLExercice } from './resultat-de-l-exercice';
 import { PosteCalcule } from './etats-financiers.service';
@@ -88,6 +102,9 @@ const SELECTION_ECRITURE_DE_TRESORERIE = {
   reference: true,
   lignes: {
     select: {
+      // L'identifiant de la ligne · le règlement d'une dette fournisseur se
+      // rattache à sa facture par son lettrage (constats N3 et N4).
+      id: true,
       compteId: true,
       debit: true,
       credit: true,
@@ -108,6 +125,8 @@ interface CumulsTresorerie {
   recettes: Map<string, CompteDuPoste>;
   /** Contreparties des DÉPENSES, débit moins crédit, par numéro de compte. */
   depenses: Map<string, CompteDuPoste>;
+  /** Règlements de dettes fournisseurs, ligne par ligne · rattachés à leur facture (constats N3 et N4). */
+  reglements: ReglementARattacher[];
 }
 
 /**
@@ -218,16 +237,13 @@ export class EtatsFinanciersSmtService {
    * repris de l'ancienne comptabilité) ni pour un dossier repris en cours de
    * vie. L'ouverture, elle, est toujours présente. C'est d'ailleurs déjà ce
    * que sert la Note 3 sous l'intitulé « Montant au 1er janvier N ».
+   *
+   * Le calcul vit dans `lignesALOuverture` (communs) depuis que le comparatif
+   * des bilans d'un dossier repris le lit aussi (cas chiffrés de la clôture,
+   * Q3) · une seule écriture de la règle.
    */
   private aLOuverture(lignes: LigneBalancePourEtat[]): LigneBalancePourEtat[] {
-    return lignes.map((l) => ({
-      ...l,
-      totalDebit: l.reportDebit,
-      totalCredit: l.reportCredit,
-      mouvementDebit: 0,
-      mouvementCredit: 0,
-      solde: l.reportDebit - l.reportCredit,
-    }));
+    return lignesALOuverture(lignes);
   }
 
   // -------------------------------------------------------------------------
@@ -317,8 +333,16 @@ export class EtatsFinanciersSmtService {
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
     ]);
+    // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
+    // est le bilan d'ouverture du dossier (SYCEBNL Partie 4 ch. 1 § 1.4,
+    // `comparatifDuBilan`), jamais une colonne vide pour un dossier repris.
+    // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
+    // report, une ouverture saisie en OD au premier jour n'est lue ni comme
+    // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYCEBNL');
     const parRefN = this.resoudreBilan(lignesN);
-    const parRefN1 = this.resoudreBilan(lignesN1);
+    const parRefN1 = this.resoudreBilan(comparatif.lignes);
 
     // `note` : le renvoi de note que la maquette imprime en troisième colonne
     // du bilan. Absent des deux autres jeux, dont les maquettes ne le portent
@@ -327,7 +351,7 @@ export class EtatsFinanciersSmtService {
     const fusionner = (ref: string): PosteCalcule & { note: string | null } => {
       const n = parRefN.get(ref)!;
       const note = [...POSTES_BILAN_ACTIF, ...POSTES_BILAN_PASSIF].find((p) => p.ref === ref)?.note ?? null;
-      return { ...n, montantN1: exerciceN1Id ? parRefN1.get(ref)?.montant : undefined, note };
+      return { ...n, montantN1: comparatif.provenance ? parRefN1.get(ref)?.montant : undefined, note };
     };
 
     const totalActif = parRefN.get('GZ')!.montant;
@@ -339,9 +363,11 @@ export class EtatsFinanciersSmtService {
       passif: ORDRE_BILAN_PASSIF.map(fusionner),
       totalActif,
       totalPassif,
-      totalActifN1: exerciceN1Id ? parRefN1.get('GZ')!.montant : undefined,
-      totalPassifN1: exerciceN1Id ? parRefN1.get('HZ')!.montant : undefined,
+      totalActifN1: comparatif.provenance ? parRefN1.get('GZ')!.montant : undefined,
+      totalPassifN1: comparatif.provenance ? parRefN1.get('HZ')!.montant : undefined,
       exerciceN1Disponible: exerciceN1Id !== null,
+      comparatif: comparatif.provenance,
+      mentionComparatif: comparatif.mention,
       equilibre: Math.abs(totalActif - totalPassif) < 0.01,
       renvoiImmobilisations: RENVOI_IMMOBILISATIONS,
       // Aucun poste de « comptes non rattachés » ici : GA à GE et HA à HD
@@ -448,6 +474,9 @@ export class EtatsFinanciersSmtService {
       if (this.estTresorerie(l.compte.numero)) continue;
       const montant = sens === 'RECETTE' ? Number(l.credit) - Number(l.debit) : Number(l.debit) - Number(l.credit);
       if (Math.abs(montant) <= 0.005) continue;
+      if (sens === 'DEPENSE' && montant > 0 && estDetteFournisseurRattachee(l.compte.numero)) {
+        cumuls.reglements.push({ ligneId: l.id, numero: l.compte.numero, montant });
+      }
       const existant = cible.get(l.compte.numero);
       if (existant) existant.montant += montant;
       else cible.set(l.compte.numero, { numero: l.compte.numero, intitule: l.compte.intitule, montant });
@@ -456,7 +485,7 @@ export class EtatsFinanciersSmtService {
 
   /** Les recettes et dépenses de l'exercice, cumulées au fil d'une lecture par tranches. */
   private async cumulsTresorerie(tenantId: string, exerciceId: string): Promise<CumulsTresorerie> {
-    const cumuls: CumulsTresorerie = { recettes: new Map(), depenses: new Map() };
+    const cumuls: CumulsTresorerie = { recettes: new Map(), depenses: new Map(), reglements: [] };
     await this.parcourirEcrituresDeTresorerie(tenantId, exerciceId, (e) => this.cumulerEcritureDeTresorerie(e, cumuls));
     return cumuls;
   }
@@ -476,9 +505,10 @@ export class EtatsFinanciersSmtService {
     // rend exactement ce que rendait la ventilation écriture par écriture.
     for (const c of contreparties.values()) {
       const poste = postes.find((p) => correspond(c.numero, p.comptes, p.exclusions));
-      // Impossible en pratique : KB et JF sont définis par exclusion et
-      // captent les classes 1 à 8. Un compte qui échapperait tout de même
-      // (numéro hors classes 1-8) serait perdu · on ne le laisse pas filer.
+      // Hors du compte de résultat, VOULU (constat B2 des cas chiffrés de la
+      // clôture) · les classes 1 et 2 et le 481, que KB et JF ne captent plus,
+      // sont des flux hors exploitation, servis à part
+      // (`fluxHorsExploitation`), jamais perdus.
       if (!poste) continue;
       comptesParRef.get(poste.ref)!.set(c.numero, { numero: c.numero, intitule: c.intitule, montant: c.montant });
     }
@@ -573,7 +603,13 @@ export class EtatsFinanciersSmtService {
    * section 2). Les variations de N-1 se mesurent contre l'ouverture de N-1,
    * par la même règle `aLOuverture`, jamais par une autre lecture.
    */
-  private construireCompteDeResultat(cumuls: CumulsTresorerie, lignesN: LigneBalancePourEtat[]) {
+  private construireCompteDeResultat(
+    cumuls: CumulsTresorerie,
+    lignesN: LigneBalancePourEtat[],
+    // Les dettes du 40 nées d'immobilisations, hors de VC comme le 481
+    // (`dettesFournisseursNeesDImmobilisations`, relecture du 2026-10-07).
+    dettesImmobilisations: { ouverture: number; cloture: number } = { ouverture: 0, cloture: 0 },
+  ) {
     const recettes = this.ventilerFlux(cumuls.recettes, POSTES_RECETTES);
     const depenses = this.ventilerFlux(cumuls.depenses, POSTES_DEPENSES);
     const soldeCaisse = recettes.total - depenses.total; // KZ
@@ -595,13 +631,22 @@ export class EtatsFinanciersSmtService {
     const valeurs: Record<string, number> = {
       VA: variation('GB'), // stocks
       VB: variation('GC'), // créances
-      VC: somme(dettesExploitation(bilanCloture)) - somme(dettesExploitation(bilanOuverture)), // dettes d'exploitation
+      // dettes d'exploitation, sans les dettes du 40 nées d'immobilisations
+      VC:
+        somme(dettesExploitation(bilanCloture)) -
+        dettesImmobilisations.cloture -
+        (somme(dettesExploitation(bilanOuverture)) - dettesImmobilisations.ouverture),
       JG: dotations,
     };
     const comptesDe: Record<string, CompteDuPoste[]> = {
       VA: bilanCloture.get('GB')!.comptes,
       VB: bilanCloture.get('GC')!.comptes,
-      VC: dettesExploitation(bilanCloture),
+      VC: [
+        ...dettesExploitation(bilanCloture),
+        ...(Math.abs(dettesImmobilisations.cloture) > 0.005
+          ? [{ numero: '40', intitule: "Dettes du 40 nées d'immobilisations (hors exploitation)", montant: -dettesImmobilisations.cloture }]
+          : []),
+      ],
       JG: lignes68
         .filter((l) => Math.abs(l.solde) > 0.005)
         .map((l) => ({ numero: l.numero, intitule: l.intitule, montant: l.solde })),
@@ -629,26 +674,44 @@ export class EtatsFinanciersSmtService {
   }
 
   async compteDeResultat(tenantId: string, exerciceId: string) {
-    const [, exerciceN1Id] = await Promise.all([
+    const [exerciceN, exerciceN1Id] = await Promise.all([
       this.exercice(tenantId, exerciceId),
       trouverExerciceN1(this.exerciceService, tenantId, exerciceId),
     ]);
-    const [cumuls, lignesN, cumulsN1, lignesN1] = await Promise.all([
+    const dettesImmo = async (id: string, dates: { dateDebut: Date; dateFin: Date }) =>
+      dettesFournisseursNeesDImmobilisations(this.prisma, tenantId, { id, ...dates }, DETTES_FOURNISSEURS_RATTACHEES);
+    const [cumuls, lignesN, cumulsN1, lignesN1, immoN, immoN1] = await Promise.all([
       this.cumulsTresorerie(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceId),
       exerciceN1Id ? this.cumulsTresorerie(tenantId, exerciceN1Id) : Promise.resolve(null),
       exerciceN1Id ? this.chargerLignes(tenantId, exerciceN1Id) : Promise.resolve(null),
+      dettesImmo(exerciceId, exerciceN),
+      exerciceN1Id ? this.exercice(tenantId, exerciceN1Id).then((d) => dettesImmo(exerciceN1Id, d)) : Promise.resolve(undefined),
     ]);
 
-    const n = this.construireCompteDeResultat(cumuls, lignesN);
+    // Constats N3 et N4 des cas chiffrés de la clôture · le règlement d'une
+    // dette fournisseur prend la ligne de la facture qu'il règle
+    // (`reglements-de-tresorerie.ts`) ; ce qui ne se rattache pas reste en JF
+    // et est nommé.
+    const [naturesN, naturesN1] = await Promise.all([
+      naturesDesReglementsFournisseurs(this.prisma, tenantId, cumuls.reglements),
+      cumulsN1 ? naturesDesReglementsFournisseurs(this.prisma, tenantId, cumulsN1.reglements) : Promise.resolve(null),
+    ]);
+    const rattacher = (c: CumulsTresorerie, natures: NaturesDesReglements): CumulsTresorerie => ({
+      ...c,
+      depenses: depensesRattachees(c.depenses, c.reglements, natures),
+    });
+    const n = this.construireCompteDeResultat(rattacher(cumuls, naturesN), lignesN, immoN);
     // Sans exercice N-1 enregistré, `montantN1` reste undefined, JAMAIS zéro :
     // un zéro se lirait « rien en N-1 », et l'art. 16 dispense du comparatif
     // la première année d'application.
-    const n1 = cumulsN1 && lignesN1 ? this.construireCompteDeResultat(cumulsN1, lignesN1) : null;
+    const n1 = cumulsN1 && lignesN1 && naturesN1 ? this.construireCompteDeResultat(rattacher(cumulsN1, naturesN1), lignesN1, immoN1) : null;
     const avecN1 = <T extends { ref: string; montant: number }>(postes: T[], postesN1: T[] | undefined) =>
       postes.map((p) => ({ ...p, montantN1: postesN1 ? (postesN1.find((x) => x.ref === p.ref)?.montant ?? 0) : undefined }));
 
-    const hors = this.fluxHorsExploitation(cumuls);
+    // Sur les contreparties RATTACHÉES · le règlement d'une immobilisation
+    // passée au 401 est un flux hors exploitation, comme celui du 481.
+    const hors = this.fluxHorsExploitation(rattacher(cumuls, naturesN));
 
     return {
       recettes: avecN1(n.recettes, n1?.recettes),
@@ -659,18 +722,28 @@ export class EtatsFinanciersSmtService {
       retraitements: avecN1(n.retraitements, n1?.retraitements), // VA, VB, VC, JG
       resultatNet: n.resultatNet, // KZC
       exerciceN1Disponible: n1 !== null,
+      // Q3 des cas chiffrés de la clôture · le compte de résultat N-1 ne se
+      // tire pas d'un bilan d'ouverture.
+      motifComparatifAbsent: n1 === null && ouvertureTenue(lignesN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       totalRecettesN1: n1?.totalRecettes,
       totalDepensesN1: n1?.totalDepenses,
       soldeCaisseN1: n1?.soldeCaisse,
       resultatNetN1: n1?.resultatNet,
+      // Les règlements fournisseurs restés en JF faute de facture lisible,
+      // avec leur montant (constats N3 et N4) · information, jamais devinés.
+      reglementsNonRattaches: naturesN.nonRattaches,
       controle: {
         resultatBilan: n.resultatBilan,
         fluxHorsExploitation: hors.montant,
         comptesHorsExploitation: hors.comptes,
-        // KZC - flux hors exploitation doit égaler le résultat du bilan ·
-        // voir la note ci-dessus sur la limite de la maquette.
-        ecart: n.resultatNet - hors.montant - n.resultatBilan,
-        concordant: Math.abs(n.resultatNet - hors.montant - n.resultatBilan) < 0.01,
+        // KZC DOIT ÉGALER le résultat du bilan, sans rien retrancher (constat
+        // B2 des cas chiffrés de la clôture) · KZC est le « RESULTAT NET DE
+        // L'EXERCICE ». Le contrôle retranchait les flux hors exploitation et
+        // disait concordant un KZC faux de leur montant. Ces flux ne sont plus
+        // dans KX ni JX · ils expliquent l'écart entre KZ et la variation de
+        // la caisse, et restent servis pour cela.
+        ecart: n.resultatNet - n.resultatBilan,
+        concordant: Math.abs(n.resultatNet - n.resultatBilan) < 0.01,
       },
     };
   }

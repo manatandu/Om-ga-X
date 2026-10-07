@@ -1,4 +1,4 @@
-import { ClasseCompte, ModeReportANouveau } from '@prisma/client';
+import { ClasseCompte, ModeReportANouveau, Referentiel } from '@prisma/client';
 import { modeReportPourClasse } from './import.service';
 import { PLAN_COMPTES_SYCEBNL } from '../comptes/compte-seed';
 import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
@@ -26,8 +26,8 @@ import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
  */
 describe('report à-nouveau · l’import suit les semis, classe par classe', () => {
   const semis = [
-    { nom: 'SYCEBNL', lignes: PLAN_COMPTES_SYCEBNL },
-    { nom: 'SYSCOHADA', lignes: PLAN_COMPTES_SYSCOHADA },
+    { nom: 'SYCEBNL', referentiel: Referentiel.SYCEBNL, lignes: PLAN_COMPTES_SYCEBNL },
+    { nom: 'SYSCOHADA', referentiel: Referentiel.SYSCOHADA, lignes: PLAN_COMPTES_SYSCOHADA },
   ];
 
   /**
@@ -50,29 +50,38 @@ describe('report à-nouveau · l’import suit les semis, classe par classe', ()
    */
   it.each(semis.map((s) => [s.nom, s] as const))(
     'aucun compte de gestion du semis %s n’est reporté par l’import, et aucun compte de bilan n’est perdu',
-    (_, { lignes }) => {
+    (_, { referentiel, lignes }) => {
       const divergences = lignes
         .filter((c) => {
           const semisReporte = c.modeReportANouveau !== ModeReportANouveau.AUCUN;
-          const importReporte = modeReportPourClasse(c.classe) !== ModeReportANouveau.AUCUN;
+          const importReporte = modeReportPourClasse(c.classe, c.numero, referentiel) !== ModeReportANouveau.AUCUN;
           return semisReporte !== importReporte;
         })
-        .map((c) => ({ numero: c.numero, semis: c.modeReportANouveau, import: modeReportPourClasse(c.classe) }));
+        .map((c) => ({ numero: c.numero, semis: c.modeReportANouveau, import: modeReportPourClasse(c.classe, c.numero, referentiel) }));
       expect(divergences).toEqual([]);
     },
   );
 
   it('les classes soldées sur le résultat sont 6, 7 ET 8 · la 8 manquait', () => {
-    expect(modeReportPourClasse(ClasseCompte.CLASSE_6)).toBe(ModeReportANouveau.AUCUN);
-    expect(modeReportPourClasse(ClasseCompte.CLASSE_7)).toBe(ModeReportANouveau.AUCUN);
+    expect(modeReportPourClasse(ClasseCompte.CLASSE_6, '60100000', Referentiel.SYSCOHADA)).toBe(ModeReportANouveau.AUCUN);
+    expect(modeReportPourClasse(ClasseCompte.CLASSE_7, '70100000', Referentiel.SYSCOHADA)).toBe(ModeReportANouveau.AUCUN);
     // Le défaut d'origine : la classe 8 (hors activités ordinaires) partait en
     // SOLDE alors qu'elle se solde sur le compte 13 comme les deux autres.
-    expect(modeReportPourClasse(ClasseCompte.CLASSE_8)).toBe(ModeReportANouveau.AUCUN);
+    expect(modeReportPourClasse(ClasseCompte.CLASSE_8, '81000000', Referentiel.SYSCOHADA)).toBe(ModeReportANouveau.AUCUN);
   });
 
   it('les classes de bilan se reportent, elles', () => {
     for (const c of [ClasseCompte.CLASSE_1, ClasseCompte.CLASSE_2, ClasseCompte.CLASSE_3, ClasseCompte.CLASSE_4, ClasseCompte.CLASSE_5]) {
-      expect(modeReportPourClasse(c)).toBe(ModeReportANouveau.SOLDE);
+      expect(modeReportPourClasse(c, `${c.slice(-1)}0000000`, Referentiel.SYSCOHADA)).toBe(ModeReportANouveau.SOLDE);
     }
+  });
+
+  it('un 90 ou un 91 importé ne se reporte pas au SYCEBNL, et se reporte au SYSCOHADA (un numéro, deux sens)', () => {
+    // Constat N5 des cas chiffrés de la clôture · au SYCEBNL, contributions
+    // volontaires en nature, ni actif ni passif ; au SYSCOHADA, engagements
+    // hors bilan encore en vigueur à la clôture.
+    expect(modeReportPourClasse(ClasseCompte.CLASSE_9, '90000000', Referentiel.SYCEBNL)).toBe(ModeReportANouveau.AUCUN);
+    expect(modeReportPourClasse(ClasseCompte.CLASSE_9, '91100000', Referentiel.SYCEBNL)).toBe(ModeReportANouveau.AUCUN);
+    expect(modeReportPourClasse(ClasseCompte.CLASSE_9, '90100000', Referentiel.SYSCOHADA)).toBe(ModeReportANouveau.SOLDE);
   });
 });

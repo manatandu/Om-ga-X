@@ -25,6 +25,26 @@
 
 export type ModeRan = 'AUCUN' | 'SOLDE' | 'DETAIL';
 
+/**
+ * LES CONTRIBUTIONS VOLONTAIRES EN NATURE NE SE REPORTENT PAS (cas chiffrés
+ * de la clôture, constat N5, 2026-10-07).
+ *
+ * Au SYCEBNL, les 90 et 91 « ne répond[ent] pas à la définition [...] d'un
+ * actif ou d'un passif » et « ne doi[vent] pas impacter le bilan et le compte
+ * de résultat » (Partie 2 ch. 1, classe 9) ; l'à-nouveau est le bilan de
+ * clôture (AUDCIF art. 34, non exclu par l'art. 3 du SYCEBNL), qui ne les
+ * porte pas. Semés au mode SOLDE, ils se reportaient, et leurs soldes
+ * s'additionnaient d'un exercice à l'autre (904 à 1 900 000 en 2027 pour
+ * 1 000 000 de bénévolat de l'année). La règle tient au TEXTE, pas au mode
+ * du compte · un dossier ancien garde son mode, le calcul l'ignore.
+ *
+ * Au SYSCOHADA, les 90 et 91 sont des ENGAGEMENTS hors bilan, encore en
+ * vigueur à la clôture · un numéro, deux sens, rien n'y change.
+ */
+export function horsDuReport(numero: string, referentiel: 'SYSCOHADA' | 'SYCEBNL'): boolean {
+  return referentiel === 'SYCEBNL' && (numero.startsWith('90') || numero.startsWith('91'));
+}
+
 /** Une ligne lue une à une · celles d'un compte au DÉTAIL. */
 export interface LigneLueRan {
   debit: number;

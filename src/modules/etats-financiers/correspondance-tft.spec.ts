@@ -249,16 +249,40 @@ describe('correspondance TFT SYCEBNL · cohérence avec le plan de comptes', () 
   it('les autres moitiés sans trésorerie que le plan décrit sont neutralisées (passe R6)', () => {
     // FO : le 1049 n'est débité que par le crédit du 703 (fiche du COMPTE 10).
     expect(correspond('10490000', trouvePosteFlux('FO')!.comptesFlux, trouvePosteFlux('FO')!.exclusionsFlux)).toBe(false);
-    // FQ : le 1679 n'est débité que par le crédit du 192 (fiche du COMPTE 16).
-    expect(correspond('16790000', trouvePosteFlux('FQ')!.comptesFlux, trouvePosteFlux('FQ')!.exclusionsFlux)).toBe(false);
+    // FO : le 1679 n'est débité que par le crédit du 192 (fiche du COMPTE 16).
+    expect(correspond('16790000', trouvePosteFlux('FO')!.comptesFlux, trouvePosteFlux('FO')!.exclusionsFlux)).toBe(false);
     // FI : l'achèvement d'un en-cours, l'imputation d'une avance, la
     // production immobilisée · chacun porte son fondement cité.
     const fi = trouvePosteFlux('FI')!;
     const retranches = (fi.creditsARetrancher ?? []).flatMap((r) => r.comptes);
     expect(retranches).toEqual(['239', '249', '25', '721', '722']);
-    for (const r of [...(fi.creditsARetrancher ?? []), ...(trouvePosteFlux('FQ')!.creditsARetrancher ?? [])]) {
+    for (const r of [...(fi.creditsARetrancher ?? []), ...(trouvePosteFlux('FO')!.creditsARetrancher ?? [])]) {
       expect(r.fondement).toMatch(/Fiches? d(u|es) COMPTES? \d\d/);
     }
+  });
+
+  it('le 16 (fonds affectés) est un fonds PROPRE · FM et FO, jamais FP ni FQ (anomalie n° 11, Q1 des cas chiffrés de la clôture)', () => {
+    // « Les Fonds affectés sont constitués par des apports » (Partie 3 ch. 2
+    // § 1.1) ; le bilan les totalise en CZ « ressources propres et
+    // assimilées », hors de DD. Lus en FP, ils passaient pour un emprunt.
+    const capteFlux = (ref: string, numero: string) =>
+      correspond(numero, trouvePosteFlux(ref)!.comptesFlux, trouvePosteFlux(ref)!.exclusionsFlux);
+    for (const numero of ['16500000', '16710000', '16800000']) {
+      expect({ numero, FM: capteFlux('FM', numero), FO: capteFlux('FO', numero), FP: capteFlux('FP', numero), FQ: capteFlux('FQ', numero) }).toEqual({
+        numero,
+        FM: true,
+        FO: true,
+        FP: false,
+        FQ: false,
+      });
+    }
+    // Le 18 reste aux fonds étrangers, ses intérêts courus en dehors.
+    expect({ FP: capteFlux('FP', '18110000'), FQ: capteFlux('FQ', '18110000'), FM: capteFlux('FM', '18110000') }).toEqual({ FP: true, FQ: true, FM: false });
+    expect(capteFlux('FP', '18600000')).toBe(false);
+    // Les reprises au 792 (consommation du 165, quote-part du 167) ne sont
+    // pas des décaissements · retranchées de FO, qui lit les débits du 16.
+    expect((trouvePosteFlux('FO')!.creditsARetrancher ?? []).flatMap((r) => r.comptes)).toEqual(['792']);
+    expect(trouvePosteFlux('FQ')!.creditsARetrancher ?? []).toEqual([]);
   });
 
   it('les subdivisions du 413 et du 419 suivent la nature de tiers que la fiche du COMPTE 41 leur donne', () => {

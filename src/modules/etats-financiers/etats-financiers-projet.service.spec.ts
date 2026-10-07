@@ -59,6 +59,8 @@ function serviceAvecExercices(
       }
       return Promise.resolve({ lignes: [...parCompte.values()] });
     }),
+    // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
+    ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
   } as unknown as EcritureService;
   // Sans liste nommée, les exercices du dossier sont ceux dont la balance est
   // fournie, ouverts le même jour pour qu'aucun ne soit le N-1 d'un autre ·

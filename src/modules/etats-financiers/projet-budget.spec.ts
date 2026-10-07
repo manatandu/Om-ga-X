@@ -4,6 +4,7 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EngagementService } from '../analytique/engagement.service';
 import { LOT_ECRITURES, LOT_LECTURE } from '../../common/lecture-par-lots';
+import * as anterieurs from './engagements-anterieurs';
 
 /**
  * TABLEAU D'EXÉCUTION BUDGÉTAIRE et TABLEAU DE RÉCONCILIATION DE TRÉSORERIE.
@@ -53,11 +54,15 @@ function ecriture(
     id,
     tenantId: tete.tenantId ?? 't1',
     exerciceId: tete.exerciceId ?? 'e1',
+    libelle: `Écriture ${id}`,
     date: new Date('2026-05-01'),
     statut: tete.statut ?? StatutEcriture.VALIDEE,
     estGenereeParCloture: tete.estGenereeParCloture ?? false,
     lignes: lignes.map((l, i) => ({
       id: `${id}-${i}`,
+      compteId: `c-${l.numero}`,
+      dateEcheance: null,
+      libelle: null,
       debit: l.debit ?? 0,
       credit: l.credit ?? 0,
       lettre: l.lettre ?? null,
@@ -204,6 +209,8 @@ function monter(options: {
   budgets?: { sectionId: string; montant: number }[];
   plan?: { id: string; code: string; intitule: string } | null;
   nombreOd?: number;
+  /** B3 · l'exercice qui précède, s'il y en a un. */
+  precedent?: { id: string; dateFin: Date };
   engagements?: {
     sectionId: string;
     statut: 'OUVERT' | 'CLOS';
@@ -245,9 +252,19 @@ function monter(options: {
     // Honore l'exercice ET le dossier · les deux tableaux refusent d'un 404
     // ce que la doublure ne rend pas (jumeau de l'audit final F222).
     exercice: {
-      findFirst: jest.fn(({ where }: { where: { id?: string; tenantId?: string } }) =>
-        Promise.resolve(where.id === 'e1' && where.tenantId === 't1' ? { id: 'e1', dateFin: new Date('2026-12-31') } : null),
-      ),
+      findFirst: jest.fn(({ where }: { where: { id?: string; tenantId?: string; dateFin?: { lt: Date } } }) => {
+        if (where.id !== undefined) {
+          return Promise.resolve(
+            where.id === 'e1' && where.tenantId === 't1'
+              ? { id: 'e1', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }
+              : null,
+          );
+        }
+        // B3 · l'exercice précédent, borné au dossier et à la date de début.
+        if (where.tenantId !== 't1' || !(where.dateFin?.lt instanceof Date)) throw new Error('exercice.findFirst non honoré');
+        const p = options.precedent;
+        return Promise.resolve(p && p.dateFin < where.dateFin.lt ? p : null);
+      }),
     },
     ligneEcriture: {
       findMany: jest
@@ -718,7 +735,9 @@ describe("Tableau d'exécution budgétaire · l'exercice lu par tranches (audit 
   it('pose la question des lignes ouvertes par paquets, sans en oublier aucune', async () => {
     // Une écriture importée peut porter des milliers de lignes fournisseurs.
     // Seule la DERNIÈRE est encore due · si un paquet était sauté ou relu, la
-    // dépense passerait en décaissement.
+    // dépense passerait en décaissement. Seul son reste dû est engagé
+    // (relecture du 2026-10-07, bloquant 1 · Application 22, règle (d)), le
+    // reste de la dépense, réglé, est décaissé.
     const nombre = LOT_LECTURE + 1;
     const f = ecriture('import', [
       { numero: '60100000', debit: nombre * 100, section: 's1' },
@@ -730,7 +749,7 @@ describe("Tableau d'exécution budgétaire · l'exercice lu par tranches (audit 
     ]);
     const { s, prisma } = monter({ sections: SECTIONS, ecritures: [f] });
     const a1 = (await s.executionBudgetaire('t1', 'e1')).lignes.find((l) => l.code === 'A1')!;
-    expect({ decaissement: a1.decaissement, engagement: a1.engagement }).toEqual({ decaissement: 0, engagement: nombre * 100 });
+    expect({ decaissement: a1.decaissement, engagement: a1.engagement }).toEqual({ decaissement: nombre * 100 - 100, engagement: 100 });
     const tailles = prisma.ligneEcriture.findMany.mock.calls.map(([args]) => ((args as { where: Filtre }).where.id as { in: string[] }).in.length);
     expect(tailles).toEqual([LOT_LECTURE, 1]);
   });
@@ -801,5 +820,91 @@ describe('Tableau de réconciliation de trésorerie · l’exercice lu par tranc
     const t = await s.reconciliationTresorerie('t1', 'e1');
     expect(t.lignes.find((l) => l.rep === 'F')!.montant).toBe(300);
     expect(t.controle.boucle).toBe(true);
+  });
+});
+
+/**
+ * CONSTAT B3 DES CAS CHIFFRÉS DE LA CLÔTURE (2026-10-07) · la dépense de N-1
+ * engagée à sa clôture se compte en N selon sa suite (Application 22, règles
+ * (c) et (d)). La suite elle-même est gelée par `dettes-rattachees.spec.ts` ·
+ * ici, ce que le tableau en fait.
+ */
+describe("Tableau d'exécution budgétaire · la dette de N-1 suivie en N (B3)", () => {
+  const SECTION_B1 = [{ id: 's1', code: 'B1', intitule: 'Fournitures', type: TypeCompteDetailTotal.DETAIL }];
+  const C10_2027 = {
+    sections: SECTION_B1,
+    budgets: [{ sectionId: 's1', montant: 1_200_000 }],
+    precedent: { id: 'e0', dateFin: new Date('2025-12-31') },
+    ecritures: [
+      // N-1 · facture B, due à la clôture.
+      ecriture('fB', [{ numero: '60110000', debit: 500_000, section: 's1' }, { numero: '40110000', credit: 500_000 }], { exerciceId: 'e0' }),
+      // N-1 · facture A, payée comptant · décaissée en N-1, rien en N.
+      ecriture('fA', [{ numero: '60110000', debit: 1_500_000, section: 's1' }, { numero: '52110000', credit: 1_500_000 }], { exerciceId: 'e0' }),
+      // N · fournitures au comptant.
+      ecriture('c', [{ numero: '60110000', debit: 1_000_000, section: 's1' }, { numero: '52110000', credit: 1_000_000 }]),
+    ],
+  };
+  afterEach(() => jest.restoreAllMocks());
+
+  it('C10, 2027 · la facture B réglée en N est un décaissement de N · 1 500 000, crédit disponible −300 000, 125 %', async () => {
+    const espion = jest.spyOn(anterieurs, 'suiteEnNDesDettes').mockResolvedValue(new Map([['fB-1', { decaisseEnN: 500_000, engageEnN: 0 }]]));
+    const t = await service(C10_2027).executionBudgetaire('t1', 'e1');
+    const b1 = t.lignes[0];
+    expect([b1.decaissement, b1.engagement, b1.realisation, b1.creditDisponible, b1.executionPourcent]).toEqual([
+      1_500_000, 0, 1_500_000, -300_000, 125,
+    ]);
+    // Seule la ligne fournisseur ouverte de N-1 est suivie, avec le libellé que le report recopie.
+    expect(espion.mock.calls[0][2]).toEqual(expect.objectContaining({ id: 'e0' }));
+    expect(espion.mock.calls[0][4]).toEqual([
+      expect.objectContaining({ id: 'fB-1', numero: '40110000', credit: 500_000, libelle: 'Écriture fB' }),
+    ]);
+    expect(t.engagementsAnterieursNonSuivis).toBeNull();
+  });
+
+  it('encore due à la clôture de N · engagement de N', async () => {
+    jest.spyOn(anterieurs, 'suiteEnNDesDettes').mockResolvedValue(new Map([['fB-1', { decaisseEnN: 0, engageEnN: 500_000 }]]));
+    const b1 = (await service(C10_2027).executionBudgetaire('t1', 'e1')).lignes[0];
+    expect([b1.decaissement, b1.engagementComptable]).toEqual([1_000_000, 500_000]);
+  });
+
+  it('réglée en partie en N-1 · seul le reste dû pèse en N, au prorata des ventilations', async () => {
+    // Relecture du 2026-10-07, bloquant 1 · sur les 500 000 de la facture B,
+    // 200 000 réglés en N-1 ; 300 000 décaissés en N, rien d'engagé.
+    jest.spyOn(anterieurs, 'suiteEnNDesDettes').mockResolvedValue(new Map([['fB-1', { decaisseEnN: 300_000, engageEnN: 0 }]]));
+    const b1 = (await service(C10_2027).executionBudgetaire('t1', 'e1')).lignes[0];
+    expect([b1.decaissement, b1.engagementComptable]).toEqual([1_300_000, 0]);
+  });
+
+  it('facture de l’exercice réglée en partie (lettrage partiel) · le réglé décaissé, le reste dû engagé', async () => {
+    // Relecture du 2026-10-07, bloquant 1 · 1 000 000 facturés, 400 000 réglés
+    // dans l'exercice · décaissement 400 000, engagement 600 000.
+    const s = service({
+      sections: SECTION_B1,
+      budgets: [{ sectionId: 's1', montant: 1_200_000 }],
+      ecritures: [ecriture('f', [{ numero: '60110000', debit: 1_000_000, section: 's1' }, { numero: '40110000', credit: 1_000_000 }])],
+    });
+    const espion = jest.spyOn(anterieurs, 'resteDuALaDate').mockResolvedValue(60_000_000);
+    const b1 = (await s.executionBudgetaire('t1', 'e1')).lignes[0];
+    expect([b1.decaissement, b1.engagementComptable]).toEqual([400_000, 600_000]);
+    expect(espion).toHaveBeenCalledWith(expect.anything(), 't1', expect.objectContaining({ id: 'f-1' }), new Date('2026-12-31'));
+    // Un groupe à plusieurs factures · nommé, compté nulle part.
+    espion.mockResolvedValue(null);
+    const t = await s.executionBudgetaire('t1', 'e1');
+    expect([t.lignes[0].decaissement, t.lignes[0].engagementComptable]).toEqual([0, 0]);
+    expect(t.engagementsReglesSansImputation).toContain('1000000.00');
+  });
+
+  it('introuvable · comptée nulle part, et NOMMÉE', async () => {
+    jest.spyOn(anterieurs, 'suiteEnNDesDettes').mockResolvedValue(new Map([['fB-1', 'INCONNUE' as const]]));
+    const t = await service(C10_2027).executionBudgetaire('t1', 'e1');
+    expect([t.lignes[0].decaissement, t.lignes[0].engagement]).toEqual([1_000_000, 0]);
+    expect(t.engagementsAnterieursNonSuivis).toContain('500000.00');
+  });
+
+  it('sans exercice précédent, rien n’est relu', async () => {
+    const espion = jest.spyOn(anterieurs, 'suiteEnNDesDettes');
+    const t = await service({ ...C10_2027, precedent: undefined }).executionBudgetaire('t1', 'e1');
+    expect(espion).not.toHaveBeenCalled();
+    expect(t.lignes[0].decaissement).toBe(1_000_000);
   });
 });

@@ -202,7 +202,9 @@ function fabriquerExport(lignesTiers: LigneTiersStub[]): ExportService {
     ecriture: { findMany: jest.fn().mockResolvedValue([]) },
     // Seule `partsParEcheance` lit les lignes dans ce parcours, et elle les
     // demande sommées par compte, borne d'échéance comprise.
-    ligneEcriture: { groupBy: sommesParEcheance(lignesTiers) },
+    // Les dettes du 40 nées d'immobilisations (relecture du 2026-10-07,
+    // majeur 3 et sa suite) · ce jeu n'en a aucune, aucune ligne à rendre.
+    ligneEcriture: { groupBy: sommesParEcheance(lignesTiers), findMany: jest.fn().mockResolvedValue([]) },
     bailleur: { findMany: jest.fn().mockResolvedValue([]) },
     planAnalytique: { findFirst: jest.fn().mockResolvedValue(null) },
     immobilisation: { findMany: jest.fn().mockResolvedValue([]) },

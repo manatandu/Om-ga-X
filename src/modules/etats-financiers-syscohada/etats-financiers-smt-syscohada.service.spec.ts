@@ -14,6 +14,14 @@ import {
   POSTES_BILAN_PASSIF_SMT_SYSCOHADA,
   SEUILS_SMT_ART13_FCFA,
 } from './correspondance-smt-syscohada';
+import * as dettesRattachees from '../etats-financiers/dettes-rattachees';
+
+// Les dettes du 40 nées d'immobilisations (relecture du 2026-10-07, majeur 3
+// et sa suite) · aucune par défaut ; leur lecture est gelée par
+// `dettes-rattachees.spec.ts`, leur effet sur VC par un test dédié.
+beforeEach(() => {
+  jest.spyOn(dettesRattachees, 'dettesFournisseursNeesDImmobilisations').mockResolvedValue({ ouverture: 0, cloture: 0 });
+});
 
 /**
  * SERVICE S.M.T SYSCOHADA · ce spec ne relit pas la table (son propre spec
@@ -232,6 +240,8 @@ function service(
       const lignes = lignesParExercice[exerciceId] ?? [];
       return Promise.resolve({ lignes, totaux: { debit: 0, credit: 0 } });
     }),
+    // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
+    ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
   } as unknown as EcritureService;
 
   const exerciceService = {
@@ -267,7 +277,18 @@ function service(
     // celui du lettrage et celui de l'échéance au jour de la clôture ne
     // testeraient que la doublure. Une borne qu'elle ne sait pas lire la fait
     // tomber, plutôt que de rendre une somme qui l'ignorerait.
-    ligneEcriture: { groupBy: sommesDesLignesTiers(options.lignesTiers ?? []) },
+    ligneEcriture: {
+      groupBy: sommesDesLignesTiers(options.lignesTiers ?? []),
+      // Constats N3 et N4 des cas chiffrés de la clôture · le rattachement
+      // d'un règlement fournisseur lit son groupe de lettrage. Les lignes de
+      // ces jeux ne sont lettrées à rien · la doublure honore la seule
+      // lecture qu'un règlement non lettré appelle (son groupe, par son
+      // identifiant) et tombe sur toute autre.
+      findMany: jest.fn().mockImplementation(({ where }: { where: { id?: { in?: string[] } } }) => {
+        if (!where.id?.in) throw new Error('doublure : lecture de lignes non honorée');
+        return Promise.resolve(where.id.in.map((id) => ({ id, lettrageId: null })));
+      }),
+    },
     // Honore le dossier, la borne d'acquisition et l'exclusion des biens
     // sortis avant l'ouverture (passe R6, E15) · une doublure qui rendrait
     // tout validerait une note qui compterait un bien sorti depuis des années.
@@ -597,6 +618,15 @@ describe('Compte de résultat S.M.T SYSCOHADA · comptabilité de TRÉSORERIE', 
     expect(ligneCr(cr, 'SD6').montant).toBe(100_000);
     expect(cr.totalDepenses).toBe(565_000);
     expect(cr.soldeCaisse).toBe(-65_000);
+  });
+
+  it('la dette du 401 née d’une immobilisation sort de la ligne E, comme le 481 (majeur 3 et sa suite)', async () => {
+    // 30 000 de la dette fournisseur de clôture sont nés d'un mobilier ·
+    // SV3 ne lit plus que 20 000 de variation (convention (N-1) - N).
+    jest.spyOn(dettesRattachees, 'dettesFournisseursNeesDImmobilisations').mockResolvedValue({ ouverture: 0, cloture: 30_000 });
+    const cr = await negoce().compteDeResultat('t1', 'e2026');
+    expect(ligneCr(cr, 'SV3').montant).toBe(-20_000);
+    expect(ligneCr(cr, 'SG').montant).toBe(125_000 + 30_000);
   });
 
   it('G = C – D + E – F boucle sur le « Résultat exercice » du bilan', async () => {
@@ -1223,7 +1253,9 @@ describe('Notes annexes S.M.T SYSCOHADA', () => {
     // l'échéance de part et d'autre de la clôture, sur les seuls comptes des
     // postes SA3 et SP4 du livre-journal, et aucune ligne rapatriée.
     const prisma = (s as unknown as { prisma: { ligneEcriture: Record<string, jest.Mock> } }).prisma;
-    expect(Object.keys(prisma.ligneEcriture)).toEqual(['groupBy']);
+    // Aucune ligne rapatriée · seule la somme est demandée (la lecture ligne
+    // à ligne de la doublure ne sert qu'au rattachement des règlements).
+    expect(prisma.ligneEcriture.findMany).not.toHaveBeenCalled();
     const appels = prisma.ligneEcriture.groupBy.mock.calls.map(([args]) => args as ArgsSommes);
     expect(appels).toHaveLength(2);
     expect(appels.map((a) => a.where.dateEcheance)).toEqual([{ gt: cloture }, { lte: cloture }]);

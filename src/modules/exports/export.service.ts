@@ -4799,6 +4799,27 @@ export class ExportService {
    * Bilan paysage, Bilan-Actif, Bilan-Passif, Compte Exploitation, NOTES
    * ANNEXES, notes applicables, TABLE COMMENTAIRE, CONTROLES, ANOMALIES.
    */
+  /**
+   * LA PROVENANCE DE LA COLONNE N-1, DITE DANS LA LIASSE (relecture du
+   * 2026-10-07, mineur 5) · l'exercice précédent n'étant pas tenu, la colonne
+   * N-1 du bilan est le bilan d'ouverture, ou rien (ouverture présumée nulle,
+   * ouverture saisie en OD) ; le compte de résultat N-1 reste vide avec son
+   * issue. Lignes INFO de la feuille ANOMALIES.
+   */
+  private provenanceDuComparatif(
+    bilan: { mentionComparatif?: string | null },
+    resultat: { motifComparatifAbsent?: string | null },
+    tft?: { mentionOuverture?: string | null },
+  ): Array<[string, string, string, string, string]> {
+    const lignes: Array<[string, string, string, string, string]> = [];
+    if (bilan.mentionComparatif) lignes.push(['INFO', '·', 'Bilan · colonne N-1', bilan.mentionComparatif, 'Aucune action si la provenance est la bonne.']);
+    if (resultat.motifComparatifAbsent) lignes.push(['INFO', '·', 'Compte de résultat · colonne N-1', resultat.motifComparatifAbsent, 'Voir l’issue dite.']);
+    if (tft?.mentionOuverture && tft.mentionOuverture !== bilan.mentionComparatif) {
+      lignes.push(['INFO', 'ZA', 'Tableau des flux · ouverture', tft.mentionOuverture, 'Aucune action si la provenance est la bonne.']);
+    }
+    return lignes;
+  }
+
   private async liasseProjetsEtafi(
     tenantId: string,
     exerciceId: string,
@@ -4978,6 +4999,7 @@ export class ExportService {
         'Vérifier le numéro de compte.',
       ]);
     }
+    anomalies.push(...this.provenanceDuComparatif(bilan, ce));
     if (anomalies.length === 0) anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     let ra = 1;
     for (const ligne of anomalies) {
@@ -5106,8 +5128,10 @@ export class ExportService {
       ['Écart bilan actif - passif (doit être 0)', 'B5-B6', 0],
       ['Résultat net (compte de résultat, KZC)', `Résultat!D${rangsCr.get('KZC')}`, ''],
       ['Résultat net logé au bilan (HB)', `'Bilan-Passif'!D${rangsPassif.get('HB')}`, ''],
-      ['Flux hors exploitation (déduits du rapprochement)', cr.controle.fluxHorsExploitation, ''],
-      ['Écart résultat CR / bilan, flux hors exploitation déduits (doit être 0)', 'B8-B10-B9', 0],
+      // Constat B2 des cas chiffrés de la clôture · les flux hors exploitation
+      // ne sont plus dans KZC, le rapprochement ne les retranche plus.
+      ['Flux hors exploitation (hors du résultat, information)', cr.controle.fluxHorsExploitation, ''],
+      ['Écart résultat CR / bilan (doit être 0)', 'B8-B9', 0],
       [
         "Éligibilité art. 6 · plus haute catégorie de ressources de l'exercice",
         Math.max(0, ...eligibilite.categories.map((c) => c.montant)),
@@ -5170,6 +5194,7 @@ export class ExportService {
         'Passer au Système normal (art. 5) dès le prochain exercice.',
       ]);
     }
+    anomalies.push(...this.provenanceDuComparatif(bilan, cr));
     if (anomalies.length === 0) anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     let ra = 1;
     for (const ligne of anomalies) {
@@ -5370,6 +5395,7 @@ export class ExportService {
         'Vérifier le numéro de compte.',
       ]);
     }
+    anomalies.push(...this.provenanceDuComparatif(bilan, cr));
     if (anomalies.length === 0) {
       anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     }
@@ -7032,6 +7058,7 @@ export class ExportService {
     for (const p of tft.postesNonCalculablesN1 ?? []) {
       anomalies.push(['INFO', p.ref, 'Tableau des flux · colonne N-1', p.raison, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.']);
     }
+    anomalies.push(...this.provenanceDuComparatif(bilan, cr, tft));
     if (anomalies.length === 0) anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     let ra = 1;
     for (const ligne of anomalies) {
@@ -7261,6 +7288,7 @@ export class ExportService {
         eligibilite.qualificationParLEntite,
       ]);
     }
+    anomalies.push(...this.provenanceDuComparatif(bilan, cr));
     if (anomalies.length === 0) anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     let ra = 1;
     for (const ligne of anomalies) {

@@ -114,6 +114,12 @@ export interface Compte {
   nature?: string | null;
   /** Rattachement à un Bailleur (comptabilité analytique par projet/bailleur) · voir Bailleur. */
   bailleurId: string | null;
+  /**
+   * Compte de trésorerie déclaré porter la contrepartie de l'État au tableau
+   * emplois-ressources d'un projet (FV, FY) · convention d'OmegaX, aucun texte
+   * ne désigne le compte (cas chiffrés de la clôture, Q2).
+   */
+  porteFondsContrepartieEtat?: boolean;
   /** Compte ouvert au lettrage · « liberté de définir la liste des comptes auxquels s'applique le lettrage » (CPCC, ch. 6). */
   lettrable: boolean;
   /** Taux de TVA proposé automatiquement en saisie quand ce compte est choisi. */
@@ -573,6 +579,10 @@ export interface Bilan {
   totalPassifN1?: number;
   /** false = premier exercice du dossier, aucun N-1 à afficher. */
   exerciceN1Disponible: boolean;
+  /** D'où vient la colonne N-1 · exercice précédent, ou bilan d'ouverture d'un dossier repris (cas chiffrés de la clôture, Q3). */
+  comparatif?: 'EXERCICE_N1' | 'BILAN_D_OUVERTURE' | null;
+  /** La mention à imprimer au-dessus d'une colonne N-1 lue sur l'ouverture. */
+  mentionComparatif?: string | null;
   equilibre: boolean;
   /** Comptes de bilan (classes 1-5) qu'aucun poste officiel ne réclame · jamais masqués. */
   comptesNonRattaches: CompteDuPoste[];
@@ -607,6 +617,10 @@ export interface BilanProjet {
   totalActifN1?: number;
   totalPassifN1?: number;
   exerciceN1Disponible: boolean;
+  /** D'où vient la colonne N-1 · exercice précédent, ou bilan d'ouverture d'un dossier repris (cas chiffrés de la clôture, Q3). */
+  comparatif?: 'EXERCICE_N1' | 'BILAN_D_OUVERTURE' | null;
+  /** La mention à imprimer au-dessus d'une colonne N-1 lue sur l'ouverture. */
+  mentionComparatif?: string | null;
   equilibre: boolean;
   comptesNonRattaches: CompteDuPoste[];
 }
@@ -621,6 +635,8 @@ export interface CompteExploitationProjet {
   solde: number; // XC · attendu à 0 en régime normal, PAS un résultat net
   soldeN1?: number;
   exerciceN1Disponible: boolean;
+  /** Colonne N-1 vide d'un dossier repris · le motif et l'issue (cas chiffrés de la clôture, Q3). */
+  motifComparatifAbsent?: string | null;
   comptesNonRattaches: CompteDuPoste[];
   controle: {
     boucleAZero: boolean;
@@ -691,6 +707,8 @@ export interface CompteDeResultat {
   resultatNetN1?: number;
   /** false = premier exercice du dossier, aucun N-1 à afficher. */
   exerciceN1Disponible: boolean;
+  /** Colonne N-1 vide d'un dossier repris · le motif et l'issue (cas chiffrés de la clôture, Q3). */
+  motifComparatifAbsent?: string | null;
   /** Comptes de gestion qu'aucun poste officiel ne réclame · jamais masqués. */
   comptesNonRattaches: CompteDuPoste[];
   controle: {
@@ -2412,6 +2430,10 @@ export interface BilanSmt {
   totalActifN1?: number;
   totalPassifN1?: number;
   exerciceN1Disponible: boolean;
+  /** D'où vient la colonne N-1 · exercice précédent, ou bilan d'ouverture d'un dossier repris (cas chiffrés de la clôture, Q3). */
+  comparatif?: 'EXERCICE_N1' | 'BILAN_D_OUVERTURE' | null;
+  /** La mention à imprimer au-dessus d'une colonne N-1 lue sur l'ouverture. */
+  mentionComparatif?: string | null;
   equilibre: boolean;
   renvoiImmobilisations: string;
 }
@@ -2439,6 +2461,8 @@ export interface CompteDeResultatSmt {
    * les totaux ci-dessous, undefined sans exercice N-1, jamais zéro.
    */
   exerciceN1Disponible: boolean;
+  /** Colonne N-1 vide d'un dossier repris · le motif et l'issue (cas chiffrés de la clôture, Q3). */
+  motifComparatifAbsent?: string | null;
   totalRecettesN1?: number;
   totalDepensesN1?: number;
   soldeCaisseN1?: number;
@@ -2457,6 +2481,15 @@ export interface CompteDeResultatSmt {
     ecart: number;
     concordant: boolean;
   };
+  /** Règlements fournisseurs restés en JF faute de facture lisible (cas chiffrés de la clôture, N4). */
+  reglementsNonRattaches?: ReglementNonRattache[];
+}
+
+/** Un règlement de dette fournisseur dont la nature ne se lit pas · nommé, jamais deviné. */
+export interface ReglementNonRattache {
+  numero: string;
+  montant: number;
+  motif: string;
 }
 
 export interface OperationTresorerieSmt {
@@ -2631,6 +2664,11 @@ export interface PosteEmploisRessources extends PosteCalcule {
   /** Correction des renvois du guide, signée · positive quand la dette a diminué. */
   correction?: number;
   /**
+   * La part de la correction qu'aucune pièce ne porte, répartie au prorata du
+   * brut (cas chiffrés de la clôture, B4) · absente quand tout se rattache.
+   */
+  correctionNonRattachee?: number;
+  /**
    * Les deux colonnes CUMULÉES de la maquette officielle (SYCEBNL, Partie 4
    * ch. 3, Section 1) · elles couvrent le dossier depuis son origine et
    * suivent la convention de financement, qui court sur plusieurs exercices.
@@ -2698,6 +2736,13 @@ export interface TableauExecutionBudgetaire {
   engagementsHorsComptabilite: string;
   /** Les OD analytiques du plan, que ce tableau établi sur la comptabilité ne reprend pas. */
   odAnalytiquesNonReprises?: string | null;
+  /**
+   * Les dépenses engagées à la clôture de N-1 dont la suite en N ne se lit
+   * pas · comptées nulle part, et dites (cas chiffrés de la clôture, B3).
+   */
+  engagementsAnterieursNonSuivis?: string | null;
+  /** Dépenses réglées par un lettrage à plusieurs factures · part due illisible, comptée nulle part. */
+  engagementsReglesSansImputation?: string | null;
 }
 
 export interface TableauReconciliationTresorerie {
@@ -3366,6 +3411,10 @@ export interface BilanSyscohada {
   totalActifN1?: number;
   totalPassifN1?: number;
   exerciceN1Disponible: boolean;
+  /** D'où vient la colonne N-1 · exercice précédent, ou bilan d'ouverture d'un dossier repris (cas chiffrés de la clôture, Q3). */
+  comparatif?: 'EXERCICE_N1' | 'BILAN_D_OUVERTURE' | null;
+  /** La mention à imprimer au-dessus d'une colonne N-1 lue sur l'ouverture. */
+  mentionComparatif?: string | null;
   equilibre: boolean;
   comptesNonRattaches: CompteDuPosteSyscohada[];
   /** Comptes que le Titre VII fait solder à la clôture et qui portent un solde (audit final F92). */
@@ -3420,6 +3469,8 @@ export interface CompteResultatSyscohada {
   soldes: SoldesCompteResultatSyscohada;
   soldesN1?: SoldesCompteResultatSyscohada;
   exerciceN1Disponible: boolean;
+  /** Colonne N-1 vide d'un dossier repris · le motif et l'issue (cas chiffrés de la clôture, Q3). */
+  motifComparatifAbsent?: string | null;
   comptesNonRattaches: CompteDuPosteSyscohada[];
   controle: {
     resultatToutesClassesDeGestion: number;
@@ -3464,6 +3515,8 @@ export interface TableauFluxTresorerieSyscohada {
   postesNonCalculables: PosteNonCalculableSyscohada[];
   /** Ceux de la colonne N-1, laissés vides (audit final F14). */
   postesNonCalculablesN1?: PosteNonCalculableSyscohada[];
+  /** D'où viennent les positions d'ouverture quand l'exercice précédent n'est pas tenu (relecture du 2026-10-07, bloquant 2). */
+  mentionOuverture?: string | null;
   controle: {
     tresorerieOuverture: number;
     variation: number;
@@ -3541,6 +3594,10 @@ export interface BilanSmtSyscohada {
   totalActifN1?: number;
   totalPassifN1?: number;
   exerciceN1Disponible: boolean;
+  /** D'où vient la colonne N-1 · exercice précédent, ou bilan d'ouverture d'un dossier repris (cas chiffrés de la clôture, Q3). */
+  comparatif?: 'EXERCICE_N1' | 'BILAN_D_OUVERTURE' | null;
+  /** La mention à imprimer au-dessus d'une colonne N-1 lue sur l'ouverture. */
+  mentionComparatif?: string | null;
   equilibre: boolean;
   comptesNonRattaches: CompteDuPoste[];
   /** Renvoi (1) imprimé sous l'actif de la maquette officielle. */
@@ -3594,9 +3651,13 @@ export interface CompteDeResultatSmtSyscohada {
   /** G · reporté au poste « Résultat exercice » du passif du bilan. */
   resultatExercice: number;
   exerciceN1Disponible: boolean;
+  /** Colonne N-1 vide d'un dossier repris · le motif et l'issue (cas chiffrés de la clôture, Q3). */
+  motifComparatifAbsent?: string | null;
   fluxHorsResultat: RubriqueHorsResultatSmtSyscohada[];
   /** Contrepartie ni en A/B, ni en classe 1 ou 2 · signalée, jamais rattachée d'office. */
   contrepartiesNonRattachees: CompteDuPoste[];
+  /** Règlements fournisseurs restés en SD6 faute de facture lisible (cas chiffrés de la clôture, N3). */
+  reglementsNonRattaches?: ReglementNonRattache[];
   controle: {
     /** Poste « Résultat exercice » du bilan, l'autre chemin vers le même nombre. */
     resultatBilan: number;

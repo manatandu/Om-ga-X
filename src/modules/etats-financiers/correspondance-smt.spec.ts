@@ -1,5 +1,6 @@
 import {
   CATEGORIES_RESSOURCES_ART6,
+  DETTES_HORS_EXPLOITATION,
   NOTES_SMT,
   ORDRE_BILAN_ACTIF,
   ORDRE_BILAN_PASSIF,
@@ -275,13 +276,30 @@ describe('correspondance SMT · discipline de la dérivation', () => {
     // KB et JF sont les « autres » de la maquette. Leurs exclusions doivent
     // reprendre TOUS les préfixes des postes nommés du même bloc · sinon un
     // encaissement tombe deux fois, ou nulle part.
+    // Plus les dettes hors exploitation (481), flux hors du résultat
+    // (constat B2 des cas chiffrés de la clôture).
     const kb = POSTES_RECETTES.find((p) => p.ref === 'KB')!;
     const nommesRecettes = POSTES_RECETTES.filter((p) => p.ref !== 'KB').flatMap((p) => p.comptes);
-    expect([...(kb.exclusions ?? [])].sort()).toEqual([...nommesRecettes].sort());
+    expect([...(kb.exclusions ?? [])].sort()).toEqual([...nommesRecettes, ...DETTES_HORS_EXPLOITATION].sort());
 
     const jf = POSTES_DEPENSES.find((p) => p.ref === 'JF')!;
     const nommesDepenses = POSTES_DEPENSES.filter((p) => p.ref !== 'JF').flatMap((p) => p.comptes);
-    expect([...(jf.exclusions ?? [])].sort()).toEqual([...nommesDepenses].sort());
+    expect([...(jf.exclusions ?? [])].sort()).toEqual([...nommesDepenses, ...DETTES_HORS_EXPLOITATION].sort());
+  });
+
+  it('aucun poste du compte de résultat ne capte un apport, une immobilisation ou le 481 (constat B2)', () => {
+    // KB « Autres recettes sur ACTIVITÉS », JF « Autres dépenses sur
+    // ACTIVITÉS », KZC « RESULTAT NET DE L'EXERCICE » · le résultat se mesure
+    // « hors nouveaux apports et retraits d'apports » (fiche du COMPTE 13), et
+    // le matériel passe en charge par sa dotation (JG).
+    for (const numero of ['10110000', '16500000', '18110000', '24410000', '24510000', '48120000']) {
+      const captes = [...POSTES_RECETTES, ...POSTES_DEPENSES].filter((p) => correspond(numero, p.comptes, p.exclusions)).map((p) => p.ref);
+      expect({ numero, captes }).toEqual({ numero, captes: [] });
+    }
+    // Les règlements de tiers d'exploitation restent des recettes et des
+    // dépenses · le recouvrement d'une créance d'adhérent en KA (constat N4).
+    expect(correspond('41100000', POSTES_RECETTES.find((p) => p.ref === 'KA')!.comptes, POSTES_RECETTES.find((p) => p.ref === 'KA')!.exclusions)).toBe(true);
+    expect(correspond('40110000', POSTES_DEPENSES.find((p) => p.ref === 'JF')!.comptes, POSTES_DEPENSES.find((p) => p.ref === 'JF')!.exclusions)).toBe(true);
   });
 
   it('la ventilation de la Note 4 ne recoupe pas les postes du compte de résultat', () => {

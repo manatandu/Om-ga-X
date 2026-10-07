@@ -1,5 +1,6 @@
 import { motifLignesTenues } from './lignes-tenues';
 import { ecartClasse9, motifRefusClasse9 } from './classe-9-equilibree';
+import { motifExerciceCloture } from './exercice-cloture';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { LOT_ECRITURES, LOT_LECTURE, PremiersSelon, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { regrouperSurCollectifs } from '../tiers/collectifs-tiers';
@@ -24,6 +25,7 @@ import { libelleReference, referencesVers } from '../../common/suppression/refer
 import { ModifierEcritureDto, ValiderJusquaDto } from './dto/brouillard.dto';
 import { JournalService } from '../journaux/journal.service';
 import { ExerciceService, refuserSiPeriodeClose } from '../exercice/exercice.service';
+import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
 import { AnalytiqueService } from '../analytique/analytique.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
@@ -677,7 +679,10 @@ export class EcritureService {
       throw new BadRequestException('Exercice introuvable pour ce tenant');
     }
     if (exercice.statut === StatutExercice.CLOTURE) {
-      throw new ForbiddenException("Impossible d'enregistrer une écriture sur un exercice clôturé");
+      // Le refus nomme l'issue (constat N6 des cas chiffrés de la clôture) ·
+      // voir `motifExerciceCloture`.
+      const dossier = await db.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } });
+      throw new ForbiddenException(motifExerciceCloture(dossier?.referentiel ?? Referentiel.SYSCOHADA));
     }
 
     // LA DATE DOIT TOMBER DANS L'EXERCICE, et c'est `modifier` qui le disait
@@ -3438,6 +3443,30 @@ export class EcritureService {
    */
   async virementsDeMiseEnService(tenantId: string, exerciceId: string | null): Promise<VirementsParCompte> {
     return this.mouvementsLiesParCompte(tenantId, exerciceId, { immobilisationMiseEnService: { isNot: null } });
+  }
+
+  /**
+   * LA POSITION D'OUVERTURE PASSÉE EN OD AU PREMIER JOUR, au livre-journal ·
+   * même périmètre que la clôture (AU2, `filtreOuverturePasseeAuPremierJour`).
+   * Lue par les états d'un exercice SANS exercice précédent ni report
+   * (cas chiffrés de la clôture, relecture du 2026-10-07, bloquant 2) · elle
+   * peut être la reprise d'un dossier ou la naissance de l'entité (apport du
+   * premier jour), et rien ne les distingue · les états ne la lisent ni comme
+   * flux ni comme ouverture, et le disent. `null` · aucune.
+   */
+  async ouverturePasseeAuPremierJour(tenantId: string, exerciceId: string): Promise<{ nombre: number; pieces: string[] } | null> {
+    const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
+    if (!exercice) return null;
+    const filtre: Prisma.EcritureWhereInput = { ...filtreOuverturePasseeAuPremierJour(tenantId, exercice), statut: StatutEcriture.VALIDEE };
+    const nombre = await this.prisma.ecriture.count({ where: { ...filtre, tenantId } });
+    if (nombre === 0) return null;
+    const premieres = await this.prisma.ecriture.findMany({
+      where: { ...filtre, tenantId },
+      select: { numeroPiece: true, journal: { select: { code: true } } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: 5,
+    });
+    return { nombre, pieces: premieres.map((e) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`) };
   }
 
   /**

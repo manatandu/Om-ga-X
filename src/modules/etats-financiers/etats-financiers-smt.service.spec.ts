@@ -5,6 +5,14 @@ import { EcritureService, PLAFOND_LIGNES_GRAND_LIVRE } from '../comptabilite/ecr
 import { LOT_ECRITURES } from '../../common/lecture-par-lots';
 import { ExerciceService } from '../exercice/exercice.service';
 import { PrismaService } from '../../common/prisma.service';
+import * as dettesRattachees from './dettes-rattachees';
+
+// Les dettes du 40 nées d'immobilisations (relecture du 2026-10-07, majeur 3
+// et sa suite) · aucune par défaut ; leur lecture est gelée par
+// `dettes-rattachees.spec.ts`, leur effet sur VC par un test dédié.
+beforeEach(() => {
+  jest.spyOn(dettesRattachees, 'dettesFournisseursNeesDImmobilisations').mockResolvedValue({ ouverture: 0, cloture: 0 });
+});
 
 // ---------------------------------------------------------------------------
 // Doublures
@@ -118,6 +126,8 @@ function service(
       const lignes = lignesParExercice[exerciceId] ?? [];
       return Promise.resolve({ lignes, totaux: { debit: 0, credit: 0 } });
     }),
+    // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
+    ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
   } as unknown as EcritureService;
 
   // LES EXERCICES DU DOSSIER · ceux qu'on nomme, ou à défaut ceux dont la
@@ -236,6 +246,15 @@ function service(
           return Promise.resolve([...parCompte.values()]);
         },
       ),
+      // Constats N3 et N4 des cas chiffrés de la clôture · le rattachement
+      // d'un règlement fournisseur lit son groupe de lettrage. Les lignes de
+      // ces jeux ne sont lettrées à rien · la doublure honore la seule
+      // lecture qu'un règlement non lettré appelle (son groupe, par son
+      // identifiant) et tombe sur toute autre.
+      findMany: jest.fn().mockImplementation(({ where }: { where: { id?: { in?: string[] } } }) => {
+        if (!where.id?.in) throw new Error('doublure : lecture de lignes non honorée');
+        return Promise.resolve(where.id.in.map((id) => ({ id, lettrageId: null })));
+      }),
     },
     tenant: {
       findUniqueOrThrow: jest.fn().mockResolvedValue({ devise: 'devise' in options ? options.devise : 'CDF' }),
@@ -613,6 +632,26 @@ describe('Compte de résultat S.M.T', () => {
     expect(cr.controle.concordant).toBe(true);
   });
 
+  it('la dette du 401 née d’une immobilisation sort de VC, comme le 481 · facture encore due à la clôture', async () => {
+    // Relecture du 2026-10-07, majeur 3 et sa suite · mobilier de 600 passé
+    // au 401, dû au 31 décembre. Dans VC, la dette diminuait KZC de 600
+    // alors que le résultat n'a pas bougé.
+    const exercices = [
+      { id: 'e0', dateDebut: new Date('2025-01-01') },
+      { id: 'e1', dateDebut: new Date('2026-01-01') },
+    ];
+    const s = service(
+      { e0: [], e1: [ligne('24410000', ClasseCompte.CLASSE_2, 600, 0), ligne('40100000', ClasseCompte.CLASSE_4, 0, 600)] },
+      { exercices, ecritures: [] },
+    );
+    const espion = jest.spyOn(dettesRattachees, 'dettesFournisseursNeesDImmobilisations').mockResolvedValue({ ouverture: 0, cloture: 600 });
+    const cr = await s.compteDeResultat('t1', 'e1');
+    expect(cr.retraitements.find((r) => r.ref === 'VC')!.montant).toBe(0);
+    expect(cr.resultatNet).toBe(0);
+    expect(cr.controle.concordant).toBe(true);
+    expect(espion).toHaveBeenCalledWith(expect.anything(), 't1', expect.objectContaining({ id: 'e1' }), expect.objectContaining({ comptes: ['40'] }));
+  });
+
   it('les dotations aux amortissements (68) sont retranchées et ne sont jamais un décaissement', async () => {
     const exercices = [
       { id: 'e0', dateDebut: new Date('2025-01-01') },
@@ -665,12 +704,12 @@ describe('Compte de résultat S.M.T', () => {
     expect(cr.retraitements.find((r) => r.ref === 'VC')!.montant).toBe(150);
   });
 
-  it('isole les flux qui ne sont NI produit NI charge, et le contrôle concorde une fois qu’on les retire', async () => {
-    // Limite assumée de la maquette officielle : un apport en dotation
-    // encaissé et une immobilisation payée gonflent et creusent KZ sans
-    // toucher au résultat, et le texte n'ouvre aucune ligne pour les
-    // reprendre. Le moteur les calcule et les expose plutôt que de laisser
-    // un écart inexpliqué.
+  it('isole les flux qui ne sont NI produit NI charge, hors de KX, JX et KZC, et le contrôle concorde sans rien retrancher (constat B2)', async () => {
+    // Un apport en dotation encaissé et une immobilisation payée ne sont ni
+    // des recettes ni des dépenses « sur activités » (KB, JF) · ils restaient
+    // dans KZ et KZC, et le contrôle les retranchait pour se dire concordant
+    // avec un KZC faux (cas chiffrés de la clôture, C11 · KZC 1 450 000
+    // pour un résultat de 1 050 000). Ils sont exposés à part.
     const s = service(
       {
         e1: [
@@ -693,11 +732,13 @@ describe('Compte de résultat S.M.T', () => {
       },
     );
     const cr = await s.compteDeResultat('t1', 'e1');
-    expect(cr.soldeCaisse).toBe(-100);
+    expect(cr.soldeCaisse).toBe(0);
+    expect(cr.totalRecettes).toBe(0);
+    expect(cr.totalDepenses).toBe(0);
+    expect(cr.resultatNet).toBe(0);
     expect(cr.controle.fluxHorsExploitation).toBe(-100);
     expect(cr.controle.comptesHorsExploitation.map((c) => c.numero)).toEqual(['10110000', '24110000']);
-    // Résultat du bilan nul (aucune classe 6/7/8 mouvementée) : KZC vaut le
-    // flux hors exploitation, et le contrôle concorde une fois celui-ci retiré.
+    // Résultat du bilan nul (aucune classe 6/7/8 mouvementée) · KZC aussi.
     expect(cr.controle.resultatBilan).toBe(0);
     expect(cr.controle.ecart).toBe(0);
     expect(cr.controle.concordant).toBe(true);
@@ -1465,7 +1506,8 @@ describe('Compte de résultat S.M.T · VC ne lit que les dettes d’exploitation
       },
     );
     const cr = await s.compteDeResultat('t1', 'e1');
-    expect(cr.soldeCaisse).toBe(-5000);
+    // Hors de JF, donc hors de KZ (constat B2).
+    expect(cr.soldeCaisse).toBe(0);
     expect(cr.retraitements.find((r) => r.ref === 'VC')!.montant).toBe(0);
     expect(cr.controle.fluxHorsExploitation).toBe(-5000);
     expect(cr.controle.comptesHorsExploitation.map((c) => c.numero)).toEqual(['48120000']);

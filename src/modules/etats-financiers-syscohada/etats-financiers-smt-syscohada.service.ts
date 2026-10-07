@@ -10,10 +10,22 @@ import {
   CompteDuPoste,
   LigneBalancePourEtat,
   MOTIF_EXERCICE_INTROUVABLE,
+  MOTIF_RESULTAT_N1_NON_TENU,
   chargerLignes,
+  comparatifDuBilan,
   correspond,
+  lireOuverturePasseeEnOd,
+  ouvertureTenue,
   trouverExerciceN1,
 } from '../etats-financiers/etats-financiers.communs';
+import {
+  DETTES_FOURNISSEURS_RATTACHEES,
+  ReglementARattacher,
+  depensesRattachees,
+  estDetteFournisseurRattachee,
+  naturesDesReglementsFournisseurs,
+} from '../etats-financiers/reglements-de-tresorerie';
+import { dettesFournisseursNeesDImmobilisations } from '../etats-financiers/dettes-rattachees';
 import { trouvePosteCompteResultat } from './correspondance-compte-resultat-syscohada';
 import {
   AMORTISSEMENT_SMT,
@@ -342,12 +354,20 @@ export class EtatsFinanciersSmtSyscohadaService {
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
     ]);
+    // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
+    // est le bilan d'ouverture du dossier (AUDCIF art. 34,
+    // `comparatifDuBilan`), jamais une colonne vide pour un dossier repris.
+    // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
+    // report, une ouverture saisie en OD au premier jour n'est lue ni comme
+    // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYSCOHADA');
     const { parRef: parRefN, resultatClasses678, resultatCompte13 } = this.resoudreBilan(lignesN);
-    const { parRef: parRefN1 } = this.resoudreBilan(lignesN1);
+    const { parRef: parRefN1 } = this.resoudreBilan(comparatif.lignes);
 
     const fusionner = (ref: string): PosteCalculeSmtSyscohada => {
       const n = parRefN.get(ref)!;
-      return { ...n, montantN1: exerciceN1Id ? parRefN1.get(ref)?.montant : undefined };
+      return { ...n, montantN1: comparatif.provenance ? parRefN1.get(ref)?.montant : undefined };
     };
 
     /*
@@ -405,9 +425,11 @@ export class EtatsFinanciersSmtSyscohadaService {
       passif: ORDRE_BILAN_PASSIF_SMT_SYSCOHADA.map(fusionner),
       totalActif,
       totalPassif,
-      totalActifN1: exerciceN1Id ? parRefN1.get('SAZ')!.montant : undefined,
-      totalPassifN1: exerciceN1Id ? parRefN1.get('SPZ')!.montant : undefined,
+      totalActifN1: comparatif.provenance ? parRefN1.get('SAZ')!.montant : undefined,
+      totalPassifN1: comparatif.provenance ? parRefN1.get('SPZ')!.montant : undefined,
       exerciceN1Disponible: exerciceN1Id !== null,
+      comparatif: comparatif.provenance,
+      mentionComparatif: comparatif.mention,
       // Tolérance d'arrondi ; un écart réel signale un compte hors maquette
       // (voir `comptesNonRattaches`) ou un défaut du moteur d'écritures, pas
       // un défaut de cette répartition.
@@ -506,6 +528,9 @@ export class EtatsFinanciersSmtSyscohadaService {
       // équilibrée dont toutes les contreparties sont hors trésorerie.
       const montant = sens === 'RECETTE' ? creditMoinsDebit : -creditMoinsDebit;
       if (Math.abs(montant) <= 0.005) continue;
+      if (sens === 'DEPENSE' && montant > 0 && estDetteFournisseurRattachee(numero)) {
+        cumuls.reglements.push({ ligneId: l.id, numero, montant });
+      }
       const existant = cible.get(numero);
       if (existant) existant.montant += montant;
       else cible.set(numero, { numero, intitule: l.compte.intitule, montant });
@@ -667,13 +692,18 @@ export class EtatsFinanciersSmtSyscohadaService {
     lignes: LigneBalancePourEtat[],
     avecEffetParNumero: Map<string, number>,
     dotations: number,
+    // Une immobilisation passée au 401 · sa dette hors de E et son règlement
+    // rattaché à la classe 2 (relecture du 2026-10-07, majeur 3 et sa suite)
+    // ne creusent plus d'écart · la variation de ces dettes et les règlements
+    // rattachés à la classe 2 compensent l'acquisition sans trésorerie.
+    ajustementImmobilisationsAu40 = 0,
   ) {
     const kSansEffet = new Map<string, number>();
     for (const l of lignes) kSansEffet.set(l.numero, l.mouvementCredit - l.mouvementDebit);
     for (const [numero, k] of avecEffetParNumero) kSansEffet.set(numero, (kSansEffet.get(numero) ?? 0) - k);
 
     let classe1 = 0;
-    let classe2 = 0;
+    let classe2 = ajustementImmobilisationsAu40;
     let depreciationsTresorerie = 0;
     let autresComptes = 0;
     for (const [numero, k] of kSansEffet) {
@@ -738,14 +768,27 @@ export class EtatsFinanciersSmtSyscohadaService {
    * la maquette imprime la colonne (voir la note de tête).
    */
   private async construireCompteDeResultat(tenantId: string, exerciceId: string) {
-    const cumuls: CumulsTresorerieSmt = { recettes: new Map(), depenses: new Map(), avecEffetParNumero: new Map() };
-    const [, lignesN] = await Promise.all([
+    const cumuls: CumulsTresorerieSmt = { recettes: new Map(), depenses: new Map(), avecEffetParNumero: new Map(), reglements: [] };
+    const [, lignesN, dettesImmo] = await Promise.all([
       this.parcourirEcrituresDeTresorerie(tenantId, exerciceId, (e) => this.cumulerEcritureDeTresorerie(e, cumuls)),
       this.chargerLignes(tenantId, exerciceId),
+      // Les dettes du 40 nées d'immobilisations sortent de la ligne E, comme
+      // leur règlement sort des dépenses (relecture du 2026-10-07, majeur 3
+      // et sa suite · `dettesFournisseursNeesDImmobilisations`).
+      this.exerciceDuDossier(tenantId, exerciceId).then((d) =>
+        dettesFournisseursNeesDImmobilisations(this.prisma, tenantId, { id: exerciceId, ...d }, DETTES_FOURNISSEURS_RATTACHEES),
+      ),
     ]);
 
+    // Constat N3 des cas chiffrés de la clôture · le règlement d'une dette
+    // fournisseur prend la ligne de la facture qu'il règle
+    // (`reglements-de-tresorerie.ts`) ; ce qui ne se rattache pas reste en SD6
+    // et est nommé. Le rattachement ne touche que la VENTILATION des
+    // dépenses · `avecEffetParNumero` reste par compte, l'écart de
+    // concordance le lit tel quel.
+    const natures = await naturesDesReglementsFournisseurs(this.prisma, tenantId, cumuls.reglements);
     const recettes = this.ventilerFlux(cumuls.recettes, POSTES_RECETTES_SMT_SYSCOHADA);
-    const depenses = this.ventilerFlux(cumuls.depenses, POSTES_DEPENSES_SMT_SYSCOHADA);
+    const depenses = this.ventilerFlux(depensesRattachees(cumuls.depenses, cumuls.reglements, natures), POSTES_DEPENSES_SMT_SYSCOHADA);
 
     const { parRef: cloture } = this.resoudreBilan(lignesN);
     const { parRef: ouverture } = this.resoudreBilan(this.aLOuverture(lignesN));
@@ -785,7 +828,10 @@ export class EtatsFinanciersSmtSyscohadaService {
       depenses: depenses.total,
       stocks: { n: montantDe(cloture, 'SA2'), n1: montantDe(ouverture, 'SA2') },
       creances: { n: montantExploitation(cloture, 'SA3'), n1: montantExploitation(ouverture, 'SA3') },
-      dettes: { n: montantExploitation(cloture, 'SP4'), n1: montantExploitation(ouverture, 'SP4') },
+      dettes: {
+        n: montantExploitation(cloture, 'SP4') - dettesImmo.cloture,
+        n1: montantExploitation(ouverture, 'SP4') - dettesImmo.ouverture,
+      },
       dotations,
     });
 
@@ -830,7 +876,16 @@ export class EtatsFinanciersSmtSyscohadaService {
 
     const hors = this.fluxHorsResultat(cumuls);
     const resultatBilan = montantDe(cloture, REF_RESULTAT_SMT_SYSCOHADA);
-    const composantes = this.composantesEcartConcordance(lignesN, cumuls.avecEffetParNumero, dotations);
+    const reglesEnClasse2 = [...natures.parLigne.values()]
+      .flat()
+      .filter((p) => p.numero.startsWith('2'))
+      .reduce((t, p) => t + p.montant, 0);
+    const composantes = this.composantesEcartConcordance(
+      lignesN,
+      cumuls.avecEffetParNumero,
+      dotations,
+      dettesImmo.cloture - dettesImmo.ouverture + reglesEnClasse2,
+    );
     const ecart = calcule.G - resultatBilan;
 
     return {
@@ -841,6 +896,7 @@ export class EtatsFinanciersSmtSyscohadaService {
       calcule,
       fluxHorsResultat: hors.rubriques,
       contrepartiesNonRattachees: hors.contrepartiesNonRattachees,
+      reglementsNonRattaches: natures.nonRattaches,
       controle: {
         resultatBilan,
         ecart,
@@ -854,9 +910,12 @@ export class EtatsFinanciersSmtSyscohadaService {
 
   async compteDeResultat(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await trouverExerciceN1(this.exerciceService, tenantId, exerciceId);
-    const [n, n1] = await Promise.all([
+    const [n, n1, lignesSansN1] = await Promise.all([
       this.construireCompteDeResultat(tenantId, exerciceId),
       exerciceN1Id ? this.construireCompteDeResultat(tenantId, exerciceN1Id) : Promise.resolve(null),
+      // Q3 des cas chiffrés de la clôture · lues seulement sans exercice N-1,
+      // pour dire l'issue d'un dossier repris.
+      exerciceN1Id ? Promise.resolve(null) : this.chargerLignes(tenantId, exerciceId),
     ]);
 
     const lignes = ORDRE_COMPTE_RESULTAT_SMT_SYSCOHADA.map((ref) => {
@@ -879,8 +938,12 @@ export class EtatsFinanciersSmtSyscohadaService {
       definitionVariation: DEFINITION_VARIATION_SMT_SYSCOHADA,
       resultatExercice: n.calcule.G,
       exerciceN1Disponible: exerciceN1Id !== null,
+      motifComparatifAbsent: lignesSansN1 && ouvertureTenue(lignesSansN1) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       fluxHorsResultat: n.fluxHorsResultat,
       contrepartiesNonRattachees: n.contrepartiesNonRattachees,
+      // Constat N3 · les règlements fournisseurs restés en SD6 faute de
+      // facture lisible, avec leur montant · information, jamais devinés.
+      reglementsNonRattaches: n.reglementsNonRattaches,
       controle: n.controle,
     };
   }
@@ -1874,7 +1937,10 @@ const SELECTION_ECRITURE_TRESORERIE_SMT = {
   libelle: true,
   reference: true,
   lignes: {
-    select: { compteId: true, debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
+    // L'identifiant de la ligne · le règlement d'une dette fournisseur se
+    // rattache à sa facture par son lettrage (constat N3 des cas chiffrés de
+    // la clôture).
+    select: { id: true, compteId: true, debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
   },
 } satisfies Prisma.EcritureSelect;
 
@@ -1895,6 +1961,8 @@ interface CumulsTresorerieSmt {
    * de la balance pour retrouver celle des écritures sans effet.
    */
   avecEffetParNumero: Map<string, number>;
+  /** Règlements de dettes fournisseurs, ligne par ligne · rattachés à leur facture (constat N3). */
+  reglements: ReglementARattacher[];
 }
 
 /**

@@ -56,6 +56,8 @@ function serviceAvecExercices(
     virementsDeMiseEnService: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
       Promise.resolve((exerciceId && virementsParExercice[exerciceId]) || new Map()),
     ),
+    // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
+    ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
       Promise.resolve((exerciceId && reevaluationsParExercice[exerciceId]) || new Map()),
     ),
@@ -1170,13 +1172,17 @@ describe('EtatsFinanciersService · tableau de flux de trésorerie', () => {
       ],
     });
     const tft = await service.tableauFluxTresorerie('t1', 'eN');
-    expect(ref(tft, 'FP').montant).toBe(45_000_000);
+    // Le 165 est un fonds PROPRE (anomalie n° 11, tranchée le 2026-10-07) ·
+    // reçu en FM, ses reprises retranchées de FO, rien aux fonds étrangers.
+    expect(ref(tft, 'FM').montant).toBe(45_000_000);
+    expect(ref(tft, 'FO').montant).toBe(0);
+    expect(ref(tft, 'FP').montant).toBe(0);
     expect(ref(tft, 'FQ').montant).toBe(0);
     expect(ref(tft, 'ZF').montant).toBe(30_000_000);
     expect(tft.controle.coherent).toBe(true);
   });
 
-  it('un débit du 16 que le texte ne décrit pas (une restitution) reste un remboursement', async () => {
+  it('un débit du 16 que le texte ne décrit pas (une restitution) est un décaissement de fonds propres (FO)', async () => {
     const service = serviceAvecExercices(
       {
         eN1: [ligneF('52110000', ClasseCompte.CLASSE_5, 5000, 0)],
@@ -1188,18 +1194,19 @@ describe('EtatsFinanciersService · tableau de flux de trésorerie', () => {
       DEUX_EXERCICES,
     );
     const tft = await service.tableauFluxTresorerie('t1', 'eN');
-    expect(ref(tft, 'FQ').montant).toBe(-1000);
+    expect(ref(tft, 'FO').montant).toBe(-1000);
+    expect(ref(tft, 'FQ').montant).toBe(0);
     expect(tft.controle.coherent).toBe(true);
   });
 
-  it('chaque débit du 16 que le plan apparie à une contrepartie sans trésorerie est neutralisé dans FQ', () => {
+  it('chaque débit du 16 que le plan apparie à une contrepartie sans trésorerie est neutralisé dans FO', () => {
     // Balayage des comptesFlux, pendant de celui des contreparties : deux
     // paires nommées par le texte. Fiche du COMPTE 79, 792 crédité « par le
     // débit : du compte 16 » ; fiche du COMPTE 16, 1679 débité « par le
     // crédit du compte 192 ».
-    const fq = TOUS_LES_POSTES_FLUX.find((p) => p.ref === 'FQ')!;
+    const fo = TOUS_LES_POSTES_FLUX.find((p) => p.ref === 'FO')!;
     const retranche = (numero: string) =>
-      (fq.creditsARetrancher ?? []).some((r) => correspond(numero, r.comptes, r.exclusions));
+      (fo.creditsARetrancher ?? []).some((r) => correspond(numero, r.comptes, r.exclusions));
     for (const reprise of ['79230000', '79250000', '79280000']) {
       expect({ reprise, retranche: retranche(reprise) }).toEqual({ reprise, retranche: true });
     }
@@ -1517,4 +1524,69 @@ describe('Exercice introuvable · un refus, jamais un état à zéro (audit fina
       await expect(service[etat]('t1', 'inconnu')).rejects.toThrow('Exercice introuvable dans ce dossier');
     },
   );
+});
+
+describe('Comparatif d’un dossier repris · le bilan d’ouverture (Q3 des cas chiffrés de la clôture)', () => {
+  // « Pour chaque poste et rubrique, les chiffres correspondants de
+  // l'exercice précédent doivent être mentionnés » (Partie 4 ch. 1 § 1.4) ·
+  // le bilan de clôture N-1 EST le bilan d'ouverture de N. Le compte de
+  // résultat N-1 ne s'en tire pas · vide, avec l'issue.
+  const lignes = [
+    ligneF('10110000', ClasseCompte.CLASSE_1, 0, 0, [0, 2000]),
+    ligneF('12100000', ClasseCompte.CLASSE_1, 0, 0, [0, 500]),
+    ligneF('24410000', ClasseCompte.CLASSE_2, 0, 0, [1800, 0]),
+    ligneF('52110000', ClasseCompte.CLASSE_5, 1000, 0, [700, 0]),
+    ligneF('70110000', ClasseCompte.CLASSE_7, 0, 1000),
+  ];
+  const service = () =>
+    serviceAvecExercices({ e1: lignes as never }, [{ id: 'e1', dateDebut: new Date('2026-01-01') }]);
+
+  it('la colonne N-1 du bilan lit l’ouverture, et le dit', async () => {
+    const bilan: any = await service().bilan('t1', 'e1');
+    expect({
+      disponible: bilan.exerciceN1Disponible,
+      comparatif: bilan.comparatif,
+      mention: bilan.mentionComparatif,
+      bz: bilan.totalActifN1,
+      dz: bilan.totalPassifN1,
+    }).toEqual({
+      disponible: false,
+      comparatif: 'BILAN_D_OUVERTURE',
+      mention: expect.stringContaining('SYCEBNL, Partie 4 ch. 1 § 1.4'),
+      bz: 2500,
+      dz: 2500,
+    });
+    expect(bilan.mentionComparatif).not.toContain('AUDCIF');
+  });
+
+  it('le compte de résultat N-1 reste vide, l’issue dite', async () => {
+    const cr: any = await service().compteDeResultat('t1', 'e1');
+    expect(cr.totalProduitsN1).toBeUndefined();
+    expect(cr.motifComparatifAbsent).toContain('importez-y sa balance de clôture');
+  });
+
+  it('une association qui naît n’a ni colonne N-1 ni mention', async () => {
+    const neuve = serviceAvecExercices(
+      { e1: [ligneF('10110000', ClasseCompte.CLASSE_1, 0, 1000), ligneF('52110000', ClasseCompte.CLASSE_5, 1000, 0)] as never },
+      [{ id: 'e1', dateDebut: new Date('2026-01-01') }],
+    );
+    const bilan: any = await neuve.bilan('t1', 'e1');
+    expect({ comparatif: bilan.comparatif, bz: bilan.totalActifN1 }).toEqual({ comparatif: null, bz: undefined });
+    expect(((await neuve.compteDeResultat('t1', 'e1')) as any).motifComparatifAbsent).toBeNull();
+  });
+});
+
+describe('TFT des associations · la classe 9 est sans trésorerie (constat N5 des cas chiffrés de la clôture)', () => {
+  it('le bénévolat (904 / 914) n’est jamais un compte « non ventilé »', async () => {
+    const service = serviceAvecExercices({
+      e1: [
+        ligneF('90400000', ClasseCompte.CLASSE_9, 1_000_000, 0),
+        ligneF('91400000', ClasseCompte.CLASSE_9, 0, 1_000_000),
+        ligneF('52110000', ClasseCompte.CLASSE_5, 500, 0),
+        ligneF('70110000', ClasseCompte.CLASSE_7, 0, 500),
+      ] as never,
+    });
+    const tft: any = await service.tableauFluxTresorerie('t1', 'e1');
+    expect(tft.comptesNonVentiles.map((c: any) => c.numero)).toEqual([]);
+  });
 });

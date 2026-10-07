@@ -131,7 +131,12 @@ export const POSTES_RESSOURCES: PosteEmploisRessources[] = [
 // A. TOTAL DES IMMOBILISATIONS (FE à FL)
 // ---------------------------------------------------------------------------
 
-/** Renvoi (2), commun aux postes FE à FJ. */
+/**
+ * Renvoi (2), commun aux postes FE à FJ · « le compte 481 CONCERNÉ ». Chaque
+ * poste reçoit la variation des dettes nées de SES pièces (`dettes-rattachees.ts`,
+ * constat B4 des cas chiffrés de la clôture) ; seule la part qu'aucune pièce
+ * ne porte reste répartie au prorata du brut, et elle est nommée.
+ */
 const DEDUCTION_DETTES_INVESTISSEMENT: DeductionEmploisRessources = {
   comptes: ['481'],
   exclusions: ['4813'],
@@ -262,7 +267,13 @@ export const POSTES_IMMOBILISATIONS: PosteEmploisRessources[] = [
 // B. TOTAL DES CHARGES DE FONCTIONNEMENT (FM à FT)
 // ---------------------------------------------------------------------------
 
-/** Renvoi (4), commun aux postes FM, FN et FO. */
+/**
+ * Renvoi (4), commun aux postes FM, FN et FO · « le compte 401 CONCERNÉ ».
+ * La variation se partage PAR NATURE DE LA DETTE · la dette d'une facture de
+ * fournitures (60) ne corrige que les achats (`dettes-rattachees.ts`, constat
+ * B4 des cas chiffrés de la clôture ; le prorata du brut, aucun texte ne
+ * l'écrit, ne reste que pour la part qu'aucune pièce ne porte, nommée).
+ */
 const DEDUCTION_DETTES_EXPLOITATION: DeductionEmploisRessources = {
   comptes: ['401'],
   operation: 'AJOUTER_VARIATION',
@@ -406,10 +417,13 @@ export const POSTES_CHARGES: PosteEmploisRessources[] = [
  * trésorerie porte quel fonds. OmegaX le sait pour les fonds bailleurs :
  * `Compte.bailleurId` rattache un compte à un bailleur, et le schéma pose
  * explicitement que ce rattachement n'est pas réservé aux comptes 16x/46x.
- * Il ne le sait PAS pour la contrepartie État, qu'aucun modèle ne désigne :
- * le poste correspondant reste donc à zéro et l'état le déclare, plutôt que
- * de répartir au jugé. Le total (GW et GY) est juste dans tous les cas, et
- * c'est lui qui porte le contrôle GZ.
+ * Pour la contrepartie de l'État, aucun texte ne désigne le compte (cas
+ * chiffrés de la clôture, Q2) · c'est une CONVENTION D'OMEGAX, déclarée par
+ * le cabinet sur le compte (`Compte.porteFondsContrepartieEtat`,
+ * `comptes/fonds-contrepartie-etat.ts`), jamais déduite d'un intitulé ni d'un
+ * mouvement du 163 ou du 463. Sans déclaration, FV et FY restent à zéro et
+ * l'état le dit quand l'État a apporté des fonds. Le total (GW et GY) est
+ * juste dans tous les cas, et c'est lui qui porte le contrôle GZ.
  */
 export const COMPTES_TRESORERIE_PROJET = ['51', '52', '53', '55', '57'];
 

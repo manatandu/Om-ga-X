@@ -864,7 +864,15 @@ export const POSTES_RECETTES_SMT_SYSCOHADA: PosteFluxSmtSyscohada[] = [
     libelle: 'Recettes sur ventes ou prestations de services',
     sens: 'RECETTE',
     note: '4',
-    comptes: ['70'],
+    // 70, et les créances clients (41) · leur encaissement EST la recette
+    // sur ventes en comptabilité de trésorerie (constat N3 des cas chiffrés
+    // de la clôture · Titre X ch. 1 § 1, « état des recettes et des dépenses
+    // […] dressé à partir d'une comptabilité de trésorerie » ; fiche du
+    // COMPTE 41, « clients […] auxquels l'entité vend les biens ou services,
+    // objet de son activité »). Le 414 (cessions d'immobilisations), le 4186
+    // (intérêts courus), le 4194 (consignations) et le 4198 (avoirs à
+    // accorder) ne naissent pas d'une vente · ils restent en SR2.
+    comptes: ['70', '411', '412', '413', '415', '416', '4181', '4191', '4192'],
     fondement:
       "Compte 70 « Ventes » : 701 marchandises, 702 à 704 produits, 705 travaux facturés, 706 services vendus, 707 produits accessoires (plan de comptes SYSCOHADA) · exactement « ventes ou prestations de services ». C'est la colonne « Ventes » de la ventilation des recettes de la NOTE 4.",
   },
@@ -879,7 +887,8 @@ export const POSTES_RECETTES_SMT_SYSCOHADA: PosteFluxSmtSyscohada[] = [
     // encaissé, un apport de l'exploitant ou le prix d'une immobilisation
     // encaissé en classe 2 n'y sont PAS : ils sont hors A et B.
     comptes: CONTREPARTIES_RESULTAT_SMT_SYSCOHADA,
-    exclusions: ['70', ...EXCLUSIONS_CONTREPARTIES_RESULTAT_SMT_SYSCOHADA],
+    // Les créances clients que SR1 lit (constat N3) en sont exclues comme le 70.
+    exclusions: ['70', '411', '412', '413', '415', '416', '4181', '4191', '4192', ...EXCLUSIONS_CONTREPARTIES_RESULTAT_SMT_SYSCOHADA],
     fondement:
       "Toute autre contrepartie d'un encaissement qui entre en A : 71 Subventions d'exploitation, 75 Autres produits, 77 Revenus financiers, 82 Produits des cessions d'immobilisations (Titre VII COMPTE 82 : « crédité des produits de cession d'actif… par le débit d'un compte de trésorerie »), 84 Produits H.A.O., 88 Subventions d'équilibre (plan de comptes SYSCOHADA), et le recouvrement d'une créance (classe 4) ou l'encaissement d'un titre de placement (50, 51), que la variation SV2 corrige ensuite. Les produits calculés (78 Transferts de charges, 79 Reprises, 86 Reprises H.A.O., 849 Reprises de charges H.A.O.) restent dans les préfixes captés pour qu'une écriture aberrante ne disparaisse pas, mais ils n'ont par construction aucune contrepartie de trésorerie (Titre VII COMPTE 19, 29, 49, 59 : les reprises se font par le débit du compte de dépréciation, jamais par la caisse) : ils ne se présentent pas ici. Colonne « Autres » de la NOTE 4, dont le périmètre est plus large (anomalie n° 21).",
   },

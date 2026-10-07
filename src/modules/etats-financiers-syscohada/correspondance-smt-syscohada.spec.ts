@@ -391,7 +391,18 @@ describe('correspondance SMT SYSCOHADA (AUDCIF Titre X)', () => {
 
   it('les postes nommés du compte de résultat visent les comptes de leur libellé (70 · 60 · 622 · 66 · 64 + 89 · 67)', () => {
     const comptesDe = (ref: string) => [...POSTES_RECETTES_SMT_SYSCOHADA, ...POSTES_DEPENSES_SMT_SYSCOHADA].find((p) => p.ref === ref)!.comptes;
-    expect(comptesDe('SR1')).toEqual(['70']);
+    // SR1 · le 70, et les créances clients dont l'encaissement EST la recette
+    // sur ventes (constat N3 des cas chiffrés de la clôture) · ni 414
+    // (cessions), ni 4186 (intérêts), ni 4194 (consignations), ni 4198.
+    expect(comptesDe('SR1')).toEqual(['70', '411', '412', '413', '415', '416', '4181', '4191', '4192']);
+    const sr = (numero: string) => POSTES_RECETTES_SMT_SYSCOHADA.find((p) => correspond(numero, p.comptes, p.exclusions))?.ref;
+    expect({ c4111: sr('41110000'), c4141: sr('41410000'), c4186: sr('41860000'), c4194: sr('41940000'), c4198: sr('41980000') }).toEqual({
+      c4111: 'SR1',
+      c4141: 'SR2',
+      c4186: 'SR2',
+      c4194: 'SR2',
+      c4198: 'SR2',
+    });
     expect(comptesDe('SD1')).toEqual(['60']);
     expect(comptesDe('SD2')).toEqual(['622']);
     expect(comptesDe('SD3')).toEqual(['66']);

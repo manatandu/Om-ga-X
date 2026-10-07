@@ -96,6 +96,15 @@ export class ModifierCompteDto {
   @IsString()
   bailleurId?: string | null;
 
+  /**
+   * Compte de trésorerie qui porte la contrepartie de l'État au tableau
+   * emplois-ressources (FV, FY) · convention d'OmegaX déclarée (cas chiffrés
+   * de la clôture, Q2, `fonds-contrepartie-etat.ts`).
+   */
+  @FacultatifNonNul("Un compte porte ou non la contrepartie de l'État · null ne dit pas lequel des deux.")
+  @IsBoolean()
+  porteFondsContrepartieEtat?: boolean;
+
   @IsOptional()
   @IsBoolean()
   lettrable?: boolean;

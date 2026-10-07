@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { referencesVers, refuserSiReferences } from '../../common/suppression/references';
 import { PrismaService } from '../../common/prisma.service';
 import { refuserBailleurHorsSycebnl } from '../../common/bailleur-referentiel';
+import { motifRefusFondsContrepartieEtat } from './fonds-contrepartie-etat';
 import { ClasseCompte, Prisma, Referentiel, TypeCompteDetailTotal } from '@prisma/client';
 import { PLAN_COMPTES_SYCEBNL } from './compte-seed';
 import { CATALOGUE_RETRAITEMENTS } from '../fiscalite/catalogue-retraitements';
@@ -266,6 +267,24 @@ export class CompteService {
       if (!bailleur) {
         throw new BadRequestException("Bailleur introuvable pour ce tenant");
       }
+    }
+    // LA CONTREPARTIE DE L'ÉTAT SE DÉCLARE (cas chiffrés de la clôture, Q2) ·
+    // l'état qui RÉSULTERAIT du geste est jugé, rattachement au bailleur et
+    // type compris, pour qu'un compte ne porte jamais deux natures de fonds.
+    const porteEtat = dto.porteFondsContrepartieEtat ?? compte.porteFondsContrepartieEtat;
+    if (porteEtat && (dto.porteFondsContrepartieEtat !== undefined || dto.bailleurId || dto.typeCompte)) {
+      const dossier = await this.prisma.tenant.findUniqueOrThrow({
+        where: { id: tenantId },
+        select: { referentiel: true, jeuEtatsFinanciersSycebnl: true },
+      });
+      const motif = motifRefusFondsContrepartieEtat({
+        referentiel: dossier.referentiel,
+        jeu: dossier.jeuEtatsFinanciersSycebnl,
+        numero: compte.numero,
+        typeCompte: dto.typeCompte ?? compte.typeCompte,
+        bailleurId: dto.bailleurId !== undefined ? dto.bailleurId : compte.bailleurId,
+      });
+      if (motif) throw new BadRequestException(motif);
     }
     return this.prisma.compte.update({ where: { id: compteId }, data: dto });
   }

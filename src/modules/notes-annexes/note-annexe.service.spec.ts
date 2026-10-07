@@ -194,6 +194,8 @@ function service(
       Promise.resolve({ lignes: lignesParExercice[e] ?? [], totaux: { debit: 0, credit: 0 } })),
     virementsDeMiseEnService: jest.fn().mockImplementation((_t: string, e: string | null) =>
       Promise.resolve((e && virementsParExercice[e]) || new Map())),
+    // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
+    ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, e: string | null) =>
       Promise.resolve((e && reevaluationsParExercice[e]) || new Map())),
   } as unknown as EcritureService;
@@ -2429,6 +2431,8 @@ describe('passe R2 · B3, la NOTE 34 SYSCOHADA est calculée depuis les trois é
       balance: jest.fn().mockResolvedValue({ lignes: balance, totaux: { debit: 0, credit: 0 } }),
       virementsDeMiseEnService: jest.fn().mockResolvedValue(new Map()),
       mouvementsDeCoutsEmpruntIncorpores: jest.fn().mockResolvedValue(new Map()),
+      // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
+      ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
       mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
     } as unknown as EcritureService;
     const exercice = {
@@ -2440,10 +2444,14 @@ describe('passe R2 · B3, la NOTE 34 SYSCOHADA est calculée depuis les trois é
     expect(cellule('cafg').saisie[0]).toBeCloseTo(fa.montant / 1000);
   });
 
-  it('sans exercice antérieur, les flux sont VIDES (null), jamais un faux zéro, et N-1 aussi', async () => {
+  it('sans exercice antérieur, les flux N se lisent contre l’ouverture (B1 des cas chiffrés de la clôture) ; la colonne N-1 reste VIDE', async () => {
+    // Avant le 2026-10-07, ils restaient vides · le tableau du premier
+    // exercice lit désormais ses positions N-1 sur l'ouverture (AUDCIF
+    // art. 34), et la note reprend ce qu'il chiffre. Rien n'est inventé en
+    // N-1, faute d'exercice N-1.
     const { cellule } = await calculer();
-    expect(cellule('flux-operationnels').saisie[0]).toBeNull();
-    expect(cellule('variation-tresorerie-nette').saisie[0]).toBeNull();
+    expect(typeof cellule('flux-operationnels').saisie[0]).toBe('number');
+    expect(typeof cellule('variation-tresorerie-nette').saisie[0]).toBe('number');
     expect(cellule('chiffre-affaires').saisie[1]).toBeNull();
   });
 
