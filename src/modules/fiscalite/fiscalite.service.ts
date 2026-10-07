@@ -482,10 +482,40 @@ export class FiscaliteService {
     // leur somme avec le 131 et le 139 vaut le résultat même quand la cascade
     // s'arrête en chemin. Ce calcul lisait jusqu'au 2026-09-27 le 131 et le
     // 139 seuls, et rendait ZÉRO sur une cascade arrêtée au 137.
-    const resultatCompte13 = details
-      .filter((l) => estCompteDuResultatDeLExercice(l.numero))
-      .reduce((s, l) => s - l.solde, 0);
-    const avantCloture = Math.abs(resultatClasses678) > 0.005;
+    const lignes13 = details.filter((l) => estCompteDuResultatDeLExercice(l.numero));
+    const resultatCompte13 = lignes13.reduce((s, l) => s - l.solde, 0);
+    /*
+      LE 13 N'EST LU QUE SI LA GESTION A ÉTÉ SOLDÉE DANS L'EXERCICE (cas
+      chiffré V3, troisième tour). La clôture d'OmegaX reporte à l'ouverture
+      suivante le résultat non affecté sur son compte (131 ou 139, colonne
+      report de la balance). Un exercice dont la gestion se solde à ZÉRO
+      (ventes 1 000 000, achats 1 000 000) basculait sur le 13 au seul motif
+      que le net des classes 6 à 8 était nul, et y lisait les pertes de 2026
+      et 2027 non affectées · 2028 et 2029 sortaient à -300 000, perte
+      fantôme reportée, et 2030 rendait 60 000 d'impôt au lieu de 240 000,
+      sans un mot. Deux règles, chacune sur ce que la balance montre.
+      (1) Une gestion qui porte un solde sur un seul de ses comptes N'EST PAS
+      soldée · son net, même nul, est le résultat (Titre VII, compte 13, le
+      13 n'est mouvementé « qu'à la clôture […] pour solde »).
+      (2) Un 13 qui ne porte que l'à-nouveau (aucun mouvement propre ni
+      clôture de l'exercice) tient le résultat d'exercices ANTÉRIEURS · le
+      résultat de l'exercice est nul (exercice sans gestion, société en
+      sommeil). Le 13 reste lu, comme avant, quand la gestion a été soldée
+      dans l'exercice (comptes de gestion tous à zéro) ou quand il porte des
+      mouvements propres sans gestion ; l'à-nouveau qu'il porte alors est
+      DIT (`reportAuCompte13`), l'affectation passée ou non ne se lisant pas
+      dans la balance.
+    */
+    const gestionNonSoldee = gestion.some((l) => Math.abs(l.solde) > 0.005);
+    const mouvementPropre13 = lignes13.some(
+      (l) =>
+        Math.abs(l.mouvementDebit) > 0.005 ||
+        Math.abs(l.mouvementCredit) > 0.005 ||
+        Math.abs(l.clotureDebit ?? 0) > 0.005 ||
+        Math.abs(l.clotureCredit ?? 0) > 0.005,
+    );
+    const reportAuCompte13 = lignes13.reduce((s, l) => s + (l.reportCredit ?? 0) - (l.reportDebit ?? 0), 0);
+    const avantCloture = gestionNonSoldee || !mouvementPropre13;
     // Un produit est un solde créditeur, donc négatif dans la convention
     // `solde = débit - crédit` de la balance · d'où le signe.
     //
@@ -551,6 +581,8 @@ export class FiscaliteService {
     return {
       resultatComptable: arrondir(avantCloture ? resultatClasses678 : resultatCompte13),
       sourceResultat: avantCloture ? ('CLASSES_6_7_8' as const) : ('COMPTE_13' as const),
+      // L'à-nouveau que porte le 13 quand il est lu · nul hors de ce cas.
+      reportAuCompte13: avantCloture ? 0 : arrondir(reportAuCompte13),
       chiffreAffaires: arrondir(chiffreAffaires),
       acomptesAu4492: arrondir(acomptesAu4492),
       impotConstateAu89: arrondir(impotConstateAu89),
@@ -1071,7 +1103,7 @@ export class FiscaliteService {
             ? null
             : {
                 montant: Number(d.deficitAnterieurSaisi),
-                origines: FiscaliteService.originesDeclarees(d.deficitAnterieurOrigines),
+                origines: FiscaliteService.originesDeclarees(d.deficitAnterieurOrigines, Number(d.deficitAnterieurSaisi)),
               },
       });
     }
@@ -1092,8 +1124,18 @@ export class FiscaliteService {
     };
   }
 
-  /** L'origine déclarée d'un report saisi, relue de sa colonne JSON · null si absente ou illisible. */
-  static originesDeclarees(brut: unknown): { dateFin: Date; montant: number }[] | null {
+  /**
+   * L'origine déclarée d'un report saisi, relue de sa colonne JSON · null si
+   * absente, illisible, ou si elle ne ventile plus le montant saisi.
+   *
+   * UNE ORIGINE QUI NE TOTALISE PAS LA SAISIE NE FAIT PAS FOI (troisième tour,
+   * relecture adverse). Le rejeu des exercices suivants prend les parts de
+   * l'origine, pas le montant saisi · une saisie ramenée de 800 000 à
+   * 600 000 sous une origine restée à 800 000 imputait 200 000 de trop en
+   * N+1, sans un mot. Relue sans elle, la saisie retombe sur la borne
+   * prudente, qui se dit.
+   */
+  static originesDeclarees(brut: unknown, montantSaisi: number): { dateFin: Date; montant: number }[] | null {
     if (!Array.isArray(brut) || brut.length === 0) return null;
     const lues = brut.map((o) => {
       const x = o as { dateFin?: unknown; montant?: unknown };
@@ -1103,6 +1145,7 @@ export class FiscaliteService {
     // Une origine illisible ne s'invente pas · toute la déclaration retombe
     // alors sur la borne prudente, qui se dit.
     if (lues.some((o) => !o.dateFin || Number.isNaN(o.dateFin.getTime()) || !Number.isFinite(o.montant))) return null;
+    if (Math.abs(arrondir(lues.reduce((t, o) => t + o.montant, 0)) - arrondir(montantSaisi)) >= 0.005) return null;
     return lues as { dateFin: Date; montant: number }[];
   }
 
@@ -1617,7 +1660,7 @@ export class FiscaliteService {
         ? null
         : partImputableDeLaSaisie(
             deficitSaisi,
-            FiscaliteService.originesDeclarees(dossier?.deficitAnterieurOrigines),
+            FiscaliteService.originesDeclarees(dossier?.deficitAnterieurOrigines, deficitSaisi),
             exercice,
             IMPOT_SOCIETES.exercicesReportDeficit,
           );
@@ -1646,6 +1689,14 @@ export class FiscaliteService {
       );
     }
     observations.push(...this.avertissementsPerimetreLoi(exercice.dateDebut, periode));
+    // V3 · le 13 lu porte aussi l'à-nouveau d'un résultat antérieur · dit, la
+    // balance ne disant pas si son affectation est passée.
+    if (Math.abs(brut.reportAuCompte13) > 0.005) {
+      observations.push(
+        `RÉSULTAT LU SUR LE COMPTE 13 · les comptes de gestion sont soldés dans l'exercice, et le 13 porte aussi ${montantFiscal(brut.reportAuCompte13)} reportés à l'ouverture, résultat d'un exercice antérieur. ` +
+          "Si son affectation n'est pas passée dans cet exercice, le résultat lu ici le contient et l'impôt est faux d'autant · passez l'affectation, ou corrigez le résultat par un retraitement motivé.",
+      );
+    }
     const reintegrationsImpot = FiscaliteService.reintegrationsImpot(brut.retraitements);
     const ecartImpotNonReintegre = FiscaliteService.observationImpotNonReintegre(brut.impotConstateAu89, reintegrationsImpot);
     if (ecartImpotNonReintegre) observations.push(ecartImpotNonReintegre);
@@ -1829,7 +1880,7 @@ export class FiscaliteService {
         origines:
           deficitSaisi === null
             ? null
-            : (FiscaliteService.originesDeclarees(dossier?.deficitAnterieurOrigines)?.map((o) => ({
+            : (FiscaliteService.originesDeclarees(dossier?.deficitAnterieurOrigines, deficitSaisi)?.map((o) => ({
                 dateFin: o.dateFin.toISOString().slice(0, 10),
                 montant: o.montant,
               })) ?? null),
@@ -2194,6 +2245,22 @@ export class FiscaliteService {
         }
       }
     }
+    // UNE SAISIE CHANGÉE SEULE EMPORTE L'ORIGINE QUI NE LA VENTILE PLUS
+    // (troisième tour, relecture adverse). L'écran envoie le montant seul ·
+    // l'origine gardée à l'ancien total aurait fait foi dans le rejeu des
+    // exercices suivants pour un montant que le cabinet venait de corriger.
+    // Retirée, la saisie retombe sur la borne prudente, dite à l'écran
+    // (« Origine non déclarée ») et dans le rejeu ; le cabinet la redéclare.
+    let origineCaduque = false;
+    if (typeof dto.deficitAnterieurSaisi === 'number' && dto.deficitAnterieurOrigines === undefined) {
+      const existant = await this.prisma.dossierFiscalExercice.findUnique({ where: { exerciceId } });
+      const lues = Array.isArray(existant?.deficitAnterieurOrigines)
+        ? (existant!.deficitAnterieurOrigines as { montant?: unknown }[])
+        : [];
+      origineCaduque =
+        lues.length > 0 &&
+        Math.abs(arrondir(lues.reduce((t, o) => t + Number(o.montant), 0)) - arrondir(dto.deficitAnterieurSaisi)) >= 0.005;
+    }
     const data = {
       ...(dto.acomptesVerses === undefined ? {} : { acomptesVerses: arrondir(dto.acomptesVerses) }),
       ...(dto.supplementsAdministration === undefined
@@ -2203,7 +2270,7 @@ export class FiscaliteService {
         ? {}
         : { deficitAnterieurSaisi: dto.deficitAnterieurSaisi === null ? null : arrondir(dto.deficitAnterieurSaisi) }),
       // Un déficit saisi effacé emporte son origine · elle ne ventile plus rien.
-      ...(dto.deficitAnterieurSaisi === null
+      ...(dto.deficitAnterieurSaisi === null || origineCaduque
         ? { deficitAnterieurOrigines: Prisma.DbNull }
         : dto.deficitAnterieurOrigines === undefined
           ? {}

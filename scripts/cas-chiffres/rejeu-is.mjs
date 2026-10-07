@@ -613,10 +613,45 @@ cas('V5', 'Déclaration enregistrée avant le troisième tour · 500 000 de 2022
   };
 });
 
+cas('V6', 'Report de 800 000 (origine 2025) ramené à 600 000 par la saisie seule · l\'origine caduque tombe, puis se redéclare', async () => {
+  const c = await dossier('Cas IS V6', 'SOCIETE_RESPONSABILITE_LIMITEE');
+  const a26 = c.exercices.get('2026-01-01');
+  await venteEtCharges(c, a26, '2026-06-30', 300_000, []);
+  await valider(c, a26, '2026-12-31');
+  await c.ok('PATCH', `/fiscalite/exercices/${a26}/dossier`, {
+    deficitAnterieurSaisi: 800_000,
+    deficitAnterieurOrigines: [{ dateFin: '2025-12-31', montant: 800_000 }],
+  });
+  const a27 = await exercice(c, '2027-01-01', '2027-12-31');
+  await venteEtCharges(c, a27, '2027-06-30', 200_000, []);
+  await valider(c, a27, '2027-12-31');
+  const a28 = await exercice(c, '2028-01-01', '2028-12-31');
+  await venteEtCharges(c, a28, '2028-06-30', 1_000_000, []);
+  await valider(c, a28, '2028-12-31');
+  // L'écran envoie le montant seul (FiscalitePage, champ « Déficits antérieurs »).
+  await c.ok('PATCH', `/fiscalite/exercices/${a26}/dossier`, { deficitAnterieurSaisi: 600_000 });
+  const brut26 = await fiscal(c, a26);
+  const apresSaisieSeule = {
+    a2026: { ...lecture(brut26), origines: brut26.deficitAnterieur?.origines },
+    a2028: lecture(await fiscal(c, a28)),
+  };
+  await c.ok('PATCH', `/fiscalite/exercices/${a26}/dossier`, {
+    deficitAnterieurOrigines: [{ dateFin: '2025-12-31', montant: 600_000 }],
+  });
+  const clotures = await cloturer(c, [['2026', a26], ['2027', a27]]);
+  return {
+    apresSaisieSeule,
+    clotures,
+    apresRedeclaration: { a2026: lecture(await fiscal(c, a26)), a2027: lecture(await fiscal(c, a27)), a2028: lecture(await fiscal(c, a28)) },
+  };
+});
+
 // --- Exécution --------------------------------------------------------------
 
 const resultats = {};
-for (const { code, titre, fn } of CAS) {
+// OMEGAX_CAS=V3,V6 · ne rejoue que les cas nommés (tous par défaut).
+const filtre = process.env.OMEGAX_CAS ? new Set(process.env.OMEGAX_CAS.split(',')) : null;
+for (const { code, titre, fn } of CAS.filter((x) => !filtre || filtre.has(x.code))) {
   try {
     resultats[code] = { titre, ...(await fn()) };
     console.log(`${code} · rejoué`);

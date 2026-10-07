@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FormeJuridiqueSyscohada, Referentiel, SensRetraitementFiscal, TypeCompteDetailTotal } from '@prisma/client';
+import { FormeJuridiqueSyscohada, Prisma, Referentiel, SensRetraitementFiscal, TypeCompteDetailTotal } from '@prisma/client';
 import { FiscaliteService, arrondirImpotArt150 } from './fiscalite.service';
 import { CATALOGUE_RETRAITEMENTS, CODE_LIBRE } from './catalogue-retraitements';
 import { motifsRefusConstat } from './ecriture-impot-resultat';
@@ -38,6 +38,12 @@ function service(options: {
    * production depuis l'audit final F4 · elle compte donc au livre-journal.
    */
   clotures?: Record<string, Ligne[]>;
+  /**
+   * À-nouveau écrit par la clôture de l'exercice précédent
+   * (`estGenereeParCloture`), colonne REPORT de la balance · le résultat non
+   * affecté y revient sur le 131 ou le 139 (cas chiffré V3).
+   */
+  reports?: Record<string, Ligne[]>;
   exercices?: { id: string; dateDebut: Date; dateFin: Date; statut?: string }[];
   retraitements?: Record<string, { sens: SensRetraitementFiscal; montant: number }[]>;
   dossier?: {
@@ -133,17 +139,18 @@ function service(options: {
   // un service qui lisait le résultat d'un exercice clos sur un solde nul.
   type LigneBalance = Ligne & {
     totalDebit: number; totalCredit: number;
+    reportDebit: number; reportCredit: number;
     mouvementDebit: number; mouvementCredit: number;
     clotureDebit: number; clotureCredit: number;
   };
   const ecritures = {
     balance: async (_t: string, exerciceId: string, inclureBrouillard = true, arreteAu?: Date) => {
       const parNumero = new Map<string, LigneBalance>();
-      const verser = (lignes: Ligne[] | undefined, estCloture: boolean) => {
+      const verser = (lignes: Ligne[] | undefined, estCloture: boolean | 'report') => {
         for (const l of lignes ?? []) {
           const a = parNumero.get(l.numero) ?? {
             numero: l.numero, solde: 0, typeCompte: l.typeCompte ?? D,
-            totalDebit: 0, totalCredit: 0,
+            totalDebit: 0, totalCredit: 0, reportDebit: 0, reportCredit: 0,
             mouvementDebit: 0, mouvementCredit: 0, clotureDebit: 0, clotureCredit: 0,
           };
           a.solde += l.solde;
@@ -151,7 +158,10 @@ function service(options: {
           const credit = Math.max(-l.solde, 0);
           a.totalDebit += debit;
           a.totalCredit += credit;
-          if (estCloture) {
+          if (estCloture === 'report') {
+            a.reportDebit += debit;
+            a.reportCredit += credit;
+          } else if (estCloture) {
             a.clotureDebit += debit;
             a.clotureCredit += credit;
           } else {
@@ -165,6 +175,7 @@ function service(options: {
         verser(options.balancesAu?.[exerciceId], false);
         return { lignes: [...parNumero.values()], totaux: { debit: 0, credit: 0 } };
       }
+      verser(options.reports?.[exerciceId], 'report');
       verser(options.balances[exerciceId], false);
       verser(options.clotures?.[exerciceId], true);
       if (inclureBrouillard) verser(options.brouillards?.[exerciceId], false);
@@ -1996,5 +2007,100 @@ describe('Cas chiffrés IS, dernière correction · une origine hors fenêtre (a
     expect(texte).toContain('REPORT PERDU PAR PRUDENCE');
     expect(texte).toContain("exercice OUVERT suivant");
     expect(texte).not.toContain("déclarez leur origine sur l'exercice de la saisie");
+  });
+});
+
+describe('Cas chiffrés IS, troisième tour · relecture adverse', () => {
+  const an = (id: string, annee: number) => ({
+    id,
+    dateDebut: new Date(Date.UTC(annee, 0, 1)),
+    dateFin: new Date(Date.UTC(annee, 11, 31)),
+  });
+
+  /*
+    V3, rejoué sur vraie base le 2026-10-07 · pertes de 2026 (100 000) et
+    2027 (200 000) non affectées, reportées par la clôture sur le 139 ; 2028
+    et 2029 se soldent à zéro (ventes 1 000 000, achats 1 000 000). Lus sur le
+    13, ils sortaient à -300 000 chacun, et 2030 rendait 60 000 au lieu de
+    240 000.
+  */
+  it('V3 · une gestion qui se solde à zéro lit zéro, jamais l’à-nouveau du 13', async () => {
+    const r = await service({
+      balances: { N: [ligne('70110000', -1_000_000), ligne('60410000', 1_000_000)] },
+      reports: { N: [ligne('13900000', 300_000)] },
+    }).s.resultatFiscal('t1', 'N');
+    expect(['resultatComptable', r.resultatComptable]).toEqual(['resultatComptable', 0]);
+    expect(r.sourceResultat).toBe('CLASSES_6_7_8');
+    expect(r.observations.join(' ')).not.toContain('RÉSULTAT LU SUR LE COMPTE 13');
+  });
+
+  it('un 13 qui ne porte que l’à-nouveau ne fait pas le résultat d’un exercice sans gestion', async () => {
+    const r = await service({ balances: { N: [] }, reports: { N: [ligne('13900000', 300_000)] } }).s.resultatFiscal('t1', 'N');
+    expect(['resultatComptable', r.resultatComptable]).toEqual(['resultatComptable', 0]);
+  });
+
+  it('le 13 lu porte aussi l’à-nouveau · le montant reste lu sur le solde, et l’à-nouveau est dit', async () => {
+    const r = await service({
+      balances: { N: [ligne('13100000', -800)] },
+      reports: { N: [ligne('13900000', 300_000)] },
+    }).s.resultatFiscal('t1', 'N');
+    expect(r.sourceResultat).toBe('COMPTE_13');
+    expect(r.resultatComptable).toBe(-299_200);
+    expect(r.observations.join(' ')).toContain('RÉSULTAT LU SUR LE COMPTE 13');
+  });
+
+  it('V3 · 2030 n’impute que la perte de 2027 (N-3), celle de 2026 (N-4) étant éteinte · impôt 240 000', async () => {
+    const zero = [ligne('70110000', -1_000_000), ligne('60410000', 1_000_000)];
+    const { s } = service({
+      exercices: [an('A2026', 2026), an('A2027', 2027), an('A2028', 2028), an('A2029', 2029), an('A2030', 2030)],
+      balances: {
+        A2026: [ligne('70110000', -1_000_000), ligne('60410000', 1_100_000)],
+        A2027: [ligne('70110000', -1_000_000), ligne('60410000', 1_200_000)],
+        A2028: zero,
+        A2029: zero,
+        A2030: [ligne('70110000', -2_000_000), ligne('60410000', 1_000_000)],
+      },
+      reports: {
+        A2027: [ligne('13900000', 100_000)],
+        A2028: [ligne('13900000', 300_000)],
+        A2029: [ligne('13900000', 300_000)],
+        A2030: [ligne('13900000', 300_000)],
+      },
+    });
+    const r2029 = await s.resultatFiscal('t1', 'A2029');
+    expect(['2029', r2029.resultatComptable, r2029.deficitAnterieur.montant]).toEqual(['2029', 0, 300_000]);
+    const r = await s.resultatFiscal('t1', 'A2030');
+    expect(['deficitAnterieur', r.deficitAnterieur.montant]).toEqual(['deficitAnterieur', 200_000]);
+    expect(['deficitImpute', r.deficitImpute]).toEqual(['deficitImpute', 200_000]);
+    expect(['impotDu', r.impotDu]).toEqual(['impotDu', 240_000]);
+  });
+
+  it('une saisie changée seule emporte l’origine qui ne la ventile plus', async () => {
+    const origines = [
+      { dateFin: '2024-12-31', montant: 500_000 },
+      { dateFin: '2025-12-31', montant: 300_000 },
+    ];
+    const change = service({ balances: { N: [] }, dossier: { deficitAnterieurSaisi: 800_000, deficitAnterieurOrigines: origines } as never });
+    await change.s.modifierDossier('t1', 'N', { deficitAnterieurSaisi: 600_000 });
+    expect(change.crees[0].deficitAnterieurOrigines).toBe(Prisma.DbNull);
+    const meme = service({ balances: { N: [] }, dossier: { deficitAnterieurSaisi: 800_000, deficitAnterieurOrigines: origines } as never });
+    await meme.s.modifierDossier('t1', 'N', { deficitAnterieurSaisi: 800_000 });
+    expect('deficitAnterieurOrigines' in meme.crees[0]).toBe(false);
+  });
+
+  it('une origine qui ne totalise plus la saisie ne fait pas foi · le rejeu retombe sur la borne prudente, et le dit', async () => {
+    const { s } = service({
+      exercices: [an('A2026', 2026), an('A2027', 2027)],
+      balances: { A2026: [ligne('70110000', -100_000)], A2027: [ligne('70110000', -2_000_000)] },
+      dossiers: {
+        A2026: { deficitAnterieurSaisi: 600_000, deficitAnterieurOrigines: [{ dateFin: '2025-12-31', montant: 800_000 }] },
+      },
+    });
+    const r2026 = await s.resultatFiscal('t1', 'A2026');
+    expect(r2026.deficitAnterieur.origines).toBeNull();
+    const r = await s.resultatFiscal('t1', 'A2027');
+    expect(['deficitImpute', r.deficitImpute]).toEqual(['deficitImpute', 0]);
+    expect(['impotDu', r.impotDu]).toEqual(['impotDu', 600_000]);
+    expect(r.observations.join(' ')).toContain('REPORT PERDU PAR PRUDENCE');
   });
 });
