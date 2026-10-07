@@ -267,6 +267,14 @@ export function FiscalitePage() {
     const n = Number(v.replace(/\s/g, '').replace(',', '.'));
     return Number.isFinite(n) ? n : null;
   };
+  // UN MONTANT ILLISIBLE SE DIT · ignoré au blur, la saisie restait à l'écran
+  // et le cabinet croyait avoir enregistré (mineur de la ligne IS-CAS).
+  const montantIllisible = (quoi: string) =>
+    setErreur(`${quoi} · montant illisible, rien n'est enregistré. Saisissez un nombre, par exemple 1 250 000 ou 1250000,50.`);
+
+  // LE REPORT ET LA PÉRIODE DE CRÉATION SONT FIGÉS SUR UN EXERCICE CLÔTURÉ ·
+  // le serveur les refuse (relevé 7), l'écran ne les offre plus.
+  const exerciceClos = exercices.find((e) => e.id === resultat?.exerciceId)?.statut === 'CLOTURE';
 
   const jour = (d: string) => new Date(d).toLocaleDateString('fr-FR');
   const physique = resultat?.regime !== 'IMPOT_SOCIETES';
@@ -685,7 +693,7 @@ export function FiscalitePage() {
                 key={`deficit-${resultat.exerciceId}-${resultat.deficitAnterieur.saisi}`}
                 defaultValue={resultat.deficitAnterieur.saisi ? String(resultat.deficitAnterieur.montantSaisi ?? '') : ''}
                 inputMode="decimal"
-                disabled={envoi}
+                disabled={envoi || exerciceClos}
                 placeholder="Calculé automatiquement"
                 onBlur={(e) => {
                   const v = e.target.value.trim();
@@ -705,7 +713,7 @@ export function FiscalitePage() {
                 <OrigineDeficits
                   key={`origines-${resultat.exerciceId}-${JSON.stringify(resultat.deficitAnterieur.origines)}`}
                   origines={resultat.deficitAnterieur.origines}
-                  envoi={envoi}
+                  envoi={envoi || exerciceClos}
                   lireNombre={lireNombre}
                   enregistrer={(origines) => modifierDossier({ deficitAnterieurOrigines: origines })}
                 />
@@ -725,6 +733,11 @@ export function FiscalitePage() {
                 <div className="mb-2 text-[11.5px] font-semibold text-warning">
                   Calcul provisoire · {resultat.brouillard.ecritures} écriture(s) au brouillard, effet sur le résultat{' '}
                   {nombre(resultat.brouillard.effetSurResultat)} {devise}
+                  {resultat.brouillard.effetSurChiffreAffaires !== 0 && (
+                    <>
+                      , sur le chiffre d’affaires {nombre(resultat.brouillard.effetSurChiffreAffaires)} {devise}
+                    </>
+                  )}
                 </div>
               )}
               <div className="text-[11px] font-semibold text-text-dim leading-none">Impôt</div>
@@ -836,8 +849,8 @@ export function FiscalitePage() {
                       disabled={envoi}
                       onBlur={(e) => {
                         const n = lireNombre(e.target.value);
-                        if (n !== null && n >= 0 && n !== resultat.supplementsAdministration)
-                          modifierDossier({ supplementsAdministration: n });
+                        if (n === null || n < 0) montantIllisible('Suppléments établis par l’Administration, nombre positif attendu');
+                        else if (n !== resultat.supplementsAdministration) modifierDossier({ supplementsAdministration: n });
                       }}
                       className="w-32 text-right border border-border rounded-[4px] bg-bg px-2 py-0.5 text-[11.5px] font-mono"
                     />
@@ -933,8 +946,8 @@ export function FiscalitePage() {
                         disabled={envoi}
                         onBlur={(e) => {
                           const n = lireNombre(e.target.value);
-                          if (n !== null && n >= 0 && n !== resultat.periodeCreation?.supplements)
-                            modifierDossier({ supplementsPeriodeCreation: n });
+                          if (n === null || n < 0) montantIllisible('Suppléments sur l’impôt de la période, nombre positif attendu');
+                          else if (n !== resultat.periodeCreation?.supplements) modifierDossier({ supplementsPeriodeCreation: n });
                         }}
                         className="w-32 text-right border border-border rounded-[4px] bg-bg px-2 py-0.5 text-[11.5px] font-mono"
                       />
@@ -957,14 +970,15 @@ export function FiscalitePage() {
                       key={`periode-${resultat.exerciceId}-${resultat.periodeCreation.source}-${resultat.periodeCreation.resultatFiscal}`}
                       defaultValue={resultat.periodeCreation.source === 'DECLARE' ? String(resultat.periodeCreation.resultatFiscal) : ''}
                       inputMode="decimal"
-                      disabled={envoi}
+                      disabled={envoi || exerciceClos}
                       placeholder="Lu au livre-journal"
                       onBlur={(e) => {
                         const v = e.target.value.trim();
                         if (v === '' && resultat.periodeCreation?.source === 'DECLARE') modifierDossier({ resultatPeriodeCreationSaisi: null });
                         else if (v !== '') {
                           const n = lireNombre(v);
-                          if (n !== null && (resultat.periodeCreation?.source !== 'DECLARE' || n !== resultat.periodeCreation.resultatFiscal))
+                          if (n === null) montantIllisible('Bénéfice fiscal de la période');
+                          else if (resultat.periodeCreation?.source !== 'DECLARE' || n !== resultat.periodeCreation.resultatFiscal)
                             modifierDossier({ resultatPeriodeCreationSaisi: n });
                         }
                       }}
