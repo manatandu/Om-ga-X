@@ -154,6 +154,19 @@ base réelle (gardés pour l'audit par décision de Manasse du 2026-10-03).**
   jamais réévaluée (3 200 000 au lieu de 1 500 USD au cours de 2 400, soit
   3 600 000).
 
+## Design de l'interface · les quatre maquettes, à reprendre après la liste
+
+Les quatre maquettes du 2026-10-03 (accueil du cabinet sur tous ses
+dossiers ; « d'où vient ce chiffre » sur un montant d'état ; espace de
+travail à onglets avec barre de commande ; vue téléphone du dirigeant) ont
+été écartées par Manasse le jour même (« le style typique des sites créés par
+IA »), le style Sage à fenêtres restant en place. Consigne de Manasse du
+2026-10-07 pour leur reprise · le design est PROPRE à VMG, mais il s'inspire
+de logiciels et de sites qui existent vraiment, et rien n'est ajouté pour le
+seul effet (ni décor, ni bloc qui encombre). Chaque choix d'écran nomme le
+produit réel dont il s'inspire. Reprise après la liste, sur décision de
+Manasse (« on verra ça plus tard », 2026-10-03).
+
 ## Décisions en attente de Manasse
 
 | # | Question | Proposition |
