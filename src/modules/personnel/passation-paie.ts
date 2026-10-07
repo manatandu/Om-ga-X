@@ -35,9 +35,35 @@
  *
  * ET LE SÉMINAIRE CPCC SE TROMPE ICI, dans les DEUX plans. Il écrit
  * « C/ 4331 INPP · C/ 4332 ONEM ». Le 4331 est « Mutuelle » et le 4332
- * « Assurances retraite » des deux côtés ; l'INPP est au 4334 et l'ONEM au
- * 4335. Un cabinet qui suivrait ce schéma porterait l'INPP à la mutuelle sur
- * une balance qui boucle.
+ * « Assurances retraite » des deux côtés. Un cabinet qui suivrait ce schéma
+ * porterait l'INPP à la mutuelle sur une balance qui boucle.
+ *
+ * ────────────────────────────────────────────────────────────────────────
+ * L'INPP ET L'ONEM NE SONT PAS DES CHARGES SOCIALES (décision T1 du
+ * 2026-10-07, `docs/decisions-par-la-loi-paie-2026-10-07.md`).
+ *
+ * La fiche du compte 64 des deux textes (AUDCIF Titre VII ; SYCEBNL Partie 2
+ * ch. 3) y range les « versements institués par les autorités pour le
+ * financement d'actions d'intérêt général », débités « par le crédit du
+ * compte 44 », et la fiche du compte 66 EXCLUT « les impôts dont l'assiette
+ * repose sur la rémunération → 6413 ». Ni l'INPP (formation, Code du
+ * travail art. 8 et 15 b) ni l'ONEM (emploi, art. 204 et 205 ; arrêté
+ * n° 028/2025, art. 1er) ne gèrent une branche de sécurité sociale (loi
+ * n° 16/009, art. 1er), et toutes les subdivisions du 43 désignent des
+ * organismes de protection. D'où, aux DEUX référentiels, mêmes numéros :
+ *   · INPP · D 64150000 « Formation professionnelle continue » ;
+ *   · ONEM · D 64130000 « Taxes sur appointements et salaires » ;
+ *   · dette · C 44280000 « Autres impôts et taxes », jamais le 447 (rien
+ *     n'est retenu sur le salarié).
+ * Les 43340000 et 43350000 qu'OmegaX ouvrait sous le 433 ne sont PAS admis
+ * pour cet usage · le plan prévoit déjà le 4428, et une dette d'impôt sous
+ * « Autres organismes sociaux » contredit la nature du parent (AUDCIF
+ * art. 18, al. 3 et 4 ; SYCEBNL Partie 2 ch. 2 sect. 1). Le cabinet qui veut
+ * suivre les deux à part subdivise le 4428 au cinquième chiffre. Au compte de
+ * résultat SYSCOHADA, la somme passe des charges de personnel aux impôts et
+ * taxes · la valeur ajoutée baisse, l'excédent brut d'exploitation ne bouge
+ * pas.
+ * ────────────────────────────────────────────────────────────────────────
  */
 
 import { NATURES_FOURNIES_EN_NATURE, type NatureElementPaie } from './assiettes-paie';
@@ -60,8 +86,9 @@ export type RoleComptePaie =
   | 'CNSS_PRESTATIONS_FAMILIALES'
   | 'CNSS_RISQUES_PROFESSIONNELS'
   | 'CNSS_PENSIONS'
-  | 'INPP'
-  | 'ONEM'
+  | 'FORMATION_PROFESSIONNELLE_CONTINUE'
+  | 'TAXES_SUR_SALAIRES'
+  | 'AUTRES_IMPOTS_ET_TAXES'
   | 'IRPP_RETENU'
   | 'REMUNERATIONS_DUES'
   | 'TRANSFERTS_DE_CHARGES';
@@ -180,16 +207,26 @@ export const NOMENCLATURE_PAIE: Readonly<Record<RoleComptePaie, CompteDuRole>> =
     intitule: 'Caisse de retraite obligatoire',
     divergent: true,
   },
-  INPP: {
-    SYSCOHADA: '43340000',
-    SYCEBNL: '43340000',
-    intitule: 'INPP (formation professionnelle)',
+  // DÉCISION T1 DU 2026-10-07 · l'INPP et l'ONEM sont des impôts et taxes
+  // (fiche du compte 64 des deux textes), voir l'en-tête du fichier. Les
+  // trois numéros sont semés aux deux plans sous le même intitulé, relus le
+  // 2026-10-07 · 64130000, 64150000, 44280000.
+  FORMATION_PROFESSIONNELLE_CONTINUE: {
+    SYSCOHADA: '64150000',
+    SYCEBNL: '64150000',
+    intitule: 'Formation professionnelle continue (INPP)',
     divergent: false,
   },
-  ONEM: {
-    SYSCOHADA: '43350000',
-    SYCEBNL: '43350000',
-    intitule: 'ONEM (emploi)',
+  TAXES_SUR_SALAIRES: {
+    SYSCOHADA: '64130000',
+    SYCEBNL: '64130000',
+    intitule: 'Taxes sur appointements et salaires (ONEM)',
+    divergent: false,
+  },
+  AUTRES_IMPOTS_ET_TAXES: {
+    SYSCOHADA: '44280000',
+    SYCEBNL: '44280000',
+    intitule: 'Autres impôts et taxes (INPP, ONEM)',
     divergent: false,
   },
   IRPP_RETENU: {
@@ -280,10 +317,13 @@ export type SensLigne = 'DEBIT' | 'CREDIT';
  *    sociaux pour le compte du personnel (cotisations salariales), par le
  *    crédit du compte 43 », et les autres retenues sont « virées de 422 vers
  *    [...] 447 (impôts retenus à la source) » (§ 4.3) ;
- *  · PATRONALES · « débit 6641/6642, crédit organismes 431-433 » (§ 4.2).
+ *  · PATRONALES · « débit 6641/6642, crédit organismes 431-433 » (§ 4.2) ·
+ *    la seule CNSS depuis la décision T1 du 2026-10-07 ;
+ *  · IMPÔTS ET TAXES SUR SALAIRES · l'INPP et l'ONEM, débités au 64 « par le
+ *    crédit du compte 44 » (fiche du compte 64 des deux textes), décision T1.
  * Le solde du 422 est alors le NET À PAYER, que le règlement solde ensuite.
  */
-export type BlocPaie = 'BRUT' | 'RETENUES' | 'PATRONALES' | 'AVANTAGES_EN_NATURE';
+export type BlocPaie = 'BRUT' | 'RETENUES' | 'PATRONALES' | 'IMPOTS_ET_TAXES_SUR_SALAIRES' | 'AVANTAGES_EN_NATURE';
 
 /**
  * L'AVANTAGE EN NATURE N'EST PAS PAYÉ (audit final F22). Il entre dans les
@@ -356,9 +396,20 @@ const ROLE_PAR_CLE_COTISATION: Readonly<Record<string, RoleComptePaie>> = {
   'cnss-rp': 'CNSS_RISQUES_PROFESSIONNELS',
   'cnss-pension-employeur': 'CNSS_PENSIONS',
   'cnss-pension-travailleur': 'CNSS_PENSIONS',
-  inpp: 'INPP',
-  onem: 'ONEM',
 };
+
+/**
+ * DÉCISION T1 · l'INPP et l'ONEM ont leur CHARGE au 64, chacun sous son
+ * sous-compte, et leur dette au 4428. Ils ne sont dus que par l'employeur
+ * (Code du travail, art. 15 b ; arrêté n° 028/2025, art. 1er).
+ */
+const CHARGE_PAR_CLE_TAXE: Readonly<Record<string, RoleComptePaie>> = {
+  inpp: 'FORMATION_PROFESSIONNELLE_CONTINUE',
+  onem: 'TAXES_SUR_SALAIRES',
+};
+
+export const RESERVE_DETTE_INPP_ONEM =
+  "L'INPP ET L'ONEM SONT DES IMPÔTS ET TAXES, pas des charges sociales · la fiche du compte 64 des deux textes les débite « par le crédit du compte 44 », et la fiche du compte 66 exclut « les impôts dont l'assiette repose sur la rémunération ». La dette va au 44280000 « Autres impôts et taxes » ; le cabinet qui veut suivre l'INPP et l'ONEM à part subdivise le 4428 au cinquième chiffre.";
 
 /**
  * L'ÉCRITURE DE PAIE PROPOSÉE, ET LES QUATRE MOTIFS QUI LA REFUSENT.
@@ -489,9 +540,16 @@ export function passationPaie(entree: EntreePassation): VerdictPassation {
   //     l'impôt retenu à la source.
   const ouvrieres = new Map<RoleComptePaie, number>();
   const patronalesParRole = new Map<RoleComptePaie, number>();
+  const taxesParRole = new Map<RoleComptePaie, number>();
   for (const c of entree.cotisations) {
+    if (c.montantFc <= 0) continue;
+    const chargeTaxe = CHARGE_PAR_CLE_TAXE[c.cle];
+    if (chargeTaxe) {
+      taxesParRole.set(chargeTaxe, (taxesParRole.get(chargeTaxe) ?? 0) + c.montantFc);
+      continue;
+    }
     const role = ROLE_PAR_CLE_COTISATION[c.cle];
-    if (!role || c.montantFc <= 0) continue;
+    if (!role) continue;
     const cible = c.charge === 'TRAVAILLEUR' ? ouvrieres : patronalesParRole;
     cible.set(role, (cible.get(role) ?? 0) + c.montantFc);
   }
@@ -576,6 +634,32 @@ export function passationPaie(entree: EntreePassation): VerdictPassation {
         reserve: reserveRole(role),
       });
     }
+  }
+
+  // 3 bis · L'INPP ET L'ONEM · D/6415 et D/6413, C/4428 (décision T1 du
+  //     2026-10-07). Une charge de l'entité, comme les patronales, mais un
+  //     IMPÔT ET TAXE · ni au 664, ni au 43.
+  let taxesFc = 0;
+  for (const m of taxesParRole.values()) taxesFc += m;
+  if (taxesFc > 0) {
+    for (const [role, montantFc] of taxesParRole) {
+      lignes.push({
+        bloc: 'IMPOTS_ET_TAXES_SUR_SALAIRES',
+        compte: compteDuRole(role, r),
+        intitule: NOMENCLATURE_PAIE[role].intitule,
+        sens: 'DEBIT',
+        montantFc,
+        reserve: null,
+      });
+    }
+    lignes.push({
+      bloc: 'IMPOTS_ET_TAXES_SUR_SALAIRES',
+      compte: compteDuRole('AUTRES_IMPOTS_ET_TAXES', r),
+      intitule: NOMENCLATURE_PAIE.AUTRES_IMPOTS_ET_TAXES.intitule,
+      sens: 'CREDIT',
+      montantFc: taxesFc,
+      reserve: RESERVE_DETTE_INPP_ONEM,
+    });
   }
 
   // 4 · LES AVANTAGES EN NATURE · D/6617, C/781 (audit final F22). La

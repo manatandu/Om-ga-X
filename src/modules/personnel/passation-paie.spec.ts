@@ -4,6 +4,7 @@ import {
   IMPUTATION_PAR_NATURE,
   NATURES_SANS_IMPUTATION,
   NOMENCLATURE_PAIE,
+  RESERVE_DETTE_INPP_ONEM,
   RESERVE_INDEMNITES_PERSONNEL_NATIONAL,
   compteDuRole,
   estVerseEnEspeces,
@@ -46,13 +47,15 @@ describe('Chaque numéro de la nomenclature est RÉELLEMENT ouvert dans son semi
     }
   });
 
-  it("gèle le décompte · UN SEUL rôle diverge sur les dix-neuf", () => {
+  it("gèle le décompte · UN SEUL rôle diverge sur les vingt", () => {
     // Dix-sept jusqu'au 2026-09-27 · le transfert de charges des avantages en
     // nature (781) est le dix-huitième (audit final F22), même numéro aux deux.
     // A8 · les indemnités de fin de contrat (6614) sont le dix-neuvième,
-    // même numéro et même fiche aux deux textes.
+    // même numéro et même fiche aux deux textes. DÉCISION T1 DU 2026-10-07 ·
+    // les deux rôles INPP et ONEM (4334, 4335) font place à trois · 6415,
+    // 6413 et 4428, mêmes numéros aux deux plans.
     const divergents = roles.filter((x) => NOMENCLATURE_PAIE[x].divergent);
-    expect(roles).toHaveLength(19);
+    expect(roles).toHaveLength(20);
     expect(divergents).toEqual(['CNSS_PENSIONS']);
   });
 
@@ -81,14 +84,20 @@ describe("Le piège du 432, et la correction évidente qui est elle-même un pi�
     expect(SEMIS_SYCEBNL).toContain("'43220000', 'Caisses de retraite · complémentaire'");
   });
 
-  it("ne reprend PAS le 4331 ni le 4332 du séminaire CPCC pour l'INPP et l'ONEM", () => {
-    // Le séminaire écrit « C/ 4331 INPP · C/ 4332 ONEM ». Faux dans les DEUX
-    // plans : 4331 est « Mutuelle », 4332 « Assurances retraite ».
-    expect(compteDuRole('INPP', 'SYSCOHADA')).toBe('43340000');
-    expect(compteDuRole('ONEM', 'SYCEBNL')).toBe('43350000');
+  it("décision T1 · l'INPP au 6415, l'ONEM au 6413, leur dette au 4428, aux deux plans", () => {
+    // Le séminaire écrit « C/ 4331 INPP · C/ 4332 ONEM », faux dans les DEUX
+    // plans (4331 « Mutuelle », 4332 « Assurances retraite »). Et le 4334 /
+    // 4335 qu'OmegaX ouvrait sous le 433 ne l'est pas moins · l'INPP et l'ONEM
+    // sont des impôts et taxes (fiche du compte 64 des deux textes).
     for (const r of ['SYSCOHADA', 'SYCEBNL'] as const) {
-      expect(compteDuRole('INPP', r)).not.toMatch(/^4331|^4332/);
-      expect(compteDuRole('ONEM', r)).not.toMatch(/^4331|^4332/);
+      expect(compteDuRole('FORMATION_PROFESSIONNELLE_CONTINUE', r)).toBe('64150000');
+      expect(compteDuRole('TAXES_SUR_SALAIRES', r)).toBe('64130000');
+      expect(compteDuRole('AUTRES_IMPOTS_ET_TAXES', r)).toBe('44280000');
+    }
+    for (const role of roles) {
+      for (const r of ['SYSCOHADA', 'SYCEBNL'] as const) {
+        expect(NOMENCLATURE_PAIE[role][r]).not.toMatch(/^433/);
+      }
     }
   });
 });
@@ -165,10 +174,11 @@ describe("L'écriture proposée", () => {
     expect(v.totalCreditFc).toBeCloseTo(1_720_000, 6);
   });
 
-  it('présente les trois blocs du Guide, dans son ordre', () => {
-    // Guide SYSCOHADA, Partie 1 ch. 3 section 4 et Application 10.
+  it('présente les trois blocs du Guide, dans son ordre, puis les impôts et taxes sur salaires', () => {
+    // Guide SYSCOHADA, Partie 1 ch. 3 section 4 et Application 10 ; l'INPP et
+    // l'ONEM forment un temps à part depuis la décision T1 du 2026-10-07.
     const blocs = passationPaie(entree()).lignes.map((l) => l.bloc);
-    expect([...new Set(blocs)]).toEqual(['BRUT', 'RETENUES', 'PATRONALES']);
+    expect([...new Set(blocs)]).toEqual(['BRUT', 'RETENUES', 'PATRONALES', 'IMPOTS_ET_TAXES_SUR_SALAIRES']);
     const premierRetenue = blocs.indexOf('RETENUES');
     expect(blocs.slice(premierRetenue).includes('BRUT')).toBe(false);
   });
@@ -203,6 +213,28 @@ describe("L'écriture proposée", () => {
     const charges = v.lignes.filter((l) => l.sens === 'DEBIT' && l.compte.startsWith('6'));
     const total = charges.reduce((n, l) => n + l.montantFc, 0);
     expect(total).toBeCloseTo(1_400_000 + 170_000, 6);
+  });
+
+  it("décision T1 · l'INPP et l'ONEM au 64 contre le 4428, la CNSS seule au 6641", () => {
+    const v = passationPaie(entree());
+    const du = (compte: string, sens: 'DEBIT' | 'CREDIT') => v.lignes.filter((l) => l.compte === compte && l.sens === sens);
+    // 6641 · la CNSS patronale seule (65 000 + 50 000 + 15 000).
+    expect(du('66410000', 'DEBIT').map((l) => [l.bloc, l.montantFc])).toEqual([['PATRONALES', 130_000]]);
+    expect(du('64150000', 'DEBIT').map((l) => [l.bloc, l.montantFc])).toEqual([['IMPOTS_ET_TAXES_SUR_SALAIRES', 35_000]]);
+    expect(du('64130000', 'DEBIT').map((l) => [l.bloc, l.montantFc])).toEqual([['IMPOTS_ET_TAXES_SUR_SALAIRES', 5_000]]);
+    const dette = du('44280000', 'CREDIT');
+    expect(dette.map((l) => [l.bloc, l.montantFc])).toEqual([['IMPOTS_ET_TAXES_SUR_SALAIRES', 40_000]]);
+    expect(dette[0].reserve).toBe(RESERVE_DETTE_INPP_ONEM);
+    // Ni 433, ni 447 · rien n'est retenu sur le salarié pour l'INPP et l'ONEM.
+    expect(v.lignes.some((l) => l.compte.startsWith('433'))).toBe(false);
+    expect(v.lignes.filter((l) => l.compte === '44720000').map((l) => l.montantFc)).toEqual([100_000]);
+    // Chaque bloc s'équilibre seul.
+    for (const bloc of ['PATRONALES', 'IMPOTS_ET_TAXES_SUR_SALAIRES'] as const) {
+      const lignes = v.lignes.filter((l) => l.bloc === bloc);
+      const d = lignes.filter((l) => l.sens === 'DEBIT').reduce((n, l) => n + l.montantFc, 0);
+      const c = lignes.filter((l) => l.sens === 'CREDIT').reduce((n, l) => n + l.montantFc, 0);
+      expect(d).toBeCloseTo(c, 6);
+    }
   });
 
   it('sépare la part ouvrière (retenue) de la part patronale (charge) du même compte', () => {

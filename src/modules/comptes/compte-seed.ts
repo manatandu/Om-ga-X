@@ -644,34 +644,22 @@ const classe4Solde: LigneSeed[] = c(ClasseCompte.CLASSE_4, SOLDE, [
   ['43310000', 'Autres organismes sociaux · mutuelle de santé'],
   ['43320000', 'Autres organismes sociaux · assurances retraite'],
   ['43330000', 'Autres organismes sociaux · assurances et organismes de santé'],
-  // INPP et ONEM · subdivisions de 433 « Autres organismes sociaux » ouvertes
-  // par le logiciel, le plan SYCEBNL étant régional et ne nommant aucun
-  // organisme congolais. Sans elles, les trois prélèvements sociaux
-  // atterrissaient sur un compte 43 unique dont l'échéancier ne pouvait
-  // distinguer ni le bénéficiaire ni le taux.
-  //  · INPP · formation professionnelle. Le taux suit D'ABORD la nature de
-  //    l'employeur, puis, pour le privé seulement, la tranche d'effectif :
-  //    4 % public, 3,5 % de 1 à 50, 3 % de 51 à 300, 2 % au-delà de 300,
-  //    arrêté interministériel n° 002/CAB/MET/2025 du 24 septembre 2025,
-  //    art. 1er, entré en vigueur à la date de sa signature (art. 3).
-  //    Avant lui, l'arrêté interministériel n° 12/MTPS/123 du 14 février
-  //    2006 : 3 % public, 3 %, 2 %, 1 %. Les taux et leurs deux dates
-  //    d'effet vivent dans `correspondance-retenues.ts`, clé `inpp` ;
-  //  · ONEM · emploi, 0,5 % de la rémunération mensuelle depuis le
-  //    25 septembre 2025 (arrêté ministériel n° 028/CAB/MIN.ET/FMM/RK/09/2025,
-  //    art. 1er), 0,2 % auparavant (arrêté n° 095/2018). Le taux et sa date
-  //    d'effet vivent dans `correspondance-retenues.ts`, clé `onem`.
-  //
-  // CE COMMENTAIRE A DÉCLARÉ UNE LACUNE À TORT, et la passe P0 de la paie l'a
-  // trouvé le 19/09/2026. Il écrivait « aucun texte ne figure au corpus pour
-  // le taux couramment pratiqué de 0,2 % · le taux n'est PAS inscrit dans le
-  // logiciel ». C'était vrai quand il a été écrit ; l'arrêté de 2025 a depuis
-  // été versé au corpus et le registre des retenues le code, avec sa date
-  // d'effet et ses sanctions. Une lacune déclarée à tort est aussi fausse
-  // qu'une règle inventée · celle-ci faisait renoncer à une règle que le
-  // logiciel applique déjà.
-  ['43340000', 'Autres organismes sociaux · INPP (formation professionnelle)'],
-  ['43350000', 'Autres organismes sociaux · ONEM (emploi)'],
+  // INPP ET ONEM · AUCUN COMPTE SOUS LE 433 (décision T1 du 2026-10-07,
+  // `docs/decisions-par-la-loi-paie-2026-10-07.md`). Ce semis ouvrait
+  // `43340000` et `43350000` sous 433 « Autres organismes sociaux ». Or ni
+  // l'INPP (formation, Code du travail art. 8 et 15 b) ni l'ONEM (emploi,
+  // art. 204 et 205) ne gèrent une branche de sécurité sociale (loi
+  // n° 16/009, art. 1er) · ce sont des « versements institués par les
+  // autorités pour le financement d'actions d'intérêt général », que la fiche
+  // du compte 64 (Partie 2 ch. 3) débite « par le crédit du compte 44 », et la
+  // fiche du compte 66 renvoie au 6413 « les impôts dont l'assiette repose sur
+  // la rémunération ». INPP au 64150000, ONEM au 64130000, dette au 44280000,
+  // tous trois semés plus bas. Le plan prévoyant déjà le 4428, une
+  // subdivision du 433 ne respectait ni le besoin ni l'arborescence (Partie 2
+  // ch. 2 sect. 1). Les dossiers déjà semés gardent leurs deux comptes · le
+  // contrôle `INPP_ONEM_SOUS_LE_433` les signale, rien n'est supprimé.
+  // Les taux et leurs dates d'effet vivent dans `correspondance-retenues.ts`,
+  // clés `inpp` et `onem`.
   ['43810000', 'Organismes sociaux · charges sociales sur gratifications à payer'],
   ['43820000', 'Organismes sociaux · charges sociales sur congés à payer'],
   ['43860000', 'Organismes sociaux · autres charges à payer'],

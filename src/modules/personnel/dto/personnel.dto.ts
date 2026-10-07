@@ -434,6 +434,19 @@ export class SimulationPaieDto {
   deviseStipulation?: 'CDF' | 'USD';
 
   /**
+   * DÉCISIONS T8 ET T5 DU 2026-10-07 · la date de MISE À DISPOSITION de la
+   * rémunération (AAAA-MM-JJ), jour où elle est payée. Les prélèvements s'y
+   * attachent (loi n° 23/053, art. 115 ; arrêté du 19 février 2025, art. 3 ;
+   * « payée », « versées », « perçues » des textes CNSS, INPP et ONEM) · elle
+   * fixe le cours d'un salaire en dollars, et le barème INPP d'une paie de
+   * septembre 2025 (arrêté du 24 septembre 2025, en vigueur à sa signature).
+   * Absente, le jour du calcul pour le cours, et le DIT.
+   */
+  @IsOptional()
+  @IsDateString()
+  dateMiseADisposition?: string;
+
+  /**
    * Article 123 · le nombre de personnes à charge RETENU par le cabinet.
    * Le registre en PROPOSE un, il ne le substitue pas : l'article 124 borne
    * la qualité de personne à charge par des ressources propres qu'aucun livre
@@ -759,6 +772,19 @@ export class DecompteFinalDto {
   @Min(0)
   remunerationJournaliereFc?: number;
 
+  /**
+   * DÉCISION T9 · la rémunération stipulée AU MOIS. Présente, l'indemnité de
+   * préavis paie les mois entiers du délai à ce montant, et le mois entamé à
+   * 1/26 par jour payable, du lundi au samedi, fériés compris (règle citée,
+   * `REGLE_MOIS_ENTAME`, décision par la loi du 2026-10-07, troisième lot,
+   * point 3). Absente, le délai se paie au taux journalier, fériés compris
+   * (art. 63, al. 3 ; art. 93).
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  remunerationMensuelleFc?: number;
+
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -774,10 +800,21 @@ export class DecompteFinalDto {
   @Min(0)
   avantagesPendantPreavisFc?: number;
 
+  /**
+   * Article 70, al. 2 · le dernier jour où le contrat à durée déterminée a été
+   * exécuté, et le terme fixé par les parties (art. 69). Ils placent la
+   * période restant à courir et ses jours fériés (art. 93), comme la date de
+   * notification place le délai de préavis (relecture M2 du 2026-10-07) ·
+   * le nombre de jours restants saisi à la main, payé « jours × taux »,
+   * retranchait chaque férié et ignorait le salaire au mois.
+   */
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  joursRestantsJusquAuTerme?: number;
+  @IsDateString()
+  dateRuptureContrat?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTermeContrat?: string;
 
   @IsOptional()
   @IsNumber()
@@ -984,6 +1021,16 @@ export class ComptabilisationPaieDto {
   @IsString()
   @MaxLength(200)
   libelle?: string;
+
+  /**
+   * C2 · le cabinet CONFIRME la reprise en négatif des bulletins annulés après
+   * passation. Exigée dès qu'il y en a · la proposition demandait jusqu'au
+   * 7 octobre 2026 de l'inscrire à la main, et la reprendre une seconde fois
+   * doublerait la correction sur une écriture équilibrée.
+   */
+  @IsOptional()
+  @IsBoolean()
+  inscrireNegatifs?: boolean;
 }
 
 export class RubriquePaieDto {

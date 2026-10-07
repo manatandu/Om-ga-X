@@ -1298,7 +1298,12 @@ export class EcritureService {
       // écriture, ou repartiraient en silence dans la paie suivante. La
       // passation se défait depuis la fenêtre Personnel, qui libère les
       // bulletins dans le même geste.
-      [DETENTEUR_PAIE_DU_MOIS, this.prisma.bulletinPaie.count({ where: { tenantId, ecritureId } })],
+      // C2 · la reprise en négatif d'un bulletin annulé tient son écriture au
+      // même titre · retirée seule, le bulletin se dirait repris sans elle.
+      [
+        DETENTEUR_PAIE_DU_MOIS,
+        this.prisma.bulletinPaie.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+      ],
       // L'ordre de virement non annulé. Sans ce refus, la pièce de règlement
       // disparaîtrait sous un ordre que la banque exécute quand même · la
       // dette serait rouverte au 40 pendant que le fournisseur est payé.

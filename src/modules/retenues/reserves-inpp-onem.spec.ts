@@ -10,16 +10,20 @@ const reserve = (cle: string) => NATURES_RETENUES.find((n) => n.cle === cle)!.re
 
 describe('F125 · réserves INPP et ONEM', () => {
   it('renvoient le calcul de la cotisation à la paie, et disent ce que le registre fait', () => {
-    for (const cle of ['inpp', 'onem']) {
-      expect(reserve(cle)).toContain('La cotisation se calcule dans la paie (fenêtre Personnel)');
-      expect(reserve(cle)).toMatch(/Ce registre, lui, ne recalcule rien : il recense ce que votre comptabilité porte sur le compte 433[45]/);
-    }
-    expect(reserve('inpp')).toContain('s\'y abstient tant qu\'ils ne le sont pas');
+    // Décision T1 du 2026-10-07 · l'INPP et l'ONEM partagent le 4428, une
+    // seule nature porte les deux textes, et chacune des deux réserves dit le
+    // compte où elle lit.
+    const r = reserve('inppOnem');
+    expect(r.match(/La cotisation se calcule dans la paie \(fenêtre Personnel\)/g)).toHaveLength(2);
+    expect(r.match(/Ce registre, lui, ne recalcule rien : il recense ce que votre comptabilité porte sur le compte 4428/g)).toHaveLength(2);
+    expect(r).toContain('s\'y abstient tant qu\'ils ne le sont pas');
+    expect(r).toMatch(/^UN SEUL COMPTE, LE 4428/);
+    expect(r).toContain('6415 pour l\'INPP, 6413 pour l\'ONEM');
   });
 
   it('l’ONEM a changé de taux le 25 septembre 2025, le lendemain de l’INPP', () => {
-    expect(reserve('inpp')).toContain('même discipline que l\'ONEM, dont le taux a changé le lendemain');
-    expect(reserve('onem')).toContain('à partir du 25 septembre 2025');
+    expect(reserve('inppOnem')).toContain('même discipline que l\'ONEM, dont le taux a changé le lendemain');
+    expect(reserve('inppOnem')).toContain('à partir du 25 septembre 2025');
   });
 });
 
@@ -31,7 +35,7 @@ describe('F125 · réserves INPP et ONEM', () => {
  */
 describe('Passe D2 · la ligne CNSS et la base légale INPP', () => {
   const cnss = NATURES_RETENUES.find((n) => n.cle === 'cnss')!;
-  const inpp = NATURES_RETENUES.find((n) => n.cle === 'inpp')!;
+  const inpp = NATURES_RETENUES.find((n) => n.cle === 'inppOnem')!;
   const texteCnss = `${cnss.baseLegale} ${cnss.reserve}`;
 
   it('les feuilles de paie jointes, et leur absence qui vaut défaut de déclaration', () => {

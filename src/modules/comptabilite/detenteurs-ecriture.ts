@@ -55,6 +55,9 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   'ExecutionEngagement.ecritureId',
   'MouvementStock.ecritureId',
   'BulletinPaie.ecritureId',
+  // C2 · la reprise en négatif d'un bulletin annulé après passation · retirée
+  // seule, le bulletin se dirait repris et sa correction ne se repasserait plus.
+  'BulletinPaie.ecritureNegatifId',
   'AmortissementDerogatoire.ecritureId',
   'LigneOrdreVirement.ecritureId',
   'Consignation.ecritureConsignationId',

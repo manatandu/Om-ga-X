@@ -115,6 +115,8 @@ const FAITS: DecompteFinalDto = {
   motif: 'LICENCIEMENT',
   typeContrat: 'DUREE_INDETERMINEE',
   executionPreavis: 'DISPENSE_PAR_EMPLOYEUR',
+  // Délai du 19 mai au 27 juin 2026, sans férié (décision T9).
+  dateNotification: '2026-05-18',
   remunerationJournaliereFc: 10_000,
   moyenneMensuelleArticle66Fc: 0,
   moyenneMensuelleArticle142Fc: 0,
@@ -377,8 +379,8 @@ describe('A8 · émettre le décompte final · rejoué, figé, numéroté avec l
     expect(natures).toContainEqual(['LOGEMENT_OU_SON_INDEMNITE', 35_000]);
     expect(b.totalVerseFc).toBe(a.totalVerseFc + 35_000);
     expect(b.assietteSocialeFc).toBe(a.assietteSocialeFc);
-    // La réserve « corpus muet » voyage avec le document.
-    expect(b.calcul.reservesDecompteEmis.join(' ')).toContain("lecture d'OmegaX, le corpus se tait");
+    // La mention de fondement (décision T7) voyage avec le document.
+    expect(b.calcul.reservesDecompteEmis.join(' ')).toContain('ASSIETTE SOCIALE · par le texte');
   });
 });
 

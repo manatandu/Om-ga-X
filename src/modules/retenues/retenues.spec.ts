@@ -9,7 +9,10 @@ import {
   AVERTISSEMENT_REDEVABLE,
   FORMES_PERSONNES_PHYSIQUES,
   avertissementRegimeImpot,
+  compteRelevantDe,
 } from './correspondance-retenues';
+import { PLAN_COMPTES_SYCEBNL } from '../comptes/compte-seed';
+import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
 
 /**
  * Les obligations SERVIES à un dossier SYCEBNL · toutes n'y sont pas. Les
@@ -207,15 +210,41 @@ describe('Registre des retenues à la source', () => {
     expect(nature(r, 'autresRetenues').retenu).toBe(30_000);
   });
 
-  it('sépare CNSS, INPP et ONEM · un taux et un bénéficiaire par organisme', async () => {
+  it('sépare la CNSS du 4428 · et compte UNE fois l’INPP et l’ONEM qui le partagent (décision T1)', async () => {
+    // DÉCISION T1 DU 2026-10-07 · l'INPP et l'ONEM sont au 44280000 « Autres
+    // impôts et taxes ». Deux natures sur ce même compte compteraient chacune
+    // toute sa dette · le registre annoncerait 74 000 FC dus pour 37 000.
+    // Les 4334 et 4335 d'un dossier semé avant la décision restent lus, dans
+    // la même nature, et nulle part ailleurs.
+    // Le 4428 de la paie du mois · un bulletin porte l'écriture (relecture M1,
+    // `inpp-onem-du-4428.ts` · le 4428 se lit par sa structure).
+    const du4428DeLaPaie = ligne('44280000', '2026-06-12', { credit: 37_000 });
     const r = await service([
       ligne('43110000', '2026-06-12', { credit: 65_000 }),
-      ligne('43340000', '2026-06-12', { credit: 35_000 }),
-      ligne('43350000', '2026-06-12', { credit: 2_000 }),
+      { ...du4428DeLaPaie, ecriture: { ...du4428DeLaPaie.ecriture, bulletinsPaie: [{ id: 'b1' }] } } as ReturnType<typeof ligne>,
+      ligne('43340000', '2026-06-12', { credit: 1_000 }),
+      ligne('43350000', '2026-06-12', { credit: 500 }),
     ]).registre('t1', { exerciceId: 'e1' });
     expect(nature(r, 'cnss').retenu).toBe(65_000);
-    expect(nature(r, 'inpp').retenu).toBe(35_000);
-    expect(nature(r, 'onem').retenu).toBe(2_000);
+    expect(nature(r, 'inppOnem').retenu).toBe(38_500);
+    expect(nature(r, 'autresOrganismesSociaux').retenu).toBe(0);
+    expect(r.natures.map((n) => n.cle)).not.toContain('inpp');
+    expect(r.natures.map((n) => n.cle)).not.toContain('onem');
+    expect(r.totalRetenu).toBe(103_500);
+  });
+
+  it('ne fait lire AUCUN compte des deux semis par deux natures à la fois', () => {
+    // LA RÈGLE QUE LA DÉCISION T1 AURAIT ROMPUE · un compte lu par deux
+    // natures double sa dette dans le registre et dans l'échéancier, sur une
+    // balance qui boucle. Relue sur tous les comptes 43 et 44 des DEUX semis,
+    // plus les 4334 et 4335 des dossiers anciens.
+    const numeros = new Set<string>(['43340000', '43350000']);
+    for (const c of [...PLAN_COMPTES_SYCEBNL, ...PLAN_COMPTES_SYSCOHADA]) {
+      if (/^4[34]/.test(c.numero) && c.typeCompte !== 'TOTAL') numeros.add(c.numero);
+    }
+    const doublons = [...numeros].filter((n) => NATURES_RETENUES.filter((x) => compteRelevantDe(n, x)).length > 1);
+    expect(doublons).toEqual([]);
+    expect(NATURES_RETENUES.filter((x) => compteRelevantDe('44280000', x)).map((x) => x.cle)).toEqual(['inppOnem']);
   });
 
   it('porte le taux ONEM de 0,5 % ET sa date d’effet', async () => {
@@ -225,13 +254,13 @@ describe('Registre des retenues à la source', () => {
     // exercice à cheval sur septembre 2025 porte les DEUX taux, et un taux
     // sans date d'effet, dans un logiciel comptable, est un piège.
     const r = await service([]).registre('t1', { exerciceId: 'e1' });
-    expect(nature(r, 'onem').baseLegale).toContain('0,5 %');
-    expect(nature(r, 'onem').baseLegale).toContain('028/CAB/MIN.ET');
-    expect(nature(r, 'onem').reserve).toContain("DATE D'EFFET");
-    expect(nature(r, 'onem').reserve).toContain('25 septembre 2025');
+    expect(nature(r, 'inppOnem').baseLegale).toContain('0,5 %');
+    expect(nature(r, 'inppOnem').baseLegale).toContain('028/CAB/MIN.ET');
+    expect(nature(r, 'inppOnem').reserve).toContain("DATE D'EFFET");
+    expect(nature(r, 'inppOnem').reserve).toContain('25 septembre 2025');
     // L'ancien taux doit rester lisible en réserve, et JAMAIS en base légale.
-    expect(nature(r, 'onem').reserve).toMatch(/0,2\s*%/);
-    expect(nature(r, 'onem').baseLegale).not.toMatch(/0[.,]2\s*%/);
+    expect(nature(r, 'inppOnem').reserve).toMatch(/0,2\s*%/);
+    expect(nature(r, 'inppOnem').baseLegale).not.toMatch(/0[.,]2\s*%/);
   });
 
   it('porte le barème INPP ANTÉRIEUR et la date d’effet du nouveau', async () => {
@@ -241,7 +270,7 @@ describe('Registre des retenues à la source', () => {
     // du 14 février 2006. Il n'y a donc PAS de décalage entre signature et
     // entrée en vigueur, et un exercice à cheval porte les deux barèmes.
     const r = await service([]).registre('t1', { exerciceId: 'e1' });
-    const inpp = nature(r, 'inpp');
+    const inpp = nature(r, 'inppOnem');
     expect(inpp.baseLegale).toContain('24 SEPTEMBRE 2025');
     expect(inpp.baseLegale).toContain('à la date de sa signature');
     // Le barème antérieur et son texte, sans lesquels un exercice clos se
@@ -267,7 +296,7 @@ describe('Registre des retenues à la source', () => {
     // public (3 %) et la première tranche privée (3 %) portaient le MÊME
     // taux · de quoi croire à un barème unique à trois échelons.
     const r = await service([]).registre('t1', { exerciceId: 'e1' });
-    const inpp = nature(r, 'inpp');
+    const inpp = nature(r, 'inppOnem');
     for (const taux of ['4 %', '3,5 %', '3 %', '2 %']) {
       expect(inpp.baseLegale).toContain(taux);
     }
@@ -283,7 +312,7 @@ describe('Registre des retenues à la source', () => {
     // et l'inverse tient aussi. L'arrêté de 2006 abroge celui du 28 mars 2003
     // sans en reproduire le taux. Le dépôt nomme ce texte et s'arrête là.
     const r = await service([]).registre('t1', { exerciceId: 'e1' });
-    const inpp = nature(r, 'inpp');
+    const inpp = nature(r, 'inppOnem');
     expect(inpp.reserve).toContain('28 mars 2003');
     expect(inpp.reserve).toContain("n'est PAS reconstitué");
     // Et il n'apparaît jamais en base légale, où il se lirait comme applicable.
@@ -295,7 +324,7 @@ describe('Registre des retenues à la source', () => {
     // Deux se lisent, le troisième non · le dépôt rend les deux et DIT que le
     // troisième manque, plutôt que de compléter une référence de mémoire.
     const r = await service([]).registre('t1', { exerciceId: 'e1' });
-    const inpp = nature(r, 'inpp');
+    const inpp = nature(r, 'inppOnem');
     expect(inpp.baseLegale).toContain('002/CAB/MET/2025');
     expect(inpp.baseLegale).toContain('003/CAB/VPM/MIN/BUD/2025');
     expect(inpp.reserve).toContain('ILLISIBLE');
@@ -321,7 +350,7 @@ describe('Registre des retenues à la source', () => {
     // le même mois, et l'écart de cinq jours qu'on veut figer est observable.
     const e = await service([]).echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2026-03-05' });
     const declaration = e.echeances.find((x) => x.cle === 'declarationMensuelleOnem');
-    const versement = e.echeances.find((x) => x.cle === 'onem');
+    const versement = e.echeances.find((x) => x.cle === 'inppOnem');
     expect(declaration).toBeDefined();
     expect(versement).toBeDefined();
     expect(declaration!.genre).toBe('DECLARATION');

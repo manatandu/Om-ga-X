@@ -2178,6 +2178,8 @@ describe('passe R6, lot C · notes des associations lues au texte', () => {
     ).resolves.toMatchObject({ cleRubrique: 'frais-sur-achats' });
   });
 
+  // Les 4334 et 4335 ne sont plus semés depuis la décision T1 du 2026-10-07
+  // (INPP et ONEM au 4428) · un dossier semé avant les garde, et ils restent lus.
   it('C4 · l’INPP (4334) et l’ONEM (4335) créditeurs sont à la note 20, et nulle part ailleurs', async () => {
     const r = await r6([
       ligne('43340000', ClasseCompte.CLASSE_4, 0, 300),

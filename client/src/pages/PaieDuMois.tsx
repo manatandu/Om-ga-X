@@ -4,6 +4,7 @@ import { useExercice } from '../lib/exercice';
 import { useAuth } from '../lib/auth';
 import type { Journal } from '../lib/types';
 import { montant as fc } from '../lib/montants';
+import { Aide } from '../components/chrome/Aide';
 
 /**
  * P9 · LA PAIE DU MOIS AU JOURNAL, EN UNE ÉCRITURE.
@@ -18,14 +19,20 @@ import { montant as fc } from '../lib/montants';
  * Les trois temps de l'écriture de paie, dans l'ordre du Guide d'application
  * SYSCOHADA (Partie 1 ch. 3 section 4, Application 10). L'impôt retenu est au
  * deuxième, jamais au troisième : c'est une retenue sur le salarié. Un
- * quatrième transfère les avantages en nature au 6617 par le 781 (§ 4.5),
- * hors du 422 (audit final F22).
+ * quatrième porte l'INPP et l'ONEM au 64 contre le 4428 · des impôts et taxes,
+ * pas des charges sociales (décision T1 du 2026-10-07). Un cinquième transfère
+ * les avantages en nature au 6617 par le 781 (§ 4.5), hors du 422 (audit
+ * final F22).
  */
 export const TITRE_BLOC_PAIE = {
   BRUT: '1 · Salaire brut dû au personnel',
   RETENUES: '2 · Retenues sur le salaire (cotisations ouvrières, impôt)',
-  PATRONALES: '3 · Charges sociales patronales',
-  AVANTAGES_EN_NATURE: '4 · Avantages en nature transférés (781)',
+  PATRONALES: '3 · Charges sociales patronales (CNSS)',
+  IMPOTS_ET_TAXES_SUR_SALAIRES: '4 · Impôts et taxes sur salaires (INPP, ONEM)',
+  AVANTAGES_EN_NATURE: '5 · Avantages en nature transférés (781)',
+  // Relecture M3 · l'écriture d'origine d'un bulletin annulé, recopiée en
+  // négatif ligne à ligne (AUDCIF art. 20, al. 2) · aucun temps du Guide.
+  REPRISE_EN_NEGATIF: '6 · Reprise en négatif de l’écriture d’origine',
 } as const;
 
 type Bloc = keyof typeof TITRE_BLOC_PAIE;
@@ -34,9 +41,11 @@ interface PropositionPaieDuMois {
   moisDePaie: string;
   aPasser: { id: string; numero: number; nomComplet: string }[];
   dejaPasses: { numero: number; nomComplet: string; ecritureId: string }[];
-  annulesApresPassation: { numero: number; nomComplet: string; ecritureId: string }[];
+  annulesApresPassation: { numero: number; nomComplet: string; ecritureId: string; ecritureNegatifId: string | null }[];
+  /** C2 · annulés après passation que cette écriture reprendrait en négatif. */
+  negatifsAPasser: { id: string; numero: number; nomComplet: string; ecritureId: string }[];
   refus: { numero: number; nomComplet: string; motifs: string[] }[];
-  lignes: { bloc: Bloc; compte: string; intitule: string; sens: 'DEBIT' | 'CREDIT'; montantFc: number }[];
+  lignes: { bloc: Bloc; compte: string; intitule: string; sens: 'DEBIT' | 'CREDIT'; montantFc: number; negatif?: boolean }[];
   totalDebitFc: number;
   totalCreditFc: number;
   equilibree: boolean;
@@ -65,6 +74,9 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
   const [erreur, setErreur] = useState('');
   const [message, setMessage] = useState('');
   const [enCours, setEnCours] = useState(false);
+  // C2 · la reprise en négatif se CONFIRME · décochée par défaut, elle a pu
+  // être inscrite à la main quand la proposition le demandait.
+  const [reprendreNegatifs, setReprendreNegatifs] = useState(false);
 
   const charger = useCallback(() => {
     setErreur('');
@@ -75,6 +87,7 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
     charger();
     setDate(dernierJour(mois));
     setMessage('');
+    setReprendreNegatifs(false);
   }, [charger, mois]);
 
   useEffect(() => {
@@ -101,6 +114,7 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
         exerciceId: exerciceCourant.id,
         journalId,
         date,
+        ...(p && p.negatifsAPasser.length > 0 ? { inscrireNegatifs: reprendreNegatifs } : {}),
       })
       .then(
         (r) => {
@@ -136,6 +150,16 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
   if (!p) return erreur ? <div className="ecran-seul text-danger mt-3">{erreur}</div> : null;
   const pieceDe = (id: string) => p.pieces.find((x) => x.id === id);
   const ecrituresPassees = [...new Set(p.dejaPasses.map((b) => b.ecritureId))];
+  // C2 · l'écriture qui ne fait que reprendre un bulletin annulé en négatif
+  // se défait de même, tant qu'elle est au brouillard.
+  const reprisesSeules = [
+    ...new Set(
+      p.annulesApresPassation.flatMap((b) =>
+        b.ecritureNegatifId && !ecrituresPassees.includes(b.ecritureNegatifId) ? [b.ecritureNegatifId] : [],
+      ),
+    ),
+  ];
+  const negatifsEnAttente = p.negatifsAPasser.length > 0;
 
   return (
     <div className="ecran-seul border border-border px-3.5 py-2.5 mt-3">
@@ -162,11 +186,33 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
         );
       })}
 
-      {p.annulesApresPassation.length > 0 && (
+      {reprisesSeules.map((id) => {
+        const piece = pieceDe(id);
+        const n = p.annulesApresPassation.filter((b) => b.ecritureNegatifId === id).map((b) => `n° ${b.numero}`);
+        return (
+          <div key={id} className="flex flex-wrap items-center gap-3 mb-1.5">
+            <span>
+              Bulletins annulés {n.join(', ')} repris en négatif dans la pièce n° {piece?.numeroPiece ?? '·'}
+              {piece?.statut === 'VALIDEE' ? ' (validée)' : ' (au brouillard)'}.
+            </span>
+            {peutValider && piece?.statut === 'BROUILLARD' && (
+              <button type="button" disabled={enCours} onClick={() => defaire(id)} className="px-2.5 py-1 border border-border">
+                Annuler la comptabilisation
+              </button>
+            )}
+          </div>
+        );
+      })}
+
+      {negatifsEnAttente && (
         <div className="border border-warning/40 bg-warning/5 px-3 py-1.5 mb-2">
-          Annulé(s) après passation :{' '}
-          {p.annulesApresPassation.map((b) => `n° ${b.numero} (${b.nomComplet})`).join(', ')}. Leur salaire est encore
-          dans l’écriture validée · il se corrige par une écriture en négatif.
+          Annulé(s) après passation, à reprendre en négatif :{' '}
+          {p.negatifsAPasser.map((b) => `n° ${b.numero} (${b.nomComplet})`).join(', ')}.
+          <Aide
+            titre="Reprise en négatif d’un bulletin annulé"
+            texte="Le salaire d’un bulletin passé puis annulé reste dans l’écriture validée qui l’a passé. La passation du mois le reprend en négatif, ligne à ligne, à côté du bulletin réémis · seule la différence pèse sur l’exercice où l’écriture est passée. Erreur d’un exercice clôturé · elle se corrige dans les comptes de l’exercice en cours, avec la date de valeur du mois, et se dit aux Notes annexes ; significative, elle passe par le report à nouveau. Un négatif déjà inscrit à la main se contre-passe d’abord."
+            source="AUDCIF art. 20, al. 2 à 4 ; art. 22, 4°"
+          />
         </div>
       )}
 
@@ -183,14 +229,16 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
         </div>
       )}
 
-      {p.aPasser.length === 0 && p.refus.length === 0 && (
+      {p.aPasser.length === 0 && !negatifsEnAttente && p.refus.length === 0 && (
         <div className="text-text-dim">Aucun bulletin émis à passer pour ce mois.</div>
       )}
 
       {p.lignes.length > 0 && (
         <>
           <div className="text-text-dim mb-1">
-            {p.aPasser.length} bulletin(s) à passer : {p.aPasser.map((b) => `n° ${b.numero}`).join(', ')}.
+            {p.aPasser.length} bulletin(s) à passer
+            {p.aPasser.length > 0 ? ` : ${p.aPasser.map((b) => `n° ${b.numero}`).join(', ')}` : ''}
+            {negatifsEnAttente ? ` · ${p.negatifsAPasser.length} repris en négatif : ${p.negatifsAPasser.map((b) => `n° ${b.numero}`).join(', ')}` : ''}.
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse">
@@ -212,7 +260,7 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
                         </td>
                       </tr>
                     )}
-                    <tr>
+                    <tr className={l.negatif ? 'text-text-dim' : undefined}>
                       <td className="py-1 pr-2 font-mono">{l.compte}</td>
                       <td className="py-1 pr-2">{l.intitule}</td>
                       <td className="py-1 pr-2 text-right font-mono">{l.sens === 'DEBIT' ? fc(l.montantFc) : ''}</td>
@@ -253,9 +301,15 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
                 Date
                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border border-border px-2 py-1" />
               </label>
+              {negatifsEnAttente && (
+                <label className="flex items-center gap-1.5">
+                  <input type="checkbox" checked={reprendreNegatifs} onChange={(e) => setReprendreNegatifs(e.target.checked)} />
+                  Reprendre en négatif les bulletins annulés
+                </label>
+              )}
               <button
                 type="button"
-                disabled={!journalId || !date || !exerciceCourant || enCours || !p.equilibree}
+                disabled={!journalId || !date || !exerciceCourant || enCours || !p.equilibree || (negatifsEnAttente && !reprendreNegatifs)}
                 onClick={passer}
                 className="bg-sel text-white rounded-[3px] px-3 py-[3px] text-[11.5px] font-semibold hover:opacity-90 disabled:opacity-40"
               >

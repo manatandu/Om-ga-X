@@ -1466,8 +1466,9 @@ export const NOTES_ASSOCIATIONS: SpecificationNote[] = [
       { libelle: 'Autres charges sociales à payer', comptes: ['4381', '4386'], sens: 'CREDITEUR' },
       // Tout le 433 « Autres organismes sociaux » que les deux lignes voisines
       // ne prennent pas (4331, 4332) · le 4333 du plan, et les 43340000
-      // (INPP) et 43350000 (ONEM) que le semis ouvre sous le 433
-      // (`compte-seed.ts`) et que la paie crédite. DI les lit (« 42, 43, 44,
+      // (INPP) et 43350000 (ONEM) que le semis ouvrait sous le 433 jusqu'à la
+      // décision T1 du 2026-10-07 (la paie les porte depuis au 4428) et que
+      // les dossiers semés avant gardent. DI les lit (« 42, 43, 44,
       // 45, 47 (sauf 479) … », Partie 4 ch. 2) ; jusqu'à la passe R6
       // (constat C4) la note, qui lisait le seul 4333, les perdait, et la
       // rubrique, officielle, n'acceptait aucun rattachement.

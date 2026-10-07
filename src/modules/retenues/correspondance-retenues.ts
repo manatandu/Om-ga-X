@@ -667,32 +667,45 @@ export const NATURES_RETENUES: NatureRetenue[] = [
       "L'ASSIETTE N'EST PAS LE REVENU IMPOSABLE, ET DEUX TEXTES LE DISENT PLUTÔT QU'UN. L'article 13 de la loi n° 16/009 ROUTE l'assiette hors de la fiscalité : les cotisations « sont assises sur l'ensemble de la rémunération du travailleur assujetti TEL QUE PRÉVU À L'ARTICLE 7, LITERA H, DU CODE DU TRAVAIL ». Et l'arrêté n° 146/2018, article 17, point 1, définit l'« assiette de cotisation du travailleur » en RECOPIANT cette définition, exclusions comprises : ne sont pas éléments de la rémunération les soins de santé, l'indemnité de logement ou le logement en nature, les allocations familiales légales, l'indemnité de transport, les frais de voyage et les avantages accordés exclusivement en vue de faciliter au travailleur l'accomplissement de ses fonctions. CES CINQ EXCLUSIONS SONT INCONDITIONNELLES · leur montant ne change rien, leur nature suffit. C'est ce qui les sépare des immunités de l'article 69 de la loi n° 23/053, qui portent des conditions et des plafonds. LA DÉCLARATION ELLE-MÊME LE PROUVE · le formulaire Mod. DC de l'article 23 porte DEUX colonnes distinctes, le « montant total brut des sommes payées aux travailleurs » (point 5) et le « montant total des sommes payées aux travailleurs QUI SONT PRISES EN CONSIDÉRATION POUR LE CALCUL DES COTISATIONS » (point 6). Si l'assiette était le brut, le point 6 n'aurait pas lieu d'être. NE PAS LA « CORRIGER » SUR UNE SOURCE ÉTRANGÈRE · la règle inverse existe ailleurs et se trouve en premier sur le web. Le Maroc a harmonisé son assiette sociale sur le traitement fiscal des indemnités par l'arrêté n° 1314-25, et le Gabon assied ses cotisations sur le « salaire brut imposable ». Aucun des deux ne régit la RDC. Un plancher au SMIG s'applique (loi, art. 13 in fine ; décret n° 18/041, art. 8). LE SMIG EST CHIFFRÉ · décret n° 25/22 du 30 mai 2025, art. 2 : 21 500 FC par jour pour le travailleur MANŒUVRE ORDINAIRE, soit 559 000 FC par mois en appliquant le multiplicateur 26 de son article 7. Le taux monte ensuite de classe en classe jusqu'à 215 000 FC par jour au dernier échelon du cadre de collaboration, suivant la tension salariale des annexes. SUR QUEL MONTANT S'ASSIED LE PLANCHER, LA QUESTION RESTE OUVERTE, et OmegaX ne la tranche pas : l'article 2 fixe le SMIG à 21 500 FC tandis que l'article 3 échelonne son PAIEMENT (14 500 FC de la paie de mai 2025 à celle de décembre 2025, 21 500 FC ensuite). Les annexes du décret, elles, assoient les allocations familiales et la contre-valeur du logement sur le montant PAYÉ (537,04 FC de mai à décembre 2025, soit 14 500/27) · elles ne disent rien du plancher d'assiette sociale, qui relève d'un autre texte. Le point est à confirmer auprès de la CNSS avant d'en tirer une assiette. CES CINQ EXCLUSIONS SONT CELLES DU TRAVAILLEUR (art. 17, point 1) · l'arrêté n° 146/2018 assujettit aussi à toutes les branches le mandataire de l'État dans les entreprises publiques, le marin et l'ASSOCIÉ ACTIF d'une société (art. 3, points 2, 4 et 6), dont l'assiette est « l'ensemble des rétributions », avantages et jetons de présence compris, seuls ceux accordés exclusivement pour faciliter les fonctions en étant exclus (art. 17, point 2). La paie d'OmegaX, bâtie sur le contrat de travail, ne la calcule pas ; la qualité d'associé actif est au cabinet. L'APPRENTI, lui, n'est assujetti qu'à la branche des risques professionnels (loi n° 16/009, art. 4). LA PAIE D'OMEGAX applique le plancher là où les deux lectures coïncident (à partir de janvier 2026, ou sur une grille saisie par le cabinet), au SMIG des jours payés, et s'abstient sur la CNSS de mai à décembre 2025 quand l'assiette tombe entre les deux. DEUX VOIES DE DÉCLARATION, et OmegaX n'en choisit aucune pour le dossier · l'arrêté n° 146/2018, art. 21, nomme le guichet unique et la « déclaration mensuelle unique des impôts, cotisations sociales et contributions patronales sur les rémunérations » pour les employeurs créateurs d'entreprise, et la représentation territorialement compétente de la Caisse, avec le formulaire Mod. DC en trois exemplaires, pour les autres catégories ; l'arrêté interministériel du 12 mai 2015, qu'il vise sans l'abroger, étend la déclaration unique à tout employeur assujetti au régime général (art. 3). Les deux textes ne s'articulent pas, et le logiciel ne tranche pas entre eux. Télédéclaration obligatoire au-delà de vingt-cinq travailleurs (arrêté n° 146/2018, art. 24).",
   },
   {
-    cle: 'inpp',
-    libelle: 'Cotisation à la formation professionnelle (INPP)',
-    comptes: ['4334'],
+    // DÉCISION T1 DU 2026-10-07 · L'INPP ET L'ONEM SONT DES IMPÔTS ET TAXES, ET
+    // LEUR DETTE EST AU 4428 « AUTRES IMPÔTS ET TAXES », AUX DEUX RÉFÉRENTIELS
+    // (fiche du compte 64 des deux textes, « par le crédit du compte 44 » ;
+    // `docs/decisions-par-la-loi-paie-2026-10-07.md`). Les deux natures
+    // `inpp` (4334) et `onem` (4335) devenaient deux lectures du MÊME compte ·
+    // chacune aurait compté toute la dette du 4428, et le registre comme
+    // l'échéancier auraient annoncé deux fois ce qui est dû. Rien ne permet de
+    // couper en deux un solde que le plan porte sur un seul compte (même parti
+    // que le prélèvement sur les capitaux mobiliers des non-résidents, plus
+    // bas) · une seule nature, donc, qui porte les deux textes. L'INPP et
+    // l'ONEM se paient au même jour (le 15 du mois suivant) ; la DÉCLARATION
+    // ONEM du 10 reste une obligation à part. Les 4334 et 4335 des dossiers
+    // semés avant la décision restent lus ici · leur historique n'est pas
+    // perdu, et le contrôle `INPP_ONEM_SOUS_LE_433` les signale. LE 4428 NE
+    // SE LIT PAS EN ENTIER (relecture M1) · seules ses lignes que la STRUCTURE
+    // rattache à l'INPP ou à l'ONEM, voir `inpp-onem-du-4428.ts`.
+    cle: 'inppOnem',
+    libelle: "Formation professionnelle (INPP) et contribution à l'emploi (ONEM)",
+    comptes: ['4428', '4334', '4335'],
+    // ORGANISME_SOCIAL garde l'échéance hors du report de l'art. 110 bis LPF ·
+    // ni le Code du travail (art. 15) ni l'arrêté n° 028/2025 ne reportent un
+    // paiement tombé un jour non ouvrable (passe D2). Le compte de la dette,
+    // lui, suit la décision T1.
     beneficiaire: 'ORGANISME_SOCIAL',
     joursApresPeriode: 15,
     echeance: 'Mensuelle, au plus tard le 15 du mois suivant',
     baseLegale:
       "Code du travail, art. 15 b) : la cotisation est « la cotisation mensuelle des employeurs proportionnelle à la somme des rémunérations versées par eux à leur personnel au cours du trimestre précédent », son TAUX seul étant fixé par arrêté. " +
       "Arrêté interministériel n° 002/CAB/MET/2025, n° […]/CAB/MIN/FINANCES/2025, n° 003/CAB/VPM/MIN/BUD/2025 du 24 septembre 2025, article 1er : 4 % pour les entreprises et établissements PUBLICS ; pour les entreprises et établissements PRIVÉS, 3,5 % de 1 à 50 travailleurs, 3 % de 51 à 300, 2 % au-delà de 300. L\'assiette est « les rémunérations versées à ses travailleurs ». Son article 3 le fait entrer en vigueur « à la date de sa signature », soit le 24 SEPTEMBRE 2025, et son article 2 abroge celui de 2006. " +
-      "JUSQU\'AU 23 SEPTEMBRE 2025, et donc sur tout exercice antérieur : arrêté interministériel n° 12/MTPS/123, n° 007/CAB/MIN/FINANCES/2006, n° 001/CAB/MIN/BUD/2006 du 14 février 2006 (J.O. n° 6 du 15 mars 2006, p. 25-26), article 1er : 3 % pour les entreprises publiques ; 3 % de 1 à 50 travailleurs, 2 % de 51 à 300, 1 % au-delà de 300. Lui aussi entrait en vigueur à la date de sa signature.",
-    reserve:
-      "DATE D\'EFFET · les deux arrêtés entrent en vigueur À LA DATE DE LEUR SIGNATURE, chacun par son article 3. Un exercice à cheval sur le 24 septembre 2025 porte donc les DEUX barèmes, mois par mois · même discipline que l\'ONEM, dont le taux a changé le lendemain. Avant le 14 février 2006, c\'est l\'arrêté n° 12/MTPS/FIN&BU/064/03 du 28 mars 2003 qui régissait ; son taux n\'est PAS reconstitué ici, le texte n\'ayant pas été lu · seule son existence est attestée, par le visa de celui de 2006. " +
-      "NUMÉROTATION · sur l\'original, les trois numéros de l\'arrêté de 2025 sont manuscrits. Celui de l\'Emploi et Travail se lit « 002/CAB/MET/2025 » et celui du Budget « 003/CAB/VPM/MIN/BUD/2025 » ; CELUI DES FINANCES EST ILLISIBLE et n\'est pas restitué. Le citer complet en contentieux demande une vérification au Journal officiel. " +
-      "TRANCHE D\'EFFECTIF · le taux dépend d\'abord de la NATURE de l\'employeur (public ou privé), puis, pour le privé seulement, de la tranche d\'effectif · jamais d\'un chiffre d\'affaires ni d\'une masse salariale. La cotisation se calcule dans la paie (fenêtre Personnel), sur la nature de l\'employeur et l\'effectif déclarés, et s\'y abstient tant qu\'ils ne le sont pas. Ce registre, lui, ne recalcule rien : il recense ce que votre comptabilité porte sur le compte 4334 et en date le reversement.",
-  },
-  {
-    cle: 'onem',
-    libelle: "Cotisation à l'Office national de l'emploi (ONEM)",
-    comptes: ['4335'],
-    beneficiaire: 'ORGANISME_SOCIAL',
-    joursApresPeriode: 15,
-    echeance: 'Mensuelle, au plus tard le 15 du mois suivant',
-    baseLegale:
+      "JUSQU\'AU 23 SEPTEMBRE 2025, et donc sur tout exercice antérieur : arrêté interministériel n° 12/MTPS/123, n° 007/CAB/MIN/FINANCES/2006, n° 001/CAB/MIN/BUD/2006 du 14 février 2006 (J.O. n° 6 du 15 mars 2006, p. 25-26), article 1er : 3 % pour les entreprises publiques ; 3 % de 1 à 50 travailleurs, 2 % de 51 à 300, 1 % au-delà de 300. Lui aussi entrait en vigueur à la date de sa signature." +
+      " ONEM · " +
       "Arrêté ministériel n° 028/CAB/MIN.ET/FMM/RK/09/2025, art. 1er : 0,5 % de la rémunération mensuelle payée aux travailleurs, pour tout employeur public, parapublic ou privé, le secteur humanitaire compris (sous réserve des exonérations légales). Déclaration au plus tard le 10 du mois suivant le paiement de la rémunération (art. 2) ; paiement au plus tard le 15 (art. 3).",
     reserve:
-      "DATE D'EFFET · les 0,5 % ne valent qu'à partir du 25 septembre 2025, date que porte la mention de signature (« Fait à Kinshasa, le 25 septembre 2025 »), l'art. 10 faisant entrer l'arrêté en vigueur « à la date de sa signature ». RÉSERVE, et elle est dans le texte officiel : son INTITULÉ le date du 24 septembre 2025, sa signature du 25. Un jour d'écart, sans portée sur un exercice civil, mais à confirmer au Journal officiel avant tout usage contentieux. Avant cette date, le taux est de 0,2 % (arrêté ministériel n° 095/CAB/MINETAT/MTEPS/01/2018 du 17 août 2018) · un exercice à cheval sur septembre 2025 porte donc les deux taux. Les arriérés antérieurs non acquittés se recalculent en revanche au nouveau taux (art. 6). SANCTIONS · 50 % de la contribution due en cas de défaut de déclaration ou de déclaration fausse, inexacte ou incomplète (art. 2) ; majoration de retard de 0,5 % PAR JOUR, tout mois commencé compté entier (art. 3). La cotisation se calcule dans la paie (fenêtre Personnel), au taux du mois de paie. Ce registre, lui, ne recalcule rien : il recense ce que votre comptabilité porte sur le compte 4335 et en date le reversement.",
+      "UN SEUL COMPTE, LE 4428 « AUTRES IMPÔTS ET TAXES » · l'INPP et l'ONEM sont des impôts et taxes, pas des cotisations sociales (fiche du compte 64 des deux textes ; la fiche du compte 66 exclut « les impôts dont l'assiette repose sur la rémunération »). Ils partagent le 4428, et ce registre en donne la dette ENSEMBLE · le montant de chacun est sur le bulletin et dans l'écriture de paie (6415 pour l'INPP, 6413 pour l'ONEM). Le 4428 peut porter d'autres impôts et taxes · une ligne n'est comptée ici que si sa STRUCTURE la rattache à l'INPP ou à l'ONEM (écriture de la paie, charge 6415 ou 6413 dans la même écriture, lettrage avec une telle ligne) ; les autres sont nommées avec leur montant, et un reversement que rien ne rattache suspend l'affirmation d'un retard. Un dossier semé avant le 7 octobre 2026 garde ses comptes 4334 et 4335, lus ici. " +
+      "DATE D\'EFFET · les deux arrêtés entrent en vigueur À LA DATE DE LEUR SIGNATURE, chacun par son article 3. Un exercice à cheval sur le 24 septembre 2025 porte donc les DEUX barèmes, mois par mois · même discipline que l\'ONEM, dont le taux a changé le lendemain. Avant le 14 février 2006, c\'est l\'arrêté n° 12/MTPS/FIN&BU/064/03 du 28 mars 2003 qui régissait ; son taux n\'est PAS reconstitué ici, le texte n\'ayant pas été lu · seule son existence est attestée, par le visa de celui de 2006. " +
+      "NUMÉROTATION · sur l\'original, les trois numéros de l\'arrêté de 2025 sont manuscrits. Celui de l\'Emploi et Travail se lit « 002/CAB/MET/2025 » et celui du Budget « 003/CAB/VPM/MIN/BUD/2025 » ; CELUI DES FINANCES EST ILLISIBLE et n\'est pas restitué. Le citer complet en contentieux demande une vérification au Journal officiel. " +
+      "TRANCHE D\'EFFECTIF · le taux dépend d\'abord de la NATURE de l\'employeur (public ou privé), puis, pour le privé seulement, de la tranche d\'effectif · jamais d\'un chiffre d\'affaires ni d\'une masse salariale. La cotisation se calcule dans la paie (fenêtre Personnel), sur la nature de l\'employeur et l\'effectif déclarés, et s\'y abstient tant qu\'ils ne le sont pas. Ce registre, lui, ne recalcule rien : il recense ce que votre comptabilité porte sur le compte 4428 et en date le reversement." +
+      " ONEM · " +
+      "DATE D'EFFET · les 0,5 % ne valent qu'à partir du 25 septembre 2025, date que porte la mention de signature (« Fait à Kinshasa, le 25 septembre 2025 »), l'art. 10 faisant entrer l'arrêté en vigueur « à la date de sa signature ». RÉSERVE, et elle est dans le texte officiel : son INTITULÉ le date du 24 septembre 2025, sa signature du 25. Un jour d'écart, sans portée sur un exercice civil, mais à confirmer au Journal officiel avant tout usage contentieux. Avant cette date, le taux est de 0,2 % (arrêté ministériel n° 095/CAB/MINETAT/MTEPS/01/2018 du 17 août 2018) · un exercice à cheval sur septembre 2025 porte donc les deux taux. Les arriérés antérieurs non acquittés se recalculent en revanche au nouveau taux (art. 6). SANCTIONS · 50 % de la contribution due en cas de défaut de déclaration ou de déclaration fausse, inexacte ou incomplète (art. 2) ; majoration de retard de 0,5 % PAR JOUR, tout mois commencé compté entier (art. 3). La cotisation se calcule dans la paie (fenêtre Personnel), au taux du mois de paie. Ce registre, lui, ne recalcule rien : il recense ce que votre comptabilité porte sur le compte 4428 et en date le reversement.",
   },
   {
     cle: 'autresOrganismesSociaux',
@@ -858,7 +871,7 @@ const RESERVE_ARRETE_CERTIFICATION =
 export const OBLIGATIONS_DECLARATIVES: ObligationDeclarative[] = [
   {
     // La DÉCLARATION ONEM (le 10) est distincte du PAIEMENT (le 15, porté par
-    // la nature `onem` ci-dessus). Deux dates, deux sanctions : 50 % de la
+    // la nature `inppOnem` ci-dessus). Deux dates, deux sanctions : 50 % de la
     // contribution pour la déclaration manquante ou inexacte, 0,5 % par jour
     // pour le versement en retard. Les confondre en une seule échéance
     // laisserait croire qu'être à jour du paiement suffit.
@@ -874,7 +887,7 @@ export const OBLIGATIONS_DECLARATIVES: ObligationDeclarative[] = [
       "Déclaration de la rémunération mensuelle payée aux travailleurs et de la contribution de 0,5 % qui en découle. Elle figure comme ligne dédiée de la Déclaration mensuelle unique du guichet unique (DGI, ONEM, INPP, CNSS), aux côtés de l'IRPP, de l'INPP et de la CNSS.",
     sanction:
       "50 % du montant de la contribution due en cas de défaut de déclaration ou de déclaration fausse, inexacte ou incomplète (art. 2). Le versement tardif, lui, subit une majoration de 0,5 % par jour, tout mois commencé compté entier (art. 3).",
-    sourceDonnees: 'Comptes 66 (charges de personnel) pour l’assiette, et 4335 pour la contribution due.',
+    sourceDonnees: 'Comptes 66 (charges de personnel) pour l’assiette, et 4428 pour la contribution due (4335 pour un dossier semé avant le 7 octobre 2026).',
   },
   /*
     LA DÉCLARATION QUE LA LOI DE FINANCES 25/060 A CRÉÉE ET QUE LE MODULE

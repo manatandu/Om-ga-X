@@ -155,6 +155,43 @@ describe("L'ONEM · un exercice à cheval porte les deux taux", () => {
     expect(tauxOnem('2025-09').tauxPourCent).toBeCloseTo(0.5, 10);
     expect(tauxOnem('2026-03').tauxPourCent).toBeCloseTo(0.5, 10);
   });
+
+  it("T5 · une paie antérieure à septembre 2025 porte la réserve de l'art. 6 de l'arrêté n° 028/2025", () => {
+    const onem = (mois: string) => cotisations(1_000_000, { moisDePaie: mois }).lignes.find((l) => l.cle === 'onem')!;
+    expect(onem('2025-08').reserve).toContain('art. 6');
+    expect(onem('2025-08').reserve).toContain('25 septembre 2025');
+    expect(onem('2025-09').reserve ?? '').not.toContain('art. 6');
+    expect(onem('2026-03').reserve ?? '').not.toContain('art. 6');
+  });
+});
+
+describe("T5 · le taux INPP de septembre 2025 suit la date de VERSEMENT", () => {
+  const inpp = (dateMiseADisposition?: string) =>
+    cotisations(1_000_000, { moisDePaie: '2025-09', natureEmployeurInpp: 'PRIVE', effectif: 50, dateMiseADisposition }).lignes.find(
+      (l) => l.cle === 'inpp',
+    )!;
+
+  it('versée à partir du 24 septembre · nouveau barème, 35 000 ; avant · ancien, 30 000', () => {
+    expect(inpp('2025-09-24').montantFc).toBeCloseTo(35_000, 6);
+    expect(inpp('2025-09-30').montantFc).toBeCloseTo(35_000, 6);
+    expect(inpp('2025-09-23').montantFc).toBeCloseTo(30_000, 6);
+    expect(tauxInpp('2025-09', 'PRIVE', 50, [], '2025-09-23').tauxPourCent).toBeCloseTo(3, 10);
+  });
+
+  it('sans date déclarée · barème du mois, et la réserve le dit', () => {
+    const l = inpp();
+    expect(l.montantFc).toBeCloseTo(35_000, 6);
+    expect(l.reserve).toContain('Déclarez la date de mise à disposition');
+    // Hors d'un mois de changement, rien à dire.
+    const mars = cotisations(1_000_000, { moisDePaie: '2026-03', natureEmployeurInpp: 'PRIVE', effectif: 50 }).lignes.find(
+      (x) => x.cle === 'inpp',
+    )!;
+    expect(mars.reserve).not.toContain('Déclarez la date de mise à disposition');
+  });
+
+  it("nomme l'ordonnance n° 84/186 comme texte manquant de la base trimestrielle", () => {
+    expect(inpp().reserve).toContain('ordonnance n° 84/186 du 15 octobre 1984');
+  });
 });
 
 describe("L'assiette empruntée de l'INPP et de l'ONEM est DÉCLARÉE", () => {
@@ -231,8 +268,10 @@ describe('F109 · chaque taux calculé est celui que le registre des retenues ci
   const pc = (x: number) => `${String(x).replace('.', ',')} %`;
   const numeroDe = (reference: string) => reference.match(/n° \S+/)![0].replace(/,$/, '');
 
+  // Décision T1 du 2026-10-07 · l'INPP et l'ONEM partagent le 4428, et une
+  // seule nature du registre (`inppOnem`) porte leurs deux textes.
   it('INPP · chaque version, public et tranches du privé', () => {
-    const t = texte('inpp');
+    const t = texte('inppOnem');
     for (const v of BAREMES_INPP) {
       const p = phrase(t, numeroDe(v.reference));
       expect(p).toContain(pc(v.publicPourCent));
@@ -244,7 +283,7 @@ describe('F109 · chaque taux calculé est celui que le registre des retenues ci
   });
 
   it('ONEM · chaque version', () => {
-    const t = texte('onem');
+    const t = texte('inppOnem');
     for (const v of BAREMES_ONEM) expect(phrase(t, numeroDe(v.reference))).toContain(pc(v.tauxPourCent));
   });
 
@@ -294,12 +333,31 @@ describe('F112 · le plancher de la CNSS', () => {
     expect(p.message).toContain('PLANCHER APPLIQUÉ');
   });
 
-  it('mai à décembre 2025 · deux lectures (payé 14 500, fixé 21 500), non tranchées', () => {
-    // 400 000 est au-dessus de 14 500 × 26 = 377 000 et sous 559 000.
-    const p = plancherCnss('2025-10', 400_000);
-    expect(p.baseFc).toBeNull();
-    expect(p.message).toContain('PLANCHER NON TRANCHÉ');
+  it('T4 · mai à décembre 2025 · le plancher est le SMIG PAYÉ, 14 500 × jours payés', () => {
+    // Décision T4 du 2026-10-07 · loi n° 16/009, art. 13 (« salaire minimum
+    // légal ») ; décret n° 25/22, art. 3 et annexe 1. P07 (d) · 400 000 est
+    // au-dessus de 14 500 × 26 = 377 000 · base 400 000, sans relèvement.
+    const p = plancherCnss('2025-11', 400_000);
+    expect(p).toMatchObject({ baseFc: 400_000, plancherFc: 377_000, applique: false, message: null });
     expect(plancherCnss('2025-10', 600_000).baseFc).toBe(600_000);
+    // Sous 377 000 sans jours déclarés · l'abstention reste, comme en 2026.
+    const sous = plancherCnss('2025-11', 300_000);
+    expect(sous.baseFc).toBeNull();
+    expect(sous.message).toContain('déclarez les jours payés');
+    // Avec les jours · relevée au SMIG payé de ces jours.
+    expect(plancherCnss('2025-11', 100_000, 10)).toMatchObject({ baseFc: 145_000, applique: true });
+  });
+
+  it('T4 · P07 (d) · novembre 2025, 400 000 · cotisations chiffrées', () => {
+    const v = cotisations(400_000, { moisDePaie: '2025-11', natureEmployeurInpp: 'PRIVE', effectif: 30 });
+    const par = (cle: string) => v.lignes.find((l) => l.cle === cle)!.montantFc;
+    expect(v.quotePartOuvriereNonChiffree).toBeNull();
+    expect(par('cnss-pension-travailleur')).toBeCloseTo(20_000, 6);
+    expect(par('cnss-pension-employeur')).toBeCloseTo(20_000, 6);
+    expect(par('cnss-pf')).toBeCloseTo(26_000, 6);
+    expect(par('cnss-rp')).toBeCloseTo(6_000, 6);
+    expect(par('inpp')).toBeCloseTo(14_000, 6);
+    expect(par('onem')).toBeCloseTo(2_000, 6);
   });
 
   it('une grille du cabinet porte un seul taux, et il fait le plancher', () => {

@@ -54,11 +54,18 @@
 
 import { MULTIPLICATEURS_ARTICLE_7 } from './bareme-smig';
 import { DECOMPTE_A_LA_RUPTURE, SANCTION_ARTICLE_103 } from './livre-de-paie';
-// SEUL `jourFerie` est repris du module des retenues · la liste des dix jours
-// fériés de l'ordonnance n° 23-042 vaut pour tout « jour ouvrable » du Code
-// (art. 7, point 9). Son `estJourOuvrable`, lui, écarte le samedi du guichet
-// fiscal et NE S'APPLIQUE PAS à un préavis (voir l'en-tête).
-import { jourFerie } from '../retenues/jour-ouvrable';
+// LE JOUR OUVRABLE DU CODE (art. 7, point 9) vit dans `jours-du-code-du-travail.ts`,
+// qui reprend du module des retenues la SEULE liste des dix jours fériés de
+// l'ordonnance n° 23-042 · son `estJourOuvrable`, lui, écarte le samedi du
+// guichet fiscal et NE S'APPLIQUE PAS à un préavis (voir l'en-tête). Le samedi
+// qui porte le congé d'un férié tombé un dimanche (art. 2) n'est pas ouvrable
+// ici (décision T9 du 2026-10-07).
+import { estJourOuvrableDuCode } from './jours-du-code-du-travail';
+import {
+  debutDuDelai,
+  remunerationDuDelai,
+  type DelaiDePreavis,
+} from './remuneration-du-delai';
 import {
   FONDEMENT_INDEMNITE_STIPULEE,
   RESERVE_PRORATA_GRATIFICATION,
@@ -112,14 +119,40 @@ export const DELAI_PAIEMENT_JOURS_OUVRABLES = 2;
 export const MOIS_DE_MOYENNE = 12;
 
 /**
- * LA MOYENNE MENSUELLE RAMENÉE AU JOUR · convention d'OmegaX, déclarée sur la
- * ligne. Les articles 66 et 142 font entrer la moyenne dans la RÉMUNÉRATION
- * qui sert au préavis et au congé, calculés en jours ouvrables ; ils ne disent
- * pas comment la ramener au jour. Le diviseur retenu est le multiplicateur
- * MOIS de l'article 7 du décret n° 25/22 (vingt-six), le même qui fait du
- * samedi un jour ouvrable dans ce fichier.
+ * LA MOYENNE MENSUELLE RAMENÉE AU JOUR, À 1/26 · règle citée, jumeau du mois
+ * entamé de T9 (décision par la loi du 2026-10-07, troisième lot, point 3,
+ * `docs/decisions-par-la-loi-2026-10-07-ter.md`). Les articles 66, al. 3 et
+ * 142, al. 2 font entrer la moyenne des douze mois dans la RÉMUNÉRATION qui
+ * sert au préavis et au congé, calculés en jours ouvrables, et l'article 144
+ * renvoie l'indemnité compensatoire à l'article 142 ; aucun ne fixe le passage
+ * du mois au jour. Le livre de paie porte pourtant un TAUX JOURNALIER de
+ * l'allocation de congé (arrêté n° 12/CAB.MIN/ETPS/042 du 8 août 2008, art.
+ * 1er, mentions 14 « le nombre de jours de congés payés », 15 « le taux
+ * journalier de l'allocation de congé » et 16 « le total de l'allocation due
+ * pour le congé »). La seule conversion légale entre valeur journalière et
+ * valeur mensuelle est celle du décret n° 25/22, art. 7 (« en multipliant par
+ * 6, 26 et 312 »), appliquée PAR ANALOGIE de la loi la plus proche, et c'est
+ * dit (`REGLE_MOYENNE_AU_JOUR`). Le séminaire CPCC (« conventionnellement de
+ * 26 jours ») corrobore sans être une source.
  */
 export const JOURS_PAR_MOIS_DE_MOYENNE = MULTIPLICATEURS_ARTICLE_7.MOIS;
+
+/**
+ * La règle de la conversion, citée au fondement de l'indemnité de congé et de
+ * la rémunération du temps restant à courir (art. 66), jamais en réserve.
+ */
+export const REGLE_MOYENNE_AU_JOUR =
+  `la moyenne mensuelle des douze mois est ramenée au jour à 1/${MULTIPLICATEURS_ARTICLE_7.MOIS} · les articles 66, al. 3 et 142, al. 2 ` +
+  "la font entrer dans la rémunération de chaque jour sans fixer la conversion, et la seule conversion légale entre valeur journalière " +
+  "et valeur mensuelle est celle du décret n° 25/22, art. 7 (« en multipliant par 6, 26 et 312 »), appliquée par analogie de la loi la plus proche";
+
+/**
+ * Le livre de paie porte l'allocation de congé par jour · l'indemnité
+ * compensatoire (art. 144) se calcule comme l'allocation (art. 142).
+ */
+export const LIVRE_DE_PAIE_CONGE_PAR_JOUR =
+  "le livre de paie porte le nombre de jours de congés payés, le taux journalier de l'allocation de congé et son total " +
+  "(arrêté n° 12/CAB.MIN/ETPS/042 du 8 août 2008, art. 1er, mentions 14 à 16)";
 
 /**
  * Le diviseur du prorata. Ce n'est PAS une constante inventée pour l'occasion ·
@@ -199,6 +232,13 @@ export const DELAI_NOUVEL_EMPLOI_MAXIMUM_JOURS = 7;
 export type VerdictPreavis = {
   /** `null` lorsque aucun préavis n'est dû, ou que la durée ne se tranche pas. */
   readonly joursOuvrables: number | null;
+  /**
+   * Le délai compté DE DATE À DATE, quand le plancher de trois mois de
+   * l'art. 258 est la durée retenue · il fixe alors la fin du délai, que la
+   * rémunération du délai lit (art. 63, al. 3). Absent sinon · le délai se
+   * compte en jours ouvrables depuis le lendemain de la notification.
+   */
+  readonly delaiDeDateADate?: { readonly du: string; readonly auExclu: string } | null;
   /** Rempli quand AUCUN préavis n'est dû · c'est une réponse, et elle porte son article. */
   readonly motifAucunPreavis: string | null;
   /** Rempli quand la durée ne se tranche pas sans un fait du dossier · ce n'est pas zéro. */
@@ -216,7 +256,10 @@ const ENTREE_EN_VIGUEUR_ORDONNANCE_23_042 = '2023-03-30';
  * LES JOURS OUVRABLES DE TROIS MOIS COMPTÉS DE DATE À DATE, à dater du
  * lendemain de la notification (art. 64, al. 1). Jours ouvrables au sens de
  * l'art. 7, point 9 · le dimanche (art. 121, al. 2) et les jours fériés de
- * l'ordonnance n° 23-042 sont exclus, le samedi compté. Un mois d'arrivée plus
+ * l'ordonnance n° 23-042 sont exclus, le samedi compté, SAUF le samedi qui
+ * porte le congé d'un férié tombé un dimanche (art. 2 de l'ordonnance,
+ * décision T9 · le 16 mai 2026, veille du 17 · 76 jours du 5 mai au 4 août
+ * 2026, et non 77, constat C4). Un mois d'arrivée plus
  * court s'arrête à son dernier jour (convention de lecture d'OmegaX, aucun
  * texte lu ne règle le 31). Une période qui commence avant le 30 mars 2023 est
  * refusée · la liste des jours fériés d'avant n'est pas au corpus.
@@ -242,9 +285,7 @@ export function joursOuvrablesDeTroisMois(
   );
   let jours = 0;
   for (let d = new Date(debut); d.getTime() < fin.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
-    if (d.getUTCDay() === 0) continue;
-    if (jourFerie(d) !== null) continue;
-    jours += 1;
+    if (estJourOuvrableDuCode(d)) jours += 1;
   }
   return { jours, du, auExclu: fin.toISOString().slice(0, 10) };
 }
@@ -254,7 +295,7 @@ const RESERVE_PLANCHER_64 =
   "Et son dernier alinéa renvoie à un ARRÊTÉ du Ministre du Travail, qui n'est PAS au corpus · c'est de lui que viennent les barèmes par catégorie (maîtrise, cadres) que la pratique applique. Vérifier la convention du dossier avant d'opposer ce chiffre.";
 
 const RESERVE_JOUR_OUVRABLE_CODE =
-  "JOURS OUVRABLES AU SENS DU CODE DU TRAVAIL, article 7, point 9 · « chaque jour de la semaine à l'exception du jour de repos hebdomadaire et des jours fériés légaux », le repos ayant lieu le dimanche (art. 121, al. 2). LE SAMEDI EST OUVRABLE. La règle des échéances fiscales, qui écarte le samedi, répond à une autre question · elle vise un guichet de l'Administration.";
+  "JOURS OUVRABLES AU SENS DU CODE DU TRAVAIL, article 7, point 9 · « chaque jour de la semaine à l'exception du jour de repos hebdomadaire et des jours fériés légaux », le repos ayant lieu le dimanche (art. 121, al. 2). LE SAMEDI EST OUVRABLE, sauf celui qui porte le congé d'un férié tombé un dimanche (ordonnance n° 23-042, art. 2, « le congé relatif à ce jour est pris le jour précédent » · règle de protection, le compter ouvrable ôterait au férié tout effet). La règle des échéances fiscales, qui écarte tout samedi, répond à une autre question · elle vise un guichet de l'Administration.";
 
 /**
  * LE PRÉAVIS LÉGAL, ET C'EST UN PLANCHER.
@@ -386,6 +427,7 @@ export function preavisLegal(params: {
   const retenu =
     typeof params.preavisRetenuJours === 'number' && params.preavisRetenuJours > 0 ? params.preavisRetenuJours : null;
   let fondement = 'Article 64';
+  let delaiDeDateADate: { du: string; auExclu: string } | null = null;
 
   reserves.push(RESERVE_PLANCHER_64, RESERVE_JOUR_OUVRABLE_CODE);
 
@@ -409,9 +451,12 @@ export function preavisLegal(params: {
       "ARTICLE 258 · « Sauf faute lourde, la durée du préavis à observer en cas de licenciement d'un délégué titulaire ou suppléant est LE DOUBLE de la période applicable en vertu des dispositions de l'article 64, SANS POUVOIR ÊTRE INFÉRIEURE À TROIS MOIS. » Et « les candidats non élus ou non réélus bénéficient pendant une durée de 6 mois après les élections des règles de préavis » de cet alinéa.";
     const trois = params.dateNotification ? joursOuvrablesDeTroisMois(params.dateNotification) : null;
     if (trois && 'jours' in trois) {
+      // Les trois mois retenus fixent la FIN du délai par leur date · la
+      // rémunération du délai la lit (art. 63, al. 3 ; art. 93).
+      if (trois.jours >= employeur) delaiDeDateADate = { du: trois.du, auExclu: trois.auExclu };
       employeur = Math.max(employeur, trois.jours);
       reserves.push(
-        `${texte258} Doublé : ${double} jours ouvrables. Trois mois du ${trois.du} au ${trois.auExclu} exclu : ${trois.jours} jours ouvrables (dimanches et jours fériés de l'ordonnance n° 23-042 exclus). Le plus grand est retenu.`,
+        `${texte258} Doublé : ${double} jours ouvrables. Trois mois du ${trois.du} au ${trois.auExclu} exclu : ${trois.jours} jours ouvrables (dimanches, jours fériés de l'ordonnance n° 23-042 et samedi portant le congé d'un férié tombé un dimanche exclus). Le plus grand est retenu.`,
       );
     } else if (double >= JOURS_OUVRABLES_MAXIMUM_EN_TROIS_MOIS || retenu !== null) {
       reserves.push(
@@ -437,7 +482,7 @@ export function preavisLegal(params: {
     );
   }
 
-  return { joursOuvrables: jours, motifAucunPreavis: null, motifIndetermine: null, fondement, reserves };
+  return { joursOuvrables: jours, delaiDeDateADate, motifAucunPreavis: null, motifIndetermine: null, fondement, reserves };
 }
 
 export type VerdictConge = {
@@ -462,9 +507,17 @@ export type VerdictConge = {
  * plusieurs années non prises et sur-évaluait une année incomplète.
  *
  * CONVENTION D'OMEGAX, déclarée · les mois non couverts sont les plus récents,
- * d'un seul tenant jusqu'à la cessation. La période en cours, incomplète, reçoit
- * la tranche d'ancienneté au prorata de ses mois · le Code ne dit pas comment
- * répartir la tranche sur une année incomplète.
+ * d'un seul tenant jusqu'à la cessation.
+ *
+ * LA PÉRIODE EN COURS, INCOMPLÈTE, REÇOIT LA TRANCHE D'ANCIENNETÉ ENTIÈRE
+ * (décision T6 du 2026-10-07). L'art. 141 rapporte la durée de base au « mois
+ * entier de service », mais l'augmentation à l'ancienneté (« par tranche de
+ * cinq années »), non au mois · aucun mot ne la répartit sur douze mois. Et
+ * l'art. 144 remplace « le congé », la durée que donne l'art. 141 à la date de
+ * la résiliation, « quel que soit le moment ». Le prorata appliqué jusque-là
+ * ajoutait une règle absente, au détriment du travailleur (P13 · 455 000 au
+ * lieu de 462 000). Une période qui ne compte AUCUN mois entier ne reçoit
+ * aucun jour · elle n'est tranchée par aucun texte lu, et c'est dit.
  */
 export function congeLegal(params: {
   moisNonCouvertsParUnConge: number;
@@ -481,9 +534,10 @@ export function congeLegal(params: {
   const reste = mois % 12;
   const anneesCompletes = (mois - reste) / 12;
   const tranches = (a: number) => Math.floor(Math.max(0, a) / CONGE_TRANCHE_ANNEES) * CONGE_AJOUT_PAR_TRANCHE_JOURS;
-  // La période en cours finit à la cessation, à l'ancienneté déclarée ; les
+  // La période en cours finit à la cessation, à l'ancienneté déclarée · elle
+  // reçoit la tranche entière dès qu'elle compte un mois entier (T6). Les
   // années complètes non prises la précèdent, une année d'ancienneté chacune.
-  let joursDAnciennete = (tranches(anciennete) * reste) / 12;
+  let joursDAnciennete = reste > 0 ? tranches(anciennete) : 0;
   for (let i = 0; i < anneesCompletes; i += 1) {
     joursDAnciennete += tranches(anciennete - reste / 12 - i);
   }
@@ -492,7 +546,7 @@ export function congeLegal(params: {
     "ARTICLE 141 · « au moins UN jour ouvrable par mois entier de service pour le travailleur âgé de PLUS de dix-huit ans », « au moins UN jour ouvrable ET DEMI » pour celui de MOINS de dix-huit ans, et « augmente d'UN jour ouvrable par tranche de cinq années d'ancienneté ». C'est un PLANCHER · une convention collective plus favorable prime.",
     "LE SÉMINAIRE CPCC PORTE 1,5 JOUR POUR LE MAJEUR, 2 POUR LE MINEUR ET 2 PAR TRANCHE DE CINQ ANS · il a décalé d'un cran, et une indemnité calculée ainsi est de cinquante pour cent trop élevée. Le fichier porte lui-même la règle : en cas de désaccord, l'article prime.",
     "ARTICLE 141, ALINÉA 2 · les services pris en compte comprennent les jours de repos hebdomadaire, de congé payé et les jours fériés, ainsi que l'incapacité de travail jusqu'à six mois par année, sans cette limite pour un accident du travail ou une maladie professionnelle. OmegaX ne recompose pas ce décompte · les mois NON COUVERTS PAR UN CONGÉ PRIS OU PAYÉ sont SAISIS (art. 144, le congé est « remplacé »).",
-    "TRANCHE D'ANCIENNETÉ · ajoutée à chaque période annuelle non prise, à l'ancienneté atteinte en fin de période, les mois saisis étant lus comme les plus récents ; la période en cours, incomplète, la reçoit au prorata de ses mois. Le Code ne dit pas comment répartir la tranche sur une année incomplète · lecture d'OmegaX. L'article 140 ne laisse cumuler que « la moitié des congés pendant une période de deux ans ».",
+    "TRANCHE D'ANCIENNETÉ · ajoutée à chaque période annuelle non prise, à l'ancienneté atteinte en fin de période, les mois saisis étant lus comme les plus récents ; la période en cours, incomplète, la reçoit ENTIÈRE · l'article 141 rapporte l'augmentation à l'ancienneté (« par tranche de cinq années »), non au mois, et l'article 144 remplace le congé « quel que soit le moment ». Une période sans aucun mois entier ne reçoit aucun jour, ce qu'aucun texte lu ne tranche. L'article 140 ne laisse cumuler que « la moitié des congés pendant une période de deux ans ».",
   ];
 
   return {
@@ -583,14 +637,30 @@ export type ParametresDecompte = {
   partieResponsable?: InitiativeRupture | null;
   /** Taux journalier de la rémunération, tel que le contrat le porte. */
   remunerationJournaliereFc: number | null;
+  /**
+   * Rémunération MENSUELLE, quand le contrat la stipule au mois (décision T9) ·
+   * l'indemnité de préavis paie alors les mois entiers du délai à ce montant,
+   * et le mois entamé à 1/26 par jour payable, du lundi au samedi, fériés
+   * compris (règle citée, décision par la loi du 2026-10-07, troisième lot,
+   * point 3 · `REGLE_MOIS_ENTAME`). Absente, le délai se paie au taux
+   * journalier.
+   */
+  remunerationMensuelleFc?: number | null;
   /** Article 66, al. 3 · moyenne MENSUELLE des douze mois des commissions, primes, gratifications et participations. */
   moyenneMensuelleArticle66Fc?: number | null;
   /** Article 142, al. 2 · moyenne MENSUELLE des douze mois des commissions, primes, prestations supplémentaires et participation. */
   moyenneMensuelleArticle142Fc?: number | null;
   /** Article 63, al. 3 · avantages de toute nature pendant le préavis non observé (logement, transport, en nature), pour toute la période. */
   avantagesPendantPreavisFc?: number | null;
-  /** Article 70, al. 2 · jours de salaire restant à courir jusqu'au terme du CDD. */
-  joursRestantsJusquAuTerme?: number | null;
+  /**
+   * Article 70, al. 2 · le dernier jour où le contrat à durée déterminée a été
+   * exécuté (AAAA-MM-JJ) · la période restant à courir part du lendemain.
+   * Avec le terme, il place la période et ses jours fériés (relecture M2 du
+   * 2026-10-07) · sans eux, les dommages-intérêts ne se chiffrent pas.
+   */
+  dateRuptureContrat?: string | null;
+  /** Article 69 · le terme fixé par les parties (AAAA-MM-JJ), dernier jour compris. */
+  dateTermeContrat?: string | null;
   /** Article 70, al. 2 · avantages de toute nature jusqu'au terme, pour toute la période. */
   avantagesJusquAuTermeFc?: number | null;
   /**
@@ -734,19 +804,33 @@ export const CLE_REMUNERATION_PREAVIS_RESTANT = 'remuneration-preavis-restant';
  * RIEN NE SE PRÉSUME · les jours restants se déclarent (au plus la moitié du
  * préavis, sinon le départ n'est pas celui de l'art. 66), le taux journalier,
  * la moyenne et les avantages en nature aussi (zéro est une réponse).
+ *
+ * LE TEMPS RESTANT À COURIR SE PAIE COMME LE DÉLAI DE L'ART. 63, AL. 3
+ * (relecture M2 du 2026-10-07, jumeau de T9). « L'employeur doit la
+ * rémunération [...] pendant le temps restant à courir » · c'est la
+ * rémunération de cette fin de délai, due aussi pour les jours fériés
+ * (art. 93), et non « jours ouvrables × taux », qui retranchait chaque férié
+ * et ignorait le salaire au mois. Même fonction que T9
+ * (`remunerationDuDelai`) · fenêtre des derniers jours ouvrables du délai,
+ * placée par la date de notification ; au mois, mois entiers au salaire du
+ * mois et mois entamé à 1/26 par jour payable (`REGLE_MOIS_ENTAME`).
  */
 function rubriqueDepartAMiPreavis(
   params: ParametresDecompte,
+  preavis: VerdictPreavis,
   jours: number,
   fondementDuree: string,
   jour: number | null,
-  moyenne66: number | null,
   conversionMoyenne: string,
 ): RubriqueDecompte {
   const restants = typeof params.joursPreavisNonObserves === 'number' ? params.joursPreavisNonObserves : null;
   const avantages = typeof params.avantagesEnNatureRestantsFc === 'number' ? params.avantagesEnNatureRestantsFc : null;
+  const mensuelle = typeof params.remunerationMensuelleFc === 'number' ? params.remunerationMensuelleFc : null;
+  const moyenneMensuelle = typeof params.moyenneMensuelleArticle66Fc === 'number' ? params.moyenneMensuelleArticle66Fc : null;
   const moitie = jours / 2;
   let reserve: string | null = null;
+  let montant: number | null = null;
+  let detailDelai = '';
   if (restants === null) {
     reserve = "Les jours ouvrables du préavis restant à courir à la cessation ne sont pas renseignés · c'est sur eux que l'employeur doit la rémunération (art. 66, al. 2).";
   } else if (restants < 0) {
@@ -756,23 +840,46 @@ function rubriqueDepartAMiPreavis(
       `${restants} jours restant à courir sur un préavis de ${jours} · le travailleur est parti AVANT la moitié (${moitie} jours). ` +
       "L'article 66 ne l'autorise à cesser le travail qu'« à l'expiration de la moitié du délai de préavis » · ce départ est un préavis non observé par le travailleur (art. 63, al. 3), ou un départ pour un nouvel emploi (art. 67) s'il en justifie." +
       mentionDureeRetenue(params);
-  } else if (jour === null) {
-    reserve = "Le taux journalier du contrat n'est pas renseigné.";
-  } else if (moyenne66 === null) {
+  } else if (jour === null && mensuelle === null) {
+    reserve = "Le taux journalier du contrat (ou sa rémunération mensuelle) n'est pas renseigné.";
+  } else if (moyenneMensuelle === null) {
     reserve =
       "La moyenne des douze mois de l'article 66, alinéa 3 n'est pas renseignée · elle entre dans la rémunération du temps restant à courir (zéro est une réponse).";
   } else if (avantages === null) {
     reserve =
       "La valeur des avantages en nature non fournis pendant le temps restant à courir n'est pas renseignée · l'article 7, point 8 la compte dans la rémunération, soins de santé, logement, allocations familiales, transport, frais de voyage et avantages de fonction exclus (zéro est une réponse).";
+  } else {
+    // Le temps restant à courir · les `restants` derniers jours ouvrables du
+    // délai, placé par ses dates comme celui de l'art. 63, al. 3 (T9).
+    const debut = preavis.delaiDeDateADate ? { du: preavis.delaiDeDateADate.du } : debutDuDelai(params.dateNotification);
+    if ('refus' in debut) {
+      reserve = debut.refus;
+    } else {
+      const r = remunerationDuDelai({
+        delai: { du: debut.du, auExclu: preavis.delaiDeDateADate?.auExclu ?? null },
+        joursOuvrables: jours,
+        de: jours - restants,
+        a: jours,
+        journaliereFc: jour,
+        mensuelleFc: mensuelle,
+        moyenneMensuelleFc: moyenneMensuelle,
+      });
+      if ('refus' in r) {
+        reserve = r.refus;
+      } else {
+        montant = r.montantFc + avantages;
+        detailDelai = ` ${r.explication}`;
+      }
+    }
   }
   return {
     // La clé en toutes lettres · `decompte-final-emis.spec.ts` lit les clés dans la SOURCE.
     cle: 'remuneration-preavis-restant',
     libelle: LIBELLE_REMUNERATION_RESTANTE,
-    montantFc: reserve === null ? (restants as number) * ((jour as number) + (moyenne66 as number)) + (avantages as number) : null,
+    montantFc: montant,
     fondement:
       `${fondementDuree} Article 66 · « Le travailleur qui reçoit le préavis peut cesser le travail à l'expiration de la moitié du délai de préavis que l'employeur est tenu de lui donner. L'employeur doit la rémunération et les allocations familiales pendant le temps restant à courir. » ` +
-      `${restants ?? '?'} jours × (taux journalier + moyenne de l'art. 66, al. 3) + avantages en nature ; ${conversionMoyenne}. ` +
+      `Les ${restants ?? '?'} derniers jours ouvrables du délai, rémunérés jours fériés compris (art. 93), plus les avantages en nature ;${detailDelai} ${conversionMoyenne}. ` +
       "Rémunération au sens de l'article 7, point 8 · ni les soins de santé, ni le logement ou son indemnité, ni les allocations familiales, ni le transport, ni les frais de voyage et avantages de fonction n'y entrent ; seuls les avantages en nature non fournis jusqu'au terme s'y ajoutent en valeur. Les jours prestés se paient en salaire, aux arriérés ; les allocations familiales du temps restant restent dues (rubrique à part).",
     reserve,
   };
@@ -883,8 +990,9 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
   const parJour = (mensuelle: number | null) => (mensuelle === null ? null : mensuelle / JOURS_PAR_MOIS_DE_MOYENNE);
   const moyenne66 = parJour(saisi(params.moyenneMensuelleArticle66Fc));
   const moyenne142 = parJour(saisi(params.moyenneMensuelleArticle142Fc));
-  const conversionMoyenne =
-    `la moyenne mensuelle des douze mois est ramenée au jour par ${JOURS_PAR_MOIS_DE_MOYENNE}, multiplicateur MOIS de l'article 7 du décret n° 25/22 (convention d'OmegaX)`;
+  // Règle citée (jumeau de T9, décision par la loi du 2026-10-07, troisième
+  // lot) · la conversion n'est plus présentée comme un choix de l'éditeur.
+  const conversionMoyenne = REGLE_MOYENNE_AU_JOUR;
 
   // 1 · Arriérés.
   rubriques.push({
@@ -949,7 +1057,7 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
         reserve: "Lecture du séminaire CPCC (« si le travailleur demande lui-même la dispense, il perd le droit à l'indemnité de préavis ») · le Code ne la nomme pas.",
       });
     } else if (execution === 'DEPART_A_MI_PREAVIS') {
-      const r = rubriqueDepartAMiPreavis(params, jours, fondementDuree, jour, moyenne66, conversionMoyenne);
+      const r = rubriqueDepartAMiPreavis(params, preavis, jours, fondementDuree, jour, conversionMoyenne);
       rubriques.push(r);
       if (r.montantFc !== null) sortDuTempsRestant = AF_DUES_ARTICLE_66;
     } else if (execution === 'DEPART_POUR_NOUVEL_EMPLOI') {
@@ -977,8 +1085,10 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
       const relevantDeLArticle66 =
         preavisRecuParLeTravailleur && nonObserves !== null && nonObserves >= 0 && nonObserves <= moitie;
       const avantages = saisi(params.avantagesPendantPreavisFc);
+      const mensuelle = saisi(params.remunerationMensuelleFc);
       let montant: number | null = null;
       let reserve: string | null = null;
+      let detailDelai = '';
       if (nonObserves === null) {
         reserve = "Le nombre de jours ouvrables de préavis non observés n'est pas renseigné.";
       } else if (nonObserves > jours || nonObserves < 0) {
@@ -994,8 +1104,8 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
           "Article 66 · « Le travailleur qui reçoit le préavis peut cesser le travail à l'expiration de la moitié du délai de préavis que l'employeur est tenu de lui donner. L'employeur doit la rémunération et les allocations familiales pendant le temps restant à courir. » " +
           'Déclarez le départ à mi-préavis · rien n\'est dû par le travailleur, la rémunération du temps restant l\'est par l\'employeur.' +
           mentionDureeRetenue(params);
-      } else if (jour === null) {
-        reserve = "Le taux journalier du contrat n'est pas renseigné.";
+      } else if (jour === null && mensuelle === null) {
+        reserve = "Le taux journalier du contrat (ou sa rémunération mensuelle) n'est pas renseigné.";
       } else if (moyenne66 === null) {
         reserve =
           "La moyenne des douze mois de l'article 66, alinéa 3 n'est pas renseignée · elle entre dans la rémunération de chaque jour de préavis (zéro est une réponse).";
@@ -1003,7 +1113,39 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
         reserve =
           "Les avantages de toute nature pendant le préavis ne sont pas renseignés · l'article 63, alinéa 3 les compte avec la rémunération (zéro est une réponse).";
       } else {
-        montant = (imputables as number) * (jour + moyenne66) + avantages;
+        // DÉCISION T9 · LA RÉMUNÉRATION DU DÉLAI, PAS « JOURS OUVRABLES ×
+        // TAUX ». L'art. 63, al. 3 vise « la rémunération [...] dont aurait
+        // bénéficié le travailleur durant le délai », et elle est due pour les
+        // jours fériés (art. 93). La fenêtre non respectée se place dans le
+        // délai · tout le délai pour une dispense, ses derniers jours pour un
+        // préavis interrompu, et pour le travailleur qui a reçu le préavis les
+        // jours d'avant la moitié (art. 66, al. 1).
+        const debut = preavis.delaiDeDateADate ? { du: preavis.delaiDeDateADate.du } : debutDuDelai(params.dateNotification);
+        if ('refus' in debut) {
+          reserve = debut.refus;
+        } else {
+          const delai: DelaiDePreavis = { du: debut.du, auExclu: preavis.delaiDeDateADate?.auExclu ?? null };
+          const de = jours - nonObserves;
+          const a = preavisRecuParLeTravailleur ? moitie : jours;
+          const r = remunerationDuDelai({
+            delai,
+            joursOuvrables: jours,
+            de,
+            a,
+            journaliereFc: jour,
+            mensuelleFc: mensuelle,
+            moyenneMensuelleFc: saisi(params.moyenneMensuelleArticle66Fc) as number,
+          });
+          if ('refus' in r) {
+            reserve = r.refus;
+          } else {
+            montant = r.montantFc + avantages;
+            // Le mois entamé d'un salaire mensuel est une RÈGLE citée dans
+            // l'explication (décision par la loi du 2026-10-07, troisième
+            // lot, point 3), plus une réserve.
+            detailDelai = ` ${r.explication}`;
+          }
+        }
       }
       const lectureArticle66 = preavisRecuParLeTravailleur && !relevantDeLArticle66
         ? ` Préavis reçu de l'employeur · le travailleur pouvait cesser à la moitié (${moitie} jours, art. 66, al. 1) ; seuls les ${imputables ?? '?'} jours non observés avant elle lui sont imputés, et les avantages déclarés sont ceux de ces jours.`
@@ -1016,7 +1158,8 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
         fondement: relevantDeLArticle66
           ? `${fondementDuree} Article 66 · le travailleur qui reçoit le préavis peut cesser le travail à l'expiration de la moitié du délai.`
           : `${fondementDuree} Article 63, alinéa 3 · « une indemnité dont le montant correspond à la rémunération et aux avantages de toute nature dont aurait bénéficié le travailleur durant le délai de préavis qui n'a pas été effectivement respecté ». ` +
-            `${imputables ?? '?'} jours × (taux journalier + moyenne de l'art. 66) + avantages ; ${conversionMoyenne}.${lectureArticle66}`,
+            "Article 93 · la rémunération « est également due [...] pour les jours fériés légaux » · l'indemnité paie la rémunération du délai, fériés compris, non ses seuls jours ouvrables." +
+            `${detailDelai} Avantages en sus.${lectureArticle66}`,
         reserve,
       };
       if (doitLEmployeur || relevantDeLArticle66) {
@@ -1057,22 +1200,67 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
     const TEXTE_70 =
       "Article 70 · « Toute rupture du contrat à durée déterminée prononcée en violation de l'article 69 donne lieu à des dommages-intérêts. Lorsque la rupture irrégulière est le fait de l'employeur, ces dommages-intérêts correspondent aux salaires et avantages de toute nature dont le salarié aurait bénéficié pendant la période restant à courir jusqu'au terme de son contrat. »";
     if (params.initiative === 'EMPLOYEUR') {
-      const restants = saisi(params.joursRestantsJusquAuTerme);
+      // RELECTURE M2 (2026-10-07) · « les salaires et avantages de toute
+      // nature dont le salarié AURAIT BÉNÉFICIÉ pendant la période restant à
+      // courir » · la même structure que l'art. 63, al. 3 (« dont aurait
+      // bénéficié le travailleur durant le délai »), donc la même règle que
+      // T9 · la période se place par ses dates, ses jours fériés sont payés
+      // (art. 93), au mois les mois entiers au salaire du mois et le mois
+      // entamé à 1/26 par jour payable. « Jours restants × taux » retranchait
+      // chaque férié et ignorait le salaire au mois. L'art. 70 ne nomme pas la
+      // moyenne des commissions et primes (art. 66, al. 3) · elle n'y entre pas.
       const avantages = saisi(params.avantagesJusquAuTermeFc);
-      const reserve =
-        restants === null
-          ? "Les jours de salaire restant à courir jusqu'au terme ne sont pas renseignés."
-          : jour === null
-            ? "Le taux journalier du contrat n'est pas renseigné."
-            : avantages === null
-              ? "Les avantages de toute nature jusqu'au terme ne sont pas renseignés (zéro est une réponse)."
-              : null;
+      const mensuelleCdd = saisi(params.remunerationMensuelleFc);
+      let reserve: string | null = null;
+      let montant: number | null = null;
+      let detail = '';
+      if (!params.dateRuptureContrat || !params.dateTermeContrat) {
+        reserve =
+          "La date de la rupture ou celle du terme n'est pas déclarée · les dommages-intérêts sont les salaires de la période restant à courir jusqu'au terme (art. 70, al. 2), jours fériés compris (art. 93), et les fériés de la période ne se placent pas sans elles.";
+      } else if (jour === null && mensuelleCdd === null) {
+        reserve = "Le taux journalier du contrat (ou sa rémunération mensuelle) n'est pas renseigné.";
+      } else if (avantages === null) {
+        reserve = "Les avantages de toute nature jusqu'au terme ne sont pas renseignés (zéro est une réponse).";
+      } else {
+        const lendemain = debutDuDelai(params.dateRuptureContrat);
+        const terme = /^\d{4}-\d{2}-\d{2}$/.test(params.dateTermeContrat.slice(0, 10)) ? params.dateTermeContrat.slice(0, 10) : null;
+        if ('refus' in lendemain) {
+          reserve = lendemain.refus.replace('La date de notification', 'La date de la rupture').replace('date de notification', 'date de la rupture');
+        } else if (terme === null) {
+          reserve = 'La date du terme doit être écrite AAAA-MM-JJ.';
+        } else if (terme < lendemain.du) {
+          reserve = `La rupture (${params.dateRuptureContrat.slice(0, 10)}) n'est pas antérieure au terme (${terme}) · aucune période ne restait à courir.`;
+        } else {
+          // Le terme est le dernier jour de la période · la fin exclue est son lendemain.
+          const apresLeTerme = debutDuDelai(terme);
+          const r =
+            'refus' in apresLeTerme
+              ? apresLeTerme
+              : remunerationDuDelai({
+                  delai: { du: lendemain.du, auExclu: apresLeTerme.du },
+                  joursOuvrables: 0,
+                  de: 0,
+                  a: Number.POSITIVE_INFINITY,
+                  journaliereFc: jour,
+                  mensuelleFc: mensuelleCdd,
+                  moyenneMensuelleFc: 0,
+                });
+          if ('refus' in r) {
+            reserve = r.refus;
+          } else {
+            montant = r.montantFc + avantages;
+            detail = ` ${r.explication.replace('Délai rémunéré', 'Période rémunérée')}`;
+          }
+        }
+      }
       rubriques.push({
         cle: 'dommages-interets-art-70',
         libelle: "Dommages-intérêts de rupture d'un contrat à durée déterminée",
-        montantFc: reserve === null ? (restants as number) * (jour as number) + (avantages as number) : null,
-        ...(reserve === null && (avantages as number) > 0 ? { avantagesInclusFc: avantages as number } : {}),
-        fondement: `${TEXTE_70} La qualification de l'irrégularité appartient au dossier.`,
+        montantFc: montant,
+        ...(montant !== null && avantages !== null && avantages > 0 ? { avantagesInclusFc: avantages } : {}),
+        fondement:
+          `${TEXTE_70} Article 93 · la rémunération « est également due [...] pour les jours fériés légaux » · la période restant à courir se paie fériés compris.` +
+          `${detail} Avantages en sus. La qualification de l'irrégularité appartient au dossier.`,
         reserve,
       });
     } else {
@@ -1089,7 +1277,7 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
   // 4 · Indemnité compensatrice de congé.
   const reserveConge =
     "ARTICLE 142 · l'allocation se calcule sur « la rémunération », et l'article 7, point 8 en exclut « l'indemnité de logement ou le logement en nature » · ni l'une ni l'autre n'y entre. L'article 142 exclut en outre le logement de la conversion en espèces des avantages en nature, « EXCEPTION FAITE SEULEMENT POUR LE LOGEMENT ». Le séminaire CPCC porte une « indemnité congé / logement » que le texte n'ouvre pas ; une indemnité de logement restant due pendant le congé relève du contrat (art. 138), hors de l'indemnité compensatoire.";
-  const fondementConge = `Article 144 · « en cas de résiliation du contrat, QUEL QUE SOIT LE MOMENT où celle-ci intervient, le congé est remplacé par une indemnité compensatoire calculée conformément à l'article 142 ». ${conge.joursOuvrables} jours ouvrables × (taux journalier + moyenne de l'art. 142, al. 2) ; ${conversionMoyenne}.`;
+  const fondementConge = `Article 144 · « en cas de résiliation du contrat, QUEL QUE SOIT LE MOMENT où celle-ci intervient, le congé est remplacé par une indemnité compensatoire calculée conformément à l'article 142 ». ${conge.joursOuvrables} jours ouvrables × (taux journalier + moyenne de l'art. 142, al. 2), ${LIVRE_DE_PAIE_CONGE_PAR_JOUR} ; ${conversionMoyenne}.`;
   if (jour === null) {
     rubriques.push({ cle: 'conge', libelle: 'Indemnité compensatrice de congé', montantFc: null, fondement: fondementConge, reserve: "Le taux journalier du contrat n'est pas renseigné." });
   } else if (moyenne142 === null) {

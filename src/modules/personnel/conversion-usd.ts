@@ -12,14 +12,32 @@ import { jourDeKinshasa } from '../../common/echeance';
  *    qu'en francs congolais, et aucun ne fixe le cours de conversion d'une
  *    rémunération en devises (recherche du 2026-09-24, plan item 11).
  *
- * LA RÈGLE RETENUE EST CELLE DU CABINET · décision de Manasse du 2026-09-24 :
- * « le taux est le taux actuel, donc il faudra toujours renseigner le taux
- * chaque jour ». D'où trois choix, et aucun autre :
- *  1. le cours est celui du JOUR du calcul, au calendrier de Kinshasa ;
+ * LA SOURCE DU COURS EST CELLE DU CABINET · décision de Manasse du
+ * 2026-09-24 : « le taux est le taux actuel, donc il faudra toujours
+ * renseigner le taux chaque jour ». Aucun texte ne la fixe (décision T8 du
+ * 2026-10-07, `docs/decisions-par-la-loi-paie-2026-10-07.md`).
+ *
+ * LA DATE DU COURS, ELLE, SE LIT DANS LES TEXTES (décision T8) · tous les
+ * prélèvements s'attachent au moment où la rémunération est payée ou mise à
+ * disposition · loi n° 23/053, art. 115 (exigibilité « au moment de la mise à
+ * disposition ») ; arrêté du 19 février 2025, art. 3 (retenue « au moment du
+ * paiement [...] ou de leur mise à disposition ») ; loi n° 16/009, art. 20
+ * (« rémunérations perçues ») ; arrêté ONEM, art. 1er (« payée ») ; arrêtés
+ * INPP, art. 1er (« versées »). D'où quatre règles, et aucune autre :
+ *  1. le cours est celui de la DATE DE MISE À DISPOSITION déclarée sur le
+ *     bulletin ; à défaut, celui du JOUR du calcul au calendrier de Kinshasa,
+ *     ce qui est juste quand le bulletin est émis le jour du paiement, et
+ *     c'est DIT (`AVERTISSEMENT_DATE_DU_CALCUL`) ;
  *  2. il se lit dans les cours saisis au dossier (Devises), pour la date
- *     EXACTE · jamais le dernier cours connu, qui ne serait pas « actuel » ;
+ *     EXACTE · jamais le dernier cours connu ;
  *  3. absent, le calcul est REFUSÉ et dit quel cours saisir · un salaire
- *     converti à un cours inventé serait faux sous l'apparence du juste.
+ *     converti à un cours inventé serait faux sous l'apparence du juste ;
+ *  4. L'ARRONDI AU CENTIME SUPÉRIEUR dès qu'une fraction reste · aucun texte
+ *     ne règle l'arrondi du salaire converti (l'art. 150 de la loi n° 23/053
+ *     arrondit l'impôt, l'art. 121 de la loi n° 16/009 des prestations), et la
+ *     conversion fixe ce que l'employeur DOIT au travailleur · la règle de
+ *     protection du dépôt tranche (une règle de protection ne se tranche pas
+ *     contre celui qu'elle protège).
  *
  * Seuls les ÉLÉMENTS DE RÉMUNÉRATION se convertissent. Les autres montants de
  * la simulation (autres retenues de l'art. 71, taux légal des allocations)
@@ -46,10 +64,24 @@ export function jourLisible(jour: Date): string {
   return `${j}/${m}/${a}`;
 }
 
-/** Conversion au centime · montant en USD multiplié par le cours (FC pour 1 USD). */
+/**
+ * Conversion au CENTIME SUPÉRIEUR dès qu'une fraction reste (décision T8,
+ * règle de protection) · montant en USD multiplié par le cours (FC pour
+ * 1 USD). Le produit en centimes est d'abord ramené au millionième de centime
+ * · un montant à deux décimales par un cours à six décimales n'en porte pas
+ * davantage, et le flottant (0,1 × 3 = 0,30000000000000004) ne doit pas faire
+ * monter d'un centime un montant exact.
+ */
 export function usdEnFc(montantUsd: number, cours: number): number {
-  return Math.round(montantUsd * cours * 100) / 100;
+  const centimes = Math.round(montantUsd * cours * 100 * 1e6) / 1e6;
+  return Math.ceil(centimes) / 100;
 }
+
+/** La date de mise à disposition n'est pas déclarée · le cours est celui du jour du calcul, et c'est dit. */
+export const AVERTISSEMENT_DATE_DU_CALCUL =
+  "DATE DU COURS · la date de mise à disposition de la rémunération n'est pas déclarée · le cours retenu est celui " +
+  "du jour du calcul, juste si le bulletin est émis le jour du paiement. Les prélèvements s'attachent à la mise à " +
+  "disposition (loi n° 23/053, art. 115 ; arrêté du 19 février 2025, art. 3) · déclarez-la si elle diffère.";
 
 /**
  * Le refus dit OÙ coter et QUI peut le faire (audit final F247) · il renvoyait
@@ -57,7 +89,14 @@ export function usdEnFc(montantUsd: number, cours: number): number {
  * y cote désormais ce cours-là, ni que la devise USD s'ajoute d'abord par
  * l'administrateur quand le dossier ne l'a pas.
  */
-export function messageCoursManquant(jour: Date): string {
+export function messageCoursManquant(jour: Date, miseADispositionDeclaree = false): string {
+  if (miseADispositionDeclaree) {
+    return (
+      `Aucun cours du dollar américain (USD) n'est renseigné pour le ${jourLisible(jour)}, date de mise à disposition ` +
+      'déclarée. Le salaire stipulé en dollars se convertit au cours de ce jour-là : le comptable le cote dans la ' +
+      "fenêtre Devises (« Coter un cours », USD, à cette date). Le cours d’un autre jour n’est jamais repris."
+    );
+  }
   return (
     `Aucun cours du dollar américain (USD) n'est renseigné pour aujourd'hui, ${jourLisible(jour)}. ` +
     'Le salaire stipulé en dollars se convertit au cours du jour : cotez-le dans la fenêtre Devises (« Coter un ' +

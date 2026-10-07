@@ -19,6 +19,7 @@ import {
   reservePourReferentiel,
 } from './correspondance-retenues';
 import { echeanceDeReversement, reporterAuJourOuvrable } from './jour-ouvrable';
+import { RACINE_4428, RACINES_CHARGE_INPP_ONEM, estDu4428, mentionDu4428Mele, partagerLe4428 } from './inpp-onem-du-4428';
 import { echeanceDepassee, jourDeKinshasa, jourUtc } from '../../common/echeance';
 import { FORMES_SOCIETES_COMMERCIALES } from '../tenant/mentions-societe';
 import { closAu31Decembre } from '../exercice/portefeuille-etat';
@@ -313,13 +314,45 @@ export class RetenuesService {
             reference: true,
             estGenereeParCloture: true,
             estSoldeDesComptesDeGestion: true,
+            // RELECTURE M1 · ce qui dit qu'une ligne du 4428 est de l'INPP ou
+            // de l'ONEM · un bulletin porte l'écriture (paie du mois ou sa
+            // reprise en négatif), ou l'écriture porte une charge 6413 / 6415.
+            bulletinsPaie: { select: { id: true }, take: 1 },
+            bulletinsPaieRepris: { select: { id: true }, take: 1 },
+            lignes: {
+              where: { compte: { OR: RACINES_CHARGE_INPP_ONEM.map((r) => ({ numero: { startsWith: r } })) } },
+              select: { id: true },
+              take: 1,
+            },
           },
         },
       },
       orderBy: { ecriture: { date: 'asc' } },
     });
 
+    // LE 4428 SE PARTAGE PAR SA STRUCTURE (relecture M1) · voir
+    // `inpp-onem-du-4428.ts`. Les reports à-nouveau sont le solde d'ouverture.
+    const partage4428 = partagerLe4428(
+      lignes
+        .filter((l) => !estReportANouveau(l.ecriture))
+        .map((l) => ({
+          ligne: l,
+          debit: l.debit,
+          credit: l.credit,
+          lettrageId: l.lettrageId,
+          compte: l.compte,
+          ecriture: {
+            estDePaie: (l.ecriture.bulletinsPaie?.length ?? 0) > 0 || (l.ecriture.bulletinsPaieRepris?.length ?? 0) > 0,
+            porteUneChargeInppOnem: (l.ecriture.lignes?.length ?? 0) > 0,
+          },
+        })),
+    );
+    const lues4428 = new Set([...partage4428.lues].map((x) => x.ligne));
     const correspond = (numero: string, nature: NatureRetenue) => compteRelevantDe(numero, nature);
+    // Une ligne appartient à sa nature par son compte, et, au 4428, par sa
+    // structure · une taxe étrangère du 4428 n'entre dans aucune nature.
+    const ligneDeLaNature = (l: (typeof lignes)[number], nature: NatureRetenue) =>
+      correspond(l.compte.numero, nature) && (!estDu4428(l.compte.numero) || estReportANouveau(l.ecriture) || lues4428.has(l));
 
     /*
       LE SOLDE D'OUVERTURE EST UN MOIS « ANTÉRIEUR », IMPUTÉ LE PREMIER (audit
@@ -345,7 +378,7 @@ export class RetenuesService {
       : null;
 
     const natures = NATURES_RETENUES.map((nature) => {
-      const siennes = lignes.filter((l) => correspond(l.compte.numero, nature));
+      const siennes = lignes.filter((l) => ligneDeLaNature(l, nature));
 
       // Par mois de VERSEMENT · l'unité de l'obligation de reversement, et le
       // mois que les textes désignent (voir dateDeRattachement).
@@ -426,11 +459,21 @@ export class RetenuesService {
       // Solde d'ouverture des comptes de la nature · crédit = retenue d'un
       // exercice antérieur encore due ; débit = reversement d'avance, qui
       // s'ajoute à ce qui reste à imputer.
+      // RELECTURE M1 · le 4428 MÊLÉ ne prête pas son solde d'ouverture à
+      // l'INPP et à l'ONEM · un report à-nouveau ne dit pas quelle part en est
+      // à eux. Il est nommé (`mention4428`), jamais compté.
+      const natureDu4428 = correspond(`${RACINE_4428}0000`, nature);
       const soldeOuverture =
         Math.round(
-          [...ouverture.entries()].filter(([numero]) => correspond(numero, nature)).reduce((s, [, v]) => s + v, 0) *
-            100,
+          [...ouverture.entries()]
+            .filter(([numero]) => correspond(numero, nature) && (partage4428.pur || !estDu4428(numero)))
+            .reduce((s, [, v]) => s + v, 0) * 100,
         ) / 100;
+      const soldeOuverture4428 =
+        Math.round([...ouverture.entries()].filter(([numero]) => estDu4428(numero)).reduce((s, [, v]) => s + v, 0) * 100) / 100;
+      // Un reversement du 4428 mêlé que rien ne rattache peut éteindre
+      // l'INPP ou l'ONEM comme l'autre taxe · aucun retard n'est affirmé.
+      const retardIndetermine = natureDu4428 && !partage4428.pur && partage4428.reversementsNonRattachesFc > 0.005;
       let aImputer = reverse + Math.max(0, -soldeOuverture);
       const aImputerDans: Array<{ cle: string; anterieur: boolean; retenu: number; reverseEcritures: number; echeance: Date }> = [
         ...(soldeOuverture > 0.005 && moisAnterieur
@@ -481,7 +524,7 @@ export class RetenuesService {
             echeance,
             // Un solde encore dû après l'échéance est un retard de
             // reversement · c'est ce que l'état doit crier, et seulement là.
-            enRetard: solde > 0.005 && echeanceDepassee(echeance, reference),
+            enRetard: solde > 0.005 && echeanceDepassee(echeance, reference) && !retardIndetermine,
           };
         });
 
@@ -548,6 +591,10 @@ export class RetenuesService {
         // `correspondance-retenues.ts`.
         chargeSousConditionArticle20: nature.chargeSousConditionArticle20 ?? null,
         prochaineEcheance: this.prochaineEcheance(nature, reference),
+        // RELECTURE M1 · le 4428 mêlé, nommé avec ses montants · `null` quand
+        // il ne porte que l'INPP et l'ONEM, ou pour une autre nature.
+        mention4428: natureDu4428 ? mentionDu4428Mele(partage4428, soldeOuverture4428) : null,
+        retardIndetermine,
       };
     });
 
@@ -623,6 +670,8 @@ export class RetenuesService {
         // Il n'apparaît que lorsque le registre a réellement une retenue
         // échue et non reversée sur une charge de l'entité.
         ...(avertissementDeductibilite ? [avertissementDeductibilite] : []),
+        // RELECTURE M1 · le 4428 qui porte d'autres impôts et taxes, nommé.
+        ...natures.flatMap((n) => (n.mention4428 ? [n.mention4428] : [])),
       ],
     };
   }

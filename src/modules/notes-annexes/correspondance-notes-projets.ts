@@ -626,10 +626,12 @@ export const NOTES_PROJETS: SpecificationNote[] = [
       // Le reliquat du 433 « Autres organismes sociaux » (fiche du compte 43,
       // Partie 2 ch. 3 : 4331 mutuelle, 4332 assurances retraite, 4333
       // assurances et organismes de santé) · 4331 et 4332 ont leur ligne, le
-      // 4333 et les 4334 INPP et 4335 ONEM qu'OmegaX ouvre sous le 433 (et
-      // que la paie crédite) tombent ici. Lu au seul 4333, un INPP ou un ONEM
-      // créditeur à la clôture était au poste du bilan et hors de la note
-      // (passe R6, D6).
+      // 4333 et les 4334 INPP et 4335 ONEM qu'OmegaX ouvrait sous le 433
+      // tombent ici. Lu au seul 4333, un INPP ou un ONEM créditeur à la
+      // clôture était au poste du bilan et hors de la note (passe R6, D6).
+      // Depuis la décision T1 du 2026-10-07, la paie porte l'INPP et l'ONEM au
+      // 4428 (impôts et taxes) · la lecture reste pour les dossiers semés
+      // avant, qui gardent leurs deux comptes.
       { libelle: 'Autres cotisations et organismes sociaux', comptes: ['433'], exclusions: ['4331', '4332'], sens: 'CREDITEUR' },
       { libelle: 'TOTAL DETTES SOCIALES', totalDeRubriques: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
       // Voir anomalie n° 2 en tête de fichier : aucun compte 441 au plan

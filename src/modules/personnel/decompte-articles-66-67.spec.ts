@@ -11,6 +11,7 @@ import { RESERVE_REMUNERATION_ARTICLE_66, elementsDuDecompte } from './decompte-
 import { PersonnelService } from './personnel.service';
 import { PrismaService } from '../../common/prisma.service';
 import type { DecompteFinalDto } from './dto/personnel.dto';
+import { REGLE_MOIS_ENTAME } from './remuneration-du-delai';
 
 /**
  * A9 · RELEVÉ CPCC C5 · les articles 66 et 67 du Code du travail, lus verbatim.
@@ -42,6 +43,8 @@ const LICENCIEMENT: ParametresDecompte = {
   initiative: 'EMPLOYEUR',
   motif: 'LICENCIEMENT',
   typeContrat: CDI,
+  // Délai du 19 mai au 27 juin 2026, sans férié (décision T9).
+  dateNotification: '2026-05-18',
   remunerationJournaliereFc: 20_000,
   // 26 000 par mois ramenés au jour par 26 · 1 000 FC par jour.
   moyenneMensuelleArticle66Fc: 26_000,
@@ -107,8 +110,23 @@ describe("A9 · article 66 · le départ à mi-préavis, et l'employeur doit le 
     expect(p.reserve).toContain('déclarez la durée retenue');
     expect(v.totalBrutFc).toBeNull();
     const retenue = remunerationDe({ ...MI_PREAVIS, joursPreavisNonObserves: 20, preavisRetenuJours: 40 });
-    // 40 jours retenus · la moitié est 20, le départ est à la moitié.
-    expect(retenue.montantFc).toBeCloseTo(20 * 21_000 + 5_000, 6);
+    // 40 jours retenus · la moitié est 20, le départ est à la moitié. Le délai
+    // court du 19 mai au 4 juillet 2026 ; ses 20 derniers jours ouvrables
+    // portent le 30 juin, férié, payé (art. 93, relecture M2) · 21 jours.
+    expect(retenue.montantFc).toBeCloseTo(21 * 21_000 + 5_000, 6);
+  });
+
+  it('relecture M2 · le temps restant à courir est la rémunération de la fin du délai (même règle que T9) · au mois, le mois entamé à 1/26 ; sans date de notification, rien n’est chiffré', () => {
+    // Au mois (520 000 + 26 000) · du 9 juin (lendemain du 18e jour ouvrable,
+    // le 8, coupé à la moitié) au 27 juin, aucun mois entier · 17,5 jours à
+    // 1/26 de 546 000, plus 5 000 d'avantages.
+    const auMois = remunerationDe({ ...MI_PREAVIS, remunerationJournaliereFc: null, remunerationMensuelleFc: 520_000 });
+    expect(auMois.montantFc).toBeCloseTo((17.5 * 546_000) / 26 + 5_000, 6);
+    expect(auMois.fondement).toContain(REGLE_MOIS_ENTAME);
+    expect(auMois.fondement).toContain('fériés compris (art. 93)');
+    const sansDate = remunerationDe({ ...MI_PREAVIS, dateNotification: null });
+    expect(sansDate.montantFc).toBeNull();
+    expect(sansDate.reserve).toContain("La date de notification n'est pas déclarée");
   });
 
   it('ne lit jamais zéro un fait non déclaré · jours restants, moyenne ou avantages en nature absents', () => {
@@ -243,6 +261,9 @@ describe('A9 · les articles 66 et 67 ne valent que pour le préavis REÇU de l�
       typeContrat: CDI,
       executionPreavis: 'DEPART_A_MI_PREAVIS',
       joursPreavisNonObserves: 17.5,
+      // Délai du 19 mai au 27 juin 2026, sans férié · le temps restant se
+      // place par la date de notification (relecture M2).
+      dateNotification: '2026-05-18',
       remunerationJournaliereFc: 20_000,
       moyenneMensuelleArticle66Fc: 0,
       avantagesEnNatureRestantsFc: 1_000,

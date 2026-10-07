@@ -369,7 +369,7 @@ describe("P2b · l'ordre de calcul, et le net qui ne part pas de l'assiette", ()
       .then((res) => {
         expect(res.net.totalVerseFc).toBe(1_400_000);
         expect(res.net.netAPayerFc).toBeCloseTo(
-          1_400_000 - res.net.quotePartOuvriereFc - (res.retenue?.retenueFc ?? 0),
+          1_400_000 - (res.net.quotePartOuvriereFc as number) - (res.retenue?.retenueFc ?? 0),
           6,
         );
         // Et surtout : le net dépasse l'assiette sociale.
@@ -672,6 +672,46 @@ describe("La quotité saisissable est appelée sur la RÉMUNÉRATION, pas sur le
     );
     expect(res.quotite.evaluationForfaitaireLogementFc).toBe(0);
   });
+
+  it("C3 (P12 f) · défalque le logement que le BULLETIN porte fourni en nature, case non cochée", async () => {
+    // Un seul fait saisi deux fois · l'élément du bulletin suffit. Sans
+    // défalcation, la base était 826 900 et la quotité 165 380 (+ 828,15).
+    const { svc } = service();
+    const res = await svc.simulerPaie(
+      't-1',
+      null,
+      dto({
+        classeProfessionnelle: 5,
+        natureEmployeurInpp: 'PRIVE',
+        effectif: 30,
+        elements: [
+          { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 1_000_000 },
+          { nature: 'LOGEMENT_OU_SON_INDEMNITE', libelle: 'Logement', montantFc: 250_000, enNature: true },
+        ],
+      } as Partial<SimulationPaieDto>),
+    );
+    expect(res.quotite.evaluationForfaitaireLogementFc).toBeCloseTo(4_140.76, 2);
+    expect(res.quotite.baseFc).toBeCloseTo(822_759.24, 2);
+    expect(res.quotite.quotiteOrdinaireFc).toBeCloseTo(164_551.85, 2);
+  });
+
+  it("C3 · une INDEMNITÉ de logement versée n'est pas un logement fourni · aucune défalcation", async () => {
+    const { svc } = service();
+    const res = await svc.simulerPaie(
+      't-1',
+      null,
+      dto({
+        classeProfessionnelle: 5,
+        natureEmployeurInpp: 'PRIVE',
+        effectif: 30,
+        elements: [
+          { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 1_000_000 },
+          { nature: 'LOGEMENT_OU_SON_INDEMNITE', libelle: 'Indemnité de logement', montantFc: 250_000 },
+        ],
+      } as Partial<SimulationPaieDto>),
+    );
+    expect(res.quotite.evaluationForfaitaireLogementFc).toBe(0);
+  });
 });
 
 describe("L'avertissement de la simulation dit la vérité de ce qu'elle fait", () => {
@@ -894,5 +934,56 @@ describe('F112 · la simulation passe les jours payés au plancher de la CNSS', 
     );
     const qp = res.cotisations.lignes.find((l) => l.cle === 'cnss-pension-travailleur');
     expect(qp?.assietteFc).toBe(215_000);
+  });
+});
+
+/**
+ * CONSTAT C1 DES CAS CHIFFRÉS DE LA PAIE (P07 b) · sous abstention de la CNSS,
+ * la quote-part ouvrière n'est pas chiffrée, et la base nette de l'article 71
+ * avec elle. La simulation servait pourtant 400 000 de base, 40 600 d'impôt
+ * et 359 400 de net, l'abstention lue comme une quote-part nulle.
+ */
+describe('C1 · la simulation ne chiffre ni base nette, ni impôt, ni net sous abstention de la CNSS', () => {
+  const p07b = () =>
+    dto({
+      natureEmployeurInpp: 'PRIVE',
+      effectif: 30,
+      elements: [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 400_000 }],
+    } as Partial<SimulationPaieDto>);
+
+  it('rend null la base nette, la retenue, la quote-part et le net, et dit pourquoi', async () => {
+    const { svc } = service();
+    const res = await svc.simulerPaie('t-1', null, p07b());
+    expect(res.cotisations.quotePartOuvriereNonChiffree).toContain('ASSIETTE SOUS LE PLANCHER');
+    expect(res.assiettes.assietteFiscaleBruteFc).toBe(400_000);
+    expect(res.assiettes.assietteFiscaleNetteFc).toBeNull();
+    expect(res.assiettes.motifAssietteNetteNonChiffree).toContain('art. 70 et 71');
+    expect(res.retenue).toBeNull();
+    expect(res.net.quotePartOuvriereFc).toBeNull();
+    expect(res.net.netAPayerFc).toBeNull();
+    // L'INPP et l'ONEM, sans plancher, restent chiffrés.
+    expect(res.cotisations.lignes.map((l) => l.cle).sort()).toEqual(['inpp', 'onem']);
+  });
+
+  it('les jours payés déclarés lèvent l’abstention et chiffrent tout', async () => {
+    const { svc } = service();
+    const res = await svc.simulerPaie('t-1', null, { ...p07b(), joursPayes: 26 } as SimulationPaieDto);
+    expect(res.cotisations.quotePartOuvriereNonChiffree).toBeNull();
+    expect(res.assiettes.assietteFiscaleNetteFc).toBe(372_050);
+    expect(res.retenue?.retenueFc).toBe(36_400);
+    expect(res.net.netAPayerFc).toBe(335_650);
+  });
+
+  it('un apprenti ne doit aucune quote-part · une RÉPONSE, jamais une abstention', async () => {
+    const { svc } = service({
+      nom: 'A',
+      nomConjoint: null,
+      _count: { enfants: 0 },
+      contrats: [{ id: 'c', type: 'APPRENTISSAGE', dateEntreeEnVigueur: new Date('2026-01-01'), dateFin: null }],
+    });
+    const res = await svc.simulerPaie('t-1', 's-1', dto());
+    expect(res.cotisations.quotePartOuvriereNonChiffree).toBeNull();
+    expect(res.net.quotePartOuvriereFc).toBe(0);
+    expect(res.net.netAPayerFc).not.toBeNull();
   });
 });

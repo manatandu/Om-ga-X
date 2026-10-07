@@ -1,7 +1,10 @@
 import {
   dernierJourDuMois,
+  MOTIF_ORIGINE_INTROUVABLE,
+  motifPartIllisible,
   propositionPaieDuMois,
   type BulletinAComptabiliser,
+  type OrigineDuBulletin,
 } from './comptabilisation-paie';
 
 /**
@@ -55,8 +58,18 @@ describe('une écriture pour tout le mois', () => {
     expect(ligne(p, 'BRUT', '66110000', 'DEBIT')[0].montantFc).toBe(2_000_000);
   });
 
-  it('garde les trois temps du Guide, dans leur ordre', () => {
-    expect([...new Set(p.lignes.map((l) => l.bloc))]).toEqual(['BRUT', 'RETENUES', 'PATRONALES']);
+  it('garde les trois temps du Guide, dans leur ordre, puis les impôts et taxes sur salaires', () => {
+    expect([...new Set(p.lignes.map((l) => l.bloc))]).toEqual(['BRUT', 'RETENUES', 'PATRONALES', 'IMPOTS_ET_TAXES_SUR_SALAIRES']);
+  });
+
+  it("décision T1 · l'INPP et l'ONEM du mois au 6415 et au 6413, leur dette totale au 4428", () => {
+    // Deux bulletins de 35 000 d'INPP et 5 000 d'ONEM chacun.
+    expect(ligne(p, 'IMPOTS_ET_TAXES_SUR_SALAIRES', '64150000', 'DEBIT')[0].montantFc).toBe(70_000);
+    expect(ligne(p, 'IMPOTS_ET_TAXES_SUR_SALAIRES', '64130000', 'DEBIT')[0].montantFc).toBe(10_000);
+    expect(ligne(p, 'IMPOTS_ET_TAXES_SUR_SALAIRES', '44280000', 'CREDIT')[0].montantFc).toBe(80_000);
+    // Le 6641 ne porte plus que la CNSS patronale.
+    expect(ligne(p, 'PATRONALES', '66410000', 'DEBIT')[0].montantFc).toBe(260_000);
+    expect(p.lignes.some((l) => l.compte.startsWith('433'))).toBe(false);
   });
 
   it('crédite le 422 du brut, le débite des retenues, et le solde est la somme des nets', () => {
@@ -159,7 +172,7 @@ describe('ce qui ne se passe pas, ou pas deux fois', () => {
       refus: [],
       equilibree: true,
       solde422: 1_250_000,
-      blocs: ['BRUT', 'RETENUES', 'PATRONALES', 'AVANTAGES_EN_NATURE'],
+      blocs: ['BRUT', 'RETENUES', 'PATRONALES', 'IMPOTS_ET_TAXES_SUR_SALAIRES', 'AVANTAGES_EN_NATURE'],
       transfert: [300_000, 300_000],
     });
   });
@@ -216,5 +229,265 @@ describe('au centime', () => {
     expect(dernierJourDuMois('2026-02')).toBe('2026-02-28');
     expect(dernierJourDuMois('2028-02')).toBe('2028-02-29');
     expect(dernierJourDuMois('2026-12')).toBe('2026-12-31');
+  });
+});
+
+/**
+ * C2 (cas chiffré P15) · LE BULLETIN ANNULÉ APRÈS PASSATION SE REPREND EN
+ * NÉGATIF AVEC CELUI QUI LE REMPLACE. Décembre de B passé à 600 000, payé,
+ * l'exercice clos, annulé en janvier puis réémis à 620 000 · seule la
+ * différence doit peser sur l'exercice de la correction (AUDCIF art. 20 ;
+ * art. 22, 4°). Avant, le réémis passait en entier · 600 000 de salaire et
+ * 503 900 de net déjà payé comptés deux fois, sur une écriture qui bouclait.
+ */
+describe('C2 · reprise en négatif du bulletin annulé après passation', () => {
+  const decembre = (numero: number, salaire: number, over: Partial<BulletinAComptabiliser> = {}): BulletinAComptabiliser => {
+    const pc = (taux: number) => Math.round(salaire * taux * 100) / 100;
+    const irpp = salaire === 600_000 ? 66_100 : 68_900;
+    const net = salaire - pc(0.05) - irpp;
+    return bulletin(numero, {
+      netAPayerFc: net,
+      entree: { elements: [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: salaire }] },
+      calcul: {
+        cotisations: {
+          lignes: [
+            { cle: 'cnss-pf', charge: 'EMPLOYEUR', montantFc: pc(0.065) },
+            { cle: 'cnss-pension-employeur', charge: 'EMPLOYEUR', montantFc: pc(0.05) },
+            { cle: 'cnss-pension-travailleur', charge: 'TRAVAILLEUR', montantFc: pc(0.05) },
+            { cle: 'cnss-rp', charge: 'EMPLOYEUR', montantFc: pc(0.015) },
+            { cle: 'inpp', charge: 'EMPLOYEUR', montantFc: pc(0.035) },
+            { cle: 'onem', charge: 'EMPLOYEUR', montantFc: pc(0.005) },
+          ],
+          abstentions: [],
+        },
+        retenue: { retenueFc: irpp },
+        net: { netAPayerFc: net },
+      },
+      ...over,
+    });
+  };
+  /** Une écriture de paie déjà passée, rendue telle que le journal la porte. */
+  const origineDe = (ecritureId: string, lignes: ReturnType<typeof propositionPaieDuMois>['lignes'], numeroPiece = '12'): OrigineDuBulletin => ({
+    ecritureId,
+    numeroPiece,
+    lignes: lignes.map((l) => ({
+      compte: l.compte,
+      intitule: l.intitule,
+      debit: l.sens === 'DEBIT' ? l.montantFc : 0,
+      credit: l.sens === 'CREDIT' ? l.montantFc : 0,
+    })),
+  });
+  const passe = (bs: BulletinAComptabiliser[]) =>
+    propositionPaieDuMois('2026-12', 'SYSCOHADA', bs.map((b) => ({ ...b, statut: 'EMIS' as const, ecritureId: null, ecritureNegatifId: null, origine: null }))).lignes;
+  const ancienSeul = decembre(2, 600_000);
+  // L'écriture de décembre qui a passé le bulletin n° 2, à la règle du jour.
+  const ancien = decembre(2, 600_000, { statut: 'ANNULE', ecritureId: 'e-decembre', origine: origineDe('e-decembre', passe([ancienSeul])) });
+  const reemis = decembre(3, 620_000);
+  /** Mouvement net de chaque compte, débit positif. */
+  const net = (p: ReturnType<typeof propositionPaieDuMois>) => {
+    const m = new Map<string, number>();
+    for (const l of p.lignes) m.set(l.compte, Math.round(((m.get(l.compte) ?? 0) + (l.sens === 'DEBIT' ? l.montantFc : -l.montantFc)) * 100) / 100);
+    return Object.fromEntries([...m].sort(([a], [b]) => a.localeCompare(b)));
+  };
+
+  it('ne fait peser que la DIFFÉRENCE · 6611 + 20 000, 6641 + 2 600, 6415 + 700, 6413 + 100, 422 − 16 200', () => {
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [ancien, reemis]);
+    expect(p.refus).toEqual([]);
+    expect(p.equilibree).toBe(true);
+    expect(p.negatifsAPasser.map((b) => [b.numero, b.ecritureId])).toEqual([[2, 'e-decembre']]);
+    expect(net(p)).toEqual({
+      '42200000': -16_200,
+      '43110000': -1_300,
+      '43120000': -300,
+      '43130000': -2_000,
+      '44280000': -800,
+      '44720000': -2_800,
+      '64130000': 100,
+      '64150000': 700,
+      '66110000': 20_000,
+      '66410000': 2_600,
+    });
+    expect(p.solde422Fc).toBe(16_200);
+    expect(p.sommeDesNetsFc).toBe(16_200);
+  });
+
+  it('garde la reprise À PART des lignes du réémis · elle se lit dans l’écriture', () => {
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [ancien, reemis]);
+    const salaires = p.lignes.filter((l) => l.compte === '66110000');
+    expect(salaires.map((l) => [l.montantFc, l.negatif ?? false])).toEqual([
+      [620_000, false],
+      [-600_000, true],
+    ]);
+    expect(salaires[1].intitule).toContain('reprise en négatif');
+    expect(p.reserves.join(' ')).toContain('REPRISE EN NÉGATIF · n° 2');
+  });
+
+  it('reprend seul un bulletin annulé sans remplaçant · le net déjà payé redevient une créance sur le salarié', () => {
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [ancien]);
+    expect(p.refus).toEqual([]);
+    expect(p.equilibree).toBe(true);
+    expect(p.aPasser).toEqual([]);
+    expect(net(p)['66110000']).toBe(-600_000);
+    // Le 422 passe DÉBITEUR du net déjà versé · le salarié le doit.
+    expect(p.solde422Fc).toBe(-503_900);
+    expect(p.sommeDesNetsFc).toBe(-503_900);
+  });
+
+  it('ne reprend jamais deux fois · un bulletin déjà repris est dit, sans ligne', () => {
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [{ ...ancien, ecritureNegatifId: 'e-reprise' }, reemis]);
+    expect(p.negatifsAPasser).toEqual([]);
+    expect(p.annulesApresPassation).toEqual([{ numero: 2, nomComplet: 'SALARIE 2', ecritureId: 'e-decembre', ecritureNegatifId: 'e-reprise' }]);
+    expect(net(p)['66110000']).toBe(620_000);
+    expect(p.lignes.some((l) => l.negatif)).toBe(false);
+  });
+
+  it('refuse le mois quand l’écriture d’origine est introuvable, et le nomme avec son issue', () => {
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [{ ...ancien, origine: null }, reemis]);
+    expect(p.lignes).toEqual([]);
+    expect(p.refus.map((r) => r.numero)).toEqual([2]);
+    expect(p.refus[0].motifs.join(' ')).toBe(MOTIF_ORIGINE_INTROUVABLE);
+  });
+
+  it('reprend un bulletin annulé illisible par les lignes de son écriture d’origine · aucun rejeu n’est nécessaire', () => {
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [{ ...ancien, entree: {} }, reemis]);
+    expect(p.refus).toEqual([]);
+    expect(net(p)['66110000']).toBe(20_000);
+  });
+});
+
+/**
+ * RELECTURE M3 (2026-10-07) · L'INSCRIPTION EN NÉGATIF ANNULE CE QUI A ÉTÉ
+ * PASSÉ (AUDCIF art. 20, al. 2). Rejouée à la règle du jour, la reprise d'un
+ * bulletin passé avant la décision T1 (INPP et ONEM au 6641, au 4334 et au
+ * 4335) tombait au 6415, au 6413 et au 4428 · charges surévaluées, 6415
+ * négatif.
+ */
+describe('M3 · la reprise en négatif recopie l’écriture d’origine', () => {
+  const pc = (s: number, t: number) => Math.round(s * t * 100) / 100;
+  const decembre = (numero: number, salaire: number, over: Partial<BulletinAComptabiliser> = {}): BulletinAComptabiliser => {
+    const irpp = salaire === 600_000 ? 66_100 : 68_900;
+    const net = salaire - pc(salaire, 0.05) - irpp;
+    return bulletin(numero, {
+      netAPayerFc: net,
+      entree: { elements: [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: salaire }] },
+      calcul: {
+        cotisations: {
+          lignes: [
+            { cle: 'cnss-pf', charge: 'EMPLOYEUR', montantFc: pc(salaire, 0.065) },
+            { cle: 'cnss-pension-employeur', charge: 'EMPLOYEUR', montantFc: pc(salaire, 0.05) },
+            { cle: 'cnss-pension-travailleur', charge: 'TRAVAILLEUR', montantFc: pc(salaire, 0.05) },
+            { cle: 'cnss-rp', charge: 'EMPLOYEUR', montantFc: pc(salaire, 0.015) },
+            { cle: 'inpp', charge: 'EMPLOYEUR', montantFc: pc(salaire, 0.035) },
+            { cle: 'onem', charge: 'EMPLOYEUR', montantFc: pc(salaire, 0.005) },
+          ],
+          abstentions: [],
+        },
+        retenue: { retenueFc: irpp },
+        net: { netAPayerFc: net },
+      },
+      ...over,
+    });
+  };
+  const net = (p: ReturnType<typeof propositionPaieDuMois>) => {
+    const m = new Map<string, number>();
+    for (const l of p.lignes) m.set(l.compte, Math.round(((m.get(l.compte) ?? 0) + (l.sens === 'DEBIT' ? l.montantFc : -l.montantFc)) * 100) / 100);
+    return Object.fromEntries(m);
+  };
+  const L = (compte: string, debit: number, credit: number) => ({ compte, intitule: `Compte ${compte}`, debit, credit });
+  /** Décembre, passé AVANT la décision T1 · l'INPP (21 000) et l'ONEM (3 000) au 6641, dettes au 4334 et au 4335. */
+  const AVANT_T1: OrigineDuBulletin = {
+    ecritureId: 'e-avant-t1',
+    numeroPiece: '7',
+    lignes: [
+      L('66110000', 600_000, 0),
+      L('42200000', 0, 600_000),
+      L('42200000', 96_100, 0),
+      L('43130000', 0, 30_000),
+      L('44720000', 0, 66_100),
+      L('66410000', 102_000, 0),
+      L('43110000', 0, 39_000),
+      L('43130000', 0, 30_000),
+      L('43120000', 0, 9_000),
+      L('43340000', 0, 21_000),
+      L('43350000', 0, 3_000),
+    ],
+  };
+  const ancien = decembre(2, 600_000, { statut: 'ANNULE', ecritureId: 'e-avant-t1', origine: AVANT_T1 });
+  const reemis = decembre(3, 620_000);
+
+  it('bulletin passé au 6641, au 4334 et au 4335, annulé après T1 · repris sur ces mêmes comptes, jamais au 6415 ni au 4428', () => {
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [ancien, reemis]);
+    expect(p.refus).toEqual([]);
+    expect(p.equilibree).toBe(true);
+    const reprise = p.lignes.filter((l) => l.bloc === 'REPRISE_EN_NEGATIF');
+    expect(reprise.every((l) => l.negatif === true && l.montantFc < 0)).toBe(true);
+    expect(reprise.map((l) => l.compte).sort()).toEqual(
+      ['42200000', '42200000', '43110000', '43120000', '43130000', '43340000', '43350000', '44720000', '66110000', '66410000'].sort(),
+    );
+    expect(reprise.some((l) => ['64150000', '64130000', '44280000'].includes(l.compte))).toBe(false);
+    const n = net(p);
+    // Le réémis passe l'INPP (21 700) et l'ONEM (3 100) à la règle du jour ;
+    // la reprise retire du 6641 les 102 000 passés, et éteint 4334 et 4335.
+    expect(n['64150000']).toBe(21_700);
+    expect(n['64130000']).toBe(3_100);
+    expect(n['66410000']).toBe(80_600 - 102_000);
+    expect(n['43340000']).toBe(21_000);
+    expect(n['43350000']).toBe(3_000);
+    expect(n['44280000']).toBe(-24_800);
+    // Seule la différence pèse · 20 000 de salaire, 3 400 de charges.
+    expect(n['66110000']).toBe(20_000);
+    expect(n['66410000'] + n['64150000'] + n['64130000']).toBe(3_400);
+    expect(p.solde422Fc).toBe(16_200);
+  });
+
+  it('écriture d’origine qui porte aussi un bulletin encore valide · rejouée à la règle du jour quand elle s’y reconstitue', () => {
+    const autre = decembre(4, 600_000, { ecritureId: 'e-commune' });
+    const lignes = propositionPaieDuMois('2026-12', 'SYSCOHADA', [decembre(2, 600_000), decembre(4, 600_000)]).lignes;
+    const commune = {
+      ecritureId: 'e-commune',
+      numeroPiece: '9',
+      lignes: lignes.map((l) => L(l.compte, l.sens === 'DEBIT' ? l.montantFc : 0, l.sens === 'CREDIT' ? l.montantFc : 0)),
+    };
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [
+      decembre(2, 600_000, { statut: 'ANNULE', ecritureId: 'e-commune', origine: commune }),
+      autre,
+      reemis,
+    ]);
+    expect(p.refus).toEqual([]);
+    expect(net(p)['66110000']).toBe(20_000);
+    expect(net(p)['64150000']).toBe(700);
+  });
+
+  it('écriture d’origine d’avant T1 qui porte aussi un bulletin encore valide · refus nommé, avec l’issue', () => {
+    const lignes = [...AVANT_T1.lignes, ...AVANT_T1.lignes];
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [
+      decembre(2, 600_000, { statut: 'ANNULE', ecritureId: 'e-avant-t1', origine: { ...AVANT_T1, lignes } }),
+      decembre(4, 600_000, { ecritureId: 'e-avant-t1' }),
+      reemis,
+    ]);
+    expect(p.lignes).toEqual([]);
+    expect(p.refus.map((r) => r.numero)).toEqual([2]);
+    expect(p.refus[0].motifs[0]).toBe(motifPartIllisible({ ...AVANT_T1, lignes }, [4]));
+    expect(p.refus[0].motifs[0]).toContain('annulez aussi ce(s) bulletin(s) et réémettez-les');
+  });
+
+  it('second tour · le réémis annulé à son tour se reprend, l’écriture qui le passait portant la reprise recopiée de l’ancien', () => {
+    // Janvier · e-x passe le réémis n° 3 et reprend l'ancien n° 2 ligne à
+    // ligne. Le n° 3 est annulé à son tour, remplacé par le n° 5.
+    const ex = propositionPaieDuMois('2026-12', 'SYSCOHADA', [ancien, reemis]);
+    expect(ex.refus).toEqual([]);
+    const origineEx = {
+      ecritureId: 'e-x',
+      numeroPiece: '13',
+      lignes: ex.lignes.map((l) => L(l.compte, l.sens === 'DEBIT' ? l.montantFc : 0, l.sens === 'CREDIT' ? l.montantFc : 0)),
+    };
+    const p = propositionPaieDuMois('2026-12', 'SYSCOHADA', [
+      { ...ancien, ecritureNegatifId: 'e-x' },
+      decembre(3, 620_000, { statut: 'ANNULE', ecritureId: 'e-x', origine: origineEx }),
+      decembre(5, 630_000),
+    ]);
+    expect(p.refus).toEqual([]);
+    expect(p.equilibree).toBe(true);
+    expect(net(p)['66110000']).toBe(10_000);
   });
 });

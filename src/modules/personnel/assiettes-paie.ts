@@ -76,13 +76,13 @@ export type NatureElementPaie =
   | 'INDEMNITE_INCAPACITE_OU_ACCOUCHEMENT'
   // A8 · L'INDEMNITÉ DE FIN DE CONTRAT, servie par le seul décompte final
   // (préavis non observé, art. 63 al. 3 ; dommages-intérêts de l'art. 70 ;
-  // somme convenue de l'art. 61 bis). Elle n'est ni dans la liste
-  // d'inclusion (« notamment ») ni dans la liste d'exclusion, FERMÉE, de
-  // l'article 7, point 8, et aucun texte lu ne la range d'un côté ou de
-  // l'autre (la mention 20 du modèle de livre de paie de 2008 ne la nomme
-  // pas). Le corpus est MUET · OmegaX la garde dans l'assiette sociale, et
-  // c'est une LECTURE D'OMEGAX, dite sur la ligne du décompte
-  // (`RESERVE_ASSIETTE_SOCIALE_INDEMNITE`). Ses avantages en logement ou en
+  // somme convenue de l'art. 61 bis). Elle est dans l'assiette sociale PAR LE
+  // TEXTE (décision T7 du 2026-10-07) · gain fixé par un accord ou une
+  // disposition légale, dû en vertu du contrat (art. 7, point 8, liste
+  // d'éléments ouverte, liste d'exclusion FERMÉE), la rémunération du délai
+  // pour le préavis (art. 63, al. 3), et les cotisations sont dues pour toute
+  // période dont l'employeur doit la rémunération (arrêté n° 146/2018,
+  // art. 20) · `FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE`. Ses avantages en
   // transport, que l'art. 7 exclut nommément, sont ventilés sous leur nature.
   // Fiscalement imposable · loi n° 23/053, art. 68, 6° (« les sommes payées
   // par l'employeur [...] par suite de cessation de travail ou de rupture de
@@ -293,6 +293,12 @@ export type VerdictAssiettes = {
   readonly retenuesArticle71Fc: number;
   /** Article 70 · la base d'imposition, nette des retenues de l'article 71. */
   readonly assietteFiscaleNetteFc: number | null;
+  /**
+   * Pourquoi la base NETTE n'est pas chiffrée alors que la brute l'est · la
+   * quote-part ouvrière de la CNSS, à déduire (art. 71), n'est pas chiffrée
+   * (constat C1). `null` quand rien ne l'empêche.
+   */
+  readonly motifAssietteNetteNonChiffree: string | null;
   readonly abstentions: readonly Abstention[];
   readonly reserves: readonly string[];
 };
@@ -317,6 +323,14 @@ export type ParametresAssiettes = {
    * définitif. C'est le texte qui le dit, pas le livre de cours.
    */
   readonly retenuesArticle71Fc?: number;
+  /**
+   * Le motif pour lequel la quote-part ouvrière de la CNSS n'est pas chiffrée
+   * (`VerdictCotisations.quotePartOuvriereNonChiffree`). Présent, la base
+   * nette ne se ferme pas · elle vaut `null`, et l'impôt et le net avec elle
+   * (constat C1 · la simulation servait l'impôt d'une base que l'article 71
+   * n'avait pas encore diminuée).
+   */
+  readonly quotePartOuvriereNonChiffree?: string | null;
 };
 
 const estHorsRemuneration = (nature: NatureElementPaie): boolean =>
@@ -397,7 +411,6 @@ export function assiettes(
     e.remboursementDeDepenseProfessionnelleEffective !== true && e.nature === 'LOGEMENT_OU_SON_INDEMNITE';
   const totalLogementFc = elements.filter(estLigneLogement).reduce((t, e) => t + e.montantFc, 0);
   let tauxLegalRestantFc = parametres.tauxLegalAllocationsFamilialesFc ?? null;
-  let reserveLogementPosee = false;
 
   for (const element of elements) {
     // Article 68, 1 · un remboursement de dépenses professionnelles EFFECTIVES
@@ -520,15 +533,12 @@ export function assiettes(
           ? "La condition est remplie, l'immunité joue tout entière."
           : "La condition n'est PAS remplie, et le point est écrit « pour autant que », non « dans la limite de » : l'immunité ne joue pas du tout, le montant entier est imposable."),
     });
-    if (!conditionRemplie && !reserveLogementPosee) {
-      reserveLogementPosee = true;
-      reserves.push(
-        "LECTURE DE L'ARTICLE 69, 8, a) · le point immunise le logement « POUR AUTANT QUE » l'indemnité ne " +
-          "dépasse 30 % de la rémunération, quand l'article 116 de la même loi écrit « DANS LA LIMITE DE » lorsqu'il " +
-          "veut un plafond. OmegaX impose donc le montant ENTIER. Lu comme un plafond, seul l'excédent de " +
-          `${(totalLogementFc - plafondFc).toFixed(2)} FC le serait. Le point n'est tranché par aucune source lue.`,
-      );
-    }
+    // DÉCISION T3 DU 2026-10-07 · c'est une CONDITION, tranchée par le texte
+    // (« pour autant que » gouverne a, b et c, dont b et c sont des conditions
+    // pures ; la loi n° 23/053 a repris cette formule après la circulaire de
+    // 1988, qui lisait une rédaction antérieure). L'autre lecture, chiffrée
+    // jusque-là en réserve, n'a plus d'objet et ne s'affiche plus (§ 9 ter,
+    // aucun historique à l'écran).
     reserves.push(
       "BASE DES 30 % · l'article 69, 8, a) dit « de la rémunération » sans la définir. OmegaX la prend au sens de " +
         "l'article 7, point 8 du Code du travail, qui en exclut justement le logement, soit " +
@@ -538,8 +548,15 @@ export function assiettes(
 
   const retenuesArticle71Fc = Math.max(0, parametres.retenuesArticle71Fc ?? 0);
   const assietteFiscaleBruteFc = indetermine ? null : brutFiscalFc;
+  const quotePartNonChiffree = parametres.quotePartOuvriereNonChiffree ?? null;
+  const motifAssietteNetteNonChiffree =
+    assietteFiscaleBruteFc !== null && quotePartNonChiffree
+      ? "Base fiscale nette NON CHIFFRÉE · elle est nette des versements « réellement effectués à titre définitif » " +
+        "à une caisse de pension officielle (loi n° 23/053, art. 70 et 71), et la quote-part ouvrière de la CNSS " +
+        `ne l'est pas · ${quotePartNonChiffree} L'impôt et le net ne se chiffrent donc pas non plus.`
+      : null;
   const assietteFiscaleNetteFc =
-    assietteFiscaleBruteFc === null
+    assietteFiscaleBruteFc === null || motifAssietteNetteNonChiffree !== null
       ? null
       : Math.max(0, assietteFiscaleBruteFc - retenuesArticle71Fc);
 
@@ -559,6 +576,7 @@ export function assiettes(
     sortsFiscaux,
     retenuesArticle71Fc,
     assietteFiscaleNetteFc,
+    motifAssietteNetteNonChiffree,
     abstentions,
     reserves: [...new Set(reserves)],
   };

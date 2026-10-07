@@ -68,6 +68,7 @@ import {
   type JournalEcrit,
 } from './banque-et-cloture-informatique';
 import { jourDeKinshasa } from '../../common/echeance';
+import { anomalieInppOnemSousLe433, estCompteAncienInppOnem, RACINES_ANCIENNES_INPP_ONEM } from './inpp-onem-sous-le-433';
 import {
   CONTROLE_CREANCE_ADHERENT_SOUS_ENCAISSEMENT,
   MethodeCotisationsDeclaree,
@@ -4926,6 +4927,50 @@ export class ControlesService {
           ],
         });
       }
+    }
+
+    // --- 36. INPP et ONEM sur un compte 433 semé avant la décision T1 -------
+    //
+    // La règle, ses textes et ses issues vivent dans `inpp-onem-sous-le-433.ts`
+    // · ici, la lecture. Le filtre par préfixe est rejoué sur ce que la base
+    // rend, sans quoi un compte voisin passerait pour un 4334.
+    const anciensInppOnem = (
+      await this.prisma.compte.findMany({
+        where: { tenantId, OR: RACINES_ANCIENNES_INPP_ONEM.map((r) => ({ numero: { startsWith: r } })) },
+        select: { id: true, numero: true, intitule: true, estActif: true, _count: { select: { lignesEcriture: true } } },
+      })
+    ).filter((c) => estCompteAncienInppOnem(c.numero));
+    if (anciensInppOnem.length > 0) {
+      const ids = anciensInppOnem.map((c) => c.id);
+      const [saisies, reports] = await Promise.all(
+        [false, true].map((genere) =>
+          this.prisma.ligneEcriture.groupBy({
+            by: ['compteId'],
+            where: { compteId: { in: ids }, ecriture: { tenantId, exerciceId, estGenereeParCloture: genere } },
+            _sum: { debit: true, credit: true },
+            _count: { _all: true },
+          }),
+        ),
+      );
+      const lu = (liste: typeof saisies, id: string) => liste.find((g) => g.compteId === id);
+      const anomalie = anomalieInppOnemSousLe433(
+        anciensInppOnem.map((c) => {
+          const s = lu(saisies, c.id);
+          const r = lu(reports, c.id);
+          const solde = [s, r].reduce((n, g) => n + Number(g?._sum.credit ?? 0) - Number(g?._sum.debit ?? 0), 0);
+          return {
+            numero: c.numero,
+            intitule: c.intitule,
+            estActif: c.estActif,
+            lignesTotal: c._count.lignesEcriture,
+            lignesSaisiesExercice: s?._count._all ?? 0,
+            lignesReportExercice: r?._count._all ?? 0,
+            soldeCrediteurExercice: solde,
+          };
+        }),
+        ex.statut === 'CLOTURE',
+      );
+      if (anomalie) anomalies.push(anomalie);
     }
 
     const ordre: Record<Gravite, number> = { BLOQUANT: 0, AVERTISSEMENT: 1, INFORMATION: 2 };

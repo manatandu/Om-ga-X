@@ -6,7 +6,9 @@ import {
   DIVISEUR_ANNUEL,
   JOURS_OUVRABLES_MAXIMUM_EN_TROIS_MOIS,
   JOURS_PAR_MOIS_DE_MOYENNE,
+  LIVRE_DE_PAIE_CONGE_PAR_JOUR,
   MOIS_DE_MOYENNE,
+  REGLE_MOYENNE_AU_JOUR,
   PREAVIS_PAR_ANNEE_JOURS,
   PREAVIS_PLANCHER_JOURS,
   congeLegal,
@@ -18,6 +20,7 @@ import {
   type ParametresDecompte,
 } from './decompte-final';
 import { MULTIPLICATEURS_ARTICLE_7 } from './bareme-smig';
+import { REGLE_MOIS_ENTAME } from './remuneration-du-delai';
 import { DECOMPTE_A_LA_RUPTURE, SANCTION_ARTICLE_103 } from './livre-de-paie';
 
 const CDI = 'DUREE_INDETERMINEE' as const;
@@ -115,17 +118,41 @@ describe("D2-A3, C6 · le type de contrat et l'essai commandent la durée", () =
     expect(v.motifAucunPreavis).toContain('nulle de plein droit');
   });
 
-  it("chiffre les dommages-intérêts de l'article 70 sur un CDD rompu par l'employeur", () => {
+  it("chiffre les dommages-intérêts de l'article 70 sur la période restant à courir, jours fériés compris (relecture M2)", () => {
+    // Rupture le vendredi 19 juin 2026, terme le vendredi 21 août · du 20 juin
+    // au 21 août, 54 jours du lundi au samedi, dont le 30 juin et le 1er août,
+    // fériés (art. 93) · 54 × 20 000 + 100 000 d'avantages.
     const v = decompteFinal({
       ...COMPLET,
       typeContrat: CDD,
-      joursRestantsJusquAuTerme: 60,
+      dateRuptureContrat: '2026-06-19',
+      dateTermeContrat: '2026-08-21',
       avantagesJusquAuTermeFc: 100_000,
     });
     const di = v.rubriques.find((r) => r.cle === 'dommages-interets-art-70')!;
-    expect(di.montantFc).toBeCloseTo(60 * 20_000 + 100_000, 6);
+    expect(di.montantFc).toBe(54 * 20_000 + 100_000);
+    expect(di.fondement).toContain('fériés compris');
+    expect(di.reserve).toBeNull();
     expect(v.rubriques.find((r) => r.cle === 'preavis')!.montantFc).toBe(0);
-    expect(decompteFinal({ ...COMPLET, typeContrat: CDD }).rubriques.find((r) => r.cle === 'dommages-interets-art-70')!.montantFc).toBeNull();
+    // Au mois · deux mois entiers du 20 juin au 19 août, puis les 20 et 21 août à 1/26.
+    const auMois = decompteFinal({
+      ...COMPLET,
+      typeContrat: CDD,
+      remunerationMensuelleFc: 1_040_000,
+      dateRuptureContrat: '2026-06-19',
+      dateTermeContrat: '2026-08-21',
+      avantagesJusquAuTermeFc: 100_000,
+    }).rubriques.find((r) => r.cle === 'dommages-interets-art-70')!;
+    expect(auMois.montantFc).toBe(2 * 1_040_000 + (2 * 1_040_000) / 26 + 100_000);
+    expect(auMois.fondement).toContain(REGLE_MOIS_ENTAME);
+    // Sans les dates, la période ne se place pas · `null`, jamais « jours × taux ».
+    const sansDates = decompteFinal({ ...COMPLET, typeContrat: CDD, avantagesJusquAuTermeFc: 100_000 });
+    const nul = sansDates.rubriques.find((r) => r.cle === 'dommages-interets-art-70')!;
+    expect(nul.montantFc).toBeNull();
+    expect(nul.reserve).toContain("n'est pas déclarée");
+    // Rupture au terme ou après · aucune période ne restait à courir.
+    const apres = decompteFinal({ ...COMPLET, typeContrat: CDD, dateRuptureContrat: '2026-08-21', dateTermeContrat: '2026-08-21', avantagesJusquAuTermeFc: 0 });
+    expect(apres.rubriques.find((r) => r.cle === 'dommages-interets-art-70')!.reserve).toContain("n'est pas antérieure au terme");
   });
 
   it('met les dommages-intérêts d’un CDD rompu par le travailleur à SA charge, hors du total', () => {
@@ -166,7 +193,7 @@ describe("D2-B1 · le plancher de trois mois du délégué (art. 258)", () => {
     const v = preavisLegal({ ...delegue, anneesAnciennete: 2 });
     expect(v.joursOuvrables).toBeNull();
     expect(v.motifIndetermine).toContain('TROIS MOIS');
-    const d = decompteFinal({ ...COMPLET, delegueSyndical: true, anneesAnciennete: 2 });
+    const d = decompteFinal({ ...COMPLET, delegueSyndical: true, anneesAnciennete: 2, dateNotification: null });
     expect(d.rubriques.find((r) => r.cle === 'preavis')!.montantFc).toBeNull();
     expect(d.totalBrutFc).toBeNull();
   });
@@ -225,10 +252,19 @@ describe("Le congé de l'article 141, où le séminaire CPCC se trompe trois foi
     expect(congeLegal({ moisNonCouvertsParUnConge: 24, moinsDeDixHuitAns: false, anneesAnciennete: 6 }).joursDAnciennete).toBe(2);
   });
 
-  it('D2-C3 · proratise la tranche sur une année incomplète, et le dit', () => {
+  it('T6 · donne la tranche ENTIÈRE à la période incomplète, sans prorata, et le dit', () => {
+    // Décision T6 du 2026-10-07 · l'art. 141 rapporte l'augmentation à
+    // l'ancienneté, non au mois, et l'art. 144 remplace « le congé » quel
+    // que soit le moment. Le prorata (2 × 4 / 12) ajoutait une règle absente.
     const v = congeLegal({ moisNonCouvertsParUnConge: 4, moinsDeDixHuitAns: false, anneesAnciennete: 11 });
-    expect(v.joursDAnciennete).toBeCloseTo((2 * 4) / 12, 9);
-    expect(v.reserves.join(' ')).toContain('au prorata');
+    expect(v.joursDAnciennete).toBe(2);
+    expect(v.joursOuvrables).toBe(6);
+    expect(v.reserves.join(' ')).toContain('la reçoit ENTIÈRE');
+    // P13 · dix mois à sept ans · 10 + 1 = 11 jours, 462 000 à 42 000 par jour.
+    const p13 = congeLegal({ moisNonCouvertsParUnConge: 10, moinsDeDixHuitAns: false, anneesAnciennete: 7 });
+    expect(p13.joursOuvrables).toBe(11);
+    // Aucun mois entier · aucun jour, la question n'étant tranchée par aucun texte.
+    expect(congeLegal({ moisNonCouvertsParUnConge: 0, moinsDeDixHuitAns: false, anneesAnciennete: 11 }).joursOuvrables).toBe(0);
   });
 
   it("compte les mois NON COUVERTS par un congé pris ou payé, qui sont SAISIS", () => {
@@ -259,6 +295,10 @@ const BASE: ParametresDecompte = {
   motif: 'LICENCIEMENT',
   typeContrat: CDI,
   remunerationJournaliereFc: 20_000,
+  // DÉCISION T9 · l'indemnité est la rémunération du délai, placé par ses
+  // dates. Du 19 mai au 27 juin 2026 · aucun férié dans les 35 jours, le
+  // montant reste celui des jours ouvrables.
+  dateNotification: '2026-05-18',
 };
 
 /** Tout ce qu'un licenciement non observé demande · 35 jours, 12 jours de congé. */
@@ -340,6 +380,56 @@ describe("D2-B3, C5 · la moyenne des douze mois entre dans la rémunération de
     const conge = decompteFinal(COMPLET).rubriques.find((r) => r.cle === 'conge')!;
     expect(conge.montantFc).toBeCloseTo(12 * (20_000 + 2_000), 6);
     expect(conge.fondement).toContain('ramenée au jour');
+  });
+
+  describe("jumeau de T9 · la conversion à 1/26 est une RÈGLE citée (décision par la loi du 2026-10-07, troisième lot, point 3)", () => {
+    // P13 · sept ans, 40 000 par jour, 52 000 de moyenne mensuelle aux art. 66
+    // et 142, notifié le 4 mai 2026.
+    const P13: ParametresDecompte = {
+      anneesAnciennete: 7,
+      moisNonCouvertsParUnConge: 10,
+      moinsDeDixHuitAns: false,
+      initiative: 'EMPLOYEUR',
+      motif: 'LICENCIEMENT',
+      typeContrat: CDI,
+      executionPreavis: 'DISPENSE_PAR_EMPLOYEUR',
+      dateNotification: '2026-05-04',
+      remunerationJournaliereFc: 40_000,
+      moyenneMensuelleArticle66Fc: 52_000,
+      moyenneMensuelleArticle142Fc: 52_000,
+      avantagesPendantPreavisFc: 0,
+      arrieresFc: 120_000,
+      gratificationFc: 0,
+      enfantsBeneficiairesAllocations: 0,
+    };
+
+    it('vingt-six jours de moyenne ramenée au jour rendent la moyenne du mois', () => {
+      expect(JOURS_PAR_MOIS_DE_MOYENNE).toBe(MULTIPLICATEURS_ARTICLE_7.MOIS);
+      expect(26 * (52_000 / JOURS_PAR_MOIS_DE_MOYENNE)).toBe(52_000);
+    });
+
+    it("congé · 11 jours × (40 000 + 52 000 / 26) = 462 000, la règle au fondement, la réserve ne portant que sur le logement", () => {
+      const conge = decompteFinal(P13).rubriques.find((r) => r.cle === 'conge')!;
+      expect(conge.montantFc).toBe(462_000);
+      expect(conge.fondement).toContain(REGLE_MOYENNE_AU_JOUR);
+      expect(conge.fondement).toContain(LIVRE_DE_PAIE_CONGE_PAR_JOUR);
+      expect(conge.reserve).toMatch(/^ARTICLE 142 · l'allocation se calcule sur « la rémunération »/);
+    });
+
+    it("article 66 · le temps restant à courir, 31,5 derniers jours ouvrables et le 30 juin férié, 32,5 × (40 000 + 52 000 / 26) = 1 365 000, cite la même règle", () => {
+      const v = decompteFinal({ ...P13, executionPreavis: 'DEPART_A_MI_PREAVIS', joursPreavisNonObserves: 31.5, avantagesEnNatureRestantsFc: 0 });
+      const r = v.rubriques.find((x) => x.cle === 'remuneration-preavis-restant')!;
+      expect(r.montantFc).toBe(1_365_000);
+      expect(r.fondement).toContain(REGLE_MOYENNE_AU_JOUR);
+    });
+
+    it('la règle cite ses textes et dit l’analogie', () => {
+      expect(REGLE_MOYENNE_AU_JOUR).toContain('ramenée au jour à 1/26');
+      expect(REGLE_MOYENNE_AU_JOUR).toContain('articles 66, al. 3 et 142, al. 2');
+      expect(REGLE_MOYENNE_AU_JOUR).toContain('décret n° 25/22, art. 7');
+      expect(REGLE_MOYENNE_AU_JOUR).toContain('par analogie de la loi la plus proche');
+      expect(LIVRE_DE_PAIE_CONGE_PAR_JOUR).toContain('mentions 14 à 16');
+    });
   });
 
   it("prend une moyenne par article · gratifications à l'art. 66, prestations supplémentaires à l'art. 142", () => {

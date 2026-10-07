@@ -122,7 +122,8 @@ describe("« Pour autant que » n'est pas « dans la limite de »", () => {
     ]);
     expect(verdict.sortsFiscaux.find((x) => x.libelle === 'Loyer')?.imposableFc).toBe(200_000);
     expect(verdict.sortsFiscaux.find((x) => x.libelle === 'Charges')?.imposableFc).toBe(200_000);
-    expect(verdict.reserves.filter((r) => r.startsWith("LECTURE DE L'ARTICLE 69, 8, a)"))).toHaveLength(1);
+    // DÉCISION T3 · la condition est tranchée · l'autre lecture n'est plus servie, chiffrée ou non.
+    expect(verdict.reserves.some((r) => r.includes("seul l'excédent"))).toBe(false);
     expect(verdict.reserves.filter((r) => r.startsWith('BASE DES 30 %'))).toHaveLength(1);
   });
 
@@ -139,15 +140,18 @@ describe("« Pour autant que » n'est pas « dans la limite de »", () => {
     expect(verdict.sortsFiscaux.find((x) => x.libelle === 'Alloc. 2')?.imposableFc).toBe(40_000);
   });
 
-  it("nomme l'autre lecture et chiffre ce qu'elle changerait", () => {
+  it("T3 · la condition est tranchée par le texte · l'autre lecture ne se chiffre plus en réserve", () => {
+    // DÉCISION T3 DU 2026-10-07 · « pour autant que » est une condition, et
+    // la réserve qui chiffrait l'excédent (100 000) au nom d'un plafond n'a
+    // plus d'objet. Le motif de la ligne dit la règle, la base des 30 % reste.
     const verdict = assiettes([
       salaire(1_000_000),
       { nature: 'LOGEMENT_OU_SON_INDEMNITE', libelle: 'Logement', montantFc: 400_000 },
     ]);
     const reserves = verdict.reserves.join(' ');
-    expect(reserves).toContain('article 116');
-    expect(reserves).toContain('100000.00 FC');
+    expect(reserves).not.toContain('100000.00 FC');
     expect(reserves).toContain('BASE DES 30 %');
+    expect(verdict.sortsFiscaux.find((x) => x.libelle === 'Logement')?.motif).toContain('« pour autant que », non « dans la limite de »');
   });
 
   it("plafonne au contraire les allocations familiales, qui sont écrites « dans la mesure où »", () => {

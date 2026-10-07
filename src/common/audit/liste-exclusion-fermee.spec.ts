@@ -226,6 +226,10 @@ describe('la liste d’exclusion est fermée sur User', () => {
       // c'est le lien que le journal doit montrer quand il se pose ou se défait.
       'ecritureId',
       'ecriture',
+      // C2 · quelle écriture reprend en négatif le bulletin annulé. Aucun
+      // montant · le lien que le journal doit montrer quand il se pose.
+      'ecritureNegatifId',
+      'ecritureNegatif',
       // Les retenues d'avance portées par le bulletin · la relation seule.
       'retenuesAvance',
     ],

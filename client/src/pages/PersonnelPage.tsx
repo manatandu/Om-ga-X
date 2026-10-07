@@ -187,9 +187,12 @@ interface Simulation {
     devise: 'USD';
     cours: number;
     dateCours: string;
+    /** Décision T8 · la date du cours vient de la mise à disposition déclarée, ou du jour du calcul. */
+    origineDateCours?: 'MISE_A_DISPOSITION' | 'JOUR_DU_CALCUL';
     sourceCours: string | null;
     elements: { libelle: string; montantUsd: number; montantFc: number }[];
     avertissement: string;
+    avertissementDate?: string | null;
   } | null;
   baremeApplicable: boolean;
   motifBaremeInapplicable: string | null;
@@ -211,6 +214,8 @@ interface Simulation {
     }[];
     retenuesArticle71Fc: number;
     assietteFiscaleNetteFc: number | null;
+    /** La quote-part ouvrière de la CNSS non chiffrée (constat C1). */
+    motifAssietteNetteNonChiffree?: string | null;
     abstentions: { motif: string; libelle: string; montantFc: number; explication: string }[];
     reserves: string[];
   };
@@ -238,7 +243,8 @@ interface Simulation {
   reserveSaisies?: string | null;
   net: {
     totalVerseFc: number;
-    quotePartOuvriereFc: number;
+    /** `null` sous abstention de la CNSS · non chiffrée, jamais zéro (C1). */
+    quotePartOuvriereFc: number | null;
     irppFc: number | null;
     netAPayerFc: number | null;
     reserves: string[];
@@ -247,7 +253,7 @@ interface Simulation {
   passation: {
     referentiel: string;
     lignes: {
-      bloc: 'BRUT' | 'RETENUES' | 'PATRONALES' | 'AVANTAGES_EN_NATURE';
+      bloc: 'BRUT' | 'RETENUES' | 'PATRONALES' | 'IMPOTS_ET_TAXES_SUR_SALAIRES' | 'AVANTAGES_EN_NATURE';
       compte: string;
       intitule: string;
       sens: 'DEBIT' | 'CREDIT';
@@ -645,10 +651,14 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
     nouvelEmploiJustifie: '' as '' | 'OUI' | 'NON',
     delaiDepartNouvelEmploiJours: '',
     remunerationJournaliereFc: '',
+    // Décision T9 · la rémunération stipulée au mois, quand le contrat la porte ainsi.
+    remunerationMensuelleFc: '',
     moyenneMensuelleArticle66Fc: '',
     moyenneMensuelleArticle142Fc: '',
     avantagesPendantPreavisFc: '',
-    joursRestantsJusquAuTerme: '',
+    // Relecture M2 · les dates placent la période restant à courir et ses fériés (art. 70, art. 93).
+    dateRuptureContrat: '',
+    dateTermeContrat: '',
     avantagesJusquAuTermeFc: '',
     montantConvenuCommunAccordFc: '',
     arrieresFc: '',
@@ -700,6 +710,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // DÉCRET n° 18/041, ART. 8 · le plancher de la CNSS se mesure au SMIG des
   // jours payés. Vide = mois entier (26 jours).
   const [joursPayes, setJoursPayes] = useState('');
+  // DÉCISIONS T8 ET T5 · le jour où la rémunération est payée · il fixe le
+  // cours d'un salaire en dollars et le barème INPP de septembre 2025. Vide =
+  // champ ABSENT, le serveur prend le jour du calcul pour le cours et le dit.
+  const [dateMiseADisposition, setDateMiseADisposition] = useState('');
   // Mention 28 du modèle de 2008 · les jours qui ouvrent droit aux allocations.
   const [joursAllocations, setJoursAllocations] = useState('');
   // La majoration NOTIFIÉE par la Caisse · 50 % (arrêté n° 140/2018, art. 22)
@@ -830,6 +844,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       ...(natureInpp === '' ? {} : { natureEmployeurInpp: natureInpp }),
       effectif: nombre(effectifInpp),
       joursPayes: nombre(joursPayes),
+      ...(dateMiseADisposition ? { dateMiseADisposition } : {}),
       joursAllocationsFamiliales: nombre(joursAllocations),
       ...(majorationRp ? { majorationRisquesProfessionnelsPourCent: Number(majorationRp) } : {}),
       ...(regimeSalarial === '' ? {} : { regimeSalarial }),
@@ -975,10 +990,12 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       nouvelEmploiJustifie: dec.nouvelEmploiJustifie === '' ? undefined : dec.nouvelEmploiJustifie === 'OUI',
       delaiDepartNouvelEmploiJours: nombre(dec.delaiDepartNouvelEmploiJours),
       remunerationJournaliereFc: nombre(dec.remunerationJournaliereFc),
+      remunerationMensuelleFc: nombre(dec.remunerationMensuelleFc),
       moyenneMensuelleArticle66Fc: nombre(dec.moyenneMensuelleArticle66Fc),
       moyenneMensuelleArticle142Fc: nombre(dec.moyenneMensuelleArticle142Fc),
       avantagesPendantPreavisFc: nombre(dec.avantagesPendantPreavisFc),
-      joursRestantsJusquAuTerme: nombre(dec.joursRestantsJusquAuTerme),
+      dateRuptureContrat: dec.dateRuptureContrat || undefined,
+      dateTermeContrat: dec.dateTermeContrat || undefined,
       avantagesJusquAuTermeFc: nombre(dec.avantagesJusquAuTermeFc),
       montantConvenuCommunAccordFc: nombre(dec.montantConvenuCommunAccordFc),
       arrieresFc: nombre(dec.arrieresFc),
@@ -2515,10 +2532,26 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             {deviseStipulation === 'USD' && (
               <Aide
                 titre="Rémunération en dollars"
-                texte="Converti au cours du dollar du jour, à saisir chaque jour dans Devises."
-                source="Code du travail, art. 89"
+                texte="Converti au cours du dollar du jour de mise à disposition de la rémunération, à défaut du jour du calcul, coté dans Devises. Chaque élément converti s’arrondit au centime supérieur."
+                source="Code du travail, art. 89 ; loi n° 23/053, art. 115"
               />
             )}
+          </label>
+          <label className="flex items-center gap-2 text-[11.5px] mb-1.5">
+            <span className={`${etiquette} flex items-center gap-1`}>
+              Mise à disposition le
+              <Aide
+                titre="Date de mise à disposition"
+                texte="Le jour où la rémunération est payée. Les prélèvements s’y attachent · elle fixe le cours d’un salaire en dollars et, pour septembre 2025, le taux INPP (nouveau barème pour une paie versée à partir du 24 septembre). Vide, le cours est celui du jour du calcul, et c’est dit."
+                source="Loi n° 23/053, art. 115 ; arrêté du 19 février 2025, art. 3"
+              />
+            </span>
+            <input
+              type="date"
+              value={dateMiseADisposition}
+              onChange={(e) => setDateMiseADisposition(e.target.value)}
+              className="border border-border bg-transparent px-1.5 py-0.5"
+            />
           </label>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse">
@@ -2771,6 +2804,9 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     </div>
                   ))}
                   <div className="mt-1">{simulation.conversion.avertissement}</div>
+                  {simulation.conversion.avertissementDate && (
+                    <div className="mt-1">{simulation.conversion.avertissementDate}</div>
+                  )}
                 </div>
               )}
               {!simulation.baremeApplicable && simulation.motifBaremeInapplicable && (
@@ -2823,6 +2859,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     , diminué des retenues de l’article 71 (
                     {fc(simulation.assiettes.retenuesArticle71Fc)} FC).
                   </div>
+                  {simulation.assiettes.motifAssietteNetteNonChiffree && (
+                    <div className="text-[11px] text-warning mt-1">
+                      {simulation.assiettes.motifAssietteNetteNonChiffree}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2980,7 +3021,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                 </div>
                 <div className="text-[11px] text-text-dim mt-1">
                   Total versé {fc(simulation.net.totalVerseFc)} FC, moins la quote-part ouvrière
-                  de {fc(simulation.net.quotePartOuvriereFc)} FC et l’impôt de{' '}
+                  {simulation.net.quotePartOuvriereFc === null
+                    ? ' non chiffrée'
+                    : ` de ${fc(simulation.net.quotePartOuvriereFc)} FC`}{' '}
+                  et l’impôt de{' '}
                   {simulation.net.irppFc === null
                     ? 'montant indéterminé'
                     : `${fc(simulation.net.irppFc)} FC`}
@@ -3359,6 +3403,21 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   className="border border-border bg-transparent px-2 py-1 w-[140px] text-right"
                 />
               </label>
+              <label className="flex flex-col gap-0.5">
+                <span className={`${etiquette} flex items-center gap-1`}>
+                  Salaire mensuel (FC)
+                  <Aide
+                    titre="Salaire mensuel"
+                    texte="À renseigner quand le contrat stipule la rémunération au mois. L’indemnité de préavis paie alors les mois entiers du délai à ce montant ; le mois entamé se paie à 1/26 du salaire mensuel par jour payable, du lundi au samedi, jours fériés compris, le dimanche exclu (Code du travail, art. 63, al. 3, art. 93, art. 7, point 9, art. 121, al. 2 ; arrêté du 8 août 2008 sur le livre de paie, mentions 5 et 6), la conversion de vingt-six jours étant celle du décret n° 25/22, art. 7, par analogie. Sans lui, le délai se paie au taux journalier, du lundi au samedi, jours fériés compris. Dans les deux cas, la date de notification place le délai et ses jours fériés."
+                    source="Code du travail, art. 63, al. 3 et art. 93 ; décret n° 25/22, art. 7"
+                  />
+                </span>
+                <input
+                  value={dec.remunerationMensuelleFc}
+                  onChange={(e) => setDec({ ...dec, remunerationMensuelleFc: e.target.value })}
+                  className="border border-border bg-transparent px-2 py-1 w-[140px] text-right"
+                />
+              </label>
               <label className="flex items-center gap-1 pb-1">
                 <input
                   type="checkbox"
@@ -3618,11 +3677,28 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
               {dec.typeContrat === 'DUREE_DETERMINEE' && (
                 <>
                   <label className="flex flex-col gap-0.5">
-                    <span className={etiquette} title="Code du travail, art. 70">Jours restant jusqu’au terme</span>
+                    <span className={`${etiquette} flex items-center gap-1`}>
+                      Date de la rupture
+                      <Aide
+                        titre="Période restant à courir"
+                        texte="Dernier jour où le contrat a été exécuté. La période restant à courir part du lendemain et va jusqu’au terme compris ; elle se paie jours fériés compris, du lundi au samedi, et au mois par mois entiers et 1/26 par jour payable du mois entamé. Sans les deux dates, les dommages-intérêts ne se chiffrent pas."
+                        source="Code du travail, art. 69, 70, al. 2, et 93"
+                      />
+                    </span>
                     <input
-                      value={dec.joursRestantsJusquAuTerme}
-                      onChange={(e) => setDec({ ...dec, joursRestantsJusquAuTerme: e.target.value })}
-                      className="border border-border bg-transparent px-2 py-1 w-[130px] text-right"
+                      type="date"
+                      value={dec.dateRuptureContrat}
+                      onChange={(e) => setDec({ ...dec, dateRuptureContrat: e.target.value })}
+                      className="border border-border bg-transparent px-2 py-1 w-[150px]"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className={etiquette} title="Code du travail, art. 69">Terme du contrat</span>
+                    <input
+                      type="date"
+                      value={dec.dateTermeContrat}
+                      onChange={(e) => setDec({ ...dec, dateTermeContrat: e.target.value })}
+                      className="border border-border bg-transparent px-2 py-1 w-[150px]"
                     />
                   </label>
                   <label className="flex flex-col gap-0.5">
@@ -3658,7 +3734,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   Moyenne 12 mois, préavis (FC/mois)
                   <Aide
                     titre="Moyenne des éléments variables, préavis"
-                    texte="Moyenne mensuelle des commissions, primes, gratifications et participations payées sur les douze mois précédents. Elle entre dans la rémunération de chaque jour de préavis, ramenée au jour par vingt-six (décret n° 25/22, art. 7)."
+                    texte="Moyenne mensuelle des commissions, primes, gratifications et participations payées sur les douze mois précédents. Elle entre dans la rémunération de chaque jour de préavis, ramenée au jour à 1/26 · le Code du travail ne fixe pas cette conversion, et la seule conversion légale entre valeur journalière et valeur mensuelle est celle du décret n° 25/22, art. 7, appliquée par analogie."
                     source="Code du travail, art. 66, al. 3"
                   />
                 </span>
@@ -3673,7 +3749,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   Moyenne 12 mois, congé (FC/mois)
                   <Aide
                     titre="Moyenne des éléments variables, congé"
-                    texte="Moyenne mensuelle des commissions, primes, prestations supplémentaires et participation au bénéfice des douze mois précédents. Elle entre dans l’allocation de chaque jour de congé, ramenée au jour par vingt-six (décret n° 25/22, art. 7)."
+                    texte="Moyenne mensuelle des commissions, primes, prestations supplémentaires et participation au bénéfice des douze mois précédents. Elle entre dans l’allocation de chaque jour de congé, ramenée au jour à 1/26 · le Code du travail ne fixe pas cette conversion, le livre de paie porte un taux journalier de l’allocation de congé (arrêté du 8 août 2008, mentions 14 à 16), et la seule conversion légale entre valeur journalière et valeur mensuelle est celle du décret n° 25/22, art. 7, appliquée par analogie."
                     source="Code du travail, art. 142, al. 2"
                   />
                 </span>

@@ -10,6 +10,8 @@ const BASE: ParametresDecompte = {
   motif: 'LICENCIEMENT',
   typeContrat: 'DUREE_INDETERMINEE',
   executionPreavis: 'DISPENSE_PAR_EMPLOYEUR',
+  // Délai du 19 mai au 27 juin 2026, sans férié (décision T9).
+  dateNotification: '2026-05-18',
   remunerationJournaliereFc: 10_000,
   moyenneMensuelleArticle66Fc: 0,
   moyenneMensuelleArticle142Fc: 0,

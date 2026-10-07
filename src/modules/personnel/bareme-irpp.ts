@@ -175,6 +175,20 @@ export function impotDuBareme(assietteArrondieFc: number): {
   return { impotFc, parTranche };
 }
 
+/**
+ * LE FONDEMENT DE LA RÈGLE DE L'IMPÔT PLAFONNÉ (décision par la loi du
+ * 2026-10-07, troisième lot, point 2) · l'impôt que le barème impute aux trois
+ * premières tranches, et son taux effectif. Tirés de `TRANCHES_IRPP`, jamais
+ * écrits à la main · 58 320 + 2 948 400 + 6 480 000 = 9 486 720 FC, soit
+ * 21,96 % de 43 200 000 FC. Tant que ce taux reste sous le plafond de l'art.
+ * 118, al. 2, le plafond ne peut toucher que la part au-delà de la troisième
+ * tranche ; un barème révisé qui le ferait passer au-dessus ferait tomber le
+ * test qui le tient, et la règle serait à relire.
+ */
+export const IMPOT_DES_TROIS_PREMIERES_TRANCHES_FC = impotDuBareme(BORNE_TROISIEME_TRANCHE).impotFc;
+export const TAUX_EFFECTIF_DES_TROIS_PREMIERES_TRANCHES_POUR_CENT =
+  (IMPOT_DES_TROIS_PREMIERES_TRANCHES_FC / BORNE_TROISIEME_TRANCHE) * 100;
+
 export type VerdictIrpp = {
   /** Le revenu net global tel que l'article 118 le veut · arrondi au millier inférieur. */
   readonly assietteArrondieFc: number;
@@ -214,12 +228,33 @@ export type VerdictIrpp = {
  * sur l'impôt qui se rapporte à la partie du revenu imposable qui excède la
  * troisième tranche. » Tant que le plafond ne mord pas, « l'impôt qui se
  * rapporte » aux 43 200 000 premiers francs se lit directement au barème.
- * QUAND LE PLAFOND MORD, le texte ne dit pas comment répartir l'impôt plafonné
- * entre les deux parts. OmegaX ne fabrique aucune clé de répartition : il
- * retient le PLUS PETIT des deux montants que le texte nomme · l'impôt du
- * barème sur la part basse, et l'impôt total réellement dû. Cette lecture est
- * une convention de l'éditeur, elle est portée en réserve sur le verdict, et
- * elle ne peut jamais rendre une base supérieure à l'un des deux.
+ *
+ * QUAND LE PLAFOND MORD, LA RÉDUCTION QU'IL OPÈRE SE RAPPORTE À LA SEULE PART
+ * DU REVENU QUI EXCÈDE LA TROISIÈME TRANCHE (décision par la loi du
+ * 2026-10-07, troisième lot, point 2,
+ * `docs/decisions-par-la-loi-2026-10-07-ter.md`). C'est une lecture de la
+ * STRUCTURE du texte · l'art. 123, al. 2 rattache l'impôt aux parts du revenu,
+ * et l'impôt que le barème impute aux trois premières tranches plafonne à
+ * 21,96 % (9 486 720 FC sur 43 200 000 FC,
+ * `TAUX_EFFECTIF_DES_TROIS_PREMIERES_TRANCHES_POUR_CENT`), sous les 30 % de
+ * l'art. 118, al. 2 · le plafond ne le touche jamais, il ne mord qu'à cause de
+ * la quatrième tranche. L'impôt qui se rapporte aux trois premières tranches
+ * reste donc celui du barème, et la quotité de l'art. 123, al. 1er s'applique
+ * sur lui. Le `Math.min` avec l'impôt de l'art. 118 ne lie jamais (l'impôt
+ * plafonné, 30 % d'au moins 77 932 800 FC, dépasse toujours 9 486 720 FC) ;
+ * il garde seulement la base sous ce qui est dû.
+ *
+ * DEUX LECTURES ÉCARTÉES par la même décision, écrites ici pour qu'on ne les
+ * réintroduise pas, et servies ni à l'écran ni en réserve ·
+ *  (a) le PRORATA · l'impôt plafonné réparti entre les deux parts au prorata
+ *      de l'impôt du barème (P03, 91 200 000 FC l'an et quatre personnes ·
+ *      base 9 047 972,69 FC, retenue mensuelle 2 219 700 FC) ;
+ *  (b) la BORNE BASSE · l'impôt plafonné moins l'impôt du barème sur la part
+ *      au-delà de la troisième tranche (P03 · base 8 160 000 FC, retenue
+ *      2 225 600 FC).
+ * Motif · toutes deux attribuent aux trois premières tranches une part de la
+ * réduction du plafond, que le plafond n'a jamais concernées. La règle rend
+ * 2 216 800 FC par mois au cas P03.
  */
 export function impotAnnuel(
   revenuNetGlobalFc: number,
@@ -269,15 +304,21 @@ export function impotAnnuel(
         `La quotité ne joue que sur ${baseDeLaQuotiteFc.toFixed(2)} FC.`,
     );
   }
+  const reductionFc = (baseDeLaQuotiteFc * quotitePourCent) / 100;
   if (plafondApplique && quotitePourCent > 0) {
+    // DÉCISION PAR LA LOI DU 2026-10-07 (troisième lot, point 2) · la règle
+    // est dite avec son fondement ; aucune lecture écartée n'est servie.
     reserves.push(
-      "LECTURE DE L'ÉDITEUR · le plafond de l'article 118 ayant joué, le texte ne dit pas comment " +
-        "répartir l'impôt plafonné entre la part basse et la part haute du revenu. OmegaX retient le " +
-        "plus petit des deux montants que le texte nomme, sans fabriquer de clé de répartition.",
+      "ARTICLE 123 SUR UN IMPÔT PLAFONNÉ · la réduction opérée par le plafond de l'article 118, alinéa 2 se rapporte " +
+        "à la seule part du revenu imposable qui excède la troisième tranche · l'impôt du barème sur les trois premières " +
+        `tranches plafonne à ${TAUX_EFFECTIF_DES_TROIS_PREMIERES_TRANCHES_POUR_CENT.toFixed(2).replace('.', ',')} % ` +
+        `(${IMPOT_DES_TROIS_PREMIERES_TRANCHES_FC.toFixed(2)} FC sur ${BORNE_TROISIEME_TRANCHE.toFixed(2)} FC), ` +
+        `sous les ${PLAFOND_IMPOT_POUR_CENT} %, et le plafond ne mord qu'à cause de la quatrième. L'impôt qui se rapporte ` +
+        `aux trois premières tranches reste celui du barème, ${baseDeLaQuotiteFc.toFixed(2)} FC, et la quotité de ` +
+        `l'article 123, alinéas 1er et 2, s'applique sur lui · réduction annuelle de ${reductionFc.toFixed(2)} FC.`,
     );
   }
 
-  const reductionFc = (baseDeLaQuotiteFc * quotitePourCent) / 100;
   const impotDuFc = impotArticle118Fc - reductionFc;
 
   return {

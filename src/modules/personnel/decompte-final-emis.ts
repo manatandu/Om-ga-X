@@ -87,10 +87,13 @@ export const CLE_ARRIERES = 'arrieres';
 
 export const RESERVE_VERSEMENT_UNIQUE =
   "IMPÔT AU BARÈME DU MOIS (loi n° 23/053, art. 118 et 119) · le revenu du mois de cessation, indemnités comprises, est " +
-  "annualisé comme celui d'un bulletin (décision du cabinet du 2026-10-02). Un versement unique qui couvre plusieurs " +
-  "périodes (préavis, congé) monte dans les tranches du barème, et la retenue peut dépasser l'impôt que ces sommes " +
-  "auraient porté, mois après mois. La loi lue ne prévoit pour elles ni étalement ni taux distinct · l'art. 68, 6° les " +
-  "rend imposables, et la retenue reste un ACOMPTE sur l'impôt annuel (art. 116 et 121), régularisé à la déclaration.";
+  "imposable en entier au mois de sa mise à disposition (art. 68, 6° et art. 115) et annualisé comme celui d'un bulletin " +
+  "(décision du cabinet du 2026-10-02, convention de mensualisation). AUCUN TAUX SPÉCIAL · aucun texte en vigueur n'en " +
+  "porte pour ces sommes, ni étalement. Un versement unique qui couvre plusieurs périodes (préavis, congé) monte dans les " +
+  "tranches du barème, et la retenue peut dépasser l'impôt que ces sommes auraient porté, mois après mois · elle reste un " +
+  "ACOMPTE sur l'impôt annuel (art. 116 et 121), et « toute retenue à la source qui s'avère supérieure au montant de " +
+  "l'impôt exigible calculé conformément à l'article 118 » est prise en compte par l'Administration des Impôts pour le " +
+  "règlement d'obligations fiscales antérieures ou futures (art. 121, al. 3).";
 
 export const RESERVE_DU_PAR_LE_TRAVAILLEUR =
   "SOMMES DUES PAR LE TRAVAILLEUR (art. 63, al. 3 ; art. 70) · ni retenues sur le net, ni comptées au total. L'article " +
@@ -101,22 +104,29 @@ export const RESERVE_EN_FRANCS =
   "et une stipulation en dollars ne s'y mêle pas.";
 
 /**
- * L'ASSIETTE SOCIALE DE L'INDEMNITÉ DE FIN DE CONTRAT · LECTURE D'OMEGAX, LE
- * CORPUS SE TAIT. Le Code du travail, art. 7, point 8, définit la rémunération
- * comme les gains « dus en vertu d'un contrat de travail », et ferme la liste
- * de ce qu'il en sort (soins de santé, logement ou son indemnité, allocations
- * familiales légales, transport, frais de voyage) · l'indemnité de préavis,
- * la somme convenue de l'art. 61 bis et les dommages-intérêts de l'art. 70 n'y
- * sont pas. Mais aucun texte lu ne les y range non plus, et la mention 20 du
- * modèle de livre de paie de 2008 (le brut, total des mentions 7, 10, 11, 12,
- * 13, 16 et 19) ne les nomme pas. OmegaX les garde dans l'assiette sociale,
- * le sens qui ne retire rien aux droits du travailleur, et le DIT sur la ligne.
+ * L'ASSIETTE SOCIALE DE L'INDEMNITÉ DE FIN DE CONTRAT · PAR LE TEXTE (décision
+ * T7 du 2026-10-07, `docs/decisions-par-la-loi-paie-2026-10-07.md`). Ce n'est
+ * plus une réserve · « le corpus se tait » était inexact. Le Code du travail,
+ * art. 7, point 8, définit la rémunération comme « la somme représentative de
+ * l'ensemble des gains susceptibles d'être évalués en espèces et fixés par un
+ * accord ou par les dispositions légales ou réglementaires qui sont dus en
+ * vertu d'un contrat de travail », liste d'éléments OUVERTE (« notamment »),
+ * liste d'exclusion FERMÉE (soins de santé, logement ou son indemnité,
+ * allocations familiales légales, transport, frais de voyage). L'indemnité de
+ * préavis est fixée par une disposition légale (art. 63, al. 3, la
+ * « rémunération [...] dont aurait bénéficié le travailleur durant le délai »),
+ * et l'arrêté n° 146/2018, art. 20, fait naître les cotisations pour « toute
+ * autre période pour laquelle l'employeur est tenu au paiement de tout ou
+ * partie de la rémunération ». La loi n° 16/009, art. 13, y renvoie l'assiette.
+ * Les dommages-intérêts que le tribunal fixe (art. 63, al. 1) sont autre chose,
+ * et le décompte ne les porte pas.
  */
-export const RESERVE_ASSIETTE_SOCIALE_INDEMNITE =
-  "ASSIETTE SOCIALE · lecture d'OmegaX, le corpus se tait. L'indemnité de fin de contrat n'est ni nommée ni exclue " +
-  "par l'art. 7, point 8 du Code du travail (liste d'exclusion fermée), et la mention 20 du modèle de livre de paie " +
-  "de 2008 ne la range pas dans le brut. Elle reste dans l'assiette sociale ; ses avantages en logement ou en " +
-  "transport, eux, sont ventilés sous leur nature, que l'art. 7 exclut.";
+export const FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE =
+  "ASSIETTE SOCIALE · par le texte. La rémunération du Code du travail (art. 7, point 8) comprend tous les gains " +
+  "« fixés par un accord ou par les dispositions légales » dus en vertu du contrat, et sa liste d'exclusion est fermée ; " +
+  "l'indemnité de préavis est la rémunération du délai (art. 63, al. 3), et les cotisations sont dues pour toute période " +
+  "dont l'employeur doit la rémunération (arrêté n° 146/2018, art. 20 ; loi n° 16/009, art. 13). Ses avantages en " +
+  "logement ou en transport, eux, sont ventilés sous leur nature, que l'art. 7 exclut.";
 
 /**
  * A9 (M4) · LA SOMME DE L'ART. 66 EST UNE RÉMUNÉRATION. L'alinéa 2 dit
@@ -233,7 +243,7 @@ export function elementsDuDecompte(
     if (montant === 0) continue;
     const reserve =
       nature === 'INDEMNITE_DE_FIN_DE_CONTRAT'
-        ? (RESERVE_EMISSION_PAR_RUBRIQUE[r.cle] ?? RESERVE_ASSIETTE_SOCIALE_INDEMNITE)
+        ? (RESERVE_EMISSION_PAR_RUBRIQUE[r.cle] ?? FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE)
         : null;
     const avantages = auCentime(r.avantagesInclusFc ?? 0);
     if (avantages <= 0) {
@@ -260,7 +270,7 @@ export function elementsDuDecompte(
         montantFc: auCentime(v.montantFc),
         cleRubrique: r.cle,
         ...(typeof v.conditionArticle69Attestee === 'boolean' ? { conditionArticle69Attestee: v.conditionArticle69Attestee } : {}),
-        reserve: natureV === 'INDEMNITE_DE_FIN_DE_CONTRAT' ? RESERVE_ASSIETTE_SOCIALE_INDEMNITE : null,
+        reserve: natureV === 'INDEMNITE_DE_FIN_DE_CONTRAT' ? FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE : null,
       });
     }
   }

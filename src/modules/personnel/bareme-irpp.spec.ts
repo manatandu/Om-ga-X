@@ -1,6 +1,8 @@
 import {
   BORNE_TROISIEME_TRANCHE,
+  IMPOT_DES_TROIS_PREMIERES_TRANCHES_FC,
   MAXIMUM_PERSONNES_A_CHARGE,
+  TAUX_EFFECTIF_DES_TROIS_PREMIERES_TRANCHES_POUR_CENT,
   MOIS_PAR_AN,
   PLAFOND_IMPOT_POUR_CENT,
   PREMIER_EXERCICE_IRPP,
@@ -173,6 +175,58 @@ describe("La quotité de l'article 123", () => {
       verdict.impotArticle118Fc - (verdict.baseDeLaQuotiteFc * 18) / 100,
       6,
     );
+  });
+
+  describe("impôt plafonné · décision par la loi du 2026-10-07 (troisième lot, point 2)", () => {
+    it("le fondement · l'impôt des trois premières tranches plafonne à 21,96 %, sous les 30 %", () => {
+      // Tirés de TRANCHES_IRPP · si un barème révisé faisait mordre le
+      // plafond sur les trois premières tranches, la règle serait à relire.
+      expect(IMPOT_DES_TROIS_PREMIERES_TRANCHES_FC).toBe(58_320 + 2_948_400 + 6_480_000);
+      expect(IMPOT_DES_TROIS_PREMIERES_TRANCHES_FC).toBe(9_486_720);
+      expect(TAUX_EFFECTIF_DES_TROIS_PREMIERES_TRANCHES_POUR_CENT).toBeCloseTo(21.96, 10);
+      expect(TAUX_EFFECTIF_DES_TROIS_PREMIERES_TRANCHES_POUR_CENT).toBeLessThan(PLAFOND_IMPOT_POUR_CENT);
+      // Sur toute assiette jusqu'à la troisième tranche, le plafond ne mord pas.
+      for (const revenu of [1_000_000, 1_944_000, 21_600_000, 30_000_000, BORNE_TROISIEME_TRANCHE]) {
+        expect(impotAnnuel(revenu, 0).plafondApplique).toBe(false);
+      }
+    });
+
+    it("la réduction du plafond se rapporte à la seule part au-delà de la troisième tranche · la quotité joue sur l'impôt du barème des trois premières, quel que soit le revenu", () => {
+      for (const revenu of [SEUIL_OU_LE_PLAFOND_MORD + 1_000, 91_200_000, 150_000_000, 1_000_000_000]) {
+        for (let personnes = 1; personnes <= MAXIMUM_PERSONNES_A_CHARGE; personnes += 1) {
+          const verdict = impotAnnuel(revenu, personnes);
+          expect(verdict.plafondApplique).toBe(true);
+          expect(verdict.baseDeLaQuotiteFc).toBe(IMPOT_DES_TROIS_PREMIERES_TRANCHES_FC);
+          expect(verdict.reductionFc).toBeCloseTo((9_486_720 * personnes * QUOTITE_PAR_PERSONNE_A_CHARGE_POUR_CENT) / 100, 6);
+          expect(verdict.impotDuFc).toBeCloseTo(verdict.plafondFc - verdict.reductionFc, 6);
+        }
+      }
+    });
+
+    it('P03 · 7 600 000 nets par mois, quatre personnes · base 9 486 720, retenue 2 216 800, la règle dite avec son fondement', () => {
+      // Barème 28 686 720, plafond 27 360 000 · la quotité de 8 % joue sur
+      // 9 486 720 (758 937,60 l'an), soit 26 601 062,40 dus l'an.
+      const verdict = impotAnnuel(91_200_000, 4);
+      expect(verdict.plafondApplique).toBe(true);
+      expect(verdict.baseDeLaQuotiteFc).toBe(9_486_720);
+      expect(verdict.reductionFc).toBeCloseTo(758_937.6, 6);
+      expect(verdict.impotDuFc).toBeCloseTo(26_601_062.4, 6);
+      expect(retenueMensuelle('2026-06', 7_600_000, 4).retenueFc).toBe(2_216_800);
+      const regle = verdict.reserves.filter((r) => r.startsWith('ARTICLE 123 SUR UN IMPÔT PLAFONNÉ'));
+      expect(regle).toHaveLength(1);
+      expect(regle[0]).toContain("se rapporte à la seule part du revenu imposable qui excède la troisième tranche");
+      expect(regle[0]).toContain('21,96 %');
+      expect(regle[0]).toContain('9486720.00 FC sur 43200000.00 FC');
+      expect(regle[0]).toContain("reste celui du barème, 9486720.00 FC");
+      expect(regle[0]).toContain("l'article 123, alinéas 1er et 2");
+      expect(regle[0]).toContain('réduction annuelle de 758937.60 FC');
+    });
+
+    it("sans personne à charge, la règle n'a rien à dire · seul le plafond est mentionné", () => {
+      const verdict = impotAnnuel(91_200_000, 0);
+      expect(verdict.reserves.some((r) => r.startsWith('ARTICLE 123 SUR UN IMPÔT PLAFONNÉ'))).toBe(false);
+      expect(verdict.reserves.some((r) => r.startsWith("PLAFOND DE L'ARTICLE 118"))).toBe(true);
+    });
   });
 
   it('ne rend jamais une base de quotité supérieure à ce qui est dû', () => {

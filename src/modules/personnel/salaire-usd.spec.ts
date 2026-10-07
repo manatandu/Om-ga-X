@@ -114,6 +114,44 @@ describe('salaire en USD · le cours du jour, et lui seul', () => {
     ).rejects.toThrow(/sans montant en francs : Salaire/);
   });
 
+  it('T8 · arrondit au CENTIME SUPÉRIEUR dès qu’une fraction reste, jamais sur un produit exact', () => {
+    // 100,01 × 2 850,33 = 285 061,5033 · le demi-centime vers le haut rendait
+    // 285 061,50, le centime supérieur rend 285 061,51 (règle de protection).
+    expect(usdEnFc(100.01, 2850.33)).toBe(285_061.51);
+    // P09 · 120,50 × 2 850,25 = 343 455,125 · inchangé, 343 455,13.
+    expect(usdEnFc(120.5, 2850.25)).toBe(343_455.13);
+    // Le flottant ne fait pas monter un montant exact (0,1 × 3).
+    expect(usdEnFc(0.1, 3)).toBe(0.3);
+    expect(usdEnFc(500, 2850.25)).toBe(1_425_125);
+  });
+
+  it('T8 · lit le cours de la DATE DE MISE À DISPOSITION déclarée, et le dit', async () => {
+    const { svc, lectures } = service({ '2026-09-24': 2850.5, '2026-09-30': 2900 });
+    const res = await svc.simulerPaie(
+      't-1',
+      null,
+      { ...enUsd(1200), dateMiseADisposition: '2026-09-30' } as SimulationPaieDto,
+      MIDI_LE_24_UTC,
+    );
+    expect(lectures[0]).toEqual({ date: new Date('2026-09-30T00:00:00Z'), devise: { tenantId: 't-1', code: 'USD' } });
+    expect(res.conversion).toMatchObject({ cours: 2900, dateCours: '2026-09-30', origineDateCours: 'MISE_A_DISPOSITION' });
+    expect(res.conversion!.avertissementDate).toBeNull();
+  });
+
+  it('T8 · sans date de mise à disposition, le jour du calcul, avec l’avertissement', async () => {
+    const { svc } = service({ '2026-09-24': 2850.5 });
+    const res = await svc.simulerPaie('t-1', null, enUsd(1200), MIDI_LE_24_UTC);
+    expect(res.conversion!.origineDateCours).toBe('JOUR_DU_CALCUL');
+    expect(res.conversion!.avertissementDate).toContain('mise à disposition');
+  });
+
+  it('T8 · refuse une date de mise à disposition sans cours, sans reprendre un autre jour', async () => {
+    const { svc } = service({ '2026-09-24': 2850.5 });
+    await expect(
+      svc.simulerPaie('t-1', null, { ...enUsd(1200), dateMiseADisposition: '2026-09-29' } as SimulationPaieDto, MIDI_LE_24_UTC),
+    ).rejects.toThrow(/pour le 29\/09\/2026, date de mise à disposition déclarée/);
+  });
+
   it('un salaire en francs ne lit aucun cours', async () => {
     const { svc, lectures } = service({});
     const res = await svc.simulerPaie('t-1', null, enFc(1_000_000), MIDI_LE_24_UTC);

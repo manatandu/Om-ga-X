@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ModeReportANouveau } from '@prisma/client';
 import { PLAN_COMPTES_SYSCOHADA } from './compte-seed-syscohada';
 import { PLAN_COMPTES_SYCEBNL } from './compte-seed';
@@ -25,15 +27,14 @@ describe('plan SYSCOHADA · structure Total/Détail', () => {
     // 918 + 32 contreparties à quatre chiffres, en miroir des 32 comptes 90xx.
     // Les huit divisions 92 à 99 sont semées, en en-têtes sans imputation.
     //
-    // + 2 EN P1 DE LA PAIE · `43340000` (INPP) et `43350000` (ONEM), ouverts
-    // PAR LE LOGICIEL sous 433, le plan SYSCOHADA étant régional et ne
-    // nommant aucun organisme congolais. Le semis SYCEBNL les portait déjà :
-    // celui-ci ne les portait pas, alors que le registre des retenues les
-    // cherche pour LES DEUX référentiels. Une société commerciale n'avait
-    // donc aucun compte où porter deux cotisations qu'elle doit.
-    expect(PLAN_COMPTES_SYSCOHADA).toHaveLength(1443);
+    // Les « + 2 » de P1 (`43340000` INPP et `43350000` ONEM, ouverts à la
+    // main sous 433) sont RETIRÉS par la décision T1 du 2026-10-07 · l'INPP et
+    // l'ONEM sont des impôts et taxes (fiche du compte 64), au 6415 et au 6413
+    // contre le 4428, tous trois au plan officiel. Le semis redevient la seule
+    // transcription du TSV.
+    expect(PLAN_COMPTES_SYSCOHADA).toHaveLength(1441);
     expect(totaux).toHaveLength(311);
-    expect(detail).toHaveLength(1132);
+    expect(detail).toHaveLength(1130);
   });
 
   it('ne porte aucun doublon de numéro', () => {
@@ -213,22 +214,40 @@ describe('CompteService.seedPlan · aiguillage par référentiel', () => {
   });
 });
 
-describe('P1 · l’INPP et l’ONEM sont ouverts DANS LES DEUX référentiels', () => {
-  it('sème 4334 et 4335 en SYSCOHADA, imputables, sous la division 433', () => {
-    // L'ASYMÉTRIE QUE CE TEST EMPÊCHE DE REVENIR. `correspondance-retenues.ts`
-    // pointe les clés `inpp` et `onem` vers `4334` et `4335` pour les deux
-    // référentiels. Tant que le semis SYSCOHADA ne les portait pas, le
-    // registre des retenues d'une société commerciale rendait un état SANS
-    // LIGNE pour deux cotisations dues · ce qui se lit « rien à reverser ».
+describe("T1 · l'INPP et l'ONEM vont au 64 contre le 4428, DANS LES DEUX référentiels", () => {
+  // Décision T1 du 2026-10-07 (`docs/decisions-par-la-loi-paie-2026-10-07.md`) ·
+  // ce sont des impôts et taxes (fiche du compte 64 des deux textes), pas des
+  // cotisations sociales. Le test qui gelait la PRÉSENCE de 4334 et 4335
+  // gèle désormais leur ABSENCE, et la présence des trois comptes qui les
+  // remplacent, relus dans les DEUX semis (F2b).
+  const SEMIS = join(__dirname);
+  const sources = {
+    SYCEBNL: readFileSync(join(SEMIS, 'compte-seed.ts'), 'utf8'),
+    SYSCOHADA: readFileSync(join(SEMIS, 'compte-seed-syscohada.ts'), 'utf8'),
+  };
+
+  it("ne sème plus ni 43340000 ni 43350000 · ni au SYSCOHADA ni au SYCEBNL", () => {
     for (const numero of ['43340000', '43350000']) {
-      const compte = PLAN_COMPTES_SYSCOHADA.find((c) => c.numero === numero);
-      expect(compte).toBeDefined();
-      // DÉTAIL, pas TOTAL · un compte en tête de division ne s'impute pas, et
-      // le registre le chercherait en vain tout autant.
-      expect(compte!.typeCompte).toBeUndefined();
-      expect(compte!.classe).toBe('CLASSE_4');
+      expect(PLAN_COMPTES_SYSCOHADA.find((c) => c.numero === numero)).toBeUndefined();
+      expect(PLAN_COMPTES_SYCEBNL.find((c) => c.numero === numero)).toBeUndefined();
+      expect(sources.SYSCOHADA).not.toContain(`'${numero}'`);
+      expect(sources.SYCEBNL).not.toContain(`'${numero}'`);
     }
-    // La division qui les porte existe bien, et en tête.
-    expect(PLAN_COMPTES_SYSCOHADA.find((c) => c.numero === '433')!.typeCompte).toBe('TOTAL');
+  });
+
+  it('sème 64130000, 64150000 et 44280000 aux deux plans, imputables', () => {
+    for (const numero of ['64130000', '64150000', '44280000']) {
+      const sys = PLAN_COMPTES_SYSCOHADA.find((c) => c.numero === numero);
+      const syc = PLAN_COMPTES_SYCEBNL.find((c) => c.numero === numero);
+      expect(sys).toBeDefined();
+      expect(syc).toBeDefined();
+      // DÉTAIL, pas TOTAL · un compte en tête de division ne s'impute pas.
+      expect(sys!.typeCompte).toBeUndefined();
+      expect(syc!.typeCompte).toBeUndefined();
+    }
+    // Les intitulés qui justifient la décision, lus au semis.
+    expect(PLAN_COMPTES_SYSCOHADA.find((c) => c.numero === '64130000')!.intitule).toBe('Taxes sur appointements et salaires');
+    expect(PLAN_COMPTES_SYSCOHADA.find((c) => c.numero === '64150000')!.intitule).toBe('Formation professionnelle continue');
+    expect(PLAN_COMPTES_SYSCOHADA.find((c) => c.numero === '44280000')!.intitule).toBe('Autres impôts et taxes');
   });
 });

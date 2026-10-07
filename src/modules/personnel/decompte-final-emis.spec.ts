@@ -4,7 +4,7 @@ import { decompteFinal, type ParametresDecompte } from './decompte-final';
 import {
   AVERTISSEMENT_SANS_COMPTE,
   CLE_ARRIERES,
-  RESERVE_ASSIETTE_SOCIALE_INDEMNITE,
+  FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE,
   auCentime,
   avertissementsPassation,
   motifsDoubleCompte,
@@ -29,6 +29,8 @@ const LICENCIEMENT: ParametresDecompte = {
   motif: 'LICENCIEMENT',
   typeContrat: 'DUREE_INDETERMINEE',
   executionPreavis: 'DISPENSE_PAR_EMPLOYEUR',
+  // Délai du 19 mai au 27 juin 2026, sans férié (décision T9).
+  dateNotification: '2026-05-18',
   remunerationJournaliereFc: 10_000,
   moyenneMensuelleArticle66Fc: 0,
   moyenneMensuelleArticle142Fc: 0,
@@ -97,6 +99,9 @@ describe('A8 · le verdict du décompte traduit en éléments de paie', () => {
   it('écrit la réserve du versement unique avec ses deux articles', () => {
     expect(RESERVE_VERSEMENT_UNIQUE).toContain('art. 118 et 119');
     expect(RESERVE_VERSEMENT_UNIQUE).toContain('68, 6°');
+    // DÉCISION T7 · complétée de l'art. 121, al. 3 et de l'absence de taux spécial.
+    expect(RESERVE_VERSEMENT_UNIQUE).toContain('art. 121, al. 3');
+    expect(RESERVE_VERSEMENT_UNIQUE).toContain('AUCUN TAUX SPÉCIAL');
   });
 });
 
@@ -176,11 +181,14 @@ describe('A8 · premier tour de relecture · la règle pure', () => {
       ['LOGEMENT_OU_SON_INDEMNITE', 20_000],
       ['INDEMNITE_DE_FIN_DE_CONTRAT', 15_000],
     ]);
-    expect(preavis[0].reserve).toBe(RESERVE_ASSIETTE_SOCIALE_INDEMNITE);
+    expect(preavis[0].reserve).toBe(FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE);
     expect(preavis[1].reserve).toBeNull();
-    // La phrase retirée ne revient pas · la réserve dit que le corpus se tait.
-    expect(RESERVE_ASSIETTE_SOCIALE_INDEMNITE).toContain('le corpus se tait');
-    expect(RESERVE_ASSIETTE_SOCIALE_INDEMNITE).toContain('mention 20');
+    // DÉCISION T7 · une mention de FONDEMENT, plus une réserve · « le corpus
+    // se tait » était inexact. Elle cite les trois textes qui la fondent.
+    expect(FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE).toContain('par le texte');
+    expect(FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE).toContain('art. 63, al. 3');
+    expect(FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE).toContain('art. 7, point 8');
+    expect(FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE).toContain('arrêté n° 146/2018, art. 20');
   });
 
   it('ASSIETTE · une ventilation qui ne fait pas le compte, ou qui vise une rubrique sans avantages, refuse', () => {

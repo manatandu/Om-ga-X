@@ -1885,7 +1885,10 @@ model Ecriture {
   facture Facture?
 
   /// P9 · les bulletins de paie que cette écriture passe au journal.
-  bulletinsPaie BulletinPaie[]
+  bulletinsPaie BulletinPaie[] @relation("PaieDuMoisBulletin")
+  /// C2 · les bulletins annulés après passation que cette écriture reprend
+  /// en négatif.
+  bulletinsPaieRepris BulletinPaie[] @relation("NegatifBulletinPaie")
 
   @@index([tenantId, exerciceId, date])
   @@index([tenantId, statut], map: "ecritures_statut_idx")
@@ -7855,12 +7858,23 @@ model BulletinPaie {
   /// sinon SET NULL sur une relation facultative, et le bulletin repartirait
   /// en silence dans la paie du mois suivant.
   ecritureId String?
-  ecriture   Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
+  ecriture   Ecriture? @relation("PaieDuMoisBulletin", fields: [ecritureId], references: [id], onDelete: Restrict)
+
+  /// C2 (2026-10-07) · L'ÉCRITURE QUI REPREND EN NÉGATIF ce bulletin annulé
+  /// après passation. Le salaire d'un bulletin passé et validé reste au
+  /// livre-journal après son annulation ; la passation du mois le reprend en
+  /// négatif avec le bulletin réémis, de sorte que seule la DIFFÉRENCE pèse
+  /// sur l'exercice de la correction (AUDCIF art. 20, al. 2 à 4 ; art. 22,
+  /// 4°). Le lien empêche de le reprendre deux fois, et RESTRICT que
+  /// l'écriture disparaisse en laissant le bulletin se dire repris.
+  ecritureNegatifId String?
+  ecritureNegatif   Ecriture? @relation("NegatifBulletinPaie", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
 
   retenuesAvance RetenueAvanceBulletin[]
 
   @@unique([tenantId, numero])
   @@index([tenantId, ecritureId])
+  @@index([tenantId, ecritureNegatifId])
   @@index([tenantId, moisDePaie])
   @@index([tenantId, salarieId])
   @@map("bulletins_paie")

@@ -1150,9 +1150,17 @@ voyage. Barème IRPP · marginal 40 %, impôt plafonné à 30 % du revenu imposa
 `correspondance-retenues.ts`), la retenue « Syndicat 2 % » (l'art. 112 FERME la
 liste sans la nommer) et **« C/ 4331 INPP · C/ 4332 ONEM », faux aux DEUX plans**
 (4331 « Mutuelle », 4332 « Assurances retraite »). « En cas de désaccord entre ce
-fichier et un article du Code, l'article prime. » **`43340000` et `43350000` sont
-ouverts aux deux semis** · l'INPP naît des art. 8 à 17 du Code du travail, l'ONEM de
-ses art. 202 et suivants, sans distinguer une ASBL d'une SARL. Manques nommés en P0,
+fichier et un article du Code, l'article prime. » **L'INPP ET L'ONEM SONT DES
+IMPÔTS ET TAXES, AUX DEUX RÉFÉRENTIELS** (décision T1 du 2026-10-07) · fiche du
+compte 64 des deux textes (« versements institués par les autorités pour le
+financement d'actions d'intérêt général », « par le crédit du compte 44 »), fiche du
+66 qui exclut « les impôts dont l'assiette repose sur la rémunération » ; INPP au
+**64150000**, ONEM au **64130000**, dette au **44280000**. `43340000` et `43350000`
+ne sont plus semés (AUDCIF art. 18, al. 3 et 4 · le 4428 suffit) ; un dossier semé
+avant les garde, jamais supprimés ni réimputés d'office, `INPP_ONEM_SOUS_LE_433`
+(INFORMATION) renvoie à la réimputation (point 9) en exercice ouvert. Le registre
+des retenues lit les trois sous UNE nature (`inppOnem`) · deux natures sur le même
+4428 doublaient la dette. Manques nommés en P0,
 aucun comblé de mémoire · **SMIG**, **arrêté de l'art. 139** (valeur forfaitaire du
 logement que l'art. 114 déduit), **arrêté INPP n° 002/CAB/MET/2025**, **convention
 collective** (art. 114, préavis par catégorie).
@@ -1187,8 +1195,11 @@ Allocation familiale 1/27e du SMIG PAR ENFANT (art. 5), **contre-valeur du logem
 1/5e de L'ALLOCATION, jamais du SMIG** (art. 6). Rien n'est arrondi (colonne 19 de
 l'ANNEXE) ; l'annexe 1 porte 537,04 FC, soit **14 500/27** · la grille s'assied sur
 le montant PAYÉ. **Une déduction tirée d'un texte PARTIEL est une règle inventée,
-même quand chaque phrase citée est exacte** ; le plancher CNSS relève d'un autre
-texte, la fiche en donne les deux lectures sans trancher. **GRILLE DE TENSION
+même quand chaque phrase citée est exacte**. Le plancher CNSS de mai à décembre
+2025 est le SMIG PAYÉ, 14 500 FC par jour payé (décision T4 du 2026-10-07 · loi
+n° 16/009, art. 13, « salaire minimum légal », qui prime sur le décret n° 18/041 ;
+décret n° 25/22, art. 3 et annexe 1 ; décret n° 25/21, art. 3, le SMIG défini par
+la sanction), le même minimum que celui opposé au contrat (P1b). **GRILLE DE TENSION
 SALARIALE** (art. 4) · sept catégories, dix-sept classes, du manœuvre ordinaire
 (indice 100) au cadre de collaboration 4e échelon (indice 1 000), `taux = tension ×
 SMIG / 100`, trente-quatre taux RECOPIÉS puis confrontés à la formule, colonnes 19
@@ -1245,8 +1256,9 @@ voyage ne sont dans AUCUN point de l'art. 69, liste fermée. **PLAFOND OU CONDIT
 · « DANS LA LIMITE DE 5 % » (art. 116, 1) et « DANS LA MESURE OÙ elles ne dépassent
 pas les taux légaux » (art. 69, 1) sont des PLAFONDS (l'excédent seul repris) ;
 « POUR AUTANT QUE l'indemnité de logement ne dépasse 30 % de la rémunération »
-(art. 69, 8, a) est une CONDITION (tout ou rien), appliquée, l'autre lecture NOMMÉE
-avec son montant ; base des 30 % au sens de l'art. 7, point 8, réserve écrite.
+(art. 69, 8, a) est une CONDITION (tout ou rien), TRANCHÉE PAR LE TEXTE (décision T3
+du 2026-10-07 · « pour autant que » gouverne a, b et c) · l'autre lecture ne se
+chiffre plus en réserve ; base des 30 % au sens de l'art. 7, point 8, réserve écrite.
 **ABSTENTIONS** · transport (art. 69, 8, b) et frais médicaux (art. 69, 8, c)
 ATTESTÉS par le cabinet, jamais immunisés d'office ; « taux légal » des allocations
 de l'art. 69, 1 (arrêté n° 137/2018 art. 3 contre colonne 19 du décret n° 25/22,
@@ -1257,8 +1269,13 @@ barème ANNUEL de l'art. 118) · **on annualise le mois, on ne divise pas les
 tranches**, l'ARRONDI AU MILLIER sur le revenu ANNUALISÉ (1 000 100 FC par mois font
 12 001 000 FC, non 12 000 000) ; **c'est un ACOMPTE** (art. 116, art. 121). **LE
 PLAFOND JOUE AVANT LA QUOTITÉ** (art. 123, « l'impôt établi par application de
-l'article 118 ») ; pour l'impôt PLAFONNÉ, le plus petit des deux montants nommés, en
-réserve. **PERSONNES À CHARGE PROPOSÉES, JAMAIS SUBSTITUÉES** (art. 124 ; art. 125,
+l'article 118 ») ; **SUR L'IMPÔT PLAFONNÉ, LA RÉDUCTION DU PLAFOND SE RAPPORTE À LA
+SEULE PART AU-DELÀ DE LA TROISIÈME TRANCHE** (décision par la loi du 2026-10-07,
+troisième lot, point 2 · art. 118, al. 2 ; art. 123, al. 1er et 2) · l'impôt du
+barème des trois premières tranches plafonne à 21,96 % (9 486 720 FC sur
+43 200 000 FC), sous les 30 %, il reste la base de la quotité (P03 · 2 216 800 FC
+par mois) ; prorata et borne basse ÉCARTÉS, gardés en commentaire avec leur motif,
+jamais servis. **PERSONNES À CHARGE PROPOSÉES, JAMAIS SUBSTITUÉES** (art. 124 ; art. 125,
 situation AU 1er JANVIER) ; à défaut, ZÉRO. **NON APPLIQUÉ ET NOMMÉ** · le minimum
 de l'art. 122 (1 % du chiffre d'affaires), qui ne vise PAS les salaires de
 l'art. 68 ; le plancher de 2 000 FC du livre de cours, dans AUCUN article ; la
@@ -1283,7 +1300,14 @@ leurs lignes, PAS sur la CNSS. **LE TAUX INPP NE SE DEVINE PAS** · NATURE de
 l'employeur (public 4 %, privé 3,5 / 3 / 2 % depuis le 24 septembre 2025 ; 3 % et 3
 / 2 / 1 % avant), puis tranche d'effectif POUR LE PRIVÉ SEULEMENT (sinon 3,5 % à un
 établissement public de dix agents) ; sans nature, abstention, qui n'emporte ni
-CNSS, ni ONEM, ni net. **NON CALCULÉ ET DIT** · retenues de l'article 112 (avances,
+CNSS, ni ONEM, ni net. LE TAUX S'ATTACHE À LA RÉMUNÉRATION VERSÉE (décision T5 du
+2026-10-07) · la date de mise à disposition déclarée au bulletin
+(`dateMiseADisposition`) choisit le barème au jour (septembre 2025 · 35 000 versé le
+24 ou après, 30 000 avant, privé de 50) ; sans elle, au mois, et un barème qui change
+dans le mois le DIT ; la base « trimestre précédent » (art. 15 b) attend
+l'ordonnance n° 84/186, absente, nommée dans `RESERVE_ASSIETTE_INPP`. ONEM · une paie
+antérieure à septembre 2025 porte l'art. 6 de l'arrêté n° 028/2025 (contribution
+non acquittée le 25 septembre 2025 · 0,5 %). **NON CALCULÉ ET DIT** · retenues de l'article 112 (avances,
 indemnités de l'article 52, cautionnement, prêt, saisie-arrêt) ; QUOTITÉ SAISISSABLE
 de l'article 114 (« cinq fois le salaire minimum interprofessionnel de SA
 CATÉGORIE », moins le logement de l'article 139, dont l'arrêté n'existe pas). La
@@ -1301,8 +1325,10 @@ la somme des tranches ; un seul porteur, `fiscalite/arrondi-article-150.ts`.
 **PLANCHER CNSS (2026-09-27, audit final F112)** · Décret n° 18/041, art. 8, loi
 n° 16/009, art. 13, « en aucun cas » sous le SMIG, taux JOURNALIER du manœuvre
 ordinaire (décret n° 25/22, art. 2), 26 par mois (art. 7) · base relevée au SMIG des
-jours payés (`plancherCnss`, `joursPayes`). Abstention sous le plancher sans jours
-déclarés, de mai à décembre 2025 (SMIG payé contre fixé), et hors corpus. Ni INPP ni
+jours payés (`plancherCnss`, `joursPayes`), au taux PAYÉ de l'annexe du mois (14 500
+FC de mai à décembre 2025, décision T4). Abstention sous le plancher sans jours
+déclarés, et hors corpus ; la quote-part ouvrière alors non chiffrée, la base nette,
+l'impôt et le net valent `null` (constat C1). Ni INPP ni
 ONEM n'ont de plancher. LE RÉGIME DE LA RETENUE SE DÉCLARE, ET UN IMPÔT NON CHIFFRÉ
 N'EST PAS ZÉRO (2026-09-27, audit final F104 à F106). `regimeSalarial` porte le
 régime de l'art. 121 · forfait libératoire (personnel domestique, micro-entreprise),
@@ -1314,10 +1340,13 @@ protégée.
 **P3 · LA PASSATION COMPTABLE** (`docs/paie-p3-passation-comptable.md`). AUCUN
 NUMÉRO DE COMPTE DE PAIE HORS DE `passation-paie.ts`, ET AUCUN SANS SON RÉFÉRENTIEL.
 
-**DIX-HUIT RÔLES, UN SEUL DIVERGE** (dix-neuf avec le 78100000 des avantages en
-nature, voir P9 ; le 66140000 des indemnités de fin de contrat depuis A8) · la retraite OBLIGATOIRE est au **43130000** en SYSCOHADA (sous
+**VINGT RÔLES, UN SEUL DIVERGE** (dont le 78100000 des avantages en nature, voir
+P9, et le 66140000 des indemnités de fin de contrat depuis A8 ; décision T1 du
+2026-10-07 · les rôles INPP et ONEM du 4334 et du 4335 font place au 64150000, au
+64130000 et au 44280000) · la retraite OBLIGATOIRE est au **43130000** en SYSCOHADA (sous
 431), au **43210000** en SYCEBNL (sous 432). Le reste coïncide · 6611, 6612, 6613,
-6615, 6617, 6618, 6631, 6634, 6638, 6641, 4311, 4312, 4334, 4335, 4472, 4220. **La
+6614, 6615, 6617, 6618, 6631, 6634, 6638, 6641, 6413, 6415, 4311, 4312, 4428, 4472,
+4220, 781. **La
 correction évidente est un piège** · le 432 SYSCOHADA est la retraite COMPLÉMENTAIRE
 (43200000), le SYCEBNL ouvre 4321 obligatoire, 4322 complémentaire, 4328 autres ;
 corriger 4313 en 432 rangerait l'obligatoire sous une nature FACULTATIVE. Un test
@@ -1325,7 +1354,8 @@ interdit 43200000 et 43220000, exige les divergents NON ouverts dans l'autre pla
 relit les DEUX semis (F2b). **Classe 66, absences non codées** · 666 QU'AU
 SYSCOHADA, 66500000 et 66900000 QU'AU SYCEBNL ; 66330000, 66720000, 66820000 aux
 deux (2026-09-30). **Faux au séminaire CPCC** · « C/ 4331 INPP · C/ 4332 ONEM »
-(4331 Mutuelle, 4332 Assurances retraite) ; INPP au 4334, ONEM au 4335, gelé.
+(4331 Mutuelle, 4332 Assurances retraite) ; INPP au 6415 et ONEM au 6413 contre le
+4428, gelé, jamais au 43.
 **SORTIR DE L'ASSIETTE N'EST PAS SORTIR DE LA COMPTABILITÉ** · logement et transport
 (art. 7, point 8) sont PAYÉS · charge au 66310000 et au 66340000. **QUATRE NATURES
 NON IMPUTÉES** · participation aux bénéfices (aucun 426 au SYCEBNL) ; allocations
@@ -1340,31 +1370,56 @@ charge minorée de l'INPP) ; SOLDE DU 422 = NET (brut moins retenues), sinon REF
 aucune ligne de bouclage. **TROIS TEMPS, PAS UNE ÉCRITURE COMBINÉE** (2026-09-24,
 Guide SYSCOHADA Partie 1 ch. 3 section 4, Application 10) · BRUT (D/66 par nature,
 C/422 brut entier, § 4.1), RETENUES (D/422, C/43 part ouvrière, C/447 impôt, § 4.3
-et fiche du compte 42), PATRONALES (D/6641, C/43, § 4.2). L'impôt retenu n'est PAS
-une charge (aucune classe 6) ; part ouvrière et patronale, deux lignes.
+et fiche du compte 42), PATRONALES (D/6641, C/43, § 4.2, la CNSS seule), puis
+IMPÔTS ET TAXES SUR SALAIRES (D/6415 INPP, D/6413 ONEM, C/4428, décision T1).
+L'impôt retenu n'est PAS une charge (aucune classe 6) ; part ouvrière et patronale,
+deux lignes.
 `simulerPaie` · un spec gèle la PROPRIÉTÉ (aucune écriture).
 
 **P4 · DÉCOMPTE FINAL.** Séminaire CPCC · « en cas de désaccord entre ce fichier et
 un article du Code, L'ARTICLE PRIME ». **Congé** (art. 141, « au moins ») · UN jour
 ouvrable par mois entier au-delà de dix-huit ans, UN ET DEMI en deçà, plus UN par
-tranche de cinq années ; le séminaire (1,5, 2, 2) gonfle l'indemnité de moitié.
+tranche de cinq années ; le séminaire (1,5, 2, 2) gonfle l'indemnité de moitié. LA
+TRANCHE EST DUE ENTIÈRE à la période incomplète (décision T6 du 2026-10-07 ·
+l'art. 141 la rapporte à l'ancienneté, non au mois, et l'art. 144 remplace le congé
+« quel que soit le moment ») ; aucun mois entier, aucun jour, non tranché.
 **Préavis** (art. 64) · QUATORZE jours ouvrables plus SEPT par année entière, sans
 catégorie, le reste à un ARRÊTÉ absent (« 1 mois + 9 jours », « 3 mois + 16 jours »)
 · OmegaX calcule le PLANCHER et le DIT, comme pour le congé. **LE SAMEDI EST
 OUVRABLE ICI** · un préavis s'exécute entre employeur et travailleur, le Code
 définit le mot (art. 7, point 9 ; repos le dimanche, art. 121 al. 2), à la
 différence du guichet fiscal (décret n° 24/09) · `jour-ouvrable.ts` NE DOIT PAS être
-réemployé ; l'art. 7 du décret n° 25/22 (VINGT-SIX par mois, 312 par an, RÉUTILISÉ)
-le confirme. **Aucun préavis** · faute lourde (art. 72, « résilié immédiatement sans
-préavis », notification écrite sous quinze jours ouvrables), force majeure, terme
-d'un CDD. Démission · LA MOITIÉ (art. 64 al. 2) ; délégué syndical · LE DOUBLE
-(art. 258), plancher de TROIS MOIS non converti. **UN SOLDE PARTIEL SE LIT COMME UN
+réemployé (sa seule LISTE des fériés l'est) ; l'art. 7 du décret n° 25/22
+(VINGT-SIX par mois, 312 par an, RÉUTILISÉ) le confirme. SAUF le samedi qui porte
+le congé d'un férié tombé un dimanche (ordonnance n° 23-042, art. 2 ; décision T9,
+règle de protection · `jours-du-code-du-travail.ts`) · non ouvrable, rémunéré (le
+16 mai 2026 · 76 jours du 5 mai au 4 août, constat C4). **L'INDEMNITÉ DE PRÉAVIS EST
+LA RÉMUNÉRATION DU DÉLAI** (art. 63, al. 3), JOURS FÉRIÉS COMPRIS (art. 93), jamais
+« jours ouvrables × taux » (`remuneration-du-delai.ts`) · le délai se place par la
+DATE DE NOTIFICATION (lendemain, art. 64), sans elle l'indemnité vaut `null` ; à la
+journée, les jours du lundi au samedi de la fenêtre non respectée ; au mois
+(`remunerationMensuelleFc`), les mois entiers au salaire du mois, le mois ENTAMÉ à
+1/26 du salaire mensuel par jour PAYABLE, du lundi au samedi, fériés compris, le
+dimanche exclu (décision par la loi du 2026-10-07, troisième lot, point 3 · art. 63
+al. 3, 93, 7 point 9, 121 al. 2 ; arrêté du 8 août 2008, mentions 5 et 6 ; vingt-six
+jours tirés du décret n° 25/22, art. 7, PAR ANALOGIE, et c'est dit), RÈGLE citée au
+fondement (`REGLE_MOIS_ENTAME`), plus une réserve ; vingt-six jours payables rendent
+un mois plein. P13 · 79 ×
+42 000 pour le délégué, 65 × 42 000 pour 63 jours notifiés le 4 mai 2026. **Aucun
+préavis** · faute lourde (art. 72, « résilié immédiatement sans préavis »,
+notification écrite sous quinze jours ouvrables), force majeure, terme d'un CDD.
+Démission · LA MOITIÉ (art. 64 al. 2) ; délégué syndical · LE DOUBLE (art. 258),
+plancher de TROIS MOIS compté de date à date. **UN SOLDE PARTIEL SE LIT COMME UN
 SOLDE** · arriérés, moyenne des douze mois, gratification, montants sans taux
 journalier valent `null`, et le TOTAL aussi ; le zéro sur faute lourde est une
 RÉPONSE, avec son article. L'art. 142 convertit les avantages en nature « EXCEPTION
 FAITE SEULEMENT POUR LE LOGEMENT », et l'indemnité de logement, hors rémunération
 (art. 7, point 8), n'entre pas dans l'allocation de congé (2026-09-30). Commissions
-et primes · MOYENNE DES DOUZE MOIS (art. 66 et 142). Non repris · l'IPR à 10 %
+et primes · MOYENNE DES DOUZE MOIS (art. 66 et 142), ramenée au jour à 1/26, RÈGLE
+citée et non convention, jumeau du mois entamé (le Code ne fixe pas la conversion ;
+le livre de paie porte un taux journalier de l'allocation de congé, arrêté du 8 août
+2008, mentions 14 à 16 ; décret n° 25/22, art. 7, par analogie,
+`REGLE_MOYENNE_AU_JOUR`). Non repris · l'IPR à 10 %
 (ABROGÉ au 1er janvier 2026) et la « retenue syndicat 2 % » (l'art. 112 ne la nomme
 pas) ; l'art. 118 vaut.
 
@@ -1520,11 +1575,13 @@ annulation, même passation (P9), indemnités de rupture au 66140000 contre le 4
 (AUDCIF Titre VIII ch. 21 § 5.2 ; fiche du compte 66, « 6614 Indemnités de
 préavis, de licenciement et de recherche d'embauche ») sous la nature
 `INDEMNITE_DE_FIN_DE_CONTRAT` (imposable, loi n° 23/053 art. 68, 6° ; dans
-l'assiette sociale avec RÉSERVE, le corpus se tait), refusée à la saisie d'un
+l'assiette sociale PAR LE TEXTE, décision T7 · art. 7, point 8 et art. 63, al. 3 du
+Code du travail, arrêté n° 146/2018, art. 20, `FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE`),
+refusée à la saisie d'un
 bulletin ordinaire. Il REMPLACE le bulletin du dernier mois (décision de Manasse
 du 2026-10-02) · un seul document actif par salarié et par mois, sous un verrou
-par dossier (`pg_advisory_xact_lock`) ; impôt au barème du mois avec réserve sur
-le versement unique. Rien ne devient zéro · ancienneté et mois non couverts
+par dossier (`pg_advisory_xact_lock`) ; impôt au barème du mois, sans taux spécial,
+la retenue en trop relevant de l'art. 121, al. 3 (réserve sur le versement unique). Rien ne devient zéro · ancienneté et mois non couverts
 exigés à l'émission (`DecompteFinalEmisDto`), arriérés jamais effacés, solde
 partiel jamais émis ; logement et transport inclus dans une indemnité VENTILÉS
 sous leur nature (Code du travail art. 7, point 8), sinon refus ; sommes dues par
@@ -1537,7 +1594,11 @@ qui REÇOIT le préavis ») et hors préavis de licenciement. Art. 66 · départ
 la moitié ou après, « la rémunération et les allocations familiales pendant le
 temps restant à courir » (art. 7, point 8 · avantages en nature NON fournis
 jusqu'au terme, hors la liste qu'il exclut) au 66140000 sous sa propre clé et
-sa réserve ; avant la moitié, `null` et renvoi aux art. 63 et 67. Art. 67 ·
+sa réserve, chiffré comme le délai de T9 (relecture M2 · derniers jours
+ouvrables du délai placés par la notification, fériés compris, au mois les
+mois entiers et 1/26) ; l'art. 70 de même, sur la période du lendemain de la
+rupture au terme DÉCLARÉS, jamais un nombre de jours saisi ; avant la
+moitié, `null` et renvoi aux art. 63 et 67. Art. 67 ·
 nouvel emploi justifié, délai convenu en jours de CALENDRIER, reste du préavis
 perdu (zéro, une RÉPONSE) · SEULEMENT avant la moitié · le « délai moindre »
 se lit contre la moitié de l'art. 66, lecture protectrice (P5) faute de texte
@@ -1558,7 +1619,22 @@ par compte). (1) Rejouée sur les CHIFFRES FIGÉS, jamais sur les lignes stocké
 bulletins libres, sinon écriture retirée ; dans `verifierAucunModuleNeLaTient`. Se
 DÉFAIT au brouillard seulement (AUDCIF art. 22, 2°), par
 `EcritureService.supprimer`, la paie détenteur (F107). Passé au brouillard, un
-bulletin ne s'annule pas seul ; validé, il s'annule, signalé au mois. **F19, F22** ·
+bulletin ne s'annule pas seul ; validé, il s'annule, et la passation de son mois le
+REPREND EN NÉGATIF (C2, 2026-10-07) · l'inscription en négatif annule CE QUI A ÉTÉ
+PASSÉ (art. 20, al. 2, relecture M3) · les lignes de l'écriture d'origine, comptes et
+montants, recopiées (un bulletin d'avant T1 repris au 6641, 4334, 4335, jamais au
+6415) ; quand elle porte d'autres bulletins, le rejeu des chiffres figés, seulement
+si elle s'y reconstitue au centime, sinon refus nommé (annuler et réémettre les
+autres) ; introuvable, refus nommé · lignes à part du
+réémis, seule la différence pesant sur l'exercice de la correction (P15 · 6611
++ 20 000, 422 − 16 200, pas 620 000 et 520 100) ; une fois
+(`BulletinPaie.ecritureNegatifId`, RESTRICT, détenteur), CONFIRMÉE par le cabinet
+(`inscrireNegatifs` · la proposition faisait inscrire le négatif à la main jusque-là),
+jamais datée avant l'écriture qu'elle reprend ; un mois d'un exercice antérieur
+passé dans celui-ci porte la date de valeur de son dernier jour (AUDCIF art. 22,
+4°). Art. 20 · même exercice, inscription en négatif (al. 2) ; exercice clôturé,
+comptes de l'exercice en cours et Notes annexes (al. 4), report à nouveau au
+cabinet si l'erreur est significative (al. 3). **F19, F22** ·
 un bulletin en dollars se passe sur ses francs figés, relus par RANG ; l'avantage en
 nature reste dans les assiettes, sort du net et du 422, quatrième temps D 6617 / C
 781 (fiche du compte 66, Guide § 4.5). **Passe F5** · logement, transport et soins
@@ -1567,13 +1643,18 @@ assiettes (art. 69, 8°), même 6617 / 781 ; 30 % et taux légal des allocations
 TOTAL du salarié. Au fiscal, mention de l'art. 73, al. 2, 5° sauf
 `CODES_HORS_ARTICLE_73_5` (liste fermée) ; le 462 débiteur d'une société SYSCOHADA
 s'informe (`COMPTE_COURANT_ASSOCIE_DEBITEUR`), rien n'est chiffré. **Salaire en
-dollars · décision de Manasse (2026-09-24).** Aucun texte ne fixe le cours ;
-l'art. 89 (« stipulée en monnaie ayant cours légal ») est rappelé à chaque calcul.
-« Le taux est le taux actuel, il faudra toujours renseigner le taux chaque jour » ·
-`personnel/conversion-usd.ts` prend le cours de Devises du JOUR DU CALCUL à Kinshasa
-(UTC+1), date EXACTE, jamais le dernier connu ; absent, REFUS nommé. Seuls les
-ÉLÉMENTS se convertissent, avant tout calcul ; le bulletin fige le cours
-(`calcul.conversion`) et la stipulation en dollars.
+dollars · décision de Manasse (2026-09-24).** Aucun texte ne fixe la SOURCE du
+cours ; l'art. 89 (« stipulée en monnaie ayant cours légal ») est rappelé à chaque
+calcul. « Le taux est le taux actuel, il faudra toujours renseigner le taux chaque
+jour » · `personnel/conversion-usd.ts` prend le cours de Devises de la DATE DE MISE
+À DISPOSITION déclarée au bulletin (décision T8 du 2026-10-07 · loi n° 23/053,
+art. 115 ; arrêté du 19 février 2025, art. 3), à défaut du JOUR DU CALCUL à
+Kinshasa (UTC+1), et le DIT (`AVERTISSEMENT_DATE_DU_CALCUL`) ; date EXACTE, jamais
+le dernier connu ; absent, REFUS nommé. Chaque élément converti s'arrondit au
+CENTIME SUPÉRIEUR dès qu'une fraction reste (règle de protection, aucun texte
+n'arrondit le salaire converti). Seuls les ÉLÉMENTS se convertissent, avant tout
+calcul ; le bulletin fige le cours (`calcul.conversion`) et la stipulation en
+dollars.
 
 **Consolidation SYSCOHADA, tranche 1 · périmètre (2026-09-24).** AUDCIF art. 74 à
 98, D4C ch. XII ; SYSCOHADA SEUL (l'art. 3 du SYCEBNL écarte les art. 73 à 113).

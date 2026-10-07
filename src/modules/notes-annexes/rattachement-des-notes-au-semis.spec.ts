@@ -257,9 +257,11 @@ describe('SYCEBNL · une rubrique que le plan détermine ne se dit pas « en att
 
 describe('SYCEBNL · les dettes sociales semées ont chacune leur ligne', () => {
   it('tout compte Détail semé du 43 (hors 4387, débiteur) est lu par exactement une rubrique des notes 12 (projets) et 20 (associations)', () => {
-    // Passe R6, D6 · les 4334 INPP et 4335 ONEM, qu'OmegaX sème sous le 433
-    // et que la paie crédite, n'étaient lus par aucune rubrique : pris au
-    // bilan (DH, DI), absents de la note qui détaille le poste.
+    // Passe R6, D6 · les 4334 INPP et 4335 ONEM, qu'OmegaX semait alors sous
+    // le 433, n'étaient lus par aucune rubrique : pris au bilan (DH, DI),
+    // absents de la note qui détaille le poste. La décision T1 du 2026-10-07
+    // les retire du semis (INPP et ONEM au 4428) · les dossiers anciens qui
+    // les gardent restent couverts par `note-annexe.service.spec.ts`, C4.
     for (const [table, code] of [[NOTES_PROJETS, '12'], [NOTES_ASSOCIATIONS, '20']] as const) {
       const rubriques = table
         .filter((n) => n.code === code)

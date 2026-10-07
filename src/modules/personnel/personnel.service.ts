@@ -38,6 +38,7 @@ export const PLAFOND_AVANCES_DECOMPTE = 200;
 import { reserveIndemniteLogementKinshasa } from './indemnite-logement-kinshasa';
 import {
   AVERTISSEMENT_ARTICLE_89,
+  AVERTISSEMENT_DATE_DU_CALCUL,
   jourDeKinshasa,
   messageCoursManquant,
   usdEnFc,
@@ -49,11 +50,15 @@ export interface ConversionUsd {
   devise: 'USD';
   /** Francs congolais pour un dollar, tel que saisi au dossier. */
   cours: number;
-  /** AAAA-MM-JJ, jour de Kinshasa du calcul. */
+  /** AAAA-MM-JJ · la date de mise à disposition déclarée, à défaut le jour de Kinshasa du calcul (T8). */
   dateCours: string;
+  /** D'où vient la date du cours (décision T8). Absente sur un bulletin émis avant. */
+  origineDateCours?: 'MISE_A_DISPOSITION' | 'JOUR_DU_CALCUL';
   sourceCours: string | null;
   elements: Array<{ libelle: string; montantUsd: number; montantFc: number }>;
   avertissement: string;
+  /** Le cours lu au jour du calcul faute de date de mise à disposition · dit (T8). */
+  avertissementDate?: string | null;
 }
 import {
   LIMITE_UN_BULLETIN_PAR_MOIS,
@@ -96,7 +101,7 @@ import { MULTIPLICATEURS_ARTICLE_7, allocationFamilialeJournaliere, type Annexe 
 import { BAREMES_SERVIS, annexesSmigDuDossier, versionsDuDossier, type LigneVersion } from './baremes-dossier';
 import { effectifDuRegistre } from './effectif-registre';
 import {
-  RESERVE_ASSIETTE_SOCIALE_INDEMNITE,
+  FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE,
   RESERVE_DU_PAR_LE_TRAVAILLEUR,
   RESERVE_EN_FRANCS,
   RESERVE_VERSEMENT_UNIQUE,
@@ -942,12 +947,19 @@ export class PersonnelService {
         `Rémunération stipulée en USD · élément(s) sans montant en dollars : ${sansUsd.map((e) => e.libelle).join(', ')}.`,
       );
     }
-    const jour = jourDeKinshasa(maintenant);
+    // DÉCISION T8 · le cours du jour de MISE À DISPOSITION déclaré · à
+    // défaut, celui du jour du calcul, et c'est dit. Le jour se lit au
+    // calendrier, à minuit UTC, forme sous laquelle un cours est enregistré.
+    const declaree = dto.dateMiseADisposition ? dto.dateMiseADisposition.slice(0, 10) : null;
+    const jour = declaree ? new Date(declaree + 'T00:00:00.000Z') : jourDeKinshasa(maintenant);
+    if (Number.isNaN(jour.getTime())) {
+      throw new BadRequestException('La date de mise à disposition doit être écrite AAAA-MM-JJ.');
+    }
     const cote = await this.prisma.coursDevise.findFirst({
       where: { date: jour, devise: { tenantId, code: 'USD' } },
       select: { cours: true, source: true },
     });
-    if (!cote) throw new BadRequestException(messageCoursManquant(jour));
+    if (!cote) throw new BadRequestException(messageCoursManquant(jour, declaree !== null));
     const cours = Number(cote.cours);
     return {
       dtoFc: {
@@ -958,6 +970,7 @@ export class PersonnelService {
         devise: 'USD',
         cours,
         dateCours: jour.toISOString().slice(0, 10),
+        origineDateCours: declaree ? 'MISE_A_DISPOSITION' : 'JOUR_DU_CALCUL',
         sourceCours: cote.source ?? null,
         elements: dto.elements.map((e) => ({
           libelle: e.libelle,
@@ -965,6 +978,7 @@ export class PersonnelService {
           montantFc: usdEnFc(e.montantUsd!, cours),
         })),
         avertissement: AVERTISSEMENT_ARTICLE_89,
+        avertissementDate: declaree ? null : AVERTISSEMENT_DATE_DU_CALCUL,
       },
     };
   }
@@ -1193,6 +1207,8 @@ export class PersonnelService {
       // Le plancher de la CNSS (audit final F112) · la grille SMIG du dossier
       // et les jours payés d'un mois incomplet.
       joursPayes: dto.joursPayes ?? null,
+      // DÉCISION T5 · le barème INPP au jour du versement déclaré.
+      dateMiseADisposition: dto.dateMiseADisposition ? dto.dateMiseADisposition.slice(0, 10) : null,
       annexesSmig,
     });
 
@@ -1206,6 +1222,9 @@ export class PersonnelService {
     const deuxAssiettes = assiettes(elements, {
       tauxLegalAllocationsFamilialesFc,
       retenuesArticle71Fc,
+      // CONSTAT C1 · sous abstention de la CNSS, la quote-part ouvrière n'est
+      // pas chiffrée · ni la base nette, ni l'impôt, ni le net ne le sont.
+      quotePartOuvriereNonChiffree: lesCotisations.quotePartOuvriereNonChiffree,
     });
 
     // TROIS RAISONS DE NE PAS CHIFFRER LA RETENUE, et aucune n'est une panne.
@@ -1234,7 +1253,7 @@ export class PersonnelService {
       .reduce((n, e) => n + Math.max(0, e.montantFc), 0);
     const net = netAPayer(
       totalVerseFc,
-      lesCotisations.totalTravailleurFc,
+      lesCotisations.quotePartOuvriereNonChiffree ? null : lesCotisations.totalTravailleurFc,
       retenue ? retenue.retenueFc : null,
       retenuesAvancesFc,
     );
@@ -1293,7 +1312,16 @@ export class PersonnelService {
       retenuesSocialesFc: lesCotisations.lignes.some((l) => l.charge === 'TRAVAILLEUR')
         ? lesCotisations.totalTravailleurFc
         : null,
-      logementFourniEnNature: dto.logementFourniEnNature,
+      // CONSTAT C3 (P12 f) · le logement est FOURNI EN NATURE dès que le
+      // bulletin le porte ainsi (élément `LOGEMENT_OU_SON_INDEMNITE` à
+      // `enNature`), même si la case de l'article 114 n'est pas cochée · c'est
+      // un seul fait, saisi deux fois, et l'article 114, alinéa 4 en fait
+      // déduire l'évaluation forfaitaire (arrêté de 2005, art. 10, « lorsque
+      // l'employeur assure le logement en nature »). Ne lire que la case
+      // surestimait la part saisissable, au détriment du travailleur.
+      logementFourniEnNature:
+        dto.logementFourniEnNature === true ||
+        elements.some((e) => e.nature === 'LOGEMENT_OU_SON_INDEMNITE' && e.enNature === true && e.montantFc > 0),
       logementEnNatureDejaDefalque: dto.logementEnNatureDejaDefalque,
       // ARTICLE 138 · fournir et indemniser sont ALTERNATIFS. Les deux
       // déclarés ensemble n'est pas interdit, c'est inhabituel · on le dit.
@@ -1470,10 +1498,12 @@ export class PersonnelService {
       delaiDepartNouvelEmploiJours: dto.delaiDepartNouvelEmploiJours ?? null,
       partieResponsable: (dto.partieResponsable as InitiativeRupture | undefined) ?? null,
       remunerationJournaliereFc: dto.remunerationJournaliereFc ?? null,
+      remunerationMensuelleFc: dto.remunerationMensuelleFc ?? null,
       moyenneMensuelleArticle66Fc: dto.moyenneMensuelleArticle66Fc ?? null,
       moyenneMensuelleArticle142Fc: dto.moyenneMensuelleArticle142Fc ?? null,
       avantagesPendantPreavisFc: dto.avantagesPendantPreavisFc ?? null,
-      joursRestantsJusquAuTerme: dto.joursRestantsJusquAuTerme ?? null,
+      dateRuptureContrat: dto.dateRuptureContrat ? dto.dateRuptureContrat.slice(0, 10) : null,
+      dateTermeContrat: dto.dateTermeContrat ? dto.dateTermeContrat.slice(0, 10) : null,
       avantagesJusquAuTermeFc: dto.avantagesJusquAuTermeFc ?? null,
       montantConvenuCommunAccordFc: dto.montantConvenuCommunAccordFc ?? null,
       arrieresFc: dto.arrieresFc ?? null,
@@ -1773,8 +1803,8 @@ export class PersonnelService {
     const retenuesDuDecompte = Object.fromEntries(simulation.retenuesAvances.map((r) => [r.avanceId, r.montantFc]));
     avertissements.push(...avertissementsSoldesRestants(avances, retenuesDuDecompte));
     const reservesDecompteEmis = [RESERVE_VERSEMENT_UNIQUE, RESERVE_DU_PAR_LE_TRAVAILLEUR, DECOMPTE_A_LA_RUPTURE];
-    if (indemnites.some((e) => e.reserve === RESERVE_ASSIETTE_SOCIALE_INDEMNITE)) {
-      reservesDecompteEmis.push(RESERVE_ASSIETTE_SOCIALE_INDEMNITE);
+    if (indemnites.some((e) => e.reserve === FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE)) {
+      reservesDecompteEmis.push(FONDEMENT_ASSIETTE_SOCIALE_INDEMNITE);
     }
     if (simulation.retenuesAvances.some((r) => r.type === 'PRET')) reservesDecompteEmis.push(RESERVE_PRET_EXIGIBILITE);
 
@@ -2136,8 +2166,9 @@ export class PersonnelService {
     // P9 · UN BULLETIN PASSÉ AU BROUILLARD NE S'ANNULE PAS SEUL. L'écriture du
     // mois porterait encore son salaire, et rien ne le signalerait. On défait
     // d'abord la passation, qui se refait sans lui. Passé et VALIDÉ, il
-    // s'annule, et la proposition du mois le signale comme salaire encore au
-    // journal, à corriger par une écriture en négatif (AUDCIF art. 20).
+    // s'annule, et la passation suivante de son mois le REPREND EN NÉGATIF
+    // avec le bulletin réémis (C2, AUDCIF art. 20 ; art. 22, 4°), une fois
+    // (`ecritureNegatifId`).
     if (b.ecritureId) {
       const ecriture = await this.prisma.ecriture.findFirst({
         where: { id: b.ecritureId, tenantId },

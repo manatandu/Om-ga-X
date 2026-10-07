@@ -1,4 +1,4 @@
-import { MULTIPLICATEURS_ARTICLE_7, SMIG_JOURNALIER_FC, annexeApplicable, type Annexe } from './bareme-smig';
+import { MULTIPLICATEURS_ARTICLE_7, annexeApplicable, type Annexe } from './bareme-smig';
 
 /**
  * LES COTISATIONS D'UN BULLETIN, ET LE NET À PAYER.
@@ -195,7 +195,32 @@ const RESERVE_ASSIETTE_EMPRUNTEE =
  * comment la proportion au trimestre précédent se forme.
  */
 export const RESERVE_ASSIETTE_INPP =
-  "Assiette · la cotisation naît de l'article 15 b) du Code du travail, qui ne délègue que le taux à l'arrêté ; « rémunération » s'y lit au sens de l'article 7 du même Code. PÉRIODE · l'article 15 b) rapporte la cotisation mensuelle « à la somme des rémunérations versées [...] au cours du trimestre précédent », et OmegaX la calcule sur le mois, aucun texte lu ne disant comment la proportion se forme.";
+  "Assiette · la cotisation naît de l'article 15 b) du Code du travail, qui ne délègue que le taux à l'arrêté ; « rémunération » s'y lit au sens de l'article 7 du même Code. PÉRIODE · l'article 15 b) rapporte la cotisation mensuelle « à la somme des rémunérations versées [...] au cours du trimestre précédent », et OmegaX la calcule sur le mois · le texte qui dit comment la somme d'un trimestre devient une cotisation de mois, l'ordonnance n° 84/186 du 15 octobre 1984 fixant les modalités de paiement de la cotisation due par les employeurs à l'INPP (visée par les deux arrêtés), n'est pas au corpus.";
+
+/**
+ * DÉCISION T5 DU 2026-10-07 · LE TAUX INPP S'ATTACHE AUX « RÉMUNÉRATIONS
+ * VERSÉES » (arrêtés, art. 1er), et l'arrêté du 24 septembre 2025 vaut dès
+ * sa signature, sans disposition transitoire ni prorata au jour · une
+ * rémunération versée à partir du 24 septembre porte le nouveau barème, une
+ * rémunération versée avant porte l'ancien. La date de VERSEMENT se lit sur la
+ * date de mise à disposition déclarée au bulletin (`dateMiseADisposition`) ;
+ * sans elle, et quand un barème change au cours du mois de paie, le barème au
+ * mois est retenu et c'est DIT.
+ */
+export const reserveBaremeInppAuMois = (moisDePaie: string, aPartirDu: string) =>
+  `TAUX INPP DU MOIS · le barème du ${aPartirDu.split('-').reverse().join('/')} change au cours du mois de paie ${moisDePaie}, et le taux s'attache aux « rémunérations versées » (arrêté, art. 1er, en vigueur à sa signature). La date de mise à disposition n'est pas déclarée · le barème en vigueur à la fin du mois est retenu ; une rémunération versée avant le ${aPartirDu.split('-').reverse().join('/')} porte le barème précédent. Déclarez la date de mise à disposition.`;
+
+/**
+ * DÉCISION T5 · ARRÊTÉ ONEM n° 028/2025, ART. 6 · « Les contributions non
+ * acquittées à la date d'entrée en vigueur du présent Arrêté ainsi que les
+ * pénalités y applicables sont calculées conformément au taux fixé aux
+ * articles 1er et 3, alinéa 2. » Une paie antérieure à septembre 2025 dont la
+ * contribution n'était pas acquittée le 25 septembre 2025 se calcule donc à
+ * 0,5 %, ses pénalités aussi · OmegaX ne connaît pas la date du paiement de
+ * la contribution, il rend le taux du mois et le dit.
+ */
+export const RESERVE_ONEM_ARTICLE_6 =
+  "ONEM, ARRÊTÉ n° 028/2025, art. 6 · « Les contributions non acquittées à la date d'entrée en vigueur du présent Arrêté ainsi que les pénalités y applicables sont calculées conformément au taux fixé aux articles 1er et 3, alinéa 2. » Si la contribution de ce mois n'était pas acquittée le 25 septembre 2025, elle se calcule à 0,5 %, et ses pénalités au nouveau taux · le taux rendu ici est celui du mois de paie.";
 
 /**
  * Le dernier barème dont la date d'effet tombe AU PLUS TARD DANS le mois de
@@ -219,8 +244,12 @@ export function tauxInpp(
   nature: NatureEmployeurInpp,
   effectif: number | null,
   versionsDossier: readonly BaremeInpp[] = [],
+  dateVersement: string | null = null,
 ): { tauxPourCent: number | null; source: string; motifAbstention: string | null; saisieCabinet?: boolean } {
-  const bareme = baremeDuMois(fusionner(BAREMES_INPP, versionsDossier), moisDePaie);
+  // DÉCISION T5 · le taux s'attache à la rémunération VERSÉE · la date de
+  // versement déclarée choisit le barème au jour ; sans elle, au mois.
+  const baremes = fusionner(BAREMES_INPP, versionsDossier);
+  const bareme = dateVersement ? baremeAuJour(baremes, dateVersement) : baremeDuMois(baremes, moisDePaie);
   if (!bareme) {
     return {
       tauxPourCent: null,
@@ -249,6 +278,16 @@ export function tauxInpp(
   }
   return { tauxPourCent: null, source: bareme.reference, motifAbstention: 'Tranche introuvable.' };
 }
+
+/** Le dernier barème en vigueur AU JOUR donné (date d'effet au plus tard ce jour). */
+const baremeAuJour = <T extends { aPartirDu: string }>(baremes: readonly T[], jour: string): T | null => {
+  const applicables = baremes.filter((b) => b.aPartirDu <= jour.slice(0, 10));
+  return applicables.length === 0 ? null : applicables[applicables.length - 1];
+};
+
+/** Le barème dont la date d'effet tombe AU COURS du mois, après son premier jour · `null` sinon. */
+const changementAuCoursDuMois = <T extends { aPartirDu: string }>(baremes: readonly T[], moisDePaie: string): T | null =>
+  baremes.find((b) => b.aPartirDu.slice(0, 7) === moisDePaie.slice(0, 7) && b.aPartirDu.slice(8, 10) !== '01') ?? null;
 
 export function tauxOnem(
   moisDePaie: string,
@@ -354,6 +393,11 @@ export type ParametresCotisations = {
    * Sert au seul plancher de la CNSS · voir `plancherCnss`.
    */
   readonly joursPayes?: number | null;
+  /**
+   * La date de mise à disposition de la rémunération (AAAA-MM-JJ), déclarée ·
+   * elle choisit le barème INPP au jour du versement (décision T5).
+   */
+  readonly dateMiseADisposition?: string | null;
   /** Grilles SMIG saisies par le cabinet (baremes-dossier.ts). */
   readonly annexesSmig?: readonly Annexe[];
   /** Versions de barème ajoutées par le cabinet (baremes-dossier.ts). */
@@ -379,6 +423,16 @@ export type VerdictCotisations = {
   /** Ce que l'employeur supporte en plus du brut. */
   readonly coutEmployeurSupplementaireFc: number;
   readonly abstentions: readonly string[];
+  /**
+   * LA QUOTE-PART OUVRIÈRE N'EST PAS CHIFFRÉE (constat C1 des cas chiffrés de
+   * la paie, P07 b) · le motif quand la CNSS s'abstient entière (barème absent
+   * ou plancher qui ne se fixe pas), `null` sinon. Elle n'est pas zéro · la
+   * base de l'impôt est nette des versements « réellement effectués » à la
+   * caisse de pension (loi n° 23/053, art. 70 et 71), et une base nette d'une
+   * quote-part inconnue n'est pas une base. L'apprenti, qui ne doit AUCUNE
+   * quote-part, est une RÉPONSE (zéro), jamais ce motif.
+   */
+  readonly quotePartOuvriereNonChiffree: string | null;
   /** Le plancher de la CNSS, appliqué, vérifié ou non (audit final F112). */
   readonly plancherCnss?: PlancherCnss;
   readonly reserves?: readonly string[];
@@ -399,10 +453,16 @@ export type VerdictCotisations = {
  * règle, et chacune de ses branches refuse une supposition :
  *  · SMIG du mois hors corpus (avant mai 2025) · rien n'est vérifié, et c'est
  *    dit ; la CNSS se calcule sur l'assiette ;
- *  · les deux lectures de l'annexe 1 (mai à décembre 2025 · 14 500 FC PAYÉS,
- *    21 500 FC FIXÉS par l'art. 2) · au-dessus des deux planchers, rien ne
- *    change ; en dessous du plus haut, la CNSS S'ABSTIENT, OmegaX ne tranchant
- *    pas ce que le registre dit ouvert ;
+ *  · DE MAI À DÉCEMBRE 2025, LE SMIG PAYÉ, 14 500 FC PAR JOUR (décision T4 du
+ *    2026-10-07, `docs/decisions-par-la-loi-paie-2026-10-07.md`) · la loi
+ *    n° 16/009, art. 13, qui prime sur le décret n° 18/041, dit « salaire
+ *    minimum légal », le minimum que la loi oblige à payer ; le décret
+ *    n° 25/22, art. 3, le fait payer à 14 500 FC « à partir de la paie du mois
+ *    de mai 2025 » ; le décret n° 25/21, art. 3, définit le SMIG par la
+ *    sanction, qu'aucun salaire de 14 500 FC ne porte en 2025 ; et l'annexe 1,
+ *    applicable à ces mois, porte le manœuvre ordinaire à 14 500 FC. C'est le
+ *    minimum qu'OmegaX oppose déjà au contrat (P1b). L'abstention « PLANCHER
+ *    NON TRANCHÉ » qui servait les deux lectures est retirée ;
  *  · une assiette sous le plancher d'un mois ENTIER sans jours payés déclarés
  *    · mois incomplet ou rémunération sous le minimum, le logiciel ne sait
  *    pas lequel, et la CNSS S'ABSTIENT en demandant les jours ;
@@ -443,25 +503,12 @@ export function plancherCnss(
     };
   }
   const jours = joursPayes ?? MULTIPLICATEURS_ARTICLE_7.MOIS;
+  // LE TAUX PAYÉ DE L'ANNEXE DU MOIS · 14 500 FC de mai à décembre 2025
+  // (annexe 1, décret n° 25/22, art. 3), 21 500 FC depuis janvier 2026
+  // (annexe 2), ou la grille du cabinet (décision T4).
   const plancher = annexe.smigJournalierFc * jours;
-  // L'annexe du décret dont le taux PAYÉ n'est pas le SMIG FIXÉ par l'art. 2.
-  const autreLecture =
-    annexe.numero !== null && annexe.smigJournalierFc !== SMIG_JOURNALIER_FC ? SMIG_JOURNALIER_FC * jours : null;
-  const plancherHaut = Math.max(plancher, autreLecture ?? 0);
-  if (assiette >= plancherHaut) {
-    return { baseFc: assiette, plancherFc: plancherHaut, applique: false, message: null };
-  }
-  if (autreLecture !== null) {
-    return {
-      baseFc: null,
-      plancherFc: null,
-      applique: false,
-      message:
-        `PLANCHER NON TRANCHÉ · l'assiette (${assiette} FC) est sous le SMIG de ${jours} jours au taux FIXÉ ` +
-        `par l'art. 2 (${autreLecture} FC), et le décret n° 25/22 échelonne son PAIEMENT à ` +
-        `${annexe.smigJournalierFc} FC par jour jusqu'en décembre 2025 (${plancher} FC) · aucun texte lu ne dit ` +
-        `lequel des deux fait le plancher (${SOURCES_PLANCHER}).`,
-    };
+  if (assiette >= plancher) {
+    return { baseFc: assiette, plancherFc: plancher, applique: false, message: null };
   }
   if (joursPayes === undefined || joursPayes === null) {
     return {
@@ -532,14 +579,17 @@ export function cotisations(
 
   const v = parametres.versionsDossier;
   const cnss = tauxCnss(parametres.moisDePaie, v?.cnss);
+  let quotePartOuvriereNonChiffree: string | null = null;
   if (cnss && plancher.baseFc === null) {
-    // Le plancher ne se tranche pas · la CNSS s'abstient entière plutôt que de
+    // Le plancher ne se fixe pas · la CNSS s'abstient entière plutôt que de
     // cotiser sur une base que personne n'a décidée.
-    abstentions.push(`CNSS · ${plancher.message}`);
+    const motif = `CNSS · ${plancher.message}`;
+    abstentions.push(motif);
+    quotePartOuvriereNonChiffree = motif;
   } else if (!cnss) {
-    abstentions.push(
-      `CNSS · aucun barème lu pour le mois ${parametres.moisDePaie} · OmegaX n'en tient aucun avant le 24 novembre 2018 (décret n° 18/041, art. 11).`,
-    );
+    const motif = `CNSS · aucun barème lu pour le mois ${parametres.moisDePaie} · OmegaX n'en tient aucun avant le 24 novembre 2018 (décret n° 18/041, art. 11).`;
+    abstentions.push(motif);
+    quotePartOuvriereNonChiffree = motif;
   } else {
     // Une version saisie par le cabinet porte SA référence, et la réserve le dit.
     const srcCnss = cnss.saisieCabinet ? `${cnss.reference} (saisi par le cabinet).` : `${cnss.reference}. ${sourceCnss}`;
@@ -596,11 +646,20 @@ export function cotisations(
       "INPP · le taux dépend d'abord de la NATURE de l'employeur, public ou privé. Elle n'est pas renseignée, et OmegaX ne la présume pas.",
     );
   } else {
-    const inpp = tauxInpp(parametres.moisDePaie, nature, parametres.effectif ?? null, v?.inpp);
+    const dateVersement = parametres.dateMiseADisposition ?? null;
+    const inpp = tauxInpp(parametres.moisDePaie, nature, parametres.effectif ?? null, v?.inpp, dateVersement);
     if (inpp.tauxPourCent === null) {
       abstentions.push(`INPP · ${inpp.motifAbstention}`);
     } else {
-      poser('inpp', 'INPP · contribution patronale', 'INPP', 'EMPLOYEUR', inpp.tauxPourCent, `Code du travail, art. 15 b) · ${inpp.source}`, inpp.saisieCabinet ? `${RESERVE_BAREME_CABINET} ${RESERVE_ASSIETTE_INPP}` : RESERVE_ASSIETTE_INPP);
+      const changement = dateVersement ? null : changementAuCoursDuMois(fusionner(BAREMES_INPP, v?.inpp), parametres.moisDePaie);
+      const reserveInpp = [
+        inpp.saisieCabinet ? RESERVE_BAREME_CABINET : null,
+        RESERVE_ASSIETTE_INPP,
+        changement ? reserveBaremeInppAuMois(parametres.moisDePaie, changement.aPartirDu) : null,
+      ]
+        .filter((r): r is string => r !== null)
+        .join(' ');
+      poser('inpp', 'INPP · contribution patronale', 'INPP', 'EMPLOYEUR', inpp.tauxPourCent, `Code du travail, art. 15 b) · ${inpp.source}`, reserveInpp);
     }
   }
 
@@ -608,7 +667,17 @@ export function cotisations(
   if (onem.tauxPourCent === null) {
     abstentions.push(`ONEM · aucun barème lu pour le mois ${parametres.moisDePaie}.`);
   } else {
-    poser('onem', 'ONEM · contribution patronale', 'ONEM', 'EMPLOYEUR', onem.tauxPourCent, onem.source, onem.saisieCabinet ? `${RESERVE_BAREME_CABINET} ${RESERVE_ASSIETTE_EMPRUNTEE}` : RESERVE_ASSIETTE_EMPRUNTEE);
+    // DÉCISION T5 · une paie antérieure à septembre 2025 porte la réserve de
+    // l'art. 6 de l'arrêté n° 028/2025 (contribution non acquittée le 25
+    // septembre 2025 · 0,5 %).
+    const reserveOnem = [
+      onem.saisieCabinet ? RESERVE_BAREME_CABINET : null,
+      RESERVE_ASSIETTE_EMPRUNTEE,
+      parametres.moisDePaie.slice(0, 7) < '2025-09' ? RESERVE_ONEM_ARTICLE_6 : null,
+    ]
+      .filter((r): r is string => r !== null)
+      .join(' ');
+    poser('onem', 'ONEM · contribution patronale', 'ONEM', 'EMPLOYEUR', onem.tauxPourCent, onem.source, reserveOnem);
   }
 
   const totalEmployeurFc = lignes
@@ -624,6 +693,7 @@ export function cotisations(
     totalTravailleurFc,
     coutEmployeurSupplementaireFc: totalEmployeurFc,
     abstentions,
+    quotePartOuvriereNonChiffree,
     plancherCnss: plancher,
     reserves,
   };
@@ -660,7 +730,8 @@ export const RESERVE_SAISIES_ET_CESSIONS =
 export type VerdictNet = {
   /** Tout ce que l'employeur verse, exclusions de l'article 7 comprises. */
   readonly totalVerseFc: number;
-  readonly quotePartOuvriereFc: number;
+  /** `null` quand la CNSS s'abstient · non chiffrée, jamais zéro (C1). */
+  readonly quotePartOuvriereFc: number | null;
   readonly irppFc: number | null;
   readonly netAPayerFc: number | null;
   readonly reserves: readonly string[];
@@ -684,7 +755,7 @@ export type VerdictNet = {
  */
 export function netAPayer(
   totalVerseFc: number,
-  quotePartOuvriereFc: number,
+  quotePartOuvriereFc: number | null,
   irppFc: number | null,
   retenuesAvancesFc = 0,
 ): VerdictNet {
@@ -701,8 +772,11 @@ export function netAPayer(
   // Pas de plancher à zéro · un net négatif est REFUSÉ par l'appelant (les
   // retenues d'avance dépasseraient ce qui est dû), jamais ramené à zéro, ce
   // qui ferait mentir le 422 de la passation.
+  // Une quote-part ouvrière non chiffrée rend le net non chiffré, comme un
+  // impôt non chiffré · lue comme zéro, elle gonflait le net de 5 % de la base
+  // (constat C1, P07 b).
   const netAPayerFc =
-    irppFc === null
+    irppFc === null || quotePartOuvriereFc === null
       ? null
       : Math.max(0, totalVerseFc - quotePartOuvriereFc - irppFc) - retenuesAvancesFc;
   return {

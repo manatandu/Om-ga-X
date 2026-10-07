@@ -3,7 +3,12 @@ import { TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { DETENTEUR_PAIE_DU_MOIS, EcritureService } from '../comptabilite/ecriture.service';
 import { moisValide } from './bulletin-paie';
-import { propositionPaieDuMois, type BulletinAComptabiliser } from './comptabilisation-paie';
+import {
+  dernierJourDuMois,
+  propositionPaieDuMois,
+  type BulletinAComptabiliser,
+  type OrigineDuBulletin,
+} from './comptabilisation-paie';
 import type { Referentiel } from './passation-paie';
 import { ComptabilisationPaieDto } from './dto/personnel.dto';
 
@@ -39,12 +44,44 @@ export class ComptabilisationPaieService {
           netAPayerFc: true,
           entree: true,
           calcul: true,
+          ecritureNegatifId: true,
         },
         // Un mois de paie ne dépasse pas l'effectif du dossier · la borne
         // est là pour qu'aucune route ne rende une collection sans limite.
         take: 5_000,
       }),
     ]);
+    // RELECTURE M3 · l'écriture qui a passé chaque bulletin annulé, telle
+    // qu'au journal · la reprise en négatif recopie ce qui a été passé, et
+    // une reprise déjà inscrite se reconnaît dans l'écriture qui la porte.
+    const idsOrigine = [
+      ...new Set(bulletins.filter((b) => b.statut === 'ANNULE' && b.ecritureId).map((b) => b.ecritureId as string)),
+    ];
+    const origines = idsOrigine.length
+      ? await this.prisma.ecriture.findMany({
+          where: { tenantId, id: { in: idsOrigine } },
+          select: {
+            id: true,
+            numeroPiece: true,
+            lignes: { select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } } },
+          },
+        })
+      : [];
+    const origineDe = new Map<string, OrigineDuBulletin>(
+      origines.map((e) => [
+        e.id,
+        {
+          ecritureId: e.id,
+          numeroPiece: e.numeroPiece === null || e.numeroPiece === undefined ? null : String(e.numeroPiece),
+          lignes: (e.lignes ?? []).map((l) => ({
+            compte: l.compte.numero,
+            intitule: l.compte.intitule,
+            debit: Number(l.debit),
+            credit: Number(l.credit),
+          })),
+        },
+      ]),
+    );
     const lus: BulletinAComptabiliser[] = bulletins.map((b) => ({
       id: b.id,
       numero: b.numero,
@@ -54,12 +91,21 @@ export class ComptabilisationPaieService {
       netAPayerFc: Number(b.netAPayerFc),
       entree: b.entree,
       calcul: b.calcul,
+      ecritureNegatifId: b.ecritureNegatifId,
+      origine: b.statut === 'ANNULE' && b.ecritureId ? (origineDe.get(b.ecritureId) ?? null) : null,
     }));
     const proposition = propositionPaieDuMois(mois, tenant.referentiel as Referentiel, lus);
 
     // Les pièces déjà passées, avec leur statut · c'est lui qui dit si la
     // comptabilisation peut encore se défaire.
-    const ids = [...new Set([...proposition.dejaPasses, ...proposition.annulesApresPassation].map((b) => b.ecritureId))];
+    // C2 · l'écriture qui reprend un bulletin annulé en négatif en est une
+    // aussi · défaite au brouillard, le bulletin redevient à reprendre.
+    const ids = [
+      ...new Set([
+        ...[...proposition.dejaPasses, ...proposition.annulesApresPassation].map((b) => b.ecritureId),
+        ...proposition.annulesApresPassation.flatMap((b) => (b.ecritureNegatifId ? [b.ecritureNegatifId] : [])),
+      ]),
+    ];
     const pieces = ids.length
       ? await this.prisma.ecriture.findMany({
           where: { tenantId, id: { in: ids } },
@@ -82,15 +128,51 @@ export class ComptabilisationPaieService {
         motifs: p.refus.map((r) => `n° ${r.numero} · ${r.nomComplet} · ${r.motifs.join(' ')}`),
       });
     }
-    if (p.aPasser.length === 0 || p.lignes.length === 0) {
+    if ((p.aPasser.length === 0 && p.negatifsAPasser.length === 0) || p.lignes.length === 0) {
       throw new BadRequestException(`Aucun bulletin émis à passer pour ${mois}.`);
     }
     if (!p.equilibree) {
       throw new BadRequestException(p.reserves[p.reserves.length - 1] ?? "L'écriture de paie ne s'équilibre pas.");
     }
+    // C2 · LA REPRISE EN NÉGATIF SE CONFIRME. Jusqu'au 7 octobre 2026, la
+    // proposition demandait au cabinet de l'inscrire lui-même · la reprendre
+    // sans le lui demander pourrait doubler la correction, sur une écriture
+    // qui boucle.
+    if (p.negatifsAPasser.length > 0 && dto.inscrireNegatifs !== true) {
+      throw new BadRequestException(
+        `La paie de ${mois} reprend en négatif le(s) bulletin(s) n° ${p.negatifsAPasser.map((b) => b.numero).join(', ')}, ` +
+          "annulé(s) après passation · confirmez la reprise (« Reprendre en négatif les bulletins annulés »). Si ce négatif " +
+          "a déjà été inscrit à la main, contre-passez d'abord cette écriture (Corriger, inscription en négatif), puis " +
+          'passez la paie ici · la reprise ne doit compter qu’une fois.',
+      );
+    }
 
-    const journal = await this.prisma.journal.findFirst({ where: { id: dto.journalId, tenantId }, select: { id: true } });
+    const [journal, exercice] = await Promise.all([
+      this.prisma.journal.findFirst({ where: { id: dto.journalId, tenantId }, select: { id: true } }),
+      this.prisma.exercice.findFirst({ where: { id: dto.exerciceId, tenantId }, select: { dateDebut: true } }),
+    ]);
     if (!journal) throw new BadRequestException('Journal introuvable dans ce dossier.');
+    if (!exercice) throw new BadRequestException('Exercice introuvable dans ce dossier.');
+
+    // UNE REPRISE NE PRÉCÈDE PAS CE QU'ELLE REPREND · l'écriture qui a passé
+    // le bulletin annulé est validée ; une inscription en négatif datée avant
+    // elle effacerait au grand livre un salaire pas encore passé.
+    const date = new Date(dto.date);
+    for (const b of p.negatifsAPasser) {
+      const origine = p.pieces.find((x) => x.id === b.ecritureId);
+      if (origine && date < origine.date) {
+        throw new BadRequestException(
+          `La reprise en négatif du bulletin n° ${b.numero} ne peut précéder l'écriture qui l'a passé (pièce n° ` +
+            `${origine.numeroPiece ?? '·'} du ${origine.date.toISOString().slice(0, 10)}) · datez la passation au plus tôt ce jour-là.`,
+        );
+      }
+    }
+
+    // AUDCIF ART. 22, 4° · un mois de paie d'un exercice antérieur passé dans
+    // cet exercice (bulletin réémis, reprise en négatif) s'y inscrit avec la
+    // date de valeur du mois, « mentionnée distinctement ».
+    const finDuMois = new Date(`${dernierJourDuMois(mois)}T00:00:00.000Z`);
+    const dateValeur = finDuMois < exercice.dateDebut ? finDuMois : null;
 
     const numeros = [...new Set(p.lignes.map((l) => l.compte))];
     const comptes = await this.prisma.compte.findMany({
@@ -126,23 +208,45 @@ export class ComptabilisationPaieService {
     // les bulletins déjà liés, et son écriture est retirée plutôt que de
     // laisser un salaire passé deux fois.
     const ids = p.aPasser.map((b) => b.id);
-    const lies = await this.prisma.bulletinPaie.updateMany({
-      where: { tenantId, id: { in: ids }, ecritureId: null, statut: 'EMIS' },
-      data: { ecritureId: ecriture.id },
-    });
-    if (lies.count !== ids.length) {
+    const idsRepris = p.negatifsAPasser.map((b) => b.id);
+    const lies = ids.length
+      ? await this.prisma.bulletinPaie.updateMany({
+          where: { tenantId, id: { in: ids }, ecritureId: null, statut: 'EMIS' },
+          data: { ecritureId: ecriture.id },
+        })
+      : { count: 0 };
+    // C2 · le lien de reprise se pose de même sur les seuls bulletins encore
+    // non repris · deux clics simultanés ne reprennent pas deux fois.
+    const repris = idsRepris.length
+      ? await this.prisma.bulletinPaie.updateMany({
+          where: { tenantId, id: { in: idsRepris }, statut: 'ANNULE', ecritureNegatifId: null },
+          data: { ecritureNegatifId: ecriture.id },
+        })
+      : { count: 0 };
+    // La date de valeur manquée n'est jamais tue · l'écriture repart avec ses
+    // liens, et l'erreur d'origine remonte (même parti que le retrait d'une
+    // écriture après l'échec d'un geste, ligne A7).
+    let echecDateValeur: unknown = null;
+    if (dateValeur && lies.count === ids.length && repris.count === idsRepris.length) {
+      await this.prisma.ecriture.update({ where: { id: ecriture.id }, data: { dateValeur } }).catch((e: unknown) => {
+        echecDateValeur = e ?? new Error('Date de valeur non posée.');
+      });
+    }
+    if (lies.count !== ids.length || repris.count !== idsRepris.length || echecDateValeur) {
       // PAR LA COMPENSATION DU JOURNAL, jamais réécrite ici (audit final
       // F107) · les bulletins que ce clic a liés se délient dans la même
       // transaction que l'écriture part.
-      await this.ecritures.retirerCompensation(tenantId, ecriture.id, (tx) =>
-        tx.bulletinPaie.updateMany({ where: { tenantId, ecritureId: ecriture.id }, data: { ecritureId: null } }),
-      );
+      await this.ecritures.retirerCompensation(tenantId, ecriture.id, async (tx) => {
+        await tx.bulletinPaie.updateMany({ where: { tenantId, ecritureId: ecriture.id }, data: { ecritureId: null } });
+        await tx.bulletinPaie.updateMany({ where: { tenantId, ecritureNegatifId: ecriture.id }, data: { ecritureNegatifId: null } });
+      });
+      if (echecDateValeur) throw echecDateValeur;
       throw new ConflictException(
         `La paie de ${mois} a changé pendant la passation (un bulletin passé ou annulé entre-temps). ` +
           "Rien n'est enregistré · relisez la proposition et recommencez.",
       );
     }
-    return { ecriture, bulletins: p.aPasser };
+    return { ecriture, bulletins: p.aPasser, reprisEnNegatif: p.negatifsAPasser, dateValeur };
   }
 
   /**
@@ -153,7 +257,11 @@ export class ComptabilisationPaieService {
   async annulerComptabilisation(tenantId: string, ecritureId: string) {
     const ecriture = await this.prisma.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { id: true } });
     if (!ecriture) throw new NotFoundException('Écriture introuvable dans ce dossier.');
-    const porte = await this.prisma.bulletinPaie.count({ where: { tenantId, ecritureId } });
+    // C2 · une écriture qui ne fait que reprendre en négatif un bulletin
+    // annulé est aussi une écriture de la paie.
+    const porte = await this.prisma.bulletinPaie.count({
+      where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] },
+    });
     if (porte === 0) throw new BadRequestException("Cette écriture ne passe aucun bulletin de paie.");
     // LES GARDES SONT CELLES DU JOURNAL, et une seule fois (audit final
     // F107) · brouillard, exercice ouvert, report à-nouveau, lettrage soldé
@@ -162,7 +270,10 @@ export class ComptabilisationPaieService {
     // les bulletins se délient dans la transaction qui retire l'écriture.
     await this.ecritures.supprimer(tenantId, ecritureId, {
       detenteur: DETENTEUR_PAIE_DU_MOIS,
-      liberer: (tx) => tx.bulletinPaie.updateMany({ where: { tenantId, ecritureId }, data: { ecritureId: null } }),
+      liberer: async (tx) => {
+        await tx.bulletinPaie.updateMany({ where: { tenantId, ecritureId }, data: { ecritureId: null } });
+        await tx.bulletinPaie.updateMany({ where: { tenantId, ecritureNegatifId: ecritureId }, data: { ecritureNegatifId: null } });
+      },
     });
     return { annule: true, bulletinsLiberes: porte };
   }
