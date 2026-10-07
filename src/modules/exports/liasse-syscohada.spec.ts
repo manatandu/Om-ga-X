@@ -203,7 +203,7 @@ const EXERCICES = [
 ];
 
 /** Une cellule saisie des notes annexes, telle que la table `saisies_notes` la rend. */
-type SaisieStub = { exerciceId: string; codeNote: string; cleRubrique: string; colonne: number; valeurTexte: string };
+type SaisieStub = { exerciceId: string; codeNote: string; cleRubrique: string; colonne: number; valeurTexte: string; rang?: number };
 
 function fabriquerExport(
   systeme: SystemeComptableSyscohada = SystemeComptableSyscohada.NORMAL,
@@ -1205,6 +1205,26 @@ describe('Passe R2, A3 et B6 · fiche R2 du Système normal SYSCOHADA', () => {
     expect(zq).toEqual(['', 'X']);
     expect(caseR2(wb, 'ZS')).toBe('');
     expect(caseR2(wb, 'ZR')).toBe('');
+  });
+
+  it('NOTE 13 · trois apporteurs saisis en ressortent trois dans la liasse (lignes répétables, décision du 2026-10-04)', async () => {
+    const A = 'apporteurs-une-ligne-par-apporteur-nom-et-prenom';
+    const wb = await ouvrir(
+      (
+        await fabriquerExport(SystemeComptableSyscohada.NORMAL, [
+          { exerciceId: 'e1', codeNote: '13', cleRubrique: A, colonne: 0, valeurTexte: 'MUKENDI Jean' },
+          { exerciceId: 'e1', codeNote: '13', cleRubrique: A, rang: 1, colonne: 0, valeurTexte: 'ILUNGA Paul' },
+          { exerciceId: 'e1', codeNote: '13', cleRubrique: A, rang: 2, colonne: 0, valeurTexte: 'KABEYA Rose' },
+        ]).liasseCompleteExcel('t1', 'e1')
+      ).buffer,
+    );
+    const feuille = wb.worksheets.find((w) => /^NOTE 13\b/.test(w.name))!;
+    const texte = texteFeuille(wb, feuille.name);
+    for (const nom of ['MUKENDI Jean', 'ILUNGA Paul', 'KABEYA Rose']) {
+      expect(texte.filter((t) => t === nom)).toHaveLength(1);
+    }
+    expect(texte.indexOf('MUKENDI Jean')).toBeLessThan(texte.indexOf('ILUNGA Paul'));
+    expect(texte.indexOf('ILUNGA Paul')).toBeLessThan(texte.indexOf('KABEYA Rose'));
   });
 
   it('une SA n’est jamais codée d’office · 00 ou 01 dépend d’une participation publique que le dossier ne porte pas', async () => {

@@ -1210,8 +1210,14 @@ export const NOTES_SYSCOHADA_3: SpecificationNote[] = [
       ...quantiteValeur("STOCK CLÔTURE DE L'EXERCICE"),
     ],
     // La maquette est une grille vide par produit ; seules ses deux lignes
-    // finales sont nommées.
-    rubriques: [saisie('non-ventile', 'NON VENTILÉ'), saisie('total', 'TOTAL')],
+    // finales sont nommées. Une ligne PAR PRODUIT, répétable (décision par la
+    // loi du 2026-10-04, point 2 · la ligne est une occurrence, pas une
+    // rubrique créée), avant NON VENTILÉ et TOTAL, qui restent à leur place.
+    rubriques: [
+      { ...saisie('produit', 'Produit (une ligne par produit)'), repetable: true as const },
+      saisie('non-ventile', 'NON VENTILÉ'),
+      saisie('total', 'TOTAL'),
+    ],
   },
   {
     code: '33',
@@ -1226,7 +1232,13 @@ export const NOTES_SYSCOHADA_3: SpecificationNote[] = [
       ...quantiteValeur("ACHATS EFFECTUÉS AU COURS DE L'EXERCICE · [sans intitulé, texte officiel]"),
       { type: 'LIBRE' as const, libelle: 'VARIATION DES STOCKS (en valeur)' },
     ],
-    rubriques: [saisie('non-ventiles', 'NON VENTILÉS'), saisie('total', 'TOTAL')],
+    // Une ligne PAR MATIÈRE OU PRODUIT, répétable, avant NON VENTILÉS et
+    // TOTAL (décision par la loi du 2026-10-04, point 2).
+    rubriques: [
+      { ...saisie('matiere', 'Matière ou produit (une ligne par matière ou produit)'), repetable: true as const },
+      saisie('non-ventiles', 'NON VENTILÉS'),
+      saisie('total', 'TOTAL'),
+    ],
     renvoiOfficiel:
       '[texte officiel] Les en-têtes des notes 32 et 33 sont désalignés : la note 33 annonce trois couples ' +
       'Quantité/Valeur pour deux origines déclarées (« dans l’État » / « hors de l’État »).',

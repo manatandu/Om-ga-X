@@ -112,6 +112,7 @@ export class NoteAnnexeController {
       dto.cleRubrique,
       dto.colonne,
       dto.valeur ?? null,
+      dto.rang ?? 0,
     );
   }
 }

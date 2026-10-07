@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { Compte, LigneFicheRecapitulative, LigneNoteCalculee, NoteCalculee } from '../lib/types';
 import { Aide } from './chrome/Aide';
@@ -5,6 +6,7 @@ import { motifAucunCompteRetenu } from '../lib/comptes-proposes';
 import { montant } from '../lib/montants';
 import { celluleLibreSaisissable, texteCelluleLibre } from '../lib/cellules-notes';
 import { sousTitreDuTableau } from '../lib/titre-note';
+import { lignesAvecAjouts } from '../lib/lignes-repetables';
 import { texteEcartSaisie, type EcartSaisieNote } from '../lib/ecarts-saisie-notes';
 
 /**
@@ -83,7 +85,8 @@ export interface RattachementNotes {
 export interface SaisieNotes {
   /** `codeNote::cleRubrique::colonne` en cours d'envoi, ou null. */
   enCours: string | null;
-  enregistrer: (codeNote: string, cleRubrique: string, colonne: number, valeur: string) => void;
+  /** `rang` · ligne d'une rubrique répétable (absent = la ligne unique). */
+  enregistrer: (codeNote: string, cleRubrique: string, colonne: number, valeur: string, rang?: number) => void;
 }
 
 /**
@@ -165,7 +168,7 @@ function LigneTableauNote({
               </span>
             );
           }
-          const ancre = `${note.code}::${ligne.cle}::${ci}`;
+          const ancre = `${note.code}::${ligne.cle}::${ligne.rang ?? 0}::${ci}`;
           return (
             <input
               key={`${ancre}-${texte}`}
@@ -174,7 +177,7 @@ function LigneTableauNote({
               // sur une note à seize colonnes.
               defaultValue={texte}
               onBlur={(e) => {
-                if (e.target.value !== texte) saisie.enregistrer(note.code, ligne.cle!, ci, e.target.value);
+                if (e.target.value !== texte) saisie.enregistrer(note.code, ligne.cle!, ci, e.target.value, ligne.rang);
               }}
               disabled={saisie.enCours !== null}
               placeholder={c.type === 'LIBRE' ? '' : '0,00'}
@@ -273,6 +276,11 @@ export function BlocTableauNote({
   // une rubrique `subdivisionAttendue`, le plan officiel ne lui donne aucun
   // compte propre, donc tout `l.comptes` vient du rattachement.
   const rattachees = note.lignes.filter((l) => l.cle && l.rattachementDuDossier);
+  // Lignes VIDES ajoutées à l'écran sur une rubrique répétable, par clé ·
+  // elles n'existent en base qu'une fois une cellule saisie. Remises à zéro
+  // quand la note change (le serveur relu les rend comme lignes réelles).
+  const [ajoutees, setAjoutees] = useState<Record<string, number>>({});
+  useEffect(() => setAjoutees({}), [note]);
 
   return (
     <div className="border border-border bg-surface mb-4">
@@ -322,8 +330,32 @@ export function BlocTableauNote({
               </span>
             ))}
           </div>
-          {note.lignes.map((l, i) => (
-            <LigneTableauNote key={`${l.cle ?? l.libelle}-${i}`} note={note} ligne={l} saisie={saisie} />
+          {lignesAvecAjouts(note.lignes, note.colonnes.length, ajoutees).map((l, i) =>
+            'ajouterApres' in l ? (
+              saisie ? (
+                <div key={`ajout-${l.ajouterApres}`} className="px-4 py-1 border-b border-border">
+                  <button
+                    type="button"
+                    onClick={() => setAjoutees((v) => ({ ...v, [l.ajouterApres]: (v[l.ajouterApres] ?? 0) + 1 }))}
+                    disabled={saisie.enCours !== null}
+                    className="text-[11px] font-semibold text-sel disabled:opacity-50"
+                  >
+                    + Ajouter une ligne
+                  </button>
+                </div>
+              ) : null
+            ) : (
+              <LigneTableauNote key={`${l.cle ?? l.libelle}-${l.rang ?? 0}-${i}`} note={note} ligne={l} saisie={saisie} />
+            ),
+          )}
+        </div>
+      )}
+
+      {/* Confrontations d'information servies par le serveur · jamais un refus. */}
+      {note.informations && note.informations.length > 0 && (
+        <div className="px-4 py-2 text-[11px] text-warning border-t border-border">
+          {note.informations.map((m, i) => (
+            <div key={i}>{m}</div>
           ))}
         </div>
       )}

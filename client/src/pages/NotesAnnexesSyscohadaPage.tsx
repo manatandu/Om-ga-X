@@ -206,7 +206,7 @@ function NotesSyscohadaSystemeNormal() {
    * Recharge après coup : l'applicabilité de la note (§ 1.4) est décidée par
    * le serveur, une cellule remplie peut la faire basculer.
    */
-  const enregistrerSaisie = async (codeNote: string, cleRubrique: string, colonne: number, valeur: string) => {
+  const enregistrerSaisie = async (codeNote: string, cleRubrique: string, colonne: number, valeur: string, rang?: number) => {
     if (!exerciceCourant) return;
     setErreur(null);
     setEnCours(`${codeNote}::${cleRubrique}::${colonne}`);
@@ -218,6 +218,8 @@ function NotesSyscohadaSystemeNormal() {
         cleRubrique,
         colonne,
         valeur,
+        // Ligne d'une rubrique répétable (apporteur, filiale, produit) · absent = la ligne unique.
+        ...(rang !== undefined ? { rang } : {}),
       });
       charger();
     } catch (e) {

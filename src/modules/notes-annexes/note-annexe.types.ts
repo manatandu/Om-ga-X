@@ -234,6 +234,22 @@ export interface RubriqueNote {
    * sa colonne (passe R6, constat B12).
    */
   sommeDesSaisies?: number[];
+  /**
+   * RUBRIQUE RÉPÉTABLE · « une ligne par apporteur », « par entité », par
+   * produit ou par matière (notes 4, 13, 32 et 33 du SYSCOHADA ; décision par
+   * la loi du 2026-10-04, point 2). Chaque ligne est une OCCURRENCE de la
+   * rubrique, rangée par `SaisieNote.rang` · ajouter une ligne n'est pas
+   * « créer une rubrique » (AUDCIF Titre IX ch. 2), et le § 1.2 du ch. 6
+   * permet d'améliorer le contenu. Exige `saisie` et une `cle`. Rien n'est
+   * prérempli ni déduit d'un compte.
+   */
+  repetable?: true;
+  /**
+   * Ligne CHIFFRÉE par la balance qui se CONFRONTE, en information et sans
+   * refus, à la somme d'une colonne des lignes d'une rubrique répétable
+   * (TOTAL de la note 13 contre le « Montant total » des apporteurs).
+   */
+  confronteSaisiesDe?: { cleRubrique: string; colonne: number };
   /** Renvoi de bas de tableau du texte officiel, reproduit tel quel. */
   renvoi?: string;
 }
@@ -312,6 +328,8 @@ export interface CompteDeRubrique {
 
 export interface LigneNoteCalculee {
   cle?: string;
+  /** Rang de ligne d'une rubrique répétable (`RubriqueNote.repetable`) · absent ailleurs. */
+  rang?: number;
   libelle: string;
   montantN: number;
   montantN1?: number;
@@ -456,5 +474,7 @@ export interface NoteCalculee {
    * colonnes « (M / F) », gardées à part et jamais scindées entre M et F
    * (`effectifs-seize-colonnes.ts`). Absent quand il n'y en a pas.
    */
+  /** Confrontations d'information (`RubriqueNote.confronteSaisiesDe`) · jamais un refus. */
+  informations?: string[];
   saisiesFormatAnterieur?: Array<{ cleRubrique: string; rubrique: string; colonneAnterieure: string; valeur: string | number }>;
 }

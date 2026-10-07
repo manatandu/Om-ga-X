@@ -951,7 +951,16 @@ export const NOTES_SYSCOHADA_1: SpecificationNote[] = [
       { type: 'LIBRE' as const, libelle: 'Montant des capitaux propres filiale' },
       { type: 'LIBRE' as const, libelle: 'Résultat dernier exercice filiale' },
     ],
-    rubriques: [{ cle: 'filiales-et-participations-une-ligne-par-entite', libelle: 'Filiales et participations (une ligne par entité)', saisie: true }],
+    // Une ligne PAR ENTITÉ · rubrique répétable (décision par la loi du
+    // 2026-10-04, point 2 · AUDCIF Titre IX ch. 6 § 1.2), rien de prérempli.
+    rubriques: [
+      {
+        cle: 'filiales-et-participations-une-ligne-par-entite',
+        libelle: 'Filiales et participations (une ligne par entité)',
+        saisie: true,
+        repetable: true,
+      },
+    ],
   },
 
   // ======================================================================
@@ -1318,7 +1327,14 @@ export const NOTES_SYSCOHADA_1: SpecificationNote[] = [
     ],
     renvoyeeDepuis: ['CA', 'CB'],
     rubriques: [
-      { cle: 'apporteurs-une-ligne-par-apporteur-nom-et-prenom', libelle: 'Apporteurs (une ligne par apporteur : nom et prénoms, nationalité, nature, nombre)', saisie: true },
+      // Une ligne PAR APPORTEUR · rubrique répétable (décision par la loi du
+      // 2026-10-04, point 2), aucun apporteur déduit d'un compte.
+      {
+        cle: 'apporteurs-une-ligne-par-apporteur-nom-et-prenom',
+        libelle: 'Apporteurs (une ligne par apporteur : nom et prénoms, nationalité, nature, nombre)',
+        saisie: true,
+        repetable: true,
+      },
       // CB = « 109 », débiteur, présenté en moins comme au bilan. Lu au
       // CRÉDIT (`natureCreditrice`), exactement comme le bilan lit CB au
       // passif : le solde débiteur du 109 ressort alors en négatif, ce que
@@ -1331,6 +1347,9 @@ export const NOTES_SYSCOHADA_1: SpecificationNote[] = [
         libelle: 'TOTAL',
         comptes: ['101', '102', '103', '104'],
         natureCreditrice: true,
+        // Confronté, en INFORMATION, au « Montant total » des apporteurs
+        // saisis (colonne 4) · jamais un refus (décision du 2026-10-04).
+        confronteSaisiesDe: { cleRubrique: 'apporteurs-une-ligne-par-apporteur-nom-et-prenom', colonne: 4 },
         renvoi:
           'Le modèle officiel ne dit pas ce que totalise cette ligne, et le détail par apporteur qui la ' +
           'précède n’est pas comptable : elle porte ici le capital du bilan (poste CA, « 101 à 104 »), lu en ' +

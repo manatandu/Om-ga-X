@@ -41,9 +41,19 @@ Manasse du 2026-10-04 sur le samedi).
   `saisiesFormatAnterieur`, bloc « Saisie antérieure à reporter » à l'écran. Gel
   de `rubriques-en-saisie.spec.ts` passé à 16. Tests · `effectifs-seize-colonnes.spec.ts`.
 
+- **R2-B5 · lignes répétables** · `SaisieNote.rang` (migration
+  `20270145000000_saisies_notes_rang`, unicité recréée, existant au rang 0),
+  `RubriqueNote.repetable` (note 4 filiales, note 13 apporteurs, nouvelles
+  occurrences « Produit » en 32 et « Matière ou produit » en 33 avant NON
+  VENTILÉ(S) et TOTAL), moteur `etendues` (une ligne par rang), rang refusé
+  hors répétable, `confronteSaisiesDe` · TOTAL de la note 13 contre la somme
+  des « Montant total » saisis, en `informations` (jamais un refus). Écran ·
+  `lib/lignes-repetables.ts`, bouton « Ajouter une ligne ». Tests ·
+  `note-annexe.service.spec.ts`, `liasse-syscohada.spec.ts` (trois apporteurs
+  sortent trois), `lignes-repetables.spec.ts`.
+
 ## Reste
 
-- R2-B5 · lignes répétables des notes 4, 13, 32, 33.
 - O1a-D2 · liquidation.
 
 ## Décisions prises

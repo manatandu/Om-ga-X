@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min, MinLength, ValidateIf } from 'class-validator';
 import { JeuNotesAnnexes } from '@prisma/client';
 
 /**
@@ -31,6 +31,17 @@ export class SaisirNoteDto {
   @IsInt()
   @Min(0)
   colonne!: number;
+
+  /**
+   * Rang de LIGNE d'une rubrique répétable (une ligne par apporteur, par
+   * entité, par produit), à partir de 0 · absent = 0. Refusé au-delà de 0 sur
+   * une rubrique à ligne unique.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(999)
+  rang?: number;
 
   /**
    * Ce que le dossier écrit. `null` ou vide EFFACE la cellule · c'est ce que

@@ -100,7 +100,7 @@ function prismaAvec(
   // notes étranger au référentiel (NoteAnnexeService.verifierJeuDuDossier).
   referentiel: Referentiel = Referentiel.SYCEBNL,
   // Cellules déjà saisies dans les rubriques renseignées hors comptabilité.
-  saisies: Array<{ codeNote: string; cleRubrique: string; colonne: number; valeurTexte?: string | null; valeurNombre?: unknown }> = [],
+  saisies: Array<{ codeNote: string; cleRubrique: string; colonne: number; rang?: number; valeurTexte?: string | null; valeurNombre?: unknown }> = [],
   // Registre des provisions · les passifs éventuels vont à la 16C / 18B
   // (passe R2, B2).
   provisions: Array<Record<string, unknown> & { tenantId: string; exerciceId: string; statut: string }> = [],
@@ -1445,6 +1445,80 @@ describe('rubriques en saisie · ce que le dossier écrit lui-même', () => {
     expect(n.lignes[0].saisie).toEqual([null, null, null, null, null, null]);
   });
 
+  it('LIGNES RÉPÉTABLES · trois apporteurs saisis en ressortent trois, avant les lignes finales restées à leur place', async () => {
+    // Décision par la loi du 2026-10-04, point 2 · AUDCIF Titre IX ch. 6 § 1.2.
+    const A = 'apporteurs-une-ligne-par-apporteur-nom-et-prenom';
+    const s = service(
+      { e1: [ligne('10110000', ClasseCompte.CLASSE_1, 0, 1_000_000)] },
+      [],
+      prismaAvec([], [], [], [], Referentiel.SYSCOHADA, [
+        { codeNote: '13', cleRubrique: A, rang: 0, colonne: 0, valeurTexte: 'MUKENDI Jean' },
+        { codeNote: '13', cleRubrique: A, rang: 0, colonne: 4, valeurNombre: 600_000 },
+        { codeNote: '13', cleRubrique: A, rang: 2, colonne: 0, valeurTexte: 'KABEYA Rose' },
+        { codeNote: '13', cleRubrique: A, rang: 2, colonne: 4, valeurNombre: 300_000 },
+        { codeNote: '13', cleRubrique: A, rang: 1, colonne: 0, valeurTexte: 'ILUNGA Paul' },
+        { codeNote: '13', cleRubrique: A, rang: 1, colonne: 4, valeurNombre: 50_000 },
+      ]),
+    );
+    const n = note(await s.notesSyscohada('t', 'e1'), '13');
+    expect(n.lignes.map((l: any) => [l.cle === A ? `rang ${l.rang}` : l.libelle, l.saisie?.[0] ?? null])).toEqual([
+      ['rang 0', 'MUKENDI Jean'],
+      ['rang 1', 'ILUNGA Paul'],
+      ['rang 2', 'KABEYA Rose'],
+      // « Apporteurs, capital non appelé » (109) à zéro n'est pas présentée (§ 1.4) ; TOTAL suit, à sa place.
+      ['TOTAL', null],
+    ]);
+    // 950 000 saisis contre 1 000 000 de capital · dit en information, rien corrigé.
+    expect(n.informations).toHaveLength(1);
+    expect(n.informations[0]).toContain('950000.00');
+    expect(n.informations[0]).toContain('1000000.00');
+  });
+
+  it('LIGNES RÉPÉTABLES · une somme égale au capital ne dit rien ; un rang de ligne est refusé hors d’une rubrique répétable', async () => {
+    const A = 'apporteurs-une-ligne-par-apporteur-nom-et-prenom';
+    const s = service(
+      { e1: [ligne('10110000', ClasseCompte.CLASSE_1, 0, 1_000_000)] },
+      [],
+      prismaAvec([], [], [], [], Referentiel.SYSCOHADA, [
+        { codeNote: '13', cleRubrique: A, rang: 0, colonne: 4, valeurNombre: 400_000 },
+        { codeNote: '13', cleRubrique: A, rang: 1, colonne: 4, valeurNombre: 600_000 },
+      ]),
+    );
+    expect(note(await s.notesSyscohada('t', 'e1'), '13').informations).toBeUndefined();
+
+    const prisma = prismaAvec([], [], [], [], Referentiel.SYSCOHADA);
+    const ecrit = service({ e1: [] }, [], prisma);
+    await ecrit.enregistrerSaisie('t', 'u', 'e1', JeuNotesAnnexes.SYSCOHADA_SYSTEME_NORMAL, '13', A, 0, 'NSIMBA', 3);
+    expect((prisma as any).saisieNote.create.mock.calls[0][0].data).toMatchObject({ cleRubrique: A, rang: 3, colonne: 0 });
+    await expect(
+      ecrit.enregistrerSaisie('t', 'u', 'e1', JeuNotesAnnexes.SYSCOHADA_SYSTEME_NORMAL, '32', 'total', 0, 'x', 1),
+    ).rejects.toThrow('n\'a qu\'une ligne');
+  });
+
+  it('notes 4, 32 et 33 · la liste est répétable, NON VENTILÉ(S) et TOTAL restent en dernier', () => {
+    const tableau = (code: string, sousTableau?: string) =>
+      NOTES_SYSCOHADA.find((n) => n.code === code && (sousTableau === undefined || n.sousTableau === sousTableau))!;
+    expect(tableau('4', 'LISTE DES FILIALES ET PARTICIPATIONS').rubriques.map((r) => !!r.repetable)).toEqual([true]);
+    expect(tableau('32').rubriques.map((r) => [r.libelle, !!r.repetable])).toEqual([
+      ['Produit (une ligne par produit)', true],
+      ['NON VENTILÉ', false],
+      ['TOTAL', false],
+    ]);
+    expect(tableau('33').rubriques.map((r) => [r.libelle, !!r.repetable])).toEqual([
+      ['Matière ou produit (une ligne par matière ou produit)', true],
+      ['NON VENTILÉS', false],
+      ['TOTAL', false],
+    ]);
+    // Toute rubrique répétable est en saisie et porte une clé · aucune n'est prérempli d'un compte.
+    for (const n of [...NOTES_SYSCOHADA, ...NOTES_ASSOCIATIONS, ...NOTES_PROJETS]) {
+      for (const r of n.rubriques.filter((x) => x.repetable)) {
+        expect({ code: n.code, saisie: r.saisie, cle: !!r.cle, comptes: r.comptes }).toEqual({
+          code: n.code, saisie: true, cle: true, comptes: undefined,
+        });
+      }
+    }
+  });
+
   it('enregistre une colonne LIBRE en texte et une colonne chiffrée en montant', async () => {
     const prisma = prismaAvec();
     const s = service({ e1: [] }, [], prisma);
@@ -1526,7 +1600,8 @@ describe('rubriques en saisie · ce que le dossier écrit lui-même', () => {
       const s = service({ e1: [] }, [], prisma);
       await s.enregistrerSaisie('t', 'u', 'e1', JEU_ASSO, '2', 'a-identite-organisation', 0, 'x');
       expect((prisma as any).saisieNote.findFirst.mock.calls[0][0].where).toEqual({
-        tenantId: 't', exerciceId: 'e1', jeu: JEU_ASSO, codeNote: '2', cleRubrique: 'a-identite-organisation', colonne: 0,
+        // Le rang de LIGNE fait partie de la clé (lignes répétables, décision du 2026-10-04).
+        tenantId: 't', exerciceId: 'e1', jeu: JEU_ASSO, codeNote: '2', cleRubrique: 'a-identite-organisation', rang: 0, colonne: 0,
       });
     });
 

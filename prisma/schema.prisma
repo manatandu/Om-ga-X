@@ -2652,6 +2652,12 @@ model SaisieNote {
   cleRubrique String
   /// Rang de la colonne dans `SpecificationNote.colonnes`, à partir de 0.
   colonne     Int
+  /// RANG DE LIGNE d'une rubrique RÉPÉTABLE (`RubriqueNote.repetable` · un
+  /// apporteur, une filiale, un produit, une matière par ligne, notes 4, 13,
+  /// 32 et 33 du SYSCOHADA ; décision par la loi du 2026-10-04, point 2).
+  /// 0 pour toute autre rubrique · la ligne est une OCCURRENCE de la
+  /// rubrique, jamais une rubrique créée (AUDCIF Titre IX ch. 6 § 1.2).
+  rang        Int      @default(0)
 
   /// Colonne LIBRE · le texte tel que le cabinet l'a rédigé.
   valeurTexte  String?
@@ -2663,7 +2669,7 @@ model SaisieNote {
   updatedAt DateTime @updatedAt
   updatedBy String
 
-  @@unique([tenantId, exerciceId, jeu, codeNote, cleRubrique, colonne])
+  @@unique([tenantId, exerciceId, jeu, codeNote, cleRubrique, rang, colonne])
   @@index([tenantId, exerciceId, jeu])
   @@map("saisies_notes")
 }

@@ -295,6 +295,9 @@ function balanceMemorisee(ecritureService: EcritureService): EcritureService {
  *   colonne N-1 systématique, `undefined` jamais 0 s'il n'y a pas
  *   d'exercice antérieur.
  */
+/** Lignes suivantes (rang > 0) des rubriques répétables, par `code::cle` puis par rang. */
+type RepetitionsSaisies = Map<string, Map<number, (string | number | null)[]>>;
+
 @Injectable()
 export class NoteAnnexeService {
   constructor(
@@ -713,6 +716,7 @@ export class NoteAnnexeService {
     saisies: Map<string, (string | number | null)[]> = new Map(),
     virements: VirementsParCompte = AUCUN_VIREMENT,
     reevaluations: VirementsParCompte = AUCUN_VIREMENT,
+    repetitions: RepetitionsSaisies = new Map(),
   ): NoteCalculee {
     const resN = this.resoudreRubriques(
       spec, lignesN, rattachements, echeancesParCompte, ventilationParCompte, virements, reevaluations,
@@ -825,6 +829,54 @@ export class NoteAnnexeService {
       if (ecarts) toutes[i].ecartsSaisie = ecarts;
     });
 
+    // RUBRIQUES RÉPÉTABLES (décision par la loi du 2026-10-04, point 2) · une
+    // ligne par OCCURRENCE saisie, rangée par `SaisieNote.rang`, la première
+    // (rang 0) toujours présente pour être remplie. Les lignes finales
+    // (« Apporteurs, capital non appelé », NON VENTILÉ(S), TOTAL) restent à
+    // leur place · elles suivent dans `spec.rubriques`. `toutes` garde une
+    // ligne par rubrique (les rangs de `totalDeRubriques` et
+    // `rubriquesEnAttente` en dépendent) ; `etendues` est ce qui se présente.
+    const etendues = toutes.flatMap((l, i) => {
+      const r = spec.rubriques[i];
+      if (!r.repetable || !r.cle || !l.saisie) return [l];
+      const suivantes = repetitions.get(`${spec.code}::${r.cle}`) ?? new Map<number, (string | number | null)[]>();
+      const rangs = [...suivantes.keys()].sort((a, b) => a - b);
+      return [
+        { ...l, rang: 0 },
+        ...rangs.map((rang) => ({
+          ...l,
+          rang,
+          saisie: spec.colonnes.map((_, ci) => suivantes.get(rang)?.[ci] ?? null),
+          ecartsSaisie: undefined,
+        })),
+      ];
+    });
+
+    // Confrontation d'INFORMATION (TOTAL de la note 13 contre le « Montant
+    // total » des apporteurs) · dite, jamais un refus ; rien n'est dit tant
+    // qu'aucun montant n'est saisi.
+    const informations: string[] = [];
+    spec.rubriques.forEach((r, i) => {
+      if (!r.confronteSaisiesDe) return;
+      const { cleRubrique, colonne } = r.confronteSaisiesDe;
+      const valeurs = etendues
+        .filter((l) => l.cle === cleRubrique)
+        .map((l) => l.saisie?.[colonne] ?? null)
+        .filter((v) => v !== null && v !== '');
+      if (valeurs.length === 0) return;
+      const nombres = valeurs.map((v) => (typeof v === 'number' ? v : Number(String(v).replace(/\s/g, '').replace(',', '.'))));
+      if (nombres.some((n) => !Number.isFinite(n))) return;
+      const somme = Math.round(nombres.reduce((a, b) => a + b, 0) * 100) / 100;
+      const attendu = toutes[i].montantN;
+      if (Math.abs(somme - attendu) > 0.005) {
+        const libelleColonne = spec.colonnes[colonne]?.libelle ?? `colonne ${colonne + 1}`;
+        informations.push(
+          `La somme des lignes saisies (« ${libelleColonne} », ${somme.toFixed(2)}) diffère de la ligne ` +
+            `« ${r.libelle} » lue en balance (${attendu.toFixed(2)}) · à rapprocher, rien n'est corrigé.`,
+        );
+      }
+    });
+
     // § 1.4 : les lignes non chiffrées ne sont pas présentées. Une ligne en
     // attente de rattachement est CONSERVÉE même à zéro : son absence de
     // montant est une information à porter, pas un vide à masquer. Une ligne
@@ -838,7 +890,7 @@ export class NoteAnnexeService {
       Math.abs(l.montantN) > 0.005 ||
       Math.abs(l.montantN1 ?? 0) > 0.005 ||
       Object.values(l.valeurs ?? {}).some((v) => Math.abs(v) > 0.005);
-    const applicableChiffree = toutes.some((l) => !l.estTotal && chiffree(l));
+    const applicableChiffree = etendues.some((l) => !l.estTotal && chiffree(l));
     // Une note qui n'est chiffrée par aucune balance devient applicable dès
     // que le dossier a RENSEIGNÉ une de ses cellules · c'est le seul signal
     // qu'elle porte (note 18B « Actifs et passifs éventuels », par exemple,
@@ -847,7 +899,7 @@ export class NoteAnnexeService {
       (cellules ?? []).some((v) => v !== null && v !== '');
     // Une sûreté ou une échéance écrite sur une rubrique chiffrée compte
     // aussi : la note qui la porte est documentée.
-    const saisieRenseignee = toutes.some((l) => renseignee(l.saisie) || renseignee(l.saisieLibre));
+    const saisieRenseignee = etendues.some((l) => renseignee(l.saisie) || renseignee(l.saisieLibre));
     // UNE NOTE HORS BALANCE N'EST PLUS APPLICABLE D'OFFICE (passe R2, B1) ·
     // `|| spec.horsBalance` l'emportait sur les deux signaux ci-dessus, et la
     // fiche récapitulative cochait « A » pour une note 32 ou 35 vide, que la
@@ -873,12 +925,12 @@ export class NoteAnnexeService {
     // des lignes à REMPLIR, et les masquer tant qu'elles sont vides rendrait
     // la note impossible à alimenter depuis le logiciel · c'est précisément
     // ce que la liasse reprochait à l'écran avant le 2026-09-03.
-    const enSaisie = toutes.filter((l) => l.saisie !== undefined);
+    const enSaisie = etendues.filter((l) => l.saisie !== undefined);
     const lignes = !applicable
       ? enSaisie
       : spec.horsBalance
-        ? toutes
-        : toutes.filter(
+        ? etendues
+        : etendues.filter(
             (l) =>
               l.saisie !== undefined ||
               chiffree(l) ||
@@ -904,6 +956,7 @@ export class NoteAnnexeService {
       horsBalance: spec.horsBalance ?? false,
       exerciceN1Disponible,
       applicable,
+      ...(informations.length > 0 ? { informations } : {}),
       rubriquesEnAttente: spec.rubriques.flatMap<RubriqueEnAttente>((r, i) =>
         r.subdivisionAttendue && !toutes[i].rattachementDuDossier
           ? [{ cle: r.cle!, libelle: r.libelle, attendu: r.subdivisionAttendue }]
@@ -1105,11 +1158,15 @@ export class NoteAnnexeService {
   ): Promise<{
     parRubrique: Map<string, (string | number | null)[]>;
     formatAnterieur: Map<string, SaisieFormatAnterieur[]>;
+    repetitions: RepetitionsSaisies;
   }> {
     const lignes = await this.prisma.saisieNote.findMany({
       where: { tenantId, exerciceId, jeu },
-      select: { codeNote: true, cleRubrique: true, colonne: true, valeurTexte: true, valeurNombre: true },
+      select: { codeNote: true, cleRubrique: true, rang: true, colonne: true, valeurTexte: true, valeurNombre: true },
     });
+    // Les lignes SUIVANTES d'une rubrique répétable (rang > 0), par rang ·
+    // le rang 0 reste dans `parRubrique`, que tout le moteur lit.
+    const repetitions: RepetitionsSaisies = new Map();
     const parRubrique = new Map<string, (string | number | null)[]>();
     // Les saisies conservées HORS de la contexture (notes 20B et 29B passées à
     // seize colonnes, `effectifs-seize-colonnes.ts`) · jamais lues comme une
@@ -1131,11 +1188,21 @@ export class NoteAnnexeService {
         continue;
       }
       const cle = `${l.codeNote}::${l.cleRubrique}`;
+      // Rang absent (doublure ancienne) = rang 0.
+      const rang = l.rang ?? 0;
+      if (rang > 0) {
+        const parRang = repetitions.get(cle) ?? new Map<number, (string | number | null)[]>();
+        const cellules = parRang.get(rang) ?? [];
+        cellules[l.colonne] = valeur;
+        parRang.set(rang, cellules);
+        repetitions.set(cle, parRang);
+        continue;
+      }
       const cellules = parRubrique.get(cle) ?? [];
       cellules[l.colonne] = valeur;
       parRubrique.set(cle, cellules);
     }
-    return { parRubrique, formatAnterieur };
+    return { parRubrique, formatAnterieur, repetitions };
   }
 
   /**
@@ -1206,13 +1273,23 @@ export class NoteAnnexeService {
     cleRubrique: string,
     colonne: number,
     valeur: string | number | null,
+    rang = 0,
   ) {
     await this.verifierJeuDuDossier(tenantId, jeu);
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId } });
     if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
-    const { colonneSpec } = this.celluleSaisissable(jeu, codeNote, cleRubrique, colonne);
+    const { colonneSpec, rubrique } = this.celluleSaisissable(jeu, codeNote, cleRubrique, colonne);
+    // Un rang de ligne n'existe que sur une rubrique RÉPÉTABLE (« une ligne
+    // par apporteur, par entité, par produit ») · ailleurs, une seconde
+    // ligne serait une rubrique créée (AUDCIF Titre IX ch. 2).
+    if (rang !== 0 && !rubrique.repetable) {
+      throw new BadRequestException(
+        `La rubrique « ${rubrique.libelle} » (note ${codeNote}) n'a qu'une ligne · seules les listes du modèle ` +
+          '(une ligne par apporteur, par entité, par produit ou par matière) se répètent.',
+      );
+    }
 
-    const cle = { tenantId, exerciceId, jeu, codeNote, cleRubrique, colonne };
+    const cle = { tenantId, exerciceId, jeu, codeNote, cleRubrique, rang, colonne };
     const vide = valeur === null || valeur === undefined || (typeof valeur === 'string' && valeur.trim() === '');
     if (vide) {
       // Effacée PAR SON IDENTIFIANT, jamais en masse · le journal d'audit ne
@@ -1249,7 +1326,15 @@ export class NoteAnnexeService {
    * se rattrape par la contrainte d'unicité, en modification.
    */
   private async ecrireCellule(
-    cle: { tenantId: string; exerciceId: string; jeu: JeuNotesAnnexes; codeNote: string; cleRubrique: string; colonne: number },
+    cle: {
+      tenantId: string;
+      exerciceId: string;
+      jeu: JeuNotesAnnexes;
+      codeNote: string;
+      cleRubrique: string;
+      rang: number;
+      colonne: number;
+    },
     donnees: { valeurTexte: string | null; valeurNombre: number | null; updatedBy: string },
   ) {
     const existante = await this.prisma.saisieNote.findFirst({ where: cle, select: { id: true } });
@@ -1287,7 +1372,7 @@ export class NoteAnnexeService {
       { parRubrique: rattachements, sansRubrique: rattachementsSansRubrique },
       echeances,
       ventilation,
-      { parRubrique: saisies, formatAnterieur },
+      { parRubrique: saisies, formatAnterieur, repetitions },
       virements,
       reevaluations,
     ] = await Promise.all([
@@ -1304,7 +1389,7 @@ export class NoteAnnexeService {
     const notes = specs.map((spec) =>
       this.calculerNote(
         spec, lignesN, lignesN1, exerciceN1Id !== null, rattachements, echeances, ventilation, saisies, virements,
-        reevaluations,
+        reevaluations, repetitions,
       ),
     );
 

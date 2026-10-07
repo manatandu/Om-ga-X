@@ -1168,6 +1168,8 @@ export interface CompteDeRubrique {
 
 export interface LigneNoteCalculee {
   cle?: string;
+  /** Rang de ligne d'une rubrique répétable (un apporteur, une filiale, un produit) · absent ailleurs. */
+  rang?: number;
   libelle: string;
   montantN: number;
   montantN1?: number;
@@ -1228,6 +1230,8 @@ export interface NoteCalculee {
    * Notes 20B et 29B · valeurs saisies au format à huit colonnes « (M / F) »,
    * gardées à part, jamais scindées entre M et F. Absent sinon.
    */
+  /** Confrontations d'information du serveur (TOTAL de la note 13 contre les apporteurs) · jamais un refus. */
+  informations?: string[];
   saisiesFormatAnterieur?: { cleRubrique: string; rubrique: string; colonneAnterieure: string; valeur: string | number }[];
 }
 

@@ -193,7 +193,7 @@ function NotesAnnexesSycebnlPage() {
    * remplie peut la faire basculer. Recalculer côté client dupliquerait la
    * règle et la ferait diverger.
    */
-  const enregistrerSaisie = async (codeNote: string, cleRubrique: string, colonne: number, valeur: string) => {
+  const enregistrerSaisie = async (codeNote: string, cleRubrique: string, colonne: number, valeur: string, rang?: number) => {
     if (!exerciceCourant) return;
     setErreur(null);
     setEnCours(`${codeNote}::${cleRubrique}::${colonne}`);
@@ -205,6 +205,8 @@ function NotesAnnexesSycebnlPage() {
         cleRubrique,
         colonne,
         valeur,
+        // Ligne d'une rubrique répétable (apporteur, filiale, produit) · absent = la ligne unique.
+        ...(rang !== undefined ? { rang } : {}),
       });
       charger();
     } catch (e) {
