@@ -103,3 +103,14 @@ les tests navigateur : ligne de travail à part, avec scénario réel avant anno
 Suppression de l'alias admin@ dans l'ancien Gmail, suppression de l'ancienne
 clé Resend `gmail-envoi`, validation en deux étapes et codes de secours du
 nouveau Gmail.
+
+## 8. Maquette de la vitrine validée (2026-10-07)
+
+Décisions de Manasse · accroche pour les associations et ONG (SYCEBNL) d'abord,
+formules sur devis, ton sobre, page BLANCHE quel que soit le thème du téléphone,
+textes réduits au strict nécessaire. Maquette · `docs/site-vitrine/maquette-v2.html`
+(organisation inspirée du parcours d'Odoo, lu sur 35 captures, rien de copié ;
+charte d'OmegaX). Contenu tiré du logiciel (formules de
+`abonnements.service.ts`, codes des modèles officiels). Avant mise en ligne ·
+mentions légales et confidentialité à faire valider, destination du formulaire
+à choisir, téléphone de contact à donner, polices servies depuis le site.
