@@ -69,12 +69,26 @@
  * nomme les acomptes provisionnels, versés « auprès de l'intervenant ou de la
  * Banque Centrale du Congo sur base du bordereau de versement d'acompte ». Le
  * décret n° 24/09 ne fixe pas les jours d'une banque. Pour une échéance de
- * PUR PAIEMENT, le samedi n'est donc exclu par aucun texte lu · le calcul
- * n'est PAS changé (décider de ne plus reporter ces échéances appartient à
- * l'éditeur, et aucun texte lu ne dit si une banque ouverte le samedi rend ce
- * jour « ouvrable » au sens de l'art. 110 bis), mais la réserve le dit. LE SAMEDI EST NON OUVRABLE pour une échéance
- * fiscale, à compter du 17 février 2024 (art. 51 du même décret, « entre en
- * vigueur à la date de sa signature »).
+ * PUR PAIEMENT, le samedi n'est donc exclu par aucun texte lu. LE SAMEDI EST
+ * NON OUVRABLE pour une échéance de DÉCLARATION (dépôt au guichet de la DGI),
+ * à compter du 17 février 2024 (art. 51 du même décret, « entre en vigueur à
+ * la date de sa signature »).
+ *
+ * LE SAMEDI D'UN PUR PAIEMENT EST OUVRABLE · décision de Manasse du
+ * 2026-10-04 (`docs/decisions-par-la-loi-2026-10-04.md`, point 6), prise là
+ * où la loi lue ne tranche pas : « Le texte dit au plus tard le 25, donc il
+ * faut s'arranger pour payer avant cette date. En RDC, les banques
+ * travaillent samedi jusqu'à 12h. » L'art. 110 bis, al. 2 vise toute
+ * « obligation » (l'al. 3, qui n'y déroge « en matière de déclaration ET DE
+ * PAIEMENT » que parce que l'al. 2 couvre le paiement, le confirme a
+ * contrario) · le dimanche et les jours fériés d'un pur paiement restent
+ * donc reportés ; le samedi, non. Le 25 juillet 2026, premier acompte
+ * provisionnel, reste le 25 · le communiqué de la DGI qui le reportait au
+ * lundi 27 n'est pas au corpus, et l'al. 3 ne donne à l'Administration que
+ * le pouvoir d'AVANCER une échéance. Il n'est pas suivi.
+ * `NatureEcheance` porte la distinction · DÉCLARATION par défaut, parce que
+ * c'est le cas où la règle est la plus large et que l'oubli d'un appelant ne
+ * doit jamais retirer un report fondé sur un texte.
  *
  * CE QUE L'ERREUR COÛTAIT · le 25 juillet 2026, première échéance d'acompte sur
  * l'impôt des sociétés, est un SAMEDI. Le logiciel l'opposait telle quelle.
@@ -222,6 +236,19 @@ export function jourFerie(date: Date): string | null {
 }
 
 /**
+ * NATURE D'UNE ÉCHÉANCE FISCALE, pour le seul samedi.
+ * - `DECLARATION` · déclaration, ou déclaration et paiement, qui s'exécutent
+ *   au guichet de la DGI (décret n° 24/09, art. 1er · samedi exclu) ;
+ * - `PAIEMENT` · PUR paiement, versé chez un intervenant sans dépôt de
+ *   déclaration (décret n° 20/019, art. 1er et 2 ; circulaire n° 002 du
+ *   1er octobre 2020, III.2.2), comme les trois acomptes de l'art. 57 bis ·
+ *   samedi OUVRABLE (décision de Manasse du 2026-10-04).
+ * Dimanche et jours fériés sont reportés dans les deux cas (art. 110 bis,
+ * al. 2).
+ */
+export type NatureEcheance = 'DECLARATION' | 'PAIEMENT';
+
+/**
  * Un jour est-il ouvrable pour l'exécution d'une obligation fiscale ?
  *
  * TROIS EXCLUSIONS, chacune sa source et sa borne :
@@ -236,9 +263,18 @@ export function jourFerie(date: Date): string | null {
  * échéances d'exercices anciens, et leur appliquer un texte postérieur est le
  * deuxième piège du dépôt.
  */
-export function estJourOuvrable(date: Date): boolean {
+export function estJourOuvrable(date: Date, nature: NatureEcheance = 'DECLARATION'): boolean {
   if (date.getUTCDay() === DIMANCHE) return false;
-  if (date.getUTCDay() === SAMEDI && date.getTime() >= ENTREE_EN_VIGUEUR_DECRET_24_09.getTime()) return false;
+  // Le samedi n'est exclu que pour ce qui s'exécute AU GUICHET de
+  // l'Administration (décret n° 24/09). Un pur paiement se fait en banque, où
+  // le samedi est ouvrable (décision de Manasse du 2026-10-04).
+  if (
+    nature === 'DECLARATION' &&
+    date.getUTCDay() === SAMEDI &&
+    date.getTime() >= ENTREE_EN_VIGUEUR_DECRET_24_09.getTime()
+  ) {
+    return false;
+  }
   return jourFerie(date) === null;
 }
 
@@ -249,9 +285,9 @@ export function estJourOuvrable(date: Date): boolean {
  * échéances calculées ailleurs, et muter l'objet reçu ferait dériver un tableau
  * entier à la première lecture.
  */
-export function reporterAuJourOuvrable(echeance: Date): Date {
+export function reporterAuJourOuvrable(echeance: Date, nature: NatureEcheance = 'DECLARATION'): Date {
   const reportee = new Date(echeance.getTime());
-  while (!estJourOuvrable(reportee)) {
+  while (!estJourOuvrable(reportee, nature)) {
     reportee.setUTCDate(reportee.getUTCDate() + 1);
   }
   return reportee;
@@ -323,5 +359,8 @@ export const RESERVE_JOUR_OUVRABLE =
   'banques et autres établissements de crédit agréés, ou à la Banque Centrale du Congo (décret n° 20/019 du ' +
   '21 août 2020, art. 1er et 2 ; circulaire ministérielle n° 002 du 1er octobre 2020, III.2.2), dont le décret ' +
   "n° 24/09 ne fixe pas les jours. Pour une échéance de PUR PAIEMENT, sans dépôt de déclaration, comme les trois " +
-  'acomptes provisionnels versés sur bordereau à la banque, l\u2019exclusion du samedi ne repose sur aucun texte ' +
-  "lu : le report affiché (le samedi 25 juillet 2026 servi au lundi 27) n'est pas acquis.";
+  'acomptes provisionnels versés sur bordereau à la banque, le SAMEDI est donc tenu pour OUVRABLE (les banques y ' +
+  "travaillent) et l'échéance n'est PAS reportée au lundi : le samedi 25 juillet 2026 reste le 25 juillet. Le " +
+  'dimanche et les jours fériés d\u2019un pur paiement restent reportés (art. 110 bis, alinéa 2). Le report au ' +
+  "lundi 27 juillet 2026 annoncé par un communiqué de la DGI n'est pas suivi : son texte n'est pas au corpus, et " +
+  "l'alinéa 3 ne permet à l'Administration que d'AVANCER une échéance.";

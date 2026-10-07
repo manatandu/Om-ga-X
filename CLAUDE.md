@@ -3360,8 +3360,11 @@ du travail, art. 7, 9° (repos hebdomadaire et jours fériés légaux exclus) et
 l'échéance s'exécute au guichet, et le DÉCRET N° 24/09 DU 17 FÉVRIER 2024, art. 1er,
 fixe l'horaire des services publics « DU LUNDI AU VENDREDI » (en vigueur à la
 signature, art. 51) ; le Code du travail (base de 26 jours) régit employeur et
-travailleur, pas l'Administration. Le 25 juillet 2026, première échéance d'acompte
-d'IS, est un samedi. Réserves · le décret fixe un HORAIRE, pas le « jour ouvrable »
+travailleur, pas l'Administration. Ce samedi-là ne vaut que pour un DÉPÔT au
+guichet · un PUR PAIEMENT en banque (acomptes de l'art. 57 bis, `natureEcheance:
+'PAIEMENT'`) garde son samedi, décision de Manasse du 2026-10-04 (« les banques
+travaillent samedi jusqu'à 12h ») · le 25 juillet 2026, premier acompte d'IS, un
+samedi, reste le 25 ; dimanche et fériés restent reportés. Réserves · le décret fixe un HORAIRE, pas le « jour ouvrable »
 fiscal ; son art. 2, al. 3 admet des horaires ministériels spécifiques. (3) DIX
 JOURS FÉRIÉS, depuis le 30 mars 2023 · ORDONNANCE N° 23-042 DU 30 MARS 2023 (J.O.
 RDC, 15 mai 2023), prise sur l'art. 123 du Code du travail, abrogeant l'ordonnance

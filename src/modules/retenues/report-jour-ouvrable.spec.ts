@@ -1,6 +1,6 @@
 import { RetenuesService } from './retenues.service';
 import { PrismaService } from '../../common/prisma.service';
-import { AVERTISSEMENT_REGISTRE } from './correspondance-retenues';
+import { AVERTISSEMENT_REGISTRE, OBLIGATIONS_DECLARATIVES } from './correspondance-retenues';
 import {
   estJourOuvrable,
   jourFerie,
@@ -74,6 +74,37 @@ describe('Report au premier jour ouvrable · art. 110 bis, alinéa 2', () => {
       expect(new Date(2026, 6, 25).getDay()).toBe(6);
       expect(estJourOuvrable(new Date(2026, 6, 25))).toBe(false);
       expect(reporterAuJourOuvrable(new Date(2026, 6, 25))).toEqual(new Date(2026, 6, 27));
+    });
+
+    it("UN PUR PAIEMENT GARDE SON SAMEDI · décision de Manasse du 2026-10-04 (LPF art. 110 bis, al. 2)", () => {
+      // « Le texte dit au plus tard le 25 [...] les banques travaillent samedi
+      // jusqu'à 12h. » Le samedi n'est exclu que pour un dépôt au guichet
+      // (décret n° 24/09) · le 25 juillet 2026 reste le 25 pour un acompte.
+      expect(estJourOuvrable(new Date(2026, 6, 25), 'PAIEMENT')).toBe(true);
+      expect(reporterAuJourOuvrable(new Date(2026, 6, 25), 'PAIEMENT')).toEqual(new Date(2026, 6, 25));
+      // Le dimanche et les fériés d'un pur paiement restent reportés.
+      expect(reporterAuJourOuvrable(new Date(2026, 6, 26), 'PAIEMENT')).toEqual(new Date(2026, 6, 27));
+      // 25 décembre 2027, samedi FÉRIÉ · reporté au lundi 27 (le dimanche 26 suit).
+      expect(new Date(2027, 11, 25).getDay()).toBe(6);
+      expect(reporterAuJourOuvrable(new Date(2027, 11, 25), 'PAIEMENT')).toEqual(new Date(2027, 11, 27));
+      // La nature par défaut reste la DÉCLARATION · l'oubli d'un appelant ne
+      // retire jamais un report fondé.
+      expect(reporterAuJourOuvrable(new Date(2026, 6, 25))).toEqual(new Date(2026, 6, 27));
+    });
+
+    it("les trois acomptes de l'art. 57 bis sont des PURS PAIEMENTS, et l'échéancier sert le samedi 25 juillet 2026", () => {
+      const acompte = OBLIGATIONS_DECLARATIVES.find((o) => o.cle === 'premierAcompteIs')!;
+      for (const cle of ['premierAcompteIs', 'deuxiemeAcompteIs', 'troisiemeAcompteIs']) {
+        expect(OBLIGATIONS_DECLARATIVES.find((o) => o.cle === cle)!.natureEcheance).toBe('PAIEMENT');
+      }
+      // La déclaration d'IS reste une déclaration · samedi exclu.
+      expect(OBLIGATIONS_DECLARATIVES.find((o) => o.cle === 'declarationImpotSocietes')!.natureEcheance).toBeUndefined();
+      const svc = service([]) as unknown as {
+        prochaineEcheanceDeclarative: (o: unknown, r: Date) => Date;
+      };
+      expect(svc.prochaineEcheanceDeclarative(acompte, new Date(Date.UTC(2026, 6, 1))).toISOString()).toBe(
+        '2026-07-25T00:00:00.000Z',
+      );
     });
 
     it("le samedi n'est fermé QU'À COMPTER du 17 février 2024 · avant, le texte n'est pas au corpus", () => {

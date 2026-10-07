@@ -233,6 +233,9 @@ describe('Passe F8 · les relevés et listes de la loi de procédures fiscales',
   it('D1 · la réserve du report distingue la déclaration (guichet) du paiement (intervenant)', () => {
     expect(RESERVE_JOUR_OUVRABLE).toContain('que la DÉCLARATION se dépose auprès des services de la DGI');
     expect(RESERVE_JOUR_OUVRABLE).toContain('décret n° 20/019 du 21 août 2020, art. 1er et 2');
-    expect(RESERVE_JOUR_OUVRABLE).toContain("le report affiché (le samedi 25 juillet 2026 servi au lundi 27) n'est pas acquis");
+    // Décision de Manasse du 2026-10-04 · le samedi d'un pur paiement est
+    // ouvrable, et la réserve le dit au lieu de laisser le report en doute.
+    expect(RESERVE_JOUR_OUVRABLE).toContain('le samedi 25 juillet 2026 reste le 25 juillet');
+    expect(RESERVE_JOUR_OUVRABLE).toContain("n'est pas suivi");
   });
 });

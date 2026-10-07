@@ -1,5 +1,5 @@
 import { FormeJuridiqueSyscohada, Referentiel } from '@prisma/client';
-import { RESERVE_ECHEANCES_SOCIALES, RESERVE_JOUR_OUVRABLE } from './jour-ouvrable';
+import { NatureEcheance, RESERVE_ECHEANCES_SOCIALES, RESERVE_JOUR_OUVRABLE } from './jour-ouvrable';
 import { FORFAITS_ARRETE_019_2025 } from '../personnel/bareme-irpp';
 
 /**
@@ -166,6 +166,13 @@ export interface ObligationDeclarative {
    * ne se reporte pas au jour ouvrable. Absent = échéance fiscale.
    */
   echeanceFiscale?: boolean;
+  /**
+   * `PAIEMENT` pour une échéance de PUR paiement, versée chez un intervenant
+   * sans dépôt de déclaration (acomptes de l'art. 57 bis) · son SAMEDI est
+   * ouvrable et ne se reporte pas (décision de Manasse du 2026-10-04,
+   * `jour-ouvrable.ts`). Absent = déclaration, samedi exclu.
+   */
+  natureEcheance?: NatureEcheance;
   /**
    * Obligation réservée aux PERSONNES PHYSIQUES · l'entreprise individuelle
    * et l'entreprenant. Absent = toutes les formes.
@@ -1163,6 +1170,8 @@ export const OBLIGATIONS_DECLARATIVES: ObligationDeclarative[] = [
     moisEcheance: 7,
     jourEcheance: 25,
     echeance: 'Au plus tard le 25 juillet',
+    // Pur paiement en banque, sur bordereau · samedi ouvrable (décision du 2026-10-04).
+    natureEcheance: 'PAIEMENT',
     baseLegale: BASE_ACOMPTES,
     contenu: CONTENU_ACOMPTE('30 %'),
     sourceDonnees: SOURCE_ACOMPTES,
@@ -1180,6 +1189,8 @@ export const OBLIGATIONS_DECLARATIVES: ObligationDeclarative[] = [
     moisEcheance: 9,
     jourEcheance: 25,
     echeance: 'Au plus tard le 25 septembre',
+    // Pur paiement en banque, sur bordereau · samedi ouvrable (décision du 2026-10-04).
+    natureEcheance: 'PAIEMENT',
     baseLegale: BASE_ACOMPTES,
     contenu: CONTENU_ACOMPTE('30 %'),
     sourceDonnees: SOURCE_ACOMPTES,
@@ -1197,6 +1208,8 @@ export const OBLIGATIONS_DECLARATIVES: ObligationDeclarative[] = [
     moisEcheance: 11,
     jourEcheance: 25,
     echeance: 'Au plus tard le 25 novembre',
+    // Pur paiement en banque, sur bordereau · samedi ouvrable (décision du 2026-10-04).
+    natureEcheance: 'PAIEMENT',
     baseLegale: BASE_ACOMPTES,
     contenu: CONTENU_ACOMPTE('20 %'),
     sourceDonnees: SOURCE_ACOMPTES,

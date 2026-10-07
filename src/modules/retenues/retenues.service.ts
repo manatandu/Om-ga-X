@@ -191,7 +191,10 @@ export class RetenuesService {
    */
   private prochaineEcheanceDeclarative(obligation: ObligationDeclarative, reference: Date): Date {
     // Une déclaration à un organisme social ne se reporte pas (passe D2).
-    const reporter = (d: Date) => (estEcheanceFiscale(obligation) ? reporterAuJourOuvrable(d) : d);
+    // Un PUR paiement (acomptes de l'art. 57 bis) garde son samedi
+    // (décision de Manasse du 2026-10-04, `jour-ouvrable.ts`).
+    const reporter = (d: Date) =>
+      estEcheanceFiscale(obligation) ? reporterAuJourOuvrable(d, obligation.natureEcheance ?? 'DECLARATION') : d;
     if (obligation.periodicite === 'MENSUELLE') {
       // N jours après la fin du mois, et le mois suivant si c'est déjà passé.
       //
