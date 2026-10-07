@@ -62,9 +62,21 @@ Manasse du 2026-10-04 sur le samedi).
   l'art. 223 ; procédure collective dite, rien calculé). Écran · Paramètres du
   dossier. Tests · `liquidation-societe.spec.ts`, `mentions-dossier.spec.ts`.
 
+- **Relecture adverse** · dépôt au RCCM d'une entreprise du portefeuille ramené
+  à un mois après l'assemblée (AUSCGIE art. 269, lu) ; note 20B / 29B portant
+  sa seule saisie à huit colonnes tenue applicable et dite dans la liasse
+  (sinon « NEANT » imprimé sur des effectifs déclarés).
+- **Scénario sur base jetable** (PostgreSQL 16 local, serveur compilé, API) ·
+  SARL SYSCOHADA N et N+1 avec clôture annuelle de N · samedi 25 juillet 2026,
+  fiche R2 (liasse relue), portefeuille (31 mars, PV, affectation), liquidation
+  art. 223 1° (N puis N+1), trois apporteurs (liasse relue), N+1 vierge ; ASBL ·
+  migration 20B / 29B rejouée sur une saisie posée en base, liasse relue,
+  refus SYCEBNL (portefeuille 400, fiche R2 403). 41 vérifications, 0 échec.
+  Script · scratchpad de la session (non versionné).
+
 ## Reste
 
-- Bloc complet du § 3, scénario sur base jetable, relecture adverse.
+- Intégration sur `main` (non faite, à la demande).
 
 ## Décisions prises
 
@@ -95,6 +107,10 @@ Manasse du 2026-10-04 sur le samedi).
   clôture (radiation art. 220 non calculée, non stockée).
 
 ## Vérification
+
+Dernier passage (2026-10-07) · serveur `tsc` propre, jest 761 suites, 10 836 tests,
+0 échec, `nest build` propre ; client `tsc` propre, vitest 224 fichiers, 1 819 tests,
+`vite build` propre ; `prisma migrate diff` sans différence.
 
 ```bash
 npx prisma migrate diff --from-migrations prisma/migrations \
