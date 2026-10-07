@@ -683,7 +683,7 @@ export function FiscalitePage() {
               )}
               <input
                 key={`deficit-${resultat.exerciceId}-${resultat.deficitAnterieur.saisi}`}
-                defaultValue={resultat.deficitAnterieur.saisi ? String(resultat.deficitAnterieur.montant) : ''}
+                defaultValue={resultat.deficitAnterieur.saisi ? String(resultat.deficitAnterieur.montantSaisi ?? '') : ''}
                 inputMode="decimal"
                 disabled={envoi}
                 placeholder="Calculé automatiquement"
@@ -692,7 +692,7 @@ export function FiscalitePage() {
                   if (v === '' && resultat.deficitAnterieur.saisi) modifierDossier({ deficitAnterieurSaisi: null });
                   else if (v !== '') {
                     const n = lireNombre(v);
-                    if (n !== null && n >= 0 && (!resultat.deficitAnterieur.saisi || n !== resultat.deficitAnterieur.montant))
+                    if (n !== null && n >= 0 && (!resultat.deficitAnterieur.saisi || n !== resultat.deficitAnterieur.montantSaisi))
                       modifierDossier({ deficitAnterieurSaisi: n });
                   }
                 }}

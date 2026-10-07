@@ -3048,6 +3048,8 @@ export interface ResultatFiscal {
       /** Déclaré sans origine · borné par prudence à la fenêtre la plus courte. */
       bornePrudente: boolean;
     }[];
+    /** Le montant saisi · `montant` n'en garde que la part imputable (art. 51). */
+    montantSaisi: number | null;
     /** Origine déclarée du report saisi · null tant qu'elle n'est pas dite. */
     origines: { dateFin: string; montant: number }[] | null;
   };

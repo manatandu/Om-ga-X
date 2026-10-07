@@ -30,6 +30,8 @@ import {
   avertissementDeficitsSimules,
   avertissementExercicesNonJointifs,
   avertissementsReportDeclare,
+  originesHorsFenetre,
+  partImputableDeLaSaisie,
   rejouerReport,
   type ExerciceRejoue,
 } from './report-deficitaire';
@@ -1039,7 +1041,7 @@ export class FiscaliteService {
     const precedents = await this.prisma.exercice.findMany({
       where: { tenantId, dateFin: { lt: exercice.dateDebut } },
       orderBy: { dateDebut: 'desc' },
-      select: { id: true, dateDebut: true, dateFin: true },
+      select: { id: true, dateDebut: true, dateFin: true, statut: true },
     });
     const premierId = precedents.length
       ? [...precedents].sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime())[0].id
@@ -1078,7 +1080,11 @@ export class FiscaliteService {
       total: arrondir(detail.reduce((s, d) => s + d.montant, 0)),
       detail,
       avertissements: [
-        ...avertissementsReportDeclare(detail, perdusParPrudence),
+        ...avertissementsReportDeclare(
+          detail,
+          perdusParPrudence,
+          new Set(precedents.filter((e) => e.statut === StatutExercice.CLOTURE).map((e) => e.id)),
+        ),
         ...[avertissementExercicesNonJointifs(precedents, exercice, IMPOT_SOCIETES.exercicesReportDeficit)].filter(
           (a): a is string => a !== null,
         ),
@@ -1604,7 +1610,18 @@ export class FiscaliteService {
     const simulationAvantLaLoi = debutImposable.getTime() < ENTREE_EN_VIGUEUR_LOI_23_053.getTime();
 
     const calcules = deficitSaisi === null ? await this.deficitsAnterieursCalcules(tenantId, exercice, physique) : null;
-    const deficitAnterieur = deficitSaisi ?? calcules!.total;
+    // LA SAISIE N'IMPUTE QUE CE QUE SA FENÊTRE COUVRE · même `imputable` que
+    // le rejeu des exercices suivants (une seule lecture de l'art. 51).
+    const saisieLue =
+      deficitSaisi === null
+        ? null
+        : partImputableDeLaSaisie(
+            deficitSaisi,
+            FiscaliteService.originesDeclarees(dossier?.deficitAnterieurOrigines),
+            exercice,
+            IMPOT_SOCIETES.exercicesReportDeficit,
+          );
+    const deficitAnterieur = saisieLue ? saisieLue.imputable : calcules!.total;
     // Un déficit ne s'impute que sur un bénéfice, et jamais au-delà.
     const deficitImpute = arrondir(Math.min(deficitAnterieur, Math.max(baseAvantReport, 0)));
     const resultatFiscal = arrondir(baseAvantReport - deficitImpute);
@@ -1621,6 +1638,13 @@ export class FiscaliteService {
     if (deficitsSimules && deficitImpute > 0.005) observations.push(deficitsSimules);
     // B2, P1 et (8) · report déclaré sans origine, et exercices non jointifs.
     if (calcules) observations.push(...calcules.avertissements);
+    if (saisieLue && saisieLue.horsFenetre.length) {
+      observations.push(
+        `PERTE DÉCLARÉE HORS FENÊTRE · ${saisieLue.horsFenetre
+          .map((o) => `${montantFiscal(o.montant)} de l'exercice clos le ${o.dateFin.toISOString().slice(0, 10)}, report éteint le ${o.finDeFenetre.toISOString().slice(0, 10)}`)
+          .join(', ')}. L'art. 51 ne reporte une perte que « jusqu'au troisième exercice qui suit l'exercice déficitaire » · cette part n'est pas imputée. Corrigez la saisie ou son origine.`,
+      );
+    }
     observations.push(...this.avertissementsPerimetreLoi(exercice.dateDebut, periode));
     const reintegrationsImpot = FiscaliteService.reintegrationsImpot(brut.retraitements);
     const ecartImpotNonReintegre = FiscaliteService.observationImpotNonReintegre(brut.impotConstateAu89, reintegrationsImpot);
@@ -1796,6 +1820,9 @@ export class FiscaliteService {
       deficitAnterieur: {
         montant: deficitAnterieur,
         saisi: deficitSaisi !== null,
+        // Le montant SAISI, tel que le cabinet l'a tapé · `montant` n'en garde
+        // que la part que la fenêtre de l'art. 51 couvre.
+        montantSaisi: deficitSaisi,
         detail: calcules?.detail ?? [],
         // L'origine déclarée du report saisi · null tant qu'elle n'est pas
         // dite (le rejeu des exercices suivants la borne alors par prudence).
@@ -2145,6 +2172,18 @@ export class FiscaliteService {
       if (Math.abs(somme - arrondir(saisi)) >= 0.005) {
         throw new BadRequestException(
           `L'origine déclarée totalise ${montantFiscal(somme)} pour un déficit saisi de ${montantFiscal(saisi)} · chaque part se rattache à un exercice déficitaire, et leur somme est le déficit saisi.`,
+        );
+      }
+      const horsFenetre = originesHorsFenetre(
+        dto.deficitAnterieurOrigines.map((o) => ({ dateFin: new Date(`${o.dateFin.slice(0, 10)}T00:00:00Z`), montant: o.montant })),
+        exercice,
+        IMPOT_SOCIETES.exercicesReportDeficit,
+      );
+      if (horsFenetre.length) {
+        throw new BadRequestException(
+          `Loi n° 23/053, art. 51 · une perte ne se reporte que « jusqu'au troisième exercice qui suit l'exercice déficitaire ». ${horsFenetre
+            .map((o) => `La perte de l'exercice clos le ${o.dateFin.toISOString().slice(0, 10)} ne s'imputait plus après le ${o.finDeFenetre.toISOString().slice(0, 10)}`)
+            .join(' ; ')}, avant l'ouverture du ${exercice.dateDebut.toISOString().slice(0, 10)} · elle ne se reporte pas sur cet exercice.`,
         );
       }
       for (const o of dto.deficitAnterieurOrigines) {

@@ -226,6 +226,39 @@ export function rejouerReport(
 }
 
 /**
+ * LA SAISIE DANS L'EXERCICE MÊME QUI LA DÉCLARE · même règle que le rejeu, par
+ * la même fonction `imputable`. Une origine dont la fenêtre de l'art. 51 est
+ * close à l'ouverture de l'exercice n'y est pas imputable · la saisie entière
+ * s'imputait (perte de 2021 déclarée en 2026, fenêtre close en 2024 · impôt
+ * de 150 000 au lieu de 300 000, sans un mot). Sans origine dite, la saisie
+ * est imputable dans son exercice (la borne prudente le couvre toujours).
+ */
+export function partImputableDeLaSaisie(
+  montant: number,
+  origines: { dateFin: Date; montant: number }[] | null,
+  exercice: { dateDebut: Date },
+  exercicesReport: number,
+): { imputable: number; horsFenetre: { dateFin: Date; montant: number; finDeFenetre: Date }[] } {
+  if (!origines || !origines.length) return { imputable: arrondir(montant), horsFenetre: [] };
+  const horsFenetre = origines
+    .filter((o) => !imputable(o, exercice, exercicesReport))
+    .map((o) => ({ ...o, finDeFenetre: finDeFenetre(o.dateFin, exercicesReport) }));
+  const exclu = horsFenetre.reduce((t, o) => t + o.montant, 0);
+  return { imputable: arrondir(Math.max(montant - exclu, 0)), horsFenetre };
+}
+
+/** L'exercice d'une perte dont la fenêtre est close avant `dateDebut` · refus à la saisie (art. 51). */
+export function originesHorsFenetre(
+  origines: { dateFin: Date; montant: number }[],
+  exercice: { dateDebut: Date },
+  exercicesReport: number,
+): { dateFin: Date; finDeFenetre: Date }[] {
+  return origines
+    .filter((o) => !imputable(o, exercice, exercicesReport))
+    .map((o) => ({ dateFin: o.dateFin, finDeFenetre: finDeFenetre(o.dateFin, exercicesReport) }));
+}
+
+/**
  * B2, P1 · LE REPORT DÉCLARÉ SANS ORIGINE, borné par prudence et DIT. Une
  * part encore disponible y est nommée avec la limite qu'on lui a posée ; une
  * part perdue à cause de cette borne l'est avec son montant, pour que le
@@ -234,6 +267,8 @@ export function rejouerReport(
 export function avertissementsReportDeclare(
   detail: DeficitReportable[],
   perdus: ReportPerduParPrudence[],
+  /** Exercices clos · on n'y déclare plus rien, l'issue est l'exercice ouvert suivant. */
+  exercicesClos: Set<string> = new Set(),
 ): string[] {
   const avertissements: string[] = [];
   const bornes = detail.filter((d) => d.bornePrudente);
@@ -246,7 +281,9 @@ export function avertissementsReportDeclare(
   for (const p of perdus) {
     avertissements.push(
       `REPORT PERDU PAR PRUDENCE · ${p.montant.toLocaleString('fr-FR')} du report déclaré à l'ouverture du ${p.dateDebutDeclaration.toISOString().slice(0, 10)} ne s'impute plus ici, sa fenêtre ayant été bornée faute d'origine déclarée. ` +
-        "Si ces pertes viennent d'exercices plus récents, déclarez leur origine sur l'exercice de la saisie · elles retrouvent alors leur fenêtre de l'art. 51.",
+        (exercicesClos.has(p.exerciceDeclarationId)
+          ? "L'exercice de cette saisie est clôturé et ne se retouche plus · si ces pertes viennent d'exercices plus récents, déclarez à l'ouverture de l'exercice OUVERT suivant le report qui y reste disponible, avec son origine · elles y retrouvent leur fenêtre de l'art. 51."
+          : "Si ces pertes viennent d'exercices plus récents, déclarez leur origine sur l'exercice de la saisie · elles retrouvent alors leur fenêtre de l'art. 51."),
     );
   }
   return avertissements;

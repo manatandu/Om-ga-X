@@ -1941,3 +1941,60 @@ describe('Cas chiffrés IS, second tour · la période de création', () => {
     ).rejects.toThrow('totalise');
   });
 });
+
+describe('Cas chiffrés IS, dernière correction · une origine hors fenêtre (art. 51)', () => {
+  const an = (id: string, annee: number, statut?: string) => ({
+    id,
+    dateDebut: new Date(Date.UTC(annee, 0, 1)),
+    dateFin: new Date(Date.UTC(annee, 11, 31)),
+    statut,
+  });
+
+  it('2026, résultat 1 000 000, saisie de 500 000 d’origine 2021 · rien imputé, impôt 300 000, dit', async () => {
+    const r = await service({
+      exercices: [an('N', 2026)],
+      balances: { N: [ligne('70110000', -1_000_000)] },
+      dossier: { deficitAnterieurSaisi: 500_000, deficitAnterieurOrigines: [{ dateFin: '2021-12-31', montant: 500_000 }] } as never,
+    }).s.resultatFiscal('t1', 'N');
+    expect(['deficitImpute', r.deficitImpute]).toEqual(['deficitImpute', 0]);
+    expect(['impotDu', r.impotDu]).toEqual(['impotDu', 300_000]);
+    expect(r.deficitAnterieur.montantSaisi).toBe(500_000);
+    expect(r.observations.join(' ')).toContain('PERTE DÉCLARÉE HORS FENÊTRE');
+    expect(r.observations.join(' ')).toContain('2024-12-31');
+  });
+
+  it('seule la part couverte par sa fenêtre s’impute', async () => {
+    const r = await service({
+      exercices: [an('N', 2026)],
+      balances: { N: [ligne('70110000', -1_000_000)] },
+      dossier: {
+        deficitAnterieurSaisi: 800_000,
+        deficitAnterieurOrigines: [
+          { dateFin: '2021-12-31', montant: 500_000 },
+          { dateFin: '2024-12-31', montant: 300_000 },
+        ],
+      } as never,
+    }).s.resultatFiscal('t1', 'N');
+    expect(r.deficitImpute).toBe(300_000);
+    expect(r.impotDu).toBe(210_000);
+  });
+
+  it('modifierDossier refuse une origine hors fenêtre en citant l’art. 51 et la date de fin', async () => {
+    const { s } = service({ exercices: [an('N', 2026)], balances: { N: [] } });
+    await expect(
+      s.modifierDossier('t1', 'N', { deficitAnterieurSaisi: 500_000, deficitAnterieurOrigines: [{ dateFin: '2021-12-31', montant: 500_000 }] }),
+    ).rejects.toThrow(/art\. 51.*2024-12-31/s);
+  });
+
+  it('le message « par prudence » renvoie à l’exercice ouvert suivant quand l’exercice de la saisie est clos', async () => {
+    const r = await service({
+      exercices: [an('A2027', 2027, 'CLOTURE'), an('A2028', 2028)],
+      balances: { A2027: [ligne('70110000', -300_000)], A2028: [ligne('70110000', -2_000_000)] },
+      dossiers: { A2027: { deficitAnterieurSaisi: 800_000 } },
+    }).s.resultatFiscal('t1', 'A2028');
+    const texte = r.observations.join(' ');
+    expect(texte).toContain('REPORT PERDU PAR PRUDENCE');
+    expect(texte).toContain("exercice OUVERT suivant");
+    expect(texte).not.toContain("déclarez leur origine sur l'exercice de la saisie");
+  });
+});

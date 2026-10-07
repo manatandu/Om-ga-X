@@ -499,6 +499,18 @@ cas('P1', 'Dossier repris en 2026 avec 800 000 de déficit déclaré, bénéfice
   };
 });
 
+cas('V2', 'Saisie 2026 de 500 000 d\'origine 2021-12-31, fenêtre close en 2024 · refusée, impôt 300 000', async () => {
+  const c = await dossier('Cas IS V2', 'SOCIETE_RESPONSABILITE_LIMITEE');
+  const n = c.exercices.get('2026-01-01');
+  await venteEtCharges(c, n, '2026-06-30', 1_000_000, []);
+  await valider(c, n, '2026-12-31');
+  const refus = await c.req('PATCH', `/fiscalite/exercices/${n}/dossier`, {
+    deficitAnterieurSaisi: 500_000,
+    deficitAnterieurOrigines: [{ dateFin: '2021-12-31', montant: 500_000 }],
+  });
+  return { exerciceId: n, refus: { statut: refus.statut, message: refus.corps?.message }, fiscal: lecture(await fiscal(c, n)) };
+});
+
 // --- Exécution --------------------------------------------------------------
 
 const resultats = {};
