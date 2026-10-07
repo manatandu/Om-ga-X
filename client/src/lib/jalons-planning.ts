@@ -11,7 +11,10 @@ import type { JalonCloture } from './types';
  *   bonne nouvelle ;
  * - AUCUN DÉLAI AU TEXTE (`sansDelai`) · le texte impose le travail sans
  *   fixer de délai (bilan avant liquidation, situation annuelle provisoire) ;
- * - LEVÉ · un fait déclaré satisfait le jalon (observation satisfaite).
+ * - LEVÉ · un fait déclaré satisfait le jalon (observation satisfaite) ;
+ * - EN ATTENTE (`enAttente`) · le fait qui fait courir le délai ne peut pas
+ *   encore exister (le dépôt pendant l'exercice), ou le délai suppose un
+ *   commissaire aux comptes qu'aucun mandat ne montre (relecture 2).
  *
  * Lire une échéance non calculée comme « rien en retard » donnait au tableau
  * de bord un vert qu'aucune donnée ne fondait · le cabinet ne voyait pas
@@ -20,13 +23,14 @@ import type { JalonCloture } from './types';
 
 /** Le jalon attend une date déclarée pour être calculé. */
 export function estNonCalcule(j: JalonCloture): boolean {
-  return j.echeance === null && !j.sansDelai && !(j.observation?.satisfait ?? false);
+  return j.echeance === null && !j.sansDelai && !j.enAttente && !(j.observation?.satisfait ?? false);
 }
 
 /** Ce que la colonne « Échéance » écrit d'un jalon. */
 export function libelleEcheance(j: JalonCloture): string {
   if (j.echeance !== null) return new Date(j.echeance).toLocaleDateString('fr-FR');
   if (j.sansDelai) return 'Aucun délai';
+  if (j.enAttente) return j.enAttente;
   if (j.observation?.satisfait) return 'Sans échéance';
   return 'Non calculée';
 }
@@ -73,4 +77,10 @@ export function lignesJalonsAccueil(
       ? { valeur: nonCalculeesDites(nonCalcules), bon: false }
       : { valeur: 'Rien à venir', bon: true };
   return { retard, prochaine };
+}
+
+/** La couleur de l'observation · ambre pour un fait déclaré HORS DÉLAI, jamais un vert muet. */
+export function classeObservation(o: { satisfait: boolean; horsDelai?: true }): string {
+  if (!o.satisfait) return 'text-danger';
+  return o.horsDelai ? 'text-warning' : 'text-positive';
 }

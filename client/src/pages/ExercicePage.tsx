@@ -11,7 +11,7 @@ import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
 import { FicheR2Exercice } from '../components/FicheR2Exercice';
 import { DatesPortefeuilleExercice } from '../components/DatesPortefeuilleExercice';
-import { estNonCalcule, libelleEcheance } from '../lib/jalons-planning';
+import { classeObservation, estNonCalcule, libelleEcheance } from '../lib/jalons-planning';
 import { estSocieteCommerciale } from '../lib/mentions-dossier';
 
 const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
@@ -757,7 +757,8 @@ export function ExercicePage() {
                       </td>
                       <td className="px-3 py-2 text-[11.5px]">
                         {j.observation ? (
-                          <span className={j.observation.satisfait ? 'text-positive' : 'text-danger'}>
+                          // Ambre · le fait lève le jalon, mais après son échéance.
+                          <span className={classeObservation(j.observation)}>
                             {j.observation.satisfait ? '✓ ' : '! '}
                             {j.observation.libelle}
                           </span>

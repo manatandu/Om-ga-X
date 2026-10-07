@@ -63,6 +63,11 @@ describe('fiche R2 et dates de l’assemblée à l’écran', () => {
     expect(lecture.match(/if \(jeton !== jetonCharger\.current\) return;/g)).toHaveLength(2);
   });
 
+  it('le planning montre en ambre un fait déclaré hors délai, et dit un jalon en attente', () => {
+    expect(exercice).toContain('<span className={classeObservation(j.observation)}>');
+    expect(exercice).toContain('libelleEcheance(j)');
+  });
+
   it('en lecture, une case vide se dit « Non renseignée »', () => {
     expect(ficheR2).toContain("const vide = peutDeclarer ? undefined : 'Non renseignée';");
     expect(dates).toContain("iso === '' ? 'Non renseignée'");

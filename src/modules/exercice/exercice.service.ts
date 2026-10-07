@@ -32,6 +32,7 @@ import { DatesPortefeuilleDto } from './dto/dates-portefeuille.dto';
 import { appliquerPortefeuilleEtat, inviterADeclarerPortefeuille, JalonServi } from './portefeuille-etat';
 import { FORMES_SOCIETES_COMMERCIALES } from '../tenant/mentions-societe';
 import { jalonsLiquidation } from './liquidation-societe';
+import { dernierExerciceCouvert, estDansLaProrogation, mandatCouvrant, regleDeProrogation } from '../mandat-auditeur/duree-mandat';
 import { JournalService } from '../journaux/journal.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { DERNIERE_VERIFICATION, dateJalon, jalonsApplicables } from './planning-cloture';
@@ -483,6 +484,27 @@ export class ExerciceService {
             select: { dateDecision: true },
           })
         : null;
+    // UN COMMISSAIRE AUX COMPTES SE LIT SUR LA TABLE DES MANDATS (relecture
+    // 2) · les quarante-cinq jours de l'art. 140 (SARL « le cas échéant ») et
+    // de l'AUDCIF art. 71 (« s'ils existent ») le supposent. Même lecture que
+    // le contrôle 28 · mandat couvrant l'exercice, ou mandat échu prorogé
+    // sans refus exprès. Rien d'enregistré · `null`, jamais « aucun ».
+    let commissaireDesigne: boolean | null = null;
+    if (portefeuille === true) {
+      const mandats = await this.prisma.mandatAuditeur.findMany({
+        where: { tenantId, finAnticipeeLe: null },
+        orderBy: { premierExercice: 'desc' },
+        select: { premierExercice: true, nombreExercices: true, refusDeProrogation: true },
+      });
+      const annee = exercice.dateFin.getUTCFullYear();
+      const echu = mandats.find((m) => dernierExerciceCouvert(m.premierExercice, m.nombreExercices) < annee);
+      const proroge =
+        !!echu &&
+        !echu.refusDeProrogation &&
+        regleDeProrogation(tenant.referentiel, formeDeLExercice) !== null &&
+        estDansLaProrogation(echu.premierExercice, echu.nombreExercices, annee);
+      if (mandatCouvrant(mandats, annee) || proroge) commissaireDesigne = true;
+    }
     // LIQUIDATION D'UNE SOCIÉTÉ COMMERCIALE (décision par la loi du
     // 2026-10-04, point 4) · ses jalons suivent ceux de l'exercice, sur les
     // seuls exercices qui finissent après la dissolution déclarée.
@@ -503,6 +525,9 @@ export class ExerciceService {
             jalons,
             {
               dateFin: exercice.dateFin,
+              forme: formeDeLExercice!,
+              commissaireDesigne,
+              exerciceClos: exercice.statut === StatutExercice.CLOTURE,
               dateAssembleeGenerale: exercice.dateAssembleeGenerale,
               dateDepotEtatsPortefeuille: exercice.dateDepotEtatsPortefeuille,
               dateTransmissionPvPortefeuille: exercice.dateTransmissionPvPortefeuille,
@@ -669,6 +694,20 @@ export class ExerciceService {
     const assemblee = jourSaisiOuEffacement(dto.dateAssembleeGenerale);
     const depot = jourSaisiOuEffacement(dto.dateDepotEtatsPortefeuille);
     const transmission = jourSaisiOuEffacement(dto.dateTransmissionPvPortefeuille);
+    // UN DÉPÔT OU UNE COMMUNICATION À VENIR NE SE DÉCLARE PAS (relecture 2),
+    // comme la nomination du liquidateur · un fait déclaré lève un jalon, et
+    // un fait futur le lèverait avant d'avoir eu lieu. L'assemblée future,
+    // elle, est admise · les délais comptés à rebours d'elle en ont besoin,
+    // et le planning la dit « prévue » sans rien lever.
+    const aujourdHui = jourDeKinshasa(new Date());
+    for (const [date, quoi] of [
+      [depot, 'Le dépôt des états financiers au ministère du Portefeuille'],
+      [transmission, 'La communication du procès-verbal à l’Administration des recettes non fiscales'],
+    ] as const) {
+      if (date && date > aujourdHui) {
+        throw new BadRequestException(`${quoi} à venir ne se déclare pas · déclarez-le une fois intervenu.`);
+      }
+    }
     for (const [date, quoi] of [
       [assemblee, 'L’assemblée générale ordinaire statue sur les résultats d’un exercice clos'],
       [depot, 'Les états financiers se déposent une fois l’exercice clos'],

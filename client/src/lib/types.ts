@@ -2869,6 +2869,12 @@ export interface JalonCloture {
   echeance: string | null;
   /** Le texte impose le travail sans fixer de délai · la date reste dans `debut`. */
   sansDelai?: true;
+  /**
+   * Le jalon attend un fait qui ne peut pas encore exister (dépôt pendant
+   * l'exercice) ou dont dépend son délai (commissaire aux comptes) · dit à la
+   * place de l'échéance, jamais compté comme non calculé.
+   */
+  enAttente?: string;
   enRetard: boolean;
   /**
    * Ce que les dirigeants encourent si le travail du jalon n'est pas fait du
@@ -2876,8 +2882,11 @@ export interface JalonCloture {
    * l'échéance : ici c'est l'OMISSION qui est punie, pas le retard.
    */
   sanction: string | null;
-  /** Ce qu'OmegaX sait vérifier seul sur ce jalon · absent sinon. */
-  observation?: { libelle: string; satisfait: boolean };
+  /**
+   * Ce qu'OmegaX sait vérifier seul sur ce jalon · absent sinon. `horsDelai`
+   * · le fait déclaré le lève, mais après son échéance (montré en ambre).
+   */
+  observation?: { libelle: string; satisfait: boolean; horsDelai?: true };
 }
 
 export interface PlanningCloture {

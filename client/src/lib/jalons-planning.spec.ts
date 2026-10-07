@@ -1,4 +1,4 @@
-import { estNonCalcule, libelleEcheance, lignesJalonsAccueil } from './jalons-planning';
+import { classeObservation, estNonCalcule, libelleEcheance, lignesJalonsAccueil } from './jalons-planning';
 import type { JalonCloture } from './types';
 
 // Aucun import de « vitest » (globales) · convention du dépôt.
@@ -71,5 +71,18 @@ describe('jalons du planning · une échéance non calculée n’est jamais favo
       AUJOURDHUI,
     );
     expect(l.retard).toEqual({ valeur: '1 en retard · Dépôt de la liasse', bon: false });
+  });
+
+  it('un jalon EN ATTENTE (dépôt impossible pendant l’exercice, commissaire non enregistré) n’est pas une échéance non calculée', () => {
+    const attente = jalon({ libelle: 'Affectation des résultats', enAttente: 'En attente du dépôt' });
+    expect(estNonCalcule(attente)).toBe(false);
+    expect(libelleEcheance(attente)).toBe('En attente du dépôt');
+    expect(lignesJalonsAccueil([attente], AUJOURDHUI).retard).toEqual({ valeur: 'Aucun jalon en retard', bon: true });
+  });
+
+  it('un fait déclaré hors délai s’affiche en ambre, jamais en vert muet', () => {
+    expect(classeObservation({ satisfait: true })).toBe('text-positive');
+    expect(classeObservation({ satisfait: true, horsDelai: true })).toBe('text-warning');
+    expect(classeObservation({ satisfait: false })).toBe('text-danger');
   });
 });

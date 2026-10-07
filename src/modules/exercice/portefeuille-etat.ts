@@ -1,3 +1,4 @@
+import { FormeJuridiqueSyscohada } from '@prisma/client';
 import { echeanceDepassee } from '../../common/echeance';
 
 /**
@@ -32,6 +33,19 @@ import { echeanceDepassee } from '../../common/echeance';
  * (3) Le procès-verbal à l'Administration des recettes non fiscales S'AJOUTE
  *     à celui de la DGI (LPF art. 13 bis), il ne le remplace pas.
  *
+ * SEULE LA DATE DE L'ASSEMBLÉE CHANGE (relecture 2) · les délais comptés à
+ * rebours d'elle restent ceux que le planning de base applique à CHAQUE
+ * forme. Les quarante-cinq jours de l'AUSCGIE art. 140 ne visent que « les
+ * sociétés anonymes, les sociétés par actions simplifiées et, le cas
+ * échéant, [...] les sociétés à responsabilité limitée » ; ceux de l'AUDCIF
+ * art. 71 l'envoi aux commissaires aux comptes « s'ils existent ». La SNC et
+ * la SCS communiquent leurs documents aux associés « au moins quinze (15)
+ * jours avant » l'assemblée (AUSCGIE art. 288 et 306), et l'associé de SARL
+ * exerce son droit de communication « durant les quinze (15) jours
+ * précédant » (art. 345). Un commissaire se lit sur la table des mandats ·
+ * sans mandat enregistré, le délai qui le suppose n'est pas calculé, et
+ * aucun retard n'est fabriqué.
+ *
  * NON SERVI, et dit · le dividende prioritaire des entreprises MINIÈRES du
  * portefeuille (art. 112 quater, inséré par la LF 2025 ; « déclaré au plus
  * tard le 15 mai » par la LF 2026), que le corpus ne donne qu'en résumé,
@@ -63,8 +77,24 @@ export interface JalonServi {
    * manque du dossier · l'écran dit « Aucun délai », pas « Non calculée ».
    */
   sansDelai?: true;
+  /**
+   * Le jalon ATTEND un fait qui ne peut pas encore exister (le dépôt pendant
+   * l'exercice) ou dont dépend son délai (un commissaire aux comptes) · dit
+   * à la place de l'échéance, jamais compté comme une échéance non calculée.
+   */
+  enAttente?: string;
   enRetard: boolean;
-  observation?: { libelle: string; satisfait: boolean };
+  observation?: ObservationJalon;
+}
+
+/**
+ * Ce qu'OmegaX sait du jalon · `horsDelai` · le fait déclaré le lève, mais
+ * après son échéance (l'écran le montre en ambre, jamais en vert muet).
+ */
+export interface ObservationJalon {
+  libelle: string;
+  satisfait: boolean;
+  horsDelai?: true;
 }
 
 const JOUR_MS = 86_400_000;
@@ -86,9 +116,48 @@ export function jourFr(d: Date): string {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 }
 
+/**
+ * UNE SEULE RÈGLE POUR UN FAIT DÉCLARÉ QUI LÈVE UN JALON (relecture 2) ·
+ * assemblée, communication du procès-verbal, dépôt, affectation.
+ * - Daté au plus tard d'aujourd'hui (jour de Kinshasa) · il lève le jalon.
+ * - Postérieur à l'échéance · il le lève aussi, mais le libellé le dit
+ *   (« après l'échéance du ») et `horsDelai` le marque · une assemblée tenue
+ *   le 15 avril restait rouge à vie, un procès-verbal tardif passait au vert
+ *   sans un mot.
+ * - FUTUR · « prévu le », et il ne lève rien (seule l'assemblée future est
+ *   admise au serveur, pour les délais comptés à rebours d'elle).
+ */
+export function observationDuFait(
+  fait: { passe: string; prevu: string },
+  date: Date | null,
+  echeance: Date | null,
+  aujourdHui: Date,
+): ObservationJalon | undefined {
+  if (!date) return undefined;
+  if (date.getTime() > aujourdHui.getTime()) return { libelle: `${fait.prevu} le ${jourFr(date)}`, satisfait: false };
+  if (echeance && date.getTime() > echeance.getTime()) {
+    return {
+      libelle: `${fait.passe} le ${jourFr(date)}, après l’échéance du ${jourFr(echeance)}`,
+      satisfait: true,
+      horsDelai: true,
+    };
+  }
+  return { libelle: `${fait.passe} le ${jourFr(date)}`, satisfait: true };
+}
+
 /** Les faits DÉCLARÉS qui font courir ou lèvent les délais de l'O.-L. n° 13/003. */
 export interface FaitsPortefeuille {
   dateFin: Date;
+  /** Forme de l'exercice · décide des délais comptés à rebours de l'assemblée. */
+  forme: FormeJuridiqueSyscohada;
+  /**
+   * Un commissaire aux comptes couvre l'exercice (mandat enregistré, ou
+   * prorogé) · `null` quand la table des mandats n'en dit rien, jamais lu
+   * « pas de commissaire ».
+   */
+  commissaireDesigne: boolean | null;
+  /** L'exercice est clôturé · le dépôt des états est alors possible. */
+  exerciceClos: boolean;
   dateAssembleeGenerale: Date | null;
   dateDepotEtatsPortefeuille: Date | null;
   /** Communication du PV à l'Administration des recettes non fiscales · lève le jalon. */
@@ -118,22 +187,54 @@ export function appliquerPortefeuilleEtat(jalons: JalonServi[], faits: FaitsPort
 
   const clos31 = closAu31Decembre(faits.dateFin);
   const trenteEtUnMars = new Date(Date.UTC(faits.dateFin.getUTCFullYear() + 1, 2, 31));
-  // La base des délais à rebours (AUSCGIE art. 140, quarante-cinq jours) et
-  // du RCCM (art. 269, un mois) · l'assemblée déclarée, sinon la date limite
-  // du 31 mars.
+  // La base des délais à rebours et du RCCM (art. 269, un mois) ·
+  // l'assemblée déclarée, FUTURE comprise, sinon la date limite du 31 mars.
   const assembleeDeReference = faits.dateAssembleeGenerale ?? trenteEtUnMars;
-  const reference = faits.dateAssembleeGenerale ? 'l’assemblée déclarée' : 'la date limite du 31 mars (art. 112)';
-  const quaranteCinqJoursAvant = plusJours(assembleeDeReference, -45);
+  const reference = faits.dateAssembleeGenerale
+    ? faits.dateAssembleeGenerale.getTime() > aujourdHui.getTime()
+      ? 'l’assemblée prévue'
+      : 'l’assemblée déclarée'
+    : 'la date limite du 31 mars (art. 112)';
+  const delais = delaisAvantAssemblee(faits.forme, faits.commissaireDesigne);
 
-  // L'assemblée DÉCLARÉE lève les étapes 21 et 23 si elle tient le 31 mars.
-  const observationAssemblee = faits.dateAssembleeGenerale
-    ? faits.dateAssembleeGenerale.getTime() <= trenteEtUnMars.getTime()
-      ? { libelle: `Assemblée tenue le ${jourFr(faits.dateAssembleeGenerale)}`, satisfait: true }
-      : {
-          libelle: `Assemblée tenue le ${jourFr(faits.dateAssembleeGenerale)}, après le 31 mars (art. 112)`,
-          satisfait: false,
-        }
-    : undefined;
+  // L'assemblée DÉCLARÉE lève les étapes 21 et 23 · la règle commune des faits.
+  const observationAssemblee = observationDuFait(
+    { passe: 'Assemblée tenue', prevu: 'Assemblée prévue' },
+    faits.dateAssembleeGenerale,
+    trenteEtUnMars,
+    aujourdHui,
+  );
+
+  /** Recale un jalon sur un délai à rebours, ou le met en attente du commissaire. */
+  const aRebours = (j: JalonServi, regle: RegleARebours | null, borne: boolean): JalonServi => {
+    if (regle === null) {
+      return {
+        ...j,
+        detail:
+          `${j.detail} ENTREPRISE DU PORTEFEUILLE DE L’ÉTAT · l’assemblée se tient au plus tard le 31 mars ; le ` +
+          'délai de quarante-cinq jours ne vaut que si un commissaire aux comptes est désigné (« le cas échéant », ' +
+          'AUSCGIE art. 140 ; « s’ils existent », AUDCIF art. 71), et aucun mandat n’est enregistré pour cet ' +
+          'exercice · enregistrez-le dans la fenêtre du mandat du contrôleur des comptes pour que l’échéance se calcule.',
+        source: `${j.source} ; ${SOURCE_112}`,
+        debut: null,
+        echeance: null,
+        enAttente: 'Sans commissaire enregistré',
+        enRetard: false,
+      };
+    }
+    const echeance = plusJours(assembleeDeReference, -regle.jours);
+    if (borne && j.echeance && j.echeance.getTime() <= echeance.getTime()) return j;
+    return {
+      ...j,
+      detail:
+        `${j.detail} ENTREPRISE DU PORTEFEUILLE DE L’ÉTAT · ${borne ? 'borné à' : 'compté à'} ` +
+        `${regle.jours === 45 ? 'quarante-cinq' : 'quinze'} jours avant ${reference} · ${regle.motif}`,
+      source: `${j.source} ; ${SOURCE_112} ; ${regle.source}`,
+      debut: debutBorne(j.debut, echeance),
+      echeance,
+      enRetard: enRetard(echeance, j.observation),
+    };
+  };
 
   const resultat = jalons.map((j): JalonServi => {
     if (!clos31) return j;
@@ -155,38 +256,16 @@ export function appliquerPortefeuilleEtat(jalons: JalonServi[], faits: FaitsPort
         enRetard: enRetard(echeance, observation),
       };
     }
-    // Étapes 17 et 18 · les QUARANTE-CINQ JOURS AU MOINS de l'art. 140
-    // AUSCGIE (commissaires aux comptes), à rebours de l'assemblée · 14 février
-    // (15 en année bissextile) pour un 31 mars.
-    if (j.etape === 17 || j.etape === 18) {
-      const echeance = quaranteCinqJoursAvant;
-      return {
-        ...j,
-        detail: `${j.detail} ENTREPRISE DU PORTEFEUILLE DE L’ÉTAT · l’échéance est comptée à rebours de ${reference}.`,
-        source: `${j.source} ; ${SOURCE_112}`,
-        debut: debutBorne(j.debut, echeance),
-        echeance,
-        enRetard: enRetard(echeance, j.observation),
-      };
-    }
-    // Étapes 13 (états financiers) et 16 (rapport de gestion) · ils partent
-    // aux commissaires quarante-cinq jours avant l'assemblée (art. 140) · le
-    // 30 avril tomberait après l'assemblée elle-même. Bornés à cette date.
-    if (j.etape === 13 || j.etape === 16) {
-      if (j.echeance && j.echeance.getTime() <= quaranteCinqJoursAvant.getTime()) return j;
-      const echeance = quaranteCinqJoursAvant;
-      return {
-        ...j,
-        detail:
-          `${j.detail} ENTREPRISE DU PORTEFEUILLE DE L’ÉTAT · borné à quarante-cinq jours avant ${reference} · ` +
-          'les états financiers et le rapport de gestion sont adressés aux commissaires aux comptes « quarante-cinq ' +
-          '(45) jours au moins avant » l’assemblée (AUSCGIE art. 140).',
-        source: `${j.source} ; ${SOURCE_112} ; AUSCGIE, art. 140`,
-        debut: debutBorne(j.debut, echeance),
-        echeance,
-        enRetard: enRetard(echeance, j.observation),
-      };
-    }
+    // Étape 17 · l'envoi aux commissaires de l'art. 140 (SA, SAS, SARL « le
+    // cas échéant ») · servie par le planning de base à ces seules formes.
+    if (j.etape === 17) return aRebours(j, delais.commissaire140, false);
+    // Étape 18 · la remise au commissaire de l'AUDCIF art. 71 (« s'ils
+    // existent »), toute forme.
+    if (j.etape === 18) return aRebours(j, delais.commissaire71, false);
+    // Étapes 13 (états financiers) et 16 (rapport de gestion) · ils doivent
+    // exister à la date d'envoi ou de communication · le 30 avril tomberait
+    // après l'assemblée elle-même. Bornés à cette date, jamais repoussés.
+    if (j.etape === 13 || j.etape === 16) return aRebours(j, delais.documents, true);
     // Étape 24 · le dépôt au RCCM « dans le mois qui suit » l'approbation
     // (AUSCGIE art. 269) · laissé au septième mois, il dirait « dans les
     // délais » une société du portefeuille dont l'assemblée est au 31 mars.
@@ -206,6 +285,7 @@ export function appliquerPortefeuilleEtat(jalons: JalonServi[], faits: FaitsPort
 
   const ajoutes: JalonServi[] = [];
   if (!clos31) {
+    // Le texte se TAIT sur cette clôture · ni échéance ni manque du dossier.
     ajoutes.push({
       etape: 23,
       libelle: 'Assemblée générale · entreprise du portefeuille de l’État',
@@ -218,6 +298,7 @@ export function appliquerPortefeuilleEtat(jalons: JalonServi[], faits: FaitsPort
       sanction: null,
       debut: null,
       echeance: null,
+      sansDelai: true,
       enRetard: false,
     });
   }
@@ -225,9 +306,12 @@ export function appliquerPortefeuilleEtat(jalons: JalonServi[], faits: FaitsPort
   // plus tard dix jours après le 31 mars (même plafond que le RCCM), et dit.
   const basePv = faits.dateAssembleeGenerale ?? (clos31 ? trenteEtUnMars : null);
   const pv = basePv ? plusJours(basePv, 10) : null;
-  const observationPv = faits.dateTransmissionPvPortefeuille
-    ? { libelle: `Procès-verbal communiqué le ${jourFr(faits.dateTransmissionPvPortefeuille)}`, satisfait: true }
-    : undefined;
+  const observationPv = observationDuFait(
+    { passe: 'Procès-verbal communiqué', prevu: 'Communication du procès-verbal prévue' },
+    faits.dateTransmissionPvPortefeuille,
+    pv,
+    aujourdHui,
+  );
   ajoutes.push({
     etape: 23,
     libelle: 'Procès-verbal à l’Administration des recettes non fiscales',
@@ -249,10 +333,21 @@ export function appliquerPortefeuilleEtat(jalons: JalonServi[], faits: FaitsPort
     observation: observationPv,
     enRetard: enRetard(pv, observationPv),
   });
+  // L'AFFECTATION · soixante jours du dépôt déclaré. Le dépôt ne peut pas
+  // exister pendant l'exercice · tant qu'il n'est pas possible (exercice non
+  // clôturé et date limite de l'assemblée non passée · le 31 mars, sinon les
+  // six mois de l'AUDCIF art. 72), le jalon est EN ATTENTE, hors du compte
+  // des échéances non calculées.
   const affectation = faits.dateDepotEtatsPortefeuille ? plusJours(faits.dateDepotEtatsPortefeuille, 60) : null;
-  const observationAffectation = faits.dateDecisionAffectation
-    ? { libelle: `Affectation décidée le ${jourFr(faits.dateDecisionAffectation)}`, satisfait: true }
-    : undefined;
+  const observationAffectation = observationDuFait(
+    { passe: 'Affectation décidée', prevu: 'Affectation prévue' },
+    faits.dateDecisionAffectation,
+    affectation,
+    aujourdHui,
+  );
+  const limiteAssemblee = clos31 ? trenteEtUnMars : plusMoisDateADate(faits.dateFin, 6);
+  const depotPossible = faits.exerciceClos || aujourdHui.getTime() > limiteAssemblee.getTime();
+  const enAttenteDuDepot = !faits.dateDepotEtatsPortefeuille && !depotPossible && !observationAffectation?.satisfait;
   ajoutes.push({
     etape: 26,
     libelle: 'Affectation des résultats · entreprise du portefeuille de l’État',
@@ -262,13 +357,16 @@ export function appliquerPortefeuilleEtat(jalons: JalonServi[], faits: FaitsPort
       'attributions », jours calendaires. ' +
       (faits.dateDepotEtatsPortefeuille
         ? 'Délai compté depuis la date de dépôt déclarée.'
-        : 'Échéance non calculée · déclarez la date de dépôt sur l’exercice.') +
+        : enAttenteDuDepot
+          ? 'Le dépôt suit l’arrêté et l’approbation des états · l’échéance se calculera sur sa date déclarée.'
+          : 'Échéance non calculée · déclarez la date de dépôt sur l’exercice.') +
       ' Le jalon se lève par la décision d’affectation enregistrée.',
     nature: 'LEGALE',
     source: SOURCE_113,
     sanction: null,
     debut: faits.dateDepotEtatsPortefeuille,
     echeance: affectation,
+    ...(enAttenteDuDepot ? { enAttente: 'En attente du dépôt' } : {}),
     observation: observationAffectation,
     enRetard: enRetard(affectation, observationAffectation),
   });
@@ -277,6 +375,78 @@ export function appliquerPortefeuilleEtat(jalons: JalonServi[], faits: FaitsPort
   const tous = [...resultat.map((j, i) => ({ j, i })), ...ajoutes.map((j, k) => ({ j, i: resultat.length + k }))];
   tous.sort((a, b) => a.j.etape - b.j.etape || a.i - b.i);
   return tous.map((x) => x.j);
+}
+
+/** Un délai compté à rebours de l'assemblée, avec ce qui le fonde. */
+interface RegleARebours {
+  jours: 45 | 15;
+  source: string;
+  motif: string;
+}
+
+const QUARANTE_CINQ_ART_140: RegleARebours = {
+  jours: 45,
+  source: 'AUSCGIE, art. 140',
+  motif:
+    'les états financiers et le rapport de gestion sont adressés aux commissaires aux comptes « quarante-cinq (45) ' +
+    'jours au moins avant » l’assemblée (AUSCGIE art. 140).',
+};
+const QUARANTE_CINQ_ART_71: RegleARebours = {
+  jours: 45,
+  source: 'AUDCIF, art. 71',
+  motif:
+    'les documents sont transmis aux commissaires aux comptes, « s’ils existent, quarante-cinq jours au moins avant » ' +
+    'l’assemblée (AUDCIF art. 71).',
+};
+const QUINZE_ART_288_306: RegleARebours = {
+  jours: 15,
+  source: 'AUSCGIE, art. 288 et 306',
+  motif:
+    'les documents sont communiqués aux associés « au moins quinze (15) jours avant la tenue de l’assemblée » ' +
+    '(AUSCGIE art. 288 pour la SNC, 306 pour la SCS).',
+};
+const QUINZE_ART_345: RegleARebours = {
+  jours: 15,
+  source: 'AUSCGIE, art. 345',
+  motif:
+    'le droit de communication des associés « s’exerce durant les quinze (15) jours précédant la tenue » de ' +
+    'l’assemblée (AUSCGIE art. 345) · les documents doivent alors exister.',
+};
+
+/**
+ * LES DÉLAIS À REBOURS DE L'ASSEMBLÉE, FORME PAR FORME (relecture 2) · ceux
+ * que le planning de base applique déjà, l'assemblée seule changeant de date.
+ * `null` · le délai suppose un commissaire aux comptes que la table des
+ * mandats ne montre pas (jalon EN ATTENTE, aucun retard fabriqué).
+ */
+export function delaisAvantAssemblee(
+  forme: FormeJuridiqueSyscohada,
+  commissaireDesigne: boolean | null,
+): { commissaire140: RegleARebours | null; commissaire71: RegleARebours | null; documents: RegleARebours } {
+  const commissaire = commissaireDesigne === true;
+  switch (forme) {
+    // Art. 140 · la SA et la SAS sans condition.
+    case FormeJuridiqueSyscohada.SOCIETE_ANONYME:
+    case FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE:
+      return { commissaire140: QUARANTE_CINQ_ART_140, commissaire71: QUARANTE_CINQ_ART_71, documents: QUARANTE_CINQ_ART_140 };
+    // Art. 140 · la SARL « le cas échéant », c'est-à-dire avec un commissaire.
+    case FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE:
+      return commissaire
+        ? { commissaire140: QUARANTE_CINQ_ART_140, commissaire71: QUARANTE_CINQ_ART_71, documents: QUARANTE_CINQ_ART_140 }
+        : { commissaire140: null, commissaire71: null, documents: QUINZE_ART_345 };
+    // Art. 288 et 306 · la SNC et la SCS, que l'art. 140 ne vise pas.
+    default:
+      return commissaire
+        ? { commissaire140: null, commissaire71: QUARANTE_CINQ_ART_71, documents: QUARANTE_CINQ_ART_71 }
+        : { commissaire140: null, commissaire71: null, documents: QUINZE_ART_288_306 };
+  }
+}
+
+/** n mois DATE À DATE, ramené au dernier jour du mois d'arrivée. */
+function plusMoisDateADate(d: Date, n: number): Date {
+  const cible = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1));
+  const dernier = new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth(), Math.min(d.getUTCDate(), dernier)));
 }
 
 /**
