@@ -1,4 +1,4 @@
-import { EcritureService, PERIMETRES_BALANCE_AGEE, type PerimetreBalanceAgee } from './ecriture.service';
+import { EcritureService, PERIMETRES_BALANCE_AGEE, ligneVentilee, type PerimetreBalanceAgee } from './ecriture.service';
 import { PrismaService } from '../../common/prisma.service';
 
 /**
@@ -115,10 +115,13 @@ describe('balance âgée · découpage des tranches', () => {
     ]).balanceAgee('t', AU_31_12);
 
     expect(r.debiteurs).toHaveLength(1);
-    expect(r.crediteurs).toHaveLength(1);
-    expect(r.crediteurs[0].montants).toEqual([]);
+    // Un client créditeur n'a pas d'antériorité de créance (fiche du 41).
+    expect(r.crediteurs).toHaveLength(0);
+    expect(r.sensInverse).toHaveLength(1);
+    expect(r.sensInverse[0].montants).toEqual([]);
     expect(r.totaux.debiteurs).toBe(1000);
-    expect(r.totaux.crediteurs).toBe(-400);
+    expect(r.totaux.crediteurs).toBe(0);
+    expect(r.totaux.sensInverse).toBe(-400);
     // Le net est ce qui doit recouper la balance auxiliaire.
     expect(r.totaux.net).toBe(600);
     // Les totaux par tranche ne portent QUE les débiteurs · y mêler les
@@ -240,6 +243,79 @@ describe('balance âgée · les périmètres et ce que l’antériorité y signi
     expect(Object.keys(PERIMETRES_BALANCE_AGEE).sort()).toEqual(
       ['CLIENTS_41', 'DIVERS_47', 'ETAT_44', 'FOURNISSEURS', 'PERSONNEL_42', 'SOCIAL_43', 'TOUS'].sort(),
     );
+  });
+
+  /**
+   * LE SENS NORMAL DE CHAQUE PÉRIMÈTRE (simulation complète du 2026-10-08,
+   * lot M, D1) · tout solde créditeur partait « en sens inverse, non
+   * ventilé », si bien que la balance âgée des FOURNISSEURS ne ventilait
+   * aucune dette, ni celle des 43 et 44 aucune dette sociale ou fiscale.
+   * Fiches des comptes 40 et 41 · le 40 crédité des factures du fournisseur
+   * (409 fournisseurs débiteurs), le 41 débité des factures au client (419
+   * clients créditeurs) ; 42, 43, 44 et 47 portent les deux sens dans leur
+   * plan (421 et 422, 4387 et 4386, 4492 et 441, débiteurs et créditeurs
+   * divers).
+   */
+  it('chaque périmètre déclare son sens normal', () => {
+    expect(Object.fromEntries(Object.entries(PERIMETRES_BALANCE_AGEE).map(([k, p]) => [k, p.sensNormal]))).toEqual({
+      TOUS: 'SELON_LE_COMPTE',
+      CLIENTS_41: 'DEBITEUR',
+      FOURNISSEURS: 'CREDITEUR',
+      PERSONNEL_42: 'LES_DEUX',
+      SOCIAL_43: 'LES_DEUX',
+      ETAT_44: 'LES_DEUX',
+      DIVERS_47: 'LES_DEUX',
+    });
+  });
+
+  it('la dette fournisseur se VENTILE dans la colonne de son échéance · un retard de paiement', async () => {
+    const r = await requete('FOURNISSEURS', [
+      // 2 000 000 HT + 320 000 de taxe, échue le 05/10/2025, non payée.
+      ligneEcriture('401001', 0, 2_320_000, '2025-10-05', '2025-09-05'),
+      // Une avance versée à un autre fournisseur · aucun retard de paiement.
+      ligneEcriture('401002', 150_000, 0, '2025-11-20', '2025-11-20'),
+    ]);
+    expect(r.crediteurs).toHaveLength(1);
+    expect(r.crediteurs[0].solde).toBe(-2_320_000);
+    expect(r.crediteurs[0].montants[r.tranches.findIndex((t) => t.cle === '2025-10')]).toBe(-2_320_000);
+    expect(r.totaux.parTrancheCrediteurs[r.tranches.findIndex((t) => t.cle === '2025-10')]).toBe(-2_320_000);
+    expect(r.totaux.crediteurs).toBe(-2_320_000);
+    expect(r.debiteurs).toHaveLength(0);
+    expect(r.sensInverse.map((l) => l.solde)).toEqual([150_000]);
+    expect(r.sensInverse[0].montants).toEqual([]);
+    expect(r.totaux.net).toBe(-2_170_000);
+  });
+
+  it('« 40 et 41 » lit le sens sur le compte de la ligne', async () => {
+    const r = await requete('TOUS', [
+      ligneEcriture('411001', 1_000, 0, '2025-12-10', '2025-12-10'),
+      ligneEcriture('401001', 0, 700, '2025-11-10', '2025-11-10'),
+      ligneEcriture('401002', 50, 0, '2025-11-10', '2025-11-10'),
+      ligneEcriture('411002', 0, 30, '2025-12-10', '2025-12-10'),
+    ]);
+    expect(r.debiteurs.map((l) => l.numero)).toEqual(['411001']);
+    expect(r.crediteurs.map((l) => l.numero)).toEqual(['401001']);
+    expect(r.sensInverse.map((l) => l.numero)).toEqual(['401002', '411002']);
+    expect(r.totaux.net).toBe(1_000 - 700 + 50 - 30);
+  });
+
+  it('les dettes sociales et les produits à recevoir du 43 se ventilent tous deux', async () => {
+    const r = await requete('SOCIAL_43', [
+      ligneEcriture('431100', 0, 900_000, '2025-09-15', '2025-08-31'),
+      ligneEcriture('438700', 40_000, 0, '2025-12-31', '2025-12-31'),
+    ]);
+    expect(r.crediteurs[0].montants[r.tranches.findIndex((t) => t.cle === '2025-09')]).toBe(-900_000);
+    expect(r.debiteurs[0].montants[6]).toBe(40_000);
+    expect(r.sensInverse).toHaveLength(0);
+  });
+
+  it('un solde nul ne se ventile jamais, quel que soit le périmètre', () => {
+    for (const sens of ['DEBITEUR', 'CREDITEUR', 'LES_DEUX', 'SELON_LE_COMPTE'] as const) {
+      expect(ligneVentilee(sens, '401001', 0)).toBe(false);
+      expect(ligneVentilee(sens, '411001', 0.004)).toBe(false);
+    }
+    expect(ligneVentilee('SELON_LE_COMPTE', '401001', -1)).toBe(true);
+    expect(ligneVentilee('SELON_LE_COMPTE', '411001', -1)).toBe(false);
   });
 
   it('le calcul des tranches est le même dans tous les périmètres · seule la source change', async () => {

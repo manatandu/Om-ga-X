@@ -52,14 +52,23 @@ describe('balance âgée · le modèle du dossier de révision', () => {
   it('ne ventile pas les soldes de sens contraire', () => {
     // Les vider est délibéré : rendus, ils seraient additionnés par colonne.
     expect(service).toContain("montants: [] as number[]");
-    expect(service).toContain('const crediteurs = toutes');
+    expect(service).toContain('const sensInverse = toutes');
     expect(page).toContain('non ventilés par antériorité');
   });
 
-  it('rend les trois totaux, dont le net qui recoupe la balance auxiliaire', () => {
+  it('le sens contraire se lit sur le sens NORMAL du périmètre, jamais sur le seul signe (lot M, D1)', () => {
+    // Une dette fournisseur est un solde CRÉDITEUR dans son sens normal ·
+    // la ranger « en sens inverse » vidait la balance âgée des fournisseurs.
+    expect(service).toContain('ligneVentilee(perimetre.sensNormal, c.numero, c.solde)');
+    expect(page).toContain('donnees.crediteurs.map');
+    expect(page).toContain('donnees.sensInverse');
+  });
+
+  it('rend les totaux, dont le net qui recoupe la balance auxiliaire', () => {
     expect(service).toContain('debiteurs: totalDebiteurs');
     expect(service).toContain('crediteurs: totalCrediteurs');
-    expect(service).toContain('net: arrondir(totalDebiteurs + totalCrediteurs)');
+    expect(service).toContain('sensInverse: totalSensInverse');
+    expect(service).toContain('net: arrondir(totalDebiteurs + totalCrediteurs + totalSensInverse)');
     expect(page).toContain('Solde net');
   });
 

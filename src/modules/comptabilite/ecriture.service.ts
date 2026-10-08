@@ -229,13 +229,46 @@ export type PerimetreBalanceAgee =
   | 'ETAT_44'
   | 'DIVERS_47';
 
+/**
+ * LE SENS QUI SE VENTILE (simulation complète du 2026-10-08, lot M, D1) ·
+ * seul un solde dans le sens NORMAL du périmètre a une antériorité. Jusque-là
+ * tout solde créditeur était rangé « en sens inverse, non ventilé », quel que
+ * soit le périmètre · la balance âgée des FOURNISSEURS, dont la lecture dit
+ * « une dette ancienne est un retard de paiement », ne ventilait aucune dette,
+ * pas plus que les dettes sociales (43) et fiscales (44).
+ *
+ * Fiches des comptes 40 et 41 des deux plans · le 40 est crédité des factures
+ * du fournisseur (son 409, fournisseurs débiteurs, porte les avances versées),
+ * le 41 débité des factures au client (son 419, clients créditeurs, porte les
+ * avances reçues) · un 40 débiteur ou un 41 créditeur n'a pas d'antériorité
+ * de règlement. Les 42, 43, 44 et 47 portent les DEUX sens dans leur plan
+ * même (avances au personnel 421 et rémunérations dues 422 ; produits à
+ * recevoir 4387 et charges à payer 4386 au 43 ; acomptes versés 4492 et impôt
+ * dû 441 ; débiteurs et créditeurs divers) · chacun s'y ventile. « 40 et 41 »
+ * lit le sens sur le compte de la ligne.
+ */
+export type SensNormalAgee = 'DEBITEUR' | 'CREDITEUR' | 'LES_DEUX' | 'SELON_LE_COMPTE';
+
+/**
+ * Une ligne (un tiers, à défaut un compte) se ventile-t-elle ? Un solde nul
+ * ne se ventile jamais · des pièces ouvertes qui se compensent ne disent aucun
+ * retard, et restent montrées avec les soldes non ventilés.
+ */
+export function ligneVentilee(sens: SensNormalAgee, numero: string, solde: number): boolean {
+  if (Math.abs(solde) < 0.005) return false;
+  if (sens === 'LES_DEUX') return true;
+  const normal = sens === 'SELON_LE_COMPTE' ? (numero.startsWith('40') ? 'CREDITEUR' : 'DEBITEUR') : sens;
+  return normal === 'DEBITEUR' ? solde > 0 : solde < 0;
+}
+
 export const PERIMETRES_BALANCE_AGEE: Record<
   PerimetreBalanceAgee,
-  { racines: string[]; exclusions: string[]; libelle: string; lecture: string }
+  { racines: string[]; exclusions: string[]; libelle: string; lecture: string; sensNormal: SensNormalAgee }
 > = {
   TOUS: {
     racines: ['40', '41'],
     exclusions: [],
+    sensNormal: 'SELON_LE_COMPTE',
     libelle: 'Crédit commercial · fournisseurs (40) et clients (41)',
     lecture:
       "Une ligne ancienne est un délai de règlement dépassé : le crédit commercial est accordé pour un temps, " +
@@ -244,6 +277,7 @@ export const PERIMETRES_BALANCE_AGEE: Record<
   CLIENTS_41: {
     racines: ['41'],
     exclusions: [],
+    sensNormal: 'DEBITEUR',
     libelle: 'Clients, adhérents et usagers (41)',
     lecture:
       "Une créance ancienne appelle un rappel, puis une dépréciation : c'est ici que se prépare le passage au " +
@@ -252,6 +286,7 @@ export const PERIMETRES_BALANCE_AGEE: Record<
   FOURNISSEURS: {
     racines: ['40'],
     exclusions: [],
+    sensNormal: 'CREDITEUR',
     libelle: 'Fournisseurs et comptes rattachés (40)',
     lecture:
       "Une dette ancienne est un retard de paiement, ou une facture réglée sans être lettrée. Les deux se " +
@@ -260,6 +295,7 @@ export const PERIMETRES_BALANCE_AGEE: Record<
   PERSONNEL_42: {
     racines: ['42'],
     exclusions: [],
+    sensNormal: 'LES_DEUX',
     libelle: 'Personnel (42)',
     lecture:
       "AUCUN CRÉDIT COMMERCIAL ICI · la rémunération naît à une date et se règle à une échéance de paie. Un " +
@@ -270,6 +306,7 @@ export const PERIMETRES_BALANCE_AGEE: Record<
   SOCIAL_43: {
     racines: ['43'],
     exclusions: [],
+    sensNormal: 'LES_DEUX',
     libelle: 'Organismes sociaux (43)',
     lecture:
       "AUCUN CRÉDIT COMMERCIAL ICI · les cotisations se déclarent et se règlent à une échéance légale, et un " +
@@ -281,6 +318,7 @@ export const PERIMETRES_BALANCE_AGEE: Record<
     // Voir l'en-tête : les comptes de TVA sont une liquidation périodique,
     // pas une créance ou une dette d'échéance.
     exclusions: ['443', '444', '445', '446'],
+    sensNormal: 'LES_DEUX',
     libelle: 'État et collectivités publiques (44), hors comptes de TVA',
     lecture:
       "AUCUN CRÉDIT COMMERCIAL ICI · l'impôt naît d'une déclaration et se règle à une échéance légale. Les " +
@@ -291,6 +329,7 @@ export const PERIMETRES_BALANCE_AGEE: Record<
   DIVERS_47: {
     racines: ['47'],
     exclusions: [],
+    sensNormal: 'LES_DEUX',
     libelle: 'Débiteurs et créditeurs divers (47)',
     lecture:
       // Citation du Contenu du COMPTE 47 (AUDCIF Titre VII ; même phrase à la
@@ -2808,11 +2847,13 @@ export class EcritureService {
    * TROISIÈME CORRECTION · les tiers dont le solde est À L'ENVERS ne sont pas
    * ventilés. Un client créditeur n'a pas d'antériorité de créance : le
    * ventiler par âge de retard est un contresens, et il pollue chaque colonne.
-   * Ils sont rendus à part, avec leur seul solde et leur propre total. D'où
-   * trois totaux, comme chez eux : débiteurs, créditeurs, et le net qui doit
-   * RECOUPER la balance auxiliaire des mêmes comptes · c'est le contrôle
-   * croisé que le réviseur fait en premier, et il était impossible tant que
-   * les deux sens étaient mélangés.
+   * Ils sont rendus à part, avec leur seul solde et leur propre total. « À
+   * l'envers » se lit sur le sens NORMAL du périmètre (`SensNormalAgee`,
+   * 2026-10-08), jamais sur le seul signe · une dette fournisseur se ventile.
+   * D'où les totaux, comme chez eux : débiteurs, créditeurs, soldes en sens
+   * inverse, et le net qui doit RECOUPER la balance auxiliaire des mêmes
+   * comptes · c'est le contrôle croisé que le réviseur fait en premier, et il
+   * était impossible tant que les deux sens étaient mélangés.
    *
    * Assiette inchangée : les lignes NON LETTRÉES des comptes de tiers, chacune
    * rattachée à son échéance saisie ou, à défaut, à sa date d'écriture (Sage
@@ -2966,19 +3007,27 @@ export class EcritureService {
       .map((c) => ({ ...c, montants: c.montants.map(arrondir), solde: arrondir(c.solde) }))
       .filter((c) => Math.abs(c.solde) >= 0.005 || c.montants.some((m) => Math.abs(m) >= 0.005));
 
-    // Les plus exposés en tête · c'est l'ordre du dossier de révision, et le
-    // premier écran doit porter ce qui fait réagir.
-    const debiteurs = toutes.filter((c) => c.solde > 0).sort((a, b) => b.solde - a.solde);
-    const crediteurs = toutes
-      .filter((c) => c.solde <= 0)
-      // Un créditeur n'a pas d'antériorité de créance · ses tranches sont
-      // vidées plutôt que rendues, pour qu'aucune lecture ne les additionne.
+    // TROIS POPULATIONS, chacune son total · les débiteurs et les créditeurs
+    // VENTILÉS (sens normal du périmètre, `ligneVentilee`), et les soldes en
+    // sens inverse, rendus sans tranches. Les plus exposés en tête · c'est
+    // l'ordre du dossier de révision, et le premier écran doit porter ce qui
+    // fait réagir.
+    const ventilee = (c: LigneAgee) => ligneVentilee(perimetre.sensNormal, c.numero, c.solde);
+    const debiteurs = toutes.filter((c) => c.solde > 0 && ventilee(c)).sort((a, b) => b.solde - a.solde);
+    const crediteurs = toutes.filter((c) => c.solde < 0 && ventilee(c)).sort((a, b) => a.solde - b.solde);
+    const sensInverse = toutes
+      .filter((c) => !ventilee(c))
+      // Un client créditeur n'a pas d'antériorité de créance, un fournisseur
+      // débiteur pas de retard de paiement · leurs tranches sont vidées
+      // plutôt que rendues, pour qu'aucune lecture ne les additionne.
       .map((c) => ({ ...c, montants: [] as number[] }))
-      .sort((a, b) => b.solde - a.solde);
+      .sort((a, b) => Math.abs(b.solde) - Math.abs(a.solde));
 
     const parTranche = tranches.map((_, i) => arrondir(debiteurs.reduce((t, c) => t + c.montants[i], 0)));
+    const parTrancheCrediteurs = tranches.map((_, i) => arrondir(crediteurs.reduce((t, c) => t + c.montants[i], 0)));
     const totalDebiteurs = arrondir(debiteurs.reduce((t, c) => t + c.solde, 0));
     const totalCrediteurs = arrondir(crediteurs.reduce((t, c) => t + c.solde, 0));
+    const totalSensInverse = arrondir(sensInverse.reduce((t, c) => t + c.solde, 0));
 
     return {
       dateReference: ref.toISOString().slice(0, 10),
@@ -2989,16 +3038,22 @@ export class EcritureService {
       // où un solde ancien est parfaitement normal.
       lecture: perimetre.lecture,
       libellePerimetre: perimetre.libelle,
+      sensNormal: perimetre.sensNormal,
       tranches,
       debiteurs,
       crediteurs,
+      sensInverse,
       totaux: {
+        // Par tranche, au signe de la balance (débit moins crédit) · les
+        // créditeurs ventilés y sont négatifs, comme leur solde.
         parTranche,
+        parTrancheCrediteurs,
         debiteurs: totalDebiteurs,
         crediteurs: totalCrediteurs,
+        sensInverse: totalSensInverse,
         // Ce net doit recouper le solde de la balance auxiliaire des mêmes
         // comptes · c'est le contrôle croisé du réviseur.
-        net: arrondir(totalDebiteurs + totalCrediteurs),
+        net: arrondir(totalDebiteurs + totalCrediteurs + totalSensInverse),
       },
     };
   }

@@ -1137,8 +1137,8 @@ export class ExportService {
       });
       // Le solde d'un débiteur EST la somme de ses tranches · l'écrire en
       // formule rend le rapprochement visible et fait suivre la ligne si une
-      // tranche est corrigée à la main. Un créditeur n'a pas de tranches : son
-      // solde reste une valeur, il n'y a rien à additionner.
+      // tranche est corrigée à la main. Un solde en sens inverse n'a pas de
+      // tranches : il reste une valeur, il n'y a rien à additionner.
       const ligneCoiffee = r.number + 3;
       r.getCell(nbColonnes).value = montants.length
         ? this.formule(`SUM(${premiereTranche}${ligneCoiffee}:${derniereTranche}${ligneCoiffee})`, solde)
@@ -1146,59 +1146,79 @@ export class ExportService {
       return r;
     };
 
-    const premiereAgee = this.ligneCoiffee(3);
-    for (const d of etat.debiteurs) ligneMontants(d.libelle, d.montants, d.solde);
-
-    if (etat.crediteurs.length > 0) {
-      // La bascule de sens se voit · sans elle, un lecteur croit lire la suite
-      // des débiteurs et additionne deux populations contraires.
-      const separateur = feuille.addRow([]);
-      separateur.getCell(1).value = 'SOLDES EN SENS INVERSE · non ventilés par antériorité';
-      separateur.font = { size: 9, italic: true };
-      for (const c of etat.crediteurs) ligneMontants(c.libelle, [], c.solde);
-    }
-
-    const derniereLigneDonnees = feuille.rowCount;
-
-    // Les débiteurs occupent les premières lignes, les créditeurs suivent
-    // après le séparateur · deux plages disjointes, donc deux sommes.
-    const derniereDebiteur = this.ligneCoiffee(2 + etat.debiteurs.length);
-    const premierCrediteur = this.ligneCoiffee(4 + etat.debiteurs.length);
-    const derniereAgee = this.ligneCoiffee(derniereLigneDonnees);
+    // TROIS POPULATIONS, trois plages disjointes, donc trois sommes · les
+    // débiteurs et les créditeurs VENTILÉS (sens normal du périmètre, lot M,
+    // D1 · une dette fournisseur se ventile), puis les soldes en sens inverse,
+    // sans tranches. Les bornes se lisent sur les lignes ÉCRITES, jamais sur
+    // un décompte · la coiffe insère trois lignes en tête après coup.
     const colSolde = lettre(nbColonnes);
+    const sommeColonne = (col: string, de: number, a: number, valeur: number) =>
+      this.formule(`SUM(${col}${this.ligneCoiffee(de)}:${col}${this.ligneCoiffee(a)})`, valeur);
+    const totaux: Array<{ ligne: number }> = [];
+    // Le filtre ne couvre que la PREMIÈRE plage de lignes · étendu aux
+    // sections suivantes, un tri mêlerait les populations et leurs totaux.
+    let finPremiereSection: number | null = null;
 
-    const totalDebiteurs = feuille.addRow([]);
-    totalDebiteurs.getCell(1).value = 'TOTAL DÉBITEURS';
-    etat.tranches.forEach((_, i) => {
-      const col = lettre(i + 2);
-      totalDebiteurs.getCell(i + 2).value = this.formule(
-        `SUM(${col}${premiereAgee}:${col}${derniereDebiteur})`,
-        etat.totaux.parTranche[i],
+    const section = (
+      titre: string | null,
+      lignes: Array<{ libelle: string; montants: number[]; solde: number }>,
+      libelleTotal: string,
+      parTranche: number[] | null,
+      total: number,
+    ) => {
+      if (titre) {
+        // La bascule de sens se voit · sans elle, un lecteur croit lire la
+        // suite des débiteurs et additionne deux populations contraires.
+        const separateur = feuille.addRow([]);
+        separateur.getCell(1).value = titre;
+        separateur.font = { size: 9, italic: true };
+      }
+      const premiere = feuille.rowCount + 1;
+      for (const l of lignes) ligneMontants(l.libelle, l.montants, l.solde);
+      const derniere = feuille.rowCount;
+      finPremiereSection ??= derniere;
+      const r = feuille.addRow([]);
+      r.getCell(1).value = libelleTotal;
+      if (parTranche) {
+        etat.tranches.forEach((_, i) => {
+          r.getCell(i + 2).value = lignes.length
+            ? sommeColonne(lettre(i + 2), premiere, derniere, parTranche[i])
+            : parTranche[i] || null;
+        });
+      }
+      r.getCell(nbColonnes).value = lignes.length ? sommeColonne(colSolde, premiere, derniere, total) : total || null;
+      r.font = ENTETE_FONT;
+      totaux.push({ ligne: r.number });
+    };
+
+    // Une section vide ne s'imprime pas · la balance âgée des fournisseurs ne
+    // s'ouvre pas sur un « TOTAL DÉBITEURS » nul. Sans aucune ligne, le seul
+    // total des débiteurs reste, à zéro, pour que le net ait une source.
+    const aucuneLigne = etat.debiteurs.length + etat.crediteurs.length + etat.sensInverse.length === 0;
+    if (etat.debiteurs.length > 0 || aucuneLigne) {
+      section(null, etat.debiteurs, 'TOTAL DÉBITEURS', etat.totaux.parTranche, etat.totaux.debiteurs);
+    }
+    if (etat.crediteurs.length > 0) {
+      section('SOLDES CRÉDITEURS', etat.crediteurs, 'TOTAL CRÉDITEURS', etat.totaux.parTrancheCrediteurs, etat.totaux.crediteurs);
+    }
+    if (etat.sensInverse.length > 0) {
+      section(
+        'SOLDES EN SENS INVERSE · non ventilés par antériorité',
+        etat.sensInverse,
+        'TOTAL SOLDES EN SENS INVERSE',
+        null,
+        etat.totaux.sensInverse,
       );
-    });
-    totalDebiteurs.getCell(nbColonnes).value = this.formule(
-      `SUM(${colSolde}${premiereAgee}:${colSolde}${derniereDebiteur})`,
-      etat.totaux.debiteurs,
-    );
-    totalDebiteurs.font = ENTETE_FONT;
-
-    const totalCrediteurs = feuille.addRow([]);
-    totalCrediteurs.getCell(1).value = 'TOTAL SOLDES EN SENS INVERSE';
-    totalCrediteurs.getCell(nbColonnes).value = etat.crediteurs.length
-      ? this.formule(
-          `SUM(${colSolde}${premierCrediteur}:${colSolde}${derniereAgee})`,
-          etat.totaux.crediteurs,
-        )
-      : etat.totaux.crediteurs || null;
-    totalCrediteurs.font = ENTETE_FONT;
+    }
+    const derniereLigneDonnees = finPremiereSection ?? feuille.rowCount;
 
     // Le net recoupe la balance auxiliaire des mêmes comptes · en formule, on
-    // voit qu'il est bien la somme des deux populations et pas un troisième
-    // chiffre calculé ailleurs.
+    // voit qu'il est bien la somme des populations et pas un autre chiffre
+    // calculé ailleurs.
     const net = feuille.addRow([]);
     net.getCell(1).value = 'SOLDE NET · recoupe la balance auxiliaire';
     net.getCell(nbColonnes).value = this.formule(
-      `${colSolde}${totalDebiteurs.number + 3}+${colSolde}${totalCrediteurs.number + 3}`,
+      totaux.map((t) => `${colSolde}${this.ligneCoiffee(t.ligne)}`).join('+'),
       etat.totaux.net,
     );
     net.font = ENTETE_FONT;

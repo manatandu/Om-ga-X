@@ -18,8 +18,11 @@ import { montantOuVide as montant } from '../lib/montants';
  * et l'antérieur à l'ouverture à part.
  *
  * Les tiers dont le solde est à l'envers ne sont pas ventilés : un client
- * créditeur n'a pas d'antériorité de créance. Ils sont rendus à part, et le
- * solde net des deux populations recoupe la balance auxiliaire.
+ * créditeur n'a pas d'antériorité de créance, un fournisseur débiteur pas de
+ * retard de paiement. « À l'envers » se lit sur le sens NORMAL du périmètre,
+ * servi par le serveur (lot M, D1 · une dette fournisseur se ventile). Trois
+ * populations, débiteurs et créditeurs ventilés, soldes en sens inverse, et
+ * le solde net des trois recoupe la balance auxiliaire.
  */
 
 interface TrancheAgee {
@@ -42,9 +45,20 @@ interface BalanceAgee {
   debutExercice: string;
   type: string;
   tranches: TrancheAgee[];
+  /** Ventilés · solde débiteur dans le sens normal du périmètre. */
   debiteurs: LigneAgee[];
+  /** Ventilés · solde créditeur dans le sens normal (dette fournisseur, sociale, fiscale). */
   crediteurs: LigneAgee[];
-  totaux: { parTranche: number[]; debiteurs: number; crediteurs: number; net: number };
+  /** Non ventilés · sens contraire au périmètre, ou solde nul. */
+  sensInverse: LigneAgee[];
+  totaux: {
+    parTranche: number[];
+    parTrancheCrediteurs: number[];
+    debiteurs: number;
+    crediteurs: number;
+    sensInverse: number;
+    net: number;
+  };
   /**
    * CE QUE L'ANTÉRIORITÉ VEUT DIRE DANS CE PÉRIMÈTRE. Sur un 40 ou un 41,
    * une ligne ancienne est un délai de règlement dépassé ; sur un compte de
@@ -155,6 +169,26 @@ export function BalanceAgeePage() {
     </div>
   );
 
+  const intercalaire = (titre: string) => (
+    <div className="px-3.5 py-1 text-[10.5px] italic text-text-dim bg-surface-alt border-y border-border/60">
+      {titre}
+    </div>
+  );
+
+  // Une ligne de total par population · `parTranche` nul pour les soldes en
+  // sens inverse, qui n'ont pas de tranches à additionner.
+  const ligneTotal = (libelle: string, parTranche: number[] | null, total: number) => (
+    <div style={grille} className="px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
+      <span>{libelle}</span>
+      {donnees!.tranches.map((t, i) => (
+        <span key={t.cle} className="font-mono text-right">
+          {parTranche ? montant(parTranche[i] ?? 0) : ''}
+        </span>
+      ))}
+      <span className="font-mono text-right">{montant(total)}</span>
+    </div>
+  );
+
   return (
     <div className="p-2">
       <EnteteImpression titre="Balance âgée" />
@@ -203,7 +237,7 @@ export function BalanceAgeePage() {
             <Aide sujet="balanceAgee" />
             <Aide
               titre="Lecture de la balance âgée"
-              texte="Une ligne par tiers, pas par compte : un tiers qui porte plusieurs comptes rattachés (un compte d'exploitation et un compte douteux, par exemple) présente ici son exposition entière. Une échéance non renseignée en saisie est rattachée à la date de l'écriture. Les lignes lettrées, soldées par définition, n'apparaissent pas. Le solde net doit recouper celui de la balance auxiliaire des mêmes comptes."
+              texte="Une ligne par tiers, pas par compte : un tiers qui porte plusieurs comptes rattachés (un compte d'exploitation et un compte douteux, par exemple) présente ici son exposition entière. Une échéance non renseignée en saisie est rattachée à la date de l'écriture. Les lignes lettrées, soldées par définition, n'apparaissent pas. Seul un solde dans le sens normal du compte se ventile : une créance client, une dette fournisseur, et dans les deux sens les comptes du personnel, des organismes sociaux, de l'État et des débiteurs et créditeurs divers. Un client créditeur ou un fournisseur débiteur est rendu à part, sans antériorité. Le solde net doit recouper celui de la balance auxiliaire des mêmes comptes."
               source="Balance âgée"
             />
           </span>
@@ -244,42 +278,40 @@ export function BalanceAgeePage() {
           </>
         )}
 
-        {donnees && donnees.debiteurs.length === 0 && donnees.crediteurs.length === 0 && (
-          <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
-            Aucune échéance non lettrée sur les comptes de tiers de cet exercice.
-          </div>
-        )}
+        {donnees &&
+          donnees.debiteurs.length === 0 &&
+          donnees.crediteurs.length === 0 &&
+          donnees.sensInverse.length === 0 && (
+            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
+              Aucune échéance non lettrée sur les comptes de tiers de cet exercice.
+            </div>
+          )}
 
-        {donnees?.debiteurs.map((l) => ligne(l, true))}
+        {donnees && donnees.debiteurs.length > 0 && (
+          <>
+            {donnees.debiteurs.map((l) => ligne(l, true))}
+            {ligneTotal('Total débiteurs', donnees.totaux.parTranche, donnees.totaux.debiteurs)}
+          </>
+        )}
 
         {donnees && donnees.crediteurs.length > 0 && (
-          <div className="px-3.5 py-1 text-[10.5px] italic text-text-dim bg-surface-alt border-y border-border/60">
-            Soldes en sens inverse · non ventilés par antériorité
-          </div>
-        )}
-        {donnees?.crediteurs.map((l) => ligne(l, false))}
-
-        {donnees && (donnees.debiteurs.length > 0 || donnees.crediteurs.length > 0) && (
           <>
-            <div
-              style={grille}
-              className="px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold"
-            >
-              <span>Total débiteurs</span>
-              {donnees.tranches.map((t, i) => (
-                <span key={t.cle} className="font-mono text-right">
-                  {montant(donnees.totaux.parTranche[i] ?? 0)}
-                </span>
-              ))}
-              <span className="font-mono text-right">{montant(donnees.totaux.debiteurs)}</span>
-            </div>
-            <div style={grille} className="px-3.5 py-1 text-[11.5px] font-bold">
-              <span>Total soldes en sens inverse</span>
-              {donnees.tranches.map((t) => (
-                <span key={t.cle} />
-              ))}
-              <span className="font-mono text-right">{montant(donnees.totaux.crediteurs)}</span>
-            </div>
+            {intercalaire('Soldes créditeurs')}
+            {donnees.crediteurs.map((l) => ligne(l, true))}
+            {ligneTotal('Total créditeurs', donnees.totaux.parTrancheCrediteurs, donnees.totaux.crediteurs)}
+          </>
+        )}
+
+        {donnees && donnees.sensInverse.length > 0 && (
+          <>
+            {intercalaire('Soldes en sens inverse · non ventilés par antériorité')}
+            {donnees.sensInverse.map((l) => ligne(l, false))}
+            {ligneTotal('Total soldes en sens inverse', null, donnees.totaux.sensInverse)}
+          </>
+        )}
+
+        {donnees &&
+          (donnees.debiteurs.length > 0 || donnees.crediteurs.length > 0 || donnees.sensInverse.length > 0) && (
             <div
               style={grille}
               className="px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold"
@@ -290,8 +322,7 @@ export function BalanceAgeePage() {
               ))}
               <span className="font-mono text-right">{montant(donnees.totaux.net)}</span>
             </div>
-          </>
-        )}
+          )}
       </div>
 
     </div>
