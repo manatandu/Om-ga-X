@@ -2804,6 +2804,13 @@ export interface MoisRetenue {
   mois: string;
   /** Solde d'ouverture · retenues antérieures encore dues, imputées en premier. */
   anterieur?: boolean;
+  /**
+   * INPP ou ONEM, quand la nature les porte tous deux · ils partagent le
+   * 4428 mais pas l'échéance (INPP par trimestre, ordonnance n° 84/186,
+   * art. 3 ; ONEM au 15 du mois suivant). `NON_VENTILEE` · aucune charge de
+   * l'écriture ne dit la part, datée au trimestre. Absent ou `null` ailleurs.
+   */
+  part?: 'INPP' | 'ONEM' | 'NON_VENTILEE' | null;
   retenu: number;
   /**
    * Reversé AU TITRE de ce mois · le reversement s'impute désormais du mois le
@@ -2857,6 +2864,12 @@ export interface NatureRetenueCalculee {
    */
   chargeSousConditionArticle20: string | null;
   prochaineEcheance: string;
+  /**
+   * L'ordre dans lequel un reversement au 4428 s'impute entre l'INPP et
+   * l'ONEM (Code civil, Livre III, art. 154, par analogie) · une lecture,
+   * servie en bulle d'aide ; null pour une autre nature.
+   */
+  reserveImputation?: string | null;
 }
 
 export interface RegistreRetenues {

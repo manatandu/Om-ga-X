@@ -189,8 +189,13 @@ describe("T5 · le taux INPP de septembre 2025 suit la date de VERSEMENT", () =>
     expect(mars.reserve).not.toContain('Déclarez la date de mise à disposition');
   });
 
-  it("nomme l'ordonnance n° 84/186 comme texte manquant de la base trimestrielle", () => {
-    expect(inpp().reserve).toContain('ordonnance n° 84/186 du 15 octobre 1984');
+  it("cite l'ordonnance n° 84/186 comme texte de la période trimestrielle, et ne la dit plus absente", () => {
+    // UNE GARANTIE NÉGATIVE VIEILLIT · la réserve la disait « pas au corpus »
+    // jusqu'au 2026-10-08. On gèle la présence de ce qu'elle tranche.
+    const reserve = inpp().reserve ?? '';
+    expect(reserve).toContain('ordonnance n° 84/186 du 15 octobre 1984, art. 1er et 3');
+    expect(reserve).toContain('le 30 avril, le 31 juillet, le 31 octobre et le 31 janvier');
+    expect(reserve).toContain("Aucun texte ne dit à quelle date se lit l'effectif");
   });
 });
 
@@ -199,11 +204,24 @@ describe("L'assiette empruntée de l'INPP et de l'ONEM est DÉCLARÉE", () => {
     const v = cotisations(1_000_000, { ...M, natureEmployeurInpp: 'PRIVE', effectif: 10 });
     expect(v.lignes.find((l) => l.cle === 'onem')!.reserve).toContain("sans renvoyer à l'article 7");
     // PASSE D2 · l'INPP naît de l'art. 15 b) du Code du travail, dont l'art. 7
-    // définit le mot · pas une lecture. Reste la période du trimestre précédent.
+    // définit le mot · pas une lecture. Le PAIEMENT trimestriel est tranché
+    // par l'ordonnance n° 84/186 (art. 1er et 3) ; la PÉRIODE DE L'ASSIETTE,
+    // non (relecture adverse, mineur a).
     const inpp = v.lignes.find((l) => l.cle === 'inpp')!;
     expect(inpp.source).toContain('art. 15 b)');
     expect(inpp.reserve).toContain('article 7 du même Code');
-    expect(inpp.reserve).toMatch(/trimestre précédent.*calcule sur le mois/);
+  });
+
+  it("cite l'art. 15 b) MOT POUR MOT, dit que la conciliation est une LECTURE et nomme l'autre", () => {
+    const v = cotisations(1_000_000, { ...M, natureEmployeurInpp: 'PRIVE', effectif: 10 });
+    const reserve = v.lignes.find((l) => l.cle === 'inpp')!.reserve ?? '';
+    expect(reserve).toContain(
+      '« la cotisation mensuelle des employeurs proportionnelle à la somme des rémunérations versées par eux à leur personnel au cours du trimestre précédent »',
+    );
+    expect(reserve).toContain("c'est une LECTURE, qu'aucun texte n'écrit");
+    expect(reserve).toContain(
+      "L'autre lecture prend pour assiette les rémunérations du trimestre précédent, ce qui décale la cotisation d'un trimestre",
+    );
   });
 
   it("ne porte PAS cette réserve sur la CNSS, dont l'assiette est routée par la loi", () => {

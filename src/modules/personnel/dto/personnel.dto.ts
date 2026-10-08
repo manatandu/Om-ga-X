@@ -514,6 +514,29 @@ export class SimulationPaieDto {
   natureEmployeurInpp?: string;
 
   /**
+   * Ordonnance n° 84/186, art. 1er, al. 2 · la réduction du taux INPP
+   * ACCORDÉE par le ministère du Travail à l'employeur qui forme lui-même son
+   * personnel, en POINTS du taux. Jamais présumée · la référence de l'acte
+   * l'accompagne, et le plafond du quart du taux se juge au calcul, sur le
+   * taux du barème du mois (`motifRefusReductionInpp`).
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  reductionTauxInppPoints?: number;
+
+  /**
+   * La référence de l'acte qui accorde la réduction. Son absence, avec une
+   * réduction, n'est pas refusée ici · le calcul s'abstient sur l'INPP avec
+   * un motif nommé en français (`cotisations-paie.ts`), comme pour un taux
+   * au-delà du quart.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  referenceReductionInpp?: string;
+
+  /**
    * Article 121, alinéa 2 · le régime de la retenue. Le personnel domestique
    * et les salariés de micro-entreprises relèvent d'un forfait LIBÉRATOIRE
    * (arrêté n° 019/CAB/MIN/FINANCES/2025, lu, `FORFAITS_ARRETE_019_2025`) que

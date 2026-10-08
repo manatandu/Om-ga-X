@@ -1399,8 +1399,20 @@ CNSS, ni ONEM, ni net. LE TAUX S'ATTACHE À LA RÉMUNÉRATION VERSÉE (décision
 2026-10-07) · la date de mise à disposition déclarée au bulletin
 (`dateMiseADisposition`) choisit le barème au jour (septembre 2025 · 35 000 versé le
 24 ou après, 30 000 avant, privé de 50) ; sans elle, au mois, et un barème qui change
-dans le mois le DIT ; la base « trimestre précédent » (art. 15 b) attend
-l'ordonnance n° 84/186, absente, nommée dans `RESERVE_ASSIETTE_INPP`. ONEM · une paie
+dans le mois le DIT. **L'INPP SE PAIE PAR TRIMESTRE** (ordonnance n° 84/186 du
+15 octobre 1984, art. 1er et 3, `retenues/inpp-trimestriel.ts`, copie
+`docs/sources/`) · 30 avril, 31 juillet, 31 octobre, 31 janvier, sans report au
+jour ouvrable ; tenir la somme des cotisations mensuelles au taux du versement
+pour la cotisation du trimestre est une LECTURE (art. 15 b, « au cours du
+trimestre précédent », cité mot pour mot), l'autre (assiette du trimestre
+précédent, décalée d'un trimestre) NOMMÉE, comme l'effectif d'un trimestre à
+cheval sur deux tranches (`RESERVE_ASSIETTE_INPP`). Le registre ventile le 4428
+au prorata des 6415 et 6413 de l'écriture, l'ONEM au 15, l'INPP au trimestre,
+sans charge lisible au trimestre et nommé ; l'échéancier sert DEUX lignes, chacune
+avec la part qui échoit à SA date ; le reversement s'impute sur la dette échue la
+plus ancienne d'abord (Code civil, Livre III, art. 154), réserve en bulle. Réduction du taux (art. 1er,
+al. 2) DÉCLARÉE avec son acte, au plus le quart du taux, sinon abstention nommée ;
+majoration de 0,5 pour mille par jour (art. 4) DITE, jamais calculée. ONEM · une paie
 antérieure à septembre 2025 porte l'art. 6 de l'arrêté n° 028/2025 (contribution
 non acquittée le 25 septembre 2025 · 0,5 %). **NON CALCULÉ ET DIT** · retenues de l'article 112 (avances,
 indemnités de l'article 52, cautionnement, prêt, saisie-arrêt) ; QUOTITÉ SAISISSABLE

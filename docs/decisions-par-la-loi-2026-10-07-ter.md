@@ -63,6 +63,6 @@ lequel de ces moyens elle emploie.
 
 ## Ce qui reste à Manasse, et pourquoi ce ne sont pas des questions de droit
 
-- **Ordonnance n° 84/186 du 15 octobre 1984** (modalités de paiement de la cotisation INPP). Le texte n'est pas au corpus · il s'agit de l'obtenir, pas de trancher.
+- **Ordonnance n° 84/186 du 15 octobre 1984** (modalités de paiement de la cotisation INPP). Le texte n'est pas au corpus · il s'agit de l'obtenir, pas de trancher. **Mise à jour du 2026-10-08** · l'ordonnance est au corpus (compétence `droit-travail-congolais`, copie `docs/sources/ordonnance-84-186-inpp-modalites-paiement.md`) et lue · voir `src/modules/retenues/inpp-trimestriel.ts`.
 - **Deux notes de compétences contraires au texte** (`fiscalite-rdc/irpp/NOTES.md` et son script ; `fiscalite-rdc/parafiscalite-sociale/NOTES.md`). Seul Manasse déploie les compétences (CLAUDE.md § 11).
 - **Réglages GitHub** (secrets SMTP, clé Resend à révoquer, branches à supprimer) · gestes sur des comptes que seul Manasse tient.

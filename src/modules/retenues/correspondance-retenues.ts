@@ -126,6 +126,13 @@ export interface NatureRetenue {
    * une retenue à la source » au sens de ce texte fiscal.
    */
   chargeSousConditionArticle20?: string;
+  /**
+   * La nature porte la cotisation INPP, payable par TRIMESTRE (ordonnance
+   * n° 84/186, art. 1er et 3), à côté de l'ONEM mensuel · ses lignes se
+   * ventilent par la structure de leur écriture (`inpp-trimestriel.ts`) et
+   * chaque part reçoit son échéance.
+   */
+  porteLInppTrimestriel?: true;
 }
 
 /**
@@ -676,9 +683,11 @@ export const NATURES_RETENUES: NatureRetenue[] = [
     // l'échéancier auraient annoncé deux fois ce qui est dû. Rien ne permet de
     // couper en deux un solde que le plan porte sur un seul compte (même parti
     // que le prélèvement sur les capitaux mobiliers des non-résidents, plus
-    // bas) · une seule nature, donc, qui porte les deux textes. L'INPP et
-    // l'ONEM se paient au même jour (le 15 du mois suivant) ; la DÉCLARATION
-    // ONEM du 10 reste une obligation à part. Les 4334 et 4335 des dossiers
+    // bas) · une seule nature, donc, qui porte les deux textes. L'ONEM se
+    // paie le 15 du mois suivant, l'INPP par TRIMESTRE (ordonnance n° 84/186,
+    // art. 3) · la dette se ventile ligne par ligne sur les charges de son
+    // écriture (`inpp-trimestriel.ts`) ; la DÉCLARATION ONEM du 10 reste une
+    // obligation à part. Les 4334 et 4335 des dossiers
     // semés avant la décision restent lus ici · leur historique n'est pas
     // perdu, et le contrôle `INPP_ONEM_SOUS_LE_433` les signale. LE 4428 NE
     // SE LIT PAS EN ENTIER (relecture M1) · seules ses lignes que la STRUCTURE
@@ -687,14 +696,19 @@ export const NATURES_RETENUES: NatureRetenue[] = [
     libelle: "Formation professionnelle (INPP) et contribution à l'emploi (ONEM)",
     comptes: ['4428', '4334', '4335'],
     // ORGANISME_SOCIAL garde l'échéance hors du report de l'art. 110 bis LPF ·
-    // ni le Code du travail (art. 15) ni l'arrêté n° 028/2025 ne reportent un
-    // paiement tombé un jour non ouvrable (passe D2). Le compte de la dette,
-    // lui, suit la décision T1.
+    // ni le Code du travail (art. 15), ni l'ordonnance n° 84/186, ni l'arrêté
+    // n° 028/2025 ne reportent un paiement tombé un jour non ouvrable (passe
+    // D2). Le compte de la dette, lui, suit la décision T1.
     beneficiaire: 'ORGANISME_SOCIAL',
+    // Le délai de l'ONEM (arrêté n° 028/2025, art. 3) · celui de l'INPP est
+    // la table de l'art. 3 de l'ordonnance n° 84/186.
     joursApresPeriode: 15,
-    echeance: 'Mensuelle, au plus tard le 15 du mois suivant',
+    porteLInppTrimestriel: true,
+    echeance:
+      'ONEM · au plus tard le 15 du mois suivant ; INPP · par trimestre, au plus tard le 30 avril, le 31 juillet, le 31 octobre et le 31 janvier de l’année suivante',
     baseLegale:
       "Code du travail, art. 15 b) : la cotisation est « la cotisation mensuelle des employeurs proportionnelle à la somme des rémunérations versées par eux à leur personnel au cours du trimestre précédent », son TAUX seul étant fixé par arrêté. " +
+      "PAIEMENT · ordonnance n° 84/186 du 15 octobre 1984 fixant les modalités de paiement de la cotisation due par les employeurs à l'INPP, art. 1er (« la cotisation trimestrielle ») et art. 3, al. 2 : versements « au plus tard, pour les quatre trimestres de l'année, respectivement le 30 avril, le 31 juillet, le 31 octobre et le 31 janvier de l'année suivante », au compte bancaire ou postal de l'INPP (art. 3, al. 1er) ; un versement entre les mains d'un tiers ne libère pas l'employeur, sauf preuve que l'INPP l'a reçu (art. 3, al. 3). Majoration de retard de 0,5 pour mille par jour (art. 4). " +
       "Arrêté interministériel n° 002/CAB/MET/2025, n° […]/CAB/MIN/FINANCES/2025, n° 003/CAB/VPM/MIN/BUD/2025 du 24 septembre 2025, article 1er : 4 % pour les entreprises et établissements PUBLICS ; pour les entreprises et établissements PRIVÉS, 3,5 % de 1 à 50 travailleurs, 3 % de 51 à 300, 2 % au-delà de 300. L\'assiette est « les rémunérations versées à ses travailleurs ». Son article 3 le fait entrer en vigueur « à la date de sa signature », soit le 24 SEPTEMBRE 2025, et son article 2 abroge celui de 2006. " +
       "JUSQU\'AU 23 SEPTEMBRE 2025, et donc sur tout exercice antérieur : arrêté interministériel n° 12/MTPS/123, n° 007/CAB/MIN/FINANCES/2006, n° 001/CAB/MIN/BUD/2006 du 14 février 2006 (J.O. n° 6 du 15 mars 2006, p. 25-26), article 1er : 3 % pour les entreprises publiques ; 3 % de 1 à 50 travailleurs, 2 % de 51 à 300, 1 % au-delà de 300. Lui aussi entrait en vigueur à la date de sa signature." +
       " ONEM · " +
@@ -703,7 +717,9 @@ export const NATURES_RETENUES: NatureRetenue[] = [
       "UN SEUL COMPTE, LE 4428 « AUTRES IMPÔTS ET TAXES » · l'INPP et l'ONEM sont des impôts et taxes, pas des cotisations sociales (fiche du compte 64 des deux textes ; la fiche du compte 66 exclut « les impôts dont l'assiette repose sur la rémunération »). Ils partagent le 4428, et ce registre en donne la dette ENSEMBLE · le montant de chacun est sur le bulletin et dans l'écriture de paie (6415 pour l'INPP, 6413 pour l'ONEM). Le 4428 peut porter d'autres impôts et taxes · une ligne n'est comptée ici que si sa STRUCTURE la rattache à l'INPP ou à l'ONEM (écriture de la paie, charge 6415 ou 6413 dans la même écriture, lettrage avec une telle ligne) ; les autres sont nommées avec leur montant, et un reversement que rien ne rattache suspend l'affirmation d'un retard. Un dossier semé avant le 7 octobre 2026 garde ses comptes 4334 et 4335, lus ici. " +
       "DATE D\'EFFET · les deux arrêtés entrent en vigueur À LA DATE DE LEUR SIGNATURE, chacun par son article 3. Un exercice à cheval sur le 24 septembre 2025 porte donc les DEUX barèmes, mois par mois · même discipline que l\'ONEM, dont le taux a changé le lendemain. Avant le 14 février 2006, c\'est l\'arrêté n° 12/MTPS/FIN&BU/064/03 du 28 mars 2003 qui régissait ; son taux n\'est PAS reconstitué ici, le texte n\'ayant pas été lu · seule son existence est attestée, par le visa de celui de 2006. " +
       "NUMÉROTATION · sur l\'original, les trois numéros de l\'arrêté de 2025 sont manuscrits. Celui de l\'Emploi et Travail se lit « 002/CAB/MET/2025 » et celui du Budget « 003/CAB/VPM/MIN/BUD/2025 » ; CELUI DES FINANCES EST ILLISIBLE et n\'est pas restitué. Le citer complet en contentieux demande une vérification au Journal officiel. " +
-      "TRANCHE D\'EFFECTIF · le taux dépend d\'abord de la NATURE de l\'employeur (public ou privé), puis, pour le privé seulement, de la tranche d\'effectif · jamais d\'un chiffre d\'affaires ni d\'une masse salariale. La cotisation se calcule dans la paie (fenêtre Personnel), sur la nature de l\'employeur et l\'effectif déclarés, et s\'y abstient tant qu\'ils ne le sont pas. Ce registre, lui, ne recalcule rien : il recense ce que votre comptabilité porte sur le compte 4428 et en date le reversement." +
+      "TRANCHE D\'EFFECTIF · le taux dépend d\'abord de la NATURE de l\'employeur (public ou privé), puis, pour le privé seulement, de la tranche d\'effectif · jamais d\'un chiffre d\'affaires ni d\'une masse salariale. La cotisation se calcule dans la paie (fenêtre Personnel), sur la nature de l\'employeur et l\'effectif déclarés, et s\'y abstient tant qu\'ils ne le sont pas. Ce registre, lui, ne recalcule rien : il recense ce que votre comptabilité porte sur le compte 4428 et en date le reversement. " +
+      "DEUX ÉCHÉANCES SUR UN COMPTE · chaque ligne de la dette se partage entre l\'INPP et l\'ONEM au prorata des charges de son écriture (6415 pour l\'INPP, 6413 pour l\'ONEM) ; la part de l\'INPP est datée à l\'échéance du trimestre de son mois, celle de l\'ONEM au 15 du mois suivant. Une ligne dont l\'écriture ne porte aucune de ces charges n\'est pas partagée · elle est datée à l\'échéance de l\'INPP, la plus tardive, et nommée. Un reversement ne dit pas ce qu\'il acquitte · il s\'impute sur les échéances les plus proches d\'abord. " +
+      "MAJORATION DE RETARD · 0,5 pour mille de la cotisation par jour de retard, à compter de l\'échéance, versée avec la cotisation (ordonnance n° 84/186, art. 4) ; taxation d\'office après mise en demeure pour défaut de déclaration des rémunérations (art. 6). Actes de l\'INPP · ce registre n\'en chiffre aucun." +
       " ONEM · " +
       "DATE D'EFFET · les 0,5 % ne valent qu'à partir du 25 septembre 2025, date que porte la mention de signature (« Fait à Kinshasa, le 25 septembre 2025 »), l'art. 10 faisant entrer l'arrêté en vigueur « à la date de sa signature ». RÉSERVE, et elle est dans le texte officiel : son INTITULÉ le date du 24 septembre 2025, sa signature du 25. Un jour d'écart, sans portée sur un exercice civil, mais à confirmer au Journal officiel avant tout usage contentieux. Avant cette date, le taux est de 0,2 % (arrêté ministériel n° 095/CAB/MINETAT/MTEPS/01/2018 du 17 août 2018) · un exercice à cheval sur septembre 2025 porte donc les deux taux. Les arriérés antérieurs non acquittés se recalculent en revanche au nouveau taux (art. 6). SANCTIONS · 50 % de la contribution due en cas de défaut de déclaration ou de déclaration fausse, inexacte ou incomplète (art. 2) ; majoration de retard de 0,5 % PAR JOUR, tout mois commencé compté entier (art. 3). La cotisation se calcule dans la paie (fenêtre Personnel), au taux du mois de paie. Ce registre, lui, ne recalcule rien : il recense ce que votre comptabilité porte sur le compte 4428 et en date le reversement.",
   },

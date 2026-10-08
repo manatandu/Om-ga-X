@@ -1202,6 +1202,10 @@ export class PersonnelService {
       versionsDossier: versionsDuDossier(versionsBaremes),
       natureEmployeurInpp: (dto.natureEmployeurInpp as NatureEmployeurInpp | undefined) ?? null,
       effectif: dto.effectif ?? null,
+      // Ordonnance n° 84/186, art. 1er, al. 2 · la réduction accordée,
+      // déclarée avec son acte, bornée au quart du taux au calcul.
+      reductionTauxInppPoints: dto.reductionTauxInppPoints ?? null,
+      referenceReductionInpp: dto.referenceReductionInpp ?? null,
       majorationRisquesProfessionnelsPourCent: dto.majorationRisquesProfessionnelsPourCent ?? null,
       regimeCnss,
       // Le plancher de la CNSS (audit final F112) · la grille SMIG du dossier

@@ -1,4 +1,5 @@
 import { MULTIPLICATEURS_ARTICLE_7, annexeApplicable, type Annexe } from './bareme-smig';
+import { motifRefusReductionInpp, reserveReductionInpp } from '../retenues/inpp-trimestriel';
 
 /**
  * LES COTISATIONS D'UN BULLETIN, ET LE NET À PAYER.
@@ -190,12 +191,32 @@ const RESERVE_ASSIETTE_EMPRUNTEE =
 /**
  * L'INPP N'EMPRUNTE PAS SON MOT (passe D2) · la cotisation naît de l'art. 15 b)
  * du Code du travail lui-même, qui ne délègue à l'arrêté que le TAUX, et
- * l'art. 7 définit « rémunération » « au sens du présent code ». Reste une
- * divergence de PÉRIODE que le calcul ne tranche pas · aucun texte lu ne dit
- * comment la proportion au trimestre précédent se forme.
+ * l'art. 7 définit « rémunération » « au sens du présent code ».
+ *
+ * LE PAIEMENT EST TRANCHÉ PAR L'ORDONNANCE n° 84/186 du 15 octobre 1984 (au
+ * corpus depuis le 2026-10-07, `retenues/inpp-trimestriel.ts`) · la
+ * cotisation est « trimestrielle » (art. 1er), versée après chaque trimestre
+ * (art. 3). L'ASSIETTE, ELLE, RESTE UNE LECTURE (relecture adverse, mineur a).
+ * L'art. 15 b) dit, mot pour mot, « la cotisation mensuelle des employeurs
+ * proportionnelle à la somme des rémunérations versées par eux à leur
+ * personnel au cours du trimestre précédent » ; les arrêtés fixent le taux
+ * « sur les rémunérations versées ». DEUX LECTURES. (1) Celle que la paie
+ * applique · la cotisation se calcule chaque mois sur les rémunérations
+ * versées dans le mois, au taux du jour du versement (décision T5), et la
+ * somme des trois mois est la cotisation du trimestre, payée à l'échéance de
+ * l'art. 3 · « le trimestre précédent » serait celui qui précède le
+ * paiement. C'est la lecture de la note d'articulation de la compétence
+ * `droit-travail-congolais`, qui donne effet aux trois textes ; aucun texte
+ * ne l'écrit. (2) L'autre · l'assiette de la cotisation du mois est la
+ * rémunération du trimestre PRÉCÉDENT, ce qui décale la cotisation d'un
+ * trimestre sur la paie qu'elle frappe. Le texte ne tranche pas entre elles ;
+ * la réserve le dit. Reste aussi NON TRANCHÉE la tranche d'effectif d'un
+ * employeur privé dont l'effectif change en cours de trimestre (aucun texte
+ * ne dit à quelle date il se lit) · le calcul prend l'effectif déclaré pour
+ * le mois.
  */
 export const RESERVE_ASSIETTE_INPP =
-  "Assiette · la cotisation naît de l'article 15 b) du Code du travail, qui ne délègue que le taux à l'arrêté ; « rémunération » s'y lit au sens de l'article 7 du même Code. PÉRIODE · l'article 15 b) rapporte la cotisation mensuelle « à la somme des rémunérations versées [...] au cours du trimestre précédent », et OmegaX la calcule sur le mois · le texte qui dit comment la somme d'un trimestre devient une cotisation de mois, l'ordonnance n° 84/186 du 15 octobre 1984 fixant les modalités de paiement de la cotisation due par les employeurs à l'INPP (visée par les deux arrêtés), n'est pas au corpus.";
+  "Assiette · la cotisation naît de l'article 15 b) du Code du travail, qui ne délègue que le taux à l'arrêté ; « rémunération » s'y lit au sens de l'article 7 du même Code. PAIEMENT · la cotisation est trimestrielle et se verse au plus tard le 30 avril, le 31 juillet, le 31 octobre et le 31 janvier (ordonnance n° 84/186 du 15 octobre 1984, art. 1er et 3). PÉRIODE DE L'ASSIETTE · l'article 15 b) dit « la cotisation mensuelle des employeurs proportionnelle à la somme des rémunérations versées par eux à leur personnel au cours du trimestre précédent ». La paie calcule chaque mois la cotisation sur les rémunérations versées dans le mois, et tient la somme des trois mois pour la cotisation du trimestre payée à l'échéance · c'est une LECTURE, qu'aucun texte n'écrit. L'autre lecture prend pour assiette les rémunérations du trimestre précédent, ce qui décale la cotisation d'un trimestre ; si c'est la vôtre, le montant de ce mois ne vaut pas. Aucun texte ne dit à quelle date se lit l'effectif d'un employeur privé dont la tranche change en cours de trimestre · la paie retient l'effectif déclaré pour le mois.";
 
 /**
  * DÉCISION T5 DU 2026-10-07 · LE TAUX INPP S'ATTACHE AUX « RÉMUNÉRATIONS
@@ -404,6 +425,14 @@ export type ParametresCotisations = {
   readonly versionsDossier?: VersionsDuDossier;
   readonly natureEmployeurInpp?: NatureEmployeurInpp | null;
   readonly effectif?: number | null;
+  /**
+   * La réduction du taux INPP ACCORDÉE par le ministère du Travail à
+   * l'employeur qui forme lui-même son personnel, en points du taux, et la
+   * référence de l'acte (ordonnance n° 84/186, art. 1er, al. 2). Absente,
+   * aucune réduction · elle ne se présume jamais.
+   */
+  readonly reductionTauxInppPoints?: number | null;
+  readonly referenceReductionInpp?: string | null;
   /**
    * La majoration notifiée par la Caisse, en pour cent du taux · 50 ou 100
    * (arrêté n° 140/2018, art. 22 et 24). Absente, aucune majoration.
@@ -648,18 +677,39 @@ export function cotisations(
   } else {
     const dateVersement = parametres.dateMiseADisposition ?? null;
     const inpp = tauxInpp(parametres.moisDePaie, nature, parametres.effectif ?? null, v?.inpp, dateVersement);
+    // ORDONNANCE n° 84/186, ART. 1er, AL. 2 · la réduction ACCORDÉE se
+    // déclare avec l'acte, et ne dépasse jamais le quart du taux. Elle se juge
+    // ici, sur le taux du barème du mois, que la saisie ne connaît pas.
+    const reduction = parametres.reductionTauxInppPoints ?? null;
+    const referenceReduction = parametres.referenceReductionInpp?.trim() || null;
+    const motifReduction =
+      inpp.tauxPourCent === null || reduction === null
+        ? null
+        : referenceReduction === null
+          ? "La réduction du taux INPP se déclare avec la référence de l'acte du ministère du Travail qui l'accorde (ordonnance n° 84/186, art. 1er, al. 2) · elle ne se présume pas."
+          : motifRefusReductionInpp(inpp.tauxPourCent, reduction);
     if (inpp.tauxPourCent === null) {
       abstentions.push(`INPP · ${inpp.motifAbstention}`);
+    } else if (motifReduction !== null) {
+      // Un taux réduit au-delà du texte minorerait la cotisation sans que rien
+      // ne le dise · l'INPP s'abstient, le motif nommé.
+      abstentions.push(`INPP · ${motifReduction}`);
     } else {
       const changement = dateVersement ? null : changementAuCoursDuMois(fusionner(BAREMES_INPP, v?.inpp), parametres.moisDePaie);
       const reserveInpp = [
         inpp.saisieCabinet ? RESERVE_BAREME_CABINET : null,
         RESERVE_ASSIETTE_INPP,
         changement ? reserveBaremeInppAuMois(parametres.moisDePaie, changement.aPartirDu) : null,
+        reduction !== null && referenceReduction !== null
+          ? reserveReductionInpp(reduction, referenceReduction, inpp.tauxPourCent)
+          : null,
       ]
         .filter((r): r is string => r !== null)
         .join(' ');
-      poser('inpp', 'INPP · contribution patronale', 'INPP', 'EMPLOYEUR', inpp.tauxPourCent, `Code du travail, art. 15 b) · ${inpp.source}`, reserveInpp);
+      // Le taux appliqué, au millième de point · 3,5 réduit de 0,875 donne 2,625.
+      const tauxApplique =
+        reduction !== null ? Math.round((inpp.tauxPourCent - reduction) * 1000) / 1000 : inpp.tauxPourCent;
+      poser('inpp', 'INPP · contribution patronale', 'INPP', 'EMPLOYEUR', tauxApplique, `Code du travail, art. 15 b) · ${inpp.source}`, reserveInpp);
     }
   }
 

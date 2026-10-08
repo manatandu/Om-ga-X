@@ -191,6 +191,19 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- LIGNE INPP TRIMESTRIEL INTÉGRÉE, relevés de la relecture ·
+  (relecture adverse, non corrigés ici)
+  
+  - **Exception de lecture de N-1** · une exception levée dans
+    `ouvertureVentileeInpp` (lecture du registre de l'exercice précédent) fait
+    tomber TOUT le registre au lieu du repli (bloc au trimestre, dit). Rien n'est
+    avalé, mais l'écran entier refuse pour une ventilation facultative · repli
+    nommé à poser.
+  - **Réduction saisie par bulletin** · la réduction et son acte se saisissent à
+    chaque simulation, sans être portés par le dossier ; un bulletin émis sans
+    elle sort au taux plein. Une déclaration au dossier, datée, avec son acte,
+    serait la forme durable · décision d'organisation à soumettre.
+
 - LIGNE AU3 INTÉGRÉE, relevés de la seconde relecture ·
   - m2 · déclaration sur une ligne REPORT · l'art. 20 al. 4 veut une mention aux Notes annexes, rien ne la signale ; aucun contrôle ne dit que l'ouverture de N+1 diffère alors, devise par devise, de la clôture de N (en francs, l'art. 34 tient).
   - m3 · la liste lit le contexte de l'exercice (réévaluation, précédent ouvert) à la date de la première candidate · les lignes d'à-nouveau partagent la date d'ouverture ; B1 est désormais lu par compte et par sens.

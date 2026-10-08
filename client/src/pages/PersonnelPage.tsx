@@ -13,6 +13,7 @@ import { lignesDepuisModele, lignesVersModele, type ModeleBulletin } from '../li
 import { ONGLETS_PERSONNEL, ongletPersonnelDe, type OngletPersonnel } from '../lib/onglets-personnel';
 import { montant } from '../lib/montants';
 import { montantPourChamp } from '../lib/creances-douteuses';
+import { motifReductionInppIllisible } from '../lib/reduction-inpp';
 import {
   allocationsDuTempsRestant,
   avantagesDesSeulsJoursAvantLaMoitie,
@@ -707,6 +708,16 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const [mentionsPortees, setMentionsPortees] = useState<number[]>([]);
   const [natureInpp, setNatureInpp] = useState<'' | 'PUBLIC' | 'PRIVE'>('');
   const [effectifInpp, setEffectifInpp] = useState('');
+  // ORDONNANCE n° 84/186, ART. 1er, AL. 2 · la réduction du taux INPP accordée
+  // par le ministère du Travail, en points, et l'acte qui l'accorde. Vide =
+  // aucune réduction · le serveur ne la présume jamais et la borne au quart.
+  const [reductionInpp, setReductionInpp] = useState('');
+  const [acteReductionInpp, setActeReductionInpp] = useState('');
+  // UNE RÉDUCTION ILLISIBLE N'EST PAS « AUCUNE RÉDUCTION » (relecture
+  // adverse, mineur b) · écartée en silence, elle faisait calculer l'INPP au
+  // taux plein sous un champ rempli. Elle se dit sous le champ, et simuler ou
+  // émettre est refusé tant qu'elle reste illisible.
+  const motifReductionInpp = motifReductionInppIllisible(reductionInpp);
   // DÉCRET n° 18/041, ART. 8 · le plancher de la CNSS se mesure au SMIG des
   // jours payés. Vide = mois entier (26 jours).
   const [joursPayes, setJoursPayes] = useState('');
@@ -843,6 +854,12 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       // champ ABSENT, ce qui vaut abstention au serveur.
       ...(natureInpp === '' ? {} : { natureEmployeurInpp: natureInpp }),
       effectif: nombre(effectifInpp),
+      ...(nombre(reductionInpp) !== undefined
+        ? {
+            reductionTauxInppPoints: nombre(reductionInpp),
+            ...(acteReductionInpp.trim() ? { referenceReductionInpp: acteReductionInpp.trim() } : {}),
+          }
+        : {}),
       joursPayes: nombre(joursPayes),
       ...(dateMiseADisposition ? { dateMiseADisposition } : {}),
       joursAllocationsFamiliales: nombre(joursAllocations),
@@ -871,6 +888,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const simuler = () => {
     setErreur('');
     setSucces('');
+    if (motifReductionInpp) return setErreur(motifReductionInpp);
     setEnCours(true);
     const corps = corpsSimulation();
     api
@@ -900,6 +918,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
     if (!selection) return;
     setErreur('');
     setSucces('');
+    if (motifReductionInpp) return setErreur(motifReductionInpp);
     setEnCours(true);
     api
       .post<{ numero: number; moisDePaie: string }>(`/personnel/salaries/${selection}/bulletins`, corpsSimulation())
@@ -1080,6 +1099,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
    */
   const proposerRetenues = () => {
     if (!selection || motifEmissionDecompte !== null) return;
+    if (motifReductionInpp) return setErreur(motifReductionInpp);
     const jeton = ++jetonPropositionRetenues.current;
     setErreur('');
     setPropositionRetenues(null);
@@ -1105,6 +1125,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const emettreDecompte = () => {
     // A8 (a, c) · la même garde que le bouton, et un seul envoi à la fois.
     if (motifEmissionDecompte !== null || emissionDecompteEnVol.current) return;
+    if (motifReductionInpp) return setErreur(motifReductionInpp);
     emissionDecompteEnVol.current = true;
     const jeton = ++jetonEmissionDecompte.current;
     const nom = salarieDuDecompte ? nomComplet(salarieDuDecompte) : 'le salarié choisi';
@@ -2342,6 +2363,41 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   className="border border-border bg-transparent px-2 py-1 w-[110px] text-right"
                 />
               </label>
+              <div className="flex flex-col gap-0.5">
+                <span className={etiquette}>
+                  Réduction INPP (points){' '}
+                  <Aide
+                    titre="Réduction du taux INPP"
+                    texte="Le ministère du Travail peut accorder une réduction du taux de la cotisation INPP à l’employeur qui assure lui-même la formation de son personnel, sur avis de la délégation syndicale et avis technique de l’INPP. La réduction ne peut jamais dépasser le quart du taux. Déclarez-la seulement si elle a été accordée, en points du taux (0,5 pour passer de 3,5 % à 3 %), avec la référence de l’acte · sans acte, ou au-delà du quart, OmegaX ne calcule pas l’INPP et dit pourquoi."
+                    source="Ordonnance n° 84/186 du 15 octobre 1984, art. 1er, al. 2"
+                  />
+                </span>
+                <input
+                  aria-label="Réduction du taux INPP, en points"
+                  value={reductionInpp}
+                  onChange={(e) => setReductionInpp(e.target.value)}
+                  placeholder="Aucune"
+                  aria-invalid={motifReductionInpp !== null}
+                  className={`border bg-transparent px-2 py-1 w-[110px] text-right ${
+                    motifReductionInpp ? 'border-danger' : 'border-border'
+                  }`}
+                />
+                {motifReductionInpp && (
+                  <span role="alert" className="text-[11px] text-danger max-w-[220px]">
+                    {motifReductionInpp}
+                  </span>
+                )}
+              </div>
+              {reductionInpp.trim() !== '' && (
+                <label className="flex flex-col gap-0.5">
+                  <span className={etiquette}>Acte qui accorde la réduction</span>
+                  <input
+                    value={acteReductionInpp}
+                    onChange={(e) => setActeReductionInpp(e.target.value)}
+                    className="border border-border bg-transparent px-2 py-1 w-[200px]"
+                  />
+                </label>
+              )}
               <label className="flex flex-col gap-0.5">
                 <span
                   className={etiquette}

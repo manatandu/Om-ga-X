@@ -816,7 +816,7 @@ et un 43350000 vierge, nommés avec leur issue.
 
 ### Restent ouverts
 
-- **T5** · l'ordonnance n° 84/186 (assiette INPP) n'est pas au corpus.
+- **T5** · l'ordonnance n° 84/186 (assiette INPP) n'est pas au corpus. **Mise à jour du 2026-10-08** · l'ordonnance est au corpus (compétence `droit-travail-congolais`, copie `docs/sources/ordonnance-84-186-inpp-modalites-paiement.md`) et lue · voir `src/modules/retenues/inpp-trimestriel.ts`.
 - **T9** · plus rien d'ouvert. Le mois entamé d'un salaire mensuel est
   tranché par la loi (troisième lot, point 3), la quotité sur un impôt
   plafonné aussi (T2, point 2). L'art. 66 (temps restant à courir après un

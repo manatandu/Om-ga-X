@@ -20,6 +20,15 @@ import {
 } from './correspondance-retenues';
 import { echeanceDeReversement, reporterAuJourOuvrable } from './jour-ouvrable';
 import { RACINE_4428, RACINES_CHARGE_INPP_ONEM, estDu4428, mentionDu4428Mele, partagerLe4428 } from './inpp-onem-du-4428';
+import {
+  PartInppOnem,
+  RESERVE_IMPUTATION_INPP_ONEM,
+  echeanceTrimestrielleInpp,
+  lignesEcheancierInppOnem,
+  mentionNonVentilee,
+  prochaineEcheanceInpp,
+  ventilerInppOnem,
+} from './inpp-trimestriel';
 import { echeanceDepassee, jourDeKinshasa, jourUtc } from '../../common/echeance';
 import { FORMES_SOCIETES_COMMERCIALES } from '../tenant/mentions-societe';
 import { closAu31Decembre } from '../exercice/portefeuille-etat';
@@ -199,6 +208,13 @@ export class RetenuesService {
    * celle du mois suivant.
    */
   private prochaineEcheance(nature: NatureRetenue, reference: Date): Date {
+    // L'INPP ET L'ONEM · la plus proche des deux, l'ONEM au mois, l'INPP au
+    // trimestre (ordonnance n° 84/186, art. 3), ni l'une ni l'autre reportée.
+    if (nature.porteLInppTrimestriel) {
+      const onem = this.prochaineEcheance({ ...nature, porteLInppTrimestriel: undefined }, reference);
+      const inpp = prochaineEcheanceInpp(reference);
+      return inpp.getTime() < onem.getTime() ? inpp : onem;
+    }
     const echeance = new Date(Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth(), nature.joursApresPeriode));
     if (echeanceDepassee(echeance, reference)) echeance.setUTCMonth(echeance.getUTCMonth() + 1);
     // Art. 110 bis, al. 2 · même report que sur l'échéance mensuelle. Il est
@@ -283,7 +299,19 @@ export class RetenuesService {
    * échéance de reversement, et un solde annuel ne dit pas lequel est en
    * retard. C'est le mois qui est l'unité de l'obligation.
    */
-  async registre(tenantId: string, params: { exerciceId: string; dateReference?: string }) {
+  async registre(
+    tenantId: string,
+    params: {
+      exerciceId: string;
+      dateReference?: string;
+      /**
+       * Interne · la lecture de l'exercice précédent qui ventile le solde
+       * d'ouverture de l'INPP et de l'ONEM ne ventile pas le sien (un niveau,
+       * jamais une récursion sur toute l'histoire du dossier).
+       */
+      sansVentilationDOuverture?: boolean;
+    },
+  ) {
     // LE JOUR, PAS L'INSTANT (audit final F81) · au jour de Kinshasa, à minuit
     // UTC, comme toutes les échéances qu'on lui compare.
     const reference = params.dateReference ? jourUtc(new Date(params.dateReference)) : jourDeKinshasa(new Date());
@@ -318,12 +346,14 @@ export class RetenuesService {
             // RELECTURE M1 · ce qui dit qu'une ligne du 4428 est de l'INPP ou
             // de l'ONEM · un bulletin porte l'écriture (paie du mois ou sa
             // reprise en négatif), ou l'écriture porte une charge 6413 / 6415.
+            // Leurs MONTANTS ventilent la dette entre l'INPP trimestriel et
+            // l'ONEM mensuel (ordonnance n° 84/186, art. 3 ;
+            // `inpp-trimestriel.ts`) · bornés par les lignes de l'écriture.
             bulletinsPaie: { select: { id: true }, take: 1 },
             bulletinsPaieRepris: { select: { id: true }, take: 1 },
             lignes: {
               where: { compte: { OR: RACINES_CHARGE_INPP_ONEM.map((r) => ({ numero: { startsWith: r } })) } },
-              select: { id: true },
-              take: 1,
+              select: { id: true, debit: true, credit: true, compte: { select: { numero: true } } },
             },
           },
         },
@@ -370,6 +400,20 @@ export class RetenuesService {
     const ouverture = exercice
       ? await this.soldesDOuverture(tenantId, params.exerciceId, exercice.dateDebut, lignes)
       : new Map<string, number>();
+    /*
+      LE SOLDE D'OUVERTURE DE L'INPP ET DE L'ONEM SE VENTILE SUR L'EXERCICE
+      PRÉCÉDENT (rejeu à travers la clôture, 2026-10-08). Le report à-nouveau
+      du 4428 ne dit ni le mois ni la part · daté en bloc à l'échéance de
+      l'INPP (31 janvier), il taisait jusque-là l'ONEM de décembre resté
+      impayé au 16 janvier. Le registre de l'exercice précédent, lu avec la
+      même règle, rend ce qui y reste dû mois par mois et part par part ;
+      il ne sert que si sa somme EST le solde d'ouverture, au centime ·
+      sinon le bloc reste daté au plus tard, et c'est dit.
+    */
+    const ouvertureInpp =
+      exercice && !params.sansVentilationDOuverture
+        ? await this.ouvertureVentileeInpp(tenantId, exercice.dateDebut, params.dateReference)
+        : null;
     // L'échéance du dernier mois AVANT l'exercice · la plus tardive que le
     // solde d'ouverture puisse porter. Le solde peut contenir des mois plus
     // anciens, déjà en retard avant elle : l'état ne signale donc jamais trop
@@ -383,7 +427,13 @@ export class RetenuesService {
 
       // Par mois de VERSEMENT · l'unité de l'obligation de reversement, et le
       // mois que les textes désignent (voir dateDeRattachement).
-      const parMois = new Map<string, { retenu: number; reverseEcritures: number }>();
+      //
+      // ET PAR PART pour l'INPP et l'ONEM · ils partagent le compte, pas
+      // l'échéance (ordonnance n° 84/186, art. 3, contre arrêté n° 028/2025,
+      // art. 3). La retenue d'un mois se ventile sur les charges de son
+      // écriture (`ventilerInppOnem`) ; le débit, lui, ne dit pas ce qu'il
+      // acquitte et reste au mois.
+      const parMois = new Map<string, { retenu: number; reverseEcritures: number; parts: Map<PartInppOnem, number> }>();
       const parCompte = new Map<string, { numero: string; intitule: string; retenu: number; reverse: number }>();
       for (const l of siennes) {
         // Le report à-nouveau est le solde d'ouverture · il vit dans la ligne
@@ -395,9 +445,14 @@ export class RetenuesService {
         // débit = reversement effectué.
         const retenu = Number(l.credit);
         const reverse = Number(l.debit);
-        const m = parMois.get(mois) ?? { retenu: 0, reverseEcritures: 0 };
+        const m = parMois.get(mois) ?? { retenu: 0, reverseEcritures: 0, parts: new Map<PartInppOnem, number>() };
         m.retenu += retenu;
         m.reverseEcritures += reverse;
+        if (nature.porteLInppTrimestriel && retenu !== 0) {
+          for (const p of ventilerInppOnem(retenu, l.compte.numero, l.ecriture.lignes)) {
+            m.parts.set(p.part, (m.parts.get(p.part) ?? 0) + p.montant);
+          }
+        }
         parMois.set(mois, m);
 
         const c = parCompte.get(l.compte.numero) ?? {
@@ -476,33 +531,98 @@ export class RetenuesService {
       // l'INPP ou l'ONEM comme l'autre taxe · aucun retard n'est affirmé.
       const retardIndetermine = natureDu4428 && !partage4428.pur && partage4428.reversementsNonRattachesFc > 0.005;
       let aImputer = reverse + Math.max(0, -soldeOuverture);
-      const aImputerDans: Array<{ cle: string; anterieur: boolean; retenu: number; reverseEcritures: number; echeance: Date }> = [
-        ...(soldeOuverture > 0.005 && moisAnterieur
+      type AImputer = {
+        cle: string;
+        anterieur: boolean;
+        retenu: number;
+        reverseEcritures: number;
+        echeance: Date;
+        part: PartInppOnem | null;
+      };
+      // L'échéance d'une part · l'INPP, et ce qui ne se ventile pas, au
+      // trimestre (ordonnance n° 84/186, art. 3, la plus tardive des deux) ;
+      // l'ONEM et toute autre nature, `joursApresPeriode` jours après le mois.
+      const echeanceDeLaPart = (part: PartInppOnem | null, annee: number, moisZeroBase: number) =>
+        part === 'INPP' || part === 'NON_VENTILEE'
+          ? echeanceTrimestrielleInpp(annee, moisZeroBase)
+          : this.echeanceDuMois(nature, annee, moisZeroBase);
+      const ORDRE_DES_PARTS: readonly PartInppOnem[] = ['ONEM', 'INPP', 'NON_VENTILEE'];
+      // La ventilation de l'exercice précédent, si elle rend le solde
+      // d'ouverture au centime (voir `ouvertureVentileeInpp`).
+      const ventilationOuverture =
+        nature.porteLInppTrimestriel && ouvertureInpp && soldeOuverture > 0.005
+          ? Math.abs(ouvertureInpp.reduce((s, r) => s + r.retenu, 0) - soldeOuverture) < 0.005
+            ? ouvertureInpp
+            : null
+          : null;
+      const mentionOuvertureNonVentilee =
+        nature.porteLInppTrimestriel && soldeOuverture > 0.005 && !ventilationOuverture
+          ? `SOLDE D'OUVERTURE DE L'INPP ET DE L'ONEM NON VENTILÉ · ${soldeOuverture.toFixed(2)} FC repris de l'exercice précédent ne se reconstituent pas mois par mois sur son registre${ouvertureInpp ? ` (${(Math.round(ouvertureInpp.reduce((s, r) => s + r.retenu, 0) * 100) / 100).toFixed(2)} FC y restent dus)` : ''} · ils sont datés à l'échéance trimestrielle de l'INPP, la plus tardive, et un ONEM resté impayé n'y est pas dit en retard.`
+          : null;
+      const aImputerDans: AImputer[] = [
+        ...(ventilationOuverture ?? []).map((r) => ({ ...r, anterieur: true, reverseEcritures: 0 })),
+        ...(soldeOuverture > 0.005 && moisAnterieur && !ventilationOuverture
           ? [
               {
                 cle: 'ANTERIEUR',
                 anterieur: true,
                 retenu: soldeOuverture,
                 reverseEcritures: 0,
-                echeance: this.echeanceDuMois(nature, moisAnterieur.annee, moisAnterieur.mois),
+                // Le report à-nouveau ne dit pas la part de l'INPP · l'échéance
+                // la plus tardive des deux, l'état ne signalant jamais trop tôt.
+                echeance: echeanceDeLaPart(
+                  nature.porteLInppTrimestriel ? 'NON_VENTILEE' : null,
+                  moisAnterieur.annee,
+                  moisAnterieur.mois,
+                ),
+                part: null,
               },
             ]
           : []),
         ...[...parMois.entries()]
           .sort(([a], [b]) => a.localeCompare(b))
-          .map(([cle, m]) => {
+          .flatMap(([cle, m]): AImputer[] => {
             const [annee, numeroMois] = cle.split('-').map(Number);
-            return {
+            const parts = ORDRE_DES_PARTS.filter((p) => Math.abs(m.parts.get(p) ?? 0) >= 0.005);
+            if (!nature.porteLInppTrimestriel || parts.length === 0) {
+              return [
+                {
+                  cle,
+                  anterieur: false,
+                  retenu: m.retenu,
+                  reverseEcritures: m.reverseEcritures,
+                  // Reversement dû `joursApresPeriode` jours après la fin du mois
+                  // de la retenue · voir echeanceDuMois.
+                  echeance: this.echeanceDuMois(nature, annee, numeroMois - 1),
+                  part: null,
+                },
+              ];
+            }
+            // Une ligne par part, la trace du débit sur la première.
+            return parts.map((part, i) => ({
               cle,
               anterieur: false,
-              retenu: m.retenu,
-              reverseEcritures: m.reverseEcritures,
-              // Reversement dû `joursApresPeriode` jours après la fin du mois
-              // de la retenue · voir echeanceDuMois.
-              echeance: this.echeanceDuMois(nature, annee, numeroMois - 1),
-            };
+              retenu: m.parts.get(part) ?? 0,
+              reverseEcritures: i === 0 ? m.reverseEcritures : 0,
+              echeance: echeanceDeLaPart(part, annee, numeroMois - 1),
+              part,
+            }));
           }),
       ];
+      /*
+        L'IMPUTATION SUIT LES ÉCHÉANCES · le reversement éteint d'abord la
+        dette échue, la plus ancienne en tête, puis celles qui échoient
+        ensuite · ordre emprunté au Code civil, Livre III, art. 154 (« sur la
+        dette échue, quoique moins onéreuse que celles qui ne le sont point »),
+        par analogie et avec ses limites (`RESERVE_IMPUTATION_INPP_ONEM`,
+        servie à l'écran). Pour une nature à échéance unique, c'est l'ordre
+        des mois, inchangé. Pour l'INPP et l'ONEM, qui n'ont plus la même
+        (ordonnance n° 84/186, art. 3), l'ONEM de février (15 mars) passe
+        avant l'INPP de janvier (30 avril) · c'est l'ordre qui ne peut pas
+        grossir le montant échu resté dû. Tri STABLE, les mois gardent leur
+        ordre à échéance égale.
+      */
+      aImputerDans.sort((a, b) => a.echeance.getTime() - b.echeance.getTime());
       const mois = aImputerDans.map((m) => {
           const echeance = m.echeance;
           const impute = Math.max(0, Math.min(aImputer, m.retenu));
@@ -510,6 +630,8 @@ export class RetenuesService {
           const solde = Math.round((m.retenu - impute) * 100) / 100;
           return {
             mois: m.cle,
+            // INPP ou ONEM, quand la nature les porte tous deux · `null` sinon.
+            part: m.part,
             // Le solde d'ouverture · retenues des exercices antérieurs encore
             // dues à l'ouverture, imputées avant celles de l'exercice.
             anterieur: m.anterieur,
@@ -582,7 +704,8 @@ export class RetenuesService {
         soldeOuverture,
         // Le solde du compte · ouverture comprise.
         solde: Math.round((soldeOuverture + retenu - reverse) * 100) / 100,
-        moisEnRetard: mois.filter((m) => m.enRetard).length,
+        // Des MOIS · l'INPP et l'ONEM d'un même mois en retard n'en font qu'un.
+        moisEnRetard: new Set(mois.filter((m) => m.enRetard).map((m) => m.mois)).size,
         retenuEchuNonReverse: Math.round(retenuEchuNonReverse * 100) / 100,
         reverseNonImpute,
         derniereEcheanceEchue: echeancesEchues.length > 0 ? echeancesEchues[echeancesEchues.length - 1] : null,
@@ -592,6 +715,17 @@ export class RetenuesService {
         // `correspondance-retenues.ts`.
         chargeSousConditionArticle20: nature.chargeSousConditionArticle20 ?? null,
         prochaineEcheance: this.prochaineEcheance(nature, reference),
+        // Ce que la paie ou un lettrage porte à la dette sans charge qui dise
+        // la part de l'INPP · nommé, daté au trimestre.
+        mentionOuvertureNonVentilee,
+        // L'ordre d'imputation d'un reversement au 4428 entre l'INPP et
+        // l'ONEM · une lecture, dite (mineur c) · `null` pour une autre nature.
+        reserveImputation: nature.porteLInppTrimestriel ? RESERVE_IMPUTATION_INPP_ONEM : null,
+        mentionNonVentilee: nature.porteLInppTrimestriel
+          ? mentionNonVentilee(
+              Math.round([...parMois.values()].reduce((s, m) => s + (m.parts.get('NON_VENTILEE') ?? 0), 0) * 100) / 100,
+            )
+          : null,
         // RELECTURE M1 · le 4428 mêlé, nommé avec ses montants · `null` quand
         // il ne porte que l'INPP et l'ONEM, ou pour une autre nature.
         mention4428: natureDu4428 ? mentionDu4428Mele(partage4428, soldeOuverture4428) : null,
@@ -673,8 +807,37 @@ export class RetenuesService {
         ...(avertissementDeductibilite ? [avertissementDeductibilite] : []),
         // RELECTURE M1 · le 4428 qui porte d'autres impôts et taxes, nommé.
         ...natures.flatMap((n) => (n.mention4428 ? [n.mention4428] : [])),
+        ...natures.flatMap((n) => (n.mentionNonVentilee ? [n.mentionNonVentilee] : [])),
+        ...natures.flatMap((n) => (n.mentionOuvertureNonVentilee ? [n.mentionOuvertureNonVentilee] : [])),
       ],
     };
+  }
+
+  /**
+   * CE QUI RESTE DÛ DE L'INPP ET DE L'ONEM À LA CLÔTURE DE L'EXERCICE
+   * PRÉCÉDENT, mois par mois et part par part · le registre de cet exercice,
+   * relu avec la même règle (ordonnance n° 84/186, art. 3 ; arrêté
+   * n° 028/2025, art. 3), sans ventiler son propre solde d'ouverture.
+   * `null` sans exercice précédent. L'appelant ne s'en sert que si la somme
+   * rend le solde d'ouverture.
+   */
+  private async ouvertureVentileeInpp(
+    tenantId: string,
+    dateDebut: Date,
+    dateReference: string | undefined,
+  ): Promise<Array<{ cle: string; part: PartInppOnem | null; retenu: number; echeance: Date }> | null> {
+    const precedent = await this.prisma.exercice.findFirst({
+      where: { tenantId, dateFin: { lt: dateDebut } },
+      orderBy: { dateFin: 'desc' },
+      select: { id: true },
+    });
+    if (!precedent) return null;
+    const r = await this.registre(tenantId, { exerciceId: precedent.id, dateReference, sansVentilationDOuverture: true });
+    const nature = r.natures.find((n) => NATURES_RETENUES.find((x) => x.cle === n.cle)?.porteLInppTrimestriel);
+    if (!nature) return null;
+    return nature.mois
+      .filter((m) => m.solde > 0.005)
+      .map((m) => ({ cle: m.mois, part: m.part, retenu: m.solde, echeance: m.echeance }));
   }
 
   /**
@@ -689,23 +852,44 @@ export class RetenuesService {
   async echeancierFiscal(tenantId: string, params: { exerciceId: string; dateReference?: string }) {
     const registre = await this.registre(tenantId, params);
 
-    const reversements = registre.natures.map((n) => ({
-      cle: n.cle,
-      libelle: n.libelle,
-      genre: 'REVERSEMENT' as const,
-      periodicite: 'MENSUELLE' as const,
-      beneficiaire: n.beneficiaire,
-      date: n.prochaineEcheance,
-      echeance: n.echeance,
-      baseLegale: n.baseLegale,
-      imprime: n.imprime,
-      reserve: n.reserve,
-      montantDu: n.solde,
-      moisEnRetard: n.moisEnRetard,
-      contenu: n.contenu as string | null,
-      sanction: null as string | null,
-      sourceDonnees: n.sourceDonnees as string | null,
-    }));
+    const reversements = registre.natures.flatMap((n) => {
+      const base = {
+        cle: n.cle,
+        libelle: n.libelle,
+        genre: 'REVERSEMENT' as const,
+        periodicite: 'MENSUELLE' as 'MENSUELLE' | 'TRIMESTRIELLE',
+        beneficiaire: n.beneficiaire,
+        date: n.prochaineEcheance,
+        echeance: n.echeance,
+        baseLegale: n.baseLegale,
+        imprime: n.imprime,
+        reserve: n.reserve,
+        montantDu: n.solde,
+        moisEnRetard: n.moisEnRetard,
+        contenu: n.contenu as string | null,
+        sanction: null as string | null,
+        sourceDonnees: n.sourceDonnees as string | null,
+      };
+      const nature = NATURES_RETENUES.find((x) => x.cle === n.cle);
+      if (!nature?.porteLInppTrimestriel) return [base];
+      // DEUX LIGNES, UNE PAR TEXTE · voir `lignesEcheancierInppOnem`. Le
+      // solde entier daté à l'échéance de l'ONEM annonçait l'INPP du
+      // trimestre comme dû au 15 du mois suivant (relecture adverse, MAJEUR).
+      const onem = this.prochaineEcheance({ ...nature, porteLInppTrimestriel: undefined }, registre.dateReference);
+      return lignesEcheancierInppOnem(n.mois, onem, prochaineEcheanceInpp(registre.dateReference)).map((l) => ({
+        ...base,
+        cle: `${n.cle}-${l.part === 'ONEM' ? 'onem' : 'inpp'}`,
+        libelle: l.part === 'ONEM' ? "Contribution à l'emploi (ONEM)" : 'Formation professionnelle (INPP)',
+        periodicite: l.periodicite,
+        date: l.date,
+        echeance:
+          l.part === 'ONEM'
+            ? 'Au plus tard le 15 du mois suivant le paiement de la rémunération'
+            : 'Par trimestre, au plus tard le 30 avril, le 31 juillet, le 31 octobre et le 31 janvier de l’année suivante',
+        montantDu: l.montantDu,
+        moisEnRetard: l.moisEnRetard,
+      }));
+    });
 
     /*
       Les obligations PUREMENT DÉCLARATIVES rejoignent le même échéancier.

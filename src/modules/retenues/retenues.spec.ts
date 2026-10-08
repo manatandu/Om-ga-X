@@ -350,7 +350,9 @@ describe('Registre des retenues à la source', () => {
     // le même mois, et l'écart de cinq jours qu'on veut figer est observable.
     const e = await service([]).echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2026-03-05' });
     const declaration = e.echeances.find((x) => x.cle === 'declarationMensuelleOnem');
-    const versement = e.echeances.find((x) => x.cle === 'inppOnem');
+    // Le 4428 sert deux lignes depuis l'ordonnance n° 84/186 · celle de
+    // l'ONEM porte le versement du 15, l'INPP la sienne au trimestre.
+    const versement = e.echeances.find((x) => x.cle === 'inppOnem-onem');
     expect(declaration).toBeDefined();
     expect(versement).toBeDefined();
     expect(declaration!.genre).toBe('DECLARATION');
@@ -379,8 +381,10 @@ describe('Échéancier fiscal et social', () => {
   it('trie par date et garde les natures sans solde · déclarer reste dû', async () => {
     const s = service([ligne('44720000', '2026-06-10', { credit: 200_000 })]);
     const e = await s.echeancierFiscal('t1', { exerciceId: 'e1', dateReference: '2026-06-20' });
-    // Toutes les natures ET toutes les obligations déclaratives figurent.
-    expect(e.echeances).toHaveLength(NATURES_RETENUES.length + OBLIGATIONS_SYCEBNL.length);
+    // Toutes les natures ET toutes les obligations déclaratives figurent ;
+    // la nature du 4428 en sert DEUX (ONEM au mois, INPP au trimestre,
+    // ordonnance n° 84/186, art. 3), d'où le « + 1 ».
+    expect(e.echeances).toHaveLength(NATURES_RETENUES.length + OBLIGATIONS_SYCEBNL.length + 1);
     const dates = e.echeances.map((x) => x.date.getTime());
     expect([...dates].sort((a, b) => a - b)).toEqual(dates);
   });

@@ -36,6 +36,17 @@ const RYTHME: Record<'MENSUELLE' | 'TRIMESTRIELLE' | 'ANNUELLE' | 'PONCTUELLE', 
 };
 
 /**
+ * La part d'un mois de l'INPP et de l'ONEM · même compte, deux échéances
+ * (INPP par trimestre, ordonnance n° 84/186, art. 3 ; ONEM au 15 du mois
+ * suivant). Le serveur ventile, l'écran nomme.
+ */
+const LIBELLE_PART: Record<'INPP' | 'ONEM' | 'NON_VENTILEE', string> = {
+  INPP: 'INPP',
+  ONEM: 'ONEM',
+  NON_VENTILEE: 'non ventilé',
+};
+
+/**
  * Titulaire de l'impôt ou de la cotisation · lu comme une chaîne, parce que le
  * serveur sert désormais 'PROVINCE' pour la retenue locative (Constitution,
  * art. 204, 16°, passe F11). Une valeur inconnue n'est jamais lue comme un
@@ -267,22 +278,35 @@ export function RetenuesPage() {
                       son grand livre ne retrouve plus ses montants, puisque la
                       première colonne les a déplacés.
                     */}
-                    <div className="grid grid-cols-[130px_100px_115px_115px_115px_115px] min-w-[780px] gap-2 px-6 py-1 text-[11px] font-bold text-text-dim">
+                    <div className="grid grid-cols-[170px_100px_115px_115px_115px_115px] min-w-[820px] gap-2 px-6 py-1 text-[11px] font-bold text-text-dim">
                       <span>Mois de la retenue</span>
                       <span>à reverser le</span>
                       <span className="text-right">RETENU</span>
-                      <span className="text-right">Reversé (imputé)</span>
+                      <span className="text-right inline-flex items-center justify-end gap-1">
+                        Reversé (imputé)
+                        {n.reserveImputation && (
+                          <Aide
+                            titre="Imputation des reversements"
+                            texte={n.reserveImputation}
+                            source="Code civil, Livre III, art. 154, par analogie · ordonnance n° 84/186, art. 3"
+                          />
+                        )}
+                      </span>
                       <span className="text-right">Débité ce mois</span>
                       <span className="text-right">Reste dû</span>
                     </div>
                     {n.mois.map((m) => (
                       <div
-                        key={m.mois}
-                        className={`grid grid-cols-[130px_100px_115px_115px_115px_115px] min-w-[780px] gap-2 px-6 py-[3px] text-[11.5px] ${
+                        key={`${m.mois}-${m.part ?? ''}`}
+                        className={`grid grid-cols-[170px_100px_115px_115px_115px_115px] min-w-[820px] gap-2 px-6 py-[3px] text-[11.5px] ${
                           m.enRetard ? 'text-danger font-semibold' : ''
                         }`}
                       >
-                        <span>{m.anterieur ? 'Solde d’ouverture' : moisLong(m.mois)}</span>
+                        <span>
+                          {/* Le solde d'ouverture ventilé sur l'exercice précédent garde son mois. */}
+                          {m.anterieur ? (m.mois === 'ANTERIEUR' ? 'Solde d’ouverture' : `Ouverture · ${moisLong(m.mois)}`) : moisLong(m.mois)}
+                          {m.part ? ` · ${LIBELLE_PART[m.part]}` : ''}
+                        </span>
                         <span className="font-mono text-[11px]">{jour(m.echeance)}</span>
                         <span className="font-mono text-right">{montant(m.retenu)}</span>
                         <span className="font-mono text-right">{montant(m.reverse)}</span>

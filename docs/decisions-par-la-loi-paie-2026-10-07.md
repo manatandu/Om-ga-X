@@ -270,7 +270,7 @@ La loi n° 16/009 prime sur le décret n° 18/041. Les décrets n° 25/21 et n°
 **INPP, la base · non tranché.**
 - La loi (art. 15 b) rapporte la cotisation mensuelle aux rémunérations « versées [...] au cours du trimestre précédent ». L'arrêté ne fixe que le taux et ne peut pas changer la base.
 - Le texte ne dit pas comment la somme d'un trimestre devient une cotisation de mois (un tiers ? la somme entière ?). Il ne dit donc pas non plus quel taux porte la cotisation d'un mois dont le trimestre de référence chevauche le 24 septembre.
-- Ces modalités relèvent de l'ordonnance n° 84/186, absente du corpus. Il faut demander ce texte.
+- Ces modalités relèvent de l'ordonnance n° 84/186, absente du corpus. Il faut demander ce texte. **Mise à jour du 2026-10-08** · l'ordonnance est au corpus (compétence `droit-travail-congolais`, copie `docs/sources/ordonnance-84-186-inpp-modalites-paiement.md`) et lue · voir `src/modules/retenues/inpp-trimestriel.ts`. Elle fait la cotisation « trimestrielle » (art. 1er), versée au plus tard le 30 avril, le 31 juillet, le 31 octobre et le 31 janvier (art. 3) · la somme des cotisations mensuelles au taux du versement est la cotisation du trimestre ; seule la tranche d'effectif d'un trimestre à cheval sur deux tranches reste non tranchée.
 
 ### Effet pour OmegaX
 
@@ -477,7 +477,7 @@ L'ordonnance est prise sur l'art. 123 du Code, sans conflit avec lui. La lacune 
 Le corpus ne tranche pas les points suivants :
 
 1. **T2.** La répartition de l'impôt plafonné entre les deux parts du revenu. Le texte n'impose que l'intervalle [8 160 000 ; 9 486 720] pour la base de la quotité, soit 2 216 800 à 2 225 600 par mois sur P03. OmegaX garde la borne haute.
-2. **T5.** L'ordonnance n° 84/186 du 15 octobre 1984 (modalités de paiement INPP), citée par les deux arrêtés et absente du corpus. Elle seule dit comment la base « trimestre précédent » de l'art. 15 b) devient une cotisation de mois.
+2. **T5.** L'ordonnance n° 84/186 du 15 octobre 1984 (modalités de paiement INPP), citée par les deux arrêtés et absente du corpus. **Mise à jour du 2026-10-08** · l'ordonnance est au corpus (compétence `droit-travail-congolais`, copie `docs/sources/ordonnance-84-186-inpp-modalites-paiement.md`) et lue · voir `src/modules/retenues/inpp-trimestriel.ts`. Elle seule dit comment la base « trimestre précédent » de l'art. 15 b) devient une cotisation de mois.
 3. **T9.** La conversion d'un salaire mensuel en indemnité pour un délai exprimé en jours ouvrables (prorata d'un mois entamé), que le constat nouveau oblige à décider.
 4. **Compétences, que Manasse seul déploie.**
    - `fiscalite-rdc/irpp/NOTES.md` et son script posent l'ordre réduction puis plafond, contraire aux art. 119, 121 et 123.
