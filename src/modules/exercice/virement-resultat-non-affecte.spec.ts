@@ -80,13 +80,29 @@ describe('Virement du résultat non affecté · le calcul', () => {
 });
 
 describe('Bilan à la clôture · l’écart que le virement n’explique pas', () => {
-  it('le bilan 2027 de la simulation · écart −46 072 000, tout expliqué par la perte 2026 non affectée', () => {
+  it('le bilan 2027 de la simulation · la perte 2026 non affectée est LUE au bilan, aucun écart admis (passe V1, B1)', () => {
+    // Le poste du résultat additionne le 13 et les classes 6 à 8
+    // (`resultatAuBilan`) · le bilan 2027 s'équilibre à 165 828 000, et la
+    // part du 13 non lue est nulle.
+    expect(
+      ecartInexpliqueDuBilan(
+        { totalActif: 165_828_000, totalPassif: 165_828_000, controle: { resultatClasses678: -11_600_000, resultatCompte13: -46_072_000 } },
+        -46_072_000,
+      ),
+    ).toBe(0);
+    // Le déséquilibre de l'ancienne lecture (211 900 000 au passif) n'est
+    // plus expliqué par rien · la clôture le refuserait.
     expect(
       ecartInexpliqueDuBilan(
         { totalActif: 165_828_000, totalPassif: 211_900_000, controle: { resultatClasses678: -11_600_000, resultatCompte13: -46_072_000 } },
         -46_072_000,
       ),
-    ).toBe(0);
+    ).toBe(-46_072_000);
+  });
+
+  it('avant clôture, seule la part du 13 que l\'état ne lit pas (le 130 du SYSCOHADA) est attendue', () => {
+    // 131 lu (200), 130 non lu (300) · 300 attendus d'écart, classes 6 à 8 mouvementées.
+    expect(ecartInexpliqueDuBilan({ totalActif: 1_300, totalPassif: 1_000, controle: { resultatClasses678: 50, resultatCompte13: 200 } }, 500)).toBe(0);
   });
 
   it('un compte non rattaché à un poste · l’écart reste, la clôture le refusera', () => {

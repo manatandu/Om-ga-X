@@ -6,6 +6,7 @@ import { LOT_ECRITURES } from '../../common/lecture-par-lots';
 import { ExerciceService } from '../exercice/exercice.service';
 import { PrismaService } from '../../common/prisma.service';
 import * as dettesRattachees from './dettes-rattachees';
+import { ecartInexpliqueDuBilan } from '../exercice/virement-resultat-non-affecte';
 
 // Les dettes du 40 nées d'immobilisations (relecture du 2026-10-07, majeur 3
 // et sa suite) · aucune par défaut ; leur lecture est gelée par
@@ -481,8 +482,17 @@ describe('Bilan S.M.T', () => {
     expect(bilan.totalActif).toBe(10000);
     expect(bilan.totalPassif).toBe(10000);
     expect(bilan.equilibre).toBe(true);
-    // Le 130 n'est pas une source du résultat de l'exercice.
-    expect(bilan.controle.doubleComptageProbable).toBe(false);
+    // Le 130 n'est pas une source du résultat de l'exercice · HC le lit, et
+    // la clôture ne le compte pas comme non lu (relecture de la passe V1,
+    // point 5 · le bilan équilibré, la clôture était refusée d'un « écart de
+    // 2 000 que le report à nouveau n'explique pas »).
+    expect(bilan.controle).toEqual({
+      resultatClasses678: 5000,
+      resultatCompte13: 0,
+      resultatAnterieurNonAffecte: 0,
+      compte13LuHorsDuResultat: 2000,
+    });
+    expect(ecartInexpliqueDuBilan(bilan, 2000)).toBe(0);
 
     const cr = await s.compteDeResultat('t1', 'e1');
     expect(cr.resultatNet).toBe(5000);
@@ -490,23 +500,84 @@ describe('Bilan S.M.T', () => {
     expect(cr.controle.concordant).toBe(true);
   });
 
-  it('un résultat N-1 encore au 131 pendant que les classes 6 à 8 portent N est SIGNALÉ, jamais additionné', async () => {
-    // Le seul solde que la maquette laisse hors du passif · HB ne retient
-    // qu'une des deux sources, et le contrôle le dit comme au bilan des
-    // associations.
-    const s = service({
-      e1: [
-        ligne('57100000', ClasseCompte.CLASSE_5, 14000, 4000, { debit: 5000 }),
-        ligne('13100000', ClasseCompte.CLASSE_1, 0, 5000, { credit: 5000 }),
-        ligne('70100000', ClasseCompte.CLASSE_7, 0, 9000),
-        ligne('60100000', ClasseCompte.CLASSE_6, 4000, 0),
-      ],
-    });
+  it('B1 · un résultat N-1 encore au 131 pendant que les classes 6 à 8 portent N va à HB avec lui · le bilan s\'équilibre', async () => {
+    // Passe V1, constat B1 · fiche du compte 13, le résultat de N reste au 13
+    // jusqu'à son affectation. HB lisait une seule des deux sources et le
+    // bilan sortait déséquilibré de 5 000 · il les additionne
+    // (`resultatAuBilan`), et le compte de résultat, qui ne porte que N, se
+    // compare à la seule part de l'exercice (`partsDuResultatAuBilan`).
+    const s = service(
+      {
+        e1: [
+          ligne('57100000', ClasseCompte.CLASSE_5, 14000, 4000, { debit: 5000 }),
+          ligne('13100000', ClasseCompte.CLASSE_1, 0, 5000, { credit: 5000 }),
+          ligne('70100000', ClasseCompte.CLASSE_7, 0, 9000),
+          ligne('60100000', ClasseCompte.CLASSE_6, 4000, 0),
+        ],
+      },
+      {
+        ecritures: [
+          ecriture('a', '2026-03-01', 'Cotisations', [
+            { numero: '57100000', debit: 9000 },
+            { numero: '70100000', credit: 9000 },
+          ]),
+          ecriture('b', '2026-04-01', 'Achat de fournitures', [
+            { numero: '60100000', debit: 4000 },
+            { numero: '57100000', credit: 4000 },
+          ]),
+        ],
+      },
+    );
     const bilan = await s.bilan('t1', 'e1');
-    expect(poste(bilan, 'HB').montant).toBe(5000);
+    expect(poste(bilan, 'HB').montant).toBe(10000);
     expect(poste(bilan, 'HC').montant).toBe(0);
-    expect(bilan.equilibre).toBe(false);
-    expect(bilan.controle).toEqual({ resultatClasses678: 5000, resultatCompte13: 5000, doubleComptageProbable: true });
+    expect(bilan.totalActif).toBe(10000);
+    expect(bilan.totalPassif).toBe(10000);
+    expect(bilan.equilibre).toBe(true);
+    expect(bilan.controle).toEqual({ resultatClasses678: 5000, resultatCompte13: 5000, resultatAnterieurNonAffecte: 5000, compte13LuHorsDuResultat: 0 });
+
+    const cr = await s.compteDeResultat('t1', 'e1');
+    expect(cr.resultatNet).toBe(5000);
+    expect(cr.controle.resultatBilan).toBe(5000);
+    expect(cr.controle.concordant).toBe(true);
+  });
+
+  it('MAJEUR (relecture V1) · cotisations et achats égaux, déficit antérieur au 139 · KZC = 0 concorde avec la part de l\'exercice de HB', async () => {
+    // Règle de la fiscalité (cas chiffré V3) · une gestion mouvementée, même
+    // nette nulle, donne le résultat de l'exercice · le 139 qui ne porte que
+    // l'à-nouveau est antérieur. L'ancienne lecture prenait -300 000 pour le
+    // résultat de l'exercice et fabriquait un écart au contrôle KZC / HB.
+    const s = service(
+      {
+        e1: [
+          ligne('57100000', ClasseCompte.CLASSE_5, 1_700_000, 1_000_000, { debit: 700_000 }),
+          ligne('10100000', ClasseCompte.CLASSE_1, 0, 1_000_000, { credit: 1_000_000 }),
+          ligne('13900000', ClasseCompte.CLASSE_1, 300_000, 0, { debit: 300_000 }),
+          ligne('70100000', ClasseCompte.CLASSE_7, 0, 1_000_000),
+          ligne('60100000', ClasseCompte.CLASSE_6, 1_000_000, 0),
+        ],
+      },
+      {
+        ecritures: [
+          ecriture('a', '2026-03-01', 'Cotisations', [
+            { numero: '57100000', debit: 1_000_000 },
+            { numero: '70100000', credit: 1_000_000 },
+          ]),
+          ecriture('b', '2026-04-01', 'Achat de fournitures', [
+            { numero: '60100000', debit: 1_000_000 },
+            { numero: '57100000', credit: 1_000_000 },
+          ]),
+        ],
+      },
+    );
+    const bilan = await s.bilan('t1', 'e1');
+    expect(poste(bilan, 'HB').montant).toBe(-300_000);
+    expect(bilan.equilibre).toBe(true);
+    expect(bilan.controle.resultatAnterieurNonAffecte).toBe(-300_000);
+    const cr = await s.compteDeResultat('t1', 'e1');
+    expect(cr.resultatNet).toBe(0);
+    expect(cr.controle.resultatBilan).toBe(0);
+    expect(cr.controle.concordant).toBe(true);
   });
 });
 

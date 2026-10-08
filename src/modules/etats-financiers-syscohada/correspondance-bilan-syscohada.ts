@@ -77,13 +77,16 @@ import { COMPTES_RESULTAT_DE_L_EXERCICE } from '../etats-financiers/resultat-de-
  * n'est crédité/débité qu'À LA CLÔTURE, « par le débit des comptes de la
  * classe 7 et des comptes créditeurs de la classe 8 » et « par le crédit des
  * comptes de la classe 6 et des comptes débiteurs de la classe 8, pour
- * solde ». Avant clôture le résultat vit donc dans les classes 6/7/8, après
- * clôture dans le 13 qui les a soldées. Le service doit prendre l'une OU
- * l'autre source, jamais les deux (même mécanique que `calculerCH` du
- * SYCEBNL, avec `controle.resultatClasses678` / `resultatCompte13` /
- * `doubleComptageProbable`) · voir `COMPTES_RESULTAT_SYSCOHADA` et
- * `REF_RESULTAT_SYSCOHADA`. Le 130 (résultat de l'exercice PRÉCÉDENT en
- * instance d'affectation) n'en fait PAS partie : anomalie n° 7.
+ * solde ». Avant clôture le résultat EN COURS vit donc dans les classes
+ * 6/7/8, après clôture dans le 13 qui les a soldées ; entre la réouverture
+ * et l'affectation, le 13 garde aussi le résultat PRÉCÉDENT (« le compte 13
+ * est donc soldé lors de la comptabilisation de cette affectation »). Le
+ * service ADDITIONNE les deux sources (`resultatAuBilan`, passe V1, B1 ·
+ * même mécanique que `calculerCH` du SYCEBNL, avec
+ * `controle.resultatClasses678` / `resultatCompte13`) · voir
+ * `COMPTES_RESULTAT_SYSCOHADA` et `REF_RESULTAT_SYSCOHADA`. Le 130 (résultat
+ * de l'exercice PRÉCÉDENT en instance d'affectation) n'en fait PAS partie :
+ * anomalie n° 7.
  *
  * ## ANOMALIES du texte officiel, rencontrées et tranchées ici
  *
@@ -226,9 +229,10 @@ import { COMPTES_RESULTAT_DE_L_EXERCICE } from '../etats-financiers/resultat-de-
  *    Le 130 porte donc le résultat de l'exercice PRÉCÉDENT, entre la
  *    réouverture et l'affectation. Le mettre dans CJ « Résultat net de
  *    l'exercice » présenterait le résultat N-1 comme résultat N sur toute
- *    balance arrêtée avant l'assemblée (bilan intermédiaire), et ferait de
- *    surcroît déclencher à tort `doubleComptageProbable` (classes 6/7/8
- *    ouvertes ET un 13 non nul). Il n'a AUCUN poste au ch. 7 (ni CJ, ni CH
+ *    balance arrêtée avant l'assemblée (bilan intermédiaire). [Depuis la
+ *    passe V1 (B1), le résultat précédent resté au 131 ou au 139 est lu en
+ *    CJ avec les classes 6/7/8 · le 130, que le ch. 7 ne nomme pas, reste
+ *    hors de CJ, point remonté.] Il n'a AUCUN poste au ch. 7 (ni CJ, ni CH
  *    tant que l'assemblée n'a pas statué) : laissé ORPHELIN, dans
  *    `COMPTES_BILAN_SANS_POSTE_JUSTIFIES`, donc remonté en
  *    `comptesNonRattaches` dès qu'il porte un solde. Au 31-12 il doit être

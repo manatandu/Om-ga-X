@@ -595,6 +595,17 @@ export interface LigneBilan {
   comptes: CompteDuPoste[];
 }
 
+/**
+ * Exercice CLÔTURÉ qui porte encore, au compte 13, le résultat de l'exercice
+ * précédent non affecté · le poste du résultat l'additionne à celui de
+ * l'exercice. Servi par le serveur, `null` sinon (relecture de la passe V1).
+ */
+export interface ResultatAnterieurNonVire {
+  montant: number;
+  poste: string;
+  motif: string;
+}
+
 export interface Bilan {
   actif: LigneBilan[];
   passif: LigneBilan[];
@@ -614,8 +625,9 @@ export interface Bilan {
   controle: {
     resultatClasses678: number;
     resultatCompte13: number;
-    doubleComptageProbable: boolean;
+    resultatAnterieurNonAffecte?: number;
   };
+  resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
 }
 
 export interface CompteDuPoste {
@@ -648,6 +660,7 @@ export interface BilanProjet {
   mentionComparatif?: string | null;
   equilibre: boolean;
   comptesNonRattaches: CompteDuPoste[];
+  resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
 }
 
 export interface CompteExploitationProjet {
@@ -712,6 +725,8 @@ export interface TableauFluxTresorerie {
   lignes: Array<LigneFluxTresorerie | SectionFlux>;
   exerciceN1Disponible: boolean;
   comptesNonVentiles: CompteDuPoste[];
+  /** D'où viennent les positions d'ouverture quand l'exercice précédent n'en tient pas. */
+  mentionOuverture?: string | null;
   controle: ControleFluxTresorerie;
 }
 
@@ -2461,6 +2476,7 @@ export interface BilanSmt {
   mentionComparatif?: string | null;
   equilibre: boolean;
   renvoiImmobilisations: string;
+  resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
 }
 
 /** VA, VB, VC et JG · les quatre lignes qui mènent du solde de caisse au résultat net. */
@@ -3460,8 +3476,9 @@ export interface BilanSyscohada {
   controle: {
     resultatClasses678: number;
     resultatCompte13: number;
-    doubleComptageProbable: boolean;
+    resultatAnterieurNonAffecte?: number;
   };
+  resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
 }
 
 /**
@@ -3643,11 +3660,11 @@ export interface BilanSmtSyscohada {
   controle: {
     /** Résultat lu dans les classes 6, 7 et 8 · avant écriture de clôture. */
     resultatClasses678: number;
-    /** Résultat lu au compte 13 · après écriture de clôture. */
+    /** Résultat lu au compte 13 · le résultat précédent non affecté, s'il y en a un. */
     resultatCompte13: number;
-    /** Les deux sources sont servies en même temps : le résultat serait compté deux fois. */
-    doubleComptageProbable: boolean;
+    resultatAnterieurNonAffecte?: number;
   };
+  resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
 }
 
 /**

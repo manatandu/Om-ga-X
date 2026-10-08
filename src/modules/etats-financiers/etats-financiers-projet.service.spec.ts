@@ -166,13 +166,36 @@ describe('EtatsFinanciersProjetService', () => {
       expect(poste(bilan, 'AZ')!.montant).toBe(1500);
     });
 
-    it('CC (solde des opérations) vient UNIQUEMENT du compte 13, jamais des classes 6/7/8', async () => {
+    it('CC (solde des opérations) lit le compte 13 ET les classes 6/7/8, comme CH des associations', async () => {
       const service = serviceAvecBalance([
-        ligne('13100000', ClasseCompte.CLASSE_1, 0, 400), // compte 13 créditeur -> CC = 400
-        ligne('66000000', ClasseCompte.CLASSE_6, 900, 0), // ignoré par CC (contrairement à CH côté associations)
+        ligne('13100000', ClasseCompte.CLASSE_1, 0, 400), // résultat de N, non affecté
+        ligne('66000000', ClasseCompte.CLASSE_6, 900, 0), // opération de N+1
       ]);
       const bilan = await service.bilan('t1', 'e1');
-      expect(poste(bilan, 'CC')!.montant).toBe(400);
+      expect(poste(bilan, 'CC')!.montant).toBe(-500);
+      expect(bilan.controle).toEqual({ resultatClasses678: -900, resultatCompte13: 400, resultatAnterieurNonAffecte: 400 });
+    });
+
+    it('P1 · un produit non neutralisé (intérêts au 7747) entre en CC avant la clôture · le bilan s\'équilibre', async () => {
+      // Passe V1, constat P1 · CC ne lisait que le 13 · 120 000 d'intérêts
+      // laissaient l'actif à 30 620 000 contre un passif de 30 500 000, et la
+      // clôture, qui refuse un bilan déséquilibré, enfermait le dossier.
+      const service = serviceAvecBalance([
+        // Soldes du banc (scénario projet, 2026), charges neutralisées au 702.
+        ligne('52110000', ClasseCompte.CLASSE_5, 9_620_000, 0),
+        ligne('16200000', ClasseCompte.CLASSE_1, 0, 22_000_000),
+        ligne('46200000', ClasseCompte.CLASSE_4, 0, 7_500_000),
+        ligne('40110000', ClasseCompte.CLASSE_4, 0, 1_000_000),
+        ligne('24110000', ClasseCompte.CLASSE_2, 21_000_000, 0),
+        ligne('60470000', ClasseCompte.CLASSE_6, 10_500_000, 0),
+        ligne('70200000', ClasseCompte.CLASSE_7, 0, 10_500_000),
+        ligne('77470000', ClasseCompte.CLASSE_7, 0, 120_000),
+      ]);
+      const bilan = await service.bilan('t1', 'e1');
+      expect(poste(bilan, 'CC')!.montant).toBe(120_000);
+      expect(bilan.totalActif).toBe(30_620_000);
+      expect(bilan.totalPassif).toBe(30_620_000);
+      expect(bilan.equilibre).toBe(true);
     });
 
     it('DW capte les découverts bancaires (52/53 créditeurs) en plus de 56', async () => {

@@ -12,9 +12,12 @@ import {
   chargerLignes,
   comparatifDuBilan,
   correspond,
+  exerciceCloture,
+  exercicePrecedentTenu,
   lignesALOuverture,
   lireOuverturePasseeEnOd,
   mentionComparatifSurOuverture,
+  mentionExercicePrecedentVide,
   mentionOuverturePresumeeNulle,
   motifOuverturePasseeEnOd,
   ouvertureTenue,
@@ -67,6 +70,12 @@ import {
   TermeFluxTresorerie,
   besoinsDuPoste,
 } from './correspondance-tft-syscohada';
+import {
+  partsDuResultatAuBilan,
+  resultatAnterieurNonVire,
+  resultatAuBilan,
+  type ResultatAnterieurNonVire,
+} from '../etats-financiers/resultat-de-l-exercice';
 
 /**
  * ÉTATS FINANCIERS DU SYSCOHADA RÉVISÉ · Système normal (AUDCIF art. 11) :
@@ -112,9 +121,9 @@ import {
  * - Le comparatif N-1 vient de `trouverExerciceN1` ; sans exercice antérieur
  *   il reste `undefined`, jamais un zéro qui laisserait croire à un exercice
  *   réel et vide.
- * - Le résultat se lit dans les classes 6/7/8 AVANT clôture ou dans le
- *   compte 13 APRÈS, jamais dans les deux : les deux sources non nulles à la
- *   fois lèvent `controle.doubleComptageProbable`.
+ * - Le résultat au bilan additionne les classes 6/7/8 et le compte 13
+ *   (`resultatAuBilan`) · avant la clôture le 13 ne porte que le résultat
+ *   PRÉCÉDENT non affecté, après elle les classes 6 à 8 sont soldées.
  * - Le tableau de flux boucle deux fois (ZH par les flux, ZH par le bilan) et
  *   l'écart est présenté, jamais corrigé : il chiffre exactement ce que la
  *   ventilation FA à FQ ne couvre pas.
@@ -166,14 +175,27 @@ export interface LigneBilanSyscohada {
 function comptesASolderALaCloture(
   lignes: LigneBalancePourEtat[],
   nonRattaches: CompteDuPoste[],
+  nonVire: ResultatAnterieurNonVire | null,
 ): Array<CompteDuPoste & { source: string }> {
   const dejaNommes = new Set(nonRattaches.map((c) => c.numero));
   return lignes.flatMap((l) => {
     if (Math.abs(l.solde) < EPSILON || dejaNommes.has(l.numero)) return [];
     const regle = COMPTES_BILAN_A_SOLDER_A_LA_CLOTURE.find((c) => l.numero.startsWith(c.prefixe));
-    return regle ? [{ numero: l.numero, intitule: l.intitule, montant: l.solde, source: regle.source }] : [];
+    if (regle) return [{ numero: l.numero, intitule: l.intitule, montant: l.solde, source: regle.source }];
+    // LE 131 À 139 D'UN EXERCICE CLÔTURÉ SANS LE VIREMENT DU RÉSULTAT
+    // PRÉCÉDENT NON AFFECTÉ (relecture de la passe V1, BLOQUANT) · avant
+    // l'écriture qui solde la gestion, il ne porte que ce résultat
+    // antérieur, que la fiche du compte 13 fait virer en fin d'exercice.
+    if (nonVire && correspond(l.numero, COMPTES_RESULTAT_SYSCOHADA)) {
+      return [{ numero: l.numero, intitule: l.intitule, montant: l.solde, source: SOURCE_RESULTAT_ANTERIEUR_NON_VIRE }];
+    }
+    return [];
   });
 }
+
+/** La source citée pour un 131 à 139 resté non viré sur un exercice clôturé. */
+const SOURCE_RESULTAT_ANTERIEUR_NON_VIRE =
+  "Titre VII COMPTE 13 : « En fin d'exercice, le résultat de l'exercice précédent non affecté […] est viré au compte de report à nouveau » · exercice clôturé sans ce virement, CJ l'additionne au résultat de l'exercice";
 
 export interface BilanSyscohada {
   actif: LigneBilanSyscohada[];
@@ -202,8 +224,11 @@ export interface BilanSyscohada {
   controle: {
     resultatClasses678: number;
     resultatCompte13: number;
-    doubleComptageProbable: boolean;
+    /** La part de CJ qui est le résultat de l'exercice PRÉCÉDENT non affecté (`partsDuResultatAuBilan`). */
+    resultatAnterieurNonAffecte: number;
   };
+  /** Exercice clôturé qui porte encore ce résultat antérieur · nommé, `null` sinon (et sur une situation intermédiaire). */
+  resultatAnterieurNonVire: ResultatAnterieurNonVire | null;
 }
 
 /**
@@ -630,14 +655,20 @@ export class EtatsFinanciersSyscohadaService {
 
   /**
    * CJ « Résultat net de l'exercice » · n'est PAS dans `POSTES_PASSIF_SYSCOHADA`
-   * parce qu'il a deux sources exclusives l'une de l'autre. Titre VII COMPTE
-   * 13 : le compte 13 n'est mouvementé qu'À LA CLÔTURE, « par le débit des
-   * comptes de la classe 7 et des comptes créditeurs de la classe 8 » et « par
-   * le crédit des comptes de la classe 6 […] pour solde ». Avant clôture le
-   * résultat vit donc dans les classes 6/7/8, après clôture dans le 13 qui les
-   * a soldées. On prend l'une OU l'autre, jamais les deux, et les deux
-   * montants sont rendus au contrôle : non nuls ensemble, ils signalent un
-   * double comptage (balance transmise à un moment ambigu de la clôture).
+   * parce qu'il a deux sources, qui S'ADDITIONNENT (`resultatAuBilan`, passe
+   * V1, B1) · le compte 13, que le ch. 7 porte sur CJ (« 13 (131 ou 139) »)
+   * et qui garde, de la réouverture à l'affectation, le résultat de
+   * l'exercice PRÉCÉDENT (Titre VII COMPTE 13 · « L'affectation du résultat
+   * d'un exercice est décidée par les organes compétents au cours de
+   * l'exercice suivant ; le compte 13 est donc soldé lors de la
+   * comptabilisation de cette affectation »), et les classes 6/7/8, que la
+   * clôture y portera (« crédité, à la clôture de l'exercice, par le débit
+   * des comptes de la classe 7 [...] »). Avant l'écriture qui solde les
+   * comptes de gestion le 13 ne porte jamais le résultat de l'exercice en
+   * cours, après elle les classes 6 à 8 sont soldées · aucun double compte.
+   * Lire l'une OU l'autre perdait le résultat de N au bilan de N+1 avant
+   * l'assemblée (15 288 000 au banc de la passe V1). Les deux montants sont
+   * rendus au contrôle, que la clôture relit (`ecartInexpliqueDuBilan`).
    *
    * Les comptes lus après clôture sont `COMPTES_RESULTAT_SYSCOHADA` (131 à
    * 139) et non « 13 » : le 130, résultat de l'exercice PRÉCÉDENT en instance
@@ -655,10 +686,8 @@ export class EtatsFinanciersSyscohadaService {
     const lignes13 = lignes.filter((l) => correspond(l.numero, COMPTES_RESULTAT_SYSCOHADA));
     const resultatCompte13 = lignes13.reduce((s, l) => s + montantSigne(l.totalDebit, l.totalCredit), 0);
 
-    const avantCloture = Math.abs(resultatClasses678) > EPSILON;
-    const montant = avantCloture ? resultatClasses678 : resultatCompte13;
-    const source = avantCloture ? lignes678 : lignes13;
-    const comptes = source
+    const montant = resultatAuBilan(resultatClasses678, resultatCompte13);
+    const comptes = [...lignes13, ...lignes678]
       .filter((l) => Math.abs(l.solde) > EPSILON)
       .map((l) => ({ numero: l.numero, intitule: l.intitule, montant: montantSigne(l.totalDebit, l.totalCredit) }));
 
@@ -832,9 +861,10 @@ export class EtatsFinanciersSyscohadaService {
     // précédent ». La colonne N-1 n'est donc PAS bornée : c'est bien la
     // clôture qu'elle doit porter, et le comparatif du modèle la sert déjà.
     const { borneN } = await this.bornesSituation(tenantId, exerciceId, exerciceN1Id, arreteAu);
-    const [lignesN, lignesN1] = await Promise.all([
+    const [lignesN, lignesN1, clos] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId, borneN),
       this.chargerLignes(tenantId, exerciceN1Id),
+      exerciceCloture(this.exerciceService, tenantId, exerciceId),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -885,6 +915,16 @@ export class EtatsFinanciersSyscohadaService {
     const totalActif = resolutionN.parRef.get('BZ')!.montant;
     const totalPassif = resolutionN.parRef.get('DZ')!.montant;
     const comptesNonRattaches = this.comptesNonRattachesDuBilan(lignesN);
+    // CJ partagé entre l'exercice et le résultat antérieur non affecté
+    // (`partsDuResultatAuBilan`) · sur un exercice CLÔTURÉ lu en entier, le
+    // second est nommé (`resultatAnterieurNonVire`, relecture de la passe V1).
+    const parts = partsDuResultatAuBilan(
+      resolutionN.resultatClasses678,
+      resolutionN.resultatCompte13,
+      lignesN.filter((l) => CLASSES_DE_GESTION.has(l.classe)),
+      lignesN.filter((l) => correspond(l.numero, COMPTES_RESULTAT_SYSCOHADA)),
+    );
+    const nonVire = borneN ? null : resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, REF_RESULTAT_SYSCOHADA, 'SYSCOHADA');
 
     return {
       actif,
@@ -900,13 +940,15 @@ export class EtatsFinanciersSyscohadaService {
       // un défaut du moteur d'écritures, pas un défaut de cette répartition.
       equilibre: Math.abs(totalActif - totalPassif) < 0.01,
       comptesNonRattaches,
-      comptesASolderALaCloture: borneN ? [] : comptesASolderALaCloture(lignesN, comptesNonRattaches),
+      comptesASolderALaCloture: borneN ? [] : comptesASolderALaCloture(lignesN, comptesNonRattaches, nonVire),
+      // Les deux sources de CJ, séparées · toutes deux non nulles, c'est la
+      // situation avant l'affectation, pas un double compte (`resultatAuBilan`).
       controle: {
         resultatClasses678: resolutionN.resultatClasses678,
         resultatCompte13: resolutionN.resultatCompte13,
-        doubleComptageProbable:
-          Math.abs(resolutionN.resultatClasses678) > EPSILON && Math.abs(resolutionN.resultatCompte13) > EPSILON,
+        resultatAnterieurNonAffecte: parts.resultatAnterieurNonAffecte,
       },
+      resultatAnterieurNonVire: nonVire,
     };
   }
 
@@ -1521,14 +1563,21 @@ export class EtatsFinanciersSyscohadaService {
     // au premier jour, sans exercice précédent ni report, n'est lue ni comme
     // flux ni comme ouverture ; sans elle, l'ouverture présumée nulle est
     // DITE. Même règle pour la colonne N-1 quand N-2 manque.
+    // Un exercice précédent ouvert SANS ÉCRITURE ne tient aucune clôture ·
+    // ses positions, nulles, ne remplacent pas l'ouverture de l'exercice
+    // (`exercicePrecedentTenu`, relecture de la passe V1).
+    const n1Tenu = exercicePrecedentTenu(exerciceN1Id, lignesN1);
+    const n2Tenu = exercicePrecedentTenu(exerciceN2Id, lignesN2);
     const [ouverturePasseeN, ouverturePasseeN1] = await Promise.all([
-      lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN),
-      exerciceN1Id ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, exerciceN2Id, lignesN1) : Promise.resolve(null),
+      lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, lignesN),
+      exerciceN1Id
+        ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, n2Tenu ? exerciceN2Id : null, lignesN1)
+        : Promise.resolve(null),
     ]);
     const resN = this.resoudreFluxPourExercice(
       lignesN,
-      exerciceN1Id ? lignesN1 : lignesALOuverture(lignesN),
-      exerciceN1Id !== null,
+      n1Tenu ? lignesN1 : lignesALOuverture(lignesN),
+      n1Tenu,
       reevaluationsN,
       ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA') : null,
     );
@@ -1539,8 +1588,8 @@ export class EtatsFinanciersSyscohadaService {
     const resN1 = exerciceN1Id
       ? this.resoudreFluxPourExercice(
           lignesN1,
-          exerciceN2Id ? lignesN2 : lignesALOuverture(lignesN1),
-          exerciceN2Id !== null,
+          n2Tenu ? lignesN2 : lignesALOuverture(lignesN1),
+          n2Tenu,
           reevaluationsN1,
           ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYSCOHADA') : null,
         )
@@ -1598,9 +1647,11 @@ export class EtatsFinanciersSyscohadaService {
       // D'où viennent les positions d'ouverture quand l'exercice précédent
       // n'est pas tenu · le report (dossier repris), rien (présumée nulle,
       // dit), ou une OD du premier jour (motif, postes vides).
-      mentionOuverture: exerciceN1Id
+      mentionOuverture: n1Tenu
         ? null
-        : ouverturePasseeN
+        : exerciceN1Id && !ouverturePasseeN
+          ? mentionExercicePrecedentVide('SYSCOHADA', ouvertureTenue(lignesN))
+          : ouverturePasseeN
           ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA')
           : ouvertureTenue(lignesN)
             ? mentionComparatifSurOuverture('SYSCOHADA')

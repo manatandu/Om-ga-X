@@ -18,8 +18,9 @@ import { soldeDuCompte, type CompteRan, type LigneRan } from './report-a-nouveau
  *
  * Sans ce virement, la clôture de N+1 laissait le résultat de N au 13, où il
  * se cumulait avec celui de N+1 · le bilan de N+1 sortait déséquilibré du
- * résultat de N (les états lisent le résultat sur les classes 6 à 8 avant
- * clôture, jamais en plus sur le 13), la colonne N-1 du bilan de N+2 était
+ * résultat de N (les états lisaient alors le résultat sur les classes 6 à 8
+ * avant clôture, jamais en plus sur le 13 · ils les additionnent depuis la
+ * passe V1, `resultatAuBilan`), la colonne N-1 du bilan de N+2 était
  * fausse aux capitaux propres, et l'affectation de N devenait impossible
  * (son exercice d'accueil clôturé). Scénario chiffré · perte 2026 de
  * 46 072 000 non affectée, bilan 2027 à 165 828 000 contre 211 900 000.
@@ -137,23 +138,31 @@ export function appliquerVirementAuReport(report: LigneRan[], virement: LigneRan
 /**
  * L'ÉCART DU BILAN QUE LE VIREMENT N'EXPLIQUE PAS · la clôture refuse un
  * bilan qui sortirait déséquilibré par un autre chemin (compte non rattaché,
- * défaut de correspondance). Avant la clôture, les états lisent le résultat
- * sur les classes 6 à 8 dès qu'elles sont mouvementées et laissent alors le
- * 13 de côté ; sinon ils lisent le 13 (sans le 130 au SYSCOHADA). L'écart
- * attendu (actif moins passif) est donc la part du 13 que l'état n'a pas
- * lue, et que le virement porte au report à nouveau. `resultat13` et
+ * défaut de correspondance). Les états lisent le résultat au bilan sur les
+ * classes 6 à 8 ET sur le 13, sans le 130 au SYSCOHADA (`resultatAuBilan`,
+ * passe V1, B1 · le résultat précédent non affecté reste au 13 jusqu'à
+ * l'assemblée, fiche du compte 13 des deux plans). L'écart attendu (actif
+ * moins passif) est donc la part du 13 que l'état n'a pas lue (le 130), et
+ * que le virement porte au report à nouveau. Jusqu'au 2026-10-08 les états
+ * laissaient tout le 13 de côté dès que les classes 6 à 8 étaient
+ * mouvementées, et l'écart admis était le 13 entier. `resultat13` et
  * `resultatCompte13` sont au sens du passif (crédit moins débit). Rend null
  * quand l'état ne dit pas comment il a lu son résultat.
  */
 export function ecartInexpliqueDuBilan(
-  bilan: { totalActif: number; totalPassif: number; controle?: { resultatClasses678: number; resultatCompte13: number } | null },
+  bilan: {
+    totalActif: number;
+    totalPassif: number;
+    controle?: { resultatClasses678: number; resultatCompte13: number; compte13LuHorsDuResultat?: number } | null;
+  },
   resultat13: number,
 ): number | null {
   const ecart = Number(bilan.totalActif) - Number(bilan.totalPassif);
   let partNonLue: number;
   if (bilan.controle) {
-    const avantCloture = Math.abs(bilan.controle.resultatClasses678) > EPSILON;
-    partNonLue = avantCloture ? resultat13 : resultat13 - bilan.controle.resultatCompte13;
+    // `compte13LuHorsDuResultat` · la part du 13 qu'un AUTRE poste lit (le
+    // 130 en HC du SMT SYCEBNL, audit final F211) n'est pas « non lue ».
+    partNonLue = resultat13 - bilan.controle.resultatCompte13 - (bilan.controle.compte13LuHorsDuResultat ?? 0);
   } else if (Math.abs(resultat13) <= EPSILON) {
     partNonLue = 0;
   } else {

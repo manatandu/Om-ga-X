@@ -19,6 +19,7 @@ import type {
 import { montant } from '../lib/montants';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
+import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
 
 /**
  * ÉTATS FINANCIERS DU SYSTÈME MINIMAL DE TRÉSORERIE · SYSCOHADA RÉVISÉ
@@ -452,6 +453,8 @@ export function EtatsSmtSyscohadaPage() {
             </span>
           </div>
 
+          <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} />
+
           {/* JAMAIS MASQUÉS · un compte de bilan qu'aucun poste ne capte est
               exactement ce qui explique un déséquilibre. Le rattacher d'office
               au poste voisin le ferait disparaître de l'écran sans le faire
@@ -467,28 +470,6 @@ export function EtatsSmtSyscohadaPage() {
                 />
               </div>
               {listeComptes(bilan.comptesNonRattaches)}
-            </div>
-          )}
-
-          {/* Le résultat a deux sources exclusives : les classes 6, 7 et 8
-              avant l'écriture de clôture, le compte de report du résultat
-              après. Les deux servies en même temps, il est compté deux fois. */}
-          {bilan.controle.doubleComptageProbable && (
-            <div className="border border-warning/40 bg-warning-soft px-3.5 py-2.5 mb-2">
-              <div className="text-[11.5px] font-bold mb-1 flex items-center gap-1.5">
-                Double comptage probable du résultat
-                <Aide
-                  titre="Double comptage du résultat"
-                  texte="Le résultat a deux sources exclusives. Avant clôture, seules les classes 6, 7 et 8 doivent être servies ; après clôture, seul le compte de résultat de l'exercice."
-                  source="AUDCIF, Titre X ch. 2"
-                />
-              </div>
-              <p className="text-[11.5px]">
-                Le résultat ressort à la fois des comptes de charges et de produits ({montant(
-                  bilan.controle.resultatClasses678,
-                )}
-                ) et du compte de résultat de l'exercice ({montant(bilan.controle.resultatCompte13)}).
-              </p>
             </div>
           )}
         </div>
@@ -609,12 +590,12 @@ export function EtatsSmtSyscohadaPage() {
           >
             <span className="text-[11.5px] break-words">
               {cr.controle.concordant
-                ? `Le résultat reconstitué (G ${montant(cr.resultatExercice)}) concorde avec le poste « Résultat exercice » du bilan (${montant(
+                ? `Le résultat reconstitué (G ${montant(cr.resultatExercice)}) concorde avec le résultat de l'exercice logé au poste « Résultat exercice » du bilan, hors résultat précédent non affecté (${montant(
                     cr.controle.resultatBilan,
                   )}).`
                 : `Écart de ${montant(cr.controle.ecart)} entre le résultat reconstitué (G ${montant(
                     cr.resultatExercice,
-                  )}) et le poste « Résultat exercice » du bilan (${montant(cr.controle.resultatBilan)}).`}
+                  )}) et le résultat de l'exercice logé au poste « Résultat exercice » du bilan, hors résultat précédent non affecté (${montant(cr.controle.resultatBilan)}).`}
             </span>
             {!cr.controle.concordant && (
               <div className="mt-1.5 text-[11.5px]">

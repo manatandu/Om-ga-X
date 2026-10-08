@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { ClasseCompte, TypeCompteDetailTotal } from '@prisma/client';
+import { ClasseCompte, StatutExercice, TypeCompteDetailTotal } from '@prisma/client';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { avantSoldeDesComptesDeGestion } from '../comptabilite/balance-trois-colonnes';
@@ -84,6 +84,39 @@ export async function trouverExerciceN1(
   }
   const anterieur = exercices.find((e) => e.dateDebut < courant.dateDebut);
   return anterieur?.id ?? null;
+}
+
+/**
+ * L'exercice est-il CLÔTURÉ ? Lu pour dire, sur le bilan d'un exercice clos,
+ * le résultat antérieur que sa clôture n'a pas viré au report à nouveau
+ * (`resultatAnterieurNonVire`, resultat-de-l-exercice.ts). Un exercice
+ * introuvable n'est pas clos · le refus d'un exercice inconnu appartient à
+ * `trouverExerciceN1`, que chaque état appelle d'abord.
+ */
+export async function exerciceCloture(exerciceService: ExerciceService, tenantId: string, exerciceId: string): Promise<boolean> {
+  const exercices = (await exerciceService.lister(tenantId)) ?? [];
+  return exercices.find((e) => e.id === exerciceId)?.statut === StatutExercice.CLOTURE;
+}
+
+/**
+ * L'EXERCICE PRÉCÉDENT TIENT-IL DES POSITIONS ? (relecture de la passe V1,
+ * 2026-10-08) · un exercice précédent OUVERT SANS AUCUNE ÉCRITURE au
+ * livre-journal (créé pour y importer plus tard sa balance) ne tient aucune
+ * clôture · les positions d'ouverture du tableau des flux se lisent alors sur
+ * l'ouverture de l'exercice, comme sans exercice précédent (AUDCIF art. 34 ;
+ * SYCEBNL art. 16, 4)), et la mention le dit. Lues sur lui, la trésorerie
+ * d'ouverture (ZA) valait zéro sans un mot.
+ */
+export function exercicePrecedentTenu(exercicePrecedentId: string | null, lignesPrecedent: readonly LigneBalancePourEtat[]): boolean {
+  return exercicePrecedentId !== null && lignesPrecedent.length > 0;
+}
+
+/** La mention d'un exercice précédent ouvert sans écriture · ouverture lue sur l'exercice, ou nulle. */
+export function mentionExercicePrecedentVide(referentiel: 'SYSCOHADA' | 'SYCEBNL', ouvertureLue: boolean): string {
+  const article = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34';
+  return ouvertureLue
+    ? `L'exercice précédent est ouvert sans aucune écriture au livre-journal · les positions d'ouverture sont lues sur le bilan d'ouverture de l'exercice (${article}).`
+    : `L'exercice précédent est ouvert sans aucune écriture au livre-journal et l'exercice n'a pas de bilan d'ouverture · les positions d'ouverture, trésorerie comprise, sont lues à zéro (${article}). Importez la balance de clôture de l'exercice précédent et clôturez-le, ou passez le bilan d'ouverture en à-nouveau.`;
 }
 
 /**

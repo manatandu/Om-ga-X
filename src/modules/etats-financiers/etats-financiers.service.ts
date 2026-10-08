@@ -10,11 +10,23 @@ import {
   chargerLignes,
   comparatifDuBilan,
   correspond,
+  exerciceCloture,
+  exercicePrecedentTenu,
+  lignesALOuverture,
   lireOuverturePasseeEnOd,
+  mentionComparatifSurOuverture,
+  mentionExercicePrecedentVide,
+  mentionOuverturePresumeeNulle,
   ouvertureTenue,
   trouverExerciceN1,
 } from './etats-financiers.communs';
-import { estCompteDuResultatDeLExercice } from './resultat-de-l-exercice';
+import {
+  estCompteDuResultatDeLExercice,
+  partsDuResultatAuBilan,
+  resultatAnterieurNonVire,
+  resultatAuBilan,
+  type PartsDuResultatAuBilan,
+} from './resultat-de-l-exercice';
 import {
   POSTES_CHARGES,
   POSTES_HAO,
@@ -194,16 +206,18 @@ export class EtatsFinanciersService {
 
   /**
    * CH (Résultat net de l'exercice) · n'est PAS listé dans
-   * `correspondance-bilan.ts` : le compte 13 officiel (voir sycebnl,
-   * COMPTE 13) n'est mouvementé qu'À LA CLÔTURE, par transfert des soldes
-   * des classes 6/7/8. Avant clôture, le résultat vit dans ces classes ;
-   * après, il vit dans le compte 13, qui les solde à zéro. Utiliser l'une
-   * OU l'autre source, jamais les deux (voir `controle` du retour de
-   * `bilan()` · double comptage possible et signalé, pas deviné).
+   * `correspondance-bilan.ts`, il a DEUX sources qui s'ADDITIONNENT
+   * (`resultatAuBilan`, resultat-de-l-exercice.ts) · le compte 13, que la
+   * correspondance de la Partie 4 ch. 2 porte sur CH (« 13 (131 ou 139) »),
+   * et les classes 6 à 8, que la clôture y portera (SYCEBNL, fiche du
+   * compte 13, Fonctionnement).
+   * Le 13 porte, entre la réouverture et l'affectation, le résultat de
+   * l'exercice PRÉCÉDENT · sans lui, le bilan de N+1 lu avant l'assemblée
+   * perdait ce résultat et sortait déséquilibré (passe V1, B1).
    */
   private calculerCH(
     lignes: LigneBalancePourBilan[],
-  ): { poste: PosteCalcule; resultatClasses678: number; resultatCompte13: number } {
+  ): { poste: PosteCalcule; resultatClasses678: number; resultatCompte13: number; parts: PartsDuResultatAuBilan } {
     const lignes678 = lignes.filter(
       (l) => l.classe === ClasseCompte.CLASSE_6 || l.classe === ClasseCompte.CLASSE_7 || l.classe === ClasseCompte.CLASSE_8,
     );
@@ -212,10 +226,8 @@ export class EtatsFinanciersService {
     const lignes13 = lignes.filter((l) => estCompteDuResultatDeLExercice(l.numero));
     const resultatCompte13 = lignes13.reduce((s, l) => s - l.solde, 0);
 
-    const avantCloture = Math.abs(resultatClasses678) > 0.005;
-    const montant = avantCloture ? resultatClasses678 : resultatCompte13;
-    const source = avantCloture ? lignes678 : lignes13;
-    const comptes = source
+    const montant = resultatAuBilan(resultatClasses678, resultatCompte13);
+    const comptes = [...lignes13, ...lignes678]
       .filter((l) => Math.abs(l.solde) > 0.005)
       .map((l) => ({ numero: l.numero, intitule: l.intitule, montant: -l.solde }));
 
@@ -223,6 +235,9 @@ export class EtatsFinanciersService {
       poste: { ref: 'CH', libelle: "Résultat net de l'exercice (excédent + ou déficit -)", montant, comptes },
       resultatClasses678,
       resultatCompte13,
+      // L'exercice et le résultat antérieur non affecté, séparés par la règle
+      // de la fiscalité (`partsDuResultatAuBilan`).
+      parts: partsDuResultatAuBilan(resultatClasses678, resultatCompte13, lignes678, lignes13),
     };
   }
 
@@ -237,6 +252,7 @@ export class EtatsFinanciersService {
     parRef: Map<string, PosteCalcule>;
     resultatClasses678: number;
     resultatCompte13: number;
+    parts: PartsDuResultatAuBilan;
   } {
     const parRef = new Map<string, PosteCalcule>();
     for (const poste of POSTES_ACTIF) {
@@ -248,7 +264,7 @@ export class EtatsFinanciersService {
     }
     parRef.set('DW', this.calculerDW(lignes));
 
-    const { poste: posteCH, resultatClasses678, resultatCompte13 } = this.calculerCH(lignes);
+    const { poste: posteCH, resultatClasses678, resultatCompte13, parts } = this.calculerCH(lignes);
     parRef.set('CH', posteCH);
 
     // Totaux : chaque total additionne des refs déjà résolues (détail OU
@@ -269,14 +285,15 @@ export class EtatsFinanciersService {
       parRef.set(total.ref, { ref: total.ref, libelle: total.libelle, montant, comptes: [] });
     }
 
-    return { parRef, resultatClasses678, resultatCompte13 };
+    return { parRef, resultatClasses678, resultatCompte13, parts };
   }
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
-    const [lignesN, lignesN1] = await Promise.all([
+    const [lignesN, lignesN1, clos] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
+      exerciceCloture(this.exerciceService, tenantId, exerciceId),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -287,7 +304,7 @@ export class EtatsFinanciersService {
     // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
     const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
     const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYCEBNL');
-    const { parRef: parRefN, resultatClasses678, resultatCompte13 } = this.resoudreTousLesPostesBilan(lignesN);
+    const { parRef: parRefN, resultatClasses678, resultatCompte13, parts } = this.resoudreTousLesPostesBilan(lignesN);
     const { parRef: parRefN1 } = this.resoudreTousLesPostesBilan(comparatif.lignes);
 
     const refsTotaux = new Set([...TOTAUX_ACTIF, ...TOTAUX_PASSIF].map((t) => t.ref));
@@ -356,15 +373,17 @@ export class EtatsFinanciersService {
       // pas un défaut de cette répartition.
       equilibre: Math.abs(totalActif - totalPassif) < 0.01,
       comptesNonRattaches,
+      // Les deux sources de CH, rendues séparées (la clôture en relit l'écart,
+      // `ecartInexpliqueDuBilan`). Toutes deux non nulles, c'est la situation
+      // avant l'affectation, pas un double comptage (`resultatAuBilan`).
       controle: {
         resultatClasses678,
         resultatCompte13,
-        // Les deux sources sont non nulles à la fois : risque de double
-        // comptage (balance transmise à un moment ambigu de la clôture).
-        // Voir COMPTE 13, sycebnl · le compte 13 ne se mouvemente qu'À la
-        // clôture, en soldant justement les classes 6/7/8 à zéro.
-        doubleComptageProbable: Math.abs(resultatClasses678) > 0.005 && Math.abs(resultatCompte13) > 0.005,
+        resultatAnterieurNonAffecte: parts.resultatAnterieurNonAffecte,
       },
+      // Exercice CLÔTURÉ qui porte encore le résultat précédent non affecté ·
+      // nommé, jamais présenté en silence comme résultat de l'exercice.
+      resultatAnterieurNonVire: resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, 'CH', 'SYCEBNL'),
     };
   }
 
@@ -749,12 +768,40 @@ export class EtatsFinanciersService {
       this.ecritureService.mouvementsDeCoutsEmpruntIncorpores(tenantId, exerciceN1Id),
     ]);
 
-    const resN = this.resoudreFluxPourExercice(lignesN, lignesN1, virementsN, reevaluationsN, incorporationsN);
+    // POSITIONS D'OUVERTURE · la clôture de l'exercice précédent quand il est
+    // tenu, sinon l'OUVERTURE de l'exercice, qui est cette clôture (SYCEBNL
+    // art. 16, 4) ; Partie 4 ch. 1 § 1.4 ; cas chiffrés de la clôture, Q3) ·
+    // à-nouveau ou bilan d'ouverture importé d'un dossier repris, lus sur la
+    // colonne REPORT (`lignesALOuverture`), ou rien pour une entité qui naît.
+    // Sans elles, le premier exercice d'un dossier repris lisait une
+    // trésorerie d'ouverture nulle et prenait le règlement d'une dette reprise
+    // pour une absence de flux (passe V1, A1 · ZA 0 au lieu de 35 000 000,
+    // variation +1 549 100 au lieu de -450 900). Même règle que le tableau du
+    // SYSCOHADA (`EtatsFinanciersSyscohadaService.tableauFluxTresorerie`).
+    // Un exercice précédent ouvert SANS ÉCRITURE ne tient aucune clôture ·
+    // ses positions, nulles, ne remplacent pas l'ouverture de l'exercice
+    // (`exercicePrecedentTenu`, relecture de la passe V1).
+    const n1Tenu = exercicePrecedentTenu(exerciceN1Id, lignesN1);
+    const n2Tenu = exercicePrecedentTenu(exerciceN2Id, lignesN2);
+    const resN = this.resoudreFluxPourExercice(
+      lignesN,
+      n1Tenu ? lignesN1 : lignesALOuverture(lignesN),
+      virementsN,
+      reevaluationsN,
+      incorporationsN,
+    );
     // Colonne N-1 : seulement si un exercice N-1 existe · jamais un faux
     // zéro pour un dossier à son premier exercice (même discipline que
-    // partout ailleurs dans ce service).
+    // partout ailleurs dans ce service). Ses propres positions d'ouverture
+    // suivent la même règle (N-2, sinon l'ouverture de N-1).
     const resN1 = exerciceN1Id
-      ? this.resoudreFluxPourExercice(lignesN1, lignesN2, virementsN1, reevaluationsN1, incorporationsN1)
+      ? this.resoudreFluxPourExercice(
+          lignesN1,
+          n2Tenu ? lignesN2 : lignesALOuverture(lignesN1),
+          virementsN1,
+          reevaluationsN1,
+          incorporationsN1,
+        )
       : null;
 
     const REFS_TOTAUX = new Set(['ZA', 'ZB', 'ZC', 'ZD', 'ZE', 'ZF', 'ZG', '']);
@@ -832,6 +879,17 @@ export class EtatsFinanciersService {
       lignes: lignesAffichees,
       exerciceN1Disponible: exerciceN1Id !== null,
       comptesNonVentiles,
+      // D'où viennent les positions d'ouverture (ZA comprise) quand
+      // l'exercice précédent n'en tient pas · même mention que le tableau du
+      // SYSCOHADA. Une ouverture saisie en OD au premier jour, sans report, y
+      // est encore lue comme flux (point remonté de la passe V1).
+      mentionOuverture: n1Tenu
+        ? null
+        : exerciceN1Id
+          ? mentionExercicePrecedentVide('SYCEBNL', ouvertureTenue(lignesN))
+          : ouvertureTenue(lignesN)
+            ? mentionComparatifSurOuverture('SYCEBNL')
+            : mentionOuverturePresumeeNulle('SYCEBNL'),
       controle: {
         tresorerieOuverture: resN.tresorerieOuverture,
         variation: resN.parRef.get('ZF')!.montant,

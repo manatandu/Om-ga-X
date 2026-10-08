@@ -11,11 +11,12 @@ import {
   chargerLignesCumulees,
   comparatifDuBilan,
   correspond,
+  exerciceCloture,
   lireOuverturePasseeEnOd,
   ouvertureTenue,
   trouverExerciceN1,
 } from './etats-financiers.communs';
-import { estCompteDuResultatDeLExercice } from './resultat-de-l-exercice';
+import { estCompteDuResultatDeLExercice, partsDuResultatAuBilan, resultatAnterieurNonVire, resultatAuBilan } from './resultat-de-l-exercice';
 import { DettesParPoste, dettesALaCloture, dettesALOuverture, dettesParPoste } from './dettes-rattachees';
 import { PosteCalcule } from './etats-financiers.service';
 import { POSTES_CHARGES, POSTES_REVENUS, PosteCompteExploitation, posteDuCompte } from './correspondance-projet-compte-exploitation';
@@ -138,20 +139,41 @@ export class EtatsFinanciersProjetService {
   }
 
   /**
-   * CC (Solde des opérations de l'exercice) · contrairement à CH côté
-   * associations, ce poste ne s'arbitre pas entre classes 6/7/8 et compte
-   * 13 : il vient UNIQUEMENT du compte 13 (voir la note de tête de fichier
-   * de `correspondance-projet-compte-exploitation.ts` · ce jeu est construit
-   * pour boucler le compte d'exploitation à XC = 0, pas pour porter un
-   * résultat net au sens associatif).
+   * CC (Solde des opérations de l'exercice) · même lecture que CH des
+   * associations (`resultatAuBilan`) · le compte 13, que la correspondance
+   * porte sur CC (Partie 4 ch. 3, « 13 (131 ou 139) »), et les classes 6 à
+   * 8, que la clôture y portera (fiche du compte 13, Fonctionnement).
+   *
+   * La fiche dit le solde des opérations du projet « toujours nul » parce que
+   * chaque charge est neutralisée au fil de l'engagement (Partie 3 ch. 3) ·
+   * mais un produit qui n'est pas un fonds du bailleur (intérêts du dépôt au
+   * 77) ne l'est pas. Lu sur le seul 13, il ne paraissait au bilan qu'après
+   * la clôture · avant elle le bilan sortait déséquilibré de son montant, et
+   * la clôture, qui refuse un bilan déséquilibré, l'était aussi · dossier
+   * ENFERMÉ (passe V1, P1 · 120 000 au 7747, actif 30 620 000 contre passif
+   * 30 500 000).
    */
   private calculerCC(lignes: LigneBalancePourEtat[]): PosteCalcule {
-    const lignes13 = lignes.filter((l) => estCompteDuResultatDeLExercice(l.numero));
-    const montant = lignes13.reduce((s, l) => s - l.solde, 0);
-    const comptes = lignes13
+    const { lignes678, resultatClasses678, lignes13, resultatCompte13 } = this.sourcesDuResultat(lignes);
+    const montant = resultatAuBilan(resultatClasses678, resultatCompte13);
+    const comptes = [...lignes13, ...lignes678]
       .filter((l) => Math.abs(l.solde) > 0.005)
       .map((l) => ({ numero: l.numero, intitule: l.intitule, montant: -l.solde }));
     return { ref: 'CC', libelle: "Solde des opérations de l'exercice", montant, comptes };
+  }
+
+  /** Les deux sources de CC, au sens du passif (crédit moins débit) · rendues aussi au contrôle de la clôture. */
+  private sourcesDuResultat(lignes: LigneBalancePourEtat[]) {
+    const lignes678 = lignes.filter(
+      (l) => l.classe === ClasseCompte.CLASSE_6 || l.classe === ClasseCompte.CLASSE_7 || l.classe === ClasseCompte.CLASSE_8,
+    );
+    const lignes13 = lignes.filter((l) => estCompteDuResultatDeLExercice(l.numero));
+    return {
+      lignes678,
+      resultatClasses678: lignes678.reduce((s, l) => s - l.solde, 0),
+      lignes13,
+      resultatCompte13: lignes13.reduce((s, l) => s - l.solde, 0),
+    };
   }
 
   private resoudreTousLesPostesBilan(lignes: LigneBalancePourEtat[]): Map<string, PosteCalcule> {
@@ -180,9 +202,10 @@ export class EtatsFinanciersProjetService {
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
-    const [lignesN, lignesN1] = await Promise.all([
+    const [lignesN, lignesN1, clos] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
+      exerciceCloture(this.exerciceService, tenantId, exerciceId),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -231,6 +254,8 @@ export class EtatsFinanciersProjetService {
       .filter((l) => CLASSES_DE_BILAN.has(l.classe) && !comptesRattaches.has(l.compteId))
       .map((l) => ({ numero: l.numero, intitule: l.intitule, montant: l.solde }));
 
+    const sources = this.sourcesDuResultat(lignesN);
+    const parts = partsDuResultatAuBilan(sources.resultatClasses678, sources.resultatCompte13, sources.lignes678, sources.lignes13);
     const totalActif = parRefN.get('BZ')!.montant;
     const totalPassif = parRefN.get('DZ')!.montant;
     const totalActifN1 = comparatif.provenance ? parRefN1.get('BZ')!.montant : undefined;
@@ -248,6 +273,17 @@ export class EtatsFinanciersProjetService {
       mentionComparatif: comparatif.mention,
       equilibre: Math.abs(totalActif - totalPassif) < 0.01,
       comptesNonRattaches,
+      // Les deux sources de CC, comme au jeu associations · la clôture en
+      // relit l'écart (`ecartInexpliqueDuBilan`), qui sans elles s'abstenait
+      // dès que le 13 portait un solde.
+      controle: {
+        resultatClasses678: sources.resultatClasses678,
+        resultatCompte13: sources.resultatCompte13,
+        resultatAnterieurNonAffecte: parts.resultatAnterieurNonAffecte,
+      },
+      // Exercice CLÔTURÉ qui porte encore le résultat précédent non affecté ·
+      // nommé (`resultatAnterieurNonVire`).
+      resultatAnterieurNonVire: resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, 'CC', 'SYCEBNL'),
     };
   }
 

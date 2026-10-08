@@ -343,7 +343,7 @@ import { correspond } from '../etats-financiers/etats-financiers.communs';
  *    compte bancaire. Aucune ligne non officielle n'est inventée pour le
  *    combler ; le service devra exposer l'écart entre G et le « Résultat
  *    exercice » comme un écart de concordance (même mécanisme que
- *    `resultatClasses678` / `resultatCompte13` / `doubleComptageProbable`),
+ *    `resultatClasses678` / `resultatCompte13`),
  *    jamais le masquer. Les dotations 659 (stocks/créances, contrepartie
  *    39/49) et la part du 679 qui vise 590/591 n'ont PAS ce défaut : leurs
  *    comptes de contrepartie sont dans le périmètre NET de SA2/SA3, donc
@@ -639,9 +639,11 @@ export const POSTES_BILAN_PASSIF_SMT_SYSCOHADA: PosteBilanSmtSyscohada[] = [
  * « Fonctionnement » et COMPTE 103 : « crédité, à l'ouverture de l'exercice,
  * du montant de l'affectation du résultat de l'exercice précédent, par le
  * débit du 131 ») ; cette seconde écriture ne concerne pas le résultat de
- * l'exercice EN COURS et ne remet pas en cause l'arbitrage ci-dessous.] Le
- * service prend l'une OU l'autre source, jamais les deux, et expose
- * `resultatClasses678` / `resultatCompte13` / `doubleComptageProbable`.
+ * l'exercice EN COURS.] Entre la réouverture et cette affectation, le 13
+ * porte donc le résultat PRÉCÉDENT pendant que les classes 6/7/8 portent
+ * celui de l'exercice · le service ADDITIONNE les deux sources
+ * (`resultatAuBilan`, passe V1, B1), sans double compte, et expose
+ * `resultatClasses678` / `resultatCompte13`.
  *
  * 131 À 139, PLUS « TOUT LE 13 » (2026-09-27) · la règle est celle de tout
  * le logiciel (`resultat-de-l-exercice.ts`). Le 130 porte le résultat de

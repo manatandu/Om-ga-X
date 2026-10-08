@@ -189,10 +189,9 @@ export const POSTES_BILAN_PASSIF: PosteBilanSmt[] = [
     fondement:
       "Compte 10 « Dotation » (Partie 2, ch. 3, COMPTE 10), 106 « Écarts de réévaluation » compris, que le plan range sous le 10 (Partie 2, ch. 2). La Note 5 détaille les 101 à 104 dans ses trois rubriques « Dotation non consomptible / Droit d'entrée / Dotation consomptible » ; elle n'en ouvre aucune pour le 106, qu'elle rappelle hors rubriques pour se rapprocher du poste.",
   },
-  // HB n'est PAS listé ici : il est arbitré entre les classes 6/7/8 et les
-  // comptes 131 à 139 selon que l'exercice est clôturé ou non · voir
-  // calculerHB() dans le service, même mécanisme que CH (associations) et
-  // CC (projets). Le commentaire disait « le compte 13 », que HB ne lit plus
+  // HB n'est PAS listé ici : il additionne les classes 6/7/8 et les
+  // comptes 131 à 139 (`resultatAuBilan`, passe V1, B1) · voir calculerHB()
+  // dans le service, même mécanisme que CH (associations) et CC (projets). Le commentaire disait « le compte 13 », que HB ne lit plus
   // en entier (audit final F211).
   {
     ref: 'HC',

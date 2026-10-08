@@ -24,6 +24,7 @@ import { ImmobilisationService } from '../immobilisations/immobilisation.service
 import { TestEcrituresJournalService } from '../controles/test-ecritures-journal.service';
 import { EtatsFinanciersService, PosteCalcule } from '../etats-financiers/etats-financiers.service';
 import { MOTIF_EXERCICE_INTROUVABLE } from '../etats-financiers/etats-financiers.communs';
+import type { ResultatAnterieurNonVire } from '../etats-financiers/resultat-de-l-exercice';
 import { EtatsFinanciersProjetService } from '../etats-financiers/etats-financiers-projet.service';
 import { EtatsFinanciersSmtService } from '../etats-financiers/etats-financiers-smt.service';
 import { AucunPlanABudgetsException, EtatsFinanciersProjetBudgetService } from '../etats-financiers/etats-financiers-projet-budget.service';
@@ -239,6 +240,48 @@ function caseControleR2(declare: DeclarationsFicheR2 | null, valeur: string): st
   const reponse = declare?.controleEntreprise ?? null;
   if (reponse === null) return 'Non renseignée';
   return reponse === valeur ? 'X' : '';
+}
+
+/**
+ * LA CELLULE « RÉSULTAT LOGÉ AU BILAN » DES CONTRÔLES DE LIASSE · le poste,
+ * moins le résultat de l'exercice PRÉCÉDENT qu'il porte encore faute
+ * d'affectation (passe V1, B1 · `partsDuResultatAuBilan`). Le compte de
+ * résultat ne le porte pas · comparé au poste entier, l'écart « doit être
+ * 0 » serait faux avant l'assemblée. Après l'affectation ou le virement de
+ * clôture, la part antérieure est nulle et la cellule reste la seule
+ * référence au poste.
+ *
+ * SAUF SUR UN EXERCICE CLÔTURÉ QUI LA PORTE ENCORE (relecture de la passe
+ * V1, BLOQUANT) · elle aurait dû être virée au report à nouveau en fin
+ * d'exercice (fiche du compte 13 des deux plans). Rien n'est retranché, la
+ * ligne d'écart reste en écart, et l'anomalie la nomme
+ * (`anomalieResultatAnterieurNonVire`) · la retrancher aurait mis le
+ * contrôle au vert sur un bilan qui présente deux résultats comme un seul.
+ */
+export function resultatDeLExerciceLogeAuBilan(
+  cellule: string,
+  bilan: { controle: { resultatAnterieurNonAffecte: number }; resultatAnterieurNonVire: ResultatAnterieurNonVire | null },
+): string {
+  if (bilan.resultatAnterieurNonVire) return cellule;
+  const anterieur = Math.round(bilan.controle.resultatAnterieurNonAffecte * 100) / 100;
+  return Math.abs(anterieur) > 0.005 ? `${cellule}-(${anterieur})` : cellule;
+}
+
+/** L'anomalie « à traiter » d'un exercice clôturé qui porte encore le résultat précédent non affecté (`resultatAnterieurNonVire`). */
+export function anomalieResultatAnterieurNonVire(bilan: {
+  resultatAnterieurNonVire: ResultatAnterieurNonVire | null;
+}): Array<[string, string, string, string, string]> {
+  const n = bilan.resultatAnterieurNonVire;
+  if (!n) return [];
+  return [
+    [
+      'A_TRAITER',
+      n.poste,
+      "Résultat net de l'exercice",
+      n.motif,
+      "Le dire dans les notes annexes · l'affectation passée dans l'exercice suivant, ou sa clôture, porte ce montant au report à nouveau.",
+    ],
+  ];
 }
 
 @Injectable()
@@ -4999,6 +5042,7 @@ export class ExportService {
         'Vérifier le numéro de compte.',
       ]);
     }
+    anomalies.push(...anomalieResultatAnterieurNonVire(bilan));
     anomalies.push(...this.provenanceDuComparatif(bilan, ce));
     if (anomalies.length === 0) anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     let ra = 1;
@@ -5127,7 +5171,7 @@ export class ExportService {
       ['TOTAL PASSIF (HZ)', `'Bilan-Passif'!D${rangsPassif.get('HZ')}`, ''],
       ['Écart bilan actif - passif (doit être 0)', 'B5-B6', 0],
       ['Résultat net (compte de résultat, KZC)', `Résultat!D${rangsCr.get('KZC')}`, ''],
-      ['Résultat net logé au bilan (HB)', `'Bilan-Passif'!D${rangsPassif.get('HB')}`, ''],
+      ['Résultat net logé au bilan (HB)', resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!D${rangsPassif.get('HB')}`, bilan), ''],
       // Constat B2 des cas chiffrés de la clôture · les flux hors exploitation
       // ne sont plus dans KZC, le rapprochement ne les retranche plus.
       ['Flux hors exploitation (hors du résultat, information)', cr.controle.fluxHorsExploitation, ''],
@@ -5194,6 +5238,7 @@ export class ExportService {
         'Passer au Système normal (art. 5) dès le prochain exercice.',
       ]);
     }
+    anomalies.push(...anomalieResultatAnterieurNonVire(bilan));
     anomalies.push(...this.provenanceDuComparatif(bilan, cr));
     if (anomalies.length === 0) anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     let ra = 1;
@@ -5323,7 +5368,7 @@ export class ExportService {
       ['Total général passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
       ['Écart bilan actif - passif (doit être 0)', 'B5-B6', 0],
       ['Résultat net (compte de résultat, XE)', `Résultat!D${rangsCr.get('XE')}`, ''],
-      ['Résultat net logé au bilan (CH)', `'Bilan-Passif'!D${rangsPassif.get('CH')}`, ''],
+      ['Résultat net logé au bilan (CH)', resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!D${rangsPassif.get('CH')}`, bilan), ''],
       ['Écart résultat CR / bilan (doit être 0)', 'B8-B9', 0],
       ['Trésorerie nette au 31/12 (TFT, ZG)', `TFT!E${rangsTft.get('ZG')}`, ''],
       [
@@ -5395,6 +5440,7 @@ export class ExportService {
         'Vérifier le numéro de compte.',
       ]);
     }
+    anomalies.push(...anomalieResultatAnterieurNonVire(bilan));
     anomalies.push(...this.provenanceDuComparatif(bilan, cr));
     if (anomalies.length === 0) {
       anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
@@ -5507,9 +5553,10 @@ export class ExportService {
   /**
    * Ce que le bilan SYSCOHADA doit dire sous son cadre · l'équilibre, les
    * comptes de bilan qu'aucun poste du ch. 7 ne réclame (jamais masqués :
-   * leur montant n'entre dans aucun total, il faut donc qu'il se voie), et
-   * le double comptage du résultat quand les classes 6/7/8 ET le compte 13
-   * portent tous deux un solde.
+   * leur montant n'entre dans aucun total, il faut donc qu'il se voie). Les
+   * classes 6/7/8 et le compte 13 portant tous deux un solde ne sont plus un
+   * double comptage · c'est la situation avant l'affectation, et CJ les
+   * additionne (`resultatAuBilan`, passe V1, B1).
    */
   private controlesBilanSyscohada(bilan: Awaited<ReturnType<EtatsFinanciersSyscohadaService['bilan']>>): string {
     const equilibre = bilan.equilibre
@@ -5533,10 +5580,7 @@ export class ExportService {
           bilan.comptesASolderALaCloture.map((c) => `${c.numero} (${c.source})`).join(' ; ') +
           '.'
         : '';
-    const doubleComptage = bilan.controle.doubleComptageProbable
-      ? ` DOUBLE COMPTAGE PROBABLE du résultat : les classes 6/7/8 portent ${bilan.controle.resultatClasses678.toLocaleString('fr-FR')} et le compte 13 ${bilan.controle.resultatCompte13.toLocaleString('fr-FR')} · le CJ du bilan ne peut pas venir des deux à la fois.`
-      : '';
-    return equilibre + nonRattaches + aSolder + doubleComptage;
+    return equilibre + nonRattaches + aSolder;
   }
 
   /** Bilan SYSCOHADA · export individuel, charte ETAFI, valeurs seules. */
@@ -6949,7 +6993,7 @@ export class ExportService {
       ['TOTAL GÉNÉRAL passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
       ['Écart bilan actif - passif (doit être 0)', 'B5-B6', 0],
       ['RÉSULTAT NET du compte de résultat (XI)', `Résultat!D${rangsCr.get('XI')}`, ''],
-      ["Résultat net logé au bilan (CJ)", `'Bilan-Passif'!D${rangsPassif.get('CJ')}`, ''],
+      ["Résultat net logé au bilan (CJ)", resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!D${rangsPassif.get('CJ')}`, bilan), ''],
       ['Écart résultat CR / bilan (doit être 0)', 'B8-B9', 0],
       ['Trésorerie nette au 31 Décembre par les flux (TFT, ZH)', `TFT!D${rangsTft.get('ZH')}`, ''],
       [
@@ -6963,18 +7007,24 @@ export class ExportService {
         bilan.controle.resultatClasses678,
         '',
       ],
-      ['Résultat par le compte 13 (après clôture)', bilan.controle.resultatCompte13, ''],
-      [
-        'Une seule des deux sources doit être servie (double comptage sinon)',
-        bilan.controle.doubleComptageProbable ? 'DOUBLE COMPTAGE PROBABLE' : 'OK',
-        'OK',
-      ],
+      // Le compte 13 porte, avant l'affectation, le résultat de l'exercice
+      // PRÉCÉDENT · CJ additionne les deux sources (`resultatAuBilan`, passe
+      // V1, B1), la ligne qui exigeait « une seule des deux » est retirée.
+      ['Résultat par le compte 13 (non affecté ou après clôture)', bilan.controle.resultatCompte13, ''],
     ];
     let rc = 1;
     for (const [lab, val, attendu] of controles) {
       rc += 1;
       ctl.getCell(rc, 1).value = lab;
-      ctl.getCell(rc, 2).value = typeof val === 'string' && /[A-Z]!|SUM\(|^B\d/.test(val) ? { formula: val } : val;
+      // TOUT TEXTE DE LA COLONNE EST UNE FORMULE, comme aux quatre autres
+      // liasses (relecture de la passe V1). Le filtre `/[A-Z]!|SUM\(|^B\d/`
+      // qu'il remplace écartait les mots « OK » et « DOUBLE COMPTAGE
+      // PROBABLE » d'une ligne retirée depuis, mais aussi toute référence à
+      // une feuille dont le nom finit par une minuscule ou une apostrophe
+      // (« Résultat!D51 », « 'Bilan-Passif'!D17 ») · écrites en TEXTE, elles
+      // rendaient chaque écart de la feuille « #VALUE! », et la ligne
+      // « Écart résultat CR / bilan » ne pouvait dire ni l'égalité ni l'écart.
+      ctl.getCell(rc, 2).value = typeof val === 'string' ? { formula: val } : val;
       ctl.getCell(rc, 3).value = attendu;
       styleLigne(ctl, rc, 1, 3, 'normal', [2]);
     }
@@ -6996,15 +7046,6 @@ export class ExportService {
         'Bilan',
         `Actif et passif diffèrent de ${(bilan.totalActif - bilan.totalPassif).toFixed(2)}.`,
         'Vérifier les écritures déséquilibrées et les comptes non rattachés ci-dessous.',
-      ]);
-    }
-    if (bilan.controle.doubleComptageProbable) {
-      anomalies.push([
-        'A_TRAITER',
-        'CJ',
-        'Résultat net de l’exercice',
-        `Les classes 6/7/8 portent ${bilan.controle.resultatClasses678.toFixed(2)} ET le compte 13 porte ${bilan.controle.resultatCompte13.toFixed(2)} : le résultat viendrait de deux sources à la fois.`,
-        'Solder les comptes de gestion à la clôture, ou reprendre l’écriture de détermination du résultat (Titre VII COMPTE 13).',
       ]);
     }
     if (!cr.controle.coherent) {
@@ -7058,6 +7099,7 @@ export class ExportService {
     for (const p of tft.postesNonCalculablesN1 ?? []) {
       anomalies.push(['INFO', p.ref, 'Tableau des flux · colonne N-1', p.raison, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.']);
     }
+    anomalies.push(...anomalieResultatAnterieurNonVire(bilan));
     anomalies.push(...this.provenanceDuComparatif(bilan, cr, tft));
     if (anomalies.length === 0) anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     let ra = 1;
@@ -7194,7 +7236,7 @@ export class ExportService {
       ['Total passif', `'Bilan-Passif'!C${rangsPassif.get('SPZ')}`, ''],
       ['Écart bilan actif - passif (doit être 0)', 'B5-B6', 0],
       ['RÉSULTAT EXERCICE du compte de résultat (G = C - D + E - F)', `Résultat!C${rangsCr.get('SG')}`, ''],
-      ['Résultat logé au bilan (poste « Résultat exercice »)', `'Bilan-Passif'!C${rangsPassif.get('SP2')}`, ''],
+      ['Résultat logé au bilan (poste « Résultat exercice »)', resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!C${rangsPassif.get('SP2')}`, bilan), ''],
       ['Écart résultat CR / bilan (doit être 0)', 'B8-B9', 0],
       [
         "Chiffre d'affaires de l'exercice (art. 13, compte 70)",
@@ -7288,6 +7330,7 @@ export class ExportService {
         eligibilite.qualificationParLEntite,
       ]);
     }
+    anomalies.push(...anomalieResultatAnterieurNonVire(bilan));
     anomalies.push(...this.provenanceDuComparatif(bilan, cr));
     if (anomalies.length === 0) anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     let ra = 1;

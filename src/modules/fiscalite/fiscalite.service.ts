@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { estCompteDuResultatDeLExercice } from '../etats-financiers/resultat-de-l-exercice';
+import { estCompteDuResultatDeLExercice, resultatDeLExerciceAuxClassesDeGestion } from '../etats-financiers/resultat-de-l-exercice';
 import {
   FormeJuridiqueSyscohada,
   NatureActiviteFiscale,
@@ -316,9 +316,11 @@ export class FiscaliteService {
   /**
    * Résultat comptable et chiffre d'affaires lus dans la balance.
    *
-   * Même règle que EtatsFinanciersService.calculerCH : avant clôture le
-   * résultat vit dans les classes 6, 7 et 8 ; après, dans le compte 13 qui
-   * les a soldées. L'une OU l'autre source, jamais les deux. Comptes Détail
+   * Le résultat de l'EXERCICE seul · avant clôture il vit dans les classes
+   * 6, 7 et 8 ; après, dans le compte 13 qui les a soldées. L'une OU
+   * l'autre source, jamais les deux · à la différence du poste du bilan
+   * (`resultatAuBilan`), qui y ajoute le résultat PRÉCÉDENT resté au 13
+   * jusqu'à son affectation, et qui n'est pas imposable ici. Comptes Détail
    * seulement · un compte Total n'est qu'un agrégat d'affichage de ses
    * enfants, l'additionner compterait deux fois les mêmes mouvements.
    */
@@ -587,7 +589,9 @@ export class FiscaliteService {
         Math.abs(l.clotureCredit ?? 0) > 0.005,
     );
     const reportAuCompte13 = lignes13.reduce((s, l) => s + (l.reportCredit ?? 0) - (l.reportDebit ?? 0), 0);
-    const avantCloture = gestionNonSoldee || !mouvementPropre13;
+    // Une règle pour tout le logiciel · les états la lisent aussi pour séparer,
+    // dans le poste du résultat, l'exercice du résultat antérieur non affecté.
+    const avantCloture = resultatDeLExerciceAuxClassesDeGestion(gestionNonSoldee, mouvementPropre13);
     // Un produit est un solde créditeur, donc négatif dans la convention
     // `solde = débit - crédit` de la balance · d'où le signe.
     //

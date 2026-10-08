@@ -191,6 +191,24 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- LIGNE PASSE-1-ETATS INTÉGRÉE (2026-10-08, défauts P1, A1 et B1 de la première passe de la version 1), relevés non bloquants ·
+  - Le **130** (« Résultat en instance d'affectation », SYSCOHADA) reste hors de
+    CJ et de SP2 (anomalie n° 7, audit final F218) · le ch. 7 ne le nomme pas.
+    Un dossier qui use de ce compte garde un bilan intermédiaire déséquilibré
+    de son montant, signalé en « comptes non rattachés ». Le corpus ne tranche
+    pas · point pour Manasse (le lire en CJ comme le 131, par la fiche du
+    compte 13 dont il est une subdivision ?).
+  - TFT des associations · une ouverture saisie en OD au premier jour (sans
+    report) reste lue comme flux, quand le SYSCOHADA la nomme et vide ses postes
+    (bloquant 2 du 2026-10-07). Hors des trois défauts, non codé (gel).
+  
+  Second tour de relecture (aucun BLOQUANT), mineurs ·
+  1. un exercice N clos avant le virement n'est signalé que sur son propre bilan ; la colonne N-1 de N+1 reprend le montant dans CH ou CJ sans le dire, et la liasse de N+1 ne lève pas l'anomalie (`comparatifDuBilan`, liasses) ;
+  2. `mentionExercicePrecedentVide` (etats-financiers.communs.ts) conseille d'importer la balance de clôture quand l'exercice précédent n'a que du brouillard, sans dire de le valider ;
+  3. exercice précédent vide · la colonne N-1 du TFT des associations rend des zéros avec `exerciceN1Disponible` vrai, sans dire « vide » ;
+  4. premier exercice clos par la nouvelle clôture · `lignesALOuverture(lignesN)` présente l'ouverture déjà virée (13 à 0, 12/129 porte le montant) dans le comparatif et l'ouverture du TFT ; totaux justes, reclassement interne aux capitaux propres faux.
+
+
 - LIGNE TVA-DECISIONS INTÉGRÉE (2026-10-08, TVA des factures annulées et rattachées tard, perte d'une créance avec duplicata, trop-payé de liquidation), relevés non bloquants ·
   - (D) La perte au TTC (sans duplicata) reste une écriture D 651 / C 416,
     comme avant · la consigne ne la ramène pas au compte d'origine, lecture
