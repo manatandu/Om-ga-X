@@ -337,8 +337,10 @@ export class ExerciceService {
    * PÉRIODE (relecture du 2026-10-08) · admis sur la seule foi de la liasse,
    * un transfert passé d'un seul côté laissait clôturer les deux dossiers,
    * et la liasse du groupe restait refusée sans issue, ses exercices clos.
-   * La clôture le lit sur tous les dossiers du groupe, validé, par le service
-   * du groupe (`LECTEUR_VIREMENTS_GROUPE`), et nomme l'écart. Un transit
+   * La clôture le lit sur tous les dossiers du groupe, position cumulée à sa
+   * date de clôture par la date des écritures (jamais par des exercices de
+   * mêmes bornes, que le siège et ses cellules ne partagent pas toujours),
+   * par le service du groupe (`LECTEUR_VIREMENTS_GROUPE`), et nomme l'écart. Un transit
    * interne au dossier (banque vers caisse) tombe sous la même règle. Le
    * Système minimal de trésorerie lit le 585 à son bilan · l'admission ne le
    * vise pas, un écart égal par hasard n'y serait pas un virement.
@@ -417,16 +419,14 @@ export class ExerciceService {
           `Le 585 du groupe n'a pas pu être lu (${(e as Error).message}) · la clôture qui l'admettrait est refusée.`,
         );
       }
-      const groupe = await lecteurGroupe.virements585DuGroupe(tenantId, periode);
+      const groupe = await lecteurGroupe.virements585DuGroupe(tenantId, periode.dateFin);
       if (Math.abs(groupe.solde) <= EPSILON) return;
       throw new BadRequestException(
-        `Le 585 (virements de fonds) du groupe n'est pas soldé sur la période · écart de ${montantFr(Math.abs(groupe.solde))} ` +
-          `${groupe.solde > 0 ? 'au débit' : 'au crédit'}, validé, tous dossiers du groupe confondus. Un transfert est passé d'un ` +
-          "seul côté, ou sa contrepartie n'est pas encore validée · passez et validez-la dans l'autre dossier, puis clôturez " +
-          "(fiche du compte 58, « soldés à la fin de l'exercice »)." +
-          (groupe.dossiersSansExercice > 0
-            ? ` ${groupe.dossiersSansExercice} dossier(s) du groupe n'ont pas d'exercice sur cette période · leur 585 n'est pas lu.`
-            : ''),
+        `Le 585 (virements de fonds) du groupe n'est pas soldé au ${periode.dateFin.toLocaleDateString('fr-FR', { timeZone: 'UTC' })} · écart de ` +
+          `${montantFr(Math.abs(groupe.solde))} ${groupe.solde > 0 ? 'au débit' : 'au crédit'}, écritures validées de tous les ` +
+          "dossiers du groupe. Un transfert est passé d'un seul côté, sa contrepartie n'est pas encore validée, ou un dossier a " +
+          "quitté le groupe en gardant un virement · passez et validez la contrepartie, ou reclassez le solde, puis clôturez " +
+          "(fiche du compte 58, « soldés à la fin de l'exercice »).",
       );
     }
     const part585 =

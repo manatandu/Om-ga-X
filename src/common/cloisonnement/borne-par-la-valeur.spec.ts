@@ -212,8 +212,22 @@ describe('le siège déclare son périmètre pour chaque méthode qui franchit',
     // modèle cloisonné · `creerCellule` déclare à part la cellule qu'elle
     // vient d'ouvrir, absente par construction de tout périmètre calculé.
     const sansFranchissement = ['cellules', 'creerCellule'];
+    // LE GROUPE ENTIER, POUR UNE SOMME (G1, 2026-10-08) · la clôture d'une
+    // CELLULE doit voir le 585 de tout son groupe, siège compris, que
+    // `dansLeGroupe` (le périmètre d'un siège) n'ouvre pas. Seule exception
+    // déclarée · le groupe se lit sur la mère du dossier de SESSION, et une
+    // seule somme en sort, jamais une ligne d'un voisin.
+    const groupeEntier = ['virements585DuGroupe'];
+    for (const nom of groupeEntier) {
+      const corps = source.slice(source.indexOf(`  async ${nom}(`)).split('\n  }\n')[0];
+      expect(corps).toContain('const mere = dossier?.dossierMereId ?? tenantId;');
+      expect(corps).toContain('where: { id: tenantId }, select: { dossierMereId: true }');
+      expect(corps).toContain('perimetreDeGroupe(membres,');
+      expect(corps).toContain('this.prisma.ligneEcriture.aggregate(');
+      expect(corps).not.toContain('findMany({\n          where: { compte');
+    }
     for (const nom of publiques) {
-      if (sansFranchissement.includes(nom)) continue;
+      if (sansFranchissement.includes(nom) || groupeEntier.includes(nom)) continue;
       // La façade publique, jusqu'à son accolade fermante · elle doit ouvrir
       // le périmètre ET appeler le corps qui franchit.
       const facade = source.slice(source.indexOf(`  async ${nom}(`)).split('\n  }\n')[0];
@@ -222,7 +236,7 @@ describe('le siège déclare son périmètre pour chaque méthode qui franchit',
     }
     // Le test ne vaut que s'il porte sur quelque chose · sept méthodes
     // franchissent aujourd'hui.
-    expect(publiques.filter((n) => !sansFranchissement.includes(n))).toHaveLength(7);
+    expect(publiques.filter((n) => !sansFranchissement.includes(n) && !groupeEntier.includes(n))).toHaveLength(7);
     expect(source).toContain("perimetreDeGroupe([resultat.tenant.id]");
   });
 });

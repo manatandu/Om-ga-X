@@ -33,13 +33,11 @@ export interface LecteurBilan {
  */
 export const LECTEUR_VIREMENTS_GROUPE = 'LECTEUR_VIREMENTS_GROUPE';
 
-export interface VirementsDuGroupe {
-  /** Solde net du 585 (débit moins crédit) de tous les dossiers du groupe sur la période, livre-journal seul. */
-  solde: number;
-  /** Dossiers du groupe sans exercice sur la même période · leur 585 n'est pas lu. */
-  dossiersSansExercice: number;
-}
-
 export interface LecteurVirementsGroupe {
-  virements585DuGroupe(tenantId: string, periode: { dateDebut: Date; dateFin: Date }): Promise<VirementsDuGroupe>;
+  /**
+   * Position cumulée du 585 (débit moins crédit) de tous les dossiers du
+   * groupe à cette date, lignes validées datées au plus tard ce jour, hors
+   * écritures générées par la clôture.
+   */
+  virements585DuGroupe(tenantId: string, dateArrete: Date): Promise<{ solde: number }>;
 }

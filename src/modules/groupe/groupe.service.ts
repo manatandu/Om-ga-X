@@ -283,21 +283,33 @@ export class GroupeService {
   }
 
   /**
-   * LE 585 DU GROUPE SUR UNE PÉRIODE (G1, relecture du 2026-10-08) · lu par la
+   * LE 585 DU GROUPE À UNE DATE (G1, relectures du 2026-10-08) · lu par la
    * clôture de l'un de ses dossiers, siège ou cellule (`LECTEUR_VIREMENTS_GROUPE`).
    * Fiche SYCEBNL du compte 58 · « soldés à la fin de l'exercice », sur
    * l'entité · un transfert passé d'un seul côté laissait clôturer les deux
    * dossiers, puis la liasse du groupe restait refusée sans issue (exercices
-   * clos). Le groupe se lit sur le dossier de la SESSION (sa mère, ou lui s'il
-   * est le siège), jamais sur un dossier reçu ; seule une SOMME en sort, le
-   * détail des voisins reste au siège. Livre-journal seul, hors solde des
-   * comptes de gestion, exercices de MÊME période ; le dossier de combinaison
-   * n'est pas un membre (aucune donnée propre).
+   * clos).
+   *
+   * LA POSITION CUMULÉE À LA DATE DE CLÔTURE, PAR LA DATE DES ÉCRITURES ·
+   * jamais par « l'exercice de même période » (second tour) · un siège à
+   * premier exercice long (art. 7) et sa cellule civile ne partagent aucune
+   * borne, la lecture n'en voyait qu'un côté, et les deux clôtures étaient
+   * refusées pour toujours. Chaque dossier du groupe pèse ses lignes du 585
+   * VALIDÉES et datées au plus tard ce jour, tous exercices confondus, hors
+   * écritures générées par la clôture (le report à-nouveau reprendrait ce
+   * qui est déjà compté ; le solde des comptes de gestion ne touche pas la
+   * classe 5) · la position ne dépend ni des bornes des exercices voisins ni
+   * de leur clôture. Le bilan d'ouverture importé d'un premier exercice,
+   * qui n'est pas généré par la clôture, compte une fois.
+   *
+   * LE GROUPE ENTIER, POUR UNE SOMME · seule méthode qui franchit hors de
+   * `dansLeGroupe`, déclarée comme telle dans `borne-par-la-valeur.spec.ts`
+   * · une cellule doit voir le groupe pour clôturer. Il se lit sur le dossier
+   * de la SESSION (sa mère, ou lui s'il est le siège), jamais sur un dossier
+   * reçu ; seule une SOMME en sort, le détail des voisins reste au siège. Le
+   * dossier de combinaison n'est pas un membre (lié par `dossierCombinaisonId`).
    */
-  async virements585DuGroupe(
-    tenantId: string,
-    periode: { dateDebut: Date; dateFin: Date },
-  ): Promise<{ solde: number; dossiersSansExercice: number }> {
+  async virements585DuGroupe(tenantId: string, dateArrete: Date): Promise<{ solde: number }> {
     const dossier = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { dossierMereId: true } });
     const mere = dossier?.dossierMereId ?? tenantId;
     const membres = (
@@ -307,26 +319,19 @@ export class GroupeService {
       })
     ).map((m) => m.id);
     return perimetreDeGroupe(membres, async () => {
-      const exercices = await this.prisma.exercice.findMany({
-        where: { tenantId: { in: membres }, dateDebut: periode.dateDebut, dateFin: periode.dateFin },
-        select: { id: true, tenantId: true },
-      });
       const agregat = await this.prisma.ligneEcriture.aggregate({
         where: {
           compte: { tenantId: { in: membres }, numero: { startsWith: '585' } },
           ecriture: {
             tenantId: { in: membres },
-            exerciceId: { in: exercices.map((e) => e.id) },
+            date: { lte: dateArrete },
             statut: StatutEcriture.VALIDEE,
-            estSoldeDesComptesDeGestion: false,
+            estGenereeParCloture: false,
           },
         },
         _sum: { debit: true, credit: true },
       });
-      return {
-        solde: Math.round((Number(agregat._sum.debit ?? 0) - Number(agregat._sum.credit ?? 0)) * 100) / 100,
-        dossiersSansExercice: membres.length - new Set(exercices.map((e) => e.tenantId)).size,
-      };
+      return { solde: Math.round((Number(agregat._sum.debit ?? 0) - Number(agregat._sum.credit ?? 0)) * 100) / 100 };
     });
   }
 

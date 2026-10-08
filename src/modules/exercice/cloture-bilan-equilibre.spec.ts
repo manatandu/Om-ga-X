@@ -24,7 +24,7 @@ function monter(
   treize = { debit: 0, credit: 0 },
   virements585 = { debit: 0, credit: 0 },
   // Le 585 de tout le groupe sur la période · soldé par défaut.
-  groupe: { solde: number; dossiersSansExercice: number } | 'absent' = { solde: 0, dossiersSansExercice: 0 },
+  groupe: { solde: number } | 'absent' = { solde: 0 },
 ) {
   const lecteur = { bilan: jest.fn().mockResolvedValue(bilan) };
   const lecteurGroupe = { virements585DuGroupe: jest.fn().mockResolvedValue(groupe) };
@@ -111,8 +111,8 @@ describe('Clôture · le bilan doit s’équilibrer', () => {
         credit: 2_000_000,
       });
       await expect(refuser('t', 'e', CELLULE)).resolves.toBeUndefined();
-      // Le groupe se lit sur la période de l'exercice clôturé.
-      expect(lecteurGroupe.virements585DuGroupe).toHaveBeenCalledWith('t', PERIODE);
+      // Le groupe se lit à la date de clôture de l'exercice.
+      expect(lecteurGroupe.virements585DuGroupe).toHaveBeenCalledWith('t', PERIODE.dateFin);
     });
 
     it('un transfert passé d’un seul côté refuse la clôture · le 585 du groupe n’est pas soldé (relecture du 2026-10-08)', async () => {
@@ -122,10 +122,10 @@ describe('Clôture · le bilan doit s’équilibrer', () => {
         { totalActif: 3_000_000, totalPassif: 5_000_000, controle: SANS_RESULTAT },
         undefined,
         { debit: 2_000_000, credit: 0 },
-        { solde: 2_000_000, dossiersSansExercice: 1 },
+        { solde: 2_000_000 },
       );
       await expect(refuser('t', 'e', SIEGE)).rejects.toThrow(
-        /585[\s\S]*du groupe n'est pas soldé[\s\S]*2\s000\s000,00 au débit[\s\S]*1 dossier\(s\) du groupe n'ont pas d'exercice/,
+        /585[\s\S]*du groupe n'est pas soldé au 31\/12\/2026[\s\S]*2\s000\s000,00 au débit[\s\S]*quitté le groupe/,
       );
     });
 
