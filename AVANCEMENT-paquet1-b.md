@@ -83,6 +83,22 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 - Tests · `fenetre-propositions.spec.ts` (le DTO sous le pipe global de
   production, et la route qui ne porte plus de `ParseIntPipe`).
 
+### B3 · balance âgée · la ligne au solde nul sous « Soldes en sens inverse »
+
+- AVANT (p1b_avant) · CLIENTS_41 au 31/12/2026 · C3, facture de 1 000 000 du
+  10/03 et règlement de 1 000 000 du 10/10 non lettrés ; C3B, facture de
+  500 000 · C3 sortait parmi les soldes en sens inverse (lu true), aucune
+  section à part (`soldesNuls` absent).
+- Correction · `EcritureService.balanceAgee` rend les lignes au solde nul à
+  part (`soldesNuls`, sans tranches, solde 0), jamais en sens inverse ; les
+  totaux et le net n'en bougent pas. Le classeur exporté les écrit sous
+  « SOLDES NULS · pièces ouvertes qui se compensent, à lettrer », sans total
+  ni place dans le net ; l'écran aussi, solde écrit « 0,00 », bulle d'aide
+  complétée.
+- Tests · `balance-agee-tranches.spec.ts` (deux cas, clients puis « 40 et
+  41 » et fournisseurs), `balance-agee-export.spec.ts` (un cas, classeur
+  relu).
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -125,7 +141,7 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 
 ## Reste
 
-B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
+B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 (`npm run build`, `cd client && npm run build`, puis
 `/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
 
@@ -133,6 +149,6 @@ B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 
 ```bash
 npx tsc --noEmit
-npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement
+npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export
 cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts
 ```

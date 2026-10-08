@@ -1211,6 +1211,20 @@ export class ExportService {
         etat.totaux.sensInverse,
       ));
     }
+    // LES SOLDES NULS, À PART (paquet 1, B3) · des pièces ouvertes qui se
+    // compensent, sans tranches ni total · leur solde est nul, le net n'en
+    // bouge pas, et elles n'entrent dans aucune somme. Le titre dit ce
+    // qu'elles appellent.
+    if ((etat.soldesNuls ?? []).length > 0) {
+      const separateur = feuille.addRow([]);
+      separateur.getCell(1).value = 'SOLDES NULS · pièces ouvertes qui se compensent, à lettrer';
+      separateur.font = { size: 9, italic: true };
+      for (const l of etat.soldesNuls) {
+        const r = feuille.addRow([]);
+        r.getCell(1).value = l.libelle;
+        r.getCell(nbColonnes).value = 0;
+      }
+    }
     // Le filtre ne couvre que la PREMIÈRE section, et seulement si elle n'a
     // pas de titre · étendu aux suivantes, ou posé sur une ligne de titre, un
     // tri mêlerait les populations, leurs titres et leurs totaux. Sans filtre,

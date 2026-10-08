@@ -49,8 +49,13 @@ interface BalanceAgee {
   debiteurs: LigneAgee[];
   /** Ventilés · solde créditeur dans le sens normal (dette fournisseur, sociale, fiscale). */
   crediteurs: LigneAgee[];
-  /** Non ventilés · sens contraire au périmètre, ou solde nul. */
+  /** Non ventilés · sens contraire au périmètre. */
   sensInverse: LigneAgee[];
+  /**
+   * Solde nul · des pièces ouvertes qui se compensent (paquet 1, B3), en
+   * aucun sens, sans tranches et hors de tout total · à lettrer.
+   */
+  soldesNuls: LigneAgee[];
   totaux: {
     parTranche: number[];
     parTrancheCrediteurs: number[];
@@ -133,6 +138,7 @@ export function BalanceAgeePage() {
           setDonnees({
             ...r,
             sensInverse: r.sensInverse ?? [],
+            soldesNuls: r.soldesNuls ?? [],
             totaux: {
               ...r.totaux,
               parTrancheCrediteurs: r.totaux.parTrancheCrediteurs ?? [],
@@ -165,7 +171,9 @@ export function BalanceAgeePage() {
     gap: '10px',
   } as const;
 
-  const ligne = (l: LigneAgee, ventile: boolean) => (
+  // `soldeNul` · le solde s'écrit « 0,00 » · vide, il se lirait comme une
+  // absence de solde, alors que c'est la réponse.
+  const ligne = (l: LigneAgee, ventile: boolean, soldeNul = false) => (
     <div
       key={l.cle}
       style={grille}
@@ -179,7 +187,7 @@ export function BalanceAgeePage() {
           {ventile ? montant(l.montants[i] ?? 0) : ''}
         </span>
       ))}
-      <span className="font-mono text-right font-semibold">{montant(l.solde)}</span>
+      <span className="font-mono text-right font-semibold">{soldeNul ? montantTotal(0) : montant(l.solde)}</span>
     </div>
   );
 
@@ -252,7 +260,7 @@ export function BalanceAgeePage() {
             <Aide sujet="balanceAgee" />
             <Aide
               titre="Lecture de la balance âgée"
-              texte="Une ligne par tiers, pas par compte : un tiers qui porte plusieurs comptes rattachés (un compte d'exploitation et un compte douteux, par exemple) présente ici son exposition entière. Une échéance non renseignée en saisie est rattachée à la date de l'écriture. Les lignes lettrées, soldées par définition, n'apparaissent pas. Seul un solde dans le sens normal du compte se ventile : une créance client, une dette fournisseur, et dans les deux sens les comptes du personnel, des organismes sociaux, de l'État et des débiteurs et créditeurs divers. Un client créditeur ou un fournisseur débiteur est rendu à part, sans antériorité. Le solde net doit recouper celui de la balance auxiliaire des mêmes comptes."
+              texte="Une ligne par tiers, pas par compte : un tiers qui porte plusieurs comptes rattachés (un compte d'exploitation et un compte douteux, par exemple) présente ici son exposition entière. Une échéance non renseignée en saisie est rattachée à la date de l'écriture. Les lignes lettrées, soldées par définition, n'apparaissent pas. Seul un solde dans le sens normal du compte se ventile : une créance client, une dette fournisseur, et dans les deux sens les comptes du personnel, des organismes sociaux, de l'État et des débiteurs et créditeurs divers. Un client créditeur ou un fournisseur débiteur est rendu à part, sans antériorité. Un tiers dont les pièces ouvertes se compensent (solde nul) est rendu à part lui aussi, sans antériorité ni total : ses pièces sont à lettrer. Le solde net doit recouper celui de la balance auxiliaire des mêmes comptes."
               source="Balance âgée"
             />
           </span>
@@ -296,7 +304,8 @@ export function BalanceAgeePage() {
         {donnees &&
           donnees.debiteurs.length === 0 &&
           donnees.crediteurs.length === 0 &&
-          donnees.sensInverse.length === 0 && (
+          donnees.sensInverse.length === 0 &&
+          donnees.soldesNuls.length === 0 && (
             <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
               Aucune échéance non lettrée sur les comptes de tiers de cet exercice.
             </div>
@@ -304,7 +313,8 @@ export function BalanceAgeePage() {
 
         {donnees && donnees.debiteurs.length > 0 && (
           <>
-            {(donnees.crediteurs.length > 0 || donnees.sensInverse.length > 0) && intercalaire('Soldes débiteurs')}
+            {(donnees.crediteurs.length > 0 || donnees.sensInverse.length > 0 || donnees.soldesNuls.length > 0) &&
+              intercalaire('Soldes débiteurs')}
             {donnees.debiteurs.map((l) => ligne(l, true))}
             {ligneTotal('Total débiteurs', donnees.totaux.parTranche, donnees.totaux.debiteurs)}
           </>
@@ -326,8 +336,20 @@ export function BalanceAgeePage() {
           </>
         )}
 
+        {/* Paquet 1, B3 · un solde nul n'est en aucun sens · à part, sans
+            total, le net n'en bouge pas. */}
+        {donnees && donnees.soldesNuls.length > 0 && (
+          <>
+            {intercalaire('Soldes nuls · pièces ouvertes qui se compensent, à lettrer')}
+            {donnees.soldesNuls.map((l) => ligne(l, false, true))}
+          </>
+        )}
+
         {donnees &&
-          (donnees.debiteurs.length > 0 || donnees.crediteurs.length > 0 || donnees.sensInverse.length > 0) && (
+          (donnees.debiteurs.length > 0 ||
+            donnees.crediteurs.length > 0 ||
+            donnees.sensInverse.length > 0 ||
+            donnees.soldesNuls.length > 0) && (
             <div
               style={grille}
               className="px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold"

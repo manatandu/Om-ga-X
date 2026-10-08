@@ -252,7 +252,8 @@ export type SensNormalAgee = 'DEBITEUR' | 'CREDITEUR' | 'LES_DEUX' | 'SELON_LE_C
 /**
  * Une ligne (un tiers, à défaut un compte) se ventile-t-elle ? Un solde nul
  * ne se ventile jamais · des pièces ouvertes qui se compensent ne disent aucun
- * retard, et restent montrées avec les soldes non ventilés. Sous « 40 et 41 »,
+ * retard, et sont montrées À PART (`soldesNuls` de la balance âgée, paquet 1,
+ * B3), jamais parmi les soldes en sens inverse. Sous « 40 et 41 »,
  * le sens se lit sur TOUS les comptes de la ligne (relecture du 2026-10-08) ·
  * lu sur le premier compte rencontré, un tiers rattaché à un 401 ET à un 411
  * changeait de section selon l'ordre de lecture de la base. Mêlée, la ligne
@@ -3033,8 +3034,20 @@ export class EcritureService {
       ligneVentilee(perimetre.sensNormal, [...(comptesDeLaCle.get(c.cle) ?? [c.numero])], c.solde);
     const debiteurs = toutes.filter((c) => c.solde > 0 && ventilee(c)).sort((a, b) => b.solde - a.solde);
     const crediteurs = toutes.filter((c) => c.solde < 0 && ventilee(c)).sort((a, b) => a.solde - b.solde);
+    // UN SOLDE NUL N'EST EN AUCUN SENS (paquet 1, B3) · des pièces ouvertes
+    // qui se compensent (une facture et son règlement non lettrés entre eux)
+    // ne disent ni retard ni avance. Rangées parmi les soldes en sens
+    // inverse, elles s'y lisaient comme un client créditeur ou un
+    // fournisseur débiteur, sous un titre faux. Elles sont rendues à part,
+    // sans tranches et hors de tout total, avec ce qu'elles appellent · un
+    // lettrage.
+    const soldeNul = (c: LigneAgee) => Math.abs(c.solde) < 0.005;
+    const soldesNuls = toutes
+      .filter(soldeNul)
+      .map((c) => ({ ...c, montants: [] as number[], solde: 0 }))
+      .sort((a, b) => a.libelle.localeCompare(b.libelle));
     const sensInverse = toutes
-      .filter((c) => !ventilee(c))
+      .filter((c) => !soldeNul(c) && !ventilee(c))
       // Un client créditeur n'a pas d'antériorité de créance, un fournisseur
       // débiteur pas de retard de paiement · leurs tranches sont vidées
       // plutôt que rendues, pour qu'aucune lecture ne les additionne.
@@ -3061,6 +3074,8 @@ export class EcritureService {
       debiteurs,
       crediteurs,
       sensInverse,
+      // Hors de tout total · leur solde est nul, le net n'en bouge pas.
+      soldesNuls,
       totaux: {
         // Par tranche, au signe de la balance (débit moins crédit) · les
         // créditeurs ventilés y sont négatifs, comme leur solde.

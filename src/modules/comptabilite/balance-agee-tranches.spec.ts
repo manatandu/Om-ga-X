@@ -309,6 +309,45 @@ describe('balance âgée · les périmètres et ce que l’antériorité y signi
     expect(r.sensInverse).toHaveLength(0);
   });
 
+  /**
+   * PAQUET 1, B3 · une facture et son règlement non lettrés entre eux font un
+   * solde nul · relevé sur vraie base, la ligne sortait sous « Soldes en sens
+   * inverse », comme un client créditeur. Elle est rendue à part, hors de
+   * tout total, et les totaux ne bougent pas.
+   */
+  it('un solde nul n’est en aucun sens · rendu à part, hors des totaux (B3)', async () => {
+    const r = await requete('CLIENTS_41', [
+      // C3 · facture de mars, règlement d'octobre, non lettrés · solde nul.
+      ligneEcriture('411003', 1_000_000, 0, '2025-03-10', '2025-03-10'),
+      ligneEcriture('411003', 0, 1_000_000, '2025-10-10', '2025-10-10'),
+      // C3B · une créance ordinaire.
+      ligneEcriture('411004', 500_000, 0, '2025-11-10', '2025-11-10'),
+    ]);
+    expect(r.sensInverse).toHaveLength(0);
+    expect(r.totaux.sensInverse).toBe(0);
+    expect(r.soldesNuls.map((l) => l.numero)).toEqual(['411003']);
+    expect(r.soldesNuls[0]).toMatchObject({ solde: 0, montants: [] });
+    expect(r.debiteurs.map((l) => l.numero)).toEqual(['411004']);
+    expect(r.totaux.debiteurs).toBe(500_000);
+    expect(r.totaux.net).toBe(500_000);
+    // Le total par tranche ne porte que la créance ordinaire · la facture
+    // compensée n'y entre pas.
+    expect(r.totaux.parTranche.reduce((t, m) => t + m, 0)).toBe(500_000);
+  });
+
+  it('un solde nul n’est en aucun sens non plus sous « 40 et 41 » ni pour un fournisseur (B3)', async () => {
+    for (const type of ['TOUS', 'FOURNISSEURS'] as const) {
+      const r = await requete(type, [
+        ligneEcriture('401005', 0, 300_000, '2025-04-10', '2025-04-10'),
+        ligneEcriture('401005', 300_000, 0, '2025-09-10', '2025-09-10'),
+      ]);
+      expect(r.sensInverse).toHaveLength(0);
+      expect(r.crediteurs).toHaveLength(0);
+      expect(r.soldesNuls.map((l) => l.numero)).toEqual(['401005']);
+      expect(r.totaux.net).toBe(0);
+    }
+  });
+
   it('un solde nul ne se ventile jamais, quel que soit le périmètre', () => {
     for (const sens of ['DEBITEUR', 'CREDITEUR', 'LES_DEUX', 'SELON_LE_COMPTE'] as const) {
       expect(ligneVentilee(sens, ['401001'], 0)).toBe(false);

@@ -136,6 +136,37 @@ describe('balance âgée exportée · trois populations', () => {
     expect(formule(f, `E${net}`)).toMatchObject({ formula: `E${total}`, result: 350 });
   });
 
+  it('les soldes nuls sortent à part, sans tranche ni total, hors du net (paquet 1, B3)', async () => {
+    const f = await feuilleDe(
+      monter({
+        type: 'CLIENTS_41',
+        tranches,
+        debiteurs: [ligne('411004 - C3B', [0, 0, 500_000], 500_000)],
+        crediteurs: [],
+        sensInverse: [],
+        soldesNuls: [ligne('411003 - C3', [], 0)],
+        totaux: {
+          parTranche: [0, 0, 500_000],
+          parTrancheCrediteurs: [0, 0, 0],
+          debiteurs: 500_000,
+          crediteurs: 0,
+          sensInverse: 0,
+          net: 500_000,
+        },
+      }),
+      'CLIENTS_41',
+    );
+    const nul = rangDe(f, '411003 - C3');
+    expect(rangDe(f, 'SOLDES NULS · pièces ouvertes qui se compensent, à lettrer')).toBe(nul - 1);
+    expect(f.getCell(`B${nul}`).value).toBeNull();
+    expect(f.getCell(`E${nul}`).value).toBe(0);
+    // Jamais sous « sens inverse », et aucun total ajouté au net.
+    expect(rangDe(f, 'SOLDES EN SENS INVERSE · non ventilés par antériorité')).toBe(-1);
+    const total = rangDe(f, 'TOTAL DÉBITEURS');
+    const net = rangDe(f, 'SOLDE NET · recoupe la balance auxiliaire');
+    expect(formule(f, `E${net}`)).toMatchObject({ formula: `E${total}`, result: 500_000 });
+  });
+
   it('aucune ligne · le total des débiteurs reste, à zéro, source du net', async () => {
     const f = await feuilleDe(
       monter({
