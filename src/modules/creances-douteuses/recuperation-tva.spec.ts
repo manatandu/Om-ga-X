@@ -3,6 +3,7 @@ import {
   EntreeRecuperation,
   FactureDeLaCreance,
   finDuDroit,
+  derniereDateEcriture,
   mentionDuplicata,
   MOTIF_FACTURE_PAYEE,
   MOTIF_FACTURE_SANS_TVA,
@@ -174,7 +175,7 @@ describe('A7 bis, partie 2 · les refus nommés', () => {
     ['hors exercice', (e) => (e.dateDansExercice = false), /sort de l’exercice/],
     ['journal', (e) => (e.journalGeneral = false), /opérations diverses/],
     ['avant la perte', (e) => (e.date = d('2026-06-14')), /ne précède pas la constatation.*2026-06-15/],
-    ['après le délai', (e) => ((e.date = d('2028-01-01')), (e.finDerniereLiquidation = null), (e.duplicatas = [{ ...e.duplicatas[0], dateEnvoi: '2027-12-01' }])), /jusqu’au 2027-12-31.*art\. 37, al\. 2/],
+    ['après le délai', (e) => ((e.date = d('2028-01-01')), (e.finDerniereLiquidation = null), (e.duplicatas = [{ ...e.duplicatas[0], dateEnvoi: '2027-12-01' }])), /jusqu’au 2027-12-31.*art\. 37, al\. 2.*perte du 2026-06-15.*après le 2027-11-30.*déclaration de 2028/],
     ['dans une période liquidée', (e) => (e.date = d('2026-06-30')), /liquidée jusqu’au 2026-06-30/],
   ];
   it.each(cas)('refus · %s', (_n, changer, attendu) => {
@@ -187,10 +188,40 @@ describe('A7 bis, partie 2 · les refus nommés', () => {
     expect(motifRefusRecuperation(e)).toMatch(attendu);
   });
 
-  it('le dernier jour du délai passe encore (31 décembre de l’année qui suit)', () => {
+  /*
+    DÉCISION PAR LA LOI DU 2026-10-08 (point C) · le délai court de la
+    constatation du non-paiement (la dernière perte, décret n° 011/42,
+    art. 126) et se juge à la DÉCLARATION qui inscrit la récupération · celle
+    du mois qui suit son écriture. L'écriture du 30 novembre de l'année qui
+    suit est inscrite en décembre, dans le délai ; celle du 1er décembre le
+    serait en janvier, hors du délai (O.-L. n° 10/001, art. 37, al. 2).
+  */
+  it('le 30 novembre de l’année qui suit passe encore · la déclaration de décembre l’inscrit', () => {
     const e = base();
-    e.date = d('2027-12-31');
+    e.date = d('2027-11-30');
     expect(motifRefusRecuperation(e)).toBeNull();
+    expect(derniereDateEcriture(d('2026-06-15')).toISOString().slice(0, 10)).toBe('2027-11-30');
+  });
+
+  it('le 1er décembre de l’année qui suit est refusé · sa déclaration (janvier) sortirait du délai, la date du geste n’y change rien', () => {
+    const e = base();
+    e.date = d('2027-12-01');
+    expect(motifRefusRecuperation(e)).toMatch(/datée après le 2027-11-30, elle tomberait dans une déclaration de 2028/);
+    e.date = d('2027-12-31');
+    expect(motifRefusRecuperation(e)).toMatch(/hors du délai/);
+  });
+
+  it('le délai court de la DERNIÈRE perte, jamais de l’envoi du duplicata', () => {
+    const e = base();
+    // Deux pertes · la seconde, en 2027, ouvre le délai jusqu'au 31/12/2028.
+    e.pertes = [...e.pertes, { date: d('2027-03-01'), validee: true, numeroPiece: 14, compteId: e.pertes[0].compteId }];
+    e.date = d('2028-11-30');
+    e.finDerniereLiquidation = null;
+    expect(motifRefusRecuperation(e)).toBeNull();
+    // Le duplicata envoyé en 2028 ne repousse rien · décembre 2028 reste au-delà.
+    e.duplicatas = [{ ...e.duplicatas[0], dateEnvoi: '2028-11-01' }];
+    e.date = d('2028-12-01');
+    expect(motifRefusRecuperation(e)).toMatch(/perte du 2027-03-01.*après le 2028-11-30/);
   });
 
   it('une facture à la taxe datée à l’encaissement seule · refus nommé, avec son motif', () => {

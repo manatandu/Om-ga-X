@@ -313,6 +313,8 @@ export interface PropositionRecuperation {
   motif: string | null;
   derniereConstatation: string | null;
   finDuDroit: string | null;
+  /** Dernière date d'écriture · la déclaration du mois suivant l'inscrit (art. 126). */
+  derniereDateEcriture?: string | null;
   finDerniereLiquidation: string | null;
   reserveAncienMoteur: string | null;
   recuperations: RecuperationPassee[];

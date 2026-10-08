@@ -2002,6 +2002,7 @@ export function CreancesDouteusesPage() {
                     {recuperation.proposition.derniereConstatation && (
                       <div className="text-text-dim">
                         Perte constatée le {jour(recuperation.proposition.derniereConstatation)} · droit ouvert jusqu’au {jour(recuperation.proposition.finDuDroit)}
+                        {recuperation.proposition.derniereDateEcriture ? ` · écriture au plus tard le ${jour(recuperation.proposition.derniereDateEcriture)}` : ''}
                         {recuperation.proposition.finDerniereLiquidation ? ` · TVA liquidée jusqu’au ${jour(recuperation.proposition.finDerniereLiquidation)}` : ''}
                       </div>
                     )}

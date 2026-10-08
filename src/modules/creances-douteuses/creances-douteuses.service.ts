@@ -27,6 +27,7 @@ import {
   chiffrerFactures,
   FactureDeLaCreance,
   finDuDroit,
+  derniereDateEcriture,
   MOTIF_TAXE_A_L_ENCAISSEMENT,
   motifRecuperationEnPlace,
   motifRefusAnnulationRecuperation,
@@ -2702,6 +2703,9 @@ export class CreancesDouteusesService {
       motif,
       derniereConstatation: derniere ? jour(derniere) : null,
       finDuDroit: derniere ? jour(finDuDroit(derniere)) : null,
+      // Décision par la loi du 2026-10-08 (point C) · la récupération s'inscrit
+      // dans la déclaration du mois qui suit son écriture, d'où cette borne.
+      derniereDateEcriture: derniere ? jour(derniereDateEcriture(derniere)) : null,
       finDerniereLiquidation: l.finDerniereLiquidation ? jour(l.finDerniereLiquidation) : null,
       reserveAncienMoteur: l.reserveAncienMoteur,
       recuperations: CreancesDouteusesService.presenterRecuperations(l.recuperations),

@@ -166,9 +166,68 @@ export function chiffrerFactures(p: {
   });
 }
 
+/*
+  LE DÉLAI DE LA RÉCUPÉRATION · DÉCISION PAR LA LOI DU 2026-10-08 (ligne
+  tva-decisions, point C ; consigne de Manasse, « réfère-toi à la loi »).
+
+  Les textes, lus en entier dans la compilation DGI au 19/07/2026 (compétence
+  `fiscalite-rdc`, `code-general-2026/references/`) ·
+   · O.-L. n° 10/001, art. 37 · « Le droit à déduction prend naissance lorsque
+     la taxe devient exigible chez l'assujetti. / Le droit à déduction est
+     exercé jusqu'au 31 décembre de l'année qui suit celle au cours de laquelle
+     la taxe est devenue exigible. » (repris par le décret n° 011/42, art. 96) ;
+   · décret n° 011/42, art. 126 · la taxe des ventes « qui [...] restent
+     impayées [...] est inscrite dans les déductions afférentes à la
+     déclaration du ou des mois suivants celui de la CONSTATATION [...] de
+     non-paiement, dans les conditions prévues pour exercer le droit à
+     déduction » ;
+   · O.-L. n° 10/001, art. 52, al. 3, et décret, art. 127, al. 2 et 3 · la
+     créance « réellement et définitivement irrécouvrable », la rectification
+     par l'envoi du duplicata surchargé, la preuve à la charge de l'assujetti.
+
+  (1) LE DÉLAI COURT DE LA CONSTATATION DU NON-PAIEMENT · c'est le fait que
+  l'art. 126 nomme, et il tient la place de l'exigibilité de l'art. 37, al. 1
+  (« dans les conditions prévues pour exercer le droit à déduction »). OmegaX
+  la constate par la PERTE validée (D 651 / C 416, fiche du compte 65), qui
+  dit la créance irrécouvrable ; la DERNIÈRE, parce que la récupération ne
+  s'ouvre qu'à la créance éteinte (art. 52, al. 3, « définitivement ») · un
+  délai compté de la première perte pourrait expirer avant que le droit ne
+  puisse s'exercer. Ni l'irrécouvrabilité comme fait distinct (elle n'a pas
+  d'autre date que la perte qui la constate), ni l'ENVOI DU DUPLICATA · c'est
+  la forme de la rectification, la condition du droit et non sa naissance,
+  comme la facture de l'art. 38 pour la déduction, dont la réception ne
+  déplace pas le délai (lecture de la ligne A21, `TauxTvaService.declaration`).
+
+  (2) LE DÉLAI SE JUGE À LA DÉCLARATION QUI INSCRIT LA RÉCUPÉRATION · le droit
+  est « exercé » (art. 37, al. 2) par son inscription « dans les déductions
+  afférentes à la déclaration » (art. 126), et la déclaration de TVA est
+  MENSUELLE (décret n° 011/42, art. 102, « pour le mois »). Le moteur lit la
+  déchéance de la déduction par la PÉRIODE de la déclaration (une déclaration
+  dont la période finit au plus tard le 31 décembre de l'année qui suit) ·
+  la même lecture vaut ici, une règle pour un texte. Or OmegaX inscrit la
+  récupération dans la déclaration du mois qui SUIT son écriture (lue comme un
+  avoir sur vente constaté, art. 126). L'écriture se date donc au plus tard le
+  30 NOVEMBRE de l'année qui suit la constatation · datée en décembre, elle
+  serait inscrite dans la déclaration de janvier, hors du délai. Ni la date
+  de l'écriture prise seule (elle laissait passer décembre), ni la date du
+  GESTE (le jour où le comptable clique ne change pas la période qui inscrit
+  la récupération · c'est la date de l'écriture qui la fixe, et le refus d'une
+  date dans une période liquidée la garde).
+*/
+
 /** Le dernier jour où le droit s'exerce · 31 décembre de l'année qui suit la constatation (art. 37 al. 2, par le renvoi de l'art. 126). */
 export function finDuDroit(derniereConstatation: Date): Date {
   return new Date(Date.UTC(derniereConstatation.getUTCFullYear() + 1, 11, 31));
+}
+
+/**
+ * La dernière date d'ÉCRITURE de la récupération · le 30 novembre de l'année
+ * qui suit la constatation, pour que la déclaration du mois suivant, qui
+ * l'inscrit, soit celle de décembre (décision par la loi du 2026-10-08,
+ * point C, ci-dessus).
+ */
+export function derniereDateEcriture(derniereConstatation: Date): Date {
+  return new Date(Date.UTC(derniereConstatation.getUTCFullYear() + 1, 10, 30));
 }
 
 export interface DuplicataSaisi {
@@ -292,11 +351,15 @@ export function motifRefusRecuperation(e: EntreeRecuperation): string | null {
     return `La récupération ne précède pas la constatation du non-paiement · la dernière perte est du ${jour(derniere)} (décret n° 011/42, art. 126).`;
   }
   const fin = finDuDroit(derniere);
-  if (e.date.getTime() > fin.getTime()) {
+  const limite = derniereDateEcriture(derniere);
+  if (e.date.getTime() > limite.getTime()) {
     return (
-      `Le droit à récupération s’exerçait jusqu’au ${jour(fin)} · « dans les conditions prévues pour exercer le droit à déduction » ` +
-      '(décret n° 011/42, art. 126), soit « jusqu’au 31 décembre de l’année qui suit » (O.-L. n° 10/001, art. 37, al. 2). ' +
-      'À l’expiration de ce délai, la taxe est acquise au Trésor.'
+      `Le droit à récupération s’exerce jusqu’au ${jour(fin)} · « dans les conditions prévues pour exercer le droit à déduction » ` +
+      '(décret n° 011/42, art. 126), soit « jusqu’au 31 décembre de l’année qui suit » (O.-L. n° 10/001, art. 37, al. 2), ' +
+      `compté de la constatation du non-paiement, la perte du ${jour(derniere)}. La récupération s’inscrit dans la déclaration ` +
+      `du mois qui suit son écriture (art. 126) · datée après le ${jour(limite)}, elle tomberait dans une déclaration ` +
+      `de ${fin.getUTCFullYear() + 1}, hors du délai. Datez-la au plus tard le ${jour(limite)} si cette période n’est pas liquidée ; ` +
+      'sinon la taxe est acquise au Trésor.'
     );
   }
   if (e.finDerniereLiquidation && e.date.getTime() <= e.finDerniereLiquidation.getTime()) {

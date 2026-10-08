@@ -1032,9 +1032,15 @@ recouvrements imputés par l'art. 154 (même imputation que la déclaration) ; s
 désignation, rien. Preuve de l'irrécouvrabilité exigée (art. 127 al. 3). (5)
 PÉRIODE · la déclaration lit l'écriture comme un avoir sur vente constaté, inscrit
 en déduction de la période qui suit (art. 126), justifié par le duplicata (jamais
-compté « sans note de crédit ») ; refus · avant la dernière perte, après le 31
-décembre de l'année qui suit (art. 37 al. 2, par le renvoi de l'art. 126), dans ou
-avant une période liquidée. (6) ANNULATION (art. 20, al. 2) · brouillard supprimé,
+compté « sans note de crédit ») ; refus · avant la dernière perte, dans ou avant
+une période liquidée, et hors du DÉLAI (décision par la loi du 2026-10-08) · il
+court de la CONSTATATION DU NON-PAIEMENT, la dernière perte validée (décret
+n° 011/42, art. 126, en lieu de l'exigibilité de l'art. 37 al. 1), jamais de
+l'envoi du duplicata (forme de la rectification, comme la facture de l'art. 38,
+lecture d'A21), et se JUGE à la déclaration qui inscrit la récupération (art. 37
+al. 2, « exercé » ; art. 126, déclaration mensuelle, décret art. 102), celle du
+mois qui suit l'écriture · écriture au plus tard le 30 NOVEMBRE de l'année qui suit
+(`derniereDateEcriture`), la date du geste n'y comptant pas. (6) ANNULATION (art. 20, al. 2) · brouillard supprimé,
 validée inscrite en négatif ; refusée dès qu'une liquidation couvre sa date ou la
 suit. LE NÉGATIF D'UN AVOIR SUR VENTE (débit négatif du 443) EST LU PAR LA
 DÉCLARATION au signe près, et la liquidation reprend au débit une récupération
