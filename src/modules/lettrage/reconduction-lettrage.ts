@@ -511,7 +511,7 @@ export interface GroupeAOrdonner {
   lignes: LigneLueDuGroupe[];
 }
 
-const SELECT_ORIGINE = {
+export const SELECT_ORIGINE = {
   id: true,
   lettrageReconduitId: true,
   compte: { select: { numero: true } },

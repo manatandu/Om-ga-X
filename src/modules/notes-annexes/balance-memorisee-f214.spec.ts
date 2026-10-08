@@ -122,7 +122,7 @@ function prisma(): PrismaService {
       ),
     },
     ecriture: { findMany: jest.fn().mockResolvedValue([]) },
-    ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
+    ligneEcriture: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
 }
 

@@ -70,7 +70,7 @@ describe('rubriques de notes · le solde, et lui seul (audit final F213)', () =>
       saisieNote: { findMany: jest.fn().mockResolvedValue([]) },
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', dateFin: new Date('2026-12-31T00:00:00Z') }) },
       ecriture: { findMany: jest.fn().mockResolvedValue([]) },
-      ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
+      ligneEcriture: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
     const budget = {
       executionBudgetaire: jest.fn().mockRejectedValue(new AucunPlanABudgetsException('aucun plan à budgets')),

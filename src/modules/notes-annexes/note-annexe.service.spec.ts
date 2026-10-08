@@ -165,6 +165,8 @@ function prismaAvec(
             .map((l) => ({ debit: l.debit, credit: l.credit, dateEcheance: l.dateEcheance, compte: { numero: l.numero } })),
         ),
       ),
+      // Aucune ligne de ce jeu n'est lettrée en groupe · aucun groupe à plusieurs.
+      groupBy: jest.fn().mockResolvedValue([]),
     },
   } as unknown as PrismaService;
 }

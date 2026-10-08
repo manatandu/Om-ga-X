@@ -77,6 +77,7 @@ import {
   type PartsDuResultatAuBilan,
 } from '../etats-financiers/resultat-de-l-exercice';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
+import { ecartsDesGroupesParEcheance } from '../lettrage/reste-des-lignes-ouvertes';
 import { chargerCampagneStocks, lignesNoteStocks, motifQuantitesNote2 } from '../etats-financiers/stocks-depuis-inventaire';
 import { compteInscritALaDate } from '../immobilisations/immobilisation-en-cours';
 
@@ -1543,6 +1544,16 @@ export class EtatsFinanciersSmtSyscohadaService {
     };
     porter(nonEchues, 'nonEchu');
     porter(echues, 'echu');
+    // UNE FACTURE RÉGLÉE EN PARTIE PÈSE SON RESTE (relecture « échecs
+    // silencieux » de la simulation du 2026-10-08, majeur 8) · sans quoi la
+    // facture comptait entière en « non échu » et le règlement lettré avec
+    // elle tombait dans le reste, en négatif, sous un motif faux.
+    for (const [compteId, e] of await ecartsDesGroupesParEcheance(this.prisma, tenantId, lignesOuvertes, exercice.dateFin, 'NOTE 3 du SMT (SYSCOHADA)')) {
+      const parts = parCompte.get(compteId) ?? { ...PARTS_ECHEANCE_NULLES_SMT_SYSCOHADA };
+      parts.nonEchu += e.nonEchu;
+      parts.echu += e.echu;
+      parCompte.set(compteId, parts);
+    }
     return parCompte;
   }
 

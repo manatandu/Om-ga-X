@@ -8,6 +8,7 @@ import { CreerNiveauDto, EmettreRelancesDto, ModifierNiveauDto, PLAFOND_COMPTES_
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { jourDeKinshasa } from '../../common/echeance';
+import { poidsDesLignesLues, poidsOuMontant } from '../lettrage/reste-des-lignes-ouvertes';
 import { pairesACheval, type PairesACheval } from '../lettrage/paires-a-cheval';
 import { datesOrigineDesReports } from './date-origine-des-reports';
 
@@ -468,10 +469,18 @@ export class RelancesService {
       );
     }
 
+    // UNE FACTURE RÉGLÉE EN PARTIE SE RÉCLAME POUR SON RESTE (relecture
+    // « échecs silencieux » de la simulation du 2026-10-08, bloquant 6) · le
+    // règlement lettré avec elle restait une ligne à part · l'avis PRÉVENTIF
+    // l'écartait (sa date est passée) et réclamait la facture entière, et le
+    // RAPPEL le retranchait d'une autre facture échue que lui. Le reste se lit
+    // par la règle du Règlement des tiers (`poidsDesLignesLues`), après la
+    // paire à cheval qui a sa propre lecture.
+    const poids = await poidsDesLignesLues(this.prisma, tenantId, lues, {}, 'Relances');
     const parCompte = new Map<string, PositionRelance>();
     const traiter = (l: LigneLue) => {
       if (paires?.absorbees.has(l.id)) return;
-      const net = paires?.reste.get(l.id)?.francs ?? Number(l.debit) - Number(l.credit);
+      const net = paires?.reste.get(l.id)?.francs ?? poidsOuMontant(poids, l);
       if (Math.abs(net) < 0.005) return;
       const datePiece = datesOrigine.get(l.id) ?? l.ecriture.date;
       const echeance = l.dateEcheance ?? datePiece;

@@ -1070,9 +1070,11 @@ describe('Lecture des écritures de trésorerie et plafond de la NOTE 4 (jumeau 
     const note = await s.note3CreancesDettes('t1', 'e1');
     expect(note.creances[0].montantEchu).toBe(5000);
     expect(note.creances[0].montantNonEchu).toBe(4000);
-    const appels = prismaDe(s).ligneEcriture.groupBy.mock.calls.map(
-      (c) => c[0] as { by: string[]; where: { dateEcheance: { gt?: Date; lte?: Date } } },
-    );
+    // Les sommes PAR COMPTE · la lecture des groupes de lettrage à plusieurs
+    // lignes est une autre question (`groupesLusAPlusieurs`).
+    const appels = prismaDe(s)
+      .ligneEcriture.groupBy.mock.calls.map((c) => c[0] as { by: string[]; where: { dateEcheance: { gt?: Date; lte?: Date } } })
+      .filter((a) => a.by[0] !== 'lettrageId');
     expect(appels).toHaveLength(2);
     for (const a of appels) expect(a.by).toEqual(['compteId']);
     const dateFin = new Date('2026-12-31');

@@ -54,7 +54,7 @@ import {
 } from '../etats-financiers-syscohada/correspondance-notes-syscohada';
 import { ajouterMois } from '../../common/ajouter-mois';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
-import { poidsDesLignesOuvertes, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
+import { groupesLusAPlusieurs, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
 import { AUCUN_VIREMENT, VirementsParCompte, virementsDesLignes } from '../immobilisations/virements-mise-en-service';
 // Sortis au socle (audit final F185), réexportés pour les appelants d'avant.
 export { LOT_LECTURE, lireParLots } from '../../common/lecture-par-lots';
@@ -1090,12 +1090,23 @@ export class NoteAnnexeService {
       else e.plusDeDeuxAns += montant;
       parCompte.set(numero, e);
     };
+    // Comme la balance qui alimente les autres notes : les notes annexes
+    // font partie intégrante des états financiers (art. 15) et ne lisent que
+    // le livre-journal, pas le brouillard. Ouvertes À LA CLÔTURE, pas
+    // seulement non lettrées (audit final F10) · un règlement postérieur
+    // lettré ensuite ne ferme pas la ligne dans la liasse de l'exercice.
+    const ouvertes: Prisma.LigneEcritureWhereInput = {
+      ecriture: { tenantId, exerciceId, statut: 'VALIDEE' },
+      ...ouverteALaCloture(exercice.dateFin),
+    };
     // UNE LIGNE D'UN GROUPE DE LETTRAGE PÈSE SON RESTE (simulation du
     // 2026-10-08, lot M, D3) · une facture réglée en partie se range à son
     // échéance pour ce qu'elle doit encore, et le règlement lettré avec elle
     // ne tombe plus en « non ventilé » négatif (la colonne « à un an au plus »
-    // dépassait le solde de la note). Les lignes d'un groupe sont gardées
-    // jusqu'à la fin de la lecture, les autres rangées au fil des lots.
+    // dépassait le solde de la note). Seules les lignes des groupes que
+    // l'exercice porte à plusieurs sont gardées jusqu'à la fin de la lecture
+    // (§ 8 bis), les autres rangées au fil des lots.
+    const aPlusieurs = await groupesLusAPlusieurs(this.prisma, ouvertes);
     const lettrees: LigneOuverteDeNote[] = [];
     // PAR LOTS · seconde source de l'étouffement mesuré le 2026-09-03. Sur un
     // dossier dont rien n'est encore lettré, ce filtre ne retire RIEN : il
@@ -1103,13 +1114,7 @@ export class NoteAnnexeService {
     await this.parLots(
       (curseur) =>
         this.prisma.ligneEcriture.findMany({
-          // Comme la balance qui alimente les autres notes : les notes annexes
-          // font partie intégrante des états financiers (art. 15) et ne lisent que
-          // le livre-journal, pas le brouillard.
-          // Ouvertes À LA CLÔTURE, pas seulement non lettrées (audit final
-          // F10) · un règlement postérieur lettré ensuite ne ferme pas la
-          // ligne dans la liasse de l'exercice.
-          where: { ecriture: { tenantId, exerciceId, statut: 'VALIDEE' }, ...ouverteALaCloture(exercice.dateFin) },
+          where: ouvertes,
           select: {
             id: true,
             debit: true,
@@ -1126,12 +1131,18 @@ export class NoteAnnexeService {
           ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
         }),
       (l) => {
-        if (l.lettrageId) lettrees.push(l);
+        if (l.lettrageId && aPlusieurs.has(l.lettrageId)) lettrees.push(l);
         else ranger(l.compte.numero, Number(l.debit) - Number(l.credit), l.dateEcheance);
       },
     );
-    const poids = poidsDesLignesOuvertes(lettrees);
-    for (const l of lettrees) ranger(l.compte.numero, poids.has(l.id) ? poids.get(l.id)! : Number(l.debit) - Number(l.credit), l.dateEcheance);
+    const poids = await poidsDesLignesLues(
+      this.prisma,
+      tenantId,
+      lettrees,
+      { dateMax: exercice.dateFin, statut: StatutEcriture.VALIDEE },
+      'Notes annexes, échéances',
+    );
+    for (const l of lettrees) ranger(l.compte.numero, poidsOuMontant(poids, l), l.dateEcheance);
     return parCompte;
   }
 

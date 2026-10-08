@@ -37,6 +37,8 @@ function service(tiers: ReturnType<typeof ligne>[], treso: ReturnType<typeof tre
   const prisma = {
     ligneEcriture: {
       findMany: jest.fn().mockResolvedValue(tiers),
+      // Aucune ligne de ce jeu n'est lettrée en groupe · aucun groupe à plusieurs.
+      groupBy: jest.fn().mockResolvedValue([]),
       // La trésorerie est un AGRÉGAT (audit final F185) · la doublure HONORE
       // le filtre, racine 5 et exclusion du 59, pour que ce test la juge.
       aggregate: jest.fn().mockImplementation(({ where }: any) => {

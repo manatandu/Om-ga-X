@@ -134,6 +134,9 @@ interface ArgsSommes {
  */
 function sommesDesLignesTiers(lignesTiers: ReturnType<typeof ligneTiers>[]) {
   return jest.fn(({ by, where, _sum }: ArgsSommes) => {
+    // Les groupes de lettrage lus à plusieurs (`groupesLusAPlusieurs`) · aucune
+    // ligne de ce jeu n'appartient à un groupe, la lecture n'en rend aucun.
+    if (by.length === 1 && by[0] === 'lettrageId') return Promise.resolve([]);
     if (by.length !== 1 || by[0] !== 'compteId') throw new Error(`Regroupement inattendu : ${by.join(', ')}`);
     if (!_sum.debit || !_sum.credit) throw new Error('Les deux sommes, débit et crédit, sont attendues');
     // Les quatre comparaisons sont honorées comme la base les lirait · une
@@ -1305,7 +1308,12 @@ describe('Notes annexes S.M.T SYSCOHADA', () => {
     // Aucune ligne rapatriée · seule la somme est demandée (la lecture ligne
     // à ligne de la doublure ne sert qu'au rattachement des règlements).
     expect(prisma.ligneEcriture.findMany).not.toHaveBeenCalled();
-    const appels = prisma.ligneEcriture.groupBy.mock.calls.map(([args]) => args as ArgsSommes);
+    // Les sommes PAR COMPTE · la lecture des groupes de lettrage à plusieurs
+    // lignes est une autre question (`groupesLusAPlusieurs`), qui ne rapatrie
+    // rien quand aucun groupe n'en porte deux.
+    const appels = prisma.ligneEcriture.groupBy.mock.calls
+      .map(([args]) => args as ArgsSommes)
+      .filter((a) => a.by[0] !== 'lettrageId');
     expect(appels).toHaveLength(2);
     expect(appels.map((a) => a.where.dateEcheance)).toEqual([{ gt: cloture }, { lte: cloture }]);
     for (const a of appels) {

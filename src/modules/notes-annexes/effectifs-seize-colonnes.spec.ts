@@ -41,7 +41,7 @@ function serviceAvec(saisies: Array<Record<string, unknown>>) {
     saisieNote: { findMany: jest.fn().mockResolvedValue(saisies) },
     exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', dateFin: new Date('2026-12-31T00:00:00Z') }) },
     ecriture: { findMany: jest.fn().mockResolvedValue([]) },
-    ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
+    ligneEcriture: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   const budget = {
     executionBudgetaire: jest.fn().mockRejectedValue(new AucunPlanABudgetsException('aucun plan à budgets')),
@@ -142,7 +142,7 @@ describe('Notes 20B et 29B · personnel propre à seize colonnes', () => {
       },
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e1', dateFin: new Date('2026-12-31T00:00:00Z') }) },
       ecriture: { findMany: jest.fn().mockResolvedValue([]) },
-      ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
+      ligneEcriture: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
     const budget = {
       executionBudgetaire: jest.fn().mockRejectedValue(new AucunPlanABudgetsException('aucun plan à budgets')),

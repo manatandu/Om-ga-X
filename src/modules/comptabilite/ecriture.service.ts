@@ -31,7 +31,7 @@ import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
 import { designationLettrage, estTenueParUnLettrage } from '../lettrage/ligne-lettree';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
-import { poidsDesLignesOuvertes } from '../lettrage/reste-des-lignes-ouvertes';
+import { groupesLusAPlusieurs, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
 import { ancienneteJours, brouillardInvalidable, enRetardDeCentralisation, JOURS_CENTRALISATION } from './centralisation-brouillard';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
@@ -181,6 +181,14 @@ export function perimetreJournal(
 
 export const PLAFOND_ECRITURES_PAR_FENETRE = 2000;
 export const PLAFOND_LIGNES_GRAND_LIVRE = 20000;
+
+
+/** Une ligne de l'échéancier, telle que sa lecture la rapporte. */
+type LigneOuverteDEcheancier = LigneOuverte & {
+  libelle: string | null;
+  compte: { numero: string; intitule: string; tiersCompte: { tiers: { nom: string } } | null };
+  ecriture: { date: Date; libelle: string; reference: string | null };
+};
 
 /**
  * PÉRIMÈTRES DE LA BALANCE ÂGÉE.
@@ -2661,14 +2669,46 @@ export class EcritureService {
       (a, b) => a.date.getTime() - b.date.getTime(),
     );
     let lignesSansEcheance = 0;
+    const ouvertes: Prisma.LigneEcritureWhereInput = {
+      ecriture: { tenantId, exerciceId: params.exerciceId },
+      lettre: null,
+      OR: ['40', '41', '42', '43', '44'].map((r) => ({ compte: { numero: { startsWith: r } } })),
+    };
+    // UNE FACTURE RÉGLÉE EN PARTIE NE S'ENCAISSE QUE POUR SON RESTE (relecture
+    // « échecs silencieux » de la simulation du 2026-10-08, majeur 7) · le
+    // règlement lettré avec elle était compté en DÉCAISSEMENT dans sa propre
+    // tranche, et la facture entière en encaissement plus loin · la trésorerie
+    // projetée passait sous zéro à tort. Les lignes des groupes que la lecture
+    // porte à plusieurs sont gardées jusqu'à la fin, et pèsent leur reste
+    // (`poidsDesLignesLues`).
+    const ranger = (l: LigneOuverteDEcheancier, net: number) => {
+      if (l.dateEcheance === null) lignesSansEcheance++;
+      if (Math.abs(net) < 0.005) return;
+      const date = l.dateEcheance ?? l.ecriture.date;
+      const tranche = trancheDe(date);
+      const c = cumuls.get(tranche) ?? { encaissements: 0, decaissements: 0 };
+      if (net > 0) c.encaissements += net;
+      else c.decaissements -= net;
+      cumuls.set(tranche, c);
+      plusProches.ajouter({
+        ligneId: l.id,
+        date,
+        tranche: trancheDe(date),
+        compteNumero: l.compte.numero,
+        compteIntitule: l.compte.intitule,
+        tiers: l.compte.tiersCompte?.tiers.nom ?? null,
+        libelle: l.libelle ?? l.ecriture.libelle,
+        reference: l.ecriture.reference,
+        montant: Math.abs(net),
+        sens: net > 0 ? 'ENCAISSEMENT' : 'DECAISSEMENT',
+      });
+    };
+    const aPlusieurs = await groupesLusAPlusieurs(this.prisma, ouvertes);
+    const lettrees: LigneOuverteDEcheancier[] = [];
     await lireParLots(
       (curseur) =>
         this.prisma.ligneEcriture.findMany({
-          where: {
-            ecriture: { tenantId, exerciceId: params.exerciceId },
-            lettre: null,
-            OR: ['40', '41', '42', '43', '44'].map((r) => ({ compte: { numero: { startsWith: r } } })),
-          },
+          where: ouvertes,
           include: {
             compte: {
               select: {
@@ -2683,29 +2723,12 @@ export class EcritureService {
           ...pageApres(curseur, LOT_LECTURE),
         }),
       (l) => {
-        if (l.dateEcheance === null) lignesSansEcheance++;
-        const net = Number(l.debit) - Number(l.credit);
-        if (Math.abs(net) < 0.005) return;
-        const date = l.dateEcheance ?? l.ecriture.date;
-        const tranche = trancheDe(date);
-        const c = cumuls.get(tranche) ?? { encaissements: 0, decaissements: 0 };
-        if (net > 0) c.encaissements += net;
-        else c.decaissements -= net;
-        cumuls.set(tranche, c);
-        plusProches.ajouter({
-          ligneId: l.id,
-          date,
-          tranche: trancheDe(date),
-          compteNumero: l.compte.numero,
-          compteIntitule: l.compte.intitule,
-          tiers: l.compte.tiersCompte?.tiers.nom ?? null,
-          libelle: l.libelle ?? l.ecriture.libelle,
-          reference: l.ecriture.reference,
-          montant: Math.abs(net),
-          sens: net > 0 ? 'ENCAISSEMENT' : 'DECAISSEMENT',
-        });
+        if (l.lettrageId && aPlusieurs.has(l.lettrageId)) lettrees.push(l);
+        else ranger(l, Number(l.debit) - Number(l.credit));
       },
     );
+    const poids = await poidsDesLignesLues(this.prisma, tenantId, lettrees, {}, 'Échéancier');
+    for (const l of lettrees) ranger(l, poidsOuMontant(poids, l));
     const details = plusProches.elements();
 
     let cumul = tresorerieActuelle;
@@ -2908,10 +2931,10 @@ export class EcritureService {
     // dans sa propre tranche, la facture entière dans la sienne · ce qui reste
     // dû l'est à l'échéance de la facture (`poidsDesLignesOuvertes`, la règle
     // des notes par échéance).
-    const poids = poidsDesLignesOuvertes(lignes);
+    const poids = await poidsDesLignesLues(this.prisma, tenantId, lignes, { dateMax: ref }, 'Balance âgée');
     const parCle = new Map<string, LigneAgee>();
     for (const l of lignes) {
-      const net = poids.has(l.id) ? poids.get(l.id)! : Number(l.debit) - Number(l.credit);
+      const net = poidsOuMontant(poids, l);
       if (Math.abs(net) < 0.005) continue;
       const tiers = tiersDuCompte.get(l.compte.id);
       const cle = tiers ? `tiers:${tiers.id}` : `compte:${l.compte.id}`;
