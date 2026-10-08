@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { estContigu, motifSuivantNonContigu } from '../exercice/exercice-contigu';
 import { estCompteDuResultatDeLExercice } from '../etats-financiers/resultat-de-l-exercice';
 import {
   FormeJuridiqueSyscohada,
@@ -187,6 +188,11 @@ export class AffectationService {
         "Aucun exercice ne suit celui-ci. L'affectation se décide « au cours de l'exercice suivant » " +
           "(AUDCIF, Titre VII, compte 13) et son écriture s'y enregistre : ouvrez-le d'abord.",
       );
+    }
+    // L'exercice suivant est celui qui commence le lendemain (constat G3,
+    // `exercice-contigu.ts`) · l'affectation ne s'écrit pas au-delà d'un trou.
+    if (!estContigu(exercice.dateFin, suivant.dateDebut)) {
+      throw new BadRequestException(motifSuivantNonContigu(exercice.dateFin, suivant));
     }
     if (suivant.statut === StatutExercice.CLOTURE) {
       throw new BadRequestException(

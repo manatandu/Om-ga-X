@@ -9,6 +9,7 @@ import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lo
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { jourDeKinshasa } from '../../common/echeance';
 import { pairesACheval, type PairesACheval } from '../lettrage/paires-a-cheval';
+import { datesOrigineDesReports } from './date-origine-des-reports';
 
 const JOUR = 86_400_000;
 
@@ -437,12 +438,43 @@ export class RelancesService {
       paires = await pairesACheval(this.prisma, { tenantId, exercice, compte: { OR: racines.map((r) => ({ numero: { startsWith: r } })) } });
     }
 
+    // UNE LIGNE REPORTÉE SANS ÉCHÉANCE GARDE LA DATE DE SA PIÈCE (constat
+    // REL-ANOUVEAU, `date-origine-des-reports.ts`) · sans elle, la facture de
+    // N était réclamée « échue » depuis le jour de l'à-nouveau.
+    const reportsSansEcheance = lues.filter(
+      (l) =>
+        !l.dateEcheance &&
+        (l.ecriture.estANouveauProvisoire === true || (l.ecriture.estGenereeParCloture === true && l.ecriture.estSoldeDesComptesDeGestion !== true)),
+    );
+    let datesOrigine = new Map<string, Date>();
+    if (reportsSansEcheance.length) {
+      const exercice = await this.prisma.exercice.findFirst({
+        where: { id: params.exerciceId, tenantId },
+        select: { dateDebut: true },
+      });
+      if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier');
+      datesOrigine = await datesOrigineDesReports(
+        this.prisma as unknown as Prisma.TransactionClient,
+        tenantId,
+        exercice.dateDebut,
+        reportsSansEcheance.map((l) => ({
+          id: l.id,
+          compteId: l.compte.id,
+          numeroCompte: l.compte.numero,
+          debit: Number(l.debit),
+          credit: Number(l.credit),
+          libelle: l.libelle,
+        })),
+      );
+    }
+
     const parCompte = new Map<string, PositionRelance>();
     const traiter = (l: LigneLue) => {
       if (paires?.absorbees.has(l.id)) return;
       const net = paires?.reste.get(l.id)?.francs ?? Number(l.debit) - Number(l.credit);
       if (Math.abs(net) < 0.005) return;
-      const echeance = l.dateEcheance ?? l.ecriture.date;
+      const datePiece = datesOrigine.get(l.id) ?? l.ecriture.date;
+      const echeance = l.dateEcheance ?? datePiece;
       const retard = Math.floor((ref.getTime() - echeance.getTime()) / JOUR);
 
       // Sélection selon l'état demandé.
@@ -482,9 +514,9 @@ export class RelancesService {
 
       acc.montantDu += net;
       const vue = piecePlusAncienne.get(l.compte.id);
-      if (!vue || l.ecriture.date < vue) piecePlusAncienne.set(l.compte.id, l.ecriture.date);
+      if (!vue || datePiece < vue) piecePlusAncienne.set(l.compte.id, datePiece);
       acc.lignes.push({
-        date: l.ecriture.date.toISOString().slice(0, 10),
+        date: datePiece.toISOString().slice(0, 10),
         echeance: l.dateEcheance?.toISOString().slice(0, 10) ?? null,
         libelle: l.libelle ?? l.ecriture.libelle,
         montant: net,

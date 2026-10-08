@@ -1,4 +1,5 @@
 import { ecartsRealisesNonConstates, motifClotureEcartsNonConstates } from '../reglements/ecarts-non-constates';
+import { estContigu, motifCreationNonContigue, motifSuivantNonContigu } from './exercice-contigu';
 import { depreciationsOrphelines } from '../creances-douteuses/depreciations-orphelines';
 import { motifClotureDepreciationsOrphelines } from '../creances-douteuses/creances-douteuses';
 import {
@@ -609,6 +610,26 @@ export class ExerciceService {
           `${anneeDejaOuverte.dateFin.toISOString().slice(0, 10)}) · une période n'est couverte que par un seul ` +
           'exercice, sans quoi les écritures se répartiraient entre deux liasses qui bouclent chacune de son côté.',
       );
+    }
+
+    if (!premier) {
+      // UN EXERCICE NOUVEAU TOUCHE UN EXERCICE DU DOSSIER (constat G3,
+      // `exercice-contigu.ts`) · un trou entre deux années faisait reporter la
+      // clôture dans l'exercice d'après le trou.
+      const [precedent, suivant] = await Promise.all([
+        client.exercice.findFirst({
+          where: { tenantId, dateFin: { lt: dateDebut } },
+          orderBy: { dateFin: 'desc' },
+          select: { dateFin: true },
+        }),
+        client.exercice.findFirst({
+          where: { tenantId, dateDebut: { gt: dateFin } },
+          orderBy: { dateDebut: 'asc' },
+          select: { dateDebut: true },
+        }),
+      ]);
+      const motifTrou = motifCreationNonContigue(dateDebut, dateFin, precedent, suivant);
+      if (motifTrou) throw new BadRequestException(motifTrou);
     }
 
     if (!premier) {
@@ -2261,6 +2282,11 @@ export class ExerciceService {
           where: { tenantId, dateDebut: { gt: exercice.dateFin } },
           orderBy: { dateDebut: 'asc' },
         });
+        // Le report va dans l'exercice qui commence le LENDEMAIN, jamais dans
+        // celui d'après un trou (constat G3, `exercice-contigu.ts`).
+        if (exerciceSuivant && !estContigu(exercice.dateFin, exerciceSuivant.dateDebut)) {
+          throw new BadRequestException(motifSuivantNonContigu(exercice.dateFin, exerciceSuivant));
+        }
         if (!exerciceSuivant) {
           refuserSuivantCivilApresDissolution(exercice, dossier);
           /*
@@ -2498,7 +2524,9 @@ export class ExerciceService {
       orderBy: { dateDebut: 'asc' },
       select: { id: true, dateDebut: true, dateFin: true },
     });
-    if (!suivant) return vide;
+    // L'aperçu dit ce que la clôture fera · elle refuse un suivant non
+    // contigu (constat G3), il n'annonce donc aucun report vers lui.
+    if (!suivant || !estContigu(exercice.dateFin, suivant.dateDebut)) return vide;
     const tx = this.prisma as unknown as Prisma.TransactionClient;
     const dejaPassee = await ouvertureDejaPassee(tx, tenantId, suivant);
     {
@@ -2612,6 +2640,10 @@ export class ExerciceService {
           where: { tenantId, dateDebut: { gt: exercice.dateFin } },
           orderBy: { dateDebut: 'asc' },
         });
+        // Même règle que la clôture · jamais au-delà d'un trou (constat G3).
+        if (exerciceSuivant && !estContigu(exercice.dateFin, exerciceSuivant.dateDebut)) {
+          throw new BadRequestException(motifSuivantNonContigu(exercice.dateFin, exerciceSuivant));
+        }
         if (!exerciceSuivant) {
           refuserSuivantCivilApresDissolution(exercice, dossier);
           // Même règle que la clôture · l'exercice suivant est une année civile.
@@ -2706,6 +2738,9 @@ export class ExerciceService {
       orderBy: { dateDebut: 'asc' },
     });
     if (!suivant) throw new BadRequestException("L'exercice suivant n'existe pas encore · ouvrez-le avant d'y reporter les budgets.");
+    if (!estContigu(exercice.dateFin, suivant.dateDebut)) {
+      throw new BadRequestException(motifSuivantNonContigu(exercice.dateFin, suivant));
+    }
     // Un budget ne se dépose pas sur un exercice clôturé (audit final F143).
     refuserSiExerciceBudgetaireClos(suivant.statut);
     const [budgets, dejaDotes, sections] = await Promise.all([
