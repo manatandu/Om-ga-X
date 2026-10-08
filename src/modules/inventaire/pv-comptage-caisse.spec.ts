@@ -29,8 +29,10 @@ type Etat = {
   sousCommission?: Record<string, unknown> | null;
   compte?: Record<string, unknown> | null;
   lignesCaisse?: { debit: number; credit: number; compte: { id: string; numero: string; intitule: string } }[];
-  pvCaisse?: { compteId: string }[];
+  pvCaisse?: { compteId: string; ecart?: number; compte?: { numero: string } }[];
   ecartsSansDecision?: number;
+  /** Les fiches de comptage · le faux HONORE le dossier et la campagne du filtre (paquet 1, B10). */
+  fiches?: { tenantId: string; campagneId: string }[];
   /** Le solde du livre-journal de la caisse à la date du comptage (ligne A10). */
   soldeLivre?: number;
 };
@@ -80,6 +82,13 @@ function service(etat: Etat = {}) {
       create: creerPv,
     },
     ecartInventaire: { count: jest.fn().mockResolvedValue(etat.ecartsSansDecision ?? 0) },
+    ficheInventaire: {
+      count: jest.fn().mockImplementation((a: { where: { tenantId?: string; campagneId?: string } }) =>
+        Promise.resolve(
+          (etat.fiches ?? []).filter((f) => f.tenantId === a.where.tenantId && f.campagneId === a.where.campagneId).length,
+        ),
+      ),
+    },
     // Lecture du solde et création du PV dans UNE transaction (seconde passe A10).
     $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
   } as unknown as PrismaService;
@@ -313,5 +322,86 @@ describe('la couverture des caisses · la question composite rendue mécanique',
       ecartsSansDecision: 2,
     });
     await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/sans décision/);
+  });
+});
+
+/**
+ * LA CAMPAGNE QUI NE COMPTE QUE SA CAISSE (paquet 1, B10). Une association
+ * sans stock inventorie sa seule caisse · le PV fait le comptage et la
+ * comparaison, aucune fiche n'est à rapprocher, et `rapprocher` refuse une
+ * campagne sans fiche. Elle restait au recensement, la clôture étant réservée
+ * à l'arbitrage · « statut RECENSEMENT, l'opération n'est possible qu'en
+ * ARBITRAGE », relevé sur vraie base avant correction.
+ */
+describe('une campagne de caisses seules se clôt depuis le recensement', () => {
+  const ligne = (id: string, numero: string, debit: number) => ({
+    debit,
+    credit: 0,
+    compte: { id, numero, intitule: `Caisse ${numero}` },
+  });
+  const CAISSE_SEULE = [ligne('c1', '57100000', 1_300_000)];
+
+  it('se clôt quand son seul PV ne porte aucun écart', async () => {
+    const { svc } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    await expect(svc.clore('t1', 'camp1', 'u1')).resolves.toMatchObject({ statut: StatutCampagneInventaire.CLOTUREE });
+  });
+
+  it('refuse un PV qui porte un écart, et nomme la caisse et l’issue (CPCC, étape 5)', async () => {
+    const { svc } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [{ compteId: 'c1', ecart: -5_000, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/57100000/);
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/fiche de la caisse.*arbitrez/);
+  });
+
+  it('refuse une campagne où rien n’a été compté (AUDCIF art. 42)', async () => {
+    const { svc } = service({ campagne: CAMPAGNE, pvCaisse: [], fiches: [] });
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/Rien n'a été compté/);
+  });
+
+  it('garde le rapprochement pour une campagne qui a des fiches · seules celles de SA campagne comptent', async () => {
+    const avecFiche = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [{ tenantId: 't1', campagneId: 'camp1' }],
+    });
+    await expect(avecFiche.svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/1 fiche\(s\) de comptage à rapprocher/);
+
+    // Une fiche d'une AUTRE campagne ne retient pas celle-ci · le faux honore le filtre.
+    const ficheAilleurs = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [{ tenantId: 't1', campagneId: 'autre' }],
+    });
+    await expect(ficheAilleurs.svc.clore('t1', 'camp1', 'u1')).resolves.toBeDefined();
+  });
+
+  it('relit encore les caisses non comptées · une seconde caisse sans PV refuse', async () => {
+    const { svc } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: [...CAISSE_SEULE, ligne('c2', '57200000', 400_000)],
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/57200000/);
+  });
+
+  it('reste fermée en préparation', async () => {
+    const { svc } = service({
+      campagne: { ...CAMPAGNE, statut: StatutCampagneInventaire.PREPARATION },
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/RECENSEMENT ou ARBITRAGE/);
   });
 });

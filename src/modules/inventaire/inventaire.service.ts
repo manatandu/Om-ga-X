@@ -546,7 +546,15 @@ export class InventaireService {
       where: { tenantId, campagneId },
       include: { compte: { select: { numero: true, intitule: true } } },
     });
-    if (fiches.length === 0) throw new BadRequestException('Aucune fiche à rapprocher.');
+    if (fiches.length === 0) {
+      // Une campagne qui ne compte que des caisses n'a rien à rapprocher · le
+      // refus le dit et nomme son issue (paquet 1, B10), sans quoi le
+      // cabinet cherchait une fiche à créer pour une caisse déjà comptée.
+      throw new BadRequestException(
+        'Aucune fiche à rapprocher. Une campagne qui ne compte que des caisses, par leurs procès-verbaux sans écart, ' +
+          'se clôt sans rapprochement (« Clore la campagne »).',
+      );
+    }
 
     const nonValorisees = fiches.filter((f) => f.valeurInventaire === null);
     if (nonValorisees.length > 0) {
@@ -1243,7 +1251,13 @@ export class InventaireService {
    * et c'est aussi celle qui se perd le plus facilement.
    */
   async clore(tenantId: string, campagneId: string, userId: string) {
-    await this.campagneOuverte(tenantId, campagneId, [StatutCampagneInventaire.ARBITRAGE]);
+    const campagne = await this.campagneOuverte(tenantId, campagneId, [
+      StatutCampagneInventaire.RECENSEMENT,
+      StatutCampagneInventaire.ARBITRAGE,
+    ]);
+    if (campagne.statut === StatutCampagneInventaire.RECENSEMENT) {
+      await this.verifierCampagneDeCaissesSeules(tenantId, campagneId);
+    }
     const enSuspens = await this.prisma.ecartInventaire.count({
       where: { tenantId, campagneId, decision: null },
     });
@@ -1265,6 +1279,60 @@ export class InventaireService {
       where: { id: campagneId },
       data: { statut: StatutCampagneInventaire.CLOTUREE, clotureeLe: new Date(), clotureePar: userId },
     });
+  }
+
+  /**
+   * LA CAMPAGNE QUI NE COMPTE QUE DES CAISSES (paquet 1, B10) · une association
+   * sans stock ni bien inventorie sa seule caisse · le procès-verbal de
+   * comptage fait à lui seul les étapes 2 à 4 du CPCC (recensement,
+   * valorisation, comparaison au solde du livre-journal, figé sur le PV) ·
+   * aucune fiche n'est à rapprocher, et `rapprocher` refuse une campagne sans
+   * fiche. Elle restait au recensement, et la clôture, réservée à l'arbitrage,
+   * lui était fermée sans issue.
+   *
+   * Elle se clôt donc depuis le recensement, aux trois conditions qui gardent
+   * les refus voulus. (1) AUCUNE FICHE · une fiche se rapproche de la balance
+   * avant toute décision (étape 4), et ce chemin-là reste celui de
+   * l'arbitrage. (2) AU MOINS UN PROCÈS-VERBAL · une campagne où rien n'a été
+   * compté ne se clôt pas, elle n'a dressé aucun inventaire (AUDCIF art. 42).
+   * (3) AUCUN ÉCART DE CAISSE · « les écarts négatifs sont à la charge de
+   * l'entreprise, et la sous-commission doit déterminer le responsable de
+   * chaque type d'écart » (CPCC, étape 5) · un manquant ou un excédent figé
+   * sur un PV n'est jamais clos sans décision, et sa décision se prend par la
+   * voie de tout compte · la fiche de la caisse, rapprochée puis arbitrée.
+   * Les caisses non comptées sont relues ensuite par `clore`, comme pour toute
+   * campagne.
+   */
+  private async verifierCampagneDeCaissesSeules(tenantId: string, campagneId: string) {
+    const [fiches, pvs] = await Promise.all([
+      this.prisma.ficheInventaire.count({ where: { tenantId, campagneId } }),
+      this.prisma.procesVerbalComptageCaisse.findMany({
+        where: { tenantId, campagneId },
+        select: { ecart: true, compte: { select: { numero: true } } },
+      }),
+    ]);
+    if (fiches > 0) {
+      throw new ForbiddenException(
+        `${fiches} fiche(s) de comptage à rapprocher · la campagne passe par le rapprochement avec la balance, puis ` +
+          "l'arbitrage des écarts, avant la clôture (CPCC, étapes 4 et 5). Seule une campagne qui ne compte que des " +
+          'caisses, par leurs procès-verbaux, se clôt sans rapprochement.',
+      );
+    }
+    if (pvs.length === 0) {
+      throw new ForbiddenException(
+        "Rien n'a été compté dans cette campagne · ni fiche ni procès-verbal de comptage de caisse. Une campagne " +
+          "ne se clôt qu'une fois l'inventaire dressé (AUDCIF art. 42).",
+      );
+    }
+    const avecEcart = pvs.filter((pv) => Math.abs(Number(pv.ecart)) > 0.005);
+    if (avecEcart.length > 0) {
+      throw new ForbiddenException(
+        `${avecEcart.length} caisse(s) à l'écart non arbitré (${avecEcart.map((pv) => pv.compte.numero).join(', ')}) · ` +
+          "« les écarts négatifs sont à la charge de l'entreprise, et la sous-commission doit déterminer le " +
+          "responsable » (CPCC, étape 5). L'écart d'une caisse s'arbitre comme celui de tout compte · portez le " +
+          "comptage sur une fiche de la caisse, rapprochez-la de la balance, puis arbitrez l'écart avant la clôture.",
+      );
+    }
   }
 
   async lister(tenantId: string, exerciceId?: string) {
