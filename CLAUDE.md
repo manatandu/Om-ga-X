@@ -335,7 +335,14 @@ F153) du siège, imposés à `creerCellule` et `modifierGroupe`, vérifiés AVAN
 `register` par la console (`verifierMere`, F47 · refusée après, la mère gardait un
 dossier inaccessible). Système figé sur une cellule et sur un siège qui en a
 (`modifierSystemeSyscohada`, F172). Canevas de trésorerie : SYCEBNL seul (filtre de
-route).
+route). LE 585 À LA CLÔTURE (G1, décision de Manasse du 2026-10-08) · le bilan des
+associations ne lit aucun 58 ; la clôture d'un dossier du groupe admet l'écart
+EXACTEMENT égal à son 585, au sens inverse, si le 585 du GROUPE est soldé sur la
+période (fiche SYCEBNL du compte 58, « soldés à la fin de l'exercice », sur l'entité),
+lu par `GroupeService.virements585DuGroupe` derrière `LECTEUR_VIREMENTS_GROUPE`
+(seul le service du groupe ouvre son périmètre) · admis sur la foi de la liasse, un
+transfert passé d'un seul côté clôturait les deux dossiers et la liasse restait
+refusée sans issue. Ni le 588, ni le Système minimal (qui lit le 585 à son bilan).
 
 **Documents obligatoires, COMMUNS**, chacun dans son texte : livre d'inventaire
 (SYCEBNL art. 14 · AUDCIF art. 19), rapport (SYCEBNL art. 16-3, quatre sections ·
@@ -2258,7 +2265,12 @@ DÉCLARÉ, aucun taux ; période close au plus tard à la clôture.
 41, chacun avec sa phrase au-dessus du tableau (un solde de 42, 43, 44 au 31
 décembre est normal). 443, 444, 445 et 446 ÉCARTÉS du 44 (liquidation sans
 échéance). Le 47 garde tout le sens de l'antériorité (469150). `TOUS` reste 40 et
-41 (6,7 s sur un million de lignes, `docs/capacite-mesuree.md`).
+41 (6,7 s sur un million de lignes, `docs/capacite-mesuree.md`). SEUL LE SENS NORMAL
+SE VENTILE (D1, 2026-10-08, `sensNormal`, `ligneVentilee`) · 41 au débit, 40 au
+crédit (fiches des comptes 40 et 41 · un 409 ou un 419 n'a pas d'antériorité), 42,
+43, 44 et 47 dans les deux sens, « 40 et 41 » sur TOUS les comptes du tiers · trois
+populations (débiteurs et créditeurs ventilés, sens inverse), le net les additionne ;
+jusque-là toute dette fournisseur partait « en sens inverse, non ventilée ».
 
 **Réévaluation.** L'Ordonnance-loi n° 89/017 du 18 février 1989 (art. 16 et 20,
 « avant le 30 avril », 100 000 CDF par jour) est abrogée (loi n° 23/053, art. 152

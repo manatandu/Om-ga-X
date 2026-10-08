@@ -200,16 +200,11 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   garde de cloisonnement), et une facture réglée en partie pèse son reste,
   imputé par la loi (art. 151 à 154 · `reste-des-lignes-ouvertes.ts`) dans les
   notes par échéance, la balance âgée, l'échéancier, les relances et la NOTE 3
-  des deux SMT. Restent, par gravité ·
-  - **BLOQUANT, groupe (G1)** · un groupe SYCEBNL qui suit le guide du siège ne
-    clôture plus · le 585 des virements entre dossiers n'est lu par aucun poste
-    du bilan des associations (BW ne lit que 52, 53, 55, 57), et le refus du
-    bilan déséquilibré posé le 2026-10-08 (`refuserBilanDesequilibre`) arrête
-    la clôture du siège et de chaque cellule en Système normal. Lu · fiche
-    SYCEBNL du compte 58 (« comptes de passage utiles à la comptabilisation
-    d'opérations internes à l'entité », « soldés à la fin de l'exercice ») ; le
-    groupe est UNE entité en plusieurs dossiers, la somme du 585 sur le groupe
-    est déjà contrôlée par la liasse. Point pour Manasse.
+  des deux SMT. Corrigés ensuite (décisions de Manasse du 2026-10-08) · G1,
+  la clôture d'un dossier SYCEBNL de groupe admet l'écart égal à son 585 si
+  le 585 du GROUPE est soldé sur la période (fiche du compte 58), et D1, la
+  balance âgée ventile chaque solde dans le sens normal de son périmètre.
+  Restent, par gravité ·
   - **MAJEUR** ·
     - G2 · le canevas de trésorerie d'une cellule ne vise que l'exercice ouvert
       le plus récent · un canevas de décembre N déposé quand N+1 est ouvert est
@@ -236,16 +231,14 @@ Manasse (« on verra ça plus tard », 2026-10-03).
     - Consolidation (J1) · le résultat N-1 non affecté de la consolidante, au
       13 en à-nouveau, est lu comme résultat de l'exercice (règle de
       `resultat-de-l-exercice.ts` non reportée au cumul).
-    - Balance âgée (lot M, D1) · un solde créditeur n'est jamais ventilé, quel
-      que soit le périmètre · la balance âgée des FOURNISSEURS range toute dette
-      en « soldes en sens inverse, non ventilés », alors que sa phrase dit
-      « une dette ancienne est un retard de paiement » ; de même les dettes
-      sociales (43) et fiscales (44). Le sens normal se lit par périmètre
-      (40, 43 au crédit ; 41 au débit ; 42, 44, 47 dans les deux sens).
     - Consolidation (J2) · TFT consolidé faux dès que des 478 et 479 sont
       retraités (poste écarté de la CAFG), contrôle en échec non compté parmi
       les motifs.
-  - **MINEUR** · IFRS consolidé, amortissement de l'écart inclus dans les titres
+  - **MINEUR** · groupe, la clôture n'admet que le 585 (choix de Manasse),
+    un virement entre dossiers passé au 588, que la liasse neutralise avec le
+    reste du 58, refuse la clôture ; balance âgée, une ligne à solde nul reste
+    rendue sous « Soldes en sens inverse », et la grille de l'écran n'a pas de
+    rôles de tableau pour un lecteur d'écran (préexistant) ; IFRS consolidé, amortissement de l'écart inclus dans les titres
     mis en équivalence non signalé (IAS 28 § 32 a) ; SMT, motif de la méthode
     des cotisations qui dit « projet de développement », écart KZC/HB d'une
     cession sans décomposition au SYCEBNL ; révision, test ISA 240 qui garde
