@@ -54,6 +54,7 @@ import {
 } from '../etats-financiers-syscohada/correspondance-notes-syscohada';
 import { ajouterMois } from '../../common/ajouter-mois';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
+import { poidsDesLignesOuvertes, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
 import { AUCUN_VIREMENT, VirementsParCompte, virementsDesLignes } from '../immobilisations/virements-mise-en-service';
 // Sortis au socle (audit final F185), réexportés pour les appelants d'avant.
 export { LOT_LECTURE, lireParLots } from '../../common/lecture-par-lots';
@@ -306,6 +307,8 @@ function balanceMemorisee(ecritureService: EcritureService): EcritureService {
  */
 /** Lignes suivantes (rang > 0) des rubriques répétables, par `code::cle` puis par rang. */
 type RepetitionsSaisies = Map<string, Map<number, (string | number | null)[]>>;
+
+type LigneOuverteDeNote = LigneOuverte & { compte: { numero: string } };
 
 @Injectable()
 export class NoteAnnexeService {
@@ -1078,6 +1081,22 @@ export class NoteAnnexeService {
     const deuxAns = ajouterMois(exercice.dateFin, 24);
 
     const parCompte = new Map<string, Echeances>();
+    const ranger = (numero: string, montant: number, dateEcheance: Date | null) => {
+      if (montant === 0) return;
+      const e = parCompte.get(numero) ?? { ...ECHEANCES_NULLES };
+      if (!dateEcheance) e.nonVentile += montant;
+      else if (dateEcheance <= unAn) e.unAn += montant;
+      else if (dateEcheance <= deuxAns) e.deuxAns += montant;
+      else e.plusDeDeuxAns += montant;
+      parCompte.set(numero, e);
+    };
+    // UNE LIGNE D'UN GROUPE DE LETTRAGE PÈSE SON RESTE (simulation du
+    // 2026-10-08, lot M, D3) · une facture réglée en partie se range à son
+    // échéance pour ce qu'elle doit encore, et le règlement lettré avec elle
+    // ne tombe plus en « non ventilé » négatif (la colonne « à un an au plus »
+    // dépassait le solde de la note). Les lignes d'un groupe sont gardées
+    // jusqu'à la fin de la lecture, les autres rangées au fil des lots.
+    const lettrees: LigneOuverteDeNote[] = [];
     // PAR LOTS · seconde source de l'étouffement mesuré le 2026-09-03. Sur un
     // dossier dont rien n'est encore lettré, ce filtre ne retire RIEN : il
     // ramenait la totalité des lignes de l'exercice.
@@ -1091,22 +1110,28 @@ export class NoteAnnexeService {
           // F10) · un règlement postérieur lettré ensuite ne ferme pas la
           // ligne dans la liasse de l'exercice.
           where: { ecriture: { tenantId, exerciceId, statut: 'VALIDEE' }, ...ouverteALaCloture(exercice.dateFin) },
-          select: { id: true, debit: true, credit: true, dateEcheance: true, compte: { select: { numero: true } } },
+          select: {
+            id: true,
+            debit: true,
+            credit: true,
+            dateEcheance: true,
+            lettrageId: true,
+            deviseId: true,
+            montantDevise: true,
+            ecriture: { select: { date: true } },
+            compte: { select: { numero: true } },
+          },
           orderBy: { id: 'asc' },
           take: NoteAnnexeService.LOT_LECTURE,
           ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
         }),
       (l) => {
-        const montant = Number(l.debit) - Number(l.credit);
-        if (montant === 0) return;
-        const e = parCompte.get(l.compte.numero) ?? { ...ECHEANCES_NULLES };
-        if (!l.dateEcheance) e.nonVentile += montant;
-        else if (l.dateEcheance <= unAn) e.unAn += montant;
-        else if (l.dateEcheance <= deuxAns) e.deuxAns += montant;
-        else e.plusDeDeuxAns += montant;
-        parCompte.set(l.compte.numero, e);
+        if (l.lettrageId) lettrees.push(l);
+        else ranger(l.compte.numero, Number(l.debit) - Number(l.credit), l.dateEcheance);
       },
     );
+    const poids = poidsDesLignesOuvertes(lettrees);
+    for (const l of lettrees) ranger(l.compte.numero, poids.has(l.id) ? poids.get(l.id)! : Number(l.debit) - Number(l.credit), l.dateEcheance);
     return parCompte;
   }
 

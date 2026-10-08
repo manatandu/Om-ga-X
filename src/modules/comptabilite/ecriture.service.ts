@@ -31,6 +31,7 @@ import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
 import { designationLettrage, estTenueParUnLettrage } from '../lettrage/ligne-lettree';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
+import { poidsDesLignesOuvertes } from '../lettrage/reste-des-lignes-ouvertes';
 import { ancienneteJours, brouillardInvalidable, enRetardDeCentralisation, JOURS_CENTRALISATION } from './centralisation-brouillard';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
@@ -2902,9 +2903,15 @@ export class EcritureService {
     ]);
     const tiersDuCompte = new Map(rattachements.map((r) => [r.compteId, r.tiers]));
 
+    // UNE FACTURE RÉGLÉE EN PARTIE PÈSE SON RESTE (simulation du 2026-10-08,
+    // lot M, D2) · le règlement lettré avec elle ne se range plus en négatif
+    // dans sa propre tranche, la facture entière dans la sienne · ce qui reste
+    // dû l'est à l'échéance de la facture (`poidsDesLignesOuvertes`, la règle
+    // des notes par échéance).
+    const poids = poidsDesLignesOuvertes(lignes);
     const parCle = new Map<string, LigneAgee>();
     for (const l of lignes) {
-      const net = Number(l.debit) - Number(l.credit);
+      const net = poids.has(l.id) ? poids.get(l.id)! : Number(l.debit) - Number(l.credit);
       if (Math.abs(net) < 0.005) continue;
       const tiers = tiersDuCompte.get(l.compte.id);
       const cle = tiers ? `tiers:${tiers.id}` : `compte:${l.compte.id}`;
