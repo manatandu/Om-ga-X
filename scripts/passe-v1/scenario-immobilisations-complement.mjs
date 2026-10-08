@@ -3,7 +3,7 @@
  * « immobilisations » (lot F) n'a pas joué, sur 2026 (N) et 2027 (N+1),
  * clôtures comprises, dans les deux référentiels.
  *
- * Quatre dossiers, parce que la réévaluation est GLOBALE (AUDCIF art. 62 ;
+ * Cinq dossiers, parce que la réévaluation est GLOBALE (AUDCIF art. 62 ;
  * loi n° 23/053, art. 130) · un dossier qui réévalue doit réévaluer tout son
  * périmètre, d'où une société à part pour la réévaluation libre.
  *
@@ -14,6 +14,9 @@
  *     sécurité et de rechange, partie non identifiée détachée puis renouvelée,
  *     fonds de commerce à prix global avec stocks, matériel récupéré au 388,
  *     réserve de propriété au 4816, nature et pièce de chaque sortie.
+ *  1 bis. SYSCOHADA normal · « Complément · Station-service de Kolwezi SARL » ·
+ *     fonds commercial à durée LIMITÉE (adossé à une concession) acquis par
+ *     le même geste de prix global, et sa dotation.
  *  2. SYSCOHADA normal · « Complément · Brasserie du Tanganyika SARL » ·
  *     réévaluation LIBRE · méthode 2 (élimination des amortissements) en 2026,
  *     méthode 1 (ajustement) en 2027, encadré de la note 3E, tableau relu tel
@@ -180,6 +183,7 @@ async function contratsDuDossier(c, exerciceId) {
 
 export default async function scenarioImmobilisationsComplement(registre) {
   await transports(registre);
+  await stationService(registre);
   await brasserie(registre);
   await association(registre);
   await projet(registre);
@@ -248,7 +252,10 @@ async function transports(R) {
     await refus(c, R, 'Crédit-bail mobilier sur le 2411 (compte ordinaire)', 'POST', '/immobilisations/location-acquisition', contratA({ compteImmobilisationId: compte(c, '24110000') }), /location-acquisition/i);
     await refus(c, R, 'Crédit-bail immobilier sur un matériel (2416)', 'POST', '/immobilisations/location-acquisition', contratA({ nature: 'CREDIT_BAIL_IMMOBILIER' }), /immobilier/i);
 
-    const sim = await c.geste('Simulation du contrat A', 'POST', '/immobilisations/location-acquisition/simulation', contratA());
+    // La simulation ne prend que les termes du contrat (DTO de simulation).
+    const { designation: _d, dureeAmortissementAns: _a, reference: _r, dateConclusion: _c, coutsDirects: _cd, avantagesRecus: _av,
+      compteContrepartieCoutsId: _cc, exerciceId: _e, journalId: _j, ...termes } = contratA();
+    const sim = await c.geste('Simulation du contrat A', 'POST', '/immobilisations/location-acquisition/simulation', termes);
     R.montant('Contrat A · simulation · dette (VA des loyers et de l’option)', 28_096_317.89, sim?.dette);
 
     const a = await c.geste('Entrée du contrat A (crédit-bail mobilier)', 'POST', '/immobilisations/location-acquisition', contratA());
@@ -417,7 +424,14 @@ async function transports(R) {
     await doter(c, R, '2026', 'entrepôt', b.structure, n, 3_000_000); // 60 000 000 / 20
     await doter(c, R, '2026', 'matériel commercial du fonds', b.matcom, n, 1_400_000); // 12 000 000 / 5 × 7/12 (juin à décembre)
     await doter(c, R, '2026', 'mobilier du fonds', b.mobilier, n, 175_000); // 3 000 000 / 10 × 7/12
-    await refus(c, R, '2026 · dotation du fonds commercial (non amortissable)', 'POST', `/immobilisations/${b.fonds?.id}/dotation`, { exerciceId: n, journalId: od.id }, /amorti/i);
+    await refus(c, R, '2026 · dotation du fonds commercial (non amortissable)', 'POST', `/immobilisations/${b.fonds?.id}/dotation`, { exerciceId: n, journalId: od.id });
+    // Le fonds commercial est un élément ACQUIS avec le fonds (§ 7.2.1), en
+    // usage dès l'acte du 1/6/2026, comme les éléments séparables qui portent
+    // cette date · présumé non limité (§ 7.2.2.1).
+    const fiches = await c.lire('Liste des biens', '/immobilisations');
+    const ficheFonds = (Array.isArray(fiches) ? fiches : (fiches?.immobilisations ?? [])).find((x) => x.id === b.fonds?.id);
+    R.egal('2026 · fonds commercial · durée présumée non limitée', true, ficheFonds?.dureeNonLimitee ?? null);
+    R.egal('2026 · fonds commercial · en usage depuis l’acte (1/6/2026)', '2026-06-01', ficheFonds?.dateMiseEnService ? String(ficheFonds.dateMiseEnService).slice(0, 10) : null);
     await doter(c, R, '2026', 'compresseur', b.compresseur, n, 1_200_000); // 6 000 000 / 5
     await doter(c, R, '2026', 'chariot', b.chariot, n, 1_200_000); // 9 000 000 / 5 × 8/12 (mai à décembre)
     await doter(c, R, '2026', 'ordinateur portable', b.laptop, n, 400_000); // 1 200 000 / 3
@@ -477,7 +491,10 @@ async function transports(R) {
     // § 1.4 du ch. 5 · « remboursement de la dette de location-acquisition » ·
     // la part de capital des loyers payés, 8 595 184,11 + 3 433 754,45.
     R.montant('2026 · TFT · remboursements de la dette de location-acquisition (FQ)', -12_028_938.56, tft.FQ?.n);
-    await controles(c, R, '2026 · contrôles', n);
+    const tftBrut = await c.lire('Flux de trésorerie 2026 (contrôle)', `/etats-financiers-syscohada/tableau-flux-tresorerie?exerciceId=${n}`);
+    R.note(`2026 · TFT · contrôle du serveur · ${JSON.stringify(tftBrut?.controle ?? null)} · postes non calculables · ${JSON.stringify((tftBrut?.postesNonCalculables ?? []).map((p) => `${p.ref} : ${String(p.raison).slice(0, 160)}`))}`);
+    // AUDCIF Titre VIII ch. 9 § 3 · les biens frappés de réserve de propriété se mentionnent aux Notes annexes.
+    await controles(c, R, '2026 · contrôles', n, { leves: ['RESERVE_PROPRIETE_A_MENTIONNER'] });
   });
 
   const clos = await etape(R, 'Clôture 2026', async () => {
@@ -693,10 +710,10 @@ async function transports(R) {
     soldes(R, '2027', bal, {
       [BQ]: 584_100_000, '2416': 28_496_317.89, '2456': 0, '2411': 35_400_000, '2451': 16_000_000, '2311': 63_000_000, '2413': 21_000_000,
       '2444': 3_000_000, '2150': 30_000_000, '2442': 0, '2441': 0, '1730': 0, '1763': 0, '6233': 0, '6723': 738_095.24,
-      '1984': 0, '6971': 210_237.54, '7911': -3_219_732.37, '7971': -596_605.42, '388': 0, '3311': 500_000, '6033': 0,
+      '1984': 0, '6971': 210_237.54, '7911': -3_219_732.37, '7971': -596_605.42, '388': 0, '331': 500_000, '6033': 0,
       '4812': 0, '4852': 0, '4816': 0, '812': 112_570_572.86, '822': -127_500_000, '6813': 29_020_133.04,
     });
-    await controles(c, R, '2027 · contrôles après le solde du 388', n1, { nonLeves: ['STOCK_IMMOBILISATIONS_388_NON_SOLDE'] });
+    await controles(c, R, '2027 · contrôles après le solde du 388', n1, { nonLeves: ['STOCK_IMMOBILISATIONS_388_NON_SOLDE', 'RESERVE_PROPRIETE_A_MENTIONNER'] });
 
     const t = await c.lire('Tableau des amortissements 2027', `/immobilisations/tableau-amortissements?exerciceId=${n1}`);
     R.montant('2027 · tableau · dotations de l’exercice (compléments de sortie compris)', 29_020_133.04, t?.totaux?.dotation);
@@ -727,11 +744,77 @@ async function transports(R) {
     // rachat P représente le capital restant dû », annulé sans paiement,
     // § 2.1.9 B ; ch. 5 § 1.3, transactions sans effet de trésorerie).
     R.montant('2027 · TFT · remboursements de la dette de location-acquisition (FQ, décaissés)', -26_892_290.25, tft.FQ?.n);
+    const tftBrut = await c.lire('Flux de trésorerie 2027 (contrôle)', `/etats-financiers-syscohada/tableau-flux-tresorerie?exerciceId=${n1}`);
+    R.note(`2027 · TFT · FI lu ${tft.FI?.n} · FG lu ${tft.FG?.n} · contrôle du serveur · ${JSON.stringify(tftBrut?.controle ?? null)}`);
     const bil = aplatir(await c.lire('Bilan 2027', `/etats-financiers-syscohada/bilan?exerciceId=${n1}`));
     R.montant('2027 · bilan · actif égal au passif', 0, bil.BZ?.n != null && bil.DZ?.n != null ? bil.BZ.n - bil.DZ.n : null);
   });
 
   await etape(R, 'Clôture 2027', async () => {
+    const r = await c.geste('Clôture de l’exercice 2027', 'POST', `/exercices/${n1}/cloturer`, {});
+    R.egal('Clôture 2027 passée', true, r !== null);
+  });
+}
+
+// =============================================================================
+// 1 bis · STATION-SERVICE DE KOLWEZI SARL (SYSCOHADA normal) · fonds commercial
+// à durée LIMITÉE, acquis par le même geste de prix global
+// =============================================================================
+async function stationService(R) {
+  R.scenario = 'Immobilisations complément · SYSCOHADA fonds amortissable';
+  const c = await nouveauDossier(R, 'Complément · Station-service de Kolwezi SARL', {
+    referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'immo2-ss', exercice: ['2026-01-01', '2026-12-31'],
+  });
+  const n = c.exercices.get('2026').id;
+  const bq = c.journal('BQ') ?? c.od;
+  const od = c.od;
+  let fonds = null;
+  let pompes = null;
+
+  await etape(R, '2026 · fonds de commerce adossé à une concession de huit ans', async () => {
+    await c.geste('Forme juridique SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await ouverture(c, n, '10130000', 50_000_000);
+    // § 7.2.2.1 · le fonds commercial « doit obligatoirement être amorti
+    // lorsque la durée d'utilité est limitée et déterminable », par exemple
+    // « adossé à un contrat (par exemple un contrat de concession) » · ici la
+    // concession de distribution de huit ans. Prix 20 000 000 · pompes
+    // 4 000 000, reliquat 16 000 000 au 21500000, amorti sur huit ans.
+    const r = await c.geste('Acquisition du fonds de la station', 'POST', '/immobilisations/prix-global', {
+      exerciceId: n, journalId: bq.id, dateAcquisition: '2026-06-01', referenceActe: 'Acte de cession de fonds n° 12/2026', compteContrepartieId: compte(c, BQ),
+      prix: 20_000_000, nature: 'FONDS_DE_COMMERCE', stocks: [], dureeFondsCommercialAns: 8,
+      biens: [{ compteImmobilisationId: compte(c, '24130000'), designation: 'Station · pompes à carburant', montant: 4_000_000, dureeAmortissementAns: 5, dateMiseEnService: '2026-06-01' }],
+    });
+    fonds = (r?.biens ?? []).find((x) => /Fonds commercial/i.test(x.designation ?? '')) ?? null;
+    pompes = (r?.biens ?? [])[0] ?? null;
+    R.montant('Fonds · reliquat au fonds commercial (20 − 4)', 16_000_000, fonds?.montant);
+    // 16 000 000 / 8 × 7/12 (juin à décembre, acquis et exploité depuis l'acte) = 1 166 666,67.
+    const d = await c.geste('Dotation 2026 du fonds commercial', 'POST', `/immobilisations/${fonds?.id}/dotation`, { exerciceId: n, journalId: od.id });
+    R.montant('2026 · fonds commercial amortissable · dotation dès l’acte (16 000 000 / 8 × 7/12)', 1_166_666.67, d?.montant);
+    if (!d) {
+      // L'issue que le refus nomme · déclarer la mise en service, puis doter.
+      await c.geste('Mise en service déclarée du fonds commercial', 'PATCH', `/immobilisations/${fonds?.id}/mise-en-service`, { date: '2026-06-01', exerciceId: n, journalId: od.id });
+      const d2 = await c.geste('Dotation 2026 du fonds commercial (après la mise en service)', 'POST', `/immobilisations/${fonds?.id}/dotation`, { exerciceId: n, journalId: od.id });
+      R.montant('2026 · fonds commercial · dotation après la mise en service déclarée', 1_166_666.67, d2?.montant);
+    }
+    await doter(c, R, '2026', 'pompes', pompes, n, 466_666.67); // 4 000 000 / 5 × 7/12
+    await validerJusqua(c, n, '2026-12-31');
+    await rechargerComptes(c);
+    soldes(R, '2026', await balance(c, n), {
+      // Le fonds commercial est incorporel · sa dotation au 6812, son cumul au 2815.
+      [BQ]: 30_000_000, '2150': 16_000_000, '2413': 4_000_000, '2815': -1_166_666.67, '6812': 1_166_666.67, '6813': 466_666.67,
+    });
+    const r2 = await c.geste('Clôture de l’exercice 2026', 'POST', `/exercices/${n}/cloturer`, {});
+    await rechargerExercices(c);
+    R.egal('Clôture 2026 passée', true, r2 !== null);
+  });
+  const n1 = c.exercices.get('2027')?.id;
+  if (!n1) return R.note('Station-service · 2027 non joué');
+  await etape(R, '2027 · dotation du fonds commercial', async () => {
+    await doter(c, R, '2027', 'fonds commercial (16 000 000 / 8)', fonds, n1, 2_000_000);
+    await doter(c, R, '2027', 'pompes', pompes, n1, 800_000); // 4 000 000 / 5
+    await validerJusqua(c, n1, '2027-12-31');
+    await rechargerComptes(c);
+    soldes(R, '2027', await balance(c, n1), { '2815': -3_166_666.67, '6812': 2_000_000, '6813': 800_000 });
     const r = await c.geste('Clôture de l’exercice 2027', 'POST', `/exercices/${n1}/cloturer`, {});
     R.egal('Clôture 2027 passée', true, r !== null);
   });
@@ -1136,6 +1219,17 @@ async function association(R) {
     await doter(c, R, '2027', 'photocopieurs', b.loc, n1, 1_123_966.94);
     const d = await c.geste('Désactualisation 2027 (association)', 'POST', `/immobilisations/${b.demant?.id}/demantelement/desactualisation`, { exerciceId: n1, journalId: od.id });
     R.montant('2027 · désactualisation ((771 086,58 + 77 108,66) × 10 %)', 84_819.52, d?.montant);
+    // § 4 · l'autre motif de reprise · les coûts de désamiantage engagés au
+    // 31/12/2027 (le site est remis en état plus tôt que prévu). La
+    // désactualisation de l'exercice est déjà passée jusqu'au 31/12 · rien de
+    // couru en plus. D 1984 933 014,76 / C 7911 771 086,58 / C 7971
+    // 161 928,18 (77 108,66 + 84 819,52).
+    const rep = await c.geste('Reprise de la provision (coûts engagés)', 'POST', `/immobilisations/${b.demant?.id}/demantelement/reprise`, {
+      exerciceId: n1, journalId: od.id, date: '2027-12-31', motif: 'ENGAGEMENT_COUTS',
+    });
+    R.montant('2027 · reprise (coûts engagés) · total', 933_014.76, rep?.montant);
+    R.montant('2027 · reprise · part d’exploitation (7911)', 771_086.58, rep?.repriseExploitation);
+    R.montant('2027 · reprise · part financière (7971)', 161_928.18, rep?.repriseFinanciere);
     // Extourne 561 983,47 ; L1 · capital 2 438 016,53, intérêts 561 983,47 ;
     // courus sur 3 181 818,18 × 10 % = 318 181,82.
     await clotureContrat(c, R, '2027', 'photocopieurs', contrat, n1, od, { extourne: 561_983.47, loyers: 3_000_000, capital: 2_438_016.53, interets: 561_983.47, courus: 318_181.82 });
@@ -1149,7 +1243,7 @@ async function association(R) {
     soldes(R, '2027', bal, {
       [BQ]: 73_000_000, '2311': 48_771_086.58, '283': -4_954_217.32, '2411': 0, '2442': 0, '2441': 6_000_000, '2451': 15_000_000, '2495': 0,
       '2446': 5_619_834.71, '378': 600_000, '118': -800_000, '10621': 0, '10611': -7_600_000, '812': 8_133_333.33,
-      '1872': -3_181_818.18, '1876': -318_181.82, '6722': 318_181.82, '6233': 0, '1984': -933_014.76, '6971': 84_819.52,
+      '1872': -3_181_818.18, '1876': -318_181.82, '6722': 318_181.82, '6233': 0, '1984': 0, '6971': 84_819.52, '7911': -771_086.58, '7971': -161_928.18,
       '48162': 0, '6813': 9_367_742.27,
     });
     const t = await c.lire('Tableau des amortissements 2027', `/immobilisations/tableau-amortissements?exerciceId=${n1}`);
