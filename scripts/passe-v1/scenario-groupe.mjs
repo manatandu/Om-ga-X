@@ -703,6 +703,32 @@ async function groupeExercicesDecales(R, op) {
   await validerJusqua(K, k26, '2026-12-31');
   R.egal('Bornes décalées · clôture 2026 de la cellule (585 créditeur de 2 000 000, exercice civil)', true, await cloturer(K, '2026'));
   R.egal('Bornes décalées · clôture du premier exercice long du siège (585 débiteur de 2 000 000)', true, await cloturer(L, '2025'));
+
+  // N+1, ET UNE CELLULE DONT L'EXERCICE PRÉCÉDENT RESTE OUVERT · la clôture du
+  // siège en 2027 lit chaque membre sur l'exercice qui contient le 31/12/2027,
+  // ouverture comprise · le report validé du siège et de Kasa-Vubu, et pour
+  // Limete, dont 2026 n'est pas clôturé et dont 2027 n'a que l'à-nouveau
+  // provisoire, la remontée à 2026 (la requête d'ouverture tourne sous la
+  // garde de cloisonnement, sur vraie base).
+  if (!op) return R.note('Bornes décalées · console fermée, seconde cellule non créée');
+  await op.geste('Console · plafond de deux cellules pour Lumière', 'PATCH', `/plateforme/cabinets/${L.tenantId}/groupe`, { plafondCellules: 2 });
+  const emailM = adresseTitulaire('lumiere-limete');
+  const crM = await L.geste('Création de la cellule Limete', 'POST', '/groupe/cellules', { nom: 'Lumière · cellule Limete', emailAdmin: emailM, jeuEtatsFinanciersSycebnl: 'ASSOCIATIONS_ORDRES_PROFESSIONNELS' });
+  if (!crM) return R.note('Bornes décalées · cellule Limete non créée');
+  const { c: M } = await seConnecter(R, emailM, crM.motDePasseTemporaire, 'Lumière · cellule Limete');
+  await M.geste('Limete · choix de son mot de passe', 'POST', '/auth/changer-mot-de-passe', { motDePasseActuel: crM.motDePasseTemporaire, nouveauMotDePasse: MOT_DE_PASSE });
+  await chargerDossier(M);
+  await ouvrirExercice(M, 2026);
+  const m27 = await ouvrirExercice(M, 2027);
+  await rechargerExercices(L);
+  const l27 = L.exercices.get('2027')?.id;
+  if (!l27 || !m27) return R.note('Bornes décalées · exercices 2027 absents');
+  const bqM = M.journal('BQ') ?? M.od;
+  await ecriture(L, 'L3 virement à Limete', l27, '2027-02-01', 'Virement à Limete', [[VIREMENT, 300_000, 0], [BQ, 0, 300_000]], { journal: bqL });
+  await ecriture(M, 'M1 virement reçu du siège', m27, '2027-02-02', 'Virement reçu du siège', [[BQ, 300_000, 0], [VIREMENT, 0, 300_000]], { journal: bqM });
+  await validerJusqua(L, l27, '2027-12-31');
+  await validerJusqua(M, m27, '2027-12-31');
+  R.egal('Bornes décalées · clôture 2027 du siège (585 cumulé 2 300 000, Limete 2026 encore ouvert)', true, await cloturer(L, '2027'));
 }
 
 /**
