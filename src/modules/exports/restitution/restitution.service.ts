@@ -334,14 +334,26 @@ export class RestitutionService {
       });
     }
 
-    // APPENDU EN DERNIER, ET LU EN DERNIER. `archiver` consomme ses entrées
-    // dans l'ordre : le corps de ce générateur ne s'exécute qu'une fois
-    // toutes les tables écrites, donc une fois les compteurs remplis. C'est ce qui
-    // permet de comparer l'inventaire annoncé à ce qui est réellement sorti,
-    // sans rien garder en mémoire.
-    archive.append(Readable.from(this.controles(lignesParTable, ecrites, pieces)), {
-      name: 'controles.txt',
+    // APPENDU EN DERNIER, ET LU QUAND TOUT LE RESTE EST ÉCRIT. `archiver` 7
+    // fait passer chaque source dans un PassThrough dès `append`
+    // (`normalizeInputSource`) · le générateur du contrôle démarrait donc
+    // aussitôt, avant la lecture des tables, et écrivait « 0 ligne écrite »
+    // partout (passe V1 du 2026-10-08, R1) · une archive amputée ne se
+    // distinguait plus d'une complète. Il attend l'événement `entry` de
+    // chacune des entrées qui le précèdent (émis une fois l'entrée écrite),
+    // ou l'arrêt de l'archive. Rien n'est gardé en mémoire.
+    const avantLeControle = 1 + 1 + TABLES_RESTITUEES.length + documents.length;
+    let traitees = 0;
+    let signalerToutEcrit: () => void = () => undefined;
+    const toutEcrit = new Promise<void>((resoudre) => (signalerToutEcrit = resoudre));
+    archive.on('entry', () => {
+      traitees++;
+      if (traitees >= avantLeControle) signalerToutEcrit();
     });
+    archive.append(
+      Readable.from(this.controlesApres(Promise.race([toutEcrit, arret]), lignesParTable, ecrites, pieces)),
+      { name: 'controles.txt' },
+    );
 
     const fin = archive.finalize();
     // Rejetée seulement sur une archive abandonnée · déjà consignée ci-dessus.
@@ -371,6 +383,16 @@ export class RestitutionService {
       this.journal.warn(`Pièce ${id} non lue · ${motif}`);
       pieces.manquantes.push(`${id} · illisible (${motif})`);
     }
+  }
+
+  private async *controlesApres(
+    attente: Promise<void>,
+    annonce: Record<string, number>,
+    ecrites: Record<string, { ecrites: number }>,
+    pieces: SuiviPieces,
+  ): AsyncGenerator<string> {
+    await attente;
+    yield* this.controles(annonce, ecrites, pieces);
   }
 
   private async *controles(

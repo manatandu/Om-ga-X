@@ -191,6 +191,18 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- **Passe V1 n° 2 (2026-10-08), constats MINEURS, non corrigés (gel).** C1 ·
+  CHARGE_SANS_TIERS se lève sur le redressement du manquant de caisse que
+  l'inventaire demande et retient (`controles.service.ts`). C2 · GET
+  `/rapprochements/:id/propositions` sans `fenetreJours` rend 400 alors que le
+  paramètre est facultatif (l'écran envoie toujours 15). C3 · cloisonnement,
+  sans fuite · des identifiants d'un autre dossier rendent 400 au lieu de 404
+  (grand livre, contrôles), ou 200 vide (liste, balance, export du journal d'un
+  exercice d'un autre dossier). Observation · la feuille CONTROLES de la liasse
+  projet compare XC à 0 « en régime normal » sur un projet au résultat de
+  120 000. Le MAJEUR R1 (contrôle de restitution écrit avant les tables) est
+  corrigé.
+
 - LIGNE PASSE-1-ETATS INTÉGRÉE (2026-10-08, défauts P1, A1 et B1 de la première passe de la version 1), relevés non bloquants ·
   - Le **130** (« Résultat en instance d'affectation », SYSCOHADA) reste hors de
     CJ et de SP2 (anomalie n° 7, audit final F218) · le ch. 7 ne le nomme pas.
