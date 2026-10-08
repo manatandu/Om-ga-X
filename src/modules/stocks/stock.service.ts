@@ -199,8 +199,15 @@ export class StockService {
     });
     if (!journal) throw new BadRequestException('Journal introuvable dans ce dossier');
 
+    // LA FORME SEMÉE À HUIT CHIFFRES EST DEMANDÉE À LA BASE AVEC LA FORME DE LA
+    // TABLE (§ 7) · la proposition écrit « 6031 », le plan sème « 60310000 ».
+    // Seule la forme courte était demandée, si bien que le repli sur
+    // `padEnd(8, '0')` ci-dessous cherchait un compte jamais lu, et la variation
+    // d'un dossier SYSCOHADA semé était refusée « 6031 non ouvert » (simulation
+    // du 2026-10-08, inventaire intermittent).
+    const numerosDemandes = [...new Set(lignes.flatMap((l) => [l.compte, l.compte.padEnd(8, '0')]))];
     const comptes = await this.prisma.compte.findMany({
-      where: { tenantId, numero: { in: [...new Set(lignes.map((l) => l.compte))] } },
+      where: { tenantId, numero: { in: numerosDemandes } },
       select: { id: true, numero: true, typeCompte: true },
     });
     const parNumero = new Map(comptes.map((c) => [c.numero, c]));

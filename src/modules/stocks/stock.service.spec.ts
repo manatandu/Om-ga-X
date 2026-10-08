@@ -237,6 +237,26 @@ describe('Stocks · l’enregistrement ne fait pas confiance au client', () => {
     ).rejects.toThrow(/6031/);
   });
 
+  it('trouve le compte de variation SEMÉ à huit chiffres · la doublure honore le `where`', async () => {
+    // Simulation du 2026-10-08 · la proposition écrit « 6031 », le plan sème
+    // « 60310000 ». La doublure qui rendait 60310000 quoi qu'on lui demande
+    // cachait que la base n'était interrogée que sur « 6031 ».
+    const { svc, prisma, creerEcriture } = service();
+    const plan = [
+      { id: 'c-31', numero: '31100000', typeCompte: 'DETAIL' },
+      { id: 'c-6031', numero: '60310000', typeCompte: 'DETAIL' },
+    ];
+    (prisma as { compte: { findMany: jest.Mock } }).compte.findMany = jest
+      .fn()
+      .mockResolvedValueOnce([COMPTE_STOCK])
+      .mockImplementation(async ({ where }: { where: { numero: { in: string[] } } }) =>
+        plan.filter((c) => where.numero.in.includes(c.numero)),
+      );
+    await svc.enregistrer('t-1', 'u-1', { exerciceId: 'ex-1', journalId: 'j-1', date: '2026-12-31' });
+    const comptesPostes = creerEcriture.mock.calls[0][2].lignes.map((l: { compteId: string }) => l.compteId);
+    expect(comptesPostes).toContain('c-6031');
+  });
+
   it('le libellé par défaut nomme le mode d’inventaire', async () => {
     const { svc, creerEcriture } = service();
     await svc.enregistrer('t-1', 'u-1', {

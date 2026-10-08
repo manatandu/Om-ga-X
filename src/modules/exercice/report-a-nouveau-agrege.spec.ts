@@ -570,3 +570,93 @@ describe('A6 bis · un groupe à cheval de deux exercices se lit non lettré pou
     expect(ou).toContainEqual({ lettrage: { lignes: { some: { ecriture: { tenantId: 't', exerciceId: { not: 'n' } } } } } });
   });
 });
+
+/**
+ * LE RÉSULTAT DE L'EXERCICE PRÉCÉDENT NON AFFECTÉ EST VIRÉ AU REPORT À NOUVEAU
+ * EN FIN D'EXERCICE (AUDCIF Titre VII, compte 13 ; SYCEBNL, fiche du compte
+ * 13). Simulation sur vraie base du 2026-10-08 · perte 2026 de 46 072 000
+ * non affectée, la clôture de 2027 la cumulait au 139 (57 672 000 en 2028) et
+ * le bilan de 2027 sortait déséquilibré de 46 072 000.
+ */
+describe('Clôture de N+1 · le résultat de N non affecté passe au report à nouveau', () => {
+  const COMPTES_RAN = [
+    ...COMPTES,
+    compte('121', '12100000', 'SOLDE'),
+    compte('1291', '12910000', 'SOLDE'),
+    compte('1290', '12900000', 'SOLDE'),
+  ];
+  for (const c of COMPTES_RAN) parId.set(c.id, c);
+  const AN = { ecriture: { libelle: 'Report à-nouveau' } };
+
+  /** La doublure garde ce que la clôture écrit · la relecture qui suit le virement le voit. */
+  function monter(jeu: Lgn[], referentiel: 'SYSCOHADA' | 'SYCEBNL') {
+    const lignes = [...jeu];
+    const m = base(COMPTES_RAN, lignes, referentiel);
+    m.tx.ecriture.create = jest.fn(async ({ data }: { data: { lignes: { create: Array<{ compteId: string; debit: number; credit: number }> } } }) => {
+      for (const l of data.lignes.create) lignes.push(ligne(l.compteId, l.debit, l.credit));
+      return { lignes: [] };
+    }) as never;
+    return m;
+  }
+  type Cree = { estSoldeDesComptesDeGestion?: boolean; estGenereeParCloture?: boolean; lignes: { create: Array<{ compteId: string; debit: number; credit: number }> } };
+  const ecritures = (tx: { ecriture: { create: unknown } }) => (tx.ecriture.create as jest.Mock).mock.calls.map((c) => c[0].data as Cree);
+  const sur = (e: Cree, id: string) => e.lignes.create.filter((l) => l.compteId === id).reduce((s, l) => s + l.debit - l.credit, 0);
+
+  it('SYSCOHADA, perte non affectée · virée au 12910000 dans une écriture de clôture liée, le report ne porte plus que le résultat de N+1', async () => {
+    const jeu = [ligne('139', 46_072_000, 0, AN), ligne('101', 0, 46_072_000, AN), ligne('601', 11_600_000, 0), ligne('521', 0, 11_600_000)];
+    const { service, tx } = monter(jeu, 'SYSCOHADA');
+    const r = await service.cloturer('t', 'n', 'u');
+    const [virement, cloture, ran] = ecritures(tx);
+    expect(virement.estGenereeParCloture).toBe(true);
+    expect(virement.estSoldeDesComptesDeGestion).toBe(false);
+    expect(sur(virement, '139')).toBe(-46_072_000);
+    expect(sur(virement, '1291')).toBe(46_072_000);
+    expect(cloture.estSoldeDesComptesDeGestion).toBe(true);
+    expect(sur(ran, '139')).toBe(11_600_000);
+    expect(sur(ran, '1291')).toBe(46_072_000);
+    expect(r.virementResultatNonAffecte).toEqual({ montant: -46_072_000, compte: '12910000' });
+    expect(r.issueOuverture[0]).toMatch(/non affecté viré au report à nouveau · perte de 46\s072\s000,00 au compte 12910000/);
+    expect(r.issueOuverture[0]).toMatch(/AVERTISSEMENT/);
+  });
+
+  it('SYCEBNL, excédent non affecté · viré au 12100000', async () => {
+    const jeu = [ligne('131', 0, 2_700_000, AN), ligne('521', 2_700_000, 0, AN), ligne('701', 0, 500_000), ligne('521', 500_000, 0)];
+    const { service, tx } = monter(jeu, 'SYCEBNL');
+    const r = await service.cloturer('t', 'n', 'u');
+    const [virement, , ran] = ecritures(tx);
+    expect(sur(virement, '131')).toBe(2_700_000);
+    expect(sur(virement, '121')).toBe(-2_700_000);
+    expect(sur(ran, '121')).toBe(-2_700_000);
+    expect(sur(ran, '131')).toBe(-500_000);
+    expect(r.virementResultatNonAffecte).toEqual({ montant: 2_700_000, compte: '12100000' });
+    expect(r.issueOuverture[0]).toMatch(/excédent de 2\s700\s000,00 au compte 12100000 \(SYCEBNL/);
+  });
+
+  it.each(['SYSCOHADA', 'SYCEBNL'] as const)('%s · affectation passée avant la clôture · le 13 est soldé, rien n’est viré', async (referentiel) => {
+    const jeu = [
+      ligne('139', 46_072_000, 0, AN),
+      ligne('101', 0, 46_072_000, AN),
+      // L'affectation de N, décidée en N+1 · D 129 / C 139.
+      ligne(referentiel === 'SYSCOHADA' ? '1291' : '1290', 46_072_000, 0),
+      ligne('139', 0, 46_072_000),
+      ligne('601', 11_600_000, 0),
+      ligne('521', 0, 11_600_000),
+    ];
+    const { service, tx } = monter(jeu, referentiel);
+    const r = await service.cloturer('t', 'n', 'u');
+    const crees = ecritures(tx);
+    expect(crees).toHaveLength(2);
+    expect(crees[0].estSoldeDesComptesDeGestion).toBe(true);
+    expect(r.virementResultatNonAffecte).toBeNull();
+    expect(sur(crees[1], '139')).toBe(11_600_000);
+  });
+
+  it('le report PROVISOIRE fond le même virement · même report que la clôture', async () => {
+    const jeu = [ligne('139', 46_072_000, 0, AN), ligne('101', 0, 46_072_000, AN), ligne('601', 11_600_000, 0), ligne('521', 0, 11_600_000)];
+    const { service, tx } = monter(jeu, 'SYSCOHADA');
+    await service.genererANouveauxProvisoires('t', 'n', 'u');
+    const [ran] = ecritures(tx);
+    expect(sur(ran, '139')).toBe(11_600_000);
+    expect(sur(ran, '1291')).toBe(46_072_000);
+  });
+});

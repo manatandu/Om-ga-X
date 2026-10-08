@@ -191,6 +191,88 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- SIMULATION COMPLÈTE DU 2026-10-08 (SARL SYSCOHADA 2026 à 2028, association SYCEBNL), failles non corrigées · voir le détail ci-dessous, repris de la fiche ·
+  Base PostgreSQL jetable, serveur compilé, jeu PAR L'API seulement. Deux
+  dossiers · SARL SYSCOHADA (système normal, assujettie TVA) sur 2026 et 2027,
+  association SYCEBNL (jeu associations) sur 2026. Chaque solde lu contre le
+  calcul à la main.
+  
+  ## Fait
+  
+  - Correction 1 (BLOQUANT, geste juste refusé sans issue) · variation des
+    stocks en inventaire intermittent refusée sur tout dossier SYSCOHADA semé ·
+    « Ces comptes ne sont pas ouverts en imputation dans ce dossier : 6031 ».
+    La proposition écrit `6031`, le plan sème `60310000`, et la requête ne
+    demandait que la forme courte (`StockService.enregistrer`). Test ·
+    `stock.service.spec.ts`, doublure qui honore le `where`. Rejoué sur la base ·
+    D 31110000 / C 60310000 8 000 000 passé.
+  - Correction 2 (MAJEUR tranché par la loi, consigne du coordinateur) · le
+    résultat de l'exercice précédent non affecté est VIRÉ AU REPORT À NOUVEAU à
+    la clôture de N+1. AUDCIF Titre VII, compte 13 (« En fin d'exercice, le
+    résultat de l'exercice précédent non affecté [...] est viré au compte de
+    report à nouveau » ; « Dans les entités individuelles, le solde du compte 13
+    est viré au compte 103 ») ; SYCEBNL Partie 2 ch. 3, compte 13, même phrase.
+    Comptes semés · SYSCOHADA 12100000 / 12910000 (10300000 pour l'entreprise
+    individuelle et l'entreprenant), SYCEBNL 12100000 / 12900000.
+    `virement-resultat-non-affecte.ts`, écriture de clôture LIÉE validée avant
+    le solde des comptes de gestion, message nommé dans la réponse de la clôture
+    et à l'écran (`issueOuverture`) avec l'avertissement sur l'affectation à
+    passer depuis le 12. Report provisoire et aperçu de l'ouverture suivante
+    fondent le même virement. Exception écrite au commentaire F209.
+  - La clôture REFUSE un bilan déséquilibré par un autre chemin
+    (`refuserBilanDesequilibre`, `ecartInexpliqueDuBilan`, montants et écart
+    nommés), bilan du jeu du dossier lu par jetons (`common/lecteurs-bilan.ts`).
+  - Rejoué sur vraie base · SARL bilan 2027 165 828 000 = 165 828 000 (CH
+    −46 072 000, CJ −11 600 000, CP −7 672 000), bilan 2028 équilibré, colonne
+    N-1 de 2028 identique, ouverture 2028 · 12910000 46 072 000 et 13900000
+    11 600 000. ASBL sans affectation · excédent 2026 de 2 700 000 viré au
+    12100000 à la clôture 2027, bilans 2027 et 2028 équilibrés. Affectation
+    passée avant la clôture · rien viré (specs, deux référentiels).
+  - Limite écrite · le virement porte le drapeau de clôture et se range, à la
+    balance de N+1, dans la colonne « report ».
+  
+  ## Scénario joué (tout lu contre le calcul à la main, concordant sauf constats)
+  
+  - SARL 2026 · capital 50 M, emprunt 150 M, achats 20 M HT + TVA 3,2 M,
+    ventes 30 M et 10 M HT + TVA 6,4 M, facture 10 000 USD à 2 800, règlement
+    4 000 USD à 2 850 (perte réalisée 200 000 au 656), paie 3 salariés juillet et
+    août (brut 5 800 000, CNSS 290 000 + 754 000, IRPP 997 000, INPP 203 000,
+    ONEM 29 000, net 4 513 000 par mois), véhicule 30 M, bâtiment 100 M plus
+    toiture 20 M en composant, serveur 6 M cédé 5 M (VNC 4 666 666,67), créance
+    C2 de 11 600 000 reclassée au 4162 et dépréciée de 5 800 000, charges à
+    payer (électricité, intérêts courus 15 M), stock final 8 M, réévaluation
+    (4783 et 4991 de 600 000), IMF 400 000, résultat −46 072 000, bilan
+    187 908 000 équilibré, TFT bouclé sur 12 628 000, liquidation TVA T1.
+  - SARL 2027 · extourne, reprise des régularisations, règlements des
+    à-nouveaux (F2 6 000 USD à 2 950, perte 900 000 ; reprise de provision
+    600 000), recouvrement 4 M et revue de C2 (reprise 2 200 000), variation
+    8 M vers 5 M, IMF 500 000, résultat −11 600 000.
+  - ASBL 2026 · cotisations à l'encaissement, dons, fonds affectés 30 M dont
+    18 M repris au 7925, subvention d'équipement 12 M reprise au 799 (2 M),
+    ordinateurs reçus en don 6 M (167, reprise 7923), excédent 2 700 000,
+    bilan 29 533 333,33 équilibré, TFT bouclé, clôture, affectation en 2027.
+  - Cloisonnement (lecture, écriture, suppression croisées) et rôle lecture
+    seule · tous refusés, sauf le constat 4.
+  
+  ## Constats non bloquants (consignés, non corrigés)
+  
+  1. (corrigé, voir « Fait », correction 2)
+  2. MOYEN · un lettrage PARTIEL n'est pas reconduit à la clôture · facture
+     34 800 000 et acompte 20 000 000 du client arrivent séparés et non lettrés
+     en N+1 ; le règlement de la facture entière (34 800 000) est accepté alors
+     que le client ne doit que 14 800 000 (compte ensuite créditeur de
+     20 000 000). Même chose pour le report en devise du fournisseur F2.
+  3. MINEUR · `POST /ecritures/valider-jusqua` avec l'exercice d'un autre
+     dossier rend 201 (zéro validée) au lieu d'un 404 · aucune fuite.
+  4. MINEUR · l'observation « Société unipersonnelle à associé unique » du
+     résultat fiscal est servie à toute SARL, SA, SAS, unipersonnelle ou non.
+  5. MINEUR · `CHARGE_SANS_TIERS` sur des intérêts d'emprunt prélevés par la
+     banque (6712 contre 521), cas légitime non nommé.
+  6. À EXAMINER · au TFT SYSCOHADA, la variation des intérêts courus (1662)
+     entre dans FE (passif circulant) quand le bilan les range en DA ; le
+     tableau boucle, la ventilation est à relire contre le ch. 5.
+  
+
 - LIGNE INPP TRIMESTRIEL INTÉGRÉE, relevés de la relecture ·
   (relecture adverse, non corrigés ici)
   

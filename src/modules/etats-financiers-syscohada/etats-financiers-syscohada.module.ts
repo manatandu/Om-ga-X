@@ -1,3 +1,4 @@
+import { LECTEUR_BILAN_SYSCOHADA_NORMAL, LECTEUR_BILAN_SYSCOHADA_SMT } from '../../common/lecteurs-bilan';
 import { Module } from '@nestjs/common';
 import { EtatsFinanciersSyscohadaService } from './etats-financiers-syscohada.service';
 import { EtatsFinanciersSmtSyscohadaService } from './etats-financiers-smt-syscohada.service';
@@ -29,7 +30,13 @@ import { NotesAnnexesModule } from '../notes-annexes/notes-annexes.module';
 @Module({
   imports: [ComptabiliteModule, LicenceModule, JwtAuthModule, ExerciceModule, NotesAnnexesModule],
   controllers: [EtatsFinanciersSyscohadaController],
-  providers: [EtatsFinanciersSyscohadaService, EtatsFinanciersSmtSyscohadaService],
+  providers: [
+    EtatsFinanciersSyscohadaService,
+    EtatsFinanciersSmtSyscohadaService,
+    // Lus par la clôture, qui refuse un bilan déséquilibré (common/lecteurs-bilan.ts).
+    { provide: LECTEUR_BILAN_SYSCOHADA_NORMAL, useExisting: EtatsFinanciersSyscohadaService },
+    { provide: LECTEUR_BILAN_SYSCOHADA_SMT, useExisting: EtatsFinanciersSmtSyscohadaService },
+  ],
   exports: [EtatsFinanciersSyscohadaService, EtatsFinanciersSmtSyscohadaService],
 })
 export class EtatsFinanciersSyscohadaModule {}

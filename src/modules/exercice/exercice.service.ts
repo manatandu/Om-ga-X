@@ -7,8 +7,26 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import {
+  LECTEUR_BILAN_SYCEBNL_ASSOCIATIONS,
+  LECTEUR_BILAN_SYCEBNL_PROJETS,
+  LECTEUR_BILAN_SYCEBNL_SMT,
+  LECTEUR_BILAN_SYSCOHADA_NORMAL,
+  LECTEUR_BILAN_SYSCOHADA_SMT,
+  type LecteurBilan,
+} from '../../common/lecteurs-bilan';
+import {
+  destinationsDuVirement,
+  appliquerVirementAuReport,
+  ecartInexpliqueDuBilan,
+  montantFr,
+  virementResultatNonAffecte,
+} from './virement-resultat-non-affecte';
 import { PrismaService } from '../../common/prisma.service';
 import {
   ClasseCompte,
@@ -16,6 +34,7 @@ import {
   RegimeLiquidation,
   GranulariteCloture,
   ModeReportANouveau,
+  JeuEtatsFinanciersSycebnl,
   Prisma,
   Referentiel,
   StatutEcriture,
@@ -233,10 +252,103 @@ export function refuserSuivantCivilApresDissolution(
  */
 @Injectable()
 export class ExerciceService {
+  private readonly journal = new Logger(ExerciceService.name);
+
+  /**
+   * Le virement du résultat antérieur non affecté, calculé sur les comptes lus
+   * (`virement-resultat-non-affecte.ts`) · même calcul pour la clôture, le
+   * report provisoire et l'aperçu de l'ouverture suivante.
+   */
+  private async virementDuResultatNonAffecte(
+    client: Prisma.TransactionClient | PrismaService,
+    tenantId: string,
+    comptes: CompteRan[],
+    dossier: { referentiel: Referentiel; formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null },
+  ) {
+    const entiteIndividuelle =
+      dossier.formeJuridiqueSyscohada === FormeJuridiqueSyscohada.ENTREPRISE_INDIVIDUELLE ||
+      dossier.formeJuridiqueSyscohada === FormeJuridiqueSyscohada.ENTREPRENANT;
+    const destination = destinationsDuVirement(dossier.referentiel, entiteIndividuelle);
+    const numeros = [...new Set([destination.credit, destination.debit])];
+    const plan = await client.compte.findMany({
+      where: { tenantId, numero: { in: numeros } },
+      select: { id: true, numero: true },
+      orderBy: { numero: 'asc' },
+    });
+    try {
+      return virementResultatNonAffecte(comptes, destination, (n) => plan.find((c) => c.numero === n)?.id);
+    } catch (e) {
+      throw new BadRequestException((e as Error).message);
+    }
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly journalService: JournalService,
+    // FACULTATIF · seule la clôture s'en sert, pour lire le bilan par le
+    // service d'états du dossier sans importer son module (cycle, voir
+    // `common/lecteurs-bilan.ts`). Les doublures des specs s'en passent.
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
+
+  /**
+   * UN BILAN DÉSÉQUILIBRÉ NE SE CLÔTURE PAS (simulation sur vraie base du
+   * 2026-10-08) · le bilan 2027 sortait à 165 828 000 contre 211 900 000, et
+   * la clôture l'acceptait sans un mot. Le seul écart admis est la part du 13
+   * que l'état ne lit pas et que la clôture vire au report à nouveau
+   * (`ecartInexpliqueDuBilan`) · tout autre écart (compte non rattaché à un
+   * poste, défaut de correspondance) refuse la clôture, montants nommés.
+   */
+  private async refuserBilanDesequilibre(
+    tenantId: string,
+    exerciceId: string,
+    dossier: {
+      referentiel: Referentiel;
+      systemeComptableSyscohada: SystemeComptableSyscohada | null;
+      jeuEtatsFinanciersSycebnl: JeuEtatsFinanciersSycebnl | null;
+    },
+  ) {
+    if (!this.moduleRef) return;
+    const jeton =
+      dossier.referentiel === Referentiel.SYSCOHADA
+        ? dossier.systemeComptableSyscohada === SystemeComptableSyscohada.MINIMAL_TRESORERIE
+          ? LECTEUR_BILAN_SYSCOHADA_SMT
+          : LECTEUR_BILAN_SYSCOHADA_NORMAL
+        : dossier.jeuEtatsFinanciersSycebnl === JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT
+          ? LECTEUR_BILAN_SYCEBNL_PROJETS
+          : dossier.jeuEtatsFinanciersSycebnl === JeuEtatsFinanciersSycebnl.SYSTEME_MINIMAL_TRESORERIE
+            ? LECTEUR_BILAN_SYCEBNL_SMT
+            : LECTEUR_BILAN_SYCEBNL_ASSOCIATIONS;
+    let lecteur: LecteurBilan;
+    try {
+      lecteur = this.moduleRef.get<LecteurBilan>(jeton, { strict: false });
+    } catch (e) {
+      // Consigné, jamais tu · un montage partiel (outil, banc) n'a pas les
+      // modules d'états ; l'application complète les a toujours.
+      this.journal.warn(`Contrôle d'équilibre du bilan non joué à la clôture · ${jeton} introuvable (${(e as Error).message})`);
+      return;
+    }
+    const [bilan, treize] = await Promise.all([
+      lecteur.bilan(tenantId, exerciceId),
+      this.prisma.ligneEcriture.aggregate({
+        where: {
+          compte: { tenantId, numero: { startsWith: '13' } },
+          ecriture: { tenantId, exerciceId, statut: StatutEcriture.VALIDEE, estSoldeDesComptesDeGestion: false },
+        },
+        _sum: { debit: true, credit: true },
+      }),
+    ]);
+    const resultat13 = Number(treize._sum.credit ?? 0) - Number(treize._sum.debit ?? 0);
+    const ecart = ecartInexpliqueDuBilan(bilan, resultat13);
+    if (ecart !== null && Math.abs(ecart) > EPSILON) {
+      throw new BadRequestException(
+        `Le bilan de l'exercice ne s'équilibre pas · actif ${montantFr(Number(bilan.totalActif))}, passif ` +
+          `${montantFr(Number(bilan.totalPassif))}, écart de ${montantFr(Math.abs(ecart))} que le report à nouveau ` +
+          "du résultat non affecté n'explique pas. Un compte n'est rattaché à aucun poste, ou un poste est mal lu · voyez les " +
+          '« comptes non rattachés » du bilan, corrigez, puis clôturez (AUDCIF art. 34 ; SYCEBNL art. 16, 4)).',
+      );
+    }
+  }
 
   /** Crée l'exercice de l'année en cours à l'inscription du tenant (1er janvier → 31 décembre). */
   /**
@@ -1791,10 +1903,21 @@ export class ExerciceService {
    * au report à-nouveau (mode SOLDE, comme tout compte de bilan), et c'est
    * l'AFFECTATION, décidée par les organes compétents au cours de l'exercice
    * suivant, qui le solde dans celui-ci (`affectation/affectation.service.ts`,
-   * contreparties de chaque référentiel dans `regles-affectation.ts`). Tant
-   * qu'aucune affectation n'est enregistrée, le résultat reste sur le 131 ou
-   * le 139 et s'y cumule d'exercice en exercice. Ce commentaire tenait encore
-   * l'affectation pour une brique à écrire (audit final F209).
+   * contreparties de chaque référentiel dans `regles-affectation.ts`).
+   *
+   * EXCEPTION, TRANCHÉE PAR LA LOI (simulation sur vraie base du 2026-10-08) ·
+   * ce commentaire disait jusque-là que, sans affectation, le résultat « reste
+   * sur le 131 ou le 139 et s'y cumule d'exercice en exercice » (audit final
+   * F209). C'était contraire aux deux textes · « En fin d'exercice, le
+   * résultat de l'exercice précédent non affecté à un compte de réserves et
+   * non distribué est viré au compte de report à nouveau » (AUDCIF Titre VII,
+   * compte 13 ; même phrase à la fiche SYCEBNL du compte 13). La clôture de
+   * N+1 vire donc au report à nouveau (au 103 pour une entité individuelle)
+   * ce qui reste au 13 avant l'écriture qui solde les comptes de gestion,
+   * dans une écriture de clôture liée, validée
+   * (`virement-resultat-non-affecte.ts`) ; une affectation passée avant ne
+   * laisse rien à virer. Le cumul faisait sortir le bilan de N+1
+   * déséquilibré du résultat de N et rendait l'affectation de N impossible.
    *
    * Le compte 130 « Résultat en instance d'affectation » (1301 bénéfice, 1309
    * perte) existe au plan SYSCOHADA et pas au plan SYCEBNL. L'AUDCIF n'en
@@ -1821,6 +1944,8 @@ export class ExerciceService {
         associeUniquePersonneMorale: true,
         dateClotureLiquidation: true,
         formeJuridiqueSyscohada: true,
+        systemeComptableSyscohada: true,
+        jeuEtatsFinanciersSycebnl: true,
       },
     });
     const { referentiel } = dossier;
@@ -1904,6 +2029,8 @@ export class ExerciceService {
     const enSouffrance = motifClotureEcartsNonConstates(await ecartsRealisesNonConstates(this.prisma, { tenantId, exerciceId }));
     if (enSouffrance) throw new BadRequestException(enSouffrance);
 
+    await this.refuserBilanDesequilibre(tenantId, exerciceId, dossier);
+
     return avecRetrySerialisable(
       this.prisma,
       async (tx) => {
@@ -1919,7 +2046,7 @@ export class ExerciceService {
         // Tout l'exercice · le brouillard vient d'être refusé plus haut. Les
         // comptes au SOLDE et de gestion sont lus en sommes, ceux au DÉTAIL
         // ligne à ligne (audit final F185, `lireComptesDuReport`).
-        const comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId }, referentiel);
+        let comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId }, referentiel);
         const solde = (c: CompteRan) => auCentime(soldeDuCompte(c));
 
         // Journal support des écritures générées · on réutilise le journal
@@ -1932,6 +2059,45 @@ export class ExerciceService {
           throw new BadRequestException(
             "Aucun journal de type Général disponible pour enregistrer les écritures de clôture (journal 'OD' attendu).",
           );
+        }
+
+        // --- 0. Le résultat de l'exercice précédent non affecté passe au report à nouveau ---
+        // AUDCIF Titre VII, compte 13 ; SYCEBNL, fiche du compte 13 (voir
+        // l'exception écrite à l'en-tête de cette méthode). Avant l'écriture
+        // qui solde les comptes de gestion, rien de l'exercice clos n'est au
+        // 13 · ce qui y reste est un résultat antérieur que l'affectation n'a
+        // pas soldé. Écriture de clôture LIÉE (drapeau de clôture, distincte du
+        // solde des comptes de gestion pour que les états la lisent), validée
+        // (AUDCIF art. 22, 2°), passée AVANT ce solde · la relecture qui suit
+        // la compte au report, une fois et une seule.
+        const virement = await this.virementDuResultatNonAffecte(tx, tenantId, comptes, dossier);
+        const messagesVirement: string[] = [];
+        if (virement.lignes.length > 0) {
+          const numeroPieceVirement = await this.journalService.prochainNumeroPiece(tenantId, journal, exerciceId, exercice.dateFin, tx);
+          await tx.ecriture.create({
+            data: {
+              tenantId,
+              exerciceId,
+              journalId: journal.id,
+              numeroPiece: numeroPieceVirement,
+              date: exercice.dateFin,
+              libelle: `Résultat de l'exercice précédent non affecté viré au report à nouveau · exercice ${libelleExercice(exercice)}`,
+              createdBy: userId,
+              estGenereeParCloture: true,
+              estSoldeDesComptesDeGestion: false,
+              ...validationParLaCloture(userId),
+              lignes: { create: virement.lignes },
+            },
+          });
+          comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId }, referentiel);
+          if (virement.compteDestination) {
+            messagesVirement.push(
+              `Résultat de l'exercice précédent non affecté viré au report à nouveau · ${libelleDuSens(referentiel, virement.montant)} de ` +
+                `${montantFr(Math.abs(virement.montant))} au compte ${virement.compteDestination} (${articleDuVirement(referentiel)}). ` +
+                `AVERTISSEMENT · si l'assemblée en décide une autre affectation, elle reste à passer dans l'exercice suivant depuis le compte ` +
+                `${virement.compteDestination}.`,
+            );
+          }
         }
 
         // --- 1. Solde des comptes en mode AUCUN (charges/produits) sur le résultat ---
@@ -2031,7 +2197,11 @@ export class ExerciceService {
           const liste = `${nonSoldes.slice(0, 20).join(', ')}${nonSoldes.length > 20 ? '…' : ''}`;
           return {
             ...clos,
+            virementResultatNonAffecte: virement.compteDestination
+              ? { montant: virement.montant, compte: virement.compteDestination }
+              : null,
             issueOuverture: [
+              ...messagesVirement,
               finSansLiquidation
                 ? `Dernier exercice de la société, dissoute sans liquidation le ${jourFr(exercice.dateFin)} · son patrimoine est transmis universellement à l'associé unique personne morale (AUSCGIE art. 201 al. 4) ; aucun exercice ne suit et aucun report à-nouveau n'est passé.` +
                   (nonSoldes.length
@@ -2184,7 +2354,13 @@ export class ExerciceService {
               : {}),
           },
         });
-        return { ...clos, issueOuverture };
+        return {
+          ...clos,
+          issueOuverture: [...messagesVirement, ...issueOuverture],
+          virementResultatNonAffecte: virement.compteDestination
+            ? { montant: virement.montant, compte: virement.compteDestination }
+            : null,
+        };
       },
       "Trop d'opérations simultanées sur cet exercice · veuillez réessayer.",
     );
@@ -2217,7 +2393,11 @@ export class ExerciceService {
       select: { id: true, dateDebut: true, dateFin: true },
     });
     if (!suivant) return vide;
-    const { referentiel } = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
+    const dossier = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { referentiel: true, formeJuridiqueSyscohada: true },
+    });
+    const { referentiel } = dossier;
     const tx = this.prisma as unknown as Prisma.TransactionClient;
     const dejaPassee = await ouvertureDejaPassee(tx, tenantId, suivant);
     if (dejaPassee.ecritures.length === 0) return { ...vide, exerciceSuivant: suivant };
@@ -2232,7 +2412,10 @@ export class ExerciceService {
     const delta = resultatDesComptesDeGestion(comptes);
     const resultat =
       Math.abs(delta) > EPSILON ? { compteId: (await this.trouverCompteResultat(tenantId, tx, delta > 0, referentiel)).id, montant: delta } : null;
-    const { ecarts, tenues } = await confrontationNommee(tx, tenantId, lignesReportANouveau(comptes, resultat), dejaPassee);
+    // Le report que la clôture passerait · virement du résultat non affecté compris.
+    const virement = await this.virementDuResultatNonAffecte(tx, tenantId, comptes, dossier);
+    const report = appliquerVirementAuReport(lignesReportANouveau(comptes, resultat), virement.lignes);
+    const { ecarts, tenues } = await confrontationNommee(tx, tenantId, report, dejaPassee);
     const ecrituresDeN = await this.prisma.ecriture.count({ where: { tenantId, exerciceId, estSoldeDesComptesDeGestion: false } });
     return {
       ...base,
@@ -2335,7 +2518,12 @@ export class ExerciceService {
           const compte = await this.trouverCompteResultat(tenantId, tx, delta > 0, referentiel);
           resultatCompte = { compteId: compte.id, montant: delta };
         }
-        const report = lignesReportANouveau(ran, resultatCompte);
+        // Le résultat antérieur non affecté va au report à nouveau, comme la
+        // clôture le passera (`virement-resultat-non-affecte.ts`) · le
+        // provisoire n'écrit rien dans l'exercice ouvert, il fond le virement
+        // dans le report, pour rendre le même report que la clôture.
+        const virement = await this.virementDuResultatNonAffecte(tx, tenantId, ran, dossier);
+        const report = appliquerVirementAuReport(lignesReportANouveau(ran, resultatCompte), virement.lignes);
         // AU2 · une ouverture déjà passée (bilan importé, validé ou au
         // brouillard) n'est jamais doublée. Le provisoire ne passe RIEN · c'est
         // la clôture qui confronte l'import au bilan de clôture et fait
@@ -2910,6 +3098,19 @@ function piecesLisibles(ecritures: Array<{ numeroPiece: number | null; journal: 
 }
 
 /** L'article qui fait correspondre les deux bilans, selon le référentiel · l'art. 34 de l'AUDCIF est exclu par l'art. 3 du SYCEBNL, qui porte la règle à son art. 16, 4). */
+/** Le sens du résultat viré, dans le vocabulaire du référentiel (excédent et déficit au SYCEBNL). */
+function libelleDuSens(referentiel: Referentiel, montant: number): string {
+  if (referentiel === Referentiel.SYCEBNL) return montant >= 0 ? 'excédent' : 'déficit';
+  return montant >= 0 ? 'bénéfice' : 'perte';
+}
+
+/** Le texte du virement du résultat non affecté, dans le chemin du dossier. */
+function articleDuVirement(referentiel: Referentiel): string {
+  return referentiel === Referentiel.SYCEBNL
+    ? 'SYCEBNL, Partie 2 ch. 3, compte 13'
+    : 'AUDCIF, Titre VII, compte 13';
+}
+
 function articleCorrespondance(referentiel: Referentiel): string {
   return referentiel === Referentiel.SYCEBNL ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34';
 }
