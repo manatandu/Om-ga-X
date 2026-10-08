@@ -249,8 +249,11 @@ export class QuestionnaireService {
       reponduPar: userId,
     };
 
+    // Le dossier dans le filtre (simulation du 2026-10-08) · sans lui, la garde
+    // de cloisonnement relisait la ligne par la clé composée, que `findFirst`
+    // refuse, et aucune réponse ne s'enregistrait (`cloisonnement-cle-composee.spec.ts`).
     return this.prisma.reponseQuestionnaire.upsert({
-      where: { questionnaireId_code: { questionnaireId, code: item.code } },
+      where: { questionnaireId_code: { questionnaireId, code: item.code }, tenantId },
       create: { tenantId, questionnaireId, code: item.code, ...donnees },
       update: donnees,
     });

@@ -3745,8 +3745,11 @@ export class ImmobilisationService {
       source: dto.source.trim(),
       saisiePar: userId,
     };
+    // Le dossier dans le filtre (simulation du 2026-10-08) · sans lui, la garde
+    // de cloisonnement relisait la ligne par la clé composée, que `findFirst`
+    // refuse, et tout relevé tombait en erreur 500 (`cloisonnement-cle-composee.spec.ts`).
     return this.prisma.consommationUniteOeuvre.upsert({
-      where: { immobilisationId_exerciceId: { immobilisationId: id, exerciceId: dto.exerciceId } },
+      where: { immobilisationId_exerciceId: { immobilisationId: id, exerciceId: dto.exerciceId }, tenantId },
       create: { tenantId, immobilisationId: id, exerciceId: dto.exerciceId, ...donnees },
       update: donnees,
     });
