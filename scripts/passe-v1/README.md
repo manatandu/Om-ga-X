@@ -281,10 +281,13 @@ bilan de 2027 lu avec les opérations passées, le résultat 2026 encore au 13
 1 528 800, report 18 759 200, résultat, 4431 6 080 000). TFT · ouverture
 10 461 200, variation 39 145 200, clôture 49 606 400.
 
-## Écarts ATTENDUS des deux corrections en cours au gel
+## Contrôles des deux corrections du gel
 
-Ils sont écrits comme des contrôles, pour basculer en « concorde » quand les
-lignes seront intégrées sur `main`.
+Écrits comme des contrôles au passage d'essai (2af9371, en écart), ils
+concordent depuis l'intégration des deux lignes sur `main` (8f49df3, première
+passe du 2026-10-08). Règle décidée pour la perte avec duplicata · retour
+D 411 / C 4162, puis D 651 HT / D 443 / C 411 ; la dépréciation se calcule au
+TTC.
 
 - `lettrage-cloture` · « 2027 · lettrage partiel de V1 reconduit à la
   clôture » (SARL). Sans la correction, les lignes de V1 arrivent en 2027

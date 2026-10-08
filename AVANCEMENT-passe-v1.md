@@ -27,8 +27,15 @@ Gel des nouveautés · AUCUN code de production touché (src/, client/, prisma/)
   (lettrage-cloture), négatif de facture et perte avec duplicata
   (tva-decisions, points A et D).
 
+## Première passe (2026-10-08, main 8f49df3)
+- Lignes `lettrage-cloture` et `tva-decisions` intégrées, P1, A1, B1 corrigés.
+- `lancer.sh` sur base PostgreSQL 16 NEUVE · 368 contrôles, 368 concordances,
+  0 écart, 0 erreur HTTP, une note (achat A4 de 2027 saisi au journal, date
+  de réception à venir).
+
 ## Reste
-- Rejouer la passe après l'intégration des deux lignes du gel.
+- Deuxième passe (critère de sortie · deux passes de suite sans BLOQUANT ni
+  MAJEUR, docs/plan-version-1.md § 4).
 
 ## Commandes
 - `PASSE_DATABASE_URL=<base jetable> scripts/passe-v1/lancer.sh /tmp/passe.json`
