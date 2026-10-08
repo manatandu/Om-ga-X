@@ -163,6 +163,8 @@ describe('chaque référentiel cite le chemin par lequel l’obligation lui parv
 function serviceControles(referentiel: Referentiel, manuel: Faux | null) {
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel ancien dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'ex',
         dateDebut: new Date('2026-01-01'),

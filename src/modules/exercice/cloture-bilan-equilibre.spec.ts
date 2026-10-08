@@ -31,10 +31,18 @@ describe('Clôture · le bilan doit s’équilibrer', () => {
     await expect(refuser('t', 'e', SARL)).rejects.toThrow(/écart de 100,00/);
   });
 
-  it('admet l’écart que la perte non affectée explique · le bilan 2027 de la simulation', async () => {
+  it('le bilan 2027 de la simulation, perte non affectée lue au poste du résultat · la clôture passe (passe V1, B1)', async () => {
     const { refuser } = monter(
-      { totalActif: 165_828_000, totalPassif: 211_900_000, controle: { resultatClasses678: -11_600_000, resultatCompte13: -46_072_000 } },
+      { totalActif: 165_828_000, totalPassif: 165_828_000, controle: { resultatClasses678: -11_600_000, resultatCompte13: -46_072_000 } },
       { debit: 46_072_000, credit: 0 },
+    );
+    await expect(refuser('t', 'e', SARL)).resolves.toBeUndefined();
+  });
+
+  it('un 130 non lu par l\'état reste la seule part admise · elle part au report à nouveau', async () => {
+    const { refuser } = monter(
+      { totalActif: 1_300, totalPassif: 1_000, controle: { resultatClasses678: 50, resultatCompte13: 200 } },
+      { debit: 0, credit: 500 },
     );
     await expect(refuser('t', 'e', SARL)).resolves.toBeUndefined();
   });

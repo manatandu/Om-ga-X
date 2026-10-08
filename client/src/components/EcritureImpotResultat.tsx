@@ -39,11 +39,16 @@ interface EtatEcritureImpot {
     ecriture: { id: string; numeroPiece: number | null; statut: 'BROUILLARD' | 'VALIDEE'; date: string } | null;
     impotRecalcule: number | null;
     ecartAvecCalcul: number | null;
+    /** Exercice de liquidation · trop-payé de la première cotisation constaté (D 441 / C 8994). */
+    tropPayeLiquidation?: number;
+    tropPayeRecalcule?: number | null;
   };
   proposition: null | {
     impot: number;
     minimumApplique: boolean;
     explication: string;
+    /** Exercice de liquidation · créance sur l'État, jamais un remboursement à encaisser. */
+    tropPaye?: number;
     date: string;
     lignes: LigneProposee[];
     imputation: {
@@ -230,7 +235,16 @@ export function EcritureImpotResultat({ exerciceId, version, apresChangement }: 
             )}
             compte {etat.constat.compteCharge} · {nombre(etat.constat.montantImpot)}
             {etat.constat.montantImpute > 0 && <> · acomptes imputés {nombre(etat.constat.montantImpute)}</>}
+            {(etat.constat.tropPayeLiquidation ?? 0) > 0 && (
+              <> · trop-payé de la première cotisation au 441 {nombre(etat.constat.tropPayeLiquidation ?? 0)}</>
+            )}
           </div>
+          {etat.constat.tropPayeRecalcule != null &&
+            Math.abs(etat.constat.tropPayeRecalcule - (etat.constat.tropPayeLiquidation ?? 0)) >= 0.005 && (
+              <p className="text-warning mt-1">
+                Le trop-payé recalculé vaut {nombre(etat.constat.tropPayeRecalcule)} · annulez et repassez l’écriture pour l’aligner.
+              </p>
+            )}
           {etat.constat.ecartAvecCalcul !== null &&
             etat.constat.impotRecalcule !== null &&
             Math.abs(etat.constat.ecartAvecCalcul) >= 0.005 && (

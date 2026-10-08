@@ -29,7 +29,7 @@ function service(lignes28: Ligne28[], o: { dotationsDuModule?: string[]; sorties
     },
   );
   const prisma = {
-    exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }) },
+    exercice: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }) },
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 't', referentiel: o.referentiel ?? Referentiel.SYCEBNL }) },
     ecriture: { findMany: jest.fn().mockResolvedValue([]) },
     compte: { findMany: jest.fn().mockResolvedValue([]) },

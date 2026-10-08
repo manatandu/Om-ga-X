@@ -5,6 +5,7 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { ORDRE_AFFICHAGE_COMPTE_RESULTAT } from './correspondance-compte-resultat-syscohada';
 import { CONTROLE_ZH_PAR_LES_FLUX } from './correspondance-tft-syscohada';
+import { mentionExercicePrecedentVide } from '../etats-financiers/etats-financiers.communs';
 
 /**
  * Ce spec ne re-teste pas les tables de correspondance (leurs specs voisins
@@ -416,14 +417,17 @@ describe('EtatsFinanciersSyscohadaService', () => {
       expect(poste(bilan, 'CJ')?.montant).toBe(1000);
       expect(bilan.controle.resultatClasses678).toBe(0);
       expect(bilan.controle.resultatCompte13).toBe(1000);
-      expect(bilan.controle.doubleComptageProbable).toBe(false);
       expect(bilan.equilibre).toBe(true);
     });
 
-    it('signale le double comptage quand les DEUX sources du résultat sont non nulles', async () => {
-      // Titre VII COMPTE 13 : le compte 13 ne se mouvemente qu'À la clôture,
-      // en soldant justement les classes 6/7/8. Les deux à la fois = balance
-      // transmise à un moment ambigu de la clôture.
+    it('B1 · avant l\'affectation, CJ additionne le résultat de N resté au 131 et celui de N+1 en cours · le bilan s\'équilibre', async () => {
+      // Passe V1, constat B1 · Titre VII COMPTE 13, « L'affectation du
+      // résultat d'un exercice est décidée par les organes compétents au
+      // cours de l'exercice suivant ; le compte 13 est donc soldé lors de la
+      // comptabilisation de cette affectation ». Le 131 porte le bénéfice de
+      // N (1 000), les classes 6/7/8 celui de N+1 en cours (500) · CJ les
+      // additionne. Lu sur une seule source, CJ perdait 1 000 et le bilan
+      // sortait déséquilibré d'autant (15 288 000 au banc).
       const service = serviceAvecBalance([
         ligne('52110000', C5, 11000, 0),
         ligne('10130000', C1, 0, 10000),
@@ -434,11 +438,47 @@ describe('EtatsFinanciersSyscohadaService', () => {
 
       const bilan = await service.bilan('t1', 'e1');
 
-      expect(bilan.controle.resultatClasses678).toBe(500);
-      expect(bilan.controle.resultatCompte13).toBe(1000);
-      expect(bilan.controle.doubleComptageProbable).toBe(true);
-      // Avant clôture, c'est la source « classes de gestion » qui prime.
-      expect(poste(bilan, 'CJ')?.montant).toBe(500);
+      expect(bilan.controle).toEqual({ resultatClasses678: 500, resultatCompte13: 1000, resultatAnterieurNonAffecte: 1000 });
+      expect(poste(bilan, 'CJ')?.montant).toBe(1500);
+      expect(bilan.totalActif).toBe(11500);
+      expect(bilan.totalPassif).toBe(11500);
+      expect(bilan.equilibre).toBe(true);
+    });
+
+    it('BLOQUANT (relecture V1) · exercice CLÔTURÉ sans le virement du résultat précédent · CJ le porte, et il est NOMMÉ', async () => {
+      // Perte 2026 de 46 072 000 non affectée, exercice 2027 clôturé avant
+      // que la clôture ne la vire au report à nouveau (fiche du compte 13 ·
+      // « En fin d'exercice, le résultat de l'exercice précédent non affecté
+      // [...] est viré au compte de report à nouveau »). Le 139 garde
+      // l'à-nouveau, la gestion de 2027 rend 600 000. CJ les additionne et
+      // le bilan s'équilibre · sans un mot, il présentait deux résultats
+      // comme « Résultat net de l'exercice ».
+      const lignes = [
+        ligne('52110000', C5, 1_000_000, 400_000, { debit: 53_928_000 }),
+        ligne('10130000', C1, 0, 0, { credit: 100_000_000 }),
+        ligne('13900000', C1, 0, 0, { debit: 46_072_000 }),
+        ligne('70110000', C7, 0, 1_000_000),
+        ligne('60110000', C6, 400_000, 0),
+      ];
+      const exercice = (statut: string) =>
+        [{ id: 'e1', dateDebut: new Date('2027-01-01T00:00:00Z'), dateFin: new Date('2027-12-31T00:00:00Z'), statut } as never];
+
+      const clos = await serviceAvecExercices({ e1: lignes }, exercice('CLOTURE')).bilan('t1', 'e1');
+      expect(poste(clos, 'CJ')?.montant).toBe(600_000 - 46_072_000);
+      expect(clos.equilibre).toBe(true);
+      expect(clos.controle.resultatAnterieurNonAffecte).toBe(-46_072_000);
+      expect(clos.resultatAnterieurNonVire).toEqual(expect.objectContaining({ montant: -46_072_000, poste: 'CJ' }));
+      expect(clos.resultatAnterieurNonVire!.motif).toContain('AUDCIF, Titre VII, compte 13');
+      // Au tableau des comptes à solder, avec la fiche du compte 13.
+      expect(clos.comptesASolderALaCloture).toEqual([
+        expect.objectContaining({ numero: '13900000', montant: 46_072_000, source: expect.stringContaining('Titre VII COMPTE 13') }),
+      ]);
+
+      // Ouvert · la même balance est celle d'avant l'assemblée, légitime.
+      const ouvert = await serviceAvecExercices({ e1: lignes }, exercice('OUVERT')).bilan('t1', 'e1');
+      expect(ouvert.resultatAnterieurNonVire).toBeNull();
+      expect(ouvert.comptesASolderALaCloture).toEqual([]);
+      expect(poste(ouvert, 'CJ')?.montant).toBe(600_000 - 46_072_000);
     });
   });
 
@@ -689,6 +729,28 @@ describe('EtatsFinanciersSyscohadaService', () => {
       }).toEqual({ za: 0, fd: -2000, fe: 500, zb: 1500, fg: -6000, zh: 5500, coherent: true });
       // Et la colonne N-1 du modèle reste absente, jamais remplie de zéros.
       expect(montant(tft, 'ZH').montantN1).toBeUndefined();
+    });
+
+    it('relecture V1 · un exercice précédent ouvert SANS ÉCRITURE · ZA se lit sur le bilan d’ouverture de l’exercice, et c’est dit', async () => {
+      // e1 (2025) ouvert pour y importer plus tard sa balance, e2 (2026)
+      // porte son bilan d'ouverture · lues sur e1 vide, les positions
+      // d'ouverture étaient nulles et ZA valait 0 sans un mot.
+      const service = serviceAvecExercices(
+        {
+          e1: [],
+          e2: [
+            ligne('10130000', C1, 0, 0, { credit: 2000 }),
+            ligne('52110000', C5, 500, 0, { debit: 2000 }),
+            ligne('70110000', C7, 0, 500),
+          ],
+        },
+        EXERCICES,
+      );
+      const tft = await service.tableauFluxTresorerie('t1', 'e2');
+      expect(montant(tft, 'ZA').montant).toBe(2000);
+      expect(montant(tft, 'ZH').montant).toBe(2500);
+      expect(tft.controle.coherent).toBe(true);
+      expect(tft.mentionOuverture).toBe(mentionExercicePrecedentVide('SYSCOHADA', true));
     });
 
     it('premier exercice d’une société qui naît · l’ouverture présumée nulle est DITE', async () => {

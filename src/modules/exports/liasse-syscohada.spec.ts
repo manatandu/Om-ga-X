@@ -1,6 +1,7 @@
 import { ClasseCompte, Referentiel, StatutEcriture, SystemeComptableSyscohada, TypeCompteDetailTotal } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
-import { writeFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { EtatsFinanciersSyscohadaService } from '../etats-financiers-syscohada/etats-financiers-syscohada.service';
@@ -10,7 +11,8 @@ import { NoteAnnexeService } from '../notes-annexes/note-annexe.service';
 import { EtatsFinanciersProjetBudgetService } from '../etats-financiers/etats-financiers-projet-budget.service';
 import { EtatsFinanciersService } from '../etats-financiers/etats-financiers.service';
 import { PrismaService } from '../../common/prisma.service';
-import { ExportService } from './export.service';
+import { ExportService, anomalieResultatAnterieurNonVire, resultatDeLExerciceLogeAuBilan } from './export.service';
+import { resultatAnterieurNonVire } from '../etats-financiers/resultat-de-l-exercice';
 import { NOM_BALANCE, NOM_BALANCE_N1 } from './theme-etafi';
 import { FOND_ENTETE_FPM } from './presentation-fpm';
 import {
@@ -664,6 +666,19 @@ describe('liasse complète · Système normal SYSCOHADA', () => {
     ctl.eachRow((row) => libelles.push(String(row.getCell(1).value ?? '')));
     expect(libelles).toContain('Écart de bouclage du TFT (doit être 0)');
     expect(libelles).toContain('Résultat net logé au bilan (CJ)');
+    // Les références aux feuilles sont des FORMULES, jamais du texte
+    // (relecture de la passe V1) · « Résultat!D… » et « 'Bilan-Passif'!D… »
+    // sortaient en texte, et chaque écart de la feuille valait #VALUE!.
+    const valeurDe = (libelle: string) => ctl.getCell(libelles.indexOf(libelle) + 1, 2);
+    for (const libelle of [
+      'TOTAL GÉNÉRAL actif net (BZ)',
+      'TOTAL GÉNÉRAL passif (DZ)',
+      'RÉSULTAT NET du compte de résultat (XI)',
+      'Résultat net logé au bilan (CJ)',
+      'Écart résultat CR / bilan (doit être 0)',
+    ]) {
+      expect([libelle, formuleDe(valeurDe(libelle))]).toEqual([libelle, expect.stringMatching(/!|^B\d/)]);
+    }
 
     // ANOMALIES · le dossier boucle, donc aucune gravité BLOQUANT ni
     // A_TRAITER. Mais la feuille n'est pas vide pour autant : les postes que
@@ -1447,5 +1462,38 @@ describe('liasse · la provenance de la colonne N-1, dite', () => {
   it('exercice précédent tenu · rien à dire, et la même mention n’est pas répétée', () => {
     expect(provenance({ mentionComparatif: null }, { motifComparatifAbsent: null })).toEqual([]);
     expect(provenance({ mentionComparatif: 'M' }, {}, { mentionOuverture: 'M' })).toHaveLength(1);
+  });
+});
+
+/**
+ * LA LIGNE « RÉSULTAT LOGÉ AU BILAN » DES CONTRÔLES DE LIASSE (relecture de
+ * la passe V1, 2026-10-08) · avant l'assemblée, elle retranche le résultat
+ * précédent non affecté (le compte de résultat ne le porte pas) ; sur un
+ * exercice CLÔTURÉ qui le porte encore, elle ne retranche RIEN · l'écart
+ * reste en écart, et l'anomalie le nomme. La retrancher mettait au vert un
+ * bilan qui présente deux résultats comme un seul.
+ */
+describe('liasses · résultat logé au bilan et résultat précédent non viré', () => {
+  it('exercice ouvert · la part antérieure est retranchée, aucune anomalie', () => {
+    const bilan = { controle: { resultatAnterieurNonAffecte: -300_000 }, resultatAnterieurNonVire: null };
+    expect(resultatDeLExerciceLogeAuBilan("'Bilan-Passif'!D40", bilan)).toBe("'Bilan-Passif'!D40-(-300000)");
+    expect(anomalieResultatAnterieurNonVire(bilan)).toEqual([]);
+  });
+
+  it('exercice clôturé sans le virement · rien n’est retranché, et l’anomalie « à traiter » le nomme', () => {
+    const avis = resultatAnterieurNonVire(true, -46_072_000, 'CJ', 'SYSCOHADA');
+    const bilan = { controle: { resultatAnterieurNonAffecte: -46_072_000 }, resultatAnterieurNonVire: avis };
+    expect(resultatDeLExerciceLogeAuBilan("'Bilan-Passif'!D40", bilan)).toBe("'Bilan-Passif'!D40");
+    const [anomalie, ...reste] = anomalieResultatAnterieurNonVire(bilan);
+    expect(reste).toEqual([]);
+    expect(anomalie.slice(0, 2)).toEqual(['A_TRAITER', 'CJ']);
+    expect(anomalie[3]).toContain('AUDCIF, Titre VII, compte 13');
+  });
+
+  it('les cinq liasses posent l’anomalie, et les quatre lignes de contrôle lisent le bilan entier', () => {
+    const source = readFileSync(join(__dirname, 'export.service.ts'), 'utf8');
+    expect(source.match(/anomalies\.push\(\.\.\.anomalieResultatAnterieurNonVire\(bilan\)\)/g)?.length).toBe(5);
+    expect(source.match(/anomalies\.push\(\.\.\.this\.provenanceDuComparatif\(bilan, /g)?.length).toBe(5);
+    expect(source.match(/resultatDeLExerciceLogeAuBilan\(`'Bilan-Passif'![CD]\$\{rangsPassif\.get\('(HB|CH|CJ|SP2)'\)\}`, bilan\)/g)?.length).toBe(4);
   });
 });

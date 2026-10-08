@@ -68,6 +68,8 @@ function service(comptes: { id: string; numero: string; intitule: string; estAct
   };
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'ex',
         statut: 'OUVERT',

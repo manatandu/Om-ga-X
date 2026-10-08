@@ -1,4 +1,6 @@
 import { Prisma, StatutExercice } from '@prisma/client';
+import { delaiSelonVolume } from '../../common/prisma-retry.util';
+import { operationsDeLaCloture } from '../lettrage/reconduction-lettrage';
 import { ExerciceService } from './exercice.service';
 import { CompteRan, lignesReportANouveau } from './report-a-nouveau';
 import { LOT_LECTURE } from '../../common/lecture-par-lots';
@@ -111,7 +113,16 @@ const canon = (lignes: Record<string, unknown>[]) =>
 // qui ignore un filtre valide un code qui ne charge pas (CLAUDE.md, F2a).
 // Le NULL suit SQL : une comparaison à NULL n'est jamais vraie.
 // ---------------------------------------------------------------------------
-type Ecr = { tenantId: string; exerciceId: string; statut: string; libelle: string };
+type Ecr = {
+  tenantId: string;
+  exerciceId: string;
+  statut: string;
+  libelle: string;
+  date?: Date;
+  estANouveauProvisoire?: boolean;
+  estGenereeParCloture?: boolean;
+  estSoldeDesComptesDeGestion?: boolean;
+};
 type Cpt = { id: string; tenantId: string; numero: string; intitule: string; modeReportANouveau: string };
 type Lgn = {
   id: string;
@@ -183,7 +194,16 @@ function projeter(r: Record<string, unknown>, select: Record<string, unknown> | 
   const sortie: Record<string, unknown> = {};
   for (const [cle, v] of Object.entries(select)) {
     if (v === true) sortie[cle] = ['debit', 'credit', 'montantDevise', 'coursApplique'].includes(cle) && r[cle] !== null ? new Prisma.Decimal(r[cle] as number) : r[cle];
-    else if (v && typeof v === 'object') sortie[cle] = projeter(r[cle] as Record<string, unknown>, (v as { select: Record<string, unknown> }).select);
+    else if (v && typeof v === 'object') {
+      const sous = (v as { select: Record<string, unknown> }).select;
+      // Une relation à plusieurs (les lignes d'un groupe) se projette ligne à ligne.
+      // Une relation facultative absente (le groupe d'une ligne libre) se projette à null.
+      sortie[cle] = Array.isArray(r[cle])
+        ? (r[cle] as Record<string, unknown>[]).map((x) => projeter(x, sous))
+        : r[cle] === null || r[cle] === undefined
+          ? null
+          : projeter(r[cle] as Record<string, unknown>, sous);
+    }
   }
   return sortie;
 }
@@ -191,9 +211,66 @@ function projeter(r: Record<string, unknown>, select: Record<string, unknown> | 
 const N = { id: 'n', tenantId: 't', statut: StatutExercice.OUVERT, dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') };
 const N1 = { id: 'n1', tenantId: 't', statut: StatutExercice.OUVERT, dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31') };
 
-function base(comptes: Cpt[], lignes: Lgn[], referentiel: 'SYSCOHADA' | 'SYCEBNL' = 'SYSCOHADA') {
+/**
+ * Un groupe de lettrage du jeu (ligne lettrage-cloture) · ses lignes sont
+ * celles du jeu qui le nomment par `lettrageId`, relues à chaque lecture.
+ */
+type GroupeJeu = {
+  id: string;
+  tenantId: string;
+  code: string;
+  statut: 'PARTIEL' | 'SOLDE';
+  compteId: string;
+  ecartChange: number | null;
+  origine?: string;
+  solde?: number;
+  lettrageReconduitId?: string | null;
+};
+/** Le filtre d'un groupe · ses champs, son compte, et la relation `lignes` (`some`), seul filtre de relation que la lecture pose. */
+function groupeCorrespond(g: Record<string, unknown>, where: unknown): boolean {
+  return Object.entries((where ?? {}) as Record<string, unknown>).every(([cle, f]) => {
+    if (cle === 'NOT') return ([] as unknown[]).concat(f).every((w) => !groupeCorrespond(g, w));
+    if (cle === 'compte') return correspond(g.compte as Record<string, unknown>, f);
+    if (cle === 'lignes') {
+      const some = (f as { some?: unknown }).some;
+      if (some === undefined) throw new Error('doublure : filtre de lignes non honoré');
+      return (g.lignes as Record<string, unknown>[]).some((l) => correspond(l, some));
+    }
+    return champ(g, g[cle] ?? null, f);
+  });
+}
+
+function base(
+  comptes: Cpt[],
+  lignes: Lgn[],
+  referentiel: 'SYSCOHADA' | 'SYCEBNL' = 'SYSCOHADA',
+  groupes: GroupeJeu[] = [],
+  exercicesDuJeu: Array<{ id: string; dateDebut: Date; dateFin: Date; statut: string }> = [
+    { ...N, statut: 'OUVERT' },
+    { ...N1, statut: 'OUVERT' },
+  ],
+) {
   const lus: Lgn[][] = [];
+  let creees = 0;
+  const groupeVu = (g: GroupeJeu) => ({
+    ...g,
+    compte: comptes.find((c) => c.id === g.compteId)!,
+    lignes: lignes.filter((l) => l.lettrageId === g.id),
+  });
   const tx = {
+    lettrage: {
+      findMany: jest.fn(async (a: { where: unknown; select?: Record<string, unknown>; orderBy?: unknown; take?: number; cursor?: { id: string }; skip?: number }) => {
+        let r = groupes.map(groupeVu).filter((g) => groupeCorrespond(g as never, a.where)).sort((x, y) => (x.id < y.id ? -1 : 1));
+        if (a.cursor) r = r.slice(r.findIndex((x) => x.id === a.cursor!.id) + (a.skip ?? 0));
+        if (a.take !== undefined) r = r.slice(0, a.take);
+        return r.map((g) => projeter(g as never, a.select));
+      }),
+      create: jest.fn(async (a: { data: Omit<GroupeJeu, 'id'> }) => {
+        const g = { id: `R${groupes.length + 1}`, ...a.data } as GroupeJeu;
+        groupes.push(g);
+        return { id: g.id, statut: g.statut };
+      }),
+    },
     // Relues DANS la transaction de clôture (A7, M2).
     creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
     compte: {
@@ -230,23 +307,76 @@ function base(comptes: Cpt[], lignes: Lgn[], referentiel: 'SYSCOHADA' | 'SYCEBNL
         }
         return [...groupes.values()];
       }),
-      findMany: jest.fn(async (a: { where: unknown; select?: Record<string, unknown>; orderBy: unknown; take: number; cursor?: { id: string }; skip?: number }) => {
-        expect(a.orderBy).toEqual({ id: 'asc' });
+      findMany: jest.fn(async (a: { where: unknown; select?: Record<string, unknown>; orderBy: unknown; take?: number; cursor?: { id: string }; skip?: number; distinct?: string[] }) => {
+        // Une lecture par tranches s'ordonne par identifiant · une lecture
+        // entière (le code suivant d'un compte, ligne lettrage-cloture) non.
+        if (a.take !== undefined) expect(a.orderBy).toEqual({ id: 'asc' });
         let r = lignes.filter((x) => correspond(x as never, a.where)).sort((x, y) => (x.id < y.id ? -1 : 1));
         if (a.cursor) r = r.slice(r.findIndex((x) => x.id === a.cursor!.id) + (a.skip ?? 0));
-        r = r.slice(0, a.take);
+        if (a.take !== undefined) r = r.slice(0, a.take);
+        if (a.distinct) {
+          const vus = new Set<string>();
+          r = r.filter((x) => {
+            const cle = JSON.stringify(a.distinct!.map((k) => (x as never)[k]));
+            if (vus.has(cle)) return false;
+            vus.add(cle);
+            return true;
+          });
+        }
         lus.push(r);
         return r.map((x) => projeter(x as never, a.select));
       }),
       deleteMany: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn(async (a: { where: Record<string, unknown>; data: Partial<Lgn> }) => {
+        const visees = lignes.filter((l) => correspond(l as never, a.where));
+        for (const l of visees) Object.assign(l, a.data);
+        return { count: visees.length };
+      }),
     },
     journal: { findFirst: jest.fn().mockResolvedValue({ id: 'od', code: 'OD' }) },
-    exercice: { findFirst: jest.fn().mockResolvedValue(N1), create: jest.fn(), update: jest.fn().mockResolvedValue({ ...N, statut: 'CLOTURE' }) },
-    ecriture: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), delete: jest.fn(), create: jest.fn().mockResolvedValue({ lignes: [] }) },
+    exercice: {
+      findFirst: jest.fn().mockResolvedValue(N1),
+      // Les exercices du dossier, dans l'ordre · lus pour les groupes de
+      // l'exercice précédent jamais reconduits (majeur 4).
+      findMany: jest.fn(async () => exercicesDuJeu),
+      create: jest.fn(),
+      update: jest.fn().mockResolvedValue({ ...N, statut: 'CLOTURE' }),
+    },
+    ecriture: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+      delete: jest.fn(),
+      // Le report de N+1 ENTRE dans la base · la reconduction relit ses
+      // lignes (ligne lettrage-cloture). Les écritures de N n'y entrent pas,
+      // comme jusqu'ici · le jeu de N reste celui que les tests ont écrit.
+      create: jest.fn(async (a: { data: { exerciceId: string; libelle: string; lignes: { create: Array<Partial<Lgn> & { compteId: string; debit: number; credit: number }> } } }) => {
+        if (a.data.exerciceId !== N1.id) return { lignes: [] };
+        const nouvelles = a.data.lignes.create.map((l) => ({
+          lettre: null,
+          libelle: null,
+          dateEcheance: null,
+          deviseId: null,
+          montantDevise: null,
+          coursApplique: null,
+          lettrageId: null,
+          ...l,
+          id: l.id ?? `ran${String(++creees).padStart(4, '0')}`,
+          compte: comptes.find((c) => c.id === l.compteId)!,
+          ecriture: { tenantId: 't', exerciceId: N1.id, statut: 'VALIDEE', libelle: a.data.libelle, date: N1.dateDebut, estANouveauProvisoire: false },
+        })) as Lgn[];
+        lignes.push(...nouvelles);
+        return { lignes: nouvelles.map((l) => ({ id: l.id, compteId: l.compteId, debit: l.debit, credit: l.credit, dateEcheance: l.dateEcheance, deviseId: l.deviseId, montantDevise: l.montantDevise })) };
+      }),
+    },
   };
   const prisma = {
     exercice: {
       findFirst: jest.fn(({ where }: { where: Record<string, unknown> }) => Promise.resolve(where.dateFin || where.dateDebut ? null : N)),
+    },
+    // Les lettrages partiels comptés avant la clôture · le délai de sa
+    // transaction en dépend (relecture TypeScript, M2). Honore le filtre.
+    lettrage: {
+      count: jest.fn(async (a: { where: unknown }) => groupes.map(groupeVu).filter((g) => groupeCorrespond(g as never, a.where)).length),
     },
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel }) },
     ecriture: { count: jest.fn().mockResolvedValue(0) },
@@ -256,7 +386,7 @@ function base(comptes: Cpt[], lignes: Lgn[], referentiel: 'SYSCOHADA' | 'SYCEBNL
     $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
   };
   const service = new ExerciceService(prisma as never, { prochainNumeroPiece: jest.fn().mockResolvedValue(7) } as never);
-  return { service, tx, lus };
+  return { service, tx, lus, prisma };
 }
 
 // ---------------------------------------------------------------------------
@@ -658,5 +788,162 @@ describe('Clôture de N+1 · le résultat de N non affecté passe au report à n
     const [ran] = ecritures(tx);
     expect(sur(ran, '139')).toBe(11_600_000);
     expect(sur(ran, '1291')).toBe(46_072_000);
+  });
+});
+
+/**
+ * LIGNE LETTRAGE-CLÔTURE · un lettrage PARTIEL traverse la clôture (constat
+ * MOYEN de la simulation du 2026-10-08, rejoué sur vraie base). La facture de
+ * 34 800 000 et l'acompte de 20 000 000 réunis en partiel en N arrivaient en
+ * N+1 SÉPARÉS et libres · le client se lisait débiteur de la facture
+ * entière, et 34 800 000 se réglaient pour 14 800 000 dus. La clôture
+ * reconduit le groupe sur les lignes d'à-nouveau qui reportent ses lignes
+ * (AUDCIF art. 34 ; fiches des comptes 40 et 41).
+ */
+describe('Lettrage partiel · la clôture le reconduit sur ses lignes d’à-nouveau', () => {
+  const groupe = (id: string, compteId: string, code = 'A'): GroupeJeu => ({ id, tenantId: 't', code, statut: 'PARTIEL', compteId, ecartChange: null });
+  const jeuClient = () => [
+    ligne('411', 34_800_000, 0, { lettrageId: 'G', libelle: 'Facture F1' }),
+    ligne('701', 0, 34_800_000),
+    ligne('521', 20_000_000, 0),
+    ligne('411', 0, 20_000_000, { lettrageId: 'G', libelle: 'Acompte F1' }),
+  ];
+
+  it('la facture et son acompte arrivent dans UN groupe partiel, origine CLÔTURE, lié au groupe de N · le reste est 14 800 000', async () => {
+    const jeu = jeuClient();
+    const { service, tx } = base(COMPTES, jeu, 'SYSCOHADA', [groupe('G', '411')]);
+    const r = (await service.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[]; lettragesPartiels: { reconduits: number; nonReconduits: number } };
+    expect(tx.lettrage.create).toHaveBeenCalledTimes(1);
+    const data = tx.lettrage.create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data).toMatchObject({ origine: 'CLOTURE', statut: 'PARTIEL', solde: 14_800_000, lettrageReconduitId: 'G', compteId: '411' });
+    // Les deux lignes d'à-nouveau du 411 sont dans le groupe, sans lettre
+    // (partiel), et ce sont bien celles qui reportent F1 et l'acompte.
+    const ran = jeu.filter((l) => l.ecriture.exerciceId === 'n1' && l.compteId === '411');
+    expect(ran).toHaveLength(2);
+    expect(ran.map((l) => [l.libelle, l.debit, l.credit, l.lettre])).toEqual(
+      expect.arrayContaining([
+        ['RAN détail 41110000 · Facture F1', 34_800_000, 0, null],
+        ['RAN détail 41110000 · Acompte F1', 0, 20_000_000, null],
+      ]),
+    );
+    expect(new Set(ran.map((l) => l.lettrageId))).toEqual(new Set(['R2']));
+    // Le groupe de N, lui, n'est pas touché.
+    expect(jeu.filter((l) => l.ecriture.exerciceId === 'n' && l.lettrageId === 'G')).toHaveLength(2);
+    expect(r.lettragesPartiels).toEqual({ reconduits: 1, nonReconduits: 0 });
+    expect(r.issueOuverture.join(' ')).toMatch(/1 lettrage\(s\) partiel\(s\) reconduit\(s\).*compte 41110000, a → b \(reste 14 800 000,00 au débit\)/);
+  });
+
+  // Relecture TypeScript, M2 · le délai de la transaction suit le nombre de
+  // lettrages partiels comptés avant elle, jamais le défaut de 5 s.
+  it('le délai de la transaction de clôture est annoncé selon les lettrages partiels', async () => {
+    const { service, prisma } = base(COMPTES, jeuClient(), 'SYSCOHADA', [groupe('G', '411')]);
+    await service.cloturer('t', 'n', 'u');
+    expect((prisma.$transaction.mock.calls[0] as unknown[])[1]).toMatchObject({ timeout: delaiSelonVolume(operationsDeLaCloture(1)) });
+  });
+
+  // Relecture « échecs silencieux », majeur 4 · un groupe de N-1 que rien n'a
+  // reconduit en N (dossier clôturé avant la règle) · ses lignes d'à-nouveau
+  // de N toutes libres · la clôture de N le reconduit vers N+1 par
+  // l'identifiant de leurs reports, et le dit ; sinon il serait tu à jamais.
+  it('un groupe de N-1 jamais reconduit en N · la clôture de N le reconduit vers N+1 et le dit', async () => {
+    const P = { id: 'p', tenantId: 't', statut: 'CLOTURE', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31') };
+    const ran = { exerciceId: 'n', date: N.dateDebut, libelle: 'Report à-nouveau', estGenereeParCloture: true, estANouveauProvisoire: false, estSoldeDesComptesDeGestion: false };
+    const jeu = [
+      ligne('411', 34_800_000, 0, { lettrageId: 'G0', libelle: 'Facture F0', ecriture: { exerciceId: 'p', date: new Date('2025-11-15') } }),
+      ligne('411', 0, 20_000_000, { lettrageId: 'G0', libelle: 'Acompte F0', ecriture: { exerciceId: 'p', date: new Date('2025-10-01') } }),
+      ligne('411', 34_800_000, 0, { libelle: 'RAN détail 41110000 · Facture F0', ecriture: ran }),
+      ligne('411', 0, 20_000_000, { libelle: 'RAN détail 41110000 · Acompte F0', ecriture: ran }),
+      ligne('101', 0, 14_800_000, { ecriture: ran }),
+    ];
+    const { service, tx } = base(COMPTES, jeu, 'SYSCOHADA', [groupe('G0', '411')], [P, { ...N, statut: 'OUVERT' }, { ...N1, statut: 'OUVERT' }]);
+    const r = (await service.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+    expect(tx.lettrage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ origine: 'CLOTURE', statut: 'PARTIEL', solde: 14_800_000, lettrageReconduitId: 'G0' }) }),
+    );
+    const reports = jeu.filter((l) => l.ecriture.exerciceId === 'n1' && l.compteId === '411');
+    expect(reports).toHaveLength(2);
+    expect(new Set(reports.map((l) => l.lettrageId)).size).toBe(1);
+    expect(r.issueOuverture.join(' ')).toMatch(/Lettrage partiel a de l'exercice ouvert le 2025-01-01.*jamais reconduit.*reportées et réunies par cette clôture/);
+  });
+
+  // Second tour de relecture · DEUX GROUPES DE N-1 RIVAUX pour la même paire
+  // de lignes d'à-nouveau de N · la clôture de N ne se refuse jamais · le
+  // premier est reconduit, le second NOMMÉ, introuvable.
+  it('deux groupes de N-1 rivaux pour la même paire de lignes · la clôture passe, l’un reconduit, l’autre nommé', async () => {
+    const P = { id: 'p', tenantId: 't', statut: 'CLOTURE', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31') };
+    const ran = { exerciceId: 'n', date: N.dateDebut, libelle: 'Report à-nouveau', estGenereeParCloture: true, estANouveauProvisoire: false, estSoldeDesComptesDeGestion: false };
+    const enP = (date: string) => ({ exerciceId: 'p', date: new Date(date) });
+    const jeu = [
+      ligne('411', 34_800_000, 0, { lettrageId: 'G0', libelle: 'Facture', ecriture: enP('2025-11-15') }),
+      ligne('411', 0, 20_000_000, { lettrageId: 'G0', libelle: 'Acompte', ecriture: enP('2025-10-01') }),
+      ligne('411', 34_800_000, 0, { lettrageId: 'G9', libelle: 'Facture', ecriture: enP('2025-11-16') }),
+      ligne('411', 0, 20_000_000, { lettrageId: 'G9', libelle: 'Acompte', ecriture: enP('2025-10-02') }),
+      ligne('411', 34_800_000, 0, { libelle: 'RAN détail 41110000 · Facture', ecriture: ran }),
+      ligne('411', 0, 20_000_000, { libelle: 'RAN détail 41110000 · Acompte', ecriture: ran }),
+      ligne('101', 0, 14_800_000, { ecriture: ran }),
+    ];
+    const { service, tx } = base(COMPTES, jeu, 'SYSCOHADA', [groupe('G0', '411'), groupe('G9', '411', 'B')], [P, { ...N, statut: 'OUVERT' }, { ...N1, statut: 'OUVERT' }]);
+    const r = (await service.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+    expect(tx.lettrage.create).toHaveBeenCalledTimes(1);
+    expect(tx.lettrage.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ lettrageReconduitId: 'G0' }) }));
+    const issue = r.issueOuverture.join(' ');
+    expect(issue).toMatch(/Lettrage partiel a .*jamais reconduit.*reportées et réunies par cette clôture/);
+    expect(issue).toMatch(/Lettrage partiel b .*jamais reconduit.*pas d'équivalent sûr au report.*la clôture ne le suit pas/);
+  });
+
+  it('EN DEVISE · la facture fournisseur et son règlement partiel arrivent ensemble, devise et montants en devise compris', async () => {
+    const jeu = [
+      ligne('401', 0, 2_800_000, { lettrageId: 'H', libelle: 'Facture USD', deviseId: 'usd', montantDevise: 1000, coursApplique: 2800 }),
+      ligne('601', 2_800_000, 0),
+      // Le règlement partiel au coût historique (A6) · 400 USD à 2 800.
+      ligne('401', 1_120_000, 0, { lettrageId: 'H', libelle: 'Règlement partiel', deviseId: 'usd', montantDevise: 400, coursApplique: 2800 }),
+      ligne('521', 0, 1_120_000),
+    ];
+    const { service, tx } = base(COMPTES, jeu, 'SYSCOHADA', [groupe('H', '401')]);
+    await service.cloturer('t', 'n', 'u');
+    expect(tx.lettrage.create.mock.calls[0][0].data).toMatchObject({ origine: 'CLOTURE', statut: 'PARTIEL', solde: -1_680_000, lettrageReconduitId: 'H' });
+    const ran = jeu.filter((l) => l.ecriture.exerciceId === 'n1' && l.compteId === '401');
+    expect(ran.map((l) => [l.debit, l.credit, l.deviseId, l.montantDevise, l.lettrageId])).toEqual(
+      expect.arrayContaining([
+        [0, 2_800_000, 'usd', 1000, 'R2'],
+        [1_120_000, 0, 'usd', 400, 'R2'],
+      ]),
+    );
+  });
+
+  it('un groupe À CHEVAL de deux exercices n’est pas reconduit · la paire le lit déjà', async () => {
+    const jeu = [
+      ligne('411', 34_800_000, 0, { lettrageId: 'G' }),
+      ligne('701', 0, 34_800_000),
+      ligne('411', 0, 20_000_000, { lettrageId: 'G', ecriture: { exerciceId: 'n1' } }),
+    ];
+    const { service, tx } = base(COMPTES, relierLesGroupes(jeu), 'SYSCOHADA', [groupe('G', '411')]);
+    await service.cloturer('t', 'n', 'u');
+    expect(tx.lettrage.create).not.toHaveBeenCalled();
+  });
+
+  it('un groupe SOLDÉ ne se reconduit pas · ses lignes ne passent pas au report', async () => {
+    const jeu = [
+      ligne('411', 1_000, 0, { lettrageId: 'S', lettre: 'A' }),
+      ligne('701', 0, 1_000),
+      ligne('521', 1_000, 0),
+      ligne('411', 0, 1_000, { lettrageId: 'S', lettre: 'A' }),
+    ];
+    const { service, tx } = base(COMPTES, jeu, 'SYSCOHADA', [{ ...groupe('S', '411'), statut: 'SOLDE' }]);
+    await service.cloturer('t', 'n', 'u');
+    expect(tx.lettrage.create).not.toHaveBeenCalled();
+    expect(jeu.filter((l) => l.ecriture.exerciceId === 'n1' && l.compteId === '411')).toHaveLength(0);
+  });
+
+  it('le report PROVISOIRE ne lettre rien, et annonce ce que la clôture reconduira', async () => {
+    const jeu = jeuClient();
+    const { service, tx } = base(COMPTES, jeu, 'SYSCOHADA', [groupe('G', '411')]);
+    const r = (await service.genererANouveauxProvisoires('t', 'n', 'u')) as unknown as {
+      lettragesPartielsAReconduire: { total: number; groupes: Array<{ code: string; compte: string; reste: number }>; annonce: string | null };
+    };
+    expect(tx.lettrage.create).not.toHaveBeenCalled();
+    expect(r.lettragesPartielsAReconduire.total).toBe(1);
+    expect(r.lettragesPartielsAReconduire.groupes).toEqual([{ code: 'a', compte: '41110000', reste: 14_800_000 }]);
+    expect(r.lettragesPartielsAReconduire.annonce).toMatch(/1 lettrage\(s\) partiel\(s\) de cet exercice seront reconduits par la clôture/);
   });
 });

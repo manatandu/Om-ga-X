@@ -46,6 +46,8 @@ function service(lignes: Ligne[], referentiel: Referentiel) {
   const precedent = { id: 'exN1', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31') };
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockImplementation((args: { where?: { dateFin?: { lt?: Date } } }) =>
         args?.where?.dateFin?.lt ? Promise.resolve(precedent) : Promise.resolve(courant),
       ),

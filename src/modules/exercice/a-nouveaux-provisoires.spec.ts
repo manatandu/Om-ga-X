@@ -117,6 +117,9 @@ function service(
     },
     // AU2 · aucune ligne au premier jour de N+1 par défaut (`ouvertureDejaPassee`).
     ligneEcriture: { ...lecture.ligneEcriture, count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn().mockResolvedValue({}) },
+    // Aucun lettrage PARTIEL de N dans ce jeu (ligne lettrage-cloture) · ses
+    // lignes lettrées le sont par une lettre, ou sont celles du report de N+1.
+    lettrage: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const prisma = {
     exercice: { findFirst: jest.fn().mockResolvedValue(N) },

@@ -278,6 +278,8 @@ function serviceControles(
   const groupes = actif ? [{ compteId: 'c521', _sum: { debit: actif, credit: 0 } }] : [];
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel ancien dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'ex',
         dateDebut: new Date('2029-01-01'),

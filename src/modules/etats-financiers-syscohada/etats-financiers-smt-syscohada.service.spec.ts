@@ -558,7 +558,6 @@ describe('Bilan S.M.T SYSCOHADA', () => {
     expect(poste(avant, 'SP2').montant).toBe(125_000);
     expect(avant.controle.resultatClasses678).toBe(125_000);
     expect(avant.controle.resultatCompte13).toBe(0);
-    expect(avant.controle.doubleComptageProbable).toBe(false);
 
     // Après clôture : les classes 6/7/8 sont soldées, le 13 porte le résultat.
     const apres = service({
@@ -572,15 +571,20 @@ describe('Bilan S.M.T SYSCOHADA', () => {
     expect(poste(bilan, 'SP2').montant).toBe(125_000);
   });
 
-  it('signale le double comptage quand les deux sources sont servies à la fois', async () => {
+  it('B1 · avant l\'affectation, SP2 additionne le résultat de N resté au 131 et celui de N+1 en cours', async () => {
+    // Passe V1, constat B1 · Titre VII COMPTE 13, le 13 garde le résultat de
+    // N jusqu'à son affectation, pendant que les classes 6/7/8 portent N+1.
     const s = service({
       e1: [
+        ligne('52110000', ClasseCompte.CLASSE_5, 825_000, 0),
         ligne('13100000', ClasseCompte.CLASSE_1, 0, 125_000),
         ligne('70110000', ClasseCompte.CLASSE_7, 0, 700_000),
       ],
     });
     const bilan = await s.bilan('t1', 'e1');
-    expect(bilan.controle.doubleComptageProbable).toBe(true);
+    expect(bilan.controle).toEqual({ resultatClasses678: 700_000, resultatCompte13: 125_000, resultatAnterieurNonAffecte: 125_000 });
+    expect(poste(bilan, 'SP2').montant).toBe(825_000);
+    expect(bilan.equilibre).toBe(true);
   });
 
   it('n’invente pas de comparatif N-1 quand il n’y a pas d’exercice antérieur', async () => {
@@ -706,6 +710,44 @@ describe('Compte de résultat S.M.T SYSCOHADA · comptabilité de TRÉSORERIE', 
     expect(cr.fluxHorsResultat.every((r) => r.montant === 0)).toBe(true);
   });
 
+  it('MAJEUR (relecture V1) · ventes et achats égaux, perte antérieure au 139 · G = 0 concorde avec la part de l’exercice de SP2', async () => {
+    // Règle de la fiscalité (cas chiffré V3) · une gestion mouvementée, même
+    // nette nulle, donne le résultat de l'exercice · le 139 qui ne porte que
+    // l'à-nouveau est antérieur. La lecture « classes 6 à 8 non nulles,
+    // sinon le 13 » prenait -300 000 pour le résultat de l'exercice et
+    // fabriquait un écart de 300 000 au contrôle G / SP2.
+    const s = service(
+      {
+        e1: [
+          ligne('10130000', ClasseCompte.CLASSE_1, 0, 1_000_000, { credit: 1_000_000 }),
+          ligne('13900000', ClasseCompte.CLASSE_1, 300_000, 0, { debit: 300_000 }),
+          ligne('52110000', ClasseCompte.CLASSE_5, 1_700_000, 1_000_000, { debit: 700_000 }),
+          ligne('70110000', ClasseCompte.CLASSE_7, 0, 1_000_000),
+          ligne('60110000', ClasseCompte.CLASSE_6, 1_000_000, 0),
+        ],
+      },
+      {
+        ecritures: [
+          ecriture('v', '2026-03-01', 'Vente au comptant', [
+            { numero: '52110000', debit: 1_000_000 },
+            { numero: '70110000', credit: 1_000_000 },
+          ]),
+          ecriture('a', '2026-04-01', 'Achat au comptant', [
+            { numero: '60110000', debit: 1_000_000 },
+            { numero: '52110000', credit: 1_000_000 },
+          ]),
+        ],
+      },
+    );
+    const [cr, bilan] = await Promise.all([s.compteDeResultat('t1', 'e1'), s.bilan('t1', 'e1')]);
+    expect(poste(bilan, 'SP2').montant).toBe(-300_000);
+    expect(bilan.equilibre).toBe(true);
+    expect(bilan.controle.resultatAnterieurNonAffecte).toBe(-300_000);
+    expect(cr.resultatExercice).toBe(0);
+    expect(cr.controle.resultatBilan).toBe(0);
+    expect(cr.controle.concordant).toBe(true);
+  });
+
   it('lit F dans les MOUVEMENTS : après clôture, le solde des 68/69/85 est nul', async () => {
     /*
       Dossier réduit à une dotation de 80 000, exercice CLÔTURÉ : l'écriture
@@ -720,8 +762,15 @@ describe('Compte de résultat S.M.T SYSCOHADA · comptabilité de TRÉSORERIE', 
           ligne('24110000', ClasseCompte.CLASSE_2, 400_000, 0, { debit: 400_000 }),
           ligne('28410000', ClasseCompte.CLASSE_2, 0, 80_000),
           ligne('10300000', ClasseCompte.CLASSE_1, 0, 400_000, { credit: 400_000 }),
-          ligne('13900000', ClasseCompte.CLASSE_1, 80_000, 0, { debit: 80_000 }),
-          ligne('68130000', ClasseCompte.CLASSE_6, 80_000, 80_000, { credit: 80_000 }),
+          // L'ÉCRITURE QUI SOLDE LA GESTION EST DANS SA COLONNE DE CLÔTURE
+          // (audit final F4, `filtresDesTroisColonnes`), jamais au report ·
+          // la balance des états la retire (`avantSoldeDesComptesDeGestion`).
+          // Le jeu la portait au report, forme d'avant F4 qu'aucune base ne
+          // garde (migration 20261121000000), et la règle du résultat
+          // (`partsDuResultatAuBilan`) y lisait un 139 d'à-nouveau, donc
+          // antérieur (relecture de la passe V1).
+          { ...ligne('13900000', ClasseCompte.CLASSE_1, 80_000, 0), mouvementDebit: 0, clotureDebit: 80_000, clotureCredit: 0 } as LigneTest,
+          { ...ligne('68130000', ClasseCompte.CLASSE_6, 80_000, 80_000), mouvementCredit: 0, clotureDebit: 0, clotureCredit: 80_000 } as LigneTest,
         ],
       },
       {

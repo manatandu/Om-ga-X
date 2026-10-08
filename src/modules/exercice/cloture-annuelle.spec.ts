@@ -114,6 +114,8 @@ function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre
     // clôturé ; sinon le suivant.
     exercice: {
       findFirst: jest.fn().mockImplementation(({ where }: { where: { id?: string } }) => Promise.resolve(where?.id === 'n' ? N : N1)),
+      // Aucun exercice clôturé avant N · aucun groupe ancien à reconduire (majeur 4).
+      findMany: jest.fn().mockResolvedValue([N, N1]),
       create: jest.fn(),
       update: jest.fn().mockResolvedValue({ ...N, statut: 'CLOTURE' }),
     },
@@ -140,6 +142,9 @@ function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre
     },
     cloture: { findMany: jest.fn().mockResolvedValue([]) },
     rapprochementBancaire: { findMany: jest.fn().mockResolvedValue([]) },
+    // Aucun lettrage PARTIEL de N dans ce jeu (ligne lettrage-cloture) · ses
+    // lignes lettrées le sont par une lettre, ou sont celles du report de N+1.
+    lettrage: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const prisma = {
     // L'exercice lu par son identifiant, et les deux questions d'ordre
@@ -151,6 +156,8 @@ function service(provisoire: { id: string; numeroPiece: number; lignes: { lettre
     },
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
     ecriture: { count: jest.fn().mockResolvedValue(0) },
+    // Aucun lettrage partiel dans ce jeu · le délai de la transaction en dépend (M2).
+    lettrage: { count: jest.fn().mockResolvedValue(0) },
     // Aucun lettrage dénoué en souffrance (décision D3, `ecartsRealisesNonConstates`).
     ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
     // Les créances douteuses du module (ligne A7, B1) · aucune par défaut, et
@@ -462,6 +469,8 @@ describe('AU1 · la clôture reporte le lettrage du provisoire sur le définitif
     (tx.ligneEcriture as Record<string, unknown>).updateMany = jest.fn().mockResolvedValue({ count: 1 });
     tx.ligneEcriture.count.mockResolvedValue(2);
     (tx as Record<string, unknown>).lettrage = {
+      // Aucun lettrage PARTIEL de N (ligne lettrage-cloture) · le groupe g est celui du provisoire.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({ code: 'A', compteId: '411', compte: { numero: '41110000', intitule: 'Clients' } }),
       delete: jest.fn().mockResolvedValue({}),
     };

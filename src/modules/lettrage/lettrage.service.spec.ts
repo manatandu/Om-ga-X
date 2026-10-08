@@ -115,6 +115,9 @@ function service(
 
   const prisma = {
     $transaction: <R>(fn: (tx: unknown) => Promise<R>) => fn(prisma),
+    // Un seul exercice, ouvert (ligne lettrage-cloture) · aucun lettrage partiel d'un
+    // exercice clôturé n'est à reconduire.
+    exercice: { findMany: jest.fn().mockResolvedValue([{ id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'OUVERT' }]) },
     // La doublure honore le filtre `granularite: { not }` · une clôture
     // PARTIELLE ne doit jamais atteindre la règle, et c'est la requête qui
     // l'écarte (exercice/gel-cloture.ts).
@@ -537,6 +540,106 @@ describe('Écart de change proposé au lettrage', () => {
     const r = await s.completer('t1', groupes[0].id, ['e']);
     expect(r.statut).toBe('SOLDE');
     expect(groupes[0].ecartChange).toBe(165200);
+  });
+
+  // Ligne lettrage-cloture · le reste d'un lettrage partiel réglé en devise
+  // depuis le Règlement des tiers COMPLÈTE le groupe · le réalisé de sa pièce
+  // (sur sa propre ligne, hors du tiers) s'ajoute à celui que le groupe garde.
+  it('compléter avec le réalisé de la pièce · 42 000 gardés, 140 000 du solde ajoutés, le groupe soldé porte 182 000', async () => {
+    const { service: s, groupes } = service([
+      ligne('f', 0, 1948800, { deviseId: 'usd', montantDevise: 1160 }),
+      ligne('r1', 1008000, 0, { deviseId: 'usd', montantDevise: 600 }),
+      ligne('r2', 940800, 0, { deviseId: 'usd', montantDevise: 560 }),
+    ]);
+    await s.lettrerManuel('t1', 'c1', ['f', 'r1'], 'u1', { autoriserPartiel: true, ecartChangeRealise: 42000 });
+    const r = await s.completer('t1', groupes[0].id, ['r2'], { ecartChangeRealise: 140000 });
+    expect(r.statut).toBe('SOLDE');
+    expect(groupes[0].ecartChange).toBe(182000);
+  });
+
+  // Relecture TypeScript, M1, et « échecs silencieux », mineur 8 · deux
+  // règlements de 600 sur un reste de 1 000 passaient tous deux · le reste
+  // lu par le Règlement des tiers se relit dans la transaction du lettrage.
+  it('compléter avec une borne · le solde a changé depuis la lecture · 409 nommé, rien n’est ajouté', async () => {
+    const { service: s, groupes } = service([ligne('f', 0, 1000), ligne('r1', 400, 0), ligne('r2', 300, 0), ligne('r3', 600, 0)]);
+    await s.lettrerManuel('t1', 'c1', ['f', 'r1'], 'u1', { autoriserPartiel: true });
+    // Le premier règlement lit le reste (-600) et complète de 300.
+    await s.completer('t1', groupes[0].id, ['r2'], { borne: { soldeAttendu: -600, sensDesFactures: 'CREDIT' } });
+    // Le second avait lu le même reste · refusé.
+    await expect(s.completer('t1', groupes[0].id, ['r3'], { borne: { soldeAttendu: -600, sensDesFactures: 'CREDIT' } })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/a changé depuis la préparation du règlement/),
+    });
+  });
+
+  it('compléter avec une borne · un ajout qui fait franchir zéro dans le sens des factures · 409 nommé', async () => {
+    const { service: s, groupes } = service([ligne('f', 0, 1000), ligne('r1', 400, 0), ligne('r2', 900, 0)]);
+    await s.lettrerManuel('t1', 'c1', ['f', 'r1'], 'u1', { autoriserPartiel: true });
+    await expect(s.completer('t1', groupes[0].id, ['r2'], { borne: { soldeAttendu: -600, sensDesFactures: 'CREDIT' } })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/dépasse le reste du lettrage/),
+    });
+  });
+
+  // BLOQUANT 1 DU SECOND TOUR · en devise, la borne se lit DANS LA DEVISE.
+  // Le coût historique inscrit au fil des règlements (arrondi règlement par
+  // règlement, ancien acompte inscrit au payé) n'est pas le reste recalculé ·
+  // un centime, ou le réalisé jamais passé, faisait refuser le solde.
+  const usd = (montantDevise: number) => ({ deviseId: 'usd', montantDevise });
+  it('cas (a) · 700 USD réglés 33,33 puis 66,67, le solde de 600 USD inscrit à un centime de plus · ADMIS, l’écart en francs reste au groupe', async () => {
+    const { service: s, groupes } = service([
+      ligne('f', 0, 1_000_000, usd(700)),
+      ligne('r1', 47_614.29, 0, usd(33.33)),
+      ligne('r2', 95_242.86, 0, usd(66.67)),
+      ligne('r3', 857_142.86, 0, usd(600)),
+    ]);
+    await s.lettrerManuel('t1', 'c1', ['f', 'r1'], 'u1', { autoriserPartiel: true });
+    await s.completer('t1', groupes[0].id, ['r2']);
+    // En francs, l'ajout franchirait zéro d'un centime · la borne en devise l'admet.
+    await expect(
+      s.completer('t1', groupes[0].id, ['r3'], { borne: { soldeAttendu: -857_142.85, sensDesFactures: 'CREDIT' } }),
+    ).rejects.toMatchObject({ status: 409 });
+    const r = await s.completer('t1', groupes[0].id, ['r3'], { borne: { soldeAttendu: -857_142.85, sensDesFactures: 'CREDIT', deviseId: 'usd' } });
+    // Soldé dans sa devise, à un centime en francs · l'écart proposé le reprend.
+    expect(r.statut).toBe('PARTIEL');
+    expect(groupes[0].solde).toBeCloseTo(0.01, 2);
+  });
+
+  it('cas (b) · acompte de 400 USD inscrit au payé (1 200 000) sur 1 000 USD à 2 800 · le solde de 600 USD (1 680 000) ADMIS', async () => {
+    const { service: s, groupes } = service([ligne('f', 0, 2_800_000, usd(1000)), ligne('a', 1_200_000, 0, usd(400)), ligne('r', 1_680_000, 0, usd(600))]);
+    await s.lettrerManuel('t1', 'c1', ['f', 'a'], 'u1', { autoriserPartiel: true });
+    const r = await s.completer('t1', groupes[0].id, ['r'], { borne: { soldeAttendu: -1_600_000, sensDesFactures: 'CREDIT', deviseId: 'usd' } });
+    // 80 000 en francs, le réalisé de l'ancien acompte · à l'écart proposé.
+    expect(r.statut).toBe('PARTIEL');
+    expect(groupes[0].solde).toBe(80_000);
+  });
+
+  it('en devise · un règlement au-delà de la DEVISE due est refusé (409 nommé), même quand ses francs passeraient', async () => {
+    const { service: s, groupes } = service([ligne('f', 0, 2_800_000, usd(1000)), ligne('a', 1_120_000, 0, usd(400)), ligne('r', 1_500_000, 0, usd(700))]);
+    await s.lettrerManuel('t1', 'c1', ['f', 'a'], 'u1', { autoriserPartiel: true });
+    await expect(
+      s.completer('t1', groupes[0].id, ['r'], { borne: { soldeAttendu: -1_680_000, sensDesFactures: 'CREDIT', deviseId: 'usd' } }),
+    ).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/dépasse le reste en devise du lettrage .* \(600\.00\)/) });
+  });
+
+  it('en devise · deux règlements concurrents de 400 USD sur un reste de 600 · le second est refusé (409)', async () => {
+    const { service: s, groupes } = service([
+      ligne('f', 0, 2_800_000, usd(1000)),
+      ligne('a', 1_120_000, 0, usd(400)),
+      ligne('r1', 1_120_000, 0, usd(400)),
+      ligne('r2', 1_120_000, 0, usd(400)),
+    ]);
+    await s.lettrerManuel('t1', 'c1', ['f', 'a'], 'u1', { autoriserPartiel: true });
+    const borne = { soldeAttendu: -1_680_000, sensDesFactures: 'CREDIT' as const, deviseId: 'usd' };
+    await s.completer('t1', groupes[0].id, ['r1'], { borne });
+    await expect(s.completer('t1', groupes[0].id, ['r2'], { borne })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/a changé depuis la préparation du règlement/),
+    });
+    // Même relu au reste actuel (200 USD), 400 USD dépassent la devise due.
+    await expect(
+      s.completer('t1', groupes[0].id, ['r2'], { borne: { ...borne, soldeAttendu: -560_000 } }),
+    ).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/dépasse le reste en devise .* \(200\.00\)/) });
   });
 
   it('sans règlement en devise, la règle d’origine · rien tant que le groupe n’est pas soldé', () => {

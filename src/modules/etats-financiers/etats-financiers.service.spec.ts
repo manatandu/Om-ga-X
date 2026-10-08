@@ -4,7 +4,7 @@ import { EtatsFinanciersService } from './etats-financiers.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { COMPTES_SANS_TRESORERIE, CONTREPARTIES_SANS_TRESORERIE, TOUS_LES_POSTES_FLUX } from './correspondance-tft';
-import { correspond } from './etats-financiers.communs';
+import { correspond, mentionComparatifSurOuverture, mentionExercicePrecedentVide } from './etats-financiers.communs';
 import { VirementsParCompte } from '../immobilisations/virements-mise-en-service';
 
 /** Fabrique une ligne de balance telle que `EcritureService.balance()` la renvoie. */
@@ -217,7 +217,6 @@ describe('EtatsFinanciersService', () => {
       expect(poste(bilan, 'CH')?.montant).toBe(500);
       expect(bilan.controle.resultatClasses678).toBe(500);
       expect(bilan.controle.resultatCompte13).toBe(0);
-      expect(bilan.controle.doubleComptageProbable).toBe(false);
     });
 
     it('CH bascule sur le compte 13 quand les classes 6/7/8 sont soldées (après clôture)', async () => {
@@ -228,20 +227,52 @@ describe('EtatsFinanciersService', () => {
       expect(poste(bilan, 'CH')?.montant).toBe(500);
       expect(bilan.controle.resultatClasses678).toBe(0);
       expect(bilan.controle.resultatCompte13).toBe(500);
-      expect(bilan.controle.doubleComptageProbable).toBe(false);
     });
 
-    it('signale (sans trancher) un double comptage probable · classes 6/7/8 ET compte 13 mouvementés à la fois', async () => {
+    it('B1 · avant l\'affectation, CH additionne le résultat de N resté au 13 et celui de N+1 en cours · le bilan s\'équilibre', async () => {
+      // Passe V1, constat B1 · bilan de 2027 lu avec des opérations de 2027
+      // passées et le résultat 2026 (1 164 000) encore au 13. Lu sur les
+      // seules classes 6 à 8, CH perdait 1 164 000 et le bilan sortait
+      // déséquilibré d'autant (fiche du compte 13 · « le compte 13 est donc
+      // soldé lors de la comptabilisation de cette affectation »).
       const service = serviceAvecBalance([
-        ligne('70100000', ClasseCompte.CLASSE_7, 0, 500),
-        ligne('13100000', ClasseCompte.CLASSE_1, 0, 300), // reliquat d'un exercice antérieur, par exemple
+        ligne('52110000', ClasseCompte.CLASSE_5, 1_164_500, 0),
+        ligne('13100000', ClasseCompte.CLASSE_1, 0, 1_164_000), // résultat 2026, à-nouveau non affecté
+        ligne('70100000', ClasseCompte.CLASSE_7, 0, 500), // opération de 2027
       ]);
 
       const bilan = await service.bilan('t1', 'e1');
 
-      expect(bilan.controle.doubleComptageProbable).toBe(true);
-      // Le résultat retenu reste déterministe (classes 6/7/8, avant clôture) même signalé en anomalie.
-      expect(poste(bilan, 'CH')?.montant).toBe(500);
+      expect(poste(bilan, 'CH')?.montant).toBe(1_164_500);
+      expect(bilan.controle).toEqual({ resultatClasses678: 500, resultatCompte13: 1_164_000, resultatAnterieurNonAffecte: 1_164_000 });
+      // Exercice ouvert (le dossier ne dit pas « clôturé ») · situation
+      // d'avant l'assemblée, rien n'est signalé.
+      expect(bilan.resultatAnterieurNonVire).toBeNull();
+      expect(bilan.totalActif).toBe(1_164_500);
+      expect(bilan.totalPassif).toBe(1_164_500);
+      expect(bilan.equilibre).toBe(true);
+      // Le détail du poste nomme les deux sources, jamais l'une à la place de l'autre.
+      expect(poste(bilan, 'CH')?.comptes.map((c) => c.numero).sort()).toEqual(['13100000', '70100000']);
+    });
+
+    it('BLOQUANT (relecture V1) · le même bilan sur un exercice CLÔTURÉ · CH porte encore le résultat de 2026, et il est NOMMÉ', async () => {
+      // Exercice clôturé avant que la clôture ne vire le résultat précédent
+      // non affecté au report à nouveau (SYCEBNL, Partie 2 ch. 3, compte 13).
+      const service = serviceAvecExercices(
+        {
+          e1: [
+            ligne('52110000', ClasseCompte.CLASSE_5, 1_164_500, 0),
+            ligne('13100000', ClasseCompte.CLASSE_1, 0, 1_164_000),
+            ligne('70100000', ClasseCompte.CLASSE_7, 0, 500),
+          ],
+        },
+        [{ id: 'e1', dateDebut: new Date('2027-01-01'), statut: 'CLOTURE' } as never],
+      );
+      const bilan = await service.bilan('t1', 'e1');
+      expect(poste(bilan, 'CH')?.montant).toBe(1_164_500);
+      expect(bilan.equilibre).toBe(true);
+      expect(bilan.resultatAnterieurNonVire).toEqual(expect.objectContaining({ montant: 1_164_000, poste: 'CH' }));
+      expect(bilan.resultatAnterieurNonVire!.motif).toContain('un excédent de');
     });
 
     it('signale un compte de bilan qu’aucun poste officiel ne réclame · et fait fuir l’équilibre de son montant', async () => {
@@ -684,6 +715,79 @@ const DEUX_EXERCICES = [
 
 describe('EtatsFinanciersService · tableau de flux de trésorerie', () => {
   const ref = (tft: any, r: string) => tft.lignes.find((l: any) => l.ref === r);
+
+  it('A1 · premier exercice d\'un dossier repris · l\'ouverture se lit sur le bilan d\'ouverture importé, colonne N-1 comprise', async () => {
+    // Passe V1, constat A1 · bilan d'ouverture importé (colonne REPORT) ·
+    // banque 1 000, fournisseur repris 150, fonds 850. En N · le fournisseur
+    // repris est payé (150), cotisations appelées 1 500 et encaissées 1 400.
+    // Sans exercice N-1 tenu, le tableau lisait une ouverture NULLE · ZA 0
+    // et le paiement du fournisseur repris absent des décaissements (SYCEBNL
+    // art. 16, 4) ; Partie 4 ch. 1 § 1.4 · le bilan d'ouverture EST la
+    // clôture précédente).
+    const premier = [
+      ligneF('52110000', ClasseCompte.CLASSE_5, 1400, 150, [1000, 0]),
+      ligneF('40110000', ClasseCompte.CLASSE_4, 150, 0, [0, 150]),
+      ligneF('10110000', ClasseCompte.CLASSE_1, 0, 0, [0, 850]),
+      ligneF('41100000', ClasseCompte.CLASSE_4, 1500, 1400),
+      ligneF('70100000', ClasseCompte.CLASSE_7, 0, 1500),
+    ];
+    const seul = serviceAvecExercices({ eN: premier });
+
+    const tft = await seul.tableauFluxTresorerie('t1', 'eN');
+
+    expect(ref(tft, 'ZA').montant).toBe(1000);
+    expect(ref(tft, 'FF').montant).toBe(-150); // le fournisseur repris, payé en N
+    expect(ref(tft, 'FA').montant).toBe(1400);
+    expect(ref(tft, 'ZF').montant).toBe(1250);
+    expect(ref(tft, 'ZG').montant).toBe(2250);
+    expect(tft.controle.tresorerieClotureParBilan).toBe(2250);
+    expect(tft.controle.ecart).toBe(0);
+    // D'où vient ZA · dit, comme au tableau du SYSCOHADA (relecture V1).
+    expect(tft.mentionOuverture).toBe(mentionComparatifSurOuverture('SYCEBNL'));
+
+    // L'exercice suivant · sa colonne N-1 rejoue le premier exercice sur la
+    // même ouverture (N-2 absent), jamais une ouverture nulle.
+    const deux = serviceAvecExercices(
+      { eN1: premier, eN: [ligneF('52110000', ClasseCompte.CLASSE_5, 0, 0, [2250, 0])] },
+      DEUX_EXERCICES,
+    );
+    const suivant = await deux.tableauFluxTresorerie('t1', 'eN');
+    expect(ref(suivant, 'ZA').montantN1).toBe(1000);
+    expect(ref(suivant, 'ZF').montantN1).toBe(1250);
+    expect(ref(suivant, 'ZG').montantN1).toBe(2250);
+    expect(suivant.mentionOuverture).toBeNull();
+  });
+
+  it('relecture V1 · un exercice précédent ouvert SANS ÉCRITURE ne tient aucune clôture · ZA se lit sur l\'ouverture de l\'exercice, et c\'est dit', async () => {
+    // L'exercice 2025 est ouvert pour y importer plus tard sa balance ; 2026
+    // porte son bilan d'ouverture (banque 1 000, fonds 1 000). Lues sur 2025
+    // vide, les positions d'ouverture étaient nulles · ZA à 0 sans un mot.
+    const vide = serviceAvecExercices(
+      {
+        eN1: [],
+        eN: [
+          ligneF('52110000', ClasseCompte.CLASSE_5, 500, 0, [1000, 0]),
+          ligneF('10110000', ClasseCompte.CLASSE_1, 0, 0, [0, 1000]),
+          ligneF('70100000', ClasseCompte.CLASSE_7, 0, 500),
+        ],
+      },
+      DEUX_EXERCICES,
+    );
+    const tft = await vide.tableauFluxTresorerie('t1', 'eN');
+    expect(ref(tft, 'ZA').montant).toBe(1000);
+    expect(ref(tft, 'ZG').montant).toBe(1500);
+    expect(tft.controle.ecart).toBe(0);
+    expect(tft.mentionOuverture).toBe(mentionExercicePrecedentVide('SYCEBNL', true));
+
+    // Sans bilan d'ouverture non plus · ZA reste nul, mais il est DIT.
+    const rien = serviceAvecExercices(
+      { eN1: [], eN: [ligneF('52110000', ClasseCompte.CLASSE_5, 500, 0), ligneF('70100000', ClasseCompte.CLASSE_7, 0, 500)] },
+      DEUX_EXERCICES,
+    );
+    const tftRien = await rien.tableauFluxTresorerie('t1', 'eN');
+    expect(ref(tftRien, 'ZA').montant).toBe(0);
+    expect(tftRien.mentionOuverture).toBe(mentionExercicePrecedentVide('SYCEBNL', false));
+  });
 
   it('applique la formule officielle et BOUCLE : cycle complet des cotisations sur deux exercices', async () => {
     // Scénario vérifié à la main, chiffre par chiffre.

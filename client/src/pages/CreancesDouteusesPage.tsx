@@ -41,6 +41,10 @@ import {
   taxeDesCochees,
   type DuplicataSaisi,
   type PropositionRecuperation,
+  type FactureRecuperable,
+  duplicatasDeLaPerte,
+  factureChoisissablePourLaPerte,
+  taxeDeLaPerte,
 } from '../lib/creances-douteuses';
 
 /**
@@ -167,6 +171,8 @@ interface Formulaire {
   source: string;
   motif: string;
   pieces: PieceSaisie[];
+  /** Point D · les duplicatas de la perte qui récupère la TVA, facture par facture (facultatifs). */
+  duplicatas: Record<string, DuplicataSaisi>;
 }
 
 const jour = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString('fr-FR') : '·');
@@ -198,6 +204,8 @@ export function CreancesDouteusesPage() {
   const [comptes651, setComptes651] = useState<Compte[] | null>(null);
   const [form, setForm] = useState<Formulaire | null>(null);
   const [proposition, setProposition] = useState<PropositionRevue | null>(null);
+  // Point D · les factures désignées de la créance, chiffrées par le serveur, pour la perte.
+  const [facturesPerte, setFacturesPerte] = useState<FactureRecuperable[] | null>(null);
   const [erreurForm, setErreurForm] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [detail, setDetail] = useState<string | null>(null);
@@ -630,6 +638,7 @@ export function CreancesDouteusesPage() {
     const courant = () => jeton.current === j;
     setErreurForm(null);
     setProposition(null);
+    setFacturesPerte(null);
     setComptes(null);
     setComptes651(null);
     setFiltreNumero('');
@@ -651,8 +660,19 @@ export function CreancesDouteusesPage() {
       source: '',
       motif: '',
       pieces: [{ nature: '', reference: '', date: '' }],
+      duplicatas: {},
     });
     if (geste === 'reclasser' || geste === 'declarer') chargerComptes('');
+    if (geste === 'perte' && creance) {
+      api.get<PropositionRecuperation>(`/creances-douteuses/${creance.id}/recuperation-tva`).then(
+        (p) => {
+          if (courant()) setFacturesPerte(p.factures);
+        },
+        (e) => {
+          if (courant()) setErreurForm(messageDe(e));
+        },
+      );
+    }
     if (geste === 'revue' && creance) {
       api.get<PropositionRevue>(`/creances-douteuses/${creance.id}/revue?exerciceId=${encodeURIComponent(exerciceId)}`).then(
         (p) => {
@@ -738,14 +758,22 @@ export function CreancesDouteusesPage() {
         const r = await api.post<{ avertissement?: string | null }>(`/creances-douteuses/${form.creance!.id}/revue`, { ...commun, depreciationNecessaire: necessaire });
         setInfo(r?.avertissement ?? null);
       } else if (form.geste === 'perte') {
-        // AU TTC ENTIER, D 651 / C 416 · aucune ligne de TVA (A7 scindée).
-        const r = await api.post<{ lettrage416?: IssueLettrage416; avertissement?: string | null }>(`/creances-douteuses/${form.creance!.id}/perte`, {
-          ...commun,
-          date: form.date,
-          montant: valeur,
-          comptePerteId: form.comptePerteId || undefined,
-        });
-        setInfo([messageLettrage416(r?.lettrage416), r?.avertissement].filter(Boolean).join(' ') || null);
+        // Sans duplicata, AU TTC ENTIER, D 651 / C 416 ; avec, deux pièces et
+        // la taxe récupérée ou annulée au 443 (point D), chiffrées au serveur.
+        const lu = duplicatasDeLaPerte(facturesPerte ?? [], form.duplicatas);
+        if (lu.erreur !== null) throw new Error(lu.erreur);
+        const r = await api.post<{ lettrage416?: IssueLettrage416; lettrageOrigine?: IssueLettrage416; avertissement?: string | null; information?: string | null }>(
+          `/creances-douteuses/${form.creance!.id}/perte`,
+          {
+            ...commun,
+            date: form.date,
+            montant: valeur,
+            comptePerteId: form.comptePerteId || undefined,
+            ...(lu.duplicatas.length > 0 ? { duplicatas: lu.duplicatas } : {}),
+          },
+        );
+        const origine = r?.lettrageOrigine && !r.lettrageOrigine.pose ? r.lettrageOrigine.motif : null;
+        setInfo([messageLettrage416(r?.lettrage416), origine, r?.information, r?.avertissement].filter(Boolean).join(' ') || null);
       } else {
         const r = await api.post<{ lettrage416?: IssueLettrage416 }>(`/creances-douteuses/${form.creance!.id}/recouvrement`, {
           ...commun,
@@ -1365,13 +1393,87 @@ export function CreancesDouteusesPage() {
                     <>
                       <span />
                       <span className="flex items-center gap-1.5 text-text-dim">
-                        Perte au TTC entier · D 651 / C 416
+                        {(() => {
+                          const t = taxeDeLaPerte(facturesPerte ?? [], form.duplicatas);
+                          return t.recuperee + t.annulee > 0
+                            ? `Retour au compte d’origine, puis D 651 hors taxe / D 443 ${montant(t.recuperee + t.annulee)} / C compte d’origine`
+                            : 'Perte au TTC entier · D 651 / C 416';
+                        })()}
                         <Aide
                           titre="TVA d'une créance irrécouvrable"
-                          texte="La perte sort du 416 le montant TTC entier, en charge au 651 ; ce geste n'écrit aucune ligne de TVA. Quand la créance est réellement et définitivement irrécouvrable, la TVA acquittée sur la vente peut être récupérée par imputation sur la taxe due pour les opérations ultérieures : elle s'inscrit dans les déductions de la déclaration du ou des mois qui suivent la constatation du non-paiement, après l'envoi au client d'un duplicata de la facture surchargé de la mention « facture demeurée impayée », la preuve de l'irrécouvrabilité incombant à l'assujetti. Une fois la créance éteinte, le geste « Récupérer la TVA » la chiffre facture par facture et la passe."
-                          source="O.-L. n° 10/001, art. 52 ; décret n° 011/42, art. 126 et 127"
+                          texte="Quand la créance est réellement et définitivement irrécouvrable et que le duplicata de chaque facture, surchargé de la mention affichée, a été envoyé au client, cochez la facture et saisissez la référence et la date d'envoi du duplicata. La perte se passe alors en deux pièces : la créance revient du 416 au compte du client, puis la perte s'y passe, le hors taxe au 651 et la taxe au 443. La taxe déjà acquittée (exigible à la facture) se récupère : elle s'inscrit dans les déductions de la déclaration du mois qui suit. La taxe d'une prestation exigible à l'encaissement n'a jamais été due sur l'impayé : elle s'annule au 443 sans être déduite. La perte doit éteindre la créance, et la preuve de l'irrécouvrabilité est à votre charge. Sans duplicata, la perte sort le montant TTC entier au 651 ; une fois le duplicata envoyé, le geste « Récupérer la TVA » passe ensuite la taxe acquittée, D 443 / C 751."
+                          source="O.-L. n° 10/001, art. 25, 2° et art. 52 ; décret n° 011/42, art. 126 et 127 ; décision du 2026-10-08"
                         />
                       </span>
+                      {facturesPerte === null && !erreurForm && (
+                        <>
+                          <span />
+                          <span className="text-text-dim">Lecture des factures désignées…</span>
+                        </>
+                      )}
+                      {facturesPerte !== null && facturesPerte.some(factureChoisissablePourLaPerte) && (
+                        <>
+                          <span className="text-right self-start">Duplicatas :</span>
+                          <table className="w-full">
+                            <thead>
+                              <tr>
+                                <th scope="col" className="px-1.5"><span className="sr-only">Choisie</span></th>
+                                <th scope="col" className="text-left px-1.5">Facture</th>
+                                <th scope="col" className="text-right px-1.5">Impayé TTC</th>
+                                <th scope="col" className="text-right px-1.5">TVA récupérée</th>
+                                <th scope="col" className="text-right px-1.5">TVA annulée</th>
+                                <th scope="col" className="text-left px-1.5">Duplicata</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {facturesPerte.filter(factureChoisissablePourLaPerte).map((f) => {
+                                const s = form.duplicatas[f.designationId] ?? { choisie: false, reference: '', dateEnvoi: '' };
+                                const poser = (x: Partial<DuplicataSaisi>) =>
+                                  setForm((fo) => (fo ? { ...fo, duplicatas: { ...fo.duplicatas, [f.designationId]: { ...s, ...x } } } : fo));
+                                return (
+                                  <tr key={f.designationId} className="align-top">
+                                    <td className="px-1.5">
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`Duplicata envoyé pour la facture ${f.libelle}`}
+                                        checked={s.choisie}
+                                        onChange={(e) => poser({ choisie: e.target.checked })}
+                                      />
+                                    </td>
+                                    <td className="px-1.5">
+                                      {jour(f.dateFacture)} {f.libelle}
+                                      <div className="text-text-dim text-[10.5px]">{f.mention}</div>
+                                    </td>
+                                    <td className="px-1.5 text-right tabular-nums">{montant(f.impayeTtc)}</td>
+                                    <td className="px-1.5 text-right tabular-nums">{montant(f.tvaRecuperable)}</td>
+                                    <td className="px-1.5 text-right tabular-nums">{montant(f.tvaAnnulable ?? 0)}</td>
+                                    <td className="px-1.5">
+                                      {s.choisie && (
+                                        <span className="flex flex-col gap-1">
+                                          <input
+                                            className="border border-bord rounded-[3px] px-1 w-[150px]"
+                                            aria-label={`Référence du duplicata de la facture ${f.libelle}`}
+                                            placeholder="Référence"
+                                            value={s.reference}
+                                            onChange={(e) => poser({ reference: e.target.value })}
+                                          />
+                                          <input
+                                            type="date"
+                                            className="border border-bord rounded-[3px] px-1 w-[150px]"
+                                            aria-label={`Date d’envoi du duplicata de la facture ${f.libelle}`}
+                                            value={s.dateEnvoi}
+                                            onChange={(e) => poser({ dateEnvoi: e.target.value })}
+                                          />
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </>
+                      )}
                     </>
                   )}
                   {form.geste !== 'revue' && form.geste !== 'declarer' && (
@@ -1988,7 +2090,7 @@ export function CreancesDouteusesPage() {
                   {recuperation.creance.compteCreance.numero} · {recuperation.creance.tiers ?? recuperation.creance.compteCreance.intitule} · reclassé {montant(recuperation.creance.montant)}
                   <Aide
                     titre="Récupération de la TVA"
-                    texte="La taxe acquittée sur une vente qui reste impayée se récupère par imputation sur la taxe due pour les opérations ultérieures, quand la créance est réellement et définitivement irrécouvrable : la créance doit être éteinte (perte validée, plus rien au 416). Pour chaque facture, envoyez au client un duplicata surchargé de la mention affichée, puis saisissez sa référence et sa date d'envoi. La preuve de l'irrécouvrabilité est à votre charge : joignez au moins une pièce. Seule la taxe déjà acquittée se récupère : celle d'une prestation exigible à l'encaissement n'a jamais été due sur la part impayée. L'écriture (D 443 / C 651) part au brouillard ; validée, elle est inscrite en déduction de la déclaration de la période qui suit. Le droit s'exerce jusqu'au 31 décembre de l'année qui suit la perte."
+                    texte="La taxe acquittée sur une vente qui reste impayée se récupère par imputation sur la taxe due pour les opérations ultérieures, quand la créance est réellement et définitivement irrécouvrable : la créance doit être éteinte (perte validée, plus rien au 416). Pour chaque facture, envoyez au client un duplicata surchargé de la mention affichée, puis saisissez sa référence et sa date d'envoi. La preuve de l'irrécouvrabilité est à votre charge : joignez au moins une pièce. Seule la taxe déjà acquittée se récupère : celle d'une prestation exigible à l'encaissement n'a jamais été due sur la part impayée. La perte étant déjà passée au TTC entier, la taxe récupérée est un produit : l'écriture (D 443 / C 751 « Profits sur créances ») part au brouillard ; validée, elle est inscrite en déduction de la déclaration de la période qui suit. Une perte d'un exercice antérieur se mentionne aux Notes annexes. Le droit s'exerce jusqu'au 31 décembre de l'année qui suit la perte : l'écriture se date au plus tard le 30 novembre de cette année-là, sa déclaration étant celle du mois suivant."
                     source="O.-L. n° 10/001, art. 25, 2°, 37 al. 2 et 52 ; décret n° 011/42, art. 126 et 127"
                   />
                 </div>
@@ -2002,6 +2104,10 @@ export function CreancesDouteusesPage() {
                     {recuperation.proposition.derniereConstatation && (
                       <div className="text-text-dim">
                         Perte constatée le {jour(recuperation.proposition.derniereConstatation)} · droit ouvert jusqu’au {jour(recuperation.proposition.finDuDroit)}
+                        {recuperation.proposition.derniereDateEcriture ? ` · écriture au plus tard le ${jour(recuperation.proposition.derniereDateEcriture)}` : ''}
+                        {recuperation.proposition.derniereDateEcritureTrimestrielle
+                          ? ` (le ${jour(recuperation.proposition.derniereDateEcritureTrimestrielle)} si la TVA se liquide par trimestre)`
+                          : ''}
                         {recuperation.proposition.finDerniereLiquidation ? ` · TVA liquidée jusqu’au ${jour(recuperation.proposition.finDerniereLiquidation)}` : ''}
                       </div>
                     )}
@@ -2139,7 +2245,7 @@ export function CreancesDouteusesPage() {
                         </div>
                         <span>TVA récupérée</span>
                         <span className="tabular-nums">
-                          {montant(taxeDesCochees(recuperation.proposition.factures, recuperation.saisis))} · D 443 / C 651
+                          {montant(taxeDesCochees(recuperation.proposition.factures, recuperation.saisis))} · D 443 / C 751
                         </span>
                       </div>
                     )}

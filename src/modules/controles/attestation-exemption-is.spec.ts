@@ -28,6 +28,8 @@ function service(options: {
 }) {
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'ex',
         dateDebut: new Date(`${(options.finExercice ?? '2026-12-31').slice(0, 4)}-01-01`),

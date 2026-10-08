@@ -4,7 +4,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
-import { FiscaliteService } from './fiscalite.service';
+import { FiscaliteService, type BilansSuccessifs } from './fiscalite.service';
 import {
   CONDITIONS_A_DECLARER,
   LONGUEUR_MIN_ATTESTATION,
@@ -53,12 +53,49 @@ export class ConstatImpotService {
   }
 
   /**
+   * L'IMPÔT QUE L'ÉCRITURE CONSTATE · celui de l'exercice, sauf dans
+   * l'EXERCICE DE LIQUIDATION d'une société dissoute, où c'est la seconde
+   * cotisation spéciale · l'impôt calculé sur le TOTAL des bilans successifs
+   * de l'année moins la première (loi n° 23/053, art. 12, al. 4, et 13), lu
+   * sur la totalisation de `FiscaliteService` (`bilansSuccessifs`), jamais
+   * l'impôt de la seule période de liquidation. La première cotisation au-delà
+   * de l'impôt de l'année est un trop-payé (`tropPaye`), constaté au débit du
+   * 441 par le crédit du 8994 (décision de Manasse du 2026-10-08).
+   */
+  static impotDeLExercice(calcul: {
+    impotDu: number | null;
+    minimumApplique: boolean;
+    bilansSuccessifs?: {
+      role: BilansSuccessifs['role'];
+      calculable: boolean;
+      motif: string | null;
+      totalisation: { minimumApplique: boolean; cotisationDeLExercice: number | null; tropPayePremiereCotisation: number } | null;
+    } | null;
+  }): { impotDu: number | null; minimumApplique: boolean; tropPaye: number; motifTotalisation: string | null; secondeCotisation: boolean } {
+    const b = calcul.bilansSuccessifs;
+    if (b?.role === 'SECONDE_COTISATION') {
+      if (!b.calculable || !b.totalisation) {
+        return { impotDu: null, minimumApplique: false, tropPaye: 0, motifTotalisation: b.motif ?? 'totalisation non calculée.', secondeCotisation: true };
+      }
+      return {
+        impotDu: b.totalisation.cotisationDeLExercice,
+        minimumApplique: b.totalisation.minimumApplique,
+        tropPaye: b.totalisation.tropPayePremiereCotisation,
+        motifTotalisation: null,
+        secondeCotisation: true,
+      };
+    }
+    return { impotDu: calcul.impotDu, minimumApplique: calcul.minimumApplique, tropPaye: 0, motifTotalisation: null, secondeCotisation: false };
+  }
+
+  /**
    * Ce que le calcul rejoue, et les motifs qui empêchent de proposer.
    * `resultatFiscal` refuse lui-même un dossier SYCEBNL (deuxième barrière
    * après `ReferentielGuard`).
    */
   private async rejouer(tenantId: string, exerciceId: string, attestationRegime: string | null | undefined) {
     const calcul = await this.fiscalite.resultatFiscal(tenantId, exerciceId);
+    const impotExercice = ConstatImpotService.impotDeLExercice(calcul);
     const exercice = await this.prisma.exercice.findFirst({
       where: { id: exerciceId, tenantId },
       select: { statut: true, dateDebut: true, dateFin: true },
@@ -86,8 +123,10 @@ export class ConstatImpotService {
     const motifs = motifsRefusConstat({
       formeJuridique: calcul.formeJuridiqueSyscohada,
       regime: calcul.regime,
-      impotDu: calcul.impotDu,
-      minimumApplique: calcul.minimumApplique,
+      impotDu: impotExercice.impotDu,
+      minimumApplique: impotExercice.minimumApplique,
+      tropPaye: impotExercice.tropPaye,
+      motifTotalisation: impotExercice.motifTotalisation,
       // C10 · la SIMULATION se lit sur la période imposable que le calcul a
       // retenue (art. 12, al. 3), jamais sur la seule ouverture de l'exercice.
       simulationAvantLaLoi: calcul.simulationAvantLaLoi,
@@ -106,7 +145,7 @@ export class ConstatImpotService {
       reintegrationsImpot: calcul.reintegrationsImpot,
       attestationRegime,
     });
-    return { calcul, exercice, motifs };
+    return { calcul, impotExercice, exercice, motifs };
   }
 
   /** La proposition ou le constat en place · lecture seule, rien n'est écrit. */
@@ -117,12 +156,14 @@ export class ConstatImpotService {
     });
     if (enPlace) {
       const calcul = await this.fiscalite.resultatFiscal(tenantId, exerciceId);
+      const recalcule = ConstatImpotService.impotDeLExercice(calcul);
       const montant = Number(enPlace.montantImpot);
+      const tropPaye = Number(enPlace.tropPayeLiquidation ?? 0);
       // L'ÉCART DIT, JAMAIS CORRIGÉ · un retraitement ajouté après le clic, ou
       // une réintégration du 89 oubliée après validation, change l'impôt
       // recalculé. Le constat garde le montant du clic · c'est au cabinet
       // d'annuler et de repasser.
-      const ecart = calcul.impotDu === null ? null : arrondir(calcul.impotDu - montant);
+      const ecart = recalcule.impotDu === null ? null : arrondir(recalcule.impotDu - montant);
       return {
         exerciceId,
         constat: {
@@ -134,8 +175,12 @@ export class ConstatImpotService {
           compteCharge: compteDeLaCharge(enPlace.minimumApplique),
           ecriture: enPlace.ecriture,
           createdAt: enPlace.createdAt,
-          impotRecalcule: calcul.impotDu,
+          impotRecalcule: recalcule.impotDu,
           ecartAvecCalcul: ecart,
+          // Exercice de liquidation · le trop-payé constaté (D 441 / C 8994)
+          // et celui que la totalisation rend aujourd'hui, l'écart dit.
+          tropPayeLiquidation: tropPaye,
+          tropPayeRecalcule: recalcule.secondeCotisation ? recalcule.tropPaye : null,
         },
         proposition: null,
         motifsRefus: [] as string[],
@@ -145,28 +190,33 @@ export class ConstatImpotService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { formeJuridiqueSyscohada: true } });
     // L'attestation n'est pas encore saisie à la lecture (`undefined`) · la
     // condition est servie à part, l'écran la demande avec le clic.
-    const { calcul, motifs } = await this.rejouer(tenantId, exerciceId, undefined);
+    const { calcul, impotExercice, motifs } = await this.rejouer(tenantId, exerciceId, undefined);
     const conditionADeclarer = tenant?.formeJuridiqueSyscohada ? CONDITIONS_A_DECLARER[tenant.formeJuridiqueSyscohada] ?? null : null;
-    const impot = calcul.impotDu ?? 0;
+    const impot = impotExercice.impotDu ?? 0;
+    const tropPaye = impotExercice.tropPaye;
     const imputation = imputationAcomptes({ declares: calcul.acomptesVerses, solde4492: calcul.acomptesAu4492, impot });
     return {
       exerciceId,
       constat: null,
       proposition:
-        calcul.impotDu === null || calcul.impotDu <= 0.005
+        impotExercice.impotDu === null || (impotExercice.impotDu <= 0.005 && tropPaye <= 0.005)
           ? null
           : {
-              impot: calcul.impotDu,
-              minimumApplique: calcul.minimumApplique,
-              explication: calcul.explication,
+              impot,
+              minimumApplique: impotExercice.minimumApplique,
+              explication: impotExercice.secondeCotisation
+                ? `Seconde cotisation spéciale de l'année de la dissolution · impôt calculé sur le total des bilans successifs moins la première cotisation (loi n° 23/053, art. 12, al. 4, et 13).`
+                : calcul.explication,
               date: calcul.dateFin,
-              lignes: lignesConstat(calcul.impotDu, calcul.minimumApplique, 0),
+              // Le trop-payé, dit et jamais présenté comme un remboursement à encaisser.
+              tropPaye,
+              lignes: lignesConstat(impot, impotExercice.minimumApplique, 0, tropPaye),
               imputation: {
                 acomptesDeclares: calcul.acomptesVerses,
                 solde4492: calcul.acomptesAu4492,
                 montant: imputation.montant,
                 motifRefus: imputation.motifRefus,
-                lignes: imputation.montant > 0 ? lignesConstat(calcul.impotDu, calcul.minimumApplique, imputation.montant).slice(2) : [],
+                lignes: imputation.montant > 0 ? lignesConstat(0, impotExercice.minimumApplique, imputation.montant) : [],
               },
               conditionADeclarer,
               // Servie, jamais recopiée à l'écran · le bouton se ferme sous la
@@ -228,16 +278,17 @@ export class ConstatImpotService {
       );
     }
     const attestation = dto.attestationRegime?.trim() || null;
-    const { calcul, exercice, motifs } = await this.rejouer(tenantId, exerciceId, attestation);
+    const { calcul, impotExercice, exercice, motifs } = await this.rejouer(tenantId, exerciceId, attestation);
     if (motifs.length > 0) throw new BadRequestException(motifs.join(' '));
-    const impot = calcul.impotDu!;
+    const impot = impotExercice.impotDu!;
+    const tropPaye = impotExercice.tropPaye;
     let impute = 0;
     if (dto.imputerAcomptes) {
       const imputation = imputationAcomptes({ declares: calcul.acomptesVerses, solde4492: calcul.acomptesAu4492, impot });
       if (imputation.motifRefus) throw new BadRequestException(imputation.motifRefus);
       impute = imputation.montant;
     }
-    const lignes = lignesConstat(impot, calcul.minimumApplique, impute);
+    const lignes = lignesConstat(impot, impotExercice.minimumApplique, impute, tropPaye);
     const ids = new Map<string, string>();
     for (const numero of new Set(lignes.map((l) => l.numero))) ids.set(numero, await this.compte(tenantId, numero));
     const { journal, repli } = await this.journalOd(tenantId);
@@ -246,9 +297,13 @@ export class ConstatImpotService {
       exerciceId,
       journalId: journal.id,
       date: exercice.dateFin.toISOString().slice(0, 10),
-      libelle: calcul.minimumApplique
-        ? "Impôt minimum de l'exercice (loi n° 23/053, art. 57)"
-        : "Impôt sur les bénéfices de l'exercice (loi n° 23/053, art. 56)",
+      libelle: impotExercice.secondeCotisation
+        ? impot > 0.005
+          ? "Seconde cotisation spéciale de l'année de la dissolution (loi n° 23/053, art. 12, al. 4, et 13)"
+          : "Trop-payé de la première cotisation spéciale · créance sur l'État (loi n° 23/053, art. 12, al. 4, et 13)"
+        : impotExercice.minimumApplique
+          ? "Impôt minimum de l'exercice (loi n° 23/053, art. 57)"
+          : "Impôt sur les bénéfices de l'exercice (loi n° 23/053, art. 56)",
       lignes: lignes.map((l) => ({
         compteId: ids.get(l.numero)!,
         ...(l.debit > 0 ? { debit: l.debit } : { credit: l.credit }),
@@ -261,15 +316,16 @@ export class ConstatImpotService {
           tenantId,
           exerciceId,
           montantImpot: new Prisma.Decimal(impot),
-          minimumApplique: calcul.minimumApplique,
+          minimumApplique: impotExercice.minimumApplique,
           montantImpute: new Prisma.Decimal(impute),
+          tropPayeLiquidation: new Prisma.Decimal(tropPaye),
           attestationRegime: attestation,
           ecritureId: ecriture.id,
           createdBy: userId,
         },
       });
       return {
-        constat: { id: constat.id, montantImpot: impot, montantImpute: impute },
+        constat: { id: constat.id, montantImpot: impot, montantImpute: impute, tropPayeLiquidation: tropPaye },
         ecriture: { id: ecriture.id, numeroPiece: ecriture.numeroPiece },
         journal: { code: journal.code, repli },
       };

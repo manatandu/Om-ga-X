@@ -41,6 +41,8 @@ interface RapFaux {
 function analyser(rapprochements: RapFaux[]) {
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn(async ({ orderBy }: { orderBy?: unknown }) =>
         // Sans tri, l'exercice contrôlé · trié, le premier du dossier.
         orderBy

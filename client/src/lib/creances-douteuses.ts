@@ -292,6 +292,12 @@ export interface FactureRecuperable {
   impayeHt: number;
   tvaCorrespondante: number;
   tvaRecuperable: number;
+  /**
+   * Point D, règle 2 · la taxe d'une prestation à l'encaissement sur
+   * l'impayé, jamais exigible · la perte l'annule au 443 sans la déduire.
+   * Absente d'une réponse d'avant le point D · lue zéro, rien n'est annulé.
+   */
+  tvaAnnulable?: number;
   motifs: string[];
   mention: string;
   dejaRecuperee: boolean;
@@ -313,6 +319,10 @@ export interface PropositionRecuperation {
   motif: string | null;
   derniereConstatation: string | null;
   finDuDroit: string | null;
+  /** Dernière date d'écriture · la déclaration du mois suivant l'inscrit (art. 126). */
+  derniereDateEcriture?: string | null;
+  /** La même borne pour une TVA liquidée par trimestre · dite à côté, la cadence n'étant pas connue. */
+  derniereDateEcritureTrimestrielle?: string | null;
   finDerniereLiquidation: string | null;
   reserveAncienMoteur: string | null;
   recuperations: RecuperationPassee[];
@@ -353,4 +363,49 @@ export function duplicatasAEnvoyer(
 export function taxeDesCochees(factures: readonly FactureRecuperable[], saisis: Record<string, DuplicataSaisi>): number {
   const total = factures.filter((f) => saisis[f.designationId]?.choisie && factureChoisissable(f)).reduce((t, f) => t + f.tvaRecuperable, 0);
   return Math.round(total * 100) / 100;
+}
+
+/*
+  POINT D · LA PERTE QUI RÉCUPÈRE LA TVA (décision de Manasse du 2026-10-08).
+  Avec le duplicata surchargé des factures désignées, la perte se passe en
+  deux pièces · retour de la créance au compte d'origine (D compte d'origine /
+  C 416), puis D 651 (hors taxe) / D 443 (taxe acquittée, déduite le mois
+  suivant ; taxe à l'encaissement annulée sans déduction) / C compte
+  d'origine. Sans duplicata, la perte reste au TTC entier (D 651 / C 416).
+  Montants SERVIS par le serveur, jamais recalculés ici.
+*/
+
+/** Une facture se choisit pour la perte si une taxe, récupérée ou annulée, reste sur son impayé. */
+export function factureChoisissablePourLaPerte(f: FactureRecuperable): boolean {
+  return !f.dejaRecuperee && f.impayeTtc > 0 && f.tvaRecuperable + (f.tvaAnnulable ?? 0) > 0;
+}
+
+/**
+ * Les duplicatas de la perte · FACULTATIFS (aucune facture cochée = perte au
+ * TTC entier), mais une facture cochée exige sa référence et sa date d'envoi,
+ * et le manque se DIT en nommant la facture.
+ */
+export function duplicatasDeLaPerte(
+  factures: readonly FactureRecuperable[],
+  saisis: Record<string, DuplicataSaisi>,
+): { duplicatas: Array<{ designationId: string; reference: string; dateEnvoi: string }>; erreur: null } | { duplicatas: null; erreur: string } {
+  const duplicatas: Array<{ designationId: string; reference: string; dateEnvoi: string }> = [];
+  for (const f of factures) {
+    const s = saisis[f.designationId];
+    if (!s?.choisie || !factureChoisissablePourLaPerte(f)) continue;
+    if (!s.reference.trim()) return { duplicatas: null, erreur: `Facture « ${f.libelle} » · la référence du duplicata envoyé est exigée.` };
+    if (!s.dateEnvoi) return { duplicatas: null, erreur: `Facture « ${f.libelle} » · la date d’envoi du duplicata est exigée.` };
+    duplicatas.push({ designationId: f.designationId, reference: s.reference.trim(), dateEnvoi: s.dateEnvoi });
+  }
+  return { duplicatas, erreur: null };
+}
+
+/** La taxe que la perte récupérera et celle qu'elle annulera, pour les factures cochées · sommes des montants SERVIS. */
+export function taxeDeLaPerte(factures: readonly FactureRecuperable[], saisis: Record<string, DuplicataSaisi>): { recuperee: number; annulee: number } {
+  const cochees = factures.filter((f) => saisis[f.designationId]?.choisie && factureChoisissablePourLaPerte(f));
+  const arrondi = (x: number) => Math.round(x * 100) / 100;
+  return {
+    recuperee: arrondi(cochees.reduce((t, f) => t + f.tvaRecuperable, 0)),
+    annulee: arrondi(cochees.reduce((t, f) => t + (f.tvaAnnulable ?? 0), 0)),
+  };
 }

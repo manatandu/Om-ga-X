@@ -329,9 +329,10 @@ export interface SuppressionPourLeModule {
    * l'ignore avant la transaction, et le rejoue dedans, après `liberer` · une
    * ligne encore lettrée à ce moment refuse, rien ne part. Deux transactions
    * (défaire, puis supprimer) laissaient, sur un échec de la seconde, une
-   * créance éteinte sans son lettrage.
+   * créance éteinte sans son lettrage. Plusieurs groupes en liste (la perte
+   * qui récupère la TVA tient le groupe du 416 et celui du compte d'origine).
    */
-  lettrageTolere?: string | null;
+  lettrageTolere?: string | readonly string[] | null;
 }
 
 /** Une ligne telle que les contrôles d'entrée la lisent · saisie, import ou canevas. */
@@ -846,7 +847,29 @@ export class EcritureService {
     dto: CreerEcritureDto,
     suite: (tx: Prisma.TransactionClient, ecriture: { id: string }) => Promise<T>,
   ) {
-    const { journal, date, dateValeur, sectionsParId } = await this.controlesDEntree(tenantId, dto);
+    const r = await this.creerPlusieursAvec(tenantId, createdBy, [dto], (tx, [ecriture]) => suite(tx, ecriture));
+    return { ecriture: r.ecritures[0], suite: r.suite };
+  }
+
+  /**
+   * PLUSIEURS ÉCRITURES ET CE QUI LES TIENT, DANS UNE SEULE TRANSACTION
+   * (ligne tva-decisions, relecture du point D, MAJEUR 2 et mineur 9) · la
+   * perte qui récupère la TVA passe DEUX pièces (retour au compte d'origine,
+   * puis perte) et leur mouvement, et pose leur lettrage. En trois
+   * transactions compensées sur exception, un arrêt du processus entre deux
+   * laissait un retour orphelin, ou deux pièces aux lignes du 411 ouvertes,
+   * qu'un lettrage manuel pouvait rapprocher de la facture (lu comme un
+   * encaissement par le moteur de TVA). Mêmes contrôles d'entrée que
+   * `creer`, numéros de pièce tirés dans l'ordre dans la transaction.
+   */
+  async creerPlusieursAvec<T>(
+    tenantId: string,
+    createdBy: string,
+    dtos: readonly CreerEcritureDto[],
+    suite: (tx: Prisma.TransactionClient, ecritures: Array<{ id: string; lignes: Array<{ id: string; compteId: string }> }>) => Promise<T>,
+  ) {
+    const controles: Array<{ dto: CreerEcritureDto } & Awaited<ReturnType<EcritureService['controlesDEntree']>>> = [];
+    for (const dto of dtos) controles.push({ dto, ...(await this.controlesDEntree(tenantId, dto)) });
 
     // Le calcul du numéro de pièce (lire le max actuel, l'incrémenter) et la
     // création de l'écriture doivent former une seule opération atomique :
@@ -858,26 +881,31 @@ export class EcritureService {
     return avecRetrySerialisable(
       this.prisma,
       async (tx) => {
-        await relireLExerciceDansLaTransaction(tx, tenantId, dto.exerciceId, date);
-        const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, journal, dto.exerciceId, date, tx);
-        const ecriture = await tx.ecriture.create({
-          data: {
-            tenantId,
-            exerciceId: dto.exerciceId,
-            journalId: dto.journalId,
-            numeroPiece,
-            date,
-            dateValeur,
-            libelle: dto.libelle,
-            reference: dto.reference,
-            createdBy,
-            lignes: { create: dto.lignes.map((l) => donneesLigneSaisie(l, sectionsParId)) },
-          },
-          include: { lignes: true, journal: true },
-        });
-        return { ecriture, suite: await suite(tx, ecriture) };
+        const ecritures = [];
+        for (const { dto, journal, date, dateValeur, sectionsParId } of controles) {
+          await relireLExerciceDansLaTransaction(tx, tenantId, dto.exerciceId, date);
+          const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, journal, dto.exerciceId, date, tx);
+          ecritures.push(
+            await tx.ecriture.create({
+              data: {
+                tenantId,
+                exerciceId: dto.exerciceId,
+                journalId: dto.journalId,
+                numeroPiece,
+                date,
+                dateValeur,
+                libelle: dto.libelle,
+                reference: dto.reference,
+                createdBy,
+                lignes: { create: dto.lignes.map((l) => donneesLigneSaisie(l, sectionsParId)) },
+              },
+              include: { lignes: true, journal: true },
+            }),
+          );
+        }
+        return { ecritures, suite: await suite(tx, ecritures) };
       },
-      `Trop d'écritures enregistrées au même instant sur le journal ${journal.code} · veuillez réessayer.`,
+      `Trop d'écritures enregistrées au même instant sur le journal ${controles[0]?.journal.code ?? ''} · veuillez réessayer.`,
     );
   }
 
@@ -981,7 +1009,8 @@ export class EcritureService {
   // signale nommément, et ControlesService applique le même barème.
   // ==========================================================================
 
-  private async trouverEnBrouillard(tenantId: string, ecritureId: string, lettrageTolere: string | null = null) {
+  private async trouverEnBrouillard(tenantId: string, ecritureId: string, lettrageTolere: string | readonly string[] | null = null) {
+    const toleres = new Set(lettrageTolere === null ? [] : typeof lettrageTolere === 'string' ? [lettrageTolere] : lettrageTolere);
     const ecriture = await this.prisma.ecriture.findFirst({
       where: { id: ecritureId, tenantId },
       include: { lignes: true, journal: true, exercice: true },
@@ -1020,7 +1049,7 @@ export class EcritureService {
       }
     }
     // Soldé OU partiel (audit final F50, lettrage/ligne-lettree.ts).
-    const lettree = ecriture.lignes.find((l) => estTenueParUnLettrage(l) && !(lettrageTolere !== null && l.lettrageId === lettrageTolere));
+    const lettree = ecriture.lignes.find((l) => estTenueParUnLettrage(l) && !(l.lettrageId !== null && toleres.has(l.lettrageId)));
     if (lettree) {
       throw new BadRequestException(
         `Une ligne de cette écriture est lettrée (${designationLettrage(lettree)}) : délettrez-la avant de modifier l'écriture.`,
@@ -1321,7 +1350,12 @@ export class EcritureService {
       [DETENTEUR_REVUE_CREANCE, this.prisma.ajustementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
       // Un mouvement annulé (K4) ne retient plus · son écriture validée est
       // neutralisée par l'inscription en négatif, celle du brouillard est partie.
-      [DETENTEUR_MOUVEMENT_CREANCE, this.prisma.mouvementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      // La perte qui récupère la TVA tient ses DEUX pièces (point D) · le retour
+      // au compte d'origine et la perte sur lui.
+      [
+        DETENTEUR_MOUVEMENT_CREANCE,
+        this.prisma.mouvementCreanceDouteuse.count({ where: { tenantId, annuleeLe: null, OR: [{ ecritureId }, { ecriturePerteId: ecritureId }] } }),
+      ],
       // La récupération de la TVA (A7 bis, partie 2) · s'annule depuis sa
       // fenêtre ; annulée, elle ne retient plus son écriture.
       [DETENTEUR_RECUPERATION_TVA_CREANCE, this.prisma.recuperationTvaCreance.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
@@ -1589,6 +1623,19 @@ export class EcritureService {
 
   /** Valide tout le brouillard jusqu'à une date, éventuellement sur un seul journal. */
   async validerJusqua(tenantId: string, valideeBy: string, dto: ValiderJusquaDto) {
+    // L'EXERCICE ET LE JOURNAL DU DOSSIER, OU UN REFUS NOMMÉ (ligne
+    // lettrage-cloture, relevé de la simulation du 2026-10-08) · l'exercice
+    // d'un autre dossier rendait 201 et « 0 validée », la réponse favorable
+    // à une question que le serveur n'avait pas pu poser. Rien ne fuyait (la
+    // lecture est bornée au dossier), mais un écran qui lit « rien à valider »
+    // sur une période qu'il n'a pas lue la croit centralisée (§ 9 ter, un
+    // échec de lecture se dit).
+    const [exercice, journal] = await Promise.all([
+      this.prisma.exercice.findFirst({ where: { id: dto.exerciceId, tenantId }, select: { id: true } }),
+      dto.journalId ? this.prisma.journal.findFirst({ where: { id: dto.journalId, tenantId }, select: { id: true } }) : null,
+    ]);
+    if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
+    if (dto.journalId && !journal) throw new NotFoundException('Journal introuvable pour ce dossier.');
     const ecritures = await this.prisma.ecriture.findMany({
       where: {
         tenantId,
@@ -2161,7 +2208,7 @@ export class EcritureService {
     ecritureId: string,
     motif: string,
     tx?: Prisma.TransactionClient,
-    options: { groupeTolere?: string | null } = {},
+    options: { groupeTolere?: string | readonly string[] | null } = {},
   ) {
     const db = tx ?? this.prisma;
     const origine = await db.ecriture.findFirst({
@@ -2186,7 +2233,7 @@ export class EcritureService {
     if (tenues) throw new BadRequestException(tenues);
     let date = origine.date;
     let dateValeur: Date | null = null;
-    const premier = await this.exerciceService.premierJourOuvert(tenantId, origine.journalId, date);
+    const premier = await this.exerciceService.premierJourOuvert(tenantId, origine.journalId, date, tx);
     if (premier.getTime() !== date.getTime()) {
       if (premier > origine.exercice.dateFin) {
         // Second tour d'A7 ter, m-a · une clôture de période ou totale est

@@ -14,6 +14,7 @@ import {
   chargerLignes,
   comparatifDuBilan,
   correspond,
+  exerciceCloture,
   lireOuverturePasseeEnOd,
   ouvertureTenue,
   trouverExerciceN1,
@@ -69,6 +70,12 @@ import {
   dansPerimetreResultatSmt,
   estTiersHorsExploitationSmt,
 } from './correspondance-smt-syscohada';
+import {
+  partsDuResultatAuBilan,
+  resultatAnterieurNonVire,
+  resultatAuBilan,
+  type PartsDuResultatAuBilan,
+} from '../etats-financiers/resultat-de-l-exercice';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
 import { chargerCampagneStocks, lignesNoteStocks, motifQuantitesNote2 } from '../etats-financiers/stocks-depuis-inventaire';
 import { compteInscritALaDate } from '../immobilisations/immobilisation-en-cours';
@@ -272,18 +279,20 @@ export class EtatsFinanciersSmtSyscohadaService {
   }
 
   /**
-   * SP2 « Résultat exercice » · même arbitrage qu'au Système normal (poste
-   * CJ) : Titre VII COMPTE 13, le compte 13 n'est mouvementé qu'À LA
-   * CLÔTURE, par virement des soldes des classes 6, 7 et 8. Avant clôture
-   * le résultat vit donc dans ces classes ; après, il vit au 13, qui les a
-   * soldées à zéro. Prendre les deux les additionnerait · c'est pourquoi
-   * les deux montants sont exposés séparément et `doubleComptageProbable`
-   * signale la balance transmise à un moment ambigu de la clôture.
+   * SP2 « Résultat exercice » · même lecture qu'au Système normal (poste
+   * CJ), `resultatAuBilan` · le compte 13, qui garde le résultat de
+   * l'exercice PRÉCÉDENT jusqu'à son affectation (Titre VII COMPTE 13,
+   * « le compte 13 est donc soldé lors de la comptabilisation de cette
+   * affectation »), PLUS les classes 6 à 8, que la clôture y portera. Lire
+   * l'une OU l'autre perdait le résultat de N au bilan de N+1 avant
+   * l'assemblée (passe V1, B1). Les deux montants restent exposés
+   * séparément, la clôture en relit l'écart.
    */
   private calculerResultatBilan(lignes: LigneBalancePourEtat[]): {
     poste: PosteCalculeSmtSyscohada;
     resultatClasses678: number;
     resultatCompte13: number;
+    parts: PartsDuResultatAuBilan;
   } {
     const lignes678 = lignes.filter(
       (l) =>
@@ -293,9 +302,7 @@ export class EtatsFinanciersSmtSyscohadaService {
     const lignes13 = lignes.filter((l) => correspond(l.numero, COMPTES_RESULTAT_SMT_SYSCOHADA));
     const resultatCompte13 = lignes13.reduce((s, l) => s - l.solde, 0);
 
-    const avantCloture = Math.abs(resultatClasses678) > 0.005;
-    const source = avantCloture ? lignes678 : lignes13;
-    const comptes = source
+    const comptes = [...lignes13, ...lignes678]
       .filter((l) => Math.abs(l.solde) > 0.005)
       .sort((a, b) => a.numero.localeCompare(b.numero))
       .map((l) => ({ numero: l.numero, intitule: l.intitule, montant: -l.solde }));
@@ -305,11 +312,14 @@ export class EtatsFinanciersSmtSyscohadaService {
         ref: REF_RESULTAT_SMT_SYSCOHADA,
         libelle: LIBELLE_RESULTAT_SMT_SYSCOHADA,
         note: null,
-        montant: avantCloture ? resultatClasses678 : resultatCompte13,
+        montant: resultatAuBilan(resultatClasses678, resultatCompte13),
         comptes,
       },
       resultatClasses678,
       resultatCompte13,
+      // L'exercice et le résultat antérieur non affecté, séparés par la règle
+      // de la fiscalité (`partsDuResultatAuBilan`).
+      parts: partsDuResultatAuBilan(resultatClasses678, resultatCompte13, lignes678, lignes13),
     };
   }
 
@@ -324,12 +334,13 @@ export class EtatsFinanciersSmtSyscohadaService {
     parRef: Map<string, PosteCalculeSmtSyscohada>;
     resultatClasses678: number;
     resultatCompte13: number;
+    parts: PartsDuResultatAuBilan;
   } {
     const parRef = new Map<string, PosteCalculeSmtSyscohada>();
     for (const poste of [...POSTES_BILAN_ACTIF_SMT_SYSCOHADA, ...POSTES_BILAN_PASSIF_SMT_SYSCOHADA]) {
       parRef.set(poste.ref, this.calculerPosteBilan(poste, lignes));
     }
-    const { poste, resultatClasses678, resultatCompte13 } = this.calculerResultatBilan(lignes);
+    const { poste, resultatClasses678, resultatCompte13, parts } = this.calculerResultatBilan(lignes);
     parRef.set(poste.ref, poste);
 
     // Chaque total additionne des refs DÉJÀ résolues · l'ordre des tables
@@ -345,14 +356,15 @@ export class EtatsFinanciersSmtSyscohadaService {
         estTotal: true,
       });
     }
-    return { parRef, resultatClasses678, resultatCompte13 };
+    return { parRef, resultatClasses678, resultatCompte13, parts };
   }
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await trouverExerciceN1(this.exerciceService, tenantId, exerciceId);
-    const [lignesN, lignesN1] = await Promise.all([
+    const [lignesN, lignesN1, clos] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
+      exerciceCloture(this.exerciceService, tenantId, exerciceId),
     ]);
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
     // est le bilan d'ouverture du dossier (AUDCIF art. 34,
@@ -362,7 +374,7 @@ export class EtatsFinanciersSmtSyscohadaService {
     // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
     const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
     const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYSCOHADA');
-    const { parRef: parRefN, resultatClasses678, resultatCompte13 } = this.resoudreBilan(lignesN);
+    const { parRef: parRefN, resultatClasses678, resultatCompte13, parts } = this.resoudreBilan(lignesN);
     const { parRef: parRefN1 } = this.resoudreBilan(comparatif.lignes);
 
     const fusionner = (ref: string): PosteCalculeSmtSyscohada => {
@@ -439,8 +451,11 @@ export class EtatsFinanciersSmtSyscohadaService {
       controle: {
         resultatClasses678,
         resultatCompte13,
-        doubleComptageProbable: Math.abs(resultatClasses678) > 0.005 && Math.abs(resultatCompte13) > 0.005,
+        resultatAnterieurNonAffecte: parts.resultatAnterieurNonAffecte,
       },
+      // Exercice CLÔTURÉ qui porte encore le résultat précédent non affecté ·
+      // nommé (`resultatAnterieurNonVire`).
+      resultatAnterieurNonVire: resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, 'SP2', 'SYSCOHADA'),
     };
   }
 
@@ -790,7 +805,7 @@ export class EtatsFinanciersSmtSyscohadaService {
     const recettes = this.ventilerFlux(cumuls.recettes, POSTES_RECETTES_SMT_SYSCOHADA);
     const depenses = this.ventilerFlux(depensesRattachees(cumuls.depenses, cumuls.reglements, natures), POSTES_DEPENSES_SMT_SYSCOHADA);
 
-    const { parRef: cloture } = this.resoudreBilan(lignesN);
+    const { parRef: cloture, parts: partsCloture } = this.resoudreBilan(lignesN);
     const { parRef: ouverture } = this.resoudreBilan(this.aLOuverture(lignesN));
     const montantDe = (source: Map<string, PosteCalculeSmtSyscohada>, ref: string) => source.get(ref)?.montant ?? 0;
     // SV2 et SV3 ne corrigent que les créances et dettes D'EXPLOITATION
@@ -875,7 +890,10 @@ export class EtatsFinanciersSmtSyscohadaService {
     }
 
     const hors = this.fluxHorsResultat(cumuls);
-    const resultatBilan = montantDe(cloture, REF_RESULTAT_SMT_SYSCOHADA);
+    // La part de SP2 qui est le résultat de l'EXERCICE · SP2 porte aussi,
+    // avant l'affectation, le résultat précédent resté au 13 (passe V1, B1),
+    // que G ne porte pas (`partsDuResultatAuBilan`).
+    const resultatBilan = partsCloture.resultatDeLExercice;
     const reglesEnClasse2 = [...natures.parLigne.values()]
       .flat()
       .filter((p) => p.numero.startsWith('2'))

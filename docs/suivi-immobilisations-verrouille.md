@@ -191,6 +191,100 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- LIGNE PASSE-1-ETATS INTÉGRÉE (2026-10-08, défauts P1, A1 et B1 de la première passe de la version 1), relevés non bloquants ·
+  - Le **130** (« Résultat en instance d'affectation », SYSCOHADA) reste hors de
+    CJ et de SP2 (anomalie n° 7, audit final F218) · le ch. 7 ne le nomme pas.
+    Un dossier qui use de ce compte garde un bilan intermédiaire déséquilibré
+    de son montant, signalé en « comptes non rattachés ». Le corpus ne tranche
+    pas · point pour Manasse (le lire en CJ comme le 131, par la fiche du
+    compte 13 dont il est une subdivision ?).
+  - TFT des associations · une ouverture saisie en OD au premier jour (sans
+    report) reste lue comme flux, quand le SYSCOHADA la nomme et vide ses postes
+    (bloquant 2 du 2026-10-07). Hors des trois défauts, non codé (gel).
+  
+  Second tour de relecture (aucun BLOQUANT), mineurs ·
+  1. un exercice N clos avant le virement n'est signalé que sur son propre bilan ; la colonne N-1 de N+1 reprend le montant dans CH ou CJ sans le dire, et la liasse de N+1 ne lève pas l'anomalie (`comparatifDuBilan`, liasses) ;
+  2. `mentionExercicePrecedentVide` (etats-financiers.communs.ts) conseille d'importer la balance de clôture quand l'exercice précédent n'a que du brouillard, sans dire de le valider ;
+  3. exercice précédent vide · la colonne N-1 du TFT des associations rend des zéros avec `exerciceN1Disponible` vrai, sans dire « vide » ;
+  4. premier exercice clos par la nouvelle clôture · `lignesALOuverture(lignesN)` présente l'ouverture déjà virée (13 à 0, 12/129 porte le montant) dans le comparatif et l'ouverture du TFT ; totaux justes, reclassement interne aux capitaux propres faux.
+
+
+- LIGNE TVA-DECISIONS INTÉGRÉE (2026-10-08, TVA des factures annulées et rattachées tard, perte d'une créance avec duplicata, trop-payé de liquidation), relevés non bloquants ·
+  - (D) La perte au TTC (sans duplicata) reste une écriture D 651 / C 416,
+    comme avant · la consigne ne la ramène pas au compte d'origine, lecture
+    gardée ; la perte qui récupère est refusée après une perte au TTC déjà
+    passée (la règle 3 sert alors).
+  - (D) Créance reclassée en N, perdue en N+1 · le lettrage du 416 reste à
+    désigner (« Lettrer au 416 », A7 ter B2), comme avant ; au compte
+    d'origine, les lignes d'à-nouveau de la facture et du reclassement restent
+    ouvertes (règle d'A7, le reclassement ne lettre pas le 411).
+  - (E) Réglé au premier tour (M3) · la première cotisation se lit sur le
+    constat A11 de l'exercice arrêté ; sans constat, ou sans la réintégration
+    de l'impôt (art. 45), la totalisation est refusée, nommée.
+  - (Relecture, mineur) La cadence trimestrielle d'une TVA n'est pas connue
+    d'OmegaX · la borne du 30 septembre est dite à côté de celle du 30
+    novembre, jamais imposée.
+  - (Relecture, M4) Le moteur ne rend jamais exigible, après la perte, la taxe
+    qu'elle a annulée ; une taxe à l'encaissement d'une facture NON cochée de
+    la perte (sans duplicata) reste lue par son groupe, la garde du lettrage
+    (reclassement et son report) étant ce qui la protège.
+  - (Relecture, M2) Le négatif d'un achat à l'encaissement est NOMMÉ sans
+    reprendre la déduction prise au règlement · reprendre la part figée au
+    premier jour non liquidé est laissé au cabinet (sûreté non établie sur un
+    groupe partiellement réglé).
+  
+  - Le négatif d'une facture À L'ENCAISSEMENT déjà en partie encaissée · la
+    taxe des règlements reste déclarée (figée) ; la restitution au client
+    relève de la note de crédit (art. 52, al. 2), non chiffrée.
+  - Les compteurs descriptifs (biens datés à la facture, services aux débits,
+    acomptes imputés) restent lus à la date d'écriture · une ligne rattachée
+    tard y figure dans sa période d'origine, pas dans celle qui la déclare.
+  - (E) Le crédit du 8994 entre au résultat comptable de l'exercice de
+    liquidation · tant que le cabinet ne le déduit pas (doctrine du 899 d'A11,
+    `observationDegrevement`), la totalisation recalculée après validation
+    l'inclut, et le constat dit l'écart du trop-payé. Neutralisation d'office
+    non codée (aucun texte exprès, même parti que le dégrèvement).
+
+
+- LIGNE LETTRAGE-CLOTURE INTÉGRÉE (2026-10-08, lettrage partiel reconduit à la clôture), relevés non bloquants ·
+  - `groupesNonReconduits` ne lit que le couple (N clôturé, N+1 ouvert). La
+    clôture de N+1 reconduit désormais en N+2 les groupes de N À RECONDUIRE
+    et nomme les autres ; un groupe NOMMÉ (lettré ailleurs, introuvable) n'est
+    plus suivi au-delà de N+2.
+  - Relevés des relectures non traités · m4 (types des lectures tirés des
+    charges utiles de Prisma plutôt qu'écrits à la main) ; les déclarations
+    d'imputation (art. 151, 153, `ImputationPaiement`) ne sont lues que par
+    la TVA, jamais par le reste servi (D9) ; la garde m6 (dû en devise nul,
+    francs restants) n'est plus guère atteignable, gardée ; les candidates de
+    l'ouverture passée en OD (`filtreOuverturePasseeAuPremierJour`) sont
+    larges (toute OD au premier jour hors gestion), à resserrer.
+  - LIMITE D9 · une facture HORS du groupe, PLUS ANCIENNE que ses factures,
+    choisie avec lui dans un règlement PARTIEL · le reste relu ensuite
+    l'éteint avant les règlements déjà inscrits sur le groupe · la répartition
+    facture par facture peut s'écarter de l'inscription ; le total du groupe
+    reste exact, et l'écart en francs passe à l'écart proposé. Cas rare,
+    non refusé.
+  - Un règlement choisi sur une facture du groupe s'inscrit d'abord sur ses
+    factures plus anciennes (D5, D9) · dit par l'avertissement, jamais
+    refusé ; l'échéancier sert chaque facture pour son reste.
+  - Un groupe partiel À CHEVAL (lignes en N−1 et N) n'est pas reconduit à la
+    clôture de N (D1 · la paire à cheval le lit) · reste au régime d'A6 bis.
+  - Un groupe reconduit (origine CLOTURE) se délettre comme un manuel · il
+    revient alors « à reconduire » au pré-lettrage et au contrôle. Voulu
+    (aucun dossier enfermé), à confirmer.
+  - Arrêt du serveur de rejeu · au premier rejeu, un `pkill -f "node
+    dist/main.js"` a été lancé (motif trop large, il pouvait atteindre un autre
+    serveur compilé de la machine) ; aucun autre `dist/main.js` n'était visible
+    ensuite. Au second rejeu, arrêt par le seul PID du serveur (port 8743
+    vérifié dans son environnement). Au rejeu du premier tour, le PID gardé
+    au lancement était celui du sous-shell (`&` posé sur toute la chaîne) ·
+    node a survécu, puis a été arrêté par son propre PID, port 8743 et copie
+    `wt-lettrage` lus dans son environnement. Lancer `node` seul en arrière-plan.
+  - Le refus en devise dit « en a déjà réglé 1680000.00 » en FRANCS (coût
+    historique) à côté d'un reste en devise · lisible, mais deux unités dans
+    une phrase.
+
+
 - SIMULATION COMPLÈTE DU 2026-10-08 (SARL SYSCOHADA 2026 à 2028, association SYCEBNL), failles non corrigées · voir le détail ci-dessous, repris de la fiche ·
   Base PostgreSQL jetable, serveur compilé, jeu PAR L'API seulement. Deux
   dossiers · SARL SYSCOHADA (système normal, assujettie TVA) sur 2026 et 2027,

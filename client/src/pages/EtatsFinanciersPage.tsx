@@ -35,6 +35,7 @@ import { parametrePaiementsEnInstance } from '../lib/paiements-en-instance';
 import { montant } from '../lib/montants';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
+import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
 
 /**
  * Onglets du jeu « associations et ordres professionnels » (Partie 4, ch. 2)
@@ -513,15 +514,7 @@ function EtatsSystemeNormalPage() {
                 </span>
               </div>
 
-              {bilan.controle.doubleComptageProbable && (
-                <div className="flex items-start gap-2 mt-2 px-3.5 py-2.5 border border-warning/40 bg-warning-soft">
-                  <span className="text-[11.5px]">
-                    ⚠ Les classes 6/7/8 ({montant(bilan.controle.resultatClasses678)}) ET le compte 13 (
-                    {montant(bilan.controle.resultatCompte13)}) sont tous deux mouvementés · risque de double comptage
-                    du résultat. Fournir une balance avant OU après clôture, pas un état intermédiaire.
-                  </span>
-                </div>
-              )}
+              <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} />
 
               {bilan.comptesNonRattaches.length > 0 && (
                 <div className="border border-danger/30 bg-danger-soft mt-2 px-3.5 py-2.5">
@@ -631,6 +624,7 @@ function EtatsSystemeNormalPage() {
           {!tft && <div className="border border-border px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
           {tft && (
             <div className="max-w-[900px] overflow-x-auto">
+              {tft.mentionOuverture && <p className="text-[11px] text-text-dim mb-1.5">{tft.mentionOuverture}</p>}
               {!tft.exerciceN1Disponible && (
                 <p className="text-[11px] text-text-dim mb-1.5">
                   Aucun exercice antérieur dans ce dossier : la colonne N-1 reste vide, ce n'est pas un zéro.
@@ -742,6 +736,8 @@ function EtatsSystemeNormalPage() {
                     : 'DÉSÉQUILIBRE DÉTECTÉ · vérifier les écritures et les comptes non rattachés ci-dessous'}
                 </span>
               </div>
+
+              <AvisResultatAnterieurNonVire avis={bilanProjet.resultatAnterieurNonVire} />
 
               {bilanProjet.comptesNonRattaches.length > 0 && (
                 <div className="border border-danger/30 bg-danger-soft mt-2 px-3.5 py-2.5">

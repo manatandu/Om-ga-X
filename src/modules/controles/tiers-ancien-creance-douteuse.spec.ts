@@ -52,7 +52,7 @@ function ecriture(libelle: string, lignes: ReturnType<typeof ligne>[], liaisons:
 
 function service(ecritures: ReturnType<typeof ecriture>[]) {
   const prisma = {
-    exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }) },
+    exercice: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') }) },
     tenant: {
       findUniqueOrThrow: jest.fn().mockResolvedValue({
         id: 't',

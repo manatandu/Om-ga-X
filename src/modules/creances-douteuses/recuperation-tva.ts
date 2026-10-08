@@ -85,6 +85,13 @@ export interface FactureChiffree {
   /** La taxe ACQUITTÉE sur l'impayé, récupérable, ligne de TVA par ligne de TVA. */
   recuperable: TaxeRecuperable[];
   tvaRecuperable: number;
+  /**
+   * La taxe d'une prestation à l'ENCAISSEMENT sur l'impayé, jamais exigible
+   * (art. 25, 2°) · rien à récupérer (art. 52, al. 1), elle s'ANNULE dans la
+   * perte (point D, règle 2).
+   */
+  annulable: TaxeRecuperable[];
+  tvaAnnulable: number;
   /** Pourquoi rien n'est récupérable, ou pas tout · dit, jamais deviné. */
   motifs: string[];
   mention: string;
@@ -129,6 +136,7 @@ export function chiffrerFactures(p: {
     const motifs: string[] = [];
     let tvaCorrespondante = 0;
     const recuperable: TaxeRecuperable[] = [];
+    const annulable: TaxeRecuperable[] = [];
     if (!f.taxe) motifs.push(MOTIF_FACTURE_NON_LUE);
     else if (f.taxe.lignesTva.length === 0 || f.taxe.ttc <= 0.005) motifs.push(MOTIF_FACTURE_SANS_TVA);
     else {
@@ -138,6 +146,7 @@ export function chiffrerFactures(p: {
         tvaCorrespondante = centimes(tvaCorrespondante + part);
         if (l.base === 'ENCAISSEMENT') {
           aLEncaissement = true;
+          if (part > 0.005) annulable.push({ compteId: l.compteId, numero: l.numero, tauxTvaId: l.tauxTvaId, tva: part });
           continue;
         }
         if (part > 0.005) recuperable.push({ compteId: l.compteId, numero: l.numero, tauxTvaId: l.tauxTvaId, tva: part });
@@ -147,6 +156,7 @@ export function chiffrerFactures(p: {
     if (impayeTtc <= 0.005) motifs.push(MOTIF_FACTURE_PAYEE);
     const impayeHt = centimes(impayeTtc - tvaCorrespondante);
     const tvaRecuperable = centimes(recuperable.reduce((t, r) => t + r.tva, 0));
+    const tvaAnnulable = centimes(annulable.reduce((t, r) => t + r.tva, 0));
     return {
       designationId: f.designationId,
       ligneEcritureId: f.ligneEcritureId,
@@ -160,15 +170,89 @@ export function chiffrerFactures(p: {
       tvaCorrespondante,
       recuperable,
       tvaRecuperable,
+      annulable,
+      tvaAnnulable,
       motifs,
       mention: mentionDuplicata(impayeHt, tvaCorrespondante),
     };
   });
 }
 
+/*
+  LE DÉLAI DE LA RÉCUPÉRATION · DÉCISION PAR LA LOI DU 2026-10-08 (ligne
+  tva-decisions, point C ; consigne de Manasse, « réfère-toi à la loi »).
+
+  Les textes, lus en entier dans la compilation DGI au 19/07/2026 (compétence
+  `fiscalite-rdc`, `code-general-2026/references/`) ·
+   · O.-L. n° 10/001, art. 37 · « Le droit à déduction prend naissance lorsque
+     la taxe devient exigible chez l'assujetti. / Le droit à déduction est
+     exercé jusqu'au 31 décembre de l'année qui suit celle au cours de laquelle
+     la taxe est devenue exigible. » (repris par le décret n° 011/42, art. 96) ;
+   · décret n° 011/42, art. 126 · la taxe des ventes « qui [...] restent
+     impayées [...] est inscrite dans les déductions afférentes à la
+     déclaration du ou des mois suivants celui de la CONSTATATION [...] de
+     non-paiement, dans les conditions prévues pour exercer le droit à
+     déduction » ;
+   · O.-L. n° 10/001, art. 52, al. 3, et décret, art. 127, al. 2 et 3 · la
+     créance « réellement et définitivement irrécouvrable », la rectification
+     par l'envoi du duplicata surchargé, la preuve à la charge de l'assujetti.
+
+  (1) LE DÉLAI COURT DE LA CONSTATATION DU NON-PAIEMENT · c'est le fait que
+  l'art. 126 nomme, et il tient la place de l'exigibilité de l'art. 37, al. 1
+  (« dans les conditions prévues pour exercer le droit à déduction »). OmegaX
+  la constate par la PERTE validée (D 651 / C 416, fiche du compte 65), qui
+  dit la créance irrécouvrable ; la DERNIÈRE, parce que la récupération ne
+  s'ouvre qu'à la créance éteinte (art. 52, al. 3, « définitivement ») · un
+  délai compté de la première perte pourrait expirer avant que le droit ne
+  puisse s'exercer. Ni l'irrécouvrabilité comme fait distinct (elle n'a pas
+  d'autre date que la perte qui la constate), ni l'ENVOI DU DUPLICATA · c'est
+  la forme de la rectification, la condition du droit et non sa naissance,
+  comme la facture de l'art. 38 pour la déduction, dont la réception ne
+  déplace pas le délai (lecture de la ligne A21, `TauxTvaService.declaration`).
+
+  (2) LE DÉLAI SE JUGE À LA DÉCLARATION QUI INSCRIT LA RÉCUPÉRATION · le droit
+  est « exercé » (art. 37, al. 2) par son inscription « dans les déductions
+  afférentes à la déclaration » (art. 126), et la déclaration de TVA est
+  MENSUELLE (décret n° 011/42, art. 102, « pour le mois »). Le moteur lit la
+  déchéance de la déduction par la PÉRIODE de la déclaration (une déclaration
+  dont la période finit au plus tard le 31 décembre de l'année qui suit) ·
+  la même lecture vaut ici, une règle pour un texte. Or OmegaX inscrit la
+  récupération dans la déclaration du mois qui SUIT son écriture (lue comme un
+  avoir sur vente constaté, art. 126). L'écriture se date donc au plus tard le
+  30 NOVEMBRE de l'année qui suit la constatation · datée en décembre, elle
+  serait inscrite dans la déclaration de janvier, hors du délai. Ni la date
+  de l'écriture prise seule (elle laissait passer décembre), ni la date du
+  GESTE (le jour où le comptable clique ne change pas la période qui inscrit
+  la récupération · c'est la date de l'écriture qui la fixe, et le refus d'une
+  date dans une période liquidée la garde).
+*/
+
 /** Le dernier jour où le droit s'exerce · 31 décembre de l'année qui suit la constatation (art. 37 al. 2, par le renvoi de l'art. 126). */
 export function finDuDroit(derniereConstatation: Date): Date {
   return new Date(Date.UTC(derniereConstatation.getUTCFullYear() + 1, 11, 31));
+}
+
+/**
+ * La dernière date d'ÉCRITURE de la récupération · le 30 novembre de l'année
+ * qui suit la constatation, pour que la déclaration du mois suivant, qui
+ * l'inscrit, soit celle de décembre (décision par la loi du 2026-10-08,
+ * point C, ci-dessus).
+ */
+export function derniereDateEcriture(derniereConstatation: Date): Date {
+  return new Date(Date.UTC(derniereConstatation.getUTCFullYear() + 1, 10, 30));
+}
+
+/**
+ * LA MÊME BORNE POUR UNE TVA LIQUIDÉE PAR TRIMESTRE (relecture « échecs
+ * silencieux », mineur du point C) · le 30 novembre suppose la déclaration
+ * MENSUELLE de l'art. 102. Liquidée par trimestre, la récupération s'inscrit
+ * dans la déclaration du trimestre qui suit son écriture · pour que ce soit
+ * celle d'octobre à décembre, l'écriture se date au plus tard le 30 septembre.
+ * OmegaX ne connaît pas la cadence du dossier · la borne est DITE, à côté de
+ * l'autre, jamais devinée.
+ */
+export function derniereDateEcritureTrimestrielle(derniereConstatation: Date): Date {
+  return new Date(Date.UTC(derniereConstatation.getUTCFullYear() + 1, 8, 30));
 }
 
 export interface DuplicataSaisi {
@@ -183,7 +267,7 @@ export interface EntreeRecuperation {
   /** Le reste au 416 après TOUS les mouvements non annulés. */
   resteFinal: number;
   /** Les pertes non annulées · date, statut de leur écriture, compte débité. */
-  pertes: ReadonlyArray<{ date: Date; validee: boolean; numeroPiece: number | null; compteId: string | null }>;
+  pertes: ReadonlyArray<{ date: Date; validee: boolean; numeroPiece: number | null }>;
   /** Les désignations actives. */
   designationsActives: number;
   /** Les factures chiffrées, par désignation. */
@@ -230,13 +314,6 @@ export function motifRefusRecuperation(e: EntreeRecuperation): string | null {
       'non-paiement est celle du livre-journal (décret n° 011/42, art. 126). Validez-la d’abord.'
     );
   }
-  const comptes = new Set(e.pertes.map((p) => p.compteId));
-  if (comptes.size !== 1 || comptes.has(null)) {
-    return (
-      'Les pertes de cette créance ne sont pas portées à un seul compte 651 · la récupération crédite le compte de la perte, et rien ' +
-      'ne dit lequel. Annulez la perte passée au mauvais compte et repassez-la au même compte que les autres.'
-    );
-  }
   if (e.designationsActives === 0) {
     return (
       'Aucune facture n’est désignée pour cette créance · la taxe se récupère facture par facture (duplicata de la facture ' +
@@ -246,6 +323,42 @@ export function motifRefusRecuperation(e: EntreeRecuperation): string | null {
   if (e.duplicatas.length === 0) {
     return 'Choisissez au moins une facture dont le duplicata surchargé a été envoyé au client (art. 52, al. 3 ; décret n° 011/42, art. 127, al. 2).';
   }
+  const refusDuplicatas = motifRefusDuplicatas(e);
+  if (refusDuplicatas) return refusDuplicatas;
+  const vus = new Set(e.duplicatas.map((d) => d.designationId));
+  const total = centimes(e.chiffrees.filter((f) => vus.has(f.designationId)).reduce((t, f) => t + f.tvaRecuperable, 0));
+  if (total <= 0.005) {
+    const motifs = [...new Set(e.chiffrees.filter((f) => vus.has(f.designationId)).flatMap((f) => f.motifs))];
+    return `Aucune taxe acquittée sur l’impayé des factures choisies (art. 52, al. 1) · ${motifs.join(' ; ') || 'rien à récupérer'}.`;
+  }
+  const m = (e.motif ?? '').trim();
+  if (!m) return 'Le motif est exigé · il dit pourquoi la créance est réellement et définitivement irrécouvrable (art. 52, al. 3).';
+  if (e.pieces.length === 0) {
+    return (
+      'Au moins une pièce prouvant l’irrécouvrabilité est exigée (nature et référence) · « la preuve de la créance irrécouvrable ' +
+      'incombe à l’assujetti » (décret n° 011/42, art. 127, al. 3).'
+    );
+  }
+  if (!e.exerciceOuvert) return 'L’exercice choisi est clôturé · la récupération s’écrit dans un exercice ouvert.';
+  if (!e.dateDansExercice) return 'La date de la récupération sort de l’exercice choisi.';
+  if (!e.journalGeneral) return 'Le journal doit être un journal d’opérations diverses (type Général), comme celui de la perte.';
+  const derniere = e.pertes.reduce((d, p) => (p.date.getTime() > d.getTime() ? p.date : d), e.pertes[0].date);
+  return motifRefusDateRecuperation(e.date, derniere, e.finDerniereLiquidation);
+}
+
+/**
+ * LES DUPLICATAS, jugés facture par facture · une fois, pour le geste
+ * « Récupérer la TVA » (règle 3) et pour la perte qui la récupère (règle 1).
+ * Référence et date d'envoi exigées (O.-L. n° 10/001, art. 52, al. 3 ; décret
+ * n° 011/42, art. 127, al. 2), envoi au plus tard le jour de l'écriture et pas
+ * avant la facture, désignation active non encore récupérée, impayé non nul.
+ */
+export function motifRefusDuplicatas(e: {
+  chiffrees: readonly FactureChiffree[];
+  dejaRecuperees: ReadonlySet<string>;
+  duplicatas: readonly DuplicataSaisi[];
+  date: Date;
+}): string | null {
   const vus = new Set<string>();
   for (const d of e.duplicatas) {
     const f = e.chiffrees.find((x) => x.designationId === d.designationId);
@@ -271,32 +384,29 @@ export function motifRefusRecuperation(e: EntreeRecuperation): string | null {
     if (envoi.getTime() < new Date(f.dateFacture).getTime()) return `${qui} · le duplicata ne peut pas précéder la facture.`;
     if (f.impayeTtc <= 0.005) return `${qui} · ${MOTIF_FACTURE_PAYEE}.`;
   }
-  const total = centimes(e.chiffrees.filter((f) => vus.has(f.designationId)).reduce((t, f) => t + f.tvaRecuperable, 0));
-  if (total <= 0.005) {
-    const motifs = [...new Set(e.chiffrees.filter((f) => vus.has(f.designationId)).flatMap((f) => f.motifs))];
-    return `Aucune taxe acquittée sur l’impayé des factures choisies (art. 52, al. 1) · ${motifs.join(' ; ') || 'rien à récupérer'}.`;
-  }
-  const m = (e.motif ?? '').trim();
-  if (!m) return 'Le motif est exigé · il dit pourquoi la créance est réellement et définitivement irrécouvrable (art. 52, al. 3).';
-  if (e.pieces.length === 0) {
-    return (
-      'Au moins une pièce prouvant l’irrécouvrabilité est exigée (nature et référence) · « la preuve de la créance irrécouvrable ' +
-      'incombe à l’assujetti » (décret n° 011/42, art. 127, al. 3).'
-    );
-  }
-  if (!e.exerciceOuvert) return 'L’exercice choisi est clôturé · la récupération s’écrit dans un exercice ouvert.';
-  if (!e.dateDansExercice) return 'La date de la récupération sort de l’exercice choisi.';
-  if (!e.journalGeneral) return 'Le journal doit être un journal d’opérations diverses (type Général), comme celui de la perte.';
-  const derniere = e.pertes.reduce((d, p) => (p.date.getTime() > d.getTime() ? p.date : d), e.pertes[0].date);
+  return null;
+}
+
+/**
+ * LES REFUS DE PÉRIODE · après la dernière perte, dans le délai (décision par
+ * la loi du 2026-10-08, point C), jamais dans ou avant une période liquidée.
+ */
+export function motifRefusDateRecuperation(date: Date, derniere: Date, finDerniereLiquidation: Date | null): string | null {
+  const e = { date, finDerniereLiquidation };
   if (e.date.getTime() < derniere.getTime()) {
     return `La récupération ne précède pas la constatation du non-paiement · la dernière perte est du ${jour(derniere)} (décret n° 011/42, art. 126).`;
   }
   const fin = finDuDroit(derniere);
-  if (e.date.getTime() > fin.getTime()) {
+  const limite = derniereDateEcriture(derniere);
+  if (e.date.getTime() > limite.getTime()) {
     return (
-      `Le droit à récupération s’exerçait jusqu’au ${jour(fin)} · « dans les conditions prévues pour exercer le droit à déduction » ` +
-      '(décret n° 011/42, art. 126), soit « jusqu’au 31 décembre de l’année qui suit » (O.-L. n° 10/001, art. 37, al. 2). ' +
-      'À l’expiration de ce délai, la taxe est acquise au Trésor.'
+      `Le droit à récupération s’exerce jusqu’au ${jour(fin)} · « dans les conditions prévues pour exercer le droit à déduction » ` +
+      '(décret n° 011/42, art. 126), soit « jusqu’au 31 décembre de l’année qui suit » (O.-L. n° 10/001, art. 37, al. 2), ' +
+      `compté de la constatation du non-paiement, la perte du ${jour(derniere)}. La récupération s’inscrit dans la déclaration ` +
+      `du mois qui suit son écriture (art. 126) · datée après le ${jour(limite)}, elle tomberait dans une déclaration ` +
+      `de ${fin.getUTCFullYear() + 1}, hors du délai. Datez-la au plus tard le ${jour(limite)} si cette période n’est pas liquidée ` +
+      `(au plus tard le ${jour(derniereDateEcritureTrimestrielle(derniere))} si la TVA se liquide par trimestre) ; ` +
+      'sinon la taxe est acquise au Trésor.'
     );
   }
   if (e.finDerniereLiquidation && e.date.getTime() <= e.finDerniereLiquidation.getTime()) {
@@ -358,5 +468,151 @@ export function motifRecuperationEnPlace(geste: string, nombre: number): string 
   return (
     `Une récupération de TVA (art. 52) non annulée porte sur cette créance · ${geste} changerait l’impayé que ses duplicatas ` +
     'déclarent. Annulez d’abord la récupération.'
+  );
+}
+
+/*
+  LA PERTE QUI RÉCUPÈRE LA TVA (point D, décision de Manasse du 2026-10-08,
+  après une simulation depuis la vente d'origine). Aucun montant négatif,
+  aucun crédit au 651 pour une récupération.
+
+  (1) CAS NORMAL · la perte d'une créance réellement et définitivement
+  irrécouvrable et la récupération de sa taxe acquittée font UNE écriture de
+  perte, D 651 (HT) / D 443 (taxe, compte et taux de la ligne de TVA de la
+  facture) / C compte d'origine (TTC) · O.-L. n° 10/001, art. 52, al. 1 et 3 ;
+  décret n° 011/42, art. 126 et 127, al. 2 et 3 (la même constatation fait la
+  perte et ouvre le duplicata) ; fiche du compte 65 (le 651 débité du montant
+  de la CHARGE, qui est hors taxe dès que la taxe se récupère).
+  (2) TAXE À L'ENCAISSEMENT (art. 25, 2°) · jamais exigible sur l'impayé,
+  rien d'acquitté, rien à récupérer (art. 52, al. 1) · la même écriture la
+  débite au 443 SANS TAUX, pour solder la taxe facturée, et la déclaration ne
+  la lit pas.
+  LA CRÉANCE REVIENT D'ABORD AU COMPTE D'ORIGINE (complément de Manasse du
+  2026-10-08 · la fiche du compte 65 dit « par le crédit d'un compte de
+  tiers » sans le nommer ; la fiche du 41 et le Guide SYCEBNL, Application 13,
+  se taisent · texte muet, décision de Manasse) · D compte d'origine / C 416
+  du reste TTC, puis la perte sur le compte d'origine. Deux pièces, passées,
+  retenues et annulées ensemble.
+  (3) PERTE DÉJÀ PASSÉE AU TTC (D 651 / C 416) · la taxe se récupère par le
+  geste « Récupérer la TVA », D 443 / C 751 (fiche du compte 75 des deux
+  plans, 751 « crédité du montant des produits, par le débit des comptes de
+  tiers concernés »), jamais au 651.
+*/
+
+/** Le compte des profits sur créances · 751, semé 75100000 aux deux plans. */
+export const RACINE_PROFITS_SUR_CREANCES = '751';
+
+export const MESSAGE_TVA_PAR_LA_REGLE_3 =
+  'Perte au TTC entier · la taxe acquittée sur l’impayé se récupérera par « Récupérer la TVA » (D 443 / C 751), une fois le ' +
+  'duplicata surchargé envoyé (O.-L. n° 10/001, art. 52, al. 3 ; décret n° 011/42, art. 127, al. 2).';
+
+/** Ce que la perte récupère et annule, compte par compte. */
+export interface VentilationPerte {
+  /** D 443 au taux · la taxe acquittée, lue par la déclaration (art. 126). */
+  recuperee: TaxeRecuperable[];
+  /** D 443 sans taux · la taxe à l'encaissement jamais exigible, annulée. */
+  annulee: Array<{ compteId: string; numero: string; tva: number }>;
+  tva: number;
+  tvaAnnulee: number;
+}
+
+/** Les factures choisies, ventilées · une ligne par compte et taux (récupérée), par compte (annulée). */
+export function ventilerPerte(choisies: readonly FactureChiffree[]): VentilationPerte {
+  const rec = new Map<string, TaxeRecuperable>();
+  const ann = new Map<string, { compteId: string; numero: string; tva: number }>();
+  for (const f of choisies) {
+    for (const r of f.recuperable) {
+      const cle = `${r.compteId}|${r.tauxTvaId}`;
+      const v = rec.get(cle) ?? { ...r, tva: 0 };
+      v.tva = centimes(v.tva + r.tva);
+      rec.set(cle, v);
+    }
+    for (const a of f.annulable) {
+      const v = ann.get(a.compteId) ?? { compteId: a.compteId, numero: a.numero, tva: 0 };
+      v.tva = centimes(v.tva + a.tva);
+      ann.set(a.compteId, v);
+    }
+  }
+  const recuperee = [...rec.values()];
+  const annulee = [...ann.values()];
+  return {
+    recuperee,
+    annulee,
+    tva: centimes(recuperee.reduce((t, r) => t + r.tva, 0)),
+    tvaAnnulee: centimes(annulee.reduce((t, r) => t + r.tva, 0)),
+  };
+}
+
+/**
+ * LES REFUS DE LA PERTE QUI RÉCUPÈRE LA TVA · chacun dit son texte et son
+ * issue (la perte au TTC entier, puis la règle 3, reste toujours ouverte).
+ */
+export function motifRefusPerteAvecTva(e: {
+  montant: number;
+  /** Le reste au 416 après TOUS les mouvements non annulés, avant cette perte. */
+  resteFinal: number;
+  /** Les pertes non annulées déjà passées sur la créance. */
+  pertesAnterieures: number;
+  chiffrees: readonly FactureChiffree[];
+  dejaRecuperees: ReadonlySet<string>;
+  duplicatas: readonly DuplicataSaisi[];
+  date: Date;
+  finDerniereLiquidation: Date | null;
+}): string | null {
+  if (e.pertesAnterieures > 0) {
+    return (
+      'Une perte est déjà passée au TTC sur cette créance · la taxe se récupère alors par « Récupérer la TVA » (D 443 / C 751), une ' +
+      'fois la créance éteinte. Passez cette perte sans duplicata.'
+    );
+  }
+  if (Math.abs(centimes(e.resteFinal) - centimes(e.montant)) >= 0.005) {
+    return (
+      `La taxe ne se récupère qu’avec la perte qui ÉTEINT la créance · « réellement et définitivement irrécouvrable » (O.-L. ` +
+      `n° 10/001, art. 52, al. 3). Il reste ${centimes(e.resteFinal).toFixed(2)} au 416 · passez la perte de ce reste, ou passez ` +
+      'celle-ci sans duplicata (au TTC entier), la taxe se récupérant ensuite par « Récupérer la TVA ».'
+    );
+  }
+  const refus = motifRefusDuplicatas(e);
+  if (refus) return refus;
+  const vus = new Set(e.duplicatas.map((d) => d.designationId));
+  const choisies = e.chiffrees.filter((f) => vus.has(f.designationId));
+  const v = ventilerPerte(choisies);
+  if (v.tva + v.tvaAnnulee <= 0.005) {
+    const motifs = [...new Set(choisies.flatMap((f) => f.motifs))];
+    return `Aucune taxe sur l’impayé des factures choisies · ${motifs.join(' ; ') || 'rien à récupérer ni à annuler'}. Passez la perte sans duplicata.`;
+  }
+  // La taxe ne dépasse jamais la perte · un hors taxe négatif ferait créditer
+  // le 651 (décision de Manasse du 2026-10-08, « aucun crédit au 651 »).
+  if (centimes(v.tva + v.tvaAnnulee) - centimes(e.montant) > 0.005) {
+    return (
+      `La taxe des factures choisies (${centimes(v.tva + v.tvaAnnulee).toFixed(2)}) dépasse la perte (${centimes(e.montant).toFixed(2)}) · ` +
+      'vérifiez les désignations, ou passez la perte sans duplicata.'
+    );
+  }
+  if (v.tva > 0.005) return motifRefusDateRecuperation(e.date, e.date, e.finDerniereLiquidation);
+  return null;
+}
+
+/**
+ * L'ANNULATION DE LA PERTE QUI RÉCUPÈRE LA TVA (relecture du point D,
+ * MAJEUR 3) · seule une LIQUIDATION de TVA qui couvre sa date, ou la suit,
+ * la refuse · la taxe récupérée est inscrite en déduction d'une déclaration
+ * figée (décret n° 011/42, art. 126). Une clôture de période ne refuse pas
+ * (`informationDecalagePerte`).
+ */
+export function motifRefusAnnulationPerteAvecTva(liquidationCouvrante: string | null): string | null {
+  if (!liquidationCouvrante) return null;
+  return (
+    `La TVA est liquidée jusqu’au ${liquidationCouvrante}, au-delà de la date de cette perte · la taxe qu’elle récupère est ` +
+    'inscrite en déduction d’une déclaration figée (décret n° 011/42, art. 126), et la perte ne s’annule plus par ce geste. ' +
+    'Si le client paie, la reprise de la taxe se déclare à la main avec la déclaration en cours, et l’encaissement se passe au journal.'
+  );
+}
+
+/** Le négatif de la perte, daté au premier jour non clôturé (AUDCIF art. 22, 4°) · la reprise se lit dans cette période. */
+export function informationDecalagePerte(premierJourOuvert: string): string {
+  return (
+    `Une clôture de période couvre la date de la perte · ses négatifs sont inscrits au ${premierJourOuvert}, premier jour non ` +
+    'clôturé (AUDCIF art. 22, 4°), et la reprise de la taxe récupérée se lit dans la déclaration de cette période.'
   );
 }

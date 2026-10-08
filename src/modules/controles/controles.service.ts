@@ -44,6 +44,7 @@ import { amortissementsHorsDotations } from '../immobilisations/partie-remplacee
 import { ecartClasse9 } from '../comptabilite/classe-9-equilibree';
 import { PLAFOND_LIGNES_EXAMINEES, reglementsSansEcart } from '../reglements/reglements-sans-ecart';
 import { issueEcartACheval, issueLettrageACheval, lettragesACheval, PLAFOND_LETTRAGES_A_CHEVAL } from '../lettrage/lettrages-a-cheval';
+import { detailNonReconduit, groupesNonReconduits } from '../lettrage/reconduction-lettrage';
 import {
   PLAFOND_REEVALUATIONS_EXAMINEES,
   contrePassationsDeDisponibilites,
@@ -4924,6 +4925,49 @@ export class ControlesService {
           occurrences: [
             ...borne,
             ...ecarts.map((g) => ({ reference: `${g.compteNumero} · lettrage ${g.code}`, detail: issueEcartACheval(g, tenant.referentiel), montant: g.ecartNonPasse! })),
+          ],
+        });
+      }
+    }
+
+    // --- 35 bis. Lettrage partiel de l'exercice précédent non reconduit ---
+    //
+    // Ligne lettrage-cloture · la clôture reconduit un lettrage PARTIEL sur
+    // ses lignes d'à-nouveau (AUDCIF art. 34 ; fiches des comptes 40 et 41).
+    // Un dossier clôturé avant la règle, ou une reconduction délettrée depuis,
+    // laisse la facture d'à-nouveau due en ENTIER et l'acompte à part. Rien
+    // n'est retouché d'office · INFORMATION, nommée groupe par groupe avec
+    // son état et son issue (« Reconduire » au pré-lettrage du compte quand
+    // ses lignes d'à-nouveau sont libres). Un exercice OUVERT seulement · ses
+    // lignes d'à-nouveau ne se lettrent plus dans un exercice clôturé. LEVÉ
+    // DÈS QUE L'EXERCICE PRÉCÉDENT EST CLÔTURÉ (relectures du 2026-10-08,
+    // mineur 7 et M3) · il ne dépend plus d'un report de clôture vu dans
+    // l'exercice · une ouverture ressaisie au premier jour le taisait.
+    const precedentClos =
+      ex.statut !== StatutExercice.CLOTURE
+        ? await this.prisma.exercice.findFirst({
+            where: { tenantId, dateFin: { lt: ex.dateDebut }, statut: StatutExercice.CLOTURE },
+            select: { id: true },
+          })
+        : null;
+    if (precedentClos) {
+      const nonReconduits = await groupesNonReconduits(this.prisma, { tenantId, exerciceSuivantId: exerciceId });
+      if (nonReconduits.total > 0) {
+        anomalies.push({
+          code: 'LETTRAGE_PARTIEL_NON_RECONDUIT',
+          gravite: 'INFORMATION',
+          libelle: "Lettrage partiel de l'exercice précédent non reconduit sur ses lignes d'à-nouveau",
+          consequence:
+            "La facture réunie en N avec son acompte ou son règlement partiel arrive en N+1 seule · elle se lit due en entier au règlement des " +
+            "tiers et aux relances, et l'acompte reste à part au compte du tiers, alors que le tiers ne doit que le reste (fiches des comptes 40 et 41).",
+          action:
+            "Lignes d'à-nouveau libres · « Reconduire » au pré-lettrage du compte. Déjà lettrées ailleurs · vérifiez que le règlement passé ne " +
+            'dépasse pas le reste dû, et relettrez à la main. Rien n’est délettré ni corrigé d’office.',
+          occurrences: [
+            ...(nonReconduits.tronque
+              ? [{ reference: 'Lecture bornée', detail: `${nonReconduits.groupes.length} groupes nommés sur ${nonReconduits.total}.` }]
+              : []),
+            ...nonReconduits.groupes.map((g) => ({ reference: `${g.compteNumero} · lettrage ${g.code}`, detail: detailNonReconduit(g), montant: g.reste })),
           ],
         });
       }

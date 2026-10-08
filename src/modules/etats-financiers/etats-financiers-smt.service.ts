@@ -13,6 +13,7 @@ import {
   chargerLignes,
   comparatifDuBilan,
   correspond,
+  exerciceCloture,
   lignesALOuverture,
   lireOuverturePasseeEnOd,
   ouvertureTenue,
@@ -28,7 +29,7 @@ import {
 } from './reglements-de-tresorerie';
 import { dettesFournisseursNeesDImmobilisations } from './dettes-rattachees';
 import { chargerCampagneStocks, lignesNoteStocks, motifQuantitesNote2 } from './stocks-depuis-inventaire';
-import { estCompteDuResultatDeLExercice } from './resultat-de-l-exercice';
+import { estCompteDuResultatDeLExercice, partsDuResultatAuBilan, resultatAnterieurNonVire, resultatAuBilan } from './resultat-de-l-exercice';
 import { PosteCalcule } from './etats-financiers.service';
 import {
   CATEGORIES_RESSOURCES_ART6,
@@ -273,9 +274,10 @@ export class EtatsFinanciersSmtService {
   }
 
   /**
-   * Les deux sources possibles du résultat de l'exercice · les classes 6 à 8
-   * avant clôture, les comptes 131 à 139 après (`resultat-de-l-exercice.ts`,
-   * jamais le 130). Lues une fois pour HB et pour le contrôle du bilan.
+   * Les deux sources du résultat au bilan · les classes 6 à 8 et les
+   * comptes 131 à 139 (`resultat-de-l-exercice.ts`, jamais le 130), qui
+   * s'additionnent (`resultatAuBilan`). Lues une fois pour HB et pour le
+   * contrôle du bilan.
    */
   private sourcesDuResultat(lignes: LigneBalancePourEtat[]) {
     const lignes678 = lignes.filter(
@@ -283,33 +285,38 @@ export class EtatsFinanciersSmtService {
         l.classe === ClasseCompte.CLASSE_6 || l.classe === ClasseCompte.CLASSE_7 || l.classe === ClasseCompte.CLASSE_8,
     );
     const lignes13 = lignes.filter((l) => estCompteDuResultatDeLExercice(l.numero));
+    const resultat678 = lignes678.reduce((s, l) => s - l.solde, 0);
+    const resultat13 = lignes13.reduce((s, l) => s - l.solde, 0);
     return {
       lignes678,
-      resultat678: lignes678.reduce((s, l) => s - l.solde, 0),
+      resultat678,
       lignes13,
-      resultat13: lignes13.reduce((s, l) => s - l.solde, 0),
+      resultat13,
+      // L'exercice et le résultat antérieur non affecté, séparés par la règle
+      // de la fiscalité (`partsDuResultatAuBilan`).
+      parts: partsDuResultatAuBilan(resultat678, resultat13, lignes678, lignes13),
     };
   }
 
   /**
-   * HB « Résultat net de l'exercice (en + ou en -) » · même arbitrage que CH
-   * (associations) et CC (projets) : avant clôture le résultat n'existe que
-   * dans les classes 6/7/8, après clôture il est aux comptes 131 à 139.
-   * Prendre les deux les additionnerait. Le 130 n'est pas le résultat de
-   * l'exercice et va à HC (audit final F211).
+   * HB « Résultat net de l'exercice (en + ou en -) » · même lecture que CH
+   * (associations) et CC (projets), `resultatAuBilan` · les comptes 131 à
+   * 139, qui portent le résultat de l'exercice précédent tant qu'il n'est pas
+   * affecté (fiche du compte 13), PLUS les classes 6 à 8, que la clôture y
+   * portera. Lire l'une OU l'autre perdait le résultat de N au bilan de N+1
+   * avant l'assemblée (passe V1, B1). Le 130 n'est pas lu ici et va à HC
+   * (audit final F211).
    */
   private calculerHB(lignes: LigneBalancePourEtat[]): PosteCalcule {
     const { lignes678, resultat678, lignes13, resultat13 } = this.sourcesDuResultat(lignes);
 
-    const avantCloture = Math.abs(resultat678) > 0.005;
-    const source = avantCloture ? lignes678 : lignes13;
-    const comptes = source
+    const comptes = [...lignes13, ...lignes678]
       .filter((l) => Math.abs(l.solde) > 0.005)
       .map((l) => ({ numero: l.numero, intitule: l.intitule, montant: -l.solde }));
     return {
       ref: 'HB',
       libelle: "Résultat net de l'exercice (en + ou en -)",
-      montant: avantCloture ? resultat678 : resultat13,
+      montant: resultatAuBilan(resultat678, resultat13),
       comptes,
     };
   }
@@ -329,9 +336,10 @@ export class EtatsFinanciersSmtService {
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await trouverExerciceN1(this.exerciceService, tenantId, exerciceId);
-    const [lignesN, lignesN1] = await Promise.all([
+    const [lignesN, lignesN1, clos] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
+      exerciceCloture(this.exerciceService, tenantId, exerciceId),
     ]);
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
     // est le bilan d'ouverture du dossier (SYCEBNL Partie 4 ch. 1 § 1.4,
@@ -356,7 +364,12 @@ export class EtatsFinanciersSmtService {
 
     const totalActif = parRefN.get('GZ')!.montant;
     const totalPassif = parRefN.get('HZ')!.montant;
-    const { resultat678, resultat13 } = this.sourcesDuResultat(lignesN);
+    const { resultat678, resultat13, parts } = this.sourcesDuResultat(lignesN);
+    // Le reste du 13 (un 130 ouvert par le cabinet) que HC lit, lui, comme
+    // « Autres fonds propres » (audit final F211) · au sens du passif.
+    const compte13LuHorsDuResultat = lignesN
+      .filter((l) => l.numero.startsWith('13') && !estCompteDuResultatDeLExercice(l.numero))
+      .reduce((s, l) => s - l.solde, 0);
 
     return {
       actif: ORDRE_BILAN_ACTIF.map(fusionner),
@@ -373,17 +386,25 @@ export class EtatsFinanciersSmtService {
       // Aucun poste de « comptes non rattachés » ici : GA à GE et HA à HD
       // couvrent les classes 1 à 5 par construction (classe par classe, les
       // soldes de tiers répartis entre GC et HD, HC étant le reste exact de
-      // la classe 1 depuis l'audit final F211, 130 compris). UN SEUL SOLDE
-      // peut encore manquer au passif, et il est signalé plutôt que deviné ·
-      // des comptes 131 à 139 qui portent encore le résultat de l'exercice
-      // précédent, non affecté, pendant que les classes 6 à 8 portent celui
-      // de l'exercice. HB ne retient qu'une des deux sources (`calculerHB`),
-      // le même contrôle que le bilan des associations le dit.
+      // la classe 1 depuis l'audit final F211, 130 compris). Les comptes 131
+      // à 139 qui portent encore le résultat de l'exercice précédent, non
+      // affecté, pendant que les classes 6 à 8 portent celui de l'exercice,
+      // vont TOUS DEUX à HB (`resultatAuBilan`, passe V1, B1) · les deux
+      // sources sont rendues séparées, la clôture en relit l'écart.
       controle: {
         resultatClasses678: resultat678,
         resultatCompte13: resultat13,
-        doubleComptageProbable: Math.abs(resultat678) > 0.005 && Math.abs(resultat13) > 0.005,
+        resultatAnterieurNonAffecte: parts.resultatAnterieurNonAffecte,
+        // Le 13 que le bilan lit HORS de HB · la clôture ne le compte pas
+        // comme non lu (`ecartInexpliqueDuBilan`). Sans lui, un 130 ouvert,
+        // lu en HC et le bilan équilibré, faisait refuser la clôture au motif
+        // d'un écart que le report à nouveau « n'explique pas » (relecture de
+        // la passe V1, point 5).
+        compte13LuHorsDuResultat,
       },
+      // Exercice CLÔTURÉ qui porte encore le résultat précédent non affecté ·
+      // nommé (`resultatAnterieurNonVire`).
+      resultatAnterieurNonVire: resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, 'HB', 'SYCEBNL'),
     };
   }
 
@@ -669,7 +690,10 @@ export class EtatsFinanciersSmtService {
       soldeCaisse,
       retraitements,
       resultatNet,
-      resultatBilan: bilanCloture.get('HB')!.montant,
+      // La part de HB qui est le résultat de l'EXERCICE · HB porte aussi,
+      // avant l'affectation, le résultat précédent resté au 13 (passe V1,
+      // B1), que KZC ne porte pas (`partsDuResultatAuBilan`).
+      resultatBilan: this.sourcesDuResultat(lignesN).parts.resultatDeLExercice,
     };
   }
 

@@ -62,6 +62,7 @@ const LIBELLE_ORIGINE: Record<GroupeLettrage['origine'], string> = {
   AUTOMATIQUE_PIECE: 'auto · référence de pièce',
   AUTOMATIQUE_MONTANT: 'auto · montant',
   MODULE: 'module · créance douteuse',
+  CLOTURE: 'clôture · reconduit',
 };
 
 /**
@@ -348,6 +349,15 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
       return `Relettré : ${r.lettres.join(', ')} · la TVA d'une prestation est datée du jour du paiement.`;
     });
 
+  // Ligne lettrage-cloture · le geste que la clôture aurait posé · le
+  // serveur rejoue la lecture avant de poser le groupe.
+  const confirmerReconduction = (lettrageId: string) =>
+    executer(async () => {
+      const r = await api.post<{ lettre: string; reconduitDe: string; reste: number }>(`/comptes/${compteId}/lettrage/reconduire`, { lettrageId });
+      setPreLettrage(null);
+      return `Lettrage partiel ${r.reconduitDe} reconduit en ${r.lettre} · il reste ${montant(Math.abs(r.reste))} à solder.`;
+    });
+
   const lancerLettrageAuto = () =>
     executer(async () => {
       const r = await api.post<{ groupes: number; parPiece: number; parMontant: number; lettres: string[]; miseDeCote?: string | null }>(
@@ -516,6 +526,47 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
                         </button>
                       )}
                     </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(preLettrage.reconductions ?? []).length > 0 && (
+            <div className="border-b border-border-dark">
+              <div className="px-3.5 py-1.5 text-[11.5px] font-semibold flex items-center gap-1.5">
+                À reconduire · lettrages partiels de l'exercice clôturé
+                <Aide
+                  titre="Reconduction d'un lettrage partiel"
+                  texte="Une facture réunie avec son acompte ou un règlement partiel arrive dans l'exercice suivant par deux lignes d'à-nouveau. Sans leur lettrage, la facture se lit due en entier. Reconduire les réunit dans le même lettrage partiel · le tiers n'y doit que le reste. Une ligne déjà lettrée ailleurs n'est jamais délettrée d'office."
+                  source="AUDCIF art. 34 · fiches des comptes 40 et 41"
+                />
+              </div>
+              {preLettrage.reconductionsTronque && (
+                <div className="px-3.5 py-1 text-[11.5px] text-text-dim">
+                  {preLettrage.reconductions!.length} lettrage(s) affiché(s) sur {preLettrage.reconductionsTotal}.
+                </div>
+              )}
+              {preLettrage.reconductions!.map((r) => (
+                <div key={r.lettrageId} className="px-3.5 py-1.5 text-[11.5px] flex items-center gap-2 flex-wrap border-t border-border/60">
+                  <span className="font-semibold">{r.code}</span>
+                  <span>reste {montant(Math.abs(r.reste))}</span>
+                  <span className="truncate max-w-[420px]">
+                    {r.lignes.map((l) => `${l.libelle} · ${montant(l.debit || l.credit)}`).join(' ; ')}
+                  </span>
+                  {r.etat === 'A_RECONDUIRE' ? (
+                    peutEcrire && (
+                      <button
+                        type="button"
+                        onClick={() => confirmerReconduction(r.lettrageId)}
+                        disabled={envoi}
+                        className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1 disabled:opacity-40"
+                      >
+                        Reconduire
+                      </button>
+                    )
+                  ) : (
+                    <span className="text-danger">{r.detail}</span>
                   )}
                 </div>
               ))}

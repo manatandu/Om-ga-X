@@ -22,6 +22,18 @@ describe('rappel d’un lot de virements', () => {
     expect(r.montants).toEqual({ f1: '1500' });
   });
 
+  // Ligne lettrage-cloture, D5 · l'échéancier sert la facture d'un lettrage
+  // partiel pour son RESTE · le lot rappelle ce reste, jamais la facture
+  // entière (1 000 000 facturés, 400 000 d'acompte · 600 000 servis).
+  it('une facture d’un lettrage partiel se rappelle pour le reste servi', () => {
+    const r = rappelerLot(lot(1_000_000), [
+      { compteId: 'f1', lignes: [{ id: 'partielle', echeance: '2027-01-01', montant: 600_000 }] },
+    ]);
+    expect(r.cochees).toEqual(['partielle']);
+    expect(r.montants).toEqual({});
+    expect(r.constats[0]).toMatch(/dû 600\s000,00, sous le montant habituel/);
+  });
+
   it('au-delà du dû, seul le dû est proposé, et c’est dit', () => {
     const r = rappelerLot(lot(5000), groupes);
     expect(r.cochees).toEqual(['ancien', 'recent']);

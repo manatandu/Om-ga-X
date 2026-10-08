@@ -5,6 +5,9 @@ import {
   COMPTES_RESULTAT_DE_L_EXERCICE,
   estCompteDuResultatDeLExercice,
   estResultatEnInstanceDAffectation,
+  partsDuResultatAuBilan,
+  resultatAnterieurNonVire,
+  resultatAuBilan,
 } from './resultat-de-l-exercice';
 
 /**
@@ -53,5 +56,75 @@ describe('résultat de l’exercice · 131 à 139, jamais le 130', () => {
         !readFileSync(join(__dirname, '..', f), 'utf8').includes("from './resultat-de-l-exercice'"),
     );
     expect(sansLaRegle).toEqual([]);
+  });
+});
+
+/**
+ * LE POSTE DU RÉSULTAT PARTAGÉ ENTRE L'EXERCICE ET LE RÉSULTAT ANTÉRIEUR NON
+ * AFFECTÉ (relecture de la passe V1, 2026-10-08) · la règle de la fiscalité
+ * (cas chiffré V3), jamais « classes 6 à 8 non nulles, sinon le 13 ».
+ */
+describe('parts du résultat au bilan · la règle de la fiscalité', () => {
+  const gestion = (solde: number) => ({ solde });
+  const treize = (mouvementDebit: number, mouvementCredit: number) => ({ mouvementDebit, mouvementCredit });
+
+  it('MAJEUR · ventes 1 000 000, achats 1 000 000, 13 à -300 000 non affecté · exercice 0, antérieur -300 000', () => {
+    // La gestion porte un solde sur ses comptes · son net, nul, EST le
+    // résultat de l'exercice. L'ancienne lecture rendait -300 000 « de
+    // l'exercice » et faisait tomber les contrôles du SMT et des liasses.
+    const parts = partsDuResultatAuBilan(0, -300_000, [gestion(-1_000_000), gestion(1_000_000)], [treize(0, 0)]);
+    expect(parts).toEqual({ resultatDeLExercice: 0, resultatAnterieurNonAffecte: -300_000 });
+    expect(parts.resultatDeLExercice + parts.resultatAnterieurNonAffecte).toBe(resultatAuBilan(0, -300_000));
+  });
+
+  it('un 13 qui ne porte que l’à-nouveau, sans gestion, est antérieur · l’exercice vaut zéro', () => {
+    expect(partsDuResultatAuBilan(0, -46_072_000, [], [treize(0, 0)])).toEqual({
+      resultatDeLExercice: 0,
+      resultatAnterieurNonAffecte: -46_072_000,
+    });
+  });
+
+  it('gestion soldée et 13 mouvementé dans l’exercice · le 13 est le résultat de l’exercice', () => {
+    expect(partsDuResultatAuBilan(0, 25_000, [gestion(0)], [treize(0, 25_000)])).toEqual({
+      resultatDeLExercice: 25_000,
+      resultatAnterieurNonAffecte: 0,
+    });
+  });
+
+  it('avant l’affectation · les classes 6 à 8 portent N, le 13 porte N-1', () => {
+    expect(partsDuResultatAuBilan(500, 1_164_000, [gestion(-500)], [treize(0, 0)])).toEqual({
+      resultatDeLExercice: 500,
+      resultatAnterieurNonAffecte: 1_164_000,
+    });
+  });
+});
+
+/**
+ * BLOQUANT de la relecture de la passe V1 · un exercice CLÔTURÉ avant le
+ * virement de clôture garde le résultat précédent au 13, et le poste
+ * l'additionne · il est NOMMÉ, jamais présenté en silence comme résultat de
+ * l'exercice. Ouvert, c'est la situation légitime d'avant l'assemblée.
+ */
+describe('résultat antérieur non viré · seulement sur un exercice clôturé', () => {
+  it('exercice clôturé, perte 2026 de 46 072 000 restée au 13 · nommée, poste, montant et fiche', () => {
+    const avis = resultatAnterieurNonVire(true, -46_072_000, 'CJ', 'SYSCOHADA');
+    expect(avis).not.toBeNull();
+    expect(avis!.montant).toBe(-46_072_000);
+    expect(avis!.poste).toBe('CJ');
+    expect(avis!.motif).toContain('une perte de 46');
+    expect(avis!.motif).toContain('AUDCIF, Titre VII, compte 13');
+    expect(avis!.motif).toContain('poste CJ');
+  });
+
+  it('le mot de chaque plan · déficit au SYCEBNL, et sa fiche', () => {
+    const avis = resultatAnterieurNonVire(true, -1_000, 'CH', 'SYCEBNL');
+    expect(avis!.motif).toContain('un déficit de');
+    expect(avis!.motif).toContain('SYCEBNL, Partie 2 ch. 3, compte 13');
+  });
+
+  it('exercice ouvert, ou rien d’antérieur · rien n’est dit', () => {
+    expect(resultatAnterieurNonVire(false, -46_072_000, 'CJ', 'SYSCOHADA')).toBeNull();
+    expect(resultatAnterieurNonVire(true, 0, 'CJ', 'SYSCOHADA')).toBeNull();
+    expect(resultatAnterieurNonVire(true, 0.004, 'CJ', 'SYSCOHADA')).toBeNull();
   });
 });

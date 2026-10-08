@@ -141,6 +141,20 @@ export class PerteCreanceDto extends MotifEtPiecesDto {
   @IsUUID('4')
   comptePerteId?: string;
 
+  /**
+   * POINT D (décision de Manasse du 2026-10-08) · les duplicatas surchargés
+   * envoyés au client, facture désignée par facture désignée (O.-L. n° 10/001,
+   * art. 52, al. 3 ; décret n° 011/42, art. 127, al. 2). Présents, la perte
+   * récupère la taxe dans la même écriture (D 651 HT / D 443 / C compte
+   * d'origine) ; absents, elle passe au TTC entier. Le montant de la taxe
+   * n'est jamais reçu, il est rejoué par le serveur.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => DuplicataFactureDto)
+  duplicatas?: DuplicataFactureDto[];
 }
 
 

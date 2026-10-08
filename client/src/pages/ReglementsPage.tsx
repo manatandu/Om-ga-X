@@ -40,6 +40,12 @@ interface LigneEcheance {
   montantDevise?: number | null;
   /** Ligne d'à-nouveau réglée en partie par un lettrage à cheval de deux exercices (A6 bis, m1) · le dû est son reste. */
   regleParLettrageACheval?: { groupe: string; montant: number } | null;
+  /**
+   * Facture d'un lettrage PARTIEL (ligne lettrage-cloture) · le dû est son
+   * reste, ce que le groupe en a déjà réglé est rendu ici, et le règlement
+   * complète le groupe.
+   */
+  regleParLettragePartiel?: { groupe: string; montant: number; deviseIndeterminee?: boolean } | null;
 }
 
 interface GroupeTiers {
@@ -851,6 +857,14 @@ export function ReglementsPage() {
                           <div className="text-text-dim">
                             reste · {fmt(l.regleParLettrageACheval.montant)} réglés par le lettrage {l.regleParLettrageACheval.groupe}
                           </div>
+                        ) : null}
+                        {l.regleParLettragePartiel ? (
+                          <div className="text-text-dim">
+                            reste · {fmt(l.regleParLettragePartiel.montant)} déjà réglés dans le lettrage partiel {l.regleParLettragePartiel.groupe}
+                          </div>
+                        ) : null}
+                        {l.regleParLettragePartiel?.deviseIndeterminee ? (
+                          <div className="text-warning">reste en devise inconnu · un acompte en francs seuls est dans le lettrage partiel {l.regleParLettragePartiel.groupe}</div>
                         ) : null}
                       </td>
                     </tr>

@@ -16,6 +16,8 @@ function service(reevaluations: unknown[]) {
   const findMany = jest.fn().mockResolvedValue(reevaluations);
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({ id: 'e27', dateDebut: new Date('2027-01-01'), dateFin: new Date('2027-12-31') }),
     },
     tenant: {

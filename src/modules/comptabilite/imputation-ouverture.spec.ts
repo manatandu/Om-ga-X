@@ -48,6 +48,8 @@ function service() {
   const misAJour: Faux[] = [];
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel ancien dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'ex',
         dateDebut: new Date('2026-01-01'),
@@ -174,6 +176,8 @@ describe('l’imputation aux capitaux propres d’ouverture', () => {
 function serviceControles(referentiel: Referentiel, lignes: Faux[]) {
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel ancien dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'ex',
         dateDebut: new Date('2026-01-01'),
@@ -271,6 +275,8 @@ describe('le contrôle des imputations non déclarées', () => {
     // cloisonnement vérifie les bornes de tenant.
     const prisma = {
       exercice: {
+        // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel ancien dans ce jeu.
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue({
           id: 'ex',
           dateDebut: new Date('2026-01-01'),

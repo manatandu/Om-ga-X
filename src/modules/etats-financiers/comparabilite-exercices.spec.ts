@@ -113,6 +113,8 @@ function serviceControles(referentiel: Referentiel, precedent: { dateDebut: stri
   const courant = { id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), dateArreteComptes: new Date('2027-03-31') };
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel ancien dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       // La recherche de l'exercice ANTÉRIEUR se reconnaît à son filtre
       // `dateFin: { lt }` · une doublure qui rendrait le même objet aux deux
       // appels ferait comparer l'exercice à lui-même, et le contrôle ne

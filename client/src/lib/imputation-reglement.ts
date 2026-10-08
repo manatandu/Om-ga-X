@@ -24,6 +24,8 @@ export interface FactureCochee {
   libelle?: string;
   deviseId?: string | null;
   regleParLettrageACheval?: { groupe: string; montant: number } | null;
+  /** Facture d'un lettrage partiel (ligne lettrage-cloture) · son reste suit l'imputation du groupe. */
+  regleParLettragePartiel?: { groupe: string; montant: number } | null;
 }
 
 /** Le nom d'une facture dans un motif ou une étiquette · sa pièce, sinon son libellé. */
@@ -48,7 +50,8 @@ export function lireMontant(saisie: string | undefined): { vide: true } | { illi
  * LE CHAMP « PART » EXISTE-T-IL POUR CE TIERS ? Fournisseur seulement, deux
  * factures cochées au moins, aucune en devise (le règlement porte alors une
  * seule ligne au tiers avec son écart réalisé), aucune réglée en partie à
- * cheval (elle se règle seule) · le serveur refuse les mêmes cas
+ * cheval (elle se règle seule), aucune d'un lettrage partiel (son reste
+ * suit l'imputation du groupe) · le serveur refuse les mêmes cas
  * (`motifRefusImputationReglement`). Le motif, quand il y en a un, se DIT
  * sous le tiers · jamais un champ qui disparaît sans un mot.
  */
@@ -64,6 +67,15 @@ export function partsServies(e: { sens: 'FOURNISSEUR' | 'CLIENT'; cochees: Reado
     return {
       servies: false,
       motif: 'Une ligne d’à-nouveau réglée en partie à cheval se règle seule · retirez-la de ce règlement pour désigner les parts des autres.',
+    };
+  }
+  // Ligne lettrage-cloture · le serveur refuse une part désignée sur une
+  // facture d'un lettrage partiel (son reste suit l'imputation du groupe,
+  // art. 154) · le champ ne s'offre pas, et c'est dit.
+  if (e.cochees.some((l) => l.regleParLettragePartiel)) {
+    return {
+      servies: false,
+      motif: 'Une facture d’un lettrage partiel se règle sans part désignée · son reste suit l’imputation du lettrage ; retirez-la de ce règlement pour désigner les parts des autres.',
     };
   }
   return { servies: true, motif: null };

@@ -201,6 +201,7 @@ describe('validerJusqua rend la forme COMPLÈTE, même à vide', () => {
     // « Rien à valider » sur un brouillard qui vient d'être refusé en entier.
     const prisma = {
       ecriture: { findMany: jest.fn().mockResolvedValue([]) },
+      exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex' }) },
     } as Faux;
     const r = await service(prisma).validerJusqua('t1', 'moi', {
       exerciceId: 'ex',
@@ -213,5 +214,50 @@ describe('validerJusqua rend la forme COMPLÈTE, même à vide', () => {
       sousDerogation: 0,
       motifRefus: null,
     });
+  });
+});
+
+describe("validerJusqua refuse l'exercice ou le journal d'un autre dossier (ligne lettrage-cloture)", () => {
+  // La doublure HONORE le `where` · elle ne rend l'exercice ou le journal que
+  // sous le dossier qui les porte, comme la base.
+  const prismaDe = () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    return {
+      findMany,
+      prisma: {
+        ecriture: { findMany },
+        exercice: {
+          findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>
+            where.id === 'exA' && where.tenantId === 'tA' ? { id: 'exA' } : null,
+          ),
+        },
+        journal: {
+          findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>
+            where.id === 'jA' && where.tenantId === 'tA' ? { id: 'jA' } : null,
+          ),
+        },
+      } as Faux,
+    };
+  };
+
+  it("l'exercice d'un autre dossier est un 404 nommé, jamais « 0 validée »", async () => {
+    const { prisma, findMany } = prismaDe();
+    await expect(service(prisma).validerJusqua('tB', 'moi', { exerciceId: 'exA', dateLimite: '2026-06-30' })).rejects.toThrow(
+      'Exercice introuvable pour ce dossier.',
+    );
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("le journal d'un autre dossier aussi", async () => {
+    const { prisma } = prismaDe();
+    await expect(
+      service(prisma).validerJusqua('tA', 'moi', { exerciceId: 'exA', dateLimite: '2026-06-30', journalId: 'jB' }),
+    ).rejects.toThrow('Journal introuvable pour ce dossier.');
+  });
+
+  it("l'exercice du dossier passe, et le vide reste la forme complète", async () => {
+    const { prisma } = prismaDe();
+    const r = await service(prisma).validerJusqua('tA', 'moi', { exerciceId: 'exA', dateLimite: '2026-06-30', journalId: 'jA' });
+    expect(r.validees).toBe(0);
   });
 });

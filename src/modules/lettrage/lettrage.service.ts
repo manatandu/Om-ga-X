@@ -7,6 +7,7 @@ import { lignesFigees, refuserSiLignesFigees } from '../exercice/gel-cloture';
 import { comptesPrescrits, ecartDuGroupe, natureDuCompte } from '../reglements/ecart-change-realise';
 import { referentielDuDossier } from '../reglements/compte-ecart-change';
 import { motifLettrageADeuxExercices } from './lettrages-a-cheval';
+import { detailNonReconduit, groupesNonReconduits, poserGroupeReconduit } from './reconduction-lettrage';
 import { lignesMisesDeCote, lignesReclasseesDuCompte, messageMiseDeCote, refuserLignesDuCompteClientReclasse } from './ligne-de-reclassement';
 
 const EPSILON = 0.005;
@@ -193,6 +194,13 @@ export function motifLettrageANouveauProvisoire(): string {
   );
 }
 
+/** Le réalisé gardé par un groupe, augmenté de celui d'une pièce qui le complète · null quand aucun des deux n'existe. */
+function cumulDuRealise(garde: number | null, ajoute: number | null): number | null {
+  if (garde === null) return ajoute;
+  if (ajoute === null) return garde;
+  return Math.round((garde + ajoute) * 100) / 100;
+}
+
 /** Une ligne du groupe a été lettrée par un autre geste entre le calcul et l'écriture. */
 function lignesPrisesEntreTemps() {
   return new ConflictException(
@@ -205,6 +213,24 @@ function lignesPrisesEntreTemps() {
  * au-delà, la tranche se dit et les totaux restent ceux du compte entier.
  */
 export const PLAFOND_LIGNES_LETTRAGE = 5000;
+
+/**
+ * LE SOLDE D'UN GROUPE DANS UNE DEVISE, dans le sens des factures · le
+ * montant en devise est stocké SANS signe et suit celui des francs (une ligne
+ * inscrite en négatif le retire, `lignesEnNegatif`).
+ */
+function soldeEnDevise(
+  lignes: Array<{ debit: Prisma.Decimal | number; credit: Prisma.Decimal | number; deviseId: string | null; montantDevise: Prisma.Decimal | number | null }>,
+  deviseId: string,
+  sens: 'DEBIT' | 'CREDIT',
+): number {
+  const signe = sens === 'DEBIT' ? 1 : -1;
+  const total = lignes.reduce((t, l) => {
+    if (l.deviseId !== deviseId || l.montantDevise === null) return t;
+    return t + signe * Math.sign(Number(l.debit) - Number(l.credit)) * Math.abs(Number(l.montantDevise));
+  }, 0);
+  return Math.round(total * 100) / 100;
+}
 
 @Injectable()
 export class LettrageService {
@@ -673,7 +699,33 @@ export class LettrageService {
    * groupe peut déjà mêler deux exercices (règle 2 de `lettrages-a-cheval.ts`)
    * · toléré, il ne refuse que la ligne d'un exercice qu'il ne touchait pas.
    */
-  async completer(tenantId: string, lettrageId: string, ligneIds: string[], options: { groupeTolere?: string | null } = {}) {
+  async completer(
+    tenantId: string,
+    lettrageId: string,
+    ligneIds: string[],
+    // `ecartChangeRealise` · le réalisé que la pièce qui complète le groupe a
+    // passé sur sa propre ligne (règlement en devise du reste d'un lettrage
+    // partiel, ligne lettrage-cloture), gardé par le groupe comme au
+    // lettrage manuel (A6, `ecartCumule`).
+    // `borne` · le Règlement des tiers complète un groupe dont il a lu le
+    // reste HORS de cette transaction · le solde lu (`soldeAttendu`) est
+    // relu ici, et l'ajout ne fait jamais franchir zéro au solde dans le sens
+    // des factures (relectures du 2026-10-08, M1 et mineur 8) · deux
+    // règlements de 600 sur un reste de 1 000 passaient tous deux, le groupe
+    // repartant partiel dans l'autre sens. EN DEVISE (`deviseId`), le reste
+    // se borne DANS LA DEVISE, jamais en francs (relecture TypeScript du
+    // second tour, bloquant 1) · le coût historique inscrit au fil des
+    // règlements (arrondi règlement par règlement, ancien règlement inscrit
+    // au payé, D4 d'A6) n'est pas le reste recalculé, et un centime ou le
+    // réalisé jamais passé faisait refuser le solde (« l'excédent est une
+    // avance ») · l'écart en francs du groupe soldé dans sa devise reste à
+    // l'écart proposé (`propositionEcartChange`), comme avant.
+    options: {
+      groupeTolere?: string | null;
+      ecartChangeRealise?: number;
+      borne?: { soldeAttendu: number; sensDesFactures: 'DEBIT' | 'CREDIT'; deviseId?: string | null };
+    } = {},
+  ) {
     const tolere = (options.groupeTolere ?? null) !== null && options.groupeTolere === lettrageId;
     return avecRetrySerialisable(
       this.prisma,
@@ -698,8 +750,45 @@ export class LettrageService {
         // lettre sur toutes, et en change le statut.
         const dejaDuGroupe = await tx.ligneEcriture.findMany({
           where: { lettrageId },
-          select: { id: true, ecriture: { select: { exerciceId: true, date: true, exercice: { select: { statut: true } } } } },
+          select: {
+            id: true,
+            debit: true,
+            credit: true,
+            deviseId: true,
+            montantDevise: true,
+            ecriture: { select: { exerciceId: true, date: true, exercice: { select: { statut: true } } } },
+          },
         });
+        if (options.borne) {
+          const avant = dejaDuGroupe.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0);
+          if (Math.abs(avant - options.borne.soldeAttendu) > EPSILON) {
+            throw new ConflictException(
+              `Le lettrage ${groupe.code.toLowerCase()} a changé depuis la préparation du règlement (reste lu ${options.borne.soldeAttendu.toFixed(2)}, ` +
+                `reste actuel ${avant.toFixed(2)}) · un autre règlement l'a complété. Relancez le règlement sur le reste actuel.`,
+            );
+          }
+          const deviseId = options.borne.deviseId ?? null;
+          if (deviseId !== null) {
+            const avantDevise = soldeEnDevise(dejaDuGroupe, deviseId, options.borne.sensDesFactures);
+            const apresDevise = avantDevise + soldeEnDevise(nouvelles, deviseId, options.borne.sensDesFactures);
+            if (apresDevise < -EPSILON) {
+              throw new ConflictException(
+                `Le règlement dépasse le reste en devise du lettrage ${groupe.code.toLowerCase()} (${avantDevise.toFixed(2)}) · l'excédent est une ` +
+                  'avance ou un trop-perçu, à comptabiliser à part.',
+              );
+            }
+          } else {
+            const ajoute = nouvelles.reduce((t, l) => t + Number(l.debit) - Number(l.credit), 0);
+            const apres = avant + ajoute;
+            const franchit = options.borne.sensDesFactures === 'DEBIT' ? apres < -EPSILON : apres > EPSILON;
+            if (franchit) {
+              throw new ConflictException(
+                `Le règlement dépasse le reste du lettrage ${groupe.code.toLowerCase()} (${Math.abs(avant).toFixed(2)}) · l'excédent est une avance ou ` +
+                  'un trop-perçu, à comptabiliser à part.',
+              );
+            }
+          }
+        }
         // AU DÉTAIL, UN GROUPE NE MÊLE PAS DEUX EXERCICES (A6 bis) · les
         // lignes déjà du groupe comptent, l'écart de change passé par
         // `passerEcartChange` aussi.
@@ -733,7 +822,7 @@ export class LettrageService {
             solde: soldeNul ? 0 : solde,
             soldeAt: soldeNul ? new Date() : null,
             ecartChange: LettrageService.ecartCumule(
-              groupe.ecartChange === null ? null : Number(groupe.ecartChange),
+              cumulDuRealise(groupe.ecartChange === null ? null : Number(groupe.ecartChange), options.ecartChangeRealise ?? null),
               soldeNul ? this.ecartChangeRealise(toutes) : null,
               soldeNul,
             ),
@@ -1393,8 +1482,40 @@ export class LettrageService {
       relettrages.push({ ligne: decrireLigne(l), candidates: candidates.map(decrireLigne) });
     }
 
+    // LIGNE LETTRAGE-CLÔTURE · un lettrage PARTIEL d'un exercice clôturé que
+    // rien n'a reconduit (dossier clôturé avant la règle, ou reconduction
+    // délettrée) · ses lignes d'à-nouveau libres se PROPOSENT, la
+    // reconduction se confirme (« Reconduire », `reconduire`, qui rejoue la
+    // lecture) ; lettrées ailleurs ou introuvables, le groupe est NOMMÉ avec
+    // son issue, et rien n'est retouché d'office.
+    const nonReconduits = await groupesNonReconduits(this.prisma, { tenantId, compteId });
+    const idsAccueil = [...new Set(nonReconduits.groupes.flatMap((g) => g.accueil.filter((id): id is string => id !== null)))];
+    const accueils = idsAccueil.length
+      ? await this.prisma.ligneEcriture.findMany({
+          where: { id: { in: idsAccueil }, ecriture: { tenantId } },
+          select: { id: true, debit: true, credit: true, libelle: true, ecriture: { select: { date: true, libelle: true } } },
+        })
+      : [];
+    const accueilDe = new Map(accueils.map((l) => [l.id, l]));
+    const reconductions = nonReconduits.groupes.map((g) => ({
+      lettrageId: g.lettrageId,
+      code: g.code,
+      reste: g.reste,
+      etat: g.etat,
+      detail: detailNonReconduit(g),
+      lignes: g.accueil.flatMap((id) => {
+        const l = id ? accueilDe.get(id) : undefined;
+        return l
+          ? [{ ligneId: l.id, date: l.ecriture.date.toISOString().slice(0, 10), libelle: l.libelle ?? l.ecriture.libelle, debit: Number(l.debit), credit: Number(l.credit) }]
+          : [];
+      }),
+    }));
+
     return {
       relettrages,
+      reconductions,
+      reconductionsTotal: nonReconduits.total,
+      reconductionsTronque: nonReconduits.tronque,
       propositions: [
         ...parPiece.map((g) => decrire(g, OrigineLettrage.AUTOMATIQUE_PIECE)),
         ...parMontant.map((g) => decrire(g, OrigineLettrage.AUTOMATIQUE_MONTANT)),
@@ -1522,6 +1643,50 @@ export class LettrageService {
     );
   }
 
+  /**
+   * RECONDUIRE UN LETTRAGE PARTIEL d'un exercice clôturé sur ses lignes
+   * d'à-nouveau (ligne lettrage-cloture) · le geste que la clôture aurait
+   * posé, confirmé par le comptable. La lecture se REJOUE (la proposition ne
+   * se croit pas) · seul un groupe dont toutes les lignes d'à-nouveau sont
+   * libres se reconduit, dans un exercice OUVERT. Une clôture de période de
+   * l'exercice qui reçoit ne l'arrête pas · les lignes sont celles du report
+   * que la clôture a passé, et c'est son geste qu'il rend (comme le
+   * relettrage de clôture d'AU1) ; un exercice clôturé, lui, ne se touche
+   * plus.
+   */
+  async reconduire(tenantId: string, compteId: string, lettrageId: string, userId: string) {
+    await this.trouverCompteLettrable(tenantId, compteId);
+    return avecRetrySerialisable(
+      this.prisma,
+      async (tx) => {
+        const { groupes } = await groupesNonReconduits(tx, { tenantId, compteId });
+        const g = groupes.find((x) => x.lettrageId === lettrageId);
+        if (!g) {
+          throw new BadRequestException(
+            "Ce lettrage partiel n'est pas à reconduire · il l'est déjà, ses lignes d'à-nouveau sont relettrées ensemble, ou l'exercice qui " +
+              "les porte n'est plus ouvert. Relancez le pré-lettrage du compte.",
+          );
+        }
+        if (g.etat !== 'A_RECONDUIRE') throw new BadRequestException(`Ce lettrage ne se reconduit pas d'office · ${detailNonReconduit(g)}`);
+        const groupe = await tx.lettrage.findFirst({
+          where: { id: lettrageId, tenantId, compteId },
+          select: { id: true, code: true, compteId: true, ecartChange: true },
+        });
+        if (!groupe) throw new NotFoundException('Lettrage introuvable pour ce dossier');
+        const pose = await poserGroupeReconduit(tx, {
+          tenantId,
+          groupe,
+          accueil: g.accueil as string[],
+          userId,
+          code: await this.prochaineLettre(tx, tenantId, compteId),
+        });
+        if (!pose.code) throw new ConflictException(`Ce lettrage n'a pas été reconduit · ${pose.motif}. Relancez le pré-lettrage du compte.`);
+        return { lettre: pose.code.toLowerCase(), reconduitDe: g.code, reste: g.reste };
+      },
+      'Trop de lettrages effectués au même instant sur ce compte · veuillez réessayer.',
+    );
+  }
+
   async lettrageAutomatique(tenantId: string, compteId: string, userId: string) {
     const compte = await this.trouverCompteLettrable(tenantId, compteId);
     // A7 QUATER, m1 · LE CALCUL SE FAIT DANS LA TRANSACTION QUI POSE. Calculé
@@ -1602,24 +1767,56 @@ export class LettrageService {
     }
     return avecRetrySerialisable(
       this.prisma,
-      async (tx) => {
-        // A7 quater, m1 · le gel se relit DANS la transaction qui pose · une
-        // clôture de période posée entre la lecture et la pose figeait sinon
-        // une ligne que le groupe prenait quand même.
-        const figees = await lignesFigees(tx, tenantId, ligneIds);
-        const figee = [...figees.values()][0];
-        if (figee) return { motif: `La ligne du ${figee.date.toISOString().slice(0, 10)} est figée, ${figee.motif} · rien n'est lettré.` };
-        const lignes = await tx.ligneEcriture.findMany({ where: { id: { in: ligneIds } }, include: { ecriture: true } });
-        const prise = lignes.find((l) => l.lettrageId !== null);
-        if (prise) return { motif: `Une des lignes est déjà lettrée (${prise.lettre ?? 'groupe partiel'}) · rien n'est lettré.` };
-        this.verifierLignes(lignes, { compteId, tenantId, nombre: ligneIds.length });
-        const solde = lignes.reduce((s, l) => s + Number(l.debit) - Number(l.credit), 0);
-        if (Math.abs(solde) > EPSILON) return { motif: `Les lignes ne soldent pas (écart de ${solde.toFixed(2)}) · rien n'est lettré.` };
-        const groupe = await this.creerGroupe(tx, { tenantId, compteId, ligneIds, origine: OrigineLettrage.MODULE, userId });
-        return { code: groupe.code };
-      },
+      (tx) => this.poserGroupeDuModule(tx, tenantId, compteId, ligneIds, userId),
       'Trop de lettrages effectués au même instant sur ce compte · veuillez réessayer.',
     );
+  }
+
+  /**
+   * LE MÊME GROUPE, POSÉ DANS LA TRANSACTION DE L'APPELANT (ligne
+   * tva-decisions, relecture du point D, MAJEUR 2) · la perte qui récupère la
+   * TVA crée ses deux pièces, son mouvement et le lettrage de leurs lignes du
+   * compte d'origine en UNE transaction · posé après coup, un échec ou un
+   * processus tombé laissait ces lignes ouvertes, et un lettrage manuel de la
+   * facture avec la perte était lu comme un encaissement. Un compte non
+   * lettrable n'a pas de groupe (personne ne le lettre) · `motif`.
+   */
+  async lettrerLignesDuModuleDansTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    compteId: string,
+    ligneIds: string[],
+    userId: string,
+  ): Promise<{ code: string } | { motif: string; nonLettrable?: true }> {
+    const compte = await tx.compte.findFirst({ where: { id: compteId, tenantId }, select: { numero: true, lettrable: true } });
+    if (!compte) throw new NotFoundException('Compte introuvable pour ce dossier.');
+    if (!compte.lettrable) {
+      return { motif: `Le compte ${compte.numero} n'est pas déclaré lettrable · ses lignes ne sont pas lettrées, et personne ne les lettre.`, nonLettrable: true };
+    }
+    return this.poserGroupeDuModule(tx, tenantId, compteId, ligneIds, userId);
+  }
+
+  private async poserGroupeDuModule(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    compteId: string,
+    ligneIds: string[],
+    userId: string,
+  ): Promise<{ code: string } | { motif: string }> {
+    // A7 quater, m1 · le gel se relit DANS la transaction qui pose · une
+    // clôture de période posée entre la lecture et la pose figeait sinon
+    // une ligne que le groupe prenait quand même.
+    const figees = await lignesFigees(tx, tenantId, ligneIds);
+    const figee = [...figees.values()][0];
+    if (figee) return { motif: `La ligne du ${figee.date.toISOString().slice(0, 10)} est figée, ${figee.motif} · rien n'est lettré.` };
+    const lignes = await tx.ligneEcriture.findMany({ where: { id: { in: ligneIds } }, include: { ecriture: true } });
+    const prise = lignes.find((l) => l.lettrageId !== null);
+    if (prise) return { motif: `Une des lignes est déjà lettrée (${prise.lettre ?? 'groupe partiel'}) · rien n'est lettré.` };
+    this.verifierLignes(lignes, { compteId, tenantId, nombre: ligneIds.length });
+    const solde = lignes.reduce((s, l) => s + Number(l.debit) - Number(l.credit), 0);
+    if (Math.abs(solde) > EPSILON) return { motif: `Les lignes ne soldent pas (écart de ${solde.toFixed(2)}) · rien n'est lettré.` };
+    const groupe = await this.creerGroupe(tx, { tenantId, compteId, ligneIds, origine: OrigineLettrage.MODULE, userId });
+    return { code: groupe.code };
   }
 
   /**

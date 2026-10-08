@@ -587,20 +587,6 @@ function EtatsSyscohadaSystemeNormal() {
                 </span>
               </div>
 
-              {/* Deux sources exclusives du résultat : les classes 6/7/8 avant
-                  clôture, le compte 13 après. Les deux mouvementées à la fois,
-                  c'est une balance intermédiaire · le résultat serait compté
-                  deux fois et le bilan bouclerait quand même. */}
-              {bilan.controle.doubleComptageProbable && (
-                <div className="flex items-start gap-2 mt-2 px-3.5 py-2.5 border border-warning/40 bg-warning-soft">
-                  <span className="text-[11.5px]">
-                    Les classes 6/7/8 ({montant(bilan.controle.resultatClasses678)}) ET le compte 13 (
-                    {montant(bilan.controle.resultatCompte13)}) sont tous deux mouvementés · risque de double comptage
-                    du résultat. Fournir une balance avant OU après clôture, pas un état intermédiaire.
-                  </span>
-                </div>
-              )}
-
               {bilan.comptesASolderALaCloture.length > 0 && (
                 <div className="border border-warning/30 bg-warning-soft mt-2 px-3.5 py-2.5">
                   <div className="text-[11.5px] font-bold mb-1.5 flex items-center gap-1.5">

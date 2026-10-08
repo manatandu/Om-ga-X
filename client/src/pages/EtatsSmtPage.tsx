@@ -7,6 +7,7 @@ import { IconCheck, IconExport } from '../components/chrome/icons';
 import { Aide } from '../components/chrome/Aide';
 import { ReglementsNonRattaches } from '../components/ReglementsNonRattaches';
 import { ComparatifN1 } from '../components/ComparatifN1';
+import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
 import { BlocCertification, EnteteImpression } from '../components/chrome/EnteteImpression';
 import type {
   BilanSmt,
@@ -349,6 +350,7 @@ export function EtatsSmtPage() {
                 : 'DÉSÉQUILIBRE DÉTECTÉ · vérifier les écritures de l’exercice'}
             </span>
           </div>
+          <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} />
         </div>
       )}
 
@@ -417,8 +419,8 @@ export function EtatsSmtPage() {
           >
             <span className="text-[11.5px]">
               {cr.controle.concordant
-                ? `Résultat net (KZC ${montant(cr.resultatNet)}) concorde avec le résultat du bilan (HB ${montant(cr.controle.resultatBilan)}).`
-                : `Écart de ${montant(cr.controle.ecart)} entre le résultat reconstitué et le résultat du bilan (HB ${montant(
+                ? `Résultat net (KZC ${montant(cr.resultatNet)}) concorde avec le résultat de l'exercice logé au bilan (HB hors résultat précédent non affecté, ${montant(cr.controle.resultatBilan)}).`
+                : `Écart de ${montant(cr.controle.ecart)} entre le résultat reconstitué et le résultat de l'exercice logé au bilan (HB hors résultat précédent non affecté, ${montant(
                     cr.controle.resultatBilan,
                   )}). Une opération de trésorerie a une contrepartie qu'aucun poste ne capte, ou une charge sans décaissement n'est pas une dotation aux amortissements.`}
             </span>

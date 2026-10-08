@@ -1,7 +1,14 @@
 import { OrigineLettrage } from '@prisma/client';
 import { LettrageService, MOTIF_DELETTRAGE_MODULE } from './lettrage.service';
 import { PrismaService } from '../../common/prisma.service';
-import { MOTIF_LETTRAGE_RECLASSEMENT, lignesDuCompteClientReclasse } from './ligne-de-reclassement';
+import {
+  MOTIF_LETTRAGE_PERTE_AVEC_TVA,
+  MOTIF_LETTRAGE_RECLASSEMENT,
+  lignesDeLaPerteAvecTva,
+  lignesDuCompteClientReclasse,
+  lignesReclasseesDuCompte,
+  refuserLignesDuCompteClientReclasse,
+} from './ligne-de-reclassement';
 
 /**
  * LIGNE A7 TER, B3 · le lettrage par montant appariait la facture de
@@ -92,6 +99,9 @@ function monter(lignes: Ligne[]) {
     });
   const prisma: any = {
     $transaction: (fn: (tx: unknown) => unknown) => fn(prisma),
+    // Un seul exercice, ouvert (ligne lettrage-cloture) · aucun lettrage partiel d'un
+    // exercice clôturé n'est à reconduire.
+    exercice: { findMany: jest.fn().mockResolvedValue([{ id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'OUVERT' }]) },
     cloture: { findMany: jest.fn().mockResolvedValue([]) },
     compte: { findFirst: jest.fn().mockResolvedValue({ id: '411', tenantId: 't1', numero: '41110001', intitule: 'Client Kasa', lettrable: true }) },
     ligneEcriture: {
@@ -381,5 +391,98 @@ describe('A7 ter, B2 (b) · le lettrage qu’un module pose sur ses propres lign
     // Un groupe d'une autre origine se délettre comme avant.
     groupes[0].origine = OrigineLettrage.MANUEL;
     await expect(service.delettrer('t1', '416', 'A')).resolves.toEqual({ lettre: 'A', nombreLignes: 3 });
+  });
+});
+
+/*
+  LIGNE TVA-DECISIONS, RELECTURE DU POINT D, MAJEUR 2 · les lignes du compte
+  d'origine de la perte qui récupère la TVA (retour, perte, négatifs de leur
+  annulation) ne se lettrent jamais avec une facture · le moteur de TVA lirait
+  le rapprochement comme un encaissement (décret n° 011/42, art. 57).
+*/
+describe('la perte qui récupère la TVA · ses lignes du compte d’origine ne se lettrent pas avec la facture', () => {
+  const creance = { compteCreanceId: 'cli' };
+  const servies = [
+    // Le retour · son mouvement porte une perte.
+    { id: 'retour', compteId: 'cli', ecriture: { mouvementCreanceDouteuse: { ecriturePerteId: 'e-perte', creance }, mouvementCreanceDouteusePerte: null, corrigeEcriture: null } },
+    // La perte.
+    { id: 'perte', compteId: 'cli', ecriture: { mouvementCreanceDouteuse: null, mouvementCreanceDouteusePerte: { creance }, corrigeEcriture: null } },
+    // Le négatif de la perte, après annulation.
+    { id: 'negatif', compteId: 'cli', ecriture: { mouvementCreanceDouteuse: null, mouvementCreanceDouteusePerte: null, corrigeEcriture: { mouvementCreanceDouteuse: null, mouvementCreanceDouteusePerte: { creance } } } },
+    // La ligne 416 du retour · pas le compte d'origine.
+    { id: 'l416', compteId: 'c416', ecriture: { mouvementCreanceDouteuse: { ecriturePerteId: 'e-perte', creance }, mouvementCreanceDouteusePerte: null, corrigeEcriture: null } },
+    // Une perte au TTC (sans seconde pièce) · hors de la règle.
+    { id: 'ttc', compteId: 'cli', ecriture: { mouvementCreanceDouteuse: { ecriturePerteId: null, creance }, mouvementCreanceDouteusePerte: null, corrigeEcriture: null } },
+  ];
+  const db = {
+    ligneEcriture: {
+      findMany: jest.fn().mockImplementation(({ where }: any) => Promise.resolve(where?.id?.in ? servies.filter((l) => where.id.in.includes(l.id)) : [])),
+    },
+  };
+
+  it('reconnaît le retour, la perte et le négatif par leur liaison, la seule ligne du compte d’origine', async () => {
+    const lues = await lignesDeLaPerteAvecTva(db as any, 't1', ['retour', 'perte', 'negatif', 'l416', 'ttc', 'facture']);
+    expect([...lues].sort()).toEqual(['negatif', 'perte', 'retour']);
+  });
+
+  it('le refus est nommé, au lettrage manuel comme au complément', async () => {
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['facture', 'perte'])).rejects.toThrow(MOTIF_LETTRAGE_PERTE_AVEC_TVA);
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['facture'], ['retour'])).rejects.toThrow(MOTIF_LETTRAGE_PERTE_AVEC_TVA);
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['facture', 'ttc'])).resolves.toBeUndefined();
+  });
+});
+
+/*
+  LIGNE TVA-DECISIONS, RELECTURE « ÉCHECS SILENCIEUX », M4 · le REPORT au
+  détail de la ligne d'un reclassement, en N+1, ne porte aucune liaison · le
+  lettrage automatique l'appariait au report de la facture, et le moteur de
+  TVA y lisait un encaissement au 1er janvier. Reconnu par la clé que le report
+  recopie, à toute profondeur. La doublure honore chaque filtre.
+*/
+describe('le report du reclassement à l’exercice suivant ne se lettre pas non plus', () => {
+  type L = {
+    id: string;
+    compteId: string;
+    debit: number;
+    credit: number;
+    dateEcheance: Date | null;
+    libelle: string | null;
+    lettrageId: string | null;
+    ecriture: { libelle: string; creanceDouteuseReclassement: { compteCreanceId: string } | null };
+  };
+  const servies: L[] = [
+    // N · le reclassement R, C 411.
+    { id: 'R', compteId: 'cli', debit: 0, credit: 1_160_000, dateEcheance: null, libelle: null, lettrageId: null, ecriture: { libelle: 'Reclassement 41110000', creanceDouteuseReclassement: { compteCreanceId: 'cli' } } },
+    // N+1 · son report, puis N+2 · le report du report.
+    { id: 'R1', compteId: 'cli', debit: 0, credit: 1_160_000, dateEcheance: null, libelle: 'RAN détail 41110000 · Reclassement 41110000', lettrageId: null, ecriture: { libelle: 'À-nouveau', creanceDouteuseReclassement: null } },
+    { id: 'R2', compteId: 'cli', debit: 0, credit: 1_160_000, dateEcheance: null, libelle: 'RAN détail 41110000 · RAN détail 41110000 · Reclassement 41110000', lettrageId: null, ecriture: { libelle: 'À-nouveau', creanceDouteuseReclassement: null } },
+    // N+1 · le report de la FACTURE, et celui d'un règlement de même montant.
+    { id: 'U1', compteId: 'cli', debit: 1_160_000, credit: 0, dateEcheance: null, libelle: 'RAN détail 41110000 · Facture 12', lettrageId: null, ecriture: { libelle: 'À-nouveau', creanceDouteuseReclassement: null } },
+    { id: 'P1', compteId: 'cli', debit: 0, credit: 1_160_000, dateEcheance: null, libelle: 'RAN détail 41110000 · Règlement', lettrageId: null, ecriture: { libelle: 'À-nouveau', creanceDouteuseReclassement: null } },
+  ];
+  const honore = (l: L, where: any): boolean => {
+    if (where.id?.in && !where.id.in.includes(l.id)) return false;
+    if (typeof where.compteId === 'string' && l.compteId !== where.compteId) return false;
+    if (where.compteId?.in && !where.compteId.in.includes(l.compteId)) return false;
+    if (where.lettrageId === null && l.lettrageId !== null) return false;
+    if (where.libelle?.startsWith && !(l.libelle ?? '').startsWith(where.libelle.startsWith)) return false;
+    const rel = where.ecriture?.creanceDouteuseReclassement?.is;
+    if (rel && (!l.ecriture.creanceDouteuseReclassement || (rel.compteCreanceId && rel.compteCreanceId !== l.ecriture.creanceDouteuseReclassement.compteCreanceId))) return false;
+    // Les pièces d'une perte (filtre `OR`) · aucune ici.
+    if (where.ecriture?.OR) return false;
+    return true;
+  };
+  const db = { ligneEcriture: { findMany: jest.fn().mockImplementation(({ where }: any) => Promise.resolve(servies.filter((l) => honore(l, where ?? {})))) } };
+
+  it('le lettrage manuel du report de la facture avec celui du reclassement est refusé, à toute profondeur', async () => {
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['U1', 'R1'])).rejects.toThrow(MOTIF_LETTRAGE_RECLASSEMENT);
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['U1', 'R2'])).rejects.toThrow(MOTIF_LETTRAGE_RECLASSEMENT);
+    // Un règlement reporté, sans lien avec le reclassement, se lettre.
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['U1', 'P1'])).resolves.toBeUndefined();
+  });
+
+  it('les passes par montant le mettent de côté · il est compté parmi les lignes reclassées du compte', async () => {
+    const reclassees = await lignesReclasseesDuCompte(db as any, 't1', 'cli');
+    expect([...reclassees].sort()).toEqual(['R', 'R1', 'R2']);
   });
 });
