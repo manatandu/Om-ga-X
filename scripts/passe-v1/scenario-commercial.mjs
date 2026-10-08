@@ -247,7 +247,7 @@ export default async function scenarioCommercial(registre) {
     await refusAttendu(c, R, 'RIB de F1 à IBAN faux', 'POST', `/tiers/${F1?.id}/ribs`, { banque: 'Rawbank', iban: fausser(IBAN_F1) }, 400, 'IBAN');
     const r1 = await c.geste('RIB de F1 (IBAN)', 'POST', `/tiers/${F1?.id}/ribs`, { banque: 'Rawbank', titulaire: 'Grossiste de Matadi SARL', iban: IBAN_F1 });
     R.egal('RIB de F1 · premier RIB principal d’office', true, r1?.estPrincipal);
-    await c.geste('Second RIB de F1 (numéro national)', 'POST', `/tiers/${F1?.id}/ribs`, { banque: 'Equity BCDC', numeroCompte: '00011-01234-5678901-23', estPrincipal: false });
+    ctx.ribF1b = await c.geste('Second RIB de F1 (numéro national)', 'POST', `/tiers/${F1?.id}/ribs`, { banque: 'Equity BCDC', numeroCompte: '00011-01234-5678901-23', estPrincipal: false });
     const ribs = (await c.lire('RIB de F1', `/tiers/${F1?.id}/ribs`)) ?? [];
     const liste = Array.isArray(ribs) ? ribs : (ribs.ribs ?? []);
     R.egal('RIB de F1 · deux RIB, un seul principal', [2, 1], [liste.length, liste.filter((x) => x.estPrincipal).length]);
@@ -344,6 +344,7 @@ export default async function scenarioCommercial(registre) {
     // Une offre déjà acceptée ne se révoque plus (art. 242, « avant que celui-ci n'ait exprimé son acceptation »).
     await refusAttendu(c, R, 'D4 · révocation après l’acceptation', 'PATCH', `/commercial/devis/${ctx.d4?.id}/revocation`, { revoqueLe: '2026-05-20', motifRevocation: 'Essai' }, 400, 'déjà parvenue');
     R.egal('D6 au 01/06 · révoqué', 'REVOQUE', etat(lu01, ctx.d6));
+    R.egal('D3 au 01/06 · rejeté, sa contre-proposition nommée sur sa ligne', ['CONTRE_PROPOSITION', ctx.cp?.id], [etat(lu01, ctx.d3), (lu01?.devis ?? []).find((x) => x.id === ctx.d3?.id)?.contrePropositionId]);
     R.egal('liste des devis · neuf devis émis ou reçus', 9, lu01?.total);
     await refusAttendu(c, R, 'Liste des devis sur une période illisible', 'GET', '/commercial/devis?du=2026-13-45', undefined, 400);
   });
@@ -553,6 +554,14 @@ export default async function scenarioCommercial(registre) {
       R.egal('ordre n° 1 · imprimé', ['IMPRIME', 1], [i1?.statut, i1?.nombreImpressions]);
       const i2 = await c.geste('Ordre n° 1 · réimpression (duplicata)', 'POST', `/ordres-virement/${ctx.ordre1.id}/impression`);
       R.egal('ordre n° 1 · duplicata · état inchangé, compteur à deux', ['IMPRIME', 2], [i2?.statut, i2?.nombreImpressions]);
+      // TOUT EST RECOPIÉ À LA DATE DE L'ORDRE · F1 change de RIB principal ensuite, l'ordre
+      // n° 1 garde les coordonnées qu'il a remises à la banque.
+      if (ctx.ribF1b) await c.geste('F1 · le RIB national devient principal', 'PATCH', `/ribs-tiers/${ctx.ribF1b.id}`, { banque: 'Equity BCDC', numeroCompte: '00011-01234-5678901-23', estPrincipal: true });
+      const ribs = (await c.lire('RIB de F1 après le changement', `/tiers/${F1?.id}/ribs`)) ?? [];
+      const liste = Array.isArray(ribs) ? ribs : (ribs.ribs ?? []);
+      R.egal('F1 · un seul principal, le RIB national', [1, '00011-01234-5678901-23'], [liste.filter((x) => x.estPrincipal).length, liste.find((x) => x.estPrincipal)?.numeroCompte]);
+      const o2 = await c.lire('Ordre n° 1 relu', `/ordres-virement/${ctx.ordre1.id}`);
+      R.egal('ordre n° 1 · coordonnées de F1 inchangées (recopiées)', true, String((o2?.lignes ?? []).find((l) => l.tiersId === F1?.id)?.coordonnees ?? '').replace(/\s/g, '').includes(IBAN_F1));
     }
     // Chaque part lettrée avec SA facture · HO-102 soldée, HO-101 en partiel.
     const lf2 = (await lignesDuTiers(c, F2)).lignes;
@@ -805,6 +814,7 @@ export default async function scenarioCommercial(registre) {
     if (reg?.ordre) {
       const o = await c.geste('Ordre n° 3 · impression', 'POST', `/ordres-virement/${reg.ordre.id}/impression`);
       R.egal('ordre n° 3 · F3 payé sur son RIB national', true, (o?.lignes ?? []).some((l) => l.tiersId === F3?.id && String(l.coordonnees).includes('12345678901')));
+      R.egal('ordre n° 3 · F1 payé sur son NOUVEAU RIB principal', true, (o?.lignes ?? []).some((l) => l.tiersId === F1?.id && String(l.coordonnees).includes('5678901')));
     }
     const ordres = await c.lire('Liste des ordres', '/ordres-virement');
     R.egal('ordres · trois au total, aucun à imprimer', [3, 0], [ordres?.total, ordres?.enAttenteImpression]);
@@ -1038,6 +1048,13 @@ export default async function scenarioCommercial(registre) {
         const vu = vues.length > 0;
         R.egal(`fiche A (${fa27?.totaux?.valeurFinale}) et compte ${STOCK_A} (${solde(b27, STOCK_A)}) divergent de ${ecart} · un contrôle le signale`, true, vu);
       }
+      // RELANCES EN 2027 · les créances de C1 reportées par l'à-nouveau (CE2 du 01/03/2026,
+      // CE4 du 01/04/2026) gardent leur ancienneté · au 15/03/2027, la plus ancienne a
+      // 365 + 14 = 379 jours de retard, et non 73 jours comptés du 1er janvier.
+      const pos27 = (await c.lire('Positions à relancer au 15/03/2027', `/relances?exerciceId=${n1}&type=RAPPEL&dateReference=2027-03-15`)) ?? [];
+      const p27 = pos27.find((x) => x.compteId === C1?.compteId);
+      R.montant('relances 2027 · C1 · dû reporté', 1_300_000, p27?.montantDu);
+      R.egal('relances 2027 · C1 · échéance la plus ancienne et retard gardés à travers l’à-nouveau', ['2026-03-01', 379], [p27?.echeancePlusAncienne, p27?.retardMaxJours]);
       const reg = await c.lire('Registre des consignations en 2027', '/emballages/consignations');
       R.egal('registre 2027 · une seule consignation en attente (CE4)', [1, 1_000_000, 0], [reg?.enAttente?.nombre, reg?.enAttente?.detteEmise, reg?.enAttente?.creanceRecue]);
     });
