@@ -87,3 +87,31 @@ physique, provisions, documents obligatoires, registre des donateurs.
 Un ou deux dossiers réels de VMG Consulting, tenus dans OmegaX en parallèle de
 l'outil actuel pendant un à deux mois. À chaque fin de mois, on compare les
 balances et les états. La vente commence après un pilote sans écart.
+
+## 6. Version 1 atteinte (2026-10-08)
+
+Deux passes de suite sans défaut BLOQUANT ni MAJEUR sur le périmètre du § 2,
+décision de Manasse du 2026-10-08 (« une passe de plus ») · la version 1 est
+atteinte, et le pilote du § 5 peut commencer.
+
+- **Passe précédente** · la simulation du logiciel complet (treize lots par
+  l'API sur base jetable, 2026 et 2027 clôtures comprises, et un lot d'écrans
+  dans le navigateur). Ses défauts du périmètre ont été corrigés et déployés
+  (exercice non contigu, ancienneté des relances à travers l'à-nouveau, reste
+  d'une facture réglée en partie imputé par la loi) ; ce qu'elle a trouvé hors
+  du périmètre ou mineur est au suivi.
+- **Passe de clôture**, sur `main` au commit `0288996` (déploiement vert ·
+  Cloud Run, Firebase Hosting, tests navigateur), après la correction de la
+  clôture d'un dossier de groupe (G1) et de la balance âgée (D1) ·
+  - les trois dossiers types et le parcours commercial joués par l'API sur
+    base PostgreSQL jetable, deux exercices clôturés · 964 contrôles, 958
+    concordants ; les six écarts sont au suivi, deux MINEURS du périmètre
+    (`CHARGE_SANS_TIERS` sur le redressement d'un manquant de caisse, fenêtre
+    de dates du rapprochement déclarée facultative) et quatre hors périmètre
+    (lien du magasin en inventaire permanent, code d'article en double) ;
+  - les écrans dans le navigateur · 531 contrôles, 531 concordants ;
+  - les tests navigateur du dépôt · 82 sur 82.
+
+Le gel du § 1 tient jusqu'à la fin du pilote · ce qui est au suivi
+(`docs/suivi-immobilisations-verrouille.md`, « Relevés en attente ») reste à
+trier avec Manasse, il ne se code pas avant.
