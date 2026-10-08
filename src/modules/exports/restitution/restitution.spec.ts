@@ -453,6 +453,31 @@ describe('la ligne du dossier (tables/tenant.csv)', () => {
     await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
     expect(texte.join('')).toContain('Tenant;1;1;conforme');
   });
+
+  // PASSE V1 DU 2026-10-08, R1 · `archiver` 7 fait couler chaque source dès
+  // `append`, et le contrôle, lu avant les tables, disait « 0 ligne écrite »
+  // partout. Une table lente, comme sur une vraie base, le montrait.
+  it('le contrôle attend que les tables soient écrites, même lentes', async () => {
+    const { client } = prismaFactice({ Journal: [{ id: 'a', tenantId: DOSSIER, code: 'OD' }] });
+    const lire = (client as any).journal.findMany;
+    (client as any).journal.findMany = async (args: any) => {
+      await new Promise((r) => setTimeout(r, 30));
+      return lire(args);
+    };
+    const service = new RestitutionService(client as any);
+    const { flux } = collecteur();
+    const texte: string[] = [];
+    const controles = (service as any).controles.bind(service);
+    (service as any).controles = async function* (...a: any[]) {
+      for await (const x of controles(...a)) {
+        texte.push(x);
+        yield x;
+      }
+    };
+    await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
+    expect(texte.join('')).toContain('Journal;1;1;conforme');
+    expect(texte.join('')).toContain('Aucun écart.');
+  });
 });
 
 /**
