@@ -18,7 +18,13 @@ function ligne(numero: string, debit: number, credit = 0) {
   return { id: `l${idLigne}`, debit, credit, lettre: null, compte: { numero, intitule: `Compte ${numero}` } };
 }
 
-function ecriture(libelle: string, lignes: ReturnType<typeof ligne>[], date = '2026-05-10') {
+function ecriture(
+  libelle: string,
+  lignes: ReturnType<typeof ligne>[],
+  date = '2026-05-10',
+  // Paquet 1, B1 · les écarts d'inventaire qui tiennent l'écriture (sa LIAISON).
+  ecartsInventaire: { ecart: number; compte: { numero: string } }[] = [],
+) {
   return {
     id: `e-${libelle}`,
     date: new Date(date),
@@ -29,6 +35,7 @@ function ecriture(libelle: string, lignes: ReturnType<typeof ligne>[], date = '2
     statut: 'VALIDEE',
     journal: { code: 'OD' },
     lignes,
+    ecartsInventaire,
   };
 }
 
@@ -168,5 +175,63 @@ describe('charge imputée directement sur la trésorerie', () => {
   it('ne se déclenche pas sur un virement interne entre deux trésoreries', async () => {
     const svc = service([ecriture('Virement banque vers caisse', [ligne('57100000', 100_000), ligne('52110000', 0, 100_000)])]);
     expect(await trouver(svc)).toBeUndefined();
+  });
+});
+
+/**
+ * PAQUET 1, B1 · LE REDRESSEMENT D'UN MANQUANT DE CAISSE. Rattaché à son écart
+ * d'inventaire (`EcartInventaire.ecritureId`), il crédite la caisse du montant
+ * manquant contre une charge, sans tiers · c'est le manquant arbitré « à la
+ * charge de l'entreprise » (CPCC, étapes 5 et 6), pas un achat réglé au
+ * comptant. Relevé sur vraie base · « Manquant de caisse constaté à
+ * l'inventaire » sortait au contrôle.
+ */
+describe('le redressement d’un manquant d’inventaire, reconnu par sa liaison (B1)', () => {
+  const ECART_CAISSE = [{ ecart: -5_000, compte: { numero: '57100000' } }];
+
+  it('ne signale pas la pièce rattachée à l’écart de caisse', async () => {
+    const svc = service([
+      ecriture(
+        'Manquant de caisse constaté à l’inventaire',
+        [ligne('65800000', 5_000), ligne('57100000', 0, 5_000)],
+        '2026-12-31',
+        ECART_CAISSE,
+      ),
+    ]);
+    expect(await trouver(svc)).toBeUndefined();
+  });
+
+  it('la même pièce SANS liaison reste signalée · jamais reconnue au libellé', async () => {
+    const svc = service([
+      ecriture('Manquant de caisse constaté à l’inventaire', [ligne('65800000', 5_000), ligne('57100000', 0, 5_000)]),
+    ]);
+    expect((await trouver(svc))!.occurrences).toHaveLength(1);
+  });
+
+  it('une dépense de caisse glissée dans la pièce rattachée reste signalée', async () => {
+    const svc = service([
+      ecriture(
+        'Manquant et fournitures',
+        [ligne('65800000', 5_000), ligne('60520000', 20_000), ligne('57100000', 0, 5_000), ligne('57100000', 0, 20_000)],
+        '2026-12-31',
+        ECART_CAISSE,
+      ),
+    ]);
+    expect((await trouver(svc))!.occurrences).toHaveLength(1);
+  });
+
+  it('seule la ligne au montant exact du manquant est justifiée', async () => {
+    // Le rattachement exige une ligne qui crédite la caisse du manquant au
+    // centime · une ligne fondue (25 000 pour un manquant de 5 000) ne
+    // l'est pas, et la pièce reste lue entière.
+    const svc = service([
+      ecriture(
+        'Manquant et fournitures fondus',
+        [ligne('65800000', 5_000), ligne('60520000', 20_000), ligne('57100000', 0, 25_000)],
+        '2026-12-31',
+        ECART_CAISSE,
+      ),
+    ]);
+    expect((await trouver(svc))!.occurrences).toHaveLength(1);
   });
 });

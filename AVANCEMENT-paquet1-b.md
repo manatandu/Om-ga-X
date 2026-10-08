@@ -36,6 +36,23 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   `client/src/lib/cloture-campagne.spec.ts` (six cas).
 - APRÈS · à rejouer avec les autres points (voir « Reste »).
 
+### B1 · `CHARGE_SANS_TIERS` sur le redressement d'un manquant de caisse
+
+- AVANT (p1b_avant) · caisse 57100000 à 1 000 000, fiche de caisse à 995 000,
+  rapprochement (écart −5 000), arbitrage « à redresser », écriture
+  D 65800000 / C 57100000 de 5 000 « Manquant de caisse constaté à
+  l'inventaire » rattachée à l'écart · le contrôle la signale (lu true). La
+  dépense de caisse sans tiers du même dossier (« Fournitures de bureau
+  payées comptant ») reste signalée (concorde).
+- Correction · `controles.service.ts` lit la liaison
+  (`ecartsInventaire` dans `SELECT_ECRITURE_CONTROLEE`) et retire de la
+  lecture la SEULE ligne que le rattachement justifie (compte inventorié,
+  crédit au centime du manquant, une par écart lié,
+  `lignesHorsRedressementInventaire`) · une autre dépense de trésorerie de
+  la même pièce reste signalée ; une pièce de même libellé sans liaison
+  aussi.
+- Tests · `charge-sans-tiers.spec.ts`, quatre cas (B1).
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -44,6 +61,11 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   § V) ; une campagne sans comptage ne se clôt pas · AUDCIF art. 42
   (« procéder au recensement et à l'évaluation de ses biens, créances et
   dettes »).
+
+- B1 · le redressement d'un manquant arbitré « à la charge de
+  l'entreprise » n'a pas de tiers · CPCC, étapes 5 et 6 ; il se reconnaît à
+  sa liaison (`EcartInventaire.ecritureId`), jamais au libellé (même parti
+  que les écritures de réévaluation et de créance douteuse du contrôle).
 
 ## Relevés voisins (hors périmètre, non corrigés)
 
@@ -55,7 +77,7 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 
 ## Reste
 
-B1, B2, B9, B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
+B2, B9, B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 (`npm run build`, `cd client && npm run build`, puis
 `/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
 
@@ -63,6 +85,6 @@ B1, B2, B9, B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 
 ```bash
 npx tsc --noEmit
-npx jest src/modules/inventaire
+npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers
 cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts
 ```

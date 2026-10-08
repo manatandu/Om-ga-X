@@ -366,6 +366,10 @@ const SELECT_ECRITURE_CONTROLEE = {
   reevaluationEcarts: { select: { id: true } },
   reevaluationExtourne: { select: { id: true } },
   corrigeEcriture: { select: { reevaluationEcarts: { select: { id: true } }, reevaluationExtourne: { select: { id: true } } } },
+  // Paquet 1, B1 · le redressement d'un manquant d'inventaire se reconnaît à
+  // sa LIAISON (`EcartInventaire.ecritureId`), jamais au libellé · l'écart
+  // lu dit quelle ligne de crédit il justifie (compte inventorié, montant).
+  ecartsInventaire: { select: { ecart: true, compte: { select: { numero: true } } } },
   // Ligne A7 ter, B2 · les écritures que tient une créance douteuse (son
   // reclassement, ses pertes et recouvrements, ses revues) se reconnaissent
   // par leur LIAISON, avec l'état d'annulation de l'acte et de la créance.
@@ -425,6 +429,38 @@ function estEcritureDeConversion(e: EcritureControlee): boolean {
     (e.corrigeEcriture != null &&
       (e.corrigeEcriture.reevaluationEcarts != null || e.corrigeEcriture.reevaluationExtourne != null))
   );
+}
+
+/**
+ * LES LIGNES QU'UN REDRESSEMENT D'INVENTAIRE JUSTIFIE (paquet 1, B1) · une
+ * écriture rattachée à un écart d'inventaire porte, par construction du
+ * rattachement (`InventaireService.rattacherEcritureRedressement`), une ligne
+ * qui CRÉDITE le compte inventorié du montant manquant. Pour une caisse, cette
+ * ligne est un crédit de trésorerie sans tiers, et c'est voulu · le manquant
+ * est constaté, arbitré « à la charge de l'entreprise » par la sous-commission
+ * (CPCC, étape 5), puis comptabilisé (étape 6) ; il n'y a personne à payer.
+ * Le contrôle des charges sans tiers le prenait pour un achat réglé au
+ * comptant. On retire donc cette ligne-là, et elle SEULE (compte inventorié,
+ * montant exact, une ligne par écart lié) · une autre dépense de trésorerie
+ * glissée dans la même pièce reste lue, et signalée.
+ */
+function lignesHorsRedressementInventaire(e: EcritureControlee): EcritureControlee['lignes'] {
+  // Une doublure ou une lecture sans la liaison rend `undefined` · rien n'est
+  // retiré, l'écriture est lue entière.
+  const ecarts = e.ecartsInventaire ?? [];
+  if (ecarts.length === 0) return e.lignes;
+  const restantes = [...e.lignes];
+  for (const ecart of ecarts) {
+    const manquant = Math.round(Math.abs(Number(ecart.ecart)) * 100);
+    const i = restantes.findIndex(
+      (l) =>
+        l.compte.numero.startsWith(ecart.compte.numero) &&
+        Math.round(Number(l.credit) * 100) === manquant &&
+        Math.round(Number(l.debit) * 100) === 0,
+    );
+    if (i !== -1) restantes.splice(i, 1);
+  }
+  return restantes;
 }
 
 /**
@@ -1643,12 +1679,15 @@ export class ControlesService {
         }
 
         if (!auSystemeMinimal) {
-          const aUneCharge = e.lignes.some(
+          // B1 · la ligne de crédit qu'un redressement d'inventaire justifie
+          // sort de la lecture, elle seule.
+          const lignesLues = lignesHorsRedressementInventaire(e);
+          const aUneCharge = lignesLues.some(
             (l) =>
               (l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8')) &&
               Number(l.debit) - Number(l.credit) > 0.005,
           );
-          const aUneTresorerieCreditee = e.lignes.some(
+          const aUneTresorerieCreditee = lignesLues.some(
             (l) =>
               l.compte.numero.startsWith('5') &&
               !l.compte.numero.startsWith('59') &&
