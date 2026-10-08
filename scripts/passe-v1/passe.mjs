@@ -28,7 +28,18 @@ const sante = await fetch(`${BASE}/health`).then((r) => r.json()).catch((e) => (
 console.log(`Passe V1 · serveur ${BASE} · santé ${JSON.stringify(sante)}`);
 
 for (const nom of choisis) {
-  const fn = SCENARIOS[nom];
+  // Un scénario hors de la table se charge par son fichier,
+  // `scenario-<nom>.mjs`, qui exporte sa fonction par défaut · ajouter un
+  // scénario ne touche plus ce lanceur (simulation du logiciel complet).
+  let fn = SCENARIOS[nom];
+  if (!fn) {
+    try {
+      fn = (await import(`./scenario-${nom}.mjs`)).default;
+    } catch (e) {
+      registre.scenario = nom;
+      registre.note(`Scénario ${nom} introuvable ou illisible · ${e.message}`);
+    }
+  }
   if (!fn) {
     console.log(`Scénario inconnu · ${nom}`);
     continue;
