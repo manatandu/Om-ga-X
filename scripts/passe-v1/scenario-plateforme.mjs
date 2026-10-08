@@ -448,17 +448,18 @@ export default async function scenarioPlateforme(registre) {
     const secondClic = await ed.req('POST', '/plateforme/dossier-demonstration', { ...sarl, email: `passe-v1-vitrine-sarl2-${sfx}@exemple.cd` });
     const r1 = await premierClic;
     if (r1.statut >= 400) R.erreurHttp('Vitrine SARL · premier clic', 'POST', '/plateforme/dossier-demonstration', r1.statut, r1.corps);
-    R.egal('Vitrine SARL · le second clic n’est pas une panne (statut < 500)', true, secondClic.statut < 500);
     if (secondClic.statut >= 500) R.erreurHttp('Vitrine SARL · second clic pendant le garnissage', 'POST', '/plateforme/dossier-demonstration', secondClic.statut, secondClic.corps);
-    R.note(`Vitrine SARL · second clic · ${secondClic.statut} · ${JSON.stringify(secondClic.corps).slice(0, 300)}`);
+    R.note(`Vitrine SARL · premier clic · ${r1.statut} ; second clic · ${secondClic.statut} · ${JSON.stringify(secondClic.corps).slice(0, 200)}`);
+    // Aucun des deux clics n'est une panne · l'un crée, l'autre complète ou se
+    // refuse en nommant la vitrine existante.
+    R.egal('Vitrine SARL · aucun des deux clics ne tombe en erreur serveur', [true, true], [r1.statut < 500, secondClic.statut < 500]);
     const vs = r1.statut < 400 ? r1.corps : null;
     // scenario-demonstration.ts · quatre tiers, neuf opérations et deux biens
     // payés comptant · onze écritures validées par vitrine.
-    for (const [nom, v] of [['association', va], ['SARL', vs]]) {
-      R.egal(`Vitrine ${nom} · quatre tiers`, 4, v?.garni?.tiers ?? null);
-      R.egal(`Vitrine ${nom} · onze écritures (neuf opérations, deux acquisitions)`, 11, v?.garni?.ecritures ?? null);
-      R.egal(`Vitrine ${nom} · créée, pas reprise`, false, v?.repris ?? null);
-    }
+    R.egal('Vitrine association · quatre tiers', 4, va?.garni?.tiers ?? null);
+    R.egal('Vitrine association · onze écritures (neuf opérations, deux acquisitions)', 11, va?.garni?.ecritures ?? null);
+    R.egal('Vitrine association · créée, pas reprise', false, va?.repris ?? null);
+    R.egal('Vitrine SARL · le premier clic la crée (pas une reprise)', false, vs?.repris ?? null);
     // Une seconde vitrine du même référentiel est refusée en nommant la première.
     await refusAttendu(ed, R, 'Seconde vitrine association', 'POST', '/plateforme/dossier-demonstration',
       { email: `passe-v1-vitrine-asso2-${sfx}@exemple.cd`, motDePasse: mdp, referentiel: 'SYCEBNL' }, 400, 'Un dossier de démonstration existe déjà');
@@ -477,6 +478,10 @@ export default async function scenarioPlateforme(registre) {
       // UN SEUL GARNISSAGE · onze écritures, toutes validées, quatre tiers.
       const le = await v.lire(`Vitrine ${nom} · écritures`, `/ecritures?exerciceId=${n}`);
       R.egal(`Vitrine ${nom} · onze écritures au journal, aucune en double`, 11, le?.total ?? null);
+      const vues = new Map();
+      for (const e of le?.ecritures ?? []) vues.set(`${jour(e.date)} ${e.libelle}`, [...(vues.get(`${jour(e.date)} ${e.libelle}`) ?? []), e.statut]);
+      const doubles = [...vues].filter(([, st]) => st.length > 1).map(([k, st]) => `${k} (${st.join(', ')})`);
+      if (doubles.length) R.note(`Vitrine ${nom} · écritures en double · ${doubles.join(' ; ')}`);
       R.egal(`Vitrine ${nom} · toutes validées`, true, (le?.ecritures ?? []).length > 0 && (le?.ecritures ?? []).every((e) => e.statut === 'VALIDEE'));
       const lt = (await v.lire(`Vitrine ${nom} · tiers`, '/tiers')) ?? [];
       R.egal(`Vitrine ${nom} · quatre tiers`, 4, Array.isArray(lt) ? lt.length : (lt?.tiers?.length ?? null));
@@ -498,6 +503,36 @@ export default async function scenarioPlateforme(registre) {
       ['banque', '52', 900_000], ['ventes 701', '701', -6_200_000], ['services 706', '706', -1_500_000],
       ['achats 601', '601', 3_600_000], ['salaires 6611', '6611', 900_000], ['clients 411', '411', 2_500_000],
     ]);
+  });
+
+  /**
+   * LA RACINE DE LA PANNE DES VITRINES, ÉPROUVÉE À PART · le journal du
+   * serveur dit « Maillon d'audit NON écrit dans la transaction ·
+   * Ecriture.create · Unique constraint failed on (tenantId, rang) » quand deux
+   * garnissages écrivent dans le même dossier. Est-ce propre à la vitrine, ou
+   * deux saisies simultanées dans un même dossier suffisent-elles ? Six
+   * écritures envoyées ensemble dans un dossier neuf · la règle écrite
+   * (`prisma-retry.util.ts`, `avecRetrySerialisable`) · un conflit se rejoue,
+   * et l'échec final rend un message, « jamais un 500 brut ».
+   */
+  await etape(R, 'Sonde · six saisies simultanées dans un même dossier', async () => {
+    const e = await nouveauDossier(R, 'Passe V1 · Epsilon (sonde de concurrence)', {
+      referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'epsilon', exercice: ['2026-01-01', '2026-12-31'],
+    });
+    const en = e.exercices.get('2026')?.id;
+    const corps = (i) => ({
+      exerciceId: en, journalId: (e.journal('BQ') ?? e.od).id, date: `2026-03-${String(10 + i).padStart(2, '0')}`, libelle: `Saisie simultanée ${i}`,
+      lignes: [{ compteId: compte(e, '60520000'), libelle: 'x', debit: 1_000 * (i + 1), credit: 0 }, { compteId: compte(e, '52110000'), libelle: 'x', debit: 0, credit: 1_000 * (i + 1) }],
+    });
+    const reponses = await Promise.all([0, 1, 2, 3, 4, 5].map((i) => e.req('POST', '/ecritures', corps(i))));
+    const statuts = reponses.map((r) => r.statut);
+    R.note(`Sonde de concurrence · statuts des six saisies simultanées · ${statuts.join(', ')}`);
+    R.egal('Sonde · aucune des six saisies simultanées ne tombe en erreur serveur', 0, statuts.filter((s) => s >= 500).length);
+    for (const r of reponses) if (r.statut >= 500) R.erreurHttp('Sonde · saisie simultanée', 'POST', '/ecritures', r.statut, r.corps);
+    // Ce qui est passé est au journal, ni plus ni moins (1 000 × (i + 1) par saisie admise).
+    const b = await balance(e, en);
+    const admis = reponses.reduce((s, r, i) => s + (r.statut < 400 ? 1_000 * (i + 1) : 0), 0);
+    R.montant('Sonde · le 6052 porte exactement les saisies admises', admis, solde(b, '6052'));
   });
 
   // ===========================================================================
@@ -574,6 +609,15 @@ export default async function scenarioPlateforme(registre) {
     // L'écart vient de G3 seul · 1 500 exacts au débit contre 4 290 000 / 2 850
     // = 1 505,263158 au crédit · −5,26, montré, jamais absorbé.
     R.montant('Second jeu 2026 · écart de conversion (G3 seule)', 1_500 - 4_290_000 / 2_850, fb?.totaux?.ecartDeConversion);
+    // L'écart a SA ligne (les totaux), jamais un compte de bouclage · chaque
+    // ligne du jeu est un compte du plan semé, et la somme des soldes rend
+    // exactement l'écart montré.
+    R.egal('Second jeu 2026 · aucune ligne hors du plan (pas de compte de bouclage)', [], (fb?.lignes ?? []).filter((l) => !g.comptes.has(l.numero)).map((l) => l.numero));
+    // Un tableau imprimé s'additionne · le total d'une colonne est la somme des
+    // montants affichés de cette colonne (au centime), sans quoi le lecteur ne
+    // retrouve pas l'écart en faisant la somme.
+    R.montant('Second jeu 2026 · total débit = somme des débits affichés', (fb?.lignes ?? []).reduce((s, l) => s + Number(l.debit), 0), fb?.totaux?.debit);
+    R.montant('Second jeu 2026 · total crédit = somme des crédits affichés', (fb?.lignes ?? []).reduce((s, l) => s + Number(l.credit), 0), fb?.totaux?.credit);
     R.egal('Second jeu 2026 · deux lignes exactes, les autres converties', 2, fb?.origine?.lignesExactes ?? null);
     R.egal('Second jeu 2026 · sept écritures converties', 7, fb?.origine?.ecritures ?? null);
   });
