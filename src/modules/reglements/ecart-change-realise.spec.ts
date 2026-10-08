@@ -486,6 +486,21 @@ function monter(referentiel: 'SYSCOHADA' | 'SYCEBNL' = 'SYSCOHADA', lignesEnPlus
       }),
     },
     cloture: { findMany: jest.fn(async () => []) },
+    // Les groupes PARTIELS que nomment les lignes du jeu (ligne
+    // lettrage-cloture) · la doublure honore le dossier et les identifiants.
+    lettrage: {
+      findMany: jest.fn(async ({ where }: { where: { tenantId: string; id: { in: string[] } } }) => {
+        const ids = [...new Set((lignes as Array<{ lettrageId: string | null }>).flatMap((l) => (l.lettrageId ? [l.lettrageId] : [])))];
+        return where.tenantId !== 't'
+          ? []
+          : ids
+              .filter((id) => where.id.in.includes(id))
+              .map((id) => {
+                const siennes = (lignes as Array<LigneDouble & { lettrageId: string | null; ecriture: { exerciceId: string; date: Date } }>).filter((l) => l.lettrageId === id);
+                return { id, code: 'C', statut: 'PARTIEL', verrouille: false, compteId: siennes[0].compteId, lignes: siennes };
+              });
+      }),
+    },
     tenant: { findFirst: jest.fn(async () => ({ referentiel })) },
     compte: {
       findFirst: jest.fn(async ({ where }: { where: { id?: string; numero?: string } }) =>
@@ -1299,5 +1314,150 @@ describe('passer l’écart de change proposé au lettrage', () => {
   it('la route d’écriture porte les rôles qui écrivent', () => {
     const src = readFileSync(join(__dirname, 'reglements.controller.ts'), 'utf8');
     expect(src).toContain("@Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)\n  @Post('ecart-change')");
+  });
+});
+
+/**
+ * LIGNE LETTRAGE-CLÔTURE, EN DEVISE · la facture de 1 000 USD (à 2 800) réglée
+ * de 400 USD en N au coût historique, reconduite avec son règlement par la
+ * clôture · en N+1 le fournisseur n'attend plus que 600 USD, au coût
+ * historique de 1 680 000 (AUDCIF art. 54 et 55). Le reste se règle dans sa
+ * devise, l'écart réalisé sur sa ligne, et le groupe se complète.
+ */
+describe('Règlement en devise du reste d’un lettrage partiel reconduit', () => {
+  const N1 = { exerciceId: 'ex', date: new Date('2026-01-01'), journalId: 'jOD', journal: { code: 'OD' }, exercice: { statut: 'OUVERT' } };
+  const reconduites = [
+    { id: 'xF', compteId: 'c401', debit: 0, credit: 2_800_000, deviseId: 'usd', montantDevise: 1000, lettrageId: 'H', compte: { numero: '40110000', intitule: 'NZUZI', lettrable: true }, ecriture: N1 },
+    { id: 'xR', compteId: 'c401', debit: 1_120_000, credit: 0, deviseId: 'usd', montantDevise: 400, lettrageId: 'H', compte: { numero: '40110000', intitule: 'NZUZI', lettrable: true }, ecriture: N1 },
+  ];
+
+  it('1 000 USD pour 600 dus · REFUSÉ, le groupe nommé, aucune pièce', async () => {
+    const { service, creer } = monter('SYSCOHADA', reconduites);
+    await expect(
+      service.enregistrer('t', 'u', { ...base, sens: 'FOURNISSEUR', reglements: [{ compteId: 'c401', ligneIds: ['xF'], montantDevise: 1000, coursReglement: 3000 }] }),
+    ).rejects.toThrow(/dépasse le reste dû \(600\.00\) dans la devise des factures.*lettrage partiel c/);
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  // RELECTURES DU 2026-10-08 (bloquant 1, B1) · l'acompte reconduit avec la
+  // facture a été passé en FRANCS SEULS · ce qu'il règle de la facture en
+  // devise ne se déduit pas · refus nommé, issues dites, aucune pièce (sinon
+  // 1 000 USD à 3 000 passaient pour 400 dus, 656 de 1 880 000).
+  it('acompte en francs seuls dans le groupe · le règlement en devise est REFUSÉ, issues nommées, aucune pièce', async () => {
+    const enFrancs = [
+      reconduites[0],
+      { id: 'xA', compteId: 'c401', debit: 1_680_000, credit: 0, deviseId: null, montantDevise: null, lettrageId: 'H', compte: { numero: '40110000', intitule: 'NZUZI', lettrable: true }, ecriture: N1 },
+    ];
+    const { service, creer } = monter('SYSCOHADA', enFrancs);
+    await expect(
+      service.enregistrer('t', 'u', { ...base, sens: 'FOURNISSEUR', reglements: [{ compteId: 'c401', ligneIds: ['xF'], montantDevise: 1000, coursReglement: 3000 }] }),
+    ).rejects.toThrow(/lettrage partiel c, qui porte un acompte, un règlement ou un avoir en francs seuls.*lettrez-le à la main.*repassez-le avec son montant en devise/);
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  // Majeur 3 · la borne en devise compte TOUTES les factures choisies · le
+  // reste du groupe (400 USD) et une facture libre (500 USD) se règlent ensemble.
+  it('reste du groupe 400 USD et facture libre 500 USD · 900 USD admis, le groupe complété avec la facture libre', async () => {
+    const libre = { id: 'fl', compteId: 'c401', debit: 0, credit: 1_400_000, deviseId: 'usd', montantDevise: 500, lettrageId: null, compte: { numero: '40110000', intitule: 'NZUZI', lettrable: true }, ecriture: N1 };
+    const quatreCents = [reconduites[0], { ...reconduites[1], debit: 1_680_000, montantDevise: 600 }, libre];
+    const { service, creer, completer } = monter('SYSCOHADA', quatreCents);
+    await service.enregistrer('t', 'u', { ...base, sens: 'FOURNISSEUR', reglements: [{ compteId: 'c401', ligneIds: ['xF', 'fl'], montantDevise: 900, coursReglement: 3000 }] });
+    expect(creer).toHaveBeenCalledTimes(1);
+    expect(completer).toHaveBeenCalledWith('t', 'H', expect.arrayContaining(['fl']), expect.anything());
+  });
+
+  // BLOQUANT 1 ET MAJEUR DU SECOND TOUR · le reste est ce que le compte du
+  // tiers porte, dans l'ordre d'inscription, et le règlement en devise se
+  // borne dans sa devise · trois cas qui se refusaient pour un centime, le
+  // réalisé d'un ancien acompte ou l'art. 154.
+  const ecr = (date: string) => ({ ...N1, date: new Date(`${date}T00:00:00.000Z`) });
+  const du401 = { compte: { numero: '40110000', intitule: 'NZUZI', lettrable: true } };
+  it('cas (a) · 700 USD pour 1 000 000 réglés 33,33 et 66,67 USD · le solde de 600 USD inscrit à 857 142,85, le groupe soldé à zéro', async () => {
+    const groupe = [
+      { id: 'xF', compteId: 'c401', debit: 0, credit: 1_000_000, deviseId: 'usd', montantDevise: 700, lettrageId: 'H', ...du401, ecriture: ecr('2026-01-10') },
+      { id: 'x1', compteId: 'c401', debit: 47_614.29, credit: 0, deviseId: 'usd', montantDevise: 33.33, lettrageId: 'H', ...du401, ecriture: ecr('2026-02-01') },
+      { id: 'x2', compteId: 'c401', debit: 95_242.86, credit: 0, deviseId: 'usd', montantDevise: 66.67, lettrageId: 'H', ...du401, ecriture: ecr('2026-03-01') },
+    ];
+    const { service, creer, completer } = monter('SYSCOHADA', groupe);
+    await service.enregistrer('t', 'u', { ...base, sens: 'FOURNISSEUR', reglements: [{ compteId: 'c401', ligneIds: ['xF'], montantDevise: 600, coursReglement: 1500 }] });
+    expect(resume(creer.mock.calls[0][2].lignes)).toEqual([
+      ['c401', 857_142.85, 0],
+      ['c656', 42_857.15, 0],
+      ['c571', 0, 900_000],
+    ]);
+    expect(completer).toHaveBeenCalledWith('t', 'H', ['p1-0'], {
+      ecartChangeRealise: 42_857.15,
+      borne: { soldeAttendu: -857_142.85, sensDesFactures: 'CREDIT', deviseId: 'usd' },
+    });
+  });
+
+  it('cas (b) · acompte de 400 USD inscrit au payé (1 200 000, D4) · le solde de 600 USD inscrit à 1 600 000, le réalisé ancien compris', async () => {
+    const groupe = [
+      { id: 'xF', compteId: 'c401', debit: 0, credit: 2_800_000, deviseId: 'usd', montantDevise: 1000, lettrageId: 'H', ...du401, ecriture: ecr('2026-01-10') },
+      { id: 'xA', compteId: 'c401', debit: 1_200_000, credit: 0, deviseId: 'usd', montantDevise: 400, lettrageId: 'H', ...du401, ecriture: ecr('2026-02-01') },
+    ];
+    const { service, creer, completer } = monter('SYSCOHADA', groupe);
+    await service.enregistrer('t', 'u', { ...base, sens: 'FOURNISSEUR', reglements: [{ compteId: 'c401', ligneIds: ['xF'], montantDevise: 600, coursReglement: 3000 }] });
+    expect(resume(creer.mock.calls[0][2].lignes)).toEqual([
+      ['c401', 1_600_000, 0],
+      ['c656', 200_000, 0],
+      ['c571', 0, 1_800_000],
+    ]);
+    expect(completer).toHaveBeenCalledWith('t', 'H', ['p1-0'], expect.objectContaining({ borne: { soldeAttendu: -1_600_000, sensDesFactures: 'CREDIT', deviseId: 'usd' } }));
+  });
+
+  const casC = [
+    { id: 'F1', compteId: 'c401', debit: 0, credit: 2_800_000, deviseId: 'usd', montantDevise: 1000, dateEcheance: new Date('2026-12-31'), lettrageId: 'H', ...du401, ecriture: ecr('2026-01-10') },
+    { id: 'F2', compteId: 'c401', debit: 0, credit: 2_500_000, deviseId: 'usd', montantDevise: 1000, dateEcheance: new Date('2026-03-10'), lettrageId: 'H', ...du401, ecriture: ecr('2026-02-10') },
+    // 500 USD inscrits sur F1, la plus ancienne (ordreDeReglement) · 1 400 000.
+    { id: 'P', compteId: 'c401', debit: 1_400_000, credit: 0, deviseId: 'usd', montantDevise: 500, lettrageId: 'H', ...du401, ecriture: ecr('2026-06-01') },
+  ];
+  it('cas (c) · F1 non échue la plus ancienne, F2 échue, 500 USD inscrits sur F1 · le solde de 1 500 USD inscrit à 3 900 000', async () => {
+    const { service, creer, completer } = monter('SYSCOHADA', casC);
+    await service.enregistrer('t', 'u', { ...base, sens: 'FOURNISSEUR', reglements: [{ compteId: 'c401', ligneIds: ['F1', 'F2'], montantDevise: 1500, coursReglement: 3000 }] });
+    expect(resume(creer.mock.calls[0][2].lignes)).toEqual([
+      ['c401', 3_900_000, 0],
+      ['c656', 600_000, 0],
+      ['c571', 0, 4_500_000],
+    ]);
+    expect(completer).toHaveBeenCalledWith('t', 'H', ['p1-0'], expect.objectContaining({ borne: { soldeAttendu: -3_900_000, sensDesFactures: 'CREDIT', deviseId: 'usd' } }));
+  });
+
+  it('cas (c), F2 seule choisie pour 500 USD · le coût suit l’ordre du groupe (le reste de F1, 1 400 000), et c’est DIT', async () => {
+    const { service, creer } = monter('SYSCOHADA', casC);
+    const r = await service.enregistrer('t', 'u', { ...base, sens: 'FOURNISSEUR', reglements: [{ compteId: 'c401', ligneIds: ['F2'], montantDevise: 500, coursReglement: 3000 }] });
+    expect(resume(creer.mock.calls[0][2].lignes)[0]).toEqual(['c401', 1_400_000, 0]);
+    expect(r.avertissements.join(' ')).toMatch(/s’inscrit d’abord sur les factures les plus anciennes du groupe · 500\.00 en devise sur .* du 2026-01-10/);
+  });
+
+  it('une AUTRE facture du groupe dans la devise au reste inconnu · le règlement en devise est refusé, aucune pièce', async () => {
+    const groupe = [
+      { id: 'G1', compteId: 'c401', debit: 0, credit: 2_800_000, deviseId: 'usd', montantDevise: 1000, lettrageId: 'H', ...du401, ecriture: ecr('2026-01-10') },
+      { id: 'G2', compteId: 'c401', debit: 0, credit: 2_800_000, deviseId: 'usd', montantDevise: 1000, lettrageId: 'H', ...du401, ecriture: ecr('2026-02-10') },
+      // Un acompte en francs seuls, inscrit sur G1 (la plus ancienne).
+      { id: 'GA', compteId: 'c401', debit: 1_000_000, credit: 0, deviseId: null, montantDevise: null, lettrageId: 'H', ...du401, ecriture: ecr('2026-03-01') },
+    ];
+    const { service, creer } = monter('SYSCOHADA', groupe);
+    await expect(
+      service.enregistrer('t', 'u', { ...base, sens: 'FOURNISSEUR', reglements: [{ compteId: 'c401', ligneIds: ['G2'], montantDevise: 1000, coursReglement: 3000 }] }),
+    ).rejects.toThrow(/reste en devise est inconnu/);
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('600 USD à 3 000 · le tiers soldé au coût historique (1 680 000), la perte de 120 000 au 656, le groupe complété avec son réalisé', async () => {
+    const { service, creer, completer, lettrerManuel } = monter('SYSCOHADA', reconduites);
+    await service.enregistrer('t', 'u', { ...base, sens: 'FOURNISSEUR', reglements: [{ compteId: 'c401', ligneIds: ['xF'], montantDevise: 600, coursReglement: 3000 }] });
+    expect(resume(creer.mock.calls[0][2].lignes)).toEqual([
+      ['c401', 1_680_000, 0],
+      ['c656', 120_000, 0],
+      ['c571', 0, 1_800_000],
+    ]);
+    expect(creer.mock.calls[0][2].lignes[0]).toMatchObject({ deviseId: 'usd', montantDevise: 600 });
+    expect(completer).toHaveBeenCalledWith('t', 'H', ['p1-0'], {
+      ecartChangeRealise: 120_000,
+      // Bloquant 1 du second tour · un règlement en devise se borne DANS la devise.
+      borne: { soldeAttendu: -1_680_000, sensDesFactures: 'CREDIT', deviseId: 'usd' },
+    });
+    expect(lettrerManuel).not.toHaveBeenCalled();
   });
 });

@@ -42,6 +42,8 @@ function service(
   const precedent = { id: 'exN1', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31') };
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockImplementation((args: { where?: { dateFin?: { lt?: Date } } }) =>
         // La recherche de l'exercice PRÉCÉDENT porte un filtre dateFin < début ·
         // c'est ce qui la distingue de la lecture de l'exercice courant.

@@ -229,7 +229,7 @@ describe('le contrôle 35 · lettrage à cheval de deux exercices', () => {
       ],
     };
     const prisma = {
-      exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'n', dateDebut: N.dateDebut, dateFin: N.dateFin }) },
+      exercice: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({ id: 'n', dateDebut: N.dateDebut, dateFin: N.dateFin }) },
       tenant: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 't', jeuEtatsFinanciersSycebnl: JeuEtatsFinanciersSycebnl.ASSOCIATIONS_ORDRES_PROFESSIONNELS }),
       },

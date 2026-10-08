@@ -102,6 +102,7 @@ import {
   LigneOuverturePassee,
   LigneTenue,
   lignesReportANouveau,
+  ligneAEcrire,
   rectificationDeLOuverture,
   ouvertureNulle,
   confrontationDeLOuverture,
@@ -111,6 +112,24 @@ import {
   soldeDuCompte,
 } from './report-a-nouveau';
 import { estTenueParUnLettrage } from '../lettrage/ligne-lettree';
+import {
+  annonceDeReconduction,
+  apparierAuReport,
+  detailNonReconduit,
+  groupesNonReconduits,
+  groupesQueLaClotureReconduira,
+  operationsDeLaCloture,
+  resteLisible,
+  type GroupeNonReconduit,
+  messagesDeReconduction,
+  parcourirGroupesPartiels,
+  poserGroupeReconduit,
+  resteDuGroupe,
+  type GroupePartielLu,
+  type IssueReconduction,
+  type LigneDAccueil,
+} from '../lettrage/reconduction-lettrage';
+import { randomUUID } from 'crypto';
 import { lignesFigees } from './gel-cloture';
 import { poserGroupeSoldeDuModule, prochaineLettreDuCompte } from '../lettrage/lettrage.service';
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
@@ -2031,6 +2050,25 @@ export class ExerciceService {
 
     await this.refuserBilanDesequilibre(tenantId, exerciceId, dossier);
 
+    // LE DÉLAI DE LA TRANSACTION SUIT LE NOMBRE DE LETTRAGES PARTIELS À
+    // RECONDUIRE (relecture TypeScript, M2) · quelques allers-retours par
+    // groupe ; sous le délai par défaut de Prisma (5 s), quelques centaines
+    // de partiels faisaient tomber la clôture en 500 à chaque essai, et le
+    // dossier restait ENFERMÉ. Comptés avant · ceux de cet exercice et ceux
+    // de l'exercice précédent, qu'elle peut reconduire (majeur 4).
+    const precedent = await this.prisma.exercice.findFirst({
+      where: { tenantId, dateFin: { lt: exercice.dateDebut } },
+      orderBy: { dateFin: 'desc' },
+      select: { id: true },
+    });
+    const partielsALire = await this.prisma.lettrage.count({
+      where: {
+        tenantId,
+        statut: StatutLettrage.PARTIEL,
+        lignes: { some: { ecriture: { tenantId, exerciceId: { in: [exerciceId, ...(precedent ? [precedent.id] : [])] } } } },
+      },
+    });
+
     return avecRetrySerialisable(
       this.prisma,
       async (tx) => {
@@ -2274,6 +2312,36 @@ export class ExerciceService {
           reporterLesTenues: true,
         });
 
+        // LES LETTRAGES PARTIELS SE RECONDUISENT (ligne lettrage-cloture ·
+        // AUDCIF art. 34, fiches des comptes 40 et 41, voir
+        // `lettrage/reconduction-lettrage.ts`). Lus AVANT le report, pour
+        // que chaque ligne d'à-nouveau qui reporte une de leurs lignes porte
+        // un identifiant connu · la reconduction se pose ensuite sans
+        // appariement, et jamais sur l'à-nouveau provisoire, retiré ci-dessus.
+        const groupesPartiels: GroupePartielLu[] = [];
+        await parcourirGroupesPartiels(tx, { tenantId, exerciceId }, async (lot) => {
+          groupesPartiels.push(...lot);
+        });
+        // LES GROUPES DE L'EXERCICE PRÉCÉDENT JAMAIS RECONDUITS DANS CELUI-CI
+        // (relecture « échecs silencieux », majeur 4 · dossier clôturé avant
+        // la règle, reconduction délettrée) · lus tant que cet exercice est
+        // encore ouvert. Leurs lignes d'à-nouveau toutes libres sont
+        // reportées sous un identifiant connu et réunies dans l'exercice
+        // suivant (`reconduireLesAnciens`) ; les autres sont NOMMÉS ici, la
+        // clôture ne les suivant pas au-delà.
+        const anciens = (await groupesNonReconduits(tx, { tenantId, exerciceSuivantId: exerciceId, plafond: Number.MAX_SAFE_INTEGER })).groupes;
+        const lignesDesGroupes = new Set([
+          ...groupesPartiels.flatMap((g) => g.lignes.map((l) => l.id)),
+          ...anciens.filter((g) => g.etat === 'A_RECONDUIRE').flatMap((g) => g.accueil.flatMap((id) => (id ? [id] : []))),
+        ]);
+        const accueilDe = new Map<string, string>();
+        const lignesAEcrire = lignesRan.map((l) => {
+          if (!l.origineId || !lignesDesGroupes.has(l.origineId)) return ligneAEcrire(l);
+          const id = randomUUID();
+          accueilDe.set(l.origineId, id);
+          return ligneAEcrire(l, id);
+        });
+
         let lignesCreees: LigneCandidate[] = [];
         if (lignesRan.length > 0) {
           const totalDebit = lignesRan.reduce((s, l) => s + l.debit, 0);
@@ -2311,7 +2379,7 @@ export class ExerciceService {
               // se calcule sur des soldes validés, et resté au brouillard il
               // manquerait au bilan d'ouverture de tous les états légaux.
               ...validationParLaCloture(userId),
-              lignes: { create: lignesRan },
+              lignes: { create: lignesAEcrire },
             },
             select: { lignes: { select: { id: true, compteId: true, debit: true, credit: true, dateEcheance: true, deviseId: true, montantDevise: true } } },
           });
@@ -2342,6 +2410,33 @@ export class ExerciceService {
         const reporte = await reporterLesTenues(tx, tenantId, exerciceSuivant.id, tenues, candidates);
         issueOuverture.push(...reporte.messages);
 
+        // LA RECONDUCTION, après le report des tenues (AU1) · une ligne
+        // d'à-nouveau qu'une tenue du provisoire a prise n'est plus libre, et
+        // le groupe qui la voulait est NOMMÉ, jamais posé à moitié.
+        const reconduction = await reconduireLesGroupesPartiels(tx, {
+          tenantId,
+          userId,
+          groupes: groupesPartiels,
+          accueilDe,
+          // Une ouverture déjà passée qui fait foi sur un compte (AU2,
+          // concordante ou conservée) · ses lignes libres reçoivent le groupe,
+          // par appariement sûr ou pas du tout.
+          ouvertureLibre: dejaPassee.lignes
+            .filter((l) => l.lettrageId === null && l.rapprochementId === null && !rectification?.comptesRectifies.includes(l.compteId))
+            .map((l) => ({
+              id: l.id,
+              compteId: l.compteId,
+              debit: l.debit,
+              credit: l.credit,
+              dateEcheance: l.dateEcheance,
+              deviseId: l.deviseId,
+              montantDevise: l.montantDevise,
+              libelle: l.libelle,
+            })),
+        });
+        issueOuverture.push(...messagesDeReconduction(reconduction));
+        issueOuverture.push(...(await reconduireLesAnciens(tx, { tenantId, userId, anciens, accueilDe })));
+
         const clos = await tx.exercice.update({
           where: { id: exerciceId },
           // La conservation déclarée s'écrit avec l'acte qui la fige · au
@@ -2357,12 +2452,17 @@ export class ExerciceService {
         return {
           ...clos,
           issueOuverture: [...messagesVirement, ...issueOuverture],
+          lettragesPartiels: {
+            reconduits: reconduction.filter((r) => r.codeReconduit !== null).length,
+            nonReconduits: reconduction.filter((r) => r.codeReconduit === null).length,
+          },
           virementResultatNonAffecte: virement.compteDestination
             ? { montant: virement.montant, compte: virement.compteDestination }
             : null,
         };
       },
       "Trop d'opérations simultanées sur cet exercice · veuillez réessayer.",
+      { operations: operationsDeLaCloture(partielsALire) },
     );
   }
 
@@ -2385,6 +2485,9 @@ export class ExerciceService {
       tronque: false,
       lignesTenues: [] as Array<{ numero: string; piece: string; debit: number; credit: number; lettree: boolean; pointee: boolean }>,
       declarationRequise: false,
+      // Ce que la clôture reconduira (ligne lettrage-cloture) · l'aperçu dit
+      // la même chose que la clôture, sans rien écrire.
+      lettragesPartielsAReconduire: null as { total: number; groupes: Array<{ code: string; compte: string; reste: number }>; annonce: string | null } | null,
     };
     if (exercice.statut === StatutExercice.CLOTURE) return vide;
     const suivant = await this.prisma.exercice.findFirst({
@@ -2393,13 +2496,17 @@ export class ExerciceService {
       select: { id: true, dateDebut: true, dateFin: true },
     });
     if (!suivant) return vide;
+    const tx = this.prisma as unknown as Prisma.TransactionClient;
+    const dejaPassee = await ouvertureDejaPassee(tx, tenantId, suivant);
+    {
+      const r = await groupesQueLaClotureReconduira(this.prisma, { tenantId, exerciceId });
+      vide.lettragesPartielsAReconduire = { ...r, annonce: annonceDeReconduction(r, { ouvertureDejaPassee: dejaPassee.ecritures.length > 0 }) };
+    }
     const dossier = await this.prisma.tenant.findUniqueOrThrow({
       where: { id: tenantId },
       select: { referentiel: true, formeJuridiqueSyscohada: true },
     });
     const { referentiel } = dossier;
-    const tx = this.prisma as unknown as Prisma.TransactionClient;
-    const dejaPassee = await ouvertureDejaPassee(tx, tenantId, suivant);
     if (dejaPassee.ecritures.length === 0) return { ...vide, exerciceSuivant: suivant };
     const base = {
       ...vide,
@@ -2542,6 +2649,11 @@ export class ExerciceService {
         }
 
         const { numeroPiece: numeroProvisoire } = await retirerANouveauProvisoire(tx, tenantId, exerciceSuivant.id);
+        // LE PROVISOIRE DIT CE QUE LA CLÔTURE RECONDUIRA (ligne
+        // lettrage-cloture) · il ne se lettre par aucun chemin (AU1), et ses
+        // lignes ne reçoivent donc aucun groupe · la même lecture que la
+        // clôture, annoncée.
+        const aReconduire = await groupesQueLaClotureReconduira(tx, { tenantId, exerciceId });
         if (lignes.length > 0) {
           const numeroPiece =
             numeroProvisoire ??
@@ -2557,7 +2669,7 @@ export class ExerciceService {
               createdBy: userId,
               estGenereeParCloture: true,
               estANouveauProvisoire: true,
-              lignes: { create: lignes },
+              lignes: { create: lignes.map((l) => ligneAEcrire(l)) },
             },
           });
         }
@@ -2565,6 +2677,7 @@ export class ExerciceService {
           exerciceSuivantId: exerciceSuivant.id,
           lignes: lignes.length,
           resultat: delta,
+          lettragesPartielsAReconduire: { ...aReconduire, annonce: annonceDeReconduction(aReconduire, { ouvertureDejaPassee: dejaPassee.ecritures.length > 0 }) },
           // Ce que le provisoire a fait d'une ouverture déjà passée · null sans elle.
           ouvertureDejaPassee: ecartsOuverture
             ? { pieces: piecesLisibles(dejaPassee.ecritures), comptesDivergents: ecartsOuverture.length }
@@ -2774,7 +2887,7 @@ async function lireComptesDuReport(
       const duCompte = lignes.get(l.compteId) ?? [];
       // Toute ligne rendue ici est reportée · la lettre d'un groupe à cheval
       // ne vaut pas pour le report de son exercice (règle 1).
-      duCompte.push({ ...versLigneRan(l), lettre: null });
+      duCompte.push({ ...versLigneRan(l), id: l.id, lettre: null });
       lignes.set(l.compteId, duCompte);
     },
     LOT_LECTURE,
@@ -2785,6 +2898,108 @@ async function lireComptesDuReport(
       ? { ...c, lignes: lignes.get(c.id) ?? [] }
       : { ...c, sommes: sommes.get(c.id) ?? { debit: 0, credit: 0, enDevise: [] } },
   );
+}
+
+/**
+ * LA RECONDUCTION DES LETTRAGES PARTIELS dans la transaction de clôture
+ * (ligne lettrage-cloture, voir `lettrage/reconduction-lettrage.ts`). Chaque
+ * groupe reçoit ses lignes d'à-nouveau · par l'identifiant posé au report
+ * (`accueilDe`), sinon, sur un compte où l'ouverture déjà passée fait foi
+ * (AU2), par un appariement sûr (`apparierAuReport`). Une ligne sans accueil,
+ * ou prise entre-temps, laisse le groupe NON reconduit, et l'issue le dit.
+ */
+async function reconduireLesGroupesPartiels(
+  tx: Prisma.TransactionClient,
+  p: {
+    tenantId: string;
+    userId: string;
+    groupes: GroupePartielLu[];
+    accueilDe: Map<string, string>;
+    ouvertureLibre: LigneDAccueil[];
+  },
+): Promise<IssueReconduction[]> {
+  const issues: IssueReconduction[] = [];
+  const codes = new Map<string, () => string>();
+  const prises = new Set<string>();
+  for (const g of p.groupes) {
+    let accueil: (string | null)[] = g.lignes.map((l) => p.accueilDe.get(l.id) ?? null);
+    if (accueil.every((a) => a === null)) {
+      accueil = apparierAuReport(
+        g.lignes.map((l) => ({ ...l, compteNumero: g.compte.numero })),
+        p.ouvertureLibre.filter((c) => !prises.has(c.id)),
+      );
+    }
+    const groupeN = { id: g.id, code: g.code, compte: g.compte.numero, reste: resteDuGroupe(g) };
+    if (accueil.some((a) => a === null)) {
+      issues.push({
+        groupeN,
+        codeReconduit: null,
+        motif: "une de ses lignes n'a pas de ligne d'à-nouveau qui la reporte telle quelle (ouverture passée à part, sans équivalent sûr)",
+      });
+      continue;
+    }
+    accueil.forEach((a) => prises.add(a!));
+    if (!codes.has(g.compteId)) codes.set(g.compteId, await prochaineLettreDuCompte(tx, p.tenantId, g.compteId));
+    const pose = await poserGroupeReconduit(tx, {
+      tenantId: p.tenantId,
+      groupe: g,
+      accueil: accueil as string[],
+      userId: p.userId,
+      code: codes.get(g.compteId)!(),
+    });
+    issues.push({ groupeN, codeReconduit: pose.code, motif: pose.motif });
+  }
+  return issues;
+}
+
+/**
+ * LES GROUPES DE N-1 JAMAIS RECONDUITS EN N, À LA CLÔTURE DE N (relecture
+ * « échecs silencieux », majeur 4). Sans elle, ils n'étaient nommés que tant
+ * que N restait ouvert · la clôture de N passait sans un mot, et en N+1 la
+ * facture se lisait due en entier. Un groupe dont les lignes d'à-nouveau de N
+ * étaient toutes libres (`A_RECONDUIRE`) suit · leurs reports en N+1 portent
+ * l'identifiant posé au report (`accueilDe`), et le groupe s'y repose, lié au
+ * groupe de N-1 · rien n'est apparié au hasard. Les autres (lignes lettrées
+ * ailleurs, introuvables) sont NOMMÉS dans l'issue de la clôture, avec ce
+ * qu'il faut faire · la clôture ne les suit pas au-delà, faute d'un lien sûr.
+ */
+async function reconduireLesAnciens(
+  tx: Prisma.TransactionClient,
+  p: { tenantId: string; userId: string; anciens: GroupeNonReconduit[]; accueilDe: Map<string, string> },
+): Promise<string[]> {
+  const messages: string[] = [];
+  let codes: (() => string) | null = null;
+  let compteDesCodes: string | null = null;
+  for (const g of p.anciens) {
+    const tete =
+      `Lettrage partiel ${g.code} de l'exercice ouvert le ${g.exerciceDebut.toISOString().slice(0, 10)} (compte ${g.compteNumero}, ` +
+      `reste ${resteLisible(g.reste)}), jamais reconduit dans l'exercice qui se clôture`;
+    const accueil = g.etat === 'A_RECONDUIRE' ? g.accueil.map((id) => (id ? (p.accueilDe.get(id) ?? null) : null)) : [];
+    if (g.etat !== 'A_RECONDUIRE' || accueil.some((a) => a === null)) {
+      messages.push(
+        `${tete} · ${detailNonReconduit(g)} · la clôture ne le suit pas dans l'exercice suivant · relettrez-y ses lignes à la main ` +
+          'avant de régler la facture, qui s’y lirait due en entier.',
+      );
+      continue;
+    }
+    if (compteDesCodes !== g.compteId) {
+      codes = await prochaineLettreDuCompte(tx, p.tenantId, g.compteId);
+      compteDesCodes = g.compteId;
+    }
+    const pose = await poserGroupeReconduit(tx, {
+      tenantId: p.tenantId,
+      groupe: { id: g.lettrageId, code: g.code.toUpperCase(), compteId: g.compteId, ecartChange: g.ecartChange },
+      accueil: accueil as string[],
+      userId: p.userId,
+      code: codes!(),
+    });
+    messages.push(
+      pose.code
+        ? `${tete} · ses lignes d'à-nouveau sont reportées et réunies par cette clôture dans l'exercice suivant (lettrage ${pose.code.toLowerCase()}).`
+        : `${tete} · ${pose.motif} · relettrez ses lignes à la main dans l'exercice suivant avant de régler la facture.`,
+    );
+  }
+  return messages;
 }
 
 /**

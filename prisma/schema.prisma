@@ -2163,6 +2163,7 @@ enum OrigineLettrage {
   AUTOMATIQUE_PIECE // « a priori » · appariement par référence de pièce
   AUTOMATIQUE_MONTANT // « a posteriori » · appariement par montant
   MODULE // posé par un module sur ses propres lignes (créance douteuse éteinte, ligne A7 ter) · défait par ce module seul, le délettrage le refuse (A7 quater, m5)
+  CLOTURE // reconduit par la clôture (ligne lettrage-cloture) · le groupe PARTIEL de N refait sur ses lignes d'à-nouveau de N+1, `lettrageReconduitId` nomme celui de N
 }
 
 model Lettrage {
@@ -2201,12 +2202,29 @@ model Lettrage {
   // Date de passage à SOLDE · « lettrage en continu ou à une date précise ».
   soldeAt   DateTime?
 
+  // LE GROUPE PARTIEL DE N QUE CELUI-CI RECONDUIT EN N+1 (ligne
+  // lettrage-cloture, AUDCIF art. 34 · fiches des comptes 40 et 41). La
+  // clôture reporte au Détail les lignes ouvertes d'un groupe partiel, chacune
+  // pour elle-même · sans ce groupe, la facture de N arrivait due en ENTIER
+  // en N+1 et l'acompte qui la réglait en partie restait à part (34 800 000
+  // réglés pour 14 800 000 dus). Le lien dit d'où vient le groupe, et c'est
+  // lui qui fait dire qu'un groupe de N n'a pas été reconduit (dossier clôturé
+  // avant la règle, ou groupe délettré depuis). RESTRICT DÉCLARÉ · sur une
+  // relation facultative Prisma poserait SET NULL, et le groupe de N+1
+  // perdrait en silence ce qui le fait reconnaître. UNIQUE (relecture
+  // TypeScript, m3) · un groupe de N n'est reconduit qu'UNE fois · deux
+  // reconductions feraient lire deux fois la même facture.
+  lettrageReconduitId String?   @unique
+  lettrageReconduit   Lettrage? @relation("ReconductionLettrage", fields: [lettrageReconduitId], references: [id], onDelete: Restrict)
+  reconduction        Lettrage? @relation("ReconductionLettrage")
+
   lignes LigneEcriture[]
 
   // Un code de lettrage est unique PAR COMPTE, pas par dossier : deux comptes
   // de tiers ont chacun leur série A, B, C.
   @@unique([compteId, code])
   @@index([tenantId, statut])
+  @@index([tenantId, lettrageReconduitId])
   @@map("lettrages")
 }
 

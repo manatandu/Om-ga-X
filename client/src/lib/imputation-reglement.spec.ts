@@ -50,6 +50,12 @@ describe('la part de chaque facture d’un règlement fournisseur', () => {
     expect(partsServies({ sens: 'FOURNISSEUR', cochees: [f1, { ...f2, regleParLettrageACheval: { groupe: 'A', montant: 1 } }] }).motif).toContain('à cheval');
   });
 
+  it('une facture d’un lettrage partiel n’offre aucune part · le serveur la refuse (ligne lettrage-cloture)', () => {
+    const r = partsServies({ sens: 'FOURNISSEUR', cochees: [f1, { ...f2, regleParLettragePartiel: { groupe: 'b', montant: 20_000_000 } }] });
+    expect(r.servies).toBe(false);
+    expect(r.motif).toContain('lettrage partiel');
+  });
+
   it('« Réglé » et la somme des parts se lisent par la même règle', () => {
     expect(montantRegle('')).toEqual({});
     expect(montantRegle('1 000,5')).toEqual({ montant: 1000.5 });

@@ -200,11 +200,15 @@ describe('F55 · la clôture passe la devise au report', () => {
     const tx = {
       compte: { findMany: lecture.compte.findMany, findUnique: jest.fn().mockResolvedValue({ id: '131' }) },
       journal: { findFirst: jest.fn().mockResolvedValue({ id: 'od', code: 'OD' }) },
-      exercice: { findFirst: jest.fn().mockResolvedValue(N1), create: jest.fn(), update: jest.fn().mockResolvedValue({ ...N, statut: 'CLOTURE' }) },
+      // Aucun exercice clôturé avant N · aucun groupe ancien à reconduire.
+      exercice: { findFirst: jest.fn().mockResolvedValue(N1), findMany: jest.fn().mockResolvedValue([N, N1]), create: jest.fn(), update: jest.fn().mockResolvedValue({ ...N, statut: 'CLOTURE' }) },
       ecriture: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]), delete: jest.fn(), create: jest.fn().mockResolvedValue({ lignes: [] }) },
       ligneEcriture: { ...lecture.ligneEcriture, count: jest.fn().mockResolvedValue(0), deleteMany: jest.fn() },
       // Les dépréciations orphelines se relisent DANS la transaction de clôture (ligne A7, M2).
       creanceDouteuse: { findMany: jest.fn().mockResolvedValue([]) },
+      // Ligne lettrage-cloture · la clôture lit les lettrages partiels des
+      // comptes au report DÉTAIL · ce jeu n'a que des comptes au SOLDE.
+      lettrage: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const prisma = {
       exercice: {
@@ -216,6 +220,7 @@ describe('F55 · la clôture passe la devise au report', () => {
       },
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
       ecriture: { count: jest.fn().mockResolvedValue(0) },
+      lettrage: { count: jest.fn().mockResolvedValue(0) },
       // Aucun lettrage dénoué en souffrance (décision D3).
       ligneEcriture: { findMany: jest.fn().mockResolvedValue([]) },
       // Aucune créance douteuse à dépréciation orpheline (ligne A7, B1).

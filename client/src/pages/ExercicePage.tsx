@@ -44,6 +44,19 @@ interface OuvertureSuivante {
   total: number;
   tronque: boolean;
   lignesTenues: { numero: string; piece: string; debit: number; credit: number; lettree: boolean; pointee: boolean }[];
+  /**
+   * Ligne lettrage-cloture · les lettrages partiels que la clôture reconduira
+   * sur les lignes d'à-nouveau. Absent d'un serveur antérieur, `null` quand
+   * l'exercice suivant n'existe pas encore.
+   */
+  lettragesPartielsAReconduire?: { total: number; groupes: { code: string; compte: string; reste: number }[] } | null;
+}
+
+/** Une ligne courte · les lettrages partiels qu'une clôture reconduira. Le détail et la source vont dans la bulle. */
+function lettragesAReconduire(r: { total: number; groupes: { code: string; compte: string }[] } | null | undefined): string | null {
+  if (!r || r.total === 0) return null;
+  const cites = r.groupes.map((g) => `${g.compte} ${g.code}`).join(', ');
+  return `${r.total} lettrage(s) partiel(s) reconduit(s) par la clôture sur les lignes d'à-nouveau (${cites}${r.total > r.groupes.length ? ', …' : ''}).`;
 }
 
 export function ExercicePage() {
@@ -402,6 +415,7 @@ export function ExercicePage() {
         brouillardNonRepris: number;
         budgetsReportes: number | null;
         ouvertureDejaPassee: { pieces: string; comptesDivergents: number } | null;
+        lettragesPartielsAReconduire?: { total: number; groupes: { code: string; compte: string; reste: number }[] } | null;
       }>(`/exercices/${exercice.id}/a-nouveaux-provisoires`, { reporterBudgets: reporterBudgetsAussi });
       // AU2 · un bilan d'ouverture déjà passé n'est jamais doublé · le
       // provisoire ne passe rien, et l'écran le dit.
@@ -415,7 +429,10 @@ export function ExercicePage() {
           (r.budgetsReportes !== null ? ` ${r.budgetsReportes} budget(s) reporté(s).` : '') +
           (r.brouillardNonRepris
             ? ` ${r.brouillardNonRepris} écriture(s) encore au brouillard n'y sont pas : validez-les puis relancez.`
-            : ''),
+            : '') +
+          // Ligne lettrage-cloture · le provisoire ne se lettre pas (AU1) ;
+          // la clôture dira la même chose, et le fera.
+          (lettragesAReconduire(r.lettragesPartielsAReconduire) ? ` ${lettragesAReconduire(r.lettragesPartielsAReconduire)}` : ''),
       );
       await rechargerExercices();
     } catch (err) {
@@ -1096,6 +1113,9 @@ export function ExercicePage() {
                     ? `Ouverture déjà passée dans l'exercice suivant (${ouverture.pieces}) · concordante, aucun report ne sera ajouté.`
                     : `Ouverture déjà passée dans l'exercice suivant (${ouverture.pieces}) · cet exercice n'a aucune écriture, elle fait foi.`}
               </div>
+            )}
+            {lettragesAReconduire(ouverture?.lettragesPartielsAReconduire) && (
+              <div className="text-[11.5px] text-text-dim mb-2">{lettragesAReconduire(ouverture?.lettragesPartielsAReconduire)}</div>
             )}
             {/* R10 · l'aperçu illisible n'empêche pas de déclarer · le serveur rejoue la confrontation et refuse ce qui ne convient pas. */}
             {(erreurOuverture || (ouverture?.declarationRequise && !ouverture.auBrouillard)) && (

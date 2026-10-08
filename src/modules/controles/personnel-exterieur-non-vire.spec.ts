@@ -35,6 +35,8 @@ const ligne = (numero: string, intitule: string, debit: number, credit = 0, sold
 function service(lignes637: ReturnType<typeof ligne>[], referentiel: Referentiel = Referentiel.SYCEBNL) {
   const prisma = {
     exercice: {
+      // Contrôle 35 bis · la lecture des exercices du dossier · aucun lettrage partiel dans ce jeu.
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'ex',
         dateDebut: new Date('2026-01-01'),

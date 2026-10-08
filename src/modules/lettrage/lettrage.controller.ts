@@ -5,7 +5,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { LettrageService } from './lettrage.service';
-import { CompleterLettrageDto, ConfirmerPreLettrageDto, LettrerDto, VerrouillerLettrageDto } from './dto/lettrage.dto';
+import { CompleterLettrageDto, ConfirmerPreLettrageDto, LettrerDto, ReconduireLettrageDto, VerrouillerLettrageDto } from './dto/lettrage.dto';
 import { RoleUtilisateur, StatutLettrage } from '@prisma/client';
 
 // Même règle que la saisie d'écritures : LECTURE_SEULE consulte, seuls
@@ -62,6 +62,17 @@ export class LettrageController {
     @Body() dto: ConfirmerPreLettrageDto,
   ) {
     return this.lettrageService.confirmerPreLettrage(user.tenantId, compteId, user.userId, dto.groupes);
+  }
+
+  /**
+   * RECONDUIT un lettrage PARTIEL d'un exercice clôturé sur ses lignes
+   * d'à-nouveau (ligne lettrage-cloture) · proposé par le pré-lettrage,
+   * rejoué par le serveur (voir LettrageService.reconduire).
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @Post('reconduire')
+  async reconduire(@CurrentUser() user: AuthenticatedUser, @Param('compteId') compteId: string, @Body() dto: ReconduireLettrageDto) {
+    return this.lettrageService.reconduire(user.tenantId, compteId, dto.lettrageId, user.userId);
   }
 
   /**

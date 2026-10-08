@@ -1589,6 +1589,19 @@ export class EcritureService {
 
   /** Valide tout le brouillard jusqu'à une date, éventuellement sur un seul journal. */
   async validerJusqua(tenantId: string, valideeBy: string, dto: ValiderJusquaDto) {
+    // L'EXERCICE ET LE JOURNAL DU DOSSIER, OU UN REFUS NOMMÉ (ligne
+    // lettrage-cloture, relevé de la simulation du 2026-10-08) · l'exercice
+    // d'un autre dossier rendait 201 et « 0 validée », la réponse favorable
+    // à une question que le serveur n'avait pas pu poser. Rien ne fuyait (la
+    // lecture est bornée au dossier), mais un écran qui lit « rien à valider »
+    // sur une période qu'il n'a pas lue la croit centralisée (§ 9 ter, un
+    // échec de lecture se dit).
+    const [exercice, journal] = await Promise.all([
+      this.prisma.exercice.findFirst({ where: { id: dto.exerciceId, tenantId }, select: { id: true } }),
+      dto.journalId ? this.prisma.journal.findFirst({ where: { id: dto.journalId, tenantId }, select: { id: true } }) : null,
+    ]);
+    if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
+    if (dto.journalId && !journal) throw new NotFoundException('Journal introuvable pour ce dossier.');
     const ecritures = await this.prisma.ecriture.findMany({
       where: {
         tenantId,

@@ -70,9 +70,11 @@ function monter(
   creancesReclassees: Array<{ compteCreanceId: string; dateReclassement: Date; compte416: { numero: string } }> = [],
   /** m-d · les crédits de reclassement au compte du client, ouverts (la facture reste, sa valeur est au 416). */
   reclassements: Record<string, number> = {},
+  /** Les groupes de lettrage du jeu (ligne lettrage-cloture) · leurs lignes sont celles qui les nomment. */
+  groupes: Array<{ id: string; code: string; statut: 'PARTIEL' | 'SOLDE'; verrouille?: boolean }> = [],
 ) {
   const lignes = [
-    { id: 'f1', compteId: 'c401', debit: 0, credit: 600, lettrageId: null, compte: { numero: '40110000', intitule: 'Fournisseur A', lettrable: true }, ecriture: { exerciceId: 'ex', date: new Date('2026-03-01'), journalId: 'jACH', journal: { code: 'ACH' }, exercice: { statut: 'OUVERT' } } },
+    { id: 'f1', compteId: 'c401', debit: 0, credit: 600, lettrageId: null as string | null, compte: { numero: '40110000', intitule: 'Fournisseur A', lettrable: true }, ecriture: { exerciceId: 'ex', date: new Date('2026-03-01'), journalId: 'jACH', journal: { code: 'ACH' }, exercice: { statut: 'OUVERT' } } },
     { id: 'f2', compteId: 'c401', debit: 0, credit: 400, lettrageId: null, compte: { numero: '40110000', intitule: 'Fournisseur A', lettrable: true }, ecriture: { exerciceId: 'ex', date: new Date('2026-03-01'), journalId: 'jACH', journal: { code: 'ACH' }, exercice: { statut: 'OUVERT' } } },
     { id: 'k1', compteId: 'c411', debit: 500, credit: 0, lettrageId: null, compte: { numero: '41110000', intitule: 'Client K', lettrable: true }, ecriture: { exerciceId: 'ex', date: new Date('2026-03-01'), journalId: 'jVEN', journal: { code: 'VEN' }, exercice: { statut: 'OUVERT' } } },
     { id: 'g1', compteId: 'c402', debit: 0, credit: 300, lettrageId: null, compte: { numero: '40120000', intitule: 'Fournisseur B', lettrable: true }, ecriture: { exerciceId: 'ex', date: new Date('2026-03-01'), journalId: 'jACH', journal: { code: 'ACH' }, exercice: { statut: 'OUVERT' } } },
@@ -93,6 +95,22 @@ function monter(
       }),
     },
     cloture: { findMany: jest.fn(async () => clotures) },
+    // Les groupes nommés par les lignes choisies (ligne lettrage-cloture) ·
+    // la doublure honore le dossier et les identifiants demandés.
+    lettrage: {
+      findMany: jest.fn(async ({ where }: { where: { tenantId: string; id: { in: string[] } } }) =>
+        where.tenantId !== 't'
+          ? []
+          : groupes
+              .filter((g) => where.id.in.includes(g.id))
+              .map((g) => ({
+                ...g,
+                verrouille: g.verrouille ?? false,
+                compteId: lignes.find((l) => l.lettrageId === g.id)?.compteId,
+                lignes: lignes.filter((l) => l.lettrageId === g.id).map((l) => ({ id: l.id, debit: l.debit, credit: l.credit, deviseId: null, montantDevise: null, ecriture: l.ecriture })),
+              })),
+      ),
+    },
     // Le RIB du journal se lit à chaque règlement (A6 bis, B3) · aucun ici.
     ribBanque: { findFirst: jest.fn(async () => null) },
     // A7 ter, mineur 1 · les créances reclassées en vigueur des comptes réglés (la doublure honore les comptes).
@@ -109,6 +127,7 @@ function monter(
     return { id: 'e' + n, lignes: dto.lignes.map((l, i) => ({ ...l, id: `p${n}-${i}` })) };
   });
   const lettrerManuel = jest.fn(async () => ({ lettre: 'A' }));
+  const completer = jest.fn(async () => ({ lettre: 'B', statut: 'SOLDE', solde: 0, nombreLignes: 3 }));
   const ordre = jest.fn();
   const ordres = {
     preparer: jest.fn(async () => {
@@ -127,10 +146,10 @@ function monter(
   const service = new ReglementsService(
     prisma,
     { creer, retirerCompensation } as unknown as EcritureService,
-    { lettrerManuel, delettrer } as unknown as LettrageService,
+    { lettrerManuel, delettrer, completer } as unknown as LettrageService,
     ordres as unknown as OrdresVirementService,
   );
-  return { service, creer, lettrerManuel, delettrer, lignes, ordres, ordre, retirerCompensation };
+  return { service, creer, lettrerManuel, delettrer, completer, lignes, ordres, ordre, retirerCompensation };
 }
 
 const base = { sens: 'FOURNISSEUR' as const, exerciceId: 'ex', journalId: 'bq', date: '2026-09-25' };
@@ -190,8 +209,8 @@ describe('enregistrer', () => {
     expect(creer).not.toHaveBeenCalled();
   });
 
-  it('refuse une facture déjà lettrée, ou sur un autre compte', async () => {
-    const { service, lignes } = monter();
+  it('refuse une facture déjà lettrée (groupe SOLDÉ), ou sur un autre compte', async () => {
+    const { service, lignes } = monter([], [], {}, [{ id: 'L', code: 'A', statut: 'SOLDE' }]);
     await expect(service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['g1'] }] })).rejects.toThrow(/compte du tiers/);
     (lignes[0] as { lettrageId: string | null }).lettrageId = 'L';
     await expect(service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] })).rejects.toThrow(/déjà lettrée/);
@@ -312,8 +331,32 @@ type LigneEcheance = {
 };
 
 /** Une doublure qui HONORE la requête des échéances (F4b) · exercice, compte, sens, lettrage. */
-function echeancier(lignes: LigneEcheance[], reevaluations: Array<{ ecritureEcartsId?: string; ecritureExtourneId?: string }> = []) {
+function echeancier(
+  lignes: LigneEcheance[],
+  reevaluations: Array<{ ecritureEcartsId?: string; ecritureExtourneId?: string }> = [],
+  groupes: Array<{ id: string; code: string; statut: 'PARTIEL' | 'SOLDE'; compteId: string; verrouille?: boolean }> = [],
+) {
   const prisma = {
+    // Les groupes PARTIELS de l'exercice (ligne lettrage-cloture) · la
+    // doublure honore le dossier, le statut, le verrou, la racine du compte et
+    // l'exercice de leurs lignes (une au moins dedans, aucune ailleurs).
+    lettrage: {
+      findMany: jest.fn(async ({ where }: { where: any }) => {
+        const exerciceDe = where.lignes.some.ecriture.exerciceId;
+        return groupes
+          .map((g) => ({ ...g, verrouille: g.verrouille ?? false, lignes: lignes.filter((l) => l.lettrageId === g.id) }))
+          .filter(
+            (g) =>
+              where.tenantId === 't' &&
+              g.statut === where.statut &&
+              g.verrouille === where.verrouille &&
+              g.lignes.some((l) => l.compte.numero.startsWith(where.compte.numero.startsWith)) &&
+              g.lignes.some((l) => l.ecriture.exerciceId === exerciceDe) &&
+              !g.lignes.some((l) => l.ecriture.exerciceId !== where.NOT.lignes.some.ecriture.exerciceId.not),
+          )
+          .map((g) => ({ ...g, lignes: g.lignes.map((l) => ({ id: l.id, debit: l.debit, credit: l.credit, deviseId: l.deviseId, montantDevise: l.montantDevise, ecriture: l.ecriture })) }));
+      }),
+    },
     // Aucune créance reclassée (A7 ter, mineur 1).
     creanceDouteuse: { findMany: jest.fn(async () => []) },
     // Les réévaluations du dossier (A6 ter) · leur écriture d'écarts et leur contre-passation.
@@ -605,5 +648,123 @@ describe('règlement fournisseur imputé par le dossier (art. 151)', () => {
     const r = await service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1', 'f2'], montant: 500 }] });
     expect(lettrerManuel).toHaveBeenCalledWith('t', 'c401', ['f1', 'f2', 'p1-0'], 'u', { autoriserPartiel: true });
     expect(r.avertissements).toEqual([expect.stringContaining('la déduction de leur TVA suit l’imputation légale (Code civil, Livre III, art. 154')]);
+  });
+});
+
+/**
+ * LIGNE LETTRAGE-CLÔTURE · une facture d'un lettrage PARTIEL se règle pour son
+ * RESTE (fiches des comptes 40 et 41), bornée à lui, et le règlement complète
+ * le groupe. Le jeu de la simulation du 2026-10-08 · facture de 34 800 000,
+ * acompte de 20 000 000, reconduits ensemble par la clôture.
+ */
+describe('Règlement d’une facture d’un lettrage partiel', () => {
+  const N1 = { exerciceId: 'ex', date: new Date('2027-01-01'), journalId: 'jOD', journal: { code: 'OD' }, exercice: { statut: 'OUVERT' } };
+  const monterPartiel = (groupe: { statut?: 'PARTIEL' | 'SOLDE'; verrouille?: boolean } = {}) => {
+    const m = monter([], [], {}, [{ id: 'G', code: 'B', statut: groupe.statut ?? 'PARTIEL', verrouille: groupe.verrouille }]);
+    m.lignes.push(
+      { id: 'xF', compteId: 'c411', debit: 34_800_000, credit: 0, lettrageId: 'G', compte: { numero: '41110000', intitule: 'Client K', lettrable: true }, ecriture: N1 },
+      { id: 'xA', compteId: 'c411', debit: 0, credit: 20_000_000, lettrageId: 'G', compte: { numero: '41110000', intitule: 'Client K', lettrable: true }, ecriture: N1 },
+    );
+    return m;
+  };
+  const client = { ...base, sens: 'CLIENT' as const };
+
+  it('34 800 000 pour 14 800 000 dus · REFUSÉ, le groupe et ce qu’il a réglé nommés, aucune pièce', async () => {
+    const { service, creer } = monterPartiel();
+    await expect(service.enregistrer('t', 'u', { ...client, reglements: [{ compteId: 'c411', ligneIds: ['xF'], montant: 34_800_000 }] })).rejects.toThrow(
+      /dépasse le reste dû \(14800000\.00\).*lettrage partiel b, qui en a déjà réglé 20000000\.00/,
+    );
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('14 800 000 · ACCEPTÉ, et le règlement COMPLÈTE le groupe au lieu d’en ouvrir un second', async () => {
+    const { service, creer, completer, lettrerManuel } = monterPartiel();
+    const r = await service.enregistrer('t', 'u', { ...client, reglements: [{ compteId: 'c411', ligneIds: ['xF'], montant: 14_800_000 }] });
+    const piece = creer.mock.calls[0][2] as { lignes: Array<{ compteId: string; debit?: number; credit?: number }> };
+    expect(piece.lignes.find((l) => l.compteId === 'c411')).toMatchObject({ credit: 14_800_000 });
+    // La ligne du tiers de la pièce (la trésorerie au débit d'abord, pour un client).
+    // M1 · le reste lu ici (14 800 000 au débit) se relit dans la transaction du lettrage.
+    expect(completer).toHaveBeenCalledWith('t', 'G', [`p1-${piece.lignes.findIndex((l) => l.compteId === 'c411')}`], {
+      borne: { soldeAttendu: 14_800_000, sensDesFactures: 'DEBIT', deviseId: null },
+    });
+    expect(lettrerManuel).not.toHaveBeenCalled();
+    expect(r.reglements[0]).toMatchObject({ montant: 14_800_000, partiel: false, lettre: 'B' });
+  });
+
+  it('sans montant, le dû servi est le RESTE · 14 800 000, jamais la facture entière', async () => {
+    const { service, creer } = monterPartiel();
+    await service.enregistrer('t', 'u', { ...client, reglements: [{ compteId: 'c411', ligneIds: ['xF'] }] });
+    const piece = creer.mock.calls[0][2] as { lignes: Array<{ compteId: string; credit?: number }> };
+    expect(piece.lignes.find((l) => l.compteId === 'c411')).toMatchObject({ credit: 14_800_000 });
+  });
+
+  it('l’acompte du groupe n’est pas une facture · rien n’y est dû', async () => {
+    const { service } = monterPartiel();
+    await expect(service.enregistrer('t', 'u', { ...client, reglements: [{ compteId: 'c411', ligneIds: ['xA'] }] })).rejects.toThrow(/Rien n'est dû/);
+  });
+
+  it('un groupe verrouillé, ou à cheval de deux exercices · refus nommé avec son issue', async () => {
+    const verrouille = monterPartiel({ verrouille: true });
+    await expect(verrouille.service.enregistrer('t', 'u', { ...client, reglements: [{ compteId: 'c411', ligneIds: ['xF'] }] })).rejects.toThrow(
+      /lettrage partiel b, verrouillé · déverrouillez-le/,
+    );
+    const aCheval = monterPartiel();
+    (aCheval.lignes.find((l) => l.id === 'xA') as { ecriture: Record<string, unknown> }).ecriture = { ...N1, exerciceId: 'avant' };
+    await expect(aCheval.service.enregistrer('t', 'u', { ...client, reglements: [{ compteId: 'c411', ligneIds: ['xF'] }] })).rejects.toThrow(
+      /touche un autre exercice.*Interrogation et lettrage/,
+    );
+  });
+
+  // RELECTURE « ÉCHECS SILENCIEUX », MAJEUR 5 · régler F2 dans un groupe
+  // {F1 10 000, F2 5 000, acompte 8 000} · l'art. 154 porte d'abord le
+  // paiement sur F1 (plus ancienne), et F2 restera due de 2 000 · DIT.
+  it('l’imputation légale portera le règlement sur une autre facture du groupe · avertissement nommé', async () => {
+    const m = monter([], [], {}, [{ id: 'K', code: 'D', statut: 'PARTIEL' }]);
+    const ecr = (date: string, libelle: string) => ({ ...N1, date: new Date(date), libelle });
+    m.lignes.push(
+      { id: 'F1', compteId: 'c411', debit: 10_000, credit: 0, lettrageId: 'K', compte: { numero: '41110000', intitule: 'Client K', lettrable: true }, ecriture: ecr('2026-01-10', 'Facture F1') },
+      { id: 'F2', compteId: 'c411', debit: 5_000, credit: 0, lettrageId: 'K', compte: { numero: '41110000', intitule: 'Client K', lettrable: true }, ecriture: ecr('2026-02-10', 'Facture F2') },
+      { id: 'AC', compteId: 'c411', debit: 0, credit: 8_000, lettrageId: 'K', compte: { numero: '41110000', intitule: 'Client K', lettrable: true }, ecriture: ecr('2026-03-10', 'Acompte') },
+    );
+    const r = await m.service.enregistrer('t', 'u', { ...client, reglements: [{ compteId: 'c411', ligneIds: ['F2'], montant: 5_000 }] });
+    // L'inscription (ordre des pièces) et la TVA (art. 154) le portent toutes deux sur F1 · dit deux fois.
+    expect(r.avertissements.join(' ')).toMatch(/lettrage partiel d · le règlement s’inscrit d’abord .*2000\.00 sur « Facture F1 » du 2026-01-10, avant la facture choisie/);
+    expect(r.avertissements.join(' ')).toMatch(/art\. 154.*qui porte 2000\.00 sur « Facture F1 » du 2026-01-10 de ce règlement/);
+  });
+
+  // D5 · L'ORDRE DE VIREMENT PORTE LE RESTE, jamais la facture entière · le
+  // fournisseur a reçu 400 000 d'acompte, l'ordre lui vire 600 000.
+  it('fournisseur · l’ordre de virement imprime le reste du lettrage partiel', async () => {
+    const m = monter([], [], {}, [{ id: 'H', code: 'C', statut: 'PARTIEL' }]);
+    m.lignes.push(
+      { id: 'yF', compteId: 'c401', debit: 0, credit: 1_000_000, lettrageId: 'H', compte: { numero: '40110000', intitule: 'Fournisseur A', lettrable: true }, ecriture: N1 },
+      { id: 'yA', compteId: 'c401', debit: 400_000, credit: 0, lettrageId: 'H', compte: { numero: '40110000', intitule: 'Fournisseur A', lettrable: true }, ecriture: N1 },
+    );
+    await m.service.enregistrer('t', 'u', { ...base, ordreVirement: true, reglements: [{ compteId: 'c401', ligneIds: ['yF'] }] }, 'compta@exemple.cd');
+    expect(m.ordres.creer).toHaveBeenCalledWith('t', 'compta@exemple.cd', 'bq', '2026-09-25', expect.anything(), [
+      expect.objectContaining({ compteId: 'c401', montant: 600_000 }),
+    ]);
+    expect(m.completer).toHaveBeenCalledWith('t', 'H', [expect.any(String)], { borne: { soldeAttendu: -600_000, sensDesFactures: 'CREDIT', deviseId: null } });
+  });
+});
+
+describe('Échéances · une facture d’un lettrage partiel est servie pour son reste', () => {
+  it('le reste et ce que le groupe a réglé, pour le client de la simulation', async () => {
+    const facture = ligneEcheance('xF', 0, { journal: { code: 'OD' } }, {
+      compteId: 'c411',
+      debit: 34_800_000,
+      lettrageId: 'G',
+      compte: { id: 'c411', numero: '41110000', intitule: 'Client K', lettrable: true, tiersCompte: null, modeReportANouveau: 'DETAIL' },
+    });
+    const acompte = ligneEcheance('xA', 0, { journal: { code: 'OD' } }, {
+      compteId: 'c411',
+      credit: 20_000_000,
+      lettrageId: 'G',
+      compte: { id: 'c411', numero: '41110000', intitule: 'Client K', lettrable: true, tiersCompte: null, modeReportANouveau: 'DETAIL' },
+    });
+    const { service } = echeancier([facture, acompte], [], [{ id: 'G', code: 'B', statut: 'PARTIEL', compteId: 'c411' }]);
+    const [g] = await service.echeances('t', 'ex', 'CLIENT');
+    expect(g.lignes).toHaveLength(1);
+    expect(g.lignes[0]).toMatchObject({ id: 'xF', montant: 14_800_000, regleParLettragePartiel: { groupe: 'b', montant: 20_000_000 } });
   });
 });

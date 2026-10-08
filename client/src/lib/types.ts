@@ -273,8 +273,11 @@ export interface Ecriture {
 }
 
 export type StatutLettrage = 'PARTIEL' | 'SOLDE';
-/** `MODULE` · posé par un module sur ses propres lignes (créance douteuse éteinte, ligne A7 ter), défait par lui seul. */
-export type OrigineLettrage = 'MANUEL' | 'AUTOMATIQUE_PIECE' | 'AUTOMATIQUE_MONTANT' | 'MODULE';
+/**
+ * `MODULE` · posé par un module sur ses propres lignes (créance douteuse éteinte, ligne A7 ter), défait par lui seul.
+ * `CLOTURE` · un lettrage partiel de l'exercice précédent reconduit sur ses lignes d'à-nouveau (ligne lettrage-cloture).
+ */
+export type OrigineLettrage = 'MANUEL' | 'AUTOMATIQUE_PIECE' | 'AUTOMATIQUE_MONTANT' | 'MODULE' | 'CLOTURE';
 
 export interface LigneLettrage {
   id: string;
@@ -370,6 +373,19 @@ export interface LigneRelettrage {
   credit: number;
 }
 
+/** Un lettrage partiel d'un exercice clôturé non reconduit (ligne lettrage-cloture). */
+export interface ReconductionProposee {
+  lettrageId: string;
+  code: string;
+  /** Reste du groupe, débit moins crédit. */
+  reste: number;
+  etat: 'A_RECONDUIRE' | 'LETTREES_AILLEURS' | 'INTROUVABLES';
+  /** Ce que le serveur en dit, avec l'issue. */
+  detail: string;
+  /** Ses lignes d'à-nouveau retrouvées. */
+  lignes: LigneRelettrage[];
+}
+
 export interface EtatPreLettrage {
   /**
    * AU1, second tour · les lignes que la clôture de l'exercice précédent a
@@ -377,6 +393,15 @@ export interface EtatPreLettrage {
    * choisit et confirme. Absent d'un serveur antérieur.
    */
   relettrages?: { ligne: LigneRelettrage; candidates: LigneRelettrage[] }[];
+  /**
+   * Ligne lettrage-cloture · les lettrages PARTIELS de l'exercice clôturé que
+   * rien n'a reconduits sur leurs lignes d'à-nouveau. `A_RECONDUIRE` se
+   * confirme (« Reconduire ») ; les autres états sont nommés, rien d'office.
+   * Absent d'un serveur antérieur.
+   */
+  reconductions?: ReconductionProposee[];
+  reconductionsTotal?: number;
+  reconductionsTronque?: boolean;
   propositions: PropositionPreLettrage[];
   /** Ce que le logiciel n'a PAS su rapprocher · la moitié utile de l'état. */
   nonProposees: number;

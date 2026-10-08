@@ -191,6 +191,45 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- LIGNE LETTRAGE-CLOTURE INTÉGRÉE (2026-10-08, lettrage partiel reconduit à la clôture), relevés non bloquants ·
+  - `groupesNonReconduits` ne lit que le couple (N clôturé, N+1 ouvert). La
+    clôture de N+1 reconduit désormais en N+2 les groupes de N À RECONDUIRE
+    et nomme les autres ; un groupe NOMMÉ (lettré ailleurs, introuvable) n'est
+    plus suivi au-delà de N+2.
+  - Relevés des relectures non traités · m4 (types des lectures tirés des
+    charges utiles de Prisma plutôt qu'écrits à la main) ; les déclarations
+    d'imputation (art. 151, 153, `ImputationPaiement`) ne sont lues que par
+    la TVA, jamais par le reste servi (D9) ; la garde m6 (dû en devise nul,
+    francs restants) n'est plus guère atteignable, gardée ; les candidates de
+    l'ouverture passée en OD (`filtreOuverturePasseeAuPremierJour`) sont
+    larges (toute OD au premier jour hors gestion), à resserrer.
+  - LIMITE D9 · une facture HORS du groupe, PLUS ANCIENNE que ses factures,
+    choisie avec lui dans un règlement PARTIEL · le reste relu ensuite
+    l'éteint avant les règlements déjà inscrits sur le groupe · la répartition
+    facture par facture peut s'écarter de l'inscription ; le total du groupe
+    reste exact, et l'écart en francs passe à l'écart proposé. Cas rare,
+    non refusé.
+  - Un règlement choisi sur une facture du groupe s'inscrit d'abord sur ses
+    factures plus anciennes (D5, D9) · dit par l'avertissement, jamais
+    refusé ; l'échéancier sert chaque facture pour son reste.
+  - Un groupe partiel À CHEVAL (lignes en N−1 et N) n'est pas reconduit à la
+    clôture de N (D1 · la paire à cheval le lit) · reste au régime d'A6 bis.
+  - Un groupe reconduit (origine CLOTURE) se délettre comme un manuel · il
+    revient alors « à reconduire » au pré-lettrage et au contrôle. Voulu
+    (aucun dossier enfermé), à confirmer.
+  - Arrêt du serveur de rejeu · au premier rejeu, un `pkill -f "node
+    dist/main.js"` a été lancé (motif trop large, il pouvait atteindre un autre
+    serveur compilé de la machine) ; aucun autre `dist/main.js` n'était visible
+    ensuite. Au second rejeu, arrêt par le seul PID du serveur (port 8743
+    vérifié dans son environnement). Au rejeu du premier tour, le PID gardé
+    au lancement était celui du sous-shell (`&` posé sur toute la chaîne) ·
+    node a survécu, puis a été arrêté par son propre PID, port 8743 et copie
+    `wt-lettrage` lus dans son environnement. Lancer `node` seul en arrière-plan.
+  - Le refus en devise dit « en a déjà réglé 1680000.00 » en FRANCS (coût
+    historique) à côté d'un reste en devise · lisible, mais deux unités dans
+    une phrase.
+
+
 - SIMULATION COMPLÈTE DU 2026-10-08 (SARL SYSCOHADA 2026 à 2028, association SYCEBNL), failles non corrigées · voir le détail ci-dessous, repris de la fiche ·
   Base PostgreSQL jetable, serveur compilé, jeu PAR L'API seulement. Deux
   dossiers · SARL SYSCOHADA (système normal, assujettie TVA) sur 2026 et 2027,

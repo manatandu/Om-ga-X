@@ -47,6 +47,12 @@ export function horsDuReport(numero: string, referentiel: 'SYSCOHADA' | 'SYCEBNL
 
 /** Une ligne lue une à une · celles d'un compte au DÉTAIL. */
 export interface LigneLueRan {
+  /**
+   * L'identifiant de la ligne lue (ligne lettrage-cloture) · le report le
+   * recopie en `origineId`, pour que la clôture sache quelle ligne d'à-nouveau
+   * reporte quelle ligne d'un lettrage partiel, sans appariement.
+   */
+  id?: string;
   debit: number;
   credit: number;
   lettre: string | null;
@@ -110,6 +116,23 @@ export interface LigneRan {
   deviseId?: string;
   montantDevise?: number;
   coursApplique?: number;
+  /**
+   * La ligne de l'exercice clos que cette ligne reporte, au Détail seulement
+   * (ligne lettrage-cloture) · elle n'est pas une colonne, et se retire avant
+   * l'écriture (`ligneAEcrire`).
+   */
+  origineId?: string;
+}
+
+/**
+ * La ligne telle qu'elle s'écrit · sans `origineId`, qui n'est pas une
+ * colonne (Prisma refuserait l'argument inconnu), avec l'identifiant que la
+ * clôture lui donne quand une ligne de lettrage partiel s'y reconduit.
+ */
+export function ligneAEcrire(l: LigneRan, id?: string): Omit<LigneRan, 'origineId'> & { id?: string } {
+  const colonnes: LigneRan & { id?: string } = { ...l, ...(id ? { id } : {}) };
+  delete colonnes.origineId;
+  return colonnes;
 }
 
 const EPSILON = 0.005;
@@ -249,6 +272,9 @@ export function lignesReportANouveau(
         debit: l.debit,
         credit: l.credit,
         libelle: `RAN détail ${c.numero} · ${l.libelle}`,
+        // La ligne reportée (ligne lettrage-cloture) · c'est par elle qu'un
+        // lettrage partiel se reconduit sur ses lignes d'à-nouveau.
+        ...(l.id ? { origineId: l.id } : {}),
         // L'échéance suit la créance ou la dette qu'elle qualifie · les notes
         // 6, 9, 10, 18A, 19 à 21 ventilent par elle (champ `dateEcheance` de
         // LigneEcriture, au schéma).

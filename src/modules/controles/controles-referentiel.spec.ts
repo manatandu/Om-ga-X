@@ -54,6 +54,9 @@ function service(referentiel: Referentiel, ecritures: (ReturnType<typeof ecritur
         dateDebut: new Date('2026-01-01'),
         dateFin: new Date('2026-12-31'),
       }),
+      // Un seul exercice, ouvert (ligne lettrage-cloture) · aucun lettrage partiel
+      // d'un exercice clôturé n'est à reconduire.
+      findMany: jest.fn().mockResolvedValue([{ id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31'), statut: 'OUVERT' }]),
     },
     tenant: {
       findUniqueOrThrow: jest.fn().mockResolvedValue({

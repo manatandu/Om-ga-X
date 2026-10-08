@@ -30,6 +30,12 @@ export class CompleterLettrageDto {
   ligneIds!: string[];
 }
 
+/** Le lettrage partiel d'un exercice clôturé à reconduire sur ses lignes d'à-nouveau (ligne lettrage-cloture). */
+export class ReconduireLettrageDto {
+  @IsUUID('4')
+  lettrageId!: string;
+}
+
 export class VerrouillerLettrageDto {
   @IsBoolean()
   verrouille!: boolean;
