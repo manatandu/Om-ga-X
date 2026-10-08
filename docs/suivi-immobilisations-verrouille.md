@@ -191,6 +191,112 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- **SIMULATION DU LOGICIEL COMPLET (2026-10-08), constats hors version 1, non
+  corrigés (gel).** Treize lots joués par l'API sur base jetable, 2026 et 2027
+  clôtures comprises, et un lot d'écrans dans le navigateur (5 131 contrôles,
+  5 030 concordants). Corrigés et en production · G3 (exercice non contigu),
+  REL-ANOUVEAU (ancienneté des relances à travers l'à-nouveau), réponse au
+  questionnaire et relevé d'unités d'œuvre (écriture par clé composée sous la
+  garde de cloisonnement), et une facture réglée en partie pèse son reste,
+  imputé par la loi (art. 151 à 154 · `reste-des-lignes-ouvertes.ts`) dans les
+  notes par échéance, la balance âgée, l'échéancier, les relances et la NOTE 3
+  des deux SMT. Restent, par gravité ·
+  - **BLOQUANT, groupe (G1)** · un groupe SYCEBNL qui suit le guide du siège ne
+    clôture plus · le 585 des virements entre dossiers n'est lu par aucun poste
+    du bilan des associations (BW ne lit que 52, 53, 55, 57), et le refus du
+    bilan déséquilibré posé le 2026-10-08 (`refuserBilanDesequilibre`) arrête
+    la clôture du siège et de chaque cellule en Système normal. Lu · fiche
+    SYCEBNL du compte 58 (« comptes de passage utiles à la comptabilisation
+    d'opérations internes à l'entité », « soldés à la fin de l'exercice ») ; le
+    groupe est UNE entité en plusieurs dossiers, la somme du 585 sur le groupe
+    est déjà contrôlée par la liasse. Point pour Manasse.
+  - **MAJEUR** ·
+    - G2 · le canevas de trésorerie d'une cellule ne vise que l'exercice ouvert
+      le plus récent · un canevas de décembre N déposé quand N+1 est ouvert est
+      refusé (`groupe.service.ts`, `exerciceOuvert`).
+    - SMT (D2) · la NOTE 4 range le règlement d'un tiers sur le 40 ou le 41,
+      jamais sur la nature de la facture qu'il règle, quand le compte de
+      résultat SMT la rattache · colonnes Achats et Ventes vides sur le chemin
+      des modèles (401, 411).
+    - Immobilisations (F D2, K1) · `DEPRECIATION_IMMO_HORS_MODULE` et
+      `REEVALUATION_IMMO_HORS_MODULE` comptent l'à-nouveau d'une dépréciation
+      ou d'un écart posés par le module en N · signalement fabriqué en N+1
+      (§ 10 bis) ; le module ne retranche que ses actes de l'exercice.
+    - Immobilisations (F D3) · la reprise D 28 / C 798 d'une révision
+      rétroactive du plan est lue en acquisition au TFT (anomalie n° 3 déclarée,
+      mais l'écriture est reconnaissable par sa liaison).
+    - Magasin (MAG-LIEN) · un mouvement se lie à n'importe quelle écriture,
+      sans contrôle de compte ni de montant · fiche et compte 31 divergent sans
+      signal.
+    - Plateforme (H D1) · un second « Ouvrir » pendant le garnissage d'une
+      vitrine la double (écritures au brouillard en double, 500).
+    - Exonérations (PA1) · les pièces de l'arrêté prévisionnel reprennent celles
+      du ponctuel (B.I.6, B.I.7) et omettent B.II.7 et B.II.8 de la note
+      circulaire n° 003/2013.
+    - Consolidation (J1) · le résultat N-1 non affecté de la consolidante, au
+      13 en à-nouveau, est lu comme résultat de l'exercice (règle de
+      `resultat-de-l-exercice.ts` non reportée au cumul).
+    - Balance âgée (lot M, D1) · un solde créditeur n'est jamais ventilé, quel
+      que soit le périmètre · la balance âgée des FOURNISSEURS range toute dette
+      en « soldes en sens inverse, non ventilés », alors que sa phrase dit
+      « une dette ancienne est un retard de paiement » ; de même les dettes
+      sociales (43) et fiscales (44). Le sens normal se lit par périmètre
+      (40, 43 au crédit ; 41 au débit ; 42, 44, 47 dans les deux sens).
+    - Consolidation (J2) · TFT consolidé faux dès que des 478 et 479 sont
+      retraités (poste écarté de la CAFG), contrôle en échec non compté parmi
+      les motifs.
+  - **MINEUR** · IFRS consolidé, amortissement de l'écart inclus dans les titres
+    mis en équivalence non signalé (IAS 28 § 32 a) ; SMT, motif de la méthode
+    des cotisations qui dit « projet de développement », écart KZC/HB d'une
+    cession sans décomposition au SYCEBNL ; révision, test ISA 240 qui garde
+    l'écriture de clôture, troisième mandat consécutif admis sans rang, report
+    des provisions vers un exercice antérieur clos, campagne d'inventaire
+    rapprochée de la balance de fin d'exercice et non de la date du comptage,
+    campagne de caisse seule qui ne se clôt pas, manuel futur qui efface le
+    contrôle d'un exercice passé ; immobilisations, mois du renouvellement d'un
+    composant doté deux fois, reconstitution en années de 365,25 jours, fonds
+    commercial du prix global sans date de mise en service, désactualisation
+    lue en coût de démantèlement au TFT, dette éteinte par l'option non levée
+    lue en remboursement ; magasin, code d'article en double en 500 ; société
+    dissoute sans liquidation qui peut ouvrir un exercice de liquidation ;
+    conventions de financement ferme non signées annoncées « mention en notes »
+    sans mention ; second jeu en monnaie fonctionnelle qui ne s'additionne pas
+    au centime ; exonération ponctuelle d'une ONG étrangère sans accord-cadre
+    dite complète ; quotité saisissable du bulletin qui ne lit pas la classe du
+    contrat ; réserves d'une entité convertie au cours d'entrée ;
+    `POST /auth/register` qui admet la licence perpétuelle sur site (porte
+    fermée en production) ; notes par échéance, la part non ventilée servie par
+    le serveur jamais dite à l'écran (`NotesAnnexesRendu.tsx`) ; état des
+    créances et dettes des deux SMT (NOTE 3), le règlement lettré en partiel
+    avec sa facture lu sous son nom et non déduit d'elle (même cause que les
+    notes, sommes demandées à la base par `groupBy`) ; paie, abstention des
+    allocations familiales qui renvoie à un nom de constante interne
+    (`RESOLUTION_TAUX_LEGAL_ALLOCATIONS`), plafond de l'art. 69, 1 non arrondi
+    au centime (« seul l'excédent de 0.00 FC est imposable »).
+  - **Reste d'une facture réglée en partie, relevés du second tour (mineurs)** ·
+    un groupe qui ne se répartit pas sûrement (négatif sans son origine ou à
+    deux origines, reste négatif en devise, part déclarée au-delà de la
+    facture) garde la lecture ligne à ligne et n'est nommé qu'au journal du
+    serveur, jamais à l'écran ; aux relances, une facture soldée dans sa devise
+    avec un gain de change non passé se lit ligne à ligne (le réalisé n'est
+    pas nommé) ; un groupe d'à-nouveaux lettré à la main, sans groupe de N
+    reconduit, garde l'ordre de ses lignes ; les doublures des tests de la
+    note et des SMT rendent un `groupBy` constant, sans ligne au brouillard.
+  - **Manque de fonction** · le facturier ne connaît pas les devises · une
+    facture en dollars comptabilisée crée une créance en francs, hors de la
+    réévaluation de l'art. 54 (voie existante · l'écriture en devise d'abord,
+    la facture liée ensuite).
+  - **Doutes que le texte ne tranche pas** · forfait libératoire de l'art.
+    121, al. 2 · aucun bulletin d'un domestique ou d'une micro-entreprise ne
+    s'émet tant que le cours de conversion de l'arrêté n° 019/2025 manque au
+    corpus ; quote-part ouvrière CNSS et art. 20, dernier alinéa (le registre
+    ne signale que l'IRPP) ; concours d'une cession et d'une saisie (AUPSRVE,
+    art. 208 et 209) non servi ; annuité pleine du SMT SYSCOHADA
+    l'année d'une cession (Titre X contre fiche du compte 81) ; valeur nette
+    d'une cession au SMT sans ligne dans les deux maquettes ; résultat de la
+    période d'activité gardé au 13 pendant la liquidation ; acompte d'IS versé
+    avant l'échéance de la première cotisation ; déduction du 8994.
+
 - **Passe V1 n° 2 (2026-10-08), constats MINEURS, non corrigés (gel).** C1 ·
   CHARGE_SANS_TIERS se lève sur le redressement du manquant de caisse que
   l'inventaire demande et retient (`controles.service.ts`). C2 · GET

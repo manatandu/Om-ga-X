@@ -2655,6 +2655,21 @@ final F50).** `lettre` n'est servie qu'au groupe soldé ; toute garde passe par
 `lettrageId`, son type exigeant les deux champs · sinon une facture payée à
 moitié se modifiait, supprimait, corrigeait ou réimputait.
 
+**Une facture réglée en partie pèse son reste, imputé par la loi (2026-10-08,
+simulation du logiciel complet, lot M).** La NOTE 7 rendait 9 280 000 « à un an
+au plus » pour un solde de 8 280 000 · le règlement lettré en partiel avec sa
+facture tombait en « non ventilé » négatif, la facture entière à son échéance.
+`lettrage/reste-des-lignes-ouvertes.ts` sert notes par échéance, balance âgée,
+échéancier, relances et NOTE 3 des deux SMT · chaque groupe lu à plusieurs
+lignes rend le reste de ses factures, la part DÉCLARÉE d'abord (art. 151, 153,
+`ImputationPaiement`), puis l'ordre légal (art. 154,
+`restesParLImputationLegale`), jamais l'ordre d'inscription. Un groupe ne se
+répartit que LU EN ENTIER dans la borne de l'état (à cheval sur N-1, ligne à
+ligne) ; à-nouveaux reconduits lus à leur pièce d'origine ; une facture et son
+négatif s'annulent entre eux ; négatif sans origine ou à deux origines, reste
+négatif en devise, part déclarée au-delà de la facture · ligne à ligne,
+consigné au journal du serveur.
+
 **Pré-lettrage · « l'une propose, l'autre confirme ».** « Un rapprochement par
 montant est une PRÉSOMPTION DU LOGICIEL » (`OrigineLettrage`) · même division du
 travail que le double regard (§ 10 ter). `calculerPropositions` porte les quatre
