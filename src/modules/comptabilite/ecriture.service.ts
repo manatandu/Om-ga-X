@@ -73,7 +73,7 @@ export interface LigneAgee {
   libelle: string;
   codeTiers: string;
   numero: string;
-  /** Un montant par tranche, dans l'ordre de `tranches`. Vide pour un créditeur. */
+  /** Un montant par tranche, dans l'ordre de `tranches`. Vide pour un solde en sens inverse. */
   montants: number[];
   solde: number;
 }
@@ -252,12 +252,21 @@ export type SensNormalAgee = 'DEBITEUR' | 'CREDITEUR' | 'LES_DEUX' | 'SELON_LE_C
 /**
  * Une ligne (un tiers, à défaut un compte) se ventile-t-elle ? Un solde nul
  * ne se ventile jamais · des pièces ouvertes qui se compensent ne disent aucun
- * retard, et restent montrées avec les soldes non ventilés.
+ * retard, et restent montrées avec les soldes non ventilés. Sous « 40 et 41 »,
+ * le sens se lit sur TOUS les comptes de la ligne (relecture du 2026-10-08) ·
+ * lu sur le premier compte rencontré, un tiers rattaché à un 401 ET à un 411
+ * changeait de section selon l'ordre de lecture de la base. Mêlée, la ligne
+ * porte les deux sens, et son solde dit lequel.
  */
-export function ligneVentilee(sens: SensNormalAgee, numero: string, solde: number): boolean {
+export function ligneVentilee(sens: SensNormalAgee, numeros: readonly string[], solde: number): boolean {
   if (Math.abs(solde) < 0.005) return false;
-  if (sens === 'LES_DEUX') return true;
-  const normal = sens === 'SELON_LE_COMPTE' ? (numero.startsWith('40') ? 'CREDITEUR' : 'DEBITEUR') : sens;
+  let normal: SensNormalAgee = sens;
+  if (sens === 'SELON_LE_COMPTE') {
+    const fournisseur = numeros.some((n) => n.startsWith('40'));
+    const client = numeros.some((n) => !n.startsWith('40'));
+    normal = fournisseur && client ? 'LES_DEUX' : fournisseur ? 'CREDITEUR' : 'DEBITEUR';
+  }
+  if (normal === 'LES_DEUX') return true;
   return normal === 'DEBITEUR' ? solde > 0 : solde < 0;
 }
 
@@ -2976,6 +2985,8 @@ export class EcritureService {
     // des notes par échéance).
     const poids = await poidsDesLignesLues(this.prisma, tenantId, lignes, { dateMax: ref }, 'Balance âgée');
     const parCle = new Map<string, LigneAgee>();
+    // Les comptes de chaque ligne, pour lire son sens normal (`ligneVentilee`).
+    const comptesDeLaCle = new Map<string, Set<string>>();
     for (const l of lignes) {
       const net = poidsOuMontant(poids, l);
       if (Math.abs(net) < 0.005) continue;
@@ -2999,7 +3010,13 @@ export class EcritureService {
       const estReport = l.ecriture.estGenereeParCloture && !l.ecriture.estSoldeDesComptesDeGestion;
       entree.montants[estReport && !l.dateEcheance ? 0 : indexTranche(l.dateEcheance ?? l.ecriture.date)] += net;
       entree.solde += net;
+      // Le numéro affiché est le plus petit des comptes du tiers · le premier
+      // lu dépendait de l'ordre de la base.
+      if (l.compte.numero < entree.numero) entree.numero = l.compte.numero;
       parCle.set(cle, entree);
+      const comptes = comptesDeLaCle.get(cle) ?? new Set<string>();
+      comptes.add(l.compte.numero);
+      comptesDeLaCle.set(cle, comptes);
     }
 
     const arrondir = (x: number) => Math.round(x * 100) / 100;
@@ -3012,7 +3029,8 @@ export class EcritureService {
     // sens inverse, rendus sans tranches. Les plus exposés en tête · c'est
     // l'ordre du dossier de révision, et le premier écran doit porter ce qui
     // fait réagir.
-    const ventilee = (c: LigneAgee) => ligneVentilee(perimetre.sensNormal, c.numero, c.solde);
+    const ventilee = (c: LigneAgee) =>
+      ligneVentilee(perimetre.sensNormal, [...(comptesDeLaCle.get(c.cle) ?? [c.numero])], c.solde);
     const debiteurs = toutes.filter((c) => c.solde > 0 && ventilee(c)).sort((a, b) => b.solde - a.solde);
     const crediteurs = toutes.filter((c) => c.solde < 0 && ventilee(c)).sort((a, b) => a.solde - b.solde);
     const sensInverse = toutes

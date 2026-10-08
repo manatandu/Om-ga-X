@@ -1139,7 +1139,7 @@ export class ExportService {
       // formule rend le rapprochement visible et fait suivre la ligne si une
       // tranche est corrigée à la main. Un solde en sens inverse n'a pas de
       // tranches : il reste une valeur, il n'y a rien à additionner.
-      const ligneCoiffee = r.number + 3;
+      const ligneCoiffee = this.ligneCoiffee(r.number);
       r.getCell(nbColonnes).value = montants.length
         ? this.formule(`SUM(${premiereTranche}${ligneCoiffee}:${derniereTranche}${ligneCoiffee})`, solde)
         : solde || null;
@@ -1155,17 +1155,15 @@ export class ExportService {
     const sommeColonne = (col: string, de: number, a: number, valeur: number) =>
       this.formule(`SUM(${col}${this.ligneCoiffee(de)}:${col}${this.ligneCoiffee(a)})`, valeur);
     const totaux: Array<{ ligne: number }> = [];
-    // Le filtre ne couvre que la PREMIÈRE plage de lignes · étendu aux
-    // sections suivantes, un tri mêlerait les populations et leurs totaux.
-    let finPremiereSection: number | null = null;
 
+    /** Écrit une section ; rend la dernière ligne de ses données, et si elle porte un titre. */
     const section = (
       titre: string | null,
       lignes: Array<{ libelle: string; montants: number[]; solde: number }>,
       libelleTotal: string,
       parTranche: number[] | null,
       total: number,
-    ) => {
+    ): { derniere: number; titree: boolean } => {
       if (titre) {
         // La bascule de sens se voit · sans elle, un lecteur croit lire la
         // suite des débiteurs et additionne deux populations contraires.
@@ -1176,7 +1174,6 @@ export class ExportService {
       const premiere = feuille.rowCount + 1;
       for (const l of lignes) ligneMontants(l.libelle, l.montants, l.solde);
       const derniere = feuille.rowCount;
-      finPremiereSection ??= derniere;
       const r = feuille.addRow([]);
       r.getCell(1).value = libelleTotal;
       if (parTranche) {
@@ -1189,28 +1186,37 @@ export class ExportService {
       r.getCell(nbColonnes).value = lignes.length ? sommeColonne(colSolde, premiere, derniere, total) : total || null;
       r.font = ENTETE_FONT;
       totaux.push({ ligne: r.number });
+      return { derniere, titree: titre !== null };
     };
+    const sections: Array<{ derniere: number; titree: boolean }> = [];
 
     // Une section vide ne s'imprime pas · la balance âgée des fournisseurs ne
     // s'ouvre pas sur un « TOTAL DÉBITEURS » nul. Sans aucune ligne, le seul
     // total des débiteurs reste, à zéro, pour que le net ait une source.
     const aucuneLigne = etat.debiteurs.length + etat.crediteurs.length + etat.sensInverse.length === 0;
     if (etat.debiteurs.length > 0 || aucuneLigne) {
-      section(null, etat.debiteurs, 'TOTAL DÉBITEURS', etat.totaux.parTranche, etat.totaux.debiteurs);
+      sections.push(section(null, etat.debiteurs, 'TOTAL DÉBITEURS', etat.totaux.parTranche, etat.totaux.debiteurs));
     }
     if (etat.crediteurs.length > 0) {
-      section('SOLDES CRÉDITEURS', etat.crediteurs, 'TOTAL CRÉDITEURS', etat.totaux.parTrancheCrediteurs, etat.totaux.crediteurs);
+      sections.push(
+        section('SOLDES CRÉDITEURS', etat.crediteurs, 'TOTAL CRÉDITEURS', etat.totaux.parTrancheCrediteurs, etat.totaux.crediteurs),
+      );
     }
     if (etat.sensInverse.length > 0) {
-      section(
+      sections.push(section(
         'SOLDES EN SENS INVERSE · non ventilés par antériorité',
         etat.sensInverse,
         'TOTAL SOLDES EN SENS INVERSE',
         null,
         etat.totaux.sensInverse,
-      );
+      ));
     }
-    const derniereLigneDonnees = finPremiereSection ?? feuille.rowCount;
+    // Le filtre ne couvre que la PREMIÈRE section, et seulement si elle n'a
+    // pas de titre · étendu aux suivantes, ou posé sur une ligne de titre, un
+    // tri mêlerait les populations, leurs titres et leurs totaux. Sans filtre,
+    // la ligne d'en-tête suffit (`finaliserTableau` ne le pose pas).
+    const premiere = sections[0];
+    const derniereLigneDonnees = premiere && !premiere.titree ? premiere.derniere : 2;
 
     // Le net recoupe la balance auxiliaire des mêmes comptes · en formule, on
     // voit qu'il est bien la somme des populations et pas un autre chiffre

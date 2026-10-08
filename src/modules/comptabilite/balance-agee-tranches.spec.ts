@@ -311,11 +311,28 @@ describe('balance âgée · les périmètres et ce que l’antériorité y signi
 
   it('un solde nul ne se ventile jamais, quel que soit le périmètre', () => {
     for (const sens of ['DEBITEUR', 'CREDITEUR', 'LES_DEUX', 'SELON_LE_COMPTE'] as const) {
-      expect(ligneVentilee(sens, '401001', 0)).toBe(false);
-      expect(ligneVentilee(sens, '411001', 0.004)).toBe(false);
+      expect(ligneVentilee(sens, ['401001'], 0)).toBe(false);
+      expect(ligneVentilee(sens, ['411001'], 0.004)).toBe(false);
     }
-    expect(ligneVentilee('SELON_LE_COMPTE', '401001', -1)).toBe(true);
-    expect(ligneVentilee('SELON_LE_COMPTE', '411001', -1)).toBe(false);
+    expect(ligneVentilee('SELON_LE_COMPTE', ['401001'], -1)).toBe(true);
+    expect(ligneVentilee('SELON_LE_COMPTE', ['411001'], -1)).toBe(false);
+  });
+
+  it('un tiers à la fois fournisseur et client se lit sur TOUS ses comptes, quel que soit l’ordre de lecture', async () => {
+    const rattachements = [
+      { compteId: 'c-401009', tiers: { id: 'T9', code: 'X9', nom: 'Mixte' } },
+      { compteId: 'c-411009', tiers: { id: 'T9', code: 'X9', nom: 'Mixte' } },
+    ];
+    const lignes = [
+      ligneEcriture('411009', 100, 0, '2025-12-10', '2025-12-10'),
+      ligneEcriture('401009', 0, 600, '2025-11-10', '2025-11-10'),
+    ];
+    for (const ordre of [lignes, [...lignes].reverse()]) {
+      const r = await service(ordre, rattachements).balanceAgee('t', { ...AU_31_12, type: 'TOUS' });
+      // Solde créditeur de 500 · la ligne porte les deux sens, elle se ventile.
+      expect(r.crediteurs.map((l) => [l.libelle, l.numero, l.solde])).toEqual([['X9 - Mixte', '401009', -500]]);
+      expect(r.sensInverse).toHaveLength(0);
+    }
   });
 
   it('le calcul des tranches est le même dans tous les périmètres · seule la source change', async () => {

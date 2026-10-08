@@ -19,7 +19,9 @@ import {
   LECTEUR_BILAN_SYCEBNL_SMT,
   LECTEUR_BILAN_SYSCOHADA_NORMAL,
   LECTEUR_BILAN_SYSCOHADA_SMT,
+  LECTEUR_VIREMENTS_GROUPE,
   type LecteurBilan,
+  type LecteurVirementsGroupe,
 } from '../../common/lecteurs-bilan';
 import {
   destinationsDuVirement,
@@ -331,7 +333,15 @@ export class ExerciceService {
    * (somme nulle exigée, `liaisonNeutralisee`). L'écart admis est EXACTEMENT
    * le solde net du 585 du dossier, au sens inverse (un 585 débiteur manque à
    * l'actif) · tout autre écart, ou un 585 hors groupe, refuse comme avant,
-   * et le message nomme alors le 585.
+   * et le message nomme alors le 585. ET LE 585 DU GROUPE EST SOLDÉ SUR LA
+   * PÉRIODE (relecture du 2026-10-08) · admis sur la seule foi de la liasse,
+   * un transfert passé d'un seul côté laissait clôturer les deux dossiers,
+   * et la liasse du groupe restait refusée sans issue, ses exercices clos.
+   * La clôture le lit sur tous les dossiers du groupe, validé, par le service
+   * du groupe (`LECTEUR_VIREMENTS_GROUPE`), et nomme l'écart. Un transit
+   * interne au dossier (banque vers caisse) tombe sous la même règle. Le
+   * Système minimal de trésorerie lit le 585 à son bilan · l'admission ne le
+   * vise pas, un écart égal par hasard n'y serait pas un virement.
    */
   private async refuserBilanDesequilibre(
     tenantId: string,
@@ -340,9 +350,12 @@ export class ExerciceService {
       referentiel: Referentiel;
       systemeComptableSyscohada: SystemeComptableSyscohada | null;
       jeuEtatsFinanciersSycebnl: JeuEtatsFinanciersSycebnl | null;
-      dossierMereId?: string | null;
-      _count?: { cellules: number };
+      // REQUIS · facultatifs, un appelant qui ne les sélectionnerait pas
+      // lirait tout dossier comme hors groupe sans un mot (relecture du typage).
+      dossierMereId: string | null;
+      _count: { cellules: number };
     },
+    periode: { dateDebut: Date; dateFin: Date },
   ) {
     if (!this.moduleRef) return;
     const jeton =
@@ -390,14 +403,38 @@ export class ExerciceService {
       });
       solde585 = Number(virements._sum.debit ?? 0) - Number(virements._sum.credit ?? 0);
     }
-    const enGroupe = !!dossier.dossierMereId || (dossier._count?.cellules ?? 0) > 0;
-    if (enGroupe && Math.abs(solde585) > EPSILON && Math.abs(ecart + solde585) <= EPSILON) return;
+    const enGroupe = !!dossier.dossierMereId || dossier._count.cellules > 0;
+    const smt = dossier.jeuEtatsFinanciersSycebnl === JeuEtatsFinanciersSycebnl.SYSTEME_MINIMAL_TRESORERIE;
+    if (enGroupe && !smt && Math.abs(solde585) > EPSILON && Math.abs(ecart + solde585) <= EPSILON) {
+      // L'écart EST le 585 du dossier · reste que le groupe l'ait soldé.
+      let lecteurGroupe: LecteurVirementsGroupe;
+      try {
+        lecteurGroupe = this.moduleRef.get<LecteurVirementsGroupe>(LECTEUR_VIREMENTS_GROUPE, { strict: false });
+      } catch (e) {
+        // Sans lecteur, le solde du groupe n'est pas vérifiable · refus
+        // nommé, jamais une admission présumée.
+        throw new BadRequestException(
+          `Le 585 du groupe n'a pas pu être lu (${(e as Error).message}) · la clôture qui l'admettrait est refusée.`,
+        );
+      }
+      const groupe = await lecteurGroupe.virements585DuGroupe(tenantId, periode);
+      if (Math.abs(groupe.solde) <= EPSILON) return;
+      throw new BadRequestException(
+        `Le 585 (virements de fonds) du groupe n'est pas soldé sur la période · écart de ${montantFr(Math.abs(groupe.solde))} ` +
+          `${groupe.solde > 0 ? 'au débit' : 'au crédit'}, validé, tous dossiers du groupe confondus. Un transfert est passé d'un ` +
+          "seul côté, ou sa contrepartie n'est pas encore validée · passez et validez-la dans l'autre dossier, puis clôturez " +
+          "(fiche du compte 58, « soldés à la fin de l'exercice »)." +
+          (groupe.dossiersSansExercice > 0
+            ? ` ${groupe.dossiersSansExercice} dossier(s) du groupe n'ont pas d'exercice sur cette période · leur 585 n'est pas lu.`
+            : ''),
+      );
+    }
     const part585 =
       Math.abs(solde585) > EPSILON
         ? ` Le 585 (virements de fonds) porte un solde ${solde585 > 0 ? 'débiteur' : 'créditeur'} de ` +
           `${montantFr(Math.abs(solde585))}, que le bilan ne lit pas · un virement interne se solde à la fin de ` +
           "l'exercice (fiche du compte 58)" +
-          (enGroupe ? ", et seul un écart égal à ce solde est admis dans un dossier du groupe." : '.')
+          (enGroupe && !smt ? ", et seul un écart égal à ce solde est admis dans un dossier du groupe." : '.')
         : '';
     throw new BadRequestException(
       `Le bilan de l'exercice ne s'équilibre pas · actif ${montantFr(Number(bilan.totalActif))}, passif ` +
@@ -2114,7 +2151,7 @@ export class ExerciceService {
     const enSouffrance = motifClotureEcartsNonConstates(await ecartsRealisesNonConstates(this.prisma, { tenantId, exerciceId }));
     if (enSouffrance) throw new BadRequestException(enSouffrance);
 
-    await this.refuserBilanDesequilibre(tenantId, exerciceId, dossier);
+    await this.refuserBilanDesequilibre(tenantId, exerciceId, dossier, exercice);
 
     // LE DÉLAI DE LA TRANSACTION SUIT LE NOMBRE DE LETTRAGES PARTIELS À
     // RECONDUIRE (relecture TypeScript, M2) · quelques allers-retours par

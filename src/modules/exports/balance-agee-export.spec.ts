@@ -98,6 +98,9 @@ describe('balance âgée exportée · trois populations', () => {
 
     const net = rangDe(f, 'SOLDE NET · recoupe la balance auxiliaire');
     expect(formule(f, `E${net}`)).toMatchObject({ formula: `E${total}+E${totalInverse}`, result: -2_170_000 });
+    // La première section porte un titre · aucun filtre, un tri déplacerait
+    // la ligne « SOLDES CRÉDITEURS » parmi les données.
+    expect(f.autoFilter).toBeFalsy();
   });
 
   it('clients · débiteurs en tête, total par tranche sur leur seule plage', async () => {
@@ -123,6 +126,10 @@ describe('balance âgée exportée · trois populations', () => {
     const b = rangDe(f, '411002 - B');
     const total = rangDe(f, 'TOTAL DÉBITEURS');
     expect(formule(f, `D${total}`)).toMatchObject({ formula: `SUM(D${a}:D${b})`, result: 50 });
+    // Le solde de chaque ligne additionne SES tranches, sur la ligne coiffée.
+    expect(formule(f, `E${a}`)).toMatchObject({ formula: `SUM(B${a}:D${a})`, result: 300 });
+    // Le filtre couvre les débiteurs, de l'en-tête à leur dernière ligne, pas leur total.
+    expect(f.autoFilter).toBe(`A${a - 1}:E${b}`);
     expect(rangDe(f, 'SOLDES CRÉDITEURS')).toBe(-1);
     expect(rangDe(f, 'TOTAL SOLDES EN SENS INVERSE')).toBe(-1);
     const net = rangDe(f, 'SOLDE NET · recoupe la balance auxiliaire');

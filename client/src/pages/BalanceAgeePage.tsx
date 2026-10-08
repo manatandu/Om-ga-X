@@ -4,7 +4,7 @@ import { useExercice } from '../lib/exercice';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
-import { montantOuVide as montant } from '../lib/montants';
+import { montant as montantTotal, montantOuVide as montant } from '../lib/montants';
 
 /**
  * BALANCE ÂGÉE · l'antériorité des créances et dettes non lettrées, tiers par
@@ -124,7 +124,21 @@ export function BalanceAgeePage() {
         `/ecritures/balance-agee?exerciceId=${exerciceCourant.id}&dateReference=${dateReference}&type=${type}`,
       )
       .then(
-        (r) => !annule && setDonnees(r),
+        // Un serveur encore à l'ancienne révision (Cloud Run garde la
+        // précédente quand la nouvelle ne démarre pas) ne sert ni
+        // `sensInverse` ni ses totaux · lus vides plutôt que de faire
+        // tomber la fenêtre.
+        (r) =>
+          !annule &&
+          setDonnees({
+            ...r,
+            sensInverse: r.sensInverse ?? [],
+            totaux: {
+              ...r.totaux,
+              parTrancheCrediteurs: r.totaux.parTrancheCrediteurs ?? [],
+              sensInverse: r.totaux.sensInverse ?? 0,
+            },
+          }),
         (e) => !annule && setErreur(e instanceof ApiError ? e.message : 'Chargement impossible'),
       );
     return () => {
@@ -176,7 +190,8 @@ export function BalanceAgeePage() {
   );
 
   // Une ligne de total par population · `parTranche` nul pour les soldes en
-  // sens inverse, qui n'ont pas de tranches à additionner.
+  // sens inverse, qui n'ont pas de tranches à additionner. Un total nul se
+  // dit « 0,00 » · vide, il se lirait comme une absence.
   const ligneTotal = (libelle: string, parTranche: number[] | null, total: number) => (
     <div style={grille} className="px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
       <span>{libelle}</span>
@@ -185,7 +200,7 @@ export function BalanceAgeePage() {
           {parTranche ? montant(parTranche[i] ?? 0) : ''}
         </span>
       ))}
-      <span className="font-mono text-right">{montant(total)}</span>
+      <span className="font-mono text-right">{montantTotal(total)}</span>
     </div>
   );
 
@@ -289,6 +304,7 @@ export function BalanceAgeePage() {
 
         {donnees && donnees.debiteurs.length > 0 && (
           <>
+            {(donnees.crediteurs.length > 0 || donnees.sensInverse.length > 0) && intercalaire('Soldes débiteurs')}
             {donnees.debiteurs.map((l) => ligne(l, true))}
             {ligneTotal('Total débiteurs', donnees.totaux.parTranche, donnees.totaux.debiteurs)}
           </>
@@ -320,7 +336,7 @@ export function BalanceAgeePage() {
               {donnees.tranches.map((t) => (
                 <span key={t.cle} />
               ))}
-              <span className="font-mono text-right">{montant(donnees.totaux.net)}</span>
+              <span className="font-mono text-right">{montantTotal(donnees.totaux.net)}</span>
             </div>
           )}
       </div>

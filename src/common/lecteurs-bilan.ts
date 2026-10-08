@@ -21,3 +21,25 @@ export interface BilanLuParLaCloture {
 export interface LecteurBilan {
   bilan(tenantId: string, exerciceId: string): Promise<BilanLuParLaCloture>;
 }
+
+/**
+ * LE 585 DU GROUPE LU PAR LA CLÔTURE (G1, relecture du 2026-10-08) · même
+ * jeton, même raison · le module du groupe importe déjà ce que la clôture
+ * importe. Fiche SYCEBNL du compte 58 · des comptes de passage « internes à
+ * l'entité », « soldés à la fin de l'exercice » · l'entité est le GROUPE, et
+ * son 585 se lit sur tous ses dossiers. Seul `GroupeService` ouvre le
+ * périmètre d'un groupe (`perimetreDeGroupe`, liste fermée par
+ * `cloisonnement.spec.ts`) · la clôture passe par lui.
+ */
+export const LECTEUR_VIREMENTS_GROUPE = 'LECTEUR_VIREMENTS_GROUPE';
+
+export interface VirementsDuGroupe {
+  /** Solde net du 585 (débit moins crédit) de tous les dossiers du groupe sur la période, livre-journal seul. */
+  solde: number;
+  /** Dossiers du groupe sans exercice sur la même période · leur 585 n'est pas lu. */
+  dossiersSansExercice: number;
+}
+
+export interface LecteurVirementsGroupe {
+  virements585DuGroupe(tenantId: string, periode: { dateDebut: Date; dateFin: Date }): Promise<VirementsDuGroupe>;
+}

@@ -59,7 +59,7 @@ describe('balance âgée · le modèle du dossier de révision', () => {
   it('le sens contraire se lit sur le sens NORMAL du périmètre, jamais sur le seul signe (lot M, D1)', () => {
     // Une dette fournisseur est un solde CRÉDITEUR dans son sens normal ·
     // la ranger « en sens inverse » vidait la balance âgée des fournisseurs.
-    expect(service).toContain('ligneVentilee(perimetre.sensNormal, c.numero, c.solde)');
+    expect(service).toContain('ligneVentilee(perimetre.sensNormal, [...(comptesDeLaCle.get(c.cle) ?? [c.numero])], c.solde)');
     expect(page).toContain('donnees.crediteurs.map');
     expect(page).toContain('donnees.sensInverse');
   });

@@ -282,6 +282,54 @@ export class GroupeService {
     };
   }
 
+  /**
+   * LE 585 DU GROUPE SUR UNE PÉRIODE (G1, relecture du 2026-10-08) · lu par la
+   * clôture de l'un de ses dossiers, siège ou cellule (`LECTEUR_VIREMENTS_GROUPE`).
+   * Fiche SYCEBNL du compte 58 · « soldés à la fin de l'exercice », sur
+   * l'entité · un transfert passé d'un seul côté laissait clôturer les deux
+   * dossiers, puis la liasse du groupe restait refusée sans issue (exercices
+   * clos). Le groupe se lit sur le dossier de la SESSION (sa mère, ou lui s'il
+   * est le siège), jamais sur un dossier reçu ; seule une SOMME en sort, le
+   * détail des voisins reste au siège. Livre-journal seul, hors solde des
+   * comptes de gestion, exercices de MÊME période ; le dossier de combinaison
+   * n'est pas un membre (aucune donnée propre).
+   */
+  async virements585DuGroupe(
+    tenantId: string,
+    periode: { dateDebut: Date; dateFin: Date },
+  ): Promise<{ solde: number; dossiersSansExercice: number }> {
+    const dossier = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { dossierMereId: true } });
+    const mere = dossier?.dossierMereId ?? tenantId;
+    const membres = (
+      await this.prisma.tenant.findMany({
+        where: { OR: [{ id: mere }, { dossierMereId: mere }] },
+        select: { id: true },
+      })
+    ).map((m) => m.id);
+    return perimetreDeGroupe(membres, async () => {
+      const exercices = await this.prisma.exercice.findMany({
+        where: { tenantId: { in: membres }, dateDebut: periode.dateDebut, dateFin: periode.dateFin },
+        select: { id: true, tenantId: true },
+      });
+      const agregat = await this.prisma.ligneEcriture.aggregate({
+        where: {
+          compte: { tenantId: { in: membres }, numero: { startsWith: '585' } },
+          ecriture: {
+            tenantId: { in: membres },
+            exerciceId: { in: exercices.map((e) => e.id) },
+            statut: StatutEcriture.VALIDEE,
+            estSoldeDesComptesDeGestion: false,
+          },
+        },
+        _sum: { debit: true, credit: true },
+      });
+      return {
+        solde: Math.round((Number(agregat._sum.debit ?? 0) - Number(agregat._sum.credit ?? 0)) * 100) / 100,
+        dossiersSansExercice: membres.length - new Set(exercices.map((e) => e.tenantId)).size,
+      };
+    });
+  }
+
   private async dansLeGroupe<T>(tenantId: string, suite: () => Promise<T>): Promise<T> {
     const [cellules, siege] = await Promise.all([
       this.prisma.tenant.findMany({ where: { dossierMereId: tenantId }, select: { id: true } }),

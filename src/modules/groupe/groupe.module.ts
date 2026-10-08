@@ -6,6 +6,7 @@ import { LicenceModule } from '../licence/licence.module';
 import { JwtAuthModule } from '../auth/jwt-auth.module';
 import { GroupeService } from './groupe.service';
 import { GroupeController } from './groupe.controller';
+import { LECTEUR_VIREMENTS_GROUPE } from '../../common/lecteurs-bilan';
 
 @Module({
   // ComptabiliteModule pour EcritureService.balance : l'agrégat réutilise LE
@@ -13,6 +14,8 @@ import { GroupeController } from './groupe.controller';
   // second moteur, donc aucune divergence possible entre les deux.
   imports: [ComptabiliteModule, AuthModule, ExportsModule, LicenceModule, JwtAuthModule],
   controllers: [GroupeController],
-  providers: [GroupeService],
+  // Le 585 du groupe lu par la clôture d'un de ses dossiers (G1) · jeton,
+  // sans quoi ExerciceModule importerait le groupe (cycle).
+  providers: [GroupeService, { provide: LECTEUR_VIREMENTS_GROUPE, useExisting: GroupeService }],
 })
 export class GroupeModule {}
