@@ -346,6 +346,10 @@ jobs:
           # l'opérateur) · facultative, absente la console refuse d'émettre
           # et le dit. Jamais dans le code, jamais affichée.
           CLE_PRIVEE_LICENCE: ${{ secrets.API_CLE_PRIVEE_LICENCE }}
+          # Télémétrie des pannes (Sentry, région UE) · facultative. Absente,
+          # le serveur démarre et écrit « Sentry · inactif (aucune clé) »
+          # (src/common/telemetrie/). Jamais affichée.
+          SENTRY_DSN: ${{ secrets.API_SENTRY_DSN }}
           # L'auto-inscription est FERMÉE : aucune variable INSCRIPTION_PUBLIQUE
           # n'est posée, et /auth/register refuse. Elle a été ouverte le temps
           # de créer le compte du cabinet (1er septembre 2026), puis retirée
@@ -427,6 +431,14 @@ jobs:
           if os.environ.get("CLE_PRIVEE_LICENCE"):
               variables["CLE_PRIVEE_LICENCE"] = os.environ["CLE_PRIVEE_LICENCE"]
 
+          # Facultative · secret absent, la variable n'est pas posée et le
+          # serveur reste sans télémétrie. Le régime est dit ici, la clé jamais.
+          if os.environ.get("SENTRY_DSN"):
+              variables["SENTRY_DSN"] = os.environ["SENTRY_DSN"]
+              print("Sentry · clé transmise au service", file=sys.stderr)
+          else:
+              print("Sentry · aucune clé, inactif", file=sys.stderr)
+
           # LE COMPTE D'ENVOI DES COURRIELS · toutes facultatives, toutes de
           # passage ici et nulle part ailleurs.
           #
@@ -464,6 +476,35 @@ jobs:
             --concurrency 80 \
             --max-instances 4 \
             --env-vars-file /tmp/env-vars.yaml
+
+      # LA CONSTRUCTION QUI ÉCHOUE SE LIT ICI (2026-10-08). `gcloud run deploy
+      # --source` ne rend que « Build failed; check build logs for details »,
+      # et le journal de Cloud Build n'était lisible que dans la console · deux
+      # échecs de suite ont dû être levés en retirant la ligne entière. Cette
+      # étape ne court QUE sur un échec, lit la dernière construction de la
+      # région (puis, faute de réponse, sans région) et en affiche la fin. Le
+      # journal de construction ne porte que les étapes du Dockerfile, qui ne
+      # reçoivent aucun secret (les variables du service partent au
+      # déploiement, pas à la construction). Elle ne change jamais l'issue
+      # (`continue-on-error`) · le rouge reste celui de l'étape précédente.
+      # Sans le droit de lire Cloud Build, elle le dit et s'arrête.
+      - name: Journal de la construction en échec
+        if: failure()
+        continue-on-error: true
+        run: |
+          id=$(gcloud builds list --project "$PROJECT_ID" --region="$REGION" --limit=1 --format='value(id)' 2>/tmp/builds-list.err || true)
+          option_region="--region=$REGION"
+          if [ -z "$id" ]; then
+            id=$(gcloud builds list --project "$PROJECT_ID" --limit=1 --format='value(id)' 2>>/tmp/builds-list.err || true)
+            option_region=""
+          fi
+          if [ -z "$id" ]; then
+            echo "Aucune construction lisible · le compte de service n'a peut-être pas le rôle « Lecteur Cloud Build » (roles/cloudbuild.builds.viewer)."
+            cat /tmp/builds-list.err 2>/dev/null | tail -n 5 || true
+            exit 0
+          fi
+          echo "Dernière construction · $id"
+          gcloud builds log "$id" --project "$PROJECT_ID" $option_region 2>&1 | tail -n 200
 
       # CONFIRMATION PAR LE SERVEUR LUI-MÊME · facultative, et c'est assumé.
       #

@@ -22,7 +22,7 @@ import { EtatSurSite } from '../lib/sur-site';
  * dirigerait les demandes vers le vide.
  */
 
-const DATE_DE_MISE_A_JOUR = '30 septembre 2026';
+const DATE_DE_MISE_A_JOUR = '7 octobre 2026';
 
 function Titre({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[12px] font-bold mt-4 mb-1.5">{children}</h2>;
@@ -89,7 +89,10 @@ export function ConfidentialitePage() {
 
         <Titre>2. Ce que le logiciel ne fait pas</Titre>
         <P>
-          OmegaX ne dépose <strong>aucun traceur publicitaire</strong> et n’utilise aucun outil de mesure d’audience.
+          OmegaX ne dépose <strong>aucun traceur publicitaire</strong>.
+          {surSite
+            ? ' Sur cette installation, il ne mesure pas la fréquentation et ne signale aucune erreur à un service extérieur.'
+            : ' Il mesure la fréquentation de son interface de façon anonyme et signale ses erreurs techniques (section 3) ; pour cela, le navigateur garde dans son stockage local un identifiant tiré au hasard, sans lien avec votre compte ni avec votre dossier.'}{' '}
           Le seul témoin de connexion déposé est celui de votre session : il est strictement nécessaire au
           fonctionnement du logiciel, et il n’est pas lisible par le code de la page. Sans l’option « Rester
           connecté sur cet appareil », il se ferme avec le navigateur, et la session prend fin au plus tard huit
@@ -116,11 +119,15 @@ export function ConfidentialitePage() {
               sur ce poste · le prestataire qu’elle a choisi reçoit alors l’adresse du destinataire et le texte du
               courrier.
             </P>
+            <P>
+              <strong>Aucune erreur technique ni aucune page vue ne quitte cette installation</strong> : les services
+              de mesure utilisés par la version en ligne (Sentry, PostHog) n’y sont pas activés.
+            </P>
           </>
         ) : (
           <>
             <P>
-              Cinq prestataires interviennent, chacun pour une part précise :
+              Sept prestataires interviennent, chacun pour une part précise :
             </P>
             <ul className="text-[11.5px] leading-relaxed mb-2 list-disc pl-5">
               <li>
@@ -145,7 +152,33 @@ export function ConfidentialitePage() {
                 licences, avis d’accès. <em>Son nom doit être arrêté par VMG Consulting et porté ici avant toute
                 publication de cette page sur un magasin d’applications.</em>
               </li>
+              <li>
+                <strong>Sentry</strong>, dans sa région de données de l’<strong>Union européenne</strong>, reçoit les
+                erreurs techniques du serveur et de l’interface · le type de l’erreur, l’endroit du code où elle est
+                survenue, l’écran ou la route en cause, le navigateur et sa version. S’y ajoutent le fil des
+                dernières requêtes réduit à leur méthode, leur adresse sans identifiants ni paramètres et leur
+                statut, les écrans ouverts juste avant, et la version publiée du logiciel.
+              </li>
+              <li>
+                <strong>PostHog</strong>, dans sa région de données de l’<strong>Union européenne</strong>, reçoit les
+                pages vues de l’interface, de façon anonyme · l’écran ouvert, le rôle de l’utilisateur (comptable,
+                administrateur…), le référentiel du dossier (SYCEBNL ou SYSCOHADA), le navigateur et la taille de
+                l’écran. S’y ajoutent le système d’exploitation, le fuseau horaire, le type d’appareil, l’adresse du
+                site et des identifiants de session tirés au hasard ; aucune localisation n’est déduite de l’adresse
+                réseau.
+              </li>
             </ul>
+            <P>
+              Ni Sentry ni PostHog ne reçoivent <strong>jamais</strong> de donnée de vos dossiers : aucun montant,
+              aucun nom, aucune adresse de courriel, aucun contenu saisi, aucun libellé, aucun numéro de pièce, aucun
+              témoin de connexion. Les identifiants et les nombres sont retirés des adresses des écrans avant l’envoi,
+              les messages d’erreur sont réduits à leur forme, et aucun enregistrement de votre session n’est fait.
+              Comme toute connexion, ces deux services voient passer l’adresse réseau qui leur écrit.{' '}
+              <em>
+                Le réglage qui leur interdit de la conserver doit être activé par VMG Consulting dans chacun des deux
+                services avant toute publication de cette page sur un magasin d’applications.
+              </em>
+            </P>
             <P>
               Vos données sont donc <strong>hébergées hors de la République démocratique du Congo</strong>. Ce point
               est énoncé ici parce qu’il vous appartient de le connaître et, le cas échéant, de vérifier qu’il est

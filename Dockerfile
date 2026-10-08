@@ -24,7 +24,11 @@ RUN npm ci
 COPY tsconfig.json nest-cli.json ./
 COPY src ./src
 RUN npx prisma generate
-RUN npm run build
+# Marge de mémoire pour nest build · mesuré le 2026-10-08, la compilation du
+# serveur tombe entre 1 920 et 2 048 Mo de tas, et Node en fixe à peu près
+# 2 Go par défaut sur la machine de Cloud Build (« heap out of memory »).
+# Posé sur cette seule étape, jamais dans l'image servie.
+RUN NODE_OPTIONS=--max-old-space-size=3072 npm run build
 
 FROM node:22-slim AS runtime
 WORKDIR /app
