@@ -185,7 +185,12 @@ importants »). Aucune nouvelle fonction ni ligne de cas limite n'entre sur
 (`lettrage-cloture`, `tva-decisions`) et la correction d'un défaut BLOQUANT ou
 MAJEUR trouvé sur un parcours du périmètre. Périmètre, passes et critère de
 sortie (deux passes de suite sans BLOQUANT ni MAJEUR) · `docs/plan-version-1.md`.
-Une demande nouvelle se note au suivi, elle ne se code pas.
+Une demande nouvelle se note au suivi, elle ne se code pas. Version 1 atteinte
+le 2026-10-08 · le gel tient jusqu'à la fin du pilote, avec UNE exception, le
+PAQUET 1 (décision de Manasse du 2026-10-08, « Lève le gel pour lui et attaque
+le paquet 1 ») · les vingt-quatre points du suivi que touche un dossier du
+pilote, en trois lignes, chacun reproduit sur vraie base avant d'être corrigé
+et rejoué après (`docs/plan-version-1.md`, § 7). Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
 qu'un autre ait réussi. Un push sur `main` en déclenche plusieurs à la fois,

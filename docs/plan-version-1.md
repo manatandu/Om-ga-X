@@ -115,3 +115,88 @@ atteinte, et le pilote du § 5 peut commencer.
 Le gel du § 1 tient jusqu'à la fin du pilote · ce qui est au suivi
 (`docs/suivi-immobilisations-verrouille.md`, « Relevés en attente ») reste à
 trier avec Manasse, il ne se code pas avant.
+
+## 7. Paquet 1 · le gel levé pour lui seul (2026-10-08)
+
+Décision de Manasse du 2026-10-08 : « Lève le gel pour lui et attaque le
+paquet 1 », avec la consigne « fais des simulations pour savoir si les
+problèmes sont bien traités ». Le paquet 1 réunit les points du suivi qu'un
+dossier du pilote touche (périmètre du § 2) · mineurs relevés par les passes,
+et questions de fond laissées « à examiner ». Rien d'autre n'entre ; le reste
+du suivi attend la fin du pilote.
+
+Chaque point est d'abord REPRODUIT sur une base PostgreSQL jetable par l'API
+du serveur compilé (le défaut constaté), puis corrigé avec son test, puis
+REJOUÉ sur la même base (le défaut disparu), à travers une clôture quand le
+point la touche. Une question de fond se tranche par le texte, et seule celle
+que le corpus ne tranche pas remonte à Manasse.
+
+### Ligne A · états et clôture (`travail/paquet1-a`)
+
+1. Un exercice N clôturé AVANT le virement du résultat non affecté au report
+   à nouveau n'est signalé que sur son propre bilan · la colonne N-1 de N+1
+   reprend le montant dans CH ou CJ sans le dire, et la liasse de N+1 ne lève
+   pas l'anomalie (`comparatifDuBilan`, liasses).
+2. `mentionExercicePrecedentVide` conseille d'importer la balance de clôture
+   quand l'exercice précédent n'a que du brouillard, sans dire de le valider.
+3. Exercice précédent vide · la colonne N-1 du tableau des flux des
+   associations rend des zéros avec `exerciceN1Disponible` vrai, sans dire
+   « vide ».
+4. Premier exercice clos par la nouvelle clôture · `lignesALOuverture(lignesN)`
+   présente l'ouverture déjà virée (13 à 0, 12 ou 129 portant le montant) dans
+   le comparatif et l'ouverture du tableau des flux · totaux justes,
+   reclassement interne aux capitaux propres faux.
+5. Tableau des flux SYSCOHADA · la variation des intérêts courus (1662) entre
+   en FE (passif circulant) quand le bilan les range en DA · à lire contre le
+   Titre IX ch. 5.
+6. Compte 130 (« Résultat en instance d'affectation ») hors de CJ et de SP2
+   (anomalie n° 7, audit final F218) · bilan intermédiaire déséquilibré de son
+   montant · à lire contre la fiche du compte 13 et le ch. 7.
+7. Tableau des flux des associations · une ouverture saisie en OD au premier
+   jour (sans report) reste lue comme flux, quand le SYSCOHADA la nomme et
+   vide ses postes.
+8. À vérifier · la contre-passation d'une réévaluation des devises passée au
+   premier jour de N+1 (OD, admise N ouvert) serait lue par AU2, à la clôture
+   de N, comme une ouverture divergente, et RECTIFIER l'inscrirait en négatif,
+   rétablissant en silence l'écart latent au 478 et au tiers.
+9. Feuille CONTROLES de la liasse projet · XC comparé à zéro « en régime
+   normal » sur un projet au résultat de 120 000.
+10. Notes par échéance · la part non ventilée servie par le serveur n'est
+    jamais dite à l'écran (`NotesAnnexesRendu.tsx`).
+
+### Ligne B · tiers, lettrage, trésorerie (`travail/paquet1-b`)
+
+1. `CHARGE_SANS_TIERS` se lève sur le redressement du manquant de caisse que
+   l'inventaire demande et retient.
+2. `CHARGE_SANS_TIERS` se lève sur des intérêts d'emprunt prélevés par la
+   banque (6712 contre 521), cas légitime non nommé.
+3. Balance âgée · une ligne à solde nul reste rendue sous « Soldes en sens
+   inverse ».
+4. Balance âgée · la grille de l'écran n'a pas de rôles de tableau pour un
+   lecteur d'écran.
+5. Reste d'une facture réglée en partie · un groupe qui ne se répartit pas
+   sûrement (négatif sans son origine ou à deux origines, reste négatif en
+   devise, part déclarée au-delà de la facture) garde la lecture ligne à ligne
+   et n'est nommé qu'au journal du serveur, jamais à l'écran.
+6. Relances · une facture soldée dans sa devise avec un gain de change non
+   passé se lit ligne à ligne, le réalisé n'est pas nommé.
+7. Un groupe d'à-nouveaux lettré à la main, sans groupe de N reconduit, garde
+   l'ordre de ses lignes au lieu de l'imputation légale.
+8. Les doublures des tests de la note et des deux SMT rendent un `groupBy`
+   constant, sans ligne au brouillard.
+9. `GET /rapprochements/:id/propositions` sans `fenetreJours` rend 400 alors
+   que le paramètre est facultatif.
+10. Une campagne d'inventaire qui ne porte que la caisse ne se clôt pas.
+
+### Ligne C · paie, fiscal, cloisonnement (`travail/paquet1-c`)
+
+1. Plafond de l'art. 69, 1 non arrondi au centime (« seul l'excédent de
+   0.00 FC est imposable »).
+2. L'abstention des allocations familiales renvoie à un nom de constante
+   interne (`RESOLUTION_TAUX_LEGAL_ALLOCATIONS`).
+3. Des identifiants d'un autre dossier rendent 400 au lieu de 404 (grand
+   livre, contrôles), ou 200 vide (liste, balance, export du journal d'un
+   exercice d'un autre dossier), et `POST /ecritures/valider-jusqua` rend 201
+   · aucune fuite, une réponse fausse.
+4. L'observation « Société unipersonnelle à associé unique » du résultat
+   fiscal est servie à toute SARL, SA ou SAS, unipersonnelle ou non.
