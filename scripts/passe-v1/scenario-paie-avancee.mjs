@@ -41,7 +41,7 @@
  * ramené au mois) et la règle du mois entamé du préavis (1/26 du salaire
  * mensuel par jour payable, décision par la loi du 2026-10-07).
  */
-import { balance, cloturer, ecriture, etape, nouveauDossier, rechargerComptes, solde, validerJusqua } from './lib.mjs';
+import { balance, cloturer, ecriture, etape, nouveauDossier, solde, validerJusqua } from './lib.mjs';
 
 const BQ = '52110000';
 const PRIVE = { natureEmployeurInpp: 'PRIVE', effectif: 12, regimeSalarial: 'BAREME_ARTICLE_118' };
@@ -76,12 +76,18 @@ function arrondiArticle150(x) {
  * inférieur, plafond de 30 %) et art. 119 (retenue mensuelle), dans la
  * convention de mensualisation que le logiciel déclare (le mois × 12).
  */
-function irppDuMois(netFiscalMensuel) {
+function irppDuMois(netFiscalMensuel, personnesACharge = 0) {
   const annuel = Math.floor((netFiscalMensuel * 12) / 1000) * 1000;
   const tranches = [[0, 1_944_000, 3], [1_944_000, 21_600_000, 15], [21_600_000, 43_200_000, 30], [43_200_000, Infinity, 40]];
-  let impot = 0;
-  for (const [de, a, t] of tranches) if (annuel > de) impot += ((Math.min(annuel, a) - de) * t) / 100;
-  impot = Math.min(impot, annuel * 0.3);
+  const bareme = (revenu) => tranches.reduce((s, [de, a, t]) => s + (revenu > de ? ((Math.min(revenu, a) - de) * t) / 100 : 0), 0);
+  // « En aucun cas, l'impôt total ne peut excéder 30 % du revenu imposable » (art. 118).
+  let impot = Math.min(bareme(annuel), annuel * 0.3);
+  // Art. 123 · 2 % par personne à charge, neuf au plus, « aucune réduction
+  // [...] sur l'impôt qui se rapporte à la partie du revenu imposable qui
+  // excède la troisième tranche » · la base est l'impôt des trois premières
+  // tranches (décision par la loi du 2026-10-07, troisième lot, point 2,
+  // le plafond jouant avant la quotité).
+  if (personnesACharge > 0) impot -= (2 * Math.min(personnesACharge, 9) * bareme(Math.min(annuel, 43_200_000))) / 100;
   return arrondiArticle150(impot / 12);
 }
 
@@ -205,6 +211,8 @@ async function refusAttendu(c, R, libelle, methode, chemin, corps, statuts = [40
   return r;
 }
 
+/** Une valeur lue · `undefined` (champ absent) se distingue de `null` (réponse « aucune »). */
+const lu = (x) => (x === undefined ? 'absente' : x);
 const nombre = (x) => (x === null || x === undefined ? null : Number(x));
 const tuple = (b) => b && [nombre(b.totalVerseFc), nombre(b.assietteSocialeFc), nombre(b.cotisationsTravailleurFc), nombre(b.irppFc), nombre(b.netAPayerFc)];
 const tupleAttendu = (a) => [a.totalVerse, a.assiette, a.pt, a.irpp, a.net];
@@ -228,7 +236,8 @@ async function sarl(R) {
   const n = c.exercices.get('2026').id;
   const bq = c.journal('BQ');
   const od = c.od;
-  const L = new LivreAttendu();
+  // Le livre attendu de l'exercice en cours · un livre neuf pour 2027, les comptes de bilan y partant de leur à-nouveau.
+  let L = new LivreAttendu();
   const ctx = { sal: {}, att: {}, bulletins: {} };
   // Le livre attendu de la banque · apport, puis chaque décaissement du banc.
   const banque = (montant) => L.add(BQ, montant > 0 ? montant : 0, montant < 0 ? -montant : 0);
@@ -293,7 +302,7 @@ async function sarl(R) {
     R.egal('deux bulletins modèles enregistrés', 2, modeles.length);
   });
 
-  await etape(R, 'SARL · registre du personnel (treize salariés) et contrats', async () => {
+  await etape(R, 'SARL · registre du personnel (quatorze salariés) et contrats', async () => {
     // Classes et rémunérations au-dessus du minimum de la classe (décret
     // n° 25/22, art. 4 et 7, annexe 2 · taux journalier × 26) ·
     // classe 7 · 50 955 × 26 = 1 324 830 ; classe 4 · 33 110 × 26 = 860 860 ;
@@ -305,6 +314,8 @@ async function sarl(R) {
       ['E3', 'ILUNGA', 'MASCULIN', { dateEntreeEnVigueur: '2021-07-01', natureTravail: 'Maçon chef d’équipe', classeProfessionnelle: 4, periodiciteRemuneration: 'MOIS', remunerationBase: 884_000, deviseRemuneration: 'CDF' }],
       ['E4', 'KASONGO', 'MASCULIN', { dateEntreeEnVigueur: '2023-02-01', natureTravail: 'Ferrailleur', classeProfessionnelle: 3, periodiciteRemuneration: 'MOIS', remunerationBase: 780_000, deviseRemuneration: 'CDF' }],
       ['E5', 'TSHIBANDA', 'MASCULIN', { dateEntreeEnVigueur: '2026-10-01', natureTravail: 'Manœuvre ordinaire à temps partiel', classeProfessionnelle: 1, periodiciteRemuneration: 'JOUR', remunerationBase: 23_000, deviseRemuneration: 'CDF' }],
+      // Contrat à durée déterminée d'un an · classe 2, 650 000 ≥ 648 440.
+      ['E14', 'MATADI', 'FEMININ', { type: 'DUREE_DETERMINEE', dateEntreeEnVigueur: '2026-01-01', dateFinPrevue: '2026-12-31', natureTravail: 'Aide-magasinière', classeProfessionnelle: 2, periodiciteRemuneration: 'MOIS', remunerationBase: 650_000, deviseRemuneration: 'CDF' }],
       ...['MUKENDI', 'KALONJI', 'NGOY', 'BANZA', 'KABEYA', 'LUMBU', 'MWAMBA', 'TSHOMBE'].map((nom, i) => [
         `E${6 + i}`, nom, i % 2 ? 'FEMININ' : 'MASCULIN',
         { dateEntreeEnVigueur: '2025-01-01', natureTravail: 'Ouvrier qualifié', classeProfessionnelle: 2, periodiciteRemuneration: 'MOIS', remunerationBase: 750_000, deviseRemuneration: 'CDF' },
@@ -317,8 +328,8 @@ async function sarl(R) {
       ctx.sal[cle] = { id: s.id, nom, contratId: k?.id ?? null };
     }
     const ef = await c.lire('Effectif au 2026-03-31', '/personnel/effectif?ala=2026-03-31');
-    // Au 31 mars · E1 à E4 et les huit ouvriers · TSHIBANDA n'entre qu'en octobre.
-    R.montant('effectif du registre au 31/03/2026', 12, ef?.effectif);
+    // Au 31 mars · E1 à E4, MATADI et les huit ouvriers · TSHIBANDA n'entre qu'en octobre.
+    R.montant('effectif du registre au 31/03/2026', 13, ef?.effectif);
     R.montant('part de main-d’œuvre nationale au 31/03/2026 (registre)', 100, ef?.partMainOeuvreNationale);
   });
 
@@ -360,6 +371,7 @@ async function sarl(R) {
     }
     if (cle === 'E3') return an === 2026 && m <= 6 ? [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire de base', montantFc: 884_000 }] : null;
     if (cle === 'E4') return an === 2026 && m <= 10 ? [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire de base', montantFc: 780_000 }] : null;
+    if (cle === 'E14') return an === 2026 && m <= 8 ? [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire de base', montantFc: 650_000 }] : null;
     if (cle === 'E5') return an === 2027 || m >= 10 ? [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire de 13 jours', montantFc: 13 * 23_000 }] : null;
     if (/^E([6-9]|1[0-3])$/.test(cle)) {
       return (ctx.modeleOuvrier?.lignes ?? []).map((l) => ({ nature: l.nature, libelle: l.libelle, montantFc: Number(l.montant), ...(l.rubriqueId ? { rubriqueId: l.rubriqueId } : {}) }));
@@ -468,6 +480,7 @@ async function sarl(R) {
         if (x) actifs.push(x);
       }
       if (mois === '2026-07') actifs.push(...(await decompteIlunga()));
+      if (mois === '2026-09') actifs.push(...(await decompteMatadi()));
       if (mois === '2026-11') actifs.push(...(await decompteKasongo()));
       if (mois === '2026-06') {
         // La rubrique impose sa nature · envoyée « transport », la prime de
@@ -504,9 +517,11 @@ async function sarl(R) {
     // Remise du décompte écrit de l'art. 103 · déclarée une fois.
     const b1 = ctx.att['E1-2026-01']?.b;
     if (b1) {
-      const r = await c.geste('Remise du bulletin de janvier de MBUYI', 'POST', `/personnel/bulletins/${b1.id}/remise`, { remisLe: '2026-02-02' });
-      R.egal('remise du bulletin déclarée au 02/02/2026', '2026-02-02', r?.remisLe ? String(r.remisLe).slice(0, 10) : null);
-      await refusAttendu(c, R, 'Seconde déclaration de remise du même bulletin', 'POST', `/personnel/bulletins/${b1.id}/remise`, { remisLe: '2026-02-03' });
+      // Le bulletin est émis au jour du serveur (15/02/2028) · la remise ne le précède pas.
+      await refusAttendu(c, R, 'Remise antérieure à l’émission du bulletin', 'POST', `/personnel/bulletins/${b1.id}/remise`, { remisLe: '2026-02-02' });
+      const r = await c.geste('Remise du bulletin de janvier de MBUYI', 'POST', `/personnel/bulletins/${b1.id}/remise`, { remisLe: '2028-02-15' });
+      R.egal('remise du bulletin déclarée au 15/02/2028', '2028-02-15', r?.remisLe ? String(r.remisLe).slice(0, 10) : null);
+      await refusAttendu(c, R, 'Seconde déclaration de remise du même bulletin', 'POST', `/personnel/bulletins/${b1.id}/remise`, { remisLe: '2028-02-15' });
     }
   }
 
@@ -625,6 +640,71 @@ async function sarl(R) {
     return [{ a, b }];
   }
 
+  /**
+   * SEPTEMBRE · RUPTURE ANTICIPÉE DU CONTRAT À DURÉE DÉTERMINÉE DE MATADI
+   * (art. 69 et 70). Conclu du 01/01/2026 au 31/12/2026, rompu par
+   * l'employeur le 30/09/2026 · aucun préavis (art. 69, « la clause [...]
+   * prévoyant le droit d'y mettre fin par préavis est nulle »). Art. 70,
+   * al. 2 · « les salaires et avantages de toute nature dont le salarié aurait
+   * bénéficié pendant la période restant à courir jusqu'au terme » · du 01/10
+   * au 31/12, trois mois entiers à 650 000 = 1 950 000 (art. 93, Noël compris
+   * dans le mois). Congé · neuf mois non couverts, aucune tranche · 9 ×
+   * 25 000 = 225 000. Arriérés · le salaire de septembre, 650 000. Total ·
+   * 2 825 000.
+   */
+  async function decompteMatadi() {
+    const s = ctx.sal.E14;
+    if (!s) return [];
+    const faits = {
+      anneesAnciennete: 0, moisNonCouvertsParUnConge: 9, initiative: 'EMPLOYEUR', motif: 'LICENCIEMENT', typeContrat: 'DUREE_DETERMINEE',
+      dateRuptureContrat: '2026-09-30', dateTermeContrat: '2026-12-31', avantagesJusquAuTermeFc: 0,
+      remunerationJournaliereFc: 25_000, remunerationMensuelleFc: 650_000, moyenneMensuelleArticle142Fc: 0,
+      arrieresFc: 650_000, gratificationFc: 0, enfantsBeneficiairesAllocations: 0, moisDeCessation: '2026-09',
+    };
+    const calc = await c.geste('Décompte final de MATADI (calcul)', 'POST', '/personnel/decompte-final', faits);
+    const rub = (k) => calc?.rubriques?.find((r) => r.cle === k)?.montantFc ?? null;
+    R.montant('MATADI · aucun préavis pour un contrat à durée déterminée (art. 69)', 0, rub('preavis'));
+    R.montant('MATADI · dommages-intérêts de l’art. 70 (période restant à courir)', 1_950_000, rub('dommages-interets-art-70'));
+    R.montant('MATADI · indemnité compensatrice de congé', 225_000, rub('conge'));
+    R.montant('MATADI · total dû au travailleur', 2_825_000, calc?.totalDuAuTravailleurFc);
+    await c.geste('Fin du contrat de MATADI', 'POST', `/personnel/contrats/${s.contratId}/fin`, { dateFin: '2026-09-30', motifFin: 'Rupture anticipée par l’employeur' });
+    const elementsMois = [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire de septembre', montantFc: 650_000 }];
+    const b = await c.geste('Décompte final de MATADI (émission)', 'POST', `/personnel/salaries/${s.id}/decompte-final`, { decompte: faits, paie: { moisDePaie: '2026-09', elements: elementsMois, ...PRIVE } });
+    const a = attenduBulletin({ elements: [...elementsMois, { nature: 'INDEMNITE_DE_FIN_DE_CONTRAT', montantFc: 1_950_000 }, { nature: 'ALLOCATION_OU_INDEMNITE_COMPENSATOIRE_DE_CONGE', montantFc: 225_000 }] });
+    if (!b) return [];
+    R.egal('2026-09 · décompte MATADI · [versé, assiette sociale, quote-part ouvrière, IRPP, net]', tupleAttendu(a), tuple(b));
+    return [{ a, b }];
+  }
+
+  await etape(R, 'SARL · quotité saisissable et quotité familiale de l’IRPP', async () => {
+    // Art. 114 · un cinquième de la rémunération nette des retenues fiscales
+    // et sociales, jusqu'à cinq fois le minimum mensuel de la catégorie ·
+    // MBUYI, classe 7 au contrat · 1 500 000 − 75 000 − 194 300 = 1 230 700,
+    // sous le seuil de 5 × 1 324 830 = 6 624 150 · 1 230 700 / 5 = 246 140.
+    const b = ctx.att['E1-2026-01']?.b;
+    R.montant('2026-01 · MBUYI · quotité saisissable du bulletin (classe 7 lue au contrat)', 246_140, b?.calcul?.quotite?.quotiteOrdinaireFc);
+    const sim = await c.geste('Simulation de MBUYI, classe déclarée', 'POST', `/personnel/simulation?salarieId=${ctx.sal.E1?.id}`, {
+      moisDePaie: '2026-01', ...PRIVE, classeProfessionnelle: 7, elements: [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire de base', montantFc: 1_500_000 }],
+    });
+    R.montant('simulation de MBUYI · quotité saisissable avec la classe déclarée', 246_140, sim?.quotite?.quotiteOrdinaireFc);
+    // Art. 123 · 3 personnes à charge sur le bulletin de KAPINGA de janvier ·
+    // 3 987 200 − 199 360 = 3 787 840, × 12 = 45 454 080 → 45 454 000 ;
+    // barème 10 388 320 ; base de la quotité, les trois premières tranches,
+    // 9 486 720 ; − 6 % = 569 203,20 ; 9 819 116,80 / 12 = 818 259,73 → 818 300.
+    const elementsKapinga = [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 3_560_000 }, { nature: 'AVANTAGE_EN_NATURE', libelle: 'Véhicule', montantFc: 427_200 }];
+    const s3 = await c.geste('Simulation · trois personnes à charge', 'POST', '/personnel/simulation', { moisDePaie: '2026-01', ...PRIVE, personnesACharge: 3, elements: elementsKapinga });
+    R.montant('simulation · IRPP avec trois personnes à charge (art. 123)', irppDuMois(3_987_200 - 199_360, 3), s3?.net?.irppFc ?? s3?.retenue?.mensuel?.retenueFc);
+    // Plafond de 30 % (art. 118) · 8 000 000 par mois, quote-part 400 000 ·
+    // 91 200 000 par an ; barème 28 686 720 > 27 360 000 · plafonné, 2 280 000
+    // par mois ; deux personnes à charge · − 4 % × 9 486 720 = 379 468,80 ·
+    // 26 980 531,20 / 12 = 2 248 377,60 → 2 248 400.
+    const gros = [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 8_000_000 }];
+    const s0 = await c.geste('Simulation · revenu au plafond de 30 %', 'POST', '/personnel/simulation', { moisDePaie: '2026-01', ...PRIVE, elements: gros });
+    R.montant('simulation · IRPP plafonné à 30 % (art. 118)', 2_280_000, s0?.net?.irppFc);
+    const s2 = await c.geste('Simulation · revenu au plafond, deux personnes à charge', 'POST', '/personnel/simulation', { moisDePaie: '2026-01', ...PRIVE, personnesACharge: 2, elements: gros });
+    R.montant('simulation · IRPP plafonné, deux personnes à charge (art. 123)', 2_248_400, s2?.net?.irppFc);
+  });
+
   await etape(R, 'SARL · avances, livre de paie et échéancier en cours d’année', async () => {
     const av = await c.lire('Registre des avances', '/personnel/avances');
     const lue = (id) => (av?.avances ?? []).find((x) => x.id === id) ?? null;
@@ -705,6 +785,7 @@ async function sarl(R) {
     return;
   }
 
+  L = new LivreAttendu();
   await etape(R, 'SARL · 2027 · barème SMIG du cabinet et ouverture', async () => {
     // Une version vient un mois APRÈS la dernière connue (2026-01, annexe 2).
     await refusAttendu(c, R, 'Version SMIG datée du 15/01/2026 (même mois que l’annexe 2)', 'POST', '/personnel/baremes', {
@@ -769,6 +850,7 @@ async function sarl(R) {
         const x = await emettre(cle, mois, { smig: SMIG_CABINET_2027 });
         if (x) actifs.push(x);
       }
+      if (mois === '2027-01') await corrigerDecembreDeTshombe();
       if (mois === '2027-01') {
         const b = ctx.att['E5-2027-01']?.b;
         // Plancher CNSS au SMIG du cabinet · 24 000 × 13 = 312 000 > 299 000 versés.
@@ -776,6 +858,42 @@ async function sarl(R) {
       }
       await passerLeMois(n1, mois, actifs);
     });
+  }
+
+  /**
+   * LA CORRECTION QUI TRAVERSE LA CLÔTURE · la prime de rendement de
+   * décembre 2026 de TSHOMBE était de 80 000, non 50 000. Le 20/01/2027,
+   * 2026 clôturé, le bulletin s'annule et se réémet ; la paie de décembre
+   * se repasse DANS 2027, reprise en négatif comprise, datée du 20/01/2027
+   * avec la date de valeur du 31/12/2026 (AUDCIF art. 22, 4° ; art. 20,
+   * al. 2 et 4) · seule la différence pèse sur 2027 · prime + 30 000 ;
+   * CNSS sur 30 000 (6,5 + 5 + 5 + 1,5 %) ; INPP 1 050, ONEM 150 ; IRPP
+   * 830 000 − 41 500 = 788 500, × 12 = 9 462 000 · 1 186 020 / 12 = 98 835 →
+   * 98 800, contre 94 600 · + 4 200 ; net + 30 000 − 1 500 − 4 200 = 24 300.
+   * Le complément est versé en janvier 2027 · sa retenue d'IRPP se reverse
+   * le 15 février (loi n° 004/2003, art. 18, « le 15 du mois qui suit celui
+   * du versement »).
+   */
+  async function corrigerDecembreDeTshombe() {
+    const orig = ctx.att['E13-2026-12'];
+    if (!orig) return;
+    await c.geste('Annulation du bulletin de décembre 2026 de TSHOMBE', 'POST', `/personnel/bulletins/${orig.b.id}/annulation`, { motif: 'Prime de rendement de décembre portée à 80 000 FC par la direction' });
+    const elements = [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire de base', montantFc: 750_000 }, { nature: 'PRIME', libelle: 'Prime de rendement', montantFc: 80_000, rubriqueId: ctx.prdt?.id }];
+    const bis = await c.geste('Bulletin de décembre 2026 de TSHOMBE, réémis', 'POST', `/personnel/salaries/${ctx.sal.E13?.id}/bulletins`, { moisDePaie: '2026-12', dateMiseADisposition: '2027-01-20', ...PRIVE, elements });
+    const a = attenduBulletin({ elements });
+    R.egal('2026-12 · TSHOMBE réémis · [versé, assiette sociale, quote-part ouvrière, IRPP, net]', tupleAttendu(a), tuple(bis));
+    const p = await c.geste('Paie de décembre 2026 repassée dans 2027', 'POST', '/personnel/paie-du-mois/2026-12/comptabilisation', { exerciceId: n1, journalId: od.id, date: '2027-01-20', inscrireNegatifs: true });
+    R.egal('décembre 2026 repassé dans 2027 · [bulletins repris en négatif, date de valeur]', [1, '2026-12-31'],
+      [p?.reprisEnNegatif?.length ?? null, p?.dateValeur ? String(p.dateValeur).slice(0, 10) : null]);
+    if (!p || !bis) return;
+    const neg = { ...orig.a, elements: orig.a.elements.map((e) => ({ ...e, montantFc: -e.montantFc })) };
+    for (const k of ['assiette', 'baseCnss', 'aen', 'totalVerse', 'pf', 'pe', 'pt', 'rp', 'inpp', 'onem', 'irpp', 'retenue', 'net']) neg[k] = -orig.a[k];
+    L.passer(neg); cumulMois('2027-01', neg);
+    L.passer(a); cumulMois('2027-01', a);
+    const complement = a.net - orig.a.net;
+    R.montant('TSHOMBE · complément de net de décembre', 24_300, complement);
+    await ecriture(c, 'Complément du net de décembre 2026 de TSHOMBE', n1, '2027-01-20', 'Complément salaire décembre 2026 TSHOMBE', [['42200000', complement, 0], [BQ, 0, complement]], { journal: bq });
+    L.add('42200000', complement, 0); banque(-complement);
   }
 
   await etape(R, 'SARL · 2027 · registre au 31/03 et prêt soldé', async () => {
@@ -793,6 +911,13 @@ async function sarl(R) {
     R.montant('prêt de MBUYI soldé au 31/03/2027 (douze retenues)', 0, (av?.avances ?? []).find((x) => x.id === ctx.pret?.id)?.soldeFc);
     const b = await balance(c, n1);
     R.montant('balance 2027 · prêt au personnel 2728 soldé', 0, solde(b, '27280000'));
+    for (const compte of ['66110000', '66120000', '66170000', '78100000', '66410000', '64150000', '64130000']) {
+      R.montant(`balance 2027 (janvier à mars) · ${compte}`, L.solde(compte), solde(b, compte));
+    }
+    const q1 = ['2027-01', '2027-02', '2027-03'].reduce((t, m) => t + parMois.get(m).inpp, 0);
+    R.egal('balance 2027 · dettes au 31/03 = retenues de mars (et INPP du trimestre) [4472, 4311, 4312, 4313, 4428]',
+      [-mar.irpp, -mar.pf, -mar.rp, -mar.pension, -(mar.onem + q1)].map((x) => Math.round(x * 100) / 100),
+      ['44720000', '43110000', '43120000', '43130000', '44280000'].map((k) => solde(b, k)));
     R.montant('balance 2027 · 422 soldé (nets payés)', 0, solde(b, '42200000'));
   });
 
@@ -864,7 +989,7 @@ async function ongEtrangere(R) {
     const s = await c.geste('Salarié sans nationalité au registre', 'POST', '/personnel/salaries', { nom: 'BAHATI', sexe: 'FEMININ' });
     if (s) await c.geste('Contrat BAHATI', 'POST', `/personnel/salaries/${s.id}/contrats`, { type: 'DUREE_INDETERMINEE', dateEntreeEnVigueur: '2026-01-01', natureTravail: 'Chauffeur', classeProfessionnelle: 3, periodiciteRemuneration: 'MOIS', remunerationBase: 800_000, deviseRemuneration: 'CDF' });
     const e3 = await c.lire('Accord-cadre après l’ajout', '/accord-cadre?dateReference=2028-02-15');
-    R.egal('accord-cadre · part non proposée quand une nationalité manque [part, effectif]', [null, 11], [e3?.propositionMainOeuvre?.part ?? 'absente', e3?.propositionMainOeuvre?.effectif ?? null]);
+    R.egal('accord-cadre · part non proposée quand une nationalité manque [part, effectif]', [null, 11], [lu(e3?.propositionMainOeuvre?.part), e3?.propositionMainOeuvre?.effectif ?? null]);
   });
 
   await etape(R, 'ONG étrangère · checklist de constitution', async () => {
@@ -937,7 +1062,7 @@ async function ongCongolaise(R) {
     await c.geste('Forme juridique · ONG de droit congolais', 'PATCH', '/dossier/forme-juridique', { formeJuridique: 'ORGANISATION_NON_GOUVERNEMENTALE', droitEtranger: false });
     const e = await c.lire('Accord-cadre', '/accord-cadre');
     // Art. 37 · sous-section II, organisations ÉTRANGÈRES seulement.
-    R.egal('ONG congolaise · accord-cadre [applicable, accords, proposition]', [false, [], null], [e?.applicable ?? null, e?.accords ?? null, e?.propositionMainOeuvre ?? 'absente']);
+    R.egal('ONG congolaise · accord-cadre [applicable, accords, proposition]', [false, [], null], [e?.applicable ?? null, e?.accords ?? null, lu(e?.propositionMainOeuvre)]);
     await refusAttendu(c, R, 'Accord-cadre enregistré pour une ONG de droit congolais', 'POST', '/accord-cadre', { reference: 'AC/PLAN/APK/2020/001', dateSignature: '2020-05-01', dureeAnnees: 10 });
     const k = await c.lire('Parcours de constitution', '/constitution');
     // Art. 3 et 4 (avis du ministère, personnalité juridique), note circulaire A.
@@ -953,5 +1078,3 @@ export default async function (R) {
   await ongCongolaise(R);
 }
 
-// Les outils non employés hors de ce fichier restent importés pour une relecture à la main.
-void rechargerComptes;
