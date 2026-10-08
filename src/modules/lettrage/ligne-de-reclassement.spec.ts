@@ -1,7 +1,13 @@
 import { OrigineLettrage } from '@prisma/client';
 import { LettrageService, MOTIF_DELETTRAGE_MODULE } from './lettrage.service';
 import { PrismaService } from '../../common/prisma.service';
-import { MOTIF_LETTRAGE_RECLASSEMENT, lignesDuCompteClientReclasse } from './ligne-de-reclassement';
+import {
+  MOTIF_LETTRAGE_PERTE_AVEC_TVA,
+  MOTIF_LETTRAGE_RECLASSEMENT,
+  lignesDeLaPerteAvecTva,
+  lignesDuCompteClientReclasse,
+  refuserLignesDuCompteClientReclasse,
+} from './ligne-de-reclassement';
 
 /**
  * LIGNE A7 TER, B3 · le lettrage par montant appariait la facture de
@@ -381,5 +387,43 @@ describe('A7 ter, B2 (b) · le lettrage qu’un module pose sur ses propres lign
     // Un groupe d'une autre origine se délettre comme avant.
     groupes[0].origine = OrigineLettrage.MANUEL;
     await expect(service.delettrer('t1', '416', 'A')).resolves.toEqual({ lettre: 'A', nombreLignes: 3 });
+  });
+});
+
+/*
+  LIGNE TVA-DECISIONS, RELECTURE DU POINT D, MAJEUR 2 · les lignes du compte
+  d'origine de la perte qui récupère la TVA (retour, perte, négatifs de leur
+  annulation) ne se lettrent jamais avec une facture · le moteur de TVA lirait
+  le rapprochement comme un encaissement (décret n° 011/42, art. 57).
+*/
+describe('la perte qui récupère la TVA · ses lignes du compte d’origine ne se lettrent pas avec la facture', () => {
+  const creance = { compteCreanceId: 'cli' };
+  const servies = [
+    // Le retour · son mouvement porte une perte.
+    { id: 'retour', compteId: 'cli', ecriture: { mouvementCreanceDouteuse: { ecriturePerteId: 'e-perte', creance }, mouvementCreanceDouteusePerte: null, corrigeEcriture: null } },
+    // La perte.
+    { id: 'perte', compteId: 'cli', ecriture: { mouvementCreanceDouteuse: null, mouvementCreanceDouteusePerte: { creance }, corrigeEcriture: null } },
+    // Le négatif de la perte, après annulation.
+    { id: 'negatif', compteId: 'cli', ecriture: { mouvementCreanceDouteuse: null, mouvementCreanceDouteusePerte: null, corrigeEcriture: { mouvementCreanceDouteuse: null, mouvementCreanceDouteusePerte: { creance } } } },
+    // La ligne 416 du retour · pas le compte d'origine.
+    { id: 'l416', compteId: 'c416', ecriture: { mouvementCreanceDouteuse: { ecriturePerteId: 'e-perte', creance }, mouvementCreanceDouteusePerte: null, corrigeEcriture: null } },
+    // Une perte au TTC (sans seconde pièce) · hors de la règle.
+    { id: 'ttc', compteId: 'cli', ecriture: { mouvementCreanceDouteuse: { ecriturePerteId: null, creance }, mouvementCreanceDouteusePerte: null, corrigeEcriture: null } },
+  ];
+  const db = {
+    ligneEcriture: {
+      findMany: jest.fn().mockImplementation(({ where }: any) => Promise.resolve(where?.id?.in ? servies.filter((l) => where.id.in.includes(l.id)) : [])),
+    },
+  };
+
+  it('reconnaît le retour, la perte et le négatif par leur liaison, la seule ligne du compte d’origine', async () => {
+    const lues = await lignesDeLaPerteAvecTva(db as any, 't1', ['retour', 'perte', 'negatif', 'l416', 'ttc', 'facture']);
+    expect([...lues].sort()).toEqual(['negatif', 'perte', 'retour']);
+  });
+
+  it('le refus est nommé, au lettrage manuel comme au complément', async () => {
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['facture', 'perte'])).rejects.toThrow(MOTIF_LETTRAGE_PERTE_AVEC_TVA);
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['facture'], ['retour'])).rejects.toThrow(MOTIF_LETTRAGE_PERTE_AVEC_TVA);
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['facture', 'ttc'])).resolves.toBeUndefined();
   });
 });

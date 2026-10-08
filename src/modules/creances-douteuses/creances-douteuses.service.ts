@@ -31,6 +31,8 @@ import {
   MOTIF_TAXE_A_L_ENCAISSEMENT,
   motifRecuperationEnPlace,
   motifRefusAnnulationRecuperation,
+  motifRefusAnnulationPerteAvecTva,
+  informationDecalagePerte,
   motifRefusPerteAvecTva,
   motifRefusRecuperation,
   MESSAGE_TVA_PAR_LA_REGLE_3,
@@ -1793,9 +1795,16 @@ export class CreancesDouteusesService {
     }
     let informationTva: string | null = null;
     if (type === TypeMouvementCreanceDouteuse.PERTE) {
-      // La taxe acquittée qui reste à récupérer se DIT, avec sa voie.
-      const l = await this.lireRecuperation(tenantId, c);
-      if (l.chiffrees.some((f) => !l.dejaRecuperees.has(f.designationId) && f.tvaRecuperable > 0.005)) informationTva = MESSAGE_TVA_PAR_LA_REGLE_3;
+      // La taxe acquittée qui reste à récupérer se DIT, avec sa voie. Lue pour
+      // un message seulement · son échec ne refuse jamais une perte au TTC
+      // légitime (relecture du point D, mineur 8), il se dit « non calculé ».
+      try {
+        const l = await this.lireRecuperation(tenantId, c);
+        if (l.chiffrees.some((f) => !l.dejaRecuperees.has(f.designationId) && f.tvaRecuperable > 0.005)) informationTva = MESSAGE_TVA_PAR_LA_REGLE_3;
+      } catch (err) {
+        this.journalServeur.error(`Taxe des factures de la créance non lue (dossier ${tenantId})`, err instanceof Error ? err.stack : String(err));
+        informationTva = 'La taxe récupérable des factures désignées n’a pas pu être lue · non calculée. « Récupérer la TVA » la chiffrera.';
+      }
     }
     // LA PERTE AU TTC ENTIER, D 651 / C 416 (A7 scindée, décision de Manasse
     // du 2026-10-03) · aucune ligne 443 ; la règle 3 du point D récupère
@@ -1881,44 +1890,59 @@ export class CreancesDouteusesService {
       const f = l.chiffrees.find((x) => x.designationId === d.designationId)!;
       return { ...f, duplicata: { reference: d.reference.trim(), dateEnvoi: d.dateEnvoi.slice(0, 10) } };
     });
+    // B2 de la relecture « échecs silencieux » · une taxe à l'encaissement
+    // qu'une liquidation a pu DÉCLARER (ancien moteur, qui la déclarait à la
+    // facture ; ou part figée par une liquidation) n'est pas « jamais
+    // exigible » · l'annuler au 443 sans taux laisserait le 443 débiteur et
+    // la taxe acquittée jamais récupérée, sans un mot.
+    const declaree = await this.taxeEncaissementDeclaree(tenantId, choisies, l);
+    if (declaree) throw new BadRequestException(declaree);
     const v = ventilerPerte(choisies);
     const ht = centimes(montant - v.tva - v.tvaAnnulee);
     const libelle = `${c.compteCreance.numero} ${c.compteCreance.intitule}`;
-    const retour = await this.ecritures.creer(tenantId, userId, {
-      exerciceId: ex.id,
-      journalId: journal.id,
-      date: jour(date),
-      libelle: `Retour de la créance irrécouvrable au compte d’origine · ${libelle}`.slice(0, 190),
-      lignes: [
-        { compteId: c.compteCreance.id, debit: montant, credit: 0 },
-        { compteId: c.compte416.id, debit: 0, credit: montant },
+    const references = choisies.map((f) => f.duplicata.reference).join(' ; ');
+    /*
+      UNE SEULE TRANSACTION (relecture du point D, MAJEUR 2 et mineur 9) ·
+      retour, perte, mouvement et lettrage de leurs lignes du compte
+      d'origine (origine MODULE) naissent ensemble ou pas du tout · en trois
+      transactions, un arrêt laissait un retour orphelin, ou des lignes du 411
+      ouvertes qu'un lettrage manuel pouvait rapprocher de la facture.
+    */
+    const { suite } = await this.ecritures.creerPlusieursAvec(
+      tenantId,
+      userId,
+      [
+        {
+          exerciceId: ex.id,
+          journalId: journal.id,
+          date: jour(date),
+          libelle: `Retour de la créance irrécouvrable au compte d’origine · ${libelle}`.slice(0, 190),
+          lignes: [
+            { compteId: c.compteCreance.id, debit: montant, credit: 0 },
+            { compteId: c.compte416.id, debit: 0, credit: montant },
+          ],
+        },
+        {
+          exerciceId: ex.id,
+          journalId: journal.id,
+          date: jour(date),
+          libelle: `Perte sur créance irrécouvrable, TVA récupérée (art. 52) · ${libelle}`.slice(0, 190),
+          // La référence de la pièce porte celles des duplicatas, bornée à
+          // 100 caractères · au-delà, le détail figé du mouvement les garde
+          // toutes (`detailTva`), et la réponse le dit.
+          reference: references.slice(0, 100),
+          lignes: [
+            ...(ht > 0.005 ? [{ compteId: comptePerte.id, debit: ht, credit: 0 }] : []),
+            ...v.recuperee.map((r) => ({ compteId: r.compteId, debit: r.tva, credit: 0, tauxTvaId: r.tauxTvaId, libelle: 'TVA récupérée sur créance irrécouvrable (art. 52)' })),
+            // SANS TAUX · la déclaration ne la lit pas ; elle solde la taxe
+            // facturée d'une prestation jamais encaissée (art. 25, 2°).
+            ...v.annulee.map((a) => ({ compteId: a.compteId, debit: a.tva, credit: 0, libelle: 'TVA à l’encaissement jamais exigible, annulée (art. 25, 2°)' })),
+            { compteId: c.compteCreance.id, debit: 0, credit: montant },
+          ],
+        },
       ],
-    });
-    let perte: Awaited<ReturnType<EcritureService['creer']>>;
-    try {
-      perte = await this.ecritures.creer(tenantId, userId, {
-        exerciceId: ex.id,
-        journalId: journal.id,
-        date: jour(date),
-        libelle: `Perte sur créance irrécouvrable, TVA récupérée (art. 52) · ${libelle}`.slice(0, 190),
-        reference: choisies.map((f) => f.duplicata.reference).join(' ; ').slice(0, 100),
-        lignes: [
-          ...(ht > 0.005 ? [{ compteId: comptePerte.id, debit: ht, credit: 0 }] : []),
-          ...v.recuperee.map((r) => ({ compteId: r.compteId, debit: r.tva, credit: 0, tauxTvaId: r.tauxTvaId, libelle: 'TVA récupérée sur créance irrécouvrable (art. 52)' })),
-          // SANS TAUX · la déclaration ne la lit pas ; elle solde la taxe
-          // facturée d'une prestation jamais encaissée (art. 25, 2°).
-          ...v.annulee.map((a) => ({ compteId: a.compteId, debit: a.tva, credit: 0, libelle: 'TVA à l’encaissement jamais exigible, annulée (art. 25, 2°)' })),
-          { compteId: c.compteCreance.id, debit: 0, credit: montant },
-        ],
-      });
-    } catch (err) {
-      await this.compenser(tenantId, retour.id);
-      throw err;
-    }
-    let ligne: Awaited<ReturnType<typeof this.prisma.mouvementCreanceDouteuse.create>>;
-    try {
-      ligne = await transactionJournalisee(this.prisma, (tx) =>
-        tx.mouvementCreanceDouteuse.create({
+      async (tx, [retour, perte]) => {
+        const ligne = await tx.mouvementCreanceDouteuse.create({
           data: {
             tenantId,
             creanceId: c.id,
@@ -1935,15 +1959,17 @@ export class CreancesDouteusesService {
             detailTva: choisies as unknown as Prisma.InputJsonValue,
             createdBy: userId,
           },
-        }),
-      );
-    } catch (err) {
-      await this.compenser(tenantId, perte.id);
-      await this.compenser(tenantId, retour.id);
-      throw err;
-    }
+        });
+        const lignesOrigine = [retour, perte].flatMap((e) => e.lignes.filter((x) => x.compteId === c.compteCreance.id).map((x) => x.id));
+        const lettrage = await this.lettrage.lettrerLignesDuModuleDansTx(tx, tenantId, c.compteCreance.id, lignesOrigine, userId);
+        // Lettrable et non lettré · rien ne part (les lignes resteraient
+        // ouvertes) ; non lettrable · personne ne les lettre, et c'est dit.
+        if ('motif' in lettrage && !lettrage.nonLettrable) throw new BadRequestException(`${lettrage.motif} La perte n’est pas passée.`);
+        return { ligne, lettrageOrigine: 'code' in lettrage ? { pose: true as const, code: lettrage.code } : { pose: false as const, motif: lettrage.motif } };
+      },
+    );
+    const { ligne, lettrageOrigine } = suite;
     const lettrage416 = await this.lettrerSiEteinteSansEchec(tenantId, userId, c.id);
-    const lettrageOrigine = await this.lettrerRetourEtPerte(tenantId, userId, c.compteCreance.id, retour.id, perte.id);
     const information = [
       v.tva > 0.005
         ? `Taxe acquittée de ${v.tva.toFixed(2)} récupérée · inscrite en déduction de la déclaration de la période qui suit (décret n° 011/42, art. 126), une fois la perte validée.`
@@ -1951,6 +1977,7 @@ export class CreancesDouteusesService {
       v.tvaAnnulee > 0.005
         ? `Taxe à l’encaissement de ${v.tvaAnnulee.toFixed(2)} jamais exigible sur l’impayé (O.-L. n° 10/001, art. 25, 2°) · annulée au 443, rien d’acquitté, rien à récupérer (art. 52, al. 1).`
         : null,
+      references.length > 100 ? 'Les références des duplicatas dépassent 100 caractères · la pièce en porte le début, le détail du mouvement les garde toutes.' : null,
     ]
       .filter(Boolean)
       .join(' ');
@@ -1968,26 +1995,51 @@ export class CreancesDouteusesService {
   }
 
   /**
-   * Le retour et la perte se lettrent entre eux au compte d'origine (origine
-   * `MODULE`) · une issue manquée se DIT, jamais ne défait le geste.
+   * B2 · LA TAXE À L'ENCAISSEMENT QU'UNE LIQUIDATION A PU DÉCLARER. Une
+   * facture cochée dont une ligne de TVA est datée à l'encaissement se refuse
+   * à la perte qui récupère quand une liquidation de l'ANCIEN moteur existe
+   * (il déclarait cette taxe à la facture, `reserveAncienMoteur`) ou quand
+   * une liquidation a FIGÉ une part de cette ligne (facture réglée, déclarée,
+   * puis délettrée et reclassée). `null` · rien ne s'y oppose.
    */
-  private async lettrerRetourEtPerte(tenantId: string, userId: string, compteId: string, retourId: string, perteId: string) {
-    try {
-      const lignes = await this.prisma.ligneEcriture.findMany({
-        where: { ecritureId: { in: [retourId, perteId] }, compteId, ecriture: { tenantId } },
-        select: { id: true },
-      });
-      if (lignes.length !== 2) return { pose: false as const, motif: 'Les deux lignes du compte d’origine ne se retrouvent pas · rien n’est lettré.' };
-      const r = await this.lettrage.lettrerLignesDuModule(tenantId, compteId, lignes.map((x) => x.id), userId);
-      return 'code' in r ? { pose: true as const, code: r.code } : { pose: false as const, motif: r.motif };
-    } catch (err) {
-      this.journalServeur.error(`Lettrage du retour et de la perte non posé (dossier ${tenantId})`, err instanceof Error ? err.stack : String(err));
-      return {
-        pose: false as const,
-        motif:
-          'Le lettrage du retour et de la perte au compte d’origine n’a pas pu se poser · ne les rapprochez pas de la facture, le moteur de TVA lirait la perte comme un encaissement.',
-      };
+  private async taxeEncaissementDeclaree(
+    tenantId: string,
+    choisies: ReadonlyArray<{ designationId: string; libelle: string; tvaAnnulable: number }>,
+    l: Awaited<ReturnType<CreancesDouteusesService['lireRecuperation']>>,
+  ): Promise<string | null> {
+    const visees = choisies.filter((f) => f.tvaAnnulable > 0.005);
+    if (visees.length === 0) return null;
+    const issue =
+      'Passez la perte sans duplicata (au TTC entier) · la taxe acquittée à la facture se récupère ensuite par « Récupérer la ' +
+      'TVA » (D 443 / C 751) ; la taxe à l’encaissement déjà déclarée n’est pas reconstituée par OmegaX · vérifiez la ' +
+      'déclaration déposée et portez sa récupération vous-même (O.-L. n° 10/001, art. 52).';
+    if (l.ancienMoteur) {
+      return (
+        `La facture « ${visees[0].libelle} » porte une taxe à l’encaissement, et une liquidation de TVA passée sous l’ancien moteur ` +
+        '(avant la ligne A7 bis) a pu la déclarer à la facture · l’annuler au 443 sans déduction laisserait le 443 débiteur et la ' +
+        `taxe acquittée jamais récupérée. ${issue}`
+      );
     }
+    const lignes = new Set(visees.flatMap((f) => l.lignesEncaissement.get(f.designationId) ?? []));
+    if (lignes.size === 0) return null;
+    const figees = await this.prisma.liquidationTva.findMany({
+      where: { tenantId, NOT: { tvaEncaissementFigee: { equals: Prisma.AnyNull } } },
+      select: { dateDebut: true, dateFin: true, tvaEncaissementFigee: true },
+      orderBy: { dateDebut: 'asc' },
+      take: 600,
+    });
+    for (const liq of figees) {
+      const fige = (liq.tvaEncaissementFigee ?? {}) as Record<string, number>;
+      const ligne = [...lignes].find((id) => Number(fige[id] ?? 0) > 0.005);
+      if (!ligne) continue;
+      const f = visees.find((x) => (l.lignesEncaissement.get(x.designationId) ?? []).includes(ligne))!;
+      return (
+        `La liquidation de TVA du ${jour(liq.dateDebut)} au ${jour(liq.dateFin)} a déclaré une part de la taxe à l’encaissement de ` +
+        `la facture « ${f.libelle} » (${Number(fige[ligne]).toFixed(2)}, réglée puis délettrée) · elle n’est pas « jamais exigible ». ` +
+        issue
+      );
+    }
+    return null;
   }
 
   /**
@@ -2622,15 +2674,59 @@ export class CreancesDouteusesService {
         }
       }
       const defaire = groupe && !groupe.figee ? groupe.id : null;
+      /*
+        LA PERTE QUI RÉCUPÈRE LA TVA SE RETIRE AVEC SES DEUX PIÈCES
+        (relecture du point D, BLOQUANT 1) · retirer le seul retour laissait
+        la pièce D 651 / D 443 / C compte d'origine au brouillard, sans
+        détenteur ; validée ensuite, elle était lue en avoir sur vente et la
+        taxe récupérée sur une créance que le module ne disait plus perdue.
+        Les deux pièces, leurs groupes du module et le mouvement partent dans
+        UNE transaction (`liberer`) ; la perte validée ne se retire plus, elle
+        s'annule (inscription en négatif).
+      */
+      let perte: { id: string; numeroPiece: number | null; statut: StatutEcriture; lignes: Array<{ id: string; compteId: string; lettrageId: string | null }> } | null = null;
+      let groupeOrigine: { id: string; code: string; figee: string | null } | null = null;
+      if (mv.ecriturePerteId) {
+        perte = await this.prisma.ecriture.findFirst({
+          where: { id: mv.ecriturePerteId, tenantId },
+          select: { id: true, numeroPiece: true, statut: true, lignes: { select: { id: true, compteId: true, lettrageId: true } } },
+        });
+        if (!perte) throw new ConflictException('La pièce de la perte de ce mouvement est introuvable · rien n’est retiré.');
+        if (perte.statut !== StatutEcriture.BROUILLARD) {
+          throw new BadRequestException(
+            `La perte (pièce n° ${perte.numeroPiece ?? '·'}) est validée · elle est entrée au livre-journal et ne se retire plus. ` +
+              'Annulez le mouvement (« Annuler ») · ses deux pièces s’inscrivent en négatif (AUDCIF art. 20, al. 2).',
+          );
+        }
+        groupeOrigine = await this.groupeRetourEtPerte(tenantId, perte, ecritureId);
+        if (groupeOrigine?.figee) throw new BadRequestException(motifLettrageFigeAuBrouillard(groupeOrigine.code, groupeOrigine.figee, 'le mouvement'));
+      }
+      const toleres = [defaire, groupeOrigine?.id ?? null].filter((x): x is string => !!x);
       await this.ecritures.supprimer(tenantId, ecritureId, {
         detenteur: DETENTEUR_MOUVEMENT_CREANCE,
-        lettrageTolere: defaire,
+        lettrageTolere: toleres.length === 0 ? null : toleres.length === 1 ? toleres[0] : toleres,
         liberer: async (tx) => {
           if (defaire) await this.lettrage.defaireLettrageDuModule(tx, tenantId, defaire);
+          if (groupeOrigine) await this.lettrage.defaireLettrageDuModule(tx, tenantId, groupeOrigine.id);
           await tx.mouvementCreanceDouteuse.delete({ where: { id: mv.id } });
+          if (perte) {
+            // Relue dans la transaction · un lettrage ou un pointage posé
+            // entre-temps sur la perte refuse, rien ne part.
+            const relues = await tx.ligneEcriture.findMany({
+              where: { ecritureId: perte.id, ecriture: { tenantId } },
+              select: { lettre: true, lettrageId: true, rapprochementId: true },
+            });
+            const tenues = motifLignesTenues(relues, `l'écriture de la perte n° ${perte.numeroPiece ?? '·'}`, 'retirer', ', puis retirez le mouvement', null);
+            if (tenues) throw new BadRequestException(tenues);
+            await this.supprimerBrouillardDansTx(tx, tenantId, perte.id);
+          }
         },
       });
-      return { retire: true, ...(defaire ? { lettrageDefait: defaire } : {}) };
+      return {
+        retire: true,
+        ...(defaire ? { lettrageDefait: defaire } : {}),
+        ...(perte ? { perteRetiree: { ecritureId: perte.id, numeroPiece: perte.numeroPiece, ...(groupeOrigine ? { lettrageDefait: groupeOrigine.id } : {}) } } : {}),
+      };
     });
   }
 
@@ -2674,30 +2770,29 @@ export class CreancesDouteusesService {
     });
     if (!mv) throw new NotFoundException('Mouvement introuvable pour cette créance.');
     /*
-      LA PERTE QUI A RÉCUPÉRÉ LA TVA (point D) s'annule avec ses deux pièces,
-      sous les refus de la récupération · une liquidation de TVA qui couvre sa
-      date ou la suit a inscrit la taxe en déduction d'une déclaration figée ;
-      une clôture de période daterait le négatif plus loin et la reprise
-      glisserait d'une période (AUDCIF art. 22, 4°).
+      LA PERTE QUI A RÉCUPÉRÉ LA TVA (point D) s'annule avec ses deux pièces.
+      Seule une LIQUIDATION de TVA qui couvre sa date ou la suit refuse · la
+      taxe est inscrite en déduction d'une déclaration figée (décret
+      n° 011/42, art. 126). Une clôture de PÉRIODE ne refuse pas (relecture du
+      point D, MAJEUR 3 · la clôture mensuelle est la règle, art. 22, 3°, et
+      la perte devenait irréversible) · le négatif s'inscrit au premier jour
+      non clôturé (art. 22, 4°), la déclaration lit la reprise à cette date, et
+      le décalage se DIT.
     */
+    let decalagePerte: string | null = null;
     if (!mv.annuleeLe && n(mv.montantTva) > 0.005 && mv.ecriturePerte) {
-      const clotures = await this.prisma.cloture.findMany({
-        where: { tenantId, annuleeAt: null, OR: [{ journalId: mv.ecriturePerte.journalId }, { journalId: null }] },
-      });
-      const premier = premierJourNonCloture(clotures, mv.ecriturePerte.journalId, mv.date);
       const liquidation = await this.prisma.liquidationTva.findFirst({
         where: { tenantId, dateFin: { gte: mv.date } },
         orderBy: { dateFin: 'desc' },
         select: { dateFin: true },
       });
-      const refusTva = motifRefusAnnulationRecuperation({
-        dejaAnnulee: null,
-        exerciceClos: false,
-        liquidationCouvrante: liquidation ? jour(liquidation.dateFin) : null,
-        periodeClose: premier.getTime() !== mv.date.getTime() ? jour(premier) : null,
-        motif: motifSaisi,
-      });
+      const refusTva = motifRefusAnnulationPerteAvecTva(liquidation ? jour(liquidation.dateFin) : null);
       if (refusTva) throw new BadRequestException(refusTva);
+      const clotures = await this.prisma.cloture.findMany({
+        where: { tenantId, annuleeAt: null, OR: [{ journalId: mv.ecriturePerte.journalId }, { journalId: null }] },
+      });
+      const premier = premierJourNonCloture(clotures, mv.ecriturePerte.journalId, mv.date);
+      if (premier.getTime() !== mv.date.getTime()) decalagePerte = informationDecalagePerte(jour(premier));
     }
     await this.refuserSiCorrigee(tenantId, id);
     // Ligne A7 bis, partie 2 · l'annulation changerait l'impayé déclaré.
@@ -2822,51 +2917,43 @@ export class CreancesDouteusesService {
       if (mv.ecriturePerte && annulationPerte?.traitement === 'SUPPRIMEE') {
         await this.supprimerBrouillardDansTx(tx, tenantId, mv.ecriturePerte.id);
       }
+      /*
+        POINT D · LES LIGNES DU COMPTE D'ORIGINE NE RESTENT PAS OUVERTES · le
+        retour, la perte et leurs négatifs (ce qui en survit) soldent ensemble ;
+        laissés ouverts, un lettrage pourrait rapprocher la facture d'une perte
+        annulée, et le moteur de TVA lirait ce rapprochement comme un
+        ENCAISSEMENT (décret n° 011/42, art. 57). Le module les lettre entre
+        elles (origine MODULE) DANS la transaction (relecture du point D,
+        MAJEUR 2) · lettrables et non lettrées, rien ne part ; un compte non
+        lettrable n'a pas de groupe, et c'est dit.
+      */
+      let lettrageOrigine: { pose: true; code: string } | { pose: false; motif: string } | null = null;
+      if (mv.ecriturePerte && creanceDuMouvement) {
+        const ecritures = [
+          annulation.traitement === 'SUPPRIMEE' ? null : (mv.ecriture?.id ?? null),
+          annulation.negatifId as string | undefined,
+          annulationPerte?.traitement === 'SUPPRIMEE' ? null : mv.ecriturePerte.id,
+          annulationPerte?.negatifId as string | undefined,
+        ].filter((x): x is string => !!x);
+        const ouvertes = await tx.ligneEcriture.findMany({
+          where: { ecritureId: { in: ecritures }, compteId: creanceDuMouvement.compteCreanceId, lettrageId: null, ecriture: { tenantId } },
+          select: { id: true },
+        });
+        if (ouvertes.length >= 2) {
+          const r = await this.lettrage.lettrerLignesDuModuleDansTx(tx, tenantId, creanceDuMouvement.compteCreanceId, ouvertes.map((l) => l.id), userId);
+          if ('motif' in r && !r.nonLettrable) throw new BadRequestException(`${r.motif} L’annulation n’est pas passée.`);
+          lettrageOrigine = 'code' in r ? { pose: true, code: r.code } : { pose: false, motif: r.motif };
+        }
+      }
       return {
         annule: true,
         annulation,
-        annulationPerte,
+        ...(mv.ecriturePerte ? { lettrageOrigine } : {}),
+        ...(decalagePerte ? { decalage: decalagePerte } : {}),
         ...(groupe && maintenu ? { information: informationLettrageMaintenu(groupe.code, groupe.figee!) } : {}),
       };
-    });
-    if (!mv.ecriturePerte || !creanceDuMouvement) {
-      const { annulationPerte: _p, ...reste } = resultat;
-      return reste;
-    }
-    /*
-      POINT D · LES LIGNES DU COMPTE D'ORIGINE NE RESTENT PAS OUVERTES · le
-      retour, la perte et leurs négatifs (ce qui en survit) soldent ensemble ;
-      laissés ouverts, un lettrage automatique pourrait rapprocher la facture
-      d'une perte annulée, et le moteur de TVA lirait ce rapprochement comme
-      un ENCAISSEMENT (décret n° 011/42, art. 57). Le module les lettre entre
-      elles (origine MODULE) ; l'issue se DIT, jamais ne défait l'annulation.
-    */
-    const ecritures = [
-      resultat.annulation.traitement === 'SUPPRIMEE' ? null : (mv.ecriture?.id ?? null),
-      resultat.annulation.negatifId as string | undefined,
-      resultat.annulationPerte?.traitement === 'SUPPRIMEE' ? null : mv.ecriturePerte.id,
-      resultat.annulationPerte?.negatifId as string | undefined,
-    ].filter((x): x is string => !!x);
-    let lettrageOrigine: { pose: true; code: string } | { pose: false; motif: string } | null = null;
-    try {
-      const ouvertes = await this.prisma.ligneEcriture.findMany({
-        where: { ecritureId: { in: ecritures }, compteId: creanceDuMouvement.compteCreanceId, lettrageId: null, ecriture: { tenantId } },
-        select: { id: true },
-      });
-      if (ouvertes.length >= 2) {
-        const r = await this.lettrage.lettrerLignesDuModule(tenantId, creanceDuMouvement.compteCreanceId, ouvertes.map((l) => l.id), userId);
-        lettrageOrigine = 'code' in r ? { pose: true, code: r.code } : { pose: false, motif: r.motif };
-      }
-    } catch (err) {
-      this.journalServeur.error(`Lettrage du compte d'origine après l'annulation non posé (dossier ${tenantId})`, err instanceof Error ? err.stack : String(err));
-      lettrageOrigine = {
-        pose: false,
-        motif:
-          'Les lignes du compte d’origine (retour, perte et leurs négatifs) n’ont pas pu se lettrer entre elles · ne les rapprochez pas de la facture, le moteur de TVA lirait la perte comme un encaissement.',
-      };
-    }
-    const { annulationPerte: _p, ...reste } = resultat;
-    return { ...reste, lettrageOrigine };
+    }, { maxWait: 10_000, timeout: 30_000 });
+    return resultat;
   }
 
   /**
@@ -2951,7 +3038,23 @@ export class CreancesDouteusesService {
           'non encaissée · OmegaX ne la récupère pas. Vérifiez la déclaration déposée et, si la taxe y figure, déclarez sa récupération ' +
           'vous-même (art. 52).'
         : null;
-    return { pertes, chiffrees, dejaRecuperees, recuperations, finDerniereLiquidation: derniereLiquidation?.dateFin ?? null, reserveAncienMoteur };
+    // B2 · les lignes de TVA à l'encaissement de chaque facture désignée.
+    const lignesEncaissement = new Map<string, string[]>(
+      designations.map((d) => [
+        d.id,
+        (taxes.get(d.ligneEcriture.ecritureId)?.lignesTva ?? []).filter((x) => x.base === 'ENCAISSEMENT').map((x) => x.ligneId),
+      ]),
+    );
+    return {
+      pertes,
+      chiffrees,
+      dejaRecuperees,
+      recuperations,
+      finDerniereLiquidation: derniereLiquidation?.dateFin ?? null,
+      reserveAncienMoteur,
+      ancienMoteur,
+      lignesEncaissement,
+    };
   }
 
   private static entreePertes(pertes: Awaited<ReturnType<CreancesDouteusesService['lireRecuperation']>>['pertes']) {

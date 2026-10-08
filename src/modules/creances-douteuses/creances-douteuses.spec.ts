@@ -462,6 +462,9 @@ describe('créances douteuses · service', () => {
       taxes?: Map<string, unknown>;
       /** Point D · la fin de la dernière liquidation de TVA du dossier. */
       finDerniereLiquidation?: Date;
+      /** B2 · une liquidation de l'ancien moteur existe ; les liquidations qui ont figé une part à l'encaissement. */
+      ancienMoteur?: boolean;
+      liquidationsFigees?: Array<{ dateDebut: Date; dateFin: Date; tvaEncaissementFigee: Record<string, number> }>;
     } = {},
   ) {
     let rang = 0;
@@ -642,6 +645,7 @@ describe('créances douteuses · service', () => {
       },
       liquidationTva: {
         findFirst: jest.fn().mockResolvedValue(options.finDerniereLiquidation ? { dateFin: options.finDerniereLiquidation } : null),
+        findMany: jest.fn().mockResolvedValue(options.liquidationsFigees ?? []),
       },
       mouvementCreanceDouteuse: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'mv-1', ...data })),
@@ -679,6 +683,8 @@ describe('créances douteuses · service', () => {
     // B2 · le service de lettrage, que le module appelle à l'extinction et à l'annulation.
     const lettrage = {
       lettrerLignesDuModule: jest.fn().mockResolvedValue({ code: 'A' }),
+      // Point D · le groupe posé DANS la transaction de l'appelant.
+      lettrerLignesDuModuleDansTx: jest.fn().mockResolvedValue({ code: 'A' }),
       defaireLettrageDuModule: jest.fn().mockResolvedValue(undefined),
     };
     // A7 quater, m1 · l'écriture et ce qui la tient dans une transaction · la
@@ -689,14 +695,24 @@ describe('créances douteuses · service', () => {
       const ecriture = await creer(t, u, dto);
       return { ecriture, suite: await suite(prisma, ecriture) };
     });
+    // Point D · plusieurs écritures et leur suite dans UNE transaction · la
+    // doublure les crée par `creer` (appels relus), lignes numérotées par rang.
+    const creerPlusieursAvec = jest.fn().mockImplementation(async (t: string, u: string, dtos: any[], suite: (tx: unknown, e: unknown[]) => Promise<unknown>) => {
+      const ecritures = [];
+      for (const dto of dtos) {
+        const e = await creer(t, u, dto);
+        ecritures.push({ ...e, lignes: dto.lignes.map((l: { compteId: string }, i: number) => ({ id: `${e.id}-l${i}`, compteId: l.compteId })) });
+      }
+      return { ecritures, suite: await suite(prisma, ecritures) };
+    });
     const detenteursDeLEcriture = jest.fn().mockResolvedValue(options.detenteurs ?? []);
     const service = new CreancesDouteusesService(
       prisma,
-      { creer, creerAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, detenteursDeLEcriture } as any,
+      { creer, creerAvec, creerPlusieursAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, detenteursDeLEcriture } as any,
       lettrage as any,
-      { taxeDesFactures: jest.fn().mockResolvedValue({ factures: options.taxes ?? new Map(), ancienMoteur: false }) } as any,
+      { taxeDesFactures: jest.fn().mockResolvedValue({ factures: options.taxes ?? new Map(), ancienMoteur: options.ancienMoteur ?? false }) } as any,
     );
-    return { service, prisma, creer, creerAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, lettrage };
+    return { service, prisma, creer, creerAvec, creerPlusieursAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, lettrage };
   }
 
   /**
@@ -1134,7 +1150,8 @@ describe('créances douteuses · service', () => {
   };
 
   it('point D, règle 1 · la perte passe en DEUX pièces · retour D 4111 / C 4162, puis D 6511 1 000 000 / D 4431 160 000 / C 4111', async () => {
-    const { service, creer, prisma, lettrage } = monterPerteAvecTva('DATE_ECRITURE');
+    const m = monterPerteAvecTva('DATE_ECRITURE');
+    const { service, creer, prisma, lettrage } = m;
     const r: any = await service.perte('t', 'u', 'cd-1', dtoPerteAvecTva);
     expect(creer).toHaveBeenCalledTimes(2);
     expect(creer.mock.calls[0][2].lignes).toEqual([
@@ -1157,8 +1174,9 @@ describe('créances douteuses · service', () => {
     const data = prisma.mouvementCreanceDouteuse.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ type: 'PERTE', montant: 1_160_000, ecritureId: 'ecr-1', ecriturePerteId: 'ecr-2', montantTva: 160_000, montantTvaAnnulee: 0 });
     expect(data.detailTva[0]).toMatchObject({ designationId: 'des-A', duplicata: { reference: 'DUP-F1', dateEnvoi: '2027-03-01' } });
-    // (ii) et (iii) · le 416 se lettre par le module, et le retour avec la perte au compte d'origine.
-    expect(lettrage.lettrerLignesDuModule).toHaveBeenCalledWith('t', 'cli', ['l-ecr-1', 'l-ecr-2'], 'u');
+    // (ii) et (iii) · le retour et la perte se lettrent au compte d'origine DANS la transaction qui les crée (MAJEUR 2).
+    expect(m.creerPlusieursAvec).toHaveBeenCalledTimes(1);
+    expect(lettrage.lettrerLignesDuModuleDansTx).toHaveBeenCalledWith(prisma, 't', 'cli', ['ecr-1-l0', 'ecr-2-l2'], 'u');
     expect(r).toMatchObject({ montantHt: 1_000_000, montantTva: 160_000, lettrageOrigine: { pose: true } });
     expect(r.information).toMatch(/160000\.00 récupérée.*art\. 126/);
   });
@@ -1173,6 +1191,26 @@ describe('créances douteuses · service', () => {
     ]);
     expect(prisma.mouvementCreanceDouteuse.create.mock.calls[0][0].data).toMatchObject({ montantTva: 0, montantTvaAnnulee: 160_000 });
     expect(r.information).toMatch(/rien d’acquitté, rien à récupérer \(art\. 52, al\. 1\)/);
+  });
+
+  it('B2 · une taxe à l’encaissement que l’ancien moteur a pu déclarer, ou qu’une liquidation a figée, refuse la perte avec duplicata, avant toute écriture', async () => {
+    const base = { creance: creanceClient(), regime: { assujettiTva: true }, designations: [designationF1], taxes: taxesF1('ENCAISSEMENT'), finDerniereLiquidation: new Date('2027-02-28') };
+    const ancien = monter({ ...base, ancienMoteur: true });
+    await expect(ancien.service.perte('t', 'u', 'cd-1', dtoPerteAvecTva)).rejects.toThrow(/ancien moteur.*443 débiteur.*Passez la perte sans duplicata/);
+    expect(ancien.creer).not.toHaveBeenCalled();
+    const fige = monter({ ...base, liquidationsFigees: [{ dateDebut: new Date('2026-03-01'), dateFin: new Date('2026-03-31'), tvaEncaissementFigee: { 't-1': 40_000 } }] });
+    await expect(fige.service.perte('t', 'u', 'cd-1', dtoPerteAvecTva)).rejects.toThrow(/du 2026-03-01 au 2026-03-31 a déclaré une part.*40000\.00/);
+    expect(fige.creer).not.toHaveBeenCalled();
+  });
+
+  it('B2 · un compte d’origine non lettrable n’arrête pas la perte · lettrable mais non lettré, rien ne part', async () => {
+    const m = monterPerteAvecTva('DATE_ECRITURE');
+    m.lettrage.lettrerLignesDuModuleDansTx.mockResolvedValueOnce({ motif: 'Le compte 41110001 n’est pas déclaré lettrable.', nonLettrable: true });
+    const r: any = await m.service.perte('t', 'u', 'cd-1', dtoPerteAvecTva);
+    expect(r.lettrageOrigine).toEqual({ pose: false, motif: 'Le compte 41110001 n’est pas déclaré lettrable.' });
+    const n = monterPerteAvecTva('DATE_ECRITURE');
+    n.lettrage.lettrerLignesDuModuleDansTx.mockResolvedValueOnce({ motif: 'Les lignes ne soldent pas.' });
+    await expect(n.service.perte('t', 'u', 'cd-1', dtoPerteAvecTva)).rejects.toThrow(/ne soldent pas.*La perte n’est pas passée/);
   });
 
   it('point D · sans duplicata, la perte reste au TTC (D 6511 / C 4162) et dit que la taxe se récupérera par la règle 3', async () => {
@@ -1243,9 +1281,44 @@ describe('créances douteuses · service', () => {
     );
     const r: any = await m.service.annulerMouvement('t', 'u', 'cd-1', 'mv-d', { motif: 'Duplicata envoyé à une mauvaise adresse' });
     expect(m.inscrireEnNegatifPourAnnulation).toHaveBeenCalledTimes(2);
-    expect(m.lettrage.lettrerLignesDuModule).toHaveBeenCalledWith('t', 'cli', ['l-ecr-1', 'l-neg-ecr-1', 'l-ecr-2', 'l-neg-ecr-2'], 'u');
+    expect(m.lettrage.lettrerLignesDuModuleDansTx).toHaveBeenCalledWith(m.prisma, 't', 'cli', ['l-ecr-1', 'l-neg-ecr-1', 'l-ecr-2', 'l-neg-ecr-2'], 'u');
+    expect(m.lettrage.lettrerLignesDuModule).not.toHaveBeenCalled();
     expect(r.lettrageOrigine).toEqual({ pose: true, code: 'A' });
-    expect(r.annulationPerte).toBeUndefined();
+  });
+
+  it('MAJEUR 3 · une clôture de PÉRIODE ne fige pas la perte qui récupère · les négatifs s’inscrivent au premier jour ouvert, et c’est dit', async () => {
+    const mv = { id: 'mv-d', type: TypeMouvementCreanceDouteuse.PERTE, date: new Date('2027-03-15'), montant: 1_160_000, ecritureId: 'ecr-1', annuleeLe: null, exerciceId: 'ex-27' };
+    const m = monter({
+      creance: { ...creanceClient([mv]), compteCreanceId: 'cli' },
+      mouvement: {
+        ...mv,
+        creanceId: 'cd-1',
+        montantTva: 160_000,
+        exercice: { statut: StatutExercice.OUVERT },
+        ecriture: { id: 'ecr-1', statut: 'VALIDEE', numeroPiece: 11, lignes: [{ lettre: null, lettrageId: null, rapprochementId: null }] },
+        ecriturePerte: { id: 'ecr-2', statut: 'VALIDEE', numeroPiece: 12, journalId: 'od', lignes: [] },
+      },
+    });
+    m.prisma.cloture.findMany.mockResolvedValue([{ granularite: 'PERIODE', journalId: null, dateLimite: new Date('2027-03-31') }]);
+    const r: any = await m.service.annulerMouvement('t', 'u', 'cd-1', 'mv-d', { motif: 'Le client a payé' });
+    expect(m.inscrireEnNegatifPourAnnulation).toHaveBeenCalledTimes(2);
+    expect(r.decalage).toMatch(/inscrits au 2027-04-01, premier jour non clôturé \(AUDCIF art\. 22, 4°\)/);
+  });
+
+  it('BLOQUANT 1 · « Retirer » une perte qui récupère retire ses DEUX pièces dans une transaction ; validée, elle ne se retire pas', async () => {
+    const mv = { id: 'mv-d', type: TypeMouvementCreanceDouteuse.PERTE, date: new Date('2027-03-15'), montant: 1_160_000, ecritureId: 'ecr-1', ecriturePerteId: 'ecr-2', annuleeLe: null, exerciceId: 'ex-27' };
+    const piece = (statut: string) => ({ id: 'ecr-2', numeroPiece: 12, statut, lignes: [{ id: 'lp', compteId: 'cli', lettrageId: null }] });
+    const m = monter({ creance: { ...creanceClient([mv]), compteCreanceId: 'cli' } });
+    m.prisma.ecriture.findFirst.mockImplementation(({ where }: any) => Promise.resolve(where.id === 'ecr-2' ? piece('BROUILLARD') : { statut: 'BROUILLARD' }));
+    const r: any = await m.service.retirerMouvement('t', 'u', 'cd-1', 'mv-d');
+    expect(m.supprimer).toHaveBeenCalledWith('t', 'ecr-1', expect.objectContaining({ liberer: expect.any(Function) }));
+    expect(m.prisma.mouvementCreanceDouteuse.delete).toHaveBeenCalledWith({ where: { id: 'mv-d' } });
+    expect(m.prisma.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'ecr-2', tenantId: 't', statut: 'BROUILLARD' } });
+    expect(r.perteRetiree).toMatchObject({ ecritureId: 'ecr-2', numeroPiece: 12 });
+    const v = monter({ creance: { ...creanceClient([mv]), compteCreanceId: 'cli' } });
+    v.prisma.ecriture.findFirst.mockImplementation(({ where }: any) => Promise.resolve(where.id === 'ecr-2' ? piece('VALIDEE') : { statut: 'BROUILLARD' }));
+    await expect(v.service.retirerMouvement('t', 'u', 'cd-1', 'mv-d')).rejects.toThrow(/pièce n° 12\) est validée.*Annulez le mouvement/);
+    expect(v.supprimer).not.toHaveBeenCalled();
   });
 
   it('point D · une liquidation de TVA qui couvre la date de la perte refuse son annulation (déclaration figée)', async () => {

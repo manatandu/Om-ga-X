@@ -100,9 +100,58 @@ export async function lignesReclasseesDuCompte(db: LecteurLignes, tenantId: stri
 }
 
 /**
+ * LES LIGNES DU COMPTE D'ORIGINE DE LA PERTE QUI RÉCUPÈRE LA TVA (ligne
+ * tva-decisions, relecture du point D, MAJEUR 2) · le retour (D compte
+ * d'origine / C 416), la perte (D 651 / D 443 / C compte d'origine) et les
+ * négatifs de leur annulation. Le module les lettre entre elles, dans la
+ * transaction qui les crée ; un lettrage qui les rapprocherait de la FACTURE
+ * serait lu par le moteur de TVA comme un encaissement (décret n° 011/42,
+ * art. 57). Reconnues par leur LIAISON (`ecritureId` d'un mouvement qui porte
+ * une `ecriturePerteId`, `ecriturePerteId`, et l'écriture qu'un négatif
+ * corrige), seule la ligne du compte d'origine de la créance.
+ */
+export const MOTIF_LETTRAGE_PERTE_AVEC_TVA =
+  "Ne lettrez pas cette ligne avec une facture · elle appartient à la perte d'une créance irrécouvrable qui récupère la TVA " +
+  '(retour au compte du client, perte, ou leurs négatifs), que le module lettre lui-même. Rapprochée de la facture, elle serait ' +
+  'lue par le calcul de la TVA comme un encaissement (décret n° 011/42, art. 57).';
+
+interface LiaisonPerte {
+  mouvementCreanceDouteuse?: { ecriturePerteId: string | null; creance: { compteCreanceId: string } | null } | null;
+  mouvementCreanceDouteusePerte?: { creance: { compteCreanceId: string } | null } | null;
+}
+
+const SELECT_LIAISON_PERTE = {
+  mouvementCreanceDouteuse: { select: { ecriturePerteId: true, creance: { select: { compteCreanceId: true } } } },
+  mouvementCreanceDouteusePerte: { select: { creance: { select: { compteCreanceId: true } } } },
+} as const;
+
+/** Le compte d'origine de la créance quand l'écriture est une pièce d'une perte qui récupère la TVA · `null` sinon. */
+function compteDeLaPerte(e: LiaisonPerte | null | undefined): string | null {
+  if (!e) return null;
+  if (e.mouvementCreanceDouteuse?.ecriturePerteId != null && e.mouvementCreanceDouteuse.creance) return e.mouvementCreanceDouteuse.creance.compteCreanceId;
+  if (e.mouvementCreanceDouteusePerte?.creance) return e.mouvementCreanceDouteusePerte.creance.compteCreanceId;
+  return null;
+}
+
+export async function lignesDeLaPerteAvecTva(db: LecteurLignes, tenantId: string, ligneIds: readonly string[]): Promise<Set<string>> {
+  if (ligneIds.length === 0) return new Set();
+  const liee = { OR: [{ mouvementCreanceDouteuse: { is: { ecriturePerteId: { not: null } } } }, { mouvementCreanceDouteusePerte: { isNot: null } }] };
+  const lues = (await db.ligneEcriture.findMany({
+    where: { id: { in: [...ligneIds] }, ecriture: { tenantId, OR: [liee, { corrigeEcriture: { is: liee } }] } },
+    select: { id: true, compteId: true, ecriture: { select: { ...SELECT_LIAISON_PERTE, corrigeEcriture: { select: SELECT_LIAISON_PERTE } } } },
+  })) as Array<{ id: string; compteId: string; ecriture: (LiaisonPerte & { corrigeEcriture?: LiaisonPerte | null }) | null }>;
+  // La liaison se relit sur la ligne servie · une doublure qui ne sert pas
+  // le filtre ne fait jamais passer une ligne pour une pièce de la perte.
+  return new Set(
+    lues.filter((l) => (compteDeLaPerte(l.ecriture) ?? compteDeLaPerte(l.ecriture?.corrigeEcriture)) === l.compteId).map((l) => l.id),
+  );
+}
+
+/**
  * LE REFUS NOMMÉ de tout lettrage qui prendrait la ligne d'un reclassement en
- * vigueur · `dejaDuGroupe`, les lignes d'un groupe partiel que l'on complète,
- * lues avec les nouvelles (un groupe hérité qui la porterait ne s'étend pas).
+ * vigueur, ou une ligne du compte d'origine de la perte qui récupère la TVA ·
+ * `dejaDuGroupe`, les lignes d'un groupe partiel que l'on complète, lues avec
+ * les nouvelles (un groupe hérité qui la porterait ne s'étend pas).
  */
 export async function refuserLignesDuCompteClientReclasse(
   db: LecteurLignes,
@@ -110,8 +159,11 @@ export async function refuserLignesDuCompteClientReclasse(
   ligneIds: readonly string[],
   dejaDuGroupe: readonly string[] = [],
 ) {
-  const tenues = await lignesDuCompteClientReclasse(db, tenantId, [...new Set([...ligneIds, ...dejaDuGroupe])]);
+  const toutes = [...new Set([...ligneIds, ...dejaDuGroupe])];
+  const tenues = await lignesDuCompteClientReclasse(db, tenantId, toutes);
   if (tenues.size > 0) throw new BadRequestException(MOTIF_LETTRAGE_RECLASSEMENT);
+  const pertes = await lignesDeLaPerteAvecTva(db, tenantId, toutes);
+  if (pertes.size > 0) throw new BadRequestException(MOTIF_LETTRAGE_PERTE_AVEC_TVA);
 }
 
 /**

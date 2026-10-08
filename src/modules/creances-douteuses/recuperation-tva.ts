@@ -578,3 +578,27 @@ export function motifRefusPerteAvecTva(e: {
   if (v.tva > 0.005) return motifRefusDateRecuperation(e.date, e.date, e.finDerniereLiquidation);
   return null;
 }
+
+/**
+ * L'ANNULATION DE LA PERTE QUI RÉCUPÈRE LA TVA (relecture du point D,
+ * MAJEUR 3) · seule une LIQUIDATION de TVA qui couvre sa date, ou la suit,
+ * la refuse · la taxe récupérée est inscrite en déduction d'une déclaration
+ * figée (décret n° 011/42, art. 126). Une clôture de période ne refuse pas
+ * (`informationDecalagePerte`).
+ */
+export function motifRefusAnnulationPerteAvecTva(liquidationCouvrante: string | null): string | null {
+  if (!liquidationCouvrante) return null;
+  return (
+    `La TVA est liquidée jusqu’au ${liquidationCouvrante}, au-delà de la date de cette perte · la taxe qu’elle récupère est ` +
+    'inscrite en déduction d’une déclaration figée (décret n° 011/42, art. 126), et la perte ne s’annule plus par ce geste. ' +
+    'Si le client paie, la reprise de la taxe se déclare à la main avec la déclaration en cours, et l’encaissement se passe au journal.'
+  );
+}
+
+/** Le négatif de la perte, daté au premier jour non clôturé (AUDCIF art. 22, 4°) · la reprise se lit dans cette période. */
+export function informationDecalagePerte(premierJourOuvert: string): string {
+  return (
+    `Une clôture de période couvre la date de la perte · ses négatifs sont inscrits au ${premierJourOuvert}, premier jour non ` +
+    'clôturé (AUDCIF art. 22, 4°), et la reprise de la taxe récupérée se lit dans la déclaration de cette période.'
+  );
+}
