@@ -70,6 +70,57 @@ describe('poids des lignes ouvertes · la règle', () => {
     expect(poids.get('r')).toBe(0);
   });
 
+  it('l’ordre est celui de la LOI · la facture échue avant la plus ancienne non échue (art. 154 ; second tour, M1)', () => {
+    // F1 de janvier n'échoit qu'en décembre, F2 de mars en mars · le
+    // règlement d'avril éteint F2, échue, et F1 reste due en entier.
+    const { poids } = poidsDesLignesOuvertes([
+      ligne('f1', 1_000_000, 0, '2026-01-15', 'g', '2026-12-15'),
+      ligne('f2', 2_000_000, 0, '2026-03-01', 'g', '2026-03-31'),
+      ligne('r', 0, 1_000_000, '2026-04-10', 'g'),
+    ]);
+    expect(poids.get('f1')).toBe(1_000_000);
+    expect(poids.get('f2')).toBe(1_000_000);
+    expect(poids.get('r')).toBe(0);
+  });
+
+  it('la part DÉCLARÉE d’un paiement prime l’ordre légal (art. 151 et 153 · le client C2 de la simulation)', () => {
+    const lignes = [
+      ligne('fp001', 1_160_000, 0, '2026-05-05', 'g'),
+      ligne('fv004', 672_800, 0, '2026-05-06', 'g'),
+      ligne('paie', 0, 1_160_000, '2026-05-20', 'g'),
+    ];
+    // Sans déclaration · la plus ancienne d'abord, FV-004 reste due.
+    expect(poidsDesLignesOuvertes(lignes).poids.get('fv004')).toBe(672_800);
+    // La quittance acceptée impute 672 800 sur FV-004 et 487 200 sur FP-001 ·
+    // FP-001 reste due pour 672 800, FV-004 est soldée.
+    const declarations = new Map([['paie', [{ ligneFactureId: 'fv004', montant: 672_800 }, { ligneFactureId: 'fp001', montant: 487_200 }]]]);
+    const { poids, nonRepartis } = poidsDesLignesOuvertes(lignes, new Map(), new Set(), declarations);
+    expect(nonRepartis).toEqual([]);
+    expect(poids.get('fp001')).toBe(672_800);
+    expect(poids.get('fv004')).toBe(0);
+    expect(poids.get('paie')).toBe(0);
+  });
+
+  it('une part déclarée au-delà de ce que la facture doit ne se répartit pas, et le groupe est nommé', () => {
+    const { nonRepartis } = poidsDesLignesOuvertes(
+      [ligne('f', 500_000, 0, '2026-05-05', 'g'), ligne('p', 0, 300_000, '2026-05-20', 'g')],
+      new Map(),
+      new Set(),
+      new Map([['p', [{ ligneFactureId: 'f', montant: 600_000 }]]]),
+    );
+    expect(nonRepartis).toEqual(['g']);
+  });
+
+  it('un négatif qui a deux origines possibles ne devine pas la sienne (second tour, m1)', () => {
+    const { nonRepartis } = poidsDesLignesOuvertes([
+      ligne('fjan', 1_000_000, 0, '2026-01-05', 'g'),
+      ligne('fmar', 1_000_000, 0, '2026-03-05', 'g'),
+      ligne('fneg', -1_000_000, 0, '2026-03-20', 'g'),
+      ligne('r', 0, 500_000, '2026-04-01', 'g'),
+    ]);
+    expect(nonRepartis).toEqual(['g']);
+  });
+
   it('un groupe RECONDUIT se lit à la pièce d’origine de ses à-nouveaux, jamais à leur identifiant (relecture TypeScript, bloquant 1)', () => {
     // Les deux à-nouveaux sont datés du 1er janvier, et l'identifiant de F2
     // se trie AVANT celui de F1 · sans l'origine, F2 serait éteinte d'abord.
@@ -158,6 +209,7 @@ function lecteur(base: Array<LigneOuverte & { statut?: string }>) {
       }),
     },
     lettrage: { findMany: jest.fn(async () => []) },
+    imputationPaiement: { findMany: jest.fn(async () => []) },
   };
 }
 
@@ -253,6 +305,7 @@ describe('poids des lignes ouvertes · les notes par échéance', () => {
         groupBy: jest.fn(async () => [{ lettrageId: 'g', _count: { _all: 2 } }]),
       },
       lettrage: { findMany: jest.fn(async () => []) },
+      imputationPaiement: { findMany: jest.fn(async () => []) },
     } as unknown as PrismaService;
     const service = new NoteAnnexeService({} as never, {} as never, prisma, {} as never, {} as never);
     const echeances = await (service as unknown as {
@@ -310,6 +363,7 @@ describe('poids des lignes ouvertes · la NOTE 3 des SMT (relecture, majeur 8)',
         findMany: jest.fn(async () => base),
       },
       lettrage: { findMany: jest.fn(async () => []) },
+      imputationPaiement: { findMany: jest.fn(async () => []) },
     };
     const ecarts = await ecartsDesGroupesParEcheance(db, 't', {}, d('2026-12-31'), 'essai');
     expect(ecarts.get('c1')).toEqual({ nonEchu: -1_000_000, echu: 0 });

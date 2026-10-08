@@ -2615,9 +2615,11 @@ export class EcritureService {
    * Contrairement à la balance âgée, qui agrège par compte, le détail garde
    * une ligne par écriture avec sa pièce : c'est ce qu'on attend d'un état
    * d'en-cours, où l'on veut savoir QUELLE facture tombe quand. Une
-   * correction par inscription en négatif (art. 20 AUDCIF) y reste donc
-   * visible à côté de la ligne qu'elle corrige · elles se compensent dans le
-   * total de la tranche, et c'est la projection qui décide.
+   * correction par inscription en négatif (art. 20 AUDCIF) y reste visible à
+   * côté de la ligne qu'elle corrige, sauf quand les deux sont lettrées dans
+   * un même groupe · elles s'annulent alors et sortent du détail, comme le
+   * règlement d'une facture réglée en partie, qui ne pèse plus que dans son
+   * reste (`poidsDesLignesLues`).
    */
   async echeancier(
     tenantId: string,
