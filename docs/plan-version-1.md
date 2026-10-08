@@ -19,7 +19,7 @@ fausse un montant, et rien de neuf n'entre.
 - Une demande nouvelle, ou un relevé hors périmètre, se note au suivi
   (`docs/suivi-immobilisations-verrouille.md`), il ne se code pas.
 
-## 2. Le périmètre de la version 1 · à valider par Manasse
+## 2. Le périmètre de la version 1 · validé par Manasse le 2026-10-08
 
 Trois dossiers types, chacun tenu sur deux exercices complets, clôture comprise.
 
