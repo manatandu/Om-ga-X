@@ -2268,7 +2268,40 @@ export class FiscaliteService {
       deficitAnterieur: { montant: number };
       chiffreAffairesMinimum: number;
       impotDu: number | null;
+      impotConstateAu89: number;
+      reintegrationsImpot: number;
     } = await this.resultatFiscal(tenantId, arrete.id);
+    /*
+      LA PREMIÈRE COTISATION SE LIT SUR SON CONSTAT, JAMAIS RECALCULÉE
+      (relecture « échecs silencieux », M3) · c'est l'impôt que l'écriture de
+      l'impôt de l'exercice arrêté a porté au 891 et au 441 (ligne A11), celui
+      que la société a déclaré et payé (loi n° 23/053, art. 13, al. 1).
+      Recalculé, il changeait avec une réintégration de l'impôt non saisie
+      (6 000 000 constatés, 4 200 000 relus, trop-payé faux de 1 400 000),
+      sans un mot. Sans constat non annulé, ou si l'impôt de l'exercice arrêté
+      n'est pas réintégré à sa mesure (la base de la période d'activité est
+      alors fausse, art. 45), la totalisation est REFUSÉE, nommée avec l'issue.
+    */
+    const constat = await this.prisma.constatImpotResultat.findFirst({
+      where: { tenantId, exerciceId: arrete.id, annuleeLe: null },
+      select: { montantImpot: true },
+    });
+    const ecartReintegration = arrondir((premier.impotConstateAu89 ?? 0) - (premier.reintegrationsImpot ?? 0));
+    if (!constat || Math.abs(ecartReintegration) >= 0.005) {
+      return {
+        role: 'SECONDE_COTISATION' as const,
+        anneeDissolution: annee,
+        calculable: false,
+        motif: !constat
+          ? `La première cotisation de l'exercice arrêté à la dissolution du ${jour(d)} n'est pas constatée · passez l'écriture de l'impôt de cet exercice (Résultat fiscal, « Écriture de l'impôt »), puis revenez ici. ` +
+            "Recalculée, elle pourrait différer de la cotisation déclarée et payée (loi n° 23/053, art. 13, al. 1), et la seconde serait fausse d'autant."
+          : `L'impôt porté au 89 de l'exercice arrêté à la dissolution du ${jour(d)} (${montantFiscal(premier.impotConstateAu89)}) n'est pas réintégré à sa mesure (${montantFiscal(premier.reintegrationsImpot)}) · la base de la période d'activité est fausse de ${montantFiscal(Math.abs(ecartReintegration))} (loi n° 23/053, art. 45). ` +
+            "Ajustez la réintégration « Impôt sur les sociétés et impôt minimum comptabilisés en charges » de cet exercice, puis revenez ici.",
+        premiereCotisation: constat ? Number(constat.montantImpot) : null,
+        totalisation: null,
+        observation: `DISSOLUTION DU ${jour(d)} · totalisation de l'année ${annee} non calculée, ${!constat ? 'faute de première cotisation constatée' : "l'impôt de la période d'activité n'étant pas réintégré à sa mesure"}.`,
+      };
+    }
     const baseActivite = arrondir(premier.resultatFiscal + premier.deficitImpute);
     const deficitDisponible = premier.deficitAnterieur.montant;
     const total = arrondir(baseActivite + courant.base);
@@ -2276,7 +2309,7 @@ export class FiscaliteService {
     const resultatFiscal = arrondir(total - deficitImpute);
     const chiffreAffaires = arrondir(premier.chiffreAffairesMinimum + courant.chiffreAffaires);
     const impot = this.calculerImpot(courant.regime, resultatFiscal, chiffreAffaires, courant.natureActivite);
-    const premiereCotisation = premier.impotDu;
+    const premiereCotisation: number | null = Number(constat.montantImpot);
     const dejaRegle =
       premiereCotisation === null ? null : arrondir(premiereCotisation + courant.acomptesVerses);
     const reste = impot.impotDu === null || dejaRegle === null ? null : arrondir(impot.impotDu - dejaRegle);

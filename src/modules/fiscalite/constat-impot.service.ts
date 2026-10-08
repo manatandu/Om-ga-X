@@ -4,7 +4,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
-import { FiscaliteService } from './fiscalite.service';
+import { FiscaliteService, type BilansSuccessifs } from './fiscalite.service';
 import {
   CONDITIONS_A_DECLARER,
   LONGUEUR_MIN_ATTESTATION,
@@ -53,11 +53,6 @@ export class ConstatImpotService {
   }
 
   /**
-   * Ce que le calcul rejoue, et les motifs qui empêchent de proposer.
-   * `resultatFiscal` refuse lui-même un dossier SYCEBNL (deuxième barrière
-   * après `ReferentielGuard`).
-   */
-  /**
    * L'IMPÔT QUE L'ÉCRITURE CONSTATE · celui de l'exercice, sauf dans
    * l'EXERCICE DE LIQUIDATION d'une société dissoute, où c'est la seconde
    * cotisation spéciale · l'impôt calculé sur le TOTAL des bilans successifs
@@ -71,7 +66,7 @@ export class ConstatImpotService {
     impotDu: number | null;
     minimumApplique: boolean;
     bilansSuccessifs?: {
-      role: string;
+      role: BilansSuccessifs['role'];
       calculable: boolean;
       motif: string | null;
       totalisation: { minimumApplique: boolean; cotisationDeLExercice: number | null; tropPayePremiereCotisation: number } | null;
@@ -93,6 +88,11 @@ export class ConstatImpotService {
     return { impotDu: calcul.impotDu, minimumApplique: calcul.minimumApplique, tropPaye: 0, motifTotalisation: null, secondeCotisation: false };
   }
 
+  /**
+   * Ce que le calcul rejoue, et les motifs qui empêchent de proposer.
+   * `resultatFiscal` refuse lui-même un dossier SYCEBNL (deuxième barrière
+   * après `ReferentielGuard`).
+   */
   private async rejouer(tenantId: string, exerciceId: string, attestationRegime: string | null | undefined) {
     const calcul = await this.fiscalite.resultatFiscal(tenantId, exerciceId);
     const impotExercice = ConstatImpotService.impotDeLExercice(calcul);

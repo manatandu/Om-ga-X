@@ -6,6 +6,7 @@ import {
   MOTIF_LETTRAGE_RECLASSEMENT,
   lignesDeLaPerteAvecTva,
   lignesDuCompteClientReclasse,
+  lignesReclasseesDuCompte,
   refuserLignesDuCompteClientReclasse,
 } from './ligne-de-reclassement';
 
@@ -425,5 +426,60 @@ describe('la perte qui récupère la TVA · ses lignes du compte d’origine ne 
     await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['facture', 'perte'])).rejects.toThrow(MOTIF_LETTRAGE_PERTE_AVEC_TVA);
     await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['facture'], ['retour'])).rejects.toThrow(MOTIF_LETTRAGE_PERTE_AVEC_TVA);
     await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['facture', 'ttc'])).resolves.toBeUndefined();
+  });
+});
+
+/*
+  LIGNE TVA-DECISIONS, RELECTURE « ÉCHECS SILENCIEUX », M4 · le REPORT au
+  détail de la ligne d'un reclassement, en N+1, ne porte aucune liaison · le
+  lettrage automatique l'appariait au report de la facture, et le moteur de
+  TVA y lisait un encaissement au 1er janvier. Reconnu par la clé que le report
+  recopie, à toute profondeur. La doublure honore chaque filtre.
+*/
+describe('le report du reclassement à l’exercice suivant ne se lettre pas non plus', () => {
+  type L = {
+    id: string;
+    compteId: string;
+    debit: number;
+    credit: number;
+    dateEcheance: Date | null;
+    libelle: string | null;
+    lettrageId: string | null;
+    ecriture: { libelle: string; creanceDouteuseReclassement: { compteCreanceId: string } | null };
+  };
+  const servies: L[] = [
+    // N · le reclassement R, C 411.
+    { id: 'R', compteId: 'cli', debit: 0, credit: 1_160_000, dateEcheance: null, libelle: null, lettrageId: null, ecriture: { libelle: 'Reclassement 41110000', creanceDouteuseReclassement: { compteCreanceId: 'cli' } } },
+    // N+1 · son report, puis N+2 · le report du report.
+    { id: 'R1', compteId: 'cli', debit: 0, credit: 1_160_000, dateEcheance: null, libelle: 'RAN détail 41110000 · Reclassement 41110000', lettrageId: null, ecriture: { libelle: 'À-nouveau', creanceDouteuseReclassement: null } },
+    { id: 'R2', compteId: 'cli', debit: 0, credit: 1_160_000, dateEcheance: null, libelle: 'RAN détail 41110000 · RAN détail 41110000 · Reclassement 41110000', lettrageId: null, ecriture: { libelle: 'À-nouveau', creanceDouteuseReclassement: null } },
+    // N+1 · le report de la FACTURE, et celui d'un règlement de même montant.
+    { id: 'U1', compteId: 'cli', debit: 1_160_000, credit: 0, dateEcheance: null, libelle: 'RAN détail 41110000 · Facture 12', lettrageId: null, ecriture: { libelle: 'À-nouveau', creanceDouteuseReclassement: null } },
+    { id: 'P1', compteId: 'cli', debit: 0, credit: 1_160_000, dateEcheance: null, libelle: 'RAN détail 41110000 · Règlement', lettrageId: null, ecriture: { libelle: 'À-nouveau', creanceDouteuseReclassement: null } },
+  ];
+  const honore = (l: L, where: any): boolean => {
+    if (where.id?.in && !where.id.in.includes(l.id)) return false;
+    if (typeof where.compteId === 'string' && l.compteId !== where.compteId) return false;
+    if (where.compteId?.in && !where.compteId.in.includes(l.compteId)) return false;
+    if (where.lettrageId === null && l.lettrageId !== null) return false;
+    if (where.libelle?.startsWith && !(l.libelle ?? '').startsWith(where.libelle.startsWith)) return false;
+    const rel = where.ecriture?.creanceDouteuseReclassement?.is;
+    if (rel && (!l.ecriture.creanceDouteuseReclassement || (rel.compteCreanceId && rel.compteCreanceId !== l.ecriture.creanceDouteuseReclassement.compteCreanceId))) return false;
+    // Les pièces d'une perte (filtre `OR`) · aucune ici.
+    if (where.ecriture?.OR) return false;
+    return true;
+  };
+  const db = { ligneEcriture: { findMany: jest.fn().mockImplementation(({ where }: any) => Promise.resolve(servies.filter((l) => honore(l, where ?? {})))) } };
+
+  it('le lettrage manuel du report de la facture avec celui du reclassement est refusé, à toute profondeur', async () => {
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['U1', 'R1'])).rejects.toThrow(MOTIF_LETTRAGE_RECLASSEMENT);
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['U1', 'R2'])).rejects.toThrow(MOTIF_LETTRAGE_RECLASSEMENT);
+    // Un règlement reporté, sans lien avec le reclassement, se lettre.
+    await expect(refuserLignesDuCompteClientReclasse(db as any, 't1', ['U1', 'P1'])).resolves.toBeUndefined();
+  });
+
+  it('les passes par montant le mettent de côté · il est compté parmi les lignes reclassées du compte', async () => {
+    const reclassees = await lignesReclasseesDuCompte(db as any, 't1', 'cli');
+    expect([...reclassees].sort()).toEqual(['R', 'R1', 'R2']);
   });
 });

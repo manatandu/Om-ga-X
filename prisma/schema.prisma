@@ -4083,6 +4083,21 @@ model LiquidationTva {
   /// 2°) · aucune clé étrangère n'est utile.
   tvaEncaissementFigee Json?
 
+  /// PASSÉE SOUS LA RÈGLE DES LIGNES TARDIVES ET DES NÉGATIFS (ligne
+  /// tva-decisions, relectures du 2026-10-08) · elle a lu les négatifs de
+  /// factures et les lignes validées après la liquidation de leur période,
+  /// rattachées au premier jour non liquidé. `false` pour toute liquidation
+  /// antérieure · leurs moteurs écartaient les uns et les autres, et elles ne
+  /// sont jamais tenues pour les avoir vus (le reste est rattaché plus loin,
+  /// NOMMÉ).
+  regleTardifs Boolean @default(false)
+
+  /// L'INSTANT DE LA LECTURE de la déclaration liquidée, pris AVANT elle · une
+  /// ligne validée entre la lecture et la création de la liquidation n'a pas
+  /// été lue (relecture, mineur 11). `null` · liquidation antérieure, lue à
+  /// sa création (`createdAt`).
+  instantLecture DateTime?
+
   createdAt DateTime @default(now())
   createdBy String
 

@@ -28,6 +28,7 @@ import {
   FactureDeLaCreance,
   finDuDroit,
   derniereDateEcriture,
+  derniereDateEcritureTrimestrielle,
   MOTIF_TAXE_A_L_ENCAISSEMENT,
   motifRecuperationEnPlace,
   motifRefusAnnulationRecuperation,
@@ -2265,23 +2266,9 @@ export class CreancesDouteusesService {
   }
 
   /**
-   * LE GROUPE QUI TIENT la ligne 416 d'une écriture de la créance, s'il en est
-   * un qui ne réunit QUE des lignes du 416 de la créance (B2 ; second tour,
-   * B-1) · `figee` dit pourquoi il ne se défait plus (une ligne sous une
-   * clôture de période, totale ou d'exercice), `duModule` s'il est d'origine
-   * `MODULE`, que seul le module défait. FIGÉ, il est TOLÉRÉ quelle que soit
-   * son origine · un groupe MANUEL posé sur le conseil d'A7 (« lettrez-la à la
-   * main »), figé ensuite, enfermait la créance ; il n'est pas touché, reste
-   * soldé, et l'annulation s'inscrit en négatif à côté. NON FIGÉ, seul le
-   * groupe du module se défait ; un autre refuse comme toute ligne lettrée
-   * (le cabinet le délettre, rien ne l'en empêche). Les lignes d'à-nouveau
-   * désignées (« Lettrer au 416 ») n'ont pas de liaison · le critère est le
-   * COMPTE, et le groupe est trouvé par une ligne de la créance elle-même.
-   */
-  /**
    * Point D · le groupe que le module a posé au compte d'origine sur le
    * retour et la perte, s'il ne réunit QUE leurs lignes · `figee` dit pourquoi
-   * il ne se défait plus (même lecture que `groupeDuModule`).
+   * il ne se défait plus (même lecture que `groupeDuModule`, ci-dessous).
    */
   private async groupeRetourEtPerte(
     tenantId: string,
@@ -2305,6 +2292,20 @@ export class CreancesDouteusesService {
     return { id: groupe.id, code: groupe.code, figee: premiere ? `la ligne du ${jour(premiere.date)} est figée, ${premiere.motif}` : null };
   }
 
+  /**
+   * LE GROUPE QUI TIENT la ligne 416 d'une écriture de la créance, s'il en est
+   * un qui ne réunit QUE des lignes du 416 de la créance (B2 ; second tour,
+   * B-1) · `figee` dit pourquoi il ne se défait plus (une ligne sous une
+   * clôture de période, totale ou d'exercice), `duModule` s'il est d'origine
+   * `MODULE`, que seul le module défait. FIGÉ, il est TOLÉRÉ quelle que soit
+   * son origine · un groupe MANUEL posé sur le conseil d'A7 (« lettrez-la à la
+   * main »), figé ensuite, enfermait la créance ; il n'est pas touché, reste
+   * soldé, et l'annulation s'inscrit en négatif à côté. NON FIGÉ, seul le
+   * groupe du module se défait ; un autre refuse comme toute ligne lettrée
+   * (le cabinet le délettre, rien ne l'en empêche). Les lignes d'à-nouveau
+   * désignées (« Lettrer au 416 ») n'ont pas de liaison · le critère est le
+   * COMPTE, et le groupe est trouvé par une ligne de la créance elle-même.
+   */
   private async groupeDuModule(
     tenantId: string,
     c: { id: string; compte416Id: string; ecritureReclassementId: string | null },
@@ -2334,7 +2335,11 @@ export class CreancesDouteusesService {
     return { id: groupe.id, code: groupe.code, figee, duModule };
   }
 
-  /** Fiche du compte 65 · D 651 / C 416 pour la part irrécouvrable, au TTC entier. */
+  /**
+   * Fiche du compte 65 · D 651 / C 416 pour la part irrécouvrable, au TTC
+   * entier · ou, avec les duplicatas de l'art. 52, en deux pièces qui
+   * récupèrent la TVA (point D, `perteAvecTva`).
+   */
   perte(tenantId: string, userId: string, id: string, dto: PerteCreanceDto) {
     return this.sousVerrou(tenantId, 'PERTE', () => this.mouvement(tenantId, userId, id, TypeMouvementCreanceDouteuse.PERTE, dto));
   }
@@ -3062,12 +3067,10 @@ export class CreancesDouteusesService {
       // Deux pièces (point D) · la perte n'est constatée au livre-journal que
       // lorsque le RETOUR et la PERTE y sont tous deux.
       const e = p.ecriturePerte ?? p.ecriture;
-      const comptes = [...new Set((e?.lignes ?? []).map((l) => l.compteId))];
       return {
         date: p.date,
         validee: p.ecriture?.statut === StatutEcriture.VALIDEE && (!p.ecriturePerte || p.ecriturePerte.statut === StatutEcriture.VALIDEE),
         numeroPiece: e?.numeroPiece ?? null,
-        compteId: comptes.length === 1 ? comptes[0] : null,
       };
     });
   }
@@ -3136,6 +3139,8 @@ export class CreancesDouteusesService {
       // Décision par la loi du 2026-10-08 (point C) · la récupération s'inscrit
       // dans la déclaration du mois qui suit son écriture, d'où cette borne.
       derniereDateEcriture: derniere ? jour(derniereDateEcriture(derniere)) : null,
+      // La borne d'une TVA liquidée par trimestre, DITE à côté (mineur du point C).
+      derniereDateEcritureTrimestrielle: derniere ? jour(derniereDateEcritureTrimestrielle(derniere)) : null,
       finDerniereLiquidation: l.finDerniereLiquidation ? jour(l.finDerniereLiquidation) : null,
       reserveAncienMoteur: l.reserveAncienMoteur,
       recuperations: CreancesDouteusesService.presenterRecuperations(l.recuperations),

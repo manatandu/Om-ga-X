@@ -2105,6 +2105,9 @@ export function CreancesDouteusesPage() {
                       <div className="text-text-dim">
                         Perte constatée le {jour(recuperation.proposition.derniereConstatation)} · droit ouvert jusqu’au {jour(recuperation.proposition.finDuDroit)}
                         {recuperation.proposition.derniereDateEcriture ? ` · écriture au plus tard le ${jour(recuperation.proposition.derniereDateEcriture)}` : ''}
+                        {recuperation.proposition.derniereDateEcritureTrimestrielle
+                          ? ` (le ${jour(recuperation.proposition.derniereDateEcritureTrimestrielle)} si la TVA se liquide par trimestre)`
+                          : ''}
                         {recuperation.proposition.finDerniereLiquidation ? ` · TVA liquidée jusqu’au ${jour(recuperation.proposition.finDerniereLiquidation)}` : ''}
                       </div>
                     )}

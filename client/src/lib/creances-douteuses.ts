@@ -321,6 +321,8 @@ export interface PropositionRecuperation {
   finDuDroit: string | null;
   /** Dernière date d'écriture · la déclaration du mois suivant l'inscrit (art. 126). */
   derniereDateEcriture?: string | null;
+  /** La même borne pour une TVA liquidée par trimestre · dite à côté, la cadence n'étant pas connue. */
+  derniereDateEcritureTrimestrielle?: string | null;
   finDerniereLiquidation: string | null;
   reserveAncienMoteur: string | null;
   recuperations: RecuperationPassee[];

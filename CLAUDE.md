@@ -1057,7 +1057,19 @@ suivant (décret art. 102) · l'écriture se date au plus tard le 30 NOVEMBRE de
 l'année qui suit, `derniereDateEcriture`). (6) ANNULATION (art. 20, al. 2) ·
 brouillard supprimé, validée inscrite en négatif ; refusée dès qu'une liquidation
 couvre sa date ou la suit ; la perte qui récupère s'annule de même, ses deux pièces
-ensemble. LE NÉGATIF D'UN AVOIR SUR VENTE (débit négatif du 443) EST LU PAR LA
+ensemble. RELECTURES DU 2026-10-08 · elle naît en UNE transaction (retour, perte,
+mouvement, lettrage `MODULE` de leurs lignes du compte d'origine, la garde du
+lettrage les refusant à tout autre groupe) ; « Retirer » au brouillard retire les
+deux pièces et défait leur groupe (validée, « Annuler ») ; son annulation n'est
+refusée que par une LIQUIDATION couvrante, en période close le négatif va au premier
+jour ouvert (art. 22, 4°), décalage nommé ; elle est REFUSÉE quand la taxe à
+l'encaissement d'une facture cochée a pu être déclarée (ancien moteur, part figée)
+· issue, perte au TTC puis « Récupérer la TVA » ; la taxe qu'elle a annulée ne
+redevient jamais exigible par un lettrage postérieur à elle
+(`perteQuiAnnuleLaTaxe`, compté) ; le REPORT au détail du reclassement en N+1 ne se
+lettre pas plus que lui (`ligne-de-reclassement.ts`, clé du report à toute
+profondeur, passes par montant suspendues) ; par trimestre, l'écriture de la
+récupération au plus tard le 30 SEPTEMBRE, dit à côté du 30 novembre. LE NÉGATIF D'UN AVOIR SUR VENTE (débit négatif du 443) EST LU PAR LA
 DÉCLARATION au signe près, et la liquidation reprend au débit une récupération
 négative · il était ignoré, tout avoir annulé restait récupéré. Perte, recouvrement
 et désignation ne se défont pas tant qu'une récupération non annulée tient. Le non
@@ -2153,7 +2165,10 @@ cotisation (impôt totalisé moins la première, `cotisationDeLExercice`) et non
 l'impôt de la seule liquidation (`ConstatImpotService.impotDeLExercice`,
 `tropPayeLiquidation`) ; le 441 débiteur reste en « Autres créances », jamais un
 remboursement à encaisser ; le 8994 crédité entre au résultat comptable et suit
-le sort du 899 (nommé, déduit par le cabinet). (3) Acomptes de l'année de la dissolution dus avant l'échéance de la
+le sort du 899 (nommé, déduit par le cabinet). LA PREMIÈRE SE LIT SUR SON CONSTAT
+(relecture du 2026-10-08, M3) · le `ConstatImpotResultat` non annulé de l'exercice
+arrêté, jamais recalculée ; sans constat, ou l'impôt de cet exercice non réintégré
+à sa mesure (art. 45), la totalisation est REFUSÉE, nommée avec l'issue. (3) Acomptes de l'année de la dissolution dus avant l'échéance de la
 dernière cotisation, aucun ensuite (LPF art. 57 bis), au registre comme au
 résultat fiscal (`echeancierDissolution().retenir`, une règle). (4) Aucune déclaration
 annuelle de l'IS pour l'année de la dissolution ni les suivantes (LPF art. 16,
@@ -3491,7 +3506,20 @@ liquidation antérieure à sa validation ne couvre (`rattachementTardif`,
 `recuperationTardive`, AUDCIF art. 22, 4°), une liquidation qui a suivi la
 validation la gardant ; NOMMÉE avec sa date d'origine (`rattachementsTardifs`),
 déchéance de l'art. 37, al. 2 lue sur la date d'origine ; l'encaissement garde sa
-mémoire (`repartirEncaissement`).
+mémoire (`repartirEncaissement`). RELECTURES DU 2026-10-08 · `LiquidationTva.regleTardifs`
+(faux pour l'existant, migration) et `instantLecture` (pris AVANT la lecture) · une
+liquidation d'avant la règle ne lit que les lignes datées dans sa période et aucun
+négatif (de facture, d'avoir fournisseur) ; ce qu'elle n'a pas repris est porté au
+premier jour non liquidé, NOMMÉ `ancienMoteur` (à vérifier contre la déclaration
+déposée) ; un trou entre deux liquidations est dit (`dansUnTrou`), une récupération
+portée après le 31 décembre de l'année qui suit sa constatation aussi
+(`horsDelaiArt37`, décret art. 126, art. 37 al. 2). ON ANNULE UNE LIQUIDATION À
+PARTIR DE LA PLUS RÉCENTE (B1, comme D6). Le négatif d'une facture à l'encaissement
+quitte l'attente de la période de la FACTURE ; NOMMÉS SANS PESER
+(`negatifsNonPortesTotal`) · période de la facture jamais liquidée dans OmegaX,
+achat à l'encaissement (déduction prise au règlement), déduction d'origine déchue ;
+facture et négatif portés le même jour tardif se compensent ; un négatif orphelin
+dans un groupe ne règle rien (`negatifsOrphelinsDansUnGroupe`).
 
 **Retenues · l'ouverture (2026-09-27, audit final F26).** `soldesDOuverture` ·
 report à-nouveau VALIDÉ, ou reconstitué depuis le dernier report validé ; ligne

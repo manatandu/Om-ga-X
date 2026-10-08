@@ -117,8 +117,20 @@ describe('Bilans successifs de l’année de la dissolution (point 2 ; constat 1
     regimeLiquidation: SARL.regimeLiquidation,
     associeUniquePersonneMorale: false,
   };
-  function service() {
-    const s = new FiscaliteService({ exercice: { findFirst: async () => ARRETE } } as never, {} as never);
+  function service(options: { constat?: number | null; impotAu89?: number; reintegre?: number } = {}) {
+    const constat = options.constat === undefined ? 2_700_000 : options.constat;
+    const s = new FiscaliteService(
+      {
+        exercice: { findFirst: async () => ARRETE },
+        // M3 · la première cotisation se lit sur le constat NON ANNULÉ de
+        // l'exercice arrêté · la doublure honore la requête.
+        constatImpotResultat: {
+          findFirst: async ({ where }: { where: { exerciceId: string; annuleeLe: null } }) =>
+            constat !== null && where.exerciceId === ARRETE.id && where.annuleeLe === null ? { montantImpot: constat } : null,
+        },
+      } as never,
+      {} as never,
+    );
     // Période d'activité · base avant report 10 000 000, déficit antérieur
     // disponible 1 000 000 (tout imputé), 9 000 000 × 30 % = 2 700 000 ;
     // chiffre d'affaires 30 000 000.
@@ -128,6 +140,8 @@ describe('Bilans successifs de l’année de la dissolution (point 2 ; constat 1
       deficitAnterieur: { montant: 1_000_000 },
       chiffreAffairesMinimum: 30_000_000,
       impotDu: 2_700_000,
+      impotConstateAu89: options.impotAu89 ?? 2_700_000,
+      reintegrationsImpot: options.reintegre ?? 2_700_000,
     } as never);
     return s as unknown as {
       bilansSuccessifsDe: (t: string, ten: typeof tenant, e: typeof LIQ, c: Record<string, unknown>) => Promise<{
@@ -201,6 +215,36 @@ describe('Bilans successifs de l’année de la dissolution (point 2 ; constat 1
       tropPayePremiereCotisation: 0,
       excedentAcomptes: 150_000,
     });
+  });
+
+  /*
+    LIGNE TVA-DECISIONS, RELECTURE « ÉCHECS SILENCIEUX », M3 · la première
+    cotisation était RECALCULÉE · constat 6 000 000, réintégration non saisie,
+    relue 4 200 000, trop-payé faux, aucun refus.
+  */
+  it('M3 · la première cotisation est celle du CONSTAT, jamais recalculée', async () => {
+    // Constat 3 000 000 (recalcul 2 700 000) · liquidation 5 000 000, impôt de
+    // l'année 4 200 000, seconde 4 200 000 − 3 000 000 − 300 000 = 900 000.
+    const b = await service({ constat: 3_000_000, impotAu89: 3_000_000, reintegre: 3_000_000 }).bilansSuccessifsDe('t', tenant, LIQ, courant(5_000_000));
+    expect(b.calculable).toBe(true);
+    expect(b.premiereCotisation).toBe(3_000_000);
+    expect(b.totalisation).toMatchObject({ dejaRegle: 3_300_000, secondeCotisation: 900_000 });
+  });
+
+  it('M3 · sans constat de la première, la totalisation est REFUSÉE, nommée avec l’issue', async () => {
+    const b = (await service({ constat: null }).bilansSuccessifsDe('t', tenant, LIQ, courant(5_000_000))) as unknown as { calculable: boolean; motif: string; totalisation: unknown };
+    expect(b.calculable).toBe(false);
+    expect(b.totalisation).toBeNull();
+    expect(b.motif).toMatch(/n'est pas constatée · passez l'écriture de l'impôt de cet exercice/);
+  });
+
+  it('M3 · l’impôt de la période d’activité non réintégré à sa mesure · refus nommé, jamais une base fausse', async () => {
+    const b = (await service({ constat: 6_000_000, impotAu89: 6_000_000, reintegre: 0 }).bilansSuccessifsDe('t', tenant, LIQ, courant(5_000_000))) as unknown as {
+      calculable: boolean;
+      motif: string;
+    };
+    expect(b.calculable).toBe(false);
+    expect(b.motif).toMatch(/n'est pas réintégré à sa mesure/);
   });
 
   it('l’exercice arrêté porte la première · un exercice non arrêté ne sépare rien', async () => {

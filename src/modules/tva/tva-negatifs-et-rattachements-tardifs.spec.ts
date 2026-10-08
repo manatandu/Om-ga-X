@@ -31,11 +31,18 @@ interface Ligne {
   debit?: number;
   credit?: number;
   piece?: number;
-  corrige?: { piece: number; date: string };
+  corrige?: { piece: number; date: string; validee?: string };
   /** Contrepartie de nature · 701 (biens), 706 (services), 601 (achat de biens). */
   contrepartie?: string;
   /** Ligne de tiers de l'écriture (411 ou 401), lettrée ou non. */
-  tiers?: { numero: string; debit?: number; credit?: number; lettrage?: unknown };
+  tiers?: {
+    numero: string;
+    debit?: number;
+    credit?: number;
+    lettrage?: unknown;
+    /** Désignations de la ligne dans une créance douteuse, et les pertes non annulées qui ont annulé leur taxe (M4). */
+    designations?: Array<{ id: string; pertes: Array<{ date: string; detail: string[] }> }>;
+  };
   statut?: 'VALIDEE' | 'BROUILLARD';
 }
 
@@ -45,6 +52,10 @@ interface Liq {
   dateFin: string;
   creeLe: string;
   net?: number;
+  /** Passée sous la règle des lignes tardives et des négatifs · par défaut oui (`false` · une liquidation d'avant). */
+  regle?: boolean;
+  /** L'instant de la lecture de sa déclaration, s'il est gardé. */
+  lu?: string;
 }
 
 const D = (s: string) => new Date(s);
@@ -58,6 +69,8 @@ function service(lignes: Ligne[], liquidations: Liq[] = [], regime = 'LIVRAISONS
     dateFin: fin(l.dateFin),
     createdAt: D(l.creeLe),
     tvaEncaissementFigee: {},
+    regleTardifs: l.regle ?? true,
+    instantLecture: l.lu ? D(l.lu) : null,
     net: l.net ?? 0,
     ecritureId: `e-${l.id}`,
     ecriture: { id: `e-${l.id}`, libelle: 'Liquidation', date: fin(l.dateFin) },
@@ -73,7 +86,7 @@ function service(lignes: Ligne[], liquidations: Liq[] = [], regime = 'LIVRAISONS
   const prisma = {
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't1', regimeExigibiliteTva: regime, referentiel: 'SYSCOHADA', dateAutorisationDebitsTva: null }) },
     tauxTva: { findMany: jest.fn().mockResolvedValue([TAUX]) },
-    ecriture: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+    ecriture: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null) },
     ligneEcriture: {
       findMany: jest.fn().mockImplementation(({ where, cursor }: { where: Record<string, any>; cursor?: unknown }) => {
         if (cursor) return Promise.resolve([]);
@@ -111,6 +124,10 @@ function service(lignes: Ligne[], liquidations: Liq[] = [], regime = 'LIVRAISONS
                   compte: { numero: l.tiers.numero, classe: 'CLASSE_4', tiersCompte: null },
                   lettrage: l.tiers.lettrage ?? null,
                   lettrageId: l.tiers.lettrage ? 'g1' : null,
+                  creancesDouteusesDesignees: (l.tiers.designations ?? []).map((d) => ({
+                    id: d.id,
+                    creance: { mouvements: d.pertes.map((p) => ({ date: D(p.date), detailTva: p.detail.map((x) => ({ designationId: x })) })) },
+                  })),
                 });
               }
               return {
@@ -129,7 +146,14 @@ function service(lignes: Ligne[], liquidations: Liq[] = [], regime = 'LIVRAISONS
                   facture: null,
                   recuperationTvaCreance: null,
                   numeroPiece: l.piece ?? null,
-                  corrigeEcriture: l.corrige ? { numeroPiece: l.corrige.piece, date: D(l.corrige.date) } : null,
+                  corrigeEcriture: l.corrige
+                    ? {
+                        numeroPiece: l.corrige.piece,
+                        date: D(l.corrige.date),
+                        valideeAt: D(l.corrige.validee ?? l.corrige.date),
+                        createdAt: D(l.corrige.validee ?? l.corrige.date),
+                      }
+                    : null,
                   lignes: lignesEcriture,
                 },
               };
@@ -317,13 +341,206 @@ describe('Point B · la ligne validée après la liquidation qui devait la lire'
   });
 
   it('la règle pure · premier jour qu’aucune liquidation antérieure à la validation ne couvre', () => {
-    const liqs = liqsAvant.map((l) => ({ dateDebut: D(l.dateDebut), dateFin: fin(l.dateFin), createdAt: D(l.creeLe) }));
-    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), D('2027-04-01'), liqs)).toEqual({ date: D('2027-03-10'), tardive: false });
-    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), D('2027-04-10'), liqs)).toEqual({ date: D('2027-04-01'), tardive: true });
-    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), D('2027-05-10'), liqs)).toEqual({ date: D('2027-05-01'), tardive: true });
-    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), D('2027-05-10'), liqs, D('2027-05-20'))).toEqual({ date: D('2027-05-20'), tardive: true });
-    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), null, liqs)).toEqual({ date: D('2027-03-10'), tardive: false });
+    const liqs = liqsAvant.map((l) => ({ dateDebut: D(l.dateDebut), dateFin: fin(l.dateFin), createdAt: D(l.creeLe), regleTardifs: true }));
+    const r = (date: Date, tardive: boolean) => ({ date, tardive, ancienMoteur: false, dansUnTrou: false });
+    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), D('2027-04-01'), liqs)).toEqual(r(D('2027-03-10'), false));
+    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), D('2027-04-10'), liqs)).toEqual(r(D('2027-04-01'), true));
+    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), D('2027-05-10'), liqs)).toEqual(r(D('2027-05-01'), true));
+    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), D('2027-05-10'), liqs, D('2027-05-20'))).toEqual(r(D('2027-05-20'), true));
+    expect(TauxTvaService.rattachementTardif(D('2027-03-10'), null, liqs)).toEqual(r(D('2027-03-10'), false));
     expect(TauxTvaService.recuperationTardive(D('2027-03-12'), D('2027-04-10'), liqs)).toBeNull();
-    expect(TauxTvaService.recuperationTardive(D('2027-03-12'), D('2027-05-10'), liqs)).toEqual(D('2027-05-01'));
+    expect(TauxTvaService.recuperationTardive(D('2027-03-12'), D('2027-05-10'), liqs)).toEqual({ date: D('2027-05-01'), ancienMoteur: false, dansUnTrou: false });
+  });
+});
+
+/*
+  RELECTURES DU 2026-10-08 (premier tour) · ce que les liquidations ont VU, et
+  les négatifs qui ne pèsent pas ici.
+*/
+describe('Relectures · ce qu’une liquidation a vu, et ce qui se nomme', () => {
+  const vente: Ligne = { id: 'v1', famille: '443', date: '2027-01-15', credit: 160_000, piece: 12, contrepartie: '701' };
+
+  it('MAJEUR 4 · une liquidation d’AVANT la règle n’a lu aucun négatif · repris au premier jour non liquidé, nommé « ancien moteur »', async () => {
+    const lignes: Ligne[] = [
+      vente,
+      { id: 'n1', famille: '443', date: '2027-01-25', validee: '2027-01-25', credit: -160_000, piece: 19, corrige: { piece: 12, date: '2027-01-15' }, contrepartie: '701' },
+    ];
+    // Janvier liquidé le 5 février, APRÈS le négatif, par un moteur qui l'écartait.
+    const s = service(lignes, [{ id: 'L1', dateDebut: '2027-01-01', dateFin: '2027-01-31', creeLe: '2027-02-05', regle: false }]);
+    const fev = await s.declaration('t1', ...FEVRIER);
+    expect(fev.recuperationArt52).toBe(160_000);
+    expect(fev.rattachementsTardifs).toEqual([expect.objectContaining({ nature: 'NEGATIF_DE_VENTE', rattacheeAu: '2027-02-01', ancienMoteur: true })]);
+    expect(fev.rattachementsAncienMoteurTotal).toBe(1);
+    expect(fev.mentionExigibilite).toContain('LIQUIDATIONS D’AVANT LA RÈGLE DES LIGNES TARDIVES');
+    // Sous la règle, la même liquidation l'a lu · il s'annule en janvier.
+    const regle = service(lignes, [{ id: 'L1', dateDebut: '2027-01-01', dateFin: '2027-01-31', creeLe: '2027-02-05' }]);
+    expect((await regle.declaration('t1', ...FEVRIER)).recuperationArt52).toBe(0);
+  });
+
+  it('M1 · une liquidation d’avant la règle, lue APRÈS la validation, n’a pas repris la ligne d’une autre période · portée plus loin, nommée', async () => {
+    const liqs: Liq[] = [
+      { id: 'L3', dateDebut: '2027-03-01', dateFin: '2027-03-31', creeLe: '2027-04-05', regle: false },
+      { id: 'L4', dateDebut: '2027-04-01', dateFin: '2027-04-30', creeLe: '2027-05-15', regle: false },
+    ];
+    const s = service([{ id: 'v1', famille: '443', date: '2027-03-10', validee: '2027-05-10', credit: 160_000, contrepartie: '701' }], liqs);
+    expect((await s.declaration('t1', ...AVRIL)).totalCollecte).toBe(0);
+    const mai = await s.declaration('t1', ...MAI);
+    expect(mai.totalCollecte).toBe(160_000);
+    expect(mai.rattachementsTardifs).toEqual([expect.objectContaining({ nature: 'COLLECTE', rattacheeAu: '2027-05-01', ancienMoteur: true })]);
+  });
+
+  it('mineur 11 · l’instant de LECTURE prime sur la création · une ligne validée pendant la lecture n’est pas tenue pour vue', async () => {
+    const liqs: Liq[] = [
+      { id: 'L3', dateDebut: '2027-03-01', dateFin: '2027-03-31', creeLe: '2027-04-05' },
+      { id: 'L4', dateDebut: '2027-04-01', dateFin: '2027-04-30', creeLe: '2027-05-15', lu: '2027-05-09' },
+    ];
+    const s = service([{ id: 'v1', famille: '443', date: '2027-03-10', validee: '2027-05-10', credit: 160_000, contrepartie: '701' }], liqs);
+    expect((await s.declaration('t1', ...AVRIL)).totalCollecte).toBe(0);
+    expect((await s.declaration('t1', ...MAI)).totalCollecte).toBe(160_000);
+  });
+
+  it('trou entre deux liquidations · la période jamais liquidée qui reçoit la ligne est DITE', async () => {
+    const liqs: Liq[] = [
+      { id: 'L1', dateDebut: '2027-01-01', dateFin: '2027-01-31', creeLe: '2027-02-03' },
+      { id: 'L3', dateDebut: '2027-03-01', dateFin: '2027-03-31', creeLe: '2027-04-05' },
+    ];
+    const s = service([{ ...vente, validee: '2027-02-10' }], liqs);
+    const fev = await s.declaration('t1', ...FEVRIER);
+    expect(fev.totalCollecte).toBe(160_000);
+    expect(fev.rattachementsTardifs[0]).toEqual(expect.objectContaining({ dansUnTrou: true }));
+    expect(fev.mentionExigibilite).toContain('PÉRIODE JAMAIS LIQUIDÉE ENTRE DEUX LIQUIDATIONS');
+  });
+
+  it('MAJEUR 5 · facture de janvier jamais liquidée, négatif de mars · il pèse sur janvier, et mars le NOMME sans le compter', async () => {
+    const lignes: Ligne[] = [
+      vente,
+      { id: 'n1', famille: '443', date: '2027-03-05', credit: -160_000, piece: 19, corrige: { piece: 12, date: '2027-01-15' }, contrepartie: '701' },
+    ];
+    const s = service(lignes);
+    expect((await s.declaration('t1', ...JANVIER)).totalCollecte).toBe(0);
+    const mars = await s.declaration('t1', ...MARS);
+    expect(mars.totalCollecte).toBe(0);
+    expect(mars.negatifsDeFactures).toEqual([expect.objectContaining({ pese: 'PESE_SUR_UNE_PERIODE_NON_LIQUIDEE', montant: 160_000 })]);
+    expect(mars.negatifsNonPortesTotal).toBe(1);
+    expect(mars.negatifsDeFacturesTotal).toBe(0);
+    expect(mars.mentionExigibilite).toContain('NÉGATIFS DE FACTURES NOMMÉS SANS PESER ICI');
+  });
+
+  it('mineur 7 · le négatif d’une prestation impayée se retire de l’attente de la période de la FACTURE, jamais de la sienne', async () => {
+    const s = service([
+      { id: 'p1', famille: '443', date: '2027-01-10', credit: 160_000, piece: 3, contrepartie: '706', tiers: { numero: '41110000', debit: 1_160_000 } },
+      { id: 'n1', famille: '443', date: '2027-02-20', credit: -160_000, piece: 4, corrige: { piece: 3, date: '2027-01-10' }, contrepartie: '706', tiers: { numero: '41110000', debit: -1_160_000 } },
+    ]);
+    const jan = await s.declaration('t1', ...JANVIER);
+    expect(jan.lignes[0]?.enAttente ?? 0).toBe(0);
+    const fev = await s.declaration('t1', ...FEVRIER);
+    // L'attente de février n'est jamais négative.
+    expect(fev.lignes.every((x) => x.enAttente >= 0)).toBe(true);
+  });
+
+  it('M2 · le négatif d’un achat de services à l’encaissement n’est pas tu · nommé sans peser', async () => {
+    const s = service([
+      { id: 'a1', famille: '445', date: '2027-02-05', debit: 16_000, piece: 7, contrepartie: '624', tiers: { numero: '40110000', credit: 116_000 } },
+      { id: 'na1', famille: '445', date: '2027-02-20', debit: -16_000, piece: 8, corrige: { piece: 7, date: '2027-02-05' }, contrepartie: '624', tiers: { numero: '40110000', credit: -116_000 } },
+    ]);
+    const fev = await s.declaration('t1', ...FEVRIER);
+    expect(fev.totalDeductible).toBe(0);
+    expect(fev.negatifsDeFactures).toEqual([expect.objectContaining({ sens: 'ACHAT', pese: 'ACHAT_A_L_ENCAISSEMENT_NON_REPRIS' })]);
+  });
+
+  it('achat déchu · le négatif tardif ne reprend pas une déduction qui n’a jamais été prise (art. 37, al. 2)', async () => {
+    const liqs: Liq[] = [{ id: 'L', dateDebut: '2025-01-01', dateFin: '2027-01-31', creeLe: '2027-02-05' }];
+    const s = service(
+      [
+        { id: 'a1', famille: '445', date: '2025-03-10', validee: '2027-02-10', debit: 16_000, piece: 7, contrepartie: '601' },
+        { id: 'na1', famille: '445', date: '2027-02-15', validee: '2027-02-15', debit: -16_000, piece: 8, corrige: { piece: 7, date: '2025-03-10', validee: '2027-02-10' }, contrepartie: '601' },
+      ],
+      liqs,
+    );
+    const fev = await s.declaration('t1', ...FEVRIER);
+    expect(fev.totalDeductible).toBe(0);
+    expect(fev.negatifsDeFactures).toEqual([expect.objectContaining({ pese: 'DEDUCTION_DECHUE_RIEN_A_REPRENDRE' })]);
+  });
+
+  it('la facture et son négatif portés le même jour tardif · ils se compensent, sans récupération ni note de crédit à réclamer', async () => {
+    const s = service(
+      [
+        { ...vente, validee: '2027-02-10' },
+        { id: 'n1', famille: '443', date: '2027-02-12', validee: '2027-02-12', credit: -160_000, piece: 19, corrige: { piece: 12, date: '2027-01-15', validee: '2027-02-10' }, contrepartie: '701' },
+      ],
+      [{ id: 'L1', dateDebut: '2027-01-01', dateFin: '2027-01-31', creeLe: '2027-02-05' }],
+    );
+    const fev = await s.declaration('t1', ...FEVRIER);
+    expect(fev.totalCollecte).toBe(0);
+    expect(fev.recuperationArt52).toBe(0);
+    expect(fev.negatifsDeFactures).toEqual([expect.objectContaining({ pese: 'ANNULEE_ICI' })]);
+  });
+
+  it('mineur 6 · une récupération portée après le 31 décembre de l’année qui suit sa constatation est DITE hors délai (art. 126, art. 37 al. 2)', async () => {
+    const s = service(
+      [{ id: 'av1', famille: '443', date: '2027-03-12', validee: '2029-01-10', debit: 80_000, contrepartie: '701' }],
+      [{ id: 'L', dateDebut: '2027-04-01', dateFin: '2028-12-31', creeLe: '2029-01-05' }],
+    );
+    const jan = await s.declaration('t1', D('2029-01-01'), fin('2029-01-31'));
+    expect(jan.recuperationArt52).toBe(80_000);
+    expect(jan.rattachementsTardifs[0]).toEqual(expect.objectContaining({ nature: 'AVOIR_SUR_VENTE', horsDelaiArt37: true }));
+    expect(jan.rattachementsHorsDelaiTotal).toBe(1);
+    expect(TauxTvaService.horsDelaiArt37(D('2027-03-12'), D('2028-12-31'))).toBe(false);
+    expect(TauxTvaService.horsDelaiArt37(D('2027-03-12'), D('2029-01-01'))).toBe(true);
+  });
+
+  it('M4 · la taxe qu’une perte a annulée ne redevient jamais exigible par un lettrage postérieur à la perte', async () => {
+    const groupe = {
+      id: 'g1',
+      statut: 'SOLDE',
+      solde: 0,
+      soldeAt: D('2028-01-01'),
+      createdAt: D('2028-01-02'),
+      lignes: [
+        { id: 'p1-t', compteId: 'c41110000', debit: 1_160_000, credit: 0, ecriture: { id: 'ep1', date: D('2027-01-10'), corrigeEcritureId: null, _count: { lignes: 0 } } },
+        // Le report du reclassement, lu comme un règlement au 1er janvier.
+        { id: 'r-t', compteId: 'c41110000', debit: 0, credit: 1_160_000, ecriture: { id: 'er', date: D('2028-01-01'), corrigeEcritureId: null, _count: { lignes: 0 } } },
+      ],
+    };
+    const facture = (designations: NonNullable<Ligne['tiers']>['designations']): Ligne => ({
+      id: 'p1',
+      famille: '443',
+      date: '2027-01-10',
+      credit: 160_000,
+      piece: 3,
+      contrepartie: '706',
+      tiers: { numero: '41110000', debit: 1_160_000, lettrage: groupe, designations },
+    });
+    const JANVIER_2028 = [D('2028-01-01'), fin('2028-01-31')] as const;
+    // Sans perte, le groupe date la taxe au 1er janvier.
+    expect((await service([facture([])]).declaration('t1', ...JANVIER_2028)).totalCollecte).toBe(160_000);
+    // La perte du 30 novembre 2027 en a annulé la taxe · rien n'est exigible, et c'est compté.
+    const d = await service([facture([{ id: 'des1', pertes: [{ date: '2027-11-30', detail: ['des1'] }] }])]).declaration('t1', ...JANVIER_2028);
+    expect(d.totalCollecte).toBe(0);
+    expect(d.taxeAnnuleeParUnePerte).toBe(160_000);
+    expect(d.mentionExigibilite).toContain('TAXE ANNULÉE PAR UNE PERTE');
+    // Une perte qui ne nomme pas cette désignation ne retient rien.
+    expect((await service([facture([{ id: 'des1', pertes: [{ date: '2027-11-30', detail: ['autre'] }] }])]).declaration('t1', ...JANVIER_2028)).totalCollecte).toBe(160_000);
+  });
+
+  it('un négatif orphelin dans le groupe ne règle rien · la taxe reste en attente, et c’est nommé', async () => {
+    const groupe = {
+      id: 'g1',
+      statut: 'PARTIEL',
+      solde: 660_000,
+      soldeAt: null,
+      createdAt: D('2027-01-20'),
+      lignes: [
+        { id: 'p1-t', compteId: 'c41110000', debit: 1_160_000, credit: 0, ecriture: { id: 'ep1', date: D('2027-01-10'), corrigeEcritureId: null, _count: { lignes: 0 } } },
+        // Un négatif d'une AUTRE pièce, sans sa ligne annulée dans le groupe.
+        { id: 'n-t', compteId: 'c41110000', debit: -500_000, credit: 0, ecriture: { id: 'en', date: D('2027-01-20'), corrigeEcritureId: 'ailleurs', _count: { lignes: 0 } } },
+      ],
+    };
+    const s = service([
+      { id: 'p1', famille: '443', date: '2027-01-10', credit: 160_000, piece: 3, contrepartie: '706', tiers: { numero: '41110000', debit: 1_160_000, lettrage: groupe } },
+    ]);
+    const d = await s.declaration('t1', ...JANVIER);
+    expect(d.totalCollecte).toBe(0);
+    expect(d.negatifsOrphelinsDansUnGroupe).toBe(1);
   });
 });

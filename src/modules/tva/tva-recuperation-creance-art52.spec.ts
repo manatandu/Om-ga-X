@@ -218,7 +218,7 @@ describe('A7 bis, partie 2, relecture MAJEUR 1 · la correction d’un avoir HOR
     const { service: s, lu } = service(lignes, { dateDebut: FEV, dateFin: FIN_FEV });
     const d = await s.declaration('t1', MARS, FIN_MARS);
     expect(lu.select.ecriture.select.numeroPiece).toBe(true);
-    expect(lu.select.ecriture.select.corrigeEcriture).toEqual({ select: { numeroPiece: true, date: true } });
+    expect(lu.select.ecriture.select.corrigeEcriture).toEqual({ select: { numeroPiece: true, date: true, valideeAt: true, createdAt: true } });
     expect(d.recuperationArt52).toBe(80_000);
     expect(d.avoirsCollecteConstates).toBe(-80_000);
     expect(d.reprisesAvoirsCorriges).toEqual([

@@ -242,6 +242,19 @@ export function derniereDateEcriture(derniereConstatation: Date): Date {
   return new Date(Date.UTC(derniereConstatation.getUTCFullYear() + 1, 10, 30));
 }
 
+/**
+ * LA MÊME BORNE POUR UNE TVA LIQUIDÉE PAR TRIMESTRE (relecture « échecs
+ * silencieux », mineur du point C) · le 30 novembre suppose la déclaration
+ * MENSUELLE de l'art. 102. Liquidée par trimestre, la récupération s'inscrit
+ * dans la déclaration du trimestre qui suit son écriture · pour que ce soit
+ * celle d'octobre à décembre, l'écriture se date au plus tard le 30 septembre.
+ * OmegaX ne connaît pas la cadence du dossier · la borne est DITE, à côté de
+ * l'autre, jamais devinée.
+ */
+export function derniereDateEcritureTrimestrielle(derniereConstatation: Date): Date {
+  return new Date(Date.UTC(derniereConstatation.getUTCFullYear() + 1, 8, 30));
+}
+
 export interface DuplicataSaisi {
   designationId: string;
   reference: string | null | undefined;
@@ -254,7 +267,7 @@ export interface EntreeRecuperation {
   /** Le reste au 416 après TOUS les mouvements non annulés. */
   resteFinal: number;
   /** Les pertes non annulées · date, statut de leur écriture, compte débité. */
-  pertes: ReadonlyArray<{ date: Date; validee: boolean; numeroPiece: number | null; compteId: string | null }>;
+  pertes: ReadonlyArray<{ date: Date; validee: boolean; numeroPiece: number | null }>;
   /** Les désignations actives. */
   designationsActives: number;
   /** Les factures chiffrées, par désignation. */
@@ -391,7 +404,8 @@ export function motifRefusDateRecuperation(date: Date, derniere: Date, finDernie
       '(décret n° 011/42, art. 126), soit « jusqu’au 31 décembre de l’année qui suit » (O.-L. n° 10/001, art. 37, al. 2), ' +
       `compté de la constatation du non-paiement, la perte du ${jour(derniere)}. La récupération s’inscrit dans la déclaration ` +
       `du mois qui suit son écriture (art. 126) · datée après le ${jour(limite)}, elle tomberait dans une déclaration ` +
-      `de ${fin.getUTCFullYear() + 1}, hors du délai. Datez-la au plus tard le ${jour(limite)} si cette période n’est pas liquidée ; ` +
+      `de ${fin.getUTCFullYear() + 1}, hors du délai. Datez-la au plus tard le ${jour(limite)} si cette période n’est pas liquidée ` +
+      `(au plus tard le ${jour(derniereDateEcritureTrimestrielle(derniere))} si la TVA se liquide par trimestre) ; ` +
       'sinon la taxe est acquise au Trésor.'
     );
   }

@@ -84,7 +84,8 @@ export class CreancesDouteusesController {
 
   /**
    * La perte · réservée au comptable comme la revue (seconde relecture, M-d) ·
-   * elle sort la créance du 416 en charge au 651, au TTC entier.
+   * elle sort la créance du 416 en charge au 651, au TTC entier · ou, avec
+   * les duplicatas de l'art. 52, en deux pièces qui récupèrent la TVA (point D).
    */
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   @ReserveAuComptable()

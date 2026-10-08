@@ -56,6 +56,35 @@ l'intégration.
   (A, B, D exemple de référence), `tva-art52.e2e.ts` mis à la règle 3
   (C 751) ; `npx tsc --noEmit -p e2e` vert.
 
+- PREMIER TOUR DE RELECTURE (2026-10-08, TypeScript et « échecs silencieux »).
+  Côté créances (commit ca71c83) · une seule transaction pour retour, perte,
+  mouvement et lettrage `MODULE` (MAJEUR 2, mineur 9), garde du lettrage
+  étendue aux lignes du compte d'origine de la perte, retrait des DEUX pièces
+  au brouillard (BLOQUANT 1), annulation refusée par une seule LIQUIDATION
+  couvrante, négatif au premier jour ouvert en période close (MAJEUR 3),
+  perte avec duplicata refusée quand la taxe à l'encaissement a pu être
+  déclarée (B2), information TTC protégée (mineur 8), `maxWait` et lecture
+  dans la transaction (mineur 10). Côté moteur de TVA (ce commit) ·
+  `LiquidationTva.regleTardifs` et `instantLecture` (migration
+  `20270163000000_liquidation_regle_tardifs`) · une liquidation d'avant la
+  règle ne voit que les lignes datées dans sa période et aucun négatif, le
+  reste est porté plus loin et NOMMÉ `ancienMoteur` (MAJEUR 4, M1) ; instant
+  de lecture pris avant la déclaration (mineur 11, course) ; annulation d'une
+  liquidation refusée tant qu'une postérieure existe (B1) ; trou entre
+  liquidations dit ; récupération portée hors du délai de l'art. 37 al. 2
+  dite (mineur 6) ; négatif d'une facture · attente de la période de la
+  facture (mineur 7), nommé sans peser pour une période jamais liquidée
+  (MAJEUR 5), un achat à l'encaissement (M2), une déduction d'origine déchue ;
+  facture et négatif tardifs du même jour compensés ; négatif orphelin d'un
+  groupe sans effet de règlement, nommé ; taxe annulée par une perte jamais
+  exigible après elle (M4, moteur) ; report au détail du reclassement gardé
+  comme le reclassement (M4, lettrage) ; première cotisation lue sur son
+  constat, refus nommé sans lui ou sans réintégration (M3) ; borne
+  trimestrielle du point C dite (30 septembre) ; casts retirés, `role` en
+  union, `compteId` inutile retiré (mineur 12) ; commentaire de la migration
+  `20270162000000_perte_avec_tva` corrigé AVANT application, JSDoc orphelines
+  remises, « au TTC entier » complété (mineur 13).
+
 ## Reste
 
 - Intégration sur `main` (hors de cette ligne) · fiche à retirer.
@@ -208,13 +237,20 @@ npx jest src/modules/creances-douteuses src/modules/tva/tva-recuperation-creance
   désigner (« Lettrer au 416 », A7 ter B2), comme avant ; au compte
   d'origine, les lignes d'à-nouveau de la facture et du reclassement restent
   ouvertes (règle d'A7, le reclassement ne lettre pas le 411).
-- (E) Sans la réintégration de l'impôt (art. 45) par le cabinet sur
-  l'exercice d'activité, la première cotisation relue par la totalisation
-  baisse (4 200 000, soit 14 000 000 × 30 %, au lieu de 6 000 000 dans le
-  premier passage du rejeu) · l'écart se
-  voit au constat de l'exercice d'activité (`ecartAvecCalcul`), rien n'est
-  corrigé d'office ; lire la première cotisation sur le constat A11 quand il
-  existe serait une suite possible.
+- (E) Réglé au premier tour (M3) · la première cotisation se lit sur le
+  constat A11 de l'exercice arrêté ; sans constat, ou sans la réintégration
+  de l'impôt (art. 45), la totalisation est refusée, nommée.
+- (Relecture, mineur) La cadence trimestrielle d'une TVA n'est pas connue
+  d'OmegaX · la borne du 30 septembre est dite à côté de celle du 30
+  novembre, jamais imposée.
+- (Relecture, M4) Le moteur ne rend jamais exigible, après la perte, la taxe
+  qu'elle a annulée ; une taxe à l'encaissement d'une facture NON cochée de
+  la perte (sans duplicata) reste lue par son groupe, la garde du lettrage
+  (reclassement et son report) étant ce qui la protège.
+- (Relecture, M2) Le négatif d'un achat à l'encaissement est NOMMÉ sans
+  reprendre la déduction prise au règlement · reprendre la part figée au
+  premier jour non liquidé est laissé au cabinet (sûreté non établie sur un
+  groupe partiellement réglé).
 
 - Le négatif d'une facture À L'ENCAISSEMENT déjà en partie encaissée · la
   taxe des règlements reste déclarée (figée) ; la restitution au client

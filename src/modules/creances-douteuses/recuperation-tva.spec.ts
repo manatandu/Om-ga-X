@@ -4,6 +4,7 @@ import {
   FactureDeLaCreance,
   finDuDroit,
   derniereDateEcriture,
+  derniereDateEcritureTrimestrielle,
   mentionDuplicata,
   MOTIF_FACTURE_PAYEE,
   MOTIF_FACTURE_SANS_TVA,
@@ -140,7 +141,7 @@ describe('A7 bis, partie 2 · les refus nommés', () => {
     creanceAnnulee: false,
     creanceCorrigee: false,
     resteFinal: 0,
-    pertes: [{ date: d('2026-06-15'), validee: true, numeroPiece: 12, compteId: 'c6511' }],
+    pertes: [{ date: d('2026-06-15'), validee: true, numeroPiece: 12 }],
     designationsActives: 1,
     chiffrees,
     dejaRecuperees: new Set(),
@@ -213,10 +214,17 @@ describe('A7 bis, partie 2 · les refus nommés', () => {
     expect(motifRefusRecuperation(e)).toMatch(/hors du délai/);
   });
 
+  it('mineur du point C · par trimestre, la borne est le 30 septembre, DITE à côté de celle du mois', () => {
+    expect(derniereDateEcritureTrimestrielle(d('2026-06-15')).toISOString().slice(0, 10)).toBe('2027-09-30');
+    const e = base();
+    e.date = d('2027-12-01');
+    expect(motifRefusRecuperation(e)).toMatch(/au plus tard le 2027-09-30 si la TVA se liquide par trimestre/);
+  });
+
   it('le délai court de la DERNIÈRE perte, jamais de l’envoi du duplicata', () => {
     const e = base();
     // Deux pertes · la seconde, en 2027, ouvre le délai jusqu'au 31/12/2028.
-    e.pertes = [...e.pertes, { date: d('2027-03-01'), validee: true, numeroPiece: 14, compteId: e.pertes[0].compteId }];
+    e.pertes = [...e.pertes, { date: d('2027-03-01'), validee: true, numeroPiece: 14 }];
     e.date = d('2028-11-30');
     e.finDerniereLiquidation = null;
     expect(motifRefusRecuperation(e)).toBeNull();

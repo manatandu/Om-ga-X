@@ -1,6 +1,9 @@
 -- LA PERTE QUI RÉCUPÈRE LA TVA (point D, décision de Manasse du 2026-10-08) ·
--- une seule écriture D 651 (HT) / D 443 (taxe) / C 416 (TTC) sur duplicata
--- surchargé (O.-L. n° 10/001, art. 52 ; décret n° 011/42, art. 126 et 127).
+-- deux pièces sur duplicata surchargé (O.-L. n° 10/001, art. 52 ; décret
+-- n° 011/42, art. 126 et 127) · le retour D compte d'origine / C 416 (TTC),
+-- puis la perte D 651 (HT) / D 443 (taxe) / C compte d'origine. Le montant de
+-- taxe récupérée, celui de la taxe à l'encaissement annulée, et le détail
+-- figé facture par facture.
 ALTER TABLE "mouvements_creances_douteuses" ADD COLUMN "montantTva" DECIMAL(18,2) NOT NULL DEFAULT 0;
 ALTER TABLE "mouvements_creances_douteuses" ADD COLUMN "montantTvaAnnulee" DECIMAL(18,2) NOT NULL DEFAULT 0;
 ALTER TABLE "mouvements_creances_douteuses" ADD COLUMN "detailTva" JSONB;
