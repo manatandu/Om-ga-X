@@ -202,7 +202,7 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   notes par échéance, la balance âgée, l'échéancier, les relances et la NOTE 3
   des deux SMT. Corrigés ensuite (décisions de Manasse du 2026-10-08) · G1,
   la clôture d'un dossier SYCEBNL de groupe admet l'écart égal à son 585 si
-  le 585 du GROUPE est soldé sur la période (fiche du compte 58), et D1, la
+  le 585 du GROUPE est soldé à sa date de clôture (fiche du compte 58), et D1, la
   balance âgée ventile chaque solde dans le sens normal de son périmètre.
   Restent, par gravité ·
   - **MAJEUR** ·

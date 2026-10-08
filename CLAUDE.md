@@ -337,12 +337,16 @@ dossier inaccessible). Système figé sur une cellule et sur un siège qui en a
 (`modifierSystemeSyscohada`, F172). Canevas de trésorerie : SYCEBNL seul (filtre de
 route). LE 585 À LA CLÔTURE (G1, décision de Manasse du 2026-10-08) · le bilan des
 associations ne lit aucun 58 ; la clôture d'un dossier du groupe admet l'écart
-EXACTEMENT égal à son 585, au sens inverse, si le 585 du GROUPE est soldé sur la
-période (fiche SYCEBNL du compte 58, « soldés à la fin de l'exercice », sur l'entité),
-lu par `GroupeService.virements585DuGroupe` derrière `LECTEUR_VIREMENTS_GROUPE`
-(seul le service du groupe ouvre son périmètre) · admis sur la foi de la liasse, un
-transfert passé d'un seul côté clôturait les deux dossiers et la liasse restait
-refusée sans issue. Ni le 588, ni le Système minimal (qui lit le 585 à son bilan).
+EXACTEMENT égal à son 585, au sens inverse, si le 585 du GROUPE est soldé à sa date
+de clôture (fiche SYCEBNL du compte 58, « soldés à la fin de l'exercice », sur
+l'entité) · position cumulée par la DATE des écritures, validées, hors écritures de
+clôture, jamais par des exercices de mêmes bornes (un siège à premier exercice long et
+sa cellule civile n'en partagent aucune), lue par `GroupeService.virements585DuGroupe`
+derrière `LECTEUR_VIREMENTS_GROUPE`, seule lecture hors du périmètre d'un siège,
+déclarée dans `borne-par-la-valeur.spec.ts` (le groupe pris sur la mère du dossier de
+session, une somme seule en sort) · admis sur la foi de la liasse, un transfert passé
+d'un seul côté clôturait les deux dossiers et la liasse restait refusée sans issue.
+Ni le 588, ni le Système minimal (qui lit le 585 à son bilan).
 
 **Documents obligatoires, COMMUNS**, chacun dans son texte : livre d'inventaire
 (SYCEBNL art. 14 · AUDCIF art. 19), rapport (SYCEBNL art. 16-3, quatre sections ·
