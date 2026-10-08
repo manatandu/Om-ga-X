@@ -60,6 +60,7 @@ export const MODELES_CLOISONNES = new Set<string>([
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',
   'FactureCreanceDouteuse',
+  'RecuperationTvaCreance',
   // L'imputation déclarée d'un paiement (décision par la loi du 2026-10-07, point 4).
   'ImputationPaiement',
   'ConstatImpotResultat',

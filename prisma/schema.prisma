@@ -839,6 +839,7 @@ model Tenant {
   ajustementsCreancesDouteuses AjustementCreanceDouteuse[]
   mouvementsCreancesDouteuses  MouvementCreanceDouteuse[]
   facturesCreancesDouteuses    FactureCreanceDouteuse[]
+  recuperationsTvaCreances     RecuperationTvaCreance[]
   imputationsPaiements         ImputationPaiement[]
   verrouCreancesDouteuses      VerrouCreancesDouteuses?
   constatsImpotResultat        ConstatImpotResultat[]
@@ -1624,6 +1625,7 @@ model Exercice {
   creancesDouteuses            CreanceDouteuse[]
   ajustementsCreancesDouteuses AjustementCreanceDouteuse[]
   mouvementsCreancesDouteuses  MouvementCreanceDouteuse[]
+  recuperationsTvaCreances     RecuperationTvaCreance[]
   constatsImpotResultat        ConstatImpotResultat[]
   cloturesLocationAcquisition  ClotureLocationAcquisition[]
   depreciationsImmo            DepreciationImmobilisation[]
@@ -1714,6 +1716,7 @@ model Ecriture {
   creanceDouteuseCorrection   CreanceDouteuse?                   @relation("CreanceDouteuseCorrectionResultat")
   ajustementCreanceDouteuse   AjustementCreanceDouteuse?
   mouvementCreanceDouteuse    MouvementCreanceDouteuse?
+  recuperationTvaCreance      RecuperationTvaCreance?
   constatImpotResultat        ConstatImpotResultat?
   clotureLocationAcquisition  ClotureLocationAcquisition?        @relation("ClotureLocationAcquisitionEcriture")
   extourneLocationAcquisition ClotureLocationAcquisition?        @relation("ClotureLocationAcquisitionExtourne")
@@ -9581,6 +9584,8 @@ model CreanceDouteuse {
   ajustements AjustementCreanceDouteuse[]
   mouvements  MouvementCreanceDouteuse[]
   factures    FactureCreanceDouteuse[]
+  /// Ligne A7 bis, partie 2 · les récupérations de la TVA de ses factures (art. 52).
+  recuperationsTva RecuperationTvaCreance[]
 
   createdAt DateTime @default(now())
   createdBy String
@@ -9779,6 +9784,65 @@ model MouvementCreanceDouteuse {
   @@index([creanceId])
   @@index([exerciceId])
   @@map("mouvements_creances_douteuses")
+}
+
+/// LA RÉCUPÉRATION DE LA TVA D'UNE CRÉANCE IRRÉCOUVRABLE (ligne A7 bis,
+/// partie 2). O.-L. n° 10/001, art. 52 · la taxe « acquittée à l'occasion des
+/// ventes ou des services qui [...] restent impayés peut être récupérée par
+/// voie d'imputation sur l'impôt dû pour les opérations faites
+/// ultérieurement » ; al. 3 et décret n° 011/42, art. 127 al. 2, quand la
+/// créance est « réellement et définitivement irrécouvrable », par l'envoi
+/// d'un DUPLICATA de la facture surchargé du montant impayé hors taxe et de la
+/// taxe correspondante ; al. 3 du décret, « la preuve de la créance
+/// irrécouvrable incombe à l'assujetti ». Un geste À PART, après la perte
+/// (D 651 / C 416 au TTC entier, inchangée) · D 443 (compte et taux de la ligne
+/// de TVA de la facture) / C 651 (le compte de la perte). L'écriture est lue par
+/// la déclaration comme un avoir sur vente constaté, inscrit en déduction de
+/// la période qui suit (décret art. 126). Le montant est REJOUÉ par le serveur
+/// et figé ici, facture par facture (`detail`).
+model RecuperationTvaCreance {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  creanceId  String
+  creance    CreanceDouteuse @relation(fields: [creanceId], references: [id], onDelete: Restrict)
+  /// L'exercice de l'écriture de récupération.
+  exerciceId String
+  exercice   Exercice        @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+
+  date       DateTime @db.Date
+  /// La taxe récupérée, somme du détail.
+  montantTva Decimal  @db.Decimal(18, 2)
+  /// L'impayé hors taxe des factures, tel que les duplicatas le portent.
+  montantHt  Decimal  @db.Decimal(18, 2)
+  /// Facture par facture · désignation, impayé TTC, HT, taxe par ligne de TVA
+  /// (compte, taux), duplicata (référence, date d'envoi). Figé au geste.
+  detail     Json
+  motif      String
+  /// La preuve de l'irrécouvrabilité (décret art. 127 al. 3) · au moins une.
+  pieces     Json
+
+  /// D 443 / C 651. Nulle quand l'écriture, restée au brouillard, est
+  /// supprimée par l'annulation. RESTRICT déclaré · retirée seule, la créance
+  /// se dirait récupérée sans la pièce qui porte la déduction.
+  ecritureId String?   @unique
+  ecriture   Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
+
+  /// L'ANNULATION (AUDCIF art. 20, al. 2) · MARQUÉE, jamais supprimée ;
+  /// l'écriture est supprimée au brouillard, inscrite en négatif validée.
+  annuleeLe       DateTime?
+  annuleePar      String?
+  motifAnnulation String?
+  annulation      Json?
+
+  createdAt DateTime @default(now())
+  createdBy String
+
+  @@index([tenantId])
+  @@index([creanceId])
+  @@index([exerciceId])
+  @@map("recuperations_tva_creances")
 }
 
 /// Le verrou des gestes sur les créances douteuses · une ligne par dossier,

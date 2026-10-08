@@ -207,7 +207,7 @@ const TOURS_DE_LECTURE = 64;
  * déclaration l'annonce en toutes lettres au lieu de le faire passer pour la
  * règle.
  */
-type NatureOperationTva = 'BIENS' | 'SERVICES' | 'INDETERMINEE';
+export type NatureOperationTva = 'BIENS' | 'SERVICES' | 'INDETERMINEE';
 
 /** Racines SYSCOHADA de TVA collectée dont la nature est certaine. */
 const NATURE_COLLECTEE_SYSCOHADA: ReadonlyArray<readonly [string, NatureOperationTva]> = [
@@ -813,6 +813,20 @@ export type LiquidationEncaissement = {
   createdAt: Date;
   figee: Record<string, number> | null;
 };
+
+/** La taxe collectée d'une facture et sa base d'exigibilité (`TauxTvaService.taxeDesFactures`). */
+export interface TaxeDeFacture {
+  ttc: number;
+  lignesTva: Array<{
+    ligneId: string;
+    compteId: string;
+    numero: string;
+    tauxTvaId: string;
+    tva: number;
+    base: 'DATE_ECRITURE' | 'ENCAISSEMENT';
+    nature: NatureOperationTva;
+  }>;
+}
 
 @Injectable()
 export class TauxTvaService {
@@ -3813,6 +3827,77 @@ export class TauxTvaService {
   }
 
   /**
+   * LA TAXE DE CHAQUE FACTURE, ET QUAND ELLE EST DEVENUE EXIGIBLE · servi à la
+   * récupération de la TVA d'une créance irrécouvrable (ligne A7 bis, partie
+   * 2 ; O.-L. n° 10/001, art. 52 al. 1, la taxe « ACQUITTÉE »). Par la règle
+   * même de la déclaration (`baseExigibilite`, régime du dossier à la date de
+   * l'écriture), jamais une seconde · une ligne datée à l'ÉCRITURE (livraison
+   * de biens, art. 25, 1° ; prestation aux débits autorisés, art. 26 ; nature
+   * indéterminée au repli déclaré) a été déclarée à la facture, pour le tout ;
+   * une ligne datée à l'ENCAISSEMENT (art. 25, 2°) ne l'est que de ce qui a
+   * été encaissé.
+   *
+   * Pour chaque écriture VALIDÉE demandée · le TTC du côté du client (classe
+   * 4 hors 44, et classe 5 perçue dans l'écriture) et ses lignes de TVA
+   * collectée (443, au crédit, à un taux). `ancienMoteur` dit qu'une
+   * liquidation sans figé existe (transition d'A7 bis, partie 1) · l'ancien
+   * moteur datait à la facture une prestation non lettrée, et ce qu'il a
+   * déclaré ne se reconstitue pas ici.
+   */
+  async taxeDesFactures(tenantId: string, ecritureIds: readonly string[]): Promise<{ factures: Map<string, TaxeDeFacture>; ancienMoteur: boolean }> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { referentiel: true, regimeExigibiliteTva: true, dateAutorisationDebitsTva: true },
+    });
+    const regime = tenant?.regimeExigibiliteTva ?? 'LIVRAISONS';
+    const dateAutorisation = tenant?.dateAutorisationDebitsTva ?? null;
+    const [ecritures, ancienne] = await Promise.all([
+      ecritureIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.ecriture.findMany({
+            where: { tenantId, id: { in: [...ecritureIds] }, statut: StatutEcriture.VALIDEE },
+            take: ecritureIds.length,
+            select: {
+              id: true,
+              date: true,
+              lignes: {
+                select: {
+                  id: true,
+                  compteId: true,
+                  debit: true,
+                  credit: true,
+                  tauxTvaId: true,
+                  compte: { select: { numero: true, classe: true } },
+                },
+              },
+            },
+          }),
+      this.prisma.liquidationTva.findFirst({ where: { tenantId, tvaEncaissementFigee: { equals: Prisma.AnyNull } }, select: { id: true } }),
+    ]);
+    const factures = new Map<string, TaxeDeFacture>();
+    for (const e of ecritures) {
+      const contreparties = e.lignes.filter((x) => x.compte.classe === ClasseCompte.CLASSE_7).map((x) => x.compte.numero);
+      let ttc = 0;
+      for (const x of e.lignes) {
+        const sens = Number(x.debit) - Number(x.credit);
+        if (sens <= EPSILON) continue;
+        if (x.compte.classe === ClasseCompte.CLASSE_5 || (x.compte.classe === ClasseCompte.CLASSE_4 && !x.compte.numero.startsWith('44'))) ttc += sens;
+      }
+      // Même lecture que la déclaration · régime du dossier à la date de
+      // l'écriture, l'autorisation aux débits bornant sa collecte.
+      const regimeLigne = regime === 'DEBITS' && dateAutorisation && e.date < dateAutorisation ? 'LIVRAISONS' : regime;
+      const lignesTva: TaxeDeFacture['lignesTva'] = [];
+      for (const x of e.lignes) {
+        if (!x.tauxTvaId || !x.compte.numero.startsWith(RACINE_COLLECTEE) || Number(x.credit) <= EPSILON) continue;
+        const { base, nature } = this.baseExigibilite(tenant?.referentiel, regimeLigne, x.compte.numero, true, false, contreparties);
+        lignesTva.push({ ligneId: x.id, compteId: x.compteId, numero: x.compte.numero, tauxTvaId: x.tauxTvaId, tva: TauxTvaService.c(Number(x.credit)), base, nature });
+      }
+      factures.set(e.id, { ttc: TauxTvaService.c(ttc), lignesTva });
+    }
+    return { factures, ancienMoteur: ancienne !== null };
+  }
+
+  /**
    * CRÉDIT DE TVA REPORTÉ SUR LA PÉRIODE · article 63.
    *
    * Fichier `code-general-2026/references/10-tva-ol10-001-loi-base-ch1-10.md`,
@@ -4338,6 +4423,16 @@ export class TauxTvaService {
               // Et ses DEUX DATES (ligne A21) · une facture reçue s'écrit à sa
               // réception, le délai de l'art. 37 al. 2 court de l'exigibilité.
               facture: { select: { nature: true, sens: true, mentionTvaDebits: true, dateFacture: true, dateReception: true } },
+              // LA RÉCUPÉRATION DE LA TVA D'UNE CRÉANCE IRRÉCOUVRABLE (ligne
+              // A7 bis, partie 2) · sa pièce n'est pas une note de crédit
+              // mais le DUPLICATA surchargé de chaque facture (O.-L.
+              // n° 10/001, art. 52 al. 3 ; décret n° 011/42, art. 127 al. 2),
+              // exigé et figé par le module. Non annulée seulement.
+              recuperationTvaCreance: { select: { id: true, annuleeLe: true } },
+              // LE NÉGATIF D'UN AVOIR SE NOMME (relecture d'A7 bis, partie 2,
+              // MAJEUR 1) · sa pièce et celle de l'avoir qu'il corrige.
+              numeroPiece: true,
+              corrigeEcriture: { select: { numeroPiece: true, date: true } },
               // DEUX contreparties sont lues sur la même écriture, et pour
               // trois questions différentes : la ligne de TIERS lettrée dit
               // QUAND la taxe est exigible (art. 25, 2°), le TIERS auquel son
@@ -4551,6 +4646,21 @@ export class TauxTvaService {
     // Avoirs sur ventes, constatés ou imputés sur cette déclaration, dont
     // l'écriture ne porte aucune note de crédit (O.-L. art. 52 al. 2).
     let avoirsSansNoteDeCredit = 0;
+    // LA REPRISE D'UN AVOIR CORRIGÉ (relecture d'A7 bis, partie 2, MAJEUR 1) ·
+    // le négatif d'un avoir sur vente, du module des créances douteuses ou
+    // posé par une correction au journal, se lit au signe près · il est
+    // NOMMÉ (pièce, avoir corrigé, montant, où il pèse), jamais tu. Borné,
+    // et le total le dit (§ 8 bis).
+    const PLAFOND_REPRISES_AVOIRS = 200;
+    const reprisesAvoirsCorriges: Array<{
+      piece: number | null;
+      date: string;
+      avoirCorrige: { piece: number | null; date: string } | null;
+      montant: number;
+      pese: 'CONSTATEE_ICI' | 'DEDUCTION_REPRISE_ICI' | 'NON_IMPUTEE';
+    }> = [];
+    let reprisesAvoirsCorrigesTotal = 0;
+    let reprisesAvoirsCorrigesMontant = 0;
     // LES HYPOTHÈSES DE DATE, NOMMÉES (ligne TVA 24-26, TU 1, 2, 4, 5) · ce
     // que la déclaration date à l'écriture faute de la date que le texte vise.
     let tvaBiensDateeALaFacture = 0;
@@ -4664,7 +4774,17 @@ export class TauxTvaService {
             `comptabiliserLiquidation`) et la requête ci-dessus filtre dessus.
           */
           const avoir = estCollecte ? Number(l.debit) : Number(l.credit);
-          if (avoir > EPSILON) {
+          /*
+            LE NÉGATIF D'UN AVOIR SUR VENTE (ligne A7 bis, partie 2) · un DÉBIT
+            NÉGATIF du 443, posé par l'inscription en négatif qui annule l'avoir
+            (AUDCIF art. 20, al. 2). Il était ignoré (ni avoir, ni collecte), si
+            bien qu'un avoir annulé restait récupéré · notamment la
+            récupération de la TVA d'une créance irrécouvrable, annulée par son
+            module. Il se lit comme l'avoir qu'il annule, au signe près, avec
+            la même mécanique de période (décret n° 011/42, art. 126).
+          */
+          const negatifDAvoir = estCollecte && avoir < -EPSILON;
+          if (avoir > EPSILON || negatifDAvoir) {
             if (!estCollecte) {
               // Reprise de la déduction, à la constatation (décret art. 127).
               if (dansLaPeriode) {
@@ -4687,10 +4807,42 @@ export class TauxTvaService {
               ceux-là une récupération à laquelle ils ont droit. Le logiciel dit
               donc ce qu'il ne voit pas, au lieu de le trancher.
             */
-            const justifie = l.ecriture.facture?.nature === NatureFacture.NOTE_DE_CREDIT;
+            // Pour l'IMPAYÉ, la pièce est le duplicata surchargé (art. 52
+            // al. 3 ; décret art. 127 al. 2), que le module des créances
+            // douteuses exige facture par facture avant d'écrire l'avoir · la
+            // note de crédit n'y est pas due. Un négatif annule, il n'appelle
+            // aucune pièce.
+            const recuperationCreance = (l.ecriture as { recuperationTvaCreance?: { annuleeLe: Date | null } | null }).recuperationTvaCreance;
+            const justifie =
+              l.ecriture.facture?.nature === NatureFacture.NOTE_DE_CREDIT || !!recuperationCreance || negatifDAvoir;
             const compteIci =
               dansLaPeriode || (dateEcriture < dateDebut && !!debutReportAvoirs && dateEcriture >= debutReportAvoirs);
             if (compteIci && !justifie) avoirsSansNoteDeCredit = TauxTvaService.c(avoirsSansNoteDeCredit + avoir);
+            if (negatifDAvoir) {
+              const pese = dansLaPeriode
+                ? ('CONSTATEE_ICI' as const)
+                : dateEcriture < dateDebut && !debutReportAvoirs
+                  ? ('NON_IMPUTEE' as const)
+                  : dateEcriture < dateDebut && !!debutReportAvoirs && dateEcriture >= debutReportAvoirs
+                    ? ('DEDUCTION_REPRISE_ICI' as const)
+                    : null;
+              if (pese) {
+                reprisesAvoirsCorrigesTotal += 1;
+                reprisesAvoirsCorrigesMontant = TauxTvaService.c(reprisesAvoirsCorrigesMontant - avoir);
+                if (reprisesAvoirsCorriges.length < PLAFOND_REPRISES_AVOIRS) {
+                  const e = l.ecriture as { numeroPiece?: number | null; corrigeEcriture?: { numeroPiece: number | null; date: Date } | null };
+                  reprisesAvoirsCorriges.push({
+                    piece: e.numeroPiece ?? null,
+                    date: dateEcriture.toISOString().slice(0, 10),
+                    avoirCorrige: e.corrigeEcriture
+                      ? { piece: e.corrigeEcriture.numeroPiece, date: e.corrigeEcriture.date.toISOString().slice(0, 10) }
+                      : null,
+                    montant: TauxTvaService.c(-avoir),
+                    pese,
+                  });
+                }
+              }
+            }
             if (dansLaPeriode) cumul.avoir = TauxTvaService.c(cumul.avoir + avoir);
             else if (dateEcriture < dateDebut) {
               if (!debutReportAvoirs) {
@@ -5681,6 +5833,8 @@ export class TauxTvaService {
         recuperationArt52,
         avoirsCollecteNonImputes,
         avoirsSansNoteDeCredit,
+        reprisesAvoirsCorrigesMontant,
+        reprisesAvoirsCorrigesTotal,
         tvaExclueArt41,
         tvaAVerifierArt41,
         tvaNatureDepenseIllisible,
@@ -5749,6 +5903,14 @@ export class TauxTvaService {
        * aucune note de crédit (art. 52 al. 2, décret art. 127). Signalés, pas retirés.
        */
       avoirsSansNoteDeCredit,
+      /**
+       * Les négatifs d'avoirs sur ventes (avoirs corrigés, récupérations de
+       * l'art. 52 annulées) qui pèsent sur cette déclaration · pièce, avoir
+       * corrigé, montant de taxe reprise. Bornés, le total le dit.
+       */
+      reprisesAvoirsCorriges,
+      reprisesAvoirsCorrigesTotal,
+      reprisesAvoirsCorrigesTronque: reprisesAvoirsCorrigesTotal > reprisesAvoirsCorriges.length,
       /** TVA d'amont écartée par l'article 41 · jamais déductible. */
       tvaExclueArt41,
       /** TVA d'amont sur des postes que l'article 41 vise sous condition. */
@@ -5895,6 +6057,8 @@ export class TauxTvaService {
     recuperationArt52: number;
     avoirsCollecteNonImputes: number;
     avoirsSansNoteDeCredit: number;
+    reprisesAvoirsCorrigesMontant: number;
+    reprisesAvoirsCorrigesTotal: number;
     tvaExclueArt41: number;
     tvaAVerifierArt41: number;
     tvaNatureDepenseIllisible: number;
@@ -6387,6 +6551,21 @@ export class TauxTvaService {
           'la tenir à disposition ; sinon, l’émettre depuis la fenêtre Facturation avant de récupérer la taxe.',
       );
     }
+    if (e.reprisesAvoirsCorrigesTotal > 0) {
+      phrases.push(
+        `REPRISE D’AVOIRS CORRIGÉS · ${e.reprisesAvoirsCorrigesTotal} inscription(s) en négatif d’avoirs sur ventes ` +
+          `reprennent ${fc(e.reprisesAvoirsCorrigesMontant)} CDF de taxe sur cette déclaration (détail ligne à ligne, ` +
+          '`reprisesAvoirsCorriges`) · l’avoir corrigé cesse d’être récupéré (article 52 ; AUDCIF art. 20, al. 2). ' +
+          'Une période déjà liquidée garde ce qu’elle a déclaré ; la reprise pèse sur la période où le négatif est inscrit ' +
+          'ou sur celle qui la suit.',
+      );
+    }
+    if (e.recuperationArt52 < -EPSILON) {
+      phrases.push(
+        `RÉCUPÉRATION NÉGATIVE · ${fc(-e.recuperationArt52)} CDF d’avoirs corrigés après leur constatation sont REPRIS ici ` +
+          '(article 52, décret art. 126) · la liquidation les porte au débit du compte de TVA facturée.',
+      );
+    }
     if (e.recuperationArt52 > EPSILON) {
       phrases.push(
         `RÉCUPÉRATION SUR VENTES ANNULÉES · ${fc(e.recuperationArt52)} CDF d’avoirs constatés avant cette période ` +
@@ -6513,7 +6692,7 @@ export class TauxTvaService {
     if (
       decl.totalCollecte <= EPSILON &&
       Math.abs(decl.totalDeductibleAdmise) <= EPSILON &&
-      recuperationArt52 <= EPSILON
+      Math.abs(recuperationArt52) <= EPSILON
     ) {
       throw new BadRequestException('Aucun mouvement de TVA sur cette période · rien à comptabiliser.');
     }
@@ -6534,7 +6713,9 @@ export class TauxTvaService {
     for (const l of decl.lignes) {
       for (const pc of l.parCompte) {
         if (pc.collecte > EPSILON) parCompteCollecte.set(pc.compteId, TauxTvaService.c((parCompteCollecte.get(pc.compteId) ?? 0) + pc.collecte));
-        if (pc.recuperation > EPSILON) {
+        // Négative quand le négatif d'un avoir (son annulation) tombe après
+        // la période qui l'a récupéré · la ligne passe alors au débit.
+        if (Math.abs(pc.recuperation) > EPSILON) {
           parCompteRecuperation.set(pc.compteId, TauxTvaService.c((parCompteRecuperation.get(pc.compteId) ?? 0) + pc.recuperation));
         }
         // Le déductible d'un compte peut être NÉGATIF · un avoir fournisseur
@@ -6603,12 +6784,11 @@ export class TauxTvaService {
       );
     }
     for (const [compteId, montant] of parCompteRecuperation) {
-      lignesEcriture.push({
-        compteId,
-        debit: 0,
-        credit: montant,
-        libelle: 'Récupération TVA sur ventes annulées ou résiliées (art. 52)',
-      });
+      lignesEcriture.push(
+        montant > 0
+          ? { compteId, debit: 0, credit: montant, libelle: 'Récupération TVA sur ventes annulées, résiliées ou impayées (art. 52)' }
+          : { compteId, debit: -montant, credit: 0, libelle: 'Reprise d’une récupération de TVA annulée (art. 52)' },
+      );
     }
     /*
       LE 444 REÇOIT LE NET DE LA PÉRIODE, ET L'IMPUTATION LE CRÉDITE À PART.

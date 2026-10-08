@@ -11,6 +11,7 @@ import { CreancesDouteusesService } from './creances-douteuses.service';
 import {
   AnnulerMouvementDto,
   AnnulerReclassementDto,
+  AnnulerRecuperationTvaDto,
   AnnulerRevueDto,
   CorrigerParResultatDto,
   DeclarerCreanceOuvertureDto,
@@ -19,6 +20,7 @@ import {
   PerteCreanceDto,
   ReclasserCreanceDto,
   RecouvrementCreanceDto,
+  RecupererTvaCreanceDto,
   RetirerDesignationDto,
   RevoirDepreciationDto,
 } from './dto/creances-douteuses.dto';
@@ -218,5 +220,36 @@ export class CreancesDouteusesController {
     @Param('mouvementId', ParseUUIDPipe) mouvementId: string,
   ) {
     return this.service.retirerMouvement(user.tenantId, user.userId, id, mouvementId);
+  }
+
+  /**
+   * Ligne A7 bis, partie 2 · la récupération de la TVA d'une créance
+   * irrécouvrable (O.-L. n° 10/001, art. 52 ; décret n° 011/42, art. 126 et
+   * 127) · la proposition, facture par facture, et les récupérations passées.
+   */
+  @Get(':id/recuperation-tva')
+  propositionRecuperation(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.propositionRecuperation(user.tenantId, id);
+  }
+
+  /** « Récupérer la TVA (art. 52) » · réservée au comptable, comme la perte qu'elle suit. Montant rejoué au serveur. */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReserveAuComptable()
+  @Post(':id/recuperation-tva')
+  recupererTva(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RecupererTvaCreanceDto) {
+    return this.service.recupererTva(user.tenantId, user.userId, id, dto);
+  }
+
+  /** L'annulation d'une récupération de TVA (AUDCIF art. 20, al. 2) · réservée au comptable. */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReserveAuComptable()
+  @Post(':id/recuperations-tva/:recuperationId/annuler')
+  annulerRecuperation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('recuperationId', ParseUUIDPipe) recuperationId: string,
+    @Body() dto: AnnulerRecuperationTvaDto,
+  ) {
+    return this.service.annulerRecuperation(user.tenantId, user.userId, id, recuperationId, dto);
   }
 }

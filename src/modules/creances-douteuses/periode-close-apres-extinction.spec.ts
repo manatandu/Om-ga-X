@@ -102,6 +102,7 @@ function monterScenario() {
     },
     creanceDouteuse: { findFirst: jest.fn().mockResolvedValue(creance) },
     ajustementCreanceDouteuse: { findFirst: jest.fn().mockResolvedValue(null) },
+    recuperationTvaCreance: { count: jest.fn().mockResolvedValue(0) },
     mouvementCreanceDouteuse: {
       findFirst: jest.fn().mockImplementation(({ where }: any) => {
         const m = mouvements.find((x) => x.id === where.id && x.creanceId === where.creanceId);
@@ -171,7 +172,7 @@ function monterScenario() {
     defaireLettrageDuModule: jest.fn().mockRejectedValue(new Error('la ligne du 2026-11-15 est figée')),
     lettrerLignesDuModule: jest.fn(),
   };
-  const service = new CreancesDouteusesService(prisma, ecritureService, lettrage as never);
+  const service = new CreancesDouteusesService(prisma, ecritureService, lettrage as never, {} as never);
   const solde = (compteId: string) => lignes.filter((l) => l.compteId === compteId).reduce((t, l) => t + l.debit.toNumber() - l.credit.toNumber(), 0);
   const ouvertes416 = () => lignes.filter((l) => l.compteId === 'c4161' && l.lettrageId === null);
   return { service, ecritures, lignes, solde, ouvertes416, lettrage };

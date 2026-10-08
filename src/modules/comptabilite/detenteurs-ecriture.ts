@@ -100,6 +100,10 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   'CreanceDouteuse.ecritureReclassementId',
   'AjustementCreanceDouteuse.ecritureId',
   'MouvementCreanceDouteuse.ecritureId',
+  // La récupération de la TVA d'une créance irrécouvrable (ligne A7 bis,
+  // partie 2) · retirée seule, la créance se dirait récupérée sans la pièce
+  // qui porte la déduction, et la récupération ne se repasserait plus.
+  'RecuperationTvaCreance.ecritureId',
   // La correction par le résultat d'une créance (relecture du 2026-10-07,
   // M9) · retirée, réimputée ou corrigée seule, l'écriture laisserait la
   // créance sortie du module sans la pièce qui la solde au 416 et au 491.

@@ -18,6 +18,10 @@ import {
   mouvementAAnnulerParDefaut,
   piecesAEnvoyer,
   ecartLettrage416,
+  duplicatasAEnvoyer,
+  factureChoisissable,
+  taxeDesCochees,
+  type FactureRecuperable,
 } from './creances-douteuses';
 import { montant } from './montants';
 import { montantSaisi } from './montant-saisi';
@@ -147,9 +151,9 @@ describe('créances douteuses · écran (ligne A7)', () => {
     // Cinq modales · le geste, l'annulation, « Lettrer au 416 » (second tour,
     // B-1), « Désigner les factures » (A7 bis) et « Corriger par le résultat »
     // (relecture du 2026-10-07, M9).
-    expect(page.match(/role="dialog"/g)).toHaveLength(5);
-    expect(page.match(/aria-modal="true"/g)).toHaveLength(5);
-    expect(page.match(/aria-label="Fermer"/g)).toHaveLength(5);
+    expect(page.match(/role="dialog"/g)).toHaveLength(6);
+    expect(page.match(/aria-modal="true"/g)).toHaveLength(6);
+    expect(page.match(/aria-label="Fermer"/g)).toHaveLength(6);
     const corriger = page.slice(page.indexOf('async function corriger'));
     expect(corriger).toMatch(/ev\.preventDefault\(\);\s*if \(!correction \|\| envoi \|\| !correction\.ecritureId\) return;/);
     const fermerCorrection = page.slice(page.indexOf('function fermerCorrection'), page.indexOf('async function corriger'));
@@ -219,7 +223,8 @@ describe('créances douteuses · A7 scindée à l’écran', () => {
     expect(corps).toContain('comptePerteId: form.comptePerteId || undefined,');
     expect(page).toContain('Perte au TTC entier · D 651 / C 416');
     expect(page).toContain('source="O.-L. n° 10/001, art. 52 ; décret n° 011/42, art. 126 et 127"');
-    expect(page).toContain('Pour l\'instant, le cabinet la déclare lui-même.');
+    // A7 bis, partie 2 · la récupération est désormais un geste du module.
+    expect(page).toContain('Une fois la créance éteinte, le geste « Récupérer la TVA » la chiffre facture par facture et la passe.');
   });
 
   it('le reclassement dit, dans sa bulle, de ne pas lettrer la facture avec lui · TOUJOURS (règle d’A7, rétablie au second tour d’A7 ter)', () => {
@@ -338,5 +343,50 @@ describe('A7 bis · « Désigner les factures » · les parts saisies', () => {
     expect(partsADesigner({ a: 'abc' }, montantSaisi).erreur).toMatch(/illisible/);
     expect(partsADesigner({ a: '0' }, montantSaisi).erreur).toMatch(/illisible ou nulle/);
     expect(partsADesigner({}, montantSaisi).erreur).toMatch(/au moins une facture/);
+  });
+});
+
+describe('créances douteuses · récupération de la TVA (ligne A7 bis, partie 2)', () => {
+  const f = (designationId: string, o: Partial<FactureRecuperable> = {}): FactureRecuperable => ({
+    designationId,
+    libelle: `Facture ${designationId}`,
+    numeroPiece: 1,
+    dateFacture: '2026-02-01',
+    designe: 1_160_000,
+    recouvre: 580_000,
+    impayeTtc: 580_000,
+    impayeHt: 500_000,
+    tvaCorrespondante: 80_000,
+    tvaRecuperable: 80_000,
+    motifs: [],
+    mention: 'FACTURE DEMEUREE IMPAYEE',
+    dejaRecuperee: false,
+    ...o,
+  });
+
+  it('seules les factures cochées, non récupérées, à taxe récupérable partent, chacune avec son duplicata', () => {
+    const factures = [f('A'), f('B', { tvaRecuperable: 0 }), f('C', { dejaRecuperee: true })];
+    expect(factureChoisissable(factures[0])).toBe(true);
+    expect(factureChoisissable(factures[1])).toBe(false);
+    expect(factureChoisissable(factures[2])).toBe(false);
+    const saisis = {
+      A: { choisie: true, reference: ' DUP-A ', dateEnvoi: '2026-07-02' },
+      B: { choisie: true, reference: 'DUP-B', dateEnvoi: '2026-07-02' },
+      C: { choisie: true, reference: 'DUP-C', dateEnvoi: '2026-07-02' },
+    };
+    expect(duplicatasAEnvoyer(factures, saisis)).toEqual({ duplicatas: [{ designationId: 'A', reference: 'DUP-A', dateEnvoi: '2026-07-02' }], erreur: null });
+    expect(taxeDesCochees(factures, saisis)).toBe(80_000);
+  });
+
+  it('un duplicata sans référence ou sans date se dit, en nommant la facture ; rien de coché se dit aussi', () => {
+    expect(duplicatasAEnvoyer([f('A')], { A: { choisie: true, reference: ' ', dateEnvoi: '2026-07-02' } }).erreur).toMatch(/Facture A.*référence/);
+    expect(duplicatasAEnvoyer([f('A')], { A: { choisie: true, reference: 'D', dateEnvoi: '' } }).erreur).toMatch(/Facture A.*date d’envoi/);
+    expect(duplicatasAEnvoyer([f('A')], {}).erreur).toMatch(/Cochez au moins une facture/);
+  });
+
+  it('le bouton du geste et celui de son annulation sont réservés au comptable (peutValider), et la route est appelée telle que le serveur la sert', () => {
+    expect(page).toMatch(/peutValider && ouvert && c\.resteFinal === 0 && c\.mouvements\.some\(\(m\) => m\.type === 'PERTE'\)/);
+    expect(page).toContain('/recuperation-tva`');
+    expect(page).toContain('/recuperations-tva/${');
   });
 });

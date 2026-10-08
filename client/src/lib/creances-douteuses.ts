@@ -274,3 +274,83 @@ export function partsADesigner(parts: Record<string, string>, lireMontant: (t: s
   if (factures.length === 0) return { factures: null, erreur: 'Saisissez la part d’au moins une facture.' };
   return { factures, erreur: null };
 }
+
+/**
+ * LIGNE A7 BIS, PARTIE 2 · « Récupérer la TVA (art. 52) ». Tout est SERVI ·
+ * l'impayé, la taxe récupérable et la mention du duplicata sont calculés par
+ * le serveur (`GET /creances-douteuses/:id/recuperation-tva`), jamais ici, et
+ * le geste les rejoue.
+ */
+export interface FactureRecuperable {
+  designationId: string;
+  libelle: string;
+  numeroPiece: number | null;
+  dateFacture: string;
+  designe: number;
+  recouvre: number;
+  impayeTtc: number;
+  impayeHt: number;
+  tvaCorrespondante: number;
+  tvaRecuperable: number;
+  motifs: string[];
+  mention: string;
+  dejaRecuperee: boolean;
+}
+export interface RecuperationPassee {
+  id: string;
+  date: string;
+  montantTva: number;
+  montantHt: number;
+  motif: string;
+  ecriture: { id: string; numeroPiece: number | null; statut: string } | null;
+  exerciceClos: boolean;
+  annuleeLe: string | null;
+  motifAnnulation: string | null;
+}
+export interface PropositionRecuperation {
+  factures: FactureRecuperable[];
+  ouverte: boolean;
+  motif: string | null;
+  derniereConstatation: string | null;
+  finDuDroit: string | null;
+  finDerniereLiquidation: string | null;
+  reserveAncienMoteur: string | null;
+  recuperations: RecuperationPassee[];
+}
+export interface DuplicataSaisi {
+  choisie: boolean;
+  reference: string;
+  dateEnvoi: string;
+}
+
+/** Une facture se choisit seulement si elle n'est pas déjà récupérée et porte une taxe récupérable. */
+export function factureChoisissable(f: FactureRecuperable): boolean {
+  return !f.dejaRecuperee && f.tvaRecuperable > 0;
+}
+
+/**
+ * Les duplicatas à envoyer · seules les factures cochées, chacune avec sa
+ * référence et sa date d'envoi · un manque se DIT avant l'envoi, en nommant
+ * la facture (le serveur porte le même refus).
+ */
+export function duplicatasAEnvoyer(
+  factures: readonly FactureRecuperable[],
+  saisis: Record<string, DuplicataSaisi>,
+): { duplicatas: Array<{ designationId: string; reference: string; dateEnvoi: string }>; erreur: null } | { duplicatas: null; erreur: string } {
+  const duplicatas: Array<{ designationId: string; reference: string; dateEnvoi: string }> = [];
+  for (const f of factures) {
+    const s = saisis[f.designationId];
+    if (!s?.choisie || !factureChoisissable(f)) continue;
+    if (!s.reference.trim()) return { duplicatas: null, erreur: `Facture « ${f.libelle} » · la référence du duplicata envoyé est exigée.` };
+    if (!s.dateEnvoi) return { duplicatas: null, erreur: `Facture « ${f.libelle} » · la date d’envoi du duplicata est exigée.` };
+    duplicatas.push({ designationId: f.designationId, reference: s.reference.trim(), dateEnvoi: s.dateEnvoi });
+  }
+  if (duplicatas.length === 0) return { duplicatas: null, erreur: 'Cochez au moins une facture dont le duplicata a été envoyé.' };
+  return { duplicatas, erreur: null };
+}
+
+/** La taxe que le geste passera pour les factures cochées · somme des montants SERVIS. */
+export function taxeDesCochees(factures: readonly FactureRecuperable[], saisis: Record<string, DuplicataSaisi>): number {
+  const total = factures.filter((f) => saisis[f.designationId]?.choisie && factureChoisissable(f)).reduce((t, f) => t + f.tvaRecuperable, 0);
+  return Math.round(total * 100) / 100;
+}

@@ -615,6 +615,7 @@ describe('créances douteuses · service', () => {
         count: jest.fn().mockResolvedValue(0),
         aggregate: jest.fn().mockResolvedValue({ _sum: { ecart: 0 } }),
       },
+      recuperationTvaCreance: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
       mouvementCreanceDouteuse: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'mv-1', ...data })),
         delete: jest.fn().mockResolvedValue({}),
@@ -666,6 +667,7 @@ describe('créances douteuses · service', () => {
       prisma,
       { creer, creerAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, detenteursDeLEcriture } as any,
       lettrage as any,
+      { taxeDesFactures: jest.fn().mockResolvedValue({ factures: new Map(), ancienMoteur: false }) } as any,
     );
     return { service, prisma, creer, creerAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, lettrage };
   }
@@ -1057,11 +1059,13 @@ describe('créances douteuses · service', () => {
     );
   });
 
-  it('A7 scindée · le service ne dépend que de la base, du journal et du lettrage, jamais du moteur de TVA', () => {
+  it('A7 scindée · le service dépend de la base, du journal, du lettrage, et du moteur de TVA pour la seule LECTURE de la taxe des factures (A7 bis, partie 2)', () => {
     // A7 ter, B2 · le lettrage pose le groupe des lignes 416 d'une créance
-    // éteinte ; il ne calcule aucune taxe.
+    // éteinte ; il ne calcule aucune taxe. A7 bis, partie 2 · la récupération
+    // de l'art. 52 lit la taxe des factures et sa base d'exigibilité par la
+    // règle de la déclaration (`taxeDesFactures`), jamais une seconde règle.
     const types = Reflect.getMetadata('design:paramtypes', CreancesDouteusesService) as Array<{ name: string }>;
-    expect(types.map((t) => t.name)).toEqual(['PrismaService', 'EcritureService', 'LettrageService']);
+    expect(types.map((t) => t.name)).toEqual(['PrismaService', 'EcritureService', 'LettrageService', 'TauxTvaService']);
   });
 
   it('le reclassement passe D 416 / C client en deux lignes, sans lettrer le compte du client', async () => {
@@ -2563,13 +2567,14 @@ describe('A7 bis, troisième reprise · encours d’une facture d’un groupe pa
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         create: jest.fn().mockResolvedValue({ id: 'v' }),
       },
+      recuperationTvaCreance: { count: jest.fn().mockResolvedValue(0) },
       factureCreanceDouteuse: {
         findFirst: jest.fn(async () => ({ id: 'd1', retireeLe: retiree })),
         update,
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
-    const s = new CreancesDouteusesService(prisma as never, {} as never, {} as never);
+    const s = new CreancesDouteusesService(prisma as never, {} as never, {} as never, {} as never);
     await s.retirerDesignation('t1', 'u1', 'cr1', 'd1', { motif: '  Mauvaise facture  ' });
     expect(update).toHaveBeenCalledWith({
       where: { id: 'd1' },
@@ -2579,5 +2584,60 @@ describe('A7 bis, troisième reprise · encours d’une facture d’un groupe pa
     expect(Object.keys(prisma)).not.toContain('exercice');
     retiree = new Date('2027-04-01');
     await expect(s.retirerDesignation('t1', 'u1', 'cr1', 'd1', { motif: 'Encore' })).rejects.toThrow(/déjà retirée/);
+  });
+
+  it('A7 bis, partie 2 (relecture, BLOQUANT) · sous une récupération non annulée, ni désignation ni retrait de désignation · l’impayé déclaré ne se redistribue pas', async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const create = jest.fn();
+    const count = jest.fn().mockResolvedValue(1);
+    const prisma = {
+      verrouCreancesDouteuses: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn().mockResolvedValue({ id: 'v' }),
+      },
+      recuperationTvaCreance: { count },
+      creanceDouteuse: { findFirst: jest.fn().mockResolvedValue({ id: 'cr1', annuleeLe: null, corrigeeParResultatLe: null }) },
+      factureCreanceDouteuse: { findFirst: jest.fn(async () => ({ id: 'd2', retireeLe: null })), update, create },
+    };
+    const s = new CreancesDouteusesService(prisma as never, {} as never, {} as never, {} as never);
+    // Retrait d'une désignation QU'AUCUNE récupération ne chiffre · refusé aussi.
+    await expect(s.retirerDesignation('t1', 'u1', 'cr1', 'd2', { motif: 'Mauvaise facture' })).rejects.toThrow(
+      /récupération de TVA \(art\. 52\) non annulée.*retirer une désignation.*Annulez d’abord la récupération/,
+    );
+    await expect(s.designerFactures('t1', 'u1', 'cr1', { factures: [{ ligneEcritureId: 'lb', montant: 1_160_000 }] })).rejects.toThrow(
+      /récupération de TVA \(art\. 52\) non annulée.*désigner une facture.*Annulez d’abord la récupération/,
+    );
+    expect(count).toHaveBeenCalledWith({ where: { tenantId: 't1', creanceId: 'cr1', annuleeLe: null } });
+    expect(update).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+  it('A7 bis, partie 2 (relecture, MAJEUR 2) · une clôture de période qui couvre la date de la récupération refuse son annulation, sans rien inscrire', async () => {
+    const inscrireEnNegatifPourAnnulation = jest.fn();
+    const prisma = {
+      verrouCreancesDouteuses: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn().mockResolvedValue({ id: 'v' }),
+      },
+      recuperationTvaCreance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'r1',
+          date: new Date('2027-01-20'),
+          annuleeLe: null,
+          exercice: { statut: 'OUVERT' },
+          ecriture: { id: 'e1', statut: 'VALIDEE', numeroPiece: 9, journalId: 'jOD', lignes: [] },
+        }),
+        update: jest.fn(),
+      },
+      // Aucune liquidation ; une clôture de PÉRIODE au 31 janvier.
+      liquidationTva: { findFirst: jest.fn().mockResolvedValue(null) },
+      cloture: { findMany: jest.fn().mockResolvedValue([{ granularite: 'PERIODE', journalId: null, dateLimite: new Date('2027-01-31') }]) },
+    };
+    const s = new CreancesDouteusesService(prisma as never, { inscrireEnNegatifPourAnnulation } as never, {} as never, {} as never);
+    await expect(s.annulerRecuperation('t1', 'u1', 'cr1', 'r1', { motif: 'Duplicata à refaire' })).rejects.toThrow(
+      /clôture de période couvre la date.*inscrit au 2027-02-01/,
+    );
+    expect(prisma.cloture.findMany).toHaveBeenCalledWith({ where: { tenantId: 't1', annuleeAt: null, OR: [{ journalId: 'jOD' }, { journalId: null }] } });
+    expect(inscrireEnNegatifPourAnnulation).not.toHaveBeenCalled();
+    expect(prisma.recuperationTvaCreance.update).not.toHaveBeenCalled();
   });
 });

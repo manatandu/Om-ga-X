@@ -148,6 +148,9 @@ export const MODELES_AUDITES = new Set<string>([
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',
   'FactureCreanceDouteuse',
+  // La récupération de la TVA d'une créance irrécouvrable (ligne A7 bis,
+  // partie 2) · les duplicatas, la preuve et l'annulation avec son motif.
+  'RecuperationTvaCreance',
   // L'imputation déclarée d'un paiement (Code civil, Livre III, art. 151 et
   // 153) · elle date la TVA à l'encaissement, sa pièce et son retrait motivé.
   'ImputationPaiement',

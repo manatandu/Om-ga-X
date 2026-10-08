@@ -22,9 +22,20 @@ import {
   EcritureService,
 } from '../comptabilite/ecriture.service';
 import { lireMethodeAuReclassement } from './methode-au-reclassement';
+import { TauxTvaService } from '../tva/taux-tva.service';
+import {
+  chiffrerFactures,
+  FactureDeLaCreance,
+  finDuDroit,
+  MOTIF_TAXE_A_L_ENCAISSEMENT,
+  motifRecuperationEnPlace,
+  motifRefusAnnulationRecuperation,
+  motifRefusRecuperation,
+} from './recuperation-tva';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { LettrageService } from '../lettrage/lettrage.service';
 import { lignesFigees } from '../exercice/gel-cloture';
+import { premierJourNonCloture } from '../exercice/report-periode-close';
 import {
   COMPTES_CREANCES_DOUTEUSES,
   RACINES_CREANCE_SOURCE,
@@ -67,6 +78,7 @@ import {
 import {
   AnnulerMouvementDto,
   AnnulerReclassementDto,
+  AnnulerRecuperationTvaDto,
   AnnulerRevueDto,
   CorrigerParResultatDto,
   DeclarerCreanceOuvertureDto,
@@ -77,6 +89,7 @@ import {
   PieceJustificativeDto,
   ReclasserCreanceDto,
   RecouvrementCreanceDto,
+  RecupererTvaCreanceDto,
   RetirerDesignationDto,
   RevoirDepreciationDto,
 } from './dto/creances-douteuses.dto';
@@ -218,6 +231,9 @@ export class CreancesDouteusesService {
     private readonly prisma: PrismaService,
     private readonly ecritures: EcritureService,
     private readonly lettrage: LettrageService,
+    // Ligne A7 bis, partie 2 · la taxe des factures et sa base d'exigibilité,
+    // par la règle même de la déclaration.
+    private readonly tva: TauxTvaService,
   ) {}
 
   /**
@@ -829,6 +845,10 @@ export class CreancesDouteusesService {
       pieces: c.pieces,
       ecritureReclassementId: c.ecritureReclassementId,
       resteALaCloture: reste,
+      // Relecture d'A7 bis, partie 2, MINEUR · le reste après TOUS les
+      // mouvements non annulés, celui que la récupération de la TVA juge
+      // (« créance éteinte ») · l'écran y aligne son bouton.
+      resteFinal: this.resteFinal(c),
       depreciationOuverture: enPlaceOuverture,
       depreciationALaCloture: corrigee ? 0 : centimes(revue ? n(revue.depreciationNecessaire) : enPlaceOuverture),
       revueAFaire: !corrigee && revueAFaire({ revueDeLExercice: !!revue, enPlace: enPlaceOuverture, reste, aucuneRevue: c.ajustements.length === 0 }),
@@ -1007,6 +1027,12 @@ export class CreancesDouteusesService {
   designerFactures(tenantId: string, userId: string, id: string, dto: DesignerFacturesDto) {
     return this.sousVerrou(tenantId, 'DÉSIGNATION DES FACTURES', async () => {
       const c = await this.creance(tenantId, id);
+      // Ligne A7 bis, partie 2 (relecture, BLOQUANT) · une désignation nouvelle
+      // redistribue les recouvrements entre les factures (art. 154) et
+      // rendrait récupérable une taxe déjà récupérée (A récupère 80 000, B
+      // désignée ensuite en offrait 160 000 de plus, pour 160 000 dus en
+      // tout). Refusée tant qu'une récupération non annulée tient.
+      await this.refuserSiRecuperee(tenantId, c.id, 'désigner une facture');
       const factures = await this.facturesADesigner(
         tenantId,
         { id: c.id, compteCreanceId: c.compteCreanceId, numero: c.compteCreance.numero, montant: n(c.montant) },
@@ -1125,6 +1151,12 @@ export class CreancesDouteusesService {
       });
       if (!d) throw new NotFoundException('Désignation introuvable pour cette créance.');
       if (d.retireeLe) throw new BadRequestException(`Cette désignation est déjà retirée, le ${jour(d.retireeLe)}.`);
+      // Ligne A7 bis, partie 2 (relecture, BLOQUANT) · TOUT retrait, même
+      // d'une désignation qu'aucune récupération ne chiffre, redistribue les
+      // recouvrements entre les factures restantes (art. 154) et changerait
+      // l'impayé que les duplicatas déclarent. Refusé tant qu'une récupération
+      // non annulée tient sur la créance.
+      await this.refuserSiRecuperee(tenantId, id, 'retirer une désignation');
       await this.prisma.factureCreanceDouteuse.update({
         where: { id: d.id },
         data: { retireeLe: new Date(), retireePar: userId, motifRetrait: dto.motif.trim() },
@@ -2372,6 +2404,8 @@ export class CreancesDouteusesService {
       const c = await this.creance(tenantId, id);
       const mv = c.mouvements.find((m) => m.id === mouvementId);
       if (!mv) throw new NotFoundException('Mouvement introuvable pour cette créance.');
+      // Ligne A7 bis, partie 2 · le retrait changerait l'impayé déclaré.
+      await this.refuserSiRecuperee(tenantId, id, 'retirer ce mouvement');
       const revue = c.ajustements.find((a) => a.exercice.dateFin.getTime() >= mv.date.getTime());
       if (revue) {
         throw new BadRequestException(
@@ -2431,6 +2465,8 @@ export class CreancesDouteusesService {
     });
     if (!mv) throw new NotFoundException('Mouvement introuvable pour cette créance.');
     await this.refuserSiCorrigee(tenantId, id);
+    // Ligne A7 bis, partie 2 · l'annulation changerait l'impayé déclaré.
+    if (!mv.annuleeLe) await this.refuserSiRecuperee(tenantId, id, 'annuler ce mouvement');
     // B2 · le lettrage que le module a posé à l'extinction se DÉFAIT avec le
     // mouvement (dans la transaction ci-dessous) · il ne refuse pas
     // l'annulation. B2b · figé par une clôture, il RESTE EN PLACE, toléré, et
@@ -2516,5 +2552,357 @@ export class CreancesDouteusesService {
       }
       return { annule: true, annulation, ...(groupe && maintenu ? { information: informationLettrageMaintenu(groupe.code, groupe.figee!) } : {}) };
     });
+  }
+
+  /**
+   * LA RÉCUPÉRATION DE LA TVA D'UNE CRÉANCE IRRÉCOUVRABLE · LECTURE (ligne A7
+   * bis, partie 2 ; règles dans `recuperation-tva.ts`). Les factures désignées
+   * actives, chiffrées · impayé TTC (part désignée moins ses recouvrements,
+   * imputés par l'art. 154 du Code civil, Livre III, comme la déclaration), HT
+   * et taxe correspondante (la mention du duplicata), taxe ACQUITTÉE
+   * récupérable (lue par la règle de la déclaration, `taxeDesFactures`).
+   */
+  private async lireRecuperation(tenantId: string, c: Creance) {
+    const [pertes, designations, recuperations, derniereLiquidation] = await Promise.all([
+      this.prisma.mouvementCreanceDouteuse.findMany({
+        where: { tenantId, creanceId: c.id, annuleeLe: null, type: TypeMouvementCreanceDouteuse.PERTE },
+        orderBy: { date: 'asc' },
+        take: 200,
+        select: {
+          id: true,
+          date: true,
+          ecriture: { select: { statut: true, numeroPiece: true, lignes: { where: { debit: { gt: 0 } }, select: { compteId: true }, take: 5 } } },
+        },
+      }),
+      this.prisma.factureCreanceDouteuse.findMany({
+        where: { tenantId, creanceId: c.id, retireeLe: null },
+        orderBy: { createdAt: 'asc' },
+        take: 200,
+        select: {
+          id: true,
+          montant: true,
+          ligneEcritureId: true,
+          ligneEcriture: { select: { dateEcheance: true, ecritureId: true, ecriture: { select: { date: true, libelle: true, numeroPiece: true } } } },
+        },
+      }),
+      this.prisma.recuperationTvaCreance.findMany({
+        where: { tenantId, creanceId: c.id },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        include: { ecriture: { select: { id: true, numeroPiece: true, statut: true } }, exercice: { select: { statut: true } } },
+      }),
+      this.prisma.liquidationTva.findFirst({ where: { tenantId }, orderBy: { dateFin: 'desc' }, select: { dateFin: true } }),
+    ]);
+    const { factures: taxes, ancienMoteur } = await this.tva.taxeDesFactures(
+      tenantId,
+      [...new Set(designations.map((d) => d.ligneEcriture.ecritureId))],
+    );
+    const factures: FactureDeLaCreance[] = designations.map((d) => ({
+      designationId: d.id,
+      ligneEcritureId: d.ligneEcritureId,
+      montant: n(d.montant),
+      dateFacture: d.ligneEcriture.ecriture.date,
+      dateEcheance: d.ligneEcriture.dateEcheance ?? null,
+      libelle: d.ligneEcriture.ecriture.libelle,
+      numeroPiece: d.ligneEcriture.ecriture.numeroPiece,
+      taxe: taxes.get(d.ligneEcriture.ecritureId) ?? null,
+    }));
+    const chiffrees = chiffrerFactures({
+      reclasse: n(c.montant),
+      factures,
+      recouvrements: c.mouvements.filter((m) => m.type === TypeMouvementCreanceDouteuse.RECOUVREMENT).map((m) => ({ date: m.date, montant: n(m.montant) })),
+    });
+    const dejaRecuperees = new Set<string>();
+    for (const r of recuperations) {
+      if (r.annuleeLe) continue;
+      for (const f of (r.detail as unknown as Array<{ designationId?: string }>) ?? []) if (f.designationId) dejaRecuperees.add(f.designationId);
+    }
+    // L'ANCIEN MOTEUR (transition d'A7 bis, partie 1) · une facture à la taxe
+    // datée à l'encaissement a pu être déclarée à la facture par une
+    // liquidation sans figé · OmegaX ne la récupère pas, il la NOMME.
+    const reserveAncienMoteur =
+      ancienMoteur && chiffrees.some((f) => f.motifs.includes(MOTIF_TAXE_A_L_ENCAISSEMENT))
+        ? 'Une liquidation de TVA passée sous l’ancien moteur (avant la ligne A7 bis) a pu déclarer à la facture la taxe d’une prestation ' +
+          'non encaissée · OmegaX ne la récupère pas. Vérifiez la déclaration déposée et, si la taxe y figure, déclarez sa récupération ' +
+          'vous-même (art. 52).'
+        : null;
+    return { pertes, chiffrees, dejaRecuperees, recuperations, finDerniereLiquidation: derniereLiquidation?.dateFin ?? null, reserveAncienMoteur };
+  }
+
+  private static entreePertes(pertes: Awaited<ReturnType<CreancesDouteusesService['lireRecuperation']>>['pertes']) {
+    return pertes.map((p) => {
+      const comptes = [...new Set((p.ecriture?.lignes ?? []).map((l) => l.compteId))];
+      return {
+        date: p.date,
+        validee: p.ecriture?.statut === StatutEcriture.VALIDEE,
+        numeroPiece: p.ecriture?.numeroPiece ?? null,
+        compteId: comptes.length === 1 ? comptes[0] : null,
+      };
+    });
+  }
+
+  /** Les récupérations de la créance, annulées comprises, les plus récentes d'abord. */
+  private static presenterRecuperations(recuperations: Awaited<ReturnType<CreancesDouteusesService['lireRecuperation']>>['recuperations']) {
+    return recuperations.map((r) => ({
+      id: r.id,
+      date: jour(r.date),
+      montantTva: n(r.montantTva),
+      montantHt: n(r.montantHt),
+      detail: r.detail,
+      motif: r.motif,
+      ecriture: r.ecriture ? { id: r.ecriture.id, numeroPiece: r.ecriture.numeroPiece, statut: r.ecriture.statut } : null,
+      exerciceClos: r.exercice.statut === StatutExercice.CLOTURE,
+      annuleeLe: r.annuleeLe ? jour(r.annuleeLe) : null,
+      motifAnnulation: r.motifAnnulation,
+    }));
+  }
+
+  /**
+   * « Récupérer la TVA (art. 52) » · la PROPOSITION, servie à l'écran ·
+   * chaque facture désignée chiffrée, la mention de son duplicata, ce qui
+   * reste ouvert ou le motif qui ferme le geste, et les récupérations déjà
+   * passées. Le geste rejoue tout (`recupererTva`).
+   */
+  async propositionRecuperation(tenantId: string, id: string) {
+    const c = await this.creance(tenantId, id);
+    const l = await this.lireRecuperation(tenantId, c);
+    const pertes = CreancesDouteusesService.entreePertes(l.pertes);
+    const derniere = pertes.length > 0 ? pertes.reduce((d, p) => (p.date > d ? p.date : d), pertes[0].date) : null;
+    // Le refus de FOND, sans les champs que le cabinet n'a pas encore saisis ·
+    // l'écran le montre avant d'ouvrir la saisie.
+    const refus = motifRefusRecuperation({
+      creanceAnnulee: false,
+      creanceCorrigee: false,
+      resteFinal: this.resteFinal(c),
+      pertes,
+      designationsActives: l.chiffrees.length,
+      chiffrees: l.chiffrees,
+      dejaRecuperees: l.dejaRecuperees,
+      // Chaque facture encore ouverte, comme si son duplicata était envoyé ·
+      // le refus qui reste est de FOND (texte, perte, taxe acquittée).
+      duplicatas: l.chiffrees
+        .filter((f) => !l.dejaRecuperees.has(f.designationId) && f.impayeTtc > 0.005)
+        .map((f) => ({ designationId: f.designationId, reference: '·', dateEnvoi: f.dateFacture })),
+      motif: '·',
+      pieces: [{ nature: '·', reference: '·', date: null }],
+      date: derniere ?? new Date(),
+      exerciceOuvert: true,
+      dateDansExercice: true,
+      journalGeneral: true,
+      finDerniereLiquidation: null,
+    });
+    const toutesRecuperees =
+      l.chiffrees.length > 0 && l.chiffrees.every((f) => l.dejaRecuperees.has(f.designationId) || f.impayeTtc <= 0.005);
+    const motif = toutesRecuperees && pertes.length > 0 && Math.abs(this.resteFinal(c)) <= 0.005
+      ? 'Chaque facture désignée encore impayée a déjà sa récupération · rien de plus à récupérer.'
+      : refus;
+    return {
+      factures: l.chiffrees.map((f) => ({ ...f, dejaRecuperee: l.dejaRecuperees.has(f.designationId) })),
+      ouverte: motif === null,
+      motif,
+      derniereConstatation: derniere ? jour(derniere) : null,
+      finDuDroit: derniere ? jour(finDuDroit(derniere)) : null,
+      finDerniereLiquidation: l.finDerniereLiquidation ? jour(l.finDerniereLiquidation) : null,
+      reserveAncienMoteur: l.reserveAncienMoteur,
+      recuperations: CreancesDouteusesService.presenterRecuperations(l.recuperations),
+    };
+  }
+
+  /**
+   * « RÉCUPÉRER LA TVA (art. 52) » · D 443 (compte et taux de chaque ligne de
+   * TVA de la facture) / C 651 (le compte de la perte), au brouillard, au
+   * journal d'opérations diverses, le montant REJOUÉ ici facture par facture
+   * et figé (`detail`). La déclaration la lit comme un avoir sur vente,
+   * constaté à sa date et inscrit en DÉDUCTION de la période qui suit (décret
+   * n° 011/42, art. 126 ; `TauxTvaService.declaration`). La perte, elle, reste
+   * au TTC entier (A7) · cette pièce en retire la taxe récupérée.
+   *
+   * Quand la perte est d'un exercice CLOS, le 651 crédité est celui de
+   * l'exercice en cours · la correction passe par le résultat de l'exercice où
+   * le droit s'exerce (AUDCIF art. 34, dernier alinéa, par analogie ; SYCEBNL,
+   * cadre conceptuel § 3.3.1.2.4) · lecture d'OmegaX, aucune fiche ne nomme
+   * de produit pour cette récupération, et la réponse le dit.
+   */
+  recupererTva(tenantId: string, userId: string, id: string, dto: RecupererTvaCreanceDto) {
+    return this.sousVerrou(tenantId, 'RÉCUPÉRATION DE LA TVA', async () => {
+      const [c, ex, journal] = await Promise.all([this.creance(tenantId, id), this.exercice(tenantId, dto.exerciceId), this.journal(tenantId, dto.journalId)]);
+      const l = await this.lireRecuperation(tenantId, c);
+      const pertes = CreancesDouteusesService.entreePertes(l.pertes);
+      const date = new Date(dto.date.slice(0, 10));
+      const pieces = this.pieces(dto.pieces);
+      const refus = motifRefusRecuperation({
+        creanceAnnulee: false,
+        creanceCorrigee: false,
+        resteFinal: this.resteFinal(c),
+        pertes,
+        designationsActives: l.chiffrees.length,
+        chiffrees: l.chiffrees,
+        dejaRecuperees: l.dejaRecuperees,
+        duplicatas: dto.duplicatas ?? [],
+        motif: dto.motif,
+        pieces,
+        date,
+        exerciceOuvert: ex.statut === StatutExercice.OUVERT,
+        dateDansExercice: date >= ex.dateDebut && date <= ex.dateFin,
+        journalGeneral: journal.type === TypeJournal.GENERAL,
+        finDerniereLiquidation: l.finDerniereLiquidation,
+      });
+      if (refus) throw new BadRequestException(refus);
+
+      const choisies = dto.duplicatas.map((d) => {
+        const f = l.chiffrees.find((x) => x.designationId === d.designationId)!;
+        return { ...f, duplicata: { reference: d.reference.trim(), dateEnvoi: d.dateEnvoi.slice(0, 10) } };
+      });
+      // Une ligne au DÉBIT par compte de TVA et par taux · le taux est porté
+      // par la ligne de TVA (la déclaration le lit là, jamais sur une autre).
+      const parCompteEtTaux = new Map<string, { compteId: string; tauxTvaId: string; tva: number }>();
+      for (const f of choisies) {
+        for (const r of f.recuperable) {
+          const cle = `${r.compteId}|${r.tauxTvaId}`;
+          const v = parCompteEtTaux.get(cle) ?? { compteId: r.compteId, tauxTvaId: r.tauxTvaId, tva: 0 };
+          v.tva = centimes(v.tva + r.tva);
+          parCompteEtTaux.set(cle, v);
+        }
+      }
+      const montantTva = centimes([...parCompteEtTaux.values()].reduce((t, v) => t + v.tva, 0));
+      const montantHt = centimes(choisies.reduce((t, f) => t + f.impayeHt, 0));
+      const comptePerteId = pertes[0].compteId!;
+      const lignes = [
+        ...[...parCompteEtTaux.values()].map((v) => ({ compteId: v.compteId, debit: v.tva, credit: 0, tauxTvaId: v.tauxTvaId })),
+        { compteId: comptePerteId, debit: 0, credit: montantTva },
+      ];
+      const { suite: recuperation } = await this.ecritures.creerAvec(
+        tenantId,
+        userId,
+        {
+          exerciceId: ex.id,
+          journalId: journal.id,
+          date: jour(date),
+          libelle: `Récupération de la TVA d’une créance irrécouvrable (art. 52) · ${c.compteCreance.numero} ${c.compteCreance.intitule}`.slice(0, 190),
+          reference: choisies.map((f) => f.duplicata.reference).join(' ; ').slice(0, 100),
+          lignes,
+        },
+        (tx, ecriture) =>
+          tx.recuperationTvaCreance.create({
+            data: {
+              tenantId,
+              creanceId: c.id,
+              exerciceId: ex.id,
+              date,
+              montantTva,
+              montantHt,
+              detail: choisies as unknown as Prisma.InputJsonValue,
+              motif: dto.motif.trim(),
+              pieces: pieces as unknown as Prisma.InputJsonValue,
+              ecritureId: ecriture.id,
+              createdBy: userId,
+            },
+          }),
+      );
+      const perteAnterieure = l.pertes.some((p) => p.date < ex.dateDebut);
+      return {
+        id: recuperation.id,
+        montantTva,
+        montantHt,
+        factures: choisies.map((f) => ({ designationId: f.designationId, libelle: f.libelle, tva: f.tvaRecuperable, mention: f.mention })),
+        information: perteAnterieure
+          ? 'La perte est d’un exercice antérieur · le 651 de cet exercice est crédité, la récupération passant par son résultat ' +
+            '(lecture d’OmegaX, aucune fiche ne nomme de produit pour elle).'
+          : null,
+        reserveAncienMoteur: l.reserveAncienMoteur,
+      };
+    });
+  }
+
+  /**
+   * L'ANNULATION D'UNE RÉCUPÉRATION (AUDCIF art. 20, al. 2), comme les autres
+   * gestes du module · au brouillard, l'écriture est supprimée ; validée, elle
+   * s'inscrit en négatif, que la déclaration lit au signe près (le négatif
+   * d'un avoir sur vente) ; la récupération est MARQUÉE annulée par un
+   * `update` unitaire (journal d'audit). Refus · exercice clôturé ; une
+   * liquidation de TVA couvre la date de la récupération ou une date
+   * postérieure (la récupération est inscrite dans une déclaration figée,
+   * `tvaEncaissementFigee` et liquidation ne changent pas).
+   */
+  annulerRecuperation(tenantId: string, userId: string, id: string, recuperationId: string, dto: AnnulerRecuperationTvaDto) {
+    return this.sousVerrou(tenantId, 'ANNULATION DE LA RÉCUPÉRATION DE TVA', async () => {
+      const r = await this.prisma.recuperationTvaCreance.findFirst({
+        where: { id: recuperationId, creanceId: id, tenantId },
+        include: {
+          exercice: { select: { statut: true } },
+          ecriture: {
+            select: { id: true, statut: true, numeroPiece: true, journalId: true, lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true } } },
+          },
+        },
+      });
+      if (!r) throw new NotFoundException('Récupération de TVA introuvable pour cette créance.');
+      // Relecture, MAJEUR 2 · une clôture de période qui couvre la date
+      // daterait le négatif au premier jour ouvert (AUDCIF art. 22, 4°).
+      let periodeClose: string | null = null;
+      if (r.ecriture) {
+        const clotures = await this.prisma.cloture.findMany({
+          where: { tenantId, annuleeAt: null, OR: [{ journalId: r.ecriture.journalId }, { journalId: null }] },
+        });
+        const premier = premierJourNonCloture(clotures, r.ecriture.journalId, r.date);
+        if (premier.getTime() !== r.date.getTime()) periodeClose = jour(premier);
+      }
+      const liquidation = await this.prisma.liquidationTva.findFirst({
+        where: { tenantId, dateFin: { gte: r.date } },
+        orderBy: { dateFin: 'desc' },
+        select: { dateFin: true },
+      });
+      const refus = motifRefusAnnulationRecuperation({
+        dejaAnnulee: r.annuleeLe ? jour(r.annuleeLe) : null,
+        exerciceClos: r.exercice.statut === StatutExercice.CLOTURE,
+        liquidationCouvrante: liquidation ? jour(liquidation.dateFin) : null,
+        periodeClose,
+        motif: dto.motif,
+      });
+      if (refus) throw new BadRequestException(refus);
+      const motif = dto.motif.trim();
+      const objet = `l'écriture de la récupération n° ${r.ecriture?.numeroPiece ?? '·'}`;
+      if (r.ecriture) {
+        const tenues = motifLignesTenues(r.ecriture.lignes, objet, 'annuler', ', puis annulez la récupération');
+        if (tenues) throw new BadRequestException(tenues);
+      }
+      return transactionJournalisee(this.prisma, async (tx) => {
+        const e = r.ecriture;
+        let annulation: Record<string, unknown> = { traitement: 'SANS_ECRITURE' };
+        if (e) {
+          if ((await this.statutDansTx(tx, tenantId, e.id)) === StatutEcriture.BROUILLARD) {
+            annulation = { traitement: 'SUPPRIMEE', ecritureId: e.id, numeroPiece: e.numeroPiece };
+          } else {
+            const negatif = await this.ecritures.inscrireEnNegatifPourAnnulation(tenantId, userId, e.id, motif, tx);
+            annulation = { traitement: 'INSCRITE_EN_NEGATIF', ecritureId: e.id, numeroPiece: e.numeroPiece, negatifId: negatif.id, negatifNumeroPiece: negatif.numeroPiece };
+          }
+        }
+        try {
+          await tx.recuperationTvaCreance.update({
+            where: { id: r.id, tenantId, annuleeLe: null },
+            data: {
+              annuleeLe: new Date(),
+              annuleePar: userId,
+              motifAnnulation: motif,
+              annulation: annulation as Prisma.InputJsonValue,
+              ...(annulation.traitement === 'SUPPRIMEE' ? { ecritureId: null } : {}),
+            },
+          });
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+            throw new ConflictException('Cette récupération est déjà annulée.');
+          }
+          throw err;
+        }
+        if (e && annulation.traitement === 'SUPPRIMEE') await this.supprimerBrouillardDansTx(tx, tenantId, e.id);
+        return { annulee: true, annulation };
+      });
+    });
+  }
+
+  /** Le refus des gestes qui changeraient l'impayé déclaré par une récupération non annulée. */
+  private async refuserSiRecuperee(tenantId: string, creanceId: string, geste: string) {
+    const nombre = await this.prisma.recuperationTvaCreance.count({ where: { tenantId, creanceId, annuleeLe: null } });
+    const motif = motifRecuperationEnPlace(geste, nombre);
+    if (motif) throw new BadRequestException(motif);
   }
 }

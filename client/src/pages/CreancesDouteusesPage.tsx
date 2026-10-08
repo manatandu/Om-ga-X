@@ -36,6 +36,11 @@ import {
   type RapprochementCreances,
   ecartLettrage416,
   type PropositionLettrage416,
+  duplicatasAEnvoyer,
+  factureChoisissable,
+  taxeDesCochees,
+  type DuplicataSaisi,
+  type PropositionRecuperation,
 } from '../lib/creances-douteuses';
 
 /**
@@ -89,6 +94,8 @@ interface CreanceDouteuse {
   montant: number;
   motif: string;
   resteALaCloture: number;
+  /** Le reste après tous les mouvements, servi · celui que juge la récupération de la TVA. */
+  resteFinal: number;
   depreciationOuverture: number;
   depreciationALaCloture: number;
   comptePertePropose: string | null;
@@ -223,8 +230,23 @@ export function CreancesDouteusesPage() {
     erreur: string | null;
   } | null>(null);
   const refCorrection = useRef<HTMLFormElement | null>(null);
+  // A7 bis, partie 2 · « Récupérer la TVA (art. 52) » · la proposition SERVIE,
+  // les duplicatas saisis facture par facture, et l'annulation d'une
+  // récupération passée.
+  const [recuperation, setRecuperation] = useState<{
+    creance: CreanceDouteuse;
+    proposition: PropositionRecuperation | null;
+    saisis: Record<string, DuplicataSaisi>;
+    journalId: string;
+    date: string;
+    motif: string;
+    pieces: PieceSaisie[];
+    erreur: string | null;
+    annulation: { id: string; motif: string } | null;
+  } | null>(null);
+  const refRecuperation = useRef<HTMLFormElement | null>(null);
   useGardeFermeture(
-    form || annulation || designation || correction ? 'Un geste sur une créance douteuse est en cours de saisie · il serait perdu.' : null,
+    form || annulation || designation || correction || recuperation ? 'Un geste sur une créance douteuse est en cours de saisie · il serait perdu.' : null,
   );
 
   // UNE RÉPONSE PÉRIMÉE NE REMPLIT JAMAIS UN FORMULAIRE (relecture « écran »,
@@ -244,6 +266,7 @@ export function CreancesDouteusesPage() {
   const lettrageOuvert = lettrage416 !== null;
   const designationOuverte = designation !== null;
   const correctionOuverte = correction !== null;
+  const recuperationOuverte = recuperation !== null;
 
   // CHANGER D'EXERCICE VIDE LA LISTE (relecture « écran », 4) · l'ancienne ne
   // reste jamais affichée sous le nouvel exercice, et sa réponse, si elle
@@ -274,6 +297,7 @@ export function CreancesDouteusesPage() {
     setLettrage416(null);
     setDesignation(null);
     setCorrection(null);
+    setRecuperation(null);
     setInfo(null);
   }, [exerciceId]);
 
@@ -301,10 +325,13 @@ export function CreancesDouteusesPage() {
   // consommée, la fenêtre dessous ne se ferme pas ; pendant l'envoi elle ne
   // ferme rien, la réponse du serveur reste à lire.
   useEffect(() => {
-    if (!formOuvert && !annulationOuverte && !lettrageOuvert && !designationOuverte && !correctionOuverte) return;
+    if (!formOuvert && !annulationOuverte && !lettrageOuvert && !designationOuverte && !correctionOuverte && !recuperationOuverte) return;
     return ecouterEchap(() => {
       if (envoiEnCours.current) return true;
-      if (correctionOuverte) {
+      if (recuperationOuverte) {
+        jeton.current++;
+        setRecuperation(null);
+      } else if (correctionOuverte) {
         jeton.current++;
         setCorrection(null);
       } else if (designationOuverte) {
@@ -320,7 +347,98 @@ export function CreancesDouteusesPage() {
       }
       return true;
     });
-  }, [formOuvert, annulationOuverte, lettrageOuvert, designationOuverte, correctionOuverte]);
+  }, [formOuvert, annulationOuverte, lettrageOuvert, designationOuverte, correctionOuverte, recuperationOuverte]);
+  useEffect(() => {
+    if (recuperationOuverte) (premierChamp(refRecuperation.current) ?? refRecuperation.current?.querySelector<HTMLElement>('button'))?.focus({ preventScroll: true });
+  }, [recuperationOuverte, recuperation?.proposition]);
+
+  /** A7 bis, partie 2 · ouvre « Récupérer la TVA » et lit la proposition du serveur · une réponse périmée est jetée. */
+  function ouvrirRecuperation(c: CreanceDouteuse) {
+    const j = ++jeton.current;
+    const od = (journaux ?? []).filter((x) => x.type === 'GENERAL');
+    setRecuperation({
+      creance: c,
+      proposition: null,
+      saisis: {},
+      // Un choix unique se présélectionne (CLAUDE.md § 9 ter).
+      journalId: od.length === 1 ? od[0].id : '',
+      date: '',
+      motif: '',
+      pieces: [{ nature: '', reference: '', date: '' }],
+      erreur: null,
+      annulation: null,
+    });
+    api.get<PropositionRecuperation>(`/creances-douteuses/${c.id}/recuperation-tva`).then(
+      (p) => {
+        if (jeton.current === j) setRecuperation((r) => (r ? { ...r, proposition: p } : r));
+      },
+      (e) => {
+        if (jeton.current === j) setRecuperation((r) => (r ? { ...r, erreur: messageDe(e) } : r));
+      },
+    );
+  }
+  function fermerRecuperation() {
+    if (envoi) return;
+    jeton.current++;
+    setRecuperation(null);
+  }
+  async function recuperer(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!recuperation?.proposition || envoi) return;
+    const lu = duplicatasAEnvoyer(recuperation.proposition.factures, recuperation.saisis);
+    if (lu.erreur !== null) {
+      setRecuperation((r) => (r ? { ...r, erreur: lu.erreur } : r));
+      return;
+    }
+    setEnvoi(true);
+    setRecuperation((r) => (r ? { ...r, erreur: null } : r));
+    try {
+      const rendu = await api.post<{ montantTva: number; information?: string | null; reserveAncienMoteur?: string | null }>(
+        `/creances-douteuses/${recuperation.creance.id}/recuperation-tva`,
+        {
+          exerciceId,
+          journalId: recuperation.journalId,
+          date: recuperation.date,
+          motif: recuperation.motif,
+          pieces: piecesAEnvoyer(recuperation.pieces),
+          duplicatas: lu.duplicatas,
+        },
+      );
+      setInfo(
+        [`TVA récupérée · ${montant(rendu.montantTva)} au débit du 443, au brouillard.`, rendu.information, rendu.reserveAncienMoteur]
+          .filter(Boolean)
+          .join(' '),
+      );
+      jeton.current++;
+      setRecuperation(null);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setRecuperation((r) => (r ? { ...r, erreur: messageDe(e) } : r));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+  /** L'annulation d'une récupération (AUDCIF art. 20, al. 2) · motif de 3 à 500 caractères ; la liste se relit. */
+  async function defaireRecuperation() {
+    if (!recuperation?.annulation || envoi) return;
+    const { id: recuperationId, motif } = recuperation.annulation;
+    if (!motifAnnulationValide(motif)) {
+      setRecuperation((r) => (r ? { ...r, erreur: 'Le motif de l’annulation compte de 3 à 500 caractères.' } : r));
+      return;
+    }
+    setEnvoi(true);
+    try {
+      await api.post(`/creances-douteuses/${recuperation.creance.id}/recuperations-tva/${recuperationId}/annuler`, { motif });
+      setInfo('Récupération de TVA annulée.');
+      jeton.current++;
+      setRecuperation(null);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setRecuperation((r) => (r ? { ...r, erreur: messageDe(e) } : r));
+    } finally {
+      setEnvoi(false);
+    }
+  }
   useEffect(() => {
     if (correctionOuverte) (premierChamp(refCorrection.current) ?? refCorrection.current?.querySelector<HTMLElement>('button'))?.focus({ preventScroll: true });
   }, [correctionOuverte, correction?.candidates]);
@@ -867,6 +985,16 @@ export function CreancesDouteusesPage() {
                                 Lettrer au 416
                               </button>
                             )}
+                            {peutValider && ouvert && c.resteFinal === 0 && c.mouvements.some((m) => m.type === 'PERTE') && (
+                              <button
+                                type="button"
+                                className="text-sel hover:underline"
+                                title="O.-L. n° 10/001, art. 52 ; décret n° 011/42, art. 126 et 127"
+                                onClick={() => ouvrirRecuperation(c)}
+                              >
+                                Récupérer la TVA
+                              </button>
+                            )}
                             {peutValider && ouvert && c.revue && (
                               <button
                                 type="button"
@@ -1240,7 +1368,7 @@ export function CreancesDouteusesPage() {
                         Perte au TTC entier · D 651 / C 416
                         <Aide
                           titre="TVA d'une créance irrécouvrable"
-                          texte="La perte sort du 416 le montant TTC entier, en charge au 651 ; ce geste n'écrit aucune ligne de TVA. Quand la créance est réellement et définitivement irrécouvrable, la TVA acquittée sur la vente peut être récupérée par imputation sur la taxe due pour les opérations ultérieures : elle s'inscrit dans les déductions de la déclaration du ou des mois qui suivent la constatation du non-paiement, après l'envoi au client d'un duplicata de la facture surchargé de la mention « facture demeurée impayée », la preuve de l'irrécouvrabilité incombant à l'assujetti. Pour l'instant, le cabinet la déclare lui-même."
+                          texte="La perte sort du 416 le montant TTC entier, en charge au 651 ; ce geste n'écrit aucune ligne de TVA. Quand la créance est réellement et définitivement irrécouvrable, la TVA acquittée sur la vente peut être récupérée par imputation sur la taxe due pour les opérations ultérieures : elle s'inscrit dans les déductions de la déclaration du ou des mois qui suivent la constatation du non-paiement, après l'envoi au client d'un duplicata de la facture surchargé de la mention « facture demeurée impayée », la preuve de l'irrécouvrabilité incombant à l'assujetti. Une fois la créance éteinte, le geste « Récupérer la TVA » la chiffre facture par facture et la passe."
                           source="O.-L. n° 10/001, art. 52 ; décret n° 011/42, art. 126 et 127"
                         />
                       </span>
@@ -1825,6 +1953,255 @@ export function CreancesDouteusesPage() {
                   <button type="submit" disabled={envoi || !designation.liste} className="bg-sel text-white rounded-full px-3 py-[3px] font-semibold disabled:opacity-50">
                     Désigner
                   </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </PortailModale>
+      )}
+      {peutValider && recuperation && (
+        <PortailModale>
+          <div className="anim-voile fixed inset-0 z-40 bg-black/35 flex items-center justify-center p-4">
+            <form
+              ref={refRecuperation}
+              onSubmit={recuperer}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={id('titre-recuperation')}
+              className="anim-modale w-full max-w-[720px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto"
+            >
+              <div className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]">
+                <span id={id('titre-recuperation')}>Récupérer la TVA d’une créance irrécouvrable</span>
+                <button
+                  type="button"
+                  aria-label="Fermer"
+                  disabled={envoi}
+                  onClick={fermerRecuperation}
+                  className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c] disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-4 text-[11.5px] space-y-2">
+                {recuperation.erreur && <div className="border border-rouge/40 bg-rouge/5 text-rouge rounded-[3px] px-2 py-1 whitespace-pre-wrap">{recuperation.erreur}</div>}
+                <div className="flex items-center gap-1.5">
+                  {recuperation.creance.compteCreance.numero} · {recuperation.creance.tiers ?? recuperation.creance.compteCreance.intitule} · reclassé {montant(recuperation.creance.montant)}
+                  <Aide
+                    titre="Récupération de la TVA"
+                    texte="La taxe acquittée sur une vente qui reste impayée se récupère par imputation sur la taxe due pour les opérations ultérieures, quand la créance est réellement et définitivement irrécouvrable : la créance doit être éteinte (perte validée, plus rien au 416). Pour chaque facture, envoyez au client un duplicata surchargé de la mention affichée, puis saisissez sa référence et sa date d'envoi. La preuve de l'irrécouvrabilité est à votre charge : joignez au moins une pièce. Seule la taxe déjà acquittée se récupère : celle d'une prestation exigible à l'encaissement n'a jamais été due sur la part impayée. L'écriture (D 443 / C 651) part au brouillard ; validée, elle est inscrite en déduction de la déclaration de la période qui suit. Le droit s'exerce jusqu'au 31 décembre de l'année qui suit la perte."
+                    source="O.-L. n° 10/001, art. 25, 2°, 37 al. 2 et 52 ; décret n° 011/42, art. 126 et 127"
+                  />
+                </div>
+                {!recuperation.proposition && !recuperation.erreur && <div className="text-text-dim">Lecture…</div>}
+                {recuperation.proposition && (
+                  <>
+                    {recuperation.proposition.motif && (
+                      <div className="border border-orange/40 bg-orange/5 rounded-[3px] px-2 py-1 whitespace-pre-wrap">{recuperation.proposition.motif}</div>
+                    )}
+                    {recuperation.proposition.reserveAncienMoteur && <div className="text-text-dim">{recuperation.proposition.reserveAncienMoteur}</div>}
+                    {recuperation.proposition.derniereConstatation && (
+                      <div className="text-text-dim">
+                        Perte constatée le {jour(recuperation.proposition.derniereConstatation)} · droit ouvert jusqu’au {jour(recuperation.proposition.finDuDroit)}
+                        {recuperation.proposition.finDerniereLiquidation ? ` · TVA liquidée jusqu’au ${jour(recuperation.proposition.finDerniereLiquidation)}` : ''}
+                      </div>
+                    )}
+                    {recuperation.proposition.factures.length === 0 ? (
+                      <div className="text-text-dim">Aucune facture désignée · désignez d’abord les factures de la créance (« Désigner les factures »).</div>
+                    ) : (
+                      <table className="w-full">
+                        <thead>
+                          <tr>
+                            <th scope="col" className="px-1.5"><span className="sr-only">Choisie</span></th>
+                            <th scope="col" className="text-left px-1.5">Facture</th>
+                            <th scope="col" className="text-right px-1.5">Impayé TTC</th>
+                            <th scope="col" className="text-right px-1.5">TVA récupérable</th>
+                            <th scope="col" className="text-left px-1.5">Duplicata</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recuperation.proposition.factures.map((f) => {
+                            const s = recuperation.saisis[f.designationId] ?? { choisie: false, reference: '', dateEnvoi: '' };
+                            const choisissable = factureChoisissable(f);
+                            const poser = (x: Partial<DuplicataSaisi>) =>
+                              setRecuperation((r) => (r ? { ...r, saisis: { ...r.saisis, [f.designationId]: { ...s, ...x } } } : r));
+                            return (
+                              <tr key={f.designationId} className="align-top">
+                                <td className="px-1.5">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Récupérer la TVA de la facture ${f.libelle}`}
+                                    disabled={!choisissable}
+                                    checked={choisissable && s.choisie}
+                                    onChange={(e) => poser({ choisie: e.target.checked })}
+                                  />
+                                </td>
+                                <td className="px-1.5">
+                                  {jour(f.dateFacture)} {f.libelle}
+                                  {f.impayeTtc > 0 && <div className="text-text-dim text-[10.5px]">{f.mention}</div>}
+                                  {f.dejaRecuperee && <div className="text-text-dim">Déjà récupérée</div>}
+                                  {!f.dejaRecuperee && f.motifs.length > 0 && <div className="text-text-dim">{f.motifs.join(' ; ')}</div>}
+                                </td>
+                                <td className="px-1.5 text-right tabular-nums">{montant(f.impayeTtc)}</td>
+                                <td className="px-1.5 text-right tabular-nums">{montant(f.tvaRecuperable)}</td>
+                                <td className="px-1.5">
+                                  {choisissable && s.choisie && (
+                                    <span className="flex flex-col gap-1">
+                                      <input
+                                        className="border border-bord rounded-[3px] px-1 w-[150px]"
+                                        aria-label={`Référence du duplicata de la facture ${f.libelle}`}
+                                        placeholder="Référence"
+                                        value={s.reference}
+                                        onChange={(e) => poser({ reference: e.target.value })}
+                                      />
+                                      <input
+                                        type="date"
+                                        className="border border-bord rounded-[3px] px-1 w-[150px]"
+                                        aria-label={`Date d’envoi du duplicata de la facture ${f.libelle}`}
+                                        value={s.dateEnvoi}
+                                        onChange={(e) => poser({ dateEnvoi: e.target.value })}
+                                      />
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                    {recuperation.proposition.ouverte && erreurJournaux && (
+                      <div className="border border-rouge/40 bg-rouge/5 text-rouge rounded-[3px] px-2 py-1">Journaux non lus · {erreurJournaux}</div>
+                    )}
+                    {recuperation.proposition.ouverte && (
+                      <div className="grid grid-cols-[140px_1fr] gap-x-2 gap-y-1.5 items-center">
+                        <label htmlFor={id('recup-journal')}>Journal</label>
+                        <select
+                          id={id('recup-journal')}
+                          required
+                          value={recuperation.journalId}
+                          onChange={(e) => setRecuperation((r) => (r ? { ...r, journalId: e.target.value } : r))}
+                          className="border border-border-dark px-2 py-1"
+                        >
+                          <option value="">·</option>
+                          {(journaux ?? [])
+                            .filter((x) => x.type === 'GENERAL')
+                            .map((x) => (
+                              <option key={x.id} value={x.id}>
+                                {x.code} · {x.intitule}
+                              </option>
+                            ))}
+                        </select>
+                        <label htmlFor={id('recup-date')}>Date</label>
+                        <input
+                          id={id('recup-date')}
+                          type="date"
+                          required
+                          {...bornesExercice(liste?.exercice)}
+                          value={recuperation.date}
+                          onChange={(e) => setRecuperation((r) => (r ? { ...r, date: e.target.value } : r))}
+                          className="border border-border-dark px-2 py-1 w-[160px]"
+                        />
+                        <label htmlFor={id('recup-motif')}>Motif</label>
+                        <input
+                          id={id('recup-motif')}
+                          required
+                          value={recuperation.motif}
+                          onChange={(e) => setRecuperation((r) => (r ? { ...r, motif: e.target.value } : r))}
+                          className="border border-border-dark px-2 py-1"
+                        />
+                        <span>Preuve de l’irrécouvrabilité</span>
+                        <div className="space-y-1">
+                          {recuperation.pieces.map((p, i) => (
+                            <div key={i} className="flex gap-1">
+                              <input
+                                aria-label={`Nature de la pièce ${i + 1}`}
+                                placeholder="Nature"
+                                value={p.nature}
+                                onChange={(e) => setRecuperation((r) => (r ? { ...r, pieces: r.pieces.map((x, k) => (k === i ? { ...x, nature: e.target.value } : x)) } : r))}
+                                className="border border-border-dark px-2 py-1 flex-1 min-w-0"
+                              />
+                              <input
+                                aria-label={`Référence de la pièce ${i + 1}`}
+                                placeholder="Référence"
+                                value={p.reference}
+                                onChange={(e) => setRecuperation((r) => (r ? { ...r, pieces: r.pieces.map((x, k) => (k === i ? { ...x, reference: e.target.value } : x)) } : r))}
+                                className="border border-border-dark px-2 py-1 flex-1 min-w-0"
+                              />
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            className="text-sel hover:underline"
+                            onClick={() => setRecuperation((r) => (r ? { ...r, pieces: [...r.pieces, { nature: '', reference: '', date: '' }] } : r))}
+                          >
+                            Ajouter une pièce
+                          </button>
+                        </div>
+                        <span>TVA récupérée</span>
+                        <span className="tabular-nums">
+                          {montant(taxeDesCochees(recuperation.proposition.factures, recuperation.saisis))} · D 443 / C 651
+                        </span>
+                      </div>
+                    )}
+                    {recuperation.proposition.recuperations.length > 0 && (
+                      <table className="w-full">
+                        <thead>
+                          <tr>
+                            <th scope="col" className="text-left px-1.5">Récupération</th>
+                            <th scope="col" className="text-right px-1.5">TVA</th>
+                            <th scope="col" className="text-left px-1.5">État</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recuperation.proposition.recuperations.map((r) => (
+                            <tr key={r.id}>
+                              <td className="px-1.5">
+                                {jour(r.date)} · pièce {r.ecriture?.numeroPiece ?? '·'} · {r.motif}
+                              </td>
+                              <td className="px-1.5 text-right tabular-nums">{montant(r.montantTva)}</td>
+                              <td className="px-1.5">
+                                {r.annuleeLe ? (
+                                  <span className="text-text-dim">Annulée le {jour(r.annuleeLe)} · {r.motifAnnulation}</span>
+                                ) : r.exerciceClos ? (
+                                  <span className="text-text-dim">Exercice clôturé</span>
+                                ) : recuperation.annulation?.id === r.id ? (
+                                  <span className="flex items-center gap-1">
+                                    <input
+                                      className="border border-bord rounded-[3px] px-1 w-[180px]"
+                                      aria-label="Motif de l’annulation"
+                                      value={recuperation.annulation.motif}
+                                      onChange={(e) => setRecuperation((x) => (x && x.annulation ? { ...x, annulation: { ...x.annulation, motif: e.target.value } } : x))}
+                                    />
+                                    <button type="button" disabled={envoi} className="text-rouge hover:underline disabled:opacity-50" onClick={defaireRecuperation}>
+                                      Annuler
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="text-rouge hover:underline"
+                                    onClick={() => setRecuperation((x) => (x ? { ...x, annulation: { id: r.id, motif: '' } } : x))}
+                                  >
+                                    Annuler la récupération
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button type="button" disabled={envoi} onClick={fermerRecuperation} className="border border-bord rounded-[3px] px-3 py-[3px] disabled:opacity-50">
+                    Fermer
+                  </button>
+                  {recuperation.proposition?.ouverte && (
+                    <button type="submit" disabled={envoi} className="bg-sel text-white rounded-full px-3 py-[3px] font-semibold disabled:opacity-50">
+                      Récupérer
+                    </button>
+                  )}
                 </div>
               </div>
             </form>

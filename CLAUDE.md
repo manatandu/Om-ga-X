@@ -760,8 +760,8 @@ perte et annulation `@ReserveAuComptable()`. A7 SCINDÉE (décision de Manasse d
 PASSE AU TTC ENTIER, D 651 / C 416, TOUJOURS · aucune ligne 443, aucune
 « récupération » ; la bulle `Aide` dit que la TVA d'une créance réellement et
 définitivement irrécouvrable se récupère par imputation (O.-L. n° 10/001, art. 52 ;
-décret n° 011/42, art. 126 et 127, duplicata surchargé) et que le cabinet la déclare
-lui-même pour l'instant. Aucune vente d'origine n'est gardée (elles ne servaient
+décret n° 011/42, art. 126 et 127, duplicata surchargé), récupération servie depuis
+par un geste à part (A7 bis, partie 2). Aucune vente d'origine n'est gardée (elles ne servaient
 qu'à la TVA ; le 4161 / 4162 se lit sur le compte du client) · A7 bis y ajoute la
 DÉSIGNATION facultative des factures, qui ne sert qu'à l'exigibilité du recouvrement. LE RECLASSEMENT NE
 LETTRE PAS LE 411 et n'exige aucun lettrage · lettré avec la facture, le moteur de
@@ -970,8 +970,40 @@ sur une ligne qu'aucune ligne de TVA lue ne reçoit, il est NOMMÉ
 et `recouvrementsSansFactureTronque`, « TVA à déclarer par le cabinet faute de
 facture désignée »). « Retirer la désignation » · motif exigé, `update` unitaire
 au journal d'audit, possible exercice clos ; ce qu'une liquidation a figé le reste,
-la suite se relit. Partie 2 (récupération de
-l'art. 52 sur créance irrécouvrable) au suivi.
+la suite se relit.
+
+**TVA d'une créance irrécouvrable (ligne A7 bis, partie 2, 2026-10-08).** O.-L.
+n° 10/001, art. 52 ; décret n° 011/42, art. 126 et 127 (`creances-douteuses/
+recuperation-tva.ts`, `TauxTvaService.taxeDesFactures`). (1) LA NOTE DE CRÉDIT N'EST
+PAS LA PIÈCE D'UN IMPAYÉ · elle sert l'opération annulée ou résiliée (art. 52 al. 2,
+art. 127 al. 1, I3 (1)) ; l'impayé se rectifie par le DUPLICATA surchargé (art. 52
+al. 3, art. 127 al. 2), référence et date d'envoi EXIGÉES facture par facture, la
+mention servie montants compris. (2) UN GESTE À PART, après la perte, qui reste au
+TTC entier · D 443 (compte et taux de la ligne de TVA de la facture) / C 651 (le
+compte des pertes, un seul, sinon refus nommé), au brouillard, journal OD, passé au
+seul clic du comptable (`@ReserveAuComptable`, bouton « Récupérer la TVA » sous
+`peutValider`), montant REJOUÉ et figé (`RecuperationTvaCreance.detail`), écriture
+RETENUE. (3) RIEN D'ACQUITTÉ, RIEN À RÉCUPÉRER (art. 52 al. 1) · seule la taxe d'une
+ligne datée à la facture (art. 25, 1° ; débits autorisés) l'est sur l'impayé ; une
+taxe à l'encaissement (art. 25, 2°) jamais, et c'est dit ; lue par la règle de la
+déclaration (`baseExigibilite`), jamais une seconde ; une liquidation de l'ancien
+moteur est NOMMÉE (`reserveAncienMoteur`), jamais reconstituée. (4) CRÉANCE ÉTEINTE
+(« réellement et définitivement irrécouvrable ») · reste nul au 416, au moins une
+perte VALIDÉE ; impayé de chaque facture DÉSIGNÉE = part désignée moins les
+recouvrements imputés par l'art. 154 (même imputation que la déclaration) ; sans
+désignation, rien. Preuve de l'irrécouvrabilité exigée (art. 127 al. 3). (5)
+PÉRIODE · la déclaration lit l'écriture comme un avoir sur vente constaté, inscrit
+en déduction de la période qui suit (art. 126), justifié par le duplicata (jamais
+compté « sans note de crédit ») ; refus · avant la dernière perte, après le 31
+décembre de l'année qui suit (art. 37 al. 2, par le renvoi de l'art. 126), dans ou
+avant une période liquidée. (6) ANNULATION (art. 20, al. 2) · brouillard supprimé,
+validée inscrite en négatif ; refusée dès qu'une liquidation couvre sa date ou la
+suit. LE NÉGATIF D'UN AVOIR SUR VENTE (débit négatif du 443) EST LU PAR LA
+DÉCLARATION au signe près, et la liquidation reprend au débit une récupération
+négative · il était ignoré, tout avoir annulé restait récupéré. Perte, recouvrement
+et désignation ne se défont pas tant qu'une récupération non annulée tient. Perte
+d'un exercice clos · le 651 de l'exercice en cours est crédité (AUDCIF art. 34 par
+analogie, lecture dite) ; le non tranché est à la ligne A7 bis du suivi.
 
 **Procès-verbal de comptage par caisse.** Le PV de campagne (CPCC, étape 2) ne porte
 pas les espèces ; le § VI vise « la caisse SIÈGE, [...] la caisse AGENCE, [...] la

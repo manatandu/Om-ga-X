@@ -247,3 +247,46 @@ export class DeclarerCreanceOuvertureDto {
   @Type(() => PieceJustificativeDto)
   pieces?: PieceJustificativeDto[];
 }
+
+/**
+ * Ligne A7 bis, partie 2 · le duplicata d'une facture désignée, envoyé au
+ * client (O.-L. n° 10/001, art. 52, al. 3 ; décret n° 011/42, art. 127, al. 2).
+ * Référence et date d'envoi exigées par le service, qui nomme la facture.
+ */
+export class DuplicataFactureDto {
+  @IsUUID('4')
+  designationId!: string;
+
+  @IsString()
+  @MaxLength(200)
+  reference!: string;
+
+  @IsDateString()
+  dateEnvoi!: string;
+}
+
+/**
+ * Ligne A7 bis, partie 2 · « Récupérer la TVA (art. 52) » · le montant n'est
+ * jamais reçu, il est REJOUÉ par le serveur facture par facture. Motif et
+ * pièces · la preuve de l'irrécouvrabilité (décret n° 011/42, art. 127, al. 3).
+ */
+export class RecupererTvaCreanceDto extends MotifEtPiecesDto {
+  @IsUUID('4')
+  exerciceId!: string;
+
+  /** Un journal d'opérations diverses, comme celui de la perte. */
+  @IsUUID('4')
+  journalId!: string;
+
+  @IsDateString()
+  date!: string;
+
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => DuplicataFactureDto)
+  duplicatas!: DuplicataFactureDto[];
+}
+
+/** L'annulation d'une récupération (AUDCIF art. 20, al. 2) · même motif. */
+export class AnnulerRecuperationTvaDto extends AnnulerRevueDto {}

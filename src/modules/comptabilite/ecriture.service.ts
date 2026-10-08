@@ -307,6 +307,7 @@ export const DETENTEUR_PAIE_DU_MOIS: DetenteurEcriture = 'la paie du mois (bulle
 export const DETENTEUR_RECLASSEMENT_CREANCE: DetenteurEcriture = 'une créance douteuse (reclassement au 416)';
 export const DETENTEUR_REVUE_CREANCE: DetenteurEcriture = 'une créance douteuse (revue de la dépréciation)';
 export const DETENTEUR_MOUVEMENT_CREANCE: DetenteurEcriture = 'une créance douteuse (perte ou recouvrement)';
+export const DETENTEUR_RECUPERATION_TVA_CREANCE: DetenteurEcriture = 'une créance douteuse (récupération de la TVA, art. 52)';
 export const DETENTEUR_CORRECTION_CREANCE: DetenteurEcriture = 'une créance douteuse (correction par le résultat)';
 export const DETENTEUR_IMPOT_RESULTAT: DetenteurEcriture = "l'écriture de l'impôt sur le résultat (fenêtre Résultat fiscal)";
 
@@ -1320,6 +1321,9 @@ export class EcritureService {
       // Un mouvement annulé (K4) ne retient plus · son écriture validée est
       // neutralisée par l'inscription en négatif, celle du brouillard est partie.
       [DETENTEUR_MOUVEMENT_CREANCE, this.prisma.mouvementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      // La récupération de la TVA (A7 bis, partie 2) · s'annule depuis sa
+      // fenêtre ; annulée, elle ne retient plus son écriture.
+      [DETENTEUR_RECUPERATION_TVA_CREANCE, this.prisma.recuperationTvaCreance.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
       // La correction par le résultat d'une créance (M9) · retirée, réimputée
       // ou corrigée seule, l'écriture laisserait la créance sortie du module
       // sans ce qui la soldait au 416 et au 491. Aucun geste ne défait la

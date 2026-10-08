@@ -63,6 +63,7 @@ function monter(options: { autreDetenteur?: boolean } = {}) {
     creanceDouteuse: zero(),
     ajustementCreanceDouteuse: zero(),
     mouvementCreanceDouteuse: zero(),
+    recuperationTvaCreance: zero(),
     constatImpotResultat: zero(),
     consignation: zero(),
     bulletinPaie: zero(),
