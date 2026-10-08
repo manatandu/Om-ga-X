@@ -124,6 +124,21 @@ async function bilanDe(c, exerciceId) {
   return m;
 }
 
+/** Le compte de résultat · la référence de poste et son montant N. */
+async function bilanDeCr(c, exerciceId) {
+  const b = await c.lire('Compte de résultat', `/etats-financiers-syscohada/compte-de-resultat?exerciceId=${exerciceId}`);
+  const m = {};
+  const visiter = (o) => {
+    if (Array.isArray(o)) return o.forEach(visiter);
+    if (o && typeof o === 'object') {
+      if (typeof o.ref === 'string' && ('montant' in o || 'net' in o)) m[o.ref] = m[o.ref] ?? (o.net ?? o.montant ?? null);
+      Object.values(o).forEach((v) => v && typeof v === 'object' && visiter(v));
+    }
+  };
+  visiter(b);
+  return m;
+}
+
 /** Un bilan d'ouverture importé au 1er janvier, puis validé (même chemin que le scénario SARL). */
 async function ouverture(c, exerciceId, date, lignes) {
   const csv = ['Compte;Intitule;Debit;Credit', ...lignes.map((l) => l.join(';'))].join('\n');
@@ -173,6 +188,10 @@ async function dossierSarlDissoute(R) {
   });
 
   await etape(R, 'A · 2026 · résultat fiscal et écriture de l’impôt (proposée, passée, annulée, repassée)', async () => {
+    // A11 · l'imputation est bornée par le solde débiteur du 4492 · des acomptes
+    // déclarés au-delà (2 500 000 contre 2 400 000 inscrits) refusent le geste.
+    await c.geste('Acomptes déclarés au-delà du 4492', 'PATCH', `/fiscalite/exercices/${n}/dossier`, { acomptesVerses: 2_500_000 });
+    await refusAttendu(c, R, 'A 2026 · imputation d’acomptes déclarés au-delà du 4492', 'POST', `/fiscalite/exercices/${n}/ecriture-impot`, { imputerAcomptes: true }, /dépassent le solde débiteur du 4492/);
     await c.geste('Acomptes d’IS versés en 2026', 'PATCH', `/fiscalite/exercices/${n}/dossier`, { acomptesVerses: 2_400_000 });
     const rf = await c.lire('Résultat fiscal 2026', `/fiscalite/resultat-fiscal?exerciceId=${n}`);
     // Résultat avant impôt · 60 000 000 − 20 000 000 − 6 000 000 − dotation
@@ -265,8 +284,30 @@ async function dossierSarlDissoute(R) {
     // LA DOTATION DE L'ANNÉE ENTIÈRE · passée avant que la dissolution soit
     // connue, sur l'exercice du 01/01 au 31/12/2027 · 24 000 000 / 4 = 6 000 000.
     if (ctx.vehicule) ctx.dotationPleine = await c.geste('Dotation 2027 sur l’année entière', 'POST', `/immobilisations/${ctx.vehicule.id}/dotation`, { exerciceId: n1, journalId: od.id });
+    // Elle est VALIDÉE (seule) · son retrait passera par l'inscription en
+    // négatif (AUDCIF art. 20, al. 2), le chemin le plus exigeant.
+    const dot = [...(await ecrituresDe(c, n1)).values()].find((e) => jour(e.date) === '2027-12-31' && e.statut === 'BROUILLARD');
+    if (dot) await c.geste('Validation de la seule dotation', 'POST', '/ecritures/valider', { ecritureIds: [dot.id] });
+    else R.note('A 2027 · écriture de la dotation de l’année entière introuvable au 31/12/2027');
+    ctx.dotationPleineId = dot?.id ?? null;
     const b = await balance(c, n1);
-    R.montant('A 2027 · dotation de l’année entière au brouillard (6813)', 6_000_000, solde(b, '6813'));
+    R.montant('A 2027 · dotation de l’année entière validée (6813)', 6_000_000, solde(b, '6813'));
+  });
+
+  await etape(R, 'A · affectation du résultat 2026 (assemblée du 31/05/2027)', async () => {
+    // L'assemblée statue sur 2026 avant la dissolution · AUSCGIE art. 346,
+    // réserve légale d'un dixième au moins du bénéfice · 10 % × 20 650 000 =
+    // 2 065 000 (sous le plafond du cinquième du capital, 10 000 000) ; le
+    // reste, 18 585 000, en report à nouveau.
+    await c.geste('Affectation du résultat 2026', 'POST', '/affectation-resultat', {
+      exerciceId: n, dateDecision: '2027-05-31', organe: 'Assemblée générale ordinaire des associés',
+      lignes: [{ compteId: compte(c, '11100000'), montant: 2_065_000 }, { compteId: compte(c, '12100000'), montant: 18_585_000 }],
+    });
+    await validerJusqua(c, n1, '2027-05-31');
+    const b = await balance(c, n1);
+    R.montant('A 2027 · après l’affectation · 13 soldé', 0, solde(b, '13'));
+    R.montant('A 2027 · après l’affectation · réserve légale', -2_065_000, solde(b, '111'));
+    R.montant('A 2027 · après l’affectation · report à nouveau', -18_585_000, solde(b, '121'));
   });
 
   await etape(R, 'A · faits de la dissolution déclarés', async () => {
@@ -276,6 +317,17 @@ async function dossierSarlDissoute(R) {
       dateDissolution: '2027-06-30', liquidateurs: 'Me Kabeya Mutombo', dateNominationLiquidateur: '2027-06-30',
       regimeLiquidation: 'AMIABLE_STATUTAIRE', associeUniquePersonneMorale: 'NON', dateClotureLiquidation: '2027-12-31',
     });
+    // L'exercice 2026, clos avant la dissolution, sert toujours ses trois
+    // acomptes de 2027, tous échus avant la dernière cotisation (31/01/2028).
+    const rf26 = await c.lire('Résultat fiscal 2026 après la dissolution déclarée', `/fiscalite/resultat-fiscal?exerciceId=${n}`);
+    R.egal('A 2026 · après la dissolution déclarée · acomptes de 2027 toujours dus', [2_655_000, 2_655_000, 1_770_000], (rf26?.acomptesProchainExercice ?? []).map((a) => a.montant));
+    // LPF art. 12 · la déclaration des revenus de 2026, année qui PRÉCÈDE la
+    // dissolution, reste due au 30/04/2027 (un vendredi) · seule l'année de la
+    // dissolution et les suivantes la cèdent aux cotisations (décision, point 4).
+    const pl26 = await c.lire('Planning 2026 après la dissolution déclarée', `/exercices/${n}/planning-cloture`);
+    R.egal('A 2026 · la déclaration annuelle de l’IS de 2026 reste servie (30/04/2027)', '2027-04-30', jour(jalon(pl26, /^Déclarations fiscales annuelles$/)?.echeance));
+    const e0 = await c.lire('Échéancier au 01/03/2027', `/retenues/echeancier?exerciceId=${n1}&dateReference=2027-03-01`);
+    R.egal('A · échéancier 01/03/2027 · déclaration de l’IS des revenus 2026 encore due (30/04/2027)', '2027-04-30', jour(echeanceDe(e0, 'declarationImpotSocietes')?.date));
     const pl = await c.lire('Planning 2027 avant l’arrêt', `/exercices/${n1}/planning-cloture`);
     R.egal('A 2027 · planning · arrêt proposé (la dotation se retire sur accord)', true, pl?.dissolution?.arretPropose);
     R.egal('A 2027 · planning · la dotation de l’année entière est nommée à retirer', true,
@@ -285,12 +337,15 @@ async function dossierSarlDissoute(R) {
   await etape(R, 'A · arrêt de l’exercice à la dissolution', async () => {
     // AUDCIF art. 59 · la dotation calculée sur douze mois ne peut ni suivre
     // son écriture ni rester · le geste sans accord est refusé et la nomme.
-    await refusAttendu(c, R, 'A · arrêt sans accord pour la dotation de l’année entière', 'POST', `/exercices/${n1}/arreter-a-la-dissolution`, {}, /dotation aux amortissements/);
+    const refus = await refusAttendu(c, R, 'A · arrêt sans accord pour la dotation de l’année entière', 'POST', `/exercices/${n1}/arreter-a-la-dissolution`, {}, /dotation aux amortissements/);
+    R.egal('A · arrêt refusé · l’issue dit l’inscription en négatif de l’écriture validée', true, /inscrit en négatif/.test(texteRefus(refus.corps)));
     const r = await c.geste('Arrêt à la dissolution (accord de retrait des actes de la période)', 'POST', `/exercices/${n1}/arreter-a-la-dissolution`, { retirerActesDeLaPeriode: true });
     R.egal('A · arrêt · l’exercice finit le 30/06/2027', '2027-06-30', jour(r?.exercice?.dateFin));
     R.egal('A · arrêt · exercice de liquidation du 01/07/2027', '2027-07-01', jour(r?.exerciceDeLiquidation?.dateDebut));
     R.egal('A · arrêt · exercice de liquidation jusqu’à la clôture déclarée, 31/12/2027', '2027-12-31', jour(r?.exerciceDeLiquidation?.dateFin));
-    R.montant('A · arrêt · trois écritures rattachées à la liquidation', 3, r?.ecrituresRattachees);
+    // Trois écritures de l'activité, plus la dotation validée et son négatif,
+    // tous deux datés du 31/12/2027 · le négatif suit sa date avec celle qu'il annule.
+    R.montant('A · arrêt · cinq écritures rattachées (trois, la dotation et son négatif)', 5, r?.ecrituresRattachees);
     R.montant('A · arrêt · un acte de la période retiré (la dotation)', 1, (r?.actesRetires ?? []).length);
     liste = await exercices(c);
     const liq = exerciceDebutant(liste, '2027-07-01');
@@ -303,6 +358,12 @@ async function dossierSarlDissoute(R) {
     }
     const b = await balance(c, n1);
     R.montant('A · arrêt · la dotation de l’année entière est retirée (6813 de l’exercice arrêté)', 0, solde(b, '6813'));
+    const bl = liq ? await balance(c, liq.id) : null;
+    R.montant('A · arrêt · dotation et négatif s’annulent dans la liquidation (6813 net)', 0, solde(bl, '6813'));
+    const negatif = [...lues.values()].find((e) => /^Annulation \(inscription en négatif\)/.test(e.libelle ?? ''));
+    R.egal('A · arrêt · le négatif de la dotation, validé, daté du 31/12/2027', ['2027-12-31', 'VALIDEE'], negatif ? [jour(negatif.date), negatif.statut] : null);
+    R.egal('A · arrêt · la dotation d’origine garde sa date et son statut', ['2027-12-31', 'VALIDEE'],
+      ctx.dotationPleineId && lues.get(ctx.dotationPleineId) ? [jour(lues.get(ctx.dotationPleineId).date), lues.get(ctx.dotationPleineId).statut] : null);
     const pl = await c.lire('Planning de l’exercice arrêté', `/exercices/${n1}/planning-cloture`);
     R.egal('A · arrêt · annulation de l’arrêt proposée', true, pl?.dissolution?.annulationProposee);
   });
@@ -312,7 +373,7 @@ async function dossierSarlDissoute(R) {
     // L'exercice retrouve son 31 décembre ; la liquidation (01/07 au 31/12/2027)
     // ne va pas au-delà · elle disparaît et ses trois écritures reviennent.
     R.egal('A · annulation · l’exercice retrouve le 31/12/2027', '2027-12-31', jour(r?.exercice?.dateFin));
-    R.montant('A · annulation · trois écritures rendues à l’exercice', 3, r?.ecrituresRattachees);
+    R.montant('A · annulation · cinq écritures rendues à l’exercice', 5, r?.ecrituresRattachees);
     liste = await exercices(c);
     R.egal('A · annulation · plus d’exercice de liquidation', null, exerciceDebutant(liste, '2027-07-01'));
     const lues = await ecrituresDe(c, n1);
@@ -320,7 +381,7 @@ async function dossierSarlDissoute(R) {
       Object.values(avant).map((a) => { const l = lues.get(a.id); return l ? [jour(l.date), l.numeroPiece, l.statut] : null; }));
     const r2 = await c.geste('Nouvel arrêt à la dissolution', 'POST', `/exercices/${n1}/arreter-a-la-dissolution`, {});
     R.egal('A · nouvel arrêt · l’exercice finit le 30/06/2027', '2027-06-30', jour(r2?.exercice?.dateFin));
-    R.montant('A · nouvel arrêt · trois écritures rattachées', 3, r2?.ecrituresRattachees);
+    R.montant('A · nouvel arrêt · cinq écritures rattachées, aucun acte à retirer', 5, r2?.ecrituresRattachees);
   });
 
   liste = await exercices(c);
@@ -359,10 +420,13 @@ async function dossierSarlDissoute(R) {
     R.montant('A · exercice arrêté · 441 (première cotisation due)', -5_700_000, solde(b, '441'));
     const bil = await bilanDe(c, n1);
     // Actif · 24 000 000 − 7 500 000 + 73 150 000 = 89 650 000 ; passif · capital
-    // 50 000 000 + résultat 2026 au 13 20 650 000 + résultat 13 300 000 + 441 5 700 000.
+    // 50 000 000 + réserve légale 2 065 000 + report 18 585 000 + résultat
+    // 13 300 000 + 441 5 700 000.
     R.montant('A · exercice arrêté · bilan avant liquidation, total actif (BZ)', 89_650_000, bil.BZ);
     R.montant('A · exercice arrêté · bilan avant liquidation, total passif (DZ)', 89_650_000, bil.DZ);
     R.montant('A · exercice arrêté · résultat net (CJ) · 19 000 000 − 5 700 000', 13_300_000, bil.CJ);
+    const cr = await bilanDeCr(c, n1);
+    R.montant('A · exercice arrêté · compte de résultat, résultat net (XI)', 13_300_000, cr.XI);
   });
 
   await etape(R, 'A · planning de l’exercice arrêté et de la liquidation', async () => {
@@ -409,12 +473,16 @@ async function dossierSarlDissoute(R) {
   await etape(R, 'A · clôture de l’exercice arrêté (bilan avant liquidation)', async () => {
     const r = await cloturerExercice(c, 'exercice arrêté au 30/06/2027', n1);
     R.egal('A · clôture de l’exercice arrêté', true, r !== null);
+    await refusAttendu(c, R, 'A · annulation de l’arrêt d’un exercice clôturé', 'POST', `/exercices/${n1}/annuler-arret-dissolution`, {}, /clôturé/);
     const b = await balance(c, lq);
-    // À-nouveaux au 01/07/2027 · banque 73 150 000, 441 −5 700 000, capitaux
-    // propres 50 000 000 + 20 650 000 + 13 300 000 (12 et 13 ensemble).
-    R.montant('A · liquidation · à-nouveau banque', 73_150_000, solde(b, BQ));
+    // À-nouveaux au 01/07/2027 · banque 73 150 000, à quoi s'ajoutent les trois
+    // écritures rattachées (−2 655 000 + 10 000 000 − 14 500 000 = −7 155 000)
+    // · 65 995 000 lus ce jour ; 441 −5 700 000 ; réserves, report et
+    // résultat · 2 065 000 + 18 585 000 + 13 300 000 = 33 950 000.
+    R.montant('A · liquidation · banque (à-nouveau et écritures rattachées)', 65_995_000, solde(b, BQ));
     R.montant('A · liquidation · à-nouveau 441', -5_700_000, solde(b, '441'));
-    R.montant('A · liquidation · à-nouveau report et résultat (12 + 13)', -33_950_000, auC(solde(b, '12') + solde(b, '13')));
+    R.montant('A · liquidation · à-nouveau résultat de la période d’activité au 13', -13_300_000, solde(b, '13'));
+    R.montant('A · liquidation · à-nouveau réserves, report et résultat (11 + 12 + 13)', -33_950_000, auC(solde(b, '11') + solde(b, '12') + solde(b, '13')));
   });
 
   await etape(R, 'A · opérations de la liquidation', async () => {
@@ -432,7 +500,11 @@ async function dossierSarlDissoute(R) {
       });
     }
     await validerJusqua(c, lq, '2027-12-31');
+    // La fin de l'exercice de liquidation ne laisse aucune écriture dehors
+    // (AUDCIF art. 7 al. 4) · avancée au 30/11/2027, elle exclurait la dotation et son négatif du 31/12.
+    await refusAttendu(c, R, 'A · fin de liquidation avancée avant des écritures', 'POST', `/exercices/${lq}/fin-de-liquidation`, { dateFin: '2027-11-30' }, /datées après/);
     const b = await balance(c, lq);
+    // 6813 · 6 000 000 − 6 000 000 (dotation retirée et son négatif) + 1 500 000.
     R.montant('A · liquidation · dotation jusqu’à la sortie (6813)', 1_500_000, solde(b, '6813'));
     R.montant('A · liquidation · valeur comptable sortie (812)', 15_000_000, solde(b, '812'));
     R.montant('A · liquidation · prix de cession (822)', -9_000_000, solde(b, '822'));
@@ -506,7 +578,37 @@ async function dossierSarlDissoute(R) {
     // passif · 50 000 000 + 33 950 000 − 8 400 000 = 75 550 000.
     R.montant('A · liquidation · bilan, total actif (BZ)', 75_550_000, bil.BZ);
     R.montant('A · liquidation · bilan, total passif (DZ)', 75_550_000, bil.DZ);
-    R.montant('A · liquidation · résultat net (CJ)', -8_400_000, bil.CJ);
+    // CJ LIT LE 13 ET LES CLASSES 6 À 8 ENSEMBLE (passe V1, B1, `resultatAuBilan` ;
+    // README, « le bilan doit porter les deux résultats ») · le résultat de la
+    // période d'activité, non affecté, reste au 13 pendant la liquidation ·
+    // 13 300 000 − 8 400 000 = 4 900 000. Le compte de résultat dit le seul
+    // résultat de la liquidation.
+    R.montant('A · liquidation · résultat au bilan (CJ · 13 non affecté et liquidation)', 4_900_000, bil.CJ);
+    const cr = await bilanDeCr(c, lq);
+    R.montant('A · liquidation · compte de résultat, résultat net (XI)', -8_400_000, cr.XI);
+  });
+
+  await etape(R, 'A · liquidation prolongée au-delà d’un 31 décembre (art. 232 et 233), puis rétablie', async () => {
+    // Décision, point 6 · dans les cas de l'art. 223, chaque 31 décembre
+    // compris entre la dissolution et la clôture fait naître les états du
+    // liquidateur dans les trois mois (art. 232) et l'assemblée dans les six
+    // (art. 233) · 31/12/2027 → 31/03/2028 et 30/06/2028. La clôture à venir ne
+    // se déclare pas (un fait futur) · elle est effacée, et l'exercice de
+    // liquidation porté au 30/09/2028 en attendant (AUDCIF art. 7 al. 4).
+    await c.geste('Liquidation de l’art. 223, clôture non encore intervenue', 'PATCH', '/dossier/identite', { regimeLiquidation: 'ARTICLE_223_1', dateClotureLiquidation: null });
+    await c.geste('Fin de l’exercice de liquidation reportée au 30/09/2028', 'POST', `/exercices/${lq}/fin-de-liquidation`, { dateFin: '2028-09-30' });
+    const pl = await c.lire('Planning de la liquidation prolongée', `/exercices/${lq}/planning-cloture`);
+    R.egal('A · prolongée · états annuels du liquidateur au 31/03/2028 (art. 232)', '2028-03-31', jour(jalon(pl, /États financiers annuels et rapport écrit du liquidateur/)?.echeance));
+    R.egal('A · prolongée · assemblée sur les états annuels au 30/06/2028 (art. 233)', '2028-06-30', jour(jalon(pl, /Assemblée des associés sur les états annuels de liquidation/)?.echeance));
+    const seconde = jalon(pl, /cotisation spéciale \(dernier bilan de liquidation\)/);
+    R.egal('A · prolongée · seconde cotisation en attente de la clôture (échéance non calculée)', [null, 'En attente de la clôture de la liquidation'], [seconde?.echeance ?? null, seconde?.enAttente ?? null]);
+    const e = await c.lire('Échéancier au 05/01/2028, liquidation prolongée', `/retenues/echeancier?exerciceId=${lq}&dateReference=2028-01-05`);
+    // Aucun acompte de 2028 · tous les bénéfices de la liquidation sont rattachés à 2027 (art. 13 al. 3).
+    R.egal('A · prolongée · aucun acompte de 2028 au 05/01/2028', [null, null, null], ['premierAcompteIs', 'deuxiemeAcompteIs', 'troisiemeAcompteIs'].map((k) => echeanceDe(e, k)));
+    R.egal('A · prolongée · l’échéancier dit la seconde cotisation non calculée', true, (e?.avertissements ?? []).some((a) => /seconde cotisation/.test(a)));
+    // Rétablie · l'exercice ne se clôture qu'à la clôture déclarée, au 31/12/2027.
+    await c.geste('Fin de l’exercice de liquidation rétablie au 31/12/2027', 'POST', `/exercices/${lq}/fin-de-liquidation`, { dateFin: '2027-12-31' });
+    await c.geste('Régime et clôture rétablis', 'PATCH', '/dossier/identite', { regimeLiquidation: 'AMIABLE_STATUTAIRE', dateClotureLiquidation: '2027-12-31' });
   });
 
   await etape(R, 'A · clôture de la liquidation', async () => {
@@ -535,11 +637,11 @@ async function dossierPortefeuille(R) {
 
   await etape(R, 'B · paramètres · SA du portefeuille, secteur minier, quote-part de l’État', async () => {
     await c.geste('Forme SA', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_ANONYME' });
+    await c.geste('Portefeuille de l’État, secteur minier', 'PATCH', '/dossier/identite', { entreprisePortefeuilleEtat: 'OUI', portefeuilleSecteurMinier: 'OUI' });
     // Décision du 2026-10-07, point 3 · la quote-part se déclare AVEC sa source.
     await refusAttendu(c, R, 'B · quote-part de l’État sans source', 'PATCH', '/dossier/identite', { quotePartEtatCapital: 20 }, /source/i);
-    await c.geste('Portefeuille de l’État, secteur minier, quote-part 20 %', 'PATCH', '/dossier/identite', {
-      entreprisePortefeuilleEtat: 'OUI', portefeuilleSecteurMinier: 'OUI', quotePartEtatCapital: 20,
-      sourceQuotePartEtat: 'Registre des actionnaires au 31/12/2026, art. 6 des statuts (banc passe V1)',
+    await c.geste('Quote-part de l’État, 20 %, avec sa source', 'PATCH', '/dossier/identite', {
+      quotePartEtatCapital: 20, sourceQuotePartEtat: 'Registre des actionnaires au 31/12/2026, art. 6 des statuts (banc passe V1)',
     });
     await ouverture(c, n, '2026-01-01', [[BQ, 'Banque', 100_000_000, 0], ['10130000', 'Capital', 0, 100_000_000]]);
   });
@@ -592,6 +694,9 @@ async function dossierPortefeuille(R) {
     R.egal('B 2026 · RCCM recompté (25/04/2027)', '2027-04-25', jour(jalon(pl, /./, 24)?.echeance));
     const pv = jalon(pl, /Procès-verbal à l’Administration des recettes non fiscales/);
     R.egal('B 2026 · PV recompté (04/04/2027) et levé', ['2027-04-04', true], [jour(pv?.echeance), pv?.observation?.satisfait === true]);
+    // Arrêté du 10/12/2025, art. 5 · aussi au Secrétariat Général du Portefeuille, astreinte dite, non calculée.
+    R.egal('B 2026 · PV · Secrétariat Général du Portefeuille et astreinte de 100 USD dits', true,
+      /Secrétariat Général du Portefeuille/.test(pv?.detail ?? '') && /100 USD/.test(pv?.detail ?? ''));
     R.egal('B 2026 · affectation, soixante jours du dépôt (04/06/2027)', '2027-06-04', jour(jalon(pl, /^Affectation des résultats · entreprise du portefeuille/)?.echeance));
     const pai = jalon(pl, /^Paiement du dividende prioritaire de l’État$/);
     R.egal('B 2026 · paiement du dividende, huit jours de la note (28/05/2027), levé', ['2027-05-28', true], [jour(pai?.echeance), pai?.observation?.satisfait === true]);
@@ -687,6 +792,7 @@ async function dossierSansLiquidation(R) {
     // 12 000 000 − 2 000 000 = 10 000 000 ; 30 % = 3 000 000 (minimum 120 000).
     R.egal('C · rôle « cotisation unique »', 'COTISATION_UNIQUE', rf?.bilansSuccessifs?.role);
     R.montant('C · cotisation unique (30 % × 10 000 000)', 3_000_000, rf?.impotDu);
+    R.egal('C · aucun acompte proposé pour l’année suivant la dissolution', [], rf?.acomptesProchainExercice ?? null);
     const p = await c.geste('Écriture de la cotisation unique', 'POST', `/fiscalite/exercices/${n}/ecriture-impot`, { imputerAcomptes: true });
     R.montant('C · constat · cotisation', 3_000_000, p?.constat?.montantImpot);
     R.montant('C · constat · acomptes imputés', 1_200_000, p?.constat?.montantImpute);
@@ -715,6 +821,116 @@ async function dossierSansLiquidation(R) {
     R.egal('C · clôture · dernier exercice, aucun report (message)', true, /dissoute sans liquidation/.test(JSON.stringify(r?.issueOuverture ?? '')));
     const liste = await exercices(c);
     R.egal('C · après la clôture · un seul exercice, aucun exercice suivant', 1, liste.length);
+    const refus = await refusAttendu(c, R, 'C · création d’un exercice 2027 après la dissolution sans liquidation', 'POST', '/exercices', { dateDebut: '2027-01-01', dateFin: '2027-12-31' }, /dissoute|dissolution/i);
+    // AUSCGIE art. 201 al. 4 · « sans qu'il y ait lieu à liquidation » · l'issue
+    // ne peut pas être de créer un exercice de liquidation, et le serveur ne
+    // doit pas l'admettre (même règle que l'arrêt, « rien ne suit l'exercice arrêté »).
+    R.egal('C · le refus ne renvoie pas à un exercice de liquidation (il n’y en a pas)', false, /exercice de liquidation/.test(texteRefus(refus.corps)));
+    await refusAttendu(c, R, 'C · création d’un exercice de liquidation pour une société dissoute sans liquidation', 'POST', '/exercices',
+      { dateDebut: '2026-10-01', dateFin: '2026-12-31', liquidation: true }, /201|sans liquidation/);
+  });
+}
+
+// =====================================================================================
+// DOSSIER D · Tanganyika Commerce SARL · liquidation BÉNÉFICIAIRE, seconde cotisation due
+// =====================================================================================
+
+/**
+ * Le chemin principal de la seconde cotisation (le dossier A n'en a éprouvé
+ * que la branche du trop-payé) · dissolution au 30/06/2026, liquidation
+ * bénéficiaire close au 31/12/2026, impôt de l'année au-delà de la première
+ * cotisation et des acomptes.
+ */
+async function dossierLiquidationBeneficiaire(R) {
+  const c = await nouveauDossier(R, 'Passe V1 · Tanganyika Commerce SARL', {
+    referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'fin-sarl2', exercice: ['2026-01-01', '2026-12-31'],
+  });
+  const n = c.exercices.get('2026').id;
+  const bq = c.journal('BQ') ?? c.od;
+
+  await etape(R, 'D · ouverture, activité jusqu’au 30/06/2026, dissolution, arrêt', async () => {
+    await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await ouverture(c, n, '2026-01-01', [[BQ, 'Banque', 30_000_000, 0], ['10130000', 'Capital', 0, 30_000_000]]);
+    await ecriture(c, 'Vente avant la dissolution', n, '2026-03-15', 'Vente', [[BQ, 20_000_000, 0], [VENTES, 0, 20_000_000]], { journal: bq, reference: 'FV-TAN-01' });
+    await ecriture(c, 'Achat avant la dissolution', n, '2026-04-10', 'Achat', [[ACHATS, 5_000_000, 0], [BQ, 0, 5_000_000]], { journal: bq, reference: 'FA-TAN-01' });
+    await validerJusqua(c, n, '2026-06-30');
+    await c.geste('Faits de la dissolution', 'PATCH', '/dossier/identite', {
+      dateDissolution: '2026-06-30', liquidateurs: 'Me Ilunga', dateNominationLiquidateur: '2026-06-30',
+      regimeLiquidation: 'AMIABLE_STATUTAIRE', associeUniquePersonneMorale: 'NON', dateClotureLiquidation: '2026-12-31',
+    });
+    const r = await c.geste('Arrêt à la dissolution', 'POST', `/exercices/${n}/arreter-a-la-dissolution`, {});
+    R.egal('D · arrêt · exercice de liquidation du 01/07 au 31/12/2026', ['2026-07-01', '2026-12-31'], [jour(r?.exerciceDeLiquidation?.dateDebut), jour(r?.exerciceDeLiquidation?.dateFin)]);
+  });
+
+  const lq = exerciceDebutant(await exercices(c), '2026-07-01')?.id;
+  if (!lq) return R.note('D · exercice de liquidation absent');
+
+  await etape(R, 'D · première cotisation, clôture de l’exercice arrêté', async () => {
+    // 20 000 000 − 5 000 000 = 15 000 000 ; 30 % = 4 500 000 (minimum 200 000).
+    const p = await c.geste('Première cotisation', 'POST', `/fiscalite/exercices/${n}/ecriture-impot`, {});
+    R.montant('D · première cotisation (30 % × 15 000 000)', 4_500_000, p?.constat?.montantImpot);
+    await validerJusqua(c, n, '2026-06-30');
+    await c.geste('Réintégration de la première cotisation', 'POST', `/fiscalite/exercices/${n}/retraitements`, { code: 'IMPOT_SUR_LE_RESULTAT', montant: 4_500_000, commentaire: 'Première cotisation au 891' });
+    R.egal('D · clôture de l’exercice arrêté', true, (await cloturerExercice(c, 'D · exercice arrêté', n)) !== null);
+  });
+
+  await etape(R, 'D · liquidation bénéficiaire et seconde cotisation', async () => {
+    await ecriture(c, 'Paiement de la première cotisation', lq, '2026-07-30', 'Cotisation spéciale · période d’activité', [['44100000', 4_500_000, 0], [BQ, 0, 4_500_000]], { journal: bq, reference: 'CS-TAN' });
+    // Acomptes 2026 sur l'impôt 2025 posé à 2 000 000 · 600 000 (25/07, un
+    // samedi, versé la veille), 600 000 (25/09), 400 000 (25/11) · tous avant
+    // la dernière cotisation (dans le mois du 31/12/2026).
+    for (const [date, m] of [['2026-07-24', 600_000], ['2026-09-25', 600_000], ['2026-11-25', 400_000]]) {
+      await ecriture(c, `Acompte d’IS du ${date}`, lq, date, 'Acompte provisionnel IS', [['44920000', m, 0], [BQ, 0, m]], { journal: bq, reference: `ACP-TAN-${date}` });
+    }
+    await ecriture(c, 'Vente en liquidation', lq, '2026-09-15', 'Réalisation du stock', [[BQ, 25_000_000, 0], [VENTES, 0, 25_000_000]], { journal: bq, reference: 'FV-TAN-02' });
+    await ecriture(c, 'Honoraires du liquidateur', lq, '2026-10-10', 'Honoraires du liquidateur', [[HONORAIRES, 3_000_000, 0], [BQ, 0, 3_000_000]], { journal: bq, reference: 'HON-TAN' });
+    await validerJusqua(c, lq, '2026-12-31');
+    await c.geste('Acomptes versés en 2026', 'PATCH', `/fiscalite/exercices/${lq}/dossier`, { acomptesVerses: 1_600_000 });
+    const rf = await c.lire('Résultat fiscal de la liquidation', `/fiscalite/resultat-fiscal?exerciceId=${lq}`);
+    const t = rf?.bilansSuccessifs?.totalisation;
+    // Liquidation · 25 000 000 − 3 000 000 = 22 000 000 ; total 15 000 000 +
+    // 22 000 000 = 37 000 000 ; impôt 30 % = 11 100 000 (minimum 1 % × 45 000 000 = 450 000).
+    R.montant('D · totalisation · total', 37_000_000, t?.total);
+    R.montant('D · totalisation · impôt de l’année', 11_100_000, t?.impotTotal);
+    // Réglé · 4 500 000 + 1 600 000 = 6 100 000 ; seconde = 11 100 000 − 6 100 000 = 5 000 000.
+    R.montant('D · totalisation · déjà réglé', 6_100_000, t?.dejaRegle);
+    R.montant('D · totalisation · seconde cotisation à payer', 5_000_000, t?.secondeCotisation);
+    // Le 891 de la liquidation · 11 100 000 − 4 500 000 = 6 600 000, avant acomptes.
+    R.montant('D · totalisation · impôt du 891 de la liquidation', 6_600_000, t?.cotisationDeLExercice);
+    R.montant('D · totalisation · aucun trop-payé', 0, t?.tropPayePremiereCotisation);
+    const prop = await c.lire('Proposition de la seconde cotisation', `/fiscalite/exercices/${lq}/ecriture-impot`);
+    R.egal('D · proposition · D 89110000 / C 44100000 de 6 600 000', [['89110000', 6_600_000, 0], ['44100000', 0, 6_600_000]],
+      (prop?.proposition?.lignes ?? []).map((l) => [l.numero, l.debit, l.credit]));
+    R.montant('D · proposition · acomptes imputables', 1_600_000, prop?.proposition?.imputation?.montant);
+    const p = await c.geste('Seconde cotisation', 'POST', `/fiscalite/exercices/${lq}/ecriture-impot`, { imputerAcomptes: true });
+    R.montant('D · constat · seconde cotisation au 891', 6_600_000, p?.constat?.montantImpot);
+    R.montant('D · constat · acomptes imputés', 1_600_000, p?.constat?.montantImpute);
+    await validerJusqua(c, lq, '2026-12-31');
+    const e1 = await c.lire('Constat de la seconde cotisation · avant réintégration', `/fiscalite/exercices/${lq}/ecriture-impot`);
+    // Sans réintégration (art. 45) · liquidation 22 000 000 − 6 600 000 = 15 400 000,
+    // total 30 400 000, impôt 9 120 000, 891 recalculé 4 620 000 · écart −1 980 000, dit.
+    R.montant('D · avant réintégration · écart du constat avec le calcul, dit', -1_980_000, e1?.constat?.ecartAvecCalcul);
+    await c.geste('Réintégration de la seconde cotisation', 'POST', `/fiscalite/exercices/${lq}/retraitements`, { code: 'IMPOT_SUR_LE_RESULTAT', montant: 6_600_000, commentaire: 'Seconde cotisation au 891' });
+    const e2 = await c.lire('Constat de la seconde cotisation · après réintégration', `/fiscalite/exercices/${lq}/ecriture-impot`);
+    R.montant('D · après réintégration · écart nul', 0, e2?.constat?.ecartAvecCalcul);
+    const b = await balance(c, lq);
+    // 441 · −4 500 000 + 4 500 000 − 6 600 000 + 1 600 000 = −5 000 000 (la seconde à payer).
+    R.montant('D · 441 · seconde cotisation restant à payer', -5_000_000, solde(b, '441'));
+    R.montant('D · 4492 · acomptes imputés', 0, solde(b, '4492'));
+    // Banque · 30 000 000 + 20 000 000 − 5 000 000 − 4 500 000 − 1 600 000 + 25 000 000 − 3 000 000.
+    R.montant('D · banque', 60_900_000, solde(b, BQ));
+    const cr = await bilanDeCr(c, lq);
+    R.montant('D · compte de résultat de la liquidation, résultat net (22 000 000 − 6 600 000)', 15_400_000, cr.XI);
+    const bil = await bilanDe(c, lq);
+    R.montant('D · bilan de liquidation, total actif', 60_900_000, bil.BZ);
+    R.montant('D · bilan de liquidation, total passif', 60_900_000, bil.DZ);
+    // LPF art. 16 · 31/12/2026 + un mois = 31/01/2027, un dimanche · reporté au lundi 01/02/2027 (art. 110 bis, al. 2).
+    const pl = await c.lire('Planning de la liquidation', `/exercices/${lq}/planning-cloture`);
+    R.egal('D · seconde cotisation · 31/01/2027 (dimanche) reporté au 01/02/2027', '2027-02-01', jour(jalon(pl, /cotisation spéciale \(dernier bilan de liquidation\)/)?.echeance));
+    const pa = await c.lire('Planning de l’exercice arrêté', `/exercices/${n}/planning-cloture`);
+    R.egal('D · première cotisation · 30/07/2026 (un jeudi)', '2026-07-30', jour(jalon(pa, /cotisation spéciale \(période d’activité\)/)?.echeance));
+    R.egal('D · clôture de la liquidation', true, (await cloturerExercice(c, 'D · liquidation', lq)) !== null);
+    R.egal('D · après la clôture · deux exercices seulement', 2, (await exercices(c)).length);
   });
 }
 
@@ -724,4 +940,5 @@ export default async function scenarioFinSociete(registre) {
   await dossierSarlDissoute(R).catch((e) => R.note(`Dossier A interrompu · ${e.stack ?? e.message}`));
   await dossierPortefeuille(R).catch((e) => R.note(`Dossier B interrompu · ${e.stack ?? e.message}`));
   await dossierSansLiquidation(R).catch((e) => R.note(`Dossier C interrompu · ${e.stack ?? e.message}`));
+  await dossierLiquidationBeneficiaire(R).catch((e) => R.note(`Dossier D interrompu · ${e.stack ?? e.message}`));
 }
