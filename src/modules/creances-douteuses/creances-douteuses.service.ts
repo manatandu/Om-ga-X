@@ -2954,7 +2954,7 @@ export class CreancesDouteusesService {
         MAJEUR 2) · lettrables et non lettrées, rien ne part ; un compte non
         lettrable n'a pas de groupe, et c'est dit.
       */
-      let lettrageOrigine: { pose: true; code: string } | { pose: false; motif: string } | null = null;
+      let lettrageOrigine: { pose: true; code: string; information?: string } | { pose: false; motif: string } | null = null;
       if (mv.ecriturePerte && creanceDuMouvement) {
         const ecritures = [
           annulation.traitement === 'SUPPRIMEE' ? null : (mv.ecriture?.id ?? null),
@@ -2962,14 +2962,28 @@ export class CreancesDouteusesService {
           annulationPerte?.traitement === 'SUPPRIMEE' ? null : mv.ecriturePerte.id,
           annulationPerte?.negatifId as string | undefined,
         ].filter((x): x is string => !!x);
-        const ouvertes = await tx.ligneEcriture.findMany({
-          where: { ecritureId: { in: ecritures }, compteId: creanceDuMouvement.compteCreanceId, lettrageId: null, ecriture: { tenantId } },
-          select: { id: true },
-        });
-        if (ouvertes.length >= 2) {
-          const r = await this.lettrage.lettrerLignesDuModuleDansTx(tx, tenantId, creanceDuMouvement.compteCreanceId, ouvertes.map((l) => l.id), userId);
+        const ouvertes =
+          ecritures.length === 0
+            ? []
+            : await tx.ligneEcriture.findMany({
+                where: { ecritureId: { in: ecritures }, compteId: creanceDuMouvement.compteCreanceId, lettrageId: null, ecriture: { tenantId } },
+                select: { id: true },
+              });
+        // Second tour, mineur c · une ligne FIGÉE par une clôture ne se lettre
+        // plus · elle reste ouverte, et la garde du lettrage la tient hors de
+        // tout groupe avec la facture (`lignesDeLaPerteAvecTva`) · l'annulation
+        // passe et le dit, au lieu de refuser sans issue.
+        const figees = await lignesFigees(tx, tenantId, ouvertes.map((l) => l.id));
+        const libres = ouvertes.filter((l) => !figees.has(l.id));
+        if (libres.length >= 2) {
+          const r = await this.lettrage.lettrerLignesDuModuleDansTx(tx, tenantId, creanceDuMouvement.compteCreanceId, libres.map((l) => l.id), userId);
           if ('motif' in r && !r.nonLettrable) throw new BadRequestException(`${r.motif} L’annulation n’est pas passée.`);
           lettrageOrigine = 'code' in r ? { pose: true, code: r.code } : { pose: false, motif: r.motif };
+        }
+        if (figees.size > 0) {
+          const f = [...figees.values()][0];
+          const dit = `${figees.size} ligne(s) du compte d’origine restent ouvertes, figées (la ligne du ${jour(f.date)}, ${f.motif}) · la garde du lettrage les tient hors de tout groupe avec la facture, rien n’est lu comme un encaissement.`;
+          lettrageOrigine = lettrageOrigine && lettrageOrigine.pose ? { ...lettrageOrigine, information: dit } : { pose: false, motif: dit };
         }
       }
       return {

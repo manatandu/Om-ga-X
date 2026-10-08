@@ -2446,9 +2446,13 @@ export class TauxTvaService {
   }
 
   /**
-   * La date de la plus ancienne perte NON ANNULÉE qui a annulé la taxe à
-   * l'encaissement de cette facture (son détail figé la nomme par la
-   * désignation de la ligne du client) · `null` sinon (M4).
+   * LA PERTE QUI A ANNULÉE LA TAXE DE CETTE FACTURE (M4 ; second tour,
+   * BLOQUANT 1) · la plus ancienne perte NON ANNULÉE dont le détail figé nomme
+   * une désignation de la ligne du client avec une taxe à l'encaissement
+   * annulée, et l'IMPAYÉ TTC qu'elle a éteint (somme des désignations de la
+   * facture) · la part annulée d'une ligne de TVA en est la quote-part
+   * (impayé × taxe de la ligne / TTC de la facture, comme `chiffrerFactures`).
+   * `null` sinon.
    */
   static perteQuiAnnuleLaTaxe(
     lignes: ReadonlyArray<{
@@ -2457,18 +2461,66 @@ export class TauxTvaService {
         creance?: { mouvements?: ReadonlyArray<{ date: Date; detailTva: unknown }> } | null;
       }> | null;
     }>,
-  ): Date | null {
-    let d: Date | null = null;
+  ): { le: Date; impayeTtc: number } | null {
+    let le: Date | null = null;
+    let impayeTtc = 0;
     for (const x of lignes) {
       for (const des of x.creancesDouteusesDesignees ?? []) {
         for (const m of des.creance?.mouvements ?? []) {
-          const detail = Array.isArray(m.detailTva) ? (m.detailTva as Array<{ designationId?: unknown } | null>) : [];
-          if (!detail.some((f) => f?.designationId === des.id)) continue;
-          if (!d || m.date.getTime() < d.getTime()) d = m.date;
+          const detail = Array.isArray(m.detailTva) ? (m.detailTva as Array<{ designationId?: unknown; impayeTtc?: unknown; tvaAnnulable?: unknown } | null>) : [];
+          const f = detail.find((y) => y?.designationId === des.id);
+          if (!f || !(Number(f.tvaAnnulable ?? 0) > EPSILON)) continue;
+          impayeTtc = TauxTvaService.c(impayeTtc + Number(f.impayeTtc ?? 0));
+          if (!le || m.date.getTime() < le.getTime()) le = m.date;
         }
       }
     }
-    return d;
+    return le ? { le, impayeTtc } : null;
+  }
+
+  /** La part de la taxe d'une ligne que la perte a annulée · quote-part de l'impayé éteint, jamais au-delà de la taxe. */
+  static partAnnuleeParLaPerte(perte: { impayeTtc: number }, taxeDeLaLigne: number, ttcFacture: number): number {
+    // TTC illisible · la taxe entière est tenue pour annulée (règle d'avant
+    // le second tour), jamais une part inventée.
+    if (!(ttcFacture > EPSILON)) return taxeDeLaLigne;
+    return TauxTvaService.c(Math.min(taxeDeLaLigne, (perte.impayeTtc * taxeDeLaLigne) / ttcFacture));
+  }
+
+  /**
+   * CE QUE LA PERTE LAISSE EXIGIBLE (second tour, BLOQUANT 1) · la part de la
+   * taxe d'une ligne que la perte n'a PAS annulée reste due quand elle est
+   * encaissée, même après la perte (l'autre moitié payée le 20 avril rend ses
+   * 80 000 exigibles en avril, art. 25, 2°). Les montants déjà déclarés par
+   * une liquidation comptent d'abord, puis les parts libres dans l'ordre de
+   * leur origine · tout ce qui naît au plus tard le jour de la perte est
+   * admis ; au-delà, seulement jusqu'au plafond (taxe de la ligne moins part
+   * annulée). L'excédent n'est la perception d'aucun prix (décret
+   * n° 011/42, art. 57) · rendu à part, COMPTÉ, jamais déclaré.
+   */
+  static bornerParLaPerte<T extends { date: Date; montant: number; origine: Date }>(
+    libres: ReadonlyArray<T>,
+    dejaDeclare: number,
+    taxeDeLaLigne: number,
+    partAnnulee: number,
+    perteLe: Date,
+  ): { admises: T[]; ecartees: T[] } {
+    const plafond = TauxTvaService.c(Math.max(0, taxeDeLaLigne - partAnnulee));
+    let admis = TauxTvaService.c(dejaDeclare);
+    const admises: T[] = [];
+    const ecartees: T[] = [];
+    for (const x of [...libres].sort((a, b) => a.origine.getTime() - b.origine.getTime() || a.date.getTime() - b.date.getTime())) {
+      if (x.origine.getTime() <= perteLe.getTime()) {
+        admis = TauxTvaService.c(admis + x.montant);
+        admises.push(x);
+        continue;
+      }
+      const garde = TauxTvaService.c(Math.min(x.montant, Math.max(0, plafond - admis)));
+      admis = TauxTvaService.c(admis + garde);
+      if (garde > EPSILON) admises.push({ ...x, montant: garde });
+      const ecarte = TauxTvaService.c(x.montant - garde);
+      if (ecarte > EPSILON) ecartees.push({ ...x, montant: ecarte });
+    }
+    return { admises, ecartees };
   }
 
   private static lendemainUtc(d: Date): Date {
@@ -4279,7 +4331,13 @@ export class TauxTvaService {
    * (`avoirsCollecteNonImputes`), pour que le comptable en dispose au lieu de
    * subir une déduction inventée.
    */
-  async declaration(tenantId: string, dateDebut: Date, dateFin: Date) {
+  /**
+   * `options.instantLecture` · la lecture d'une LIQUIDATION ne prend que les
+   * lignes entrées au livre-journal au plus tard à cet instant (second tour de
+   * relecture, MAJEUR) · une ligne validée pendant le calcul était liquidée,
+   * puis tenue pour tardive et reprise par la période suivante, deux fois.
+   */
+  async declaration(tenantId: string, dateDebut: Date, dateFin: Date, options: { instantLecture?: Date } = {}) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     const regime = tenant?.regimeExigibiliteTva ?? 'LIVRAISONS';
     // L'AUTORISATION DU DOSSIER A UNE DATE, ET ELLE BORNE SA COLLECTE
@@ -4624,6 +4682,20 @@ export class TauxTvaService {
               // qu'elle corrige, tant que cette période n'est pas liquidée.
               { corrigeEcriture: { is: { date: { lte: dateFin } } } },
             ],
+            // Lecture d'une liquidation · rien de ce qui est validé après
+            // son instant (à défaut de validation tracée, la saisie).
+            ...(options.instantLecture
+              ? {
+                  AND: [
+                    {
+                      OR: [
+                        { valideeAt: { lte: options.instantLecture } },
+                        { valideeAt: null, createdAt: { lte: options.instantLecture } },
+                      ],
+                    },
+                  ],
+                }
+              : {}),
           },
         },
         select: {
@@ -4985,6 +5057,8 @@ export class TauxTvaService {
     // M4 · la taxe à l'encaissement qu'une perte a annulée, qu'un lettrage
     // postérieur à la perte aurait rendue exigible.
     let taxeAnnuleeParUnePerte = 0;
+    // Mineur b · la part annulée par une perte, retirée de l'attente.
+    let attenteAnnuleeParUnePerte = 0;
     // Les lignes de TVA à l'encaissement dont un groupe porte une inscription
     // en négatif sans la ligne qu'elle annule · nommées (mineur).
     const negatifsOrphelins = new Set<string>();
@@ -5737,8 +5811,18 @@ export class TauxTvaService {
           // qui explique l'écart entre le chiffre d'affaires et la déclaration, et
           // sans lequel le régime paraît perdre de la TVA. Une prestation dont la
           // créance n'est réglée par rien y figure EN ENTIER (art. 25, 2°).
+          // La perte qui a annulé la taxe de cette facture, s'il y en a une (M4).
+          const perteAnnule = estCollecte && base === 'ENCAISSEMENT' ? TauxTvaService.perteQuiAnnuleLaTaxe(l.ecriture.lignes) : null;
           if (estCollecte && base === 'ENCAISSEMENT' && dansLaPeriode) {
-            const enAttente = tranches.reduce((t, x, i) => (x.date ? t : t + montants[i]), 0);
+            let enAttente = tranches.reduce((t, x, i) => (x.date ? t : t + montants[i]), 0);
+            // LA PART ANNULÉE PAR LA PERTE N'EST PLUS « EN ATTENTE » (second
+            // tour, mineur b) · aucun encaissement ne la rendra exigible ;
+            // elle est dite annulée par la perte, à part.
+            if (perteAnnule) {
+              const annulee = Math.min(enAttente, TauxTvaService.partAnnuleeParLaPerte(perteAnnule, montant, ttcFacture));
+              enAttente = TauxTvaService.c(enAttente - annulee);
+              attenteAnnuleeParUnePerte = TauxTvaService.c(attenteAnnuleeParUnePerte + annulee);
+            }
             cumul.attente = TauxTvaService.c(cumul.attente + enAttente);
             // F1 · dans un groupe lu en bloc (fraction cumulée), une part de
             // ce montant peut répondre à une somme DÉJÀ perçue · il n'est pas
@@ -5831,29 +5915,38 @@ export class TauxTvaService {
                 });
               }
             }
+            /*
+              M4 · LA TAXE QU'UNE PERTE A ANNULÉE NE REDEVIENT JAMAIS
+              EXIGIBLE (relecture « échecs silencieux ») · la perte qui
+              récupère la TVA solde au 443, sans taux, la taxe d'une
+              prestation jamais encaissée (point D ; art. 25, 2°). Un lettrage
+              posé APRÈS elle (le report de la facture et celui du
+              reclassement, en N+1) n'est la perception d'aucun prix (décret
+              n° 011/42, art. 57) · ce qu'il daterait au-delà de la part que la
+              perte a laissée reste hors de toute déclaration, COMPTÉ, quel que
+              soit le groupe. BORNÉ (second tour, BLOQUANT 1) · la part non
+              annulée, encaissée après la perte, reste exigible.
+            */
+            let libres = repartition.libres;
+            if (perteAnnule && !liquidationExacte) {
+              const partAnnulee = TauxTvaService.partAnnuleeParLaPerte(perteAnnule, montant, ttcFacture);
+              const dejaDeclare = [...repartition.parLiquidation.values()].reduce((t, v) => t + v, 0);
+              const borne = TauxTvaService.bornerParLaPerte(repartition.libres, dejaDeclare, montant, partAnnulee, perteAnnule.le);
+              libres = borne.admises;
+              for (const x of borne.ecartees) {
+                if (x.date >= dateDebut && x.date <= dateFin) taxeAnnuleeParUnePerte = TauxTvaService.c(taxeAnnuleeParUnePerte + x.montant);
+              }
+            }
             const parts = liquidationExacte
               ? [{ date: dateDebut, montant: repartition.parLiquidation.get(liquidationExacte.id) ?? 0, origine: dateDebut }]
-              : repartition.libres.filter((x) => x.date >= dateDebut && x.date <= dateFin);
+              : libres.filter((x) => x.date >= dateDebut && x.date <= dateFin);
             aImputer = [];
-            // M4 · LA TAXE QU'UNE PERTE A ANNULÉE NE REDEVIENT JAMAIS
-            // EXIGIBLE (relecture « échecs silencieux ») · la perte qui
-            // récupère la TVA solde au 443, sans taux, la taxe d'une
-            // prestation jamais encaissée (point D ; art. 25, 2°). Un
-            // lettrage posé APRÈS elle (le report de la facture et celui du
-            // reclassement, en N+1) n'est la perception d'aucun prix (décret
-            // n° 011/42, art. 57) · ce qu'il daterait reste hors de toute
-            // déclaration, COMPTÉ, quel que soit le groupe.
-            const annuleeLe = estCollecte ? TauxTvaService.perteQuiAnnuleLaTaxe(l.ecriture.lignes) : null;
             // Le négatif orphelin d'un groupe ne règle rien · nommé (mineur).
             if (lignesTiers.some((x) => x.lettrage?.lignes && TauxTvaService.neutraliserLesNegatifs(x.lettrage.lignes) === null)) {
               negatifsOrphelins.add(l.id);
             }
             for (const x of parts) {
               if (x.montant <= EPSILON) continue;
-              if (annuleeLe && !liquidationExacte && x.date.getTime() > annuleeLe.getTime()) {
-                taxeAnnuleeParUnePerte = TauxTvaService.c(taxeAnnuleeParUnePerte + x.montant);
-                continue;
-              }
               if (!estCollecte && !liquidationExacte && x.origine < limiteDecheance) continue;
               if (!liquidationExacte) figeEncaissement[l.id] = TauxTvaService.c((figeEncaissement[l.id] ?? 0) + x.montant);
               aImputer.push({ date: x.date, exigible: x.montant, reparti: true });
@@ -6441,6 +6534,7 @@ export class TauxTvaService {
         rattachementsHorsDelaiTotal,
         rattachementsHorsDelaiMontant,
         taxeAnnuleeParUnePerte,
+        attenteAnnuleeParUnePerte,
         negatifsOrphelinsDansUnGroupe: negatifsOrphelins.size,
         tvaExclueArt41,
         tvaAVerifierArt41,
@@ -6559,6 +6653,8 @@ export class TauxTvaService {
        * jamais exigible (M4).
        */
       taxeAnnuleeParUnePerte,
+      /** La taxe des factures de la période qu'une perte a annulée · retirée de l'attente, dite à part (second tour, mineur b). */
+      attenteAnnuleeParUnePerte,
       /** Factures à l'encaissement dont le groupe porte un négatif sans sa ligne annulée · il ne règle rien (mineur). */
       negatifsOrphelinsDansUnGroupe: negatifsOrphelins.size,
       /** TVA d'amont écartée par l'article 41 · jamais déductible. */
@@ -6722,6 +6818,7 @@ export class TauxTvaService {
     rattachementsHorsDelaiTotal?: number;
     rattachementsHorsDelaiMontant?: number;
     taxeAnnuleeParUnePerte?: number;
+    attenteAnnuleeParUnePerte?: number;
     negatifsOrphelinsDansUnGroupe?: number;
     tvaExclueArt41: number;
     tvaAVerifierArt41: number;
@@ -7288,6 +7385,13 @@ export class TauxTvaService {
           'ligne qu’il annule.',
       );
     }
+    if ((e.attenteAnnuleeParUnePerte ?? 0) > EPSILON) {
+      phrases.push(
+        `TAXE ANNULÉE PAR UNE PERTE, HORS DE L’ATTENTE · ${fc(e.attenteAnnuleeParUnePerte ?? 0)} CDF de taxe à l’encaissement de ` +
+          'factures de la période ont été annulés par la perte qui récupère la TVA (O.-L. n° 10/001, art. 25, 2° et art. 52) · ' +
+          'ils ne sont plus comptés en attente, aucun encaissement ne les rendra exigibles.',
+      );
+    }
     if ((e.taxeAnnuleeParUnePerte ?? 0) > EPSILON) {
       phrases.push(
         `TAXE ANNULÉE PAR UNE PERTE · ${fc(e.taxeAnnuleeParUnePerte ?? 0)} CDF de taxe à l’encaissement de factures dont la ` +
@@ -7413,7 +7517,7 @@ export class TauxTvaService {
     // Le `createdAt`, posé après l'écriture, la tenait pour vue alors que la
     // lecture avait pu la manquer · la taxe se perdait sans un mot.
     const instantLecture = new Date();
-    const decl = await this.declaration(tenantId, dateDebut, dateFin);
+    const decl = await this.declaration(tenantId, dateDebut, dateFin, { instantLecture });
 
     // UNE PÉRIODE LIQUIDÉE NE SE REDÉCLARE PAS (audit final F25) · une ligne
     // de TVA validée APRÈS la liquidation garderait sa date d'exigibilité dans
@@ -7703,10 +7807,21 @@ export class TauxTvaService {
     const posterieure = await this.prisma.liquidationTva.findFirst({
       where: { tenantId, dateDebut: { gt: liquidation.dateFin } },
       orderBy: { dateDebut: 'desc' },
-      select: { dateDebut: true, dateFin: true },
+      select: { dateDebut: true, dateFin: true, ecriture: { select: { statut: true } } },
     });
     if (posterieure) {
       const jour = (d: Date) => d.toISOString().slice(0, 10);
+      // Second tour, mineur a · une liquidation dont l'écriture est VALIDÉE ne
+      // s'annule plus (AUDCIF art. 22, 2°) · la chaîne s'arrête là, et le
+      // message dit l'issue réelle, jamais « annulez la plus récente ».
+      if (posterieure.ecriture?.statut === StatutEcriture.VALIDEE) {
+        throw new BadRequestException(
+          `La liquidation du ${jour(posterieure.dateDebut)} au ${jour(posterieure.dateFin)} est postérieure et son écriture est ` +
+            'validée · elle ne s’annule plus (AUDCIF art. 22, 2°), et celle-ci ne s’annule donc plus non plus · une ligne ' +
+            'oubliée ou validée tard est reprise, nommée, par la déclaration de la première période non liquidée ; une erreur ' +
+            'de la liquidation se corrige par une écriture de la période en cours, jamais en défaisant une liquidation antérieure.',
+        );
+      }
       throw new BadRequestException(
         `La liquidation du ${jour(posterieure.dateDebut)} au ${jour(posterieure.dateFin)} est postérieure · annulez d'abord la plus ` +
           'récente, une à une · une liquidation annulée puis refaite derrière une autre tiendrait pour déclarées des lignes que ' +

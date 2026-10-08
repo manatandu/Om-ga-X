@@ -117,11 +117,13 @@ describe('Bilans successifs de l’année de la dissolution (point 2 ; constat 1
     regimeLiquidation: SARL.regimeLiquidation,
     associeUniquePersonneMorale: false,
   };
-  function service(options: { constat?: number | null; impotAu89?: number; reintegre?: number } = {}) {
+  function service(options: { constat?: number | null; impotAu89?: number; reintegre?: number; statut?: 'OUVERT' | 'CLOTURE' } = {}) {
     const constat = options.constat === undefined ? 2_700_000 : options.constat;
+    // L'impôt au 89 de l'exercice arrêté · celui du constat, à défaut rien.
+    const au89 = options.impotAu89 ?? constat ?? 0;
     const s = new FiscaliteService(
       {
-        exercice: { findFirst: async () => ARRETE },
+        exercice: { findFirst: async () => ({ ...ARRETE, statut: options.statut ?? 'OUVERT' }) },
         // M3 · la première cotisation se lit sur le constat NON ANNULÉ de
         // l'exercice arrêté · la doublure honore la requête.
         constatImpotResultat: {
@@ -140,8 +142,9 @@ describe('Bilans successifs de l’année de la dissolution (point 2 ; constat 1
       deficitAnterieur: { montant: 1_000_000 },
       chiffreAffairesMinimum: 30_000_000,
       impotDu: 2_700_000,
-      impotConstateAu89: options.impotAu89 ?? 2_700_000,
-      reintegrationsImpot: options.reintegre ?? 2_700_000,
+      impotConstateAu89: au89,
+      impotExerciceAu89: au89,
+      reintegrationsImpot: options.reintegre ?? au89,
     } as never);
     return s as unknown as {
       bilansSuccessifsDe: (t: string, ten: typeof tenant, e: typeof LIQ, c: Record<string, unknown>) => Promise<{
@@ -236,6 +239,39 @@ describe('Bilans successifs de l’année de la dissolution (point 2 ; constat 1
     expect(b.calculable).toBe(false);
     expect(b.totalisation).toBeNull();
     expect(b.motif).toMatch(/n'est pas constatée · passez l'écriture de l'impôt de cet exercice/);
+  });
+
+  /*
+    SECOND TOUR, BLOQUANT 2 · sans constat, renvoyer à « passer l'écriture de
+    l'impôt » enfermait le dossier quand l'écriture de l'impôt la refuse
+    (exercice clôturé, impôt déjà passé à la main au 891 ou au 895).
+  */
+  it('BLOQUANT 2 · sans constat, l’impôt passé à la main au 891 et au 895 fait la première cotisation, et c’est dit', async () => {
+    const b = (await service({ constat: null, impotAu89: 3_000_000 }).bilansSuccessifsDe('t', tenant, LIQ, courant(5_000_000))) as unknown as {
+      calculable: boolean;
+      premiereCotisation: number;
+      sourcePremiereCotisation: string;
+      observation: string;
+      totalisation: Record<string, number>;
+    };
+    expect(b.calculable).toBe(true);
+    expect(b.sourcePremiereCotisation).toBe('COMPTE_89');
+    expect(b.premiereCotisation).toBe(3_000_000);
+    expect(b.totalisation).toMatchObject({ secondeCotisation: 900_000 });
+    expect(b.observation).toContain('lue sur le débit du 891 et du 895');
+  });
+
+  it('BLOQUANT 2 · exercice arrêté CLÔTURÉ sans constat ni impôt au 89 · la première est recalculée, avec sa réserve', async () => {
+    const b = (await service({ constat: null, statut: 'CLOTURE' }).bilansSuccessifsDe('t', tenant, LIQ, courant(5_000_000))) as unknown as {
+      calculable: boolean;
+      premiereCotisation: number;
+      sourcePremiereCotisation: string;
+      observation: string;
+    };
+    expect(b.calculable).toBe(true);
+    expect(b.sourcePremiereCotisation).toBe('RECALCUL');
+    expect(b.premiereCotisation).toBe(2_700_000);
+    expect(b.observation).toContain('RECALCULÉE');
   });
 
   it('M3 · l’impôt de la période d’activité non réintégré à sa mesure · refus nommé, jamais une base fausse', async () => {

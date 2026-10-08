@@ -465,6 +465,8 @@ describe('créances douteuses · service', () => {
       /** B2 · une liquidation de l'ancien moteur existe ; les liquidations qui ont figé une part à l'encaissement. */
       ancienMoteur?: boolean;
       liquidationsFigees?: Array<{ dateDebut: Date; dateFin: Date; tvaEncaissementFigee: Record<string, number> }>;
+      /** Second tour, mineur c · la date de l'écriture de chaque ligne lue par le gel. */
+      datesDesLignes?: Record<string, Date>;
     } = {},
   ) {
     let rang = 0;
@@ -600,7 +602,24 @@ describe('créances douteuses · service', () => {
             options.lignes ? aggregatSurLignes(args) : Promise.resolve({ _sum: { debit: options.solde ?? 1_160_000, credit: 0 } }),
           ),
         count: jest.fn().mockResolvedValue(0),
-        findMany: jest.fn().mockResolvedValue([{ lettre: null, lettrageId: null, rapprochementId: null }]),
+        // La lecture du gel (`lignesFigees`) est honorée · chaque ligne avec
+        // son écriture, datée par `options.datesDesLignes` (défaut · le 1er
+        // avril 2027, exercice ouvert).
+        findMany: jest.fn().mockImplementation((args: any) =>
+          Promise.resolve(
+            args?.where?.id?.in && args?.select?.ecriture?.select?.exercice
+              ? args.where.id.in.map((id: string) => ({
+                  id,
+                  ecriture: {
+                    date: options.datesDesLignes?.[id] ?? new Date('2027-04-01'),
+                    journalId: 'od',
+                    journal: { code: 'OD' },
+                    exercice: { statut: 'OUVERT' },
+                  },
+                }))
+              : [{ lettre: null, lettrageId: null, rapprochementId: null }],
+          ),
+        ),
         deleteMany: jest.fn().mockResolvedValue({}),
       },
       creanceDouteuse: {
@@ -1292,18 +1311,50 @@ describe('créances douteuses · service', () => {
       },
     });
     m.inscrireEnNegatifPourAnnulation.mockImplementation((_t: string, _u: string, id: string) => Promise.resolve({ id: `neg-${id}`, numeroPiece: 99 }));
-    m.prisma.ligneEcriture.findMany.mockImplementation(({ where }: any) =>
-      Promise.resolve(
-        where?.ecritureId?.in && where.compteId === 'cli' && where.lettrageId === null
-          ? where.ecritureId.in.map((e: string) => ({ id: `l-${e}` }))
-          : [{ lettre: null, lettrageId: null, rapprochementId: null }],
-      ),
+    const gel = m.prisma.ligneEcriture.findMany.getMockImplementation();
+    m.prisma.ligneEcriture.findMany.mockImplementation((args: any) =>
+      args?.where?.ecritureId?.in && args.where.compteId === 'cli' && args.where.lettrageId === null
+        ? Promise.resolve(args.where.ecritureId.in.map((e: string) => ({ id: `l-${e}` })))
+        : gel(args),
     );
     const r: any = await m.service.annulerMouvement('t', 'u', 'cd-1', 'mv-d', { motif: 'Duplicata envoyé à une mauvaise adresse' });
     expect(m.inscrireEnNegatifPourAnnulation).toHaveBeenCalledTimes(2);
     expect(m.lettrage.lettrerLignesDuModuleDansTx).toHaveBeenCalledWith(m.prisma, 't', 'cli', ['l-ecr-1', 'l-neg-ecr-1', 'l-ecr-2', 'l-neg-ecr-2'], 'u');
     expect(m.lettrage.lettrerLignesDuModule).not.toHaveBeenCalled();
     expect(r.lettrageOrigine).toEqual({ pose: true, code: 'A' });
+  });
+
+  /*
+    SECOND TOUR, MINEUR C · les lignes du compte d'origine de la perte restées
+    ouvertes et FIGÉES par une clôture de période refusaient l'annulation,
+    « ligne figée », sans issue · elles restent ouvertes, tenues par la garde
+    du lettrage, les négatifs se lettrent entre eux, et c'est dit.
+  */
+  it('mineur c · des lignes d’origine figées non lettrées n’empêchent pas l’annulation · dites, les négatifs lettrés entre eux', async () => {
+    const mv = { id: 'mv-d', type: TypeMouvementCreanceDouteuse.PERTE, date: new Date('2027-03-15'), montant: 1_160_000, ecritureId: 'ecr-1', annuleeLe: null, exerciceId: 'ex-27' };
+    const m = monter({
+      creance: { ...creanceClient([mv]), compteCreanceId: 'cli' },
+      mouvement: {
+        ...mv,
+        creanceId: 'cd-1',
+        montantTva: 160_000,
+        exercice: { statut: StatutExercice.OUVERT },
+        ecriture: { id: 'ecr-1', statut: 'VALIDEE', numeroPiece: 11, lignes: [{ lettre: null, lettrageId: null, rapprochementId: null }] },
+        ecriturePerte: { id: 'ecr-2', statut: 'VALIDEE', numeroPiece: 12, journalId: 'od', lignes: [] },
+      },
+      datesDesLignes: { 'l-ecr-1': new Date('2027-03-15'), 'l-ecr-2': new Date('2027-03-15') },
+    });
+    m.prisma.cloture.findMany.mockResolvedValue([{ granularite: 'PERIODE', journalId: null, dateLimite: new Date('2027-03-31') }]);
+    m.inscrireEnNegatifPourAnnulation.mockImplementation((_t: string, _u: string, id: string) => Promise.resolve({ id: `neg-${id}`, numeroPiece: 99 }));
+    const gel = m.prisma.ligneEcriture.findMany.getMockImplementation();
+    m.prisma.ligneEcriture.findMany.mockImplementation((args: any) =>
+      args?.where?.ecritureId?.in && args.where.compteId === 'cli' && args.where.lettrageId === null
+        ? Promise.resolve(args.where.ecritureId.in.map((e: string) => ({ id: `l-${e}` })))
+        : gel(args),
+    );
+    const r: any = await m.service.annulerMouvement('t', 'u', 'cd-1', 'mv-d', { motif: 'Le client a payé' });
+    expect(m.lettrage.lettrerLignesDuModuleDansTx).toHaveBeenCalledWith(m.prisma, 't', 'cli', ['l-neg-ecr-1', 'l-neg-ecr-2'], 'u');
+    expect(r.lettrageOrigine).toMatchObject({ pose: true, code: 'A', information: expect.stringMatching(/2 ligne\(s\) du compte d’origine restent ouvertes, figées/) });
   });
 
   it('MAJEUR 3 · une clôture de PÉRIODE ne fige pas la perte qui récupère · les négatifs s’inscrivent au premier jour ouvert, et c’est dit', async () => {

@@ -183,6 +183,39 @@ toujours (perte au TTC, rien à récupérer à l'encaissement) · le refus ne
 joue plus que si la part déclarée et la part que la perte annulerait
 dépassent ensemble la taxe de la ligne (recouvrement), test à l'appui.
 
+### Second et dernier tour de relecture (2026-10-08)
+
+Corrigé, chaque point avec son test · BLOQUANT 1 (M4 borné · la part non
+annulée par la perte, encaissée après elle, reste exigible ; plafond = taxe
+de la ligne moins la quote-part de l'impayé éteint, `bornerParLaPerte`,
+`partAnnuleeParLaPerte`) ; BLOQUANT 2 (première cotisation sans constat ·
+débit du 891 et du 895, sinon recalcul d'un exercice clôturé avec réserve,
+refus seulement si l'écriture de l'impôt peut encore se passer,
+`sourcePremiereCotisation`) ; MAJEUR (la lecture d'une liquidation n'admet
+que les lignes validées au plus tard à son instant) ; mineurs a (la plus
+récente validée arrête la chaîne, le refus dit l'issue), b (la part annulée
+par la perte sort de l'attente, `attenteAnnuleeParUnePerte`), c (annulation
+avec des lignes d'origine figées non lettrées · passe, dit). L'affinage de B2
+est gardé.
+
+Rejeu sur base jetable neuve (migrations, `migrate diff` sans écart), serveur
+compilé · les rejeux du premier tour rejoués en non-régression (dossiers 3 et
+4, 29 contrôles au vert, avec l'affinage de B2 · P4 passe désormais, 4432
+soldé fin N au lieu de −80 000), puis ·
+
+| Contrôle | Calcul à la main | Lu |
+|---|---|---|
+| BLOQUANT 1 · P7 · moitié contestée perdue le 15/03 · taxe annulée | 80 000 | 80 000 |
+| BLOQUANT 1 · février · attente · taxe annulée hors de l'attente | 0 · 80 000 | 0 · 80 000 |
+| BLOQUANT 1 · avril · autre moitié payée le 20/04 · exigible | 80 000 | 80 000 |
+| BLOQUANT 1 · 4432 après liquidation d'avril · 41110211 | 0 · 0 | 0 · 0 |
+| BLOQUANT 2 · impôt passé à la main au 891 · écriture de l'impôt | refusée (891 déjà porté) | refusée |
+| BLOQUANT 2 · source · première · trop-payé | COMPTE_89 · 6 000 000 · 5 400 000 | idem |
+| BLOQUANT 2 · exercice arrêté clôturé sans 89 · écriture de l'impôt | refusée (clôturé) | refusée |
+| BLOQUANT 2 · source · première (20 000 000 × 30 %) | RECALCUL · 6 000 000 | idem |
+| BLOQUANT 2 · exercice ouvert, 89 vide, sans constat (tour1e) | refusée, nommée | refusée |
+| MAJEUR · validation lancée pendant la liquidation de février (délais 0, 60, 150, 300 ms ; 0 ms dans la fenêtre lecture-création) · taxe de V comptée février + mars | 32 000 une fois | 32 000, 4 fois sur 4 |
+
 ## Décisions prises, avec leurs articles
 
 ### (C) Délai de l'art. 37, al. 2, par le renvoi de l'art. 126

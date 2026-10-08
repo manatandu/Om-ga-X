@@ -41,7 +41,7 @@ interface Ligne {
     credit?: number;
     lettrage?: unknown;
     /** Désignations de la ligne dans une créance douteuse, et les pertes non annulées qui ont annulé leur taxe (M4). */
-    designations?: Array<{ id: string; pertes: Array<{ date: string; detail: string[] }> }>;
+    designations?: Array<{ id: string; pertes: Array<{ date: string; detail: string[]; impayeTtc?: number }> }>;
   };
   statut?: 'VALIDEE' | 'BROUILLARD';
 }
@@ -95,8 +95,11 @@ function service(lignes: Ligne[], liquidations: Liq[] = [], regime = 'LIVRAISONS
         const lte: Date | undefined = where.ecriture?.OR?.[0]?.date?.lte;
         // La branche du point A · le négatif d'une facture de la période.
         const lteCorrigee: Date | undefined = where.ecriture?.OR?.find((b: any) => b.corrigeEcriture)?.corrigeEcriture?.is?.date?.lte;
+        // La lecture d'une liquidation, bornée à son instant (second tour, MAJEUR).
+        const borne: Date | undefined = where.ecriture?.AND?.[0]?.OR?.[0]?.valideeAt?.lte;
         return Promise.resolve(
           lignes
+            .filter((l) => !borne || D(l.validee ?? l.date) <= borne)
             .filter((l) => (l.statut ?? 'VALIDEE') === where.ecriture.statut)
             .filter(() => taux.includes(TAUX.id))
             .filter((l) => !lte || D(l.date) <= lte || (!!l.corrige && !!lteCorrigee && D(l.corrige.date) <= lteCorrigee))
@@ -126,7 +129,13 @@ function service(lignes: Ligne[], liquidations: Liq[] = [], regime = 'LIVRAISONS
                   lettrageId: l.tiers.lettrage ? 'g1' : null,
                   creancesDouteusesDesignees: (l.tiers.designations ?? []).map((d) => ({
                     id: d.id,
-                    creance: { mouvements: d.pertes.map((p) => ({ date: D(p.date), detailTva: p.detail.map((x) => ({ designationId: x })) })) },
+                    // Le détail figé de la perte · l'impayé éteint et la taxe à l'encaissement annulée.
+                    creance: {
+                      mouvements: d.pertes.map((p) => ({
+                        date: D(p.date),
+                        detailTva: p.detail.map((x) => ({ designationId: x, impayeTtc: p.impayeTtc ?? 1_160_000, tvaAnnulable: 1 })),
+                      })),
+                    },
                   })),
                 });
               }
@@ -521,6 +530,70 @@ describe('Relectures · ce qu’une liquidation a vu, et ce qui se nomme', () =>
     expect(d.mentionExigibilite).toContain('TAXE ANNULÉE PAR UNE PERTE');
     // Une perte qui ne nomme pas cette désignation ne retient rien.
     expect((await service([facture([{ id: 'des1', pertes: [{ date: '2027-11-30', detail: ['autre'] }] }])]).declaration('t1', ...JANVIER_2028)).totalCollecte).toBe(160_000);
+  });
+
+  /*
+    SECOND TOUR, BLOQUANT 1 · la moitié contestée (580 000) reclassée, désignée,
+    perdue avec duplicata le 15 mars (80 000 annulés) ; le client paie l'autre
+    moitié le 20 avril, lettrée avec la facture · ses 80 000 sont exigibles en
+    avril. L'exclusion sans plafond les écartait, et le 4432 les gardait.
+  */
+  it('M4 borné · l’autre moitié payée après la perte reste exigible · seule la part annulée est écartée', async () => {
+    const groupe = {
+      id: 'g1',
+      statut: 'PARTIEL',
+      solde: 580_000,
+      soldeAt: null,
+      createdAt: D('2027-04-20'),
+      lignes: [
+        { id: 'p1-t', compteId: 'c41110000', debit: 1_160_000, credit: 0, ecriture: { id: 'ep1', date: D('2027-01-10'), corrigeEcritureId: null, _count: { lignes: 0 } } },
+        { id: 'r-t', compteId: 'c41110000', debit: 0, credit: 580_000, ecriture: { id: 'er', date: D('2027-04-20'), corrigeEcritureId: null, _count: { lignes: 0 } } },
+      ],
+    };
+    const s = service([
+      {
+        id: 'p1',
+        famille: '443',
+        date: '2027-01-10',
+        credit: 160_000,
+        piece: 3,
+        contrepartie: '706',
+        tiers: { numero: '41110000', debit: 1_160_000, lettrage: groupe, designations: [{ id: 'des1', pertes: [{ date: '2027-03-15', detail: ['des1'], impayeTtc: 580_000 }] }] },
+      },
+    ]);
+    const avril = await s.declaration('t1', D('2027-04-01'), fin('2027-04-30'));
+    expect(avril.totalCollecte).toBe(80_000);
+    expect(avril.taxeAnnuleeParUnePerte).toBe(0);
+    // Mineur b · janvier · la moitié annulée n'est plus « en attente », elle est dite annulée.
+    const jan = await s.declaration('t1', ...JANVIER);
+    expect(jan.lignes[0]?.enAttente ?? 0).toBe(0);
+    expect(jan.attenteAnnuleeParUnePerte).toBe(80_000);
+    expect(jan.mentionExigibilite).toContain('TAXE ANNULÉE PAR UNE PERTE, HORS DE L’ATTENTE');
+  });
+
+  it('la règle pure · ce qui est déclaré compte d’abord, puis le plafond borne ce qui suit la perte', () => {
+    const t = (d: string, m: number) => ({ date: D(d), montant: m, origine: D(d) });
+    const r = TauxTvaService.bornerParLaPerte([t('2027-02-10', 40_000), t('2027-04-20', 80_000), t('2028-01-01', 40_000)], 0, 160_000, 80_000, D('2027-03-15'));
+    // 40 000 avant la perte, puis 40 000 sur les 80 000 d'avril (plafond 80 000), rien en 2028.
+    expect(r.admises.map((x) => x.montant)).toEqual([40_000, 40_000]);
+    expect(r.ecartees.map((x) => x.montant)).toEqual([40_000, 40_000]);
+    expect(TauxTvaService.partAnnuleeParLaPerte({ impayeTtc: 580_000 }, 160_000, 1_160_000)).toBe(80_000);
+    expect(TauxTvaService.partAnnuleeParLaPerte({ impayeTtc: 580_000 }, 160_000, 0)).toBe(160_000);
+  });
+
+  /*
+    SECOND TOUR, MAJEUR · une ligne validée APRÈS l'instant de lecture d'une
+    liquidation n'est pas lue par elle · elle sera reprise, une fois, par la
+    période suivante.
+  */
+  it('la lecture d’une liquidation est bornée à son instant · la ligne validée pendant le calcul n’y entre pas', async () => {
+    const lignes: Ligne[] = [vente, { id: 'v3', famille: '443', date: '2027-01-20', validee: '2027-02-02T10:00:00Z', credit: 80_000, contrepartie: '701' }];
+    // Pendant la liquidation de janvier, celle-ci n'existe pas encore.
+    const pendant = service(lignes);
+    expect((await pendant.declaration('t1', ...JANVIER, { instantLecture: D('2027-02-02T09:59:00Z') })).totalCollecte).toBe(160_000);
+    // Janvier liquidé (lu à 9 h 59) · février reprend V3, une fois.
+    const apres = service(lignes, [{ id: 'L1', dateDebut: '2027-01-01', dateFin: '2027-01-31', creeLe: '2027-02-02T10:05:00Z', lu: '2027-02-02T09:59:00Z' }]);
+    expect((await apres.declaration('t1', ...FEVRIER)).totalCollecte).toBe(80_000);
   });
 
   it('un négatif orphelin dans le groupe ne règle rien · la taxe reste en attente, et c’est nommé', async () => {

@@ -14,7 +14,7 @@ import { PrismaService } from '../../common/prisma.service';
 
 const EXERCICE = { id: 'ex', statut: 'OUVERT', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') };
 
-function monter(options: { autreDetenteur?: boolean; posterieure?: { dateDebut: Date; dateFin: Date } } = {}) {
+function monter(options: { autreDetenteur?: boolean; posterieure?: { dateDebut: Date; dateFin: Date; ecriture?: { statut: string } } } = {}) {
   let marqueur: { id: string; ecritureId: string; dateDebut: Date; dateFin: Date } | null = {
     id: 'liq1',
     ecritureId: 'ecr1',
@@ -111,6 +111,12 @@ describe('annulation d’une liquidation de TVA', () => {
     const m = monter({ posterieure: { dateDebut: new Date('2026-04-01'), dateFin: new Date('2026-04-30') } });
     await expect(m.tva.annulerLiquidation('t1', 'liq1')).rejects.toThrow(/2026-04-01 au 2026-04-30 est postérieure · annulez d'abord la plus récente/);
     expect(m.marqueurRestant()).not.toBeNull();
+    expect(m.ordre).toEqual([]);
+  });
+
+  it('second tour, mineur a · la plus récente a son écriture VALIDÉE · le refus dit l’issue réelle', async () => {
+    const m = monter({ posterieure: { dateDebut: new Date('2026-04-01'), dateFin: new Date('2026-04-30'), ecriture: { statut: 'VALIDEE' } } });
+    await expect(m.tva.annulerLiquidation('t1', 'liq1')).rejects.toThrow(/son écriture est validée · elle ne s’annule plus.*première période non liquidée/);
     expect(m.ordre).toEqual([]);
   });
 });

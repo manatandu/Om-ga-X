@@ -1067,8 +1067,11 @@ l'encaissement d'une facture cochée a pu être déclarée (ancien moteur, ou pa
 figée qui, ajoutée à la part que la perte annulerait, dépasse la taxe de la
 ligne · une facture payée à moitié passe) · issue, perte au TTC puis « Récupérer
 la TVA » ; la taxe qu'elle a annulée ne
-redevient jamais exigible par un lettrage postérieur à elle
-(`perteQuiAnnuleLaTaxe`, compté) ; le REPORT au détail du reclassement en N+1 ne se
+redevient jamais exigible par un lettrage postérieur à elle, au-delà de la part
+qu'elle a laissée (second tour · plafond, taxe de la ligne moins la quote-part de
+l'impayé éteint, `bornerParLaPerte` · l'autre moitié payée après la perte reste
+due), l'excédent compté, et la part annulée sort de l'attente, dite à part ;
+annulée avec des lignes d'origine figées non lettrées, elle passe et le dit ; le REPORT au détail du reclassement en N+1 ne se
 lettre pas plus que lui (`ligne-de-reclassement.ts`, clé du report à toute
 profondeur, passes par montant suspendues) ; par trimestre, l'écriture de la
 récupération au plus tard le 30 SEPTEMBRE, dit à côté du 30 novembre. LE NÉGATIF D'UN AVOIR SUR VENTE (débit négatif du 443) EST LU PAR LA
@@ -2168,9 +2171,12 @@ l'impôt de la seule liquidation (`ConstatImpotService.impotDeLExercice`,
 `tropPayeLiquidation`) ; le 441 débiteur reste en « Autres créances », jamais un
 remboursement à encaisser ; le 8994 crédité entre au résultat comptable et suit
 le sort du 899 (nommé, déduit par le cabinet). LA PREMIÈRE SE LIT SUR SON CONSTAT
-(relecture du 2026-10-08, M3) · le `ConstatImpotResultat` non annulé de l'exercice
-arrêté, jamais recalculée ; sans constat, ou l'impôt de cet exercice non réintégré
-à sa mesure (art. 45), la totalisation est REFUSÉE, nommée avec l'issue. (3) Acomptes de l'année de la dissolution dus avant l'échéance de la
+(relecture du 2026-10-08, M3 ; second tour, BLOQUANT 2) · le `ConstatImpotResultat`
+non annulé de l'exercice arrêté ; à défaut le débit du 891 et du 895 (impôt passé à
+la main) ; à défaut, exercice clôturé, l'impôt recalculé avec sa réserve
+(`sourcePremiereCotisation`) · la totalisation n'est REFUSÉE que si l'écriture de
+l'impôt peut encore se passer (exercice ouvert, 891 et 895 vides), ou si l'impôt
+au 89 n'est pas réintégré à sa mesure (art. 45), nommée avec l'issue. (3) Acomptes de l'année de la dissolution dus avant l'échéance de la
 dernière cotisation, aucun ensuite (LPF art. 57 bis), au registre comme au
 résultat fiscal (`echeancierDissolution().retenir`, une règle). (4) Aucune déclaration
 annuelle de l'IS pour l'année de la dissolution ni les suivantes (LPF art. 16,
@@ -3509,14 +3515,16 @@ liquidation antérieure à sa validation ne couvre (`rattachementTardif`,
 validation la gardant ; NOMMÉE avec sa date d'origine (`rattachementsTardifs`),
 déchéance de l'art. 37, al. 2 lue sur la date d'origine ; l'encaissement garde sa
 mémoire (`repartirEncaissement`). RELECTURES DU 2026-10-08 · `LiquidationTva.regleTardifs`
-(faux pour l'existant, migration) et `instantLecture` (pris AVANT la lecture) · une
+(faux pour l'existant, migration) et `instantLecture` (pris AVANT la lecture, qui
+n'admet que les lignes validées au plus tard à cet instant, second tour) · une
 liquidation d'avant la règle ne lit que les lignes datées dans sa période et aucun
 négatif (de facture, d'avoir fournisseur) ; ce qu'elle n'a pas repris est porté au
 premier jour non liquidé, NOMMÉ `ancienMoteur` (à vérifier contre la déclaration
 déposée) ; un trou entre deux liquidations est dit (`dansUnTrou`), une récupération
 portée après le 31 décembre de l'année qui suit sa constatation aussi
 (`horsDelaiArt37`, décret art. 126, art. 37 al. 2). ON ANNULE UNE LIQUIDATION À
-PARTIR DE LA PLUS RÉCENTE (B1, comme D6). Le négatif d'une facture à l'encaissement
+PARTIR DE LA PLUS RÉCENTE (B1, comme D6) ; la plus récente validée arrête la
+chaîne, et le refus le dit. Le négatif d'une facture à l'encaissement
 quitte l'attente de la période de la FACTURE ; NOMMÉS SANS PESER
 (`negatifsNonPortesTotal`) · période de la facture jamais liquidée dans OmegaX,
 achat à l'encaissement (déduction prise au règlement), déduction d'origine déchue ;
