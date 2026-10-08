@@ -165,11 +165,42 @@ describe('Bilans successifs de l’année de la dissolution (point 2 ; constat 1
     });
   });
 
-  it('une liquidation en perte · seconde nulle, l’excédent réglé est DIT avec son montant', async () => {
+  it('une liquidation en perte · seconde nulle, l’excédent réglé se SÉPARE · première cotisation au 441, acomptes au 4492', async () => {
     // Liquidation − 2 000 000 · total 8 000 000 − 1 000 000 = 7 000 000 × 30 %
-    // = 2 100 000 ; réglé 2 700 000 + 300 000 = 3 000 000 · excédent 900 000.
-    const b = await service().bilansSuccessifsDe('t', tenant, LIQ, courant(-2_000_000));
-    expect(b.totalisation).toMatchObject({ impotTotal: 2_100_000, secondeCotisation: 0, excedent: 900_000 });
+    // = 2 100 000 ; réglé 2 700 000 + 300 000 = 3 000 000 · excédent 900 000,
+    // dont 2 700 000 − 2 100 000 = 600 000 de première cotisation (dette de
+    // l'État, D 441 / C 8994, décision de Manasse du 2026-10-08) et les 300 000
+    // d'acomptes, qui restent au 4492 (LPF art. 57 ter).
+    const b = (await service().bilansSuccessifsDe('t', tenant, LIQ, courant(-2_000_000))) as unknown as {
+      totalisation: Record<string, number | null>;
+      observation: string;
+    };
+    expect(b.totalisation).toMatchObject({
+      impotTotal: 2_100_000,
+      secondeCotisation: 0,
+      excedent: 900_000,
+      cotisationDeLExercice: 0,
+      tropPayePremiereCotisation: 600_000,
+      excedentAcomptes: 300_000,
+    });
+    expect(b.observation).toContain('au débit du 441 par le crédit du 8994');
+    expect(b.observation).toContain('jamais un remboursement à encaisser');
+    expect(b.observation).toContain('qui restent au 4492 (LPF art. 57 ter');
+  });
+
+  it('première cotisation sous l’impôt de l’année, acomptes au-delà · aucun trop-payé au 441, l’excédent d’acomptes reste au 4492', async () => {
+    // Liquidation 500 000 · total 10 500 000 − 1 000 000 = 9 500 000 × 30 % =
+    // 2 850 000 ; cotisation de l'exercice 150 000 ; acomptes 300 000 · 150 000
+    // d'acomptes en trop, aucun trop-payé de la première.
+    const b = await service().bilansSuccessifsDe('t', tenant, LIQ, courant(500_000));
+    expect(b.totalisation).toMatchObject({
+      impotTotal: 2_850_000,
+      cotisationDeLExercice: 150_000,
+      secondeCotisation: 0,
+      excedent: 150_000,
+      tropPayePremiereCotisation: 0,
+      excedentAcomptes: 150_000,
+    });
   });
 
   it('l’exercice arrêté porte la première · un exercice non arrêté ne sépare rien', async () => {

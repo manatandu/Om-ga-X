@@ -9883,6 +9883,13 @@ model ConstatImpotResultat {
   /// Acomptes imputés sur la dette d'impôt (D 441 / C 4492, art. 57 bis,
   /// al. 3 LPF) · zéro quand le cabinet ne l'a pas demandé.
   montantImpute     Decimal @default(0) @db.Decimal(18, 2)
+  /// EXERCICE DE LIQUIDATION (décision de Manasse du 2026-10-08, compte choisi
+  /// par la loi) · la part de la première cotisation spéciale (loi n° 23/053,
+  /// art. 13, al. 1) qui dépasse l'impôt calculé sur le total des bilans
+  /// successifs (art. 12, al. 4) · dette de l'État constatée au DÉBIT du 441
+  /// (fiche du compte 44) par le CRÉDIT du 8994 (fiche du compte 89). Zéro
+  /// hors de ce cas ; l'excédent d'ACOMPTES reste au 4492 (art. 57 ter LPF).
+  tropPayeLiquidation Decimal @default(0) @db.Decimal(18, 2)
   /// Ce que le cabinet déclare quand l'assujettissement de sa forme dépend
   /// d'un fait que le dossier ne porte pas (option de l'art. 4, art. 5 et 6).
   attestationRegime String?

@@ -210,6 +210,20 @@ export interface BilansSuccessifs {
     dejaRegle: number | null;
     secondeCotisation: number | null;
     excedent: number;
+    /**
+     * L'impôt que porte le 891 de l'exercice de liquidation · l'impôt
+     * totalisé moins la première cotisation, AVANT acomptes (fiche du compte
+     * 89, « quelles que soient les modalités de règlement »). Nul quand la
+     * première cotisation le dépasse ; `null` si l'un des deux n'est pas chiffré.
+     */
+    cotisationDeLExercice: number | null;
+    /**
+     * La part de la première cotisation qui dépasse l'impôt totalisé · dette
+     * de l'État, D 441 / C 8994 (décision de Manasse du 2026-10-08).
+     */
+    tropPayePremiereCotisation: number;
+    /** La part des acomptes non absorbée · reste au 4492 (art. 57 ter LPF). */
+    excedentAcomptes: number;
   } | null;
   observation: string;
 }
@@ -2173,9 +2187,23 @@ export class FiscaliteService {
    *   al. 3 · déduits de la cotisation dont la déclaration les suit).
    * · Sans liquidation (AUSCGIE art. 201 al. 4), la cotisation de l'exercice
    *   arrêté est la seule.
-   * Un réglé supérieur à l'impôt totalisé se DIT, avec son montant, sans en
-   * tirer ni remboursement ni imputation · aucun texte lu ne le règle (LPF
-   * art. 57 ter ne vise que les acomptes, art. 104 la réclamation).
+   * UN RÉGLÉ SUPÉRIEUR À L'IMPÔT TOTALISÉ SE SÉPARE EN DEUX (décision de
+   * Manasse du 2026-10-08, « crédit d'impôt dans un compte du bilan », compte
+   * choisi par la loi). L'impôt de l'année s'éteint d'abord par la première
+   * cotisation, puis par les acomptes. (1) L'excédent d'ACOMPTES reste au
+   * 4492 · l'art. 57 ter LPF ne vise que « les acomptes provisionnels
+   * versés ». (2) La part de la PREMIÈRE COTISATION (art. 13, al. 1) qui
+   * dépasse l'impôt totalisé (art. 12, al. 4) n'est pas un acompte · c'est une
+   * dette de l'État envers la société, constatée au DÉBIT du 441 « État,
+   * impôt sur les bénéfices » (fiche du compte 44, « Débité lors de la
+   * constatation de la dette de l'État envers l'entité [...] par le crédit
+   * des comptes concernés [...] des classes 7 et 8 ») par le CRÉDIT du 8994
+   * « Annulations pour pertes rétroactives » (fiche du compte 89 · le 891
+   * « diminué des dégrèvements et des annulations sur des exercices
+   * antérieurs »), dans l'exercice de liquidation · proposée par l'écriture
+   * de l'impôt (`ConstatImpotService`). Le 441 débiteur reste au bilan en
+   * créance (« Autres créances »), jamais présenté comme un remboursement à
+   * encaisser.
    */
   private async bilansSuccessifsDe(
     tenantId: string,
@@ -2274,7 +2302,13 @@ export class FiscaliteService {
       dejaRegle,
       secondeCotisation: reste === null ? null : Math.max(reste, 0),
       excedent: reste !== null && reste < 0 ? -reste : 0,
+      cotisationDeLExercice:
+        impot.impotDu === null || premiereCotisation === null ? null : Math.max(arrondir(impot.impotDu - premiereCotisation), 0),
+      tropPayePremiereCotisation:
+        impot.impotDu === null || premiereCotisation === null ? 0 : Math.max(arrondir(premiereCotisation - impot.impotDu), 0),
+      excedentAcomptes: 0,
     };
+    totalisation.excedentAcomptes = Math.max(arrondir(totalisation.excedent - totalisation.tropPayePremiereCotisation), 0);
     const montant = (n: number | null) => (n === null ? 'non calculé' : montantFiscal(n));
     return {
       role: 'SECONDE_COTISATION' as const,
@@ -2290,7 +2324,14 @@ export class FiscaliteService {
         `, chiffre d'affaires total ${montant(chiffreAffaires)} · impôt de l'année ${montant(impot.impotDu)}, ` +
         `première cotisation ${montant(premiereCotisation)}, acomptes imputés ${montant(courant.acomptesVerses)}, ` +
         (totalisation.excedent > 0.005
-          ? `seconde cotisation 0 · ce qui est réglé dépasse l'impôt totalisé de ${montant(totalisation.excedent)}, et aucun texte lu ne dit s'il se rembourse, s'impute ou se réclame.`
+          ? `seconde cotisation 0 · ce qui est réglé dépasse l'impôt totalisé de ${montant(totalisation.excedent)}` +
+            (totalisation.tropPayePremiereCotisation > 0.005
+              ? `, dont ${montant(totalisation.tropPayePremiereCotisation)} de première cotisation · créance sur l'État, gardée au bilan au débit du 441 par le crédit du 8994 « Annulations pour pertes rétroactives » (AUDCIF, Titre VII, fiches des comptes 44 et 89), proposée par l'écriture de l'impôt de l'exercice, jamais un remboursement à encaisser`
+              : '') +
+            (totalisation.excedentAcomptes > 0.005
+              ? `${totalisation.tropPayePremiereCotisation > 0.005 ? ', et' : ', dont'} ${montant(totalisation.excedentAcomptes)} d'acomptes, qui restent au 4492 (LPF art. 57 ter, « peuvent, à sa demande, servir au paiement d'autres impôts et droits dus »)`
+              : '') +
+            '.'
           : `seconde cotisation ${montant(totalisation.secondeCotisation)}.`),
     };
   }

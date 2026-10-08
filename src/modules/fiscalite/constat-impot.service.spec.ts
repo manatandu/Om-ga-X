@@ -31,7 +31,7 @@ function monter(options: {
     reintegrationsImpot: 0,
     ...options.calcul,
   };
-  const comptes: Record<string, string> = { '89110000': 'c8911', '89500000': 'c895', '44100000': 'c441', '44920000': 'c4492' };
+  const comptes: Record<string, string> = { '89110000': 'c8911', '89500000': 'c895', '44100000': 'c441', '44920000': 'c4492', '89940000': 'c8994' };
   const prisma = {
     constatImpotResultat: {
       findFirst: jest.fn().mockResolvedValue(options.enPlace ?? null),
@@ -195,5 +195,52 @@ describe('ConstatImpotService.annuler', () => {
     // « aucun impôt à annuler », jamais un refus de régime.
     await expect(service.annuler('t', 'u', 'ex', { motif: 'erreur de base' })).rejects.toThrow(/Aucun impôt constaté/);
     expect(fiscalite.resultatFiscal).not.toHaveBeenCalled();
+  });
+});
+
+/*
+  L'EXERCICE DE LIQUIDATION · l'impôt constaté est la SECONDE cotisation (loi
+  n° 23/053, art. 12, al. 4, et 13), lue sur la totalisation, jamais l'impôt de
+  la seule période de liquidation ; la première cotisation au-delà de l'impôt
+  de l'année se constate D 441 / C 8994 (décision de Manasse du 2026-10-08).
+*/
+describe('ConstatImpotService · exercice de liquidation', () => {
+  const totalisation = (t: { cotisationDeLExercice: number | null; tropPayePremiereCotisation: number }) => ({
+    bilansSuccessifs: { role: 'SECONDE_COTISATION', calculable: true, motif: null, totalisation: { minimumApplique: false, ...t } },
+  });
+
+  it('trop-payé · D 441 / C 8994 seuls, montant rejoué, figé sur le constat', async () => {
+    const { service, ecritures, prisma } = monter({ calcul: { impotDu: 999, ...totalisation({ cotisationDeLExercice: 0, tropPayePremiereCotisation: 600_000 }) } });
+    await service.passer('t', 'u', 'ex', {});
+    const dto = ecritures.creer.mock.calls[0][2];
+    expect(dto.lignes).toEqual([
+      expect.objectContaining({ compteId: 'c441', debit: 600_000 }),
+      expect.objectContaining({ compteId: 'c8994', credit: 600_000 }),
+    ]);
+    expect(dto.libelle).toMatch(/Trop-payé de la première cotisation/);
+    const data = prisma.constatImpotResultat.create.mock.calls[0][0].data;
+    expect(Number(data.montantImpot)).toBe(0);
+    expect(Number(data.tropPayeLiquidation)).toBe(600_000);
+  });
+
+  it('seconde cotisation positive · le 891 reçoit l’impôt totalisé moins la première, pas l’impôt de la seule liquidation', async () => {
+    const { service, ecritures } = monter({ calcul: { impotDu: 999, ...totalisation({ cotisationDeLExercice: 1_500_000, tropPayePremiereCotisation: 0 }) } });
+    await service.passer('t', 'u', 'ex', {});
+    expect(ecritures.creer.mock.calls[0][2].lignes[0]).toMatchObject({ compteId: 'c8911', debit: 1_500_000 });
+  });
+
+  it('totalisation non calculée · refus nommé, rien écrit', async () => {
+    const { service, ecritures } = monter({
+      calcul: { bilansSuccessifs: { role: 'SECONDE_COTISATION', calculable: false, motif: 'Aucun exercice n’est arrêté.', totalisation: null } },
+    });
+    await expect(service.passer('t', 'u', 'ex', {})).rejects.toThrow(/seconde cotisation spéciale.*Aucun exercice n’est arrêté/);
+    expect(ecritures.creer).not.toHaveBeenCalled();
+  });
+
+  it('la proposition dit le trop-payé · lignes D 441 / C 8994, jamais un remboursement', async () => {
+    const { service } = monter({ calcul: { ...totalisation({ cotisationDeLExercice: 0, tropPayePremiereCotisation: 600_000 }) } });
+    const etat = await service.etat('t', 'ex');
+    expect(etat.proposition).toMatchObject({ impot: 0, tropPaye: 600_000 });
+    expect(etat.proposition!.lignes.map((l) => l.numero)).toEqual(['44100000', '89940000']);
   });
 });

@@ -2120,8 +2120,20 @@ transaction de l'écriture ; le bouton d'arrêt lit le refus du serveur
 (`motifRefusArret`). (2) UNE ASSIETTE, DEUX COTISATIONS (loi n° 23/053, art. 11,
 1°, 12 al. 4, 13 al. 3) · la seconde est l'impôt calculé une fois sur le TOTAL
 (report et minimum de l'art. 57 sur le chiffre d'affaires total) moins la
-première et les acomptes (`bilansSuccessifs`) ; un réglé au-delà est DIT, sans
-suite. (3) Acomptes de l'année de la dissolution dus avant l'échéance de la
+première et les acomptes (`bilansSuccessifs`) ; un RÉGLÉ AU-DELÀ SE SÉPARE
+(décision de Manasse du 2026-10-08, « crédit d'impôt dans un compte du bilan »,
+compte choisi par la loi) · l'excédent d'ACOMPTES reste au 4492 (LPF art. 57 ter,
+« les acomptes provisionnels versés ») ; la part de la PREMIÈRE cotisation qui
+dépasse l'impôt totalisé est une dette de l'État, D 441 (fiche du compte 44,
+« Débité lors de la constatation de la dette de l'État envers l'entité ») / C
+89940000 « Annulations pour pertes rétroactives » (fiche du compte 89, le 891
+« diminué des dégrèvements et des annulations »), dans l'exercice de
+liquidation, PROPOSÉE par l'écriture de l'impôt (A11), qui y constate la seconde
+cotisation (impôt totalisé moins la première, `cotisationDeLExercice`) et non
+l'impôt de la seule liquidation (`ConstatImpotService.impotDeLExercice`,
+`tropPayeLiquidation`) ; le 441 débiteur reste en « Autres créances », jamais un
+remboursement à encaisser ; le 8994 crédité entre au résultat comptable et suit
+le sort du 899 (nommé, déduit par le cabinet). (3) Acomptes de l'année de la dissolution dus avant l'échéance de la
 dernière cotisation, aucun ensuite (LPF art. 57 bis), au registre comme au
 résultat fiscal (`echeancierDissolution().retenir`, une règle). (4) Aucune déclaration
 annuelle de l'IS pour l'année de la dissolution ni les suivantes (LPF art. 16,
