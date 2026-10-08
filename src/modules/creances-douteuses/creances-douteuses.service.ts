@@ -2005,7 +2005,7 @@ export class CreancesDouteusesService {
    */
   private async taxeEncaissementDeclaree(
     tenantId: string,
-    choisies: ReadonlyArray<{ designationId: string; libelle: string; tvaAnnulable: number }>,
+    choisies: ReadonlyArray<{ designationId: string; libelle: string; tvaAnnulable: number; impayeTtc: number }>,
     l: Awaited<ReturnType<CreancesDouteusesService['lireRecuperation']>>,
   ): Promise<string | null> {
     const visees = choisies.filter((f) => f.tvaAnnulable > 0.005);
@@ -2021,23 +2021,45 @@ export class CreancesDouteusesService {
         `taxe acquittée jamais récupérée. ${issue}`
       );
     }
-    const lignes = new Set(visees.flatMap((f) => l.lignesEncaissement.get(f.designationId) ?? []));
-    if (lignes.size === 0) return null;
+    /*
+      CE QU'UNE LIQUIDATION A DÉCLARÉ ET CE QUE LA PERTE ANNULERAIT, LIGNE PAR
+      LIGNE · la part annulée est celle de l'IMPAYÉ (impayé × taxe / TTC) ; la
+      part figée, celle d'un règlement lettré · tant que les deux ne dépassent
+      pas la taxe de la ligne, elles ne se recouvrent pas (une facture payée à
+      moitié, la moitié déclarée, l'autre annulée). Au-delà, la perte
+      annulerait une taxe déjà déclarée (règlement délettré depuis, ou
+      reclassement d'une part déjà encaissée) · refus nommé.
+    */
+    const parLigne = new Map<string, { tva: number; annulee: number; libelle: string }>();
+    for (const f of visees) {
+      for (const x of l.lignesEncaissement.get(f.designationId) ?? []) {
+        const v = parLigne.get(x.ligneId) ?? { tva: x.tva, annulee: 0, libelle: f.libelle };
+        v.annulee = centimes(v.annulee + (x.ttc > 0.005 ? (f.impayeTtc * x.tva) / x.ttc : 0));
+        parLigne.set(x.ligneId, v);
+      }
+    }
+    if (parLigne.size === 0) return null;
     const figees = await this.prisma.liquidationTva.findMany({
       where: { tenantId, NOT: { tvaEncaissementFigee: { equals: Prisma.AnyNull } } },
       select: { dateDebut: true, dateFin: true, tvaEncaissementFigee: true },
       orderBy: { dateDebut: 'asc' },
       take: 600,
     });
-    for (const liq of figees) {
-      const fige = (liq.tvaEncaissementFigee ?? {}) as Record<string, number>;
-      const ligne = [...lignes].find((id) => Number(fige[id] ?? 0) > 0.005);
-      if (!ligne) continue;
-      const f = visees.find((x) => (l.lignesEncaissement.get(x.designationId) ?? []).includes(ligne))!;
+    for (const [ligne, v] of parLigne) {
+      let declare = 0;
+      let premiere: { dateDebut: Date; dateFin: Date } | null = null;
+      for (const liq of figees) {
+        const fige = Number(((liq.tvaEncaissementFigee ?? {}) as Record<string, number>)[ligne] ?? 0);
+        if (fige <= 0.005) continue;
+        declare = centimes(declare + fige);
+        premiere ??= liq;
+      }
+      if (!premiere || declare + v.annulee <= v.tva + 0.01) continue;
       return (
-        `La liquidation de TVA du ${jour(liq.dateDebut)} au ${jour(liq.dateFin)} a déclaré une part de la taxe à l’encaissement de ` +
-        `la facture « ${f.libelle} » (${Number(fige[ligne]).toFixed(2)}, réglée puis délettrée) · elle n’est pas « jamais exigible ». ` +
-        issue
+        `La liquidation de TVA du ${jour(premiere.dateDebut)} au ${jour(premiere.dateFin)} a déclaré ${declare.toFixed(2)} de la taxe à ` +
+        `l’encaissement de la facture « ${v.libelle} » (au titre d’un règlement lettré avec elle, même délettré depuis), et la perte en ` +
+        `annulerait ${v.annulee.toFixed(2)} sur ${v.tva.toFixed(2)} · une part déjà déclarée n’est pas « jamais exigible », et l’annuler au ` +
+        `443 le laisserait débiteur. ${issue}`
       );
     }
     return null;
@@ -3043,12 +3065,17 @@ export class CreancesDouteusesService {
           'non encaissée · OmegaX ne la récupère pas. Vérifiez la déclaration déposée et, si la taxe y figure, déclarez sa récupération ' +
           'vous-même (art. 52).'
         : null;
-    // B2 · les lignes de TVA à l'encaissement de chaque facture désignée.
-    const lignesEncaissement = new Map<string, string[]>(
-      designations.map((d) => [
-        d.id,
-        (taxes.get(d.ligneEcriture.ecritureId)?.lignesTva ?? []).filter((x) => x.base === 'ENCAISSEMENT').map((x) => x.ligneId),
-      ]),
+    // B2 · les lignes de TVA à l'encaissement de chaque facture désignée,
+    // avec leur taxe et le TTC de la pièce · la part qu'une perte annulerait
+    // se confronte à ce qu'une liquidation a déjà déclaré de la même ligne.
+    const lignesEncaissement = new Map<string, Array<{ ligneId: string; tva: number; ttc: number }>>(
+      designations.map((d) => {
+        const t = taxes.get(d.ligneEcriture.ecritureId);
+        return [
+          d.id,
+          (t?.lignesTva ?? []).filter((x) => x.base === 'ENCAISSEMENT').map((x) => ({ ligneId: x.ligneId, tva: x.tva, ttc: t!.ttc })),
+        ];
+      }),
     );
     return {
       pertes,

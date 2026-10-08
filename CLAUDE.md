@@ -1063,8 +1063,10 @@ lettrage les refusant à tout autre groupe) ; « Retirer » au brouillard retire
 deux pièces et défait leur groupe (validée, « Annuler ») ; son annulation n'est
 refusée que par une LIQUIDATION couvrante, en période close le négatif va au premier
 jour ouvert (art. 22, 4°), décalage nommé ; elle est REFUSÉE quand la taxe à
-l'encaissement d'une facture cochée a pu être déclarée (ancien moteur, part figée)
-· issue, perte au TTC puis « Récupérer la TVA » ; la taxe qu'elle a annulée ne
+l'encaissement d'une facture cochée a pu être déclarée (ancien moteur, ou part
+figée qui, ajoutée à la part que la perte annulerait, dépasse la taxe de la
+ligne · une facture payée à moitié passe) · issue, perte au TTC puis « Récupérer
+la TVA » ; la taxe qu'elle a annulée ne
 redevient jamais exigible par un lettrage postérieur à elle
 (`perteQuiAnnuleLaTaxe`, compté) ; le REPORT au détail du reclassement en N+1 ne se
 lettre pas plus que lui (`ligne-de-reclassement.ts`, clé du report à toute

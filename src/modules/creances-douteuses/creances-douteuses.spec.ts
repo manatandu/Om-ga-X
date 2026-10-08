@@ -1199,8 +1199,28 @@ describe('créances douteuses · service', () => {
     await expect(ancien.service.perte('t', 'u', 'cd-1', dtoPerteAvecTva)).rejects.toThrow(/ancien moteur.*443 débiteur.*Passez la perte sans duplicata/);
     expect(ancien.creer).not.toHaveBeenCalled();
     const fige = monter({ ...base, liquidationsFigees: [{ dateDebut: new Date('2026-03-01'), dateFin: new Date('2026-03-31'), tvaEncaissementFigee: { 't-1': 40_000 } }] });
-    await expect(fige.service.perte('t', 'u', 'cd-1', dtoPerteAvecTva)).rejects.toThrow(/du 2026-03-01 au 2026-03-31 a déclaré une part.*40000\.00/);
+    await expect(fige.service.perte('t', 'u', 'cd-1', dtoPerteAvecTva)).rejects.toThrow(/du 2026-03-01 au 2026-03-31 a déclaré 40000\.00 de la taxe.*en annulerait 160000\.00 sur 160000\.00/);
     expect(fige.creer).not.toHaveBeenCalled();
+  });
+
+  /*
+    Rejeu du premier tour · une facture payée à MOITIÉ, la moitié déclarée et
+    figée en mars, l'autre moitié reclassée · les deux parts ne se recouvrent
+    pas, la perte avec duplicata annule la seule taxe de l'impayé. Refusée,
+    elle laissait au 4432 un crédit que rien ne soldait jamais.
+  */
+  it('B2 · une part déclarée qui ne recouvre pas la part annulée (facture payée à moitié) ne refuse rien', async () => {
+    const moitie = { ...designationF1, montant: 580_000 };
+    const m = monter({
+      creance: creanceClient(),
+      regime: { assujettiTva: true },
+      designations: [moitie],
+      taxes: taxesF1('ENCAISSEMENT'),
+      finDerniereLiquidation: new Date('2027-02-28'),
+      liquidationsFigees: [{ dateDebut: new Date('2026-03-01'), dateFin: new Date('2026-03-31'), tvaEncaissementFigee: { 't-1': 80_000 } }],
+    });
+    await expect(m.service.perte('t', 'u', 'cd-1', { ...dtoPerteAvecTva })).resolves.toBeDefined();
+    expect(m.prisma.mouvementCreanceDouteuse.create.mock.calls[0][0].data).toMatchObject({ montantTvaAnnulee: 80_000 });
   });
 
   it('B2 · un compte d’origine non lettrable n’arrête pas la perte · lettrable mais non lettré, rien ne part', async () => {

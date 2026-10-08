@@ -136,6 +136,53 @@ Dossier 2 · SARL, dissolution au 30/06/2026, exercice arrêté, liquidation du
 | 891 et 4492 (liquidation) | 0 | 0 |
 | trop-payé recalculé, 8994 déduit par le cabinet | 5 400 000 | 5 400 000 |
 
+### Rejeu du premier tour de relecture (2026-10-08, base jetable neuve, migrations rejouées, `migrate diff` sans écart)
+
+Dossier 3 · SARL SYSCOHADA assujettie, N = 2026 clôturé, N+1 = 2027.
+
+| Contrôle | Calcul à la main | Lu |
+|---|---|---|
+| B1 · février · V3 de janvier validée après janvier (au brouillard), portée au 1er février | 80 000 | 80 000 |
+| B1 · annulation de janvier avec février liquidé | refusée, nommée | refusée |
+| B1 · février puis janvier annulés, janvier refait · V1 + V3 | 240 000 | 240 000 |
+| B1 · février relu · V3 jamais deux fois | 0 | 0 |
+| mars · P4 payée à moitié · taxe exigible, figée | 80 000 | 80 000 |
+| M1 · avril tenu d'avant la règle · V4 portée en mai, `ancienMoteur` | 32 000 | 32 000 |
+| M1 · avril sous la règle · mai sans V4 | 0 | 0 |
+| MAJEUR 4 · juin d'avant la règle · négatif de V5 repris en juillet, `ancienMoteur` | 80 000 | 80 000 |
+| MAJEUR 4 · juin sous la règle · juillet sans reprise | 0 | 0 |
+| MAJEUR 2 · P1 · perte qui récupère, lettrage `MODULE` posé dans la transaction | code A, 2 lignes | A, 2 lignes |
+| BLOQUANT 1 · P2 au brouillard retirée · lignes au 651, pertes et retours de P2 restants | 1 retirée · 0 · 0 | idem |
+| B2 · P4 · moitié déclarée en mars · perte avec duplicata, AVANT l'affinage ci-dessous | refusée · perte au TTC (issue) | refusée · TTC passée |
+| B2 · P5 (même cas, octobre) · perte avec duplicata | passe, 4432 soldé | passe |
+| B2 · P6 · payée, figée, délettrée, chèque impayé, reclassée | refusée, nommée | refusée |
+| MAJEUR 3 · P3 · perte validée, période close au 30/09, annulation | négatifs au 01/10, valeur 15/09 | idem |
+| 41110206 après annulation (la créance reste au 416) | 0 | 0 |
+| garde · facture P6 / reclassement | refusé | refusé |
+| novembre · collecte (pertes P1, P5 · aucun encaissement) | 0 | 0 |
+| 4432 fin N · seul le reste de P4 (perte au TTC passée avant l'affinage) | −80 000 | −80 000 |
+| clôture N | faite | faite |
+| M4 · N+1 · reports au détail de la facture P1 et du reclassement | 2 ouverts | 2 |
+| M4 · lettrage automatique · passes par montant suspendues | 0 groupe | 0 |
+| M4 · lettrage manuel des deux reports | refusé (motif du reclassement) | refusé |
+| M4 · janvier N+1 · collecte | 0 | 0 |
+| M4 · moteur · groupe des reports posé en base · collecte, taxe annulée comptée | 0 · 160 000 | 0 · 160 000 |
+
+Dossier 4 · SARL dissoute au 30/06/2026, exercice arrêté (M3).
+
+| Contrôle | Calcul à la main | Lu |
+|---|---|---|
+| sans constat de la première · totalisation | refusée, nommée | refusée |
+| constat 6 000 000 sans réintégration · totalisation | refusée, nommée | refusée |
+| réintégration · première lue sur le constat | 6 000 000 | 6 000 000 |
+| impôt totalisé · trop-payé | 600 000 · 5 400 000 | idem |
+
+B2 AFFINÉ PENDANT LE REJEU · refuser dès qu'une part était figée laissait,
+pour une facture payée à moitié, la moitié impayée de la taxe au 4432 pour
+toujours (perte au TTC, rien à récupérer à l'encaissement) · le refus ne
+joue plus que si la part déclarée et la part que la perte annulerait
+dépassent ensemble la taxe de la ligne (recouvrement), test à l'appui.
+
 ## Décisions prises, avec leurs articles
 
 ### (C) Délai de l'art. 37, al. 2, par le renvoi de l'art. 126
