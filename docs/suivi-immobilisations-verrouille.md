@@ -191,6 +191,43 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- LIGNE TVA-DECISIONS INTÉGRÉE (2026-10-08, TVA des factures annulées et rattachées tard, perte d'une créance avec duplicata, trop-payé de liquidation), relevés non bloquants ·
+  - (D) La perte au TTC (sans duplicata) reste une écriture D 651 / C 416,
+    comme avant · la consigne ne la ramène pas au compte d'origine, lecture
+    gardée ; la perte qui récupère est refusée après une perte au TTC déjà
+    passée (la règle 3 sert alors).
+  - (D) Créance reclassée en N, perdue en N+1 · le lettrage du 416 reste à
+    désigner (« Lettrer au 416 », A7 ter B2), comme avant ; au compte
+    d'origine, les lignes d'à-nouveau de la facture et du reclassement restent
+    ouvertes (règle d'A7, le reclassement ne lettre pas le 411).
+  - (E) Réglé au premier tour (M3) · la première cotisation se lit sur le
+    constat A11 de l'exercice arrêté ; sans constat, ou sans la réintégration
+    de l'impôt (art. 45), la totalisation est refusée, nommée.
+  - (Relecture, mineur) La cadence trimestrielle d'une TVA n'est pas connue
+    d'OmegaX · la borne du 30 septembre est dite à côté de celle du 30
+    novembre, jamais imposée.
+  - (Relecture, M4) Le moteur ne rend jamais exigible, après la perte, la taxe
+    qu'elle a annulée ; une taxe à l'encaissement d'une facture NON cochée de
+    la perte (sans duplicata) reste lue par son groupe, la garde du lettrage
+    (reclassement et son report) étant ce qui la protège.
+  - (Relecture, M2) Le négatif d'un achat à l'encaissement est NOMMÉ sans
+    reprendre la déduction prise au règlement · reprendre la part figée au
+    premier jour non liquidé est laissé au cabinet (sûreté non établie sur un
+    groupe partiellement réglé).
+  
+  - Le négatif d'une facture À L'ENCAISSEMENT déjà en partie encaissée · la
+    taxe des règlements reste déclarée (figée) ; la restitution au client
+    relève de la note de crédit (art. 52, al. 2), non chiffrée.
+  - Les compteurs descriptifs (biens datés à la facture, services aux débits,
+    acomptes imputés) restent lus à la date d'écriture · une ligne rattachée
+    tard y figure dans sa période d'origine, pas dans celle qui la déclare.
+  - (E) Le crédit du 8994 entre au résultat comptable de l'exercice de
+    liquidation · tant que le cabinet ne le déduit pas (doctrine du 899 d'A11,
+    `observationDegrevement`), la totalisation recalculée après validation
+    l'inclut, et le constat dit l'écart du trop-payé. Neutralisation d'office
+    non codée (aucun texte exprès, même parti que le dégrèvement).
+
+
 - LIGNE LETTRAGE-CLOTURE INTÉGRÉE (2026-10-08, lettrage partiel reconduit à la clôture), relevés non bloquants ·
   - `groupesNonReconduits` ne lit que le couple (N clôturé, N+1 ouvert). La
     clôture de N+1 reconduit désormais en N+2 les groupes de N À RECONDUIRE

@@ -190,3 +190,47 @@ describe('observation · l’impôt déduit de son propre calcul (art. 45 et 50,
     ).toBe(180);
   });
 });
+
+/*
+  EXERCICE DE LIQUIDATION · le trop-payé de la première cotisation (décision de
+  Manasse du 2026-10-08, compte choisi par la loi). Loi n° 23/053, art. 12,
+  al. 4, et 13 ; AUDCIF Titre VII, fiche du compte 44 (441 « Débité lors de la
+  constatation de la dette de l'État envers l'entité [...] par le crédit des
+  comptes concernés [...] des classes 7 et 8 ») et fiche du compte 89 (8994
+  « Annulations pour pertes rétroactives »). L'excédent d'ACOMPTES reste au
+  4492 (LPF art. 57 ter).
+*/
+describe('exercice de liquidation · trop-payé de la première cotisation au 441 par le 8994', () => {
+  it('8994 est semé au SYSCOHADA, en détail, sous l’intitulé de la fiche du compte 89', () => {
+    const ligne = PLAN_COMPTES_SYSCOHADA.find((l) => l.numero === COMPTES_IMPOT_RESULTAT.annulationPertesRetroactives);
+    expect(ligne?.intitule).toMatch(/Annulations pour pertes rétroactives/);
+    expect(ligne!.typeCompte ?? TypeCompteDetailTotal.DETAIL).toBe(TypeCompteDetailTotal.DETAIL);
+    expect(PLAN_COMPTES_SYSCOHADA.find((l) => l.numero === '899')?.typeCompte).toBe(TypeCompteDetailTotal.TOTAL);
+  });
+
+  it('les lignes · D 441 / C 8994 du trop-payé, sans ligne d’impôt nulle', () => {
+    expect(lignesConstat(0, false, 0, 600_000)).toEqual([
+      expect.objectContaining({ numero: '44100000', debit: 600_000, credit: 0 }),
+      expect.objectContaining({ numero: '89940000', debit: 0, credit: 600_000 }),
+    ]);
+    // Une seconde cotisation positive · l'écriture ordinaire, aucun trop-payé.
+    expect(lignesConstat(150_000, false, 0, 0).map((l) => l.numero)).toEqual(['89110000', '44100000']);
+  });
+
+  it('un impôt de l’exercice nul n’est pas refusé quand un trop-payé reste à constater', () => {
+    expect(motifsRefusConstat({ ...base, impotDu: 0, tropPaye: 600_000 })).toEqual([]);
+    expect(motifsRefusConstat({ ...base, impotDu: 0, tropPaye: 0 }).join(' ')).toMatch(/nul/);
+  });
+
+  it('totalisation non calculée · refus nommé, jamais l’impôt de la seule liquidation', () => {
+    const m = motifsRefusConstat({ ...base, impotDu: null, motifTotalisation: 'Aucun exercice n’est arrêté à la dissolution.' }).join(' ');
+    expect(m).toMatch(/seconde cotisation spéciale/);
+    expect(m).toMatch(/Aucun exercice n’est arrêté/);
+  });
+
+  it('aucun impôt à éteindre · les acomptes restent au 4492 (art. 57 ter)', () => {
+    const r = imputationAcomptes({ declares: 300_000, solde4492: 300_000, impot: 0 });
+    expect(r.montant).toBe(0);
+    expect(r.motifRefus).toMatch(/restent au 4492/);
+  });
+});

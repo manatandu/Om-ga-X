@@ -56,6 +56,9 @@ export const ACTES_QUI_SUIVENT_LEUR_ECRITURE: readonly ActeQuiSuitSonEcriture[] 
   { modele: 'creanceDouteuse', libelle: 'reclassement d’une créance douteuse', colonne: 'ecritureReclassementId', unicite: null },
   { modele: 'ajustementCreanceDouteuse', libelle: 'revue d’une créance douteuse', colonne: 'ecritureId', unicite: ['creanceId', 'annuleeLe'] },
   { modele: 'mouvementCreanceDouteuse', libelle: 'mouvement d’une créance douteuse', colonne: 'ecritureId', unicite: null },
+  // Sa seconde pièce, quand la perte récupère la TVA (point D) · même exercice
+  // que la première, datées du même jour.
+  { modele: 'mouvementCreanceDouteuse', libelle: 'perte d’une créance douteuse (seconde pièce)', colonne: 'ecriturePerteId', unicite: null },
 ];
 
 /**

@@ -7,7 +7,8 @@ import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
  * 52 ; décret n° 011/42, art. 126 et 127). Une vente de marchandises de
  * 1 160 000 TTC (160 000 de TVA) en N, reclassée, recouvrée de 580 000, la
  * perte de 580 000 constatée en décembre ; N clôturé. En N+1, la récupération
- * rend 580 000 × 160 000 / 1 160 000 = 80 000 (HT 500 000), D 4431 / C 6511 ;
+ * rend 580 000 × 160 000 / 1 160 000 = 80 000 (HT 500 000), D 4431 / C 751
+ * (point D, règle 3, décision de Manasse du 2026-10-08 · jamais au 651) ;
  * annulée validée, son négatif est lu ; refaite, elle est constatée en
  * janvier et inscrite en déduction de février. Une prestation (taxe à
  * l'encaissement) ne rend rien. Rejoué avant intégration par l'API du serveur
@@ -108,7 +109,9 @@ test('SYSCOHADA · la TVA acquittée d’une créance irrécouvrable se récupè
   const { lignes: balance } = await appelApi<{ lignes: Array<{ numero: string; solde: number }> }>(page, 'GET', `/ecritures/balance?exerciceId=${suivant.id}`);
   const solde = (n: string) => balance.find((l) => l.numero === n)?.solde ?? 0;
   expect(solde(detail('4431').numero)).toBe(0);
-  expect(solde(detail('6511').numero)).toBe(-80_000);
+  // Règle 3 du point D · la perte déjà au TTC se complète au 751, le 651 n'est jamais crédité.
+  expect(solde(detail('751').numero)).toBe(-80_000);
+  expect(solde(detail('6511').numero)).toBe(0);
   expect(solde('44490000')).toBe(80_000);
   expect(pannes).toEqual([]);
 });

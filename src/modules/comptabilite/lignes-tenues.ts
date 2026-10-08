@@ -64,9 +64,12 @@ export function motifLignesTenues(
   objet: string,
   geste: string,
   issue = '',
-  groupeTolere: string | null = null,
+  groupeTolere: string | readonly string[] | null = null,
 ): string | null {
-  const lettrees = lignes.filter((l) => estTenueParUnLettrage(l) && !(groupeTolere !== null && l.lettrageId === groupeTolere));
+  // Point D · la perte qui récupère la TVA tient DEUX groupes du module, celui
+  // du 416 et celui du compte d'origine (retour et perte), chacun toléré figé.
+  const toleres = new Set(groupeTolere === null ? [] : typeof groupeTolere === 'string' ? [groupeTolere] : groupeTolere);
+  const lettrees = lignes.filter((l) => estTenueParUnLettrage(l) && !(l.lettrageId !== null && toleres.has(l.lettrageId)));
   if (lettrees.length > 0) {
     return (
       `${lettrees.length} ligne(s) de ${objet} sont lettrées (${[...new Set(lettrees.map(designationLettrage))].join(', ')}). ` +

@@ -3,13 +3,18 @@ import {
   EntreeRecuperation,
   FactureDeLaCreance,
   finDuDroit,
+  derniereDateEcriture,
+  derniereDateEcritureTrimestrielle,
   mentionDuplicata,
   MOTIF_FACTURE_PAYEE,
   MOTIF_FACTURE_SANS_TVA,
   MOTIF_TAXE_A_L_ENCAISSEMENT,
   motifRecuperationEnPlace,
   motifRefusAnnulationRecuperation,
+  motifRefusPerteAvecTva,
   motifRefusRecuperation,
+  RACINE_PROFITS_SUR_CREANCES,
+  ventilerPerte,
 } from './recuperation-tva';
 
 /**
@@ -136,7 +141,7 @@ describe('A7 bis, partie 2 · les refus nommés', () => {
     creanceAnnulee: false,
     creanceCorrigee: false,
     resteFinal: 0,
-    pertes: [{ date: d('2026-06-15'), validee: true, numeroPiece: 12, compteId: 'c6511' }],
+    pertes: [{ date: d('2026-06-15'), validee: true, numeroPiece: 12 }],
     designationsActives: 1,
     chiffrees,
     dejaRecuperees: new Set(),
@@ -158,7 +163,6 @@ describe('A7 bis, partie 2 · les refus nommés', () => {
     ['aucune perte', (e) => (e.pertes = []), /Aucune perte n’est constatée/],
     ['créance non éteinte', (e) => (e.resteFinal = 100_000), /n’est pas éteinte · il reste 100000\.00 au 416.*réellement et définitivement irrécouvrable/],
     ['perte au brouillard', (e) => (e.pertes = [{ ...e.pertes[0], validee: false }]), /au brouillard · la constatation du non-paiement/],
-    ['pertes à deux comptes', (e) => (e.pertes = [...e.pertes, { date: d('2026-06-20'), validee: true, numeroPiece: 13, compteId: 'c6515' }]), /un seul compte 651/],
     ['aucune désignation', (e) => (e.designationsActives = 0), /Aucune facture n’est désignée.*ne la devine jamais/],
     ['aucun duplicata', (e) => (e.duplicatas = []), /au moins une facture dont le duplicata surchargé/],
     ['désignation inconnue', (e) => (e.duplicatas = [{ designationId: 'Z', reference: 'x', dateEnvoi: '2026-07-01' }]), /n’est pas une désignation active/],
@@ -174,7 +178,7 @@ describe('A7 bis, partie 2 · les refus nommés', () => {
     ['hors exercice', (e) => (e.dateDansExercice = false), /sort de l’exercice/],
     ['journal', (e) => (e.journalGeneral = false), /opérations diverses/],
     ['avant la perte', (e) => (e.date = d('2026-06-14')), /ne précède pas la constatation.*2026-06-15/],
-    ['après le délai', (e) => ((e.date = d('2028-01-01')), (e.finDerniereLiquidation = null), (e.duplicatas = [{ ...e.duplicatas[0], dateEnvoi: '2027-12-01' }])), /jusqu’au 2027-12-31.*art\. 37, al\. 2/],
+    ['après le délai', (e) => ((e.date = d('2028-01-01')), (e.finDerniereLiquidation = null), (e.duplicatas = [{ ...e.duplicatas[0], dateEnvoi: '2027-12-01' }])), /jusqu’au 2027-12-31.*art\. 37, al\. 2.*perte du 2026-06-15.*après le 2027-11-30.*déclaration de 2028/],
     ['dans une période liquidée', (e) => (e.date = d('2026-06-30')), /liquidée jusqu’au 2026-06-30/],
   ];
   it.each(cas)('refus · %s', (_n, changer, attendu) => {
@@ -187,10 +191,47 @@ describe('A7 bis, partie 2 · les refus nommés', () => {
     expect(motifRefusRecuperation(e)).toMatch(attendu);
   });
 
-  it('le dernier jour du délai passe encore (31 décembre de l’année qui suit)', () => {
+  /*
+    DÉCISION PAR LA LOI DU 2026-10-08 (point C) · le délai court de la
+    constatation du non-paiement (la dernière perte, décret n° 011/42,
+    art. 126) et se juge à la DÉCLARATION qui inscrit la récupération · celle
+    du mois qui suit son écriture. L'écriture du 30 novembre de l'année qui
+    suit est inscrite en décembre, dans le délai ; celle du 1er décembre le
+    serait en janvier, hors du délai (O.-L. n° 10/001, art. 37, al. 2).
+  */
+  it('le 30 novembre de l’année qui suit passe encore · la déclaration de décembre l’inscrit', () => {
     const e = base();
-    e.date = d('2027-12-31');
+    e.date = d('2027-11-30');
     expect(motifRefusRecuperation(e)).toBeNull();
+    expect(derniereDateEcriture(d('2026-06-15')).toISOString().slice(0, 10)).toBe('2027-11-30');
+  });
+
+  it('le 1er décembre de l’année qui suit est refusé · sa déclaration (janvier) sortirait du délai, la date du geste n’y change rien', () => {
+    const e = base();
+    e.date = d('2027-12-01');
+    expect(motifRefusRecuperation(e)).toMatch(/datée après le 2027-11-30, elle tomberait dans une déclaration de 2028/);
+    e.date = d('2027-12-31');
+    expect(motifRefusRecuperation(e)).toMatch(/hors du délai/);
+  });
+
+  it('mineur du point C · par trimestre, la borne est le 30 septembre, DITE à côté de celle du mois', () => {
+    expect(derniereDateEcritureTrimestrielle(d('2026-06-15')).toISOString().slice(0, 10)).toBe('2027-09-30');
+    const e = base();
+    e.date = d('2027-12-01');
+    expect(motifRefusRecuperation(e)).toMatch(/au plus tard le 2027-09-30 si la TVA se liquide par trimestre/);
+  });
+
+  it('le délai court de la DERNIÈRE perte, jamais de l’envoi du duplicata', () => {
+    const e = base();
+    // Deux pertes · la seconde, en 2027, ouvre le délai jusqu'au 31/12/2028.
+    e.pertes = [...e.pertes, { date: d('2027-03-01'), validee: true, numeroPiece: 14 }];
+    e.date = d('2028-11-30');
+    e.finDerniereLiquidation = null;
+    expect(motifRefusRecuperation(e)).toBeNull();
+    // Le duplicata envoyé en 2028 ne repousse rien · décembre 2028 reste au-delà.
+    e.duplicatas = [{ ...e.duplicatas[0], dateEnvoi: '2028-11-01' }];
+    e.date = d('2028-12-01');
+    expect(motifRefusRecuperation(e)).toMatch(/perte du 2027-03-01.*après le 2028-11-30/);
   });
 
   it('une facture à la taxe datée à l’encaissement seule · refus nommé, avec son motif', () => {
@@ -224,5 +265,86 @@ describe('A7 bis, partie 2 · annulation et gestes qui changeraient l’impayé'
   it('une récupération en place refuse l’annulation d’un mouvement et le retrait d’une désignation', () => {
     expect(motifRecuperationEnPlace('annuler ce mouvement', 0)).toBeNull();
     expect(motifRecuperationEnPlace('annuler ce mouvement', 1)).toMatch(/annuler ce mouvement changerait l’impayé.*Annulez d’abord la récupération/);
+  });
+});
+
+/*
+  POINT D · DÉCISION DE MANASSE DU 2026-10-08 · aucun montant négatif, aucun
+  crédit au 651. (1) La perte qui récupère la taxe la passe en UNE écriture de
+  perte · D 651 (HT) / D 443 (taxe acquittée) / C compte d'origine (TTC),
+  précédée du retour de la créance au compte d'origine. (2) La taxe à
+  l'encaissement s'annule au 443 sans être déduite. (3) La perte déjà au TTC
+  se complète par D 443 / C 751.
+*/
+describe('point D · la perte qui récupère la TVA', () => {
+  const chiffrer = (base: 'DATE_ECRITURE' | 'ENCAISSEMENT', recouvre = 0) =>
+    chiffrerFactures({
+      reclasse: 1_160_000,
+      factures: [facture('A', '2026-02-01', base)],
+      recouvrements: recouvre > 0 ? [{ date: d('2026-05-10'), montant: recouvre }] : [],
+    });
+  const entree = (o: Partial<Parameters<typeof motifRefusPerteAvecTva>[0]> = {}): Parameters<typeof motifRefusPerteAvecTva>[0] => ({
+    montant: 1_160_000,
+    resteFinal: 1_160_000,
+    pertesAnterieures: 0,
+    chiffrees: chiffrer('DATE_ECRITURE'),
+    dejaRecuperees: new Set(),
+    duplicatas: [{ designationId: 'A', reference: 'DUP-A', dateEnvoi: '2027-03-01' }],
+    date: d('2027-03-15'),
+    finDerniereLiquidation: d('2027-02-28'),
+    ...o,
+  });
+
+  it('exemple de référence · 1 160 000 au 4162, perte · D 6511 1 000 000 / D 4431 160 000 / C 4111 1 160 000', () => {
+    // 1 160 000 × 160 000 / 1 160 000 = 160 000 ; 1 160 000 − 160 000 = 1 000 000.
+    expect(motifRefusPerteAvecTva(entree())).toBeNull();
+    const v = ventilerPerte(chiffrer('DATE_ECRITURE'));
+    expect(v).toEqual({
+      recuperee: [{ compteId: 'c4431', numero: '44310000', tauxTvaId: 'tva16', tva: 160_000 }],
+      annulee: [],
+      tva: 160_000,
+      tvaAnnulee: 0,
+    });
+    expect(1_160_000 - v.tva - v.tvaAnnulee).toBe(1_000_000);
+  });
+
+  it('règle 2 · taxe à l’encaissement · annulée au 443 sans taux, rien de récupéré (art. 25, 2° ; art. 52, al. 1)', () => {
+    const v = ventilerPerte(chiffrer('ENCAISSEMENT'));
+    expect(v.recuperee).toEqual([]);
+    expect(v.annulee).toEqual([{ compteId: 'c4431', numero: '44310000', tva: 160_000 }]);
+    expect(v.tvaAnnulee).toBe(160_000);
+    // Rien à récupérer · aucune période liquidée ne la refuse.
+    expect(
+      motifRefusPerteAvecTva(
+        entree({ chiffrees: chiffrer('ENCAISSEMENT'), date: d('2027-02-10'), duplicatas: [{ designationId: 'A', reference: 'DUP-A', dateEnvoi: '2027-02-01' }] }),
+      ),
+    ).toBeNull();
+  });
+
+  it('(iv) perte partielle après un recouvrement de 580 000 · seul le reste sort, 500 000 HT et 80 000 de taxe', () => {
+    const chiffrees = chiffrer('DATE_ECRITURE', 580_000);
+    expect(motifRefusPerteAvecTva(entree({ chiffrees, montant: 580_000, resteFinal: 580_000 }))).toBeNull();
+    const v = ventilerPerte(chiffrees);
+    expect(v.tva).toBe(80_000);
+    expect(580_000 - v.tva).toBe(500_000);
+  });
+
+  const refus: Array<[string, Partial<Parameters<typeof motifRefusPerteAvecTva>[0]>, RegExp]> = [
+    ['une perte déjà au TTC', { pertesAnterieures: 1 }, /déjà passée au TTC.*D 443 \/ C 751/],
+    ['perte qui n’éteint pas la créance', { montant: 1_000_000 }, /n° 10\/001, art\. 52, al\. 3.*Il reste 1160000\.00 au 416/],
+    ['duplicata sans référence', { duplicatas: [{ designationId: 'A', reference: ' ', dateEnvoi: '2027-03-01' }] }, /référence du duplicata/],
+    ['facture payée', { chiffrees: chiffrer('DATE_ECRITURE', 1_160_000), montant: 0, resteFinal: 0 }, /aucun impayé|Aucune taxe/],
+    ['période liquidée', { date: d('2027-02-15'), duplicatas: [{ designationId: 'A', reference: 'DUP-A', dateEnvoi: '2027-02-01' }] }, /liquidée jusqu’au 2027-02-28/],
+  ];
+  it.each(refus)('refus · %s', (_n, o, attendu) => {
+    expect(motifRefusPerteAvecTva(entree(o))).toMatch(attendu);
+  });
+
+  it('règle 3 · la perte déjà au TTC se complète au 751, semé 75100000 aux deux plans, jamais au 651', () => {
+    expect(RACINE_PROFITS_SUR_CREANCES).toBe('751');
+    const lire = (f: string) => require('fs').readFileSync(require('path').join(__dirname, '..', '..', f), 'utf8') as string;
+    for (const semis of ['modules/comptes/compte-seed.ts', 'modules/comptes/compte-seed-syscohada.ts']) {
+      expect(lire(semis)).toMatch(/'75100000'/);
+    }
   });
 });

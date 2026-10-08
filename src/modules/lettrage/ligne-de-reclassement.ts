@@ -92,17 +92,140 @@ export async function lignesReclasseesDuCompte(db: LecteurLignes, tenantId: stri
   })) as LigneLue[];
   // La liaison se relit sur la ligne servie · une doublure qui ne sert pas le
   // filtre de relation ne fait jamais passer tout le compte pour reclassé.
-  return new Set(
+  const reclassees = new Set(
     lues
       .filter((l) => l.ecriture?.creanceDouteuseReclassement != null && l.ecriture.creanceDouteuseReclassement.compteCreanceId === compteId)
       .map((l) => l.id),
+  );
+  // M4 · et le REPORT au détail de cette ligne, à l'exercice suivant, qui ne
+  // porte aucune liaison · sans lui, en N+1, les passes par montant
+  // rapprochaient le report de la facture et celui du reclassement.
+  const ouverts = (await db.ligneEcriture.findMany({
+    where: { compteId, lettrageId: null, libelle: { startsWith: PREFIXE_REPORT_DETAIL }, ecriture: { tenantId } },
+    select: SELECT_LIGNE_DE_REPORT,
+  })) as LigneDeReportLue[];
+  for (const id of await reportsDuReclassement(db, tenantId, ouverts)) reclassees.add(id);
+  return reclassees;
+}
+
+/*
+  LE REPORT AU DÉTAIL DE LA LIGNE D'UN RECLASSEMENT (ligne tva-decisions,
+  relecture « échecs silencieux », M4) · la clôture recopie la ligne C compte
+  du client, jamais lettrée, en « RAN détail <compte> · <libellé> » dans
+  l'exercice suivant, SANS liaison avec le reclassement. Lettrée en N+1 avec
+  le report de la facture (même montant), le moteur de TVA y lisait un
+  encaissement au premier jour de N+1 (`relierAuxANouveaux`), la taxe d'une
+  prestation impayée déclarée sans qu'aucun prix ne soit perçu (décret
+  n° 011/42, art. 57 ; O.-L. n° 10/001, art. 25, 2°). Reconnu par la clé que
+  le report recopie (compte, montants au centime, échéance, libellé · comme
+  `apparierReports`), à toute profondeur (« RAN détail · RAN détail · … »).
+*/
+const PREFIXE_REPORT_DETAIL = 'RAN détail ';
+const PREFIXE_REPORT = /^RAN détail \S+ · /;
+
+const SELECT_LIGNE_DE_REPORT = { id: true, compteId: true, debit: true, credit: true, dateEcheance: true, libelle: true } as const;
+
+interface LigneDeReportLue {
+  id: string;
+  compteId: string;
+  debit: unknown;
+  credit: unknown;
+  dateEcheance: Date | null;
+  libelle: string | null;
+}
+
+/** Le libellé d'origine d'une ligne reportée, débarrassé de tous ses préfixes de report. */
+function libelleDOrigine(libelle: string): string {
+  let s = libelle;
+  while (PREFIXE_REPORT.test(s)) s = s.replace(PREFIXE_REPORT, '');
+  return s;
+}
+
+function cle(compteId: string, debit: unknown, credit: unknown, echeance: Date | null, libelle: string): string {
+  return [compteId, Math.round(Number(debit) * 100), Math.round(Number(credit) * 100), echeance?.getTime() ?? '', libelle].join('|');
+}
+
+/** Parmi des lignes servies, celles qui reportent la ligne du compte client d'un reclassement en vigueur. */
+async function reportsDuReclassement(db: LecteurLignes, tenantId: string, candidates: readonly LigneDeReportLue[]): Promise<Set<string>> {
+  const reports = candidates.filter((c) => typeof c.libelle === 'string' && PREFIXE_REPORT.test(c.libelle));
+  if (reports.length === 0) return new Set();
+  const comptes = [...new Set(reports.map((r) => r.compteId))];
+  const origines = (await db.ligneEcriture.findMany({
+    where: { compteId: { in: comptes }, ecriture: { tenantId, creanceDouteuseReclassement: { is: RECLASSEMENT_EN_VIGUEUR } } },
+    select: { ...SELECT_LIGNE_DE_REPORT, ecriture: { select: { libelle: true, creanceDouteuseReclassement: { select: { compteCreanceId: true } } } } },
+  })) as Array<LigneDeReportLue & { ecriture: { libelle: string; creanceDouteuseReclassement: { compteCreanceId: string } | null } | null }>;
+  const cles = new Set(
+    origines
+      .filter((o) => o.ecriture?.creanceDouteuseReclassement != null && o.ecriture.creanceDouteuseReclassement.compteCreanceId === o.compteId)
+      .map((o) => cle(o.compteId, o.debit, o.credit, o.dateEcheance, o.libelle ?? o.ecriture?.libelle ?? '')),
+  );
+  if (cles.size === 0) return new Set();
+  return new Set(reports.filter((r) => cles.has(cle(r.compteId, r.debit, r.credit, r.dateEcheance, libelleDOrigine(r.libelle!)))).map((r) => r.id));
+}
+
+/** Parmi `ligneIds`, celles qui reportent la ligne du compte client d'un reclassement en vigueur. */
+export async function reportsDuReclassementParIdentifiants(db: LecteurLignes, tenantId: string, ligneIds: readonly string[]): Promise<Set<string>> {
+  if (ligneIds.length === 0) return new Set();
+  const lues = (await db.ligneEcriture.findMany({
+    where: { id: { in: [...ligneIds] }, libelle: { startsWith: PREFIXE_REPORT_DETAIL }, ecriture: { tenantId } },
+    select: SELECT_LIGNE_DE_REPORT,
+  })) as LigneDeReportLue[];
+  return reportsDuReclassement(db, tenantId, lues);
+}
+
+/**
+ * LES LIGNES DU COMPTE D'ORIGINE DE LA PERTE QUI RÉCUPÈRE LA TVA (ligne
+ * tva-decisions, relecture du point D, MAJEUR 2) · le retour (D compte
+ * d'origine / C 416), la perte (D 651 / D 443 / C compte d'origine) et les
+ * négatifs de leur annulation. Le module les lettre entre elles, dans la
+ * transaction qui les crée ; un lettrage qui les rapprocherait de la FACTURE
+ * serait lu par le moteur de TVA comme un encaissement (décret n° 011/42,
+ * art. 57). Reconnues par leur LIAISON (`ecritureId` d'un mouvement qui porte
+ * une `ecriturePerteId`, `ecriturePerteId`, et l'écriture qu'un négatif
+ * corrige), seule la ligne du compte d'origine de la créance.
+ */
+export const MOTIF_LETTRAGE_PERTE_AVEC_TVA =
+  "Ne lettrez pas cette ligne avec une facture · elle appartient à la perte d'une créance irrécouvrable qui récupère la TVA " +
+  '(retour au compte du client, perte, ou leurs négatifs), que le module lettre lui-même. Rapprochée de la facture, elle serait ' +
+  'lue par le calcul de la TVA comme un encaissement (décret n° 011/42, art. 57).';
+
+interface LiaisonPerte {
+  mouvementCreanceDouteuse?: { ecriturePerteId: string | null; creance: { compteCreanceId: string } | null } | null;
+  mouvementCreanceDouteusePerte?: { creance: { compteCreanceId: string } | null } | null;
+}
+
+const SELECT_LIAISON_PERTE = {
+  mouvementCreanceDouteuse: { select: { ecriturePerteId: true, creance: { select: { compteCreanceId: true } } } },
+  mouvementCreanceDouteusePerte: { select: { creance: { select: { compteCreanceId: true } } } },
+} as const;
+
+/** Le compte d'origine de la créance quand l'écriture est une pièce d'une perte qui récupère la TVA · `null` sinon. */
+function compteDeLaPerte(e: LiaisonPerte | null | undefined): string | null {
+  if (!e) return null;
+  if (e.mouvementCreanceDouteuse?.ecriturePerteId != null && e.mouvementCreanceDouteuse.creance) return e.mouvementCreanceDouteuse.creance.compteCreanceId;
+  if (e.mouvementCreanceDouteusePerte?.creance) return e.mouvementCreanceDouteusePerte.creance.compteCreanceId;
+  return null;
+}
+
+export async function lignesDeLaPerteAvecTva(db: LecteurLignes, tenantId: string, ligneIds: readonly string[]): Promise<Set<string>> {
+  if (ligneIds.length === 0) return new Set();
+  const liee = { OR: [{ mouvementCreanceDouteuse: { is: { ecriturePerteId: { not: null } } } }, { mouvementCreanceDouteusePerte: { isNot: null } }] };
+  const lues = (await db.ligneEcriture.findMany({
+    where: { id: { in: [...ligneIds] }, ecriture: { tenantId, OR: [liee, { corrigeEcriture: { is: liee } }] } },
+    select: { id: true, compteId: true, ecriture: { select: { ...SELECT_LIAISON_PERTE, corrigeEcriture: { select: SELECT_LIAISON_PERTE } } } },
+  })) as Array<{ id: string; compteId: string; ecriture: (LiaisonPerte & { corrigeEcriture?: LiaisonPerte | null }) | null }>;
+  // La liaison se relit sur la ligne servie · une doublure qui ne sert pas
+  // le filtre ne fait jamais passer une ligne pour une pièce de la perte.
+  return new Set(
+    lues.filter((l) => (compteDeLaPerte(l.ecriture) ?? compteDeLaPerte(l.ecriture?.corrigeEcriture)) === l.compteId).map((l) => l.id),
   );
 }
 
 /**
  * LE REFUS NOMMÉ de tout lettrage qui prendrait la ligne d'un reclassement en
- * vigueur · `dejaDuGroupe`, les lignes d'un groupe partiel que l'on complète,
- * lues avec les nouvelles (un groupe hérité qui la porterait ne s'étend pas).
+ * vigueur, ou une ligne du compte d'origine de la perte qui récupère la TVA ·
+ * `dejaDuGroupe`, les lignes d'un groupe partiel que l'on complète, lues avec
+ * les nouvelles (un groupe hérité qui la porterait ne s'étend pas).
  */
 export async function refuserLignesDuCompteClientReclasse(
   db: LecteurLignes,
@@ -110,8 +233,14 @@ export async function refuserLignesDuCompteClientReclasse(
   ligneIds: readonly string[],
   dejaDuGroupe: readonly string[] = [],
 ) {
-  const tenues = await lignesDuCompteClientReclasse(db, tenantId, [...new Set([...ligneIds, ...dejaDuGroupe])]);
+  const toutes = [...new Set([...ligneIds, ...dejaDuGroupe])];
+  const tenues = await lignesDuCompteClientReclasse(db, tenantId, toutes);
   if (tenues.size > 0) throw new BadRequestException(MOTIF_LETTRAGE_RECLASSEMENT);
+  // M4 · le report du reclassement à l'exercice suivant, même refus.
+  const reports = await reportsDuReclassementParIdentifiants(db, tenantId, toutes);
+  if (reports.size > 0) throw new BadRequestException(MOTIF_LETTRAGE_RECLASSEMENT);
+  const pertes = await lignesDeLaPerteAvecTva(db, tenantId, toutes);
+  if (pertes.size > 0) throw new BadRequestException(MOTIF_LETTRAGE_PERTE_AVEC_TVA);
 }
 
 /**

@@ -1836,8 +1836,8 @@ export class ExerciceService {
     return faits;
   }
 
-  async premierJourOuvert(tenantId: string, journalId: string, date: Date): Promise<Date> {
-    return premierJourNonCloture(await this.cloturesApplicables(tenantId, journalId), journalId, date);
+  async premierJourOuvert(tenantId: string, journalId: string, date: Date, db?: Prisma.TransactionClient): Promise<Date> {
+    return premierJourNonCloture(await this.cloturesApplicables(tenantId, journalId, db), journalId, date);
   }
 
   /**
@@ -1857,8 +1857,11 @@ export class ExerciceService {
    * siennes et celles de période, jamais les annulées. Lues UNE fois par
    * journal quand un lot de pièces se contrôle (import, audit final F2).
    */
-  cloturesApplicables(tenantId: string, journalId: string) {
-    return this.prisma.cloture.findMany({
+  // `db` · la transaction de l'appelant, quand il en tient une (relecture du
+  // point D, mineur 10 · une seconde connexion prise pendant une transaction
+  // ouverte attendait la libération du pool).
+  cloturesApplicables(tenantId: string, journalId: string, db?: Prisma.TransactionClient) {
+    return (db ?? this.prisma).cloture.findMany({
       where: { tenantId, annuleeAt: null, OR: [{ journalId }, { journalId: null }] },
     });
   }

@@ -194,6 +194,13 @@ export interface BilansSuccessifs {
   calculable: boolean;
   motif: string | null;
   premiereCotisation: number | null;
+  /**
+   * D'où vient la première cotisation (second tour, BLOQUANT 2) · le constat
+   * de l'écriture de l'impôt, le débit du 891 et du 895 de l'exercice arrêté
+   * (impôt passé à la main), ou le recalcul (exercice clôturé sans l'un ni
+   * l'autre), dit avec sa réserve. Absente hors de la seconde cotisation.
+   */
+  sourcePremiereCotisation?: 'CONSTAT' | 'COMPTE_89' | 'RECALCUL';
   totalisation: {
     periodeActivite: { exerciceId: string; dateDebut: Date; dateFin: Date; resultatFiscalAvantReport: number; chiffreAffaires: number };
     liquidation: { resultatFiscalAvantReport: number; chiffreAffaires: number };
@@ -210,6 +217,20 @@ export interface BilansSuccessifs {
     dejaRegle: number | null;
     secondeCotisation: number | null;
     excedent: number;
+    /**
+     * L'impôt que porte le 891 de l'exercice de liquidation · l'impôt
+     * totalisé moins la première cotisation, AVANT acomptes (fiche du compte
+     * 89, « quelles que soient les modalités de règlement »). Nul quand la
+     * première cotisation le dépasse ; `null` si l'un des deux n'est pas chiffré.
+     */
+    cotisationDeLExercice: number | null;
+    /**
+     * La part de la première cotisation qui dépasse l'impôt totalisé · dette
+     * de l'État, D 441 / C 8994 (décision de Manasse du 2026-10-08).
+     */
+    tropPayePremiereCotisation: number;
+    /** La part des acomptes non absorbée · reste au 4492 (art. 57 ter LPF). */
+    excedentAcomptes: number;
   } | null;
   observation: string;
 }
@@ -2173,9 +2194,23 @@ export class FiscaliteService {
    *   al. 3 · déduits de la cotisation dont la déclaration les suit).
    * · Sans liquidation (AUSCGIE art. 201 al. 4), la cotisation de l'exercice
    *   arrêté est la seule.
-   * Un réglé supérieur à l'impôt totalisé se DIT, avec son montant, sans en
-   * tirer ni remboursement ni imputation · aucun texte lu ne le règle (LPF
-   * art. 57 ter ne vise que les acomptes, art. 104 la réclamation).
+   * UN RÉGLÉ SUPÉRIEUR À L'IMPÔT TOTALISÉ SE SÉPARE EN DEUX (décision de
+   * Manasse du 2026-10-08, « crédit d'impôt dans un compte du bilan », compte
+   * choisi par la loi). L'impôt de l'année s'éteint d'abord par la première
+   * cotisation, puis par les acomptes. (1) L'excédent d'ACOMPTES reste au
+   * 4492 · l'art. 57 ter LPF ne vise que « les acomptes provisionnels
+   * versés ». (2) La part de la PREMIÈRE COTISATION (art. 13, al. 1) qui
+   * dépasse l'impôt totalisé (art. 12, al. 4) n'est pas un acompte · c'est une
+   * dette de l'État envers la société, constatée au DÉBIT du 441 « État,
+   * impôt sur les bénéfices » (fiche du compte 44, « Débité lors de la
+   * constatation de la dette de l'État envers l'entité [...] par le crédit
+   * des comptes concernés [...] des classes 7 et 8 ») par le CRÉDIT du 8994
+   * « Annulations pour pertes rétroactives » (fiche du compte 89 · le 891
+   * « diminué des dégrèvements et des annulations sur des exercices
+   * antérieurs »), dans l'exercice de liquidation · proposée par l'écriture
+   * de l'impôt (`ConstatImpotService`). Le 441 débiteur reste au bilan en
+   * créance (« Autres créances »), jamais présenté comme un remboursement à
+   * encaisser.
    */
   private async bilansSuccessifsDe(
     tenantId: string,
@@ -2219,7 +2254,7 @@ export class FiscaliteService {
     }
     const arrete = await this.prisma.exercice.findFirst({
       where: { tenantId, dateFin: d },
-      select: { id: true, dateDebut: true, dateFin: true },
+      select: { id: true, dateDebut: true, dateFin: true, statut: true },
     });
     if (!arrete) {
       return {
@@ -2240,7 +2275,54 @@ export class FiscaliteService {
       deficitAnterieur: { montant: number };
       chiffreAffairesMinimum: number;
       impotDu: number | null;
+      impotConstateAu89: number;
+      impotExerciceAu89: number;
+      reintegrationsImpot: number;
     } = await this.resultatFiscal(tenantId, arrete.id);
+    /*
+      LA PREMIÈRE COTISATION SE LIT SUR CE QUI L'A CONSTATÉE, JAMAIS
+      RECALCULÉE QUAND ELLE EST ÉCRITE (relecture « échecs silencieux », M3 ;
+      second tour, BLOQUANT 2) · c'est l'impôt de la période d'activité que la
+      société a déclaré et payé (loi n° 23/053, art. 13, al. 1). Dans l'ordre ·
+      le constat non annulé de l'écriture de l'impôt (ligne A11) ; à défaut,
+      le DÉBIT du 891 et du 895 de l'exercice arrêté (impôt passé à la main,
+      que l'écriture de l'impôt refuse alors de doubler) ; à défaut, sur un
+      exercice CLÔTURÉ (où l'écriture de l'impôt ne se passe plus), l'impôt
+      recalculé, avec sa réserve. On ne refuse que là où le cabinet PEUT
+      passer le constat (exercice ouvert, 891 et 895 vides) · sans quoi le
+      dossier était enfermé, la seconde cotisation jamais calculée. Un impôt
+      au 89 non réintégré à sa mesure fausse la base de la période d'activité
+      (art. 45) · refus nommé, la réintégration se saisit même sur un exercice
+      clôturé.
+    */
+    const constat = await this.prisma.constatImpotResultat.findFirst({
+      where: { tenantId, exerciceId: arrete.id, annuleeLe: null },
+      select: { montantImpot: true },
+    });
+    const impotAu89 = arrondir(premier.impotExerciceAu89 ?? 0);
+    const ecartReintegration = arrondir((premier.impotConstateAu89 ?? 0) - (premier.reintegrationsImpot ?? 0));
+    const sourcePremiereCotisation: 'CONSTAT' | 'COMPTE_89' | 'RECALCUL' | null = constat
+      ? 'CONSTAT'
+      : impotAu89 > 0.005
+        ? 'COMPTE_89'
+        : arrete.statut === StatutExercice.CLOTURE
+          ? 'RECALCUL'
+          : null;
+    if (!sourcePremiereCotisation || Math.abs(ecartReintegration) >= 0.005) {
+      return {
+        role: 'SECONDE_COTISATION' as const,
+        anneeDissolution: annee,
+        calculable: false,
+        motif: !sourcePremiereCotisation
+          ? `La première cotisation de l'exercice arrêté à la dissolution du ${jour(d)} n'est pas constatée · passez l'écriture de l'impôt de cet exercice (Résultat fiscal, « Écriture de l'impôt »), puis revenez ici. ` +
+            "Recalculée, elle pourrait différer de la cotisation déclarée et payée (loi n° 23/053, art. 13, al. 1), et la seconde serait fausse d'autant."
+          : `L'impôt porté au 89 de l'exercice arrêté à la dissolution du ${jour(d)} (${montantFiscal(premier.impotConstateAu89)}) n'est pas réintégré à sa mesure (${montantFiscal(premier.reintegrationsImpot)}) · la base de la période d'activité est fausse de ${montantFiscal(Math.abs(ecartReintegration))} (loi n° 23/053, art. 45). ` +
+            "Ajustez la réintégration « Impôt sur les sociétés et impôt minimum comptabilisés en charges » de cet exercice, puis revenez ici.",
+        premiereCotisation: constat ? Number(constat.montantImpot) : impotAu89 > 0.005 ? impotAu89 : null,
+        totalisation: null,
+        observation: `DISSOLUTION DU ${jour(d)} · totalisation de l'année ${annee} non calculée, ${!sourcePremiereCotisation ? 'faute de première cotisation constatée' : "l'impôt de la période d'activité n'étant pas réintégré à sa mesure"}.`,
+      };
+    }
     const baseActivite = arrondir(premier.resultatFiscal + premier.deficitImpute);
     const deficitDisponible = premier.deficitAnterieur.montant;
     const total = arrondir(baseActivite + courant.base);
@@ -2248,7 +2330,14 @@ export class FiscaliteService {
     const resultatFiscal = arrondir(total - deficitImpute);
     const chiffreAffaires = arrondir(premier.chiffreAffairesMinimum + courant.chiffreAffaires);
     const impot = this.calculerImpot(courant.regime, resultatFiscal, chiffreAffaires, courant.natureActivite);
-    const premiereCotisation = premier.impotDu;
+    const premiereCotisation: number | null =
+      sourcePremiereCotisation === 'CONSTAT' ? Number(constat!.montantImpot) : sourcePremiereCotisation === 'COMPTE_89' ? impotAu89 : premier.impotDu;
+    const reservePremiere =
+      sourcePremiereCotisation === 'COMPTE_89'
+        ? ` La première cotisation est lue sur le débit du 891 et du 895 de l'exercice arrêté (${montantFiscal(impotAu89)}), l'impôt y ayant été passé hors de l'écriture de l'impôt.`
+        : sourcePremiereCotisation === 'RECALCUL'
+          ? " La première cotisation est RECALCULÉE · l'exercice arrêté est clôturé sans écriture de l'impôt ni impôt au 89 · à vérifier contre la déclaration déposée, qui prime (loi n° 23/053, art. 13, al. 1)."
+          : '';
     const dejaRegle =
       premiereCotisation === null ? null : arrondir(premiereCotisation + courant.acomptesVerses);
     const reste = impot.impotDu === null || dejaRegle === null ? null : arrondir(impot.impotDu - dejaRegle);
@@ -2274,7 +2363,13 @@ export class FiscaliteService {
       dejaRegle,
       secondeCotisation: reste === null ? null : Math.max(reste, 0),
       excedent: reste !== null && reste < 0 ? -reste : 0,
+      cotisationDeLExercice:
+        impot.impotDu === null || premiereCotisation === null ? null : Math.max(arrondir(impot.impotDu - premiereCotisation), 0),
+      tropPayePremiereCotisation:
+        impot.impotDu === null || premiereCotisation === null ? 0 : Math.max(arrondir(premiereCotisation - impot.impotDu), 0),
+      excedentAcomptes: 0,
     };
+    totalisation.excedentAcomptes = Math.max(arrondir(totalisation.excedent - totalisation.tropPayePremiereCotisation), 0);
     const montant = (n: number | null) => (n === null ? 'non calculé' : montantFiscal(n));
     return {
       role: 'SECONDE_COTISATION' as const,
@@ -2282,6 +2377,7 @@ export class FiscaliteService {
       calculable: true,
       motif: null as string | null,
       premiereCotisation,
+      sourcePremiereCotisation,
       totalisation,
       observation:
         `BILANS SUCCESSIFS DE ${annee} · une assiette, deux cotisations (loi n° 23/053, art. 11, 1°, 12, al. 4, et 13, al. 3). ` +
@@ -2290,8 +2386,16 @@ export class FiscaliteService {
         `, chiffre d'affaires total ${montant(chiffreAffaires)} · impôt de l'année ${montant(impot.impotDu)}, ` +
         `première cotisation ${montant(premiereCotisation)}, acomptes imputés ${montant(courant.acomptesVerses)}, ` +
         (totalisation.excedent > 0.005
-          ? `seconde cotisation 0 · ce qui est réglé dépasse l'impôt totalisé de ${montant(totalisation.excedent)}, et aucun texte lu ne dit s'il se rembourse, s'impute ou se réclame.`
-          : `seconde cotisation ${montant(totalisation.secondeCotisation)}.`),
+          ? `seconde cotisation 0 · ce qui est réglé dépasse l'impôt totalisé de ${montant(totalisation.excedent)}` +
+            (totalisation.tropPayePremiereCotisation > 0.005
+              ? `, dont ${montant(totalisation.tropPayePremiereCotisation)} de première cotisation · créance sur l'État, gardée au bilan au débit du 441 par le crédit du 8994 « Annulations pour pertes rétroactives » (AUDCIF, Titre VII, fiches des comptes 44 et 89), proposée par l'écriture de l'impôt de l'exercice, jamais un remboursement à encaisser`
+              : '') +
+            (totalisation.excedentAcomptes > 0.005
+              ? `${totalisation.tropPayePremiereCotisation > 0.005 ? ', et' : ', dont'} ${montant(totalisation.excedentAcomptes)} d'acomptes, qui restent au 4492 (LPF art. 57 ter, « peuvent, à sa demande, servir au paiement d'autres impôts et droits dus »)`
+              : '') +
+            '.'
+          : `seconde cotisation ${montant(totalisation.secondeCotisation)}.`) +
+        reservePremiere,
     };
   }
 

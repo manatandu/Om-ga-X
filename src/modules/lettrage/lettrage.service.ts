@@ -1767,24 +1767,56 @@ export class LettrageService {
     }
     return avecRetrySerialisable(
       this.prisma,
-      async (tx) => {
-        // A7 quater, m1 · le gel se relit DANS la transaction qui pose · une
-        // clôture de période posée entre la lecture et la pose figeait sinon
-        // une ligne que le groupe prenait quand même.
-        const figees = await lignesFigees(tx, tenantId, ligneIds);
-        const figee = [...figees.values()][0];
-        if (figee) return { motif: `La ligne du ${figee.date.toISOString().slice(0, 10)} est figée, ${figee.motif} · rien n'est lettré.` };
-        const lignes = await tx.ligneEcriture.findMany({ where: { id: { in: ligneIds } }, include: { ecriture: true } });
-        const prise = lignes.find((l) => l.lettrageId !== null);
-        if (prise) return { motif: `Une des lignes est déjà lettrée (${prise.lettre ?? 'groupe partiel'}) · rien n'est lettré.` };
-        this.verifierLignes(lignes, { compteId, tenantId, nombre: ligneIds.length });
-        const solde = lignes.reduce((s, l) => s + Number(l.debit) - Number(l.credit), 0);
-        if (Math.abs(solde) > EPSILON) return { motif: `Les lignes ne soldent pas (écart de ${solde.toFixed(2)}) · rien n'est lettré.` };
-        const groupe = await this.creerGroupe(tx, { tenantId, compteId, ligneIds, origine: OrigineLettrage.MODULE, userId });
-        return { code: groupe.code };
-      },
+      (tx) => this.poserGroupeDuModule(tx, tenantId, compteId, ligneIds, userId),
       'Trop de lettrages effectués au même instant sur ce compte · veuillez réessayer.',
     );
+  }
+
+  /**
+   * LE MÊME GROUPE, POSÉ DANS LA TRANSACTION DE L'APPELANT (ligne
+   * tva-decisions, relecture du point D, MAJEUR 2) · la perte qui récupère la
+   * TVA crée ses deux pièces, son mouvement et le lettrage de leurs lignes du
+   * compte d'origine en UNE transaction · posé après coup, un échec ou un
+   * processus tombé laissait ces lignes ouvertes, et un lettrage manuel de la
+   * facture avec la perte était lu comme un encaissement. Un compte non
+   * lettrable n'a pas de groupe (personne ne le lettre) · `motif`.
+   */
+  async lettrerLignesDuModuleDansTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    compteId: string,
+    ligneIds: string[],
+    userId: string,
+  ): Promise<{ code: string } | { motif: string; nonLettrable?: true }> {
+    const compte = await tx.compte.findFirst({ where: { id: compteId, tenantId }, select: { numero: true, lettrable: true } });
+    if (!compte) throw new NotFoundException('Compte introuvable pour ce dossier.');
+    if (!compte.lettrable) {
+      return { motif: `Le compte ${compte.numero} n'est pas déclaré lettrable · ses lignes ne sont pas lettrées, et personne ne les lettre.`, nonLettrable: true };
+    }
+    return this.poserGroupeDuModule(tx, tenantId, compteId, ligneIds, userId);
+  }
+
+  private async poserGroupeDuModule(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    compteId: string,
+    ligneIds: string[],
+    userId: string,
+  ): Promise<{ code: string } | { motif: string }> {
+    // A7 quater, m1 · le gel se relit DANS la transaction qui pose · une
+    // clôture de période posée entre la lecture et la pose figeait sinon
+    // une ligne que le groupe prenait quand même.
+    const figees = await lignesFigees(tx, tenantId, ligneIds);
+    const figee = [...figees.values()][0];
+    if (figee) return { motif: `La ligne du ${figee.date.toISOString().slice(0, 10)} est figée, ${figee.motif} · rien n'est lettré.` };
+    const lignes = await tx.ligneEcriture.findMany({ where: { id: { in: ligneIds } }, include: { ecriture: true } });
+    const prise = lignes.find((l) => l.lettrageId !== null);
+    if (prise) return { motif: `Une des lignes est déjà lettrée (${prise.lettre ?? 'groupe partiel'}) · rien n'est lettré.` };
+    this.verifierLignes(lignes, { compteId, tenantId, nombre: ligneIds.length });
+    const solde = lignes.reduce((s, l) => s + Number(l.debit) - Number(l.credit), 0);
+    if (Math.abs(solde) > EPSILON) return { motif: `Les lignes ne soldent pas (écart de ${solde.toFixed(2)}) · rien n'est lettré.` };
+    const groupe = await this.creerGroupe(tx, { tenantId, compteId, ligneIds, origine: OrigineLettrage.MODULE, userId });
+    return { code: groupe.code };
   }
 
   /**

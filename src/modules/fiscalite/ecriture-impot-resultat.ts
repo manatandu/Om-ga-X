@@ -97,6 +97,13 @@ export const COMPTES_IMPOT_RESULTAT = {
   dette: '44100000',
   /** 4492 « État, avances et acomptes versés sur impôts » · fiche du compte 44. */
   acomptes: '44920000',
+  /**
+   * 8994 « Annulations pour pertes rétroactives », sous 899 « Dégrèvements et
+   * annulations d'impôts sur résultats antérieurs » (fiche du compte 89) · le
+   * trop-payé de la première cotisation spéciale d'une société dissoute
+   * (décision de Manasse du 2026-10-08), crédité par le débit du 441.
+   */
+  annulationPertesRetroactives: '89940000',
 } as const;
 
 /**
@@ -153,6 +160,14 @@ export interface EntreeConstatImpot {
    * null hors de ce cas.
    */
   periodeCreation?: { dateFin: Date; dateFinExercice: Date; impotDu: number | null; minimumApplique: boolean } | null;
+  /**
+   * EXERCICE DE LIQUIDATION (bilans successifs, loi n° 23/053, art. 12, al. 4,
+   * et 13) · la part de la première cotisation qui dépasse l'impôt totalisé,
+   * dette de l'État (D 441 / C 8994). Zéro ailleurs.
+   */
+  tropPaye?: number;
+  /** La totalisation de l'exercice de liquidation n'est pas calculée · son motif. */
+  motifTotalisation?: string | null;
 }
 
 /** Le format des montants des messages fiscaux · un seul, pour les motifs et leurs jumeaux d'observation. */
@@ -230,9 +245,14 @@ export function motifsRefusConstat(e: EntreeConstatImpot): string[] {
         : `Premier exercice long (loi n° 23/053, art. 12, al. 3) · deux impositions pour un seul exercice comptable, et le compte 891 doit porter « le montant total de l'impôt dû de l'exercice » (fiche du compte 89). Passez les écritures à la main : D ${compteDeLaCharge(p.minimumApplique)} ${montantFiscal(p.impotDu)} / C ${COMPTES_IMPOT_RESULTAT.dette} au ${jour(p.dateFin)} (période de création), puis ${ligneExercice} / C ${COMPTES_IMPOT_RESULTAT.dette}, soit ${montantFiscal(Math.round((p.impotDu + e.impotDu) * 100) / 100)} au 441 en tout.`,
     );
   }
+  if (e.motifTotalisation) {
+    motifs.push(
+      `Exercice de liquidation · son impôt est la seconde cotisation spéciale, l'impôt calculé sur le total des bilans successifs de l'année moins la première (loi n° 23/053, art. 12, al. 4, et 13) · ${e.motifTotalisation}`,
+    );
+  }
   if (e.impotDu === null) {
     motifs.push("L'impôt n'est pas chiffré · rien ne se constate tant qu'il ne l'est pas.");
-  } else if (e.impotDu <= 0.005) {
+  } else if (e.impotDu <= 0.005 && (e.tropPaye ?? 0) <= 0.005) {
     motifs.push(
       "L'impôt dû de l'exercice est nul (résultat fiscal nul ou déficitaire et chiffre d'affaires nul) · aucune écriture à passer.",
     );
@@ -251,6 +271,15 @@ export function imputationAcomptes(e: { declares: number; solde4492: number; imp
 } {
   if (e.declares <= 0.005) {
     return { montant: 0, motifRefus: "Aucun acompte n'est déclaré dans la fenêtre Résultat fiscal pour cet exercice." };
+  }
+  if (e.impot <= 0.005) {
+    // Exercice de liquidation dont la première cotisation couvre l'impôt de
+    // l'année · rien à éteindre, les acomptes restent au 4492.
+    return {
+      montant: 0,
+      motifRefus:
+        "Aucun impôt de l'exercice à éteindre · les acomptes restent au 4492, crédit au compte courant fiscal (LPF art. 57 ter, « peuvent, à sa demande, servir au paiement d'autres impôts et droits dus »).",
+    };
   }
   if (e.solde4492 <= 0.005) {
     return {
@@ -286,20 +315,45 @@ export function compteDeLaCharge(minimumApplique: boolean): string {
  * C 4492 si l'imputation est demandée · débits puis crédits dans chaque
  * paire, comme l'Application 8 du Guide.
  */
-export function lignesConstat(impot: number, minimumApplique: boolean, impute: number): LigneProposee[] {
-  const lignes: LigneProposee[] = [
-    {
-      numero: compteDeLaCharge(minimumApplique),
-      debit: impot,
-      credit: 0,
-      libelle: minimumApplique ? "Impôt minimum de l'exercice" : "Impôt sur les bénéfices de l'exercice",
-    },
-    { numero: COMPTES_IMPOT_RESULTAT.dette, debit: 0, credit: impot, libelle: 'État, impôt sur les bénéfices' },
-  ];
+export function lignesConstat(impot: number, minimumApplique: boolean, impute: number, tropPaye = 0): LigneProposee[] {
+  const lignes: LigneProposee[] = [];
+  if (impot > 0.005) {
+    lignes.push(
+      {
+        numero: compteDeLaCharge(minimumApplique),
+        debit: impot,
+        credit: 0,
+        libelle: minimumApplique ? "Impôt minimum de l'exercice" : "Impôt sur les bénéfices de l'exercice",
+      },
+      { numero: COMPTES_IMPOT_RESULTAT.dette, debit: 0, credit: impot, libelle: 'État, impôt sur les bénéfices' },
+    );
+  }
   if (impute > 0.005) {
     lignes.push(
       { numero: COMPTES_IMPOT_RESULTAT.dette, debit: impute, credit: 0, libelle: 'Imputation des acomptes provisionnels' },
       { numero: COMPTES_IMPOT_RESULTAT.acomptes, debit: 0, credit: impute, libelle: 'Acomptes provisionnels imputés' },
+    );
+  }
+  /*
+    LE TROP-PAYÉ DE LA PREMIÈRE COTISATION (exercice de liquidation, décision
+    de Manasse du 2026-10-08, compte choisi par la loi) · dette de l'État
+    envers la société, au DÉBIT du 441 (fiche du compte 44, « Débité lors de
+    la constatation de la dette de l'État envers l'entité [...] par le crédit
+    des comptes concernés [...] des classes 7 et 8 ») par le CRÉDIT du 8994
+    (fiche du compte 89, le 891 « diminué des dégrèvements et des annulations
+    sur des exercices antérieurs »). Le 441 débiteur reste au bilan en
+    créance, jamais un remboursement à encaisser ; l'excédent d'ACOMPTES, lui,
+    reste au 4492 (art. 57 ter LPF, « les acomptes provisionnels versés »).
+  */
+  if (tropPaye > 0.005) {
+    lignes.push(
+      { numero: COMPTES_IMPOT_RESULTAT.dette, debit: tropPaye, credit: 0, libelle: 'État · trop-payé de la première cotisation spéciale' },
+      {
+        numero: COMPTES_IMPOT_RESULTAT.annulationPertesRetroactives,
+        debit: 0,
+        credit: tropPaye,
+        libelle: 'Annulation de la première cotisation au-delà de l’impôt de l’année',
+      },
     );
   }
   return lignes;

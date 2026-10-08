@@ -14,8 +14,13 @@ import { PrismaService } from '../../common/prisma.service';
 
 const EXERCICE = { id: 'ex', statut: 'OUVERT', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') };
 
-function monter(options: { autreDetenteur?: boolean } = {}) {
-  let marqueur: { id: string; ecritureId: string } | null = { id: 'liq1', ecritureId: 'ecr1' };
+function monter(options: { autreDetenteur?: boolean; posterieure?: { dateDebut: Date; dateFin: Date; ecriture?: { statut: string } } } = {}) {
+  let marqueur: { id: string; ecritureId: string; dateDebut: Date; dateFin: Date } | null = {
+    id: 'liq1',
+    ecritureId: 'ecr1',
+    dateDebut: new Date('2026-03-01'),
+    dateFin: new Date('2026-03-31'),
+  };
   const zero = () => ({ count: jest.fn().mockResolvedValue(0) });
   const ordre: string[] = [];
   const prisma: Record<string, unknown> = {
@@ -33,7 +38,11 @@ function monter(options: { autreDetenteur?: boolean } = {}) {
     ligneEcriture: { deleteMany: jest.fn().mockImplementation(async () => ordre.push('lignes')) },
     liquidationTva: {
       findMany: jest.fn().mockResolvedValue([]),
-      findFirst: jest.fn().mockImplementation(async () => marqueur),
+      // La doublure honore la requête · la recherche d'une liquidation
+      // POSTÉRIEURE (B1) porte un filtre sur `dateDebut`.
+      findFirst: jest.fn().mockImplementation(async ({ where }: { where?: { dateDebut?: { gt?: Date } } } = {}) =>
+        where?.dateDebut?.gt ? (options.posterieure && options.posterieure.dateDebut > where.dateDebut.gt ? options.posterieure : null) : marqueur,
+      ),
       count: jest.fn().mockImplementation(async () => (marqueur ? 1 : 0)),
       delete: jest.fn().mockImplementation(async () => {
         ordre.push('marqueur');
@@ -89,6 +98,25 @@ describe('annulation d’une liquidation de TVA', () => {
     const m = monter({ autreDetenteur: true });
     await expect(m.tva.annulerLiquidation('t1', 'liq1')).rejects.toThrow(/une donation/);
     expect(m.marqueurRestant()).not.toBeNull();
+    expect(m.ordre).toEqual([]);
+  });
+
+  /*
+    LIGNE TVA-DECISIONS, RELECTURE « ÉCHECS SILENCIEUX », B1 · janvier liquidé,
+    V3 de janvier validée tard et rattachée à février, février liquidé ·
+    janvier annulé puis refait « aurait vu » V3, et 160 000 étaient collectés
+    deux fois. On annule à partir de la plus récente, comme D6.
+  */
+  it('une liquidation POSTÉRIEURE existe · refus nommé, rien ne part', async () => {
+    const m = monter({ posterieure: { dateDebut: new Date('2026-04-01'), dateFin: new Date('2026-04-30') } });
+    await expect(m.tva.annulerLiquidation('t1', 'liq1')).rejects.toThrow(/2026-04-01 au 2026-04-30 est postérieure · annulez d'abord la plus récente/);
+    expect(m.marqueurRestant()).not.toBeNull();
+    expect(m.ordre).toEqual([]);
+  });
+
+  it('second tour, mineur a · la plus récente a son écriture VALIDÉE · le refus dit l’issue réelle', async () => {
+    const m = monter({ posterieure: { dateDebut: new Date('2026-04-01'), dateFin: new Date('2026-04-30'), ecriture: { statut: 'VALIDEE' } } });
+    await expect(m.tva.annulerLiquidation('t1', 'liq1')).rejects.toThrow(/son écriture est validée · elle ne s’annule plus.*première période non liquidée/);
     expect(m.ordre).toEqual([]);
   });
 });
