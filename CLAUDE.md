@@ -1032,15 +1032,9 @@ recouvrements imputés par l'art. 154 (même imputation que la déclaration) ; s
 désignation, rien. Preuve de l'irrécouvrabilité exigée (art. 127 al. 3). (5)
 PÉRIODE · la déclaration lit l'écriture comme un avoir sur vente constaté, inscrit
 en déduction de la période qui suit (art. 126), justifié par le duplicata (jamais
-compté « sans note de crédit ») ; refus · avant la dernière perte, dans ou avant
-une période liquidée, et hors du DÉLAI (décision par la loi du 2026-10-08) · il
-court de la CONSTATATION DU NON-PAIEMENT, la dernière perte validée (décret
-n° 011/42, art. 126, en lieu de l'exigibilité de l'art. 37 al. 1), jamais de
-l'envoi du duplicata (forme de la rectification, comme la facture de l'art. 38,
-lecture d'A21), et se JUGE à la déclaration qui inscrit la récupération (art. 37
-al. 2, « exercé » ; art. 126, déclaration mensuelle, décret art. 102), celle du
-mois qui suit l'écriture · écriture au plus tard le 30 NOVEMBRE de l'année qui suit
-(`derniereDateEcriture`), la date du geste n'y comptant pas. (6) ANNULATION (art. 20, al. 2) · brouillard supprimé,
+compté « sans note de crédit ») ; refus · avant la dernière perte, après le 31
+décembre de l'année qui suit (art. 37 al. 2, par le renvoi de l'art. 126), dans ou
+avant une période liquidée. (6) ANNULATION (art. 20, al. 2) · brouillard supprimé,
 validée inscrite en négatif ; refusée dès qu'une liquidation couvre sa date ou la
 suit. LE NÉGATIF D'UN AVOIR SUR VENTE (débit négatif du 443) EST LU PAR LA
 DÉCLARATION au signe près, et la liquidation reprend au débit une récupération
@@ -3444,6 +3438,28 @@ retiré).
 liquidation sur écritures VALIDÉES (AUDCIF art. 22, 2°) ; TVA au brouillard NOMMÉE
 (`tvaAuBrouillard`), liquidation de la période REFUSÉE (une ligne validée ensuite
 échapperait à toute déclaration).
+
+**TVA · le négatif d'une facture et la ligne validée tard (ligne tva-decisions,
+décisions par la loi du 2026-10-08).** (A) Le crédit NÉGATIF du 443 qui annule une
+vente, le débit NÉGATIF du 445 qui annule un achat (AUDCIF art. 20, al. 2) se
+lisent AU SIGNE PRÈS · écartés comme nuls, la taxe d'une vente annulée au journal
+restait déclarée. À la date de la FACTURE CORRIGÉE (`corrigeEcriture`, la requête
+lit aussi le négatif inscrit après la période), dans sa période tant qu'elle n'est
+pas liquidée (O.-L. n° 10/001, art. 25) ; liquidée, la taxe d'une vente se
+RÉCUPÈRE une fois, au premier jour non liquidé à partir du négatif (art. 52,
+al. 1 ; décret n° 011/42, art. 126, « inscrite dans les déductions »), celle d'un
+achat se REPREND (décret, art. 127), NOMMÉES (`negatifsDeFactures`) ; la
+liquidation porte au crédit du 443 une collecte devenue négative. À
+l'ENCAISSEMENT, le négatif retire la facture de l'attente, et une facture lettrée
+avec son propre négatif n'est jamais « encaissée » (`datesDuGroupeDeMain`
+neutralise, `neutraliserLesNegatifs`). (B) Une ligne validée APRÈS la liquidation
+qui devait la lire (période de sa date, ou suivante pour l'avoir sur vente,
+art. 126) n'entrait dans aucune déclaration · RATTACHÉE au premier jour qu'aucune
+liquidation antérieure à sa validation ne couvre (`rattachementTardif`,
+`recuperationTardive`, AUDCIF art. 22, 4°), une liquidation qui a suivi la
+validation la gardant ; NOMMÉE avec sa date d'origine (`rattachementsTardifs`),
+déchéance de l'art. 37, al. 2 lue sur la date d'origine ; l'encaissement garde sa
+mémoire (`repartirEncaissement`).
 
 **Retenues · l'ouverture (2026-09-27, audit final F26).** `soldesDOuverture` ·
 report à-nouveau VALIDÉ, ou reconstitué depuis le dernier report validé ; ligne

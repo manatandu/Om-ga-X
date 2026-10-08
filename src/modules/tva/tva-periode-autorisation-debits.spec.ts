@@ -303,6 +303,8 @@ describe('art. 62 · le règlement antérieur au débit avance l’exigibilité'
     expect(appel?.[0].where.ecriture.OR).toEqual([
       { date: { lte: FIN_MARS } },
       { lignes: { some: { lettrage: { lignes: { some: { ecriture: { date: { lte: FIN_MARS } } } } } } } },
+      // Point A (ligne tva-decisions) · le négatif d'une facture de la période.
+      { corrigeEcriture: { is: { date: { lte: FIN_MARS } } } },
     ]);
     expect(appel?.[0].where.ecriture.tenantId).toBe('t1');
   });

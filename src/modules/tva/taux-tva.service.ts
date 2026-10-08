@@ -1591,7 +1591,23 @@ export class TauxTvaService {
     }>,
     dateEcriture: Date,
   ): Array<{ date: Date | null; fraction: number }> {
-    const groupe = avecLettrage[0].lettrage!;
+    const groupeLu = avecLettrage[0].lettrage!;
+    /*
+      LA FACTURE ANNULÉE PAR SON NÉGATIF DANS SON GROUPE (point A) · la ligne
+      négative du 411 (débit négatif) allait dans le sens d'un règlement, et
+      la taxe d'une prestation annulée devenait exigible au jour du négatif,
+      comme ENCAISSÉE (art. 25, 2°). Une inscription en négatif n'est ni une
+      facture ni un paiement (AUDCIF art. 20, al. 2 ; `neutraliserLesNegatifs`)
+      · retirée avec ce qu'elle annule, et si c'est la facture elle-même,
+      rien n'a été perçu pour elle, rien n'est exigible.
+    */
+    const nettes = groupeLu.lignes ? TauxTvaService.neutraliserLesNegatifs(groupeLu.lignes as Array<{ debit: unknown; credit: unknown; compteId?: string; id?: string; ecriture?: { date: Date; id?: string; corrigeEcritureId?: string | null } | null }>) : null;
+    if (nettes && nettes.length !== groupeLu.lignes!.length) {
+      const ids = new Set(nettes.map((x) => x.id).filter(Boolean));
+      const propres = avecLettrage.map((l) => (l as { id?: string }).id).filter((id): id is string => !!id);
+      if (propres.length > 0 && propres.every((id) => !ids.has(id))) return [{ date: null, fraction: 1 }];
+    }
+    const groupe = nettes && nettes.length !== groupeLu.lignes!.length ? { ...groupeLu, lignes: nettes } : groupeLu;
     // Sens de la FACTURE sur le compte de tiers · une vente débite le 411, un
     // achat crédite le 401. Le règlement est, par construction, ce qui va dans
     // l'autre sens ; c'est le seul critère qui distingue, à l'intérieur du
@@ -2292,6 +2308,95 @@ export class TauxTvaService {
       reglements.push({ date, montant: Math.abs(sens) });
     }
     return reglements;
+  }
+
+  /**
+   * CE QU'UNE LIQUIDATION N'A PAS VU N'EST PAS PERDU (ligne tva-decisions,
+   * point B, décision par la loi du 2026-10-08).
+   *
+   * Une ligne de TVA datée à son écriture (livraison de biens, art. 25, 1° ;
+   * débits autorisés, art. 26 ; avoir à sa constatation, décret n° 011/42,
+   * art. 126 et 127) appartient à la période qui couvre cette date. Validée
+   * APRÈS la liquidation de cette période (ou d'une période ultérieure qui
+   * aurait dû la reprendre), aucune déclaration ne la lisait plus · celle de
+   * sa période était figée, les suivantes l'écartaient comme antérieure. La
+   * taxe d'une vente n'était jamais versée, la déduction d'un achat jamais
+   * exercée, sur des écritures équilibrées (§ 10 bis).
+   *
+   * LA LOI · la taxe exigible (O.-L. n° 10/001, art. 25) reste due ; la
+   * déduction s'exerce « jusqu'au 31 décembre de l'année qui suit » (art. 37,
+   * al. 2) ; la taxe récupérable d'un avoir s'inscrit dans « la déclaration
+   * du ou des mois suivants » sa constatation (décret, art. 126). Aucune ne
+   * tombe parce qu'une déclaration est passée. Une période liquidée ne se
+   * redéclare pas (liquidation figée), et l'opération d'une période close
+   * « est enregistrée au premier jour de la période non encore clôturée, sa
+   * date de valeur étant mentionnée distinctement » (AUDCIF art. 22, 4°) · la
+   * ligne est donc RATTACHÉE au premier jour qu'aucune liquidation ayant
+   * précédé sa validation ne couvre, une fois, et la déclaration la NOMME
+   * avec sa date d'origine. La déchéance de l'art. 37, al. 2 se lit toujours
+   * sur la date d'origine · un rattachement ne rajeunit rien.
+   *
+   * Une liquidation qui a SUIVI la validation l'a vue · elle ne déplace
+   * rien, et la ligne reste dans la période qui l'a déclarée (une période
+   * liquidée relue rend ce qu'elle a liquidé). `depuis` borne le
+   * rattachement par en bas · le négatif d'une vente ne se reprend pas avant
+   * d'être inscrit.
+   */
+  static rattachementTardif(
+    date: Date,
+    valideeLe: Date | null | undefined,
+    liquidations: ReadonlyArray<Pick<LiquidationEncaissement, 'dateDebut' | 'dateFin' | 'createdAt'>>,
+    depuis?: Date | null,
+  ): { date: Date; tardive: boolean } {
+    const couvrante = (d: Date) => liquidations.find((l) => l.dateDebut <= d && d <= l.dateFin);
+    const l0 = couvrante(date);
+    if (!l0 || !valideeLe || valideeLe.getTime() <= l0.createdAt.getTime()) return { date, tardive: false };
+    return { date: TauxTvaService.premierJourVuApres(TauxTvaService.lendemainUtc(l0.dateFin), valideeLe, liquidations, depuis), tardive: true };
+  }
+
+  /**
+   * L'AVOIR SUR VENTE SE RÉCUPÈRE À LA DÉCLARATION QUI SUIT SA CONSTATATION
+   * (décret n° 011/42, art. 126) · la fenêtre de report de la déclaration le
+   * lit. Validé APRÈS la liquidation de la première période qui le suit
+   * (celle qui devait l'inscrire en déduction), il n'était plus récupéré nulle
+   * part · il l'est au premier jour qu'aucune liquidation ayant précédé sa
+   * validation ne couvre (point B). `null` · la fenêtre ordinaire suffit.
+   */
+  static recuperationTardive(
+    date: Date,
+    valideeLe: Date | null | undefined,
+    liquidations: ReadonlyArray<Pick<LiquidationEncaissement, 'dateDebut' | 'dateFin' | 'createdAt'>>,
+  ): Date | null {
+    if (!valideeLe) return null;
+    const suivante = [...liquidations]
+      .filter((l) => l.dateDebut.getTime() > date.getTime())
+      .sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime())[0];
+    if (!suivante || valideeLe.getTime() <= suivante.createdAt.getTime()) return null;
+    return TauxTvaService.premierJourVuApres(TauxTvaService.lendemainUtc(suivante.dateFin), valideeLe, liquidations);
+  }
+
+  private static lendemainUtc(d: Date): Date {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
+  }
+
+  /**
+   * Le premier jour, à partir de `depart` (et de `depuis`), qu'aucune
+   * liquidation créée AVANT `valideeLe` ne couvre · une liquidation créée
+   * après l'a lu, et ce jour reste le sien.
+   */
+  private static premierJourVuApres(
+    depart: Date,
+    valideeLe: Date,
+    liquidations: ReadonlyArray<Pick<LiquidationEncaissement, 'dateDebut' | 'dateFin' | 'createdAt'>>,
+    depuis?: Date | null,
+  ): Date {
+    let x = depuis && depuis.getTime() > depart.getTime() ? depuis : depart;
+    for (let garde = 0; garde <= liquidations.length; garde++) {
+      const l = liquidations.find((y) => y.dateDebut <= x && x <= y.dateFin);
+      if (!l || l.createdAt.getTime() >= valideeLe.getTime()) return x;
+      x = TauxTvaService.lendemainUtc(l.dateFin);
+    }
+    return x;
   }
 
   /**
@@ -4394,6 +4499,10 @@ export class TauxTvaService {
             OR: [
               { date: { lte: dateFin } },
               { lignes: { some: { lettrage: { lignes: { some: { ecriture: { date: { lte: dateFin } } } } } } } },
+              // L'INSCRIPTION EN NÉGATIF D'UNE FACTURE DE LA PÉRIODE, inscrite
+              // après elle (point A) · elle se lit à la date de la facture
+              // qu'elle corrige, tant que cette période n'est pas liquidée.
+              { corrigeEcriture: { is: { date: { lte: dateFin } } } },
             ],
           },
         },
@@ -4414,6 +4523,11 @@ export class TauxTvaService {
               // L'instant de SAISIE · une écriture saisie après une liquidation
               // de l'ancien moteur n'a pas été déclarée par elle.
               createdAt: true,
+              // L'instant de VALIDATION · une ligne validée après la
+              // liquidation de sa période n'a été déclarée par aucune, et se
+              // rattache au premier jour non liquidé (point B,
+              // `rattachementTardif`).
+              valideeAt: true,
               // LA PIÈCE RATTACHÉE À L'ÉCRITURE, lue pour deux questions.
               // Sa NATURE justifie un avoir sur vente (décret n° 011/42,
               // art. 127) · une note de crédit est la pièce que le texte
@@ -4661,6 +4775,42 @@ export class TauxTvaService {
     }> = [];
     let reprisesAvoirsCorrigesTotal = 0;
     let reprisesAvoirsCorrigesMontant = 0;
+    /*
+      LE NÉGATIF D'UNE FACTURE (point A, décision par la loi du 2026-10-08) ·
+      le crédit NÉGATIF du 443 qui annule une vente, le débit NÉGATIF du 445
+      qui annule un achat (AUDCIF art. 20, al. 2), lus au signe près · ils
+      étaient écartés comme des montants nuls, et la taxe d'une vente annulée
+      au journal restait déclarée. NOMMÉS (pièce, facture corrigée, montant,
+      où ils pèsent), bornés, le total le dit (§ 8 bis).
+    */
+    const PLAFOND_NEGATIFS_FACTURES = 200;
+    const negatifsDeFactures: Array<{
+      piece: number | null;
+      date: string;
+      factureCorrigee: { piece: number | null; date: string } | null;
+      sens: 'VENTE' | 'ACHAT';
+      montant: number;
+      pese: 'ANNULEE_ICI' | 'REPRISE_ICI' | 'RETIREE_DE_L_ATTENTE';
+    }> = [];
+    let negatifsDeFacturesTotal = 0;
+    let negatifsDeFacturesMontant = 0;
+    /*
+      LES LIGNES VALIDÉES APRÈS LA LIQUIDATION QUI DEVAIT LES LIRE (point B) ·
+      rattachées au premier jour non liquidé, NOMMÉES avec leur date
+      d'origine (AUDCIF art. 22, 4°, « sa date de valeur étant mentionnée
+      distinctement »). Bornées, le total le dit.
+    */
+    const PLAFOND_RATTACHEMENTS_TARDIFS = 200;
+    const rattachementsTardifs: Array<{
+      piece: number | null;
+      libelle: string;
+      dateOrigine: string;
+      rattacheeAu: string;
+      nature: 'COLLECTE' | 'DEDUCTION' | 'AVOIR_SUR_VENTE' | 'AVOIR_FOURNISSEUR' | 'NEGATIF_DE_VENTE' | 'NEGATIF_D_ACHAT';
+      montant: number;
+    }> = [];
+    let rattachementsTardifsTotal = 0;
+    let rattachementsTardifsMontant = 0;
     // LES HYPOTHÈSES DE DATE, NOMMÉES (ligne TVA 24-26, TU 1, 2, 4, 5) · ce
     // que la déclaration date à l'écriture faute de la date que le texte vise.
     let tvaBiensDateeALaFacture = 0;
@@ -4756,6 +4906,31 @@ export class TauxTvaService {
       const membresAuxDebitsParGroupe = new Map<string, MembreDeGroupe[]>();
       const facturesParGroupe = new Map<string, Map<string, FactureLue>>();
       const aProlonger: LigneLue[] = [];
+      // Le point B, nommé une fois par ligne et par nature.
+      const tardivesVues = new Set<string>();
+      const nommerTardif = (
+        l: LigneLue,
+        dateOrigine: Date,
+        rattacheeAu: Date,
+        nature: (typeof rattachementsTardifs)[number]['nature'],
+        montant: number,
+      ) => {
+        const cle = `${l.id}|${nature}|${rattacheeAu.getTime()}`;
+        if (tardivesVues.has(cle)) return;
+        tardivesVues.add(cle);
+        rattachementsTardifsTotal++;
+        rattachementsTardifsMontant = TauxTvaService.c(rattachementsTardifsMontant + montant);
+        if (rattachementsTardifs.length < PLAFOND_RATTACHEMENTS_TARDIFS) {
+          rattachementsTardifs.push({
+            piece: (l.ecriture as { numeroPiece?: number | null }).numeroPiece ?? null,
+            libelle: l.ecriture.libelle,
+            dateOrigine: dateOrigine.toISOString().slice(0, 10),
+            rattacheeAu: rattacheeAu.toISOString().slice(0, 10),
+            nature,
+            montant: TauxTvaService.c(montant),
+          });
+        }
+      };
       const traiter = (l: LigneLue, relie: boolean, impose?: TranchesImposees | PartImputeeDuGroupe | AuDebitImpose | 'MAIN', prolonge = false) => {
           const cumul = l.tauxTvaId ? parTaux.get(l.tauxTvaId) : undefined;
           if (!cumul) return;
@@ -4763,6 +4938,10 @@ export class TauxTvaService {
           const dateEcriture = l.ecriture.date as Date;
           const regimeLigne = estCollecte ? regimeALaDate(dateEcriture) : regime;
           const dansLaPeriode = dateEcriture >= dateDebut && dateEcriture <= dateFin;
+          // L'instant où la ligne est entrée au livre-journal (point B) · à
+          // défaut de validation tracée, sa saisie (une écriture née validée).
+          const valideeLe =
+            (l.ecriture as { valideeAt?: Date | null }).valideeAt ?? ((l.ecriture as { createdAt?: Date }).createdAt ?? null);
 
           /*
             L'AVOIR EST LA LIGNE DE SENS INVERSE À SA FAMILLE · un 443 débité, un
@@ -4783,14 +4962,21 @@ export class TauxTvaService {
             module. Il se lit comme l'avoir qu'il annule, au signe près, avec
             la même mécanique de période (décret n° 011/42, art. 126).
           */
-          const negatifDAvoir = estCollecte && avoir < -EPSILON;
+          // Son jumeau à la déduction (point A) · le crédit NÉGATIF du 445
+          // qui annule un avoir fournisseur rend la déduction reprise, au
+          // signe près, par la même ligne de code.
+          const negatifDAvoir = avoir < -EPSILON;
           if (avoir > EPSILON || negatifDAvoir) {
             if (!estCollecte) {
-              // Reprise de la déduction, à la constatation (décret art. 127).
-              if (dansLaPeriode) {
+              // Reprise de la déduction, à la constatation (décret art. 127) ·
+              // validée après la liquidation de sa période, au premier jour
+              // non liquidé (point B).
+              const r = TauxTvaService.rattachementTardif(dateEcriture, valideeLe, liquidationsLues);
+              if (r.date >= dateDebut && r.date <= dateFin) {
                 cumul.deductible = TauxTvaService.c(cumul.deductible - avoir);
                 const v = suivi(l.tauxTvaId!, l.compteId);
                 v.deductible = TauxTvaService.c(v.deductible - avoir);
+                if (r.tardive) nommerTardif(l, dateEcriture, r.date, 'AVOIR_FOURNISSEUR', -avoir);
               }
               return;
             }
@@ -4817,6 +5003,23 @@ export class TauxTvaService {
               l.ecriture.facture?.nature === NatureFacture.NOTE_DE_CREDIT || !!recuperationCreance || negatifDAvoir;
             const compteIci =
               dansLaPeriode || (dateEcriture < dateDebut && !!debutReportAvoirs && dateEcriture >= debutReportAvoirs);
+            /*
+              VALIDÉ APRÈS LA LIQUIDATION QUI DEVAIT L'INSCRIRE EN DÉDUCTION
+              (point B) · récupéré au premier jour non liquidé, une fois, nommé
+              ; la fenêtre ordinaire ne le lit plus (aucun double compte).
+            */
+            const recuperationTard = TauxTvaService.recuperationTardive(dateEcriture, valideeLe, liquidationsLues);
+            if (recuperationTard) {
+              if (dansLaPeriode) cumul.avoir = TauxTvaService.c(cumul.avoir + avoir);
+              if (recuperationTard >= dateDebut && recuperationTard <= dateFin) {
+                if (!justifie) avoirsSansNoteDeCredit = TauxTvaService.c(avoirsSansNoteDeCredit + avoir);
+                cumul.recuperation = TauxTvaService.c(cumul.recuperation + avoir);
+                const v = suivi(l.tauxTvaId!, l.compteId);
+                v.recuperation = TauxTvaService.c(v.recuperation + avoir);
+                nommerTardif(l, dateEcriture, recuperationTard, 'AVOIR_SUR_VENTE', avoir);
+              }
+              return;
+            }
             if (compteIci && !justifie) avoirsSansNoteDeCredit = TauxTvaService.c(avoirsSansNoteDeCredit + avoir);
             if (negatifDAvoir) {
               const pese = dansLaPeriode
@@ -4859,6 +5062,115 @@ export class TauxTvaService {
               // signaler ici serait une fausse alerte, et l'imputer une seconde
               // fois une déduction en double.
             }
+            return;
+          }
+
+          /*
+            LE NÉGATIF D'UNE FACTURE (point A, décision par la loi du
+            2026-10-08) · crédit NÉGATIF du 443 (vente annulée au journal),
+            débit NÉGATIF du 445 (achat annulé), posés par l'inscription en
+            négatif (AUDCIF art. 20, al. 2 ; `lignesEnNegatif` reprend le
+            compte et le taux). Écartés comme des montants nuls, la taxe
+            d'une vente annulée restait déclarée et la déduction d'un achat
+            annulé restait acquise.
+
+            LA LOI · la taxe se déclare pour la période où elle est exigible
+            (O.-L. n° 10/001, art. 25) · une vente annulée par correction
+            d'écriture n'a pas de taxe à porter, et le négatif se lit donc à
+            la date de la FACTURE QU'IL CORRIGE (`corrigeEcriture`, à défaut la
+            sienne), dans la même période qu'elle · les deux s'annulent avant
+            toute déclaration. Si la période de la facture est LIQUIDÉE, la
+            taxe a été déclarée · elle se récupère par imputation sur l'impôt
+            dû pour les opérations ultérieures (art. 52, al. 1 ; décret
+            n° 011/42, art. 126, « inscrite dans les déductions »), une fois,
+            au premier jour non liquidé à partir du négatif
+            (`rattachementTardif`, AUDCIF art. 22, 4°), NOMMÉE. À la
+            déduction, la reprise de l'achat annulé suit la même règle, en
+            moins de la déduction (décret, art. 127). Datée à
+            l'ENCAISSEMENT (art. 25, 2°), la taxe d'une facture impayée n'a
+            jamais été exigible · le négatif la retire de l'attente, rien de
+            plus ; ce qu'un règlement a rendu exigible reste déclaré, la
+            restitution au client relevant de la note de crédit (art. 52,
+            al. 2).
+          */
+          const negatifDeFacture = estCollecte ? Number(l.credit) < -EPSILON : Number(l.debit) < -EPSILON;
+          if (negatifDeFacture) {
+            const x = TauxTvaService.c(estCollecte ? -Number(l.credit) : -Number(l.debit));
+            const e = l.ecriture as { numeroPiece?: number | null; corrigeEcriture?: { numeroPiece: number | null; date: Date } | null };
+            const dateFacture = e.corrigeEcriture?.date ?? dateEcriture;
+            const contrepartiesNegatif = l.ecriture.lignes
+              .filter((x) =>
+                estCollecte
+                  ? x.compte?.classe === ClasseCompte.CLASSE_7
+                  : x.compte?.classe === ClasseCompte.CLASSE_6 || x.compte?.classe === ClasseCompte.CLASSE_2,
+              )
+              .map((x) => x.compte?.numero)
+              .filter((n): n is string => Boolean(n));
+            const fournisseurNegatif = estCollecte
+              ? { autorise: false }
+              : TauxTvaService.fournisseurAuxDebits(
+                  l.ecriture.lignes.filter((x) => x.compte?.classe === ClasseCompte.CLASSE_4),
+                  dateFacture,
+                );
+            const { base: baseNegatif } = this.baseExigibilite(
+              referentiel,
+              estCollecte ? regimeALaDate(dateFacture) : regime,
+              l.compte.numero,
+              estCollecte,
+              fournisseurNegatif.autorise,
+              contrepartiesNegatif,
+            );
+            const nommer = (pese: 'ANNULEE_ICI' | 'REPRISE_ICI' | 'RETIREE_DE_L_ATTENTE') => {
+              negatifsDeFacturesTotal++;
+              negatifsDeFacturesMontant = TauxTvaService.c(negatifsDeFacturesMontant + x);
+              if (negatifsDeFactures.length < PLAFOND_NEGATIFS_FACTURES) {
+                negatifsDeFactures.push({
+                  piece: e.numeroPiece ?? null,
+                  date: dateEcriture.toISOString().slice(0, 10),
+                  factureCorrigee: e.corrigeEcriture
+                    ? { piece: e.corrigeEcriture.numeroPiece, date: e.corrigeEcriture.date.toISOString().slice(0, 10) }
+                    : null,
+                  sens: estCollecte ? 'VENTE' : 'ACHAT',
+                  montant: x,
+                  pese,
+                });
+              }
+            };
+            if (baseNegatif === 'ENCAISSEMENT') {
+              if (estCollecte && dansLaPeriode) {
+                cumul.attente = TauxTvaService.c(cumul.attente - x);
+                nommer('RETIREE_DE_L_ATTENTE');
+              }
+              return;
+            }
+            const r = TauxTvaService.rattachementTardif(dateFacture, valideeLe, liquidationsLues, dateEcriture);
+            // Une déduction déchue n'a rien à reprendre (art. 37, al. 2).
+            if (!estCollecte && !r.tardive && dateFacture < limiteDecheance) return;
+            if (r.date < dateDebut || r.date > dateFin) return;
+            const v = suivi(l.tauxTvaId!, l.compteId);
+            if (estCollecte) {
+              if (r.tardive) {
+                cumul.recuperation = TauxTvaService.c(cumul.recuperation + x);
+                v.recuperation = TauxTvaService.c(v.recuperation + x);
+                nommerTardif(l, dateFacture, r.date, 'NEGATIF_DE_VENTE', -x);
+              } else {
+                cumul.collecte = TauxTvaService.c(cumul.collecte - x);
+                v.collecte = TauxTvaService.c(v.collecte - x);
+              }
+            } else {
+              // La part que l'art. 41 retirait de la déduction d'origine ne
+              // se reprend pas · lue sur les charges du négatif, au signe près.
+              const part = this.partExclueArt41(
+                l.ecriture.lignes
+                  .filter((x) => x.compte?.classe === ClasseCompte.CLASSE_6)
+                  .map((x) => ({ debit: -Number(x.debit), credit: -Number(x.credit), compte: x.compte! })),
+              );
+              const repris = TauxTvaService.c(x - x * part.exclue);
+              cumul.deductible = TauxTvaService.c(cumul.deductible - repris);
+              v.deductible = TauxTvaService.c(v.deductible - repris);
+              if (r.tardive) nommerTardif(l, dateFacture, r.date, 'NEGATIF_D_ACHAT', -repris);
+            }
+            nommer(r.tardive ? 'REPRISE_ICI' : 'ANNULEE_ICI');
             return;
           }
 
@@ -5282,12 +5594,26 @@ export class TauxTvaService {
           } else {
             aImputer = tranches.map((t, i) => ({ date: t.date, exigible: montants[i], auPaiement: t.auPaiement }));
           }
-          aImputer.forEach(({ date, exigible, auPaiement, reparti }) => {
+          aImputer.forEach(({ date: dateExigible, exigible, auPaiement, reparti }) => {
+            let date = dateExigible;
             if (!reparti) {
               const dateDuDelai = date && factureRecue && !auPaiement && factureRecue.dateFacture < date ? factureRecue.dateFacture : date;
               if (!estCollecte && dateDuDelai && dateDuDelai < limiteDecheance) {
+                // Déchue, elle est comptée et ne se déduit nulle part · un
+                // rattachement tardif (point B) ne la rajeunit pas.
                 tvaDeductibleDechue = TauxTvaService.c(tvaDeductibleDechue + exigible);
-                if (dateDuDelai !== date) return;
+                return;
+              }
+              // VALIDÉE APRÈS LA LIQUIDATION DE SA PÉRIODE (point B) · la
+              // répartition à l'encaissement a sa propre mémoire
+              // (`repartirEncaissement`) ; datée à l'écriture, la ligne se
+              // rattache au premier jour non liquidé, nommée.
+              if (date) {
+                const r = TauxTvaService.rattachementTardif(date, valideeLe, liquidationsLues);
+                if (r.tardive && r.date >= dateDebut && r.date <= dateFin) {
+                  nommerTardif(l, date, r.date, estCollecte ? 'COLLECTE' : 'DEDUCTION', exigible);
+                }
+                date = r.date;
               }
             }
             if (!date || date < dateDebut || date > dateFin) return;
@@ -5835,6 +6161,11 @@ export class TauxTvaService {
         avoirsSansNoteDeCredit,
         reprisesAvoirsCorrigesMontant,
         reprisesAvoirsCorrigesTotal,
+        negatifsDeFacturesTotal,
+        negatifsDeFacturesMontant,
+        negatifsDeFacturesRepris: negatifsDeFactures.some((x) => x.pese === 'REPRISE_ICI'),
+        rattachementsTardifsTotal,
+        rattachementsTardifsMontant,
         tvaExclueArt41,
         tvaAVerifierArt41,
         tvaNatureDepenseIllisible,
@@ -5911,6 +6242,22 @@ export class TauxTvaService {
       reprisesAvoirsCorriges,
       reprisesAvoirsCorrigesTotal,
       reprisesAvoirsCorrigesTronque: reprisesAvoirsCorrigesTotal > reprisesAvoirsCorriges.length,
+      /**
+       * Les inscriptions en négatif de factures de vente ou d'achat (point A)
+       * qui pèsent sur cette déclaration · pièce, facture corrigée, montant de
+       * taxe, où elles pèsent. Bornées, le total le dit.
+       */
+      negatifsDeFactures,
+      negatifsDeFacturesTotal,
+      negatifsDeFacturesTronque: negatifsDeFacturesTotal > negatifsDeFactures.length,
+      /**
+       * Les lignes de TVA validées après la liquidation qui devait les lire
+       * (point B), rattachées ici avec leur date d'origine (AUDCIF art. 22,
+       * 4°). Bornées, le total le dit.
+       */
+      rattachementsTardifs,
+      rattachementsTardifsTotal,
+      rattachementsTardifsTronque: rattachementsTardifsTotal > rattachementsTardifs.length,
       /** TVA d'amont écartée par l'article 41 · jamais déductible. */
       tvaExclueArt41,
       /** TVA d'amont sur des postes que l'article 41 vise sous condition. */
@@ -6059,6 +6406,11 @@ export class TauxTvaService {
     avoirsSansNoteDeCredit: number;
     reprisesAvoirsCorrigesMontant: number;
     reprisesAvoirsCorrigesTotal: number;
+    negatifsDeFacturesTotal?: number;
+    negatifsDeFacturesMontant?: number;
+    negatifsDeFacturesRepris?: boolean;
+    rattachementsTardifsTotal?: number;
+    rattachementsTardifsMontant?: number;
     tvaExclueArt41: number;
     tvaAVerifierArt41: number;
     tvaNatureDepenseIllisible: number;
@@ -6560,6 +6912,28 @@ export class TauxTvaService {
           'ou sur celle qui la suit.',
       );
     }
+    if ((e.negatifsDeFacturesTotal ?? 0) > 0) {
+      phrases.push(
+        `FACTURES ANNULÉES PAR INSCRIPTION EN NÉGATIF · ${e.negatifsDeFacturesTotal} négatif(s) de vente ou d’achat portent ` +
+          `${fc(e.negatifsDeFacturesMontant ?? 0)} CDF de taxe sur cette déclaration (détail ligne à ligne, \`negatifsDeFactures\`) · ` +
+          'lus au signe près, à la date de la facture corrigée (O.-L. n° 10/001, art. 25 ; AUDCIF art. 20, al. 2). ' +
+          (e.negatifsDeFacturesRepris
+            ? 'La taxe d’une vente dont la période était déjà liquidée est récupérée ici, en déduction (article 52, al. 1 ; ' +
+              'décret n° 011/42, art. 126) · si la facture initiale a été remise au client, la récupération exige la ' +
+              'facture nouvelle ou la note de crédit (article 52, al. 2), qu’OmegaX ne voit pas sur une inscription en négatif.'
+            : 'Une période déjà liquidée garde ce qu’elle a déclaré ; la reprise pèse sur le premier jour non liquidé.'),
+      );
+    }
+    if ((e.rattachementsTardifsTotal ?? 0) > 0) {
+      phrases.push(
+        `LIGNES VALIDÉES APRÈS LA LIQUIDATION DE LEUR PÉRIODE · ${e.rattachementsTardifsTotal} ligne(s) de TVA, ` +
+          `${fc(e.rattachementsTardifsMontant ?? 0)} CDF au total, sont rattachées à cette déclaration, premier jour non ` +
+          'liquidé, avec leur date d’origine (détail, `rattachementsTardifs`) · aucune déclaration déjà liquidée ne les ' +
+          'avait lues (AUDCIF art. 22, 4° ; O.-L. n° 10/001, art. 25 et 37, al. 2 ; décret n° 011/42, art. 126). ' +
+          'La taxe d’une période déjà déclarée, portée en retard, peut appeler les pénalités de la loi n° 004/2003 · ' +
+          'à apprécier par le cabinet.',
+      );
+    }
     if (e.recuperationArt52 < -EPSILON) {
       phrases.push(
         `RÉCUPÉRATION NÉGATIVE · ${fc(-e.recuperationArt52)} CDF d’avoirs corrigés après leur constatation sont REPRIS ici ` +
@@ -6690,7 +7064,9 @@ export class TauxTvaService {
 
     const recuperationArt52 = decl.recuperationArt52;
     if (
-      decl.totalCollecte <= EPSILON &&
+      // La collecte peut être NÉGATIVE (le négatif d'une vente, point A) ·
+      // elle reste un mouvement à liquider.
+      Math.abs(decl.totalCollecte) <= EPSILON &&
       Math.abs(decl.totalDeductibleAdmise) <= EPSILON &&
       Math.abs(recuperationArt52) <= EPSILON
     ) {
@@ -6712,7 +7088,10 @@ export class TauxTvaService {
     const deductiblesBruts = new Map<string, number>();
     for (const l of decl.lignes) {
       for (const pc of l.parCompte) {
-        if (pc.collecte > EPSILON) parCompteCollecte.set(pc.compteId, TauxTvaService.c((parCompteCollecte.get(pc.compteId) ?? 0) + pc.collecte));
+        // Négative quand le négatif d'une vente (point A) dépasse ce que le
+        // compte a collecté dans la période · la ligne passe au crédit, sans
+        // quoi l'écriture ne s'équilibrerait plus.
+        if (Math.abs(pc.collecte) > EPSILON) parCompteCollecte.set(pc.compteId, TauxTvaService.c((parCompteCollecte.get(pc.compteId) ?? 0) + pc.collecte));
         // Négative quand le négatif d'un avoir (son annulation) tombe après
         // la période qui l'a récupéré · la ligne passe alors au débit.
         if (Math.abs(pc.recuperation) > EPSILON) {
@@ -6773,7 +7152,12 @@ export class TauxTvaService {
 
     const lignesEcriture: Array<{ compteId: string; debit?: number; credit?: number; libelle?: string }> = [];
     for (const [compteId, montant] of parCompteCollecte) {
-      lignesEcriture.push({ compteId, debit: montant, credit: 0, libelle: 'Liquidation TVA · solde TVA collectée' });
+      if (Math.abs(montant) <= EPSILON) continue;
+      lignesEcriture.push(
+        montant > 0
+          ? { compteId, debit: montant, credit: 0, libelle: 'Liquidation TVA · solde TVA collectée' }
+          : { compteId, debit: 0, credit: -montant, libelle: 'Liquidation TVA · ventes annulées par inscription en négatif' },
+      );
     }
     for (const [compteId, montant] of parCompteDeductible) {
       if (Math.abs(montant) <= EPSILON) continue;
