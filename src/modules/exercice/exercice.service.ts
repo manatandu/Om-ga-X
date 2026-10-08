@@ -318,6 +318,20 @@ export class ExerciceService {
    * que l'état ne lit pas et que la clôture vire au report à nouveau
    * (`ecartInexpliqueDuBilan`) · tout autre écart (compte non rattaché à un
    * poste, défaut de correspondance) refuse la clôture, montants nommés.
+   *
+   * LE 585 D'UN GROUPE SYCEBNL (G1, simulation complète du 2026-10-08,
+   * décision de Manasse) · le siège et ses cellules passent leurs transferts
+   * au 585 (canevas de trésorerie du groupe), et le bilan des associations ne
+   * lit aucun 58 (BW ne lit que 52, 53, 55 et 57) · sans cette admission, un
+   * groupe qui suit le guide ne clôturait plus aucun de ses dossiers. Fiche
+   * SYCEBNL du compte 58 · « des comptes de passage utiles à la
+   * comptabilisation d'opérations internes à l'entité », « soldés à la fin de
+   * l'exercice » · le groupe est UNE entité en plusieurs dossiers, et c'est
+   * sur elle que le 58 se solde, contrôle déjà tenu par la liasse du groupe
+   * (somme nulle exigée, `liaisonNeutralisee`). L'écart admis est EXACTEMENT
+   * le solde net du 585 du dossier, au sens inverse (un 585 débiteur manque à
+   * l'actif) · tout autre écart, ou un 585 hors groupe, refuse comme avant,
+   * et le message nomme alors le 585.
    */
   private async refuserBilanDesequilibre(
     tenantId: string,
@@ -326,6 +340,8 @@ export class ExerciceService {
       referentiel: Referentiel;
       systemeComptableSyscohada: SystemeComptableSyscohada | null;
       jeuEtatsFinanciersSycebnl: JeuEtatsFinanciersSycebnl | null;
+      dossierMereId?: string | null;
+      _count?: { cellules: number };
     },
   ) {
     if (!this.moduleRef) return;
@@ -360,14 +376,36 @@ export class ExerciceService {
     ]);
     const resultat13 = Number(treize._sum.credit ?? 0) - Number(treize._sum.debit ?? 0);
     const ecart = ecartInexpliqueDuBilan(bilan, resultat13);
-    if (ecart !== null && Math.abs(ecart) > EPSILON) {
-      throw new BadRequestException(
-        `Le bilan de l'exercice ne s'équilibre pas · actif ${montantFr(Number(bilan.totalActif))}, passif ` +
-          `${montantFr(Number(bilan.totalPassif))}, écart de ${montantFr(Math.abs(ecart))} que le report à nouveau ` +
-          "du résultat non affecté n'explique pas. Un compte n'est rattaché à aucun poste, ou un poste est mal lu · voyez les " +
-          '« comptes non rattachés » du bilan, corrigez, puis clôturez (AUDCIF art. 34 ; SYCEBNL art. 16, 4)).',
-      );
+    if (ecart === null || Math.abs(ecart) <= EPSILON) return;
+    // Lu seulement quand l'écart existe, et au SYCEBNL seul · le 585 du
+    // SYSCOHADA n'est pas le compte de liaison d'un groupe (184 à 187).
+    let solde585 = 0;
+    if (dossier.referentiel === Referentiel.SYCEBNL) {
+      const virements = await this.prisma.ligneEcriture.aggregate({
+        where: {
+          compte: { tenantId, numero: { startsWith: '585' } },
+          ecriture: { tenantId, exerciceId, statut: StatutEcriture.VALIDEE, estSoldeDesComptesDeGestion: false },
+        },
+        _sum: { debit: true, credit: true },
+      });
+      solde585 = Number(virements._sum.debit ?? 0) - Number(virements._sum.credit ?? 0);
     }
+    const enGroupe = !!dossier.dossierMereId || (dossier._count?.cellules ?? 0) > 0;
+    if (enGroupe && Math.abs(solde585) > EPSILON && Math.abs(ecart + solde585) <= EPSILON) return;
+    const part585 =
+      Math.abs(solde585) > EPSILON
+        ? ` Le 585 (virements de fonds) porte un solde ${solde585 > 0 ? 'débiteur' : 'créditeur'} de ` +
+          `${montantFr(Math.abs(solde585))}, que le bilan ne lit pas · un virement interne se solde à la fin de ` +
+          "l'exercice (fiche du compte 58)" +
+          (enGroupe ? ", et seul un écart égal à ce solde est admis dans un dossier du groupe." : '.')
+        : '';
+    throw new BadRequestException(
+      `Le bilan de l'exercice ne s'équilibre pas · actif ${montantFr(Number(bilan.totalActif))}, passif ` +
+        `${montantFr(Number(bilan.totalPassif))}, écart de ${montantFr(Math.abs(ecart))} que le report à nouveau ` +
+        "du résultat non affecté n'explique pas. Un compte n'est rattaché à aucun poste, ou un poste est mal lu · voyez les " +
+        '« comptes non rattachés » du bilan, corrigez, puis clôturez (AUDCIF art. 34 ; SYCEBNL art. 16, 4)).' +
+        part585,
+    );
   }
 
   /** Crée l'exercice de l'année en cours à l'inscription du tenant (1er janvier → 31 décembre). */
@@ -1989,6 +2027,10 @@ export class ExerciceService {
         formeJuridiqueSyscohada: true,
         systemeComptableSyscohada: true,
         jeuEtatsFinanciersSycebnl: true,
+        // Le groupe (siège ou cellule) · le contrôle d'équilibre du bilan
+        // admet le 585 des virements entre dossiers (`refuserBilanDesequilibre`).
+        dossierMereId: true,
+        _count: { select: { cellules: true } },
       },
     });
     const { referentiel } = dossier;
