@@ -152,10 +152,24 @@ const elimination = (ag, dossier, numero) => (ag?.eliminations ?? []).find((e) =
 /** Une ligne d'un dossier dans la supervision. */
 const ligneSupervision = (sup, id) => (sup?.cellules ?? []).find((l) => l.id === id) ?? null;
 
-/** Un exercice civil créé à la main dans un dossier (les cellules naissent sur l'année du serveur). */
+/**
+ * Un exercice civil créé à la main dans un dossier (les cellules naissent sur
+ * l'année du serveur). LES EXERCICES SE SUIVENT SANS INTERRUPTION (constat
+ * G3, AUDCIF art. 34 ; SYCEBNL art. 16, 4°) · une cellule née en 2028 qui doit
+ * tenir 2026 crée d'abord 2027, comme le refus du serveur le demande. Un
+ * exercice déjà ouvert n'est pas recréé.
+ */
 async function ouvrirExercice(c, annee) {
-  await c.geste(`Exercice ${annee} · ${c.nom}`, 'POST', '/exercices', { dateDebut: `${annee}-01-01`, dateFin: `${annee}-12-31` });
   await rechargerExercices(c);
+  if (c.exercices.has(String(annee))) return c.exercices.get(String(annee)).id;
+  const annees = [...c.exercices.keys()].map(Number);
+  const plusProcheApres = annees.filter((a) => a > annee).sort((a, b) => a - b)[0];
+  const depart = plusProcheApres !== undefined ? plusProcheApres - 1 : annee;
+  for (let a = depart; a >= annee; a--) {
+    if (c.exercices.has(String(a))) continue;
+    await c.geste(`Exercice ${a} · ${c.nom}`, 'POST', '/exercices', { dateDebut: `${a}-01-01`, dateFin: `${a}-12-31` });
+    await rechargerExercices(c);
+  }
   return c.exercices.get(String(annee))?.id ?? null;
 }
 
