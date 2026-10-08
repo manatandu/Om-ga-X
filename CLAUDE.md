@@ -178,6 +178,15 @@ commandes de vérification · committée avec le travail et retirée à
 l'intégration. L'agent qui reprend après une coupure part de la branche et de
 la fiche, jamais de zéro.
 
+**GEL DES NOUVEAUTÉS JUSQU'À LA VERSION 1** (décision de Manasse du
+2026-10-08, « Geler les nouveautés et se concentrer sur les plus
+importants »). Aucune nouvelle fonction ni ligne de cas limite n'entre sur
+`main` avant la version 1 · seulement les deux lignes en cours au gel
+(`lettrage-cloture`, `tva-decisions`) et la correction d'un défaut BLOQUANT ou
+MAJEUR trouvé sur un parcours du périmètre. Périmètre, passes et critère de
+sortie (deux passes de suite sans BLOQUANT ni MAJEUR) · `docs/plan-version-1.md`.
+Une demande nouvelle se note au suivi, elle ne se code pas.
+
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
 qu'un autre ait réussi. Un push sur `main` en déclenche plusieurs à la fois,
 le déploiement du serveur seulement s'il touche ses chemins ; les autres
