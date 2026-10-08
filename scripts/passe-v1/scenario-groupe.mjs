@@ -238,6 +238,7 @@ export default async function scenarioGroupe(registre) {
   if (!op) R.note('Groupe · console fermée · aucun plafond de cellules ne peut être posé, les créations de cellules seront refusées');
 
   const sycebnl = await etape(R, 'SYCEBNL · association siège et deux cellules', () => groupeSycebnl(R, op));
+  await etape(R, 'SYCEBNL · variante sans virement interne · N et N+1, éliminations dans leur colonne', () => groupeSansVirement(R, op));
   await etape(R, 'SYSCOHADA · société siège et deux succursales', () => groupeSyscohada(R, op, sycebnl));
 }
 
@@ -538,22 +539,44 @@ async function groupeSycebnl(R, op) {
 
   // --- 12 · Clôtures 2026 · cellules d'abord, siège en dernier (guide du siège, § 5.1) ----
   await etape(R, 'SYCEBNL · clôtures 2026', async () => {
-    R.egal('Clôture 2026 · Ngaliema', true, await cloturer(A, '2026'));
-    R.egal('Clôture 2026 · Kintambo', true, await cloturer(B, '2026'));
-    R.egal('Clôture 2026 · siège', true, await cloturer(S, '2026'));
-    // Les cellules reportent dans LEUR 2027, ouvert avant la clôture.
-    const bA27 = await balance(A, a27);
-    R.montant('Ngaliema 2027 · à-nouveau 521', 5_600_000, solde(bA27, BQ));
-    R.montant('Ngaliema 2027 · à-nouveau 585', -3_500_000, solde(bA27, VIREMENT));
-    R.montant('Ngaliema 2027 · à-nouveau de la dette envers le siège', -600_000, ctx.c401 ? solde(bA27, ctx.c401) : null);
-    // Liasse 2026 régénérée après les clôtures · même bilan, comparatif de 2027.
-    await relireLiasse(S, R, 'Groupe SYCEBNL 2026 après clôtures', `/groupe/liasse/excel?exerciceId=${s26}`, { BZ: 14_600_000, DZ: 14_600_000 });
+    // LE BILAN INDIVIDUEL D'UN DOSSIER DU GROUPE · le 585 n'est soldé dans
+    // AUCUN dossier (le virement sort chez l'un, entre chez l'autre), et le
+    // poste BW du bilan des associations ne lit que 52, 53, 55 et 57 (SYCEBNL,
+    // Partie 4 ch. 2, correspondance du bilan). Ngaliema · actif 5 600 000
+    // (521) ; passif 1 500 000 (résultat) + 600 000 (dette envers le siège) =
+    // 2 100 000 · les 3 500 000 du 585 ne sont lus nulle part.
+    const bilanA = await A.lire('Bilan individuel de Ngaliema 2026', `/etats-financiers/bilan?exerciceId=${a26}`);
+    R.egal('Ngaliema 2026 · bilan individuel (actif, passif) · le 585 hors de tout poste', [5_600_000, 2_100_000], bilanA ? [Number(bilanA.totalActif), Number(bilanA.totalPassif)] : null);
+    // Guide du siège, § 5 · chaque dossier clôture, le siège en dernier.
+    const clos = {
+      A: R.egal('Clôture 2026 · Ngaliema (585 créditeur de 3 500 000, virements reçus du siège)', true, await cloturer(A, '2026')),
+      B: R.egal('Clôture 2026 · Kintambo (SMT)', true, await cloturer(B, '2026')),
+      S: R.egal('Clôture 2026 · siège (585 débiteur de 4 300 000, virements envoyés)', true, await cloturer(S, '2026')),
+    };
+    if (clos.A) {
+      const bA27 = await balance(A, a27);
+      R.montant('Ngaliema 2027 · à-nouveau 521', 5_600_000, solde(bA27, BQ));
+      R.montant('Ngaliema 2027 · à-nouveau 585', -3_500_000, solde(bA27, VIREMENT));
+      R.montant('Ngaliema 2027 · à-nouveau de la dette envers le siège', -600_000, ctx.c401 ? solde(bA27, ctx.c401) : null);
+    } else {
+      R.note('Ngaliema · 2026 non clôturé · le 585 que le guide impose aux virements entre dossiers n’est soldé dans aucun dossier, et la clôture refuse le bilan individuel (voir la variante sans virement)');
+    }
+    if (clos.B) {
+      // Kintambo, Système minimal · sa trésorerie se lit sur toute la classe 5
+      // (correspondance du SMT), 585 compris · 571 1 300 000, 585 − 800 000.
+      const bB27 = await balance(B, b27);
+      R.montant('Kintambo 2027 · à-nouveau 571', 1_300_000, solde(bB27, CAISSE));
+      R.montant('Kintambo 2027 · à-nouveau 585', -800_000, solde(bB27, VIREMENT));
+    }
+    // Liasse 2026 régénérée après les clôtures passées · même bilan.
+    await relireLiasse(S, R, 'Groupe SYCEBNL 2026 après les clôtures', `/groupe/liasse/excel?exerciceId=${s26}`, { BZ: 14_600_000, DZ: 14_600_000 });
   });
 
   await rechargerExercices(S);
+  await rechargerExercices(A);
   const s27 = S.exercices.get('2027')?.id;
-  if (!s27) {
-    R.note('SYCEBNL · le siège n’a pas d’exercice 2027 · 2027 non joué');
+  if (!s27 || A.exercices.get('2026')?.statut !== 'CLOTURE') {
+    R.note('SYCEBNL · siège ou Ngaliema non clôturé en 2026 · 2027 du groupe Bethel non joué (sans à-nouveau, l’agrégat 2027 ne voudrait rien dire) · voir la variante sans virement');
     return { S, A, B, cA, cB, X };
   }
 
@@ -623,6 +646,96 @@ async function groupeSycebnl(R, op) {
   return { S, A, B, cA, cB, X };
 }
 
+/**
+ * LA VARIANTE SANS VIREMENT INTERNE · un siège et une cellule qui n'échangent
+ * que par une refacturation, portée par des tiers rattachés à l'autre dossier
+ * (412 au siège, 401 à la cellule) et JAMAIS par le 58 · elle sert deux
+ * desseins. Prouver la cause du refus de clôture du groupe Bethel (ici, aucun
+ * 585 ne reste, et les deux dossiers doivent se clôturer). Jouer N+1, que le
+ * groupe Bethel ne peut atteindre · la créance et la dette internes reportées
+ * à l'à-nouveau s'éliminent dans la colonne d'à-nouveau (audit final F41),
+ * leur règlement dans celle des mouvements.
+ */
+async function groupeSansVirement(R, op) {
+  const V = await nouveauDossier(R, 'Passe groupe · Fraternité Maranatha (siège)', {
+    referentiel: 'SYCEBNL', jeu: 'ASSOCIATIONS_ORDRES_PROFESSIONNELS', cle: 'maranatha', exercice: ['2026-01-01', '2026-12-31'],
+  });
+  const v26 = V.exercices.get('2026').id;
+  if (op) await op.geste('Console · plafond d’une cellule pour Maranatha', 'PATCH', `/plateforme/cabinets/${V.tenantId}/groupe`, { plafondCellules: 1 });
+  const email = adresseTitulaire('maranatha-matete');
+  const cr = await V.geste('Création de la cellule Matete', 'POST', '/groupe/cellules', { nom: 'Maranatha · cellule Matete', emailAdmin: email, jeuEtatsFinanciersSycebnl: 'ASSOCIATIONS_ORDRES_PROFESSIONNELS' });
+  if (!cr) return R.note('Variante · cellule non créée');
+  const { c: W } = await seConnecter(R, email, cr.motDePasseTemporaire, 'Maranatha · cellule Matete');
+  await W.geste('Matete · choix de son mot de passe', 'POST', '/auth/changer-mot-de-passe', { motDePasseActuel: cr.motDePasseTemporaire, nouveauMotDePasse: MOT_DE_PASSE });
+  await chargerDossier(W);
+  const w26 = await ouvrirExercice(W, 2026);
+  const w27 = await ouvrirExercice(W, 2027);
+  const tV = await V.geste('Tiers « Cellule Matete » au siège', 'POST', '/tiers', { type: 'CLIENT', code: 'CEL-MATETE', nom: 'Cellule Matete', creerCompteIndividuel: true, celluleGroupeId: cr.tenant.id });
+  const tW = await W.geste('Tiers « Siège Maranatha » à Matete', 'POST', '/tiers', { type: 'FOURNISSEUR', code: 'SIEGE', nom: 'Siège Maranatha', creerCompteIndividuel: true, celluleGroupeId: V.tenantId });
+  await rechargerComptes(V);
+  await rechargerComptes(W);
+  const c412 = tV?.compteIndividuel?.numero;
+  const c401 = tW?.compteIndividuel?.numero;
+  if (!c412 || !c401) return R.note('Variante · tiers rattachés non créés');
+  const bqV = V.journal('BQ') ?? V.od;
+  const bqW = W.journal('BQ') ?? W.od;
+
+  await ecriture(V, 'V1 dîmes', v26, '2026-02-15', 'Dîmes Maranatha', [[BQ, 5_000_000, 0], [DIMES, 0, 5_000_000]], { journal: bqV });
+  await ecriture(V, 'V2 refacturation de la formation à Matete', v26, '2026-06-30', 'Formation refacturée à Matete', [[c412, 400_000, 0], [ACCESSOIRES, 0, 400_000]]);
+  await ecriture(W, 'W1 quêtes', w26, '2026-05-20', 'Quêtes Matete', [[BQ, 1_000_000, 0], [DIMES, 0, 1_000_000]], { journal: bqW });
+  await ecriture(W, 'W2 formation facturée par le siège', w26, '2026-06-30', 'Formation du siège', [[FORMATION, 400_000, 0], [c401, 0, 400_000]]);
+  await validerJusqua(V, v26, '2026-12-31');
+  await validerJusqua(W, w26, '2026-12-31');
+
+  const ag26 = await V.lire('Balance agrégée Maranatha 2026', `/groupe/balance-agregee?exerciceId=${v26}`);
+  // 521 · 5 000 000 + 1 000 000 ; 7044 · 6 000 000 ; 707, 633, 412, 401 éliminés.
+  R.montant('Variante 2026 · agrégat 521', 6_000_000, ligneAgregat(ag26, BQ)?.solde);
+  R.egal('Variante 2026 · quatre éliminations, symétriques', [4, true], ag26 ? [ag26.eliminations.length, ag26.controles.eliminationsSymetriques] : null);
+  // Bilan agrégé · 6 000 000 de trésorerie contre 6 000 000 de résultat
+  // (siège 5 000 000 + 400 000, Matete 1 000 000 − 400 000).
+  await relireLiasse(V, R, 'Variante 2026', `/groupe/liasse/excel?exerciceId=${v26}`, { BZ: 6_000_000, DZ: 6_000_000 });
+
+  // Sans 585, les bilans individuels s'équilibrent · siège 5 000 000 + 400 000
+  // à l'actif contre 5 400 000 de résultat ; Matete 1 000 000 contre 400 000
+  // de dette et 600 000 de résultat.
+  R.egal('Variante · clôture 2026 de Matete (aucun 585)', true, await cloturer(W, '2026'));
+  R.egal('Variante · clôture 2026 du siège (aucun 585)', true, await cloturer(V, '2026'));
+  await rechargerExercices(V);
+  const v27 = V.exercices.get('2027')?.id;
+  if (!v27) return R.note('Variante · 2027 du siège absent');
+
+  await ecriture(W, 'W3 règlement au siège', w27, '2027-02-10', 'Règlement au siège', [[c401, 400_000, 0], [BQ, 0, 400_000]], { journal: bqW });
+  await ecriture(V, 'V3 règlement de Matete', v27, '2027-02-12', 'Règlement de Matete', [[BQ, 400_000, 0], [c412, 0, 400_000]], { journal: bqV });
+  await ecriture(V, 'V4 dîmes 2027', v27, '2027-04-20', 'Dîmes Maranatha 2027', [[BQ, 2_000_000, 0], [DIMES, 0, 2_000_000]], { journal: bqV });
+  await validerJusqua(V, v27, '2027-12-31');
+  await validerJusqua(W, w27, '2027-12-31');
+
+  const ag = await V.lire('Balance agrégée Maranatha 2027', `/groupe/balance-agregee?exerciceId=${v27}`);
+  const eV = elimination(ag, V.nom, c412);
+  const eW = elimination(ag, 'Maranatha · cellule Matete', c401);
+  // La créance reportée (D 400 000 à l'à-nouveau) et son règlement (C 400 000
+  // en mouvement) · chaque part sort de sa colonne.
+  R.egal('Variante 2027 · élimination de la créance du siège · D 400 000 à l’à-nouveau, C 400 000 en mouvement', [400_000, 400_000, 400_000, 0],
+    eV ? [eV.debit, eV.credit, eV.horsMouvement?.reportDebit, eV.horsMouvement?.reportCredit] : null);
+  R.egal('Variante 2027 · élimination de la dette de Matete · C 400 000 à l’à-nouveau, D 400 000 en mouvement', [400_000, 400_000, 0, 400_000],
+    eW ? [eW.debit, eW.credit, eW.horsMouvement?.reportDebit, eW.horsMouvement?.reportCredit] : null);
+  R.egal('Variante 2027 · ouverture concordante (aucun avertissement d’ouverture)', [], (ag?.avertissements ?? []).filter((x) => /OUVERTURE/.test(x)));
+  R.egal('Variante 2027 · créance et dette internes absentes de l’agrégat', [null, null], [ligneAgregat(ag, c412), ligneAgregat(ag, c401)].map((x) => (x ? x.solde : null)));
+  // À-nouveau du 521 · 5 000 000 + 1 000 000 ; solde · 6 000 000 − 400 000 +
+  // 400 000 + 2 000 000 = 8 000 000.
+  R.montant('Variante 2027 · agrégat · à-nouveau 521', 6_000_000, ligneAgregat(ag, BQ)?.reportDebit);
+  R.montant('Variante 2027 · agrégat · 521', 8_000_000, ligneAgregat(ag, BQ)?.solde);
+  // Bilan 2027 · 8 000 000 de trésorerie contre 6 000 000 de résultat 2026
+  // reporté et 2 000 000 de résultat 2027.
+  const lu = await relireLiasse(V, R, 'Variante 2027', `/groupe/liasse/excel?exerciceId=${v27}`, { BZ: 8_000_000, DZ: 8_000_000 });
+  const rep = lu ? reportDansLaBalanceDeLaLiasse(lu.wb, BQ) : null;
+  R.montant('Variante 2027 · balance N de la liasse · à-nouveau du 521 (combinaison)', 6_000_000, rep?.debit);
+  R.egal('Variante 2027 · balance N de la liasse · aucune ligne pour la créance interne', null, lu ? reportDansLaBalanceDeLaLiasse(lu.wb, c412) : null);
+  R.egal('Variante · clôture 2027 de Matete', true, await cloturer(W, '2027'));
+  R.egal('Variante · clôture 2027 du siège', true, await cloturer(V, '2027'));
+  await relireLiasse(V, R, 'Variante 2027 après clôtures', `/groupe/liasse/excel?exerciceId=${v27}`, { BZ: 8_000_000, DZ: 8_000_000 });
+}
+
 /** Une cellule ne lit ni le siège ni sa sœur ; un dossier hors groupe ne lit rien du groupe. */
 async function cloisonnementSycebnl(R, { S, A, B, cA, cB, s26, a26, b26 }) {
   const fouilleA = [MARQUE.S, MARQUE.B];
@@ -661,6 +774,22 @@ async function cloisonnementSycebnl(R, { S, A, B, cA, cB, s26, a26, b26 }) {
   // Rien n'a bougé chez Ngaliema.
   const bA = await balance(A, a26);
   R.montant('Ngaliema · 521 inchangé après les tentatives', 5_600_000, solde(bA, BQ));
+
+  // L'EXERCICE QUI SUIT · une cellule naît sur l'année du serveur (ici 2028)
+  // et ouvre ensuite l'exercice du siège (2026) · la même situation est jouée
+  // sur Horizon, hors groupe, pour ne rien déranger · 2026 et 2028 ouverts,
+  // 2027 jamais créé. AUDCIF art. 7 (l'exercice coïncide avec l'année civile)
+  // et art. 34 (le bilan d'ouverture d'un exercice est le bilan de clôture de
+  // l'exercice PRÉCÉDENT) · le report de 2026 va en 2027, qui naît à la clôture.
+  await X.geste('Horizon · exercice 2028 (l’année du serveur)', 'POST', '/exercices', { dateDebut: '2028-01-01', dateFin: '2028-12-31' });
+  await validerJusqua(X, x26, '2026-12-31');
+  if (await cloturer(X, '2026')) {
+    await rechargerExercices(X);
+    R.egal('Horizon · la clôture de 2026 ouvre 2027, l’exercice qui suit', true, X.exercices.has('2027'));
+    const x28 = X.exercices.get('2028')?.id;
+    const b28 = x28 ? await balance(X, x28) : null;
+    R.montant('Horizon · aucun à-nouveau de 2026 posé en 2028 (521)', 0, solde(b28, BQ));
+  }
   return X;
 }
 
