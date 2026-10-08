@@ -131,6 +131,14 @@ const CONTROLES_COMMUNS = {
   BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE: { raison: 'la banque n’est pas rapprochée par le banc', references: ['52110000'] },
 };
 
+// En 2027, les contrôles se lisent AVANT la cession du bien qui sort en cours
+// d'année (étapes de cession) · ce bien n'a encore aucune dotation 2027, et le
+// contrôle le dit à juste titre (sa dotation passe par la sortie ensuite).
+const CONTROLES_2027 = {
+  ...CONTROLES_COMMUNS,
+  IMMO_SANS_DOTATION: 'le bien cédé en cours d’année n’a pas encore sa dotation 2027 au moment de la lecture',
+};
+
 export default async function scenarioSmt(registre) {
   await scenarioSmtSycebnl(registre);
   await scenarioSmtSyscohada(registre);
@@ -160,7 +168,15 @@ async function scenarioSmtSycebnl(registre) {
   await etape(R, 'Paramètres · cotisations à l’encaissement, inventaire intermittent', async () => {
     // Comptabilité de trésorerie (Partie 4 ch. 1 § 1.3) · la cotisation se
     // constate à l'encaissement (cadre conceptuel § 5.4.2.1, seconde branche).
-    await c.geste('Méthode des cotisations (encaissement)', 'PATCH', '/dossier/methode-cotisations', { methodeCotisations: 'ENCAISSEMENT' });
+    // Au SMT, le fait générateur est déjà l'encaissement (Partie 4 ch. 1
+    // § 1.3) · un refus de déclarer la méthode du § 5.4.2.1 se comprend, mais
+    // son motif ne peut pas faire de l'association un projet de
+    // développement (art. 6 · « les petites entités », associations comprises).
+    const r = await c.req('PATCH', '/dossier/methode-cotisations', { methodeCotisations: 'ENCAISSEMENT' });
+    R.note(`Méthode des cotisations au SMT · statut ${r.statut} · ${texteRefus(r.corps).slice(0, 200)}`);
+    if (r.statut >= 400) {
+      R.egal('Méthode des cotisations · le refus ne présente pas l’association au SMT comme un projet de développement', false, /projet de développement/.test(texteRefus(r.corps)));
+    }
     await c.geste('Inventaire intermittent', 'PATCH', '/dossier/methode-inventaire-stocks', { methodeInventaireStocks: 'INTERMITTENT' });
   });
 
@@ -198,6 +214,11 @@ async function scenarioSmtSycebnl(registre) {
       compteImmobilisationId: compte(c, '24420000'), designation: 'Ordinateur et imprimante', dateAcquisition: '2026-07-01', dateMiseEnService: '2026-07-01',
       valeurOrigine: 1_200_000, dureeAmortissementAns: 4, modeAmortissement: 'LINEAIRE', compteContrepartieId: compte(c, BQ), exerciceId: n, journalId: bq.id,
     });
+    // Vidéoprojecteur payé en espèces, trois ans · cédé en 2027 (étape de la cession).
+    ctx.projecteur = await c.geste('Vidéoprojecteur (module)', 'POST', '/immobilisations', {
+      compteImmobilisationId: compte(c, '24420000'), designation: 'Vidéoprojecteur', dateAcquisition: '2026-07-01', dateMiseEnService: '2026-07-01',
+      valeurOrigine: 300_000, dureeAmortissementAns: 3, modeAmortissement: 'LINEAIRE', compteContrepartieId: compte(c, CAISSE), exerciceId: n, journalId: ca.id,
+    });
     await ecriture(c, 'Fournitures de bureau (caisse)', n, '2026-08-15', 'Fournitures de bureau', [['60550000', 300_000, 0], [CAISSE, 0, 300_000]], { journal: ca });
     await ecriture(c, 'Loyer du local', n, '2026-09-01', 'Loyer septembre 2026 à août 2027', [['62220000', 360_000, 0], [BQ, 0, 360_000]], { journal: bq });
     await ecriture(c, 'Impôt foncier', n, '2026-10-01', 'Impôt foncier 2026', [['64110000', 50_000, 0], [BQ, 0, 50_000]], { journal: bq });
@@ -226,6 +247,8 @@ async function scenarioSmtSycebnl(registre) {
     // Le SYCEBNL ne prescrit AUCUN mode à son SMT (la Note 1 ne demande que la
     // « durée d'utilité ») · le prorata reste · 1 200 000 / 4 × 6/12 = 150 000.
     if (ctx.immo) await c.geste('Dotation 2026', 'POST', `/immobilisations/${ctx.immo.id}/dotation`, { exerciceId: n, journalId: c.od.id });
+    // Vidéoprojecteur · 300 000 / 3 × 6/12 = 50 000.
+    if (ctx.projecteur) await c.geste('Dotation 2026 · vidéoprojecteur', 'POST', `/immobilisations/${ctx.projecteur.id}/dotation`, { exerciceId: n, journalId: c.od.id });
     await validerJusqua(c, n, '2026-12-31');
   });
 
@@ -234,21 +257,21 @@ async function scenarioSmtSycebnl(registre) {
     const b = await balance(c, n);
     R.montant('2026 · balance équilibrée', 0, b ? b.totalDebit - b.totalCredit : null);
     // Banque · 3 000 000 + 2 000 000 − 1 000 000 − 600 000 − 1 200 000 − 360 000 − 50 000 + 500 000 − 600 000 = 1 690 000.
-    // Caisse · 500 000 + 1 200 000 − 300 000 − 500 000 = 900 000.
+    // Caisse · 500 000 + 1 200 000 − 300 000 (vidéoprojecteur) − 300 000 − 500 000 = 600 000.
     const att = {
-      [BQ]: 1_690_000, [CAISSE]: 900_000, '2442': 1_200_000, '2844': -150_000, '311': 400_000, '412': 250_000, '401': -150_000,
+      [BQ]: 1_690_000, [CAISSE]: 600_000, '2442': 1_500_000, '2844': -200_000, '311': 400_000, '412': 250_000, '401': -150_000,
       '101': -3_000_000, '121': -500_000, '701': -1_200_000, '7041': -2_000_000, '7052': -250_000,
-      '6011': 1_000_000, '6031': -400_000, '6055': 300_000, '6052': 150_000, '6222': 360_000, '6411': 50_000, '6611': 1_200_000, '6813': 150_000,
+      '6011': 1_000_000, '6031': -400_000, '6055': 300_000, '6052': 150_000, '6222': 360_000, '6411': 50_000, '6611': 1_200_000, '6813': 200_000,
     };
     for (const [racine, m] of Object.entries(att)) R.montant(`2026 · solde ${racine}`, m, solde(b, racine));
-    // Produits 3 450 000 (1 200 000 + 2 000 000 + 250 000) ; charges 2 810 000
-    // (1 000 000 − 400 000 + 300 000 + 150 000 + 360 000 + 50 000 + 1 200 000 + 150 000).
-    R.montant('2026 · résultat (classes 6 à 8)', 640_000, -(solde(b, '6') + solde(b, '7') + solde(b, '8')));
+    // Produits 3 450 000 (1 200 000 + 2 000 000 + 250 000) ; charges 2 860 000
+    // (1 000 000 − 400 000 + 300 000 + 150 000 + 360 000 + 50 000 + 1 200 000 + 200 000).
+    R.montant('2026 · résultat (classes 6 à 8)', 590_000, -(solde(b, '6') + solde(b, '7') + solde(b, '8')));
 
     const bilan = await c.lire('Bilan SMT 2026', `/etats-financiers/smt/bilan?exerciceId=${n}`);
     const f = aplatir(bilan);
-    // GA 1 200 000 − 150 000 ; GC la créance de CLI-1 ; HD la dette FRS-2.
-    for (const [ref, m] of Object.entries({ GA: 1_050_000, GB: 400_000, GC: 250_000, GD: 900_000, GE: 1_690_000, GZ: 4_290_000, HA: 3_000_000, HB: 640_000, HC: 500_000, HD: 150_000, HZ: 4_290_000 })) {
+    // GA (1 200 000 − 150 000) + (300 000 − 50 000) ; GC la créance de CLI-1 ; HD la dette FRS-2.
+    for (const [ref, m] of Object.entries({ GA: 1_300_000, GB: 400_000, GC: 250_000, GD: 600_000, GE: 1_690_000, GZ: 4_240_000, HA: 3_000_000, HB: 590_000, HC: 500_000, HD: 150_000, HZ: 4_240_000 })) {
       R.montant(`2026 · bilan SMT · ${ref}`, m, f[ref]?.n);
     }
     R.egal('2026 · bilan SMT équilibré', true, bilan?.equilibre);
@@ -269,20 +292,21 @@ async function scenarioSmtSycebnl(registre) {
     R.montant('2026 · compte de résultat SMT · KX (A)', 3_200_000, cr?.totalRecettes);
     R.montant('2026 · compte de résultat SMT · JX (B)', 2_910_000, cr?.totalDepenses);
     R.montant('2026 · compte de résultat SMT · KZ (C = A − B)', 290_000, cr?.soldeCaisse);
-    // VA = GB 400 000 − 0 ; VB = GC 250 000 − 0 ; VC = dettes 150 000 − 0 ; JG = 68 150 000.
-    for (const [ref, m] of Object.entries({ VA: 400_000, VB: 250_000, VC: 150_000, JG: 150_000 })) R.montant(`2026 · compte de résultat SMT · ${ref}`, m, g[ref]?.n);
-    // KZC = KZ + VA + VB − VC − JG = 290 000 + 400 000 + 250 000 − 150 000 − 150 000 = 640 000.
-    R.montant('2026 · compte de résultat SMT · KZC', 640_000, cr?.resultatNet);
+    // VA = GB 400 000 − 0 ; VB = GC 250 000 − 0 ; VC = dettes 150 000 − 0 ; JG = 68 150 000 + 50 000.
+    for (const [ref, m] of Object.entries({ VA: 400_000, VB: 250_000, VC: 150_000, JG: 200_000 })) R.montant(`2026 · compte de résultat SMT · ${ref}`, m, g[ref]?.n);
+    // KZC = KZ + VA + VB − VC − JG = 290 000 + 400 000 + 250 000 − 150 000 − 200 000 = 590 000.
+    R.montant('2026 · compte de résultat SMT · KZC', 590_000, cr?.resultatNet);
     R.egal('2026 · compte de résultat SMT · KZC concorde avec le résultat du bilan', true, cr?.controle?.concordant);
-    // Le seul flux hors exploitation · le matériel payé en banque (− 1 200 000).
-    R.montant('2026 · compte de résultat SMT · flux hors exploitation', -1_200_000, cr?.controle?.fluxHorsExploitation);
+    // Flux hors exploitation · le matériel payé (− 1 200 000 en banque, − 300 000 en caisse).
+    R.montant('2026 · compte de résultat SMT · flux hors exploitation', -1_500_000, cr?.controle?.fluxHorsExploitation);
     R.egal('2026 · compte de résultat SMT · aucun règlement fournisseur laissé non rattaché', [], (cr?.reglementsNonRattaches ?? []).map((x) => `${x.numero} ${x.montant}`));
     ctx.cr26 = cr;
 
     const notes = await c.lire('Notes SMT 2026', `/etats-financiers/smt/notes?exerciceId=${n}`);
-    R.egal('2026 · notes applicables (fiche récapitulative)', [1, 2, 3, 4, 5], notes?.applicables);
-    R.montant('2026 · note 1 · total du registre', 1_200_000, notes?.note1?.total);
-    R.montant('2026 · note 1 · une ligne', 1, notes?.note1?.lignes?.length);
+    // L'ordre est celui de la fiche récapitulative (Partie 1 · notes 1, 2, 3, 5 ; Partie 2 · note 4).
+    R.egal('2026 · notes applicables (fiche récapitulative)', [1, 2, 3, 5, 4], notes?.applicables);
+    R.montant('2026 · note 1 · total du registre', 1_500_000, notes?.note1?.total);
+    R.montant('2026 · note 1 · deux lignes', 2, notes?.note1?.lignes?.length);
     R.montant('2026 · note 2 · stock final', 400_000, notes?.note2?.valeurStockFinal);
     R.montant('2026 · note 2 · stock initial', 0, notes?.note2?.valeurStockInitial);
     const l2 = (notes?.note2?.lignes ?? []).find((l) => String(l.numero ?? l.reference ?? '').startsWith('311'));
@@ -305,8 +329,9 @@ async function scenarioSmtSycebnl(registre) {
     R.egal('2026 · note 4 · banque · le journal reboucle sur la balance', true, jbq?.boucle);
     R.montant('2026 · note 4 · caisse · report à nouveau', 500_000, jca?.reportANouveau);
     R.montant('2026 · note 4 · caisse · recettes', 1_200_000, jca?.totalRecettes);
-    R.montant('2026 · note 4 · caisse · dépenses', 800_000, jca?.totalDepenses);
-    R.montant('2026 · note 4 · caisse · solde à reporter', 900_000, jca?.soldeAReporter);
+    // Caisse · dépenses fournitures 300 000 + vidéoprojecteur 300 000 + versement 500 000.
+    R.montant('2026 · note 4 · caisse · dépenses', 1_100_000, jca?.totalDepenses);
+    R.montant('2026 · note 4 · caisse · solde à reporter', 600_000, jca?.soldeAReporter);
     const vbq = sommesVentilation(jbq);
     const vca = sommesVentilation(jca);
     R.montant('2026 · note 4 · caisse · colonne Cotisations', 1_200_000, vca['RECETTE:cotisations']);
@@ -334,7 +359,7 @@ async function scenarioSmtSycebnl(registre) {
     R.montant('2026 · registre des donateurs · total inscrit', 2_000_000, rapport?.rapprochement?.totalRegistre);
     R.montant('2026 · registre des donateurs · total comptabilisé', 2_000_000, rapport?.rapprochement?.totalComptable);
 
-    await relireLiasse(c, R, '2026', `/exports/etats-financiers/liasse-complete?exerciceId=${n}`, { GZ: 4_290_000, HZ: 4_290_000, KZC: 640_000, HB: 640_000 });
+    await relireLiasse(c, R, '2026', `/exports/etats-financiers/liasse-complete?exerciceId=${n}`, { GZ: 4_240_000, HZ: 4_240_000, KZC: 590_000, HB: 590_000 });
     await exportsSmt(c, R, '2026', n, 'etats-financiers', ['bilan', 'compte-de-resultat', 'journal-tresorerie', 'notes', 'eligibilite']);
     await confronterControles(c, R, '2026 · contrôles de clôture', n, CONTROLES_COMMUNS);
   });
@@ -348,16 +373,16 @@ async function scenarioSmtSycebnl(registre) {
   await etape(R, '2027 · à-nouveaux et bilan d’ouverture', async () => {
     const b = await balance(c, n1);
     R.montant('2027 · à-nouveau banque', 1_690_000, solde(b, BQ));
-    R.montant('2027 · à-nouveau caisse', 900_000, solde(b, CAISSE));
-    R.montant('2027 · à-nouveau résultat 2026 au 13', -640_000, solde(b, '13'));
+    R.montant('2027 · à-nouveau caisse', 600_000, solde(b, CAISSE));
+    R.montant('2027 · à-nouveau résultat 2026 au 13', -590_000, solde(b, '13'));
     R.montant('2027 · à-nouveau stock', 400_000, solde(b, '311'));
     R.montant('2027 · à-nouveau créance CLI-1', 250_000, solde(b, '412'));
     R.montant('2027 · à-nouveau dette FRS-2', -150_000, solde(b, '401'));
     const bilan = await c.lire('Bilan SMT 2027 à l’ouverture', `/etats-financiers/smt/bilan?exerciceId=${n1}`);
     const f = aplatir(bilan);
     // Avant toute opération · le résultat 2026 non affecté reste au 13, lu en HB.
-    R.montant('2027 · bilan SMT à l’ouverture · GZ', 4_290_000, f.GZ?.n);
-    R.montant('2027 · bilan SMT à l’ouverture · HB (résultat 2026 non affecté)', 640_000, f.HB?.n);
+    R.montant('2027 · bilan SMT à l’ouverture · GZ', 4_240_000, f.GZ?.n);
+    R.montant('2027 · bilan SMT à l’ouverture · HB (résultat 2026 non affecté)', 590_000, f.HB?.n);
     R.egal('2027 · bilan SMT à l’ouverture · équilibré', true, bilan?.equilibre);
   });
 
@@ -385,6 +410,8 @@ async function scenarioSmtSycebnl(registre) {
     await ecriture(c, 'Salaires du second semestre 2027', n1, '2027-12-31', 'Salaires juillet à décembre 2027', [['66110000', 600_000, 0], [BQ, 0, 600_000]], { journal: bq });
     // 25 kits à 10 000 · stock final 250 000 contre 400 000 · D 6031 / C 3110 150 000.
     await stockFinal(c, R, '2027', n1, STOCK, 'Kits scolaires', 'kit', 25, 250_000);
+    // Le matériel informatique seul · le vidéoprojecteur sort en cours d'année
+    // (étape de la cession), sa dotation 2027 est passée par la sortie.
     if (ctx.immo) await c.geste('Dotation 2027', 'POST', `/immobilisations/${ctx.immo.id}/dotation`, { exerciceId: n1, journalId: c.od.id });
     await validerJusqua(c, n1, '2027-12-31');
   });
@@ -392,13 +419,14 @@ async function scenarioSmtSycebnl(registre) {
   await etape(R, '2027 · situation avant l’affectation, puis affectation', async () => {
     const bilan = await c.lire('Bilan SMT 2027 avant affectation', `/etats-financiers/smt/bilan?exerciceId=${n1}`);
     const f = aplatir(bilan);
-    // HB = 640 000 (13) − 490 000 (classes 6 à 8) = 150 000 ; HC = 500 000.
-    R.montant('2027 · bilan SMT avant affectation · HB', 150_000, f.HB?.n);
+    // HB = 590 000 (13) − 490 000 (classes 6 à 8) = 100 000 ; HC = 500 000 ;
+    // GA = 750 000 + vidéoprojecteur encore détenu 250 000.
+    R.montant('2027 · bilan SMT avant affectation · HB', 100_000, f.HB?.n);
     R.montant('2027 · bilan SMT avant affectation · HC', 500_000, f.HC?.n);
-    R.montant('2027 · bilan SMT avant affectation · GZ', 3_830_000, f.GZ?.n);
+    R.montant('2027 · bilan SMT avant affectation · GZ', 3_780_000, f.GZ?.n);
     R.egal('2027 · bilan SMT avant affectation · équilibré', true, bilan?.equilibre);
     await c.geste('Affectation du résultat 2026', 'POST', '/affectation-resultat', {
-      exerciceId: n, dateDecision: '2027-06-30', organe: 'Assemblée générale ordinaire', lignes: [{ compteId: compte(c, '12100000'), montant: 640_000 }],
+      exerciceId: n, dateDecision: '2027-06-30', organe: 'Assemblée générale ordinaire', lignes: [{ compteId: compte(c, '12100000'), montant: 590_000 }],
     });
     await validerJusqua(c, n1, '2027-12-31');
   });
@@ -407,10 +435,11 @@ async function scenarioSmtSycebnl(registre) {
     const b = await balance(c, n1);
     R.montant('2027 · balance équilibrée', 0, b ? b.totalDebit - b.totalCredit : null);
     // Banque · 1 690 000 + 250 000 − 150 000 + 1 000 000 − 800 000 − 600 000 − 360 000 + 1 000 000 − 600 000 = 1 430 000.
-    // Caisse · 900 000 + 1 400 000 − 200 000 − 1 000 000 = 1 100 000.
+    // Caisse · 600 000 + 1 400 000 − 200 000 − 1 000 000 = 800 000.
+    // 2844 · − 200 000 à l'ouverture − 300 000 ; 121 · 500 000 + 590 000.
     const att = {
-      [BQ]: 1_430_000, [CAISSE]: 1_100_000, '2844': -450_000, '311': 250_000, '412': 300_000, '401': -180_000,
-      '121': -1_140_000, '13': 0, '701': -1_400_000, '7041': -1_000_000, '7052': -300_000,
+      [BQ]: 1_430_000, [CAISSE]: 800_000, '2844': -500_000, '311': 250_000, '412': 300_000, '401': -180_000,
+      '121': -1_090_000, '13': 0, '701': -1_400_000, '7041': -1_000_000, '7052': -300_000,
       '6011': 800_000, '6031': 150_000, '6055': 200_000, '6052': 180_000, '6222': 360_000, '6611': 1_200_000, '6813': 300_000,
     };
     for (const [racine, m] of Object.entries(att)) R.montant(`2027 · solde ${racine}`, m, solde(b, racine));
@@ -419,10 +448,10 @@ async function scenarioSmtSycebnl(registre) {
 
     const bilan = await c.lire('Bilan SMT 2027', `/etats-financiers/smt/bilan?exerciceId=${n1}`);
     const f = aplatir(bilan);
-    for (const [ref, m] of Object.entries({ GA: 750_000, GB: 250_000, GC: 300_000, GD: 1_100_000, GE: 1_430_000, GZ: 3_830_000, HA: 3_000_000, HB: -490_000, HC: 1_140_000, HD: 180_000, HZ: 3_830_000 })) {
+    for (const [ref, m] of Object.entries({ GA: 1_000_000, GB: 250_000, GC: 300_000, GD: 800_000, GE: 1_430_000, GZ: 3_780_000, HA: 3_000_000, HB: -490_000, HC: 1_090_000, HD: 180_000, HZ: 3_780_000 })) {
       R.montant(`2027 · bilan SMT · ${ref}`, m, f[ref]?.n);
     }
-    for (const [ref, m] of Object.entries({ GZ: 4_290_000, HB: 640_000, HZ: 4_290_000 })) R.montant(`2027 · bilan SMT · colonne N-1 · ${ref}`, m, f[ref]?.n1);
+    for (const [ref, m] of Object.entries({ GZ: 4_240_000, HB: 590_000, HZ: 4_240_000 })) R.montant(`2027 · bilan SMT · colonne N-1 · ${ref}`, m, f[ref]?.n1);
 
     const cr = await c.lire('Compte de résultat SMT 2027', `/etats-financiers/smt/compte-de-resultat?exerciceId=${n1}`);
     const g = aplatir(cr);
@@ -440,9 +469,9 @@ async function scenarioSmtSycebnl(registre) {
     R.egal('2027 · compte de résultat SMT · KZC concorde avec le résultat du bilan', true, cr?.controle?.concordant);
     R.egal('2027 · compte de résultat SMT · aucun règlement fournisseur laissé non rattaché', [], (cr?.reglementsNonRattaches ?? []).map((x) => `${x.numero} ${x.montant}`));
     // La colonne N-1 rejoue 2026 sur un exercice CLÔTURÉ · mêmes chiffres qu'en 2026.
-    R.montant('2027 · compte de résultat SMT · colonne N-1 · KZC', 640_000, cr?.resultatNetN1);
+    R.montant('2027 · compte de résultat SMT · colonne N-1 · KZC', 590_000, cr?.resultatNetN1);
     R.montant('2027 · compte de résultat SMT · colonne N-1 · KX', 3_200_000, cr?.totalRecettesN1);
-    R.montant('2027 · compte de résultat SMT · colonne N-1 · JG', 150_000, g.JG?.n1);
+    R.montant('2027 · compte de résultat SMT · colonne N-1 · JG', 200_000, g.JG?.n1);
     R.montant('2027 · compte de résultat SMT · colonne N-1 · VA', 400_000, g.VA?.n1);
 
     const notes = await c.lire('Notes SMT 2027', `/etats-financiers/smt/notes?exerciceId=${n1}`);
@@ -463,7 +492,7 @@ async function scenarioSmtSycebnl(registre) {
     R.montant('2027 · note 4 · banque · dépenses', 2_510_000, jbq?.totalDepenses);
     R.montant('2027 · note 4 · banque · solde à reporter', 1_430_000, jbq?.soldeAReporter);
     R.egal('2027 · note 4 · banque · le journal reboucle', true, jbq?.boucle);
-    R.montant('2027 · note 4 · caisse · solde à reporter', 1_100_000, jca?.soldeAReporter);
+    R.montant('2027 · note 4 · caisse · solde à reporter', 800_000, jca?.soldeAReporter);
 
     const el = await c.lire('Éligibilité SMT 2027', `/etats-financiers/smt/eligibilite?exerciceId=${n1}`);
     const cat = (k) => el?.categories?.find((x) => x.cle === k)?.montant;
@@ -475,9 +504,50 @@ async function scenarioSmtSycebnl(registre) {
     R.montant('2027 · éligibilité · cumul biennal · cotisations (1 450 000 + 1 700 000)', 3_150_000, cum('cotisationsRevenus')?.cumule);
     R.montant('2027 · éligibilité · cumul biennal · dons (2 000 000 + 1 000 000)', 3_000_000, cum('donsLegs')?.cumule);
 
-    await relireLiasse(c, R, '2027', `/exports/etats-financiers/liasse-complete?exerciceId=${n1}`, { GZ: 3_830_000, HZ: 3_830_000, KZC: -490_000, HB: -490_000 });
+    await relireLiasse(c, R, '2027', `/exports/etats-financiers/liasse-complete?exerciceId=${n1}`, { GZ: 3_780_000, HZ: 3_780_000, KZC: -490_000, HB: -490_000 });
     await exportsSmt(c, R, '2027', n1, 'etats-financiers', ['bilan', 'compte-de-resultat', 'journal-tresorerie', 'notes', 'eligibilite']);
-    await confronterControles(c, R, '2027 · contrôles de clôture', n1, CONTROLES_COMMUNS);
+    await confronterControles(c, R, '2027 · contrôles de clôture', n1, CONTROLES_2027);
+  });
+
+  await etape(R, '2027 · cession du vidéoprojecteur (jumeau de l’anomalie n° 22)', async () => {
+    if (!ctx.projecteur) return R.note('Vidéoprojecteur absent · cession non jouée');
+    // Vendu 180 000 en espèces le 30/06/2027. Dotation arrêtée à la sortie
+    // (fiche du COMPTE 81) · prorata maintenu au SMT SYCEBNL, six mois ·
+    // 100 000 × 6/12 = 50 000 ; cumul 100 000 ; valeur nette 200 000 au 812,
+    // prix au 822.
+    await c.geste('Cession du vidéoprojecteur', 'POST', `/immobilisations/${ctx.projecteur.id}/sortie`, {
+      dateSortie: '2027-06-30', type: 'CESSION', natureSortie: 'VENTE', prixCession: 180_000, compteContrepartieId: compte(c, CAISSE),
+      exerciceId: n1, journalId: ca.id, referencePieceSortie: 'VTE-PROJ-2027', datePieceSortie: '2027-06-30',
+    });
+    await validerJusqua(c, n1, '2027-12-31');
+    const b = await balance(c, n1);
+    // 2844 · − 500 000 − 50 000 + 100 000 ; 6813 · 300 000 + 50 000.
+    for (const [racine, m] of Object.entries({ [CAISSE]: 980_000, '2844': -450_000, '812': 200_000, '822': -180_000, '6813': 350_000 })) {
+      R.montant(`2027 après cession · solde ${racine}`, m, solde(b, racine));
+    }
+    // − 490 000 + 180 000 − 200 000 − 50 000 = − 560 000.
+    R.montant('2027 après cession · résultat (classes 6 à 8)', -560_000, -(solde(b, '6') + solde(b, '7') + solde(b, '8')));
+    const bilan = await c.lire('Bilan SMT 2027 après cession', `/etats-financiers/smt/bilan?exerciceId=${n1}`);
+    const f = aplatir(bilan);
+    for (const [ref, m] of Object.entries({ GA: 750_000, GD: 980_000, GZ: 3_710_000, HB: -560_000, HZ: 3_710_000 })) R.montant(`2027 après cession · bilan SMT · ${ref}`, m, f[ref]?.n);
+    const cr = await c.lire('Compte de résultat SMT 2027 après cession', `/etats-financiers/smt/compte-de-resultat?exerciceId=${n1}`);
+    const g = aplatir(cr);
+    // KB · le prix au 822 ; JG 350 000 ; la valeur nette (812) n'a aucune
+    // contrepartie de trésorerie · KZ = 2 830 000 − 2 710 000 = 120 000 ;
+    // KZC = 120 000 − 150 000 + 50 000 − 30 000 − 350 000 = − 360 000, contre
+    // − 560 000 au bilan · écart de la valeur nette, que le contrôle doit dire.
+    for (const [ref, m] of Object.entries({ KB: 180_000, JG: 350_000 })) R.montant(`2027 après cession · compte de résultat SMT · ${ref}`, m, g[ref]?.n);
+    R.montant('2027 après cession · compte de résultat SMT · KZ', 120_000, cr?.soldeCaisse);
+    R.montant('2027 après cession · compte de résultat SMT · KZC', -360_000, cr?.resultatNet);
+    R.egal('2027 après cession · l’écart de la valeur nette est EXPOSÉ (non concordant)', false, cr?.controle?.concordant);
+    R.montant('2027 après cession · écart KZC − résultat du bilan = valeur nette cédée', 200_000, cr?.controle?.ecart);
+    const notes = await c.lire('Notes SMT 2027 après cession', `/etats-financiers/smt/notes?exerciceId=${n1}`);
+    const sortie = (notes?.note1?.sortiesDeLExercice ?? [])[0];
+    R.egal('2027 après cession · note 1 · le bien sorti figure à part, prix de cession', ['Vidéoprojecteur', 180_000], [sortie?.designation ?? null, sortie?.prixCession ?? null]);
+    const jt = await c.lire('Journal de trésorerie SMT 2027 après cession', `/etats-financiers/smt/journal-tresorerie?exerciceId=${n1}`);
+    const jca = (jt?.journaux ?? []).find((j) => j.numero === CAISSE);
+    R.montant('2027 après cession · note 4 · caisse · colonne Matériel, mobilier et autres', 180_000, sommesVentilation(jca)['RECETTE:materiel']);
+    R.montant('2027 après cession · note 4 · caisse · solde à reporter', 980_000, jca?.soldeAReporter);
   });
 
   await etape(R, 'Clôture 2027', () => cloturer(c, '2027'));
@@ -487,8 +557,9 @@ async function scenarioSmtSycebnl(registre) {
     if (!n2) return R.note('2028 absent après la clôture de 2027');
     const b = await balance(c, n2);
     R.montant('2028 · à-nouveau banque', 1_430_000, solde(b, BQ));
-    R.montant('2028 · à-nouveau déficit 2027 au 13', 490_000, solde(b, '13'));
-    R.montant('2028 · à-nouveau report à nouveau', -1_140_000, solde(b, '121'));
+    R.montant('2028 · à-nouveau caisse', 980_000, solde(b, CAISSE));
+    R.montant('2028 · à-nouveau déficit 2027 au 13', 560_000, solde(b, '13'));
+    R.montant('2028 · à-nouveau report à nouveau', -1_090_000, solde(b, '121'));
     R.montant('2028 · à-nouveau stock', 250_000, solde(b, '311'));
   });
 }
@@ -545,7 +616,12 @@ async function scenarioSmtSyscohada(registre) {
   await etape(R, '2026 · recettes et dépenses de trésorerie', async () => {
     await loyer(n, '2026-01-05');
     // Apport temporaire de l'exploitant · crédit du 104 (Titre VII, COMPTE 104).
-    await ecriture(c, 'Apport de l’exploitant', n, '2026-01-10', 'Apport temporaire de l’exploitant', [[BQ, 1_000_000, 0], ['10410000', 0, 1_000_000]], { journal: bq });
+    await ecriture(c, 'Apport de l’exploitant', n, '2026-01-10', 'Apport temporaire de l’exploitant', [[BQ, 1_400_000, 0], ['10410000', 0, 1_400_000]], { journal: bq });
+    // Étagères et comptoir, payés en banque, quatre ans · cédés en 2027.
+    ctx.mobilier = await c.geste('Étagères et comptoir (module)', 'POST', '/immobilisations', {
+      compteImmobilisationId: compte(c, '24440000'), designation: 'Étagères et comptoir', dateAcquisition: '2026-02-01', dateMiseEnService: '2026-02-01',
+      valeurOrigine: 400_000, dureeAmortissementAns: 4, modeAmortissement: 'LINEAIRE', compteContrepartieId: compte(c, BQ), exerciceId: n, journalId: bq.id,
+    });
     await achatPaye(n, '2026-02-15', 2_000_000);
     await ventes(n, '2026-03-31', 2_500_000);
     await salaire(n, '2026-03-31');
@@ -593,14 +669,19 @@ async function scenarioSmtSyscohada(registre) {
     // 1 200 000 / 4 = 300 000 la première année, bien entré le 1er octobre
     // (le Système normal aurait doté 300 000 × 3/12 = 75 000).
     if (ctx.immo) {
-      const d = await c.geste('Dotation 2026', 'POST', `/immobilisations/${ctx.immo.id}/dotation`, { exerciceId: n, journalId: c.od.id });
-      R.note(`Dotation 2026 · réponse ${JSON.stringify(d ?? {}).slice(0, 200)}`);
+      const d = await c.geste('Dotation 2026 · caisse enregistreuse', 'POST', `/immobilisations/${ctx.immo.id}/dotation`, { exerciceId: n, journalId: c.od.id });
+      R.montant('2026 · dotation SMT de la caisse enregistreuse (annuité pleine, entrée le 1er octobre)', 300_000, d?.montant);
+    }
+    // Étagères · 400 000 / 4 = 100 000, entrées le 1er février, annuité pleine.
+    if (ctx.mobilier) {
+      const d = await c.geste('Dotation 2026 · étagères', 'POST', `/immobilisations/${ctx.mobilier.id}/dotation`, { exerciceId: n, journalId: c.od.id });
+      R.montant('2026 · dotation SMT des étagères (annuité pleine, entrées le 1er février)', 100_000, d?.montant);
     }
     // Fiche du COMPTE 104 · « débité, à la clôture, du montant de son solde
-    // créditeur, par le crédit du 103 » · 1 000 000 d'apport moins 300 000
-    // de prélèvement = 700 000 viré au capital personnel.
+    // créditeur, par le crédit du 103 » · 1 400 000 d'apport moins 300 000
+    // de prélèvement = 1 100 000 viré au capital personnel.
     await ecriture(c, 'Solde du compte de l’exploitant au 103', n, '2026-12-31', 'Virement du compte de l’exploitant au capital personnel',
-      [['10410000', 1_000_000, 0], ['10480000', 0, 300_000], ['10300000', 0, 700_000]]);
+      [['10410000', 1_400_000, 0], ['10480000', 0, 300_000], ['10300000', 0, 1_100_000]]);
     await validerJusqua(c, n, '2026-12-31');
   });
 
@@ -608,20 +689,20 @@ async function scenarioSmtSyscohada(registre) {
     await rechargerComptes(c);
     const b = await balance(c, n);
     R.montant('2026 · balance équilibrée', 0, b ? b.totalDebit - b.totalCredit : null);
-    // Banque · 2 000 000 − 600 000 + 1 000 000 − 2 000 000 + 2 000 000 − 2 000 000 − 100 000 + 2 000 000 − 600 000 − 1 200 000 = 500 000.
+    // Banque · 2 000 000 − 600 000 + 1 400 000 − 400 000 − 2 000 000 + 2 000 000 − 2 000 000 − 100 000 + 2 000 000 − 600 000 − 1 200 000 = 500 000.
     // Caisse · 300 000 + 8 000 000 − 4 × 450 000 − 4 000 000 − 300 000 = 2 200 000.
     const att = {
-      [BQ]: 500_000, [CAISSE]: 2_200_000, '2442': 1_200_000, '2844': -300_000, '311': 700_000, '411': 400_000, '401': -600_000,
-      '103': -3_500_000, '104': 0, '7011': -8_400_000, '6011': 4_600_000, '6031': -200_000, '6222': 1_200_000, '6412': 100_000, '6611': 1_800_000, '6813': 300_000,
+      [BQ]: 500_000, [CAISSE]: 2_200_000, '2442': 1_200_000, '2444': 400_000, '2844': -400_000, '311': 700_000, '411': 400_000, '401': -600_000,
+      '103': -3_900_000, '104': 0, '7011': -8_400_000, '6011': 4_600_000, '6031': -200_000, '6222': 1_200_000, '6412': 100_000, '6611': 1_800_000, '6813': 400_000,
     };
     for (const [racine, m] of Object.entries(att)) R.montant(`2026 · solde ${racine}`, m, solde(b, racine));
-    // Produits 8 400 000 ; charges 4 600 000 − 200 000 + 1 200 000 + 100 000 + 1 800 000 + 300 000 = 7 800 000.
-    R.montant('2026 · résultat (classes 6 à 8)', 600_000, -(solde(b, '6') + solde(b, '7') + solde(b, '8')));
+    // Produits 8 400 000 ; charges 4 600 000 − 200 000 + 1 200 000 + 100 000 + 1 800 000 + 400 000 = 7 900 000.
+    R.montant('2026 · résultat (classes 6 à 8)', 500_000, -(solde(b, '6') + solde(b, '7') + solde(b, '8')));
 
     const bilan = await c.lire('Bilan SMT 2026', `/etats-financiers-syscohada/smt/bilan?exerciceId=${n}`);
     const f = aplatir(bilan);
-    // SA1 1 200 000 − 300 000 ; SP1 = 103 (2 800 000 + 700 000), 104 soldé.
-    for (const [ref, m] of Object.entries({ SA1: 900_000, SA2: 700_000, SA3: 400_000, SA4: 2_200_000, SA5: 500_000, SAZ: 4_700_000, SP1: 3_500_000, SP2: 600_000, SP3: 0, SP4: 600_000, SPZ: 4_700_000 })) {
+    // SA1 (1 200 000 − 300 000) + (400 000 − 100 000) ; SP1 = 103 (2 800 000 + 1 100 000), 104 soldé.
+    for (const [ref, m] of Object.entries({ SA1: 1_200_000, SA2: 700_000, SA3: 400_000, SA4: 2_200_000, SA5: 500_000, SAZ: 5_000_000, SP1: 3_900_000, SP2: 500_000, SP3: 0, SP4: 600_000, SPZ: 5_000_000 })) {
       R.montant(`2026 · bilan SMT · ${ref}`, m, f[ref]?.n);
     }
     // Comparatif sans N-1 · le bilan d'ouverture · 2 000 000 + 300 000 + 500 000.
@@ -632,21 +713,21 @@ async function scenarioSmtSyscohada(registre) {
     // A · ventes au comptant 8 000 000 (la vente à crédit n'est pas encaissée).
     // B · achats payés 4 000 000, loyers 1 200 000, salaires 1 800 000, patente 100 000.
     // Variations (N-1) − N (anomalie n° 2 de la table, le sens du 603) ·
-    // SV1 500 000 − 700 000, SV2 0 − 400 000, SV3 0 − 600 000 ; F 300 000.
-    // G = C − D + E − F = 900 000 − (−200 000 − 400 000) + (−600 000) − 300 000 = 600 000.
+    // SV1 500 000 − 700 000, SV2 0 − 400 000, SV3 0 − 600 000 ; F 300 000 + 100 000.
+    // G = C − D + E − F = 900 000 − (−200 000 − 400 000) + (−600 000) − 400 000 = 500 000.
     for (const [ref, m] of Object.entries({
       SR1: 8_000_000, SR2: 0, SRA: 8_000_000, SD1: 4_000_000, SD2: 1_200_000, SD3: 1_800_000, SD4: 100_000, SD5: 0, SD6: 0, SDB: 7_100_000,
-      SC: 900_000, SV1: -200_000, SV2: -400_000, SV3: -600_000, SF: 300_000, SG: 600_000,
+      SC: 900_000, SV1: -200_000, SV2: -400_000, SV3: -600_000, SF: 400_000, SG: 500_000,
     })) R.montant(`2026 · compte de résultat SMT · ${ref}`, m, g[ref]?.n);
     R.montant('2026 · compte de résultat SMT · lettre D (SV1 + SV2)', -600_000, cr?.lettres?.D);
     R.montant('2026 · compte de résultat SMT · lettre E (SV3)', -600_000, cr?.lettres?.E);
     R.egal('2026 · compte de résultat SMT · G concorde avec le résultat du bilan', true, cr?.controle?.concordant);
-    // Hors A et B (anomalie n° 13) · apport + 1 000 000, prélèvement − 300 000, matériel − 1 200 000.
+    // Hors A et B (anomalie n° 13) · apport + 1 400 000, prélèvement − 300 000, matériel − 1 200 000 et − 400 000.
     const hors = (cr?.fluxHorsResultat ?? []).reduce((s, x) => s + Number(x.montant ?? 0), 0);
     R.montant('2026 · compte de résultat SMT · flux hors résultat (apport, prélèvement, matériel)', -500_000, hors);
 
     const notes = await c.lire('Notes SMT 2026', `/etats-financiers-syscohada/smt/notes?exerciceId=${n}`);
-    R.montant('2026 · note 1 · total du registre', 1_200_000, notes?.note1?.total);
+    R.montant('2026 · note 1 · total du registre (deux biens)', 1_600_000, notes?.note1?.total);
     R.egal('2026 · note 1 · amortissement linéaire sans prorata temporis', false, notes?.note1?.amortissement?.prorataTemporis ?? null);
     R.montant('2026 · note 2 · stock final', 700_000, notes?.note2?.valeurStockFinal);
     R.montant('2026 · note 2 · stock initial', 500_000, notes?.note2?.valeurStockInitial);
@@ -661,10 +742,10 @@ async function scenarioSmtSyscohada(registre) {
     const jt = await c.lire('Journal de trésorerie SMT 2026', `/etats-financiers-syscohada/smt/journal-tresorerie?exerciceId=${n}`);
     const jbq = (jt?.journaux ?? []).find((j) => j.numero === BQ);
     const jca = (jt?.journaux ?? []).find((j) => j.numero === CAISSE);
-    // Banque · recettes apport 1 000 000 + versements 4 000 000 ; dépenses 600 000 × 2 + 2 000 000 × 2 + 100 000 + 1 200 000.
+    // Banque · recettes apport 1 400 000 + versements 4 000 000 ; dépenses 600 000 × 2 + 2 000 000 × 2 + 100 000 + 1 200 000 + 400 000.
     R.montant('2026 · note 4 · banque · report à nouveau', 2_000_000, jbq?.reportANouveau);
-    R.montant('2026 · note 4 · banque · recettes', 5_000_000, jbq?.totalRecettes);
-    R.montant('2026 · note 4 · banque · dépenses', 6_500_000, jbq?.totalDepenses);
+    R.montant('2026 · note 4 · banque · recettes', 5_400_000, jbq?.totalRecettes);
+    R.montant('2026 · note 4 · banque · dépenses', 6_900_000, jbq?.totalDepenses);
     R.montant('2026 · note 4 · banque · solde à reporter', 500_000, jbq?.soldeAReporter);
     R.egal('2026 · note 4 · banque · le journal reboucle', true, jbq?.boucle);
     // Caisse · recettes 8 000 000 ; dépenses salaires 1 800 000 + versements 4 000 000 + prélèvement 300 000.
@@ -675,7 +756,7 @@ async function scenarioSmtSyscohada(registre) {
     const vca = sommesVentilation(jca);
     R.montant('2026 · note 4 · caisse · colonne Ventes', 8_000_000, vca['RECETTE:ventes']);
     R.montant('2026 · note 4 · banque · colonne Achats marchandises', 4_000_000, vbq['DEPENSE:achatsMarchandises']);
-    R.montant('2026 · note 4 · colonne Compte exploitant (apport)', 1_000_000, vbq['RECETTE:compteExploitant']);
+    R.montant('2026 · note 4 · colonne Compte exploitant (apport)', 1_400_000, vbq['RECETTE:compteExploitant']);
     R.montant('2026 · note 4 · colonne Compte exploitant (prélèvement)', 300_000, vca['DEPENSE:compteExploitant']);
 
     // Art. 13 · chiffre d'affaires HT de l'exercice face aux trois seuils.
@@ -687,8 +768,8 @@ async function scenarioSmtSyscohada(registre) {
 
     const lia = await relireLiasse(c, R, '2026', `/exports/etats-financiers-syscohada/liasse-complete?exerciceId=${n}`);
     const ligneLiasse = (debut) => (lia?.lignes ?? []).find((l) => l.intitule.startsWith(debut));
-    R.montant('2026 · liasse · total actif lu par CONTROLES', 4_700_000, ligneLiasse('Total actif')?.valeur);
-    R.montant('2026 · liasse · résultat G lu par CONTROLES', 600_000, ligneLiasse('RÉSULTAT EXERCICE')?.valeur);
+    R.montant('2026 · liasse · total actif lu par CONTROLES', 5_000_000, ligneLiasse('Total actif')?.valeur);
+    R.montant('2026 · liasse · résultat G lu par CONTROLES', 500_000, ligneLiasse('RÉSULTAT EXERCICE')?.valeur);
     await exportsSmt(c, R, '2026', n, 'etats-financiers-syscohada', ['bilan', 'compte-de-resultat', 'journal-tresorerie', 'notes']);
     await confronterControles(c, R, '2026 · contrôles de clôture', n, CONTROLES_COMMUNS);
   });
@@ -703,9 +784,9 @@ async function scenarioSmtSyscohada(registre) {
     const b = await balance(c, n1);
     R.montant('2027 · à-nouveau banque', 500_000, solde(b, BQ));
     R.montant('2027 · à-nouveau caisse', 2_200_000, solde(b, CAISSE));
-    R.montant('2027 · à-nouveau capital personnel', -3_500_000, solde(b, '103'));
+    R.montant('2027 · à-nouveau capital personnel', -3_900_000, solde(b, '103'));
     R.montant('2027 · à-nouveau compte de l’exploitant (soldé)', 0, solde(b, '104'));
-    R.montant('2027 · à-nouveau résultat 2026 au 13', -600_000, solde(b, '13'));
+    R.montant('2027 · à-nouveau résultat 2026 au 13', -500_000, solde(b, '13'));
     R.montant('2027 · à-nouveau stock', 700_000, solde(b, '311'));
   });
 
@@ -736,6 +817,8 @@ async function scenarioSmtSyscohada(registre) {
     await salaire(n1, '2027-12-31');
     // 40 pièces à 10 000 · 400 000 contre 700 000 · D 6031 / C 3111 300 000.
     await stockFinal(c, R, '2027', n1, STOCK, 'Pagnes wax', 'pièce', 40, 400_000);
+    // La caisse enregistreuse seule · les étagères sortent en cours d'année
+    // (étape de la cession, plus bas), leur annuité 2027 est passée par la sortie.
     if (ctx.immo) await c.geste('Dotation 2027', 'POST', `/immobilisations/${ctx.immo.id}/dotation`, { exerciceId: n1, journalId: c.od.id });
     // Fiche du COMPTE 104 · solde débiteur de 500 000 viré au 103.
     await ecriture(c, 'Solde du compte de l’exploitant au 103', n1, '2027-12-31', 'Virement du compte de l’exploitant au capital personnel',
@@ -746,15 +829,16 @@ async function scenarioSmtSyscohada(registre) {
   await etape(R, '2027 · situation avant l’affectation, puis affectation au 103', async () => {
     const bilan = await c.lire('Bilan SMT 2027 avant affectation', `/etats-financiers-syscohada/smt/bilan?exerciceId=${n1}`);
     const f = aplatir(bilan);
-    // SP1 = 3 500 000 − 500 000 ; SP2 = 600 000 (13) + 500 000 (6 à 8).
-    R.montant('2027 · bilan SMT avant affectation · SP1', 3_000_000, f.SP1?.n);
-    R.montant('2027 · bilan SMT avant affectation · SP2', 1_100_000, f.SP2?.n);
-    R.montant('2027 · bilan SMT avant affectation · SAZ', 4_900_000, f.SAZ?.n);
-    R.montant('2027 · bilan SMT avant affectation · SPZ', 4_900_000, f.SPZ?.n);
+    // SP1 = 3 900 000 − 500 000 ; SP2 = 500 000 (13) + 500 000 (6 à 8) ;
+    // SA1 = caisse enregistreuse 600 000 + étagères encore détenues 300 000.
+    R.montant('2027 · bilan SMT avant affectation · SP1', 3_400_000, f.SP1?.n);
+    R.montant('2027 · bilan SMT avant affectation · SP2', 1_000_000, f.SP2?.n);
+    R.montant('2027 · bilan SMT avant affectation · SAZ', 5_200_000, f.SAZ?.n);
+    R.montant('2027 · bilan SMT avant affectation · SPZ', 5_200_000, f.SPZ?.n);
     // COMPTE 103 · « crédité, à l'ouverture de l'exercice, du montant de
     // l'affectation du résultat de l'exercice précédent, par le débit du 131 ».
     await c.geste('Affectation du résultat 2026 au capital personnel', 'POST', '/affectation-resultat', {
-      exerciceId: n, dateDecision: '2027-03-31', organe: 'Décision de l’exploitant', lignes: [{ compteId: compte(c, '10300000'), montant: 600_000 }],
+      exerciceId: n, dateDecision: '2027-03-31', organe: 'Décision de l’exploitant', lignes: [{ compteId: compte(c, '10300000'), montant: 500_000 }],
     });
     await validerJusqua(c, n1, '2027-12-31');
   });
@@ -764,8 +848,9 @@ async function scenarioSmtSyscohada(registre) {
     R.montant('2027 · balance équilibrée', 0, b ? b.totalDebit - b.totalCredit : null);
     // Banque · 500 000 + 2 000 000 + 400 000 − 600 000 − 600 000 − 1 500 000 + 2 000 000 − 2 000 000 + 2 000 000 − 600 000 = 1 600 000.
     // Caisse · 2 200 000 − 6 000 000 + 8 000 000 − 1 800 000 − 100 000 − 500 000 = 1 800 000.
+    // 2844 · − 400 000 à l'ouverture − 300 000 de l'année ; 103 · 3 900 000 + 500 000 − 500 000.
     const att = {
-      [BQ]: 1_600_000, [CAISSE]: 1_800_000, '2844': -600_000, '311': 400_000, '411': 500_000, '401': -800_000, '103': -3_600_000, '104': 0, '13': 0,
+      [BQ]: 1_600_000, [CAISSE]: 1_800_000, '2844': -700_000, '311': 400_000, '411': 500_000, '401': -800_000, '103': -3_900_000, '104': 0, '13': 0,
       '7011': -8_500_000, '6011': 4_300_000, '6031': 300_000, '6222': 1_200_000, '6412': 100_000, '6611': 1_800_000, '6813': 300_000,
     };
     for (const [racine, m] of Object.entries(att)) R.montant(`2027 · solde ${racine}`, m, solde(b, racine));
@@ -773,10 +858,10 @@ async function scenarioSmtSyscohada(registre) {
 
     const bilan = await c.lire('Bilan SMT 2027', `/etats-financiers-syscohada/smt/bilan?exerciceId=${n1}`);
     const f = aplatir(bilan);
-    for (const [ref, m] of Object.entries({ SA1: 600_000, SA2: 400_000, SA3: 500_000, SA4: 1_800_000, SA5: 1_600_000, SAZ: 4_900_000, SP1: 3_600_000, SP2: 500_000, SP3: 0, SP4: 800_000, SPZ: 4_900_000 })) {
+    for (const [ref, m] of Object.entries({ SA1: 900_000, SA2: 400_000, SA3: 500_000, SA4: 1_800_000, SA5: 1_600_000, SAZ: 5_200_000, SP1: 3_900_000, SP2: 500_000, SP3: 0, SP4: 800_000, SPZ: 5_200_000 })) {
       R.montant(`2027 · bilan SMT · ${ref}`, m, f[ref]?.n);
     }
-    for (const [ref, m] of Object.entries({ SAZ: 4_700_000, SP2: 600_000, SPZ: 4_700_000 })) R.montant(`2027 · bilan SMT · colonne N-1 · ${ref}`, m, f[ref]?.n1);
+    for (const [ref, m] of Object.entries({ SAZ: 5_000_000, SP2: 500_000, SPZ: 5_000_000 })) R.montant(`2027 · bilan SMT · colonne N-1 · ${ref}`, m, f[ref]?.n1);
 
     const cr = await c.lire('Compte de résultat SMT 2027', `/etats-financiers-syscohada/smt/compte-de-resultat?exerciceId=${n1}`);
     const g = aplatir(cr);
@@ -791,7 +876,7 @@ async function scenarioSmtSyscohada(registre) {
     R.egal('2027 · compte de résultat SMT · G concorde avec le résultat du bilan', true, cr?.controle?.concordant);
     R.egal('2027 · compte de résultat SMT · aucun règlement fournisseur laissé non rattaché', [], (cr?.reglementsNonRattaches ?? []).map((x) => `${x.numero} ${x.montant}`));
     // Colonne N-1 rejouée sur 2026 CLÔTURÉ · F lu dans les mouvements, pas dans le solde.
-    for (const [ref, m] of Object.entries({ SRA: 8_000_000, SF: 300_000, SG: 600_000 })) R.montant(`2027 · compte de résultat SMT · colonne N-1 · ${ref}`, m, g[ref]?.n1);
+    for (const [ref, m] of Object.entries({ SRA: 8_000_000, SF: 400_000, SG: 500_000 })) R.montant(`2027 · compte de résultat SMT · colonne N-1 · ${ref}`, m, g[ref]?.n1);
 
     const notes = await c.lire('Notes SMT 2027', `/etats-financiers-syscohada/smt/notes?exerciceId=${n1}`);
     R.montant('2027 · note 2 · stock final', 400_000, notes?.note2?.valeurStockFinal);
@@ -822,10 +907,56 @@ async function scenarioSmtSyscohada(registre) {
 
     const lia = await relireLiasse(c, R, '2027', `/exports/etats-financiers-syscohada/liasse-complete?exerciceId=${n1}`);
     const ligneLiasse = (debut) => (lia?.lignes ?? []).find((l) => l.intitule.startsWith(debut));
-    R.montant('2027 · liasse · total actif lu par CONTROLES', 4_900_000, ligneLiasse('Total actif')?.valeur);
+    R.montant('2027 · liasse · total actif lu par CONTROLES', 5_200_000, ligneLiasse('Total actif')?.valeur);
     R.montant('2027 · liasse · résultat G lu par CONTROLES', 500_000, ligneLiasse('RÉSULTAT EXERCICE')?.valeur);
     await exportsSmt(c, R, '2027', n1, 'etats-financiers-syscohada', ['bilan', 'compte-de-resultat', 'journal-tresorerie', 'notes']);
-    await confronterControles(c, R, '2027 · contrôles de clôture', n1, CONTROLES_COMMUNS);
+    await confronterControles(c, R, '2027 · contrôles de clôture', n1, CONTROLES_2027);
+  });
+
+  // CESSION AU SMT · les étagères vendues 250 000 en espèces le 30/06/2027.
+  // Fiches des COMPTES 81 et 82 · prix au 822, valeur nette au 812 ; l'annuité
+  // de l'année de sortie est « sans prorata temporis » au SMT (Titre X ch. 1
+  // § 1, lecture d'OmegaX · annuité pleine, 100 000) ; cumul 200 000, valeur
+  // nette 200 000. Le Titre X n'ouvre aucune ligne pour la valeur nette · le G
+  // du SMT en est majoré, TROU DU TEXTE que la table documente (anomalie
+  // n° 22 de `correspondance-smt-syscohada.ts`) et que le contrôle de
+  // concordance doit EXPOSER, jamais absorber. Joué APRÈS la relecture des
+  // états de 2027 pour que la liasse ci-dessus juge un dossier sans cession.
+  await etape(R, '2027 · cession des étagères (anomalie n° 22 du Titre X)', async () => {
+    if (!ctx.mobilier) return R.note('Étagères absentes · cession non jouée');
+    await c.geste('Cession des étagères', 'POST', `/immobilisations/${ctx.mobilier.id}/sortie`, {
+      dateSortie: '2027-06-30', type: 'CESSION', natureSortie: 'VENTE', prixCession: 250_000, compteContrepartieId: compte(c, CAISSE),
+      exerciceId: n1, journalId: ca.id, referencePieceSortie: 'VTE-ETAG-2027', datePieceSortie: '2027-06-30',
+    });
+    await validerJusqua(c, n1, '2027-12-31');
+    const b = await balance(c, n1);
+    // 6813 · 300 000 + 100 000 ; 2844 · − 700 000 − 100 000 + 200 000 soldé avec le bien.
+    for (const [racine, m] of Object.entries({ [CAISSE]: 2_050_000, '2444': 0, '2844': -600_000, '812': 200_000, '822': -250_000, '6813': 400_000 })) {
+      R.montant(`2027 après cession · solde ${racine}`, m, solde(b, racine));
+    }
+    // 500 000 + 250 000 − 200 000 − 100 000 = 450 000.
+    R.montant('2027 après cession · résultat (classes 6 à 8)', 450_000, -(solde(b, '6') + solde(b, '7') + solde(b, '8')));
+    const bilan = await c.lire('Bilan SMT 2027 après cession', `/etats-financiers-syscohada/smt/bilan?exerciceId=${n1}`);
+    const f = aplatir(bilan);
+    // SA1 600 000 ; SA4 2 050 000 ; SP2 450 000 · le bilan, lu en soldes, reste juste.
+    for (const [ref, m] of Object.entries({ SA1: 600_000, SA4: 2_050_000, SAZ: 5_150_000, SP2: 450_000, SPZ: 5_150_000 })) R.montant(`2027 après cession · bilan SMT · ${ref}`, m, f[ref]?.n);
+    const cr = await c.lire('Compte de résultat SMT 2027 après cession', `/etats-financiers-syscohada/smt/compte-de-resultat?exerciceId=${n1}`);
+    const g = aplatir(cr);
+    // SR2 · le prix au 822 (« crédité des produits de cession d'actif… par le
+    // débit d'un compte de trésorerie », COMPTE 82) ; F 300 000 + 100 000 ;
+    // G = (8 650 000 − 7 200 000) − (300 000 − 100 000) + (− 200 000) − 400 000 = 650 000.
+    for (const [ref, m] of Object.entries({ SR2: 250_000, SRA: 8_650_000, SC: 1_450_000, SF: 400_000, SG: 650_000 })) R.montant(`2027 après cession · compte de résultat SMT · ${ref}`, m, g[ref]?.n);
+    R.egal('2027 après cession · l’écart de la valeur nette est EXPOSÉ (non concordant)', false, cr?.controle?.concordant);
+    R.montant('2027 après cession · écart G − résultat du bilan = valeur nette cédée', 200_000, cr?.controle?.ecart);
+    R.montant('2027 après cession · écart entièrement expliqué (résiduel nul)', 0, cr?.controle?.residuel);
+    const notes = await c.lire('Notes SMT 2027 après cession', `/etats-financiers-syscohada/smt/notes?exerciceId=${n1}`);
+    const sortie = (notes?.note1?.sortiesDeLExercice ?? [])[0];
+    R.egal('2027 après cession · note 1 · le bien sorti figure à part, prix de cession', ['Étagères et comptoir', 250_000], [sortie?.designation ?? null, sortie?.prixCession ?? null]);
+    R.montant('2027 après cession · note 1 · total des biens détenus', 1_200_000, notes?.note1?.total);
+    const jt = await c.lire('Journal de trésorerie SMT 2027 après cession', `/etats-financiers-syscohada/smt/journal-tresorerie?exerciceId=${n1}`);
+    const jca = (jt?.journaux ?? []).find((j) => j.numero === CAISSE);
+    R.montant('2027 après cession · note 4 · caisse · colonne Matériel et Mobilier', 250_000, sommesVentilation(jca)['RECETTE:materielMobilier']);
+    R.montant('2027 après cession · note 4 · caisse · solde à reporter', 2_050_000, jca?.soldeAReporter);
   });
 
   await etape(R, 'Clôture 2027', () => cloturer(c, '2027'));
@@ -835,8 +966,9 @@ async function scenarioSmtSyscohada(registre) {
     if (!n2) return R.note('2028 absent après la clôture de 2027');
     const b = await balance(c, n2);
     R.montant('2028 · à-nouveau banque', 1_600_000, solde(b, BQ));
-    R.montant('2028 · à-nouveau résultat 2027 au 13', -500_000, solde(b, '13'));
-    R.montant('2028 · à-nouveau capital personnel', -3_600_000, solde(b, '103'));
+    R.montant('2028 · à-nouveau caisse', 2_050_000, solde(b, CAISSE));
+    R.montant('2028 · à-nouveau résultat 2027 au 13', -450_000, solde(b, '13'));
+    R.montant('2028 · à-nouveau capital personnel', -3_900_000, solde(b, '103'));
   });
 }
 
