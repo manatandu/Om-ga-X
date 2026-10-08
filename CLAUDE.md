@@ -339,9 +339,12 @@ route). LE 585 À LA CLÔTURE (G1, décision de Manasse du 2026-10-08) · le bil
 associations ne lit aucun 58 ; la clôture d'un dossier du groupe admet l'écart
 EXACTEMENT égal à son 585, au sens inverse, si le 585 du GROUPE est soldé à sa date
 de clôture (fiche SYCEBNL du compte 58, « soldés à la fin de l'exercice », sur
-l'entité) · position cumulée par la DATE des écritures, validées, hors écritures de
-clôture, jamais par des exercices de mêmes bornes (un siège à premier exercice long et
-sa cellule civile n'en partagent aucune), lue par `GroupeService.virements585DuGroupe`
+l'entité) · chaque membre lu COMME IL SE LIT LUI-MÊME, sur son exercice qui contient
+la date, ouverture comprise (report, import ou OD), en remontant l'exercice précédent
+non clôturé sans ouverture validée ; jamais par des exercices de mêmes bornes (un
+siège à premier exercice long et sa cellule civile n'en partagent aucune), ni par la
+seule date hors écritures de clôture (l'import en sortait, l'OD comptait deux fois),
+lue par `GroupeService.virements585DuGroupe`
 derrière `LECTEUR_VIREMENTS_GROUPE`, seule lecture hors du périmètre d'un siège,
 déclarée dans `borne-par-la-valeur.spec.ts` (le groupe pris sur la mère du dossier de
 session, une somme seule en sort) · admis sur la foi de la liasse, un transfert passé

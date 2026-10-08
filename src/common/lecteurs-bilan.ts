@@ -35,9 +35,9 @@ export const LECTEUR_VIREMENTS_GROUPE = 'LECTEUR_VIREMENTS_GROUPE';
 
 export interface LecteurVirementsGroupe {
   /**
-   * Position cumulée du 585 (débit moins crédit) de tous les dossiers du
-   * groupe à cette date, lignes validées datées au plus tard ce jour, hors
-   * écritures générées par la clôture.
+   * Position du 585 (débit moins crédit) de tous les dossiers du groupe à
+   * cette date, chacun lu sur son exercice qui la contient, ouverture
+   * comprise, en remontant les exercices non clôturés sans ouverture validée.
    */
   virements585DuGroupe(tenantId: string, dateArrete: Date): Promise<{ solde: number }>;
 }

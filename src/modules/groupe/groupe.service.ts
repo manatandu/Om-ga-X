@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { prochainNumeroPiece } from '../journaux/numerotation-piece';
+import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { AuthService } from '../auth/auth.service';
 import { ClasseurExporte, ExportService } from '../exports/export.service';
@@ -290,17 +291,21 @@ export class GroupeService {
    * dossiers, puis la liasse du groupe restait refusée sans issue (exercices
    * clos).
    *
-   * LA POSITION CUMULÉE À LA DATE DE CLÔTURE, PAR LA DATE DES ÉCRITURES ·
-   * jamais par « l'exercice de même période » (second tour) · un siège à
-   * premier exercice long (art. 7) et sa cellule civile ne partagent aucune
-   * borne, la lecture n'en voyait qu'un côté, et les deux clôtures étaient
-   * refusées pour toujours. Chaque dossier du groupe pèse ses lignes du 585
-   * VALIDÉES et datées au plus tard ce jour, tous exercices confondus, hors
-   * écritures générées par la clôture (le report à-nouveau reprendrait ce
-   * qui est déjà compté ; le solde des comptes de gestion ne touche pas la
-   * classe 5) · la position ne dépend ni des bornes des exercices voisins ni
-   * de leur clôture. Le bilan d'ouverture importé d'un premier exercice,
-   * qui n'est pas généré par la clôture, compte une fois.
+   * CHAQUE MEMBRE SE LIT COMME IL SE LIT LUI-MÊME, à la date de clôture ·
+   * son exercice qui contient la date (à défaut, le dernier fini avant),
+   * OUVERTURE COMPRISE (report de clôture, bilan d'ouverture importé ou
+   * ouverture en opérations diverses), ses lignes du 585 validées datées au
+   * plus tard ce jour, hors solde des comptes de gestion. On ne remonte à
+   * l'exercice précédent que s'il n'est pas clôturé ET qu'aucune ouverture
+   * validée n'est passée au premier jour (même périmètre que la clôture,
+   * `filtreOuverturePasseeAuPremierJour`) · l'ouverture n'est alors que le
+   * provisoire, qui ne compte pas. Trois lectures ont été écartées en
+   * relecture · par « l'exercice de même période » (un siège à premier
+   * exercice long et sa cellule civile ne partagent aucune borne, les deux
+   * clôtures restaient refusées pour toujours) ; par la date seule, hors
+   * écritures générées par la clôture (un bilan d'ouverture IMPORTÉ, qui porte
+   * ce drapeau, sortait de la somme ; une ouverture saisie en OD s'ajoutait à
+   * l'historique qu'elle reprend).
    *
    * LE GROUPE ENTIER, POUR UNE SOMME · seule méthode qui franchit hors de
    * `dansLeGroupe`, déclarée comme telle dans `borne-par-la-valeur.spec.ts`
@@ -319,19 +324,48 @@ export class GroupeService {
       })
     ).map((m) => m.id);
     return perimetreDeGroupe(membres, async () => {
-      const agregat = await this.prisma.ligneEcriture.aggregate({
-        where: {
-          compte: { tenantId: { in: membres }, numero: { startsWith: '585' } },
-          ecriture: {
-            tenantId: { in: membres },
-            date: { lte: dateArrete },
-            statut: StatutEcriture.VALIDEE,
-            estGenereeParCloture: false,
-          },
-        },
-        _sum: { debit: true, credit: true },
+      // Les exercices commencés au plus tard la date · le dernier de chaque
+      // membre contient la date, ou est le dernier fini avant elle.
+      const exercices = await this.prisma.exercice.findMany({
+        where: { tenantId: { in: membres }, dateDebut: { lte: dateArrete } },
+        select: { id: true, tenantId: true, dateDebut: true, statut: true },
+        orderBy: { dateDebut: 'asc' },
       });
-      return { solde: Math.round((Number(agregat._sum.debit ?? 0) - Number(agregat._sum.credit ?? 0)) * 100) / 100 };
+      const lire585 = async (membre: string, exerciceId: string) => {
+        const a = await this.prisma.ligneEcriture.aggregate({
+          where: {
+            compte: { tenantId: membre, numero: { startsWith: '585' } },
+            ecriture: {
+              tenantId: membre,
+              exerciceId,
+              date: { lte: dateArrete },
+              statut: StatutEcriture.VALIDEE,
+              estSoldeDesComptesDeGestion: false,
+            },
+          },
+          _sum: { debit: true, credit: true },
+        });
+        return Number(a._sum.debit ?? 0) - Number(a._sum.credit ?? 0);
+      };
+      const ouvertureValidee = async (membre: string, exercice: { id: string; dateDebut: Date }) =>
+        (await this.prisma.ecriture.count({
+          // Le dossier écrit en clair · le filtre le porte aussi, mais la
+          // garde et son balayage le lisent ici.
+          where: { ...filtreOuverturePasseeAuPremierJour(membre, exercice), tenantId: membre, statut: StatutEcriture.VALIDEE },
+        })) > 0;
+
+      let total = 0;
+      for (const membre of membres) {
+        const siens = exercices.filter((e) => e.tenantId === membre);
+        let i = siens.length - 1;
+        if (i < 0) continue;
+        total += await lire585(membre, siens[i].id);
+        while (i > 0 && siens[i - 1].statut !== StatutExercice.CLOTURE && !(await ouvertureValidee(membre, siens[i]))) {
+          i -= 1;
+          total += await lire585(membre, siens[i].id);
+        }
+      }
+      return { solde: Math.round(total * 100) / 100 };
     });
   }
 
