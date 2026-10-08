@@ -103,6 +103,7 @@ function monterScenario() {
     creanceDouteuse: { findFirst: jest.fn().mockResolvedValue(creance) },
     ajustementCreanceDouteuse: { findFirst: jest.fn().mockResolvedValue(null) },
     recuperationTvaCreance: { count: jest.fn().mockResolvedValue(0) },
+    declarationDeviseANouveau: { count: jest.fn().mockResolvedValue(0) },
     mouvementCreanceDouteuse: {
       findFirst: jest.fn().mockImplementation(({ where }: any) => {
         const m = mouvements.find((x) => x.id === where.id && x.creanceId === where.creanceId);

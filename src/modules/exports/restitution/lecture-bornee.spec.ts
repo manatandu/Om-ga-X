@@ -95,8 +95,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // tenantId (A7 bis), 151 avec les imputations déclarées des paiements,
     // bornées par leur tenantId (décision par la loi du 2026-10-07, point 4),
     // 152 avec les récupérations de la TVA des créances irrécouvrables,
-    // bornées par leur tenantId (A7 bis, partie 2).
-    expect(modeles).toHaveLength(152);
+    // bornées par leur tenantId (A7 bis, partie 2), 153 avec les devises
+    // déclarées des à-nouveaux, bornées par leur tenantId (AU3).
+    expect(modeles).toHaveLength(153);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

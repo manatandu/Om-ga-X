@@ -72,6 +72,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   MouvementCreanceDouteuse: 'Perte ou recouvrement d’une créance douteuse',
   FactureCreanceDouteuse: 'Facture désignée d’une créance douteuse',
   RecuperationTvaCreance: 'Récupération de la TVA d’une créance irrécouvrable',
+  DeclarationDeviseANouveau: 'Devise déclarée d’une ligne d’à-nouveau',
   ImputationPaiement: 'Imputation déclarée d’un paiement',
   ConstatImpotResultat: 'Écriture de l’impôt sur le résultat',
   ProcesVerbalComptageCaisse: 'Procès-verbal de comptage de caisse',

@@ -840,6 +840,7 @@ model Tenant {
   mouvementsCreancesDouteuses  MouvementCreanceDouteuse[]
   facturesCreancesDouteuses    FactureCreanceDouteuse[]
   recuperationsTvaCreances     RecuperationTvaCreance[]
+  declarationsDeviseANouveau   DeclarationDeviseANouveau[]
   imputationsPaiements         ImputationPaiement[]
   verrouCreancesDouteuses      VerrouCreancesDouteuses?
   constatsImpotResultat        ConstatImpotResultat[]
@@ -1626,6 +1627,7 @@ model Exercice {
   ajustementsCreancesDouteuses AjustementCreanceDouteuse[]
   mouvementsCreancesDouteuses  MouvementCreanceDouteuse[]
   recuperationsTvaCreances     RecuperationTvaCreance[]
+  declarationsDeviseANouveau   DeclarationDeviseANouveau[]
   constatsImpotResultat        ConstatImpotResultat[]
   cloturesLocationAcquisition  ClotureLocationAcquisition[]
   depreciationsImmo            DepreciationImmobilisation[]
@@ -1717,6 +1719,7 @@ model Ecriture {
   ajustementCreanceDouteuse   AjustementCreanceDouteuse?
   mouvementCreanceDouteuse    MouvementCreanceDouteuse?
   recuperationTvaCreance      RecuperationTvaCreance?
+  declarationDeviseANouveau   DeclarationDeviseANouveau?
   constatImpotResultat        ConstatImpotResultat?
   clotureLocationAcquisition  ClotureLocationAcquisition?        @relation("ClotureLocationAcquisitionEcriture")
   extourneLocationAcquisition ClotureLocationAcquisition?        @relation("ClotureLocationAcquisitionExtourne")
@@ -9903,4 +9906,56 @@ model ConstatImpotResultat {
   @@unique([exerciceId, annuleeLe])
   @@index([tenantId])
   @@map("constats_impot_resultat")
+}
+
+/// LA DEVISE D'UNE LIGNE D'À-NOUVEAU DÉCLARÉE APRÈS COUP (ligne AU3,
+/// 2026-10-08). Une balance d'ouverture importée sans devise a fait de
+/// créances et dettes en devises des lignes en francs, que la réévaluation de
+/// clôture ne lit pas (AUDCIF art. 54). Le cabinet DÉCLARE, pièce à l'appui,
+/// quelle part de la ligne est en quelle devise · rien n'est deviné. Une
+/// déclaration par ligne d'origine, jamais refaite.
+///
+/// Trois modes · EN_FRANCS (la ligne est en francs, rien ne change), BROUILLARD
+/// (la ligne non validée est complétée en place, ses autres parts naissent
+/// dans la même pièce), CORRECTION (la ligne validée est inscrite en négatif
+/// puis ses parts exactes dans une pièce de correction, AUDCIF art. 20,
+/// al. 2). Au journal d'audit.
+///
+/// La ligne et l'écriture d'origine sont gardées par leur IDENTIFIANT, sans
+/// clé étrangère · un à-nouveau au brouillard se supprime pour être
+/// réimporté, et la déclaration reste l'histoire de ce qui a été dit. La
+/// pièce de correction, VALIDÉE, est RETENUE (RESTRICT, `detenteurs-ecriture`).
+model DeclarationDeviseANouveau {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  exerciceId String
+  exercice   Exercice @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+
+  ecritureOrigineId String
+  ligneOrigineId    String @unique
+  compteId          String
+
+  /// EN_FRANCS, BROUILLARD ou CORRECTION.
+  mode          String
+  /// Le montant de la ligne d'origine, en monnaie de tenue, sans signe.
+  montantLigne  Decimal @db.Decimal(18, 2)
+  /// [{ deviseId, devise, montantDevise, coursApplique, montant }] · figé.
+  parts         Json
+  resteEnFrancs Decimal @db.Decimal(18, 2)
+  /// La pièce qui établit la devise et le montant en devise.
+  source        String
+
+  /// La pièce de correction d'une ligne validée.
+  ecritureCorrectionId String?   @unique
+  ecritureCorrection   Ecriture? @relation(fields: [ecritureCorrectionId], references: [id], onDelete: Restrict)
+  /// Les lignes nées de la déclaration · elles sortent de la liste.
+  lignesResultantes    Json?
+
+  createdAt DateTime @default(now())
+  createdBy String
+
+  @@index([tenantId, exerciceId])
+  @@map("declarations_devise_a_nouveau")
 }

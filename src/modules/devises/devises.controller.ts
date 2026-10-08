@@ -6,6 +6,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AccesRolesCantonnes, ReserveAuComptable } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { DevisesService } from './devises.service';
+import { DeclarationDeviseANouveauService } from './declaration-devise-a-nouveau.service';
+import { DeclarerDeviseANouveauDto } from './dto/declaration-devise-a-nouveau.dto';
 import {
   AnnulerReevaluationDto,
   CreerDeviseDto,
@@ -26,7 +28,31 @@ import { EXERCICE_REQUIS } from '../../common/exercice-requis';
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('devises')
 export class DevisesController {
-  constructor(private readonly devises: DevisesService) {}
+  constructor(
+    private readonly devises: DevisesService,
+    private readonly declarations: DeclarationDeviseANouveauService,
+  ) {}
+
+  /**
+   * LES À-NOUVEAUX SANS DEVISE QUI RESTENT À DÉCLARER (ligne AU3) · nommés,
+   * jamais devinés · chacun avec le refus qui le tient aujourd'hui.
+   */
+  @Get('a-nouveaux/a-declarer')
+  async aNouveauxADeclarer(@CurrentUser() user: AuthenticatedUser) {
+    return this.declarations.restantADeclarer(user.tenantId);
+  }
+
+  /**
+   * DÉCLARER LA DEVISE D'UNE LIGNE D'À-NOUVEAU (ligne AU3) · au brouillard
+   * en place, validée par inscription en négatif (AUDCIF art. 20, al. 2) ;
+   * une décision de validation, réservée au comptable.
+   */
+  @Post('a-nouveaux/declaration')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @ReserveAuComptable()
+  async declarerDeviseANouveau(@CurrentUser() user: AuthenticatedUser, @Body() dto: DeclarerDeviseANouveauDto) {
+    return this.declarations.declarer(user.tenantId, user.userId, dto);
+  }
 
   /**
    * Ouverte au gestionnaire de paie (audit final F247) · il doit voir la

@@ -13,6 +13,7 @@ import { cotationBorneeAuCoursDuJour, DEVISE_COTEE_PAR_LA_PAIE, jourDeKinshasaIs
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ProvisionChangeOuverture } from '../components/ProvisionChangeOuverture';
 import { PortailModale } from '../components/PortailModale';
+import { ANouveauxADeclarer } from '../components/ANouveauxADeclarer';
 import { MOTIF_ANNULATION_MAX, motifRefusMotifAnnulation } from '../lib/motif-annulation';
 import { ecouterEchap } from '../lib/echap';
 import { AVERTISSEMENT_ATTESTATION, MOTIF_ATTESTATION_MAX, motifRefusAttestation } from '../lib/attestation-etat';
@@ -1017,6 +1018,11 @@ export function DevisesPage() {
               </div>
             )}
           </section>
+        )}
+        {/* Les à-nouveaux importés sans devise (ligne AU3) · ce qui reste à
+            déclarer, nommé par le serveur, avant de réévaluer. */}
+        {!coursDuJourSeul && devises !== null && (
+          <ANouveauxADeclarer devises={devises} peutValider={peutValider} apresDeclaration={() => void charger()} />
         )}
       </div>
       {aAnnuler && (

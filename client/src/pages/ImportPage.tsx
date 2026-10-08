@@ -5,6 +5,7 @@ import { useExercice } from '../lib/exercice';
 import { Aide } from '../components/chrome/Aide';
 import type { AnalyseImport, RapportImport, TypeImport } from '../lib/types';
 import { montant } from '../lib/montants';
+import { modeleImport, nomModeleImport } from '../lib/modele-import';
 
 /**
  * IMPORT · Fichier → Importer chez Sage. Aucun des manuels du Drive ne décrit
@@ -172,9 +173,16 @@ export function ImportPage() {
                     2. Le fichier
                     <Aide
                       titre="Format du fichier"
-                      texte="CSV (point-virgule ou virgule, détecté automatiquement) ou classeur .xlsx. Les montants au format francophone sont lus tels quels : espaces de milliers, virgule décimale, parenthèses pour le négatif."
-                      source="Importer des données"
+                      texte="CSV (point-virgule ou virgule, détecté automatiquement) ou classeur .xlsx. Les montants au format francophone sont lus tels quels : espaces de milliers, virgule décimale, parenthèses pour le négatif. Une balance ou des écritures peuvent porter trois colonnes facultatives pour une ligne en devise · Montant en devise, Devise (code ISO, USD) et Cours. Le montant de la ligne reste en francs, contrevaleur au centime du montant en devise au cours ; sans cours, il se déduit des deux montants. Une créance ou une dette importée avec sa devise est réévaluée à la clôture ; sans elle, elle reste au cours d'origine."
+                      source="AUDCIF art. 52 et 54"
                     />
+                    <a
+                      href={`data:text/csv;charset=utf-8,${encodeURIComponent(modeleImport(type))}`}
+                      download={nomModeleImport(type)}
+                      className="ml-auto text-sel font-normal hover:underline"
+                    >
+                      Modèle de fichier
+                    </a>
                   </div>
                   <input
                     type="file"

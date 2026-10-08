@@ -64,6 +64,7 @@ function monter(options: { autreDetenteur?: boolean } = {}) {
     ajustementCreanceDouteuse: zero(),
     mouvementCreanceDouteuse: zero(),
     recuperationTvaCreance: zero(),
+    declarationDeviseANouveau: zero(),
     constatImpotResultat: zero(),
     consignation: zero(),
     bulletinPaie: zero(),

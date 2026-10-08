@@ -152,7 +152,17 @@ base réelle (gardés pour l'audit par décision de Manasse du 2026-10-03).**
   N+1.
 - AU3 · une balance importée perd la devise · l'ancienne créance n'est
   jamais réévaluée (3 200 000 au lieu de 1 500 USD au cours de 2 400, soit
-  3 600 000).
+  3 600 000). CODÉE sur `travail/au3` (2026-10-08), à intégrer · l'import de
+  balance lit Devise, Montant en devise et Cours (règle de la saisie, AUDCIF
+  art. 52) ; une ligne d'à-nouveau déjà passée se DÉCLARE (au brouillard en
+  place, validée par inscription en négatif, art. 20 al. 2), ce qui reste est
+  nommé. Rejouée sur vraie base à travers une clôture (40 contrôles) · une
+  créance qui monte avec le cours va au 479 sans provision, seule la dette va
+  au 478 avec sa provision (art. 54). Relecture adverse (B1, M1, M2, M3, m1,
+  m5, m6) corrigée · règlements en francs non lettrés refusés et nommés,
+  réévaluation d'un exercice postérieur lue, héritage ligne à ligne, pièce de
+  correction hors des écritures de clôture. Relevés en attente · m2, m3, m4
+  (fiche `AVANCEMENT-au3.md`), report au solde non retrouvé (nommé, sans geste).
 
 ## Design de l'interface · les quatre maquettes, à reprendre après la liste
 
@@ -180,6 +190,12 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 | D7 | Créances douteuses (A7 ter, mineur 8) · au SYCEBNL, sous la méthode des cotisations à l'ENCAISSEMENT, un impayé d'adhérent (4131 chèques impayés, 4133 autres valeurs impayées) se reclasse-t-il au 4161 ? Lu · la fiche SYCEBNL du compte 41 (« Les chèques, effets à payer et autres valeurs revenus impayés doivent être enregistrés dans le compte 413 ») et le cadre conceptuel § 5.4.2.1 (cotisations « comptabilisées lors de leur encaissement effectif » faute de droit d'agir) · aucun ne dit si une valeur remise puis revenue impayée a été encaissée, les deux textes ne se hiérarchisent pas | RÉGLÉE PAR LA LOI le 2026-10-07, CODÉE et intégrée le même jour (M8, M9) (`docs/decisions-par-la-loi-2026-10-07-bis.md`, point 5) · sous l'encaissement, une valeur revenue impayée n'a jamais été encaissée (fiche SYCEBNL du compte 51 ; cadre conceptuel § 5.4.2.1) · le 4131 et le 4133 sont REFUSÉS comme le 411, l'avertissement devient un refus nommé ; reclassements déjà passés signalés, jamais défaits d'office · CODÉE sur `travail/decisions-loi-3` (refus du reclassement, de la déclaration et de la perte au 6512 ; contrôle `CREANCE_ADHERENT_RECLASSEE_SOUS_ENCAISSEMENT`), à intégrer · PREMIÈRE RELECTURE (2026-10-07) · M8, la méthode qui juge la perte, la dotation (refusée, reprise ouverte) et le contrôle est celle du JOUR DU RECLASSEMENT, figée au geste ou reconstituée sur le journal d'audit, sinon dite inconnue sans refus ; M9, « Corriger par le résultat » désigne l'écriture du cabinet qui solde la créance d'un exercice clos (cadre conceptuel § 3.3.1.2.4) et la sort du module · limite écrite, le contrôle ne lit que le dossier qui déclare l'encaissement aujourd'hui |
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
+
+- LIGNE AU3 INTÉGRÉE, relevés de la seconde relecture ·
+  - m2 · déclaration sur une ligne REPORT · l'art. 20 al. 4 veut une mention aux Notes annexes, rien ne la signale ; aucun contrôle ne dit que l'ouverture de N+1 diffère alors, devise par devise, de la clôture de N (en francs, l'art. 34 tient).
+  - m3 · la liste lit le contexte de l'exercice (réévaluation, précédent ouvert) à la date de la première candidate · les lignes d'à-nouveau partagent la date d'ouverture ; B1 est désormais lu par compte et par sens.
+  - m4 · le lettrage concurrent n'est relu que par `count` dans la transaction, sans verrou de ligne · fenêtre étroite.
+  - Report au SOLDE d'une ligne non déclarée · nommé, sans geste dédié (correction par inscription en négatif à la main).
 
 - LIGNE A7 BIS PARTIE 2 (TVA de l'art. 52) INTÉGRÉE, relevés de la seconde relecture ·
   - NÉGATIF D'UNE VENTE CORRIGÉE · un crédit NÉGATIF du 443 à taux (inscription en

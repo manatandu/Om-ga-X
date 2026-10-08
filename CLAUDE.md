@@ -506,6 +506,44 @@ coté à la date de la pièce. **La devise suit le report (F54, F55)** : DÉTAIL
 ligne, SOLDE une ligne par devise au cours moyen. Une seule réévaluation par
 exercice (index unique), écarts passés sans devise.
 
+**Une balance importée garde sa devise (ligne AU3, 2026-10-08).** L'import d'une
+balance ou d'un bilan d'ouverture lit, comme l'import d'écritures, les colonnes
+facultatives Montant en devise, Devise et Cours (`lireDeviseDeLaLigne`), jugées
+ligne par ligne par la règle de la saisie (`motifRefusLigneEnDevise`,
+simulation comprise) · sans elles, une créance de 1 500 USD reprise pour
+3 200 000 restait en francs, et la réévaluation de clôture (AUDCIF art. 54) ne
+la lisait jamais. Une ligne d'à-nouveau DÉJÀ passée sans devise n'est jamais
+retouchée d'office · le cabinet la DÉCLARE (`DeclarationDeviseANouveau`, au
+journal d'audit, source exigée, une par ligne) · parts en devise, le reste en
+francs, ou « en francs » ; au brouillard la ligne est complétée en place, validée
+elle est inscrite en négatif puis exacte dans une pièce de correction (art. 20,
+al. 2 ; art. 22, 2°), le négatif lettré avec l'origine quand le lettrage le
+permet. LA CORRECTION EST UNE SAISIE (relecture adverse, M3) · sans
+`estGenereeParCloture`, elle reste au contrôle `VALIDATION_PAR_SON_AUTEUR` et au
+test des écritures de journal, reconnue par sa LIAISON
+(`ecritureCorrectionId`) ; validée d'office (précédent D6), au BROUILLARD sous le
+double regard. Refus · ligne lettrée ou pointée, réévaluation non annulée d'un
+exercice qui COMMENCE au plus tôt avec celui de la ligne (M1 · N+1 réévalué a lu
+le report en francs ; annuler à partir de la plus récente, déclarer, réévaluer
+dans l'ordre), RÈGLEMENTS EN FRANCS non lettrés postérieurs sur le compte (B1,
+art. 54 · colonne du règlement seule, débit d'une dette, crédit d'une créance,
+hors écritures de réévaluation et de correction reconnues par liaison ; pièce,
+date et montant nommés ; issues · les annuler par une contre-passation lettrée et les repasser en devise, ou les lettrer avec les
+pièces en francs qu'ils règlent), report d'une ligne déjà déclarée (M2),
+exercice précédent encore ouvert (sa clôture confronte l'ouverture devise par
+devise, AU2), compte qui ne se réévalue pas, à-nouveau provisoire, exercice
+clos. Ce qui reste à déclarer est NOMMÉ (`GET /devises/a-nouveaux/a-declarer`) ·
+lignes importées sans devise sur une créance, une dette ou une disponibilité,
+et le report AU DÉTAIL d'une telle ligne non déclarée, apparié LIGNE À LIGNE
+(`apparierReports`, clé compte, montants, échéance et libellé « RAN détail »),
+jamais par compte · une facture en francs reportée sur le même compte garde son
+appariement à-nouveau / facture ; un report non retrouvé (au solde) ou ambigu
+est nommé (`nonRetrouvees`). Seulement si le dossier a une devise étrangère.
+« CDF » dans la colonne Devise se lit sans devise quand montant et cours le
+confirment (m1). Une créance qui monte avec le cours est un GAIN latent (479,
+sans provision) ; seule la dette donne la perte probable (478) et sa provision
+(art. 54).
+
 **La provision pour pertes de change S'AJUSTE (A5, 2026-10-02).** D1 (2026-10-03) · la réévaluation se
 fait à la date de CLÔTURE et à elle seule (art. 54, ch. 22 § 2.2) · `reevaluer` refuse
 toute autre date (400), l'écran ne la laisse pas changer, une réévaluation passée

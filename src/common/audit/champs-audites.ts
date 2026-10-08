@@ -151,6 +151,9 @@ export const MODELES_AUDITES = new Set<string>([
   // La récupération de la TVA d'une créance irrécouvrable (ligne A7 bis,
   // partie 2) · les duplicatas, la preuve et l'annulation avec son motif.
   'RecuperationTvaCreance',
+  // La devise d'une ligne d'à-nouveau déclarée après coup (ligne AU3) · elle
+  // change ce que la réévaluation de clôture lit, sur une écriture équilibrée.
+  'DeclarationDeviseANouveau',
   // L'imputation déclarée d'un paiement (Code civil, Livre III, art. 151 et
   // 153) · elle date la TVA à l'encaissement, sa pièce et son retrait motivé.
   'ImputationPaiement',

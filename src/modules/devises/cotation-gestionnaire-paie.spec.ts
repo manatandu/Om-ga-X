@@ -2,6 +2,7 @@ import { ConflictException, ExecutionContext, ForbiddenException, NotFoundExcept
 import { Reflector } from '@nestjs/core';
 import { Prisma, RoleUtilisateur } from '@prisma/client';
 import { DevisesController } from './devises.controller';
+import { DeclarationDeviseANouveauService } from './declaration-devise-a-nouveau.service';
 import { DevisesService } from './devises.service';
 import type { PrismaService } from '../../common/prisma.service';
 import type { EcritureService } from '../comptabilite/ecriture.service';
@@ -144,7 +145,7 @@ describe('le contrôleur borne la cotation du gestionnaire de paie', () => {
     const lister = jest.fn(async (tenantId: string) => DEVISES_DU_DOSSIER[tenantId] ?? []);
     const poserCours = jest.fn(async () => ({ ok: true }));
     const ajouterCours = jest.fn(async () => ({ ok: true }));
-    const controleur = new DevisesController({ lister, poserCours, ajouterCours } as unknown as DevisesService);
+    const controleur = new DevisesController({ lister, poserCours, ajouterCours } as unknown as DevisesService, {} as DeclarationDeviseANouveauService);
     return { controleur, lister, poserCours, ajouterCours };
   }
   const utilisateur = (role: RoleUtilisateur, tenantId = 't-1') =>
@@ -271,7 +272,7 @@ describe('un cours déjà coté ne se réécrit pas par le gestionnaire de paie'
       },
     };
     const service = new DevisesService(prisma as unknown as PrismaService, {} as EcritureService);
-    const controleur = new DevisesController(service);
+    const controleur = new DevisesController(service, {} as DeclarationDeviseANouveauService);
     const coursDu = (iso: string) =>
       cours.find((c) => c.date.toISOString() === new Date(iso).toISOString())?.cours.toString() ?? null;
     return { prisma, controleur, coursDu };

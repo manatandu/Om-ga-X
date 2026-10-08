@@ -104,6 +104,10 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // partie 2) · retirée seule, la créance se dirait récupérée sans la pièce
   // qui porte la déduction, et la récupération ne se repasserait plus.
   'RecuperationTvaCreance.ecritureId',
+  // La devise déclarée d'un à-nouveau validé (ligne AU3) · retirée seule, la
+  // pièce de correction laisserait la ligne se dire déclarée sans les parts
+  // en devise que la réévaluation lit.
+  'DeclarationDeviseANouveau.ecritureCorrectionId',
   // La correction par le résultat d'une créance (relecture du 2026-10-07,
   // M9) · retirée, réimputée ou corrigée seule, l'écriture laisserait la
   // créance sortie du module sans la pièce qui la solde au 416 et au 491.

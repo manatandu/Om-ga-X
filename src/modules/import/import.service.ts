@@ -10,8 +10,9 @@ import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
 import { AnalyserImportDto, ExecuterImportDto, TypeImport } from './dto/import.dto';
 import { lireDate, lireFichier, lireMontant, type Tableau } from './lecture-fichier';
 import { classeDuNumero } from '../comptes/classe-du-numero';
-import { coursDeLaLigne } from '../comptabilite/ligne-en-devise';
+import { coursDeLaLigne, motifRefusLigneEnDevise } from '../comptabilite/ligne-en-devise';
 import { horsDuReport } from '../exercice/report-a-nouveau';
+import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
 
 /**
  * Tranches des insertions groupées de l'import · une requête PostgreSQL porte
@@ -43,6 +44,77 @@ interface ChampAttendu {
   indices: string[];
 }
 
+/**
+ * Les trois colonnes d'une ligne en devise, communes à la balance et aux
+ * écritures · une seule liste, pour que les deux imports se lisent pareil. Le
+ * montant en devise passe AVANT le code, pour qu'une colonne « Montant en
+ * devise » ne soit pas prise pour la devise elle-même.
+ */
+const CHAMPS_DEVISE: ChampAttendu[] = [
+  { cle: 'montantDevise', libelle: 'Montant en devise', obligatoire: false, indices: ['montant en devise', 'montant devise'] },
+  { cle: 'devise', libelle: 'Devise (code ISO)', obligatoire: false, indices: ['devise', 'monnaie'] },
+  { cle: 'cours', libelle: 'Cours appliqué', obligatoire: false, indices: ['cours', 'taux de change'] },
+];
+
+/** Ce qu'une ligne de fichier dit de sa devise · rien, un refus, ou les trois champs. */
+type LectureDevise =
+  | { enDevise: false }
+  | { enDevise: true; refus: string }
+  | { enDevise: true; refus: null; deviseId: string; montantDevise: number; coursApplique?: number };
+
+/**
+ * LA DEVISE D'UNE LIGNE DE FICHIER, lue de la même façon par les deux imports.
+ * La devise est nommée par son code ISO et doit exister au dossier ; le
+ * montant en devise est lu comme un montant, le cours aussi. Les RÈGLES de la
+ * ligne (monnaie de tenue refusée comme devise, contrevaleur au centime) sont
+ * celles de la saisie (`motifRefusLigneEnDevise`), jouées par l'appelant ·
+ * jamais réécrites ici.
+ */
+export function lireDeviseDeLaLigne(
+  codeDevise: string,
+  texteMontantDevise: string,
+  texteCours: string,
+  numero: string,
+  devisesParCode: Map<string, { id: string; code: string }>,
+  montantFrancs: number,
+): LectureDevise {
+  const code = codeDevise.trim().toUpperCase();
+  if (!code && !texteMontantDevise && !texteCours) return { enDevise: false };
+  // LA MONNAIE DE TENUE DANS LA COLONNE DEVISE (relecture adverse, m1) · un
+  // fichier exporté d'un autre logiciel écrit souvent « CDF » sur chaque
+  // ligne. Ce n'est pas une devise (loi n° 23/053 art. 141, 1° ; AUDCIF
+  // art. 17, 1°) · lue « sans devise », pourvu que ce qui l'accompagne le
+  // confirme (montant égal à la ligne, cours 1 ou vide), sinon refusée.
+  if (code === MONNAIE_DE_TENUE) {
+    const montant = texteMontantDevise ? lireMontant(texteMontantDevise) : null;
+    const cours = texteCours ? lireMontant(texteCours) : null;
+    const montantConcorde = !texteMontantDevise || (montant !== null && Math.abs(Math.abs(montant) - Math.abs(montantFrancs)) < 0.005);
+    const coursConcorde = !texteCours || (cours !== null && Math.abs(cours - 1) < 1e-9);
+    if (montantConcorde && coursConcorde) return { enDevise: false };
+    return {
+      enDevise: true,
+      refus:
+        `${MONNAIE_DE_TENUE} est la monnaie de tenue, pas une devise · sur le compte ${numero}, son montant doit être celui ` +
+        'de la ligne et son cours 1, ou laissez les colonnes vides.',
+    };
+  }
+  const devise = devisesParCode.get(code);
+  if (!devise) {
+    return {
+      enDevise: true,
+      refus: code
+        ? `Devise « ${code} » inconnue du dossier · créez-la dans la fenêtre Devises.`
+        : `Montant en devise ou cours sans devise sur le compte ${numero}.`,
+    };
+  }
+  const montantDevise = lireMontant(texteMontantDevise);
+  const cours = texteCours ? lireMontant(texteCours) : null;
+  if (montantDevise === null || (texteCours && cours === null)) {
+    return { enDevise: true, refus: `Montant en devise ou cours illisible sur le compte ${numero}.` };
+  }
+  return { enDevise: true, refus: null, deviseId: devise.id, montantDevise, ...(cours !== null ? { coursApplique: cours } : {}) };
+}
+
 const CHAMPS: Record<TypeImport, ChampAttendu[]> = {
   [TypeImport.PLAN_COMPTES]: [
     { cle: 'numero', libelle: 'Numéro de compte', obligatoire: true, indices: ['numero', 'compte', 'code'] },
@@ -54,6 +126,14 @@ const CHAMPS: Record<TypeImport, ChampAttendu[]> = {
     { cle: 'intitule', libelle: 'Intitulé', obligatoire: false, indices: ['intitule', 'libelle', 'designation'] },
     { cle: 'debit', libelle: 'Solde débiteur', obligatoire: true, indices: ['debit', 'debiteur'] },
     { cle: 'credit', libelle: 'Solde créditeur', obligatoire: true, indices: ['credit', 'crediteur'] },
+    // LIGNES EN DEVISE (ligne AU3, 2026-10-08) · facultatives, comme pour les
+    // écritures. Une balance d'ouverture perdait la devise de ses créances et
+    // dettes · la réévaluation de clôture ne trouvait aucune position (elle ne
+    // lit que les lignes qui portent une devise), et 1 500 USD repris pour
+    // 3 200 000 FC restaient à 3 200 000 au bilan quand le cours de clôture
+    // en faisait 3 600 000 (AUDCIF art. 54). Même ordre que pour les
+    // écritures · le montant en devise avant le code.
+    ...CHAMPS_DEVISE,
   ],
   [TypeImport.ECRITURES]: [
     { cle: 'date', libelle: 'Date', obligatoire: true, indices: ['date'] },
@@ -64,12 +144,8 @@ const CHAMPS: Record<TypeImport, ChampAttendu[]> = {
     { cle: 'libelle', libelle: 'Libellé', obligatoire: true, indices: ['libelle', 'intitule', 'designation'] },
     { cle: 'debit', libelle: 'Débit', obligatoire: true, indices: ['debit'] },
     { cle: 'credit', libelle: 'Crédit', obligatoire: true, indices: ['credit'] },
-    // LIGNES EN DEVISE (audit final F49) · facultatives. Le montant en devise
-    // passe AVANT le code, pour qu'une colonne « Montant en devise » ne soit
-    // pas prise pour la devise elle-même.
-    { cle: 'montantDevise', libelle: 'Montant en devise', obligatoire: false, indices: ['montant en devise', 'montant devise'] },
-    { cle: 'devise', libelle: 'Devise (code ISO)', obligatoire: false, indices: ['devise', 'monnaie'] },
-    { cle: 'cours', libelle: 'Cours appliqué', obligatoire: false, indices: ['cours', 'taux de change'] },
+    // LIGNES EN DEVISE (audit final F49) · facultatives.
+    ...CHAMPS_DEVISE,
   ],
 };
 
@@ -495,6 +571,17 @@ export class ImportService {
     const iIntitule = this.indexDe(tableau, dto.mapping, 'intitule');
     const iDebit = this.indexDe(tableau, dto.mapping, 'debit');
     const iCredit = this.indexDe(tableau, dto.mapping, 'credit');
+    const iDevise = this.indexDe(tableau, dto.mapping, 'devise');
+    const iMontantDevise = this.indexDe(tableau, dto.mapping, 'montantDevise');
+    const iCours = this.indexDe(tableau, dto.mapping, 'cours');
+    // Les devises du dossier · lues une fois, et seulement si le fichier en
+    // nomme une colonne. Un fichier sans ces colonnes s'importe comme avant.
+    const devisesDuDossier =
+      iDevise >= 0 || iMontantDevise >= 0 || iCours >= 0
+        ? await this.prisma.devise.findMany({ where: { tenantId }, select: { id: true, code: true } })
+        : [];
+    const devisesParCode = new Map(devisesDuDossier.map((d) => [d.code.toUpperCase(), d]));
+    const devisesParId = new Map(devisesDuDossier.map((d) => [d.id, d]));
 
     // Défaut : une balance importée est le bilan d'ouverture du dossier · c'est
     // le cas de très loin le plus fréquent, et le seul pour lequel il faut
@@ -503,7 +590,14 @@ export class ImportService {
     const anomalies: AnomalieImport[] = [];
     const comptesParNumero = new Map(comptes.map((c) => [c.numero, c]));
     const comptesACreer: Prisma.CompteCreateManyInput[] = [];
-    const lignes: { numero: string; debit: number; credit: number }[] = [];
+    const lignes: {
+      numero: string;
+      debit: number;
+      credit: number;
+      deviseId?: string;
+      montantDevise?: number;
+      coursApplique?: number;
+    }[] = [];
 
     tableau.lignes.forEach((ligne, i) => {
       const numeroLigne = i + 2;
@@ -516,6 +610,39 @@ export class ImportService {
         return;
       }
       if (Math.abs(debit) < 0.005 && Math.abs(credit) < 0.005) return;
+
+      // LA DEVISE DE LA LIGNE (ligne AU3) · lue comme à l'import d'écritures,
+      // jugée par la règle de la saisie (`motifRefusLigneEnDevise` · devise du
+      // dossier, jamais la monnaie de tenue, montant de la ligne = contrevaleur
+      // du montant en devise au cours, AUDCIF art. 52). Refusée ICI, ligne par
+      // ligne, pour que la simulation le dise · les contrôles d'entrée ne
+      // jouent qu'au moment d'écrire, sur la pièce entière.
+      const enDevise: { deviseId?: string; montantDevise?: number; coursApplique?: number } = {};
+      const lue = lireDeviseDeLaLigne(
+        this.valeur(ligne, iDevise),
+        this.valeur(ligne, iMontantDevise),
+        this.valeur(ligne, iCours),
+        numero,
+        devisesParCode,
+        Math.abs((debit ?? 0) - (credit ?? 0)),
+      );
+      if (lue.enDevise) {
+        if (lue.refus !== null) {
+          anomalies.push({ ligne: numeroLigne, message: lue.refus });
+          return;
+        }
+        const motif = motifRefusLigneEnDevise(
+          { debit, credit, deviseId: lue.deviseId, montantDevise: lue.montantDevise, coursApplique: lue.coursApplique ?? null },
+          devisesParId.get(lue.deviseId),
+        );
+        if (motif) {
+          anomalies.push({ ligne: numeroLigne, message: `Compte ${numero} · ${motif}` });
+          return;
+        }
+        enDevise.deviseId = lue.deviseId;
+        enDevise.montantDevise = lue.montantDevise;
+        if (lue.coursApplique !== undefined) enDevise.coursApplique = lue.coursApplique;
+      }
 
       // Même garde que pour l'import de plan, et pour la même raison · elle
       // vaut ici AUSSI quand le compte existe déjà : le montant serait alors
@@ -581,7 +708,7 @@ export class ImportService {
         });
         return;
       }
-      lignes.push({ numero, debit, credit });
+      lignes.push({ numero, debit, credit, ...enDevise });
     });
 
     const totalDebit = lignes.reduce((s, l) => s + l.debit, 0);
@@ -621,7 +748,14 @@ export class ImportService {
             exerciceId: exercice.id,
             journalId: journal.id,
             date,
-            lignes: lignes.map((l) => ({ compteId: parNumero.get(l.numero)!, debit: l.debit, credit: l.credit })),
+            lignes: lignes.map((l) => ({
+              compteId: parNumero.get(l.numero)!,
+              debit: l.debit,
+              credit: l.credit,
+              deviseId: l.deviseId,
+              montantDevise: l.montantDevise,
+              coursApplique: l.coursApplique,
+            })),
             exigerVentilationObligatoire: false,
           },
           tx,
@@ -654,6 +788,14 @@ export class ImportService {
                   compteId: parNumero.get(l.numero)!,
                   debit: l.debit,
                   credit: l.credit,
+                  // La devise suit la ligne · c'est elle qui fait de la
+                  // créance reprise une POSITION que la réévaluation de
+                  // clôture lit (AUDCIF art. 54), que le règlement en devise
+                  // solde au coût historique (art. 55) et que le report
+                  // à-nouveau Détail recopie.
+                  deviseId: l.deviseId,
+                  montantDevise: l.montantDevise,
+                  coursApplique: coursDeLaLigne(l),
                 })),
               },
             },
@@ -786,29 +928,22 @@ export class ImportService {
       // dossier, contrevaleur au cours) est celle de la saisie, jouée plus bas
       // par les contrôles d'entrée.
       const enDevise: Pick<LigneImportee, 'deviseId' | 'montantDevise' | 'coursApplique'> = {};
-      const codeDevise = this.valeur(ligne, iDevise).toUpperCase();
-      const texteMontantDevise = this.valeur(ligne, iMontantDevise);
-      const texteCours = this.valeur(ligne, iCours);
-      if (codeDevise || texteMontantDevise || texteCours) {
-        const devise = devisesParCode.get(codeDevise);
-        if (!devise) {
-          anomalies.push({
-            ligne: numeroLigne,
-            message: codeDevise
-              ? `Devise « ${codeDevise} » inconnue du dossier · créez-la dans la fenêtre Devises.`
-              : `Montant en devise ou cours sans devise sur le compte ${numero}.`,
-          });
+      const lue = lireDeviseDeLaLigne(
+        this.valeur(ligne, iDevise),
+        this.valeur(ligne, iMontantDevise),
+        this.valeur(ligne, iCours),
+        numero,
+        devisesParCode,
+        Math.abs((debit ?? 0) - (credit ?? 0)),
+      );
+      if (lue.enDevise) {
+        if (lue.refus !== null) {
+          anomalies.push({ ligne: numeroLigne, message: lue.refus });
           return;
         }
-        const montantDevise = lireMontant(texteMontantDevise);
-        const cours = texteCours ? lireMontant(texteCours) : null;
-        if (montantDevise === null || (texteCours && cours === null)) {
-          anomalies.push({ ligne: numeroLigne, message: `Montant en devise ou cours illisible sur le compte ${numero}.` });
-          return;
-        }
-        enDevise.deviseId = devise.id;
-        enDevise.montantDevise = montantDevise;
-        if (cours !== null) enDevise.coursApplique = cours;
+        enDevise.deviseId = lue.deviseId;
+        enDevise.montantDevise = lue.montantDevise;
+        if (lue.coursApplique !== undefined) enDevise.coursApplique = lue.coursApplique;
       }
 
       const piece = this.valeur(ligne, iPiece);

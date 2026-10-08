@@ -100,6 +100,7 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
     ajustementCreanceDouteuse: { count: compteur('ajustementCreanceDouteuse') },
     mouvementCreanceDouteuse: { count: compteur('mouvementCreanceDouteuse') },
     recuperationTvaCreance: { count: compteur('recuperationTvaCreance') },
+    declarationDeviseANouveau: { count: compteur('declarationDeviseANouveau') },
     constatImpotResultat: { count: compteur('constatImpotResultat') },
     bulletinPaie: { count: compteur('bulletinPaie') },
     ligneOrdreVirement: { count: compteur('ligneOrdreVirement') },
@@ -418,7 +419,7 @@ describe('3 bis · une écriture qu’un module tient ne se retouche pas non plu
     'immobilisation', 'dotationAmortissement', 'depreciationImmobilisation', 'reclassementImmobilisation', 'reevaluation', 'regularisation',
     'echeanceAbonnement', 'liquidationTva', 'donation', 'affectationResultat', 'executionEngagement',
     'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation',
-    'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'constatImpotResultat',
+    'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat',
   ];
   const gestes: Array<[string, string, (s: EcritureService) => Promise<unknown>]> = [
     ['supprimer', 'BROUILLARD', (s) => s.supprimer('t1', 'e1')],
@@ -641,6 +642,9 @@ describe('5 · les imports passent par les contrôles d’entrée de la saisie',
     expect(fichiers.sort()).toEqual(
       [
         join('modules', 'comptabilite', 'ecriture.service.ts'),
+        // La pièce de correction d'une devise déclarée sur un à-nouveau
+        // validé (ligne AU3) · passe par les contrôles d'entrée.
+        join('modules', 'devises', 'declaration-devise-a-nouveau.service.ts'),
         join('modules', 'exercice', 'exercice.service.ts'),
         join('modules', 'groupe', 'groupe.service.ts'),
         join('modules', 'import', 'import.service.ts'),

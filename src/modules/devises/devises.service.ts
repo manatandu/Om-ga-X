@@ -1354,7 +1354,7 @@ export class DevisesService {
    * est bien au-delà de la durée d'un geste, et c'est une borne de reprise,
    * pas une durée de travail.
    */
-  private async sousVerrouDuDossier<T>(tenantId: string, geste: string, travail: () => Promise<T>): Promise<T> {
+  async sousVerrouDuDossier<T>(tenantId: string, geste: string, travail: () => Promise<T>): Promise<T> {
     const maintenant = new Date();
     await this.prisma.verrouProvisionChange.deleteMany({ where: { tenantId, echeance: { lt: maintenant } } });
     let verrou: { id: string };
