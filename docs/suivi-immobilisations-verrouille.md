@@ -234,6 +234,22 @@ Manasse (« on verra ça plus tard », 2026-10-03).
     - Consolidation (J2) · TFT consolidé faux dès que des 478 et 479 sont
       retraités (poste écarté de la CAFG), contrôle en échec non compté parmi
       les motifs.
+  - **MAJEUR, relevé après le second tour de G1 (2026-10-08)** · la lecture du
+    585 du groupe (`GroupeService.virements585DuGroupe`) cesse de remonter
+    vers l'exercice précédent encore ouvert d'un voisin dès qu'une écriture
+    validée tombe dans `filtreOuverturePasseeAuPremierJour`, alors que la
+    clôture n'y voit pas toujours une ouverture · une ouverture nulle (import
+    puis son négatif, la clôture passe le report entier) ou la contre-passation
+    d'une réévaluation au premier jour (`devises.service.ts`, OD, admise N
+    ouvert). Refus à tort (« écart de 1 000 000 au débit ») tant que le voisin
+    n'a pas clôturé N · issue existante (clôturer d'abord N du voisin), non
+    nommée par le message, qui propose de passer une contrepartie. Correctif
+    proposé · ne s'arrêter que sur une ouverture non nulle, écarter la
+    contre-passation reconnue par sa liaison (`ecritureExtourneId`), nommer
+    l'exercice précédent ouvert. À VÉRIFIER, hors G1 · à la clôture de N, AU2
+    lirait cette contre-passation comme une ouverture divergente (RECTIFIER
+    l'inscrirait en négatif, `report-a-nouveau.ts`, rétablissant en silence
+    l'écart latent au 478 et au tiers).
   - **MINEUR** · groupe, la clôture n'admet que le 585 (choix de Manasse),
     un virement entre dossiers passé au 588, que la liasse neutralise avec le
     reste du 58, refuse la clôture ; balance âgée, une ligne à solde nul reste
