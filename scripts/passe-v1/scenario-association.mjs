@@ -16,7 +16,7 @@
  */
 import {
   aplatir, balance, cloturer, compte, ecriture, etape, ligneDe, nouveauDossier,
-  rechargerComptes, rechargerExercices, solde, tiers, validerJusqua,
+  livresExportes, rechargerComptes, rechargerExercices, restitution, solde, tiers, validerJusqua,
 } from './lib.mjs';
 
 const BQ = '52110000';
@@ -229,7 +229,7 @@ export async function scenarioAssociation(registre) {
     ctx.cr26 = cr;
 
     const notes = await c.lire('Notes annexes 2026', `/notes-annexes/associations?exerciceId=${n}`);
-    const totalNote = (code, cle) => (notes?.notes ?? []).filter((x) => x.code === code).flatMap((x) => x.lignes ?? []).find((l) => /TOTAL GENERAL/i.test(l.libelle ?? ''))?.valeurs?.[cle];
+    const totalNote = (code, cle) => (notes?.notes ?? []).filter((x) => x.code === code).flatMap((x) => x.lignes ?? []).find((l) => /TOTAL G[EÉ]N[EÉ]RAL/i.test(l.libelle ?? ''))?.valeurs?.[cle];
     R.montant('2026 · note 5B · immobilisations brutes, acquisitions', 15_000_000, totalNote('5B', 'AUGMENTATIONS'));
     R.montant('2026 · note 5B · immobilisations brutes à la clôture', 15_000_000, totalNote('5B', 'CLOTURE'));
 
@@ -238,11 +238,14 @@ export async function scenarioAssociation(registre) {
     R.montant('2026 · registre des donateurs · total comptabilisé', 19_000_000, rapport?.rapprochement?.totalComptable);
   });
 
+  await etape(R, 'Livres exportés de 2026', () => livresExportes(c, R, n, '2026'));
+
   const clos = await etape(R, 'Clôture 2026', () => cloturer(c, '2026'));
   await rechargerExercices(c);
   const n1 = c.exercices.get('2027')?.id;
   if (!clos || !n1) {
     R.note('Association · 2027 non joué · la clôture de 2026 n’a pas abouti ou l’exercice 2027 manque');
+    await etape(R, 'Restitution du dossier', () => restitution(c, R));
     return;
   }
 
@@ -259,12 +262,6 @@ export async function scenarioAssociation(registre) {
     for (const [cle, r] of Object.entries(ctx.regul)) {
       if (r) await c.geste(`Reprise à l’ouverture · ${cle}`, 'POST', `/regularisations/${r.id}/reprise`, { exerciceCibleId: n1 });
     }
-    const prep = await c.lire('Préparation de l’affectation 2026', `/affectation-resultat/exercice/${n}`);
-    R.montant('2026 · résultat lu par l’affectation', 1_164_000, prep?.resultat ?? prep?.montant ?? null);
-    await c.geste('Affectation du résultat 2026', 'POST', '/affectation-resultat', {
-      exerciceId: n, dateDecision: '2027-06-30', organe: 'Assemblée générale ordinaire',
-      lignes: [{ compteId: compte(c, '12100000'), montant: 1_164_000 }],
-    });
   });
 
   await etape(R, '2027 · opérations de l’exercice', async () => {
@@ -307,6 +304,21 @@ export async function scenarioAssociation(registre) {
     await validerJusqua(c, n1, '2027-12-31');
   });
 
+  // UNE SITUATION AVANT L'ASSEMBLÉE · les opérations de 2027 passées, le
+  // résultat 2026 encore au 13 · le bilan doit porter les deux résultats.
+  await etape(R, '2027 · situation avant l’affectation, puis affectation', async () => {
+    const situation = await c.lire('Bilan 2027 avant affectation (opérations passées)', `/etats-financiers/bilan?exerciceId=${n1}`);
+    R.montant('2027 · bilan avant affectation, opérations passées · actif moins passif', 0, situation ? situation.totalActif - situation.totalPassif : null);
+    R.montant('2027 · bilan avant affectation · total actif', 45_684_000, situation?.totalActif);
+    const prep = await c.lire('Préparation de l’affectation 2026', `/affectation-resultat/exercice/${n}`);
+    R.montant('2026 · résultat lu par l’affectation', 1_164_000, prep?.resultat ?? prep?.montant ?? null);
+    await c.geste('Affectation du résultat 2026', 'POST', '/affectation-resultat', {
+      exerciceId: n, dateDecision: '2027-06-30', organe: 'Assemblée générale ordinaire',
+      lignes: [{ compteId: compte(c, '12100000'), montant: 1_164_000 }],
+    });
+    await validerJusqua(c, n1, '2027-12-31');
+  });
+
   await etape(R, '2027 · contrôles avant clôture', async () => {
     const b = await balance(c, n1);
     R.montant('2027 · balance équilibrée', 0, b ? b.totalDebit - b.totalCredit : null);
@@ -335,12 +347,17 @@ export async function scenarioAssociation(registre) {
     R.montant('2027 · TFT · trésorerie au 31 décembre (ZG)', 35_484_000, f.ZG?.n);
     R.montant('2027 · TFT · colonne N-1 · trésorerie au 31 décembre 2026', 34_549_100, f.ZG?.n1);
     const notes = await c.lire('Notes annexes 2027', `/notes-annexes/associations?exerciceId=${n1}`);
-    const totalNote = (code, cle) => (notes?.notes ?? []).filter((x) => x.code === code).flatMap((x) => x.lignes ?? []).find((l) => /TOTAL GENERAL/i.test(l.libelle ?? ''))?.valeurs?.[cle];
+    const totalNote = (code, cle) => (notes?.notes ?? []).filter((x) => x.code === code).flatMap((x) => x.lignes ?? []).find((l) => /TOTAL G[EÉ]N[EÉ]RAL/i.test(l.libelle ?? ''))?.valeurs?.[cle];
     R.montant('2027 · note 5B · immobilisations brutes à l’ouverture', 15_000_000, totalNote('5B', 'OUVERTURE'));
     R.montant('2027 · note 5B · immobilisations brutes à la clôture', 15_000_000, totalNote('5B', 'CLOTURE'));
     const rapport = await c.lire('Registre des donateurs · rapport 2027', `/registre-donateurs/rapport-conformite?exerciceId=${n1}`);
     R.montant('2027 · registre des donateurs · total inscrit', 1_500_000, rapport?.rapprochement?.totalRegistre);
     R.montant('2027 · registre des donateurs · total comptabilisé', 1_500_000, rapport?.rapprochement?.totalComptable);
+  });
+
+  await etape(R, 'Livres exportés de 2027 et restitution', async () => {
+    await livresExportes(c, R, n1, '2027');
+    await restitution(c, R);
   });
 
   await etape(R, 'Clôture 2027', () => cloturer(c, '2027'));

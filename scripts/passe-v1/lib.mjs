@@ -322,3 +322,25 @@ export async function cloturer(c, annee, corps = {}) {
   await rechargerExercices(c);
   return r !== null;
 }
+
+/**
+ * LIVRES EXPORTÉS ET RESTITUTION · journal, grand livre et balance de
+ * l'exercice (AUDCIF art. 22, 6°) et l'archive de restitution du dossier.
+ * Le banc ne relit pas le contenu des classeurs (leurs tests le font) · il
+ * vérifie qu'ils sortent, non vides, sur un dossier réel de deux exercices.
+ */
+export async function livresExportes(c, R, exerciceId, an) {
+  for (const [nom, chemin] of [
+    ['journal', `/exports/journal?exerciceId=${exerciceId}`],
+    ['grand livre', `/exports/grand-livre?exerciceId=${exerciceId}`],
+    ['balance', `/exports/balance?exerciceId=${exerciceId}`],
+  ]) {
+    const r = await c.lire(`Export ${nom} ${an}`, chemin);
+    R.egal(`${an} · export ${nom} produit (classeur non vide)`, true, Boolean(r?.octets > 1000));
+  }
+}
+
+export async function restitution(c, R) {
+  const r = await c.lire('Archive de restitution', '/restitution/archive');
+  R.egal('restitution du dossier produite (archive non vide)', true, Boolean(r?.octets > 1000));
+}

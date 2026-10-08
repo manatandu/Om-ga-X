@@ -11,7 +11,7 @@
  */
 import {
   aplatir, balance, cloturer, compte, ecriture, etape, lettrer, ligneDe, lignesDuCompte,
-  nouveauDossier, rechargerExercices, solde, tiers, validerJusqua,
+  livresExportes, nouveauDossier, rechargerExercices, restitution, solde, tiers, validerJusqua,
 } from './lib.mjs';
 
 const BQ = '52110000';
@@ -139,11 +139,14 @@ export async function scenarioProjet(registre) {
     });
   });
 
+  await etape(R, 'Livres exportés de 2026', () => livresExportes(c, R, n, '2026'));
+
   const clos = await etape(R, 'Clôture 2026', () => cloturer(c, '2026'));
   await rechargerExercices(c);
   const n1 = c.exercices.get('2027')?.id;
   if (!clos || !n1) {
     R.note('Projet · 2027 non joué · la clôture de 2026 n’a pas abouti ou l’exercice 2027 manque');
+    await etape(R, 'Restitution du dossier', () => restitution(c, R));
     return;
   }
 
@@ -201,6 +204,11 @@ export async function scenarioProjet(registre) {
       bilan: { actif: 40_500_000 + I, passif: 40_500_000 + I, actifN1: 30_500_000 + I, postes: { CA: 27_000_000, CB: I, CC: 0, DF: 13_500_000, DG: 0, BW: 15_500_000 + I } },
       exploitation: { RA: 9_000_000 },
     });
+  });
+
+  await etape(R, 'Livres exportés de 2027 et restitution', async () => {
+    await livresExportes(c, R, n1, '2027');
+    await restitution(c, R);
   });
 
   await etape(R, 'Clôture 2027', () => cloturer(c, '2027'));
