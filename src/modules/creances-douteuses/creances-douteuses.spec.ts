@@ -1220,6 +1220,34 @@ describe('créances douteuses · service', () => {
     expect(prisma.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'ecr-2', tenantId: 't', statut: 'BROUILLARD' } });
   });
 
+  it('point D · validées, les deux pièces s’inscrivent en négatif, et les lignes du compte d’origine se lettrent entre elles (jamais lues comme un encaissement)', async () => {
+    const mv = { id: 'mv-d', type: TypeMouvementCreanceDouteuse.PERTE, date: new Date('2027-03-15'), montant: 1_160_000, ecritureId: 'ecr-1', annuleeLe: null, exerciceId: 'ex-27' };
+    const m = monter({
+      creance: { ...creanceClient([mv]), compteCreanceId: 'cli' },
+      mouvement: {
+        ...mv,
+        creanceId: 'cd-1',
+        montantTva: 160_000,
+        exercice: { statut: StatutExercice.OUVERT },
+        ecriture: { id: 'ecr-1', statut: 'VALIDEE', numeroPiece: 11, lignes: [{ lettre: null, lettrageId: null, rapprochementId: null }] },
+        ecriturePerte: { id: 'ecr-2', statut: 'VALIDEE', numeroPiece: 12, journalId: 'od', lignes: [] },
+      },
+    });
+    m.inscrireEnNegatifPourAnnulation.mockImplementation((_t: string, _u: string, id: string) => Promise.resolve({ id: `neg-${id}`, numeroPiece: 99 }));
+    m.prisma.ligneEcriture.findMany.mockImplementation(({ where }: any) =>
+      Promise.resolve(
+        where?.ecritureId?.in && where.compteId === 'cli' && where.lettrageId === null
+          ? where.ecritureId.in.map((e: string) => ({ id: `l-${e}` }))
+          : [{ lettre: null, lettrageId: null, rapprochementId: null }],
+      ),
+    );
+    const r: any = await m.service.annulerMouvement('t', 'u', 'cd-1', 'mv-d', { motif: 'Duplicata envoyé à une mauvaise adresse' });
+    expect(m.inscrireEnNegatifPourAnnulation).toHaveBeenCalledTimes(2);
+    expect(m.lettrage.lettrerLignesDuModule).toHaveBeenCalledWith('t', 'cli', ['l-ecr-1', 'l-neg-ecr-1', 'l-ecr-2', 'l-neg-ecr-2'], 'u');
+    expect(r.lettrageOrigine).toEqual({ pose: true, code: 'A' });
+    expect(r.annulationPerte).toBeUndefined();
+  });
+
   it('point D · une liquidation de TVA qui couvre la date de la perte refuse son annulation (déclaration figée)', async () => {
     const mv = { id: 'mv-d', type: TypeMouvementCreanceDouteuse.PERTE, date: new Date('2027-03-15'), montant: 1_160_000, ecritureId: 'ecr-1', annuleeLe: null, exerciceId: 'ex-27' };
     const { service, prisma } = monter({

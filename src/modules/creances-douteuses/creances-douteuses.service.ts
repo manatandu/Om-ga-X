@@ -2708,7 +2708,7 @@ export class CreancesDouteusesService {
     // l'annulation s'inscrit en négatif à côté de lui.
     const creanceDuMouvement = await this.prisma.creanceDouteuse.findFirst({
       where: { id, tenantId },
-      select: { id: true, compte416Id: true, ecritureReclassementId: true },
+      select: { id: true, compte416Id: true, ecritureReclassementId: true, compteCreanceId: true },
     });
     const groupe = creanceDuMouvement && mv.ecriture ? await this.groupeDuModule(tenantId, creanceDuMouvement, mv.ecriture.id) : null;
     const maintenu = groupe?.figee ? groupe.id : null;
@@ -2748,7 +2748,7 @@ export class CreancesDouteusesService {
       const tenues = motifLignesTenues(mv.ecriturePerte.lignes, `l'écriture de la perte n° ${mv.ecriturePerte.numeroPiece ?? '·'}`, 'annuler', ', puis annulez le mouvement', tenusDuModule);
       if (tenues) throw new BadRequestException(tenues);
     }
-    return transactionJournalisee(this.prisma, async (tx) => {
+    const resultat = await transactionJournalisee(this.prisma, async (tx) => {
       const e = mv.ecriture;
       let annulation: Record<string, unknown> = { traitement: 'SANS_ECRITURE' };
       // Point D · la seconde pièce s'annule avec la première, par la même règle.
@@ -2822,8 +2822,51 @@ export class CreancesDouteusesService {
       if (mv.ecriturePerte && annulationPerte?.traitement === 'SUPPRIMEE') {
         await this.supprimerBrouillardDansTx(tx, tenantId, mv.ecriturePerte.id);
       }
-      return { annule: true, annulation, ...(groupe && maintenu ? { information: informationLettrageMaintenu(groupe.code, groupe.figee!) } : {}) };
+      return {
+        annule: true,
+        annulation,
+        annulationPerte,
+        ...(groupe && maintenu ? { information: informationLettrageMaintenu(groupe.code, groupe.figee!) } : {}),
+      };
     });
+    if (!mv.ecriturePerte || !creanceDuMouvement) {
+      const { annulationPerte: _p, ...reste } = resultat;
+      return reste;
+    }
+    /*
+      POINT D · LES LIGNES DU COMPTE D'ORIGINE NE RESTENT PAS OUVERTES · le
+      retour, la perte et leurs négatifs (ce qui en survit) soldent ensemble ;
+      laissés ouverts, un lettrage automatique pourrait rapprocher la facture
+      d'une perte annulée, et le moteur de TVA lirait ce rapprochement comme
+      un ENCAISSEMENT (décret n° 011/42, art. 57). Le module les lettre entre
+      elles (origine MODULE) ; l'issue se DIT, jamais ne défait l'annulation.
+    */
+    const ecritures = [
+      resultat.annulation.traitement === 'SUPPRIMEE' ? null : (mv.ecriture?.id ?? null),
+      resultat.annulation.negatifId as string | undefined,
+      resultat.annulationPerte?.traitement === 'SUPPRIMEE' ? null : mv.ecriturePerte.id,
+      resultat.annulationPerte?.negatifId as string | undefined,
+    ].filter((x): x is string => !!x);
+    let lettrageOrigine: { pose: true; code: string } | { pose: false; motif: string } | null = null;
+    try {
+      const ouvertes = await this.prisma.ligneEcriture.findMany({
+        where: { ecritureId: { in: ecritures }, compteId: creanceDuMouvement.compteCreanceId, lettrageId: null, ecriture: { tenantId } },
+        select: { id: true },
+      });
+      if (ouvertes.length >= 2) {
+        const r = await this.lettrage.lettrerLignesDuModule(tenantId, creanceDuMouvement.compteCreanceId, ouvertes.map((l) => l.id), userId);
+        lettrageOrigine = 'code' in r ? { pose: true, code: r.code } : { pose: false, motif: r.motif };
+      }
+    } catch (err) {
+      this.journalServeur.error(`Lettrage du compte d'origine après l'annulation non posé (dossier ${tenantId})`, err instanceof Error ? err.stack : String(err));
+      lettrageOrigine = {
+        pose: false,
+        motif:
+          'Les lignes du compte d’origine (retour, perte et leurs négatifs) n’ont pas pu se lettrer entre elles · ne les rapprochez pas de la facture, le moteur de TVA lirait la perte comme un encaissement.',
+      };
+    }
+    const { annulationPerte: _p, ...reste } = resultat;
+    return { ...reste, lettrageOrigine };
   }
 
   /**

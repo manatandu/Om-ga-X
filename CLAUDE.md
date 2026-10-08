@@ -803,8 +803,8 @@ de l'irrécouvrabilité (O.-L. n° 10/001, art. 52 ; décret n° 011/42, art. 12
 texte muet, décision de Manasse), puis D 651 (HT) / D 443 (taxe) / C compte
 d'origine (TTC) · deux pièces liées à la créance (`ecritureId`, `ecriturePerteId`),
 retenues, annulées ensemble, lettrées entre elles par le module (origine `MODULE`,
-jamais lues comme un encaissement de la facture, que le reclassement ne lettre
-toujours pas) ; dépréciation reprise au 7594 comme avant (E1) ; détail en A7 bis,
+négatifs de l'annulation compris, jamais lues comme un encaissement de la
+facture, que le reclassement ne lettre toujours pas) ; dépréciation reprise au 7594 comme avant (E1) ; détail en A7 bis,
 partie 2. Aucune vente d'origine n'est gardée (elles ne servaient
 qu'à la TVA ; le 4161 / 4162 se lit sur le compte du client) · A7 bis y ajoute la
 DÉSIGNATION facultative des factures, qui ne sert qu'à l'exigibilité du recouvrement. LE RECLASSEMENT NE
