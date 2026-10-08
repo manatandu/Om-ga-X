@@ -209,6 +209,14 @@ export function memeReference(a: string | null, b: string | null): boolean {
  */
 export const FENETRE_JOURS_DEFAUT = 15;
 
+/**
+ * La plus large fenêtre admise · celle que l'écran propose (champ de 0 à 120
+ * jours, `RapprochementDetailPage`), convention d'OmegaX elle aussi. Une
+ * fenêtre sans borne faisait sortir du calendrier la date qu'elle borne, et
+ * la lecture des propositions tombait en 500 (paquet 1, B9).
+ */
+export const FENETRE_JOURS_MAX = 120;
+
 const JOUR_MS = 86_400_000;
 
 /**

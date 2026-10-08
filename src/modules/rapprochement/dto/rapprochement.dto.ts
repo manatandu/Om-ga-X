@@ -1,17 +1,47 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
   IsDateString,
   IsIn,
+  IsInt,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
+import { enEntier } from '../../../common/audit/filtre-journal-audit.dto';
+import { FENETRE_JOURS_MAX } from '../releve-bancaire';
+
+/**
+ * LA FENÊTRE DE DATES DES PROPOSITIONS (paquet 1, B9) · FACULTATIVE.
+ *
+ * `ParseIntPipe({ optional: true })` ne suffisait pas · le ValidationPipe
+ * global (`transform: true`) convertit d'abord le paramètre ABSENT en nombre,
+ * `Number(undefined)` rend NaN, et le pipe le refusait en 400 « numeric
+ * string is expected » · l'appel sans fenêtre, que le service sert pourtant
+ * avec son défaut (`FENETRE_JOURS_DEFAUT`, quinze jours, convention d'OmegaX,
+ * aucun texte ne la fixe), ne passait jamais. Absente, la fenêtre prend ce
+ * défaut, celui de l'écran ; illisible ou hors de la plage que l'écran
+ * propose (0 à 120 jours), elle est refusée par un 400 qui la NOMME. Au-delà,
+ * la date bornée par la fenêtre sortait du calendrier et la lecture tombait
+ * en 500.
+ */
+export class PropositionsRapprochementDto {
+  @IsOptional()
+  @Transform(enEntier)
+  @IsInt({ message: `Fenêtre de dates illisible · un nombre entier de jours, de 0 à ${FENETRE_JOURS_MAX}, est attendu.` })
+  @Min(0, { message: `Fenêtre de dates illisible · un nombre entier de jours, de 0 à ${FENETRE_JOURS_MAX}, est attendu.` })
+  @Max(FENETRE_JOURS_MAX, {
+    message: `Fenêtre de dates hors limite · ${FENETRE_JOURS_MAX} jours au plus, comme à l'écran.`,
+  })
+  fenetreJours?: number;
+}
 
 export class OuvrirRapprochementDto {
   @IsUUID('4')

@@ -65,6 +65,24 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   (AVERTISSEMENT) restent ; loyer, pièce mêlée et 679 ne sont pas nommés.
 - Tests · `charge-sans-tiers.spec.ts`, quatre cas (B2).
 
+### B9 · `GET /rapprochements/:id/propositions` sans `fenetreJours`
+
+- AVANT (p1b_avant) · 52110000, relevé d'une ligne · sans paramètre, 400
+  « Validation failed (numeric string is expected) », aucune proposition,
+  fenêtre non servie ; avec `fenetreJours=15`, 200 et une proposition
+  (concorde) ; `abc`, 400 qui ne nomme pas la fenêtre.
+- Cause · le ValidationPipe global (`transform: true`) convertissait le
+  paramètre absent en NaN AVANT `ParseIntPipe({ optional: true })`.
+- Correction · `PropositionsRapprochementDto` (requête entière, `enEntier`
+  désormais exporté de `filtre-journal-audit.dto.ts`, une seule règle de
+  lecture d'un entier) · absente, la fenêtre prend le défaut du service
+  (`FENETRE_JOURS_DEFAUT`, 15, convention d'OmegaX écrite au commentaire) ;
+  illisible ou hors de la plage de l'écran (0 à 120, `FENETRE_JOURS_MAX`),
+  400 qui nomme la fenêtre. La borne haute ferme aussi le 500 d'une fenêtre
+  énorme (date sortie du calendrier), relevé voisin d'avant.
+- Tests · `fenetre-propositions.spec.ts` (le DTO sous le pipe global de
+  production, et la route qui ne porte plus de `ParseIntPipe`).
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -90,6 +108,10 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   charges assimilées » aux deux semis (`compte-seed.ts`,
   `compte-seed-syscohada.ts`).
 
+- B9 · aucune source ne fixe la fenêtre de dates d'un rapprochement · le
+  défaut (15) et la borne (120) sont des conventions d'OmegaX, celles que
+  l'écran porte déjà (`RapprochementDetailPage`, champ de 0 à 120).
+
 ## Relevés voisins (hors périmètre, non corrigés)
 
 - Inventaire · une campagne MIXTE (fiches d'autres comptes et PV de caisse à
@@ -100,12 +122,10 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   relevé ne sont pas nommés par CHARGE_SANS_TIERS, alors que la garde des
   modèles de saisie les nomme comme cas légitime. Non touché (B2 vise les
   intérêts).
-- Rapprochement bancaire · une `fenetreJours` énorme (au-delà de ce qu'une
-  date peut porter) produit une date invalide et un 500.
 
 ## Reste
 
-B9, B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
+B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 (`npm run build`, `cd client && npm run build`, puis
 `/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
 
@@ -113,6 +133,6 @@ B9, B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 
 ```bash
 npx tsc --noEmit
-npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers
+npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement
 cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts
 ```
