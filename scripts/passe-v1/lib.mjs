@@ -15,6 +15,16 @@ let compteurAdresse = 1;
 /** Un montant au centime · le flottant de JavaScript ne se compare jamais tel quel. */
 export const auCentime = (x) => Math.round(Number(x) * 100) / 100;
 
+/**
+ * LE JOUR DU BANC · celui de l'horloge du serveur quand `lancer.sh` la pose
+ * (PASSE_HORLOGE, voir README), sinon le jour réel. Le banc le lit pour savoir
+ * ce que le serveur tiendra pour « à venir » ou « échu ».
+ */
+export function aujourdhui() {
+  const h = process.env.PASSE_HORLOGE;
+  return h ? h.slice(0, 10) : new Date().toISOString().slice(0, 10);
+}
+
 // --- Le registre des contrôles ---------------------------------------------
 
 export class Registre {
@@ -122,7 +132,10 @@ export class Client {
       }
     } else {
       const octets = Buffer.from(await r.arrayBuffer());
-      json = { octets: octets.length, type };
+      // Le contenu reste à portée de la relecture (liasse, restitution,
+      // cloisonnement) · il n'entre jamais dans le fichier de résultats, qui
+      // ne recopie que les corps des refus.
+      json = { octets: octets.length, type, contenu: octets };
     }
     if (json && typeof json.csrfToken === 'string') this.csrf = json.csrfToken;
     return { statut: r.status, corps: json };
@@ -152,17 +165,21 @@ export class Client {
 /** Un dossier neuf, né par l'inscription comme dans les tests navigateur. */
 export async function nouveauDossier(registre, nom, options) {
   const c = new Client(registre);
+  c.email = `passe-v1-${options.cle}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@exemple.cd`;
+  c.nom = nom;
   const r = await c.geste('Inscription du dossier', 'POST', '/auth/register', {
     nomEntite: nom,
     referentiel: options.referentiel,
     ...(options.systeme ? { systemeComptableSyscohada: options.systeme } : {}),
     ...(options.jeu ? { jeuEtatsFinanciersSycebnl: options.jeu } : {}),
-    email: `passe-v1-${options.cle}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@exemple.cd`,
+    email: c.email,
     motDePasse: MOT_DE_PASSE,
     dateDebutExercice: options.exercice[0],
     dateFinExercice: options.exercice[1],
   });
   if (!r) throw new Error('Inscription refusée · le scénario ne peut pas commencer');
+  c.moi = await c.lire('Session du dossier', '/auth/me');
+  c.tenantId = c.moi?.tenant?.id ?? null;
   await rechargerComptes(c);
   c.journaux = (await c.lire('Journaux', '/journaux')) ?? [];
   c.journal = (code) => c.journaux.find((j) => j.code === code);
@@ -340,7 +357,39 @@ export async function livresExportes(c, R, exerciceId, an) {
   }
 }
 
-export async function restitution(c, R) {
+/**
+ * L'ARCHIVE DE RESTITUTION, RELUE · produite, manifeste présent et nommant le
+ * dossier, `controles.txt` sans écart entre l'inventaire annoncé et les lignes
+ * écrites, tables principales non vides (une table vide sortirait d'une
+ * borne fausse aussi bien que d'un dossier vide · ces tables ne le sont pas).
+ * Rend les entrées de l'archive, que le scénario de cloisonnement fouille.
+ */
+export async function restitution(c, R, libelle = 'restitution') {
   const r = await c.lire('Archive de restitution', '/restitution/archive');
-  R.egal('restitution du dossier produite (archive non vide)', true, Boolean(r?.octets > 1000));
+  if (!R.egal(`${libelle} · archive du dossier produite (non vide)`, true, Boolean(r?.octets > 1000)) || !r?.contenu) return null;
+  const { entreesZip, enregistrementsCsv } = await import('./parcours.mjs');
+  const entrees = await entreesZip(r.contenu);
+  const texte = (nom) => (entrees.get(nom) ?? Buffer.alloc(0)).toString('utf8');
+  R.egal(`${libelle} · manifeste présent`, true, texte('MANIFESTE.md').length > 0);
+  R.egal(`${libelle} · le manifeste nomme le dossier`, true, Boolean(c.nom) && texte('MANIFESTE.md').includes(c.nom));
+  // controles.txt confronte, table par table, les lignes annoncées par
+  // l'inventaire à celles réellement écrites · ses lignes « ECART » sont
+  // relevées telles quelles, et le nombre réel de lignes de chaque CSV est
+  // relu à côté (tables/<table>.csv), pour départager l'archive et son contrôle.
+  const ecartsDits = texte('controles.txt').split(/\r?\n/).filter((l) => l.endsWith(';ECART'));
+  R.egal(`${libelle} · controles.txt · aucune table en écart entre l'inventaire et les lignes écrites`, [], ecartsDits.slice(0, 6));
+  const ecritureCsv = entrees.has('tables/ecriture.csv') ? enregistrementsCsv(texte('tables/ecriture.csv')) - 1 : null;
+  const ditEcriture = texte('controles.txt').split(/\r?\n/).find((l) => l.startsWith('Ecriture;'))?.split(';');
+  if (ditEcriture) {
+    R.montant(`${libelle} · controles.txt · lignes d'écriture annoncées = lignes du CSV`, ecritureCsv ?? NaN, Number(ditEcriture[1]));
+    R.montant(`${libelle} · controles.txt · lignes d'écriture dites écrites = lignes du CSV`, ecritureCsv ?? NaN, Number(ditEcriture[2]));
+  }
+  for (const table of ['tenant', 'exercice', 'journal', 'compte', 'tiers', 'ecriture', 'ligne-ecriture', 'evenement-audit']) {
+    const nom = `tables/${table}.csv`;
+    const lignes = entrees.has(nom) ? enregistrementsCsv(texte(nom)) - 1 : null;
+    R.egal(`${libelle} · table ${table} présente et non vide`, true, lignes !== null && lignes > 0);
+  }
+  const exercices = entrees.has('tables/exercice.csv') ? enregistrementsCsv(texte('tables/exercice.csv')) - 1 : null;
+  R.montant(`${libelle} · table exercice · une ligne par exercice du dossier`, c.exercices?.size ?? 0, exercices);
+  return entrees;
 }

@@ -13,6 +13,27 @@ import {
   aplatir, balance, cloturer, compte, ecriture, etape, lettrer, ligneDe, lignesDuCompte,
   livresExportes, nouveauDossier, rechargerExercices, restitution, solde, tiers, validerJusqua,
 } from './lib.mjs';
+import { confronterControles, relireLiasse } from './parcours.mjs';
+
+/** Les contrôles que la fin de chaque exercice doit lever · README, « Contrôles de clôture ». */
+const CONTROLES_ATTENDUS_2026 = {
+  BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE: { raison: 'la banque du projet n’est pas rapprochée par le banc', references: ['52110000'] },
+  CHARGE_SANS_TIERS: 'missions, entretien, transport et maintenance payés directement par la banque',
+  CLOTURE_INFORMATIQUE_EN_RETARD: 'aucune clôture de période posée dans OmegaX, échéance du premier trimestre passée au 15/02/2028',
+  DATE_ARRETE_NON_RENSEIGNEE: 'le banc ne saisit pas la date d’arrêté des comptes',
+  MANUEL_PROCEDURES_ABSENT: 'aucun manuel des procédures enregistré',
+  SANS_PIECE: 'des écritures du banc sans référence de pièce',
+  VALIDATION_PAR_SON_AUTEUR: 'un seul utilisateur saisit et valide',
+};
+const CONTROLES_ATTENDUS_2027 = {
+  BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE: { raison: 'la banque du projet n’est pas rapprochée par le banc', references: ['52110000'] },
+  CHARGE_SANS_TIERS: 'missions, entretien, transport et maintenance payés directement par la banque',
+  CLOTURE_INFORMATIQUE_EN_RETARD: 'aucune clôture de période posée dans OmegaX, échéance du premier trimestre passée au 15/02/2028',
+  DATE_ARRETE_NON_RENSEIGNEE: 'le banc ne saisit pas la date d’arrêté des comptes',
+  MANUEL_PROCEDURES_ABSENT: 'aucun manuel des procédures enregistré',
+  SANS_PIECE: 'des écritures du banc sans référence de pièce',
+  VALIDATION_PAR_SON_AUTEUR: 'un seul utilisateur saisit et valide',
+};
 
 const BQ = '52110000';
 const F162 = '16200000';
@@ -137,6 +158,8 @@ export async function scenarioProjet(registre) {
       bilan: { actif: 30_500_000 + I, passif: 30_500_000 + I, postes: { CA: 22_000_000, CC: I, DF: 7_500_000, DG: 1_000_000, BW: 9_500_000 + I } },
       exploitation: { RA: 10_500_000 },
     });
+    await relireLiasse(c, R, '2026', `/exports/etats-financiers/liasse-complete?exerciceId=${n}`, { BZ: 30_500_000 + I, DZ: 30_500_000 + I, XC: I });
+    await confronterControles(c, R, '2026 · contrôles de clôture', n, CONTROLES_ATTENDUS_2026);
   });
 
   await etape(R, 'Livres exportés de 2026', () => livresExportes(c, R, n, '2026'));
@@ -204,6 +227,8 @@ export async function scenarioProjet(registre) {
       bilan: { actif: 40_500_000 + I, passif: 40_500_000 + I, actifN1: 30_500_000 + I, postes: { CA: 27_000_000, CB: I, CC: 0, DF: 13_500_000, DG: 0, BW: 15_500_000 + I } },
       exploitation: { RA: 9_000_000 },
     });
+    await relireLiasse(c, R, '2027', `/exports/etats-financiers/liasse-complete?exerciceId=${n1}`, { BZ: 40_500_000 + I, DZ: 40_500_000 + I, XC: 0 });
+    await confronterControles(c, R, '2027 · contrôles de clôture', n1, CONTROLES_ATTENDUS_2027);
   });
 
   await etape(R, 'Livres exportés de 2027 et restitution', async () => {

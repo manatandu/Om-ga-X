@@ -15,15 +15,70 @@
  * Attendus calculés à la main · README.md, section « SARL ».
  */
 import {
-  aplatir, balance, cloturer, compte, ecriture, etape, ligneDe, lettrer, nouveauDossier,
+  aplatir, aujourdhui, balance, cloturer, compte, ecriture, etape, ligneDe, lettrer, nouveauDossier,
   livresExportes, rechargerComptes, rechargerExercices, restitution, solde, tiers, validerJusqua,
 } from './lib.mjs';
+import {
+  confronterControles, deroulerModele, importerEcritures, occurrences, rapprochementSurReleve, relireLiasse,
+} from './parcours.mjs';
 
 const BQ = '52110000';
 const VENTES = '70110000';
 const EXPORT = '70120000';
 const ACHATS = '60110000';
 const STOCK = '31110000';
+
+/**
+ * LE RELEVÉ BANCAIRE DE 2026 · les dix-huit mouvements du livre sur le
+ * 52110000, à leur date de valeur en banque (un ou deux jours après), moins le
+ * virement du salaire net du 31 décembre, que la banque n'a pas encore passé.
+ * [date, libellé, débit banque, crédit banque] · un crédit de la banque est
+ * un débit du 52.
+ */
+const RELEVE_2026 = [
+  ['2026-01-12', 'Cheque fournisseur repris', 8_000_000, 0],
+  ['2026-01-16', 'Virement recu Mines du Sud', 0, 2_320_000],
+  ['2026-02-11', 'Virement Grossiste de Kinshasa', 4_640_000, 0],
+  ['2026-02-16', 'Paiement TVA janvier', 160_000, 0],
+  ['2026-02-21', 'Virement recu Mines du Sud', 0, 2_480_000],
+  ['2026-03-16', 'Paiement TVA fevrier', 480_000, 0],
+  ['2026-03-17', 'Virement Grossiste de Kinshasa', 3_480_000, 0],
+  ['2026-03-21', 'Virement recu Mines du Sud', 0, 6_960_000],
+  ['2026-04-02', 'Paiement camion Isuzu', 24_000_000, 0],
+  ['2026-07-11', 'Virement Grossiste de Kinshasa', 6_960_000, 0],
+  ['2026-07-26', 'Acompte IS', 300_000, 0],
+  ['2026-08-17', 'Virement recu Mines du Sud', 0, 9_280_000],
+  ['2026-09-26', 'Acompte IS', 300_000, 0],
+  ['2026-11-11', 'Virement recu Lusaka Trading', 0, 17_280_000],
+  ['2026-11-26', 'Acompte IS', 300_000, 0],
+  ['2026-12-01', 'Virement salaire novembre', 1_619_400, 0],
+  ['2026-12-02', 'Prelevement loyer entrepot', 6_000_000, 0],
+];
+
+/**
+ * LES CONTRÔLES QUE LA FIN DE CHAQUE EXERCICE DOIT LEVER, avec leur raison ·
+ * le README dit pourquoi chacun est juste. Un code levé hors de cette liste
+ * est un contrôle levé à tort tant qu'il n'est pas justifié ici.
+ */
+const CONTROLES_ATTENDUS_2026 = {
+  CHARGE_SANS_TIERS: 'loyer payé directement par la banque',
+  CLOTURE_INFORMATIQUE_EN_RETARD: 'aucune clôture de période posée dans OmegaX, échéance du premier trimestre passée au 15/02/2028',
+  DATE_ARRETE_NON_RENSEIGNEE: 'le banc ne saisit pas la date d’arrêté des comptes',
+  MANUEL_PROCEDURES_ABSENT: 'aucun manuel des procédures enregistré',
+  SANS_PIECE: 'des écritures du banc sans référence de pièce',
+  VALIDATION_PAR_SON_AUTEUR: 'un seul utilisateur saisit et valide',
+  TIERS_ANCIEN_NON_LETTRE: 'acompte 4191 et son imputation non lettrés, dette reprise et son règlement, groupe partiel de V1 encore ouvert',
+};
+const CONTROLES_ATTENDUS_2027 = {
+  BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE: { raison: 'le relevé clos du 31/12/2026 ne couvre pas la clôture de 2027', references: ['52110000'] },
+  CHARGE_SANS_TIERS: 'loyer payé directement par la banque',
+  CLOTURE_INFORMATIQUE_EN_RETARD: 'aucune clôture de période posée dans OmegaX, échéance du premier trimestre passée au 15/02/2028',
+  DATE_ARRETE_NON_RENSEIGNEE: 'le banc ne saisit pas la date d’arrêté des comptes',
+  MANUEL_PROCEDURES_ABSENT: 'aucun manuel des procédures enregistré',
+  SANS_PIECE: 'des écritures du banc sans référence de pièce',
+  VALIDATION_PAR_SON_AUTEUR: 'un seul utilisateur saisit et valide',
+  TIERS_ANCIEN_NON_LETTRE: 'écart de réévaluation reporté sur C2 et son extourne non lettrés',
+};
 
 export async function scenarioSarl(registre) {
   registre.scenario = 'SARL';
@@ -82,7 +137,7 @@ export async function scenarioSarl(registre) {
    */
   const facture = async (geste, sens, numero, date, t, ht, compteGestion, journal) => {
     const tva = Math.round(ht * 0.16 * 100) / 100;
-    if (sens === 'ACHAT' && date > new Date(Date.now() + 3_600_000).toISOString().slice(0, 10)) {
+    if (sens === 'ACHAT' && date > aujourdhui()) {
       R.note(`${geste} · reçue le ${date}, date à venir · saisie au journal des achats au lieu du module de facturation`);
       const e = await ecriture(c, geste, ex(date), date, `Facture ${numero}`, [
         [compteGestion, ht, 0], ['44520000', tva, 0, { tauxTvaId: ctx.tva16?.id }], [t.numero, 0, ht + tva],
@@ -251,6 +306,24 @@ export async function scenarioSarl(registre) {
     R.montant('2026 · impôt dû après l’écriture et sa réintégration', 6_552_000, rf2?.impotDu);
   });
 
+  // RAPPROCHEMENT BANCAIRE SUR RELEVÉ IMPORTÉ · la banque n'a pas encore
+  // débité le virement du salaire net de décembre (passé au livre le 31) ·
+  // relevé au 31/12 de 12 080 600, livre de 10 461 200, un suspens de
+  // 1 619 400 (README, « Rapprochement »).
+  await etape(R, '2026 · rapprochement bancaire sur relevé importé', async () => {
+    const parle = aujourdhui() > '2026-12-31';
+    const avant = await c.lire('Contrôles 2026 avant le rapprochement', `/controles?exerciceId=${n}`);
+    if (parle) R.egal('2026 · avant le rapprochement · banque 52110000 à rapprocher (contrôle levé)', true, occurrences(avant, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE').some((o) => o.startsWith(BQ)));
+    else R.note('Horloge au jour réel · le contrôle de la banque ne parle qu’au lendemain du 31/12/2026, non vérifiable');
+    await rapprochementSurReleve(c, R, {
+      libelle: '2026 · rapprochement 52110000', numero: BQ, dateDepart: '2026-01-01', soldeDepart: 30_000_000, dateReleve: '2026-12-31',
+      releve: RELEVE_2026,
+      attendus: { soldeReleve: 12_080_600, propositions: 17, motifs: ['MONTANT_DATE'], suspens: [-1_619_400] },
+    });
+    const apres = await c.lire('Contrôles 2026 après le rapprochement', `/controles?exerciceId=${n}`);
+    R.egal('2026 · après le rapprochement · banque 52110000 plus signalée', false, occurrences(apres, 'BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE').some((o) => o.startsWith(BQ)));
+  });
+
   await etape(R, '2026 · contrôles avant clôture', async () => {
     await rechargerComptes(c);
     const b = await balance(c, n);
@@ -278,8 +351,10 @@ export async function scenarioSarl(registre) {
     const notes = await c.lire('Notes annexes 2026', `/etats-financiers-syscohada/notes?exerciceId=${n}`);
     const n3a = (notes?.notes ?? []).filter((x) => x.code === '3A').flatMap((x) => x.lignes ?? []).find((l) => /TOTAL G[EÉ]N[EÉ]RAL/i.test(l.libelle ?? ''));
     R.montant('2026 · note 3A · acquisitions de l’exercice', 24_000_000, n3a?.valeurs?.AUGMENTATIONS);
-    const liasse = await c.lire('Liasse Excel 2026', `/exports/etats-financiers-syscohada/liasse-complete?exerciceId=${n}`);
-    R.egal('2026 · liasse Excel produite (classeur non vide)', true, Boolean(liasse?.octets > 1000));
+    await relireLiasse(c, R, '2026', `/exports/etats-financiers-syscohada/liasse-complete?exerciceId=${n}`, {
+      BZ: 54_181_200, DZ: 54_181_200, XI: 15_288_000, CJ: 15_288_000, ZH: 10_461_200,
+    });
+    await confronterControles(c, R, '2026 · contrôles de clôture', n, CONTROLES_ATTENDUS_2026);
   });
 
   await etape(R, 'Livres exportés de 2026', () => livresExportes(c, R, n, '2026'));
@@ -449,6 +524,10 @@ export async function scenarioSarl(registre) {
     R.montant('2027 · TFT · variation (ZG)', 39_145_200, tft.ZG?.n);
     R.montant('2027 · TFT · trésorerie à la clôture (ZH)', 49_606_400, tft.ZH?.n);
     R.montant('2027 · TFT · colonne N-1 · trésorerie à la clôture 2026', 10_461_200, tft.ZH?.n1);
+    await relireLiasse(c, R, '2027', `/exports/etats-financiers-syscohada/liasse-complete?exerciceId=${n1}`, {
+      BZ: 60_160_000, DZ: 60_160_000, XI: 8_792_000, CJ: 8_792_000, ZH: 49_606_400,
+    });
+    await confronterControles(c, R, '2027 · contrôles de clôture', n1, CONTROLES_ATTENDUS_2027);
   });
 
   await etape(R, 'Livres exportés de 2027 et restitution', async () => {
@@ -466,4 +545,121 @@ export async function scenarioSarl(registre) {
     R.montant('2028 · à-nouveau résultat 2027 au 13', -8_792_000, solde(b, '13'));
     R.montant('2028 · à-nouveau réserve légale', -1_528_800, solde(b, '111'));
   });
+
+  await etape(R, '2028 · modèle de saisie, import d’écritures, lettrage et relance', () => parcours2028(c, R, { c1, ven, bq }));
+  await etape(R, 'Restitution du dossier en fin de banc', () => restitution(c, R, 'restitution finale'));
+}
+
+/**
+ * 2028, APRÈS LES DEUX CLÔTURES · trois ventes à C1 passées par un MODÈLE DE
+ * SAISIE (C1 à équilibrer, ventes à saisir, TVA à 16 % calculée), deux
+ * règlements IMPORTÉS par le modèle de fichier, le PRÉ-LETTRAGE (la paire par
+ * référence confirmée, celle par montant laissée au lettrage AUTOMATIQUE), et
+ * une RELANCE sur la troisième facture, échue, dont la lettre reste en file.
+ * Attendus · README, « 2028 ».
+ */
+async function parcours2028(c, R, { c1, ven, bq }) {
+  await rechargerExercices(c);
+  const n2 = c.exercices.get('2028')?.id;
+  if (!n2 || !c1) return R.note('2028 · exercice ou client C1 absent, parcours non joué');
+  if (aujourdhui() < '2028-02-15') R.note('Horloge au jour réel · les pièces de 2028 sont à venir, la relance ne trouvera rien d’échu');
+  const taux = (await c.lire('Taux de TVA', '/taux-tva')) ?? [];
+  const tva16 = taux.find((t) => t.code === 'TVA16');
+
+  // --- Modèle de saisie ---
+  const modele = await c.geste('Modèle « Vente de ciment TVA 16 % »', 'POST', '/modeles-saisie', {
+    intitule: 'Vente de ciment TVA 16 % (Mines du Sud)', journalId: ven.id,
+    lignes: [
+      { compteId: c1.compteId, sens: 'DEBIT', fonction: 'EQUILIBRER', libelle: 'Mines du Sud' },
+      { compteId: compte(c, VENTES), sens: 'CREDIT', fonction: 'SAISIR', libelle: 'Ventes de ciment' },
+      { compteId: compte(c, '44310000'), sens: 'CREDIT', fonction: 'CALCULER', tauxTvaId: tva16?.id, libelle: 'TVA facturée 16 %' },
+    ],
+  });
+  const lus = (await c.lire('Modèles de saisie', '/modeles-saisie')) ?? [];
+  const lu = (Array.isArray(lus) ? lus : (lus.modeles ?? [])).find((m) => m.id === modele?.id);
+  R.egal('2028 · modèle enregistré · fonctions des trois lignes dans l’ordre', ['EQUILIBRER', 'SAISIR', 'CALCULER'], (lu?.lignes ?? []).sort((a, b) => a.ordre - b.ordre).map((l) => l.fonction));
+  const ventes = [
+    ['FV-2028-001', '2028-01-05', 1_000_000, '2028-01-20', 1_160_000],
+    ['FV-2028-002', '2028-01-08', 2_000_000, '2028-01-25', 2_320_000],
+    ['FV-2028-003', '2028-01-12', 500_000, '2028-01-25', 580_000],
+  ];
+  const lignesC1 = {};
+  for (const [ref, date, ht, echeance, ttc] of ventes) {
+    if (!lu) break;
+    const deroule = deroulerModele(lu.lignes, { 1: ht }, taux);
+    R.montant(`2028 · ${ref} · ligne client déroulée (HT + 16 %)`, ttc, deroule[0]?.debit);
+    const e = await c.geste(`Vente ${ref} par le modèle`, 'POST', '/ecritures', {
+      exerciceId: n2, journalId: ven.id, date, libelle: `Facture ${ref}`, reference: ref,
+      lignes: deroule.map((l, i) => ({ ...l, libelle: `Facture ${ref}`, ...(i === 0 ? { dateEcheance: echeance } : {}) })),
+    });
+    lignesC1[ref] = e?.lignes?.find((l) => l.compteId === c1.compteId)?.id;
+  }
+
+  // --- Import d'écritures (les deux virements reçus) ---
+  const imp = await importerEcritures(c, R, '2028 · import des virements reçus', {
+    exerciceId: n2, journalId: bq.id,
+    lignes: [
+      ['20/01/2028', 'BQ', '1', 'FV-2028-001', BQ, 'Virement Mines du Sud FV-2028-001', '1160000', '0', '', '', ''],
+      ['20/01/2028', 'BQ', '1', 'FV-2028-001', c1.numero, 'Virement Mines du Sud FV-2028-001', '0', '1160000', '', '', ''],
+      ['25/01/2028', 'BQ', '2', 'VIR-2028-778', BQ, 'Virement Mines du Sud', '2320000', '0', '', '', ''],
+      ['25/01/2028', 'BQ', '2', 'VIR-2028-778', c1.numero, 'Virement Mines du Sud', '0', '2320000', '', '', ''],
+    ],
+  });
+  void imp;
+  await validerJusqua(c, n2, '2028-01-31');
+  const b = await balance(c, n2);
+  R.montant('2028 · banque après l’import (49 606 400 + 1 160 000 + 2 320 000)', 53_086_400, solde(b, BQ));
+  R.montant('2028 · client C1 (trois ventes moins deux virements)', 580_000, solde(b, c1.numero));
+  R.montant('2028 · TVA facturée (à-nouveau 6 080 000 et 560 000 de la ligne « Calculer »)', -6_640_000, solde(b, '4431'));
+  R.montant('2028 · ventes de marchandises', -3_500_000, solde(b, '7011'));
+  const brouillard = (await c.lire('Écritures 2028', `/ecritures?exerciceId=${n2}`)) ?? {};
+  const ecr = Array.isArray(brouillard) ? brouillard : (brouillard.ecritures ?? brouillard.donnees ?? []);
+  R.montant('2028 · écritures importées validées (journal BQ)', 2, ecr.filter((e) => e.journal?.code === 'BQ' && e.statut === 'VALIDEE').length);
+  const decl = await c.lire('Déclaration de TVA de janvier 2028', '/taux-tva/declaration?dateDebut=2028-01-01&dateFin=2028-01-31');
+  R.montant('2028 · TVA de janvier · collectée (taux porté par la ligne « Calculer »)', 560_000, decl?.totalCollecte);
+
+  // --- Pré-lettrage, puis lettrage automatique ---
+  const pre = await c.lire('Pré-lettrage de C1', `/comptes/${c1.compteId}/lettrage/pre-lettrage`);
+  const props = pre?.propositions ?? [];
+  const parPiece = props.filter((p) => p.origine === 'AUTOMATIQUE_PIECE');
+  const parMontant = props.filter((p) => p.origine === 'AUTOMATIQUE_MONTANT');
+  R.montant('2028 · pré-lettrage · paires par référence de pièce (FV-2028-001)', 1, parPiece.length);
+  R.montant('2028 · pré-lettrage · paires par montant (2 320 000)', 1, parMontant.length);
+  R.montant('2028 · pré-lettrage · lignes non proposées (FV-2028-003)', 1, pre?.nonProposees);
+  if (parPiece[0]) {
+    R.egal('2028 · pré-lettrage · la paire par référence contient FV-2028-001', true, parPiece[0].ligneIds.includes(lignesC1['FV-2028-001']));
+    await c.geste('Confirmation de la paire par référence', 'POST', `/comptes/${c1.compteId}/lettrage/pre-lettrage/confirmer`, {
+      groupes: [{ ligneIds: parPiece[0].ligneIds, origine: 'AUTOMATIQUE_PIECE' }],
+    });
+  }
+  const auto = await c.geste('Lettrage automatique de C1', 'POST', `/comptes/${c1.compteId}/lettrage/auto`);
+  R.montant('2028 · lettrage automatique · groupes posés (la paire par montant)', 1, auto?.groupes);
+  const ouvertes = (await c.lire('Lignes ouvertes de C1 en 2028', `/comptes/${c1.compteId}/lettrage?nonLettreesSeulement=true`))?.lignes ?? [];
+  const ouv28 = ouvertes.filter((l) => String(l.date).slice(0, 4) === '2028');
+  R.egal('2028 · après lettrage · seule FV-2028-003 reste ouverte', [lignesC1['FV-2028-003']], ouv28.map((l) => l.id));
+  const groupes = ((await c.lire('Lettrages de C1', `/comptes/${c1.compteId}/lettrage`))?.lettrages ?? []).filter((g) => g.statut !== 'PARTIEL');
+  R.egal('2028 · origines conservées (pièce confirmée, montant automatique)', ['AUTOMATIQUE_MONTANT', 'AUTOMATIQUE_PIECE'],
+    groupes.filter((g) => ['AUTOMATIQUE_MONTANT', 'AUTOMATIQUE_PIECE'].includes(g.origine)).map((g) => g.origine).sort());
+
+  // --- Relance de la facture échue, la lettre reste en file ---
+  await c.geste('Adresse de courriel de Mines du Sud', 'PATCH', `/tiers/${c1.id}`, { email: 'comptabilite@mines-du-sud.exemple.cd' });
+  const niveaux = (await c.lire('Niveaux de relance', '/relances/niveaux')) ?? [];
+  const rappel = (Array.isArray(niveaux) ? niveaux : []).find((x) => x.niveau === 2);
+  const positions = await c.lire('Positions à relancer', `/relances?exerciceId=${n2}&type=RAPPEL`);
+  const pos = (positions?.positions ?? positions ?? []).find?.((p) => p.compteId === c1.compteId);
+  R.montant('2028 · relance · montant dû par C1 (FV-2028-003)', 580_000, pos?.montantDu);
+  R.montant('2028 · relance · retard de FV-2028-003 au 15/02/2028 (échue le 25/01)', 21, pos?.retardMaxJours);
+  R.montant('2028 · relance · niveau suggéré (rappel à 15 jours)', 2, pos?.niveauSuggere);
+  if (rappel) {
+    const em = await c.geste('Émission de la relance de C1', 'POST', '/relances/emettre', { exerciceId: n2, compteIds: [c1.compteId], niveauId: rappel.id });
+    R.montant('2028 · relance · lettres écrites', 1, em?.emises);
+    R.montant('2028 · relance · lettres mises en file', 1, em?.misesEnFile);
+  }
+  const hist = await c.lire('Historique des relances de C1', `/relances/historique?compteId=${c1.compteId}`);
+  const lignesHist = hist?.relances ?? hist?.lignes ?? (Array.isArray(hist) ? hist : []);
+  R.montant('2028 · relance · montant figé à l’historique', 580_000, Number(lignesHist[0]?.montant ?? NaN));
+  const courrier = await c.lire('Courrier en file', '/courrier');
+  const messages = courrier?.messages ?? courrier?.lignes ?? (Array.isArray(courrier) ? courrier : []);
+  const lettre = messages.find((m) => String(m.destinataire ?? '').includes('mines-du-sud'));
+  R.egal('2028 · relance · la lettre est en file, rien n’est parti', true, Boolean(lettre) && ['EN_ATTENTE', 'SANS_TRANSPORT'].includes(lettre.statut));
 }

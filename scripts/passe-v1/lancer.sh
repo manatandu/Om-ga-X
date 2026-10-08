@@ -9,7 +9,17 @@
 #   PASSE_DATABASE_URL=… scripts/passe-v1/lancer.sh [sortie.json]
 #
 # Variables · PASSE_PORT (8745), PASSE_SANS_BUILD=1 (garde dist/ tel quel),
-# PASSE_SCENARIOS (association,projet,sarl), PASSE_PROJET_SANS_INTERETS=1.
+# PASSE_SCENARIOS (association,projet,sarl,cloisonnement),
+# PASSE_PROJET_SANS_INTERETS=1, PASSE_HORLOGE (« 2028-02-15 09:00:00 »).
+#
+# L'HORLOGE DU SERVEUR · le banc clôture 2026 et 2027 · un cabinet le fait en
+# 2028. Le serveur tourne donc sous libfaketime au 15 février 2028 (paquet
+# `faketime`), date à laquelle les contrôles qui ne parlent qu'au lendemain de
+# la clôture parlent, la caisse du 31/12/2027 se compte et une facture de
+# janvier 2028 est échue. Seul le processus du serveur est décalé (la base et
+# le banc gardent leur heure), et le banc lit la même date (PASSE_HORLOGE).
+# PASSE_HORLOGE=aucune garde l'horloge réelle · les parcours qui en dépendent
+# le disent en note.
 set -euo pipefail
 
 RACINE="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -32,8 +42,22 @@ if [ "${PASSE_SANS_BUILD:-}" != "1" ]; then
   npm run build > "$JOURNAL.build" 2>&1 || { echo "Échec de la construction · voir $JOURNAL.build" >&2; exit 1; }
 fi
 
+HORLOGE="${PASSE_HORLOGE:-2028-02-15 09:00:00}"
+FAKETIME_LIB="/usr/lib/x86_64-linux-gnu/faketime/libfaketimeMT.so.1"
+if [ "$HORLOGE" != "aucune" ] && [ -f "$FAKETIME_LIB" ]; then
+  export PASSE_HORLOGE="$HORLOGE"
+  PRECHARGE="$FAKETIME_LIB"
+  echo "Horloge du serveur · $HORLOGE (libfaketime)"
+else
+  unset PASSE_HORLOGE
+  PRECHARGE=""
+  echo "Horloge du serveur · réelle (libfaketime absent ou PASSE_HORLOGE=aucune)"
+fi
+
 echo "Démarrage du serveur sur le port $PORT…"
-DATABASE_URL="$PASSE_DATABASE_URL" PORT="$PORT" INSCRIPTION_PUBLIQUE=true \
+# LD_PRELOAD posé sur node lui-même · $! est bien le PID de node, que le trap arrête.
+LD_PRELOAD="$PRECHARGE" FAKETIME="@$HORLOGE" FAKETIME_DONT_FAKE_MONOTONIC=1 TZ=UTC \
+  DATABASE_URL="$PASSE_DATABASE_URL" PORT="$PORT" INSCRIPTION_PUBLIQUE=true \
   JWT_SECRET="passe-v1-jetable-$RANDOM-$RANDOM" JWT_EXPIRES_IN=8h NODE_ENV=production \
   node dist/main.js > "$JOURNAL" 2>&1 &
 PID=$!

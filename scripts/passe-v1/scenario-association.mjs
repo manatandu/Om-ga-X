@@ -15,9 +15,32 @@
  * (section « Association »), poste par poste.
  */
 import {
-  aplatir, balance, cloturer, compte, ecriture, etape, ligneDe, nouveauDossier,
+  aplatir, aujourdhui, balance, cloturer, compte, ecriture, etape, ligneDe, nouveauDossier,
   livresExportes, rechargerComptes, rechargerExercices, restitution, solde, tiers, validerJusqua,
 } from './lib.mjs';
+import { confronterControles, relireLiasse } from './parcours.mjs';
+
+/** Les contrôles que la fin de chaque exercice doit lever · README, « Contrôles de clôture ». */
+const CONTROLES_ATTENDUS_2026 = {
+  BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE: { raison: 'les deux banques ne sont pas rapprochées par le banc', references: ['52110000', '52150000'] },
+  CHARGE_SANS_TIERS: 'assurance, missions et colloque payés directement par la banque',
+  CLOTURE_INFORMATIQUE_EN_RETARD: 'aucune clôture de période posée dans OmegaX, échéance du premier trimestre passée au 15/02/2028',
+  DATE_ARRETE_NON_RENSEIGNEE: 'le banc ne saisit pas la date d’arrêté des comptes',
+  MANUEL_PROCEDURES_ABSENT: 'aucun manuel des procédures enregistré',
+  SANS_PIECE: 'des écritures du banc sans référence de pièce',
+  VALIDATION_PAR_SON_AUTEUR: 'un seul utilisateur saisit et valide',
+  TIERS_ANCIEN_NON_LETTRE: 'dette fournisseur reprise et son règlement non lettrés, appel de la créance reclassée (annoté)',
+};
+const CONTROLES_ATTENDUS_2027 = {
+  BANQUE_SANS_RAPPROCHEMENT_A_LA_CLOTURE: { raison: 'les deux banques ne sont pas rapprochées par le banc', references: ['52110000', '52150000'] },
+  CHARGE_SANS_TIERS: 'missions payées directement par la banque',
+  CLOTURE_INFORMATIQUE_EN_RETARD: 'aucune clôture de période posée dans OmegaX, échéance du premier trimestre passée au 15/02/2028',
+  DATE_ARRETE_NON_RENSEIGNEE: 'le banc ne saisit pas la date d’arrêté des comptes',
+  MANUEL_PROCEDURES_ABSENT: 'aucun manuel des procédures enregistré',
+  SANS_PIECE: 'des écritures du banc sans référence de pièce',
+  VALIDATION_PAR_SON_AUTEUR: 'un seul utilisateur saisit et valide',
+  TIERS_ANCIEN_NON_LETTRE: 'charge à payer reprise à l’ouverture (408) et son à-nouveau non lettrés',
+};
 
 const BQ = '52110000';
 const BQ_USD = '52150000';
@@ -236,6 +259,8 @@ export async function scenarioAssociation(registre) {
     const rapport = await c.lire('Registre des donateurs · rapport', `/registre-donateurs/rapport-conformite?exerciceId=${n}`);
     R.montant('2026 · registre des donateurs · total inscrit', 19_000_000, rapport?.rapprochement?.totalRegistre);
     R.montant('2026 · registre des donateurs · total comptabilisé', 19_000_000, rapport?.rapprochement?.totalComptable);
+    await relireLiasse(c, R, '2026', `/exports/etats-financiers/liasse-complete?exerciceId=${n}`, { BZ: 50_579_100, DZ: 50_579_100 });
+    await confronterControles(c, R, '2026 · contrôles de clôture', n, CONTROLES_ATTENDUS_2026);
   });
 
   await etape(R, 'Livres exportés de 2026', () => livresExportes(c, R, n, '2026'));
@@ -319,32 +344,76 @@ export async function scenarioAssociation(registre) {
     await validerJusqua(c, n1, '2027-12-31');
   });
 
+  // INVENTAIRE DE LA CAISSE AU 31/12/2027 · 995 000 comptés pour 1 000 000
+  // au livre, manquant de 5 000 arbitré « à redresser », passé au 658 par le
+  // cabinet (le module laisse la contrepartie vide) · README, « Caisse ».
+  await etape(R, '2027 · inventaire de la caisse, PV de comptage et écart arbitré', async () => {
+    if (aujourdhui() <= '2027-12-31') return R.note('Horloge au jour réel · le comptage du 31/12/2027 est à venir, PV non établi');
+    const camp = await c.geste('Campagne d’inventaire 2027', 'POST', '/inventaire', { exerciceId: n1, dateInventaire: '2027-12-31', libelle: 'Inventaire de fin d’année 2027' });
+    if (!camp) return;
+    const sc = await c.geste('Sous-commission de la caisse', 'POST', `/inventaire/${camp.id}/sous-commissions`, { nom: 'Caisse du siège', perimetre: 'Caisse 57100000' });
+    if (!sc) return;
+    await c.geste('Membre · caissière (inventoriant)', 'POST', `/inventaire/sous-commissions/${sc.id}/membres`, { nom: 'MUKENDI', fonction: 'Caissière', role: 'INVENTORIANT' });
+    await c.geste('Membre · trésorier (témoin)', 'POST', `/inventaire/sous-commissions/${sc.id}/membres`, { nom: 'ILUNGA', fonction: 'Trésorier', role: 'TEMOIN' });
+    const fiche = await c.geste('Fiche · caisse du siège', 'POST', `/inventaire/${camp.id}/fiches`, { compteId: compte(c, CAISSE), sousCommissionId: sc.id, designation: 'Espèces en caisse au siège' });
+    if (fiche) await c.geste('Comptage · espèces', 'PATCH', `/inventaire/fiches/${fiche.id}`, { valeurInventaire: 995_000, referencePiece: 'PV-CAISSE-2027' });
+    const apercu = await c.lire('Aperçu du PV de caisse', `/inventaire/${camp.id}/pv-caisse/apercu?compteId=${compte(c, CAISSE)}&dateComptage=2027-12-31`);
+    R.montant('2027 · PV de caisse · solde du livre-journal au 31/12', 1_000_000, apercu?.soldeComptable);
+    const pv = await c.geste('PV de comptage de la caisse', 'POST', `/inventaire/${camp.id}/pv-caisse`, {
+      compteId: compte(c, CAISSE), sousCommissionId: sc.id, dateComptage: '2027-12-31', heureComptage: '17:30',
+      modeComparaison: apercu?.modeComparaison ?? 'FRANCS', especesComptees: 995_000,
+      coupures: [{ valeurUnitaire: 10_000, nombre: 99 }, { valeurUnitaire: 5_000, nombre: 1 }],
+      attestationEtablieLe: '2027-12-31', attestationPar: 'ILUNGA, trésorier',
+    });
+    R.montant('2027 · PV de caisse · écart figé (995 000 − 1 000 000)', -5_000, pv?.ecart);
+    await c.geste('PV de la campagne', 'POST', `/inventaire/${camp.id}/proces-verbal`, { dateEtablissement: '2027-12-31' });
+    const rap = await c.geste('Rapprochement des fiches avec la balance', 'POST', `/inventaire/${camp.id}/rapprocher`);
+    const ecart = (rap?.ecarts ?? []).find((e) => e.compte?.numero === CAISSE);
+    R.montant('2027 · inventaire · écart de la caisse', -5_000, ecart?.ecart);
+    if (!ecart) return;
+    await c.geste('Arbitrage · manquant à redresser', 'PATCH', `/inventaire/ecarts/${ecart.id}`, {
+      decision: 'A_REDRESSER', responsable: 'MUKENDI, caissière', explication: 'Manquant constaté au comptage, non justifié',
+    });
+    const prop = await c.lire('Proposition de redressement', `/inventaire/ecarts/${ecart.id}/proposition`);
+    R.egal('2027 · proposition · contrepartie laissée vide, caisse au crédit de 5 000',
+      [null, 'DEBIT', 5_000, CAISSE, 'CREDIT', 5_000],
+      [prop?.lignes?.[0]?.compte ?? null, prop?.lignes?.[0]?.sens, prop?.lignes?.[0]?.montant, prop?.lignes?.[1]?.compte, prop?.lignes?.[1]?.sens, prop?.lignes?.[1]?.montant]);
+    const e = await ecriture(c, 'Redressement du manquant de caisse', n1, '2027-12-31', 'Manquant de caisse constaté à l’inventaire',
+      [['65800000', 5_000, 0], [CAISSE, 0, 5_000]]);
+    await validerJusqua(c, n1, '2027-12-31');
+    const candidates = (await c.lire('Écritures candidates au redressement', `/inventaire/ecarts/${ecart.id}/ecritures-candidates`)) ?? [];
+    R.egal('2027 · l’écriture de redressement est proposée au rattachement', true, candidates.some((x) => x.id === e?.id));
+    if (e) await c.geste('Rattachement de l’écriture de redressement', 'POST', `/inventaire/ecarts/${ecart.id}/ecriture`, { ecritureId: e.id });
+    const close = await c.geste('Clôture de la campagne', 'POST', `/inventaire/${camp.id}/clore`);
+    R.egal('2027 · campagne d’inventaire close', 'CLOTUREE', close?.statut ?? null);
+  });
+
   await etape(R, '2027 · contrôles avant clôture', async () => {
     const b = await balance(c, n1);
     R.montant('2027 · balance équilibrée', 0, b ? b.totalDebit - b.totalCredit : null);
     const att = {
-      [BQ]: 22_484_000, [BQ_USD]: 12_000_000, [CAISSE]: 1_000_000, '284': -4_800_000, '411': 0, '4161': 0, '491': 0,
+      [BQ]: 22_484_000, [BQ_USD]: 12_000_000, [CAISSE]: 995_000, '658': 5_000, '284': -4_800_000, '411': 0, '4161': 0, '491': 0,
       '476': 0, '40': 0, '408': 0, '43': 0, '447': 0, '4428': 0, '1417': -3_900_000, '1671': -6_300_000, '165': 0,
       '121': -4_164_000, '13': 0,
       '701': -2_200_000, '7041': -1_500_000, '7925': -2_000_000, '799': -1_200_000, '7923': -1_800_000, '7594': -100_000, '776': -400_000,
       '6052': 0, '6251': 2_730_000, '6384': 2_000_000, '6512': 150_000, '6813': 3_000_000,
     };
     for (const [racine, m] of Object.entries(att)) R.montant(`2027 · solde ${racine}`, m, solde(b, racine));
-    R.montant('2027 · résultat (classes 6 à 8)', 1_320_000, -(solde(b, '6') + solde(b, '7') + solde(b, '8')));
+    R.montant('2027 · résultat (classes 6 à 8)', 1_315_000, -(solde(b, '6') + solde(b, '7') + solde(b, '8')));
     const bilan = await c.lire('Bilan 2027', `/etats-financiers/bilan?exerciceId=${n1}`);
-    R.montant('2027 · bilan · total actif', 45_684_000, bilan?.totalActif);
-    R.montant('2027 · bilan · total passif', 45_684_000, bilan?.totalPassif);
+    R.montant('2027 · bilan · total actif', 45_679_000, bilan?.totalActif);
+    R.montant('2027 · bilan · total passif', 45_679_000, bilan?.totalPassif);
     R.montant('2027 · bilan · colonne N-1 · total actif = bilan 2026', 50_579_100, bilan?.totalActifN1);
     R.montant('2027 · bilan · colonne N-1 · total passif = bilan 2026', 50_579_100, bilan?.totalPassifN1);
     const cr = await c.lire('Compte de résultat 2027', `/etats-financiers/compte-de-resultat?exerciceId=${n1}`);
-    R.montant('2027 · compte de résultat · résultat net', 1_320_000, cr?.resultatNet);
+    R.montant('2027 · compte de résultat · résultat net', 1_315_000, cr?.resultatNet);
     R.montant('2027 · compte de résultat · colonne N-1 · résultat net = 2026', 1_164_000, cr?.resultatNetN1);
     R.montant('2027 · compte de résultat · colonne N-1 · produits = 2026', 17_250_000, cr?.totalProduitsN1);
     const tft = await c.lire('Flux de trésorerie 2027', `/etats-financiers/tableau-flux-tresorerie?exerciceId=${n1}`);
     const f = aplatir(tft);
     R.montant('2027 · TFT · trésorerie au 1er janvier (ZA)', 34_549_100, f.ZA?.n);
-    R.montant('2027 · TFT · variation (ZF)', 934_900, f.ZF?.n);
-    R.montant('2027 · TFT · trésorerie au 31 décembre (ZG)', 35_484_000, f.ZG?.n);
+    R.montant('2027 · TFT · variation (ZF)', 929_900, f.ZF?.n);
+    R.montant('2027 · TFT · trésorerie au 31 décembre (ZG)', 35_479_000, f.ZG?.n);
     R.montant('2027 · TFT · colonne N-1 · trésorerie au 31 décembre 2026', 34_549_100, f.ZG?.n1);
     const notes = await c.lire('Notes annexes 2027', `/notes-annexes/associations?exerciceId=${n1}`);
     const totalNote = (code, cle) => (notes?.notes ?? []).filter((x) => x.code === code).flatMap((x) => x.lignes ?? []).find((l) => /TOTAL G[EÉ]N[EÉ]RAL/i.test(l.libelle ?? ''))?.valeurs?.[cle];
@@ -353,6 +422,13 @@ export async function scenarioAssociation(registre) {
     const rapport = await c.lire('Registre des donateurs · rapport 2027', `/registre-donateurs/rapport-conformite?exerciceId=${n1}`);
     R.montant('2027 · registre des donateurs · total inscrit', 1_500_000, rapport?.rapprochement?.totalRegistre);
     R.montant('2027 · registre des donateurs · total comptabilisé', 1_500_000, rapport?.rapprochement?.totalComptable);
+    await relireLiasse(c, R, '2027', `/exports/etats-financiers/liasse-complete?exerciceId=${n1}`, { BZ: 45_679_000, DZ: 45_679_000 });
+    const rap27 = await confronterControles(c, R, '2027 · contrôles de clôture', n1, CONTROLES_ATTENDUS_2027);
+    // Le redressement d'un manquant de caisse, que le module d'inventaire
+    // demande et retient (EcartInventaire.ecritureId), n'est pas une charge
+    // payée sans tiers · le signaler fabrique une anomalie (README, constats).
+    const charges = (rap27?.anomalies ?? []).filter((a) => a.code === 'CHARGE_SANS_TIERS').flatMap((a) => a.occurrences ?? []);
+    R.egal('2027 · CHARGE_SANS_TIERS ne vise pas le redressement du manquant de caisse', false, charges.some((o) => /Manquant de caisse/.test(`${o.reference} ${o.detail}`)));
   });
 
   await etape(R, 'Livres exportés de 2027 et restitution', async () => {
@@ -367,7 +443,7 @@ export async function scenarioAssociation(registre) {
     if (!n2) return R.note('2028 absent après la clôture de 2027');
     const b = await balance(c, n2);
     R.montant('2028 · à-nouveau banque en francs', 22_484_000, solde(b, BQ));
-    R.montant('2028 · à-nouveau résultat 2027 au 13', -1_320_000, solde(b, '13'));
+    R.montant('2028 · à-nouveau résultat 2027 au 13', -1_315_000, solde(b, '13'));
     R.montant('2028 · à-nouveau report à nouveau', -4_164_000, solde(b, '121'));
   });
 }

@@ -18,9 +18,10 @@ import { BASE, Registre } from './lib.mjs';
 import { scenarioProjet } from './scenario-projet.mjs';
 import { scenarioAssociation } from './scenario-association.mjs';
 import { scenarioSarl } from './scenario-sarl.mjs';
+import { scenarioCloisonnement } from './scenario-cloisonnement.mjs';
 
-const SCENARIOS = { association: scenarioAssociation, projet: scenarioProjet, sarl: scenarioSarl };
-const choisis = (process.env.PASSE_SCENARIOS ?? 'association,projet,sarl').split(',').map((s) => s.trim()).filter(Boolean);
+const SCENARIOS = { association: scenarioAssociation, projet: scenarioProjet, sarl: scenarioSarl, cloisonnement: scenarioCloisonnement };
+const choisis = (process.env.PASSE_SCENARIOS ?? 'association,projet,sarl,cloisonnement').split(',').map((s) => s.trim()).filter(Boolean);
 
 const registre = new Registre();
 const sante = await fetch(`${BASE}/health`).then((r) => r.json()).catch((e) => ({ erreur: e.message }));
