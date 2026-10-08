@@ -376,7 +376,16 @@ export async function restitution(c, R, libelle = 'restitution') {
   // l'inventaire à celles réellement écrites · ses lignes « ECART » sont
   // relevées telles quelles, et le nombre réel de lignes de chaque CSV est
   // relu à côté (tables/<table>.csv), pour départager l'archive et son contrôle.
-  const ecartsDits = texte('controles.txt').split(/\r?\n/).filter((l) => l.endsWith(';ECART'));
+  // Le maillon d'audit de la restitution elle-même s'écrit APRÈS l'inventaire
+  // (restitution.service.ts, il porte cet inventaire) · EvenementAudit a donc
+  // exactement une ligne écrite de plus qu'annoncée. Écart voulu, que
+  // controles.txt explique en tête ; toute autre forme reste relevée.
+  const estLeMaillonDeLaRestitution = (l) => {
+    const [table, annonce, ecrit] = l.split(';');
+    return table === 'EvenementAudit' && Number(ecrit) === Number(annonce) + 1;
+  };
+  const ecartsDits = texte('controles.txt').split(/\r?\n/)
+    .filter((l) => l.endsWith(';ECART') && !estLeMaillonDeLaRestitution(l));
   R.egal(`${libelle} · controles.txt · aucune table en écart entre l'inventaire et les lignes écrites`, [], ecartsDits.slice(0, 6));
   const ecritureCsv = entrees.has('tables/ecriture.csv') ? enregistrementsCsv(texte('tables/ecriture.csv')) - 1 : null;
   const ditEcriture = texte('controles.txt').split(/\r?\n/).find((l) => l.startsWith('Ecriture;'))?.split(';');
