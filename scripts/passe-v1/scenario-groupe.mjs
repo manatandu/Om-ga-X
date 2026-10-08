@@ -253,6 +253,7 @@ export default async function scenarioGroupe(registre) {
 
   const sycebnl = await etape(R, 'SYCEBNL · association siège et deux cellules', () => groupeSycebnl(R, op));
   await etape(R, 'SYCEBNL · variante sans virement interne · N et N+1, éliminations dans leur colonne', () => groupeSansVirement(R, op));
+  await etape(R, 'SYCEBNL · siège à premier exercice long, cellule civile · virement passé d’un seul côté', () => groupeExercicesDecales(R, op));
   await etape(R, 'SYSCOHADA · société siège et deux succursales', () => groupeSyscohada(R, op, sycebnl));
 }
 
@@ -658,6 +659,50 @@ async function groupeSycebnl(R, op) {
     await relireLiasse(S, R, 'Groupe SYCEBNL 2027 après clôtures', `/groupe/liasse/excel?exerciceId=${s27}`, { BZ: 25_500_000, DZ: 25_500_000 });
   });
   return { S, A, B, cA, cB, X };
+}
+
+/**
+ * LE 585 DU GROUPE À LA CLÔTURE, BORNES DÉCALÉES (G1, relectures du
+ * 2026-10-08) · la clôture d'un dossier de groupe admet l'écart égal à son
+ * 585 si le 585 du GROUPE est soldé à sa date de clôture (fiche SYCEBNL du
+ * compte 58, « soldés à la fin de l'exercice »). Un siège à premier exercice
+ * long (01/08/2025 au 31/12/2026, AUDCIF art. 7) et sa cellule civile ne
+ * partagent aucune borne · lu par « l'exercice de même période », le groupe
+ * n'en voyait qu'un côté et les deux clôtures étaient refusées pour toujours.
+ * Le virement passé d'un seul côté refuse ; complété, les deux se clôturent.
+ */
+async function groupeExercicesDecales(R, op) {
+  const L = await nouveauDossier(R, 'Passe groupe · Mission Lumière (siège, premier exercice long)', {
+    referentiel: 'SYCEBNL', jeu: 'ASSOCIATIONS_ORDRES_PROFESSIONNELS', cle: 'lumiere', exercice: ['2025-08-01', '2026-12-31'],
+  });
+  const l26 = L.exercices.get('2025')?.id;
+  if (!l26) return R.note('Bornes décalées · premier exercice long du siège absent');
+  if (op) await op.geste('Console · plafond d’une cellule pour Lumière', 'PATCH', `/plateforme/cabinets/${L.tenantId}/groupe`, { plafondCellules: 1 });
+  const email = adresseTitulaire('lumiere-kasa');
+  const cr = await L.geste('Création de la cellule Kasa-Vubu', 'POST', '/groupe/cellules', { nom: 'Lumière · cellule Kasa-Vubu', emailAdmin: email, jeuEtatsFinanciersSycebnl: 'ASSOCIATIONS_ORDRES_PROFESSIONNELS' });
+  if (!cr) return R.note('Bornes décalées · cellule non créée');
+  const { c: K } = await seConnecter(R, email, cr.motDePasseTemporaire, 'Lumière · cellule Kasa-Vubu');
+  await K.geste('Kasa-Vubu · choix de son mot de passe', 'POST', '/auth/changer-mot-de-passe', { motDePasseActuel: cr.motDePasseTemporaire, nouveauMotDePasse: MOT_DE_PASSE });
+  await chargerDossier(K);
+  const k26 = await ouvrirExercice(K, 2026);
+  const bqL = L.journal('BQ') ?? L.od;
+  const bqK = K.journal('BQ') ?? K.od;
+
+  await ecriture(L, 'L1 dîmes', l26, '2025-09-14', 'Dîmes Lumière', [[BQ, 5_000_000, 0], [DIMES, 0, 5_000_000]], { journal: bqL });
+  // Fiche du COMPTE 58 · l'émetteur débite le 585 par le crédit de sa trésorerie.
+  await ecriture(L, 'L2 virement à Kasa-Vubu', l26, '2026-03-02', 'Virement à Kasa-Vubu', [[VIREMENT, 2_000_000, 0], [BQ, 0, 2_000_000]], { journal: bqL });
+  await validerJusqua(L, l26, '2026-12-31');
+
+  // La cellule n'a encore rien passé · le 585 du groupe vaut + 2 000 000.
+  const refus = await tenter(R, L, 'Bornes décalées · clôture du siège, virement passé d’un seul côté', 'POST', `/exercices/${l26}/cloturer`, {}, [], [400]);
+  R.egal('Bornes décalées · le refus nomme le 585 du groupe et son écart',
+    true, /585[\s\S]*du groupe n'est pas soldé au 31\/12\/2026[\s\S]*2\s000\s000,00 au débit/.test(JSON.stringify(refus?.corps ?? '')));
+
+  // Le receveur débite sa trésorerie par le crédit du 585.
+  await ecriture(K, 'K1 virement reçu du siège', k26, '2026-03-03', 'Virement reçu du siège', [[BQ, 2_000_000, 0], [VIREMENT, 0, 2_000_000]], { journal: bqK });
+  await validerJusqua(K, k26, '2026-12-31');
+  R.egal('Bornes décalées · clôture 2026 de la cellule (585 créditeur de 2 000 000, exercice civil)', true, await cloturer(K, '2026'));
+  R.egal('Bornes décalées · clôture du premier exercice long du siège (585 débiteur de 2 000 000)', true, await cloturer(L, '2025'));
 }
 
 /**
