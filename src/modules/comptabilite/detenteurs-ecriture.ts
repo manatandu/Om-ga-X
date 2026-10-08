@@ -100,6 +100,11 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   'CreanceDouteuse.ecritureReclassementId',
   'AjustementCreanceDouteuse.ecritureId',
   'MouvementCreanceDouteuse.ecritureId',
+  // La perte qui récupère la TVA (point D, décision de Manasse du 2026-10-08)
+  // · sa seconde pièce, la perte sur le compte d'origine · retirée seule, le
+  // retour au compte d'origine resterait sans sa perte et la créance se dirait
+  // perdue sans la pièce qui porte le 651 et le 443.
+  'MouvementCreanceDouteuse.ecriturePerteId',
   // La récupération de la TVA d'une créance irrécouvrable (ligne A7 bis,
   // partie 2) · retirée seule, la créance se dirait récupérée sans la pièce
   // qui porte la déduction, et la récupération ne se repasserait plus.

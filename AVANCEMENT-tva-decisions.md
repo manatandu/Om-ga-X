@@ -29,11 +29,23 @@ l'intégration.
   migration `20270161000000_trop_paye_liquidation`). CLAUDE.md, paragraphe
   « Liquidation d'une société commerciale » mis à jour.
 
+- (D) Perte et récupération de la TVA d'une créance irrécouvrable, version
+  finale de Manasse (2026-10-08) · aucun montant négatif, aucun crédit au 651.
+  Règle 1 · avec duplicatas, retour D compte d'origine / C 416 puis D 651 HT /
+  D 443 au taux / C compte d'origine (`perteAvecTva`, `motifRefusPerteAvecTva`,
+  `ventilerPerte`, colonnes `ecriturePerteId`, `montantTva`,
+  `montantTvaAnnulee`, `detailTva`, migration
+  `20270162000000_perte_avec_tva`) ; règle 2 · D 443 SANS taux pour la taxe à
+  l'encaissement ; règle 3 · « Récupérer la TVA » D 443 / C 751, mention
+  AUDCIF art. 61 quand la perte est d'un exercice antérieur. Moteur de TVA ·
+  la perte qui récupère justifie son avoir (`mouvementCreanceDouteusePerte`).
+  Écran · duplicatas facultatifs dans la modale de la perte. CLAUDE.md, A7 et
+  A7 bis partie 2 réécrits (avec le délai du point C).
+
 ## Reste
 
-- (D) EN ATTENTE · Manasse a refusé le montant négatif au 651 ; rien codé,
-  récupération identique à `main`, paragraphe A7 bis partie 2 intact.
-- Bloc du § 3 des deux côtés ; scénario sur vraie base.
+- Bloc du § 3 des deux côtés ; scénario sur vraie base (exemple de référence
+  du point D compris) ; test navigateur écrit, non lancé.
 
 ## Décisions prises, avec leurs articles
 
@@ -96,12 +108,34 @@ l'intégration.
   (défaut d'avant, l'A11 ignorait la totalisation) ; totalisation non
   calculée · refus nommé.
 
+### (D) Perte et récupération (décision de Manasse du 2026-10-08)
+
+- Rien d'acquitté, rien à récupérer (O.-L. n° 10/001, art. 52, al. 1) ;
+  rectification par duplicata surchargé (art. 52, al. 3 ; décret n° 011/42,
+  art. 127, al. 2 et 3) ; inscription en déduction de la période qui suit
+  (décret, art. 126). La taxe à l'encaissement n'a jamais été exigible
+  (art. 25, 2°) · annulée au 443 sans déduction.
+- Le retour au compte d'origine · texte muet (fiche du compte 65, « par le
+  crédit d'un compte de tiers »), décision de Manasse. Les deux pièces se
+  lettrent entre elles (origine MODULE) · le moteur de TVA ne lit l'encaissement
+  d'une facture que sur SON groupe, que le reclassement ne lettre pas (A7 ter,
+  B3) · rien n'est lu comme un encaissement.
+- Règle 3 · produit au 751 « Profits sur créances » (fiche du compte 75 des
+  deux plans) ; perte antérieure · AUDCIF art. 61 (non exclu par l'art. 3 du
+  SYCEBNL), mention aux Notes annexes dite.
+- Lecture d'OmegaX (non dictée) · la perte qui récupère est la perte qui
+  ÉTEINT la créance (art. 52, al. 3, « définitivement ») · refusée après une
+  perte au TTC déjà passée (la règle 3 sert alors), et la perte partielle après
+  recouvrement ne sort que le reste.
+
 ## Commandes de vérification
 
 ```bash
 npx jest src/modules/creances-douteuses/recuperation-tva.spec.ts
 npx jest src/modules/tva
 npx jest src/modules/fiscalite src/modules/exercice/echeancier-dissolution.spec.ts
+npx jest src/modules/creances-douteuses src/modules/tva/tva-recuperation-creance-art52.spec.ts
+(cd client && npx vitest run src/lib/creances-douteuses.spec.ts)
 ```
 
 ## Relevés non bloquants

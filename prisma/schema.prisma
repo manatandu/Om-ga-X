@@ -1717,7 +1717,8 @@ model Ecriture {
   creanceDouteuseReclassement CreanceDouteuse?                   @relation("CreanceDouteuseReclassement")
   creanceDouteuseCorrection   CreanceDouteuse?                   @relation("CreanceDouteuseCorrectionResultat")
   ajustementCreanceDouteuse   AjustementCreanceDouteuse?
-  mouvementCreanceDouteuse    MouvementCreanceDouteuse?
+  mouvementCreanceDouteuse    MouvementCreanceDouteuse?          @relation("MouvementCreanceDouteuseEcriture")
+  mouvementCreanceDouteusePerte MouvementCreanceDouteuse?        @relation("MouvementCreanceDouteusePerte")
   recuperationTvaCreance      RecuperationTvaCreance?
   declarationDeviseANouveau   DeclarationDeviseANouveau?
   constatImpotResultat        ConstatImpotResultat?
@@ -9767,10 +9768,32 @@ model MouvementCreanceDouteuse {
   motif   String
   pieces  Json
 
+  /// LA PERTE QUI RÉCUPÈRE LA TVA (ligne tva-decisions, point D, décision de
+  /// Manasse du 2026-10-08) · D 651 (HT) / D 443 (taxe) / C compte d'origine
+  /// (TTC), sur duplicata surchargé (O.-L. n° 10/001, art. 52, al. 1 et 3 ;
+  /// décret n° 011/42, art. 126 et 127). `montantTva` · la taxe ACQUITTÉE
+  /// récupérée (D 443 au taux, lue par la déclaration comme un avoir sur
+  /// vente) ; `montantTvaAnnulee` · la taxe à l'encaissement jamais exigible
+  /// (art. 25, 2°), annulée sans déduction (D 443 sans taux). Zéro pour une
+  /// perte au TTC entier ; `detailTva` · facture par facture, figé au geste.
+  montantTva        Decimal @default(0) @db.Decimal(18, 2)
+  montantTvaAnnulee Decimal @default(0) @db.Decimal(18, 2)
+  detailTva         Json?
+
   /// Nulle quand l'écriture, restée au brouillard, est supprimée par
   /// l'annulation du mouvement (K4).
   ecritureId String?   @unique
-  ecriture   Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
+  ecriture   Ecriture? @relation("MouvementCreanceDouteuseEcriture", fields: [ecritureId], references: [id], onDelete: Restrict)
+
+  /// LA PERTE QUI RÉCUPÈRE LA TVA SE PASSE EN DEUX ÉCRITURES (point D,
+  /// décision de Manasse du 2026-10-08, texte muet sur le compte de tiers
+  /// crédité) · `ecritureId` porte le RETOUR de la créance du 416 au compte
+  /// d'origine (D compte d'origine / C 416, le reste TTC), et celle-ci la PERTE
+  /// sur le compte d'origine (D 651 HT / D 443 taxe / C compte d'origine TTC).
+  /// Passées ensemble, retenues ensemble, annulées ensemble (AUDCIF art. 20,
+  /// al. 2). Nulle pour une perte au TTC entier (D 651 / C 416, une écriture).
+  ecriturePerteId String?   @unique
+  ecriturePerte   Ecriture? @relation("MouvementCreanceDouteusePerte", fields: [ecriturePerteId], references: [id], onDelete: Restrict)
 
   /// L'ANNULATION (K4 · AUDCIF art. 20, al. 2) · le mouvement est MARQUÉ,
   /// jamais supprimé ; son écriture est supprimée au brouillard, inscrite en

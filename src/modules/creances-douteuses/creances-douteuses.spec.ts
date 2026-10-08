@@ -406,6 +406,8 @@ describe('créances douteuses · service', () => {
     { id: 'c7594', numero: '75940000', intitule: '7594', typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true },
     { id: 'c6511', numero: '65110000', intitule: '6511', typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true },
     { id: 'c6512', numero: '65120000', intitule: '6512', typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true },
+    // Point D, règle 3 · « Profits sur créances », semé 75100000 aux deux plans.
+    { id: 'c751', numero: '75100000', intitule: '751', typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true },
   ];
   const journaux = [
     { id: 'od', code: 'OD', type: TypeJournal.GENERAL, compteTresorerieId: null },
@@ -452,6 +454,14 @@ describe('créances douteuses · service', () => {
       journalAudit?: Array<{ rang: number; horodatage: Date; entite: string; avant?: unknown; apres?: unknown }>;
       /** M9 · les modules qui tiennent l'écriture désignée. */
       detenteurs?: string[];
+      /**
+       * Point D · les factures désignées de la créance (lues par la perte qui
+       * récupère la TVA) et la taxe de leur pièce, rendue par le moteur.
+       */
+      designations?: Array<Record<string, unknown>>;
+      taxes?: Map<string, unknown>;
+      /** Point D · la fin de la dernière liquidation de TVA du dossier. */
+      finDerniereLiquidation?: Date;
     } = {},
   ) {
     let rang = 0;
@@ -615,7 +625,24 @@ describe('créances douteuses · service', () => {
         count: jest.fn().mockResolvedValue(0),
         aggregate: jest.fn().mockResolvedValue({ _sum: { ecart: 0 } }),
       },
-      recuperationTvaCreance: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+      recuperationTvaCreance: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'rec-1', ...data })),
+      },
+      // Point D · les désignations de LA créance demandée, actives seulement.
+      factureCreanceDouteuse: {
+        findMany: jest.fn().mockImplementation(({ where }: any) =>
+          Promise.resolve(
+            (options.designations ?? []).filter(
+              (d: any) => (!where?.creanceId || d.creanceId === where.creanceId) && (where?.retireeLe !== null || !d.retireeLe),
+            ),
+          ),
+        ),
+      },
+      liquidationTva: {
+        findFirst: jest.fn().mockResolvedValue(options.finDerniereLiquidation ? { dateFin: options.finDerniereLiquidation } : null),
+      },
       mouvementCreanceDouteuse: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'mv-1', ...data })),
         delete: jest.fn().mockResolvedValue({}),
@@ -667,7 +694,7 @@ describe('créances douteuses · service', () => {
       prisma,
       { creer, creerAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, detenteursDeLEcriture } as any,
       lettrage as any,
-      { taxeDesFactures: jest.fn().mockResolvedValue({ factures: new Map(), ancienMoteur: false }) } as any,
+      { taxeDesFactures: jest.fn().mockResolvedValue({ factures: options.taxes ?? new Map(), ancienMoteur: false }) } as any,
     );
     return { service, prisma, creer, creerAvec, retirerCompensation, supprimer, inscrireEnNegatifPourAnnulation, lettrage };
   }
@@ -1057,6 +1084,191 @@ describe('créances douteuses · service', () => {
     expect(Object.keys(prisma.mouvementCreanceDouteuse.create.mock.calls[0][0].data).sort()).toEqual(
       ['createdBy', 'creanceId', 'date', 'ecritureId', 'exerciceId', 'montant', 'motif', 'pieces', 'tenantId', 'type'].sort(),
     );
+  });
+
+  /*
+    POINT D · DÉCISION DE MANASSE DU 2026-10-08 · l'exemple de référence. Vente
+    de 1 000 000 HT + 160 000 de TVA (D 4111 1 160 000 / C 7011 / C 4431),
+    reclassée au 4162, perte en N+1 · la créance revient au 4111 (D 4111 /
+    C 4162 1 160 000), puis D 6511 1 000 000 / D 4431 160 000 / C 4111
+    1 160 000. Aucun montant négatif, aucun crédit au 651.
+  */
+  const designationF1 = {
+    id: 'des-A',
+    creanceId: 'cd-1',
+    montant: 1_160_000,
+    ligneEcritureId: 'l-fac',
+    retireeLe: null,
+    ligneEcriture: { dateEcheance: null, ecritureId: 'ecr-fac', ecriture: { date: new Date('2026-02-01'), libelle: 'Facture F-1', numeroPiece: 7 } },
+  };
+  const taxesF1 = (base: 'DATE_ECRITURE' | 'ENCAISSEMENT') =>
+    new Map([['ecr-fac', { ttc: 1_160_000, lignesTva: [{ ligneId: 't-1', compteId: 'c4431', numero: '44310000', tauxTvaId: 'tva16', tva: 160_000, base }] }]]);
+  const creanceClient = (mouvements: unknown[] = []) =>
+    creance([], mouvements, {
+      compteCreance: { id: 'cli', numero: '41110001', intitule: 'Client Kasa', tiersCompte: null },
+      compte416: { id: 'c4162', numero: '41620000', intitule: '4162' },
+      compte416Id: 'c4162',
+    });
+  const dtoPerteAvecTva = {
+    exerciceId: 'ex-27',
+    journalId: 'od',
+    date: '2027-03-15',
+    montant: 1_160_000,
+    motif: 'Client en liquidation, aucun actif',
+    pieces: [{ nature: 'Jugement de clôture pour insuffisance d’actif', reference: 'JC-7' }],
+    duplicatas: [{ designationId: 'des-A', reference: 'DUP-F1', dateEnvoi: '2027-03-01' }],
+  };
+  const monterPerteAvecTva = (base: 'DATE_ECRITURE' | 'ENCAISSEMENT') => {
+    const m = monter({
+      creance: creanceClient(),
+      regime: { assujettiTva: true },
+      designations: [designationF1],
+      taxes: taxesF1(base),
+      finDerniereLiquidation: new Date('2027-02-28'),
+    });
+    // Les deux lignes du compte d'origine, une par pièce (retour, perte).
+    m.prisma.ligneEcriture.findMany.mockImplementation(({ where }: any) =>
+      Promise.resolve(where?.ecritureId?.in ? where.ecritureId.in.map((e: string) => ({ id: `l-${e}` })) : [{ lettre: null, lettrageId: null, rapprochementId: null }]),
+    );
+    return m;
+  };
+
+  it('point D, règle 1 · la perte passe en DEUX pièces · retour D 4111 / C 4162, puis D 6511 1 000 000 / D 4431 160 000 / C 4111', async () => {
+    const { service, creer, prisma, lettrage } = monterPerteAvecTva('DATE_ECRITURE');
+    const r: any = await service.perte('t', 'u', 'cd-1', dtoPerteAvecTva);
+    expect(creer).toHaveBeenCalledTimes(2);
+    expect(creer.mock.calls[0][2].lignes).toEqual([
+      { compteId: 'cli', debit: 1_160_000, credit: 0 },
+      { compteId: 'c4162', debit: 0, credit: 1_160_000 },
+    ]);
+    expect(creer.mock.calls[1][2].lignes).toEqual([
+      { compteId: 'c6511', debit: 1_000_000, credit: 0 },
+      { compteId: 'c4431', debit: 160_000, credit: 0, tauxTvaId: 'tva16', libelle: 'TVA récupérée sur créance irrécouvrable (art. 52)' },
+      { compteId: 'cli', debit: 0, credit: 1_160_000 },
+    ]);
+    // Aucun montant négatif, aucun crédit au 651.
+    for (const appel of creer.mock.calls) {
+      for (const l of appel[2].lignes) {
+        expect(l.debit).toBeGreaterThanOrEqual(0);
+        expect(l.credit).toBeGreaterThanOrEqual(0);
+        if (l.compteId === 'c6511') expect(l.credit).toBe(0);
+      }
+    }
+    const data = prisma.mouvementCreanceDouteuse.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ type: 'PERTE', montant: 1_160_000, ecritureId: 'ecr-1', ecriturePerteId: 'ecr-2', montantTva: 160_000, montantTvaAnnulee: 0 });
+    expect(data.detailTva[0]).toMatchObject({ designationId: 'des-A', duplicata: { reference: 'DUP-F1', dateEnvoi: '2027-03-01' } });
+    // (ii) et (iii) · le 416 se lettre par le module, et le retour avec la perte au compte d'origine.
+    expect(lettrage.lettrerLignesDuModule).toHaveBeenCalledWith('t', 'cli', ['l-ecr-1', 'l-ecr-2'], 'u');
+    expect(r).toMatchObject({ montantHt: 1_000_000, montantTva: 160_000, lettrageOrigine: { pose: true } });
+    expect(r.information).toMatch(/160000\.00 récupérée.*art\. 126/);
+  });
+
+  it('point D, règle 2 · taxe à l’encaissement · D 4431 SANS TAUX (jamais déduite), rien d’acquitté', async () => {
+    const { service, creer, prisma } = monterPerteAvecTva('ENCAISSEMENT');
+    const r: any = await service.perte('t', 'u', 'cd-1', dtoPerteAvecTva);
+    expect(creer.mock.calls[1][2].lignes).toEqual([
+      { compteId: 'c6511', debit: 1_000_000, credit: 0 },
+      { compteId: 'c4431', debit: 160_000, credit: 0, libelle: 'TVA à l’encaissement jamais exigible, annulée (art. 25, 2°)' },
+      { compteId: 'cli', debit: 0, credit: 1_160_000 },
+    ]);
+    expect(prisma.mouvementCreanceDouteuse.create.mock.calls[0][0].data).toMatchObject({ montantTva: 0, montantTvaAnnulee: 160_000 });
+    expect(r.information).toMatch(/rien d’acquitté, rien à récupérer \(art\. 52, al\. 1\)/);
+  });
+
+  it('point D · sans duplicata, la perte reste au TTC (D 6511 / C 4162) et dit que la taxe se récupérera par la règle 3', async () => {
+    const { service, creer } = monterPerteAvecTva('DATE_ECRITURE');
+    const { duplicatas: _d, ...sans } = dtoPerteAvecTva;
+    const r: any = await service.perte('t', 'u', 'cd-1', sans);
+    expect(creer).toHaveBeenCalledTimes(1);
+    expect(creer.mock.calls[0][2].lignes).toEqual([
+      { compteId: 'c6511', debit: 1_160_000, credit: 0 },
+      { compteId: 'c4162', debit: 0, credit: 1_160_000 },
+    ]);
+    expect(r.information).toMatch(/Récupérer la TVA.*D 443 \/ C 751/);
+  });
+
+  it('point D · une perte déjà passée au TTC refuse la perte avec duplicata, avant toute écriture', async () => {
+    const dejaPassee = { id: 'mv-p', type: TypeMouvementCreanceDouteuse.PERTE, date: new Date('2027-01-10'), montant: 160_000, ecritureId: 'ecr-p', annuleeLe: null, exerciceId: 'ex-27' };
+    const m = monter({ creance: creanceClient([dejaPassee]), designations: [designationF1], taxes: taxesF1('DATE_ECRITURE') });
+    await expect(m.service.perte('t', 'u', 'cd-1', { ...dtoPerteAvecTva, montant: 1_000_000 })).rejects.toThrow(/déjà passée au TTC/);
+    expect(m.creer).not.toHaveBeenCalled();
+  });
+
+  it('point D · l’annulation défait les DEUX pièces · au brouillard, toutes deux supprimées, les liens effacés', async () => {
+    const mv = { id: 'mv-d', type: TypeMouvementCreanceDouteuse.PERTE, date: new Date('2027-03-15'), montant: 1_160_000, ecritureId: 'ecr-1', annuleeLe: null, exerciceId: 'ex-27' };
+    const { service, prisma } = monter({
+      creance: creanceClient([mv]),
+      mouvement: {
+        ...mv,
+        creanceId: 'cd-1',
+        montantTva: 160_000,
+        exercice: { statut: StatutExercice.OUVERT },
+        ecriture: { id: 'ecr-1', statut: 'BROUILLARD', numeroPiece: 11, lignes: [{ lettre: null, lettrageId: null, rapprochementId: null }] },
+        ecriturePerte: {
+          id: 'ecr-2',
+          statut: 'BROUILLARD',
+          numeroPiece: 12,
+          journalId: 'od',
+          lignes: [{ id: 'lp', compteId: 'cli', lettre: null, lettrageId: null, rapprochementId: null }],
+        },
+      },
+    });
+    await service.annulerMouvement('t', 'u', 'cd-1', 'mv-d', { motif: 'Duplicata envoyé au mauvais client' });
+    const data = prisma.mouvementCreanceDouteuse.update.mock.calls[0][0].data;
+    expect(data).toMatchObject({ ecritureId: null, ecriturePerteId: null, annulation: { traitement: 'SUPPRIMEE', perte: { traitement: 'SUPPRIMEE', ecritureId: 'ecr-2' } } });
+    expect(prisma.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'ecr-1', tenantId: 't', statut: 'BROUILLARD' } });
+    expect(prisma.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'ecr-2', tenantId: 't', statut: 'BROUILLARD' } });
+  });
+
+  it('point D · une liquidation de TVA qui couvre la date de la perte refuse son annulation (déclaration figée)', async () => {
+    const mv = { id: 'mv-d', type: TypeMouvementCreanceDouteuse.PERTE, date: new Date('2027-03-15'), montant: 1_160_000, ecritureId: 'ecr-1', annuleeLe: null, exerciceId: 'ex-27' };
+    const { service, prisma } = monter({
+      creance: creanceClient([mv]),
+      finDerniereLiquidation: new Date('2027-04-30'),
+      mouvement: {
+        ...mv,
+        creanceId: 'cd-1',
+        montantTva: 160_000,
+        exercice: { statut: StatutExercice.OUVERT },
+        ecriture: { id: 'ecr-1', statut: 'VALIDEE', numeroPiece: 11, lignes: [{ lettre: null, lettrageId: null, rapprochementId: null }] },
+        ecriturePerte: { id: 'ecr-2', statut: 'VALIDEE', numeroPiece: 12, journalId: 'od', lignes: [] },
+      },
+    });
+    await expect(service.annulerMouvement('t', 'u', 'cd-1', 'mv-d', { motif: 'Erreur' })).rejects.toThrow(/liquidée jusqu’au 2027-04-30/);
+    expect(prisma.mouvementCreanceDouteuse.update).not.toHaveBeenCalled();
+  });
+
+  it('point D, règle 3 · « Récupérer la TVA » après une perte au TTC passe D 4431 / C 751, jamais au 651', async () => {
+    const perteTtc = {
+      id: 'mv-p',
+      type: TypeMouvementCreanceDouteuse.PERTE,
+      date: new Date('2026-12-20'),
+      montant: 1_160_000,
+      ecritureId: 'ecr-p',
+      annuleeLe: null,
+      exerciceId: 'ex-26',
+      ecriture: { statut: 'VALIDEE', numeroPiece: 5, lignes: [{ compteId: 'c6511' }] },
+    };
+    const { service, creerAvec } = monter({
+      creance: creanceClient([perteTtc]),
+      designations: [designationF1],
+      taxes: taxesF1('DATE_ECRITURE'),
+      finDerniereLiquidation: new Date('2027-02-28'),
+    });
+    const r: any = await service.recupererTva('t', 'u', 'cd-1', {
+      exerciceId: 'ex-27',
+      journalId: 'od',
+      date: '2027-03-15',
+      motif: 'Client en liquidation, aucun actif',
+      pieces: [{ nature: 'Jugement de clôture', reference: 'JC-7' }],
+      duplicatas: [{ designationId: 'des-A', reference: 'DUP-F1', dateEnvoi: '2027-03-01' }],
+    } as any);
+    expect(creerAvec.mock.calls[0][2].lignes).toEqual([
+      { compteId: 'c4431', debit: 160_000, credit: 0, tauxTvaId: 'tva16' },
+      { compteId: 'c751', debit: 0, credit: 160_000 },
+    ]);
+    // La perte est de l'exercice 2026, la récupération de 2027 · mention aux Notes annexes (AUDCIF art. 61).
+    expect(r.information).toMatch(/AUDCIF art\. 61/);
   });
 
   it('A7 scindée · le service dépend de la base, du journal, du lettrage, et du moteur de TVA pour la seule LECTURE de la taxe des factures (A7 bis, partie 2)', () => {

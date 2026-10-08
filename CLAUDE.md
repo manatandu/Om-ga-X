@@ -795,11 +795,17 @@ créances du module. (M-c) mouvement de l'exercice sans revue · information. (M
 perte et annulation `@ReserveAuComptable()`. A7 SCINDÉE (décision de Manasse du
 2026-10-03, après la cinquième relecture) · A7 NE TOUCHE PLUS AU MOTEUR DE TVA
 (`src/modules/tva/` identique à `main`, `EcritureService.valider` aussi). LA PERTE
-PASSE AU TTC ENTIER, D 651 / C 416, TOUJOURS · aucune ligne 443, aucune
-« récupération » ; la bulle `Aide` dit que la TVA d'une créance réellement et
-définitivement irrécouvrable se récupère par imputation (O.-L. n° 10/001, art. 52 ;
-décret n° 011/42, art. 126 et 127, duplicata surchargé), récupération servie depuis
-par un geste à part (A7 bis, partie 2). Aucune vente d'origine n'est gardée (elles ne servaient
+(décision de Manasse du 2026-10-08, point D de la ligne tva-decisions, aucun
+montant négatif, aucun crédit au 651) · SANS duplicata, au TTC ENTIER, D 651 / C 416,
+aucune ligne 443 ; AVEC le duplicata surchargé des factures désignées et la preuve
+de l'irrécouvrabilité (O.-L. n° 10/001, art. 52 ; décret n° 011/42, art. 126 et
+127), la créance REVIENT d'abord au compte d'origine (D 4111 / C 4162 du reste TTC,
+texte muet, décision de Manasse), puis D 651 (HT) / D 443 (taxe) / C compte
+d'origine (TTC) · deux pièces liées à la créance (`ecritureId`, `ecriturePerteId`),
+retenues, annulées ensemble, lettrées entre elles par le module (origine `MODULE`,
+jamais lues comme un encaissement de la facture, que le reclassement ne lettre
+toujours pas) ; dépréciation reprise au 7594 comme avant (E1) ; détail en A7 bis,
+partie 2. Aucune vente d'origine n'est gardée (elles ne servaient
 qu'à la TVA ; le 4161 / 4162 se lit sur le compte du client) · A7 bis y ajoute la
 DÉSIGNATION facultative des factures, qui ne sert qu'à l'exigibilité du recouvrement. LE RECLASSEMENT NE
 LETTRE PAS LE 411 et n'exige aucun lettrage · lettré avec la facture, le moteur de
@@ -1016,12 +1022,22 @@ recuperation-tva.ts`, `TauxTvaService.taxeDesFactures`). (1) LA NOTE DE CRÉDIT 
 PAS LA PIÈCE D'UN IMPAYÉ · elle sert l'opération annulée ou résiliée (art. 52 al. 2,
 art. 127 al. 1, I3 (1)) ; l'impayé se rectifie par le DUPLICATA surchargé (art. 52
 al. 3, art. 127 al. 2), référence et date d'envoi EXIGÉES facture par facture, la
-mention servie montants compris. (2) UN GESTE À PART, après la perte, qui reste au
-TTC entier · D 443 (compte et taux de la ligne de TVA de la facture) / C 651 (le
-compte des pertes, un seul, sinon refus nommé), au brouillard, journal OD, passé au
-seul clic du comptable (`@ReserveAuComptable`, bouton « Récupérer la TVA » sous
-`peutValider`), montant REJOUÉ et figé (`RecuperationTvaCreance.detail`), écriture
-RETENUE. (3) RIEN D'ACQUITTÉ, RIEN À RÉCUPÉRER (art. 52 al. 1) · seule la taxe d'une
+mention servie montants compris. (2) TROIS RÈGLES (décision de Manasse du
+2026-10-08, point D ; aucun montant négatif, aucun crédit au 651) · (a) LA PERTE QUI
+RÉCUPÈRE (`perteAvecTva`, `motifRefusPerteAvecTva`) · duplicatas saisis à la perte,
+retour au compte d'origine puis D 651 HT / D 443 au taux de la facture / C compte
+d'origine TTC, taxe REJOUÉE (`ventilerPerte`), figée (`MouvementCreanceDouteuse.
+detailTva`, `montantTva`) ; refusée si une perte est déjà passée, si elle n'éteint
+pas la créance (perte partielle après recouvrement · le seul reste), dans une
+période liquidée ; (b) TAXE À L'ENCAISSEMENT · même écriture, D 443 SANS TAUX, que
+la déclaration ne lit pas · rien d'acquitté, rien à récupérer (art. 52 al. 1),
+`montantTvaAnnulee` ; (c) PERTE DÉJÀ AU TTC · le geste « Récupérer la TVA » passe
+D 443 (compte et taux) / C 751 « Profits sur créances » (fiche du compte 75 des deux
+plans, 75100000 semé aux deux), jamais au 651, au brouillard, journal OD, au seul
+clic du comptable (`@ReserveAuComptable`, `peutValider`), montant REJOUÉ et figé
+(`RecuperationTvaCreance.detail`), écriture RETENUE ; perte d'un exercice antérieur
+· mention aux Notes annexes dite (AUDCIF art. 61, non exclu par l'art. 3 du
+SYCEBNL) ; les récupérations déjà passées au C 651 ne se retouchent pas. (3) RIEN D'ACQUITTÉ, RIEN À RÉCUPÉRER (art. 52 al. 1) · seule la taxe d'une
 ligne datée à la facture (art. 25, 1° ; débits autorisés) l'est sur l'impayé ; une
 taxe à l'encaissement (art. 25, 2°) jamais, et c'est dit ; lue par la règle de la
 déclaration (`baseExigibilite`), jamais une seconde ; une liquidation de l'ancien
@@ -1032,16 +1048,20 @@ recouvrements imputés par l'art. 154 (même imputation que la déclaration) ; s
 désignation, rien. Preuve de l'irrécouvrabilité exigée (art. 127 al. 3). (5)
 PÉRIODE · la déclaration lit l'écriture comme un avoir sur vente constaté, inscrit
 en déduction de la période qui suit (art. 126), justifié par le duplicata (jamais
-compté « sans note de crédit ») ; refus · avant la dernière perte, après le 31
-décembre de l'année qui suit (art. 37 al. 2, par le renvoi de l'art. 126), dans ou
-avant une période liquidée. (6) ANNULATION (art. 20, al. 2) · brouillard supprimé,
-validée inscrite en négatif ; refusée dès qu'une liquidation couvre sa date ou la
-suit. LE NÉGATIF D'UN AVOIR SUR VENTE (débit négatif du 443) EST LU PAR LA
+compté « sans note de crédit »), la perte qui récupère aussi (`mouvementCreanceDouteusePerte`) ; refus · avant la dernière perte,
+dans ou avant une période liquidée, et après le DÉLAI (décision par la loi du
+2026-10-08, point C · art. 37 al. 2 par le renvoi de l'art. 126 · il court de la
+DERNIÈRE perte validée, constatation du non-paiement, jamais de l'envoi du
+duplicata ; il se juge à la déclaration qui inscrit la récupération, celle du mois
+suivant (décret art. 102) · l'écriture se date au plus tard le 30 NOVEMBRE de
+l'année qui suit, `derniereDateEcriture`). (6) ANNULATION (art. 20, al. 2) ·
+brouillard supprimé, validée inscrite en négatif ; refusée dès qu'une liquidation
+couvre sa date ou la suit ; la perte qui récupère s'annule de même, ses deux pièces
+ensemble. LE NÉGATIF D'UN AVOIR SUR VENTE (débit négatif du 443) EST LU PAR LA
 DÉCLARATION au signe près, et la liquidation reprend au débit une récupération
 négative · il était ignoré, tout avoir annulé restait récupéré. Perte, recouvrement
-et désignation ne se défont pas tant qu'une récupération non annulée tient. Perte
-d'un exercice clos · le 651 de l'exercice en cours est crédité (AUDCIF art. 34 par
-analogie, lecture dite) ; le non tranché est à la ligne A7 bis du suivi.
+et désignation ne se défont pas tant qu'une récupération non annulée tient. Le non
+tranché est à la ligne A7 bis du suivi.
 
 **Procès-verbal de comptage par caisse.** Le PV de campagne (CPCC, étape 2) ne porte
 pas les espèces ; le § VI vise « la caisse SIÈGE, [...] la caisse AGENCE, [...] la

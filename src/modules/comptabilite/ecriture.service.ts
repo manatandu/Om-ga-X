@@ -1321,7 +1321,12 @@ export class EcritureService {
       [DETENTEUR_REVUE_CREANCE, this.prisma.ajustementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
       // Un mouvement annulé (K4) ne retient plus · son écriture validée est
       // neutralisée par l'inscription en négatif, celle du brouillard est partie.
-      [DETENTEUR_MOUVEMENT_CREANCE, this.prisma.mouvementCreanceDouteuse.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
+      // La perte qui récupère la TVA tient ses DEUX pièces (point D) · le retour
+      // au compte d'origine et la perte sur lui.
+      [
+        DETENTEUR_MOUVEMENT_CREANCE,
+        this.prisma.mouvementCreanceDouteuse.count({ where: { tenantId, annuleeLe: null, OR: [{ ecritureId }, { ecriturePerteId: ecritureId }] } }),
+      ],
       // La récupération de la TVA (A7 bis, partie 2) · s'annule depuis sa
       // fenêtre ; annulée, elle ne retient plus son écriture.
       [DETENTEUR_RECUPERATION_TVA_CREANCE, this.prisma.recuperationTvaCreance.count({ where: { tenantId, ecritureId, annuleeLe: null } })],
@@ -2161,7 +2166,7 @@ export class EcritureService {
     ecritureId: string,
     motif: string,
     tx?: Prisma.TransactionClient,
-    options: { groupeTolere?: string | null } = {},
+    options: { groupeTolere?: string | readonly string[] | null } = {},
   ) {
     const db = tx ?? this.prisma;
     const origine = await db.ecriture.findFirst({

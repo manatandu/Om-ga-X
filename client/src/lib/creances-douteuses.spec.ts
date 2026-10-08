@@ -22,6 +22,9 @@ import {
   factureChoisissable,
   taxeDesCochees,
   type FactureRecuperable,
+  duplicatasDeLaPerte,
+  factureChoisissablePourLaPerte,
+  taxeDeLaPerte,
 } from './creances-douteuses';
 import { montant } from './montants';
 import { montantSaisi } from './montant-saisi';
@@ -217,14 +220,17 @@ describe('créances douteuses · seconde relecture à l’écran (K4, M-c)', () 
   });
 });
 
-describe('créances douteuses · A7 scindée à l’écran', () => {
-  it('la perte s’envoie sans aucun champ de TVA, au TTC entier, et la bulle dit la récupération par imputation avec ses articles', () => {
+describe('créances douteuses · la perte à l’écran (point D, décision de Manasse du 2026-10-08)', () => {
+  it('sans duplicata, la perte part au TTC entier ; avec, les duplicatas partent et le serveur chiffre la taxe · la bulle dit les deux voies', () => {
     const corps = page.slice(page.indexOf('async function envoyer'), page.indexOf('async function annuler'));
     expect(corps).toContain('comptePerteId: form.comptePerteId || undefined,');
+    expect(corps).toContain('...(lu.duplicatas.length > 0 ? { duplicatas: lu.duplicatas } : {}),');
     expect(page).toContain('Perte au TTC entier · D 651 / C 416');
-    expect(page).toContain('source="O.-L. n° 10/001, art. 52 ; décret n° 011/42, art. 126 et 127"');
-    // A7 bis, partie 2 · la récupération est désormais un geste du module.
-    expect(page).toContain('Une fois la créance éteinte, le geste « Récupérer la TVA » la chiffre facture par facture et la passe.');
+    expect(page).toContain('le hors taxe au 651 et la taxe au 443');
+    expect(page).toContain('elle s\'annule au 443 sans être déduite');
+    // Règle 3 · la perte déjà au TTC se complète au 751, jamais au 651.
+    expect(page).toContain('D 443 / C 751');
+    expect(page).not.toContain('D 443 / C 651');
   });
 
   it('le reclassement dit, dans sa bulle, de ne pas lettrer la facture avec lui · TOUJOURS (règle d’A7, rétablie au second tour d’A7 ter)', () => {
@@ -302,8 +308,9 @@ describe('A7 ter · le rapprochement et le lettrage de la créance éteinte, dit
     expect(messageLettrage416({ pose: false, motif: 'Créance éteinte · deux exercices.' })).toBe('Créance éteinte · deux exercices.');
     const envoyer = page.slice(page.indexOf('async function envoyer'), page.indexOf('async function annuler'));
     expect(envoyer.match(/setInfo\(messageLettrage416\(r\?\.lettrage416\)\)/g)).toHaveLength(1);
-    // M8 · la perte dit aussi la méthode inconnue au jour du reclassement.
-    expect(envoyer).toContain('setInfo([messageLettrage416(r?.lettrage416), r?.avertissement].filter(Boolean).join(\' \') || null);');
+    // M8 · la perte dit aussi la méthode inconnue au jour du reclassement ;
+    // point D · et le lettrage du compte d'origine manqué, et la taxe passée.
+    expect(envoyer).toContain('setInfo([messageLettrage416(r?.lettrage416), origine, r?.information, r?.avertissement].filter(Boolean).join(\' \') || null);');
     expect(envoyer).toContain('setInfo(r?.avertissement ?? null)');
   });
 });
@@ -382,6 +389,22 @@ describe('créances douteuses · récupération de la TVA (ligne A7 bis, partie 
     expect(duplicatasAEnvoyer([f('A')], { A: { choisie: true, reference: ' ', dateEnvoi: '2026-07-02' } }).erreur).toMatch(/Facture A.*référence/);
     expect(duplicatasAEnvoyer([f('A')], { A: { choisie: true, reference: 'D', dateEnvoi: '' } }).erreur).toMatch(/Facture A.*date d’envoi/);
     expect(duplicatasAEnvoyer([f('A')], {}).erreur).toMatch(/Cochez au moins une facture/);
+  });
+
+  it('point D · la perte choisit les factures dont une taxe, récupérée ou annulée, reste sur l’impayé ; aucune cochée = perte au TTC', () => {
+    const factures = [f('A'), f('S', { tvaRecuperable: 0, tvaAnnulable: 80_000 }), f('P', { impayeTtc: 0, tvaRecuperable: 0 }), f('R', { dejaRecuperee: true })];
+    expect(factures.map(factureChoisissablePourLaPerte)).toEqual([true, true, false, false]);
+    expect(duplicatasDeLaPerte(factures, {})).toEqual({ duplicatas: [], erreur: null });
+    const saisis = {
+      A: { choisie: true, reference: ' DUP-A ', dateEnvoi: '2027-03-01' },
+      S: { choisie: true, reference: 'DUP-S', dateEnvoi: '2027-03-01' },
+    };
+    expect(duplicatasDeLaPerte(factures, saisis).duplicatas).toEqual([
+      { designationId: 'A', reference: 'DUP-A', dateEnvoi: '2027-03-01' },
+      { designationId: 'S', reference: 'DUP-S', dateEnvoi: '2027-03-01' },
+    ]);
+    expect(taxeDeLaPerte(factures, saisis)).toEqual({ recuperee: 80_000, annulee: 80_000 });
+    expect(duplicatasDeLaPerte(factures, { A: { choisie: true, reference: '', dateEnvoi: '2027-03-01' } }).erreur).toMatch(/Facture A.*référence/);
   });
 
   it('le bouton du geste et celui de son annulation sont réservés au comptable (peutValider), et la route est appelée telle que le serveur la sert', () => {

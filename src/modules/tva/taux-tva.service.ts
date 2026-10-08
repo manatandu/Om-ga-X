@@ -4543,6 +4543,11 @@ export class TauxTvaService {
               // n° 10/001, art. 52 al. 3 ; décret n° 011/42, art. 127 al. 2),
               // exigé et figé par le module. Non annulée seulement.
               recuperationTvaCreance: { select: { id: true, annuleeLe: true } },
+              // LA PERTE QUI RÉCUPÈRE LA TVA (point D, décision de Manasse du
+              // 2026-10-08) · D 651 (HT) / D 443 (taxe) / C compte d'origine,
+              // sur le même duplicata exigé facture par facture · sa ligne
+              // 443 au taux est un avoir sur vente justifié.
+              mouvementCreanceDouteusePerte: { select: { id: true } },
               // LE NÉGATIF D'UN AVOIR SE NOMME (relecture d'A7 bis, partie 2,
               // MAJEUR 1) · sa pièce et celle de l'avoir qu'il corrige.
               numeroPiece: true,
@@ -4999,8 +5004,9 @@ export class TauxTvaService {
             // note de crédit n'y est pas due. Un négatif annule, il n'appelle
             // aucune pièce.
             const recuperationCreance = (l.ecriture as { recuperationTvaCreance?: { annuleeLe: Date | null } | null }).recuperationTvaCreance;
+            const perteAvecTva = (l.ecriture as { mouvementCreanceDouteusePerte?: { id: string } | null }).mouvementCreanceDouteusePerte;
             const justifie =
-              l.ecriture.facture?.nature === NatureFacture.NOTE_DE_CREDIT || !!recuperationCreance || negatifDAvoir;
+              l.ecriture.facture?.nature === NatureFacture.NOTE_DE_CREDIT || !!recuperationCreance || !!perteAvecTva || negatifDAvoir;
             const compteIci =
               dansLaPeriode || (dateEcriture < dateDebut && !!debutReportAvoirs && dateEcriture >= debutReportAvoirs);
             /*

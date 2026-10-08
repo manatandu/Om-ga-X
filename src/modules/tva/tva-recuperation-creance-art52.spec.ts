@@ -22,13 +22,15 @@ interface LigneFausse {
   debit?: number;
   credit?: number;
   recuperation?: boolean;
+  /** Point D · la ligne 443 de la perte qui récupère la taxe (D 651 / D 443 / C compte d'origine). */
+  perte?: boolean;
   piece?: number;
   corrige?: { numeroPiece: number; date: string };
   noteDeCredit?: boolean;
 }
 
 function service(lignes: LigneFausse[], derniere: { dateDebut: Date; dateFin: Date } | null = null) {
-  const lu: { select?: any } = {};
+  const lu: { select?: any; where?: any } = {};
   const prisma = {
     tenant: { findUnique: jest.fn().mockResolvedValue({ id: 't1', regimeExigibiliteTva: 'LIVRAISONS', referentiel: 'SYSCOHADA' }) },
     tauxTva: { findMany: jest.fn().mockResolvedValue([TAUX]) },
@@ -38,7 +40,9 @@ function service(lignes: LigneFausse[], derniere: { dateDebut: Date; dateFin: Da
         const compte = where.compte as { OR?: unknown } | undefined;
         if (!compte?.OR) return Promise.resolve([]);
         lu.select = select;
+        lu.where = where;
         const demandeLaRecuperation = !!select?.ecriture?.select?.recuperationTvaCreance;
+        const demandeLaPerte = !!select?.ecriture?.select?.mouvementCreanceDouteusePerte;
         return Promise.resolve(
           lignes.map((l, i) => ({
             id: `l${i}`,
@@ -52,6 +56,7 @@ function service(lignes: LigneFausse[], derniere: { dateDebut: Date; dateFin: Da
               lignes: [],
               facture: l.noteDeCredit ? { nature: 'NOTE_DE_CREDIT' } : null,
               recuperationTvaCreance: demandeLaRecuperation && l.recuperation ? { id: 'r1', annuleeLe: null } : null,
+              mouvementCreanceDouteusePerte: demandeLaPerte && l.perte ? { id: 'mv-p' } : null,
               numeroPiece: select?.ecriture?.select?.numeroPiece ? (l.piece ?? null) : undefined,
               corrigeEcriture:
                 select?.ecriture?.select?.corrigeEcriture && l.corrige ? { numeroPiece: l.corrige.numeroPiece, date: new Date(l.corrige.date) } : null,
@@ -89,6 +94,22 @@ describe('A7 bis, partie 2 · la déclaration et la récupération de l’art. 5
     expect(d.avoirsCollecteConstates).toBe(80_000);
     expect(d.recuperationArt52).toBe(0);
     expect(d.avoirsSansNoteDeCredit).toBe(0);
+  });
+
+  it('point D · la perte qui récupère la taxe (D 6511 / D 4431 / C 4111) est un avoir justifié par son duplicata, inscrit le mois suivant', async () => {
+    // Exemple de référence · 160 000 de TVA sur 1 160 000, perte de janvier.
+    const { service: s, lu } = service([{ date: '2027-01-20', debit: 160_000, perte: true }]);
+    const d = await s.declaration('t1', JANVIER, FIN_JANVIER);
+    expect(lu.select.ecriture.select.mouvementCreanceDouteusePerte).toEqual({ select: { id: true } });
+    expect(d.avoirsCollecteConstates).toBe(160_000);
+    expect(d.avoirsSansNoteDeCredit).toBe(0);
+    // Règle 2 · la ligne 443 SANS TAUX (taxe à l'encaissement annulée) n'est jamais lue · la requête ne prend que les lignes à un taux.
+    expect(lu.where.tauxTvaId).toEqual({ in: [TAUX.id] });
+    // Février, après la liquidation de janvier · 160 000 en déduction (décret art. 126).
+    const { service: s2 } = service([{ date: '2027-01-20', debit: 160_000, perte: true }], { dateDebut: JANVIER, dateFin: FIN_JANVIER });
+    const f = await s2.declaration('t1', FEVRIER, FIN_FEVRIER);
+    expect(f.recuperationArt52).toBe(160_000);
+    expect(f.avoirsSansNoteDeCredit).toBe(0);
   });
 
   it('février, après la liquidation de janvier · la récupération est inscrite en déduction', async () => {
