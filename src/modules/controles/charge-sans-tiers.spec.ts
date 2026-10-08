@@ -235,3 +235,45 @@ describe('le redressement d’un manquant d’inventaire, reconnu par sa liaison
     expect((await trouver(svc))!.occurrences).toHaveLength(1);
   });
 });
+
+/**
+ * PAQUET 1, B2 · LES INTÉRÊTS PRÉLEVÉS PAR LA BANQUE. La fiche du compte 67 des
+ * deux plans le fait débiter « par le crédit des comptes de tiers concernés ou
+ * des comptes de trésorerie », et ses éléments de contrôle sont « les relevés
+ * de banque ; décomptes d'intérêt ». Le signal reste · il NOMME ce cas, sans
+ * jamais aveugler l'oubli de tiers d'une autre charge.
+ */
+describe('les frais financiers prélevés en trésorerie sont nommés (B2)', () => {
+  it('intérêts d’emprunt prélevés en banque · signalés ET nommés, avec leur pièce', async () => {
+    const svc = service([ecriture('Intérêts emprunt S1', [ligne('67120000', 450_000), ligne('52110000', 0, 450_000)])]);
+    const a = await trouver(svc);
+    expect(a!.gravite).toBe('AVERTISSEMENT');
+    expect(a!.occurrences).toHaveLength(1);
+    expect(a!.occurrences[0].detail).toMatch(/fiche du compte 67/);
+    expect(a!.occurrences[0].detail).toMatch(/comptes de trésorerie/);
+    expect(a!.occurrences[0].detail).toMatch(/relevé de banque et le décompte d'intérêt/);
+  });
+
+  it('un loyer prélevé reste un oubli de tiers, non nommé', async () => {
+    const svc = service([ecriture('Loyer juillet', [ligne('62210000', 300_000), ligne('52110000', 0, 300_000)])]);
+    expect((await trouver(svc))!.occurrences[0].detail).not.toMatch(/fiche du compte 67/);
+  });
+
+  it('une pièce qui mêle intérêts et loyer n’est pas nommée', async () => {
+    const svc = service([
+      ecriture('Intérêts et loyer', [
+        ligne('67120000', 450_000),
+        ligne('62210000', 300_000),
+        ligne('52110000', 0, 750_000),
+      ]),
+    ]);
+    const a = await trouver(svc);
+    expect(a!.occurrences).toHaveLength(1);
+    expect(a!.occurrences[0].detail).not.toMatch(/fiche du compte 67/);
+  });
+
+  it('le 679 (dotation, par le crédit du 59) n’est pas le cas de la fiche', async () => {
+    const svc = service([ecriture('Charge 679 en banque', [ligne('67910000', 10_000), ligne('52110000', 0, 10_000)])]);
+    expect((await trouver(svc))!.occurrences[0].detail).not.toMatch(/fiche du compte 67/);
+  });
+});

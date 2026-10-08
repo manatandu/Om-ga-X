@@ -53,6 +53,18 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   aussi.
 - Tests · `charge-sans-tiers.spec.ts`, quatre cas (B1).
 
+### B2 · `CHARGE_SANS_TIERS` sur les intérêts prélevés par la banque
+
+- AVANT (p1b_avant) · D 67120000 / C 52110000 « Intérêts emprunt BCDC S1 »,
+  dans un dossier SYSCOHADA et dans un dossier SYCEBNL · signalé (concorde)
+  mais jamais nommé (lu false aux deux) ; loyer prélevé et pièce mêlée
+  intérêts et loyer, signalés et non nommés (concorde).
+- Correction · l'occurrence d'une pièce dont TOUTES les charges sont au 67
+  (hors 679) dit le cas que la fiche du compte 67 admet et sa pièce
+  (`chargesToutesAu67HorsDotations`) ; le signal et sa gravité
+  (AVERTISSEMENT) restent ; loyer, pièce mêlée et 679 ne sont pas nommés.
+- Tests · `charge-sans-tiers.spec.ts`, quatre cas (B2).
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -67,17 +79,33 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   sa liaison (`EcartInventaire.ecritureId`), jamais au libellé (même parti
   que les écritures de réévaluation et de créance douteuse du contrôle).
 
+- B2 · fiche du compte 67 des deux plans, lue dans les compétences
+  (`audcif-acte-uniforme/references/titre-7-comptes-classe-6.md` ;
+  `sycebnl/references/partie2-ch3-classe6-comptes60-69.md`) · « Le compte 67
+  (sauf 679) est débité des frais dus et des pertes financières constatées,
+  par le crédit des comptes de tiers concernés ou des comptes de
+  trésorerie » ; éléments de contrôle « Relevés de banque ; décomptes
+  d'intérêt ». Le texte ADMET la trésorerie, il n'en fait pas la règle · le
+  signal reste, nommé. Le 52 est « Banques » et le 67 « Frais financiers et
+  charges assimilées » aux deux semis (`compte-seed.ts`,
+  `compte-seed-syscohada.ts`).
+
 ## Relevés voisins (hors périmètre, non corrigés)
 
 - Inventaire · une campagne MIXTE (fiches d'autres comptes et PV de caisse à
   écart, sans fiche de la caisse) passe à l'arbitrage sans écart de caisse, et
   se clôt avec le manquant du PV jamais décidé.
+- Contrôles · la fiche des comptes 62 et 63 admet aussi « le crédit d'un
+  compte de tiers ou de trésorerie » ; les frais bancaires (631) prélevés sur
+  relevé ne sont pas nommés par CHARGE_SANS_TIERS, alors que la garde des
+  modèles de saisie les nomme comme cas légitime. Non touché (B2 vise les
+  intérêts).
 - Rapprochement bancaire · une `fenetreJours` énorme (au-delà de ce qu'une
   date peut porter) produit une date invalide et un 500.
 
 ## Reste
 
-B2, B9, B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
+B9, B3, B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 (`npm run build`, `cd client && npm run build`, puis
 `/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
 

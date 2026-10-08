@@ -464,6 +464,27 @@ function lignesHorsRedressementInventaire(e: EcritureControlee): EcritureControl
 }
 
 /**
+ * DES FRAIS FINANCIERS PRÉLEVÉS EN TRÉSORERIE (paquet 1, B2) · la fiche du
+ * compte 67 des DEUX plans fait débiter le compte « des frais dus et des
+ * pertes financières constatées, par le crédit des comptes de tiers concernés
+ * ou des comptes de trésorerie » (AUDCIF Titre VII, compte 67 ; SYCEBNL
+ * Partie 2 ch. 3, compte 67), sauf le 679 (dotations, par le crédit du 59) ;
+ * et ses éléments de contrôle sont « les relevés de banque ; décomptes
+ * d'intérêt ». Les intérêts prélevés par la banque ne sont donc pas l'oubli
+ * d'un fournisseur · le signal reste (rien ne dit ici que le relevé et le
+ * décompte existent, ni que la pièce ne mêle pas autre chose), mais il NOMME
+ * ce cas admis par le texte, et sa pièce. Seules les écritures dont TOUTES
+ * les charges sont au 67 (hors 679) sont nommées · un loyer ou un achat
+ * glissé dans la même pièce reste un oubli de tiers.
+ */
+function chargesToutesAu67HorsDotations(lignesDeCharge: EcritureControlee['lignes']): boolean {
+  return (
+    lignesDeCharge.length > 0 &&
+    lignesDeCharge.every((l) => l.compte.numero.startsWith('67') && !l.compte.numero.startsWith('679'))
+  );
+}
+
+/**
  * L'ÉCRITURE QUE TIENT UNE CRÉANCE DOUTEUSE EN VIGUEUR (ligne A7 ter, B2) ·
  * son reclassement au 416, une perte ou un recouvrement, une revue de sa
  * dépréciation, tant que ni l'acte ni la créance ne sont annulés. Le contrôle
@@ -2105,17 +2126,32 @@ export class ControlesService {
             'Passez deux écritures : la charge par le crédit du tiers (compte 40 fournisseur, 42 personnel, 43 organismes sociaux, 44 État selon le cas), puis le règlement par le débit de ce tiers et le crédit de la trésorerie.' +
             (tenant.referentiel === Referentiel.SYCEBNL ? ' C’est le schéma des § 2.2 et 2.4 de la Partie 3, ch. 3.' : ''),
           ...nombreSiTronque(parcours.chargesDirectes),
-          occurrences: chargesDirectes.map((e) => ({
-            reference: `${e.journal.code} n° ${e.numeroPiece ?? '·'}`,
-            detail: `${e.libelle} · ${e.lignes
+          occurrences: chargesDirectes.map((e) => {
+            const lignesDeCharge = e.lignes.filter(
+              (l) =>
+                (l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8')) &&
+                Number(l.debit) - Number(l.credit) > 0.005,
+            );
+            const comptes = e.lignes
               .filter((l) => l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8'))
               .map((l) => l.compte.numero)
-              .join(', ')} soldé(s) directement en trésorerie`,
-            montant: e.lignes
-              .filter((l) => l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8'))
-              .reduce((s2, l) => s2 + Number(l.debit) - Number(l.credit), 0),
-            date: e.date.toISOString().slice(0, 10),
-          })),
+              .join(', ');
+            // B2 · le cas que la fiche du compte 67 admet est NOMMÉ, et sa
+            // pièce avec lui · le signal reste.
+            const fraisFinanciers = chargesToutesAu67HorsDotations(lignesDeCharge)
+              ? ' · frais financiers, que la fiche du compte 67 fait débiter « par le crédit des comptes de tiers ' +
+                'concernés ou des comptes de trésorerie » · à justifier par le relevé de banque et le décompte ' +
+                "d'intérêt (éléments de contrôle du compte 67)"
+              : '';
+            return {
+              reference: `${e.journal.code} n° ${e.numeroPiece ?? '·'}`,
+              detail: `${e.libelle} · ${comptes} soldé(s) directement en trésorerie${fraisFinanciers}`,
+              montant: e.lignes
+                .filter((l) => l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8'))
+                .reduce((s2, l) => s2 + Number(l.debit) - Number(l.credit), 0),
+              date: e.date.toISOString().slice(0, 10),
+            };
+          }),
         });
       }
     }
