@@ -138,7 +138,7 @@ import { poserGroupeSoldeDuModule, prochaineLettreDuCompte } from '../lettrage/l
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { libelleExercice } from '../../common/libelle-exercice';
 import { formeApplicable } from '../tenant/forme-applicable';
-import { filtreOuverturePasseeAuPremierJour } from './ouverture-passee';
+import { filtreOuverturePasseeAuPremierJour, lignesDeContrePassationDeclaree } from './ouverture-passee';
 
 /**
  * Ce que le refus dit de la voie que le texte ouvre · AUDCIF art. 22, 4°. Le
@@ -3372,13 +3372,25 @@ async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: strin
     );
   }
   if (nombre === 0) return { ecritures: [] as Array<{ id: string; numeroPiece: number | null; statut: StatutEcriture; journal: { code: string } }>, lignes: [] as LigneDOuverture[] };
-  const ecritures = await tx.ecriture.findMany({
+  const lues = await tx.ecriture.findMany({
     where: { ...filtre, tenantId },
-    select: { id: true, numeroPiece: true, statut: true, journal: { select: { code: true } } },
+    select: {
+      id: true,
+      numeroPiece: true,
+      statut: true,
+      journal: { select: { code: true } },
+      // A8 · la contre-passation faite à la main et DÉCLARÉE (voir
+      // `lignesDeContrePassationDeclaree`).
+      reevaluationContrePassationDeclaree: {
+        select: { annuleeLe: true, ecritureEcarts: { select: { lignes: { select: { compteId: true, debit: true, credit: true, compte: { select: { numero: true } } } } } } },
+      },
+    },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: PLAFOND_LIGNES_OUVERTURE,
   });
-  const pieceDe = new Map(ecritures.map((e) => [e.id, `${e.journal.code} n° ${e.numeroPiece ?? '·'}`]));
+  const horsOuverture = lignesDeContrePassationDeclaree(lues);
+  const pieceDe = new Map(lues.map((e) => [e.id, `${e.journal.code} n° ${e.numeroPiece ?? '·'}`]));
+  const retenues = new Set<string>();
   const lignes: LigneDOuverture[] = [];
   await lireParLots(
     (curseur) =>
@@ -3402,6 +3414,8 @@ async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: strin
         ...pageApres(curseur, LOT_LECTURE),
       }),
     (l) => {
+      if (horsOuverture.get(l.ecritureId)?.has(l.compteId)) return;
+      retenues.add(l.ecritureId);
       lignes.push({
         id: l.id,
         compteId: l.compteId,
@@ -3420,6 +3434,12 @@ async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: strin
     },
     LOT_LECTURE,
   );
+  // Une contre-passation déclarée dont TOUTES les lignes sont celles de
+  // l'écart n'est plus une écriture d'ouverture · ni pièce nommée, ni refus
+  // « au brouillard ». Toute autre écriture du périmètre reste.
+  const ecritures = lues
+    .filter((e) => !horsOuverture.has(e.id) || retenues.has(e.id))
+    .map(({ id, numeroPiece, statut, journal }) => ({ id, numeroPiece, statut, journal }));
   return { ecritures, lignes };
 }
 

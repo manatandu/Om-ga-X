@@ -34,6 +34,9 @@ function correspond(ligne: Ligne, where: Record<string, unknown> | undefined, mo
     }
     // Les relations de bornage (bien, journal, lignes) ne filtrent pas ici.
     if (['immobilisation', 'journal', 'lignes', 'corrigeEcriture', 'compte'].includes(cle)) return true;
+    // Paquet 1, A8 · la contre-passation d'une réévaluation, liée, sort du
+    // périmètre de l'ouverture · `is: null` honoré sur la relation absente.
+    if (cle === 'reevaluationExtourne') return (attendu as { is?: unknown }).is === null ? !ligne[cle] : true;
     const valeur = ligne[cle];
     if (attendu instanceof Date) return valeur instanceof Date && valeur.getTime() === attendu.getTime();
     if (attendu !== null && typeof attendu === 'object') {

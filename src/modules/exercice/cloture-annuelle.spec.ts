@@ -317,6 +317,12 @@ describe('AU2 · clôture de N avec une ouverture déjà passée dans N+1', () =
             { corrigeEcriture: { is: { OR: [{ estGenereeParCloture: true }, { journal: { type: 'GENERAL' } }] } } },
           ],
         },
+        // Paquet 1, A8 · la contre-passation d'une réévaluation (et son
+        // négatif) n'est pas une ouverture (ouverture-passee.spec.ts).
+        {
+          reevaluationExtourne: { is: null },
+          OR: [{ corrigeEcritureId: null }, { corrigeEcriture: { is: { reevaluationExtourne: { is: null } } } }],
+        },
       ],
       lignes: { none: { compte: { classe: { in: ['CLASSE_6', 'CLASSE_7', 'CLASSE_8'] } } } },
     });
@@ -408,6 +414,65 @@ describe('AU2 · clôture de N avec une ouverture déjà passée dans N+1', () =
     expect(r.issueOuverture.join(' ')).toMatch(/lettrées ou pointées.*N411 OD n° 1 débit 450\.00, lettrée/);
     const ouverture = (c: string) => [...faux, ...lignes].filter((l) => l.compteId === c).reduce((t, l) => t + l.debit - l.credit, 0);
     expect([ouverture('521'), ouverture('411'), ouverture('401'), ouverture('131')]).toEqual([500, 300, -300, -500]);
+  });
+
+  /**
+   * Paquet 1, A8 · la contre-passation faite à la main et DÉCLARÉE au premier
+   * jour de N+1, N encore ouvert. Ses lignes de l'écart (le tiers et son 479)
+   * ne sont pas une position d'ouverture · sans quoi la clôture la disait
+   * divergente de tout le bilan, et « Rectifier » l'inscrivait en négatif,
+   * l'écart latent rétabli en silence au 479 et au compte du tiers.
+   */
+  const declaree = () => ({
+    id: 'cp',
+    numeroPiece: 7,
+    statut: 'VALIDEE',
+    journal: { code: 'OD' },
+    reevaluationContrePassationDeclaree: {
+      annuleeLe: null,
+      // L'écart de N · client +100 au 411, gain latent au 479.
+      ecritureEcarts: {
+        lignes: [
+          { compteId: '411', debit: 100, credit: 0, compte: { numero: '41110000' } },
+          { compteId: '479', debit: 0, credit: 100, compte: { numero: '47910000' } },
+        ],
+      },
+    },
+  });
+  const ligneCp = (id: string, compteId: string, debit: number, credit: number) => ({ ...ligneImport(id, compteId, debit, credit), ecritureId: 'cp' });
+
+  it('A8 · une contre-passation DÉCLARÉE seule au premier jour · rien à déclarer, le report entier passe, elle n’est jamais inscrite en négatif', async () => {
+    const { s, tx } = avecOuverture([declaree()], [ligneCp('k1', '479', 100, 0), ligneCp('k2', '411', 0, 100)]);
+    const r = (await s.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+    // Le solde des comptes de gestion, puis le report ENTIER (aucune ouverture).
+    expect(tx.ecriture.create).toHaveBeenCalledTimes(2);
+    const ran = tx.ecriture.create.mock.calls[1][0].data.lignes.create as { compteId: string; debit: number; credit: number }[];
+    expect(ran.find((l) => l.compteId === '521')).toMatchObject({ debit: 500 });
+    expect(ran.filter((l) => l.debit < 0 || l.credit < 0)).toEqual([]);
+    expect(r.issueOuverture.join(' ')).not.toMatch(/inscrites en négatif/);
+  });
+
+  it('A8 · une OD déclarée qui groupe aussi un bilan d’ouverture · ses lignes de l’écart sortent, les autres restent confrontées', async () => {
+    // La même OD porte la contre-passation de l'écart d'un AUTRE client (412,
+    // gain latent au 479) ET l'ouverture exacte des autres comptes · la
+    // déclaration n'admet aucune autre ligne sur les comptes de l'écart
+    // (`motifRefusInversion`), le 411 de l'ouverture est donc ailleurs.
+    const ecarts = (declaree().reevaluationContrePassationDeclaree.ecritureEcarts.lignes as Array<Record<string, unknown>>).map((l) =>
+      l.compteId === '411' ? { ...l, compteId: '412', compte: { numero: '41120000' } } : l,
+    );
+    const od = { ...declaree(), reevaluationContrePassationDeclaree: { annuleeLe: null, ecritureEcarts: { lignes: ecarts } } };
+    const lignes = [
+      ligneCp('k1', '479', 100, 0), ligneCp('k2', '412', 0, 100),
+      ligneCp('o1', '521', 500, 0), ligneCp('o3', '401', 0, 300), ligneCp('o4', '131', 0, 500), ligneImport('i2', '411', 300, 0),
+    ];
+    const { s, tx } = avecOuverture([od, IMPORT], lignes);
+    const r = (await s.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+    expect(tx.ecriture.create).toHaveBeenCalledTimes(1);
+    expect(r.issueOuverture.join(' ')).toMatch(/correspond au bilan de clôture/);
+    // Sans la déclaration, la même OD diverge sur le 479 et le 412 · c'est
+    // l'exclusion, et elle seule, qui la rend concordante.
+    const sans = avecOuverture([{ ...od, reevaluationContrePassationDeclaree: null }, IMPORT], lignes);
+    await expect(sans.s.cloturer('t', 'n', 'u')).rejects.toThrow(/N479 \(clôture 0\.00, ouverture 100\.00\)/);
   });
 
   it('une écriture du premier jour AU BROUILLARD · la clôture est refusée, les gestes ouverts sont nommés', async () => {

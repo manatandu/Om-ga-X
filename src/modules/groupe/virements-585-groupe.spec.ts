@@ -155,6 +155,52 @@ describe('le 585 du groupe à la date de clôture', () => {
     expect(await service.virements585DuGroupe('C1', AU_31_12_2026)).toEqual({ solde: 0 });
   });
 
+  /**
+   * Paquet 1, A8 (relevé majeur après le second tour de G1) · la
+   * contre-passation d'une réévaluation des devises passée par le module au
+   * premier jour, l'exercice précédent encore ouvert, n'est pas une ouverture
+   * (`filtreOuverturePasseeAuPremierJour`) · elle n'arrête plus la remontée.
+   * La doublure ÉVALUE la requête de comptage sur les écritures du premier
+   * jour de chaque exercice, au lieu de répondre par l'exercice seul.
+   */
+  it('A8 · une contre-passation de réévaluation au premier jour n’arrête pas la remontée vers l’exercice précédent ouvert', async () => {
+    type R = Record<string, unknown>;
+    const evaluer = (r: R, w: unknown): boolean =>
+      Object.entries((w ?? {}) as R).every(([cle, f]) => {
+        if (cle === 'AND') return (f as unknown[]).every((x) => evaluer(r, x));
+        if (cle === 'OR') return (f as unknown[]).some((x) => evaluer(r, x));
+        if (cle === 'lignes') return !((r.lignes as R[]) ?? []).some((l) => evaluer(l, (f as { none: unknown }).none));
+        if (f !== null && typeof f === 'object' && !(f instanceof Date) && ('is' in (f as R) || cle === 'journal' || cle === 'compte')) {
+          const x = r[cle] as R | null | undefined;
+          const is = 'is' in (f as R) ? (f as R).is : f;
+          return is === null ? !x : !!x && evaluer(x, is);
+        }
+        if (f !== null && typeof f === 'object' && 'in' in (f as R)) return ((f as R).in as unknown[]).includes(r[cle]);
+        if (f instanceof Date) return r[cle] instanceof Date && (r[cle] as Date).getTime() === f.getTime();
+        return (r[cle] ?? null) === f;
+      });
+    const extourne: R = {
+      tenantId: 'C1', exerciceId: 'c26', statut: 'VALIDEE', date: new Date('2026-01-01'), dateValeur: null,
+      estANouveauProvisoire: false, estSoldeDesComptesDeGestion: false, estGenereeParCloture: false,
+      journal: { type: 'GENERAL' }, corrigeEcriture: null, corrigeEcritureId: null,
+      reevaluationExtourne: { id: 'r25' }, lignes: [{ compte: { classe: 'CLASSE_4' } }],
+    };
+    const { service, prisma } = monter({
+      dossierMereId: null,
+      membres: ['SIEGE', 'C1'],
+      exercices: [ex('s26', 'SIEGE', '2026-01-01'), ex('c25', 'C1', '2025-01-01'), ex('c26', 'C1', '2026-01-01')],
+      // La cellule a reçu le virement du siège en 2025, encore ouvert ; 2026
+      // ne porte que la contre-passation au premier jour.
+      soldes585: { s26: 2_000_000, c25: -2_000_000, c26: 0 },
+    });
+    prisma.ecriture.count.mockImplementation(((args: { where: unknown }) =>
+      Promise.resolve([extourne].filter((e) => evaluer(e, args.where)).length)) as never);
+    expect(await service.virements585DuGroupe('SIEGE', AU_31_12_2026)).toEqual({ solde: 0 });
+    // Liée à rien, la même OD est une ouverture validée · la remontée s'arrête.
+    extourne.reevaluationExtourne = null;
+    expect(await service.virements585DuGroupe('SIEGE', AU_31_12_2026)).toEqual({ solde: 2_000_000 });
+  });
+
   it('lignes validées du 585 de l’exercice, datées au plus tard la date, hors solde des comptes de gestion', async () => {
     const { service, prisma } = monter({
       dossierMereId: null,

@@ -341,9 +341,11 @@ function correspond(r: Rangee, where: unknown): boolean {
     if (cle === 'OR') return (f as unknown[]).some((w) => correspond(r, w));
     if (cle === 'AND') return (f as unknown[]).every((w) => correspond(r, w));
     if (cle === 'ecriture' || cle === 'compte') return correspond(r[cle] as Rangee, f);
-    // Les relations facultatives du périmètre de l'ouverture (AU2) · absentes, elles ne répondent pas.
-    if (cle === 'journal' || cle === 'corrigeEcriture') {
+    // Les relations facultatives du périmètre de l'ouverture (AU2) · absentes, elles ne répondent pas,
+    // sauf à `is: null` (paquet 1, A8 · la contre-passation d'une réévaluation, liée, en sort).
+    if (cle === 'journal' || cle === 'corrigeEcriture' || cle === 'reevaluationExtourne') {
       const x = r[cle] as Rangee | null | undefined;
+      if (f !== null && typeof f === 'object' && 'is' in (f as Rangee) && (f as Rangee).is === null) return !x;
       return x ? correspond(x, (f as { is?: unknown }).is ?? f) : false;
     }
     if (cle === 'lignes') {
@@ -508,6 +510,25 @@ describe('groupesNonReconduits · ce qui reste à relettrer d’un dossier clôt
     ];
     const r = await groupesNonReconduits(base(lignes, [groupe('G', 'A')]), { tenantId: 't' });
     expect(r.groupes[0]).toMatchObject({ etat: 'A_RECONDUIRE', accueil: ['oF', 'oA'] });
+  });
+
+  // Paquet 1, A8 · la contre-passation d'une réévaluation, passée au premier
+  // jour en OD, n'est pas une position d'ouverture · ses lignes sur le compte
+  // du tiers ne sont pas des lignes d'accueil d'un groupe à reconduire.
+  it('A8 · la contre-passation d’une réévaluation au premier jour n’offre aucune ligne d’accueil', async () => {
+    const ecrOd = { ...ecrRan, estGenereeParCloture: false, journal: { type: 'GENERAL' }, corrigeEcriture: null, dateValeur: null, lignes: [] };
+    const extourne = { ...ecrOd, reevaluationExtourne: { id: 'r26' } };
+    const lignes = [
+      ligneDe('F', 1_000, 0, 'Facture', ecrN, { lettrageId: 'G' }),
+      ligneDe('A', 0, 400, 'Acompte', ecrN, { lettrageId: 'G' }),
+      ligneDe('xF', 1_000, 0, 'Contre-passation des écarts de conversion', extourne),
+      ligneDe('xA', 0, 400, 'Contre-passation des écarts de conversion', extourne),
+    ];
+    const r = await groupesNonReconduits(base(lignes, [groupe('G', 'A')]), { tenantId: 't' });
+    expect(r.groupes[0].etat).toBe('INTROUVABLES');
+    // Liée à rien (une OD ordinaire au premier jour), les mêmes lignes accueillent.
+    const r2 = await groupesNonReconduits(base(lignes.map((l) => (l.ecriture === extourne ? { ...l, ecriture: ecrOd } : l)), [groupe('G', 'A')]), { tenantId: 't' });
+    expect(r2.groupes[0]).toMatchObject({ etat: 'A_RECONDUIRE', accueil: ['xF', 'xA'] });
   });
 
   // Majeur 2 · la date d'origine des lignes d'un groupe reconduit, par son lien.
