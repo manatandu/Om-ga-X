@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { TypeTiers } from '@prisma/client';
 import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
 
@@ -35,8 +35,10 @@ export class CreerTiersDto {
    * connaît pas. Les sous-comptes de la panoplie prennent son rang.
    */
   @FacultatifNonNul("Un numéro de compte choisi est un numéro · omettez le champ pour garder celui qu'OmegaX propose.")
-  @IsString()
+  @IsString({ message: 'Le numéro de compte choisi est une suite de chiffres' })
   @IsNotEmpty({ message: "Un numéro de compte choisi ne peut pas être vide · omettez le champ pour garder celui qu'OmegaX propose." })
+  // La plage de `Tenant.longueurCompte` (3 à 13) · au-delà, aucun dossier ne l'admet.
+  @MaxLength(13, { message: 'Un numéro de compte compte au plus 13 chiffres' })
   numeroCompte?: string;
 
   /*

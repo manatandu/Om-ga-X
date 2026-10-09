@@ -138,13 +138,17 @@ describe('création du tiers et de son compte', () => {
         findFirst: async () => tiersLu,
         create: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'ti1', ...data }),
       },
+      // La doublure honore la requête · une lecture sans le dossier de la session est une faute.
       compte: {
-        findFirst: async ({ where }: { where: { numero: string } }) => {
+        findFirst: async ({ where }: { where: { tenantId: string; numero: string } }) => {
+          if (where.tenantId !== 't1') throw new Error(`compte.findFirst hors du dossier : ${where.tenantId}`);
           const c = comptes.find((x) => x.numero === where.numero);
           return c ? { classe: 'CLASSE_4', typeCompte: 'DETAIL', modeReportANouveau: 'DETAIL', lettrable: true, estActif: true, ...c } : null;
         },
-        findMany: async ({ where }: { where: { numero: { startsWith: string } } }) =>
-          comptes.filter((c) => c.numero.startsWith(where.numero.startsWith)),
+        findMany: async ({ where }: { where: { tenantId: string; numero: { startsWith: string } } }) => {
+          if (where.tenantId !== 't1') throw new Error(`compte.findMany hors du dossier : ${where.tenantId}`);
+          return comptes.filter((c) => c.numero.startsWith(where.numero.startsWith));
+        },
         create: async ({ data }: { data: Record<string, unknown> }) => {
           crees.push(data);
           // Le compte créé prend sa place au plan · le rôle suivant le lit.
@@ -154,6 +158,7 @@ describe('création du tiers et de son compte', () => {
       },
       tiersCompte: {
         findFirst: async () => null,
+        findUnique: async () => null,
         findMany: async () => dejaRattaches,
         create: async ({ data }: { data: Record<string, unknown> }) => {
           rattaches.push(data);
@@ -314,10 +319,15 @@ describe('création du tiers et de son compte', () => {
   });
 
   it('un numéro choisi sous un collectif absent ou en sommeil refuse la création, jamais un tiers sans son compte', async () => {
-    const { service, crees } = monter(Referentiel.SYSCOHADA, [{ id: 'c4011', numero: '40110000', estActif: false }]);
+    const { service, crees } = monter(Referentiel.SYSCOHADA, [
+      { id: 'c4011', numero: '40110000', estActif: false },
+      { id: 'c4081', numero: '40810000' },
+      { id: 'c4091', numero: '40910000' },
+    ]);
     await expect(
       service.creer('t1', { type: TypeTiers.FOURNISSEUR, code: 'F1', nom: 'Soco', numeroCompte: '40110005' }),
     ).rejects.toThrow(/40110000 n'existe pas ou est en sommeil/);
+    // Aucun sous-compte ouvert avant le refus · la doublure ne défait rien, le refus arrive avant.
     expect(crees).toHaveLength(0);
   });
 
@@ -334,7 +344,8 @@ describe('création du tiers et de son compte', () => {
       motif: null,
     });
     expect(await service.numeroPropose('t1', TypeTiers.SALARIE)).toMatchObject({ numero: null, motif: /pas de compte collectif/ });
-    expect(await service.numeroPropose('t1', TypeTiers.ADHERENT)).toMatchObject({ numero: null, collectif: null });
+    // Un adhérent hors SYCEBNL reçoit le refus de la création, jamais « à rattacher à la main ».
+    await expect(service.numeroPropose('t1', TypeTiers.ADHERENT)).rejects.toThrow(/utilisez le type « client »/);
   });
 
   it('sans collectif ouvert, rien n’est proposé, et le motif le dit', async () => {
@@ -427,6 +438,7 @@ describe('création du tiers et de son compte', () => {
       crees: [{ role: 'PRINCIPAL', numero: '40110002', collectif: '40110000' }],
       dejaPresents: 0,
       impossibles: [],
+      horsRang: [{ collectif: '40810000', numero: '40810003' }],
     });
     const r = await service.completerPanoplies('t1', 'curseur');
     expect(requetes[0]).toMatchObject({
@@ -436,6 +448,8 @@ describe('création du tiers et de son compte', () => {
     expect(requetes[0]).not.toHaveProperty('cursor');
     expect(r.comptesCrees).toBe(1);
     expect(r.impossibles).toEqual([{ tiers: 'A', collectif: '', motif: expect.stringMatching(/relancez/) }]);
+    // Les sous-comptes hors rang remontent avec leur tiers, comme pour un seul tiers.
+    expect(r.horsRang).toEqual([{ tiers: expect.any(String), numero: '40810003' }]);
   });
 
   it('compléter un tiers dont aucun compte ne peut naître le refuse en le disant', async () => {

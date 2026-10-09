@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest';
 import { numeroAEnvoyer, type NumeroPropose } from './numero-compte-tiers';
 
 const propose: NumeroPropose = { numero: '41110002', collectif: '41110000', longueur: 8, motif: null };

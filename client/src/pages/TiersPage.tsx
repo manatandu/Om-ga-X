@@ -77,6 +77,7 @@ interface CompletionPanoplies {
   tiersLus: number;
   comptesCrees: number;
   impossibles: { tiers: string; collectif: string; motif: string }[];
+  horsRang?: { tiers: string; numero: string }[];
   suivant: string | null;
 }
 
@@ -474,12 +475,14 @@ export function TiersPage() {
     let lus = 0;
     let crees = 0;
     const impossibles: { tiers: string; motif: string }[] = [];
+    const horsRang: string[] = [];
     try {
       do {
         const r: CompletionPanoplies = await api.post<CompletionPanoplies>('/tiers/panoplies', apres ? { apres } : {});
         lus += r.tiersLus;
         crees += r.comptesCrees;
         impossibles.push(...r.impossibles);
+        horsRang.push(...(r.horsRang ?? []).map((h) => h.numero));
         apres = r.suivant;
       } while (apres);
       // Les tiers concernés sont nommés, cinq au plus, et le total toujours
@@ -491,6 +494,10 @@ export function TiersPage() {
             ? ` ${impossibles.length} compte(s) n'ont pas pu naître, chez ${concernes.length} tiers (` +
               `${concernes.slice(0, 5).join(', ')}${concernes.length > 5 ? '…' : ''}) · ${impossibles[0].motif}` +
               ' Ouvrez la fiche du tiers et « Compléter ses comptes » pour le détail.'
+            : '') +
+          (horsRang.length > 0
+            ? ` ${horsRang.length} compte(s) hors du rang du principal (rang pris ou trop long sous le collectif) · ` +
+              `${horsRang.slice(0, 5).join(', ')}${horsRang.length > 5 ? '…' : ''}.`
             : ''),
       );
       await charger();

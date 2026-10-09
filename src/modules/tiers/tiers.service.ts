@@ -62,6 +62,8 @@ export interface CompletionPanoplies {
   tiersLus: number;
   comptesCrees: number;
   impossibles: { tiers: string; collectif: string; motif: string }[];
+  /** Sous-comptes ouverts hors du rang du principal de leur tiers · dits, comme pour un seul tiers. */
+  horsRang: { tiers: string; numero: string }[];
   /** Curseur de la tranche suivante · nul quand tout le dossier est lu. */
   suivant: string | null;
 }
@@ -194,6 +196,8 @@ export class TiersService {
    * jamais un numéro que la création refuserait.
    */
   async numeroPropose(tenantId: string, type: TypeTiers): Promise<NumeroPropose> {
+    // Le même refus que la création · un adhérent hors SYCEBNL n'est pas « à rattacher à la main ».
+    await this.refuserAdherentHorsSycebnl(tenantId, type);
     const { referentiel, longueurCompte } = await this.prisma.tenant.findUniqueOrThrow({
       where: { id: tenantId },
       select: { referentiel: true, longueurCompte: true },
@@ -273,6 +277,7 @@ export class TiersService {
     });
     let comptesCrees = 0;
     const impossibles: CompletionPanoplies['impossibles'] = [];
+    const horsRang: CompletionPanoplies['horsRang'] = [];
     for (const tiers of tranche) {
       // UN TIERS QUI ÉCHOUE N'ARRÊTE PAS LA TRANCHE · sa transaction est
       // défaite, il est nommé avec son motif, et les suivants se complètent.
@@ -292,9 +297,10 @@ export class TiersService {
       if (!r) continue;
       comptesCrees += r.crees.length;
       for (const i of r.impossibles) impossibles.push({ tiers: tiers.code, ...i });
+      for (const h of r.horsRang) horsRang.push({ tiers: tiers.code, numero: h.numero });
     }
     const suivant = tranche.length === TRANCHE_PANOPLIES ? tranche[tranche.length - 1].id : null;
-    return { tiersLus: tranche.length, comptesCrees, impossibles, suivant };
+    return { tiersLus: tranche.length, comptesCrees, impossibles, horsRang, suivant };
   }
 
   /**
@@ -368,10 +374,10 @@ export class TiersService {
       }
       const collectif = await tx.compte.findFirst({ where: { tenantId, numero: role.collectif } });
       if (!collectif || !collectif.estActif) {
-        resultat.impossibles.push({
-          collectif: role.collectif,
-          motif: `Le compte collectif ${role.collectif} n'existe pas ou est en sommeil dans ce dossier.`,
-        });
+        const motif = `Le compte collectif ${role.collectif} n'existe pas ou est en sommeil dans ce dossier.`;
+        // Le numéro choisi ne peut pas s'ouvrir · rien d'autre ne s'ouvre.
+        if (role.role === 'PRINCIPAL' && options.numeroPrincipal !== undefined) throw new BadRequestException(motif);
+        resultat.impossibles.push({ collectif: role.collectif, motif });
         continue;
       }
       const existants = await tx.compte.findMany({
@@ -384,7 +390,7 @@ export class TiersService {
       // Ouvert à la main sans tiers (une reprise), le refus nomme l'issue.
       const pris = choisi !== undefined ? existants.find((c) => c.numero === choisi) : undefined;
       if (pris) {
-        const tenuParUnTiers = await tx.tiersCompte.findFirst({ where: { compteId: pris.id }, select: { id: true } });
+        const tenuParUnTiers = await tx.tiersCompte.findUnique({ where: { compteId: pris.id }, select: { id: true } });
         throw new ConflictException(
           `Le compte ${choisi} existe déjà dans ce dossier · choisissez un autre numéro, ou laissez celui qu'OmegaX propose.` +
             (tenuParUnTiers
