@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { BadRequestException, NotFoundException, ParseUUIDPipe, PipeTransform } from '@nestjs/common';
 import { GUARDS_METADATA, PATH_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum';
+import { getMetadataStorage } from 'class-validator';
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import {
@@ -64,6 +65,21 @@ function fichiersControleurs(dossier: string): string[] {
 
 type RouteExercice = { route: string; type: 'query' | 'param'; pipes: unknown[]; gardes: unknown[] };
 
+/** Un `@Query()` entier, lu par un DTO · la classe et les champs qu'elle admet. */
+type DtoEnRequete = { route: string; dto: string; proprietes: string[] };
+
+/**
+ * Les champs qu'un DTO admet en requête · ceux que class-validator décore. Le
+ * ValidationPipe global (`whitelist`, `forbidNonWhitelisted`) refuse tout
+ * autre champ, si bien que cette liste est exactement ce que la requête peut
+ * porter.
+ */
+function proprietesDuDto(classe: unknown): string[] {
+  if (typeof classe !== 'function' || [String, Number, Boolean, Object, Array].includes(classe as never)) return [];
+  const metadonnees = getMetadataStorage().getTargetValidationMetadatas(classe, '', true, false);
+  return [...new Set(metadonnees.map((m) => m.propertyName))].sort();
+}
+
 /**
  * Les routes qui lisent `exerciceId` (et, pour C3, `journalId` en requête),
  * avec leurs pipes et leurs gardes · celles de la classe et celles de la
@@ -75,6 +91,7 @@ function routesExercice(): {
   routes: RouteExercice[];
   routesJournal: RouteExercice[];
   routesCompte: RouteExercice[];
+  dtosEnRequete: DtoEnRequete[];
 } {
   const racine = join(__dirname, '..');
   const fichiers = fichiersControleurs(racine);
@@ -82,6 +99,7 @@ function routesExercice(): {
   const routes: RouteExercice[] = [];
   const routesJournal: RouteExercice[] = [];
   const routesCompte: RouteExercice[] = [];
+  const dtosEnRequete: DtoEnRequete[] = [];
   for (const fichier of fichiers) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const exports = require(fichier) as Record<string, unknown>;
@@ -95,8 +113,20 @@ function routesExercice(): {
         if (methode === 'constructor') continue;
         const gardesMethode = (Reflect.getMetadata(GUARDS_METADATA, prototype[methode] as object) ?? []) as unknown[];
         const args = (Reflect.getMetadata(ROUTE_ARGS_METADATA, exporte, methode) ?? {}) as Record<string, Arg>;
+        const typesDesParametres = (Reflect.getMetadata('design:paramtypes', prototype, methode) ?? []) as unknown[];
         for (const [cle, arg] of Object.entries(args)) {
           const type = Number(cle.split(':')[0]);
+          // UN `@Query()` ENTIER, LU PAR UN DTO (premier tour de relecture du
+          // paquet 1, constat 5) · son `exerciceId` échappait à ce recensement,
+          // qui ne lisait que les paramètres nommés.
+          if (type === RouteParamtypes.QUERY && arg.data === undefined) {
+            const classe = typesDesParametres[arg.index] as { name?: string } | undefined;
+            dtosEnRequete.push({
+              route: `${relative(racine, fichier)} ${methode}`,
+              dto: classe?.name ?? '?',
+              proprietes: proprietesDuDto(classe),
+            });
+          }
           if (type !== RouteParamtypes.QUERY && type !== RouteParamtypes.PARAM) continue;
           const route = {
             route: `${relative(racine, fichier)} ${methode}`,
@@ -112,7 +142,7 @@ function routesExercice(): {
     }
     if (controleurs === 0) sansControleur.push(relative(racine, fichier));
   }
-  return { fichiers: fichiers.length, sansControleur, routes, routesJournal, routesCompte };
+  return { fichiers: fichiers.length, sansControleur, routes, routesJournal, routesCompte, dtosEnRequete };
 }
 
 /**
@@ -182,6 +212,22 @@ const ROUTES_A_COMPTE_JUGE_PAR_LE_SERVICE: Record<string, string> = {
   'modules/inventaire/inventaire.controller.ts apercuPvCaisse':
     "la caisse du procès-verbal est requise · InventaireService.apercuPvCaisse la lit bornée au dossier et rend 404 « Compte introuvable pour ce dossier. »",
 };
+
+/**
+ * UN IDENTIFIANT PORTÉ PAR UN DTO DE REQUÊTE (premier tour de relecture du
+ * paquet 1, constat 5). Un `@Query()` entier échappe aux porteurs, qui se
+ * posent sur un paramètre nommé · un `exerciceId`, un `journalId` ou un
+ * `compteId` déclaré dans le DTO n'est jugé que par le SERVICE. Liste FERMÉE,
+ * chaque ligne avec la preuve que le service juge l'appartenance au dossier ·
+ * un DTO nouveau qui déclarerait l'un de ces champs fait tomber le test tant
+ * qu'il n'est pas passé au porteur ou écrit ici.
+ */
+const IDENTIFIANTS_DANS_UN_DTO_DE_REQUETE: Record<string, string> = {
+  'modules/registre-donateurs/donation.controller.ts lister FiltreRegistreDto exerciceId':
+    "@IsUUID('4') refuse l'illisible (400) ; DonationService.lister lit l'exercice borné au dossier et rend 404 « Exercice introuvable pour ce dossier. »",
+};
+
+const IDENTIFIANTS_A_PORTEUR = ['exerciceId', 'journalId', 'compteId'];
 
 const DOSSIER = 'dossier-de-la-session';
 const VOISIN = 'dossier-voisin';
@@ -465,5 +511,25 @@ describe('COMPTE_FACULTATIF · le compte en filtre, du dossier ou introuvable (c
     const { prisma, requetes } = doublurePrisma();
     await jouer([COMPTE_FACULTATIF], ID, 'query', 'compteId', prisma);
     expect(requetes).toEqual([{ modele: 'compte', where: { id: ID, tenantId: DOSSIER } }]);
+  });
+});
+
+describe('Un identifiant porté par un DTO de requête (constat 5)', () => {
+  let lecture: ReturnType<typeof routesExercice>;
+  beforeAll(() => {
+    lecture = routesExercice();
+  }, 120_000);
+
+  it('le recensement lit les DTO de requête et leurs champs (un garde-fou vide ne garde rien)', () => {
+    expect(lecture.dtosEnRequete.length).toBeGreaterThan(0);
+    expect(lecture.dtosEnRequete.filter((d) => d.dto === '?').map((d) => d.route)).toEqual([]);
+    expect(lecture.dtosEnRequete.every((d) => d.proprietes.length > 0)).toBe(true);
+  });
+
+  it('aucun DTO de requête ne porte exerciceId, journalId ou compteId hors de la liste fermée, et la liste est celle-ci', () => {
+    const portes = lecture.dtosEnRequete.flatMap((d) =>
+      d.proprietes.filter((p) => IDENTIFIANTS_A_PORTEUR.includes(p)).map((p) => `${d.route} ${d.dto} ${p}`),
+    );
+    expect(portes.sort()).toEqual(Object.keys(IDENTIFIANTS_DANS_UN_DTO_DE_REQUETE).sort());
   });
 });

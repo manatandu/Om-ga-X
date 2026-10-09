@@ -406,6 +406,31 @@ joué (absent, illisible, voisin, du dossier) et la doublure honore le `where`
 (`p1c-s4-apres.json`) · 9 contrôles, 9 concordances (404 et 400 nommés, le
 témoin rend le rapprochement de A).
 
+### S5 · constat 5 (MINEUR) · le garde-fou voit l'identifiant porté par un DTO de requête
+
+Constat EXACT · `exercice-requis.spec.ts` ne lisait que les paramètres NOMMÉS
+(`@Query('exerciceId')`) ; un `@Query()` entier lu par un DTO lui échappait.
+Recensés · sept DTO de requête (`FiltreJournalAuditDto`, `FiltreRegistreDto`,
+`ListerDevisDto`, `ListerExonerationsDto`, `ListerFacturesDto`,
+`ListerFileDto`, `ListerOrdresDto`), un seul porte un identifiant à porteur ·
+`FiltreRegistreDto.exerciceId` (`GET /registre-donateurs`). La route, elle, est
+déjà juste (`@IsUUID('4')` 400, `DonationService.lister` 404 « Exercice
+introuvable pour ce dossier. ») · le défaut est l'aveuglement du garde-fou.
+
+**Correction.** `exercice-requis.spec.ts` lit le type du paramètre
+(`design:paramtypes`) de chaque `@Query()` entier et les champs que le DTO
+admet (métadonnées de class-validator · le ValidationPipe global refuse tout
+autre champ) ; un DTO qui déclare `exerciceId`, `journalId` ou `compteId` fait
+tomber le test, sauf à figurer avec la preuve de son jugement au service dans
+une liste FERMÉE (`IDENTIFIANTS_DANS_UN_DTO_DE_REQUETE`, une ligne · le
+registre des donateurs). Le recensement vérifie qu'il trouve des DTO et leurs
+champs (retirer la ligne fait tomber le test sur
+`FiltreRegistreDto exerciceId`, éprouvé).
+
+**Sur vraie base** (`p1c-s5-avant.json`, `p1c-s5-apres.json`) · 3 contrôles,
+3 concordances des deux côtés (404, 400, témoin 200) · aucun changement de
+comportement, comme attendu.
+
 ## Reste (au coordinateur, à l'intégration)
 
 - Committer le scénario `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-c.mjs`.
@@ -500,6 +525,7 @@ npx jest src/modules/personnel/dto-passe-d2.spec.ts src/modules/personnel/assiet
 PAQUET1_C_POINTS=S4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s4-avant.json
 PAQUET1_C_POINTS=S4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s4-apres.json
 npx jest src/common/exercice-requis.spec.ts src/modules/rapprochement src/modules/relances
+PAQUET1_C_POINTS=S5 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s5-apres.json
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json
