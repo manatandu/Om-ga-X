@@ -13,6 +13,7 @@
  * le plan semé ne l'a pas).
  */
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import ExcelJS from 'exceljs';
 import { evaluateur, relireLiasse } from './parcours.mjs';
 import {
@@ -21,7 +22,7 @@ import {
 } from './lib.mjs';
 
 const BQ = '52110000';
-const POINTS = (process.env.PAQUET1_A_POINTS ?? 'A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6,B2').split(',').map((s) => s.trim()).filter(Boolean);
+const POINTS = (process.env.PAQUET1_A_POINTS ?? 'A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6,B2,M4,m2,m5').split(',').map((s) => s.trim()).filter(Boolean);
 
 /** Une devise USD du dossier, créée si le semis ne l'a pas, et ses cours. */
 async function dollar(c, cours) {
@@ -421,6 +422,76 @@ async function pointA7(R, referentiel) {
     const motif = (t?.postesNonCalculables ?? []).find((p) => p.ref === apport)?.raison ?? null;
     R.egal(`${P} · flux · le motif de ${apport} nomme la pièce`, true, Boolean(motif && /OD n° /.test(motif)));
   });
+  // RELECTURE M1 · ZA et la variation laissées vides, le contrôle du tableau
+  // n'est pas effectué · jamais un écart chiffré sur des zéros, ni à l'écran,
+  // ni à la liasse (ANOMALIES, CONTROLES), ni au rapport.
+  await etape(R, `${P} · contrôle du tableau des flux de 2026 non effectué (relecture M1)`, async () => {
+    const t = await c.lire('Flux 2026 · contrôle', `${etats}/tableau-flux-tresorerie?exerciceId=${n}`);
+    const ctl = t?.controle ?? null;
+    R.egal(`${P} · M1 · contrôle du tableau · coherent null (non contrôlable)`, null, ctl ? ctl.coherent : 'absent');
+    R.egal(`${P} · M1 · contrôle du tableau · écart null, jamais chiffré sur des zéros`, null, ctl ? ctl.ecart : 'absent');
+    R.egal(`${P} · M1 · contrôle du tableau · ouverture et variation null`, [null, null], ctl ? [ctl.tresorerieOuverture, ctl.variation] : 'absent');
+    R.egal(`${P} · M1 · contrôle du tableau · le motif est dit`, true, Boolean(ctl?.motifNonControlable));
+    const liasse = sycebnl ? '/exports/etats-financiers/liasse-complete' : '/exports/etats-financiers-syscohada/liasse-complete';
+    const r = await c.lire('Liasse 2026 · M1', `${liasse}?exerciceId=${n}`);
+    if (!r?.contenu) {
+      R.egal(`${P} · M1 · liasse 2026 produite`, true, false);
+      return;
+    }
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(r.contenu);
+    const an = [];
+    wb.getWorksheet('ANOMALIES')?.eachRow((row, i) => {
+      if (i > 1) an.push([1, 2, 3, 4, 5].map((k) => String(row.getCell(k).value ?? '')));
+    });
+    const codeTresorerie = sycebnl ? 'ZG' : 'ZH';
+    R.egal(`${P} · M1 · liasse · aucune anomalie « à traiter » sur ${codeTresorerie} chiffrée sur des zéros`, [],
+      an.filter((a) => a[0] === 'A_TRAITER' && a[1] === codeTresorerie).map((a) => a[3]));
+    // RELECTURE m3 · le motif de l'OD demande un geste (à-nouveau, journal,
+    // lendemain) · aucune ligne qui le porte ne dit « Aucune action », et les
+    // postes qu'il vide sont « à vérifier ».
+    R.egal(`${P} · m3 · liasse · aucune ligne au motif de l'OD ne dit « Aucune action »`, [],
+      an.filter((a) => a[3].includes('opérations diverses') && /^Aucune action/.test(a[4])).map((a) => `${a[0]} ${a[1]} ${a[2]}`));
+    R.egal(`${P} · m3 · liasse · les postes vidés par l'OD sont « à vérifier »`, true,
+      an.some((a) => a[0] === 'A_VERIFIER' && a[2].startsWith('Tableau des flux') && a[3].includes('opérations diverses')));
+    const jugees = [];
+    wb.getWorksheet('CONTROLES')?.eachRow((row, i) => {
+      if (i === 1) return;
+      const intitule = String(row.getCell(1).value ?? '');
+      if (/TFT|flux/i.test(intitule) && row.getCell(3).value === 0) jugees.push(intitule);
+    });
+    R.egal(`${P} · M1 · liasse · CONTROLES ne juge aucune ligne du tableau des flux à zéro`, [], jugees);
+    // M2 · l'export du seul tableau dit le motif sous l'état, jamais un écart
+    // ni « la feuille ANOMALIES », qu'il n'a pas.
+    const e = await c.lire('Export TFT 2026', `/exports/${sycebnl ? 'etats-financiers' : 'etats-financiers-syscohada'}/tableau-flux-tresorerie?exerciceId=${n}`);
+    if (!e?.contenu) {
+      R.egal(`${P} · M2 · export du tableau des flux produit`, true, false);
+      return;
+    }
+    const wt = new ExcelJS.Workbook();
+    await wt.xlsx.load(e.contenu);
+    const textes = [];
+    wt.getWorksheet('TFT')?.eachRow((row) => row.eachCell((cell) => {
+      if (typeof cell.value === 'string') textes.push(cell.value);
+    }));
+    const tout = textes.join(' | ');
+    R.egal(`${P} · M2 · export du tableau · aucun écart de bouclage chiffré`, false, /écart de bouclage|diffère de BT - DT/i.test(tout));
+    R.egal(`${P} · M2 · export du tableau · ne renvoie pas à une feuille ANOMALIES absente`, false, /feuille ANOMALIES/.test(tout));
+    R.egal(`${P} · M2 · export du tableau · le motif des postes vides est écrit sous l'état`, true, /opérations diverses/.test(tout));
+    if (sycebnl) {
+      // Le rapport d'activité fige la trésorerie du tableau · ouverture et
+      // variation non servies, contrôle non effectué, jamais « non bouclé ».
+      await c.geste('Rapport d’activité 2026', 'POST', '/documents-obligatoires/rapport-activite', {
+        exerciceId: n, etabliLe: '2027-03-01', situationExerciceEcoule: 'Situation', perspectivesDeveloppement: 'Perspectives',
+        evolutionTresorerie: 'Trésorerie', evenementsPosterieurs: 'Néant',
+      });
+      const conf = await c.lire('Rapport 2026 · conformité', `/documents-obligatoires/rapport-activite/conformite?exerciceId=${n}`);
+      const tr = conf?.tresorerie ?? null;
+      R.egal(`${P} · M1 · rapport · ouverture et variation null, contrôle null`, [null, null, null],
+        tr ? [tr.ouverture, tr.variation, tr.boucle] : 'absent');
+      R.egal(`${P} · M1 · rapport · le motif est figé avec la trésorerie`, true, Boolean(tr?.motifNonControlable));
+    }
+  });
   // À travers la clôture · 2026 devient la colonne N-1 du tableau de 2027, et
   // ses postes vides le restent (jamais des zéros), motif compris.
   let clos = false;
@@ -468,6 +539,19 @@ async function pointA7(R, referentiel) {
 // ==============================================================================
 // A3 · L'EXERCICE PRÉCÉDENT OUVERT SANS ÉCRITURE · la colonne N-1 des états
 // ==============================================================================
+/** Les lignes de la feuille ANOMALIES de la liasse des associations (gravité, compte, intitulé, problème, solution). */
+async function anomaliesDeLaLiasseA3(c, n) {
+  const r = await c.lire('Liasse 2026 · m3', `/exports/etats-financiers/liasse-complete?exerciceId=${n}`);
+  if (!r?.contenu) return [];
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(r.contenu);
+  const an = [];
+  wb.getWorksheet('ANOMALIES')?.eachRow((row, i) => {
+    if (i > 1) an.push([1, 2, 3, 4, 5].map((k) => String(row.getCell(k).value ?? '')));
+  });
+  return an;
+}
+
 async function pointA3(R, referentiel) {
   const sycebnl = referentiel === 'SYCEBNL';
   const P = sycebnl ? 'A3 (SYCEBNL)' : 'A3 (SYSCOHADA)';
@@ -512,6 +596,14 @@ async function pointA3(R, referentiel) {
       (t?.postesNonCalculablesN1 ?? []).some((p) => p.ref === 'ZA' && /sans aucune écriture/.test(p.raison)));
     R.egal(`${P} · flux · l'exercice précédent reste disponible, comme au bilan et au compte de résultat`, true,
       t?.exerciceN1Disponible === true && b?.exerciceN1Disponible === true && cr?.exerciceN1Disponible === true);
+    // RELECTURE m3 · 2025 ouvert vide · le motif de la colonne N-1 et la
+    // mention d'ouverture demandent un geste · la liasse ne dit pas
+    // « Aucune action », et la colonne N-1 vide est « à vérifier ».
+    const an = await anomaliesDeLaLiasseA3(c, n);
+    R.egal(`${P} · m3 · liasse · aucune ligne qui demande un geste ne dit « Aucune action »`, [],
+      an.filter((a) => /Importez|passez|[Vv]alidez/.test(a[3]) && /^Aucune action/.test(a[4])).map((a) => `${a[0]} ${a[1]} ${a[2]}`));
+    R.egal(`${P} · m3 · liasse · la colonne N-1 vide de 2025 ouvert est « à vérifier »`, true,
+      an.some((a) => a[0] === 'A_VERIFIER' && a[2] === 'Tableau des flux · colonne N-1'));
   });
   if (!sycebnl) return;
   // À travers une clôture · 2025, vide, est clôturé · il ne tient toujours
@@ -529,6 +621,20 @@ async function pointA3(R, referentiel) {
       lignesFlux.length > 0 && lignesFlux.every((l) => l.montantN1 === undefined));
     R.egal(`${P} · 2025 clôturé · la colonne N-1 dit pourquoi elle est vide`, true,
       (t?.postesNonCalculablesN1 ?? []).some((p) => p.ref === 'ZA' && /sans aucune écriture/.test(p.raison)));
+    // RELECTURE m1 · 2025 est CLÔTURÉ · ni « ouvert » ni « clôturez-le », ni
+    // l'import d'une balance dans un exercice clos.
+    const motifZa = (t?.postesNonCalculablesN1 ?? []).find((p) => p.ref === 'ZA')?.raison ?? '';
+    const mention = String(t?.mentionOuverture ?? '');
+    R.note(`${P} · 2025 clôturé · motif N-1 « ${motifZa.slice(0, 160)} » · mention « ${mention.slice(0, 160)} »`);
+    R.egal(`${P} · m1 · le motif N-1 dit l'exercice précédent clôturé, sans « ouvert » ni « clôturez-le »`, true,
+      /clôturé/.test(motifZa) && !/est ouvert|clôturez-le|Importez sa balance/.test(motifZa));
+    R.egal(`${P} · m1 · la mention d'ouverture dit l'exercice précédent clôturé, sans « ouvert » ni « clôturez-le »`, true,
+      /clôturé/.test(mention) && !/est ouvert|clôturez-le/.test(mention));
+    // RELECTURE m3 · 2025 clôturé vide · plus aucun geste sur la colonne
+    // N-1, qui reste une information, « Aucune action ».
+    const an = await anomaliesDeLaLiasseA3(c, n);
+    R.egal(`${P} · m3 · liasse · 2025 clôturé · la colonne N-1 vide est une information sans action`, true,
+      an.some((a) => a[0] === 'INFO' && a[2] === 'Tableau des flux · colonne N-1' && /^Aucune action/.test(a[4])));
   });
 }
 
@@ -811,25 +917,14 @@ async function pointA9(R) {
       lignes: [{ compteId: compte(c, '12100000'), montant: I }],
     });
   });
-  // L'affectation entre au brouillard · tant qu'elle n'est pas validée, le 13
-  // de 2027 porte encore le solde de 2026, que CC lit (« 13 (131 ou 139) »)
-  // et que XC de 2027 n'a pas · l'écart le dit, il ne se cache pas.
+  // RELECTURE M3 · l'affectation entre au brouillard · tant qu'elle n'est
+  // pas validée, le 13 de 2027 porte encore le solde de 2026, que CC lit
+  // (« 13 (131 ou 139) ») et que XC de 2027 n'a pas. Comme aux quatre autres
+  // liasses, la ligne CC des CONTROLES retranche ce résultat antérieur non
+  // affecté (`resultatDeLExerciceLogeAuBilan`) · l'écart XC-CC reste nul, et
+  // la relecture commune s'applique sans exception.
   await etape(R, `${P} · 2027, l'affectation encore au brouillard`, async () => {
-    // Lu à part · la relecture commune jugerait cette ligne sur son zéro, et
-    // c'est justement l'écart qu'elle doit montrer ici.
-    const r = await c.lire('Liasse 2027 avant validation', `/exports/etats-financiers/liasse-complete?exerciceId=${n1}`);
-    if (!r?.contenu) return R.note(`${P} · liasse 2027 avant validation non relue`);
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(r.contenu);
-    const ev = evaluateur(wb);
-    let lu = null;
-    wb.getWorksheet('CONTROLES')?.eachRow((row, rang) => {
-      if (/XC-CC/.test(String(row.getCell(1).value ?? ''))) {
-        const v = ev.cellule('CONTROLES', `B${rang}`);
-        lu = v.erreur ? null : v.valeur;
-      }
-    });
-    R.montant(`${P} · 2027 avant validation · l'écart XC-CC dit le solde de 2026 resté au 13`, -I, lu);
+    juger('2027 avant validation', await controlesDe('2027 avant validation', n1, 0), 0, 0);
   });
   await etape(R, `${P} · affectation validée, liasses relues à travers la clôture`, async () => {
     await validerJusqua(c, n1, '2027-12-31');
@@ -981,6 +1076,306 @@ async function pointB2(R, variante = 'CONCORDANTE') {
   });
 }
 
+// ==============================================================================
+// RELECTURE M4 · UNE OD D'OUVERTURE DU PREMIER JOUR ANNULÉE PAR SON NÉGATIF ne
+// vide plus le tableau des flux d'un exercice sans précédent
+// ==============================================================================
+//
+// Même lecture qu'en B2 (AUDCIF art. 20, al. 2) · l'OD du 01/01/2026 et son
+// négatif du 01/03/2026 se soldent, le dossier n'a plus d'ouverture passée en
+// OD · l'entité naît (ouverture présumée nulle, mention dite), et l'apport
+// encaissé le 02/03/2026 par la banque se lit en flux de financement.
+//
+// Chiffres · apport 10 000 000 encaissé (FK au SYSCOHADA, FM chez les
+// associations), produit 500 000 encaissé · ZA = 0, trésorerie de clôture
+// 10 500 000.
+async function pointM4(R, referentiel) {
+  const sycebnl = referentiel === 'SYCEBNL';
+  const P = sycebnl ? 'M4 (SYCEBNL)' : 'M4 (SYSCOHADA)';
+  const etats = sycebnl ? '/etats-financiers' : '/etats-financiers-syscohada';
+  const apport = sycebnl ? 'FM' : 'FK';
+  R.scenario = `paquet1-a · ${P}`;
+  const c = await nouveauDossier(R, `Paquet 1 ${P} · OD d’ouverture annulée`, sycebnl
+    ? { referentiel: 'SYCEBNL', jeu: 'ASSOCIATIONS_ORDRES_PROFESSIONNELS', cle: 'p1a-m4s', exercice: ['2026-01-01', '2026-12-31'] }
+    : { referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'p1a-m4', exercice: ['2026-01-01', '2026-12-31'] });
+  const n = c.exercices.get('2026').id;
+  const bq = c.journal('BQ') ?? c.od;
+  const fonds = sycebnl ? '10110000' : '10130000';
+  const produit = sycebnl ? '70410000' : '70110000';
+  let ok = false;
+  await etape(R, `${P} · OD d'ouverture au 01/01/2026, son négatif au 01/03/2026, apport et produit encaissés`, async () => {
+    if (!sycebnl) await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    const od = await ecriture(c, 'OD d’ouverture', n, '2026-01-01', 'Bilan d’ouverture saisi en OD', [
+      [BQ, 12_000_000, 0], [fonds, 0, 10_000_000], ['13100000', 0, 2_000_000],
+    ]);
+    await validerJusqua(c, n, '2026-01-01');
+    const neg = od?.id
+      ? await c.geste('Correction de l’OD par inscription en négatif', 'POST', `/ecritures/${od.id}/correction`, {
+          date: '2026-03-01',
+          motifCorrection: 'OD d’ouverture passée à tort · l’entité naît le 02/03/2026 (banc paquet 1, M4)',
+        })
+      : null;
+    await ecriture(c, 'Apport encaissé', n, '2026-03-02', 'Apport des associés', [[BQ, 10_000_000, 0], [fonds, 0, 10_000_000]], { journal: bq });
+    await ecriture(c, 'Produit 2026', n, '2026-06-30', 'Produit de 2026', [[BQ, 500_000, 0], [produit, 0, 500_000]], { journal: bq });
+    await validerJusqua(c, n, '2026-12-31');
+    ok = Boolean(neg?.id);
+    R.egal(`${P} · le négatif de l'OD est passé`, true, ok);
+  });
+  if (!ok) return;
+  await etape(R, `${P} · tableau des flux de 2026`, async () => {
+    const t = await c.lire('Flux 2026', `${etats}/tableau-flux-tresorerie?exerciceId=${n}`);
+    const vides = new Set(t?.postesVides ?? []);
+    R.egal(`${P} · flux · aucun poste laissé vide (l'OD et son négatif se soldent)`, [], [...vides]);
+    R.egal(`${P} · flux · la mention ne nomme plus d'OD du premier jour`, false, String(t?.mentionOuverture ?? '').includes('opérations diverses'));
+    const lignes = aplatir(t);
+    R.montant(`${P} · flux · ${apport} (apport encaissé)`, 10_000_000, lignes?.[apport]?.n ?? null);
+    R.montant(`${P} · flux · ZA (ouverture présumée nulle)`, 0, lignes?.ZA?.n ?? null);
+  });
+}
+
+// ==============================================================================
+// RELECTURE m2 · L'OUVERTURE PASSÉE EN OD AU PREMIER JOUR, AVEC UN EXERCICE
+// PRÉCÉDENT QUI NE TIENT RIEN (vide, au brouillard, ou clôturé vide)
+// ==============================================================================
+//
+// Le motif disait « sans exercice précédent ni à-nouveau » alors que 2025
+// existe, et la mention de l'exercice précédent au brouillard (A2 · « validez-
+// les », AUDCIF art. 22, 2°) n'était plus dite, le motif de l'OD la
+// remplaçant. Chiffres · OD du 01/01/2026 (banque 12 000 000, fonds
+// 10 000 000, 13 2 000 000), produit 500 000 encaissé au 30/06/2026 ; 2025 au
+// brouillard · apport 1 000 000 au 01/03/2025.
+async function pointRelectureM2(R, referentiel, variante) {
+  const sycebnl = referentiel === 'SYCEBNL';
+  const P = `m2 ${variante} (${sycebnl ? 'SYCEBNL' : 'SYSCOHADA'})`;
+  const etats = sycebnl ? '/etats-financiers' : '/etats-financiers-syscohada';
+  R.scenario = `paquet1-a · ${P}`;
+  const cle = `p1a-m2${variante.slice(0, 2).toLowerCase()}${sycebnl ? 's' : ''}`;
+  const c = await nouveauDossier(R, `Paquet 1 ${P} · OD d’ouverture, exercice précédent ${variante.toLowerCase()}`, sycebnl
+    ? { referentiel: 'SYCEBNL', jeu: 'ASSOCIATIONS_ORDRES_PROFESSIONNELS', cle, exercice: ['2026-01-01', '2026-12-31'] }
+    : { referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle, exercice: ['2026-01-01', '2026-12-31'] });
+  const n = c.exercices.get('2026').id;
+  const bq = c.journal('BQ') ?? c.od;
+  const fonds = sycebnl ? '10110000' : '10130000';
+  const produit = sycebnl ? '70410000' : '70110000';
+  let ok = false;
+  await etape(R, `${P} · 2025 ${variante.toLowerCase()}, OD d'ouverture au 01/01/2026, produit`, async () => {
+    if (!sycebnl) await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await c.geste('Exercice 2025', 'POST', '/exercices', { dateDebut: '2025-01-01', dateFin: '2025-12-31' });
+    await rechargerExercices(c);
+    const n25 = c.exercices.get('2025')?.id ?? null;
+    if (!n25) return;
+    if (variante === 'BROUILLARD') {
+      await ecriture(c, 'Apport 2025', n25, '2025-03-01', 'Apport', [[BQ, 1_000_000, 0], [fonds, 0, 1_000_000]], { journal: bq });
+    }
+    await ecriture(c, 'Ouverture en OD', n, '2026-01-01', 'Bilan d’ouverture saisi en OD', [
+      [BQ, 12_000_000, 0], [fonds, 0, 10_000_000], ['13100000', 0, 2_000_000],
+    ]);
+    await ecriture(c, 'Produit 2026', n, '2026-06-30', 'Produit de 2026', [[BQ, 500_000, 0], [produit, 0, 500_000]], { journal: bq });
+    await validerJusqua(c, n, '2026-12-31');
+    if (variante === 'CLOS') {
+      const clos = await cloturer(c, '2025');
+      R.egal(`${P} · clôture de 2025 sans écriture`, true, clos);
+      if (!clos) return;
+    }
+    ok = true;
+  });
+  if (!ok) return;
+  await etape(R, `${P} · tableau des flux de 2026`, async () => {
+    const t = await c.lire('Flux 2026', `${etats}/tableau-flux-tresorerie?exerciceId=${n}`);
+    const mention = String(t?.mentionOuverture ?? '');
+    const motifZa = (t?.postesNonCalculables ?? []).find((p) => p.ref === 'ZA')?.raison ?? '';
+    R.note(`${P} · mention « ${mention} »`);
+    R.egal(`${P} · ZA laissée vide (l'OD du premier jour n'est lue ni comme flux ni comme ouverture)`, true, (t?.postesVides ?? []).includes('ZA'));
+    R.egal(`${P} · la mention nomme l'OD du premier jour`, true, mention.includes('opérations diverses'));
+    R.egal(`${P} · la mention ne dit pas « sans exercice précédent », 2025 existe`, false, /sans exercice précédent/.test(mention));
+    R.egal(`${P} · le motif de ZA ne dit pas « sans exercice précédent », 2025 existe`, false, /sans exercice précédent/.test(motifZa));
+    if (variante === 'BROUILLARD') {
+      R.egal(`${P} · la mention dit le brouillard de 2025 et de le valider (AUDCIF art. 22, 2°)`, true,
+        /brouillard/.test(mention) && /[Vv]alidez/.test(mention) && /art\. 22, 2°/.test(mention));
+    } else if (variante === 'VIDE') {
+      R.egal(`${P} · la mention dit 2025 ouvert sans aucune écriture`, true, /ouvert sans aucune écriture/.test(mention));
+    } else {
+      R.egal(`${P} · la mention dit 2025 clôturé, sans « clôturez-le » ni import dans un exercice clos`, true,
+        /clôturé/.test(mention) && !/clôturez-le|balance de clôture/.test(mention));
+    }
+  });
+}
+
+// ==============================================================================
+// m5 · LA REQUÊTE QUI TROUVE LES DOSSIERS CLÔTURÉS SUR main PAR « RECTIFIER »
+// SUR UNE CONTRE-PASSATION DE RÉÉVALUATION (relecture 1, constat m5)
+// ==============================================================================
+//
+// La requête est LUE dans la fiche de la ligne (bloc `requete-m5` de
+// AVANCEMENT-paquet1-a.md) · le banc éprouve celle qui sera remise, jamais une
+// copie. Un dossier par voie (contre-passation du MODULE, ou faite À LA MAIN et
+// déclarée), deux temps sur le même dossier.
+//  (1) NE DÉCLENCHE PAS · contre-passation au 01/01/2027 ET bilan d'ouverture
+//      importé en OD au même jour, divergent sur la banque et le capital ;
+//      clôture de 2026 par « Rectifier » sur cette copie (corrigée) · seul
+//      l'import est inscrit en négatif, et la requête ne rend rien.
+//  (2) DÉCLENCHE · la sortie de main, reconstituée sur la base jetable (psql,
+//      comme l'état hérité d'A1) · main comptait aussi la contre-passation
+//      dans le périmètre de l'ouverture, et le même report l'inscrivait en
+//      négatif à côté de l'import (même `rectificationDeLOuverture`, tous les
+//      comptes du report divergeant). Ses lignes niées sont ajoutées au report ;
+//      2027 prend alors ce que A8 a constaté sur main (client 2 900 000, 479 à
+//      -100 000), et la requête rend ce dossier, ses quatre lignes, ses comptes
+//      et ses montants.
+// Chiffres · ceux d'A8 (client 1 000 USD, fournisseur 500 USD, 2 800 puis
+// 2 900, capital 50 000 000) ; import · banque 49 000 000 contre capital
+// 49 000 000 au 01/01/2027.
+
+/** Un bloc SQL de la fiche (`requete-m5` par défaut), tel qu'il y est écrit. */
+function requeteM5(marque = 'requete-m5') {
+  const copie = process.env.PAQUET1_A_COPIE;
+  if (!copie) throw new Error('PAQUET1_A_COPIE absente · la fiche qui porte la requête est introuvable');
+  const fiche = readFileSync(`${copie}/AVANCEMENT-paquet1-a.md`, 'utf8');
+  const debut = fiche.indexOf(`<!-- ${marque} `);
+  if (debut < 0) throw new Error(`bloc ${marque} absent de la fiche`);
+  const ouverture = fiche.indexOf('```sql\n', debut);
+  const fermeture = fiche.indexOf('\n```', ouverture + 7);
+  if (ouverture < 0 || fermeture < 0) throw new Error(`bloc SQL ${marque} mal formé`);
+  return fiche.slice(ouverture + 7, fermeture);
+}
+
+/** Les lignes rendues par la requête m5 · [dossierId, dossier, exercice, pièce, voie, réévaluation, contre-passation, lignes, comptes]. */
+function lignesM5() {
+  const sortie = psql(requeteM5());
+  return sortie ? sortie.split('\n').filter(Boolean).map((l) => l.split('|')) : [];
+}
+
+async function pointRelectureM5(R, voie) {
+  const P = `m5 ${voie === 'MODULE' ? 'module' : 'à la main'}`;
+  R.scenario = `paquet1-a · ${P}`;
+  const nom = `Paquet 1 m5 ${voie} · Kasaï Négoce SARL`;
+  const c = await nouveauDossier(R, nom, {
+    referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: voie === 'MODULE' ? 'p1a-m5' : 'p1a-m5m', exercice: ['2026-01-01', '2026-12-31'],
+  });
+  const n = c.exercices.get('2026').id;
+  const bq = c.journal('BQ') ?? c.od;
+  const ven = c.journal('VEN') ?? c.od;
+  const ach = c.journal('ACH') ?? c.od;
+  const ctx = {};
+
+  await etape(R, `${P} · 2026, réévaluation, 2027 ouvert, contre-passation et import au 01/01/2027`, async () => {
+    await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    ctx.usd = await dollar(c, [['2026-03-02', 2_800], ['2026-12-31', 2_900]]);
+    ctx.cli = await tiers(c, 'CLIENT', 'CLI-M5', 'Copper Trading Ltd');
+    ctx.frs = await tiers(c, 'FOURNISSEUR', 'FRS-M5', 'Johannesburg Supplies');
+    if (!ctx.cli || !ctx.frs || !ctx.usd) return;
+    const usd = (m, cours) => ({ deviseId: ctx.usd?.id, montantDevise: m, coursApplique: cours });
+    await ecriture(c, 'Capital libéré', n, '2026-01-02', 'Apport des associés', [[BQ, 50_000_000, 0], ['10130000', 0, 50_000_000]], { journal: bq });
+    await ecriture(c, 'Vente en dollars', n, '2026-03-02', 'Facture FV-M5-1', [[ctx.cli.numero, 2_800_000, 0, usd(1_000, 2_800)], ['70110000', 0, 2_800_000]], { journal: ven });
+    await ecriture(c, 'Achat en dollars', n, '2026-03-02', 'Facture JS-M5-1', [['60110000', 1_400_000, 0], [ctx.frs.numero, 0, 1_400_000, usd(500, 2_800)]], { journal: ach });
+    await validerJusqua(c, n, '2026-12-31');
+    ctx.reeval = await c.geste('Réévaluation au 31/12/2026', 'POST', '/devises/reevaluation', { exerciceId: n });
+    await validerJusqua(c, n, '2026-12-31');
+    await c.geste('Nouvel exercice avec reports provisoires', 'POST', `/exercices/${n}/a-nouveaux-provisoires`, {});
+    await rechargerExercices(c);
+    ctx.n1 = c.exercices.get('2027')?.id;
+    if (!ctx.n1 || !ctx.reeval?.reevaluationId) return;
+    if (voie === 'MODULE') {
+      const ext = await c.geste('Contre-passation de la réévaluation 2026', 'POST', `/devises/reevaluation/${ctx.reeval.reevaluationId}/extourne`, { exerciceSuivantId: ctx.n1 });
+      ctx.contrePassation = ext?.ecritureExtourneId ?? null;
+    } else {
+      await rechargerComptes(c);
+      const b26 = await balance(c, n);
+      const comptesEcart = [...(b26?.parNumero ?? new Map())].filter(([num, l]) => num && /^47[89]/.test(num) && l.solde !== 0);
+      const od = await ecriture(c, 'Contre-passation à la main au 01/01/2027', ctx.n1, '2027-01-01', 'Contre-passation des écarts de conversion 2026', [
+        ...comptesEcart.map(([num, l]) => [num, l.solde < 0 ? -l.solde : 0, l.solde > 0 ? l.solde : 0]),
+        [ctx.cli.numero, 0, 100_000],
+        [ctx.frs.numero, 50_000, 0],
+      ]);
+      await validerJusqua(c, ctx.n1, '2027-01-01');
+      const decl = od?.id
+        ? await c.geste('Déclaration de la contre-passation manuelle', 'POST', `/devises/reevaluations/${ctx.reeval.reevaluationId}/contre-passation-manuelle`, {
+            ecritureId: od.id,
+            motif: 'Contre-passation saisie à la main au 01/01/2027 (banc paquet 1, m5)',
+          })
+        : null;
+      ctx.contrePassation = decl?.contrePassationDeclareeId ? od.id : null;
+    }
+    await ecriture(c, 'Bilan d’ouverture importé en OD', ctx.n1, '2027-01-01', 'Bilan d’ouverture repris', [[BQ, 49_000_000, 0], ['10130000', 0, 49_000_000]]);
+    await validerJusqua(c, ctx.n1, '2027-01-01');
+    R.egal(`${P} · la contre-passation est passée et liée`, true, Boolean(ctx.contrePassation));
+  });
+  if (!ctx.n1 || !ctx.contrePassation) return R.note(`${P} · la suite n’est pas jouée`);
+
+  await etape(R, `${P} · clôture de 2026 · refusée sans déclaration, passée par « Rectifier »`, async () => {
+    const r = await c.req('POST', `/exercices/${n}/cloturer`, {});
+    R.egal(`${P} · sans déclaration, la clôture refuse (import divergent)`, true, r.statut >= 400);
+    const rect = await c.geste('Clôture de 2026 en déclarant « Rectifier »', 'POST', `/exercices/${n}/cloturer`, { ouvertureImportee: 'RECTIFIER' });
+    R.egal(`${P} · « Rectifier » passe`, true, rect !== null);
+    await rechargerExercices(c);
+  });
+
+  ctx.dossierId = psql(`SELECT id FROM tenants WHERE nom = '${nom.replace(/'/g, "''")}'`);
+  ctx.report = psql(
+    `SELECT e.id FROM ecritures e JOIN exercices x ON x.id = e."exerciceId" WHERE e."tenantId" = '${ctx.dossierId}' ` +
+      `AND x.id = '${ctx.n1}' AND e."estGenereeParCloture" AND NOT e."estSoldeDesComptesDeGestion" AND e."motifCorrection" IS NOT NULL`,
+  );
+  if (!ctx.dossierId || !ctx.report || ctx.report.includes('\n')) return R.note(`${P} · report rectifié introuvable ou multiple (${ctx.report})`);
+
+  await etape(R, `${P} · (1) cette copie · seul l'import est inscrit en négatif, la requête ne rend rien`, async () => {
+    await rechargerComptes(c);
+    const b = await balance(c, ctx.n1);
+    R.montant(`${P} · 2027 · banque, le report exact (import inscrit en négatif)`, 50_000_000, solde(b, BQ));
+    R.montant(`${P} · 2027 · capital`, -50_000_000, solde(b, '10130000'));
+    R.montant(`${P} · 2027 · client au coût historique (contre-passation tenue)`, 2_800_000, solde(b, ctx.cli.numero));
+    R.montant(`${P} · 2027 · fournisseur au coût historique`, -1_400_000, solde(b, ctx.frs.numero));
+    R.montant(`${P} · 2027 · 479 à zéro`, 0, solde(b, '479'));
+    R.montant(`${P} · 2027 · 478 à zéro`, 0, solde(b, '478'));
+    R.montant(`${P} · 2027 · balance équilibrée`, 0, b ? b.totalDebit - b.totalCredit : NaN);
+    const negatifs = psql(`SELECT count(*) FROM lignes_ecriture WHERE "ecritureId" = '${ctx.report}' AND (debit < 0 OR credit < 0)`);
+    R.egal(`${P} · le report rectifié porte les deux négatifs de l'import (la requête a de quoi lire)`, '2', negatifs);
+    const rendues = lignesM5().filter((l) => l[0] === ctx.dossierId);
+    R.egal(`${P} · la requête ne rend pas ce dossier (rectification légitime)`, 0, rendues.length);
+  });
+
+  await etape(R, `${P} · (2) sortie de main reconstituée · la contre-passation inscrite en négatif, la requête la rend`, async () => {
+    const filtreComptes = voie === 'MODULE'
+      ? ''
+      : ` AND lx."compteId" IN (SELECT le."compteId" FROM lignes_ecriture le JOIN reevaluations r ON r."ecritureEcartsId" = le."ecritureId" WHERE r."contrePassationDeclareeId" = '${ctx.contrePassation}')`;
+    psql(
+      `INSERT INTO lignes_ecriture (id, "ecritureId", "compteId", libelle, debit, credit, "dateEcheance", "deviseId", "montantDevise", "coursApplique") ` +
+        `SELECT gen_random_uuid()::text, '${ctx.report}', lx."compteId", 'Inscription en négatif (sortie de main reconstituée, banc m5)', ` +
+        `-lx.debit, -lx.credit, lx."dateEcheance", lx."deviseId", lx."montantDevise", lx."coursApplique" ` +
+        `FROM lignes_ecriture lx WHERE lx."ecritureId" = '${ctx.contrePassation}'${filtreComptes}`,
+    );
+    await rechargerComptes(c);
+    const b = await balance(c, ctx.n1);
+    R.montant(`${P} · main reconstitué · client à la valeur réévaluée (défaut d'A8 reproduit)`, 2_900_000, solde(b, ctx.cli.numero));
+    R.montant(`${P} · main reconstitué · 479 revenu à -100 000`, -100_000, solde(b, '479'));
+    R.montant(`${P} · main reconstitué · balance toujours équilibrée`, 0, b ? b.totalDebit - b.totalCredit : NaN);
+    const rendues = lignesM5().filter((l) => l[0] === ctx.dossierId);
+    R.egal(`${P} · la requête rend ce dossier, une ligne`, 1, rendues.length);
+    const [ligne] = rendues;
+    R.egal(`${P} · voie nommée`, voie === 'MODULE' ? 'MODULE' : 'DECLAREE', ligne?.[4] ?? null);
+    R.egal(`${P} · la contre-passation nommée`, ctx.contrePassation, ligne?.[6] ?? null);
+    R.egal(`${P} · quatre lignes inscrites en négatif (client, fournisseur, 478, 479), l'import non compté`, '4', ligne?.[7] ?? null);
+    R.note(`${P} · rendu · ${ligne ? `${ligne[1]} · ${ligne[2]} · pièce ${ligne[3]} · ${ligne[8]}` : 'rien'}`);
+    const montants = (ligne?.[8] ?? '').split(', ').map((x) => x.split(' ')[1]).sort();
+    R.egal(`${P} · montants rendus · 50 000 et 100 000, deux fois chacun`, '100000.00,100000.00,50000.00,50000.00', montants.join(','));
+  });
+
+  // (3) LE JUMEAU « Conserver » · main ne passait alors aucun report, et le
+  // motif s'écrivait sur 2026. Reconstitué par le seul motif (la requête ne
+  // lit que lui et la contre-passation de la réévaluation de 2026 en 2027).
+  await etape(R, `${P} · (3) jumeau « Conserver » · la requête rend l'exercice dont la clôture a conservé la contre-passation`, async () => {
+    const conserves = () => {
+      const s = psql(requeteM5('requete-m5-conserver'));
+      return (s ? s.split('\n').filter(Boolean).map((l) => l.split('|')) : []).filter((l) => l[0] === ctx.dossierId);
+    };
+    R.egal(`${P} · jumeau · rien avant (2026 clôturé par « Rectifier », aucun motif de conservation)`, 0, conserves().length);
+    psql(`UPDATE exercices SET "motifOuvertureSuivanteConservee" = 'Ouverture conservée (sortie de main reconstituée, banc m5)' WHERE id = '${n}'`);
+    const rendus = conserves();
+    R.egal(`${P} · jumeau · la requête rend 2026, une ligne`, 1, rendus.length);
+    R.egal(`${P} · jumeau · voie nommée`, voie === 'MODULE' ? 'MODULE' : 'DECLAREE', rendus[0]?.[4] ?? null);
+    R.egal(`${P} · jumeau · la contre-passation nommée`, ctx.contrePassation, rendus[0]?.[5] ?? null);
+  });
+}
+
 export default async function scenarioPaquet1A(registre) {
   const table = {
     A8: (r) => pointA8(r, 'MODULE'),
@@ -1012,6 +1407,20 @@ export default async function scenarioPaquet1A(registre) {
     B2: async (r) => {
       await pointB2(r, 'CONCORDANTE');
       await pointB2(r, 'DIVERGENTE');
+    },
+    M4: async (r) => {
+      await pointM4(r, 'SYSCOHADA');
+      await pointM4(r, 'SYCEBNL');
+    },
+    m5: async (r) => {
+      await pointRelectureM5(r, 'MODULE');
+      await pointRelectureM5(r, 'MAIN');
+    },
+    m2: async (r) => {
+      for (const v of ['VIDE', 'BROUILLARD', 'CLOS']) {
+        await pointRelectureM2(r, 'SYCEBNL', v);
+        await pointRelectureM2(r, 'SYSCOHADA', v);
+      }
     },
   };
   for (const p of POINTS) {
