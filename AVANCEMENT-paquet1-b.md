@@ -496,6 +496,8 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN3`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
 
 ## Rejeu d'ensemble (vraie base, scénario `scenario-paquet1-b.mjs`)
 
+Première livraison (B1 à B10) ·
+
 - AVANT · `main` (/home/user/Comptaflow), base `p1b_avant`, port 8771 ·
   70 contrôles, 43 concordances, 27 écarts, 0 erreur HTTP
   (`/tmp/claude-0/sim/p1b-avant-tout.json`) · B10 (2), B1 (1), B2 (2), B9
@@ -503,6 +505,18 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN3`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
 - APRÈS · cette copie compilée, base `p1b_apres`, port 8772 · 70 contrôles,
   70 concordances, 0 écart, 0 erreur HTTP (`/tmp/claude-0/sim/p1b-apres.json`).
 - B4 n'a pas de contrôle sur base (écran seul, sans montant).
+
+Après le premier tour de relecture (tous les points, B1 à B10, M1, M1B, M2,
+MIN2 à MIN6, VOISIN) ·
+
+- AVANT · `main`, base `p1b_avant` · 112 contrôles, 63 concordances,
+  49 écarts, 0 erreur HTTP (`/tmp/claude-0/sim/p1b-avant-relecture.json`).
+  MIN3 ne s'y joue pas (la campagne de caisse seule n'y est pas
+  clôturable) ; la course a été reproduite contre la copie avant correction.
+- APRÈS · cette copie compilée (serveur et client), base `p1b_apres` ·
+  112 contrôles, 112 concordances, 0 écart, 0 erreur HTTP
+  (`/tmp/claude-0/sim/p1b-apres-relecture.json`). Le scénario `association`
+  (184 contrôles, clôture d'inventaire après arbitrage) concorde aussi.
 
 ## Reste
 
@@ -514,6 +528,10 @@ navigateur, puis retrait de cette fiche.
 
 ```bash
 npx tsc --noEmit
-npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export src/modules/lettrage/reste-des-lignes-ouvertes src/modules/relances src/modules/etats-financiers/etats-financiers-smt.service src/modules/etats-financiers-syscohada/etats-financiers-smt-syscohada.service
+npx jest src/modules/inventaire src/modules/controles src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export src/modules/lettrage/reste-des-lignes-ouvertes src/modules/relances src/modules/etats-financiers/etats-financiers-smt.service src/modules/etats-financiers-syscohada/etats-financiers-smt-syscohada.service
 cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts src/lib/groupes-lus-ligne-a-ligne.spec.ts src/components/GroupesLusLigneALigne.spec.tsx src/components/TableauBalanceAgee.spec.tsx src/pages
+# Rejeu sur vraie base (après `npm run build` des deux côtés) · tous les points,
+# ou une liste par PAQUET1_B_POINTS (B10,B1,…,M1,M1B,M2,MIN2,…,MIN6,VOISIN)
+/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres-relecture.json
+/tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1b_avant 8771 paquet1-b /tmp/claude-0/sim/p1b-avant-relecture.json
 ```
