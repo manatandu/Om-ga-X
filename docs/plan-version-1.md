@@ -209,7 +209,8 @@ INTÉGRÉE le 2026-10-09 · rejouée sur vraie base (616 contrôles, 0 écart ;
 second tour (millier de l'art. 118) et son jumeau (net négatif au centime)
 corrigés ; les majeurs de la relecture ciblée et les mineurs sont au suivi
 (« Relevés en attente »), la purge de production R1 dans
-`docs/requetes-production-paquet-1.md`.
+`docs/requetes-production-paquet-1.md` · lue le 2026-10-09 par le workflow
+`requetes-production.yml`, aucune ligne, purge sans objet ; R2 vide.
 
 1. Plafond de l'art. 69, 1 non arrondi au centime (« seul l'excédent de
    0.00 FC est imposable »).

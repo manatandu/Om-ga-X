@@ -229,7 +229,10 @@ Manasse (« on verra ça plus tard », 2026-10-03).
     (`docs/requetes-production-paquet-1.md`, R2) trouvent les dossiers
     clôturés sur l'ancien code par « Rectifier » ou « Conserver » sur une
     contre-passation de réévaluation ; aucun contrôle codé tant qu'elles
-    n'ont pas été passées.
+    n'ont pas été passées. PASSÉES LE 2026-10-09 (workflow `requetes-production.yml`,
+    run 37932375402, lecture seule) · aucun dossier, ni « Rectifier » ni
+    « Conserver » ; R1 · aucune provision rattachée à l'exercice d'un autre
+    dossier, la purge est sans objet. Rien à faire.
 
 - **PAQUET 1, LIGNE C (2026-10-09), second et dernier tour de relecture, non
   corrigés (règle des deux tours, CLAUDE.md § 11).** Aucun BLOQUANT restant
