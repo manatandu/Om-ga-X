@@ -99,6 +99,40 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   41 » et fournisseurs), `balance-agee-export.spec.ts` (un cas, classeur
   relu).
 
+### B7 · un groupe d'à-nouveaux lettré à la main, sans groupe de N reconduit
+
+- AVANT (p1b_avant) · SARL SYSCOHADA, 2026 clôturé. C7 · F1 du 01/03/2026
+  (échéance 31/03) et F2 du 01/09/2026 (échéance 30/09), 1 000 000 chacune,
+  reportées au détail ; règlement de 1 000 000 le 15/02/2027, lettré à la main
+  en partiel avec les deux à-nouveaux. Relance au 15/03/2027 · dû 1 000 000
+  (concorde) mais deux lignes de 500 000 (prorata), échéance la plus ancienne
+  31/03/2026 et 349 jours de retard. C7B · même libellé et même montant
+  (600 000, février et août) · deux lignes de 300 000, échéance 28/02/2026,
+  380 jours.
+- Cause · `poidsDesLignesLues` ne relisait l'origine que des groupes
+  RECONDUITS (`originesDesLignes`) ; un groupe posé en N+1 lisait ses
+  à-nouveaux au 1er janvier, et l'imputation de l'art. 154 tombait au prorata.
+- Correction · `originesDesANouveaux` (`reste-des-lignes-ouvertes.ts`)
+  retrouve la pièce d'origine de chaque ligne d'à-nouveau d'un groupe qu'aucune
+  reconduction ne date, par la clé du report au détail
+  (`originesDesReports`, extrait de `datesOrigineDesReports` des relances, de
+  proche en proche). La clé porte désormais l'ÉCHÉANCE (le report la
+  recopie) et le libellé de l'écriture quand la ligne n'en a pas (celui que
+  le report recopie, `lireComptesDuReport`). TOUT OU RIEN par groupe · une
+  origine manquante laisse toutes les lignes d'à-nouveau du groupe à la date
+  du report, et le groupe à plusieurs factures est consigné au journal du
+  serveur. Les lignes relues sont filtrées en mémoire (identifiant demandé,
+  écriture d'à-nouveau). La date imprimée par les relances (même lecture)
+  retrouve aussi l'origine d'une ligne sans libellé propre, et une origine à
+  échéance ne se confond plus avec un report sans échéance.
+- APRÈS (p1b_apres, port 8772) · C7 · une ligne de 1 000 000, échéance
+  30/09/2026, 166 jours ; C7B · une ligne de 600 000, échéance 31/08/2026,
+  196 jours ; soldes de la balance 2027 inchangés (concorde).
+- Tests · `reste-des-lignes-ouvertes.spec.ts` (cinq cas, doublure complétée
+  qui honore l'identifiant, le drapeau d'à-nouveau, l'exercice, le compte et
+  le lettrage ; quatre tombent sur le code d'avant, celui de l'échéance tombe
+  si on la retire de la clé), `date-origine-des-reports.spec.ts` (cinq cas).
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -124,6 +158,17 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   charges assimilées » aux deux semis (`compte-seed.ts`,
   `compte-seed-syscohada.ts`).
 
+- B7 · Code civil, Livre III, art. 154, lu dans la compétence
+  (`code-civil-livre-iii-rdc/references/titre-01-des-contrats-ou-des-obligations-conven.md`)
+  · « sinon sur la dette échue, quoique moins onéreuse que celles qui ne le
+  sont point. Si les dettes sont d'égale nature, l'imputation se fait sur la
+  plus ancienne: toutes choses égales, elle se fait proportionnellement »
+  (décision par la loi du 2026-10-07, point 4, déjà codée par
+  `imputerPaiements`) · la plus
+  ancienne se lit à la date de la PIÈCE, jamais à celle du report qui la
+  recopie. Une origine incertaine ne se devine pas (même règle que
+  `apparierAuReport` et `datesOrigineDesReports`).
+
 - B9 · aucune source ne fixe la fenêtre de dates d'un rapprochement · le
   défaut (15) et la borne (120) sont des conventions d'OmegaX, celles que
   l'écran porte déjà (`RapprochementDetailPage`, champ de 0 à 120).
@@ -141,7 +186,7 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 
 ## Reste
 
-B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
+B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 (`npm run build`, `cd client && npm run build`, puis
 `/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
 
@@ -149,6 +194,6 @@ B7, B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 
 ```bash
 npx tsc --noEmit
-npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export
+npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export src/modules/lettrage/reste-des-lignes-ouvertes src/modules/relances
 cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts
 ```

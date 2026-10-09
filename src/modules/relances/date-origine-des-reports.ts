@@ -25,6 +25,20 @@ import { cleDeLigne, cleDuReport } from '../devises/declaration-devise-a-nouveau
  * n'est rattaché et la relance garde la date de l'écriture, comme avant. Une
  * origine elle-même reportée se suit d'exercice en exercice, au plus
  * `PROFONDEUR_MAX` fois (dix ans de conservation, AUDCIF art. 24).
+ *
+ * LA MÊME ORIGINE ORDONNE L'IMPUTATION (paquet 1, B7). Un groupe de lettrage
+ * posé à la main en N+1 sur des lignes d'à-nouveau (aucun groupe de N
+ * reconduit) s'imputait au 1er janvier · deux factures de mars et de
+ * septembre, reportées le même jour, s'éteignaient au PRORATA au lieu de la
+ * plus ancienne d'abord (Code civil, Livre III, art. 154). `originesDesReports`
+ * rend la pièce d'origine (sa date et sa ligne) que `poidsDesLignesLues` donne
+ * à l'imputation, comme `originesDesLignes` le fait pour un groupe reconduit.
+ * L'ÉCHÉANCE ENTRE DANS LA CLÉ quand le report en porte une · le report au
+ * détail la recopie (`report-a-nouveau.ts`), et deux factures de même montant
+ * et de même libellé ne se distinguent que par elle ; sans elle, l'ordre des
+ * identifiants les échangeait. Le libellé de l'origine est celui que le report
+ * recopie · celui de la ligne, sinon celui de l'écriture
+ * (`lireComptesDuReport`).
  */
 
 export const PROFONDEUR_MAX = 10;
@@ -37,6 +51,8 @@ export interface LigneReportee {
   debit: number;
   credit: number;
   libelle: string | null;
+  /** L'échéance, que le report au détail recopie · absente, aucune. */
+  dateEcheance?: Date | null;
 }
 
 /** Une ligne candidate de l'exercice précédent. */
@@ -56,9 +72,12 @@ export function apparierAuxOrigines(
   candidates: LigneCandidate[],
 ): Map<string, LigneCandidate> {
   const cleReport = (r: LigneReportee) =>
-    cleDeLigne({ id: r.id, compteId: r.compteId, debit: r.debit, credit: r.credit, libelle: r.libelle, dateEcheance: null });
+    cleDeLigne({ id: r.id, compteId: r.compteId, debit: r.debit, credit: r.credit, libelle: r.libelle, dateEcheance: r.dateEcheance ?? null });
   const cleOrigine = (o: LigneCandidate) =>
-    cleDuReport({ id: o.id, compteId: o.compteId, debit: o.debit, credit: o.credit, libelle: o.libelle, dateEcheance: null }, o.numeroCompte);
+    cleDuReport(
+      { id: o.id, compteId: o.compteId, debit: o.debit, credit: o.credit, libelle: o.libelle, dateEcheance: o.dateEcheance ?? null },
+      o.numeroCompte,
+    );
   const reportsParCle = new Map<string, LigneReportee[]>();
   for (const r of reports) reportsParCle.set(cleReport(r), [...(reportsParCle.get(cleReport(r)) ?? []), r]);
   const originesParCle = new Map<string, LigneCandidate[]>();
@@ -76,6 +95,12 @@ export function apparierAuxOrigines(
 
 type Client = Pick<Prisma.TransactionClient, 'exercice' | 'ligneEcriture'>;
 
+/** La pièce d'origine d'une ligne reportée · sa date et l'identifiant de sa ligne. */
+export interface OrigineDuReport {
+  date: Date;
+  id: string;
+}
+
 /**
  * Les dates d'origine des lignes reportées, lues dans les exercices qui
  * précèdent `debutExercice` · la clé est l'identifiant de la ligne reportée,
@@ -88,7 +113,27 @@ export async function datesOrigineDesReports(
   debutExercice: Date,
   reports: LigneReportee[],
 ): Promise<Map<string, Date>> {
-  const dates = new Map<string, Date>();
+  const { origines } = await originesDesReports(client, tenantId, debutExercice, reports);
+  return new Map([...origines].map(([id, o]) => [id, o.date]));
+}
+
+/**
+ * Les pièces d'origine des lignes reportées · `origines` par identifiant de
+ * la ligne reportée ; `introuvables`, celles qu'un exercice précédent aurait
+ * dû porter et où aucune origine sûre n'a été retrouvée (clé absente, ou
+ * portée par un nombre différent de lignes des deux côtés). Une ligne dont la
+ * chaîne s'arrête sur un report SANS exercice précédent (bilan d'ouverture
+ * importé au premier exercice tenu) n'est dans aucune des deux · rien n'est
+ * à chercher.
+ */
+export async function originesDesReports(
+  client: Client,
+  tenantId: string,
+  debutExercice: Date,
+  reports: LigneReportee[],
+): Promise<{ origines: Map<string, OrigineDuReport>; introuvables: string[] }> {
+  const origines = new Map<string, OrigineDuReport>();
+  const introuvables: string[] = [];
   // Chaque niveau · la ligne reportée de départ, et la ligne qu'on cherche à
   // rattacher à ce niveau (la même au premier, son origine reportée ensuite).
   let enCours = reports.map((r) => ({ depart: r.id, ligne: r }));
@@ -119,7 +164,8 @@ export async function datesOrigineDesReports(
             debit: true,
             credit: true,
             libelle: true,
-            ecriture: { select: { date: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
+            dateEcheance: true,
+            ecriture: { select: { date: true, libelle: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
           },
         }),
       (l) =>
@@ -129,24 +175,30 @@ export async function datesOrigineDesReports(
           numeroCompte: numeros.get(l.compteId) ?? '',
           debit: Number(l.debit),
           credit: Number(l.credit),
-          libelle: l.libelle,
+          // Le libellé que le report recopie · celui de la ligne, sinon celui
+          // de l'écriture (`lireComptesDuReport`).
+          libelle: l.libelle ?? l.ecriture.libelle ?? null,
+          dateEcheance: l.dateEcheance ?? null,
           date: l.ecriture.date,
           estReport: l.ecriture.estGenereeParCloture === true || l.ecriture.estANouveauProvisoire === true,
         }),
     );
-    const origines = apparierAuxOrigines(
+    const trouvees = apparierAuxOrigines(
       enCours.map((e) => e.ligne),
       candidates,
     );
     const suivants: typeof enCours = [];
     for (const e of enCours) {
-      const o = origines.get(e.ligne.id);
-      if (!o) continue;
+      const o = trouvees.get(e.ligne.id);
+      if (!o) {
+        introuvables.push(e.depart);
+        continue;
+      }
       if (o.estReport) suivants.push({ depart: e.depart, ligne: o });
-      else dates.set(e.depart, o.date);
+      else origines.set(e.depart, { date: o.date, id: o.id });
     }
     enCours = suivants;
     borne = precedent.dateDebut;
   }
-  return dates;
+  return { origines, introuvables };
 }

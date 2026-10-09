@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Logger } from '@nestjs/common';
 import { Referentiel, TypeRelance } from '@prisma/client';
 import { ecartsDesGroupesParEcheance, poidsDesLignesLues, poidsDesLignesOuvertes, type LigneOuverte } from './reste-des-lignes-ouvertes';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -185,14 +186,68 @@ describe('poids des lignes ouvertes · la règle', () => {
   });
 });
 
+/** Une ligne de la base de la doublure · son exercice, son compte, son libellé, et si elle est un report. */
+type LigneDeBase = LigneOuverte & {
+  statut?: string;
+  compteId?: string;
+  libelle?: string | null;
+  exerciceId?: string;
+  aNouveau?: boolean;
+  lettre?: string | null;
+};
+
 /**
  * La doublure honore la requête · `groupBy` compte les lignes du groupe
  * admises par la borne (date, statut), `lettrage.findMany` rend les groupes
- * reconduits demandés (aucun ici).
+ * reconduits demandés (aucun ici), `ligneEcriture.findMany` rend les lignes
+ * demandées par identifiant et d'à-nouveau (`ECRITURE_D_A_NOUVEAU`), ou les
+ * lignes non lettrées d'un exercice et de ses comptes (la clé du report),
+ * `exercice.findFirst` le plus récent qui finit avant la borne.
  */
-function lecteur(base: Array<LigneOuverte & { statut?: string }>) {
+function lecteur(base: LigneDeBase[], exercices: Array<{ id: string; dateDebut: Date; dateFin: Date }> = []) {
+  const vue = (l: LigneDeBase) => ({
+    id: l.id,
+    compteId: l.compteId ?? 'c411',
+    debit: l.debit,
+    credit: l.credit,
+    libelle: l.libelle ?? null,
+    dateEcheance: l.dateEcheance,
+    lettrageId: l.lettrageId,
+    compte: { numero: '41110001' },
+    ecriture: {
+      date: l.ecriture.date,
+      libelle: 'Pièce sans libellé de ligne',
+      estANouveauProvisoire: false,
+      estGenereeParCloture: l.aNouveau === true,
+      estSoldeDesComptesDeGestion: false,
+    },
+  });
+  type Requete = {
+    where: { id?: { in: string[] }; ecriture?: { exerciceId?: string; OR?: unknown }; compteId?: { in: string[] }; lettre?: null };
+    cursor?: unknown;
+  };
   return {
+    exercice: {
+      findFirst: jest.fn(
+        async (a: { where: { dateFin: { lt: Date } } }) =>
+          exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
+      ),
+    },
     ligneEcriture: {
+      findMany: jest.fn(async (a: Requete) => {
+        if (a.cursor) return [];
+        const w = a.where;
+        return base
+          .filter(
+            (l) =>
+              (!w.id || w.id.in.includes(l.id)) &&
+              (!w.ecriture?.OR || l.aNouveau === true) &&
+              (!w.ecriture?.exerciceId || l.exerciceId === w.ecriture.exerciceId) &&
+              (!w.compteId || w.compteId.in.includes(l.compteId ?? 'c411')) &&
+              (!('lettre' in w) || (l.lettre ?? null) === null),
+          )
+          .map(vue);
+      }),
       groupBy: jest.fn(async (a: { where: { lettrageId?: { in: string[] }; ecriture?: { date?: { lte: Date }; statut?: string } } }) => {
         const ids = a.where.lettrageId?.in ?? [];
         return ids.map((id) => ({
@@ -237,6 +292,120 @@ describe('poids des lignes ouvertes · un groupe se répartit s’il est lu en e
     const lues = base.filter((l) => l.ecriture.date <= d('2026-12-31'));
     const p = await poidsDesLignesLues(lecteur(base), 't', lues, { dateMax: d('2026-12-31') }, 'essai');
     expect(p.poids.get('f')).toBe(2_480_000);
+  });
+});
+
+/**
+ * PAQUET 1, B7 · UN GROUPE D'À-NOUVEAUX LETTRÉ À LA MAIN S'IMPUTE PAR LA LOI.
+ * Rejoué sur vraie base (scénario paquet1-b, B7) · deux factures de 2026
+ * reportées au détail en 2027, lettrées à la main avec un règlement de 2027
+ * (aucun groupe de 2026 reconduit) · `main` les éteignait au PRORATA, leurs
+ * à-nouveaux portant la même date du 1er janvier ; la loi éteint la plus
+ * ANCIENNE d'abord (Code civil, Livre III, art. 154).
+ */
+describe('poids des lignes ouvertes · les à-nouveaux d’un groupe posé à la main (paquet 1, B7)', () => {
+  const exercices = [
+    { id: 'e2026', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') },
+    { id: 'e2027', dateDebut: d('2027-01-01'), dateFin: d('2027-12-31') },
+  ];
+  const de2026 = (id: string, debit: number, date: string, echeance: string, libelle: string): LigneDeBase => ({
+    ...ligne(id, debit, 0, date, null, echeance),
+    exerciceId: 'e2026',
+    libelle,
+  });
+  const report = (id: string, debit: number, echeance: string, libelle: string, lettrageId = 'g'): LigneDeBase => ({
+    ...ligne(id, debit, 0, '2027-01-01', lettrageId, echeance),
+    exerciceId: 'e2027',
+    libelle: `RAN détail 41110001 · ${libelle}`,
+    aNouveau: true,
+  });
+  const reglement = (id: string, credit: number, date: string, lettrageId = 'g'): LigneDeBase => ({
+    ...ligne(id, 0, credit, date, lettrageId),
+    exerciceId: 'e2027',
+    libelle: 'Règlement',
+  });
+  const lire = (base: LigneDeBase[]) =>
+    poidsDesLignesLues(lecteur(base, exercices), 't', base.filter((l) => l.exerciceId === 'e2027'), { dateMax: d('2027-12-31') }, 'essai');
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('la facture la plus ancienne est éteinte la première, jamais au prorata', async () => {
+    // L'identifiant du report de F2 se trie AVANT celui de F1.
+    const base = [
+      de2026('f1', 1_000_000, '2026-03-01', '2026-03-31', 'Facture FV-B7-1'),
+      de2026('f2', 1_000_000, '2026-09-01', '2026-09-30', 'Facture FV-B7-2'),
+      report('an-a', 1_000_000, '2026-09-30', 'Facture FV-B7-2'),
+      report('an-b', 1_000_000, '2026-03-31', 'Facture FV-B7-1'),
+      reglement('reg', 1_000_000, '2027-02-15'),
+    ];
+    const p = await lire(base);
+    expect(p.poids.get('an-b')).toBe(0);
+    expect(p.poids.get('an-a')).toBe(1_000_000);
+    expect(p.poids.get('reg')).toBe(0);
+    expect(p.nonRepartis).toEqual([]);
+  });
+
+  it('même montant, même libellé · l’échéance que le report recopie distingue les deux factures', async () => {
+    // Sans l'échéance dans la clé, les reports (triés par identifiant) et les
+    // origines (triées par date) s'échangeaient · le report d'août prenait la
+    // date de février, et la facture de février restait due.
+    const base = [
+      de2026('fev', 600_000, '2026-02-01', '2026-02-28', 'Vente marchandises'),
+      de2026('aou', 600_000, '2026-08-01', '2026-08-31', 'Vente marchandises'),
+      report('an-a', 600_000, '2026-08-31', 'Vente marchandises'),
+      report('an-b', 600_000, '2026-02-28', 'Vente marchandises'),
+      reglement('reg', 600_000, '2027-02-20'),
+    ];
+    const p = await lire(base);
+    expect(p.poids.get('an-b')).toBe(0);
+    expect(p.poids.get('an-a')).toBe(600_000);
+  });
+
+  it('tout ou rien · une origine non retrouvée laisse le groupe à la date du report, et il est consigné', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const base = [
+      de2026('f1', 1_000_000, '2026-03-01', '2026-03-31', 'Facture FV-B7-1'),
+      report('an-b', 1_000_000, '2026-03-31', 'Facture FV-B7-1'),
+      report('an-c', 1_000_000, '2026-06-30', 'Facture inconnue'),
+      reglement('reg', 1_000_000, '2027-02-15'),
+    ];
+    const p = await lire(base);
+    // F1 seule datée de mars passerait pour la plus ancienne · rien n'est deviné.
+    expect(p.poids.get('an-b')).toBe(500_000);
+    expect(p.poids.get('an-c')).toBe(500_000);
+    expect(warn.mock.calls.some(([m]) => String(m).includes('pièce d\'origine') && String(m).includes('g'))).toBe(true);
+  });
+
+  it('une seule facture dans le groupe · rien à départager, rien de consigné', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const base = [report('an-c', 1_000_000, '2026-06-30', 'Facture inconnue'), reglement('reg', 400_000, '2027-02-15')];
+    const p = await lire(base);
+    expect(p.poids.get('an-c')).toBe(600_000);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('une lecture qui rend plus que demandé n’invente aucun report', async () => {
+    // La doublure rend toutes les lignes, quel que soit le filtre · seules les
+    // lignes demandées ET d'à-nouveau sont prises pour des reports.
+    const base = [
+      de2026('f1', 1_000_000, '2026-03-01', '2026-03-31', 'Facture FV-B7-1'),
+      de2026('f2', 1_000_000, '2026-09-01', '2026-09-30', 'Facture FV-B7-2'),
+      report('an-a', 1_000_000, '2026-09-30', 'Facture FV-B7-2'),
+      report('an-b', 1_000_000, '2026-03-31', 'Facture FV-B7-1'),
+      reglement('reg', 1_000_000, '2027-02-15'),
+    ];
+    const l = lecteur(base, exercices);
+    const touteLaBase = base.map((x) => ({
+      ...x,
+      compteId: 'c411',
+      compte: { numero: '41110001' },
+      ecriture: { ...x.ecriture, estGenereeParCloture: x.aNouveau === true },
+    }));
+    const parId = l.ligneEcriture.findMany;
+    l.ligneEcriture.findMany = jest.fn(async (a: Parameters<typeof parId>[0]) => (a.where.id ? touteLaBase : parId(a))) as never;
+    const p = await poidsDesLignesLues(l, 't', base.filter((x) => x.exerciceId === 'e2027'), { dateMax: d('2027-12-31') }, 'essai');
+    expect(p.poids.get('an-b')).toBe(0);
+    expect(p.poids.get('an-a')).toBe(1_000_000);
   });
 });
 

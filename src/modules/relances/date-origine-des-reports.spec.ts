@@ -1,4 +1,4 @@
-import { apparierAuxOrigines, datesOrigineDesReports, type LigneCandidate, type LigneReportee } from './date-origine-des-reports';
+import { apparierAuxOrigines, datesOrigineDesReports, originesDesReports, type LigneCandidate, type LigneReportee } from './date-origine-des-reports';
 
 /**
  * UNE LIGNE REPORTÉE SANS ÉCHÉANCE GARDE LA DATE DE SA PIÈCE (simulation du
@@ -124,6 +124,88 @@ describe('date d’origine des reports · la lecture sur plusieurs exercices', (
       { id: 'r27c', compteId: 'c1', numeroCompte: '41110001', debit: 7_000, credit: 0, libelle: 'RAN détail 41110001 · Inconnue' },
     ]);
     expect(dates.has('r27c')).toBe(false);
+  });
+});
+
+/**
+ * PAQUET 1, B7 · LA MÊME ORIGINE ORDONNE L'IMPUTATION D'UN GROUPE D'À-NOUVEAUX.
+ * Le report au détail recopie l'échéance (`report-a-nouveau.ts`) · elle entre
+ * dans la clé, et deux factures de même montant et de même libellé ne
+ * s'échangent plus par l'ordre de leurs identifiants. Le libellé de
+ * l'origine est celui que le report recopie (`lireComptesDuReport`) · celui
+ * de la ligne, sinon celui de l'écriture.
+ */
+describe('date d’origine des reports · l’échéance et le libellé recopiés (paquet 1, B7)', () => {
+  const avecEcheance = <T extends LigneReportee>(l: T, echeance: string | null): T => ({ ...l, dateEcheance: echeance ? d(echeance) : null });
+
+  it('même montant, même libellé · chaque report rejoint l’origine de SON échéance, quel que soit l’ordre des identifiants', () => {
+    const r = apparierAuxOrigines(
+      [avecEcheance(report('ra', 600_000, 'Vente marchandises'), '2026-08-31'), avecEcheance(report('rb', 600_000, 'Vente marchandises'), '2026-02-28')],
+      [
+        avecEcheance(origine('fev', 600_000, 'Vente marchandises', '2026-02-01'), '2026-02-28'),
+        avecEcheance(origine('aou', 600_000, 'Vente marchandises', '2026-08-01'), '2026-08-31'),
+      ],
+    );
+    expect(r.get('ra')?.id).toBe('aou');
+    expect(r.get('rb')?.id).toBe('fev');
+  });
+
+  it('un report sans échéance ne prend pas une origine qui en porte une · le report l’aurait recopiée', () => {
+    const r = apparierAuxOrigines([report('r1', 100_000, 'Cotisation')], [
+      origine('sans', 100_000, 'Cotisation', '2026-02-01'),
+      avecEcheance(origine('avec', 100_000, 'Cotisation', '2026-06-01'), '2026-06-30'),
+    ]);
+    expect(r.get('r1')?.id).toBe('sans');
+  });
+
+  const exercices = [{ id: 'e2026', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') }];
+  const client = (lignes: Array<{ id: string; debit: number; libelle: string | null; libelleEcriture: string; date: Date; echeance: Date | null }>) => ({
+    exercice: {
+      findFirst: async (a: { where: { dateFin: { lt: Date } } }) =>
+        exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
+    },
+    ligneEcriture: {
+      findMany: async (a: { where: { ecriture: { exerciceId: string } }; cursor?: unknown }) =>
+        a.cursor || a.where.ecriture.exerciceId !== 'e2026'
+          ? []
+          : lignes.map((l) => ({
+              id: l.id,
+              compteId: 'c1',
+              debit: l.debit,
+              credit: 0,
+              libelle: l.libelle,
+              dateEcheance: l.echeance,
+              ecriture: { date: l.date, libelle: l.libelleEcriture, estGenereeParCloture: false, estANouveauProvisoire: false },
+            })),
+    },
+  });
+
+  it('une ligne sans libellé se retrouve par celui de son écriture, que le report a recopié', async () => {
+    const { origines, introuvables } = await originesDesReports(
+      client([{ id: 'f9', debit: 250_000, libelle: null, libelleEcriture: 'Facture FV-009', date: d('2026-04-02'), echeance: d('2026-05-02') }]) as never,
+      't1',
+      d('2027-01-01'),
+      [avecEcheance(report('r9', 250_000, 'Facture FV-009'), '2026-05-02')],
+    );
+    expect(origines.get('r9')).toEqual({ date: d('2026-04-02'), id: 'f9' });
+    expect(introuvables).toEqual([]);
+  });
+
+  it('une ligne dont l’exercice précédent ne porte aucune origine sûre est rendue introuvable', async () => {
+    const { origines, introuvables } = await originesDesReports(
+      client([{ id: 'f9', debit: 250_000, libelle: 'Facture FV-009', libelleEcriture: 'Pièce', date: d('2026-04-02'), echeance: null }]) as never,
+      't1',
+      d('2027-01-01'),
+      [report('r-inconnu', 7_000, 'Inconnue')],
+    );
+    expect(origines.size).toBe(0);
+    expect(introuvables).toEqual(['r-inconnu']);
+  });
+
+  it('sans exercice précédent (premier exercice tenu), rien n’est à chercher · ni origine, ni introuvable', async () => {
+    const { origines, introuvables } = await originesDesReports(client([]) as never, 't1', d('2026-01-01'), [report('r0', 7_000, 'Ouverture')]);
+    expect(origines.size).toBe(0);
+    expect(introuvables).toEqual([]);
   });
 });
 

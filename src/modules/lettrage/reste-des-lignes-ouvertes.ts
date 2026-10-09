@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Prisma, StatutEcriture } from '@prisma/client';
+import { originesDesReports, type LigneReportee } from '../relances/date-origine-des-reports';
+import { ECRITURE_D_A_NOUVEAU } from './paires-a-cheval';
 import {
   LOT_GROUPES,
   SELECT_ORIGINE,
@@ -35,7 +37,9 @@ import {
  * relecture, M1). Une ligne d'à-nouveau d'un groupe reconduit s'y lit à sa
  * pièce d'ORIGINE (date et ligne, `originesDesLignes`) · sans elle, deux
  * factures reportées le même premier jour s'ordonnaient par un identifiant
- * tiré au hasard (relecture TypeScript, bloquant 1). Les factures sont les lignes du sens du
+ * tiré au hasard (relecture TypeScript, bloquant 1). Celle d'un groupe posé à
+ * la main en N+1 aussi, par la clé du report au détail (`originesDesANouveaux`,
+ * paquet 1, B7) · sans elle, les deux factures s'éteignaient au prorata. Les factures sont les lignes du sens du
  * solde du groupe (débit pour une créance, crédit pour une dette) ; les autres
  * lignes du groupe ne pèsent plus rien, leur montant est dans le reste des
  * factures.
@@ -275,7 +279,8 @@ export interface BorneDeLEtat {
 /**
  * Le poids des lignes lues · les groupes lus en partie exclus, les origines
  * des lignes d'à-nouveau des groupes RECONDUITS relues (un groupe de N+1 nomme
- * celui de N qu'il reconduit), le tout par tranches · rien n'est lu quand
+ * celui de N qu'il reconduit), puis celles des autres lignes d'à-nouveau des
+ * groupes (`originesDesANouveaux`), le tout par tranches · rien n'est lu quand
  * aucun groupe n'en porte deux lignes.
  */
 export async function poidsDesLignesLues(
@@ -289,6 +294,7 @@ export async function poidsDesLignesLues(
   const ids = [...groupes.keys()];
   const origines = new Map<string, OrigineDeLigne>();
   const exclus = new Set<string>();
+  const sansOrigine: string[] = [];
   for (let i = 0; i < ids.length; i += LOT_GROUPES) {
     const tranche = ids.slice(i, i + LOT_GROUPES);
     const [comptes, reconduits] = await Promise.all([
@@ -312,6 +318,8 @@ export async function poidsDesLignesLues(
     const dansLaBorne = new Map(comptes.map((c) => [c.lettrageId, c._count._all]));
     for (const id of tranche) if (dansLaBorne.get(id) !== groupes.get(id)!.length) exclus.add(id);
     if (reconduits.length > 0) for (const [id, o] of await originesDesLignes(db, tenantId, reconduits)) origines.set(id, o);
+    const lus = tranche.filter((id) => !exclus.has(id)).map((id) => [id, groupes.get(id)!] as const);
+    for (const id of await originesDesANouveaux(db, tenantId, lus, origines)) sansOrigine.push(id);
   }
   // Les parts déclarées des paiements des groupes (art. 151 et 153), non
   // retirées, par tranches des lignes.
@@ -340,7 +348,123 @@ export async function poidsDesLignesLues(
         (p.nonRepartis.length > 20 ? ' …' : ''),
     );
   }
+  if (sansOrigine.length > 0) {
+    journal.warn(
+      `${etat} · ${sansOrigine.length} groupe(s) de lettrage à plusieurs factures dont une ligne d'à-nouveau n'a pas retrouvé ` +
+        `sa pièce d'origine (aucune origine sûre à la clé du report, ou pièce antérieure au premier exercice tenu) · ` +
+        `leurs lignes d'à-nouveau s'imputent à la date du report (Code civil, Livre III, art. 154, lu sur cette date) · ` +
+        `${sansOrigine.slice(0, 20).join(', ')}` +
+        (sansOrigine.length > 20 ? ' …' : ''),
+    );
+  }
   return p;
+}
+
+type LecteurDesANouveaux = {
+  ligneEcriture: { findMany: (args: Prisma.LigneEcritureFindManyArgs) => Promise<unknown[]> };
+};
+
+interface LigneDAnouveauLue {
+  id: string;
+  compteId: string;
+  debit: Prisma.Decimal | number;
+  credit: Prisma.Decimal | number;
+  libelle: string | null;
+  dateEcheance: Date | null;
+  compte?: { numero: string } | null;
+  ecriture?: { date: Date; estANouveauProvisoire?: boolean; estGenereeParCloture?: boolean; estSoldeDesComptesDeGestion?: boolean } | null;
+}
+
+/**
+ * L'ORIGINE DES LIGNES D'À-NOUVEAU D'UN GROUPE POSÉ EN N+1 (paquet 1, B7).
+ * Un groupe lettré à la main sur des lignes d'à-nouveau, sans groupe de N
+ * qu'il reconduise, n'a pas de `lettrageReconduitId` · ses lignes d'à-nouveau
+ * portaient toutes la date du report, et l'imputation de l'art. 154 (« sur la
+ * plus ancienne », puis « proportionnellement ») éteignait deux factures de
+ * mars et de septembre au PRORATA. Chaque ligne d'à-nouveau qu'aucune
+ * reconduction ne date retrouve sa pièce d'origine par la clé du report au
+ * détail (`originesDesReports`, la règle des relances), de proche en proche.
+ *
+ * TOUT OU RIEN, PAR GROUPE · un groupe dont une ligne d'à-nouveau n'a pas
+ * retrouvé son origine garde la date du report pour TOUTES · la seule
+ * origine manquante, laissée au 1er janvier, passerait pour la plus récente
+ * et la facture la plus ancienne resterait due. Le groupe est rendu
+ * (`sansOrigine`) et consigné, jamais tu. Les lignes que la reconduction a
+ * datées gardent leur origine. Les lignes relues sont filtrées EN MÉMOIRE
+ * (identifiant demandé, écriture d'à-nouveau) · une lecture qui rendrait
+ * plus que demandé n'invente aucun report.
+ */
+async function originesDesANouveaux(
+  db: unknown,
+  tenantId: string,
+  groupes: ReadonlyArray<readonly [string, readonly LigneOuverte[]]>,
+  origines: Map<string, OrigineDeLigne>,
+): Promise<string[]> {
+  const demandees = new Set(groupes.flatMap(([, membres]) => membres.map((l) => l.id)).filter((id) => !origines.has(id)));
+  if (demandees.size === 0) return [];
+  const lues = (await (db as LecteurDesANouveaux).ligneEcriture.findMany({
+    where: { id: { in: [...demandees] }, ecriture: { tenantId, OR: ECRITURE_D_A_NOUVEAU } },
+    select: {
+      id: true,
+      compteId: true,
+      debit: true,
+      credit: true,
+      libelle: true,
+      dateEcheance: true,
+      compte: { select: { numero: true } },
+      ecriture: { select: { date: true, estANouveauProvisoire: true, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true } },
+    },
+  })) as LigneDAnouveauLue[];
+  const estANouveau = (l: LigneDAnouveauLue) =>
+    l.ecriture?.estANouveauProvisoire === true || (l.ecriture?.estGenereeParCloture === true && l.ecriture.estSoldeDesComptesDeGestion !== true);
+  const reports = lues.filter((l) => demandees.has(l.id) && estANouveau(l) && l.compte && l.ecriture);
+  if (reports.length === 0) return [];
+  // Par date de report · chaque date nomme l'exercice qui la précède.
+  const parDate = new Map<number, LigneDAnouveauLue[]>();
+  for (const l of reports) parDate.set(l.ecriture!.date.getTime(), [...(parDate.get(l.ecriture!.date.getTime()) ?? []), l]);
+  const trouvees = new Map<string, OrigineDeLigne>();
+  for (const [date, lignes] of parDate) {
+    const { origines: o } = await originesDesReports(
+      db as Parameters<typeof originesDesReports>[0],
+      tenantId,
+      new Date(date),
+      lignes.map(
+        (l): LigneReportee => ({
+          id: l.id,
+          compteId: l.compteId,
+          numeroCompte: l.compte!.numero,
+          debit: Number(l.debit),
+          credit: Number(l.credit),
+          libelle: l.libelle,
+          dateEcheance: l.dateEcheance,
+        }),
+      ),
+    );
+    for (const [id, origine] of o) trouvees.set(id, origine);
+  }
+  // Le groupe de chaque ligne est celui des lignes REÇUES, jamais celui que
+  // la lecture rendrait.
+  const groupeDe = new Map(groupes.flatMap(([lettrageId, membres]) => membres.map((l) => [l.id, lettrageId] as const)));
+  const reportsParGroupe = new Map<string, string[]>();
+  for (const l of reports) {
+    const lettrageId = groupeDe.get(l.id)!;
+    reportsParGroupe.set(lettrageId, [...(reportsParGroupe.get(lettrageId) ?? []), l.id]);
+  }
+  const membresDe = new Map(groupes);
+  const sansOrigine: string[] = [];
+  for (const [lettrageId, ids] of reportsParGroupe) {
+    if (ids.every((id) => trouvees.has(id))) {
+      for (const id of ids) origines.set(id, trouvees.get(id)!);
+      continue;
+    }
+    // Rien n'est à départager quand le groupe ne porte qu'une facture (ou se
+    // solde) · l'imputation n'a pas de choix, la date n'y change rien.
+    const membres = membresDe.get(lettrageId) ?? [];
+    const net = membres.reduce((t, l) => t + centimes(l.debit) - centimes(l.credit), 0);
+    const factures = membres.filter((l) => (net > 0 ? centimes(l.debit) > 0 : centimes(l.credit) > 0));
+    if (net !== 0 && factures.length > 1) sansOrigine.push(lettrageId);
+  }
+  return sansOrigine;
 }
 
 type LecteurDeLignes = {
