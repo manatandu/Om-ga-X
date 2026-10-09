@@ -480,6 +480,37 @@ describe('EtatsFinanciersSyscohadaService', () => {
       expect(ouvert.comptesASolderALaCloture).toEqual([]);
       expect(poste(ouvert, 'CJ')?.montant).toBe(600_000 - 46_072_000);
     });
+
+    it('paquet 1, A1 · la colonne N-1 de l’exercice suivant reprend CJ tel quel, et le DIT', async () => {
+      // 2027 clôturé avant le virement (la balance du BLOQUANT ci-dessus),
+      // 2028 ouvert. La colonne N-1 de 2028 reprend CJ de 2027 · 600 000 de
+      // l'exercice et -46 072 000 de 2026 (AUDCIF art. 34, dernier tiret, rien
+      // n'est recalculé), et elle le dit. Sans l'avis, rien ne le disait.
+      const lignes2027 = [
+        ligne('52110000', C5, 1_000_000, 400_000, { debit: 53_928_000 }),
+        ligne('10130000', C1, 0, 0, { credit: 100_000_000 }),
+        ligne('13900000', C1, 0, 0, { debit: 46_072_000 }),
+        ligne('70110000', C7, 0, 1_000_000),
+        ligne('60110000', C6, 400_000, 0),
+      ];
+      const lignes2028 = [ligne('52110000', C5, 0, 0, { debit: 54_528_000 }), ligne('10130000', C1, 0, 0, { credit: 100_000_000 })];
+      const exercices = (statut2027: string) => [
+        { id: 'e0', dateDebut: new Date('2027-01-01T00:00:00Z'), dateFin: new Date('2027-12-31T00:00:00Z'), statut: statut2027 } as never,
+        { id: 'e1', dateDebut: new Date('2028-01-01T00:00:00Z'), dateFin: new Date('2028-12-31T00:00:00Z'), statut: 'OUVERT' } as never,
+      ];
+
+      const bilan = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('CLOTURE')).bilan('t1', 'e1');
+      expect(poste(bilan, 'CJ')?.montantN1).toBe(600_000 - 46_072_000);
+      expect(bilan.resultatAnterieurNonVire).toBeNull();
+      expect(bilan.resultatAnterieurNonVireN1).toEqual(expect.objectContaining({ montant: -46_072_000, poste: 'CJ' }));
+      expect(bilan.resultatAnterieurNonVireN1!.motif).toMatch(/^Colonne N-1 · /);
+
+      // 2027 encore ouvert · sa balance est celle d'avant l'assemblée, la colonne N-1 ne dit rien.
+      const ouvert = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('OUVERT')).bilan('t1', 'e1');
+      expect(ouvert.resultatAnterieurNonVireN1).toBeNull();
+      // Premier exercice du dossier · aucune colonne N-1, rien à dire.
+      expect((await serviceAvecBalance(lignes2028).bilan('t1', 'e1')).resultatAnterieurNonVireN1).toBeNull();
+    });
   });
 
   // =========================================================================

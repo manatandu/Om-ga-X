@@ -99,6 +99,19 @@ export async function exerciceCloture(exerciceService: ExerciceService, tenantId
 }
 
 /**
+ * L'exercice PRÉCÉDENT est-il clôturé ? Lu pour dire, sur la colonne N-1, le
+ * résultat antérieur que sa clôture n'a pas viré (`resultatAnterieurNonVireDuComparatif`,
+ * paquet 1, A1). Sans exercice précédent, rien n'est clos.
+ */
+export async function exercicePrecedentCloture(
+  exerciceService: ExerciceService,
+  tenantId: string,
+  exerciceN1Id: string | null,
+): Promise<boolean> {
+  return exerciceN1Id ? exerciceCloture(exerciceService, tenantId, exerciceN1Id) : false;
+}
+
+/**
  * L'EXERCICE PRÉCÉDENT TIENT-IL DES POSITIONS ? (relecture de la passe V1,
  * 2026-10-08) · un exercice précédent OUVERT SANS AUCUNE ÉCRITURE au
  * livre-journal (créé pour y importer plus tard sa balance) ne tient aucune

@@ -15,6 +15,7 @@ import {
   comparatifDuBilan,
   correspond,
   exerciceCloture,
+  exercicePrecedentCloture,
   lireOuverturePasseeEnOd,
   ouvertureTenue,
   trouverExerciceN1,
@@ -73,6 +74,7 @@ import {
 import {
   partsDuResultatAuBilan,
   resultatAnterieurNonVire,
+  resultatAnterieurNonVireDuComparatif,
   resultatAuBilan,
   type PartsDuResultatAuBilan,
 } from '../etats-financiers/resultat-de-l-exercice';
@@ -362,10 +364,11 @@ export class EtatsFinanciersSmtSyscohadaService {
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await trouverExerciceN1(this.exerciceService, tenantId, exerciceId);
-    const [lignesN, lignesN1, clos] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
+      exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
     ]);
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
     // est le bilan d'ouverture du dossier (AUDCIF art. 34,
@@ -376,7 +379,7 @@ export class EtatsFinanciersSmtSyscohadaService {
     const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
     const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYSCOHADA');
     const { parRef: parRefN, resultatClasses678, resultatCompte13, parts } = this.resoudreBilan(lignesN);
-    const { parRef: parRefN1 } = this.resoudreBilan(comparatif.lignes);
+    const { parRef: parRefN1, parts: partsN1 } = this.resoudreBilan(comparatif.lignes);
 
     const fusionner = (ref: string): PosteCalculeSmtSyscohada => {
       const n = parRefN.get(ref)!;
@@ -457,6 +460,14 @@ export class EtatsFinanciersSmtSyscohadaService {
       // Exercice CLÔTURÉ qui porte encore le résultat précédent non affecté ·
       // nommé (`resultatAnterieurNonVire`).
       resultatAnterieurNonVire: resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, 'SP2', 'SYSCOHADA'),
+      // La colonne N-1 qui reprend le même défaut · dite, jamais recalculée (paquet 1, A1).
+      resultatAnterieurNonVireN1: resultatAnterieurNonVireDuComparatif(
+        comparatif.provenance,
+        closN1,
+        partsN1.resultatAnterieurNonAffecte,
+        'SP2',
+        'SYSCOHADA',
+      ),
     };
   }
 

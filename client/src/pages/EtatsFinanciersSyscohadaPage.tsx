@@ -22,6 +22,7 @@ import {
 import { montant } from '../lib/montants';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
+import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
 
 /**
  * ÉTATS FINANCIERS DU SYSCOHADA RÉVISÉ · Système normal.
@@ -586,6 +587,8 @@ function EtatsSyscohadaSystemeNormal() {
                       )} · vérifier les écritures et les comptes non rattachés ci-dessous`}
                 </span>
               </div>
+
+              <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} avisN1={bilan.resultatAnterieurNonVireN1} />
 
               {bilan.comptesASolderALaCloture.length > 0 && (
                 <div className="border border-warning/30 bg-warning-soft mt-2 px-3.5 py-2.5">

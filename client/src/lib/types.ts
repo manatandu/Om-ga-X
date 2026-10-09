@@ -628,6 +628,8 @@ export interface Bilan {
     resultatAnterieurNonAffecte?: number;
   };
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 export interface CompteDuPoste {
@@ -661,6 +663,8 @@ export interface BilanProjet {
   equilibre: boolean;
   comptesNonRattaches: CompteDuPoste[];
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 export interface CompteExploitationProjet {
@@ -2477,6 +2481,8 @@ export interface BilanSmt {
   equilibre: boolean;
   renvoiImmobilisations: string;
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 /** VA, VB, VC et JG · les quatre lignes qui mènent du solde de caisse au résultat net. */
@@ -3479,6 +3485,8 @@ export interface BilanSyscohada {
     resultatAnterieurNonAffecte?: number;
   };
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 /**
@@ -3665,6 +3673,8 @@ export interface BilanSmtSyscohada {
     resultatAnterieurNonAffecte?: number;
   };
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 /**

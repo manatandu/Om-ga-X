@@ -12,7 +12,7 @@ import { EtatsFinanciersProjetBudgetService } from '../etats-financiers/etats-fi
 import { EtatsFinanciersService } from '../etats-financiers/etats-financiers.service';
 import { PrismaService } from '../../common/prisma.service';
 import { ExportService, anomalieResultatAnterieurNonVire, resultatDeLExerciceLogeAuBilan } from './export.service';
-import { resultatAnterieurNonVire } from '../etats-financiers/resultat-de-l-exercice';
+import { resultatAnterieurNonVire, resultatAnterieurNonVireDuComparatif } from '../etats-financiers/resultat-de-l-exercice';
 import { NOM_BALANCE, NOM_BALANCE_N1 } from './theme-etafi';
 import { FOND_ENTETE_FPM } from './presentation-fpm';
 import {
@@ -1488,6 +1488,17 @@ describe('liasses · résultat logé au bilan et résultat précédent non viré
     expect(reste).toEqual([]);
     expect(anomalie.slice(0, 2)).toEqual(['A_TRAITER', 'CJ']);
     expect(anomalie[3]).toContain('AUDCIF, Titre VII, compte 13');
+  });
+
+  it('paquet 1, A1 · la colonne N-1 qui reprend le défaut de l’exercice précédent lève sa propre anomalie', () => {
+    const n1 = resultatAnterieurNonVireDuComparatif('EXERCICE_N1', true, 1_000_000, 'CJ', 'SYSCOHADA');
+    const bilan = { controle: { resultatAnterieurNonAffecte: 1_400_000 }, resultatAnterieurNonVire: null, resultatAnterieurNonVireN1: n1 };
+    // L'exercice suivant est ouvert · sa cellule de contrôle retranche sa propre part antérieure, comme avant.
+    expect(resultatDeLExerciceLogeAuBilan("'Bilan-Passif'!D40", bilan)).toBe("'Bilan-Passif'!D40-(1400000)");
+    const anomalies = anomalieResultatAnterieurNonVire(bilan);
+    expect(anomalies).toHaveLength(1);
+    expect(anomalies[0].slice(0, 3)).toEqual(['A_TRAITER', 'CJ', "Résultat net de l'exercice · colonne N-1"]);
+    expect(anomalies[0][3]).toMatch(/^Colonne N-1 · /);
   });
 
   it('les cinq liasses posent l’anomalie, et les quatre lignes de contrôle lisent le bilan entier', () => {

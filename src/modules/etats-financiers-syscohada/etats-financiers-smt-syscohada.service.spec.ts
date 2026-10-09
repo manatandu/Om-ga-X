@@ -1819,3 +1819,34 @@ describe('passes O1a C7 et O6 B3 · les états des garanties que la forme exige 
     }
   });
 });
+
+/**
+ * PAQUET 1, A1 (reproduit sur vraie base le 2026-10-08) · même règle au SMT
+ * SYSCOHADA · SP2 de la colonne N-1 reprend tel quel le résultat antérieur que
+ * la clôture de l'exercice précédent n'a pas viré (AUDCIF art. 34), et le DIT.
+ */
+describe('Bilan S.M.T SYSCOHADA · la colonne N-1 qui reprend un résultat antérieur non viré', () => {
+  const lignes2027 = [
+    ligne('52110000', ClasseCompte.CLASSE_5, 700_000, 0),
+    ligne('13910000', ClasseCompte.CLASSE_1, 300_000, 0),
+    ligne('70110000', ClasseCompte.CLASSE_7, 0, 1_000_000),
+  ];
+  const lignes2028 = [ligne('52110000', ClasseCompte.CLASSE_5, 700_000, 0), ligne('13100000', ClasseCompte.CLASSE_1, 0, 700_000)];
+  const exercices = (statut2027: string) => [
+    { id: 'e0', dateDebut: new Date('2027-01-01T00:00:00Z'), statut: statut2027 } as never,
+    { id: 'e1', dateDebut: new Date('2028-01-01T00:00:00Z'), statut: 'OUVERT' } as never,
+  ];
+
+  it('2027 clôturé · SP2 N-1 reprend 700 000, et la colonne dit la perte de 2026 restée au 13', async () => {
+    const bilan = await service({ e0: lignes2027, e1: lignes2028 }, { exercices: exercices('CLOTURE') }).bilan('t1', 'e1');
+    expect(poste(bilan, 'SP2').montantN1).toBe(700_000);
+    expect(bilan.resultatAnterieurNonVire).toBeNull();
+    expect(bilan.resultatAnterieurNonVireN1).toEqual(expect.objectContaining({ montant: -300_000, poste: 'SP2' }));
+    expect(bilan.resultatAnterieurNonVireN1!.motif).toContain('une perte de');
+  });
+
+  it('2027 ouvert · rien n’est dit', async () => {
+    const bilan = await service({ e0: lignes2027, e1: lignes2028 }, { exercices: exercices('OUVERT') }).bilan('t1', 'e1');
+    expect(bilan.resultatAnterieurNonVireN1).toBeNull();
+  });
+});

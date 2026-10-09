@@ -13,6 +13,7 @@ import {
   comparatifDuBilan,
   correspond,
   exerciceCloture,
+  exercicePrecedentCloture,
   exercicePrecedentTenu,
   lignesALOuverture,
   lireOuverturePasseeEnOd,
@@ -73,6 +74,7 @@ import {
 import {
   partsDuResultatAuBilan,
   resultatAnterieurNonVire,
+  resultatAnterieurNonVireDuComparatif,
   resultatAuBilan,
   type ResultatAnterieurNonVire,
 } from '../etats-financiers/resultat-de-l-exercice';
@@ -229,6 +231,8 @@ export interface BilanSyscohada {
   };
   /** Exercice clôturé qui porte encore ce résultat antérieur · nommé, `null` sinon (et sur une situation intermédiaire). */
   resultatAnterieurNonVire: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent (paquet 1, A1). */
+  resultatAnterieurNonVireN1: ResultatAnterieurNonVire | null;
 }
 
 /**
@@ -861,10 +865,11 @@ export class EtatsFinanciersSyscohadaService {
     // précédent ». La colonne N-1 n'est donc PAS bornée : c'est bien la
     // clôture qu'elle doit porter, et le comparatif du modèle la sert déjà.
     const { borneN } = await this.bornesSituation(tenantId, exerciceId, exerciceN1Id, arreteAu);
-    const [lignesN, lignesN1, clos] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId, borneN),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
+      exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -925,6 +930,22 @@ export class EtatsFinanciersSyscohadaService {
       lignesN.filter((l) => correspond(l.numero, COMPTES_RESULTAT_SYSCOHADA)),
     );
     const nonVire = borneN ? null : resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, REF_RESULTAT_SYSCOHADA, 'SYSCOHADA');
+    // La colonne N-1 qui reprend le même défaut de l'exercice précédent ·
+    // dite, jamais recalculée (paquet 1, A1). Lue en situation aussi · la
+    // colonne N-1 y porte toujours la clôture précédente (ch. 39 § 2.1.2).
+    const partsN1 = partsDuResultatAuBilan(
+      resolutionN1.resultatClasses678,
+      resolutionN1.resultatCompte13,
+      comparatif.lignes.filter((l) => CLASSES_DE_GESTION.has(l.classe)),
+      comparatif.lignes.filter((l) => correspond(l.numero, COMPTES_RESULTAT_SYSCOHADA)),
+    );
+    const nonVireN1 = resultatAnterieurNonVireDuComparatif(
+      comparatif.provenance,
+      closN1,
+      partsN1.resultatAnterieurNonAffecte,
+      REF_RESULTAT_SYSCOHADA,
+      'SYSCOHADA',
+    );
 
     return {
       actif,
@@ -949,6 +970,7 @@ export class EtatsFinanciersSyscohadaService {
         resultatAnterieurNonAffecte: parts.resultatAnterieurNonAffecte,
       },
       resultatAnterieurNonVire: nonVire,
+      resultatAnterieurNonVireN1: nonVireN1,
     };
   }
 

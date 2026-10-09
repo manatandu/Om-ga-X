@@ -12,11 +12,18 @@ import {
   comparatifDuBilan,
   correspond,
   exerciceCloture,
+  exercicePrecedentCloture,
   lireOuverturePasseeEnOd,
   ouvertureTenue,
   trouverExerciceN1,
 } from './etats-financiers.communs';
-import { estCompteDuResultatDeLExercice, partsDuResultatAuBilan, resultatAnterieurNonVire, resultatAuBilan } from './resultat-de-l-exercice';
+import {
+  estCompteDuResultatDeLExercice,
+  partsDuResultatAuBilan,
+  resultatAnterieurNonVire,
+  resultatAnterieurNonVireDuComparatif,
+  resultatAuBilan,
+} from './resultat-de-l-exercice';
 import { DettesParPoste, dettesALaCloture, dettesALOuverture, dettesParPoste } from './dettes-rattachees';
 import { PosteCalcule } from './etats-financiers.service';
 import { POSTES_CHARGES, POSTES_REVENUS, PosteCompteExploitation, posteDuCompte } from './correspondance-projet-compte-exploitation';
@@ -202,10 +209,11 @@ export class EtatsFinanciersProjetService {
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
-    const [lignesN, lignesN1, clos] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
+      exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -256,6 +264,8 @@ export class EtatsFinanciersProjetService {
 
     const sources = this.sourcesDuResultat(lignesN);
     const parts = partsDuResultatAuBilan(sources.resultatClasses678, sources.resultatCompte13, sources.lignes678, sources.lignes13);
+    const sourcesN1 = this.sourcesDuResultat(comparatif.lignes);
+    const partsN1 = partsDuResultatAuBilan(sourcesN1.resultatClasses678, sourcesN1.resultatCompte13, sourcesN1.lignes678, sourcesN1.lignes13);
     const totalActif = parRefN.get('BZ')!.montant;
     const totalPassif = parRefN.get('DZ')!.montant;
     const totalActifN1 = comparatif.provenance ? parRefN1.get('BZ')!.montant : undefined;
@@ -284,6 +294,14 @@ export class EtatsFinanciersProjetService {
       // Exercice CLÔTURÉ qui porte encore le résultat précédent non affecté ·
       // nommé (`resultatAnterieurNonVire`).
       resultatAnterieurNonVire: resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, 'CC', 'SYCEBNL'),
+      // La colonne N-1 qui reprend le même défaut · dite, jamais recalculée (paquet 1, A1).
+      resultatAnterieurNonVireN1: resultatAnterieurNonVireDuComparatif(
+        comparatif.provenance,
+        closN1,
+        partsN1.resultatAnterieurNonAffecte,
+        'CC',
+        'SYCEBNL',
+      ),
     };
   }
 

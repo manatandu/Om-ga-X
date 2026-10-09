@@ -267,21 +267,40 @@ export function resultatDeLExerciceLogeAuBilan(
   return Math.abs(anterieur) > 0.005 ? `${cellule}-(${anterieur})` : cellule;
 }
 
-/** L'anomalie « à traiter » d'un exercice clôturé qui porte encore le résultat précédent non affecté (`resultatAnterieurNonVire`). */
+/**
+ * L'anomalie « à traiter » d'un exercice clôturé qui porte encore le résultat
+ * précédent non affecté (`resultatAnterieurNonVire`), et celle de la colonne
+ * N-1 qui reprend le même défaut de l'exercice précédent
+ * (`resultatAnterieurNonVireN1`, paquet 1, A1) · sans elle, la liasse de
+ * l'exercice suivant ne levait rien sur un comparatif qui présente deux
+ * résultats comme un seul.
+ */
 export function anomalieResultatAnterieurNonVire(bilan: {
   resultatAnterieurNonVire: ResultatAnterieurNonVire | null;
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }): Array<[string, string, string, string, string]> {
+  const lignes: Array<[string, string, string, string, string]> = [];
   const n = bilan.resultatAnterieurNonVire;
-  if (!n) return [];
-  return [
-    [
+  if (n) {
+    lignes.push([
       'A_TRAITER',
       n.poste,
       "Résultat net de l'exercice",
       n.motif,
       "Le dire dans les notes annexes · l'affectation passée dans l'exercice suivant, ou sa clôture, porte ce montant au report à nouveau.",
-    ],
-  ];
+    ]);
+  }
+  const n1 = bilan.resultatAnterieurNonVireN1;
+  if (n1) {
+    lignes.push([
+      'A_TRAITER',
+      n1.poste,
+      "Résultat net de l'exercice · colonne N-1",
+      n1.motif,
+      "Le dire dans les notes annexes · la colonne N-1 reprend le poste tel que l'exercice précédent l'a présenté, rien n'est recalculé.",
+    ]);
+  }
+  return lignes;
 }
 
 @Injectable()

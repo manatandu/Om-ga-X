@@ -514,7 +514,7 @@ function EtatsSystemeNormalPage() {
                 </span>
               </div>
 
-              <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} />
+              <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} avisN1={bilan.resultatAnterieurNonVireN1} />
 
               {bilan.comptesNonRattaches.length > 0 && (
                 <div className="border border-danger/30 bg-danger-soft mt-2 px-3.5 py-2.5">
@@ -737,7 +737,7 @@ function EtatsSystemeNormalPage() {
                 </span>
               </div>
 
-              <AvisResultatAnterieurNonVire avis={bilanProjet.resultatAnterieurNonVire} />
+              <AvisResultatAnterieurNonVire avis={bilanProjet.resultatAnterieurNonVire} avisN1={bilanProjet.resultatAnterieurNonVireN1} />
 
               {bilanProjet.comptesNonRattaches.length > 0 && (
                 <div className="border border-danger/30 bg-danger-soft mt-2 px-3.5 py-2.5">

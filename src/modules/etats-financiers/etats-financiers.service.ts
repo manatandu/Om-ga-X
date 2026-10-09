@@ -11,6 +11,7 @@ import {
   comparatifDuBilan,
   correspond,
   exerciceCloture,
+  exercicePrecedentCloture,
   exercicePrecedentTenu,
   lignesALOuverture,
   lireOuverturePasseeEnOd,
@@ -24,6 +25,7 @@ import {
   estCompteDuResultatDeLExercice,
   partsDuResultatAuBilan,
   resultatAnterieurNonVire,
+  resultatAnterieurNonVireDuComparatif,
   resultatAuBilan,
   type PartsDuResultatAuBilan,
 } from './resultat-de-l-exercice';
@@ -290,10 +292,11 @@ export class EtatsFinanciersService {
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
-    const [lignesN, lignesN1, clos] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
+      exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -305,7 +308,7 @@ export class EtatsFinanciersService {
     const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
     const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYCEBNL');
     const { parRef: parRefN, resultatClasses678, resultatCompte13, parts } = this.resoudreTousLesPostesBilan(lignesN);
-    const { parRef: parRefN1 } = this.resoudreTousLesPostesBilan(comparatif.lignes);
+    const { parRef: parRefN1, parts: partsN1 } = this.resoudreTousLesPostesBilan(comparatif.lignes);
 
     const refsTotaux = new Set([...TOTAUX_ACTIF, ...TOTAUX_PASSIF].map((t) => t.ref));
     const fusionnerN1 = (ref: string): PosteCalcule => {
@@ -384,6 +387,15 @@ export class EtatsFinanciersService {
       // Exercice CLÔTURÉ qui porte encore le résultat précédent non affecté ·
       // nommé, jamais présenté en silence comme résultat de l'exercice.
       resultatAnterieurNonVire: resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, 'CH', 'SYCEBNL'),
+      // La colonne N-1 qui reprend le même défaut de l'exercice précédent ·
+      // dite, jamais recalculée (paquet 1, A1).
+      resultatAnterieurNonVireN1: resultatAnterieurNonVireDuComparatif(
+        comparatif.provenance,
+        closN1,
+        partsN1.resultatAnterieurNonAffecte,
+        'CH',
+        'SYCEBNL',
+      ),
     };
   }
 

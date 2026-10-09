@@ -14,6 +14,7 @@ import {
   comparatifDuBilan,
   correspond,
   exerciceCloture,
+  exercicePrecedentCloture,
   lignesALOuverture,
   lireOuverturePasseeEnOd,
   ouvertureTenue,
@@ -29,7 +30,13 @@ import {
 } from './reglements-de-tresorerie';
 import { dettesFournisseursNeesDImmobilisations } from './dettes-rattachees';
 import { chargerCampagneStocks, lignesNoteStocks, motifQuantitesNote2 } from './stocks-depuis-inventaire';
-import { estCompteDuResultatDeLExercice, partsDuResultatAuBilan, resultatAnterieurNonVire, resultatAuBilan } from './resultat-de-l-exercice';
+import {
+  estCompteDuResultatDeLExercice,
+  partsDuResultatAuBilan,
+  resultatAnterieurNonVire,
+  resultatAnterieurNonVireDuComparatif,
+  resultatAuBilan,
+} from './resultat-de-l-exercice';
 import { PosteCalcule } from './etats-financiers.service';
 import {
   CATEGORIES_RESSOURCES_ART6,
@@ -337,10 +344,11 @@ export class EtatsFinanciersSmtService {
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await trouverExerciceN1(this.exerciceService, tenantId, exerciceId);
-    const [lignesN, lignesN1, clos] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
+      exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
     ]);
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
     // est le bilan d'ouverture du dossier (SYCEBNL Partie 4 ch. 1 § 1.4,
@@ -366,6 +374,7 @@ export class EtatsFinanciersSmtService {
     const totalActif = parRefN.get('GZ')!.montant;
     const totalPassif = parRefN.get('HZ')!.montant;
     const { resultat678, resultat13, parts } = this.sourcesDuResultat(lignesN);
+    const { parts: partsN1 } = this.sourcesDuResultat(comparatif.lignes);
     // Le reste du 13 (un 130 ouvert par le cabinet) que HC lit, lui, comme
     // « Autres fonds propres » (audit final F211) · au sens du passif.
     const compte13LuHorsDuResultat = lignesN
@@ -406,6 +415,14 @@ export class EtatsFinanciersSmtService {
       // Exercice CLÔTURÉ qui porte encore le résultat précédent non affecté ·
       // nommé (`resultatAnterieurNonVire`).
       resultatAnterieurNonVire: resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, 'HB', 'SYCEBNL'),
+      // La colonne N-1 qui reprend le même défaut · dite, jamais recalculée (paquet 1, A1).
+      resultatAnterieurNonVireN1: resultatAnterieurNonVireDuComparatif(
+        comparatif.provenance,
+        closN1,
+        partsN1.resultatAnterieurNonAffecte,
+        'HB',
+        'SYCEBNL',
+      ),
     };
   }
 

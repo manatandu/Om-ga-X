@@ -346,6 +346,7 @@ function poste(etat: { actif: unknown[]; passif: unknown[] }, ref: string) {
     ref: string;
     libelle: string;
     montant: number;
+    montantN1?: number;
     note: string | null;
     comptes: Array<{ numero: string; montant: number }>;
   };
@@ -1849,5 +1850,37 @@ describe('Fiche récapitulative · colonnes A et N/A', () => {
       s.note5Dotation('t1', 'e1'),
     ]);
     expect(await s.notesApplicables('t1', 'e1', { note1, note2, note3, note5 })).toEqual([]);
+  });
+});
+
+/**
+ * PAQUET 1, A1 (reproduit sur vraie base le 2026-10-08) · l'exercice précédent
+ * clôturé avant le virement porte encore le résultat antérieur en HB · la
+ * colonne N-1 de l'exercice suivant le reprend tel quel (SYCEBNL art. 16, 7))
+ * et le DIT ; un exercice précédent ouvert ne dit rien.
+ */
+describe('Bilan S.M.T · la colonne N-1 qui reprend un résultat antérieur non viré', () => {
+  const lignes2027 = [
+    ligne('57100000', ClasseCompte.CLASSE_5, 1_164_500, 0),
+    ligne('13100000', ClasseCompte.CLASSE_1, 0, 1_164_000),
+    ligne('70100000', ClasseCompte.CLASSE_7, 0, 500),
+  ];
+  const lignes2028 = [ligne('57100000', ClasseCompte.CLASSE_5, 1_164_500, 0), ligne('13100000', ClasseCompte.CLASSE_1, 0, 1_164_500)];
+  const exercices = (statut2027: string) => [
+    { id: 'e0', dateDebut: new Date('2027-01-01'), statut: statut2027 } as never,
+    { id: 'e1', dateDebut: new Date('2028-01-01'), statut: 'OUVERT' } as never,
+  ];
+
+  it('2027 clôturé · HB N-1 reprend 1 164 500, et la colonne dit l’excédent de 2026 resté au 13', async () => {
+    const bilan = await service({ e0: lignes2027, e1: lignes2028 }, { exercices: exercices('CLOTURE') }).bilan('t1', 'e1');
+    expect(poste(bilan, 'HB').montantN1).toBe(1_164_500);
+    expect(bilan.resultatAnterieurNonVire).toBeNull();
+    expect(bilan.resultatAnterieurNonVireN1).toEqual(expect.objectContaining({ montant: 1_164_000, poste: 'HB' }));
+    expect(bilan.resultatAnterieurNonVireN1!.motif).toMatch(/^Colonne N-1 · /);
+  });
+
+  it('2027 ouvert · rien n’est dit', async () => {
+    const bilan = await service({ e0: lignes2027, e1: lignes2028 }, { exercices: exercices('OUVERT') }).bilan('t1', 'e1');
+    expect(bilan.resultatAnterieurNonVireN1).toBeNull();
   });
 });

@@ -275,6 +275,30 @@ describe('EtatsFinanciersService', () => {
       expect(bilan.resultatAnterieurNonVire!.motif).toContain('un excédent de');
     });
 
+    it('paquet 1, A1 · la colonne N-1 de l’exercice suivant reprend CH tel quel, et le DIT', async () => {
+      // 2027 clôturé avant le virement (la balance ci-dessus), 2028 ouvert.
+      // La colonne N-1 de 2028 reprend CH de 2027 (SYCEBNL art. 16, 7), rien
+      // n'est recalculé) et dit l'excédent de 2026 qu'il porte encore.
+      const lignes2027 = [
+        ligne('52110000', ClasseCompte.CLASSE_5, 1_164_500, 0),
+        ligne('13100000', ClasseCompte.CLASSE_1, 0, 1_164_000),
+        ligne('70100000', ClasseCompte.CLASSE_7, 0, 500),
+      ];
+      const lignes2028 = [ligne('52110000', ClasseCompte.CLASSE_5, 1_164_500, 0), ligne('13100000', ClasseCompte.CLASSE_1, 0, 1_164_500)];
+      const exercices = (statut2027: string) => [
+        { id: 'e0', dateDebut: new Date('2027-01-01'), statut: statut2027 } as never,
+        { id: 'e1', dateDebut: new Date('2028-01-01'), statut: 'OUVERT' } as never,
+      ];
+      const bilan = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('CLOTURE')).bilan('t1', 'e1');
+      expect(poste(bilan, 'CH')?.montantN1).toBe(1_164_500);
+      expect(bilan.resultatAnterieurNonVire).toBeNull();
+      expect(bilan.resultatAnterieurNonVireN1).toEqual(expect.objectContaining({ montant: 1_164_000, poste: 'CH' }));
+      expect(bilan.resultatAnterieurNonVireN1!.motif).toContain('SYCEBNL art. 16, 7)');
+
+      const ouvert = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('OUVERT')).bilan('t1', 'e1');
+      expect(ouvert.resultatAnterieurNonVireN1).toBeNull();
+    });
+
     it('signale un compte de bilan qu’aucun poste officiel ne réclame · et fait fuir l’équilibre de son montant', async () => {
       // Une vraie écriture a toujours une contrepartie : le compte 29999999
       // (hors de tout préfixe officiel) est débité, son crédit compensateur

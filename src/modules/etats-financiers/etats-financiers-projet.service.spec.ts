@@ -166,6 +166,23 @@ describe('EtatsFinanciersProjetService', () => {
       expect(poste(bilan, 'AZ')!.montant).toBe(1500);
     });
 
+    it('paquet 1, A1 · la colonne N-1 reprend CC tel quel, et dit le résultat antérieur que la clôture précédente n’a pas viré', async () => {
+      // 2027 clôturé avant le virement · CC y additionne le 13 (400, de 2026)
+      // et la gestion de 2027 (-900). La colonne N-1 de 2028 reprend -500
+      // (SYCEBNL art. 16, 7)) et le DIT ; 2027 ouvert, rien n'est dit.
+      const lignes2027 = [ligne('13100000', ClasseCompte.CLASSE_1, 0, 400), ligne('66000000', ClasseCompte.CLASSE_6, 900, 0)];
+      const lignes2028 = [ligne('13900000', ClasseCompte.CLASSE_1, 500, 0)];
+      const exercices = (statut2027: string) => [
+        { id: 'e0', dateDebut: new Date('2027-01-01'), statut: statut2027 } as never,
+        { id: 'e1', dateDebut: new Date('2028-01-01'), statut: 'OUVERT' } as never,
+      ];
+      const bilan = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('CLOTURE')).bilan('t1', 'e1');
+      expect(poste(bilan, 'CC')!.montantN1).toBe(-500);
+      expect(bilan.resultatAnterieurNonVireN1).toEqual(expect.objectContaining({ montant: 400, poste: 'CC' }));
+      const ouvert = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('OUVERT')).bilan('t1', 'e1');
+      expect(ouvert.resultatAnterieurNonVireN1).toBeNull();
+    });
+
     it('CC (solde des opérations) lit le compte 13 ET les classes 6/7/8, comme CH des associations', async () => {
       const service = serviceAvecBalance([
         ligne('13100000', ClasseCompte.CLASSE_1, 0, 400), // résultat de N, non affecté

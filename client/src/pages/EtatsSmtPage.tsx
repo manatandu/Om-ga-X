@@ -350,7 +350,7 @@ export function EtatsSmtPage() {
                 : 'DÉSÉQUILIBRE DÉTECTÉ · vérifier les écritures de l’exercice'}
             </span>
           </div>
-          <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} />
+          <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} avisN1={bilan.resultatAnterieurNonVireN1} />
         </div>
       )}
 
