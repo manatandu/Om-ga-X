@@ -84,6 +84,14 @@ les deux), plus compte (5 routes), journal (4 routes, dont les modèles de saisi
 validation par lot. Requête de contrôle en base (relevé R1) · 2 provisions
 croisées sur la base AVANT, 0 APRÈS.
 
+**À travers une clôture** (ajouté au scénario après coup, CLAUDE.md § 10 ·
+`p1c-apres.json`) · dans chaque référentiel, un dossier C (apport validé),
+2026 clôturé puis 2027 ouvert par la clôture · aucune des lectures du tableau
+(107 au SYSCOHADA, 118 au SYCEBNL, hors 403) ne dit introuvable ni l'exercice
+CLÔTURÉ ni celui qui naît, et le grand livre de la banque rend 1 000 000 des
+deux côtés (l'apport, puis son à-nouveau). Le porteur juge l'appartenance au
+dossier, jamais le statut.
+
 #### Routes couvertes (relues sur le `dist` compilé, `routes-c3.txt`)
 
 Porteur REQUIS (144) · DELETE /ifrs/effet-change/:exerciceId ;
@@ -237,12 +245,37 @@ attentes (« 25/22 », « colonne 19 »).
 
 **Rejoué APRÈS** (`p1c-apres-c2.json`) · 8 contrôles, 8 concordances.
 
-## Reste
+### Rejeu APRÈS complet
 
-- Rejeu APRÈS complet (C3, C4, C1, C2), compte rendu final.
+`p1c-apres.json` (base `p1c_apres`, serveur compilé de la copie au commit de
+C2, horloge 2028-02-15) · les quatre points sur une base neuve · 551
+contrôles, 551 concordances, 0 écart, 0 erreur HTTP, 2 notes (routes sautées
+en 403 dans un référentiel, jouées dans l'autre). AVANT (`p1c-avant.json`,
+`main` e31f4de) · 537 contrôles, 118 écarts (le scénario a gagné depuis les
+contrôles « condition dite » de C4 et la traversée de clôture de C3).
+
+## Reste (au coordinateur, à l'intégration)
+
+- Committer le scénario `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-c.mjs`.
+- Relectures du § 11 (échecs silencieux, serveur), bloc du § 3 complet des
+  deux côtés (`npx jest` entier non lancé ici, consigne), tests navigateur.
+- Relevé R1 · la requête en production AVANT l'intégration.
+- Retirer cette fiche et la branche `travail/paquet1-c` à l'intégration.
 
 ## Décisions
 
+- C4 · par la loi (art. 3 et art. 63, al. 2, 1° de la loi n° 23/053 ; AUSCGIE
+  art. 853-2, al. 2, 309, al. 2, 385, al. 2) · l'observation ne se sert que sur
+  les deux faits déclarés (unicité, personne physique), jamais sur la forme ;
+  aucun fait créé, la proposition pour la SARL et la SA est à Manasse.
+- C1 · aucune question de fond · la règle du plafond (art. 69, 1, « dans la
+  mesure où elles ne dépassent pas les taux légaux ») est inchangée ; seul
+  l'arrondi au centime, celui des montants gardés en base (Decimal 18,2) et de
+  la colonne 19, est posé.
+- C2 · le message suit la cause que le service connaît, LA GRILLE D'ABORD ·
+  un mois sans grille du SMIG ne se règle pas en renseignant les enfants (le
+  taux saisi seul lève l'abstention, il prime déjà dans le service). La
+  constante de résolution reste la référence du code.
 - C3 · aucune question de fond · un identifiant que le dossier ne porte pas
   est introuvable (404), comme `MOTIF_EXERCICE_INTROUVABLE` (F222) et le
   justificatif de solde le disaient déjà. Le message ne dit pas « d'un autre
@@ -294,4 +327,9 @@ PAQUET1_C_POINTS=C2 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_ap
 PAQUET1_C_POINTS=C1 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c1 8786 paquet1-c /tmp/claude-0/sim/p1c-apres-c1.json
 PAQUET1_C_POINTS=C4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c4 8785 paquet1-c /tmp/claude-0/sim/p1c-apres-c4.json
 PAQUET1_C_POINTS=C3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c3 8783 paquet1-c /tmp/claude-0/sim/p1c-apres-c3.json
+# Rejeu complet (les quatre points), et AVANT sur main
+/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
+/tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json
+# Relevé R1, en production (endpoint DIRECT, jamais affiché)
+# SELECT count(*) FROM provisions_risques_charges p JOIN exercices e ON e.id = p."exerciceId" WHERE e."tenantId" <> p."tenantId";
 ```
