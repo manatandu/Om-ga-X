@@ -217,7 +217,56 @@ describe('le redressement d’un manquant d’inventaire, reconnu par sa liaison
         ECART_CAISSE,
       ),
     ]);
-    expect((await trouver(svc))!.occurrences).toHaveLength(1);
+    const occ = (await trouver(svc))!.occurrences;
+    expect(occ).toHaveLength(1);
+    // Mineur 6 · la dépense seule, jamais le manquant · ni dans le montant, ni
+    // parmi les comptes nommés.
+    expect(occ[0].montant).toBe(20_000);
+    expect(occ[0].detail).toContain('60520000');
+    expect(occ[0].detail).not.toContain('65800000');
+  });
+
+  it('la contrepartie du manquant ne sort qu’avec sa ligne de crédit, et au montant exact (mineur 6)', async () => {
+    // Une contrepartie scindée (3 000 + 2 000) n'est pas reconnue · lue entière.
+    const scindee = service([
+      ecriture(
+        'Manquant scindé et fournitures',
+        [
+          ligne('65800000', 3_000),
+          ligne('65810000', 2_000),
+          ligne('60520000', 20_000),
+          ligne('57100000', 0, 5_000),
+          ligne('57100000', 0, 20_000),
+        ],
+        '2026-12-31',
+        ECART_CAISSE,
+      ),
+    ]);
+    expect((await trouver(scindee))!.occurrences[0].montant).toBe(25_000);
+    // Une ligne de crédit fondue · rien n'est retiré, la contrepartie non plus.
+    const fondue = service([
+      ecriture(
+        'Manquant fondu',
+        [ligne('65800000', 5_000), ligne('60520000', 20_000), ligne('57100000', 0, 25_000)],
+        '2026-12-31',
+        ECART_CAISSE,
+      ),
+    ]);
+    expect((await trouver(fondue))!.occurrences[0].montant).toBe(25_000);
+  });
+
+  it('un virement interne glissé dans la pièce du manquant n’en fait pas une charge sans tiers (mineur 6)', async () => {
+    // Le 658 du manquant, resté lu, faisait d'un virement de caisse à banque
+    // une « charge réglée en trésorerie ».
+    const svc = service([
+      ecriture(
+        'Manquant et versement en banque',
+        [ligne('65800000', 5_000), ligne('57100000', 0, 5_000), ligne('52100000', 100_000), ligne('57100000', 0, 100_000)],
+        '2026-12-31',
+        ECART_CAISSE,
+      ),
+    ]);
+    expect(await trouver(svc)).toBeUndefined();
   });
 
   it('seule la ligne au montant exact du manquant est justifiée', async () => {

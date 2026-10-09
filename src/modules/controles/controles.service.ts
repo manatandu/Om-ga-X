@@ -440,9 +440,21 @@ function estEcritureDeConversion(e: EcritureControlee): boolean {
  * est constaté, arbitré « à la charge de l'entreprise » par la sous-commission
  * (CPCC, étape 5), puis comptabilisé (étape 6) ; il n'y a personne à payer.
  * Le contrôle des charges sans tiers le prenait pour un achat réglé au
- * comptant. On retire donc cette ligne-là, et elle SEULE (compte inventorié,
- * montant exact, une ligne par écart lié) · une autre dépense de trésorerie
- * glissée dans la même pièce reste lue, et signalée.
+ * comptant. On retire donc cette ligne-là (compte inventorié, montant exact,
+ * une ligne par écart lié) · une autre dépense de trésorerie glissée dans la
+ * même pièce reste lue, et signalée.
+ *
+ * SA CONTREPARTIE DE CHARGE SORT AVEC ELLE (relecture « échecs silencieux » du
+ * paquet 1, mineur 6). Restée lue, elle gonflait le montant de l'occurrence
+ * et se nommait parmi les comptes · une pièce qui redresse 5 000 au 658 et
+ * paie 2 000 de fournitures au 6052 sortait à 7 000, « 65800000, 60520000 ».
+ * La contrepartie n'est pas contrôlée au rattachement (la proposition la
+ * laisse vide, décision de la sous-commission) · est retirée UNE ligne de
+ * charge (classe 6 ou 8) débitée du montant exact du manquant, et seulement
+ * si la ligne de crédit a été trouvée · une contrepartie scindée en deux
+ * lignes reste lue, comme une ligne de crédit fondue. Une contrepartie hors
+ * des charges (un tiers, le responsable du manquant) n'est pas une charge et
+ * n'a rien à retirer.
  */
 function lignesHorsRedressementInventaire(e: EcritureControlee): EcritureControlee['lignes'] {
   // Une doublure ou une lecture sans la liaison rend `undefined` · rien n'est
@@ -450,15 +462,21 @@ function lignesHorsRedressementInventaire(e: EcritureControlee): EcritureControl
   const ecarts = e.ecartsInventaire ?? [];
   if (ecarts.length === 0) return e.lignes;
   const restantes = [...e.lignes];
+  const centimes = (x: unknown) => Math.round(Number(x) * 100);
   for (const ecart of ecarts) {
     const manquant = Math.round(Math.abs(Number(ecart.ecart)) * 100);
     const i = restantes.findIndex(
-      (l) =>
-        l.compte.numero.startsWith(ecart.compte.numero) &&
-        Math.round(Number(l.credit) * 100) === manquant &&
-        Math.round(Number(l.debit) * 100) === 0,
+      (l) => l.compte.numero.startsWith(ecart.compte.numero) && centimes(l.credit) === manquant && centimes(l.debit) === 0,
     );
-    if (i !== -1) restantes.splice(i, 1);
+    if (i === -1) continue;
+    restantes.splice(i, 1);
+    const j = restantes.findIndex(
+      (l) =>
+        (l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8')) &&
+        centimes(l.debit) === manquant &&
+        centimes(l.credit) === 0,
+    );
+    if (j !== -1) restantes.splice(j, 1);
   }
   return restantes;
 }
@@ -2127,12 +2145,16 @@ export class ControlesService {
             (tenant.referentiel === Referentiel.SYCEBNL ? ' C’est le schéma des § 2.2 et 2.4 de la Partie 3, ch. 3.' : ''),
           ...nombreSiTronque(parcours.chargesDirectes),
           occurrences: chargesDirectes.map((e) => {
-            const lignesDeCharge = e.lignes.filter(
+            // Mineur 6 · montant, comptes et cas nommé se lisent sur les mêmes
+            // lignes que la détection · le redressement d'un manquant (sa
+            // ligne de crédit et sa contrepartie de charge) n'y entre pas.
+            const lignesLues = lignesHorsRedressementInventaire(e);
+            const lignesDeCharge = lignesLues.filter(
               (l) =>
                 (l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8')) &&
                 Number(l.debit) - Number(l.credit) > 0.005,
             );
-            const comptes = e.lignes
+            const comptes = lignesLues
               .filter((l) => l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8'))
               .map((l) => l.compte.numero)
               .join(', ');
@@ -2146,7 +2168,7 @@ export class ControlesService {
             return {
               reference: `${e.journal.code} n° ${e.numeroPiece ?? '·'}`,
               detail: `${e.libelle} · ${comptes} soldé(s) directement en trésorerie${fraisFinanciers}`,
-              montant: e.lignes
+              montant: lignesLues
                 .filter((l) => l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8'))
                 .reduce((s2, l) => s2 + Number(l.debit) - Number(l.credit), 0),
               date: e.date.toISOString().slice(0, 10),

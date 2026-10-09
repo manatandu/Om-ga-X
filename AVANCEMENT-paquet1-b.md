@@ -403,6 +403,25 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN3`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
   se lettrer.
 - APRÈS · MIN5 et B3 · 8 contrôles, 8 concordances.
 
+### Mineur 6 · le montant de l'occurrence de CHARGE_SANS_TIERS
+
+- Vérifié · montant et comptes de l'occurrence se lisaient sur `e.lignes`,
+  le 658 du manquant compris. La correction proposée (calculer sur
+  `lignesHorsRedressementInventaire(e)`) ne suffisait PAS · cette fonction
+  ne retirait que la ligne de CRÉDIT de la caisse, et le 658 restait lu ·
+  7 000 toujours, « 65800000, 60520000 » toujours.
+- AVANT (main et copie) · MIN6 · occurrence à 7 000 au lieu de 2 000, et le
+  65800000 nommé.
+- Correction · `lignesHorsRedressementInventaire` retire aussi la
+  contrepartie de charge du manquant · UNE ligne de classe 6 ou 8 débitée du
+  montant exact, et seulement si la ligne de crédit a été trouvée (une
+  contrepartie scindée ou un crédit fondu restent lus) ; montant, comptes et
+  cas nommé de l'occurrence se lisent sur ces lignes, comme la détection.
+  Effet voisin, voulu · un virement de caisse glissé dans la pièce du
+  manquant ne fait plus une « charge sans tiers » (le 658 justifié n'est plus
+  la charge lue).
+- APRÈS · MIN6, B1, B2 · toutes concordances.
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
