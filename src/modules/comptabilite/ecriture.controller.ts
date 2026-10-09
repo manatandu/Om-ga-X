@@ -15,6 +15,7 @@ import { ModifierEcritureDto, ValiderEcrituresDto, ValiderJusquaDto } from './dt
 import { RoleUtilisateur } from '@prisma/client';
 import { ReserveAuComptable } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { EXERCICE_FACULTATIF, EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { JOURNAL_FACULTATIF } from '../../common/journal-du-dossier';
 
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('ecritures')
@@ -101,7 +102,7 @@ export class EcritureController {
   async brouillard(
     @CurrentUser() user: AuthenticatedUser,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
-    @Query('journalId') journalId?: string,
+    @Query('journalId', JOURNAL_FACULTATIF) journalId?: string,
     @Query('dateDebut') dateDebut?: string,
     @Query('dateFin') dateFin?: string,
   ) {
@@ -171,7 +172,7 @@ export class EcritureController {
   async lister(
     @CurrentUser() user: AuthenticatedUser,
     @Query('exerciceId', EXERCICE_FACULTATIF) exerciceId?: string,
-    @Query('journalId') journalId?: string,
+    @Query('journalId', JOURNAL_FACULTATIF) journalId?: string,
     @Query('dateDebut') dateDebut?: string,
     @Query('dateFin') dateFin?: string,
     @Query('recherche') recherche?: string,

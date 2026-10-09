@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import { BadRequestException, ParseUUIDPipe } from '@nestjs/common';
+import { EXERCICE_REQUIS } from '../../common/exercice-requis';
 import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { Prisma, RoleUtilisateur } from '@prisma/client';
 import { IfrsService } from './ifrs.service';
@@ -647,7 +648,10 @@ describe('F234 · les lectures IFRS exigent l’exercice', () => {
   it.each(['etat', 'etatConsolide'])('%s · le paramètre exerciceId passe par un ParseUUIDPipe', (methode) => {
     const args = Reflect.getMetadata(ROUTE_ARGS_METADATA, IfrsController, methode) as Record<string, { data?: string; pipes: unknown[] }>;
     const exercice = Object.values(args).find((a) => a.data === 'exerciceId');
-    expect(exercice?.pipes.some((p) => p instanceof ParseUUIDPipe)).toBe(true);
+    // Le porteur est injectable depuis le paquet 1 (C3, appartenance au
+    // dossier de la session) · la forme reste contrôlée par un ParseUUIDPipe.
+    expect(exercice?.pipes).toContain(EXERCICE_REQUIS);
+    expect(EXERCICE_REQUIS.format).toBeInstanceOf(ParseUUIDPipe);
   });
 
   it('au service aussi · sans exercice, 400, jamais l’état du premier exercice venu', async () => {

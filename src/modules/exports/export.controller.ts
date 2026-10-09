@@ -13,6 +13,7 @@ import { ClasseurExporte, ExportService } from './export.service';
 import { ExportFpmService, familleOuRefus } from './export-fpm.service';
 import { lirePaiementsEnInstance } from '../etats-financiers/paiements-en-instance';
 import { EXERCICE_FACULTATIF, EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { JOURNAL_FACULTATIF } from '../../common/journal-du-dossier';
 
 /**
  * Cloisonnement par ROUTE, pas par contrôleur : les livres, les éditions de
@@ -133,7 +134,7 @@ export class ExportController {
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Query('exerciceId', EXERCICE_FACULTATIF) exerciceId?: string,
-    @Query('journalId') journalId?: string,
+    @Query('journalId', JOURNAL_FACULTATIF) journalId?: string,
     @Query('dateDebut') dateDebut?: string,
     @Query('dateFin') dateFin?: string,
     @Query('recherche') recherche?: string,

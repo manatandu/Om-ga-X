@@ -1842,7 +1842,10 @@ source, sinon pas de dispense. L'art. 97 compte de date à date, fin de mois com
 **F234** · `EXERCICE_REQUIS` (400 nommé, `common/exercice-requis.ts`),
 `exigerExercice` (Prisma ignore un `id: undefined`) ; toute route lisant
 `exerciceId` porte ce pipe ou `EXERCICE_FACULTATIF` (six listes, fermée par
-`exercice-requis.spec.ts`). **F232** · une déclaration ne vise que les entités de
+`exercice-requis.spec.ts`) ; depuis le paquet 1 (C3), porteurs INJECTABLES qui
+jugent l'appartenance au dossier de la SESSION (404 nommé, avant toute lecture),
+le journal en filtre aussi (`JOURNAL_FACULTATIF`), et la seule balance d'une
+cellule au format seul (`EXERCICE_D_UNE_CELLULE`, liste fermée). **F232** · une déclaration ne vise que les entités de
 son exercice (`exerciceDuDossier`, `entiteDeLExercice`). **F235** · un nom par
 exercice aux deux portes, 400 nommé. **Tranche 2 · cumul et éliminations.** AUDCIF
 art. 80 à 86, D4C ch. XII-5 et XII-6 (`consolidation/cumul-consolidation.ts`).

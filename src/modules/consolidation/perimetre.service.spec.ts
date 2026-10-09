@@ -7,6 +7,7 @@ import { ConsolidationController } from './consolidation.controller';
 import { REFERENTIELS_KEY } from '../../common/decorators/referentiels.decorator';
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { dansContexteAudit } from '../../common/audit/contexte-audit';
 
 /**
  * Le câblage du périmètre · le moteur est testé à part, ici on vérifie que le
@@ -312,18 +313,33 @@ describe('F234 · les lectures exigent l’exercice', () => {
     const args = Reflect.getMetadata(ROUTE_ARGS_METADATA, ConsolidationController, methode) as Record<string, { data?: string; pipes: unknown[] }>;
     const exercice = Object.values(args).find((a) => a.data === 'exerciceId');
     expect(exercice?.pipes).toContain(EXERCICE_REQUIS);
-    expect(exercice?.pipes.some((p) => p instanceof ParseUUIDPipe)).toBe(true);
+    // Le porteur est injectable depuis C3 (appartenance au dossier de la
+    // session) · sa forme reste contrôlée par un ParseUUIDPipe.
+    expect(EXERCICE_REQUIS.format).toBeInstanceOf(ParseUUIDPipe);
   });
 
   it('le pipe refuse un exerciceId absent ou illisible en 400, avec son motif', async () => {
     const meta = { type: 'query' as const, data: 'exerciceId' };
+    const id = '0b5f9c1e-3a4d-4c2b-9f1e-2a7d6c8b1e30';
+    // Une doublure qui honore la requête · l'exercice n'existe que dans le
+    // dossier de la session.
+    const prisma = {
+      exercice: {
+        findFirst: async (a: { where: { id: string; tenantId: string } }) =>
+          a.where.id === id && a.where.tenantId === T ? { id } : null,
+      },
+    };
+    const porteur = new EXERCICE_REQUIS(prisma as never);
+    const jouer = (v: unknown) => dansContexteAudit({ acteurEmail: 'c@d.test', tenantId: T }, () => porteur.transform(v, meta));
     for (const v of [undefined, '', 'ex-2026']) {
-      await expect(EXERCICE_REQUIS.transform(v as any, meta)).rejects.toMatchObject({
+      await expect(jouer(v)).rejects.toMatchObject({
         status: 400,
         message: expect.stringMatching(/exerciceId est requis/),
       });
     }
-    await expect(EXERCICE_REQUIS.transform('0b5f9c1e-3a4d-4c2b-9f1e-2a7d6c8b1e30', meta)).resolves.toBe('0b5f9c1e-3a4d-4c2b-9f1e-2a7d6c8b1e30');
+    await expect(jouer(id)).resolves.toBe(id);
+    // C3 · un identifiant lisible qui n'est pas du dossier de la session.
+    await expect(jouer('7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f')).rejects.toMatchObject({ status: 404 });
   });
 
   it('au service aussi · sans exercice, rien n’est lu, jamais le dossier entier', async () => {
