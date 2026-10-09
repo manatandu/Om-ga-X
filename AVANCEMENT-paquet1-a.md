@@ -652,6 +652,24 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
   export seul, cellules vides), `documents-obligatoires.spec.ts` (rapport),
   `client/src/lib/controle-flux.spec.ts` (issues et câblage des trois écrans).
 
+### M2 · l'export du seul tableau des flux renvoyait à une feuille ANOMALIES qu'il n'a pas
+
+- Vérifié · `feuilleTftEtafi` laisse vides les cellules des postes vides
+  « et la feuille ANOMALIES en dit le motif » · vrai de la liasse, faux du
+  classeur du seul tableau (`tableauFluxTresorerieExcel`), qui n'a pas cette
+  feuille ; sous l'état, il écrivait l'écart de bouclage (corrigé par M1).
+  Même silence à l'export du seul tableau SYSCOHADA, qui nomme les postes
+  sans leur motif.
+- AVANT (copie à 0377f13, M1 compris) · A7 SYCEBNL et SYSCOHADA · aucune
+  ligne du classeur ne porte le motif (« opérations diverses » absent).
+- Correction · `motifsDesPostesSousLeTableau` · sous la ligne de contrôle,
+  une ligne par motif, colonne N puis colonne N-1, aux deux exports du seul
+  tableau ; le commentaire dit où le motif se lit dans chacun des deux
+  classeurs.
+- APRÈS · point A7 45 contrôles sur 45.
+- Tests · `liasse-etafi.spec.ts` (aucune feuille ANOMALIES, motifs N et N-1),
+  `liasse-syscohada.spec.ts` (une ligne par motif).
+
 ## Reste
 
 Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).

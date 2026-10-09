@@ -279,6 +279,30 @@ function postesParMotif(postes: ReadonlyArray<{ ref: string; raison: string }>):
 }
 
 /**
+ * LE MOTIF DES POSTES DU TABLEAU DES FLUX, SOUS L'ÉTAT EXPORTÉ SEUL (paquet 1,
+ * relecture M2). La liasse le dit à sa feuille ANOMALIES ; le classeur du
+ * seul tableau n'en a pas, et ses cellules vides restaient sans raison · une
+ * ligne par motif, colonne N puis colonne N-1, sous la ligne de contrôle.
+ * Rend le rang de la dernière ligne écrite.
+ */
+function motifsDesPostesSousLeTableau(
+  ws: ExcelJS.Worksheet,
+  rangDepart: number,
+  tft: { postesNonCalculables?: ReadonlyArray<{ ref: string; raison: string }>; postesNonCalculablesN1?: ReadonlyArray<{ ref: string; raison: string }> },
+): number {
+  let r = rangDepart;
+  for (const g of postesParMotif(tft.postesNonCalculables ?? [])) {
+    r += 1;
+    ligneControleSousEtat(ws, r, `Exercice N · ${g.refs.join(', ')} · ${g.raison}`);
+  }
+  for (const g of postesParMotif(tft.postesNonCalculablesN1 ?? [])) {
+    r += 1;
+    ligneControleSousEtat(ws, r, `Exercice N-1 · ${g.refs.join(', ')} · ${g.raison}`);
+  }
+  return r;
+}
+
+/**
  * L'anomalie « à traiter » d'un exercice clôturé qui porte encore le résultat
  * précédent non affecté (`resultatAnterieurNonVire`), et celle de la colonne
  * N-1 qui reprend le même défaut de l'exercice précédent
@@ -2171,7 +2195,9 @@ export class ExportService {
     ws.getRow(r).height = 22;
     // Un poste laissé VIDE par le tableau (paquet 1, A7 · ouverture passée en
     // OD au premier jour) reste une cellule vide · son 0 servi n'est pas un
-    // montant, et la feuille ANOMALIES en dit le motif.
+    // montant. Son motif se dit à la feuille ANOMALIES de la liasse, et sous
+    // l'état dans le classeur du seul tableau, qui n'a pas cette feuille
+    // (`motifsDesPostesSousLeTableau`, relecture M2).
     const vides = new Set(tft.postesVides);
     for (const l of tft.lignes) {
       r += 1;
@@ -2224,6 +2250,7 @@ export class ExportService {
           ? 'Contrôle : le TFT boucle avec la trésorerie du bilan (ZG = trésorerie actif N - trésorerie passif N).'
           : `CONTRÔLE : écart de bouclage de ${(tft.controle.ecart ?? 0).toLocaleString('fr-FR')} avec la trésorerie du bilan.`,
     );
+    motifsDesPostesSousLeTableau(classeur.getWorksheet('TFT')!, dernier + 1, tft);
     numeroterPages(classeur);
     return {
       buffer: await this.versBuffer(classeur),
@@ -5953,6 +5980,9 @@ export class ExportService {
     const classeur = this.nouveauClasseur();
     const { dernier } = this.feuilleTftSyscohadaEtafi(classeur, tft, ident);
     ligneControleSousEtat(classeur.getWorksheet('TFT')!, dernier + 1, this.controlesTftSyscohada(tft));
+    // Le motif de chaque poste nommé par la ligne de contrôle (relecture M2) ·
+    // la liasse le porte à ANOMALIES, le classeur du seul tableau sous l'état.
+    motifsDesPostesSousLeTableau(classeur.getWorksheet('TFT')!, dernier + 1, tft);
     numeroterPages(classeur);
     return {
       buffer: await this.versBuffer(classeur),

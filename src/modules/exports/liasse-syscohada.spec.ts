@@ -755,6 +755,13 @@ describe('Paquet 1, relecture M1 · TFT SYSCOHADA dont le contrôle n’est pas 
     expect(ws.getCell(rangDe(ws, 'FA'), 4).value).not.toBeNull();
   });
 
+  it('l’export du seul tableau écrit sous l’état le motif des postes vides, une ligne par motif (relecture M2)', async () => {
+    const { buffer } = await nonControlable().tableauFluxTresorerieSyscohadaExcel('t1', 'e1');
+    const textes: string[] = [];
+    (await ouvrir(buffer)).getWorksheet('TFT')!.eachRow((row) => row.eachCell((c) => textes.push(String(c.value ?? ''))));
+    expect(textes.filter((t) => t.startsWith('Exercice N · '))).toEqual([`Exercice N · ${VIDES.join(', ')} · ${MOTIF}`]);
+  });
+
   it('l’export du seul tableau dit le motif du contrôle, jamais un écart chiffré', async () => {
     const { buffer } = await nonControlable().tableauFluxTresorerieSyscohadaExcel('t1', 'e1');
     const textes: string[] = [];

@@ -429,6 +429,20 @@ describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur',
     expect(typeof ws.getCell(rangDe(ws, 'FA'), 5).value).toBe('number');
   });
 
+  // RELECTURE M2 · le classeur du seul tableau n'a pas de feuille ANOMALIES ·
+  // ses cellules vides restaient sans raison, sous un renvoi à une feuille
+  // absente. Le motif s'écrit sous l'état, une ligne par motif.
+  it('l’export du seul tableau écrit le motif des postes vides sous l’état, colonne N et colonne N-1', async () => {
+    const { buffer } = await avecVides(fabriquerExport()).tableauFluxTresorerieExcel('t1', 'e1');
+    const wb = await ouvrir(buffer);
+    expect(wb.getWorksheet('ANOMALIES')).toBeUndefined();
+    const textes: string[] = [];
+    wb.getWorksheet('TFT')!.eachRow((row) => row.eachCell((c) => textes.push(String(c.value ?? ''))));
+    expect(textes).toContain(`Exercice N · FM · ${MOTIF}`);
+    expect(textes).toContain(`Exercice N-1 · ZA, FA, FM · ${MOTIF_N1}`);
+    expect(textes.some((t) => /feuille ANOMALIES/.test(t))).toBe(false);
+  });
+
   it('la feuille ANOMALIES dit le motif, colonne N et colonne N-1, une ligne par motif', async () => {
     const { buffer } = await avecVides(fabriquerExport()).liasseCompleteExcel('t1', 'e1');
     const an = (await ouvrir(buffer)).getWorksheet('ANOMALIES')!;
