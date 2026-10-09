@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useExercice } from '../lib/exercice';
 import { IconCheck, IconExport } from '../components/chrome/icons';
 import { Aide } from '../components/chrome/Aide';
+import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
 import { ReglementsNonRattaches } from '../components/ReglementsNonRattaches';
 import { BlocCertification, EnteteImpression } from '../components/chrome/EnteteImpression';
 import type {
@@ -1030,6 +1031,8 @@ export function EtatsSmtSyscohadaPage() {
                 « dont non échu » qui répond au titre de la note. Les trois parts la totalisent toujours.
                 {notes.note3.motifEcheances ? ` ${notes.note3.motifEcheances}` : ''}
               </p>
+              {/* Paquet 1, B5 · les groupes lus ligne à ligne. */}
+              <GroupesLusLigneALigne groupes={notes.note3.groupesLusLigneALigne} className="px-3 pb-2" />
               <p className="px-3 py-2 text-[11px] text-text-dim border-t border-border">
                 Variations portées au compte de résultat : créances {montant(notes.note3.variationSv2)}, dettes
                 d'exploitation {montant(notes.note3.variationSv3)}. {notes.note3.reserveVariationPourcent}

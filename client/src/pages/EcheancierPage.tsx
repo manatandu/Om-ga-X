@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { useExercice } from '../lib/exercice';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { Aide } from '../components/chrome/Aide';
+import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
 import type { Echeancier } from '../lib/types';
 import { montant } from '../lib/montants';
 
@@ -181,6 +182,8 @@ export function EcheancierPage() {
               d'échéance.
             </p>
           )}
+          {/* Paquet 1, B5 · les groupes lus ligne à ligne. */}
+          <GroupesLusLigneALigne groupes={etat.groupesLusLigneALigne} />
         </div>
       )}
     </div>

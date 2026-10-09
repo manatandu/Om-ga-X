@@ -8,7 +8,12 @@ import { CreerNiveauDto, EmettreRelancesDto, ModifierNiveauDto, PLAFOND_COMPTES_
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { jourDeKinshasa } from '../../common/echeance';
-import { poidsDesLignesLues, poidsOuMontant } from '../lettrage/reste-des-lignes-ouvertes';
+import {
+  groupesLusLigneALigneParCompte,
+  poidsDesLignesLues,
+  poidsOuMontant,
+  type GroupesLusLigneALigne,
+} from '../lettrage/reste-des-lignes-ouvertes';
 import { pairesACheval, type PairesACheval } from '../lettrage/paires-a-cheval';
 import { datesOrigineDesReports } from './date-origine-des-reports';
 import { groupesSoldesEnDevise } from './groupes-soldes-en-devise';
@@ -230,6 +235,13 @@ export interface PositionRelance {
    * client.
    */
   ecartsChangeNonPasses: { code: string; ecart: number; libelle: string }[];
+  /**
+   * Les groupes de lettrage du compte lus ligne à ligne, leur reste ne se
+   * répartissant pas sûrement entre leurs factures (paquet 1, B5) · le dû
+   * reste exact, l'échéance réclamée de ces lignes ne l'est plus. Servis,
+   * l'écran les dit.
+   */
+  groupesLusLigneALigne: GroupesLusLigneALigne;
 }
 
 /**
@@ -494,6 +506,13 @@ export class RelancesService {
     // réclament pas, et l'écart est nommé sur la position du compte
     // (`groupes-soldes-en-devise.ts`).
     const soldesEnDevise = await groupesSoldesEnDevise(this.prisma, tenantId, lues);
+    // Les groupes lus ligne à ligne (paquet 1, B5), hors de ceux que la règle
+    // précédente ne réclame pas · nommés sur la position de leur compte.
+    const lusLigneALigne = await groupesLusLigneALigneParCompte(
+      this.prisma,
+      tenantId,
+      poids.nonRepartis.filter((id) => !soldesEnDevise.has(id)),
+    );
     const parCompte = new Map<string, PositionRelance>();
     const traiter = (l: LigneLue) => {
       if (paires?.absorbees.has(l.id)) return;
@@ -538,6 +557,7 @@ export class RelancesService {
           derniereRelance: null,
           lignes: [],
           ecartsChangeNonPasses: [],
+          groupesLusLigneALigne: lusLigneALigne.get(l.compte.id) ?? { total: 0, groupes: [], tronque: false },
         } satisfies PositionRelance);
 
       acc.montantDu += net;

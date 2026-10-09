@@ -161,6 +161,35 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   groupe qui porte aussi une ligne en francs seuls garde la règle commune
   (lu ligne à ligne, B5).
 
+### B5 · les groupes lus ligne à ligne, servis et dits
+
+- AVANT (p1b_avant) · C5 doit 1 000 USD inscrits à 2 800 000, réglés de
+  600 USD à 3 000 (1 800 000), lettrés en partiel · le reste au coût
+  historique (1 120 000) ne rend pas le solde en francs (1 000 000), le
+  groupe est lu ligne à ligne. Note par échéance, balance âgée, échéancier,
+  relance d'une SARL, NOTE 3 des SMT SYSCOHADA et SYCEBNL · aucun ne le sert
+  (`groupesLusLigneALigne` absent, lu null aux six) ; six lignes « WARN » au
+  journal du serveur seulement. Totaux exacts (net et dû 1 000 000, concorde).
+- Correction · `groupesLusLigneALigne` et `groupesLusLigneALigneParCompte`
+  (`reste-des-lignes-ouvertes.ts`) · total, vingt premiers groupes par compte
+  puis code, `tronque`, lus par tranches, bornés au dossier. Servis par
+  `notesDuJeu` (via `chargerEcheances`), `balanceAgee`, `echeancier`, la
+  NOTE 3 des deux SMT (via `ecartsDesGroupesParEcheance`, qui rend
+  `nonRepartis`) et chaque position de relance (hors des groupes soldés dans
+  leur devise, nommés par B6). Écran · une ligne (`GroupesLusLigneALigne`,
+  la raison en infobulle) sur les sept fenêtres · notes annexes (deux),
+  balance âgée, échéancier, rappel et relevé (et « lu ligne à ligne » sur la
+  ligne du compte), états des deux SMT. Rien quand `total` vaut 0 ou que le
+  serveur ne le sert pas.
+- APRÈS (p1b_apres) · les six lectures servent `{ total: 1, groupes: [C5] }`,
+  totaux inchangés (concorde).
+- Tests · `reste-des-lignes-ouvertes.spec.ts` (neuf cas · le service borné,
+  par compte, cloisonné ; balance âgée, relance et notes sur le groupe de
+  C5 ; câblage des lecteurs), `groupes-soldes-en-devise.spec.ts` (un groupe
+  soldé en devise n'est pas nommé deux fois), client
+  `lib/groupes-lus-ligne-a-ligne.spec.ts` (texte et câblage des sept écrans)
+  et `components/GroupesLusLigneALigne.spec.tsx` (rendu).
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -204,6 +233,12 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   l'entité, pas une créance sur le client ; le geste qui le passe est celui
   de la ligne A6 (« Passer l'écart », `POST /reglements/ecart-change`).
 
+- B5 · aucun texte · l'état reste exact, c'est une règle de restitution
+  (AUDCIF art. 22, 1°, lu dans `audcif-acte-uniforme/references/titre-1-ch1-3-champ-organisation-etats.md` ·
+  les données « puissent être restituées sur papier ou sous une forme
+  directement intelligible ») ; plafond de vingt groupes
+  nommés, convention d'OmegaX, le total toujours dit (§ 8 bis).
+
 - B9 · aucune source ne fixe la fenêtre de dates d'un rapprochement · le
   défaut (15) et la borne (120) sont des conventions d'OmegaX, celles que
   l'écran porte déjà (`RapprochementDetailPage`, champ de 0 à 120).
@@ -219,9 +254,15 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   modèles de saisie les nomme comme cas légitime. Non touché (B2 vise les
   intérêts).
 
+- Lettrage · un groupe d'à-nouveaux à plusieurs factures dont une origine
+  n'est pas retrouvée (B7, tout ou rien) garde la date du report et n'est
+  consigné qu'au journal du serveur, jamais servi à l'écran comme ceux de B5.
+- Exports · le classeur de la balance âgée et la liasse des notes ne disent
+  pas les groupes lus ligne à ligne (B5 ne vise que les écrans).
+
 ## Reste
 
-B5, B4, B8 ; puis rejeu APRÈS de tous les points
+B4, B8 ; puis rejeu APRÈS de tous les points
 (`npm run build`, `cd client && npm run build`, puis
 `/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
 
@@ -230,5 +271,5 @@ B5, B4, B8 ; puis rejeu APRÈS de tous les points
 ```bash
 npx tsc --noEmit
 npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export src/modules/lettrage/reste-des-lignes-ouvertes src/modules/relances
-cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts src/pages
+cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts src/lib/groupes-lus-ligne-a-ligne.spec.ts src/components/GroupesLusLigneALigne.spec.tsx src/pages
 ```

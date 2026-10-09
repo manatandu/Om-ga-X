@@ -31,7 +31,7 @@ import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
 import { designationLettrage, estTenueParUnLettrage } from '../lettrage/ligne-lettree';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
-import { groupesLusAPlusieurs, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
+import { groupesLusAPlusieurs, groupesLusLigneALigne, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
 import { ancienneteJours, brouillardInvalidable, enRetardDeCentralisation, JOURS_CENTRALISATION } from './centralisation-brouillard';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
@@ -2824,6 +2824,9 @@ export class EcritureService {
       // la règle, mais elle fausse la projection si beaucoup de lignes en
       // relèvent. Le compte est donné pour que le lecteur en juge.
       lignesSansEcheance,
+      // Les groupes de lettrage lus ligne à ligne, leur reste ne se
+      // répartissant pas sûrement (paquet 1, B5) · servis, l'écran les dit.
+      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, poids.nonRepartis),
     };
   }
 
@@ -3076,6 +3079,11 @@ export class EcritureService {
       sensInverse,
       // Hors de tout total · leur solde est nul, le net n'en bouge pas.
       soldesNuls,
+      // Les groupes de lettrage lus ligne à ligne, leur reste ne se
+      // répartissant pas sûrement entre leurs factures (paquet 1, B5) · leur
+      // total est dans les tranches, leur répartition par ancienneté ne
+      // l'est pas · servis, l'écran les dit.
+      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, poids.nonRepartis),
       totaux: {
         // Par tranche, au signe de la balance (débit moins crédit) · les
         // créditeurs ventilés y sont négatifs, comme leur solde.

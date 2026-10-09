@@ -54,7 +54,7 @@ import {
 } from '../etats-financiers-syscohada/correspondance-notes-syscohada';
 import { ajouterMois } from '../../common/ajouter-mois';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
-import { groupesLusAPlusieurs, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
+import { groupesLusAPlusieurs, groupesLusLigneALigne, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
 import { AUCUN_VIREMENT, VirementsParCompte, virementsDesLignes } from '../immobilisations/virements-mise-en-service';
 // Sortis au socle (audit final F185), réexportés pour les appelants d'avant.
 export { LOT_LECTURE, lireParLots } from '../../common/lecture-par-lots';
@@ -1071,9 +1071,12 @@ export class NoteAnnexeService {
    * porter et sort de la ventilation, exactement comme dans le report
    * à-nouveau en mode Détail.
    */
-  private async chargerEcheances(tenantId: string, exerciceId: string): Promise<Map<string, Echeances>> {
+  private async chargerEcheances(
+    tenantId: string,
+    exerciceId: string,
+  ): Promise<{ parCompte: Map<string, Echeances>; nonRepartis: string[] }> {
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId } });
-    if (!exercice) return new Map();
+    if (!exercice) return { parCompte: new Map(), nonRepartis: [] };
 
     // Bornés à la fin du mois (audit final F8) · un exercice clos un
     // 29 février ne compte pas « à un an » jusqu'au 1er mars.
@@ -1143,7 +1146,7 @@ export class NoteAnnexeService {
       'Notes annexes, échéances',
     );
     for (const l of lettrees) ranger(l.compte.numero, poidsOuMontant(poids, l), l.dateEcheance);
-    return parCompte;
+    return { parCompte, nonRepartis: poids.nonRepartis };
   }
 
   private static readonly LOT_LECTURE = LOT_LECTURE;
@@ -1479,7 +1482,7 @@ export class NoteAnnexeService {
 
     const [
       { parRubrique: rattachements, sansRubrique: rattachementsSansRubrique },
-      echeances,
+      { parCompte: echeances, nonRepartis },
       ventilation,
       { parRubrique: saisies, formatAnterieur, repetitions },
       virements,
@@ -1535,6 +1538,10 @@ export class NoteAnnexeService {
       notes,
       exerciceN1Disponible: exerciceN1Id !== null,
       rattachementsSansRubrique,
+      // Les groupes de lettrage que la ventilation par échéance lit ligne à
+      // ligne, leur reste ne se répartissant pas sûrement (paquet 1, B5) ·
+      // servis, l'écran les dit.
+      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, nonRepartis),
       // La fiche récapitulative recense les NOTES officielles ; une note à
       // plusieurs tableaux (note 1, note 7…) y tient une seule ligne,
       // applicable dès qu'un de ses tableaux l'est.

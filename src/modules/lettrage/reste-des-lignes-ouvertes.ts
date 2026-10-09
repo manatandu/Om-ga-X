@@ -264,6 +264,75 @@ export function poidsDesLignesOuvertes(
 }
 
 type LecteurDeGroupes = { lettrage: { findMany: (args: Prisma.LettrageFindManyArgs) => Promise<unknown[]> } };
+
+/**
+ * LES GROUPES LUS LIGNE À LIGNE, SERVIS (paquet 1, B5). Un groupe dont le reste
+ * ne se répartit pas sûrement entre ses factures (`nonRepartis`) garde la
+ * lecture ligne à ligne · le total de l'état reste exact, mais la répartition
+ * par échéance de CE groupe ne l'est plus (la facture à son échéance, le
+ * règlement sans échéance ou dans la sienne). Consigné au seul journal du
+ * serveur, le lecteur de l'état ne le voyait pas · chaque état qui le lit le
+ * SERT, borné (`PLAFOND_GROUPES_NOMMES`, le total dit), et l'écran le dit en
+ * une ligne. Jamais un zéro · un état sans groupe lu ligne à ligne sert
+ * `total: 0`, et c'est une lecture faite, pas une absence.
+ */
+export const PLAFOND_GROUPES_NOMMES = 20;
+
+export interface GroupesLusLigneALigne {
+  /** Tous les groupes lus ligne à ligne par l'état. */
+  total: number;
+  /** Les premiers, par compte puis code (le code tel que le lettrage l'affiche). */
+  groupes: Array<{ code: string; compte: string }>;
+  /** Vrai quand `groupes` n'en nomme qu'une partie. */
+  tronque: boolean;
+}
+
+interface GroupeNomme {
+  id: string;
+  code: string;
+  compteId: string;
+  compte: string;
+}
+
+/** Les groupes nommés, lus par tranches · un groupe d'un autre dossier n'est pas rendu. */
+async function lireGroupesNommes(db: unknown, tenantId: string, ids: readonly string[]): Promise<GroupeNomme[]> {
+  const lus: GroupeNomme[] = [];
+  const uniques = [...new Set(ids)];
+  for (let i = 0; i < uniques.length; i += LOT_GROUPES) {
+    const tranche = (await (db as LecteurDeGroupes).lettrage.findMany({
+      where: { tenantId, id: { in: uniques.slice(i, i + LOT_GROUPES) } },
+      select: { id: true, code: true, compteId: true, compte: { select: { numero: true } } },
+    })) as Array<{ id: string; code: string; compteId: string; compte: { numero: string } }>;
+    for (const g of tranche) lus.push({ id: g.id, code: g.code.toLowerCase(), compteId: g.compteId, compte: g.compte.numero });
+  }
+  return lus.sort((a, b) => a.compte.localeCompare(b.compte) || a.code.localeCompare(b.code));
+}
+
+function nommer(groupes: readonly GroupeNomme[], total: number): GroupesLusLigneALigne {
+  return {
+    total,
+    groupes: groupes.slice(0, PLAFOND_GROUPES_NOMMES).map((g) => ({ code: g.code, compte: g.compte })),
+    tronque: total > PLAFOND_GROUPES_NOMMES,
+  };
+}
+
+/** Les groupes lus ligne à ligne d'un état, servis · `total` est le nombre de groupes reçus. */
+export async function groupesLusLigneALigne(db: unknown, tenantId: string, ids: readonly string[]): Promise<GroupesLusLigneALigne> {
+  const uniques = [...new Set(ids)];
+  if (uniques.length === 0) return { total: 0, groupes: [], tronque: false };
+  return nommer(await lireGroupesNommes(db, tenantId, uniques), uniques.length);
+}
+
+/** Les mêmes, compte par compte (relances · une position par compte). */
+export async function groupesLusLigneALigneParCompte(
+  db: unknown,
+  tenantId: string,
+  ids: readonly string[],
+): Promise<Map<string, GroupesLusLigneALigne>> {
+  const parCompte = new Map<string, GroupeNomme[]>();
+  for (const g of await lireGroupesNommes(db, tenantId, ids)) parCompte.set(g.compteId, [...(parCompte.get(g.compteId) ?? []), g]);
+  return new Map([...parCompte].map(([compteId, groupes]) => [compteId, nommer(groupes, groupes.length)]));
+}
 type LecteurDeDeclarations = { imputationPaiement: { findMany: (args: Prisma.ImputationPaiementFindManyArgs) => Promise<unknown[]> } };
 
 /**
@@ -510,7 +579,8 @@ type LecteurDeLignesLettrees = {
  * sans échéance n'est dans aucune part · son écart reste dans le reste du
  * compte, que la note dit sous son nom. Les sommes demandées à la base ne
  * changent pas · seules les lignes des groupes que la lecture porte à
- * plusieurs sont relues, par tranches.
+ * plusieurs sont relues, par tranches. Les groupes lus ligne à ligne sont
+ * rendus (`nonRepartis`), que la note sert (paquet 1, B5).
  */
 export async function ecartsDesGroupesParEcheance(
   db: unknown,
@@ -518,10 +588,10 @@ export async function ecartsDesGroupesParEcheance(
   ouvertes: Prisma.LigneEcritureWhereInput,
   dateFin: Date,
   etat: string,
-): Promise<Map<string, { nonEchu: number; echu: number }>> {
+): Promise<{ ecarts: Map<string, { nonEchu: number; echu: number }>; nonRepartis: string[] }> {
   const ecarts = new Map<string, { nonEchu: number; echu: number }>();
   const ids = [...(await groupesLusAPlusieurs(db, ouvertes))];
-  if (ids.length === 0) return ecarts;
+  if (ids.length === 0) return { ecarts, nonRepartis: [] };
   const lues: Array<LigneOuverte & { compteId: string }> = [];
   for (let i = 0; i < ids.length; i += LOT_GROUPES) {
     lues.push(
@@ -553,5 +623,5 @@ export async function ecartsDesGroupesParEcheance(
     else e.echu += ecart;
     ecarts.set(l.compteId, e);
   }
-  return ecarts;
+  return { ecarts, nonRepartis: p.nonRepartis };
 }

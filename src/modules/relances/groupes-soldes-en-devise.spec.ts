@@ -166,6 +166,8 @@ describe('groupes soldés dans leur devise · les positions de relance', () => {
     expect(p6?.montantDu).toBe(500_000);
     expect(p6?.lignes.map((l) => l.montant)).toEqual([500_000]);
     expect(p6?.ecartsChangeNonPasses).toEqual([{ code: 'aa', ecart: -100_000, libelle: libelleEcartNonPasse(-100_000) }]);
+    // Nommé une fois, pour ce qu'il est · pas aussi parmi les groupes lus ligne à ligne (B5).
+    expect(p6?.groupesLusLigneALigne.total).toBe(0);
     const p6b = positions.find((p) => p.compteId === 'c6b');
     // La perte de change n'est jamais réclamée au client.
     expect(p6b?.montantDu).toBe(300_000);

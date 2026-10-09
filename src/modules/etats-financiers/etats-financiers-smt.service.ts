@@ -57,7 +57,7 @@ import {
   VENTILATION_RECETTES,
 } from './correspondance-smt';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
-import { ecartsDesGroupesParEcheance } from '../lettrage/reste-des-lignes-ouvertes';
+import { ecartsDesGroupesParEcheance, groupesLusLigneALigne } from '../lettrage/reste-des-lignes-ouvertes';
 import { compteInscritALaDate } from '../immobilisations/immobilisation-en-cours';
 
 /**
@@ -1127,7 +1127,10 @@ export class EtatsFinanciersSmtService {
    * dont l'échéance est atteinte · une ligne SANS échéance ne tombe dans
    * aucune des deux requêtes, et se retrouve dans le reste, sous son nom.
    */
-  private async partsParEcheance(tenantId: string, exerciceId: string): Promise<Map<string, PartsEcheance>> {
+  private async partsParEcheance(
+    tenantId: string,
+    exerciceId: string,
+  ): Promise<{ parCompte: Map<string, PartsEcheance>; nonRepartis: string[] }> {
     const exercice = await this.exercice(tenantId, exerciceId);
     const lignesOuvertes: Prisma.LigneEcritureWhereInput = {
       // Même porte que la balance qui sert le reste de la note : les états
@@ -1168,13 +1171,14 @@ export class EtatsFinanciersSmtService {
     // silencieux » de la simulation du 2026-10-08, majeur 8) · sans quoi la
     // facture comptait entière en « non échu » et le règlement lettré avec
     // elle tombait dans le reste, en négatif, sous un motif faux.
-    for (const [compteId, e] of await ecartsDesGroupesParEcheance(this.prisma, tenantId, lignesOuvertes, exercice.dateFin, 'NOTE 3 du SMT (SYCEBNL)')) {
+    const { ecarts, nonRepartis } = await ecartsDesGroupesParEcheance(this.prisma, tenantId, lignesOuvertes, exercice.dateFin, 'NOTE 3 du SMT (SYCEBNL)');
+    for (const [compteId, e] of ecarts) {
       const parts = parCompte.get(compteId) ?? { ...PARTS_ECHEANCE_NULLES };
       parts.nonEchu += e.nonEchu;
       parts.echu += e.echu;
       parCompte.set(compteId, parts);
     }
-    return parCompte;
+    return { parCompte, nonRepartis };
   }
 
   /**
@@ -1236,7 +1240,7 @@ export class EtatsFinanciersSmtService {
       include: { tiers: { select: { nom: true } } },
     });
     for (const r of rattachements) tiersParCompte.set(r.compteId, r.tiers.nom);
-    const parts = await this.partsParEcheance(tenantId, exerciceId);
+    const { parCompte: parts, nonRepartis } = await this.partsParEcheance(tenantId, exerciceId);
 
     const construire = (filtre: (l: LigneBalancePourEtat) => boolean, signe: 1 | -1) =>
       lignes
@@ -1316,6 +1320,9 @@ export class EtatsFinanciersSmtService {
       motifEcheances: echeancesTenues
         ? null
         : "La maquette officielle intitule cette note « Etat des créances et des dettes non échues » (Partie 4, ch. 4). Une ligne de tiers sans date d'échéance n'est ni échue ni non échue : elle est portée à part et non rangée d'office dans le non échu. Renseigner la date d'échéance sur les lignes de tiers, et tenir les comptes de tiers en report à-nouveau mode DÉTAIL, pour que la ventilation soit complète.",
+      // Les groupes de lettrage dont le reste ne se répartit pas sûrement,
+      // lus ligne à ligne (paquet 1, B5) · servis, l'écran les dit.
+      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, nonRepartis),
     };
   }
 

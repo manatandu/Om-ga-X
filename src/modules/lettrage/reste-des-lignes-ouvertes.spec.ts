@@ -2,7 +2,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { Referentiel, TypeRelance } from '@prisma/client';
-import { ecartsDesGroupesParEcheance, poidsDesLignesLues, poidsDesLignesOuvertes, type LigneOuverte } from './reste-des-lignes-ouvertes';
+import {
+  ecartsDesGroupesParEcheance,
+  groupesLusLigneALigne,
+  groupesLusLigneALigneParCompte,
+  PLAFOND_GROUPES_NOMMES,
+  poidsDesLignesLues,
+  poidsDesLignesOuvertes,
+  type LigneOuverte,
+} from './reste-des-lignes-ouvertes';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { NoteAnnexeService } from '../notes-annexes/note-annexe.service';
 import { RelancesService } from '../relances/relances.service';
@@ -477,11 +485,15 @@ describe('poids des lignes ouvertes · les notes par échéance', () => {
       imputationPaiement: { findMany: jest.fn(async () => []) },
     } as unknown as PrismaService;
     const service = new NoteAnnexeService({} as never, {} as never, prisma, {} as never, {} as never);
-    const echeances = await (service as unknown as {
-      chargerEcheances: (t: string, e: string) => Promise<Map<string, { unAn: number; deuxAns: number; plusDeDeuxAns: number; nonVentile: number }>>;
+    const { parCompte: echeances, nonRepartis } = await (service as unknown as {
+      chargerEcheances: (
+        t: string,
+        e: string,
+      ) => Promise<{ parCompte: Map<string, { unAn: number; deuxAns: number; plusDeDeuxAns: number; nonVentile: number }>; nonRepartis: string[] }>;
     }).chargerEcheances('t', 'ex');
     expect(findMany.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(echeances.get('41110001')).toEqual({ unAn: 2_480_000 + LOT_LECTURE, deuxAns: 0, plusDeDeuxAns: 0, nonVentile: 0 });
+    expect(nonRepartis).toEqual([]);
   });
 });
 
@@ -534,8 +546,161 @@ describe('poids des lignes ouvertes · la NOTE 3 des SMT (relecture, majeur 8)',
       lettrage: { findMany: jest.fn(async () => []) },
       imputationPaiement: { findMany: jest.fn(async () => []) },
     };
-    const ecarts = await ecartsDesGroupesParEcheance(db, 't', {}, d('2026-12-31'), 'essai');
+    const { ecarts, nonRepartis } = await ecartsDesGroupesParEcheance(db, 't', {}, d('2026-12-31'), 'essai');
     expect(ecarts.get('c1')).toEqual({ nonEchu: -1_000_000, echu: 0 });
+    expect(nonRepartis).toEqual([]);
+  });
+});
+
+/**
+ * PAQUET 1, B5 · UN GROUPE QUI NE SE RÉPARTIT PAS SÛREMENT EST SERVI, ET DIT.
+ * Rejoué sur vraie base (scénario paquet1-b, B5) · C5 doit 1 000 USD inscrits
+ * à 2 800 000, en a réglé 600 USD à 3 000 (1 800 000), lettrés en partiel ·
+ * le reste au coût historique (1 120 000) ne rend pas le solde en francs
+ * (1 000 000), le groupe est lu ligne à ligne, et `main` ne le disait qu'au
+ * journal du serveur, sous la note par échéance, la balance âgée,
+ * l'échéancier, la relance et la NOTE 3 des deux SMT.
+ */
+describe('poids des lignes ouvertes · les groupes lus ligne à ligne, servis (paquet 1, B5)', () => {
+  const groupesEnBase = (n: number, tenantId = 't') =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `g${String(i).padStart(2, '0')}`,
+      code: `A${String.fromCharCode(65 + (i % 26))}`,
+      compteId: `c${i % 3}`,
+      compte: { numero: `4111000${i % 3}` },
+      tenantId,
+    }));
+  const lecteurDeGroupes = (base: ReturnType<typeof groupesEnBase>) => ({
+    lettrage: {
+      findMany: jest.fn(async (a: { where: { tenantId: string; id?: { in: string[] }; lettrageReconduitId?: unknown } }) =>
+        a.where.lettrageReconduitId
+          ? []
+          : base.filter((g) => g.tenantId === a.where.tenantId && (!a.where.id || a.where.id.in.includes(g.id))),
+      ),
+    },
+  });
+
+  it('borné, le total dit · les premiers par compte puis code, le code tel que le lettrage l’affiche', async () => {
+    const base = groupesEnBase(PLAFOND_GROUPES_NOMMES + 5);
+    const r = await groupesLusLigneALigne(lecteurDeGroupes(base), 't', base.map((g) => g.id));
+    expect(r.total).toBe(PLAFOND_GROUPES_NOMMES + 5);
+    expect(r.tronque).toBe(true);
+    expect(r.groupes).toHaveLength(PLAFOND_GROUPES_NOMMES);
+    expect(r.groupes[0]).toEqual({ code: 'aa', compte: '41110000' });
+    const tries = [...r.groupes].sort((a, b) => a.compte.localeCompare(b.compte) || a.code.localeCompare(b.code));
+    expect(r.groupes).toEqual(tries);
+  });
+
+  it('aucun groupe · une lecture faite, total 0, rien n’est lu', async () => {
+    const l = lecteurDeGroupes([]);
+    expect(await groupesLusLigneALigne(l, 't', [])).toEqual({ total: 0, groupes: [], tronque: false });
+    expect(l.lettrage.findMany).not.toHaveBeenCalled();
+  });
+
+  it('un groupe d’un autre dossier n’est pas nommé', async () => {
+    const r = await groupesLusLigneALigne(lecteurDeGroupes(groupesEnBase(1, 'autre')), 't', ['g00']);
+    expect(r.groupes).toEqual([]);
+  });
+
+  it('compte par compte (relances)', async () => {
+    const base = groupesEnBase(4);
+    const r = await groupesLusLigneALigneParCompte(lecteurDeGroupes(base), 't', base.map((g) => g.id));
+    expect(r.get('c0')).toEqual({ total: 2, groupes: [{ code: 'aa', compte: '41110000' }, { code: 'ad', compte: '41110000' }], tronque: false });
+    expect(r.get('c1')?.total).toBe(1);
+  });
+
+  // Les lignes de C5 · la facture en USD et son règlement partiel à un autre cours.
+  const usd = { deviseId: 'usd', montantDevise: 1_000 };
+  const base5 = [
+    ligne('f5', 2_800_000, 0, '2026-03-01', 'g5', '2026-03-31', usd),
+    ligne('r5', 0, 1_800_000, '2026-06-10', 'g5', null, { deviseId: 'usd', montantDevise: 600 }),
+  ];
+  const groupe5 = [{ id: 'g5', code: 'AA', compteId: 'c411', compte: { numero: '41110001' }, tenantId: 't' }];
+  const attendu = { total: 1, groupes: [{ code: 'aa', compte: '41110001' }], tronque: false };
+
+  it('la règle · le reste en devise ne rend pas le solde en francs, le groupe est lu ligne à ligne', () => {
+    expect(poidsDesLignesOuvertes(base5).nonRepartis).toEqual(['g5']);
+  });
+
+  it('la balance âgée le sert', async () => {
+    const compte = { id: 'c411', numero: '41110001', intitule: 'C5' };
+    const lignes = base5.map((l) => ({ ...l, compte, ecriture: { ...l.ecriture, estGenereeParCloture: false, estSoldeDesComptesDeGestion: false } }));
+    const prisma = {
+      ...lecteur(base5),
+      ...lecteurDeGroupes(groupe5),
+      exercice: { findFirst: jest.fn().mockResolvedValue({ dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') }) },
+      ligneEcriture: { ...lecteur(base5).ligneEcriture, findMany: jest.fn().mockResolvedValue(lignes) },
+      tiersCompte: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+    const r = await new EcritureService(prisma, {} as never, {} as never, {} as never).balanceAgee('t', {
+      exerciceId: 'ex',
+      dateReference: '2026-12-31',
+      type: 'CLIENTS_41',
+    });
+    expect(r.groupesLusLigneALigne).toEqual(attendu);
+    // Le total reste exact · le solde du compte.
+    expect(r.totaux.net).toBe(1_000_000);
+  });
+
+  it('la relance le sert sur la position du compte', async () => {
+    const tiers = { id: 't-c5', nom: 'C5', type: 'CLIENT', email: null, horsRelance: false, motifHorsRelance: null, horsRelanceDepuis: null };
+    const compte = { id: 'c411', numero: '41110001', intitule: 'Client C5', tiersCompte: { tiers } };
+    const lignes = base5.map((l) => ({
+      ...l,
+      lettre: null,
+      libelle: l.id,
+      compte,
+      ecriture: { ...l.ecriture, libelle: 'Pièce', estANouveauProvisoire: false, estGenereeParCloture: false, estSoldeDesComptesDeGestion: false },
+    }));
+    const prisma = {
+      ...lecteur(base5),
+      ...lecteurDeGroupes(groupe5),
+      tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: Referentiel.SYSCOHADA }) },
+      ligneEcriture: { ...lecteur(base5).ligneEcriture, findMany: jest.fn().mockResolvedValue(lignes) },
+      niveauRelance: { findMany: jest.fn().mockResolvedValue([]) },
+      relance: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+    const [p] = await new RelancesService(prisma, {} as CourrierService).positions('t', {
+      exerciceId: 'ex',
+      type: TypeRelance.RAPPEL,
+      dateReference: '2026-12-31',
+    });
+    expect(p.groupesLusLigneALigne).toEqual(attendu);
+    expect(p.montantDu).toBe(1_000_000);
+  });
+
+  it('les notes par échéance le rendent', async () => {
+    const lignes = base5.map((l) => ({ ...l, compte: { numero: '41110001' } }));
+    const prisma = {
+      ...lecteur(base5),
+      ...lecteurDeGroupes(groupe5),
+      exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') }) },
+      ligneEcriture: {
+        ...lecteur(base5).ligneEcriture,
+        groupBy: jest.fn(async (a: { where: { lettrageId?: { in: string[] } } }) =>
+          a.where.lettrageId?.in ? lecteur(base5).ligneEcriture.groupBy(a as never) : [{ lettrageId: 'g5', _count: { _all: 2 } }],
+        ),
+        findMany: jest.fn(async (a: { cursor?: unknown }) => (a.cursor ? [] : lignes)),
+      },
+      imputationPaiement: { findMany: jest.fn(async () => []) },
+    } as unknown as PrismaService;
+    const service = new NoteAnnexeService({} as never, {} as never, prisma, {} as never, {} as never);
+    const { nonRepartis } = await (service as unknown as {
+      chargerEcheances: (t: string, e: string) => Promise<{ nonRepartis: string[] }>;
+    }).chargerEcheances('t', 'ex');
+    expect(nonRepartis).toEqual(['g5']);
+  });
+
+  it('chaque lecteur sert ce qu’il a lu ligne à ligne', () => {
+    // Le câblage se teste avec la règle (F4a).
+    const lire = (f: string) => readFileSync(join(__dirname, '..', f), 'utf8');
+    const ecriture = lire('comptabilite/ecriture.service.ts');
+    expect(ecriture.match(/groupesLusLigneALigne: await groupesLusLigneALigne\(this\.prisma, tenantId, poids\.nonRepartis\)/g)).toHaveLength(2);
+    expect(lire('notes-annexes/note-annexe.service.ts')).toMatch(/groupesLusLigneALigne: await groupesLusLigneALigne\(this\.prisma, tenantId, nonRepartis\)/);
+    for (const f of ['etats-financiers/etats-financiers-smt.service.ts', 'etats-financiers-syscohada/etats-financiers-smt-syscohada.service.ts']) {
+      expect(lire(f)).toMatch(/groupesLusLigneALigne: await groupesLusLigneALigne\(this\.prisma, tenantId, nonRepartis\)/);
+      expect(lire(f)).toMatch(/const \{ ecarts, nonRepartis \} = await ecartsDesGroupesParEcheance\(/);
+    }
   });
 });
 

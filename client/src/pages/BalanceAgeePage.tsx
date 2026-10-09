@@ -4,6 +4,8 @@ import { useExercice } from '../lib/exercice';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
+import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
+import type { GroupesLusLigneALigne as GroupesLusLigneALigneServis } from '../lib/types';
 import { montant as montantTotal, montantOuVide as montant } from '../lib/montants';
 
 /**
@@ -56,6 +58,8 @@ interface BalanceAgee {
    * aucun sens, sans tranches et hors de tout total · à lettrer.
    */
   soldesNuls: LigneAgee[];
+  /** Groupes de lettrage lus ligne à ligne (paquet 1, B5). */
+  groupesLusLigneALigne?: GroupesLusLigneALigneServis;
   totaux: {
     parTranche: number[];
     parTrancheCrediteurs: number[];
@@ -362,6 +366,9 @@ export function BalanceAgeePage() {
             </div>
           )}
       </div>
+      {/* Paquet 1, B5 · les groupes lus ligne à ligne · leur total est dans les
+          tranches, leur répartition par ancienneté ne l'est pas. */}
+      <GroupesLusLigneALigne groupes={donnees?.groupesLusLigneALigne} className="mt-1.5" />
 
     </div>
   );

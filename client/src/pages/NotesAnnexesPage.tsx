@@ -1,4 +1,5 @@
 import { RattachementsSansRubrique } from '../components/RattachementsSansRubrique';
+import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
 import { Suspense, lazy, useEffect, useMemo, useState, useRef } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
@@ -376,6 +377,8 @@ function NotesAnnexesSycebnlPage() {
         enCours={enCours}
         retirer={detacher}
       />
+      {/* Paquet 1, B5 · les groupes que la ventilation par échéance lit ligne à ligne. */}
+      <GroupesLusLigneALigne groupes={resultat?.groupesLusLigneALigne} className="mb-2.5" />
 
       {!resultat && <div className="border border-border px-4 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
 
