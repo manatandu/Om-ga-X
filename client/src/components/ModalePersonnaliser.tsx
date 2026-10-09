@@ -29,7 +29,13 @@ export function ModalePersonnaliser({
 }) {
   // La structure du plan est réservée à l'administrateur (`@Roles` des routes
   // /comptes) · la boîte ne s'ouvre que pour lui, et ne valide rien sans lui.
-  const { estAdmin } = useAuth();
+  const { estAdmin, utilisateur } = useAuth();
+  // Chaque référentiel par SON texte · l'art. 18 de l'AUDCIF est écarté par
+  // l'art. 3 du SYCEBNL, qui en porte l'équivalent à sa Partie 2.
+  const sourceSubdivisions =
+    utilisateur?.tenant.referentiel === 'SYCEBNL'
+      ? 'SYCEBNL, Partie 2 ch. 2, section 1 (le plan « peut être complété par des codes établis en fonction des besoins ») · règle d’organisation d’OmegaX'
+      : 'AUDCIF art. 18, al. 3 (l’entité « peut ouvrir toutes subdivisions nécessaires ») · règle d’organisation d’OmegaX';
   const dejaPersonnalise = !!compte.estRetenu || !!compte.utilise;
   // Un compte déjà personnalisé ne s'adopte plus · on y ouvre un sous-compte.
   // Un compte SUBDIVISÉ non plus · la saisie va à ses sous-comptes, et
@@ -132,7 +138,7 @@ export function ModalePersonnaliser({
               <Aide
                 titre="Compte personnalisé"
                 texte="Seuls les comptes personnalisés du dossier se saisissent et se rattachent à un tiers ou à un journal. Adopter garde le numéro du plan, avec l'intitulé du cabinet ; un sous-compte s'ouvre sous lui et en reprend les réglages. Un compte qu'une écriture automatique, un journal, un tiers ou un taux de taxe utilise est personnalisé d'office."
-                source="AUDCIF art. 18, al. 3 (l'entité peut ouvrir toutes subdivisions nécessaires) · règle d'organisation d'OmegaX"
+                source={sourceSubdivisions}
               />
               <button
                 type="button"

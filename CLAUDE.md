@@ -3137,8 +3137,9 @@ retient »). Semé non retenu, créé retenu. LE RETENU OU UTILISÉ EST LE COMPT
 PERSONNALISÉ, ET SEUL IL SE SAISIT (décision de Manasse du 2026-10-09, quatre
 réponses · « seuls les numéros personnalisés sont ceux qui s'affichent et
 permettent de passer les écritures ») · aucun texte ne l'impose (AUDCIF art.
-18, al. 3, « peut ouvrir toutes subdivisions nécessaires »), règle
-d'organisation d'OmegaX. (1) PERSONNALISER = ADOPTER le compte du plan tel
+18, al. 3, « peut ouvrir toutes subdivisions nécessaires » ; au SYCEBNL, dont
+l'art. 3 écarte l'art. 18, Partie 2 ch. 2, section 1, « peut être complété par
+des codes établis en fonction des besoins »), règle d'organisation d'OmegaX. (1) PERSONNALISER = ADOPTER le compte du plan tel
 quel (retenu, intitulé du cabinet) ou OUVRIR UN SOUS-COMPTE sous lui
 (`GET /comptes/:id/sous-compte-propose`, `sousComptePropose`, premier libre
 sous la racine officielle, jamais sous une racine semée plus profonde),

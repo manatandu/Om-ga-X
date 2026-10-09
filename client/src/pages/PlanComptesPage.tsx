@@ -332,7 +332,11 @@ export function PlanComptesPage() {
             <Aide
               titre="Comptes personnalisés"
               texte="Seuls les comptes personnalisés du dossier se saisissent, se proposent dans les listes de choix et se rattachent à un tiers ou à un journal. Un compte est personnalisé quand le cabinet l’a adopté ou créé (bouton Personnaliser de la fiche), ou d’office quand une écriture automatique, un journal, un tiers, un taux de taxe ou une famille d’immobilisations l’utilise. Un sous-compte fonctionne comme son compte du plan : il en reprend les réglages, et les états financiers le lisent sous lui. Le plan officiel reste entier : les états financiers et les imports lisent tout le plan."
-              source="AUDCIF art. 18, al. 3 · règle d’organisation d’OmegaX"
+              source={
+                utilisateur?.tenant.referentiel === 'SYCEBNL'
+                  ? 'SYCEBNL, Partie 2 ch. 2, section 1 · règle d’organisation d’OmegaX'
+                  : 'AUDCIF art. 18, al. 3 · règle d’organisation d’OmegaX'
+              }
             />
           </label>
           {estAdmin && (

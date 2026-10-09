@@ -79,8 +79,10 @@ export async function comptesProposes<C extends { id: string; estRetenu: boolean
  * module y passe (paie, TVA, clôture, impôt, amortissements), par un journal,
  * un tiers, un taux de taxe ou une famille d'immobilisations qui le porte.
  * Aucun texte n'impose la règle · l'AUDCIF, art. 18, al. 3, laisse à l'entité
- * la FACULTÉ d'ouvrir « toutes subdivisions nécessaires ». C'est une règle
- * d'organisation d'OmegaX, et le refus le dit sans citer d'article.
+ * la FACULTÉ d'ouvrir « toutes subdivisions nécessaires », et le SYCEBNL, dont
+ * l'art. 3 écarte cet art. 18, dit à sa Partie 2 ch. 2, section 1, que le plan
+ * « peut être complété par des codes établis en fonction des besoins ». C'est
+ * une règle d'organisation d'OmegaX, et le refus le dit sans citer d'article.
  *
  * Seuls les comptes d'IMPUTATION sont jugés · un compte Total est refusé à
  * la saisie par sa propre règle (`controlesDEntree`), jamais par celle-ci.
