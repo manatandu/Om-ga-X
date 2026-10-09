@@ -96,6 +96,8 @@ function serviceAvecExercices(
     }),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    // Paquet 1, A2 · aucune écriture au brouillard par DÉFAUT.
+    nombreAuBrouillard: jest.fn().mockResolvedValue(0),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
       Promise.resolve((exerciceId && reevaluationsParExercice[exerciceId]) || new Map()),
     ),
@@ -889,6 +891,20 @@ describe('EtatsFinanciersSyscohadaService', () => {
       expect(montant(tft, 'ZH').montant).toBe(2500);
       expect(tft.controle.coherent).toBe(true);
       expect(tft.mentionOuverture).toBe(mentionExercicePrecedentVide('SYSCOHADA', true));
+    });
+
+    it('paquet 1, A2 · un exercice précédent qui n’a que du brouillard · la mention dit de le valider, pas d’importer', async () => {
+      const service = serviceAvecExercices(
+        { e1: [], e2: [ligne('52110000', C5, 500, 0), ligne('70110000', C7, 0, 500)] },
+        EXERCICES,
+      );
+      const ecritures = (service as unknown as { ecritureService: { nombreAuBrouillard: jest.Mock } }).ecritureService;
+      ecritures.nombreAuBrouillard.mockResolvedValue(3);
+      const tft = await service.tableauFluxTresorerie('t1', 'e2');
+      expect(ecritures.nombreAuBrouillard).toHaveBeenCalledWith('t1', 'e1');
+      expect(tft.mentionOuverture).toBe(mentionExercicePrecedentVide('SYSCOHADA', false, 3));
+      expect(tft.mentionOuverture).toContain('brouillard (3)');
+      expect(tft.mentionOuverture).not.toContain('Importez');
     });
 
     it('premier exercice d’une société qui naît · l’ouverture présumée nulle est DITE', async () => {

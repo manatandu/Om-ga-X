@@ -292,3 +292,24 @@ describe('Balance générale', () => {
     expect(groupBy).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * PAQUET 1, A2 · les écritures au brouillard d'un exercice, à-nouveau
+ * provisoire EXCLU (il ne se valide jamais, et la mention qui le compterait
+ * dirait de valider ce que `valider` refuse), bornées au dossier.
+ */
+describe('nombreAuBrouillard', () => {
+  it('compte le brouillard du dossier et de l’exercice, sans l’à-nouveau provisoire', async () => {
+    const count = jest.fn().mockResolvedValue(3);
+    const svc = new EcritureService(
+      { ecriture: { count } } as unknown as PrismaService,
+      {} as JournalService,
+      {} as ExerciceService,
+      {} as AnalytiqueService,
+    );
+    await expect(svc.nombreAuBrouillard('t1', 'e1')).resolves.toBe(3);
+    expect(count).toHaveBeenCalledWith({
+      where: { tenantId: 't1', exerciceId: 'e1', statut: 'BROUILLARD', estANouveauProvisoire: false },
+    });
+  });
+});

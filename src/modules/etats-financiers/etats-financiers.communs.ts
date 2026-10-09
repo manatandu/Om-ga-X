@@ -124,12 +124,41 @@ export function exercicePrecedentTenu(exercicePrecedentId: string | null, lignes
   return exercicePrecedentId !== null && lignesPrecedent.length > 0;
 }
 
-/** La mention d'un exercice précédent ouvert sans écriture · ouverture lue sur l'exercice, ou nulle. */
-export function mentionExercicePrecedentVide(referentiel: 'SYSCOHADA' | 'SYCEBNL', ouvertureLue: boolean): string {
+/**
+ * La mention d'un exercice précédent qui ne tient rien au livre-journal ·
+ * ouverture lue sur l'exercice, ou nulle. DEUX CAS (paquet 1, A2) · sans
+ * aucune écriture, l'issue est d'importer sa balance de clôture ; avec des
+ * écritures restées au BROUILLARD (`auBrouillard`, à-nouveau provisoire
+ * exclu), elles existent et attendent leur validation (AUDCIF art. 22, 2°,
+ * non exclu par l'art. 3 du SYCEBNL) · importer une balance les doublerait.
+ */
+export function mentionExercicePrecedentVide(referentiel: 'SYSCOHADA' | 'SYCEBNL', ouvertureLue: boolean, auBrouillard = 0): string {
   const article = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34';
+  if (auBrouillard > 0) {
+    const etat = `L'exercice précédent n'a que des écritures au brouillard (${auBrouillard}), hors du livre-journal`;
+    const issue = "Validez-les (AUDCIF art. 22, 2°) · l'exercice précédent tiendra alors ses positions de clôture.";
+    return ouvertureLue
+      ? `${etat} · les positions d'ouverture sont lues sur le bilan d'ouverture de l'exercice (${article}). ${issue}`
+      : `${etat}, et l'exercice n'a pas de bilan d'ouverture · les positions d'ouverture, trésorerie comprise, sont lues à zéro (${article}). ${issue}`;
+  }
   return ouvertureLue
     ? `L'exercice précédent est ouvert sans aucune écriture au livre-journal · les positions d'ouverture sont lues sur le bilan d'ouverture de l'exercice (${article}).`
     : `L'exercice précédent est ouvert sans aucune écriture au livre-journal et l'exercice n'a pas de bilan d'ouverture · les positions d'ouverture, trésorerie comprise, sont lues à zéro (${article}). Importez la balance de clôture de l'exercice précédent et clôturez-le, ou passez le bilan d'ouverture en à-nouveau.`;
+}
+
+/**
+ * Les écritures au brouillard d'un exercice précédent qui ne tient rien au
+ * livre-journal · lues seulement dans ce cas, pour dire laquelle des deux
+ * issues de `mentionExercicePrecedentVide` vaut (paquet 1, A2).
+ */
+export async function brouillardDuPrecedentNonTenu(
+  ecritureService: EcritureService,
+  tenantId: string,
+  exerciceN1Id: string | null,
+  n1Tenu: boolean,
+): Promise<number> {
+  if (!exerciceN1Id || n1Tenu) return 0;
+  return ecritureService.nombreAuBrouillard(tenantId, exerciceN1Id);
 }
 
 /**
@@ -140,8 +169,16 @@ export function mentionExercicePrecedentVide(referentiel: 'SYSCOHADA' | 'SYCEBNL
  * art. 34) ne sont pas connus · des zéros diraient une entité sans aucune
  * opération. La colonne reste vide, et ce motif le dit.
  */
-export function motifColonneN1NonTenue(referentiel: 'SYSCOHADA' | 'SYCEBNL'): string {
+export function motifColonneN1NonTenue(referentiel: 'SYSCOHADA' | 'SYCEBNL', auBrouillard = 0): string {
   const article = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 7)' : 'AUDCIF art. 34';
+  // Des écritures au brouillard attendent leur validation (A2) · l'issue est
+  // de les valider, jamais d'importer une balance qui les doublerait.
+  if (auBrouillard > 0) {
+    return (
+      `L'exercice précédent n'a que des écritures au brouillard (${auBrouillard}), hors du livre-journal · il ne tient ni ` +
+      `positions ni flux, et sa colonne reste vide, ce n'est pas un zéro (${article}). Validez-les (AUDCIF art. 22, 2°) pour la servir.`
+    );
+  }
   return (
     "L'exercice précédent est ouvert sans aucune écriture au livre-journal · il ne tient ni positions ni flux, " +
     `et sa colonne reste vide, ce n'est pas un zéro (${article}). Importez sa balance de clôture et clôturez-le pour la servir.`

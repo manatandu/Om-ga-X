@@ -2,7 +2,13 @@ import { NotFoundException } from '@nestjs/common';
 import { TypeCompteDetailTotal } from '@prisma/client';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
-import { chargerOuverture, trouverExerciceN1 } from './etats-financiers.communs';
+import {
+  brouillardDuPrecedentNonTenu,
+  chargerOuverture,
+  mentionExercicePrecedentVide,
+  motifColonneN1NonTenue,
+  trouverExerciceN1,
+} from './etats-financiers.communs';
 
 /**
  * `trouverExerciceN1` · la lecture commune du comparatif, et le REFUS d'un
@@ -110,5 +116,41 @@ describe('chargerOuverture', () => {
     const es = ecritureService([]);
     await expect(chargerOuverture(es, 't1', null)).resolves.toEqual([]);
     expect(es.balance).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * PAQUET 1, A2 (reproduit sur vraie base le 2026-10-09) · un exercice
+ * précédent qui ne tient rien au livre-journal est soit VIDE (importer sa
+ * balance de clôture), soit tenu au BROUILLARD (valider ses écritures, AUDCIF
+ * art. 22, 2°) · importer une balance doublerait ce qui attend sa validation.
+ */
+describe('l’exercice précédent qui ne tient rien · vide ou au brouillard', () => {
+  it.each(['SYSCOHADA', 'SYCEBNL'] as const)('%s · au brouillard, les messages disent de valider, jamais d’importer', (referentiel) => {
+    for (const ouvertureLue of [true, false]) {
+      const m = mentionExercicePrecedentVide(referentiel, ouvertureLue, 2);
+      expect(m).toContain("n'a que des écritures au brouillard (2)");
+      expect(m).toContain('Validez-les (AUDCIF art. 22, 2°)');
+      expect(m).not.toContain('Importez');
+    }
+    const motif = motifColonneN1NonTenue(referentiel, 2);
+    expect(motif).toContain('Validez-les (AUDCIF art. 22, 2°)');
+    expect(motif).not.toContain('Importez');
+  });
+
+  it.each(['SYSCOHADA', 'SYCEBNL'] as const)('%s · sans aucune écriture, les messages gardent l’issue de l’import', (referentiel) => {
+    expect(mentionExercicePrecedentVide(referentiel, false)).toContain('Importez la balance de clôture');
+    expect(mentionExercicePrecedentVide(referentiel, false, 0)).toBe(mentionExercicePrecedentVide(referentiel, false));
+    expect(motifColonneN1NonTenue(referentiel)).toContain('Importez sa balance de clôture');
+    expect(motifColonneN1NonTenue(referentiel)).not.toContain('brouillard');
+  });
+
+  it('le brouillard n’est compté que d’un exercice précédent qui ne tient rien', async () => {
+    const es = { nombreAuBrouillard: jest.fn().mockResolvedValue(4) } as unknown as EcritureService & { nombreAuBrouillard: jest.Mock };
+    await expect(brouillardDuPrecedentNonTenu(es, 't1', 'e0', true)).resolves.toBe(0);
+    await expect(brouillardDuPrecedentNonTenu(es, 't1', null, false)).resolves.toBe(0);
+    expect(es.nombreAuBrouillard).not.toHaveBeenCalled();
+    await expect(brouillardDuPrecedentNonTenu(es, 't1', 'e0', false)).resolves.toBe(4);
+    expect(es.nombreAuBrouillard).toHaveBeenCalledWith('t1', 'e0');
   });
 });

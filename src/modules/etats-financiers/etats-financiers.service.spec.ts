@@ -72,6 +72,8 @@ function serviceAvecExercices(
     ),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    // Paquet 1, A2 · aucune écriture au brouillard par DÉFAUT.
+    nombreAuBrouillard: jest.fn().mockResolvedValue(0),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
       Promise.resolve((exerciceId && reevaluationsParExercice[exerciceId]) || new Map()),
     ),
@@ -850,6 +852,33 @@ describe('EtatsFinanciersService · tableau de flux de trésorerie', () => {
     expect(motifColonneN1NonTenue('SYCEBNL')).toContain('SYCEBNL art. 16, 7)');
     // La colonne N, elle, se chiffre · l'exercice tient ses écritures.
     expect({ za: ref(tft, 'ZA').montant, zf: ref(tft, 'ZF').montant, vides: tft.postesVides }).toEqual({ za: 0, zf: 1500, vides: [] });
+  });
+
+  it('paquet 1, A2 · un exercice précédent qui n’a que du brouillard · la mention et la colonne N-1 disent de le valider, pas d’importer', async () => {
+    // Reproduit sur vraie base · 2025 tenu au brouillard seulement · la mention
+    // conseillait d'importer la balance de clôture, qui doublerait ces écritures.
+    const auBrouillard = serviceAvecExercices(
+      { eN1: [], eN: [ligneF('52110000', ClasseCompte.CLASSE_5, 500, 0), ligneF('70100000', ClasseCompte.CLASSE_7, 0, 500)] },
+      DEUX_EXERCICES,
+    );
+    const ecritures = (auBrouillard as unknown as { ecritureService: { nombreAuBrouillard: jest.Mock } }).ecritureService;
+    ecritures.nombreAuBrouillard.mockResolvedValue(2);
+    const tft = await auBrouillard.tableauFluxTresorerie('t1', 'eN');
+    expect(ecritures.nombreAuBrouillard).toHaveBeenCalledWith('t1', 'eN1');
+    expect(tft.mentionOuverture).toBe(mentionExercicePrecedentVide('SYCEBNL', false, 2));
+    expect(tft.mentionOuverture).toContain('Validez-les (AUDCIF art. 22, 2°)');
+    expect(tft.mentionOuverture).not.toContain('Importez');
+    expect(tft.postesNonCalculablesN1.find((p) => p.ref === 'ZA')?.raison).toBe(motifColonneN1NonTenue('SYCEBNL', 2));
+  });
+
+  it('paquet 1, A2 · un exercice précédent tenu n’est pas compté', async () => {
+    const tenu = serviceAvecExercices(
+      { eN1: [ligneF('52110000', ClasseCompte.CLASSE_5, 500, 0), ligneF('70100000', ClasseCompte.CLASSE_7, 0, 500)], eN: [] },
+      DEUX_EXERCICES,
+    );
+    await tenu.tableauFluxTresorerie('t1', 'eN');
+    const ecritures = (tenu as unknown as { ecritureService: { nombreAuBrouillard: jest.Mock } }).ecritureService;
+    expect(ecritures.nombreAuBrouillard).not.toHaveBeenCalled();
   });
 
   it('applique la formule officielle et BOUCLE : cycle complet des cotisations sur deux exercices', async () => {

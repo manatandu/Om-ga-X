@@ -7,6 +7,7 @@ import {
   CompteDuPoste,
   LigneBalancePourEtat,
   MOTIF_RESULTAT_N1_NON_TENU,
+  brouillardDuPrecedentNonTenu,
   chargerLignes,
   chargerOuverture,
   comparatifDuBilan,
@@ -840,9 +841,11 @@ export class EtatsFinanciersService {
     // L'OUVERTURE se lit AVANT ce que la clôture de l'exercice y porte
     // (`chargerOuverture`, paquet 1, A4) · la colonne report d'un exercice
     // clôturé porte aussi le virement du résultat antérieur non affecté.
-    const [ouvertureN, ouvertureN1] = await Promise.all([
+    const [ouvertureN, ouvertureN1, brouillardN1] = await Promise.all([
       n1Tenu ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId),
       exerciceN1Id && !n2Tenu ? chargerOuverture(this.ecritureService, tenantId, exerciceN1Id) : Promise.resolve([]),
+      // Un exercice précédent qui ne tient rien · vide, ou au brouillard (A2).
+      brouillardDuPrecedentNonTenu(this.ecritureService, tenantId, exerciceN1Id, n1Tenu),
     ]);
     // PAQUET 1, A7 · une ouverture saisie en OD au premier jour, sans exercice
     // précédent tenu ni report, n'est lue ni comme flux ni comme ouverture
@@ -870,7 +873,7 @@ export class EtatsFinanciersService {
     // (`motifColonneN1NonTenue`), jamais des zéros calculés sur rien.
     const motifN1 =
       exerciceN1Id && !n1Tenu
-        ? motifColonneN1NonTenue('SYCEBNL')
+        ? motifColonneN1NonTenue('SYCEBNL', brouillardN1)
         : ouverturePasseeN1
           ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYCEBNL')
           : null;
@@ -971,7 +974,7 @@ export class EtatsFinanciersService {
       mentionOuverture: n1Tenu
         ? null
         : exerciceN1Id && !ouverturePasseeN
-          ? mentionExercicePrecedentVide('SYCEBNL', ouvertureTenue(ouvertureN))
+          ? mentionExercicePrecedentVide('SYCEBNL', ouvertureTenue(ouvertureN), brouillardN1)
           : ouverturePasseeN
             ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYCEBNL')
             : ouvertureTenue(ouvertureN)

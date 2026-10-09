@@ -3627,6 +3627,20 @@ export class EcritureService {
   }
 
   /**
+   * LES ÉCRITURES D'UN EXERCICE RESTÉES AU BROUILLARD (paquet 1, A2) · lues
+   * pour dire, d'un exercice précédent qui ne tient rien au livre-journal,
+   * s'il est vide ou s'il attend sa validation (AUDCIF art. 22, 2° · « Toute
+   * donnée entrée fait l'objet d'une validation »). L'à-nouveau PROVISOIRE
+   * n'y compte pas · il ne se valide jamais (`valider` le refuse), et une
+   * mention qui dirait de le valider enverrait sur un refus.
+   */
+  async nombreAuBrouillard(tenantId: string, exerciceId: string): Promise<number> {
+    return this.prisma.ecriture.count({
+      where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD, estANouveauProvisoire: false },
+    });
+  }
+
+  /**
    * LA POSITION D'OUVERTURE PASSÉE EN OD AU PREMIER JOUR, au livre-journal ·
    * même périmètre que la clôture (AU2, `filtreOuverturePasseeAuPremierJour`).
    * Lue par les états d'un exercice SANS exercice précédent ni report

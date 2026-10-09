@@ -3,7 +3,7 @@
 Branche `travail/paquet1-a`, partie de `main` e31f4de. Fiche tenue à chaque
 point fini (CLAUDE.md § 5), retirée à l'intégration.
 
-Ordre de travail · A8, A2, A10, A9, A5, A6.
+Ordre de travail · A8, A10, A9, A5, A6.
 
 ## Commandes
 
@@ -11,8 +11,8 @@ Ordre de travail · A8, A2, A10, A9, A5, A6.
 # Scénario (non committé ici, tenu par le coordinateur)
 #   /home/user/wt-passe/scripts/passe-v1/scenario-paquet1-a.mjs
 # AVANT (main) et APRÈS (cette copie, après npm run build)
-PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
-PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
+PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
+PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
 # Specs touchés
 npx tsc --noEmit
 npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/cloture-annuelle.spec.ts \
@@ -305,7 +305,7 @@ CORRECTION ·
   postes de la colonne N-1 vides, aucun `montantN1`, motif dans
   `postesNonCalculablesN1`.
 - liasse des associations · une ligne d'ANOMALIES par MOTIF (postes nommés),
-  plus une par poste · la colonne N-1 entière en aurait aligné dix-neuf.
+  et non plus une par poste · la colonne N-1 entière en aurait aligné dix-neuf.
 - écran · rien de neuf · la colonne vide s'écrit « · » et le motif se dit
   (A7).
 
@@ -316,6 +316,48 @@ ligne par motif).
 APRÈS · 94 contrôles sur 94 pour A3, A7, A4, A1, A8, A8M
 (`/tmp/claude-0/sim/p1a-apres-a3.json`), et 7 sur 7 pour A3 à travers la
 clôture de 2025 (`/tmp/claude-0/sim/p1a-apres-a3b.json`).
+
+### A2 · l'exercice précédent qui n'a que du brouillard · la mention dit de le valider
+
+REPRODUIT sur vraie base contre `main`, aux deux référentiels. 2025 tenu au
+brouillard seulement (apport 1 000 000, produit 300 000, jamais validés), 2026
+validé sans bilan d'ouverture ; puis 2025 validé et clôturé.
+
+AVANT (main) · tableau des flux de 2026, mention servie « L'exercice précédent
+est ouvert sans aucune écriture au livre-journal […] Importez la balance de
+clôture de l'exercice précédent et clôturez-le » · `la mention dit que
+l'exercice précédent n'a que du brouillard`, `dit de valider ses écritures
+(AUDCIF art. 22, 2°)`, `ne conseille plus d'importer la balance de clôture`
+lus `false` aux deux référentiels ; au SYCEBNL, le motif de la colonne N-1
+(A3) ne le disait pas non plus. 7 écarts sur 13
+(`/tmp/claude-0/sim/p1a-avant-a2.json`). Importer la balance, comme la
+mention le conseillait, aurait DOUBLÉ les écritures au brouillard.
+
+DÉCISION PAR LA LOI · « Toute donnée entrée fait l'objet d'une validation,
+mise en œuvre au terme de chaque période qui ne peut excéder un mois »
+(AUDCIF art. 22, 2°, non exclu par l'art. 3 du SYCEBNL) · les états ne lisent
+que le livre-journal ; des écritures au brouillard existent et attendent leur
+validation, ce n'est pas un exercice vide. Deux cas, deux issues.
+
+CORRECTION ·
+- `EcritureService.nombreAuBrouillard` · les écritures au brouillard d'un
+  exercice, à-nouveau provisoire exclu (il ne se valide jamais).
+- `etats-financiers.communs.ts` · `mentionExercicePrecedentVide` et
+  `motifColonneN1NonTenue` prennent ce nombre · au brouillard, « n'a que des
+  écritures au brouillard (n), hors du livre-journal […] Validez-les (AUDCIF
+  art. 22, 2°) » ; sans aucune écriture, l'issue de l'import reste.
+  `brouillardDuPrecedentNonTenu` ne compte que pour un exercice précédent qui
+  ne tient rien.
+- les deux tableaux des flux (SYSCOHADA normal, associations) le lisent.
+
+TESTS · `etats-financiers.communs.spec.ts` (deux référentiels, deux cas, le
+comptage borné) ; `balance.spec.ts` (requête du comptage) ; un test par
+tableau des flux (tombent sur les services d'avant) ; doublures complétées.
+
+APRÈS · 104 contrôles sur 104 pour A2, A3, A7, A4, A1, A8, A8M
+(`/tmp/claude-0/sim/p1a-apres-a2.json`) ; A2 à travers la clôture de 2025,
+13 sur 13 (`/tmp/claude-0/sim/p1a-apres-a2b.json` · 2025 validé et clôturé,
+plus de mention, ZA de 2026 = 1 300 000).
 
 ## Reste
 
