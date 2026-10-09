@@ -12,6 +12,7 @@ import { CreerCompteDto, ModifierCompteDto } from './dto/creer-compte.dto';
 import { naturesDuDossier } from './natures-compte.service';
 import { LIBELLES_NATURE, natureDe } from './natures-compte';
 import { classeDuNumero } from './classe-du-numero';
+import { assurerComptesDePassage } from '../virements-fonds/comptes-de-passage';
 import { COMPTES_DE_TAXE_ROUTES_SYSCOHADA } from '../tva/routage-tva';
 import { comptesUtilises, estPropose } from './comptes-proposes';
 import { compteSemeSubdivise, comptesDuPlanSubdivises, estCompteSeme, numerosSemes, racineDuCompteSeme, sousComptePropose } from './subdivisions-du-plan';
@@ -74,6 +75,10 @@ export class CompteService {
       })),
       skipDuplicates: true,
     });
+    // LES QUATRE COMPTES DE PASSAGE DES VIREMENTS DE FONDS, sous le 58500000
+    // que le plan vient de semer · personnalisés par défaut (demande de Manasse
+    // du 2026-10-09, virements-fonds/).
+    await assurerComptesDePassage(client, tenantId);
   }
 
   /**

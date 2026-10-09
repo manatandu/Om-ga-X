@@ -183,9 +183,34 @@ describe('plan SYSCOHADA · ancrage des semis annexes', () => {
 describe('CompteService.seedPlan · aiguillage par référentiel', () => {
   function serviceCapturant() {
     const captures: Array<{ data: Array<{ numero: string; typeCompte?: string; lettrable: boolean }> }> = [];
-    const prisma = { compte: { createMany: async (args: never) => void captures.push(args as never) } };
-    return { service: new CompteService(prisma as never), captures };
+    // Le semis ouvre ensuite les quatre comptes de passage des virements de
+    // fonds sous le 58500000 (virements-fonds/comptes-de-passage.ts).
+    const passages: string[] = [];
+    const prisma = {
+      compte: {
+        createMany: async (args: never) => void captures.push(args as never),
+        findUnique: async () => ({ lettrable: true, modeReportANouveau: 'DETAIL' }),
+        findMany: async () => [],
+        create: async ({ data }: { data: { numero: string } }) => {
+          passages.push(data.numero);
+          return { id: data.numero, ...data };
+        },
+      },
+      compteVirementFonds: { findMany: async () => [], create: async () => ({}) },
+      tenant: { findUniqueOrThrow: async () => ({ referentiel: 'SYSCOHADA', longueurCompte: 8 }) },
+    };
+    return { service: new CompteService(prisma as never), captures, passages };
   }
+
+  it('ouvre les quatre comptes de passage des virements de fonds sous le 585, dans les deux plans', async () => {
+    const { service, captures, passages } = serviceCapturant();
+    await service.seedPlan('t1', 'SYSCOHADA');
+    await service.seedPlan('t2', 'SYCEBNL');
+    // Le 58500000 que les quatre subdivisent est semé par les deux plans.
+    expect(captures[0].data.some((c) => c.numero === '58500000')).toBe(true);
+    expect(captures[1].data.some((c) => c.numero === '58500000')).toBe(true);
+    expect(passages).toEqual(['58500001', '58500002', '58500003', '58500004', '58500001', '58500002', '58500003', '58500004']);
+  });
 
   it('sème le plan SYSCOHADA pour un dossier SYSCOHADA, le SYCEBNL sinon', async () => {
     const { service, captures } = serviceCapturant();

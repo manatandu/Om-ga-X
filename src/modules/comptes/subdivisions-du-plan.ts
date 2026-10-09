@@ -164,6 +164,20 @@ export function numerosSemes(referentiel: Referentiel): string[] {
 }
 
 /**
+ * LES COMPTES DE PASSAGE (585 « Virements de fonds », 588 « Autres virements
+ * internes ») ne tombent jamais sous la règle du compte subdivisé · « comptes
+ * de passage », « soldés au terme de leur utilisation » (AUDCIF Titre VII et
+ * SYCEBNL Partie 2 ch. 3, compte 58), ils ne gardent aucun solde qu'un
+ * sous-compte devrait porter à sa place. Le virement de fonds ouvre ses quatre
+ * comptes sous le 585 (virements-fonds/) · sans l'exemption, le 58500000 se
+ * fermait à la saisie, et avec lui les transferts du siège et des cellules
+ * d'un groupe SYCEBNL qui y passent (groupe/canevas-tresorerie.ts).
+ */
+export function estCompteDePassage(numero: string): boolean {
+  return numero.startsWith('585') || numero.startsWith('588');
+}
+
+/**
  * LES COMPTES DU PLAN QUE LE DOSSIER SUBDIVISE · même règle que la saisie
  * (`EcritureService.verifierComptesCollectifs`), lue sur la liste du dossier ·
  * le compte semé sous la racine duquel le dossier a ouvert un compte
@@ -178,7 +192,7 @@ export function comptesDuPlanSubdivises(
   for (const c of comptes) {
     if (c.typeCompte !== TypeCompteDetailTotal.DETAIL || !c.estActif) continue;
     const parent = compteSemeSubdivise(referentiel, c.numero);
-    if (parent) subdivises.add(parent);
+    if (parent && !estCompteDePassage(parent)) subdivises.add(parent);
   }
   return subdivises;
 }

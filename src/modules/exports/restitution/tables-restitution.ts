@@ -187,3 +187,12 @@ export function fichierDeLaTable(modele: string): string {
 export function fichierDuDocument(id: string, nomFichier: string): string {
   return `documents-tiers/${id}-${nomFichier.replace(/[\\/]/g, '_')}`;
 }
+
+/**
+ * L'entrée d'archive d'une pièce jointe à un virement de fonds · même règle,
+ * préfixée de son identifiant, qui la relie à sa ligne de
+ * `tables/piece-virement-fonds.csv`.
+ */
+export function fichierDeLaPieceVirement(id: string, nomFichier: string): string {
+  return `pieces-virements/${id}-${nomFichier.replace(/[\\/]/g, '_')}`;
+}

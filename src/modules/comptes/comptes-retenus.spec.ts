@@ -71,7 +71,19 @@ describe('comptes retenus', () => {
     // Ce que le semis ÉCRIT, lu sur l'appel · jamais sur la forme de la source.
     const semer = async (referentiel: 'SYCEBNL' | 'SYSCOHADA') => {
       const createMany = jest.fn(async () => ({ count: 0 }));
-      await new CompteService({} as never).seedPlan('t1', referentiel as never, { compte: { createMany } } as never);
+      // Le semis ouvre ensuite les quatre comptes de passage des virements de
+      // fonds sous le 58500000 (virements-fonds/comptes-de-passage.ts).
+      const client = {
+        compte: {
+          createMany,
+          findUnique: jest.fn(async () => ({ lettrable: true, modeReportANouveau: 'SOLDE' })),
+          findMany: jest.fn(async () => []),
+          create: jest.fn(async ({ data }: { data: { numero: string; intitule: string } }) => ({ id: data.numero, ...data })),
+        },
+        compteVirementFonds: { findMany: jest.fn(async () => []), create: jest.fn(async () => ({})) },
+        tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel, longueurCompte: 8 })) },
+      };
+      await new CompteService({} as never).seedPlan('t1', referentiel as never, client as never);
       return (createMany.mock.calls[0] as unknown as [{ data: { numero: string; estRetenu: boolean }[] }])[0].data;
     };
     expect((await semer('SYCEBNL')).filter((c) => c.estRetenu)).toEqual([]);

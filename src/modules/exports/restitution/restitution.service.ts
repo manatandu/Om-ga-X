@@ -23,6 +23,7 @@ import {
   colonnesDuModele,
   fichierDeLaTable,
   fichierDuDocument,
+  fichierDeLaPieceVirement,
   ordreDuModele,
 } from './tables-restitution';
 import { ecrireManifeste } from './manifeste-restitution';
@@ -327,10 +328,21 @@ export class RestitutionService {
       orderBy: { id: 'asc' },
       select: { id: true, nomFichier: true },
     });
-    const pieces: SuiviPieces = { annoncees: documents.length, ecrites: 0, manquantes: [] };
+    // LES PIÈCES JOINTES AUX VIREMENTS DE FONDS · même lecture, une à la fois.
+    const piecesVirement = await this.prisma.pieceVirementFonds.findMany({
+      where: { tenantId },
+      orderBy: { id: 'asc' },
+      select: { id: true, nomFichier: true },
+    });
+    const pieces: SuiviPieces = { annoncees: documents.length + piecesVirement.length, ecrites: 0, manquantes: [] };
     for (const document of documents) {
       archive.append(Readable.from(this.contenuDocument(tenantId, document.id, pieces)), {
         name: fichierDuDocument(document.id, document.nomFichier),
+      });
+    }
+    for (const piece of piecesVirement) {
+      archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, 'virement')), {
+        name: fichierDeLaPieceVirement(piece.id, piece.nomFichier),
       });
     }
 
@@ -342,7 +354,7 @@ export class RestitutionService {
     // distinguait plus d'une complète. Il attend l'événement `entry` de
     // chacune des entrées qui le précèdent (émis une fois l'entrée écrite),
     // ou l'arrêt de l'archive. Rien n'est gardé en mémoire.
-    const avantLeControle = 1 + 1 + TABLES_RESTITUEES.length + documents.length;
+    const avantLeControle = 1 + 1 + TABLES_RESTITUEES.length + documents.length + piecesVirement.length;
     let traitees = 0;
     let signalerToutEcrit: () => void = () => undefined;
     const toutEcrit = new Promise<void>((resoudre) => (signalerToutEcrit = resoudre));
@@ -369,9 +381,17 @@ export class RestitutionService {
    * la pièce · une entrée vide sans un mot se lirait comme une pièce vide.
    * Même traitement pour une pièce retirée entre l'inventaire et sa lecture.
    */
-  private async *contenuDocument(tenantId: string, id: string, pieces: SuiviPieces): AsyncGenerator<Buffer> {
+  private async *contenuDocument(
+    tenantId: string,
+    id: string,
+    pieces: SuiviPieces,
+    origine: 'tiers' | 'virement' = 'tiers',
+  ): AsyncGenerator<Buffer> {
     try {
-      const document = await this.prisma.documentTiers.findFirst({ where: { id, tenantId }, select: { contenu: true } });
+      const document =
+        origine === 'tiers'
+          ? await this.prisma.documentTiers.findFirst({ where: { id, tenantId }, select: { contenu: true } })
+          : await this.prisma.pieceVirementFonds.findFirst({ where: { id, tenantId }, select: { contenu: true } });
       if (!document) {
         pieces.manquantes.push(`${id} · retirée pendant l'extraction`);
         return;

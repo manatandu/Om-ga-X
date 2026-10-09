@@ -48,10 +48,12 @@ Les colonnes sont celles du schéma, moins cinq, retirées à dessein :
 \`User.estOperateurPlateforme\` (le drapeau qui désigne le compte de
 l'éditeur), et les trois colonnes du second facteur de connexion
 (\`User.secretDoubleAuth\`, \`User.dernierPasDoubleAuth\`,
-\`User.codesSecoursDoubleAuth\`). Aucune autre colonne n'est retirée. La
-seule colonne binaire du schéma, \`DocumentTiers.contenu\`, n'entre pas dans
-le CSV · chaque document attaché à un tiers sort À CÔTÉ, un fichier par pièce,
-dans \`documents-tiers/\`, sous l'identifiant du document.
+\`User.codesSecoursDoubleAuth\`). Aucune autre colonne n'est retirée. Les
+deux colonnes binaires du schéma n'entrent pas dans le CSV · chaque document
+attaché à un tiers (\`DocumentTiers.contenu\`) sort À CÔTÉ, un fichier par
+pièce, dans \`documents-tiers/\`, et chaque pièce jointe à un virement de
+fonds (\`PieceVirementFonds.contenu\`) dans \`pieces-virements/\`, chacun sous
+son identifiant.
 
 ## CE QUE CETTE ARCHIVE N'EST PAS
 
@@ -61,8 +63,10 @@ ainsi que les pièces justificatives » soient conservés dix ans, et l'art. 17,
 3° veut les pièces « datées, conservées, classées dans un ordre défini dans le
 manuel ». OmegaX ne tient pas les pièces justificatives des écritures · il ne
 garde que les documents attachés aux fiches des tiers, restitués dans
-\`documents-tiers/\`, et rien ne les rattache à une écriture. Les classeurs
-papier restent la conservation.
+\`documents-tiers/\`, que rien ne rattache à une écriture, et les pièces jointes
+aux virements de fonds, restituées dans \`pieces-virements/\`, rattachées au
+virement qui porte ses deux écritures. Les classeurs papier restent la
+conservation.
 
 **Elle n'a pas la force probante de l'écrit papier légalisé.** Le Code du
 numérique (ordonnance-loi n° 23/10 du 13 mars 2023) pose que « L'écrit

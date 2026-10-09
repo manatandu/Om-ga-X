@@ -39,7 +39,7 @@ import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBa
 import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements-mise-en-service';
 import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
 import { compteDeLaFamille, type FamilleTiers } from './familles-tiers';
-import { compteSemeSubdivise, racineDuCompteSeme, racinesSousLeCompteSeme } from '../comptes/subdivisions-du-plan';
+import { compteSemeSubdivise, estCompteDePassage, racineDuCompteSeme, racinesSousLeCompteSeme } from '../comptes/subdivisions-du-plan';
 import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../comptes/comptes-proposes';
 
 /**
@@ -820,6 +820,9 @@ export class EcritureService {
       // compte de CE journal, et le journal ouvert ensuite au 52110001 n'en
       // fait pas un compte commun · le refuser fermait la saisie du journal BQ.
       if ((c.journauxTresorerie ?? []).length > 0) return false;
+      // Un compte de passage (585, 588) ne garde aucun solde · subdivisé par
+      // les virements de fonds, il reste ouvert (subdivisions-du-plan.ts).
+      if (estCompteDePassage(c.numero)) return false;
       return racineDuCompteSeme(referentiel, c.numero) !== null;
     });
     // Une lecture par compte du plan de la pièce, lancées ensemble · la pièce
@@ -1599,6 +1602,12 @@ export class EcritureService {
       ['une immobilisation (mise en service d’un en-cours)', this.prisma.immobilisation.count({ where: { tenantId, ecritureMiseEnServiceId: ecritureId } })],
       ['une immobilisation (solde de la dette d\'acquisition)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSoldeDetteAleatoireId: ecritureId } })],
       ['une immobilisation (écart de réévaluation soldé à la sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSortieEcartReevaluationId: ecritureId } })],
+      // Un virement de fonds · ses deux pièces nées ensemble et leurs négatifs ·
+      // retirée seule, l'une laisserait le 585 non soldé (virements-fonds/).
+      ['un virement de fonds (journal d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureOrigineId: ecritureId } })],
+      ['un virement de fonds (journal de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureDestinationId: ecritureId } })],
+      ['un virement de fonds annulé (négatif d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifOrigineId: ecritureId } })],
+      ['un virement de fonds annulé (négatif de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifDestinationId: ecritureId } })],
       ["une dotation aux amortissements", this.prisma.dotationAmortissement.count({ where: parLEcriture })],
       ["une dépréciation d'immobilisation", this.prisma.depreciationImmobilisation.count({ where: parLEcriture })],
       // Le reclassement d'un bien · la clé est RESTRICT, et sans ce refus nommé

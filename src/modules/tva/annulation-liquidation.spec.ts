@@ -73,6 +73,7 @@ function monter(options: { autreDetenteur?: boolean; posterieure?: { dateDebut: 
     ajustementCreanceDouteuse: zero(),
     mouvementCreanceDouteuse: zero(),
     recuperationTvaCreance: zero(),
+    virementFonds: zero(),
     declarationDeviseANouveau: zero(),
     constatImpotResultat: zero(),
     consignation: zero(),

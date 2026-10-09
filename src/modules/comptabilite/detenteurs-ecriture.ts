@@ -98,6 +98,14 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // qui l'a fait, et la revue suivante lirait une dépréciation en place que
   // le 491 ne porte plus.
   'CreanceDouteuse.ecritureReclassementId',
+  // Les virements de fonds · deux pièces nées ensemble, une par journal ·
+  // retirée seule, l'une laisserait le 585 non soldé, et la fiche dirait un
+  // virement que le journal ne porte plus qu'à moitié ; leurs négatifs de
+  // même (virements-fonds/).
+  'VirementFonds.ecritureOrigineId',
+  'VirementFonds.ecritureDestinationId',
+  'VirementFonds.ecritureNegatifOrigineId',
+  'VirementFonds.ecritureNegatifDestinationId',
   'AjustementCreanceDouteuse.ecritureId',
   'MouvementCreanceDouteuse.ecritureId',
   // La perte qui récupère la TVA (point D, décision de Manasse du 2026-10-08)

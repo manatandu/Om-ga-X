@@ -144,6 +144,13 @@ export const MODELES_AUDITES = new Set<string>([
   // déclarée justifient la charge (fiche du compte 49) · retouchés après coup,
   // le dossier de révision montrerait une justification qui n'était pas celle
   // de la décision.
+  // Les virements de fonds · la pièce justificative, l'objet, le porteur
+  // des espèces et l'annulation avec son motif justifient deux pièces au
+  // journal (AUDCIF art. 17, 3° et 5°) ; les comptes de passage, quel compte
+  // chaque sens mouvemente ; les pièces jointes, ce qui a été déposé et par qui.
+  'CompteVirementFonds',
+  'VirementFonds',
+  'PieceVirementFonds',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',
@@ -430,6 +437,9 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // conservé plus longtemps que la fiche. Le nom, la taille et l'empreinte
   // SHA-256 désignent la pièce sans la reproduire.
   DocumentTiers: ['contenu'],
+  // Même raison pour le scan d'une pièce de virement · nom, taille et
+  // empreinte la désignent sans la reproduire.
+  PieceVirementFonds: ['contenu'],
 
   // LE REGISTRE DU PERSONNEL · le premier cas où l'exclusion ne protège pas
   // le LOGICIEL mais une PERSONNE.

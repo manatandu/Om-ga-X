@@ -320,14 +320,14 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
   it('nomme la colonne binaire sortie à côté des CSV', () => {
     const deplie = manifeste.replace(/\s+/g, ' ');
     expect(deplie).toContain(
-      "La seule colonne binaire du schéma, `DocumentTiers.contenu`, n'entre pas dans le CSV · chaque document attaché à un tiers sort À CÔTÉ, un fichier par pièce, dans `documents-tiers/`",
+      "Les deux colonnes binaires du schéma n'entrent pas dans le CSV · chaque document attaché à un tiers (`DocumentTiers.contenu`) sort À CÔTÉ, un fichier par pièce, dans `documents-tiers/`, et chaque pièce jointe à un virement de fonds (`PieceVirementFonds.contenu`) dans `pieces-virements/`",
     );
     // La prémisse relue dans le schéma · une seconde colonne binaire ferait
     // mentir la phrase.
     const binaires = Prisma.dmmf.datamodel.models.flatMap((m) =>
       m.fields.filter((f) => f.type === 'Bytes').map((f) => `${m.name}.${f.name}`),
     );
-    expect(binaires).toEqual(['DocumentTiers.contenu']);
+    expect(binaires.sort()).toEqual(['DocumentTiers.contenu', 'PieceVirementFonds.contenu']);
   });
 
   it('nomme les tables dont le journal d’audit ne garde aucune trace', () => {
