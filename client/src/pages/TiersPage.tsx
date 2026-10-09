@@ -26,6 +26,7 @@ import { PortailModale } from '../components/PortailModale';
 import { montant } from '../lib/montants';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
+import { numeroAEnvoyer, type NumeroPropose } from '../lib/numero-compte-tiers';
 
 /**
  * PLAN DES TIERS · la fenêtre Structure → Plan tiers de Sage 100 i7 :
@@ -310,17 +311,47 @@ export function TiersPage() {
   // propose le compte collectif du type.
   const [creerCompteIndividuel, setCreerCompteIndividuel] = useState(true);
 
+  // LE NUMÉRO DU COMPTE PRINCIPAL, PROPOSÉ PUIS MODIFIABLE (décision de
+  // Manasse du 2026-10-09) · relu à chaque ouverture de la fenêtre et à
+  // chaque type, la proposition d'un autre collectif n'ayant plus de sens.
+  // Une réponse arrivée après un changement de type est jetée.
+  const [numeroPropose, setNumeroPropose] = useState<NumeroPropose | null>(null);
+  const [numeroSaisi, setNumeroSaisi] = useState('');
+  const [erreurNumero, setErreurNumero] = useState<string | null>(null);
+  useEffect(() => {
+    if (!nouveauOuvert || !creerCompteIndividuel) return;
+    let actif = true;
+    setNumeroPropose(null);
+    setNumeroSaisi('');
+    setErreurNumero(null);
+    api
+      .get<NumeroPropose>(`/tiers/numero-propose?type=${type}`)
+      .then((r) => {
+        if (!actif) return;
+        setNumeroPropose(r);
+        setNumeroSaisi(r.numero ?? '');
+      })
+      .catch((err) => {
+        if (actif) setErreurNumero(err instanceof ApiError ? err.message : 'Numéro proposé illisible');
+      });
+    return () => {
+      actif = false;
+    };
+  }, [nouveauOuvert, creerCompteIndividuel, type]);
+
   const onCreerTiers = async (e: FormEvent) => {
     e.preventDefault();
     setErreur(null);
     setInfo(null);
     setEnvoi(true);
+    const numeroCompte = creerCompteIndividuel ? numeroAEnvoyer(numeroSaisi, numeroPropose) : undefined;
     try {
       const cree = await api.post<{ compteIndividuel: { numero: string; collectif: string } | null; panoplie: Panoplie | null }>('/tiers', {
         type,
         code,
         nom,
         creerCompteIndividuel,
+        ...(numeroCompte ? { numeroCompte } : {}),
         ...(modeleReglementId ? { modeleReglementId } : {}),
       });
       setInfo(
@@ -1190,6 +1221,33 @@ export function TiersPage() {
                       source="Sage 100 i7, plan tiers : compte collectif selon le type ; plans SYSCOHADA et SYCEBNL, comptes 40 et 41"
                     />
                   </label>
+                  {creerCompteIndividuel && (
+                    <>
+                      <label htmlFor="numero-compte-tiers" className="text-[11.5px] text-right">N° de compte :</label>
+                      {erreurNumero ? (
+                        <span className="text-[11.5px] text-danger">{erreurNumero}</span>
+                      ) : numeroPropose && !numeroPropose.numero ? (
+                        <span className="text-[11.5px] text-text-dim">{numeroPropose.motif}</span>
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <input
+                            id="numero-compte-tiers"
+                            value={numeroSaisi}
+                            onChange={(e) => setNumeroSaisi(e.target.value)}
+                            inputMode="numeric"
+                            disabled={!numeroPropose}
+                            placeholder={numeroPropose ? '' : 'Lecture…'}
+                            className="border border-border-dark px-2.5 py-1.5 text-[12px] w-[130px] disabled:bg-chrome"
+                          />
+                          <Aide
+                            titre="Numéro du compte"
+                            texte="OmegaX propose le premier numéro libre sous le collectif du type. Vous pouvez le garder ou en saisir un autre : des chiffres seuls, commençant par la racine du collectif, à la longueur des comptes du dossier, et libre. Les sous-comptes du tiers prennent le même rang (le client 41110250 a son avance au 41910250). Un champ vidé reprend le numéro proposé."
+                            source="AUDCIF art. 18 et Titre VII, structure décimale des comptes ; SYCEBNL, Partie 2 ch. 2, section 1"
+                          />
+                        </span>
+                      )}
+                    </>
+                  )}
                 </div>
                 <div className="flex justify-end gap-2 mt-4">
                   <button type="button" onClick={() => setNouveauOuvert(false)} className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px]">
