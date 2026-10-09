@@ -1088,7 +1088,7 @@ export class ExerciceService {
         formeJuridique: tenant.formeJuridique,
         formeJuridiqueSyscohada: formeDeLExercice,
         droitEtranger: tenant.droitEtranger,
-        associeUniqueSas: tenant.associeUniqueSas,
+        associeUnique: tenant.associeUnique,
       })).flatMap((j): JalonServi[] => {
         if (j === REMPLACEE_PAR_LES_COTISATIONS) return cotisations;
         // Une échéance FISCALE tombant un jour non ouvrable est reportée au

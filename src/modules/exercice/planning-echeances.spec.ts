@@ -135,7 +135,7 @@ describe('O1b G6 · le planning lit l’associé unique déclaré du dossier', (
   it('une SASU déclarée voit l’approbation par l’associé unique au jalon 23', async () => {
     const p = await service(StatutExercice.OUVERT, [], undefined, {
       formeJuridiqueSyscohada: FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE,
-      associeUniqueSas: true,
+      associeUnique: true,
     }).planningCloture('t', 'ex');
     expect(p.jalons.find((j) => j.etape === 23)?.libelle).toBe('Approbation des comptes par l’associé unique');
   });

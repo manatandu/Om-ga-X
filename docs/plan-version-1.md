@@ -137,7 +137,8 @@ INTÉGRÉE le 2026-10-09 · rejouée sur vraie base (379 contrôles sur 379),
 deux tours de relecture ; les deux BLOQUANTS du second tour corrigés (une
 ouverture du premier jour annulée par un négatif inscrit plus tard fait
 déclarer à la clôture, et ne retient plus l'arrêt à la dissolution, sur
-l'accord du cabinet) ; A5 sans défaut, A6 (compte 130) remonté à Manasse ;
+l'accord du cabinet) ; A5 sans défaut ; A6 (compte 130) tranché par Manasse le
+2026-10-09 et codé (lu dans le résultat au bilan, soldé par l'affectation) ;
 le MAJEUR et les mineurs du second tour au suivi (« Relevés en attente »),
 les deux requêtes en lecture seule de m5 dans
 `docs/requetes-production-paquet-1.md`.

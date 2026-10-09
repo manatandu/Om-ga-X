@@ -224,7 +224,7 @@ export interface DefinitionJalon {
   /**
    * Le libellé, le détail et la source que le texte donne à une SAS selon
    * qu'elle compte un seul associé (AUSCGIE art. 853-11, al. 4 et 5) · le
-   * fait se DÉCLARE (`Tenant.associeUniqueSas`, null = pas encore dit), il
+   * fait se DÉCLARE (`Tenant.associeUnique`, null = pas encore dit), il
    * n'est jamais présumé. `jalonsApplicables` l'applique.
    */
   selonAssocieUniqueSas?: (associeUnique: boolean | null) => { libelle: string; detail: string; source: string };
@@ -1495,7 +1495,7 @@ export function jalonsApplicables(contexte: {
   formeJuridiqueSyscohada?: FormeJuridiqueSyscohada | null;
   droitEtranger: boolean;
   /** AUSCGIE art. 853-2 et 853-11 · SAS seule ; null ou absent, pas encore dit. */
-  associeUniqueSas?: boolean | null;
+  associeUnique?: boolean | null;
 }): DefinitionJalon[] {
   return JALONS_CLOTURE.filter((j) => {
     if (j.referentiels && !j.referentiels.includes(contexte.referentiel)) return false;
@@ -1517,7 +1517,7 @@ export function jalonsApplicables(contexte: {
     return true;
   })
     .map((j) => (j.selonFormeSyscohada ? { ...j, ...j.selonFormeSyscohada(contexte.formeJuridiqueSyscohada ?? null) } : j))
-    .map((j) => (j.selonAssocieUniqueSas ? { ...j, ...j.selonAssocieUniqueSas(contexte.associeUniqueSas ?? null) } : j));
+    .map((j) => (j.selonAssocieUniqueSas ? { ...j, ...j.selonAssocieUniqueSas(contexte.associeUnique ?? null) } : j));
 }
 
 /**

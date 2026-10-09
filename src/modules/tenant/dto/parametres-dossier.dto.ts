@@ -197,7 +197,7 @@ export class ModifierIdentiteDto {
   // AUSCGIE art. 853-2 al. 2 · SAS à associé unique, désignée « SASU ».
   @IsOptional()
   @IsIn(['OUI', 'NON', 'PAS_ENCORE_DIT'], { message: 'L’associé unique se déclare OUI, NON ou PAS_ENCORE_DIT.' })
-  associeUniqueSas?: ReponseFait;
+  associeUnique?: ReponseFait;
 
   // O.-L. n° 13/003, art. 112 et 113 · entreprise relevant du portefeuille
   // de l'État (loi n° 08/010, art. 3). SYSCOHADA seul.

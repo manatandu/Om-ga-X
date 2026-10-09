@@ -1751,7 +1751,7 @@ export interface ParametresDossier {
   /** AUSCGIE art. 386 et 414 · SA seule, null tant que rien n'est dit. */
   modeAdministrationSa: 'CONSEIL_ADMINISTRATION' | 'ADMINISTRATEUR_GENERAL' | null;
   /** AUSCGIE art. 853-2 · SAS seule, null tant que rien n'est dit. */
-  associeUniqueSas: boolean | null;
+  associeUnique: boolean | null;
   /** O.-L. n° 13/003, art. 112 et 113 · null = pas encore dit. */
   entreprisePortefeuilleEtat?: boolean | null;
   /** Liquidation d'une société commerciale (AUSCGIE art. 201, 223, 228, 266) · null = pas encore dit. */

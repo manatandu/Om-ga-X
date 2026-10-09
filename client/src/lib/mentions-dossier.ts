@@ -49,7 +49,9 @@ export const estSocieteCommerciale = (forme: FormeJuridiqueSyscohada | null | un
 /**
  * LES FAITS DE LA DÉNOMINATION QUE CHAQUE FORME PORTE · miroir des refus de
  * `TenantService.modifierIdentite`. Le mode d'administration est celui de la
- * SA (AUSCGIE art. 386 et 414), l'associé unique celui de la SAS (art. 853-2),
+ * SA (AUSCGIE art. 386 et 414), l'associé unique celui de la SARL, de la SA
+ * et de la SAS (art. 309, 385 et 853-2 ; paquet 1, C4, décision de Manasse du
+ * 2026-10-09),
  * la dissolution et les liquidateurs ceux des cinq sociétés commerciales
  * (art. 203 et 204) et de la coopérative (AUSCOOP art. 183).
  */
@@ -70,7 +72,8 @@ export function faitsDeLaForme(forme: FormeJuridiqueSyscohada | null | undefined
 } {
   return {
     modeAdministration: forme === 'SOCIETE_ANONYME',
-    associeUnique: forme === 'SOCIETE_PAR_ACTIONS_SIMPLIFIEE',
+    associeUnique:
+      forme === 'SOCIETE_RESPONSABILITE_LIMITEE' || forme === 'SOCIETE_ANONYME' || forme === 'SOCIETE_PAR_ACTIONS_SIMPLIFIEE',
     dissolution: estSocieteCommerciale(forme) || estCooperative(forme),
     liquidation: estSocieteCommerciale(forme) || estCooperative(forme),
     associeUniquePm: estSocieteCommerciale(forme),
@@ -97,7 +100,7 @@ export function faitsDeLaFormeAEnvoyer(
   forme: FormeJuridiqueSyscohada | null | undefined,
   saisie: {
     modeAdministrationSa: ModeAdministrationSaisi;
-    associeUniqueSas: ReponseFaitSaisie;
+    associeUnique: ReponseFaitSaisie;
     dateDissolution: string;
     liquidateurs: string;
     dateNominationLiquidateur?: string;
@@ -116,7 +119,7 @@ export function faitsDeLaFormeAEnvoyer(
   const faits = faitsDeLaForme(forme);
   return {
     ...(faits.modeAdministration ? { modeAdministrationSa: saisie.modeAdministrationSa } : {}),
-    ...(faits.associeUnique ? { associeUniqueSas: saisie.associeUniqueSas } : {}),
+    ...(faits.associeUnique ? { associeUnique: saisie.associeUnique } : {}),
     ...(faits.dissolution ? { dateDissolution: saisie.dateDissolution, liquidateurs: saisie.liquidateurs } : {}),
     // La liquidation · sociétés commerciales et coopérative ; l'associé unique
     // personne morale, sociétés commerciales seules (art. 201 al. 4).

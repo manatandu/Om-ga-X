@@ -2493,7 +2493,7 @@ des notes 3A et 3B (SYSCOHADA), 5B et 3A (SYCEBNL) vers leurs colonnes
 « Virements de poste à poste », D inchangé ; 5C et 3B des locations n'en ont
 pas, elle y reste en B ; au TFT SYCEBNL, FI retranche le crédit lié du 219 et
 du 229 (le 239 et le 249 l'étaient déjà). La nature du barème POSE son compte
-unique (`compteSelonNature`). RÉÉVALUATION (lot 14, D-29 à D-44 proposées) · une
+unique (`compteSelonNature`). RÉÉVALUATION (lot 14, D-29 à D-44 confirmées par Manasse le 2026-10-09) · une
 opération à la clôture sur L'ENSEMBLE des 22 à 24, 26 et 27 (rien écarté en
 silence), coefficient déclaré plafonné par la valeur actuelle (k'), écart au
 106 du sens de CHAQUE plan ou au 154 (amortissables, neutralité déclarée)
@@ -3866,11 +3866,29 @@ spec du point d'appel s'écrit en même temps.
 L'ASSOCIÉ UNIQUE DE L'ART. 63, AL. 2, 1° (paquet 1, C4) · l'observation sur la
 société unipersonnelle se sert SOUS CONDITION dite partout où le dossier ne
 tranche pas (`unipersonnaliteDeLArticle63`, `observationArticle63`), et ne se
-retire que sur un fait DÉCLARÉ qui l'écarte · SAS déclarée à plusieurs associés
-(`associeUniqueSas`), associé unique personne morale
-(`associeUniquePersonneMorale`) ; la SARL et la SA, dont l'unicité ne se
-déclare pas (AUSCGIE art. 309, al. 2 et 385, al. 2), la gardent sous
-condition, et la déclaration de ce fait reste à Manasse.
+retire que sur un fait DÉCLARÉ qui l'écarte · société déclarée à plusieurs
+associés, associé unique personne morale (`associeUniquePersonneMorale`).
+L'UNICITÉ SE DÉCLARE POUR LA SARL, LA SA ET LA SAS (décision de Manasse du
+2026-10-09 · AUSCGIE art. 309, al. 2, 385, al. 2, 853-2, al. 2) · un seul
+champ, `Tenant.associeUnique` (colonne `associeUniqueSas` gardée, aucune
+migration), `FORMES_A_ASSOCIE_UNIQUE_DECLARE`, refusé ailleurs ; la
+désignation « SASU » reste propre à la SAS, aucun texte lu n'en donnant à la
+SARL ni à la SA.
+
+**LE 130 · DANS LE RÉSULTAT AU BILAN, SOLDÉ PAR L'AFFECTATION** (paquet 1,
+A6, décision de Manasse du 2026-10-09). Le 130 « Résultat en instance
+d'affectation » (AUDCIF, Titre VII, compte 13) est lu en CJ et en SP2 du
+SYSCOHADA (`COMPTES_RESULTAT_SYSCOHADA`, `COMPTES_RESULTAT_SMT_SYSCOHADA`),
+sa part servie à part (`resultatEnInstance`) et dite sous le bilan ; impôt
+et affectation ne lisent que le 131 à 139 (`estCompteDuResultatDeLExercice`).
+L'AFFECTATION SOLDE LE RÉSULTAT LÀ OÙ IL EST (`partsAuResultatEnInstance`) ·
+« le compte 13 est donc soldé lors de la comptabilisation de cette
+affectation », le 11 crédité « par le débit du 131 ou du 1301 » · la part au
+1301 (ou au 1309) de l'exercice d'accueil d'abord, le reste au 131 ou au
+139 ; elle débitait toujours le 131, déjà vidé par le virement au 130, et le
+résultat comptait deux fois. Ce qui reste au 130 en fin d'exercice est viré
+au report à nouveau (`virement-resultat-non-affecte.ts`), seul secours. Le
+SYCEBNL n'ouvre pas de 130.
 
 **PASSE F4b · loi n° 23/053, Titre 2, charges, taux, liquidation (2026-09-17)** ; F4
 close, 4 sur 31. **ART. 57, L'ÉGALITÉ** · `minimum > theorique` est STRICTE, et

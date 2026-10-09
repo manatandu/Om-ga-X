@@ -88,7 +88,7 @@ describe('constat 7 · le champ de l’associé unique, nommé où il est et rem
     for (const forme of ['SOCIETE_RESPONSABILITE_LIMITEE', 'SOCIETE_PAR_ACTIONS_SIMPLIFIEE'] as const) {
       const corps = faitsDeLaFormeAEnvoyer(forme, {
         modeAdministrationSa: 'PAS_ENCORE_DIT',
-        associeUniqueSas: 'OUI',
+        associeUnique: 'OUI',
         dateDissolution: '',
         liquidateurs: '',
         associeUniquePersonneMorale: 'NON',

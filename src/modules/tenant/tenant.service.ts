@@ -5,6 +5,7 @@ import { siSycebnl } from '../../common/reponse-referentiel';
 import { PrismaService } from '../../common/prisma.service';
 import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
 import {
+  FORMES_A_ASSOCIE_UNIQUE_DECLARE,
   FORMES_SOCIETES_COMMERCIALES,
   identiteSociete,
   mentionsEmetteur,
@@ -163,7 +164,7 @@ export class TenantService {
       varianteCooperative: tenant.varianteCooperative,
       // AUSCGIE art. 386 et 414, 853-2, 203 et 204 · faits de la dénomination.
       modeAdministrationSa: tenant.modeAdministrationSa,
-      associeUniqueSas: tenant.associeUniqueSas,
+      associeUnique: tenant.associeUnique,
       entreprisePortefeuilleEtat: tenant.entreprisePortefeuilleEtat,
       dateDissolution: tenant.dateDissolution,
       liquidateurs: tenant.liquidateurs,
@@ -479,7 +480,7 @@ export class TenantService {
       numeroRegistreCooperatives?: string;
       varianteCooperative?: 'SCOOPS' | 'COOP_CA' | 'PAS_ENCORE_DIT';
       modeAdministrationSa?: 'CONSEIL_ADMINISTRATION' | 'ADMINISTRATEUR_GENERAL' | 'PAS_ENCORE_DIT';
-      associeUniqueSas?: ReponseFait;
+      associeUnique?: ReponseFait;
       entreprisePortefeuilleEtat?: ReponseFait;
       dateDissolution?: string;
       liquidateurs?: string;
@@ -577,13 +578,20 @@ export class TenantService {
           'anonyme (AUSCGIE art. 386 et 414) · la SAS en est exclue par l’art. 853-3.',
       );
     }
+    // L'ASSOCIÉ OU ACTIONNAIRE UNIQUE · la SARL (AUSCGIE art. 309, al. 2), la
+    // SA (art. 385, al. 2) et la SAS (art. 853-2, al. 2) peuvent n'en avoir
+    // qu'un, et la loi n° 23/053, art. 63, al. 2, 1° les vise toutes trois ·
+    // déclaré pour elles seules (paquet 1, C4, décision de Manasse du
+    // 2026-10-09). La désignation « SASU » reste propre à la SAS
+    // (`mentions-societe.ts`) · aucun texte lu n'en donne à la SARL ni à la SA.
     if (
-      dto.associeUniqueSas !== undefined &&
-      dto.associeUniqueSas !== 'PAS_ENCORE_DIT' &&
-      forme !== FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE
+      dto.associeUnique !== undefined &&
+      dto.associeUnique !== 'PAS_ENCORE_DIT' &&
+      !(forme && FORMES_A_ASSOCIE_UNIQUE_DECLARE.includes(forme))
     ) {
       throw new BadRequestException(
-        'La désignation « société par actions simplifiée unipersonnelle » est propre à la SAS (AUSCGIE art. 853-2).',
+        'L’associé ou actionnaire unique se déclare pour une SARL, une SA ou une SAS (AUSCGIE art. 309, 385 et 853-2) · ' +
+          'cette forme n’en a pas.',
       );
     }
     // ENTREPRISE DU PORTEFEUILLE DE L'ÉTAT (O.-L. n° 13/003, art. 112 et
@@ -864,9 +872,9 @@ export class TenantService {
         ...(dto.modeAdministrationSa === undefined
           ? {}
           : { modeAdministrationSa: dto.modeAdministrationSa === 'PAS_ENCORE_DIT' ? null : dto.modeAdministrationSa }),
-        ...(dto.associeUniqueSas === undefined
+        ...(dto.associeUnique === undefined
           ? {}
-          : { associeUniqueSas: dto.associeUniqueSas === 'OUI' ? true : dto.associeUniqueSas === 'NON' ? false : null }),
+          : { associeUnique: dto.associeUnique === 'OUI' ? true : dto.associeUnique === 'NON' ? false : null }),
         ...(dto.entreprisePortefeuilleEtat === undefined
           ? {}
           : {

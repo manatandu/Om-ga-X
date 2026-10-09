@@ -172,27 +172,17 @@ export const COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE =
 
 /**
  * Complément servi quand l'unicité n'est pas déclarée (premier tour de
- * relecture du paquet 1, constat 2) · la SAS dont « Associé unique (SASU) »
- * est encore « pas encore dit ».
+ * relecture du paquet 1, constat 2) · la SARL, la SA ou la SAS dont
+ * « Associé unique » est encore « pas encore dit ».
  */
 export const COMPLEMENT_UNICITE_NON_DECLAREE =
-  "L'unicité de l'associé n'est pas déclarée (Paramètres du dossier, section Immatriculation, « Associé unique (SASU) ») · l'observation ne vaut que si la société n'a qu'un associé ou actionnaire, personne physique.";
-
-/**
- * Complément servi à la SARL et à la SA, dont le dossier ne déclare pas
- * l'unicité (constat 2) · AUSCGIE art. 309, al. 2 (la SARL « peut être
- * instituée par une personne physique ou morale ») et art. 385, al. 2 (la SA
- * « peut ne comprendre qu'un seul actionnaire »).
- */
-export const COMPLEMENT_UNICITE_NON_DECLARABLE =
-  "Le dossier ne déclare pas l'unicité de l'associé d'une SARL ni de l'actionnaire d'une SA (AUSCGIE art. 309, al. 2 et 385, al. 2 la permettent) · l'observation ne vaut que si la société n'a qu'un associé ou actionnaire, personne physique.";
+  "L'unicité de l'associé n'est pas déclarée (Paramètres du dossier, section Immatriculation, « Associé unique ») · l'observation ne vaut que si la société n'a qu'un associé ou actionnaire, personne physique.";
 
 /** Ce que le dossier dit de l'art. 63, al. 2, 1°, et la phrase qui en suit. */
 export type UnipersonnaliteArticle63 =
   | 'ASSOCIE_PERSONNE_PHYSIQUE'
   | 'NATURE_NON_DECLAREE'
-  | 'UNICITE_NON_DECLAREE'
-  | 'UNICITE_NON_DECLARABLE';
+  | 'UNICITE_NON_DECLAREE';
 
 /**
  * QUAND L'OBSERVATION DE L'ART. 63, AL. 2, 1° SE SERT (paquet 1, ligne C,
@@ -206,26 +196,24 @@ export type UnipersonnaliteArticle63 =
  * simplifiée, lorsque cet associé ou cet actionnaire est une personne
  * physique » (loi n° 23/053, art. 63, al. 2, 1°) · DEUX faits, l'unicité et
  * la personne physique. Le dossier en porte deux :
- *  · `associeUniqueSas` · la SAS qui « ne comprend qu'un associé », la SASU
- *    (AUSCGIE art. 853-2, al. 2), propre à la SAS ;
+ *  · `associeUnique` · la SARL, la SA ou la SAS qui n'a qu'un associé ou
+ *    actionnaire (AUSCGIE art. 309, al. 2, 385, al. 2 et 853-2, al. 2),
+ *    déclaré pour les trois depuis la décision de Manasse du 2026-10-09 ;
  *  · `associeUniquePersonneMorale` · tous les titres détenus par un associé
  *    unique PERSONNE MORALE (art. 201, al. 4), pour toute société
  *    commerciale. Sur une SASU déclarée, « non » dit donc que l'associé
  *    unique est une personne physique ; ailleurs il ne dit pas l'unicité.
  *
- * UN SILENCE N'EST PAS UN « NON » (constat 2). C4 ne servait rien à la SARL
- * et à la SA, dont aucun champ ne déclare l'unicité (l'art. 309, al. 2 et
- * l'art. 385, al. 2 de l'AUSCGIE la permettent), ni à la SAS dont l'unicité
- * n'est pas encore dite · la SARL à associé unique personne physique, que
- * l'article nomme le PREMIER, perdait l'observation sans un mot. Elle se sert
- * donc SOUS CONDITION, dite, partout où le dossier ne tranche pas ; rien ne
- * s'en retire que sur un fait DÉCLARÉ qui l'écarte · l'unicité déclarée
- * « non » (SAS) ou l'associé unique déclaré personne morale. Aucun fait n'est
- * créé (la déclaration de l'unicité d'une SARL ou d'une SA reste à Manasse).
+ * UN SILENCE N'EST PAS UN « NON » (constat 2). C4 ne servait rien à la
+ * forme dont l'unicité n'est pas dite · la SARL à associé unique personne
+ * physique, que l'article nomme le PREMIER, perdait l'observation sans un
+ * mot. Elle se sert donc SOUS CONDITION, dite, tant que le dossier ne
+ * tranche pas ; rien ne s'en retire que sur un fait DÉCLARÉ qui l'écarte ·
+ * l'unicité déclarée « non » ou l'associé unique déclaré personne morale.
  */
 export function unipersonnaliteDeLArticle63(t: {
   formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null;
-  associeUniqueSas?: boolean | null;
+  associeUnique?: boolean | null;
   associeUniquePersonneMorale?: boolean | null;
 }): UnipersonnaliteArticle63 | null {
   const forme = t.formeJuridiqueSyscohada;
@@ -239,11 +227,11 @@ export function unipersonnaliteDeLArticle63(t: {
   // L'art. 63 vise la personne physique · un associé unique déclaré personne
   // morale l'écarte, quelle que soit la forme.
   if (t.associeUniquePersonneMorale === true) return null;
-  // Le fait de la SAS posé sur une autre forme ne vaut rien (le service du
-  // dossier le refuse d'ailleurs, AUSCGIE art. 853-2).
-  if (forme !== FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE) return 'UNICITE_NON_DECLARABLE';
-  if (t.associeUniqueSas === false) return null;
-  if (t.associeUniqueSas !== true) return 'UNICITE_NON_DECLAREE';
+  // L'unicité se déclare pour les trois formes depuis la décision de Manasse
+  // du 2026-10-09 (`Tenant.associeUnique`) · plus aucune n'est
+  // « non déclarable ».
+  if (t.associeUnique === false) return null;
+  if (t.associeUnique !== true) return 'UNICITE_NON_DECLAREE';
   return t.associeUniquePersonneMorale === false ? 'ASSOCIE_PERSONNE_PHYSIQUE' : 'NATURE_NON_DECLAREE';
 }
 
@@ -258,8 +246,6 @@ export function observationArticle63(u: UnipersonnaliteArticle63 | null): string
       return `${OBSERVATION_UNIPERSONNELLE_PASSE_F5} ${COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE}`;
     case 'UNICITE_NON_DECLAREE':
       return `${OBSERVATION_UNIPERSONNELLE_PASSE_F5} ${COMPLEMENT_UNICITE_NON_DECLAREE}`;
-    case 'UNICITE_NON_DECLARABLE':
-      return `${OBSERVATION_UNIPERSONNELLE_PASSE_F5} ${COMPLEMENT_UNICITE_NON_DECLARABLE}`;
   }
 }
 
@@ -1592,7 +1578,7 @@ export class FiscaliteService {
     forme: FormeJuridiqueSyscohada | null,
     chiffreAffaires: number,
     chiffresAffairesAnterieurs: number[],
-    faits: { associeUniqueSas?: boolean | null; associeUniquePersonneMorale?: boolean | null } = {},
+    faits: { associeUnique?: boolean | null; associeUniquePersonneMorale?: boolean | null } = {},
   ): { regime: RegimeImposition; observations: string[] } {
     const observations: string[] = [];
     const physique = forme !== null && FORMES_PERSONNES_PHYSIQUES.includes(forme);
@@ -1878,7 +1864,7 @@ export class FiscaliteService {
       tenant.formeJuridiqueSyscohada,
       brut.chiffreAffaires,
       chiffresAffairesAnterieurs,
-      { associeUniqueSas: tenant.associeUniqueSas, associeUniquePersonneMorale: tenant.associeUniquePersonneMorale },
+      { associeUnique: tenant.associeUnique, associeUniquePersonneMorale: tenant.associeUniquePersonneMorale },
     );
     observations.push(...this.avertissementsReportDeficitaire(deficitAnterieur));
     // C15 · le déficit d'avant la loi se dit dans la vue qui l'IMPUTE, pas

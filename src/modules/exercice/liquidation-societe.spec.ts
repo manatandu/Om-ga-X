@@ -191,7 +191,7 @@ describe('Liquidation · câblée au planning de clôture', () => {
           formeJuridique: 'ASSOCIATION',
           formeJuridiqueSyscohada: FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE,
           droitEtranger: false,
-          associeUniqueSas: null,
+          associeUnique: null,
           entreprisePortefeuilleEtat: null,
           dateDissolution: base.dateDissolution,
           dateNominationLiquidateur: base.dateNominationLiquidateur,

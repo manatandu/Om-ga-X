@@ -59,6 +59,18 @@ export const FORMES_SOCIETES_COMMERCIALES: FormeJuridiqueSyscohada[] = [
   FormeJuridiqueSyscohada.SOCIETE_COMMANDITE_SIMPLE,
 ];
 
+/**
+ * Les formes qui peuvent n'avoir qu'un associé ou actionnaire, et pour
+ * lesquelles le dossier le DÉCLARE (`Tenant.associeUnique`) · SARL (AUSCGIE
+ * art. 309, al. 2), SA (art. 385, al. 2), SAS (art. 853-2, al. 2) · celles que
+ * vise la loi n° 23/053, art. 63, al. 2, 1° (paquet 1, C4).
+ */
+export const FORMES_A_ASSOCIE_UNIQUE_DECLARE: FormeJuridiqueSyscohada[] = [
+  FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE,
+  FormeJuridiqueSyscohada.SOCIETE_ANONYME,
+  FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE,
+];
+
 const FORME_SOCIALE: Partial<Record<FormeJuridiqueSyscohada, string>> = {
   SOCIETE_ANONYME: 'Société anonyme',
   SOCIETE_PAR_ACTIONS_SIMPLIFIEE: 'Société par actions simplifiée',
@@ -127,7 +139,7 @@ export interface IdentiteSociete {
   /** AUSCGIE art. 386 et 414 · SA seule ; null ou absent, pas encore dit. */
   modeAdministrationSa?: 'CONSEIL_ADMINISTRATION' | 'ADMINISTRATEUR_GENERAL' | null;
   /** AUSCGIE art. 853-2 al. 2 · SAS seule ; null ou absent, pas encore dit. */
-  associeUniqueSas?: boolean | null;
+  associeUnique?: boolean | null;
   /** AUSCGIE art. 203 et 204, AUSCOOP art. 183 · null tant qu'aucune dissolution n'est déclarée. */
   dateDissolution?: Date | null;
   liquidateurs?: string | null;
@@ -170,7 +182,7 @@ export const SELECT_IDENTITE_SOCIETE = {
   numeroRegistreCooperatives: true,
   varianteCooperative: true,
   modeAdministrationSa: true,
-  associeUniqueSas: true,
+  associeUnique: true,
   dateDissolution: true,
   liquidateurs: true,
   associeUniquePersonneMorale: true,
@@ -229,8 +241,8 @@ export function mentionsArticle17(t: IdentiteSociete): MentionsSociete {
     else manquantes.push('mode d’administration de la société anonyme (AUSCGIE art. 386 et 414)');
   }
   if (t.formeJuridiqueSyscohada === FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE) {
-    if (t.associeUniqueSas === true) forme = 'Société par actions simplifiée unipersonnelle';
-    else if (t.associeUniqueSas !== false) manquantes.push('associé unique ou non (AUSCGIE art. 853-2)');
+    if (t.associeUnique === true) forme = 'Société par actions simplifiée unipersonnelle';
+    else if (t.associeUnique !== false) manquantes.push('associé unique ou non (AUSCGIE art. 853-2)');
   }
   // Art. 269-2 · « si la société use de la faculté accordée par l'article
   // 269-1 », que seules la SA et la SAS ont. Un drapeau hérité sur une autre

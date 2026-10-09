@@ -304,7 +304,7 @@ describe('les cotisations spéciales prennent la place de la déclaration annuel
           formeJuridique: 'ASSOCIATION',
           formeJuridiqueSyscohada: FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE,
           droitEtranger: false,
-          associeUniqueSas: null,
+          associeUnique: null,
           entreprisePortefeuilleEtat: false,
           dateDissolution: DISSOLUTION,
           dateNominationLiquidateur: null,

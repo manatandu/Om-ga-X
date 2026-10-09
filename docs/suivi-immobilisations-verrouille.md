@@ -207,9 +207,10 @@ Manasse (« on verra ça plus tard », 2026-10-03).
     tardif conclut « rien ajouté » ; la mention aux états ne vise que la
     colonne N du tableau des flux ; la bulle « Bilan d'ouverture importé » du
     cadre de déclaration garde son texte général.
-  - **A6 · compte 130** (« Résultat en instance d'affectation ») · le corpus
-    ne tranche pas, question pour Manasse ; aucun geste ne passe le résultat
-    au 130 à la réouverture.
+  - **A6 · compte 130** (« Résultat en instance d'affectation ») · TRANCHÉ
+    par Manasse le 2026-10-09 et codé · lu dans le résultat au bilan (CJ,
+    SP2), soldé par l'affectation. Reste · aucun geste ne PROPOSE de virer le
+    résultat au 130 à la réouverture (le cabinet le passe à la main).
   - **A3 · proposition** · bilans et comptes de résultat des cinq jeux, et
     tableau des flux SYSCOHADA, servent encore des zéros en colonne N-1 quand
     l'exercice précédent est ouvert sans écriture ; pour le bilan, l'art. 34

@@ -266,7 +266,7 @@ export function ParametresDossierPage() {
         p.associeUniquePersonneMorale === true ? 'OUI' : p.associeUniquePersonneMorale === false ? 'NON' : 'PAS_ENCORE_DIT',
       );
       setModeAdministration(p.modeAdministrationSa ?? 'PAS_ENCORE_DIT');
-      setAssocieUnique(p.associeUniqueSas === true ? 'OUI' : p.associeUniqueSas === false ? 'NON' : 'PAS_ENCORE_DIT');
+      setAssocieUnique(p.associeUnique === true ? 'OUI' : p.associeUnique === false ? 'NON' : 'PAS_ENCORE_DIT');
       setPortefeuille(
         p.entreprisePortefeuilleEtat === true ? 'OUI' : p.entreprisePortefeuilleEtat === false ? 'NON' : 'PAS_ENCORE_DIT',
       );
@@ -823,7 +823,7 @@ export function ParametresDossierPage() {
                     locataireGerantFonds: locataireGerant,
                     ...faitsDeLaFormeAEnvoyer(params?.formeJuridiqueSyscohada, {
                       modeAdministrationSa: modeAdministration,
-                      associeUniqueSas: associeUnique,
+                      associeUnique: associeUnique,
                       dateDissolution,
                       liquidateurs,
                       dateNominationLiquidateur: dateNomination,
@@ -839,7 +839,7 @@ export function ParametresDossierPage() {
                     locataireGerantFonds: locataireGerant,
                     ...faitsDeLaFormeAEnvoyer(params?.formeJuridiqueSyscohada, {
                       modeAdministrationSa: modeAdministration,
-                      associeUniqueSas: associeUnique,
+                      associeUnique: associeUnique,
                       dateDissolution,
                       liquidateurs,
                       dateNominationLiquidateur: dateNomination,
@@ -1380,13 +1380,13 @@ export function ParametresDossierPage() {
                     </>
                   )}
                   {!estSycebnl && faitsDeLaForme(params?.formeJuridiqueSyscohada).associeUnique && (
-                    <Ligne label="Associé unique (SASU)">
+                    <Ligne label="Associé unique">
                       <select
                         value={associeUnique}
                         onChange={(e) => setAssocieUnique(e.target.value as ReponseFaitSaisie)}
                         disabled={!estAdmin || envoi}
-                        aria-label="Associé unique (SASU)"
-                        title="AUSCGIE art. 853-2 al. 2 · « société par actions simplifiée unipersonnelle » ou « SASU » ; art. 853-11 al. 4 · l’associé unique approuve seul les comptes"
+                        aria-label="Associé unique"
+                        title="Un seul associé ou actionnaire · SARL (AUSCGIE art. 309, al. 2), SA (art. 385, al. 2), SAS (art. 853-2, al. 2, désignée « SASU » ; art. 853-11, al. 4 · l’associé unique approuve seul les comptes). La loi n° 23/053, art. 63, al. 2, 1° vise l’associé unique personne physique des trois."
                         className={champSage}
                       >
                         <option value="PAS_ENCORE_DIT">Pas encore dit</option>

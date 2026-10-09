@@ -341,7 +341,7 @@ describe('Le service · la contre-proposition ne naît que d’un rejet', () => 
 
 describe('Le service · la sélection du dossier porte les faits de la dénomination', () => {
   it('une SASU déclarée imprime « unipersonnelle » et ne voit plus l’associé unique dans ses manques (AUSCGIE art. 853-2)', async () => {
-    const { svc, create } = service({ dossier: { formeJuridiqueSyscohada: 'SOCIETE_PAR_ACTIONS_SIMPLIFIEE', associeUniqueSas: true } });
+    const { svc, create } = service({ dossier: { formeJuridiqueSyscohada: 'SOCIETE_PAR_ACTIONS_SIMPLIFIEE', associeUnique: true } });
     await svc.emettre('t', dto() as never);
     const recopie = ((create.mock.calls[0][0] as Faux).data as Faux).mentionsSocieteEmetteur as Faux;
     expect(recopie.ligne).toBe('Société par actions simplifiée unipersonnelle');

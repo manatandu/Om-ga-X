@@ -1031,13 +1031,13 @@ describe('jalon de déclaration des revenus · réserve de l’art. 57 quater, a
  * associé unique déclaré.
  */
 describe('recensement · capital à l’affectation et associé unique de la SAS', () => {
-  const contexte = (forme: FormeJuridiqueSyscohada, associeUniqueSas?: boolean | null) =>
+  const contexte = (forme: FormeJuridiqueSyscohada, associeUnique?: boolean | null) =>
     jalonsApplicables({
       referentiel: Referentiel.SYSCOHADA,
       formeJuridique: FormeJuridiqueEbnl.ASSOCIATION,
       formeJuridiqueSyscohada: forme,
       droitEtranger: false,
-      associeUniqueSas,
+      associeUnique,
     });
 
   it('O1b D2 · SA, SAS et SARL lisent l’avertissement de la fenêtre d’affectation, les autres formes rien', () => {

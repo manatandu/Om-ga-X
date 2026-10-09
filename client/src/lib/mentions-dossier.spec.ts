@@ -149,23 +149,26 @@ describe('Paramètres du dossier · l’enregistrement au ministère du secteur 
 describe('Paramètres du dossier · les faits de la dénomination, forme par forme', () => {
   const saisie = {
     modeAdministrationSa: 'CONSEIL_ADMINISTRATION' as const,
-    associeUniqueSas: 'OUI' as const,
+    associeUnique: 'OUI' as const,
     dateDissolution: '2026-06-30',
     liquidateurs: 'M. Liquidateur',
   };
 
   it('chaque fait ne part qu’à la forme qui le porte (AUSCGIE art. 204, 386, 853-2 · AUSCOOP art. 183)', () => {
+    // L'associé unique part aussi d'une SA et d'une SARL (paquet 1, C4, décision de Manasse du 2026-10-09).
     expect(faitsDeLaFormeAEnvoyer('SOCIETE_ANONYME', saisie)).toEqual({
       modeAdministrationSa: 'CONSEIL_ADMINISTRATION',
+      associeUnique: 'OUI',
       dateDissolution: '2026-06-30',
       liquidateurs: 'M. Liquidateur',
     });
     expect(faitsDeLaFormeAEnvoyer('SOCIETE_PAR_ACTIONS_SIMPLIFIEE', saisie)).toEqual({
-      associeUniqueSas: 'OUI',
+      associeUnique: 'OUI',
       dateDissolution: '2026-06-30',
       liquidateurs: 'M. Liquidateur',
     });
     expect(faitsDeLaFormeAEnvoyer('SOCIETE_RESPONSABILITE_LIMITEE', saisie)).toEqual({
+      associeUnique: 'OUI',
       dateDissolution: '2026-06-30',
       liquidateurs: 'M. Liquidateur',
     });
@@ -185,6 +188,7 @@ describe('Paramètres du dossier · les faits de la dénomination, forme par for
       dateDeclarationCotisationLiquidation: '',
     };
     expect(faitsDeLaFormeAEnvoyer('SOCIETE_RESPONSABILITE_LIMITEE', dates)).toEqual({
+      associeUnique: 'OUI',
       dateDissolution: '2026-06-30',
       liquidateurs: 'M. Liquidateur',
       dateClotureLiquidation: '2027-09-30',
@@ -250,7 +254,7 @@ describe('Paramètres du dossier · le numéro CNSS de l’employeur sous ses de
 describe('Paramètres du dossier · la liquidation d’une société commerciale (décision du 2026-10-04, point 4)', () => {
   const saisie = {
     modeAdministrationSa: 'PAS_ENCORE_DIT' as const,
-    associeUniqueSas: 'PAS_ENCORE_DIT' as const,
+    associeUnique: 'PAS_ENCORE_DIT' as const,
     dateDissolution: '2026-05-31',
     liquidateurs: 'M. Liquidateur',
     dateNominationLiquidateur: '2026-06-15',
@@ -260,6 +264,7 @@ describe('Paramètres du dossier · la liquidation d’une société commerciale
 
   it('nomination et régime partent aussi à la coopérative (AUSCOOP art. 185 et 196) · l’associé unique personne morale, à une société commerciale seule', () => {
     expect(faitsDeLaFormeAEnvoyer('SOCIETE_RESPONSABILITE_LIMITEE', saisie)).toEqual({
+      associeUnique: 'PAS_ENCORE_DIT',
       dateDissolution: '2026-05-31',
       liquidateurs: 'M. Liquidateur',
       dateNominationLiquidateur: '2026-06-15',

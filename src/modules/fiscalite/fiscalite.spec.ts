@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { FormeJuridiqueSyscohada, Prisma, Referentiel, SensRetraitementFiscal, TypeCompteDetailTotal } from '@prisma/client';
 import {
   COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE,
-  COMPLEMENT_UNICITE_NON_DECLARABLE,
   COMPLEMENT_UNICITE_NON_DECLAREE,
   FiscaliteService,
   arrondirImpotArt150,
@@ -1047,9 +1046,7 @@ describe('passe F5 · observations du Titre 3', () => {
         ? 'NATURE'
         : obs.some((o) => o.includes(COMPLEMENT_UNICITE_NON_DECLAREE))
           ? 'UNICITE'
-          : obs.some((o) => o.includes(COMPLEMENT_UNICITE_NON_DECLARABLE))
-            ? 'UNICITE_NON_DECLARABLE'
-            : null;
+          : null;
       return [r.regime, obs.length, condition];
     };
     const F = FormeJuridiqueSyscohada;
@@ -1059,21 +1056,28 @@ describe('passe F5 · observations du Titre 3', () => {
       sarlNonPm: await lire(F.SOCIETE_RESPONSABILITE_LIMITEE, { associeUniquePersonneMorale: false }),
       saSansFait: await lire(F.SOCIETE_ANONYME),
       saAssociePm: await lire(F.SOCIETE_ANONYME, { associeUniquePersonneMorale: true }),
-      sasUniciteNonDite: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: null }),
-      sasUniciteNonDitePm: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: null, associeUniquePersonneMorale: true }),
-      sasPluripersonnelle: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: false }),
-      sasuNatureNonDite: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: true, associeUniquePersonneMorale: null }),
-      sasuPersonnePhysique: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: true, associeUniquePersonneMorale: false }),
-      sasuPersonneMorale: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: true, associeUniquePersonneMorale: true }),
+      // Paquet 1, C4, décision de Manasse du 2026-10-09 · l'unicité se déclare aussi pour la SARL et la SA.
+      sarlPluripersonnelle: await lire(F.SOCIETE_RESPONSABILITE_LIMITEE, { associeUnique: false }),
+      sarluPersonnePhysique: await lire(F.SOCIETE_RESPONSABILITE_LIMITEE, { associeUnique: true, associeUniquePersonneMorale: false }),
+      sauNatureNonDite: await lire(F.SOCIETE_ANONYME, { associeUnique: true }),
+      sasUniciteNonDite: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUnique: null }),
+      sasUniciteNonDitePm: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUnique: null, associeUniquePersonneMorale: true }),
+      sasPluripersonnelle: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUnique: false }),
+      sasuNatureNonDite: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUnique: true, associeUniquePersonneMorale: null }),
+      sasuPersonnePhysique: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUnique: true, associeUniquePersonneMorale: false }),
+      sasuPersonneMorale: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUnique: true, associeUniquePersonneMorale: true }),
       snc: await lire(F.SOCIETE_NOM_COLLECTIF),
     }).toEqual({
-      // L'unicité d'une SARL ou d'une SA ne se déclare pas · servie, sous condition.
-      sarlSansFait: ['IMPOT_SOCIETES', 1, 'UNICITE_NON_DECLARABLE'],
+      // L'unicité non dite · servie, sous condition.
+      sarlSansFait: ['IMPOT_SOCIETES', 1, 'UNICITE'],
       sarlAssociePm: ['IMPOT_SOCIETES', 0, null],
       // « Non personne morale » ne dit pas qu'elle est unipersonnelle · la condition reste.
-      sarlNonPm: ['IMPOT_SOCIETES', 1, 'UNICITE_NON_DECLARABLE'],
-      saSansFait: ['IMPOT_SOCIETES', 1, 'UNICITE_NON_DECLARABLE'],
+      sarlNonPm: ['IMPOT_SOCIETES', 1, 'UNICITE'],
+      saSansFait: ['IMPOT_SOCIETES', 1, 'UNICITE'],
       saAssociePm: ['IMPOT_SOCIETES', 0, null],
+      sarlPluripersonnelle: ['IMPOT_SOCIETES', 0, null],
+      sarluPersonnePhysique: ['IMPOT_SOCIETES', 1, null],
+      sauNatureNonDite: ['IMPOT_SOCIETES', 1, 'NATURE'],
       sasUniciteNonDite: ['IMPOT_SOCIETES', 1, 'UNICITE'],
       sasUniciteNonDitePm: ['IMPOT_SOCIETES', 0, null],
       sasPluripersonnelle: ['IMPOT_SOCIETES', 0, null],
@@ -1085,15 +1089,15 @@ describe('passe F5 · observations du Titre 3', () => {
   });
 
   it('les deux conditions disent la même chose, l’unicité ET la personne physique', () => {
-    for (const complement of [COMPLEMENT_UNICITE_NON_DECLAREE, COMPLEMENT_UNICITE_NON_DECLARABLE]) {
+    for (const complement of [COMPLEMENT_UNICITE_NON_DECLAREE]) {
       expect(complement).toContain("ne vaut que si la société n'a qu'un associé ou actionnaire, personne physique");
     }
   });
 
   it('unipersonnaliteDeLArticle63 · la règle seule, forme par forme', () => {
     const F = FormeJuridiqueSyscohada;
-    const u = (formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null, associeUniqueSas?: boolean | null, associeUniquePersonneMorale?: boolean | null) =>
-      unipersonnaliteDeLArticle63({ formeJuridiqueSyscohada, associeUniqueSas, associeUniquePersonneMorale });
+    const u = (formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null, associeUnique?: boolean | null, associeUniquePersonneMorale?: boolean | null) =>
+      unipersonnaliteDeLArticle63({ formeJuridiqueSyscohada, associeUnique, associeUniquePersonneMorale });
     expect([
       u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, true, false),
       u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, true, null),
@@ -1102,12 +1106,12 @@ describe('passe F5 · observations du Titre 3', () => {
       u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, false, false),
       u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, null, false),
       u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, undefined, null),
-      // Le fait de la SAS posé sur une autre forme ne vaut rien (le service
-      // du dossier le refuse d'ailleurs, AUSCGIE art. 853-2) · l'unicité d'une
-      // SA ou d'une SARL reste non déclarable.
+      // La SA et la SARL déclarent leur unicité comme la SAS (paquet 1, C4).
       u(F.SOCIETE_ANONYME, true, false),
       u(F.SOCIETE_RESPONSABILITE_LIMITEE, true, false),
       u(F.SOCIETE_RESPONSABILITE_LIMITEE, false, true),
+      u(F.SOCIETE_RESPONSABILITE_LIMITEE, false, false),
+      u(F.SOCIETE_ANONYME, null, null),
       u(F.SOCIETE_NOM_COLLECTIF, true, false),
       u(null, true, false),
     ]).toEqual([
@@ -1118,9 +1122,11 @@ describe('passe F5 · observations du Titre 3', () => {
       null,
       'UNICITE_NON_DECLAREE',
       'UNICITE_NON_DECLAREE',
-      'UNICITE_NON_DECLARABLE',
-      'UNICITE_NON_DECLARABLE',
+      'ASSOCIE_PERSONNE_PHYSIQUE',
+      'ASSOCIE_PERSONNE_PHYSIQUE',
       null,
+      null,
+      'UNICITE_NON_DECLAREE',
       null,
       null,
     ]);

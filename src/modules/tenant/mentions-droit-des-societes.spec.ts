@@ -43,7 +43,7 @@ describe('SA · le mode d’administration fait partie de la forme (art. 386 et 
     const m = mentionsArticle17({
       ...base,
       formeJuridiqueSyscohada: FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE,
-      associeUniqueSas: false,
+      associeUnique: false,
     });
     expect(m.manquantes).toEqual([]);
   });
@@ -53,13 +53,13 @@ describe('SAS · l’associé unique fait une SASU (art. 853-2, al. 2)', () => {
   const sas = { ...base, formeJuridiqueSyscohada: FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE as FormeJuridiqueSyscohada | null };
 
   it('« société par actions simplifiée unipersonnelle » quand l’associé est unique', () => {
-    expect(mentionsArticle17({ ...sas, associeUniqueSas: true }).ligne).toMatch(
+    expect(mentionsArticle17({ ...sas, associeUnique: true }).ligne).toMatch(
       /^Société par actions simplifiée unipersonnelle · /,
     );
   });
 
   it('pas encore dit · la ligne ne change pas, le manque se dit', () => {
-    const m = mentionsArticle17({ ...sas, associeUniqueSas: null });
+    const m = mentionsArticle17({ ...sas, associeUnique: null });
     expect(m.ligne).toMatch(/^Société par actions simplifiée · /);
     expect(m.manquantes).toContain('associé unique ou non (AUSCGIE art. 853-2)');
   });
@@ -175,10 +175,19 @@ describe('Les faits de la dénomination se déclarent à la route, chacun à sa 
     expect(capture.data!.modeAdministrationSa).toBe('ADMINISTRATEUR_GENERAL');
   });
 
-  it('l’associé unique n’est reçu que d’une SAS', async () => {
+  it('l’associé unique est reçu d’une SARL, d’une SA ou d’une SAS, et d’elles seules (paquet 1, C4)', async () => {
+    for (const forme of [
+      FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE,
+      FormeJuridiqueSyscohada.SOCIETE_ANONYME,
+      FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE,
+    ]) {
+      const capture: { data?: Record<string, unknown> } = {};
+      await service(forme, capture).modifierIdentite('t1', { associeUnique: 'OUI' });
+      expect(capture.data!.associeUnique).toBe(true);
+    }
     await expect(
-      service(FormeJuridiqueSyscohada.SOCIETE_ANONYME).modifierIdentite('t1', { associeUniqueSas: 'OUI' }),
-    ).rejects.toThrow(/art\. 853-2/);
+      service(FormeJuridiqueSyscohada.SOCIETE_NOM_COLLECTIF).modifierIdentite('t1', { associeUnique: 'OUI' }),
+    ).rejects.toThrow(/SARL, une SA ou une SAS/);
   });
 
   it('la dissolution d’une société commerciale se déclare, jamais dans le futur', async () => {

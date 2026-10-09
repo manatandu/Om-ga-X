@@ -438,10 +438,12 @@ model Tenant {
   // pas encore dit, jamais présumé · les statuts le choisissent « de manière
   // non équivoque ». Propre à la SA · la SAS en est exclue (art. 853-3).
   modeAdministrationSa              ModeAdministrationSa?
-  // AUSCGIE art. 853-2 al. 2 · une SAS qui ne comprend qu'un associé est
-  // désignée « société par actions simplifiée unipersonnelle » ou « SASU ».
-  // null = pas encore dit ; propre à la SAS.
-  associeUniqueSas                  Boolean?
+  // L'ASSOCIÉ OU ACTIONNAIRE UNIQUE · SARL (AUSCGIE art. 309, al. 2), SA
+  // (art. 385, al. 2), SAS (art. 853-2, al. 2, désignée « SASU »). null = pas
+  // encore dit. Déclaré pour les trois depuis la décision de Manasse du
+  // 2026-10-09 (paquet 1, C4, loi n° 23/053, art. 63, al. 2, 1°) ; la colonne
+  // garde son nom d'origine (SAS seule jusque-là), aucune migration.
+  associeUnique                     Boolean? @map("associeUniqueSas")
   // ENTREPRISE RELEVANT DU PORTEFEUILLE DE L'ÉTAT · O.-L. n° 13/003, art. 112
   // et 113 ; loi n° 08/010, art. 3 (« toute société dans laquelle l'État ou
   // toute personne morale de droit public détient la totalité des actions ou
