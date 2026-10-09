@@ -737,3 +737,11 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   versement » ; aucun montant ni aucune écriture n'est touché (vu sur la
   capture du parcours `e2e/tests/saisie-par-piece.e2e.ts`). Mineur, hors du
   gel tant que Manasse ne le met pas dans la liste.
+- 2026-10-09 · comptes personnalisés (demande de Manasse, à discuter avant
+  tout code, hors du gel) · les écritures n'admettraient que les comptes
+  personnalisés du dossier ; chaque journal de banque ou de caisse rattaché à
+  son compte personnalisé (le `compteTresorerieId` du journal existe déjà) ;
+  chaque tiers rattaché à son compte (le compte individuel né avec le tiers,
+  point 13, existe déjà) ; une place pour le compte de tiers dans l'écriture
+  d'achat, de vente ou autre ; un tiers qui a une avance (409, 419) porte un
+  second compte à lui, rattaché, pour le suivi.

@@ -8,6 +8,9 @@ import { LicenceService } from './licence.service';
  * Restent hors d'elle, à dessein · la console de l'opérateur, la restitution
  * du dossier et les sauvegardes sur site (CLAUDE.md § 8).
  */
+/** Ce qu'un dossier en lecture seule admet · ni POST, ni PUT, ni PATCH, ni DELETE. */
+const METHODES_DE_LECTURE = new Set(['GET', 'HEAD']);
+
 @Injectable()
 export class LicenceGuard implements CanActivate {
   constructor(private readonly licenceService: LicenceService) {}
@@ -23,12 +26,21 @@ export class LicenceGuard implements CanActivate {
     // Licence préchargée par JwtStrategy (le cas normal) : évaluation pure,
     // zéro requête. Un request.user construit sans elle (tests, appels
     // internes) retombe sur la lecture directe.
-    const { autorise, motif } =
+    const { autorise, motif, lectureSeule } =
       request.user.licence !== undefined
         ? this.licenceService.evaluerLicence(request.user.licence)
         : await this.licenceService.estAccesAutorise(tenantId);
     if (!autorise) {
-      throw new ForbiddenException(motif ?? 'Accès refusé : licence invalide');
+      // ABONNEMENT ÉCHU · le dossier se CONSULTE (lectures, impressions,
+      // exports servis en GET), rien ne s'y écrit. Le refus d'une écriture le
+      // dit, pour que le client sache quoi faire.
+      if (lectureSeule && METHODES_DE_LECTURE.has(String(request.method).toUpperCase())) return true;
+      throw new ForbiddenException(
+        lectureSeule
+          ? `${motif} · le dossier est en lecture seule : consultation et impression possibles, aucune modification ` +
+              "jusqu'au renouvellement de l'abonnement."
+          : (motif ?? 'Accès refusé : licence invalide'),
+      );
     }
 
     return true;

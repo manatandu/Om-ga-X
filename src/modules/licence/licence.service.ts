@@ -29,7 +29,7 @@ export class LicenceService {
     @Optional() private readonly surSite?: LicenceSurSiteService,
   ) {}
 
-  async estAccesAutorise(tenantId: string): Promise<{ autorise: boolean; motif?: string }> {
+  async estAccesAutorise(tenantId: string): Promise<{ autorise: boolean; motif?: string; lectureSeule?: boolean }> {
     const licence = await this.prisma.licence.findUnique({ where: { tenantId } });
     return this.evaluerLicence(licence);
   }
@@ -40,7 +40,7 @@ export class LicenceService {
    * l'utilisateur (le cas de toute requête HTTP normale) ; estAccesAutorise
    * reste la voie de service pour les appels qui partent d'un tenantId seul.
    */
-  evaluerLicence(licence: Licence | null): { autorise: boolean; motif?: string } {
+  evaluerLicence(licence: Licence | null): { autorise: boolean; motif?: string; lectureSeule?: boolean } {
     // SUR SITE, UNE SEULE LICENCE POUR TOUTE L'INSTALLATION · le fichier
     // signé décide, avant et à la place de la ligne du dossier. Une ligne
     // PROPRIETAIRE ou ABONNEMENT arrivée par une restauration de sauvegarde
@@ -78,7 +78,12 @@ export class LicenceService {
     switch (licence.type) {
       case TypeLicence.ABONNEMENT: {
         if (licence.dateExpiration && licence.dateExpiration < new Date()) {
-          return { autorise: false, motif: 'Abonnement expiré' };
+          // LECTURE SEULE (décision de Manasse du 2026-10-09, « Lecture
+          // simple », comme QuickBooks) · le client d'un abonnement échu garde
+          // la consultation de ses propres livres, rien ne s'y écrit plus
+          // (`LicenceGuard`). Une licence SUSPENDUE, geste de l'opérateur,
+          // reste fermée en entier.
+          return { autorise: false, motif: 'Abonnement expiré', lectureSeule: true };
         }
         return { autorise: true };
       }
