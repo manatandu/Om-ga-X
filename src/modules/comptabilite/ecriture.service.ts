@@ -2991,6 +2991,10 @@ export class EcritureService {
     const parCle = new Map<string, LigneAgee>();
     // Les comptes de chaque ligne, pour lire son sens normal (`ligneVentilee`).
     const comptesDeLaCle = new Map<string, Set<string>>();
+    // Les pièces ouvertes de chaque ligne · deux ou plus qui se compensent font
+    // une ligne au solde nul, gardée même quand elles tombent dans la même
+    // tranche (relecture du paquet 1, mineur 5).
+    const piecesOuvertes = new Map<string, number>();
     for (const l of lignes) {
       const net = poidsOuMontant(poids, l);
       if (Math.abs(net) < 0.005) continue;
@@ -3021,12 +3025,23 @@ export class EcritureService {
       const comptes = comptesDeLaCle.get(cle) ?? new Set<string>();
       comptes.add(l.compte.numero);
       comptesDeLaCle.set(cle, comptes);
+      piecesOuvertes.set(cle, (piecesOuvertes.get(cle) ?? 0) + 1);
     }
 
     const arrondir = (x: number) => Math.round(x * 100) / 100;
+    // UNE LIGNE QUI PORTE DEUX PIÈCES OUVERTES RESTE, MÊME À SOLDE NUL
+    // (relecture « échecs silencieux » du paquet 1, mineur 5) · le filtre ne
+    // gardait une ligne à solde nul que si une tranche restait non nulle ; une
+    // facture et son règlement non lettrés dans la MÊME tranche s'y annulaient,
+    // et le tiers sortait de l'état sans un mot, quand B3 le rend à part.
     const toutes = [...parCle.values()]
       .map((c) => ({ ...c, montants: c.montants.map(arrondir), solde: arrondir(c.solde) }))
-      .filter((c) => Math.abs(c.solde) >= 0.005 || c.montants.some((m) => Math.abs(m) >= 0.005));
+      .filter(
+        (c) =>
+          Math.abs(c.solde) >= 0.005 ||
+          c.montants.some((m) => Math.abs(m) >= 0.005) ||
+          (piecesOuvertes.get(c.cle) ?? 0) >= 2,
+      );
 
     // TROIS POPULATIONS, chacune son total · les débiteurs et les créditeurs
     // VENTILÉS (sens normal du périmètre, `ligneVentilee`), et les soldes en
@@ -3042,8 +3057,9 @@ export class EcritureService {
     // ne disent ni retard ni avance. Rangées parmi les soldes en sens
     // inverse, elles s'y lisaient comme un client créditeur ou un
     // fournisseur débiteur, sous un titre faux. Elles sont rendues à part,
-    // sans tranches et hors de tout total, avec ce qu'elles appellent · un
-    // lettrage.
+    // sans tranches et hors de tout total, sous un titre NEUTRE (mineur 5) ·
+    // « à lettrer » était faux d'un tiers dont la dette au 401 compense la
+    // créance au 411 · deux comptes ne se lettrent pas entre eux.
     const soldeNul = (c: LigneAgee) => Math.abs(c.solde) < 0.005;
     const soldesNuls = toutes
       .filter(soldeNul)

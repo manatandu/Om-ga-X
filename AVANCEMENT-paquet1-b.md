@@ -387,6 +387,22 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN3`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
   montants dans la devise, la fiche en francs, aucun cours choisi.
 - APRÈS · MIN4 (4 contrôles), B10 et MIN3 · 13 contrôles, 13 concordances.
 
+### Mineur 5 · les soldes nuls · titre neutre, ligne gardée dans la même tranche
+
+- Vérifié · le filtre de `balanceAgee` ne gardait une ligne à solde nul que
+  si une tranche restait non nulle · une facture et son règlement non
+  lettrés dans la MÊME tranche s'y annulaient, et le tiers sortait de l'état ;
+  le titre « à lettrer » (écran, classeur, aide) était faux d'un tiers dont la
+  dette au 401 compense la créance au 411.
+- AVANT (main et copie) · MIN5 · C55 (facture de 500 000 le 10/02/2027,
+  règlement de 500 000 le 20/02, non lettrés) absent de l'état au 01/03/2027.
+- Correction · les pièces ouvertes sont comptées par ligne de l'état ; une
+  ligne qui en porte deux reste, rendue avec les soldes nuls ; titre
+  « Soldes nuls · pièces ouvertes qui se compensent » (écran, classeur),
+  l'aide dit qu'une dette et une créance sur deux comptes se compensent sans
+  se lettrer.
+- APRÈS · MIN5 et B3 · 8 contrôles, 8 concordances.
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,

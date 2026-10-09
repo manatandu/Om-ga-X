@@ -132,7 +132,7 @@ describe('TableauBalanceAgee · la structure d’un tableau', () => {
       'Soldes débiteurs',
       'Soldes créditeurs',
       'Soldes en sens inverse · non ventilés par antériorité',
-      'Soldes nuls · pièces ouvertes qui se compensent, à lettrer',
+      'Soldes nuls · pièces ouvertes qui se compensent',
     ]);
     for (const r of intercalaires) expect(r.enfants[0].attributs['aria-colspan']).toBe(String(nbColonnes));
   });

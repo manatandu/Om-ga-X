@@ -348,6 +348,29 @@ describe('balance âgée · les périmètres et ce que l’antériorité y signi
     }
   });
 
+  /**
+   * Relecture « échecs silencieux » du paquet 1, mineur 5 · une facture et
+   * son règlement non lettrés dans la MÊME tranche · ses tranches valent zéro
+   * comme son solde, et le filtre retirait le tiers de l'état sans un mot.
+   */
+  it('deux pièces ouvertes qui se compensent dans la même tranche restent rendues avec les soldes nuls (mineur 5)', async () => {
+    const r = await requete('CLIENTS_41', [
+      ligneEcriture('411055', 500_000, 0, '2025-12-05', '2025-12-02'),
+      ligneEcriture('411055', 0, 500_000, '2025-12-20', '2025-12-20'),
+      ligneEcriture('411056', 300_000, 0, '2025-12-28', '2025-12-28'),
+    ]);
+    expect(r.soldesNuls.map((l) => l.numero)).toEqual(['411055']);
+    expect(r.debiteurs.map((l) => l.numero)).toEqual(['411056']);
+    expect(r.totaux.net).toBe(300_000);
+  });
+
+  it('une seule pièce, au net nul par son poids, ne fait pas de ligne', async () => {
+    // Une ligne à zéro (débit et crédit nuls) n'est pas une pièce ouverte.
+    const r = await requete('CLIENTS_41', [ligneEcriture('411057', 0, 0, '2025-12-05', '2025-12-05')]);
+    expect(r.soldesNuls).toHaveLength(0);
+    expect(r.debiteurs).toHaveLength(0);
+  });
+
   it('un solde nul ne se ventile jamais, quel que soit le périmètre', () => {
     for (const sens of ['DEBITEUR', 'CREDITEUR', 'LES_DEUX', 'SELON_LE_COMPTE'] as const) {
       expect(ligneVentilee(sens, ['401001'], 0)).toBe(false);

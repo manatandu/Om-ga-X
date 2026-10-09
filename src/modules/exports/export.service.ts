@@ -1217,7 +1217,7 @@ export class ExportService {
     // qu'elles appellent.
     if ((etat.soldesNuls ?? []).length > 0) {
       const separateur = feuille.addRow([]);
-      separateur.getCell(1).value = 'SOLDES NULS · pièces ouvertes qui se compensent, à lettrer';
+      separateur.getCell(1).value = 'SOLDES NULS · pièces ouvertes qui se compensent';
       separateur.font = { size: 9, italic: true };
       for (const l of etat.soldesNuls) {
         const r = feuille.addRow([]);

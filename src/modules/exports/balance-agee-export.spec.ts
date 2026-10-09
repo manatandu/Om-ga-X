@@ -157,7 +157,7 @@ describe('balance âgée exportée · trois populations', () => {
       'CLIENTS_41',
     );
     const nul = rangDe(f, '411003 - C3');
-    expect(rangDe(f, 'SOLDES NULS · pièces ouvertes qui se compensent, à lettrer')).toBe(nul - 1);
+    expect(rangDe(f, 'SOLDES NULS · pièces ouvertes qui se compensent')).toBe(nul - 1);
     expect(f.getCell(`B${nul}`).value).toBeNull();
     expect(f.getCell(`E${nul}`).value).toBe(0);
     // Jamais sous « sens inverse », et aucun total ajouté au net.

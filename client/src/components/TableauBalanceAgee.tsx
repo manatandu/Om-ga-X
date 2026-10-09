@@ -44,7 +44,9 @@ export interface BalanceAgee {
   sensInverse: LigneAgee[];
   /**
    * Solde nul · des pièces ouvertes qui se compensent (paquet 1, B3), en
-   * aucun sens, sans tranches et hors de tout total · à lettrer.
+   * aucun sens, sans tranches et hors de tout total. Le titre ne dit pas « à
+   * lettrer » (relecture du paquet 1, mineur 5) · une dette au 401 et une
+   * créance au 411 du même tiers se compensent sans se lettrer.
    */
   soldesNuls: LigneAgee[];
   /** Groupes de lettrage lus ligne à ligne (paquet 1, B5). */
@@ -206,7 +208,7 @@ export function TableauBalanceAgee({ donnees }: { donnees: BalanceAgee }) {
             total, le net n'en bouge pas. */}
         {donnees.soldesNuls.length > 0 && (
           <>
-            {intercalaire('Soldes nuls · pièces ouvertes qui se compensent, à lettrer')}
+            {intercalaire('Soldes nuls · pièces ouvertes qui se compensent')}
             {donnees.soldesNuls.map((l) => ligne(l, false, true))}
           </>
         )}
