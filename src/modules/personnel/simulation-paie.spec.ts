@@ -1113,3 +1113,69 @@ describe('Second tour, BLOQUANT · le millier de l’art. 118 se prend sur la va
     expect(() => JSON.stringify(res)).not.toThrow();
   });
 });
+
+/**
+ * SECOND TOUR DE RELECTURE DU PAQUET 1, JUMEAU m1 · le net négatif se jugeait
+ * sur le flottant. Cinq lignes de 880 000 FC laissaient un net de
+ * 729 999,9999999999, et une retenue d'avance égale au net affiché
+ * (730 000,00) rendait -1,16e-10 · refusée comme « dépassant ce qui reste
+ * dû ». Il se juge en centimes sur la valeur exacte, par la règle de la
+ * colonne où le bulletin le fige (demi-centime loin de zéro).
+ */
+describe('Second tour, jumeau m1 · le net négatif se juge en centimes sur la valeur exacte', () => {
+  const avance = (montantFc: number) => ({
+    avanceId: 'av-1',
+    type: 'AVANCE' as const,
+    categoriePret: null,
+    littera: 'c' as const,
+    libelle: "Avance sur salaire",
+    montantFc,
+    soldeAvantFc: 2_000_000,
+  });
+  const avecRetenue = (montantFc: number) => {
+    const { svc } = service();
+    jest
+      .spyOn(svc, 'resoudreSaisie')
+      .mockImplementation(async (_t, _s, d) => ({ dto: d as never, retenuesAvances: [avance(montantFc)] }));
+    return svc;
+  };
+  const prive = (montants: readonly number[]) =>
+    dto({
+      moisDePaie: '2026-03',
+      natureEmployeurInpp: 'PRIVE',
+      effectif: 30,
+      personnesACharge: 0,
+      elements: montants.map((montantFc, i) => ({
+        nature: i === 0 ? 'SALAIRE_OU_TRAITEMENT' : 'PRIME',
+        libelle: `Ligne ${i + 1}`,
+        montantFc,
+      })),
+    } as Partial<SimulationPaieDto>);
+  const cinqLignes = [51_905.39, 53_651.71, 168_138.49, 68_332.09, 537_972.32];
+
+  it('une retenue égale au net affiché de cinq lignes (730 000,00) passe, et le net vaut zéro', async () => {
+    const res = await avecRetenue(730_000).simulerPaie('t-1', null, prive(cinqLignes));
+    expect(res.net.netAPayerFc).toBe(0);
+    const sans = await service().svc.simulerPaie('t-1', null, prive(cinqLignes));
+    expect(sans.net.netAPayerFc).toBe(730_000);
+  });
+
+  it('un centime de plus est refusé, avec son issue', async () => {
+    await expect(avecRetenue(730_000.01).simulerPaie('t-1', null, prive(cinqLignes))).rejects.toThrow(
+      /dépassent ce qui reste dû au travailleur ce mois-ci · réduisez-les/,
+    );
+  });
+
+  it('un net exact de -0,005 FC, que la colonne figerait à -0,01, est refusé ; +0,005 passe', async () => {
+    // 600 000,10 FC · quote-part 30 000,005 (5 %), base nette 570 000,095,
+    // annualisée 6 840 001,14, millier 6 840 000, impôt annuel 792 720,
+    // retenue 66 100 · net exact 503 900,095, affiché 503 900,10.
+    const sans = await service().svc.simulerPaie('t-1', null, prive([600_000.1]));
+    expect(sans.cotisations.totalTravailleurFc).toBe(30_000.005);
+    expect(sans.retenue?.retenueFc).toBe(66_100);
+    expect(sans.net.netAPayerFc).toBe(503_900.095);
+    await expect(avecRetenue(503_900.1).simulerPaie('t-1', null, prive([600_000.1]))).rejects.toThrow(/réduisez-les/);
+    const passe = await avecRetenue(503_900.09).simulerPaie('t-1', null, prive([600_000.1]));
+    expect(passe.net.netAPayerFc).toBeCloseTo(0.005, 9);
+  });
+});

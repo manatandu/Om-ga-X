@@ -291,9 +291,10 @@ Les autres comparaisons de seuil de la paie, relues une à une ·
 - **art. 116, 1 (« dans la limite de 5 % »)** · non calculé par le moteur
   (cité au commentaire de tête des assiettes, comme exemple de plafond) · rien
   à corriger ;
-- **net négatif** (`personnel.service.ts`, retenues d'avance) · NON CORRIGÉ,
-  consigné (relevé R6 ci-dessous) · le net porte des fractions de centime
-  (cotisations non arrondies), le seuil n'y a pas de bord exact au centime.
+- **net négatif** (`personnel.service.ts`, retenues d'avance) · NON CORRIGÉ
+  à ce tour, sur un motif FAUX (« le seuil n'y a pas de bord exact au
+  centime ») · une retenue égale au net affiché EST un bord exact, que le
+  flottant franchissait · corrigé au second tour (S9, relevé R6 réécrit).
 
 Correction · `au-centime.ts` porte `enCentimes` (centimes ENTIERS, même règle
 que le registre des avances `avances-salaire.ts`) ; logement · total × 100 ≤
@@ -580,8 +581,8 @@ Plancher de la CNSS et 30 % du logement · déjà jugés en centimes (S1), sur d
 flottants désormais au plus près de la valeur exacte.
 
 **Tests.** `src/common/decimal-exact.spec.ts` (lecture des écritures à
-exposant, opérations, plancher qui ne remonte pas 10 031 999,9964, centimes au
-demi vers le haut) ; `simulation-paie.spec.ts`, describe « Second tour,
+exposant, opérations, plancher qui ne remonte pas 10 031 999,9964, centimes du
+demi loin de zéro, ajoutés en S9) ; `simulation-paie.spec.ts`, describe « Second tour,
 BLOQUANT » · témoin (somme flottante des cinq lignes sous 880 000, celle des
 centimes à 88 000 000), cinq lignes = une ligne = 106 000 FC, 999,9964 non
 remonté, verdict sérialisable · le test des cinq lignes TOMBE sur l'ancien code
@@ -596,6 +597,55 @@ bulletin émis IRPP 105 900, net 730 100 ; 4472 au journal -105 900. **APRÈS**
 (`p1c-s8-apres.json`) · 7 concordances · 880 000, 44 000, 836 000, 10 032 000,
 106 000 (cinq lignes comme une), bulletin IRPP 106 000, net 730 000, 4472
 -106 000.
+
+### S9 · jumeau m1 · le net négatif en centimes sur la valeur exacte
+
+Code du travail, art. 112 (retenues autorisées, jamais au-delà de ce qui est
+dû) ; le service refuse un net négatif, que le 422 de la passation ne peut
+porter. Il le jugeait sur le flottant · après S8, cinq lignes de 880 000 FC
+laissent 880 000 − 44 000 − 106 000 = 730 000, que le flottant rend
+729 999,9999999999 ; une retenue d'avance de 730 000,00, le net affiché,
+rendait -1,16e-10 et la simulation (donc le bulletin) était refusée
+« dépassent ce qui reste dû ». Sur `main`, même défaut au net de 730 100.
+
+**Correction.** `netAPayerExact` (`cotisations-paie.ts`) calcule le net en
+décimal exact (total versé, quote-part, impôt, retenues d'avance, toutes
+sommées exactement au service) et le verdict n'en reçoit que le flottant le
+plus proche ; `netAPayer` garde sa signature. Le refus se juge par
+`netNegatifAuCentime`, sur les CENTIMES de la valeur exacte. **Convention
+dite au code, et l'écart avec la consigne.** La consigne écrivait
+`enCentimes(net) < 0` (`Math.round`, demi-centime vers le haut). Les deux
+règles ne diffèrent qu'au seul point -0,005 FC, et là `Math.round` rend zéro
+alors que la colonne `Decimal(18,2)` où le bulletin fige `netAPayerFc` range
+-0,005 à -0,01 (PostgreSQL arrondit un `numeric` au demi loin de zéro, relu
+sur la base du banc · `SELECT (-0.005)::numeric(18,2)` rend -0.01) · le
+bulletin aurait figé un net NÉGATIF au double du livre de paie, et la paie du
+mois l'aurait compté tel. Le jugement prend donc les centimes LOIN DE ZÉRO
+(`centimesLoinDeZero`, `common/decimal-exact.ts`), la règle de la colonne et
+de l'affichage (`client/src/lib/montants.ts`) · le bruit flottant et tout net
+au-dessus de -0,005 se figent à zéro et passent ; à -0,005 et au-delà la
+retenue dépasse ce qui reste dû, et le refus dit de la réduire (issue d'un
+centime). Le cas -0,005 n'arrive qu'avec une quote-part au demi-millième
+(600 000,10 FC · net exact 503 900,095, affiché 503 900,10) ; il est rejoué
+au banc et gelé par un test.
+
+**Tests.** `simulation-paie.spec.ts`, describe « jumeau m1 » · retenue égale
+au net affiché de cinq lignes acceptée, net 0 (TOMBE sur b0531bd, après S8 ·
+« BadRequestException … (730000.00 FC) dépassent ce qui reste dû », éprouvé
+sur une copie) ; un centime de plus refusé avec son issue ; 503 900,10 refusé,
+503 900,09 accepté. `cotisations-paie.spec.ts` · `netNegatifAuCentime` sur le
+bruit, -0,0049999, -0,005, -0,01, et le témoin flottant.
+`decimal-exact.spec.ts` · `centimesLoinDeZero` comme PostgreSQL.
+
+**AVANT, `main`** (`p1c-s9-avant.json`, point S9) · 8 contrôles, 5 écarts,
+2 refus HTTP · net affiché 730 100, retenue de 730 100,00 refusée
+(« dépassent ce qui reste dû »), bulletin refusé, rien à passer, 4211 non
+diminué ; les trois contrôles du demi-centime concordent déjà (même règle de
+fait sur ce bord). **APRÈS** (`p1c-s9-apres.json`) · 8 concordances · net
+affiché 730 000, retenue égale acceptée, net 0, bulletin émis à 0, paie
+passée, 422 soldé, 4211 à 1 269 900 ; 600 000,10 · quote-part 30 000,005,
+impôt 66 100, net 503 900,095 ; 503 900,10 refusé avec son issue,
+503 900,09 accepté.
 
 ## Reste (au coordinateur, à l'intégration)
 
@@ -684,12 +734,18 @@ bulletin émis IRPP 105 900, net 730 100 ; 4472 au journal -105 900. **APRÈS**
   réponse est désormais toujours 404 « Exercice introuvable dans ce dossier. ».
 - **R5 · coût** · une lecture `exercice.findFirst` par clé primaire de plus par
   requête porteuse (et `journal.findFirst` quand un journal est filtré).
-- **R6 · le net négatif se juge sur un net à fractions de centime**
-  (`personnel.service.ts`, « les retenues d'avance […] dépassent ce qui reste
-  dû ») · les cotisations ne sont pas arrondies (`cotisations-paie.ts`,
-  `montantFc: base × taux / 100`), le net non plus ; une retenue égale au net
-  AFFICHÉ (au centime) peut le dépasser d'une fraction et être refusée. Hors
-  du défaut du constat 1 (aucun bord exact au centime), non codé.
+- **R6 · le net négatif se jugeait sur le flottant · CORRIGÉ au second tour
+  (S9).** Le motif écrit ici au premier tour était faux · « aucun bord exact
+  au centime » · une retenue d'avance ÉGALE AU NET AFFICHÉ est exactement ce
+  bord, et le flottant le franchissait (-1,16e-10, cinq lignes de 880 000 FC,
+  retenue refusée). Le net se juge désormais en centimes sur la valeur exacte
+  (S9). Reste, NON CORRIGÉ et rattaché à m2 (au suivi du coordinateur) · une
+  quote-part au demi-millième (5 % d'une base au centime) laisse un net exact
+  en demi-centime ; le bulletin le fige au centime loin de zéro (503 900,095
+  figé 503 900,10) quand la passation du mois arrondit chaque ligne
+  (quote-part 30 000,005 passée 30 000,01, 422 à 503 900,09) · l'écart d'un
+  centime est MONTRÉ par la paie du mois (P9, « écart du 422 avec les
+  nets »), rien n'est faussé en silence.
 
 ## Commandes
 
@@ -732,6 +788,10 @@ PAQUET1_C_POINTS=S7 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_ap
 npx jest src/common/decimal-exact.spec.ts src/modules/personnel/bareme-irpp.spec.ts src/modules/personnel/simulation-paie.spec.ts
 PAQUET1_C_POINTS=S8 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s8-avant.json
 PAQUET1_C_POINTS=S8 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s8-apres.json
+# Second tour · S9 (net négatif au centime), AVANT puis APRÈS
+npx jest src/common/decimal-exact.spec.ts src/modules/personnel/cotisations-paie.spec.ts src/modules/personnel/simulation-paie.spec.ts
+PAQUET1_C_POINTS=S9 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s9-avant.json
+PAQUET1_C_POINTS=S9 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s9-apres.json
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json

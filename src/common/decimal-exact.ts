@@ -153,16 +153,17 @@ export function plancherAuMultiple(a: DecimalExact, pas: number): number {
 }
 
 /**
- * Le nombre de centimes, le demi-centime vers le haut · exactement
- * `Math.round(x × 100)`, la règle de `enCentimes` de la paie et de la passation
- * du mois (`comptabilisation-paie.ts`), mais sur la valeur exacte. Ce n'est PAS
- * l'arrondi de l'affichage (`client/src/lib/montants.ts`, demi-centime loin de
- * zéro) · les deux ne diffèrent que sur un demi-centime négatif.
+ * Le nombre de centimes, le demi-centime LOIN DE ZÉRO · la règle de la colonne
+ * `Decimal(18,2)` où le bulletin fige ses montants (PostgreSQL arrondit un
+ * `numeric` ainsi · -0,005 se range -0,01, 0,005 se range 0,01), et celle de
+ * l'affichage (`client/src/lib/montants.ts`). Prise sur la valeur exacte.
  */
-export function centimesDemiHaut(a: DecimalExact): bigint {
-  // floor(x × 100 + 1/2) = floor((200 m + 10^e) / (2 × 10^e)).
+export function centimesLoinDeZero(a: DecimalExact): bigint {
+  // floor(|x| × 100 + 1/2) = floor((200 |m| + 10^e) / (2 × 10^e)), signe remis.
   const d = puissanceDeDix(a.echelle);
-  return diviserVersLeBas(200n * a.mantisse + d, 2n * d);
+  const absolu = a.mantisse < 0n ? -a.mantisse : a.mantisse;
+  const centimes = (200n * absolu + d) / (2n * d);
+  return a.mantisse < 0n ? -centimes : centimes;
 }
 
 export function versChaine(a: DecimalExact): string {

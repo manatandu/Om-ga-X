@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureBulletinPaie, Prisma, StatutBulletinPaie, StatutEcriture, TypeContratTravail } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
-import { depuisNombre, plus } from '../../common/decimal-exact';
+import { depuisNombre, plus, somme, versNombre } from '../../common/decimal-exact';
 import {
   ContratTravailDto,
   DecompteFinalDto,
@@ -19,7 +19,13 @@ import {
   type TauxLegalNonCalcule,
 } from './assiettes-paie';
 import { RESERVE_REGIME_NON_DECLARE, baremeApplicableAuMois, regimeApplicable, retenueMensuelle } from './bareme-irpp';
-import { cotisationsExactes, netAPayer, type NatureEmployeurInpp, type RegimeCnss } from './cotisations-paie';
+import {
+  cotisationsExactes,
+  netAPayerExact,
+  netNegatifAuCentime,
+  type NatureEmployeurInpp,
+  type RegimeCnss,
+} from './cotisations-paie';
 import { NATURES_SANS_IMPUTATION, estVerseEnEspeces, passationPaie, type Referentiel } from './passation-paie';
 import {
   LITTERA_ARTICLE_112,
@@ -1150,7 +1156,8 @@ export class PersonnelService {
       throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
     }
     const { dto: dtoStipule, retenuesAvances } = await this.resoudreSaisie(tenantId, salarieId, dtoSaisi);
-    const retenuesAvancesFc = retenuesAvances.reduce((s, r) => s + r.montantFc, 0);
+    // En valeur exacte · le net qui en sort se juge au centime (jumeau m1).
+    const retenuesAvancesExactes = somme(retenuesAvances.map((r) => depuisNombre(r.montantFc)));
     const { dtoFc: dto, conversion } = await this.convertirEnFrancs(tenantId, dtoStipule, maintenant);
     const borne = baremeApplicableAuMois(dto.moisDePaie);
     // Les versions de barème que le cabinet a ajoutées (baremes-dossier.ts) ·
@@ -1290,21 +1297,26 @@ export class PersonnelService {
     // sortent de la rémunération, pas de ce que l'employeur paie.
     // L'avantage en nature entre dans les assiettes, pas dans ce qui est
     // versé (audit final F22, `estVerseEnEspeces`).
-    const totalVerseFc = elements
-      .filter((e) => estVerseEnEspeces(e.nature as NatureElementPaie, e.enNature))
-      .reduce((n, e) => n + Math.max(0, e.montantFc), 0);
-    const net = netAPayer(
-      totalVerseFc,
-      lesCotisations.quotePartOuvriereNonChiffree ? null : lesCotisations.totalTravailleurFc,
+    const totalVerse = somme(
+      elements
+        .filter((e) => estVerseEnEspeces(e.nature as NatureElementPaie, e.enNature))
+        .map((e) => depuisNombre(Math.max(0, e.montantFc))),
+    );
+    const { verdict: net, netExact } = netAPayerExact(
+      totalVerse,
+      lesCotisations.quotePartOuvriereNonChiffree ? null : totalTravailleurExact,
       retenue ? retenue.retenueFc : null,
-      retenuesAvancesFc,
+      retenuesAvancesExactes,
     );
     // UN NET NÉGATIF N'EST PAS PAYABLE · les retenues d'avance dépasseraient
     // ce qui est dû au travailleur ce mois-ci. Le ramener à zéro ferait
     // mentir le 422 de la passation ; la retenue se réduit, elle ne se force pas.
-    if (net.netAPayerFc !== null && net.netAPayerFc < 0) {
+    // JUGÉ EN CENTIMES SUR LA VALEUR EXACTE (second tour de relecture du
+    // paquet 1, jumeau m1) · le reste flottant -1,16e-10 refusait une retenue
+    // égale au net affiché (`netNegatifAuCentime`, la convention y est dite).
+    if (netExact !== null && netNegatifAuCentime(netExact)) {
       throw new BadRequestException(
-        `Les retenues d'avance et de prêt (${retenuesAvancesFc.toFixed(2)} FC) dépassent ce qui reste dû au travailleur ce mois-ci · réduisez-les.`,
+        `Les retenues d'avance et de prêt (${versNombre(retenuesAvancesExactes).toFixed(2)} FC) dépassent ce qui reste dû au travailleur ce mois-ci · réduisez-les.`,
       );
     }
 

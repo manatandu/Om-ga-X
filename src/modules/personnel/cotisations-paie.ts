@@ -2,9 +2,12 @@ import { MULTIPLICATEURS_ARTICLE_7, annexeApplicable, type Annexe } from './bare
 import { enCentimes } from './au-centime';
 import {
   ZERO,
+  centimesLoinDeZero,
+  comparer,
   depuisNombre,
   fois,
   maximum,
+  moins,
   pourCent,
   somme,
   versNombre,
@@ -883,9 +886,35 @@ export function netAPayer(
   irppFc: number | null,
   retenuesAvancesFc = 0,
 ): VerdictNet {
+  return netAPayerExact(
+    depuisNombre(totalVerseFc),
+    quotePartOuvriereFc === null ? null : depuisNombre(quotePartOuvriereFc),
+    irppFc,
+    depuisNombre(retenuesAvancesFc),
+  ).verdict;
+}
+
+/**
+ * Le même net, et sa VALEUR EXACTE, qui reste hors du verdict (second tour de
+ * relecture du paquet 1, ligne C, jumeau m1 du BLOQUANT). Le total versé, la
+ * quote-part et les retenues d'avance arrivent en décimal exact
+ * (`common/decimal-exact.ts`) · cinq lignes de 880 000 FC rendaient en
+ * flottant un net de 729 999,9999999999, et une retenue d'avance égale au net
+ * affiché (730 000,00) laissait -1,16e-10 · refusée comme « dépassant ce qui
+ * reste dû ».
+ */
+export function netAPayerExact(
+  totalVerse: DecimalExact,
+  quotePartOuvriere: DecimalExact | null,
+  irppFc: number | null,
+  retenuesAvances: DecimalExact = ZERO,
+): { verdict: VerdictNet; netExact: DecimalExact | null } {
+  const totalVerseFc = versNombre(totalVerse);
+  const quotePartOuvriereFc = quotePartOuvriere === null ? null : versNombre(quotePartOuvriere);
+  const avecAvances = comparer(retenuesAvances, ZERO) > 0;
   const reserves = [
     "LE NET PART DU TOTAL VERSÉ · les cinq exclusions de l'article 7, point 8 du Code du travail sortent de l'ASSIETTE des cotisations, pas de ce que l'employeur paie. Le logement et le transport sont bien versés au travailleur, sauf ceux qu'il reçoit EN NATURE, qui ne sont ni dans ce total ni au 422.",
-    retenuesAvancesFc > 0
+    avecAvances
       ? `NET APRÈS LES RETENUES DU REGISTRE DES AVANCES (article 112, c, f et g · avances, prêts, saisies-arrêts). ${RESERVE_SAISIES_ET_CESSIONS}`
       : `NET AVANT LES RETENUES DE L'ARTICLE 112 · aucune avance ni aucun prêt n'est retenu sur ce bulletin. ${RESERVE_SAISIES_ET_CESSIONS}`,
     // UNE GARANTIE NÉGATIVE VIEILLIT · cette réserve disait la quotité « non
@@ -899,15 +928,40 @@ export function netAPayer(
   // Une quote-part ouvrière non chiffrée rend le net non chiffré, comme un
   // impôt non chiffré · lue comme zéro, elle gonflait le net de 5 % de la base
   // (constat C1, P07 b).
-  const netAPayerFc =
-    irppFc === null || quotePartOuvriereFc === null
+  const netExact =
+    irppFc === null || quotePartOuvriere === null
       ? null
-      : Math.max(0, totalVerseFc - quotePartOuvriereFc - irppFc) - retenuesAvancesFc;
+      : moins(maximum(ZERO, moins(moins(totalVerse, quotePartOuvriere), depuisNombre(irppFc))), retenuesAvances);
   return {
-    totalVerseFc,
-    quotePartOuvriereFc,
-    irppFc,
-    netAPayerFc,
-    reserves,
+    verdict: {
+      totalVerseFc,
+      quotePartOuvriereFc,
+      irppFc,
+      netAPayerFc: netExact === null ? null : versNombre(netExact),
+      reserves,
+    },
+    netExact,
   };
+}
+
+/**
+ * UN NET NÉGATIF SE JUGE TEL QUE LE BULLETIN LE FIGE, AU CENTIME (second tour
+ * de relecture du paquet 1, jumeau m1). Il est refusé quand SES CENTIMES, pris
+ * sur la valeur EXACTE, sont négatifs, jamais sur un reste flottant (-1,16e-10
+ * refusait une retenue égale au net affiché de 730 000,00 FC).
+ *
+ * CONVENTION DE L'ÉDITEUR, et sa raison · aucun texte n'arrondit le net. Le
+ * bulletin fige `netAPayerFc` dans une colonne `Decimal(18,2)`, que
+ * PostgreSQL arrondit au demi-centime LOIN DE ZÉRO · un net exact de
+ * -0,005 FC (quote-part au demi-millième, retenue d'avance égale au net
+ * affiché au centime supérieur) s'y rangerait -0,01, un net NÉGATIF au double
+ * du livre de paie et compté tel à la paie du mois. Les centimes se prennent
+ * donc par cette même règle (`centimesLoinDeZero`), qui est aussi celle de
+ * l'affichage · de -0,005 exclu à 0 le net se fige à zéro et la retenue
+ * passe ; à -0,005 et au-delà elle dépasse ce qui reste dû, et le refus dit de
+ * la réduire. `Math.round`, qui range -0,005 à zéro, aurait laissé figer
+ * -0,01.
+ */
+export function netNegatifAuCentime(net: DecimalExact): boolean {
+  return centimesLoinDeZero(net) < 0n;
 }

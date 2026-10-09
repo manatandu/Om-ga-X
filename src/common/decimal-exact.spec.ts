@@ -1,6 +1,6 @@
 import {
   ZERO,
-  centimesDemiHaut,
+  centimesLoinDeZero,
   comparer,
   depuisNombre,
   exact,
@@ -92,15 +92,16 @@ describe('Le plancher au multiple · l’arrondi au millier inférieur de l’ar
   });
 });
 
-describe('Les centimes, le demi-centime vers le haut, comme Math.round de la passation', () => {
-  it('rend les mêmes centimes que Math.round(x × 100) sur la valeur exacte', () => {
-    expect(centimesDemiHaut(depuisNombre(0.005))).toBe(1n);
-    expect(centimesDemiHaut(depuisNombre(-0.005))).toBe(0n);
-    expect(centimesDemiHaut(depuisNombre(-0.0051))).toBe(-1n);
-    expect(centimesDemiHaut(depuisNombre(730_100))).toBe(73_010_000n);
+describe('Les centimes, le demi-centime loin de zéro, comme la colonne Decimal(18,2)', () => {
+  it('range -0,005 à -0,01 et 0,005 à 0,01, comme PostgreSQL', () => {
+    expect(centimesLoinDeZero(depuisNombre(0.005))).toBe(1n);
+    expect(centimesLoinDeZero(depuisNombre(-0.005))).toBe(-1n);
+    expect(centimesLoinDeZero(depuisNombre(-0.0049999))).toBe(0n);
+    expect(centimesLoinDeZero(depuisNombre(503_900.095))).toBe(50_390_010n);
+    expect(centimesLoinDeZero(depuisNombre(730_100))).toBe(73_010_000n);
   });
 
-  it('juge zéro un écart de bruit flottant, que Math.round(x × 100) juge aussi zéro', () => {
-    expect(centimesDemiHaut(depuisNombre(-1.1641532182693481e-10))).toBe(0n);
+  it('juge zéro un reste de bruit flottant', () => {
+    expect(centimesLoinDeZero(depuisNombre(-1.1641532182693481e-10))).toBe(0n);
   });
 });
