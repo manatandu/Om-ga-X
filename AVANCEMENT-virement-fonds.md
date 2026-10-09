@@ -32,22 +32,19 @@ pièces et informations justificatives, quatre comptes de passage par défaut.
 
 ## Fait
 
-- Schéma et migration (commit 954c4d2).
-- Service, contrôleur, module, listes structurelles (cloisonnement, audit,
-  détenteurs, fonctions métier, restitution), exemption 585/588, semis.
-- Doublures des specs complétées ; serveur au vert (837 suites).
+- Schéma et migration (954c4d2), `prisma migrate diff` sans écart.
+- Service, contrôleur, module, listes structurelles, exemption 585/588, semis.
+- Tests du module (30), doublures complétées, serveur et client au vert.
+- Écran Traitement > Tiers et trésorerie > Virement de fonds, cache du plan.
+- Scénarios navigateur sur vraie base à travers une clôture, SYSCOHADA et
+  SYCEBNL (`e2e/tests/virements-fonds.e2e.ts`), au vert en local.
+- CLAUDE.md (paragraphe de la ligne, gel levé pour elle).
 
 ## Reste
 
-1. Specs du module (règle pure, service creer et annuler, comptes de passage).
-2. `prisma migrate diff` sur base jetable.
-3. Écran `VirementsFondsPage`, menu Traitement > Tiers et trésorerie,
-   registre des fenêtres, specs client.
-4. Scénario e2e sur vraie base à travers une clôture.
-5. CLAUDE.md (paragraphe et gel levé).
-6. Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer),
-   deux tours.
-7. Bloc § 3, intégration sur `main`, déploiement vérifié, fiche retirée.
+1. Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer) ·
+   lancées puis arrêtées, la limite d'utilisation approchant · à relancer.
+2. Bloc § 3, intégration sur `main`, déploiement vérifié, fiche retirée.
 
 ## Vérification
 
