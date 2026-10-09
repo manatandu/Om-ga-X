@@ -473,6 +473,53 @@ describe('poids des lignes ouvertes · les à-nouveaux d’un groupe posé à la
     expect(warn).not.toHaveBeenCalled();
   });
 
+  /**
+   * RELECTURE « ÉCHECS SILENCIEUX », MINEUR 1 · un groupe RECONDUIT (F et P de
+   * 2026, lettrés en partiel, reconduits sur leurs reports) complété à la
+   * main en 2027 par un autre à-nouveau (sans pièce retrouvée) et un
+   * règlement. Rejoué sur vraie base (scénario paquet1-b, M1B, C22) · F,
+   * datée de sa pièce par la reconduction, passait avant l'autre à-nouveau
+   * resté au 1er janvier et s'éteignait seule · 1 000 000 réclamés sur
+   * l'autre. Tout ou rien · toutes les lignes d'à-nouveau à la date du report.
+   */
+  it('tout ou rien sur TOUTES les lignes d’à-nouveau, celles que la reconduction a datées comprises (mineur 1)', async () => {
+    const vueGroupe = (l: LigneDeBase, exerciceId: string) => ({
+      id: l.id,
+      compteId: 'c411',
+      debit: l.debit,
+      credit: l.credit,
+      dateEcheance: l.dateEcheance,
+      deviseId: null,
+      montantDevise: null,
+      libelle: l.libelle ?? null,
+      ecriture: { exerciceId, date: l.ecriture.date, libelle: l.libelle ?? 'Pièce' },
+    });
+    const f = de2026('f', 1_000_000, '2026-03-01', '2026-03-31', 'Facture F');
+    const pReg: LigneDeBase = { ...ligne('p', 0, 400_000, '2026-06-10', null), exerciceId: 'e2026', libelle: 'Règlement P' };
+    const anF = report('an-f', 1_000_000, '2026-03-31', 'Facture F');
+    const anP: LigneDeBase = { ...ligne('an-p', 0, 400_000, '2027-01-01', 'g'), exerciceId: 'e2027', libelle: 'RAN détail 41110001 · Règlement P', aNouveau: true };
+    const anI: LigneDeBase = { ...ligne('an-i', 1_000_000, 0, '2027-01-01', 'g', null), exerciceId: 'e2027', libelle: 'RAN détail 41110001 · Inconnue', aNouveau: true };
+    const reg2 = reglement('reg2', 600_000, '2027-02-15');
+    const base = [f, pReg, anF, anP, anI, reg2];
+    const l = lecteur(base, exercices);
+    l.lettrage.findMany = jest.fn(async (a: { where: { id?: { in: string[] }; lettrageReconduitId?: unknown } }) => {
+      if (a.where.lettrageReconduitId) {
+        return (a.where.id?.in ?? []).includes('g')
+          ? [{ id: 'g', lettrageReconduitId: 'g26', compte: { numero: '41110001' }, lignes: [anF, anP, anI, reg2].map((x) => vueGroupe(x, 'e2027')) }]
+          : [];
+      }
+      return (a.where.id?.in ?? []).includes('g26')
+        ? [{ id: 'g26', lettrageReconduitId: null, compte: { numero: '41110001' }, lignes: [f, pReg].map((x) => vueGroupe(x, 'e2026')) }]
+        : [];
+    }) as never;
+    const p = await poidsDesLignesLues(l, 't', base.filter((x) => x.exerciceId === 'e2027'), { dateMax: d('2027-12-31') }, 'essai');
+    // Au prorata à date égale (art. 154, « toutes choses égales ») · 500 000
+    // restent sur F et sur l'autre à-nouveau, jamais F éteinte seule.
+    expect(p.poids.get('an-f')).toBe(500_000);
+    expect(p.poids.get('an-i')).toBe(500_000);
+    expect([...p.motifs]).toEqual([['g', 'A_NOUVEAU_SANS_ORIGINE']]);
+  });
+
   it('une lecture qui rend plus que demandé n’invente aucun report', async () => {
     // La doublure rend toutes les lignes, quel que soit le filtre · seules les
     // lignes demandées ET d'à-nouveau sont prises pour des reports.

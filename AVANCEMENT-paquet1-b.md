@@ -282,6 +282,19 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
   (`A_NOUVEAU_SANS_ORIGINE`), servi comme ceux de B5.
 - APRÈS · M1 (8 contrôles) et la part M1 de M1B concordent.
 
+### Mineur 1 · le tout ou rien vise toutes les lignes d'à-nouveau du groupe
+
+- Vérifié · `originesDesANouveaux` ne cherchait que les lignes sans origine
+  de reconduction, et le tout ou rien ne retirait que celles-là · un groupe
+  reconduit complété à la main par un autre à-nouveau mêlait les ordres.
+- AVANT (main et copie) · M1B, C22 · `[1 000 000]` réclamés sur le report de
+  l'import (F, datée de mars par la reconduction, éteinte seule) au lieu de
+  `[500 000, 500 000]`.
+- Correction · toutes les lignes du groupe relues, le tout ou rien retire
+  aussi les origines de la reconduction ; prorata à date égale (Code civil,
+  Livre III, art. 154, « toutes choses égales »), groupe nommé.
+- APRÈS · M1, M1B et B7 · 27 contrôles, 27 concordances.
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,

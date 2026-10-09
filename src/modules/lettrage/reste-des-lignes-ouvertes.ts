@@ -525,13 +525,14 @@ interface LigneDAnouveauLue {
  * détail (`originesDesReports`, la règle des relances), de proche en proche.
  *
  * TOUT OU RIEN, PAR GROUPE · un groupe dont une ligne d'à-nouveau n'a pas
- * retrouvé son origine garde la date du report pour TOUTES · la seule
- * origine manquante, laissée au 1er janvier, passerait pour la plus récente
- * et la facture la plus ancienne resterait due. Le groupe est rendu
- * (`sansOrigine`), NOMMÉ par l'état avec son motif (M1) et consigné. Les lignes que la reconduction a
- * datées gardent leur origine. Les lignes relues sont filtrées EN MÉMOIRE
- * (identifiant demandé, écriture d'à-nouveau) · une lecture qui rendrait
- * plus que demandé n'invente aucun report.
+ * retrouvé son origine garde la date du report pour TOUTES, celles que la
+ * reconduction avait datées comprises (relecture « échecs silencieux »,
+ * mineur 1) · la seule origine manquante, laissée au 1er janvier, passerait
+ * pour la plus récente et la facture la plus ancienne resterait due. Le
+ * groupe est rendu (`sansOrigine`), NOMMÉ par l'état avec son motif (M1) et
+ * consigné. Les lignes relues sont filtrées EN MÉMOIRE (identifiant demandé,
+ * écriture d'à-nouveau) · une lecture qui rendrait plus que demandé n'invente
+ * aucun report.
  */
 async function originesDesANouveaux(
   db: unknown,
@@ -539,10 +540,13 @@ async function originesDesANouveaux(
   groupes: ReadonlyArray<readonly [string, readonly LigneOuverte[]]>,
   origines: Map<string, OrigineDeLigne>,
 ): Promise<string[]> {
-  const demandees = new Set(groupes.flatMap(([, membres]) => membres.map((l) => l.id)).filter((id) => !origines.has(id)));
-  if (demandees.size === 0) return [];
+  // TOUTES les lignes des groupes sont relues pour savoir lesquelles sont
+  // des à-nouveaux · celles que la reconduction a déjà datées comprises
+  // (relecture « échecs silencieux », mineur 1), le tout ou rien les vise.
+  const membres = new Set(groupes.flatMap(([, ms]) => ms.map((l) => l.id)));
+  if (membres.size === 0) return [];
   const lues = (await (db as LecteurDesANouveaux).ligneEcriture.findMany({
-    where: { id: { in: [...demandees] }, ecriture: { tenantId, OR: ECRITURE_D_A_NOUVEAU } },
+    where: { id: { in: [...membres] }, ecriture: { tenantId, OR: ECRITURE_D_A_NOUVEAU } },
     select: {
       id: true,
       compteId: true,
@@ -556,11 +560,13 @@ async function originesDesANouveaux(
   })) as LigneDAnouveauLue[];
   const estANouveau = (l: LigneDAnouveauLue) =>
     l.ecriture?.estANouveauProvisoire === true || (l.ecriture?.estGenereeParCloture === true && l.ecriture.estSoldeDesComptesDeGestion !== true);
-  const reports = lues.filter((l) => demandees.has(l.id) && estANouveau(l) && l.compte && l.ecriture);
-  if (reports.length === 0) return [];
+  const aNouveaux = lues.filter((l) => membres.has(l.id) && estANouveau(l) && l.compte && l.ecriture);
+  // Seules celles qu'aucune reconduction ne date se cherchent par la clé.
+  const aChercher = aNouveaux.filter((l) => !origines.has(l.id));
+  if (aChercher.length === 0) return [];
   // Par date de report · chaque date nomme l'exercice qui la précède.
   const parDate = new Map<number, LigneDAnouveauLue[]>();
-  for (const l of reports) parDate.set(l.ecriture!.date.getTime(), [...(parDate.get(l.ecriture!.date.getTime()) ?? []), l]);
+  for (const l of aChercher) parDate.set(l.ecriture!.date.getTime(), [...(parDate.get(l.ecriture!.date.getTime()) ?? []), l]);
   const trouvees = new Map<string, OrigineDeLigne>();
   for (const [date, lignes] of parDate) {
     const { origines: o } = await originesDesReports(
@@ -584,24 +590,31 @@ async function originesDesANouveaux(
   }
   // Le groupe de chaque ligne est celui des lignes REÇUES, jamais celui que
   // la lecture rendrait.
-  const groupeDe = new Map(groupes.flatMap(([lettrageId, membres]) => membres.map((l) => [l.id, lettrageId] as const)));
-  const reportsParGroupe = new Map<string, string[]>();
-  for (const l of reports) {
+  const groupeDe = new Map(groupes.flatMap(([lettrageId, ms]) => ms.map((l) => [l.id, lettrageId] as const)));
+  const aNouveauxParGroupe = new Map<string, string[]>();
+  for (const l of aNouveaux) {
     const lettrageId = groupeDe.get(l.id)!;
-    reportsParGroupe.set(lettrageId, [...(reportsParGroupe.get(lettrageId) ?? []), l.id]);
+    aNouveauxParGroupe.set(lettrageId, [...(aNouveauxParGroupe.get(lettrageId) ?? []), l.id]);
   }
   const membresDe = new Map(groupes);
   const sansOrigine: string[] = [];
-  for (const [lettrageId, ids] of reportsParGroupe) {
-    if (ids.every((id) => trouvees.has(id))) {
-      for (const id of ids) origines.set(id, trouvees.get(id)!);
+  for (const [lettrageId, ids] of aNouveauxParGroupe) {
+    if (ids.every((id) => origines.has(id) || trouvees.has(id))) {
+      for (const id of ids) if (trouvees.has(id)) origines.set(id, trouvees.get(id)!);
       continue;
     }
+    // TOUT OU RIEN SUR TOUTES LES LIGNES D'À-NOUVEAU DU GROUPE (mineur 1) ·
+    // un groupe reconduit complété à la main par une autre ligne
+    // d'à-nouveau gardait les origines de la reconduction · ses factures
+    // datées de leur pièce passaient avant celle restée au 1er janvier, et
+    // l'ordre mêlé éteignait la récente pour l'ancienne. Toutes reviennent
+    // à la date du report.
+    for (const id of ids) origines.delete(id);
     // Rien n'est à départager quand le groupe ne porte qu'une facture (ou se
     // solde) · l'imputation n'a pas de choix, la date n'y change rien.
-    const membres = membresDe.get(lettrageId) ?? [];
-    const net = membres.reduce((t, l) => t + centimes(l.debit) - centimes(l.credit), 0);
-    const factures = membres.filter((l) => (net > 0 ? centimes(l.debit) > 0 : centimes(l.credit) > 0));
+    const ms = membresDe.get(lettrageId) ?? [];
+    const net = ms.reduce((t, l) => t + centimes(l.debit) - centimes(l.credit), 0);
+    const factures = ms.filter((l) => (net > 0 ? centimes(l.debit) > 0 : centimes(l.credit) > 0));
     if (net !== 0 && factures.length > 1) sansOrigine.push(lettrageId);
   }
   return sansOrigine;
