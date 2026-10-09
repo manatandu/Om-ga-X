@@ -691,6 +691,22 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
 - Test · `liasse-etafi.spec.ts`, N+1 dont le 13 porte le solde de N · la
   formule CC retranche 120 000, et N n'en retranche rien.
 
+### m1 · un exercice précédent CLÔTURÉ sans écriture se disait « ouvert », avec « clôturez-le »
+
+- Vérifié · `motifColonneN1NonTenue` et `mentionExercicePrecedentVide` ne
+  connaissaient que l'exercice ouvert vide ou au brouillard.
+- AVANT (copie à e398007) · A3 SYCEBNL, 2025 vide puis clôturé · motif N-1
+  « L'exercice précédent est ouvert sans aucune écriture… Importez sa balance
+  de clôture et clôturez-le », mention d'ouverture de même.
+- Correction · branche « clôturé sans aucune écriture » aux deux textes
+  (il ne reçoit plus d'écriture · seule l'ouverture de l'exercice reste à
+  passer en à-nouveau), lue par `precedentNonTenuCloture` seulement quand
+  l'exercice précédent ne tient rien, aux deux tableaux des flux.
+- APRÈS · point A3 9 contrôles sur 9.
+- Tests · `etats-financiers.communs.spec.ts` (deux référentiels, lecture
+  bornée), `etats-financiers.service.spec.ts` (tableau des associations, 2025
+  clôturé vide).
+
 ## Reste
 
 Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).

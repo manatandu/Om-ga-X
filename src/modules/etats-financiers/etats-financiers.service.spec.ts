@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { ClasseCompte, TypeCompteDetailTotal } from '@prisma/client';
+import { ClasseCompte, StatutExercice, TypeCompteDetailTotal } from '@prisma/client';
 import { EtatsFinanciersService } from './etats-financiers.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
@@ -852,6 +852,27 @@ describe('EtatsFinanciersService · tableau de flux de trésorerie', () => {
     expect(motifColonneN1NonTenue('SYCEBNL')).toContain('SYCEBNL art. 16, 7)');
     // La colonne N, elle, se chiffre · l'exercice tient ses écritures.
     expect({ za: ref(tft, 'ZA').montant, zf: ref(tft, 'ZF').montant, vides: tft.postesVides }).toEqual({ za: 0, zf: 1500, vides: [] });
+  });
+
+  // RELECTURE m1 (reproduit sur vraie base le 2026-10-09) · 2025 CLÔTURÉ
+  // sans écriture · la colonne N-1 et la mention disaient « ouvert sans
+  // aucune écriture… clôturez-le », un geste impossible sur un exercice clos.
+  it('paquet 1, relecture m1 · un exercice précédent CLÔTURÉ sans écriture se dit clôturé, sans « clôturez-le »', async () => {
+    const exercices = [
+      { id: 'eN', dateDebut: new Date('2026-01-01') },
+      { id: 'eN1', dateDebut: new Date('2025-01-01'), statut: StatutExercice.CLOTURE },
+    ];
+    const clos = serviceAvecExercices(
+      { eN1: [], eN: [ligneF('52110000', ClasseCompte.CLASSE_5, 500, 0), ligneF('70100000', ClasseCompte.CLASSE_7, 0, 500)] },
+      exercices,
+    );
+    const tft = await clos.tableauFluxTresorerie('t1', 'eN');
+    expect(tft.mentionOuverture).toBe(mentionExercicePrecedentVide('SYCEBNL', false, 0, true));
+    expect(tft.postesNonCalculablesN1.find((p) => p.ref === 'ZA')?.raison).toBe(motifColonneN1NonTenue('SYCEBNL', 0, true));
+    for (const texte of [tft.mentionOuverture ?? '', tft.postesNonCalculablesN1.find((p) => p.ref === 'ZA')?.raison ?? '']) {
+      expect(texte).toContain('clôturé sans aucune écriture');
+      expect(texte).not.toMatch(/est ouvert|clôturez-le|Importez/);
+    }
   });
 
   it('paquet 1, A2 · un exercice précédent qui n’a que du brouillard · la mention et la colonne N-1 disent de le valider, pas d’importer', async () => {

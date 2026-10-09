@@ -25,6 +25,7 @@ import {
   mentionOuverturePresumeeNulle,
   motifOuverturePasseeEnOd,
   ouvertureTenue,
+  precedentNonTenuCloture,
   trouverExerciceN1,
 } from '../etats-financiers/etats-financiers.communs';
 import {
@@ -1595,11 +1596,13 @@ export class EtatsFinanciersSyscohadaService {
     // L'OUVERTURE se lit AVANT ce que la clôture de l'exercice y porte
     // (`chargerOuverture`, paquet 1, A4) · la colonne report d'un exercice
     // clôturé porte aussi le virement du résultat antérieur non affecté.
-    const [ouvertureN, ouvertureN1, brouillardN1] = await Promise.all([
+    const [ouvertureN, ouvertureN1, brouillardN1, closN1NonTenu] = await Promise.all([
       n1Tenu ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId, borneN),
       exerciceN1Id && !n2Tenu ? chargerOuverture(this.ecritureService, tenantId, exerciceN1Id) : Promise.resolve([]),
       // Un exercice précédent qui ne tient rien · vide, ou au brouillard (paquet 1, A2).
       brouillardDuPrecedentNonTenu(this.ecritureService, tenantId, exerciceN1Id, n1Tenu),
+      // Et s'il est CLÔTURÉ, l'issue n'est plus de le compléter (relecture m1).
+      precedentNonTenuCloture(this.exerciceService, tenantId, exerciceN1Id, n1Tenu),
     ]);
     const [ouverturePasseeN, ouverturePasseeN1] = await Promise.all([
       lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, ouvertureN),
@@ -1691,7 +1694,7 @@ export class EtatsFinanciersSyscohadaService {
       mentionOuverture: n1Tenu
         ? null
         : exerciceN1Id && !ouverturePasseeN
-          ? mentionExercicePrecedentVide('SYSCOHADA', ouvertureTenue(ouvertureN), brouillardN1)
+          ? mentionExercicePrecedentVide('SYSCOHADA', ouvertureTenue(ouvertureN), brouillardN1, closN1NonTenu)
           : ouverturePasseeN
           ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA')
           : ouvertureTenue(ouvertureN)

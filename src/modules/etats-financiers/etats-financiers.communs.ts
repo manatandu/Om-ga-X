@@ -132,8 +132,21 @@ export function exercicePrecedentTenu(exercicePrecedentId: string | null, lignes
  * exclu), elles existent et attendent leur validation (AUDCIF art. 22, 2°,
  * non exclu par l'art. 3 du SYCEBNL) · importer une balance les doublerait.
  */
-export function mentionExercicePrecedentVide(referentiel: 'SYSCOHADA' | 'SYCEBNL', ouvertureLue: boolean, auBrouillard = 0): string {
+export function mentionExercicePrecedentVide(
+  referentiel: 'SYSCOHADA' | 'SYCEBNL',
+  ouvertureLue: boolean,
+  auBrouillard = 0,
+  // L'exercice précédent est CLÔTURÉ (paquet 1, relecture m1) · il ne reçoit
+  // plus d'écriture, et « importez sa balance et clôturez-le » ne se fait
+  // plus · seule l'ouverture de l'exercice reste à passer.
+  clos = false,
+): string {
   const article = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34';
+  if (clos) {
+    return ouvertureLue
+      ? `L'exercice précédent est clôturé sans aucune écriture au livre-journal · les positions d'ouverture sont lues sur le bilan d'ouverture de l'exercice (${article}).`
+      : `L'exercice précédent est clôturé sans aucune écriture au livre-journal et l'exercice n'a pas de bilan d'ouverture · les positions d'ouverture, trésorerie comprise, sont lues à zéro (${article}). Un exercice clôturé ne reçoit plus d'écriture · si l'entité tenait des positions à cette date, passez le bilan d'ouverture en à-nouveau.`;
+  }
   if (auBrouillard > 0) {
     const etat = `L'exercice précédent n'a que des écritures au brouillard (${auBrouillard}), hors du livre-journal`;
     const issue = "Validez-les (AUDCIF art. 22, 2°) · l'exercice précédent tiendra alors ses positions de clôture.";
@@ -162,6 +175,21 @@ export async function brouillardDuPrecedentNonTenu(
 }
 
 /**
+ * L'exercice précédent qui ne tient rien est-il CLÔTURÉ ? Lu seulement dans
+ * ce cas, pour dire laquelle des issues de `mentionExercicePrecedentVide` et
+ * de `motifColonneN1NonTenue` vaut (paquet 1, relecture m1).
+ */
+export async function precedentNonTenuCloture(
+  exerciceService: ExerciceService,
+  tenantId: string,
+  exerciceN1Id: string | null,
+  n1Tenu: boolean,
+): Promise<boolean> {
+  if (!exerciceN1Id || n1Tenu) return false;
+  return exerciceCloture(exerciceService, tenantId, exerciceN1Id);
+}
+
+/**
  * LA COLONNE N-1 D'UN EXERCICE PRÉCÉDENT QUI NE TIENT AUCUNE ÉCRITURE (paquet
  * 1, A3) · un exercice ouvert sans écriture au livre-journal ne tient ni
  * positions ni flux (`exercicePrecedentTenu`). Les chiffres « relatifs au
@@ -169,8 +197,16 @@ export async function brouillardDuPrecedentNonTenu(
  * art. 34) ne sont pas connus · des zéros diraient une entité sans aucune
  * opération. La colonne reste vide, et ce motif le dit.
  */
-export function motifColonneN1NonTenue(referentiel: 'SYSCOHADA' | 'SYCEBNL', auBrouillard = 0): string {
+export function motifColonneN1NonTenue(referentiel: 'SYSCOHADA' | 'SYCEBNL', auBrouillard = 0, clos = false): string {
   const article = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 7)' : 'AUDCIF art. 34';
+  // CLÔTURÉ sans écriture (paquet 1, relecture m1) · aucune issue dans le
+  // dossier, il ne reçoit plus d'écriture · « clôturez-le » serait faux.
+  if (clos) {
+    return (
+      "L'exercice précédent est clôturé sans aucune écriture au livre-journal · il ne tient ni positions ni flux, " +
+      `et sa colonne reste vide, ce n'est pas un zéro (${article}). Un exercice clôturé ne reçoit plus d'écriture.`
+    );
+  }
   // Des écritures au brouillard attendent leur validation (A2) · l'issue est
   // de les valider, jamais d'importer une balance qui les doublerait.
   if (auBrouillard > 0) {

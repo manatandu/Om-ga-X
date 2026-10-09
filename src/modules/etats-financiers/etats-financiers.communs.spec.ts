@@ -8,6 +8,7 @@ import {
   controleDuTableauDesFlux,
   mentionExercicePrecedentVide,
   motifColonneN1NonTenue,
+  precedentNonTenuCloture,
   trouverExerciceN1,
 } from './etats-financiers.communs';
 
@@ -217,5 +218,34 @@ describe('controleDuTableauDesFlux (relecture M1)', () => {
     });
     const ecart = controleDuTableauDesFlux({ ...base, clotureParFlux: { ref: 'ZG', montant: 12_400_000 }, vides: new Set(['FM']) });
     expect({ ecart: ecart.ecart, coherent: ecart.coherent }).toEqual({ ecart: -100_000, coherent: false });
+  });
+});
+
+/**
+ * PAQUET 1, RELECTURE m1 · un exercice précédent CLÔTURÉ sans écriture ne se
+ * dit pas « ouvert », et ne se voit pas conseiller « clôturez-le » ni
+ * « importez sa balance » · il ne reçoit plus d'écriture.
+ */
+describe('exercice précédent clôturé sans écriture (relecture m1)', () => {
+  it.each(['SYSCOHADA', 'SYCEBNL'] as const)('%s · la mention et le motif de la colonne N-1 le disent clôturé', (referentiel) => {
+    for (const texte of [
+      mentionExercicePrecedentVide(referentiel, false, 0, true),
+      mentionExercicePrecedentVide(referentiel, true, 0, true),
+      motifColonneN1NonTenue(referentiel, 0, true),
+    ]) {
+      expect(texte).toContain('clôturé sans aucune écriture');
+      expect(texte).not.toMatch(/est ouvert|clôturez-le|Importez/);
+    }
+    // Sans bilan d'ouverture, la seule issue qui reste se dit.
+    expect(mentionExercicePrecedentVide(referentiel, false, 0, true)).toContain("passez le bilan d'ouverture en à-nouveau");
+  });
+
+  it('lu seulement quand l’exercice précédent ne tient rien', async () => {
+    const lister = jest.fn().mockResolvedValue([{ id: 'e0', statut: 'CLOTURE' }]);
+    const es = { lister } as unknown as ExerciceService;
+    await expect(precedentNonTenuCloture(es, 't1', 'e0', true)).resolves.toBe(false);
+    await expect(precedentNonTenuCloture(es, 't1', null, false)).resolves.toBe(false);
+    expect(lister).not.toHaveBeenCalled();
+    await expect(precedentNonTenuCloture(es, 't1', 'e0', false)).resolves.toBe(true);
   });
 });
