@@ -2,6 +2,7 @@ import { ClasseCompte, Prisma, StatutEcriture, TypeJournal } from '@prisma/clien
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { montantsAContrePasser } from '../devises/contre-passation-manuelle';
 import { partagerLignesDEcarts } from '../devises/ecarts-disponibilites';
+import { jourFr } from './portefeuille-etat';
 import { LigneOuverturePassee, ouvertureNulle } from './report-a-nouveau';
 
 /**
@@ -132,6 +133,56 @@ export function lignesDeContrePassationDeclaree(ecritures: readonly EcritureDuPr
   return horsOuverture;
 }
 
+/** Le négatif lié d'une écriture du premier jour, inscrit hors du premier jour · sa pièce et sa date. */
+export interface NegatifTardif {
+  piece: string;
+  date: Date;
+}
+
+/** Une écriture du périmètre, lue avec ce qui la date et ce qu'elle corrige. */
+export interface EcritureDuPerimetreDatee {
+  numeroPiece: number | null;
+  journal: { code: string };
+  date?: Date | null;
+  dateValeur?: Date | null;
+  corrigeEcritureId?: string | null;
+}
+
+/**
+ * UNE OUVERTURE ANNULÉE APRÈS LE PREMIER JOUR NE CONCLUT PAS SEULE (second
+ * tour de relecture du paquet 1, BLOQUANT 1, reproduit sur vraie base le
+ * 2026-10-09). Le négatif lié entre au périmètre quelle que soit sa date (B2,
+ * `DATEE_DU_PREMIER_JOUR`), et l'OD qu'il annule s'y solde à zéro · « une
+ * position nulle n'est pas une ouverture » (R10), et la clôture passait le
+ * report entier. Mais « l'enregistrement exact est ensuite opéré » (AUDCIF
+ * art. 20, al. 2, non exclu par l'art. 3 du SYCEBNL), et un négatif inscrit
+ * le jour où l'erreur est découverte (« Corriger » depuis le Journal, date du
+ * jour) appelle une ressaisie du même jour, HORS du périmètre · la clôture
+ * reportait par-dessus, l'ouverture comptée deux fois sans un mot (banque
+ * 2027 à 20 800 000 pour 10 400 000, OD du 01/01 annulée le 15/03 et ressaisie
+ * le 15/03). OmegaX ne sait pas si la position exacte a été ressaisie
+ * ailleurs · le cabinet le DÉCLARE (`issueDeLOuverture`). Un négatif daté ou
+ * valorisé au premier jour corrige l'ouverture DANS le périmètre · sa
+ * ressaisie y entre aussi, et la confrontation la lit. Le premier jour se lit
+ * comme le périmètre le lit (égalité de la date ou de la date de valeur).
+ */
+export function negatifsTardifs(ecritures: readonly EcritureDuPerimetreDatee[], premierJour: Date): NegatifTardif[] {
+  const jour = premierJour.getTime();
+  const tardifs: NegatifTardif[] = [];
+  for (const e of ecritures) {
+    if (!e.corrigeEcritureId || !(e.date instanceof Date)) continue;
+    if (e.date.getTime() === jour || (e.dateValeur instanceof Date && e.dateValeur.getTime() === jour)) continue;
+    tardifs.push({ piece: `${e.journal.code} n° ${e.numeroPiece ?? '·'}`, date: e.date });
+  }
+  return tardifs;
+}
+
+/** « OD n° 2 du 15/03/2027 » · les négatifs tardifs dans un message, cinq au plus. */
+export function negatifsTardifsLisibles(tardifs: readonly NegatifTardif[]): string {
+  const noms = tardifs.slice(0, 5).map((t) => `${t.piece} du ${jourFr(t.date)}`);
+  return noms.join(', ') + (tardifs.length > 5 ? ` et ${tardifs.length - 5} autre(s)` : '');
+}
+
 /** Ce qu'il faut de la base pour juger l'ouverture · la transaction de la clôture ou le client d'un service. */
 export type LecteurOuverturePassee = Pick<Prisma.TransactionClient, 'ecriture' | 'ligneEcriture'>;
 
@@ -147,6 +198,16 @@ export interface OuverturePasseeNonNulle {
   nombre: number;
   pieces: string[];
 }
+
+/**
+ * La position d'ouverture passée au premier jour · aucune écriture, une
+ * position qui se solde (avec les négatifs inscrits hors du premier jour,
+ * `negatifsTardifs`), ou une position non nulle.
+ */
+export type PositionDOuverturePassee =
+  | { etat: 'AUCUNE' }
+  | { etat: 'NULLE'; negatifsTardifs: NegatifTardif[] }
+  | ({ etat: 'NON_NULLE' } & OuverturePasseeNonNulle);
 
 /**
  * L'OUVERTURE PASSÉE AU PREMIER JOUR, JUGÉE SUR SA POSITION NETTE (relecture du
@@ -170,17 +231,36 @@ export async function ouverturePasseeNonNulle(
   exercice: { id: string; dateDebut: Date },
   options: { validees: boolean },
 ): Promise<OuverturePasseeNonNulle | null> {
+  const position = await positionDOuverturePassee(db, tenantId, exercice, options);
+  return position.etat === 'NON_NULLE' ? { nombre: position.nombre, pieces: position.pieces } : null;
+}
+
+/**
+ * La même lecture, qui dit en plus d'une position nulle les négatifs inscrits
+ * hors du premier jour (second tour, BLOQUANT 1) · les états d'un exercice
+ * sans précédent la NOMMENT, une ressaisie de l'ouverture après le premier
+ * jour se lisant chez eux comme des flux de l'exercice.
+ */
+export async function positionDOuverturePassee(
+  db: LecteurOuverturePassee,
+  tenantId: string,
+  exercice: { id: string; dateDebut: Date },
+  options: { validees: boolean },
+): Promise<PositionDOuverturePassee> {
   const filtre: Prisma.EcritureWhereInput = {
     ...filtreOuverturePasseeAuPremierJour(tenantId, exercice),
     ...(options.validees ? { statut: StatutEcriture.VALIDEE } : {}),
   };
   const nombreLignes = await db.ligneEcriture.count({ where: { ecriture: filtre } });
-  if (nombreLignes === 0) return null;
+  if (nombreLignes === 0) return { etat: 'AUCUNE' };
   const lues = await db.ecriture.findMany({
     where: { ...filtre, tenantId },
     select: {
       id: true,
       numeroPiece: true,
+      date: true,
+      dateValeur: true,
+      corrigeEcritureId: true,
       journal: { select: { code: true } },
       reevaluationContrePassationDeclaree: {
         select: { annuleeLe: true, ecritureEcarts: { select: { lignes: { select: { compteId: true, debit: true, credit: true, compte: { select: { numero: true } } } } } } },
@@ -191,7 +271,7 @@ export async function ouverturePasseeNonNulle(
   });
   const piece = (e: (typeof lues)[number]) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`;
   if (nombreLignes > PLAFOND_LIGNES_JUGEMENT_OUVERTURE) {
-    return { nombre: lues.length, pieces: lues.slice(0, 5).map(piece) };
+    return { etat: 'NON_NULLE', nombre: lues.length, pieces: lues.slice(0, 5).map(piece) };
   }
   const horsOuverture = lignesDeContrePassationDeclaree(lues);
   const retenues = new Set<string>();
@@ -219,7 +299,7 @@ export async function ouverturePasseeNonNulle(
     },
     LOT_LECTURE,
   );
-  if (lignes.length === 0 || ouvertureNulle(lignes)) return null;
   const portees = lues.filter((e) => retenues.has(e.id));
-  return { nombre: portees.length, pieces: portees.slice(0, 5).map(piece) };
+  if (lignes.length === 0 || ouvertureNulle(lignes)) return { etat: 'NULLE', negatifsTardifs: negatifsTardifs(portees, exercice.dateDebut) };
+  return { etat: 'NON_NULLE', nombre: portees.length, pieces: portees.slice(0, 5).map(piece) };
 }

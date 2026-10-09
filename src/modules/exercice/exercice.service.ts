@@ -138,7 +138,13 @@ import { poserGroupeSoldeDuModule, prochaineLettreDuCompte } from '../lettrage/l
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { libelleExercice } from '../../common/libelle-exercice';
 import { formeApplicable } from '../tenant/forme-applicable';
-import { filtreOuverturePasseeAuPremierJour, lignesDeContrePassationDeclaree } from './ouverture-passee';
+import {
+  filtreOuverturePasseeAuPremierJour,
+  lignesDeContrePassationDeclaree,
+  NegatifTardif,
+  negatifsTardifs,
+  negatifsTardifsLisibles,
+} from './ouverture-passee';
 
 /**
  * Ce que le refus dit de la voie que le texte ouvre · AUDCIF art. 22, 4°. Le
@@ -2593,6 +2599,9 @@ export class ExerciceService {
       tronque: false,
       lignesTenues: [] as Array<{ numero: string; piece: string; debit: number; credit: number; lettree: boolean; pointee: boolean }>,
       declarationRequise: false,
+      // Second tour, BLOQUANT 1 · les négatifs inscrits hors du premier jour
+      // (`negatifsTardifs`) · avec une position nulle, ils font déclarer.
+      negatifsTardifs: [] as Array<{ piece: string; date: string }>,
       // Ce que la clôture reconduira (ligne lettrage-cloture) · l'aperçu dit
       // la même chose que la clôture, sans rien écrire.
       lettragesPartielsAReconduire: null as { total: number; groupes: Array<{ code: string; compte: string; reste: number }>; annonce: string | null } | null,
@@ -2623,8 +2632,13 @@ export class ExerciceService {
       exerciceSuivant: suivant,
       pieces: piecesLisibles(dejaPassee.ecritures),
       auBrouillard: dejaPassee.ecritures.some((e) => e.statut === StatutEcriture.BROUILLARD),
+      negatifsTardifs: dejaPassee.negatifsTardifs.map((t) => ({ piece: t.piece, date: t.date.toISOString().slice(0, 10) })),
     };
-    if (ouvertureNulle(dejaPassee.lignes)) return { ...base, ouvertureNulle: true };
+    const nulle = ouvertureNulle(dejaPassee.lignes);
+    // Une position nulle sans négatif tardif · le report entier passera, rien
+    // à confronter. Avec un négatif tardif, la clôture fera déclarer (second
+    // tour, BLOQUANT 1) · l'aperçu dit les positions que le report porterait.
+    if (nulle && dejaPassee.negatifsTardifs.length === 0) return { ...base, ouvertureNulle: true };
     const comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId }, referentiel);
     const delta = resultatDesComptesDeGestion(comptes);
     const resultat =
@@ -2633,6 +2647,17 @@ export class ExerciceService {
     const virement = await this.virementDuResultatNonAffecte(tx, tenantId, comptes, dossier);
     const report = appliquerVirementAuReport(lignesReportANouveau(comptes, resultat), virement.lignes);
     const { ecarts, tenues } = await confrontationNommee(tx, tenantId, report, dejaPassee);
+    if (nulle) {
+      // Même règle que `issueDeLOuverture` · un report vide n'a rien à doubler.
+      return {
+        ...base,
+        ouvertureNulle: true,
+        ecarts: ecarts.slice(0, PLAFOND_ECARTS_SERVIS),
+        total: ecarts.length,
+        tronque: ecarts.length > PLAFOND_ECARTS_SERVIS,
+        declarationRequise: report.length > 0,
+      };
+    }
     const ecrituresDeN = await this.prisma.ecriture.count({ where: { tenantId, exerciceId, estSoldeDesComptesDeGestion: false } });
     return {
       ...base,
@@ -2752,9 +2777,13 @@ export class ExerciceService {
         // rectifierait d'avance effacerait l'ouverture d'un dossier dont
         // l'exercice précédent n'est tenu que pour les comparatifs.
         const dejaPassee = await ouvertureDejaPassee(tx, tenantId, exerciceSuivant);
-        // Une ouverture nulle (import entièrement annulé) n'en est plus une (R10).
+        // Une ouverture nulle (import entièrement annulé) n'en est plus une
+        // (R10) · sauf annulée par un négatif inscrit hors du premier jour,
+        // que la clôture fera déclarer (second tour, BLOQUANT 1) · d'ici là le
+        // provisoire ne passe rien, comme pour une ouverture divergente.
+        const nulleSansDoute = ouvertureNulle(dejaPassee.lignes) && dejaPassee.negatifsTardifs.length === 0;
         const ecartsOuverture =
-          dejaPassee.ecritures.length > 0 && !ouvertureNulle(dejaPassee.lignes) ? confrontationDeLOuverture(report, dejaPassee.lignes) : null;
+          dejaPassee.ecritures.length > 0 && !nulleSansDoute ? confrontationDeLOuverture(report, dejaPassee.lignes) : null;
         const lignes = ecartsOuverture ? [] : report;
         const debit = lignes.reduce((t, l) => t + l.debit, 0);
         const credit = lignes.reduce((t, l) => t + l.credit, 0);
@@ -3372,13 +3401,24 @@ async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: strin
         'passez le bilan d’ouverture en mode Solde sur les comptes de tiers, ou contactez l’éditeur.',
     );
   }
-  if (nombre === 0) return { ecritures: [] as Array<{ id: string; numeroPiece: number | null; statut: StatutEcriture; journal: { code: string } }>, lignes: [] as LigneDOuverture[] };
+  if (nombre === 0) {
+    return {
+      ecritures: [] as Array<{ id: string; numeroPiece: number | null; statut: StatutEcriture; journal: { code: string } }>,
+      lignes: [] as LigneDOuverture[],
+      negatifsTardifs: [] as NegatifTardif[],
+    };
+  }
   const lues = await tx.ecriture.findMany({
     where: { ...filtre, tenantId },
     select: {
       id: true,
       numeroPiece: true,
       statut: true,
+      // Second tour, BLOQUANT 1 · le négatif lié inscrit hors du premier jour
+      // (`negatifsTardifs`).
+      date: true,
+      dateValeur: true,
+      corrigeEcritureId: true,
       journal: { select: { code: true } },
       // A8 · la contre-passation faite à la main et DÉCLARÉE (voir
       // `lignesDeContrePassationDeclaree`).
@@ -3438,10 +3478,9 @@ async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: strin
   // Une contre-passation déclarée dont TOUTES les lignes sont celles de
   // l'écart n'est plus une écriture d'ouverture · ni pièce nommée, ni refus
   // « au brouillard ». Toute autre écriture du périmètre reste.
-  const ecritures = lues
-    .filter((e) => !horsOuverture.has(e.id) || retenues.has(e.id))
-    .map(({ id, numeroPiece, statut, journal }) => ({ id, numeroPiece, statut, journal }));
-  return { ecritures, lignes };
+  const gardees = lues.filter((e) => !horsOuverture.has(e.id) || retenues.has(e.id));
+  const ecritures = gardees.map(({ id, numeroPiece, statut, journal }) => ({ id, numeroPiece, statut, journal }));
+  return { ecritures, lignes, negatifsTardifs: negatifsTardifs(gardees, exercice.dateDebut) };
 }
 
 /** « pièce OD n° 1 » · ce qui désigne les écritures déjà passées dans un message, cinq au plus. */
@@ -3527,6 +3566,27 @@ function listeLisible<T>(items: T[], lire: (x: T) => string, n = 5): string {
   return items.slice(0, n).map(lire).join(', ') + (items.length > n ? ` et ${items.length - n} autre(s)` : '');
 }
 
+/** Le motif de CONSERVER, relu · écrit, 3 à 500 caractères, il reste au journal d'audit. */
+function motifDeConservation(motifConservation: string | null): string {
+  const motif = (motifConservation ?? '').trim();
+  if (motif.length < 3 || motif.length > 500) {
+    throw new BadRequestException(
+      "Conserver l'ouverture déjà passée exige un motif écrit (3 à 500 caractères) · il dit pourquoi les livres légaux de cet " +
+        "exercice ne sont pas ceux d'OmegaX, et il reste au journal d'audit.",
+    );
+  }
+  return motif;
+}
+
+/** Les positions gardées sur l'exercice à la conservation (R8) · bornées, le total se dit toujours. */
+function ecartsGardes(ecarts: EcartNomme[]) {
+  return {
+    total: ecarts.length,
+    tronque: ecarts.length > PLAFOND_ECARTS_SERVIS,
+    ecarts: ecarts.slice(0, PLAFOND_ECARTS_SERVIS).map(({ compteId: _c, ...e }) => e),
+  };
+}
+
 /**
  * AU2 · CE QUE LA CLÔTURE FAIT D'UNE OUVERTURE DÉJÀ PASSÉE DANS N+1.
  *
@@ -3538,7 +3598,10 @@ function listeLisible<T>(items: T[], lire: (x: T) => string, n = 5): string {
  *    livre-journal (art. 22, 2°) et pourrait encore disparaître · la valider
  *    (ou, si c'est une opération ordinaire, la supprimer ou la redater) ;
  *  · NULLE sur toutes ses positions (un import entièrement annulé), elle
- *    n'est plus une ouverture · le report entier passe (R10) ;
+ *    n'est plus une ouverture · le report entier passe (R10) ; SAUF si un
+ *    négatif est inscrit hors du premier jour (second tour, BLOQUANT 1) · la
+ *    position exacte a pu être ressaisie ce jour-là, le cabinet DÉCLARE
+ *    (CONSERVER, rien n'est passé ; RECTIFIER, le report entier) ;
  *  · CONCORDANTE par compte et par devise · rien n'est ajouté ;
  *  · DIVERGENTE, et N ne porte aucune écriture · l'import fait foi ;
  *  · DIVERGENTE, et N a des écritures · OmegaX ne sait pas lequel des deux
@@ -3582,11 +3645,60 @@ async function issueDeLOuverture(
     );
   }
   if (ouvertureNulle(dejaPassee.lignes)) {
-    return {
-      ...rien,
-      lignes: p.report,
-      messages: [`Les écritures du premier jour de l'exercice suivant (${pieces}) se soldent à zéro sur chaque compte · le report entier est passé.`],
-    };
+    // SECOND TOUR, BLOQUANT 1 · une ouverture annulée par un négatif inscrit
+    // HORS du premier jour (`negatifsTardifs`) ne conclut pas seule · sa
+    // position exacte a pu être ressaisie le jour du négatif, hors du
+    // périmètre, et le report entier la doublait sans un mot. Le cabinet
+    // déclare · CONSERVER si la position exacte a été ressaisie (rien n'est
+    // passé, la ressaisie fait l'ouverture), RECTIFIER si elle ne l'a pas été
+    // (le report entier est passé). Un report vide n'a rien à doubler.
+    const tardifs = dejaPassee.negatifsTardifs;
+    if (tardifs.length === 0 || p.report.length === 0) {
+      return {
+        ...rien,
+        lignes: p.report,
+        messages: [`Les écritures du premier jour de l'exercice suivant (${pieces}) se soldent à zéro sur chaque compte · le report entier est passé.`],
+      };
+    }
+    const nommes = negatifsTardifsLisibles(tardifs);
+    if (p.choix === 'RECTIFIER') {
+      return {
+        ...rien,
+        lignes: p.report,
+        messages: [
+          `Les écritures du premier jour de l'exercice suivant (${pieces}) sont annulées par leur négatif inscrit après le premier jour ` +
+            `(${nommes}), et déclarées non ressaisies · le report entier est passé (${article} ; AUDCIF art. 20, al. 2).`,
+        ],
+      };
+    }
+    if (p.choix === 'CONSERVER') {
+      const motif = motifDeConservation(p.motifConservation);
+      const { ecarts } = await confrontationNommee(tx, p.tenantId, p.report, dejaPassee);
+      return {
+        rectification: null,
+        lignes: [],
+        messages: [
+          `Les écritures du premier jour de l'exercice suivant (${pieces}) sont annulées par leur négatif inscrit après le premier jour ` +
+            `(${nommes}) · leur position exacte est déclarée ressaisie dans l'exercice, aucun report n'est passé, et le contrôle de ` +
+            "l'exercice suivant le rappellera.",
+        ],
+        conservation: {
+          motif,
+          ecarts: {
+            ...ecartsGardes(ecarts),
+            negatifsTardifs: tardifs.map((t) => ({ piece: t.piece, date: t.date.toISOString().slice(0, 10) })),
+          } as unknown as Prisma.InputJsonValue,
+        },
+      };
+    }
+    throw new BadRequestException(
+      `Les écritures du premier jour de l'exercice suivant (${pieces}) se soldent à zéro, mais leur négatif est inscrit après le ` +
+        `premier jour (${nommes}) · OmegaX ne sait pas si la position exacte de l'ouverture a été ressaisie ce jour-là, hors du ` +
+        `premier jour. Le bilan d'ouverture correspond au bilan de clôture (${article}), et le report passé par-dessus une ` +
+        'ressaisie compterait l’ouverture deux fois. Déclarez-le · « Conserver » avec son motif si la position exacte a été ' +
+        'ressaisie (rien n’est passé, la ressaisie fait l’ouverture) ; « Rectifier » si elle ne l’a pas été (le report entier ' +
+        'est passé, AUDCIF art. 20, al. 2).',
+    );
   }
   const { ecarts, tenues } = await confrontationNommee(tx, p.tenantId, p.report, dejaPassee);
   if (ecarts.length === 0) {
@@ -3621,18 +3733,7 @@ async function issueDeLOuverture(
     return { rectification, lignes: rectification.lignes, messages, conservation: null };
   }
   if (p.choix === 'CONSERVER') {
-    const motif = (p.motifConservation ?? '').trim();
-    if (motif.length < 3 || motif.length > 500) {
-      throw new BadRequestException(
-        "Conserver l'ouverture déjà passée exige un motif écrit (3 à 500 caractères) · il dit pourquoi les livres légaux de cet " +
-          "exercice ne sont pas ceux d'OmegaX, et il reste au journal d'audit.",
-      );
-    }
-    const ecartsGardes = {
-      total: ecarts.length,
-      tronque: ecarts.length > PLAFOND_ECARTS_SERVIS,
-      ecarts: ecarts.slice(0, PLAFOND_ECARTS_SERVIS).map(({ compteId: _c, ...e }) => e),
-    };
+    const motif = motifDeConservation(p.motifConservation);
     return {
       rectification: null,
       lignes: [],
@@ -3640,7 +3741,7 @@ async function issueDeLOuverture(
         `L'ouverture déjà passée dans l'exercice suivant (${pieces}) est conservée, déclarée faire foi · elle diffère du bilan de clôture ` +
           `d'OmegaX sur ${ecarts.length} position(s) (${detail}), aucun report n'est passé, et le contrôle de l'exercice suivant le rappellera.`,
       ],
-      conservation: { motif, ecarts: ecartsGardes as unknown as Prisma.InputJsonValue },
+      conservation: { motif, ecarts: ecartsGardes(ecarts) as unknown as Prisma.InputJsonValue },
     };
   }
   throw new BadRequestException(
@@ -3648,7 +3749,11 @@ async function issueDeLOuverture(
       `position(s) · ${detail}. Les deux doivent correspondre (${article}), et OmegaX ne sait pas lequel est faux. Déclarez-le · ` +
       "« Rectifier l'import » si les livres de cet exercice sont tenus dans OmegaX (l'ouverture est inscrite en négatif là où elle diffère, " +
       "puis le report exact est passé, AUDCIF art. 20), ou « Conserver l'import » avec son motif si cet exercice n'y est tenu que pour " +
-      'les comparatifs (rien n’est passé).',
+      'les comparatifs (rien n’est passé).' +
+      (dejaPassee.negatifsTardifs.length > 0
+        ? ` Négatif(s) inscrit(s) après le premier jour · ${negatifsTardifsLisibles(dejaPassee.negatifsTardifs)} ; si la position ` +
+          'exacte a été ressaisie ce jour-là, « Rectifier l’import » la compterait deux fois.'
+        : ''),
   );
 }
 

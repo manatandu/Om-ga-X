@@ -1,6 +1,14 @@
 import { ClasseCompte, TypeJournal } from '@prisma/client';
 import { EcritureService } from '../comptabilite/ecriture.service';
-import { LecteurOuverturePassee, filtreOuverturePasseeAuPremierJour, lignesDeContrePassationDeclaree, ouverturePasseeNonNulle } from './ouverture-passee';
+import {
+  LecteurOuverturePassee,
+  filtreOuverturePasseeAuPremierJour,
+  lignesDeContrePassationDeclaree,
+  negatifsTardifs,
+  negatifsTardifsLisibles,
+  ouverturePasseeNonNulle,
+  positionDOuverturePassee,
+} from './ouverture-passee';
 
 /**
  * LE PÉRIMÈTRE DE L'OUVERTURE PASSÉE AU PREMIER JOUR, ÉVALUÉ (paquet 1, A8).
@@ -218,6 +226,21 @@ describe('B2 · une ouverture qui se solde n’est pas une ouverture (`ouverture
   });
 
   /**
+   * Second tour, BLOQUANT 1 · la position nulle DIT le négatif inscrit hors du
+   * premier jour · la clôture fait déclarer, les états le nomment.
+   */
+  it('second tour, B1 · une position nulle dit son négatif inscrit après le premier jour, jamais celui du premier jour', async () => {
+    expect(await positionDOuverturePassee(lecteur([odOuverture, negatif]), 't', N1, { validees: true })).toEqual({
+      etat: 'NULLE',
+      negatifsTardifs: [{ piece: 'OD n° 3', date: new Date('2027-02-15') }],
+    });
+    const duPremierJour = { ...negatif, date: N1.dateDebut };
+    expect(await positionDOuverturePassee(lecteur([odOuverture, duPremierJour]), 't', N1, { validees: true })).toEqual({ etat: 'NULLE', negatifsTardifs: [] });
+    expect(await positionDOuverturePassee(lecteur([]), 't', N1, { validees: true })).toEqual({ etat: 'AUCUNE' });
+    expect(await positionDOuverturePassee(lecteur([odOuverture]), 't', N1, { validees: true })).toEqual({ etat: 'NON_NULLE', nombre: 1, pieces: ['OD n° 2'] });
+  });
+
+  /**
    * Relecture du paquet 1, M4 · le CÂBLAGE · les états d'un exercice sans
    * précédent lisent l'ouverture par `EcritureService.ouverturePasseeAuPremierJour`,
    * qui comptait les écritures du périmètre · une OD annulée par son négatif
@@ -234,5 +257,28 @@ describe('B2 · une ouverture qui se solde n’est pas une ouverture (`ouverture
       );
     expect(await service([odOuverture, negatif]).ouverturePasseeAuPremierJour('t', 'n1')).toBeNull();
     expect(await service([odOuverture]).ouverturePasseeAuPremierJour('t', 'n1')).toEqual({ nombre: 1, pieces: ['OD n° 2'] });
+  });
+});
+
+/**
+ * SECOND TOUR DE RELECTURE DU PAQUET 1, BLOQUANT 1 · le négatif lié inscrit
+ * HORS du premier jour (ni daté ni valorisé au premier jour, comme le
+ * périmètre lit le premier jour) · sa ressaisie a pu se faire ce jour-là, hors
+ * du périmètre. AUDCIF art. 20, al. 2.
+ */
+describe('second tour, B1 · `negatifsTardifs`', () => {
+  const jour1 = new Date('2027-01-01');
+  const base = { numeroPiece: 4, journal: { code: 'OD' }, dateValeur: null };
+
+  it('un négatif lié daté du 15/03 est tardif, et se nomme avec sa date', () => {
+    const t = negatifsTardifs([{ ...base, date: new Date('2027-03-15'), corrigeEcritureId: 'od' }], jour1);
+    expect(t).toEqual([{ piece: 'OD n° 4', date: new Date('2027-03-15') }]);
+    expect(negatifsTardifsLisibles(t)).toBe('OD n° 4 du 15/03/2027');
+  });
+
+  it('daté ou valorisé au premier jour, ou sans liaison, il ne l’est pas', () => {
+    expect(negatifsTardifs([{ ...base, date: jour1, corrigeEcritureId: 'od' }], jour1)).toEqual([]);
+    expect(negatifsTardifs([{ ...base, date: new Date('2027-03-15'), dateValeur: jour1, corrigeEcritureId: 'od' }], jour1)).toEqual([]);
+    expect(negatifsTardifs([{ ...base, date: new Date('2027-03-15'), corrigeEcritureId: null }], jour1)).toEqual([]);
   });
 });

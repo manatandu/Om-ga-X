@@ -363,6 +363,67 @@ describe('AU2 · clôture de N avec une ouverture déjà passée dans N+1', () =
     expect(ran.find((l) => l.compteId === '521')).toMatchObject({ debit: 500 });
   });
 
+  /**
+   * SECOND TOUR DE RELECTURE DU PAQUET 1, BLOQUANT 1 (reproduit sur vraie base
+   * le 2026-10-09) · une OD du premier jour annulée par son négatif inscrit le
+   * 15 mars (« Corriger » depuis le Journal, date du jour), la position
+   * exacte ressaisie le même jour hors du périmètre · la position nulle
+   * passait le report entier, l'ouverture comptée deux fois (banque à
+   * 20 800 000 pour 10 400 000). AUDCIF art. 20, al. 2 ; art. 34.
+   */
+  describe('second tour, B1 · une ouverture annulée par un négatif inscrit hors du premier jour', () => {
+    const OD = { id: 'imp', numeroPiece: 1, statut: 'VALIDEE', journal: { code: 'OD' }, date: N1.dateDebut, dateValeur: null, corrigeEcritureId: null };
+    const negatif = (date: Date, dateValeur: Date | null = null) => ({
+      id: 'neg', numeroPiece: 2, statut: 'VALIDEE', journal: { code: 'OD' }, date, dateValeur, corrigeEcritureId: 'imp',
+    });
+    const annulee = [
+      ligneImport('a1', '521', 500, 0), ligneImport('a2', '131', 0, 500),
+      ligneImport('b1', '521', -500, 0, { ecritureId: 'neg' }), ligneImport('b2', '131', 0, -500, { ecritureId: 'neg' }),
+    ];
+    const MARS = new Date('2027-03-15');
+
+    it('rien de déclaré · refus qui nomme le négatif, sa date et les deux issues', async () => {
+      const { s, tx } = avecOuverture([OD, negatif(MARS)], annulee);
+      await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(
+        /OD n° 2 du 15\/03\/2027.*AUDCIF art\. 34.*« Conserver ».*ressaisie.*« Rectifier ».*le report entier/,
+      );
+      // Aucun report dans l'exercice suivant (l'écriture de solde tombe avec la transaction).
+      expect(tx.ecriture.create.mock.calls.filter((c) => c[0].data.exerciceId === 'n1')).toHaveLength(0);
+    });
+
+    it('RECTIFIER · le report ENTIER est passé, rien n’est inscrit en négatif', async () => {
+      const { s, tx } = avecOuverture([OD, negatif(MARS)], annulee);
+      const r = (await s.cloturer('t', 'n', 'u', { ouvertureImportee: 'RECTIFIER' })) as unknown as { issueOuverture: string[] };
+      const ran = tx.ecriture.create.mock.calls[1][0].data.lignes.create as { compteId: string; debit: number; credit: number }[];
+      expect(ran.find((l) => l.compteId === '521')).toMatchObject({ debit: 500 });
+      expect(ran.every((l) => l.debit >= 0 && l.credit >= 0)).toBe(true);
+      expect(r.issueOuverture.join(' ')).toMatch(/OD n° 2 du 15\/03\/2027.*non ressaisies · le report entier est passé/);
+    });
+
+    it('CONSERVER · rien n’est passé, motif, positions et négatif s’écrivent sur l’exercice ; sans motif, refus', async () => {
+      const sans = avecOuverture([OD, negatif(MARS)], annulee);
+      await expect(sans.s.cloturer('t', 'n', 'u', { ouvertureImportee: 'CONSERVER' })).rejects.toThrow(/motif écrit/);
+      const { s, tx } = avecOuverture([OD, negatif(MARS)], annulee);
+      await s.cloturer('t', 'n', 'u', { ouvertureImportee: 'CONSERVER', motifConservation: 'Ouverture ressaisie le 15/03' });
+      expect(tx.ecriture.create).toHaveBeenCalledTimes(1);
+      const data = tx.exercice.update.mock.calls[0][0].data;
+      expect(data.motifOuvertureSuivanteConservee).toBe('Ouverture ressaisie le 15/03');
+      expect(data.ecartsOuvertureSuivanteConservee).toMatchObject({
+        ecarts: expect.arrayContaining([expect.objectContaining({ numero: 'N521', cloture: 500, ouverture: 0 })]),
+        negatifsTardifs: [{ piece: 'OD n° 2', date: '2027-03-15' }],
+      });
+    });
+
+    it('un négatif daté ou valorisé au PREMIER JOUR · position nulle sans doute, le report entier passe sans déclaration (R10)', async () => {
+      for (const n of [negatif(N1.dateDebut), negatif(MARS, N1.dateDebut)]) {
+        const { s, tx } = avecOuverture([OD, n], annulee);
+        await s.cloturer('t', 'n', 'u');
+        const ran = tx.ecriture.create.mock.calls[1][0].data.lignes.create as { compteId: string; debit: number }[];
+        expect(ran.find((l) => l.compteId === '521')).toMatchObject({ debit: 500 });
+      }
+    });
+  });
+
   it('R2 · le report porte le 521 en dollars, l’import en francs seuls · ÉCART nommé avec sa devise, jamais concordant', async () => {
     const { s, tx } = avecOuverture([IMPORT], importExact);
     // Le report rend la banque en devise (une ligne en USD).
