@@ -764,19 +764,39 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
   resté en information), `liasse-syscohada.spec.ts` (postes vidés par l'OD) ·
   les deux tests « à vérifier » tombent sans la correction.
 
+### m4 · la contre-passation DÉCLARÉE lue comme une ouverture (585 du groupe, reconduction du lettrage)
+
+- 585 du groupe (G1) · déjà corrigé par le commit de B2 (187c72c) · la
+  remontée lit l'ouverture NETTE comme la clôture (`ouverturePasseeNonNulle`,
+  qui écarte les lignes de l'écart d'une contre-passation déclarée par
+  `lignesDeContrePassationDeclaree`). Il manquait le test de ce cas · ajouté
+  (`virements-585-groupe.spec.ts`, déclarée puis annulée) ; il tombe sur la
+  lecture d'avant B2 (« une écriture existe »).
+- Reconduction du lettrage (`groupesNonReconduits`) · les candidates
+  reprenaient le périmètre de l'ouverture sans écarter les lignes de l'écart
+  d'une contre-passation déclarée, que la clôture écarte
+  (`ouvertureDejaPassee`). Effet · sa ligne au compte du tiers rivalisait
+  avec la ligne d'une ouverture importée de même montant (groupe dit
+  INTROUVABLE), ou accueillait seule un groupe sur une ligne qui ne reporte
+  aucune pièce. Corrigé · même lecture que la clôture
+  (`lignesDeContrePassationDeclaree`, déclaration lue avec la candidate),
+  seules ces lignes sortent ; une déclaration annulée ne couvre plus rien.
+- Vraie base · le cas exige une ouverture importée ET une contre-passation
+  déclarée au premier jour, un groupe partiel de N délettré après sa
+  reconduction et une ligne de même montant que l'écart · hors de portée du
+  banc dans ce tour. Non-régression rejouée · A8, A8M (contre-passation à la
+  main déclarée), B2, M4 · 60 sur 60. Test unitaire
+  (`reconduction-lettrage.spec.ts`), qui tombe sans la correction.
+
 ## Reste
 
 Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).
 
 ## Relevés (voisins, non codés)
 
-- A8 · la contre-passation DÉCLARÉE n'est écartée que par la clôture et son
-  aperçu (ligne à ligne). Les autres lecteurs du filtre (585 du groupe G1,
-  candidates de la reconduction du lettrage) la lisent encore comme une
-  ouverture · pour G1, une OD déclarée au premier jour qui ne touche aucun 585
-  arrête la remontée vers l'exercice précédent ouvert ; pour le lettrage, ses
-  lignes de tiers peuvent être offertes comme lignes d'accueil. Rien n'est
-  faussé dans les montants, mais la lecture diffère de celle de la clôture.
+- A8 · (levé par la relecture m4, voir plus haut) la contre-passation
+  DÉCLARÉE était encore lue comme une ouverture par le 585 du groupe et par
+  les candidates de la reconduction du lettrage.
 - A4 · d'autres lecteurs prennent la colonne report (ou le filtre
   `estGenereeParCloture && !estSoldeDesComptesDeGestion`) pour l'à-nouveau et
   y comptent donc le virement du 13 d'un exercice clôturé · balance en

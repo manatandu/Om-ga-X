@@ -250,6 +250,45 @@ describe('le 585 du groupe à la date de clôture', () => {
   });
 
   /**
+   * Relecture du paquet 1, m4 · la contre-passation faite À LA MAIN et
+   * DÉCLARÉE (A5 bis) n'est pas une ouverture non plus · ses lignes sur les
+   * comptes de l'écart (client 4111, 479) sont écartées comme à la clôture
+   * (`lignesDeContrePassationDeclaree`), la position qui reste est nulle, la
+   * remontée se fait. La doublure rend la déclaration avec l'écriture des
+   * écarts qu'elle couvre.
+   */
+  it('m4 · une contre-passation DÉCLARÉE au premier jour n’arrête pas la remontée vers l’exercice précédent ouvert', async () => {
+    const declaree = ecritureDuPremierJour('cpm', 'C1', 'c26', '2026-01-01', {
+      lignes: [
+        { id: 'cpm-1', ecritureId: 'cpm', compteId: 'c479', debit: 100_000, credit: 0, deviseId: null, montantDevise: null, compte: { classe: 'CLASSE_4' } },
+        { id: 'cpm-2', ecritureId: 'cpm', compteId: 'c411', debit: 0, credit: 100_000, deviseId: null, montantDevise: null, compte: { classe: 'CLASSE_4' } },
+      ],
+      reevaluationContrePassationDeclaree: {
+        annuleeLe: null,
+        ecritureEcarts: {
+          lignes: [
+            { compteId: 'c411', debit: 100_000, credit: 0, compte: { numero: '41110000' } },
+            { compteId: 'c479', debit: 0, credit: 100_000, compte: { numero: '47910000' } },
+          ],
+        },
+      },
+    });
+    const jouer = () =>
+      monter({
+        dossierMereId: null,
+        membres: ['SIEGE', 'C1'],
+        exercices: [ex('s26', 'SIEGE', '2026-01-01'), ex('c25', 'C1', '2025-01-01'), ex('c26', 'C1', '2026-01-01')],
+        soldes585: { s26: 2_000_000, c25: -2_000_000, c26: 0 },
+        ecritures: [declaree],
+      }).service.virements585DuGroupe('SIEGE', AU_31_12_2026);
+    expect(await jouer()).toEqual({ solde: 0 });
+    // Déclaration ANNULÉE (sa réévaluation l'est) · l'OD redevient une
+    // ouverture validée, la remontée s'arrête.
+    (declaree.reevaluationContrePassationDeclaree as R).annuleeLe = new Date('2026-03-01');
+    expect(await jouer()).toEqual({ solde: 2_000_000 });
+  });
+
+  /**
    * Relecture du paquet 1, B2 · une OD d'ouverture validée au premier jour,
    * puis annulée par son négatif daté plus tard (AUDCIF art. 20, al. 2) ·
    * l'exercice n'a plus d'ouverture, la remontée vers l'exercice précédent

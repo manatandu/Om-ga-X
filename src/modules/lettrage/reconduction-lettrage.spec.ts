@@ -532,6 +532,39 @@ describe('groupesNonReconduits · ce qui reste à relettrer d’un dossier clôt
     expect(r2.groupes[0]).toMatchObject({ etat: 'A_RECONDUIRE', accueil: ['xF', 'xA'] });
   });
 
+  // Relecture du paquet 1, m4 · la contre-passation faite À LA MAIN et
+  // DÉCLARÉE (A5 bis) au premier jour · ses lignes sur les comptes de l'écart
+  // n'accueillent aucun groupe, comme à la clôture (`ouvertureDejaPassee`) ·
+  // candidate, sa ligne au 411 rivalisait avec celle de l'ouverture importée
+  // de même montant, et le groupe se disait introuvable.
+  it('m4 · une contre-passation DÉCLARÉE au premier jour n’offre aucune ligne d’accueil sur les comptes de l’écart', async () => {
+    const ecrOd = { ...ecrRan, estGenereeParCloture: false, journal: { type: 'GENERAL' }, corrigeEcriture: null, dateValeur: null, lignes: [] };
+    const declaration = {
+      annuleeLe: null as Date | null,
+      ecritureEcarts: {
+        lignes: [
+          { compteId: '411', debit: 400, credit: 0, compte: { numero: '41110000' } },
+          { compteId: '479', debit: 0, credit: 400, compte: { numero: '47910000' } },
+        ],
+      },
+    };
+    const contrePassation = { ...ecrOd, reevaluationContrePassationDeclaree: declaration };
+    const lignes = [
+      ligneDe('F', 1_000, 0, 'Facture', ecrN, { lettrageId: 'G' }),
+      ligneDe('A', 0, 400, 'Acompte', ecrN, { lettrageId: 'G' }),
+      ligneDe('oF', 1_000, 0, 'Bilan importé', ecrOd, { ecritureId: 'od' }),
+      ligneDe('oA', 0, 400, 'Bilan importé', ecrOd, { ecritureId: 'od' }),
+      ligneDe('cA', 0, 400, 'Contre-passation des écarts de conversion', contrePassation, { ecritureId: 'cpm' }),
+    ];
+    const r = await groupesNonReconduits(base(lignes, [groupe('G', 'A')]), { tenantId: 't' });
+    expect(r.groupes[0]).toMatchObject({ etat: 'A_RECONDUIRE', accueil: ['oF', 'oA'] });
+    // La déclaration annulée (sa réévaluation l'est) ne couvre plus rien · la
+    // ligne redevient une candidate, qui rivalise · rien n'est deviné.
+    declaration.annuleeLe = j('2027-03-01');
+    const r2 = await groupesNonReconduits(base(lignes, [groupe('G', 'A')]), { tenantId: 't' });
+    expect(r2.groupes[0].etat).toBe('INTROUVABLES');
+  });
+
   // Relecture du paquet 1, B2 · l'OD d'ouverture du premier jour, annulée par
   // son négatif (AUDCIF art. 20, al. 2), n'accueille plus aucun groupe · ni
   // elle, ni son négatif, qui entre au périmètre quelle que soit sa date. La
