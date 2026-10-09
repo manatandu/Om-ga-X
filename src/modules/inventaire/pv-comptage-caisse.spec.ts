@@ -1,4 +1,4 @@
-import { RoleMembreInventaire, StatutCampagneInventaire } from '@prisma/client';
+import { Prisma, RoleMembreInventaire, StatutCampagneInventaire } from '@prisma/client';
 import { InventaireService } from './inventaire.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -89,10 +89,14 @@ function service(etat: Etat = {}) {
         ),
       ),
     },
+    // Le verrou de la campagne à la clôture (relecture du paquet 1, mineur 3) ·
+    // le faux le prend sans rien bloquer ; la course est jouée plus bas, sur
+    // une doublure qui sérialise.
+    $queryRaw: jest.fn().mockResolvedValue([]),
     // Lecture du solde et création du PV dans UNE transaction (seconde passe A10).
     $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
   } as unknown as PrismaService;
-  return { svc: new InventaireService(prisma, {} as unknown as EcritureService), creerPv };
+  return { svc: new InventaireService(prisma, {} as unknown as EcritureService), creerPv, prisma };
 }
 
 const CAMPAGNE = {
@@ -403,5 +407,120 @@ describe('une campagne de caisses seules se clôt depuis le recensement', () => 
       fiches: [],
     });
     await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/RECENSEMENT ou ARBITRAGE/);
+  });
+});
+
+/**
+ * DEUX CLÔTURES SIMULTANÉES (relecture « échecs silencieux » du paquet 1,
+ * mineur 3). Les contrôles se lisaient hors transaction et l'écriture visait le
+ * seul identifiant · sur vraie base, six campagnes sur six fermées DEUX fois
+ * (201 et 201), la seconde réécrivant la date et l'auteur de la première.
+ * La doublure joue la base · `$queryRaw` (le `FOR UPDATE`) tient un verrou
+ * jusqu'à la fin de la transaction qui l'a pris, et `update` honore le statut
+ * de son filtre (P2025 sinon, comme Prisma).
+ */
+describe('deux clôtures simultanées · une seule passe', () => {
+  function baseSerialisee() {
+    const campagne: Record<string, unknown> = { ...CAMPAGNE };
+    let verrou: Promise<void> = Promise.resolve();
+    const ecritures: unknown[] = [];
+    const lignes = [{ debit: 1_300_000, credit: 0, compte: { id: 'c1', numero: '57100000', intitule: 'Caisse' } }];
+    const client = () => {
+      // Le verrou appartient à la transaction · relâché à sa fin, réussie ou non.
+      let liberer: () => void = () => undefined;
+      return {
+        liberer: () => liberer(),
+        $queryRaw: jest.fn().mockImplementation(async () => {
+          const precedent = verrou;
+          verrou = new Promise<void>((r) => (liberer = r));
+          await precedent;
+          return [{ id: 'camp1' }];
+        }),
+        campagneInventaire: {
+          findFirst: jest.fn().mockImplementation(async () => ({ ...campagne })),
+          update: jest.fn().mockImplementation(async (a: { where: { statut?: string }; data: Record<string, unknown> }) => {
+            // L'écriture est retardée d'un tour · sans verrou, la seconde clôture
+            // lit le statut avant que la première ne l'écrive.
+            await new Promise((r) => setImmediate(r));
+            if (a.where.statut !== undefined && a.where.statut !== campagne.statut) {
+              throw new Prisma.PrismaClientKnownRequestError('Record to update not found.', {
+                code: 'P2025',
+                clientVersion: 'doublure',
+              });
+            }
+            Object.assign(campagne, a.data);
+            ecritures.push(a.data);
+            return { ...campagne };
+          }),
+        },
+        ficheInventaire: { count: jest.fn().mockResolvedValue(0) },
+        procesVerbalComptageCaisse: {
+          findMany: jest.fn().mockResolvedValue([{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }]),
+        },
+        ecartInventaire: { count: jest.fn().mockResolvedValue(0) },
+        ligneEcriture: { findMany: jest.fn().mockResolvedValue(lignes) },
+      };
+    };
+    const prisma = {
+      ...client(),
+      $transaction: jest.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = client();
+        try {
+          return await fn(tx);
+        } finally {
+          tx.liberer();
+        }
+      }),
+    };
+    return { prisma, campagne, ecritures };
+  }
+
+  it('la seconde attend la première, relit CLOTUREE et reçoit le refus ordinaire', async () => {
+    const { prisma, campagne, ecritures } = baseSerialisee();
+    const svc = new InventaireService(prisma as unknown as PrismaService, {} as unknown as EcritureService);
+    const [a, b] = await Promise.allSettled([svc.clore('t1', 'camp1', 'u1'), svc.clore('t1', 'camp1', 'u2')]);
+    const reussies = [a, b].filter((r) => r.status === 'fulfilled');
+    const refusees = [a, b].filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    expect(reussies).toHaveLength(1);
+    expect(refusees).toHaveLength(1);
+    expect(String(refusees[0].reason?.message)).toMatch(/statut CLOTUREE/);
+    expect(ecritures).toHaveLength(1);
+    expect(campagne.statut).toBe(StatutCampagneInventaire.CLOTUREE);
+  });
+});
+
+describe('une écriture de clôture qui ne trouve plus le statut lu · 409 nommé', () => {
+  it('P2025 sur le statut lu devient un ConflictException qui dit quoi faire', async () => {
+    const { svc, prisma } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: [{ debit: 1_300_000, credit: 0, compte: { id: 'c1', numero: '57100000', intitule: 'Caisse' } }],
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    const maj = (prisma as unknown as { campagneInventaire: { update: jest.Mock } }).campagneInventaire.update;
+    maj.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Record to update not found.', { code: 'P2025', clientVersion: 'doublure' }),
+    );
+    const refus = svc.clore('t1', 'camp1', 'u1');
+    await expect(refus).rejects.toMatchObject({ status: 409 });
+    await expect(svc.clore('t1', 'camp1', 'u1')).resolves.toBeDefined();
+    // L'écriture vise le statut LU, pas le seul identifiant.
+    expect(maj.mock.calls[0][0].where).toEqual({ id: 'camp1', tenantId: 't1', statut: StatutCampagneInventaire.RECENSEMENT });
+  });
+
+  it('le verrou de la campagne est pris AVANT la lecture de son statut, dans la transaction', async () => {
+    const { svc, prisma } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: [{ debit: 1_300_000, credit: 0, compte: { id: 'c1', numero: '57100000', intitule: 'Caisse' } }],
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    await svc.clore('t1', 'camp1', 'u1');
+    const p = prisma as unknown as { $queryRaw: jest.Mock; $transaction: jest.Mock; campagneInventaire: { findFirst: jest.Mock } };
+    expect(p.$transaction).toHaveBeenCalled();
+    const sql = (p.$queryRaw.mock.calls[0][0] as TemplateStringsArray).join('?');
+    expect(sql).toMatch(/FROM "campagnes_inventaire" WHERE "id" = \? AND "tenantId" = \? FOR UPDATE/);
+    expect(p.$queryRaw.mock.calls[0].slice(1)).toEqual(['camp1', 't1']);
+    expect(p.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(p.campagneInventaire.findFirst.mock.invocationCallOrder[0]);
   });
 });

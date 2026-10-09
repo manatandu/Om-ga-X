@@ -252,8 +252,13 @@ export class InventaireService {
         };
   }
 
-  private async campagneOuverte(tenantId: string, id: string, statutsAdmis: StatutCampagneInventaire[]) {
-    const campagne = await this.prisma.campagneInventaire.findFirst({ where: { id, tenantId } });
+  private async campagneOuverte(
+    tenantId: string,
+    id: string,
+    statutsAdmis: StatutCampagneInventaire[],
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const campagne = await db.campagneInventaire.findFirst({ where: { id, tenantId } });
     if (!campagne) throw new NotFoundException("Campagne d'inventaire introuvable.");
     if (!statutsAdmis.includes(campagne.statut)) {
       throw new ForbiddenException(
@@ -1213,14 +1218,18 @@ export class InventaireService {
    * à compter, et l'exiger ferait du bruit sur chaque dossier qui a soldé une
    * caisse d'agence. C'est un choix, et il est ici plutôt que caché.
    */
-  async caissesNonComptees(tenantId: string, campagneId: string) {
-    const campagne = await this.prisma.campagneInventaire.findFirst({
+  async caissesNonComptees(
+    tenantId: string,
+    campagneId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const campagne = await db.campagneInventaire.findFirst({
       where: { id: campagneId, tenantId },
       select: { id: true, exerciceId: true },
     });
     if (!campagne) throw new NotFoundException('Campagne introuvable.');
 
-    const lignes = await this.prisma.ligneEcriture.findMany({
+    const lignes = await db.ligneEcriture.findMany({
       where: {
         compte: { tenantId, numero: { startsWith: '57' } },
         ecriture: { tenantId, exerciceId: campagne.exerciceId },
@@ -1233,7 +1242,7 @@ export class InventaireService {
       acc.solde += Number(l.debit) - Number(l.credit);
       soldes.set(l.compte.id, acc);
     }
-    const pv = await this.prisma.procesVerbalComptageCaisse.findMany({
+    const pv = await db.procesVerbalComptageCaisse.findMany({
       where: { tenantId, campagneId },
       select: { compteId: true },
     });
@@ -1249,35 +1258,66 @@ export class InventaireService {
    * CLÔTURE · plus rien ne bouge. Refusée tant qu'un écart n'est pas arbitré :
    * un écart laissé sans décision est la seule chose que l'étape 5 interdit,
    * et c'est aussi celle qui se perd le plus facilement.
+   *
+   * LES CONTRÔLES ET L'ÉCRITURE NE FONT QU'UN (relecture « échecs
+   * silencieux » du paquet 1, mineur 3). Lus hors transaction, puis écrits
+   * par un `update` sur le seul identifiant, ils laissaient passer deux
+   * clôtures simultanées · relevé sur vraie base, six campagnes sur six closes
+   * DEUX fois (201 et 201), la seconde réécrivant la date et l'auteur de la
+   * première, et une fiche ou un procès-verbal arrivé entre les contrôles et
+   * l'écriture entrait dans une campagne déjà jugée. La campagne est donc
+   * VERROUILLÉE en tête de transaction (`FOR UPDATE`) · une seconde clôture
+   * attend, puis relit le statut CLÔTURÉE et reçoit le refus ordinaire ; une
+   * fiche ou un procès-verbal de la campagne attend aussi (sa clé étrangère
+   * demande un verrou que celui-ci exclut), et les contrôles lisent sous ce
+   * verrou. L'écriture reste UNITAIRE, sur le statut lu · le journal d'audit
+   * garde l'avant et l'après (un `updateMany` n'y laisserait que le filtre et
+   * le compte), et si le statut a changé malgré tout, P2025 devient un 409
+   * nommé, jamais une erreur brute.
    */
   async clore(tenantId: string, campagneId: string, userId: string) {
-    const campagne = await this.campagneOuverte(tenantId, campagneId, [
-      StatutCampagneInventaire.RECENSEMENT,
-      StatutCampagneInventaire.ARBITRAGE,
-    ]);
-    if (campagne.statut === StatutCampagneInventaire.RECENSEMENT) {
-      await this.verifierCampagneDeCaissesSeules(tenantId, campagneId);
-    }
-    const enSuspens = await this.prisma.ecartInventaire.count({
-      where: { tenantId, campagneId, decision: null },
-    });
-    if (enSuspens > 0) {
-      throw new ForbiddenException(
-        `${enSuspens} écart(s) sans décision · la sous-commission doit trancher chacun avant la clôture (CPCC, étape 5).`,
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "campagnes_inventaire" WHERE "id" = ${campagneId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const campagne = await this.campagneOuverte(
+        tenantId,
+        campagneId,
+        [StatutCampagneInventaire.RECENSEMENT, StatutCampagneInventaire.ARBITRAGE],
+        tx,
       );
-    }
-    const caissesOubliees = await this.caissesNonComptees(tenantId, campagneId);
-    if (caissesOubliees.length > 0) {
-      throw new ForbiddenException(
-        `${caissesOubliees.length} caisse(s) à solde non nul sans procès-verbal de comptage ` +
-          `(${caissesOubliees.map((c) => c.numero).join(', ')}). Le CPCC demande « a-t-on tenu compte de la ` +
-          'caisse siège, de la caisse agence, de la caisse de secours ? » · un « oui » global ne dit rien de ' +
-          "celle qu'on a oubliée, et une caisse non comptée à la clôture ne se recompte plus jamais.",
-      );
-    }
-    return this.prisma.campagneInventaire.update({
-      where: { id: campagneId },
-      data: { statut: StatutCampagneInventaire.CLOTUREE, clotureeLe: new Date(), clotureePar: userId },
+      if (campagne.statut === StatutCampagneInventaire.RECENSEMENT) {
+        await this.verifierCampagneDeCaissesSeules(tenantId, campagneId, tx);
+      }
+      const enSuspens = await tx.ecartInventaire.count({
+        where: { tenantId, campagneId, decision: null },
+      });
+      if (enSuspens > 0) {
+        throw new ForbiddenException(
+          `${enSuspens} écart(s) sans décision · la sous-commission doit trancher chacun avant la clôture (CPCC, étape 5).`,
+        );
+      }
+      const caissesOubliees = await this.caissesNonComptees(tenantId, campagneId, tx);
+      if (caissesOubliees.length > 0) {
+        throw new ForbiddenException(
+          `${caissesOubliees.length} caisse(s) à solde non nul sans procès-verbal de comptage ` +
+            `(${caissesOubliees.map((c) => c.numero).join(', ')}). Le CPCC demande « a-t-on tenu compte de la ` +
+            'caisse siège, de la caisse agence, de la caisse de secours ? » · un « oui » global ne dit rien de ' +
+            "celle qu'on a oubliée, et une caisse non comptée à la clôture ne se recompte plus jamais.",
+        );
+      }
+      try {
+        return await tx.campagneInventaire.update({
+          where: { id: campagneId, tenantId, statut: campagne.statut },
+          data: { statut: StatutCampagneInventaire.CLOTUREE, clotureeLe: new Date(), clotureePar: userId },
+        });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          throw new ConflictException(
+            `Cette campagne a quitté le statut ${campagne.statut} pendant sa clôture · un autre geste est passé ` +
+              'entre-temps. Rechargez la campagne pour voir son état, puis relancez la clôture si elle reste à faire.',
+          );
+        }
+        throw err;
+      }
     });
   }
 
@@ -1303,10 +1343,14 @@ export class InventaireService {
    * Les caisses non comptées sont relues ensuite par `clore`, comme pour toute
    * campagne.
    */
-  private async verifierCampagneDeCaissesSeules(tenantId: string, campagneId: string) {
+  private async verifierCampagneDeCaissesSeules(
+    tenantId: string,
+    campagneId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
     const [fiches, pvs] = await Promise.all([
-      this.prisma.ficheInventaire.count({ where: { tenantId, campagneId } }),
-      this.prisma.procesVerbalComptageCaisse.findMany({
+      db.ficheInventaire.count({ where: { tenantId, campagneId } }),
+      db.procesVerbalComptageCaisse.findMany({
         where: { tenantId, campagneId },
         select: { ecart: true, compte: { select: { numero: true } } },
       }),

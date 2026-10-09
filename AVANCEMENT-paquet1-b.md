@@ -237,7 +237,7 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 Chaque constat vérifié dans le code, reproduit sur vraie base contre `main`
 (base `p1b_avant`, port 8771) et contre cette copie AVANT correction, corrigé
 avec son test, rejoué APRÈS (base `p1b_apres`, port 8772). Points du
-scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
+scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN3`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
 (`/tmp/claude-0/sim/p1b-relecture-avant.json` contre `main`,
 `p1b-relecture-branche.json` contre la copie avant correction).
 
@@ -341,6 +341,30 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
   motif dit « se réclame pour son net », jamais « lu ligne à ligne ».
 - APRÈS · M2, B5, B6 · 25 contrôles, 25 concordances (le motif du mineur 7
   compris).
+
+### Mineur 3 · contrôles et clôture de la campagne ne font qu'un
+
+- Vérifié · `clore` lisait statut, écarts, fiches et procès-verbaux hors
+  transaction, puis écrivait par un `update` sur le seul identifiant.
+- AVANT · contre `main`, la course ne se joue pas (la campagne de caisse
+  seule n'y est pas clôturable, B10 · 403/403 ×6) ; contre la copie avant
+  correction, MIN3 · six campagnes, deux clôtures simultanées chacune ·
+  `201/201` ×6, six campagnes closes DEUX fois (la seconde réécrit date et
+  auteur), aucune une fois (`/tmp/claude-0/sim/p1b-min3-branche-avant.json`).
+- Correction · une `transactionJournalisee` qui VERROUILLE la campagne en tête
+  (`SELECT … FOR UPDATE`), relit le statut et fait tous les contrôles sous ce
+  verrou · une seconde clôture attend puis reçoit le refus ordinaire (statut
+  CLOTUREE) ; un procès-verbal ou une fiche de la campagne attend aussi (sa
+  clé étrangère demande un verrou que `FOR UPDATE` exclut). L'écriture reste
+  un `update` UNITAIRE filtré sur le statut lu, P2025 rendu en 409 nommé ·
+  pas un `updateMany` comme proposé, qui ne laisserait au journal d'audit que
+  le filtre et le compte (la campagne est un modèle audité ; même choix que
+  la fin de contrat, CLAUDE.md P1b). Tests · une doublure qui sérialise comme
+  la base (deux clôtures, une seule passe), le 409 sur P2025, et le verrou
+  pris avant la lecture du statut ; les trois tombent contre l'ancien code.
+- APRÈS · MIN3 `201/403` ×6, 0 double, 6 simples ; B10 (7) et le scénario
+  `association` (184 contrôles, clôture après arbitrage comprise)
+  concordent.
 
 ## Décisions, avec leur source
 
