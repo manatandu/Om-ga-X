@@ -776,6 +776,14 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   la reconnexion fermerait la session neuve (défaut d'avant, forme de F164) ;
   un principal rattaché à la main n'est pas lié à son collectif
   (`rattacherCompte` ne pose pas `collectifId`), présentation seule.
+  Relevés de sécurité d'avant, vus à la vérification du 2026-10-09 (non
+  bloquants pour la ligne) · un administrateur du dossier de l'éditeur qui
+  n'est pas opérateur peut réinitialiser un compte opérateur du même dossier,
+  ce qui lève sa double authentification, puis l'enrôler à son nom (refuser
+  cette réinitialisation, ou ne pas lever le second facteur d'un opérateur,
+  est un choix de Manasse) ; le contrôle CSRF est sauté dès qu'un en-tête
+  Authorization est présent, même quand le jeton vient du cookie (fermé
+  aujourd'hui par CORS, à resserrer).
   RESTE · le salarié (42, « pas pour l'instant »), les organismes sociaux, l'État, les associés et bailleurs,
   les débiteurs et créditeurs divers (43 à 47), dont les sous-comptes se
   relisent dans les deux plans avant tout code.

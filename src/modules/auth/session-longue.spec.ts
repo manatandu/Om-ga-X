@@ -16,6 +16,7 @@ import {
   DUREE_INACTIVITE_SESSION_LONGUE_S,
   DUREE_MAXIMALE_SESSION_LONGUE_S,
   authentificationTropAnciennePourLaConsole,
+  demandeDeReemission,
   emettreSession,
   prolongationDue,
   SECONDES_PAR_JOUR,
@@ -296,6 +297,30 @@ describe('3 · la console de l’éditeur, session longue admise, connexion comp
     expect(jeton.authentification).toBeGreaterThanOrEqual(maintenant);
     expect(jeton.connexionComplete).toBe(ilYATroisJours);
     expect(authentificationTropAnciennePourLaConsole(sessionDuJeton(jeton, maintenant), maintenant)).toBe(true);
+  });
+
+  it('changer d’adresse ou déconnecter les autres appareils recopie aussi la connexion complète', async () => {
+    const maintenant = Math.floor(Date.now() / 1000);
+    const ilYATroisJours = maintenant - 3 * SECONDES_PAR_JOUR;
+    const session = {
+      longue: true,
+      origine: ilYATroisJours,
+      iat: maintenant - 60,
+      exp: maintenant + 3600,
+      csrf: 'c',
+      authentification: ilYATroisJours,
+      connexionComplete: ilYATroisJours,
+    };
+    const s = service(compte(true));
+    const actes = [
+      () => s.changerAdresse('u1', 'le-bon', 'neuve@b.cd', session),
+      () => s.deconnecterAutresAppareils('u1', 'le-bon', session),
+    ];
+    for (const acte of actes) {
+      const r = (await acte()) as { accessToken: string };
+      expect(lireJeton(r.accessToken).connexionComplete).toBe(ilYATroisJours);
+    }
+    expect(demandeDeReemission(session).connexionComplete).toBe(ilYATroisJours);
   });
 
   it('la prolongation recopie la connexion complète, et un jeton qui ne la porte pas ne l’invente pas', () => {
