@@ -61,10 +61,12 @@ describe('comptes proposés · la règle', () => {
   const prisma = new Proxy({} as Record<string, unknown>, {
     get(_c, nom: string) {
       return {
-        findMany: async ({ where, select }: { where: Record<string, { in: string[] }>; select: Record<string, boolean> }) => {
-          const champ = Object.keys(select)[0];
+        // Un regroupement par la colonne du lien, comme `identifiantsUtilises` le demande.
+        groupBy: async ({ where, by }: { where: Record<string, { in: string[] }>; by: string[] }) => {
+          const champ = by[0];
           appels.push(`${nom}.${champ}`);
-          return (REFERENCES[nom] ?? []).filter((l) => l[champ] && where[champ].in.includes(l[champ]));
+          const lignes = (REFERENCES[nom] ?? []).filter((l) => l[champ] && where[champ].in.includes(l[champ]));
+          return [...new Map(lignes.map((l) => [l[champ], { [champ]: l[champ] }])).values()];
         },
       };
     },
@@ -215,9 +217,10 @@ function serviceImmo(plan: Array<Record<string, unknown>>, references: Record<st
       get(cible, nom: string) {
         if (nom in cible) return cible[nom];
         return {
-          findMany: async ({ where, select }: { where: Record<string, { in: string[] }>; select: Record<string, boolean> }) => {
-            const champ = Object.keys(select)[0];
-            return (references[nom] ?? []).filter((l) => l[champ] && where[champ].in.includes(l[champ]));
+          groupBy: async ({ where, by }: { where: Record<string, { in: string[] }>; by: string[] }) => {
+            const champ = by[0];
+            const lignes = (references[nom] ?? []).filter((l) => l[champ] && where[champ].in.includes(l[champ]));
+            return [...new Map(lignes.map((l) => [l[champ], { [champ]: l[champ] }])).values()];
           },
         };
       },

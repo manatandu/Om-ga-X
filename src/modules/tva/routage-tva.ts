@@ -18,6 +18,26 @@
  * alors foi.
  */
 
+/**
+ * LES SOUS-COMPTES DE TAXE QUE CE ROUTAGE PEUT IMPOSER au SYSCOHADA · la
+ * ligne de TVA que la saisie pose d'office y va (régime AUTO), et elle ne
+ * doit jamais tomber sur un compte non personnalisé, que le comptable ne
+ * peut pas adopter (décision de Manasse du 2026-10-09 · les écritures que le
+ * logiciel calcule adoptent d'office). Ils sont semés RETENUS et la migration
+ * `20270164000000_comptes_personnalises` les retient dans tout dossier
+ * SYSCOHADA · `routage-tva-parite.spec.ts` tient la liste égale à ce que les
+ * deux fonctions ci-dessous rendent.
+ */
+export const COMPTES_DE_TAXE_ROUTES_SYSCOHADA: readonly string[] = [
+  '44310000',
+  '44320000',
+  '44330000',
+  '44510000',
+  '44520000',
+  '44530000',
+  '44540000',
+];
+
 /** Racine du compte de TVA collectée, d'après la contrepartie de produit. */
 export function compteTvaCollectee(numeroProduit: string): string | null {
   if (/^70[1234]/.test(numeroProduit) || /^707/.test(numeroProduit)) return '44310000';

@@ -228,9 +228,10 @@ export function BrouillardPage() {
   const ouvrirEdition = (l: LigneBrouillard) => {
     setErreurEdition(null);
     // UN NUMÉRO TAPÉ SE RÉSOUT DANS TOUT LE PLAN (`lib/comptes-proposes.ts`) ·
-    // l'édition n'offre aucune liste de choix, et la règle des comptes retenus
-    // aurait dit « introuvable au plan » d'un compte qui y est. Un échec de
-    // lecture se dit au lieu d'une liste vide.
+    // l'édition n'offre aucune liste de choix, et la liste des comptes
+    // personnalisés aurait dit « introuvable au plan » d'un compte qui y est ;
+    // le serveur refuse ensuite un compte non personnalisé en le nommant. Un
+    // échec de lecture se dit au lieu d'une liste vide.
     if (!comptes)
       api.get<Compte[]>('/comptes?typeCompte=DETAIL').then(setComptes, (e) =>
         setErreurEdition(`Plan de comptes illisible · ${e instanceof ApiError ? e.message : 'serveur injoignable'}`),

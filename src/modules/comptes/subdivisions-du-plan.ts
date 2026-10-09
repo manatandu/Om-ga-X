@@ -162,3 +162,23 @@ export function sousComptePropose(
 export function numerosSemes(referentiel: Referentiel): string[] {
   return [...racinesDu(referentiel).semes];
 }
+
+/**
+ * LES COMPTES DU PLAN QUE LE DOSSIER SUBDIVISE · même règle que la saisie
+ * (`EcritureService.verifierComptesCollectifs`), lue sur la liste du dossier ·
+ * le compte semé sous la racine duquel le dossier a ouvert un compte
+ * d'imputation ACTIF. Le Plan comptable le dit, pour qu'un compte que la
+ * saisie refuse ne s'y présente pas comme admis.
+ */
+export function comptesDuPlanSubdivises(
+  referentiel: Referentiel,
+  comptes: readonly { numero: string; typeCompte: TypeCompteDetailTotal | string; estActif: boolean }[],
+): Set<string> {
+  const subdivises = new Set<string>();
+  for (const c of comptes) {
+    if (c.typeCompte !== TypeCompteDetailTotal.DETAIL || !c.estActif) continue;
+    const parent = compteSemeSubdivise(referentiel, c.numero);
+    if (parent) subdivises.add(parent);
+  }
+  return subdivises;
+}

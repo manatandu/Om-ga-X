@@ -1,3 +1,4 @@
+import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../comptes/comptes-proposes';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import {
@@ -918,6 +919,16 @@ export class RegularisationService {
             : `SYCEBNL, Partie 3, ch. 3, § 2.2 et 2.4.`),
       );
     }
+
+    // UN ABONNEMENT COMPOSE DES ÉCRITURES · ses deux comptes sont personnalisés,
+    // comme ceux d'une saisie (décision de Manasse du 2026-10-09) · porté par
+    // l'abonnement, un compte deviendrait utilisé, donc personnalisé d'office,
+    // et la règle se contournerait par lui.
+    const motifPersonnalise = motifComptesNonPersonnalises(
+      await comptesNonPersonnalises(this.prisma, tenantId, [debit.id, credit.id]),
+      'un abonnement',
+    );
+    if (motifPersonnalise) throw new BadRequestException(motifPersonnalise);
 
     const dates = RegularisationService.echeancesDe(dateDebut, dateFin, dto.periodicite);
     if (dates.length === 0) {

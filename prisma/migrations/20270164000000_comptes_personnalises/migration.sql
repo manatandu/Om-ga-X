@@ -283,3 +283,16 @@ WHERE c."tenantId" = i.id
   AND s.referentiel = i.referentiel
   AND s.numero = c.numero
   AND c."typeCompte" = 'DETAIL';
+
+-- LES SOUS-COMPTES DE TAXE QUE LE ROUTAGE DE LA TVA IMPOSE AU SYSCOHADA
+-- (src/modules/tva/routage-tva.ts, COMPTES_DE_TAXE_ROUTES_SYSCOHADA) sont
+-- personnalisés d'office dans TOUT dossier SYSCOHADA · la ligne de taxe que la
+-- saisie pose d'office y va, et un comptable ne peut pas les adopter lui-même.
+-- Un dossier né après cette migration les sème retenus (CompteService.seedPlan).
+UPDATE comptes c
+SET "estRetenu" = true
+FROM tenants t
+WHERE c."tenantId" = t.id
+  AND t.referentiel = 'SYSCOHADA'
+  AND c.numero IN ('44310000', '44320000', '44330000', '44510000', '44520000', '44530000', '44540000')
+  AND c."estRetenu" = false;

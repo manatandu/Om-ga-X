@@ -4,7 +4,7 @@ import { referencesVers, refuserSiReferences } from '../../common/suppression/re
 import { PrismaService } from '../../common/prisma.service';
 import { refuserBailleurHorsSycebnl } from '../../common/bailleur-referentiel';
 import { motifRefusFondsContrepartieEtat } from './fonds-contrepartie-etat';
-import { ClasseCompte, Prisma, Referentiel, TypeCompteDetailTotal } from '@prisma/client';
+import { ClasseCompte, Prisma, Referentiel, TypeCompteDetailTotal, TypeJournal } from '@prisma/client';
 import { PLAN_COMPTES_SYCEBNL } from './compte-seed';
 import { CATALOGUE_RETRAITEMENTS } from '../fiscalite/catalogue-retraitements';
 import { PLAN_COMPTES_SYSCOHADA } from './compte-seed-syscohada';
@@ -12,8 +12,10 @@ import { CreerCompteDto, ModifierCompteDto } from './dto/creer-compte.dto';
 import { naturesDuDossier } from './natures-compte.service';
 import { LIBELLES_NATURE, natureDe } from './natures-compte';
 import { classeDuNumero } from './classe-du-numero';
+import { COMPTES_DE_TAXE_ROUTES_SYSCOHADA } from '../tva/routage-tva';
+import { collectifsDesPanoplies } from '../tiers/collectifs-tiers';
 import { comptesUtilises, estPropose } from './comptes-proposes';
-import { compteSemeSubdivise, numerosSemes, racineDuCompteSeme, sousComptePropose } from './subdivisions-du-plan';
+import { compteSemeSubdivise, comptesDuPlanSubdivises, estCompteSeme, numerosSemes, racineDuCompteSeme, sousComptePropose } from './subdivisions-du-plan';
 
 /**
  * Comptes ouverts au lettrage à la création d'un dossier.
@@ -65,8 +67,11 @@ export class CompteService {
         // semis, pas par un décompte.
         lettrable: c.typeCompte === 'TOTAL' ? false : estLettrableParDefaut(c.numero),
         // Le plan normalisé part NON retenu · le cabinet retient ce qu'il
-        // utilise, et tout compte utilisé reste proposé (schema.prisma).
-        estRetenu: false,
+        // utilise, et tout compte utilisé reste proposé (schema.prisma). Sauf
+        // les sous-comptes de taxe que le routage de la TVA impose au
+        // SYSCOHADA · la ligne que la saisie pose d'office y va, et le
+        // comptable ne peut pas les adopter lui-même (routage-tva.ts).
+        estRetenu: referentiel === Referentiel.SYSCOHADA && COMPTES_DE_TAXE_ROUTES_SYSCOHADA.includes(c.numero),
       })),
       skipDuplicates: true,
     });
@@ -123,6 +128,32 @@ export class CompteService {
     // pour toutes les routes qui servent des comptes.
     const utilises =
       filtres.retenus || filtres.usage ? await comptesUtilises(this.prisma, tenantId, comptes.map((c) => c.id)) : null;
+    // LA FENÊTRE PLAN COMPTABLE (`usage`) dit aussi si le compte est du plan
+    // OFFICIEL (il se personnalise, ou s'y ouvre un sous-compte) et si le
+    // dossier l'a SUBDIVISÉ · la saisie le refuse alors, personnalisé ou non,
+    // sauf le compte qu'un journal de banque ou de caisse actif tient (même
+    // règle que `EcritureService.verifierComptesCollectifs`). La subdivision se
+    // lit sur TOUT le plan du dossier, la liste rendue pouvant être filtrée.
+    const plan = filtres.usage
+      ? await (async () => {
+          const filtree = !!(filtres.classe || filtres.recherche || filtres.actifsSeuls || filtres.typeCompte);
+          const [dossier, tous, journaux] = await Promise.all([
+            this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } }),
+            filtree
+              ? this.prisma.compte.findMany({ where: { tenantId }, select: { numero: true, typeCompte: true, estActif: true } })
+              : Promise.resolve(comptes),
+            this.prisma.journal.findMany({
+              where: { tenantId, type: TypeJournal.TRESORERIE, estActif: true, compteTresorerieId: { not: null } },
+              select: { compteTresorerieId: true },
+            }),
+          ]);
+          return {
+            referentiel: dossier.referentiel,
+            subdivises: comptesDuPlanSubdivises(dossier.referentiel, tous),
+            tenusParUnJournal: new Set(journaux.map((j) => j.compteTresorerieId)),
+          };
+        })()
+      : null;
     return comptes
       .filter((c) => !filtres.retenus || estPropose(c, utilises!))
       .map((c) => {
@@ -131,6 +162,12 @@ export class CompteService {
           ...c,
           nature: n ? LIBELLES_NATURE[n.nature] : null,
           ...(utilises ? { utilise: utilises.has(c.id) } : {}),
+          ...(plan
+            ? {
+                duPlan: estCompteSeme(plan.referentiel, c.numero),
+                subdivise: plan.subdivises.has(c.numero) && !plan.tenusParUnJournal.has(c.id),
+              }
+            : {}),
         };
       });
   }
@@ -177,25 +214,29 @@ export class CompteService {
     // du 2026-10-09, point 4 · « ces comptes personnalisés fonctionnent
     // exactement comme leur compte racine ») · les états, la TVA et les
     // contrôles le lisent déjà par sa racine ; ses RÉGLAGES (lettrage, report
-    // à-nouveau, taux de taxe par défaut, comportement de gestion, traitement
-    // fiscal proposé) sont repris du compte du plan qu'il subdivise, sauf ce
-    // que la création précise. Le rattachement à un bailleur et la
-    // contrepartie de l'État ne se reprennent pas · ils nomment UN fonds, et
-    // le sous-compte peut être celui d'un autre bailleur.
+    // à-nouveau, taux de taxe par défaut, comportement de gestion) sont repris
+    // du compte du plan qu'il subdivise, sauf ce que la création précise.
+    // Trois choses ne se reprennent pas · le TRAITEMENT FISCAL, décision du
+    // cabinet sur SON compte (« le logiciel se souvient, il ne qualifie
+    // pas » · un sous-compte s'ouvre souvent pour isoler une part qui ne se
+    // traite pas comme le reste) ; le rattachement à un bailleur et la
+    // contrepartie de l'État, qui nomment UN fonds. Sous le collectif d'une
+    // panoplie de tiers, il s'y rattache comme le compte que la panoplie ouvre.
     const numeroDuPlan = compteSemeSubdivise(tenant.referentiel, dto.numero);
     const duPlan = numeroDuPlan
       ? await this.prisma.compte.findUnique({
           where: { tenantId_numero: { tenantId, numero: numeroDuPlan } },
           select: {
+            id: true,
             lettrable: true,
             modeReportANouveau: true,
             tauxTvaDefautId: true,
             comportementGestion: true,
             partVariableGestionPct: true,
-            codeRetraitementFiscal: true,
           },
         })
       : null;
+    const sousUnCollectif = !!duPlan && !!numeroDuPlan && collectifsDesPanoplies(tenant.referentiel).has(numeroDuPlan);
     return this.prisma.compte.create({
       data: {
         ...dto,
@@ -211,10 +252,9 @@ export class CompteService {
               // Non portés par la création · repris tels quels, modifiables ensuite.
               comportementGestion: duPlan.comportementGestion,
               partVariableGestionPct: duPlan.partVariableGestionPct,
-              codeRetraitementFiscal:
-                dto.codeRetraitementFiscal !== undefined ? dto.codeRetraitementFiscal : duPlan.codeRetraitementFiscal,
             }
           : {}),
+        ...(sousUnCollectif && duPlan ? { collectifId: duPlan.id } : {}),
       },
     });
   }
@@ -229,9 +269,16 @@ export class CompteService {
   async sousComptePropose(tenantId: string, compteId: string) {
     const [dossier, compte] = await Promise.all([
       this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true, longueurCompte: true } }),
-      this.prisma.compte.findFirst({ where: { id: compteId, tenantId }, select: { numero: true, intitule: true, typeCompte: true } }),
+      this.prisma.compte.findFirst({ where: { id: compteId, tenantId }, select: { numero: true, intitule: true, typeCompte: true, estActif: true } }),
     ]);
     if (!compte) throw new NotFoundException('Compte introuvable pour ce dossier.');
+    if (!compte.estActif) {
+      return {
+        numero: null,
+        intitule: compte.intitule,
+        motif: `Le compte ${compte.numero} est en sommeil · réactivez-le dans le plan comptable avant d'ouvrir un sous-compte sous lui.`,
+      };
+    }
     const racine = racineDuCompteSeme(dossier.referentiel, compte.numero);
     if (racine === null || compte.typeCompte !== TypeCompteDetailTotal.DETAIL) {
       return {

@@ -124,13 +124,17 @@ export function PlanComptesPage() {
   };
 
   useEffect(() => {
+    // Une lecture refusée se DIT · sans quoi « Chargement… » restait affiché
+    // pour toujours.
+    const lire = () =>
+      charger().catch((err) => setErreur(`Plan comptable illisible · ${err instanceof ApiError ? err.message : 'serveur injoignable'}`));
     // Montage (recherche vide) : chargement immédiat · attendre 250 ms
     // n'amortit rien quand personne n'a encore tapé.
     if (recherche === '') {
-      charger();
+      void lire();
       return;
     }
-    const t = setTimeout(charger, 250);
+    const t = setTimeout(lire, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recherche]);
@@ -158,16 +162,22 @@ export function PlanComptesPage() {
   // vue des comptes que la saisie admet (retenus, ou utilisés donc
   // personnalisés d'office). Préférence d'affichage du poste, gardée par
   // dossier ; le stockage local peut manquer (fenêtre privée), d'où le try.
-  const clePreference = `omegax.plan.personnalisesSeuls.${utilisateur?.tenant?.id ?? ''}`;
-  const [retenusSeuls, setRetenusSeulsEtat] = useState(() => {
+  const dossierId = utilisateur?.tenant?.id ?? null;
+  const clePreference = dossierId ? `omegax.plan.personnalisesSeuls.${dossierId}` : null;
+  const [retenusSeuls, setRetenusSeulsEtat] = useState(false);
+  // Relue à chaque dossier · la clé ne se fige pas au premier rendu, et sans
+  // dossier connu rien n'est lu ni écrit.
+  useEffect(() => {
+    if (!clePreference) return;
     try {
-      return localStorage.getItem(clePreference) === '1';
+      setRetenusSeulsEtat(localStorage.getItem(clePreference) === '1');
     } catch {
-      return false;
+      setRetenusSeulsEtat(false);
     }
-  });
+  }, [clePreference]);
   const setRetenusSeuls = (v: boolean) => {
     setRetenusSeulsEtat(v);
+    if (!clePreference) return;
     try {
       localStorage.setItem(clePreference, v ? '1' : '0');
     } catch {
@@ -176,13 +186,17 @@ export function PlanComptesPage() {
   };
   const [personnaliserOuvert, setPersonnaliserOuvert] = useState(false);
   const [infoPersonnalisation, setInfoPersonnalisation] = useState<string | null>(null);
-  const liste = useMemo(
-    () =>
-      (comptes ?? [])
-        .filter((c) => recherche.trim() !== '' || c.classe === classeFiltre)
-        .filter((c) => !retenusSeuls || c.typeCompte === 'TOTAL' || c.estRetenu || c.utilise),
-    [comptes, classeFiltre, recherche, retenusSeuls],
+  const avantFiltre = useMemo(
+    () => (comptes ?? []).filter((c) => recherche.trim() !== '' || c.classe === classeFiltre),
+    [comptes, classeFiltre, recherche],
   );
+  const liste = useMemo(
+    () => avantFiltre.filter((c) => !retenusSeuls || c.typeCompte === 'TOTAL' || c.estRetenu || c.utilise),
+    [avantFiltre, retenusSeuls],
+  );
+  // Ce que l'option masque se COMPTE · sans quoi une recherche du numéro à
+  // personnaliser lisait « Aucun compte ne correspond » d'un compte présent.
+  const masquesParLOption = avantFiltre.length - liste.length;
 
   const neRetenirQueLesUtilises = async () => {
     if (!window.confirm('Ne garder personnalisés que les comptes du plan officiel déjà utilisés ? Les autres comptes du plan ne seront plus proposés ni admis à la saisie ; les comptes que vous avez créés le restent. Rien n’est supprimé.')) return;
@@ -208,6 +222,12 @@ export function PlanComptesPage() {
   useEffect(() => {
     setIntituleEdit(selection?.intitule ?? '');
   }, [selection?.id, selection?.intitule]);
+  // Une autre sélection ferme la boîte et efface le message du geste
+  // précédent · sans quoi la boîte se rouvrirait seule sur le compte suivant.
+  useEffect(() => {
+    setPersonnaliserOuvert(false);
+    setInfoPersonnalisation(null);
+  }, [selectionId]);
 
   const onCreer = async (e: FormEvent) => {
     e.preventDefault();
@@ -428,14 +448,31 @@ export function PlanComptesPage() {
                 </span>
                 <span
                   className={`text-[11px] ${selectionId === c.id ? 'text-white/90' : 'text-sel'}`}
-                  title={c.estRetenu ? 'Adopté ou créé par le cabinet' : c.utilise ? 'Personnalisé d’office · une écriture, un journal, un tiers ou un réglage l’utilise' : 'Non personnalisé · ni saisie ni rattachement'}
+                  title={
+                    c.subdivise
+                      ? 'Subdivisé · la saisie va à ses sous-comptes'
+                      : c.estRetenu
+                        ? 'Adopté ou créé par le cabinet'
+                        : c.utilise
+                          ? 'Personnalisé d’office · une écriture, un journal, un tiers ou un réglage l’utilise'
+                          : 'Non personnalisé · ni saisie ni rattachement'
+                  }
                 >
-                  {c.typeCompte !== 'DETAIL' ? '' : c.estRetenu ? 'Oui' : c.utilise ? 'D’office' : '·'}
+                  {c.typeCompte !== 'DETAIL' ? '' : c.subdivise ? 'Subdivisé' : c.estRetenu ? 'Oui' : c.utilise ? 'D’office' : '·'}
                 </span>
               </button>
             ))}
-            {comptes && liste.length === 0 && (
+            {comptes && liste.length === 0 && masquesParLOption === 0 && (
               <div className="px-3.5 py-3 text-[11.5px] text-text-dim italic">Aucun compte ne correspond.</div>
+            )}
+            {masquesParLOption > 0 && (
+              <div className="px-3.5 py-2 text-[11.5px] text-text-dim">
+                {masquesParLOption} compte{masquesParLOption > 1 ? 's' : ''} non personnalisé{masquesParLOption > 1 ? 's' : ''} masqué
+                {masquesParLOption > 1 ? 's' : ''} ·{' '}
+                <button type="button" className="text-sel underline" onClick={() => setRetenusSeuls(false)}>
+                  les afficher
+                </button>
+              </div>
             )}
           </div>
           <div className="px-3.5 py-1 bg-surface-alt border-t border-border text-[11px] text-text-dim shrink-0">
@@ -636,7 +673,11 @@ export function PlanComptesPage() {
                       checked={!!selection.estRetenu}
                       onChange={(e) => modifier(selection.id, { estRetenu: e.target.checked })}
                     />
-                    <span>Compte personnalisé (admis à la saisie){selection.utilise && !selection.estRetenu ? ' · d’office, car utilisé' : ''}</span>
+                    <span>
+                      Adopté par le cabinet
+                      {selection.utilise && !selection.estRetenu ? ' · personnalisé d’office, car utilisé' : ''}
+                      {selection.subdivise ? ' · subdivisé, la saisie va à ses sous-comptes' : ''}
+                    </span>
                   </label>
                   <label className="flex items-start gap-2 mb-3 text-[11.5px]">
                     <input
@@ -666,7 +707,7 @@ export function PlanComptesPage() {
                     Gérer · interrogation et lettrage
                   </button>
                 )}
-                {estAdmin && selection.typeCompte === 'DETAIL' && selection.estActif && (
+                {estAdmin && selection.duPlan && selection.typeCompte === 'DETAIL' && selection.estActif && (
                   <button
                     type="button"
                     onClick={() => {
@@ -700,7 +741,15 @@ export function PlanComptesPage() {
           onFait={async (message) => {
             setPersonnaliserOuvert(false);
             setInfoPersonnalisation(message);
-            await charger();
+            // Un rechargement refusé après le geste réussi se dit ici · la boîte
+            // est fermée, et la liste resterait périmée sous le message.
+            try {
+              await charger();
+            } catch (err) {
+              setErreur(
+                `Le compte est enregistré, mais le plan n’a pas pu être relu · ${err instanceof ApiError ? err.message : 'serveur injoignable'}`,
+              );
+            }
           }}
         />
       )}

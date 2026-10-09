@@ -13,8 +13,11 @@
  * (`specs-sans-react.spec.ts`) ; le crochet de présélection vit dans
  * `preselection-unique.ts`.
  *
- * JAMAIS UN REFUS · un compte non retenu reste admis partout (états, imports,
- * écritures automatiques, numéro tapé à la saisie) ; seule la LISTE se tait.
+ * LE COMPTE PROPOSÉ EST LE COMPTE PERSONNALISÉ (décision de Manasse du
+ * 2026-10-09) · seul il se saisit, se réimpute et se rattache à un tiers ou à
+ * un journal ; le serveur refuse les autres en les nommant. Les états, les
+ * imports et les écritures que le logiciel calcule lisent tout le plan, et
+ * le compte qu'ils mouvementent devient personnalisé d'office.
  */
 
 /** Le paramètre de requête, le même pour toutes les routes de la liste du serveur. */
@@ -29,7 +32,7 @@ export const RETENUS = 'retenus=true';
  */
 export function motifAucunCompteRetenu(liste: readonly unknown[] | null | undefined, nature: string): string | null {
   if (!liste || liste.length > 0) return null;
-  return `Aucun compte ${nature} personnalisé · personnalisez-le dans Plan comptable (ou ouvrez-le s'il manque au plan).`;
+  return `Aucun compte ${nature} personnalisé · l'administrateur du dossier le personnalise dans Plan comptable (ou l'ouvre s'il manque au plan).`;
 }
 
 /** Le seul compte d'une liste, à présélectionner ; chaîne vide sinon. */
@@ -38,11 +41,9 @@ export function compteUnique(liste: readonly { id: string }[] | null | undefined
 }
 
 /**
- * UN NUMÉRO TAPÉ SE RÉSOUT DANS TOUT LE PLAN · jamais un refus. La liste de
- * choix ne propose que les comptes retenus ou utilisés, mais un compte du plan
- * que le cabinet n'a pas retenu reste un compte du plan : tapé en entier, il
- * se prend. La même règle sert la saisie des écritures et les fiches
- * d'inventaire, pour que les deux écrans ne divergent pas.
+ * LE COMPTE D'UN NUMÉRO TAPÉ EN ENTIER, cherché dans le plan reçu · la saisie
+ * le cherche dans tout le plan pour NOMMER un compte non personnalisé (il ne
+ * se prend pas), l'inventaire, qui compte et ne saisit pas, pour le prendre.
  */
 export function compteDuNumeroTape<C extends { numero: string }>(saisie: string, plan: readonly C[]): C | undefined {
   const numero = saisie.trim();

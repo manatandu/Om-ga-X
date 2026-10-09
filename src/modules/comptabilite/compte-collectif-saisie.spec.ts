@@ -293,9 +293,10 @@ describe('saisie sur un compte collectif', () => {
     const lignes = [{ compteId: 'c4111' }];
     await ctrl.creer(user, { lignes } as never);
     await ctrl.modifier(user, 'e1', { lignes } as never);
-    // Le compte non personnalisé est refusé d'abord · c'est le refus le plus
-    // simple à lever, et il ne dépend d'aucun autre compte de la pièce.
-    expect(appels).toEqual(['personnalise', 'collectif', 'sommeil', 'creer', 'personnalise', 'collectif', 'sommeil', 'modifier']);
+    // Le collectif et le compte subdivisé d'abord · leur refus nomme le compte
+    // du dossier où la ligne doit aller ; « personnalisez-le » enverrait
+    // adopter un compte que la saisie refuserait encore.
+    expect(appels).toEqual(['collectif', 'personnalise', 'sommeil', 'creer', 'collectif', 'personnalise', 'sommeil', 'modifier']);
     expect(svc.verifierComptesPersonnalises).toHaveBeenCalledWith('t1', lignes);
     expect(svc.verifierComptesCollectifs).toHaveBeenCalledWith('t1', lignes);
     expect(svc.verifierComptesCollectifs).toHaveBeenCalledWith('t1', lignes, 'e1');
@@ -317,7 +318,25 @@ describe('saisie sur un compte collectif', () => {
     expect(svc.reimputer).not.toHaveBeenCalled();
     expect(svc.fusionnerComptes).not.toHaveBeenCalled();
     expect(svc.verifierComptesCollectifs).toHaveBeenCalledWith('t1', [{ compteId: 'c4111' }]);
-    expect(svc.verifierComptesPersonnalises).toHaveBeenCalledWith('t1', [{ compteId: 'c4111' }], 'une réimputation');
-    expect(svc.verifierComptesPersonnalises).toHaveBeenCalledWith('t1', [{ compteId: 'c4111' }], 'une fusion');
+    expect(svc.verifierComptesPersonnalises).not.toHaveBeenCalled();
+  });
+
+  it('la réimputation et la fusion refusent ensuite un compte d’arrivée non personnalisé', async () => {
+    const svc = {
+      verifierComptesCollectifs: jest.fn(async () => undefined),
+      verifierComptesPersonnalises: jest.fn(async () => {
+        throw new Error('non personnalisé');
+      }),
+      reimputer: jest.fn(),
+      fusionnerComptes: jest.fn(),
+    };
+    const ctrl = new EcritureController(svc as never);
+    const user = { tenantId: 't1', userId: 'u1', role: RoleUtilisateur.ADMIN_CABINET } as never;
+    await expect(ctrl.reimputer(user, { compteCibleId: 'c622' } as never)).rejects.toThrow('non personnalisé');
+    await expect(ctrl.fusionnerComptes(user, { compteSourceId: 'x', compteCibleId: 'c622' } as never)).rejects.toThrow('non personnalisé');
+    expect(svc.verifierComptesPersonnalises).toHaveBeenCalledWith('t1', [{ compteId: 'c622' }], 'une réimputation');
+    expect(svc.verifierComptesPersonnalises).toHaveBeenCalledWith('t1', [{ compteId: 'c622' }], 'une fusion');
+    expect(svc.reimputer).not.toHaveBeenCalled();
+    expect(svc.fusionnerComptes).not.toHaveBeenCalled();
   });
 });

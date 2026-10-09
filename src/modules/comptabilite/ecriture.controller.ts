@@ -26,8 +26,11 @@ export class EcritureController {
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   @Post()
   async creer(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreerEcritureDto) {
-    await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
+    // Le collectif et le compte subdivisé d'abord · leur refus nomme les comptes
+    // du dossier où la ligne doit aller, là où « personnalisez-le » enverrait
+    // adopter un compte que la saisie refuserait encore.
     await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes);
+    await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
     return this.ecritureService.creer(user.tenantId, user.userId, dto);
   }
@@ -75,13 +78,13 @@ export class EcritureController {
     // des comptes de tiers y ferait passer ses lignes. Le compte fondu, que la
     // fusion endort, ne compte pas parmi les sous-comptes de la cible. La
     // cible reçoit des lignes · comme une saisie, elle est personnalisée.
-    await this.ecritureService.verifierComptesPersonnalises(user.tenantId, [{ compteId: dto.compteCibleId }], 'une fusion');
     await this.ecritureService.verifierComptesCollectifs(
       user.tenantId,
       [{ compteId: dto.compteCibleId }],
       undefined,
       dto.compteSourceId,
     );
+    await this.ecritureService.verifierComptesPersonnalises(user.tenantId, [{ compteId: dto.compteCibleId }], 'une fusion');
     return this.ecritureService.fusionnerComptes(user.tenantId, user.userId, dto.compteSourceId, dto.compteCibleId, dto.motif);
   }
 
@@ -91,8 +94,8 @@ export class EcritureController {
   async reimputer(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReimputerDto) {
     // La réimputation est une saisie · elle ne porte pas une ligne au
     // collectif que la saisie refuse, ni à un compte non personnalisé.
-    await this.ecritureService.verifierComptesPersonnalises(user.tenantId, [{ compteId: dto.compteCibleId }], 'une réimputation');
     await this.ecritureService.verifierComptesCollectifs(user.tenantId, [{ compteId: dto.compteCibleId }]);
+    await this.ecritureService.verifierComptesPersonnalises(user.tenantId, [{ compteId: dto.compteCibleId }], 'une réimputation');
     return this.ecritureService.reimputer(user.tenantId, user.userId, dto);
   }
 
@@ -134,8 +137,8 @@ export class EcritureController {
     @Param('id') id: string,
     @Body() dto: ModifierEcritureDto,
   ) {
-    await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes, id);
+    await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
     return this.ecritureService.modifier(user.tenantId, id, dto);
   }

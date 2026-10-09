@@ -205,13 +205,13 @@ export function SaisiePage() {
   const [grilleLue, setGrilleLue] = useState<LigneGrilleSaisie[] | null>(null);
   const [erreurGrille, setErreurGrille] = useState<string | null>(null);
   const grilleSaisie = grilleLue ?? AUCUNE_LIGNE_DE_GRILLE;
-  // DEUX LECTURES DU PLAN, deux usages (décision du 2026-09-28, « Comptes
-  // retenus »). La LISTE proposée à la frappe ne montre que les comptes
-  // retenus ou utilisés ; tout le reste (numéro tapé en entier, contrepartie
-  // de trésorerie, compte de TVA routé, modèles) lit le PLAN ENTIER · une
-  // écriture automatique qui ne trouverait pas un compte non retenu dirait
-  // « aucun compte » à tort, et un numéro tapé serait refusé, ce que la règle
-  // interdit.
+  // DEUX LECTURES DU PLAN, deux usages. La LISTE proposée à la frappe ne
+  // montre que les comptes PERSONNALISÉS (retenus ou utilisés), les seuls que
+  // la saisie admet (décision de Manasse du 2026-10-09) ; un numéro tapé en
+  // entier qui ne l'est pas est NOMMÉ, jamais pris. Le PLAN ENTIER sert ce que
+  // l'écran pose lui-même (contrepartie de trésorerie, compte de TVA routé,
+  // écritures-types) · une ligne posée qui ne trouverait pas son compte dirait
+  // « aucun compte » à tort ; le serveur juge ensuite chaque compte posé.
   const [comptesLus, setComptesLus] = useState<Compte[] | null>(null);
   const [comptesProposesLus, setComptesProposesLus] = useState<Compte[] | null>(null);
   const [erreurComptes, setErreurComptes] = useState<string | null>(null);
@@ -630,6 +630,27 @@ export function SaisiePage() {
     const exact = compteDuNumeroTape(compteSaisie, comptes);
     return exact && !comptesProposes.some((c) => c.id === exact.id) ? exact : null;
   }, [compteSaisie, comptes, comptesProposes]);
+  // LA FENÊTRE RESTE OUVERTE pendant que l'administrateur personnalise le
+  // compte ailleurs · la liste lue au montage le refuserait encore, et seule
+  // la fermeture, qui perd la pièce, l'aurait relue. Elle se relit donc à
+  // chaque numéro non personnalisé tapé ; une lecture refusée garde la liste
+  // et se dit.
+  const idTapeNonPersonnalise = tapeNonPersonnalise?.id ?? null;
+  useEffect(() => {
+    if (!idTapeNonPersonnalise) return;
+    let actif = true;
+    api.get<Compte[]>(`/comptes?actifsSeuls=true&typeCompte=DETAIL&${RETENUS}`).then(
+      (proposes) => {
+        if (actif) setComptesProposesLus(proposes);
+      },
+      (e) => {
+        if (actif) setErreurComptes(e instanceof Error ? e.message : "Le plan de comptes n'a pas pu être relu.");
+      },
+    );
+    return () => {
+      actif = false;
+    };
+  }, [idTapeNonPersonnalise]);
   const comptesFiltres = useMemo(() => frappe.map((f) => f.compte), [frappe]);
 
   const choisirCompte = (c: Compte) => {
@@ -1762,11 +1783,10 @@ export function SaisiePage() {
               Plan de comptes illisible · {erreurComptes}
             </div>
           )}
-          {/* Une liste de proposition vide dit pourquoi et quoi faire (§ 9 ter) ·
-              jamais un refus, le numéro tapé en entier se prend toujours. */}
+          {/* Une liste de proposition vide dit pourquoi et quoi faire (§ 9 ter). */}
           {comptesProposesLus && comptesProposesLus.length === 0 && (
             <div className="px-3 py-1.5 border-b border-border/50 text-[11.5px] text-warning">
-              Aucun compte personnalisé · personnalisez dans Plan comptable les comptes à proposer, ou tapez le numéro du compte en entier.
+              Aucun compte personnalisé · l’administrateur du dossier personnalise dans Plan comptable les comptes à saisir.
             </div>
           )}
           {/* Des taux illisibles ne se taisent pas · la TVA posée d'office
@@ -1853,7 +1873,7 @@ export function SaisiePage() {
                   role="status"
                   className="absolute left-0 top-full z-20 w-[380px] text-[11px] text-warning bg-surface px-2 py-1 border border-border-dark shadow-flottante"
                 >
-                  {tapeNonPersonnalise.numero} {tapeNonPersonnalise.intitule} · compte non personnalisé · personnalisez-le dans Plan comptable pour le saisir.
+                  {tapeNonPersonnalise.numero} {tapeNonPersonnalise.intitule} · compte non personnalisé · l’administrateur du dossier le personnalise dans Plan comptable pour qu’il se saisisse.
                 </div>
               )}
               {compteChoisi && !pickerOuvert && (

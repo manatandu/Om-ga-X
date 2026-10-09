@@ -37,7 +37,7 @@ const COMPTES: C[] = [
   // Un Total n'est jamais jugé ici · sa propre règle le refuse.
   { id: 't62', tenantId: 't1', numero: '62', intitule: 'Services extérieurs', estRetenu: false, typeCompte: 'TOTAL' },
   // Le même numéro dans un autre dossier, retenu · jamais lu pour t1.
-  { id: 'v622', tenantId: 't2', numero: '62200000', intitule: 'Locations', estRetenu: true, typeCompte: 'DETAIL' },
+  { id: 'v622', tenantId: 't2', numero: '62200000', intitule: 'Locations', estRetenu: false, typeCompte: 'DETAIL' },
 ];
 const REFERENCES: Record<string, Record<string, string>[]> = {
   ligneEcriture: [{ compteId: 'c661' }],
@@ -46,12 +46,12 @@ const REFERENCES: Record<string, Record<string, string>[]> = {
 
 type Where = { tenantId?: string; id?: string | { in: string[] }; estRetenu?: boolean; typeCompte?: string };
 
-/** La lecture « qui se réfère à ces comptes » d'une relation, telle que `identifiantsUtilises` la fait. */
+/** La lecture « qui se réfère à ces comptes » d'une relation, telle que `identifiantsUtilises` la fait (un regroupement). */
 function lectureDesReferences(nom: string) {
-  return jest.fn(async ({ where, select }: { where: Record<string, { in: string[] }>; select: Record<string, boolean> }) => {
-    const champ = Object.keys(select)[0];
+  return jest.fn(async ({ where, by }: { where: Record<string, { in: string[] }>; by: string[] }) => {
+    const champ = by[0];
     const lignes = (REFERENCES[nom] ?? []).filter((l) => l[champ] && where[champ]?.in?.includes(l[champ]));
-    return [...new Map(lignes.map((l) => [l[champ], l])).values()];
+    return [...new Map(lignes.map((l) => [l[champ], { [champ]: l[champ] }])).values()];
   });
 }
 
@@ -62,10 +62,10 @@ function prisma(extra: Record<string, unknown> = {}) {
         const d = cible[nom] as Record<string, unknown>;
         // Une table que le test double pour son propre geste répond aussi à
         // la lecture des références, sans que le test ait à l'écrire.
-        if (d && typeof d === 'object' && nom !== 'compte' && !('findMany' in d)) d.findMany = lectureDesReferences(nom);
+        if (d && typeof d === 'object' && nom !== 'compte' && !('groupBy' in d)) d.groupBy = lectureDesReferences(nom);
         return d;
       }
-      return { findMany: lectureDesReferences(nom) };
+      return { groupBy: lectureDesReferences(nom) };
     },
   };
   const compte = {
@@ -91,6 +91,13 @@ describe('le compte personnalisé · une seule règle', () => {
     expect(non.map((c) => c.numero)).toEqual(['62200000']);
   });
 
+  it('un identifiant répété n’est demandé qu’une fois', async () => {
+    const p = prisma();
+    await comptesNonPersonnalises(p, 't1', ['c622', 'c622', 'c411']);
+    const where = ((p.compte as { findMany: jest.Mock }).findMany.mock.calls[0][0] as { where: { id: { in: string[] } } }).where;
+    expect(where.id.in).toEqual(['c622', 'c411']);
+  });
+
   it('aucun identifiant, aucune lecture', async () => {
     const p = prisma();
     await expect(comptesNonPersonnalises(p, 't1', [])).resolves.toEqual([]);
@@ -104,6 +111,8 @@ describe('le compte personnalisé · une seule règle', () => {
     expect(m).toContain('une saisie ne se fait que sur un compte personnalisé');
     expect(m).toContain('Plan comptable');
     expect(m).toMatch(/adoptez le compte du plan tel quel, ou ouvrez un sous-compte/);
+    // Le comptable ne personnalise pas lui-même · le refus dit à qui revient le geste.
+    expect(m).toContain("geste de l'administrateur du dossier");
   });
 
   it('au-delà de cinq comptes, le refus compte les autres au lieu de les taire', () => {
@@ -190,7 +199,7 @@ describe('un sous-compte fonctionne comme son compte du plan', () => {
     codeRetraitementFiscal: 'AMENDES',
   };
 
-  it('reprend lettrage, report, taxe, comportement de gestion et traitement fiscal du compte du plan qu’il subdivise', async () => {
+  it('reprend lettrage, report, taxe et comportement de gestion du compte du plan qu’il subdivise', async () => {
     const { svc, create, p } = monde(DU_PLAN);
     await svc.creer('t1', { numero: '52110001', intitule: 'Rawbank' } as never);
     expect(p.compte.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId_numero: { tenantId: 't1', numero: '52110000' } } }));
@@ -200,11 +209,30 @@ describe('un sous-compte fonctionne comme son compte du plan', () => {
       modeReportANouveau: 'DETAIL',
       tauxTvaDefautId: 'tva-16',
       comportementGestion: 'FIXE',
-      codeRetraitementFiscal: 'AMENDES',
     });
-    // Le fonds d'un bailleur ne se reprend pas · il en nomme UN.
+    // Le traitement fiscal est la décision du cabinet sur SON compte · jamais
+    // hérité. Le fonds d'un bailleur non plus · il en nomme UN.
+    expect(create.mock.calls[0][0].data).not.toHaveProperty('codeRetraitementFiscal');
     expect(create.mock.calls[0][0].data).not.toHaveProperty('bailleurId');
     expect(create.mock.calls[0][0].data).not.toHaveProperty('porteFondsContrepartieEtat');
+    // Un compte de banque n'est pas le collectif d'une panoplie de tiers.
+    expect(create.mock.calls[0][0].data).not.toHaveProperty('collectifId');
+  });
+
+  it('sous le collectif d’une panoplie de tiers, le compte s’y rattache comme celui que la panoplie ouvre', async () => {
+    const create = jest.fn(async ({ data }: { data: Record<string, unknown> }) => data);
+    const p = {
+      tenant: { findUniqueOrThrow: jest.fn(async () => ({ id: 't1', longueurCompte: 8, referentiel: 'SYSCOHADA' })) },
+      compte: {
+        findUnique: jest.fn(async ({ where }: { where: { tenantId_numero: { numero: string } } }) =>
+          where.tenantId_numero.numero === '40110000' ? { id: 'c4011', ...DU_PLAN } : null,
+        ),
+        create,
+      },
+      natureCompte: { findMany: jest.fn(async () => []), createMany: jest.fn(async () => ({ count: 0 })), count: jest.fn(async () => 7) },
+    };
+    await new CompteService(p as never).creer('t1', { numero: '40110001', intitule: 'Nova Services' } as never);
+    expect(create.mock.calls[0][0].data).toMatchObject({ numero: '40110001', collectifId: 'c4011' });
   });
 
   it('ce que la création précise prime sur le compte du plan', async () => {
@@ -220,6 +248,40 @@ describe('un sous-compte fonctionne comme son compte du plan', () => {
       expect.objectContaining({ where: { tenantId_numero: { tenantId: 't1', numero: '52110000' } } }),
     );
     expect(create.mock.calls[0][0].data).not.toHaveProperty('tauxTvaDefautId');
+  });
+});
+
+describe('le Plan comptable dit le compte du plan et le compte subdivisé', () => {
+  it('un compte du plan sous lequel le dossier a ouvert un compte actif est subdivisé, sauf celui d’un journal de banque', async () => {
+    const plan = [
+      { id: 'a', tenantId: 't1', numero: '52110000', typeCompte: 'DETAIL', estActif: true, estRetenu: false },
+      { id: 'b', tenantId: 't1', numero: '52110001', typeCompte: 'DETAIL', estActif: true, estRetenu: true },
+      { id: 'c', tenantId: 't1', numero: '62210000', typeCompte: 'DETAIL', estActif: true, estRetenu: false },
+      { id: 'd', tenantId: 't1', numero: '62210001', typeCompte: 'DETAIL', estActif: true, estRetenu: true },
+      { id: 'e', tenantId: 't1', numero: '62220000', typeCompte: 'DETAIL', estActif: true, estRetenu: false },
+      // Un sous-compte en sommeil rend son compte du plan à la saisie.
+      { id: 'f', tenantId: 't1', numero: '62220001', typeCompte: 'DETAIL', estActif: false, estRetenu: true },
+    ];
+    const handler: ProxyHandler<Record<string, unknown>> = {
+      get(cible, nom: string) {
+        return nom in cible ? cible[nom] : { groupBy: jest.fn(async () => []) };
+      },
+    };
+    const p = new Proxy(
+      {
+        compte: { findMany: jest.fn(async () => plan) },
+        natureCompte: { findMany: jest.fn(async () => []), createMany: jest.fn(async () => ({ count: 0 })), count: jest.fn(async () => 7) },
+        tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: 'SYSCOHADA' })) },
+        journal: { findMany: jest.fn(async () => [{ compteTresorerieId: 'a' }]), groupBy: jest.fn(async () => [{ compteTresorerieId: 'a' }]) },
+      } as Record<string, unknown>,
+      handler,
+    );
+    const r = await new CompteService(p as never).lister('t1', { usage: true });
+    const lu = (n: string) => r.find((c) => c.numero === n) as { duPlan: boolean; subdivise: boolean };
+    expect(lu('52110000')).toMatchObject({ duPlan: true, subdivise: false });
+    expect(lu('52110001')).toMatchObject({ duPlan: false, subdivise: false });
+    expect(lu('62210000')).toMatchObject({ duPlan: true, subdivise: true });
+    expect(lu('62220000')).toMatchObject({ duPlan: true, subdivise: false });
   });
 });
 
@@ -265,14 +327,22 @@ describe('ne garder que les utilisés ne touche qu’au plan officiel', () => {
 describe('la migration des dossiers existants', () => {
   const sql = readFileSync(join(__dirname, '../../../prisma/migrations/20270164000000_comptes_personnalises/migration.sql'), 'utf8');
 
-  it('porte exactement les comptes d’imputation semés des deux plans', () => {
+  it('porte les comptes d’imputation semés au jour de la migration, une fois chacun', () => {
+    // UNE MIGRATION APPLIQUÉE NE SE RETOUCHE PAS · la liste est figée au jour
+    // de son écriture (880 au SYCEBNL, 1 130 au SYSCOHADA, relus contre les
+    // deux semis ce jour-là), jamais confrontée au semis VIVANT, qu'un ajout
+    // légitime ferait diverger d'elle.
     const lus = [...sql.matchAll(/\('(SYCEBNL|SYSCOHADA)','(\d+)'\)/g)].map((m) => `${m[1]}:${m[2]}`);
-    const attendus = [
-      ...PLAN_COMPTES_SYCEBNL.filter((c) => c.typeCompte !== 'TOTAL').map((c) => `SYCEBNL:${c.numero}`),
-      ...PLAN_COMPTES_SYSCOHADA.filter((c) => c.typeCompte !== 'TOTAL').map((c) => `SYSCOHADA:${c.numero}`),
-    ];
-    expect(lus.length).toBe(attendus.length);
-    expect(new Set(lus)).toEqual(new Set(attendus));
+    expect(new Set(lus).size).toBe(lus.length);
+    expect(lus.filter((x) => x.startsWith('SYCEBNL:'))).toHaveLength(880);
+    expect(lus.filter((x) => x.startsWith('SYSCOHADA:'))).toHaveLength(1130);
+    for (const x of ['SYSCOHADA:52110000', 'SYSCOHADA:62210000', 'SYSCOHADA:40110000', 'SYCEBNL:41100000', 'SYCEBNL:52110000']) expect(lus).toContain(x);
+    // Jamais un compte Total.
+    const totaux = new Set([
+      ...PLAN_COMPTES_SYCEBNL.filter((c) => c.typeCompte === 'TOTAL').map((c) => `SYCEBNL:${c.numero}`),
+      ...PLAN_COMPTES_SYSCOHADA.filter((c) => c.typeCompte === 'TOTAL').map((c) => `SYSCOHADA:${c.numero}`),
+    ]);
+    expect(lus.filter((x) => totaux.has(x))).toEqual([]);
   });
 
   it('ne touche qu’aux dossiers dont aucun compte n’est non retenu, et qu’aux comptes d’imputation', () => {
@@ -280,5 +350,25 @@ describe('la migration des dossiers existants', () => {
     expect(sql).toMatch(/SET "estRetenu" = false/);
     expect(sql).toMatch(/c\."typeCompte" = 'DETAIL'/);
     expect(sql).toMatch(/s\.referentiel = i\.referentiel/);
+  });
+});
+
+describe('les liens qui ne personnalisent pas', () => {
+  it('chaque lien exclu de l’usage est une relation réelle vers Compte · un nom faux ne retirerait rien, en silence', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Prisma } = require('@prisma/client') as typeof import('@prisma/client');
+    const reels = new Set<string>();
+    for (const m of Prisma.dmmf.datamodel.models) {
+      for (const f of m.fields) {
+        if (f.kind === 'object' && f.type === 'Compte' && (f.relationFromFields ?? []).length === 1) reels.add(`${m.name}.${f.relationFromFields![0]}`);
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { LIENS_QUI_NE_RETIENNENT_PAS } = require('./comptes-proposes') as { LIENS_QUI_NE_RETIENNENT_PAS: string[] };
+    expect(LIENS_QUI_NE_RETIENNENT_PAS.filter((l) => !reels.has(l))).toEqual([]);
+    // Les liens qui composent des écritures ou que le module redresse RETIENNENT.
+    for (const l of ['LigneEcriture.compteId', 'Journal.compteTresorerieId', 'TiersCompte.compteId', 'EcartInventaire.compteId']) {
+      expect(LIENS_QUI_NE_RETIENNENT_PAS).not.toContain(l);
+    }
   });
 });

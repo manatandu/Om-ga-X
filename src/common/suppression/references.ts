@@ -179,17 +179,27 @@ export async function identifiantsUtilises(
   if (ids.length === 0) return utilises;
   const client = prisma as Record<
     string,
-    { findMany: (a: { where: Record<string, unknown>; select: Record<string, boolean>; distinct: string[] }) => Promise<Record<string, string | null>[]> }
+    { groupBy: (a: { by: string[]; where: Record<string, unknown> }) => Promise<Record<string, string | null>[]> }
   >;
+  // UN REGROUPEMENT EN BASE, JAMAIS UN `distinct` (relecture du 2026-10-09) ·
+  // sans `nativeDistinct`, Prisma 5 lit TOUTES les lignes puis les dédoublonne
+  // en mémoire · pour un 52 de deux cent mille lignes, chaque pièce saisie
+  // rapatriait les deux cent mille, puisque la saisie juge désormais l'usage
+  // des comptes non retenus (`comptesNonPersonnalises`). Et la lecture
+  // s'arrête dès que chaque identifiant a trouvé un usage · les relations
+  // suivantes n'ont plus rien à dire.
+  let restants = [...new Set(ids)];
   for (const lien of relationsVers(cible, exclure)) {
+    if (restants.length === 0) break;
     const delegue = client[lien.modele.charAt(0).toLowerCase() + lien.modele.slice(1)];
-    const where: Record<string, unknown> = { [lien.champ]: { in: ids } };
+    const where: Record<string, unknown> = { [lien.champ]: { in: restants } };
     if (lien.cloisonne) where.tenantId = tenantId;
-    const lignes = await delegue.findMany({ where, select: { [lien.champ]: true }, distinct: [lien.champ] });
-    for (const l of lignes) {
-      const v = l[lien.champ];
+    const groupes = await delegue.groupBy({ by: [lien.champ], where });
+    for (const g of groupes) {
+      const v = g[lien.champ];
       if (v) utilises.add(v);
     }
+    restants = restants.filter((id) => !utilises.has(id));
   }
   return utilises;
 }

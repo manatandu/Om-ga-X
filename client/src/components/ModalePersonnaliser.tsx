@@ -23,7 +23,7 @@ export function ModalePersonnaliser({
   onFermer,
   onFait,
 }: {
-  compte: { id: string; numero: string; intitule: string; estRetenu?: boolean; utilise?: boolean };
+  compte: { id: string; numero: string; intitule: string; estRetenu?: boolean; utilise?: boolean; subdivise?: boolean };
   onFermer: () => void;
   onFait: (message: string) => Promise<void> | void;
 }) {
@@ -32,7 +32,10 @@ export function ModalePersonnaliser({
   const { estAdmin } = useAuth();
   const dejaPersonnalise = !!compte.estRetenu || !!compte.utilise;
   // Un compte déjà personnalisé ne s'adopte plus · on y ouvre un sous-compte.
-  const [geste, setGeste] = useState<'ADOPTER' | 'SOUS_COMPTE'>(dejaPersonnalise ? 'SOUS_COMPTE' : 'ADOPTER');
+  // Un compte SUBDIVISÉ non plus · la saisie va à ses sous-comptes, et
+  // l'adopter le dirait admis alors qu'elle le refuse encore.
+  const adoptionFermee = dejaPersonnalise || !!compte.subdivise;
+  const [geste, setGeste] = useState<'ADOPTER' | 'SOUS_COMPTE'>(adoptionFermee ? 'SOUS_COMPTE' : 'ADOPTER');
   const [intituleAdopte, setIntituleAdopte] = useState(compte.intitule);
   const [numero, setNumero] = useState('');
   const [intituleSous, setIntituleSous] = useState(compte.intitule);
@@ -50,7 +53,8 @@ export function ModalePersonnaliser({
       .then((r) => {
         if (!actif) return;
         setProposition({ numero: r.numero, motif: r.motif });
-        if (r.numero) setNumero(r.numero);
+        // Ce que l'administrateur a déjà tapé n'est jamais écrasé.
+        if (r.numero) setNumero((tape) => tape || (r.numero as string));
       })
       .catch((e) => {
         if (actif) setErreurLecture(e instanceof ApiError ? e.message : 'Lecture du numéro proposé impossible');
@@ -61,14 +65,20 @@ export function ModalePersonnaliser({
   }, [compte.id]);
 
   useEffect(() => premierChamp.current?.focus({ preventScroll: true }), [geste]);
-  // Échap ferme, sauf pendant l'envoi · la réponse arriverait sur une boîte fermée.
+  // Échap ferme, sauf pendant l'envoi · la réponse arriverait sur une boîte
+  // fermée. UN SEUL abonnement, qui lit l'état par des références · `onFermer`
+  // change à chaque rendu du parent.
+  const envoiRef = useRef(envoi);
+  envoiRef.current = envoi;
+  const fermerRef = useRef(onFermer);
+  fermerRef.current = onFermer;
   useEffect(
     () =>
       ecouterEchap(() => {
-        if (!envoi) onFermer();
+        if (!envoiRef.current) fermerRef.current();
         return true;
       }),
-    [envoi, onFermer],
+    [],
   );
 
   const valider = async () => {
@@ -83,7 +93,8 @@ export function ModalePersonnaliser({
         await onFait(`Le compte ${compte.numero} est personnalisé.`);
       } else {
         await api.post('/comptes', { numero: numero.trim(), intitule: intituleSous.trim(), typeCompte: 'DETAIL' });
-        await onFait(`Le sous-compte ${numero.trim()} est ouvert sous le ${compte.numero}.`);
+        // Le numéro reste libre · le message ne prétend pas qu'il est sous ce compte.
+        await onFait(`Le compte ${numero.trim()} ${intituleSous.trim()} est ouvert.`);
       }
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Personnalisation impossible');
@@ -97,16 +108,20 @@ export function ModalePersonnaliser({
     estAdmin &&
     !envoi &&
     (geste === 'ADOPTER'
-      ? !dejaPersonnalise && intituleAdopte.trim() !== ''
-      : /^\d+$/.test(numero.trim()) && intituleSous.trim() !== '');
+      ? !adoptionFermee && intituleAdopte.trim() !== ''
+      : !sousCompteImpossible && /^\d+$/.test(numero.trim()) && intituleSous.trim() !== '');
 
   return (
     <PortailModale>
       <div className="anim-voile fixed inset-0 z-40 bg-black/35 flex items-center justify-center p-4">
-        <div
+        <form
           role="dialog"
           aria-modal="true"
           aria-labelledby="titre-personnaliser"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (formulaireValide) void valider();
+          }}
           className="anim-modale w-full max-w-[480px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto text-[11.5px]"
         >
           <div className="h-[32px] flex items-center justify-between px-2.5 border-b border-border">
@@ -133,16 +148,17 @@ export function ModalePersonnaliser({
           <div className="p-4 space-y-3">
             <fieldset className="space-y-1.5">
               <legend className="sr-only">Geste</legend>
-              <label className={`flex items-center gap-2 ${dejaPersonnalise ? 'opacity-50' : ''}`}>
+              <label className={`flex items-center gap-2 ${adoptionFermee ? 'opacity-50' : ''}`}>
                 <input
                   type="radio"
                   name="geste-personnaliser"
                   checked={geste === 'ADOPTER'}
-                  disabled={dejaPersonnalise}
+                  disabled={adoptionFermee}
                   onChange={() => setGeste('ADOPTER')}
                 />
                 <span>
-                  Adopter ce compte tel quel{dejaPersonnalise ? ' · déjà personnalisé' : ''}
+                  Adopter ce compte tel quel
+                  {dejaPersonnalise ? ' · déjà personnalisé' : compte.subdivise ? ' · subdivisé, la saisie va à ses sous-comptes' : ''}
                 </span>
               </label>
               <label className="flex items-center gap-2">
@@ -187,14 +203,18 @@ export function ModalePersonnaliser({
                   className="border border-border-dark px-2.5 py-1.5 text-[12px]"
                 />
                 {(sousCompteImpossible || erreurLecture) && (
-                  <p id="motif-sous-compte" className="col-span-2 text-warning">
+                  <p id="motif-sous-compte" role="status" className="col-span-2 text-warning">
                     {erreurLecture ?? proposition?.motif}
                   </p>
                 )}
               </div>
             )}
 
-            {erreur && <div className="text-danger bg-danger-soft border border-danger/30 px-3 py-1.5">{erreur}</div>}
+            {erreur && (
+              <div role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-1.5">
+                {erreur}
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
@@ -206,8 +226,7 @@ export function ModalePersonnaliser({
                 Annuler
               </button>
               <button
-                type="button"
-                onClick={() => void valider()}
+                type="submit"
                 disabled={!formulaireValide}
                 className="bg-sel text-white px-4 py-1.5 font-semibold disabled:opacity-50"
               >
@@ -215,7 +234,7 @@ export function ModalePersonnaliser({
               </button>
             </div>
           </div>
-        </div>
+        </form>
       </div>
     </PortailModale>
   );

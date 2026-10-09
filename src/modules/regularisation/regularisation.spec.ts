@@ -138,6 +138,8 @@ describe('abonnement · contrepartie de la charge', () => {
         findFirst: jest.fn(({ where }: { where: { id: string } }) =>
           Promise.resolve(where.id === debit.id ? debit : credit),
         ),
+        // Les comptes non personnalisés · les deux comptes d'ici sont retenus.
+        findMany: jest.fn(async () => []),
       },
     };
     return { svc: new RegularisationService(prisma as never, {} as never), prisma };

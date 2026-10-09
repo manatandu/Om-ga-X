@@ -12,14 +12,14 @@ import { JournalService } from './journal.service';
  * d'un autre dossier, de classe 6 ou Total passait.
  */
 
-type Compte = { id: string; tenantId: string; numero: string; typeCompte: 'DETAIL' | 'TOTAL' };
+type Compte = { id: string; tenantId: string; numero: string; typeCompte: 'DETAIL' | 'TOTAL'; estRetenu: boolean };
 
 const COMPTES: Compte[] = [
-  { id: 'banque', tenantId: 't1', numero: '52110000', typeCompte: 'DETAIL' },
-  { id: 'banque-bq', tenantId: 't1', numero: '52120000', typeCompte: 'DETAIL' },
-  { id: 'banque-voisin', tenantId: 't2', numero: '52110000', typeCompte: 'DETAIL' },
-  { id: 'charge', tenantId: 't1', numero: '60500000', typeCompte: 'DETAIL' },
-  { id: 'total-52', tenantId: 't1', numero: '52', typeCompte: 'TOTAL' },
+  { id: 'banque', tenantId: 't1', numero: '52110000', typeCompte: 'DETAIL', estRetenu: true },
+  { id: 'banque-bq', tenantId: 't1', numero: '52120000', typeCompte: 'DETAIL', estRetenu: true },
+  { id: 'banque-voisin', tenantId: 't2', numero: '52110000', typeCompte: 'DETAIL', estRetenu: true },
+  { id: 'charge', tenantId: 't1', numero: '60500000', typeCompte: 'DETAIL', estRetenu: true },
+  { id: 'total-52', tenantId: 't1', numero: '52', typeCompte: 'TOTAL', estRetenu: true },
 ];
 
 function monde() {
@@ -47,9 +47,12 @@ function monde() {
       findFirst: jest.fn().mockImplementation(({ where }: { where: { id: string; tenantId: string } }) =>
         Promise.resolve(COMPTES.find((c) => c.id === where.id && c.tenantId === where.tenantId) ?? null),
       ),
-      // Les comptes non personnalisés demandés · tous ceux d'ici sont retenus
-      // par le cabinet (comptes-personnalises.spec.ts éprouve le refus).
-      findMany: jest.fn(async () => []),
+      // Les comptes non personnalisés demandés · la doublure honore le filtre ;
+      // tous ceux d'ici sont retenus par le cabinet, la lecture n'en rend donc
+      // aucun (comptes-personnalises.spec.ts éprouve le refus).
+      findMany: jest.fn(async ({ where }: { where: { tenantId: string; id: { in: string[] }; estRetenu?: boolean } }) =>
+        COMPTES.filter((c) => c.tenantId === where.tenantId && where.id.in.includes(c.id) && (where.estRetenu === undefined || c.estRetenu === where.estRetenu)),
+      ),
     },
   };
   return { svc: new JournalService(prisma as never), create, update, prisma };

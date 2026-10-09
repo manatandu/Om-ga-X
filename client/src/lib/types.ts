@@ -108,6 +108,10 @@ export interface Compte {
   estRetenu?: boolean;
   /** Utilisé quelque part (écriture, journal, taux, famille, tiers) · rendu sur `?usage=true`. */
   utilise?: boolean;
+  /** Compte du plan officiel (semé) · il se personnalise, ou s'y ouvre un sous-compte · rendu sur `?usage=true`. */
+  duPlan?: boolean;
+  /** Compte du plan que le dossier a subdivisé · la saisie va à ses sous-comptes · rendu sur `?usage=true`. */
+  subdivise?: boolean;
   /** Report à-nouveau en fin d'exercice · Aucun (charges/produits), Solde, ou Détail (lignes non lettrées). */
   modeReportANouveau: ModeReportANouveau;
   /** Nature (Sage) déduite du numéro et du paramétrage du dossier · lue par GET /comptes, jamais stockée. */

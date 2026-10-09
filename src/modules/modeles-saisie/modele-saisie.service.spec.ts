@@ -14,7 +14,7 @@ import { PrismaService } from '../../common/prisma.service';
  */
 
 function service(options: {
-  comptes?: Array<{ id: string; numero: string; typeCompte: string }>;
+  comptes?: Array<{ id: string; numero: string; typeCompte: string; estRetenu?: boolean; intitule?: string }>;
   journal?: unknown;
   modele?: unknown;
   lignesEnregistrees?: Array<{ sens: string; compte: { numero: string } }>;
@@ -32,7 +32,15 @@ function service(options: {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
-    compte: { findMany: jest.fn().mockResolvedValue(options.comptes ?? []) },
+    // La lecture des comptes non personnalisés (`estRetenu: false`) n'en rend
+    // aucun quand le test ne dit rien · un compte sans `estRetenu` est retenu.
+    compte: {
+      findMany: jest.fn(async ({ where }: { where?: { estRetenu?: boolean } } = {}) =>
+        where?.estRetenu === false
+          ? (options.comptes ?? []).filter((c) => c.estRetenu === false).map((c) => ({ intitule: '', ...c }))
+          : (options.comptes ?? []),
+      ),
+    },
     // `?? { id }` aurait été un PIÈGE : `null ?? défaut` rend le défaut, donc
     // le cas « journal absent » n'aurait jamais été joué et le test serait
     // passé au vert sans rien éprouver.
@@ -49,7 +57,16 @@ function service(options: {
   // bloc, et une doublure qui rendrait un autre objet ferait passer un
   // service qui écrit à côté.
   prisma.$transaction = (fn: (tx: unknown) => unknown) => fn(prisma);
-  const client = prisma as unknown as PrismaService;
+  // L'usage d'un compte se lit relation par relation (`identifiantsUtilises`) ·
+  // une table que le test ne double pas n'en porte aucun.
+  const client = new Proxy(prisma, {
+    get: (cible, nom: string) => {
+      if (!(nom in cible)) return { groupBy: jest.fn(async () => []) };
+      const d = cible[nom] as Record<string, unknown>;
+      if (d && typeof d === 'object' && !('groupBy' in d)) d.groupBy = jest.fn(async () => []);
+      return d;
+    },
+  }) as unknown as PrismaService;
   return { svc: new ModeleSaisieService(client), prisma: prisma as never, cree, supprime };
 }
 
@@ -65,6 +82,16 @@ describe('création d’un modèle de saisie', () => {
     const { svc, cree } = service({ comptes: [DETAIL('c-1', '60110000'), DETAIL('c-2', '40110000')] });
     await svc.creer('t-1', 'u-1', { intitule: 'Achat de marchandises', lignes: deuxLignes });
     expect(cree).toHaveBeenCalledTimes(1);
+  });
+
+  it('REFUSE un compte non personnalisé · porté par le modèle, il le deviendrait d’office', async () => {
+    const { svc, cree } = service({
+      comptes: [DETAIL('c-1', '60110000'), { ...DETAIL('c-2', '62210000'), estRetenu: false, intitule: 'Locations de terrains' }],
+    });
+    await expect(svc.creer('t-1', 'u-1', { intitule: 'Loyer', lignes: deuxLignes })).rejects.toThrow(
+      /Compte non personnalisé : 62210000 Locations de terrains · un modèle de saisie ne se fait que sur un compte personnalisé/,
+    );
+    expect(cree).not.toHaveBeenCalled();
   });
 
   it('REFUSE un compte de totalisation', async () => {

@@ -135,6 +135,17 @@ function principaux(referentiel: Referentiel): Partial<Record<TypeTiers, string>
   return sortie;
 }
 
+/**
+ * TOUS LES COLLECTIFS DES PANOPLIES du référentiel · un compte ouvert sous
+ * l'un d'eux au Plan comptable est le compte d'un tiers, et s'y rattache
+ * comme celui que la panoplie ouvre (« on crée d'abord ce compte tiers dans
+ * le plan de compte », décision de Manasse du 2026-10-09) · sans le lien, la
+ * balance générale le montrerait à côté de son collectif.
+ */
+export function collectifsDesPanoplies(referentiel: Referentiel): ReadonlySet<string> {
+  return new Set(Object.values(PANOPLIES_TIERS[referentiel]).flatMap((panoplie) => (panoplie ?? []).map((c) => c.collectif)));
+}
+
 export function numeroCollectif(referentiel: Referentiel, type: TypeTiers): string | null {
   return COLLECTIFS_TIERS[referentiel][type] ?? null;
 }

@@ -1,3 +1,4 @@
+import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../comptes/comptes-proposes';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, SensModeleSaisie } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -222,6 +223,14 @@ export class ModeleSaisieService {
           "Choisissez un compte d'imputation.",
       );
     }
+
+    // UN MODÈLE COMPOSE DES SAISIES · ses comptes sont personnalisés, comme
+    // ceux de la saisie qu'il prépare (décision de Manasse du 2026-10-09) ·
+    // porté par le modèle, un compte deviendrait utilisé, donc personnalisé
+    // d'office, et la règle se contournerait par le modèle même. Un modèle déjà
+    // enregistré garde ses comptes, que son propre lien personnalise.
+    const motifPersonnalise = motifComptesNonPersonnalises(await comptesNonPersonnalises(this.prisma, tenantId, ids), 'un modèle de saisie');
+    if (motifPersonnalise) throw new BadRequestException(motifPersonnalise);
 
     const refusFonctions = motifRefusFonctions(lignes);
     if (refusFonctions) throw new BadRequestException(refusFonctions);

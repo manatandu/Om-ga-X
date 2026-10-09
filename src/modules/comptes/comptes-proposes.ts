@@ -1,11 +1,15 @@
+import { TypeCompteDetailTotal } from '@prisma/client';
 import { identifiantsUtilises } from '../../common/suppression/references';
 
 /**
  * LES COMPTES PROPOSÉS · décision de Manasse du 2026-09-28 (CLAUDE.md,
  * « Comptes retenus »). Une LISTE DE CHOIX ne propose que les comptes que le
  * cabinet a RETENUS et ceux déjà UTILISÉS ; les états, les imports et les
- * écritures automatiques lisent tout le plan, et rien n'est jamais refusé au
- * motif qu'un compte n'est pas retenu.
+ * écritures automatiques lisent tout le plan. Depuis le 2026-10-09, la même
+ * règle dit le compte PERSONNALISÉ, et elle REFUSE · la saisie, la
+ * réimputation, la fusion, un modèle de saisie, un abonnement, le rattachement
+ * à un tiers ou à un journal n'admettent qu'un compte personnalisé (voir
+ * `comptesNonPersonnalises` plus bas).
  *
  * UN SEUL CALCUL · `identifiantsUtilises` (relations lues dans le schéma) et
  * `Compte.estRetenu`, appelés ici et nulle part ailleurs. Chaque route qui sert
@@ -19,7 +23,24 @@ import { identifiantsUtilises } from '../../common/suppression/references';
  * collectif · un collectif ne se saisit pas à la place de ses tiers, il ne
  * reste donc pas proposé pour ce seul motif.
  */
-const LIENS_QUI_NE_RETIENNENT_PAS = ['Compte.collectifId'];
+export const LIENS_QUI_NE_RETIENNENT_PAS = [
+  'Compte.collectifId',
+  // LES LIENS QUI LISENT UN COMPTE SANS Y PASSER D'ÉCRITURE (relecture du
+  // 2026-10-09) · le rattachement d'une rubrique de note, la fiche d'un
+  // comptage, une provision tenue au registre, une demande de confirmation,
+  // le procès-verbal d'une caisse, une relance, une OD analytique. Chacun
+  // rendait le compte utilisé, donc personnalisé d'office, et ouvrait à la
+  // saisie un compte que l'administrateur n'a jamais adopté, par un geste
+  // qui n'en est pas une. L'écart d'inventaire, lui, retient · c'est le
+  // module qui le redresse.
+  'RattachementNote.compteId',
+  'FicheInventaire.compteId',
+  'ProvisionRisqueCharge.compteId',
+  'DemandeConfirmation.compteId',
+  'ProcesVerbalComptageCaisse.compteId',
+  'Relance.compteId',
+  'OdAnalytique.compteId',
+];
 
 /** Parmi `ids`, les comptes auxquels quoi que ce soit se réfère. */
 export function comptesUtilises(prisma: unknown, tenantId: string, ids: string[]): Promise<Set<string>> {
@@ -77,7 +98,7 @@ export async function comptesNonPersonnalises(
     };
   };
   const comptes = await p.compte.findMany({
-    where: { tenantId, id: { in: uniques }, estRetenu: false, typeCompte: 'DETAIL' },
+    where: { tenantId, id: { in: uniques }, estRetenu: false, typeCompte: TypeCompteDetailTotal.DETAIL },
     select: { id: true, numero: true, intitule: true, estRetenu: true, typeCompte: true },
     orderBy: { numero: 'asc' },
   });
@@ -93,7 +114,8 @@ export function motifComptesNonPersonnalises(comptes: { numero: string; intitule
   const suite = comptes.length > 5 ? ` et ${comptes.length - 5} autre(s)` : '';
   return (
     `Compte non personnalisé : ${noms}${suite} · ${geste} ne se fait que sur un compte personnalisé du dossier. ` +
-    'Personnalisez-le d\'abord dans Plan comptable · adoptez le compte du plan tel quel, ou ouvrez un sous-compte sous lui.'
+    'Personnalisez-le d\'abord dans Plan comptable (geste de l\'administrateur du dossier) · adoptez le compte du plan tel ' +
+    'quel, ou ouvrez un sous-compte sous lui.'
   );
 }
 
