@@ -11,8 +11,13 @@ Ordre de travail · A8, A1, A9, A5, A6.
 # Scénario (non committé ici, tenu par le coordinateur)
 #   /home/user/wt-passe/scripts/passe-v1/scenario-paquet1-a.mjs
 # AVANT (main) et APRÈS (cette copie, après npm run build)
+# Relecture 1 · main ne tourne plus ici (garde de l'environnement) · l'AVANT de
+# chaque constat est cette copie construite au commit qui précède sa correction.
 PAQUET1_A_COPIE=/home/user/Comptaflow PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
-PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
+PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6,B2,M4,m2,m5 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
+# m5 · les deux requêtes de la fiche (blocs requete-m5 et requete-m5-conserver),
+# en lecture seule, sur une base jetable du banc
+PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,m5 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_m5 8767 paquet1-a /tmp/claude-0/sim/p1a-m5.json
 # Specs touchés
 npx tsc --noEmit
 npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/cloture-annuelle.spec.ts \
@@ -788,9 +793,179 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
   main déclarée), B2, M4 · 60 sur 60. Test unitaire
   (`reconduction-lettrage.spec.ts`), qui tombe sans la correction.
 
+### m5 · les dossiers déjà clôturés sur `main` qui ont pris « Rectifier » sur une contre-passation
+
+Sur `main`, le périmètre de l'ouverture (`filtreOuverturePasseeAuPremierJour`)
+comptait la contre-passation d'une réévaluation, du module
+(`Reevaluation.ecritureExtourneId`) comme faite à la main et déclarée
+(`Reevaluation.contrePassationDeclareeId`, colonne présente sur `main`). La
+clôture de N la lisait comme une ouverture divergente et n'ouvrait que deux
+issues · « Rectifier », qui l'inscrivait en NÉGATIF dans le report de N+1
+(`rectificationDeLOuverture`, débit et crédit négatifs, même compte), ou
+« Conserver ». Un dossier qui a pris « Rectifier » a donc en N+1 l'écart
+latent revenu au 478 ou au 479 et le tiers à la valeur réévaluée, balance
+bouclée (A8, client 2 900 000 au lieu de 2 800 000, 479 à -100 000). Rien
+n'est touché en production ; la requête ci-dessous, en LECTURE SEULE, les
+trouve.
+
+Ce qu'elle lit · chaque report de clôture rectifié (`estGenereeParCloture`,
+hors solde des comptes de gestion, `motifCorrection` non nul, que seule la
+rectification pose sur un report), et, sur ce report, chaque ligne inscrite
+en négatif qui annule AU CENTIME, sur le même compte et dans le même
+exercice, une ligne de la contre-passation. Pour la contre-passation
+déclarée, ses seules lignes sur les comptes de l'écriture des écarts, hors
+disponibilités (52, 53, 55, 57, 58 · `partagerLignesDEcarts`), comme la
+clôture les écarte aujourd'hui (`lignesDeContrePassationDeclaree`) · l'OD
+déclarée peut porter d'autres lignes, qu'une rectification légitime inscrit
+en négatif. Une réévaluation annulée est écartée · annulée avant la clôture
+de N (après, l'exercice clos la refuse, D6), sa contre-passation et le
+négatif de l'annulation se soldaient, et « Rectifier » les inscrivait tous
+deux en négatif, sans effet.
+
+<!-- requete-m5 · le scénario du banc (point m5) exécute ce bloc tel quel -->
+```sql
+-- m5 · LECTURE SEULE · reports de clôture rectifiés qui ont inscrit en négatif
+-- une contre-passation de réévaluation (module ou déclarée). Une ligne par
+-- report et par réévaluation.
+WITH negatifs AS (
+  SELECT rep.id AS report_id, rep."tenantId" AS tenant_id, rep."exerciceId" AS exercice_id,
+         l.id AS ligne_id, l."compteId" AS compte_id, l.debit, l.credit
+  FROM ecritures rep
+  JOIN lignes_ecriture l ON l."ecritureId" = rep.id
+  WHERE rep."estGenereeParCloture" = true
+    AND rep."estSoldeDesComptesDeGestion" = false
+    AND rep."motifCorrection" IS NOT NULL
+    AND (l.debit < 0 OR l.credit < 0)
+),
+contre_passations AS (
+  SELECT r.id AS reevaluation_id, r."tenantId" AS tenant_id, 'MODULE' AS voie,
+         x.id AS ecriture_id, x."exerciceId" AS exercice_id,
+         lx."compteId" AS compte_id, lx.debit, lx.credit
+  FROM reevaluations r
+  JOIN ecritures x ON x.id = r."ecritureExtourneId"
+  JOIN lignes_ecriture lx ON lx."ecritureId" = x.id
+  WHERE r."annuleeLe" IS NULL
+  UNION ALL
+  SELECT r.id, r."tenantId", 'DECLAREE',
+         x.id, x."exerciceId",
+         lx."compteId", lx.debit, lx.credit
+  FROM reevaluations r
+  JOIN ecritures x ON x.id = r."contrePassationDeclareeId"
+  JOIN lignes_ecriture lx ON lx."ecritureId" = x.id
+  JOIN comptes cx ON cx.id = lx."compteId"
+  WHERE r."annuleeLe" IS NULL
+    AND cx.numero !~ '^(52|53|55|57|58)'
+    AND EXISTS (SELECT 1 FROM lignes_ecriture le
+                WHERE le."ecritureId" = r."ecritureEcartsId" AND le."compteId" = lx."compteId")
+)
+SELECT t.id AS dossier_id,
+       t.nom AS dossier,
+       ex."dateDebut"::date AS exercice_ouvert_le,
+       rep."numeroPiece" AS piece_du_report,
+       cp.voie,
+       cp.reevaluation_id,
+       cp.ecriture_id AS contre_passation,
+       count(DISTINCT n.ligne_id) AS lignes_inscrites_en_negatif,
+       string_agg(DISTINCT c.numero || ' ' || to_char(abs(n.debit + n.credit), 'FM999999999990.00'), ', '
+                  ORDER BY c.numero || ' ' || to_char(abs(n.debit + n.credit), 'FM999999999990.00')) AS comptes_et_montants
+FROM negatifs n
+JOIN contre_passations cp
+  ON cp.tenant_id = n.tenant_id AND cp.exercice_id = n.exercice_id AND cp.compte_id = n.compte_id
+ AND cp.debit = -n.debit AND cp.credit = -n.credit
+JOIN ecritures rep ON rep.id = n.report_id
+JOIN exercices ex ON ex.id = n.exercice_id
+JOIN tenants t ON t.id = n.tenant_id
+JOIN comptes c ON c.id = n.compte_id
+GROUP BY t.id, t.nom, ex."dateDebut", rep."numeroPiece", cp.voie, cp.reevaluation_id, cp.ecriture_id
+ORDER BY t.nom, ex."dateDebut";
+```
+
+Lecture d'un résultat · une ligne nomme le dossier, l'exercice N+1 dont
+l'ouverture a été rectifiée, la pièce du report, la voie et la
+contre-passation annulée, avec ses comptes et montants. Limite écrite · une
+ligne d'import de même compte et de même montant qu'une ligne de la
+contre-passation la ferait sortir aussi ; le rapprochement ligne à ligne est
+un indice, chaque ligne rendue se relit sur le report.
+
+Le JUMEAU « Conserver » · l'autre issue que `main` ouvrait. Déclarée, elle ne
+passait AUCUN report · si la contre-passation était la seule écriture du
+premier jour, N+1 s'est ouvert sans bilan d'ouverture. Le contrôle existant
+(`OUVERTURE_DIFFERENTE_DE_LA_CLOTURE_DECLAREE`, INFORMATION, présent sur
+`main`) le nomme en N+1, mais son action dit « Rien à corriger si la
+déclaration est exacte ». Requête en lecture seule, même règle de lecture ·
+les positions figées à la déclaration (`ecartsOuvertureSuivanteConservee`)
+disent si la contre-passation était seule.
+
+<!-- requete-m5-conserver · le scénario du banc (point m5) exécute ce bloc tel quel -->
+```sql
+-- m5, jumeau · LECTURE SEULE · exercices dont la clôture a CONSERVÉ une
+-- ouverture du suivant qui portait la contre-passation de leur réévaluation.
+SELECT t.id AS dossier_id,
+       t.nom AS dossier,
+       n."dateFin"::date AS exercice_clos_le,
+       r.id AS reevaluation_id,
+       CASE WHEN x.id = r."ecritureExtourneId" THEN 'MODULE' ELSE 'DECLAREE' END AS voie,
+       x.id AS contre_passation,
+       n."motifOuvertureSuivanteConservee" AS motif,
+       n."ecartsOuvertureSuivanteConservee" AS positions_figees
+FROM reevaluations r
+JOIN exercices n ON n.id = r."exerciceId"
+JOIN ecritures x ON x.id IN (r."ecritureExtourneId", r."contrePassationDeclareeId")
+JOIN exercices n1 ON n1.id = x."exerciceId" AND n1."dateDebut" > n."dateFin"
+JOIN tenants t ON t.id = r."tenantId"
+WHERE r."annuleeLe" IS NULL
+  AND n."motifOuvertureSuivanteConservee" IS NOT NULL
+ORDER BY t.nom, n."dateFin";
+```
+
+VÉRIFIÉES SUR BASE JETABLE (`p1a_m5`, point m5 du scénario, qui lit les
+deux blocs dans cette fiche). Un dossier par voie (contre-passation du
+module, contre-passation à la main déclarée), chacun avec un bilan
+d'ouverture importé en OD au 01/01/2027, divergent sur la banque et le
+capital. (1) NE DÉCLENCHE PAS · clôture de 2026 par « Rectifier » sur cette
+copie · le report porte les deux négatifs de l'import, la contre-passation
+reste (client 2 800 000, 478 et 479 à zéro), et la requête ne rend pas le
+dossier ; les dossiers A8 et A8M (clôturés sans déclaration) ne sortent pas
+non plus. (2) DÉCLENCHE · `main` ne peut pas tourner ici (garde de
+l'environnement) · sa sortie est reconstituée sur la base jetable, au plus
+près de `rectificationDeLOuverture` · les lignes de la contre-passation
+niées (débit et crédit négatifs, mêmes comptes) ajoutées au même report.
+2027 prend alors exactement ce que A8 avait constaté sur `main` (client
+2 900 000, 479 à -100 000, balance équilibrée), et la requête rend chaque
+dossier sur UNE ligne · voie MODULE ou DECLAREE, la contre-passation nommée,
+quatre lignes (40110001 50 000, 41110001 100 000, 47830000 50 000,
+47910000 100 000), l'import non compté. (3) Jumeau · rien avant ; le motif
+de conservation posé sur 2026 (reconstitution), la requête le rend, voie et
+contre-passation nommées. 84 contrôles sur 84 (A8, A8M, m5).
+
+UN CONTRÔLE DE CLÔTURE DEVRAIT-IL LE NOMMER · non, pas d'abord. La
+correction d'A8 (et de m4 pour la contre-passation déclarée) ferme la
+source · aucune clôture ne lit plus la contre-passation comme une ouverture,
+et le défaut ne se reproduit pas. Ce qui reste est un stock fini, les
+clôtures passées sur `main` depuis que la contre-passation existe jusqu'au
+déploiement d'A8 · un contrôle de clôture ne verrait jamais un cas nouveau.
+Proposition · faire passer les deux requêtes en lecture seule sur la base
+de production (le coordinateur ou Manasse, l'environnement ne l'atteint
+pas). Vides, rien à coder. Si elles rendent des dossiers, chacun se corrige
+dans l'exercice où l'erreur est découverte · N+1 encore ouvert, une OD qui
+inscrit en négatif les lignes négatives erronées, c'est-à-dire qui repasse
+les lignes de la contre-passation (AUDCIF art. 20, al. 2 ; le report,
+validé par la clôture, ne se retouche pas, art. 22, 2°) ; N+1 déjà clos,
+dans l'exercice en cours avec la mention aux Notes annexes (art. 20,
+al. 4). Un contrôle d'exercice (AVERTISSEMENT, même détection que la
+requête, écart chiffré et issue nommée) ne se justifierait que si le stock
+était trop grand pour la main · jamais un refus de clôture de N+1, qui ne
+saurait reconnaître l'OD de correction (aucune liaison) et enfermerait le
+dossier. Non codé · à la décision du coordinateur.
+
+
+
 ## Reste
 
-Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).
+Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse), et
+les onze constats de la relecture 1 (B1, B2, M1 à M4, m1 à m5). À la décision
+du coordinateur · passer les deux requêtes de m5 sur la production, et dire
+s'il faut un contrôle (proposition au constat m5).
 
 ## Relevés (voisins, non codés)
 
