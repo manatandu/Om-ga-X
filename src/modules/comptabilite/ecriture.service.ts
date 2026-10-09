@@ -3548,13 +3548,34 @@ export class EcritureService {
    * aussi pourquoi une date hors de l'exercice est refusée par les appelants ·
    * en deçà de l'ouverture, la balance perdrait le report et présenterait des
    * soldes amputés du bilan d'ouverture sans que rien ne le dise.
+   *
+   * `avantLaCloture` (paquet 1, A4) borne la lecture aux écritures datées
+   * AVANT la date de fin de l'exercice, où la clôture écrit les siennes · le
+   * virement du résultat antérieur non affecté (fiche du compte 13 des deux
+   * plans) et le solde des comptes de gestion. C'est la lecture de
+   * l'OUVERTURE (`chargerOuverture`, communs des états) · la colonne report
+   * d'un exercice clôturé porte aussi ce virement, que l'ouverture ne
+   * connaît pas encore.
    */
-  async balance(tenantId: string, exerciceId: string, inclureBrouillard = true, arreteAu?: Date) {
+  async balance(
+    tenantId: string,
+    exerciceId: string,
+    inclureBrouillard = true,
+    arreteAu?: Date,
+    options: { avantLaCloture?: boolean } = {},
+  ) {
+    let avantLe: Date | null = null;
+    if (options.avantLaCloture) {
+      const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { dateFin: true } });
+      if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
+      avantLe = exercice.dateFin;
+    }
     const filtreEcriture = {
       tenantId,
       exerciceId,
       ...(inclureBrouillard ? {} : { statut: StatutEcriture.VALIDEE }),
       ...(arreteAu ? { date: { lte: arreteAu } } : {}),
+      ...(avantLe ? { AND: [{ date: { lt: avantLe } }] } : {}),
     };
     // TROIS COLONNES ET NON DEUX (audit final F4, F5) · le report à-nouveau,
     // les mouvements, et l'écriture qui solde les comptes de gestion. Le calcul

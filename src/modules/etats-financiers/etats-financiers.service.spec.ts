@@ -41,10 +41,19 @@ function serviceAvecExercices(
   reevaluationsParExercice: Record<string, VirementsParCompte> = {},
   // Coûts d'emprunt incorporés par le module, par exercice (ligne A22) · par DÉFAUT aucun.
   incorporationsParExercice: Record<string, VirementsParCompte> = {},
+  // L'OUVERTURE lue avant la clôture de l'exercice (`avantLaCloture`,
+  // paquet 1, A4) · par DÉFAUT les mêmes lignes que l'exercice entier.
+  ouverturesParExercice: Record<string, ReturnType<typeof ligne>[]> = {},
 ) {
   const ecritureService = {
-    balance: jest.fn().mockImplementation((_tenantId: string, exerciceId: string) => {
-      const lignes = lignesParExercice[exerciceId] ?? [];
+    balance: jest.fn().mockImplementation((
+      _tenantId: string,
+      exerciceId: string,
+      _inclureBrouillard?: boolean,
+      _arreteAu?: Date,
+      options?: { avantLaCloture?: boolean },
+    ) => {
+      const lignes = (options?.avantLaCloture ? ouverturesParExercice[exerciceId] : undefined) ?? lignesParExercice[exerciceId] ?? [];
       return Promise.resolve({
         lignes,
         totaux: {
@@ -1701,6 +1710,67 @@ describe('Comparatif d’un dossier repris · le bilan d’ouverture (Q3 des cas
     const bilan: any = await neuve.bilan('t1', 'e1');
     expect({ comparatif: bilan.comparatif, bz: bilan.totalActifN1 }).toEqual({ comparatif: null, bz: undefined });
     expect(((await neuve.compteDeResultat('t1', 'e1')) as any).motifComparatifAbsent).toBeNull();
+  });
+});
+
+/**
+ * PAQUET 1, A4 (reproduit sur vraie base le 2026-10-09) · un dossier repris
+ * importe son bilan d'ouverture au 01/01/2026, dont 2 000 000 de résultat 2025
+ * au 13, puis clôture 2026 · la clôture vire ce résultat au report à nouveau,
+ * à la date de FIN, par une écriture que la balance range en colonne report.
+ * La colonne N-1, lue sur ce report, montrait un résultat nul et 2 000 000 au
+ * report à nouveau ; le bilan d'ouverture (Partie 4 ch. 1 § 1.4 ; art. 16, 4))
+ * les porte au 13. Elle se lit sur l'ouverture AVANT la clôture.
+ */
+describe('Paquet 1, A4 · l’ouverture d’un premier exercice clôturé se lit avant le virement du 13', () => {
+  // Après la clôture · le 13 importé soldé par le virement, le 121 crédité.
+  const apresCloture = [
+    ligneF('52110000', ClasseCompte.CLASSE_5, 500_000, 0, [12_000_000, 0]),
+    ligneF('10110000', ClasseCompte.CLASSE_1, 0, 0, [0, 10_000_000]),
+    ligneF('13100000', ClasseCompte.CLASSE_1, 0, 0, [2_000_000, 2_000_000]),
+    ligneF('12100000', ClasseCompte.CLASSE_1, 0, 0, [0, 2_000_000]),
+    ligneF('70110000', ClasseCompte.CLASSE_7, 0, 500_000),
+  ];
+  // Avant la date de fin · le bilan d'ouverture importé, tel quel.
+  const avantCloture = [
+    ligneF('52110000', ClasseCompte.CLASSE_5, 500_000, 0, [12_000_000, 0]),
+    ligneF('10110000', ClasseCompte.CLASSE_1, 0, 0, [0, 10_000_000]),
+    ligneF('13100000', ClasseCompte.CLASSE_1, 0, 0, [0, 2_000_000]),
+    ligneF('70110000', ClasseCompte.CLASSE_7, 0, 500_000),
+  ];
+  const service = () =>
+    serviceAvecExercices({ e1: apresCloture as never }, [{ id: 'e1', dateDebut: new Date('2026-01-01') }], {}, {}, {}, {
+      e1: avantCloture as never,
+    });
+  const poste = (bilan: any, ref: string) => [...bilan.actif, ...bilan.passif].find((p: any) => p.ref === ref);
+
+  it('la colonne N-1 porte le résultat 2025 au 13 et aucun report à nouveau', async () => {
+    const bilan: any = await service().bilan('t1', 'e1');
+    expect({
+      comparatif: bilan.comparatif,
+      chN1: poste(bilan, 'CH')?.montantN1,
+      cgN1: poste(bilan, 'CG')?.montantN1,
+      dzN1: bilan.totalPassifN1,
+      chN: poste(bilan, 'CH')?.montant,
+      cgN: poste(bilan, 'CG')?.montant,
+    }).toEqual({ comparatif: 'BILAN_D_OUVERTURE', chN1: 2_000_000, cgN1: 0, dzN1: 12_000_000, chN: 500_000, cgN: 2_000_000 });
+  });
+
+  it('l’ouverture est demandée avant la clôture, à la balance du livre-journal', async () => {
+    const s = service();
+    await s.bilan('t1', 'e1');
+    await s.tableauFluxTresorerie('t1', 'e1');
+    await s.compteDeResultat('t1', 'e1');
+    const balance = (s as any).ecritureService.balance as jest.Mock;
+    const ouvertures = balance.mock.calls.filter((c) => c[4]?.avantLaCloture);
+    expect(ouvertures).toHaveLength(3);
+    for (const c of ouvertures) expect(c.slice(0, 3)).toEqual(['t1', 'e1', false]);
+  });
+
+  it('le tableau des flux part de la même ouverture, et le dit', async () => {
+    const tft: any = await service().tableauFluxTresorerie('t1', 'e1');
+    expect(tft.lignes.find((l: any) => l.ref === 'ZA')?.montant).toBe(12_000_000);
+    expect(tft.mentionOuverture).toBe(mentionComparatifSurOuverture('SYCEBNL'));
   });
 });
 

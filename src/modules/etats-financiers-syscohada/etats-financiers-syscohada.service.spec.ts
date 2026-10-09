@@ -5,7 +5,7 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { ORDRE_AFFICHAGE_COMPTE_RESULTAT } from './correspondance-compte-resultat-syscohada';
 import { CONTROLE_ZH_PAR_LES_FLUX } from './correspondance-tft-syscohada';
-import { mentionExercicePrecedentVide } from '../etats-financiers/etats-financiers.communs';
+import { mentionComparatifSurOuverture, mentionExercicePrecedentVide } from '../etats-financiers/etats-financiers.communs';
 
 /**
  * Ce spec ne re-teste pas les tables de correspondance (leurs specs voisins
@@ -73,10 +73,19 @@ function serviceAvecExercices(
   exercices: Array<{ id: string; dateDebut: Date }> = [],
   // Lot 14 · l'écriture de réévaluation du module, par exercice · par DÉFAUT aucune.
   reevaluationsParExercice: Record<string, Map<string, { debit: number; credit: number }>> = {},
+  // L'OUVERTURE lue avant la clôture de l'exercice (`avantLaCloture`,
+  // paquet 1, A4) · par DÉFAUT les mêmes lignes que l'exercice entier.
+  ouverturesParExercice: Record<string, LigneBalance[]> = {},
 ) {
   const ecritureService = {
-    balance: jest.fn().mockImplementation((_tenantId: string, exerciceId: string) => {
-      const lignes = lignesParExercice[exerciceId] ?? [];
+    balance: jest.fn().mockImplementation((
+      _tenantId: string,
+      exerciceId: string,
+      _inclureBrouillard?: boolean,
+      _arreteAu?: Date,
+      options?: { avantLaCloture?: boolean },
+    ) => {
+      const lignes = (options?.avantLaCloture ? ouverturesParExercice[exerciceId] : undefined) ?? lignesParExercice[exerciceId] ?? [];
       return Promise.resolve({
         lignes,
         totaux: {
@@ -216,6 +225,69 @@ describe('EtatsFinanciersSyscohadaService', () => {
       const cr = await serviceAvecBalance(lignes).compteDeResultat('t1', 'e1');
       expect(cr.lignes.every((l) => l.montantN1 === undefined)).toBe(true);
       expect(cr.motifComparatifAbsent).toContain('importez-y sa balance de clôture');
+    });
+
+    // PAQUET 1, A4 (reproduit sur vraie base le 2026-10-09) · la clôture de
+    // 2026 vire au 121, à la date de FIN, les 2 000 000 de résultat 2025 que
+    // le bilan d'ouverture importé portait au 13 · la balance range ce
+    // virement en colonne report. Lue sur ce report, la colonne N-1 montrait
+    // CJ à zéro et CH à 2 000 000 ; le bilan d'ouverture (AUDCIF art. 34) les
+    // porte au 13. Elle se lit avant la clôture (`chargerOuverture`).
+    describe('Paquet 1, A4 · l’ouverture d’un premier exercice clôturé se lit avant le virement du 13', () => {
+      const apresCloture = [
+        ligne('52110000', C5, 500_000, 0, { debit: 12_000_000 }),
+        ligne('10130000', C1, 0, 0, { credit: 10_000_000 }),
+        ligne('13100000', C1, 0, 0, { debit: 2_000_000, credit: 2_000_000 }),
+        ligne('12100000', C1, 0, 0, { credit: 2_000_000 }),
+        ligne('70110000', C7, 0, 500_000),
+      ];
+      const avantCloture = [
+        ligne('52110000', C5, 500_000, 0, { debit: 12_000_000 }),
+        ligne('10130000', C1, 0, 0, { credit: 10_000_000 }),
+        ligne('13100000', C1, 0, 0, { credit: 2_000_000 }),
+        ligne('70110000', C7, 0, 500_000),
+      ];
+      const E1 = { id: 'e1', dateDebut: new Date('2026-01-01T00:00:00Z'), dateFin: new Date('2026-12-31T00:00:00Z') } as never;
+      const service = () => serviceAvecExercices({ e1: apresCloture }, [E1], {}, { e1: avantCloture });
+
+      it('la colonne N-1 porte le résultat 2025 au 13 (CJ) et aucun report à nouveau (CH)', async () => {
+        const bilan = await service().bilan('t1', 'e1');
+        expect({
+          comparatif: bilan.comparatif,
+          cjN1: poste(bilan, 'CJ')?.montantN1,
+          chN1: poste(bilan, 'CH')?.montantN1,
+          dzN1: bilan.totalPassifN1,
+          cjN: poste(bilan, 'CJ')?.montant,
+          chN: poste(bilan, 'CH')?.montant,
+        }).toEqual({ comparatif: 'BILAN_D_OUVERTURE', cjN1: 2_000_000, chN1: 0, dzN1: 12_000_000, cjN: 500_000, chN: 2_000_000 });
+      });
+
+      it('bilan, compte de résultat et tableau des flux demandent l’ouverture avant la clôture', async () => {
+        const s = service();
+        await s.bilan('t1', 'e1');
+        await s.compteDeResultat('t1', 'e1');
+        const tft = await s.tableauFluxTresorerie('t1', 'e1');
+        const balance = (s as any).ecritureService.balance as jest.Mock;
+        const ouvertures = balance.mock.calls.filter((c) => c[4]?.avantLaCloture);
+        expect(ouvertures).toHaveLength(3);
+        for (const c of ouvertures) expect(c.slice(0, 3)).toEqual(['t1', 'e1', false]);
+        expect((tft.lignes.find((l: any) => l.ref === 'ZA') as any)?.montant).toBe(12_000_000);
+        expect(tft.mentionOuverture).toBe(mentionComparatifSurOuverture('SYSCOHADA'));
+      });
+
+      it('la colonne N-1 du tableau des flux de l’exercice suivant part de la même ouverture', async () => {
+        const E2 = { id: 'e2', dateDebut: new Date('2027-01-01T00:00:00Z'), dateFin: new Date('2027-12-31T00:00:00Z') } as never;
+        const s = serviceAvecExercices(
+          { e1: apresCloture, e2: [ligne('52110000', C5, 0, 0, { debit: 12_500_000 }), ligne('10130000', C1, 0, 0, { credit: 10_000_000 }), ligne('12100000', C1, 0, 0, { credit: 2_500_000 })] },
+          [E1, E2],
+          {},
+          { e1: avantCloture },
+        );
+        const tft = await s.tableauFluxTresorerie('t1', 'e2');
+        const balance = (s as any).ecritureService.balance as jest.Mock;
+        expect(balance.mock.calls.filter((c) => c[4]?.avantLaCloture).map((c) => c[1])).toEqual(['e1']);
+        expect((tft.lignes.find((l: any) => l.ref === 'ZA') as any)?.montantN1).toBe(12_000_000);
+      });
     });
 
     it('société qui naît · aucune colonne N-1, l’ouverture présumée nulle DITE', async () => {

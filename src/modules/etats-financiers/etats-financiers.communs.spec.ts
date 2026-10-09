@@ -1,6 +1,8 @@
 import { NotFoundException } from '@nestjs/common';
+import { TypeCompteDetailTotal } from '@prisma/client';
+import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
-import { trouverExerciceN1 } from './etats-financiers.communs';
+import { chargerOuverture, trouverExerciceN1 } from './etats-financiers.communs';
 
 /**
  * `trouverExerciceN1` · la lecture commune du comparatif, et le REFUS d'un
@@ -45,5 +47,68 @@ describe('trouverExerciceN1', () => {
     await expect(trouverExerciceN1(exerciceService([E2025, E2026], 't1'), 't2', 'e2026')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+});
+
+/**
+ * PAQUET 1, A4 (reproduit sur vraie base le 2026-10-09) · l'ouverture d'un
+ * exercice se lit AVANT ce que sa clôture y porte · la colonne report d'un
+ * exercice clôturé contient aussi le virement du résultat antérieur non
+ * affecté, daté de la fin de l'exercice. `chargerOuverture` le demande à la
+ * balance du livre-journal, et rend des lignes déjà ramenées à l'ouverture.
+ */
+describe('chargerOuverture', () => {
+  const ligneBalance = (
+    numero: string,
+    rd: number,
+    rc: number,
+    md: number,
+    mc: number,
+    typeCompte: TypeCompteDetailTotal = TypeCompteDetailTotal.DETAIL,
+  ) => ({
+    compteId: `id-${numero}`,
+    numero,
+    intitule: numero,
+    classe: 'CLASSE_1',
+    typeCompte,
+    reportDebit: rd,
+    reportCredit: rc,
+    mouvementDebit: md,
+    mouvementCredit: mc,
+    clotureDebit: 0,
+    clotureCredit: 0,
+    totalDebit: rd + md,
+    totalCredit: rc + mc,
+    solde: rd + md - rc - mc,
+  });
+  const ecritureService = (lignes: unknown[]) =>
+    ({ balance: jest.fn().mockResolvedValue({ lignes, totaux: { debit: 0, credit: 0 } }) }) as unknown as EcritureService & {
+      balance: jest.Mock;
+    };
+
+  it('demande la balance du livre-journal avant la clôture, date d’arrêté transmise', async () => {
+    const es = ecritureService([]);
+    const arrete = new Date('2026-06-30');
+    await chargerOuverture(es, 't1', 'e1', arrete);
+    expect(es.balance).toHaveBeenCalledWith('t1', 'e1', false, arrete, { avantLaCloture: true });
+  });
+
+  it('rend les lignes à l’ouverture · le report tient lieu de solde, les comptes Total écartés', async () => {
+    const es = ecritureService([
+      ligneBalance('13100000', 0, 2_000_000, 0, 0),
+      ligneBalance('52110000', 12_000_000, 0, 500_000, 0),
+      ligneBalance('13', 0, 2_000_000, 0, 0, TypeCompteDetailTotal.TOTAL),
+    ]);
+    const lignes = await chargerOuverture(es, 't1', 'e1');
+    expect(lignes.map((l) => [l.numero, l.solde, l.mouvementDebit, l.mouvementCredit])).toEqual([
+      ['13100000', -2_000_000, 0, 0],
+      ['52110000', 12_000_000, 0, 0],
+    ]);
+  });
+
+  it('sans exercice, rien n’est lu', async () => {
+    const es = ecritureService([]);
+    await expect(chargerOuverture(es, 't1', null)).resolves.toEqual([]);
+    expect(es.balance).not.toHaveBeenCalled();
   });
 });

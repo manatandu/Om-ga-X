@@ -10,12 +10,12 @@ import {
   MOTIF_RESULTAT_N1_NON_TENU,
   ProvenanceComparatif,
   chargerLignes,
+  chargerOuverture,
   comparatifDuBilan,
   correspond,
   exerciceCloture,
   exercicePrecedentCloture,
   exercicePrecedentTenu,
-  lignesALOuverture,
   lireOuverturePasseeEnOd,
   mentionComparatifSurOuverture,
   mentionExercicePrecedentVide,
@@ -865,11 +865,14 @@ export class EtatsFinanciersSyscohadaService {
     // précédent ». La colonne N-1 n'est donc PAS bornée : c'est bien la
     // clôture qu'elle doit porter, et le comparatif du modèle la sert déjà.
     const { borneN } = await this.bornesSituation(tenantId, exerciceId, exerciceN1Id, arreteAu);
-    const [lignesN, lignesN1, clos, closN1] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId, borneN),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
       exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
+      // Paquet 1, A4 · l'ouverture lue AVANT ce que la clôture de N y porte
+      // (`chargerOuverture`), seulement quand elle sert le comparatif.
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId, borneN),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -878,8 +881,8 @@ export class EtatsFinanciersSyscohadaService {
     // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
     // report, une ouverture saisie en OD au premier jour n'est lue ni comme
     // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
-    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
-    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYSCOHADA');
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, ouvertureN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, ouvertureN, ouverturePassee, 'SYSCOHADA');
     const resolutionN = this.resoudreTousLesPostesBilan(lignesN);
     const resolutionN1 = this.resoudreTousLesPostesBilan(comparatif.lignes);
 
@@ -1077,10 +1080,12 @@ export class EtatsFinanciersSyscohadaService {
       exerciceN1Id,
       arreteAu,
     );
-    const [lignesN, lignesN1, lignesMemePeriodeN1] = await Promise.all([
+    const [lignesN, lignesN1, lignesMemePeriodeN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId, borneN),
       this.chargerLignes(tenantId, exerciceN1Id),
       borneMemePeriodeN1 ? this.chargerLignes(tenantId, exerciceN1Id, borneMemePeriodeN1) : Promise.resolve(null),
+      // Le motif de la colonne N-1 lit l'ouverture comme le bilan (paquet 1, A4).
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId, borneN),
     ]);
 
     const resN = this.resoudreTousLesPostesCR(lignesN);
@@ -1146,7 +1151,7 @@ export class EtatsFinanciersSyscohadaService {
       memePeriodeN1JusquAu: borneMemePeriodeN1 ? borneMemePeriodeN1.toISOString().slice(0, 10) : undefined,
       // Q3 · le compte de résultat N-1 ne se tire pas d'un bilan d'ouverture ·
       // vide, et l'issue dite.
-      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(lignesN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
+      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(ouvertureN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       comptesNonRattaches: resN.comptesNonRattaches,
       controle: {
         resultatToutesClassesDeGestion: resN.resultatToutesClassesDeGestion,
@@ -1460,12 +1465,12 @@ export class EtatsFinanciersSyscohadaService {
     nonCalcules: Set<string>;
     ctx: ContexteFlux;
   } {
+    // Le solde N-1 d'un compte · la balance de l'exercice antérieur, sinon
+    // l'OUVERTURE que l'appelant passe (`chargerOuverture`, solde = report),
+    // jamais le report de `lignesCourant` · sur un exercice clôturé, celui-ci
+    // porte aussi le virement du résultat antérieur non affecté (paquet 1, A4).
     const soldesAnterieurs = new Map<string, number>();
-    if (exerciceAnterieurDisponible) {
-      for (const l of lignesAnterieur) soldesAnterieurs.set(l.numero, l.solde);
-    } else {
-      for (const l of lignesCourant) soldesAnterieurs.set(l.numero, l.reportDebit - l.reportCredit);
-    }
+    for (const l of lignesAnterieur) soldesAnterieurs.set(l.numero, l.solde);
 
     const ctx: ContexteFlux = {
       bilanCourant: this.resoudreTousLesPostesBilan(lignesCourant),
@@ -1590,15 +1595,22 @@ export class EtatsFinanciersSyscohadaService {
     // (`exercicePrecedentTenu`, relecture de la passe V1).
     const n1Tenu = exercicePrecedentTenu(exerciceN1Id, lignesN1);
     const n2Tenu = exercicePrecedentTenu(exerciceN2Id, lignesN2);
+    // L'OUVERTURE se lit AVANT ce que la clôture de l'exercice y porte
+    // (`chargerOuverture`, paquet 1, A4) · la colonne report d'un exercice
+    // clôturé porte aussi le virement du résultat antérieur non affecté.
+    const [ouvertureN, ouvertureN1] = await Promise.all([
+      n1Tenu ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId, borneN),
+      exerciceN1Id && !n2Tenu ? chargerOuverture(this.ecritureService, tenantId, exerciceN1Id) : Promise.resolve([]),
+    ]);
     const [ouverturePasseeN, ouverturePasseeN1] = await Promise.all([
-      lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, lignesN),
+      lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, ouvertureN),
       exerciceN1Id
-        ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, n2Tenu ? exerciceN2Id : null, lignesN1)
+        ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, n2Tenu ? exerciceN2Id : null, ouvertureN1)
         : Promise.resolve(null),
     ]);
     const resN = this.resoudreFluxPourExercice(
       lignesN,
-      n1Tenu ? lignesN1 : lignesALOuverture(lignesN),
+      n1Tenu ? lignesN1 : ouvertureN,
       n1Tenu,
       reevaluationsN,
       ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA') : null,
@@ -1610,7 +1622,7 @@ export class EtatsFinanciersSyscohadaService {
     const resN1 = exerciceN1Id
       ? this.resoudreFluxPourExercice(
           lignesN1,
-          n2Tenu ? lignesN2 : lignesALOuverture(lignesN1),
+          n2Tenu ? lignesN2 : ouvertureN1,
           n2Tenu,
           reevaluationsN1,
           ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYSCOHADA') : null,
@@ -1672,10 +1684,10 @@ export class EtatsFinanciersSyscohadaService {
       mentionOuverture: n1Tenu
         ? null
         : exerciceN1Id && !ouverturePasseeN
-          ? mentionExercicePrecedentVide('SYSCOHADA', ouvertureTenue(lignesN))
+          ? mentionExercicePrecedentVide('SYSCOHADA', ouvertureTenue(ouvertureN))
           : ouverturePasseeN
           ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA')
-          : ouvertureTenue(lignesN)
+          : ouvertureTenue(ouvertureN)
             ? mentionComparatifSurOuverture('SYSCOHADA')
             : mentionOuverturePresumeeNulle('SYSCOHADA'),
       postesNonCalculablesN1: resN1?.postesNonCalculables ?? [],

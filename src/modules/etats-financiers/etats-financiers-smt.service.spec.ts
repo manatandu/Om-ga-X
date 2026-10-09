@@ -120,11 +120,20 @@ function service(
     campagne?: unknown;
     campagneExerciceId?: string;
     exercicePrecedent?: { id: string; dateDebut: Date; dateFin: Date } | null;
+    // L'OUVERTURE lue avant la clôture de l'exercice (`avantLaCloture`,
+    // paquet 1, A4) · par DÉFAUT les mêmes lignes que l'exercice entier.
+    ouvertures?: Record<string, LigneTest[]>;
   } = {},
 ) {
   const ecritureService = {
-    balance: jest.fn().mockImplementation((_t: string, exerciceId: string) => {
-      const lignes = lignesParExercice[exerciceId] ?? [];
+    balance: jest.fn().mockImplementation((
+      _t: string,
+      exerciceId: string,
+      _inclureBrouillard?: boolean,
+      _arreteAu?: Date,
+      opts?: { avantLaCloture?: boolean },
+    ) => {
+      const lignes = (opts?.avantLaCloture ? options.ouvertures?.[exerciceId] : undefined) ?? lignesParExercice[exerciceId] ?? [];
       return Promise.resolve({ lignes, totaux: { debit: 0, credit: 0 } });
     }),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
@@ -1882,5 +1891,32 @@ describe('Bilan S.M.T · la colonne N-1 qui reprend un résultat antérieur non 
   it('2027 ouvert · rien n’est dit', async () => {
     const bilan = await service({ e0: lignes2027, e1: lignes2028 }, { exercices: exercices('OUVERT') }).bilan('t1', 'e1');
     expect(bilan.resultatAnterieurNonVireN1).toBeNull();
+  });
+});
+
+/**
+ * PAQUET 1, A4 (reproduit sur vraie base le 2026-10-09) · un premier exercice
+ * clôturé, repris avec 1 000 au 13 dans son bilan d'ouverture · la clôture les
+ * vire au 12 à la date de fin, en colonne report. La colonne N-1 lit
+ * l'ouverture AVANT la clôture (`chargerOuverture`) · HB 1 000, HC 0.
+ */
+describe('Bilan S.M.T · paquet 1, A4 · l’ouverture d’un premier exercice clôturé', () => {
+  it('la colonne N-1 porte le résultat repris en HB, pas en HC', async () => {
+    const apresCloture = [
+      ligne('57100000', ClasseCompte.CLASSE_5, 1_000, 0, { debit: 1_000 }),
+      ligne('13100000', ClasseCompte.CLASSE_1, 1_000, 1_000, { debit: 1_000, credit: 1_000 }),
+      ligne('12100000', ClasseCompte.CLASSE_1, 0, 1_000, { credit: 1_000 }),
+    ];
+    const avantCloture = [
+      ligne('57100000', ClasseCompte.CLASSE_5, 1_000, 0, { debit: 1_000 }),
+      ligne('13100000', ClasseCompte.CLASSE_1, 0, 1_000, { credit: 1_000 }),
+    ];
+    const bilan = await service({ e1: apresCloture }, { ouvertures: { e1: avantCloture } }).bilan('t1', 'e1');
+    expect({ comparatif: bilan.comparatif, hbN1: poste(bilan, 'HB').montantN1, hcN1: poste(bilan, 'HC').montantN1 }).toEqual({
+      comparatif: 'BILAN_D_OUVERTURE',
+      hbN1: 1_000,
+      hcN1: 0,
+    });
+    expect(poste(bilan, 'HC').montant).toBe(1_000);
   });
 });

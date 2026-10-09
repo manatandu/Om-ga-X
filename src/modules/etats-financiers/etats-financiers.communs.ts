@@ -194,15 +194,18 @@ export interface OuverturePasseeEnOd {
   pieces: string[];
 }
 
-/** Lue seulement quand elle compte · aucun exercice précédent, aucun report. */
+/**
+ * Lue seulement quand elle compte · aucun exercice précédent, aucun report.
+ * `ouvertureN` est l'ouverture lue par `chargerOuverture` (paquet 1, A4).
+ */
 export async function lireOuverturePasseeEnOd(
   ecritureService: EcritureService,
   tenantId: string,
   exerciceId: string,
   exerciceN1Id: string | null,
-  lignesN: readonly LigneBalancePourEtat[],
+  ouvertureN: readonly LigneBalancePourEtat[],
 ): Promise<OuverturePasseeEnOd | null> {
-  if (exerciceN1Id || ouvertureTenue(lignesN)) return null;
+  if (exerciceN1Id || ouvertureTenue(ouvertureN)) return null;
   return ecritureService.ouverturePasseeAuPremierJour(tenantId, exerciceId);
 }
 
@@ -231,18 +234,21 @@ export function mentionOuverturePresumeeNulle(referentiel: 'SYSCOHADA' | 'SYCEBN
  * sinon celles de l'ouverture de N quand le dossier en a une, sinon rien
  * (premier exercice d'une entité qui naît · aucun exercice précédent, aucune
  * colonne à remplir de zéros). La mention dit toujours d'où vient la colonne
- * ou pourquoi elle manque.
+ * ou pourquoi elle manque. `ouvertureN` est l'ouverture de N lue par
+ * `chargerOuverture`, jamais la balance de N ramenée à son report · celle-ci
+ * porte, sur un exercice clôturé, le virement du résultat antérieur que la
+ * clôture a passé (paquet 1, A4).
  */
 export function comparatifDuBilan(
   exerciceN1Id: string | null,
   lignesN1: LigneBalancePourEtat[],
-  lignesN: LigneBalancePourEtat[],
+  ouvertureN: LigneBalancePourEtat[],
   ouverturePassee: OuverturePasseeEnOd | null,
   referentiel: 'SYSCOHADA' | 'SYCEBNL',
 ): { provenance: ProvenanceComparatif | null; lignes: LigneBalancePourEtat[]; mention: string | null } {
   if (exerciceN1Id) return { provenance: 'EXERCICE_N1', lignes: lignesN1, mention: null };
-  if (ouvertureTenue(lignesN)) {
-    return { provenance: 'BILAN_D_OUVERTURE', lignes: lignesALOuverture(lignesN), mention: mentionComparatifSurOuverture(referentiel) };
+  if (ouvertureTenue(ouvertureN)) {
+    return { provenance: 'BILAN_D_OUVERTURE', lignes: lignesALOuverture(ouvertureN), mention: mentionComparatifSurOuverture(referentiel) };
   }
   if (ouverturePassee) return { provenance: null, lignes: [], mention: motifOuverturePasseeEnOd(ouverturePassee, referentiel) };
   return { provenance: null, lignes: [], mention: mentionOuverturePresumeeNulle(referentiel) };
@@ -291,6 +297,11 @@ export async function chargerLignes(
   // entrée · un bilan bâti dessus n'engagerait personne (voir
   // EcritureService.balance et StatutEcriture dans le schéma).
   const { lignes } = await ecritureService.balance(tenantId, exerciceId, false, arreteAu);
+  return lignesDesEtats(lignes);
+}
+
+/** Les lignes que les états lisent, prises dans une balance du livre-journal. */
+function lignesDesEtats<L extends LigneBalancePourEtat>(lignes: readonly L[]): L[] {
   // AVANT L'ÉCRITURE QUI SOLDE LES COMPTES DE GESTION · validée depuis F4, elle
   // ramenait à zéro le compte de résultat de tout exercice clos
   // (`avantSoldeDesComptesDeGestion`).
@@ -301,4 +312,40 @@ export async function chargerLignes(
   // de ses enfants double des montants EN SILENCE · une assurance d'une ligne
   // contre la catégorie de bug que ce projet ne peut pas se permettre.
   return avantSoldeDesComptesDeGestion(lignes).filter((l) => l.typeCompte !== TypeCompteDetailTotal.TOTAL);
+}
+
+/**
+ * L'OUVERTURE D'UN EXERCICE, LUE AVANT CE QUE SA CLÔTURE Y PORTE (paquet 1,
+ * A4, reproduit sur vraie base le 2026-10-09).
+ *
+ * La colonne REPORT de la balance range toute écriture de clôture qui n'est
+ * pas le solde des comptes de gestion (`filtresDesTroisColonnes`) · l'à-nouveau
+ * et le bilan d'ouverture importé, mais aussi le VIREMENT du résultat
+ * antérieur non affecté, que la clôture de l'exercice passe à sa date de fin
+ * pour que le bilan de l'exercice le lise au report à nouveau (fiche du
+ * compte 13, AUDCIF Titre VII et SYCEBNL Partie 2 ch. 3 · « En fin
+ * d'exercice, le résultat […] non affecté […] est viré au compte de report à
+ * nouveau »). Lue telle quelle, l'ouverture d'un exercice clôturé présentait
+ * ce virement comme fait au premier jour · un dossier repris avec 2 000 000
+ * de résultat 2025 au 13 sortait, en colonne N-1 du bilan 2026, un résultat
+ * nul et 2 000 000 au report à nouveau, quand son bilan d'ouverture (AUDCIF
+ * art. 34 ; SYCEBNL Partie 4 ch. 1 § 1.4, art. 16, 4)) les porte au 13.
+ *
+ * L'ouverture se lit donc sur les écritures datées AVANT la date de fin de
+ * l'exercice (`avantLaCloture` de `EcritureService.balance`), où la clôture
+ * écrit les siennes · l'à-nouveau et le bilan d'ouverture importé, datés du
+ * premier jour, y restent, et rien d'autre que la colonne report n'est gardé
+ * (`lignesALOuverture`). `arreteAu` borne comme pour `chargerLignes` (une
+ * situation intermédiaire). Les lignes rendues sont DÉJÀ à l'ouverture ·
+ * `ouvertureTenue` et `lignesALOuverture` s'y appliquent tels quels.
+ */
+export async function chargerOuverture(
+  ecritureService: EcritureService,
+  tenantId: string,
+  exerciceId: string | null,
+  arreteAu?: Date,
+): Promise<LigneBalancePourEtat[]> {
+  if (!exerciceId) return [];
+  const { lignes } = await ecritureService.balance(tenantId, exerciceId, false, arreteAu, { avantLaCloture: true });
+  return lignesALOuverture(lignesDesEtats(lignes));
 }

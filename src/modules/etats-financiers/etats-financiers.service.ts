@@ -8,12 +8,12 @@ import {
   LigneBalancePourEtat,
   MOTIF_RESULTAT_N1_NON_TENU,
   chargerLignes,
+  chargerOuverture,
   comparatifDuBilan,
   correspond,
   exerciceCloture,
   exercicePrecedentCloture,
   exercicePrecedentTenu,
-  lignesALOuverture,
   lireOuverturePasseeEnOd,
   mentionComparatifSurOuverture,
   mentionExercicePrecedentVide,
@@ -292,11 +292,14 @@ export class EtatsFinanciersService {
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
-    const [lignesN, lignesN1, clos, closN1] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
       exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
+      // Paquet 1, A4 · l'ouverture lue AVANT ce que la clôture de N y porte
+      // (`chargerOuverture`), seulement quand elle sert le comparatif.
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -305,8 +308,8 @@ export class EtatsFinanciersService {
     // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
     // report, une ouverture saisie en OD au premier jour n'est lue ni comme
     // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
-    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
-    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYCEBNL');
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, ouvertureN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, ouvertureN, ouverturePassee, 'SYCEBNL');
     const { parRef: parRefN, resultatClasses678, resultatCompte13, parts } = this.resoudreTousLesPostesBilan(lignesN);
     const { parRef: parRefN1, parts: partsN1 } = this.resoudreTousLesPostesBilan(comparatif.lignes);
 
@@ -472,9 +475,11 @@ export class EtatsFinanciersService {
    */
   async compteDeResultat(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
-    const [lignesN, lignesN1] = await Promise.all([
+    const [lignesN, lignesN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
+      // Le motif de la colonne N-1 lit l'ouverture comme le bilan (paquet 1, A4).
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId),
     ]);
 
     const resN = this.resoudreTousLesPostesCR(lignesN);
@@ -538,7 +543,7 @@ export class EtatsFinanciersService {
       resultatNetN1,
       exerciceN1Disponible: exerciceN1Id !== null,
       // Q3 · le compte de résultat N-1 ne se tire pas d'un bilan d'ouverture.
-      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(lignesN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
+      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(ouvertureN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       comptesNonRattaches: resN.comptesNonRattaches,
       controle: {
         resultatToutesClassesDeGestion: resN.resultatToutesClassesDeGestion,
@@ -784,7 +789,8 @@ export class EtatsFinanciersService {
     // tenu, sinon l'OUVERTURE de l'exercice, qui est cette clôture (SYCEBNL
     // art. 16, 4) ; Partie 4 ch. 1 § 1.4 ; cas chiffrés de la clôture, Q3) ·
     // à-nouveau ou bilan d'ouverture importé d'un dossier repris, lus sur la
-    // colonne REPORT (`lignesALOuverture`), ou rien pour une entité qui naît.
+    // colonne REPORT avant la clôture de l'exercice (`chargerOuverture`), ou
+    // rien pour une entité qui naît.
     // Sans elles, le premier exercice d'un dossier repris lisait une
     // trésorerie d'ouverture nulle et prenait le règlement d'une dette reprise
     // pour une absence de flux (passe V1, A1 · ZA 0 au lieu de 35 000 000,
@@ -795,9 +801,16 @@ export class EtatsFinanciersService {
     // (`exercicePrecedentTenu`, relecture de la passe V1).
     const n1Tenu = exercicePrecedentTenu(exerciceN1Id, lignesN1);
     const n2Tenu = exercicePrecedentTenu(exerciceN2Id, lignesN2);
+    // L'OUVERTURE se lit AVANT ce que la clôture de l'exercice y porte
+    // (`chargerOuverture`, paquet 1, A4) · la colonne report d'un exercice
+    // clôturé porte aussi le virement du résultat antérieur non affecté.
+    const [ouvertureN, ouvertureN1] = await Promise.all([
+      n1Tenu ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId),
+      exerciceN1Id && !n2Tenu ? chargerOuverture(this.ecritureService, tenantId, exerciceN1Id) : Promise.resolve([]),
+    ]);
     const resN = this.resoudreFluxPourExercice(
       lignesN,
-      n1Tenu ? lignesN1 : lignesALOuverture(lignesN),
+      n1Tenu ? lignesN1 : ouvertureN,
       virementsN,
       reevaluationsN,
       incorporationsN,
@@ -809,7 +822,7 @@ export class EtatsFinanciersService {
     const resN1 = exerciceN1Id
       ? this.resoudreFluxPourExercice(
           lignesN1,
-          n2Tenu ? lignesN2 : lignesALOuverture(lignesN1),
+          n2Tenu ? lignesN2 : ouvertureN1,
           virementsN1,
           reevaluationsN1,
           incorporationsN1,
@@ -898,8 +911,8 @@ export class EtatsFinanciersService {
       mentionOuverture: n1Tenu
         ? null
         : exerciceN1Id
-          ? mentionExercicePrecedentVide('SYCEBNL', ouvertureTenue(lignesN))
-          : ouvertureTenue(lignesN)
+          ? mentionExercicePrecedentVide('SYCEBNL', ouvertureTenue(ouvertureN))
+          : ouvertureTenue(ouvertureN)
             ? mentionComparatifSurOuverture('SYCEBNL')
             : mentionOuverturePresumeeNulle('SYCEBNL'),
       controle: {

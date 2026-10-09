@@ -9,6 +9,7 @@ import {
   MOTIF_RESULTAT_N1_NON_TENU,
   chargerLignes,
   chargerLignesCumulees,
+  chargerOuverture,
   comparatifDuBilan,
   correspond,
   exerciceCloture,
@@ -209,11 +210,14 @@ export class EtatsFinanciersProjetService {
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
-    const [lignesN, lignesN1, clos, closN1] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
       exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
+      // Paquet 1, A4 · l'ouverture lue AVANT ce que la clôture de N y porte
+      // (`chargerOuverture`), seulement quand elle sert le comparatif.
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -222,8 +226,8 @@ export class EtatsFinanciersProjetService {
     // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
     // report, une ouverture saisie en OD au premier jour n'est lue ni comme
     // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
-    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
-    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYCEBNL');
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, ouvertureN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, ouvertureN, ouverturePassee, 'SYCEBNL');
     const parRefN = this.resoudreTousLesPostesBilan(lignesN);
     const parRefN1 = this.resoudreTousLesPostesBilan(comparatif.lignes);
 
@@ -351,9 +355,11 @@ export class EtatsFinanciersProjetService {
    */
   async compteExploitation(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await this.trouverExerciceN1(tenantId, exerciceId);
-    const [lignesN, lignesN1] = await Promise.all([
+    const [lignesN, lignesN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
+      // Le motif de la colonne N-1 lit l'ouverture comme le bilan (paquet 1, A4).
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId),
     ]);
 
     const resN = this.resoudreTousLesPostesCE(lignesN);
@@ -400,7 +406,7 @@ export class EtatsFinanciersProjetService {
       soldeN1,
       exerciceN1Disponible: exerciceN1Id !== null,
       // Q3 · le compte d'exploitation N-1 ne se tire pas d'un bilan d'ouverture.
-      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(lignesN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
+      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(ouvertureN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       comptesNonRattaches: resN.comptesNonRattaches,
       controle: {
         // XC doit valoir 0 en régime normal (voir note de tête de fichier) ·

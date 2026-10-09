@@ -229,6 +229,9 @@ function service(
     campagneExerciceId?: string;
     /** Forme juridique du dossier · les états des garanties en dépendent. */
     forme?: FormeJuridiqueSyscohada | null;
+    // L'OUVERTURE lue avant la clôture de l'exercice (`avantLaCloture`,
+    // paquet 1, A4) · par DÉFAUT les mêmes lignes que l'exercice entier.
+    ouvertures?: Record<string, LigneTest[]>;
   } = {},
 ) {
   // LES EXERCICES DU DOSSIER · ceux qu'on déclare, sinon un par balance
@@ -239,8 +242,14 @@ function service(
     options.exercices ??
     Object.keys(lignesParExercice).map((id) => ({ id, dateDebut: new Date('2026-01-01T00:00:00Z') }));
   const ecritureService = {
-    balance: jest.fn().mockImplementation((_t: string, exerciceId: string) => {
-      const lignes = lignesParExercice[exerciceId] ?? [];
+    balance: jest.fn().mockImplementation((
+      _t: string,
+      exerciceId: string,
+      _inclureBrouillard?: boolean,
+      _arreteAu?: Date,
+      opts?: { avantLaCloture?: boolean },
+    ) => {
+      const lignes = (opts?.avantLaCloture ? options.ouvertures?.[exerciceId] : undefined) ?? lignesParExercice[exerciceId] ?? [];
       return Promise.resolve({ lignes, totaux: { debit: 0, credit: 0 } });
     }),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
@@ -1848,5 +1857,35 @@ describe('Bilan S.M.T SYSCOHADA · la colonne N-1 qui reprend un résultat anté
   it('2027 ouvert · rien n’est dit', async () => {
     const bilan = await service({ e0: lignes2027, e1: lignes2028 }, { exercices: exercices('OUVERT') }).bilan('t1', 'e1');
     expect(bilan.resultatAnterieurNonVireN1).toBeNull();
+  });
+});
+
+/**
+ * PAQUET 1, A4 (reproduit sur vraie base le 2026-10-09) · même règle au SMT
+ * SYSCOHADA · un premier exercice clôturé, repris avec 700 000 au 13 dans son
+ * bilan d'ouverture, que la clôture vire au 12 à la date de fin, en colonne
+ * report. La colonne N-1 lit l'ouverture AVANT la clôture · SP2 700 000, SP1
+ * sans le report.
+ */
+describe('Bilan S.M.T SYSCOHADA · paquet 1, A4 · l’ouverture d’un premier exercice clôturé', () => {
+  it('la colonne N-1 porte le résultat repris en SP2, pas au compte exploitant', async () => {
+    const apresCloture = [
+      ligne('52110000', ClasseCompte.CLASSE_5, 1_700_000, 0, { debit: 1_700_000 }),
+      ligne('10130000', ClasseCompte.CLASSE_1, 0, 1_000_000, { credit: 1_000_000 }),
+      ligne('13100000', ClasseCompte.CLASSE_1, 700_000, 700_000, { debit: 700_000, credit: 700_000 }),
+      ligne('12100000', ClasseCompte.CLASSE_1, 0, 700_000, { credit: 700_000 }),
+    ];
+    const avantCloture = [
+      ligne('52110000', ClasseCompte.CLASSE_5, 1_700_000, 0, { debit: 1_700_000 }),
+      ligne('10130000', ClasseCompte.CLASSE_1, 0, 1_000_000, { credit: 1_000_000 }),
+      ligne('13100000', ClasseCompte.CLASSE_1, 0, 700_000, { credit: 700_000 }),
+    ];
+    const bilan = await service({ e1: apresCloture }, { ouvertures: { e1: avantCloture } }).bilan('t1', 'e1');
+    expect({ comparatif: bilan.comparatif, sp2N1: poste(bilan, 'SP2').montantN1, sp1N1: poste(bilan, 'SP1').montantN1 }).toEqual({
+      comparatif: 'BILAN_D_OUVERTURE',
+      sp2N1: 700_000,
+      sp1N1: 1_000_000,
+    });
+    expect(poste(bilan, 'SP1').montant).toBe(1_700_000);
   });
 });
