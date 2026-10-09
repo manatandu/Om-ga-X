@@ -732,3 +732,8 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   sommeil refusé au serveur. À vérifier en production avant de passer en
   « Fait ».
 - 2026-10-02 · séminaires du CPCC confrontés à OmegaX · dix-sept manques et un écart à trancher, au relevé `docs/releve-seminaires-cpcc-2026-10-02.md` (hors liste tant que Manasse ne les y met pas) ; les deux défauts du lot 14 (réévaluations successives) sont corrigés dans le lot.
+- 2026-10-09 · saisie des journaux, affichage · la liste des comptes (« n° ou F4 »)
+  reste ouverte après la validation d'une ligne et recouvre le champ « Date de
+  versement » ; aucun montant ni aucune écriture n'est touché (vu sur la
+  capture du parcours `e2e/tests/saisie-par-piece.e2e.ts`). Mineur, hors du
+  gel tant que Manasse ne le met pas dans la liste.
