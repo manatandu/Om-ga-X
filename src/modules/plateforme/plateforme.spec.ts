@@ -25,7 +25,7 @@ import { raisonHorsCloisonnement } from '../../common/cloisonnement/contexte-clo
  */
 
 // Une session authentifiée à l'instant · la console exige moins de huit heures.
-const sessionRecente = () => ({ authentification: Math.floor(Date.now() / 1000) - 60 });
+const sessionRecente = () => ({ authentification: Math.floor(Date.now() / 1000) - 60, connexionComplete: Math.floor(Date.now() / 1000) - 60 });
 const contexte = (user: unknown, session: unknown = sessionRecente()): ExecutionContext =>
   ({
     switchToHttp: () => ({ getRequest: () => ({ user, [CLE_SESSION_REQUETE]: session }) }),
@@ -59,11 +59,19 @@ describe('OperateurPlateformeGuard', () => {
     authentification de moins de huit heures. Le refus est une session
     perdue (401 marqué) · l'écran ramène à la connexion avec le motif.
   */
-  it('refuse une authentification de plus de huit heures, ou inconnue, comme une session perdue', () => {
+  it('refuse une connexion complète de plus de huit heures, ou inconnue, comme une session perdue', () => {
     const operateur = { userId: 'u1', estOperateurPlateforme: true, doubleAuthentificationActive: true };
     const maintenant = Math.floor(Date.now() / 1000);
-    expect(garde.canActivate(contexte(operateur, { authentification: maintenant - 8 * 3600 + 60 }))).toBe(true);
-    for (const session of [{ authentification: maintenant - 8 * 3600 - 60 }, { authentification: null }, null]) {
+    expect(garde.canActivate(contexte(operateur, { connexionComplete: maintenant - 8 * 3600 + 60 }))).toBe(true);
+    for (const session of [
+      { connexionComplete: maintenant - 8 * 3600 - 60 },
+      { connexionComplete: null },
+      // Une authentification RÉCENTE par le mot de passe seul (changement de
+      // mot de passe, autres appareils déconnectés) ne rouvre pas la console.
+      { authentification: maintenant - 60, connexionComplete: maintenant - 3 * 86_400 },
+      { authentification: maintenant - 60 },
+      null,
+    ]) {
       try {
         garde.canActivate(contexte(operateur, session));
         throw new Error('la garde aurait dû refuser');

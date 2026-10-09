@@ -55,7 +55,7 @@ export const INTERVALLE_PROLONGATION_S = SECONDES_PAR_JOUR;
  * authentification EXPLICITE (mot de passe, et code s'il est actif) date de
  * moins de huit heures. Une session longue volée n'en donne donc pas les
  * clés. Huit heures · la durée d'une session courte (`JWT_EXPIRES_IN`),
- * convention d'OmegaX · une session courte la satisfait toujours.
+ * convention d'OmegaX, égale à la durée par défaut d'une session courte.
  * Jusqu'au 2026-10-09, la console refusait toute session longue (audit final
  * F270), et la case ne faisait rien pour l'opérateur.
  */
@@ -64,11 +64,19 @@ export const DELAI_CONSOLE_DEPUIS_AUTHENTIFICATION_S = 8 * 3600;
 export const MOTIF_CONSOLE_AUTHENTIFICATION_ANCIENNE =
   "La console de l'éditeur demande une connexion de moins de huit heures · reconnectez-vous avec votre mot de passe et votre code.";
 
-/** Vrai quand la dernière authentification explicite est inconnue ou trop ancienne pour la console. */
+/**
+ * Vrai quand la dernière CONNEXION COMPLÈTE (mot de passe, et code s'il est
+ * actif) est inconnue ou trop ancienne pour la console. Jamais
+ * `authentification` · un changement de mot de passe, d'adresse ou « Déconnecter
+ * mes autres appareils » ne demandent que le mot de passe et la renouvellent ;
+ * lue par la console, elle rouvrait huit heures sans le code à qui tenait un
+ * cookie volé et le mot de passe (relecture du 2026-10-09).
+ */
 export function authentificationTropAnciennePourLaConsole(session: SessionEnCours | null, maintenantS: number): boolean {
-  const a = session?.authentification;
-  if (a == null) return true;
-  return maintenantS - a > DELAI_CONSOLE_DEPUIS_AUTHENTIFICATION_S;
+  const c = session?.connexionComplete;
+  // Ce qui ne se lit pas comme un instant est trop ancien · une comparaison
+  // avec NaN rendrait faux, et la console s'ouvrirait.
+  return !(typeof c === 'number' && Number.isFinite(c) && maintenantS - c <= DELAI_CONSOLE_DEPUIS_AUTHENTIFICATION_S);
 }
 
 /** Ce que le jeton porte de sa session. */
@@ -94,6 +102,15 @@ export interface ChargeJeton {
    * sans mot de passe. Absente des jetons d'avant, l'émission en tient lieu.
    */
   authentification?: number;
+  /**
+   * Dernière CONNEXION COMPLÈTE, en secondes · mot de passe ET second facteur
+   * s'il est actif (la connexion, l'activation et le retrait de la double
+   * authentification). Les réémissions qui ne demandent que le mot de passe et
+   * la prolongation la RECOPIENT. C'est elle, et elle seule, que la console lit
+   * (`authentificationTropAnciennePourLaConsole`). Absente (jeton d'avant le
+   * 2026-10-09), la console redemande la connexion · jamais l'émission en lieu.
+   */
+  connexionComplete?: number;
 }
 
 /** La session d'une requête, lue dans son jeton par `JwtStrategy`. */
@@ -105,6 +122,8 @@ export interface SessionEnCours {
   csrf: string | null;
   /** Voir `ChargeJeton.authentification` · la prolongation la recopie. */
   authentification?: number | null;
+  /** Voir `ChargeJeton.connexionComplete` · nulle quand le jeton ne la porte pas. */
+  connexionComplete?: number | null;
 }
 
 export function sessionDuJeton(charge: ChargeJeton, instantS: number): SessionEnCours {
@@ -117,6 +136,7 @@ export function sessionDuJeton(charge: ChargeJeton, instantS: number): SessionEn
     exp: charge.exp ?? null,
     csrf: charge.csrf ?? null,
     authentification: charge.authentification ?? charge.iat ?? null,
+    connexionComplete: charge.connexionComplete ?? null,
   };
 }
 
@@ -160,6 +180,13 @@ export interface DemandeSession {
    * réémission après un acte), ce qui lui fait passer sa propre révocation.
    */
   authentification?: number | null;
+  /**
+   * Connexion complète · `'maintenant'` pour un acte qui a présenté le mot de
+   * passe ET le code s'il est actif (la connexion, l'activation et le retrait
+   * de la double authentification), une date à RECOPIER sinon. Absente, le
+   * jeton n'en porte pas, et la console redemandera la connexion.
+   */
+  connexionComplete?: 'maintenant' | number | null;
 }
 
 export interface SessionEmise {
@@ -196,7 +223,15 @@ export function emettreSession(
   const origine = demande.origine ?? instantS;
   const csrfToken = demande.csrf ?? randomBytes(16).toString('hex');
   const authentification = demande.authentification ?? instantS;
-  const charge: ChargeJeton = { sub: userId, csrf: csrfToken, origine, authentification, iat: instantS };
+  const connexionComplete = demande.connexionComplete === 'maintenant' ? instantS : (demande.connexionComplete ?? undefined);
+  const charge: ChargeJeton = {
+    sub: userId,
+    csrf: csrfToken,
+    origine,
+    authentification,
+    ...(connexionComplete !== undefined ? { connexionComplete } : {}),
+    iat: instantS,
+  };
   if (demande.longue) {
     const duree = Math.max(1, echeanceSessionLongue(origine, instantS) - instantS);
     return {
@@ -235,7 +270,10 @@ export function sessionDeLaRequete(requete: unknown): SessionDeRequete | null {
  */
 export function demandeDeReemission(session: SessionEnCours | null): DemandeSession {
   if (!session) return { longue: false };
+  // La connexion complète se RECOPIE · la réémission suit un acte qui n'a
+  // présenté que le mot de passe, sauf quand l'appelant dit le contraire.
+  const connexionComplete = session.connexionComplete ?? null;
   return session.longue
-    ? { longue: true, origine: session.origine }
-    : { longue: false, origine: session.origine, expCourte: session.exp };
+    ? { longue: true, origine: session.origine, connexionComplete }
+    : { longue: false, origine: session.origine, expCourte: session.exp, connexionComplete };
 }

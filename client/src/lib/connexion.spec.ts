@@ -40,7 +40,7 @@ describe('ce que la réponse demande à l’écran', () => {
 
   it('le serveur n’écrit plus d’avis de session courte · la prémisse relue sur sa source', () => {
     const service = readFileSync(join(__dirname, '..', '..', '..', 'src', 'modules', 'auth', 'auth.service.ts'), 'utf8');
-    expect(service).toContain('return emettreSession(this.jwt, user.id, { longue });');
+    expect(service).toContain("return emettreSession(this.jwt, user.id, { longue, connexionComplete: 'maintenant' });");
   });
 });
 

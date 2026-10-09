@@ -132,9 +132,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
     // L'opérateur garde sa session longue (décision de Manasse du
     // 2026-10-09) · la console, elle, exige une authentification de moins de
-    // huit heures, relue à chaque requête par `OperateurPlateformeGuard` sur
-    // la session posée ci-dessous. Un compte promu après s'être connecté
-    // « sur cet appareil » n'y entre donc pas sans se reconnecter.
+    // huit heures (`connexionComplete`), relue à chaque requête par
+    // `OperateurPlateformeGuard` sur la session posée ci-dessous.
 
     // LA SESSION DE LA REQUÊTE, posée à côté de l'utilisateur · le contrôleur
     // d'authentification y lit ce qu'une réémission doit garder, et
@@ -153,7 +152,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       const prolonge = emettreSession(
         this.jwt,
         user.id,
-        { longue: true, origine: session.origine, csrf: session.csrf, authentification: session.authentification },
+        {
+          longue: true,
+          origine: session.origine,
+          csrf: session.csrf,
+          authentification: session.authentification,
+          connexionComplete: session.connexionComplete ?? null,
+        },
         maintenant,
       );
       session.prolongation = { accessToken: prolonge.accessToken, maxAgeMs: prolonge.maxAgeMs ?? 0 };

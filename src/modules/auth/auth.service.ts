@@ -259,7 +259,7 @@ export class AuthService {
       },
       exercice,
       // Session courte · un dossier naissant n'a pas coché « Rester connecté ».
-      ...emettreSession(this.jwt, user.id, { longue: false }),
+      ...emettreSession(this.jwt, user.id, { longue: false, connexionComplete: 'maintenant' }),
     };
   }
 
@@ -400,7 +400,8 @@ export class AuthService {
     // de moins de huit heures (`OperateurPlateformeGuard`).
     const longue = dto.resterConnecte === true;
     await this.journaliserConnexion(user, adresseIp, longue);
-    return emettreSession(this.jwt, user.id, { longue });
+    // Mot de passe, et code s'il est actif · une connexion complète.
+    return emettreSession(this.jwt, user.id, { longue, connexionComplete: 'maintenant' });
   }
 
   /**
@@ -512,7 +513,7 @@ export class AuthService {
       data: { doubleAuthActiveDepuis: maintenant, dernierPasDoubleAuth: pas, codesSecoursDoubleAuth: empreintes, sessionsInvalidesAvant: maintenant },
     });
     await this.aviserDoubleAuth(u, 'ACTIVEE', maintenant);
-    return { codesSecours: codes, ...this.reemettre(u, session) };
+    return { codesSecours: codes, ...this.reemettre(u, session, undefined, true) };
   }
 
   /** Mot de passe ET second facteur · un poste laissé ouvert ne suffit pas à la retirer. */
@@ -526,7 +527,7 @@ export class AuthService {
       data: { secretDoubleAuth: null, doubleAuthActiveDepuis: null, dernierPasDoubleAuth: null, codesSecoursDoubleAuth: [], sessionsInvalidesAvant: maintenant },
     });
     await this.aviserDoubleAuth(u, 'RETIREE', maintenant);
-    return { desactivee: true, ...this.reemettre(u, session) };
+    return { desactivee: true, ...this.reemettre(u, session, undefined, true) };
   }
 
   /**
@@ -774,8 +775,10 @@ export class AuthService {
    * une session longue qui redeviendrait courte ferait perdre « Rester
    * connecté » au premier changement de mot de passe, et une session courte
    * qui repartirait pour huit heures dépasserait les huit heures annoncées.
-   * La console de l'éditeur ne reçoit jamais de session longue · JwtStrategy
-   * la refuse déjà, et c'est redit ici, où le compte est sous la main.
+   * La CONNEXION COMPLÈTE (`connexionComplete`, que la console lit) se
+   * recopie, sauf quand l'acte a présenté le mot de passe ET le code
+   * (`complete`, activation et retrait de la double authentification) · un
+   * changement de mot de passe seul ne rouvre pas la console.
    *
    * La charge reste minimale (voir `emettreSession`) · JwtStrategy.validate
    * relit dossier, adresse et rôle en base à chaque requête plutôt que de leur
@@ -784,12 +787,8 @@ export class AuthService {
    * (cookie httpOnly) et le jeton CSRF que l'écran rejoue en en-tête
    * X-CSRF-Token · voir session.constants.ts et jwt.strategy.ts.
    */
-  private reemettre(
-    user: { id: string; estOperateurPlateforme?: boolean },
-    session: SessionEnCours | null,
-    instantMs?: number,
-  ): SessionEmise {
+  private reemettre(user: { id: string }, session: SessionEnCours | null, instantMs?: number, complete = false): SessionEmise {
     const demande = demandeDeReemission(session);
-    return emettreSession(this.jwt, user.id, demande, instantMs);
+    return emettreSession(this.jwt, user.id, complete ? { ...demande, connexionComplete: 'maintenant' } : demande, instantMs);
   }
 }

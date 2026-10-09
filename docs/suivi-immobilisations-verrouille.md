@@ -769,6 +769,13 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   numéros ont été élargis garde ses comptes plus courts, et l'un d'eux peut
   être le début d'un numéro neuf, choisi ou proposé (le collectif l'est déjà
   de ses premiers individuels) · une recherche par racine les lirait ensemble.
+  Relevés en attente de la connexion (2026-10-09, non bloquants) · l'adresse
+  préremplie du dernier dossier ne s'oublie plus depuis l'écran (poste
+  partagé) ; après une reconnexion exigée par la console, retour à l'accueil
+  et non à la console ; un refus de session venu d'une requête partie avant
+  la reconnexion fermerait la session neuve (défaut d'avant, forme de F164) ;
+  un principal rattaché à la main n'est pas lié à son collectif
+  (`rattacherCompte` ne pose pas `collectifId`), présentation seule.
   RESTE · le salarié (42, « pas pour l'instant »), les organismes sociaux, l'État, les associés et bailleurs,
   les débiteurs et créditeurs divers (43 à 47), dont les sous-comptes se
   relisent dans les deux plans avant tout code.

@@ -5,7 +5,7 @@ import type { Exercice, JeuEtatsFinanciersSycebnl, SystemeComptableSyscohada, Re
 import { oublierPrechargement, prechargerExercices } from './prechargement';
 import { peutEcrirePourRole, peutValiderPourRole } from './roles-cantonnes';
 import { surSessionPerdue } from './session-perdue';
-import { fermerLaSession } from './deconnexion';
+import { deconnecterServeur, fermerLaSession } from './deconnexion';
 
 interface MeResponse {
   id: string;
@@ -126,6 +126,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       surSessionPerdue((motif) => {
         if (!ouverte.current) return;
         ouverte.current = false;
+        // LE COOKIE SE FERME AUSSI · la console refuse une connexion de plus de
+        // huit heures en session perdue alors que le cookie « Rester connecté »
+        // reste valide pour le dossier · un rechargement serait rentré sans mot
+        // de passe, l'écran disant « reconnectez-vous ». La connexion suivante
+        // attend cette réponse (`apresDeconnexion`).
+        void deconnecterServeur(() => api.post('/auth/logout'));
         oublierPrechargement();
         setCsrf(null);
         setUtilisateur(null);

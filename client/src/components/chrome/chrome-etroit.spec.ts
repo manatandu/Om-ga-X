@@ -115,7 +115,10 @@ describe('chrome à 360 px', () => {
     // (décision de Manasse du 2026-10-09) ; « entités à but non lucratif ·
     // SYCEBNL » mentait déjà à tout dossier SYSCOHADA. La négation vise la
     // LIGNE DE TEXTE affichée, pas la prose des commentaires.
-    expect(src).not.toMatch(/^\s*Comptabilité (OHADA|des entités à but non lucratif)/m);
+    // On gèle ce que le panneau MONTRE · le logotype, puis le filet de clôture.
+    const panneau = src.slice(src.indexOf('<LogotypeOmegaX'), src.indexOf('filet-cloture'));
+    expect(panneau).toContain('<LogotypeOmegaX hauteur={21} className="mt-2.5 text-white" />');
+    expect(panneau.replace(/\{\/\*[\s\S]*?\*\/\}/g, '')).not.toMatch(/<div[^>]*>\s*[A-Za-zÀ-ÿ]/);
   });
 });
 

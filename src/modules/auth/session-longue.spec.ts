@@ -15,6 +15,7 @@ import {
   CLE_SESSION_REQUETE,
   DUREE_INACTIVITE_SESSION_LONGUE_S,
   DUREE_MAXIMALE_SESSION_LONGUE_S,
+  authentificationTropAnciennePourLaConsole,
   emettreSession,
   prolongationDue,
   SECONDES_PAR_JOUR,
@@ -217,7 +218,7 @@ describe('2 bis · la prolongation par la stratégie et la garde', () => {
   });
 });
 
-describe('3 · jamais pour la console de l’éditeur', () => {
+describe('3 · la console de l’éditeur, session longue admise, connexion complète exigée', () => {
   const service = (user: Record<string, unknown>) =>
     new AuthService(
       { user: { findUnique: async () => user, update: async () => ({}) } } as never,
@@ -272,6 +273,35 @@ describe('3 · jamais pour la console de l’éditeur', () => {
     ).resolves.toMatchObject({ userId: 'u1', estOperateurPlateforme: true });
     // C'est elle que la console relit · trois jours, la console redemandera.
     expect((req[CLE_SESSION_REQUETE] as SessionDeRequete).authentification).toBe(maintenant - 3 * SECONDES_PAR_JOUR);
+  });
+
+  it('la connexion pose la connexion complète ; un changement de mot de passe la RECOPIE, et la console reste fermée', async () => {
+    const maintenant = Math.floor(Date.now() / 1000);
+    const r = await service(compte(true)).login({ email: 'a@b.cd', motDePasse: 'le-bon', resterConnecte: true });
+    if ('deuxiemeFacteurRequis' in r) throw new Error('inattendu');
+    expect(lireJeton(r.accessToken).connexionComplete).toBeGreaterThanOrEqual(maintenant);
+    // Session longue d'opérateur connectée il y a trois jours · un cookie
+    // volé et le mot de passe ne rouvrent pas la console sans le code.
+    const ilYATroisJours = maintenant - 3 * SECONDES_PAR_JOUR;
+    const change = await service(compte(true)).changerMotDePasse('u1', 'le-bon', 'nouveau-tres-long', {
+      longue: true,
+      origine: ilYATroisJours,
+      iat: maintenant - 60,
+      exp: maintenant + 3600,
+      csrf: 'c',
+      authentification: ilYATroisJours,
+      connexionComplete: ilYATroisJours,
+    });
+    const jeton = lireJeton(change.accessToken);
+    expect(jeton.authentification).toBeGreaterThanOrEqual(maintenant);
+    expect(jeton.connexionComplete).toBe(ilYATroisJours);
+    expect(authentificationTropAnciennePourLaConsole(sessionDuJeton(jeton, maintenant), maintenant)).toBe(true);
+  });
+
+  it('la prolongation recopie la connexion complète, et un jeton qui ne la porte pas ne l’invente pas', () => {
+    expect(sessionDuJeton({ sub: 'u1', iat: S0, authentification: S0 }, S0).connexionComplete).toBeNull();
+    const prolonge = emettreSession(jwt, 'u1', { longue: true, origine: S0, csrf: 'c', authentification: S0, connexionComplete: S0 }, (S0 + SECONDES_PAR_JOUR) * 1000);
+    expect(lireJeton(prolonge.accessToken).connexionComplete).toBe(S0);
   });
 
   it('la réémission d’un opérateur garde sa session longue', async () => {

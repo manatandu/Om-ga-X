@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useId, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -94,6 +94,7 @@ export function AuthPage() {
   // Le second facteur · demandé par le serveur, jamais supposé par l'écran.
   const [codeRequis, setCodeRequis] = useState(false);
   const [code, setCode] = useState('');
+  const idCode = useId();
   // « Rester connecté sur cet appareil » (audit final F270) · DÉCOCHÉE par
   // défaut, et jamais mémorisée d'une ouverture à l'autre · sur un poste
   // partagé, la case cochée par le précédent ouvrirait trente jours au suivant.
@@ -227,7 +228,14 @@ export function AuthPage() {
               required
               autoFocus={!email}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                // Le code demandé l'était pour l'ADRESSE d'avant · il part avec elle.
+                if (codeRequis) {
+                  setCodeRequis(false);
+                  setCode('');
+                }
+              }}
               className={champClasse}
             />
           </label>
@@ -255,26 +263,32 @@ export function AuthPage() {
           </label>
 
           {codeRequis && (
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[11.5px] font-semibold text-text-dim flex items-center gap-1.5">
-                Code de l'application d'authentification
+            // L'Aide HORS du <label> · dedans, le libellé désignait le bouton
+            // « ? », premier élément qu'il contient, et non le champ.
+            <div className="flex flex-col gap-1.5">
+              <span className="flex items-center gap-1.5">
+                <label htmlFor={idCode} className="text-[11.5px] font-semibold text-text-dim">
+                  Code de l'application d'authentification
+                </label>
                 <Aide
                   titre="Code de l'application d'authentification"
                   texte="Ce compte a activé la vérification en deux étapes (Fichier > Mon compte). Saisissez les six chiffres affichés par l'application d'authentification du téléphone (Google Authenticator, Microsoft Authenticator…), ou l'un des codes de secours remis à l'activation. Le code change toutes les trente secondes."
-                  source="RFC 6238 (codes à usage unique fondés sur le temps) ; exigée pour la console de l'éditeur"
+                  source="RFC 6238 (codes à usage unique fondés sur le temps) ; double authentification exigée pour la console de l'éditeur"
                 />
               </span>
+              {/* Sans pavé numérique imposé · un code de secours porte des lettres. */}
               <input
-                inputMode="numeric"
+                id={idCode}
                 autoComplete="one-time-code"
+                autoCapitalize="characters"
                 required
                 autoFocus
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                placeholder="6 chiffres"
+                placeholder="6 chiffres ou code de secours"
                 className={champClasse}
               />
-            </label>
+            </div>
           )}
 
           <div className="flex items-center gap-1.5">

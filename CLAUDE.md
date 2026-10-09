@@ -4264,20 +4264,24 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   seule pose du cookie (`poserCookieSession`). LA CONSOLE REDEMANDE APRÈS
   HUIT HEURES (décision de Manasse du 2026-10-09, « Long, console
   redemandée ») · l'opérateur reste connecté comme tout utilisateur, mais
-  `OperateurPlateformeGuard` n'admet qu'une dernière authentification
-  explicite de moins de huit heures (`authentificationTropAnciennePourLaConsole`),
-  sinon une session perdue nommée ramène à la connexion, mot de passe et
-  code ; jusque-là la console refusait toute session longue. `/auth/me` rend le jeton CSRF de la
+  `OperateurPlateformeGuard` n'admet qu'une dernière CONNEXION COMPLÈTE
+  (claim `connexionComplete` · mot de passe ET code, posée par la connexion,
+  l'activation et le retrait de la double authentification, RECOPIÉE par la
+  prolongation et par les réémissions au mot de passe seul) de moins de huit
+  heures (`authentificationTropAnciennePourLaConsole`), sinon une session
+  perdue nommée ramène à la connexion et ferme le cookie ; jamais
+  `authentification`, qu'un changement de mot de passe renouvelle (il
+  rouvrait la console sans le code). Jusque-là la console refusait toute
+  session longue. `/auth/me` rend le jeton CSRF de la
   session en cours, le stockage local de l'écran pouvant disparaître avant le
   cookie. « Déconnecter mes autres appareils » (`POST
   /auth/deconnecter-autres-appareils`) exige le mot de passe actuel, ferme
   toutes les sessions et repose aussitôt celle de l'appareil, qui garde son
   régime · ce n'est PAS une sortie de mot de passe provisoire. Les routes qui
   éprouvent un secret portent `@Throttle` (vingt par minute) et
-  `JwtAuthGuard`, gelés route par route par `session-longue.spec.ts`. Une
-  session demandée longue et ouverte courte le dit à l'écran
-  (`motifSessionCourte`, `lib/connexion.ts`), et la déconnexion attend
-  `POST /auth/logout` avant qu'une connexion reparte (`lib/deconnexion.ts`).
+  `JwtAuthGuard`, gelés route par route par `session-longue.spec.ts`. La
+  déconnexion attend `POST /auth/logout` avant qu'une connexion reparte
+  (`lib/deconnexion.ts`).
 - **Double authentification** (`src/modules/auth/double-authentification.ts`,
   2026-09-26) · TOTP, RFC 6238, écrit ici et figé par les vecteurs des RFC,
   vérifiable hors ligne donc aussi sur site. OUVERTE À TOUS, EXIGÉE POUR LA

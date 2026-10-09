@@ -382,7 +382,7 @@ export function TiersPage() {
     setEnvoi(true);
     // Pendant la lecture, le champ est fermé et vide · rien ne part, le serveur prend le premier libre.
     const numeroCompte =
-      creerCompteIndividuel && lecture?.etat !== 'en-cours' ? numeroAEnvoyer(numeroSaisi, numeroPropose) : undefined;
+      creerCompteIndividuel && lecture !== null && lecture.etat !== 'en-cours' ? numeroAEnvoyer(numeroSaisi, numeroPropose) : undefined;
     try {
       const cree = await api.post<{ compteIndividuel: { numero: string; collectif: string } | null; panoplie: Panoplie | null }>('/tiers', {
         type,
@@ -1240,7 +1240,7 @@ export function TiersPage() {
                 className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]"
               >
                 <span>Nouveau tiers</span>
-                <button type="button" onClick={() => setNouveauOuvert(false)} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c]">✕</button>
+                <button type="button" disabled={envoi} onClick={() => setNouveauOuvert(false)} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c]">✕</button>
               </div>
               <div className="p-4">
                 <div className="grid grid-cols-[110px_1fr] items-center gap-x-3 gap-y-2.5">
@@ -1307,8 +1307,10 @@ export function TiersPage() {
                           {lecture?.etat === 'echec' && (
                             <>
                               <span />
-                              <span id={idMessageNumero} role="alert" className="flex items-center gap-2 text-[11.5px] text-danger">
-                                {lecture.message}
+                              <span className="flex items-center gap-2 text-[11.5px] text-danger">
+                                <span id={idMessageNumero} role="alert">
+                                  {lecture.message}
+                                </span>
                                 <button
                                   type="button"
                                   onClick={() => setRelectureNumero((n) => n + 1)}
@@ -1330,7 +1332,7 @@ export function TiersPage() {
                   </p>
                 )}
                 <div className="flex justify-end gap-2 mt-4">
-                  <button type="button" onClick={() => setNouveauOuvert(false)} className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px]">
+                  <button type="button" disabled={envoi} onClick={() => setNouveauOuvert(false)} className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px]">
                     Annuler
                   </button>
                   <button type="submit" disabled={envoi} className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold disabled:opacity-50">
