@@ -9,9 +9,18 @@ import { EcritureService } from './ecriture.service';
  * reste ouvert ; les modules, qui ne passent pas par le contrôleur, ne sont
  * pas touchés.
  */
-type Compte = { id: string; tenantId: string; numero: string; intitule: string; collectifId: string | null };
+type Compte = {
+  id: string;
+  tenantId: string;
+  numero: string;
+  intitule: string;
+  collectifId: string | null;
+  typeCompte?: 'DETAIL' | 'TOTAL';
+  estActif?: boolean;
+  journauxTresorerie?: { id: string }[];
+};
 
-const COMPTES: Compte[] = [
+const COMPTES_DE_BASE: Compte[] = [
   { id: 'c4111', tenantId: 't1', numero: '41110000', intitule: 'Clients', collectifId: null },
   { id: 'i1', tenantId: 't1', numero: '41110001', intitule: 'Acme', collectifId: 'c4111' },
   { id: 'i2', tenantId: 't1', numero: '41110002', intitule: 'Bema', collectifId: 'c4111' },
@@ -20,29 +29,39 @@ const COMPTES: Compte[] = [
   { id: 'vente', tenantId: 't1', numero: '70110000', intitule: 'Ventes', collectifId: null },
 ];
 
-function service(opts: { portees?: string[]; tenusParUneCreance?: string[] } = {}) {
+type Where = {
+  tenantId: string;
+  collectifId?: string;
+  id?: { in: string[] };
+  individuels?: unknown;
+  typeCompte?: string;
+  estActif?: boolean;
+  numero?: { startsWith: string; not: string };
+  NOT?: { numero: { startsWith: string } }[];
+};
+
+function service(opts: { portees?: string[]; tenusParUneCreance?: string[]; comptes?: Compte[] } = {}) {
+  const COMPTES = [...COMPTES_DE_BASE, ...(opts.comptes ?? [])];
   const prisma = {
+    tenant: { findFirst: jest.fn(async () => ({ referentiel: 'SYSCOHADA' })) },
     compte: {
-      // La doublure honore dossier, collectif, identifiants et « porte des
-      // individuels » demandés.
-      findMany: jest.fn(
-        async ({
-          where,
-          take,
-        }: {
-          where: { tenantId: string; collectifId?: string; id?: { in: string[] }; individuels?: unknown };
-          take?: number;
-        }) => {
-          const r = COMPTES.filter(
-            (c) =>
-              c.tenantId === where.tenantId &&
-              (where.collectifId === undefined || c.collectifId === where.collectifId) &&
-              (!where.id || where.id.in.includes(c.id)) &&
-              (!where.individuels || COMPTES.some((i) => i.tenantId === where.tenantId && i.collectifId === c.id)),
-          );
-          return take ? r.slice(0, take) : r;
-        },
-      ),
+      // La doublure honore dossier, collectif, identifiants, « porte des
+      // individuels », type, activité, préfixe et exclusions demandés.
+      findMany: jest.fn(async ({ where, take }: { where: Where; take?: number }) => {
+        const r = COMPTES.filter(
+          (c) =>
+            c.tenantId === where.tenantId &&
+            (where.collectifId === undefined || c.collectifId === where.collectifId) &&
+            (!where.id || where.id.in.includes(c.id)) &&
+            (!where.individuels || COMPTES.some((i) => i.tenantId === where.tenantId && i.collectifId === c.id)) &&
+            (where.typeCompte === undefined || (c.typeCompte ?? 'DETAIL') === where.typeCompte) &&
+            (where.estActif === undefined || (c.estActif ?? true) === where.estActif) &&
+            (!where.numero || (c.numero.startsWith(where.numero.startsWith) && c.numero !== where.numero.not)) &&
+            !(where.NOT ?? []).some((n) => c.numero.startsWith(n.numero.startsWith)),
+        );
+        r.sort((a, b) => a.numero.localeCompare(b.numero));
+        return take ? r.slice(0, take) : r;
+      }),
     },
     ligneEcriture: {
       findMany: jest.fn(async () => (opts.portees ?? []).map((compteId) => ({ compteId }))),
@@ -91,6 +110,79 @@ describe('saisie sur un compte collectif', () => {
     await expect(
       service({ portees: ['vente'] }).verifierComptesCollectifs('t1', [{ compteId: 'c4111' }, { compteId: 'vente' }], 'e1'),
     ).rejects.toThrow(/Compte collectif : 41110000/);
+  });
+
+  it('refuse le compte du plan que le dossier subdivise, en nommant ses sous-comptes', async () => {
+    const comptes: Compte[] = [
+      { id: 'b5211', tenantId: 't1', numero: '52110000', intitule: 'Banques locales', collectifId: null },
+      { id: 'bcdc', tenantId: 't1', numero: '52110001', intitule: 'BCDC', collectifId: null },
+      { id: 'raw', tenantId: 't1', numero: '52110002', intitule: 'Rawbank', collectifId: null },
+    ];
+    await expect(
+      service({ comptes }).verifierComptesCollectifs('t1', [{ compteId: 'b5211' }, { compteId: 'vente' }]),
+    ).rejects.toThrow(/Compte du plan subdivisé par le dossier : 52110000 \(52110001 BCDC, 52110002 Rawbank\) · une écriture saisie s'impute/);
+    // Le sous-compte du dossier, lui, reçoit la saisie.
+    await expect(
+      service({ comptes }).verifierComptesCollectifs('t1', [{ compteId: 'bcdc' }, { compteId: 'vente' }]),
+    ).resolves.toBeUndefined();
+  });
+
+  it('un sous-compte en sommeil ou TOTAL ne ferme pas le compte du plan', async () => {
+    const comptes: Compte[] = [
+      { id: 'b5211', tenantId: 't1', numero: '52110000', intitule: 'Banques locales', collectifId: null },
+      { id: 'dort', tenantId: 't1', numero: '52110001', intitule: 'BCDC', collectifId: null, estActif: false },
+      { id: 'tot', tenantId: 't1', numero: '521100', intitule: 'Regroupement', collectifId: null, typeCompte: 'TOTAL' },
+    ];
+    await expect(
+      service({ comptes }).verifierComptesCollectifs('t1', [{ compteId: 'b5211' }, { compteId: 'vente' }]),
+    ).resolves.toBeUndefined();
+  });
+
+  it('le 490 ne se ferme pas pour un sous-compte du 4911 · la racine est le numéro officiel', async () => {
+    const comptes: Compte[] = [
+      { id: 'd490', tenantId: 't1', numero: '49000000', intitule: 'Dépréciations des comptes fournisseurs', collectifId: null },
+      { id: 'd4911', tenantId: 't1', numero: '49110000', intitule: 'Créances litigieuses', collectifId: null },
+      { id: 'x', tenantId: 't1', numero: '49110001', intitule: 'Client X', collectifId: null },
+    ];
+    await expect(
+      service({ comptes }).verifierComptesCollectifs('t1', [{ compteId: 'd490' }, { compteId: 'vente' }]),
+    ).resolves.toBeUndefined();
+    await expect(
+      service({ comptes }).verifierComptesCollectifs('t1', [{ compteId: 'd4911' }, { compteId: 'vente' }]),
+    ).rejects.toThrow(/Compte du plan subdivisé par le dossier : 49110000 \(49110001 Client X\)/);
+  });
+
+  it('le solde porté au compte du plan se reporte sur ses sous-comptes par une pièce qui ne porte qu’eux', async () => {
+    const comptes: Compte[] = [
+      { id: 'b5211', tenantId: 't1', numero: '52110000', intitule: 'Banques locales', collectifId: null },
+      { id: 'bcdc', tenantId: 't1', numero: '52110001', intitule: 'BCDC', collectifId: null },
+    ];
+    await expect(
+      service({ comptes }).verifierComptesCollectifs('t1', [{ compteId: 'b5211' }, { compteId: 'bcdc' }]),
+    ).resolves.toBeUndefined();
+    await expect(
+      service({ comptes }).verifierComptesCollectifs('t1', [{ compteId: 'b5211' }, { compteId: 'bcdc' }, { compteId: 'vente' }]),
+    ).rejects.toThrow(/se reporte par une pièce qui ne porte que lui et ses sous-comptes/);
+  });
+
+  it('un compte du plan sans sous-compte du dossier reste ouvert, celui d’un autre dossier ne compte pas', async () => {
+    const comptes: Compte[] = [
+      { id: 'b5211', tenantId: 't1', numero: '52110000', intitule: 'Banques locales', collectifId: null },
+      { id: 'ailleurs', tenantId: 't2', numero: '52110001', intitule: 'Voisin', collectifId: null },
+    ];
+    await expect(
+      service({ comptes }).verifierComptesCollectifs('t1', [{ compteId: 'b5211' }, { compteId: 'vente' }]),
+    ).resolves.toBeUndefined();
+  });
+
+  it('le compte d’un journal de banque reste ouvert quand un autre journal a son compte dessous', async () => {
+    const comptes: Compte[] = [
+      { id: 'b5211', tenantId: 't1', numero: '52110000', intitule: 'Banques locales', collectifId: null, journauxTresorerie: [{ id: 'BQ' }] },
+      { id: 'bq2', tenantId: 't1', numero: '52110001', intitule: 'Rawbank', collectifId: null, journauxTresorerie: [{ id: 'BQ2' }] },
+    ];
+    await expect(
+      service({ comptes }).verifierComptesCollectifs('t1', [{ compteId: 'b5211' }, { compteId: 'vente' }]),
+    ).resolves.toBeUndefined();
   });
 
   it('le contrôleur le joue à la saisie et à la modification, avant d’écrire', async () => {

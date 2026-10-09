@@ -38,6 +38,7 @@ import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBa
 import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements-mise-en-service';
 import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
 import { compteDeLaFamille, type FamilleTiers } from './familles-tiers';
+import { compteSemeSubdivise, racineDuCompteSeme, racinesSousLeCompteSeme } from '../comptes/subdivisions-du-plan';
 
 /**
  * Une ligne est au débit si son montant est porté du côté débit · quel que
@@ -720,6 +721,19 @@ export class EcritureService {
    * personne ne saisit, et une balance importée sur un collectif ne doit pas
    * tomber pour autant. Un collectif sans compte individuel reste ouvert ·
    * le dossier qui ne suit pas ses tiers un par un n'est pas enfermé.
+   *
+   * MÊME RÈGLE POUR UN COMPTE DU PLAN QUE LE DOSSIER SUBDIVISE (même
+   * décision, point 1 de la note du 2026-10-09) · le 52110000 semé sous
+   * lequel le cabinet a ouvert 52110001 « BCDC » ne reçoit plus de ligne
+   * saisie (`comptes/subdivisions-du-plan.ts`, la racine officielle et la
+   * plus profonde). Seuls comptent les sous-comptes d'imputation ACTIFS · mis
+   * en sommeil, ils rendent la saisie au compte du plan, sans quoi le dossier
+   * qui revient sur une subdivision serait enfermé. Mêmes issues que le
+   * collectif · la modification ne juge que les comptes nouveaux, le 416
+   * qu'une créance douteuse tient reste ouvert, et la pièce qui ne porte que
+   * le compte et ses sous-comptes reporte un solde déjà porté. Le compte
+   * qu'un journal de banque ou de caisse porte reste ouvert · il est celui
+   * de ce journal, pas un compte commun.
    */
   async verifierComptesCollectifs(
     tenantId: string,
@@ -727,7 +741,8 @@ export class EcritureService {
     ecritureModifieeId?: string,
   ) {
     if (!lignes || lignes.length === 0) return;
-    let ids = [...new Set(lignes.map((l) => l.compteId))];
+    const toutes = [...new Set(lignes.map((l) => l.compteId))];
+    let ids = toutes;
     // UNE PIÈCE QUI PORTE DÉJÀ LE COLLECTIF SE CORRIGE ENCORE · un brouillard
     // importé, ou passé avant la règle, sur le 41110000 doit pouvoir changer
     // de date ou de libellé · seul un compte que la pièce ne portait pas est
@@ -741,58 +756,126 @@ export class EcritureService {
       ids = ids.filter((id) => !deja.has(id));
       if (ids.length === 0) return;
     }
-    let collectifs = await this.prisma.compte.findMany({
+    const collectifs = await this.prisma.compte.findMany({
       where: { tenantId, id: { in: ids }, individuels: { some: {} } },
       select: { id: true, numero: true },
       orderBy: { numero: 'asc' },
     });
-    if (collectifs.length === 0) return;
+    const dossier = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } });
+    if (!dossier) throw new NotFoundException('Dossier introuvable');
+    const referentiel = dossier.referentiel;
+    // Les numéros de TOUTE la pièce · le report d'un solde se reconnaît à ce
+    // qu'elle ne porte que le compte et ses sous-comptes.
+    const numerosDeLaPiece = await this.prisma.compte.findMany({
+      where: { tenantId, id: { in: toutes } },
+      select: { id: true, numero: true, journauxTresorerie: { select: { id: true }, take: 1 } },
+    });
+    const dejaCollectifs = new Set(collectifs.map((c) => c.id));
+    const subdivises: { id: string; numero: string }[] = [];
+    const exemplesDuPlan = new Map<string, { numero: string; intitule: string }[]>();
+    for (const c of numerosDeLaPiece) {
+      if (!ids.includes(c.id) || dejaCollectifs.has(c.id)) continue;
+      // LE COMPTE D'UN JOURNAL DE BANQUE OU DE CAISSE RESTE OUVERT · le
+      // 52110000 que le journal BQ porte depuis la création du dossier est le
+      // compte de CE journal, et le journal ouvert ensuite au 52110001 n'en
+      // fait pas un compte commun · le refuser fermait la saisie du journal BQ.
+      if ((c.journauxTresorerie ?? []).length > 0) continue;
+      const racine = racineDuCompteSeme(referentiel, c.numero);
+      if (racine === null) continue;
+      const siens = await this.prisma.compte.findMany({
+        where: {
+          tenantId,
+          typeCompte: TypeCompteDetailTotal.DETAIL,
+          estActif: true,
+          numero: { startsWith: racine, not: c.numero },
+          // Un numéro rangé sous un sous-compte SEMÉ (le 8311 sous le 831
+          // du SYCEBNL) relève de lui, jamais du compte jugé.
+          NOT: racinesSousLeCompteSeme(referentiel, c.numero).map((r) => ({ numero: { startsWith: r } })),
+        },
+        select: { numero: true, intitule: true },
+        orderBy: { numero: 'asc' },
+        take: 4,
+      });
+      if (siens.length === 0) continue;
+      subdivises.push({ id: c.id, numero: c.numero });
+      exemplesDuPlan.set(c.id, siens);
+    }
+    let generiques = [
+      ...collectifs.map((c) => ({ ...c, nature: 'COLLECTIF' as const })),
+      ...subdivises.map((c) => ({ ...c, nature: 'PLAN' as const })),
+    ];
+    if (generiques.length === 0) return;
     // LE 416 QU'UNE CRÉANCE DOUTEUSE TIENT RESTE OUVERT · reclassée au
     // 41620000 avant que la panoplie n'ouvre les 4162 des tiers, la créance
     // se corrige par le résultat (M9) sur SON 416, que le module lit · la
     // refuser l'enfermait, et la reporter ailleurs ferait lire au module un
     // mouvement hors module.
     const tenus = await this.prisma.creanceDouteuse.findMany({
-      where: { tenantId, compte416Id: { in: collectifs.map((c) => c.id) }, annuleeLe: null },
+      where: { tenantId, compte416Id: { in: generiques.map((c) => c.id) }, annuleeLe: null },
       select: { compte416Id: true },
       distinct: ['compte416Id'],
     });
     const parUneCreance = new Set(tenus.map((t) => t.compte416Id));
-    collectifs = collectifs.filter((c) => !parUneCreance.has(c.id));
-    if (collectifs.length === 0) return;
-    // UN SOLDE DÉJÀ PORTÉ AU COLLECTIF SE REPORTE SUR LES COMPTES DES TIERS ·
-    // à-nouveau, balance importée ou saisie d'avant la panoplie. La pièce qui
-    // ne porte QUE ce collectif et ses comptes de tiers est un reclassement
-    // entre eux, sans effet sur la balance générale qui les fond · refusée,
-    // ce solde ne quittait jamais le collectif.
-    if (collectifs.length === 1) {
-      const toutes = [...new Set(lignes.map((l) => l.compteId))];
-      const siensDansLaPiece = await this.prisma.compte.findMany({
-        where: { tenantId, id: { in: toutes }, collectifId: collectifs[0].id },
-        select: { id: true },
-      });
-      const famille = new Set([collectifs[0].id, ...siensDansLaPiece.map((c) => c.id)]);
+    generiques = generiques.filter((c) => !parUneCreance.has(c.id));
+    if (generiques.length === 0) return;
+    // UN SOLDE DÉJÀ PORTÉ AU COMPTE COMMUN SE REPORTE SUR SES SOUS-COMPTES ·
+    // à-nouveau, balance importée ou saisie d'avant la subdivision. La pièce
+    // qui ne porte QUE ce compte et les siens est un reclassement entre eux ·
+    // refusée, ce solde ne quittait jamais le compte commun.
+    if (generiques.length === 1) {
+      const seul = generiques[0];
+      const siensDansLaPiece =
+        seul.nature === 'COLLECTIF'
+          ? (
+              await this.prisma.compte.findMany({
+                where: { tenantId, id: { in: toutes }, collectifId: seul.id },
+                select: { id: true },
+              })
+            ).map((c) => c.id)
+          : numerosDeLaPiece
+              .filter((c) => compteSemeSubdivise(referentiel, c.numero) === seul.numero)
+              .map((c) => c.id);
+      const famille = new Set([seul.id, ...siensDansLaPiece]);
       if (siensDansLaPiece.length > 0 && toutes.every((id) => famille.has(id))) return;
     }
-    // Trois exemples PAR collectif · une seule liste bornée pouvait se
-    // remplir des comptes du premier et taire le second.
-    const motifs: string[] = [];
-    for (const col of collectifs) {
-      const siens = await this.prisma.compte.findMany({
-        where: { tenantId, collectifId: col.id },
-        select: { numero: true, intitule: true },
-        orderBy: { numero: 'asc' },
-        take: 4,
-      });
-      const exemples = siens.slice(0, 3).map((c) => `${c.numero} ${c.intitule}`).join(', ');
-      motifs.push(`${col.numero} (${exemples}${siens.length > 3 ? '…' : ''})`);
+    // Trois exemples PAR compte · une seule liste bornée pouvait se remplir
+    // des comptes du premier et taire le second.
+    const nommer = (numero: string, siens: { numero: string; intitule: string }[]) =>
+      `${numero} (${siens
+        .slice(0, 3)
+        .map((c) => `${c.numero} ${c.intitule}`)
+        .join(', ')}${siens.length > 3 ? '…' : ''})`;
+    const phrases: string[] = [];
+    const desCollectifs = generiques.filter((c) => c.nature === 'COLLECTIF');
+    if (desCollectifs.length > 0) {
+      const motifs: string[] = [];
+      for (const col of desCollectifs) {
+        const siens = await this.prisma.compte.findMany({
+          where: { tenantId, collectifId: col.id },
+          select: { numero: true, intitule: true },
+          orderBy: { numero: 'asc' },
+          take: 4,
+        });
+        motifs.push(nommer(col.numero, siens));
+      }
+      phrases.push(
+        `Compte collectif : ${motifs.join(' ; ')} · une écriture saisie s'impute au compte du tiers, jamais à son ` +
+          'collectif, sans quoi la balance des tiers, le lettrage et les relances ne la verraient pas. Un montant ' +
+          'déjà porté au collectif se reporte sur le compte du tiers par une pièce qui ne porte que ce collectif ' +
+          'et ses comptes de tiers.',
+      );
     }
-    throw new BadRequestException(
-      `Compte collectif : ${motifs.join(' ; ')} · une écriture saisie s'impute au compte du tiers, jamais à son ` +
-        'collectif, sans quoi la balance des tiers, le lettrage et les relances ne la verraient pas. Un montant ' +
-        'déjà porté au collectif se reporte sur le compte du tiers par une pièce qui ne porte que ce collectif ' +
-        'et ses comptes de tiers.',
-    );
+    const duPlan = generiques.filter((c) => c.nature === 'PLAN');
+    if (duPlan.length > 0) {
+      phrases.push(
+        `Compte du plan subdivisé par le dossier : ${duPlan
+          .map((c) => nommer(c.numero, exemplesDuPlan.get(c.id) ?? []))
+          .join(' ; ')} · une écriture saisie s'impute à l'un des comptes que le dossier a ouverts sous lui. Un ` +
+          'montant déjà porté à ce compte se reporte par une pièce qui ne porte que lui et ses sous-comptes ; il ' +
+          'se rouvre à la saisie quand ses sous-comptes sont mis en sommeil.',
+      );
+    }
+    throw new BadRequestException(phrases.join(' '));
   }
 
   /**
