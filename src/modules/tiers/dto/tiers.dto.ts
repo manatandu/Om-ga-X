@@ -16,9 +16,10 @@ export class CreerTiersDto {
   modeleReglementId?: string;
 
   /**
-   * Créer le compte individuel du tiers sous le collectif de son type
-   * (collectifs-tiers.ts). Vrai par défaut, comme la proposition de Sage ;
-   * faux pour rattacher ensuite un compte existant à la main.
+   * Ouvrir les comptes du tiers, son compte principal et les sous-comptes de
+   * sa panoplie, chacun sous son collectif (collectifs-tiers.ts). Vrai par
+   * défaut, comme la proposition de Sage ; faux pour rattacher ensuite un
+   * compte existant à la main.
    */
   @IsOptional()
   @IsBoolean()
@@ -228,6 +229,13 @@ export class ModifierTiersDto {
   @ValidateIf((o: ModifierTiersDto) => o.dateRevocationAutorisationDebits !== '')
   @IsDateString()
   dateRevocationAutorisationDebits?: string | null;
+}
+
+/** Complétion des panoplies du dossier, par tranches · `apres` est le curseur rendu par l'appel précédent. */
+export class CompletionPanopliesDto {
+  @IsOptional()
+  @IsUUID()
+  apres?: string;
 }
 
 export class RattacherCompteDto {

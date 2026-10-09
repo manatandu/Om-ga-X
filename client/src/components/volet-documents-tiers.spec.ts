@@ -64,7 +64,7 @@ describe('Plan des tiers ouvert en consultation (2026-09-26)', () => {
       'Nouveau tiers',
       'Modèles de règlement…',
       'Fusionner…',
-      'Créer son compte sous le collectif',
+      'Compléter ses comptes',
       'Définir principal',
       'Détacher',
       'Rattacher',
@@ -75,6 +75,11 @@ describe('Plan des tiers ouvert en consultation (2026-09-26)', () => {
       expect(i).toBeGreaterThan(0);
       expect(blocs.some(([debut, fin]) => i > debut && i < fin)).toBe(true);
     }
+    // La complétion des comptes de TOUS les tiers aussi (décision de Manasse
+    // du 2026-10-09) · son libellé change pendant l'envoi, on relit son geste.
+    const tous = page.indexOf('onClick={completerTousLesComptes}');
+    expect(tous).toBeGreaterThan(0);
+    expect(blocs.some(([debut, fin]) => tous > debut && tous < fin)).toBe(true);
     expect(page).toContain('readOnly={!estAdmin}');
     expect(page).toContain('disabled={!estAdmin}');
   });

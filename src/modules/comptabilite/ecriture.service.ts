@@ -705,6 +705,49 @@ export class EcritureService {
   }
 
   /**
+   * UNE SAISIE S'IMPUTE AU COMPTE DU TIERS, JAMAIS À SON COLLECTIF (décision
+   * de Manasse du 2026-10-09 · « les écritures n'admettent que les numéros de
+   * compte personnalisés », « Refus nommé »). Un collectif qui porte des
+   * comptes individuels (`Compte.collectifId`, tiers/collectifs-tiers.ts) ne
+   * reçoit plus de ligne SAISIE · une facture passée au 41110000 commun
+   * n'appartient à aucun client, et la balance des tiers, le lettrage, la
+   * balance âgée et les relances ne la voient pas, sans qu'aucun total ne
+   * bouge. Le refus nomme quelques comptes du collectif pour que le cabinet
+   * choisisse le bon.
+   *
+   * Appelée par le CONTRÔLEUR seulement, comme le sommeil · les modules
+   * (clôture, imports, régularisations, paie) passent des écritures que
+   * personne ne saisit, et une balance importée sur un collectif ne doit pas
+   * tomber pour autant. Un collectif sans compte individuel reste ouvert ·
+   * le dossier qui ne suit pas ses tiers un par un n'est pas enfermé.
+   */
+  async verifierComptesCollectifs(tenantId: string, lignes: { compteId: string }[] | undefined) {
+    if (!lignes || lignes.length === 0) return;
+    const ids = [...new Set(lignes.map((l) => l.compteId))];
+    const individuels = await this.prisma.compte.findMany({
+      where: { tenantId, collectifId: { in: ids } },
+      select: { collectifId: true, numero: true, intitule: true },
+      orderBy: { numero: 'asc' },
+      take: 200,
+    });
+    if (individuels.length === 0) return;
+    const collectifs = await this.prisma.compte.findMany({
+      where: { tenantId, id: { in: [...new Set(individuels.map((c) => c.collectifId as string))] } },
+      select: { id: true, numero: true },
+      orderBy: { numero: 'asc' },
+    });
+    const motifs = collectifs.map((col) => {
+      const siens = individuels.filter((c) => c.collectifId === col.id);
+      const exemples = siens.slice(0, 3).map((c) => `${c.numero} ${c.intitule}`).join(', ');
+      return `${col.numero} (${exemples}${siens.length > 3 ? '…' : ''})`;
+    });
+    throw new BadRequestException(
+      `Compte collectif : ${motifs.join(' ; ')} · une écriture saisie s'impute au compte du tiers, jamais à son ` +
+        'collectif, sans quoi la balance des tiers, le lettrage et les relances ne la verraient pas.',
+    );
+  }
+
+  /**
    * LES CONTRÔLES D'ENTRÉE D'UNE PIÈCE, SANS LA NUMÉROTER NI LA CRÉER · audit
    * du serveur du 2026-09-27, F3.
    *

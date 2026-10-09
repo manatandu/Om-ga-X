@@ -16,6 +16,7 @@ type Compte = { id: string; tenantId: string; numero: string; typeCompte: 'DETAI
 
 const COMPTES: Compte[] = [
   { id: 'banque', tenantId: 't1', numero: '52110000', typeCompte: 'DETAIL' },
+  { id: 'banque-bq', tenantId: 't1', numero: '52120000', typeCompte: 'DETAIL' },
   { id: 'banque-voisin', tenantId: 't2', numero: '52110000', typeCompte: 'DETAIL' },
   { id: 'charge', tenantId: 't1', numero: '60500000', typeCompte: 'DETAIL' },
   { id: 'total-52', tenantId: 't1', numero: '52', typeCompte: 'TOTAL' },
@@ -27,7 +28,15 @@ function monde() {
   const prisma = {
     journal: {
       findUnique: jest.fn().mockResolvedValue(null),
-      findFirst: jest.fn().mockResolvedValue({ id: 'j1', tenantId: 't1', code: 'BQ', type: 'TRESORERIE' }),
+      // La doublure honore la requête · le journal j1 (BQ) tient déjà le
+      // compte banque-bq, et la recherche d'un autre journal sur un compte
+      // s'écarte du journal modifié.
+      findFirst: jest.fn().mockImplementation(({ where }: { where: { compteTresorerieId?: string; id?: string | { not: string } } }) => {
+        const j1 = { id: 'j1', tenantId: 't1', code: 'BQ', type: 'TRESORERIE', compteTresorerieId: 'banque-bq' };
+        if (where.compteTresorerieId === undefined) return Promise.resolve(j1);
+        const exclu = typeof where.id === 'object' ? where.id.not : null;
+        return Promise.resolve(where.compteTresorerieId === j1.compteTresorerieId && exclu !== j1.id ? j1 : null);
+      }),
       create,
       update,
     },
@@ -89,6 +98,22 @@ describe('F60 · le compte de trésorerie d’un journal', () => {
     await expect(svc.modifier('t1', 'j1', { compteTresorerieId: 'charge' })).rejects.toThrow(/classe 5/);
     expect(update).not.toHaveBeenCalled();
     await svc.modifier('t1', 'j1', { compteTresorerieId: 'banque' });
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('un compte de trésorerie par journal (décision de Manasse du 2026-10-09)', () => {
+  it('refuse à la création le compte d’un autre journal, en nommant ce journal', async () => {
+    const { svc, create } = monde();
+    await expect(
+      svc.creer('t1', { code: 'BQ2', intitule: 'Banque 2', type: 'TRESORERIE', compteTresorerieId: 'banque-bq' } as never),
+    ).rejects.toThrow(/52120000 est déjà celui du journal BQ/);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('le journal qui garde son propre compte se modifie librement', async () => {
+    const { svc, update } = monde();
+    await svc.modifier('t1', 'j1', { compteTresorerieId: 'banque-bq', intitule: 'Banque principale' } as never);
     expect(update).toHaveBeenCalledTimes(1);
   });
 });

@@ -26,6 +26,7 @@ export class EcritureController {
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   @Post()
   async creer(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreerEcritureDto) {
+    await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
     return this.ecritureService.creer(user.tenantId, user.userId, dto);
   }
@@ -117,6 +118,7 @@ export class EcritureController {
     @Param('id') id: string,
     @Body() dto: ModifierEcritureDto,
   ) {
+    await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
     return this.ecritureService.modifier(user.tenantId, id, dto);
   }

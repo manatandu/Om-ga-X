@@ -1,7 +1,14 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { libelleReference, referencesVers, refuserSiReferences, reporterReferences } from '../../common/suppression/references';
 import { coordonneesAComblement, motifRefusFusionTiers } from './fusion-tiers';
-import { numeroCollectif, prochainNumeroIndividuel, racineCollectif } from './collectifs-tiers';
+import {
+  numeroIndividuelAligne,
+  panoplieDuTiers,
+  racineCollectif,
+  rangSousRacine,
+  type RolePanoplie,
+} from './collectifs-tiers';
+import { pageApres } from '../../common/lecture-par-lots';
 import { PrismaService } from '../../common/prisma.service';
 import { ClasseCompte, ConditionEcheance, Prisma, Referentiel, TypeEcheance, TypeTiers } from '@prisma/client';
 import { CreerTiersDto, ModifierTiersDto, RattacherCompteDto } from './dto/tiers.dto';
@@ -22,6 +29,28 @@ import { motifRefusPeriodeAutorisationDebits } from './periode-autorisation-debi
  * suivi par tiers n'a de sens que parce que le solde réel (mouvements non
  * lettrés) est calculable.
  */
+/** Les types qui ont une panoplie dans un référentiel au moins (collectifs-tiers.ts). */
+const TYPES_A_PANOPLIE: TypeTiers[] = [TypeTiers.FOURNISSEUR, TypeTiers.CLIENT, TypeTiers.ADHERENT];
+
+/** Tiers traités par appel de la complétion du dossier · voir `completerPanoplies`. */
+export const TRANCHE_PANOPLIES = 100;
+
+export interface PanoplieTiers {
+  /** Le compte principal CRÉÉ par cet appel · nul s'il existait déjà ou n'a pas pu naître. */
+  principal: { id: string; numero: string; collectif: string } | null;
+  crees: { role: RolePanoplie; numero: string; collectif: string }[];
+  dejaPresents: number;
+  impossibles: { collectif: string; motif: string }[];
+}
+
+export interface CompletionPanoplies {
+  tiersLus: number;
+  comptesCrees: number;
+  impossibles: { tiers: string; collectif: string; motif: string }[];
+  /** Curseur de la tranche suivante · nul quand tout le dossier est lu. */
+  suivant: string | null;
+}
+
 @Injectable()
 export class TiersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -108,84 +137,157 @@ export class TiersService {
     // aucune écriture, et personne ne s'en apercevrait avant la relance.
     return transactionJournalisee(this.prisma, async (tx) => {
       const tiers = await tx.tiers.create({ data: { ...donnees, tenantId } });
-      const compteIndividuel =
-        creerCompteIndividuel === false ? null : await this.poserCompteIndividuel(tx, tenantId, tiers, { silencieux: true });
-      return { ...tiers, compteIndividuel };
+      const panoplie =
+        creerCompteIndividuel === false ? null : await this.poserPanoplie(tx, tenantId, tiers, { silencieux: true });
+      return { ...tiers, compteIndividuel: panoplie?.principal ?? null, panoplie };
     });
   }
 
   /**
-   * Crée, pour un tiers qui n'en a pas, son compte individuel sous le
-   * collectif de son type · les tiers créés avant le point 13, ou ceux créés
-   * sans. Refuse en le disant quand le type n'a pas de collectif proposé.
+   * COMPLÈTE LA PANOPLIE D'UN TIERS (collectifs-tiers.ts) · les tiers nés
+   * avant elle, ou sans leurs comptes, reçoivent ceux qui leur manquent, et
+   * ceux qu'ils ont restent tels quels. Rien d'automatique sur un dossier
+   * existant (décision de Manasse du 2026-10-09, « Bouton Compléter ») · le
+   * cabinet le demande. Refuse en le disant quand le type n'a pas de panoplie.
    */
-  async creerCompteIndividuel(tenantId: string, tiersId: string) {
+  async completerPanoplie(tenantId: string, tiersId: string): Promise<PanoplieTiers> {
     const tiers = await this.trouver(tenantId, tiersId);
-    return transactionJournalisee(this.prisma, (tx) => this.poserCompteIndividuel(tx, tenantId, tiers, { silencieux: false }));
+    const resultat = await transactionJournalisee(this.prisma, (tx) =>
+      this.poserPanoplie(tx, tenantId, tiers, { silencieux: false }),
+    );
+    return resultat as PanoplieTiers;
   }
 
   /**
-   * COMPTE INDIVIDUEL SOUS LE COLLECTIF (collectifs-tiers.ts) · numéro libre
-   * suivant, intitulé du tiers, mêmes réglages que le collectif (classe,
-   * lettrage, mode de report à-nouveau), rattaché comme Principal. En mode
-   * `silencieux` (création d'un tiers), un type sans collectif ne bloque pas
-   * la création · il rend null et le compte se rattache à la main.
+   * LA MÊME CHOSE POUR TOUS LES TIERS DU DOSSIER, PAR TRANCHES · cent tiers
+   * par appel, une transaction par tiers, le curseur rendu pour l'appel
+   * suivant. Un dossier de milliers de tiers dépasserait sinon la minute que
+   * le relais du site laisse à une requête, et un tiers qui ne peut pas
+   * recevoir un compte (collectif en sommeil, plus de numéro libre)
+   * n'empêche pas les autres · il est nommé.
    */
-  private async poserCompteIndividuel(
+  async completerPanoplies(tenantId: string, apres?: string): Promise<CompletionPanoplies> {
+    const tranche = await this.prisma.tiers.findMany({
+      where: { tenantId, type: { in: TYPES_A_PANOPLIE } },
+      select: { id: true, type: true, nom: true, code: true },
+      ...pageApres(apres, TRANCHE_PANOPLIES),
+    });
+    let comptesCrees = 0;
+    const impossibles: CompletionPanoplies['impossibles'] = [];
+    for (const tiers of tranche) {
+      const r = await transactionJournalisee(this.prisma, (tx) =>
+        this.poserPanoplie(tx, tenantId, tiers, { silencieux: true }),
+      );
+      if (!r) continue;
+      comptesCrees += r.crees.length;
+      for (const i of r.impossibles) impossibles.push({ tiers: tiers.code, ...i });
+    }
+    const suivant = tranche.length === TRANCHE_PANOPLIES ? tranche[tranche.length - 1].id : null;
+    return { tiersLus: tranche.length, comptesCrees, impossibles, suivant };
+  }
+
+  /**
+   * LES COMPTES DU TIERS SOUS LES COLLECTIFS DE SA PANOPLIE · pour chaque
+   * rôle qui n'a pas encore son compte, le numéro de même rang que le
+   * principal s'il est libre, sinon le suivant libre, l'intitulé du tiers
+   * (suivi du rôle hors du principal), les réglages du collectif (classe,
+   * lettrage, report à-nouveau) et le lien au collectif · c'est ce lien qui
+   * fond le compte sur son collectif à la balance générale et qui fait
+   * refuser la saisie manuelle sur le collectif (`EcritureService.
+   * verifierComptesCollectifs`). Le premier rôle est rattaché comme
+   * principal.
+   *
+   * Un rôle est déjà tenu quand un compte rattaché au tiers vit sous sa
+   * racine, autre que le collectif lui-même ; le principal, dès qu'un compte
+   * principal est rattaché. En mode `silencieux` (création d'un tiers,
+   * complétion du dossier), un type sans panoplie rend null.
+   */
+  private async poserPanoplie(
     tx: Prisma.TransactionClient,
     tenantId: string,
     tiers: { id: string; type: TypeTiers; nom: string; code: string },
     options: { silencieux: boolean },
-  ) {
-    const refus = (motif: string) => {
-      if (options.silencieux) return null;
-      throw new BadRequestException(motif);
-    };
+  ): Promise<PanoplieTiers | null> {
     const { referentiel, longueurCompte } = await tx.tenant.findUniqueOrThrow({
       where: { id: tenantId },
       select: { referentiel: true, longueurCompte: true },
     });
-    const numero = numeroCollectif(referentiel, tiers.type);
-    if (!numero) {
-      return refus(
+    const panoplie = panoplieDuTiers(referentiel, tiers.type);
+    if (panoplie.length === 0) {
+      if (options.silencieux) return null;
+      throw new BadRequestException(
         'Ce type de tiers n\'a pas de compte collectif proposé · un salarié passe par le 422 de la paie, un tiers « autre » ' +
           'peut être débiteur ou créditeur. Rattachez son compte à la main.',
       );
     }
-    const collectif = await tx.compte.findFirst({ where: { tenantId, numero } });
-    if (!collectif || !collectif.estActif) {
-      return refus(`Le compte collectif ${numero} n'existe pas ou est en sommeil dans ce dossier · rattachez un compte à la main.`);
-    }
-    const dejaPrincipal = await tx.tiersCompte.findFirst({ where: { tiersId: tiers.id, estPrincipal: true } });
-    if (dejaPrincipal) {
-      return refus('Ce tiers a déjà un compte principal.');
-    }
-    const racine = racineCollectif(numero);
-    const existants = await tx.compte.findMany({
-      where: { tenantId, numero: { startsWith: racine } },
-      select: { numero: true },
+    const rattaches = await tx.tiersCompte.findMany({
+      where: { tiersId: tiers.id },
+      select: { estPrincipal: true, compte: { select: { numero: true } } },
     });
-    const numeroIndividuel = prochainNumeroIndividuel(racine, longueurCompte, [numero, ...existants.map((c) => c.numero)]);
-    if (!numeroIndividuel) {
-      return refus(
-        `Plus aucun numéro libre sous le collectif ${numero} à ${longueurCompte} chiffres · allongez les numéros de compte ` +
-          '(Structure > Paramètres du dossier) ou rattachez un compte à la main.',
-      );
+    const resultat: PanoplieTiers = { principal: null, crees: [], dejaPresents: 0, impossibles: [] };
+    let rang: number | null = null;
+    const principalExistant = rattaches.find((r) => r.estPrincipal);
+    if (principalExistant) rang = rangSousRacine(principalExistant.compte.numero, racineCollectif(panoplie[0].collectif));
+
+    for (const role of panoplie) {
+      const racine = racineCollectif(role.collectif);
+      const tenu =
+        role.role === 'PRINCIPAL'
+          ? !!principalExistant
+          : rattaches.some((r) => r.compte.numero.startsWith(racine) && r.compte.numero !== role.collectif);
+      if (tenu) {
+        resultat.dejaPresents += 1;
+        continue;
+      }
+      const collectif = await tx.compte.findFirst({ where: { tenantId, numero: role.collectif } });
+      if (!collectif || !collectif.estActif) {
+        resultat.impossibles.push({
+          collectif: role.collectif,
+          motif: `Le compte collectif ${role.collectif} n'existe pas ou est en sommeil dans ce dossier.`,
+        });
+        continue;
+      }
+      const existants = await tx.compte.findMany({
+        where: { tenantId, numero: { startsWith: racine } },
+        select: { numero: true },
+      });
+      const numero = numeroIndividuelAligne(racine, longueurCompte, rang, [
+        role.collectif,
+        ...existants.map((c) => c.numero),
+      ]);
+      if (!numero) {
+        resultat.impossibles.push({
+          collectif: role.collectif,
+          motif:
+            `Plus aucun numéro libre sous le collectif ${role.collectif} à ${longueurCompte} chiffres · allongez les numéros ` +
+            'de compte (Structure > Paramètres du dossier) ou rattachez un compte à la main.',
+        });
+        continue;
+      }
+      const compte = await tx.compte.create({
+        data: {
+          tenantId,
+          numero,
+          intitule: role.libelle ? `${tiers.nom} · ${role.libelle}` : tiers.nom,
+          classe: collectif.classe,
+          typeCompte: collectif.typeCompte,
+          modeReportANouveau: collectif.modeReportANouveau,
+          lettrable: collectif.lettrable,
+          collectifId: collectif.id,
+        },
+      });
+      const principal = role.role === 'PRINCIPAL';
+      await tx.tiersCompte.create({ data: { tiersId: tiers.id, compteId: compte.id, estPrincipal: principal } });
+      if (principal) {
+        resultat.principal = { id: compte.id, numero: compte.numero, collectif: collectif.numero };
+        rang = rangSousRacine(compte.numero, racine);
+      }
+      resultat.crees.push({ role: role.role, numero: compte.numero, collectif: collectif.numero });
     }
-    const compte = await tx.compte.create({
-      data: {
-        tenantId,
-        numero: numeroIndividuel,
-        intitule: tiers.nom,
-        classe: collectif.classe,
-        typeCompte: collectif.typeCompte,
-        modeReportANouveau: collectif.modeReportANouveau,
-        lettrable: collectif.lettrable,
-        collectifId: collectif.id,
-      },
-    });
-    await tx.tiersCompte.create({ data: { tiersId: tiers.id, compteId: compte.id, estPrincipal: true } });
-    return { id: compte.id, numero: compte.numero, collectif: collectif.numero };
+    if (!options.silencieux && resultat.crees.length === 0 && resultat.impossibles.length > 0) {
+      throw new BadRequestException(resultat.impossibles.map((i) => i.motif).join(' '));
+    }
+    return resultat;
   }
 
   /**

@@ -96,7 +96,7 @@ export class JournalService {
    * borné au dossier, de trésorerie (classe 5, lue dans le numéro comme
    * partout) et d'imputation · un compte Total ne reçoit jamais d'écriture.
    */
-  private async verifierCompteTresorerie(tenantId: string, compteId: string) {
+  private async verifierCompteTresorerie(tenantId: string, compteId: string, journalId?: string) {
     const compte = await this.prisma.compte.findFirst({
       where: { id: compteId, tenantId },
       select: { numero: true, typeCompte: true },
@@ -110,6 +110,23 @@ export class JournalService {
     if (compte.typeCompte !== TypeCompteDetailTotal.DETAIL) {
       throw new BadRequestException(
         `Le compte ${compte.numero} est un compte Total · il ne reçoit aucune écriture, choisissez un compte de détail.`,
+      );
+    }
+    // UN COMPTE PAR JOURNAL DE BANQUE OU DE CAISSE (décision de Manasse du
+    // 2026-10-09 · « chaque journal banque ou caisse doit être rattaché à un
+    // numéro de compte personnalisé ») · deux journaux sur un même 52 mêlent
+    // deux banques dans un seul solde, et le rapprochement, qui se fait compte
+    // par compte contre UN relevé (fiche du compte 52), devient impossible.
+    // Jugé au choix du compte seulement · un dossier qui partage déjà un compte
+    // n'est pas enfermé, il le change quand il le veut.
+    const autre = await this.prisma.journal.findFirst({
+      where: { tenantId, compteTresorerieId: compteId, ...(journalId ? { id: { not: journalId } } : {}) },
+      select: { code: true },
+    });
+    if (autre) {
+      throw new BadRequestException(
+        `Le compte ${compte.numero} est déjà celui du journal ${autre.code} · chaque journal de banque ou de caisse a son ` +
+          'propre compte. Ouvrez dans le Plan comptable un compte de détail pour cette banque ou cette caisse, puis choisissez-le.',
       );
     }
   }
@@ -134,7 +151,9 @@ export class JournalService {
     if (journal.type === TypeJournal.TRESORERIE && dto.compteTresorerieId === null) {
       throw new BadRequestException('Un journal de type Trésorerie doit avoir un compte de trésorerie associé');
     }
-    if (dto.compteTresorerieId) await this.verifierCompteTresorerie(tenantId, dto.compteTresorerieId);
+    if (dto.compteTresorerieId && dto.compteTresorerieId !== journal.compteTresorerieId) {
+      await this.verifierCompteTresorerie(tenantId, dto.compteTresorerieId, journal.id);
+    }
 
     // Une contrepartie de trésorerie n'a de sens que sur un journal de
     // trésorerie · cochée sur un journal d'achats, elle solderait chaque charge

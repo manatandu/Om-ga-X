@@ -30,8 +30,8 @@ const ECRITURES_INDIRECTES: readonly { prefixe: string; vide: readonly string[] 
   // toucher un chemin /comptes ou /journaux.
   { prefixe: '/import', vide: CHEMINS_CACHES },
   // Un tiers naît avec son compte individuel sous le collectif du type
-  // (tiers/collectifs-tiers.ts), `/tiers/:id/compte-individuel` en ouvre un
-  // après coup, et la fusion de deux tiers reporte leurs comptes.
+  // (tiers/collectifs-tiers.ts), `/tiers/:id/panoplie` et `/tiers/panoplies`
+  // en ouvrent après coup, et la fusion de deux tiers reporte leurs comptes.
   { prefixe: '/tiers', vide: ['/comptes'] },
   // La fusion de deux comptes met le compte absorbé en sommeil
   // (comptabilite/reimputation.ts).

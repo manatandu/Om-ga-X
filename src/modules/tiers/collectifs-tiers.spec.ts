@@ -3,7 +3,10 @@ import { join } from 'path';
 import { Referentiel, TypeTiers } from '@prisma/client';
 import {
   COLLECTIFS_TIERS,
+  PANOPLIES_TIERS,
   numeroCollectif,
+  numeroIndividuelAligne,
+  rangSousRacine,
   prochainNumeroIndividuel,
   racineCollectif,
   regrouperSurCollectifs,
@@ -112,14 +115,19 @@ describe('balance générale regroupée par collectif', () => {
 });
 
 describe('création du tiers et de son compte', () => {
-  function monter(referentiel: Referentiel, comptes: { id: string; numero: string; estActif?: boolean }[]) {
+  function monter(
+    referentiel: Referentiel,
+    comptes: { id: string; numero: string; estActif?: boolean }[],
+    dejaRattaches: { estPrincipal: boolean; compte: { numero: string } }[] = [],
+    tiersLu: Record<string, unknown> = { id: 'ti9', type: TypeTiers.AUTRE, nom: 'Divers', code: 'D' },
+  ) {
     const crees: Record<string, unknown>[] = [];
     const rattaches: Record<string, unknown>[] = [];
     const p: Record<string, unknown> = {
       tenant: { findUniqueOrThrow: async () => ({ referentiel, longueurCompte: 8 }) },
       tiers: {
         findUnique: async () => null,
-        findFirst: async () => ({ id: 'ti9', type: TypeTiers.AUTRE, nom: 'Divers', code: 'D' }),
+        findFirst: async () => tiersLu,
         create: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'ti1', ...data }),
       },
       compte: {
@@ -131,11 +139,14 @@ describe('création du tiers et de son compte', () => {
           comptes.filter((c) => c.numero.startsWith(where.numero.startsWith)),
         create: async ({ data }: { data: Record<string, unknown> }) => {
           crees.push(data);
+          // Le compte créé prend sa place au plan · le rôle suivant le lit.
+          comptes.push({ id: `nouveau-${crees.length}`, numero: data.numero as string });
           return { id: 'nouveau', ...data };
         },
       },
       tiersCompte: {
         findFirst: async () => null,
+        findMany: async () => dejaRattaches,
         create: async ({ data }: { data: Record<string, unknown> }) => {
           rattaches.push(data);
           return data;
@@ -172,6 +183,148 @@ describe('création du tiers et de son compte', () => {
 
   it('demandé après coup pour un type sans collectif, il est refusé en le disant', async () => {
     const { service } = monter(Referentiel.SYSCOHADA, []);
-    await expect(service.creerCompteIndividuel('t1', 'ti9')).rejects.toThrow(/pas de compte collectif proposé/);
+    await expect(service.completerPanoplie('t1', 'ti9')).rejects.toThrow(/pas de compte collectif proposé/);
+  });
+
+  it('un fournisseur naît avec sa panoplie, chaque compte au même rang que le principal', async () => {
+    const { service, crees, rattaches } = monter(Referentiel.SYSCOHADA, [
+      { id: 'c4011', numero: '40110000' },
+      { id: 'x', numero: '40110001' },
+      { id: 'c4081', numero: '40810000' },
+      { id: 'c4091', numero: '40910000' },
+    ]);
+    const t = await service.creer('t1', { type: TypeTiers.FOURNISSEUR, code: 'F1', nom: 'Soco' });
+    expect(crees.map((c) => [c.numero, c.intitule, c.collectifId])).toEqual([
+      ['40110002', 'Soco', 'c4011'],
+      ['40810002', 'Soco · factures non parvenues', 'c4081'],
+      ['40910002', 'Soco · avances et acomptes versés', 'c4091'],
+    ]);
+    expect(rattaches.map((r) => r.estPrincipal)).toEqual([true, false, false]);
+    expect(t.panoplie?.crees.map((c) => c.role)).toEqual(['PRINCIPAL', 'FACTURES_NON_PARVENUES', 'AVANCES_VERSEES']);
+  });
+
+  it('un rang déjà pris cède au premier numéro libre, et un collectif absent est nommé sans bloquer la création', async () => {
+    const { service, crees } = monter(Referentiel.SYSCOHADA, [
+      { id: 'c4111', numero: '41110000' },
+      { id: 'c4181', numero: '41810000' },
+      { id: 'pris', numero: '41810001' },
+      { id: 'c4191', numero: '41910000' },
+      { id: 'c4161', numero: '41610000', estActif: false },
+      { id: 'c4162', numero: '41620000' },
+    ]);
+    const t = await service.creer('t1', { type: TypeTiers.CLIENT, code: 'C1', nom: 'Acme' });
+    expect(crees.map((c) => c.numero)).toEqual(['41110001', '41810002', '41910001', '41620001']);
+    expect(t.panoplie?.impossibles).toEqual([expect.objectContaining({ collectif: '41610000' })]);
+  });
+
+  it('un adhérent SYCEBNL reçoit ses appels de fonds au 4181 et ses cotisations douteuses au 4161', async () => {
+    const { service, crees } = monter(Referentiel.SYCEBNL, [
+      { id: 'c411', numero: '41100000' },
+      { id: 'c4181', numero: '41810000' },
+      { id: 'c4191', numero: '41910000' },
+      { id: 'c4161', numero: '41610000' },
+    ]);
+    await service.creer('t1', { type: TypeTiers.ADHERENT, code: 'A1', nom: 'Membre' });
+    expect(crees.map((c) => [c.numero, c.intitule])).toEqual([
+      ['41100001', 'Membre'],
+      ['41810001', 'Membre · appels de fonds à établir'],
+      ['41910001', 'Membre · avances reçues'],
+      ['41610001', 'Membre · cotisations litigieuses ou douteuses'],
+    ]);
+  });
+
+  it('compléter ne recrée rien de ce que le tiers a, et s’aligne sur son principal', async () => {
+    const client = { id: 'ti5', type: TypeTiers.CLIENT, nom: 'Usager', code: 'U5' };
+    const { service, crees, rattaches } = monter(
+      Referentiel.SYCEBNL,
+      [
+        { id: 'c412', numero: '41200000' },
+        { id: 'u', numero: '41200007' },
+        { id: 'c4182', numero: '41820000' },
+        { id: 'c4192', numero: '41920000' },
+        { id: 'c4162', numero: '41620000' },
+      ],
+      [
+        { estPrincipal: true, compte: { numero: '41200007' } },
+        { estPrincipal: false, compte: { numero: '41920003' } },
+      ],
+      client,
+    );
+    const r = await service.completerPanoplie('t1', 'ti5');
+    expect(crees.map((c) => c.numero)).toEqual(['41820007', '41620007']);
+    expect(rattaches.every((x) => x.estPrincipal === false)).toBe(true);
+    expect(r.dejaPresents).toBe(2);
+  });
+
+  it('compléter un tiers dont aucun compte ne peut naître le refuse en le disant', async () => {
+    const fournisseur = { id: 'ti6', type: TypeTiers.FOURNISSEUR, nom: 'F', code: 'F6' };
+    const { service } = monter(Referentiel.SYSCOHADA, [], [], fournisseur);
+    await expect(service.completerPanoplie('t1', 'ti6')).rejects.toThrow(/40110000 n'existe pas ou est en sommeil/);
+  });
+});
+
+describe('la panoplie existe dans le plan semé, sous l’intitulé qui la justifie', () => {
+  const semis = {
+    [Referentiel.SYCEBNL]: readFileSync(join(__dirname, '../comptes/compte-seed.ts'), 'utf8'),
+    [Referentiel.SYSCOHADA]: readFileSync(join(__dirname, '../comptes/compte-seed-syscohada.ts'), 'utf8'),
+  };
+  // Lus dans les deux semis, eux-mêmes tirés des compétences (SYCEBNL Partie
+  // 2 ch. 2 ; AUDCIF Titre VII). Un numéro, deux sens · le 4181 et le 4161.
+  const attendus: Record<Referentiel, Record<string, string>> = {
+    [Referentiel.SYSCOHADA]: {
+      '40110000': 'Fournisseurs',
+      '40810000': 'Fournisseurs',
+      '40910000': 'Fournisseurs - Avances et acomptes versés',
+      '41110000': 'Clients',
+      '41810000': 'Clients, factures à établir',
+      '41910000': 'Clients, avances et acomptes reçus',
+      '41610000': 'Créances litigieuses',
+      '41620000': 'Créances douteuses',
+    },
+    [Referentiel.SYCEBNL]: {
+      '40110000': 'Fournisseurs',
+      '40810000': 'Fournisseurs, factures non parvenues',
+      '40910000': 'Fournisseurs débiteurs · avances et acomptes versés',
+      '41100000': 'Adhérents',
+      '41810000': 'Adhérents, appels de fonds à établir',
+      '41910000': 'Adhérents, avances reçues',
+      '41610000': 'Créances · cotisations litigieuses ou douteuses',
+      '41200000': 'Clients-usagers',
+      '41820000': 'Clients-usagers, factures à établir',
+      '41920000': 'Clients-usagers, avances et acomptes reçus',
+      '41620000': 'Créances · adhérents, clients-usagers litigieuses ou douteuses',
+    },
+  };
+  for (const ref of [Referentiel.SYCEBNL, Referentiel.SYSCOHADA]) {
+    it(`${ref} · chaque collectif de la panoplie est semé, et la table n'en cite aucun autre`, () => {
+      const cites = new Set(Object.values(PANOPLIES_TIERS[ref]).flatMap((p) => (p ?? []).map((r) => r.collectif)));
+      expect([...cites].sort()).toEqual(Object.keys(attendus[ref]).sort());
+      for (const [numero, intitule] of Object.entries(attendus[ref])) {
+        expect(semis[ref]).toMatch(new RegExp(`'${numero}',\\s*'${intitule}'`));
+      }
+    });
+  }
+
+  it('le principal est le premier rôle de chaque panoplie, et c’est le collectif du type', () => {
+    for (const ref of [Referentiel.SYCEBNL, Referentiel.SYSCOHADA]) {
+      for (const [type, panoplie] of Object.entries(PANOPLIES_TIERS[ref])) {
+        expect(panoplie?.[0]).toMatchObject({ role: 'PRINCIPAL', collectif: COLLECTIFS_TIERS[ref][type as TypeTiers] });
+      }
+    }
+  });
+});
+
+describe('numéro au même rang que le principal', () => {
+  it('prend le rang s’il est libre, sinon le premier numéro libre', () => {
+    expect(numeroIndividuelAligne('4181', 8, 5, ['41810000'])).toBe('41810005');
+    expect(numeroIndividuelAligne('4181', 8, 5, ['41810000', '41810005'])).toBe('41810001');
+    expect(numeroIndividuelAligne('4181', 8, null, ['41810000'])).toBe('41810001');
+  });
+
+  it('lit le rang par la valeur, quelle que soit la largeur de la racine', () => {
+    expect(rangSousRacine('41100012', '411')).toBe(12);
+    expect(numeroIndividuelAligne('4181', 8, 12, [])).toBe('41810012');
+    expect(rangSousRacine('41100000', '411')).toBeNull();
+    expect(rangSousRacine('47110003', '411')).toBeNull();
   });
 });

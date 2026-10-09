@@ -21,7 +21,7 @@ describe('cheminsAViderApres · ce qu’une écriture rend faux', () => {
 
   it('la création d’un tiers et de son compte individuel vide le plan de comptes', () => {
     expect(cheminsAViderApres('/tiers')).toEqual(['/comptes']);
-    expect(cheminsAViderApres('/tiers/t1/compte-individuel')).toEqual(['/comptes']);
+    expect(cheminsAViderApres('/tiers/t1/panoplie')).toEqual(['/comptes']);
   });
 
   it('la fusion de deux tiers et celle de deux comptes le vident aussi', () => {

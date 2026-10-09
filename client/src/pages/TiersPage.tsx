@@ -57,6 +57,28 @@ import { usePreselectionUnique } from '../lib/preselection-unique';
  * sans refuser laisserait la route ouverte à un appel direct.
  */
 
+/** Ce que rend l'ouverture des comptes d'un tiers (tiers/collectifs-tiers.ts côté serveur). */
+interface Panoplie {
+  crees: { role: string; numero: string; collectif: string }[];
+  dejaPresents: number;
+  impossibles: { collectif: string; motif: string }[];
+}
+
+interface CompletionPanoplies {
+  tiersLus: number;
+  comptesCrees: number;
+  impossibles: { tiers: string; collectif: string; motif: string }[];
+  suivant: string | null;
+}
+
+/** Les types qui ont une panoplie · le serveur refuse les autres en le disant. */
+const TYPES_A_PANOPLIE: TypeTiers[] = ['FOURNISSEUR', 'CLIENT', 'ADHERENT'];
+
+/** Ce qui n'a pas pu naître, dit à la suite du message · jamais tu. */
+function motifsImpossibles(p: Panoplie): string {
+  return p.impossibles.length > 0 ? ` Non ouverts · ${p.impossibles.map((i) => i.motif).join(' ')}` : '';
+}
+
 interface TableauxTiers {
   /** Types proposés à la création et au filtre, dans l'ordre d'affichage. */
   ordre: TypeTiers[];
@@ -294,7 +316,7 @@ export function TiersPage() {
     setInfo(null);
     setEnvoi(true);
     try {
-      const cree = await api.post<{ compteIndividuel: { numero: string; collectif: string } | null }>('/tiers', {
+      const cree = await api.post<{ compteIndividuel: { numero: string; collectif: string } | null; panoplie: Panoplie | null }>('/tiers', {
         type,
         code,
         nom,
@@ -302,9 +324,9 @@ export function TiersPage() {
         ...(modeleReglementId ? { modeleReglementId } : {}),
       });
       setInfo(
-        cree.compteIndividuel
-          ? `Tiers ${code} créé, avec son compte ${cree.compteIndividuel.numero} sous le collectif ${cree.compteIndividuel.collectif}.`
-          : `Tiers ${code} créé, sans compte · rattachez-en un dans sa fiche.`,
+        cree.panoplie && cree.panoplie.crees.length > 0
+          ? `Tiers ${code} créé avec ses comptes ${cree.panoplie.crees.map((c) => c.numero).join(', ')}.${motifsImpossibles(cree.panoplie)}`
+          : `Tiers ${code} créé, sans compte · rattachez-en un dans sa fiche.${cree.panoplie ? motifsImpossibles(cree.panoplie) : ''}`,
       );
       setCode('');
       setNom('');
@@ -344,15 +366,59 @@ export function TiersPage() {
     }
   };
 
-  const creerSonCompte = async () => {
+  // LA PANOPLIE DU TIERS (tiers/collectifs-tiers.ts côté serveur) · les
+  // comptes qui lui manquent, principal compris, chacun sous son collectif.
+  const completerSesComptes = async () => {
     if (!selectionId) return;
     setErreur(null);
+    setInfo(null);
     try {
-      const c = await api.post<{ numero: string; collectif: string }>(`/tiers/${selectionId}/compte-individuel`, {});
-      setInfo(`Compte ${c.numero} créé sous le collectif ${c.collectif}, rattaché comme principal.`);
+      const r = await api.post<Panoplie>(`/tiers/${selectionId}/panoplie`, {});
+      setInfo(
+        r.crees.length > 0
+          ? `Comptes ouverts · ${r.crees.map((c) => c.numero).join(', ')}.${motifsImpossibles(r)}`
+          : `Rien à compléter · le tiers a déjà tous ses comptes.${motifsImpossibles(r)}`,
+      );
       await charger();
     } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Impossible de créer ce compte');
+      setErreur(err instanceof ApiError ? err.message : 'Impossible de compléter ses comptes');
+    }
+  };
+
+  // TOUS LES TIERS DU DOSSIER, cent par appel · le serveur rend le curseur
+  // de la tranche suivante, et l'écran enchaîne jusqu'au bout.
+  const [completionEnCours, setCompletionEnCours] = useState(false);
+  const completerTousLesComptes = async () => {
+    setErreur(null);
+    setInfo(null);
+    setCompletionEnCours(true);
+    let apres: string | null = null;
+    let lus = 0;
+    let crees = 0;
+    const impossibles: { tiers: string; motif: string }[] = [];
+    try {
+      do {
+        const r: CompletionPanoplies = await api.post<CompletionPanoplies>('/tiers/panoplies', apres ? { apres } : {});
+        lus += r.tiersLus;
+        crees += r.comptesCrees;
+        impossibles.push(...r.impossibles);
+        apres = r.suivant;
+      } while (apres);
+      setInfo(
+        `${lus} tiers lus · ${crees} compte(s) ouvert(s).` +
+          (impossibles.length > 0
+            ? ` ${impossibles.length} compte(s) n'ont pas pu naître, dont ${impossibles[0].tiers} · ${impossibles[0].motif}`
+            : ''),
+      );
+      await charger();
+    } catch (err) {
+      setErreur(
+        `${err instanceof ApiError ? err.message : 'Impossible de compléter les comptes des tiers'}` +
+          (lus > 0 ? ` (${lus} tiers déjà traités, ${crees} compte(s) ouvert(s) · relancez pour finir).` : ''),
+      );
+      await charger();
+    } finally {
+      setCompletionEnCours(false);
     }
   };
 
@@ -600,6 +666,17 @@ export function TiersPage() {
             className="border border-border-dark bg-chrome hover:bg-chrome-alt px-3 py-1 text-[11.5px]"
           >
             Modèles de règlement…
+          </button>
+          )}
+          {estAdmin && (
+          <button
+            type="button"
+            onClick={completerTousLesComptes}
+            disabled={completionEnCours}
+            title="Ouvre, pour chaque tiers du dossier, les comptes de sa panoplie qui lui manquent"
+            className="border border-border-dark bg-chrome hover:bg-chrome-alt px-3 py-1 text-[11.5px] disabled:opacity-60"
+          >
+            {completionEnCours ? 'Comptes en cours…' : 'Compléter les comptes des tiers'}
           </button>
           )}
           {estAdmin && (
@@ -967,15 +1044,20 @@ export function TiersPage() {
               <div className="border-t border-border pt-2.5">
                 <div className="text-[11px] font-bold text-text-dim mb-1.5">Comptes généraux rattachés</div>
                 {tiersSelectionne.comptesRattaches.length === 0 && (
-                  <div className="text-[11.5px] text-text-dim mb-2 flex items-center gap-2">
-                    Aucun compte rattaché.
-                    {estAdmin && (
-                      <button type="button" onClick={creerSonCompte} className="text-sel hover:underline">
-                        Créer son compte sous le collectif
-                      </button>
-                    )}
-                  </div>
+                  <div className="text-[11.5px] text-text-dim mb-2">Aucun compte rattaché.</div>
                 )}
+                {estAdmin && (TYPES_A_PANOPLIE.includes(tiersSelectionne.type) ? (
+                  <div className="mb-2 flex items-center gap-1.5">
+                    <button type="button" onClick={completerSesComptes} className="text-[11px] text-sel hover:underline">
+                      Compléter ses comptes
+                    </button>
+                    <Aide
+                      titre="Comptes du tiers"
+                      texte="Chaque tiers a son compte principal et les sous-comptes de son type, chacun sous son collectif : un fournisseur ses factures non parvenues (408) et ses avances versées (409) ; un client ses factures à établir (418), ses avances reçues (419) et ses créances litigieuses ou douteuses (416) ; un adhérent ses appels de fonds à établir, ses avances reçues et ses cotisations litigieuses ou douteuses. Compléter n'ouvre que les comptes qui manquent, au même rang que le principal quand il est libre. Une écriture saisie s'impute au compte du tiers, jamais au collectif."
+                      source="Plan de comptes SYSCOHADA (AUDCIF, Titre VII, comptes 40 et 41) et SYCEBNL (Partie 2 ch. 2 et 3)"
+                    />
+                  </div>
+                ) : null)}
                 {tiersSelectionne.comptesRattaches.map((tc) => (
                   <div key={tc.id} className="border border-border mb-1.5 px-2.5 py-1.5">
                     <div className="flex items-center justify-between gap-2">
@@ -1096,11 +1178,11 @@ export function TiersPage() {
                       checked={creerCompteIndividuel}
                       onChange={(e) => setCreerCompteIndividuel(e.target.checked)}
                     />
-                    Créer son compte sous le collectif
+                    Ouvrir ses comptes
                     <Aide
-                      titre="Compte individuel du tiers"
-                      texte="OmegaX crée le compte du tiers sous le compte collectif de son type (fournisseurs 4011, clients 4111 ou 412, adhérents 411) avec le numéro suivant libre, et le rattache comme principal. Un salarié ou un tiers « autre » n'a pas de collectif proposé : son compte se rattache à la main."
-                      source="Sage 100 i7, plan tiers : compte collectif selon le type"
+                      titre="Comptes du tiers"
+                      texte="OmegaX ouvre le compte principal du tiers sous le collectif de son type (fournisseurs 4011, clients 4111 ou 412, adhérents 411), rattaché comme principal, et les sous-comptes de sa panoplie au même rang : factures non parvenues et avances versées d'un fournisseur ; factures à établir, avances reçues et créances litigieuses ou douteuses d'un client ou d'un adhérent. Un salarié ou un tiers « autre » n'a pas de collectif proposé : son compte se rattache à la main."
+                      source="Sage 100 i7, plan tiers : compte collectif selon le type ; plans SYSCOHADA et SYCEBNL, comptes 40 et 41"
                     />
                   </label>
                 </div>

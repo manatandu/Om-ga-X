@@ -5,7 +5,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { TiersService } from './tiers.service';
-import { CreerTiersDto, ModifierTiersDto, RattacherCompteDto } from './dto/tiers.dto';
+import { CompletionPanopliesDto, CreerTiersDto, ModifierTiersDto, RattacherCompteDto } from './dto/tiers.dto';
 import {
   CreerModeleReglementDto,
   ModifierModeleReglementDto,
@@ -78,11 +78,22 @@ export class TiersController {
   }
 
 
-  /** Compte individuel sous le collectif du type · point 13 (collectifs-tiers.ts). */
+  /**
+   * LA PANOPLIE DES COMPTES DU TIERS (collectifs-tiers.ts) · ceux qui lui
+   * manquent, principal compris. Structure du plan des tiers · réservée à
+   * l'administrateur, comme le rattachement d'un compte.
+   */
   @Roles(RoleUtilisateur.ADMIN_CABINET)
-  @Post(':id/compte-individuel')
-  async creerCompteIndividuel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.tiersService.creerCompteIndividuel(user.tenantId, id);
+  @Post(':id/panoplie')
+  async completerPanoplie(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.tiersService.completerPanoplie(user.tenantId, id);
+  }
+
+  /** La même complétion pour tous les tiers du dossier, cent par appel (`apres`, curseur rendu). */
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  @Post('panoplies')
+  async completerPanoplies(@CurrentUser() user: AuthenticatedUser, @Body() dto: CompletionPanopliesDto) {
+    return this.tiersService.completerPanoplies(user.tenantId, dto.apres);
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET)
