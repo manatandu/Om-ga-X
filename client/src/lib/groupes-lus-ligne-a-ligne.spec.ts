@@ -59,8 +59,20 @@ describe('raisonGroupesLusLigneALigne', () => {
     expect(
       raisonGroupesLusLigneALigne({ total: 1, groupes: [{ code: 'ab', compte: '41110001', motif: 'DEVISE_SOLDEE_ECART_NON_PASSE' }], tronque: false }),
     ).toBe(
-      "Des factures soldées dans leur devise et non en francs · l'écart de change réalisé n'est pas passé (AUDCIF art. 55), le groupe est lu ligne à ligne. " +
+      "Des factures soldées dans leur devise et non en francs · l'écart de change réalisé n'est pas passé (AUDCIF art. 55) · le groupe est lu ligne à ligne. " +
         "Le total est exact ; la répartition par échéance de ces groupes n'est pas sûre.",
+    );
+  });
+
+  it('la relance réclame le groupe pour son net · la raison le dit, jamais « lu ligne à ligne » (relecture, M2)', () => {
+    expect(
+      raisonGroupesLusLigneALigne(
+        { total: 1, groupes: [{ code: 'aa', compte: '41110001', motif: 'DEVISE_REGLEE_EN_PARTIE' }], tronque: false },
+        'relance',
+      ),
+    ).toBe(
+      "Une facture en devise réglée en partie à un autre cours · son reste au coût historique ne rend pas le solde en francs, et l'écart réalisé ne se passe qu'au groupe soldé · le groupe se réclame pour son net, à l'échéance de sa facture encore ouverte la plus ancienne. " +
+        "Le dû est exact ; l'échéance réclamée de ces groupes n'est pas sûre.",
     );
   });
 
@@ -101,7 +113,7 @@ describe('les écrans qui lisent les restes le disent (paquet 1, B5)', () => {
     ['NotesAnnexesSyscohadaPage.tsx', /<GroupesLusLigneALigne groupes=\{resultat\?\.groupesLusLigneALigne\}/],
     ['BalanceAgeePage.tsx', /<GroupesLusLigneALigne groupes=\{donnees\?\.groupesLusLigneALigne\}/],
     ['EcheancierPage.tsx', /<GroupesLusLigneALigne groupes=\{etat\.groupesLusLigneALigne\}/],
-    ['RelancesPage.tsx', /<GroupesLusLigneALigne groupes=\{p\.groupesLusLigneALigne\}/],
+    ['RelancesPage.tsx', /<GroupesLusLigneALigne groupes=\{p\.groupesLusLigneALigne\} lecture="relance"/],
     ['EtatsSmtPage.tsx', /<GroupesLusLigneALigne groupes=\{notes\.note3\.groupesLusLigneALigne\}/],
     ['EtatsSmtSyscohadaPage.tsx', /<GroupesLusLigneALigne groupes=\{notes\.note3\.groupesLusLigneALigne\}/],
   ];

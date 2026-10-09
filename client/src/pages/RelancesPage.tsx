@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
 import { Aide } from '../components/chrome/Aide';
 import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
-import { texteGroupesLusLigneALigne } from '../lib/groupes-lus-ligne-a-ligne';
+import { raisonGroupesLusLigneALigne } from '../lib/groupes-lus-ligne-a-ligne';
 import type { BilanEmissionRelances, BilanRepriseCourrier, LettreRelance, NiveauRelance, PositionRelance, TypeRelance } from '../lib/types';
 import { libelleRemise, phraseEmission, tonRemise } from '../lib/remise-courriel';
 import { EVENEMENT_FILE_COURRIER, SUITE_REPRISE_HORS_FILE, cumulerReprises, reprendreEncore, resumeReprise } from '../lib/courrier-file';
@@ -366,7 +366,10 @@ function PositionsRelances() {
                     factures n'est pas sûre (paquet 1, B5), nommé avec son
                     motif (mineur 7). */}
                 {(p.groupesLusLigneALigne?.total ?? 0) > 0 && (
-                  <span className="ml-1 text-[10.5px] text-warning font-semibold" title={texteGroupesLusLigneALigne(p.groupesLusLigneALigne) ?? undefined}>
+                  <span
+                    className="ml-1 text-[10.5px] text-warning font-semibold"
+                    title={raisonGroupesLusLigneALigne(p.groupesLusLigneALigne, 'relance') ?? undefined}
+                  >
                     répartition incertaine
                   </span>
                 )}
@@ -414,7 +417,7 @@ function PositionsRelances() {
               </span>
             </div>
             {deplie.has(p.compteId) && (
-              <GroupesLusLigneALigne groupes={p.groupesLusLigneALigne} className="px-3 py-0.5 bg-chrome-alt/50 border-b border-border/30" />
+              <GroupesLusLigneALigne groupes={p.groupesLusLigneALigne} lecture="relance" className="px-3 py-0.5 bg-chrome-alt/50 border-b border-border/30" />
             )}
             {deplie.has(p.compteId) &&
               (p.ecartsChangeNonPasses ?? []).map((e) => (

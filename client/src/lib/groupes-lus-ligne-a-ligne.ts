@@ -27,18 +27,43 @@ export const LIBELLE_MOTIF: Record<MotifGroupeNomme, string> = {
   A_NOUVEAU_SANS_ORIGINE: 'à-nouveau sans pièce d’origine',
 };
 
-const RAISON_MOTIF: Record<MotifGroupeNomme, string> = {
-  NEGATIF_SANS_ORIGINE: "Une inscription en négatif n'a pas sa ligne d'origine parmi les lignes lues · le groupe est lu ligne à ligne.",
-  IMPUTATION_DECLAREE_NON_LUE:
-    "Une imputation déclarée dépasse ce que la facture doit, ou porte sur un groupe en devise · le groupe est lu ligne à ligne.",
+/**
+ * La cause de chaque motif · la conséquence suit, selon ce que l'écran lit.
+ * Un état à colonnes lit le groupe LIGNE À LIGNE ; la relance le réclame
+ * pour son NET, à l'échéance de sa facture encore ouverte la plus ancienne
+ * (relecture « échecs silencieux », M2) · une seule phrase pour les deux
+ * mentirait à l'un des deux écrans.
+ */
+const CAUSE_MOTIF: Record<MotifGroupeNomme, string> = {
+  NEGATIF_SANS_ORIGINE: "Une inscription en négatif n'a pas sa ligne d'origine parmi les lignes lues",
+  IMPUTATION_DECLAREE_NON_LUE: 'Une imputation déclarée dépasse ce que la facture doit, ou porte sur un groupe en devise',
   DEVISE_SOLDEE_ECART_NON_PASSE:
-    "Des factures soldées dans leur devise et non en francs · l'écart de change réalisé n'est pas passé (AUDCIF art. 55), le groupe est lu ligne à ligne.",
+    "Des factures soldées dans leur devise et non en francs · l'écart de change réalisé n'est pas passé (AUDCIF art. 55)",
   DEVISE_REGLEE_EN_PARTIE:
-    "Une facture en devise réglée en partie à un autre cours · son reste au coût historique ne rend pas le solde en francs, et l'écart réalisé ne se passe qu'au groupe soldé · le groupe est lu ligne à ligne.",
-  RESTE_NON_REPARTI: 'Des restes qui ne rendent pas le solde du groupe · le groupe est lu ligne à ligne.',
-  A_NOUVEAU_SANS_ORIGINE:
-    "Une ligne d'à-nouveau n'a pas retrouvé sa pièce d'origine dans l'exercice précédent · les lignes d'à-nouveau du groupe s'imputent à la date du report, au prorata entre elles.",
+    "Une facture en devise réglée en partie à un autre cours · son reste au coût historique ne rend pas le solde en francs, et l'écart réalisé ne se passe qu'au groupe soldé",
+  RESTE_NON_REPARTI: 'Des restes qui ne rendent pas le solde du groupe',
+  A_NOUVEAU_SANS_ORIGINE: "Une ligne d'à-nouveau n'a pas retrouvé sa pièce d'origine dans l'exercice précédent",
 };
+
+/** Ce que l'écran lit · un état à colonnes, ou la relance. */
+export type LectureDesGroupes = 'etat' | 'relance';
+
+const CONSEQUENCE_LIGNE_A_LIGNE: Record<LectureDesGroupes, string> = {
+  etat: 'le groupe est lu ligne à ligne',
+  relance: "le groupe se réclame pour son net, à l'échéance de sa facture encore ouverte la plus ancienne",
+};
+
+const CONSEQUENCE_A_NOUVEAU = "les lignes d'à-nouveau du groupe s'imputent à la date du report, au prorata entre elles";
+
+const CONCLUSION: Record<LectureDesGroupes, string> = {
+  etat: "Le total est exact ; la répartition par échéance de ces groupes n'est pas sûre.",
+  relance: "Le dû est exact ; l'échéance réclamée de ces groupes n'est pas sûre.",
+};
+
+function raisonDuMotif(m: MotifGroupeNomme, lecture: LectureDesGroupes): string {
+  const consequence = m === 'A_NOUVEAU_SANS_ORIGINE' ? CONSEQUENCE_A_NOUVEAU : CONSEQUENCE_LIGNE_A_LIGNE[lecture];
+  return `${CAUSE_MOTIF[m]} · ${consequence}.`;
+}
 
 export function texteGroupesLusLigneALigne(g: GroupesLusLigneALigne | null | undefined): string | null {
   if (!g || g.total <= 0) return null;
@@ -61,11 +86,14 @@ export function texteGroupesLusLigneALigne(g: GroupesLusLigneALigne | null | und
  * groupes nommés, puis ce que la lecture change. Le texte à l'écran reste
  * d'une ligne.
  */
-export function raisonGroupesLusLigneALigne(g: GroupesLusLigneALigne | null | undefined): string | null {
+export function raisonGroupesLusLigneALigne(
+  g: GroupesLusLigneALigne | null | undefined,
+  lecture: LectureDesGroupes = 'etat',
+): string | null {
   if (!g || g.total <= 0) return null;
-  const motifs = [...new Set(g.groupes.map((x) => x.motif).filter((m): m is MotifGroupeNomme => Boolean(m && RAISON_MOTIF[m])))];
-  const phrases = motifs.map((m) => RAISON_MOTIF[m]);
-  if (g.total > g.groupes.length) phrases.push("Les groupes que la liste ne nomme pas peuvent porter un autre motif.");
-  phrases.push("Le total est exact ; la répartition par échéance de ces groupes n'est pas sûre.");
+  const motifs = [...new Set(g.groupes.map((x) => x.motif).filter((m): m is MotifGroupeNomme => Boolean(m && CAUSE_MOTIF[m])))];
+  const phrases = motifs.map((m) => raisonDuMotif(m, lecture));
+  if (g.total > g.groupes.length) phrases.push('Les groupes que la liste ne nomme pas peuvent porter un autre motif.');
+  phrases.push(CONCLUSION[lecture]);
   return phrases.join(' ');
 }

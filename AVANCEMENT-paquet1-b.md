@@ -321,6 +321,27 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
   la date de la pièce borne les relances et s'imprime.
 - APRÈS · VOISIN, B7, B6, MIN2, M1 · 33 contrôles, 33 concordances.
 
+### M2 · un groupe qui ne se répartit pas se réclame pour son net
+
+- Vérifié · `positions` filtrait chaque ligne d'un groupe `nonRepartis` par
+  l'état pour elle-même · la facture en devise réglée en partie passait en
+  préventif entière, et son règlement se retranchait en rappel d'une AUTRE
+  facture échue. Les textes « le dû reste exact » et « le total est exact »
+  ne disaient pas ce que la relance faisait.
+- AVANT (main et copie) · M2, C51, au 01/03/2027 · préventif 2 800 000
+  (une ligne 2 800 000) au lieu de 1 000 000 ; rappel · compte absent des
+  positions (dû −300 000) au lieu de 1 500 000 sur F0.
+- Correction · `PoidsDesLignes.enBloc` porte pour chaque groupe non réparti
+  son net et sa facture encore ouverte la plus ancienne
+  (`factureOuverteLaPlusAncienne` · les restes de l'imputation légale quand
+  ils existent, Code civil, Livre III, art. 154, sinon les factures les plus
+  récentes qui couvrent le net) ; la relance réclame le net sur cette seule
+  ligne, à son échéance. Textes · « Le dû est exact ; l'échéance réclamée de
+  ces groupes n'est pas sûre », et dans la relance la conséquence de chaque
+  motif dit « se réclame pour son net », jamais « lu ligne à ligne ».
+- APRÈS · M2, B5, B6 · 25 contrôles, 25 concordances (le motif du mineur 7
+  compris).
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,

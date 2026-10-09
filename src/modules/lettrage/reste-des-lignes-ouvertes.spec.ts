@@ -8,6 +8,7 @@ import {
   groupesLusLigneALigne,
   groupesLusLigneALigneParCompte,
   PLAFOND_GROUPES_NOMMES,
+  factureOuverteLaPlusAncienne,
   poidsDesLignesLues,
   poidsDesLignesOuvertes,
   type LigneOuverte,
@@ -927,6 +928,77 @@ describe('poids des lignes ouvertes · les groupes lus ligne à ligne, servis (p
     });
     expect(p.groupesLusLigneALigne).toEqual(attendu);
     expect(p.montantDu).toBe(1_000_000);
+    // Le groupe se réclame pour son net, sur sa facture (relecture, M2).
+    expect(p.lignes.map((x) => [x.libelle, x.montant])).toEqual([['f5', 1_000_000]]);
+  });
+
+  /**
+   * RELECTURE « ÉCHECS SILENCIEUX » DU PAQUET 1, M2 · un groupe qui ne se
+   * répartit pas se réclame pour son NET, à l'échéance de sa facture encore
+   * ouverte. Rejoué sur vraie base (scénario paquet1-b, M2) · facture de
+   * 1 000 USD à 2 800 (2 800 000), échéance 30/04/2027, réglée de 600 USD à
+   * 3 000 (1 800 000) le 15/02/2027, lettrés en partiel ; F0 de 1 500 000,
+   * échéance 31/01/2027. Au 01/03/2027, le PRÉVENTIF réclamait 2 800 000 (le
+   * client doit 1 000 000), et le RAPPEL retranchait le règlement de F0 · dû
+   * de −300 000, le compte sortait des positions et F0 n'était jamais relancée.
+   */
+  describe('la relance lit le groupe comme un tout (relecture, M2)', () => {
+    const tiers = { id: 't-c51', nom: 'C51', type: 'CLIENT', email: null, horsRelance: false, motifHorsRelance: null, horsRelanceDepuis: null };
+    const compte = { id: 'c411', numero: '41110001', intitule: 'Client C51', tiersCompte: { tiers } };
+    const baseM2 = [
+      ligne('f0', 1_500_000, 0, '2027-01-05', null, '2027-01-31'),
+      ligne('fusd', 2_800_000, 0, '2027-01-20', 'g5', '2027-04-30', usd),
+      ligne('rusd', 0, 1_800_000, '2027-02-15', 'g5', null, { deviseId: 'usd', montantDevise: 600 }),
+    ];
+    const positions = async (type: TypeRelance) => {
+      const lignes = baseM2.map((l) => ({
+        ...l,
+        lettre: null,
+        libelle: l.id,
+        compte,
+        ecriture: { ...l.ecriture, libelle: 'Pièce', estANouveauProvisoire: false, estGenereeParCloture: false, estSoldeDesComptesDeGestion: false },
+      }));
+      const prisma = {
+        ...lecteur(baseM2),
+        ...lecteurDeGroupes(groupe5),
+        tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: Referentiel.SYSCOHADA }) },
+        ligneEcriture: { ...lecteur(baseM2).ligneEcriture, findMany: jest.fn().mockResolvedValue(lignes) },
+        niveauRelance: { findMany: jest.fn().mockResolvedValue([]) },
+        relance: { findMany: jest.fn().mockResolvedValue([]) },
+      } as unknown as PrismaService;
+      return new RelancesService(prisma, {} as CourrierService).positions('t', { exerciceId: 'ex', type, dateReference: '2027-03-01' });
+    };
+
+    it('préventif · le net du groupe (1 000 000), à l’échéance de sa facture, jamais la facture entière', async () => {
+      const [p] = await positions(TypeRelance.PREVENTIVE);
+      expect(p.montantDu).toBe(1_000_000);
+      expect(p.lignes.map((x) => [x.libelle, x.montant, x.echeance])).toEqual([['fusd', 1_000_000, '2027-04-30']]);
+    });
+
+    it('rappel · F0 seule (1 500 000) · le règlement du groupe ne se retranche jamais d’une autre facture', async () => {
+      const [p] = await positions(TypeRelance.RAPPEL);
+      expect(p.montantDu).toBe(1_500_000);
+      expect(p.lignes.map((x) => [x.libelle, x.montant])).toEqual([['f0', 1_500_000]]);
+    });
+  });
+
+  it('la facture encore ouverte la plus ancienne · par les restes de la loi, sinon les plus récentes qui couvrent le net', () => {
+    const f1 = ligne('f1', 100_000, 0, '2026-01-05', 'g', '2026-02-05');
+    const f2 = ligne('f2', 100_000, 0, '2026-02-05', 'g', '2026-03-05');
+    const f3 = ligne('f3', 100_000, 0, '2026-03-05', 'g', '2026-04-05');
+    const r = ligne('r', 0, 150_000, '2026-04-10', 'g');
+    // Sans restes · F3 et F2 couvrent 150 000 · la plus ancienne des deux, F2.
+    expect(factureOuverteLaPlusAncienne([f1, f2, f3, r], new Map(), 15_000_000)).toBe('f2');
+    // Avec les restes de la loi · celle qu'ils disent ouverte.
+    expect(factureOuverteLaPlusAncienne([f1, f2, f3, r], new Map(), 15_000_000, new Map([['f3', { francs: 100_000, devise: null }], ['f1', { francs: 0, devise: null }]]))).toBe('f3');
+    // L'origine d'un à-nouveau date la facture.
+    expect(factureOuverteLaPlusAncienne([f2, f3], new Map([['f3', { date: d('2025-12-01'), id: 'o3' }]]), 10_000_000)).toBe('f2');
+    // Ni règlement, ni ligne du mauvais sens.
+    expect(factureOuverteLaPlusAncienne([r, f3], new Map(), 5_000_000)).toBe('f3');
+  });
+
+  it('chaque groupe lu ligne à ligne porte sa ligne et son net, pour qui le réclame', () => {
+    expect([...poidsDesLignesOuvertes(base5).enBloc]).toEqual([['g5', { ligneId: 'f5', net: 1_000_000 }]]);
   });
 
   it('les notes par échéance le rendent', async () => {
@@ -977,6 +1049,6 @@ describe('poids des lignes ouvertes · les jumeaux qui lisent les mêmes lignes'
     }
   });
   it('les relances lisent la paire à cheval, puis le poids', () => {
-    expect(lire('relances/relances.service.ts')).toMatch(/const net = paires\?\.reste\.get\(l\.id\)\?\.francs \?\? poidsOuMontant\(poids, l\);/);
+    expect(lire('relances/relances.service.ts')).toMatch(/const net = paires\?\.reste\.get\(l\.id\)\?\.francs \?\? bloc\?\.net \?\? poidsOuMontant\(poids, l\);/);
   });
 });

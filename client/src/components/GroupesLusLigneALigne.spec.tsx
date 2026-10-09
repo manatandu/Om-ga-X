@@ -11,6 +11,17 @@ describe('GroupesLusLigneALigne', () => {
     expect(html).toContain('aa (41110001, facture en devise réglée en partie)');
   });
 
+  it('dans la relance, l’infobulle dit que le groupe se réclame pour son net (relecture, M2)', () => {
+    const html = renderToStaticMarkup(
+      <GroupesLusLigneALigne
+        lecture="relance"
+        groupes={{ total: 1, groupes: [{ code: 'aa', compte: '41110001', motif: 'NEGATIF_SANS_ORIGINE' }], tronque: false }}
+      />,
+    );
+    expect(html).toContain('le groupe se réclame pour son net');
+    expect(html).toContain('Le dû est exact');
+  });
+
   it('rien quand la lecture n’en a trouvé aucun, ni quand le serveur ne le sert pas', () => {
     expect(renderToStaticMarkup(<GroupesLusLigneALigne groupes={{ total: 0, groupes: [], tronque: false }} />)).toBe('');
     expect(renderToStaticMarkup(<GroupesLusLigneALigne groupes={undefined} />)).toBe('');

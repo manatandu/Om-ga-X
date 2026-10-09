@@ -236,10 +236,13 @@ export interface PositionRelance {
    */
   ecartsChangeNonPasses: { code: string; ecart: number; libelle: string }[];
   /**
-   * Les groupes de lettrage du compte lus ligne à ligne, leur reste ne se
-   * répartissant pas sûrement entre leurs factures (paquet 1, B5) · le dû
-   * reste exact, l'échéance réclamée de ces lignes ne l'est plus. Servis,
-   * l'écran les dit.
+   * Les groupes de lettrage du compte dont la répartition entre factures
+   * n'est pas sûre (paquet 1, B5), chacun avec son motif · ceux qui ne se
+   * répartissent pas se réclament pour leur NET, à l'échéance de leur
+   * facture encore ouverte la plus ancienne (relecture, M2) ; ceux dont un
+   * à-nouveau n'a pas retrouvé sa pièce s'imputent à la date du report (M1).
+   * Le dû est exact, l'échéance réclamée de ces groupes n'est pas sûre.
+   * Servis, l'écran les dit.
    */
   groupesLusLigneALigne: GroupesLusLigneALigne;
 }
@@ -525,7 +528,19 @@ export class RelancesService {
     const traiter = (l: LigneLue) => {
       if (paires?.absorbees.has(l.id)) return;
       if (l.lettrageId && soldesEnDevise.has(l.lettrageId)) return;
-      const net = paires?.reste.get(l.id)?.francs ?? poidsOuMontant(poids, l);
+      // UN GROUPE QUI NE SE RÉPARTIT PAS SE RÉCLAME POUR SON NET (relecture
+      // « échecs silencieux » du paquet 1, M2) · lu ligne à ligne, chaque
+      // ligne passait le filtre de l'état pour elle-même · en PRÉVENTIF la
+      // facture en devise réglée en partie était réclamée entière (le
+      // règlement, daté du passé, écarté), en RAPPEL le règlement se
+      // retranchait d'une AUTRE facture échue, le dû devenait négatif et le
+      // compte sortait des positions. Le groupe se lit comme un TOUT · son net,
+      // porté par sa facture encore ouverte la plus ancienne (Code civil,
+      // Livre III, art. 154 · `factureOuverteLaPlusAncienne`), à son échéance ;
+      // ses autres lignes ne se réclament pas.
+      const bloc = l.lettrageId ? poids.enBloc.get(l.lettrageId) : undefined;
+      if (bloc && bloc.ligneId !== l.id) return;
+      const net = paires?.reste.get(l.id)?.francs ?? bloc?.net ?? poidsOuMontant(poids, l);
       if (Math.abs(net) < 0.005) return;
       const datePiece = datesOrigine.get(l.id) ?? l.ecriture.date;
       const echeance = l.dateEcheance ?? datePiece;

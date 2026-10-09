@@ -10,6 +10,7 @@ import {
   type GroupeAOrdonner,
   type LigneDeGroupe,
   type OrigineDeLigne,
+  type ResteSelonLaLoi,
 } from './reconduction-lettrage';
 
 /**
@@ -88,6 +89,15 @@ export interface PoidsDesLignes {
    * ceux dont un à-nouveau n'a pas retrouvé son origine (M1).
    */
   motifs: Map<string, MotifGroupeNomme>;
+  /**
+   * LE GROUPE LU COMME UN TOUT, pour qui réclame une somme (relecture « échecs
+   * silencieux » du paquet 1, M2) · pour chaque groupe de `nonRepartis`, son
+   * net (en unités, débit moins crédit) et la ligne qui le porte · la facture
+   * encore ouverte la plus ancienne (`factureOuverteLaPlusAncienne`). Les
+   * états à colonnes gardent la lecture ligne à ligne, dite ; la relance, qui
+   * filtre par échéance, lit le groupe ENTIER à cette ligne.
+   */
+  enBloc: Map<string, { ligneId: string; net: number }>;
 }
 
 /**
@@ -239,9 +249,17 @@ export function poidsDesLignesOuvertes(
   const poids = new Map<string, number>();
   const nonRepartis: string[] = [];
   const motifs = new Map<string, MotifGroupeNomme>();
-  const nommerLeGroupe = (lettrageId: string, motif: MotifGroupeNomme) => {
+  const enBloc = new Map<string, { ligneId: string; net: number }>();
+  const nommerLeGroupe = (
+    lettrageId: string,
+    motif: MotifGroupeNomme,
+    net: number,
+    candidates: readonly LigneOuverte[],
+    restes?: ReadonlyMap<string, ResteSelonLaLoi>,
+  ) => {
     nonRepartis.push(lettrageId);
     motifs.set(lettrageId, motif);
+    enBloc.set(lettrageId, { ligneId: factureOuverteLaPlusAncienne(candidates, origines, net, restes), net: net / 100 });
   };
   for (const [lettrageId, membres] of groupesAPlusieurs(lignes)) {
     // Lu en partie · la lecture ligne à ligne est celle de l'état, sans
@@ -258,7 +276,7 @@ export function poidsDesLignesOuvertes(
     // origine parmi les lignes lues ne se répartit pas.
     const annulees = annulerLesNegatifs(membres);
     if (annulees === null) {
-      nommerLeGroupe(lettrageId, 'NEGATIF_SANS_ORIGINE');
+      nommerLeGroupe(lettrageId, 'NEGATIF_SANS_ORIGINE', net, membres);
       continue;
     }
     for (const id of annulees) poids.set(id, 0);
@@ -283,7 +301,7 @@ export function poidsDesLignesOuvertes(
     const imputees = imputerLesDeclarations(lues, sens, declarations);
     if (imputees === null) {
       for (const id of annulees) poids.delete(id);
-      nommerLeGroupe(lettrageId, 'IMPUTATION_DECLAREE_NON_LUE');
+      nommerLeGroupe(lettrageId, 'IMPUTATION_DECLAREE_NON_LUE', net, restantes);
       continue;
     }
     const restes = restesParLImputationLegale(imputees, sens);
@@ -293,7 +311,7 @@ export function poidsDesLignesOuvertes(
     // jamais une créance négative dans une colonne (mineur 3).
     if (totalRestes !== Math.abs(net) || [...restes.values()].some((r) => r.francs < 0)) {
       for (const id of annulees) poids.delete(id);
-      nommerLeGroupe(lettrageId, motifDuReste(restes));
+      nommerLeGroupe(lettrageId, motifDuReste(restes), net, restantes, restes);
       continue;
     }
     const signe = sens === 'DEBIT' ? 1 : -1;
@@ -302,7 +320,44 @@ export function poidsDesLignesOuvertes(
       poids.set(l.id, reste ? signe * reste.francs : 0);
     }
   }
-  return { poids, nonRepartis, motifs };
+  return { poids, nonRepartis, motifs, enBloc };
+}
+
+/**
+ * LA FACTURE ENCORE OUVERTE LA PLUS ANCIENNE d'un groupe qui ne se répartit
+ * pas sûrement (M2) · celle à l'échéance de laquelle la relance réclame le
+ * net du groupe. Les factures sont les lignes du sens du net. Celles qui
+ * restent ouvertes se lisent sur les restes de l'imputation légale quand ils
+ * existent (Code civil, Livre III, art. 154 · leur somme ne rend pas le net,
+ * mais l'ordre légal dit lesquelles sont éteintes), sinon ce sont les plus
+ * récentes qui couvrent le net (l'imputation éteint les plus anciennes
+ * d'abord). Parmi elles, la plus ancienne par son échéance, à défaut par sa
+ * date (sa pièce d'origine pour un à-nouveau). Jamais une ligne du sens du
+ * règlement · un groupe sans facture du sens du net (un négatif seul) se lit
+ * à sa première ligne.
+ */
+export function factureOuverteLaPlusAncienne(
+  membres: readonly LigneOuverte[],
+  origines: ReadonlyMap<string, OrigineDeLigne>,
+  net: number,
+  restes?: ReadonlyMap<string, ResteSelonLaLoi>,
+): string {
+  const colonne = (l: LigneOuverte) => centimes(net > 0 ? l.debit : l.credit);
+  const dateDe = (l: LigneOuverte) => (origines.get(l.id)?.date ?? l.ecriture.date).getTime();
+  const factures = membres.filter((l) => colonne(l) > 0);
+  if (factures.length === 0) return membres[0].id;
+  let ouvertes = restes ? factures.filter((f) => (restes.get(f.id)?.francs ?? 0) > 0 || (restes.get(f.id)?.devise ?? 0) > 0) : [];
+  if (ouvertes.length === 0) {
+    ouvertes = [];
+    let couvert = 0;
+    for (const f of [...factures].sort((a, b) => dateDe(b) - dateDe(a) || b.id.localeCompare(a.id))) {
+      if (couvert >= Math.abs(net)) break;
+      ouvertes.push(f);
+      couvert += colonne(f);
+    }
+  }
+  const echeanceDe = (l: LigneOuverte) => l.dateEcheance?.getTime() ?? dateDe(l);
+  return [...ouvertes].sort((a, b) => echeanceDe(a) - echeanceDe(b) || dateDe(a) - dateDe(b) || a.id.localeCompare(b.id))[0].id;
 }
 
 /**
