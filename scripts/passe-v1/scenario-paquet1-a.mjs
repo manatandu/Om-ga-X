@@ -440,6 +440,29 @@ async function pointA7(R, referentiel) {
     // La colonne N de 2027 part de la clôture de 2026 · ZA = 12 500 000.
     R.montant(`${P} · 2027 · ZA N · la trésorerie de clôture de 2026`, 12_500_000, ligne('ZA')?.montant ?? null);
   });
+  // RELECTURE B1 · la fiche de synthèse des notes (33 des associations, 34 du
+  // SYSCOHADA) relit le tableau des flux sur la balance mémorisée de l'appel ·
+  // 2026 CLÔTURÉ, elle doit laisser vides les postes que le tableau laisse
+  // vides (financement et variation de la trésorerie), jamais les chiffrer.
+  await etape(R, `${P} · fiche de synthèse des notes de 2026, après la clôture`, async () => {
+    const t = await c.lire('Flux 2026 après clôture', `${etats}/tableau-flux-tresorerie?exerciceId=${n}`);
+    const vides = new Set(t?.postesVides ?? []);
+    R.egal(`${P} · flux 2026 après clôture · ${apport} toujours vide`, true, vides.has(apport));
+    const r = sycebnl
+      ? await c.lire('Notes 2026', `/notes-annexes/associations?exerciceId=${n}`)
+      : await c.lire('Notes 2026', `/etats-financiers-syscohada/notes?exerciceId=${n}`);
+    const note = (r?.notes ?? []).find((x) => x.code === (sycebnl ? '33' : '34'));
+    const valeur = (cle) => {
+      const l = (note?.lignes ?? []).find((x) => x.cle === cle);
+      return l ? (l.saisie ?? [])[0] ?? null : 'absente';
+    };
+    const cles = sycebnl
+      ? ['flux-de-tresorerie-des-activites-de-financement', 'variation-de-la-tresorerie-nette-de-la-periode']
+      : ['flux-financement'];
+    for (const cle of cles) {
+      R.egal(`${P} · note ${sycebnl ? '33' : '34'} de 2026 après clôture · « ${cle} » laissée vide (le tableau des flux la laisse vide)`, null, valeur(cle));
+    }
+  });
 }
 
 // ==============================================================================
