@@ -583,6 +583,7 @@ async function originesDesANouveaux(
           libelle: l.libelle,
           dateEcheance: l.dateEcheance,
           date: l.ecriture!.date,
+          provisoire: l.ecriture!.estANouveauProvisoire === true,
         }),
       ),
     );

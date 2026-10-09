@@ -1,6 +1,7 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, StatutEcriture } from '@prisma/client';
 import { lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { cleDeLigne, cleDuReport } from '../devises/declaration-devise-a-nouveau';
+import { lignesReporteesAuDetail } from '../exercice/lignes-reportees-au-detail';
 
 /**
  * LA DATE D'ORIGINE D'UNE LIGNE REPORTÉE SANS ÉCHÉANCE (simulation du logiciel
@@ -80,12 +81,20 @@ export interface LigneReportee {
    * d'exercice précédent où chercher sa pièce (premier exercice tenu, M1).
    */
   date: Date;
+  /**
+   * Vraie pour une ligne de l'à-nouveau PROVISOIRE, qui ne reporte que le
+   * livre-journal (point 11) · ses origines ne se cherchent que parmi les
+   * lignes VALIDÉES (mineur 2).
+   */
+  provisoire?: boolean;
 }
 
 /** Une ligne candidate de l'exercice précédent. */
 export interface LigneCandidate extends LigneReportee {
   /** Elle-même un report d'à-nouveau · on remonte encore d'un exercice. */
   estReport: boolean;
+  /** Au livre-journal · seule candidate d'un report provisoire. */
+  validee: boolean;
 }
 
 /**
@@ -178,15 +187,18 @@ export async function originesDesReports(
     const comptes = [...new Set(enCours.map((e) => e.ligne.compteId))];
     const numeros = new Map(enCours.map((e) => [e.ligne.compteId, e.ligne.numeroCompte]));
     const candidates: LigneCandidate[] = [];
-    // Seules les lignes NON lettrées partent au détail (`report-a-nouveau.ts`).
+    // LE MÊME FILTRE QUE LE REPORT (mineur 2) · les lignes que le report au
+    // détail reporte, lettre vide et groupe à cheval compris
+    // (`lignesReporteesAuDetail`), toutes statuts · le report provisoire,
+    // qui ne lit que le livre-journal, s'apparie plus bas aux seules
+    // validées.
     await lireParLots(
       (curseur) =>
         client.ligneEcriture.findMany({
           ...pageApres(curseur, 500),
           where: {
-            ecriture: { tenantId, exerciceId: precedent.id, estSoldeDesComptesDeGestion: false },
+            ...lignesReporteesAuDetail({ tenantId, exerciceId: precedent.id }),
             compteId: { in: comptes },
-            lettre: null,
           },
           select: {
             id: true,
@@ -195,7 +207,7 @@ export async function originesDesReports(
             credit: true,
             libelle: true,
             dateEcheance: true,
-            ecriture: { select: { date: true, libelle: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
+            ecriture: { select: { date: true, libelle: true, statut: true, estGenereeParCloture: true, estANouveauProvisoire: true } },
           },
         }),
       (l) =>
@@ -211,12 +223,22 @@ export async function originesDesReports(
           dateEcheance: l.dateEcheance ?? null,
           date: l.ecriture.date,
           estReport: l.ecriture.estGenereeParCloture === true || l.ecriture.estANouveauProvisoire === true,
+          provisoire: l.ecriture.estANouveauProvisoire === true,
+          validee: l.ecriture.statut === StatutEcriture.VALIDEE,
         }),
     );
-    const trouvees = apparierAuxOrigines(
-      enCours.map((e) => e.ligne),
-      candidates,
-    );
+    // Un report provisoire ne vient que du livre-journal · un doublon resté
+    // au brouillard ne lui dispute pas sa pièce.
+    const trouvees = new Map([
+      ...apparierAuxOrigines(
+        enCours.filter((e) => e.ligne.provisoire === true).map((e) => e.ligne),
+        candidates.filter((c) => c.validee),
+      ),
+      ...apparierAuxOrigines(
+        enCours.filter((e) => e.ligne.provisoire !== true).map((e) => e.ligne),
+        candidates,
+      ),
+    ]);
     const suivants: typeof enCours = [];
     for (const e of enCours) {
       const o = trouvees.get(e.ligne.id);

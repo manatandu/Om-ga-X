@@ -295,6 +295,20 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
   Livre III, art. 154, « toutes choses égales »), groupe nommé.
 - APRÈS · M1, M1B et B7 · 27 contrôles, 27 concordances.
 
+### Mineur 2 · les origines se cherchent par le filtre du report
+
+- Vérifié · les candidates étaient lues par `lettre: null` seulement, quand
+  `lireComptesDuReport` reporte aussi `lettre: ''` et les lignes d'un groupe
+  à cheval, et l'à-nouveau PROVISOIRE ne lit que le livre-journal.
+- AVANT (main et copie) · MIN2, C31 · facture validée et doublon au
+  brouillard, 2027 ouvert par les à-nouveaux provisoires · ligne datée
+  `2027-01-01`, 45 jours, au lieu de `2026-03-01`, 351 jours (deux
+  candidates pour un report, aucune origine).
+- Correction · une seule définition (`exercice/lignes-reportees-au-detail.ts`),
+  lue par le report et par la recherche des origines ; un report provisoire
+  ne s'apparie qu'aux lignes validées. Un test de source gèle les deux appels.
+- APRÈS · MIN2, M1, B7 · 19 contrôles, 19 concordances.
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,

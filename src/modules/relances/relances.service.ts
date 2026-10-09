@@ -487,6 +487,7 @@ export class RelancesService {
           credit: Number(l.credit),
           libelle: l.libelle,
           date: l.ecriture.date,
+          provisoire: l.ecriture.estANouveauProvisoire === true,
         })),
       );
     }

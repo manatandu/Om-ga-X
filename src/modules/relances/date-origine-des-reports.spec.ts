@@ -29,7 +29,31 @@ const origine = (id: string, debit: number, libelle: string, date: string, estRe
   libelle,
   date: d(date),
   estReport,
+  validee: true,
 });
+
+/**
+ * Le filtre que la doublure HONORE · celui du report au détail
+ * (`lignesReporteesAuDetail`) et les comptes demandés · exercice, compte au
+ * DÉTAIL, puis non lettrée, lettre vide, ou lettrée par un groupe qui touche
+ * un autre exercice (mineur 2).
+ */
+type LigneEnBase = { exerciceId: string; compteId: string; lettre: string | null; exercicesDuGroupe?: string[] };
+type FiltreDuReport = {
+  ecriture: { exerciceId: string };
+  compte?: { modeReportANouveau?: string };
+  compteId: { in: string[] };
+  OR: Array<{ lettre?: string | null; lettrage?: { lignes: { some: { ecriture: { exerciceId: { not: string } } } } } }>;
+};
+const honoreLeReport = (l: LigneEnBase, w: FiltreDuReport) =>
+  l.exerciceId === w.ecriture.exerciceId &&
+  w.compte?.modeReportANouveau === 'DETAIL' &&
+  w.compteId.in.includes(l.compteId) &&
+  w.OR.some((o) =>
+    'lettre' in o
+      ? l.lettre === o.lettre
+      : (l.exercicesDuGroupe ?? []).some((ex) => ex !== o.lettrage!.lignes.some.ecriture.exerciceId.not),
+  );
 
 describe('date d’origine des reports · l’appariement', () => {
   it('rattache le report à la facture de même compte, montant et libellé', () => {
@@ -87,18 +111,18 @@ describe('date d’origine des reports · la lecture sur plusieurs exercices', (
         exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
     },
     ligneEcriture: {
-      findMany: async (a: { where: { ecriture: { exerciceId: string }; compteId: { in: string[] }; lettre: null }; cursor?: unknown }) =>
+      findMany: async (a: { where: FiltreDuReport; cursor?: unknown }) =>
         a.cursor
           ? []
           : lignes
-              .filter((l) => l.exerciceId === a.where.ecriture.exerciceId && a.where.compteId.in.includes(l.compteId) && l.lettre === null)
+              .filter((l) => honoreLeReport(l, a.where))
               .map((l) => ({
                 id: l.id,
                 compteId: l.compteId,
                 debit: l.debit,
                 credit: l.credit,
                 libelle: l.libelle,
-                ecriture: { date: l.date, estGenereeParCloture: l.report, estANouveauProvisoire: false },
+                ecriture: { date: l.date, statut: 'VALIDEE', estGenereeParCloture: l.report, estANouveauProvisoire: false },
               })),
     },
   };
@@ -167,18 +191,20 @@ describe('date d’origine des reports · l’échéance et le libellé recopié
         exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
     },
     ligneEcriture: {
-      findMany: async (a: { where: { ecriture: { exerciceId: string } }; cursor?: unknown }) =>
-        a.cursor || a.where.ecriture.exerciceId !== 'e2026'
+      findMany: async (a: { where: FiltreDuReport; cursor?: unknown }) =>
+        a.cursor
           ? []
-          : lignes.map((l) => ({
-              id: l.id,
-              compteId: 'c1',
-              debit: l.debit,
-              credit: 0,
-              libelle: l.libelle,
-              dateEcheance: l.echeance,
-              ecriture: { date: l.date, libelle: l.libelleEcriture, estGenereeParCloture: false, estANouveauProvisoire: false },
-            })),
+          : lignes
+              .filter((l) => honoreLeReport({ exerciceId: 'e2026', compteId: 'c1', lettre: null }, a.where))
+              .map((l) => ({
+                id: l.id,
+                compteId: 'c1',
+                debit: l.debit,
+                credit: 0,
+                libelle: l.libelle,
+                dateEcheance: l.echeance,
+                ecriture: { date: l.date, libelle: l.libelleEcriture, statut: 'VALIDEE', estGenereeParCloture: false, estANouveauProvisoire: false },
+              })),
     },
   });
 
@@ -229,18 +255,20 @@ describe('date d’origine des reports · le premier exercice tenu (relecture, M
         exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
     },
     ligneEcriture: {
-      findMany: async (a: { where: { ecriture: { exerciceId: string } }; cursor?: unknown }) =>
-        a.cursor || a.where.ecriture.exerciceId !== 'e2026'
+      findMany: async (a: { where: FiltreDuReport; cursor?: unknown }) =>
+        a.cursor
           ? []
-          : lignes2026.map((l) => ({
-              id: l.id,
-              compteId: 'c1',
-              debit: l.debit,
-              credit: 0,
-              libelle: l.libelle,
-              dateEcheance: null,
-              ecriture: { date: l.date, libelle: l.libelleEcriture, estGenereeParCloture: l.report, estANouveauProvisoire: false },
-            })),
+          : lignes2026
+              .filter(() => honoreLeReport({ exerciceId: 'e2026', compteId: 'c1', lettre: null }, a.where))
+              .map((l) => ({
+                id: l.id,
+                compteId: 'c1',
+                debit: l.debit,
+                credit: 0,
+                libelle: l.libelle,
+                dateEcheance: null,
+                ecriture: { date: l.date, libelle: l.libelleEcriture, statut: 'VALIDEE', estGenereeParCloture: l.report, estANouveauProvisoire: false },
+              })),
     },
   };
 
@@ -268,6 +296,88 @@ describe('date d’origine des reports · le premier exercice tenu (relecture, M
     const { origines, introuvables } = await originesDesReports(client as never, 't1', d('2027-01-01'), [report('r-x', 5_000, 'Inconnue')]);
     expect(origines.size).toBe(0);
     expect(introuvables).toEqual(['r-x']);
+  });
+});
+
+/**
+ * RELECTURE « ÉCHECS SILENCIEUX » DU PAQUET 1, MINEUR 2 · LES ORIGINES SE
+ * CHERCHENT PAR LE FILTRE DU REPORT. Les candidates étaient lues par
+ * `lettre: null` seulement, quand le report au détail reporte aussi une
+ * lettre vide et une ligne d'un groupe à cheval, et le report PROVISOIRE ne
+ * lit que le livre-journal. Rejoué sur vraie base (scénario paquet1-b, MIN2) ·
+ * une facture validée et son doublon au brouillard, 2027 ouvert par les
+ * à-nouveaux provisoires · deux candidates pour un report, aucune origine,
+ * la ligne datée du 01/01/2027 et 45 jours de retard au lieu de 351.
+ */
+describe('date d’origine des reports · le filtre du report (relecture, mineur 2)', () => {
+  const exercices = [{ id: 'e2026', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') }];
+  type Ligne = LigneEnBase & { id: string; debit: number; libelle: string; date: Date; statut: 'VALIDEE' | 'BROUILLARD' };
+  const client = (lignes: Ligne[]) => ({
+    exercice: {
+      findFirst: async (a: { where: { dateFin: { lt: Date } } }) =>
+        exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
+    },
+    ligneEcriture: {
+      findMany: async (a: { where: FiltreDuReport & { ecriture: { statut?: string } }; cursor?: unknown }) =>
+        a.cursor
+          ? []
+          : lignes
+              .filter((l) => honoreLeReport(l, a.where) && (!a.where.ecriture.statut || l.statut === a.where.ecriture.statut))
+              .map((l) => ({
+                id: l.id,
+                compteId: l.compteId,
+                debit: l.debit,
+                credit: 0,
+                libelle: l.libelle,
+                dateEcheance: null,
+                ecriture: { date: l.date, libelle: l.libelle, statut: l.statut, estGenereeParCloture: false, estANouveauProvisoire: false },
+              })),
+    },
+  });
+  const base = (l: Partial<Ligne> & { id: string }): Ligne => ({
+    exerciceId: 'e2026',
+    compteId: 'c1',
+    lettre: null,
+    debit: 1_000_000,
+    libelle: 'Facture FV-1',
+    date: d('2026-03-01'),
+    statut: 'VALIDEE',
+    ...l,
+  });
+
+  it('une lettre vide et une ligne d’un groupe à cheval sont des candidates, comme au report', async () => {
+    const { origines, introuvables } = await originesDesReports(
+      client([
+        base({ id: 'vide', lettre: '' }),
+        base({ id: 'cheval', lettre: 'A', libelle: 'Facture FV-2', date: d('2026-09-01'), exercicesDuGroupe: ['e2026', 'e2027'] }),
+        // Lettrée dans 2026 seul · jamais reportée, jamais candidate.
+        base({ id: 'soldee', lettre: 'B', libelle: 'Facture FV-3', exercicesDuGroupe: ['e2026'] }),
+      ]) as never,
+      't1',
+      d('2027-01-01'),
+      [report('r-vide', 1_000_000, 'Facture FV-1'), report('r-cheval', 1_000_000, 'Facture FV-2'), report('r-soldee', 1_000_000, 'Facture FV-3')],
+    );
+    expect(origines.get('r-vide')).toEqual({ date: d('2026-03-01'), id: 'vide' });
+    expect(origines.get('r-cheval')).toEqual({ date: d('2026-09-01'), id: 'cheval' });
+    expect(introuvables).toEqual(['r-soldee']);
+  });
+
+  it('le report PROVISOIRE ne prend que le livre-journal · un doublon au brouillard ne lui dispute pas sa pièce', async () => {
+    const lignes = [base({ id: 'f' }), base({ id: 'f-bis', date: d('2026-04-02'), statut: 'BROUILLARD' })];
+    const provisoire = await originesDesReports(client(lignes) as never, 't1', d('2027-01-01'), [{ ...report('r', 1_000_000, 'Facture FV-1'), provisoire: true }]);
+    expect(provisoire.origines.get('r')).toEqual({ date: d('2026-03-01'), id: 'f' });
+    // Un report de clôture, lui, lit l'exercice entier · deux candidates pour
+    // un report, rien n'est deviné.
+    const cloture = await originesDesReports(client(lignes) as never, 't1', d('2027-01-01'), [report('r', 1_000_000, 'Facture FV-1')]);
+    expect(cloture.introuvables).toEqual(['r']);
+  });
+
+  it('une seule définition · le report et la recherche des origines lisent le même filtre', () => {
+    const fs = require('node:fs') as typeof import('node:fs');
+    const path = require('node:path') as typeof import('node:path');
+    const lire = (f: string) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    expect(lire('exercice/exercice.service.ts')).toMatch(/where: lignesReporteesAuDetail\(ecriture\),/);
+    expect(lire('relances/date-origine-des-reports.ts')).toMatch(/\.\.\.lignesReporteesAuDetail\(\{ tenantId, exerciceId: precedent\.id \}\),/);
   });
 });
 

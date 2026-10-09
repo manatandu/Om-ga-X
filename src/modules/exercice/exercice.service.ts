@@ -1,5 +1,6 @@
 import { ecartsRealisesNonConstates, motifClotureEcartsNonConstates } from '../reglements/ecarts-non-constates';
 import { estContigu, motifCreationNonContigue, motifSuivantNonContigu } from './exercice-contigu';
+import { lignesReporteesAuDetail } from './lignes-reportees-au-detail';
 import { depreciationsOrphelines } from '../creances-douteuses/depreciations-orphelines';
 import { motifClotureDepreciationsOrphelines } from '../creances-douteuses/creances-douteuses';
 import {
@@ -2987,16 +2988,9 @@ async function lireComptesDuReport(
   await lireParLots(
     (curseur) =>
       tx.ligneEcriture.findMany({
-        where: {
-          ecriture,
-          compte: { modeReportANouveau: ModeReportANouveau.DETAIL },
-          OR: [
-            { lettre: null },
-            { lettre: '' },
-            // Lettrée par un groupe qui touche un autre exercice · se lit non lettrée.
-            { lettrage: { lignes: { some: { ecriture: { tenantId: ecriture.tenantId, exerciceId: { not: ecriture.exerciceId } } } } } },
-          ],
-        },
+        // Une seule définition, que la date d'origine d'une ligne reportée
+        // relit aussi (`lignes-reportees-au-detail.ts`, mineur 2).
+        where: lignesReporteesAuDetail(ecriture),
         select: { id: true, compteId: true, ...SELECT_LIGNE_RAN },
         ...pageApres(curseur, LOT_LECTURE),
       }),

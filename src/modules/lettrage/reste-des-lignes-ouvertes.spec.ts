@@ -271,9 +271,24 @@ function lecteur(base: LigneDeBase[], exercices: Array<{ id: string; dateDebut: 
     },
   });
   type Requete = {
-    where: { id?: { in: string[] }; ecriture?: { exerciceId?: string; OR?: unknown }; compteId?: { in: string[] }; lettre?: null };
+    where: {
+      id?: { in: string[] };
+      ecriture?: { exerciceId?: string; OR?: unknown };
+      compteId?: { in: string[] };
+      // Le filtre du report au détail (`lignesReporteesAuDetail`, mineur 2).
+      OR?: Array<{ lettre?: string | null; lettrage?: { lignes: { some: { ecriture: { exerciceId: { not: string } } } } } }>;
+    };
     cursor?: unknown;
   };
+  // Non lettrée, lettre vide, ou d'un groupe dont une ligne est d'un autre
+  // exercice que celui lu.
+  const reporteeAuDetail = (l: LigneDeBase, ou: NonNullable<Requete['where']['OR']>) =>
+    ou.some((o) =>
+      'lettre' in o
+        ? (l.lettre ?? null) === o.lettre
+        : l.lettrageId !== null &&
+          base.some((x) => x.lettrageId === l.lettrageId && (x.exerciceId ?? null) !== o.lettrage!.lignes.some.ecriture.exerciceId.not),
+    );
   return {
     exercice: {
       findFirst: jest.fn(
@@ -292,7 +307,7 @@ function lecteur(base: LigneDeBase[], exercices: Array<{ id: string; dateDebut: 
               (!w.ecriture?.OR || l.aNouveau === true) &&
               (!w.ecriture?.exerciceId || l.exerciceId === w.ecriture.exerciceId) &&
               (!w.compteId || w.compteId.in.includes(l.compteId ?? 'c411')) &&
-              (!('lettre' in w) || (l.lettre ?? null) === null),
+              (!w.OR || reporteeAuDetail(l, w.OR)),
           )
           .map(vue);
       }),
