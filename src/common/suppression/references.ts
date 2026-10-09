@@ -188,16 +188,22 @@ export async function identifiantsUtilises(
   // des comptes non retenus (`comptesNonPersonnalises`). Et la lecture
   // s'arrête dès que chaque identifiant a trouvé un usage · les relations
   // suivantes n'ont plus rien à dire.
+  // PAR LOTS (relecture du 2026-10-09) · PostgreSQL refuse plus de 32 767
+  // paramètres liés, et un dossier de six mille clients à cinq comptes chacun
+  // dépasse le seuil · la liste entière de la fenêtre et de la saisie tombait.
+  const LOT = 10_000;
   let restants = [...new Set(ids)];
   for (const lien of relationsVers(cible, exclure)) {
     if (restants.length === 0) break;
     const delegue = client[lien.modele.charAt(0).toLowerCase() + lien.modele.slice(1)];
-    const where: Record<string, unknown> = { [lien.champ]: { in: restants } };
-    if (lien.cloisonne) where.tenantId = tenantId;
-    const groupes = await delegue.groupBy({ by: [lien.champ], where });
-    for (const g of groupes) {
-      const v = g[lien.champ];
-      if (v) utilises.add(v);
+    for (let i = 0; i < restants.length; i += LOT) {
+      const where: Record<string, unknown> = { [lien.champ]: { in: restants.slice(i, i + LOT) } };
+      if (lien.cloisonne) where.tenantId = tenantId;
+      const groupes = await delegue.groupBy({ by: [lien.champ], where });
+      for (const g of groupes) {
+        const v = g[lien.champ];
+        if (v) utilises.add(v);
+      }
     }
     restants = restants.filter((id) => !utilises.has(id));
   }

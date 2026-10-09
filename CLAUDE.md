@@ -3165,8 +3165,21 @@ le nomme ; l'inventaire, qui compte et ne saisit pas, le prend tel que tapé.
 UN SOUS-COMPTE FONCTIONNE COMME SON COMPTE DU PLAN · états, TVA et contrôles
 le lisent par sa racine, et `CompteService.creer` reprend du compte du plan
 qu'il subdivise lettrage, report, taxe par défaut, comportement de gestion
-et traitement fiscal proposé, sauf ce que la création précise ; jamais le
-bailleur ni la contrepartie de l'État, qui nomment UN fonds. Les états et
+et traitement fiscal proposé (garde du catalogue rejouée), sauf ce que la
+création précise ; jamais le bailleur ni la contrepartie de l'État, qui nomment
+UN fonds, ni un lien de collectif, qui ne se déduit pas du numéro. L'usage se
+lit par regroupement en base, par lots de dix mille, arrêté au premier usage
+trouvé ; les liens de LECTURE (rubrique de note, fiche de comptage, provision
+au registre, demande de confirmation, procès-verbal de caisse, relance, OD
+analytique) ne personnalisent rien (`LIENS_QUI_NE_RETIENNENT_PAS`). Un modèle
+de saisie et un abonnement composent des écritures · leurs comptes sont
+personnalisés, comme ceux de la saisie. Les sous-comptes de taxe que le
+routage de la TVA impose au SYSCOHADA (`COMPTES_DE_TAXE_ROUTES_SYSCOHADA`)
+sont semés et migrés retenus, et « Ne garder que les comptes utilisés » les
+épargne · la ligne de TVA posée d'office y va. Le Plan comptable dit le
+compte du plan officiel et le compte SUBDIVISÉ (« Subdivisé », que la saisie
+refuse), compte ce que l'option masque, et la boîte n'adopte pas un compte
+subdivisé. Les états et
 les imports lisent tout le plan (§ 7). Une liste vide dit « personnalisez-le
 dans Plan comptable » ou « ouvrez-le », un choix unique se présélectionne. NON FILTRÉE · la liste où le texte, et le serveur par un refus
 nommé, n'admet qu'UNE racine que l'opération mouvemente souvent la PREMIÈRE

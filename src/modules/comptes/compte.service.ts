@@ -13,7 +13,6 @@ import { naturesDuDossier } from './natures-compte.service';
 import { LIBELLES_NATURE, natureDe } from './natures-compte';
 import { classeDuNumero } from './classe-du-numero';
 import { COMPTES_DE_TAXE_ROUTES_SYSCOHADA } from '../tva/routage-tva';
-import { collectifsDesPanoplies } from '../tiers/collectifs-tiers';
 import { comptesUtilises, estPropose } from './comptes-proposes';
 import { compteSemeSubdivise, comptesDuPlanSubdivises, estCompteSeme, numerosSemes, racineDuCompteSeme, sousComptePropose } from './subdivisions-du-plan';
 
@@ -214,14 +213,15 @@ export class CompteService {
     // du 2026-10-09, point 4 · « ces comptes personnalisés fonctionnent
     // exactement comme leur compte racine ») · les états, la TVA et les
     // contrôles le lisent déjà par sa racine ; ses RÉGLAGES (lettrage, report
-    // à-nouveau, taux de taxe par défaut, comportement de gestion) sont repris
-    // du compte du plan qu'il subdivise, sauf ce que la création précise.
-    // Trois choses ne se reprennent pas · le TRAITEMENT FISCAL, décision du
-    // cabinet sur SON compte (« le logiciel se souvient, il ne qualifie
-    // pas » · un sous-compte s'ouvre souvent pour isoler une part qui ne se
-    // traite pas comme le reste) ; le rattachement à un bailleur et la
-    // contrepartie de l'État, qui nomment UN fonds. Sous le collectif d'une
-    // panoplie de tiers, il s'y rattache comme le compte que la panoplie ouvre.
+    // à-nouveau, taux de taxe par défaut, comportement de gestion, traitement
+    // fiscal) sont repris du compte du plan qu'il subdivise, sauf ce que la
+    // création précise. Le TRAITEMENT FISCAL est la mémoire de la décision du
+    // cabinet sur le compte du plan · non repris, la saisie passée au
+    // sous-compte sortait des propositions de réintégration sans un mot ; il
+    // reste une proposition, modifiable sur la fiche (relecture du 2026-10-09,
+    // R1). Ne se reprennent pas · le rattachement à un bailleur et la
+    // contrepartie de l'État, qui nomment UN fonds ; ni le lien à un
+    // collectif, qui ne se déduit jamais du numéro (schema.prisma).
     const numeroDuPlan = compteSemeSubdivise(tenant.referentiel, dto.numero);
     const duPlan = numeroDuPlan
       ? await this.prisma.compte.findUnique({
@@ -233,10 +233,13 @@ export class CompteService {
             tauxTvaDefautId: true,
             comportementGestion: true,
             partVariableGestionPct: true,
+            codeRetraitementFiscal: true,
           },
         })
       : null;
-    const sousUnCollectif = !!duPlan && !!numeroDuPlan && collectifsDesPanoplies(tenant.referentiel).has(numeroDuPlan);
+    // Le code hérité passe la même garde que le code saisi · un code sorti du
+    // catalogue depuis ne se recopie pas.
+    if (duPlan && dto.codeRetraitementFiscal === undefined) this.verifierCodeRetraitement(duPlan.codeRetraitementFiscal);
     return this.prisma.compte.create({
       data: {
         ...dto,
@@ -252,9 +255,10 @@ export class CompteService {
               // Non portés par la création · repris tels quels, modifiables ensuite.
               comportementGestion: duPlan.comportementGestion,
               partVariableGestionPct: duPlan.partVariableGestionPct,
+              codeRetraitementFiscal:
+                dto.codeRetraitementFiscal !== undefined ? dto.codeRetraitementFiscal : duPlan.codeRetraitementFiscal,
             }
           : {}),
-        ...(sousUnCollectif && duPlan ? { collectifId: duPlan.id } : {}),
       },
     });
   }
@@ -359,8 +363,11 @@ export class CompteService {
     // · le dépersonnaliser fermerait à la saisie le sous-compte qu'il vient
     // d'ouvrir.
     const { referentiel } = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
+    // Les sous-comptes de taxe que le routage de la TVA impose restent
+    // personnalisés · la ligne posée d'office y va (routage-tva.ts).
+    const gardes = referentiel === Referentiel.SYSCOHADA ? new Set(COMPTES_DE_TAXE_ROUTES_SYSCOHADA) : new Set<string>();
     const { count } = await this.prisma.compte.updateMany({
-      where: { tenantId, estRetenu: true, numero: { in: numerosSemes(referentiel) } },
+      where: { tenantId, estRetenu: true, numero: { in: numerosSemes(referentiel).filter((n) => !gardes.has(n)) } },
       data: { estRetenu: false },
     });
     return { comptesDesretenus: count };

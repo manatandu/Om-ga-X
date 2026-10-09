@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { BadRequestException } from '@nestjs/common';
 import { CompteService } from './compte.service';
+import { CATALOGUE_RETRAITEMENTS } from '../fiscalite/catalogue-retraitements';
 import { comptesNonPersonnalises, motifComptesNonPersonnalises } from './comptes-proposes';
 import { PLAN_COMPTES_SYCEBNL } from './compte-seed';
 import { PLAN_COMPTES_SYSCOHADA } from './compte-seed-syscohada';
@@ -196,7 +197,7 @@ describe('un sous-compte fonctionne comme son compte du plan', () => {
     tauxTvaDefautId: 'tva-16',
     comportementGestion: 'FIXE',
     partVariableGestionPct: null,
-    codeRetraitementFiscal: 'AMENDES',
+    codeRetraitementFiscal: CATALOGUE_RETRAITEMENTS[0].code,
   };
 
   it('reprend lettrage, report, taxe et comportement de gestion du compte du plan qu’il subdivise', async () => {
@@ -210,29 +211,20 @@ describe('un sous-compte fonctionne comme son compte du plan', () => {
       tauxTvaDefautId: 'tva-16',
       comportementGestion: 'FIXE',
     });
-    // Le traitement fiscal est la décision du cabinet sur SON compte · jamais
-    // hérité. Le fonds d'un bailleur non plus · il en nomme UN.
-    expect(create.mock.calls[0][0].data).not.toHaveProperty('codeRetraitementFiscal');
+    // Le traitement fiscal est repris · non repris, la saisie passée au
+    // sous-compte sortait des propositions de réintégration sans un mot (R1).
+    expect(create.mock.calls[0][0].data).toMatchObject({ codeRetraitementFiscal: DU_PLAN.codeRetraitementFiscal });
+    // Le fonds d'un bailleur, non · il en nomme UN. Ni un lien de collectif,
+    // qui ne se déduit jamais du numéro.
     expect(create.mock.calls[0][0].data).not.toHaveProperty('bailleurId');
     expect(create.mock.calls[0][0].data).not.toHaveProperty('porteFondsContrepartieEtat');
-    // Un compte de banque n'est pas le collectif d'une panoplie de tiers.
     expect(create.mock.calls[0][0].data).not.toHaveProperty('collectifId');
   });
 
-  it('sous le collectif d’une panoplie de tiers, le compte s’y rattache comme celui que la panoplie ouvre', async () => {
-    const create = jest.fn(async ({ data }: { data: Record<string, unknown> }) => data);
-    const p = {
-      tenant: { findUniqueOrThrow: jest.fn(async () => ({ id: 't1', longueurCompte: 8, referentiel: 'SYSCOHADA' })) },
-      compte: {
-        findUnique: jest.fn(async ({ where }: { where: { tenantId_numero: { numero: string } } }) =>
-          where.tenantId_numero.numero === '40110000' ? { id: 'c4011', ...DU_PLAN } : null,
-        ),
-        create,
-      },
-      natureCompte: { findMany: jest.fn(async () => []), createMany: jest.fn(async () => ({ count: 0 })), count: jest.fn(async () => 7) },
-    };
-    await new CompteService(p as never).creer('t1', { numero: '40110001', intitule: 'Nova Services' } as never);
-    expect(create.mock.calls[0][0].data).toMatchObject({ numero: '40110001', collectifId: 'c4011' });
+  it('un traitement fiscal hérité sorti du catalogue est refusé comme un code saisi', async () => {
+    const { svc, create } = monde({ ...DU_PLAN, codeRetraitementFiscal: 'CODE_DISPARU' });
+    await expect(svc.creer('t1', { numero: '52110001', intitule: 'Rawbank' } as never)).rejects.toThrow(/Code de retraitement fiscal inconnu : CODE_DISPARU/);
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('ce que la création précise prime sur le compte du plan', async () => {
@@ -321,6 +313,15 @@ describe('ne garder que les utilisés ne touche qu’au plan officiel', () => {
     expect(where.estRetenu).toBe(true);
     expect(new Set(where.numero.in)).toEqual(new Set(numerosSemes('SYCEBNL' as never)));
     expect(where.numero.in).not.toContain('52110001');
+  });
+
+  it('au SYSCOHADA, les sous-comptes de taxe routés restent personnalisés', async () => {
+    const updateMany = jest.fn(async () => ({ count: 3 }));
+    const p = { tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: 'SYSCOHADA' })) }, compte: { updateMany } };
+    await new CompteService(p as never).neRetenirQueLesUtilises('t1');
+    const where = (updateMany.mock.calls[0] as unknown as [{ where: { numero: { in: string[] } } }])[0].where;
+    for (const n of ['44540000', '44310000']) expect(where.numero.in).not.toContain(n);
+    expect(where.numero.in).toContain('62210000');
   });
 });
 
