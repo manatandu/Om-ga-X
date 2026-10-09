@@ -846,6 +846,9 @@ model Tenant {
   imputationsPaiements         ImputationPaiement[]
   verrouCreancesDouteuses      VerrouCreancesDouteuses?
   constatsImpotResultat        ConstatImpotResultat[]
+  comptesVirementFonds         CompteVirementFonds[]
+  virementsFonds               VirementFonds[]
+  piecesVirementFonds          PieceVirementFonds[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -1298,6 +1301,9 @@ model Compte {
 
   lignesLotVirement LigneLotVirement[]
 
+  /// Compte de passage (585) d'un sens de virement de fonds · virement-fonds/.
+  virementFonds CompteVirementFonds?
+
   @@unique([tenantId, numero])
   // Le résultat fiscal ne cherche que les comptes qui portent un code de
   // retraitement · sans cet index il balaie tout le plan du dossier.
@@ -1357,6 +1363,8 @@ model Journal {
   modelesAbonnement ModeleAbonnement[]
   modelesSaisie     ModeleSaisie[]
   ribsBanque        RibBanque[]
+  virementsFondsOrigine     VirementFonds[] @relation("VirementFondsJournalOrigine")
+  virementsFondsDestination VirementFonds[] @relation("VirementFondsJournalDestination")
 
   @@unique([tenantId, code])
   @@map("journaux")
@@ -1675,6 +1683,7 @@ model Exercice {
   notesIfrs                       NotesIfrs[]
   simulationsReference            SimulationBudgetaire[]             @relation("SimulationReference")
   simulationsCible                SimulationBudgetaire[]             @relation("SimulationCible")
+  virementsFonds                  VirementFonds[]
 
   @@unique([tenantId, dateDebut, dateFin])
   @@map("exercices")
@@ -1916,6 +1925,12 @@ model Ecriture {
   /// C2 · les bulletins annulés après passation que cette écriture reprend
   /// en négatif.
   bulletinsPaieRepris BulletinPaie[] @relation("NegatifBulletinPaie")
+  /// Virement de fonds · la pièce du journal d'origine, celle du journal de
+  /// destination, et leurs inscriptions en négatif à l'annulation.
+  virementFondsOrigine            VirementFonds? @relation("VirementFondsEcritureOrigine")
+  virementFondsDestination        VirementFonds? @relation("VirementFondsEcritureDestination")
+  virementFondsNegatifOrigine     VirementFonds? @relation("VirementFondsNegatifOrigine")
+  virementFondsNegatifDestination VirementFonds? @relation("VirementFondsNegatifDestination")
 
   @@index([tenantId, exerciceId, date])
   @@index([tenantId, statut], map: "ecritures_statut_idx")
@@ -10023,4 +10038,111 @@ model DeclarationDeviseANouveau {
 
   @@index([tenantId, exerciceId])
   @@map("declarations_devise_a_nouveau")
+}
+
+/// VIREMENT DE FONDS (demande de Manasse du 2026-10-09) · d'une banque ou d'une
+/// caisse vers une autre, chacune tenue par son journal de trésorerie. Le sens
+/// se lit sur les comptes des deux journaux (57 · caisse ; tout autre compte
+/// de trésorerie · banque et assimilés).
+enum SensVirementFonds {
+  BANQUE_BANQUE
+  BANQUE_CAISSE
+  CAISSE_BANQUE
+  CAISSE_CAISSE
+}
+
+/// Nature de la pièce justificative du virement (AUDCIF art. 17, 3° et 5°).
+enum NaturePieceVirement {
+  BORDEREAU_VERSEMENT
+  CHEQUE
+  ORDRE_VIREMENT
+  AVIS_DEBIT_CREDIT
+  BON_CAISSE
+  AUTRE
+}
+
+/// LES QUATRE COMPTES DE PASSAGE, un par sens · sous-comptes du 585 « Virements
+/// de fonds » (AUDCIF Titre VII et SYCEBNL Partie 2 ch. 3, compte 58 · « comptes
+/// de passage », « soldés au terme de leur utilisation »), personnalisés par
+/// défaut. Le lien se tient ici, jamais par le numéro, qu'un dossier peut avoir
+/// déjà pris.
+model CompteVirementFonds {
+  id       String            @id @default(uuid())
+  tenantId String
+  tenant   Tenant            @relation(fields: [tenantId], references: [id])
+  sens     SensVirementFonds
+  compteId String            @unique
+  compte   Compte            @relation(fields: [compteId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, sens])
+  @@map("comptes_virement_fonds")
+}
+
+/// UN VIREMENT · deux pièces passées ensemble, une dans chaque journal (D 585 /
+/// C trésorerie d'origine ; D trésorerie de destination / C 585), le 585 soldé
+/// à chaque virement. Jamais supprimé · annulé avec son motif, ses pièces au
+/// brouillard retirées, validées inscrites en négatif (AUDCIF art. 20, al. 2).
+model VirementFonds {
+  id                           String               @id @default(uuid())
+  tenantId                     String
+  tenant                       Tenant               @relation(fields: [tenantId], references: [id])
+  exerciceId                   String
+  exercice                     Exercice             @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  date                         DateTime             @db.Date
+  montant                      Decimal              @db.Decimal(18, 2)
+  sens                         SensVirementFonds
+  journalOrigineId             String
+  journalOrigine               Journal              @relation("VirementFondsJournalOrigine", fields: [journalOrigineId], references: [id], onDelete: Restrict)
+  journalDestinationId         String
+  journalDestination           Journal              @relation("VirementFondsJournalDestination", fields: [journalDestinationId], references: [id], onDelete: Restrict)
+  /// Pièce justificative · nature, référence, date (AUDCIF art. 17, 3° et 5°).
+  naturePiece                  NaturePieceVirement
+  referencePiece               String               @db.VarChar(100)
+  datePiece                    DateTime             @db.Date
+  objet                        String               @db.VarChar(200)
+  /// Personne qui a déposé ou retiré les espèces · exigée dès qu'une caisse est en jeu.
+  porteur                      String?              @db.VarChar(120)
+  observations                 String?              @db.VarChar(500)
+  /// Nulles une fois les pièces au brouillard retirées par l'annulation.
+  ecritureOrigineId            String?              @unique
+  ecritureOrigine              Ecriture?            @relation("VirementFondsEcritureOrigine", fields: [ecritureOrigineId], references: [id], onDelete: Restrict)
+  ecritureDestinationId        String?              @unique
+  ecritureDestination          Ecriture?            @relation("VirementFondsEcritureDestination", fields: [ecritureDestinationId], references: [id], onDelete: Restrict)
+  /// Numéros des deux pièces, gardés pour la trace quand elles sont retirées.
+  piecesPassees                String?              @db.VarChar(200)
+  createdBy                    String
+  createdAt                    DateTime             @default(now())
+  annuleLe                     DateTime?
+  annulePar                    String?
+  motifAnnulation              String?              @db.VarChar(500)
+  ecritureNegatifOrigineId     String?              @unique
+  ecritureNegatifOrigine       Ecriture?            @relation("VirementFondsNegatifOrigine", fields: [ecritureNegatifOrigineId], references: [id], onDelete: Restrict)
+  ecritureNegatifDestinationId String?              @unique
+  ecritureNegatifDestination   Ecriture?            @relation("VirementFondsNegatifDestination", fields: [ecritureNegatifDestinationId], references: [id], onDelete: Restrict)
+  pieces                       PieceVirementFonds[]
+
+  @@index([tenantId, exerciceId, date])
+  @@map("virements_fonds")
+}
+
+/// LES PIÈCES JOINTES D'UN VIREMENT · le scan du bordereau, du chèque, de
+/// l'avis · en base, comme les documents des tiers (types lus dans les octets,
+/// 5 Mo, téléchargement seul).
+model PieceVirementFonds {
+  id         String        @id @default(uuid())
+  tenantId   String
+  tenant     Tenant        @relation(fields: [tenantId], references: [id])
+  virementId String
+  virement   VirementFonds @relation(fields: [virementId], references: [id], onDelete: Restrict)
+  nomFichier String
+  typeMime   String
+  taille     Int
+  empreinte  String
+  contenu    Bytes
+  deposePar  String?
+  createdAt  DateTime      @default(now())
+
+  @@unique([virementId, empreinte])
+  @@index([tenantId, virementId])
+  @@map("pieces_virement_fonds")
 }
