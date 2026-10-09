@@ -764,3 +764,13 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   l'instant »), les organismes sociaux, l'État, les associés et bailleurs,
   les débiteurs et créditeurs divers (43 à 47), dont les sous-comptes se
   relisent dans les deux plans avant tout code.
+  Relevés en attente du second tour (non bloquants) · (1) la création d'un
+  tiers prend le verrou du journal d'audit avant celui de la panoplie, la
+  complétion l'inverse · deux gestes simultanés du même dossier peuvent se
+  bloquer, PostgreSQL en arrête un (relancer suffit) ; prendre le verrou de
+  la panoplie avant `tiers.create`. (2) l'échec imprévu d'un tiers pendant la
+  complétion du dossier est nommé à l'écran sans être consigné au journal du
+  serveur. (3) quand le compte d'une créance est le collectif commun encore
+  rattaché à un ancien tiers, le 416 de ce tiers est proposé pour un solde
+  qui peut appartenir à d'autres clients · ne rien proposer quand le compte
+  source n'est pas un compte individuel.
