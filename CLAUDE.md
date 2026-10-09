@@ -4404,6 +4404,22 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   `$transaction(` écrit ailleurs, forme TABLEAU comprise (elle n'a pas de
   contexte asynchrone).
 
+- **VMG NE VOIT JAMAIS LES INFORMATIONS D'UN CLIENT** (décision de Manasse
+  du 2026-10-09 · « c'est confidentiel et non discutable »). L'accès
+  exclusif de VMG porte sur les FONCTIONNALITÉS, jamais sur les données
+  d'autrui · son dossier d'éditeur reçoit tous les modules
+  (`modulesServis`), et la console ne montre d'un cabinet que sa fiche
+  commerciale et sa licence. Le mot de passe provisoire d'un administrateur
+  de cabinet est TIRÉ AU SORT par le serveur et part au seul courriel de
+  l'administrateur (`reinitialisation-admin.ts`), DIRECTEMENT et jamais par
+  la file, dont le corps reste lisible par tout le dossier
+  (`CourrierService.envoyerUnSecret`, qui n'y garde que le texte sans le
+  secret) · sans messagerie, la réinitialisation est refusée et rien ne
+  change. Une requête de production rend des identifiants et des nombres,
+  jamais un montant, un compte, un objet ou un motif
+  (`docs/requetes-production-paquet-1.md`) ; une correction de dossier se
+  fait par le client, dans son dossier.
+
 - **Le dossier de l'éditeur ne se coupe jamais** · `TypeLicence.PROPRIETAIRE`.
   C'est un verrou de sûreté avant d'être une formule commerciale : VMG
   Consulting possède le logiciel, ne paie rien, et c'est depuis SON dossier que

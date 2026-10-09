@@ -1,4 +1,4 @@
-import { ModuleOptionnel } from '@prisma/client';
+import { ModuleOptionnel, TypeLicence } from '@prisma/client';
 
 /**
  * MODULES ACTIVABLES PAR DOSSIER (décision de Manasse du 2026-09-28). Le
@@ -32,4 +32,20 @@ export const MODULES_OPTIONNELS: readonly ModuleOptionnel[] = [
 /** Liste normalisée · ordre du catalogue, sans doublon. */
 export function normaliserModules(modules: readonly ModuleOptionnel[]): ModuleOptionnel[] {
   return MODULES_OPTIONNELS.filter((m) => modules.includes(m));
+}
+
+/**
+ * LE DOSSIER DE L'ÉDITEUR VOIT TOUT (décision de Manasse du 2026-10-09 · VMG
+ * Consulting « a accès à toutes les fonctionnalités du logiciel »). Ce sont
+ * les FONCTIONNALITÉS, jamais les données d'un client · rien d'ici n'ouvre un
+ * autre dossier. Servi à la lecture plutôt qu'écrit en base · le dossier
+ * désigné avant cette règle n'a rien à migrer, et décocher un module dans ses
+ * paramètres ne le lui retire pas.
+ */
+export function modulesServis(
+  modulesActives: readonly ModuleOptionnel[] | null | undefined,
+  typeLicence: TypeLicence | null | undefined,
+): ModuleOptionnel[] {
+  if (typeLicence === TypeLicence.PROPRIETAIRE) return [...MODULES_OPTIONNELS];
+  return normaliserModules(modulesActives ?? []);
 }

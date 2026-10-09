@@ -22,7 +22,7 @@ import { GROUPES_ACTIVITES_SYSCOHADA } from '../etats-financiers-syscohada/corre
 import { dateSaisieOuEffacement, jourSaisiOuEffacement } from './date-effacable';
 import { jourDeKinshasa } from '../../common/echeance';
 import { jourFr } from '../exercice/portefeuille-etat';
-import { normaliserModules } from './modules-optionnels';
+import { modulesServis, normaliserModules } from './modules-optionnels';
 import { Prisma, ModuleOptionnel, FormeJuridiqueEbnl,
   FormeJuridiqueSyscohada, JeuEtatsFinanciersSycebnl, MethodeCotisations, Referentiel, RegimeExigibiliteTva, SystemeComptableSyscohada, TypeLicence,
   MethodeInventaireStocks, RegimeLiquidation,
@@ -101,7 +101,10 @@ export class TenantService {
    */
   async demarrage(tenantId: string) {
     const [tenant, exercices, journaux, tiers, ecritures] = await Promise.all([
-      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { modulesActives: true } }),
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { modulesActives: true, licence: { select: { type: true } } },
+      }),
       this.prisma.exercice.count({ where: { tenantId } }),
       this.prisma.journal.count({ where: { tenantId } }),
       this.prisma.tiers.count({ where: { tenantId } }),
@@ -110,11 +113,14 @@ export class TenantService {
     if (!tenant) {
       throw new NotFoundException('Dossier introuvable');
     }
-    return { exercices, journaux, tiers, ecritures, modulesActives: normaliserModules(tenant.modulesActives) };
+    return { exercices, journaux, tiers, ecritures, modulesActives: modulesServis(tenant.modulesActives, tenant.licence?.type) };
   }
 
   async parametres(tenantId: string) {
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: { licence: { select: { type: true } } },
+    });
     if (!tenant) {
       throw new NotFoundException('Dossier introuvable');
     }
@@ -212,7 +218,7 @@ export class TenantService {
       // `null` = pas encore dit · voir `faits-declares.ts`.
       assujettissementTva: faitAssujettissementTva(tenant),
       venteBiensServices: tenant.venteBiensServices,
-      modulesActives: normaliserModules(tenant.modulesActives ?? []),
+      modulesActives: modulesServis(tenant.modulesActives, tenant.licence?.type),
       dateOptionTva: tenant.dateOptionTva,
       regimeExigibiliteTva: tenant.regimeExigibiliteTva,
       dateAutorisationDebitsTva: tenant.dateAutorisationDebitsTva,

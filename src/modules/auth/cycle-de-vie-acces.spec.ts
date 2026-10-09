@@ -367,6 +367,10 @@ describe('5 · la chaîne de recours va jusqu’au bout', () => {
    * retombait sur un UPDATE SQL en production, c'est-à-dire exactement ce que
    * B5 devait supprimer, remonté d'un cran.
    */
+  // La messagerie est posée · le mot de passe tiré au sort part au seul
+  // administrateur (décision de Manasse du 2026-10-09), et le corps envoyé est
+  // capturé pour relire le mot de passe effectivement posé.
+  const envoyerUnSecret = jest.fn(async (..._args: unknown[]) => ({ id: 'm1', statut: 'ENVOYE', erreur: null }));
   const service = (admin: unknown, capture: { data?: Record<string, unknown> }) =>
     new (require('../plateforme/plateforme.service').PlateformeService)(
       {
@@ -380,20 +384,24 @@ describe('5 · la chaîne de recours va jusqu’au bout', () => {
       } as never,
       { get: () => undefined } as never,
       undefined as never,
+      undefined,
+      { etatDuTransport: () => ({ configure: true }), envoyerUnSecret } as never,
     );
 
   it('l’opérateur réinitialise l’administrateur d’un cabinet, avec les trois mêmes effets', async () => {
     const capture: { data?: Record<string, unknown> } = {};
+    envoyerUnSecret.mockClear();
     const resultat = await service({ id: 'u1', email: 'chef@cabinet.cd' }, capture).reinitialiserAdmin('d-1', {
       email: 'chef@cabinet.cd',
-      motDePasseProvisoire: 'provisoire-tres-long',
     });
-    expect(resultat).toEqual({ reinitialise: true, email: 'chef@cabinet.cd' });
+    expect(resultat).toEqual({ reinitialise: true, email: 'chef@cabinet.cd', courriel: 'ENVOYE' });
+    const corps = (envoyerUnSecret.mock.calls[0][1] as { corps: string }).corps;
+    const envoye = /Mot de passe provisoire · (\S+)/.exec(corps)![1];
     expect(capture.data!.doitChangerMotDePasse).toBe(true);
     expect(capture.data!.sessionsInvalidesAvant).toBeInstanceOf(Date);
     expect(capture.data!.verrouilleJusqua).toBeNull();
     expect(capture.data).toMatchObject({ tentativesEchouees: 0, dernierEchecLe: null });
-    expect(await bcrypt.compare('provisoire-tres-long', capture.data!.motDePasse as string)).toBe(true);
+    expect(await bcrypt.compare(envoye, capture.data!.motDePasse as string)).toBe(true);
     // Le second facteur tombe avec le mot de passe · sinon un administrateur
     // qui a perdu son téléphone et ses codes resterait dehors pour de bon.
     expect(capture.data).toMatchObject({ secretDoubleAuth: null, doubleAuthActiveDepuis: null, codesSecoursDoubleAuth: [] });
@@ -407,7 +415,6 @@ describe('5 · la chaîne de recours va jusqu’au bout', () => {
     await expect(
       service(null, capture).reinitialiserAdmin('d-1', {
         email: 'comptable@cabinet.cd',
-        motDePasseProvisoire: 'provisoire-tres-long',
       }),
     ).rejects.toThrow(/administrateur/);
     expect(capture.data).toBeUndefined();

@@ -5,6 +5,14 @@ production. Aucune session ne les joue · la production n'est touchée que par
 Manasse (CLAUDE.md, § 5). Chaque requête a d'abord été éprouvée sur une base
 jetable, à travers une clôture (CLAUDE.md, § 10).
 
+AUCUNE NE MONTRE UNE DONNÉE D'UN CLIENT (décision de Manasse du 2026-10-09 ·
+« VMG ne doit pas voir les informations du client, c'est confidentiel et non
+discutable »). Elles rendent des IDENTIFIANTS, des dates et des NOMBRES · ni
+montant, ni compte, ni objet, ni motif, ni nom de dossier. Ce qui doit être
+gardé avant une purge est copié DANS la base, sans être lu à l'écran. La
+correction d'un dossier se fait par le CLIENT, dans son dossier, à qui l'on
+transmet l'identifiant de la pièce concernée.
+
 Toutes se jouent sur l'endpoint DIRECT (`API_DATABASE_URL`), jamais sur
 l'endpoint poolé, et la chaîne de connexion ne s'affiche ni ne se recopie
 nulle part (CLAUDE.md, § 4).
@@ -25,18 +33,29 @@ toute lecture). Restent les lignes déjà écrites, s'il y en a.
    WHERE e."tenantId" <> p."tenantId";
    ```
 
-2. Lire les lignes et en garder une copie avant tout changement. Une ligne qui
-   porte un travail réel (montants non nuls, statut `COMPTABILISEE`) est
-   montrée à Manasse avant la purge.
+2. Garder une copie DANS la base, sans la lire, puis compter par dossier. La
+   copie permet de rendre une ligne si un client la réclame ; elle se
+   supprime une fois la purge consignée. Le décompte dit seulement combien de
+   lignes portent un travail (un montant non nul ou le statut
+   `COMPTABILISEE`), jamais lequel.
 
    ```sql
-   SELECT p.id, p."tenantId", p."exerciceId", e."tenantId" AS "tenantIdDeLExercice",
-          p.objet, p.nature, p.statut, p."compteId", p."montantOuverture",
-          p."dotationsExercice", p."createdAt", p."createdBy"
+   CREATE TABLE copie_r1_provisions AS
+   SELECT p.*
    FROM provisions_risques_charges p
    JOIN exercices e ON e.id = p."exerciceId"
    WHERE e."tenantId" <> p."tenantId";
+
+   SELECT "tenantId" AS dossier_id,
+          count(*) AS lignes,
+          count(*) FILTER (WHERE statut = 'COMPTABILISEE'
+                            OR "montantOuverture" <> 0 OR "dotationsExercice" <> 0) AS lignes_avec_travail
+   FROM copie_r1_provisions
+   GROUP BY "tenantId";
    ```
+
+   Un dossier qui a des lignes avec travail est prévenu par son identifiant ·
+   c'est son administrateur qui ressaisit la provision dans son exercice.
 
 3. Purger dans une transaction, relire, puis valider ou défaire.
 
@@ -48,11 +67,11 @@ toute lecture). Restent les lignes déjà écrites, s'il y en a.
    -- La requête 1, rejouée ici, doit rendre 0.
    ```
 
-   `COMMIT` si le nombre de lignes supprimées est celui de l'étape 2, sinon
-   `ROLLBACK`.
+   `COMMIT` si le nombre de lignes supprimées est celui de la copie de
+   l'étape 2, sinon `ROLLBACK`.
 
 4. Le journal d'audit n'est pas retouché · la purge est consignée au suivi,
-   avec la copie de l'étape 2.
+   par le décompte de l'étape 2, jamais par le contenu des lignes.
 
 Éprouvée sur la base jetable du banc (scénario S6, `PURGE_R1`).
 
@@ -71,10 +90,11 @@ modifient rien · elles tournent dans une transaction en LECTURE SEULE,
 annulée à la fin (une écriture y est refusée par la base).
 
 1. « Rectifier ». Une ligne par dossier · l'exercice N+1 rectifié, la pièce du
-   report, la voie (MODULE, DECLAREE, ou DECLAREE (retirée)) et les lignes de
-   la contre-passation annulées. Limite · une ligne d'import de même compte et
-   de même montant qu'une ligne de la contre-passation la ferait sortir aussi ;
-   chaque ligne rendue se relit sur le report.
+   report, la voie (MODULE, DECLAREE, ou DECLAREE (retirée)) et le NOMBRE de
+   lignes de la contre-passation annulées, sans leurs comptes ni leurs
+   montants. Limite · une ligne d'import de même compte et de même montant
+   qu'une ligne de la contre-passation la ferait sortir aussi ; c'est le
+   client qui relit le report dans son dossier.
 
 <!-- requete-m5 · le scénario du banc (point m5) exécute ce bloc tel quel -->
 ```sql
@@ -132,26 +152,22 @@ contre_passations AS (
     AND EXISTS (SELECT 1 FROM lignes_ecriture le
                 WHERE le."ecritureId" = r."ecritureEcartsId" AND le."compteId" = lx."compteId")
 )
-SELECT t.id AS dossier_id,
-       t.nom AS dossier,
+SELECT n.tenant_id AS dossier_id,
        ex."dateDebut"::date AS exercice_ouvert_le,
+       rep.id AS report,
        rep."numeroPiece" AS piece_du_report,
        cp.voie,
        cp.reevaluation_id,
        cp.ecriture_id AS contre_passation,
-       count(DISTINCT n.ligne_id) AS lignes_inscrites_en_negatif,
-       string_agg(DISTINCT c.numero || ' ' || to_char(abs(n.debit + n.credit), 'FM999999999990.00'), ', '
-                  ORDER BY c.numero || ' ' || to_char(abs(n.debit + n.credit), 'FM999999999990.00')) AS comptes_et_montants
+       count(DISTINCT n.ligne_id) AS lignes_inscrites_en_negatif
 FROM negatifs n
 JOIN contre_passations cp
   ON cp.tenant_id = n.tenant_id AND cp.exercice_id = n.exercice_id AND cp.compte_id = n.compte_id
  AND cp.debit = -n.debit AND cp.credit = -n.credit
 JOIN ecritures rep ON rep.id = n.report_id
 JOIN exercices ex ON ex.id = n.exercice_id
-JOIN tenants t ON t.id = n.tenant_id
-JOIN comptes c ON c.id = n.compte_id
-GROUP BY t.id, t.nom, ex."dateDebut", rep."numeroPiece", cp.voie, cp.reevaluation_id, cp.ecriture_id
-ORDER BY t.nom, ex."dateDebut";
+GROUP BY n.tenant_id, ex."dateDebut", rep.id, rep."numeroPiece", cp.voie, cp.reevaluation_id, cp.ecriture_id
+ORDER BY dossier_id, exercice_ouvert_le;
 ROLLBACK;
 ```
 
@@ -189,19 +205,15 @@ WITH contre_passations AS (
     AND (tr.e->>'ecritureId') IS DISTINCT FROM r."contrePassationDeclareeId"
 )
 SELECT DISTINCT
-       t.id AS dossier_id,
-       t.nom AS dossier,
+       cp.tenant_id AS dossier_id,
        n."dateFin"::date AS exercice_clos_le,
        cp.reevaluation_id,
        cp.voie,
-       x.id AS contre_passation,
-       n."motifOuvertureSuivanteConservee" AS motif,
-       n."ecartsOuvertureSuivanteConservee"::text AS positions_figees
+       x.id AS contre_passation
 FROM contre_passations cp
 JOIN exercices n ON n.id = cp.exercice_id
 JOIN ecritures x ON x.id = cp.ecriture_id
 JOIN exercices n1 ON n1.id = x."exerciceId" AND n1."dateDebut" > n."dateFin"
-JOIN tenants t ON t.id = cp.tenant_id
 WHERE n."motifOuvertureSuivanteConservee" IS NOT NULL
   AND (x.date = n1."dateDebut" OR x."dateValeur" = n1."dateDebut")
   AND NOT EXISTS (
@@ -217,7 +229,7 @@ WHERE n."motifOuvertureSuivanteConservee" IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM lignes_ecriture lo JOIN comptes co ON co.id = lo."compteId"
                       WHERE lo."ecritureId" = o.id AND co.classe IN ('CLASSE_6', 'CLASSE_7', 'CLASSE_8'))
   )
-ORDER BY dossier, exercice_clos_le;
+ORDER BY dossier_id, exercice_clos_le;
 ROLLBACK;
 ```
 
@@ -226,7 +238,8 @@ ROLLBACK;
    de la contre-passation (AUDCIF art. 20, al. 2 ; le report, validé par la
    clôture, ne se retouche pas, art. 22, 2°) ; N+1 déjà clos, dans
    l'exercice en cours avec la mention aux Notes annexes (art. 20, al. 4).
-   Les résultats sont montrés à Manasse avant toute écriture.
+   L'écriture est passée par le CLIENT, dans son dossier · VMG lui transmet
+   l'identifiant de la contre-passation, et rien de ses comptes.
 
 Éprouvées sur la base jetable du banc (point m5 du scénario de la ligne A,
 94 contrôles sur 94).
