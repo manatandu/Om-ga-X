@@ -191,10 +191,11 @@ test('SYSCOHADA · seuls les comptes personnalisés se saisissent et se rattache
   // Le compte de caisse du plan, ADOPTÉ tel quel, avec l'intitulé du cabinet.
   await appelApi(page, 'PATCH', `/comptes/${caisse.id}`, { estRetenu: true, intitule: 'Caisse siège' });
   await appelApi(page, 'POST', '/ecritures', piece(exercice.id, date, [{ compteId: sousLoyer.id, debit: 300_000, credit: 0 }, { compteId: caisse.id, debit: 0, credit: 300_000 }], 'Loyer de mai'), {}, sansAdopter);
-  // Le compte du plan qu'il subdivise reste refusé · non personnalisé, et subdivisé.
+  // Le compte du plan qu'il subdivise reste refusé · le refus de la subdivision
+  // passe d'abord, il nomme le sous-compte où la ligne doit aller.
   await expect(
     appelApi(page, 'POST', '/ecritures', piece(exercice.id, date, [{ compteId: loyer.id, debit: 1, credit: 0 }, { compteId: caisse.id, debit: 0, credit: 1 }], 'Loyer au compte du plan'), {}, sansAdopter),
-  ).rejects.toThrow(new RegExp(`Compte non personnalisé : ${loyer.numero}`));
+  ).rejects.toThrow(new RegExp(`Compte du plan subdivisé par le dossier : ${loyer.numero} \\(${sousLoyer.numero} Loyer du siège`));
 
   // Un tiers ne se rattache qu'à un compte personnalisé.
   const tiers = await appelApi<{ id: string }>(page, 'POST', '/tiers', { type: 'FOURNISSEUR', code: 'F-NOVA', nom: 'Nova Services', creerCompteIndividuel: false });
