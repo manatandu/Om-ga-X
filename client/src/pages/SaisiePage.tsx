@@ -18,7 +18,7 @@ import { ETATS_JOURNAL, bulleCase, moisCourt, sigleCase, type LigneGrilleSaisie 
 import { contrevaleur, coursPropose, devisesEtrangeres, motifLigneEnDevise, type DeviseDuDossier } from '../lib/ligne-en-devise';
 import { lireJournalDeSaisie, urlJournalDeSaisie, type ReponseJournal } from '../lib/journal-de-saisie';
 import { useGardeFermeture } from '../lib/fenetres';
-import { comptesPourLaFrappe, RETENUS } from '../lib/comptes-proposes';
+import { compteDuNumeroTape, comptesPourLaFrappe, RETENUS } from '../lib/comptes-proposes';
 import { libelleRenvoiDiscordant, remplacementsProposes, type RenvoiDiscordant } from '../lib/regle-compte-saisie';
 
 /**
@@ -620,9 +620,16 @@ export function SaisiePage() {
 
   const numerosDuPlan = useMemo(() => new Set(comptes.map((c) => c.numero)), [comptes]);
 
-  // La liste montre les comptes proposés ; un numéro tapé en entier se prend
-  // dans tout le plan, même non retenu, et c'est dit (`lib/comptes-proposes.ts`).
-  const frappe = useMemo(() => comptesPourLaFrappe(compteSaisie, comptesProposes, comptes), [compteSaisie, comptesProposes, comptes]);
+  // SEULS LES COMPTES PERSONNALISÉS SE SAISISSENT (décision de Manasse du
+  // 2026-10-09) · la liste ne montre que les comptes proposés, et un numéro
+  // du plan tapé en entier qui n'est pas personnalisé n'est pas pris · il est
+  // NOMMÉ, avec le geste qui le rend saisissable, au lieu d'un refus du
+  // serveur à l'enregistrement de la pièce.
+  const frappe = useMemo(() => comptesPourLaFrappe(compteSaisie, comptesProposes, comptesProposes), [compteSaisie, comptesProposes]);
+  const tapeNonPersonnalise = useMemo(() => {
+    const exact = compteDuNumeroTape(compteSaisie, comptes);
+    return exact && !comptesProposes.some((c) => c.id === exact.id) ? exact : null;
+  }, [compteSaisie, comptes, comptesProposes]);
   const comptesFiltres = useMemo(() => frappe.map((f) => f.compte), [frappe]);
 
   const choisirCompte = (c: Compte) => {
@@ -1759,7 +1766,7 @@ export function SaisiePage() {
               jamais un refus, le numéro tapé en entier se prend toujours. */}
           {comptesProposesLus && comptesProposesLus.length === 0 && (
             <div className="px-3 py-1.5 border-b border-border/50 text-[11.5px] text-warning">
-              Aucun compte retenu ni utilisé · retenez dans Plan comptable les comptes à proposer, ou tapez le numéro du compte en entier.
+              Aucun compte personnalisé · personnalisez dans Plan comptable les comptes à proposer, ou tapez le numéro du compte en entier.
             </div>
           )}
           {/* Des taux illisibles ne se taisent pas · la TVA posée d'office
@@ -1837,13 +1844,16 @@ export function SaisiePage() {
                     >
                       <span className="font-mono font-semibold w-[86px] shrink-0">{c.numero}</span>
                       <span className="truncate">{c.intitule}</span>
-                      {frappe[i]?.horsListe && (
-                        <span className="shrink-0 text-[10.5px] opacity-80" title="Compte du plan ni retenu ni utilisé · il se saisit, et sera proposé dès qu'il sert.">
-                          non retenu
-                        </span>
-                      )}
                     </button>
                   ))}
+                </div>
+              )}
+              {tapeNonPersonnalise && !compteChoisi && !(pickerOuvert && comptesFiltres.length > 0) && (
+                <div
+                  role="status"
+                  className="absolute left-0 top-full z-20 w-[380px] text-[11px] text-warning bg-surface px-2 py-1 border border-border-dark shadow-flottante"
+                >
+                  {tapeNonPersonnalise.numero} {tapeNonPersonnalise.intitule} · compte non personnalisé · personnalisez-le dans Plan comptable pour le saisir.
                 </div>
               )}
               {compteChoisi && !pickerOuvert && (

@@ -1250,7 +1250,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                     if (proposes.length === 0) {
                       return absents.length > 0 ? (
                         <span className="block mt-1 text-[11px] font-normal text-warning">
-                          Le compte que cette catégorie propose ({absents.join(', ')}) n'est ni retenu ni utilisé · retenez-le dans
+                          Le compte que cette catégorie propose ({absents.join(', ')}) n'est pas personnalisé · personnalisez-le dans
                           Plan comptable (ou ouvrez-le s'il manque au plan).
                         </span>
                       ) : null;
@@ -1469,7 +1469,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                     </select>
                     {iCompteBienId && contrepartiesAdmises !== null && modesAcquisition.length === 0 && (
                       <span className="block text-warning font-normal">
-                        Aucune contrepartie que la fiche de ce compte admet n'est retenue ni utilisée · retenez dans Plan comptable
+                        Aucune contrepartie que la fiche de ce compte admet n'est personnalisée · personnalisez dans Plan comptable
                         le compte de trésorerie, de fournisseur d'investissements ou d'apport qui règle le bien (ou ouvrez-le s'il
                         manque au plan).
                       </span>

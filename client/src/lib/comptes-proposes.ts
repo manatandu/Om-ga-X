@@ -29,7 +29,7 @@ export const RETENUS = 'retenus=true';
  */
 export function motifAucunCompteRetenu(liste: readonly unknown[] | null | undefined, nature: string): string | null {
   if (!liste || liste.length > 0) return null;
-  return `Aucun compte ${nature} retenu ni utilisé · retenez-le dans Plan comptable (ou ouvrez-le s'il manque au plan).`;
+  return `Aucun compte ${nature} personnalisé · personnalisez-le dans Plan comptable (ou ouvrez-le s'il manque au plan).`;
 }
 
 /** Le seul compte d'une liste, à présélectionner ; chaîne vide sinon. */

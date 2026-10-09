@@ -237,7 +237,7 @@ describe('comptes proposés · les listes des immobilisations', () => {
     const choix = await serviceImmo(plan, {}).comptesFondsProjet('t1', true);
     expect(choix.comptes).toEqual([]);
     expect(choix.nonRetenus).toBe(2);
-    expect(choix.motifVide).toContain('retenez');
+    expect(choix.motifVide).toContain('personnalisez');
     expect(choix.motifVide).toContain('Plan comptable');
     // Le 163 mouvementé reste proposé, seul · l'écran le présélectionne.
     const utilise = await serviceImmo(plan, { ligneEcriture: [{ compteId: 'b' }] }).comptesFondsProjet('t1', true);

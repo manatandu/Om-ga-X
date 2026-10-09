@@ -83,7 +83,7 @@ describe('etatReglePar · une liste qui dépend d’un choix dit pourquoi elle e
   });
 
   it("aucun compte admis · la raison et ce qu'il faut ouvrir d'abord", () => {
-    expect(etatReglePar([cible], [[]], null).motif).toMatch(/Aucun compte que la fiche du compte du bien admet en contrepartie n'est retenu ni utilisé · retenez/);
+    expect(etatReglePar([cible], [[]], null).motif).toMatch(/Aucun compte que la fiche du compte du bien admet en contrepartie n'est personnalisé · personnalisez/);
     expect(etatReglePar([cible, { compteImmobilisationId: 'c2' }], [[compte('a', '48110000')], [compte('b', '48120000')]], null).motif).toMatch(
       /admis à la fois pour tous ces biens/,
     );

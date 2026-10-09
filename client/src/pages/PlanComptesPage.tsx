@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState, useRef } from 'react';
 import { ModaleFusion } from '../components/ModaleFusion';
+import { ModalePersonnaliser } from '../components/ModalePersonnaliser';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -153,9 +154,28 @@ export function PlanComptesPage() {
 
   // Une recherche en cours affiche ses résultats toutes classes confondues ·
   // le classement par classe ne s'applique qu'en navigation libre, sans recherche.
-  // RETENUS SEULEMENT · la vue des comptes que les listes de choix proposent
-  // (retenus, ou déjà utilisés). Préférence d'affichage, jamais un refus.
-  const [retenusSeuls, setRetenusSeuls] = useState(false);
+  // PERSONNALISÉS SEULEMENT (décision de Manasse du 2026-10-09, point 3) · la
+  // vue des comptes que la saisie admet (retenus, ou utilisés donc
+  // personnalisés d'office). Préférence d'affichage du poste, gardée par
+  // dossier ; le stockage local peut manquer (fenêtre privée), d'où le try.
+  const clePreference = `omegax.plan.personnalisesSeuls.${utilisateur?.tenant?.id ?? ''}`;
+  const [retenusSeuls, setRetenusSeulsEtat] = useState(() => {
+    try {
+      return localStorage.getItem(clePreference) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setRetenusSeuls = (v: boolean) => {
+    setRetenusSeulsEtat(v);
+    try {
+      localStorage.setItem(clePreference, v ? '1' : '0');
+    } catch {
+      // Préférence non gardée · la vue reste juste pour cette visite.
+    }
+  };
+  const [personnaliserOuvert, setPersonnaliserOuvert] = useState(false);
+  const [infoPersonnalisation, setInfoPersonnalisation] = useState<string | null>(null);
   const liste = useMemo(
     () =>
       (comptes ?? [])
@@ -165,7 +185,7 @@ export function PlanComptesPage() {
   );
 
   const neRetenirQueLesUtilises = async () => {
-    if (!window.confirm('Ne retenir que les comptes déjà utilisés ? Les autres ne seront plus proposés dans les listes de choix. Rien n’est supprimé.')) return;
+    if (!window.confirm('Ne garder personnalisés que les comptes du plan officiel déjà utilisés ? Les autres comptes du plan ne seront plus proposés ni admis à la saisie ; les comptes que vous avez créés le restent. Rien n’est supprimé.')) return;
     setErreur(null);
     try {
       await api.post('/comptes/ne-retenir-que-les-utilises', {});
@@ -288,16 +308,16 @@ export function PlanComptesPage() {
           />
           <label className="flex items-center gap-1.5 text-[11.5px]">
             <input type="checkbox" checked={retenusSeuls} onChange={(e) => setRetenusSeuls(e.target.checked)} />
-            Comptes retenus seulement
+            Comptes personnalisés seulement
             <Aide
-              titre="Comptes retenus"
-              texte="Les listes de choix (saisie, lettrage, modèles, réimputation, régularisations) ne proposent que les comptes retenus par le cabinet et ceux déjà utilisés : mouvementés, portés par un journal, un taux de taxe, une famille d’immobilisations ou un tiers. Le plan officiel reste entier : les états financiers, les imports et les écritures automatiques lisent tout le plan. Retenir un compte ne change aucun solde."
-              source="Organisation d’OmegaX · le plan officiel reste celui du référentiel"
+              titre="Comptes personnalisés"
+              texte="Seuls les comptes personnalisés du dossier se saisissent, se proposent dans les listes de choix et se rattachent à un tiers ou à un journal. Un compte est personnalisé quand le cabinet l’a adopté ou créé (bouton Personnaliser de la fiche), ou d’office quand une écriture automatique, un journal, un tiers, un taux de taxe ou une famille d’immobilisations l’utilise. Un sous-compte fonctionne comme son compte du plan : il en reprend les réglages, et les états financiers le lisent sous lui. Le plan officiel reste entier : les états financiers et les imports lisent tout le plan."
+              source="AUDCIF art. 18, al. 3 · règle d’organisation d’OmegaX"
             />
           </label>
           {estAdmin && (
             <button type="button" onClick={() => void neRetenirQueLesUtilises()} className="border border-border-dark px-3 py-1 text-[11.5px]">
-              Ne retenir que les comptes utilisés
+              Ne garder que les comptes utilisés
             </button>
           )}
           {estAdmin && (
@@ -312,6 +332,9 @@ export function PlanComptesPage() {
         </div>
       </div>
 
+      {infoPersonnalisation && (
+        <div className="mb-2 text-[11.5px] text-positive bg-positive-soft border border-positive/30 px-3 py-2">{infoPersonnalisation}</div>
+      )}
       {infoFusion && (
         <div className="mb-2 text-[11.5px] text-positive bg-positive-soft border border-positive/30 px-3 py-2">{infoFusion}</div>
       )}
@@ -358,7 +381,7 @@ export function PlanComptesPage() {
             <span>Type</span>
             <span title="Mode de report à-nouveau en fin d'exercice">À-nouveau</span>
             <span>État</span>
-            <span title="Proposé dans les listes de choix · retenu par le cabinet, ou déjà utilisé">Saisie</span>
+            <span title="Admis à la saisie · adopté ou créé par le cabinet, ou d’office quand quelque chose l’utilise">Personnalisé</span>
           </div>
           <div className="flex-1 overflow-auto min-w-[590px]">
             {!comptes && <div className="px-3.5 py-3 text-[11.5px] text-text-dim">Chargement…</div>}
@@ -403,8 +426,11 @@ export function PlanComptesPage() {
                 <span className={`text-[11px] ${selectionId === c.id ? 'text-white/90' : c.estActif ? 'text-positive' : 'text-warning'}`}>
                   {c.estActif ? 'Actif' : 'Sommeil'}
                 </span>
-                <span className={`text-[11px] ${selectionId === c.id ? 'text-white/90' : 'text-sel'}`} title={c.estRetenu ? 'Retenu par le cabinet' : c.utilise ? 'Utilisé, donc proposé' : ''}>
-                  {c.typeCompte !== 'DETAIL' ? '' : c.estRetenu ? 'Retenu' : c.utilise ? 'Utilisé' : '·'}
+                <span
+                  className={`text-[11px] ${selectionId === c.id ? 'text-white/90' : 'text-sel'}`}
+                  title={c.estRetenu ? 'Adopté ou créé par le cabinet' : c.utilise ? 'Personnalisé d’office · une écriture, un journal, un tiers ou un réglage l’utilise' : 'Non personnalisé · ni saisie ni rattachement'}
+                >
+                  {c.typeCompte !== 'DETAIL' ? '' : c.estRetenu ? 'Oui' : c.utilise ? 'D’office' : '·'}
                 </span>
               </button>
             ))}
@@ -610,7 +636,7 @@ export function PlanComptesPage() {
                       checked={!!selection.estRetenu}
                       onChange={(e) => modifier(selection.id, { estRetenu: e.target.checked })}
                     />
-                    <span>Compte retenu (proposé à la saisie){selection.utilise && !selection.estRetenu ? ' · proposé car utilisé' : ''}</span>
+                    <span>Compte personnalisé (admis à la saisie){selection.utilise && !selection.estRetenu ? ' · d’office, car utilisé' : ''}</span>
                   </label>
                   <label className="flex items-start gap-2 mb-3 text-[11.5px]">
                     <input
@@ -640,6 +666,18 @@ export function PlanComptesPage() {
                     Gérer · interrogation et lettrage
                   </button>
                 )}
+                {estAdmin && selection.typeCompte === 'DETAIL' && selection.estActif && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInfoPersonnalisation(null);
+                      setPersonnaliserOuvert(true);
+                    }}
+                    className="border border-border-dark bg-chrome hover:bg-chrome-alt px-3 py-1.5 text-[11.5px]"
+                  >
+                    {selection.estRetenu || selection.utilise ? 'Ouvrir un sous-compte…' : 'Personnaliser…'}
+                  </button>
+                )}
                 {estAdmin && !estComptePrincipalOfficiel(selection) && (
                   <button
                     type="button"
@@ -654,6 +692,18 @@ export function PlanComptesPage() {
           )}
         </div>
       </div>
+
+      {estAdmin && personnaliserOuvert && selection && (
+        <ModalePersonnaliser
+          compte={selection}
+          onFermer={() => setPersonnaliserOuvert(false)}
+          onFait={async (message) => {
+            setPersonnaliserOuvert(false);
+            setInfoPersonnalisation(message);
+            await charger();
+          }}
+        />
+      )}
 
       {/* Nouveau compte · boîte de dialogue */}
       {estAdmin && nouveauOuvert && (

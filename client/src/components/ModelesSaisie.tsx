@@ -637,7 +637,7 @@ export function ModelesSaisieModale({
                     {racineTiers && comptesTiers.length === 0 && (
                       <div className="col-span-2 border border-danger/50 bg-danger/5 px-2.5 py-2 text-[11.5px] leading-[1.5]">
                         {tiersAuPlan
-                          ? `Aucun compte retenu ni utilisé sous la racine ${racineTiers} · cette opération passe OBLIGATOIREMENT par un compte de tiers, retenez-le dans Plan comptable avant d'employer ce modèle.`
+                          ? `Aucun compte personnalisé sous la racine ${racineTiers} · cette opération passe OBLIGATOIREMENT par un compte de tiers, personnalisez-le dans Plan comptable avant d'employer ce modèle.`
                           : `Aucun compte n'est ouvert sous la racine ${racineTiers} dans le plan de ce dossier. Cette opération passe OBLIGATOIREMENT par un compte de tiers · ouvrez-le au plan comptable avant d'employer ce modèle.`}
                       </div>
                     )}

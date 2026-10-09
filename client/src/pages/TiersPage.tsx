@@ -319,7 +319,7 @@ export function TiersPage() {
       ? null
       : comptesLus.length === 0
         ? motifAucunCompteRetenu(comptesLus, 'de classe 4')
-        : 'Tous les comptes de classe 4 retenus ou utilisés sont déjà rattachés à ce tiers · retenez-en un autre dans Plan comptable (ou ouvrez-le s\'il manque au plan).';
+        : 'Tous les comptes de classe 4 personnalisés sont déjà rattachés à ce tiers · personnalisez-en un autre dans Plan comptable (ou ouvrez-le s\'il manque au plan).';
 
   // Compte individuel sous le collectif du type, créé avec le tiers (point 13,
   // tiers/collectifs-tiers.ts côté serveur) · coché par défaut, comme Sage

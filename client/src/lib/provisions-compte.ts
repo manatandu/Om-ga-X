@@ -157,6 +157,6 @@ export function motifListeComptesVide(
   if (comptesAdmis(comptes, natures, nature).length > 0) return null;
   return (
     `Aucun compte ${servie.compte} (${servie.intitule}) n'est ouvert ou retenu dans le plan du dossier · ` +
-    `ouvrez-le ou retenez-le dans le plan de comptes, puis rouvrez le formulaire.`
+    `ouvrez-le ou personnalisez-le dans le plan de comptes, puis rouvrez le formulaire.`
   );
 }

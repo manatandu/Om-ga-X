@@ -276,7 +276,7 @@ export function compteSelonNature<C extends { id: string; numero: string }>(
  * LES COMPTES DE LA NATURE QUE LA LISTE NE PORTE PAS · la liste des comptes
  * du bien ne rend que les comptes retenus ou utilisés (`lib/comptes-proposes.ts`),
  * et une proposition qui disparaît sans un mot fait chercher le compte. Rend
- * les numéros à dire (« retenez-le dans Plan comptable »), rien si le compte
+ * les numéros à dire (« personnalisez-le dans Plan comptable »), rien si le compte
  * choisi est déjà l'un d'eux.
  */
 export function numerosNonProposesPourNature(

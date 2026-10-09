@@ -1099,7 +1099,7 @@ export class ReevaluationBilanService {
         proposes.length > 0
           ? null
           : ecartes > 0
-            ? 'Aucune réserve sous 111, 112 ou 1138 n’est retenue · retenez-la dans Plan comptable.'
+            ? 'Aucune réserve sous 111, 112 ou 1138 n’est personnalisée · personnalisez-la dans Plan comptable.'
             : 'Aucune réserve sous 111, 112 ou 1138 n’est ouverte au plan · ouvrez-la dans Plan comptable.',
     };
   }

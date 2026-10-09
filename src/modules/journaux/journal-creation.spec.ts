@@ -47,6 +47,9 @@ function monde() {
       findFirst: jest.fn().mockImplementation(({ where }: { where: { id: string; tenantId: string } }) =>
         Promise.resolve(COMPTES.find((c) => c.id === where.id && c.tenantId === where.tenantId) ?? null),
       ),
+      // Les comptes non personnalisés demandés · tous ceux d'ici sont retenus
+      // par le cabinet (comptes-personnalises.spec.ts éprouve le refus).
+      findMany: jest.fn(async () => []),
     },
   };
   return { svc: new JournalService(prisma as never), create, update, prisma };

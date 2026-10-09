@@ -112,8 +112,8 @@ export function etatReglePar(
   if (communes.length === 0) {
     return vide(
       cibles.length > 1
-        ? "Aucun compte retenu ou utilisé n'est admis à la fois pour tous ces biens · retenez dans Plan comptable un compte de trésorerie, admis pour chacun (ou ouvrez-le s'il manque au plan), ou saisissez les biens séparément."
-        : "Aucun compte que la fiche du compte du bien admet en contrepartie n'est retenu ni utilisé · retenez dans Plan comptable le compte de trésorerie ou de fournisseur d'immobilisations (ou ouvrez-le s'il manque au plan).",
+        ? "Aucun compte personnalisé n'est admis à la fois pour tous ces biens · personnalisez dans Plan comptable un compte de trésorerie, admis pour chacun (ou ouvrez-le s'il manque au plan), ou saisissez les biens séparément."
+        : "Aucun compte que la fiche du compte du bien admet en contrepartie n'est personnalisé · personnalisez dans Plan comptable le compte de trésorerie ou de fournisseur d'immobilisations (ou ouvrez-le s'il manque au plan).",
     );
   }
   return { options: communes, preselection: communes.length === 1 ? communes[0].id : null, enLecture: false, motif: null };

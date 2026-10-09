@@ -102,7 +102,7 @@ export function piecesAEnvoyer(pieces: readonly PieceSaisie[]) {
 export function motifListe651Vide(comptes: readonly unknown[] | null): string | null {
   if (comptes === null || comptes.length > 0) return null;
   return (
-    'Aucun compte 651 retenu au plan · retenez-le (ou ouvrez-le) dans Plan comptable, sous « Pertes sur créances », ' +
+    'Aucun compte 651 personnalisé au plan · personnalisez-le (ou ouvrez-le) dans Plan comptable, sous « Pertes sur créances », ' +
     'puis rouvrez ce formulaire.'
   );
 }

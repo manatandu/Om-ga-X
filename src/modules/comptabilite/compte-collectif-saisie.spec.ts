@@ -276,6 +276,9 @@ describe('saisie sur un compte collectif', () => {
   it('le contrôleur le joue à la saisie et à la modification, avant d’écrire', async () => {
     const appels: string[] = [];
     const svc = {
+      verifierComptesPersonnalises: jest.fn(async () => {
+        appels.push('personnalise');
+      }),
       verifierComptesCollectifs: jest.fn(async () => {
         appels.push('collectif');
       }),
@@ -290,13 +293,17 @@ describe('saisie sur un compte collectif', () => {
     const lignes = [{ compteId: 'c4111' }];
     await ctrl.creer(user, { lignes } as never);
     await ctrl.modifier(user, 'e1', { lignes } as never);
-    expect(appels).toEqual(['collectif', 'sommeil', 'creer', 'collectif', 'sommeil', 'modifier']);
+    // Le compte non personnalisé est refusé d'abord · c'est le refus le plus
+    // simple à lever, et il ne dépend d'aucun autre compte de la pièce.
+    expect(appels).toEqual(['personnalise', 'collectif', 'sommeil', 'creer', 'personnalise', 'collectif', 'sommeil', 'modifier']);
+    expect(svc.verifierComptesPersonnalises).toHaveBeenCalledWith('t1', lignes);
     expect(svc.verifierComptesCollectifs).toHaveBeenCalledWith('t1', lignes);
     expect(svc.verifierComptesCollectifs).toHaveBeenCalledWith('t1', lignes, 'e1');
   });
 
   it('la réimputation et la fusion de comptes jugent le compte d’arrivée', async () => {
     const svc = {
+      verifierComptesPersonnalises: jest.fn(async () => undefined),
       verifierComptesCollectifs: jest.fn(async () => {
         throw new Error('collectif');
       }),
@@ -310,5 +317,7 @@ describe('saisie sur un compte collectif', () => {
     expect(svc.reimputer).not.toHaveBeenCalled();
     expect(svc.fusionnerComptes).not.toHaveBeenCalled();
     expect(svc.verifierComptesCollectifs).toHaveBeenCalledWith('t1', [{ compteId: 'c4111' }]);
+    expect(svc.verifierComptesPersonnalises).toHaveBeenCalledWith('t1', [{ compteId: 'c4111' }], 'une réimputation');
+    expect(svc.verifierComptesPersonnalises).toHaveBeenCalledWith('t1', [{ compteId: 'c4111' }], 'une fusion');
   });
 });

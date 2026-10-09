@@ -145,7 +145,7 @@ export function motifListeFondsProjetVide(o: {
   if (o.nonRetenus && o.nonRetenus > 0) {
     return (
       `Aucun compte de fonds affectés aux investissements (162, 163, 164) n'est retenu ni utilisé (${o.nonRetenus} au plan) · ` +
-      'retenez dans Plan comptable celui qui a financé le bien, puis rouvrez la sortie (SYCEBNL Partie 3 ch. 3 § 2.5).'
+      'personnalisez dans Plan comptable celui qui a financé le bien, puis rouvrez la sortie (SYCEBNL Partie 3 ch. 3 § 2.5).'
     );
   }
   if (o.inactifs > 0) {

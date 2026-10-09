@@ -817,11 +817,11 @@ function AjoutFiche({
       {erreurComptes && <span className="text-[11px] text-danger">Plan de comptes illisible · {erreurComptes}</span>}
       {comptes && numero.trim() !== '' && !compte && <span className="text-[11px] text-warning">Compte de détail introuvable au plan.</span>}
       {horsListe && compte && (
-        <span className="text-[11px] text-text-dim">{compte.intitule} · compte ni retenu ni utilisé, pris tel que tapé.</span>
+        <span className="text-[11px] text-text-dim">{compte.intitule} · compte non personnalisé, pris tel que tapé pour le comptage.</span>
       )}
       {comptes && proposes.length === 0 && (
         <span className="text-[11px] text-warning">
-          Aucun compte retenu ni utilisé à proposer · retenez-le dans Plan comptable, ou tapez le numéro du compte en entier.
+          Aucun compte personnalisé à proposer · personnalisez-le dans Plan comptable, ou tapez le numéro du compte en entier.
         </span>
       )}
     </div>
