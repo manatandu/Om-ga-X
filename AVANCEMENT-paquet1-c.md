@@ -358,6 +358,29 @@ contrôles, 4 écarts · SARL sans fait, SARL « non personne morale », SA sans
 fait, SAS non dite lues `[false, false]` (rien servi). **APRÈS**
 (`p1c-s2-apres.json`, S2 et C4) · 18 contrôles, 18 concordances.
 
+### S3 · constat 3 (MINEUR) · un montant de paie est au centime
+
+Constat EXACT · `ElementPaieDto.montantFc` n'avait aucune borne de décimales
+(les autres montants de la paie en ont deux, la base garde des Decimal 18,2) ;
+une allocation de 50 000,005 FC sous un taux légal de 62 111,40 FC rendait,
+depuis l'arrondi de C1, une part immunisée de 50 000,01 et une part imposable
+de −0,01 FC. Aucune question de fond.
+
+**Correction.** `dto/personnel.dto.ts` · `@IsNumber({ maxDecimalPlaces: 2 })`
+avec un refus nommé en français (`MOTIF_MONTANT_AU_CENTIME`) ;
+`assiettes-paie.ts` · l'immunité ne dépasse jamais le montant
+(`Math.min(element.montantFc, auCentime(…))`), pour un appelant interne.
+L'écran n'est pas touché (le refus du serveur s'y affiche). **Tests.**
+`dto-passe-d2.spec.ts` (50 000,005 refusé avec le motif, 50 000,01 admis),
+`assiettes-paie.spec.ts` (millième · imposable 0, base 1 000 000) · 2 tombent
+sans la correction.
+
+**AVANT, `main`** (`p1c-s3-avant.json`) · 3 contrôles, 2 écarts · 50 000,005
+admis (`[201, 0]`), aucun refus. **AVANT, copie au commit 93eddc6**
+(`p1c-s3-apres-avantcorr.json`) · admis, imposable `-0.01`. **APRÈS**
+(`p1c-s3-apres.json`) · 3 contrôles, 3 concordances ; S1 et C1 rejoués avec,
+23 concordances.
+
 ## Reste (au coordinateur, à l'intégration)
 
 - Committer le scénario `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-c.mjs`.
@@ -446,6 +469,9 @@ npx jest src/modules/personnel/assiettes-paie.spec.ts src/modules/personnel/coti
 PAQUET1_C_POINTS=S2,C4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s2-avant.json
 PAQUET1_C_POINTS=S2,C4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s2-apres.json
 npx jest src/modules/fiscalite
+PAQUET1_C_POINTS=S3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s3-avant.json
+PAQUET1_C_POINTS=S3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s3-apres.json
+npx jest src/modules/personnel/dto-passe-d2.spec.ts src/modules/personnel/assiettes-paie.spec.ts
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json

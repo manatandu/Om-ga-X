@@ -424,6 +424,17 @@ describe("C1 · le plafond de l'article 69, 1 se juge au centime", () => {
     expect(verdict.assietteFiscaleBruteFc).toBe(1_000_000);
   });
 
+  it('constat 3 · un montant au millième ne rend jamais une part imposable négative', () => {
+    // La porte refuse le millième (ElementPaieDto) ; la règle tient aussi
+    // pour un appelant interne · l'immunité ne dépasse jamais le montant.
+    const verdict = assiettes([salaire(1_000_000), allocation('Allocations', 50_000.005)], {
+      tauxLegalAllocationsFamilialesFc: TAUX_FLOTTANT,
+    });
+    const sort = verdict.sortsFiscaux.find((x) => x.libelle === 'Allocations');
+    expect(sort?.imposableFc).toBe(0);
+    expect(verdict.assietteFiscaleBruteFc).toBe(1_000_000);
+  });
+
   it("la règle du plafond ne bouge pas · au-delà, l'excédent entier est repris", () => {
     const verdict = assiettes([salaire(1_000_000), allocation('Allocations', 100_000)], {
       tauxLegalAllocationsFamilialesFc: TAUX_FLOTTANT,

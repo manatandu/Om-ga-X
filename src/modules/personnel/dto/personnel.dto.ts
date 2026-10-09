@@ -317,6 +317,10 @@ export class TerminerContratDto {
   motifFin?: string;
 }
 
+/** Le refus nommé d'un montant de paie au-delà du centime (constat 3). */
+export const MOTIF_MONTANT_AU_CENTIME =
+  "Le montant d'un élément de paie se saisit en francs, au centime (deux décimales au plus).";
+
 /**
  * UN ÉLÉMENT DE PAIE SOUMIS À LA SIMULATION. Rien n'est stocké · P2a rend
  * deux assiettes et une retenue, le bulletin est de P2b.
@@ -349,9 +353,15 @@ export class ElementPaieDto {
    * Le montant en francs congolais · exigé sauf quand l'élément est donné en
    * dollars (`montantUsd`), auquel cas le SERVEUR le calcule au cours du jour
    * et l'écrase (voir conversion-usd.ts).
+   *
+   * AU CENTIME, comme les autres montants de la paie (premier tour de
+   * relecture du paquet 1, constat 3) · la base garde des Decimal 18,2, et
+   * 50 000,005 FC d'allocations rendait, après l'arrondi au centime du
+   * plafond de l'art. 69, 1, une part immunisée de 50 000,01 et une part
+   * imposable de −0,01 FC.
    */
   @ValidateIf((e: ElementPaieDto) => e.montantUsd === undefined)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: MOTIF_MONTANT_AU_CENTIME })
   @Min(0)
   montantFc!: number;
 

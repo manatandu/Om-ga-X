@@ -534,7 +534,11 @@ export function assiettes(
       // plafond, part immunisée, reste et excédent y sont ramenés. La règle du
       // plafond n'est pas touchée (seul l'excédent est repris).
       const plafondRestantFc = auCentime(Math.max(0, tauxLegalRestantFc ?? tauxLegal));
-      const immunise = auCentime(Math.min(element.montantFc, plafondRestantFc));
+      // L'arrondi ne porte jamais l'immunité AU-DELÀ du montant (constat 3) ·
+      // 50 000,005 FC s'arrondissait à 50 000,01, et la part imposable
+      // devenait négative. La porte refuse le millième (ElementPaieDto) ; la
+      // règle tient aussi pour un appelant interne.
+      const immunise = Math.min(element.montantFc, auCentime(Math.min(element.montantFc, plafondRestantFc)));
       tauxLegalRestantFc = auCentime(plafondRestantFc - immunise);
       const excedent = auCentime(element.montantFc - immunise);
       brutFiscalFc += excedent;
