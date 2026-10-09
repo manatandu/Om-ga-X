@@ -183,6 +183,79 @@ export function especesReconstitueesALaCloture(
   return arrondi(especesComptees - r.encaissementsPosterieurs + r.decaissementsPosterieurs);
 }
 
+const FORMAT_MONTANT_PV = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * LA VALEUR À PORTER SUR LA FICHE D'UNE CAISSE À L'ÉCART NON ARBITRÉ
+ * (relecture « échecs silencieux » du paquet 1, mineur 4).
+ *
+ * L'écart d'un procès-verbal s'arbitre par la fiche de la caisse, rapprochée
+ * du solde de l'exercice de la campagne, celui de la CLÔTURE (`rapprocher` lit
+ * la balance de l'exercice). Le refus de la clôture disait « portez le comptage
+ * sur une fiche » · pour une caisse comptée APRÈS la clôture (ligne A10), les
+ * espèces comptées au jour du comptage, rapprochées du solde de clôture, font
+ * un écart des mouvements intercalés qui n'existe pas (1 190 000 comptés le 5
+ * janvier, 100 000 payés le 3, 1 300 000 au 31 décembre · 110 000 au lieu de
+ * 10 000). La valeur à porter est celle que le PV a figée · les espèces
+ * RECONSTITUÉES à la clôture (AUDCIF art. 42 ; art. 16, al. 4 et 5 ; CPCC
+ * § VI), par le même calcul que le PV imprime (`especesReconstitueesALaCloture`).
+ *
+ * Un PV établi avant la règle n'a pas figé la reconstitution · la phrase le
+ * dit, sans chiffre inventé. Compté AVANT la clôture, les mouvements jusqu'à
+ * elle ne sont pas reconstitués (la mention du PV le dit déjà) · ils entrent
+ * dans l'écart du rapprochement. Un PV dans une devise donne ses montants dans
+ * cette devise, et la fiche se valorise en francs, comme le solde auquel elle
+ * se rapproche · aucun cours n'est choisi ici.
+ */
+export function valeurAPorterSurLaFiche(
+  pv: {
+    numero: string;
+    dateComptage: Date;
+    especesComptees: number;
+    soldeALaCloture: number | null;
+    encaissementsPosterieurs: number | null;
+    decaissementsPosterieurs: number | null;
+    /** Le code de la devise d'un PV compté dans une devise, `null` en francs. */
+    unite: string | null;
+  },
+  dateCloture: Date | null,
+): string {
+  const m = (n: number) => `${FORMAT_MONTANT_PV.format(arrondi(n))}${pv.unite ? ` ${pv.unite}` : ''}`;
+  const devise = pv.unite
+    ? ` · le procès-verbal compte en ${pv.unite}, la fiche se valorise en francs, comme le solde du livre-journal auquel elle se rapproche`
+    : '';
+  const cloture = dateCloture ? ` du ${jour(dateCloture)}` : '';
+  if (pv.soldeALaCloture !== null && pv.encaissementsPosterieurs !== null && pv.decaissementsPosterieurs !== null) {
+    const reconstituees = especesReconstitueesALaCloture(pv.especesComptees, {
+      encaissementsPosterieurs: pv.encaissementsPosterieurs,
+      decaissementsPosterieurs: pv.decaissementsPosterieurs,
+    });
+    return (
+      `${pv.numero}, comptée le ${jour(pv.dateComptage)} après la clôture${cloture} · portez sur sa fiche la valeur ` +
+      `reconstituée à la clôture, figée sur le procès-verbal, ${m(reconstituees)} (${m(pv.especesComptees)} comptés, ` +
+      `moins ${m(pv.encaissementsPosterieurs)} d'encaissements et plus ${m(pv.decaissementsPosterieurs)} de ` +
+      'décaissements postérieurs), jamais les espèces comptées · la fiche se rapproche du solde de clôture, et les ' +
+      `mouvements d'après la clôture y feraient un écart qui n'existe pas${devise}`
+    );
+  }
+  if (dateCloture && compteApresLaCloture(pv.dateComptage, dateCloture)) {
+    return (
+      `${pv.numero}, comptée le ${jour(pv.dateComptage)} après la clôture${cloture} · le procès-verbal ne porte pas la ` +
+      'reconstitution vers la clôture (établi avant la règle) · portez sur sa fiche les espèces existant à la clôture, ' +
+      "reconstituées des mouvements d'après la clôture, jamais les espèces comptées, qui y feraient un écart qui " +
+      `n'existe pas${devise}`
+    );
+  }
+  if (dateCloture && jourUtc(pv.dateComptage).getTime() < jourUtc(dateCloture).getTime()) {
+    return (
+      `${pv.numero} · portez sur sa fiche les espèces comptées, ${m(pv.especesComptees)} ; comptée le ` +
+      `${jour(pv.dateComptage)}, avant la clôture${cloture}, ses mouvements jusqu'à la clôture ne sont pas ` +
+      `reconstitués et entrent dans l'écart du rapprochement${devise}`
+    );
+  }
+  return `${pv.numero} · portez sur sa fiche les espèces comptées, ${m(pv.especesComptees)}${devise}`;
+}
+
 /**
  * LES FENÊTRES DE LECTURE d'un comptage · ce qui est de l'exercice de la
  * campagne, et, compté après la clôture, ce qui suit. Le report à-nouveau des

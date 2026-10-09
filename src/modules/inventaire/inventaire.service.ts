@@ -38,6 +38,7 @@ import {
   mentionsDuPv,
   sommesDansLUnite,
   type UniteComparaison,
+  valeurAPorterSurLaFiche,
   valideesDepuisLePv,
 } from './solde-caisse-au-comptage';
 import { libelleLieuBien } from './lieu-sur-fiche';
@@ -1348,11 +1349,25 @@ export class InventaireService {
     campagneId: string,
     db: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
-    const [fiches, pvs] = await Promise.all([
+    const [fiches, pvs, campagne] = await Promise.all([
       db.ficheInventaire.count({ where: { tenantId, campagneId } }),
       db.procesVerbalComptageCaisse.findMany({
         where: { tenantId, campagneId },
-        select: { ecart: true, compte: { select: { numero: true } } },
+        select: {
+          ecart: true,
+          dateComptage: true,
+          especesComptees: true,
+          soldeALaCloture: true,
+          encaissementsPosterieurs: true,
+          decaissementsPosterieurs: true,
+          modeComparaison: true,
+          devise: { select: { code: true } },
+          compte: { select: { numero: true } },
+        },
+      }),
+      db.campagneInventaire.findFirst({
+        where: { id: campagneId, tenantId },
+        select: { exercice: { select: { dateFin: true } } },
       }),
     ]);
     if (fiches > 0) {
@@ -1370,11 +1385,30 @@ export class InventaireService {
     }
     const avecEcart = pvs.filter((pv) => Math.abs(Number(pv.ecart)) > 0.005);
     if (avecEcart.length > 0) {
+      // La valeur que la fiche doit porter, caisse par caisse (relecture du
+      // paquet 1, mineur 4) · « portez le comptage » fabriquait, pour une
+      // caisse comptée après la clôture, l'écart des mouvements intercalés.
+      const dateCloture = campagne?.exercice?.dateFin ?? null;
+      const valeurs = avecEcart.map((pv) =>
+        valeurAPorterSurLaFiche(
+          {
+            numero: pv.compte.numero,
+            dateComptage: pv.dateComptage,
+            especesComptees: Number(pv.especesComptees),
+            soldeALaCloture: pv.soldeALaCloture != null ? Number(pv.soldeALaCloture) : null,
+            encaissementsPosterieurs: pv.encaissementsPosterieurs != null ? Number(pv.encaissementsPosterieurs) : null,
+            decaissementsPosterieurs: pv.decaissementsPosterieurs != null ? Number(pv.decaissementsPosterieurs) : null,
+            unite: pv.modeComparaison === ModeComparaisonCaisse.DEVISE ? (pv.devise?.code ?? null) : null,
+          },
+          dateCloture,
+        ),
+      );
       throw new ForbiddenException(
         `${avecEcart.length} caisse(s) à l'écart non arbitré (${avecEcart.map((pv) => pv.compte.numero).join(', ')}) · ` +
           "« les écarts négatifs sont à la charge de l'entreprise, et la sous-commission doit déterminer le " +
-          "responsable » (CPCC, étape 5). L'écart d'une caisse s'arbitre comme celui de tout compte · portez le " +
-          "comptage sur une fiche de la caisse, rapprochez-la de la balance, puis arbitrez l'écart avant la clôture.",
+          "responsable » (CPCC, étape 5). L'écart d'une caisse s'arbitre comme celui de tout compte · portez sur une " +
+          "fiche de la caisse la valeur dite ci-après, rapprochez-la de la balance, puis arbitrez l'écart avant la " +
+          `clôture. ${valeurs.join(' ; ')}.`,
       );
     }
   }

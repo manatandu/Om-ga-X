@@ -12,9 +12,10 @@ import type { CampagneInventaire } from './types';
  * comptage, la valorisation et la comparaison au solde du livre-journal ; il
  * n'y a rien à rapprocher, et le bouton manquait · la campagne restait au
  * recensement sans issue. Un PV qui porte un écart reste refusé par le
- * serveur, et le refus nomme son issue (porter le comptage sur une fiche de
- * la caisse, rapprocher, arbitrer) · le bouton le laisse dire plutôt que de
- * se cacher sans un mot.
+ * serveur, et le refus nomme son issue (porter sur une fiche de la caisse la
+ * valeur qu'il chiffre, les espèces comptées ou, comptée après la clôture,
+ * les espèces reconstituées à la clôture ; rapprocher, arbitrer) · le bouton
+ * le laisse dire plutôt que de se cacher sans un mot.
  */
 export function peutCloreLaCampagne(
   campagne: Pick<CampagneInventaire, 'statut' | 'fiches' | 'pvComptageCaisse'>,

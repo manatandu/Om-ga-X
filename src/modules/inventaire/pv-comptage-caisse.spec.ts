@@ -29,7 +29,7 @@ type Etat = {
   sousCommission?: Record<string, unknown> | null;
   compte?: Record<string, unknown> | null;
   lignesCaisse?: { debit: number; credit: number; compte: { id: string; numero: string; intitule: string } }[];
-  pvCaisse?: { compteId: string; ecart?: number; compte?: { numero: string } }[];
+  pvCaisse?: Record<string, unknown>[];
   ecartsSansDecision?: number;
   /** Les fiches de comptage · le faux HONORE le dossier et la campagne du filtre (paquet 1, B10). */
   fiches?: { tenantId: string; campagneId: string }[];
@@ -43,7 +43,15 @@ function service(etat: Etat = {}) {
   );
   const prisma = {
     campagneInventaire: {
-      findFirst: jest.fn().mockResolvedValue(etat.campagne ?? null),
+      // Le faux HONORE la sélection de l'exercice · le refus d'une caisse à
+      // l'écart lit la date de clôture (relecture du paquet 1, mineur 4).
+      findFirst: jest.fn().mockImplementation((a?: { select?: { exercice?: unknown } }) =>
+        Promise.resolve(
+          etat.campagne && a?.select?.exercice
+            ? { exercice: { dateFin: new Date('2025-12-31T00:00:00Z') } }
+            : (etat.campagne ?? null),
+        ),
+      ),
       update: jest.fn().mockImplementation((a: { data: unknown }) => Promise.resolve({ id: 'camp1', ...(a.data as object) })),
       // Le PV d'une caisse ouvre le recensement d'une campagne en préparation
       // (audit final F134) · le faux honore le statut du filtre.
@@ -359,11 +367,51 @@ describe('une campagne de caisses seules se clôt depuis le recensement', () => 
     const { svc } = service({
       campagne: CAMPAGNE,
       lignesCaisse: CAISSE_SEULE,
-      pvCaisse: [{ compteId: 'c1', ecart: -5_000, compte: { numero: '57100000' } }],
+      pvCaisse: [
+        {
+          compteId: 'c1',
+          ecart: -5_000,
+          dateComptage: new Date('2025-12-31T00:00:00Z'),
+          especesComptees: 1_295_000,
+          soldeALaCloture: null,
+          encaissementsPosterieurs: null,
+          decaissementsPosterieurs: null,
+          modeComparaison: 'FRANCS',
+          compte: { numero: '57100000' },
+        },
+      ],
       fiches: [],
     });
     await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/57100000/);
     await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/fiche de la caisse.*arbitrez/);
+    // Comptée à la clôture · la fiche porte les espèces comptées (mineur 4).
+    const refus = await svc.clore('t1', 'camp1', 'u1').catch((e: Error) => e.message);
+    expect(String(refus).replace(/\s/g, '')).toContain('lesespècescomptées,1295000,00');
+  });
+
+  it('nomme la valeur à porter sur la fiche · reconstituée à la clôture pour une caisse comptée après (mineur 4)', async () => {
+    const { svc } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [
+        {
+          compteId: 'c1',
+          ecart: -10_000,
+          dateComptage: new Date('2026-01-05T00:00:00Z'),
+          especesComptees: 1_190_000,
+          soldeALaCloture: 1_300_000,
+          encaissementsPosterieurs: 0,
+          decaissementsPosterieurs: 100_000,
+          modeComparaison: 'FRANCS',
+          compte: { numero: '57100000' },
+        },
+      ],
+      fiches: [],
+    });
+    const refus = await svc.clore('t1', 'camp1', 'u1').catch((e: Error) => e.message);
+    expect(String(refus).replace(/\s/g, '')).toContain('reconstituéeàlaclôture,figéesurleprocès-verbal,1290000,00');
+    expect(refus).toMatch(/jamais les espèces comptées/);
+    expect(refus).toMatch(/fiche de la caisse.*arbitrez/);
   });
 
   it('refuse une campagne où rien n’a été compté (AUDCIF art. 42)', async () => {

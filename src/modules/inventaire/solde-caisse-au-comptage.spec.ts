@@ -9,6 +9,7 @@ import {
   exercicesDuComptage,
   lireSoldeCaisseAuComptage,
   mentionsDuPv,
+  valeurAPorterSurLaFiche,
 } from './solde-caisse-au-comptage';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -875,5 +876,72 @@ describe('second tour · l’unité de l’aperçu et l’heure d’établisseme
     expect(r.decaissements).toBe(472_000);
     expect(r.concorde).toBe(false);
     expect(r.saisiesDepuisLePv).toEqual({ nombre: 1, net: -3_000 });
+  });
+});
+
+/**
+ * LA VALEUR À PORTER SUR LA FICHE (relecture « échecs silencieux » du paquet 1,
+ * mineur 4). La fiche se rapproche du solde de CLÔTURE · le refus disait de
+ * « porter le comptage », et 1 190 000 comptés le 5 janvier contre 1 300 000
+ * au 31 décembre faisaient 110 000 d'écart, quand le manquant est de 10 000
+ * (100 000 payés le 3 janvier).
+ */
+describe('la valeur que la fiche d’une caisse à l’écart doit porter', () => {
+  const sp = (t: string) => t.replace(/\s/g, '');
+  const CLOTURE = new Date('2026-12-31T00:00:00Z');
+  const base = {
+    numero: '57100000',
+    dateComptage: new Date('2027-01-05T00:00:00Z'),
+    especesComptees: 1_190_000,
+    soldeALaCloture: 1_300_000,
+    encaissementsPosterieurs: 0,
+    decaissementsPosterieurs: 100_000,
+    unite: null,
+  };
+
+  it('comptée après la clôture · la valeur reconstituée figée sur le PV, jamais les espèces comptées', () => {
+    const t = valeurAPorterSurLaFiche(base, CLOTURE);
+    expect(sp(t)).toContain('valeurreconstituéeàlaclôture,figéesurleprocès-verbal,1290000,00');
+    expect(t).toMatch(/jamais les espèces comptées/);
+    expect(t).toContain('2027-01-05');
+    expect(t).toContain('2026-12-31');
+    // Le même calcul que le PV imprime.
+    expect(sp(t)).toContain(sp(new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2 }).format(
+      especesReconstitueesALaCloture(1_190_000, { encaissementsPosterieurs: 0, decaissementsPosterieurs: 100_000 }),
+    )));
+  });
+
+  it('un PV d’avant la règle, compté après la clôture · aucun chiffre inventé, la reconstitution est réclamée', () => {
+    const t = valeurAPorterSurLaFiche(
+      { ...base, soldeALaCloture: null, encaissementsPosterieurs: null, decaissementsPosterieurs: null },
+      CLOTURE,
+    );
+    expect(t).toMatch(/établi avant la règle/);
+    expect(t).toMatch(/jamais les espèces comptées/);
+    expect(sp(t)).not.toMatch(/1190000|1290000/);
+  });
+
+  it('comptée à la clôture · les espèces comptées', () => {
+    const t = valeurAPorterSurLaFiche(
+      { ...base, dateComptage: CLOTURE, especesComptees: 1_295_000, soldeALaCloture: null, encaissementsPosterieurs: null, decaissementsPosterieurs: null },
+      CLOTURE,
+    );
+    expect(sp(t)).toContain('portezsursafichelesespècescomptées,1295000,00');
+    expect(t).not.toMatch(/reconstitu/);
+  });
+
+  it('comptée avant la clôture · les espèces comptées, et les mouvements jusqu’à la clôture dits non reconstitués', () => {
+    const t = valeurAPorterSurLaFiche(
+      { ...base, dateComptage: new Date('2026-12-20T00:00:00Z'), soldeALaCloture: null, encaissementsPosterieurs: null, decaissementsPosterieurs: null },
+      CLOTURE,
+    );
+    expect(sp(t)).toContain('lesespècescomptées,1190000,00');
+    expect(t).toMatch(/ne sont pas reconstitués et entrent dans l'écart du rapprochement/);
+  });
+
+  it('un PV dans une devise · montants dans la devise, la fiche se valorise en francs, aucun cours choisi', () => {
+    const t = valeurAPorterSurLaFiche({ ...base, especesComptees: 1_190, soldeALaCloture: 1_300, decaissementsPosterieurs: 100, unite: 'USD' }, CLOTURE);
+    expect(sp(t)).toContain('1290,00USD');
+    expect(t).toMatch(/la fiche se valorise en francs/);
   });
 });

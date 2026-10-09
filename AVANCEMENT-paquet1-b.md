@@ -366,6 +366,27 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN3`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
   `association` (184 contrôles, clôture après arbitrage comprise)
   concordent.
 
+### Mineur 4 · la valeur à porter sur la fiche d'une caisse à l'écart
+
+- Vérifié · le refus disait « portez le comptage sur une fiche de la
+  caisse » ; la fiche se rapproche du solde de l'exercice de la campagne, la
+  CLÔTURE (`rapprocher` lit sa balance) · pour une caisse comptée après la
+  clôture (A10), les espèces comptées y feraient l'écart des mouvements
+  intercalés (1 190 000 contre 1 300 000, 110 000 au lieu de 10 000).
+- AVANT (main et copie) · MIN4 · le refus ne dit pas 1 290 000 ni
+  « reconstituée » (main refuse sur le statut, la copie dit « portez le
+  comptage »).
+- Correction · `valeurAPorterSurLaFiche` (pure, `solde-caisse-au-comptage.ts`)
+  nomme, caisse par caisse · comptée après la clôture, la valeur RECONSTITUÉE
+  figée sur le PV, par le calcul que le PV imprime
+  (`especesReconstitueesALaCloture`, AUDCIF art. 42 ; art. 16, al. 4 et 5),
+  avec ses composantes, « jamais les espèces comptées » ; PV d'avant la règle
+  sans reconstitution · aucun chiffre inventé, la reconstitution réclamée ;
+  comptée à la clôture · les espèces comptées ; avant · les espèces comptées
+  et les mouvements jusqu'à la clôture dits non reconstitués ; PV en devise ·
+  montants dans la devise, la fiche en francs, aucun cours choisi.
+- APRÈS · MIN4 (4 contrôles), B10 et MIN3 · 13 contrôles, 13 concordances.
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
