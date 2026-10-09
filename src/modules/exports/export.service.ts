@@ -267,21 +267,133 @@ export function resultatDeLExerciceLogeAuBilan(
   return Math.abs(anterieur) > 0.005 ? `${cellule}-(${anterieur})` : cellule;
 }
 
-/** L'anomalie « à traiter » d'un exercice clôturé qui porte encore le résultat précédent non affecté (`resultatAnterieurNonVire`). */
+/**
+ * Des postes regroupés par motif, dans l'ordre du tableau · une ligne
+ * d'anomalie par motif. Un même motif lève ou ne lève pas sa cause · le
+ * groupe garde ce que ses postes en disent (`aLever`, relecture m3).
+ */
+function postesParMotif(
+  postes: ReadonlyArray<{ ref: string; raison: string; aLever?: boolean }>,
+): Array<{ refs: string[]; raison: string; aLever: boolean }> {
+  const groupes: Array<{ refs: string[]; raison: string; aLever: boolean }> = [];
+  for (const p of postes) {
+    const groupe = groupes.find((g) => g.raison === p.raison);
+    if (groupe) {
+      groupe.refs.push(p.ref);
+      groupe.aLever ||= p.aLever === true;
+    } else groupes.push({ refs: [p.ref], raison: p.raison, aLever: p.aLever === true });
+  }
+  return groupes;
+}
+
+/**
+ * LA LIGNE « ANOMALIES » D'UN POSTE DU TABLEAU DES FLUX QUE LA LIASSE NE
+ * CHIFFRE PAS (paquet 1, relecture m3, 2026-10-09). Classés en information
+ * « Aucune action : la donnée manque », les postes qu'une OD du premier jour
+ * ou un exercice précédent ouvert sans écriture vident contredisaient leur
+ * propre motif, qui nomme le geste qui les lève (repasser l'OD en à-nouveau,
+ * valider le brouillard, importer la balance de clôture). Un motif qui nomme
+ * un geste (`aLever`) est « à vérifier » et renvoie à ce geste ; les autres
+ * (compte de résultat N-1 qu'aucun exercice tenu ne porte, exercice précédent
+ * clôturé sans écriture, poste chiffré sous réserve) restent une
+ * information, sans action. Rien n'est déduit du texte du motif.
+ */
+export function anomaliePosteDeFlux(
+  refs: string,
+  raison: string,
+  colonne: 'N' | 'N-1',
+  aLever: boolean | undefined,
+): [string, string, string, string, string] {
+  const intitule = colonne === 'N' ? 'Tableau des flux de trésorerie' : 'Tableau des flux · colonne N-1';
+  if (aLever === true) {
+    return [
+      'A_VERIFIER',
+      refs,
+      intitule,
+      raison,
+      colonne === 'N'
+        ? 'Suivre l’issue que le motif nomme · tant que sa cause tient, le poste reste vide, ce n’est pas un zéro.'
+        : 'Suivre l’issue que le motif nomme · tant que sa cause tient, la cellule N-1 reste vide, ce n’est pas un zéro.',
+    ];
+  }
+  return [
+    'INFO',
+    refs,
+    intitule,
+    raison,
+    colonne === 'N'
+      ? 'Aucune action : la donnée manque, elle n’est pas approximée.'
+      : 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.',
+  ];
+}
+
+/**
+ * La solution d'une ligne de provenance de la colonne N-1 ou de l'ouverture
+ * (relecture m3) · la mention nomme parfois un geste (OD du premier jour,
+ * exercice précédent au brouillard ou vide), parfois aucun (bilan
+ * d'ouverture importé) · la solution renvoie à elle, jamais « aucune action »
+ * seul.
+ */
+const SOLUTION_PROVENANCE = 'Suivre l’issue que la mention nomme, s’il y en a une ; aucune action si la provenance est la bonne.';
+
+/**
+ * LE MOTIF DES POSTES DU TABLEAU DES FLUX, SOUS L'ÉTAT EXPORTÉ SEUL (paquet 1,
+ * relecture M2). La liasse le dit à sa feuille ANOMALIES ; le classeur du
+ * seul tableau n'en a pas, et ses cellules vides restaient sans raison · une
+ * ligne par motif, colonne N puis colonne N-1, sous la ligne de contrôle.
+ * Rend le rang de la dernière ligne écrite.
+ */
+function motifsDesPostesSousLeTableau(
+  ws: ExcelJS.Worksheet,
+  rangDepart: number,
+  tft: { postesNonCalculables?: ReadonlyArray<{ ref: string; raison: string }>; postesNonCalculablesN1?: ReadonlyArray<{ ref: string; raison: string }> },
+): number {
+  let r = rangDepart;
+  for (const g of postesParMotif(tft.postesNonCalculables ?? [])) {
+    r += 1;
+    ligneControleSousEtat(ws, r, `Exercice N · ${g.refs.join(', ')} · ${g.raison}`);
+  }
+  for (const g of postesParMotif(tft.postesNonCalculablesN1 ?? [])) {
+    r += 1;
+    ligneControleSousEtat(ws, r, `Exercice N-1 · ${g.refs.join(', ')} · ${g.raison}`);
+  }
+  return r;
+}
+
+/**
+ * L'anomalie « à traiter » d'un exercice clôturé qui porte encore le résultat
+ * précédent non affecté (`resultatAnterieurNonVire`), et celle de la colonne
+ * N-1 qui reprend le même défaut de l'exercice précédent
+ * (`resultatAnterieurNonVireN1`, paquet 1, A1) · sans elle, la liasse de
+ * l'exercice suivant ne levait rien sur un comparatif qui présente deux
+ * résultats comme un seul.
+ */
 export function anomalieResultatAnterieurNonVire(bilan: {
   resultatAnterieurNonVire: ResultatAnterieurNonVire | null;
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }): Array<[string, string, string, string, string]> {
+  const lignes: Array<[string, string, string, string, string]> = [];
   const n = bilan.resultatAnterieurNonVire;
-  if (!n) return [];
-  return [
-    [
+  if (n) {
+    lignes.push([
       'A_TRAITER',
       n.poste,
       "Résultat net de l'exercice",
       n.motif,
       "Le dire dans les notes annexes · l'affectation passée dans l'exercice suivant, ou sa clôture, porte ce montant au report à nouveau.",
-    ],
-  ];
+    ]);
+  }
+  const n1 = bilan.resultatAnterieurNonVireN1;
+  if (n1) {
+    lignes.push([
+      'A_TRAITER',
+      n1.poste,
+      "Résultat net de l'exercice · colonne N-1",
+      n1.motif,
+      "Le dire dans les notes annexes · la colonne N-1 reprend le poste tel que l'exercice précédent l'a présenté, rien n'est recalculé.",
+    ]);
+  }
+  return lignes;
 }
 
 @Injectable()
@@ -2153,6 +2265,12 @@ export class ExportService {
     }
     entetesBande(ws, r, r, 1, 6);
     ws.getRow(r).height = 22;
+    // Un poste laissé VIDE par le tableau (paquet 1, A7 · ouverture passée en
+    // OD au premier jour) reste une cellule vide · son 0 servi n'est pas un
+    // montant. Son motif se dit à la feuille ANOMALIES de la liasse, et sous
+    // l'état dans le classeur du seul tableau, qui n'a pas cette feuille
+    // (`motifsDesPostesSousLeTableau`, relecture M2).
+    const vides = new Set(tft.postesVides);
     for (const l of tft.lignes) {
       r += 1;
       ws.getRow(r).height = 22;
@@ -2167,7 +2285,7 @@ export class ExportService {
       ws.getCell(r, 2).value = l.libelle;
       ws.getCell(r, 3).value = l.repere ?? REP_TFT[l.ref] ?? '';
       // Colonne 4 · Note, vide (voir l'en-tête de la méthode).
-      ws.getCell(r, 5).value = l.montant;
+      if (!vides.has(l.ref)) ws.getCell(r, 5).value = l.montant;
       if (l.montantN1 !== undefined) ws.getCell(r, 6).value = l.montantN1;
       styleLigne(ws, r, 1, 6, NIVEAUX_TFT[l.ref] ?? 'normal', [5, 6], 1);
       ws.getCell(r, 3).alignment = { horizontal: 'center', vertical: 'middle' };
@@ -2193,13 +2311,18 @@ export class ExportService {
     ]);
     const classeur = this.nouveauClasseur();
     const { dernier } = this.feuilleTftEtafi(classeur, tft, ident);
+    // Contrôle non effectué (ZA ou ZF laissée vide, relecture M1) · le motif,
+    // jamais un écart chiffré sur des zéros.
     ligneControleSousEtat(
       classeur.getWorksheet('TFT')!,
       dernier + 1,
-      tft.controle.coherent
-        ? 'Contrôle : le TFT boucle avec la trésorerie du bilan (ZG = trésorerie actif N - trésorerie passif N).'
-        : `CONTRÔLE : écart de bouclage de ${tft.controle.ecart.toLocaleString('fr-FR')} avec la trésorerie du bilan.`,
+      tft.controle.coherent === null
+        ? (tft.controle.motifNonControlable ?? 'Contrôle non effectué.')
+        : tft.controle.coherent
+          ? 'Contrôle : le TFT boucle avec la trésorerie du bilan (ZG = trésorerie actif N - trésorerie passif N).'
+          : `CONTRÔLE : écart de bouclage de ${(tft.controle.ecart ?? 0).toLocaleString('fr-FR')} avec la trésorerie du bilan.`,
     );
+    motifsDesPostesSousLeTableau(classeur.getWorksheet('TFT')!, dernier + 1, tft);
     numeroterPages(classeur);
     return {
       buffer: await this.versBuffer(classeur),
@@ -2338,9 +2461,12 @@ export class ExportService {
     ligneControleSousEtat(
       classeur.getWorksheet('Compte Exploitation')!,
       Math.max(...rangs.values()) + 2,
+      // Le solde se DIT, il n'est pas jugé à zéro (paquet 1, A9) · Partie 4
+      // ch. 3 l'imprime « (+excédent, -déficit) » ; non nul, il est hors de la
+      // neutralisation des charges par le 702 que la fiche du compte 13 décrit.
       ce.controle.boucleAZero
-        ? 'Contrôle : le compte d’exploitation boucle à zéro (XC = 0), régime normal du jeu projets.'
-        : `CONTRÔLE : XC = ${ce.solde.toLocaleString('fr-FR')} · le compte d'exploitation ne boucle pas à zéro (voir Notes).`,
+        ? 'Solde des opérations de l’exercice : XC = 0.'
+        : `Solde des opérations de l'exercice : XC = ${ce.solde.toLocaleString('fr-FR')} · non nul, à expliquer en Notes (produit ou charge hors de la neutralisation par le 702).`,
     );
     numeroterPages(classeur);
     return {
@@ -3578,9 +3704,16 @@ export class ExportService {
       ],
       [
         'Évolution de la trésorerie (figée du Tableau des flux)',
+        // Ouverture ou variation laissée vide par le tableau (relecture M1) ·
+        // « non servie », et le contrôle non effectué dit son motif, jamais
+        // « non bouclé ».
         conformite.tresorerie
-          ? `ouverture ${conformite.tresorerie.ouverture} · variation ${conformite.tresorerie.variation} · clôture ${conformite.tresorerie.cloture}` +
-            (conformite.tresorerie.boucle ? ' · tableau bouclé' : ' · ⚠ TABLEAU NON BOUCLÉ à cette date')
+          ? `ouverture ${conformite.tresorerie.ouverture ?? 'non servie'} · variation ${conformite.tresorerie.variation ?? 'non servie'} · clôture ${conformite.tresorerie.cloture}` +
+            (conformite.tresorerie.boucle === null
+              ? ` · contrôle non effectué : ${conformite.tresorerie.motifNonControlable ?? 'ouverture ou variation laissée vide'}`
+              : conformite.tresorerie.boucle
+                ? ' · tableau bouclé'
+                : ' · ⚠ TABLEAU NON BOUCLÉ à cette date')
           : '·',
       ],
     ];
@@ -4895,10 +5028,10 @@ export class ExportService {
     tft?: { mentionOuverture?: string | null },
   ): Array<[string, string, string, string, string]> {
     const lignes: Array<[string, string, string, string, string]> = [];
-    if (bilan.mentionComparatif) lignes.push(['INFO', '·', 'Bilan · colonne N-1', bilan.mentionComparatif, 'Aucune action si la provenance est la bonne.']);
+    if (bilan.mentionComparatif) lignes.push(['INFO', '·', 'Bilan · colonne N-1', bilan.mentionComparatif, SOLUTION_PROVENANCE]);
     if (resultat.motifComparatifAbsent) lignes.push(['INFO', '·', 'Compte de résultat · colonne N-1', resultat.motifComparatifAbsent, 'Voir l’issue dite.']);
     if (tft?.mentionOuverture && tft.mentionOuverture !== bilan.mentionComparatif) {
-      lignes.push(['INFO', 'ZA', 'Tableau des flux · ouverture', tft.mentionOuverture, 'Aucune action si la provenance est la bonne.']);
+      lignes.push(['INFO', 'ZA', 'Tableau des flux · ouverture', tft.mentionOuverture, SOLUTION_PROVENANCE]);
     }
     return lignes;
   }
@@ -5009,6 +5142,29 @@ export class ExportService {
     construireTableCommentaires(classeur, parties, ident);
 
     // CONTROLES · les recoupements croisés propres à ce jeu.
+    //
+    // LE SOLDE DES OPÉRATIONS N'EST PAS TENU À ZÉRO (paquet 1, A9, reproduit
+    // sur vraie base le 2026-10-09). SYCEBNL Partie 4 ch. 3, tableaux de
+    // correspondance · XC « SOLDE DES OPERATIONS DE L'EXERCICE (+excédent,
+    // -déficit) XA - XB », CC « Solde des opérations de l'exercice (+ ou
+    // déficit -) », « 13 (131 ou 139) », et CB « Report à nouveau (+ ou -) »
+    // pour le recevoir. La fiche du compte 13 le dit « toujours nul » parce que
+    // chaque charge engagée sur les fonds d'administration est neutralisée par
+    // le 702 (Partie 3 ch. 3 § 2.2, note (2)) ; un produit hors de cette
+    // neutralisation (intérêts du dépôt, prix de cession au 82 du § 2.5.1) le
+    // rend non nul, et la liasse comparait alors à zéro « en régime normal »
+    // un projet au solde de 120 000. Les lignes « Attendu 0 » sont des
+    // égalités qui doivent tenir · XC y reste une valeur lue, et l'égalité est
+    // celle du même solde dans les deux états, XC au compte d'exploitation et
+    // CC au bilan (un compte de gestion qu'aucun poste du compte
+    // d'exploitation ne lit les écarte). Le SOLDE DE L'EXERCICE PRÉCÉDENT
+    // resté au 13 faute d'affectation validée n'est pas de l'exercice · CC le
+    // porte, XC non, et la ligne CC le retranche comme aux quatre autres
+    // liasses (`resultatDeLExerciceLogeAuBilan`, paquet 1, relecture M3 ·
+    // 2027, affectation au brouillard, XC-CC rendait -120 000). Sur un
+    // exercice clôturé qui le porte encore, rien n'est retranché et
+    // l'anomalie le nomme. Un XC non nul reste « à vérifier » à la feuille
+    // ANOMALIES.
     const ctl = classeur.addWorksheet('CONTROLES');
     ctl.getCell(1, 1).value = 'Contrôle';
     ctl.getCell(1, 2).value = 'Valeur';
@@ -5023,11 +5179,13 @@ export class ExportService {
       ['Total général actif (BZ)', `'Bilan-Actif'!D${rangsActif.get('BZ')}`, ''],
       ['Total général passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
       ['Écart bilan actif - passif (doit être 0)', 'B5-B6', 0],
-      ["Solde du compte d'exploitation (XC · doit boucler à 0 en régime normal)", `'Compte Exploitation'!D${rangsCe.get('XC')}`, 0],
+      ["Solde des opérations de l'exercice, compte d'exploitation (XC)", `'Compte Exploitation'!D${rangsCe.get('XC')}`, ''],
+      ["Solde des opérations de l'exercice, bilan (CC)", resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!D${rangsPassif.get('CC')}`, bilan), ''],
+      ["Écart compte d'exploitation / bilan (XC-CC, doit être 0)", 'B8-B9', 0],
       ['Contrôle emplois-ressources (VII · V - VI, doit être 0)', `'Emplois-Ressources'!D${terRangs.get('GZ')}`, 0],
       ['Trésorerie fin (réconciliation, G)', `'Reconciliation tresorerie'!C${rangsRecon.get('G')}`, ''],
       ['Trésorerie balance (classe 5 nette)', recon.controle.tresorerieBalance, ''],
-      ['Écart réconciliation / balance (doit être 0)', 'B10-B11', 0],
+      ['Écart réconciliation / balance (doit être 0)', 'B12-B13', 0],
     ];
     let rc = 1;
     for (const [lab, val, attendu] of controles) {
@@ -5398,7 +5556,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const controles: Array<[string, string | number, string | number]> = [
+    // ZG laissée vide (relecture M1) · sa cellule est vide, et une formule
+    // qui la lirait rendrait toute la trésorerie du bilan en écart. La ligne
+    // dit le contrôle non effectué, sans attendu.
+    const tftNonControlable = tft.controle.coherent === null;
+    const controles: Array<[string, string | number | { texte: string }, string | number]> = [
       // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
       // lignes de compte.
       ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
@@ -5410,19 +5572,21 @@ export class ExportService {
       ['Résultat net (compte de résultat, XE)', `Résultat!D${rangsCr.get('XE')}`, ''],
       ['Résultat net logé au bilan (CH)', resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!D${rangsPassif.get('CH')}`, bilan), ''],
       ['Écart résultat CR / bilan (doit être 0)', 'B8-B9', 0],
-      ['Trésorerie nette au 31/12 (TFT, ZG)', `TFT!E${rangsTft.get('ZG')}`, ''],
+      ['Trésorerie nette au 31/12 (TFT, ZG)', tftNonControlable ? { texte: 'Laissée vide · voir ANOMALIES' } : `TFT!E${rangsTft.get('ZG')}`, ''],
       [
         'Trésorerie nette au 31/12 (bilan, BX - DX)',
         `'Bilan-Actif'!F${rangsActif.get('BX')}-'Bilan-Passif'!D${rangsPassif.get('DX')}`,
         '',
       ],
-      ['Écart trésorerie TFT / bilan (doit être 0)', 'B11-B12', 0],
+      tftNonControlable
+        ? ['Écart trésorerie TFT / bilan · contrôle non effectué', { texte: 'Non contrôlable' }, '']
+        : ['Écart trésorerie TFT / bilan (doit être 0)', 'B11-B12', 0],
     ];
     let rc = 1;
     for (const [lab, val, attendu] of controles) {
       rc += 1;
       ctl.getCell(rc, 1).value = lab;
-      ctl.getCell(rc, 2).value = typeof val === 'string' ? { formula: val } : val;
+      ctl.getCell(rc, 2).value = typeof val === 'string' ? { formula: val } : typeof val === 'number' ? val : val.texte;
       ctl.getCell(rc, 3).value = attendu;
       styleLigne(ctl, rc, 1, 3, 'normal', [2]);
     }
@@ -5453,14 +5617,37 @@ export class ExportService {
         'Rattacher les comptes de gestion listés ci-dessous à un poste officiel.',
       ]);
     }
-    if (!tft.controle.coherent) {
+    // Un écart CONSTATÉ seulement · un contrôle non effectué (ZA ou ZF
+    // laissée vide) n'est pas un écart, il se dit avec son motif (M1).
+    if (tft.controle.coherent === false) {
       anomalies.push([
         'A_TRAITER',
         'ZG',
         'Tableau des flux de trésorerie',
-        `Écart de bouclage de ${tft.controle.ecart.toFixed(2)} avec la trésorerie du bilan.`,
+        `Écart de bouclage de ${(tft.controle.ecart ?? 0).toFixed(2)} avec la trésorerie du bilan.`,
         'Examiner les comptes non ventilés du tableau.',
       ]);
+    }
+    if (tft.controle.coherent === null) {
+      anomalies.push([
+        'INFO',
+        'ZG',
+        'Tableau des flux de trésorerie',
+        tft.controle.motifNonControlable ?? 'Contrôle non effectué.',
+        'Lever la cause des postes laissés vides (lignes suivantes) ; le contrôle se fera alors.',
+      ]);
+    }
+    // Les postes laissés vides et leur motif (paquet 1, A3 et A7), une ligne
+    // par motif · une ouverture en OD ou un exercice précédent sans écriture
+    // vident une vingtaine de postes d'un coup, et vingt lignes identiques
+    // apprendraient à ignorer la feuille.
+    // Gravité et solution selon que le motif nomme un geste (relecture m3,
+    // `anomaliePosteDeFlux`).
+    for (const g of postesParMotif(tft.postesNonCalculables)) {
+      anomalies.push(anomaliePosteDeFlux(g.refs.join(', '), g.raison, 'N', g.aLever));
+    }
+    for (const g of postesParMotif(tft.postesNonCalculablesN1)) {
+      anomalies.push(anomaliePosteDeFlux(g.refs.join(', '), g.raison, 'N-1', g.aLever));
     }
     for (const c of bilan.comptesNonRattaches) {
       anomalies.push([
@@ -5481,7 +5668,7 @@ export class ExportService {
       ]);
     }
     anomalies.push(...anomalieResultatAnterieurNonVire(bilan));
-    anomalies.push(...this.provenanceDuComparatif(bilan, cr));
+    anomalies.push(...this.provenanceDuComparatif(bilan, cr, tft));
     if (anomalies.length === 0) {
       anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     }
@@ -5758,6 +5945,7 @@ export class ExportService {
     ws.getRow(r).height = 22;
 
     let rangVariationBf = 0;
+    const videsN = new Set(tft.postesVides);
     for (const l of tft.lignes) {
       r += 1;
       ws.getRow(r).height = 22;
@@ -5771,7 +5959,10 @@ export class ExportService {
       else rangVariationBf = r;
       ws.getCell(r, 1).value = l.ref;
       ws.getCell(r, 2).value = l.libelle;
-      ws.getCell(r, 4).value = l.montant;
+      // Un poste laissé VIDE (ouverture passée en OD, A7) reste une cellule
+      // vide en colonne N · son 0 servi n'est pas un montant, et la ligne de
+      // contrôle de la liasse l'aurait lu comme tel (relecture M1).
+      if (!videsN.has(l.ref)) ws.getCell(r, 4).value = l.montant;
       if (l.montantN1 !== undefined) ws.getCell(r, 5).value = l.montantN1;
       ws.getCell(r, 6).value = l.repere ?? REP_TFT_SYSCOHADA[l.ref] ?? '';
       styleLigne(ws, r, 1, NB, NIVEAUX_TFT_SYSCOHADA[l.ref] ?? (l.estTotal ? 'inter' : 'normal'), [4, 5], 1);
@@ -5799,6 +5990,8 @@ export class ExportService {
       if (!rang) continue;
       for (const [lettre, col] of colonnes) {
         if (col === 5 && montantsN1.get(total.ref ?? '') === undefined) continue;
+        // De même en colonne N · un total d'un poste laissé vide est vide.
+        if (col === 4 && total.ref && videsN.has(total.ref)) continue;
         const termes = total.deRefs.map((ref) => (rangs.has(ref) ? `${lettre}${rangs.get(ref)}` : '0'));
         ws.getCell(rang, col).value = { formula: termes.join('+') };
       }
@@ -5823,9 +6016,14 @@ export class ExportService {
   private controlesTftSyscohada(
     tft: Awaited<ReturnType<EtatsFinanciersSyscohadaService['tableauFluxTresorerie']>>,
   ): string {
-    const bouclage = tft.controle.coherent
-      ? `Contrôle du modèle : ZH = Trésorerie actif N - Trésorerie passif N (BT - DT) = ${tft.controle.tresorerieClotureParBilan.toLocaleString('fr-FR')}.`
-      : `CONTRÔLE : ZH par les flux (${tft.controle.tresorerieClotureParFlux.toLocaleString('fr-FR')}) diffère de BT - DT du bilan (${tft.controle.tresorerieClotureParBilan.toLocaleString('fr-FR')}) de ${tft.controle.ecart.toLocaleString('fr-FR')} · l'écart chiffre ce que la ventilation FA à FQ ne couvre pas, il n'est pas corrigé.`;
+    // ZA ou ZG laissée vide (relecture M1) · le contrôle n'est pas effectué,
+    // le motif le dit, jamais un écart chiffré sur des zéros.
+    const bouclage =
+      tft.controle.coherent === null
+        ? (tft.controle.motifNonControlable ?? 'Contrôle non effectué.')
+        : tft.controle.coherent
+          ? `Contrôle du modèle : ZH = Trésorerie actif N - Trésorerie passif N (BT - DT) = ${tft.controle.tresorerieClotureParBilan.toLocaleString('fr-FR')}.`
+          : `CONTRÔLE : ZH par les flux (${(tft.controle.tresorerieClotureParFlux ?? 0).toLocaleString('fr-FR')}) diffère de BT - DT du bilan (${tft.controle.tresorerieClotureParBilan.toLocaleString('fr-FR')}) de ${(tft.controle.ecart ?? 0).toLocaleString('fr-FR')} · l'écart chiffre ce que la ventilation FA à FQ ne couvre pas, il n'est pas corrigé.`;
     const nonVentiles =
       tft.comptesNonVentiles.length > 0
         ? ` ${tft.comptesNonVentiles.length} compte(s) de trésorerie non ventilé(s) : ` +
@@ -5862,6 +6060,9 @@ export class ExportService {
     const classeur = this.nouveauClasseur();
     const { dernier } = this.feuilleTftSyscohadaEtafi(classeur, tft, ident);
     ligneControleSousEtat(classeur.getWorksheet('TFT')!, dernier + 1, this.controlesTftSyscohada(tft));
+    // Le motif de chaque poste nommé par la ligne de contrôle (relecture M2) ·
+    // la liasse le porte à ANOMALIES, le classeur du seul tableau sous l'état.
+    motifsDesPostesSousLeTableau(classeur.getWorksheet('TFT')!, dernier + 1, tft);
     numeroterPages(classeur);
     return {
       buffer: await this.versBuffer(classeur),
@@ -7023,7 +7224,10 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const controles: Array<[string, string | number, string | number]> = [
+    // ZH laissée vide (relecture M1) · même règle qu'aux associations, la
+    // ligne dit le contrôle non effectué, sans attendu.
+    const tftNonControlable = tft.controle.coherent === null;
+    const controles: Array<[string, string | number | { texte: string }, string | number]> = [
       // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
       // lignes de compte.
       ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
@@ -7035,13 +7239,19 @@ export class ExportService {
       ['RÉSULTAT NET du compte de résultat (XI)', `Résultat!D${rangsCr.get('XI')}`, ''],
       ["Résultat net logé au bilan (CJ)", resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!D${rangsPassif.get('CJ')}`, bilan), ''],
       ['Écart résultat CR / bilan (doit être 0)', 'B8-B9', 0],
-      ['Trésorerie nette au 31 Décembre par les flux (TFT, ZH)', `TFT!D${rangsTft.get('ZH')}`, ''],
+      [
+        'Trésorerie nette au 31 Décembre par les flux (TFT, ZH)',
+        tftNonControlable ? { texte: 'Laissée vide · voir ANOMALIES' } : `TFT!D${rangsTft.get('ZH')}`,
+        '',
+      ],
       [
         'Contrôle du modèle : Trésorerie actif N - Trésorerie passif N (BT - DT)',
         `'Bilan-Actif'!F${rangsActif.get('BT')}-'Bilan-Passif'!D${rangsPassif.get('DT')}`,
         '',
       ],
-      ['Écart de bouclage du TFT (doit être 0)', 'B11-B12', 0],
+      tftNonControlable
+        ? ['Écart de bouclage du TFT · contrôle non effectué', { texte: 'Non contrôlable' }, '']
+        : ['Écart de bouclage du TFT (doit être 0)', 'B11-B12', 0],
       [
         'Résultat par les classes 6/7/8 (avant clôture)',
         bilan.controle.resultatClasses678,
@@ -7064,7 +7274,7 @@ export class ExportService {
       // (« Résultat!D51 », « 'Bilan-Passif'!D17 ») · écrites en TEXTE, elles
       // rendaient chaque écart de la feuille « #VALUE! », et la ligne
       // « Écart résultat CR / bilan » ne pouvait dire ni l'égalité ni l'écart.
-      ctl.getCell(rc, 2).value = typeof val === 'string' ? { formula: val } : val;
+      ctl.getCell(rc, 2).value = typeof val === 'string' ? { formula: val } : typeof val === 'number' ? val : val.texte;
       ctl.getCell(rc, 3).value = attendu;
       styleLigne(ctl, rc, 1, 3, 'normal', [2]);
     }
@@ -7097,13 +7307,24 @@ export class ExportService {
         'Rattacher les comptes de gestion listés ci-dessous à un poste du ch. 7.',
       ]);
     }
-    if (!tft.controle.coherent) {
+    // Un écart CONSTATÉ seulement (relecture M1) · un contrôle non effectué
+    // se dit avec son motif.
+    if (tft.controle.coherent === false) {
       anomalies.push([
         'A_TRAITER',
         'ZH',
         'Tableau des flux de trésorerie',
-        `Écart de ${tft.controle.ecart.toFixed(2)} entre ZH par les flux et BT - DT du bilan · l’écart chiffre ce que la ventilation FA à FQ ne couvre pas.`,
+        `Écart de ${(tft.controle.ecart ?? 0).toFixed(2)} entre ZH par les flux et BT - DT du bilan · l’écart chiffre ce que la ventilation FA à FQ ne couvre pas.`,
         'Examiner les comptes non ventilés ci-dessous.',
+      ]);
+    }
+    if (tft.controle.coherent === null) {
+      anomalies.push([
+        'INFO',
+        'ZH',
+        'Tableau des flux de trésorerie',
+        tft.controle.motifNonControlable ?? 'Contrôle non effectué.',
+        'Lever la cause des postes laissés vides (lignes du tableau des flux ci-dessous) ; le contrôle se fera alors.',
       ]);
     }
     for (const c of bilan.comptesNonRattaches) {
@@ -7133,11 +7354,13 @@ export class ExportService {
         'Rapprocher l’opération de la ventilation du ch. 5 ; l’écart de bouclage de ZH en dépend.',
       ]);
     }
+    // Gravité et solution selon que le motif nomme un geste (relecture m3,
+    // `anomaliePosteDeFlux`) · un poste chiffré sous réserve n'en porte pas.
     for (const p of tft.postesNonCalculables) {
-      anomalies.push(['INFO', p.ref, 'Tableau des flux de trésorerie', p.raison, 'Aucune action : la donnée manque, elle n’est pas approximée.']);
+      anomalies.push(anomaliePosteDeFlux(p.ref, p.raison, 'N', p.aLever));
     }
     for (const p of tft.postesNonCalculablesN1 ?? []) {
-      anomalies.push(['INFO', p.ref, 'Tableau des flux · colonne N-1', p.raison, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.']);
+      anomalies.push(anomaliePosteDeFlux(p.ref, p.raison, 'N-1', p.aLever));
     }
     anomalies.push(...anomalieResultatAnterieurNonVire(bilan));
     anomalies.push(...this.provenanceDuComparatif(bilan, cr, tft));

@@ -34,6 +34,9 @@ function correspond(ligne: Ligne, where: Record<string, unknown> | undefined, mo
     }
     // Les relations de bornage (bien, journal, lignes) ne filtrent pas ici.
     if (['immobilisation', 'journal', 'lignes', 'corrigeEcriture', 'compte'].includes(cle)) return true;
+    // Paquet 1, A8 · la contre-passation d'une réévaluation, liée, sort du
+    // périmètre de l'ouverture · `is: null` honoré sur la relation absente.
+    if (cle === 'reevaluationExtourne') return (attendu as { is?: unknown }).is === null ? !ligne[cle] : true;
     const valeur = ligne[cle];
     if (attendu instanceof Date) return valeur instanceof Date && valeur.getTime() === attendu.getTime();
     if (attendu !== null && typeof attendu === 'object') {
@@ -532,6 +535,76 @@ describe('le dossier repris ne déplace pas une ouverture passée (relecture du 
       'ne serait plus celle du premier jour de l\'exercice de liquidation',
     );
     expect(iso(monde.tables.exercice[0].dateDebut as Date)).toBe('2027-01-01');
+  });
+});
+
+/**
+ * SECOND TOUR DE RELECTURE DU PAQUET 1, BLOQUANT 2 (reproduit sur vraie base
+ * le 2026-10-09) · l'arrêt, son annulation et le rattachement refusaient dès
+ * qu'une écriture restait au premier jour, en conseillant « validée,
+ * inscrivez-la en négatif (AUDCIF art. 20, al. 2) » · une fois le négatif
+ * inscrit, le refus tenait toujours, sans issue. Même prédicat que la
+ * clôture · brouillard, refus ; position nulle, le geste passe ; nulle par un
+ * négatif inscrit après le premier jour, sur l'accord du cabinet.
+ */
+describe('second tour, B2 · une ouverture inscrite en négatif ne retient plus le geste', () => {
+  const N1 = { id: 'n1', tenantId: 't1', dateDebut: jour(2027, 1, 1), dateFin: jour(2027, 12, 31), statut: 'OUVERT' };
+  const ligneDe = (id: string, ecritureId: string, numero: string, debit: number, credit: number) => ({
+    id, ecritureId, compteId: numero, compte: { numero }, debit, credit, libelle: 'Ouverture',
+    dateEcheance: null, deviseId: null, montantDevise: null, coursApplique: null, lettrageId: null, rapprochementId: null,
+  });
+  /** OD d'ouverture au 01/01/2027 et son négatif lié, daté `dateNegatif`, dans l'exercice `exerciceId`. */
+  function odAnnulee(exerciceId: string, dateNegatif: Date, statutNegatif = 'VALIDEE') {
+    return {
+      ecriture: [
+        ecriture('o1', jour(2027, 1, 1), { exerciceId, journalCode: 'OD', estSoldeDesComptesDeGestion: false, corrigeEcritureId: null }),
+        ecriture('o2', dateNegatif, { exerciceId, journalCode: 'OD', estSoldeDesComptesDeGestion: false, corrigeEcritureId: 'o1', statut: statutNegatif }),
+      ],
+      ligneEcriture: [
+        ligneDe('l1', 'o1', '52110000', 10_000_000, 0), ligneDe('l2', 'o1', '10130000', 0, 10_000_000),
+        ligneDe('l3', 'o2', '52110000', -10_000_000, 0), ligneDe('l4', 'o2', '10130000', 0, -10_000_000),
+      ],
+    };
+  }
+
+  it('arrêt · négatif au premier jour · l’ouverture nulle ne retient plus le geste', async () => {
+    const monde = new Monde({ exercice: [N, N1], ...odAnnulee('n1', jour(2027, 1, 1)) });
+    await service(monde).arreterALaDissolution('t1', 'n');
+    expect(iso(monde.tables.exercice.find((e) => e.id === 'n1')!.dateDebut as Date)).toBe('2026-07-01');
+  });
+
+  it('arrêt · négatif au 15/03 · refus qui nomme le négatif et sa date, et passe sur l’accord du cabinet', async () => {
+    const monde = new Monde({ exercice: [N, N1], ...odAnnulee('n1', jour(2027, 3, 15)) });
+    await expect(service(monde).arreterALaDissolution('t1', 'n')).rejects.toThrow(
+      /OD n° 2 du 15\/03\/2027.*AUDCIF art\. 34.*inscrivez aussi cette ressaisie en négatif.*en confirmant que l’ouverture annulée n’est pas ressaisie/,
+    );
+    expect(iso(monde.tables.exercice.find((e) => e.id === 'n1')!.dateDebut as Date)).toBe('2027-01-01');
+    await service(monde).arreterALaDissolution('t1', 'n', { ouvertureAnnuleeNonRessaisie: true });
+    expect(iso(monde.tables.exercice.find((e) => e.id === 'n1')!.dateDebut as Date)).toBe('2026-07-01');
+  });
+
+  it('un négatif encore au BROUILLARD · refus inchangé (il pourrait disparaître)', async () => {
+    const monde = new Monde({ exercice: [N, N1], ...odAnnulee('n1', jour(2027, 1, 1), 'BROUILLARD') });
+    await expect(service(monde).arreterALaDissolution('t1', 'n', { ouvertureAnnuleeNonRessaisie: true })).rejects.toThrow(
+      'ne serait plus celle de son premier jour',
+    );
+  });
+
+  it('annulation de l’arrêt et rattachement · même issue', async () => {
+    const arrete = { ...N, dateFin: DISSOLUTION };
+    const liq = { id: 'l', tenantId: 't1', dateDebut: jour(2026, 7, 1), dateFin: jour(2027, 12, 31), statut: 'OUVERT' };
+    const annul = odAnnulee('l', jour(2027, 3, 15));
+    // L'ouverture de l'exercice de liquidation est passée à SON premier jour, le 01/07/2026.
+    annul.ecriture[0].date = jour(2026, 7, 1);
+    const monde = new Monde({ exercice: [arrete, liq], ...annul });
+    await expect(service(monde).annulerArretDissolution('t1', 'n')).rejects.toThrow(/OD n° 2 du 15\/03\/2027.*n’est pas ressaisie/);
+    await service(monde).annulerArretDissolution('t1', 'n', { ouvertureAnnuleeNonRessaisie: true });
+    expect(iso(monde.tables.exercice.find((e) => e.id === 'l')!.dateDebut as Date)).toBe('2027-01-01');
+
+    const repris = { id: 'r', tenantId: 't1', dateDebut: jour(2027, 1, 1), dateFin: jour(2027, 12, 31), statut: 'OUVERT' };
+    const nul = new Monde({ exercice: [repris], ...odAnnulee('r', jour(2027, 1, 1)) });
+    await service(nul, { ...SARL, dateDissolution: jour(2025, 6, 30) }).rattacherALaLiquidation('t1', 'r');
+    expect(iso(nul.tables.exercice[0].dateDebut as Date)).toBe('2025-07-01');
   });
 });
 

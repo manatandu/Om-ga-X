@@ -9,6 +9,7 @@ import { celluleLibreSaisissable, texteCelluleLibre } from '../lib/cellules-note
 import { sousTitreDuTableau } from '../lib/titre-note';
 import { ligneVideeApres, lignesAvecAjouts, rangSuivant, sansDemande, type RangsDemandes } from '../lib/lignes-repetables';
 import { texteEcartSaisie, type EcartSaisieNote } from '../lib/ecarts-saisie-notes';
+import { TITRE_PART_NON_VENTILEE, aidePartNonVentilee, phrasePartNonVentilee } from '../lib/part-non-ventilee';
 
 /**
  * RENDU DES NOTES ANNEXES · pièces d'affichage communes aux deux écrans de
@@ -150,6 +151,7 @@ function LigneTableauNote({
   // le dossier n'a rien mis · une case vide n'est pas un zéro.
   const cellules = ligne.saisie;
   const ecarts = (ligne as LigneNoteCalculee & { ecartsSaisie?: EcartSaisieNote[] }).ecartsSaisie ?? [];
+  const partNonVentilee = phrasePartNonVentilee(ligne);
   return (
     <>
     <div
@@ -259,6 +261,15 @@ function LigneTableauNote({
         {texteEcartSaisie(note, e)}
       </div>
     ))}
+    {/* La part du solde qu'aucune échéance ne range, servie par le serveur
+        (paquet 1, A10) · dite sous la ligne, jamais fondue dans « à un an au
+        plus ». Sans elle, les colonnes d'échéance se lisaient complètes. */}
+    {partNonVentilee && (
+      <div className="flex items-center gap-1.5 px-4 pb-1 text-[11px] text-warning">
+        {partNonVentilee}
+        <Aide titre={TITRE_PART_NON_VENTILEE} texte={aidePartNonVentilee(ligne)} source="Notes annexes · ventilation par échéance" />
+      </div>
+    )}
     </>
   );
 }

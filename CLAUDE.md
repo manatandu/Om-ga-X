@@ -2211,7 +2211,11 @@ change pas ; aucun exercice civil ne s'ouvre après la dissolution ; un exercice
 repris se RATTACHE à la liquidation ; la liquidation ne se clôture qu'à la
 clôture déclarée, sans exercice suivant ; l'exercice est relu dans la
 transaction de l'écriture ; le bouton d'arrêt lit le refus du serveur
-(`motifRefusArret`). (2) UNE ASSIETTE, DEUX COTISATIONS (loi n° 23/053, art. 11,
+(`motifRefusArret`). Arrêt, annulation et rattachement jugent l'ouverture
+du premier jour par le prédicat de la clôture (`issueOuvertureQuiSeDeplace`,
+paquet 1, BLOQUANT 2) · brouillard ou position non nulle, refus ; nulle,
+le geste passe ; nulle par un négatif inscrit plus tard, sur l'accord du
+cabinet (`ouvertureAnnuleeNonRessaisie`). (2) UNE ASSIETTE, DEUX COTISATIONS (loi n° 23/053, art. 11,
 1°, 12 al. 4, 13 al. 3) · la seconde est l'impôt calculé une fois sur le TOTAL
 (report et minimum de l'art. 57 sur le chiffre d'affaires total) moins la
 première et les acomptes (`bilansSuccessifs`) ; un RÉGLÉ AU-DELÀ SE SÉPARE
@@ -3228,7 +3232,15 @@ comptes divergents puis report exact, art. 20, al. 2, chaque négatif lettré av
 ligne quand c'est permis) ou CONSERVER (motif et positions sur l'exercice, contrôle
 `OUVERTURE_DIFFERENTE_DE_LA_CLOTURE_DECLAREE` en N+1, ruptures dites par
 `justificatifSolde` et `balanceCumulee`). Aperçu `GET /exercices/:id/ouverture-suivante`,
-borné ; le provisoire ne passe rien quand une ouverture existe. TVA · le fait
+borné ; le provisoire ne passe rien quand une ouverture existe. LA
+CONTRE-PASSATION D'UNE RÉÉVALUATION n'est pas une ouverture (paquet 1, A8 et
+m4), du module ou déclarée. UNE OUVERTURE ANNULÉE APRÈS LE PREMIER JOUR NE
+CONCLUT PAS SEULE (paquet 1, second tour, BLOQUANT 1 · AUDCIF art. 20, al. 2 ;
+art. 34 · SYCEBNL art. 16, 4)) · nulle par un négatif lié ni daté ni valorisé
+au premier jour (`negatifsTardifs`), sa position exacte a pu être ressaisie ce
+jour-là, hors du périmètre, et le report entier la doublait · refus qui nomme
+le négatif et sa date, CONSERVER (motif, rien passé) ou RECTIFIER (report
+entier). TVA · le fait
 générateur d'une prestation est l'exécution (art. 24, 2°), l'encaissement la rend
 EXIGIBLE (art. 25, 2°) · jamais « due » ni « naît » à l'encaissement.
 

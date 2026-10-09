@@ -7,6 +7,7 @@ import {
   estResultatEnInstanceDAffectation,
   partsDuResultatAuBilan,
   resultatAnterieurNonVire,
+  resultatAnterieurNonVireDuComparatif,
   resultatAuBilan,
 } from './resultat-de-l-exercice';
 
@@ -126,5 +127,38 @@ describe('résultat antérieur non viré · seulement sur un exercice clôturé'
     expect(resultatAnterieurNonVire(false, -46_072_000, 'CJ', 'SYSCOHADA')).toBeNull();
     expect(resultatAnterieurNonVire(true, 0, 'CJ', 'SYSCOHADA')).toBeNull();
     expect(resultatAnterieurNonVire(true, 0.004, 'CJ', 'SYSCOHADA')).toBeNull();
+  });
+});
+
+/**
+ * PAQUET 1, A1 (reproduit sur vraie base le 2026-10-08) · la colonne N-1 de
+ * l'exercice qui suit un exercice clôturé sans le virement reprend le même
+ * poste (AUDCIF art. 34, dernier tiret ; SYCEBNL art. 16, 7)) · elle le DIT,
+ * sans rien recalculer. Seulement quand la colonne vient de l'exercice
+ * précédent tenu dans OmegaX et clôturé.
+ */
+describe('résultat antérieur non viré · la colonne N-1', () => {
+  it('exercice précédent clôturé, bénéfice de 2025 resté au 13 · nommé pour la colonne N-1, poste, montant, fiche et comparatif', () => {
+    const avis = resultatAnterieurNonVireDuComparatif('EXERCICE_N1', true, 1_000_000, 'CJ', 'SYSCOHADA');
+    expect(avis).toEqual(expect.objectContaining({ montant: 1_000_000, poste: 'CJ' }));
+    expect(avis!.motif).toMatch(/^Colonne N-1 · /);
+    expect(avis!.motif).toContain('un bénéfice de 1');
+    expect(avis!.motif).toContain('AUDCIF, Titre VII, compte 13');
+    expect(avis!.motif).toContain('AUDCIF art. 34');
+    expect(avis!.motif).toContain("Rien n'est recalculé");
+  });
+
+  it('le texte de chaque plan · excédent, fiche SYCEBNL et art. 16, 7)', () => {
+    const avis = resultatAnterieurNonVireDuComparatif('EXERCICE_N1', true, 1_000_000, 'CH', 'SYCEBNL');
+    expect(avis!.motif).toContain('un excédent de');
+    expect(avis!.motif).toContain('SYCEBNL, Partie 2 ch. 3, compte 13');
+    expect(avis!.motif).toContain('SYCEBNL art. 16, 7)');
+  });
+
+  it('colonne lue sur le bilan d’ouverture, absente, exercice précédent ouvert, ou rien d’antérieur · rien n’est dit', () => {
+    expect(resultatAnterieurNonVireDuComparatif('BILAN_D_OUVERTURE', true, 1_000_000, 'CJ', 'SYSCOHADA')).toBeNull();
+    expect(resultatAnterieurNonVireDuComparatif(null, true, 1_000_000, 'CJ', 'SYSCOHADA')).toBeNull();
+    expect(resultatAnterieurNonVireDuComparatif('EXERCICE_N1', false, 1_000_000, 'CJ', 'SYSCOHADA')).toBeNull();
+    expect(resultatAnterieurNonVireDuComparatif('EXERCICE_N1', true, 0, 'CJ', 'SYSCOHADA')).toBeNull();
   });
 });

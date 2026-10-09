@@ -2,7 +2,7 @@ import { ConflictException } from '@nestjs/common';
 import { ModeReportANouveau, OrigineLettrage, Prisma, StatutExercice, StatutLettrage } from '@prisma/client';
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { imputerPaiements, type DetteImputable, type PaiementImputable } from '../tva/imputation-paiements';
-import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
+import { EcritureDuPremierJour, filtreOuverturePasseeAuPremierJour, lignesDeContrePassationDeclaree } from '../exercice/ouverture-passee';
 import { ordreDeReglement } from '../reglements/ecart-change-realise';
 
 /**
@@ -838,6 +838,8 @@ export async function groupesNonReconduits(
       const ouverture = filtreOuverturePasseeAuPremierJour(p.tenantId, suivant);
       type Candidate = {
         id: string;
+        ecritureId: string;
+        ecriture: { reevaluationContrePassationDeclaree: EcritureDuPremierJour['reevaluationContrePassationDeclaree'] } | null;
         compteId: string;
         debit: Prisma.Decimal | number;
         credit: Prisma.Decimal | number;
@@ -861,10 +863,34 @@ export async function groupesNonReconduits(
                 estANouveauProvisoire: false,
                 estSoldeDesComptesDeGestion: false,
                 OR: [{ estGenereeParCloture: true }, { AND: ouverture.AND, lignes: ouverture.lignes }],
+                // UNE LIGNE ANNULÉE N'ACCUEILLE RIEN (relecture du paquet 1,
+                // B2) · une OD d'ouverture corrigée par son négatif (AUDCIF
+                // art. 20, al. 2 · tout écrivain de `corrigeEcritureId`
+                // l'inscrit ENTIÈRE en négatif) n'est plus une position, et
+                // le négatif, qui entre dans le périmètre quelle que soit sa
+                // date, n'en est pas une non plus. Candidate, l'OD annulée
+                // rivalisait avec la ligne du report qui la remplace · le
+                // groupe passait pour introuvable, ou se reconduisait sur une
+                // ligne que son négatif annule.
+                correction: { is: null },
+                corrigeEcritureId: null,
               },
             },
             select: {
               id: true,
+              ecritureId: true,
+              // La contre-passation faite à la main et DÉCLARÉE (A5 bis) ·
+              // ses lignes de l'écart ne sont pas une ouverture (ci-dessous).
+              ecriture: {
+                select: {
+                  reevaluationContrePassationDeclaree: {
+                    select: {
+                      annuleeLe: true,
+                      ecritureEcarts: { select: { lignes: { select: { compteId: true, debit: true, credit: true, compte: { select: { numero: true } } } } } },
+                    },
+                  },
+                },
+              },
               compteId: true,
               debit: true,
               credit: true,
@@ -880,6 +906,27 @@ export async function groupesNonReconduits(
           }) as Promise<Candidate[]>,
         (c) => candidates.push(c),
       );
+      // UNE CONTRE-PASSATION DÉCLARÉE N'ACCUEILLE RIEN (relecture du paquet 1,
+      // m4) · ses lignes sur les comptes de l'écart de conversion (le compte
+      // du tiers compris) inversent la réévaluation de N, elles ne reportent
+      // aucune pièce d'un groupe · la clôture les écarte de l'ouverture où
+      // elle reconduit (`ouvertureDejaPassee`), ce qui reste à relettrer les
+      // écarte de même, par la même lecture (`lignesDeContrePassationDeclaree`).
+      // Candidates, elles rivalisaient avec la ligne d'une ouverture importée
+      // de même montant (groupe dit introuvable), ou accueillaient seules un
+      // groupe sur une ligne qui n'en reporte aucune. La contre-passation du
+      // MODULE est déjà hors du périmètre (`HORS_CONTRE_PASSATION_DU_MODULE`).
+      const declarees = new Map<string, EcritureDuPremierJour>();
+      for (const c of candidates) {
+        const d = c.ecriture?.reevaluationContrePassationDeclaree;
+        if (d) declarees.set(c.ecritureId, { id: c.ecritureId, reevaluationContrePassationDeclaree: d });
+      }
+      const horsOuverture = lignesDeContrePassationDeclaree([...declarees.values()]);
+      if (horsOuverture.size > 0) {
+        const retenues = candidates.filter((c) => !horsOuverture.get(c.ecritureId)?.has(c.compteId));
+        candidates.length = 0;
+        candidates.push(...retenues);
+      }
       const accueils: LigneDAccueil[] = candidates.map((c) => ({
         id: c.id,
         compteId: c.compteId,

@@ -33,6 +33,8 @@ import type {
 } from '../lib/types';
 import { parametrePaiementsEnInstance } from '../lib/paiements-en-instance';
 import { montant } from '../lib/montants';
+import { montantDuPosteDeFlux, postesParMotif } from '../lib/postes-de-flux-vides';
+import { STYLE_CONTROLE_FLUX, issueDuControleDesFlux, motifDuControleNonEffectue } from '../lib/controle-flux';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
 import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
@@ -246,7 +248,9 @@ function EtatsSystemeNormalPage() {
   );
 
   // --- Tableau de flux de trésorerie : REF | Libellé | Montant (N) | Montant (N-1) ---
-  const ligneFlux = (l: LigneFluxTresorerie) => (
+  // Un poste que le serveur laisse vide (paquet 1, A7) s'écrit « · », jamais
+  // « 0,00 » (`montantDuPosteDeFlux`).
+  const ligneFlux = (l: LigneFluxTresorerie, vides?: readonly string[]) => (
     <div
       key={l.ref || l.libelle}
       title={l.comptes.length > 0 ? `Comptes : ${l.comptes.map((c) => c.numero).join(', ')}` : undefined}
@@ -256,7 +260,7 @@ function EtatsSystemeNormalPage() {
     >
       <span className="font-mono text-[11.5px] text-text-dim">{l.ref}</span>
       <span>{l.libelle}</span>
-      <span className="font-mono text-right">{montant(l.montant)}</span>
+      <span className="font-mono text-right">{montant(montantDuPosteDeFlux(l.ref, l.montant, vides))}</span>
       <span className="font-mono text-right text-text-dim font-normal">{montant(l.montantN1)}</span>
     </div>
   );
@@ -514,7 +518,7 @@ function EtatsSystemeNormalPage() {
                 </span>
               </div>
 
-              <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} />
+              <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} avisN1={bilan.resultatAnterieurNonVireN1} />
 
               {bilan.comptesNonRattaches.length > 0 && (
                 <div className="border border-danger/30 bg-danger-soft mt-2 px-3.5 py-2.5">
@@ -644,26 +648,31 @@ function EtatsSystemeNormalPage() {
                       {l.section}
                     </div>
                   ) : (
-                    ligneFlux(l)
+                    ligneFlux(l, tft.postesVides)
                   ),
                 )}
               </div>
 
+              {/* Trois issues (relecture M1) · ZA ou ZF laissée vide, le
+                  contrôle n'est pas effectué, jamais un écart chiffré sur des
+                  zéros (`issueDuControleDesFlux`). */}
               <div
                 className={`flex flex-col gap-1 mt-3 px-3.5 py-2.5 border ${
-                  tft.controle.coherent ? 'border-positive/30 bg-positive-soft' : 'border-danger/30 bg-danger-soft'
+                  STYLE_CONTROLE_FLUX[issueDuControleDesFlux(tft.controle.coherent)].cadre
                 }`}
               >
                 <div className="flex items-start gap-2">
                   <IconCheck
                     width={14}
                     height={14}
-                    className={`mt-0.5 shrink-0 ${tft.controle.coherent ? 'text-positive' : 'text-danger'}`}
+                    className={`mt-0.5 shrink-0 ${STYLE_CONTROLE_FLUX[issueDuControleDesFlux(tft.controle.coherent)].icone}`}
                   />
                   <span className="font-mono text-[11.5px] font-medium">
-                    {tft.controle.coherent
-                      ? "L'ÉTAT BOUCLE · trésorerie de clôture identique par cumul des flux et par lecture du bilan"
-                      : `ÉCART DE ${montant(tft.controle.ecart)} · la ventilation FA-FQ ne couvre pas tout le mouvement de trésorerie`}
+                    {issueDuControleDesFlux(tft.controle.coherent) === 'NON_EFFECTUE'
+                      ? motifDuControleNonEffectue(tft.controle.motifNonControlable)
+                      : tft.controle.coherent
+                        ? "L'ÉTAT BOUCLE · trésorerie de clôture identique par cumul des flux et par lecture du bilan"
+                        : `ÉCART DE ${montant(tft.controle.ecart)} · la ventilation FA-FQ ne couvre pas tout le mouvement de trésorerie`}
                   </span>
                 </div>
                 <div className="pl-[22px] font-mono text-[11px] text-text-dim">
@@ -672,6 +681,21 @@ function EtatsSystemeNormalPage() {
                   bilan : {montant(tft.controle.tresorerieClotureParBilan)}
                 </div>
               </div>
+
+              {/* Les postes laissés vides et leur motif (paquet 1, A7), une fois
+                  par motif · un poste vide n'est pas un zéro. */}
+              {postesParMotif(tft.postesNonCalculables).map((g) => (
+                <div key={`n-${g.raison}`} className="border border-warning/40 bg-warning-soft mt-2 px-3.5 py-2.5">
+                  <div className="text-[11.5px] font-bold mb-1">Postes laissés vides · {g.refs.join(', ')}</div>
+                  <p className="text-[11.5px]">{g.raison}</p>
+                </div>
+              ))}
+              {postesParMotif(tft.postesNonCalculablesN1).map((g) => (
+                <div key={`n1-${g.raison}`} className="border border-warning/40 bg-warning-soft mt-2 px-3.5 py-2.5">
+                  <div className="text-[11.5px] font-bold mb-1">Colonne N-1 · postes laissés vides · {g.refs.join(', ')}</div>
+                  <p className="text-[11.5px]">{g.raison}</p>
+                </div>
+              ))}
 
               {tft.comptesNonVentiles.length > 0 && (
                 <div className="border border-danger/30 bg-danger-soft mt-2 px-3.5 py-2.5">
@@ -737,7 +761,7 @@ function EtatsSystemeNormalPage() {
                 </span>
               </div>
 
-              <AvisResultatAnterieurNonVire avis={bilanProjet.resultatAnterieurNonVire} />
+              <AvisResultatAnterieurNonVire avis={bilanProjet.resultatAnterieurNonVire} avisN1={bilanProjet.resultatAnterieurNonVireN1} />
 
               {bilanProjet.comptesNonRattaches.length > 0 && (
                 <div className="border border-danger/30 bg-danger-soft mt-2 px-3.5 py-2.5">

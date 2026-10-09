@@ -454,7 +454,7 @@ export function EtatsSmtSyscohadaPage() {
             </span>
           </div>
 
-          <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} />
+          <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} avisN1={bilan.resultatAnterieurNonVireN1} />
 
           {/* JAMAIS MASQUÉS · un compte de bilan qu'aucun poste ne capte est
               exactement ce qui explique un déséquilibre. Le rattacher d'office

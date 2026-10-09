@@ -1,5 +1,10 @@
 import { Aide } from './chrome/Aide';
-import { montant } from '../lib/montants';
+import {
+  TITRE_AVIS_COLONNE_N1,
+  TITRE_AVIS_EXERCICE,
+  phraseAvisColonneN1,
+  phraseAvisExercice,
+} from '../lib/resultat-anterieur-non-vire';
 import type { ResultatAnterieurNonVire } from '../lib/types';
 
 /**
@@ -11,19 +16,41 @@ import type { ResultatAnterieurNonVire } from '../lib/types';
  * poste du résultat l'additionne à celui de l'exercice. Le bilan s'équilibre,
  * et sans cet avis il présenterait deux résultats comme un seul. Le texte
  * qui cite la fiche du compte 13 va dans la bulle.
+ *
+ * LA COLONNE N-1 AUSSI (paquet 1, A1) · l'exercice qui suit un tel exercice
+ * reprend son poste tel quel dans sa colonne N-1, rien n'est recalculé ; le
+ * serveur le sert à part (`resultatAnterieurNonVireN1`), et l'écran le dit
+ * sous le bilan, la colonne nommée. Les phrases vivent dans
+ * `lib/resultat-anterieur-non-vire.ts`, où elles se testent.
  */
-export function AvisResultatAnterieurNonVire({ avis }: { avis?: ResultatAnterieurNonVire | null }) {
-  if (!avis) return null;
+export function AvisResultatAnterieurNonVire({
+  avis,
+  avisN1,
+}: {
+  avis?: ResultatAnterieurNonVire | null;
+  avisN1?: ResultatAnterieurNonVire | null;
+}) {
+  if (!avis && !avisN1) return null;
   return (
-    <div className="border border-warning/40 bg-warning-soft mt-2 px-3.5 py-2.5">
-      <div className="text-[11.5px] font-bold mb-1 flex items-center gap-1.5">
-        Résultat de l'exercice précédent non viré
-        <Aide titre="Résultat de l'exercice précédent non viré" texte={avis.motif} source="Fiche du compte 13" />
-      </div>
-      <p className="text-[11.5px]">
-        Le poste {avis.poste} inclut {montant(avis.montant)} de résultat de l'exercice précédent, resté au compte 13 à la
-        clôture.
-      </p>
-    </div>
+    <>
+      {avis && (
+        <div className="border border-warning/40 bg-warning-soft mt-2 px-3.5 py-2.5">
+          <div className="text-[11.5px] font-bold mb-1 flex items-center gap-1.5">
+            {TITRE_AVIS_EXERCICE}
+            <Aide titre={TITRE_AVIS_EXERCICE} texte={avis.motif} source="Fiche du compte 13" />
+          </div>
+          <p className="text-[11.5px]">{phraseAvisExercice(avis)}</p>
+        </div>
+      )}
+      {avisN1 && (
+        <div className="border border-warning/40 bg-warning-soft mt-2 px-3.5 py-2.5">
+          <div className="text-[11.5px] font-bold mb-1 flex items-center gap-1.5">
+            {TITRE_AVIS_COLONNE_N1}
+            <Aide titre={TITRE_AVIS_COLONNE_N1} texte={avisN1.motif} source="Fiche du compte 13" />
+          </div>
+          <p className="text-[11.5px]">{phraseAvisColonneN1(avisN1)}</p>
+        </div>
+      )}
+    </>
   );
 }

@@ -191,6 +191,45 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- **PAQUET 1, LIGNE A (2026-10-09), second et dernier tour de relecture, non
+  corrigés (règle des deux tours, CLAUDE.md § 11).** Les deux BLOQUANTS du
+  second tour sont CORRIGÉS (ouverture annulée par un négatif inscrit après
+  le premier jour, à la clôture et à l'arrêt à la dissolution).
+  - **MAJEUR** · le livre d'inventaire fige 0,00 sur les postes vides du
+    tableau des flux (`export.service.ts`, `feuilleEtatFige`), là où l'écran
+    et la liasse des associations laissent la cellule vide avec son motif.
+  - **Mineurs** · (3) l'écran SYSCOHADA affiche 0,00 sur un poste vide du
+    tableau des flux ; (4) `cleDeLectureDeBalance` ne juge pas une date
+    invalide ; (5) conversions `as unknown as LecteurOuverturePassee`.
+  - **Limites écrites du BLOQUANT 1** · un négatif DATÉ du premier jour laisse
+    la position nulle conclure seule (R10), une ressaisie datée plus tard la
+    doublerait encore ; une position CONCORDANTE qui contient un négatif
+    tardif conclut « rien ajouté » ; la mention aux états ne vise que la
+    colonne N du tableau des flux ; la bulle « Bilan d'ouverture importé » du
+    cadre de déclaration garde son texte général.
+  - **A6 · compte 130** (« Résultat en instance d'affectation ») · le corpus
+    ne tranche pas, question pour Manasse ; aucun geste ne passe le résultat
+    au 130 à la réouverture.
+  - **A3 · proposition** · bilans et comptes de résultat des cinq jeux, et
+    tableau des flux SYSCOHADA, servent encore des zéros en colonne N-1 quand
+    l'exercice précédent est ouvert sans écriture ; pour le bilan, l'art. 34
+    (AUDCIF) et l'art. 16, 4) (SYCEBNL) permettraient de lire le comparatif
+    sur l'ouverture de N.
+  - **Voisins non codés** · A4, d'autres lecteurs comptent le virement du 13
+    dans l'à-nouveau (balance en monnaie fonctionnelle, IFRS 1, « Mouvements
+    au <veille> » de la balance FPM) ; A7, rapport d'activité et livre
+    d'inventaire reprennent ouverture et variation à 0 sans le dire ; m2, une
+    OD du premier jour derrière un N-1 qui tient ses positions se lit comme
+    un flux de N (raisonné, non éprouvé) ; A10, `ecartCloture` et
+    `natureNonVentilee` servis et jamais lus à l'écran des notes ; A9,
+    l'écran des états du projet dit encore « XC ≈ 0 · régime normal » ; G1,
+    le cas « ouverture nulle » du relevé MAJEUR reste ouvert.
+  - **m5 · production** · deux requêtes en lecture seule
+    (`docs/requetes-production-paquet-1.md`, R2) trouvent les dossiers
+    clôturés sur l'ancien code par « Rectifier » ou « Conserver » sur une
+    contre-passation de réévaluation ; aucun contrôle codé tant qu'elles
+    n'ont pas été passées.
+
 - **PAQUET 1, LIGNE C (2026-10-09), second et dernier tour de relecture, non
   corrigés (règle des deux tours, CLAUDE.md § 11).** Aucun BLOQUANT restant
   (celui du second tour, l'arrondi au millier de l'art. 118 jugé sur le

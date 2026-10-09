@@ -25,7 +25,7 @@ import { libelleReference, referencesVers } from '../../common/suppression/refer
 import { ModifierEcritureDto, ValiderJusquaDto } from './dto/brouillard.dto';
 import { JournalService } from '../journaux/journal.service';
 import { ExerciceService, refuserSiPeriodeClose } from '../exercice/exercice.service';
-import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
+import { LecteurOuverturePassee, PositionDOuverturePassee, ouverturePasseeNonNulle, positionDOuverturePassee } from '../exercice/ouverture-passee';
 import { AnalytiqueService } from '../analytique/analytique.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
@@ -3595,13 +3595,34 @@ export class EcritureService {
    * aussi pourquoi une date hors de l'exercice est refusée par les appelants ·
    * en deçà de l'ouverture, la balance perdrait le report et présenterait des
    * soldes amputés du bilan d'ouverture sans que rien ne le dise.
+   *
+   * `avantLaCloture` (paquet 1, A4) borne la lecture aux écritures datées
+   * AVANT la date de fin de l'exercice, où la clôture écrit les siennes · le
+   * virement du résultat antérieur non affecté (fiche du compte 13 des deux
+   * plans) et le solde des comptes de gestion. C'est la lecture de
+   * l'OUVERTURE (`chargerOuverture`, communs des états) · la colonne report
+   * d'un exercice clôturé porte aussi ce virement, que l'ouverture ne
+   * connaît pas encore.
    */
-  async balance(tenantId: string, exerciceId: string, inclureBrouillard = true, arreteAu?: Date) {
+  async balance(
+    tenantId: string,
+    exerciceId: string,
+    inclureBrouillard = true,
+    arreteAu?: Date,
+    options: { avantLaCloture?: boolean } = {},
+  ) {
+    let avantLe: Date | null = null;
+    if (options.avantLaCloture) {
+      const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { dateFin: true } });
+      if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
+      avantLe = exercice.dateFin;
+    }
     const filtreEcriture = {
       tenantId,
       exerciceId,
       ...(inclureBrouillard ? {} : { statut: StatutEcriture.VALIDEE }),
       ...(arreteAu ? { date: { lte: arreteAu } } : {}),
+      ...(avantLe ? { AND: [{ date: { lt: avantLe } }] } : {}),
     };
     // TROIS COLONNES ET NON DEUX (audit final F4, F5) · le report à-nouveau,
     // les mouvements, et l'écriture qui solde les comptes de gestion. Le calcul
@@ -3653,6 +3674,20 @@ export class EcritureService {
   }
 
   /**
+   * LES ÉCRITURES D'UN EXERCICE RESTÉES AU BROUILLARD (paquet 1, A2) · lues
+   * pour dire, d'un exercice précédent qui ne tient rien au livre-journal,
+   * s'il est vide ou s'il attend sa validation (AUDCIF art. 22, 2° · « Toute
+   * donnée entrée fait l'objet d'une validation »). L'à-nouveau PROVISOIRE
+   * n'y compte pas · il ne se valide jamais (`valider` le refuse), et une
+   * mention qui dirait de le valider enverrait sur un refus.
+   */
+  async nombreAuBrouillard(tenantId: string, exerciceId: string): Promise<number> {
+    return this.prisma.ecriture.count({
+      where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD, estANouveauProvisoire: false },
+    });
+  }
+
+  /**
    * LA POSITION D'OUVERTURE PASSÉE EN OD AU PREMIER JOUR, au livre-journal ·
    * même périmètre que la clôture (AU2, `filtreOuverturePasseeAuPremierJour`).
    * Lue par les états d'un exercice SANS exercice précédent ni report
@@ -3660,20 +3695,32 @@ export class EcritureService {
    * peut être la reprise d'un dossier ou la naissance de l'entité (apport du
    * premier jour), et rien ne les distingue · les états ne la lisent ni comme
    * flux ni comme ouverture, et le disent. `null` · aucune.
+   *
+   * JUGÉE SUR SA POSITION NETTE (relecture du paquet 1, M4) · une OD du
+   * premier jour annulée par son négatif (AUDCIF art. 20, al. 2, B2) ou une
+   * contre-passation DÉCLARÉE (A8) suffisaient à vider tout le tableau des
+   * flux, sans issue, quand plus rien ne restait de l'ouverture. Même lecture
+   * que la clôture (`ouverturePasseeNonNulle`) · une position qui se solde
+   * compte par compte n'est pas une ouverture, et l'entité naît.
    */
   async ouverturePasseeAuPremierJour(tenantId: string, exerciceId: string): Promise<{ nombre: number; pieces: string[] } | null> {
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
     if (!exercice) return null;
-    const filtre: Prisma.EcritureWhereInput = { ...filtreOuverturePasseeAuPremierJour(tenantId, exercice), statut: StatutEcriture.VALIDEE };
-    const nombre = await this.prisma.ecriture.count({ where: { ...filtre, tenantId } });
-    if (nombre === 0) return null;
-    const premieres = await this.prisma.ecriture.findMany({
-      where: { ...filtre, tenantId },
-      select: { numeroPiece: true, journal: { select: { code: true } } },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: 5,
-    });
-    return { nombre, pieces: premieres.map((e) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`) };
+    return ouverturePasseeNonNulle(this.prisma as unknown as LecteurOuverturePassee, tenantId, exercice, { validees: true });
+  }
+
+  /**
+   * La même position, qui dit en plus d'une position NULLE les négatifs
+   * inscrits hors du premier jour (second tour de relecture du paquet 1,
+   * BLOQUANT 1, `negatifsTardifs`) · une ouverture annulée le 15/03 et
+   * ressaisie le même jour se lit, aux états d'un exercice sans précédent,
+   * comme des flux de l'exercice ; les états le NOMMENT. `AUCUNE` · aucun
+   * exercice de ce dossier sous cet identifiant, ou rien au premier jour.
+   */
+  async positionDOuvertureAuPremierJour(tenantId: string, exerciceId: string): Promise<PositionDOuverturePassee> {
+    const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
+    if (!exercice) return { etat: 'AUCUNE' };
+    return positionDOuverturePassee(this.prisma as unknown as LecteurOuverturePassee, tenantId, exercice, { validees: true });
   }
 
   /**

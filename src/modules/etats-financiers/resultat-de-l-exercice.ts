@@ -201,3 +201,46 @@ export function resultatAnterieurNonVire(
       "l'exercice suivant le reprend au compte 13 à l'ouverture, et sa clôture le vire au report à nouveau si l'affectation ne l'a pas soldé avant.",
   };
 }
+
+/**
+ * LA COLONNE N-1 HÉRITE DU MÊME DÉFAUT, ET LE DIT (paquet 1, point A1,
+ * reproduit sur vraie base le 2026-10-08). L'exercice précédent clôturé avant
+ * le virement présente, à son poste du résultat, son propre résultat ET celui
+ * de l'exercice qui le précède. La colonne N-1 de l'exercice suivant le
+ * reprend tel quel · « chacun des postes des états financiers comporte
+ * l'indication du chiffre relatif au poste correspondant de l'exercice
+ * précédent » (AUDCIF art. 34, dernier tiret ; SYCEBNL art. 16, 7)), et rien
+ * n'est recalculé · un comparatif corrigé ne serait plus le bilan de clôture
+ * que l'exercice précédent a présenté. Mais elle le DIT · sans cet avis, le
+ * montant passait sous « Résultat net de l'exercice » de N-1 sans un mot, et la
+ * liasse de l'exercice suivant ne levait rien.
+ *
+ * Même règle que `resultatAnterieurNonVire`, lue sur l'exercice précédent ·
+ * seulement quand la colonne vient de lui (`EXERCICE_N1`). Lue sur le bilan
+ * d'ouverture d'un dossier repris, la colonne ne présente aucun exercice clos
+ * dans OmegaX, et le 13 d'ouverture y est le résultat à affecter.
+ */
+export function resultatAnterieurNonVireDuComparatif(
+  provenanceComparatif: string | null,
+  exercicePrecedentCloture: boolean,
+  resultatAnterieurNonAffecteN1: number,
+  poste: string,
+  referentiel: 'SYSCOHADA' | 'SYCEBNL',
+): ResultatAnterieurNonVire | null {
+  if (provenanceComparatif !== 'EXERCICE_N1') return null;
+  const avis = resultatAnterieurNonVire(exercicePrecedentCloture, resultatAnterieurNonAffecteN1, poste, referentiel);
+  if (!avis) return null;
+  const fiche = referentiel === 'SYCEBNL' ? 'SYCEBNL, Partie 2 ch. 3, compte 13' : 'AUDCIF, Titre VII, compte 13';
+  const comparatif = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 7)' : 'AUDCIF art. 34';
+  const sens =
+    referentiel === 'SYCEBNL' ? (avis.montant < 0 ? 'un déficit' : 'un excédent') : avis.montant < 0 ? 'une perte' : 'un bénéfice';
+  return {
+    ...avis,
+    motif:
+      "Colonne N-1 · l'exercice précédent a été clôturé sans le virement du résultat de l'exercice qui le précède, non affecté · " +
+      `${sens} de ${MONTANT_FR.format(Math.abs(avis.montant))} restait à son compte 13, et le poste ${poste} de la colonne N-1 ` +
+      `l'additionne au résultat de l'exercice précédent, alors que ce résultat antérieur est viré au report à nouveau en fin ` +
+      `d'exercice (${fiche}). Rien n'est recalculé · la colonne N-1 reprend le chiffre du poste tel que l'exercice précédent l'a ` +
+      `présenté (${comparatif}) ; le dire dans les notes annexes.`,
+  };
+}

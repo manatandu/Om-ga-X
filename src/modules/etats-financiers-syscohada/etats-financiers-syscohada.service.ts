@@ -5,22 +5,31 @@ import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements
 import { ExerciceService } from '../exercice/exercice.service';
 import {
   CompteDuPoste,
+  ControleTableauDesFlux,
   LigneBalancePourEtat,
   MOTIF_EXERCICE_INTROUVABLE,
   MOTIF_RESULTAT_N1_NON_TENU,
   ProvenanceComparatif,
+  brouillardDuPrecedentNonTenu,
+  EtatDuPrecedentNonTenu,
+  etatDuPrecedentNonTenu,
   chargerLignes,
+  chargerOuverture,
   comparatifDuBilan,
+  controleDuTableauDesFlux,
   correspond,
   exerciceCloture,
+  exercicePrecedentCloture,
   exercicePrecedentTenu,
-  lignesALOuverture,
   lireOuverturePasseeEnOd,
+  lireNegatifsTardifsDeLOuverture,
+  avecNegatifsTardifs,
   mentionComparatifSurOuverture,
   mentionExercicePrecedentVide,
   mentionOuverturePresumeeNulle,
   motifOuverturePasseeEnOd,
   ouvertureTenue,
+  precedentNonTenuCloture,
   trouverExerciceN1,
 } from '../etats-financiers/etats-financiers.communs';
 import {
@@ -73,6 +82,7 @@ import {
 import {
   partsDuResultatAuBilan,
   resultatAnterieurNonVire,
+  resultatAnterieurNonVireDuComparatif,
   resultatAuBilan,
   type ResultatAnterieurNonVire,
 } from '../etats-financiers/resultat-de-l-exercice';
@@ -229,6 +239,8 @@ export interface BilanSyscohada {
   };
   /** Exercice clôturé qui porte encore ce résultat antérieur · nommé, `null` sinon (et sur une situation intermédiaire). */
   resultatAnterieurNonVire: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent (paquet 1, A1). */
+  resultatAnterieurNonVireN1: ResultatAnterieurNonVire | null;
 }
 
 /**
@@ -334,6 +346,13 @@ export interface SectionFluxSyscohada {
 export interface PosteNonCalculable {
   ref: string;
   raison: string;
+  /**
+   * Sur un poste laissé VIDE seulement (paquet 1, relecture m3) · le motif
+   * nomme-t-il un geste du cabinet qui lève sa cause ? Vrai d'une OD du
+   * premier jour, faux d'un compte de résultat N-1 qu'aucun exercice tenu ne
+   * porte. Absent d'un poste chiffré sous réserve.
+   */
+  aLever?: boolean;
 }
 
 export interface CompteTropAgrege extends CompteDuPoste {
@@ -384,14 +403,8 @@ export interface TableauFluxTresorerieSyscohada {
   mentionOuverture: string | null;
   /** Ceux de la colonne N-1, laissés vides pour la même raison (audit final F14). */
   postesNonCalculablesN1: PosteNonCalculable[];
-  controle: {
-    tresorerieOuverture: number;
-    variation: number;
-    tresorerieClotureParFlux: number;
-    tresorerieClotureParBilan: number;
-    ecart: number;
-    coherent: boolean;
-  };
+  /** Contrôle non effectué (`coherent: null`) quand ZA ou ZG est laissée vide (paquet 1, relecture M1). */
+  controle: ControleTableauDesFlux;
 }
 
 // ---------------------------------------------------------------------------
@@ -861,10 +874,14 @@ export class EtatsFinanciersSyscohadaService {
     // précédent ». La colonne N-1 n'est donc PAS bornée : c'est bien la
     // clôture qu'elle doit porter, et le comparatif du modèle la sert déjà.
     const { borneN } = await this.bornesSituation(tenantId, exerciceId, exerciceN1Id, arreteAu);
-    const [lignesN, lignesN1, clos] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId, borneN),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
+      exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
+      // Paquet 1, A4 · l'ouverture lue AVANT ce que la clôture de N y porte
+      // (`chargerOuverture`), seulement quand elle sert le comparatif.
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId, borneN),
     ]);
 
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
@@ -873,8 +890,8 @@ export class EtatsFinanciersSyscohadaService {
     // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
     // report, une ouverture saisie en OD au premier jour n'est lue ni comme
     // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
-    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
-    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYSCOHADA');
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, ouvertureN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, ouvertureN, ouverturePassee, 'SYSCOHADA');
     const resolutionN = this.resoudreTousLesPostesBilan(lignesN);
     const resolutionN1 = this.resoudreTousLesPostesBilan(comparatif.lignes);
 
@@ -925,6 +942,22 @@ export class EtatsFinanciersSyscohadaService {
       lignesN.filter((l) => correspond(l.numero, COMPTES_RESULTAT_SYSCOHADA)),
     );
     const nonVire = borneN ? null : resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, REF_RESULTAT_SYSCOHADA, 'SYSCOHADA');
+    // La colonne N-1 qui reprend le même défaut de l'exercice précédent ·
+    // dite, jamais recalculée (paquet 1, A1). Lue en situation aussi · la
+    // colonne N-1 y porte toujours la clôture précédente (ch. 39 § 2.1.2).
+    const partsN1 = partsDuResultatAuBilan(
+      resolutionN1.resultatClasses678,
+      resolutionN1.resultatCompte13,
+      comparatif.lignes.filter((l) => CLASSES_DE_GESTION.has(l.classe)),
+      comparatif.lignes.filter((l) => correspond(l.numero, COMPTES_RESULTAT_SYSCOHADA)),
+    );
+    const nonVireN1 = resultatAnterieurNonVireDuComparatif(
+      comparatif.provenance,
+      closN1,
+      partsN1.resultatAnterieurNonAffecte,
+      REF_RESULTAT_SYSCOHADA,
+      'SYSCOHADA',
+    );
 
     return {
       actif,
@@ -949,6 +982,7 @@ export class EtatsFinanciersSyscohadaService {
         resultatAnterieurNonAffecte: parts.resultatAnterieurNonAffecte,
       },
       resultatAnterieurNonVire: nonVire,
+      resultatAnterieurNonVireN1: nonVireN1,
     };
   }
 
@@ -1055,10 +1089,12 @@ export class EtatsFinanciersSyscohadaService {
       exerciceN1Id,
       arreteAu,
     );
-    const [lignesN, lignesN1, lignesMemePeriodeN1] = await Promise.all([
+    const [lignesN, lignesN1, lignesMemePeriodeN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId, borneN),
       this.chargerLignes(tenantId, exerciceN1Id),
       borneMemePeriodeN1 ? this.chargerLignes(tenantId, exerciceN1Id, borneMemePeriodeN1) : Promise.resolve(null),
+      // Le motif de la colonne N-1 lit l'ouverture comme le bilan (paquet 1, A4).
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId, borneN),
     ]);
 
     const resN = this.resoudreTousLesPostesCR(lignesN);
@@ -1124,7 +1160,7 @@ export class EtatsFinanciersSyscohadaService {
       memePeriodeN1JusquAu: borneMemePeriodeN1 ? borneMemePeriodeN1.toISOString().slice(0, 10) : undefined,
       // Q3 · le compte de résultat N-1 ne se tire pas d'un bilan d'ouverture ·
       // vide, et l'issue dite.
-      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(lignesN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
+      motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(ouvertureN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       comptesNonRattaches: resN.comptesNonRattaches,
       controle: {
         resultatToutesClassesDeGestion: resN.resultatToutesClassesDeGestion,
@@ -1438,12 +1474,12 @@ export class EtatsFinanciersSyscohadaService {
     nonCalcules: Set<string>;
     ctx: ContexteFlux;
   } {
+    // Le solde N-1 d'un compte · la balance de l'exercice antérieur, sinon
+    // l'OUVERTURE que l'appelant passe (`chargerOuverture`, solde = report),
+    // jamais le report de `lignesCourant` · sur un exercice clôturé, celui-ci
+    // porte aussi le virement du résultat antérieur non affecté (paquet 1, A4).
     const soldesAnterieurs = new Map<string, number>();
-    if (exerciceAnterieurDisponible) {
-      for (const l of lignesAnterieur) soldesAnterieurs.set(l.numero, l.solde);
-    } else {
-      for (const l of lignesCourant) soldesAnterieurs.set(l.numero, l.reportDebit - l.reportCredit);
-    }
+    for (const l of lignesAnterieur) soldesAnterieurs.set(l.numero, l.solde);
 
     const ctx: ContexteFlux = {
       bilanCourant: this.resoudreTousLesPostesBilan(lignesCourant),
@@ -1464,7 +1500,7 @@ export class EtatsFinanciersSyscohadaService {
       if (motifOuvertureIncertaine && this.litLOuvertureOuLesMouvements(poste)) {
         parRef.set(poste.ref, { libelle: poste.libelle, montant: 0, comptes: [] });
         nonCalcules.add(poste.ref);
-        postesNonCalculables.push({ ref: poste.ref, raison: motifOuvertureIncertaine });
+        postesNonCalculables.push({ ref: poste.ref, raison: motifOuvertureIncertaine, aLever: true });
         continue;
       }
       if (!exerciceAnterieurDisponible && this.exigeCompteDeResultatAnterieur(poste)) {
@@ -1479,6 +1515,7 @@ export class EtatsFinanciersSyscohadaService {
           raison:
             "Aucun exercice antérieur tenu dans le dossier : ce poste lit le compte de résultat de l'exercice " +
             "N-1, qui ne se tire pas du bilan d'ouverture. Poste laissé vide, non chiffré à zéro.",
+          aLever: false,
         });
         continue;
       }
@@ -1568,18 +1605,41 @@ export class EtatsFinanciersSyscohadaService {
     // (`exercicePrecedentTenu`, relecture de la passe V1).
     const n1Tenu = exercicePrecedentTenu(exerciceN1Id, lignesN1);
     const n2Tenu = exercicePrecedentTenu(exerciceN2Id, lignesN2);
-    const [ouverturePasseeN, ouverturePasseeN1] = await Promise.all([
-      lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, lignesN),
-      exerciceN1Id
-        ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, n2Tenu ? exerciceN2Id : null, lignesN1)
-        : Promise.resolve(null),
+    // L'OUVERTURE se lit AVANT ce que la clôture de l'exercice y porte
+    // (`chargerOuverture`, paquet 1, A4) · la colonne report d'un exercice
+    // clôturé porte aussi le virement du résultat antérieur non affecté.
+    const [ouvertureN, ouvertureN1, brouillardN1, closN1NonTenu] = await Promise.all([
+      n1Tenu ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId, borneN),
+      exerciceN1Id && !n2Tenu ? chargerOuverture(this.ecritureService, tenantId, exerciceN1Id) : Promise.resolve([]),
+      // Un exercice précédent qui ne tient rien · vide, ou au brouillard (paquet 1, A2).
+      brouillardDuPrecedentNonTenu(this.ecritureService, tenantId, exerciceN1Id, n1Tenu),
+      // Et s'il est CLÔTURÉ, l'issue n'est plus de le compléter (relecture m1).
+      precedentNonTenuCloture(this.exerciceService, tenantId, exerciceN1Id, n1Tenu),
     ]);
+    const [ouverturePasseeN, ouverturePasseeN1, negatifsTardifsN] = await Promise.all([
+      lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, ouvertureN),
+      exerciceN1Id
+        ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, n2Tenu ? exerciceN2Id : null, ouvertureN1)
+        : Promise.resolve(null),
+      // Second tour, jumeau du BLOQUANT 1 · une ouverture annulée après le
+      // premier jour, dont la ressaisie se lit ici comme des flux · dite.
+      lireNegatifsTardifsDeLOuverture(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, ouvertureN),
+    ]);
+    // Le motif de l'OD dit l'exercice précédent qui EXISTE sans rien tenir,
+    // et l'issue de son brouillard (paquet 1, relecture m2) · jamais « sans
+    // exercice précédent ». Pour la colonne N-1, l'état de N-2 n'est lu que
+    // si une OD l'exige.
+    const precedentN: EtatDuPrecedentNonTenu | null =
+      exerciceN1Id && !n1Tenu ? { auBrouillard: brouillardN1, clos: closN1NonTenu } : null;
+    const precedentN1 = ouverturePasseeN1
+      ? await etatDuPrecedentNonTenu(this.ecritureService, this.exerciceService, tenantId, exerciceN2Id, n2Tenu)
+      : null;
     const resN = this.resoudreFluxPourExercice(
       lignesN,
-      n1Tenu ? lignesN1 : lignesALOuverture(lignesN),
+      n1Tenu ? lignesN1 : ouvertureN,
       n1Tenu,
       reevaluationsN,
-      ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA') : null,
+      ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA', precedentN) : null,
     );
     // Colonne N-1 seulement si l'exercice existe · jamais un faux zéro pour un
     // dossier à son premier exercice (même discipline que partout ailleurs).
@@ -1588,10 +1648,10 @@ export class EtatsFinanciersSyscohadaService {
     const resN1 = exerciceN1Id
       ? this.resoudreFluxPourExercice(
           lignesN1,
-          n2Tenu ? lignesN2 : lignesALOuverture(lignesN1),
+          n2Tenu ? lignesN2 : ouvertureN1,
           n2Tenu,
           reevaluationsN1,
-          ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYSCOHADA') : null,
+          ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYSCOHADA', precedentN1) : null,
         )
       : null;
 
@@ -1624,12 +1684,20 @@ export class EtatsFinanciersSyscohadaService {
     // indépendant. Un écart n'est PAS corrigé : il chiffre exactement ce que la
     // ventilation FA à FQ ne couvre pas, et `comptesNonVentiles` en nomme la
     // cause avec son montant.
-    const tresorerieClotureParFlux = resN.parRef.get('ZH')!.montant;
     const tresorerieClotureParBilan = CONTROLE_ZH_PAR_LE_BILAN.reduce(
       (s, terme) => s + this.evaluerTerme(terme, resN.ctx).reduce((t, c) => t + c.montant, 0),
       0,
     );
-    const ecart = tresorerieClotureParFlux - tresorerieClotureParBilan;
+    // ZA ou ZG laissée vide (ouverture passée en OD au premier jour) ·
+    // contrôle non effectué, jamais un écart chiffré sur des zéros (paquet 1,
+    // relecture M1, `controleDuTableauDesFlux`).
+    const controle = controleDuTableauDesFlux({
+      ouverture: { ref: 'ZA', montant: resN.parRef.get('ZA')!.montant },
+      variation: { ref: 'ZG', montant: resN.parRef.get('ZG')!.montant },
+      clotureParFlux: { ref: 'ZH', montant: resN.parRef.get('ZH')!.montant },
+      clotureParBilan: tresorerieClotureParBilan,
+      vides: resN.nonCalcules,
+    });
 
     return {
       lignes,
@@ -1647,24 +1715,21 @@ export class EtatsFinanciersSyscohadaService {
       // D'où viennent les positions d'ouverture quand l'exercice précédent
       // n'est pas tenu · le report (dossier repris), rien (présumée nulle,
       // dit), ou une OD du premier jour (motif, postes vides).
-      mentionOuverture: n1Tenu
-        ? null
-        : exerciceN1Id && !ouverturePasseeN
-          ? mentionExercicePrecedentVide('SYSCOHADA', ouvertureTenue(lignesN))
-          : ouverturePasseeN
-          ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA')
-          : ouvertureTenue(lignesN)
-            ? mentionComparatifSurOuverture('SYSCOHADA')
-            : mentionOuverturePresumeeNulle('SYSCOHADA'),
+      mentionOuverture: avecNegatifsTardifs(
+        n1Tenu
+          ? null
+          : exerciceN1Id && !ouverturePasseeN
+            ? mentionExercicePrecedentVide('SYSCOHADA', ouvertureTenue(ouvertureN), brouillardN1, closN1NonTenu)
+            : ouverturePasseeN
+            ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA', precedentN)
+            : ouvertureTenue(ouvertureN)
+              ? mentionComparatifSurOuverture('SYSCOHADA')
+              : mentionOuverturePresumeeNulle('SYSCOHADA'),
+        negatifsTardifsN,
+        'SYSCOHADA',
+      ),
       postesNonCalculablesN1: resN1?.postesNonCalculables ?? [],
-      controle: {
-        tresorerieOuverture: resN.parRef.get('ZA')!.montant,
-        variation: resN.parRef.get('ZG')!.montant,
-        tresorerieClotureParFlux,
-        tresorerieClotureParBilan,
-        ecart,
-        coherent: Math.abs(ecart) < 0.01,
-      },
+      controle,
     };
   }
 }

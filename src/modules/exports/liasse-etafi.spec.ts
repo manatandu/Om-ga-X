@@ -145,9 +145,15 @@ const EXERCICES = [
   { id: 'e0', tenantId: 't1', dateDebut: new Date('2025-01-01T00:00:00Z'), dateFin: new Date('2025-12-31T00:00:00Z') },
 ];
 
-function fabriquerExport(jeu: JeuEtatsFinanciersSycebnl = TENANT.jeuEtatsFinanciersSycebnl): ExportService {
-  const balances: Record<string, LigneBalanceStub[]> =
-    jeu === JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT
+function fabriquerExport(
+  jeu: JeuEtatsFinanciersSycebnl = TENANT.jeuEtatsFinanciersSycebnl,
+  // Balances par exercice qui remplacent celles du jeu · un cas qui a besoin
+  // d'un dossier propre (paquet 1, A9) sans toucher aux balances communes.
+  surcharge?: Record<string, LigneBalanceStub[]>,
+): ExportService {
+  const balances: Record<string, LigneBalanceStub[]> = surcharge
+    ? surcharge
+    : jeu === JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT
       ? { e1: BALANCE_PROJET_N, e0: BALANCE_PROJET_N1 }
       : jeu === JeuEtatsFinanciersSycebnl.SYSTEME_MINIMAL_TRESORERIE
         ? { e1: BALANCE_SMT_N }
@@ -377,6 +383,161 @@ describe('exports individuels · charte ETAFI, état seul en valeurs', () => {
     expect(rangZg).toBeGreaterThan(8);
     expect(fondDe(ws.getCell(rangZg, 2))).toBe('FF003366');
     expect(bandes).toBeGreaterThanOrEqual(4);
+  });
+});
+
+/**
+ * PAQUET 1, A7 · un poste que le tableau des flux laisse VIDE (ouverture
+ * passée en OD au premier jour) reste une cellule vide dans le classeur, et
+ * la feuille ANOMALIES en dit le motif · son 0 servi n'est pas un montant.
+ */
+describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur', () => {
+  const MOTIF = "Le premier jour de l'exercice porte une position de bilan passée en opérations diverses (OD n° 1)";
+  const MOTIF_N1 = "L'exercice précédent est ouvert sans aucune écriture au livre-journal";
+  const avecVides = (exportService: ExportService) => {
+    const etats = (exportService as unknown as { etatsFinanciersService: EtatsFinanciersService }).etatsFinanciersService;
+    const reel = etats.tableauFluxTresorerie.bind(etats);
+    jest.spyOn(etats, 'tableauFluxTresorerie').mockImplementation(async (t: string, e: string) => {
+      const tft = await reel(t, e);
+      return {
+        ...tft,
+        postesVides: ['ZA', 'FM', 'ZD', 'ZF', 'ZG'],
+        postesNonCalculables: [{ ref: 'FM', raison: MOTIF, aLever: true }],
+        // Paquet 1, A3 · un même motif vide la colonne N-1 entière · une ligne.
+        postesNonCalculablesN1: [
+          { ref: 'ZA', raison: MOTIF_N1, aLever: true },
+          { ref: 'FA', raison: MOTIF_N1, aLever: true },
+          { ref: 'FM', raison: MOTIF_N1, aLever: true },
+        ],
+      };
+    });
+    return exportService;
+  };
+  const rangDe = (ws: ExcelJS.Worksheet, ref: string) => {
+    let rang = 0;
+    ws.eachRow((row, n) => {
+      if (n > 8 && row.getCell(1).value === ref) rang = n;
+    });
+    return rang;
+  };
+
+  it('la cellule N d’un poste vide reste vide, les autres portent leur montant', async () => {
+    const { buffer } = await avecVides(fabriquerExport()).tableauFluxTresorerieExcel('t1', 'e1');
+    const ws = (await ouvrir(buffer)).getWorksheet('TFT')!;
+    expect(ws.getCell(rangDe(ws, 'FM'), 5).value ?? null).toBeNull();
+    expect(ws.getCell(rangDe(ws, 'ZA'), 5).value ?? null).toBeNull();
+    expect(typeof ws.getCell(rangDe(ws, 'FA'), 5).value).toBe('number');
+  });
+
+  // RELECTURE M2 · le classeur du seul tableau n'a pas de feuille ANOMALIES ·
+  // ses cellules vides restaient sans raison, sous un renvoi à une feuille
+  // absente. Le motif s'écrit sous l'état, une ligne par motif.
+  it('l’export du seul tableau écrit le motif des postes vides sous l’état, colonne N et colonne N-1', async () => {
+    const { buffer } = await avecVides(fabriquerExport()).tableauFluxTresorerieExcel('t1', 'e1');
+    const wb = await ouvrir(buffer);
+    expect(wb.getWorksheet('ANOMALIES')).toBeUndefined();
+    const textes: string[] = [];
+    wb.getWorksheet('TFT')!.eachRow((row) => row.eachCell((c) => textes.push(String(c.value ?? ''))));
+    expect(textes).toContain(`Exercice N · FM · ${MOTIF}`);
+    expect(textes).toContain(`Exercice N-1 · ZA, FA, FM · ${MOTIF_N1}`);
+    expect(textes.some((t) => /feuille ANOMALIES/.test(t))).toBe(false);
+  });
+
+  // RELECTURE m3 (reproduit sur vraie base le 2026-10-09) · le motif d'une
+  // OD du premier jour ou d'un exercice précédent ouvert sans écriture nomme
+  // le geste qui lève sa cause · la ligne est « à vérifier » et y renvoie,
+  // jamais « Aucune action ».
+  it('la feuille ANOMALIES dit le motif, colonne N et colonne N-1, une ligne par motif, « à vérifier » quand il nomme un geste', async () => {
+    const { buffer } = await avecVides(fabriquerExport()).liasseCompleteExcel('t1', 'e1');
+    const an = (await ouvrir(buffer)).getWorksheet('ANOMALIES')!;
+    const lignes: string[][] = [];
+    an.eachRow((row) => lignes.push([1, 2, 3, 4, 5].map((c) => String(row.getCell(c).value ?? ''))));
+    expect(lignes.find((l) => l[1] === 'FM' && l[2] === 'Tableau des flux de trésorerie')?.slice(0, 4)).toEqual([
+      'A_VERIFIER', 'FM', 'Tableau des flux de trésorerie', MOTIF,
+    ]);
+    // Une ligne par motif, ses postes nommés dans l'ordre du tableau.
+    expect(lignes.filter((l) => l[2] === 'Tableau des flux · colonne N-1').map((l) => l.slice(0, 4))).toEqual([
+      ['A_VERIFIER', 'ZA, FA, FM', 'Tableau des flux · colonne N-1', MOTIF_N1],
+    ]);
+    const auMotif = lignes.filter((l) => l[3] === MOTIF || l[3] === MOTIF_N1);
+    expect(auMotif.every((l) => l[4].startsWith('Suivre l’issue que le motif nomme'))).toBe(true);
+    expect(lignes.filter((l) => /^Aucune action si la provenance est la bonne/.test(l[4]))).toEqual([]);
+  });
+
+  it('relecture m3 · un motif qui ne nomme aucun geste reste une information, sans action', async () => {
+    const exportService = fabriquerExport();
+    const etats = (exportService as unknown as { etatsFinanciersService: EtatsFinanciersService }).etatsFinanciersService;
+    const reel = etats.tableauFluxTresorerie.bind(etats);
+    jest.spyOn(etats, 'tableauFluxTresorerie').mockImplementation(async (t: string, e: string) => ({
+      ...(await reel(t, e)),
+      postesNonCalculablesN1: [{ ref: 'ZA', raison: MOTIF_N1, aLever: false }],
+    }));
+    const { buffer } = await exportService.liasseCompleteExcel('t1', 'e1');
+    const lignes: string[][] = [];
+    (await ouvrir(buffer)).getWorksheet('ANOMALIES')!.eachRow((row) => lignes.push([1, 2, 3, 4, 5].map((c) => String(row.getCell(c).value ?? ''))));
+    expect(lignes.filter((l) => l[2] === 'Tableau des flux · colonne N-1')).toEqual([
+      ['INFO', 'ZA', 'Tableau des flux · colonne N-1', MOTIF_N1, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.'],
+    ]);
+  });
+
+  // RELECTURE M1 (reproduit sur vraie base le 2026-10-09) · ZA et ZF vides,
+  // le contrôle n'est pas effectué · la liasse portait « Écart de bouclage de
+  // -12500000.00 » à traiter, et CONTROLES jugeait à zéro une formule qui
+  // lisait la cellule vide de ZG.
+  const MOTIF_CONTROLE = 'Contrôle non effectué · la trésorerie d’ouverture (ZA) est laissée vide.';
+  const nonControlable = (exportService: ExportService) => {
+    const etats = (exportService as unknown as { etatsFinanciersService: EtatsFinanciersService }).etatsFinanciersService;
+    const reel = etats.tableauFluxTresorerie.bind(etats);
+    jest.spyOn(etats, 'tableauFluxTresorerie').mockImplementation(async (t: string, e: string) => {
+      const tft = await reel(t, e);
+      return {
+        ...tft,
+        postesVides: ['ZA', 'FM', 'ZD', 'ZF', 'ZG'],
+        postesNonCalculables: [{ ref: 'FM', raison: MOTIF, aLever: true }],
+        controle: {
+          ...tft.controle,
+          tresorerieOuverture: null,
+          variation: null,
+          tresorerieClotureParFlux: null,
+          ecart: null,
+          coherent: null,
+          motifNonControlable: MOTIF_CONTROLE,
+        },
+      };
+    });
+    return exportService;
+  };
+
+  it('contrôle non effectué · aucune anomalie « à traiter » sur ZG, le motif dit en information', async () => {
+    const { buffer } = await nonControlable(fabriquerExport()).liasseCompleteExcel('t1', 'e1');
+    const an = (await ouvrir(buffer)).getWorksheet('ANOMALIES')!;
+    const lignes: string[][] = [];
+    an.eachRow((row) => lignes.push([1, 2, 3, 4].map((c) => String(row.getCell(c).value ?? ''))));
+    expect(lignes.filter((l) => l[0] === 'A_TRAITER' && l[1] === 'ZG')).toEqual([]);
+    expect(lignes).toContainEqual(['INFO', 'ZG', 'Tableau des flux de trésorerie', MOTIF_CONTROLE]);
+  });
+
+  it('contrôle non effectué · CONTROLES ne lit pas la cellule vide de ZG et ne juge aucune ligne du tableau à zéro', async () => {
+    const { buffer } = await nonControlable(fabriquerExport()).liasseCompleteExcel('t1', 'e1');
+    const ctl = (await ouvrir(buffer)).getWorksheet('CONTROLES')!;
+    const lignesTft: Array<{ intitule: string; valeur: unknown; attendu: unknown }> = [];
+    ctl.eachRow((row, n) => {
+      const intitule = String(row.getCell(1).value ?? '');
+      if (n > 1 && /TFT/.test(intitule)) lignesTft.push({ intitule, valeur: row.getCell(2).value, attendu: row.getCell(3).value });
+    });
+    expect(lignesTft.length).toBe(2);
+    for (const l of lignesTft) {
+      expect(l.attendu).toBe('');
+      expect(typeof l.valeur).toBe('string');
+    }
+  });
+
+  it('contrôle non effectué · l’export du seul tableau dit le motif, jamais un écart de bouclage', async () => {
+    const { buffer } = await nonControlable(fabriquerExport()).tableauFluxTresorerieExcel('t1', 'e1');
+    const textes: string[] = [];
+    (await ouvrir(buffer)).getWorksheet('TFT')!.eachRow((row) => row.eachCell((c) => textes.push(String(c.value ?? ''))));
+    expect(textes).toContain(MOTIF_CONTROLE);
+    expect(textes.some((t) => /écart de bouclage/i.test(t))).toBe(false);
   });
 });
 
@@ -767,6 +928,136 @@ describe('liasse complète · jeu projets de développement', () => {
     ]);
     // RA ne renvoie qu'à la note 9 · la note 14 ne porte pas le 702.
     expect(ce.getCell(rangsCe.get('RA')!, 3).value).toBe('9');
+  });
+});
+
+/**
+ * PAQUET 1, A9 (reproduit sur vraie base le 2026-10-09) · la feuille
+ * CONTROLES de la liasse projet tenait XC à zéro (« doit boucler à 0 en
+ * régime normal », Attendu 0) sur un projet au solde de 120 000 (intérêts du
+ * dépôt, non neutralisés par le 702). SYCEBNL Partie 4 ch. 3 imprime XC
+ * « (+excédent, -déficit) » et CC « (+ ou déficit -) » · l'égalité qui doit
+ * tenir est XC = CC, le même solde dans les deux états ; XC reste une valeur
+ * lue. Projet · 400 000 reçus au 462, 250 000 de charges neutralisées au 702,
+ * 120 000 d'intérêts au 7747 · XC = CC = 120 000.
+ */
+const BALANCE_PROJET_INTERETS: LigneBalanceStub[] = [
+  ligne('46210000', ClasseCompte.CLASSE_4, 0, 0, 250_000, 400_000),
+  ligne('70210000', ClasseCompte.CLASSE_7, 0, 0, 0, 250_000),
+  ligne('60410000', ClasseCompte.CLASSE_6, 0, 0, 180_000, 0),
+  ligne('66110000', ClasseCompte.CLASSE_6, 0, 0, 70_000, 0),
+  ligne('77470000', ClasseCompte.CLASSE_7, 0, 0, 0, 120_000),
+  ligne('52110000', ClasseCompte.CLASSE_5, 0, 0, 520_000, 250_000),
+];
+
+describe('Paquet 1, A9 · la feuille CONTROLES de la liasse projet ne tient pas XC à zéro', () => {
+  /** Les lignes de CONTROLES · intitulé, formule ou valeur, attendu, par rang. */
+  const lignesControles = (wb: ExcelJS.Workbook) => {
+    const ws = wb.getWorksheet('CONTROLES')!;
+    const lignes: Array<{ rang: number; intitule: string; formule?: string; valeur: unknown; attendu: unknown }> = [];
+    ws.eachRow((row, rang) => {
+      if (rang === 1) return;
+      const v = row.getCell(2).value as { formula?: string } | null;
+      lignes.push({
+        rang,
+        intitule: String(row.getCell(1).value ?? ''),
+        formule: v && typeof v === 'object' && 'formula' in v ? v.formula : undefined,
+        valeur: v,
+        attendu: row.getCell(3).value,
+      });
+    });
+    return lignes;
+  };
+  const rangDeRef = (ws: ExcelJS.Worksheet, ref: string) => {
+    let rang = 0;
+    ws.eachRow((row, n) => {
+      if (row.getCell(1).value === ref) rang = n;
+    });
+    return rang;
+  };
+
+  it('XC est une valeur lue, CC est lu au bilan, et leur écart est l’égalité attendue', async () => {
+    const exportService = fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, { e1: BALANCE_PROJET_INTERETS, e0: [] });
+    const wb = await ouvrir((await exportService.liasseCompleteExcel('t1', 'e1')).buffer);
+    const lignes = lignesControles(wb);
+    const xc = lignes.find((l) => /\(XC\)$/.test(l.intitule))!;
+    const cc = lignes.find((l) => /\(CC\)$/.test(l.intitule))!;
+    const ecart = lignes.find((l) => /XC-CC/.test(l.intitule))!;
+    expect(xc).toBeDefined();
+    expect(cc).toBeDefined();
+    expect(ecart).toBeDefined();
+    // XC n'est plus tenu à zéro · aucune attente sur sa ligne.
+    expect(xc.attendu === null || xc.attendu === '').toBe(true);
+    expect(xc.formule).toBe(`'Compte Exploitation'!D${rangDeRef(wb.getWorksheet('Compte Exploitation')!, 'XC')}`);
+    // CC est lu sur la ligne CC du passif, qui porte les 120 000.
+    const passif = wb.getWorksheet('Bilan-Passif')!;
+    const rangCc = rangDeRef(passif, 'CC');
+    expect(cc.formule).toBe(`'Bilan-Passif'!D${rangCc}`);
+    expect(passif.getCell(rangCc, 4).value).toBe(120_000);
+    // L'égalité porte sur les deux lignes qui la précèdent.
+    expect(ecart.formule).toBe(`B${xc.rang}-B${cc.rang}`);
+    expect(ecart.attendu).toBe(0);
+    expect(lignes.filter((l) => /régime normal/.test(l.intitule))).toEqual([]);
+  });
+
+  // RELECTURE M3 (reproduit sur vraie base le 2026-10-09 · 2027, affectation
+  // de 2026 au brouillard, XC-CC rendait -120 000) · en N+1, le 13 porte
+  // encore le solde de N, que CC lit et que XC de N+1 n'a pas. Comme aux
+  // quatre autres liasses, la ligne CC le retranche.
+  it('N+1 dont le 13 porte encore le solde de N · la ligne CC le retranche, XC-CC reste nul', async () => {
+    const N_PLUS_1: LigneBalanceStub[] = [
+      ligne('46210000', ClasseCompte.CLASSE_4, 0, 150_000, 0, 0),
+      ligne('13100000', ClasseCompte.CLASSE_1, 0, 120_000, 0, 0),
+      ligne('52110000', ClasseCompte.CLASSE_5, 270_000, 0, 0, 0),
+    ];
+    const exportService = fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, { e1: N_PLUS_1, e0: BALANCE_PROJET_INTERETS });
+    const wb = await ouvrir((await exportService.liasseCompleteExcel('t1', 'e1')).buffer);
+    const lignes = lignesControles(wb);
+    const cc = lignes.find((l) => /\(CC\)$/.test(l.intitule))!;
+    const passif = wb.getWorksheet('Bilan-Passif')!;
+    const rangCc = rangDeRef(passif, 'CC');
+    expect(passif.getCell(rangCc, 4).value).toBe(120_000);
+    expect(cc.formule).toBe(`'Bilan-Passif'!D${rangCc}-(120000)`);
+    // L'exercice dont les comptes sont ceux de l'affectation · rien à retrancher.
+    const n = await ouvrir(
+      (await fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, { e1: BALANCE_PROJET_INTERETS, e0: [] }).liasseCompleteExcel('t1', 'e1')).buffer,
+    );
+    expect(lignesControles(n).find((l) => /\(CC\)$/.test(l.intitule))!.formule).toBe(`'Bilan-Passif'!D${rangDeRef(n.getWorksheet('Bilan-Passif')!, 'CC')}`);
+  });
+
+  it('chaque écart de la feuille se lit sur les deux lignes qui le précèdent', async () => {
+    // Trois lignes insérées décalent les rangs · une formule restée sur
+    // « B10-B11 » comparerait alors la trésorerie à la mauvaise ligne.
+    const exportService = fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, { e1: BALANCE_PROJET_INTERETS, e0: [] });
+    const wb = await ouvrir((await exportService.liasseCompleteExcel('t1', 'e1')).buffer);
+    const ecarts = lignesControles(wb).filter((l) => l.formule && /^B\d+-B\d+$/.test(l.formule));
+    expect(ecarts.map((l) => l.intitule)).toEqual([
+      'Écart balance (doit être 0)',
+      'Écart bilan actif - passif (doit être 0)',
+      "Écart compte d'exploitation / bilan (XC-CC, doit être 0)",
+      'Écart réconciliation / balance (doit être 0)',
+    ]);
+    for (const l of ecarts) expect(l.formule).toBe(`B${l.rang - 2}-B${l.rang - 1}`);
+  });
+
+  it('le compte d’exploitation exporté seul dit le solde sans le juger à zéro', async () => {
+    const lire = async (surcharge?: Record<string, LigneBalanceStub[]>) => {
+      const exportService = fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, surcharge);
+      const wb = await ouvrir((await exportService.compteExploitationProjetExcel('t1', 'e1')).buffer);
+      const textes: string[] = [];
+      wb.getWorksheet('Compte Exploitation')!.eachRow((row) =>
+        row.eachCell((cell) => {
+          if (typeof cell.value === 'string' && /XC =/.test(cell.value)) textes.push(cell.value);
+        }),
+      );
+      return textes;
+    };
+    const [nonNul] = await lire({ e1: BALANCE_PROJET_INTERETS, e0: [] });
+    expect(nonNul).toMatch(/^Solde des opérations de l'exercice : XC = 120\s?000 · non nul, à expliquer en Notes/);
+    expect(nonNul).not.toMatch(/régime normal|ne boucle pas/);
+    // Les fonds consommés égalent les charges · XC = 0, dit sans « régime normal ».
+    const sansInterets = BALANCE_PROJET_INTERETS.filter((l) => l.numero !== '77470000');
+    expect(await lire({ e1: sansInterets, e0: [] })).toEqual(['Solde des opérations de l’exercice : XC = 0.']);
   });
 });
 

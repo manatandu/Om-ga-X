@@ -133,6 +133,15 @@ que le corpus ne tranche pas remonte à Manasse.
 
 ### Ligne A · états et clôture (`travail/paquet1-a`)
 
+INTÉGRÉE le 2026-10-09 · rejouée sur vraie base (379 contrôles sur 379),
+deux tours de relecture ; les deux BLOQUANTS du second tour corrigés (une
+ouverture du premier jour annulée par un négatif inscrit plus tard fait
+déclarer à la clôture, et ne retient plus l'arrêt à la dissolution, sur
+l'accord du cabinet) ; A5 sans défaut, A6 (compte 130) remonté à Manasse ;
+le MAJEUR et les mineurs du second tour au suivi (« Relevés en attente »),
+les deux requêtes en lecture seule de m5 dans
+`docs/requetes-production-paquet-1.md`.
+
 1. Un exercice N clôturé AVANT le virement du résultat non affecté au report
    à nouveau n'est signalé que sur son propre bilan · la colonne N-1 de N+1
    reprend le montant dans CH ou CJ sans le dire, et la liasse de N+1 ne lève

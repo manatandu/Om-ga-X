@@ -35,10 +35,19 @@ function serviceAvecExercices(
   lignesParExercice: Record<string, ReturnType<typeof ligne>[]>,
   exercices: Array<{ id: string; dateDebut: Date }> = [],
   prisma: PrismaService = prismaVide(),
+  // L'OUVERTURE lue avant la clôture de l'exercice (`avantLaCloture`,
+  // paquet 1, A4) · par DÉFAUT les mêmes lignes que l'exercice entier.
+  ouverturesParExercice: Record<string, ReturnType<typeof ligne>[]> = {},
 ) {
   const ecritureService = {
-    balance: jest.fn().mockImplementation((_tenantId: string, exerciceId: string) => {
-      const lignes = lignesParExercice[exerciceId] ?? [];
+    balance: jest.fn().mockImplementation((
+      _tenantId: string,
+      exerciceId: string,
+      _inclureBrouillard?: boolean,
+      _arreteAu?: Date,
+      options?: { avantLaCloture?: boolean },
+    ) => {
+      const lignes = (options?.avantLaCloture ? ouverturesParExercice[exerciceId] : undefined) ?? lignesParExercice[exerciceId] ?? [];
       return Promise.resolve({
         lignes,
         totaux: {
@@ -164,6 +173,60 @@ describe('EtatsFinanciersProjetService', () => {
       ]);
       const bilan = await service.bilan('t1', 'e1');
       expect(poste(bilan, 'AZ')!.montant).toBe(1500);
+    });
+
+    it('paquet 1, A1 · la colonne N-1 reprend CC tel quel, et dit le résultat antérieur que la clôture précédente n’a pas viré', async () => {
+      // 2027 clôturé avant le virement · CC y additionne le 13 (400, de 2026)
+      // et la gestion de 2027 (-900). La colonne N-1 de 2028 reprend -500
+      // (SYCEBNL art. 16, 7)) et le DIT ; 2027 ouvert, rien n'est dit.
+      const lignes2027 = [ligne('13100000', ClasseCompte.CLASSE_1, 0, 400), ligne('66000000', ClasseCompte.CLASSE_6, 900, 0)];
+      const lignes2028 = [ligne('13900000', ClasseCompte.CLASSE_1, 500, 0)];
+      const exercices = (statut2027: string) => [
+        { id: 'e0', dateDebut: new Date('2027-01-01'), statut: statut2027 } as never,
+        { id: 'e1', dateDebut: new Date('2028-01-01'), statut: 'OUVERT' } as never,
+      ];
+      const bilan = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('CLOTURE')).bilan('t1', 'e1');
+      expect(poste(bilan, 'CC')!.montantN1).toBe(-500);
+      expect(bilan.resultatAnterieurNonVireN1).toEqual(expect.objectContaining({ montant: 400, poste: 'CC' }));
+      const ouvert = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('OUVERT')).bilan('t1', 'e1');
+      expect(ouvert.resultatAnterieurNonVireN1).toBeNull();
+    });
+
+    it('paquet 1, A4 · la colonne N-1 d’un premier exercice clôturé lit l’ouverture avant le virement du 13', async () => {
+      // Bilan d'ouverture importé au 01/01 · 400 au 13 ; la clôture les a virés
+      // au 12 à la date de fin, en colonne report. La colonne N-1 lit
+      // l'ouverture AVANT la clôture (`chargerOuverture`) · CC 400, CB 0.
+      const enReport = (numero: string, classe: ClasseCompte, rd: number, rc: number, md = 0, mc = 0) => ({
+        ...ligne(numero, classe, rd + md, rc + mc),
+        reportDebit: rd,
+        reportCredit: rc,
+        mouvementDebit: md,
+        mouvementCredit: mc,
+      });
+      const apresCloture = [
+        enReport('52110000', ClasseCompte.CLASSE_5, 1_400, 0),
+        enReport('16500000', ClasseCompte.CLASSE_1, 0, 1_000),
+        enReport('13100000', ClasseCompte.CLASSE_1, 400, 400),
+        enReport('12100000', ClasseCompte.CLASSE_1, 0, 400),
+      ];
+      const avantCloture = [
+        enReport('52110000', ClasseCompte.CLASSE_5, 1_400, 0),
+        enReport('16500000', ClasseCompte.CLASSE_1, 0, 1_000),
+        enReport('13100000', ClasseCompte.CLASSE_1, 0, 400),
+      ];
+      const service = serviceAvecExercices(
+        { e1: apresCloture as never },
+        [{ id: 'e1', dateDebut: new Date('2026-01-01') }],
+        prismaVide(),
+        { e1: avantCloture as never },
+      );
+      const bilan: any = await service.bilan('t1', 'e1');
+      expect({ comparatif: bilan.comparatif, ccN1: poste(bilan, 'CC')!.montantN1, cbN1: poste(bilan, 'CB')!.montantN1 }).toEqual({
+        comparatif: 'BILAN_D_OUVERTURE',
+        ccN1: 400,
+        cbN1: 0,
+      });
+      expect(poste(bilan, 'CB')!.montant).toBe(400);
     });
 
     it('CC (solde des opérations) lit le compte 13 ET les classes 6/7/8, comme CH des associations', async () => {

@@ -263,22 +263,66 @@ interface RubriqueResolue {
  * écriture.
  *
  * Elle ne double que `balance`, et sa clé porte TOUS les paramètres de la
- * lecture (dossier, exercice, brouillard, date d'arrêté) · deux lectures qui
- * ne demandent pas la même balance ne partagent jamais leur résultat. Les
- * lignes rendues sont partagées, pas recopiées · aucun lecteur ne les modifie
- * (`chargerLignes` filtre dans un nouveau tableau, les états en projettent
- * les montants).
+ * lecture (dossier, exercice, brouillard, date d'arrêté, options) · deux
+ * lectures qui ne demandent pas la même balance ne partagent jamais leur
+ * résultat. Les lignes rendues sont partagées, pas recopiées · aucun lecteur
+ * ne les modifie (`chargerLignes` filtre dans un nouveau tableau, les états
+ * en projettent les montants).
+ *
+ * TOUS LES PARAMÈTRES PASSENT, ET LA CLÉ LES PORTE TOUS (relecture du paquet 1,
+ * B1). La doublure écrite à quatre paramètres jetait l'option
+ * `avantLaCloture` (A4) · `chargerOuverture` recevait la balance COMPLÈTE de
+ * l'exercice, virement de clôture du 13 compris, et sur un exercice clôturé
+ * la note 33 et la note 34 chiffraient les postes du tableau des flux que le
+ * tableau lui-même laisse vides (une ouverture passée en OD au premier jour,
+ * A7 · 10 000 000 d'apports lus comme un encaissement). Les paramètres sont
+ * repris EN BLOC (`Parameters<…>`), jamais nommés un à un · et
+ * `ParametresDeBalanceConnus` fait tomber la compilation le jour où
+ * `balance` en prend un de plus, pour qu'on relise cette clé.
  */
-function balanceMemorisee(ecritureService: EcritureService): EcritureService {
+type ParametresDeBalance = Parameters<EcritureService['balance']>;
+type ParametresDeBalanceConnus = [
+  tenantId: string,
+  exerciceId: string,
+  inclureBrouillard?: boolean,
+  arreteAu?: Date,
+  options?: { avantLaCloture?: boolean },
+];
+// Les deux listes s'acceptent mutuellement · un paramètre ajouté, retiré ou
+// retypé à `balance` rend l'une des deux affectations impossible.
+const parametresDeBalanceConnus: [ParametresDeBalance] extends [ParametresDeBalanceConnus]
+  ? [ParametresDeBalanceConnus] extends [ParametresDeBalance]
+    ? true
+    : never
+  : never = true;
+void parametresDeBalanceConnus;
+
+/**
+ * La clé d'une lecture · chaque paramètre, les options par leurs clés TRIÉES
+ * (une option ajoutée à `{ avantLaCloture }` entre d'elle-même dans la clé).
+ * `getTime` et non `toISOString`, qui lèverait sur une date illisible · la
+ * mémoire ne doit refuser que ce que la balance refuserait. L'absence d'un
+ * paramètre facultatif et sa valeur par défaut donnent deux clés · une
+ * lecture de trop, jamais une lecture confondue.
+ */
+export function cleDeLectureDeBalance(parametres: ParametresDeBalance): string {
+  const [tenantId, exerciceId, inclureBrouillard, arreteAu, options] = parametres;
+  const optionsTriees = options
+    ? Object.keys(options)
+        .sort()
+        .map((k) => [k, (options as Record<string, unknown>)[k]])
+    : null;
+  return JSON.stringify([tenantId, exerciceId, inclureBrouillard ?? null, arreteAu ? arreteAu.getTime() : null, optionsTriees]);
+}
+
+export function balanceMemorisee(ecritureService: EcritureService): EcritureService {
   const lues = new Map<string, ReturnType<EcritureService['balance']>>();
   const memoire: EcritureService = Object.create(ecritureService);
-  memoire.balance = (tenantId, exerciceId, inclureBrouillard = true, arreteAu) => {
-    // `getTime` et non `toISOString`, qui lèverait sur une date illisible ·
-    // la mémoire ne doit refuser que ce que la balance refuserait.
-    const cle = [tenantId, exerciceId, inclureBrouillard, arreteAu ? arreteAu.getTime() : ''].join('|');
+  memoire.balance = (...parametres: ParametresDeBalance) => {
+    const cle = cleDeLectureDeBalance(parametres);
     let lecture = lues.get(cle);
     if (!lecture) {
-      lecture = ecritureService.balance(tenantId, exerciceId, inclureBrouillard, arreteAu);
+      lecture = ecritureService.balance(...parametres);
       lues.set(cle, lecture);
     }
     return lecture;

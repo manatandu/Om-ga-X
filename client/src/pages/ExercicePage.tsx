@@ -13,9 +13,8 @@ import { FicheR2Exercice } from '../components/FicheR2Exercice';
 import { DatesPortefeuilleExercice } from '../components/DatesPortefeuilleExercice';
 import { classeObservation, estNonCalcule, libelleEcheance, libelleMontant, montantNonCalcule } from '../lib/jalons-planning';
 import { estSocieteCommerciale } from '../lib/mentions-dossier';
-
-/** Le marqueur du refus que le serveur lève quand le geste peut retirer les actes de la période (`issueActeDeLaPeriode`). */
-const ACCORD_RETRAIT_ACTES = 'en acceptant de retirer les actes de la période';
+import { ApercuOuverture, issueSansDeclaration, libellesChoix, titreDeclaration } from '../lib/ouverture-suivante';
+import { envoyerAvecAccords } from '../lib/accords-dissolution';
 
 const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
   PARTIELLE: 'Partielle',
@@ -24,12 +23,7 @@ const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
 };
 
 /** AU2 · l'aperçu servi par `GET /exercices/:id/ouverture-suivante`. */
-interface OuvertureSuivante {
-  pieces: string | null;
-  auBrouillard: boolean;
-  ouvertureNulle: boolean;
-  exerciceSansEcriture: boolean;
-  declarationRequise: boolean;
+interface OuvertureSuivante extends ApercuOuverture {
   /** Bornée (R9) · `total` dit toujours le nombre de positions. */
   ecarts: {
     compteId: string;
@@ -41,7 +35,6 @@ interface OuvertureSuivante {
     clotureDevise: number | null;
     ouvertureDevise: number | null;
   }[];
-  total: number;
   tronque: boolean;
   lignesTenues: { numero: string; piece: string; debit: number; credit: number; lettree: boolean; pointee: boolean }[];
   /**
@@ -471,9 +464,14 @@ export function ExercicePage() {
     setErreur(null);
     setInfo(null);
     try {
-      const r = await api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(
-        `/exercices/${pour}/arreter-a-la-dissolution`,
+      // L'accord des actes est donné par la confirmation ci-dessus ; un autre
+      // refus porteur d'un marqueur (ouverture annulée hors du premier jour,
+      // second tour, BLOQUANT 2) se demande sous le refus et relance.
+      const r = await envoyerAvecAccords(
+        (corps) => api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(`/exercices/${pour}/arreter-a-la-dissolution`, corps),
         actes.length ? { retirerActesDeLaPeriode: true } : {},
+        (message) => confirm(message),
+        (err) => (err instanceof ApiError ? err.message : null),
       );
       await rechargerExercices();
       await charger();
@@ -505,20 +503,17 @@ export function ExercicePage() {
     setEnvoi(true);
     setErreur(null);
     setInfo(null);
-    // LES ACTES CALCULÉS SUR LA PÉRIODE (bloquant 1) · le serveur les nomme
-    // au refus ; ceux qu'il peut retirer le disent (`ACCORD_RETRAIT_ACTES`),
-    // et le geste se relance avec l'accord du cabinet, jamais sans.
-    const envoyer = (corps: Record<string, unknown>) =>
-      api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(`/exercices/${pour}/${route}`, corps);
+    // LES ACTES CALCULÉS SUR LA PÉRIODE (bloquant 1) et L'OUVERTURE ANNULÉE
+    // HORS DU PREMIER JOUR (second tour, BLOQUANT 2) · le serveur les nomme au
+    // refus avec leur marqueur (`ACCORDS_DISSOLUTION`), et le geste se relance
+    // avec l'accord du cabinet, jamais sans.
     try {
-      let r: { actesRetires?: string[]; relevesARevoir?: string[] };
-      try {
-        r = await envoyer({});
-      } catch (err) {
-        if (!(err instanceof ApiError) || !err.message.includes(ACCORD_RETRAIT_ACTES)) throw err;
-        if (!confirm(`${err.message}\n\nRetirer ces actes et relancer ?`)) throw err;
-        r = await envoyer({ retirerActesDeLaPeriode: true });
-      }
+      const r = await envoyerAvecAccords(
+        (corps) => api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(`/exercices/${pour}/${route}`, corps),
+        {},
+        (message) => confirm(message),
+        (err) => (err instanceof ApiError ? err.message : null),
+      );
       await rechargerExercices();
       await charger();
       const suites = [...(r.actesRetires ?? []).map((a) => `${a} · à refaire sur chaque exercice`), ...(r.relevesARevoir ?? [])];
@@ -1105,14 +1100,8 @@ export function ExercicePage() {
                 L'exercice suivant porte un bilan d'ouverture au brouillard ({ouverture.pieces}) · validez-le avant de clôturer.
               </div>
             )}
-            {ouverture?.pieces && !ouverture.auBrouillard && !ouverture.declarationRequise && (
-              <div className="text-[11.5px] text-text-dim mb-2">
-                {ouverture.ouvertureNulle
-                  ? `Écritures du premier jour de l'exercice suivant (${ouverture.pieces}) soldées à zéro · le report entier sera passé.`
-                  : ouverture.total === 0
-                    ? `Ouverture déjà passée dans l'exercice suivant (${ouverture.pieces}) · concordante, aucun report ne sera ajouté.`
-                    : `Ouverture déjà passée dans l'exercice suivant (${ouverture.pieces}) · cet exercice n'a aucune écriture, elle fait foi.`}
-              </div>
+            {ouverture && issueSansDeclaration(ouverture) && (
+              <div className="text-[11.5px] text-text-dim mb-2">{issueSansDeclaration(ouverture)}</div>
             )}
             {lettragesAReconduire(ouverture?.lettragesPartielsAReconduire) && (
               <div className="text-[11.5px] text-text-dim mb-2">{lettragesAReconduire(ouverture?.lettragesPartielsAReconduire)}</div>
@@ -1121,7 +1110,7 @@ export function ExercicePage() {
             {(erreurOuverture || (ouverture?.declarationRequise && !ouverture.auBrouillard)) && (
               <div className="mb-3 border border-border p-2.5">
                 <div className="text-[11.5px] font-semibold mb-1.5 flex items-center gap-1.5">
-                  {ouverture ? `Ouverture déjà passée (${ouverture.pieces}) différente du bilan de clôture` : "Ouverture de l'exercice suivant"}
+                  {titreDeclaration(ouverture)}
                   <Aide
                     titre="Bilan d'ouverture importé"
                     texte="Le bilan d'ouverture d'un exercice doit correspondre au bilan de clôture du précédent. Rectifier · les livres de cet exercice sont tenus dans OmegaX, l'import est inscrit en négatif sur les comptes qui diffèrent puis le report exact est passé. Conserver · cet exercice n'est tenu ici que pour les comparatifs, l'import fait foi et rien n'est passé ; le motif reste au journal d'audit."
@@ -1178,11 +1167,11 @@ export function ExercicePage() {
                 <div className="flex flex-col gap-1 text-[11.5px]">
                   <label className="flex items-center gap-1.5">
                     <input type="radio" name="choixOuverture" checked={choixOuverture === 'RECTIFIER'} onChange={() => setChoixOuverture('RECTIFIER')} />
-                    Rectifier l'import (les livres de cet exercice sont dans OmegaX)
+                    {libellesChoix(ouverture).rectifier}
                   </label>
                   <label className="flex items-center gap-1.5">
                     <input type="radio" name="choixOuverture" checked={choixOuverture === 'CONSERVER'} onChange={() => setChoixOuverture('CONSERVER')} />
-                    Conserver l'import (exercice tenu ici pour les comparatifs)
+                    {libellesChoix(ouverture).conserver}
                   </label>
                   {choixOuverture === 'CONSERVER' && (
                     <label className="flex flex-col gap-1">

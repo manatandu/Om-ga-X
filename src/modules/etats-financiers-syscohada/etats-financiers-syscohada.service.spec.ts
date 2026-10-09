@@ -5,7 +5,11 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { ORDRE_AFFICHAGE_COMPTE_RESULTAT } from './correspondance-compte-resultat-syscohada';
 import { CONTROLE_ZH_PAR_LES_FLUX } from './correspondance-tft-syscohada';
-import { mentionExercicePrecedentVide } from '../etats-financiers/etats-financiers.communs';
+import {
+  mentionComparatifSurOuverture,
+  mentionExercicePrecedentVide,
+  motifOuverturePasseeEnOd,
+} from '../etats-financiers/etats-financiers.communs';
 
 /**
  * Ce spec ne re-teste pas les tables de correspondance (leurs specs voisins
@@ -73,10 +77,19 @@ function serviceAvecExercices(
   exercices: Array<{ id: string; dateDebut: Date }> = [],
   // Lot 14 · l'écriture de réévaluation du module, par exercice · par DÉFAUT aucune.
   reevaluationsParExercice: Record<string, Map<string, { debit: number; credit: number }>> = {},
+  // L'OUVERTURE lue avant la clôture de l'exercice (`avantLaCloture`,
+  // paquet 1, A4) · par DÉFAUT les mêmes lignes que l'exercice entier.
+  ouverturesParExercice: Record<string, LigneBalance[]> = {},
 ) {
   const ecritureService = {
-    balance: jest.fn().mockImplementation((_tenantId: string, exerciceId: string) => {
-      const lignes = lignesParExercice[exerciceId] ?? [];
+    balance: jest.fn().mockImplementation((
+      _tenantId: string,
+      exerciceId: string,
+      _inclureBrouillard?: boolean,
+      _arreteAu?: Date,
+      options?: { avantLaCloture?: boolean },
+    ) => {
+      const lignes = (options?.avantLaCloture ? ouverturesParExercice[exerciceId] : undefined) ?? lignesParExercice[exerciceId] ?? [];
       return Promise.resolve({
         lignes,
         totaux: {
@@ -87,6 +100,10 @@ function serviceAvecExercices(
     }),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    // Second tour, jumeau du BLOQUANT 1 · rien d'annulé hors du premier jour.
+    positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
+    // Paquet 1, A2 · aucune écriture au brouillard par DÉFAUT.
+    nombreAuBrouillard: jest.fn().mockResolvedValue(0),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
       Promise.resolve((exerciceId && reevaluationsParExercice[exerciceId]) || new Map()),
     ),
@@ -216,6 +233,104 @@ describe('EtatsFinanciersSyscohadaService', () => {
       const cr = await serviceAvecBalance(lignes).compteDeResultat('t1', 'e1');
       expect(cr.lignes.every((l) => l.montantN1 === undefined)).toBe(true);
       expect(cr.motifComparatifAbsent).toContain('importez-y sa balance de clôture');
+    });
+
+    // PAQUET 1, A4 (reproduit sur vraie base le 2026-10-09) · la clôture de
+    // 2026 vire au 121, à la date de FIN, les 2 000 000 de résultat 2025 que
+    // le bilan d'ouverture importé portait au 13 · la balance range ce
+    // virement en colonne report. Lue sur ce report, la colonne N-1 montrait
+    // CJ à zéro et CH à 2 000 000 ; le bilan d'ouverture (AUDCIF art. 34) les
+    // porte au 13. Elle se lit avant la clôture (`chargerOuverture`).
+    describe('Paquet 1, A4 · l’ouverture d’un premier exercice clôturé se lit avant le virement du 13', () => {
+      const apresCloture = [
+        ligne('52110000', C5, 500_000, 0, { debit: 12_000_000 }),
+        ligne('10130000', C1, 0, 0, { credit: 10_000_000 }),
+        ligne('13100000', C1, 0, 0, { debit: 2_000_000, credit: 2_000_000 }),
+        ligne('12100000', C1, 0, 0, { credit: 2_000_000 }),
+        ligne('70110000', C7, 0, 500_000),
+      ];
+      const avantCloture = [
+        ligne('52110000', C5, 500_000, 0, { debit: 12_000_000 }),
+        ligne('10130000', C1, 0, 0, { credit: 10_000_000 }),
+        ligne('13100000', C1, 0, 0, { credit: 2_000_000 }),
+        ligne('70110000', C7, 0, 500_000),
+      ];
+      const E1 = { id: 'e1', dateDebut: new Date('2026-01-01T00:00:00Z'), dateFin: new Date('2026-12-31T00:00:00Z') } as never;
+      const service = () => serviceAvecExercices({ e1: apresCloture }, [E1], {}, { e1: avantCloture });
+
+      it('la colonne N-1 porte le résultat 2025 au 13 (CJ) et aucun report à nouveau (CH)', async () => {
+        const bilan = await service().bilan('t1', 'e1');
+        expect({
+          comparatif: bilan.comparatif,
+          cjN1: poste(bilan, 'CJ')?.montantN1,
+          chN1: poste(bilan, 'CH')?.montantN1,
+          dzN1: bilan.totalPassifN1,
+          cjN: poste(bilan, 'CJ')?.montant,
+          chN: poste(bilan, 'CH')?.montant,
+        }).toEqual({ comparatif: 'BILAN_D_OUVERTURE', cjN1: 2_000_000, chN1: 0, dzN1: 12_000_000, cjN: 500_000, chN: 2_000_000 });
+      });
+
+      it('bilan, compte de résultat et tableau des flux demandent l’ouverture avant la clôture', async () => {
+        const s = service();
+        await s.bilan('t1', 'e1');
+        await s.compteDeResultat('t1', 'e1');
+        const tft = await s.tableauFluxTresorerie('t1', 'e1');
+        const balance = (s as any).ecritureService.balance as jest.Mock;
+        const ouvertures = balance.mock.calls.filter((c) => c[4]?.avantLaCloture);
+        expect(ouvertures).toHaveLength(3);
+        for (const c of ouvertures) expect(c.slice(0, 3)).toEqual(['t1', 'e1', false]);
+        expect((tft.lignes.find((l: any) => l.ref === 'ZA') as any)?.montant).toBe(12_000_000);
+        expect(tft.mentionOuverture).toBe(mentionComparatifSurOuverture('SYSCOHADA'));
+      });
+
+      it('la colonne N-1 du tableau des flux de l’exercice suivant part de la même ouverture', async () => {
+        const E2 = { id: 'e2', dateDebut: new Date('2027-01-01T00:00:00Z'), dateFin: new Date('2027-12-31T00:00:00Z') } as never;
+        const s = serviceAvecExercices(
+          { e1: apresCloture, e2: [ligne('52110000', C5, 0, 0, { debit: 12_500_000 }), ligne('10130000', C1, 0, 0, { credit: 10_000_000 }), ligne('12100000', C1, 0, 0, { credit: 2_500_000 })] },
+          [E1, E2],
+          {},
+          { e1: avantCloture },
+        );
+        const tft = await s.tableauFluxTresorerie('t1', 'e2');
+        const balance = (s as any).ecritureService.balance as jest.Mock;
+        expect(balance.mock.calls.filter((c) => c[4]?.avantLaCloture).map((c) => c[1])).toEqual(['e1']);
+        expect((tft.lignes.find((l: any) => l.ref === 'ZA') as any)?.montantN1).toBe(12_000_000);
+      });
+
+      // Reproduit sur vraie base (paquet 1, A7, à travers la clôture) · un
+      // premier exercice ouvert par une OD au premier jour, clôturé · le
+      // virement de son 13 en colonne report le faisait passer pour un
+      // exercice ouvert par un report, et la colonne N-1 de N+1 lisait l'OD
+      // comme des flux (FK 10 000 000). Lue avant la clôture, son ouverture
+      // est vide · l'OD est cherchée, la colonne reste vide, motif dit.
+      it('un premier exercice ouvert en OD et clôturé reste, en N-1, ni flux ni ouverture', async () => {
+        const E2 = { id: 'e2', dateDebut: new Date('2027-01-01T00:00:00Z'), dateFin: new Date('2027-12-31T00:00:00Z') } as never;
+        const enOd = [
+          ligne('52110000', C5, 12_500_000, 0),
+          ligne('10130000', C1, 0, 10_000_000),
+          ligne('13100000', C1, 0, 2_000_000, { debit: 2_000_000 }),
+          ligne('12100000', C1, 0, 0, { credit: 2_000_000 }),
+          ligne('70110000', C7, 0, 500_000),
+        ];
+        const enOdAvantCloture = [
+          ligne('52110000', C5, 12_500_000, 0),
+          ligne('10130000', C1, 0, 10_000_000),
+          ligne('13100000', C1, 0, 2_000_000),
+          ligne('70110000', C7, 0, 500_000),
+        ];
+        const s = serviceAvecExercices(
+          { e1: enOd, e2: [ligne('52110000', C5, 0, 0, { debit: 12_500_000 }), ligne('10130000', C1, 0, 0, { credit: 10_000_000 }), ligne('12100000', C1, 0, 0, { credit: 2_500_000 })] },
+          [E1, E2],
+          {},
+          { e1: enOdAvantCloture },
+        );
+        const ecritures = (s as unknown as { ecritureService: { ouverturePasseeAuPremierJour: jest.Mock } }).ecritureService;
+        ecritures.ouverturePasseeAuPremierJour.mockResolvedValue({ nombre: 1, pieces: ['OD n° 1'] });
+        const tft = await s.tableauFluxTresorerie('t1', 'e2');
+        expect(ecritures.ouverturePasseeAuPremierJour).toHaveBeenCalledWith('t1', 'e1');
+        expect((tft.lignes.find((l: any) => l.ref === 'FK') as any)?.montantN1).toBeUndefined();
+        expect(tft.postesNonCalculablesN1.find((p) => p.ref === 'FK')?.raison).toContain('OD n° 1');
+      });
     });
 
     it('société qui naît · aucune colonne N-1, l’ouverture présumée nulle DITE', async () => {
@@ -479,6 +594,37 @@ describe('EtatsFinanciersSyscohadaService', () => {
       expect(ouvert.resultatAnterieurNonVire).toBeNull();
       expect(ouvert.comptesASolderALaCloture).toEqual([]);
       expect(poste(ouvert, 'CJ')?.montant).toBe(600_000 - 46_072_000);
+    });
+
+    it('paquet 1, A1 · la colonne N-1 de l’exercice suivant reprend CJ tel quel, et le DIT', async () => {
+      // 2027 clôturé avant le virement (la balance du BLOQUANT ci-dessus),
+      // 2028 ouvert. La colonne N-1 de 2028 reprend CJ de 2027 · 600 000 de
+      // l'exercice et -46 072 000 de 2026 (AUDCIF art. 34, dernier tiret, rien
+      // n'est recalculé), et elle le dit. Sans l'avis, rien ne le disait.
+      const lignes2027 = [
+        ligne('52110000', C5, 1_000_000, 400_000, { debit: 53_928_000 }),
+        ligne('10130000', C1, 0, 0, { credit: 100_000_000 }),
+        ligne('13900000', C1, 0, 0, { debit: 46_072_000 }),
+        ligne('70110000', C7, 0, 1_000_000),
+        ligne('60110000', C6, 400_000, 0),
+      ];
+      const lignes2028 = [ligne('52110000', C5, 0, 0, { debit: 54_528_000 }), ligne('10130000', C1, 0, 0, { credit: 100_000_000 })];
+      const exercices = (statut2027: string) => [
+        { id: 'e0', dateDebut: new Date('2027-01-01T00:00:00Z'), dateFin: new Date('2027-12-31T00:00:00Z'), statut: statut2027 } as never,
+        { id: 'e1', dateDebut: new Date('2028-01-01T00:00:00Z'), dateFin: new Date('2028-12-31T00:00:00Z'), statut: 'OUVERT' } as never,
+      ];
+
+      const bilan = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('CLOTURE')).bilan('t1', 'e1');
+      expect(poste(bilan, 'CJ')?.montantN1).toBe(600_000 - 46_072_000);
+      expect(bilan.resultatAnterieurNonVire).toBeNull();
+      expect(bilan.resultatAnterieurNonVireN1).toEqual(expect.objectContaining({ montant: -46_072_000, poste: 'CJ' }));
+      expect(bilan.resultatAnterieurNonVireN1!.motif).toMatch(/^Colonne N-1 · /);
+
+      // 2027 encore ouvert · sa balance est celle d'avant l'assemblée, la colonne N-1 ne dit rien.
+      const ouvert = await serviceAvecExercices({ e0: lignes2027, e1: lignes2028 }, exercices('OUVERT')).bilan('t1', 'e1');
+      expect(ouvert.resultatAnterieurNonVireN1).toBeNull();
+      // Premier exercice du dossier · aucune colonne N-1, rien à dire.
+      expect((await serviceAvecBalance(lignes2028).bilan('t1', 'e1')).resultatAnterieurNonVireN1).toBeNull();
     });
   });
 
@@ -753,9 +899,38 @@ describe('EtatsFinanciersSyscohadaService', () => {
       expect(tft.mentionOuverture).toBe(mentionExercicePrecedentVide('SYSCOHADA', true));
     });
 
+    it('paquet 1, A2 · un exercice précédent qui n’a que du brouillard · la mention dit de le valider, pas d’importer', async () => {
+      const service = serviceAvecExercices(
+        { e1: [], e2: [ligne('52110000', C5, 500, 0), ligne('70110000', C7, 0, 500)] },
+        EXERCICES,
+      );
+      const ecritures = (service as unknown as { ecritureService: { nombreAuBrouillard: jest.Mock } }).ecritureService;
+      ecritures.nombreAuBrouillard.mockResolvedValue(3);
+      const tft = await service.tableauFluxTresorerie('t1', 'e2');
+      expect(ecritures.nombreAuBrouillard).toHaveBeenCalledWith('t1', 'e1');
+      expect(tft.mentionOuverture).toBe(mentionExercicePrecedentVide('SYSCOHADA', false, 3));
+      expect(tft.mentionOuverture).toContain('brouillard (3)');
+      expect(tft.mentionOuverture).not.toContain('Importez');
+    });
+
     it('premier exercice d’une société qui naît · l’ouverture présumée nulle est DITE', async () => {
       const tft = await serviceAvecBalance([ligne('10130000', C1, 0, 1000), ligne('52110000', C5, 1000, 0)]).tableauFluxTresorerie('t1', 'e1');
       expect(tft.mentionOuverture).toContain('présumée nulle');
+    });
+
+    // SECOND TOUR DE RELECTURE DU PAQUET 1, jumeau du BLOQUANT 1 · l'OD du
+    // premier jour annulée par son négatif du 15/03, l'ouverture exacte
+    // ressaisie le même jour · elle se lit ici comme un apport de l'exercice
+    // (FK) et ZA reste à zéro. Rien ne la distingue d'un vrai apport (M4) ·
+    // la mention le DIT, négatif et date nommés.
+    it('second tour, B1 · l’ouverture annulée par un négatif du 15/03 · la mention nomme le négatif, sa date et la lecture en flux', async () => {
+      const service = serviceAvecBalance([ligne('10130000', C1, 0, 1000), ligne('52110000', C5, 1000, 0)]);
+      const ecritures = (service as unknown as { ecritureService: { positionDOuvertureAuPremierJour: jest.Mock } }).ecritureService;
+      ecritures.positionDOuvertureAuPremierJour.mockResolvedValue({ etat: 'NULLE', negatifsTardifs: [{ piece: 'OD n° 2', date: new Date('2027-03-15') }] });
+      const tft = await service.tableauFluxTresorerie('t1', 'e1');
+      expect(tft.mentionOuverture).toContain('présumée nulle');
+      expect(tft.mentionOuverture).toMatch(/annulée par son négatif inscrit plus tard \(OD n° 2 du 15\/03\/2027\).*flux de l'exercice.*AUDCIF art\. 34/);
+      expect(ecritures.positionDOuvertureAuPremierJour).toHaveBeenCalledWith('t1', 'e1');
     });
 
     // BLOQUANT 2 DE LA RELECTURE DU 2026-10-07 · le bilan d'ouverture d'un
@@ -782,6 +957,37 @@ describe('EtatsFinanciersSyscohadaService', () => {
       const bilan = await service.bilan('t1', 'e1');
       expect({ comparatif: bilan.comparatif, bz: bilan.totalActifN1 }).toEqual({ comparatif: null, bz: undefined });
       expect(bilan.mentionComparatif).toContain('OD n° 1');
+      // RELECTURE M1 · ZA et ZG vides, le contrôle de ZH n'est pas effectué ·
+      // jamais un écart chiffré sur des zéros (sur vraie base, -12 000 000).
+      expect({ coherent: tft.controle.coherent, ecart: tft.controle.ecart, zhFlux: tft.controle.tresorerieClotureParFlux }).toEqual({
+        coherent: null,
+        ecart: null,
+        zhFlux: null,
+      });
+      expect(tft.controle.tresorerieClotureParBilan).toBe(200);
+      expect(tft.controle.motifNonControlable).toContain('(ZH)');
+    });
+
+    // RELECTURE m2 (reproduit sur vraie base le 2026-10-09) · l'exercice
+    // précédent EXISTE, au brouillard · le motif de l'OD disait « sans
+    // exercice précédent », et l'issue d'A2 (valider) n'était plus dite.
+    it('relecture m2 · OD du premier jour derrière un exercice précédent au brouillard · il est dit, et l’issue de sa validation reste', async () => {
+      const service = serviceAvecExercices(
+        { e1: [], e2: [ligne('10130000', C1, 0, 2000), ligne('52110000', C5, 2000, 0)] },
+        EXERCICES,
+      );
+      const ecritures = (service as unknown as {
+        ecritureService: { ouverturePasseeAuPremierJour: jest.Mock; nombreAuBrouillard: jest.Mock };
+      }).ecritureService;
+      ecritures.ouverturePasseeAuPremierJour.mockResolvedValue({ nombre: 1, pieces: ['OD n° 1'] });
+      ecritures.nombreAuBrouillard.mockResolvedValue(3);
+      const tft = await service.tableauFluxTresorerie('t1', 'e2');
+      expect(ecritures.ouverturePasseeAuPremierJour).toHaveBeenCalledWith('t1', 'e2');
+      const attendu = motifOuverturePasseeEnOd({ nombre: 1, pieces: ['OD n° 1'] }, 'SYSCOHADA', { auBrouillard: 3, clos: false });
+      expect(tft.mentionOuverture).toBe(attendu);
+      expect(tft.postesNonCalculables.find((p) => p.ref === 'ZA')?.raison).toBe(attendu);
+      expect(attendu).not.toContain('sans exercice précédent');
+      expect(attendu).toContain('validez-les (AUDCIF art. 22, 2°)');
     });
 
     it('un report tenu ou un exercice précédent · l’OD du premier jour n’est pas cherchée', async () => {

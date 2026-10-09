@@ -61,6 +61,12 @@ function service(
   const prisma = {
     compte: { findMany: jest.fn().mockResolvedValue(comptes()) },
     ligneEcriture: { groupBy },
+    // L'exercice que `avantLaCloture` relit · borné au dossier, comme la base.
+    exercice: {
+      findFirst: jest.fn().mockImplementation(({ where }) =>
+        Promise.resolve(where.id === 'e1' && where.tenantId === 't1' ? { dateFin: new Date('2026-12-31') } : null),
+      ),
+    },
   } as unknown as PrismaService;
   const svc = new EcritureService(
     prisma,
@@ -250,5 +256,60 @@ describe('Balance générale', () => {
     const { svc: svc2, groupBy: g2 } = service([], []);
     await svc2.balance('t1', 'e1');
     expect(g2.mock.calls[0][0].where.ecriture.statut).toBeUndefined();
+  });
+
+  /**
+   * PAQUET 1, A4 (reproduit sur vraie base le 2026-10-09) · la clôture passe,
+   * à la date de FIN de l'exercice, le virement du résultat antérieur non
+   * affecté au report à nouveau, rangé dans la colonne report. L'ouverture se
+   * lit donc AVANT cette date, sur les trois colonnes, et la borne vient de
+   * l'exercice du dossier, jamais de l'appelant.
+   */
+  it('avantLaCloture borne les trois colonnes avant la date de fin de l’exercice', async () => {
+    const { svc, groupBy } = service([], []);
+    await svc.balance('t1', 'e1', false, undefined, { avantLaCloture: true });
+    expect(groupBy).toHaveBeenCalledTimes(3);
+    for (const [arg] of groupBy.mock.calls) {
+      expect(arg.where.ecriture.tenantId).toBe('t1');
+      expect(arg.where.ecriture.AND).toEqual([{ date: { lt: new Date('2026-12-31') } }]);
+    }
+    // Une date d'arrêté se garde à côté, sans être écrasée.
+    const { svc: svc2, groupBy: g2 } = service([], []);
+    await svc2.balance('t1', 'e1', false, new Date('2026-06-30'), { avantLaCloture: true });
+    expect(g2.mock.calls[0][0].where.ecriture.date).toEqual({ lte: new Date('2026-06-30') });
+    expect(g2.mock.calls[0][0].where.ecriture.AND).toEqual([{ date: { lt: new Date('2026-12-31') } }]);
+    // Sans l'option, rien ne change.
+    const { svc: svc3, groupBy: g3 } = service([], []);
+    await svc3.balance('t1', 'e1', false);
+    expect(g3.mock.calls[0][0].where.ecriture.AND).toBeUndefined();
+  });
+
+  it('avantLaCloture refuse un exercice que le dossier ne porte pas, plutôt que de lire sans borne', async () => {
+    const { svc, groupBy } = service([], []);
+    await expect(svc.balance('t1', 'autre', false, undefined, { avantLaCloture: true })).rejects.toThrow(
+      'Exercice introuvable pour ce dossier.',
+    );
+    expect(groupBy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * PAQUET 1, A2 · les écritures au brouillard d'un exercice, à-nouveau
+ * provisoire EXCLU (il ne se valide jamais, et la mention qui le compterait
+ * dirait de valider ce que `valider` refuse), bornées au dossier.
+ */
+describe('nombreAuBrouillard', () => {
+  it('compte le brouillard du dossier et de l’exercice, sans l’à-nouveau provisoire', async () => {
+    const count = jest.fn().mockResolvedValue(3);
+    const svc = new EcritureService(
+      { ecriture: { count } } as unknown as PrismaService,
+      {} as JournalService,
+      {} as ExerciceService,
+      {} as AnalytiqueService,
+    );
+    await expect(svc.nombreAuBrouillard('t1', 'e1')).resolves.toBe(3);
+    expect(count).toHaveBeenCalledWith({
+      where: { tenantId: 't1', exerciceId: 'e1', statut: 'BROUILLARD', estANouveauProvisoire: false },
+    });
   });
 });

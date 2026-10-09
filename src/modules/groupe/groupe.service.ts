@@ -15,7 +15,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { prochainNumeroPiece } from '../journaux/numerotation-piece';
-import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
+import { LecteurOuverturePassee, ouverturePasseeNonNulle } from '../exercice/ouverture-passee';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { AuthService } from '../auth/auth.service';
 import { ClasseurExporte, ExportService } from '../exports/export.service';
@@ -347,12 +347,15 @@ export class GroupeService {
         });
         return Number(a._sum.debit ?? 0) - Number(a._sum.credit ?? 0);
       };
+      // UNE OUVERTURE QUI SE SOLDE N'EN EST PAS UNE (relecture du paquet 1,
+      // B2 et m4) · une OD du premier jour annulée par son négatif (AUDCIF
+      // art. 20, al. 2) ou une contre-passation DÉCLARÉE (A8) se lisait
+      // comme une ouverture validée, et le groupe ne lisait plus le 585 de
+      // l'exercice précédent encore ouvert. Même lecture que la clôture
+      // (`ouverturePasseeNonNulle`, position nette au livre-journal) · seul
+      // le oui ou le non en sort, jamais une ligne d'un voisin.
       const ouvertureValidee = async (membre: string, exercice: { id: string; dateDebut: Date }) =>
-        (await this.prisma.ecriture.count({
-          // Le dossier écrit en clair · le filtre le porte aussi, mais la
-          // garde et son balayage le lisent ici.
-          where: { ...filtreOuverturePasseeAuPremierJour(membre, exercice), tenantId: membre, statut: StatutEcriture.VALIDEE },
-        })) > 0;
+        (await ouverturePasseeNonNulle(this.prisma as unknown as LecteurOuverturePassee, membre, exercice, { validees: true })) !== null;
 
       let total = 0;
       for (const membre of membres) {

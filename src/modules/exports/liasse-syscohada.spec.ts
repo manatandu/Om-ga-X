@@ -12,7 +12,7 @@ import { EtatsFinanciersProjetBudgetService } from '../etats-financiers/etats-fi
 import { EtatsFinanciersService } from '../etats-financiers/etats-financiers.service';
 import { PrismaService } from '../../common/prisma.service';
 import { ExportService, anomalieResultatAnterieurNonVire, resultatDeLExerciceLogeAuBilan } from './export.service';
-import { resultatAnterieurNonVire } from '../etats-financiers/resultat-de-l-exercice';
+import { resultatAnterieurNonVire, resultatAnterieurNonVireDuComparatif } from '../etats-financiers/resultat-de-l-exercice';
 import { NOM_BALANCE, NOM_BALANCE_N1 } from './theme-etafi';
 import { FOND_ENTETE_FPM } from './presentation-fpm';
 import {
@@ -703,6 +703,101 @@ describe('liasse complète · Système normal SYSCOHADA', () => {
     expect(fiche1.getCell('A1').value).toMatch(/^- \d+ -$/);
 
     if (process.env.LIASSE_SYSCOHADA_DEBUG_SORTIE) writeFileSync(process.env.LIASSE_SYSCOHADA_DEBUG_SORTIE, buffer);
+  });
+});
+
+/**
+ * PAQUET 1, RELECTURE M1 (reproduit sur vraie base le 2026-10-09) · une
+ * ouverture passée en OD au premier jour laisse ZA et ZG vides · le contrôle
+ * de ZH n'est pas effectué. La liasse portait « Écart de -12000000.00 entre
+ * ZH par les flux et BT - DT du bilan » à traiter, écrivait 0 dans les
+ * cellules des postes vides et jugeait à zéro une formule qui les lisait.
+ */
+describe('Paquet 1, relecture M1 · TFT SYSCOHADA dont le contrôle n’est pas effectué', () => {
+  const MOTIF = "Le premier jour de l'exercice porte une position de bilan passée en opérations diverses (OD n° 1)";
+  const MOTIF_CONTROLE = 'Contrôle non effectué · la trésorerie d’ouverture (ZA) et la variation de la trésorerie (ZG) sont laissées vides.';
+  const VIDES = ['ZA', 'FK', 'ZD', 'ZF', 'ZG', 'ZH'];
+  const nonControlable = () => {
+    const exportService = fabriquerExport();
+    const etats = (exportService as unknown as { syscohada: EtatsFinanciersSyscohadaService }).syscohada;
+    const reel = etats.tableauFluxTresorerie.bind(etats);
+    jest.spyOn(etats, 'tableauFluxTresorerie').mockImplementation(async (t: string, e: string) => {
+      const tft = await reel(t, e);
+      return {
+        ...tft,
+        postesVides: VIDES,
+        postesNonCalculables: VIDES.map((ref) => ({ ref, raison: MOTIF, aLever: true })),
+        controle: {
+          ...tft.controle,
+          tresorerieOuverture: null,
+          variation: null,
+          tresorerieClotureParFlux: null,
+          ecart: null,
+          coherent: null,
+          motifNonControlable: MOTIF_CONTROLE,
+        },
+      };
+    });
+    return exportService;
+  };
+  const rangDe = (ws: ExcelJS.Worksheet, ref: string) => {
+    let rang = 0;
+    ws.eachRow((row, n) => {
+      if (n > 8 && row.getCell(1).value === ref) rang = n;
+    });
+    return rang;
+  };
+
+  it('les postes vides restent des cellules vides en colonne N, leurs totaux sans formule', async () => {
+    const { buffer } = await nonControlable().tableauFluxTresorerieSyscohadaExcel('t1', 'e1');
+    const ws = (await ouvrir(buffer)).getWorksheet('TFT')!;
+    for (const ref of VIDES) expect(ws.getCell(rangDe(ws, ref), 4).value ?? null).toBeNull();
+    expect(ws.getCell(rangDe(ws, 'FA'), 4).value).not.toBeNull();
+  });
+
+  it('l’export du seul tableau écrit sous l’état le motif des postes vides, une ligne par motif (relecture M2)', async () => {
+    const { buffer } = await nonControlable().tableauFluxTresorerieSyscohadaExcel('t1', 'e1');
+    const textes: string[] = [];
+    (await ouvrir(buffer)).getWorksheet('TFT')!.eachRow((row) => row.eachCell((c) => textes.push(String(c.value ?? ''))));
+    expect(textes.filter((t) => t.startsWith('Exercice N · '))).toEqual([`Exercice N · ${VIDES.join(', ')} · ${MOTIF}`]);
+  });
+
+  it('l’export du seul tableau dit le motif du contrôle, jamais un écart chiffré', async () => {
+    const { buffer } = await nonControlable().tableauFluxTresorerieSyscohadaExcel('t1', 'e1');
+    const textes: string[] = [];
+    (await ouvrir(buffer)).getWorksheet('TFT')!.eachRow((row) => row.eachCell((c) => textes.push(String(c.value ?? ''))));
+    expect(textes.some((t) => t.startsWith(MOTIF_CONTROLE))).toBe(true);
+    expect(textes.some((t) => /diffère de BT - DT/.test(t))).toBe(false);
+  });
+
+  it('la liasse · aucune anomalie « à traiter » sur ZH, et CONTROLES ne juge aucune ligne du tableau à zéro', async () => {
+    const wb = await ouvrir((await nonControlable().liasseCompleteExcel('t1', 'e1')).buffer);
+    const anomalies: string[][] = [];
+    wb.getWorksheet('ANOMALIES')!.eachRow((row) => anomalies.push([1, 2, 3, 4].map((c) => String(row.getCell(c).value ?? ''))));
+    expect(anomalies.filter((l) => l[0] === 'A_TRAITER' && l[1] === 'ZH')).toEqual([]);
+    expect(anomalies).toContainEqual(['INFO', 'ZH', 'Tableau des flux de trésorerie', MOTIF_CONTROLE]);
+    const lignesTft: Array<{ valeur: unknown; attendu: unknown }> = [];
+    wb.getWorksheet('CONTROLES')!.eachRow((row, n) => {
+      if (n > 1 && /TFT/.test(String(row.getCell(1).value ?? ''))) lignesTft.push({ valeur: row.getCell(2).value, attendu: row.getCell(3).value });
+    });
+    expect(lignesTft.length).toBe(2);
+    for (const l of lignesTft) expect({ attendu: l.attendu, texte: typeof l.valeur }).toEqual({ attendu: '', texte: 'string' });
+  });
+
+  // RELECTURE m3 (reproduit sur vraie base le 2026-10-09) · les postes que
+  // l'OD du premier jour vide étaient « INFO · Aucune action » quand leur
+  // motif dit de la repasser en à-nouveau.
+  it('relecture m3 · les postes vidés par l’OD sont « à vérifier » et renvoient au geste du motif, jamais « Aucune action »', async () => {
+    const wb = await ouvrir((await nonControlable().liasseCompleteExcel('t1', 'e1')).buffer);
+    const anomalies: string[][] = [];
+    wb.getWorksheet('ANOMALIES')!.eachRow((row) => anomalies.push([1, 2, 3, 4, 5].map((c) => String(row.getCell(c).value ?? ''))));
+    const auMotif = anomalies.filter((l) => l[3] === MOTIF);
+    expect(auMotif.map((l) => l[1])).toEqual(VIDES);
+    for (const l of auMotif) {
+      expect(l[0]).toBe('A_VERIFIER');
+      expect(l[4]).toMatch(/^Suivre l’issue que le motif nomme/);
+    }
+    expect(anomalies.filter((l) => /^Aucune action si la provenance est la bonne/.test(l[4]))).toEqual([]);
   });
 });
 
@@ -1488,6 +1583,17 @@ describe('liasses · résultat logé au bilan et résultat précédent non viré
     expect(reste).toEqual([]);
     expect(anomalie.slice(0, 2)).toEqual(['A_TRAITER', 'CJ']);
     expect(anomalie[3]).toContain('AUDCIF, Titre VII, compte 13');
+  });
+
+  it('paquet 1, A1 · la colonne N-1 qui reprend le défaut de l’exercice précédent lève sa propre anomalie', () => {
+    const n1 = resultatAnterieurNonVireDuComparatif('EXERCICE_N1', true, 1_000_000, 'CJ', 'SYSCOHADA');
+    const bilan = { controle: { resultatAnterieurNonAffecte: 1_400_000 }, resultatAnterieurNonVire: null, resultatAnterieurNonVireN1: n1 };
+    // L'exercice suivant est ouvert · sa cellule de contrôle retranche sa propre part antérieure, comme avant.
+    expect(resultatDeLExerciceLogeAuBilan("'Bilan-Passif'!D40", bilan)).toBe("'Bilan-Passif'!D40-(1400000)");
+    const anomalies = anomalieResultatAnterieurNonVire(bilan);
+    expect(anomalies).toHaveLength(1);
+    expect(anomalies[0].slice(0, 3)).toEqual(['A_TRAITER', 'CJ', "Résultat net de l'exercice · colonne N-1"]);
+    expect(anomalies[0][3]).toMatch(/^Colonne N-1 · /);
   });
 
   it('les cinq liasses posent l’anomalie, et les quatre lignes de contrôle lisent le bilan entier', () => {

@@ -628,6 +628,8 @@ export interface Bilan {
     resultatAnterieurNonAffecte?: number;
   };
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 export interface CompteDuPoste {
@@ -661,6 +663,8 @@ export interface BilanProjet {
   equilibre: boolean;
   comptesNonRattaches: CompteDuPoste[];
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 export interface CompteExploitationProjet {
@@ -712,13 +716,19 @@ export interface SectionFlux {
   section: string;
 }
 
+/**
+ * Le contrôle du tableau · `coherent: null` quand l'ouverture ou la variation
+ * est laissée vide (paquet 1, relecture M1) · ni bouclé ni en écart, les
+ * montants inconnus valent `null`, jamais zéro.
+ */
 export interface ControleFluxTresorerie {
-  tresorerieOuverture: number;
-  variation: number;
-  tresorerieClotureParFlux: number;
+  tresorerieOuverture: number | null;
+  variation: number | null;
+  tresorerieClotureParFlux: number | null;
   tresorerieClotureParBilan: number;
-  ecart: number;
-  coherent: boolean;
+  ecart: number | null;
+  coherent: boolean | null;
+  motifNonControlable?: string | null;
 }
 
 export interface TableauFluxTresorerie {
@@ -727,6 +737,11 @@ export interface TableauFluxTresorerie {
   comptesNonVentiles: CompteDuPoste[];
   /** D'où viennent les positions d'ouverture quand l'exercice précédent n'en tient pas. */
   mentionOuverture?: string | null;
+  /** Postes laissés vides en colonne N (paquet 1, A7) · servis à 0, ce ne sont pas des montants. */
+  postesVides?: string[];
+  /** Le motif de chaque poste laissé vide, colonne N puis colonne N-1. */
+  postesNonCalculables?: Array<{ ref: string; raison: string }>;
+  postesNonCalculablesN1?: Array<{ ref: string; raison: string }>;
   controle: ControleFluxTresorerie;
 }
 
@@ -1497,10 +1512,13 @@ export interface ConformiteInventaire {
 export interface TresorerieDuRapport {
   /** Le tableau des flux d'où elle vient (audit final F94) · absent sur un rapport plus ancien. */
   tableau?: 'TFT_ASSOCIATIONS' | 'TFT_SYSCOHADA_NORMAL';
-  ouverture: number;
-  variation: number;
+  /** `null` quand le tableau laisse l'ouverture ou la variation vide (relecture M1). */
+  ouverture: number | null;
+  variation: number | null;
   cloture: number;
-  boucle: boolean;
+  /** `null` · contrôle non effectué, ni bouclé ni en écart. */
+  boucle: boolean | null;
+  motifNonControlable?: string | null;
 }
 
 export interface RapportActivite {
@@ -2511,6 +2529,8 @@ export interface BilanSmt {
   equilibre: boolean;
   renvoiImmobilisations: string;
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 /** VA, VB, VC et JG · les quatre lignes qui mènent du solde de caisse au résultat net. */
@@ -3517,6 +3537,8 @@ export interface BilanSyscohada {
     resultatAnterieurNonAffecte?: number;
   };
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 /**
@@ -3610,14 +3632,10 @@ export interface TableauFluxTresorerieSyscohada {
   postesNonCalculablesN1?: PosteNonCalculableSyscohada[];
   /** D'où viennent les positions d'ouverture quand l'exercice précédent n'est pas tenu (relecture du 2026-10-07, bloquant 2). */
   mentionOuverture?: string | null;
-  controle: {
-    tresorerieOuverture: number;
-    variation: number;
-    tresorerieClotureParFlux: number;
-    tresorerieClotureParBilan: number;
-    ecart: number;
-    coherent: boolean;
-  };
+  /** Postes laissés vides en colonne N · servis à 0, ce ne sont pas des montants. */
+  postesVides?: string[];
+  /** Même contrôle à trois issues qu'aux associations (relecture M1). */
+  controle: ControleFluxTresorerie;
 }
 
 /** Distingue une rubrique intercalée d'une ligne chiffrée du tableau des flux. */
@@ -3703,6 +3721,8 @@ export interface BilanSmtSyscohada {
     resultatAnterieurNonAffecte?: number;
   };
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
+  resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
 
 /**

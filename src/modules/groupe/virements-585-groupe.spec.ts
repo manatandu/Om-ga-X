@@ -24,9 +24,59 @@ interface Exercice {
   statut: StatutExercice;
 }
 
+type R = Record<string, unknown>;
+
 /**
- * Doublure qui HONORE les requêtes · les sommes du 585 par exercice, les
- * ouvertures validées par exercice ; les exercices filtrés par la date.
+ * Évaluateur des filtres que la lecture pose (périmètre de l'ouverture du
+ * premier jour) · il honore chaque opérateur rencontré, relations `is`
+ * comprises. Ce qui dépend de ce qu'une requête ramène se teste sur la
+ * requête (CLAUDE.md, F4b).
+ */
+const evaluer = (r: R, w: unknown): boolean =>
+  Object.entries((w ?? {}) as R).every(([cle, f]) => {
+    if (cle === 'AND') return (f as unknown[]).every((x) => evaluer(r, x));
+    if (cle === 'OR') return (f as unknown[]).some((x) => evaluer(r, x));
+    if (cle === 'lignes') return !((r.lignes as R[]) ?? []).some((l) => evaluer(l, (f as { none: unknown }).none));
+    if (f !== null && typeof f === 'object' && !(f instanceof Date) && ('is' in (f as R) || cle === 'journal' || cle === 'compte')) {
+      const x = r[cle] as R | null | undefined;
+      const is = 'is' in (f as R) ? (f as R).is : f;
+      return is === null ? !x : !!x && evaluer(x, is);
+    }
+    if (f !== null && typeof f === 'object' && 'in' in (f as R)) return ((f as R).in as unknown[]).includes(r[cle]);
+    if (f instanceof Date) return r[cle] instanceof Date && (r[cle] as Date).getTime() === f.getTime();
+    return (r[cle] ?? null) === f;
+  });
+
+/** Une écriture du premier jour, telle que la base la rendrait · OD validée, lignes de bilan. */
+const ecritureDuPremierJour = (id: string, tenantId: string, exerciceId: string, debut: string, x: R = {}): R => ({
+  id,
+  tenantId,
+  exerciceId,
+  numeroPiece: 1,
+  statut: 'VALIDEE',
+  date: new Date(debut),
+  dateValeur: null,
+  estANouveauProvisoire: false,
+  estSoldeDesComptesDeGestion: false,
+  estGenereeParCloture: false,
+  journal: { type: 'GENERAL', code: 'OD' },
+  corrigeEcriture: null,
+  corrigeEcritureId: null,
+  reevaluationExtourne: null,
+  reevaluationContrePassationDeclaree: null,
+  lignes: [
+    { id: `${id}-1`, ecritureId: id, compteId: 'c521', debit: 100, credit: 0, deviseId: null, montantDevise: null, compte: { classe: 'CLASSE_5' } },
+    { id: `${id}-2`, ecritureId: id, compteId: 'c101', debit: 0, credit: 100, deviseId: null, montantDevise: null, compte: { classe: 'CLASSE_1' } },
+  ],
+  ...x,
+});
+
+/**
+ * Doublure qui HONORE les requêtes · les sommes du 585 par exercice ; les
+ * écritures du premier jour ÉVALUÉES contre le filtre de la lecture
+ * (comptage des lignes, écritures, lignes par tranches) ; les exercices
+ * filtrés par la date. `ouvertures` · une OD d'ouverture validée, non nulle,
+ * au premier jour de chaque exercice nommé.
  */
 function monter(options: {
   dossierMereId: string | null;
@@ -34,8 +84,17 @@ function monter(options: {
   exercices: Exercice[];
   soldes585: Record<string, number>;
   ouvertures?: string[];
+  ecritures?: R[];
 }) {
   const perimetres: Array<ReadonlySet<string> | undefined> = [];
+  const premierJour: R[] = [
+    ...(options.ouvertures ?? []).map((id) => {
+      const e = options.exercices.find((x) => x.id === id)!;
+      return ecritureDuPremierJour(`od-${id}`, e.tenantId, id, e.dateDebut.toISOString().slice(0, 10));
+    }),
+    ...(options.ecritures ?? []),
+  ];
+  const retenues = (where: unknown) => premierJour.filter((e) => evaluer(e, where));
   const prisma = {
     tenant: {
       findUnique: jest.fn().mockResolvedValue({ dossierMereId: options.dossierMereId }),
@@ -57,11 +116,20 @@ function monter(options: {
         const s = options.soldes585[args.where.ecriture.exerciceId] ?? 0;
         return Promise.resolve({ _sum: { debit: s > 0 ? s : 0, credit: s < 0 ? -s : 0 } });
       }),
+      count: jest.fn((args: { where: { ecriture: unknown } }) => {
+        perimetres.push(perimetreCourant());
+        return Promise.resolve(retenues(args.where.ecriture).reduce((n, e) => n + (e.lignes as R[]).length, 0));
+      }),
+      // Une seule tranche · le jeu d'essai tient sous la taille d'un lot.
+      findMany: jest.fn((args: { where: { ecriture: unknown }; cursor?: unknown }) => {
+        perimetres.push(perimetreCourant());
+        return Promise.resolve(args.cursor ? [] : retenues(args.where.ecriture).flatMap((e) => e.lignes as R[]));
+      }),
     },
     ecriture: {
-      count: jest.fn((args: { where: { exerciceId: string } }) => {
+      findMany: jest.fn((args: { where: unknown }) => {
         perimetres.push(perimetreCourant());
-        return Promise.resolve((options.ouvertures ?? []).includes(args.where.exerciceId) ? 1 : 0);
+        return Promise.resolve(retenues(args.where));
       }),
     },
   };
@@ -153,6 +221,97 @@ describe('le 585 du groupe à la date de clôture', () => {
       soldes585: { s25: 2_000_000, s26: 0, c25: -2_000_000, c26: -2_000_000 },
     });
     expect(await service.virements585DuGroupe('C1', AU_31_12_2026)).toEqual({ solde: 0 });
+  });
+
+  /**
+   * Paquet 1, A8 (relevé majeur après le second tour de G1) · la
+   * contre-passation d'une réévaluation des devises passée par le module au
+   * premier jour, l'exercice précédent encore ouvert, n'est pas une ouverture
+   * (`filtreOuverturePasseeAuPremierJour`) · elle n'arrête plus la remontée.
+   * La doublure ÉVALUE la requête de comptage sur les écritures du premier
+   * jour de chaque exercice, au lieu de répondre par l'exercice seul.
+   */
+  it('A8 · une contre-passation de réévaluation au premier jour n’arrête pas la remontée vers l’exercice précédent ouvert', async () => {
+    const extourne = ecritureDuPremierJour('ext', 'C1', 'c26', '2026-01-01', { reevaluationExtourne: { id: 'r25' } });
+    const jouer = () =>
+      monter({
+        dossierMereId: null,
+        membres: ['SIEGE', 'C1'],
+        exercices: [ex('s26', 'SIEGE', '2026-01-01'), ex('c25', 'C1', '2025-01-01'), ex('c26', 'C1', '2026-01-01')],
+        // La cellule a reçu le virement du siège en 2025, encore ouvert ; 2026
+        // ne porte que la contre-passation au premier jour.
+        soldes585: { s26: 2_000_000, c25: -2_000_000, c26: 0 },
+        ecritures: [extourne],
+      }).service.virements585DuGroupe('SIEGE', AU_31_12_2026);
+    expect(await jouer()).toEqual({ solde: 0 });
+    // Liée à rien, la même OD est une ouverture validée · la remontée s'arrête.
+    extourne.reevaluationExtourne = null;
+    expect(await jouer()).toEqual({ solde: 2_000_000 });
+  });
+
+  /**
+   * Relecture du paquet 1, m4 · la contre-passation faite À LA MAIN et
+   * DÉCLARÉE (A5 bis) n'est pas une ouverture non plus · ses lignes sur les
+   * comptes de l'écart (client 4111, 479) sont écartées comme à la clôture
+   * (`lignesDeContrePassationDeclaree`), la position qui reste est nulle, la
+   * remontée se fait. La doublure rend la déclaration avec l'écriture des
+   * écarts qu'elle couvre.
+   */
+  it('m4 · une contre-passation DÉCLARÉE au premier jour n’arrête pas la remontée vers l’exercice précédent ouvert', async () => {
+    const declaree = ecritureDuPremierJour('cpm', 'C1', 'c26', '2026-01-01', {
+      lignes: [
+        { id: 'cpm-1', ecritureId: 'cpm', compteId: 'c479', debit: 100_000, credit: 0, deviseId: null, montantDevise: null, compte: { classe: 'CLASSE_4' } },
+        { id: 'cpm-2', ecritureId: 'cpm', compteId: 'c411', debit: 0, credit: 100_000, deviseId: null, montantDevise: null, compte: { classe: 'CLASSE_4' } },
+      ],
+      reevaluationContrePassationDeclaree: {
+        annuleeLe: null,
+        ecritureEcarts: {
+          lignes: [
+            { compteId: 'c411', debit: 100_000, credit: 0, compte: { numero: '41110000' } },
+            { compteId: 'c479', debit: 0, credit: 100_000, compte: { numero: '47910000' } },
+          ],
+        },
+      },
+    });
+    const jouer = () =>
+      monter({
+        dossierMereId: null,
+        membres: ['SIEGE', 'C1'],
+        exercices: [ex('s26', 'SIEGE', '2026-01-01'), ex('c25', 'C1', '2025-01-01'), ex('c26', 'C1', '2026-01-01')],
+        soldes585: { s26: 2_000_000, c25: -2_000_000, c26: 0 },
+        ecritures: [declaree],
+      }).service.virements585DuGroupe('SIEGE', AU_31_12_2026);
+    expect(await jouer()).toEqual({ solde: 0 });
+    // Déclaration ANNULÉE (sa réévaluation l'est) · l'OD redevient une
+    // ouverture validée, la remontée s'arrête.
+    (declaree.reevaluationContrePassationDeclaree as R).annuleeLe = new Date('2026-03-01');
+    expect(await jouer()).toEqual({ solde: 2_000_000 });
+  });
+
+  /**
+   * Relecture du paquet 1, B2 · une OD d'ouverture validée au premier jour,
+   * puis annulée par son négatif daté plus tard (AUDCIF art. 20, al. 2) ·
+   * l'exercice n'a plus d'ouverture, la remontée vers l'exercice précédent
+   * encore ouvert se fait. Lue comme la clôture la lit (position nette).
+   */
+  it('B2 · une OD d’ouverture annulée par son négatif n’arrête pas la remontée', async () => {
+    const od = ecritureDuPremierJour('od', 'C1', 'c26', '2026-01-01');
+    const negatif = ecritureDuPremierJour('neg', 'C1', 'c26', '2026-02-15', {
+      corrigeEcritureId: 'od',
+      corrigeEcriture: od,
+      lignes: (od.lignes as R[]).map((l, i) => ({ ...l, id: `neg-${i}`, ecritureId: 'neg', debit: -(l.debit as number), credit: -(l.credit as number) })),
+    });
+    const jouer = (ecritures: R[]) =>
+      monter({
+        dossierMereId: null,
+        membres: ['SIEGE', 'C1'],
+        exercices: [ex('s26', 'SIEGE', '2026-01-01'), ex('c25', 'C1', '2025-01-01'), ex('c26', 'C1', '2026-01-01')],
+        soldes585: { s26: 2_000_000, c25: -2_000_000, c26: 0 },
+        ecritures,
+      }).service.virements585DuGroupe('SIEGE', AU_31_12_2026);
+    expect(await jouer([od, negatif])).toEqual({ solde: 0 });
+    // Sans son négatif, l'OD fait foi · la remontée s'arrête.
+    expect(await jouer([od])).toEqual({ solde: 2_000_000 });
   });
 
   it('lignes validées du 585 de l’exercice, datées au plus tard la date, hors solde des comptes de gestion', async () => {

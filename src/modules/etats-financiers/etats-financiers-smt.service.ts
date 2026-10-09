@@ -11,9 +11,11 @@ import {
   MOTIF_EXERCICE_INTROUVABLE,
   MOTIF_RESULTAT_N1_NON_TENU,
   chargerLignes,
+  chargerOuverture,
   comparatifDuBilan,
   correspond,
   exerciceCloture,
+  exercicePrecedentCloture,
   lignesALOuverture,
   lireOuverturePasseeEnOd,
   ouvertureTenue,
@@ -29,7 +31,13 @@ import {
 } from './reglements-de-tresorerie';
 import { dettesFournisseursNeesDImmobilisations } from './dettes-rattachees';
 import { chargerCampagneStocks, lignesNoteStocks, motifQuantitesNote2 } from './stocks-depuis-inventaire';
-import { estCompteDuResultatDeLExercice, partsDuResultatAuBilan, resultatAnterieurNonVire, resultatAuBilan } from './resultat-de-l-exercice';
+import {
+  estCompteDuResultatDeLExercice,
+  partsDuResultatAuBilan,
+  resultatAnterieurNonVire,
+  resultatAnterieurNonVireDuComparatif,
+  resultatAuBilan,
+} from './resultat-de-l-exercice';
 import { PosteCalcule } from './etats-financiers.service';
 import {
   CATEGORIES_RESSOURCES_ART6,
@@ -337,10 +345,14 @@ export class EtatsFinanciersSmtService {
 
   async bilan(tenantId: string, exerciceId: string) {
     const exerciceN1Id = await trouverExerciceN1(this.exerciceService, tenantId, exerciceId);
-    const [lignesN, lignesN1, clos] = await Promise.all([
+    const [lignesN, lignesN1, clos, closN1, ouvertureN] = await Promise.all([
       this.chargerLignes(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceN1Id),
       exerciceCloture(this.exerciceService, tenantId, exerciceId),
+      exercicePrecedentCloture(this.exerciceService, tenantId, exerciceN1Id),
+      // Paquet 1, A4 · l'ouverture lue AVANT ce que la clôture de N y porte
+      // (`chargerOuverture`), seulement quand elle sert le comparatif.
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId),
     ]);
     // Q3 des cas chiffrés de la clôture · sans exercice N-1, le comparatif
     // est le bilan d'ouverture du dossier (SYCEBNL Partie 4 ch. 1 § 1.4,
@@ -348,8 +360,8 @@ export class EtatsFinanciersSmtService {
     // Bloquant 2 de la relecture du 2026-10-07 · sans exercice N-1 ni
     // report, une ouverture saisie en OD au premier jour n'est lue ni comme
     // flux ni comme ouverture, et l'ouverture présumée nulle est DITE.
-    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, lignesN);
-    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, lignesN, ouverturePassee, 'SYCEBNL');
+    const ouverturePassee = await lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, exerciceN1Id, ouvertureN);
+    const comparatif = comparatifDuBilan(exerciceN1Id, lignesN1, ouvertureN, ouverturePassee, 'SYCEBNL');
     const parRefN = this.resoudreBilan(lignesN);
     const parRefN1 = this.resoudreBilan(comparatif.lignes);
 
@@ -366,6 +378,7 @@ export class EtatsFinanciersSmtService {
     const totalActif = parRefN.get('GZ')!.montant;
     const totalPassif = parRefN.get('HZ')!.montant;
     const { resultat678, resultat13, parts } = this.sourcesDuResultat(lignesN);
+    const { parts: partsN1 } = this.sourcesDuResultat(comparatif.lignes);
     // Le reste du 13 (un 130 ouvert par le cabinet) que HC lit, lui, comme
     // « Autres fonds propres » (audit final F211) · au sens du passif.
     const compte13LuHorsDuResultat = lignesN
@@ -406,6 +419,14 @@ export class EtatsFinanciersSmtService {
       // Exercice CLÔTURÉ qui porte encore le résultat précédent non affecté ·
       // nommé (`resultatAnterieurNonVire`).
       resultatAnterieurNonVire: resultatAnterieurNonVire(clos, parts.resultatAnterieurNonAffecte, 'HB', 'SYCEBNL'),
+      // La colonne N-1 qui reprend le même défaut · dite, jamais recalculée (paquet 1, A1).
+      resultatAnterieurNonVireN1: resultatAnterieurNonVireDuComparatif(
+        comparatif.provenance,
+        closN1,
+        partsN1.resultatAnterieurNonAffecte,
+        'HB',
+        'SYCEBNL',
+      ),
     };
   }
 
@@ -705,13 +726,15 @@ export class EtatsFinanciersSmtService {
     ]);
     const dettesImmo = async (id: string, dates: { dateDebut: Date; dateFin: Date }) =>
       dettesFournisseursNeesDImmobilisations(this.prisma, tenantId, { id, ...dates }, DETTES_FOURNISSEURS_RATTACHEES);
-    const [cumuls, lignesN, cumulsN1, lignesN1, immoN, immoN1] = await Promise.all([
+    const [cumuls, lignesN, cumulsN1, lignesN1, immoN, immoN1, ouvertureN] = await Promise.all([
       this.cumulsTresorerie(tenantId, exerciceId),
       this.chargerLignes(tenantId, exerciceId),
       exerciceN1Id ? this.cumulsTresorerie(tenantId, exerciceN1Id) : Promise.resolve(null),
       exerciceN1Id ? this.chargerLignes(tenantId, exerciceN1Id) : Promise.resolve(null),
       dettesImmo(exerciceId, exerciceN),
       exerciceN1Id ? this.exercice(tenantId, exerciceN1Id).then((d) => dettesImmo(exerciceN1Id, d)) : Promise.resolve(undefined),
+      // Le motif de la colonne N-1 lit l'ouverture comme le bilan (paquet 1, A4).
+      exerciceN1Id ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId),
     ]);
 
     // Constats N3 et N4 des cas chiffrés de la clôture · le règlement d'une
@@ -749,7 +772,7 @@ export class EtatsFinanciersSmtService {
       exerciceN1Disponible: n1 !== null,
       // Q3 des cas chiffrés de la clôture · le compte de résultat N-1 ne se
       // tire pas d'un bilan d'ouverture.
-      motifComparatifAbsent: n1 === null && ouvertureTenue(lignesN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
+      motifComparatifAbsent: n1 === null && ouvertureTenue(ouvertureN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       totalRecettesN1: n1?.totalRecettes,
       totalDepensesN1: n1?.totalDepenses,
       soldeCaisseN1: n1?.soldeCaisse,

@@ -310,12 +310,25 @@ describe('AU2 · clôture de N avec une ouverture déjà passée dans N+1', () =
       estANouveauProvisoire: false,
       estSoldeDesComptesDeGestion: false,
       AND: [
-        { OR: [{ date: N1.dateDebut }, { dateValeur: N1.dateDebut }] },
+        // Relecture du paquet 1, B2 · le négatif lié d'une écriture du premier
+        // jour en fait partie, quelle que soit sa date (AUDCIF art. 20, al. 2).
+        {
+          OR: [
+            { OR: [{ date: N1.dateDebut }, { dateValeur: N1.dateDebut }] },
+            { corrigeEcriture: { is: { OR: [{ date: N1.dateDebut }, { dateValeur: N1.dateDebut }] } } },
+          ],
+        },
         {
           OR: [
             { OR: [{ estGenereeParCloture: true }, { journal: { type: 'GENERAL' } }] },
             { corrigeEcriture: { is: { OR: [{ estGenereeParCloture: true }, { journal: { type: 'GENERAL' } }] } } },
           ],
+        },
+        // Paquet 1, A8 · la contre-passation d'une réévaluation (et son
+        // négatif) n'est pas une ouverture (ouverture-passee.spec.ts).
+        {
+          reevaluationExtourne: { is: null },
+          OR: [{ corrigeEcritureId: null }, { corrigeEcriture: { is: { reevaluationExtourne: { is: null } } } }],
         },
       ],
       lignes: { none: { compte: { classe: { in: ['CLASSE_6', 'CLASSE_7', 'CLASSE_8'] } } } },
@@ -348,6 +361,67 @@ describe('AU2 · clôture de N avec une ouverture déjà passée dans N+1', () =
     await s.cloturer('t', 'n', 'u');
     const ran = tx.ecriture.create.mock.calls[1][0].data.lignes.create as { compteId: string; debit: number }[];
     expect(ran.find((l) => l.compteId === '521')).toMatchObject({ debit: 500 });
+  });
+
+  /**
+   * SECOND TOUR DE RELECTURE DU PAQUET 1, BLOQUANT 1 (reproduit sur vraie base
+   * le 2026-10-09) · une OD du premier jour annulée par son négatif inscrit le
+   * 15 mars (« Corriger » depuis le Journal, date du jour), la position
+   * exacte ressaisie le même jour hors du périmètre · la position nulle
+   * passait le report entier, l'ouverture comptée deux fois (banque à
+   * 20 800 000 pour 10 400 000). AUDCIF art. 20, al. 2 ; art. 34.
+   */
+  describe('second tour, B1 · une ouverture annulée par un négatif inscrit hors du premier jour', () => {
+    const OD = { id: 'imp', numeroPiece: 1, statut: 'VALIDEE', journal: { code: 'OD' }, date: N1.dateDebut, dateValeur: null, corrigeEcritureId: null };
+    const negatif = (date: Date, dateValeur: Date | null = null) => ({
+      id: 'neg', numeroPiece: 2, statut: 'VALIDEE', journal: { code: 'OD' }, date, dateValeur, corrigeEcritureId: 'imp',
+    });
+    const annulee = [
+      ligneImport('a1', '521', 500, 0), ligneImport('a2', '131', 0, 500),
+      ligneImport('b1', '521', -500, 0, { ecritureId: 'neg' }), ligneImport('b2', '131', 0, -500, { ecritureId: 'neg' }),
+    ];
+    const MARS = new Date('2027-03-15');
+
+    it('rien de déclaré · refus qui nomme le négatif, sa date et les deux issues', async () => {
+      const { s, tx } = avecOuverture([OD, negatif(MARS)], annulee);
+      await expect(s.cloturer('t', 'n', 'u')).rejects.toThrow(
+        /OD n° 2 du 15\/03\/2027.*AUDCIF art\. 34.*« Conserver ».*ressaisie.*« Rectifier ».*le report entier/,
+      );
+      // Aucun report dans l'exercice suivant (l'écriture de solde tombe avec la transaction).
+      expect(tx.ecriture.create.mock.calls.filter((c) => c[0].data.exerciceId === 'n1')).toHaveLength(0);
+    });
+
+    it('RECTIFIER · le report ENTIER est passé, rien n’est inscrit en négatif', async () => {
+      const { s, tx } = avecOuverture([OD, negatif(MARS)], annulee);
+      const r = (await s.cloturer('t', 'n', 'u', { ouvertureImportee: 'RECTIFIER' })) as unknown as { issueOuverture: string[] };
+      const ran = tx.ecriture.create.mock.calls[1][0].data.lignes.create as { compteId: string; debit: number; credit: number }[];
+      expect(ran.find((l) => l.compteId === '521')).toMatchObject({ debit: 500 });
+      expect(ran.every((l) => l.debit >= 0 && l.credit >= 0)).toBe(true);
+      expect(r.issueOuverture.join(' ')).toMatch(/OD n° 2 du 15\/03\/2027.*non ressaisies · le report entier est passé/);
+    });
+
+    it('CONSERVER · rien n’est passé, motif, positions et négatif s’écrivent sur l’exercice ; sans motif, refus', async () => {
+      const sans = avecOuverture([OD, negatif(MARS)], annulee);
+      await expect(sans.s.cloturer('t', 'n', 'u', { ouvertureImportee: 'CONSERVER' })).rejects.toThrow(/motif écrit/);
+      const { s, tx } = avecOuverture([OD, negatif(MARS)], annulee);
+      await s.cloturer('t', 'n', 'u', { ouvertureImportee: 'CONSERVER', motifConservation: 'Ouverture ressaisie le 15/03' });
+      expect(tx.ecriture.create).toHaveBeenCalledTimes(1);
+      const data = tx.exercice.update.mock.calls[0][0].data;
+      expect(data.motifOuvertureSuivanteConservee).toBe('Ouverture ressaisie le 15/03');
+      expect(data.ecartsOuvertureSuivanteConservee).toMatchObject({
+        ecarts: expect.arrayContaining([expect.objectContaining({ numero: 'N521', cloture: 500, ouverture: 0 })]),
+        negatifsTardifs: [{ piece: 'OD n° 2', date: '2027-03-15' }],
+      });
+    });
+
+    it('un négatif daté ou valorisé au PREMIER JOUR · position nulle sans doute, le report entier passe sans déclaration (R10)', async () => {
+      for (const n of [negatif(N1.dateDebut), negatif(MARS, N1.dateDebut)]) {
+        const { s, tx } = avecOuverture([OD, n], annulee);
+        await s.cloturer('t', 'n', 'u');
+        const ran = tx.ecriture.create.mock.calls[1][0].data.lignes.create as { compteId: string; debit: number }[];
+        expect(ran.find((l) => l.compteId === '521')).toMatchObject({ debit: 500 });
+      }
+    });
   });
 
   it('R2 · le report porte le 521 en dollars, l’import en francs seuls · ÉCART nommé avec sa devise, jamais concordant', async () => {
@@ -408,6 +482,65 @@ describe('AU2 · clôture de N avec une ouverture déjà passée dans N+1', () =
     expect(r.issueOuverture.join(' ')).toMatch(/lettrées ou pointées.*N411 OD n° 1 débit 450\.00, lettrée/);
     const ouverture = (c: string) => [...faux, ...lignes].filter((l) => l.compteId === c).reduce((t, l) => t + l.debit - l.credit, 0);
     expect([ouverture('521'), ouverture('411'), ouverture('401'), ouverture('131')]).toEqual([500, 300, -300, -500]);
+  });
+
+  /**
+   * Paquet 1, A8 · la contre-passation faite à la main et DÉCLARÉE au premier
+   * jour de N+1, N encore ouvert. Ses lignes de l'écart (le tiers et son 479)
+   * ne sont pas une position d'ouverture · sans quoi la clôture la disait
+   * divergente de tout le bilan, et « Rectifier » l'inscrivait en négatif,
+   * l'écart latent rétabli en silence au 479 et au compte du tiers.
+   */
+  const declaree = () => ({
+    id: 'cp',
+    numeroPiece: 7,
+    statut: 'VALIDEE',
+    journal: { code: 'OD' },
+    reevaluationContrePassationDeclaree: {
+      annuleeLe: null,
+      // L'écart de N · client +100 au 411, gain latent au 479.
+      ecritureEcarts: {
+        lignes: [
+          { compteId: '411', debit: 100, credit: 0, compte: { numero: '41110000' } },
+          { compteId: '479', debit: 0, credit: 100, compte: { numero: '47910000' } },
+        ],
+      },
+    },
+  });
+  const ligneCp = (id: string, compteId: string, debit: number, credit: number) => ({ ...ligneImport(id, compteId, debit, credit), ecritureId: 'cp' });
+
+  it('A8 · une contre-passation DÉCLARÉE seule au premier jour · rien à déclarer, le report entier passe, elle n’est jamais inscrite en négatif', async () => {
+    const { s, tx } = avecOuverture([declaree()], [ligneCp('k1', '479', 100, 0), ligneCp('k2', '411', 0, 100)]);
+    const r = (await s.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+    // Le solde des comptes de gestion, puis le report ENTIER (aucune ouverture).
+    expect(tx.ecriture.create).toHaveBeenCalledTimes(2);
+    const ran = tx.ecriture.create.mock.calls[1][0].data.lignes.create as { compteId: string; debit: number; credit: number }[];
+    expect(ran.find((l) => l.compteId === '521')).toMatchObject({ debit: 500 });
+    expect(ran.filter((l) => l.debit < 0 || l.credit < 0)).toEqual([]);
+    expect(r.issueOuverture.join(' ')).not.toMatch(/inscrites en négatif/);
+  });
+
+  it('A8 · une OD déclarée qui groupe aussi un bilan d’ouverture · ses lignes de l’écart sortent, les autres restent confrontées', async () => {
+    // La même OD porte la contre-passation de l'écart d'un AUTRE client (412,
+    // gain latent au 479) ET l'ouverture exacte des autres comptes · la
+    // déclaration n'admet aucune autre ligne sur les comptes de l'écart
+    // (`motifRefusInversion`), le 411 de l'ouverture est donc ailleurs.
+    const ecarts = (declaree().reevaluationContrePassationDeclaree.ecritureEcarts.lignes as Array<Record<string, unknown>>).map((l) =>
+      l.compteId === '411' ? { ...l, compteId: '412', compte: { numero: '41120000' } } : l,
+    );
+    const od = { ...declaree(), reevaluationContrePassationDeclaree: { annuleeLe: null, ecritureEcarts: { lignes: ecarts } } };
+    const lignes = [
+      ligneCp('k1', '479', 100, 0), ligneCp('k2', '412', 0, 100),
+      ligneCp('o1', '521', 500, 0), ligneCp('o3', '401', 0, 300), ligneCp('o4', '131', 0, 500), ligneImport('i2', '411', 300, 0),
+    ];
+    const { s, tx } = avecOuverture([od, IMPORT], lignes);
+    const r = (await s.cloturer('t', 'n', 'u')) as unknown as { issueOuverture: string[] };
+    expect(tx.ecriture.create).toHaveBeenCalledTimes(1);
+    expect(r.issueOuverture.join(' ')).toMatch(/correspond au bilan de clôture/);
+    // Sans la déclaration, la même OD diverge sur le 479 et le 412 · c'est
+    // l'exclusion, et elle seule, qui la rend concordante.
+    const sans = avecOuverture([{ ...od, reevaluationContrePassationDeclaree: null }, IMPORT], lignes);
+    await expect(sans.s.cloturer('t', 'n', 'u')).rejects.toThrow(/N479 \(clôture 0\.00, ouverture 100\.00\)/);
   });
 
   it('une écriture du premier jour AU BROUILLARD · la clôture est refusée, les gestes ouverts sont nommés', async () => {
