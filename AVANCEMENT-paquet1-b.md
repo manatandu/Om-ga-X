@@ -307,11 +307,21 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 - Exports · le classeur de la balance âgée et la liasse des notes ne disent
   pas les groupes lus ligne à ligne (B5 ne vise que les écrans).
 
+## Rejeu d'ensemble (vraie base, scénario `scenario-paquet1-b.mjs`)
+
+- AVANT · `main` (/home/user/Comptaflow), base `p1b_avant`, port 8771 ·
+  70 contrôles, 43 concordances, 27 écarts, 0 erreur HTTP
+  (`/tmp/claude-0/sim/p1b-avant-tout.json`) · B10 (2), B1 (1), B2 (2), B9
+  (4), B3 (2), B7 (4), B6 (6), B5 (6) ; B8 concorde (point de tests).
+- APRÈS · cette copie compilée, base `p1b_apres`, port 8772 · 70 contrôles,
+  70 concordances, 0 écart, 0 erreur HTTP (`/tmp/claude-0/sim/p1b-apres.json`).
+- B4 n'a pas de contrôle sur base (écran seul, sans montant).
+
 ## Reste
 
-rejeu APRÈS de tous les points
-(`npm run build`, `cd client && npm run build`, puis
-`/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
+Intégration (hors de cette ligne) · relectures (comptable, échecs
+silencieux, TypeScript, React), bloc du § 3 complet des deux côtés, tests
+navigateur, puis retrait de cette fiche.
 
 ## Commandes de vérification
 
