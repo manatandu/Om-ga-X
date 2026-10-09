@@ -5085,8 +5085,14 @@ export class ExportService {
     // égalités qui doivent tenir · XC y reste une valeur lue, et l'égalité est
     // celle du même solde dans les deux états, XC au compte d'exploitation et
     // CC au bilan (un compte de gestion qu'aucun poste du compte
-    // d'exploitation ne lit, un résultat antérieur resté au 13, les écartent).
-    // Un XC non nul reste « à vérifier » à la feuille ANOMALIES.
+    // d'exploitation ne lit les écarte). Le SOLDE DE L'EXERCICE PRÉCÉDENT
+    // resté au 13 faute d'affectation validée n'est pas de l'exercice · CC le
+    // porte, XC non, et la ligne CC le retranche comme aux quatre autres
+    // liasses (`resultatDeLExerciceLogeAuBilan`, paquet 1, relecture M3 ·
+    // 2027, affectation au brouillard, XC-CC rendait -120 000). Sur un
+    // exercice clôturé qui le porte encore, rien n'est retranché et
+    // l'anomalie le nomme. Un XC non nul reste « à vérifier » à la feuille
+    // ANOMALIES.
     const ctl = classeur.addWorksheet('CONTROLES');
     ctl.getCell(1, 1).value = 'Contrôle';
     ctl.getCell(1, 2).value = 'Valeur';
@@ -5102,7 +5108,7 @@ export class ExportService {
       ['Total général passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
       ['Écart bilan actif - passif (doit être 0)', 'B5-B6', 0],
       ["Solde des opérations de l'exercice, compte d'exploitation (XC)", `'Compte Exploitation'!D${rangsCe.get('XC')}`, ''],
-      ["Solde des opérations de l'exercice, bilan (CC)", `'Bilan-Passif'!D${rangsPassif.get('CC')}`, ''],
+      ["Solde des opérations de l'exercice, bilan (CC)", resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!D${rangsPassif.get('CC')}`, bilan), ''],
       ["Écart compte d'exploitation / bilan (XC-CC, doit être 0)", 'B8-B9', 0],
       ['Contrôle emplois-ressources (VII · V - VI, doit être 0)', `'Emplois-Ressources'!D${terRangs.get('GZ')}`, 0],
       ['Trésorerie fin (réconciliation, G)', `'Reconciliation tresorerie'!C${rangsRecon.get('G')}`, ''],

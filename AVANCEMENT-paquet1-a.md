@@ -444,7 +444,9 @@ APRÈS · 50 contrôles sur 50 (`/tmp/claude-0/sim/p1a-a9-apres.json`), à
 travers la clôture de 2026 · 2026 relu clos, XC = CC = 120 000, écart 0 ;
 2027, l'affectation au 121 encore au brouillard, l'écart XC-CC vaut −120 000
 (le 13 porte encore le solde de 2026, que CC lit et XC non) ; affectation
-validée, XC = CC = 0.
+validée, XC = CC = 0. Cette lecture de 2027 avant validation est REMPLACÉE
+par la relecture M3 (ci-dessous) · la ligne CC retranche le solde précédent
+non affecté, l'écart y vaut 0.
 
 ### A5 · les intérêts courus sur emprunts au tableau des flux SYSCOHADA · pas de défaut
 
@@ -669,6 +671,25 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
 - APRÈS · point A7 45 contrôles sur 45.
 - Tests · `liasse-etafi.spec.ts` (aucune feuille ANOMALIES, motifs N et N-1),
   `liasse-syscohada.spec.ts` (une ligne par motif).
+
+### M3 · la ligne CC de la liasse projet ne retranchait pas le solde précédent resté au 13
+
+- Vérifié · les quatre autres liasses lisent le résultat logé au bilan par
+  `resultatDeLExerciceLogeAuBilan` (le poste moins le résultat PRÉCÉDENT non
+  affecté, rien retranché sur un exercice clôturé qui le porte encore) ; la
+  liasse projet lisait CC entier. En N+1, affectation de N au brouillard, le
+  13 porte le solde de N, que XC de N+1 n'a pas · « Attendu 0 » faux.
+- AVANT (copie à 7c1b63c) · A9, 2027 avant validation · CC lu 120 000,
+  écart XC-CC -120 000 (relecture commune, attendu 0).
+- Correction · `liasseProjetsEtafi`, ligne CC par
+  `resultatDeLExerciceLogeAuBilan(…, bilan)` (le bilan projet porte déjà
+  `controle.resultatAnterieurNonAffecte` et `resultatAnterieurNonVire`) ;
+  le scénario relit 2027 avant validation par la relecture commune, sans le
+  contournement d'A9.
+- APRÈS · point A9 65 contrôles sur 65 (2026, 2027 avant validation, 2026
+  clos, 2027).
+- Test · `liasse-etafi.spec.ts`, N+1 dont le 13 porte le solde de N · la
+  formule CC retranche 120 000, et N n'en retranche rien.
 
 ## Reste
 

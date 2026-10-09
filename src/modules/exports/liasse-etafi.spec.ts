@@ -975,6 +975,31 @@ describe('Paquet 1, A9 · la feuille CONTROLES de la liasse projet ne tient pas 
     expect(lignes.filter((l) => /régime normal/.test(l.intitule))).toEqual([]);
   });
 
+  // RELECTURE M3 (reproduit sur vraie base le 2026-10-09 · 2027, affectation
+  // de 2026 au brouillard, XC-CC rendait -120 000) · en N+1, le 13 porte
+  // encore le solde de N, que CC lit et que XC de N+1 n'a pas. Comme aux
+  // quatre autres liasses, la ligne CC le retranche.
+  it('N+1 dont le 13 porte encore le solde de N · la ligne CC le retranche, XC-CC reste nul', async () => {
+    const N_PLUS_1: LigneBalanceStub[] = [
+      ligne('46210000', ClasseCompte.CLASSE_4, 0, 150_000, 0, 0),
+      ligne('13100000', ClasseCompte.CLASSE_1, 0, 120_000, 0, 0),
+      ligne('52110000', ClasseCompte.CLASSE_5, 270_000, 0, 0, 0),
+    ];
+    const exportService = fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, { e1: N_PLUS_1, e0: BALANCE_PROJET_INTERETS });
+    const wb = await ouvrir((await exportService.liasseCompleteExcel('t1', 'e1')).buffer);
+    const lignes = lignesControles(wb);
+    const cc = lignes.find((l) => /\(CC\)$/.test(l.intitule))!;
+    const passif = wb.getWorksheet('Bilan-Passif')!;
+    const rangCc = rangDeRef(passif, 'CC');
+    expect(passif.getCell(rangCc, 4).value).toBe(120_000);
+    expect(cc.formule).toBe(`'Bilan-Passif'!D${rangCc}-(120000)`);
+    // L'exercice dont les comptes sont ceux de l'affectation · rien à retrancher.
+    const n = await ouvrir(
+      (await fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, { e1: BALANCE_PROJET_INTERETS, e0: [] }).liasseCompleteExcel('t1', 'e1')).buffer,
+    );
+    expect(lignesControles(n).find((l) => /\(CC\)$/.test(l.intitule))!.formule).toBe(`'Bilan-Passif'!D${rangDeRef(n.getWorksheet('Bilan-Passif')!, 'CC')}`);
+  });
+
   it('chaque écart de la feuille se lit sur les deux lignes qui le précèdent', async () => {
     // Trois lignes insérées décalent les rangs · une formule restée sur
     // « B10-B11 » comparerait alors la trésorerie à la mauvaise ligne.
