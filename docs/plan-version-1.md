@@ -243,4 +243,10 @@ refusée en le disant ; le salarié n'entre pas encore (« Pas pour l'instant »
   d'un autre, jugé au choix du compte seulement.
 - **Scénario sur vraie base** · `e2e/tests/tiers-panoplie.e2e.ts`, à travers la
   clôture de N et l'imputation de l'avance en N+1.
+- **Numéro choisi à la création** (même jour, « Choisi à la création ») · la
+  fenêtre préremplit le numéro proposé (`GET /tiers/numero-propose`), le
+  cabinet le garde ou le remplace ; chiffres seuls sous la racine du
+  collectif, à la longueur du dossier, libre ; la panoplie prend son rang. Le
+  scénario ci-dessus ouvre son client au 41110250 et le fait traverser la
+  clôture.
 

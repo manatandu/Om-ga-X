@@ -3273,7 +3273,14 @@ et lié à lui, au même rang que le principal quand il est libre
 412, 4182, 4192, 4162 ; adhérent 411, 4181, 4191, 4161 · un numéro, deux sens
 au 4181 et au 4161) ; un dossier existant se COMPLÈTE au bouton, jamais
 d'office (par tiers, ou tout le dossier par tranches de cent) ; le salarié
-n'entre pas encore. UNE LIGNE SAISIE NE VA JAMAIS AU COLLECTIF qui porte des
+n'entre pas encore. LE NUMÉRO DU PRINCIPAL SE CHOISIT À LA CRÉATION
+(décision de Manasse du 2026-10-09, « Choisi à la création ») · OmegaX le
+propose (`GET /tiers/numero-propose`, premier libre), le cabinet le garde
+ou le remplace, la panoplie prend son rang (`motifRefusNumeroChoisi` ·
+chiffres seuls, AUDCIF art. 18 et Titre VII contre SYCEBNL Partie 2 ch. 2
+section 1 ; racine du collectif ; longueur du dossier, convention d'OmegaX) ;
+pris, il est refusé et jamais remplacé par le suivant ; gardé tel quel, il
+ne part pas. UNE LIGNE SAISIE NE VA JAMAIS AU COLLECTIF qui porte des
 comptes de tiers (`verifierComptesCollectifs`, au CONTRÔLEUR seul, comme le
 sommeil · refus qui nomme les comptes ; modules et imports non touchés ; un
 collectif sans individuel reste ouvert ; à la modification, seul un compte que

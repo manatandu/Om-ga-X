@@ -763,8 +763,9 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   TRAITÉ EN PARTIE (2026-10-09, ligne tiers-panoplie, `docs/plan-version-1.md`
   § 8) · fournisseur, client et adhérent portent leur panoplie (40 et 41), la
   saisie refuse le collectif qui porte des comptes de tiers, un journal de
-  trésorerie a son propre compte. RESTE · le salarié (42, « pas pour
-  l'instant »), les organismes sociaux, l'État, les associés et bailleurs,
+  trésorerie a son propre compte ; le numéro du compte principal se choisit
+  à la création, proposé par OmegaX (même jour, « Choisi à la création »).
+  RESTE · le salarié (42, « pas pour l'instant »), les organismes sociaux, l'État, les associés et bailleurs,
   les débiteurs et créditeurs divers (43 à 47), dont les sous-comptes se
   relisent dans les deux plans avant tout code.
   Relevés en attente du second tour (non bloquants) · (1) la création d'un
