@@ -1,4 +1,5 @@
 import { MULTIPLICATEURS_ARTICLE_7, annexeApplicable, type Annexe } from './bareme-smig';
+import { enCentimes } from './au-centime';
 import { motifRefusReductionInpp, reserveReductionInpp } from '../retenues/inpp-trimestriel';
 
 /**
@@ -536,7 +537,12 @@ export function plancherCnss(
   // (annexe 1, décret n° 25/22, art. 3), 21 500 FC depuis janvier 2026
   // (annexe 2), ou la grille du cabinet (décision T4).
   const plancher = annexe.smigJournalierFc * jours;
-  if (assiette >= plancher) {
+  // « EN AUCUN CAS » SOUS LE SMIG · le seuil se juge en CENTIMES ENTIERS
+  // (premier tour de relecture du paquet 1, constat 1). Cinq lignes qui font
+  // 21 500 × 26 = 559 000 FC s'additionnaient à 558 999,9999999999 · « sous le
+  // plancher », et la CNSS, l'impôt et le net d'un salaire AU minimum ne se
+  // chiffraient plus.
+  if (enCentimes(assiette) >= enCentimes(plancher)) {
     return { baseFc: assiette, plancherFc: plancher, applique: false, message: null };
   }
   if (joursPayes === undefined || joursPayes === null) {

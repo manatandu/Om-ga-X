@@ -433,6 +433,48 @@ describe("C1 · le plafond de l'article 69, 1 se juge au centime", () => {
   });
 });
 
+describe("Jumeau de C1 · la condition de l'article 69, 8, a) se juge au centime", () => {
+  // Premier tour de relecture du paquet 1, constat 1. « Pour autant que
+  // l'indemnité de logement ne dépasse 30 % de la rémunération » · à 30 %
+  // EXACTEMENT, la condition est remplie. Le test de bascule ci-dessus vise
+  // 1 000 000 FC, dont les 30 % tombent juste en flottant · il n'aurait
+  // jamais vu ce défaut.
+  const logement = (montantFc: number): ElementPaie => ({ nature: 'LOGEMENT_OU_SON_INDEMNITE', libelle: 'Logement', montantFc });
+
+  it('témoin · le flottant rend 131 072,30 × 30 % sous 39 321,69', () => {
+    expect((131_072.3 * PLAFOND_LOGEMENT_POUR_CENT) / 100).toBeLessThan(39_321.69);
+  });
+
+  it('à 30 % EXACTEMENT, le logement reste immunisé tout entier', () => {
+    const verdict = assiettes([salaire(131_072.3), logement(39_321.69)]);
+    const sort = verdict.sortsFiscaux.find((x) => x.libelle === 'Logement');
+    expect(sort?.imposableFc).toBe(0);
+    expect(sort?.motif).toContain('La condition est remplie');
+    expect(sort?.motif).toContain('plafond de comparaison : 39321.69 FC');
+    expect(verdict.assietteFiscaleBruteFc).toBe(131_072.3);
+  });
+
+  it('un centime au-dessus, le logement entier est imposé', () => {
+    const verdict = assiettes([salaire(131_072.3), logement(39_321.7)]);
+    expect(verdict.sortsFiscaux.find((x) => x.libelle === 'Logement')?.imposableFc).toBe(39_321.7);
+  });
+
+  it('deux lignes de logement qui font 30 % pile · la condition porte sur leur total, au centime', () => {
+    const verdict = assiettes([salaire(131_072.3), logement(20_000.1), logement(19_321.59)]);
+    expect(verdict.sortsFiscaux.filter((x) => x.libelle === 'Logement').map((x) => x.imposableFc)).toEqual([0, 0]);
+  });
+
+  it('un plafond au millième se dit au millième, jamais arrondi sur le total qui le dépasse', () => {
+    // 30 % de 131 072,33 = 39 321,699 · un logement de 39 321,70 le dépasse
+    // d'un millième. Arrondi au centime, le plafond s'affichait 39321.70, égal
+    // au total que le motif disait au-dessus.
+    const verdict = assiettes([salaire(131_072.33), logement(39_321.7)]);
+    const sort = verdict.sortsFiscaux.find((x) => x.libelle === 'Logement');
+    expect(sort?.imposableFc).toBe(39_321.7);
+    expect(sort?.motif).toContain('plafond de comparaison : 39321.699 FC');
+  });
+});
+
 describe("Les articles 70 et 71 · l'ordre de calcul", () => {
   it("déduit les retenues de l'article 71 APRÈS l'article 69, jamais avant", () => {
     const verdict = assiettes(

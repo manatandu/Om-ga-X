@@ -53,7 +53,7 @@
  * ici.
  */
 
-import { auCentime } from './au-centime';
+import { auCentime, enCentimes } from './au-centime';
 
 /**
  * Les natures qu'un élément de paie peut prendre. La liste d'INCLUSION du
@@ -586,8 +586,19 @@ export function assiettes(
     }
 
     // Article 69, 8, a) · la seule condition que le logiciel sait vérifier.
-    const plafondFc = (sociale.montantFc * PLAFOND_LOGEMENT_POUR_CENT) / 100;
-    const conditionRemplie = totalLogementFc <= plafondFc;
+    // « Ne dépasse 30 % » · à 30 % EXACTEMENT la condition est remplie. Elle
+    // se juge en CENTIMES ENTIERS (premier tour de relecture du paquet 1,
+    // constat 1) · le flottant rendait 131 072,30 × 30 / 100 =
+    // 39 321,689999999995, et un logement de 39 321,69 FC, 30 % pile, était
+    // imposé EN ENTIER. Total × 100 ≤ rémunération × 30, sur des entiers.
+    // Le plafond se dit au millième quand il en porte un (30 % d'un nombre
+    // de centimes) · arrondi au centime, 39 321,699 s'affichait 39 321,70
+    // à côté d'un total de 39 321,70 dit au-dessus.
+    const remunerationCentimes = enCentimes(sociale.montantFc);
+    const conditionRemplie = enCentimes(totalLogementFc) * 100 <= remunerationCentimes * PLAFOND_LOGEMENT_POUR_CENT;
+    const plafondMillimes = remunerationCentimes * PLAFOND_LOGEMENT_POUR_CENT / 10;
+    const plafondFc = plafondMillimes / 1000;
+    const plafondAffiche = Number.isInteger(plafondMillimes / 10) ? plafondFc.toFixed(2) : plafondFc.toFixed(3);
     const imposableFc = conditionRemplie ? 0 : element.montantFc;
     brutFiscalFc += imposableFc;
     sortsFiscaux.push({
@@ -596,7 +607,7 @@ export function assiettes(
       imposableFc,
       motif:
         `${immunite.point} · ${immunite.texte}. Indemnité de logement du mois, toutes lignes : ${totalLogementFc.toFixed(2)} FC, ` +
-        `plafond de comparaison : ${plafondFc.toFixed(2)} FC. ` +
+        `plafond de comparaison : ${plafondAffiche} FC. ` +
         (conditionRemplie
           ? "La condition est remplie, l'immunité joue tout entière."
           : "La condition n'est PAS remplie, et le point est écrit « pour autant que », non « dans la limite de » : l'immunité ne joue pas du tout, le montant entier est imposable."),

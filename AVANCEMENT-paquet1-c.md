@@ -254,6 +254,60 @@ en 403 dans un référentiel, jouées dans l'autre). AVANT (`p1c-avant.json`,
 `main` e31f4de) · 537 contrôles, 118 écarts (le scénario a gagné depuis les
 contrôles « condition dite » de C4 et la traversée de clôture de C3).
 
+## Premier tour de relecture (échecs silencieux) · sept constats
+
+Points `S1` à `S7` du scénario (`PAQUET1_C_POINTS=S1`…), un commit par
+constat, chacun reproduit contre `main` (base `p1c_avant`, port 8781) puis
+rejoué sur la copie (base `p1c_apres`, port 8782).
+
+### S1 · constat 1 (BLOQUANT) · les seuils de la paie au centime
+
+Loi n° 23/053, art. 69, 8, a) relu dans la compétence `fiscalite-rdc`
+(code-general-2026, titre 3) · « pour autant que · a) l'indemnité de logement
+ne dépasse 30 % de la rémunération » · à 30 % EXACTEMENT, la condition est
+remplie. `assiettes-paie.ts` comparait le total du logement au produit
+flottant · 131 072,30 × 30 / 100 = 39 321,689999999995, et un logement de
+39 321,69 FC (30 % pile) était imposé EN ENTIER.
+
+Les autres comparaisons de seuil de la paie, relues une à une ·
+- **plancher de la CNSS** (`cotisations-paie.ts`, décret n° 18/041, art. 8 ;
+  loi n° 16/009, art. 13, « en aucun cas ») · MÊME DÉFAUT · cinq lignes de
+  559 000 FC en tout s'additionnent à 558 999,9999999999, « sous le plancher »,
+  CNSS, impôt et net non chiffrés · CORRIGÉ ;
+- **minimum de la classe** (`regles-contrat-travail.ts`, décret n° 25/22 ;
+  Code du travail, art. 88, al. 2) · MÊME DÉFAUT avec une grille du cabinet aux
+  centimes · 104 920,05 × 26 = 2 727 921,3000000003, un contrat au minimum
+  exact dit « en deçà » (manque 4,7e-10 FC) · CORRIGÉ ;
+- **plafond de 30 % de l'art. 118** (`bareme-irpp.ts`) · PAS DE DÉFAUT ·
+  l'assiette est arrondie au millier (art. 118), son produit par 30 / 100 est
+  exact, et l'égalité impôt du barème = 30 % ne tombe qu'à 77 932 800 FC, qui
+  n'est pas un multiple de mille ; même si elle tombait, le montant retenu est
+  le même des deux côtés (seule une réserve en dépendrait) ;
+- **art. 116, 1 (« dans la limite de 5 % »)** · non calculé par le moteur
+  (cité au commentaire de tête des assiettes, comme exemple de plafond) · rien
+  à corriger ;
+- **net négatif** (`personnel.service.ts`, retenues d'avance) · NON CORRIGÉ,
+  consigné (relevé R6 ci-dessous) · le net porte des fractions de centime
+  (cotisations non arrondies), le seuil n'y a pas de bord exact au centime.
+
+Correction · `au-centime.ts` porte `enCentimes` (centimes ENTIERS, même règle
+que le registre des avances `avances-salaire.ts`) ; logement · total × 100 ≤
+rémunération × 30 sur des entiers, et le plafond se dit au millième quand il
+en porte un (30 % de 131 072,33 = 39 321,699, qui s'affichait « 39321.70 » à
+côté d'un total de 39 321,70 dit au-dessus) ; plancher · centimes de
+l'assiette contre centimes du plancher ; minimum · arrondi au centime,
+conformité et manque en centimes. Tests · `assiettes-paie.spec.ts` (bord exact,
+deux lignes, millième, témoin du flottant), `cotisations-paie.spec.ts` (cinq
+lignes, grille du cabinet), `regles-contrat-travail.spec.ts` (minimum exact et
+un centime dessous) · 5 tombent sans la correction.
+
+**AVANT** (`p1c-s1-avant.json`, `main`) · 11 contrôles, 9 écarts · logement
+30 % pile imposable 39 321,69 et base brute 170 393,99 ; plafond affiché
+« 39321.70 » ; CNSS « ASSIETTE SOUS LE PLANCHER · 558999.9999999999 FC contre
+559000 FC », quote-part non chiffrée ; MBOMBO au minimum exact
+`[false, 4.656612873077393e-10]`, LIKOFO `[false, 0.01000000024214387]`.
+**APRÈS** (`p1c-s1-apres.json`) · 11 contrôles, 11 concordances.
+
 ## Reste (au coordinateur, à l'intégration)
 
 - Committer le scénario `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-c.mjs`.
@@ -308,6 +362,12 @@ contrôles « condition dite » de C4 et la traversée de clôture de C3).
   réponse est désormais toujours 404 « Exercice introuvable dans ce dossier. ».
 - **R5 · coût** · une lecture `exercice.findFirst` par clé primaire de plus par
   requête porteuse (et `journal.findFirst` quand un journal est filtré).
+- **R6 · le net négatif se juge sur un net à fractions de centime**
+  (`personnel.service.ts`, « les retenues d'avance […] dépassent ce qui reste
+  dû ») · les cotisations ne sont pas arrondies (`cotisations-paie.ts`,
+  `montantFc: base × taux / 100`), le net non plus ; une retenue égale au net
+  AFFICHÉ (au centime) peut le dépasser d'une fraction et être refusée. Hors
+  du défaut du constat 1 (aucun bord exact au centime), non codé.
 
 ## Commandes
 
@@ -327,6 +387,10 @@ PAQUET1_C_POINTS=C2 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_ap
 PAQUET1_C_POINTS=C1 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c1 8786 paquet1-c /tmp/claude-0/sim/p1c-apres-c1.json
 PAQUET1_C_POINTS=C4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c4 8785 paquet1-c /tmp/claude-0/sim/p1c-apres-c4.json
 PAQUET1_C_POINTS=C3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c3 8783 paquet1-c /tmp/claude-0/sim/p1c-apres-c3.json
+# Premier tour de relecture, un point par constat (S1 à S7), AVANT puis APRÈS
+PAQUET1_C_POINTS=S1 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s1-avant.json
+PAQUET1_C_POINTS=S1 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s1-apres.json
+npx jest src/modules/personnel/assiettes-paie.spec.ts src/modules/personnel/cotisations-paie.spec.ts src/modules/personnel/regles-contrat-travail.spec.ts
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json

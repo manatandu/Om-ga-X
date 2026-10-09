@@ -31,6 +31,7 @@
  */
 
 import { ajouterMois } from '../../common/ajouter-mois';
+import { auCentime, enCentimes } from './au-centime';
 import {
   MULTIPLICATEURS_ARTICLE_7,
   TENSIONS,
@@ -1019,14 +1020,21 @@ export function verdictRemunerationMinimale(
   const taux = tauxJournalierDeLaClasse(contrat.classeProfessionnelle, moisDeReference, annexesSmig);
   if (!taux.valeur) return abstention('HORS_BAREME', taux.explication);
 
-  const minimum = taux.valeur.tauxFc * MULTIPLICATEUR[contrat.periodiciteRemuneration];
-  const conforme = contrat.remunerationBase >= minimum;
+  // LE MINIMUM SE JUGE EN CENTIMES ENTIERS (premier tour de relecture du
+  // paquet 1, constat 1). Le taux d'une classe est au centime (grille du
+  // décret, ou du cabinet arrondie au centime) · 104 920,05 × 26 rendait
+  // 2 727 921,3000000003, et un contrat stipulé EXACTEMENT au minimum de la
+  // classe 12 d'une grille à 21 500,01 FC était dit « en deçà », nul de plein
+  // droit (art. 88, al. 2), pour un manque de 4,7e-10 FC.
+  const minimum = auCentime(taux.valeur.tauxFc * MULTIPLICATEUR[contrat.periodiciteRemuneration]);
+  const manqueCentimes = enCentimes(minimum) - enCentimes(contrat.remunerationBase);
+  const conforme = manqueCentimes <= 0;
   const unite = contrat.periodiciteRemuneration.toLowerCase();
   return {
     conforme,
     minimumFc: minimum,
     convenueFc: contrat.remunerationBase,
-    manqueFc: conforme ? null : minimum - contrat.remunerationBase,
+    manqueFc: conforme ? null : manqueCentimes / 100,
     abstention: null,
     explication: conforme
       ? `Classe ${taux.valeur.classe} (${taux.valeur.categorie.libelle}${
