@@ -8,6 +8,7 @@ import {
   correspond,
   mentionComparatifSurOuverture,
   mentionExercicePrecedentVide,
+  motifOuverturePasseeEnOd,
   motifColonneN1NonTenue,
 } from './etats-financiers.communs';
 import { VirementsParCompte } from '../immobilisations/virements-mise-en-service';
@@ -1925,6 +1926,40 @@ describe('Paquet 1, A7 · TFT des associations · une ouverture passée en OD au
     expect(tft.lignes.find((l: any) => l.ref === 'ZA')?.montantN1).toBeUndefined();
     expect(tft.postesNonCalculablesN1.find((p: any) => p.ref === 'ZA')?.raison).toContain('OD n° 1');
     expect(tft.postesVides).toEqual([]);
+  });
+
+  // RELECTURE m2 (reproduit sur vraie base le 2026-10-09) · 2025 EXISTE,
+  // au brouillard · l'OD du premier jour de 2026 est bien cherchée (2025 ne
+  // tient rien), mais le motif disait « sans exercice précédent », et la
+  // mention perdait l'issue d'A2 (valider le brouillard).
+  it('relecture m2 · l’exercice précédent au brouillard est dit avec l’OD, et l’issue de sa validation reste', async () => {
+    const service = serviceAvecExercices({ eN1: [], eN: lignes as never }, DEUX_EXERCICES);
+    const ecritures = odDuPremierJour(service) as unknown as { ouverturePasseeAuPremierJour: jest.Mock; nombreAuBrouillard: jest.Mock };
+    ecritures.nombreAuBrouillard.mockResolvedValue(2);
+    const tft: any = await service.tableauFluxTresorerie('t1', 'eN');
+    expect(ecritures.ouverturePasseeAuPremierJour).toHaveBeenCalledWith('t1', 'eN');
+    const attendu = motifOuverturePasseeEnOd({ nombre: 1, pieces: ['OD n° 1'] }, 'SYCEBNL', { auBrouillard: 2, clos: false });
+    expect(tft.mentionOuverture).toBe(attendu);
+    expect(tft.postesNonCalculables.find((p: any) => p.ref === 'ZA')?.raison).toBe(attendu);
+    expect(attendu).not.toContain('sans exercice précédent');
+    expect(attendu).toContain('validez-les (AUDCIF art. 22, 2°)');
+    expect(tft.postesVides).toContain('ZA');
+  });
+
+  it('relecture m2 · la colonne N-1 dit son propre exercice précédent (N-2) quand il existe sans rien tenir', async () => {
+    const trois = [...DEUX_EXERCICES, { id: 'eN2', dateDebut: new Date('2024-01-01') }];
+    const service = serviceAvecExercices(
+      { eN2: [], eN1: lignes as never, eN: [ligneF('52110000', ClasseCompte.CLASSE_5, 0, 0, [12_500_000, 0])] as never },
+      trois,
+    );
+    const ecritures = (service as unknown as { ecritureService: { ouverturePasseeAuPremierJour: jest.Mock } }).ecritureService;
+    ecritures.ouverturePasseeAuPremierJour.mockImplementation((_t: string, id: string) =>
+      Promise.resolve(id === 'eN1' ? { nombre: 1, pieces: ['OD n° 1'] } : null),
+    );
+    const tft: any = await service.tableauFluxTresorerie('t1', 'eN');
+    const motif = tft.postesNonCalculablesN1.find((p: any) => p.ref === 'ZA')?.raison;
+    expect(motif).toBe(motifOuverturePasseeEnOd({ nombre: 1, pieces: ['OD n° 1'] }, 'SYCEBNL', { auBrouillard: 0, clos: false }));
+    expect(motif).toContain("l'exercice précédent étant ouvert sans aucune écriture");
   });
 
   it('un report tenu · l’OD du premier jour n’est pas cherchée, rien n’est vide', async () => {

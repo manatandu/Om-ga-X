@@ -298,16 +298,76 @@ export async function lireOuverturePasseeEnOd(
   return ecritureService.ouverturePasseeAuPremierJour(tenantId, exerciceId);
 }
 
-/** Le motif d'une ouverture saisie en OD, qui n'est lue ni comme flux ni comme ouverture. */
-export function motifOuverturePasseeEnOd(o: OuverturePasseeEnOd, referentiel: 'SYSCOHADA' | 'SYCEBNL'): string {
+/**
+ * L'état d'un exercice précédent qui EXISTE sans rien tenir au livre-journal
+ * (`exercicePrecedentTenu`) · ses écritures au brouillard (à-nouveau
+ * provisoire exclu) et sa clôture. `null` quand il n'y a pas d'exercice
+ * précédent, ou qu'il tient ses positions.
+ */
+export interface EtatDuPrecedentNonTenu {
+  auBrouillard: number;
+  clos: boolean;
+}
+
+/**
+ * Lu seulement quand il sert · un exercice précédent qui existe et ne tient
+ * rien (paquet 1, relecture m2), pour la colonne N-1 dont l'ouverture est
+ * passée en OD (son propre exercice précédent, N-2).
+ */
+export async function etatDuPrecedentNonTenu(
+  ecritureService: EcritureService,
+  exerciceService: ExerciceService,
+  tenantId: string,
+  precedentId: string | null,
+  tenu: boolean,
+): Promise<EtatDuPrecedentNonTenu | null> {
+  if (!precedentId || tenu) return null;
+  const [auBrouillard, clos] = await Promise.all([
+    brouillardDuPrecedentNonTenu(ecritureService, tenantId, precedentId, tenu),
+    precedentNonTenuCloture(exerciceService, tenantId, precedentId, tenu),
+  ]);
+  return { auBrouillard, clos };
+}
+
+/**
+ * Le motif d'une ouverture saisie en OD, qui n'est lue ni comme flux ni comme
+ * ouverture. UN EXERCICE PRÉCÉDENT QUI EXISTE SANS RIEN TENIR SE DIT (paquet
+ * 1, relecture m2, `precedent`) · l'OD est cherchée aussi derrière lui (il ne
+ * tient aucune clôture, `exercicePrecedentTenu`), mais le motif disait « sans
+ * exercice précédent » alors qu'il existe, et l'issue de l'exercice précédent
+ * au brouillard (A2 · les valider, AUDCIF art. 22, 2°, non exclu par l'art. 3
+ * du SYCEBNL) disparaissait, le motif de l'OD remplaçant la mention. L'issue
+ * de l'OD vient d'abord · une ouverture passée en à-nouveau se lit en colonne
+ * report et se confronte à la clôture de l'exercice précédent (AU2), là où
+ * une OD restée au premier jour se lirait comme un flux dès que l'exercice
+ * précédent tient ses positions.
+ */
+export function motifOuverturePasseeEnOd(
+  o: OuverturePasseeEnOd,
+  referentiel: 'SYSCOHADA' | 'SYCEBNL',
+  precedent: EtatDuPrecedentNonTenu | null = null,
+): string {
   const article = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34';
   const pieces = o.pieces.join(', ') + (o.nombre > o.pieces.length ? ` et ${o.nombre - o.pieces.length} autre(s)` : '');
+  const contexte = !precedent
+    ? "sans exercice précédent ni à-nouveau dans le dossier"
+    : precedent.clos
+      ? "sans à-nouveau, l'exercice précédent étant clôturé sans aucune écriture au livre-journal"
+      : precedent.auBrouillard > 0
+        ? `sans à-nouveau, l'exercice précédent n'ayant que des écritures au brouillard (${precedent.auBrouillard}), hors du livre-journal`
+        : "sans à-nouveau, l'exercice précédent étant ouvert sans aucune écriture au livre-journal";
+  const validation =
+    precedent && !precedent.clos && precedent.auBrouillard > 0
+      ? " Les écritures au brouillard de l'exercice précédent attendent leur validation · validez-les (AUDCIF art. 22, 2°), " +
+        'il tiendra alors ses positions de clôture.'
+      : '';
   return (
     `Le premier jour de l'exercice porte une position de bilan passée en opérations diverses (${pieces}), ` +
-    "sans exercice précédent ni à-nouveau dans le dossier · elle peut être le bilan d'ouverture d'un dossier repris " +
+    `${contexte} · elle peut être le bilan d'ouverture d'un dossier repris ` +
     `(${article}) ou l'apport qui fait naître l'entité, et rien ne les distingue. Ni la colonne N-1 ni les postes qui lisent ` +
     "l'ouverture ne sont servis. Si c'est un bilan d'ouverture, passez-le en à-nouveau (import du bilan d'ouverture) ; " +
-    "si c'est une opération de l'exercice, passez-la par le journal qui l'encaisse ou datez-la du lendemain."
+    "si c'est une opération de l'exercice, passez-la par le journal qui l'encaisse ou datez-la du lendemain." +
+    validation
   );
 }
 

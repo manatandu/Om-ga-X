@@ -707,6 +707,35 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
   bornée), `etats-financiers.service.spec.ts` (tableau des associations, 2025
   clôturé vide).
 
+### m2 · l'OD du premier jour derrière un exercice précédent qui existe sans rien tenir
+
+- Vérifié · l'OD est bien cherchée derrière un exercice précédent qui ne
+  tient rien (`lireOuverturePasseeEnOd` reçoit `null` · il ne tient aucune
+  clôture, voulu), mais `motifOuverturePasseeEnOd` disait « sans exercice
+  précédent ni à-nouveau dans le dossier », et la mention d'ouverture le
+  préférait à celle d'A2 · l'issue « validez-les » disparaissait.
+- AVANT (copie à 58114b3) · point m2, 2025 vide, au brouillard ou clôturé
+  vide, OD au 01/01/2026, les deux référentiels · 18 écarts sur 32 (« sans
+  exercice précédent » dans la mention et le motif de ZA, ni l'état de 2025
+  ni l'issue de son brouillard).
+- Correction · `motifOuverturePasseeEnOd(o, referentiel, precedent)` · sans
+  exercice précédent, texte inchangé ; sinon « sans à-nouveau, l'exercice
+  précédent étant ouvert / clôturé sans aucune écriture » ou « n'ayant que
+  des écritures au brouillard (n) », et, au brouillard, l'issue d'A2
+  (« validez-les (AUDCIF art. 22, 2°) »). L'issue de l'OD vient d'abord · une
+  ouverture repassée en à-nouveau se lit en colonne report et se confronte à
+  la clôture de l'exercice précédent (AU2), là où une OD restée au premier
+  jour se lirait comme un flux dès qu'il tient ses positions (relevé
+  ci-dessous). Colonne N-1 · l'état de N-2 (`etatDuPrecedentNonTenu`) n'est
+  lu que si une OD l'exige. Les deux tableaux des flux ; le bilan, le SMT et
+  le projet ne cherchent l'OD que sans exercice précédent, leur texte reste.
+- APRÈS · m2 32 sur 32, A7 et A2 rejoués, 90 sur 90.
+- Tests · `etats-financiers.communs.spec.ts` (trois états, deux
+  référentiels, lecture bornée), `etats-financiers.service.spec.ts`
+  (brouillard en N-1 ; N-2 vide derrière une OD de N-1),
+  `etats-financiers-syscohada.service.spec.ts` (brouillard) · les trois tests
+  de service tombent sans la correction.
+
 ## Reste
 
 Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).
@@ -750,6 +779,12 @@ Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).
   art. 16, 4)), et `comparatifDuBilan` pourrait le lire sur l'ouverture de N
   comme sans exercice précédent (provenance `BILAN_D_OUVERTURE`). Non codé
   (hors du point).
+- m2 · une ouverture passée en OD au premier jour de N alors que N-1 TIENT
+  ses positions (validé, clôturé) · AU2 l'admet « concordante, rien » à la
+  clôture de N-1, et le tableau des flux de N ne la cherche plus (N-1 tenu) ·
+  elle se lit comme un flux de N, en plus de ZA tirée de la clôture de N-1.
+  Raisonné sur le code (`filtresDesTroisColonnes` · une OD est un mouvement),
+  non éprouvé sur vraie base, non codé (hors du constat).
 - G1 (relevé MAJEUR du second tour, suivi) · seul le cas de la contre-passation
   du module est réglé ici ; le cas « ouverture nulle » du relevé reste ouvert.
 - A10 · à l'écran des notes, deux autres champs servis par le serveur ne

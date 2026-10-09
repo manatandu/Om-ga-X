@@ -8,6 +8,8 @@ import {
   LigneBalancePourEtat,
   MOTIF_RESULTAT_N1_NON_TENU,
   brouillardDuPrecedentNonTenu,
+  EtatDuPrecedentNonTenu,
+  etatDuPrecedentNonTenu,
   chargerLignes,
   chargerOuverture,
   comparatifDuBilan,
@@ -860,13 +862,22 @@ export class EtatsFinanciersService {
         ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, n2Tenu ? exerciceN2Id : null, ouvertureN1)
         : Promise.resolve(null),
     ]);
+    // Le motif de l'OD dit l'exercice précédent qui EXISTE sans rien tenir,
+    // et l'issue de son brouillard (paquet 1, relecture m2) · jamais « sans
+    // exercice précédent ». Pour la colonne N-1, l'état de N-2 n'est lu que
+    // si une OD l'exige.
+    const precedentN: EtatDuPrecedentNonTenu | null =
+      exerciceN1Id && !n1Tenu ? { auBrouillard: brouillardN1, clos: closN1NonTenu } : null;
+    const precedentN1 = ouverturePasseeN1
+      ? await etatDuPrecedentNonTenu(this.ecritureService, this.exerciceService, tenantId, exerciceN2Id, n2Tenu)
+      : null;
     const resN = this.resoudreFluxPourExercice(
       lignesN,
       n1Tenu ? lignesN1 : ouvertureN,
       virementsN,
       reevaluationsN,
       incorporationsN,
-      ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYCEBNL') : null,
+      ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYCEBNL', precedentN) : null,
     );
     // Colonne N-1 : seulement si un exercice N-1 existe · jamais un faux
     // zéro pour un dossier à son premier exercice (même discipline que
@@ -879,7 +890,7 @@ export class EtatsFinanciersService {
       exerciceN1Id && !n1Tenu
         ? motifColonneN1NonTenue('SYCEBNL', brouillardN1, closN1NonTenu)
         : ouverturePasseeN1
-          ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYCEBNL')
+          ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYCEBNL', precedentN1)
           : null;
     const resN1 = exerciceN1Id
       ? this.resoudreFluxPourExercice(
@@ -980,7 +991,7 @@ export class EtatsFinanciersService {
         : exerciceN1Id && !ouverturePasseeN
           ? mentionExercicePrecedentVide('SYCEBNL', ouvertureTenue(ouvertureN), brouillardN1, closN1NonTenu)
           : ouverturePasseeN
-            ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYCEBNL')
+            ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYCEBNL', precedentN)
             : ouvertureTenue(ouvertureN)
               ? mentionComparatifSurOuverture('SYCEBNL')
               : mentionOuverturePresumeeNulle('SYCEBNL'),

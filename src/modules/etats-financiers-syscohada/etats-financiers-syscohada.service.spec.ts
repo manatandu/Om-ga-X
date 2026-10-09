@@ -5,7 +5,11 @@ import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { ORDRE_AFFICHAGE_COMPTE_RESULTAT } from './correspondance-compte-resultat-syscohada';
 import { CONTROLE_ZH_PAR_LES_FLUX } from './correspondance-tft-syscohada';
-import { mentionComparatifSurOuverture, mentionExercicePrecedentVide } from '../etats-financiers/etats-financiers.communs';
+import {
+  mentionComparatifSurOuverture,
+  mentionExercicePrecedentVide,
+  motifOuverturePasseeEnOd,
+} from '../etats-financiers/etats-financiers.communs';
 
 /**
  * Ce spec ne re-teste pas les tables de correspondance (leurs specs voisins
@@ -945,6 +949,28 @@ describe('EtatsFinanciersSyscohadaService', () => {
       });
       expect(tft.controle.tresorerieClotureParBilan).toBe(200);
       expect(tft.controle.motifNonControlable).toContain('(ZH)');
+    });
+
+    // RELECTURE m2 (reproduit sur vraie base le 2026-10-09) · l'exercice
+    // précédent EXISTE, au brouillard · le motif de l'OD disait « sans
+    // exercice précédent », et l'issue d'A2 (valider) n'était plus dite.
+    it('relecture m2 · OD du premier jour derrière un exercice précédent au brouillard · il est dit, et l’issue de sa validation reste', async () => {
+      const service = serviceAvecExercices(
+        { e1: [], e2: [ligne('10130000', C1, 0, 2000), ligne('52110000', C5, 2000, 0)] },
+        EXERCICES,
+      );
+      const ecritures = (service as unknown as {
+        ecritureService: { ouverturePasseeAuPremierJour: jest.Mock; nombreAuBrouillard: jest.Mock };
+      }).ecritureService;
+      ecritures.ouverturePasseeAuPremierJour.mockResolvedValue({ nombre: 1, pieces: ['OD n° 1'] });
+      ecritures.nombreAuBrouillard.mockResolvedValue(3);
+      const tft = await service.tableauFluxTresorerie('t1', 'e2');
+      expect(ecritures.ouverturePasseeAuPremierJour).toHaveBeenCalledWith('t1', 'e2');
+      const attendu = motifOuverturePasseeEnOd({ nombre: 1, pieces: ['OD n° 1'] }, 'SYSCOHADA', { auBrouillard: 3, clos: false });
+      expect(tft.mentionOuverture).toBe(attendu);
+      expect(tft.postesNonCalculables.find((p) => p.ref === 'ZA')?.raison).toBe(attendu);
+      expect(attendu).not.toContain('sans exercice précédent');
+      expect(attendu).toContain('validez-les (AUDCIF art. 22, 2°)');
     });
 
     it('un report tenu ou un exercice précédent · l’OD du premier jour n’est pas cherchée', async () => {

@@ -6,8 +6,10 @@ import {
   brouillardDuPrecedentNonTenu,
   chargerOuverture,
   controleDuTableauDesFlux,
+  etatDuPrecedentNonTenu,
   mentionExercicePrecedentVide,
   motifColonneN1NonTenue,
+  motifOuverturePasseeEnOd,
   precedentNonTenuCloture,
   trouverExerciceN1,
 } from './etats-financiers.communs';
@@ -247,5 +249,54 @@ describe('exercice précédent clôturé sans écriture (relecture m1)', () => {
     await expect(precedentNonTenuCloture(es, 't1', null, false)).resolves.toBe(false);
     expect(lister).not.toHaveBeenCalled();
     await expect(precedentNonTenuCloture(es, 't1', 'e0', false)).resolves.toBe(true);
+  });
+});
+
+/**
+ * RELECTURE m2 (reproduit sur vraie base le 2026-10-09) · une ouverture passée
+ * en OD au premier jour derrière un exercice précédent qui EXISTE sans rien
+ * tenir · le motif disait « sans exercice précédent ni à-nouveau », et
+ * l'issue d'un exercice précédent au brouillard (A2, AUDCIF art. 22, 2°)
+ * n'était plus dite.
+ */
+describe('l’ouverture passée en OD derrière un exercice précédent qui ne tient rien (relecture m2)', () => {
+  const od = { nombre: 1, pieces: ['OD n° 1'] };
+
+  it.each(['SYSCOHADA', 'SYCEBNL'] as const)('%s · sans exercice précédent, le texte d’origine est gardé', (referentiel) => {
+    const texte = motifOuverturePasseeEnOd(od, referentiel);
+    expect(texte).toContain('sans exercice précédent ni à-nouveau dans le dossier');
+    expect(motifOuverturePasseeEnOd(od, referentiel, null)).toBe(texte);
+  });
+
+  it.each(['SYSCOHADA', 'SYCEBNL'] as const)('%s · l’exercice précédent existe · il est dit, jamais « sans exercice précédent »', (referentiel) => {
+    const vide = motifOuverturePasseeEnOd(od, referentiel, { auBrouillard: 0, clos: false });
+    const brouillard = motifOuverturePasseeEnOd(od, referentiel, { auBrouillard: 2, clos: false });
+    const clos = motifOuverturePasseeEnOd(od, referentiel, { auBrouillard: 0, clos: true });
+    for (const texte of [vide, brouillard, clos]) {
+      expect(texte).not.toContain('sans exercice précédent');
+      expect(texte).toContain('OD n° 1');
+      expect(texte).toContain('passez-le en à-nouveau');
+      expect(texte).toContain(referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34');
+    }
+    expect(vide).toContain("l'exercice précédent étant ouvert sans aucune écriture au livre-journal");
+    expect(clos).toContain("l'exercice précédent étant clôturé sans aucune écriture au livre-journal");
+    expect(clos).not.toMatch(/clôturez-le|Validez|validez-les/);
+    // A2 · le brouillard et l'issue de sa validation restent dits.
+    expect(brouillard).toContain("n'ayant que des écritures au brouillard (2)");
+    expect(brouillard).toContain('validez-les (AUDCIF art. 22, 2°)');
+    expect(vide).not.toContain('validez-les');
+  });
+
+  it('l’état de l’exercice précédent n’est lu que s’il existe sans rien tenir', async () => {
+    const nombreAuBrouillard = jest.fn().mockResolvedValue(3);
+    const lister = jest.fn().mockResolvedValue([{ id: 'e0', statut: 'OUVERT' }]);
+    const ecritures = { nombreAuBrouillard } as unknown as EcritureService;
+    const exercices = { lister } as unknown as ExerciceService;
+    await expect(etatDuPrecedentNonTenu(ecritures, exercices, 't1', null, false)).resolves.toBeNull();
+    await expect(etatDuPrecedentNonTenu(ecritures, exercices, 't1', 'e0', true)).resolves.toBeNull();
+    expect(nombreAuBrouillard).not.toHaveBeenCalled();
+    expect(lister).not.toHaveBeenCalled();
+    await expect(etatDuPrecedentNonTenu(ecritures, exercices, 't1', 'e0', false)).resolves.toEqual({ auBrouillard: 3, clos: false });
+    expect(nombreAuBrouillard).toHaveBeenCalledWith('t1', 'e0');
   });
 });

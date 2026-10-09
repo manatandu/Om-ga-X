@@ -11,6 +11,8 @@ import {
   MOTIF_RESULTAT_N1_NON_TENU,
   ProvenanceComparatif,
   brouillardDuPrecedentNonTenu,
+  EtatDuPrecedentNonTenu,
+  etatDuPrecedentNonTenu,
   chargerLignes,
   chargerOuverture,
   comparatifDuBilan,
@@ -1610,12 +1612,21 @@ export class EtatsFinanciersSyscohadaService {
         ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, n2Tenu ? exerciceN2Id : null, ouvertureN1)
         : Promise.resolve(null),
     ]);
+    // Le motif de l'OD dit l'exercice précédent qui EXISTE sans rien tenir,
+    // et l'issue de son brouillard (paquet 1, relecture m2) · jamais « sans
+    // exercice précédent ». Pour la colonne N-1, l'état de N-2 n'est lu que
+    // si une OD l'exige.
+    const precedentN: EtatDuPrecedentNonTenu | null =
+      exerciceN1Id && !n1Tenu ? { auBrouillard: brouillardN1, clos: closN1NonTenu } : null;
+    const precedentN1 = ouverturePasseeN1
+      ? await etatDuPrecedentNonTenu(this.ecritureService, this.exerciceService, tenantId, exerciceN2Id, n2Tenu)
+      : null;
     const resN = this.resoudreFluxPourExercice(
       lignesN,
       n1Tenu ? lignesN1 : ouvertureN,
       n1Tenu,
       reevaluationsN,
-      ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA') : null,
+      ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA', precedentN) : null,
     );
     // Colonne N-1 seulement si l'exercice existe · jamais un faux zéro pour un
     // dossier à son premier exercice (même discipline que partout ailleurs).
@@ -1627,7 +1638,7 @@ export class EtatsFinanciersSyscohadaService {
           n2Tenu ? lignesN2 : ouvertureN1,
           n2Tenu,
           reevaluationsN1,
-          ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYSCOHADA') : null,
+          ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYSCOHADA', precedentN1) : null,
         )
       : null;
 
@@ -1696,7 +1707,7 @@ export class EtatsFinanciersSyscohadaService {
         : exerciceN1Id && !ouverturePasseeN
           ? mentionExercicePrecedentVide('SYSCOHADA', ouvertureTenue(ouvertureN), brouillardN1, closN1NonTenu)
           : ouverturePasseeN
-          ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA')
+          ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYSCOHADA', precedentN)
           : ouvertureTenue(ouvertureN)
             ? mentionComparatifSurOuverture('SYSCOHADA')
             : mentionOuverturePresumeeNulle('SYSCOHADA'),
