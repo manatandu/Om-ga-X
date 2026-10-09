@@ -92,3 +92,33 @@ haut ; un agent à la fois.
 À la charge de Manasse (hors session) : supprimer les branches travail/*
 intégrées, dossiers pilotes, messagerie, relevés de sécurité, secrets de
 télémétrie (dont le refus de conserver l'adresse IP).
+
+## Ajouts du 2026-10-09 (soir), à traiter à la reprise
+
+- MESSAGERIE : DÉJÀ POSÉE ET EN SERVICE (fenêtre « Courriers sortants » :
+  « Messagerie posée · le courrier part sous l'adresse admin@vmgconsulting.net »,
+  avis de double authentification ENVOYÉ et reçu). Les secrets API_SMTP_*,
+  API_COURRIER_EXPEDITEUR, télémétrie existent depuis deux jours. NE RIEN
+  ÉCRASER. Le mot de passe d'application Gmail demandé à Manasse ne sert pas.
+- À VÉRIFIER DANS LE CODE (docs/plan-site-et-courrier-2026-10-05.md § 3 et § 4) :
+  courriel d'un cabinet à SES clients · nom du cabinet affiché, « Répondre à »
+  du cabinet, envoi refusé sans adresse de réponse ; écran « Courrier » des
+  cabinets (n'existe pas).
+- À CONSTRUIRE (demande de Manasse, levée du gel à demander expressément, une
+  phrase par fonction) : (1) FORMULAIRE DE DEMANDE sur la vitrine, relié à la
+  messagerie (plan du site, étape 3) ; (2) question posée : débloquer
+  l'abonnement AUTOMATIQUEMENT après un paiement (plan, étape 5). Aujourd'hui
+  la licence suit l'encaissement DÉCLARÉ à la main
+  (PlateformeService.echeanceAbonnement). L'automatisation suppose un
+  prestataire de paiement qui appelle le serveur (webhook) : signature
+  vérifiée, paiement jamais compté deux fois, montant et monnaie confrontés à
+  la facture, journal d'audit. À étudier avec Manasse (choix du prestataire :
+  décision commerciale, non régie par un texte).
+- Parcours client actuel : inscription publique fermée, dossier créé par VMG
+  depuis la console, mot de passe provisoire tiré au sort par le serveur et
+  envoyé au seul courriel de l'administrateur, changement forcé à la première
+  connexion. Vérifier comment démarre l'essai de 30 jours à la création.
+- Branches travail/* intégrées supprimées par Manasse ; restent
+  travail/virement-fonds et travail/passe-v1 (39 commits en avance sur main,
+  À VÉRIFIER avant toute suppression).
+- Prochain sujet avec Manasse : relevés de sécurité.
