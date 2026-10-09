@@ -745,3 +745,9 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   point 13, existe déjà) ; une place pour le compte de tiers dans l'écriture
   d'achat, de vente ou autre ; un tiers qui a une avance (409, 419) porte un
   second compte à lui, rattaché, pour le suivi.
+  Précision de Manasse (2026-10-09) · chaque client porte TOUS ses sous-comptes
+  du 41, pas seulement le 411 · facture non parvenue ou à établir (418),
+  créance douteuse (416), client créditeur ou avance (419), chacun ouvert à
+  son nom et rattaché au même tiers, dont la fiche lit la position entière ;
+  de même pour le fournisseur au 40. Les numéros exacts se relisent dans les
+  deux plans avant tout code (un numéro, deux sens).
