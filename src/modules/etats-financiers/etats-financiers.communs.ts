@@ -372,6 +372,20 @@ export function motifOuverturePasseeEnOd(
 }
 
 /**
+ * UN POSTE DU TABLEAU DES FLUX LAISSÉ VIDE, et son motif (paquet 1, A3 et
+ * A7). `aLever` dit si le motif nomme un geste du cabinet qui lève sa cause
+ * (relecture m3) · la liasse le classe alors « à vérifier », avec ce geste,
+ * sinon il reste une information. Classés « aucune action », les postes
+ * qu'une OD du premier jour vide contredisaient leur propre motif, qui dit
+ * de la repasser en à-nouveau.
+ */
+export interface PosteDeFluxVide {
+  ref: string;
+  raison: string;
+  aLever: boolean;
+}
+
+/**
  * LE CONTRÔLE DU TABLEAU DES FLUX NE SE CHIFFRE PAS SUR DES POSTES VIDES
  * (paquet 1, relecture M1, 2026-10-09). Le modèle confronte la trésorerie de
  * clôture obtenue par les flux (ouverture plus variation) à celle du bilan

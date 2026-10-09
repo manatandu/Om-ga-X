@@ -344,6 +344,13 @@ export interface SectionFluxSyscohada {
 export interface PosteNonCalculable {
   ref: string;
   raison: string;
+  /**
+   * Sur un poste laissé VIDE seulement (paquet 1, relecture m3) · le motif
+   * nomme-t-il un geste du cabinet qui lève sa cause ? Vrai d'une OD du
+   * premier jour, faux d'un compte de résultat N-1 qu'aucun exercice tenu ne
+   * porte. Absent d'un poste chiffré sous réserve.
+   */
+  aLever?: boolean;
 }
 
 export interface CompteTropAgrege extends CompteDuPoste {
@@ -1491,7 +1498,7 @@ export class EtatsFinanciersSyscohadaService {
       if (motifOuvertureIncertaine && this.litLOuvertureOuLesMouvements(poste)) {
         parRef.set(poste.ref, { libelle: poste.libelle, montant: 0, comptes: [] });
         nonCalcules.add(poste.ref);
-        postesNonCalculables.push({ ref: poste.ref, raison: motifOuvertureIncertaine });
+        postesNonCalculables.push({ ref: poste.ref, raison: motifOuvertureIncertaine, aLever: true });
         continue;
       }
       if (!exerciceAnterieurDisponible && this.exigeCompteDeResultatAnterieur(poste)) {
@@ -1506,6 +1513,7 @@ export class EtatsFinanciersSyscohadaService {
           raison:
             "Aucun exercice antérieur tenu dans le dossier : ce poste lit le compte de résultat de l'exercice " +
             "N-1, qui ne se tire pas du bilan d'ouverture. Poste laissé vide, non chiffré à zéro.",
+          aLever: false,
         });
         continue;
       }

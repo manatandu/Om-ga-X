@@ -726,7 +726,7 @@ describe('Paquet 1, relecture M1 · TFT SYSCOHADA dont le contrôle n’est pas 
       return {
         ...tft,
         postesVides: VIDES,
-        postesNonCalculables: VIDES.map((ref) => ({ ref, raison: MOTIF })),
+        postesNonCalculables: VIDES.map((ref) => ({ ref, raison: MOTIF, aLever: true })),
         controle: {
           ...tft.controle,
           tresorerieOuverture: null,
@@ -782,6 +782,22 @@ describe('Paquet 1, relecture M1 · TFT SYSCOHADA dont le contrôle n’est pas 
     });
     expect(lignesTft.length).toBe(2);
     for (const l of lignesTft) expect({ attendu: l.attendu, texte: typeof l.valeur }).toEqual({ attendu: '', texte: 'string' });
+  });
+
+  // RELECTURE m3 (reproduit sur vraie base le 2026-10-09) · les postes que
+  // l'OD du premier jour vide étaient « INFO · Aucune action » quand leur
+  // motif dit de la repasser en à-nouveau.
+  it('relecture m3 · les postes vidés par l’OD sont « à vérifier » et renvoient au geste du motif, jamais « Aucune action »', async () => {
+    const wb = await ouvrir((await nonControlable().liasseCompleteExcel('t1', 'e1')).buffer);
+    const anomalies: string[][] = [];
+    wb.getWorksheet('ANOMALIES')!.eachRow((row) => anomalies.push([1, 2, 3, 4, 5].map((c) => String(row.getCell(c).value ?? ''))));
+    const auMotif = anomalies.filter((l) => l[3] === MOTIF);
+    expect(auMotif.map((l) => l[1])).toEqual(VIDES);
+    for (const l of auMotif) {
+      expect(l[0]).toBe('A_VERIFIER');
+      expect(l[4]).toMatch(/^Suivre l’issue que le motif nomme/);
+    }
+    expect(anomalies.filter((l) => /^Aucune action si la provenance est la bonne/.test(l[4]))).toEqual([]);
   });
 });
 

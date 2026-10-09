@@ -736,6 +736,34 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
   `etats-financiers-syscohada.service.spec.ts` (brouillard) · les trois tests
   de service tombent sans la correction.
 
+### m3 · les postes vides dont le motif nomme un geste étaient « INFO · Aucune action »
+
+- Vérifié · les deux liasses classaient tout poste du tableau des flux non
+  chiffré en INFO « Aucune action : la donnée manque », et la provenance de
+  la colonne N-1 et de l'ouverture en « Aucune action si la provenance est
+  la bonne » · alors que le motif d'une OD du premier jour dit de la repasser
+  en à-nouveau, et celui d'un exercice précédent ouvert vide ou au
+  brouillard d'importer sa balance ou de le valider.
+- AVANT (copie à c9e5d99) · A7 (deux référentiels) et A3 (SYCEBNL) · 6
+  écarts · 17 postes SYSCOHADA et le groupe SYCEBNL au motif de l'OD en
+  « INFO · Aucune action », la ligne « Bilan · colonne N-1 » de même ; en A3,
+  la colonne N-1 et l'ouverture de 2025 ouvert vide de même.
+- Correction · le motif dit à sa source s'il nomme un geste qui lève sa
+  cause (`PosteDeFluxVide.aLever`, `PosteNonCalculable.aLever`) · vrai d'une
+  OD du premier jour et d'un exercice précédent ouvert (vide ou au
+  brouillard) ; faux d'un exercice précédent clôturé sans écriture et du
+  compte de résultat N-1 qu'aucun exercice tenu ne porte ; absent d'un poste
+  chiffré sous réserve. `anomaliePosteDeFlux` · « à vérifier », « Suivre
+  l'issue que le motif nomme… », sinon l'information d'avant, sans action.
+  Rien n'est déduit du texte du motif. Provenance · « Suivre l'issue que la
+  mention nomme, s'il y en a une ; aucune action si la provenance est la
+  bonne. »
+- APRÈS · A7, A3 et m2 rejoués, 93 sur 93 (A3 après la clôture de 2025 ·
+  la colonne N-1 reste « INFO · Aucune action », rien ne la lève).
+- Tests · `liasse-etafi.spec.ts` (à vérifier et son geste ; motif sans geste
+  resté en information), `liasse-syscohada.spec.ts` (postes vidés par l'OD) ·
+  les deux tests « à vérifier » tombent sans la correction.
+
 ## Reste
 
 Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).

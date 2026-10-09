@@ -402,12 +402,12 @@ describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur',
       return {
         ...tft,
         postesVides: ['ZA', 'FM', 'ZD', 'ZF', 'ZG'],
-        postesNonCalculables: [{ ref: 'FM', raison: MOTIF }],
+        postesNonCalculables: [{ ref: 'FM', raison: MOTIF, aLever: true }],
         // Paquet 1, A3 · un même motif vide la colonne N-1 entière · une ligne.
         postesNonCalculablesN1: [
-          { ref: 'ZA', raison: MOTIF_N1 },
-          { ref: 'FA', raison: MOTIF_N1 },
-          { ref: 'FM', raison: MOTIF_N1 },
+          { ref: 'ZA', raison: MOTIF_N1, aLever: true },
+          { ref: 'FA', raison: MOTIF_N1, aLever: true },
+          { ref: 'FM', raison: MOTIF_N1, aLever: true },
         ],
       };
     });
@@ -443,15 +443,40 @@ describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur',
     expect(textes.some((t) => /feuille ANOMALIES/.test(t))).toBe(false);
   });
 
-  it('la feuille ANOMALIES dit le motif, colonne N et colonne N-1, une ligne par motif', async () => {
+  // RELECTURE m3 (reproduit sur vraie base le 2026-10-09) · le motif d'une
+  // OD du premier jour ou d'un exercice précédent ouvert sans écriture nomme
+  // le geste qui lève sa cause · la ligne est « à vérifier » et y renvoie,
+  // jamais « Aucune action ».
+  it('la feuille ANOMALIES dit le motif, colonne N et colonne N-1, une ligne par motif, « à vérifier » quand il nomme un geste', async () => {
     const { buffer } = await avecVides(fabriquerExport()).liasseCompleteExcel('t1', 'e1');
     const an = (await ouvrir(buffer)).getWorksheet('ANOMALIES')!;
     const lignes: string[][] = [];
-    an.eachRow((row) => lignes.push([1, 2, 3, 4].map((c) => String(row.getCell(c).value ?? ''))));
-    expect(lignes).toContainEqual(['INFO', 'FM', 'Tableau des flux de trésorerie', MOTIF]);
+    an.eachRow((row) => lignes.push([1, 2, 3, 4, 5].map((c) => String(row.getCell(c).value ?? ''))));
+    expect(lignes.find((l) => l[1] === 'FM' && l[2] === 'Tableau des flux de trésorerie')?.slice(0, 4)).toEqual([
+      'A_VERIFIER', 'FM', 'Tableau des flux de trésorerie', MOTIF,
+    ]);
     // Une ligne par motif, ses postes nommés dans l'ordre du tableau.
+    expect(lignes.filter((l) => l[2] === 'Tableau des flux · colonne N-1').map((l) => l.slice(0, 4))).toEqual([
+      ['A_VERIFIER', 'ZA, FA, FM', 'Tableau des flux · colonne N-1', MOTIF_N1],
+    ]);
+    const auMotif = lignes.filter((l) => l[3] === MOTIF || l[3] === MOTIF_N1);
+    expect(auMotif.every((l) => l[4].startsWith('Suivre l’issue que le motif nomme'))).toBe(true);
+    expect(lignes.filter((l) => /^Aucune action si la provenance est la bonne/.test(l[4]))).toEqual([]);
+  });
+
+  it('relecture m3 · un motif qui ne nomme aucun geste reste une information, sans action', async () => {
+    const exportService = fabriquerExport();
+    const etats = (exportService as unknown as { etatsFinanciersService: EtatsFinanciersService }).etatsFinanciersService;
+    const reel = etats.tableauFluxTresorerie.bind(etats);
+    jest.spyOn(etats, 'tableauFluxTresorerie').mockImplementation(async (t: string, e: string) => ({
+      ...(await reel(t, e)),
+      postesNonCalculablesN1: [{ ref: 'ZA', raison: MOTIF_N1, aLever: false }],
+    }));
+    const { buffer } = await exportService.liasseCompleteExcel('t1', 'e1');
+    const lignes: string[][] = [];
+    (await ouvrir(buffer)).getWorksheet('ANOMALIES')!.eachRow((row) => lignes.push([1, 2, 3, 4, 5].map((c) => String(row.getCell(c).value ?? ''))));
     expect(lignes.filter((l) => l[2] === 'Tableau des flux · colonne N-1')).toEqual([
-      ['INFO', 'ZA, FA, FM', 'Tableau des flux · colonne N-1', MOTIF_N1],
+      ['INFO', 'ZA', 'Tableau des flux · colonne N-1', MOTIF_N1, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.'],
     ]);
   });
 
@@ -468,7 +493,7 @@ describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur',
       return {
         ...tft,
         postesVides: ['ZA', 'FM', 'ZD', 'ZF', 'ZG'],
-        postesNonCalculables: [{ ref: 'FM', raison: MOTIF }],
+        postesNonCalculables: [{ ref: 'FM', raison: MOTIF, aLever: true }],
         controle: {
           ...tft.controle,
           tresorerieOuverture: null,

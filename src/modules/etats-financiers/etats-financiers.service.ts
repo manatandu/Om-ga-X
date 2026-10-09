@@ -10,6 +10,7 @@ import {
   brouillardDuPrecedentNonTenu,
   EtatDuPrecedentNonTenu,
   etatDuPrecedentNonTenu,
+  PosteDeFluxVide,
   chargerLignes,
   chargerOuverture,
   comparatifDuBilan,
@@ -726,6 +727,11 @@ export class EtatsFinanciersService {
     // sans écriture au livre-journal (A3). Les postes qui lisent l'ouverture
     // ou les mouvements restent vides, avec ce motif.
     motifOuvertureIncertaine: string | null = null,
+    // Le motif nomme-t-il un geste du cabinet qui lève sa cause (paquet 1,
+    // relecture m3) ? Vrai d'une OD du premier jour (à-nouveau, journal ou
+    // lendemain) et d'un exercice précédent ouvert, vide ou au brouillard ;
+    // faux d'un exercice précédent clôturé sans écriture, que rien ne lève.
+    motifALever = true,
   ): {
     parRef: Map<string, PosteCalcule & { flux?: number; variationContrepartie?: number }>;
     tresorerieOuverture: number;
@@ -734,11 +740,11 @@ export class EtatsFinanciersService {
     ecart: number;
     /** Postes laissés vides, et les totaux qui en dépendent · jamais des zéros constatés. */
     nonCalcules: Set<string>;
-    postesNonCalculables: Array<{ ref: string; raison: string }>;
+    postesNonCalculables: PosteDeFluxVide[];
   } {
     const parRef = new Map<string, PosteCalcule & { flux?: number; variationContrepartie?: number }>();
     const nonCalcules = new Set<string>();
-    const postesNonCalculables: Array<{ ref: string; raison: string }> = [];
+    const postesNonCalculables: PosteDeFluxVide[] = [];
     // UNE OUVERTURE SAISIE EN OD AU PREMIER JOUR (paquet 1, A7, même règle que
     // le tableau du SYSCOHADA, bloquant 2 du 2026-10-07) · sans exercice
     // précédent ni report, une position de bilan passée par le journal
@@ -753,7 +759,7 @@ export class EtatsFinanciersService {
     const laisserVide = (ref: string, libelle: string) => {
       parRef.set(ref, { ref, libelle, montant: 0, comptes: [] });
       nonCalcules.add(ref);
-      postesNonCalculables.push({ ref, raison: motifOuvertureIncertaine! });
+      postesNonCalculables.push({ ref, raison: motifOuvertureIncertaine!, aLever: motifALever });
     };
 
     // ZA · « Trésorerie nette au 1er janvier (Trésorerie actif N-1 -
@@ -900,6 +906,9 @@ export class EtatsFinanciersService {
           reevaluationsN1,
           incorporationsN1,
           motifN1,
+          // Un exercice précédent CLÔTURÉ sans écriture ne se complète plus ·
+          // sa colonne vide est une information, rien ne la lève (m3).
+          !(exerciceN1Id && !n1Tenu && closN1NonTenu),
         )
       : null;
 

@@ -267,16 +267,74 @@ export function resultatDeLExerciceLogeAuBilan(
   return Math.abs(anterieur) > 0.005 ? `${cellule}-(${anterieur})` : cellule;
 }
 
-/** Des postes regroupés par motif, dans l'ordre du tableau · une ligne d'anomalie par motif. */
-function postesParMotif(postes: ReadonlyArray<{ ref: string; raison: string }>): Array<{ refs: string[]; raison: string }> {
-  const groupes: Array<{ refs: string[]; raison: string }> = [];
+/**
+ * Des postes regroupés par motif, dans l'ordre du tableau · une ligne
+ * d'anomalie par motif. Un même motif lève ou ne lève pas sa cause · le
+ * groupe garde ce que ses postes en disent (`aLever`, relecture m3).
+ */
+function postesParMotif(
+  postes: ReadonlyArray<{ ref: string; raison: string; aLever?: boolean }>,
+): Array<{ refs: string[]; raison: string; aLever: boolean }> {
+  const groupes: Array<{ refs: string[]; raison: string; aLever: boolean }> = [];
   for (const p of postes) {
     const groupe = groupes.find((g) => g.raison === p.raison);
-    if (groupe) groupe.refs.push(p.ref);
-    else groupes.push({ refs: [p.ref], raison: p.raison });
+    if (groupe) {
+      groupe.refs.push(p.ref);
+      groupe.aLever ||= p.aLever === true;
+    } else groupes.push({ refs: [p.ref], raison: p.raison, aLever: p.aLever === true });
   }
   return groupes;
 }
+
+/**
+ * LA LIGNE « ANOMALIES » D'UN POSTE DU TABLEAU DES FLUX QUE LA LIASSE NE
+ * CHIFFRE PAS (paquet 1, relecture m3, 2026-10-09). Classés en information
+ * « Aucune action : la donnée manque », les postes qu'une OD du premier jour
+ * ou un exercice précédent ouvert sans écriture vident contredisaient leur
+ * propre motif, qui nomme le geste qui les lève (repasser l'OD en à-nouveau,
+ * valider le brouillard, importer la balance de clôture). Un motif qui nomme
+ * un geste (`aLever`) est « à vérifier » et renvoie à ce geste ; les autres
+ * (compte de résultat N-1 qu'aucun exercice tenu ne porte, exercice précédent
+ * clôturé sans écriture, poste chiffré sous réserve) restent une
+ * information, sans action. Rien n'est déduit du texte du motif.
+ */
+export function anomaliePosteDeFlux(
+  refs: string,
+  raison: string,
+  colonne: 'N' | 'N-1',
+  aLever: boolean | undefined,
+): [string, string, string, string, string] {
+  const intitule = colonne === 'N' ? 'Tableau des flux de trésorerie' : 'Tableau des flux · colonne N-1';
+  if (aLever === true) {
+    return [
+      'A_VERIFIER',
+      refs,
+      intitule,
+      raison,
+      colonne === 'N'
+        ? 'Suivre l’issue que le motif nomme · tant que sa cause tient, le poste reste vide, ce n’est pas un zéro.'
+        : 'Suivre l’issue que le motif nomme · tant que sa cause tient, la cellule N-1 reste vide, ce n’est pas un zéro.',
+    ];
+  }
+  return [
+    'INFO',
+    refs,
+    intitule,
+    raison,
+    colonne === 'N'
+      ? 'Aucune action : la donnée manque, elle n’est pas approximée.'
+      : 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.',
+  ];
+}
+
+/**
+ * La solution d'une ligne de provenance de la colonne N-1 ou de l'ouverture
+ * (relecture m3) · la mention nomme parfois un geste (OD du premier jour,
+ * exercice précédent au brouillard ou vide), parfois aucun (bilan
+ * d'ouverture importé) · la solution renvoie à elle, jamais « aucune action »
+ * seul.
+ */
+const SOLUTION_PROVENANCE = 'Suivre l’issue que la mention nomme, s’il y en a une ; aucune action si la provenance est la bonne.';
 
 /**
  * LE MOTIF DES POSTES DU TABLEAU DES FLUX, SOUS L'ÉTAT EXPORTÉ SEUL (paquet 1,
@@ -4956,10 +5014,10 @@ export class ExportService {
     tft?: { mentionOuverture?: string | null },
   ): Array<[string, string, string, string, string]> {
     const lignes: Array<[string, string, string, string, string]> = [];
-    if (bilan.mentionComparatif) lignes.push(['INFO', '·', 'Bilan · colonne N-1', bilan.mentionComparatif, 'Aucune action si la provenance est la bonne.']);
+    if (bilan.mentionComparatif) lignes.push(['INFO', '·', 'Bilan · colonne N-1', bilan.mentionComparatif, SOLUTION_PROVENANCE]);
     if (resultat.motifComparatifAbsent) lignes.push(['INFO', '·', 'Compte de résultat · colonne N-1', resultat.motifComparatifAbsent, 'Voir l’issue dite.']);
     if (tft?.mentionOuverture && tft.mentionOuverture !== bilan.mentionComparatif) {
-      lignes.push(['INFO', 'ZA', 'Tableau des flux · ouverture', tft.mentionOuverture, 'Aucune action si la provenance est la bonne.']);
+      lignes.push(['INFO', 'ZA', 'Tableau des flux · ouverture', tft.mentionOuverture, SOLUTION_PROVENANCE]);
     }
     return lignes;
   }
@@ -5569,11 +5627,13 @@ export class ExportService {
     // par motif · une ouverture en OD ou un exercice précédent sans écriture
     // vident une vingtaine de postes d'un coup, et vingt lignes identiques
     // apprendraient à ignorer la feuille.
+    // Gravité et solution selon que le motif nomme un geste (relecture m3,
+    // `anomaliePosteDeFlux`).
     for (const g of postesParMotif(tft.postesNonCalculables)) {
-      anomalies.push(['INFO', g.refs.join(', '), 'Tableau des flux de trésorerie', g.raison, 'Aucune action : la donnée manque, elle n’est pas approximée.']);
+      anomalies.push(anomaliePosteDeFlux(g.refs.join(', '), g.raison, 'N', g.aLever));
     }
     for (const g of postesParMotif(tft.postesNonCalculablesN1)) {
-      anomalies.push(['INFO', g.refs.join(', '), 'Tableau des flux · colonne N-1', g.raison, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.']);
+      anomalies.push(anomaliePosteDeFlux(g.refs.join(', '), g.raison, 'N-1', g.aLever));
     }
     for (const c of bilan.comptesNonRattaches) {
       anomalies.push([
@@ -7280,11 +7340,13 @@ export class ExportService {
         'Rapprocher l’opération de la ventilation du ch. 5 ; l’écart de bouclage de ZH en dépend.',
       ]);
     }
+    // Gravité et solution selon que le motif nomme un geste (relecture m3,
+    // `anomaliePosteDeFlux`) · un poste chiffré sous réserve n'en porte pas.
     for (const p of tft.postesNonCalculables) {
-      anomalies.push(['INFO', p.ref, 'Tableau des flux de trésorerie', p.raison, 'Aucune action : la donnée manque, elle n’est pas approximée.']);
+      anomalies.push(anomaliePosteDeFlux(p.ref, p.raison, 'N', p.aLever));
     }
     for (const p of tft.postesNonCalculablesN1 ?? []) {
-      anomalies.push(['INFO', p.ref, 'Tableau des flux · colonne N-1', p.raison, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.']);
+      anomalies.push(anomaliePosteDeFlux(p.ref, p.raison, 'N-1', p.aLever));
     }
     anomalies.push(...anomalieResultatAnterieurNonVire(bilan));
     anomalies.push(...this.provenanceDuComparatif(bilan, cr, tft));
