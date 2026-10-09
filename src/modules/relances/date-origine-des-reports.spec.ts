@@ -1,4 +1,8 @@
+import { TypeRelance } from '@prisma/client';
 import { apparierAuxOrigines, datesOrigineDesReports, originesDesReports, type LigneCandidate, type LigneReportee } from './date-origine-des-reports';
+import { RelancesService } from './relances.service';
+import type { PrismaService } from '../../common/prisma.service';
+import type { CourrierService } from '../courrier/courrier.service';
 
 /**
  * UNE LIGNE REPORTÉE SANS ÉCHÉANCE GARDE LA DATE DE SA PIÈCE (simulation du
@@ -390,5 +394,100 @@ describe('date d’origine des reports · le branchement dans les relances', () 
     expect(src).toMatch(/const echeance = l\.dateEcheance \?\? datePiece;/);
     expect(src).toMatch(/piecePlusAncienne\.set\(l\.compte\.id, datePiece\)/);
     expect(src).toMatch(/date: datePiece\.toISOString\(\)\.slice\(0, 10\)/);
+  });
+});
+
+/**
+ * RELECTURE « ÉCHECS SILENCIEUX » DU PAQUET 1, VOISIN · LES RELANCES DE N
+ * COMPTENT EN N+1. Rejoué sur vraie base (scénario paquet1-b, VOISIN) · une
+ * facture de mars 2026 à échéance du 31 mars, mise en demeure (niveau 3) le
+ * 30 juin 2026, reportée avec son échéance · la relance de 2027 ne lisait
+ * l'origine que des reports SANS échéance · la pièce se datait du
+ * 1er janvier 2027, la mise en demeure sortait du décompte (F169) et se
+ * resuggérait.
+ */
+describe('date d’origine des reports · un report AVEC échéance garde la date de sa pièce (relecture, voisin)', () => {
+  const exercices = [
+    { id: 'e2026', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') },
+    { id: 'e2027', dateDebut: d('2027-01-01'), dateFin: d('2027-12-31') },
+  ];
+  const tiers = { id: 't-c41', nom: 'C41', type: 'CLIENT', email: null, horsRelance: false, motifHorsRelance: null, horsRelanceDepuis: null };
+  const compte = { id: 'c1', numero: '41110001', intitule: 'Client C41', tiersCompte: { tiers } };
+  const reportLu = {
+    id: 'r27',
+    compteId: 'c1',
+    debit: 1_000_000,
+    credit: 0,
+    libelle: 'RAN détail 41110001 · Facture FV-VOIS-1',
+    dateEcheance: d('2026-03-31'),
+    lettre: null,
+    lettrageId: null,
+    deviseId: null,
+    montantDevise: null,
+    compte,
+    ecriture: { date: d('2027-01-01'), libelle: 'Report à-nouveau', estANouveauProvisoire: false, estGenereeParCloture: true, estSoldeDesComptesDeGestion: false },
+  };
+  const facture2026 = { exerciceId: 'e2026', compteId: 'c1', lettre: null as string | null, id: 'f26', libelle: 'Facture FV-VOIS-1', date: d('2026-03-01') };
+  const relanceN = { id: 'rel', compteId: 'c1', dateRelance: d('2026-06-30'), niveauRelance: { niveau: 3 } };
+  const prisma = () =>
+    ({
+      tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
+      exercice: {
+        findFirst: jest.fn(async (a: { where: { id?: string; dateFin?: { lt: Date } } }) =>
+          a.where.id
+            ? (exercices.find((e) => e.id === a.where.id) ?? null)
+            : (exercices.filter((e) => e.dateFin < a.where.dateFin!.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null),
+        ),
+      },
+      ligneEcriture: {
+        findMany: jest.fn(async (a: { where: Record<string, unknown>; cursor?: unknown }) => {
+          if (a.cursor) return [];
+          // Les paires à cheval · aucun groupe à cheval ici.
+          if ('lettrageId' in a.where) return [];
+          // Les candidates de l'exercice précédent, par le filtre du report.
+          if ('compteId' in a.where) {
+            return honoreLeReport(facture2026, a.where as unknown as FiltreDuReport)
+              ? [
+                  {
+                    id: facture2026.id,
+                    compteId: 'c1',
+                    debit: 1_000_000,
+                    credit: 0,
+                    libelle: facture2026.libelle,
+                    dateEcheance: d('2026-03-31'),
+                    ecriture: { date: facture2026.date, libelle: facture2026.libelle, statut: 'VALIDEE', estGenereeParCloture: false, estANouveauProvisoire: false },
+                  },
+                ]
+              : [];
+          }
+          // Les lignes ouvertes de 2027 que la relance lit.
+          return (a.where.ecriture as { exerciceId: string }).exerciceId === 'e2027' ? [reportLu] : [];
+        }),
+        groupBy: jest.fn(async () => []),
+      },
+      lettrage: { findMany: jest.fn(async () => []) },
+      imputationPaiement: { findMany: jest.fn(async () => []) },
+      niveauRelance: {
+        findMany: jest.fn(async () => [
+          { id: 'n3', niveau: 3, joursApresEcheance: 45, type: TypeRelance.RAPPEL },
+          { id: 'n2', niveau: 2, joursApresEcheance: 15, type: TypeRelance.RAPPEL },
+        ]),
+      },
+      // Honore la borne de F169 · seules les relances depuis la pièce la plus ancienne.
+      relance: {
+        findMany: jest.fn(async (a: { where: { dateRelance: { gte: Date } } }) => (relanceN.dateRelance >= a.where.dateRelance.gte ? [relanceN] : [])),
+      },
+    }) as unknown as PrismaService;
+
+  it('la ligne imprime la date de sa pièce, et la mise en demeure de N reste la dernière relance', async () => {
+    const [p] = await new RelancesService(prisma(), {} as CourrierService).positions('t1', {
+      exerciceId: 'e2027',
+      type: TypeRelance.RAPPEL,
+      dateReference: '2027-02-15',
+    });
+    expect(p.lignes.map((l) => [l.date, l.echeance])).toEqual([['2026-03-01', '2026-03-31']]);
+    expect(p.derniereRelance).toEqual({ niveau: 3, date: '2026-06-30' });
+    // Rien au-delà du niveau 3 · la mise en demeure n'est pas resuggérée.
+    expect(p.niveauSuggere).toBeNull();
   });
 });

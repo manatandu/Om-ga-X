@@ -309,6 +309,18 @@ scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
   ne s'apparie qu'aux lignes validées. Un test de source gèle les deux appels.
 - APRÈS · MIN2, M1, B7 · 19 contrôles, 19 concordances.
 
+### Voisin · les relances de N comptent en N+1
+
+- Vérifié · `positions` ne lisait l'origine que des reports SANS échéance ·
+  un report avec échéance se datait du 1er janvier, borne des relances qui
+  comptent (audit final F169).
+- AVANT (main et copie) · VOISIN, C41 · ligne datée `2027-01-01`, dernière
+  relance `[null, null]` au lieu de `[3, 2026-06-30]`, niveau 3 resuggéré
+  (la mise en demeure de 2026 renvoyée).
+- Correction · tout report cherche sa pièce (clé avec l'échéance recopiée) ;
+  la date de la pièce borne les relances et s'imprime.
+- APRÈS · VOISIN, B7, B6, MIN2, M1 · 33 contrôles, 33 concordances.
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,

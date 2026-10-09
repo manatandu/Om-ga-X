@@ -460,16 +460,21 @@ export class RelancesService {
       paires = await pairesACheval(this.prisma, { tenantId, exercice, compte: { OR: racines.map((r) => ({ numero: { startsWith: r } })) } });
     }
 
-    // UNE LIGNE REPORTÉE SANS ÉCHÉANCE GARDE LA DATE DE SA PIÈCE (constat
-    // REL-ANOUVEAU, `date-origine-des-reports.ts`) · sans elle, la facture de
-    // N était réclamée « échue » depuis le jour de l'à-nouveau.
-    const reportsSansEcheance = lues.filter(
-      (l) =>
-        !l.dateEcheance &&
-        (l.ecriture.estANouveauProvisoire === true || (l.ecriture.estGenereeParCloture === true && l.ecriture.estSoldeDesComptesDeGestion !== true)),
+    // UNE LIGNE REPORTÉE GARDE LA DATE DE SA PIÈCE (constat REL-ANOUVEAU,
+    // `date-origine-des-reports.ts`) · sans elle, la facture de N sans
+    // échéance était réclamée « échue » depuis le jour de l'à-nouveau. Avec
+    // une échéance aussi (relecture « échecs silencieux » du paquet 1,
+    // voisin) · l'échéance range le retard, mais la date de la PIÈCE borne
+    // les relances qui comptent (audit final F169, `piecePlusAncienne`) et
+    // s'imprime dans la lettre · datée du jour de l'à-nouveau, la mise en
+    // demeure envoyée en N sortait du décompte et le niveau repartait, la
+    // même mise en demeure resuggérée en N+1. La clé du report porte
+    // l'échéance qu'il recopie.
+    const reports = lues.filter(
+      (l) => l.ecriture.estANouveauProvisoire === true || (l.ecriture.estGenereeParCloture === true && l.ecriture.estSoldeDesComptesDeGestion !== true),
     );
     let datesOrigine = new Map<string, Date>();
-    if (reportsSansEcheance.length) {
+    if (reports.length) {
       const exercice = await this.prisma.exercice.findFirst({
         where: { id: params.exerciceId, tenantId },
         select: { dateDebut: true },
@@ -479,13 +484,14 @@ export class RelancesService {
         this.prisma as unknown as Prisma.TransactionClient,
         tenantId,
         exercice.dateDebut,
-        reportsSansEcheance.map((l) => ({
+        reports.map((l) => ({
           id: l.id,
           compteId: l.compte.id,
           numeroCompte: l.compte.numero,
           debit: Number(l.debit),
           credit: Number(l.credit),
           libelle: l.libelle,
+          dateEcheance: l.dateEcheance,
           date: l.ecriture.date,
           provisoire: l.ecriture.estANouveauProvisoire === true,
         })),

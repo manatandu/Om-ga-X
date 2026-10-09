@@ -4,8 +4,8 @@ import { cleDeLigne, cleDuReport } from '../devises/declaration-devise-a-nouveau
 import { lignesReporteesAuDetail } from '../exercice/lignes-reportees-au-detail';
 
 /**
- * LA DATE D'ORIGINE D'UNE LIGNE REPORTÉE SANS ÉCHÉANCE (simulation du logiciel
- * complet du 2026-10-08, constat REL-ANOUVEAU).
+ * LA DATE D'ORIGINE D'UNE LIGNE REPORTÉE (simulation du logiciel complet du
+ * 2026-10-08, constat REL-ANOUVEAU).
  *
  * Le report au DÉTAIL recopie l'échéance d'une créance (`report-a-nouveau.ts`)
  * · une facture qui n'en portait pas arrivait en N+1 sans échéance, et la
@@ -15,7 +15,11 @@ import { lignesReporteesAuDetail } from '../exercice/lignes-reportees-au-detail'
  * relances envoyées en 2026 sortaient du décompte (audit final F169, la plus
  * ancienne pièce ouverte devenait le 1er janvier). La balance âgée range déjà
  * ces lignes en « antérieur à l'exercice » (audit final F51) · la relance, qui
- * imprime une date, doit retrouver celle de la pièce.
+ * imprime une date, doit retrouver celle de la pièce. AVEC UNE ÉCHÉANCE
+ * AUSSI (relecture « échecs silencieux » du paquet 1, voisin) · l'échéance
+ * range le retard, mais la date de la pièce borne les relances qui comptent
+ * (F169) · datée du 1er janvier, la mise en demeure envoyée en N sortait du
+ * décompte et se resuggérait en N+1.
  *
  * AUCUN LIEN EN BASE ne relie une ligne à son report · la clé est celle du
  * report au détail (`cleDuReport` · compte, montants au centime, échéance,
