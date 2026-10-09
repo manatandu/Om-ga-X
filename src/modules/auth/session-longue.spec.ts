@@ -16,7 +16,6 @@ import {
   DUREE_INACTIVITE_SESSION_LONGUE_S,
   DUREE_MAXIMALE_SESSION_LONGUE_S,
   emettreSession,
-  MOTIF_CONSOLE_SANS_SESSION_LONGUE,
   prolongationDue,
   SECONDES_PAR_JOUR,
   SessionDeRequete,
@@ -246,11 +245,15 @@ describe('3 · jamais pour la console de l’éditeur', () => {
     expect(r.sessionLongue).toBe(true);
   });
 
-  it('case cochée · un opérateur reçoit une session COURTE, et la réponse le dit', async () => {
+  // SESSION LONGUE, CONSOLE REDEMANDÉE (décision de Manasse du 2026-10-09) ·
+  // l'opérateur reste connecté comme tout utilisateur ; c'est la console qui
+  // exige une authentification de moins de huit heures (plateforme.spec.ts).
+  it('case cochée · un opérateur reçoit aussi une session longue, sans avis', async () => {
     const r = await service(compte(true)).login({ email: 'a@b.cd', motDePasse: 'le-bon', resterConnecte: true });
     if ('deuxiemeFacteurRequis' in r) throw new Error('inattendu');
-    expect(lireJeton(r.accessToken).longue).toBeUndefined();
-    expect(r).toMatchObject({ sessionLongue: false, maxAgeMs: null, motifSessionCourte: MOTIF_CONSOLE_SANS_SESSION_LONGUE });
+    expect(lireJeton(r.accessToken).longue).toBe(true);
+    expect(r.sessionLongue).toBe(true);
+    expect(r).not.toHaveProperty('motifSessionCourte');
   });
 
   it('case absente · session courte, pour tout le monde', async () => {
@@ -259,18 +262,19 @@ describe('3 · jamais pour la console de l’éditeur', () => {
     expect(r).toMatchObject({ sessionLongue: false, maxAgeMs: null });
   });
 
-  it('un jeton long porté par un compte devenu opérateur est refusé à la requête suivante', async () => {
+  it('un jeton long porté par un opérateur passe la stratégie, et la session garde sa dernière authentification', async () => {
     const operateur = { ...compte(true), tenantId: 't1', email: 'a@b.cd', role: 'ADMIN_CABINET', sessionsInvalidesAvant: null, tenant: { referentiel: 'SYCEBNL', licence: null } };
     const s = new JwtStrategy({ getOrThrow: () => 'x' } as never, { user: { findUnique: async () => operateur } } as never, jwt);
-    const req = { method: 'GET', cookies: { [COOKIE_SESSION]: 'j' }, headers: {} };
-    await expect(s.validate(req as never, { sub: 'u1', longue: true, origine: 1, iat: Math.floor(Date.now() / 1000) })).rejects.toThrow(
-      new UnauthorizedException(MOTIF_CONSOLE_SANS_SESSION_LONGUE),
-    );
-    // Une session courte de l'opérateur, elle, passe.
-    await expect(s.validate(req as never, { sub: 'u1', iat: Math.floor(Date.now() / 1000) })).resolves.toMatchObject({ userId: 'u1' });
+    const req: Record<string, unknown> = { method: 'GET', cookies: { [COOKIE_SESSION]: 'j' }, headers: {} };
+    const maintenant = Math.floor(Date.now() / 1000);
+    await expect(
+      s.validate(req as never, { sub: 'u1', longue: true, origine: maintenant - 3 * SECONDES_PAR_JOUR, authentification: maintenant - 3 * SECONDES_PAR_JOUR, iat: maintenant }),
+    ).resolves.toMatchObject({ userId: 'u1', estOperateurPlateforme: true });
+    // C'est elle que la console relit · trois jours, la console redemandera.
+    expect((req[CLE_SESSION_REQUETE] as SessionDeRequete).authentification).toBe(maintenant - 3 * SECONDES_PAR_JOUR);
   });
 
-  it('la réémission d’un opérateur ne rend jamais une session longue', async () => {
+  it('la réémission d’un opérateur garde sa session longue', async () => {
     const r = await service(compte(true)).changerMotDePasse('u1', 'le-bon', 'nouveau-tres-long', {
       longue: true,
       origine: S0,
@@ -278,7 +282,7 @@ describe('3 · jamais pour la console de l’éditeur', () => {
       exp: S0 + 3600,
       csrf: 'c',
     });
-    expect(lireJeton(r.accessToken).longue).toBeUndefined();
+    expect(lireJeton(r.accessToken).longue).toBe(true);
   });
 });
 

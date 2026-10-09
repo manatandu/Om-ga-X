@@ -789,12 +789,6 @@ export interface AuthResponse {
   csrfToken: string;
   /** Session « Rester connecté » ouverte (audit final F270). */
   sessionLongue?: boolean;
-  /**
-   * La case était cochée et la session s'ouvre COURTE quand même · la console
-   * de l'éditeur ne l'admet pas. Le serveur dit pourquoi, l'écran le montre
-   * (lib/connexion.ts).
-   */
-  motifSessionCourte?: string;
 }
 
 // Types de tiers HÉRITÉS DU SYCEBNL, dont le compte 41 « Adhérents,

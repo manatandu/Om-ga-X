@@ -100,19 +100,11 @@ export function AuthPage() {
   const [resterConnecte, setResterConnecte] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
-  // La session est ouverte, mais pas comme demandé (console de l'éditeur,
-  // case cochée) · l'écran le dit avant d'entrer (lib/connexion.ts).
-  const [avisSession, setAvisSession] = useState<string | null>(null);
   const { seConnecter, motifDeconnexion } = useAuth();
   const navigate = useNavigate();
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    // Session déjà ouverte, avis lu · Entrée vaut « Continuer ».
-    if (avisSession) {
-      navigate('/');
-      return;
-    }
     setErreur(null);
     setEnvoi(true);
     try {
@@ -134,10 +126,6 @@ export function AuthPage() {
       // (lib/auth.tsx), qui lit /auth/me · la réponse de /auth/login ne porte
       // que le jeton, elle ne connaît pas le nom du dossier.
       await seConnecter(issue.csrfToken);
-      if (issue.avis) {
-        setAvisSession(issue.avis);
-        return;
-      }
       navigate('/');
     } catch (err) {
       setErreur(messageConnexion(err));
@@ -300,7 +288,7 @@ export function AuthPage() {
             </label>
             <Aide
               titre="Rester connecté sur cet appareil"
-              texte="Case décochée, la session se ferme avec le navigateur, et au plus tard huit heures après la connexion. Cochée, elle reste ouverte sur cet appareil trente jours au plus, et se ferme après sept jours sans utilisation. Ne la cochez pas sur un poste partagé. La console de l'éditeur n'admet que la session fermée avec le navigateur. « Mon compte » déconnecte à tout moment vos autres appareils."
+              texte="Case décochée, la session se ferme avec le navigateur, et au plus tard huit heures après la connexion. Cochée, elle reste ouverte sur cet appareil trente jours au plus, et se ferme après sept jours sans utilisation. Ne la cochez pas sur un poste partagé. La console de l'éditeur redemande le mot de passe et le code huit heures après la dernière connexion. « Mon compte » déconnecte à tout moment vos autres appareils."
               source="Règle d'OmegaX (audit final F270)."
             />
           </div>
@@ -315,11 +303,6 @@ export function AuthPage() {
               {erreur}
             </div>
           )}
-          {avisSession && (
-            <div role="status" className="text-[11.5px] text-text bg-sel-soft border border-sel/30 rounded-[4px] px-3 py-2">
-              {avisSession}
-            </div>
-          )}
 
           <div className="mt-2 pt-3 border-t border-border flex items-center justify-end">
             {/* Bouton principal en PILULE, comme le « + Créer » de Sage Active
@@ -332,7 +315,7 @@ export function AuthPage() {
               className="inline-flex items-center gap-2 px-5 py-1.5 rounded-full bg-sel text-white text-[11.5px] font-semibold shadow-plate hover:brightness-110 disabled:opacity-60"
             >
               {envoi && <span aria-hidden className="anneau-attente" />}
-              {envoi ? 'Un instant…' : avisSession ? 'Continuer' : 'Ouvrir le dossier'}
+              {envoi ? 'Un instant…' : 'Ouvrir le dossier'}
             </button>
           </div>
         </form>

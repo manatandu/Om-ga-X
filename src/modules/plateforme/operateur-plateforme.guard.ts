@@ -1,4 +1,10 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { refusDeSession } from '../auth/jwt-auth.guard';
+import {
+  authentificationTropAnciennePourLaConsole,
+  MOTIF_CONSOLE_AUTHENTIFICATION_ANCIENNE,
+  sessionDeLaRequete,
+} from '../auth/session-longue';
 
 export const MOTIF_CONSOLE_SANS_DOUBLE_AUTH =
   'La console exige la double authentification · activez-la dans Fichier > Mon compte…, puis revenez.';
@@ -37,6 +43,14 @@ export class OperateurPlateformeGuard implements CanActivate {
       // l'état, et l'opérateur qui y cherchait le bouton ne le trouvait pas
       // (audit final F162).
       throw new ForbiddenException(MOTIF_CONSOLE_SANS_DOUBLE_AUTH);
+    }
+    // AUTHENTIFICATION DE MOINS DE HUIT HEURES (décision de Manasse du
+    // 2026-10-09, « Long, console redemandée ») · une session « Rester
+    // connecté » vit trente jours, la console ne la suit pas au-delà. Le refus
+    // est une SESSION PERDUE (`refusDeSession`) · l'écran ramène à la
+    // connexion avec le motif, où le mot de passe et le code se redemandent.
+    if (authentificationTropAnciennePourLaConsole(sessionDeLaRequete(request), Math.floor(Date.now() / 1000))) {
+      throw refusDeSession(MOTIF_CONSOLE_AUTHENTIFICATION_ANCIENNE);
     }
     return true;
   }

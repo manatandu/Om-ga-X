@@ -19,10 +19,13 @@ import type { JwtService } from '@nestjs/jwt';
  * prolongerait en repartant de la dernière réémission vivrait indéfiniment
  * pour qui s'en sert une fois par semaine.
  *
- * JAMAIS POUR LA CONSOLE DE L'ÉDITEUR · un opérateur de la plateforme tient
- * les licences et les administrateurs de tous les cabinets. Refusé au
- * serveur à la connexion (`AuthService.login`) ET à chaque requête
- * (`JwtStrategy.validate`), jamais seulement à l'écran.
+ * LA CONSOLE DE L'ÉDITEUR EXIGE UNE AUTHENTIFICATION RÉCENTE · un opérateur
+ * de la plateforme tient les licences et les administrateurs de tous les
+ * cabinets. Il reste connecté sur son appareil comme tout utilisateur
+ * (décision de Manasse du 2026-10-09, « Long, console redemandée »), mais la
+ * console n'admet qu'une authentification de moins de huit heures
+ * (`authentificationTropAnciennePourLaConsole`, relue par
+ * `OperateurPlateformeGuard` à chaque requête), jamais seulement à l'écran.
  */
 
 export const SECONDES_PAR_JOUR = 86_400;
@@ -43,8 +46,30 @@ export const DUREE_INACTIVITE_SESSION_LONGUE_S = 7 * SECONDES_PAR_JOUR;
  */
 export const INTERVALLE_PROLONGATION_S = SECONDES_PAR_JOUR;
 
-export const MOTIF_CONSOLE_SANS_SESSION_LONGUE =
-  "La console de l'éditeur n'admet pas « Rester connecté sur cet appareil » · la session se ferme avec le navigateur.";
+/**
+ * LA CONSOLE DE L'ÉDITEUR EXIGE UNE AUTHENTIFICATION RÉCENTE (décision de
+ * Manasse du 2026-10-09, « Long, console redemandée ») · l'opérateur peut
+ * rester connecté sur son appareil comme tout utilisateur, mais la console,
+ * qui rouvre et coupe les licences et réinitialise l'administrateur de
+ * n'importe quel cabinet, n'admet qu'une session dont la dernière
+ * authentification EXPLICITE (mot de passe, et code s'il est actif) date de
+ * moins de huit heures. Une session longue volée n'en donne donc pas les
+ * clés. Huit heures · la durée d'une session courte (`JWT_EXPIRES_IN`),
+ * convention d'OmegaX · une session courte la satisfait toujours.
+ * Jusqu'au 2026-10-09, la console refusait toute session longue (audit final
+ * F270), et la case ne faisait rien pour l'opérateur.
+ */
+export const DELAI_CONSOLE_DEPUIS_AUTHENTIFICATION_S = 8 * 3600;
+
+export const MOTIF_CONSOLE_AUTHENTIFICATION_ANCIENNE =
+  "La console de l'éditeur demande une connexion de moins de huit heures · reconnectez-vous avec votre mot de passe et votre code.";
+
+/** Vrai quand la dernière authentification explicite est inconnue ou trop ancienne pour la console. */
+export function authentificationTropAnciennePourLaConsole(session: SessionEnCours | null, maintenantS: number): boolean {
+  const a = session?.authentification;
+  if (a == null) return true;
+  return maintenantS - a > DELAI_CONSOLE_DEPUIS_AUTHENTIFICATION_S;
+}
 
 /** Ce que le jeton porte de sa session. */
 export interface ChargeJeton {

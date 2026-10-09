@@ -11,7 +11,6 @@ import {
   ChargeJeton,
   CLE_SESSION_REQUETE,
   emettreSession,
-  MOTIF_CONSOLE_SANS_SESSION_LONGUE,
   prolongationDue,
   SessionDeRequete,
   sessionDuJeton,
@@ -131,14 +130,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (sessionRevoquee(payload.authentification ?? payload.iat, user.sessionsInvalidesAvant)) {
       throw new UnauthorizedException('Session close · reconnectez-vous');
     }
-    // LA CONSOLE DE L'ÉDITEUR N'A JAMAIS DE SESSION LONGUE (audit final F270) ·
-    // la connexion la refuse déjà, mais le drapeau d'opérateur s'accorde au
-    // démarrage (OPERATEURS_PLATEFORME) · un compte promu APRÈS s'être connecté
-    // « sur cet appareil » garderait sinon trente jours d'accès à la console.
-    // Relu ici comme le rôle, à chaque requête.
-    if (payload.longue === true && user.estOperateurPlateforme) {
-      throw new UnauthorizedException(MOTIF_CONSOLE_SANS_SESSION_LONGUE);
-    }
+    // L'opérateur garde sa session longue (décision de Manasse du
+    // 2026-10-09) · la console, elle, exige une authentification de moins de
+    // huit heures, relue à chaque requête par `OperateurPlateformeGuard` sur
+    // la session posée ci-dessous. Un compte promu après s'être connecté
+    // « sur cet appareil » n'y entre donc pas sans se reconnecter.
 
     // LA SESSION DE LA REQUÊTE, posée à côté de l'utilisateur · le contrôleur
     // d'authentification y lit ce qu'une réémission doit garder, et

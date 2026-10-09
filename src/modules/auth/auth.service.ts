@@ -32,7 +32,6 @@ import { genererCodesSecours, genererSecret, secondFacteurAccepte, uriOtpauth, v
 import {
   demandeDeReemission,
   emettreSession,
-  MOTIF_CONSOLE_SANS_SESSION_LONGUE,
   SessionEmise,
   SessionEnCours,
 } from './session-longue';
@@ -395,17 +394,13 @@ export class AuthService {
 
     // « RESTER CONNECTÉ SUR CET APPAREIL » (audit final F270) · la case est
     // décochée par défaut, et seul `true` l'est · une valeur absente ou fausse
-    // ouvre une session courte. JAMAIS POUR LA CONSOLE DE L'ÉDITEUR, même case
-    // cochée · refusé ICI, au serveur, et relu à chaque requête par
-    // JwtStrategy. La connexion n'est pas refusée pour autant · elle s'ouvre
-    // en session courte, et la réponse le dit.
-    const demandee = dto.resterConnecte === true;
-    const longue = demandee && !user.estOperateurPlateforme;
+    // ouvre une session courte. L'opérateur de la console y a droit comme
+    // tout utilisateur depuis le 2026-10-09 (décision de Manasse, « Long,
+    // console redemandée ») · c'est la console qui exige une authentification
+    // de moins de huit heures (`OperateurPlateformeGuard`).
+    const longue = dto.resterConnecte === true;
     await this.journaliserConnexion(user, adresseIp, longue);
-    return {
-      ...emettreSession(this.jwt, user.id, { longue }),
-      ...(demandee && !longue ? { motifSessionCourte: MOTIF_CONSOLE_SANS_SESSION_LONGUE } : {}),
-    };
+    return emettreSession(this.jwt, user.id, { longue });
   }
 
   /**
@@ -795,11 +790,6 @@ export class AuthService {
     instantMs?: number,
   ): SessionEmise {
     const demande = demandeDeReemission(session);
-    return emettreSession(
-      this.jwt,
-      user.id,
-      demande.longue && user.estOperateurPlateforme ? { longue: false } : demande,
-      instantMs,
-    );
+    return emettreSession(this.jwt, user.id, demande, instantMs);
   }
 }

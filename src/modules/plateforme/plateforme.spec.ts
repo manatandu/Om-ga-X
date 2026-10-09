@@ -1,4 +1,6 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { SIGNAL_SESSION_PERDUE } from '../auth/jwt-auth.guard';
+import { CLE_SESSION_REQUETE, MOTIF_CONSOLE_AUTHENTIFICATION_ANCIENNE } from '../auth/session-longue';
 import { ExecutionContext } from '@nestjs/common';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
@@ -22,9 +24,11 @@ import { raisonHorsCloisonnement } from '../../common/cloisonnement/contexte-clo
  *    du dossier.
  */
 
-const contexte = (user: unknown): ExecutionContext =>
+// Une session authentifiée à l'instant · la console exige moins de huit heures.
+const sessionRecente = () => ({ authentification: Math.floor(Date.now() / 1000) - 60 });
+const contexte = (user: unknown, session: unknown = sessionRecente()): ExecutionContext =>
   ({
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
+    switchToHttp: () => ({ getRequest: () => ({ user, [CLE_SESSION_REQUETE]: session }) }),
   }) as never;
 
 describe('OperateurPlateformeGuard', () => {
@@ -47,6 +51,30 @@ describe('OperateurPlateformeGuard', () => {
     expect(() => garde.canActivate(contexte({ userId: 'u1', estOperateurPlateforme: true }))).toThrow(MOTIF_CONSOLE_SANS_DOUBLE_AUTH);
     expect(MOTIF_CONSOLE_SANS_DOUBLE_AUTH).toContain('Fichier > Mon compte…');
     expect(() => garde.canActivate(contexte({ userId: 'u1', estOperateurPlateforme: true, doubleAuthentificationActive: false }))).toThrow(ForbiddenException);
+  });
+
+  /*
+    SESSION LONGUE, CONSOLE REDEMANDÉE (décision de Manasse du 2026-10-09) ·
+    l'opérateur reste connecté sur son appareil, la console n'admet qu'une
+    authentification de moins de huit heures. Le refus est une session
+    perdue (401 marqué) · l'écran ramène à la connexion avec le motif.
+  */
+  it('refuse une authentification de plus de huit heures, ou inconnue, comme une session perdue', () => {
+    const operateur = { userId: 'u1', estOperateurPlateforme: true, doubleAuthentificationActive: true };
+    const maintenant = Math.floor(Date.now() / 1000);
+    expect(garde.canActivate(contexte(operateur, { authentification: maintenant - 8 * 3600 + 60 }))).toBe(true);
+    for (const session of [{ authentification: maintenant - 8 * 3600 - 60 }, { authentification: null }, null]) {
+      try {
+        garde.canActivate(contexte(operateur, session));
+        throw new Error('la garde aurait dû refuser');
+      } catch (e) {
+        expect(e).toBeInstanceOf(UnauthorizedException);
+        expect((e as UnauthorizedException).getResponse()).toMatchObject({
+          message: MOTIF_CONSOLE_AUTHENTIFICATION_ANCIENNE,
+          session: SIGNAL_SESSION_PERDUE,
+        });
+      }
+    }
   });
 });
 

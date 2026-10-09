@@ -30,18 +30,16 @@ export function corpsConnexion(s: {
   };
 }
 
-export type IssueConnexion =
-  | { etape: 'CODE_REQUIS' }
-  /**
-   * `avis` · la session s'est ouverte, mais pas comme demandé. La console de
-   * l'éditeur n'admet pas « Rester connecté » · le serveur ouvre alors une
-   * session COURTE et dit pourquoi (`motifSessionCourte`). L'écran le dit en
-   * une ligne avant d'entrer, sans quoi l'opérateur croirait sa session
-   * gardée trente jours et la verrait se fermer avec le navigateur.
-   */
-  | { etape: 'OUVERTE'; csrfToken: string; avis: string | null };
+/**
+ * Ce que la réponse demande à l'écran · un code, ou l'entrée. La session
+ * s'ouvre toujours comme demandé · l'opérateur de la console aussi reste
+ * connecté depuis le 2026-10-09 (décision de Manasse), et c'est la console
+ * qui redemande le mot de passe et le code après huit heures. L'avis « session
+ * courte » qui s'affichait ici avant d'entrer n'a plus d'objet.
+ */
+export type IssueConnexion = { etape: 'CODE_REQUIS' } | { etape: 'OUVERTE'; csrfToken: string };
 
 export function issueConnexion(res: ReponseConnexion): IssueConnexion {
   if ('deuxiemeFacteurRequis' in res) return { etape: 'CODE_REQUIS' };
-  return { etape: 'OUVERTE', csrfToken: res.csrfToken, avis: res.motifSessionCourte ?? null };
+  return { etape: 'OUVERTE', csrfToken: res.csrfToken };
 }

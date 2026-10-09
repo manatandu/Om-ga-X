@@ -4261,9 +4261,13 @@ avant de l'écrire ; un spec (`compte-seed-syscohada.spec.ts`) le contrôle.
   usage · `JwtStrategy` prolonge à l'usage, au plus une fois par jour, jeton
   CSRF recopié, et `JwtAuthGuard` ne pose le cookie prolongé qu'une fois la
   requête admise. UNE seule écriture de la charge (`emettreSession`), UNE
-  seule pose du cookie (`poserCookieSession`). JAMAIS POUR LA CONSOLE · la
-  session d'un opérateur s'ouvre courte, et `JwtStrategy` refuse un jeton long
-  à un compte promu opérateur après coup. `/auth/me` rend le jeton CSRF de la
+  seule pose du cookie (`poserCookieSession`). LA CONSOLE REDEMANDE APRÈS
+  HUIT HEURES (décision de Manasse du 2026-10-09, « Long, console
+  redemandée ») · l'opérateur reste connecté comme tout utilisateur, mais
+  `OperateurPlateformeGuard` n'admet qu'une dernière authentification
+  explicite de moins de huit heures (`authentificationTropAnciennePourLaConsole`),
+  sinon une session perdue nommée ramène à la connexion, mot de passe et
+  code ; jusque-là la console refusait toute session longue. `/auth/me` rend le jeton CSRF de la
   session en cours, le stockage local de l'écran pouvant disparaître avant le
   cookie. « Déconnecter mes autres appareils » (`POST
   /auth/deconnecter-autres-appareils`) exige le mot de passe actuel, ferme
