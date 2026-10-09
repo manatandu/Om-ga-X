@@ -431,12 +431,47 @@ champs (retirer la ligne fait tomber le test sur
 3 concordances des deux côtés (404, 400, témoin 200) · aucun changement de
 comportement, comme attendu.
 
+### S6 · constat 6 (MINEUR) · l'exercice d'un CORPS, et la purge du relevé R1
+
+Constat EXACT, et CONSIGNÉ, non aligné. Un `exerciceId` de corps d'un autre
+dossier rend 400 « Exercice introuvable pour ce tenant » là où une route rend
+404. Ce n'est pas une règle unique, commune et sûre · le refus « Exercice
+introuvable » en 400 est écrit en TRENTE-TROIS endroits de douze services
+(`ecriture.service.ts` 3, `immobilisation.service.ts` 13, `devises.service.ts`
+4, `regularisation.service.ts` 3, `demantelement.service.ts` 3, analytique 2,
+reprise de subvention, location-acquisition, contrôles, paie, créances
+douteuses 1 chacun), sept lectures rattrapent `instanceof BadRequestException`
+pour en faire un motif (IFRS 4, états consolidés, courrier, abonnements · un
+404 y traverserait la page au lieu d'être dit), et l'import d'écritures
+rattrape tout refus de `controlesDEntree` en anomalie de ligne. Changer le type
+dans ces services changerait ce que ces lectures montrent ; le refus, lui, est
+juste et nommé (rien n'est écrit, prouvé en base ci-dessous). Relevé R2 tenu à
+jour.
+
+**Sur vraie base** (`p1c-s6-avant.json`, `p1c-s6-apres.json`, point S6 du
+scénario) · (a) `POST /ecritures` et `POST /ecritures/imputation-ouverture`
+avec l'exercice de B dans le corps · 400 « Exercice introuvable pour ce
+tenant » des deux côtés, aucune écriture de plus dans A ni rattachée à
+l'exercice de B (comptées EN BASE, la balance de A ne verrait pas une écriture
+de A posée sur l'exercice de B), témoin 201. (b) Relevé R1 · AVANT, la
+provision de A sur l'exercice 2027 (vide) de B est créée (201), la requête
+de contrôle rend 1, et l'arrêt à la dissolution sans liquidation de B (AUSCGIE
+art. 201 al. 4, qui retire l'exercice postérieur vide,
+`exercice.service.ts:1381`) tombe en 500 (`Foreign key constraint violated:
+provisions_risques_charges_exerciceId_fkey`, journal du serveur) · B est
+ENFERMÉ par une ligne qu'il ne voit pas. La purge préparée (ci-dessous, relevé
+R1), jouée sur la base JETABLE, ramène la requête à 0, et le second arrêt passe
+(2026 finit le 30/09/2026, 2027 retiré). APRÈS · 404 à la création, 0 en base,
+l'arrêt passe du premier coup · 11 contrôles, 11 concordances (AVANT 3 écarts,
+les trois de R1).
+
 ## Reste (au coordinateur, à l'intégration)
 
 - Committer le scénario `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-c.mjs`.
 - Relectures du § 11 (échecs silencieux, serveur), bloc du § 3 complet des
   deux côtés (`npx jest` entier non lancé ici, consigne), tests navigateur.
-- Relevé R1 · la requête en production AVANT l'intégration.
+- Relevé R1 · la requête en production AVANT l'intégration, par Manasse, et la
+  purge préparée s'il rend des lignes (étapes 1 à 4 du relevé).
 - Retirer cette fiche et la branche `travail/paquet1-c` à l'intégration.
 
 ## Décisions
@@ -465,16 +500,46 @@ comportement, comme attendu.
 - **R1 · données croisées déjà en production ?** Sur `main`, `POST
   /provisions/:exerciceId` avec l'exercice d'un autre dossier CRÉAIT une
   provision dans le dossier de la session, rattachée à l'exercice du voisin
-  (clé étrangère sans dossier). Requête à passer en production avant
-  l'intégration, sur l'endpoint DIRECT · `SELECT count(*) FROM
-  provisions_risques_charges p JOIN exercices e ON e.id = p."exerciceId" WHERE
-  e."tenantId" <> p."tenantId"` (rend 2 sur la base AVANT, 0 APRÈS). Les cinq
-  autres routes d'écriture porteuses refusaient déjà par leur service.
+  (clé étrangère sans dossier). Les cinq autres routes d'écriture porteuses
+  refusaient déjà par leur service. CONSÉQUENCE PROUVÉE en base (S6) · la clé
+  étrangère (RESTRICT) ENFERME le voisin · l'arrêt à la dissolution sans
+  liquidation, qui retire son exercice postérieur vide
+  (`exercice.service.ts:1381`), tombe en 500. Aucune table ne référence
+  `provisions_risques_charges` (aucune ligne dépendante à retirer). La session
+  NE TOUCHE PAS à la production · à passer par Manasse, sur l'endpoint DIRECT
+  (`API_DATABASE_URL`, jamais affiché), AVANT l'intégration :
+  1. Contrôle · `SELECT count(*) FROM provisions_risques_charges p JOIN
+     exercices e ON e.id = p."exerciceId" WHERE e."tenantId" <> p."tenantId";`
+     (rend 1 sur la base AVANT du point S6, 0 APRÈS). Zéro · rien à faire.
+  2. S'il rend des lignes, les LIRE et les garder (copie au suivi) avant toute
+     retouche · `SELECT p.id, p."tenantId", p."exerciceId", e."tenantId" AS
+     "tenantIdDeLExercice", p.objet, p.nature, p.statut, p."compteId",
+     p."montantOuverture", p."dotationsExercice", p."createdAt", p."createdBy"
+     FROM provisions_risques_charges p JOIN exercices e ON e.id =
+     p."exerciceId" WHERE e."tenantId" <> p."tenantId";` · aucune page ne les
+     montre (le dossier qui les porte ne lit que ses exercices, le voisin que
+     ses lignes) ; une ligne qui porte un travail réel (montants non nuls,
+     `statut` COMPTABILISEE) se montre à Manasse avant la purge, son dossier
+     la ressaisira sur son propre exercice.
+  3. Purge, en UNE transaction · `BEGIN; DELETE FROM provisions_risques_charges
+     p USING exercices e WHERE e.id = p."exerciceId" AND e."tenantId" <>
+     p."tenantId";` puis la requête 1, qui doit rendre 0, et `COMMIT` si le
+     nombre supprimé (`DELETE n`) est celui de l'étape 2, sinon `ROLLBACK`.
+     Jouée telle quelle sur la base jetable du banc (point S6, `PURGE_R1`) ·
+     0 restante, l'arrêt du voisin passe.
+  4. Le journal d'audit n'est pas retouché · la création y reste (maillon du
+     dossier de la session, chaîne intacte, aucune ligne d'événement n'est
+     modifiée) ; la purge, faite hors du serveur, n'y écrit rien et se
+     consigne au suivi avec la copie de l'étape 2.
 - **R2 · les corps (DTO) ne passent pas par les porteurs.** Un `exerciceId`
   de corps d'un autre dossier rend 400 « Exercice introuvable pour ce tenant »
-  (`EcritureService` · contrôles d'entrée, imputation d'ouverture), refusé,
-  rien écrit · statut 400 et non 404, non changé (le même contrôle sert les
-  lignes d'import). Les autres corps n'ont pas été recensés.
+  (`EcritureService` · contrôles d'entrée, relecture dans la transaction,
+  imputation d'ouverture), refusé, rien écrit (prouvé en base, S6) · statut
+  400 et non 404, NON ALIGNÉ (constat 6) · trente-trois refus en 400 dans
+  douze services, sept lectures qui rattrapent `instanceof
+  BadRequestException` pour en faire un motif, l'import qui rattrape tout
+  refus en anomalie de ligne ; aucune règle unique et sûre. Les autres corps
+  n'ont pas été recensés.
 - **R3 · autres `compteId` non éprouvés.** Lettrage (`/lettrage/:compteId/*`,
   déjà 404 « Compte introuvable pour ce tenant »), inventaire (`?compteId=`,
   404 du service), tiers (`/tiers/:id/comptes/:compteId`) · non joués avec un
@@ -526,9 +591,12 @@ PAQUET1_C_POINTS=S4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1
 PAQUET1_C_POINTS=S4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s4-apres.json
 npx jest src/common/exercice-requis.spec.ts src/modules/rapprochement src/modules/relances
 PAQUET1_C_POINTS=S5 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s5-apres.json
+PAQUET1_C_POINTS=S6 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s6-avant.json
+PAQUET1_C_POINTS=S6 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s6-apres.json
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json
 # Relevé R1, en production (endpoint DIRECT, jamais affiché)
 # SELECT count(*) FROM provisions_risques_charges p JOIN exercices e ON e.id = p."exerciceId" WHERE e."tenantId" <> p."tenantId";
+# S'il rend des lignes · lecture, purge en une transaction et contrôle, relevé R1, étapes 2 à 4 (Manasse, jamais la session)
 ```
