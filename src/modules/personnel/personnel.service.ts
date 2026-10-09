@@ -10,7 +10,13 @@ import {
   SimulationPaieDto,
   TerminerContratDto,
 } from './dto/personnel.dto';
-import { assiettes, NATURES_FOURNIES_EN_NATURE, type ElementPaie, type NatureElementPaie } from './assiettes-paie';
+import {
+  assiettes,
+  NATURES_FOURNIES_EN_NATURE,
+  type ElementPaie,
+  type NatureElementPaie,
+  type TauxLegalNonCalcule,
+} from './assiettes-paie';
 import { RESERVE_REGIME_NON_DECLARE, baremeApplicableAuMois, regimeApplicable, retenueMensuelle } from './bareme-irpp';
 import { cotisations, netAPayer, type NatureEmployeurInpp, type RegimeCnss } from './cotisations-paie';
 import { NATURES_SANS_IMPUTATION, estVerseEnEspeces, passationPaie, type Referentiel } from './passation-paie';
@@ -97,7 +103,7 @@ import {
   livreDePaie,
   type FormeDuDocument,
 } from './livre-de-paie';
-import { MULTIPLICATEURS_ARTICLE_7, allocationFamilialeJournaliere, type Annexe } from './bareme-smig';
+import { MULTIPLICATEURS_ARTICLE_7, allocationFamilialeJournaliere, annexeApplicable, type Annexe } from './bareme-smig';
 import { BAREMES_SERVIS, annexesSmigDuDossier, versionsDuDossier, type LigneVersion } from './baremes-dossier';
 import { effectifDuRegistre } from './effectif-registre';
 import {
@@ -905,6 +911,23 @@ export class PersonnelService {
     return auCentime(a.valeur.totalFc * (dto.joursAllocationsFamiliales ?? MULTIPLICATEURS_ARTICLE_7.MOIS));
   }
 
+  /**
+   * POURQUOI LE TAUX LÉGAL N'EST PAS CALCULÉ (paquet 1, C2), lu sur les mêmes
+   * faits que `tauxLegalAllocationsFamiliales`, et servi seulement quand il
+   * rend null · l'abstention des assiettes le dit à l'utilisateur, avec le
+   * geste qui la lève. LA GRILLE DU MOIS D'ABORD · un mois qu'aucune grille du
+   * SMIG ne couvre ne se règle pas en renseignant les enfants, seul un taux
+   * saisi le lève ; demander les enfants à qui les a déjà renseignés
+   * l'enverrait dans une impasse.
+   */
+  private tauxLegalNonCalcule(dto: SimulationPaieDto, annexesSmig: readonly Annexe[] = []): TauxLegalNonCalcule | null {
+    if (typeof dto.tauxLegalAllocationsFamilialesFc === 'number') return null;
+    const grille = annexeApplicable(dto.moisDePaie, annexesSmig);
+    if (!grille.valeur) return { cause: 'MOIS_SANS_GRILLE_DU_SMIG', raison: grille.explication };
+    if (typeof dto.enfantsBeneficiairesAllocations !== 'number') return { cause: 'ENFANTS_BENEFICIAIRES_NON_RENSEIGNES' };
+    return null;
+  }
+
   /** La réserve du plafond calculé · sur quels jours, et ce qu'il faut déclarer. */
   private reserveTauxLegalAllocations(dto: SimulationPaieDto, tauxFc: number | null): string | null {
     if (typeof dto.tauxLegalAllocationsFamilialesFc === 'number' || tauxFc === null) return null;
@@ -1197,9 +1220,12 @@ export class PersonnelService {
     // charge de l'article 124. Un taux saisi PRIME, pour le mois qu'aucune
     // annexe ne couvre. Ni l'un ni l'autre, et l'assiette s'abstient.
     const tauxLegalAllocationsFamilialesFc = this.tauxLegalAllocationsFamiliales(dto, annexesSmig);
+    const tauxLegalAllocationsNonCalcule =
+      tauxLegalAllocationsFamilialesFc === null ? this.tauxLegalNonCalcule(dto, annexesSmig) : null;
 
     const premierPassage = assiettes(elements, {
       tauxLegalAllocationsFamilialesFc,
+      tauxLegalAllocationsNonCalcule,
     });
     const lesCotisations = cotisations(premierPassage.assietteSocialeFc, {
       moisDePaie: dto.moisDePaie,
@@ -1229,6 +1255,7 @@ export class PersonnelService {
 
     const deuxAssiettes = assiettes(elements, {
       tauxLegalAllocationsFamilialesFc,
+      tauxLegalAllocationsNonCalcule,
       retenuesArticle71Fc,
       // CONSTAT C1 · sous abstention de la CNSS, la quote-part ouvrière n'est
       // pas chiffrée · ni la base nette, ni l'impôt, ni le net ne le sont.

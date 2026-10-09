@@ -5,8 +5,10 @@ import {
   RESOLUTION_TAUX_LEGAL_ALLOCATIONS,
   assiettes,
   assietteSociale,
+  explicationTauxLegalNonChiffre,
   type ElementPaie,
 } from './assiettes-paie';
+import { annexeApplicable } from './bareme-smig';
 
 const salaire = (montantFc: number): ElementPaie => ({
   nature: 'SALAIRE_OU_TRAITEMENT',
@@ -251,6 +253,84 @@ describe("Les abstentions plutôt que les suppositions", () => {
     );
     expect(verdict.abstentions[0].explication).toContain('25/22');
     expect(verdict.abstentions[0].explication).toMatch(/colonne 19/i);
+  });
+});
+
+/**
+ * C2 · L'ABSTENTION DIT CE QUI MANQUE, EN FRANÇAIS (paquet 1, ligne C, passe
+ * V1 n° 2). L'explication, servie telle quelle à l'écran, renvoyait au NOM
+ * d'une constante du code (« voir RESOLUTION_TAUX_LEGAL_ALLOCATIONS »). Elle
+ * dit désormais ce qui manque et le geste qui le lève, selon la cause que le
+ * service connaît · aucun identifiant du code n'y paraît.
+ */
+describe("C2 · l'abstention sur les allocations dit ce qui manque et quoi faire", () => {
+  const NOM_INTERNE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/;
+  const elements: ElementPaie[] = [
+    salaire(1_000_000),
+    { nature: 'ALLOCATIONS_FAMILIALES_LEGALES', libelle: 'Allocations', montantFc: 50_000 },
+  ];
+  const explication = (parametres: Parameters<typeof assiettes>[1]) => {
+    const verdict = assiettes(elements, parametres);
+    expect(verdict.assietteFiscaleBruteFc).toBeNull();
+    expect(verdict.abstentions).toHaveLength(1);
+    expect(verdict.abstentions[0].motif).toBe('TAUX_LEGAL_ALLOCATIONS_FAMILIALES_NON_FOURNI');
+    return verdict.abstentions[0].explication;
+  };
+  // La raison telle que la grille la rend pour un mois qu'elle ne couvre pas.
+  const grille2019 = annexeApplicable('2019-03');
+  const RAISON_2019 = grille2019.explication;
+
+  it('le témoin · mars 2019 n’a pas de grille, et la grille dit pourquoi', () => {
+    expect(grille2019.valeur).toBeNull();
+    expect(RAISON_2019).toContain('2019');
+  });
+
+  it('enfants non renseignés · demande de les renseigner, sans parler de saisir un taux', () => {
+    const texte = explication({ tauxLegalAllocationsNonCalcule: { cause: 'ENFANTS_BENEFICIAIRES_NON_RENSEIGNES' } });
+    expect(texte).toContain("Le nombre d'enfants bénéficiaires n'est pas renseigné");
+    expect(texte).toContain("Renseignez le nombre d'enfants bénéficiaires des allocations familiales");
+    expect(texte).not.toMatch(/saisissez le taux légal/i);
+    expect(texte.match(NOM_INTERNE)).toBeNull();
+  });
+
+  it("mois qu'aucune grille ne couvre · dit pourquoi et demande de saisir le taux légal, pas les enfants", () => {
+    const texte = explication({
+      tauxLegalAllocationsNonCalcule: { cause: 'MOIS_SANS_GRILLE_DU_SMIG', raison: RAISON_2019 },
+    });
+    expect(texte).toContain("OmegaX n'a aucune grille du SMIG pour ce mois de paie");
+    expect(texte).toContain(RAISON_2019);
+    expect(texte).toContain('Saisissez le taux légal du mois');
+    expect(texte).not.toMatch(/renseignez le nombre d.enfants/i);
+    expect(texte.match(NOM_INTERNE)).toBeNull();
+  });
+
+  it('cause inconnue · nomme les deux causes et les deux gestes', () => {
+    const texte = explication({});
+    expect(texte).toContain("Renseignez le nombre d'enfants bénéficiaires");
+    expect(texte).toContain('saisissez le taux légal du mois');
+    expect(texte.match(NOM_INTERNE)).toBeNull();
+  });
+
+  it('chaque variante rappelle la règle et la colonne 19 du décret n° 25/22', () => {
+    const immunite = IMMUNITES_ARTICLE_69.find((i) => i.nature === 'ALLOCATIONS_FAMILIALES_LEGALES')!;
+    for (const cause of [
+      null,
+      { cause: 'ENFANTS_BENEFICIAIRES_NON_RENSEIGNES' as const },
+      { cause: 'MOIS_SANS_GRILLE_DU_SMIG' as const, raison: RAISON_2019 },
+    ]) {
+      const texte = explicationTauxLegalNonChiffre(immunite, cause);
+      expect(texte).toContain("L'article 69, 1 de la loi n° 23/053 immunise");
+      expect(texte).toContain('dans la mesure où elles ne dépassent pas les taux légaux');
+      expect(texte).toContain('colonne 19');
+      expect(texte).toContain('25/22');
+    }
+  });
+
+  it('la constante de résolution reste la référence du code, et le moteur ne la cite plus', () => {
+    // Le constat du rejeu · « voir RESOLUTION_TAUX_LEGAL_ALLOCATIONS » à
+    // l'écran. La conclusion reste gelée plus bas (bloc « taux légal »).
+    expect(explication({})).not.toContain('RESOLUTION_TAUX_LEGAL_ALLOCATIONS');
+    expect(RESOLUTION_TAUX_LEGAL_ALLOCATIONS).toMatch(/colonne 19/i);
   });
 });
 

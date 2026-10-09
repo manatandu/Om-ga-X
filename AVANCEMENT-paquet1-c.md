@@ -197,9 +197,48 @@ cinq de ces tests tombent (vérifié en retirant les deux fichiers corrigés).
 
 **Rejoué APRÈS** (`p1c-apres-c1.json`) · 10 contrôles, 10 concordances.
 
+### C2 · l'abstention des allocations familiales dit ce qui manque, en français
+
+**Reproduit AVANT** (`p1c-avant.json`, 8 contrôles, 4 écarts) · simulation
+SYSCOHADA, salaire 1 000 000 et allocations 50 000 ·
+- mars 2026, enfants non renseignés · l'explication contient
+  `RESOLUTION_TAUX_LEGAL_ALLOCATIONS` (nom de constante, affiché tel quel dans
+  l'encadré « La simulation s'abstient plutôt que de supposer » de l'écran
+  Personnel) et ne dit pas quoi faire (« renseignez » absent) ;
+- mars 2019 (aucune grille du SMIG), deux enfants renseignés · même nom
+  interne, et rien sur la saisie du taux légal du mois.
+
+**Correction.** `assiettes-paie.ts` · `explicationTauxLegalNonChiffre`
+(exportée) bâtit le message · la règle (art. 69, 1 de la loi n° 23/053, relu
+dans `fiscalite-rdc`, `code-general-2026/references/05-loi23-053-titre3-irpp.md`,
+et la colonne 19 de la grille du SMIG du mois, décret n° 25/22), puis la cause
+et son geste · ENFANTS non renseignés → « Renseignez le nombre d'enfants
+bénéficiaires des allocations familiales (il ne se confond pas avec les
+personnes à charge de l'impôt) » ; MOIS sans grille → la raison telle que la
+grille la rend (`annexeApplicable`) puis « Saisissez le taux légal du mois » ;
+cause inconnue → les deux. Nouveau paramètre facultatif
+`tauxLegalAllocationsNonCalcule` (type `TauxLegalNonCalcule`) · aucun fait
+nouveau du dossier, seulement ce que le service sait déjà.
+`personnel.service.ts` · `tauxLegalNonCalcule` lit la cause sur les mêmes faits
+que le calcul du taux, LA GRILLE D'ABORD (un mois sans grille ne se règle pas
+en renseignant les enfants), et la passe aux deux appels des assiettes. La
+constante `RESOLUTION_TAUX_LEGAL_ALLOCATIONS` reste dans le code, inchangée.
+Le motif (`TAUX_LEGAL_ALLOCATIONS_FAMILIALES_NON_FOURNI`) n'est pas affiché à
+l'écran (seuls libellé, montant et explication le sont), il n'est pas touché.
+
+**Tests.** `assiettes-paie.spec.ts` · bloc « C2 », six tests (témoin de la
+grille de mars 2019, chaque cause avec son geste et sans celui de l'autre,
+cause inconnue, règle et colonne 19 dans chaque variante, aucun identifiant du
+code). `simulation-paie.spec.ts` · le service passe la bonne cause (mars 2026
+sans enfants, mars 2019 avec et sans enfants, taux saisi qui lève
+l'abstention). Sans la correction, le spec des assiettes ne compile plus et le
+test de simulation tombe. L'ancien test d'abstention (sans cause) garde ses
+attentes (« 25/22 », « colonne 19 »).
+
+**Rejoué APRÈS** (`p1c-apres-c2.json`) · 8 contrôles, 8 concordances.
+
 ## Reste
 
-- C2 · message d'abstention des allocations familiales sans nom interne.
 - Rejeu APRÈS complet (C3, C4, C1, C2), compte rendu final.
 
 ## Décisions
@@ -251,6 +290,7 @@ npx jest src/common src/modules/groupe src/modules/relances src/modules/modeles-
 npx jest src/modules/fiscalite
 npx jest src/modules/personnel
 npm run build
+PAQUET1_C_POINTS=C2 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c2 8787 paquet1-c /tmp/claude-0/sim/p1c-apres-c2.json
 PAQUET1_C_POINTS=C1 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c1 8786 paquet1-c /tmp/claude-0/sim/p1c-apres-c1.json
 PAQUET1_C_POINTS=C4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c4 8785 paquet1-c /tmp/claude-0/sim/p1c-apres-c4.json
 PAQUET1_C_POINTS=C3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c3 8783 paquet1-c /tmp/claude-0/sim/p1c-apres-c3.json

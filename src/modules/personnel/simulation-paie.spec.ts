@@ -588,6 +588,47 @@ describe("Le « taux légal » des allocations familiales, calculé et non saisi
     expect(res.tauxLegalAllocationsFamilialesFc).toBe(12_345);
   });
 
+  it("C2 · l'abstention dit la cause que le service connaît, et le geste qui la lève", async () => {
+    // Paquet 1, C2 · l'explication citait le nom d'une constante du code.
+    const { svc } = service();
+    const elements = [
+      { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 1_000_000 },
+      { nature: 'ALLOCATIONS_FAMILIALES_LEGALES', libelle: 'Allocations', montantFc: 50_000 },
+    ];
+    const abstention = async (over: Partial<SimulationPaieDto>) => {
+      const res = await svc.simulerPaie('t-1', null, dto({ elements, ...over } as Partial<SimulationPaieDto>));
+      const a = res.assiettes.abstentions.find((x) => x.libelle === 'Allocations');
+      expect(a?.explication).not.toMatch(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/);
+      return a?.explication ?? '';
+    };
+
+    // Mois couvert, enfants non renseignés · les renseigner.
+    const sansEnfants = await abstention({});
+    expect(sansEnfants).toContain("Renseignez le nombre d'enfants bénéficiaires");
+    expect(sansEnfants).not.toMatch(/saisissez le taux légal/i);
+
+    // Mois qu'aucune grille ne couvre, enfants renseignés · saisir le taux,
+    // la raison de la grille dite, les enfants jamais redemandés.
+    const sansGrille = await abstention({ moisDePaie: '2019-03', enfantsBeneficiairesAllocations: 2 });
+    expect(sansGrille).toContain('Saisissez le taux légal du mois');
+    expect(sansGrille).toContain('De janvier à juin 2019');
+    expect(sansGrille).not.toMatch(/renseignez le nombre d.enfants/i);
+
+    // Les deux manquent · la grille d'abord, renseigner les enfants n'y
+    // changerait rien.
+    const lesDeux = await abstention({ moisDePaie: '2019-03' });
+    expect(lesDeux).toContain('Saisissez le taux légal du mois');
+    expect(lesDeux).not.toMatch(/renseignez le nombre d.enfants/i);
+
+    // Un taux saisi lève l'abstention.
+    const saisi = await svc.simulerPaie(
+      't-1',
+      null,
+      dto({ elements, moisDePaie: '2019-03', tauxLegalAllocationsFamilialesFc: 40_000 } as Partial<SimulationPaieDto>),
+    );
+    expect(saisi.assiettes.abstentions.filter((x) => x.libelle === 'Allocations')).toHaveLength(0);
+  });
+
   it("rend null hors période d'annexe, même avec des enfants déclarés", async () => {
     const { svc } = service();
     const res = await svc.simulerPaie(

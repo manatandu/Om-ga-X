@@ -305,6 +305,16 @@ export type VerdictAssiettes = {
   readonly reserves: readonly string[];
 };
 
+/**
+ * Les deux raisons pour lesquelles le « taux légal » de l'article 69, 1 ne se
+ * calcule pas · le nombre d'enfants bénéficiaires n'est pas renseigné, ou
+ * aucune grille du SMIG ne couvre le mois de paie (`raison` dit pourquoi, telle
+ * que la grille la rend).
+ */
+export type TauxLegalNonCalcule =
+  | { readonly cause: 'ENFANTS_BENEFICIAIRES_NON_RENSEIGNES' }
+  | { readonly cause: 'MOIS_SANS_GRILLE_DU_SMIG'; readonly raison: string };
+
 export type ParametresAssiettes = {
   /**
    * Article 69, 1 · le « taux légal » des allocations familiales, POUR LA
@@ -315,6 +325,13 @@ export type ParametresAssiettes = {
    * mois de paie sort des annexes, et l'absence vaut alors abstention.
    */
   readonly tauxLegalAllocationsFamilialesFc?: number | null;
+  /**
+   * POURQUOI le taux légal n'est pas chiffré, quand il ne l'est pas · le
+   * service le sait (grille du mois, enfants renseignés), le moteur non. Il
+   * ne sert qu'à DIRE à l'utilisateur ce qui manque et quoi faire (paquet 1,
+   * C2) ; absent, l'explication nomme les deux causes possibles.
+   */
+  readonly tauxLegalAllocationsNonCalcule?: TauxLegalNonCalcule | null;
   /**
    * Article 71 · « les versements réellement effectués à titre définitif, soit
    * à des caisses de pension officielles, soit obligatoirement sous le
@@ -334,6 +351,49 @@ export type ParametresAssiettes = {
    */
   readonly quotePartOuvriereNonChiffree?: string | null;
 };
+
+/**
+ * L'EXPLICATION DE L'ABSTENTION SUR LES ALLOCATIONS FAMILIALES, servie telle
+ * quelle à l'écran (paquet 1, C2, passe V1 n° 2). Elle renvoyait l'utilisateur
+ * au NOM d'une constante du code, qu'aucun écran ne montre · elle dit
+ * désormais, en français, ce qui manque et le geste qui le lève. La constante
+ * `RESOLUTION_TAUX_LEGAL_ALLOCATIONS` reste la référence du code (quel
+ * montant borne l'immunité), elle n'est plus citée à l'utilisateur.
+ *
+ * DEUX CAUSES, DEUX GESTES · enfants non renseignés, on les renseigne ; mois
+ * qu'aucune grille du SMIG ne couvre, renseigner les enfants n'y change rien,
+ * seul un taux légal SAISI lève l'abstention (le service le laisse primer).
+ * Cause inconnue · les deux, dans cet ordre.
+ */
+export function explicationTauxLegalNonChiffre(
+  immunite: Pick<ImmuniteArticle69, 'point' | 'texte'>,
+  nonCalcule: TauxLegalNonCalcule | null,
+): string {
+  const regle =
+    `L'${immunite.point} de la loi n° 23/053 immunise ${immunite.texte}. Ce « taux légal » est ` +
+    "l'allocation familiale journalière par enfant de la colonne 19 de la grille du SMIG du mois (décret " +
+    "n° 25/22), multipliée par les jours ouvrant droit (vingt-six pour un mois entier) et par le nombre " +
+    "d'enfants bénéficiaires.";
+  if (nonCalcule?.cause === 'ENFANTS_BENEFICIAIRES_NON_RENSEIGNES') {
+    return (
+      `${regle} Le nombre d'enfants bénéficiaires n'est pas renseigné, et le plafond ne se place donc pas. ` +
+      "Renseignez le nombre d'enfants bénéficiaires des allocations familiales (il ne se confond pas avec les " +
+      "personnes à charge de l'impôt)."
+    );
+  }
+  if (nonCalcule?.cause === 'MOIS_SANS_GRILLE_DU_SMIG') {
+    return (
+      `${regle} OmegaX n'a aucune grille du SMIG pour ce mois de paie. ${nonCalcule.raison} Le plafond ne ` +
+      "se calcule donc pas. Saisissez le taux légal du mois, montant mensuel pour l'ensemble des enfants " +
+      "bénéficiaires, tiré du barème qui régissait cette paie."
+    );
+  }
+  return (
+    `${regle} Le nombre d'enfants bénéficiaires n'est pas renseigné, ou OmegaX n'a aucune grille du SMIG pour ` +
+    "ce mois de paie · le plafond ne se place donc pas. Renseignez le nombre d'enfants bénéficiaires ; pour un " +
+    "mois qu'aucune grille ne couvre, saisissez le taux légal du mois."
+  );
+}
 
 const estHorsRemuneration = (nature: NatureElementPaie): boolean =>
   HORS_REMUNERATION_ARTICLE_7.includes(nature);
@@ -455,10 +515,7 @@ export function assiettes(
           motif: 'TAUX_LEGAL_ALLOCATIONS_FAMILIALES_NON_FOURNI',
           libelle: element.libelle,
           montantFc: element.montantFc,
-          explication:
-            `${immunite.point} immunise les allocations familiales ${immunite.texte}. Le « taux légal » est la ` +
-            "colonne 19 du décret n° 25/22 (voir RESOLUTION_TAUX_LEGAL_ALLOCATIONS), mais AUCUNE ANNEXE DE CE DÉCRET NE " +
-            "COUVRE CE MOIS DE PAIE, ou le nombre d'enfants bénéficiaires n'est pas renseigné. Le plafond ne se place donc pas.",
+          explication: explicationTauxLegalNonChiffre(immunite, parametres.tauxLegalAllocationsNonCalcule ?? null),
         });
         sortsFiscaux.push({
           libelle: element.libelle,
