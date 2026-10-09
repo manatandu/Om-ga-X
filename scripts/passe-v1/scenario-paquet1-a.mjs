@@ -22,7 +22,7 @@ import {
 } from './lib.mjs';
 
 const BQ = '52110000';
-const POINTS = (process.env.PAQUET1_A_POINTS ?? 'A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6,B2,M4,m2,m5').split(',').map((s) => s.trim()).filter(Boolean);
+const POINTS = (process.env.PAQUET1_A_POINTS ?? 'A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6,B2,M4,m2,m5,S1,S1E,S2').split(',').map((s) => s.trim()).filter(Boolean);
 
 /** Une devise USD du dossier, créée si le semis ne l'a pas, et ses cours. */
 async function dollar(c, cours) {
@@ -1376,6 +1376,210 @@ async function pointRelectureM5(R, voie) {
   });
 }
 
+// ==============================================================================
+// S1 · SECOND TOUR, BLOQUANT 1 · UNE POSITION NULLE PAR UN NÉGATIF DATÉ PLUS
+// TARD NE CONCLUT PAS SEULE
+// ==============================================================================
+//
+// AUDCIF art. 20, al. 2 · « inscription en négatif des éléments erronés ;
+// l'enregistrement exact est ensuite opéré » ; art. 34 (correspondance des
+// bilans). 2026 tenu · capital 10 400 000 en banque. Bilan d'ouverture de 2027
+// en OD au 01/01/2027, FAUX (10 500 000) ; « Corriger » l'inscrit en négatif au
+// 15/03/2027 (le Journal n'envoie pas de date, c'est le jour de la correction) ;
+// RESSAISI · le cabinet repasse l'exact en OD au 15/03 (10 400 000). Le
+// périmètre du premier jour {OD, négatif} se solde · la clôture passait le
+// report ENTIER, et la banque de 2027 valait 20 800 000 (report et ressaisie),
+// le capital doublé, balance bouclée, aucun signal. Juste · la clôture exige une
+// déclaration qui nomme le négatif et sa date ; « Conserver » (ressaisi) ne passe
+// rien · banque 10 400 000 ; « Rectifier » (non ressaisi) passe le report
+// entier · banque 10 400 000.
+async function pointSecondTour1(R, variante) {
+  const P = `S1 ${variante === 'RESSAISI' ? 'ressaisi' : 'non ressaisi'}`;
+  R.scenario = `paquet1-a · ${P}`;
+  const c = await nouveauDossier(R, `Paquet 1 ${P} · OD d’ouverture corrigée le 15/03`, {
+    referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: variante === 'RESSAISI' ? 'p1a-s1r' : 'p1a-s1n', exercice: ['2026-01-01', '2026-12-31'],
+  });
+  const n = c.exercices.get('2026').id;
+  const bq = c.journal('BQ') ?? c.od;
+  const ctx = {};
+  await etape(R, `${P} · 2026 tenu, OD d'ouverture fausse au 01/01/2027, négatif au 15/03/2027${variante === 'RESSAISI' ? ', exact repassé au 15/03' : ''}`, async () => {
+    await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await ecriture(c, 'Capital libéré', n, '2026-01-02', 'Apport des associés', [[BQ, 10_400_000, 0], ['10130000', 0, 10_400_000]], { journal: bq });
+    await validerJusqua(c, n, '2026-12-31');
+    await c.geste('Nouvel exercice avec reports provisoires', 'POST', `/exercices/${n}/a-nouveaux-provisoires`, {});
+    await rechargerExercices(c);
+    ctx.n1 = c.exercices.get('2027')?.id;
+    if (!ctx.n1) return;
+    const od = await ecriture(c, 'OD d’ouverture fausse au 01/01/2027', ctx.n1, '2027-01-01', 'Bilan d’ouverture saisi en OD', [[BQ, 10_500_000, 0], ['10130000', 0, 10_500_000]]);
+    await validerJusqua(c, ctx.n1, '2027-01-01');
+    const neg = od?.id
+      ? await c.geste('« Corriger » · négatif au 15/03/2027', 'POST', `/ecritures/${od.id}/correction`, {
+          date: '2027-03-15',
+          motifCorrection: 'Bilan d’ouverture saisi faux (banc paquet 1, second tour)',
+        })
+      : null;
+    if (variante === 'RESSAISI') {
+      await ecriture(c, 'Enregistrement exact au 15/03/2027', ctx.n1, '2027-03-15', 'Bilan d’ouverture exact', [[BQ, 10_400_000, 0], ['10130000', 0, 10_400_000]]);
+    }
+    await validerJusqua(c, ctx.n1, '2027-03-15');
+    ctx.ok = Boolean(neg?.id);
+    R.egal(`${P} · le négatif est passé au 15/03/2027`, true, ctx.ok);
+  });
+  if (!ctx.ok) return;
+  await etape(R, `${P} · aperçu, puis clôture de 2026`, async () => {
+    const apercu = await c.lire('Aperçu de l’ouverture 2027', `/exercices/${n}/ouverture-suivante`);
+    R.egal(`${P} · aperçu · déclaration requise (la position ne se solde que par un négatif du 15/03)`, true, apercu?.declarationRequise ?? null);
+    R.egal(`${P} · aperçu · le négatif tardif est nommé avec sa date`, '2027-03-15', String(apercu?.negatifsTardifs?.[0]?.date ?? '').slice(0, 10));
+    const r = await c.req('POST', `/exercices/${n}/cloturer`, {});
+    R.egal(`${P} · sans déclaration, la clôture refuse`, true, r.statut >= 400);
+    const message = String(r.corps?.message ?? '');
+    R.egal(`${P} · le refus nomme le 15/03/2027 et les deux issues`, true, /15\/03\/2027/.test(message) && /Conserver/.test(message) && /Rectifier/.test(message));
+    if (r.statut < 400) R.note(`${P} · clôture passée sans déclaration · ${JSON.stringify(r.corps?.issueOuverture ?? null).slice(0, 300)}`);
+    else {
+      const corps = variante === 'RESSAISI'
+        ? { ouvertureImportee: 'CONSERVER', motifConservation: 'Bilan d’ouverture exact ressaisi en OD au 15/03/2027 (banc paquet 1)' }
+        : { ouvertureImportee: 'RECTIFIER' };
+      const d = await c.geste(`Clôture de 2026 en déclarant « ${variante === 'RESSAISI' ? 'Conserver' : 'Rectifier'} »`, 'POST', `/exercices/${n}/cloturer`, corps);
+      R.egal(`${P} · la clôture déclarée passe`, true, d !== null);
+    }
+    await rechargerExercices(c);
+  });
+  await etape(R, `${P} · 2027 porte le bilan d'ouverture une fois`, async () => {
+    await rechargerComptes(c);
+    const b = await balance(c, ctx.n1);
+    R.montant(`${P} · 2027 · banque, une fois (10 400 000)`, 10_400_000, solde(b, BQ));
+    R.montant(`${P} · 2027 · capital, une fois`, -10_400_000, solde(b, '10130000'));
+    R.montant(`${P} · 2027 · balance équilibrée`, 0, b ? b.totalDebit - b.totalCredit : NaN);
+  });
+}
+
+// ==============================================================================
+// S1E · SECOND TOUR, JUMEAU DU BLOQUANT 1 AUX ÉTATS · le premier exercice
+// ==============================================================================
+//
+// Premier exercice 2027 (aucun exercice précédent) · même OD fausse au 01/01,
+// même négatif au 15/03, même exact repassé au 15/03. Les états (M4) lisent la
+// position du premier jour, nulle · l'ouverture est présumée nulle et l'exact
+// du 15/03 se lit comme un flux de l'exercice (apport de 10 400 000, ZA à 0).
+// Ce que la clôture ne conclut plus seule, les états doivent au moins le DIRE ·
+// la mention nomme le négatif et sa date.
+async function pointSecondTour1Etats(R, referentiel) {
+  const sycebnl = referentiel === 'SYCEBNL';
+  const P = `S1E (${sycebnl ? 'SYCEBNL' : 'SYSCOHADA'})`;
+  const etats = sycebnl ? '/etats-financiers' : '/etats-financiers-syscohada';
+  const apport = sycebnl ? 'FM' : 'FK';
+  const fonds = sycebnl ? '10110000' : '10130000';
+  R.scenario = `paquet1-a · ${P}`;
+  const c = await nouveauDossier(R, `Paquet 1 ${P} · premier exercice, OD d’ouverture corrigée le 15/03`, sycebnl
+    ? { referentiel: 'SYCEBNL', jeu: 'ASSOCIATIONS_ORDRES_PROFESSIONNELS', cle: 'p1a-s1es', exercice: ['2027-01-01', '2027-12-31'] }
+    : { referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'p1a-s1e', exercice: ['2027-01-01', '2027-12-31'] });
+  const n = c.exercices.get('2027').id;
+  let ok = false;
+  await etape(R, `${P} · OD fausse au 01/01/2027, négatif et exact au 15/03/2027`, async () => {
+    if (!sycebnl) await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    const od = await ecriture(c, 'OD d’ouverture fausse au 01/01/2027', n, '2027-01-01', 'Bilan d’ouverture saisi en OD', [[BQ, 10_500_000, 0], [fonds, 0, 10_500_000]]);
+    await validerJusqua(c, n, '2027-01-01');
+    const neg = od?.id
+      ? await c.geste('« Corriger » · négatif au 15/03/2027', 'POST', `/ecritures/${od.id}/correction`, { date: '2027-03-15', motifCorrection: 'Bilan d’ouverture saisi faux (banc paquet 1, second tour)' })
+      : null;
+    await ecriture(c, 'Enregistrement exact au 15/03/2027', n, '2027-03-15', 'Bilan d’ouverture exact', [[BQ, 10_400_000, 0], [fonds, 0, 10_400_000]]);
+    await validerJusqua(c, n, '2027-03-15');
+    ok = Boolean(neg?.id);
+  });
+  if (!ok) return R.note(`${P} · négatif absent`);
+  await etape(R, `${P} · tableau des flux de 2027`, async () => {
+    const t = await c.lire('Flux 2027', `${etats}/tableau-flux-tresorerie?exerciceId=${n}`);
+    const mention = String(t?.mentionOuverture ?? '');
+    const lignes = aplatir(t);
+    R.note(`${P} · ${apport} ${lignes?.[apport]?.n ?? '·'} · ZA ${lignes?.ZA?.n ?? '·'} · mention « ${mention} »`);
+    R.egal(`${P} · la mention nomme le négatif du 15/03/2027 qui annule l'ouverture`, true, /15\/03\/2027/.test(mention));
+    R.egal(`${P} · la mention dit qu'une ressaisie après lui se lit comme un flux`, true, /flux/.test(mention) && /ressaisi/.test(mention));
+  });
+}
+
+// ==============================================================================
+// S2 · SECOND TOUR, BLOQUANT 2 · L'ARRÊT À LA DISSOLUTION ENFERMÉ PAR SON
+// PROPRE CONSEIL
+// ==============================================================================
+//
+// AUSCGIE art. 200 et suivants (dissolution), AUDCIF art. 7 al. 4 (exercice de
+// liquidation), art. 20, al. 2. 2026 tenu, 2027 ouvert (reports provisoires),
+// bilan d'ouverture de 2027 en OD au 01/01/2027 ; dissolution au 30/06/2026.
+// L'arrêt de 2026 fait de 2027 l'exercice de liquidation, du 01/07/2026 · son
+// ouverture passée au 01/01/2027 ne serait plus celle du premier jour, refus
+// « validée, inscrivez-la en négatif ». Une fois le négatif inscrit, le refus
+// tenait toujours (« une écriture existe ») · aucune issue. Juste · une
+// position nulle laisse passer le geste ; nulle par un négatif daté plus tard,
+// il passe sur la déclaration que l'ouverture annulée n'est pas ressaisie (une
+// ressaisie après lui doublerait le report que la clôture passera au
+// 01/07/2026). Après l'arrêt, la clôture de 2026 · banque 10 000 000 dans
+// l'exercice de liquidation, une fois.
+async function pointSecondTour2(R, variante) {
+  const P = `S2 ${variante === 'PREMIER_JOUR' ? 'négatif au 01/01' : 'négatif au 15/03'}`;
+  R.scenario = `paquet1-a · ${P}`;
+  const c = await nouveauDossier(R, `Paquet 1 ${P} · arrêt à la dissolution`, {
+    referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: variante === 'PREMIER_JOUR' ? 'p1a-s2p' : 'p1a-s2t', exercice: ['2026-01-01', '2026-12-31'],
+  });
+  const n = c.exercices.get('2026').id;
+  const bq = c.journal('BQ') ?? c.od;
+  const ctx = {};
+  await etape(R, `${P} · 2026, 2027 ouvert, OD d'ouverture au 01/01/2027 inscrite en négatif, dissolution au 30/06/2026`, async () => {
+    await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await ecriture(c, 'Capital libéré', n, '2026-01-02', 'Apport des associés', [[BQ, 10_000_000, 0], ['10130000', 0, 10_000_000]], { journal: bq });
+    await validerJusqua(c, n, '2026-06-30');
+    await c.geste('Nouvel exercice avec reports provisoires', 'POST', `/exercices/${n}/a-nouveaux-provisoires`, {});
+    await rechargerExercices(c);
+    ctx.n1 = c.exercices.get('2027')?.id;
+    if (!ctx.n1) return;
+    const od = await ecriture(c, 'OD d’ouverture au 01/01/2027', ctx.n1, '2027-01-01', 'Bilan d’ouverture saisi en OD', [[BQ, 10_000_000, 0], ['10130000', 0, 10_000_000]]);
+    await validerJusqua(c, ctx.n1, '2027-01-01');
+    await c.geste('Faits de la dissolution', 'PATCH', '/dossier/identite', {
+      dateDissolution: '2026-06-30', liquidateurs: 'Me Ilunga', dateNominationLiquidateur: '2026-06-30',
+      regimeLiquidation: 'AMIABLE_STATUTAIRE', associeUniquePersonneMorale: 'NON', dateClotureLiquidation: '2027-12-31',
+    });
+    const avantNegatif = await c.req('POST', `/exercices/${n}/arreter-a-la-dissolution`, {});
+    R.egal(`${P} · l'OD seule · l'arrêt refuse et conseille de l'inscrire en négatif`, true, avantNegatif.statut >= 400 && /inscrivez-la en négatif/.test(String(avantNegatif.corps?.message ?? '')));
+    const date = variante === 'PREMIER_JOUR' ? '2027-01-01' : '2027-03-15';
+    const neg = od?.id
+      ? await c.geste(`Négatif de l’OD au ${date}`, 'POST', `/ecritures/${od.id}/correction`, { date, motifCorrection: 'Ouverture passée avant la dissolution (banc paquet 1, second tour)' })
+      : null;
+    await validerJusqua(c, ctx.n1, date);
+    ctx.ok = Boolean(neg?.id);
+  });
+  if (!ctx.ok) return R.note(`${P} · la suite n’est pas jouée`);
+  await etape(R, `${P} · l'arrêt après le négatif`, async () => {
+    const r = await c.req('POST', `/exercices/${n}/arreter-a-la-dissolution`, {});
+    if (variante === 'PREMIER_JOUR') {
+      R.egal(`${P} · l'OD et son négatif du premier jour se soldent · l'arrêt passe`, true, r.statut < 400);
+      if (r.statut >= 400) R.note(`${P} · refus · ${String(r.corps?.message ?? '').slice(0, 300)}`);
+      ctx.arrete = r.statut < 400;
+      return;
+    }
+    const message = String(r.corps?.message ?? '');
+    R.egal(`${P} · nulle par un négatif du 15/03 · refus qui le nomme et ouvre la déclaration`, true,
+      r.statut >= 400 && /15\/03\/2027/.test(message) && /n’est pas ressaisie/.test(message));
+    if (r.statut < 400) { ctx.arrete = true; return; }
+    R.note(`${P} · refus · ${message.slice(0, 300)}`);
+    const d = await c.req('POST', `/exercices/${n}/arreter-a-la-dissolution`, { ouvertureAnnuleeNonRessaisie: true });
+    R.egal(`${P} · avec la déclaration · l'arrêt passe`, true, d.statut < 400);
+    if (d.statut >= 400) R.note(`${P} · refus avec déclaration · ${String(d.corps?.message ?? '').slice(0, 300)}`);
+    ctx.arrete = d.statut < 400;
+  });
+  if (!ctx.arrete) return;
+  await etape(R, `${P} · clôture de 2026 arrêté · l'exercice de liquidation porte la banque une fois`, async () => {
+    // Deux exercices commencent en 2026 · lus en liste, jamais par l'année.
+    const liste = (await c.lire('Exercices', '/exercices')) ?? [];
+    const liq = liste.find((e) => String(e.dateDebut).slice(0, 10) === '2026-07-01');
+    R.egal(`${P} · exercice de liquidation du 01/07/2026`, true, Boolean(liq));
+    const r = await c.req('POST', `/exercices/${n}/cloturer`, {});
+    if (r.statut >= 400) return R.note(`${P} · clôture de 2026 refusée · ${String(r.corps?.message ?? '').slice(0, 300)}`);
+    await rechargerComptes(c);
+    const b = liq ? await balance(c, liq.id) : null;
+    R.montant(`${P} · liquidation · banque, une fois`, 10_000_000, solde(b, BQ));
+    R.montant(`${P} · liquidation · capital, une fois`, -10_000_000, solde(b, '10130000'));
+  });
+}
+
 export default async function scenarioPaquet1A(registre) {
   const table = {
     A8: (r) => pointA8(r, 'MODULE'),
@@ -1411,6 +1615,18 @@ export default async function scenarioPaquet1A(registre) {
     M4: async (r) => {
       await pointM4(r, 'SYSCOHADA');
       await pointM4(r, 'SYCEBNL');
+    },
+    S1: async (r) => {
+      await pointSecondTour1(r, 'RESSAISI');
+      await pointSecondTour1(r, 'NON_RESSAISI');
+    },
+    S1E: async (r) => {
+      await pointSecondTour1Etats(r, 'SYSCOHADA');
+      await pointSecondTour1Etats(r, 'SYCEBNL');
+    },
+    S2: async (r) => {
+      await pointSecondTour2(r, 'PREMIER_JOUR');
+      await pointSecondTour2(r, 'TARDIF');
     },
     m5: async (r) => {
       await pointRelectureM5(r, 'MODULE');
