@@ -599,6 +599,23 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
   `reconduction-lettrage.spec.ts`), colonne absente lue NULL comme en base ;
   la forme figée du filtre (`cloture-annuelle.spec.ts`, R1) suit la règle.
 
+### M4 · une OD du premier jour neutralisée vidait le tableau des flux sans issue
+
+- Vérifié · `EcritureService.ouverturePasseeAuPremierJour` comptait les
+  écritures du périmètre · OD et négatif présents, le tableau des flux d'un
+  exercice sans précédent vidait tous ses postes et nommait une OD qui
+  n'existe plus. Antérieur au SYSCOHADA, étendu aux associations par A7.
+- AVANT (copie avec B2) · SYSCOHADA et SYCEBNL, OD du 01/01/2026 annulée le
+  01/03/2026, apport de 10 000 000 encaissé le 02/03 · tous les postes vides
+  (ZA, FA à FQ, ZB à ZH), mention « opérations diverses », FK et FM non servis.
+- Correction · le lecteur des états juge la position NETTE
+  (`ouverturePasseeNonNulle`, celui de B2) · une ouverture qui se solde n'en
+  est pas une, l'entité naît (mention de l'ouverture présumée nulle).
+- APRÈS · 10 contrôles sur 10 (FK et FM à 10 000 000, ZA à 0, aucun poste
+  vide) ; A7 rejoué, 25 sur 25.
+- Test · `ouverture-passee.spec.ts`, câblage du service (OD et négatif ·
+  `null` ; OD seule · pièce nommée).
+
 ## Reste
 
 Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).

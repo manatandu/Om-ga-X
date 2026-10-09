@@ -25,7 +25,7 @@ import { libelleReference, referencesVers } from '../../common/suppression/refer
 import { ModifierEcritureDto, ValiderJusquaDto } from './dto/brouillard.dto';
 import { JournalService } from '../journaux/journal.service';
 import { ExerciceService, refuserSiPeriodeClose } from '../exercice/exercice.service';
-import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
+import { LecteurOuverturePassee, ouverturePasseeNonNulle } from '../exercice/ouverture-passee';
 import { AnalytiqueService } from '../analytique/analytique.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
@@ -3648,20 +3648,18 @@ export class EcritureService {
    * peut être la reprise d'un dossier ou la naissance de l'entité (apport du
    * premier jour), et rien ne les distingue · les états ne la lisent ni comme
    * flux ni comme ouverture, et le disent. `null` · aucune.
+   *
+   * JUGÉE SUR SA POSITION NETTE (relecture du paquet 1, M4) · une OD du
+   * premier jour annulée par son négatif (AUDCIF art. 20, al. 2, B2) ou une
+   * contre-passation DÉCLARÉE (A8) suffisaient à vider tout le tableau des
+   * flux, sans issue, quand plus rien ne restait de l'ouverture. Même lecture
+   * que la clôture (`ouverturePasseeNonNulle`) · une position qui se solde
+   * compte par compte n'est pas une ouverture, et l'entité naît.
    */
   async ouverturePasseeAuPremierJour(tenantId: string, exerciceId: string): Promise<{ nombre: number; pieces: string[] } | null> {
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
     if (!exercice) return null;
-    const filtre: Prisma.EcritureWhereInput = { ...filtreOuverturePasseeAuPremierJour(tenantId, exercice), statut: StatutEcriture.VALIDEE };
-    const nombre = await this.prisma.ecriture.count({ where: { ...filtre, tenantId } });
-    if (nombre === 0) return null;
-    const premieres = await this.prisma.ecriture.findMany({
-      where: { ...filtre, tenantId },
-      select: { numeroPiece: true, journal: { select: { code: true } } },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: 5,
-    });
-    return { nombre, pieces: premieres.map((e) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`) };
+    return ouverturePasseeNonNulle(this.prisma as unknown as LecteurOuverturePassee, tenantId, exercice, { validees: true });
   }
 
   /**

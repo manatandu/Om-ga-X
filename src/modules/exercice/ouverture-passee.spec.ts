@@ -1,4 +1,5 @@
 import { ClasseCompte, TypeJournal } from '@prisma/client';
+import { EcritureService } from '../comptabilite/ecriture.service';
 import { LecteurOuverturePassee, filtreOuverturePasseeAuPremierJour, lignesDeContrePassationDeclaree, ouverturePasseeNonNulle } from './ouverture-passee';
 
 /**
@@ -214,5 +215,24 @@ describe('B2 · une ouverture qui se solde n’est pas une ouverture (`ouverture
 
   it('aucune écriture au premier jour · aucune ouverture', async () => {
     expect(await ouverturePasseeNonNulle(lecteur([]), 't', N1, { validees: true })).toBeNull();
+  });
+
+  /**
+   * Relecture du paquet 1, M4 · le CÂBLAGE · les états d'un exercice sans
+   * précédent lisent l'ouverture par `EcritureService.ouverturePasseeAuPremierJour`,
+   * qui comptait les écritures du périmètre · une OD annulée par son négatif
+   * vidait le tableau des flux sans issue. Elle juge désormais la position
+   * nette, comme la clôture.
+   */
+  it('M4 · les états lisent l’ouverture NETTE · l’OD et son négatif ne vident plus le tableau des flux', async () => {
+    const service = (ecritures: Rangee[]) =>
+      new EcritureService(
+        { ...lecteur(ecritures), exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'n1', dateDebut: N1.dateDebut }) } } as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
+    expect(await service([odOuverture, negatif]).ouverturePasseeAuPremierJour('t', 'n1')).toBeNull();
+    expect(await service([odOuverture]).ouverturePasseeAuPremierJour('t', 'n1')).toEqual({ nombre: 1, pieces: ['OD n° 2'] });
   });
 });
