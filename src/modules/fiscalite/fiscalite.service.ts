@@ -160,40 +160,96 @@ export const COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE =
   "La nature de l'associé unique n'est pas déclarée (identité du dossier, « associé unique personne morale ») · l'observation ne vaut que s'il est une personne physique.";
 
 /**
+ * Complément servi quand l'unicité n'est pas déclarée (premier tour de
+ * relecture du paquet 1, constat 2) · la SAS dont « Associé unique (SASU) »
+ * est encore « pas encore dit ».
+ */
+export const COMPLEMENT_UNICITE_NON_DECLAREE =
+  "L'unicité de l'associé n'est pas déclarée (Paramètres du dossier, section Immatriculation, « Associé unique (SASU) ») · l'observation ne vaut que si la société n'a qu'un associé ou actionnaire, personne physique.";
+
+/**
+ * Complément servi à la SARL et à la SA, dont le dossier ne déclare pas
+ * l'unicité (constat 2) · AUSCGIE art. 309, al. 2 (la SARL « peut être
+ * instituée par une personne physique ou morale ») et art. 385, al. 2 (la SA
+ * « peut ne comprendre qu'un seul actionnaire »).
+ */
+export const COMPLEMENT_UNICITE_NON_DECLARABLE =
+  "Le dossier ne déclare pas l'unicité de l'associé d'une SARL ni de l'actionnaire d'une SA (AUSCGIE art. 309, al. 2 et 385, al. 2 la permettent) · l'observation ne vaut que si la société n'a qu'un associé ou actionnaire, personne physique.";
+
+/** Ce que le dossier dit de l'art. 63, al. 2, 1°, et la phrase qui en suit. */
+export type UnipersonnaliteArticle63 =
+  | 'ASSOCIE_PERSONNE_PHYSIQUE'
+  | 'NATURE_NON_DECLAREE'
+  | 'UNICITE_NON_DECLAREE'
+  | 'UNICITE_NON_DECLARABLE';
+
+/**
  * QUAND L'OBSERVATION DE L'ART. 63, AL. 2, 1° SE SERT (paquet 1, ligne C,
- * point C4, passe V1 n° 2). Elle était servie à TOUTE SA, SARL ou SAS, sur la
- * seule forme · une société à plusieurs associés lisait qu'elle était
- * « unipersonnelle à associé unique personne physique ».
+ * point C4, passe V1 n° 2 ; premier tour de relecture, constat 2). Elle était
+ * servie à TOUTE SA, SARL ou SAS, sur la seule forme, et SANS CONDITION · une
+ * société à plusieurs associés lisait qu'elle était « unipersonnelle à associé
+ * unique personne physique ».
  *
  * Le texte vise « l'associé unique d'une société à responsabilité limitée ou
  * […] l'actionnaire unique d'une société anonyme ou d'une société par action
  * simplifiée, lorsque cet associé ou cet actionnaire est une personne
  * physique » (loi n° 23/053, art. 63, al. 2, 1°) · DEUX faits, l'unicité et
- * la personne physique. Le dossier n'en porte que deux, et pour la SAS
- * seulement :
+ * la personne physique. Le dossier en porte deux :
  *  · `associeUniqueSas` · la SAS qui « ne comprend qu'un associé », la SASU
  *    (AUSCGIE art. 853-2, al. 2), propre à la SAS ;
  *  · `associeUniquePersonneMorale` · tous les titres détenus par un associé
  *    unique PERSONNE MORALE (art. 201, al. 4), pour toute société
  *    commerciale. Sur une SASU déclarée, « non » dit donc que l'associé
- *    unique est une personne physique.
- * Rien ne dit qu'une SARL ou une SA est unipersonnelle À ASSOCIÉ PERSONNE
- * PHYSIQUE (l'art. 309 et l'art. 385 de l'AUSCGIE le permettent, aucun champ
- * ne le déclare) · l'observation ne leur est pas servie. « Pas encore dit »
- * n'est pas « oui » · une SAS dont l'unicité n'est pas déclarée ne la reçoit
- * pas ; une SASU dont la nature de l'associé n'est pas déclarée la reçoit,
- * avec la condition dite ; une SASU à associé personne morale ne la reçoit
- * pas (l'art. 63 vise la personne physique).
+ *    unique est une personne physique ; ailleurs il ne dit pas l'unicité.
+ *
+ * UN SILENCE N'EST PAS UN « NON » (constat 2). C4 ne servait rien à la SARL
+ * et à la SA, dont aucun champ ne déclare l'unicité (l'art. 309, al. 2 et
+ * l'art. 385, al. 2 de l'AUSCGIE la permettent), ni à la SAS dont l'unicité
+ * n'est pas encore dite · la SARL à associé unique personne physique, que
+ * l'article nomme le PREMIER, perdait l'observation sans un mot. Elle se sert
+ * donc SOUS CONDITION, dite, partout où le dossier ne tranche pas ; rien ne
+ * s'en retire que sur un fait DÉCLARÉ qui l'écarte · l'unicité déclarée
+ * « non » (SAS) ou l'associé unique déclaré personne morale. Aucun fait n'est
+ * créé (la déclaration de l'unicité d'une SARL ou d'une SA reste à Manasse).
  */
 export function unipersonnaliteDeLArticle63(t: {
   formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null;
   associeUniqueSas?: boolean | null;
   associeUniquePersonneMorale?: boolean | null;
-}): 'ASSOCIE_PERSONNE_PHYSIQUE' | 'NATURE_NON_DECLAREE' | null {
-  if (t.formeJuridiqueSyscohada !== FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE) return null;
-  if (t.associeUniqueSas !== true) return null;
+}): UnipersonnaliteArticle63 | null {
+  const forme = t.formeJuridiqueSyscohada;
+  if (
+    forme !== FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE &&
+    forme !== FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE &&
+    forme !== FormeJuridiqueSyscohada.SOCIETE_ANONYME
+  ) {
+    return null;
+  }
+  // L'art. 63 vise la personne physique · un associé unique déclaré personne
+  // morale l'écarte, quelle que soit la forme.
   if (t.associeUniquePersonneMorale === true) return null;
+  // Le fait de la SAS posé sur une autre forme ne vaut rien (le service du
+  // dossier le refuse d'ailleurs, AUSCGIE art. 853-2).
+  if (forme !== FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE) return 'UNICITE_NON_DECLARABLE';
+  if (t.associeUniqueSas === false) return null;
+  if (t.associeUniqueSas !== true) return 'UNICITE_NON_DECLAREE';
   return t.associeUniquePersonneMorale === false ? 'ASSOCIE_PERSONNE_PHYSIQUE' : 'NATURE_NON_DECLAREE';
+}
+
+/** La phrase servie, l'observation et sa condition (constat 2). */
+export function observationArticle63(u: UnipersonnaliteArticle63 | null): string | null {
+  switch (u) {
+    case null:
+      return null;
+    case 'ASSOCIE_PERSONNE_PHYSIQUE':
+      return OBSERVATION_UNIPERSONNELLE_PASSE_F5;
+    case 'NATURE_NON_DECLAREE':
+      return `${OBSERVATION_UNIPERSONNELLE_PASSE_F5} ${COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE}`;
+    case 'UNICITE_NON_DECLAREE':
+      return `${OBSERVATION_UNIPERSONNELLE_PASSE_F5} ${COMPLEMENT_UNICITE_NON_DECLAREE}`;
+    case 'UNICITE_NON_DECLARABLE':
+      return `${OBSERVATION_UNIPERSONNELLE_PASSE_F5} ${COMPLEMENT_UNICITE_NON_DECLARABLE}`;
+  }
 }
 
 /**
@@ -1580,11 +1636,10 @@ export class FiscaliteService {
       case FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE:
       case FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE: {
         // Servie sur les FAITS déclarés, jamais sur la seule forme (C4).
-        const unipersonnalite = unipersonnaliteDeLArticle63({ formeJuridiqueSyscohada: forme, ...faits });
-        if (unipersonnalite === 'ASSOCIE_PERSONNE_PHYSIQUE') observations.push(OBSERVATION_UNIPERSONNELLE_PASSE_F5);
-        if (unipersonnalite === 'NATURE_NON_DECLAREE') {
-          observations.push(`${OBSERVATION_UNIPERSONNELLE_PASSE_F5} ${COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE}`);
-        }
+        // Un silence se dit avec sa condition, jamais comme un « non »
+        // (premier tour de relecture, constat 2).
+        const observation = observationArticle63(unipersonnaliteDeLArticle63({ formeJuridiqueSyscohada: forme, ...faits }));
+        if (observation) observations.push(observation);
         break;
       }
       // LA FORME NE DIT NI LA NATURE NI LA RÉSIDENCE DU PROPRIÉTAIRE (passe

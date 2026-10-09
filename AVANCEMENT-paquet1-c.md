@@ -157,10 +157,15 @@ six écarts d'AVANT, plus la condition dite ou non).
 **Proposition (non codée).** Un fait pour la SARL et la SA unipersonnelles
 (AUSCGIE art. 309, al. 2 ; art. 385, al. 2), par exemple « associé ou
 actionnaire unique » OUI / NON / PAS_ENCORE_DIT, sans défaut · avec
-`associeUniquePersonneMorale`, il permettrait de servir l'observation à la
-SARL et à la SA à associé unique personne physique, que le dossier ne sait
-pas dire aujourd'hui (elle ne leur est donc jamais servie). Décision de
-Manasse (ajout d'un champ, hors gel).
+`associeUniquePersonneMorale`, il permettrait de servir l'observation SANS
+condition à la SARL et à la SA à associé unique personne physique, et de la
+retirer à la société déclarée pluripersonnelle. Décision de Manasse (ajout
+d'un champ, hors gel).
+
+**Revu au premier tour de relecture (constat 2, point S2).** La règle
+« jamais servie » de la SARL, de la SA et de la SAS non déclarée lisait un
+silence comme un « non » · voir S2 ci-dessous ; elle se sert désormais sous
+condition dite.
 
 ### C1 · le plafond de l'art. 69, 1 se juge au centime
 
@@ -308,6 +313,51 @@ un centime dessous) · 5 tombent sans la correction.
 `[false, 4.656612873077393e-10]`, LIKOFO `[false, 0.01000000024214387]`.
 **APRÈS** (`p1c-s1-apres.json`) · 11 contrôles, 11 concordances.
 
+### S2 · constat 2 (MAJEUR) · l'unicité non déclarée n'est pas un « non »
+
+Texte relu · loi n° 23/053, art. 63, al. 2, 1° (`fiscalite-rdc`,
+code-general-2026, titre 3) · « de l'associé unique d'une société à
+responsabilité limitée ou de l'actionnaire unique d'une société anonyme ou
+d'une société par action simplifiée, lorsque cet associé ou cet actionnaire
+est une personne physique » ; AUSCGIE (`auscgie-acte-uniforme`) art. 309,
+al. 2 (SARL « instituée par une personne physique ou morale »), art. 385,
+al. 2 (SA « ne comprendre qu'un seul actionnaire »), art. 853-2, al. 2 (SASU).
+Le constat est EXACT · C4 ne servait rien à la SARL et à la SA (aucun champ ne
+déclare leur unicité) ni à la SAS dont l'unicité n'est pas dite, si bien que la
+SARL à associé unique personne physique, que l'article nomme le PREMIER,
+perdait l'observation sans un mot (faux négatif silencieux).
+
+**Décision par la loi.** Un silence n'est pas un « non » · l'observation se
+sert avec sa condition (« ne vaut que si la société n'a qu'un associé ou
+actionnaire, personne physique ») partout où le dossier ne tranche pas · SARL
+et SA (`COMPLEMENT_UNICITE_NON_DECLARABLE`, art. 309 et 385 cités), SAS à
+unicité non dite (`COMPLEMENT_UNICITE_NON_DECLAREE`, qui nomme le champ
+« Associé unique (SASU) » de Paramètres du dossier, section Immatriculation).
+Rien seulement sur un fait DÉCLARÉ qui l'écarte · SAS déclarée « non », ou
+associé unique déclaré personne morale (toute forme). SASU déclarée · comme C4
+(sans condition si l'associé est déclaré non personne morale, condition de
+nature sinon). Aucun fait créé (la proposition de C4 reste à Manasse).
+
+**Correction.** `fiscalite.service.ts` · `unipersonnaliteDeLArticle63` rend
+quatre issues (`UNICITE_NON_DECLAREE`, `UNICITE_NON_DECLARABLE` en plus),
+`observationArticle63` en tire la phrase. **Tests.** `fiscalite.spec.ts` · la
+table de C4 gelait le faux négatif · réécrite sur douze cas (SA et SAS à
+associé personne morale ajoutés), la règle pure sur douze cas, et les deux
+conditions vérifiées sur leur phrase commune.
+
+**Scénario modifié** (`scenario-paquet1-c.mjs`, non committé) · point S2
+ajouté ; dans C4, trois contrôles renversés (SARL, SA, SAS non dite · « servie
+sous la condition d'unicité » au lieu de « non servie ») et `conditionDite`
+lit « ne vaut que s'il est une personne physique ».
+
+**AVANT, `main`** (`p1c-s2-avant.json`, S2 et C4) · 18 contrôles, 14 écarts ·
+`main` sert l'observation sans condition à toute SA, SARL et SAS (`[true,
+false]`), y compris déclarée pluripersonnelle ou à associé personne morale.
+**AVANT, copie au commit 0ff7342** (`p1c-s2-copie-avant.json`, S2) · 8
+contrôles, 4 écarts · SARL sans fait, SARL « non personne morale », SA sans
+fait, SAS non dite lues `[false, false]` (rien servi). **APRÈS**
+(`p1c-s2-apres.json`, S2 et C4) · 18 contrôles, 18 concordances.
+
 ## Reste (au coordinateur, à l'intégration)
 
 - Committer le scénario `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-c.mjs`.
@@ -319,9 +369,11 @@ un centime dessous) · 5 tombent sans la correction.
 ## Décisions
 
 - C4 · par la loi (art. 3 et art. 63, al. 2, 1° de la loi n° 23/053 ; AUSCGIE
-  art. 853-2, al. 2, 309, al. 2, 385, al. 2) · l'observation ne se sert que sur
-  les deux faits déclarés (unicité, personne physique), jamais sur la forme ;
-  aucun fait créé, la proposition pour la SARL et la SA est à Manasse.
+  art. 853-2, al. 2, 309, al. 2, 385, al. 2) · l'observation ne se sert jamais
+  sur la forme seule ; aucun fait créé, la proposition pour la SARL et la SA
+  est à Manasse. Revu au constat 2 (S2) · servie SOUS CONDITION DITE quand
+  l'unicité n'est pas déclarée ou pas déclarable, retirée seulement sur un
+  fait déclaré qui l'écarte.
 - C1 · aucune question de fond · la règle du plafond (art. 69, 1, « dans la
   mesure où elles ne dépassent pas les taux légaux ») est inchangée ; seul
   l'arrondi au centime, celui des montants gardés en base (Decimal 18,2) et de
@@ -391,6 +443,9 @@ PAQUET1_C_POINTS=C3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_ap
 PAQUET1_C_POINTS=S1 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s1-avant.json
 PAQUET1_C_POINTS=S1 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s1-apres.json
 npx jest src/modules/personnel/assiettes-paie.spec.ts src/modules/personnel/cotisations-paie.spec.ts src/modules/personnel/regles-contrat-travail.spec.ts
+PAQUET1_C_POINTS=S2,C4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s2-avant.json
+PAQUET1_C_POINTS=S2,C4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s2-apres.json
+npx jest src/modules/fiscalite
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json
