@@ -3,7 +3,7 @@
 Branche `travail/paquet1-a`, partie de `main` e31f4de. Fiche tenue à chaque
 point fini (CLAUDE.md § 5), retirée à l'intégration.
 
-Ordre de travail · A8, A3, A2, A10, A9, A5, A6.
+Ordre de travail · A8, A2, A10, A9, A5, A6.
 
 ## Commandes
 
@@ -11,8 +11,8 @@ Ordre de travail · A8, A3, A2, A10, A9, A5, A6.
 # Scénario (non committé ici, tenu par le coordinateur)
 #   /home/user/wt-passe/scripts/passe-v1/scenario-paquet1-a.mjs
 # AVANT (main) et APRÈS (cette copie, après npm run build)
-PAQUET1_A_POINTS=A8,A8M,A1,A4,A7 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
-PAQUET1_A_POINTS=A8,A8M,A1,A4,A7 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
+PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
+PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
 # Specs touchés
 npx tsc --noEmit
 npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/cloture-annuelle.spec.ts \
@@ -269,6 +269,54 @@ page). Les trois tests de service tombent sur le service d'avant.
 APRÈS · 90 contrôles sur 90 concordent pour A7, A4, A1, A8, A8M
 (`/tmp/claude-0/sim/p1a-apres-a7.json`).
 
+### A3 · la colonne N-1 du tableau des flux des associations, exercice précédent vide
+
+REPRODUIT sur vraie base contre `main`. Association · 2025 ouvert sans
+écriture, 2026 tenu (apport 1 000 000, produit 500 000) ; puis 2025, vide,
+clôturé et le tableau de 2026 relu.
+
+AVANT (main) · `colonne N-1 vide, aucun montant servi (ZA, ZB, ZF)` lu
+`false` (ZA N-1 0, ZB N-1 0), `aucune ligne de la colonne N-1 n'est chiffrée`
+lu `false`, `la colonne N-1 dit pourquoi elle est vide` lu `false` ; même
+chose après la clôture de 2025. 5 écarts sur 7
+(`/tmp/claude-0/sim/p1a-avant-a3.json`).
+
+CE QUE FONT LE BILAN ET LE COMPTE DE RÉSULTAT (lu sur la même base) · aux deux
+référentiels, l'exercice précédent vide est « disponible » et sa colonne N-1
+sort en zéros, sans mention · ils ne disent pas « vide » non plus. Le
+tableau des flux du SYSCOHADA aussi (ZA N-1 0, ZB N-1 0, aucun poste nommé).
+Aligner le tableau des associations sur eux ne corrigerait donc rien.
+
+DÉCISION PAR LA LOI · « chacun des postes des états financiers comporte
+l'indication du chiffre relatif au poste correspondant de l'exercice
+précédent » (SYCEBNL art. 16, 7)) · un exercice ouvert sans écriture au
+livre-journal ne tient ni positions ni flux (doctrine déjà écrite,
+`exercicePrecedentTenu`, relecture de la passe V1, qui en écarte les
+positions pour la colonne N) ; ses chiffres ne sont pas connus, et des zéros
+diraient une entité sans aucune opération. La colonne N-1 reste VIDE, et le
+motif le dit. L'exercice précédent reste « disponible » (il existe), comme au
+bilan et au compte de résultat · c'est la seule chose à y aligner.
+
+CORRECTION ·
+- `etats-financiers.communs.ts` · `motifColonneN1NonTenue` (SYCEBNL art. 16,
+  7) ; AUDCIF art. 34 pour l'autre référentiel).
+- `EtatsFinanciersService.tableauFluxTresorerie` · un exercice N-1 non tenu
+  passe ce motif à `resoudreFluxPourExercice` (la mécanique d'A7) · tous les
+  postes de la colonne N-1 vides, aucun `montantN1`, motif dans
+  `postesNonCalculablesN1`.
+- liasse des associations · une ligne d'ANOMALIES par MOTIF (postes nommés),
+  plus une par poste · la colonne N-1 entière en aurait aligné dix-neuf.
+- écran · rien de neuf · la colonne vide s'écrit « · » et le motif se dit
+  (A7).
+
+TESTS · `etats-financiers.service.spec.ts` (colonne N-1 vide et dite, colonne
+N chiffrée · tombe sur le service d'avant) ; `liasse-etafi.spec.ts` (une
+ligne par motif).
+
+APRÈS · 94 contrôles sur 94 pour A3, A7, A4, A1, A8, A8M
+(`/tmp/claude-0/sim/p1a-apres-a3.json`), et 7 sur 7 pour A3 à travers la
+clôture de 2025 (`/tmp/claude-0/sim/p1a-apres-a3b.json`).
+
 ## Reste
 
 A4, A7, A3, A2, A10, A9, A5, A6.
@@ -303,5 +351,14 @@ A4, A7, A3, A2, A10, A9, A5, A6.
 - A7 · `effectifs-seize-colonnes.spec.ts` est tombé une fois sous une suite
   chargée, puis a passé trois fois seul et deux fois avec la suite · instable,
   sans lien avec la ligne.
+- A3 · PROPOSITION pour le coordinateur · les bilans et les comptes de
+  résultat (les cinq jeux) et le tableau des flux du SYSCOHADA servent encore
+  des zéros en colonne N-1 quand l'exercice précédent est ouvert sans
+  écriture, sans le dire. Même lecture de l'art. 16, 7) (SYCEBNL) et de
+  l'art. 34 (AUDCIF) · colonne vide et motif. Pour le BILAN, le texte va plus
+  loin · le bilan de clôture N-1 EST le bilan d'ouverture de N (art. 34 ;
+  art. 16, 4)), et `comparatifDuBilan` pourrait le lire sur l'ouverture de N
+  comme sans exercice précédent (provenance `BILAN_D_OUVERTURE`). Non codé
+  (hors du point).
 - G1 (relevé MAJEUR du second tour, suivi) · seul le cas de la contre-passation
   du module est réglé ici ; le cas « ouverture nulle » du relevé reste ouvert.

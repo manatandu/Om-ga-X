@@ -387,6 +387,7 @@ describe('exports individuels · charte ETAFI, état seul en valeurs', () => {
  */
 describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur', () => {
   const MOTIF = "Le premier jour de l'exercice porte une position de bilan passée en opérations diverses (OD n° 1)";
+  const MOTIF_N1 = "L'exercice précédent est ouvert sans aucune écriture au livre-journal";
   const avecVides = (exportService: ExportService) => {
     const etats = (exportService as unknown as { etatsFinanciersService: EtatsFinanciersService }).etatsFinanciersService;
     const reel = etats.tableauFluxTresorerie.bind(etats);
@@ -396,7 +397,12 @@ describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur',
         ...tft,
         postesVides: ['ZA', 'FM', 'ZD', 'ZF', 'ZG'],
         postesNonCalculables: [{ ref: 'FM', raison: MOTIF }],
-        postesNonCalculablesN1: [{ ref: 'FM', raison: MOTIF }],
+        // Paquet 1, A3 · un même motif vide la colonne N-1 entière · une ligne.
+        postesNonCalculablesN1: [
+          { ref: 'ZA', raison: MOTIF_N1 },
+          { ref: 'FA', raison: MOTIF_N1 },
+          { ref: 'FM', raison: MOTIF_N1 },
+        ],
       };
     });
     return exportService;
@@ -417,13 +423,16 @@ describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur',
     expect(typeof ws.getCell(rangDe(ws, 'FA'), 5).value).toBe('number');
   });
 
-  it('la feuille ANOMALIES dit le motif, colonne N et colonne N-1', async () => {
+  it('la feuille ANOMALIES dit le motif, colonne N et colonne N-1, une ligne par motif', async () => {
     const { buffer } = await avecVides(fabriquerExport()).liasseCompleteExcel('t1', 'e1');
     const an = (await ouvrir(buffer)).getWorksheet('ANOMALIES')!;
     const lignes: string[][] = [];
     an.eachRow((row) => lignes.push([1, 2, 3, 4].map((c) => String(row.getCell(c).value ?? ''))));
     expect(lignes).toContainEqual(['INFO', 'FM', 'Tableau des flux de trésorerie', MOTIF]);
-    expect(lignes).toContainEqual(['INFO', 'FM', 'Tableau des flux · colonne N-1', MOTIF]);
+    // Une ligne par motif, ses postes nommés dans l'ordre du tableau.
+    expect(lignes.filter((l) => l[2] === 'Tableau des flux · colonne N-1')).toEqual([
+      ['INFO', 'ZA, FA, FM', 'Tableau des flux · colonne N-1', MOTIF_N1],
+    ]);
   });
 });
 

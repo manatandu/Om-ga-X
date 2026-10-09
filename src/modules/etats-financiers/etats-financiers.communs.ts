@@ -133,6 +133,22 @@ export function mentionExercicePrecedentVide(referentiel: 'SYSCOHADA' | 'SYCEBNL
 }
 
 /**
+ * LA COLONNE N-1 D'UN EXERCICE PRÉCÉDENT QUI NE TIENT AUCUNE ÉCRITURE (paquet
+ * 1, A3) · un exercice ouvert sans écriture au livre-journal ne tient ni
+ * positions ni flux (`exercicePrecedentTenu`). Les chiffres « relatifs au
+ * poste correspondant de l'exercice précédent » (SYCEBNL art. 16, 7) ; AUDCIF
+ * art. 34) ne sont pas connus · des zéros diraient une entité sans aucune
+ * opération. La colonne reste vide, et ce motif le dit.
+ */
+export function motifColonneN1NonTenue(referentiel: 'SYSCOHADA' | 'SYCEBNL'): string {
+  const article = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 7)' : 'AUDCIF art. 34';
+  return (
+    "L'exercice précédent est ouvert sans aucune écriture au livre-journal · il ne tient ni positions ni flux, " +
+    `et sa colonne reste vide, ce n'est pas un zéro (${article}). Importez sa balance de clôture et clôturez-le pour la servir.`
+  );
+}
+
+/**
  * LE COMPARATIF D'UN DOSSIER QUI N'A PAS SON EXERCICE N-1 · tranché par la
  * loi le 2026-10-07 (cas chiffrés de la clôture, question Q3, constats B1 et
  * N1).

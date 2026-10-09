@@ -18,6 +18,7 @@ import {
   mentionComparatifSurOuverture,
   mentionExercicePrecedentVide,
   mentionOuverturePresumeeNulle,
+  motifColonneN1NonTenue,
   motifOuverturePasseeEnOd,
   ouvertureTenue,
   trouverExerciceN1,
@@ -715,9 +716,10 @@ export class EtatsFinanciersService {
     reevaluationsCourant: VirementsParCompte = AUCUN_VIREMENT,
     // Ligne A22 · les coûts d'emprunt incorporés par le module.
     incorporationsCourant: VirementsParCompte = AUCUN_VIREMENT,
-    // PAQUET 1, A7 · une ouverture saisie en OD au premier jour, sans
-    // exercice précédent tenu ni report · ni flux ni ouverture, les postes qui
-    // lisent l'une ou l'autre restent vides, avec ce motif.
+    // Une colonne qui ne se lit pas · ouverture saisie en OD au premier jour,
+    // sans exercice précédent tenu ni report (paquet 1, A7), ou exercice ouvert
+    // sans écriture au livre-journal (A3). Les postes qui lisent l'ouverture
+    // ou les mouvements restent vides, avec ce motif.
     motifOuvertureIncertaine: string | null = null,
   ): {
     parRef: Map<string, PosteCalcule & { flux?: number; variationContrepartie?: number }>;
@@ -863,6 +865,15 @@ export class EtatsFinanciersService {
     // zéro pour un dossier à son premier exercice (même discipline que
     // partout ailleurs dans ce service). Ses propres positions d'ouverture
     // suivent la même règle (N-2, sinon l'ouverture de N-1).
+    // PAQUET 1, A3 · un exercice N-1 ouvert SANS ÉCRITURE au livre-journal ne
+    // tient ni positions ni flux · sa colonne reste vide, motif dit
+    // (`motifColonneN1NonTenue`), jamais des zéros calculés sur rien.
+    const motifN1 =
+      exerciceN1Id && !n1Tenu
+        ? motifColonneN1NonTenue('SYCEBNL')
+        : ouverturePasseeN1
+          ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYCEBNL')
+          : null;
     const resN1 = exerciceN1Id
       ? this.resoudreFluxPourExercice(
           lignesN1,
@@ -870,7 +881,7 @@ export class EtatsFinanciersService {
           virementsN1,
           reevaluationsN1,
           incorporationsN1,
-          ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYCEBNL') : null,
+          motifN1,
         )
       : null;
 

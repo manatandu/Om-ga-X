@@ -267,6 +267,17 @@ export function resultatDeLExerciceLogeAuBilan(
   return Math.abs(anterieur) > 0.005 ? `${cellule}-(${anterieur})` : cellule;
 }
 
+/** Des postes regroupés par motif, dans l'ordre du tableau · une ligne d'anomalie par motif. */
+function postesParMotif(postes: ReadonlyArray<{ ref: string; raison: string }>): Array<{ refs: string[]; raison: string }> {
+  const groupes: Array<{ refs: string[]; raison: string }> = [];
+  for (const p of postes) {
+    const groupe = groupes.find((g) => g.raison === p.raison);
+    if (groupe) groupe.refs.push(p.ref);
+    else groupes.push({ refs: [p.ref], raison: p.raison });
+  }
+  return groupes;
+}
+
 /**
  * L'anomalie « à traiter » d'un exercice clôturé qui porte encore le résultat
  * précédent non affecté (`resultatAnterieurNonVire`), et celle de la colonne
@@ -5471,12 +5482,15 @@ export class ExportService {
         'Examiner les comptes non ventilés du tableau.',
       ]);
     }
-    // Les postes laissés vides et leur motif (paquet 1, A7), comme au SYSCOHADA.
-    for (const p of tft.postesNonCalculables) {
-      anomalies.push(['INFO', p.ref, 'Tableau des flux de trésorerie', p.raison, 'Aucune action : la donnée manque, elle n’est pas approximée.']);
+    // Les postes laissés vides et leur motif (paquet 1, A3 et A7), une ligne
+    // par motif · une ouverture en OD ou un exercice précédent sans écriture
+    // vident une vingtaine de postes d'un coup, et vingt lignes identiques
+    // apprendraient à ignorer la feuille.
+    for (const g of postesParMotif(tft.postesNonCalculables)) {
+      anomalies.push(['INFO', g.refs.join(', '), 'Tableau des flux de trésorerie', g.raison, 'Aucune action : la donnée manque, elle n’est pas approximée.']);
     }
-    for (const p of tft.postesNonCalculablesN1) {
-      anomalies.push(['INFO', p.ref, 'Tableau des flux · colonne N-1', p.raison, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.']);
+    for (const g of postesParMotif(tft.postesNonCalculablesN1)) {
+      anomalies.push(['INFO', g.refs.join(', '), 'Tableau des flux · colonne N-1', g.raison, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.']);
     }
     for (const c of bilan.comptesNonRattaches) {
       anomalies.push([

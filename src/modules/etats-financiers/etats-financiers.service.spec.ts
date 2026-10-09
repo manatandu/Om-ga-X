@@ -4,7 +4,12 @@ import { EtatsFinanciersService } from './etats-financiers.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { COMPTES_SANS_TRESORERIE, CONTREPARTIES_SANS_TRESORERIE, TOUS_LES_POSTES_FLUX } from './correspondance-tft';
-import { correspond, mentionComparatifSurOuverture, mentionExercicePrecedentVide } from './etats-financiers.communs';
+import {
+  correspond,
+  mentionComparatifSurOuverture,
+  mentionExercicePrecedentVide,
+  motifColonneN1NonTenue,
+} from './etats-financiers.communs';
 import { VirementsParCompte } from '../immobilisations/virements-mise-en-service';
 
 /** Fabrique une ligne de balance telle que `EcritureService.balance()` la renvoie. */
@@ -820,6 +825,31 @@ describe('EtatsFinanciersService · tableau de flux de trésorerie', () => {
     const tftRien = await rien.tableauFluxTresorerie('t1', 'eN');
     expect(ref(tftRien, 'ZA').montant).toBe(0);
     expect(tftRien.mentionOuverture).toBe(mentionExercicePrecedentVide('SYCEBNL', false));
+  });
+
+  it('paquet 1, A3 · la colonne N-1 d’un exercice précédent ouvert sans écriture reste vide, et c’est dit', async () => {
+    // Reproduit sur vraie base · 2025 ouvert sans écriture, 2026 tenu · la
+    // colonne N-1 sortait en zéros (ZA, ZB, ZF), l'exercice disponible.
+    // Rien n'est connu de 2025 · ni positions ni flux, jamais des zéros.
+    const vide = serviceAvecExercices(
+      {
+        eN1: [],
+        eN: [
+          ligneF('52110000', ClasseCompte.CLASSE_5, 1500, 0),
+          ligneF('10110000', ClasseCompte.CLASSE_1, 0, 1000),
+          ligneF('70100000', ClasseCompte.CLASSE_7, 0, 500),
+        ],
+      },
+      DEUX_EXERCICES,
+    );
+    const tft = await vide.tableauFluxTresorerie('t1', 'eN');
+    const chiffrees = tft.lignes.filter((l: any) => 'ref' in l && l.montantN1 !== undefined);
+    expect(chiffrees).toEqual([]);
+    expect(tft.exerciceN1Disponible).toBe(true);
+    expect(tft.postesNonCalculablesN1.find((p) => p.ref === 'ZA')?.raison).toBe(motifColonneN1NonTenue('SYCEBNL'));
+    expect(motifColonneN1NonTenue('SYCEBNL')).toContain('SYCEBNL art. 16, 7)');
+    // La colonne N, elle, se chiffre · l'exercice tient ses écritures.
+    expect({ za: ref(tft, 'ZA').montant, zf: ref(tft, 'ZF').montant, vides: tft.postesVides }).toEqual({ za: 0, zf: 1500, vides: [] });
   });
 
   it('applique la formule officielle et BOUCLE : cycle complet des cotisations sur deux exercices', async () => {
