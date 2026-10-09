@@ -501,12 +501,12 @@ describe('EtatsFinanciersSyscohadaService', () => {
 
     /**
      * Anomalie n° 7 · le 130 (résultat de l'exercice PRÉCÉDENT en instance
-     * d'affectation) n'est ni dans CJ ni dans CH tant que l'assemblée n'a pas
-     * statué. Le mettre dans CJ présenterait le résultat N-1 comme résultat N
-     * sur toute balance arrêtée avant l'assemblée. Le 585 (virements de fonds)
-     * doit être soldé à la clôture, anomalie n° 4.
+     * d'affectation) est lu en CJ depuis la décision de Manasse du 2026-10-09
+     * (paquet 1, A6, « le 130 est toujours dans la rubrique résultat de
+     * l'exercice »), sa part rendue à part. Le 585 (virements de fonds) reste
+     * orphelin, à solder à la clôture, anomalie n° 4.
      */
-    it('laisse le 130 et le 585 orphelins et les signale, plutôt que de les ranger d’office', async () => {
+    it('lit le 130 en CJ et dit sa part ; laisse le 585 orphelin et le signale', async () => {
       const service = serviceAvecBalance([
         ligne('13010000', C1, 0, 800), // résultat en instance d'affectation
         ligne('58500000', C5, 200, 0), // virement de fonds non soldé
@@ -515,9 +515,10 @@ describe('EtatsFinanciersSyscohadaService', () => {
 
       const bilan = await service.bilan('t1', 'e1');
 
-      expect(bilan.comptesNonRattaches.map((c) => c.numero).sort()).toEqual(['13010000', '58500000']);
-      expect(poste(bilan, 'CJ')?.montant).toBe(0); // le 130 n'est PAS le résultat de N
-      expect(bilan.equilibre).toBe(false); // et le déséquilibre le dit
+      expect(bilan.comptesNonRattaches.map((c) => c.numero)).toEqual(['58500000']);
+      expect(poste(bilan, 'CJ')?.montant).toBe(800);
+      expect(bilan.resultatEnInstance).toBe(800);
+      expect(bilan.equilibre).toBe(false); // le 585 non soldé, nommé
     });
 
     it('prend le résultat dans le compte 13 APRÈS clôture, quand les classes de gestion sont soldées', async () => {

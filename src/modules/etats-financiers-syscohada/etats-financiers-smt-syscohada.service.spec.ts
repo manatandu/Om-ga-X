@@ -1597,18 +1597,19 @@ describe('monnaie du jeu légal · audit final F215', () => {
   });
 });
 
-describe('le 130 est un orphelin VOULU du bilan S.M.T · audit final F218', () => {
-  it('le signale comme compte non rattaché, sans l’additionner à aucun poste', async () => {
-    // Résultat N-1 en instance d'affectation, resté au 31 décembre : il doit
-    // être soldé. Le bilan ne boucle pas, et la cause est nommée.
+describe('le 130 est lu en SP2 (paquet 1, A6, décision de Manasse du 2026-10-09)', () => {
+  it('l’additionne au résultat et dit sa part · le bilan arrêté avant l’assemblée s’équilibre', async () => {
+    // Résultat N-1 viré au 130 à la réouverture, l'assemblée n'ayant pas
+    // encore statué · il est au poste résultat, sa part est rendue à part.
     const s = service({
       e1: [ligne('13010000', ClasseCompte.CLASSE_1, 0, 50_000), ligne('57110000', ClasseCompte.CLASSE_5, 50_000, 0)],
     });
     const bilan = await s.bilan('t1', 'e1');
-    expect(bilan.comptesNonRattaches.map((c) => c.numero)).toEqual(['13010000']);
+    expect(bilan.comptesNonRattaches).toEqual([]);
     expect(poste(bilan, 'SA4').montant).toBe(50_000);
-    expect(poste(bilan, 'SP2').montant).toBe(0);
-    expect(bilan.equilibre).toBe(false);
+    expect(poste(bilan, 'SP2').montant).toBe(50_000);
+    expect(bilan.resultatEnInstance).toBe(50_000);
+    expect(bilan.equilibre).toBe(true);
   });
 });
 

@@ -85,8 +85,8 @@ import { COMPTES_RESULTAT_DE_L_EXERCICE } from '../etats-financiers/resultat-de-
  * même mécanique que `calculerCH` du SYCEBNL, avec
  * `controle.resultatClasses678` / `resultatCompte13`) · voir
  * `COMPTES_RESULTAT_SYSCOHADA` et `REF_RESULTAT_SYSCOHADA`. Le 130 (résultat
- * de l'exercice PRÉCÉDENT en instance d'affectation) n'en fait PAS partie :
- * anomalie n° 7.
+ * de l'exercice PRÉCÉDENT en instance d'affectation) en fait partie depuis la
+ * décision de Manasse du 2026-10-09 : anomalie n° 7.
  *
  * ## ANOMALIES du texte officiel, rencontrées et tranchées ici
  *
@@ -231,11 +231,14 @@ import { COMPTES_RESULTAT_DE_L_EXERCICE } from '../etats-financiers/resultat-de-
  *    l'exercice » présenterait le résultat N-1 comme résultat N sur toute
  *    balance arrêtée avant l'assemblée (bilan intermédiaire). [Depuis la
  *    passe V1 (B1), le résultat précédent resté au 131 ou au 139 est lu en
- *    CJ avec les classes 6/7/8 · le 130, que le ch. 7 ne nomme pas, reste
- *    hors de CJ, point remonté.] Il n'a AUCUN poste au ch. 7 (ni CJ, ni CH
- *    tant que l'assemblée n'a pas statué) : laissé ORPHELIN, dans
- *    `COMPTES_BILAN_SANS_POSTE_JUSTIFIES`, donc remonté en
- *    `comptesNonRattaches` dès qu'il porte un solde. Au 31-12 il doit être
+ *    CJ avec les classes 6/7/8.] Le ch. 7 ne le nomme pas, et deux
+ *    lectures tenaient · TRANCHÉ PAR MANASSE le 2026-10-09 (paquet 1, A6) ·
+ *    « le 130 est toujours dans la rubrique résultat de l'exercice ». Il est
+ *    lu en CJ (`COMPTES_RESULTAT_SYSCOHADA`), comme le résultat précédent
+ *    resté au 131 ou au 139, et le bilan rend sa part à part
+ *    (`resultatEnInstance`) · un bilan arrêté avant l'assemblée s'équilibre
+ *    et dit ce que CJ contient. L'affectation le solde
+ *    (`affectation/resultat-en-instance.ts`). Au 31-12 il doit être
  *    soldé (COMPTE 13 : « en fin d'exercice, le résultat de l'exercice
  *    précédent non affecté… est viré au compte de report à nouveau »), un
  *    résidu à la clôture est donc une erreur d'inventaire, listée dans
@@ -589,7 +592,11 @@ export const REF_TRESORERIE_PASSIF_SYSCOHADA = 'DR';
  */
 export const REF_RESULTAT_SYSCOHADA = 'CJ';
 export const LIBELLE_RESULTAT_SYSCOHADA = "Résultat net de l'exercice (bénéfice + ou perte -)";
-export const COMPTES_RESULTAT_SYSCOHADA: string[] = [...COMPTES_RESULTAT_DE_L_EXERCICE];
+// LE 130 EST LU EN CJ (paquet 1, A6, décision de Manasse du 2026-10-09 · « le
+// 130 est toujours dans la rubrique résultat de l'exercice ») · voir
+// l'anomalie n° 7. Au BILAN seulement · impôt et affectation ne lisent que
+// le 131 à 139 (`estCompteDuResultatDeLExercice`).
+export const COMPTES_RESULTAT_SYSCOHADA: string[] = [...COMPTES_RESULTAT_DE_L_EXERCICE, '130'];
 
 /**
  * Comptes de bilan (classes 1 à 5) du plan semé qu'AUCUN poste ne capte,
@@ -601,7 +608,6 @@ export const COMPTES_RESULTAT_SYSCOHADA: string[] = [...COMPTES_RESULTAT_DE_L_EX
  * remontent en `comptesNonRattaches` dès qu'ils portent un solde.
  */
 export const COMPTES_BILAN_SANS_POSTE_JUSTIFIES: { prefixe: string; anomalie: number; motif: string }[] = [
-  { prefixe: '130', anomalie: 7, motif: 'Résultat de l’exercice précédent en instance d’affectation (Titre VII COMPTE 13) : ni CJ (résultat N) ni CH tant que l’assemblée n’a pas statué ; à solder avant la clôture' },
   { prefixe: '186', anomalie: 5, motif: 'Compte de liaison charges siège/établissements, neutralisé dans la comptabilité fusionnée (Titre VII COMPTE 18)' },
   { prefixe: '187', anomalie: 5, motif: 'Compte de liaison produits siège/établissements, neutralisé dans la comptabilité fusionnée (Titre VII COMPTE 18)' },
   { prefixe: '188', anomalie: 5, motif: 'Compte de liaison des sociétés en participation : aucun poste au ch. 7 ; le Titre VII COMPTE 18 le range avec 181 à 183 (opérations financières entre entités liées) sans lui donner de poste' },

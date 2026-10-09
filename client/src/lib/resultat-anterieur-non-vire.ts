@@ -30,3 +30,20 @@ export function phraseAvisColonneN1(avis: ResultatAnterieurNonVire): string {
     "clôture de l'exercice précédent."
   );
 }
+
+/**
+ * LE 130 AU POSTE RÉSULTAT (paquet 1, A6, décision de Manasse du 2026-10-09).
+ * Le serveur sert la part du poste au 130 (`resultatEnInstance`) · l'écran dit
+ * ce que le poste contient, sans le recalculer.
+ */
+export const TITRE_RESULTAT_EN_INSTANCE = "Résultat en instance d'affectation";
+export const AIDE_RESULTAT_EN_INSTANCE =
+  "AUDCIF, Titre VII, compte 13 · « À la réouverture des comptes de l'exercice suivant, les entités ont la possibilité " +
+  "d'utiliser un compte spécial \"Résultat en instance d'affectation\" (130) » ; « le compte 13 est donc soldé lors de la " +
+  "comptabilisation de cette affectation ». L'affectation solde le 130 ; ce qui reste non affecté en fin d'exercice est " +
+  'viré au report à nouveau.';
+
+export function phraseResultatEnInstance(part: number): string {
+  const sens = part >= 0 ? 'bénéfice' : 'perte';
+  return `Le poste résultat comprend ${montant(Math.abs(part))} (${sens}) au compte 130 · le résultat de l'exercice précédent, en attente de son affectation.`;
+}

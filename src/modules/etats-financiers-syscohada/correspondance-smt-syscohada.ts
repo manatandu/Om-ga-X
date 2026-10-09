@@ -645,16 +645,16 @@ export const POSTES_BILAN_PASSIF_SMT_SYSCOHADA: PosteBilanSmtSyscohada[] = [
  * (`resultatAuBilan`, passe V1, B1), sans double compte, et expose
  * `resultatClasses678` / `resultatCompte13`.
  *
- * 131 À 139, PLUS « TOUT LE 13 » (2026-09-27) · la règle est celle de tout
- * le logiciel (`resultat-de-l-exercice.ts`). Le 130 porte le résultat de
- * l'exercice PRÉCÉDENT en instance d'affectation : lu ici, il présentait le
- * résultat N-1 comme résultat N, là où le Système normal l'écartait déjà
- * (anomalie n° 7 de `correspondance-bilan-syscohada.ts`). Il reste sans
- * poste, et un résidu à la clôture est signalé comme compte non rattaché.
+ * 131 À 139, PLUS LE 130 (paquet 1, A6, décision de Manasse du 2026-10-09 ·
+ * « le 130 est toujours dans la rubrique résultat de l'exercice »). Le 130
+ * porte le résultat de l'exercice PRÉCÉDENT en instance d'affectation · lu en
+ * SP2 comme au Système normal (anomalie n° 7 de
+ * `correspondance-bilan-syscohada.ts`), sa part rendue à part
+ * (`resultatEnInstance`) ; impôt et affectation ne lisent que le 131 à 139.
  */
 export const REF_RESULTAT_SMT_SYSCOHADA = 'SP2';
 export const LIBELLE_RESULTAT_SMT_SYSCOHADA = 'Résultat exercice';
-export const COMPTES_RESULTAT_SMT_SYSCOHADA: string[] = [...COMPTES_RESULTAT_DE_L_EXERCICE];
+export const COMPTES_RESULTAT_SMT_SYSCOHADA: string[] = [...COMPTES_RESULTAT_DE_L_EXERCICE, '130'];
 
 export interface TotalSmtSyscohada {
   ref: string;

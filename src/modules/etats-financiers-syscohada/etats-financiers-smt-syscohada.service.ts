@@ -73,6 +73,7 @@ import {
   estTiersHorsExploitationSmt,
 } from './correspondance-smt-syscohada';
 import {
+  resultatEnInstanceAuBilan,
   partsDuResultatAuBilan,
   resultatAnterieurNonVire,
   resultatAnterieurNonVireDuComparatif,
@@ -472,6 +473,8 @@ export class EtatsFinanciersSmtSyscohadaService {
         'SP2',
         'SYSCOHADA',
       ),
+      // La part de SP2 au 130, résultat précédent en instance d'affectation (paquet 1, A6).
+      resultatEnInstance: resultatEnInstanceAuBilan(lignesN),
     };
   }
 

@@ -80,6 +80,7 @@ import {
   besoinsDuPoste,
 } from './correspondance-tft-syscohada';
 import {
+  resultatEnInstanceAuBilan,
   partsDuResultatAuBilan,
   resultatAnterieurNonVire,
   resultatAnterieurNonVireDuComparatif,
@@ -241,6 +242,8 @@ export interface BilanSyscohada {
   resultatAnterieurNonVire: ResultatAnterieurNonVire | null;
   /** La colonne N-1 qui reprend le même défaut de l'exercice précédent (paquet 1, A1). */
   resultatAnterieurNonVireN1: ResultatAnterieurNonVire | null;
+  /** La part de CJ au 130, résultat précédent en instance d'affectation (paquet 1, A6) · `null` si nulle. */
+  resultatEnInstance: number | null;
 }
 
 /**
@@ -983,6 +986,7 @@ export class EtatsFinanciersSyscohadaService {
       },
       resultatAnterieurNonVire: nonVire,
       resultatAnterieurNonVireN1: nonVireN1,
+      resultatEnInstance: resultatEnInstanceAuBilan(lignesN),
     };
   }
 

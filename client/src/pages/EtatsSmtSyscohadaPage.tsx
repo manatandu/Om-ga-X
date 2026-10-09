@@ -20,7 +20,7 @@ import type {
 import { montant } from '../lib/montants';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
-import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
+import { AvisResultatAnterieurNonVire, MentionResultatEnInstance } from '../components/ResultatAnterieurNonVire';
 
 /**
  * ÉTATS FINANCIERS DU SYSTÈME MINIMAL DE TRÉSORERIE · SYSCOHADA RÉVISÉ
@@ -455,6 +455,7 @@ export function EtatsSmtSyscohadaPage() {
           </div>
 
           <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} avisN1={bilan.resultatAnterieurNonVireN1} />
+          <MentionResultatEnInstance part={bilan.resultatEnInstance} />
 
           {/* JAMAIS MASQUÉS · un compte de bilan qu'aucun poste ne capte est
               exactement ce qui explique un déséquilibre. Le rattacher d'office

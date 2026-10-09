@@ -177,7 +177,8 @@ describe('correspondance bilan SYSCOHADA (AUDCIF Titre IX ch. 3 et ch. 7)', () =
     // elle masquerait un compte qu'un poste capte déjà, ou un compte disparu).
     const justificationsInutiles = justifies.filter((j) => !orphelins.some((n) => n.startsWith(j)));
     expect(justificationsInutiles).toEqual([]);
-    expect(justifies.sort()).toEqual(['130', '186', '187', '188', '585', '588']);
+    // Le 130 n'y est plus · lu en CJ (paquet 1, A6, décision de Manasse du 2026-10-09).
+    expect(justifies.sort()).toEqual(['186', '187', '188', '585', '588']);
   });
 
   it('les comptes « à solder à la clôture » existent au plan, et chacun est soit capté par un poste (104 → CA) soit orphelin justifié', () => {
@@ -315,14 +316,14 @@ describe('correspondance bilan SYSCOHADA (AUDCIF Titre IX ch. 3 et ch. 7)', () =
     expect(trouvePostePassifSyscohada('CB')!.comptes).toEqual(['109']);
     expect(trouvePostePassifSyscohada('CH')!.comptes).toEqual(['12']);
     // Le 13 n'est réclamé par AUCUN poste de passif (anomalie n° 7) : 131 à
-    // 139 n'appartiennent qu'à CJ ; 130 (résultat N-1 en instance
-    // d'affectation) n'est NI dans CJ ni ailleurs, il est orphelin justifié.
+    // 139 et le 130 (résultat N-1 en instance d'affectation, décision de
+    // Manasse du 2026-10-09, paquet 1, A6) n'appartiennent qu'à CJ.
     for (const c of COMPTES_BILAN_SEMIS.filter((c) => c.numero.startsWith('13'))) {
       expect(POSTES_PASSIF_SYSCOHADA.some((p) => correspond(c.numero, p.comptes, p.exclusions))).toBe(false);
-      expect({ numero: c.numero, cj: correspond(c.numero, COMPTES_RESULTAT_SYSCOHADA) }).toEqual({ numero: c.numero, cj: !c.numero.startsWith('130') });
+      expect({ numero: c.numero, cj: correspond(c.numero, COMPTES_RESULTAT_SYSCOHADA) }).toEqual({ numero: c.numero, cj: true });
     }
-    expect(COMPTES_RESULTAT_SYSCOHADA).toEqual(['131', '132', '133', '134', '135', '136', '137', '138', '139']);
-    expect(COMPTES_BILAN_SANS_POSTE_JUSTIFIES.find((j) => j.prefixe === '130')?.anomalie).toBe(7);
+    expect(COMPTES_RESULTAT_SYSCOHADA).toEqual(['131', '132', '133', '134', '135', '136', '137', '138', '139', '130']);
+    expect(COMPTES_BILAN_SANS_POSTE_JUSTIFIES.find((j) => j.prefixe === '130')).toBeUndefined();
   });
 
   it('chaque poste de l’actif a des comptes d’amortissement sauf BU (écart de conversion) · ch. 7, colonne vide', () => {

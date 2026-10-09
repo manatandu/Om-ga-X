@@ -23,7 +23,7 @@ import { montant } from '../lib/montants';
 import { STYLE_CONTROLE_FLUX, issueDuControleDesFlux, motifDuControleNonEffectue } from '../lib/controle-flux';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
-import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
+import { AvisResultatAnterieurNonVire, MentionResultatEnInstance } from '../components/ResultatAnterieurNonVire';
 
 /**
  * ÉTATS FINANCIERS DU SYSCOHADA RÉVISÉ · Système normal.
@@ -590,6 +590,7 @@ function EtatsSyscohadaSystemeNormal() {
               </div>
 
               <AvisResultatAnterieurNonVire avis={bilan.resultatAnterieurNonVire} avisN1={bilan.resultatAnterieurNonVireN1} />
+              <MentionResultatEnInstance part={bilan.resultatEnInstance} />
 
               {bilan.comptesASolderALaCloture.length > 0 && (
                 <div className="border border-warning/30 bg-warning-soft mt-2 px-3.5 py-2.5">

@@ -1,9 +1,12 @@
 import { Aide } from './chrome/Aide';
 import {
+  AIDE_RESULTAT_EN_INSTANCE,
   TITRE_AVIS_COLONNE_N1,
   TITRE_AVIS_EXERCICE,
+  TITRE_RESULTAT_EN_INSTANCE,
   phraseAvisColonneN1,
   phraseAvisExercice,
+  phraseResultatEnInstance,
 } from '../lib/resultat-anterieur-non-vire';
 import type { ResultatAnterieurNonVire } from '../lib/types';
 
@@ -52,5 +55,20 @@ export function AvisResultatAnterieurNonVire({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * LE 130 AU POSTE RÉSULTAT (paquet 1, A6) · une information, pas un avis · le
+ * poste l'additionne par décision de Manasse du 2026-10-09, et la ligne dit ce
+ * que le poste contient. Le texte cité va dans la bulle.
+ */
+export function MentionResultatEnInstance({ part }: { part?: number | null }) {
+  if (part === null || part === undefined) return null;
+  return (
+    <div className="border border-border mt-2 px-3.5 py-2 text-[11.5px] flex items-center gap-1.5">
+      <span>{phraseResultatEnInstance(part)}</span>
+      <Aide titre={TITRE_RESULTAT_EN_INSTANCE} texte={AIDE_RESULTAT_EN_INSTANCE} source="Fiche du compte 13" />
+    </div>
   );
 }

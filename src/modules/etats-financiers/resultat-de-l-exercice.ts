@@ -45,6 +45,19 @@ export function estResultatEnInstanceDAffectation(numero: string): boolean {
 }
 
 /**
+ * LA PART DU POSTE RÉSULTAT QUI EST AU 130 (paquet 1, A6, décision de Manasse
+ * du 2026-10-09 · le 130 est lu en CJ et en SP2 du SYSCOHADA). Le poste
+ * l'additionne ; l'écran dit sous le poste ce que c'est · le résultat de
+ * l'exercice précédent en instance d'affectation (AUDCIF, Titre VII, compte
+ * 13). Créditeur positif (bénéfice), débiteur négatif (perte), `null` si nul.
+ */
+export function resultatEnInstanceAuBilan(lignes: readonly { numero: string; solde: number }[]): number | null {
+  const montant =
+    Math.round(-lignes.filter((l) => estResultatEnInstanceDAffectation(l.numero)).reduce((s, l) => s + l.solde, 0) * 100) / 100;
+  return Math.abs(montant) < 0.005 ? null : montant;
+}
+
+/**
  * LE RÉSULTAT AU BILAN · LE COMPTE 13 ET LES CLASSES 6 À 8, ADDITIONNÉS
  * (passe V1, constat B1, 2026-10-08, tranché par le texte).
  *

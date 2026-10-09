@@ -3537,6 +3537,8 @@ export interface BilanSyscohada {
     resultatAnterieurNonAffecte?: number;
   };
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La part du poste résultat au 130, résultat précédent en instance d'affectation (paquet 1, A6) · `null` si nulle. */
+  resultatEnInstance?: number | null;
   /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
   resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
@@ -3721,6 +3723,8 @@ export interface BilanSmtSyscohada {
     resultatAnterieurNonAffecte?: number;
   };
   resultatAnterieurNonVire?: ResultatAnterieurNonVire | null;
+  /** La part du poste résultat au 130, résultat précédent en instance d'affectation (paquet 1, A6) · `null` si nulle. */
+  resultatEnInstance?: number | null;
   /** La colonne N-1 qui reprend le même défaut de l'exercice précédent, servie par le serveur (paquet 1, A1). */
   resultatAnterieurNonVireN1?: ResultatAnterieurNonVire | null;
 }
