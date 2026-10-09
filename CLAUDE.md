@@ -193,7 +193,9 @@ pilote, en trois lignes, chacun reproduit sur vraie base avant d'être corrigé
 et rejoué après (`docs/plan-version-1.md`, § 7) ; puis la ligne
 TIERS-PANOPLIE (décision de Manasse du 2026-10-09, « Lève le gel pour la
 fonction de chaque tiers et numéro personnalisée, et corrige », même plan,
-§ 8). Rien d'autre n'entre.
+§ 8) ; puis, le même jour, les COMPTES PERSONNALISÉS et le VIREMENT DE FONDS,
+fonctions nouvelles que Manasse a demandées expressément (§ 6), une demande
+expresse valant levée du gel pour elle seule. Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
 qu'un autre ait réussi. Un push sur `main` en déclenche plusieurs à la fois,
@@ -3117,6 +3119,32 @@ l'art. 154, et c'est DIT. L'imputation se déclare AU FOURNISSEUR « lorsqu'il p
 (relecture du 2026-10-07, M6) · l'ordre de virement l'IMPRIME (factures et parts,
 `LigneOrdreVirement.imputationDeclaree`), sinon la référence de la pièce qui la lui a
 notifiée est exigée (`pieceImputation`, recopiée à la référence de la pièce).
+
+**Virement de fonds (2026-10-09, demande de Manasse).** Traitement > Tiers et
+trésorerie (`virements-fonds/`) · banque ou caisse vers une autre, chacune dans
+SON journal. LE COMPTE DE PASSAGE EST LE 585, JAMAIS LE 581 que la demande
+citait · au SYSCOHADA le 581 est la régie d'avance (AUDCIF Titre VII, compte
+58), le SYCEBNL n'ouvre que 585 et 588 (Partie 2 ch. 3, compte 58), tous deux
+« soldés au terme de leur utilisation ». QUATRE SOUS-COMPTES, un par sens
+(`COMPTES_DE_PASSAGE`, 58500001 banque vers banque à 58500004 caisse vers
+caisse), personnalisés, nés avec le dossier (`seedPlan`), migrés pour les
+autres (`20270165000000_virements_de_fonds`), rouverts au premier virement s'il
+en manque, au premier numéro libre si le rang est pris (`assurerComptesDePassage`).
+DEUX PIÈCES NÉES ENSEMBLE (`creerPlusieursAvec`) · origine D 585 / C sa
+trésorerie, destination D sa trésorerie / C 585, même date · le 585 revient à
+zéro au virement même. La fiche `VirementFonds` retient les deux (détenteurs).
+PIÈCE JUSTIFICATIVE EXIGÉE · nature, référence, date, objet (AUDCIF art. 17,
+3° et 5°) ; PORTEUR des espèces dès qu'une caisse est en jeu, exigence
+d'OmegaX ; scan facultatif (`PieceVirementFonds`, mêmes règles que les documents
+des tiers, binaire hors du journal d'audit, restitué à part). Refus · journal
+hors trésorerie, en sommeil, sans compte, même journal ou même compte, montant
+au-delà du centime, journal dont le RIB est en devise (le change se passe à la
+main, F49). ANNULATION motivée (AUDCIF art. 20, al. 2) · au brouillard les deux
+pièces sont retirées (`deleteMany` filtré sur le statut, sinon 409), validées
+inscrites en négatif, la fiche MARQUÉE, jamais supprimée ; refus · ligne
+lettrée ou pointée, exercice clôturé. LE 585 ET LE 588 RESTENT OUVERTS À LA
+SAISIE (`estCompteDePassage`) · sans quoi les quatre sous-comptes fermaient le
+58500000 aux transferts du groupe SYCEBNL (G1).
 
 **Nouvelle immobilisation (2026-09-28, relevé par Manasse).** (1) CONTREPARTIE EN
 LISTE FERMÉE (`immobilisations/contrepartie-acquisition.ts`, fiches 21 à 24) ·
