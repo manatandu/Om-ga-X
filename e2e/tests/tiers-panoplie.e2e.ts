@@ -10,6 +10,12 @@ import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
  * sur SES comptes, la clôture les reporte compte par compte en N+1, où le
  * collectif refuse encore la saisie. Un journal de banque ne prend pas le
  * compte d'un autre.
+ *
+ * LE NUMÉRO CHOISI À LA CRÉATION (décision de Manasse du 2026-10-09,
+ * « Choisi à la création ») · OmegaX propose le premier numéro libre, le
+ * client naît sous le numéro que le cabinet a choisi, sa panoplie au même
+ * rang, et c'est ce numéro qui traverse la clôture. Pris, il est refusé ; à
+ * l'écran, la fenêtre de création le propose et le garde modifiable.
  */
 interface Exercice { id: string; dateDebut: string; dateFin: string }
 interface Compte { id: string; numero: string; typeCompte: string }
@@ -28,12 +34,38 @@ test('SYSCOHADA · un client et sa panoplie traversent la clôture, le collectif
   await seConnecter(page, dossier.email);
   const [exercice] = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).filter((e) => e.id === dossier.exerciceId);
 
-  const tiers = await appelApi<{ id: string; panoplie: Panoplie }>(page, 'POST', '/tiers', { type: 'CLIENT', code: 'ACME', nom: 'Acme' });
+  // Le numéro proposé est le premier libre sous le 4111, à la longueur du dossier.
+  expect(await appelApi(page, 'GET', '/tiers/numero-propose?type=CLIENT')).toEqual({
+    numero: '41110001',
+    collectif: '41110000',
+    longueur: 8,
+    motif: null,
+  });
+  const tiers = await appelApi<{ id: string; panoplie: Panoplie }>(page, 'POST', '/tiers', {
+    type: 'CLIENT',
+    code: 'ACME',
+    nom: 'Acme',
+    numeroCompte: '41110250',
+  });
   const numero = Object.fromEntries(tiers.panoplie.crees.map((c) => [c.role, c.numero]));
   expect(Object.keys(numero)).toEqual(['PRINCIPAL', 'A_ETABLIR', 'AVANCES_RECUES', 'LITIGIEUSES', 'DOUTEUSES']);
-  expect([numero.PRINCIPAL.slice(0, 4), numero.A_ETABLIR.slice(0, 4), numero.AVANCES_RECUES.slice(0, 4)]).toEqual(['4111', '4181', '4191']);
-  // Même rang sous chaque collectif.
-  expect(new Set(Object.values(numero).map((n) => n.slice(4))).size).toBe(1);
+  // Le numéro choisi, et la panoplie à son rang sous chaque collectif.
+  expect(numero).toEqual({
+    PRINCIPAL: '41110250',
+    A_ETABLIR: '41810250',
+    AVANCES_RECUES: '41910250',
+    LITIGIEUSES: '41610250',
+    DOUTEUSES: '41620250',
+  });
+  // Pris, il est refusé en le disant ; hors de la racine du collectif aussi.
+  await expect(
+    appelApi(page, 'POST', '/tiers', { type: 'CLIENT', code: 'ACME2', nom: 'Acme 2', numeroCompte: '41110250' }),
+  ).rejects.toThrow(/Le compte 41110250 existe déjà dans ce dossier/);
+  await expect(
+    appelApi(page, 'POST', '/tiers', { type: 'CLIENT', code: 'ACME2', nom: 'Acme 2', numeroCompte: '40110250' }),
+  ).rejects.toThrow(/ne commence pas par 4111/);
+  // Rien n'est né des refus · la proposition reste le premier libre.
+  expect((await appelApi<{ numero: string }>(page, 'GET', '/tiers/numero-propose?type=CLIENT')).numero).toBe('41110001');
 
   const comptes = await appelApi<Compte[]>(page, 'GET', '/comptes?typeCompte=DETAIL');
   const id = (n: string) => comptes.find((c) => c.numero === n)!.id;
@@ -102,6 +134,17 @@ test('SYSCOHADA · un client et sa panoplie traversent la clôture, le collectif
   });
   await expect(appelApi(page, 'POST', '/ecritures', imputation('41910000'))).rejects.toThrow(/Compte collectif : 41910000/);
   await appelApi(page, 'POST', '/ecritures', imputation(numero.AVANCES_RECUES));
+
+  // À l'écran · la fenêtre de création propose le numéro, et le numéro saisi est celui qui s'ouvre.
+  await page.goto('/#/tiers');
+  await page.getByRole('button', { name: 'Nouveau tiers' }).click();
+  const champNumero = page.locator('#numero-compte-tiers');
+  await expect(champNumero).toHaveValue('41110001');
+  await page.getByPlaceholder('ex. CLI-0001').fill('BETA');
+  await champNumero.fill('41110251');
+  await page.locator('form').getByRole('textbox').nth(1).fill('Beta');
+  await page.getByRole('button', { name: 'Créer le tiers' }).click();
+  await expect(page.getByText(/Tiers BETA créé avec ses comptes 41110251, 41810251/)).toBeVisible();
 
   expect(pannes).toEqual([]);
 });
