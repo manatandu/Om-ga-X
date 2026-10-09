@@ -19,12 +19,19 @@ import { join } from 'node:path';
  */
 
 const service = readFileSync(join(__dirname, 'ecriture.service.ts'), 'utf8');
-const page = readFileSync(
-  join(__dirname, '..', '..', '..', 'client', 'src', 'pages', 'BalanceAgeePage.tsx'),
-  'utf8',
-);
+// L'ÉCRAN EST LA PAGE ET LA GRILLE QU'ELLE REND · depuis le paquet 1 (B4), la
+// grille vit dans son composant (`TableauBalanceAgee`, rendu par la page et
+// lu par son propre test Vitest) · relue ici avec la page, sans quoi chaque
+// propriété de l'écran passait pour perdue.
+const page = ['pages/BalanceAgeePage.tsx', 'components/TableauBalanceAgee.tsx']
+  .map((f) => readFileSync(join(__dirname, '..', '..', '..', 'client', 'src', f), 'utf8'))
+  .join('\n');
 
 describe('balance âgée · le modèle du dossier de révision', () => {
+  it('la page rend la grille du composant qu’on relit avec elle', () => {
+    expect(page).toContain('<TableauBalanceAgee donnees={donnees} />');
+  });
+
   it('ne ventile plus par tranches glissantes de trente jours', () => {
     for (const ancien of ['nonEchu', 'j1a30', 'j31a60', 'j61a90', 'plus90']) {
       expect(service).not.toContain(`${ancien}:`);
