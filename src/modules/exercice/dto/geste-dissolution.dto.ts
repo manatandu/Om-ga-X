@@ -12,4 +12,14 @@ export class GesteDissolutionDto {
   @FacultatifNonNul('retirerActesDeLaPeriode vaut true ou false · omettez le champ pour ne rien retirer.')
   @IsBoolean()
   retirerActesDeLaPeriode?: boolean;
+
+  /**
+   * Second tour de relecture du paquet 1, BLOQUANT 2 · l'accord du cabinet
+   * qu'une ouverture du premier jour, annulée par un négatif inscrit plus tard,
+   * n'a pas été ressaisie (`issueOuvertureQuiSeDeplace`, AUDCIF art. 20,
+   * al. 2 ; art. 34). Absent, le geste nomme le négatif et refuse.
+   */
+  @FacultatifNonNul('ouvertureAnnuleeNonRessaisie vaut true ou false · omettez le champ pour ne rien confirmer.')
+  @IsBoolean()
+  ouvertureAnnuleeNonRessaisie?: boolean;
 }

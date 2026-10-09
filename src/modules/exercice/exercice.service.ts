@@ -1344,7 +1344,7 @@ export class ExerciceService {
   async arreterALaDissolution(
     tenantId: string,
     exerciceId: string,
-    options: { retirerActesDeLaPeriode?: boolean; userId?: string } = {},
+    options: { retirerActesDeLaPeriode?: boolean; ouvertureAnnuleeNonRessaisie?: boolean; userId?: string } = {},
   ) {
     const dossier = await this.prisma.tenant.findUniqueOrThrow({
       where: { id: tenantId },
@@ -1408,7 +1408,11 @@ export class ExerciceService {
           // ne se déplace pas d'office · nommée, avec son issue.
           const suivant = etat.posterieurs[0];
           const passee = await ouvertureDejaPassee(tx, tenantId, suivant);
-          if (passee.ecritures.length > 0) {
+          // Second tour, BLOQUANT 2 · une ouverture inscrite en négatif ne
+          // retient plus le geste (`issueOuvertureQuiSeDeplace`).
+          const issueOuverture = issueOuvertureQuiSeDeplace(passee, options.ouvertureAnnuleeNonRessaisie === true);
+          if (issueOuverture === 'A_CONFIRMER') throw new BadRequestException(refusOuvertureAnnuleeHorsDuPremierJour(passee, suivant.dateDebut));
+          if (issueOuverture === 'REFUS') {
             throw new BadRequestException(
               `L'exercice du ${jourFr(suivant.dateDebut)} au ${jourFr(suivant.dateFin)} devient l'exercice de liquidation, ` +
                 `et son ouverture passée au ${jourFr(suivant.dateDebut)} (${piecesLisibles(passee.ecritures)}) ne serait plus ` +
@@ -1459,7 +1463,7 @@ export class ExerciceService {
   async annulerArretDissolution(
     tenantId: string,
     exerciceId: string,
-    options: { retirerActesDeLaPeriode?: boolean; userId?: string } = {},
+    options: { retirerActesDeLaPeriode?: boolean; ouvertureAnnuleeNonRessaisie?: boolean; userId?: string } = {},
   ) {
     const exercice = await this.trouverExercice(tenantId, exerciceId);
     const { dateDissolution: dissolution } = await this.prisma.tenant.findUniqueOrThrow({
@@ -1524,7 +1528,10 @@ export class ExerciceService {
           );
         }
         const passee = await ouvertureDejaPassee(tx, tenantId, liquidation);
-        if (passee.ecritures.length > 0) {
+        // Second tour, BLOQUANT 2 · même issue que l'arrêt.
+        const issueOuverture = issueOuvertureQuiSeDeplace(passee, options.ouvertureAnnuleeNonRessaisie === true);
+        if (issueOuverture === 'A_CONFIRMER') throw new BadRequestException(refusOuvertureAnnuleeHorsDuPremierJour(passee, liquidation.dateDebut));
+        if (issueOuverture === 'REFUS') {
           throw new BadRequestException(
             `L'ouverture passée au ${jourFr(liquidation.dateDebut)} dans l'exercice de liquidation (${piecesLisibles(passee.ecritures)}) ` +
               'tomberait au milieu de l’exercice rendu · au brouillard, supprimez-la ; validée, inscrivez-la en négatif ' +
@@ -1578,7 +1585,7 @@ export class ExerciceService {
   async rattacherALaLiquidation(
     tenantId: string,
     exerciceId: string,
-    options: { retirerActesDeLaPeriode?: boolean; userId?: string } = {},
+    options: { retirerActesDeLaPeriode?: boolean; ouvertureAnnuleeNonRessaisie?: boolean; userId?: string } = {},
   ) {
     const exercice = await this.trouverExercice(tenantId, exerciceId);
     const dossier = await this.prisma.tenant.findUniqueOrThrow({
@@ -1624,7 +1631,10 @@ export class ExerciceService {
         // fait de l'exercice suivant l'exercice de liquidation · au nouveau
         // premier jour, elle ne serait plus celle de son premier jour (AU2).
         const passee = await ouvertureDejaPassee(tx, tenantId, exercice);
-        if (passee.ecritures.length > 0) {
+        // Second tour, BLOQUANT 2 · même issue que l'arrêt.
+        const issueOuverture = issueOuvertureQuiSeDeplace(passee, options.ouvertureAnnuleeNonRessaisie === true);
+        if (issueOuverture === 'A_CONFIRMER') throw new BadRequestException(refusOuvertureAnnuleeHorsDuPremierJour(passee, exercice.dateDebut));
+        if (issueOuverture === 'REFUS') {
           throw new BadRequestException(
             `L'ouverture passée au ${jourFr(exercice.dateDebut)} (${piecesLisibles(passee.ecritures)}) ne serait plus celle du ` +
               `premier jour de l'exercice de liquidation, le ${jourFr(lendemain)} · au brouillard, supprimez-la ; validée, ` +
@@ -3481,6 +3491,44 @@ async function ouvertureDejaPassee(tx: Prisma.TransactionClient, tenantId: strin
   const gardees = lues.filter((e) => !horsOuverture.has(e.id) || retenues.has(e.id));
   const ecritures = gardees.map(({ id, numeroPiece, statut, journal }) => ({ id, numeroPiece, statut, journal }));
   return { ecritures, lignes, negatifsTardifs: negatifsTardifs(gardees, exercice.dateDebut) };
+}
+
+/** Le marqueur du refus que l'écran relance avec l'accord du cabinet (second tour, BLOQUANT 2, `issueOuvertureQuiSeDeplace`). */
+export const ACCORD_OUVERTURE_NON_RESSAISIE = 'en confirmant que l’ouverture annulée n’est pas ressaisie';
+
+/**
+ * SECOND TOUR DE RELECTURE DU PAQUET 1, BLOQUANT 2 · UNE OUVERTURE INSCRITE
+ * EN NÉGATIF NE RETIENT PLUS LE GESTE QUI DÉPLACE LE PREMIER JOUR (arrêt à la
+ * dissolution, son annulation, rattachement à la liquidation). Les trois
+ * refusaient dès qu'une écriture restait au périmètre, en conseillant
+ * « validée, inscrivez-la en négatif (AUDCIF art. 20, al. 2) » · le négatif
+ * entrant au périmètre (B2), le refus tenait toujours, et le dossier était
+ * enfermé par son propre conseil. Même prédicat que la clôture
+ * (`issueDeLOuverture`) · une écriture au BROUILLARD, refus inchangé (elle
+ * pourrait encore disparaître) ; une position NULLE n'est plus une ouverture
+ * (R10), déplacée au milieu de l'exercice elle ne pèse rien, le geste passe ;
+ * sinon, refus inchangé. Nulle par un négatif inscrit HORS du premier jour
+ * (BLOQUANT 1, `negatifsTardifs`) · la position exacte a pu être ressaisie ce
+ * jour-là, et le report que la clôture passera au nouveau premier jour la
+ * compterait deux fois · le geste passe sur l'accord du cabinet
+ * (`ouvertureAnnuleeNonRessaisie`, marqueur `ACCORD_OUVERTURE_NON_RESSAISIE`).
+ */
+function issueOuvertureQuiSeDeplace(passee: OuvertureDejaPassee, accordNonRessaisie: boolean): 'PASSE' | 'A_CONFIRMER' | 'REFUS' {
+  if (passee.ecritures.length === 0) return 'PASSE';
+  if (passee.ecritures.some((e) => e.statut === StatutEcriture.BROUILLARD)) return 'REFUS';
+  if (!ouvertureNulle(passee.lignes)) return 'REFUS';
+  return passee.negatifsTardifs.length > 0 && !accordNonRessaisie ? 'A_CONFIRMER' : 'PASSE';
+}
+
+/** Le refus d'une ouverture annulée hors du premier jour, et ses deux issues. */
+function refusOuvertureAnnuleeHorsDuPremierJour(passee: OuvertureDejaPassee, premierJour: Date): string {
+  return (
+    `L'ouverture passée au ${jourFr(premierJour)} (${piecesLisibles(passee.ecritures)}) se solde à zéro, mais son négatif est ` +
+    `inscrit après ce jour (${negatifsTardifsLisibles(passee.negatifsTardifs)}). Si la position exacte a été ressaisie ce jour-là, ` +
+    'elle resterait dans l’exercice, et le report que la clôture de l’exercice précédent passera au premier jour la compterait ' +
+    'deux fois (AUDCIF art. 34) · inscrivez aussi cette ressaisie en négatif (AUDCIF art. 20, al. 2). Sinon, relancez le geste ' +
+    `${ACCORD_OUVERTURE_NON_RESSAISIE}.`
+  );
 }
 
 /** « pièce OD n° 1 » · ce qui désigne les écritures déjà passées dans un message, cinq au plus. */

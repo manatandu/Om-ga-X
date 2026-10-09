@@ -141,7 +141,11 @@ export class ExerciceController {
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post(':id/arreter-a-la-dissolution')
   async arreterALaDissolution(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: GesteDissolutionDto) {
-    return this.exerciceService.arreterALaDissolution(user.tenantId, id, { retirerActesDeLaPeriode: dto.retirerActesDeLaPeriode === true, userId: user.userId });
+    return this.exerciceService.arreterALaDissolution(user.tenantId, id, {
+      retirerActesDeLaPeriode: dto.retirerActesDeLaPeriode === true,
+      ouvertureAnnuleeNonRessaisie: dto.ouvertureAnnuleeNonRessaisie === true,
+      userId: user.userId,
+    });
   }
 
   /**
@@ -152,7 +156,11 @@ export class ExerciceController {
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post(':id/annuler-arret-dissolution')
   async annulerArretDissolution(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: GesteDissolutionDto) {
-    return this.exerciceService.annulerArretDissolution(user.tenantId, id, { retirerActesDeLaPeriode: dto.retirerActesDeLaPeriode === true, userId: user.userId });
+    return this.exerciceService.annulerArretDissolution(user.tenantId, id, {
+      retirerActesDeLaPeriode: dto.retirerActesDeLaPeriode === true,
+      ouvertureAnnuleeNonRessaisie: dto.ouvertureAnnuleeNonRessaisie === true,
+      userId: user.userId,
+    });
   }
 
   /**
@@ -162,7 +170,11 @@ export class ExerciceController {
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post(':id/rattacher-a-la-liquidation')
   async rattacherALaLiquidation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: GesteDissolutionDto) {
-    return this.exerciceService.rattacherALaLiquidation(user.tenantId, id, { retirerActesDeLaPeriode: dto.retirerActesDeLaPeriode === true, userId: user.userId });
+    return this.exerciceService.rattacherALaLiquidation(user.tenantId, id, {
+      retirerActesDeLaPeriode: dto.retirerActesDeLaPeriode === true,
+      ouvertureAnnuleeNonRessaisie: dto.ouvertureAnnuleeNonRessaisie === true,
+      userId: user.userId,
+    });
   }
 
   /** La fin de l'exercice de liquidation, reportée ou avancée tant qu'il est ouvert (AUDCIF art. 7 al. 4). */

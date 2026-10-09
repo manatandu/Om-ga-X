@@ -14,9 +14,7 @@ import { DatesPortefeuilleExercice } from '../components/DatesPortefeuilleExerci
 import { classeObservation, estNonCalcule, libelleEcheance, libelleMontant, montantNonCalcule } from '../lib/jalons-planning';
 import { estSocieteCommerciale } from '../lib/mentions-dossier';
 import { ApercuOuverture, issueSansDeclaration, libellesChoix, titreDeclaration } from '../lib/ouverture-suivante';
-
-/** Le marqueur du refus que le serveur lève quand le geste peut retirer les actes de la période (`issueActeDeLaPeriode`). */
-const ACCORD_RETRAIT_ACTES = 'en acceptant de retirer les actes de la période';
+import { envoyerAvecAccords } from '../lib/accords-dissolution';
 
 const LIBELLE_GRANULARITE: Record<GranulariteCloture, string> = {
   PARTIELLE: 'Partielle',
@@ -466,9 +464,14 @@ export function ExercicePage() {
     setErreur(null);
     setInfo(null);
     try {
-      const r = await api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(
-        `/exercices/${pour}/arreter-a-la-dissolution`,
+      // L'accord des actes est donné par la confirmation ci-dessus ; un autre
+      // refus porteur d'un marqueur (ouverture annulée hors du premier jour,
+      // second tour, BLOQUANT 2) se demande sous le refus et relance.
+      const r = await envoyerAvecAccords(
+        (corps) => api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(`/exercices/${pour}/arreter-a-la-dissolution`, corps),
         actes.length ? { retirerActesDeLaPeriode: true } : {},
+        (message) => confirm(message),
+        (err) => (err instanceof ApiError ? err.message : null),
       );
       await rechargerExercices();
       await charger();
@@ -500,20 +503,17 @@ export function ExercicePage() {
     setEnvoi(true);
     setErreur(null);
     setInfo(null);
-    // LES ACTES CALCULÉS SUR LA PÉRIODE (bloquant 1) · le serveur les nomme
-    // au refus ; ceux qu'il peut retirer le disent (`ACCORD_RETRAIT_ACTES`),
-    // et le geste se relance avec l'accord du cabinet, jamais sans.
-    const envoyer = (corps: Record<string, unknown>) =>
-      api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(`/exercices/${pour}/${route}`, corps);
+    // LES ACTES CALCULÉS SUR LA PÉRIODE (bloquant 1) et L'OUVERTURE ANNULÉE
+    // HORS DU PREMIER JOUR (second tour, BLOQUANT 2) · le serveur les nomme au
+    // refus avec leur marqueur (`ACCORDS_DISSOLUTION`), et le geste se relance
+    // avec l'accord du cabinet, jamais sans.
     try {
-      let r: { actesRetires?: string[]; relevesARevoir?: string[] };
-      try {
-        r = await envoyer({});
-      } catch (err) {
-        if (!(err instanceof ApiError) || !err.message.includes(ACCORD_RETRAIT_ACTES)) throw err;
-        if (!confirm(`${err.message}\n\nRetirer ces actes et relancer ?`)) throw err;
-        r = await envoyer({ retirerActesDeLaPeriode: true });
-      }
+      const r = await envoyerAvecAccords(
+        (corps) => api.post<{ actesRetires?: string[]; relevesARevoir?: string[] }>(`/exercices/${pour}/${route}`, corps),
+        {},
+        (message) => confirm(message),
+        (err) => (err instanceof ApiError ? err.message : null),
+      );
       await rechargerExercices();
       await charger();
       const suites = [...(r.actesRetires ?? []).map((a) => `${a} · à refaire sur chaque exercice`), ...(r.relevesARevoir ?? [])];
