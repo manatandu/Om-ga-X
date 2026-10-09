@@ -1368,7 +1368,7 @@ export function ParametresDossierPage() {
                           onChange={(e) => setAssociePm(e.target.value as ReponseFaitSaisie)}
                           disabled={!estAdmin || envoi}
                           aria-label="Associé unique personne morale"
-                          title="AUSCGIE art. 201 al. 4 · la dissolution transmet le patrimoine à l’associé unique personne morale, sans liquidation"
+                          title="Tous les titres détenus par un associé unique personne morale · à la dissolution, le patrimoine lui est transmis sans liquidation (AUSCGIE art. 201 al. 4). La réponse se donne aussi hors de toute dissolution · l’observation fiscale de l’associé unique personne physique en dépend (loi n° 23/053, art. 63, al. 2, 1°)."
                           className={champSage}
                         >
                           <option value="PAS_ENCORE_DIT">Pas encore dit</option>

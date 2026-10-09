@@ -465,6 +465,37 @@ R1), jouée sur la base JETABLE, ramène la requête à 0, et le second arrêt p
 l'arrêt passe du premier coup · 11 contrôles, 11 concordances (AVANT 3 écarts,
 les trois de R1).
 
+### S7 · constat 7 (MINEUR) · le champ de l'associé unique, nommé où il est
+
+Constat EXACT · `COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE` renvoyait à
+« identité du dossier, “associé unique personne morale” », qu'aucun écran ne
+porte ; le champ vit dans Paramètres du dossier, section Immatriculation,
+« Associé unique personne morale », sous « Régime de la liquidation »
+(`ParametresDossierPage.tsx`), et son infobulle ne parlait que de la
+dissolution (AUSCGIE art. 201 al. 4). Vérifié · la ligne s'affiche pour toute
+société commerciale (`faitsDeLaForme(...).liquidation` et `associeUniquePm`,
+aucune date de dissolution), part dans le corps sans elle
+(`faitsDeLaFormeAEnvoyer`), et le serveur la reçoit sans elle
+(`TenantService`, refus seulement hors société commerciale).
+
+**Correction.** Le complément nomme le champ et dit que la réponse vaut hors
+de toute dissolution (la phrase de condition, relue par le banc, est gardée) ;
+l'infobulle dit l'art. 201 al. 4 ET que la réponse se donne aussi hors
+dissolution, l'observation fiscale de l'associé personne physique en dépendant
+(loi n° 23/053, art. 63, al. 2, 1°). **Test.**
+`client/src/pages/associe-unique-hors-dissolution.spec.ts` relit les deux
+compléments du SERVEUR et l'écran · chaque libellé cité après « section
+Immatriculation » est une `<Ligne>` de cette section, la ligne n'est soumise à
+aucune date de dissolution, le corps part sans elle (SARL et SAS), l'infobulle
+le dit · 3 tests sur 5 tombent sur les textes d'avant (éprouvé).
+
+**AVANT, `main`** (`p1c-s7-avant.json`, point S7, SASU sans dissolution) ·
+5 contrôles, 2 écarts (le complément ne nomme pas le champ, ne dit rien de la
+dissolution ; `main` sert d'ailleurs l'observation sans condition, voir S2).
+**APRÈS** (`p1c-s7-apres.json`) · 5 concordances · « non » reçu sans
+dissolution, la dissolution reste vide, la condition tombe. S2 et C4 rejoués
+après le changement de texte · 18 concordances (`p1c-s7-s2c4-apres.json`).
+
 ## Reste (au coordinateur, à l'intégration)
 
 - Committer le scénario `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-c.mjs`.
@@ -593,6 +624,9 @@ npx jest src/common/exercice-requis.spec.ts src/modules/rapprochement src/module
 PAQUET1_C_POINTS=S5 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s5-apres.json
 PAQUET1_C_POINTS=S6 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s6-avant.json
 PAQUET1_C_POINTS=S6 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s6-apres.json
+(cd client && npx vitest run src/pages/associe-unique-hors-dissolution.spec.ts)
+PAQUET1_C_POINTS=S7 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s7-avant.json
+PAQUET1_C_POINTS=S7 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s7-apres.json
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json

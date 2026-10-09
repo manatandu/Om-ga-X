@@ -155,9 +155,20 @@ export const OBSERVATIONS_PHYSIQUE_PASSE_F5 = {
 export const OBSERVATION_UNIPERSONNELLE_PASSE_F5 =
   "Société unipersonnelle à associé ou actionnaire unique personne physique : le Titre 2, art. 3 la soumet à l'impôt sur les sociétés « même unipersonnelle », quand l'art. 63, al. 2, 1° soumet cet associé personnellement à l'IRPP, par renvoi au régime des sociétés de personnes qui n'ont pas opté pour l'IS. Aucune source lue n'articule les deux textes · le calcul reste à l'IS, et le point est à faire trancher.";
 
-/** Complément servi quand la SASU est déclarée mais pas la nature de son associé (C4). */
+/**
+ * Complément servi quand la SASU est déclarée mais pas la nature de son
+ * associé (C4). LE CHAMP EST NOMMÉ OÙ IL EST (premier tour de relecture,
+ * constat 7) · « identité du dossier » ne désignait aucun écran ; le champ vit
+ * dans Paramètres du dossier, section Immatriculation, sous « Régime de la
+ * liquidation », et son infobulle ne parlait que de la dissolution · un
+ * cabinet qui ne dissout rien ne pensait pas à y répondre. La réponse vaut
+ * pourtant hors de toute dissolution (le serveur la reçoit sans date de
+ * dissolution, `TenantService`), et c'est elle qui lève la condition. Le
+ * libellé cité est celui de l'écran, relu par
+ * `client/src/pages/associe-unique-hors-dissolution.spec.ts`.
+ */
 export const COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE =
-  "La nature de l'associé unique n'est pas déclarée (identité du dossier, « associé unique personne morale ») · l'observation ne vaut que s'il est une personne physique.";
+  "La nature de l'associé unique n'est pas déclarée (Paramètres du dossier, section Immatriculation, « Associé unique personne morale », sous « Régime de la liquidation » · la réponse vaut hors de toute dissolution) · l'observation ne vaut que s'il est une personne physique.";
 
 /**
  * Complément servi quand l'unicité n'est pas déclarée (premier tour de
