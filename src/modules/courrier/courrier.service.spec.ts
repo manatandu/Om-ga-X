@@ -703,3 +703,49 @@ describe('un lot écrit pour la reprise · `ecrireEnFileSansTenter` (audit final
     expect(transport.envoyer).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe('un secret ne s’écrit pas dans la file (2026-10-09)', () => {
+  const SECRET = { ...RELANCE, sujet: 'Votre mot de passe provisoire', corps: 'Mot de passe · Xy7kPq2mZt9wRb4n' };
+  const GARDE = 'Mot de passe · [remis au seul destinataire, non conservé]';
+
+  it('le secret part par le transport, la file ne garde que le texte sans lui', async () => {
+    const memoire = baseMemoire();
+    const transport = transportFactice({ configure: true });
+    const resultat = await new CourrierService(memoire.prisma, transport).envoyerUnSecret(DOSSIER, SECRET, GARDE);
+
+    expect(resultat.statut).toBe(StatutMessage.ENVOYE);
+    expect(transport.envoyer.mock.calls[0][0].corps).toBe(SECRET.corps);
+    expect(memoire.table).toHaveLength(1);
+    expect(memoire.table[0]).toMatchObject({ corps: GARDE, statut: StatutMessage.ENVOYE });
+    expect(JSON.stringify(memoire.table)).not.toContain('Xy7kPq2mZt9wRb4n');
+  });
+
+  it('sans transport, refus et rien d’écrit · la reprise n’aurait que le texte gardé', async () => {
+    const memoire = baseMemoire();
+    await expect(
+      new CourrierService(memoire.prisma, transportFactice({ configure: false })).envoyerUnSecret(DOSSIER, SECRET, GARDE),
+    ).rejects.toThrow(/Aucune messagerie/);
+    expect(memoire.table).toHaveLength(0);
+  });
+
+  it('un envoi qui échoue refuse et n’écrit rien', async () => {
+    const memoire = baseMemoire();
+    const envoyer = jest.fn(async () => {
+      throw new Error('connexion refusée');
+    });
+    await expect(
+      new CourrierService(memoire.prisma, transportFactice({ configure: true, envoyer })).envoyerUnSecret(DOSSIER, SECRET, GARDE),
+    ).rejects.toThrow(/pas parti/);
+    expect(memoire.table).toHaveLength(0);
+  });
+
+  it('un texte gardé qui reprend le message entier est refusé', async () => {
+    const memoire = baseMemoire();
+    await expect(
+      new CourrierService(memoire.prisma, transportFactice({ configure: true })).envoyerUnSecret(DOSSIER, SECRET, `${SECRET.corps}\n`),
+    ).rejects.toThrow(/secret serait écrit/);
+    expect(memoire.table).toHaveLength(0);
+  });
+});

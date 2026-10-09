@@ -124,7 +124,6 @@ export function PlateformePage({ adresse }: { adresse?: string } = {}) {
   // Sans cet écran on retombait sur un UPDATE SQL en production.
   const [reinitEnCours, setReinitEnCours] = useState<CabinetClient | null>(null);
   const [reinitEmail, setReinitEmail] = useState('');
-  const [reinitMotDePasse, setReinitMotDePasse] = useState('');
   const [reinitErreur, setReinitErreur] = useState<string | null>(null);
   const [reinitFait, setReinitFait] = useState<string | null>(null);
 
@@ -196,12 +195,13 @@ export function PlateformePage({ adresse }: { adresse?: string } = {}) {
     try {
       const r = await api.post<{ reinitialise: boolean; email: string }>(
         `/plateforme/cabinets/${reinitEnCours.id}/reinitialiser-admin`,
-        { email: reinitEmail, motDePasseProvisoire: reinitMotDePasse },
+        // AUCUN MOT DE PASSE (décision de Manasse du 2026-10-09) · le serveur le
+        // tire au sort et l'envoie au seul administrateur du cabinet.
+        { email: reinitEmail },
       );
       setReinitFait(r.email);
       setReinitEnCours(null);
       setReinitEmail('');
-      setReinitMotDePasse('');
     } catch (err) {
       setReinitErreur(err instanceof ApiError ? err.message : 'Réinitialisation impossible');
     }
@@ -429,7 +429,6 @@ export function PlateformePage({ adresse }: { adresse?: string } = {}) {
                     onClick={() => {
                       setReinitEnCours(c);
                       setReinitEmail('');
-                      setReinitMotDePasse('');
                       setReinitErreur(null);
                       setReinitFait(null);
                     }}
@@ -445,9 +444,8 @@ export function PlateformePage({ adresse }: { adresse?: string } = {}) {
       </div>
       {reinitFait && (
         <div className="border border-positive/30 bg-positive-soft px-3.5 py-2 text-[11.5px] mt-2 mb-2">
-          Mot de passe administrateur réinitialisé pour <strong>{reinitFait}</strong>. Remettez-le en main propre · il
-          est PROVISOIRE, les sessions ouvertes du compte sont fermées, et le logiciel lui restera fermé tant qu'il ne
-          l'aura pas remplacé.
+          Accès administrateur réinitialisé pour <strong>{reinitFait}</strong>. Un mot de passe provisoire lui est envoyé
+          par courriel · VMG ne le connaît pas.
         </div>
       )}
 
@@ -477,17 +475,6 @@ export function PlateformePage({ adresse }: { adresse?: string } = {}) {
                     autoFocus
                     className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
                   />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold text-text-dim">Mot de passe provisoire</span>
-                  <input
-                    value={reinitMotDePasse}
-                    onChange={(e) => setReinitMotDePasse(e.target.value)}
-                    minLength={10}
-                    required
-                    className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
-                  />
-                  <span className="text-[11px] text-text-dim">Dix caractères au minimum.</span>
                 </label>
                 {reinitErreur && (
                   <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-2.5 py-1.5">

@@ -1,4 +1,6 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { CourrierService } from '../courrier/courrier.service';
+import { ORIGINE_REINITIALISATION_ADMIN, avisReinitialisationAdmin, motDePasseTireAuSort } from './reinitialisation-admin';
 import { normaliserCourriel } from '../../common/courriel';
 import { SANS_DOUBLE_AUTH } from '../auth/double-authentification';
 import { DECOMPTE_REMIS_A_ZERO } from '../auth/verrouillage';
@@ -39,6 +41,7 @@ export class PlateformeService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly authService: AuthService,
     @Optional() private readonly garnissage?: GarnissageDemonstrationService,
+    @Optional() private readonly courrier?: CourrierService,
   ) {}
 
   /**
@@ -528,7 +531,7 @@ export class PlateformeService implements OnModuleInit {
    * empêche la console de devenir un passe-partout sur tous les comptes de
    * tous les cabinets.
    */
-  async reinitialiserAdmin(tenantId: string, dto: { email: string; motDePasseProvisoire: string }) {
+  async reinitialiserAdmin(tenantId: string, dto: { email: string }) {
     // LA LECTURE SORT DU CLOISONNEMENT ELLE AUSSI (audit final F45) · faite
     // dans le contexte de l'opérateur, la garde rendait « inexistant » le
     // compte d'un autre dossier, et la route de dernier recours répondait 404
@@ -543,13 +546,45 @@ export class PlateformeService implements OnModuleInit {
         "Aucun administrateur avec cette adresse dans ce dossier · l'opérateur ne réinitialise que les administrateurs.",
       );
     }
+    // LA CONSOLE NE CONNAÎT JAMAIS LE MOT DE PASSE (décision de Manasse du
+    // 2026-10-09 · « VMG ne doit pas voir les informations du client, c'est
+    // confidentiel et non discutable »). L'opérateur choisissait le mot de
+    // passe provisoire · il pouvait ouvrir le dossier du client avant lui et
+    // tout y lire. Il est désormais tiré au sort et part au SEUL courriel de
+    // l'administrateur du cabinet · ni l'écran ni la réponse ne le portent.
+    // Sans messagerie, rien n'est touché · le mot de passe n'aurait aucun
+    // chemin vers le client, et le compte serait fermé pour tous.
+    if (!this.courrier || !this.courrier.etatDuTransport().configure) {
+      throw new ConflictException(
+        "Aucune messagerie n'est configurée · le mot de passe provisoire ne part qu'au courriel de l'administrateur du " +
+          'cabinet, jamais à la console. Configurez la messagerie, puis réinitialisez.',
+      );
+    }
+    const motDePasseProvisoire = motDePasseTireAuSort();
+    // LE COURRIEL PART D'ABORD, DIRECTEMENT, et le compte n'est touché
+    // qu'ensuite · un envoi qui échoue laisse l'ancien accès intact (refus,
+    // rien changé), au lieu d'un compte fermé sur un mot de passe que personne
+    // n'a reçu. Il ne passe PAS par la file · son corps y resterait en clair,
+    // lisible par tout utilisateur du dossier client dans l'historique des
+    // courriels (`envoyerUnSecret`, qui n'y garde que le texte sans le mot de
+    // passe). Le message naît dans le dossier du CLIENT, pas de l'éditeur.
+    const { sujet, corps, corpsGarde } = avisReinitialisationAdmin(motDePasseProvisoire);
+    const envoi = await horsCloisonnement('console · mot de passe provisoire remis au seul administrateur du cabinet', () =>
+      this.courrier!.envoyerUnSecret(
+        tenantId,
+        { destinataire: admin.email, sujet, corps, origine: ORIGINE_REINITIALISATION_ADMIN, origineId: admin.id },
+        corpsGarde,
+      ),
+    );
     // SORTIE DE CLOISONNEMENT · le compte visé relève du dossier CLIENT, pas
-    // de celui de l'opérateur dont la session porte le contexte.
+    // de celui de l'opérateur dont la session porte le contexte. Un échec ici
+    // laisse l'ancien mot de passe valable · le courriel reçu ne sert à rien,
+    // et une nouvelle réinitialisation en envoie un autre.
     await horsCloisonnement('console · réinitialisation de l’administrateur d’un cabinet client', () =>
       this.prisma.user.update({
         where: { id: admin.id },
         data: {
-          motDePasse: bcrypt.hashSync(dto.motDePasseProvisoire, 12),
+          motDePasse: bcrypt.hashSync(motDePasseProvisoire, 12),
           doitChangerMotDePasse: true,
           sessionsInvalidesAvant: new Date(),
           ...DECOMPTE_REMIS_A_ZERO,
@@ -557,8 +592,8 @@ export class PlateformeService implements OnModuleInit {
         },
       }),
     );
-    this.logger.log(`Mot de passe administrateur réinitialisé · ${admin.email}`);
-    return { reinitialise: true, email: admin.email };
+    this.logger.log(`Mot de passe administrateur réinitialisé et remis par courriel · ${admin.email}`);
+    return { reinitialise: true, email: admin.email, courriel: envoi.statut };
   }
 
   /**

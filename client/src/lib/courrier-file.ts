@@ -172,6 +172,10 @@ export const LIBELLES_ORIGINE: Record<string, string> = {
   // et le fichier de licence d'une installation sur site, joint au courriel.
   FACTURE_ABONNEMENT: 'Facture d’abonnement',
   LICENCE_SUR_SITE: 'Licence sur site',
+  // La console réinitialise l'administrateur d'un cabinet · le mot de passe
+  // part directement, la file n'en garde que le texte sans lui
+  // (plateforme/reinitialisation-admin.ts).
+  REINITIALISATION_ADMIN: 'Réinitialisation de l’administrateur',
   // L'avis au titulaire quand son second facteur change (activé, retiré,
   // codes de secours renouvelés) · aucun secret dans le corps.
   DOUBLE_AUTHENTIFICATION: 'Double authentification',

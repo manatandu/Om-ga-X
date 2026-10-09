@@ -151,11 +151,10 @@ export class ReinitialiserAdminDto {
   @CourrielNormalise()
   @IsEmail()
   email!: string;
-
-  // Même exigence qu'ailleurs · l'opérateur ne pose pas un mot de passe plus
-  // faible que celui qu'on demande au titulaire.
-  @MinLength(10, { message: 'Le mot de passe doit contenir au moins 10 caractères' })
-  motDePasseProvisoire!: string;
+  // AUCUN MOT DE PASSE ICI (décision de Manasse du 2026-10-09) · il est tiré
+  // au sort par le serveur et part au seul courriel de l'administrateur du
+  // cabinet (`reinitialisation-admin.ts`). Envoyé quand même, il est refusé
+  // par la liste blanche de la validation.
 }
 
 /**

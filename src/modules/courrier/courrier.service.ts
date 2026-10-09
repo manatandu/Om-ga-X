@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma, StatutMessage } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -163,6 +169,66 @@ export class CourrierService {
   async mettreEnFile(tenantId: string, message: MessageAMettreEnFile): Promise<ResultatMiseEnFile> {
     const ligne = await this.prisma.message.create({ data: this.preparer(tenantId, message) });
     return this.tenter(tenantId, ligne);
+  }
+
+  /**
+   * UN SECRET NE S'ÉCRIT PAS DANS LA FILE (2026-10-09, décision de Manasse ·
+   * « VMG ne doit pas voir les informations du client »).
+   *
+   * Le corps d'un message reste EN CLAIR dans `messages` après l'envoi, part
+   * dans la sauvegarde de chaque nuit, et `GET /courrier/:id` le rend à tout
+   * utilisateur du dossier (voir `avis-acces.service.ts`). Un mot de passe
+   * provisoire écrit là serait lu par un collègue avant son titulaire.
+   *
+   * Le secret part donc DIRECTEMENT par le transport, et la file ne garde que
+   * `corpsGarde`, le même message où le secret est remplacé · la trace de
+   * l'envoi demeure (destinataire, sujet, date), le secret non. Pas de
+   * transport, ou un envoi qui échoue · REFUS, rien d'écrit · l'appelant n'a
+   * encore rien changé et rien ne sera rejoué plus tard par la reprise, qui
+   * n'aurait que le corps gardé à envoyer.
+   */
+  async envoyerUnSecret(
+    tenantId: string,
+    message: MessageAMettreEnFile,
+    corpsGarde: string,
+  ): Promise<ResultatMiseEnFile> {
+    if (!this.transport.etat().configure) {
+      throw new ConflictException(
+        "Aucune messagerie n'est configurée · un mot de passe ne s'envoie que directement, jamais mis en file.",
+      );
+    }
+    if (corpsGarde.includes(message.corps)) {
+      // Le corps gardé doit être une AUTRE version du message · s'il le
+      // contient entier, le secret serait écrit quand même.
+      throw new BadRequestException('Le corps gardé reprend le message entier · le secret serait écrit dans la file.');
+    }
+    const donnees = this.preparer(tenantId, { ...message, corps: corpsGarde, pieceJointe: null });
+    try {
+      await this.transport.envoyer({
+        destinataire: donnees.destinataire,
+        destinataireNom: donnees.destinataireNom ?? null,
+        sujet: donnees.sujet,
+        corps: message.corps,
+        pieceJointe: null,
+      });
+    } catch (erreur) {
+      throw new ServiceUnavailableException(
+        `Le courriel n'est pas parti · ${texteDErreur(erreur)}. Rien n'a été changé, recommencez.`,
+      );
+    }
+    const maintenant = new Date();
+    const ligne = await this.prisma.message.create({
+      data: {
+        ...donnees,
+        statut: StatutMessage.ENVOYE,
+        tentatives: 1,
+        dernierEssaiAt: maintenant,
+        envoyeAt: maintenant,
+        prochainEssaiAt: null,
+        erreur: null,
+      },
+    });
+    return { id: ligne.id, statut: StatutMessage.ENVOYE, erreur: null };
   }
 
   /**
