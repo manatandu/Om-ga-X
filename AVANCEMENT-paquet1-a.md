@@ -11,8 +11,8 @@ Ordre de travail · A8, A1, A9, A5, A6.
 # Scénario (non committé ici, tenu par le coordinateur)
 #   /home/user/wt-passe/scripts/passe-v1/scenario-paquet1-a.mjs
 # AVANT (main) et APRÈS (cette copie, après npm run build)
-PAQUET1_A_COPIE=/home/user/Comptaflow PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
-PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
+PAQUET1_A_COPIE=/home/user/Comptaflow PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
+PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
 # Specs touchés
 npx tsc --noEmit
 npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/cloture-annuelle.spec.ts \
@@ -446,9 +446,91 @@ travers la clôture de 2026 · 2026 relu clos, XC = CC = 120 000, écart 0 ;
 (le 13 porte encore le solde de 2026, que CC lit et XC non) ; affectation
 validée, XC = CC = 0.
 
+### A5 · les intérêts courus sur emprunts au tableau des flux SYSCOHADA · pas de défaut
+
+NON REPRODUIT comme défaut · le comportement de `main` est celui que le texte
+prescrit, rien n'est corrigé. Scénario sur vraie base (SARL, 2026 puis 2027
+à travers la clôture) · apport 2 000 000, emprunt 1 000 000 au 162, vente
+500 000, intérêts courus 50 000 au 31/12 (D 6712 / C 1662) ; 2027,
+contre-passation au 01/01 (D 1662 / C 6712), intérêts payés 50 000,
+principal remboursé 200 000. 13 contrôles sur 13 concordants AVANT et APRÈS
+(`/tmp/claude-0/sim/p1a-a5-avant.json`, `p1a-a5-apres.json`) · 2026 FA
+450 000, FE +50 000, FO 1 000 000, ZB 500 000, ZH 3 500 000, DA au bilan
+1 050 000 ; 2027 FA 0, FE −50 000, FQ −200 000, ZA 3 500 000, ZH 3 250 000,
+FE N-1 50 000.
+
+DÉCISION PAR LA LOI · AUDCIF Titre IX ch. 5 § 1.2.1.3, passage de la CAFG au
+flux opérationnel · « + Variation du passif circulant ET DES INTÉRÊTS DES
+EMPRUNTS ET DETTES FINANCIÈRES COURUS (exercices N–N-1) (b) et (1) » (et,
+à l'actif, « des intérêts courus des immobilisations financières » avec les
+créances). Le ch. 7 range bien le 166 en DA (« 16, 181, 182, 183, 184 »),
+mais c'est le ch. 5 qui dit où va sa VARIATION au tableau des flux · en FE,
+hors de FO à FQ, cohérent avec la CAFG qui porte déjà la charge 671 courus
+compris. `correspondance-tft-syscohada.ts` l'écrit déjà (anomalie n° 4,
+FE · « intérêts des emprunts et dettes financières courus », FP et FQ les
+excluent) ; la matrice du praticien qui les met en financement est une
+source secondaire que le fichier écarte nommément. Le skill `syscohada`
+(Partie 3 ch. 1, « Variation des comptes 16 (hors intérêts courus) et 18 »
+pour les capitaux étrangers) dit la même chose.
+
+### A6 · le 130 « Résultat en instance d'affectation » · le corpus ne tranche pas, point pour Manasse
+
+CONSTATÉ sur vraie base contre `main` (SARL) · 2026 (apport 1 000 000,
+vente 300 000) clôturé ; le 02/01/2027 le cabinet reclasse le résultat de
+2026 au 1301 (D 131 / C 1301, 300 000), comme la fiche du compte 13 le lui
+permet. Bilan de 2027 avant l'affectation · actif 1 300 000, passif
+1 000 000, CJ 0, déséquilibré de 300 000, « 13010000 −300 000 » parmi les
+comptes non rattachés (`/tmp/claude-0/sim/p1a-a6-avant.json`). La clôture de
+2027 passe et VIRE le 1301 au report à nouveau (bilan clos équilibré, CH
+300 000 ; à-nouveau de 2028 · 12 créditeur de 300 000, 1301 à zéro) ·
+l'exercice clos est conforme à la fiche (« en fin d'exercice […] viré au
+compte de report à nouveau »). Seul un bilan INTERMÉDIAIRE (avant
+l'assemblée ou la clôture) reste déséquilibré du montant du 130. Rien n'est
+corrigé.
+
+LU · AUDCIF Titre VII, fiche du compte 13 · subdivisions « 130 Résultat en
+instance d'affectation (1301 Bénéfice, 1309 Perte) », « 131 Résultat net :
+Bénéfice » à « 139 Résultat net : Perte » ; « À la réouverture des comptes
+de l'exercice suivant, les entités ont la possibilité d'utiliser un compte
+spécial "Résultat en instance d'affectation" (130) » ; « En fin d'exercice,
+le résultat de l'exercice précédent non affecté à un compte de réserves et
+non distribué est viré au compte de report à nouveau ». Fiche du compte 11 ·
+crédité « par le débit du 131 (Résultat net : Bénéfice) ou du 1301 ».
+AUDCIF Titre VIII ch. 19 (attribution gratuite d'actions) et Guide
+d'application SYSCOHADA, Partie 2 ch. 16, Application 65 · l'affectation
+décidée par l'assemblée débite le 1301.
+Titre IX ch. 3 (modèle) · CJ « Résultat net de l'exercice (bénéfice + ou
+perte -) » ; ch. 7 · CJ « 13 (131 ou 139) », CH « 12 (121 ou 129) ».
+Titre VIII ch. 39 (comptes intermédiaires) · « les mêmes états de synthèse
+que ceux établis à la clôture », mêmes méthodes, rien sur le 130. Code ·
+`resultat-de-l-exercice.ts` (« 131 à 139, et jamais le 130 »),
+`correspondance-bilan-syscohada.ts` (anomalie n° 7, le 130 orphelin voulu,
+à solder à la clôture), `correspondance-smt-syscohada.ts` (SP2, même
+lecture).
+
+POURQUOI LE CORPUS NE TRANCHE PAS · deux lectures tiennent. (1) Le ch. 7
+nomme pour CJ « 13 (131 ou 139) », et le libellé est le résultat « de
+l'exercice » · le 130, résultat de l'exercice PRÉCÉDENT, n'y est pas, et
+l'exercice clos ne le porte jamais (la fiche le fait virer au 12). (2) La
+fiche fait du 130 une subdivision du 13, que le ch. 7 met en tête de la
+case ; la parenthèse « (131 ou 139) » peut se lire comme les deux sens du
+libellé (bénéfice +, perte −), à la façon de « 12 (121 ou 129) » pour CH.
+Aucun texte ne dit où se lit le 130 dans un état INTERMÉDIAIRE (ch. 39
+muet).
+
+PROPOSITION pour Manasse · garder le résultat DE L'EXERCICE sur 131 à 139
+(impôt, affectation, `estCompteDuResultatDeLExercice` inchangés, sans quoi
+le bénéfice de N-1 serait imposé deux fois), mais lire le 130 avec CJ (et
+SP2 au Système minimal) AU BILAN, comme OmegaX lit déjà un résultat
+précédent resté au 131 ou au 139 à la réouverture (passe V1, B1), avec un
+avis qui le nomme « résultat de l'exercice précédent en instance
+d'affectation » · le bilan intermédiaire s'équilibre et dit ce qu'il
+contient. Autre issue · une ligne à part, sous CJ, que le ch. 3 ne prévoit
+pas. Sans décision, l'état actuel reste (130 nommé en compte sans poste).
+
 ## Reste
 
-A5, A6.
+Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).
 
 ## Relevés (voisins, non codés)
 
@@ -503,3 +585,10 @@ A5, A6.
   branche non nulle dit déjà « pas nécessairement une erreur ». La feuille
   ANOMALIES garde son « à vérifier » sur un XC non nul, avec « ne boucle pas
   à zéro ». Non codés (hors du point, l'écran n'était pas visé).
+- A6 · après la clôture qui a viré le 1301 au 12, le bilan de l'exercice
+  clos liste encore « 13010000 » parmi les comptes non rattachés, pour un
+  montant nul (ligne mouvementée, soldée). Cosmétique, non codé.
+- A6 · OmegaX ne propose aucun geste pour passer le résultat au 130 à la
+  réouverture, et le module d'affectation lit les résultats antérieurs sur
+  le « 13 hors clôture » (130 compris) · non éprouvé ici au-delà de la
+  clôture.
