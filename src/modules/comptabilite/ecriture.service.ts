@@ -14,6 +14,7 @@ import {
   StatutEcriture,
   StatutExercice,
   TypeCompteDetailTotal,
+  TypeJournal,
 } from '@prisma/client';
 import { lignesEnNegatif } from './lignes-en-negatif';
 import { CriteresRecherche, filtreRecherche } from './recherche-ecritures';
@@ -729,73 +730,99 @@ export class EcritureService {
    * plus profonde). Seuls comptent les sous-comptes d'imputation ACTIFS · mis
    * en sommeil, ils rendent la saisie au compte du plan, sans quoi le dossier
    * qui revient sur une subdivision serait enfermé. Mêmes issues que le
-   * collectif · la modification ne juge que les comptes nouveaux, le 416
-   * qu'une créance douteuse tient reste ouvert, et la pièce qui ne porte que
-   * le compte et ses sous-comptes reporte un solde déjà porté. Le compte
-   * qu'un journal de banque ou de caisse porte reste ouvert · il est celui
-   * de ce journal, pas un compte commun.
+   * collectif · la modification n'est jugée que si elle apporte un compte
+   * nouveau, le compte qu'un module exige reste ouvert (le 416 et le 491
+   * d'une créance douteuse, le compte d'un écart d'inventaire à redresser),
+   * et la pièce qui ne porte que le compte et ses sous-comptes reporte un
+   * solde déjà porté. Le compte qu'un journal de banque ou de caisse ACTIF
+   * porte reste ouvert · il est celui de ce journal, pas un compte commun.
+   *
+   * `compteQuiSEndort` · la fusion juge son compte d'arrivée sans le compte
+   * qu'elle fond, puisqu'elle le met en sommeil · fondre le dernier
+   * sous-compte dans son compte du plan rend ce compte à la saisie.
    */
   async verifierComptesCollectifs(
     tenantId: string,
     lignes: { compteId: string }[] | undefined,
     ecritureModifieeId?: string,
+    compteQuiSEndort?: string,
   ) {
     if (!lignes || lignes.length === 0) return;
     const toutes = [...new Set(lignes.map((l) => l.compteId))];
-    let ids = toutes;
     // UNE PIÈCE QUI PORTE DÉJÀ LE COLLECTIF SE CORRIGE ENCORE · un brouillard
     // importé, ou passé avant la règle, sur le 41110000 doit pouvoir changer
-    // de date ou de libellé · seul un compte que la pièce ne portait pas est
-    // jugé à la modification.
+    // de date, de libellé ou de montant · la modification qui n'apporte aucun
+    // compte nouveau n'est pas jugée. Celle qui en apporte un est jugée
+    // ENTIÈRE (relecture du 2026-10-09) · ne juger que le compte nouveau
+    // laissait la pièce de report D 52150001 / C 52150000 devenir, au
+    // brouillard, une saisie ordinaire D 701 / C 52150000.
     if (ecritureModifieeId) {
       const portees = await this.prisma.ligneEcriture.findMany({
         where: { ecritureId: ecritureModifieeId, ecriture: { tenantId } },
         select: { compteId: true },
       });
       const deja = new Set(portees.map((l) => l.compteId));
-      ids = ids.filter((id) => !deja.has(id));
-      if (ids.length === 0) return;
+      if (toutes.every((id) => deja.has(id))) return;
     }
-    const collectifs = await this.prisma.compte.findMany({
-      where: { tenantId, id: { in: ids }, individuels: { some: {} } },
-      select: { id: true, numero: true },
-      orderBy: { numero: 'asc' },
-    });
-    const dossier = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } });
-    if (!dossier) throw new NotFoundException('Dossier introuvable');
-    const referentiel = dossier.referentiel;
+    const ids = toutes;
+    const individuelsJuges = compteQuiSEndort ? { some: { id: { not: compteQuiSEndort } } } : { some: {} };
     // Les numéros de TOUTE la pièce · le report d'un solde se reconnaît à ce
     // qu'elle ne porte que le compte et ses sous-comptes.
-    const numerosDeLaPiece = await this.prisma.compte.findMany({
-      where: { tenantId, id: { in: toutes } },
-      select: { id: true, numero: true, journauxTresorerie: { select: { id: true }, take: 1 } },
-    });
+    const [collectifs, dossier, numerosDeLaPiece] = await Promise.all([
+      this.prisma.compte.findMany({
+        where: { tenantId, id: { in: ids }, individuels: individuelsJuges },
+        select: { id: true, numero: true },
+        orderBy: { numero: 'asc' },
+      }),
+      this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } }),
+      this.prisma.compte.findMany({
+        where: { tenantId, id: { in: toutes } },
+        select: {
+          id: true,
+          numero: true,
+          // Un journal en sommeil, ou qui n'est pas de trésorerie, ne fait pas
+          // du compte celui d'une banque ou d'une caisse en activité.
+          journauxTresorerie: { where: { estActif: true, type: TypeJournal.TRESORERIE }, select: { id: true }, take: 1 },
+        },
+      }),
+    ]);
+    if (!dossier) throw new NotFoundException('Dossier introuvable');
+    const referentiel = dossier.referentiel;
     const dejaCollectifs = new Set(collectifs.map((c) => c.id));
-    const subdivises: { id: string; numero: string }[] = [];
-    const exemplesDuPlan = new Map<string, { numero: string; intitule: string }[]>();
-    for (const c of numerosDeLaPiece) {
-      if (!ids.includes(c.id) || dejaCollectifs.has(c.id)) continue;
+    const aJuger = numerosDeLaPiece.filter((c) => {
+      if (dejaCollectifs.has(c.id)) return false;
       // LE COMPTE D'UN JOURNAL DE BANQUE OU DE CAISSE RESTE OUVERT · le
       // 52110000 que le journal BQ porte depuis la création du dossier est le
       // compte de CE journal, et le journal ouvert ensuite au 52110001 n'en
       // fait pas un compte commun · le refuser fermait la saisie du journal BQ.
-      if ((c.journauxTresorerie ?? []).length > 0) continue;
-      const racine = racineDuCompteSeme(referentiel, c.numero);
-      if (racine === null) continue;
-      const siens = await this.prisma.compte.findMany({
-        where: {
-          tenantId,
-          typeCompte: TypeCompteDetailTotal.DETAIL,
-          estActif: true,
-          numero: { startsWith: racine, not: c.numero },
-          // Un numéro rangé sous un sous-compte SEMÉ (le 8311 sous le 831
-          // du SYCEBNL) relève de lui, jamais du compte jugé.
-          NOT: racinesSousLeCompteSeme(referentiel, c.numero).map((r) => ({ numero: { startsWith: r } })),
-        },
-        select: { numero: true, intitule: true },
-        orderBy: { numero: 'asc' },
-        take: 4,
-      });
+      if ((c.journauxTresorerie ?? []).length > 0) return false;
+      return racineDuCompteSeme(referentiel, c.numero) !== null;
+    });
+    // Une lecture par compte du plan de la pièce, lancées ensemble · la pièce
+    // borne leur nombre.
+    const lus = await Promise.all(
+      aJuger.map(async (c) => ({
+        c,
+        siens: await this.prisma.compte.findMany({
+          where: {
+            tenantId,
+            typeCompte: TypeCompteDetailTotal.DETAIL,
+            estActif: true,
+            numero: { startsWith: racineDuCompteSeme(referentiel, c.numero) as string, not: c.numero },
+            // Un numéro rangé sous un sous-compte SEMÉ (le 8311 sous le 831
+            // du SYCEBNL) relève de lui, jamais du compte jugé.
+            NOT: racinesSousLeCompteSeme(referentiel, c.numero).map((r) => ({ numero: { startsWith: r } })),
+            ...(compteQuiSEndort ? { id: { not: compteQuiSEndort } } : {}),
+          },
+          select: { numero: true, intitule: true },
+          orderBy: { numero: 'asc' },
+          take: 4,
+        }),
+      })),
+    );
+    const subdivises: { id: string; numero: string }[] = [];
+    const exemplesDuPlan = new Map<string, { numero: string; intitule: string }[]>();
+    for (const { c, siens } of lus) {
       if (siens.length === 0) continue;
       subdivises.push({ id: c.id, numero: c.numero });
       exemplesDuPlan.set(c.id, siens);
@@ -810,13 +837,37 @@ export class EcritureService {
     // se corrige par le résultat (M9) sur SON 416, que le module lit · la
     // refuser l'enfermait, et la reporter ailleurs ferait lire au module un
     // mouvement hors module.
-    const tenus = await this.prisma.creanceDouteuse.findMany({
-      where: { tenantId, compte416Id: { in: generiques.map((c) => c.id) }, annuleeLe: null },
-      select: { compte416Id: true },
-      distinct: ['compte416Id'],
-    });
-    const parUneCreance = new Set(tenus.map((t) => t.compte416Id));
-    generiques = generiques.filter((c) => !parUneCreance.has(c.id));
+    //
+    // MÊME RÈGLE POUR TOUT COMPTE QU'UN MODULE EXIGE (relecture du
+    // 2026-10-09) · la correction par le résultat solde « la dépréciation en
+    // place au 491 » de la créance, sur SON 491 (creances-douteuses.ts, M9),
+    // et le redressement d'un manquant d'inventaire porte une ligne sur le
+    // compte de l'écart (`rattacherEcritureRedressement`) · refusés, le geste
+    // juste ne passait qu'en endormant les sous-comptes du dossier.
+    const idsGeneriques = generiques.map((c) => c.id);
+    const [par416, par491, parEcart] = await Promise.all([
+      this.prisma.creanceDouteuse.findMany({
+        where: { tenantId, compte416Id: { in: idsGeneriques }, annuleeLe: null },
+        select: { compte416Id: true },
+        distinct: ['compte416Id'],
+      }),
+      this.prisma.creanceDouteuse.findMany({
+        where: { tenantId, compte491Id: { in: idsGeneriques }, annuleeLe: null, corrigeeParResultatLe: null },
+        select: { compte491Id: true },
+        distinct: ['compte491Id'],
+      }),
+      this.prisma.ecartInventaire.findMany({
+        where: { tenantId, compteId: { in: idsGeneriques }, ecritureId: null },
+        select: { compteId: true },
+        distinct: ['compteId'],
+      }),
+    ]);
+    const tenusParUnModule = new Set([
+      ...par416.map((t) => t.compte416Id),
+      ...par491.map((t) => t.compte491Id),
+      ...parEcart.map((t) => t.compteId),
+    ]);
+    generiques = generiques.filter((c) => !tenusParUnModule.has(c.id));
     if (generiques.length === 0) return;
     // UN SOLDE DÉJÀ PORTÉ AU COMPTE COMMUN SE REPORTE SUR SES SOUS-COMPTES ·
     // à-nouveau, balance importée ou saisie d'avant la subdivision. La pièce

@@ -36,8 +36,14 @@ test('SYSCOHADA · un journal de banque ouvre son compte, la saisie refuse le co
   const duPlan = await appelApi<Compte[]>(page, 'GET', '/journaux/comptes-du-plan');
   const numerosDuPlan = duPlan.map((c) => c.numero);
   expect(numerosDuPlan).toEqual(expect.arrayContaining(['52110000', '52150000', '52400000', '57110000']));
-  expect(numerosDuPlan.every((n) => n.startsWith('5') && n.length === 8)).toBe(true);
+  expect(numerosDuPlan.every((n) => /^5[2357]/.test(n) || /^58[12]/.test(n))).toBe(true);
+  // Jamais un compte qui ne tient pas de fonds (fiches de la classe 5).
+  for (const n of ['59000000', '58500000', '52610000', '56100000', '50220000']) expect(numerosDuPlan).not.toContain(n);
   const sous = (n: string) => duPlan.find((c) => c.numero === n)!.id;
+  const depreciation = (await appelApi<Compte[]>(page, 'GET', '/comptes?typeCompte=DETAIL')).find((c) => c.numero === '59000000')!;
+  await expect(
+    appelApi(page, 'POST', '/journaux', { code: 'BQX', intitule: 'Erreur', type: 'TRESORERIE', ouvrirCompteSousId: depreciation.id }),
+  ).rejects.toThrow(/fiche du compte 59/);
 
   const comptes = await appelApi<Compte[]>(page, 'GET', '/comptes?typeCompte=DETAIL');
   const produit = comptes.find((c) => c.numero.startsWith('701'))!;

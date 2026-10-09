@@ -805,9 +805,11 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   de compte propre (aujourd'hui, choisir un compte existant à la
   modification) ; (2) une réimputation ou une fusion VERS un compte du plan
   subdivisé est refusée par la même règle, l'issue étant la mise en sommeil
-  des sous-comptes ; (3) « Sous le compte » offre tous les comptes
-  d'imputation semés de la classe 5, comme le compte existant d'un journal
-  de trésorerie l'admet déjà (`verifierCompteTresorerie`) · titres de
-  placement, valeurs à encaisser, virements internes et dépréciations y
-  figurent. Les borner aux disponibilités exige de lire la classe 5 des DEUX
-  plans, dont les numéros divergent (relecture écran du 2026-10-09).
+  des sous-comptes, sauf la fusion qui fond le dernier sous-compte (jugée
+  sans lui). Relectures du 2026-10-09 traitées · comptes des fonds seuls
+  (52, 53, 55, 57, 581 et 582 au SYSCOHADA), comptes qu'un module exige
+  ouverts (491 d'une créance douteuse, écart d'inventaire à redresser),
+  journal en sommeil sans effet, modification jugée entière quand elle
+  apporte un compte, numéro proposé pris sous verrou. Reste en attente ·
+  (3) d'autres modules qui exigeraient un compte précis à la saisie ne sont
+  pas recensés (les deux ci-dessus sont les seuls trouvés par la relecture).

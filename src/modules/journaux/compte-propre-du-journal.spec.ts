@@ -1,8 +1,11 @@
 import { Prisma, Referentiel } from '@prisma/client';
-import { ValidationPipe } from '@nestjs/common';
+import { NotFoundException, ValidationPipe } from '@nestjs/common';
 import { JournalService } from './journal.service';
 import { CreerJournalDto } from './dto/journal.dto';
-import { motifRefusNumeroDuJournal } from './compte-propre-du-journal';
+import { motifRefusCompteDeTresorerie, motifRefusNumeroDuJournal } from './compte-propre-du-journal';
+import { PLAN_COMPTES_SYCEBNL } from '../comptes/compte-seed';
+import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
+import { comptesDImputationSemes } from '../comptes/subdivisions-du-plan';
 
 /**
  * LE COMPTE PROPRE D'UN JOURNAL DE BANQUE OU DE CAISSE, OUVERT AVEC LUI
@@ -30,6 +33,55 @@ describe('le numéro du compte propre d’un journal', () => {
     expect(motifRefusNumeroDuJournal('83110001', '83100000', '831', 8, Referentiel.SYCEBNL)).toMatch(
       /se range sous le compte 83110000 du plan, pas sous le 83100000/,
     );
+  });
+});
+
+describe('le compte d’une banque ou d’une caisse (fiches des comptes de la classe 5 des deux plans)', () => {
+  const plans = [
+    [Referentiel.SYCEBNL, PLAN_COMPTES_SYCEBNL],
+    [Referentiel.SYSCOHADA, PLAN_COMPTES_SYSCOHADA],
+  ] as const;
+
+  it.each(plans)('%s · les comptes admis tiennent des fonds, relus à leur intitulé semé', (referentiel, plan) => {
+    const intitules = new Map(plan.map((c) => [c.numero, c.intitule]));
+    const admis = comptesDImputationSemes(referentiel, '5').filter((n) => motifRefusCompteDeTresorerie(n, referentiel) === null);
+    expect(admis.length).toBeGreaterThan(8);
+    for (const n of admis) {
+      expect([n, intitules.get(n)]).toEqual([
+        n,
+        expect.stringMatching(
+          /Banque|postaux|postales|Trésor|gestion et d.intermédiation|organismes financiers|onnaie électronique|onnaies électroniques|Porte-monnaie|Caisse|En monnaie nationale|En devises|Régies|Accréditifs/,
+        ),
+      ]);
+      expect(intitules.get(n)).not.toMatch(/intérêts courus|Dépréciation|Virement/i);
+    }
+    expect(admis).toEqual(expect.arrayContaining(['52110000', '52150000', '53200000', '55200000']));
+  });
+
+  it.each(plans)('%s · titres, valeurs à encaisser, crédits, intérêts courus, virements et dépréciations sont refusés, chacun par sa fiche', (r) => {
+    expect(motifRefusCompteDeTresorerie('50220000', r)).toMatch(/titres de placement \(fiche du compte 50\)/);
+    expect(motifRefusCompteDeTresorerie('51300000', r)).toMatch(/valeurs à encaisser/);
+    expect(motifRefusCompteDeTresorerie('52610000', r)).toMatch(/intérêts courus.*fiche du compte 52/);
+    expect(motifRefusCompteDeTresorerie('56100000', r)).toMatch(/par le débit du compte 52/);
+    expect(motifRefusCompteDeTresorerie('58500000', r)).toMatch(/comptes de passage/);
+    expect(motifRefusCompteDeTresorerie('58800000', r)).toMatch(/comptes de passage/);
+    expect(motifRefusCompteDeTresorerie('59000000', r)).toMatch(/dépréciations et provisions \(fiche du compte 59\)/);
+    expect(motifRefusCompteDeTresorerie('60110000', r)).toMatch(/n'est pas un compte de banque ou de caisse/);
+  });
+
+  it('un numéro, deux sens · le 58 du SYSCOHADA ouvre les régies d’avance et les accréditifs, celui du SYCEBNL les seuls virements', () => {
+    expect(motifRefusCompteDeTresorerie('58100000', Referentiel.SYSCOHADA)).toBeNull();
+    expect(motifRefusCompteDeTresorerie('58200000', Referentiel.SYSCOHADA)).toBeNull();
+    expect(motifRefusCompteDeTresorerie('58100001', Referentiel.SYCEBNL)).toMatch(/divisions 52, 53, 55 ou 57\./);
+    expect(comptesDImputationSemes(Referentiel.SYCEBNL, '58')).toEqual(['58500000', '58800000']);
+    expect(motifRefusCompteDeTresorerie('54100000', Referentiel.SYSCOHADA)).toMatch(/instruments de trésorerie/);
+    expect(comptesDImputationSemes(Referentiel.SYCEBNL, '54')).toEqual([]);
+  });
+
+  it('les caisses des deux plans sont admises, sous-comptes du dossier compris', () => {
+    expect(motifRefusCompteDeTresorerie('57100000', Referentiel.SYCEBNL)).toBeNull();
+    expect(motifRefusCompteDeTresorerie('57110000', Referentiel.SYSCOHADA)).toBeNull();
+    expect(motifRefusCompteDeTresorerie('57110003', Referentiel.SYSCOHADA)).toBeNull();
   });
 });
 
@@ -105,6 +157,7 @@ function monde(comptes: CompteDouble[], opts: { conflitNumero?: boolean } = {}) 
     },
   };
   prisma.$transaction = (f: (tx: unknown) => unknown) => f(prisma);
+  prisma.$executeRaw = jest.fn(async () => 0);
   return { svc: new JournalService(prisma as never), crees, journaux, prisma };
 }
 
@@ -146,6 +199,37 @@ describe('ouvrir le compte propre d’un journal de trésorerie', () => {
     ]);
     expect(journaux).toEqual([expect.objectContaining({ code: 'BQ2', compteTresorerieId: 'c-52110003' })]);
     expect((prisma.compte as { create: jest.Mock }).create).toHaveBeenCalledTimes(1);
+    // Le numéro proposé se prend sous le verrou de la panoplie des tiers.
+    const verrou = (prisma.$executeRaw as jest.Mock).mock.calls[0];
+    expect(verrou[0].join('?')).toMatch(/pg_advisory_xact_lock\(hashtext\(\?\)\)/);
+    expect(verrou[1]).toBe('panoplie:t1');
+  });
+
+  it('le numéro proposé est relu sous le verrou · un numéro pris entre-temps cède au suivant', async () => {
+    const comptes = [...BANQUES];
+    const { svc, crees, prisma } = monde(comptes);
+    // Une autre saisie ouvre 52110003 entre la proposition et la transaction.
+    (prisma.$executeRaw as jest.Mock).mockImplementationOnce(async () => {
+      comptes.push(compte('pris', '52110003'));
+      return 0;
+    });
+    await svc.creer('t1', journal({ ouvrirCompteSousId: 'b5211' }));
+    expect(crees[0].numero).toBe('52110004');
+  });
+
+  it('un conflit d’unicité se dit selon sa clé · numéro non choisi, code du journal, autre clé relancée', async () => {
+    const conflit = (target: string[]) =>
+      new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'x', meta: { target } });
+    const { svc, prisma } = monde(BANQUES);
+    const create = (prisma.compte as { create: jest.Mock }).create;
+    create.mockRejectedValueOnce(conflit(['tenantId', 'numero']));
+    await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'b5211' }))).rejects.toThrow(
+      /52110003 vient d'être ouvert par une autre saisie/,
+    );
+    create.mockRejectedValueOnce(conflit(['tenantId', 'code']));
+    await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'b5211' }))).rejects.toThrow(/Le journal BQ2 vient d'être créé/);
+    create.mockRejectedValueOnce(conflit(['tenantId', 'numerotation']));
+    await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'b5211' }))).rejects.toThrow(/^unique$/);
   });
 
   it('garde le numéro choisi par le cabinet, et refuse celui qui sort de la racine', async () => {
@@ -166,13 +250,23 @@ describe('ouvrir le compte propre d’un journal de trésorerie', () => {
   });
 
   it('refuse un compte qui n’est pas un compte du plan de trésorerie, ni d’un autre dossier, ni en sommeil', async () => {
-    const comptes = [...BANQUES, compte('charge', '60110000', { classe: 'CLASSE_6' }), compte('dort', '52150000', { estActif: false })];
+    const comptes = [
+      ...BANQUES,
+      compte('charge', '60110000', { classe: 'CLASSE_6' }),
+      compte('dort', '52150000', { estActif: false }),
+      compte('depreciation', '59000000'),
+      compte('virement', '58500000'),
+      compte('total', '52', { typeCompte: 'TOTAL' }),
+    ];
     const { svc } = monde(comptes);
     await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'dossier' }))).rejects.toThrow(
-      /52110002 n'est pas un compte du plan de trésorerie/,
+      /52110002 n'est pas un compte d'imputation du plan/,
     );
-    await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'charge' }))).rejects.toThrow(/n'est pas un compte du plan de trésorerie/);
-    await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'voisin' }))).rejects.toThrow(/introuvable pour ce dossier/);
+    await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'total' }))).rejects.toThrow(/52 n'est pas un compte d'imputation/);
+    await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'charge' }))).rejects.toThrow(/n'est pas un compte de banque ou de caisse/);
+    await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'depreciation' }))).rejects.toThrow(/fiche du compte 59/);
+    await expect(svc.compteDuJournalPropose('t1', 'virement')).rejects.toThrow(/comptes de passage/);
+    await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'voisin' }))).rejects.toBeInstanceOf(NotFoundException);
     await expect(svc.creer('t1', journal({ ouvrirCompteSousId: 'dort' }))).rejects.toThrow(/est en sommeil/);
   });
 
@@ -189,10 +283,17 @@ describe('ouvrir le compte propre d’un journal de trésorerie', () => {
     );
   });
 
-  it('la liste des comptes du plan se lit par les numéros semés de la classe 5, actifs, du dossier', async () => {
-    const { svc } = monde(BANQUES);
+  it('la liste des comptes du plan se lit par les numéros semés qui tiennent des fonds, actifs, du dossier', async () => {
+    const { svc } = monde([
+      ...BANQUES,
+      compte('caisse', '57110000'),
+      compte('regie', '58100000'),
+      compte('depreciation', '59000000'),
+      compte('virement', '58500000'),
+      compte('interets', '52610000'),
+    ]);
     const liste = await svc.comptesDuPlanPourJournal('t1');
-    expect(liste.map((c: { numero: string }) => c.numero)).toEqual(['52110000']);
+    expect(liste.map((c: { numero: string }) => c.numero).sort()).toEqual(['52110000', '57110000', '58100000']);
   });
 });
 

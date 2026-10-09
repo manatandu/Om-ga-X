@@ -71,8 +71,14 @@ export class EcritureController {
   @Post('fusion-comptes')
   async fusionnerComptes(@CurrentUser() user: AuthenticatedUser, @Body() dto: FusionnerComptesDto) {
     // Même règle que la saisie · fondre un compte dans un collectif qui porte
-    // des comptes de tiers y ferait passer ses lignes.
-    await this.ecritureService.verifierComptesCollectifs(user.tenantId, [{ compteId: dto.compteCibleId }]);
+    // des comptes de tiers y ferait passer ses lignes. Le compte fondu, que la
+    // fusion endort, ne compte pas parmi les sous-comptes de la cible.
+    await this.ecritureService.verifierComptesCollectifs(
+      user.tenantId,
+      [{ compteId: dto.compteCibleId }],
+      undefined,
+      dto.compteSourceId,
+    );
     return this.ecritureService.fusionnerComptes(user.tenantId, user.userId, dto.compteSourceId, dto.compteCibleId, dto.motif);
   }
 

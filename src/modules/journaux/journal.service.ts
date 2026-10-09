@@ -7,18 +7,25 @@ import { CreerJournalDto, ModifierJournalDto } from './dto/journal.dto';
 import { NUMEROTATION_PAR_DEFAUT, prochainNumeroPiece } from './numerotation-piece';
 import { comptesDImputationSemes, racineDuCompteSeme } from '../comptes/subdivisions-du-plan';
 import { prochainNumeroIndividuel } from '../tiers/collectifs-tiers';
-import { motifRefusNumeroDuJournal } from './compte-propre-du-journal';
+import { motifRefusCompteDeTresorerie, motifRefusNumeroDuJournal } from './compte-propre-du-journal';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 
 /** Le compte propre d'un journal ouvert sous ce numéro vient d'être pris · refus nommé. */
-function conflitDuCompteOuvert(e: unknown, numero: string, code: string): never {
+function conflitDuCompteOuvert(e: unknown, numero: string, code: string, numeroChoisi: boolean): never {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-    const cible = JSON.stringify(e.meta?.target ?? '');
-    throw new ConflictException(
-      cible.includes('numero')
-        ? `Le compte ${numero} existe déjà dans ce dossier · choisissez un autre numéro, ou relisez la proposition.`
-        : `Le journal ${code} vient d'être créé par une autre saisie · relancez la demande.`,
-    );
+    // La cible se lit colonne par colonne · « numerotation » contient
+    // « numero », et un conflit sur une autre clé ne se dit pas pour celui-ci.
+    const cible = e.meta?.target;
+    const colonnes = Array.isArray(cible) ? cible.map(String) : typeof cible === 'string' ? [cible] : [];
+    const sur = (col: string) => colonnes.some((c) => c === col || c.endsWith(`_${col}_key`) || c.includes(`_${col}_`));
+    if (sur('numero')) {
+      throw new ConflictException(
+        numeroChoisi
+          ? `Le compte ${numero} existe déjà dans ce dossier · choisissez un autre numéro, ou relisez la proposition.`
+          : `Le compte ${numero} vient d'être ouvert par une autre saisie · relancez la création, le numéro suivant sera proposé.`,
+      );
+    }
+    if (sur('code')) throw new ConflictException(`Le journal ${code} vient d'être créé par une autre saisie · relancez la demande.`);
   }
   throw e;
 }
@@ -122,11 +129,29 @@ export class JournalService {
     const ouvert = await this.compteAOuvrir(tenantId, dto.ouvrirCompteSousId);
     // Choisi ou proposé, le numéro passe la même règle · la proposition ne
     // dispense de rien.
-    const numeroRetenu = dto.numeroCompte ?? ouvert.propose;
-    if (numeroRetenu === null) throw new BadRequestException(ouvert.motif ?? 'Aucun numéro libre sous ce compte du plan.');
-    const motif = motifRefusNumeroDuJournal(numeroRetenu, ouvert.parent.numero, ouvert.racine, ouvert.longueur, ouvert.referentiel);
-    if (motif) throw new BadRequestException(motif);
+    const juger = (numero: string | null) => {
+      if (numero === null) throw new BadRequestException(ouvert.motif ?? 'Aucun numéro libre sous ce compte du plan.');
+      const motif = motifRefusNumeroDuJournal(numero, ouvert.parent.numero, ouvert.racine, ouvert.longueur, ouvert.referentiel);
+      if (motif) throw new BadRequestException(motif);
+      return numero;
+    };
+    const numeroChoisi = dto.numeroCompte !== undefined;
+    let numeroRetenu = numeroChoisi ? juger(dto.numeroCompte ?? null) : juger(ouvert.propose);
     return transactionJournalisee(this.prisma, async (tx) => {
+      // LE NUMÉRO PROPOSÉ SE PREND SOUS VERROU, comme celui d'un tiers (même
+      // clé, tiers.service.ts) · deux journaux créés ensemble lisaient le même
+      // premier libre, et le second recevait « choisissez un autre numéro »
+      // sans en avoir choisi aucun.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`panoplie:${tenantId}`}))`;
+      if (!numeroChoisi) {
+        const existants = await tx.compte.findMany({
+          where: { tenantId, numero: { startsWith: ouvert.racine } },
+          select: { numero: true },
+        });
+        numeroRetenu = juger(
+          prochainNumeroIndividuel(ouvert.racine, ouvert.longueur, [ouvert.parent.numero, ...existants.map((c) => c.numero)]),
+        );
+      }
       const compte = await tx.compte.create({
         data: {
           tenantId,
@@ -142,13 +167,15 @@ export class JournalService {
         select: { id: true },
       });
       return tx.journal.create({ data: { ...donnees, compteTresorerieId: compte.id } });
-    }).catch((e) => conflitDuCompteOuvert(e, numeroRetenu, dto.code));
+    }).catch((e) => conflitDuCompteOuvert(e, numeroRetenu, dto.code, numeroChoisi));
   }
 
   /**
    * LES COMPTES DU PLAN SOUS LESQUELS UN JOURNAL OUVRE SON COMPTE · les comptes
-   * d'imputation SEMÉS de la classe 5 du dossier, actifs (banques, établissements
-   * financiers, monnaie électronique, caisse). Lus par leur numéro, jamais par la
+   * d'imputation SEMÉS du dossier, actifs, qui tiennent des fonds
+   * (`motifRefusCompteDeTresorerie` · banques, établissements financiers,
+   * monnaie électronique, caisse, et au SYSCOHADA régies d'avance et
+   * accréditifs). Lus par leur numéro, jamais par la
    * règle des comptes retenus · ouvrir une banque sous le 52200000 est souvent le
    * PREMIER usage de ce compte, et la règle viderait la liste
    * (`comptes/listes-de-comptes.ts`).
@@ -159,7 +186,11 @@ export class JournalService {
       select: { referentiel: true },
     });
     return this.prisma.compte.findMany({
-      where: { tenantId, numero: { in: comptesDImputationSemes(referentiel, '5') }, estActif: true },
+      where: {
+        tenantId,
+        numero: { in: comptesDImputationSemes(referentiel, '5').filter((n) => motifRefusCompteDeTresorerie(n, referentiel) === null) },
+        estActif: true,
+      },
       select: { id: true, numero: true, intitule: true },
       orderBy: { numero: 'asc' },
     });
@@ -198,14 +229,16 @@ export class JournalService {
         },
       }),
     ]);
-    if (!parent) throw new BadRequestException('Compte du plan introuvable pour ce dossier.');
+    if (!parent) throw new NotFoundException('Compte du plan introuvable pour ce dossier.');
     const racine = racineDuCompteSeme(dossier.referentiel, parent.numero);
-    if (racine === null || !parent.numero.startsWith('5')) {
+    if (racine === null || parent.typeCompte !== TypeCompteDetailTotal.DETAIL) {
       throw new BadRequestException(
-        `Le compte ${parent.numero} n'est pas un compte du plan de trésorerie (classe 5) · le compte propre d'un ` +
-          'journal de banque ou de caisse s\'ouvre sous l\'un d\'eux.',
+        `Le compte ${parent.numero} n'est pas un compte d'imputation du plan · le compte propre d'un journal de ` +
+          "banque ou de caisse s'ouvre sous l'un d'eux.",
       );
     }
+    const horsDesFonds = motifRefusCompteDeTresorerie(parent.numero, dossier.referentiel);
+    if (horsDesFonds) throw new BadRequestException(horsDesFonds);
     if (!parent.estActif) {
       throw new BadRequestException(`Le compte ${parent.numero} est en sommeil · réactivez-le dans le plan comptable.`);
     }
@@ -241,11 +274,12 @@ export class JournalService {
       select: { numero: true, typeCompte: true },
     });
     if (!compte) throw new BadRequestException('Compte de trésorerie introuvable pour ce dossier.');
-    if (!compte.numero.startsWith('5')) {
-      throw new BadRequestException(
-        `Le compte ${compte.numero} n'est pas un compte de trésorerie · un journal de trésorerie porte un compte de classe 5.`,
-      );
-    }
+    // Même règle que le compte ouvert avec le journal · jugée au choix du
+    // compte seulement, un journal qui porte déjà un autre compte n'est pas
+    // enfermé.
+    const { referentiel } = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
+    const horsDesFonds = motifRefusCompteDeTresorerie(compte.numero, referentiel);
+    if (horsDesFonds) throw new BadRequestException(horsDesFonds);
     if (compte.typeCompte !== TypeCompteDetailTotal.DETAIL) {
       throw new BadRequestException(
         `Le compte ${compte.numero} est un compte Total · il ne reçoit aucune écriture, choisissez un compte de détail.`,

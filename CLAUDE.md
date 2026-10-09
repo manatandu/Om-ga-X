@@ -3283,20 +3283,26 @@ pris, il est refusé et jamais remplacé par le suivant ; gardé tel quel, il
 ne part pas. UNE LIGNE SAISIE NE VA JAMAIS AU COLLECTIF qui porte des
 comptes de tiers (`verifierComptesCollectifs`, au CONTRÔLEUR seul, comme le
 sommeil · refus qui nomme les comptes ; modules et imports non touchés ; un
-collectif sans individuel reste ouvert ; à la modification, seul un compte que
-la pièce ne portait pas est jugé ; réimputation et fusion jugent le compte
-d'arrivée). DEUX ISSUES, jamais un enfermement · un montant DÉJÀ porté au
+collectif sans individuel reste ouvert ; à la modification, la pièce n'est
+jugée que si elle reçoit un compte qu'elle ne portait pas, et alors ENTIÈRE ;
+réimputation et fusion jugent le compte d'arrivée, la fusion sans le compte
+qu'elle fond). DEUX ISSUES, jamais un enfermement · un montant DÉJÀ porté au
 collectif (à-nouveau, import, saisie d'avant) se reporte par une pièce qui ne
-porte que ce collectif et ses comptes de tiers ; le 416 qu'une créance
-douteuse non annulée tient reste ouvert (correction M9). Le reclassement en
+porte que ce collectif et ses comptes de tiers ; le compte qu'un module exige
+reste ouvert · le 416 et le 491 d'une créance douteuse non annulée
+(correction M9), le compte d'un écart d'inventaire à redresser. Le reclassement en
 créance douteuse propose le 416 PROPRE au client (`compte416DuTiers`), servi
 à l'écran. Numéros choisis sous verrou du dossier, conflit d'unicité nommé ;
 un principal posé sur le collectif commun reçoit son compte, le collectif
 reste rattaché sans la marque. UN JOURNAL DE BANQUE OU DE CAISSE A
 SON PROPRE COMPTE · celui d'un autre journal est refusé au choix, jamais
 reproché à un dossier qui le partage déjà ; il NAÎT AVEC LUI (décision de
-Manasse du 2026-10-09), sous un compte d'imputation semé de la classe 5,
-numéro proposé (`GET /journaux/compte-propose`) et modifiable
+Manasse du 2026-10-09), sous un compte d'imputation semé qui TIENT DES FONDS
+(`motifRefusCompteDeTresorerie`, fiches de la classe 5 des deux plans · 52,
+53, 55, 57, et au SYSCOHADA 581 et 582 ; jamais titres, valeurs à encaisser,
+crédits de trésorerie, intérêts courus, virements internes ni dépréciations,
+règle tenue aussi au choix d'un compte existant), numéro proposé
+(`GET /journaux/compte-propose`, pris sous verrou du dossier) et modifiable
 (`motifRefusNumeroDuJournal` · chiffres, racine, longueur, rang, et jamais
 sous un autre compte du plan), compte et journal dans UNE transaction ;
 « Compte existant » reste offert. LES COMPTES PERSONNALISÉS (même jour, « les
@@ -3306,7 +3312,7 @@ sous-compte détail actif sous sa racine (`comptes/subdivisions-du-plan.ts`,
 même contrôle, mêmes issues que le collectif) · la racine d'un semé est le
 plus court préfixe qui n'est pas un TOTAL semé (49000000 est le 490, jamais
 le 49), et une racine semée plus profonde garde les siens (4478, 831, 841 au
-SYCEBNL). Le compte qu'un journal de trésorerie TIENT reste ouvert, sans
+SYCEBNL). Le compte qu'un journal de trésorerie ACTIF tient reste ouvert, sans
 quoi le journal semé s'enfermait dès qu'un second journal ouvrait son compte
 dessous ; un sous-compte en sommeil le rouvre.
 

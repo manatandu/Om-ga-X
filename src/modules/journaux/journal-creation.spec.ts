@@ -26,6 +26,7 @@ function monde() {
   const create = jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'j-neuf', ...data }));
   const update = jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'j1', ...data }));
   const prisma = {
+    tenant: { findUniqueOrThrow: jest.fn(async () => ({ referentiel: 'SYSCOHADA' })) },
     journal: {
       findUnique: jest.fn().mockResolvedValue(null),
       // La doublure honore la requête · le journal j1 (BQ) tient déjà le
@@ -84,7 +85,7 @@ describe('F60 · le compte de trésorerie d’un journal', () => {
 
   it.each([
     ['un compte d’un autre dossier', 'banque-voisin', /introuvable pour ce dossier/],
-    ['un compte de classe 6', 'charge', /60500000 n'est pas un compte de trésorerie/],
+    ['un compte de classe 6', 'charge', /60500000 n'est pas un compte de banque ou de caisse/],
     ['un compte Total', 'total-52', /52 est un compte Total/],
   ])('refuse à la création %s', async (_cas, id, motif) => {
     const { svc, create } = monde();
@@ -95,7 +96,7 @@ describe('F60 · le compte de trésorerie d’un journal', () => {
   it('refuse aussi à la modification, et ne touche pas au journal', async () => {
     const { svc, update } = monde();
     await expect(svc.modifier('t1', 'j1', { compteTresorerieId: 'banque-voisin' })).rejects.toThrow(/introuvable/);
-    await expect(svc.modifier('t1', 'j1', { compteTresorerieId: 'charge' })).rejects.toThrow(/classe 5/);
+    await expect(svc.modifier('t1', 'j1', { compteTresorerieId: 'charge' })).rejects.toThrow(/divisions 52, 53, 55, 57, 581 ou 582/);
     expect(update).not.toHaveBeenCalled();
     await svc.modifier('t1', 'j1', { compteTresorerieId: 'banque' });
     expect(update).toHaveBeenCalledTimes(1);
