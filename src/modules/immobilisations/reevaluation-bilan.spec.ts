@@ -134,7 +134,7 @@ describe('ch. 28 § 4.2.1 · les deux exemples de la réévaluation légale', ()
     );
     expect(sycebnl.compteEcart).toBe('10611000');
     const source = readFileSync(join(__dirname, 'reevaluation-bilan.ts'), 'utf8');
-    expect(source).toContain('décision proposée D-43');
+    expect(source).toContain('décision confirmée D-43');
   });
 
   it('légale · un bien totalement amorti est gardé sans valeur actuelle exigée (D-37)', () => {

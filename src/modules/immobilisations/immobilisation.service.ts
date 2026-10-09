@@ -4058,7 +4058,7 @@ export class ImmobilisationService {
       orderBy: { reevaluation: { dateReevaluation: 'asc' } },
     });
     if (reevaluations.length > 0 && dto.sens === SensDepreciation.REPRISE) {
-      // ABSTENTION ÉCRITE (décision proposée D-35) · le texte ne dit ni où
+      // ABSTENTION ÉCRITE (décision confirmée D-35) · le texte ne dit ni où
       // reprendre la part d'une perte imputée sur l'écart, ni comment le
       // plafond du § 2.4.2 (valeur sans dépréciation, plan rejoué) se lit sur
       // un plan réévalué. Une reprise au 79 ferait entrer au résultat ce qui

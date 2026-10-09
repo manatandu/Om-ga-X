@@ -17,7 +17,7 @@
  * (202 à 205) reçus en dons et legs et destinés à la vente · corporels et
  * financiers par nature, ils sont DANS le périmètre, mais le texte ne dit pas
  * comment l'opération les traite · ils restent à leur valeur, avec leur motif,
- * jamais écartés en silence (décision proposée D-29). Les ÉLÉMENTS
+ * jamais écartés en silence (décision confirmée D-29). Les ÉLÉMENTS
  * MONÉTAIRES de la division 27 (prêts, créances, dépôts, cautionnements,
  * intérêts courus) sont lus et gardés à leur valeur · le ch. 28 § 1.2 ne
  * réévalue qu'« un bien ou un élément non monétaire » (`estElementMonetaire`).
@@ -122,7 +122,7 @@ export function estBienRecuDestineALaVente(numeroCompte: string, referentiel: Re
  * Provision spéciale de réévaluation doit être crédité au lieu du 1061 [...]
  * du même montant ». La provision spéciale n'est écrite que pour la
  * réévaluation LÉGALE (§ 4.3.1 crédite toujours le 1062). La neutralité se
- * DÉCLARE à chaque opération, jamais présumée (décision proposée D-30) · la
+ * DÉCLARE à chaque opération, jamais présumée (décision confirmée D-30) · la
  * loi n° 23/053, art. 133 al. 2, l'obtient « par une réintégration dans les
  * bénéfices », sans nommer le 154.
  *
@@ -136,7 +136,7 @@ export function estBienRecuDestineALaVente(numeroCompte: string, referentiel: Re
  * financières) ; 1062 [...] AVEC DROIT DE REPRISE (10621, 10622) » · le
  * numéro ne dit pas légale ou libre, il dit si le bien est grevé d'un droit
  * de reprise. Ce droit n'est pas une donnée de la fiche · il se DÉCLARE pour
- * chaque bien réévalué, sans défaut (décision proposée D-31). Le 154 du
+ * chaque bien réévalué, sans défaut (décision confirmée D-31). Le 154 du
  * SYCEBNL porte la même définition (fiche du compte 15) et suit la même
  * règle que l'AUDCIF.
  */
@@ -157,7 +157,7 @@ export function compteEcart(o: {
           'réévaluation libre crédite le 1062 (AUDCIF Titre VIII ch. 28 § 4.2.4.1 et § 4.3.1).',
       };
     }
-    // TEXTE EN TENSION, LECTURE DÉCLARÉE (décision proposée D-43) · le
+    // TEXTE EN TENSION, LECTURE DÉCLARÉE (décision confirmée D-43) · le
     // ch. 28 § 4.2.4.1 met le 154 « au lieu du 1061 » sans distinguer, mais
     // le ch. 16 § 2.6 crée la provision spéciale « pour constater l'écart
     // entre la valeur réévaluée et la valeur d'origine des immobilisations
@@ -390,12 +390,12 @@ export function reevaluerBien(bien: BienAReevaluer, saisie: SaisieBien, op: Oper
   // est rangé sous la réévaluation LÉGALE (§ 4.2) ; il est appliqué aussi à
   // la libre, dont la valeur réévaluée « est toujours la valeur actuelle »
   // (§ 3.1.2) · la même valeur actuelle, au même jour, que la dépréciation
-  // vient de constater, ne fait aucun écart (décision proposée D-44).
+  // vient de constater, ne fait aucun écart (décision confirmée D-44).
   if (bien.cumulDepreciation > EPSILON) return garde(MOTIF_DEPRECIE);
 
   // LÉGALE · un bien totalement amorti n'a rien que le coefficient multiplie
   // (valeur nette × k = 0, § 4.2.1.1) · il est gardé sans qu'on lui demande
-  // une valeur actuelle qui ne servirait à rien (décision proposée D-37). En
+  // une valeur actuelle qui ne servirait à rien (décision confirmée D-37). En
   // libre, la valeur actuelle reste exigée · positive, elle appellerait un
   // nouveau plan (§ 4.2.2), refusé plus bas.
   if (op.type === 'LEGALE' && valeurNette <= EPSILON) return garde(MOTIF_VALEUR_NETTE_NULLE);
@@ -671,7 +671,7 @@ export function partsDuSupplement(
  * charges ». Exemple du texte · perte 15 000 000, écart 6 000 000 · D 1062
  * 6 000 000 et D 6914 9 000 000 / C 2931 15 000 000. L'écart s'entend du 106 ·
  * la provision spéciale (154), provision réglementée, n'est pas un écart de
- * capitaux propres et ne reçoit rien (décision proposée D-34).
+ * capitaux propres et ne reçoit rien (décision confirmée D-34).
  */
 export function imputationSurEcart(
   montant: number,
