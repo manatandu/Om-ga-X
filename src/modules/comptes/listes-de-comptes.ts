@@ -74,6 +74,14 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
       "débit du compte 416 »), seule racine admise par le serveur, et le reclassement en est souvent le premier mouvement · les " +
       'créances proposées sont celles que la balance montre débitrices, chacune déjà utilisée.',
   },
+  '/journaux/comptes-du-plan': {
+    regime: 'texte',
+    motif:
+      "Le compte propre d'un journal de banque ou de caisse s'ouvre sous un compte du plan de la classe 5 · « le numéro " +
+      "d'un compte divisionnaire commence toujours par celui du compte principal ou sous-compte dont il est une " +
+      'subdivision » (AUDCIF, Titre VII) ; le SYCEBNL se complète « en respectant l\'arborescence » (Partie 2 ch. 2, ' +
+      'section 1). Ouvrir une banque sous un compte du plan en est souvent le premier usage, la règle viderait la liste.',
+  },
   '/affectation-resultat/exercice/:exerciceId': {
     regime: 'texte',
     motif:
@@ -90,6 +98,8 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
  */
 export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>> = {
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
+  '/journaux/compte-propose':
+    "numéro proposé pour le compte propre d'un journal à créer, lu sous le compte du plan choisi, un seul numéro et jamais une liste",
   '/tiers/numero-propose':
     "numéro proposé pour le compte principal d'un tiers à créer, lu sous son collectif, un seul numéro et jamais une liste",
   '/comptes/:compteId/lettrage/:lettrageId/ecart-change':

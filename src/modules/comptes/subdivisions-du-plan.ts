@@ -117,3 +117,11 @@ export function racinesSousLeCompteSeme(referentiel: Referentiel, numero: string
     .racines.filter((r) => r.numero !== numero && r.racine.length > racine.length && r.racine.startsWith(racine))
     .map((r) => r.racine);
 }
+
+/**
+ * Les comptes d'imputation SEMÉS dont le numéro commence par un préfixe · la
+ * classe 5 pour le compte propre d'un journal de banque ou de caisse.
+ */
+export function comptesDImputationSemes(referentiel: Referentiel, prefixe: string): string[] {
+  return [...racinesDu(referentiel).racineDuDetail.keys()].filter((n) => n.startsWith(prefixe)).sort();
+}

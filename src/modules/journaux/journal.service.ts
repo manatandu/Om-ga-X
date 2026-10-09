@@ -5,6 +5,23 @@ import { NumerotationPiece, Prisma, Referentiel, TypeCompteDetailTotal, TypeJour
 import { journauxDefaut } from './journal-seed';
 import { CreerJournalDto, ModifierJournalDto } from './dto/journal.dto';
 import { NUMEROTATION_PAR_DEFAUT, prochainNumeroPiece } from './numerotation-piece';
+import { comptesDImputationSemes, racineDuCompteSeme } from '../comptes/subdivisions-du-plan';
+import { prochainNumeroIndividuel } from '../tiers/collectifs-tiers';
+import { motifRefusNumeroDuJournal } from './compte-propre-du-journal';
+import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+
+/** Le compte propre d'un journal ouvert sous ce numéro vient d'être pris · refus nommé. */
+function conflitDuCompteOuvert(e: unknown, numero: string, code: string): never {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+    const cible = JSON.stringify(e.meta?.target ?? '');
+    throw new ConflictException(
+      cible.includes('numero')
+        ? `Le compte ${numero} existe déjà dans ce dossier · choisissez un autre numéro, ou relisez la proposition.`
+        : `Le journal ${code} vient d'être créé par une autre saisie · relancez la demande.`,
+    );
+  }
+  throw e;
+}
 
 @Injectable()
 export class JournalService {
@@ -62,7 +79,20 @@ export class JournalService {
   }
 
   async creer(tenantId: string, dto: CreerJournalDto) {
-    if (dto.type === TypeJournal.TRESORERIE && !dto.compteTresorerieId) {
+    if (dto.ouvrirCompteSousId && dto.compteTresorerieId) {
+      throw new BadRequestException(
+        'Choisissez un compte existant OU ouvrez le compte propre du journal, pas les deux.',
+      );
+    }
+    if (dto.ouvrirCompteSousId && dto.type !== TypeJournal.TRESORERIE) {
+      throw new BadRequestException('Seul un journal de trésorerie (banque, caisse) ouvre son compte propre.');
+    }
+    if (dto.numeroCompte !== undefined && !dto.ouvrirCompteSousId) {
+      throw new BadRequestException(
+        "Un numéro de compte ne se choisit qu'avec le compte du plan sous lequel ouvrir le compte du journal.",
+      );
+    }
+    if (dto.type === TypeJournal.TRESORERIE && !dto.compteTresorerieId && !dto.ouvrirCompteSousId) {
       throw new BadRequestException('Un journal de type Trésorerie doit avoir un compte de trésorerie associé');
     }
     const existant = await this.prisma.journal.findUnique({ where: { tenantId_code: { tenantId, code: dto.code } } });
@@ -70,22 +100,131 @@ export class JournalService {
       throw new ConflictException(`Le journal ${dto.code} existe déjà pour ce tenant`);
     }
     if (dto.compteTresorerieId) await this.verifierCompteTresorerie(tenantId, dto.compteTresorerieId);
-    return this.prisma.journal.create({
-      data: {
-        tenantId,
-        code: dto.code,
-        intitule: dto.intitule,
-        type: dto.type,
-        compteTresorerieId: dto.compteTresorerieId,
-        // CONTINUE PAR JOURNAL À DÉFAUT (audit final F59) · en MANUELLE
-        // OmegaX n'attribue aucun numéro, et aucune saisie n'en porte · un
-        // journal créé sans choix recevait donc des pièces sans numéro, alors
-        // que la pièce se cite par sa référence (AUDCIF art. 17, 3° ; CPCC
-        // § 3.2). La manuelle reste un choix, jamais un défaut.
-        numerotation: dto.numerotation ?? NUMEROTATION_PAR_DEFAUT,
-        contrepartieChaqueLigne: dto.type === TypeJournal.TRESORERIE && dto.contrepartieChaqueLigne === true,
-      },
+    const donnees = {
+      tenantId,
+      code: dto.code,
+      intitule: dto.intitule,
+      type: dto.type,
+      // CONTINUE PAR JOURNAL À DÉFAUT (audit final F59) · en MANUELLE
+      // OmegaX n'attribue aucun numéro, et aucune saisie n'en porte · un
+      // journal créé sans choix recevait donc des pièces sans numéro, alors
+      // que la pièce se cite par sa référence (AUDCIF art. 17, 3° ; CPCC
+      // § 3.2). La manuelle reste un choix, jamais un défaut.
+      numerotation: dto.numerotation ?? NUMEROTATION_PAR_DEFAUT,
+      contrepartieChaqueLigne: dto.type === TypeJournal.TRESORERIE && dto.contrepartieChaqueLigne === true,
+    };
+    if (!dto.ouvrirCompteSousId) {
+      return this.prisma.journal.create({ data: { ...donnees, compteTresorerieId: dto.compteTresorerieId } });
+    }
+    // LE COMPTE NAÎT AVEC LE JOURNAL, dans la même transaction · un journal
+    // refusé ne laisse pas de compte orphelin, un compte refusé pas de journal
+    // sans compte.
+    const ouvert = await this.compteAOuvrir(tenantId, dto.ouvrirCompteSousId);
+    // Choisi ou proposé, le numéro passe la même règle · la proposition ne
+    // dispense de rien.
+    const numeroRetenu = dto.numeroCompte ?? ouvert.propose;
+    if (numeroRetenu === null) throw new BadRequestException(ouvert.motif ?? 'Aucun numéro libre sous ce compte du plan.');
+    const motif = motifRefusNumeroDuJournal(numeroRetenu, ouvert.parent.numero, ouvert.racine, ouvert.longueur, ouvert.referentiel);
+    if (motif) throw new BadRequestException(motif);
+    return transactionJournalisee(this.prisma, async (tx) => {
+      const compte = await tx.compte.create({
+        data: {
+          tenantId,
+          numero: numeroRetenu,
+          intitule: dto.intitule,
+          classe: ouvert.parent.classe,
+          typeCompte: TypeCompteDetailTotal.DETAIL,
+          modeReportANouveau: ouvert.parent.modeReportANouveau,
+          lettrable: ouvert.parent.lettrable,
+          // Créé par le cabinet, il naît retenu (comptes-proposes.ts).
+          estRetenu: true,
+        },
+        select: { id: true },
+      });
+      return tx.journal.create({ data: { ...donnees, compteTresorerieId: compte.id } });
+    }).catch((e) => conflitDuCompteOuvert(e, numeroRetenu, dto.code));
+  }
+
+  /**
+   * LES COMPTES DU PLAN SOUS LESQUELS UN JOURNAL OUVRE SON COMPTE · les comptes
+   * d'imputation SEMÉS de la classe 5 du dossier, actifs (banques, établissements
+   * financiers, monnaie électronique, caisse). Lus par leur numéro, jamais par la
+   * règle des comptes retenus · ouvrir une banque sous le 52200000 est souvent le
+   * PREMIER usage de ce compte, et la règle viderait la liste
+   * (`comptes/listes-de-comptes.ts`).
+   */
+  async comptesDuPlanPourJournal(tenantId: string) {
+    const { referentiel } = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { referentiel: true },
     });
+    return this.prisma.compte.findMany({
+      where: { tenantId, numero: { in: comptesDImputationSemes(referentiel, '5') }, estActif: true },
+      select: { id: true, numero: true, intitule: true },
+      orderBy: { numero: 'asc' },
+    });
+  }
+
+  /** Le numéro que le compte propre d'un journal prendrait sous ce compte du plan. */
+  async compteDuJournalPropose(tenantId: string, sousId: string) {
+    const ouvert = await this.compteAOuvrir(tenantId, sousId);
+    return {
+      numero: ouvert.propose,
+      racine: ouvert.racine,
+      longueur: ouvert.longueur,
+      compteDuPlan: { numero: ouvert.parent.numero, intitule: ouvert.parent.intitule },
+      motif: ouvert.motif,
+    };
+  }
+
+  /**
+   * Le compte du plan choisi, sa racine et le premier numéro libre dessous.
+   * Refus nommé hors d'un compte d'imputation semé de la classe 5, actif, du
+   * dossier.
+   */
+  private async compteAOuvrir(tenantId: string, sousId: string) {
+    const [dossier, parent] = await Promise.all([
+      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true, longueurCompte: true } }),
+      this.prisma.compte.findFirst({
+        where: { id: sousId, tenantId },
+        select: {
+          numero: true,
+          intitule: true,
+          classe: true,
+          typeCompte: true,
+          estActif: true,
+          modeReportANouveau: true,
+          lettrable: true,
+        },
+      }),
+    ]);
+    if (!parent) throw new BadRequestException('Compte du plan introuvable pour ce dossier.');
+    const racine = racineDuCompteSeme(dossier.referentiel, parent.numero);
+    if (racine === null || !parent.numero.startsWith('5')) {
+      throw new BadRequestException(
+        `Le compte ${parent.numero} n'est pas un compte du plan de trésorerie (classe 5) · le compte propre d'un ` +
+          'journal de banque ou de caisse s\'ouvre sous l\'un d\'eux.',
+      );
+    }
+    if (!parent.estActif) {
+      throw new BadRequestException(`Le compte ${parent.numero} est en sommeil · réactivez-le dans le plan comptable.`);
+    }
+    const existants = await this.prisma.compte.findMany({
+      where: { tenantId, numero: { startsWith: racine } },
+      select: { numero: true },
+    });
+    const propose = prochainNumeroIndividuel(racine, dossier.longueurCompte, [parent.numero, ...existants.map((c) => c.numero)]);
+    return {
+      parent,
+      racine,
+      referentiel: dossier.referentiel,
+      longueur: dossier.longueurCompte,
+      propose,
+      motif: propose
+        ? null
+        : `Plus aucun numéro libre sous le compte ${parent.numero} à ${dossier.longueurCompte} chiffres · allongez ` +
+          'les numéros de compte (Structure > Paramètres du dossier).',
+    };
   }
 
   /**

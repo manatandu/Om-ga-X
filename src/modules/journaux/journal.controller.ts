@@ -6,7 +6,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { JournalService } from './journal.service';
 import { AnalyseJournauxService } from './analyse-journaux.service';
-import { CreerJournalDto, ModifierJournalDto } from './dto/journal.dto';
+import { CompteDuJournalProposeDto, CreerJournalDto, ModifierJournalDto } from './dto/journal.dto';
 import { RoleUtilisateur } from '@prisma/client';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
 
@@ -61,6 +61,22 @@ export class JournalController {
   @Get('analyse')
   async analyse(@CurrentUser() user: AuthenticatedUser, @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string) {
     return this.analyseJournauxService.analyseJournaux(user.tenantId, { exerciceId });
+  }
+
+  /**
+   * LES COMPTES DU PLAN SOUS LESQUELS UN JOURNAL DE BANQUE OU DE CAISSE OUVRE
+   * SON COMPTE (décision de Manasse du 2026-10-09) · comptes d'imputation semés
+   * de la classe 5 du dossier.
+   */
+  @Get('comptes-du-plan')
+  async comptesDuPlan(@CurrentUser() user: AuthenticatedUser) {
+    return this.journalService.comptesDuPlanPourJournal(user.tenantId);
+  }
+
+  /** Le numéro qu'OmegaX propose pour le compte propre d'un journal, sous le compte du plan choisi. */
+  @Get('compte-propose')
+  async compteDuJournalPropose(@CurrentUser() user: AuthenticatedUser, @Query() dto: CompteDuJournalProposeDto) {
+    return this.journalService.compteDuJournalPropose(user.tenantId, dto.sousId);
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET)
