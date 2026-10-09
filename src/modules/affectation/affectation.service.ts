@@ -1,3 +1,4 @@
+import { partsAuResultatEnInstance } from './resultat-en-instance';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { estContigu, motifSuivantNonContigu } from '../exercice/exercice-contigu';
 import { estCompteDuResultatDeLExercice } from '../etats-financiers/resultat-de-l-exercice';
@@ -303,12 +304,23 @@ export class AffectationService {
     // Bénéfice : le 131 est créditeur, on le DÉBITE et on crédite les
     // destinations. Perte : le 139 est débiteur, on le CRÉDITE et on débite les
     // destinations qui l'absorbent (report à nouveau, réserves, capital).
-    const compteResultat = await this.compteResultat(tenantId, soldes.estBenefice);
+    //
+    // Le résultat que le cabinet a viré au 130 à la réouverture se solde là
+    // (`partsAuResultatEnInstance`, paquet 1, A6) · le reste sur le 131 ou le 139.
+    const balanceAccueil = await this.ecritureService.balance(tenantId, suivant.id, true);
+    const { parts, reste } = partsAuResultatEnInstance(balanceAccueil.lignes, soldes.estBenefice, soldes.montant);
+    const aSolder = parts.map((p) => ({ compteId: p.compteId, montant: p.montant }));
+    if (reste > 0) {
+      const compteResultat = await this.compteResultat(tenantId, soldes.estBenefice);
+      aSolder.push({ compteId: compteResultat.id, montant: reste });
+    }
     const journal = await this.journalGeneral(tenantId);
     const lignesEcriture = [
-      soldes.estBenefice
-        ? { compteId: compteResultat.id, debit: soldes.montant, libelle: 'Affectation du résultat' }
-        : { compteId: compteResultat.id, credit: soldes.montant, libelle: 'Imputation de la perte' },
+      ...aSolder.map((s) =>
+        soldes.estBenefice
+          ? { compteId: s.compteId, debit: s.montant, libelle: 'Affectation du résultat' }
+          : { compteId: s.compteId, credit: s.montant, libelle: 'Imputation de la perte' },
+      ),
       ...dto.lignes.map((l) => ({
         compteId: l.compteId,
         ...(soldes.estBenefice ? { credit: l.montant } : { debit: l.montant }),

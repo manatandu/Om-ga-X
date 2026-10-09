@@ -68,6 +68,11 @@ interface Options {
    */
   forme?: FormeJuridiqueSyscohada | null;
   balance?: LigneBalance[];
+  /**
+   * La balance de l'exercice D'ACCUEIL (paquet 1, A6) · par défaut la même
+   * que celle de l'exercice affecté, qui ne porte aucun 130.
+   */
+  balanceAccueil?: Array<LigneBalance & { compteId: string }>;
   statutExercice?: 'OUVERT' | 'CLOTURE';
   suivant?: { id: string; statut: string; dateDebut: Date; dateFin: Date } | null;
   affectationExistante?: unknown;
@@ -134,10 +139,16 @@ function service(o: Options = {}) {
     },
   } as unknown as PrismaService;
   const ecritures = {
-    balance: jest.fn().mockResolvedValue({
-      lignes: (o.balance ?? []).map((l) => ({ clotureDebit: 0, clotureCredit: 0, ...l })),
-      totaux: { debit: 0, credit: 0 },
-    }),
+    balance: jest.fn().mockImplementation((_t: string, exerciceId: string) =>
+      Promise.resolve({
+        lignes: (exerciceId === suivant?.id && o.balanceAccueil ? o.balanceAccueil : (o.balance ?? [])).map((l) => ({
+          clotureDebit: 0,
+          clotureCredit: 0,
+          ...l,
+        })),
+        totaux: { debit: 0, credit: 0 },
+      }),
+    ),
     creer: creerEcriture,
   } as unknown as EcritureService;
   return { svc: new AffectationService(prisma, ecritures), creerEcriture, creerAffectation };
@@ -211,6 +222,52 @@ describe('Affectation · le compte 13 doit être SOLDÉ', () => {
       ],
     });
     expect(creerEcriture).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Affectation · le résultat viré au 130 à la réouverture (paquet 1, A6)', () => {
+  // AUDCIF, Titre VII, compte 13 · « le compte 13 est donc soldé lors de la
+  // comptabilisation de cette affectation » ; compte 11, crédité « par le
+  // débit du 131 […] ou du 1301 ». Le cabinet a viré le bénéfice de 2026 au
+  // 1301 le 02/01/2027 (D 131 / C 1301) · l'affectation débitait le 131,
+  // déjà vide, et le 1301 gardait le résultat.
+  it('débite le 1301, et non le 131, quand le bénéfice y a été viré', async () => {
+    const { svc, creerEcriture } = service({
+      balance: benefice(1_000_000),
+      balanceAccueil: [
+        { compteId: 'c131', numero: '13100000', mouvementDebit: 1_000_000, mouvementCredit: 0, solde: 0 },
+        { compteId: 'c1301', numero: '13010000', mouvementDebit: 0, mouvementCredit: 1_000_000, solde: -1_000_000 },
+      ],
+    });
+    await svc.enregistrer('t1', 'u1', {
+      ...DECISION,
+      exerciceId: 'ex2026',
+      lignes: [
+        { compteId: 'c111', montant: 100_000 },
+        { compteId: 'c121', montant: 900_000 },
+      ],
+    });
+    const dto = creerEcriture.mock.calls[0][2];
+    expect(dto.lignes[0]).toMatchObject({ compteId: 'c1301', debit: 1_000_000 });
+    expect(dto.lignes.some((l: { compteId: string }) => l.compteId === 'c131')).toBe(false);
+  });
+
+  it('crédite le 1309 pour une perte qui y a été virée, le reste au 139', async () => {
+    const { svc, creerEcriture } = service({
+      balance: perte(500_000),
+      balanceAccueil: [
+        { compteId: 'c139', numero: '13900000', mouvementDebit: 0, mouvementCredit: 300_000, solde: 200_000 },
+        { compteId: 'c1309', numero: '13090000', mouvementDebit: 300_000, mouvementCredit: 0, solde: 300_000 },
+      ],
+    });
+    await svc.enregistrer('t1', 'u1', {
+      ...DECISION,
+      exerciceId: 'ex2026',
+      lignes: [{ compteId: 'c129', montant: 500_000 }],
+    });
+    const dto = creerEcriture.mock.calls[0][2];
+    expect(dto.lignes[0]).toMatchObject({ compteId: 'c1309', credit: 300_000 });
+    expect(dto.lignes[1]).toMatchObject({ compteId: 'c139', credit: 200_000 });
   });
 });
 
