@@ -209,6 +209,7 @@ ou redéclenché sans que la ligne suive fait tomber le test.
 | `sauvegarde-base.yml` | horaire, chaque nuit à 02:00 UTC ; à la main | `pg_dump` chiffré + restauration de contrôle, qui doit rendre la source table par table et ligne par ligne, décomptée dans l'instantané même de l'export (audit final F262) |
 | `surveillance.yml` | horaire, toutes les quinze minutes ; à la main | interroge le service, le relais `/api` du site et le site ; après trois échecs, ouvre l'issue « Panne de production », refermée au retour |
 | `paquet-sur-site.yml` | à la main seulement | paquet d'installation Windows (`OmegaX-installation-<date>-<commit>.exe`) |
+| `requetes-production.yml` | à la main seulement | lit les requêtes R1 et R2 du paquet 1 sur la base de production, blocs pris dans `docs/requetes-production-paquet-1.md`, session en lecture seule, identifiants et nombres seulement |
 
 **TÉLÉMÉTRIE, TROIS SECRETS, TOUS FACULTATIFS** (décision de Manasse du
 2026-10-07). `API_SENTRY_DSN` · le serveur le reçoit en `SENTRY_DSN` par le

@@ -1,0 +1,112 @@
+name: Requêtes de production (lecture seule)
+
+# LES REQUÊTES DU PAQUET 1, JOUÉES SANS QU'AUCUN POSTE NE TIENNE LA CHAÎNE DE
+# CONNEXION (décision de Manasse du 2026-10-09) · R1 (provisions rattachées à
+# l'exercice d'un autre dossier, décompte) et R2 (clôtures « Rectifier » et
+# « Conserver » sur une contre-passation de réévaluation). Les blocs SQL ne
+# sont écrits qu'UNE fois, dans docs/requetes-production-paquet-1.md, et lus
+# ici par leur marqueur · deux copies finiraient par ne plus dire la même
+# chose.
+#
+# RIEN NE S'ÉCRIT · la session s'ouvre en lecture seule
+# (`default_transaction_read_only`, que la base fait respecter), chaque bloc
+# s'ouvre en `BEGIN TRANSACTION READ ONLY` et finit par `ROLLBACK`, et un bloc
+# qui nommerait un ordre d'écriture est refusé avant toute connexion. La
+# purge de R1 reste un geste de Manasse (docs, étapes 2 et 3).
+#
+# RIEN D'UN CLIENT NE S'AFFICHE (CLAUDE.md § 8, « VMG ne voit jamais les
+# informations d'un client ») · les blocs ne rendent que des identifiants,
+# des dates et des nombres. La chaîne de connexion n'est jamais écrite ·
+# endpoint DIRECT (`API_DATABASE_URL`), passé par l'environnement, masqué par
+# GitHub, jamais en `set -x`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      requetes:
+        description: Requêtes à lire
+        type: choice
+        options:
+          - R1 et R2
+          - R1
+          - R2
+        default: R1 et R2
+
+permissions:
+  contents: read
+
+concurrency:
+  group: requetes-production
+  cancel-in-progress: false
+
+jobs:
+  lire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # LES BLOCS, LUS DANS LE DOCUMENT ET JUGÉS AVANT TOUTE CONNEXION · un
+      # marqueur introuvable, un bloc vide, un bloc qui ne s'ouvre pas en
+      # lecture seule ou qui nomme un ordre d'écriture arrêtent le job.
+      - name: Extraire et contrôler les blocs
+        env:
+          CHOIX: ${{ inputs.requetes }}
+        run: |
+          set -euo pipefail
+          extraire() {
+            awk -v m="<!-- $1 " 'index($0,m)==1{f=1;next} f&&/^```sql/{g=1;next} g&&/^```/{exit} g{print}' \
+              docs/requetes-production-paquet-1.md
+          }
+          mkdir -p requetes
+          case "$CHOIX" in
+            "R1") marqueurs="requete-r1-lecture" ;;
+            "R2") marqueurs="requete-m5 requete-m5-conserver" ;;
+            *) marqueurs="requete-r1-lecture requete-m5 requete-m5-conserver" ;;
+          esac
+          for m in $marqueurs; do
+            extraire "$m" > "requetes/$m.sql"
+            code=$(grep -v '^[[:space:]]*--' "requetes/$m.sql" | grep -v '^[[:space:]]*$' || true)
+            if [ -z "$code" ]; then echo "::error::Bloc $m introuvable ou vide dans le document."; exit 1; fi
+            premiere=$(printf '%s\n' "$code" | head -1)
+            derniere=$(printf '%s\n' "$code" | tail -1)
+            if [ "$premiere" != "BEGIN TRANSACTION READ ONLY;" ] || [ "$derniere" != "ROLLBACK;" ]; then
+              echo "::error::Le bloc $m ne s'ouvre pas en lecture seule ou ne finit pas par ROLLBACK."; exit 1
+            fi
+            if printf '%s\n' "$code" | grep -Eiq '\b(insert|update|delete|merge|create|drop|alter|truncate|grant|revoke|copy|call|do|vacuum|reindex|cluster|refresh|lock|set[[:space:]]+session)\b'; then
+              echo "::error::Le bloc $m nomme un ordre d'écriture · refusé."; exit 1
+            fi
+          done
+          echo "MARQUEURS=$marqueurs" >> "$GITHUB_ENV"
+          ls -1 requetes
+
+      # Le client doit être au moins de la version du serveur Neon (même
+      # installation que la sauvegarde nocturne, binaires versionnés).
+      - name: Installer le client PostgreSQL 18
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client-18
+          /usr/lib/postgresql/18/bin/psql --version
+
+      - name: Lire en production
+        env:
+          DATABASE_URL: ${{ secrets.API_DATABASE_URL }}
+          # La session entière en lecture seule · la base refuse toute
+          # écriture, quoi que contienne un bloc.
+          PGOPTIONS: -c default_transaction_read_only=on
+        run: |
+          set -euo pipefail
+          if [ -z "$DATABASE_URL" ]; then echo "::error::Le secret API_DATABASE_URL est absent."; exit 1; fi
+          for m in $MARQUEURS; do
+            echo "::group::$m"
+            /usr/lib/postgresql/18/bin/psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "requetes/$m.sql" | tee "requetes/$m.txt"
+            echo "::endgroup::"
+            {
+              echo "### $m"
+              echo '```'
+              cat "requetes/$m.txt"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done

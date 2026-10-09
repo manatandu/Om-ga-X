@@ -17,6 +17,14 @@ Toutes se jouent sur l'endpoint DIRECT (`API_DATABASE_URL`), jamais sur
 l'endpoint poolé, et la chaîne de connexion ne s'affiche ni ne se recopie
 nulle part (CLAUDE.md, § 4).
 
+LES LECTURES SE LANCENT DEPUIS GITHUB (décision de Manasse du 2026-10-09) ·
+le workflow `requetes-production.yml`, à la main seulement, joue les blocs
+marqués `requete-r1-lecture`, `requete-m5` et `requete-m5-conserver` de ce
+document, tels quels, sur une session ouverte en LECTURE SEULE
+(`default_transaction_read_only`), après avoir refusé tout bloc qui ne
+s'ouvre pas en lecture seule ou qui nomme un ordre d'écriture. La purge de R1
+(étapes 2 et 3) reste un geste de Manasse, après lecture du décompte.
+
 ## R1 · provisions rattachées à l'exercice d'un autre dossier (ligne C)
 
 Avant le paquet 1, une provision pour risques et charges pouvait être créée
@@ -32,6 +40,32 @@ toute lecture). Restent les lignes déjà écrites, s'il y en a.
    JOIN exercices e ON e.id = p."exerciceId"
    WHERE e."tenantId" <> p."tenantId";
    ```
+
+   Le workflow manuel `requetes-production.yml` joue ce décompte, et celui de
+   l'étape 2 par dossier, sans la copie, en lecture seule · le bloc ci-dessous,
+   tel quel.
+
+<!-- requete-r1-lecture · le workflow requetes-production.yml exécute ce bloc tel quel -->
+```sql
+-- R1 · LECTURE SEULE · provisions rattachées à l'exercice d'un autre dossier,
+-- le total puis le décompte par dossier (étapes 1 et 2, sans la copie).
+-- Identifiants et nombres seulement. Transaction en lecture seule, annulée.
+BEGIN TRANSACTION READ ONLY;
+SELECT count(*) AS lignes_rattachees_a_un_autre_dossier
+FROM provisions_risques_charges p
+JOIN exercices e ON e.id = p."exerciceId"
+WHERE e."tenantId" <> p."tenantId";
+SELECT p."tenantId" AS dossier_id,
+       count(*) AS lignes,
+       count(*) FILTER (WHERE p.statut = 'COMPTABILISEE'
+                         OR p."montantOuverture" <> 0 OR p."dotationsExercice" <> 0) AS lignes_avec_travail
+FROM provisions_risques_charges p
+JOIN exercices e ON e.id = p."exerciceId"
+WHERE e."tenantId" <> p."tenantId"
+GROUP BY p."tenantId"
+ORDER BY dossier_id;
+ROLLBACK;
+```
 
 2. Garder une copie DANS la base, sans la lire, puis compter par dossier. La
    copie permet de rendre une ligne si un client la réclame ; elle se
