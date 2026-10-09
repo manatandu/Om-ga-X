@@ -3,7 +3,7 @@
 Branche `travail/paquet1-a`, partie de `main` e31f4de. Fiche tenue à chaque
 point fini (CLAUDE.md § 5), retirée à l'intégration.
 
-Ordre de travail · A8, A10, A9, A5, A6.
+Ordre de travail · A8, A1, A9, A5, A6.
 
 ## Commandes
 
@@ -11,8 +11,8 @@ Ordre de travail · A8, A10, A9, A5, A6.
 # Scénario (non committé ici, tenu par le coordinateur)
 #   /home/user/wt-passe/scripts/passe-v1/scenario-paquet1-a.mjs
 # AVANT (main) et APRÈS (cette copie, après npm run build)
-PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
-PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
+PAQUET1_A_COPIE=/home/user/Comptaflow PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
+PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
 # Specs touchés
 npx tsc --noEmit
 npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/cloture-annuelle.spec.ts \
@@ -20,7 +20,8 @@ npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/clot
   src/modules/exercice/arret-dissolution.spec.ts
 npx jest src/modules/etats-financiers src/modules/etats-financiers-syscohada src/modules/exports
 npx jest src/modules/comptabilite/balance.spec.ts src/modules/notes-annexes src/modules/consolidation src/modules/ifrs
-cd client && npx tsc --noEmit && npx vitest run src/components/resultat-anterieur-non-vire.spec.ts src/lib/postes-de-flux-vides.spec.ts src/specs-sans-react.spec.ts
+cd client && npx tsc --noEmit && npx vitest run src/components/resultat-anterieur-non-vire.spec.ts src/lib/postes-de-flux-vides.spec.ts \
+  src/components/notes-part-non-ventilee.spec.ts src/components/notes-ecarts-saisie.spec.ts src/specs-sans-react.spec.ts
 ```
 
 ## Fait
@@ -359,9 +360,42 @@ APRÈS · 104 contrôles sur 104 pour A2, A3, A7, A4, A1, A8, A8M
 13 sur 13 (`/tmp/claude-0/sim/p1a-apres-a2b.json` · 2025 validé et clôturé,
 plus de mention, ZA de 2026 = 1 300 000).
 
+### A10 · la part non ventilée par échéance, dite à l'écran des notes
+
+REPRODUIT sur vraie base contre `main` (SYSCOHADA, note 7). Facture F1 de
+1 000 000 au 01/03/2026, échéance 31/03/2027 ; facture F2 de 400 000 au
+01/06/2026, sans échéance ; validées. Le serveur sert déjà la ligne « Clients
+(hors réserves de propriété Groupe) » · N 1 400 000, à un an au plus
+1 000 000, `echeanceNonVentilee` 400 000 (trois contrôles concordants avant
+comme après) ; l'écran (`NotesAnnexesRendu.tsx`) ne lisait le champ nulle
+part · contrôle `NotesAnnexesRendu (ou un module qu'il importe) lit
+echeanceNonVentilee` lu `false` (le scénario relit la source de la copie
+jouée, `PAQUET1_A_COPIE`, `lib/types.ts` écarté, qui déclare sans lire).
+1 écart sur 4 (`/tmp/claude-0/sim/p1a-a10-avant.json`). Les colonnes
+d'échéance s'y lisaient complètes alors qu'elles laissaient 400 000 de côté ;
+seule la liasse le disait (commentaire de cellule).
+
+CORRECTION ·
+- `client/src/lib/part-non-ventilee.ts` · la phrase (« Part non ventilée par
+  échéance : <montant> · rangée dans aucune colonne d'échéance. »), montant par
+  `lib/montants.ts`, `null` sous le demi-centime ; la bulle dit le pourquoi,
+  et pour une part NÉGATIVE qu'elle n'est ni due ni recouvrable (même lecture
+  que `NOTE_PART_NON_VENTILEE_NEGATIVE` de `etat-etafi.ts`).
+- `NotesAnnexesRendu.tsx` · sous la ligne qui la porte (`LigneTableauNote`),
+  avec sa bulle `Aide`, comme les écarts de saisie. Commun aux deux écrans de
+  notes · aucun poste, compte ni libellé de référentiel.
+
+TESTS · `client/src/components/notes-part-non-ventilee.spec.ts` (phrase,
+absence, part négative et sa bulle, câblage dans le corps de
+`LigneTableauNote`) · le câblage tombe sur le composant d'avant.
+
+APRÈS · 4 contrôles sur 4 (`/tmp/claude-0/sim/p1a-a10-apres.json`), client
+construit (la phrase est dans le paquet de `NotesAnnexesPage`). Aucune
+clôture à traverser · le point est d'écran, le serveur n'est pas touché.
+
 ## Reste
 
-A4, A7, A3, A2, A10, A9, A5, A6.
+A9, A5, A6.
 
 ## Relevés (voisins, non codés)
 
@@ -404,3 +438,9 @@ A4, A7, A3, A2, A10, A9, A5, A6.
   (hors du point).
 - G1 (relevé MAJEUR du second tour, suivi) · seul le cas de la contre-passation
   du module est réglé ici ; le cas « ouverture nulle » du relevé reste ouvert.
+- A10 · à l'écran des notes, deux autres champs servis par le serveur ne
+  sont lus nulle part · `ecartCloture` (clôture recalculée D = A + B − C
+  différente du solde de la balance, que la liasse dit en commentaire de
+  cellule) et `natureNonVentilee` (mouvements de provision de la note 30 dont
+  la contrepartie ne relève d'aucune des trois natures). Même forme que A10,
+  non codés (hors du point).
