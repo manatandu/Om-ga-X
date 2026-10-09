@@ -11,6 +11,7 @@ import { jourDeKinshasa } from '../../common/echeance';
 import { poidsDesLignesLues, poidsOuMontant } from '../lettrage/reste-des-lignes-ouvertes';
 import { pairesACheval, type PairesACheval } from '../lettrage/paires-a-cheval';
 import { datesOrigineDesReports } from './date-origine-des-reports';
+import { groupesSoldesEnDevise } from './groupes-soldes-en-devise';
 
 const JOUR = 86_400_000;
 
@@ -221,6 +222,14 @@ export interface PositionRelance {
     montant: number;
     retardJours: number;
   }[];
+  /**
+   * LES FACTURES SOLDÉES DANS LEUR DEVISE dont l'écart de change réalisé
+   * n'est pas passé (paquet 1, B6 ; AUDCIF art. 55) · leurs lignes ne sont
+   * ni réclamées ni retranchées, et l'écart est NOMMÉ pour le cabinet. Jamais
+   * imprimé dans la lettre · c'est une écriture de l'entité, pas une dette du
+   * client.
+   */
+  ecartsChangeNonPasses: { code: string; ecart: number; libelle: string }[];
 }
 
 /**
@@ -477,9 +486,18 @@ export class RelancesService {
     // par la règle du Règlement des tiers (`poidsDesLignesLues`), après la
     // paire à cheval qui a sa propre lecture.
     const poids = await poidsDesLignesLues(this.prisma, tenantId, lues, {}, 'Relances');
+    // UNE FACTURE SOLDÉE DANS SA DEVISE NE SE RÉCLAME PLUS (paquet 1, B6) ·
+    // le groupe que le règlement a soldé dans la devise de la facture, et
+    // non en francs, porte un écart de change réalisé que l'entité passe
+    // (AUDCIF art. 55) · lu ligne à ligne, il réclamait au client la perte de
+    // change, ou retranchait le gain d'une autre dette. Ses lignes ne se
+    // réclament pas, et l'écart est nommé sur la position du compte
+    // (`groupes-soldes-en-devise.ts`).
+    const soldesEnDevise = await groupesSoldesEnDevise(this.prisma, tenantId, lues);
     const parCompte = new Map<string, PositionRelance>();
     const traiter = (l: LigneLue) => {
       if (paires?.absorbees.has(l.id)) return;
+      if (l.lettrageId && soldesEnDevise.has(l.lettrageId)) return;
       const net = paires?.reste.get(l.id)?.francs ?? poidsOuMontant(poids, l);
       if (Math.abs(net) < 0.005) return;
       const datePiece = datesOrigine.get(l.id) ?? l.ecriture.date;
@@ -519,6 +537,7 @@ export class RelancesService {
           niveauSuggere: null,
           derniereRelance: null,
           lignes: [],
+          ecartsChangeNonPasses: [],
         } satisfies PositionRelance);
 
       acc.montantDu += net;
@@ -538,6 +557,13 @@ export class RelancesService {
       parCompte.set(l.compte.id, acc);
     };
     for (const l of lues) traiter(l);
+    // L'écart se nomme sur la position du compte quand le compte doit encore
+    // autre chose · sans rien d'autre à réclamer, aucune relance ne part, et
+    // l'écart reste nommé au lettrage du compte et refusé à la clôture
+    // (`ecartsRealisesNonConstates`, D3 d'A6).
+    for (const g of soldesEnDevise.values()) {
+      parCompte.get(g.compteId)?.ecartsChangeNonPasses.push({ code: g.code, ecart: g.ecart, libelle: g.libelle });
+    }
 
     // LES RELANCES QUI COMPTENT SONT CELLES DE LA DETTE OUVERTE (audit final
     // F169) · la dernière relance d'un compte, même vieille d'un an et d'une

@@ -133,6 +133,34 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   le lettrage ; quatre tombent sur le code d'avant, celui de l'échéance tombe
   si on la retire de la clé), `date-origine-des-reports.spec.ts` (cinq cas).
 
+### B6 · relance d'une facture soldée dans sa devise, écart réalisé non passé
+
+- AVANT (p1b_avant) · SARL SYSCOHADA, 2026 clôturé. C6 · facture de
+  1 000 USD à 2 800 (2 800 000) du 01/03/2026, reportée au détail ; règlement
+  de 1 000 USD à 2 900 (2 900 000) le 10/02/2027 lettré en partiel avec
+  l'à-nouveau (gain réalisé de 100 000 non passé) ; facture en francs de
+  500 000. Relance au 15/03/2027 · dû 400 000, trois lignes (2 800 000,
+  500 000, − 2 900 000), aucun écart nommé. C6B · réglé à 2 700 (perte de
+  100 000), facture en francs de 300 000 · dû 400 000, la PERTE DE CHANGE
+  réclamée au client.
+- Correction · `groupes-soldes-en-devise.ts` (relances) · un groupe lu en
+  entier (nombre de ses lignes en base égal aux lignes lues), toutes ses
+  lignes dans une seule devise, soldé dans cette devise et non en francs, ne
+  se réclame ni ne se retranche ; l'écart (signé comme `ecartDuGroupe`) est
+  nommé sur la position (`ecartsChangeNonPasses`), jamais imprimé dans la
+  lettre. Écran Rappel et relevé · « écart de change à passer » sur la ligne
+  du compte, le libellé au détail.
+- APRÈS (p1b_apres) · C6 · dû 500 000, une ligne, gain de 100 000 nommé ;
+  C6B · dû 300 000, une ligne, perte de 100 000 nommée ; soldes de la balance
+  2027 inchangés (400 000 chacun, l'écart non passé compris).
+- Tests · `groupes-soldes-en-devise.spec.ts` (onze cas · la règle, lu en
+  entier, cloisonnement, et les positions de relance ; deux tombent si la
+  règle est retirée du service).
+- Limites écrites · un compte qui ne doit rien d'autre n'a pas de position,
+  l'écart y reste nommé au lettrage et refusé à la clôture (D3 d'A6) ; un
+  groupe qui porte aussi une ligne en francs seuls garde la règle commune
+  (lu ligne à ligne, B5).
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -169,6 +197,13 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   recopie. Une origine incertaine ne se devine pas (même règle que
   `apparierAuReport` et `datesOrigineDesReports`).
 
+- B6 · AUDCIF art. 55 (`audcif-acte-uniforme/references/titre-1-ch4-evaluation-resultat.md`)
+  · « À la date de règlement des créances et dettes, les pertes et gains de
+  change à cette date sont constatés par rapport à leur coût historique » ·
+  l'écart d'un groupe soldé dans sa devise est un gain ou une perte de
+  l'entité, pas une créance sur le client ; le geste qui le passe est celui
+  de la ligne A6 (« Passer l'écart », `POST /reglements/ecart-change`).
+
 - B9 · aucune source ne fixe la fenêtre de dates d'un rapprochement · le
   défaut (15) et la borne (120) sont des conventions d'OmegaX, celles que
   l'écran porte déjà (`RapprochementDetailPage`, champ de 0 à 120).
@@ -186,7 +221,7 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 
 ## Reste
 
-B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
+B5, B4, B8 ; puis rejeu APRÈS de tous les points
 (`npm run build`, `cd client && npm run build`, puis
 `/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
 
@@ -195,5 +230,5 @@ B6, B5, B4, B8 ; puis rejeu APRÈS de tous les points
 ```bash
 npx tsc --noEmit
 npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export src/modules/lettrage/reste-des-lignes-ouvertes src/modules/relances
-cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts
+cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts src/pages
 ```

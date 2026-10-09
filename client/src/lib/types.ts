@@ -2402,6 +2402,12 @@ export interface PositionRelance {
    */
   tiersEmail: string | null;
   lignes: { date: string; echeance: string | null; libelle: string; montant: number; retardJours: number }[];
+  /**
+   * Les factures soldées dans leur devise dont l'écart de change réalisé
+   * n'est pas passé · ni réclamées ni retranchées, l'écart nommé (AUDCIF
+   * art. 55). Jamais dans la lettre.
+   */
+  ecartsChangeNonPasses?: { code: string; ecart: number; libelle: string }[];
 }
 
 /**

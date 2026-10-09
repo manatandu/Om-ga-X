@@ -360,6 +360,16 @@ function PositionsRelances() {
                 {p.tiersId && !p.tiersEmail && (
                   <span className="ml-1 text-[10.5px] text-warning font-semibold">sans adresse</span>
                 )}
+                {/* Une facture soldée dans sa devise n'est pas réclamée · son
+                    écart de change reste à passer au lettrage (paquet 1, B6). */}
+                {(p.ecartsChangeNonPasses ?? []).length > 0 && (
+                  <span
+                    className="ml-1 text-[10.5px] text-warning font-semibold"
+                    title={(p.ecartsChangeNonPasses ?? []).map((e) => `Groupe ${e.code} · ${e.libelle}`).join('\n')}
+                  >
+                    écart de change à passer
+                  </span>
+                )}
                 {/* L'EXCLUSION SE VOIT, elle ne fait pas disparaître la ligne ·
                     un tiers hors circuit doit toujours, et une liste qui le
                     cacherait laisserait croire le poste apuré. */}
@@ -393,6 +403,12 @@ function PositionsRelances() {
                 )}
               </span>
             </div>
+            {deplie.has(p.compteId) &&
+              (p.ecartsChangeNonPasses ?? []).map((e) => (
+                <div key={`ecart-${e.code}`} className="px-3 py-0.5 text-[11.5px] text-warning bg-chrome-alt/50 border-b border-border/30">
+                  Groupe {e.code} · {e.libelle}
+                </div>
+              ))}
             {deplie.has(p.compteId) &&
               p.lignes.map((l, i) => (
                 <div key={i} className={`${grille} px-3 py-0.5 text-[11.5px] bg-chrome-alt/50 border-b border-border/30`}>
