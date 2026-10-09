@@ -310,6 +310,8 @@ export function AppShell() {
             { label: 'Interrogation et lettrage', chemin: '/lettrage', onClick: () => navigate('/lettrage') },
             // Le règlement suit le lettrage · il en pose un à chaque pièce.
             { label: 'Règlement des tiers', chemin: '/reglements', onClick: () => navigate('/reglements') },
+            // Banque ou caisse vers une autre, par le 585 (virements-fonds/).
+            { label: 'Virement de fonds', chemin: '/virements-fonds', onClick: () => navigate('/virements-fonds') },
             { label: 'Rapprochement bancaire', chemin: '/rapprochement', onClick: () => navigate('/rapprochement') },
             { label: 'Rappel et relevé', chemin: '/relances', onClick: () => navigate('/relances') },
           ],

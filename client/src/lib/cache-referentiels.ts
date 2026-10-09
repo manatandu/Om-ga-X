@@ -43,6 +43,9 @@ const ECRITURES_INDIRECTES: readonly { prefixe: string; vide: readonly string[];
   // La nature s'affiche dans la liste des comptes (CompteService.lister), et
   // l'alignement réécrit leur mode de report.
   { prefixe: '/natures-compte', vide: ['/comptes'] },
+  // Le premier virement de fonds rouvre les comptes de passage du 585 qui
+  // manqueraient (virements-fonds/comptes-de-passage.ts) · la création seule.
+  { prefixe: '/virements-fonds', vide: ['/comptes'], exact: true },
 ];
 
 /** Les entrées du cache qu'une écriture sur `chemin` rend fausses. */

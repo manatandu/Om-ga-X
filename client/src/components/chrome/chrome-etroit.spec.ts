@@ -389,8 +389,9 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // déclaration de TVA, les engagements et les exonérations venus d'État.
     // Puis « Paie du mois » sous « Clôture » · la passation mensuelle de la
     // paie, qu'on n'atteignait que par la Structure (audit I10). Puis
-    // « Créances douteuses ou litigieuses » sous « Clôture » (ligne A7).
-    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 21],
+    // « Créances douteuses ou litigieuses » sous « Clôture » (ligne A7). Puis
+    // « Virement de fonds » sous « Tiers et trésorerie » (2026-10-09).
+    ['Traitement', "titre: 'Traitement',", "titre: 'État',", 7, 22],
   ] as const) {
     it(`${menu} · ${auRepos} lignes au repos, les ${total} commandes toujours atteignables`, () => {
       const entrees = entreesDe(debut, fin);

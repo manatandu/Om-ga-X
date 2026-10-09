@@ -38,6 +38,11 @@ describe('cheminsAViderApres · ce qu’une écriture rend faux', () => {
     expect(cheminsAViderApres('/natures-compte/CLIENTS')).toEqual(['/comptes']);
   });
 
+  it('le virement de fonds, qui peut rouvrir ses comptes de passage, vide le plan de comptes · sa création seule', () => {
+    expect(cheminsAViderApres('/virements-fonds')).toEqual(['/comptes']);
+    expect(cheminsAViderApres('/virements-fonds/v1/annuler')).toEqual([]);
+  });
+
   it('l’import vide les deux référentiels', () => {
     expect(trie(cheminsAViderApres('/import/executer'))).toEqual(trie([...CHEMINS_CACHES]));
   });
