@@ -3566,6 +3566,9 @@ après l'essai (ou le début), puis la période payée. (2) Échéance jamais RE
 paiement sur facture impayée seule. (3) Licence AVANT l'écriture · perpétuelle ou de
 l'éditeur, refus. (4) Cellules alignées sur la mère (audit final F46,
 `licenceDeCellule`) ; l'éditeur hors groupe ; `modifierLicence` hors cloisonnement.
+ÉCHUE, LE DOSSIER PASSE EN LECTURE SEULE (décision de Manasse du 2026-10-09,
+« Lecture simple ») · `LicenceGuard` laisse passer GET et HEAD, refuse toute
+écriture en le disant ; une licence SUSPENDUE reste fermée en entier.
 
 **Factures et licences par courriel (2026-09-26).**
 `abonnements/courriels-editeur.ts`, `CourrielsEditeurService`. (1) File
