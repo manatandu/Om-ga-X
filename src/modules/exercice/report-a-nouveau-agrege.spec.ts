@@ -144,7 +144,9 @@ type Lgn = {
 const estReference = (x: unknown): x is { name: string } =>
   !!x && typeof x === 'object' && 'modelName' in (x as object) && 'name' in (x as object);
 function champ(r: Record<string, unknown>, v: unknown, f: unknown): boolean {
-  if (f === null || typeof f !== 'object' || f instanceof Date) return v === f;
+  // Une colonne absente de la rangée vaut NULL, comme en base (`corrigeEcritureId: null`).
+  if (f === null) return (v ?? null) === null;
+  if (typeof f !== 'object' || f instanceof Date) return v === f;
   return Object.entries(f as Record<string, unknown>).every(([op, x]) => {
     const o = estReference(x) ? r[x.name] : x;
     switch (op) {
@@ -175,6 +177,14 @@ function correspond(r: Record<string, unknown>, where: unknown): boolean {
     if (cle === 'OR') return (f as unknown[]).some((w) => correspond(r, w));
     if (cle === 'NOT') return ([] as unknown[]).concat(f).every((w) => !correspond(r, w));
     if (cle === 'ecriture' || cle === 'compte') return correspond(r[cle] as Record<string, unknown>, f);
+    // L'écriture qui en corrige une autre, vue de l'origine (relecture du
+    // paquet 1, B2 · une OD annulée n'accueille aucun groupe) · `is: null`
+    // seul, le seul que la lecture pose ; tout autre filtre lève.
+    if (cle === 'correction') {
+      const relation = f as { is?: unknown };
+      if (!('is' in relation) || relation.is !== null) throw new Error('doublure : filtre de correction non honoré');
+      return !r.correction;
+    }
     // Le groupe de lettrage et ses lignes (A6 bis, règle 1) · `some` seul,
     // le seul que la lecture pose ; tout autre filtre de relation lève.
     if (cle === 'lettrage') {

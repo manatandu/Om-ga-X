@@ -1,5 +1,5 @@
 import { ClasseCompte, TypeJournal } from '@prisma/client';
-import { filtreOuverturePasseeAuPremierJour, lignesDeContrePassationDeclaree } from './ouverture-passee';
+import { LecteurOuverturePassee, filtreOuverturePasseeAuPremierJour, lignesDeContrePassationDeclaree, ouverturePasseeNonNulle } from './ouverture-passee';
 
 /**
  * LE PÉRIMÈTRE DE L'OUVERTURE PASSÉE AU PREMIER JOUR, ÉVALUÉ (paquet 1, A8).
@@ -134,5 +134,85 @@ describe('A8 · la contre-passation faite à la main et DÉCLARÉE · ses seules
     expect(
       lignesDeContrePassationDeclaree([{ id: 'od', reevaluationContrePassationDeclaree: { annuleeLe: new Date('2027-02-01'), ecritureEcarts: ecarts } }]).size,
     ).toBe(0);
+  });
+});
+
+describe('B2 · le négatif d’une écriture du premier jour en fait partie, quelle que soit sa date (AUDCIF art. 20, al. 2)', () => {
+  const od = { journal: OD, estGenereeParCloture: false, reevaluationExtourne: null, date: N1.dateDebut, dateValeur: null };
+  const plusTard = new Date('2027-02-15');
+
+  it('le négatif daté du 15/02 d’une OD du 01/01 entre dans le périmètre', () => {
+    expect(evaluer(ecriture({ date: plusTard, corrigeEcritureId: 'od', corrigeEcriture: od }), filtre)).toBe(true);
+  });
+
+  it('le négatif d’une écriture qui n’est PAS du premier jour n’y entre pas', () => {
+    const odDuLendemain = { ...od, date: new Date('2027-01-02') };
+    expect(evaluer(ecriture({ date: plusTard, corrigeEcritureId: 'od', corrigeEcriture: odDuLendemain }), filtre)).toBe(false);
+  });
+
+  it('le négatif d’une écriture de trésorerie du premier jour n’y entre pas (même journal, opération de l’exercice)', () => {
+    const banque = { ...od, journal: BQ };
+    expect(evaluer(ecriture({ journal: BQ, date: plusTard, corrigeEcritureId: 'bq', corrigeEcriture: banque }), filtre)).toBe(false);
+  });
+
+  it('le négatif d’une contre-passation du MODULE, daté plus tard, reste dehors', () => {
+    const extourne = { ...od, reevaluationExtourne: { id: 'r26' } };
+    expect(evaluer(ecriture({ date: plusTard, corrigeEcritureId: 'x', corrigeEcriture: extourne }), filtre)).toBe(false);
+  });
+
+  it('dans le AND aussi · la reconduction du lettrage le lit', () => {
+    const { AND, lignes } = filtre as { AND: unknown; lignes: unknown };
+    expect(evaluer(ecriture({ date: plusTard, corrigeEcritureId: 'od', corrigeEcriture: od }), { AND, lignes })).toBe(true);
+  });
+});
+
+/**
+ * La position NETTE de l'ouverture (B2, M4, m4) · une doublure qui ÉVALUE les
+ * trois lectures (comptage des lignes, écritures, lignes par tranches) sur des
+ * écritures en mémoire.
+ */
+describe('B2 · une ouverture qui se solde n’est pas une ouverture (`ouverturePasseeNonNulle`)', () => {
+  const ligne = (id: string, ecritureId: string, compteId: string, debit: number, credit: number) => ({
+    id, ecritureId, compteId, debit, credit, deviseId: null, montantDevise: null, compte: { classe: ClasseCompte.CLASSE_4, numero: compteId },
+  });
+  const odOuverture = ecriture({
+    id: 'od', statut: 'VALIDEE', numeroPiece: 2,
+    lignes: [ligne('l1', 'od', 'c521', 10_500_000, 0), ligne('l2', 'od', 'c101', 0, 10_000_000), ligne('l3', 'od', 'c131', 0, 500_000)],
+  });
+  const negatif = ecriture({
+    id: 'neg', statut: 'VALIDEE', numeroPiece: 3, date: new Date('2027-02-15'), corrigeEcritureId: 'od', corrigeEcriture: odOuverture,
+    lignes: [ligne('n1', 'neg', 'c521', -10_500_000, 0), ligne('n2', 'neg', 'c101', 0, -10_000_000), ligne('n3', 'neg', 'c131', 0, -500_000)],
+  });
+  function lecteur(ecritures: Rangee[]): LecteurOuverturePassee {
+    const retenues = (w: unknown) => ecritures.filter((e) => evaluer(e, w));
+    return {
+      ligneEcriture: {
+        count: jest.fn(({ where }: { where: { ecriture: unknown } }) =>
+          Promise.resolve(retenues(where.ecriture).reduce((n, e) => n + (e.lignes as Rangee[]).length, 0))),
+        findMany: jest.fn(({ where, cursor }: { where: { ecriture: unknown }; cursor?: unknown }) =>
+          Promise.resolve(cursor ? [] : retenues(where.ecriture).flatMap((e) => e.lignes as Rangee[]))),
+      },
+      ecriture: {
+        findMany: jest.fn(({ where }: { where: unknown }) =>
+          Promise.resolve(retenues(where).map((e) => ({ ...e, journal: { code: 'OD' }, reevaluationContrePassationDeclaree: e.reevaluationContrePassationDeclaree ?? null })))),
+      },
+    } as unknown as LecteurOuverturePassee;
+  }
+
+  it('l’OD seule est une ouverture · ses pièces sont nommées', async () => {
+    expect(await ouverturePasseeNonNulle(lecteur([odOuverture]), 't', N1, { validees: true })).toEqual({ nombre: 1, pieces: ['OD n° 2'] });
+  });
+
+  it('l’OD et son négatif daté plus tard se soldent compte par compte · aucune ouverture', async () => {
+    expect(await ouverturePasseeNonNulle(lecteur([odOuverture, negatif]), 't', N1, { validees: true })).toBeNull();
+  });
+
+  it('au livre-journal seul · un négatif encore au brouillard n’annule rien', async () => {
+    const auBrouillard = { ...negatif, statut: 'BROUILLARD' };
+    expect(await ouverturePasseeNonNulle(lecteur([odOuverture, auBrouillard]), 't', N1, { validees: true })).toEqual({ nombre: 1, pieces: ['OD n° 2'] });
+  });
+
+  it('aucune écriture au premier jour · aucune ouverture', async () => {
+    expect(await ouverturePasseeNonNulle(lecteur([]), 't', N1, { validees: true })).toBeNull();
   });
 });

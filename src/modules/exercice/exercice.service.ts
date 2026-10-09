@@ -3339,7 +3339,8 @@ interface LigneDOuverture extends LigneOuverturePassee {
  * DATE DE VALEUR est le premier jour (un négatif reporté au premier jour
  * ouvert, AUDCIF art. 22, 4°), passée en À-NOUVEAU ou au journal d'OPÉRATIONS
  * DIVERSES (bilan importé, ressaisie à la main par OD), ou qui corrige l'une
- * d'elles (négatif lié), JAMAIS une écriture d'un journal d'achats, de ventes
+ * d'elles (négatif lié, QUELLE QUE SOIT SA DATE · relecture du paquet 1, B2,
+ * `filtreOuverturePasseeAuPremierJour`), JAMAIS une écriture d'un journal d'achats, de ventes
  * ou de trésorerie (une opération de l'exercice), SAUF · le report provisoire
  * d'OmegaX (que la clôture remplace), l'écriture de solde des comptes de
  * gestion, et toute écriture qui touche un compte de GESTION (classes 6 à 8).
@@ -3574,7 +3575,7 @@ async function issueDeLOuverture(
   const auBrouillard = dejaPassee.ecritures.filter((e) => e.statut === StatutEcriture.BROUILLARD);
   if (auBrouillard.length > 0) {
     throw new BadRequestException(
-      `L'exercice suivant porte au premier jour des écritures au brouillard (${piecesLisibles(auBrouillard)}) · une ouverture qui n'est pas ` +
+      `L'exercice suivant porte au premier jour (ou en correction d'une écriture du premier jour) des écritures au brouillard (${piecesLisibles(auBrouillard)}) · une ouverture qui n'est pas ` +
         `le report d'OmegaX. Le bilan d'ouverture correspond au bilan de clôture de l'exercice précédent (${article}), et la clôture ` +
         "doit le confronter à ce qui est au livre-journal. Validez-les (fenêtre Brouillard), ou, s'il s'agit d'opérations de l'exercice, " +
         'supprimez-les ou redatez-les au lendemain, puis clôturez.',

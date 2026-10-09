@@ -861,6 +861,17 @@ export async function groupesNonReconduits(
                 estANouveauProvisoire: false,
                 estSoldeDesComptesDeGestion: false,
                 OR: [{ estGenereeParCloture: true }, { AND: ouverture.AND, lignes: ouverture.lignes }],
+                // UNE LIGNE ANNULÉE N'ACCUEILLE RIEN (relecture du paquet 1,
+                // B2) · une OD d'ouverture corrigée par son négatif (AUDCIF
+                // art. 20, al. 2 · tout écrivain de `corrigeEcritureId`
+                // l'inscrit ENTIÈRE en négatif) n'est plus une position, et
+                // le négatif, qui entre dans le périmètre quelle que soit sa
+                // date, n'en est pas une non plus. Candidate, l'OD annulée
+                // rivalisait avec la ligne du report qui la remplace · le
+                // groupe passait pour introuvable, ou se reconduisait sur une
+                // ligne que son négatif annule.
+                correction: { is: null },
+                corrigeEcritureId: null,
               },
             },
             select: {

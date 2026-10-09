@@ -557,6 +557,48 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
   distinctes, option transmise à sa place, mémoire d'une même lecture,
   ouverture lue avant la clôture à travers la mémoire).
 
+### B2 · une OD d'ouverture du premier jour corrigée par un négatif daté plus tard
+
+- Vérifié · le périmètre (`filtreOuverturePasseeAuPremierJour`) exigeait la
+  date ou la date de valeur au premier jour, y compris pour le négatif lié ·
+  « Corriger » depuis le Journal date le négatif du jour de la correction,
+  il sortait du périmètre et l'OD annulée y restait seule. Défaut antérieur
+  à la ligne (même filtre sur `main`).
+- Lu au texte · AUDCIF art. 20, al. 2 (« Toute correction d'erreur commise
+  et découverte sur l'exercice en cours s'effectue exclusivement par
+  inscription en négatif des éléments erronés ; l'enregistrement exact est
+  ensuite opéré ») et art. 34 (le bilan d'ouverture correspond au bilan de
+  clôture précédent) · la position d'ouverture est ce qui reste APRÈS la
+  correction. Tranché · le négatif lié d'une écriture du premier jour fait
+  partie du périmètre quelle que soit sa date (tous les écrivains de
+  `corrigeEcritureId` inscrivent l'origine ENTIÈRE en négatif, liaison
+  unique), et l'OD et son négatif se soldent (`ouvertureNulle`).
+- AVANT (copie avant correction ; `main` non joué dans cette session, la
+  commande contre `/home/user/Comptaflow` a été refusée par le garde-fou de
+  l'environnement · le filtre y est le même hors A8) · OD CONCORDANTE avec le
+  report · clôture passée sans rien ajouter, 2027 banque 0 au lieu de
+  10 500 000, capital 0 au lieu de -10 000 000, 13 à 0 au lieu de -500 000,
+  balance bouclée. OD DIVERGENTE (3 000 000) · aperçu « déclaration requise »,
+  clôture refusée, RECTIFIER · banque 7 500 000, capital -7 000 000 (report
+  moins l'OD).
+- Correction · le filtre admet le négatif lié (`corrigeEcriture` datée du
+  premier jour) ; un lecteur NET pour ceux qui ne demandaient qu'« y a-t-il
+  une écriture » (`ouverturePasseeNonNulle` · même périmètre, mêmes lignes
+  écartées que la clôture, nulle compte par compte et devise par devise) ·
+  le 585 du groupe (G1) le lit ; la reconduction du lettrage n'accueille ni
+  une écriture corrigée ni son négatif (`correction: { is: null }`,
+  `corrigeEcritureId: null`). Message du brouillard de la clôture complété
+  (« ou en correction d'une écriture du premier jour »).
+- APRÈS · 14 contrôles sur 14 (deux variantes) ; A8, A8M et A7 rejoués, 61
+  sur 61.
+- Tests · `ouverture-passee.spec.ts` (cinq cas du filtre, quatre du lecteur
+  net), `virements-585-groupe.spec.ts` (doublure qui ÉVALUE les trois
+  lectures, cas B2), `reconduction-lettrage.spec.ts` (l'OD annulée
+  n'accueille rien, sans elle elle rivalise). Doublures complétées, jamais
+  contournées · `correction` honoré (`report-a-nouveau-agrege.spec.ts`,
+  `reconduction-lettrage.spec.ts`), colonne absente lue NULL comme en base ;
+  la forme figée du filtre (`cloture-annuelle.spec.ts`, R1) suit la règle.
+
 ## Reste
 
 Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).

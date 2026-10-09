@@ -1,6 +1,8 @@
-import { ClasseCompte, Prisma, TypeJournal } from '@prisma/client';
+import { ClasseCompte, Prisma, StatutEcriture, TypeJournal } from '@prisma/client';
+import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { montantsAContrePasser } from '../devises/contre-passation-manuelle';
 import { partagerLignesDEcarts } from '../devises/ecarts-disponibilites';
+import { LigneOuverturePassee, ouvertureNulle } from './report-a-nouveau';
 
 /**
  * LE PÉRIMÈTRE DE LA POSITION D'OUVERTURE PASSÉE AU PREMIER JOUR (AU2), écrit
@@ -41,6 +43,32 @@ const HORS_CONTRE_PASSATION_DU_MODULE: Prisma.EcritureWhereInput = {
   OR: [{ corrigeEcritureId: null }, { corrigeEcriture: { is: { reevaluationExtourne: { is: null } } } }],
 };
 
+/**
+ * LE NÉGATIF D'UNE ÉCRITURE DU PREMIER JOUR EN FAIT PARTIE, QUELLE QUE SOIT SA
+ * DATE (relecture du paquet 1, B2, reproduit sur vraie base le 2026-10-09).
+ * « Toute correction d'erreur commise et découverte sur l'exercice en cours
+ * s'effectue exclusivement par inscription en négatif des éléments erronés ;
+ * l'enregistrement exact est ensuite opéré » (AUDCIF art. 20, al. 2, non
+ * exclu par l'art. 3 du SYCEBNL) · le négatif annule les éléments qu'il
+ * corrige, et la position d'ouverture que l'art. 34 (SYCEBNL art. 16, 4))
+ * confronte au bilan de clôture est ce qui reste APRÈS lui. Daté du jour où
+ * l'erreur est découverte (« Corriger » depuis le Journal, `new Date()` à
+ * défaut de date), il tombait hors du premier jour · l'OD annulée restait
+ * seule dans le périmètre · CONCORDANTE avec le report, la clôture n'ajoutait
+ * rien et N+1 restait sans ouverture (banque à zéro au lieu de 10 500 000) ;
+ * DIVERGENTE, elle exigeait une déclaration, et RECTIFIER la retranchait une
+ * seconde fois (N+1 = report moins l'OD). Le négatif est reconnu par sa
+ * LIAISON (`corrigeEcritureId`), jamais par son libellé ni son montant · tout
+ * écrivain de la liaison inscrit l'écriture d'origine ENTIÈRE en négatif
+ * (`lignesEnNegatif`, liaison unique), et l'OD et son négatif se soldent
+ * compte par compte (`ouvertureNulle`). Au brouillard, il est refusé à la
+ * clôture comme toute écriture d'ouverture au brouillard · il pourrait encore
+ * disparaître. LIMITE ÉCRITE · l'« enregistrement exact » qui suit la
+ * correction n'est lu comme une ouverture que s'il est daté du premier jour,
+ * comme toute OD.
+ */
+const DATEE_DU_PREMIER_JOUR = (debut: Date): Prisma.EcritureWhereInput => ({ OR: [{ date: debut }, { dateValeur: debut }] });
+
 export function filtreOuverturePasseeAuPremierJour(tenantId: string, exercice: { id: string; dateDebut: Date }): Prisma.EcritureWhereInput {
   return {
     tenantId,
@@ -48,7 +76,7 @@ export function filtreOuverturePasseeAuPremierJour(tenantId: string, exercice: {
     estANouveauProvisoire: false,
     estSoldeDesComptesDeGestion: false,
     AND: [
-      { OR: [{ date: exercice.dateDebut }, { dateValeur: exercice.dateDebut }] },
+      { OR: [DATEE_DU_PREMIER_JOUR(exercice.dateDebut), { corrigeEcriture: { is: DATEE_DU_PREMIER_JOUR(exercice.dateDebut) } }] },
       // Une ouverture de bilan ne passe JAMAIS par un journal d'achats, de
       // ventes ou de trésorerie (décision du coordinateur, troisième tour) ·
       // une écriture de ces journaux au premier jour est une opération de
@@ -102,4 +130,96 @@ export function lignesDeContrePassationDeclaree(ecritures: readonly EcritureDuPr
     if (comptes.length > 0) horsOuverture.set(e.id, new Set(comptes));
   }
   return horsOuverture;
+}
+
+/** Ce qu'il faut de la base pour juger l'ouverture · la transaction de la clôture ou le client d'un service. */
+export type LecteurOuverturePassee = Pick<Prisma.TransactionClient, 'ecriture' | 'ligneEcriture'>;
+
+/**
+ * Au-delà, l'ouverture n'est pas relue ligne à ligne pour la dire nulle · elle
+ * est tenue pour NON nulle (les états la nomment, le groupe ne remonte pas),
+ * jamais pour absente. Même plafond que la confrontation de la clôture.
+ */
+export const PLAFOND_LIGNES_JUGEMENT_OUVERTURE = 50_000;
+
+/** Les pièces qui portent une ouverture non nulle, cinq au plus, et leur nombre. */
+export interface OuverturePasseeNonNulle {
+  nombre: number;
+  pieces: string[];
+}
+
+/**
+ * L'OUVERTURE PASSÉE AU PREMIER JOUR, JUGÉE SUR SA POSITION NETTE (relecture du
+ * paquet 1, B2, M4, m4). Hors de la clôture, deux lecteurs demandaient
+ * seulement « y a-t-il une écriture dans le périmètre ? » · les états d'un
+ * exercice sans précédent (qui vident alors leurs postes d'ouverture) et le 585
+ * du groupe (qui ne remonte plus à l'exercice précédent). Une OD annulée par
+ * son négatif (art. 20, al. 2 · B2) ou une contre-passation DÉCLARÉE (A8 ·
+ * ses lignes de l'écart ne sont pas une ouverture) y passaient pour une
+ * ouverture · le tableau des flux restait vide sans issue, et le groupe ne
+ * lisait pas l'exercice précédent encore ouvert. La position se lit comme la
+ * clôture la lit (même périmètre, mêmes lignes écartées,
+ * `lignesDeContrePassationDeclaree`), et une position qui se solde compte par
+ * compte et devise par devise n'est PAS une ouverture (`ouvertureNulle`, R10).
+ * `validees` borne au livre-journal (AUDCIF art. 22, 2°) · c'est la lecture des
+ * états et du groupe. `null` · aucune ouverture, ou une ouverture nulle.
+ */
+export async function ouverturePasseeNonNulle(
+  db: LecteurOuverturePassee,
+  tenantId: string,
+  exercice: { id: string; dateDebut: Date },
+  options: { validees: boolean },
+): Promise<OuverturePasseeNonNulle | null> {
+  const filtre: Prisma.EcritureWhereInput = {
+    ...filtreOuverturePasseeAuPremierJour(tenantId, exercice),
+    ...(options.validees ? { statut: StatutEcriture.VALIDEE } : {}),
+  };
+  const nombreLignes = await db.ligneEcriture.count({ where: { ecriture: filtre } });
+  if (nombreLignes === 0) return null;
+  const lues = await db.ecriture.findMany({
+    where: { ...filtre, tenantId },
+    select: {
+      id: true,
+      numeroPiece: true,
+      journal: { select: { code: true } },
+      reevaluationContrePassationDeclaree: {
+        select: { annuleeLe: true, ecritureEcarts: { select: { lignes: { select: { compteId: true, debit: true, credit: true, compte: { select: { numero: true } } } } } } },
+      },
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: PLAFOND_LIGNES_JUGEMENT_OUVERTURE,
+  });
+  const piece = (e: (typeof lues)[number]) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`;
+  if (nombreLignes > PLAFOND_LIGNES_JUGEMENT_OUVERTURE) {
+    return { nombre: lues.length, pieces: lues.slice(0, 5).map(piece) };
+  }
+  const horsOuverture = lignesDeContrePassationDeclaree(lues);
+  const retenues = new Set<string>();
+  const lignes: LigneOuverturePassee[] = [];
+  await lireParLots(
+    (curseur) =>
+      db.ligneEcriture.findMany({
+        where: { ecriture: filtre },
+        select: { id: true, ecritureId: true, compteId: true, debit: true, credit: true, deviseId: true, montantDevise: true },
+        ...pageApres(curseur, LOT_LECTURE),
+      }),
+    (l) => {
+      if (horsOuverture.get(l.ecritureId)?.has(l.compteId)) return;
+      retenues.add(l.ecritureId);
+      lignes.push({
+        compteId: l.compteId,
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+        libelle: null,
+        dateEcheance: null,
+        deviseId: l.deviseId,
+        montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+        coursApplique: null,
+      });
+    },
+    LOT_LECTURE,
+  );
+  if (lignes.length === 0 || ouvertureNulle(lignes)) return null;
+  const portees = lues.filter((e) => retenues.has(e.id));
+  return { nombre: portees.length, pieces: portees.slice(0, 5).map(piece) };
 }

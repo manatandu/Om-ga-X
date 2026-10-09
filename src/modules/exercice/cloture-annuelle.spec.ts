@@ -310,7 +310,14 @@ describe('AU2 · clôture de N avec une ouverture déjà passée dans N+1', () =
       estANouveauProvisoire: false,
       estSoldeDesComptesDeGestion: false,
       AND: [
-        { OR: [{ date: N1.dateDebut }, { dateValeur: N1.dateDebut }] },
+        // Relecture du paquet 1, B2 · le négatif lié d'une écriture du premier
+        // jour en fait partie, quelle que soit sa date (AUDCIF art. 20, al. 2).
+        {
+          OR: [
+            { OR: [{ date: N1.dateDebut }, { dateValeur: N1.dateDebut }] },
+            { corrigeEcriture: { is: { OR: [{ date: N1.dateDebut }, { dateValeur: N1.dateDebut }] } } },
+          ],
+        },
         {
           OR: [
             { OR: [{ estGenereeParCloture: true }, { journal: { type: 'GENERAL' } }] },
