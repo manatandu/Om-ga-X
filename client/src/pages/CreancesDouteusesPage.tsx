@@ -73,6 +73,7 @@ interface CreanceCandidate {
   tiers: string | null;
   solde: number;
   propose416: Record<NatureCreance, string | null>;
+  propre416?: Record<NatureCreance, string | null>;
   /** m9 · servis · le refus que le geste opposera (cotisations à l'encaissement), ou l'avertissement. */
   refusCotisations?: string | null;
   avertissementCotisations?: string | null;
@@ -707,7 +708,7 @@ export function CreancesDouteusesPage() {
             ...f,
             compteCreanceId: compteId,
             nature,
-            compte416Id: compte416Initial(c?.propose416, nature, comptes?.comptes416 ?? []),
+            compte416Id: compte416Initial(c?.propose416, nature, comptes?.comptes416 ?? [], c?.propre416),
             compte491Id: compte491Initial(nature, comptes?.comptes491 ?? []),
             montant: c && f.compteCreanceId !== compteId ? montantPourChamp(c.solde) : f.montant,
           }

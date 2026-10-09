@@ -70,6 +70,9 @@ export class EcritureController {
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post('fusion-comptes')
   async fusionnerComptes(@CurrentUser() user: AuthenticatedUser, @Body() dto: FusionnerComptesDto) {
+    // Même règle que la saisie · fondre un compte dans un collectif qui porte
+    // des comptes de tiers y ferait passer ses lignes.
+    await this.ecritureService.verifierComptesCollectifs(user.tenantId, [{ compteId: dto.compteCibleId }]);
     return this.ecritureService.fusionnerComptes(user.tenantId, user.userId, dto.compteSourceId, dto.compteCibleId, dto.motif);
   }
 
@@ -77,6 +80,9 @@ export class EcritureController {
   @ReserveAuComptable()
   @Post('reimputation')
   async reimputer(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReimputerDto) {
+    // La réimputation est une saisie · elle ne porte pas une ligne au
+    // collectif que la saisie refuse.
+    await this.ecritureService.verifierComptesCollectifs(user.tenantId, [{ compteId: dto.compteCibleId }]);
     return this.ecritureService.reimputer(user.tenantId, user.userId, dto);
   }
 
@@ -118,7 +124,7 @@ export class EcritureController {
     @Param('id') id: string,
     @Body() dto: ModifierEcritureDto,
   ) {
-    await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes);
+    await this.ecritureService.verifierComptesCollectifs(user.tenantId, dto.lignes, id);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
     return this.ecritureService.modifier(user.tenantId, id, dto);
   }

@@ -39,7 +39,8 @@ test('SYSCOHADA · un client et sa panoplie traversent la clôture, le collectif
   const id = (n: string) => comptes.find((c) => c.numero === n)!.id;
   const produit = comptes.find((c) => c.numero.startsWith('701'))!;
   const journaux = await appelApi<Journal[]>(page, 'GET', '/journaux');
-  const od = journaux.find((j) => j.type === 'GENERAL') ?? journaux[0];
+  const od = journaux.find((j) => j.type === 'GENERAL');
+  if (!od) throw new Error('Aucun journal d’opérations diverses semé · le scénario ne peut pas passer ses pièces.');
   const banque = journaux.find((j) => j.type === 'TRESORERIE' && j.compteTresorerieId)!;
   const date = `${exercice.dateDebut.slice(0, 4)}-06-15`;
   const piece = (lignes: { compteId: string; debit: number; credit: number }[], libelle: string) => ({

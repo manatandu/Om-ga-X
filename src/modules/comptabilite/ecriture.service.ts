@@ -721,29 +721,77 @@ export class EcritureService {
    * tomber pour autant. Un collectif sans compte individuel reste ouvert ·
    * le dossier qui ne suit pas ses tiers un par un n'est pas enfermé.
    */
-  async verifierComptesCollectifs(tenantId: string, lignes: { compteId: string }[] | undefined) {
+  async verifierComptesCollectifs(
+    tenantId: string,
+    lignes: { compteId: string }[] | undefined,
+    ecritureModifieeId?: string,
+  ) {
     if (!lignes || lignes.length === 0) return;
-    const ids = [...new Set(lignes.map((l) => l.compteId))];
-    const individuels = await this.prisma.compte.findMany({
-      where: { tenantId, collectifId: { in: ids } },
-      select: { collectifId: true, numero: true, intitule: true },
-      orderBy: { numero: 'asc' },
-      take: 200,
-    });
-    if (individuels.length === 0) return;
-    const collectifs = await this.prisma.compte.findMany({
-      where: { tenantId, id: { in: [...new Set(individuels.map((c) => c.collectifId as string))] } },
+    let ids = [...new Set(lignes.map((l) => l.compteId))];
+    // UNE PIÈCE QUI PORTE DÉJÀ LE COLLECTIF SE CORRIGE ENCORE · un brouillard
+    // importé, ou passé avant la règle, sur le 41110000 doit pouvoir changer
+    // de date ou de libellé · seul un compte que la pièce ne portait pas est
+    // jugé à la modification.
+    if (ecritureModifieeId) {
+      const portees = await this.prisma.ligneEcriture.findMany({
+        where: { ecritureId: ecritureModifieeId, ecriture: { tenantId } },
+        select: { compteId: true },
+      });
+      const deja = new Set(portees.map((l) => l.compteId));
+      ids = ids.filter((id) => !deja.has(id));
+      if (ids.length === 0) return;
+    }
+    let collectifs = await this.prisma.compte.findMany({
+      where: { tenantId, id: { in: ids }, individuels: { some: {} } },
       select: { id: true, numero: true },
       orderBy: { numero: 'asc' },
     });
-    const motifs = collectifs.map((col) => {
-      const siens = individuels.filter((c) => c.collectifId === col.id);
-      const exemples = siens.slice(0, 3).map((c) => `${c.numero} ${c.intitule}`).join(', ');
-      return `${col.numero} (${exemples}${siens.length > 3 ? '…' : ''})`;
+    if (collectifs.length === 0) return;
+    // LE 416 QU'UNE CRÉANCE DOUTEUSE TIENT RESTE OUVERT · reclassée au
+    // 41620000 avant que la panoplie n'ouvre les 4162 des tiers, la créance
+    // se corrige par le résultat (M9) sur SON 416, que le module lit · la
+    // refuser l'enfermait, et la reporter ailleurs ferait lire au module un
+    // mouvement hors module.
+    const tenus = await this.prisma.creanceDouteuse.findMany({
+      where: { tenantId, compte416Id: { in: collectifs.map((c) => c.id) }, annuleeLe: null },
+      select: { compte416Id: true },
+      distinct: ['compte416Id'],
     });
+    const parUneCreance = new Set(tenus.map((t) => t.compte416Id));
+    collectifs = collectifs.filter((c) => !parUneCreance.has(c.id));
+    if (collectifs.length === 0) return;
+    // UN SOLDE DÉJÀ PORTÉ AU COLLECTIF SE REPORTE SUR LES COMPTES DES TIERS ·
+    // à-nouveau, balance importée ou saisie d'avant la panoplie. La pièce qui
+    // ne porte QUE ce collectif et ses comptes de tiers est un reclassement
+    // entre eux, sans effet sur la balance générale qui les fond · refusée,
+    // ce solde ne quittait jamais le collectif.
+    if (collectifs.length === 1) {
+      const toutes = [...new Set(lignes.map((l) => l.compteId))];
+      const siensDansLaPiece = await this.prisma.compte.findMany({
+        where: { tenantId, id: { in: toutes }, collectifId: collectifs[0].id },
+        select: { id: true },
+      });
+      const famille = new Set([collectifs[0].id, ...siensDansLaPiece.map((c) => c.id)]);
+      if (siensDansLaPiece.length > 0 && toutes.every((id) => famille.has(id))) return;
+    }
+    // Trois exemples PAR collectif · une seule liste bornée pouvait se
+    // remplir des comptes du premier et taire le second.
+    const motifs: string[] = [];
+    for (const col of collectifs) {
+      const siens = await this.prisma.compte.findMany({
+        where: { tenantId, collectifId: col.id },
+        select: { numero: true, intitule: true },
+        orderBy: { numero: 'asc' },
+        take: 4,
+      });
+      const exemples = siens.slice(0, 3).map((c) => `${c.numero} ${c.intitule}`).join(', ');
+      motifs.push(`${col.numero} (${exemples}${siens.length > 3 ? '…' : ''})`);
+    }
     throw new BadRequestException(
       `Compte collectif : ${motifs.join(' ; ')} · une écriture saisie s'impute au compte du tiers, jamais à son ` +
-        'collectif, sans quoi la balance des tiers, le lettrage et les relances ne la verraient pas.',
+        'collectif, sans quoi la balance des tiers, le lettrage et les relances ne la verraient pas. Un montant ' +
+        'déjà porté au collectif se reporte sur le compte du tiers par une pièce qui ne porte que ce collectif ' +
+        'et ses comptes de tiers.',
     );
   }
 

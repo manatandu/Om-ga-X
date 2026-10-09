@@ -564,10 +564,16 @@ describe('créances douteuses · service', () => {
           Promise.resolve(
             where.id
               ? plan.find((c) => c.id === where.id) ?? null
-              : plan.filter((c) => c.numero.startsWith(where.numero.startsWith)).sort((a, b) => a.numero.localeCompare(b.numero))[0] ?? null,
+              : // Le 416 PROPRE à un tiers (panoplie) · le plan semé de la
+                // doublure n'en porte aucun, seuls les collectifs.
+                where.tiersCompte
+                ? null
+                : plan.filter((c) => c.numero.startsWith(where.numero.startsWith)).sort((a, b) => a.numero.localeCompare(b.numero))[0] ?? null,
           ),
         ),
       },
+      // Les rattachements des comptes clients à leurs tiers · aucun ici.
+      tiersCompte: { findMany: jest.fn().mockResolvedValue([]) },
       ligneEcriture: {
         // Mineur 2 · la position en devise, par compte et par devise, honore
         // la requête (comptes, exercices, date, à-nouveau provisoire, sens).
@@ -2356,6 +2362,31 @@ describe('créances douteuses · service', () => {
     const r = await service.comptes('t', 'ex-26');
     expect(r.listes416491).toEqual({ plafond: 200, total416: 201, tronque416: true, total491: 1, tronque491: false });
     expect(prisma.compte.findMany.mock.calls[1][0].take).toBe(200);
+  });
+
+  it('panoplie · le 416 du client lui-même est servi, ajouté à la liste bornée, et préféré au collectif commun', async () => {
+    const { service, prisma } = monter({ creance: null });
+    prisma.ligneEcriture.groupBy = jest.fn().mockResolvedValue([{ compteId: 'cli', _sum: { debit: 500_000, credit: 0 } }]);
+    prisma.compte.findMany = jest
+      .fn()
+      // Les comptes des créances, puis les 416 et 491 de la liste bornée.
+      .mockResolvedValueOnce([{ id: 'cli', numero: '41110007', intitule: 'Kasa', tiersCompte: { tiers: { nom: 'Kasa' } } }])
+      .mockResolvedValueOnce([{ id: 'c4162', numero: '41620000', intitule: 'Créances douteuses' }])
+      .mockResolvedValueOnce([])
+      // Les 416 PROPRES aux tiers des créances.
+      .mockResolvedValueOnce([
+        { id: 'p4161', numero: '41610007', intitule: 'Kasa · créances litigieuses', tiersCompte: { tiersId: 'tk' } },
+        { id: 'p4162', numero: '41620007', intitule: 'Kasa · créances douteuses', tiersCompte: { tiersId: 'tk' } },
+      ]);
+    prisma.tiersCompte.findMany = jest.fn().mockResolvedValue([{ compteId: 'cli', tiersId: 'tk' }]);
+    const r = await service.comptes('t', 'ex-26');
+    expect(r.creances[0].propre416).toEqual({ LITIGIEUSE: 'p4161', DOUTEUSE: 'p4162' });
+    expect(r.comptes416.map((c) => c.numero)).toEqual(['41610007', '41620000', '41620007']);
+    // La lecture des 416 propres porte sur les tiers des créances, et sur eux seuls.
+    expect(prisma.compte.findMany.mock.calls[3][0].where).toMatchObject({
+      collectifId: { not: null },
+      tiersCompte: { tiersId: { in: ['tk'] } },
+    });
   });
 
   it('m6 · la règle du retrait est servie · une créance au brouillard, sans acte, se retire ; revue annulée ou écriture validée, non', () => {

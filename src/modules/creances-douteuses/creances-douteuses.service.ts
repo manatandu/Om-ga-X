@@ -380,6 +380,29 @@ export class CreancesDouteusesService {
     return c;
   }
 
+  /**
+   * LE 416 DU TIERS LUI-MÊME (décision de Manasse du 2026-10-09, panoplie des
+   * tiers) · la panoplie ouvre à chaque client son 4161 ou son 4162 sous le
+   * collectif (tiers/collectifs-tiers.ts) ; reclassée au collectif commun, la
+   * créance n'appartiendrait plus à son client à la balance des tiers, et la
+   * saisie refuse ce collectif. Rendu seulement s'il existe · sinon `null`, et
+   * le premier compte de la racine reste proposé (`compteDetail`).
+   */
+  private async compte416DuTiers(tenantId: string, compteCreanceId: string, racine: string) {
+    return this.prisma.compte.findFirst({
+      where: {
+        tenantId,
+        numero: { startsWith: racine },
+        typeCompte: TypeCompteDetailTotal.DETAIL,
+        estActif: true,
+        collectifId: { not: null },
+        tiersCompte: { tiers: { tenantId, comptesRattaches: { some: { compteId: compteCreanceId } } } },
+      },
+      orderBy: { numero: 'asc' },
+      select: { id: true, numero: true, intitule: true, typeCompte: true },
+    });
+  }
+
   /** Un à-nouveau qui fait foi · jamais l'à-nouveau provisoire (B1). */
   private async aUnANouveau(tenantId: string, exerciceId: string) {
     return (await this.prisma.ecriture.count({ where: { tenantId, exerciceId, ...A_NOUVEAU } })) > 0;
@@ -615,6 +638,46 @@ export class CreancesDouteusesService {
       this.prisma.compte.count({ where: { ...ou491, tenantId } }),
     ]);
     const soldes = new Map(debiteurs.map((d) => [d.compteId, d.solde]));
+    // LE 416 PROPRE À CHAQUE CLIENT, SERVI · la liste bornée des 416 se remplit
+    // des collectifs et des premiers clients, et le compte du client choisi
+    // pouvait n'y être pas · il s'y ajoute, et l'écran le présélectionne.
+    // Deux lectures bornées par la liste des créances (au plus mille), jamais
+    // une par client.
+    const rattaches = await this.prisma.tiersCompte.findMany({
+      where: { tiers: { tenantId }, compteId: { in: comptesCreances.map((c) => c.id) } },
+      select: { compteId: true, tiersId: true },
+    });
+    const tiersDe = new Map(rattaches.map((r) => [r.compteId, r.tiersId]));
+    const candidats416 = rattaches.length
+      ? await this.prisma.compte.findMany({
+          where: {
+            tenantId,
+            numero: { startsWith: COMPTES_CREANCES_DOUTEUSES.creances416 },
+            typeCompte: TypeCompteDetailTotal.DETAIL,
+            estActif: true,
+            collectifId: { not: null },
+            tiersCompte: { tiersId: { in: [...new Set(rattaches.map((r) => r.tiersId))] } },
+          },
+          select: { id: true, numero: true, intitule: true, tiersCompte: { select: { tiersId: true } } },
+          orderBy: { numero: 'asc' },
+        })
+      : [];
+    const propres = comptesCreances.map((c) => {
+      const parNature = {} as Record<NatureCreanceDouteuse, { id: string; numero: string; intitule: string } | null>;
+      for (const nature of [NatureCreanceDouteuse.LITIGIEUSE, NatureCreanceDouteuse.DOUTEUSE]) {
+        const racine = compte416Propose(referentiel, nature, c.numero);
+        const k = racine
+          ? candidats416.find((x) => x.tiersCompte?.tiersId === tiersDe.get(c.id) && x.numero.startsWith(racine))
+          : undefined;
+        parNature[nature] = k ? { id: k.id, numero: k.numero, intitule: k.intitule } : null;
+      }
+      return [c.id, parNature] as const;
+    });
+    const propreDe = new Map(propres);
+    const deja416 = new Set(comptes416.map((k) => k.id));
+    const ajoutes416 = propres
+      .flatMap(([, p]) => Object.values(p))
+      .filter((k): k is { id: string; numero: string; intitule: string } => !!k && !deja416.has(k.id) && !!deja416.add(k.id));
     return {
       referentiel,
       soldesProvisoires: provisoire,
@@ -628,6 +691,10 @@ export class CreancesDouteusesService {
           LITIGIEUSE: compte416Propose(referentiel, NatureCreanceDouteuse.LITIGIEUSE, c.numero),
           DOUTEUSE: compte416Propose(referentiel, NatureCreanceDouteuse.DOUTEUSE, c.numero),
         },
+        propre416: {
+          LITIGIEUSE: propreDe.get(c.id)?.[NatureCreanceDouteuse.LITIGIEUSE]?.id ?? null,
+          DOUTEUSE: propreDe.get(c.id)?.[NatureCreanceDouteuse.DOUTEUSE]?.id ?? null,
+        },
         // m9 · servis, jamais recalculés à l'écran · le refus que le geste
         // opposera (cotisations à l'encaissement), ou l'avertissement.
         refusCotisations: motifRefusCotisationsEncaissement(referentiel, c.numero, methodeCotisations ?? null),
@@ -636,7 +703,7 @@ export class CreancesDouteusesService {
       tronque: groupes.length > PLAFOND_COMPTES_CANDIDATS,
       plafond: PLAFOND_COMPTES_CANDIDATS,
       filtreNumero: filtre || null,
-      comptes416,
+      comptes416: [...comptes416, ...ajoutes416].sort((a, b) => a.numero.localeCompare(b.numero)),
       comptes491,
       listes416491: {
         plafond: PLAFOND_COMPTES_416_491,
@@ -922,7 +989,9 @@ export class CreancesDouteusesService {
         `Le compte ${source.numero} ne dit pas si le débiteur est un adhérent (4161) ou un client-usager (4162) · choisissez le 416.`,
       );
     }
-    const c416 = dto.compte416Id ? await this.compteParId(tenantId, dto.compte416Id) : await this.compteDetail(tenantId, propose!);
+    const c416 = dto.compte416Id
+      ? await this.compteParId(tenantId, dto.compte416Id)
+      : ((await this.compte416DuTiers(tenantId, source.id, propose!)) ?? (await this.compteDetail(tenantId, propose!)));
     const pieces = this.pieces(dto.pieces);
     const { ids, provisoire } = await this.chaine(tenantId, ex);
     const [soldeDebiteur, soldeDernier, enDevise, c491] = await Promise.all([

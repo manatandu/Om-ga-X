@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { libelleReference, referencesVers, refuserSiReferences, reporterReferences } from '../../common/suppression/references';
 import { coordonneesAComblement, motifRefusFusionTiers } from './fusion-tiers';
 import {
@@ -8,7 +8,6 @@ import {
   rangSousRacine,
   type RolePanoplie,
 } from './collectifs-tiers';
-import { pageApres } from '../../common/lecture-par-lots';
 import { PrismaService } from '../../common/prisma.service';
 import { ClasseCompte, ConditionEcheance, Prisma, Referentiel, TypeEcheance, TypeTiers } from '@prisma/client';
 import { CreerTiersDto, ModifierTiersDto, RattacherCompteDto } from './dto/tiers.dto';
@@ -49,6 +48,22 @@ export interface CompletionPanoplies {
   impossibles: { tiers: string; collectif: string; motif: string }[];
   /** Curseur de la tranche suivante · nul quand tout le dossier est lu. */
   suivant: string | null;
+}
+
+/**
+ * UN CONFLIT D'UNICITÉ SE DIT · une autre saisie a pris le numéro ou le code
+ * entre la lecture et l'écriture. Le 500 brut laissait croire à une panne.
+ */
+function conflitDeNumeroNomme(e: unknown): never {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+    const cible = JSON.stringify(e.meta?.target ?? '');
+    throw new ConflictException(
+      cible.includes('numero')
+        ? "Un numéro de compte de la panoplie vient d'être ouvert par une autre saisie · relancez la demande."
+        : "Ce tiers vient d'être créé par une autre saisie · relancez la demande.",
+    );
+  }
+  throw e;
 }
 
 @Injectable()
@@ -140,7 +155,7 @@ export class TiersService {
       const panoplie =
         creerCompteIndividuel === false ? null : await this.poserPanoplie(tx, tenantId, tiers, { silencieux: true });
       return { ...tiers, compteIndividuel: panoplie?.principal ?? null, panoplie };
-    });
+    }).catch(conflitDeNumeroNomme);
   }
 
   /**
@@ -154,7 +169,7 @@ export class TiersService {
     const tiers = await this.trouver(tenantId, tiersId);
     const resultat = await transactionJournalisee(this.prisma, (tx) =>
       this.poserPanoplie(tx, tenantId, tiers, { silencieux: false }),
-    );
+    ).catch(conflitDeNumeroNomme);
     return resultat as PanoplieTiers;
   }
 
@@ -167,17 +182,34 @@ export class TiersService {
    * n'empêche pas les autres · il est nommé.
    */
   async completerPanoplies(tenantId: string, apres?: string): Promise<CompletionPanoplies> {
+    // LE CURSEUR EST UNE BORNE, PAS UNE LIGNE · `pageApres` pose le curseur de
+    // Prisma sur le dernier tiers lu, et un tiers supprimé entre deux appels
+    // rendait une tranche VIDE, lue comme « tout le dossier est fait ». Les
+    // tiers en sommeil ne reçoivent rien.
     const tranche = await this.prisma.tiers.findMany({
-      where: { tenantId, type: { in: TYPES_A_PANOPLIE } },
+      where: { tenantId, type: { in: TYPES_A_PANOPLIE }, estActif: true, ...(apres ? { id: { gt: apres } } : {}) },
       select: { id: true, type: true, nom: true, code: true },
-      ...pageApres(apres, TRANCHE_PANOPLIES),
+      orderBy: { id: 'asc' },
+      take: TRANCHE_PANOPLIES,
     });
     let comptesCrees = 0;
     const impossibles: CompletionPanoplies['impossibles'] = [];
     for (const tiers of tranche) {
-      const r = await transactionJournalisee(this.prisma, (tx) =>
-        this.poserPanoplie(tx, tenantId, tiers, { silencieux: true }),
-      );
+      // UN TIERS QUI ÉCHOUE N'ARRÊTE PAS LA TRANCHE · sa transaction est
+      // défaite, il est nommé avec son motif, et les suivants se complètent.
+      let r: PanoplieTiers | null;
+      try {
+        r = await transactionJournalisee(this.prisma, (tx) => this.poserPanoplie(tx, tenantId, tiers, { silencieux: true }));
+      } catch (e) {
+        let motif = 'Échec imprévu · relancez la complétion de ce tiers depuis sa fiche.';
+        try {
+          conflitDeNumeroNomme(e);
+        } catch (nomme) {
+          if (nomme instanceof HttpException) motif = nomme.message;
+        }
+        impossibles.push({ tiers: tiers.code, collectif: '', motif });
+        continue;
+      }
       if (!r) continue;
       comptesCrees += r.crees.length;
       for (const i of r.impossibles) impossibles.push({ tiers: tiers.code, ...i });
@@ -220,13 +252,23 @@ export class TiersService {
           'peut être débiteur ou créditeur. Rattachez son compte à la main.',
       );
     }
+    // UN NUMÉRO SE CHOISIT SOUS VERROU · deux complétions du même dossier, ou
+    // une complétion et une création de tiers, lisaient les mêmes numéros
+    // libres et la seconde tombait sur la contrainte d'unicité.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`panoplie:${tenantId}`}))`;
     const rattaches = await tx.tiersCompte.findMany({
       where: { tiersId: tiers.id },
-      select: { estPrincipal: true, compte: { select: { numero: true } } },
+      select: { id: true, estPrincipal: true, compte: { select: { numero: true } } },
     });
     const resultat: PanoplieTiers = { principal: null, crees: [], dejaPresents: 0, impossibles: [] };
     let rang: number | null = null;
-    const principalExistant = rattaches.find((r) => r.estPrincipal);
+    // UN PRINCIPAL POSÉ SUR LE COLLECTIF N'EST PAS UN COMPTE DU TIERS · un
+    // tiers ancien rattaché au 41110000 commun recevait « déjà présent » et
+    // restait sans compte à lui, quand la saisie refuse ce collectif. Il
+    // reçoit son compte, qui devient le principal ; le collectif reste
+    // rattaché, sans la marque.
+    const principalSurCollectif = rattaches.find((r) => r.estPrincipal && r.compte.numero === panoplie[0].collectif);
+    const principalExistant = principalSurCollectif ? undefined : rattaches.find((r) => r.estPrincipal);
     if (principalExistant) rang = rangSousRacine(principalExistant.compte.numero, racineCollectif(panoplie[0].collectif));
 
     for (const role of panoplie) {
@@ -277,6 +319,9 @@ export class TiersService {
         },
       });
       const principal = role.role === 'PRINCIPAL';
+      if (principal && principalSurCollectif) {
+        await tx.tiersCompte.update({ where: { id: principalSurCollectif.id }, data: { estPrincipal: false } });
+      }
       await tx.tiersCompte.create({ data: { tiersId: tiers.id, compteId: compte.id, estPrincipal: principal } });
       if (principal) {
         resultat.principal = { id: compte.id, numero: compte.numero, collectif: collectif.numero };

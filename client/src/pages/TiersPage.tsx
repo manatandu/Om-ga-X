@@ -404,10 +404,15 @@ export function TiersPage() {
         impossibles.push(...r.impossibles);
         apres = r.suivant;
       } while (apres);
+      // Les tiers concernés sont nommés, cinq au plus, et le total toujours
+      // dit · un seul exemple taisait les autres.
+      const concernes = [...new Set(impossibles.map((i) => i.tiers))];
       setInfo(
         `${lus} tiers lus · ${crees} compte(s) ouvert(s).` +
           (impossibles.length > 0
-            ? ` ${impossibles.length} compte(s) n'ont pas pu naître, dont ${impossibles[0].tiers} · ${impossibles[0].motif}`
+            ? ` ${impossibles.length} compte(s) n'ont pas pu naître, chez ${concernes.length} tiers (` +
+              `${concernes.slice(0, 5).join(', ')}${concernes.length > 5 ? '…' : ''}) · ${impossibles[0].motif}` +
+              ' Ouvrez la fiche du tiers et « Compléter ses comptes » pour le détail.'
             : ''),
       );
       await charger();

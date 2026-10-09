@@ -76,7 +76,12 @@ export function compte416Initial(
   propose: Partial<Record<NatureCreance, string | null>> | undefined,
   nature: NatureCreance,
   comptes416: readonly { id: string; numero: string }[],
+  propre?: Partial<Record<NatureCreance, string | null>>,
 ): string {
+  // Le 416 du client lui-même (panoplie des tiers) passe avant le premier
+  // compte de la racine, qui est le collectif commun.
+  const sien = propre?.[nature];
+  if (sien && comptes416.some((c) => c.id === sien)) return sien;
   const racine = propose?.[nature];
   if (racine) return comptes416.find((c) => c.numero.startsWith(racine))?.id ?? '';
   return comptes416.length === 1 ? comptes416[0].id : '';

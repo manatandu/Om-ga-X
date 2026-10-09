@@ -118,12 +118,19 @@ describe('création du tiers et de son compte', () => {
   function monter(
     referentiel: Referentiel,
     comptes: { id: string; numero: string; estActif?: boolean }[],
-    dejaRattaches: { estPrincipal: boolean; compte: { numero: string } }[] = [],
+    dejaRattaches: { id?: string; estPrincipal: boolean; compte: { numero: string } }[] = [],
     tiersLu: Record<string, unknown> = { id: 'ti9', type: TypeTiers.AUTRE, nom: 'Divers', code: 'D' },
   ) {
     const crees: Record<string, unknown>[] = [];
     const rattaches: Record<string, unknown>[] = [];
+    const retires: string[] = [];
+    const verrous: string[] = [];
     const p: Record<string, unknown> = {
+      // Le verrou du dossier · la doublure garde la clé posée.
+      $executeRaw: async (_gabarit: TemplateStringsArray, cle: string) => {
+        verrous.push(cle);
+        return 1;
+      },
       tenant: { findUniqueOrThrow: async () => ({ referentiel, longueurCompte: 8 }) },
       tiers: {
         findUnique: async () => null,
@@ -151,10 +158,14 @@ describe('création du tiers et de son compte', () => {
           rattaches.push(data);
           return data;
         },
+        update: async ({ where, data }: { where: { id: string }; data: { estPrincipal: boolean } }) => {
+          if (data.estPrincipal === false) retires.push(where.id);
+          return { id: where.id, ...data };
+        },
       },
     };
     p.$transaction = (f: (tx: unknown) => unknown) => f(p);
-    return { service: new TiersService(p as unknown as PrismaService), crees, rattaches };
+    return { service: new TiersService(p as unknown as PrismaService), crees, rattaches, retires, verrous };
   }
 
   it('un fournisseur SYSCOHADA naît avec son compte sous le 4011, principal, rattaché au collectif', async () => {
@@ -254,6 +265,59 @@ describe('création du tiers et de son compte', () => {
     expect(crees.map((c) => c.numero)).toEqual(['41820007', '41620007']);
     expect(rattaches.every((x) => x.estPrincipal === false)).toBe(true);
     expect(r.dejaPresents).toBe(2);
+  });
+
+  it('un principal posé sur le collectif commun n’est pas un compte du tiers · il reçoit le sien, sous verrou du dossier', async () => {
+    const client = { id: 'ti7', type: TypeTiers.CLIENT, nom: 'Ancien', code: 'A7' };
+    const { service, crees, rattaches, retires, verrous } = monter(
+      Referentiel.SYSCOHADA,
+      [{ id: 'c4111', numero: '41110000' }],
+      [{ id: 'tc-collectif', estPrincipal: true, compte: { numero: '41110000' } }],
+      client,
+    );
+    const r = await service.completerPanoplie('t1', 'ti7');
+    expect(crees[0]).toMatchObject({ numero: '41110001', collectifId: 'c4111' });
+    expect(rattaches[0]).toMatchObject({ estPrincipal: true });
+    // Le collectif reste rattaché, sans la marque de principal.
+    expect(retires).toEqual(['tc-collectif']);
+    expect(r.principal?.numero).toBe('41110001');
+    expect(verrous).toEqual(['panoplie:t1']);
+  });
+
+  it('compléter le dossier lit la tranche APRÈS le curseur, tiers actifs seuls, et nomme le tiers qui échoue sans arrêter les autres', async () => {
+    const requetes: Record<string, unknown>[] = [];
+    let appel = 0;
+    const p: Record<string, unknown> = {
+      tiers: {
+        findMany: async (q: Record<string, unknown>) => {
+          requetes.push(q);
+          return [
+            { id: 'ta', type: TypeTiers.FOURNISSEUR, nom: 'A', code: 'A' },
+            { id: 'tb', type: TypeTiers.FOURNISSEUR, nom: 'B', code: 'B' },
+          ];
+        },
+      },
+    };
+    p.$transaction = async (f: (tx: unknown) => unknown) => {
+      appel += 1;
+      if (appel === 1) throw new Error('panne');
+      return f(p);
+    };
+    const service = new TiersService(p as unknown as PrismaService);
+    (service as unknown as { poserPanoplie: unknown }).poserPanoplie = async () => ({
+      principal: null,
+      crees: [{ role: 'PRINCIPAL', numero: '40110002', collectif: '40110000' }],
+      dejaPresents: 0,
+      impossibles: [],
+    });
+    const r = await service.completerPanoplies('t1', 'curseur');
+    expect(requetes[0]).toMatchObject({
+      where: { tenantId: 't1', estActif: true, id: { gt: 'curseur' } },
+      orderBy: { id: 'asc' },
+    });
+    expect(requetes[0]).not.toHaveProperty('cursor');
+    expect(r.comptesCrees).toBe(1);
+    expect(r.impossibles).toEqual([{ tiers: 'A', collectif: '', motif: expect.stringMatching(/relancez/) }]);
   });
 
   it('compléter un tiers dont aucun compte ne peut naître le refuse en le disant', async () => {

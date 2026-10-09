@@ -86,6 +86,16 @@ describe('créances douteuses · écran (ligne A7)', () => {
     expect(compte416Initial({ DOUTEUSE: null }, 'DOUTEUSE', [c[0]])).toBe('a');
   });
 
+  it('présélectionne le 416 du client lui-même avant le collectif commun (panoplie des tiers)', () => {
+    const c = [
+      { id: 'b', numero: '41620000' },
+      { id: 'p', numero: '41620007' },
+    ];
+    expect(compte416Initial({ DOUTEUSE: '4162' }, 'DOUTEUSE', c, { DOUTEUSE: 'p' })).toBe('p');
+    // Un compte servi hors de la liste n'est jamais présélectionné à l'aveugle.
+    expect(compte416Initial({ DOUTEUSE: '4162' }, 'DOUTEUSE', c, { DOUTEUSE: 'absent' })).toBe('b');
+  });
+
   it('n’envoie que les pièces qui ont une nature et une référence', () => {
     expect(piecesAEnvoyer([{ nature: 'Mise en demeure', reference: 'LR-1', date: '' }, { nature: '', reference: 'x', date: '' }])).toEqual([
       { nature: 'Mise en demeure', reference: 'LR-1' },
