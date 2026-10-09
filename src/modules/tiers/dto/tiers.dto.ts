@@ -1,5 +1,6 @@
 import { IsBoolean, IsDateString, IsEmail, IsEnum, IsOptional, IsString, IsUUID, Matches, ValidateIf } from 'class-validator';
 import { TypeTiers } from '@prisma/client';
+import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
 
 export class CreerTiersDto {
   @IsEnum(TypeTiers)
@@ -24,6 +25,18 @@ export class CreerTiersDto {
   @IsOptional()
   @IsBoolean()
   creerCompteIndividuel?: boolean;
+
+  /**
+   * LE NUMÉRO DU COMPTE PRINCIPAL, CHOISI PAR LE CABINET (décision de Manasse
+   * du 2026-10-09, « Choisi à la création ») · absent, OmegaX prend le
+   * premier numéro libre sous le collectif, comme avant. Les règles (chiffres
+   * seuls, racine du collectif, longueur du dossier) sont jugées par le
+   * service (`motifRefusNumeroChoisi`), qui connaît le dossier · un DTO ne le
+   * connaît pas. Les sous-comptes de la panoplie prennent son rang.
+   */
+  @FacultatifNonNul("Un numéro de compte choisi est un numéro · omettez le champ pour garder celui qu'OmegaX propose.")
+  @IsString()
+  numeroCompte?: string;
 
   /*
     COORDONNÉES · elles manquaient, et cela rendait inutilisable une brique
@@ -232,6 +245,12 @@ export class ModifierTiersDto {
 }
 
 /** Complétion des panoplies du dossier, par tranches · `apres` est le curseur rendu par l'appel précédent. */
+/** Le type du tiers à créer · `GET /tiers/numero-propose` y lit le collectif de son compte principal. */
+export class NumeroProposeDto {
+  @IsEnum(TypeTiers, { message: 'Type de tiers inconnu' })
+  type!: TypeTiers;
+}
+
 export class CompletionPanopliesDto {
   @IsOptional()
   @IsUUID()

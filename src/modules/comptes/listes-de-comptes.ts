@@ -90,6 +90,8 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
  */
 export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>> = {
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
+  '/tiers/numero-propose':
+    "numéro proposé pour le compte principal d'un tiers à créer, lu sous son collectif, un seul numéro et jamais une liste",
   '/comptes/:compteId/lettrage/:lettrageId/ecart-change':
     "écart de change proposé d'un lettrage (ligne A6), le compte que le texte donne ou aucun, jamais une liste",
   '/natures-compte': 'les sept natures de compte, paramètres du dossier',

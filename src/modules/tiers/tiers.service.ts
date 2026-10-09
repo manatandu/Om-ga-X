@@ -5,6 +5,8 @@ import {
   numeroIndividuelAligne,
   panoplieDuTiers,
   racineCollectif,
+  motifRefusNumeroChoisi,
+  prochainNumeroIndividuel,
   rangSousRacine,
   type RolePanoplie,
 } from './collectifs-tiers';
@@ -40,6 +42,14 @@ export interface PanoplieTiers {
   crees: { role: RolePanoplie; numero: string; collectif: string }[];
   dejaPresents: number;
   impossibles: { collectif: string; motif: string }[];
+}
+
+export interface NumeroPropose {
+  /** Nul quand rien ne peut s'ouvrir · `motif` dit pourquoi. */
+  numero: string | null;
+  collectif: string | null;
+  longueur: number;
+  motif: string | null;
 }
 
 export interface CompletionPanoplies {
@@ -132,7 +142,14 @@ export class TiersService {
     if (dto.celluleGroupeId) {
       await this.exigerMemeGroupe(tenantId, dto.celluleGroupeId);
     }
-    const { creerCompteIndividuel, dateEffetAutorisationDebits, dateRevocationAutorisationDebits, ...reste } = dto;
+    const { creerCompteIndividuel, numeroCompte, dateEffetAutorisationDebits, dateRevocationAutorisationDebits, ...reste } = dto;
+    // UN NUMÉRO CHOISI SANS COMPTE À OUVRIR NE SE PERD PAS EN SILENCE · le
+    // cabinet croirait son compte ouvert sous ce numéro.
+    if (numeroCompte !== undefined && creerCompteIndividuel === false) {
+      throw new BadRequestException(
+        "Un numéro de compte choisi suppose d'ouvrir les comptes du tiers · cochez « Ouvrir ses comptes », ou laissez le numéro vide.",
+      );
+    }
     // Les deux dates de l'autorisation aux débits passent par la même lecture
     // que les dates du régime de TVA du dossier · une chaîne AAAA-MM-JJ n'est
     // pas un DateTime pour Prisma, et `new Date` reporterait en silence un
@@ -153,9 +170,63 @@ export class TiersService {
     return transactionJournalisee(this.prisma, async (tx) => {
       const tiers = await tx.tiers.create({ data: { ...donnees, tenantId } });
       const panoplie =
-        creerCompteIndividuel === false ? null : await this.poserPanoplie(tx, tenantId, tiers, { silencieux: true });
+        creerCompteIndividuel === false
+          ? null
+          : await this.poserPanoplie(tx, tenantId, tiers, { silencieux: true, numeroPrincipal: numeroCompte });
       return { ...tiers, compteIndividuel: panoplie?.principal ?? null, panoplie };
     }).catch(conflitDeNumeroNomme);
+  }
+
+  /**
+   * LE NUMÉRO QU'OMEGAX PROPOSE pour le compte principal d'un tiers à créer ·
+   * le premier libre sous le collectif de son type, à la longueur du
+   * dossier, le même que la création prendrait sans numéro choisi. Il n'est
+   * PAS réservé · la création le rejuge sous verrou. Un type sans panoplie,
+   * ou un collectif absent ou en sommeil, rend `numero: null` avec le motif,
+   * jamais un numéro que la création refuserait.
+   */
+  async numeroPropose(tenantId: string, type: TypeTiers): Promise<NumeroPropose> {
+    const { referentiel, longueurCompte } = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { referentiel: true, longueurCompte: true },
+    });
+    const panoplie = panoplieDuTiers(referentiel, type);
+    if (panoplie.length === 0) {
+      return {
+        numero: null,
+        collectif: null,
+        longueur: longueurCompte,
+        motif: "Ce type de tiers n'a pas de compte collectif proposé · son compte se rattache à la main.",
+      };
+    }
+    const collectif = panoplie[0].collectif;
+    const compteCollectif = await this.prisma.compte.findFirst({
+      where: { tenantId, numero: collectif },
+      select: { estActif: true },
+    });
+    if (!compteCollectif?.estActif) {
+      return {
+        numero: null,
+        collectif,
+        longueur: longueurCompte,
+        motif: `Le compte collectif ${collectif} n'existe pas ou est en sommeil dans ce dossier.`,
+      };
+    }
+    const racine = racineCollectif(collectif);
+    const existants = await this.prisma.compte.findMany({
+      where: { tenantId, numero: { startsWith: racine } },
+      select: { numero: true },
+    });
+    const numero = prochainNumeroIndividuel(racine, longueurCompte, [collectif, ...existants.map((c) => c.numero)]);
+    return {
+      numero,
+      collectif,
+      longueur: longueurCompte,
+      motif: numero
+        ? null
+        : `Plus aucun numéro libre sous le collectif ${collectif} à ${longueurCompte} chiffres · allongez les numéros ` +
+          'de compte (Structure > Paramètres du dossier).',
+    };
   }
 
   /**
@@ -238,7 +309,7 @@ export class TiersService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     tiers: { id: string; type: TypeTiers; nom: string; code: string },
-    options: { silencieux: boolean },
+    options: { silencieux: boolean; numeroPrincipal?: string },
   ): Promise<PanoplieTiers | null> {
     const { referentiel, longueurCompte } = await tx.tenant.findUniqueOrThrow({
       where: { id: tenantId },
@@ -246,7 +317,7 @@ export class TiersService {
     });
     const panoplie = panoplieDuTiers(referentiel, tiers.type);
     if (panoplie.length === 0) {
-      if (options.silencieux) return null;
+      if (options.silencieux && options.numeroPrincipal === undefined) return null;
       throw new BadRequestException(
         'Ce type de tiers n\'a pas de compte collectif proposé · un salarié passe par le 422 de la paie, un tiers « autre » ' +
           'peut être débiteur ou créditeur. Rattachez son compte à la main.',
@@ -260,6 +331,12 @@ export class TiersService {
       where: { tiersId: tiers.id },
       select: { id: true, estPrincipal: true, compte: { select: { numero: true } } },
     });
+    // LE NUMÉRO CHOISI SE JUGE AVANT TOUTE ÉCRITURE de la panoplie · ses
+    // règles (collectifs-tiers.ts) ne dépendent que du dossier.
+    if (options.numeroPrincipal !== undefined) {
+      const motif = motifRefusNumeroChoisi(options.numeroPrincipal, panoplie[0].collectif, longueurCompte, referentiel);
+      if (motif) throw new BadRequestException(motif);
+    }
     const resultat: PanoplieTiers = { principal: null, crees: [], dejaPresents: 0, impossibles: [] };
     let rang: number | null = null;
     // UN PRINCIPAL POSÉ SUR LE COLLECTIF N'EST PAS UN COMPTE DU TIERS · un
@@ -293,10 +370,17 @@ export class TiersService {
         where: { tenantId, numero: { startsWith: racine } },
         select: { numero: true },
       });
-      const numero = numeroIndividuelAligne(racine, longueurCompte, rang, [
-        role.collectif,
-        ...existants.map((c) => c.numero),
-      ]);
+      const choisi = role.role === 'PRINCIPAL' ? options.numeroPrincipal : undefined;
+      // PRIS, LE NUMÉRO CHOISI EST REFUSÉ, jamais remplacé par le suivant · le
+      // cabinet a nommé ce compte, et un autre numéro passerait inaperçu.
+      if (choisi !== undefined && existants.some((c) => c.numero === choisi)) {
+        throw new ConflictException(
+          `Le compte ${choisi} existe déjà dans ce dossier · choisissez un autre numéro, ou laissez celui qu'OmegaX propose.`,
+        );
+      }
+      const numero =
+        choisi ??
+        numeroIndividuelAligne(racine, longueurCompte, rang, [role.collectif, ...existants.map((c) => c.numero)]);
       if (!numero) {
         resultat.impossibles.push({
           collectif: role.collectif,
@@ -331,6 +415,14 @@ export class TiersService {
     }
     if (!options.silencieux && resultat.crees.length === 0 && resultat.impossibles.length > 0) {
       throw new BadRequestException(resultat.impossibles.map((i) => i.motif).join(' '));
+    }
+    // UN NUMÉRO CHOISI QUI N'A PAS PU S'OUVRIR REFUSE LA CRÉATION · un tiers
+    // né sans le compte qu'on lui a nommé ne recevrait aucune écriture.
+    if (options.numeroPrincipal !== undefined && resultat.principal?.numero !== options.numeroPrincipal) {
+      const motifs = resultat.impossibles.map((i) => i.motif).join(' ');
+      throw new BadRequestException(
+        motifs || `Le compte ${options.numeroPrincipal} n'a pas été ouvert · ce tiers a déjà un compte principal.`,
+      );
     }
     return resultat;
   }

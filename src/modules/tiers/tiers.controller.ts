@@ -5,7 +5,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { TiersService } from './tiers.service';
-import { CompletionPanopliesDto, CreerTiersDto, ModifierTiersDto, RattacherCompteDto } from './dto/tiers.dto';
+import { CompletionPanopliesDto, CreerTiersDto, ModifierTiersDto, NumeroProposeDto, RattacherCompteDto } from './dto/tiers.dto';
 import {
   CreerModeleReglementDto,
   ModifierModeleReglementDto,
@@ -42,6 +42,16 @@ export class TiersController {
   @Get('dossiers-du-groupe')
   async dossiersDuGroupe(@CurrentUser() user: AuthenticatedUser) {
     return this.tiersService.dossiersDuGroupe(user.tenantId);
+  }
+
+  /**
+   * Le numéro qu'OmegaX propose pour le compte principal d'un tiers à créer ·
+   * la fenêtre de création le préremplit, le cabinet le garde ou le
+   * remplace. Déclarée avant `:id`, comme la route précédente.
+   */
+  @Get('numero-propose')
+  async numeroPropose(@CurrentUser() user: AuthenticatedUser, @Query() dto: NumeroProposeDto) {
+    return this.tiersService.numeroPropose(user.tenantId, dto.type);
   }
 
   @Get(':id')

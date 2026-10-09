@@ -191,6 +191,70 @@ export function rangSousRacine(numero: string, racine: string): number | null {
   return Number.isInteger(rang) && rang >= 1 ? rang : null;
 }
 
+/**
+ * LE NUMÉRO QUE LE CABINET CHOISIT POUR LE COMPTE PRINCIPAL D'UN TIERS
+ * (décision de Manasse du 2026-10-09, « Choisi à la création ») · OmegaX
+ * propose le premier numéro libre sous le collectif, le cabinet le garde ou
+ * le remplace, et les sous-comptes de la panoplie prennent son rang. Quatre
+ * règles, chacune avec sa raison.
+ *
+ *  · DES CHIFFRES SEULS · la codification des comptes est décimale (AUDCIF
+ *    art. 18, al. 1er, et Titre VII, « Structure décimale des comptes » ;
+ *    SYCEBNL, Partie 2 ch. 2, section 1, « principe de la décimalisation »,
+ *    l'art. 18 de l'AUDCIF étant écarté par l'art. 3 du SYCEBNL). Un
+ *    « 401SONEL » à la manière de Sage n'y a pas de place · le CODE du tiers
+ *    l'identifie déjà.
+ *  · SOUS LA RACINE DU COLLECTIF · « Le numéro d'un compte divisionnaire
+ *    commence toujours par celui du compte principal ou sous-compte dont il
+ *    est une subdivision » (AUDCIF, Titre VII) ; le SYCEBNL complète son plan
+ *    « en respectant l'arborescence » (même section). Hors de sa racine, le
+ *    compte ne se fondrait pas sur son collectif et changerait de poste.
+ *  · DISTINCT DU COLLECTIF · des zéros seuls après la racine redonnent le
+ *    collectif, ou un numéro qui ne s'en distingue que par sa longueur.
+ *  · À LA LONGUEUR DU DOSSIER (`Tenant.longueurCompte`), comme les numéros
+ *    qu'OmegaX ouvre lui-même · convention d'OmegaX, aucun texte ne fixe la
+ *    longueur d'une subdivision. Deux numéros de même longueur ne sont
+ *    jamais le début l'un de l'autre, et la lecture par début de numéro
+ *    (§ 7 du règlement) ne mêle pas deux tiers.
+ *
+ * Rend le motif du refus, ou null. L'unicité dans le dossier se juge à part,
+ * sous le verrou de la panoplie.
+ */
+export function motifRefusNumeroChoisi(
+  numero: string,
+  collectif: string,
+  longueur: number,
+  referentiel: Referentiel,
+): string | null {
+  const racine = racineCollectif(collectif);
+  if (!/^\d+$/.test(numero)) {
+    const source =
+      referentiel === Referentiel.SYCEBNL
+        ? 'SYCEBNL, Partie 2 ch. 2, section 1'
+        : 'AUDCIF art. 18 et Titre VII';
+    return (
+      `Le numéro de compte « ${numero} » ne doit porter que des chiffres · la codification des comptes est décimale ` +
+      `(${source}). Le code du tiers l'identifie déjà.`
+    );
+  }
+  if (!numero.startsWith(racine)) {
+    return (
+      `Le numéro ${numero} ne commence pas par ${racine}, racine du collectif ${collectif} de ce type de tiers · ` +
+      'le compte d\'un tiers est une subdivision de son collectif.'
+    );
+  }
+  if (numero.length !== longueur) {
+    return (
+      `Le numéro ${numero} compte ${numero.length} chiffres, et les comptes de ce dossier en comptent ${longueur} ` +
+      '(Structure > Paramètres du dossier).'
+    );
+  }
+  if (rangSousRacine(numero, racine) === null) {
+    return `Le numéro ${numero} ne se distingue pas du collectif ${collectif} · ajoutez un rang après ${racine}.`;
+  }
+  return null;
+}
+
 /** Une ligne de balance, telle que `EcritureService.balance` la rend. */
 export interface LigneBalanceRegroupable {
   compteId: string;

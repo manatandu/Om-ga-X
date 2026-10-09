@@ -4,6 +4,7 @@ import { Referentiel, TypeTiers } from '@prisma/client';
 import {
   COLLECTIFS_TIERS,
   PANOPLIES_TIERS,
+  motifRefusNumeroChoisi,
   numeroCollectif,
   numeroIndividuelAligne,
   rangSousRacine,
@@ -228,6 +229,101 @@ describe('création du tiers et de son compte', () => {
     expect(t.panoplie?.impossibles).toEqual([expect.objectContaining({ collectif: '41610000' })]);
   });
 
+  /*
+    LE NUMÉRO CHOISI PAR LE CABINET (décision de Manasse du 2026-10-09,
+    « Choisi à la création ») · il remplace le premier numéro libre, et la
+    panoplie prend son rang. Pris, il est refusé, jamais remplacé par le
+    suivant · un autre numéro passerait inaperçu.
+  */
+  it('un numéro choisi ouvre le principal sous ce numéro, et la panoplie prend son rang', async () => {
+    const { service, crees, rattaches } = monter(Referentiel.SYSCOHADA, [
+      { id: 'c4011', numero: '40110000' },
+      { id: 'x', numero: '40110001' },
+      { id: 'c4081', numero: '40810000' },
+      { id: 'c4091', numero: '40910000' },
+    ]);
+    const t = await service.creer('t1', { type: TypeTiers.FOURNISSEUR, code: 'F1', nom: 'Soco', numeroCompte: '40110250' });
+    expect(crees.map((c) => [c.numero, c.collectifId])).toEqual([
+      ['40110250', 'c4011'],
+      ['40810250', 'c4081'],
+      ['40910250', 'c4091'],
+    ]);
+    expect(rattaches.map((r) => r.estPrincipal)).toEqual([true, false, false]);
+    expect(t.compteIndividuel).toEqual({ id: 'nouveau', numero: '40110250', collectif: '40110000' });
+    // Le numéro choisi n'est pas une colonne du tiers · il ne part pas dans sa fiche.
+    expect(Object.keys(t)).not.toContain('numeroCompte');
+  });
+
+  it('un client SYCEBNL choisit son numéro sous le 412, et ses sous-comptes à racine plus longue prennent le même rang', async () => {
+    const { service, crees } = monter(Referentiel.SYCEBNL, [
+      { id: 'c412', numero: '41200000' },
+      { id: 'c4182', numero: '41820000' },
+      { id: 'c4192', numero: '41920000' },
+      { id: 'c4162', numero: '41620000' },
+    ]);
+    await service.creer('t1', { type: TypeTiers.CLIENT, code: 'C1', nom: 'Usager', numeroCompte: '41200037' });
+    expect(crees.map((c) => c.numero)).toEqual(['41200037', '41820037', '41920037', '41620037']);
+  });
+
+  it('un numéro choisi déjà ouvert est refusé en le disant, rien n’est créé', async () => {
+    const { service, crees } = monter(Referentiel.SYSCOHADA, [
+      { id: 'c4011', numero: '40110000' },
+      { id: 'x', numero: '40110001' },
+    ]);
+    await expect(
+      service.creer('t1', { type: TypeTiers.FOURNISSEUR, code: 'F1', nom: 'Soco', numeroCompte: '40110001' }),
+    ).rejects.toThrow(/Le compte 40110001 existe déjà dans ce dossier/);
+    expect(crees).toHaveLength(0);
+  });
+
+  it('un numéro choisi hors des règles, sans compte à ouvrir, ou pour un type sans collectif est refusé', async () => {
+    const { service, crees } = monter(Referentiel.SYSCOHADA, [{ id: 'c4011', numero: '40110000' }]);
+    const creer = (dto: Record<string, unknown>) =>
+      service.creer('t1', { type: TypeTiers.FOURNISSEUR, code: 'F1', nom: 'Soco', ...dto } as never);
+    await expect(creer({ numeroCompte: '4011SOCO' })).rejects.toThrow(/que des chiffres/);
+    await expect(creer({ numeroCompte: '41110001' })).rejects.toThrow(/ne commence pas par 4011/);
+    await expect(creer({ numeroCompte: '401100012' })).rejects.toThrow(/compte 9 chiffres/);
+    await expect(creer({ numeroCompte: '40110000' })).rejects.toThrow(/ne se distingue pas du collectif/);
+    await expect(creer({ numeroCompte: '40110005', creerCompteIndividuel: false })).rejects.toThrow(/Ouvrir ses comptes/);
+    await expect(
+      service.creer('t1', { type: TypeTiers.AUTRE, code: 'A1', nom: 'Y', numeroCompte: '47110001' }),
+    ).rejects.toThrow(/pas de compte collectif proposé/);
+    expect(crees).toHaveLength(0);
+  });
+
+  it('un numéro choisi sous un collectif absent ou en sommeil refuse la création, jamais un tiers sans son compte', async () => {
+    const { service, crees } = monter(Referentiel.SYSCOHADA, [{ id: 'c4011', numero: '40110000', estActif: false }]);
+    await expect(
+      service.creer('t1', { type: TypeTiers.FOURNISSEUR, code: 'F1', nom: 'Soco', numeroCompte: '40110005' }),
+    ).rejects.toThrow(/40110000 n'existe pas ou est en sommeil/);
+    expect(crees).toHaveLength(0);
+  });
+
+  it('le numéro proposé est le premier libre sous le collectif, celui que la création prendrait sans choix', async () => {
+    const { service } = monter(Referentiel.SYSCOHADA, [
+      { id: 'c4111', numero: '41110000' },
+      { id: 'x', numero: '41110001' },
+      { id: 'y', numero: '41110003' },
+    ]);
+    expect(await service.numeroPropose('t1', TypeTiers.CLIENT)).toEqual({
+      numero: '41110002',
+      collectif: '41110000',
+      longueur: 8,
+      motif: null,
+    });
+    expect(await service.numeroPropose('t1', TypeTiers.SALARIE)).toMatchObject({ numero: null, motif: /pas de compte collectif/ });
+    expect(await service.numeroPropose('t1', TypeTiers.ADHERENT)).toMatchObject({ numero: null, collectif: null });
+  });
+
+  it('sans collectif ouvert, rien n’est proposé, et le motif le dit', async () => {
+    const { service } = monter(Referentiel.SYSCOHADA, [{ id: 'c4011', numero: '40110000', estActif: false }]);
+    expect(await service.numeroPropose('t1', TypeTiers.FOURNISSEUR)).toMatchObject({
+      numero: null,
+      collectif: '40110000',
+      motif: /n'existe pas ou est en sommeil/,
+    });
+  });
+
   it('un adhérent SYCEBNL reçoit ses appels de fonds au 4181 et ses cotisations douteuses au 4161', async () => {
     const { service, crees } = monter(Referentiel.SYCEBNL, [
       { id: 'c411', numero: '41100000' },
@@ -390,5 +486,25 @@ describe('numéro au même rang que le principal', () => {
     expect(numeroIndividuelAligne('4181', 8, 12, [])).toBe('41810012');
     expect(rangSousRacine('41100000', '411')).toBeNull();
     expect(rangSousRacine('47110003', '411')).toBeNull();
+  });
+});
+
+describe('le numéro choisi pour le compte principal', () => {
+  it('admis · des chiffres, sous la racine, à la longueur du dossier, distinct du collectif', () => {
+    expect(motifRefusNumeroChoisi('40110250', '40110000', 8, Referentiel.SYSCOHADA)).toBeNull();
+    expect(motifRefusNumeroChoisi('4120000001', '41200000', 10, Referentiel.SYCEBNL)).toBeNull();
+  });
+
+  it('chaque refus cite le texte de SON référentiel, jamais celui de l’autre', () => {
+    expect(motifRefusNumeroChoisi('4011AB01', '40110000', 8, Referentiel.SYSCOHADA)).toMatch(/AUDCIF art\. 18 et Titre VII/);
+    expect(motifRefusNumeroChoisi('412AB001', '41200000', 8, Referentiel.SYCEBNL)).toMatch(/SYCEBNL, Partie 2 ch\. 2, section 1/);
+    expect(motifRefusNumeroChoisi('412AB001', '41200000', 8, Referentiel.SYCEBNL)).not.toMatch(/AUDCIF/);
+  });
+
+  it('refusé · hors racine, mauvaise longueur, zéros seuls après la racine', () => {
+    expect(motifRefusNumeroChoisi('41110001', '40110000', 8, Referentiel.SYSCOHADA)).toMatch(/ne commence pas par 4011/);
+    expect(motifRefusNumeroChoisi('4011001', '40110000', 8, Referentiel.SYSCOHADA)).toMatch(/compte 7 chiffres/);
+    expect(motifRefusNumeroChoisi('4011000000', '40110000', 10, Referentiel.SYSCOHADA)).toMatch(/ne se distingue pas/);
+    expect(motifRefusNumeroChoisi('', '40110000', 8, Referentiel.SYSCOHADA)).toMatch(/que des chiffres/);
   });
 });
