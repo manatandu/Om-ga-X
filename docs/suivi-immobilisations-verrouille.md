@@ -797,3 +797,12 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   rattaché à un ancien tiers, le 416 de ce tiers est proposé pour un solde
   qui peut appartenir à d'autres clients · ne rien proposer quand le compte
   source n'est pas un compte individuel.
+  COMPTES PERSONNALISÉS (2026-10-09, même ligne, `docs/plan-version-1.md`
+  § 8) · la saisie refuse un compte d'imputation semé que le dossier a
+  subdivisé, le compte qu'un journal de trésorerie tient restant ouvert ; un
+  journal de banque ou de caisse naît avec son compte, numéro proposé.
+  Relevés en attente (non bloquants) · (1) un journal EXISTANT ne s'ouvre pas
+  de compte propre (aujourd'hui, choisir un compte existant à la
+  modification) ; (2) une réimputation ou une fusion VERS un compte du plan
+  subdivisé est refusée par la même règle, l'issue étant la mise en sommeil
+  des sous-comptes.

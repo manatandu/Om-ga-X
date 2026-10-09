@@ -250,3 +250,15 @@ refusée en le disant ; le salarié n'entre pas encore (« Pas pour l'instant »
   scénario ci-dessus ouvre son client au 41110250 et le fait traverser la
   clôture.
 
+- **Comptes personnalisés du dossier** (même jour, « les écritures
+  n'admettraient que les comptes personnalisés du dossier ») · la saisie
+  refuse un compte d'imputation semé que le dossier a subdivisé (un
+  sous-compte détail actif sous sa racine, `comptes/subdivisions-du-plan.ts`),
+  en nommant le compte du dossier, avec les mêmes issues que le collectif ;
+  le compte qu'un journal de trésorerie tient reste ouvert. Un journal de
+  banque ou de caisse naît avec SON compte, ouvert sous un compte de la
+  classe 5 du plan, numéro proposé et modifiable. Scénario ·
+  `e2e/tests/comptes-personnalises.e2e.ts`, à travers la clôture de N et le
+  report en N+1 de ce qui était resté au compte du plan. Hors de la ligne,
+  au suivi · ouvrir le compte propre d'un journal EXISTANT ; les numéros des
+  tiers 43 à 47 ; le salarié.

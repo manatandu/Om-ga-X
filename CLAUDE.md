@@ -3294,7 +3294,21 @@ créance douteuse propose le 416 PROPRE au client (`compte416DuTiers`), servi
 un principal posé sur le collectif commun reçoit son compte, le collectif
 reste rattaché sans la marque. UN JOURNAL DE BANQUE OU DE CAISSE A
 SON PROPRE COMPTE · celui d'un autre journal est refusé au choix, jamais
-reproché à un dossier qui le partage déjà.
+reproché à un dossier qui le partage déjà ; il NAÎT AVEC LUI (décision de
+Manasse du 2026-10-09), sous un compte d'imputation semé de la classe 5,
+numéro proposé (`GET /journaux/compte-propose`) et modifiable
+(`motifRefusNumeroDuJournal` · chiffres, racine, longueur, rang, et jamais
+sous un autre compte du plan), compte et journal dans UNE transaction ;
+« Compte existant » reste offert. LES COMPTES PERSONNALISÉS (même jour, « les
+écritures n'admettraient que les comptes personnalisés du dossier ») · la
+saisie refuse un compte d'imputation SEMÉ dès que le dossier a ouvert un
+sous-compte détail actif sous sa racine (`comptes/subdivisions-du-plan.ts`,
+même contrôle, mêmes issues que le collectif) · la racine d'un semé est le
+plus court préfixe qui n'est pas un TOTAL semé (49000000 est le 490, jamais
+le 49), et une racine semée plus profonde garde les siens (4478, 831, 841 au
+SYCEBNL). Le compte qu'un journal de trésorerie TIENT reste ouvert, sans
+quoi le journal semé s'enfermait dès qu'un second journal ouvrait son compte
+dessous ; un sous-compte en sommeil le rouvre.
 
 **Natures de compte (point 14).** Sept, pas une de plus · Stock, Clients,
 Fournisseurs, Banque, Caisse, Charges, Produits (`comptes/natures-compte.ts`,
