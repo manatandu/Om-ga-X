@@ -12,11 +12,12 @@
  * leur contrôle ; aucun numéro de compte n'est deviné (`compte()` lève si le
  * plan semé ne l'a pas).
  */
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { cloturer, compte, ecriture, etape, nouveauDossier, validerJusqua } from './lib.mjs';
 
 const BQ = '52110000';
-const POINTS = (process.env.PAQUET1_C_POINTS ?? 'C3,C4,C1,C2').split(',').map((s) => s.trim()).filter(Boolean);
+const POINTS = (process.env.PAQUET1_C_POINTS ?? 'C3,C4,C1,C2,S1,S2,S3,S4,S5,S6,S7').split(',').map((s) => s.trim()).filter(Boolean);
 
 /** Le message d'une réponse, quelle que soit sa forme. */
 const messageDe = (r) => {
@@ -382,12 +383,18 @@ async function pointC3(R) {
 // deux faits · `associeUniqueSas` (AUSCGIE art. 853-2, la SASU, propre à la
 // SAS) et `associeUniquePersonneMorale` (art. 201 al. 4 et 5, tous les titres
 // détenus par un seul associé personne morale). Aucun fait ne dit qu'une SARL
-// ou une SA est unipersonnelle à associé personne physique · l'observation ne
-// leur est pas servie (« pas encore dit » n'est pas « oui »).
+// ou une SA est unipersonnelle à associé personne physique · depuis le premier
+// tour de relecture (constat 2, point S2), l'observation leur est servie SOUS
+// CONDITION, dite (« ne vaut que si la société n'a qu'un associé ou
+// actionnaire, personne physique »), comme à la SAS dont l'unicité n'est pas
+// encore dite ; rien seulement sur un « non » déclaré ou un associé unique
+// déclaré personne morale.
 
 const marqueObservation = (rf) => (rf?.observations ?? []).some((o) => o.includes('art. 63, al. 2, 1°'));
 const conditionDite = (rf) =>
-  (rf?.observations ?? []).some((o) => o.includes('art. 63, al. 2, 1°') && o.includes("nature de l'associé unique n'est pas déclarée"));
+  (rf?.observations ?? []).some((o) => o.includes('art. 63, al. 2, 1°') && o.includes("ne vaut que s'il est une personne physique"));
+const conditionUniciteDite = (rf) =>
+  (rf?.observations ?? []).some((o) => o.includes('art. 63, al. 2, 1°') && o.includes("ne vaut que si la société n'a qu'un associé ou actionnaire, personne physique"));
 
 async function pointC4(R) {
   R.scenario = 'paquet1-c · C4';
@@ -401,15 +408,18 @@ async function pointC4(R) {
     const identite = (d, corps) => d.c.geste(`Identité ${JSON.stringify(corps)}`, 'PATCH', '/dossier/identite', corps);
 
     const sarl = await dossier('SOCIETE_RESPONSABILITE_LIMITEE', 'p1c-c4-sarl');
-    R.egal('C4 · SARL, aucun fait déclaré · observation non servie', false, marqueObservation(await sarl.lire()));
+    const sarlSansFait = await sarl.lire();
+    R.egal('C4 · SARL, aucun fait déclaré · observation servie sous la condition d’unicité, dite (constat 2)', [true, true], [marqueObservation(sarlSansFait), conditionUniciteDite(sarlSansFait)]);
     await identite(sarl, { associeUniquePersonneMorale: 'OUI' });
     R.egal('C4 · SARL à associé unique PERSONNE MORALE (art. 201 al. 4) · observation non servie (art. 63 vise la personne physique)', false, marqueObservation(await sarl.lire()));
 
     const sa = await dossier('SOCIETE_ANONYME', 'p1c-c4-sa');
-    R.egal('C4 · SA, aucun fait déclaré · observation non servie', false, marqueObservation(await sa.lire()));
+    const saSansFait = await sa.lire();
+    R.egal('C4 · SA, aucun fait déclaré · observation servie sous la condition d’unicité, dite (constat 2)', [true, true], [marqueObservation(saSansFait), conditionUniciteDite(saSansFait)]);
 
     const sas = await dossier('SOCIETE_PAR_ACTIONS_SIMPLIFIEE', 'p1c-c4-sas');
-    R.egal('C4 · SAS, associé unique pas encore dit · observation non servie', false, marqueObservation(await sas.lire()));
+    const sasNonDit = await sas.lire();
+    R.egal('C4 · SAS, associé unique pas encore dit · observation servie sous la condition d’unicité, dite (constat 2)', [true, true], [marqueObservation(sasNonDit), conditionUniciteDite(sasNonDit)]);
     await identite(sas, { associeUniqueSas: 'NON' });
     R.egal('C4 · SAS déclarée pluripersonnelle · observation non servie', false, marqueObservation(await sas.lire()));
     await identite(sas, { associeUniqueSas: 'OUI' });
@@ -515,8 +525,371 @@ async function pointC2(R) {
   });
 }
 
+// ==============================================================================
+// S1 · PREMIER TOUR DE RELECTURE, CONSTAT 1 · LES SEUILS DE LA PAIE AU CENTIME
+// ==============================================================================
+//
+// Jumeau de C1. Loi n° 23/053, art. 69, 8, a) · le logement est immunisé
+// « pour autant que l'indemnité de logement ne dépasse 30 % de la
+// rémunération » · à 30 % EXACTEMENT, la condition est remplie. Salaire de
+// 131 072,30 FC, logement de 39 321,69 FC (30 % exactement) · le flottant
+// calculait le plafond à 39 321,689999999995 et imposait le logement ENTIER.
+// Au-dessus · salaire de 131 072,33 FC (30 % = 39 321,699 FC), logement de
+// 39 321,70 FC · condition non remplie, et le motif ne doit pas afficher un
+// plafond arrondi égal au total (« 39321.70 » contre « 39321.70 »).
+//
+// Deux autres seuils du même défaut. (a) Le plancher de la CNSS (décret
+// n° 18/041, art. 8 ; loi n° 16/009, art. 13, « en aucun cas ») · cinq lignes
+// dont la somme vaut EXACTEMENT 21 500 × 26 = 559 000 FC s'additionnaient à
+// 558 999,9999999999 · « ASSIETTE SOUS LE PLANCHER », CNSS, impôt et net non
+// chiffrés. (b) Le minimum de la classe (décret n° 25/22 ; Code du travail,
+// art. 37) · grille du cabinet au SMIG de 21 500,01 FC, classe 12 (tension
+// 488) · 104 920,05 × 26 = 2 727 921,30 FC, que le flottant rendait
+// 2 727 921,3000000003 · un contrat EXACTEMENT au minimum était dit non
+// conforme. Un centime de moins, il ne l'est pas.
+
+async function pointS1(R) {
+  R.scenario = 'paquet1-c · S1';
+  await etape(R, 'S1 · seuils de la paie comparés au centime', async () => {
+    const c = await nouveauDossier(R, 'Paquet 1 S1 · Tshopo Bois SARL', { referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'p1c-s1', exercice: ['2026-01-01', '2026-12-31'] });
+    await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await c.geste('Activation du module de paie', 'PATCH', '/dossier/modules', { modulesActives: ['PAIE'] });
+    const base = { moisDePaie: '2026-03', natureEmployeurInpp: 'PRIVE', effectif: 7, regimeSalarial: 'BAREME_ARTICLE_118' };
+    const salaire = (montantFc, libelle = 'Salaire de base') => ({ nature: 'SALAIRE_OU_TRAITEMENT', libelle, montantFc });
+    const logement = (montantFc) => ({ nature: 'LOGEMENT_OU_SON_INDEMNITE', libelle: 'Indemnité de logement', montantFc });
+    const sortLogement = (s) => (s?.assiettes?.sortsFiscaux ?? []).find((x) => /logement/i.test(x.libelle)) ?? null;
+
+    const exact = await c.geste('Simulation · logement à 30 % exactement', 'POST', '/personnel/simulation', { ...base, elements: [salaire(131_072.30), logement(39_321.69)] });
+    R.egal('S1 · logement de 39 321,69 sur 131 072,30 (30 % exactement) · imposable 0', 0, sortLogement(exact)?.imposableFc ?? null);
+    R.egal('S1 · logement à 30 % exactement · base fiscale brute = le salaire seul, 131 072,30', 131_072.3, exact?.assiettes?.assietteFiscaleBruteFc ?? null);
+    R.egal('S1 · logement à 30 % exactement · le motif dit la condition remplie', true, /condition est remplie/.test(sortLogement(exact)?.motif ?? ''));
+
+    const dessus = await c.geste('Simulation · logement au-dessus de 30 %', 'POST', '/personnel/simulation', { ...base, elements: [salaire(131_072.33), logement(39_321.70)] });
+    R.egal('S1 · logement de 39 321,70 sur 131 072,33 (30 % = 39 321,699) · imposable en entier', 39_321.7, sortLogement(dessus)?.imposableFc ?? null);
+    R.egal('S1 · logement au-dessus · le motif dit le plafond exact, 39321.699, jamais arrondi au total', true, (sortLogement(dessus)?.motif ?? '').includes('39321.699'));
+
+    const parts = [157_287.52, 117_823.56, 116_773.59, 45_556.48, 121_558.85];
+    const cinq = await c.geste('Simulation · cinq lignes égales au SMIG du mois', 'POST', '/personnel/simulation', { ...base, elements: parts.map((m, i) => salaire(m, `Élément ${i + 1}`)) });
+    const pl = cinq?.cotisations?.plancherCnss ?? null;
+    // `??` lirait le `null` attendu comme une absence · on lit la clé.
+    const lu = (o, cle) => (o && cle in o ? o[cle] : 'absent');
+    R.egal('S1 · cinq lignes = 559 000 · plancher de la CNSS non appliqué et sans message', [false, null], [lu(pl, 'applique'), lu(pl, 'message')]);
+    R.egal('S1 · cinq lignes = 559 000 · base de la CNSS chiffrée', true, typeof pl?.baseFc === 'number');
+    R.egal('S1 · cinq lignes = 559 000 · quote-part ouvrière chiffrée', null, lu(cinq?.cotisations, 'quotePartOuvriereNonChiffree'));
+
+    const v = await c.geste('Version SMIG du cabinet au 01/01/2027 (21 500,01)', 'POST', '/personnel/baremes', {
+      bareme: 'SMIG', aPartirDu: '2027-01-01', reference: 'Arrêté ministériel fictif du banc portant ajustement du SMIG (décret n° 25/21, art. 10 et 11)', valeurs: { smigJournalierFc: 21_500.01 },
+    });
+    R.egal('S1 · version SMIG du cabinet enregistrée', true, Boolean(v?.version?.id));
+    const contrats = [['MBOMBO', 2_727_921.30], ['LIKOFO', 2_727_921.29]];
+    for (const [nom, remunerationBase] of contrats) {
+      const s = await c.geste(`Salarié ${nom}`, 'POST', '/personnel/salaries', { nom, sexe: 'MASCULIN', nationalite: 'congolaise', lieuNaissance: 'Kisangani' });
+      if (!s) continue;
+      await c.geste(`Contrat ${nom}`, 'POST', `/personnel/salaries/${s.id}/contrats`, {
+        type: 'DUREE_INDETERMINEE', lieuExecution: 'Kisangani', dateEntreeEnVigueur: '2026-01-01', natureTravail: 'Agent de maîtrise',
+        classeProfessionnelle: 12, periodiciteRemuneration: 'MOIS', remunerationBase, deviseRemuneration: 'CDF',
+      });
+    }
+    const conf = await c.lire('Confrontation du registre', '/personnel/confrontation');
+    const fiche = (nom) => (conf?.fiches ?? []).find((f) => f.salarie === nom)?.remunerationMinimale ?? null;
+    R.egal('S1 · MBOMBO, 2 727 921,30 au minimum exact de la classe 12 · [conforme, manque]', [true, null], [fiche('MBOMBO')?.conforme ?? 'absent', fiche('MBOMBO')?.manqueFc ?? null]);
+    R.egal('S1 · LIKOFO, un centime sous le minimum · [conforme, manque]', [false, 0.01], [fiche('LIKOFO')?.conforme ?? 'absent', fiche('LIKOFO')?.manqueFc ?? null]);
+  });
+}
+
+// ==============================================================================
+// S2 · PREMIER TOUR DE RELECTURE, CONSTAT 2 · L'UNICITÉ NON DÉCLARÉE N'EST PAS UN « NON »
+// ==============================================================================
+//
+// Loi n° 23/053, art. 63, al. 2, 1° · « l'associé unique d'une société à
+// responsabilité limitée ou […] l'actionnaire unique d'une société anonyme ou
+// d'une société par action simplifiée, lorsque cet associé ou cet actionnaire
+// est une personne physique ». AUSCGIE art. 309, al. 2 (SARL instituée « par
+// une personne physique ou morale ») et art. 385, al. 2 (SA « ne comprendre
+// qu'un seul actionnaire »). Le dossier ne déclare l'unicité que de la SAS ·
+// pour une SARL ou une SA, et pour une SAS dont l'unicité n'est pas encore
+// dite, C4 lisait le silence comme un « non » et ne servait RIEN · la SARL à
+// associé unique personne physique, que l'article nomme le premier, perdait
+// l'observation sans un mot. Attendu · l'observation, avec sa condition
+// (« ne vaut que si la société n'a qu'un associé ou actionnaire, personne
+// physique ») ; rien seulement sur l'unicité déclarée « non » (SAS) ou sur un
+// associé unique déclaré personne morale. Aucun fait créé.
+
+async function pointS2(R) {
+  R.scenario = 'paquet1-c · S2';
+  await etape(R, 'S2 · unicité non déclarée ou non déclarable', async () => {
+    const dossier = async (forme, cle) => {
+      const c = await nouveauDossier(R, `Paquet 1 S2 · ${forme}`, { referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle, exercice: ['2026-01-01', '2026-12-31'] });
+      await c.geste(`Forme ${forme}`, 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: forme });
+      const n = c.exercices.get('2026').id;
+      return { c, lire: async () => c.lire('Résultat fiscal', `/fiscalite/resultat-fiscal?exerciceId=${n}`) };
+    };
+    const identite = (d, corps) => d.c.geste(`Identité ${JSON.stringify(corps)}`, 'PATCH', '/dossier/identite', corps);
+    const verdict = (rf) => [marqueObservation(rf), conditionUniciteDite(rf)];
+
+    const sarl = await dossier('SOCIETE_RESPONSABILITE_LIMITEE', 'p1c-s2-sarl');
+    R.egal('S2 · SARL, unicité non déclarable · [observation, condition d’unicité dite]', [true, true], verdict(await sarl.lire()));
+    await identite(sarl, { associeUniquePersonneMorale: 'NON' });
+    R.egal('S2 · SARL, associé unique personne morale « non » · [observation, condition d’unicité dite]', [true, true], verdict(await sarl.lire()));
+    await identite(sarl, { associeUniquePersonneMorale: 'OUI' });
+    R.egal('S2 · SARL, associé unique déclaré personne morale · rien', [false, false], verdict(await sarl.lire()));
+
+    const sa = await dossier('SOCIETE_ANONYME', 'p1c-s2-sa');
+    R.egal('S2 · SA, unicité non déclarable · [observation, condition d’unicité dite]', [true, true], verdict(await sa.lire()));
+    await identite(sa, { associeUniquePersonneMorale: 'OUI' });
+    R.egal('S2 · SA, actionnaire unique déclaré personne morale · rien', [false, false], verdict(await sa.lire()));
+
+    const sas = await dossier('SOCIETE_PAR_ACTIONS_SIMPLIFIEE', 'p1c-s2-sas');
+    R.egal('S2 · SAS, unicité pas encore dite · [observation, condition d’unicité dite]', [true, true], verdict(await sas.lire()));
+    await identite(sas, { associeUniqueSas: 'NON' });
+    R.egal('S2 · SAS, unicité déclarée « non » · rien', [false, false], verdict(await sas.lire()));
+    await identite(sas, { associeUniqueSas: 'OUI', associeUniquePersonneMorale: 'NON' });
+    R.egal('S2 · SASU, associé personne physique · [observation, aucune condition]', [true, false], verdict(await sas.lire()));
+  });
+}
+
+// ==============================================================================
+// S3 · PREMIER TOUR DE RELECTURE, CONSTAT 3 · UN MONTANT DE PAIE EST AU CENTIME
+// ==============================================================================
+//
+// Le montant d'un élément de paie (`ElementPaieDto.montantFc`) n'avait aucune
+// borne de décimales, quand les autres montants de la paie en ont deux (base
+// gardée en Decimal 18,2). Une allocation de 50 000,005 FC sous un taux légal
+// de 62 111,40 FC (3 enfants, 2026-03) rendait, depuis l'arrondi de C1, une
+// part immunisée de 50 000,01 et une part IMPOSABLE de −0,01 FC. Attendu ·
+// refus nommé (400) d'un montant au-delà du centime ; au centime, part
+// imposable jamais négative.
+
+async function pointS3(R) {
+  R.scenario = 'paquet1-c · S3';
+  await etape(R, 'S3 · montant d’un élément de paie au centime', async () => {
+    const c = await nouveauDossier(R, 'Paquet 1 S3 · Sankuru Pêche SARL', { referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'p1c-s3', exercice: ['2026-01-01', '2026-12-31'] });
+    await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await c.geste('Activation du module de paie', 'PATCH', '/dossier/modules', { modulesActives: ['PAIE'] });
+    const base = { moisDePaie: '2026-03', natureEmployeurInpp: 'PRIVE', effectif: 7, regimeSalarial: 'BAREME_ARTICLE_118', enfantsBeneficiairesAllocations: 3 };
+    const elements = (alloc) => [
+      { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire de base', montantFc: 1_000_000 },
+      { nature: 'ALLOCATIONS_FAMILIALES_LEGALES', libelle: 'Allocations familiales', montantFc: alloc },
+    ];
+    const millieme = await c.req('POST', '/personnel/simulation', { ...base, elements: elements(50_000.005) });
+    const sort = (millieme.corps?.assiettes?.sortsFiscaux ?? []).find((x) => /Allocations/.test(x.libelle));
+    R.egal('S3 · allocation de 50 000,005 FC · refusée (400), jamais une part imposable', [400, null], [millieme.statut, sort?.imposableFc ?? null]);
+    R.egal('S3 · le refus dit le centime, en français', true, JSON.stringify(millieme.corps ?? '').includes('au centime (deux décimales au plus)'));
+    const centime = await c.geste('Simulation · allocation au centime', 'POST', '/personnel/simulation', { ...base, elements: elements(50_000.01) });
+    const s2 = (centime?.assiettes?.sortsFiscaux ?? []).find((x) => /Allocations/.test(x.libelle));
+    R.egal('S3 · allocation de 50 000,01 FC · admise, imposable 0', 0, s2?.imposableFc ?? null);
+  });
+}
+
+// ==============================================================================
+// S4 · PREMIER TOUR DE RELECTURE, CONSTAT 4 · LE COMPTE EN FILTRE D'UN AUTRE DOSSIER
+// ==============================================================================
+//
+// Même règle que l'exercice et le journal (C3) · un `compteId` de filtre que
+// le dossier ne porte pas est INTROUVABLE (404), jamais une liste vide en 200
+// lue comme « aucun rapprochement » ou « aucune relance sur ce compte ».
+// Illisible, il est refusé (400). Routes · `GET /rapprochements?compteId=` et
+// `GET /relances/historique?compteId=`.
+
+async function pointS4(R) {
+  R.scenario = 'paquet1-c · S4';
+  await etape(R, 'S4 · le compte en filtre, du dossier ou introuvable', async () => {
+    const { A, B } = await paireDeDossiers(R, 'SYSCOHADA', { systeme: 'NORMAL' }, 'p1c-s4');
+    const bqA = compte(A, BQ);
+    const bqB = compte(B, BQ);
+    await A.geste('Rapprochement de A sur sa banque', 'POST', '/rapprochements', { compteId: bqA, dateReleve: '2026-01-31', soldeReleve: 1_000_000 });
+    for (const chemin of ['/rapprochements', '/relances/historique']) {
+      const croise = await A.req('GET', `${chemin}?compteId=${bqB}`);
+      R.egal(`S4 · GET ${chemin} · le compte de B est introuvable (404)`, 'refus 404 introuvable',
+        croise.statut === 404 && /introuvable/i.test(messageDe(croise)) ? 'refus 404 introuvable' : `statut ${croise.statut} · ${JSON.stringify(croise.corps).slice(0, 90)}`);
+      const illisible = await A.req('GET', `${chemin}?compteId=abc`);
+      R.egal(`S4 · GET ${chemin} · un compte illisible est refusé (400)`, 400, illisible.statut);
+      const temoin = await A.req('GET', `${chemin}?compteId=${bqA}`);
+      R.egal(`S4 · GET ${chemin} · témoin · son propre compte se lit (200)`, 200, temoin.statut);
+      const sansFiltre = await A.req('GET', chemin);
+      R.egal(`S4 · GET ${chemin} · témoin · sans filtre, la liste se lit (200)`, 200, sansFiltre.statut);
+    }
+    const rapprochementsA = await A.lire('Rapprochements de A sur sa banque', `/rapprochements?compteId=${bqA}`);
+    R.egal('S4 · le filtre du dossier rend le rapprochement de A', 1, Array.isArray(rapprochementsA) ? rapprochementsA.length : null);
+  });
+}
+
+// ==============================================================================
+// S5 · PREMIER TOUR DE RELECTURE, CONSTAT 5 · L'EXERCICE PORTÉ PAR UN DTO DE REQUÊTE
+// ==============================================================================
+//
+// `GET /registre-donateurs` lit un `@Query()` entier (`FiltreRegistreDto`),
+// dont l'`exerciceId` échappait au recensement d'`exercice-requis.spec.ts`.
+// La ROUTE est déjà juste (le service rend 404, `@IsUUID` 400) · ce point le
+// prouve sur vraie base, des deux côtés ; le défaut corrigé est l'aveuglement
+// du garde-fou, qui ne l'aurait pas vu régresser.
+
+async function pointS5(R) {
+  R.scenario = 'paquet1-c · S5';
+  await etape(R, 'S5 · registre des donateurs filtré par un exercice', async () => {
+    const { A, nA, nB } = await paireDeDossiers(R, 'SYCEBNL', { jeu: 'ASSOCIATIONS_ORDRES_PROFESSIONNELS' }, 'p1c-s5');
+    const croise = await A.req('GET', `/registre-donateurs?exerciceId=${nB}`);
+    R.egal('S5 · GET /registre-donateurs · l’exercice de B est introuvable (404)', 'refus 404 introuvable',
+      croise.statut === 404 && /introuvable/i.test(messageDe(croise)) ? 'refus 404 introuvable' : `statut ${croise.statut} · ${JSON.stringify(croise.corps).slice(0, 90)}`);
+    const illisible = await A.req('GET', '/registre-donateurs?exerciceId=abc');
+    R.egal('S5 · GET /registre-donateurs · un exercice illisible est refusé (400)', 400, illisible.statut);
+    const temoin = await A.req('GET', `/registre-donateurs?exerciceId=${nA}`);
+    R.egal('S5 · GET /registre-donateurs · témoin · son propre exercice se lit (200)', 200, temoin.statut);
+  });
+}
+
+// ==============================================================================
+// S6 · PREMIER TOUR DE RELECTURE, CONSTAT 6 · L'EXERCICE D'UN CORPS, ET LE RELEVÉ R1
+// ==============================================================================
+//
+// (a) Un `exerciceId` de CORPS d'un autre dossier (`POST /ecritures`,
+// `POST /ecritures/imputation-ouverture`) est REFUSÉ et RIEN n'est écrit,
+// dans aucun des deux dossiers · lu en base, pas sur la balance de A, qui ne
+// verrait pas une écriture de A rattachée à l'exercice de B. Le statut (400
+// « Exercice introuvable pour ce tenant ») est noté, non jugé · relevé R2.
+//
+// (b) Relevé R1 · sur `main`, `POST /provisions/:exerciceId` avec l'exercice
+// de B créait une provision dans A rattachée à l'exercice de B. La clé
+// étrangère (RESTRICT) enferme alors B · l'arrêt à la dissolution sans
+// liquidation (AUSCGIE art. 201 al. 4) retire l'exercice postérieur vide
+// (`exercice.service.ts`, `tx.exercice.delete`), et la provision du voisin le
+// retient. La purge PRÉPARÉE dans la fiche (`PURGE_R1`, la même requête) est
+// jouée ici sur la base JETABLE du banc, jamais ailleurs · elle doit rendre la
+// main à B.
+
+/** La base JETABLE du banc · la chaîne n'est jamais affichée, une erreur ne rend que le code de psql. */
+function psql(sql) {
+  const url = process.env.PASSE_DATABASE_URL;
+  if (!url) throw new Error('PASSE_DATABASE_URL absente · la lecture en base ne peut pas se faire');
+  try {
+    return execFileSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-qtAc', sql], { encoding: 'utf8' }).trim();
+  } catch (e) {
+    throw new Error(`psql a échoué (code ${e.status ?? '?'})`);
+  }
+}
+
+const CROISEES_R1 =
+  'SELECT count(*) FROM provisions_risques_charges p JOIN exercices e ON e.id = p."exerciceId" WHERE e."tenantId" <> p."tenantId"';
+/** La purge de la fiche (relevé R1), en une transaction · elle rend le nombre restant. */
+const PURGE_R1 =
+  'BEGIN; DELETE FROM provisions_risques_charges p USING exercices e WHERE e.id = p."exerciceId" AND e."tenantId" <> p."tenantId"; COMMIT; ' +
+  CROISEES_R1;
+
+async function pointS6(R) {
+  R.scenario = 'paquet1-c · S6';
+  await etape(R, 'S6 · (a) un exercice de corps d’un autre dossier, refusé sans rien écrire', async () => {
+    const { A, B, nA, nB } = await paireDeDossiers(R, 'SYSCOHADA', { systeme: 'NORMAL' }, 'p1c-s6a');
+    const compter = () => ({
+      deA: Number(psql(`SELECT count(*) FROM ecritures WHERE "tenantId" = '${A.tenantId}'`)),
+      surB: Number(psql(`SELECT count(*) FROM ecritures WHERE "exerciceId" = '${nB}'`)),
+    });
+    const avant = compter();
+    const capital = '10130000';
+    const corpsEcriture = (exerciceId) => ({
+      exerciceId,
+      journalId: A.od.id,
+      date: '2026-03-03',
+      libelle: 'Écriture sur l’exercice d’un autre dossier',
+      lignes: [
+        { compteId: compte(A, BQ), libelle: 'S6', debit: 10_000, credit: 0 },
+        { compteId: compte(A, capital), libelle: 'S6', debit: 0, credit: 10_000 },
+      ],
+    });
+    const croise = await A.req('POST', '/ecritures', corpsEcriture(nB));
+    R.egal('S6 · POST /ecritures · l’exercice de B en corps est refusé (introuvable)', 'refus introuvable',
+      croise.statut >= 400 && croise.statut < 500 && /introuvable/i.test(messageDe(croise)) ? 'refus introuvable' : `statut ${croise.statut} · ${JSON.stringify(croise.corps).slice(0, 90)}`);
+    R.note(`S6 · POST /ecritures · statut du refus · ${croise.statut} · ${messageDe(croise)}`);
+    const imputation = await A.req('POST', '/ecritures/imputation-ouverture', {
+      exerciceId: nB,
+      journalId: A.od.id,
+      motif: 'CORRECTION_ERREUR_SIGNIFICATIVE',
+      justification: 'Banc paquet 1 · S6',
+      compteReportANouveauId: compte(A, '12100000'),
+      compteContrepartieId: compte(A, BQ),
+      montant: -10_000,
+    });
+    R.egal('S6 · POST /ecritures/imputation-ouverture · l’exercice de B en corps est refusé (introuvable)', 'refus introuvable',
+      imputation.statut >= 400 && imputation.statut < 500 && /introuvable/i.test(messageDe(imputation)) ? 'refus introuvable' : `statut ${imputation.statut} · ${JSON.stringify(imputation.corps).slice(0, 90)}`);
+    R.note(`S6 · POST /ecritures/imputation-ouverture · statut du refus · ${imputation.statut} · ${messageDe(imputation)}`);
+    const apres = compter();
+    R.egal('S6 · rien n’est écrit dans A (écritures du dossier en base)', avant.deA, apres.deA);
+    R.egal('S6 · rien n’est rattaché à l’exercice de B (écritures en base)', avant.surB, apres.surB);
+    const temoin = await A.req('POST', '/ecritures', corpsEcriture(nA));
+    R.egal('S6 · témoin · la même écriture sur l’exercice de A passe (201)', 201, temoin.statut);
+  });
+
+  await etape(R, 'S6 · (b) relevé R1 · la provision croisée enferme le voisin, la purge le libère', async () => {
+    const { A, B, nB } = await paireDeDossiers(R, 'SYSCOHADA', { systeme: 'NORMAL' }, 'p1c-s6b');
+    await B.geste('Exercice 2027 de B (vide)', 'POST', '/exercices', { dateDebut: '2027-01-01', dateFin: '2027-12-31' });
+    const exercicesB = (await B.lire('Exercices de B', '/exercices')) ?? [];
+    const nB2027 = exercicesB.find((e) => e.dateDebut.startsWith('2027'))?.id;
+    if (!nB2027) throw new Error('exercice 2027 de B non créé');
+    const provision = await A.req('POST', `/provisions/${nB2027}`, CORPS['POST /provisions/:exerciceId']);
+    R.egal('S6 · R1 · une provision sur l’exercice de B est refusée (404)', 404, provision.statut);
+    const croisees = Number(psql(CROISEES_R1));
+    R.egal('S6 · R1 · aucune provision rattachée à l’exercice d’un autre dossier', 0, croisees);
+    // B · associé unique personne morale, dissolution au 30/09/2026 · l'arrêt
+    // retire l'exercice 2027 vide (AUSCGIE art. 201 al. 4).
+    await validerJusqua(B, nB, '2026-09-30');
+    await B.geste('Faits · associé unique personne morale, dissolution au 30/09/2026', 'PATCH', '/dossier/identite', {
+      dateDissolution: '2026-09-30', associeUniquePersonneMorale: 'OUI',
+    });
+    const arret = await B.req('POST', `/exercices/${nB}/arreter-a-la-dissolution`, {});
+    R.egal('S6 · R1 · l’arrêt à la dissolution de B passe (exercice 2027 vide retiré)', 'arrêt passé',
+      arret.statut < 300 ? 'arrêt passé' : `statut ${arret.statut} · ${JSON.stringify(arret.corps).slice(0, 120)}`);
+    // La purge préparée (fiche, relevé R1), jouée ici sur la base jetable.
+    const restantes = Number(psql(PURGE_R1));
+    R.egal('S6 · R1 · après la purge préparée, aucune provision croisée', 0, restantes);
+    if (arret.statut >= 300) {
+      const second = await B.req('POST', `/exercices/${nB}/arreter-a-la-dissolution`, {});
+      R.egal('S6 · R1 · après la purge, l’arrêt de B passe', 'arrêt passé',
+        second.statut < 300 ? 'arrêt passé' : `statut ${second.statut} · ${JSON.stringify(second.corps).slice(0, 120)}`);
+    } else {
+      R.egal('S6 · R1 · après la purge, l’arrêt de B passe', 'arrêt passé', 'arrêt passé');
+    }
+    const finaux = (await B.lire('Exercices de B après l’arrêt', '/exercices')) ?? [];
+    R.egal('S6 · R1 · B · l’exercice 2026 finit le 30/09/2026, 2027 est retiré',
+      ['2026-09-30'], finaux.map((e) => String(e.dateFin).slice(0, 10)).sort());
+  });
+}
+
+// ==============================================================================
+// S7 · PREMIER TOUR DE RELECTURE, CONSTAT 7 · LE CHAMP NOMMÉ OÙ IL EST, RÉPONDU HORS DISSOLUTION
+// ==============================================================================
+//
+// Une SASU déclarée dont la nature de l'associé n'est pas dite reçoit
+// l'observation de l'art. 63, al. 2, 1° sous condition. Le complément disait
+// de répondre dans « identité du dossier » · le champ vit dans Paramètres du
+// dossier, section Immatriculation, « Associé unique personne morale » (le
+// libellé de l'écran, relu par le spec client du constat), et la réponse vaut
+// HORS DE TOUTE DISSOLUTION. Le dossier ne déclare aucune dissolution · la
+// réponse « non » est reçue, la dissolution reste vide, et la condition tombe.
+
+async function pointS7(R) {
+  R.scenario = 'paquet1-c · S7';
+  await etape(R, 'S7 · SASU sans dissolution · le champ nommé, la réponse reçue', async () => {
+    const c = await nouveauDossier(R, 'Paquet 1 S7 · SASU', { referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'p1c-s7', exercice: ['2026-01-01', '2026-12-31'] });
+    await c.geste('Forme SAS', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_PAR_ACTIONS_SIMPLIFIEE' });
+    const n = c.exercices.get('2026').id;
+    const lire = () => c.lire('Résultat fiscal', `/fiscalite/resultat-fiscal?exerciceId=${n}`);
+    await c.geste('SASU déclarée', 'PATCH', '/dossier/identite', { associeUniqueSas: 'OUI' });
+    const avant = await lire();
+    const complement = (avant?.observations ?? []).find((o) => o.includes('art. 63, al. 2, 1°') && o.includes("ne vaut que s'il est une personne physique")) ?? '';
+    R.egal('S7 · le complément nomme le champ où il est (Paramètres du dossier, section Immatriculation, « Associé unique personne morale »)', true,
+      complement.includes('Paramètres du dossier, section Immatriculation, « Associé unique personne morale »'));
+    R.egal('S7 · le complément dit que la réponse vaut hors de toute dissolution', true, complement.includes('hors de toute dissolution'));
+    const reponse = await c.req('PATCH', '/dossier/identite', { associeUniquePersonneMorale: 'NON' });
+    R.egal('S7 · « non » est reçu sans aucune dissolution déclarée', true, reponse.statut < 300);
+    const params = await c.lire('Paramètres du dossier', '/dossier/parametres');
+    R.egal('S7 · la dissolution reste vide', null, params ? (params.dateDissolution ?? null) : 'paramètres non lus');
+    const apres = await lire();
+    R.egal('S7 · associé unique personne physique · [observation, aucune condition]', [true, false],
+      [marqueObservation(apres), conditionDite(apres)]);
+  });
+}
+
 export default async function scenarioPaquet1C(registre) {
-  const table = { C3: pointC3, C4: pointC4, C1: pointC1, C2: pointC2 };
+  const table = { C3: pointC3, C4: pointC4, C1: pointC1, C2: pointC2, S1: pointS1, S2: pointS2, S3: pointS3, S4: pointS4, S5: pointS5, S6: pointS6, S7: pointS7 };
   for (const p of POINTS) {
     const fn = table[p];
     if (!fn) continue;
