@@ -20,6 +20,9 @@ import { groupesSoldesEnDevise } from './groupes-soldes-en-devise';
 
 const JOUR = 86_400_000;
 
+/** Le refus du relevé d'un compte que le dossier ne porte pas (C3). */
+export const MOTIF_COMPTE_INTROUVABLE_RELEVE = 'Compte introuvable dans ce dossier : aucun relevé ne peut être établi.';
+
 /**
  * LES ÉTATS D'UNE LETTRE QUI EST PARTIE OU PARTIRA (audit final F241) · écrite
  * en file, gardée faute de messagerie, en échec qui sera retenté, ou envoyée.
@@ -666,6 +669,13 @@ export class RelancesService {
 
   /** Relevé d'un compte : tout ce qui est dû, sans gradation. */
   async releve(tenantId: string, compteId: string, exerciceId: string) {
+    // LE COMPTE D'UN AUTRE DOSSIER EST INTROUVABLE (paquet 1, C3) · il
+    // passait jusqu'à la recherche dans les positions du dossier, et la
+    // réponse disait « rien de dû sur cet exercice », une affirmation sur un
+    // compte que le dossier ne porte pas. Jugé avant toute lecture des
+    // positions, sur le dossier de la session.
+    const compte = await this.prisma.compte.findFirst({ where: { id: compteId, tenantId }, select: { id: true } });
+    if (!compte) throw new NotFoundException(MOTIF_COMPTE_INTROUVABLE_RELEVE);
     const positions = await this.positions(tenantId, { exerciceId, type: TypeRelance.RELEVE });
     const position = positions.find((p) => p.compteId === compteId);
     if (!position) {

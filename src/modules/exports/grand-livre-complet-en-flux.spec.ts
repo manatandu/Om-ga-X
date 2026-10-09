@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
+import { EXERCICE_REQUIS } from '../../common/exercice-requis';
 import { ParseUUIDPipe } from '@nestjs/common';
 import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { ExportService } from './export.service';
@@ -119,6 +120,9 @@ describe('F100 · les exports du grand livre exigent l’exercice', () => {
       { data?: string; pipes: unknown[] }
     >;
     const exercice = Object.values(args).find((a) => a.data === 'exerciceId');
-    expect(exercice?.pipes.some((p) => p instanceof ParseUUIDPipe)).toBe(true);
+    // Le porteur est injectable depuis le paquet 1 (C3, appartenance au
+    // dossier de la session) · la forme reste contrôlée par un ParseUUIDPipe.
+    expect(exercice?.pipes).toContain(EXERCICE_REQUIS);
+    expect(EXERCICE_REQUIS.format).toBeInstanceOf(ParseUUIDPipe);
   });
 });

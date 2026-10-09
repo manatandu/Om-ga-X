@@ -1,8 +1,9 @@
 import 'reflect-metadata';
-import { BadRequestException, PipeTransform } from '@nestjs/common';
+import { BadRequestException, NotFoundException, PipeTransform } from '@nestjs/common';
 import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum';
-import { EXERCICE_REQUIS, MESSAGE_EXERCICE_REQUIS } from './exercice-requis';
+import { EXERCICE_REQUIS, MESSAGE_EXERCICE_HORS_DOSSIER, MESSAGE_EXERCICE_REQUIS } from './exercice-requis';
+import { dansContexteAudit } from './audit/contexte-audit';
 import { AnalytiqueController } from '../modules/analytique/analytique.controller';
 import { IfrsController } from '../modules/ifrs/ifrs.controller';
 import { EngagementService } from '../modules/analytique/engagement.service';
@@ -23,10 +24,10 @@ import { PrismaService } from './prisma.service';
  * illisible · c'est le refus qui est vérifié, pas la forme de la source.
  */
 
-type Arg = { index: number; data?: unknown; pipes?: PipeTransform[] };
+type Arg = { index: number; data?: unknown; pipes?: unknown[] };
 
 /** Les pipes posés sur le paramètre `exerciceId` de la route, requête ou chemin. */
-function pipesExercice(controleur: object, methode: string, type: RouteParamtypes): PipeTransform[] {
+function pipesExercice(controleur: object, methode: string, type: RouteParamtypes): unknown[] {
   const args = (Reflect.getMetadata(ROUTE_ARGS_METADATA, controleur, methode) ?? {}) as Record<string, Arg>;
   const trouves = Object.entries(args).filter(
     ([cle, arg]) => Number(cle.split(':')[0]) === type && arg.data === 'exerciceId',
@@ -35,23 +36,44 @@ function pipesExercice(controleur: object, methode: string, type: RouteParamtype
   return trouves[0][1].pipes ?? [];
 }
 
-/** Joue les pipes de la route comme Nest les joue, dans l'ordre. */
-async function jouer(pipes: PipeTransform[], valeur: unknown, type: 'query' | 'param'): Promise<unknown> {
-  let courant = valeur;
-  for (const pipe of pipes) courant = await pipe.transform(courant, { type, data: 'exerciceId' });
-  return courant;
-}
-
 const ILLISIBLES: unknown[] = [undefined, '', 'ex-2026', '1'];
 const ID = '0b5f9c1e-3a4d-4c2b-9f1e-2a7d6c8b1e30';
+const ID_DU_VOISIN = '7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
+const DOSSIER = 'dossier-de-la-session';
 
-async function attendreRefusNomme(pipes: PipeTransform[], type: 'query' | 'param') {
+/**
+ * Joue les pipes de la route comme Nest les joue, dans l'ordre · une classe
+ * (porteur injectable depuis C3) reçoit le client Prisma, ici une doublure qui
+ * ne connaît l'exercice que dans le dossier de la session.
+ */
+async function jouer(pipes: unknown[], valeur: unknown, type: 'query' | 'param'): Promise<unknown> {
+  const prisma = {
+    exercice: {
+      findFirst: async (a: { where: { id: string; tenantId: string } }) =>
+        a.where.id === ID && a.where.tenantId === DOSSIER ? { id: ID } : null,
+    },
+  } as unknown as PrismaService;
+  return dansContexteAudit({ acteurEmail: 'c@d.test', tenantId: DOSSIER }, async () => {
+    let courant = valeur;
+    for (const p of pipes) {
+      const pipe = typeof p === 'function' ? new (p as new (x: PrismaService) => PipeTransform)(prisma) : (p as PipeTransform);
+      courant = await pipe.transform(courant, { type, data: 'exerciceId' });
+    }
+    return courant;
+  });
+}
+
+async function attendreRefusNomme(pipes: unknown[], type: 'query' | 'param') {
   for (const v of ILLISIBLES) {
     const refus = await jouer(pipes, v, type).catch((e: unknown) => e);
     expect(refus).toBeInstanceOf(BadRequestException);
     expect((refus as BadRequestException).message).toBe(MESSAGE_EXERCICE_REQUIS);
   }
   await expect(jouer(pipes, ID, type)).resolves.toBe(ID);
+  // C3 · l'exercice d'un autre dossier est introuvable.
+  const voisin = await jouer(pipes, ID_DU_VOISIN, type).catch((e: unknown) => e);
+  expect(voisin).toBeInstanceOf(NotFoundException);
+  expect((voisin as NotFoundException).message).toBe(MESSAGE_EXERCICE_HORS_DOSSIER);
 }
 
 describe('exerciceId exigé par le porteur · les trois routes qui y échappaient', () => {

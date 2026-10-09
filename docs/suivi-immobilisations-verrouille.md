@@ -191,6 +191,56 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
 
+- **PAQUET 1, LIGNE C (2026-10-09), second et dernier tour de relecture, non
+  corrigés (règle des deux tours, CLAUDE.md § 11).** Aucun BLOQUANT restant
+  (celui du second tour, l'arrondi au millier de l'art. 118 jugé sur le
+  flottant, et son jumeau du net négatif sont CORRIGÉS, `decimal-exact.ts`).
+  - **MAJEURS (relecture ciblée des corrections)** · (M1) la proposition des
+    retenues d'un décompte final (`decompte-retenues-stipulations.ts`) chiffre
+    sur le net figé au centime loin de zéro (503 900,10) une retenue que
+    l'émission refuse au net exact (503 900,095) · le cabinet saisit la
+    proposition et reçoit un refus, issue · un centime de moins ; (M2) les
+    centimes figés des bulletins ORDINAIRES suivent désormais la règle
+    déclarée (loin de zéro) là où le flottant les arrondissait autrement
+    (témoin · 380 107 FC, privé, mars 2026, `totalEmployeurFc` 13 303,745
+    figé 13 303,75), changement non écrit au guide de la paie ; (M3) le refus
+    d'une retenue d'avance au-delà du net ne dit pas le maximum retenable ;
+    (M4) `totalExact` de `cotisations-paie.ts` apparie les lignes par RANG, et
+    `bareme-irpp.ts` garde des signatures publiques en nombres flottants.
+  - **MINEURS** · (m2) les montants de paie à plus de deux décimales ne sont
+    refusés qu'à `ElementPaieDto.montantFc` · `montantUsd`,
+    `retenuesArticle71Fc`, `tauxLegalAllocationsFamilialesFc`, les champs du
+    décompte final, `remunerationBase`, `LigneModeleBulletinDto.montant` et le
+    SMIG saisi du cabinet s'arrondissent en silence d'un demi-centime au plus ;
+    s'y rattachent R6 (une quote-part au demi-millième laisse un net en
+    demi-centime, le bulletin le fige à 503 900,10 quand la paie du mois porte
+    le 422 à 503 900,09 · l'écart d'un centime est MONTRÉ par P9) et
+    `comptabilisation-paie.ts`, qui arrondit des lignes flottantes par
+    `Math.round` (ONEM 285 340,725 passé ,72, dans la tolérance de trois
+    centimes) ; (m3) l'observation de l'art. 63, al. 2, 1° (société
+    unipersonnelle) est servie à une entreprise DÉCLARÉE du portefeuille de
+    l'État · loi n° 08/010, art. 3, à relire avant de coder.
+  - **NOTE** · `exercice-requis.spec.ts` ne recense que `compteId` ·
+    `compteImmobilisationId`, `compteDepreciationCibleId` et
+    `compteSubventionId` lui échappent (déjà jugés par leurs services).
+  - **RELEVÉS DE LA LIGNE** · (R1) sur l'ancien `main`, `POST
+    /provisions/:exerciceId` avec l'exercice d'un autre dossier créait une
+    provision rattachée à l'exercice du voisin, dont l'arrêt à la dissolution
+    tombait alors en 500 (clé RESTRICT) · requêtes de contrôle et de purge à
+    passer par Manasse (`docs/requetes-production-paquet-1.md`) ; (R2) un
+    `exerciceId` de CORPS d'un autre dossier rend 400 « Exercice introuvable
+    pour ce tenant », pas 404 (trente-trois refus dans douze services, aucune
+    règle unique et sûre), refusé, rien écrit ; (R3) les `compteId` du
+    lettrage, de l'inventaire et des comptes d'un tiers n'ont pas été joués
+    avec un compte d'un autre dossier ; (R4) `GET
+    /creances-douteuses/:id/revue` rendait 400 ou 404 selon la lecture
+    concurrente gagnante, désormais toujours 404 ; (R5) une lecture par clé
+    primaire de plus par requête porteuse.
+  - **À MANASSE** · la déclaration de l'unicité (C4) existe pour la SAS
+    (`associeUniqueSas`) ; pour la SARL et la SA, aucun fait n'est encore
+    déclarable, l'observation y est servie « sous condition » · ajouter le
+    fait relève d'une nouveauté (gel), à décider.
+
 - **PAQUET 1, LIGNE B (2026-10-09), second et dernier tour de relecture, non
   corrigés (règle des deux tours, CLAUDE.md § 11).** Aucun BLOQUANT.
   - **MAJEUR** · B7 incomplet · un bilan d'ouverture IMPORTÉ dans un exercice

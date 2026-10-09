@@ -53,6 +53,17 @@
  * ici.
  */
 
+import { auCentime, enCentimes } from './au-centime';
+import {
+  ZERO,
+  depuisNombre,
+  maximum,
+  moins,
+  plus,
+  versNombre,
+  type DecimalExact,
+} from '../../common/decimal-exact';
+
 /**
  * Les natures qu'un élément de paie peut prendre. La liste d'INCLUSION du
  * Code du travail est ouverte (« Elle comprend NOTAMMENT ») ; sa liste
@@ -303,6 +314,16 @@ export type VerdictAssiettes = {
   readonly reserves: readonly string[];
 };
 
+/**
+ * Les deux raisons pour lesquelles le « taux légal » de l'article 69, 1 ne se
+ * calcule pas · le nombre d'enfants bénéficiaires n'est pas renseigné, ou
+ * aucune grille du SMIG ne couvre le mois de paie (`raison` dit pourquoi, telle
+ * que la grille la rend).
+ */
+export type TauxLegalNonCalcule =
+  | { readonly cause: 'ENFANTS_BENEFICIAIRES_NON_RENSEIGNES' }
+  | { readonly cause: 'MOIS_SANS_GRILLE_DU_SMIG'; readonly raison: string };
+
 export type ParametresAssiettes = {
   /**
    * Article 69, 1 · le « taux légal » des allocations familiales, POUR LA
@@ -313,6 +334,13 @@ export type ParametresAssiettes = {
    * mois de paie sort des annexes, et l'absence vaut alors abstention.
    */
   readonly tauxLegalAllocationsFamilialesFc?: number | null;
+  /**
+   * POURQUOI le taux légal n'est pas chiffré, quand il ne l'est pas · le
+   * service le sait (grille du mois, enfants renseignés), le moteur non. Il
+   * ne sert qu'à DIRE à l'utilisateur ce qui manque et quoi faire (paquet 1,
+   * C2) ; absent, l'explication nomme les deux causes possibles.
+   */
+  readonly tauxLegalAllocationsNonCalcule?: TauxLegalNonCalcule | null;
   /**
    * Article 71 · « les versements réellement effectués à titre définitif, soit
    * à des caisses de pension officielles, soit obligatoirement sous le
@@ -332,6 +360,49 @@ export type ParametresAssiettes = {
    */
   readonly quotePartOuvriereNonChiffree?: string | null;
 };
+
+/**
+ * L'EXPLICATION DE L'ABSTENTION SUR LES ALLOCATIONS FAMILIALES, servie telle
+ * quelle à l'écran (paquet 1, C2, passe V1 n° 2). Elle renvoyait l'utilisateur
+ * au NOM d'une constante du code, qu'aucun écran ne montre · elle dit
+ * désormais, en français, ce qui manque et le geste qui le lève. La constante
+ * `RESOLUTION_TAUX_LEGAL_ALLOCATIONS` reste la référence du code (quel
+ * montant borne l'immunité), elle n'est plus citée à l'utilisateur.
+ *
+ * DEUX CAUSES, DEUX GESTES · enfants non renseignés, on les renseigne ; mois
+ * qu'aucune grille du SMIG ne couvre, renseigner les enfants n'y change rien,
+ * seul un taux légal SAISI lève l'abstention (le service le laisse primer).
+ * Cause inconnue · les deux, dans cet ordre.
+ */
+export function explicationTauxLegalNonChiffre(
+  immunite: Pick<ImmuniteArticle69, 'point' | 'texte'>,
+  nonCalcule: TauxLegalNonCalcule | null,
+): string {
+  const regle =
+    `L'${immunite.point} de la loi n° 23/053 immunise ${immunite.texte}. Ce « taux légal » est ` +
+    "l'allocation familiale journalière par enfant de la colonne 19 de la grille du SMIG du mois (décret " +
+    "n° 25/22), multipliée par les jours ouvrant droit (vingt-six pour un mois entier) et par le nombre " +
+    "d'enfants bénéficiaires.";
+  if (nonCalcule?.cause === 'ENFANTS_BENEFICIAIRES_NON_RENSEIGNES') {
+    return (
+      `${regle} Le nombre d'enfants bénéficiaires n'est pas renseigné, et le plafond ne se place donc pas. ` +
+      "Renseignez le nombre d'enfants bénéficiaires des allocations familiales (il ne se confond pas avec les " +
+      "personnes à charge de l'impôt)."
+    );
+  }
+  if (nonCalcule?.cause === 'MOIS_SANS_GRILLE_DU_SMIG') {
+    return (
+      `${regle} OmegaX n'a aucune grille du SMIG pour ce mois de paie. ${nonCalcule.raison} Le plafond ne ` +
+      "se calcule donc pas. Saisissez le taux légal du mois, montant mensuel pour l'ensemble des enfants " +
+      "bénéficiaires, tiré du barème qui régissait cette paie."
+    );
+  }
+  return (
+    `${regle} Le nombre d'enfants bénéficiaires n'est pas renseigné, ou OmegaX n'a aucune grille du SMIG pour ` +
+    "ce mois de paie · le plafond ne se place donc pas. Renseignez le nombre d'enfants bénéficiaires ; pour un " +
+    "mois qu'aucune grille ne couvre, saisissez le taux légal du mois."
+  );
+}
 
 const estHorsRemuneration = (nature: NatureElementPaie): boolean =>
   HORS_REMUNERATION_ARTICLE_7.includes(nature);
@@ -359,8 +430,24 @@ export function assietteSociale(elements: readonly ElementPaie[]): {
   montantFc: number;
   horsRemuneration: readonly ElementHorsRemuneration[];
 } {
+  const { montant, horsRemuneration } = assietteSocialeExacte(elements);
+  return { montantFc: versNombre(montant), horsRemuneration };
+}
+
+/**
+ * LA MÊME ASSIETTE, EN VALEUR EXACTE (second tour de relecture du paquet 1,
+ * ligne C, BLOQUANT du millier). Cinq lignes qui font 880 000 FC
+ * s'additionnaient en flottant à 879 999,9999999999 · la base de l'impôt qui
+ * en descend (art. 70 et 71) tombait sous son millier à l'arrondi de
+ * l'art. 118. La somme se prend en décimal exact (`common/decimal-exact.ts`) ;
+ * le verdict n'en reçoit que le flottant le plus proche.
+ */
+function assietteSocialeExacte(elements: readonly ElementPaie[]): {
+  montant: DecimalExact;
+  horsRemuneration: readonly ElementHorsRemuneration[];
+} {
   const horsRemuneration: ElementHorsRemuneration[] = [];
-  let montantFc = 0;
+  let montant = ZERO;
 
   for (const element of elements) {
     if (estHorsRemuneration(element.nature)) {
@@ -373,10 +460,10 @@ export function assietteSociale(elements: readonly ElementPaie[]): {
       });
       continue;
     }
-    montantFc += element.montantFc;
+    montant = plus(montant, depuisNombre(element.montantFc));
   }
 
-  return { montantFc, horsRemuneration };
+  return { montant, horsRemuneration };
 }
 
 /**
@@ -392,12 +479,49 @@ export function assiettes(
   elements: readonly ElementPaie[],
   parametres: ParametresAssiettes = {},
 ): VerdictAssiettes {
-  const sociale = assietteSociale(elements);
+  const { retenuesArticle71Fc, ...reste } = parametres;
+  return assiettesExactes(elements, {
+    ...reste,
+    retenuesArticle71: depuisNombre(retenuesArticle71Fc ?? 0),
+  }).verdict;
+}
+
+/** Les mêmes paramètres, les retenues de l'article 71 en valeur exacte. */
+export type ParametresAssiettesExactes = Omit<ParametresAssiettes, 'retenuesArticle71Fc'> & {
+  readonly retenuesArticle71?: DecimalExact;
+};
+
+/**
+ * Le verdict, et les deux assiettes en VALEUR EXACTE, qui n'entrent jamais dans
+ * le verdict (une `bigint` ne se fige pas en JSON, `common/decimal-exact.ts`).
+ * La simulation s'en sert pour la quote-part ouvrière et pour l'arrondi au
+ * millier de l'art. 118, qui ne se prennent pas sur un flottant.
+ */
+export type AssiettesExactes = {
+  readonly verdict: VerdictAssiettes;
+  readonly socialeExacte: DecimalExact;
+  /** La base nette de l'art. 70 · `null` quand le verdict la dit non chiffrée. */
+  readonly netteExacte: DecimalExact | null;
+};
+
+export function assiettesExactes(
+  elements: readonly ElementPaie[],
+  parametres: ParametresAssiettesExactes = {},
+): AssiettesExactes {
+  const sociale = assietteSocialeExacte(elements);
+  const socialeFc = versNombre(sociale.montant);
   const sortsFiscaux: SortFiscal[] = [];
   const abstentions: Abstention[] = [];
   const reserves: string[] = [];
 
-  let brutFiscalFc = 0;
+  // LE BRUT FISCAL S'ADDITIONNE EN VALEUR EXACTE (second tour de relecture du
+  // paquet 1, BLOQUANT du millier) · chaque part imposable est un montant au
+  // centime (la ligne saisie, ou l'excédent ramené par `auCentime`), et leur
+  // somme flottante glissait sous un millier exact.
+  let brutFiscal = ZERO;
+  const ajouterImposable = (fc: number) => {
+    brutFiscal = plus(brutFiscal, depuisNombre(fc));
+  };
   let indetermine = false;
 
   // LES PLAFONDS DE L'ARTICLE 69 PORTENT SUR LA GRANDEUR DU SALARIÉ, pas sur
@@ -432,7 +556,7 @@ export function assiettes(
     if (!immunite) {
       // Article 68 · tout le reste est imposable, avantages en nature compris,
       // « comptés pour leur valeur réelle » (dernier alinéa).
-      brutFiscalFc += element.montantFc;
+      ajouterImposable(element.montantFc);
       sortsFiscaux.push({
         libelle: element.libelle,
         montantFc: element.montantFc,
@@ -453,10 +577,7 @@ export function assiettes(
           motif: 'TAUX_LEGAL_ALLOCATIONS_FAMILIALES_NON_FOURNI',
           libelle: element.libelle,
           montantFc: element.montantFc,
-          explication:
-            `${immunite.point} immunise les allocations familiales ${immunite.texte}. Le « taux légal » est la ` +
-            "colonne 19 du décret n° 25/22 (voir RESOLUTION_TAUX_LEGAL_ALLOCATIONS), mais AUCUNE ANNEXE DE CE DÉCRET NE " +
-            "COUVRE CE MOIS DE PAIE, ou le nombre d'enfants bénéficiaires n'est pas renseigné. Le plafond ne se place donc pas.",
+          explication: explicationTauxLegalNonChiffre(immunite, parametres.tauxLegalAllocationsNonCalcule ?? null),
         });
         sortsFiscaux.push({
           libelle: element.libelle,
@@ -466,10 +587,23 @@ export function assiettes(
         });
         continue;
       }
-      const immunise = Math.min(element.montantFc, Math.max(0, tauxLegalRestantFc ?? tauxLegal));
-      tauxLegalRestantFc = (tauxLegalRestantFc ?? tauxLegal) - immunise;
-      const excedent = element.montantFc - immunise;
-      brutFiscalFc += excedent;
+      // AU CENTIME (paquet 1, C1, passe V1 n° 2) · le taux légal est un
+      // produit de flottants (796,30 × 26 × 3 = 62 111,399999999994), et la
+      // consommation ligne à ligne en ajoute d'autres (62 111,40 − 20 000,10).
+      // Une allocation EXACTEMENT égale au taux légal laissait un excédent de
+      // 7,3e-12 FC, imposable, et le motif « Seul l'excédent de 0.00 FC est
+      // imposable ». Les montants de la paie vivent au centime (Decimal 18,2) ·
+      // plafond, part immunisée, reste et excédent y sont ramenés. La règle du
+      // plafond n'est pas touchée (seul l'excédent est repris).
+      const plafondRestantFc = auCentime(Math.max(0, tauxLegalRestantFc ?? tauxLegal));
+      // L'arrondi ne porte jamais l'immunité AU-DELÀ du montant (constat 3) ·
+      // 50 000,005 FC s'arrondissait à 50 000,01, et la part imposable
+      // devenait négative. La porte refuse le millième (ElementPaieDto) ; la
+      // règle tient aussi pour un appelant interne.
+      const immunise = Math.min(element.montantFc, auCentime(Math.min(element.montantFc, plafondRestantFc)));
+      tauxLegalRestantFc = auCentime(plafondRestantFc - immunise);
+      const excedent = auCentime(element.montantFc - immunise);
+      ajouterImposable(excedent);
       sortsFiscaux.push({
         libelle: element.libelle,
         montantFc: element.montantFc,
@@ -505,7 +639,7 @@ export function assiettes(
         continue;
       }
       const imposableFc = atteste ? 0 : element.montantFc;
-      brutFiscalFc += imposableFc;
+      ajouterImposable(imposableFc);
       sortsFiscaux.push({
         libelle: element.libelle,
         montantFc: element.montantFc,
@@ -518,17 +652,28 @@ export function assiettes(
     }
 
     // Article 69, 8, a) · la seule condition que le logiciel sait vérifier.
-    const plafondFc = (sociale.montantFc * PLAFOND_LOGEMENT_POUR_CENT) / 100;
-    const conditionRemplie = totalLogementFc <= plafondFc;
+    // « Ne dépasse 30 % » · à 30 % EXACTEMENT la condition est remplie. Elle
+    // se juge en CENTIMES ENTIERS (premier tour de relecture du paquet 1,
+    // constat 1) · le flottant rendait 131 072,30 × 30 / 100 =
+    // 39 321,689999999995, et un logement de 39 321,69 FC, 30 % pile, était
+    // imposé EN ENTIER. Total × 100 ≤ rémunération × 30, sur des entiers.
+    // Le plafond se dit au millième quand il en porte un (30 % d'un nombre
+    // de centimes) · arrondi au centime, 39 321,699 s'affichait 39 321,70
+    // à côté d'un total de 39 321,70 dit au-dessus.
+    const remunerationCentimes = enCentimes(socialeFc);
+    const conditionRemplie = enCentimes(totalLogementFc) * 100 <= remunerationCentimes * PLAFOND_LOGEMENT_POUR_CENT;
+    const plafondMillimes = remunerationCentimes * PLAFOND_LOGEMENT_POUR_CENT / 10;
+    const plafondFc = plafondMillimes / 1000;
+    const plafondAffiche = Number.isInteger(plafondMillimes / 10) ? plafondFc.toFixed(2) : plafondFc.toFixed(3);
     const imposableFc = conditionRemplie ? 0 : element.montantFc;
-    brutFiscalFc += imposableFc;
+    ajouterImposable(imposableFc);
     sortsFiscaux.push({
       libelle: element.libelle,
       montantFc: element.montantFc,
       imposableFc,
       motif:
         `${immunite.point} · ${immunite.texte}. Indemnité de logement du mois, toutes lignes : ${totalLogementFc.toFixed(2)} FC, ` +
-        `plafond de comparaison : ${plafondFc.toFixed(2)} FC. ` +
+        `plafond de comparaison : ${plafondAffiche} FC. ` +
         (conditionRemplie
           ? "La condition est remplie, l'immunité joue tout entière."
           : "La condition n'est PAS remplie, et le point est écrit « pour autant que », non « dans la limite de » : l'immunité ne joue pas du tout, le montant entier est imposable."),
@@ -542,12 +687,13 @@ export function assiettes(
     reserves.push(
       "BASE DES 30 % · l'article 69, 8, a) dit « de la rémunération » sans la définir. OmegaX la prend au sens de " +
         "l'article 7, point 8 du Code du travail, qui en exclut justement le logement, soit " +
-        `${sociale.montantFc.toFixed(2)} FC. Une lecture qui y inclurait le logement élargirait le plafond.`,
+        `${socialeFc.toFixed(2)} FC. Une lecture qui y inclurait le logement élargirait le plafond.`,
     );
   }
 
-  const retenuesArticle71Fc = Math.max(0, parametres.retenuesArticle71Fc ?? 0);
-  const assietteFiscaleBruteFc = indetermine ? null : brutFiscalFc;
+  const retenues71 = maximum(ZERO, parametres.retenuesArticle71 ?? ZERO);
+  const retenuesArticle71Fc = versNombre(retenues71);
+  const assietteFiscaleBruteFc = indetermine ? null : versNombre(brutFiscal);
   const quotePartNonChiffree = parametres.quotePartOuvriereNonChiffree ?? null;
   const motifAssietteNetteNonChiffree =
     assietteFiscaleBruteFc !== null && quotePartNonChiffree
@@ -555,10 +701,11 @@ export function assiettes(
         "à une caisse de pension officielle (loi n° 23/053, art. 70 et 71), et la quote-part ouvrière de la CNSS " +
         `ne l'est pas · ${quotePartNonChiffree} L'impôt et le net ne se chiffrent donc pas non plus.`
       : null;
-  const assietteFiscaleNetteFc =
+  const netteExacte =
     assietteFiscaleBruteFc === null || motifAssietteNetteNonChiffree !== null
       ? null
-      : Math.max(0, assietteFiscaleBruteFc - retenuesArticle71Fc);
+      : maximum(ZERO, moins(brutFiscal, retenues71));
+  const assietteFiscaleNetteFc = netteExacte === null ? null : versNombre(netteExacte);
 
   if (retenuesArticle71Fc > 0) {
     reserves.push(
@@ -570,14 +717,18 @@ export function assiettes(
   }
 
   return {
-    assietteSocialeFc: sociale.montantFc,
-    horsRemuneration: sociale.horsRemuneration,
-    assietteFiscaleBruteFc,
-    sortsFiscaux,
-    retenuesArticle71Fc,
-    assietteFiscaleNetteFc,
-    motifAssietteNetteNonChiffree,
-    abstentions,
-    reserves: [...new Set(reserves)],
+    verdict: {
+      assietteSocialeFc: socialeFc,
+      horsRemuneration: sociale.horsRemuneration,
+      assietteFiscaleBruteFc,
+      sortsFiscaux,
+      retenuesArticle71Fc,
+      assietteFiscaleNetteFc,
+      motifAssietteNetteNonChiffree,
+      abstentions,
+      reserves: [...new Set(reserves)],
+    },
+    socialeExacte: sociale.montant,
+    netteExacte,
   };
 }

@@ -6,6 +6,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ModeleSaisieService } from './modele-saisie.service';
+import { JOURNAL_FACULTATIF } from '../../common/journal-du-dossier';
 import { CreerModeleSaisieDto, ModifierModeleSaisieDto } from './dto/modele-saisie.dto';
 
 /**
@@ -21,7 +22,7 @@ export class ModeleSaisieController {
   @Get()
   async lister(
     @CurrentUser() user: AuthenticatedUser,
-    @Query('journalId') journalId?: string,
+    @Query('journalId', JOURNAL_FACULTATIF) journalId?: string,
     @Query('inclureInactifs') inclureInactifs?: string,
   ) {
     return this.service.lister(user.tenantId, journalId, inclureInactifs === 'true');

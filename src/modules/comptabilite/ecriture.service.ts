@@ -180,6 +180,10 @@ export function perimetreJournal(
 }
 
 export const PLAFOND_ECRITURES_PAR_FENETRE = 2000;
+
+/** Le refus du grand livre d'un compte que le dossier ne porte pas (C3). */
+export const MOTIF_COMPTE_INTROUVABLE_GRAND_LIVRE =
+  'Compte introuvable dans ce dossier : aucun grand livre ne peut être établi.';
 export const PLAFOND_LIGNES_GRAND_LIVRE = 20000;
 
 
@@ -3376,7 +3380,11 @@ export class EcritureService {
   async grandLivre(tenantId: string, compteId: string, exerciceId?: string, plafond?: number) {
     const compte = await this.prisma.compte.findFirst({ where: { id: compteId, tenantId } });
     if (!compte) {
-      throw new BadRequestException('Compte introuvable pour ce tenant');
+      // 404, et non plus 400 (paquet 1, C3) · un compte que le dossier ne
+      // porte pas est INTROUVABLE, comme au justificatif de solde, qui le
+      // disait déjà ; la requête n'avait rien d'illisible. Le même texte pour
+      // un compte inconnu partout et celui d'un autre dossier.
+      throw new NotFoundException(MOTIF_COMPTE_INTROUVABLE_GRAND_LIVRE);
     }
 
     const perimetreEcriture = { tenantId, ...(exerciceId ? { exerciceId } : {}) };

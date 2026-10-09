@@ -12,12 +12,16 @@ import {
   arrondirAuMillierInferieur,
   TRANCHES_IRPP_MENSUELLES,
   baremeApplicableAuMois,
+  detailMensuel,
   impotAnnuel,
   impotDuBareme,
   regimeApplicable,
   retenueMensuelle,
 } from './bareme-irpp';
 import { arrondirImpotArt150 } from '../fiscalite/arrondi-article-150';
+import { depuisNombre, somme } from '../../common/decimal-exact';
+import { assiettesExactes, type ElementPaie } from './assiettes-paie';
+import { cotisationsExactes } from './cotisations-paie';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -378,5 +382,111 @@ describe('Le barème lu au mois · ce que montrent l’écran et le bulletin', (
     // 1 000 083 FC par mois font 12 000 996 FC par an, arrondis à 12 000 000.
     const m = retenueMensuelle('2026-03', 1_000_083).mensuel;
     expect(m.revenuRetenuFc).toBeCloseTo(1_000_000, 6);
+  });
+});
+
+/**
+ * SECOND TOUR DE RELECTURE DU PAQUET 1, LIGNE C, BLOQUANT · le millier de
+ * l'art. 118 se prend sur la valeur exacte, de l'assiette sociale à la base
+ * annualisée. Le câblage du service est tenu par `simulation-paie.spec.ts`.
+ */
+describe("L'arrondi au millier de l'art. 118 se prend sur la valeur EXACTE", () => {
+  const cinqLignes = [51_905.39, 53_651.71, 168_138.49, 68_332.09, 537_972.32];
+  const elements: ElementPaie[] = cinqLignes.map((montantFc, i) => ({
+    nature: i === 0 ? 'SALAIRE_OU_TRAITEMENT' : 'PRIME',
+    libelle: `Ligne ${i + 1}`,
+    montantFc,
+  }));
+
+  it('assiette, quote-part et base nette exactes · 880 000, 44 000, 836 000', () => {
+    const premier = assiettesExactes(elements);
+    expect(premier.verdict.assietteSocialeFc).toBe(880_000);
+    const { verdict, totalTravailleurExact } = cotisationsExactes(premier.socialeExacte, {
+      moisDePaie: '2026-03',
+      natureEmployeurInpp: 'PRIVE',
+      effectif: 30,
+    });
+    expect(verdict.totalTravailleurFc).toBe(44_000);
+    const second = assiettesExactes(elements, { retenuesArticle71: totalTravailleurExact });
+    expect(second.verdict.assietteFiscaleNetteFc).toBe(836_000);
+    const r = retenueMensuelle('2026-03', second.netteExacte!, 0);
+    expect(r.revenuAnnualiseFc).toBe(10_032_000);
+    expect(r.annuel.assietteArrondieFc).toBe(10_032_000);
+    expect(r.retenueFc).toBe(106_000);
+  });
+
+  it('témoin · le même revenu porté par le flottant tombe au millier inférieur', () => {
+    const flottant = (cinqLignes.reduce((a, b) => a + b, 0) * 95) / 100;
+    expect(flottant * MOIS_PAR_AN).toBeLessThan(10_032_000);
+    expect(Math.floor((flottant * MOIS_PAR_AN) / 1_000) * 1_000).toBe(10_031_000);
+    expect(arrondirAuMillierInferieur(somme(cinqLignes.map(depuisNombre)))).toBe(880_000);
+  });
+
+  it('ne remonte jamais un revenu à 999,9964 FC du millier · aucun arrondi au centime d’abord', () => {
+    expect(arrondirAuMillierInferieur(depuisNombre(10_031_999.9964))).toBe(10_031_000);
+    expect(retenueMensuelle('2026-03', depuisNombre(835_999.9997)).annuel.assietteArrondieFc).toBe(10_031_000);
+  });
+
+  it('un revenu non chiffré lève, jamais un zéro', () => {
+    expect(() => retenueMensuelle('2026-03', null as unknown as number)).toThrow('Montant non chiffré');
+  });
+});
+
+/**
+ * LES AUTRES PALIERS DE LA RETENUE NE BASCULENT PAS (second tour de relecture
+ * du paquet 1, recherche demandée avec le BLOQUANT) · une fois l'assiette de
+ * l'art. 118 un millier exact, l'arrondi de l'art. 150 se prend sur un impôt
+ * mensuel dont la fraction est soit exacte (impôt annuel entier), soit loin de
+ * toute frontière (commentaire de `detailMensuel`). Le test le rejoue contre
+ * un calcul en entiers, sur des assiettes et des personnes à charge balayées.
+ */
+describe("L'arrondi de l'art. 150 sur la retenue rejoue un calcul en entiers", () => {
+  // Le barème en entiers · chaque tranche porte sur des multiples de 1 000.
+  const baremeEntier = (a: bigint): bigint => {
+    let bas = 0n;
+    let impot = 0n;
+    for (const t of TRANCHES_IRPP) {
+      const haut = t.jusqua === null ? a : BigInt(t.jusqua);
+      const borne = a < haut ? a : haut;
+      if (borne > bas) impot += ((borne - bas) * BigInt(t.tauxPourCent)) / 100n;
+      bas = haut;
+      if (a <= haut) break;
+    }
+    return impot;
+  };
+  // L'art. 150 en entiers, sur la retenue du mois exprimée en centièmes de
+  // franc × 12 · première décimale ≥ 5 ⟺ fraction ≥ 0,5, puis la centaine.
+  const retenueEntiere = (a: bigint, personnes: bigint): number => {
+    const bareme = baremeEntier(a);
+    const plafond = (a * BigInt(PLAFOND_IMPOT_POUR_CENT)) / 100n;
+    const impot118 = bareme > plafond ? plafond : bareme;
+    const basse = baremeEntier(a < BigInt(BORNE_TROISIEME_TRANCHE) ? a : BigInt(BORNE_TROISIEME_TRANCHE));
+    const baseQuotite = basse < impot118 ? basse : impot118;
+    // Impôt dû en centièmes · 100 × impôt de l'art. 118 − base × quotité.
+    const du100 = impot118 * 100n - baseQuotite * personnes * BigInt(QUOTITE_PAR_PERSONNE_A_CHARGE_POUR_CENT);
+    const unite = (2n * du100 + 1200n) / 2400n;
+    const tranche = unite % 100n;
+    return Number(tranche >= 50n ? unite - tranche + 100n : unite - tranche);
+  };
+
+  it('rend la retenue au franc près sur 40 000 assiettes et zéro à neuf personnes à charge', () => {
+    let ecarts = 0;
+    for (let i = 0; i < 4_000; i++) {
+      // De 0 à près de 200 millions, au pas de 49 000 FC (premier avec 12), plus
+      // les bornes des tranches et du plafond.
+      const a = i * 49_000;
+      for (let p = 0; p <= 9; p++) {
+        const attendu = retenueEntiere(BigInt(a), BigInt(p));
+        if (detailMensuel(impotAnnuel(a, p)).retenueFc !== attendu) ecarts++;
+      }
+    }
+    // Le seuil où le plafond mord (77 932 800) n'est pas un millier · ses deux
+    // milliers voisins.
+    for (const a of [1_944_000, 21_600_000, 43_200_000, 77_932_000, 77_933_000]) {
+      for (let p = 0; p <= 9; p++) {
+        if (detailMensuel(impotAnnuel(a, p)).retenueFc !== retenueEntiere(BigInt(a), BigInt(p))) ecarts++;
+      }
+    }
+    expect(ecarts).toBe(0);
   });
 });

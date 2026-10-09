@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { EcritureService } from './ecriture.service';
+import { EcritureService, MOTIF_COMPTE_INTROUVABLE_GRAND_LIVRE } from './ecriture.service';
+import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { JournalService } from '../journaux/journal.service';
 import { ExerciceService } from '../exercice/exercice.service';
@@ -220,11 +221,13 @@ describe('grand livre · colonne « compte contrepartie »', () => {
     expect(typeof gl[0].soldeProgressif).toBe('number');
   });
 
-  it('refuse un compte qui n’appartient pas au tenant', async () => {
+  it('refuse un compte qui n’appartient pas au tenant · introuvable, en 404 (paquet 1, C3)', async () => {
     const service = serviceAvec([], undefined);
-    await expect(service.grandLivre('t1', 'compte-d-un-autre-tenant')).rejects.toThrow(
-      'Compte introuvable pour ce tenant',
-    );
+    const refus = await service.grandLivre('t1', 'compte-d-un-autre-tenant').catch((e: unknown) => e);
+    // 400 jusqu'à C3 · la requête n'avait rien d'illisible, le compte n'est
+    // simplement pas du dossier, comme au justificatif de solde.
+    expect(refus).toBeInstanceOf(NotFoundException);
+    expect((refus as NotFoundException).message).toBe(MOTIF_COMPTE_INTROUVABLE_GRAND_LIVRE);
   });
 });
 

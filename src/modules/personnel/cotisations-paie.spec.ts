@@ -11,10 +11,13 @@ import {
   TAUX_CNSS,
   cotisations,
   netAPayer,
+  netAPayerExact,
+  netNegatifAuCentime,
   plancherCnss,
   tauxInpp,
   tauxOnem,
 } from './cotisations-paie';
+import { depuisNombre, somme } from '../../common/decimal-exact';
 
 const M = { moisDePaie: '2026-03' as const };
 
@@ -320,6 +323,25 @@ describe('F109 · chaque taux calculé est celui que le registre des retenues ci
  * SMIG est JOURNALIER (décret n° 25/22, art. 2), le mois en compte 26 (art. 7).
  */
 describe('F112 · le plancher de la CNSS', () => {
+  it('jumeau de C1 · une assiette EXACTEMENT au SMIG du mois, faite de plusieurs lignes, n’est pas sous le plancher', () => {
+    // Premier tour de relecture du paquet 1, constat 1. Cinq lignes de
+    // 559 000 FC en tout s'additionnent à 558 999,9999999999 · « en aucun cas »
+    // sous le SMIG se juge au centime, sinon la CNSS, l'impôt et le net d'un
+    // salaire AU minimum ne se chiffrent plus.
+    const assiette = [157_287.52, 117_823.56, 116_773.59, 45_556.48, 121_558.85].reduce((n, m) => n + m, 0);
+    expect(assiette).toBeLessThan(559_000);
+    expect(plancherCnss('2026-03', assiette)).toMatchObject({ baseFc: assiette, plancherFc: 559_000, applique: false, message: null });
+    // Un centime sous le SMIG, l'abstention reste.
+    expect(plancherCnss('2026-03', 558_999.99).baseFc).toBeNull();
+  });
+
+  it('jumeau de C1 · un SMIG du cabinet aux centimes se compare au centime', () => {
+    const grille = annexeDuCabinet({ aPartirDu: '2027-01-01', reference: 'Arrêté du banc', smigJournalierFc: 21_500.01 });
+    // 21 500,01 × 26 = 559 000,26 · une assiette égale passe, un centime de moins non.
+    expect(plancherCnss('2027-03', 559_000.26, null, [grille])).toMatchObject({ applique: false, message: null });
+    expect(plancherCnss('2027-03', 559_000.25, null, [grille]).baseFc).toBeNull();
+  });
+
   it('sous le décret n° 18/017, le plancher est le SMIG de 7 075 FC (audit D2-C1)', () => {
     expect(plancherCnss('2022-06', 100_000, 26).baseFc).toBe(7_075 * 26);
   });
@@ -414,5 +436,35 @@ describe('Passe O4 · la saisie-arrêt et la cession notifiées ne sont plus « 
     expect(RESERVE_SAISIES_ET_CESSIONS).toMatch(/art\. 184, 3° et 206/);
     expect(RESERVE_SAISIES_ET_CESSIONS).toMatch(/personnellement débiteur/);
     expect(RESERVE_SAISIES_ET_CESSIONS).toContain('42320000');
+  });
+});
+
+/**
+ * SECOND TOUR DE RELECTURE DU PAQUET 1, JUMEAU m1 · le net négatif se juge en
+ * centimes sur la valeur exacte, par la règle de la colonne Decimal(18,2) où
+ * le bulletin le fige (demi-centime loin de zéro). Le câblage est tenu par
+ * `simulation-paie.spec.ts`.
+ */
+describe('Le net négatif se juge en centimes, comme la colonne qui le fige', () => {
+  it('un reste flottant n’est pas un net négatif', () => {
+    expect(netNegatifAuCentime(depuisNombre(-1.1641532182693481e-10))).toBe(false);
+    expect(netNegatifAuCentime(depuisNombre(-0.0049999))).toBe(false);
+  });
+
+  it('-0,005 FC, que la colonne range -0,01, est un net négatif', () => {
+    expect(netNegatifAuCentime(depuisNombre(-0.005))).toBe(true);
+    expect(netNegatifAuCentime(depuisNombre(-0.01))).toBe(true);
+  });
+
+  it('le net se calcule en valeur exacte · 880 000 − 44 000 − 106 000 − 730 000 = 0', () => {
+    const cinq = [51_905.39, 53_651.71, 168_138.49, 68_332.09, 537_972.32];
+    const sommeFlottante = cinq.reduce((a, b) => a + b, 0);
+    // Témoin · le flottant laisse un reste négatif, que le jugement en
+    // centimes ne prend pas pour un net négatif.
+    expect(sommeFlottante - 44_000 - 106_000 - 730_000).toBeLessThan(0);
+    const { netExact } = netAPayerExact(somme(cinq.map(depuisNombre)), depuisNombre(44_000), 106_000, depuisNombre(730_000));
+    expect(netExact).not.toBeNull();
+    expect(netNegatifAuCentime(netExact!)).toBe(false);
+    expect(netAPayer(880_000, 44_000, 106_000, 730_000).netAPayerFc).toBe(0);
   });
 });

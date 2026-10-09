@@ -11,7 +11,7 @@ import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-
 import { GroupeService } from './groupe.service';
 import { CreerCelluleDto, ImporterCanevasDto } from './dto/groupe.dto';
 import { ReserveAuComptable } from '../../common/decorators/acces-roles-cantonnes.decorator';
-import { EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { EXERCICE_D_UNE_CELLULE, EXERCICE_REQUIS } from '../../common/exercice-requis';
 
 const TYPE_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -76,11 +76,14 @@ export class GroupeController {
     return this.groupeService.supervision(user.tenantId, exerciceId);
   }
 
+  // L'exercice est celui de la CELLULE, pas du siège · le porteur du dossier
+  // de la session le refuserait à tort. Format seul ici, appartenance jugée
+  // par le service (cellule du groupe, puis exercice de la cellule).
   @Get('cellules/:celluleId/balance')
   balanceCellule(
     @CurrentUser() user: AuthenticatedUser,
     @Param('celluleId', ParseUUIDPipe) celluleId: string,
-    @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('exerciceId', EXERCICE_D_UNE_CELLULE) exerciceId: string,
   ) {
     return this.groupeService.balanceCellule(user.tenantId, celluleId, exerciceId);
   }

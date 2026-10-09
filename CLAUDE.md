@@ -1450,6 +1450,10 @@ l'art. 68 ; le plancher de 2 000 FC du livre de cours, dans AUCUN article ; la
 retenue LIBÉRATOIRE de l'art. 121, alinéa 2 (arrêté n° 019/2025, lu depuis la passe
 F5, cours de conversion manquant). L'écran Personnel ne dit plus que le moteur
 « attend des textes » · lacune déclarée à tort (§ 10 bis, comme F1, F2b, F3a).
+LE MILLIER SE PREND SUR LA VALEUR EXACTE (paquet 1, S8) · `plancherAuMultiple`
+(`common/decimal-exact.ts`, entiers BigInt), jamais un `Math.floor` sur un
+flottant · 12 001 000 rendait 12 000 000 quand le produit du mois par douze
+tombait juste sous le millier.
 
 **P2b · LES COTISATIONS, ET LE NET.** Décret n° 18/041, art. 2 à 4 · prestations aux
 familles 6,5 % (employeur), pensions 10 % (5 % employeur + 5 % travailleur), risques
@@ -1515,7 +1519,17 @@ régime de l'art. 121 · forfait libératoire (personnel domestique, micro-entre
 retenue abstenue ; non déclaré, barème de l'art. 118 EN LE DISANT
 (`RESERVE_REGIME_NON_DECLARE`). La quotité de l'art. 114 reçoit `null`, jamais zéro,
 pour l'impôt ou la quote-part non chiffrés · sinon la saisie mord sur la part
-protégée.
+protégée. **UN SEUIL SE JUGE EN CENTIMES ENTIERS** (paquet 1, C1 et S1,
+`personnel/au-centime.ts`, `enCentimes`) · logement à 30 % (total × 100 contre
+rémunération × 30), plancher CNSS, minimum de la classe · le flottant faisait
+d'un logement à 30 % exactement un logement au-delà (39 321,689999… contre
+39 321,69), et d'un 559 000 un 558 999,9999 ; l'arrondi ne sert QU'AU centime,
+jamais au franc. LE NET NÉGATIF SE JUGE AU CENTIME DE LA COLONNE
+(`netNegatifAuCentime`, `centimesLoinDeZero`, arrondi Decimal(18,2) loin de
+zéro, S9) · un reste de -0,004 n'est pas un net négatif, -0,005 l'est.
+L'abstention sur les allocations DIT CE QUI MANQUE (C2,
+`explicationTauxLegalNonChiffre`) · la grille du mois d'abord, puis les enfants
+bénéficiaires, jamais un nom de constante.
 
 **P3 · LA PASSATION COMPTABLE** (`docs/paie-p3-passation-comptable.md`). AUCUN
 NUMÉRO DE COMPTE DE PAIE HORS DE `passation-paie.ts`, ET AUCUN SANS SON RÉFÉRENTIEL.
@@ -1850,7 +1864,14 @@ source, sinon pas de dispense. L'art. 97 compte de date à date, fin de mois com
 **F234** · `EXERCICE_REQUIS` (400 nommé, `common/exercice-requis.ts`),
 `exigerExercice` (Prisma ignore un `id: undefined`) ; toute route lisant
 `exerciceId` porte ce pipe ou `EXERCICE_FACULTATIF` (six listes, fermée par
-`exercice-requis.spec.ts`). **F232** · une déclaration ne vise que les entités de
+`exercice-requis.spec.ts`) ; depuis le paquet 1 (C3), porteurs INJECTABLES qui
+jugent l'appartenance au dossier de la SESSION (404 nommé, avant toute lecture),
+le journal en filtre aussi (`JOURNAL_FACULTATIF`), le compte de même
+(`COMPTE_FACULTATIF`), et la seule balance d'une cellule au format seul
+(`EXERCICE_D_UNE_CELLULE`, liste fermée) ; un `exerciceId`, `journalId` ou
+`compteId` porté par un DTO de requête (`@Query()` entier, hors porteur) est dans
+une liste FERMÉE avec la preuve que son service le juge
+(`IDENTIFIANTS_DANS_UN_DTO_DE_REQUETE`, même spec). **F232** · une déclaration ne vise que les entités de
 son exercice (`exerciceDuDossier`, `entiteDeLExercice`). **F235** · un nom par
 exercice aux deux portes, 400 nommé. **Tranche 2 · cumul et éliminations.** AUDCIF
 art. 80 à 86, D4C ch. XII-5 et XII-6 (`consolidation/cumul-consolidation.ts`).
@@ -3830,6 +3851,14 @@ réintégrée. **BORNE DU 1er JANVIER 2026** · `deficitsAnterieursCalcules` et
 se dit SIMULATION. TERRITORIALITÉ (art. 7, « uniquement » les bénéfices réalisés en
 RDC) · dite, dans ses deux sens (F4b). **LE CÂBLAGE SE TESTE AVEC LA RÈGLE** · le
 spec du point d'appel s'écrit en même temps.
+L'ASSOCIÉ UNIQUE DE L'ART. 63, AL. 2, 1° (paquet 1, C4) · l'observation sur la
+société unipersonnelle se sert SOUS CONDITION dite partout où le dossier ne
+tranche pas (`unipersonnaliteDeLArticle63`, `observationArticle63`), et ne se
+retire que sur un fait DÉCLARÉ qui l'écarte · SAS déclarée à plusieurs associés
+(`associeUniqueSas`), associé unique personne morale
+(`associeUniquePersonneMorale`) ; la SARL et la SA, dont l'unicité ne se
+déclare pas (AUSCGIE art. 309, al. 2 et 385, al. 2), la gardent sous
+condition, et la déclaration de ce fait reste à Manasse.
 
 **PASSE F4b · loi n° 23/053, Titre 2, charges, taux, liquidation (2026-09-17)** ; F4
 close, 4 sur 31. **ART. 57, L'ÉGALITÉ** · `minimum > theorique` est STRICTE, et

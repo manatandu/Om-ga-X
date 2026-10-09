@@ -16,6 +16,7 @@ import {
   type EmployeurPourControle,
   type SalariePourControle,
 } from './regles-contrat-travail';
+import { annexeDuCabinet } from './bareme-smig';
 
 const EMPLOYEUR: EmployeurPourControle = {
   nom: 'ASBL Bomoko',
@@ -551,6 +552,21 @@ describe('la rémunération convenue confrontée au minimum de sa classe', () =>
     expect(v.minimumFc).toBe(559_000);
     expect(v.manqueFc).toBeNull();
     expect(v.explication).toContain('Manœuvre');
+  });
+
+  it('jumeau de C1 · un contrat EXACTEMENT au minimum d’une grille aux centimes est conforme, au centime', () => {
+    // Premier tour de relecture du paquet 1, constat 1. Grille du cabinet au
+    // SMIG de 21 500,01 FC · classe 12 (tension 488), 104 920,05 FC par jour,
+    // × 26 = 2 727 921,30 FC, que le flottant rendait 2 727 921,3000000003 ·
+    // le contrat stipulé au minimum exact était dit « en deçà », nul de plein
+    // droit, pour un manque de 4,7e-10 FC.
+    const grille = annexeDuCabinet({ aPartirDu: '2027-01-01', reference: 'Arrêté du banc', smigJournalierFc: 21_500.01 });
+    expect(104_920.05 * 26).toBeGreaterThan(2_727_921.3);
+    const auMinimum = { ...manoeuvre, classeProfessionnelle: 12, remunerationBase: 2_727_921.3 };
+    const v = verdictRemunerationMinimale(auMinimum, '2027-03', [grille]);
+    expect(v).toMatchObject({ conforme: true, minimumFc: 2_727_921.3, manqueFc: null });
+    const unCentimeDessous = verdictRemunerationMinimale({ ...auMinimum, remunerationBase: 2_727_921.29 }, '2027-03', [grille]);
+    expect(unCentimeDessous).toMatchObject({ conforme: false, manqueFc: 0.01 });
   });
 
   it('EN DEÇÀ · il chiffre le manque et cite les deux textes qui le sanctionnent', () => {

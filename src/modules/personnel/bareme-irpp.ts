@@ -1,4 +1,13 @@
 import { arrondirImpotArt150 } from '../fiscalite/arrondi-article-150';
+import {
+  ZERO,
+  exact,
+  foisEntier,
+  maximum,
+  plancherAuMultiple,
+  versNombre,
+  type DecimalExact,
+} from '../../common/decimal-exact';
 
 /**
  * LE BARÈME DE L'IMPÔT SUR LE REVENU DES PERSONNES PHYSIQUES, ET CE QU'IL
@@ -118,8 +127,22 @@ export const MAXIMUM_PERSONNES_A_CHARGE = 9;
  */
 export const PAS_D_ARRONDI_ASSIETTE_FC = 1_000;
 
-export const arrondirAuMillierInferieur = (montantFc: number): number =>
-  Math.floor(montantFc / PAS_D_ARRONDI_ASSIETTE_FC) * PAS_D_ARRONDI_ASSIETTE_FC;
+/**
+ * L'ARRONDI SE PREND SUR LA VALEUR EXACTE, JAMAIS SUR LE FLOTTANT (second tour
+ * de relecture du paquet 1, ligne C, BLOQUANT). Cinq lignes de paie qui font
+ * 880 000 FC (51 905,39 + 53 651,71 + 168 138,49 + 68 332,09 + 537 972,32),
+ * moins la quote-part ouvrière, portées à l'année, rendaient en flottant
+ * 10 031 999,999999998 · `Math.floor` les ramenait à 10 031 000 au lieu de
+ * 10 032 000, et la retenue du mois tombait de 106 000 à 105 900 FC, figée
+ * dans le bulletin, le décompte final et le 447. Le plancher est donc pris
+ * par `plancherAuMultiple` sur la valeur décimale exacte · celle que
+ * l'appelant a calculée exactement (`retenueMensuelle`), ou l'écriture
+ * décimale du nombre reçu (`common/decimal-exact.ts`). Aucune tolérance ne
+ * remplace cette exactitude · un revenu peut réellement finir à 999,996 FC
+ * d'un millier.
+ */
+export const arrondirAuMillierInferieur = (montantFc: number | DecimalExact): number =>
+  plancherAuMultiple(exact(montantFc), PAS_D_ARRONDI_ASSIETTE_FC);
 
 /**
  * LE SEUIL OÙ LE PLAFOND DE 30 % MORD, calculé une fois ici pour être
@@ -257,11 +280,11 @@ export type VerdictIrpp = {
  * 2 216 800 FC par mois au cas P03.
  */
 export function impotAnnuel(
-  revenuNetGlobalFc: number,
+  revenuNetGlobalFc: number | DecimalExact,
   personnesACharge = 0,
 ): VerdictIrpp {
   const reserves: string[] = [];
-  const assietteArrondieFc = arrondirAuMillierInferieur(Math.max(0, revenuNetGlobalFc));
+  const assietteArrondieFc = arrondirAuMillierInferieur(maximum(ZERO, exact(revenuNetGlobalFc)));
 
   const { impotFc: impotDuBaremeFc, parTranche } = impotDuBareme(assietteArrondieFc);
 
@@ -385,6 +408,26 @@ export type DetailMensuel = {
   readonly retenueFc: number;
 };
 
+/**
+ * L'ARRONDI DE L'ART. 150 NE BASCULE PAS SUR LE FLOTTANT, ET CELA SE DÉMONTRE
+ * (second tour de relecture du paquet 1, recherche des autres paliers). Une
+ * fois l'assiette A un multiple EXACT de 1 000 (`arrondirAuMillierInferieur`),
+ * chaque tranche du barème (bornes multiples de 1 000, taux de 3, 15, 30 et
+ * 40 %) et le plafond de 30 % rendent des francs ENTIERS, multiples de 30 ;
+ * la réduction de l'art. 123 (2 % par personne d'une base multiple de 30) est
+ * un multiple de 0,6. L'impôt dû I est donc un multiple de 0,6, et I / 12 :
+ *  · si I est ENTIER, tous les calculs sont exacts en binaire 64 (entiers
+ *    sous 2^53, division par cent d'un multiple de cent), et I / 12 vaut
+ *    N + r/12 ; la seule fraction qui touche la règle « première décimale
+ *    supérieure ou égale à 5 » est r = 6, soit N,5, que la division rend
+ *    exactement ;
+ *  · si I ne l'est pas, sa partie fractionnaire s/12 (s non entier, multiple
+ *    de 0,2) reste à au moins 0,2 / 12 ≈ 0,0167 de 0,5 et de tout entier, loin
+ *    au-delà de l'erreur du flottant.
+ * La centaine se prend ensuite sur un entier. Aucun palier de l'art. 150 ne se
+ * franchit donc par le bruit du calcul · le seul qui le pouvait était le
+ * millier de l'art. 118, désormais exact.
+ */
 export function detailMensuel(annuel: VerdictIrpp): DetailMensuel {
   const m = (x: number) => x / MOIS_PAR_AN;
   const avantArrondi = m(annuel.impotDuFc);
@@ -459,11 +502,18 @@ export type VerdictRetenueMensuelle = {
  */
 export function retenueMensuelle(
   moisDePaie: string,
-  revenuImposableDuMoisFc: number,
+  revenuImposableDuMoisFc: number | DecimalExact,
   personnesACharge = 0,
 ): VerdictRetenueMensuelle {
-  const revenuAnnualiseFc = Math.max(0, revenuImposableDuMoisFc) * MOIS_PAR_AN;
-  const annuel = impotAnnuel(revenuAnnualiseFc, personnesACharge);
+  // L'ANNUALISATION EST EXACTE (second tour de relecture du paquet 1,
+  // BLOQUANT du millier) · le revenu du mois arrive en décimal exact de la
+  // simulation (`assiettesExactes`), et douze fois un flottant glissait sous
+  // le millier que l'art. 118 arrondit vers le bas. Un appelant qui passe un
+  // nombre est lu sur son écriture décimale.
+  const revenuDuMois = exact(revenuImposableDuMoisFc);
+  const revenuAnnualise = foisEntier(maximum(ZERO, revenuDuMois), MOIS_PAR_AN);
+  const revenuAnnualiseFc = versNombre(revenuAnnualise);
+  const annuel = impotAnnuel(revenuAnnualise, personnesACharge);
 
   // UN SEUL CALCUL DE L'ARRONDI · la retenue EST celle du détail, sans quoi
   // l'écran et le bulletin pourraient montrer deux montants.
@@ -484,7 +534,8 @@ export function retenueMensuelle(
 
   return {
     moisDePaie,
-    revenuImposableDuMoisFc,
+    revenuImposableDuMoisFc:
+      typeof revenuImposableDuMoisFc === 'number' ? revenuImposableDuMoisFc : versNombre(revenuDuMois),
     revenuAnnualiseFc,
     annuel,
     mensuel,

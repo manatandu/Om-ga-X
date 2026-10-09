@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureBulletinPaie, Prisma, StatutBulletinPaie, StatutEcriture, TypeContratTravail } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { depuisNombre, plus, somme, versNombre } from '../../common/decimal-exact';
 import {
   ContratTravailDto,
   DecompteFinalDto,
@@ -10,9 +11,21 @@ import {
   SimulationPaieDto,
   TerminerContratDto,
 } from './dto/personnel.dto';
-import { assiettes, NATURES_FOURNIES_EN_NATURE, type ElementPaie, type NatureElementPaie } from './assiettes-paie';
+import {
+  assiettesExactes,
+  NATURES_FOURNIES_EN_NATURE,
+  type ElementPaie,
+  type NatureElementPaie,
+  type TauxLegalNonCalcule,
+} from './assiettes-paie';
 import { RESERVE_REGIME_NON_DECLARE, baremeApplicableAuMois, regimeApplicable, retenueMensuelle } from './bareme-irpp';
-import { cotisations, netAPayer, type NatureEmployeurInpp, type RegimeCnss } from './cotisations-paie';
+import {
+  cotisationsExactes,
+  netAPayerExact,
+  netNegatifAuCentime,
+  type NatureEmployeurInpp,
+  type RegimeCnss,
+} from './cotisations-paie';
 import { NATURES_SANS_IMPUTATION, estVerseEnEspeces, passationPaie, type Referentiel } from './passation-paie';
 import {
   LITTERA_ARTICLE_112,
@@ -97,7 +110,7 @@ import {
   livreDePaie,
   type FormeDuDocument,
 } from './livre-de-paie';
-import { MULTIPLICATEURS_ARTICLE_7, allocationFamilialeJournaliere, type Annexe } from './bareme-smig';
+import { MULTIPLICATEURS_ARTICLE_7, allocationFamilialeJournaliere, annexeApplicable, type Annexe } from './bareme-smig';
 import { BAREMES_SERVIS, annexesSmigDuDossier, versionsDuDossier, type LigneVersion } from './baremes-dossier';
 import { effectifDuRegistre } from './effectif-registre';
 import {
@@ -898,7 +911,28 @@ export class PersonnelService {
     // PASSE D2 · les jours qui OUVRENT DROIT (mention 28 du modèle de 2008),
     // quand ils sont déclarés · un mois incomplet mensualisé à 26 jours
     // plaçait le plafond trop haut, et l'excédent imposable n'était pas repris.
-    return a.valeur.totalFc * (dto.joursAllocationsFamiliales ?? MULTIPLICATEURS_ARTICLE_7.MOIS);
+    // AU CENTIME (paquet 1, C1) · la colonne 19 est donnée au centime et se
+    // multiplie par des entiers (enfants, jours) · le produit exact a deux
+    // décimales, le flottant en porte quinze (62 111,399999999994 pour
+    // 796,30 × 3 × 26). Ramené au centime, il redevient le taux légal.
+    return auCentime(a.valeur.totalFc * (dto.joursAllocationsFamiliales ?? MULTIPLICATEURS_ARTICLE_7.MOIS));
+  }
+
+  /**
+   * POURQUOI LE TAUX LÉGAL N'EST PAS CALCULÉ (paquet 1, C2), lu sur les mêmes
+   * faits que `tauxLegalAllocationsFamiliales`, et servi seulement quand il
+   * rend null · l'abstention des assiettes le dit à l'utilisateur, avec le
+   * geste qui la lève. LA GRILLE DU MOIS D'ABORD · un mois qu'aucune grille du
+   * SMIG ne couvre ne se règle pas en renseignant les enfants, seul un taux
+   * saisi le lève ; demander les enfants à qui les a déjà renseignés
+   * l'enverrait dans une impasse.
+   */
+  private tauxLegalNonCalcule(dto: SimulationPaieDto, annexesSmig: readonly Annexe[] = []): TauxLegalNonCalcule | null {
+    if (typeof dto.tauxLegalAllocationsFamilialesFc === 'number') return null;
+    const grille = annexeApplicable(dto.moisDePaie, annexesSmig);
+    if (!grille.valeur) return { cause: 'MOIS_SANS_GRILLE_DU_SMIG', raison: grille.explication };
+    if (typeof dto.enfantsBeneficiairesAllocations !== 'number') return { cause: 'ENFANTS_BENEFICIAIRES_NON_RENSEIGNES' };
+    return null;
   }
 
   /** La réserve du plafond calculé · sur quels jours, et ce qu'il faut déclarer. */
@@ -1122,7 +1156,8 @@ export class PersonnelService {
       throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
     }
     const { dto: dtoStipule, retenuesAvances } = await this.resoudreSaisie(tenantId, salarieId, dtoSaisi);
-    const retenuesAvancesFc = retenuesAvances.reduce((s, r) => s + r.montantFc, 0);
+    // En valeur exacte · le net qui en sort se juge au centime (jumeau m1).
+    const retenuesAvancesExactes = somme(retenuesAvances.map((r) => depuisNombre(r.montantFc)));
     const { dtoFc: dto, conversion } = await this.convertirEnFrancs(tenantId, dtoStipule, maintenant);
     const borne = baremeApplicableAuMois(dto.moisDePaie);
     // Les versions de barème que le cabinet a ajoutées (baremes-dossier.ts) ·
@@ -1193,11 +1228,20 @@ export class PersonnelService {
     // charge de l'article 124. Un taux saisi PRIME, pour le mois qu'aucune
     // annexe ne couvre. Ni l'un ni l'autre, et l'assiette s'abstient.
     const tauxLegalAllocationsFamilialesFc = this.tauxLegalAllocationsFamiliales(dto, annexesSmig);
+    const tauxLegalAllocationsNonCalcule =
+      tauxLegalAllocationsFamilialesFc === null ? this.tauxLegalNonCalcule(dto, annexesSmig) : null;
 
-    const premierPassage = assiettes(elements, {
+    // LES MONTANTS QUI DESCENDENT VERS L'ARRONDI AU MILLIER DE L'ART. 118 SE
+    // PORTENT EN VALEUR EXACTE (second tour de relecture du paquet 1, BLOQUANT
+    // du millier) · assiette sociale, quote-part ouvrière, retenues de
+    // l'article 71, base nette. Le flottant faisait de cinq lignes de
+    // 880 000 FC un revenu annualisé de 10 031 999,999999998, arrondi à
+    // 10 031 000 · cent francs de retenue en moins sur le bulletin et au 447.
+    const premierPassage = assiettesExactes(elements, {
       tauxLegalAllocationsFamilialesFc,
+      tauxLegalAllocationsNonCalcule,
     });
-    const lesCotisations = cotisations(premierPassage.assietteSocialeFc, {
+    const { verdict: lesCotisations, totalTravailleurExact } = cotisationsExactes(premierPassage.socialeExacte, {
       moisDePaie: dto.moisDePaie,
       versionsDossier: versionsDuDossier(versionsBaremes),
       natureEmployeurInpp: (dto.natureEmployeurInpp as NatureEmployeurInpp | undefined) ?? null,
@@ -1220,16 +1264,17 @@ export class PersonnelService {
     // de pension complémentaire, une assurance-maladie souscrite sous le
     // patronage de l'employeur). La quote-part ouvrière de la CNSS, elle, est
     // calculée · la faire saisir en plus la compterait deux fois.
-    const retenuesArticle71Fc =
-      lesCotisations.totalTravailleurFc + Math.max(0, dto.retenuesArticle71Fc ?? 0);
+    const retenuesArticle71 = plus(totalTravailleurExact, depuisNombre(Math.max(0, dto.retenuesArticle71Fc ?? 0)));
 
-    const deuxAssiettes = assiettes(elements, {
+    const secondPassage = assiettesExactes(elements, {
       tauxLegalAllocationsFamilialesFc,
-      retenuesArticle71Fc,
+      tauxLegalAllocationsNonCalcule,
+      retenuesArticle71,
       // CONSTAT C1 · sous abstention de la CNSS, la quote-part ouvrière n'est
       // pas chiffrée · ni la base nette, ni l'impôt, ni le net ne le sont.
       quotePartOuvriereNonChiffree: lesCotisations.quotePartOuvriereNonChiffree,
     });
+    const deuxAssiettes = secondPassage.verdict;
 
     // TROIS RAISONS DE NE PAS CHIFFRER LA RETENUE, et aucune n'est une panne.
     // Le barème hors de sa période, une assiette indéterminée, et c'est tout ·
@@ -1240,10 +1285,10 @@ export class PersonnelService {
     // s'abstient plutôt que de retenir l'article 118 (audit final F105).
     const regime = regimeApplicable(dto.regimeSalarial ?? 'BAREME_ARTICLE_118');
     const retenue =
-      borne.applicable && regime.calculable && deuxAssiettes.assietteFiscaleNetteFc !== null
+      borne.applicable && regime.calculable && secondPassage.netteExacte !== null
         ? retenueMensuelle(
             dto.moisDePaie,
-            deuxAssiettes.assietteFiscaleNetteFc,
+            secondPassage.netteExacte,
             dto.personnesACharge ?? 0,
           )
         : null;
@@ -1252,21 +1297,26 @@ export class PersonnelService {
     // sortent de la rémunération, pas de ce que l'employeur paie.
     // L'avantage en nature entre dans les assiettes, pas dans ce qui est
     // versé (audit final F22, `estVerseEnEspeces`).
-    const totalVerseFc = elements
-      .filter((e) => estVerseEnEspeces(e.nature as NatureElementPaie, e.enNature))
-      .reduce((n, e) => n + Math.max(0, e.montantFc), 0);
-    const net = netAPayer(
-      totalVerseFc,
-      lesCotisations.quotePartOuvriereNonChiffree ? null : lesCotisations.totalTravailleurFc,
+    const totalVerse = somme(
+      elements
+        .filter((e) => estVerseEnEspeces(e.nature as NatureElementPaie, e.enNature))
+        .map((e) => depuisNombre(Math.max(0, e.montantFc))),
+    );
+    const { verdict: net, netExact } = netAPayerExact(
+      totalVerse,
+      lesCotisations.quotePartOuvriereNonChiffree ? null : totalTravailleurExact,
       retenue ? retenue.retenueFc : null,
-      retenuesAvancesFc,
+      retenuesAvancesExactes,
     );
     // UN NET NÉGATIF N'EST PAS PAYABLE · les retenues d'avance dépasseraient
     // ce qui est dû au travailleur ce mois-ci. Le ramener à zéro ferait
     // mentir le 422 de la passation ; la retenue se réduit, elle ne se force pas.
-    if (net.netAPayerFc !== null && net.netAPayerFc < 0) {
+    // JUGÉ EN CENTIMES SUR LA VALEUR EXACTE (second tour de relecture du
+    // paquet 1, jumeau m1) · le reste flottant -1,16e-10 refusait une retenue
+    // égale au net affiché (`netNegatifAuCentime`, la convention y est dite).
+    if (netExact !== null && netNegatifAuCentime(netExact)) {
       throw new BadRequestException(
-        `Les retenues d'avance et de prêt (${retenuesAvancesFc.toFixed(2)} FC) dépassent ce qui reste dû au travailleur ce mois-ci · réduisez-les.`,
+        `Les retenues d'avance et de prêt (${versNombre(retenuesAvancesExactes).toFixed(2)} FC) dépassent ce qui reste dû au travailleur ce mois-ci · réduisez-les.`,
       );
     }
 
