@@ -3,12 +3,12 @@ import { GroupesLusLigneALigne } from './GroupesLusLigneALigne';
 
 /** Paquet 1, B5 · une ligne, la raison en infobulle ; rien quand il n'y a rien. */
 describe('GroupesLusLigneALigne', () => {
-  it('rend une ligne qui nomme le groupe, la raison en infobulle', () => {
+  it('rend une ligne qui nomme le groupe et son motif, la raison du motif en infobulle (mineur 7)', () => {
     const html = renderToStaticMarkup(
-      <GroupesLusLigneALigne groupes={{ total: 1, groupes: [{ code: 'aa', compte: '41110001' }], tronque: false }} />,
+      <GroupesLusLigneALigne groupes={{ total: 1, groupes: [{ code: 'aa', compte: '41110001', motif: 'DEVISE_REGLEE_EN_PARTIE' }], tronque: false }} />,
     );
-    expect(html).toMatch(/^<p [^>]*title="[^"]+"[^>]*>1 groupe de lettrage lu ligne à ligne/);
-    expect(html).toContain('aa (41110001)');
+    expect(html).toMatch(/^<p [^>]*title="Une facture en devise réglée en partie à un autre cours[^"]+"[^>]*>1 groupe de lettrage à la répartition incertaine/);
+    expect(html).toContain('aa (41110001, facture en devise réglée en partie)');
   });
 
   it('rien quand la lecture n’en a trouvé aucun, ni quand le serveur ne le sert pas', () => {

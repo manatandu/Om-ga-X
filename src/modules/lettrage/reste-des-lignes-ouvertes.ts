@@ -82,7 +82,38 @@ export interface PoidsDesLignes {
   poids: Map<string, number>;
   /** Les groupes dont les restes ne rendent pas le solde · lus ligne à ligne. */
   nonRepartis: string[];
+  /**
+   * Les groupes que l'état NOMME, chacun avec son motif (paquet 1, B5 ;
+   * relecture « échecs silencieux », mineur 7) · ceux de `nonRepartis`.
+   */
+  motifs: Map<string, MotifGroupeNomme>;
 }
+
+/**
+ * POURQUOI UN GROUPE EST NOMMÉ (relecture « échecs silencieux » du paquet 1,
+ * mineur 7) · l'écran disait pour tous « écart de change non passé », faux
+ * pour une facture en devise réglée en PARTIE · l'écart réalisé ne se passe
+ * qu'au groupe SOLDÉ (AUDCIF art. 55 ; ligne A6, « Groupe soldé en devise et
+ * non en francs · écart PROPOSÉ au lettrage »). Chaque groupe porte le sien.
+ *
+ *  · `NEGATIF_SANS_ORIGINE` · une inscription en négatif sans sa ligne
+ *    d'origine parmi les lignes lues (ou avec plusieurs) ;
+ *  · `IMPUTATION_DECLAREE_NON_LUE` · une part déclarée (art. 151 et 153)
+ *    au-delà de la facture, ou dans un groupe en devise ;
+ *  · `DEVISE_SOLDEE_ECART_NON_PASSE` · factures soldées dans leur devise et
+ *    non en francs · l'écart réalisé n'est pas passé (art. 55) ;
+ *  · `DEVISE_REGLEE_EN_PARTIE` · une facture en devise réglée en partie à un
+ *    autre cours · son reste au coût historique ne rend pas le solde en
+ *    francs, et rien n'est encore à passer ;
+ *  · `RESTE_NON_REPARTI` · des restes qui ne rendent pas le solde, sans
+ *    devise.
+ */
+export type MotifGroupeNomme =
+  | 'NEGATIF_SANS_ORIGINE'
+  | 'IMPUTATION_DECLAREE_NON_LUE'
+  | 'DEVISE_SOLDEE_ECART_NON_PASSE'
+  | 'DEVISE_REGLEE_EN_PARTIE'
+  | 'RESTE_NON_REPARTI';
 
 const journal = new Logger('RestesDesLignesOuvertes');
 
@@ -201,6 +232,11 @@ export function poidsDesLignesOuvertes(
 ): PoidsDesLignes {
   const poids = new Map<string, number>();
   const nonRepartis: string[] = [];
+  const motifs = new Map<string, MotifGroupeNomme>();
+  const nommerLeGroupe = (lettrageId: string, motif: MotifGroupeNomme) => {
+    nonRepartis.push(lettrageId);
+    motifs.set(lettrageId, motif);
+  };
   for (const [lettrageId, membres] of groupesAPlusieurs(lignes)) {
     // Lu en partie · la lecture ligne à ligne est celle de l'état, sans
     // réserve (la paire à cheval a sa propre lecture là où elle compte).
@@ -216,7 +252,7 @@ export function poidsDesLignesOuvertes(
     // origine parmi les lignes lues ne se répartit pas.
     const annulees = annulerLesNegatifs(membres);
     if (annulees === null) {
-      nonRepartis.push(lettrageId);
+      nommerLeGroupe(lettrageId, 'NEGATIF_SANS_ORIGINE');
       continue;
     }
     for (const id of annulees) poids.set(id, 0);
@@ -241,7 +277,7 @@ export function poidsDesLignesOuvertes(
     const imputees = imputerLesDeclarations(lues, sens, declarations);
     if (imputees === null) {
       for (const id of annulees) poids.delete(id);
-      nonRepartis.push(lettrageId);
+      nommerLeGroupe(lettrageId, 'IMPUTATION_DECLAREE_NON_LUE');
       continue;
     }
     const restes = restesParLImputationLegale(imputees, sens);
@@ -251,7 +287,7 @@ export function poidsDesLignesOuvertes(
     // jamais une créance négative dans une colonne (mineur 3).
     if (totalRestes !== Math.abs(net) || [...restes.values()].some((r) => r.francs < 0)) {
       for (const id of annulees) poids.delete(id);
-      nonRepartis.push(lettrageId);
+      nommerLeGroupe(lettrageId, motifDuReste(restes));
       continue;
     }
     const signe = sens === 'DEBIT' ? 1 : -1;
@@ -260,7 +296,20 @@ export function poidsDesLignesOuvertes(
       poids.set(l.id, reste ? signe * reste.francs : 0);
     }
   }
-  return { poids, nonRepartis };
+  return { poids, nonRepartis, motifs };
+}
+
+/**
+ * Le motif d'un groupe dont les restes ne rendent pas le solde · une facture
+ * en devise encore ouverte DANS SA DEVISE est réglée en partie ; toutes
+ * soldées dans leur devise, c'est l'écart réalisé qui manque ; sans facture
+ * en devise, un reste non réparti.
+ */
+function motifDuReste(restes: ReadonlyMap<string, { francs: number; devise: number | null }>): MotifGroupeNomme {
+  // Les restes ne portent une devise que pour une FACTURE en devise.
+  const enDevise = [...restes.values()].filter((r) => r.devise !== null);
+  if (enDevise.length === 0) return 'RESTE_NON_REPARTI';
+  return enDevise.some((r) => (r.devise ?? 0) > 0) ? 'DEVISE_REGLEE_EN_PARTIE' : 'DEVISE_SOLDEE_ECART_NON_PASSE';
 }
 
 type LecteurDeGroupes = { lettrage: { findMany: (args: Prisma.LettrageFindManyArgs) => Promise<unknown[]> } };
@@ -281,8 +330,11 @@ export const PLAFOND_GROUPES_NOMMES = 20;
 export interface GroupesLusLigneALigne {
   /** Tous les groupes lus ligne à ligne par l'état. */
   total: number;
-  /** Les premiers, par compte puis code (le code tel que le lettrage l'affiche). */
-  groupes: Array<{ code: string; compte: string }>;
+  /**
+   * Les premiers, par compte puis code (le code tel que le lettrage
+   * l'affiche), chacun avec son motif (mineur 7).
+   */
+  groupes: Array<{ code: string; compte: string; motif: MotifGroupeNomme }>;
   /** Vrai quand `groupes` n'en nomme qu'une partie. */
   tronque: boolean;
 }
@@ -292,18 +344,19 @@ interface GroupeNomme {
   code: string;
   compteId: string;
   compte: string;
+  motif: MotifGroupeNomme;
 }
 
 /** Les groupes nommés, lus par tranches · un groupe d'un autre dossier n'est pas rendu. */
-async function lireGroupesNommes(db: unknown, tenantId: string, ids: readonly string[]): Promise<GroupeNomme[]> {
+async function lireGroupesNommes(db: unknown, tenantId: string, motifs: ReadonlyMap<string, MotifGroupeNomme>): Promise<GroupeNomme[]> {
   const lus: GroupeNomme[] = [];
-  const uniques = [...new Set(ids)];
+  const uniques = [...motifs.keys()];
   for (let i = 0; i < uniques.length; i += LOT_GROUPES) {
     const tranche = (await (db as LecteurDeGroupes).lettrage.findMany({
       where: { tenantId, id: { in: uniques.slice(i, i + LOT_GROUPES) } },
       select: { id: true, code: true, compteId: true, compte: { select: { numero: true } } },
     })) as Array<{ id: string; code: string; compteId: string; compte: { numero: string } }>;
-    for (const g of tranche) lus.push({ id: g.id, code: g.code.toLowerCase(), compteId: g.compteId, compte: g.compte.numero });
+    for (const g of tranche) lus.push({ id: g.id, code: g.code.toLowerCase(), compteId: g.compteId, compte: g.compte.numero, motif: motifs.get(g.id)! });
   }
   return lus.sort((a, b) => a.compte.localeCompare(b.compte) || a.code.localeCompare(b.code));
 }
@@ -311,26 +364,32 @@ async function lireGroupesNommes(db: unknown, tenantId: string, ids: readonly st
 function nommer(groupes: readonly GroupeNomme[], total: number): GroupesLusLigneALigne {
   return {
     total,
-    groupes: groupes.slice(0, PLAFOND_GROUPES_NOMMES).map((g) => ({ code: g.code, compte: g.compte })),
+    groupes: groupes.slice(0, PLAFOND_GROUPES_NOMMES).map((g) => ({ code: g.code, compte: g.compte, motif: g.motif })),
     tronque: total > PLAFOND_GROUPES_NOMMES,
   };
 }
 
-/** Les groupes lus ligne à ligne d'un état, servis · `total` est le nombre de groupes reçus. */
-export async function groupesLusLigneALigne(db: unknown, tenantId: string, ids: readonly string[]): Promise<GroupesLusLigneALigne> {
-  const uniques = [...new Set(ids)];
-  if (uniques.length === 0) return { total: 0, groupes: [], tronque: false };
-  return nommer(await lireGroupesNommes(db, tenantId, uniques), uniques.length);
+/**
+ * Les groupes nommés d'un état, servis avec leur motif · `total` est le
+ * nombre de groupes reçus.
+ */
+export async function groupesLusLigneALigne(
+  db: unknown,
+  tenantId: string,
+  motifs: ReadonlyMap<string, MotifGroupeNomme>,
+): Promise<GroupesLusLigneALigne> {
+  if (motifs.size === 0) return { total: 0, groupes: [], tronque: false };
+  return nommer(await lireGroupesNommes(db, tenantId, motifs), motifs.size);
 }
 
 /** Les mêmes, compte par compte (relances · une position par compte). */
 export async function groupesLusLigneALigneParCompte(
   db: unknown,
   tenantId: string,
-  ids: readonly string[],
+  motifs: ReadonlyMap<string, MotifGroupeNomme>,
 ): Promise<Map<string, GroupesLusLigneALigne>> {
   const parCompte = new Map<string, GroupeNomme[]>();
-  for (const g of await lireGroupesNommes(db, tenantId, ids)) parCompte.set(g.compteId, [...(parCompte.get(g.compteId) ?? []), g]);
+  for (const g of await lireGroupesNommes(db, tenantId, motifs)) parCompte.set(g.compteId, [...(parCompte.get(g.compteId) ?? []), g]);
   return new Map([...parCompte].map(([compteId, groupes]) => [compteId, nommer(groupes, groupes.length)]));
 }
 type LecteurDeDeclarations = { imputationPaiement: { findMany: (args: Prisma.ImputationPaiementFindManyArgs) => Promise<unknown[]> } };
@@ -580,7 +639,7 @@ type LecteurDeLignesLettrees = {
  * compte, que la note dit sous son nom. Les sommes demandées à la base ne
  * changent pas · seules les lignes des groupes que la lecture porte à
  * plusieurs sont relues, par tranches. Les groupes lus ligne à ligne sont
- * rendus (`nonRepartis`), que la note sert (paquet 1, B5).
+ * rendus avec leur motif (`nommes`), que la note sert (paquet 1, B5).
  */
 export async function ecartsDesGroupesParEcheance(
   db: unknown,
@@ -588,10 +647,10 @@ export async function ecartsDesGroupesParEcheance(
   ouvertes: Prisma.LigneEcritureWhereInput,
   dateFin: Date,
   etat: string,
-): Promise<{ ecarts: Map<string, { nonEchu: number; echu: number }>; nonRepartis: string[] }> {
+): Promise<{ ecarts: Map<string, { nonEchu: number; echu: number }>; nommes: Map<string, MotifGroupeNomme> }> {
   const ecarts = new Map<string, { nonEchu: number; echu: number }>();
   const ids = [...(await groupesLusAPlusieurs(db, ouvertes))];
-  if (ids.length === 0) return { ecarts, nonRepartis: [] };
+  if (ids.length === 0) return { ecarts, nommes: new Map() };
   const lues: Array<LigneOuverte & { compteId: string }> = [];
   for (let i = 0; i < ids.length; i += LOT_GROUPES) {
     lues.push(
@@ -623,5 +682,5 @@ export async function ecartsDesGroupesParEcheance(
     else e.echu += ecart;
     ecarts.set(l.compteId, e);
   }
-  return { ecarts, nonRepartis: p.nonRepartis };
+  return { ecarts, nommes: p.motifs };
 }

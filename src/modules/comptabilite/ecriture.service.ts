@@ -2826,7 +2826,7 @@ export class EcritureService {
       lignesSansEcheance,
       // Les groupes de lettrage lus ligne à ligne, leur reste ne se
       // répartissant pas sûrement (paquet 1, B5) · servis, l'écran les dit.
-      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, poids.nonRepartis),
+      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, poids.motifs),
     };
   }
 
@@ -3083,7 +3083,7 @@ export class EcritureService {
       // répartissant pas sûrement entre leurs factures (paquet 1, B5) · leur
       // total est dans les tranches, leur répartition par ancienneté ne
       // l'est pas · servis, l'écran les dit.
-      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, poids.nonRepartis),
+      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, poids.motifs),
       totaux: {
         // Par tranche, au signe de la balance (débit moins crédit) · les
         // créditeurs ventilés y sont négatifs, comme leur solde.

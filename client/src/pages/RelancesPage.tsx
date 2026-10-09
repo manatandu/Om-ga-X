@@ -362,13 +362,16 @@ function PositionsRelances() {
                 {p.tiersId && !p.tiersEmail && (
                   <span className="ml-1 text-[10.5px] text-warning font-semibold">sans adresse</span>
                 )}
-                {/* Une facture soldée dans sa devise n'est pas réclamée · son
-                    écart de change reste à passer au lettrage (paquet 1, B6). */}
+                {/* Un groupe de lettrage du compte dont la répartition entre
+                    factures n'est pas sûre (paquet 1, B5), nommé avec son
+                    motif (mineur 7). */}
                 {(p.groupesLusLigneALigne?.total ?? 0) > 0 && (
                   <span className="ml-1 text-[10.5px] text-warning font-semibold" title={texteGroupesLusLigneALigne(p.groupesLusLigneALigne) ?? undefined}>
-                    lu ligne à ligne
+                    répartition incertaine
                   </span>
                 )}
+                {/* Une facture soldée dans sa devise n'est pas réclamée · son
+                    écart de change reste à passer au lettrage (paquet 1, B6). */}
                 {(p.ecartsChangeNonPasses ?? []).length > 0 && (
                   <span
                     className="ml-1 text-[10.5px] text-warning font-semibold"

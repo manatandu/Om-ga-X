@@ -1335,9 +1335,21 @@ export interface LigneFicheRecapitulative {
  * répartissant pas sûrement entre leurs factures (paquet 1, B5) · servis
  * bornés, le total dit.
  */
+/**
+ * Pourquoi un groupe de lettrage est nommé (paquet 1, B5 ; relecture
+ * « échecs silencieux », mineur 7) · servi par le serveur
+ * (`lettrage/reste-des-lignes-ouvertes.ts`).
+ */
+export type MotifGroupeNomme =
+  | 'NEGATIF_SANS_ORIGINE'
+  | 'IMPUTATION_DECLAREE_NON_LUE'
+  | 'DEVISE_SOLDEE_ECART_NON_PASSE'
+  | 'DEVISE_REGLEE_EN_PARTIE'
+  | 'RESTE_NON_REPARTI';
+
 export interface GroupesLusLigneALigne {
   total: number;
-  groupes: { code: string; compte: string }[];
+  groupes: { code: string; compte: string; motif: MotifGroupeNomme }[];
   tronque: boolean;
 }
 

@@ -511,7 +511,7 @@ export class RelancesService {
     const lusLigneALigne = await groupesLusLigneALigneParCompte(
       this.prisma,
       tenantId,
-      poids.nonRepartis.filter((id) => !soldesEnDevise.has(id)),
+      new Map([...poids.motifs].filter(([id]) => !soldesEnDevise.has(id))),
     );
     const parCompte = new Map<string, PositionRelance>();
     const traiter = (l: LigneLue) => {
