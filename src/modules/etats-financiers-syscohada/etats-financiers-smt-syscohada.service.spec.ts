@@ -99,7 +99,7 @@ const CLASSE_PAR_CHIFFRE: Record<string, ClasseCompte> = {
 function ligneTiers(
   numero: string,
   montant: { debit?: number; credit?: number },
-  options: { echeance?: string; lettre?: string; regleApresCloture?: boolean } = {},
+  options: { echeance?: string; lettre?: string; regleApresCloture?: boolean; statut?: 'VALIDEE' | 'BROUILLARD' } = {},
 ) {
   return {
     compteId: `id-${numero}`,
@@ -109,6 +109,8 @@ function ligneTiers(
     dateEcheance: options.echeance ? new Date(options.echeance) : null,
     lettre: options.lettre ?? null,
     regleApresCloture: options.regleApresCloture ?? false,
+    // Paquet 1, B8 · une ligne au brouillard n'est pas au livre-journal.
+    statut: options.statut ?? 'VALIDEE',
   };
 }
 
@@ -121,6 +123,7 @@ interface ArgsSommes {
     compteId?: { in: string[] };
     compte?: { classe: ClasseCompte };
     dateEcheance?: Record<string, Date>;
+    ecriture?: { tenantId?: string; exerciceId?: string; statut?: string };
   };
   _sum: { debit?: boolean; credit?: boolean };
 }
@@ -151,6 +154,9 @@ function sommesDesLignesTiers(lignesTiers: ReturnType<typeof ligneTiers>[]) {
     const parCompte = new Map<string, { debit: number; credit: number }>();
     for (const l of lignesTiers) {
       if (where.lettre === null && l.lettre !== null) continue;
+      // Paquet 1, B8 · le statut de l'écriture est honoré · une ligne au
+      // brouillard ne répond pas à un filtre sur le livre-journal.
+      if (where.ecriture?.statut !== undefined && l.statut !== where.ecriture.statut) continue;
       // Ouverte à la clôture (audit final F10) · non lettrée, ou soldée par
       // un règlement postérieur.
       if (where.OR && l.lettre !== null && !l.regleApresCloture) continue;
@@ -1154,6 +1160,26 @@ describe('Notes annexes S.M.T SYSCOHADA', () => {
     // Une seule ligne non datée suffit à retirer à la note le droit
     // d'affirmer que son total est celui du non échu.
     expect(note.echeancesTenues).toBe(false);
+  });
+
+  it('NOTE 3 · une ligne au BROUILLARD n’entre dans aucune part (paquet 1, B8 ; livre-journal seul)', async () => {
+    // La balance (livre-journal) porte 220 000 ; le brouillard de 80 000,
+    // lu, ferait 200 000 « non échu » et une part non ventilée négative.
+    const s = service(
+      { e1: [ligne('41110000', ClasseCompte.CLASSE_4, 220_000, 0)] },
+      {
+        lignesTiers: [
+          ligneTiers('41110000', { debit: 120_000 }, { echeance: '2027-01-31' }),
+          ligneTiers('41110000', { debit: 100_000 }, { echeance: '2026-11-30' }),
+          ligneTiers('41110000', { debit: 80_000 }, { echeance: '2027-03-31', statut: 'BROUILLARD' }),
+        ],
+      },
+    );
+    const note = await s.note3CreancesDettes('t1', 'e1');
+    expect(note.creances[0].montantNonEchu).toBe(120_000);
+    expect(note.creances[0].montantEchu).toBe(100_000);
+    expect(note.creances[0].montantNonVentile).toBe(0);
+    expect(note.echeancesTenues).toBe(true);
   });
 
   it("NOTE 3 · l'échéance tombant LE JOUR de la clôture est échue, le terme est atteint", async () => {

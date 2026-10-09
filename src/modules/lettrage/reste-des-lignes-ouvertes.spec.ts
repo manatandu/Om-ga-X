@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
-import { Referentiel, TypeRelance } from '@prisma/client';
+import { Referentiel, StatutEcriture, TypeRelance } from '@prisma/client';
+import { ouverteALaCloture } from './ouverte-a-la-cloture';
 import {
   ecartsDesGroupesParEcheance,
   groupesLusLigneALigne,
@@ -455,35 +456,139 @@ describe('poids des lignes ouvertes · la balance âgée', () => {
   });
 });
 
+/**
+ * PAQUET 1, B8 · UNE DOUBLURE QUI HONORE LE `where` QU'ON LUI DONNE. Les
+ * doublures de la note par échéance et de la NOTE 3 des SMT rendaient un
+ * `groupBy` constant et toutes les lignes à `findMany`, quel que soit le
+ * filtre · un état qui aurait lu le brouillard (AUDCIF art. 22, 2°, seul le
+ * livre-journal fait foi) passait au vert. Celle-ci évalue le filtre comme la
+ * base · ET, OU, écriture (dossier, exercice, statut, date, drapeaux
+ * d'à-nouveau), lettrage, lettre, identifiant, compte · et TOMBE sur toute
+ * clé qu'elle ne sait pas lire, pour ne jamais valider en silence une
+ * requête qu'elle ignorerait.
+ */
+type LigneEnBase = LigneOuverte & {
+  statut: 'VALIDEE' | 'BROUILLARD';
+  compteId: string;
+  compte: { numero: string };
+  lettre?: string | null;
+};
+
+function baseQuiHonore(lignes: LigneEnBase[]) {
+  const tenantId = 't';
+  const exerciceId = 'ex';
+  const dateDe = (b: Record<string, Date>, x: Date) =>
+    Object.entries(b).every(([op, v]) => {
+      if (op === 'lte') return x <= v;
+      if (op === 'lt') return x < v;
+      if (op === 'gt') return x > v;
+      if (op === 'gte') return x >= v;
+      throw new Error(`doublure : borne de date ${op} non honorée`);
+    });
+  const ecritureSatisfait = (w: Record<string, unknown>, l: LigneEnBase): boolean =>
+    Object.entries(w).every(([cle, v]) => {
+      switch (cle) {
+        case 'tenantId':
+          return v === tenantId;
+        case 'exerciceId':
+          return v === exerciceId;
+        case 'statut':
+          return v === l.statut;
+        case 'date':
+          return dateDe(v as Record<string, Date>, l.ecriture.date);
+        case 'estANouveauProvisoire':
+        case 'estGenereeParCloture':
+        case 'estSoldeDesComptesDeGestion':
+          return v === false;
+        case 'OR':
+          return (v as Record<string, unknown>[]).some((x) => ecritureSatisfait(x, l));
+        default:
+          throw new Error(`doublure : clé d'écriture ${cle} non honorée`);
+      }
+    });
+  const satisfait = (w: Record<string, unknown>, l: LigneEnBase): boolean =>
+    Object.entries(w).every(([cle, v]) => {
+      switch (cle) {
+        case 'AND':
+          return (v as Record<string, unknown>[]).every((x) => satisfait(x, l));
+        case 'OR':
+          return (v as Record<string, unknown>[]).some((x) => satisfait(x, l));
+        case 'ecriture':
+          return ecritureSatisfait(v as Record<string, unknown>, l);
+        case 'lettre':
+          if (v !== null) throw new Error('doublure : seule `lettre: null` est honorée');
+          return (l.lettre ?? null) === null;
+        case 'lettrageId': {
+          const f = v as { in?: string[]; not?: null };
+          if (f.in) return l.lettrageId !== null && f.in.includes(l.lettrageId);
+          if ('not' in f && f.not === null) return l.lettrageId !== null;
+          throw new Error('doublure : filtre de lettrage non honoré');
+        }
+        case 'lettrage': {
+          // `ouverteALaCloture` · le groupe porte une ligne datée après la clôture.
+          const apres = (v as { lignes: { some: { ecriture: { date: Record<string, Date> } } } }).lignes.some.ecriture.date;
+          return lignes.some((x) => x.lettrageId !== null && x.lettrageId === l.lettrageId && dateDe(apres, x.ecriture.date));
+        }
+        case 'id':
+          return (v as { in: string[] }).in.includes(l.id);
+        case 'compteId':
+          return (v as { in: string[] }).in.includes(l.compteId);
+        default:
+          throw new Error(`doublure : clé ${cle} non honorée`);
+      }
+    });
+  const triees = [...lignes].sort((a, b) => a.id.localeCompare(b.id));
+  const vue = (l: LigneEnBase) => ({
+    ...l,
+    ecriture: { ...l.ecriture, estANouveauProvisoire: false, estGenereeParCloture: false, estSoldeDesComptesDeGestion: false },
+  });
+  return {
+    ligneEcriture: {
+      findMany: jest.fn(async (a: { where: Record<string, unknown>; take?: number; cursor?: { id: string }; skip?: number }) => {
+        const retenues = triees.filter((l) => satisfait(a.where, l));
+        const debut = a.cursor ? retenues.findIndex((l) => l.id === a.cursor!.id) + (a.skip ?? 0) : 0;
+        return retenues.slice(debut, a.take === undefined ? undefined : debut + a.take).map(vue);
+      }),
+      groupBy: jest.fn(async (a: { by: string[]; where: Record<string, unknown> }) => {
+        if (a.by.length !== 1 || a.by[0] !== 'lettrageId') throw new Error(`doublure : regroupement ${a.by.join(', ')} non honoré`);
+        const parGroupe = new Map<string | null, number>();
+        for (const l of lignes.filter((x) => satisfait(a.where, x))) parGroupe.set(l.lettrageId, (parGroupe.get(l.lettrageId) ?? 0) + 1);
+        return [...parGroupe].map(([lettrageId, n]) => ({ lettrageId, _count: { _all: n } }));
+      }),
+    },
+    lettrage: { findMany: jest.fn(async () => []) },
+    imputationPaiement: { findMany: jest.fn(async () => []) },
+    exercice: { findFirst: jest.fn(async () => ({ id: exerciceId, dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') })) },
+  };
+}
+
 describe('poids des lignes ouvertes · les notes par échéance', () => {
   /**
    * La facture et son règlement tombent dans DEUX LOTS (la doublure honore
    * l'ordre, le curseur et la taille) · une version qui calculerait le poids
    * lot par lot laisserait la facture entière dans sa colonne.
    */
-  it('la colonne « à un an au plus » vaut le solde, à travers deux lots', async () => {
-    const remplissage = Array.from({ length: LOT_LECTURE }, (_, i) => ({
-      ...ligne(`m${String(i).padStart(6, '0')}`, 1, 0, '2026-11-01', null, '2026-12-01'),
+  it('la colonne « à un an au plus » vaut le solde, à travers deux lots, le brouillard écarté', async () => {
+    const enBase = (l: LigneOuverte, statut: 'VALIDEE' | 'BROUILLARD' = 'VALIDEE'): LigneEnBase => ({
+      ...l,
+      statut,
+      compteId: 'c411',
       compte: { numero: '41110001' },
-    }));
-    const lignes = [
-      { ...ligne('a-facture', 3_480_000, 0, '2026-09-05', 'g', '2026-10-05'), compte: { numero: '41110001' } },
-      ...remplissage,
-      { ...ligne('z-reglement', 0, 1_000_000, '2026-10-10', 'g'), compte: { numero: '41110001' } },
-    ].sort((x, y) => x.id.localeCompare(y.id));
-    const findMany = jest.fn(async (a: { take: number; cursor?: { id: string }; skip?: number }) => {
-      const debut = a.cursor ? lignes.findIndex((l) => l.id === a.cursor!.id) + (a.skip ?? 0) : 0;
-      return lignes.slice(debut, debut + a.take);
     });
-    const prisma = {
-      exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') }) },
-      ligneEcriture: {
-        findMany,
-        groupBy: jest.fn(async () => [{ lettrageId: 'g', _count: { _all: 2 } }]),
-      },
-      lettrage: { findMany: jest.fn(async () => []) },
-      imputationPaiement: { findMany: jest.fn(async () => []) },
-    } as unknown as PrismaService;
+    const remplissage = Array.from({ length: LOT_LECTURE }, (_, i) =>
+      enBase(ligne(`m${String(i).padStart(6, '0')}`, 1, 0, '2026-11-01', null, '2026-12-01')),
+    );
+    const lignes = [
+      enBase(ligne('a-facture', 3_480_000, 0, '2026-09-05', 'g', '2026-10-05')),
+      ...remplissage,
+      // B8 · un second règlement, au BROUILLARD, dans le même groupe · le
+      // livre-journal seul fait foi, la note ne le lit pas.
+      enBase(ligne('y-reglement-brouillard', 0, 500_000, '2026-10-20', 'g'), 'BROUILLARD'),
+      enBase(ligne('z-reglement', 0, 1_000_000, '2026-10-10', 'g')),
+    ];
+    const base = baseQuiHonore(lignes);
+    const findMany = base.ligneEcriture.findMany;
+    const prisma = base as unknown as PrismaService;
     const service = new NoteAnnexeService({} as never, {} as never, prisma, {} as never, {} as never);
     const { parCompte: echeances, nonRepartis } = await (service as unknown as {
       chargerEcheances: (
@@ -531,22 +636,26 @@ describe('poids des lignes ouvertes · les relances (relecture, bloquant 6)', ()
 
 describe('poids des lignes ouvertes · la NOTE 3 des SMT (relecture, majeur 8)', () => {
   it('l’écart d’une facture réglée en partie va à la part de SON échéance, le règlement sans échéance n’en change aucune', async () => {
-    const base = [
-      { ...ligne('f', 3_480_000, 0, '2026-12-05', 'g', '2027-02-05'), compteId: 'c1' },
-      { ...ligne('r', 0, 1_000_000, '2026-12-20', 'g'), compteId: 'c1' },
-    ];
-    const db = {
-      ligneEcriture: {
-        ...lecteur(base).ligneEcriture,
-        groupBy: jest.fn(async (a: { by: string[]; where: { lettrageId?: { in: string[] } } }) =>
-          a.where.lettrageId?.in ? lecteur(base).ligneEcriture.groupBy(a as never) : [{ lettrageId: 'g', _count: { _all: 2 } }],
-        ),
-        findMany: jest.fn(async () => base),
-      },
-      lettrage: { findMany: jest.fn(async () => []) },
-      imputationPaiement: { findMany: jest.fn(async () => []) },
+    const enBase = (l: LigneOuverte, statut: 'VALIDEE' | 'BROUILLARD' = 'VALIDEE'): LigneEnBase => ({
+      ...l,
+      statut,
+      compteId: 'c1',
+      compte: { numero: '41110001' },
+    });
+    const db = baseQuiHonore([
+      enBase(ligne('f', 3_480_000, 0, '2026-12-05', 'g', '2027-02-05')),
+      enBase(ligne('r', 0, 1_000_000, '2026-12-20', 'g')),
+      // B8 · un règlement au BROUILLARD dans le même groupe, écarté par le
+      // filtre des deux SMT (livre-journal seul).
+      enBase(ligne('r-brouillard', 0, 500_000, '2026-12-22', 'g'), 'BROUILLARD'),
+    ]);
+    // Le filtre que les deux services posent (`partsParEcheance`).
+    const ouvertes = {
+      ecriture: { tenantId: 't', exerciceId: 'ex', statut: StatutEcriture.VALIDEE },
+      ...ouverteALaCloture(d('2026-12-31')),
+      compteId: { in: ['c1'] },
     };
-    const { ecarts, nonRepartis } = await ecartsDesGroupesParEcheance(db, 't', {}, d('2026-12-31'), 'essai');
+    const { ecarts, nonRepartis } = await ecartsDesGroupesParEcheance(db, 't', ouvertes, d('2026-12-31'), 'essai');
     expect(ecarts.get('c1')).toEqual({ nonEchu: -1_000_000, echu: 0 });
     expect(nonRepartis).toEqual([]);
   });

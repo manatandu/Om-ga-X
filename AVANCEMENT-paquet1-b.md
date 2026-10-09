@@ -210,6 +210,28 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 - Pas de rejeu sur base · point d'écran, sans montant (le serveur et ses
   réponses ne bougent pas).
 
+### B8 · doublures de la note par échéance et de la NOTE 3 des SMT
+
+- Point de TESTS · les doublures de `reste-des-lignes-ouvertes.spec.ts`
+  (note par échéance, NOTE 3 des SMT) rendaient un `groupBy` constant et
+  toutes les lignes à `findMany`, celles des deux services SMT ignoraient le
+  statut de l'écriture · un état qui aurait lu le brouillard passait au vert.
+- Vérifié quand même sur vraie base (p1b_avant, `main`) · C8, facture de
+  1 000 000 (échéance 28/02/2027), règlement validé de 300 000, règlement de
+  200 000 resté au brouillard, les trois lettrés en partiel · NOTE 7 de la
+  SARL (« à un an au plus » 700 000, rien de non ventilé) et NOTE 3 des deux
+  SMT (solde, non échu 700 000, non ventilé 0) · concorde avant correction,
+  le code de production filtrait déjà le livre-journal.
+- Correction (tests seuls) · `baseQuiHonore` évalue le filtre comme la base
+  (ET, OU, écriture · dossier, exercice, statut, date, drapeaux d'à-nouveau ;
+  lettrage, lettre, identifiant, compte) et tombe sur toute clé inconnue ;
+  un règlement au brouillard dans le groupe de chaque cas. Les doublures des
+  deux services SMT honorent le statut, un cas de brouillard chacune.
+- Preuve · retirer `statut: 'VALIDEE'` de `chargerEcheances`, ou le filtre de
+  l'appelant de `ecartsDesGroupesParEcheance`, fait tomber les deux cas de
+  `reste-des-lignes-ouvertes.spec.ts` ; retirer le statut des deux
+  `partsParEcheance` fait tomber trois cas des specs des services SMT.
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -287,7 +309,7 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 
 ## Reste
 
-B8 ; puis rejeu APRÈS de tous les points
+rejeu APRÈS de tous les points
 (`npm run build`, `cd client && npm run build`, puis
 `/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
 
@@ -295,6 +317,6 @@ B8 ; puis rejeu APRÈS de tous les points
 
 ```bash
 npx tsc --noEmit
-npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export src/modules/lettrage/reste-des-lignes-ouvertes src/modules/relances
+npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export src/modules/lettrage/reste-des-lignes-ouvertes src/modules/relances src/modules/etats-financiers/etats-financiers-smt.service src/modules/etats-financiers-syscohada/etats-financiers-smt-syscohada.service
 cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts src/lib/groupes-lus-ligne-a-ligne.spec.ts src/components/GroupesLusLigneALigne.spec.tsx src/components/TableauBalanceAgee.spec.tsx src/pages
 ```

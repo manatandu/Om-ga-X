@@ -60,6 +60,8 @@ function ligneTiers(
   // Lettrée par un règlement daté APRÈS la clôture · ouverte à la clôture
   // (audit final F10).
   regleApresCloture = false,
+  // Paquet 1, B8 · une ligne au brouillard n'est pas au livre-journal.
+  statut: 'VALIDEE' | 'BROUILLARD' = 'VALIDEE',
 ) {
   return {
     compteId: `id-${numero}`,
@@ -68,6 +70,7 @@ function ligneTiers(
     dateEcheance: echeance ? new Date(echeance) : null,
     lettre,
     regleApresCloture,
+    statut,
   };
 }
 
@@ -224,9 +227,17 @@ function service(
         ({
           where,
         }: {
-          where: { lettre?: string | null; OR?: unknown[]; dateEcheance?: { gt?: Date; lte?: Date } };
+          where: {
+            lettre?: string | null;
+            OR?: unknown[];
+            dateEcheance?: { gt?: Date; lte?: Date };
+            ecriture?: { tenantId?: string; exerciceId?: string; statut?: string };
+          };
         }) => {
           const retenues = (options.lignesTiers ?? []).filter((l) => {
+            // Paquet 1, B8 · le statut de l'écriture est honoré · une ligne
+            // au brouillard ne répond pas à un filtre sur le livre-journal.
+            if (where.ecriture?.statut !== undefined && l.statut !== where.ecriture.statut) return false;
             const ouverte =
               where.lettre === null ? l.lettre === null : where.OR ? l.lettre === null || l.regleApresCloture : true;
             if (!ouverte) return false;
@@ -1198,6 +1209,24 @@ describe('Notes annexes S.M.T', () => {
     // Le solde entier reste porté : la note justifie GC au bilan et VB au
     // compte de résultat, qui sont pris sur le solde.
     expect(note.creances[0].montantCloture).toBe(4000);
+  });
+
+  it('Note 3 · une ligne au BROUILLARD n’entre dans aucune part (paquet 1, B8 ; livre-journal seul)', async () => {
+    // La balance (livre-journal) porte 4 000 ; le brouillard de 1 500, lu,
+    // ferait 5 500 « non échu » et une part non ventilée négative.
+    const s = service(
+      { e1: [ligne('41100000', ClasseCompte.CLASSE_4, 4000, 0)] },
+      {
+        lignesTiers: [
+          ligneTiers('41100000', { debit: 4000 }, '2027-03-31'),
+          ligneTiers('41100000', { debit: 1500 }, '2027-04-30', null, false, 'BROUILLARD'),
+        ],
+      },
+    );
+    const note = await s.note3CreancesDettes('t1', 'e1');
+    expect(note.creances[0].montantNonEchu).toBe(4000);
+    expect(note.creances[0].montantNonVentile).toBe(0);
+    expect(note.echeancesTenues).toBe(true);
   });
 
   it('Note 3 · une créance à terme postérieur à la clôture est la seule à être dite non échue', async () => {
