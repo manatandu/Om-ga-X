@@ -4,6 +4,7 @@ import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { COMPTE_FACULTATIF } from '../../common/compte-du-dossier';
 import { RapprochementService } from './rapprochement.service';
 import {
   ConfirmerCorrespondancesDto,
@@ -24,8 +25,10 @@ import { RoleUtilisateur } from '@prisma/client';
 export class RapprochementController {
   constructor(private readonly rapprochementService: RapprochementService) {}
 
+  // Le compte en filtre est du dossier ou introuvable (premier tour de
+  // relecture du paquet 1, constat 4) · jamais une liste vide en 200.
   @Get()
-  async lister(@CurrentUser() user: AuthenticatedUser, @Query('compteId') compteId?: string) {
+  async lister(@CurrentUser() user: AuthenticatedUser, @Query('compteId', COMPTE_FACULTATIF) compteId?: string) {
     return this.rapprochementService.lister(user.tenantId, compteId);
   }
 

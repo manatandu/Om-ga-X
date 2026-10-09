@@ -8,6 +8,7 @@ import { RelancesService } from './relances.service';
 import { CreerNiveauDto, EmettreRelancesDto, HorsRelanceDto, ModifierNiveauDto } from './dto/relances.dto';
 import { RoleUtilisateur, TypeRelance } from '@prisma/client';
 import { EXERCICE_REQUIS } from '../../common/exercice-requis';
+import { COMPTE_FACULTATIF } from '../../common/compte-du-dossier';
 
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('relances')
@@ -77,10 +78,12 @@ export class RelancesController {
     return this.relances.definirHorsRelance(user.tenantId, tiersId, dto);
   }
 
+  // Le compte en filtre est du dossier ou introuvable (premier tour de
+  // relecture du paquet 1, constat 4) · jamais un historique vide en 200.
   @Get('historique')
   async historique(
     @CurrentUser() user: AuthenticatedUser,
-    @Query('compteId') compteId?: string,
+    @Query('compteId', COMPTE_FACULTATIF) compteId?: string,
     @Query('du') du?: string,
     @Query('au') au?: string,
   ) {

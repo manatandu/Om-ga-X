@@ -381,6 +381,31 @@ admis (`[201, 0]`), aucun refus. **AVANT, copie au commit 93eddc6**
 (`p1c-s3-apres.json`) · 3 contrôles, 3 concordances ; S1 et C1 rejoués avec,
 23 concordances.
 
+### S4 · constat 4 (MINEUR) · le compte en filtre d'un autre dossier est introuvable
+
+Constat EXACT · `GET /rapprochements?compteId=` (`rapprochement.service.ts`,
+`lister`) et `GET /relances/historique?compteId=` (`relances.service.ts`,
+`historique`) filtraient sur un `compteId` lu nu · le compte d'un autre
+dossier, ou « abc », rendait 200 et une liste vide. Même règle que l'exercice
+et le journal de C3.
+
+**Correction.** `src/common/compte-du-dossier.ts` · `COMPTE_FACULTATIF`
+(`CompteFacultatifDuDossier`), porteur injectable sur le modèle de
+`JOURNAL_FACULTATIF` · absent reste absent, illisible 400 nommé
+(`MESSAGE_COMPTE_ILLISIBLE`), d'un autre dossier 404 « Compte introuvable dans
+ce dossier. », lu dans le dossier de la SESSION. Posé sur les deux routes.
+**Tests.** `exercice-requis.spec.ts` relit désormais aussi les `compteId` des
+contrôleurs (métadonnées) · toute route qui lit `compteId` en requête porte le
+porteur, ou figure avec son motif dans une liste fermée (la caisse de
+`apercuPvCaisse`, requise et déjà jugée par le service) ; chaque porteur est
+joué (absent, illisible, voisin, du dossier) et la doublure honore le `where`
+· 2 tombent sans la correction.
+
+**AVANT, `main`** (`p1c-s4-avant.json`) · 9 contrôles, 4 écarts · compte de B
+`statut 200 · []` et `{"relances":[],"total":0,…}`, « abc » 200. **APRÈS**
+(`p1c-s4-apres.json`) · 9 contrôles, 9 concordances (404 et 400 nommés, le
+témoin rend le rapprochement de A).
+
 ## Reste (au coordinateur, à l'intégration)
 
 - Committer le scénario `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-c.mjs`.
@@ -426,10 +451,10 @@ admis (`[201, 0]`), aucun refus. **AVANT, copie au commit 93eddc6**
   rien écrit · statut 400 et non 404, non changé (le même contrôle sert les
   lignes d'import). Les autres corps n'ont pas été recensés.
 - **R3 · autres `compteId` non éprouvés.** Lettrage (`/lettrage/:compteId/*`,
-  déjà 404 « Compte introuvable pour ce tenant »), rapprochement
-  (`/rapprochements?compteId=`), inventaire (`?compteId=`), tiers
-  (`/tiers/:id/comptes/:compteId`), relances (`?compteId=` de l'historique) ·
-  non joués avec un compte d'un autre dossier.
+  déjà 404 « Compte introuvable pour ce tenant »), inventaire (`?compteId=`,
+  404 du service), tiers (`/tiers/:id/comptes/:compteId`) · non joués avec un
+  compte d'un autre dossier. Rapprochement et historique des rappels · traités
+  au constat 4 (S4).
 - **R4 · réponse instable sur main** · `GET /creances-douteuses/:id/revue`
   (exercice de B, créance aléatoire) a rendu 400 « Exercice introuvable » au
   premier rejeu et 404 au second (deux lectures concurrentes, la première qui
@@ -472,6 +497,9 @@ npx jest src/modules/fiscalite
 PAQUET1_C_POINTS=S3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s3-avant.json
 PAQUET1_C_POINTS=S3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s3-apres.json
 npx jest src/modules/personnel/dto-passe-d2.spec.ts src/modules/personnel/assiettes-paie.spec.ts
+PAQUET1_C_POINTS=S4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s4-avant.json
+PAQUET1_C_POINTS=S4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s4-apres.json
+npx jest src/common/exercice-requis.spec.ts src/modules/rapprochement src/modules/relances
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json

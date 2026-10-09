@@ -14,6 +14,7 @@ import {
   exigerExercice,
 } from './exercice-requis';
 import { JOURNAL_FACULTATIF, MESSAGE_JOURNAL_HORS_DOSSIER, MESSAGE_JOURNAL_ILLISIBLE } from './journal-du-dossier';
+import { COMPTE_FACULTATIF, MESSAGE_COMPTE_HORS_DOSSIER, MESSAGE_COMPTE_ILLISIBLE } from './compte-du-dossier';
 import { dansContexteAudit } from './audit/contexte-audit';
 import type { PrismaService } from './prisma.service';
 import { JwtAuthGuard } from '../modules/auth/jwt-auth.guard';
@@ -73,12 +74,14 @@ function routesExercice(): {
   sansControleur: string[];
   routes: RouteExercice[];
   routesJournal: RouteExercice[];
+  routesCompte: RouteExercice[];
 } {
   const racine = join(__dirname, '..');
   const fichiers = fichiersControleurs(racine);
   const sansControleur: string[] = [];
   const routes: RouteExercice[] = [];
   const routesJournal: RouteExercice[] = [];
+  const routesCompte: RouteExercice[] = [];
   for (const fichier of fichiers) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const exports = require(fichier) as Record<string, unknown>;
@@ -103,12 +106,13 @@ function routesExercice(): {
           };
           if (arg.data === 'exerciceId') routes.push(route);
           if (arg.data === 'journalId') routesJournal.push(route);
+          if (arg.data === 'compteId') routesCompte.push(route);
         }
       }
     }
     if (controleurs === 0) sansControleur.push(relative(racine, fichier));
   }
-  return { fichiers: fichiers.length, sansControleur, routes, routesJournal };
+  return { fichiers: fichiers.length, sansControleur, routes, routesJournal, routesCompte };
 }
 
 /**
@@ -159,6 +163,26 @@ const ROUTES_A_JOURNAL_EN_FILTRE = [
   'modules/modeles-saisie/modele-saisie.controller.ts lister',
 ];
 
+/**
+ * LES ROUTES QUI FILTRENT PAR UN COMPTE EN REQUÊTE (premier tour de relecture
+ * du paquet 1, constat 4) · toutes portent COMPTE_FACULTATIF. Une route
+ * nouvelle qui lirait `compteId` nu en requête fait tomber le test, sauf à
+ * figurer, avec son motif, dans la liste fermée qui suit.
+ */
+const ROUTES_A_COMPTE_EN_FILTRE = [
+  'modules/rapprochement/rapprochement.controller.ts lister',
+  'modules/relances/relances.controller.ts historique',
+];
+
+/**
+ * LE COMPTE EN REQUÊTE QUI N'EST PAS UN FILTRE · il est REQUIS et le service
+ * le juge déjà dans le dossier (404 nommé avant toute lecture). Liste FERMÉE.
+ */
+const ROUTES_A_COMPTE_JUGE_PAR_LE_SERVICE: Record<string, string> = {
+  'modules/inventaire/inventaire.controller.ts apercuPvCaisse':
+    "la caisse du procès-verbal est requise · InventaireService.apercuPvCaisse la lit bornée au dossier et rend 404 « Compte introuvable pour ce dossier. »",
+};
+
 const DOSSIER = 'dossier-de-la-session';
 const VOISIN = 'dossier-voisin';
 const ID = '0b5f9c1e-3a4d-4c2b-9f1e-2a7d6c8b1e30';
@@ -184,7 +208,10 @@ function doublurePrisma() {
       return trouve ? { id: trouve.id } : null;
     },
   });
-  return { prisma: { exercice: modele('exercice'), journal: modele('journal') } as unknown as PrismaService, requetes };
+  return {
+    prisma: { exercice: modele('exercice'), journal: modele('journal'), compte: modele('compte') } as unknown as PrismaService,
+    requetes,
+  };
 }
 
 /** Les pipes comme Nest les instancie · une classe reçoit le client Prisma, une instance sert telle quelle. */
@@ -402,5 +429,41 @@ describe('JOURNAL_FACULTATIF · le journal en filtre, du dossier ou introuvable 
     const { prisma, requetes } = doublurePrisma();
     await jouer([JOURNAL_FACULTATIF], ID, 'query', 'journalId', prisma);
     expect(requetes).toEqual([{ modele: 'journal', where: { id: ID, tenantId: DOSSIER } }]);
+  });
+});
+
+describe('COMPTE_FACULTATIF · le compte en filtre, du dossier ou introuvable (constat 4)', () => {
+  let lecture: ReturnType<typeof routesExercice>;
+  beforeAll(() => {
+    lecture = routesExercice();
+  }, 120_000);
+
+  it('toute route qui lit compteId en requête porte le porteur, ou figure avec son motif dans la liste fermée', () => {
+    const enRequete = lecture.routesCompte.filter((r) => r.type === 'query');
+    expect(enRequete.map((r) => r.route).sort()).toEqual(
+      [...ROUTES_A_COMPTE_EN_FILTRE, ...Object.keys(ROUTES_A_COMPTE_JUGE_PAR_LE_SERVICE)].sort(),
+    );
+    expect(enRequete.filter((r) => ROUTES_A_COMPTE_EN_FILTRE.includes(r.route) && !r.pipes.includes(COMPTE_FACULTATIF)).map((r) => r.route)).toEqual([]);
+    // Toutes derrière JwtAuthGuard · le porteur lit le dossier de la session.
+    expect(enRequete.filter((r) => !r.gardes.includes(JwtAuthGuard)).map((r) => r.route)).toEqual([]);
+  });
+
+  it('joué sur chaque route · absent reste absent, illisible 400, d’un autre dossier 404, du dossier passe', async () => {
+    const routes = lecture.routesCompte.filter((x) => x.type === 'query' && ROUTES_A_COMPTE_EN_FILTRE.includes(x.route));
+    expect(routes).toHaveLength(ROUTES_A_COMPTE_EN_FILTRE.length);
+    for (const r of routes) {
+      await expect(jouer(r.pipes, undefined, 'query', 'compteId')).resolves.toBeUndefined();
+      const illisible = await jouer(r.pipes, 'abc', 'query', 'compteId').catch((e: unknown) => e);
+      expect({ route: r.route, refus: messageDe(illisible) }).toEqual({ route: r.route, refus: `400 ${MESSAGE_COMPTE_ILLISIBLE}` });
+      const voisin = await jouer(r.pipes, ID_DU_VOISIN, 'query', 'compteId').catch((e: unknown) => e);
+      expect({ route: r.route, refus: messageDe(voisin) }).toEqual({ route: r.route, refus: `404 ${MESSAGE_COMPTE_HORS_DOSSIER}` });
+      await expect(jouer(r.pipes, ID, 'query', 'compteId')).resolves.toBe(ID);
+    }
+  });
+
+  it('le compte est cherché dans le dossier de la session', async () => {
+    const { prisma, requetes } = doublurePrisma();
+    await jouer([COMPTE_FACULTATIF], ID, 'query', 'compteId', prisma);
+    expect(requetes).toEqual([{ modele: 'compte', where: { id: ID, tenantId: DOSSIER } }]);
   });
 });
