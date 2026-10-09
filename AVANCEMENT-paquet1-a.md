@@ -528,6 +528,35 @@ d'affectation » · le bilan intermédiaire s'équilibre et dit ce qu'il
 contient. Autre issue · une ligne à part, sous CJ, que le ch. 3 ne prévoit
 pas. Sans décision, l'état actuel reste (130 nommé en compte sans poste).
 
+## Relecture 1 (échecs silencieux, 2026-10-09)
+
+Constats B1, B2, M1 à M4, m1 à m5. Chacun vérifié avant correction,
+reproduit sur vraie base par un contrôle ajouté au scénario
+(`scenario-paquet1-a.mjs`, modifié dans `wt-passe`, non committé), corrigé
+avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
+
+### B1 · la mémoire de la balance des notes jetait `avantLaCloture`
+
+- Vérifié · `balanceMemorisee` (notes annexes) ne prenait que quatre
+  paramètres, ni sa clé ni son appel ne portaient `{ avantLaCloture }` (A4) ·
+  `chargerOuverture`, appelé par les trois états que les notes 33 et 34
+  résument, recevait la balance COMPLÈTE d'un exercice clôturé (virement du
+  13 compris), l'ouverture n'était plus vide et l'OD du premier jour (A7)
+  n'était plus vue. Défaut introduit par A4 dans la ligne (`main` n'a pas
+  l'option).
+- AVANT (copie à 3615aa2) · A7 à travers la clôture, notes de 2026 ·
+  note 33 « flux de trésorerie des activités de financement » lu 10000,
+  « variation de la trésorerie nette » lu 10500 ; note 34 « flux-financement »
+  lu 10000 (milliers), quand le tableau des flux les laisse vides.
+- Correction · tous les paramètres repris EN BLOC (`Parameters<…>`), clé de
+  lecture qui porte chaque paramètre et les options triées
+  (`cleDeLectureDeBalance`), et une garde de type qui fait tomber la
+  compilation si `balance` change de signature (`ParametresDeBalanceConnus`).
+- APRÈS · les trois contrôles concordent (25 sur 25 au point A7).
+- Tests · `balance-memorisee-f214.spec.ts`, quatre cas (lectures
+  distinctes, option transmise à sa place, mémoire d'une même lecture,
+  ouverture lue avant la clôture à travers la mémoire).
+
 ## Reste
 
 Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).

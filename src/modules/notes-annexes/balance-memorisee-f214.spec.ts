@@ -7,7 +7,7 @@ import {
 } from '../etats-financiers/etats-financiers-projet-budget.service';
 import { EtatsFinanciersService } from '../etats-financiers/etats-financiers.service';
 import { PrismaService } from '../../common/prisma.service';
-import { NoteAnnexeService } from './note-annexe.service';
+import { NoteAnnexeService, balanceMemorisee, cleDeLectureDeBalance } from './note-annexe.service';
 
 /**
  * LES NOTES DU JEU ASSOCIATIONS LISENT CHAQUE EXERCICE UNE FOIS (audit final
@@ -197,5 +197,72 @@ describe('notes du jeu associations · une balance par exercice (audit final F21
     (ecriture.balance as jest.Mock).mockClear();
     await etats.bilan('t', 'e2');
     expect(exercicesLus(ecriture)).toEqual(['e1', 'e2']);
+  });
+});
+
+/**
+ * RELECTURE DU PAQUET 1, B1 · LA MÉMOIRE PASSE TOUS LES PARAMÈTRES.
+ *
+ * La doublure écrite à quatre paramètres jetait l'option `avantLaCloture`
+ * (A4) · `chargerOuverture` recevait la balance COMPLÈTE d'un exercice
+ * clôturé (virement de clôture du 13 compris), et la note 33 chiffrait les
+ * postes du tableau des flux que le tableau lui-même laisse vides. Reproduit
+ * sur vraie base (scénario paquet1-a, A7 à travers la clôture · « flux de
+ * trésorerie des activités de financement » à 10 000 au lieu de vide).
+ */
+describe('notes du jeu associations · la mémoire garde les options de la lecture (paquet 1, B1)', () => {
+  const lignesCompletes = [ligne('13100000', ClasseCompte.CLASSE_1, 2_000_000, 0, 0, 0)];
+  const lignesAvantCloture = [ligne('13100000', ClasseCompte.CLASSE_1, 0, 2_000_000, 0, 0)];
+
+  /** Une balance qui HONORE l'option · deux lectures, deux résultats. */
+  function balanceQuiHonoreLOption(): EcritureService {
+    return {
+      balance: jest.fn(
+        (_t: string, _e: string, _b?: boolean, _a?: Date, options?: { avantLaCloture?: boolean }) =>
+          Promise.resolve({
+            lignes: options?.avantLaCloture ? lignesAvantCloture : lignesCompletes,
+            totaux: { debit: 0, credit: 0 },
+          }),
+      ),
+    } as unknown as EcritureService;
+  }
+
+  it('deux lectures qui ne diffèrent que par avantLaCloture ne partagent pas leur résultat', async () => {
+    const reelle = balanceQuiHonoreLOption();
+    const memoire = balanceMemorisee(reelle);
+    const complete = await memoire.balance('t', 'e2', false);
+    const avant = await memoire.balance('t', 'e2', false, undefined, { avantLaCloture: true });
+    expect(complete.lignes).toBe(lignesCompletes);
+    expect(avant.lignes).toBe(lignesAvantCloture);
+    // L'option ATTEINT la balance réelle, à sa place.
+    expect((reelle.balance as jest.Mock).mock.calls[1]).toEqual(['t', 'e2', false, undefined, { avantLaCloture: true }]);
+  });
+
+  it('la même lecture répétée, options comprises, n’interroge la base qu’une fois', async () => {
+    const reelle = balanceQuiHonoreLOption();
+    const memoire = balanceMemorisee(reelle);
+    await memoire.balance('t', 'e2', false, undefined, { avantLaCloture: true });
+    await memoire.balance('t', 'e2', false, undefined, { avantLaCloture: true });
+    expect((reelle.balance as jest.Mock).mock.calls).toHaveLength(1);
+  });
+
+  it('la clé porte chaque paramètre, options triées comprises', () => {
+    const date = new Date('2026-06-30T00:00:00Z');
+    expect(cleDeLectureDeBalance(['t', 'e', false, date, { avantLaCloture: true }])).not.toBe(
+      cleDeLectureDeBalance(['t', 'e', false, date]),
+    );
+    expect(cleDeLectureDeBalance(['t', 'e', false, date, { avantLaCloture: true }])).not.toBe(
+      cleDeLectureDeBalance(['t', 'e', false, date, { avantLaCloture: false }]),
+    );
+    expect(cleDeLectureDeBalance(['t', 'e', true])).not.toBe(cleDeLectureDeBalance(['t', 'e', false]));
+  });
+
+  it('les notes d’un exercice sans N-1 lisent l’ouverture AVANT la clôture, à travers la mémoire', async () => {
+    const ecriture = balanceComptee();
+    const exercice = { lister: jest.fn().mockResolvedValue([EXERCICES[0]]) } as unknown as ExerciceService;
+    const service = new NoteAnnexeService(ecriture, exercice, prisma(), sansBudget, new EtatsFinanciersService(ecriture, exercice));
+    await service.notesAssociations('t', 'e2');
+    const appels = (ecriture.balance as jest.Mock).mock.calls as unknown[][];
+    expect(appels.some((a) => a[1] === 'e2' && (a[4] as { avantLaCloture?: boolean } | undefined)?.avantLaCloture === true)).toBe(true);
   });
 });
