@@ -825,8 +825,10 @@ deux en négatif, sans effet.
 <!-- requete-m5 · le scénario du banc (point m5) exécute ce bloc tel quel -->
 ```sql
 -- m5 · LECTURE SEULE · reports de clôture rectifiés qui ont inscrit en négatif
--- une contre-passation de réévaluation (module ou déclarée). Une ligne par
--- report et par réévaluation.
+-- une contre-passation de réévaluation (module, déclarée, ou déclarée puis
+-- retirée). Une ligne par report et par réévaluation. Transaction en lecture
+-- seule, annulée à la fin · rien ne peut s'écrire.
+BEGIN TRANSACTION READ ONLY;
 WITH negatifs AS (
   SELECT rep.id AS report_id, rep."tenantId" AS tenant_id, rep."exerciceId" AS exercice_id,
          l.id AS ligne_id, l."compteId" AS compte_id, l.debit, l.credit
@@ -857,6 +859,24 @@ contre_passations AS (
     AND cx.numero !~ '^(52|53|55|57|58)'
     AND EXISTS (SELECT 1 FROM lignes_ecriture le
                 WHERE le."ecritureId" = r."ecritureEcartsId" AND le."compteId" = lx."compteId")
+  UNION ALL
+  -- La déclaration RETIRÉE après la clôture (quatrième tour, m3) · la trace
+  -- garde l'écriture (`retraitsContrePassationDeclaree`), qui reste au journal.
+  SELECT r.id, r."tenantId", 'DECLAREE (retirée)',
+         x.id, x."exerciceId",
+         lx."compteId", lx.debit, lx.credit
+  FROM reevaluations r
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE WHEN jsonb_typeof(r."retraitsContrePassationDeclaree") = 'array'
+         THEN r."retraitsContrePassationDeclaree" ELSE '[]'::jsonb END) AS tr(e)
+  JOIN ecritures x ON x.id = tr.e->>'ecritureId'
+  JOIN lignes_ecriture lx ON lx."ecritureId" = x.id
+  JOIN comptes cx ON cx.id = lx."compteId"
+  WHERE r."annuleeLe" IS NULL
+    AND x.id IS DISTINCT FROM r."contrePassationDeclareeId"
+    AND cx.numero !~ '^(52|53|55|57|58)'
+    AND EXISTS (SELECT 1 FROM lignes_ecriture le
+                WHERE le."ecritureId" = r."ecritureEcartsId" AND le."compteId" = lx."compteId")
 )
 SELECT t.id AS dossier_id,
        t.nom AS dossier,
@@ -878,6 +898,7 @@ JOIN tenants t ON t.id = n.tenant_id
 JOIN comptes c ON c.id = n.compte_id
 GROUP BY t.id, t.nom, ex."dateDebut", rep."numeroPiece", cp.voie, cp.reevaluation_id, cp.ecriture_id
 ORDER BY t.nom, ex."dateDebut";
+ROLLBACK;
 ```
 
 Lecture d'un résultat · une ligne nomme le dossier, l'exercice N+1 dont
@@ -899,23 +920,64 @@ disent si la contre-passation était seule.
 <!-- requete-m5-conserver · le scénario du banc (point m5) exécute ce bloc tel quel -->
 ```sql
 -- m5, jumeau · LECTURE SEULE · exercices dont la clôture a CONSERVÉ une
--- ouverture du suivant qui portait la contre-passation de leur réévaluation.
-SELECT t.id AS dossier_id,
+-- ouverture du suivant qui n'était QUE la contre-passation de leur
+-- réévaluation (module, déclarée, ou déclarée puis retirée), datée ou
+-- valorisée au premier jour, sans aucune autre écriture d'ouverture ce
+-- jour-là (même périmètre que la clôture sur `main` · à-nouveau ou opérations
+-- diverses, hors report provisoire, hors solde des comptes de gestion, sans
+-- compte de gestion). Une autre écriture d'ouverture au premier jour, la
+-- conservation a pu viser l'écart de celle-ci · écartée, sans quoi un import
+-- conservé à bon droit sortirait. Transaction en lecture seule, annulée.
+BEGIN TRANSACTION READ ONLY;
+WITH contre_passations AS (
+  SELECT r.id AS reevaluation_id, r."tenantId" AS tenant_id, r."exerciceId" AS exercice_id,
+         'MODULE' AS voie, r."ecritureExtourneId" AS ecriture_id
+  FROM reevaluations r
+  WHERE r."annuleeLe" IS NULL AND r."ecritureExtourneId" IS NOT NULL
+  UNION ALL
+  SELECT r.id, r."tenantId", r."exerciceId", 'DECLAREE', r."contrePassationDeclareeId"
+  FROM reevaluations r
+  WHERE r."annuleeLe" IS NULL AND r."contrePassationDeclareeId" IS NOT NULL
+  UNION ALL
+  SELECT r.id, r."tenantId", r."exerciceId", 'DECLAREE (retirée)', tr.e->>'ecritureId'
+  FROM reevaluations r
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE WHEN jsonb_typeof(r."retraitsContrePassationDeclaree") = 'array'
+         THEN r."retraitsContrePassationDeclaree" ELSE '[]'::jsonb END) AS tr(e)
+  WHERE r."annuleeLe" IS NULL
+    AND (tr.e->>'ecritureId') IS DISTINCT FROM r."contrePassationDeclareeId"
+)
+SELECT DISTINCT
+       t.id AS dossier_id,
        t.nom AS dossier,
        n."dateFin"::date AS exercice_clos_le,
-       r.id AS reevaluation_id,
-       CASE WHEN x.id = r."ecritureExtourneId" THEN 'MODULE' ELSE 'DECLAREE' END AS voie,
+       cp.reevaluation_id,
+       cp.voie,
        x.id AS contre_passation,
        n."motifOuvertureSuivanteConservee" AS motif,
-       n."ecartsOuvertureSuivanteConservee" AS positions_figees
-FROM reevaluations r
-JOIN exercices n ON n.id = r."exerciceId"
-JOIN ecritures x ON x.id IN (r."ecritureExtourneId", r."contrePassationDeclareeId")
+       n."ecartsOuvertureSuivanteConservee"::text AS positions_figees
+FROM contre_passations cp
+JOIN exercices n ON n.id = cp.exercice_id
+JOIN ecritures x ON x.id = cp.ecriture_id
 JOIN exercices n1 ON n1.id = x."exerciceId" AND n1."dateDebut" > n."dateFin"
-JOIN tenants t ON t.id = r."tenantId"
-WHERE r."annuleeLe" IS NULL
-  AND n."motifOuvertureSuivanteConservee" IS NOT NULL
-ORDER BY t.nom, n."dateFin";
+JOIN tenants t ON t.id = cp.tenant_id
+WHERE n."motifOuvertureSuivanteConservee" IS NOT NULL
+  AND (x.date = n1."dateDebut" OR x."dateValeur" = n1."dateDebut")
+  AND NOT EXISTS (
+    SELECT 1
+    FROM ecritures o
+    JOIN journaux j ON j.id = o."journalId"
+    WHERE o."exerciceId" = n1.id
+      AND o.id <> x.id
+      AND (o.date = n1."dateDebut" OR o."dateValeur" = n1."dateDebut")
+      AND o."estANouveauProvisoire" = false
+      AND o."estSoldeDesComptesDeGestion" = false
+      AND (o."estGenereeParCloture" = true OR j.type = 'GENERAL')
+      AND NOT EXISTS (SELECT 1 FROM lignes_ecriture lo JOIN comptes co ON co.id = lo."compteId"
+                      WHERE lo."ecritureId" = o.id AND co.classe IN ('CLASSE_6', 'CLASSE_7', 'CLASSE_8'))
+  )
+ORDER BY dossier, exercice_clos_le;
+ROLLBACK;
 ```
 
 VÉRIFIÉES SUR BASE JETABLE (`p1a_m5`, point m5 du scénario, qui lit les
@@ -937,6 +999,29 @@ quatre lignes (40110001 50 000, 41110001 100 000, 47830000 50 000,
 47910000 100 000), l'import non compté. (3) Jumeau · rien avant ; le motif
 de conservation posé sur 2026 (reconstitution), la requête le rend, voie et
 contre-passation nommées. 84 contrôles sur 84 (A8, A8M, m5).
+
+SECOND TOUR (2026-10-09, trois changements demandés par le coordinateur,
+rejoués sur `p1a_m5b`, 94 contrôles sur 94 · A8, A8M, m5). (a) « Rectifier »
+lit aussi la déclaration RETIRÉE après la clôture · la trace
+(`retraitsContrePassationDeclaree`, JSONB, `ecritureId`) garde l'écriture,
+qui reste au journal ; sans elle, le retrait faisait disparaître le dossier
+de la requête. Rejoué · la déclaration retirée par la route
+(`DELETE /devises/reevaluations/:id/contre-passation-manuelle`) après la
+sortie de `main` reconstituée, la requête rend encore le dossier, une ligne,
+voie « DECLAREE (retirée) », la contre-passation et ses quatre lignes. Une
+écriture redéclarée n'est pas comptée deux fois (`IS DISTINCT FROM`). (b)
+« Conserver » ne rend que la contre-passation DATÉE ou VALORISÉE AU PREMIER
+JOUR et SEULE ce jour-là (aucune autre écriture d'ouverture, même périmètre
+que la clôture sur `main`) · rejoué, motif posé avec l'import et le report au
+premier jour · rien (la conservation a pu viser l'import, aucun faux
+positif) ; les deux redatés au 02/01 · le dossier rendu, une ligne, voie dite
+(« MODULE », ou « DECLAREE (retirée) » après le retrait de (a)) ; la
+contre-passation redatée au 03/01 · rien. (c) Les deux blocs tournent dans
+`BEGIN TRANSACTION READ ONLY; … ROLLBACK;` · éprouvé, une écriture y est
+refusée par la base (« cannot execute UPDATE in a read-only transaction »),
+et la sortie ne porte que les lignes de la requête. Le banc les passe par
+l'entrée standard de `psql` (`-qtA`), `-c` ne rendant que la dernière
+instruction.
 
 UN CONTRÔLE DE CLÔTURE DEVRAIT-IL LE NOMMER · non, pas d'abord. La
 correction d'A8 (et de m4 pour la contre-passation déclarée) ferme la
