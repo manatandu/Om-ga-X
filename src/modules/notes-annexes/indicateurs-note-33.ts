@@ -108,7 +108,16 @@ export interface EtatsPourIndicateurs {
    * de trésorerie provenant des activités opérationnelles »), d'où un type
    * qui les tolère : les filtrer est le travail du lecteur, pas de l'appelant.
    */
-  fluxTresorerie: { lignes: Array<{ ref?: string; montant?: number; montantN1?: number } | { section: string }> };
+  fluxTresorerie: {
+    lignes: Array<{ ref?: string; montant?: number; montantN1?: number } | { section: string }>;
+    /**
+     * Les postes laissés VIDES en colonne N (paquet 1, A7 · ouverture passée
+     * en OD au premier jour) · leur montant servi à 0 n'est pas un zéro, et
+     * l'indicateur qui les lit n'a pas de valeur. En colonne N-1, un poste
+     * vide n'a pas de `montantN1`.
+     */
+    postesVides?: string[];
+  };
 }
 
 /**
@@ -197,6 +206,11 @@ export const INDICATEURS_LAISSES_EN_SAISIE = ['ratio-d-utilisation-des-dons-somm
  * dénominateur est nul n'a pas de valeur, et un exercice N-1 absent n'en a
  * pas non plus.
  */
+/** La somme de deux valeurs, null dès que l'une n'en a pas · un vide n'est pas un zéro. */
+function sommeOuNull(a: number | null, b: number | null): number | null {
+  return a === null || b === null ? null : a + b;
+}
+
 export function indicateursNote33(
   etats: EtatsPourIndicateurs,
   cessionsN: CessionsImmobilisations,
@@ -218,8 +232,14 @@ export function indicateursNote33(
   const bilanN1 = (ref: string) => postesBilan.get(ref)?.montantN1 ?? 0;
   const crN = (ref: string) => postesCr.get(ref)?.montant ?? 0;
   const crN1 = (ref: string) => postesCr.get(ref)?.montantN1 ?? 0;
-  const fluxN = (ref: string) => postesFlux.get(ref)?.montant ?? 0;
-  const fluxN1 = (ref: string) => postesFlux.get(ref)?.montantN1 ?? 0;
+  // Un poste du tableau des flux laissé vide n'a pas de valeur (paquet 1, A7) ·
+  // l'indicateur qui le lit vaut null, jamais zéro.
+  const fluxVidesN = new Set(etats.fluxTresorerie.postesVides ?? []);
+  const fluxN = (ref: string): number | null => (fluxVidesN.has(ref) ? null : (postesFlux.get(ref)?.montant ?? 0));
+  const fluxN1 = (ref: string): number | null => {
+    const l = postesFlux.get(ref);
+    return l && exerciceN1Disponible && l.montantN1 === undefined ? null : (l?.montantN1 ?? 0);
+  };
 
   /**
    * Un exercice, vu par la note. Écrit une fois et appliqué à N puis à N-1 ·
@@ -228,7 +248,7 @@ export function indicateursNote33(
   const pourUnExercice = (
     bl: (ref: string) => number,
     cr: (ref: string) => number,
-    fl: (ref: string) => number,
+    fl: (ref: string) => number | null,
     resultatAo: number,
     resultatHao: number,
     resultatNet: number,
@@ -300,7 +320,7 @@ export function indicateursNote33(
       // « Flux de trésorerie provenant des activités de financement (D+E) » ·
       // la maquette du TFT en fait un intitulé de section sans code REF : les
       // deux totaux ZD (fonds propres) et ZE (fonds étrangers) le composent.
-      'flux-de-tresorerie-des-activites-de-financement': fl('ZD') + fl('ZE'),
+      'flux-de-tresorerie-des-activites-de-financement': sommeOuNull(fl('ZD'), fl('ZE')),
       'variation-de-la-tresorerie-nette-de-la-periode': fl('ZF'),
     } as Record<string, number | null>;
   };

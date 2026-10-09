@@ -731,6 +731,11 @@ export interface TableauFluxTresorerie {
   comptesNonVentiles: CompteDuPoste[];
   /** D'où viennent les positions d'ouverture quand l'exercice précédent n'en tient pas. */
   mentionOuverture?: string | null;
+  /** Postes laissés vides en colonne N (paquet 1, A7) · servis à 0, ce ne sont pas des montants. */
+  postesVides?: string[];
+  /** Le motif de chaque poste laissé vide, colonne N puis colonne N-1. */
+  postesNonCalculables?: Array<{ ref: string; raison: string }>;
+  postesNonCalculablesN1?: Array<{ ref: string; raison: string }>;
   controle: ControleFluxTresorerie;
 }
 

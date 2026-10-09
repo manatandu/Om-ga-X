@@ -3,7 +3,7 @@
 Branche `travail/paquet1-a`, partie de `main` e31f4de. Fiche tenue à chaque
 point fini (CLAUDE.md § 5), retirée à l'intégration.
 
-Ordre de travail · A8, A7, A3, A2, A10, A9, A5, A6.
+Ordre de travail · A8, A3, A2, A10, A9, A5, A6.
 
 ## Commandes
 
@@ -11,8 +11,8 @@ Ordre de travail · A8, A7, A3, A2, A10, A9, A5, A6.
 # Scénario (non committé ici, tenu par le coordinateur)
 #   /home/user/wt-passe/scripts/passe-v1/scenario-paquet1-a.mjs
 # AVANT (main) et APRÈS (cette copie, après npm run build)
-PAQUET1_A_POINTS=A8,A8M,A1,A4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
-PAQUET1_A_POINTS=A8,A8M,A1,A4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
+PAQUET1_A_POINTS=A8,A8M,A1,A4,A7 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
+PAQUET1_A_POINTS=A8,A8M,A1,A4,A7 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
 # Specs touchés
 npx tsc --noEmit
 npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/cloture-annuelle.spec.ts \
@@ -20,7 +20,7 @@ npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/clot
   src/modules/exercice/arret-dissolution.spec.ts
 npx jest src/modules/etats-financiers src/modules/etats-financiers-syscohada src/modules/exports
 npx jest src/modules/comptabilite/balance.spec.ts src/modules/notes-annexes src/modules/consolidation src/modules/ifrs
-cd client && npx tsc --noEmit && npx vitest run src/components/resultat-anterieur-non-vire.spec.ts src/specs-sans-react.spec.ts
+cd client && npx tsc --noEmit && npx vitest run src/components/resultat-anterieur-non-vire.spec.ts src/lib/postes-de-flux-vides.spec.ts src/specs-sans-react.spec.ts
 ```
 
 ## Fait
@@ -206,6 +206,69 @@ l'appel de l'ouverture par bilan, compte de résultat et tableau des flux
 APRÈS · 70 contrôles sur 70 concordent pour A4, A1, A8, A8M
 (`/tmp/claude-0/sim/p1a-apres-a4.json`).
 
+### A7 · le tableau des flux des associations et l'ouverture passée en OD au premier jour
+
+REPRODUIT sur vraie base contre `main`, aux deux référentiels, à travers une
+clôture. Dossier sans exercice précédent ni report · bilan d'ouverture saisi
+en OD au 01/01/2026 (banque 12 000 000, fonds 10 000 000, 13100000
+2 000 000), produit 500 000, puis 2026 clôturé et le tableau de 2027 lu.
+
+AVANT (main) · SYCEBNL, tableau de 2026 · `mention d'ouverture nomme l'OD du
+premier jour` lu `false` (servi « Aucun exercice précédent ni bilan
+d'ouverture… l'ouverture est présumée nulle »), `ZA laissée vide` lu `false`,
+`FM (apports) laissé vide` lu `false` (FM servi 10 000 000, la reprise lue
+comme un encaissement de la dotation), `le motif de FM nomme la pièce` lu
+`false`. Tableau de 2027, colonne N-1 · `FM N-1 laissé vide`, `ZA N-1
+laissée vide`, `motif de la colonne N-1` lus `false`. Et LE SYSCOHADA AUSSI,
+à travers la clôture · son tableau de 2026 concordait, mais la colonne N-1 de
+2027 lisait l'OD comme des flux (FK, ZA, motif · trois écarts) · le virement
+du 13 passé par la clôture, en colonne report, faisait passer 2026 pour un
+exercice ouvert par un report (le défaut d'A4). 10 écarts sur 20
+(`/tmp/claude-0/sim/p1a-avant-a7.json`).
+
+DÉCISION PAR LA LOI · « le Bilan d'ouverture d'un exercice doit correspondre
+au Bilan de clôture de l'exercice précédent » (SYCEBNL art. 16, 4) ; cadre
+conceptuel § 3.3.1.2.4) · une position passée en OD au premier jour, sans
+exercice précédent ni report, peut être ce bilan d'ouverture (dossier repris)
+ou l'apport qui fait naître l'association, et le livre ne les distingue pas.
+Même règle qu'au SYSCOHADA (bloquant 2 du 2026-10-07) · ni flux ni
+ouverture, postes vides, motif qui nomme les pièces et les deux issues. ZA est
+« Trésorerie nette au 1er janvier (Trésorerie actif N-1 – Trésorerie passif
+N-1) » (Partie 4 ch. 2, tableau des flux) · elle lit l'ouverture, vide aussi.
+
+CORRECTION ·
+- `EtatsFinanciersService.tableauFluxTresorerie` (associations) · l'OD du
+  premier jour est cherchée pour chaque colonne (`lireOuverturePasseeEnOd`,
+  sur l'ouverture d'A4) ; `resoudreFluxPourExercice` reçoit le motif · ZA et
+  chaque poste FA à FQ (tous lisent les mouvements et leurs contreparties à
+  l'ouverture) sont laissés vides, leurs totaux aussi (ZG compris) ; la
+  colonne N-1 n'a pas de montant pour un poste vide ; la mention d'ouverture
+  est le motif ; le tableau sert `postesVides`, `postesNonCalculables`,
+  `postesNonCalculablesN1` ; les 12 et 13 ne sont plus nommés en suspects d'un
+  écart que le motif explique.
+- note 33 (`indicateurs-note-33.ts`) · un indicateur qui lit un poste vide du
+  tableau vaut null, jamais le 0 servi (colonne N par `postesVides`, colonne
+  N-1 par l'absence de `montantN1`).
+- liasse des associations · la cellule d'un poste vide reste vide ; la feuille
+  ANOMALIES dit les motifs (colonne N et N-1) et la provenance de
+  l'ouverture du tableau (`provenanceDuComparatif` reçoit le tableau, comme
+  au SYSCOHADA).
+- écran des associations · un poste vide s'écrit « · » et ses motifs se
+  disent une fois par motif (`client/src/lib/postes-de-flux-vides.ts`).
+- SYSCOHADA · rien à corriger ici · la lecture de l'ouverture avant la
+  clôture (A4) suffit à la colonne N-1 de 2027.
+
+TESTS · `etats-financiers.service.spec.ts` (colonne N vide et motif, colonne
+N-1 vide, report tenu sans recherche) ; `etats-financiers-syscohada.service.spec.ts`
+(premier exercice ouvert en OD et clôturé, lu en N-1 · tombe sur le service
+d'avant A4) ; `passe-r6-notes-associations.spec.ts` (note 33, N et N-1) ;
+`liasse-etafi.spec.ts` (cellule vide, ANOMALIES) ;
+`client/src/lib/postes-de-flux-vides.spec.ts` (règle d'écriture, regroupement,
+page). Les trois tests de service tombent sur le service d'avant.
+
+APRÈS · 90 contrôles sur 90 concordent pour A7, A4, A1, A8, A8M
+(`/tmp/claude-0/sim/p1a-apres-a7.json`).
+
 ## Reste
 
 A4, A7, A3, A2, A10, A9, A5, A6.
@@ -229,5 +292,16 @@ A4, A7, A3, A2, A10, A9, A5, A6.
 - A4 · les variations VA, VB, VC du SMT SYCEBNL lisent encore
   `aLOuverture(lignesN)` · sans effet (stocks, créances, dettes, jamais le 12
   ni le 13), laissé tel quel.
+- A7 · au SYSCOHADA, un poste laissé vide garde son 0 servi en colonne N, à
+  l'écran (`EtatsFinanciersSyscohadaPage`) et dans la feuille TFT de la
+  liasse, la liste des postes non calculables le disant à côté · les
+  associations l'écrivent désormais « · » et laissent la cellule vide.
+- A7 · le rapport d'activité (`tresorerieDuTft`) et le livre d'inventaire
+  reprennent le tableau des flux tel quel · dans le cas d'une ouverture en OD
+  au premier jour, ouverture et variation y valent 0 sans le dire (les deux
+  référentiels).
+- A7 · `effectifs-seize-colonnes.spec.ts` est tombé une fois sous une suite
+  chargée, puis a passé trois fois seul et deux fois avec la suite · instable,
+  sans lien avec la ligne.
 - G1 (relevé MAJEUR du second tour, suivi) · seul le cas de la contre-passation
   du module est réglé ici ; le cas « ouverture nulle » du relevé reste ouvert.

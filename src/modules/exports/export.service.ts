@@ -2158,6 +2158,10 @@ export class ExportService {
     }
     entetesBande(ws, r, r, 1, 6);
     ws.getRow(r).height = 22;
+    // Un poste laissé VIDE par le tableau (paquet 1, A7 · ouverture passée en
+    // OD au premier jour) reste une cellule vide · son 0 servi n'est pas un
+    // montant, et la feuille ANOMALIES en dit le motif.
+    const vides = new Set(tft.postesVides);
     for (const l of tft.lignes) {
       r += 1;
       ws.getRow(r).height = 22;
@@ -2172,7 +2176,7 @@ export class ExportService {
       ws.getCell(r, 2).value = l.libelle;
       ws.getCell(r, 3).value = l.repere ?? REP_TFT[l.ref] ?? '';
       // Colonne 4 · Note, vide (voir l'en-tête de la méthode).
-      ws.getCell(r, 5).value = l.montant;
+      if (!vides.has(l.ref)) ws.getCell(r, 5).value = l.montant;
       if (l.montantN1 !== undefined) ws.getCell(r, 6).value = l.montantN1;
       styleLigne(ws, r, 1, 6, NIVEAUX_TFT[l.ref] ?? 'normal', [5, 6], 1);
       ws.getCell(r, 3).alignment = { horizontal: 'center', vertical: 'middle' };
@@ -5467,6 +5471,13 @@ export class ExportService {
         'Examiner les comptes non ventilés du tableau.',
       ]);
     }
+    // Les postes laissés vides et leur motif (paquet 1, A7), comme au SYSCOHADA.
+    for (const p of tft.postesNonCalculables) {
+      anomalies.push(['INFO', p.ref, 'Tableau des flux de trésorerie', p.raison, 'Aucune action : la donnée manque, elle n’est pas approximée.']);
+    }
+    for (const p of tft.postesNonCalculablesN1) {
+      anomalies.push(['INFO', p.ref, 'Tableau des flux · colonne N-1', p.raison, 'Aucune action : la cellule N-1 reste vide, elle n’est pas un zéro.']);
+    }
     for (const c of bilan.comptesNonRattaches) {
       anomalies.push([
         'A_TRAITER',
@@ -5486,7 +5497,7 @@ export class ExportService {
       ]);
     }
     anomalies.push(...anomalieResultatAnterieurNonVire(bilan));
-    anomalies.push(...this.provenanceDuComparatif(bilan, cr));
+    anomalies.push(...this.provenanceDuComparatif(bilan, cr, tft));
     if (anomalies.length === 0) {
       anomalies.push(['INFO', '·', '·', 'Aucune anomalie détectée sur cet exercice.', '·']);
     }

@@ -18,6 +18,7 @@ import {
   mentionComparatifSurOuverture,
   mentionExercicePrecedentVide,
   mentionOuverturePresumeeNulle,
+  motifOuverturePasseeEnOd,
   ouvertureTenue,
   trouverExerciceN1,
 } from './etats-financiers.communs';
@@ -714,26 +715,55 @@ export class EtatsFinanciersService {
     reevaluationsCourant: VirementsParCompte = AUCUN_VIREMENT,
     // Ligne A22 · les coûts d'emprunt incorporés par le module.
     incorporationsCourant: VirementsParCompte = AUCUN_VIREMENT,
+    // PAQUET 1, A7 · une ouverture saisie en OD au premier jour, sans
+    // exercice précédent tenu ni report · ni flux ni ouverture, les postes qui
+    // lisent l'une ou l'autre restent vides, avec ce motif.
+    motifOuvertureIncertaine: string | null = null,
   ): {
     parRef: Map<string, PosteCalcule & { flux?: number; variationContrepartie?: number }>;
     tresorerieOuverture: number;
     tresorerieClotureParFlux: number;
     tresorerieClotureParBilan: number;
     ecart: number;
+    /** Postes laissés vides, et les totaux qui en dépendent · jamais des zéros constatés. */
+    nonCalcules: Set<string>;
+    postesNonCalculables: Array<{ ref: string; raison: string }>;
   } {
     const parRef = new Map<string, PosteCalcule & { flux?: number; variationContrepartie?: number }>();
+    const nonCalcules = new Set<string>();
+    const postesNonCalculables: Array<{ ref: string; raison: string }> = [];
+    // UNE OUVERTURE SAISIE EN OD AU PREMIER JOUR (paquet 1, A7, même règle que
+    // le tableau du SYSCOHADA, bloquant 2 du 2026-10-07) · sans exercice
+    // précédent ni report, une position de bilan passée par le journal
+    // d'opérations diverses au premier jour peut être la REPRISE d'un dossier
+    // (son bilan d'ouverture, SYCEBNL art. 16, 4) ; cadre conceptuel
+    // § 3.3.1.2.4) ou l'APPORT qui fait naître l'association, et rien ne les
+    // distingue. Lue comme flux, la reprise sortait en encaissement de la
+    // dotation (FM) et ZA valait zéro, sous la mention d'une ouverture
+    // présumée nulle. Ni l'un ni l'autre · ZA (l'ouverture) et chaque poste
+    // FA à FQ (tous lisent les mouvements de l'exercice, et leurs
+    // contreparties à l'ouverture) restent VIDES, le motif nomme les pièces.
+    const laisserVide = (ref: string, libelle: string) => {
+      parRef.set(ref, { ref, libelle, montant: 0, comptes: [] });
+      nonCalcules.add(ref);
+      postesNonCalculables.push({ ref, raison: motifOuvertureIncertaine! });
+    };
 
     // ZA · « Trésorerie nette au 1er janvier (Trésorerie actif N-1 -
     // Trésorerie passif N-1) », le libellé officiel dit lui-même la formule.
-    const tresorerieOuverture = this.tresorerieNette(lignesAnterieur);
-    parRef.set('ZA', {
-      ref: 'ZA',
-      libelle: 'Trésorerie nette au 1er janvier (Trésorerie actif N-1 – Trésorerie passif N-1)',
-      montant: tresorerieOuverture,
-      comptes: [],
-    });
+    const libelleZA = 'Trésorerie nette au 1er janvier (Trésorerie actif N-1 – Trésorerie passif N-1)';
+    const tresorerieOuverture = motifOuvertureIncertaine ? 0 : this.tresorerieNette(lignesAnterieur);
+    if (motifOuvertureIncertaine) {
+      laisserVide('ZA', libelleZA);
+    } else {
+      parRef.set('ZA', { ref: 'ZA', libelle: libelleZA, montant: tresorerieOuverture, comptes: [] });
+    }
 
     for (const poste of TOUS_LES_POSTES_FLUX) {
+      if (motifOuvertureIncertaine) {
+        laisserVide(poste.ref, poste.libelle);
+        continue;
+      }
       parRef.set(
         poste.ref,
         this.calculerPosteFlux(poste, lignesCourant, lignesAnterieur, virementsCourant, reevaluationsCourant, incorporationsCourant),
@@ -746,6 +776,9 @@ export class EtatsFinanciersService {
         montant: total.deRefs.reduce((s, ref) => s + (parRef.get(ref)?.montant ?? 0), 0),
         comptes: [],
       });
+      // Un total d'un poste laissé vide est vide lui aussi · l'additionner
+      // comme zéro rendrait un total plausible et faux.
+      if (total.deRefs.some((ref) => nonCalcules.has(ref))) nonCalcules.add(total.ref);
     }
 
     // ZG calculé DEUX FOIS, comme le texte l'exige (deux égalités de
@@ -763,8 +796,9 @@ export class EtatsFinanciersService {
       montant: tresorerieClotureParFlux,
       comptes: [],
     });
+    if (nonCalcules.has('ZA') || nonCalcules.has('ZF')) nonCalcules.add('ZG');
 
-    return { parRef, tresorerieOuverture, tresorerieClotureParFlux, tresorerieClotureParBilan, ecart };
+    return { parRef, tresorerieOuverture, tresorerieClotureParFlux, tresorerieClotureParBilan, ecart, nonCalcules, postesNonCalculables };
   }
 
   async tableauFluxTresorerie(tenantId: string, exerciceId: string) {
@@ -808,12 +842,22 @@ export class EtatsFinanciersService {
       n1Tenu ? Promise.resolve([]) : chargerOuverture(this.ecritureService, tenantId, exerciceId),
       exerciceN1Id && !n2Tenu ? chargerOuverture(this.ecritureService, tenantId, exerciceN1Id) : Promise.resolve([]),
     ]);
+    // PAQUET 1, A7 · une ouverture saisie en OD au premier jour, sans exercice
+    // précédent tenu ni report, n'est lue ni comme flux ni comme ouverture
+    // (même règle que le tableau du SYSCOHADA) · cherchée pour chaque colonne.
+    const [ouverturePasseeN, ouverturePasseeN1] = await Promise.all([
+      lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, ouvertureN),
+      exerciceN1Id
+        ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, n2Tenu ? exerciceN2Id : null, ouvertureN1)
+        : Promise.resolve(null),
+    ]);
     const resN = this.resoudreFluxPourExercice(
       lignesN,
       n1Tenu ? lignesN1 : ouvertureN,
       virementsN,
       reevaluationsN,
       incorporationsN,
+      ouverturePasseeN ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYCEBNL') : null,
     );
     // Colonne N-1 : seulement si un exercice N-1 existe · jamais un faux
     // zéro pour un dossier à son premier exercice (même discipline que
@@ -826,6 +870,7 @@ export class EtatsFinanciersService {
           virementsN1,
           reevaluationsN1,
           incorporationsN1,
+          ouverturePasseeN1 ? motifOuverturePasseeEnOd(ouverturePasseeN1, 'SYCEBNL') : null,
         )
       : null;
 
@@ -836,7 +881,9 @@ export class EtatsFinanciersService {
       const total = TOTAUX_FLUX.find((t) => t.ref === entree.ref);
       return {
         ...p,
-        montantN1: resN1?.parRef.get(entree.ref)?.montant,
+        // Un poste laissé vide en N-1 (paquet 1, A7) n'a pas de valeur ·
+        // jamais un zéro.
+        montantN1: resN1 && !resN1.nonCalcules.has(entree.ref) ? resN1.parRef.get(entree.ref)?.montant : undefined,
         estTotal: REFS_TOTAUX.has(entree.ref),
         repere: total?.repere,
       };
@@ -888,7 +935,9 @@ export class EtatsFinanciersService {
     // Les réserves, le report et le résultat ne le sont que si la dotation a
     // bougé : sans mouvement du 10, leur affectation ordinaire (131 au 121,
     // 131 au 111) ne touche aucun poste.
-    if (Math.abs(resN.ecart) >= 0.01) {
+    // Une ouverture en OD au premier jour (A7) explique l'écart par son motif ·
+    // ses comptes ne sont pas des suspects.
+    if (Math.abs(resN.ecart) >= 0.01 && !ouverturePasseeN) {
       const dotationMouvementee = lignesN.some(
         (l) => correspond(l.numero, ['10'], ['106', '1049']) && mouvemente(l),
       );
@@ -906,15 +955,22 @@ export class EtatsFinanciersService {
       comptesNonVentiles,
       // D'où viennent les positions d'ouverture (ZA comprise) quand
       // l'exercice précédent n'en tient pas · même mention que le tableau du
-      // SYSCOHADA. Une ouverture saisie en OD au premier jour, sans report, y
-      // est encore lue comme flux (point remonté de la passe V1).
+      // SYSCOHADA · le report (dossier repris), rien (présumée nulle, dit), ou
+      // une OD du premier jour (motif, postes vides, paquet 1, A7).
       mentionOuverture: n1Tenu
         ? null
-        : exerciceN1Id
+        : exerciceN1Id && !ouverturePasseeN
           ? mentionExercicePrecedentVide('SYCEBNL', ouvertureTenue(ouvertureN))
-          : ouvertureTenue(ouvertureN)
-            ? mentionComparatifSurOuverture('SYCEBNL')
-            : mentionOuverturePresumeeNulle('SYCEBNL'),
+          : ouverturePasseeN
+            ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYCEBNL')
+            : ouvertureTenue(ouvertureN)
+              ? mentionComparatifSurOuverture('SYCEBNL')
+              : mentionOuverturePresumeeNulle('SYCEBNL'),
+      // Les postes laissés VIDES, jamais des zéros (paquet 1, A7), et leur
+      // motif · colonne N, puis colonne N-1.
+      postesVides: [...resN.nonCalcules],
+      postesNonCalculables: resN.postesNonCalculables,
+      postesNonCalculablesN1: resN1?.postesNonCalculables ?? [],
       controle: {
         tresorerieOuverture: resN.tresorerieOuverture,
         variation: resN.parRef.get('ZF')!.montant,

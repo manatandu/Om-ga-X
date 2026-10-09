@@ -380,6 +380,53 @@ describe('exports individuels · charte ETAFI, état seul en valeurs', () => {
   });
 });
 
+/**
+ * PAQUET 1, A7 · un poste que le tableau des flux laisse VIDE (ouverture
+ * passée en OD au premier jour) reste une cellule vide dans le classeur, et
+ * la feuille ANOMALIES en dit le motif · son 0 servi n'est pas un montant.
+ */
+describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur', () => {
+  const MOTIF = "Le premier jour de l'exercice porte une position de bilan passée en opérations diverses (OD n° 1)";
+  const avecVides = (exportService: ExportService) => {
+    const etats = (exportService as unknown as { etatsFinanciersService: EtatsFinanciersService }).etatsFinanciersService;
+    const reel = etats.tableauFluxTresorerie.bind(etats);
+    jest.spyOn(etats, 'tableauFluxTresorerie').mockImplementation(async (t: string, e: string) => {
+      const tft = await reel(t, e);
+      return {
+        ...tft,
+        postesVides: ['ZA', 'FM', 'ZD', 'ZF', 'ZG'],
+        postesNonCalculables: [{ ref: 'FM', raison: MOTIF }],
+        postesNonCalculablesN1: [{ ref: 'FM', raison: MOTIF }],
+      };
+    });
+    return exportService;
+  };
+  const rangDe = (ws: ExcelJS.Worksheet, ref: string) => {
+    let rang = 0;
+    ws.eachRow((row, n) => {
+      if (n > 8 && row.getCell(1).value === ref) rang = n;
+    });
+    return rang;
+  };
+
+  it('la cellule N d’un poste vide reste vide, les autres portent leur montant', async () => {
+    const { buffer } = await avecVides(fabriquerExport()).tableauFluxTresorerieExcel('t1', 'e1');
+    const ws = (await ouvrir(buffer)).getWorksheet('TFT')!;
+    expect(ws.getCell(rangDe(ws, 'FM'), 5).value ?? null).toBeNull();
+    expect(ws.getCell(rangDe(ws, 'ZA'), 5).value ?? null).toBeNull();
+    expect(typeof ws.getCell(rangDe(ws, 'FA'), 5).value).toBe('number');
+  });
+
+  it('la feuille ANOMALIES dit le motif, colonne N et colonne N-1', async () => {
+    const { buffer } = await avecVides(fabriquerExport()).liasseCompleteExcel('t1', 'e1');
+    const an = (await ouvrir(buffer)).getWorksheet('ANOMALIES')!;
+    const lignes: string[][] = [];
+    an.eachRow((row) => lignes.push([1, 2, 3, 4].map((c) => String(row.getCell(c).value ?? ''))));
+    expect(lignes).toContainEqual(['INFO', 'FM', 'Tableau des flux de trésorerie', MOTIF]);
+    expect(lignes).toContainEqual(['INFO', 'FM', 'Tableau des flux · colonne N-1', MOTIF]);
+  });
+});
+
 describe('liasse complète · le classeur entier du modèle', () => {
   it('reproduit les feuilles du modèle, dans son ordre, et boucle', async () => {
     const exportService = fabriquerExport();

@@ -1774,6 +1774,71 @@ describe('Paquet 1, A4 · l’ouverture d’un premier exercice clôturé se lit
   });
 });
 
+/**
+ * PAQUET 1, A7 (reproduit sur vraie base le 2026-10-09) · le bilan d'ouverture
+ * d'un premier exercice passé en OD au premier jour, sans report · lu comme
+ * flux, la dotation sortait en encaissement (FM 10 000 000), ZA à zéro, sous
+ * la mention d'une ouverture présumée nulle. Rien ne le distingue d'un apport
+ * du premier jour (SYCEBNL art. 16, 4) ; cadre conceptuel § 3.3.1.2.4) · ni
+ * flux ni ouverture, postes vides et motif, comme au SYSCOHADA.
+ */
+describe('Paquet 1, A7 · TFT des associations · une ouverture passée en OD au premier jour', () => {
+  const lignes = [
+    ligneF('10110000', ClasseCompte.CLASSE_1, 0, 10_000_000),
+    ligneF('13100000', ClasseCompte.CLASSE_1, 0, 2_000_000),
+    ligneF('52110000', ClasseCompte.CLASSE_5, 12_500_000, 0),
+    ligneF('70110000', ClasseCompte.CLASSE_7, 0, 500_000),
+  ];
+  const odDuPremierJour = (service: EtatsFinanciersService) => {
+    const ecritures = (service as unknown as { ecritureService: { ouverturePasseeAuPremierJour: jest.Mock } }).ecritureService;
+    ecritures.ouverturePasseeAuPremierJour.mockResolvedValue({ nombre: 1, pieces: ['OD n° 1'] });
+    return ecritures;
+  };
+
+  it('ni flux ni ouverture · ZA et les postes FA à FQ vides, leurs totaux aussi, le motif nomme la pièce', async () => {
+    const service = serviceAvecExercices({ e1: lignes as never }, [{ id: 'e1', dateDebut: new Date('2026-01-01') }]);
+    const ecritures = odDuPremierJour(service);
+    const tft: any = await service.tableauFluxTresorerie('t1', 'e1');
+    expect(ecritures.ouverturePasseeAuPremierJour).toHaveBeenCalledWith('t1', 'e1');
+    const vides = new Set(tft.postesVides);
+    expect(['ZA', 'FA', 'FM', 'ZB', 'ZD', 'ZF', 'ZG'].every((r) => vides.has(r))).toBe(true);
+    expect(TOUS_LES_POSTES_FLUX.every((p) => vides.has(p.ref))).toBe(true);
+    expect(tft.postesNonCalculables.find((p: any) => p.ref === 'FM')?.raison).toContain('OD n° 1');
+    expect(tft.mentionOuverture).toContain('passez-le en à-nouveau');
+    expect(tft.mentionOuverture).toContain('SYCEBNL art. 16, 4)');
+    // L'apport n'est jamais servi comme un encaissement de la dotation.
+    expect(tft.lignes.find((l: any) => l.ref === 'FM')?.montant).toBe(0);
+    // L'écart s'explique par le motif · les 12 et 13 ne sont pas nommés en suspects.
+    expect(tft.comptesNonVentiles.map((c: any) => c.numero)).not.toContain('13100000');
+  });
+
+  it('la colonne N-1 suit la même règle · ses postes vides restent vides, jamais des zéros', async () => {
+    const service = serviceAvecExercices(
+      { eN1: lignes as never, eN: [ligneF('52110000', ClasseCompte.CLASSE_5, 0, 0, [12_500_000, 0])] as never },
+      DEUX_EXERCICES,
+    );
+    const ecritures = odDuPremierJour(service);
+    const tft: any = await service.tableauFluxTresorerie('t1', 'eN');
+    expect(ecritures.ouverturePasseeAuPremierJour).toHaveBeenCalledWith('t1', 'eN1');
+    expect(ecritures.ouverturePasseeAuPremierJour).not.toHaveBeenCalledWith('t1', 'eN');
+    expect(tft.lignes.find((l: any) => l.ref === 'FM')?.montantN1).toBeUndefined();
+    expect(tft.lignes.find((l: any) => l.ref === 'ZA')?.montantN1).toBeUndefined();
+    expect(tft.postesNonCalculablesN1.find((p: any) => p.ref === 'ZA')?.raison).toContain('OD n° 1');
+    expect(tft.postesVides).toEqual([]);
+  });
+
+  it('un report tenu · l’OD du premier jour n’est pas cherchée, rien n’est vide', async () => {
+    const service = serviceAvecExercices(
+      { e1: [ligneF('10110000', ClasseCompte.CLASSE_1, 0, 0, [0, 2000]), ligneF('52110000', ClasseCompte.CLASSE_5, 0, 0, [2000, 0])] as never },
+      [{ id: 'e1', dateDebut: new Date('2026-01-01') }],
+    );
+    const ecritures = odDuPremierJour(service);
+    const tft: any = await service.tableauFluxTresorerie('t1', 'e1');
+    expect(ecritures.ouverturePasseeAuPremierJour).not.toHaveBeenCalled();
+    expect({ vides: tft.postesVides, za: tft.lignes.find((l: any) => l.ref === 'ZA')?.montant }).toEqual({ vides: [], za: 2000 });
+  });
+});
+
 describe('TFT des associations · la classe 9 est sans trésorerie (constat N5 des cas chiffrés de la clôture)', () => {
   it('le bénévolat (904 / 914) n’est jamais un compte « non ventilé »', async () => {
     const service = serviceAvecExercices({

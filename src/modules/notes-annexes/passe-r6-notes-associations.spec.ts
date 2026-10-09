@@ -175,3 +175,49 @@ describe('C12 · la CAFG de la note 33 compte les dotations et reprises H.A.O.',
     expect((cafg.valeurN as number) / (sansHao.valeurN as number)).toBeCloseTo(1.2, 9);
   });
 });
+
+/**
+ * PAQUET 1, A7 · un poste du tableau des flux laissé VIDE (ouverture passée en
+ * OD au premier jour) est servi à 0 avec `postesVides`, et sans `montantN1` en
+ * colonne N-1 · l'indicateur de la note 33 qui le lit n'a pas de valeur, il
+ * ne reprend jamais ce 0.
+ */
+describe('Paquet 1, A7 · la note 33 ne reprend pas un poste vide du tableau des flux', () => {
+  const vide = { valeurComptable: 0, produits: 0, dotationsHao: 0, reprisesHao: 0 };
+  const etats = (lignes: Array<{ ref: string; montant: number; montantN1?: number }>, postesVides?: string[]) => ({
+    bilan: { actif: [], passif: [] },
+    compteDeResultat: {
+      produits: [], charges: [], totalCharges: 0, resultatActivitesOrdinaires: 0, resultatHao: 0, resultatNet: 0,
+      resultatActivitesOrdinairesN1: 0, resultatHaoN1: 0, resultatNetN1: 0, totalChargesN1: 0,
+    },
+    fluxTresorerie: { lignes, postesVides },
+  });
+  const valeur = (i: ReturnType<typeof indicateursNote33>, cle: string) => i.find((x) => x.cle === cle)!;
+
+  it('colonne N · les indicateurs des flux valent null, jamais zéro', () => {
+    const lignes = ['ZB', 'ZC', 'ZD', 'ZE', 'ZF'].map((ref) => ({ ref, montant: 0 }));
+    const i = indicateursNote33(etats(lignes, ['ZB', 'ZC', 'ZD', 'ZE', 'ZF']), vide, vide, false);
+    for (const cle of [
+      'flux-de-tresorerie-des-activites-operationnelles',
+      'flux-de-tresorerie-des-activites-d-investissemen',
+      'flux-de-tresorerie-des-activites-de-financement',
+      'variation-de-la-tresorerie-nette-de-la-periode',
+    ]) {
+      expect(valeur(i, cle).valeurN).toBeNull();
+    }
+    // Sans poste vide, le même zéro est une valeur.
+    expect(valeur(indicateursNote33(etats(lignes), vide, vide, false), 'flux-de-tresorerie-des-activites-operationnelles').valeurN).toBe(0);
+  });
+
+  it('colonne N-1 · un poste sans montantN1 n’a pas de valeur', () => {
+    const lignes = [
+      { ref: 'ZB', montant: 1000, montantN1: undefined },
+      { ref: 'ZD', montant: 0, montantN1: 4000 },
+      { ref: 'ZE', montant: 0, montantN1: undefined },
+    ];
+    const i = indicateursNote33(etats(lignes), vide, vide, true);
+    expect(valeur(i, 'flux-de-tresorerie-des-activites-operationnelles').valeurN1).toBeNull();
+    expect(valeur(i, 'flux-de-tresorerie-des-activites-de-financement').valeurN1).toBeNull();
+    expect(valeur(i, 'flux-de-tresorerie-des-activites-operationnelles').valeurN).not.toBeNull();
+  });
+});

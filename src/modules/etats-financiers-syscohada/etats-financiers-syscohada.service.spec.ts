@@ -288,6 +288,41 @@ describe('EtatsFinanciersSyscohadaService', () => {
         expect(balance.mock.calls.filter((c) => c[4]?.avantLaCloture).map((c) => c[1])).toEqual(['e1']);
         expect((tft.lignes.find((l: any) => l.ref === 'ZA') as any)?.montantN1).toBe(12_000_000);
       });
+
+      // Reproduit sur vraie base (paquet 1, A7, à travers la clôture) · un
+      // premier exercice ouvert par une OD au premier jour, clôturé · le
+      // virement de son 13 en colonne report le faisait passer pour un
+      // exercice ouvert par un report, et la colonne N-1 de N+1 lisait l'OD
+      // comme des flux (FK 10 000 000). Lue avant la clôture, son ouverture
+      // est vide · l'OD est cherchée, la colonne reste vide, motif dit.
+      it('un premier exercice ouvert en OD et clôturé reste, en N-1, ni flux ni ouverture', async () => {
+        const E2 = { id: 'e2', dateDebut: new Date('2027-01-01T00:00:00Z'), dateFin: new Date('2027-12-31T00:00:00Z') } as never;
+        const enOd = [
+          ligne('52110000', C5, 12_500_000, 0),
+          ligne('10130000', C1, 0, 10_000_000),
+          ligne('13100000', C1, 0, 2_000_000, { debit: 2_000_000 }),
+          ligne('12100000', C1, 0, 0, { credit: 2_000_000 }),
+          ligne('70110000', C7, 0, 500_000),
+        ];
+        const enOdAvantCloture = [
+          ligne('52110000', C5, 12_500_000, 0),
+          ligne('10130000', C1, 0, 10_000_000),
+          ligne('13100000', C1, 0, 2_000_000),
+          ligne('70110000', C7, 0, 500_000),
+        ];
+        const s = serviceAvecExercices(
+          { e1: enOd, e2: [ligne('52110000', C5, 0, 0, { debit: 12_500_000 }), ligne('10130000', C1, 0, 0, { credit: 10_000_000 }), ligne('12100000', C1, 0, 0, { credit: 2_500_000 })] },
+          [E1, E2],
+          {},
+          { e1: enOdAvantCloture },
+        );
+        const ecritures = (s as unknown as { ecritureService: { ouverturePasseeAuPremierJour: jest.Mock } }).ecritureService;
+        ecritures.ouverturePasseeAuPremierJour.mockResolvedValue({ nombre: 1, pieces: ['OD n° 1'] });
+        const tft = await s.tableauFluxTresorerie('t1', 'e2');
+        expect(ecritures.ouverturePasseeAuPremierJour).toHaveBeenCalledWith('t1', 'e1');
+        expect((tft.lignes.find((l: any) => l.ref === 'FK') as any)?.montantN1).toBeUndefined();
+        expect(tft.postesNonCalculablesN1.find((p) => p.ref === 'FK')?.raison).toContain('OD n° 1');
+      });
     });
 
     it('société qui naît · aucune colonne N-1, l’ouverture présumée nulle DITE', async () => {
