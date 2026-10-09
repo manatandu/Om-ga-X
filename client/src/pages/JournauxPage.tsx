@@ -60,8 +60,14 @@ export function JournauxPage() {
     propose: CompteDuJournalPropose | null;
     erreur: string | null;
   } | null>(null);
+  // Relancer la lecture de la proposition après un échec · sans quoi seul un
+  // aller-retour sur un autre compte du plan la redemandait.
+  const [relire, setRelire] = useState(0);
   const idNumero = useId();
   const idSous = useId();
+  const idMessageNumero = useId();
+  const idCompteExistant = useId();
+  const idModeCompte = useId();
   // Continue par journal à défaut, comme au serveur (audit final F59) · en
   // manuelle aucune pièce ne reçoit de numéro, la saisie n'en portant aucun.
   const [numerotation, setNumerotation] = useState<NumerotationPiece>('CONTINUE_JOURNAL');
@@ -109,7 +115,11 @@ export function JournauxPage() {
   useEffect(() => {
     if (!nouveauOuvert || type !== 'TRESORERIE' || modeCompte !== 'OUVRIR' || !sousId) return;
     let actif = true;
+    // Le numéro d'un autre compte du plan, ou une proposition périmée, ne part
+    // pas pendant la relecture · un champ vide laisse le serveur prendre le
+    // premier libre au moment même (`numeroAEnvoyer`).
     setLectureNumero(null);
+    setNumeroCompte('');
     api.get<CompteDuJournalPropose>(`/journaux/compte-propose?sousId=${encodeURIComponent(sousId)}`).then(
       (p) => {
         if (!actif) return;
@@ -125,8 +135,25 @@ export function JournauxPage() {
     return () => {
       actif = false;
     };
-  }, [nouveauOuvert, type, modeCompte, sousId]);
+  }, [nouveauOuvert, type, modeCompte, sousId, relire]);
   const propositionDuChoix = lectureNumero && lectureNumero.sousId === sousId ? lectureNumero : null;
+  const lectureEnCours = type === 'TRESORERIE' && modeCompte === 'OUVRIR' && !!sousId && !propositionDuChoix;
+
+  // Fermer remet le formulaire à neuf · un refus ou un numéro d'une ouverture
+  // précédente ne reparaît pas à la suivante. Le compte du plan reste choisi,
+  // sa proposition étant relue à l'ouverture.
+  const fermer = () => {
+    setCode('');
+    setIntitule('');
+    setType('GENERAL');
+    setCompteTresorerieId('');
+    setModeCompte('OUVRIR');
+    setNumeroCompte('');
+    setLectureNumero(null);
+    setNumerotation('CONTINUE_JOURNAL');
+    setErreurForm(null);
+    setNouveauOuvert(false);
+  };
 
   if (!estAdmin) {
     return (
@@ -157,15 +184,7 @@ export function JournauxPage() {
             })
           : {}),
       });
-      setCode('');
-      setIntitule('');
-      setType('GENERAL');
-      setCompteTresorerieId('');
-      setModeCompte('OUVRIR');
-      setNumeroCompte('');
-      setLectureNumero(null);
-      setNumerotation('CONTINUE_JOURNAL');
-      setNouveauOuvert(false);
+      fermer();
       await charger();
     } catch (err) {
       setErreurForm(err instanceof ApiError ? err.message : 'Impossible de créer ce journal');
@@ -297,7 +316,7 @@ export function JournauxPage() {
                 className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]"
               >
                 <span>Nouveau code journal</span>
-                <button type="button" disabled={envoi} onClick={() => setNouveauOuvert(false)} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c] disabled:opacity-50">
+                <button type="button" disabled={envoi} onClick={fermer} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c] disabled:opacity-50">
                   ✕
                 </button>
               </div>
@@ -352,8 +371,8 @@ export function JournauxPage() {
                   )}
                   {type === 'TRESORERIE' && (
                     <>
-                      <span className="text-[11.5px] text-right">Compte du journal :</span>
-                      <div role="radiogroup" aria-label="Compte du journal" className="flex gap-4 text-[11.5px]">
+                      <span id={idModeCompte} className="text-[11.5px] text-right">Compte du journal :</span>
+                      <div role="radiogroup" aria-labelledby={idModeCompte} className="flex gap-4 text-[11.5px]">
                         <label className="flex items-center gap-1.5">
                           <input
                             type="radio"
@@ -410,12 +429,14 @@ export function JournauxPage() {
                       <div className="flex items-center gap-2">
                         <input
                           id={idNumero}
-                          required
                           inputMode="numeric"
                           value={numeroCompte}
                           onChange={(e) => setNumeroCompte(e.target.value)}
                           disabled={!sousId || !propositionDuChoix}
-                          className="border border-border-dark px-2.5 py-1.5 text-[12px] w-[140px]"
+                          placeholder={lectureEnCours ? 'Lecture…' : undefined}
+                          aria-busy={lectureEnCours}
+                          aria-describedby={idMessageNumero}
+                          className="border border-border-dark px-2.5 py-1.5 text-[12px] w-[140px] disabled:opacity-50"
                         />
                         <Aide
                           titre="Numéro du compte du journal"
@@ -423,20 +444,28 @@ export function JournauxPage() {
                           source="Le numéro d'un compte divisionnaire commence toujours par celui du compte dont il est une subdivision (AUDCIF, Titre VII ; SYCEBNL, Partie 2 ch. 2)."
                         />
                       </div>
-                      {propositionDuChoix && (propositionDuChoix.erreur || propositionDuChoix.propose?.motif) && (
-                        <>
-                          <span />
-                          <span className="text-[11px] text-danger">
-                            {propositionDuChoix.erreur ?? propositionDuChoix.propose?.motif}
-                          </span>
-                        </>
-                      )}
+                      <span />
+                      <span id={idMessageNumero} role="status" className="text-[11px] text-danger">
+                        {propositionDuChoix && (propositionDuChoix.erreur ?? propositionDuChoix.propose?.motif)}
+                        {propositionDuChoix?.erreur && (
+                          <button
+                            type="button"
+                            onClick={() => setRelire((n) => n + 1)}
+                            className="ml-2 underline text-text"
+                          >
+                            Relire
+                          </button>
+                        )}
+                      </span>
                     </>
                   )}
                   {type === 'TRESORERIE' && modeCompte === 'EXISTANT' && (
                     <>
-                      <label className="text-[11.5px] text-right">Compte de trésorerie :</label>
+                      <label htmlFor={idCompteExistant} className="text-[11.5px] text-right">
+                        Compte de trésorerie :
+                      </label>
                       <select
+                        id={idCompteExistant}
                         required
                         value={compteTresorerieId}
                         onChange={(e) => setCompteTresorerieId(e.target.value)}
@@ -471,12 +500,12 @@ export function JournauxPage() {
                   <button
                     type="button"
                     disabled={envoi}
-                    onClick={() => setNouveauOuvert(false)}
+                    onClick={fermer}
                     className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px] disabled:opacity-50"
                   >
                     Annuler
                   </button>
-                  <button type="submit" disabled={envoi} className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold disabled:opacity-50">
+                  <button type="submit" disabled={envoi || lectureEnCours} className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold disabled:opacity-50">
                     {envoi ? 'Création…' : 'Créer le journal'}
                   </button>
                 </div>

@@ -805,4 +805,9 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   de compte propre (aujourd'hui, choisir un compte existant à la
   modification) ; (2) une réimputation ou une fusion VERS un compte du plan
   subdivisé est refusée par la même règle, l'issue étant la mise en sommeil
-  des sous-comptes.
+  des sous-comptes ; (3) « Sous le compte » offre tous les comptes
+  d'imputation semés de la classe 5, comme le compte existant d'un journal
+  de trésorerie l'admet déjà (`verifierCompteTresorerie`) · titres de
+  placement, valeurs à encaisser, virements internes et dépréciations y
+  figurent. Les borner aux disponibilités exige de lire la classe 5 des DEUX
+  plans, dont les numéros divergent (relecture écran du 2026-10-09).
