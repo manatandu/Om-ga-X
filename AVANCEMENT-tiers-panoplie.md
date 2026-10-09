@@ -15,8 +15,13 @@ refus nommé sur le collectif, salarié « pas pour l'instant ».
 - Scénario sur vraie base · `e2e/tests/tiers-panoplie.e2e.ts` (clôture N, N+1).
 - Test navigateur de « Rester connecté » · `e2e/tests/rester-connecte.e2e.ts`.
 
+- Premier tour de relecture corrigé (f24f774) · report d'un montant porté au
+  collectif, 416 tenu par une créance douteuse, modification, réimputation et
+  fusion, 416 propre au client, verrou de numérotation, tranche par borne,
+  principal posé sur le collectif.
+
 ## Reste
-- Relectures (échecs silencieux, TypeScript), bloc § 3, e2e complet, main,
+- Second tour de relecture (BLOQUANT seul), bloc § 3, e2e complet, main,
   déploiement vérifié.
 
 ## Vérification

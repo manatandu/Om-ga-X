@@ -3276,7 +3276,16 @@ d'office (par tiers, ou tout le dossier par tranches de cent) ; le salarié
 n'entre pas encore. UNE LIGNE SAISIE NE VA JAMAIS AU COLLECTIF qui porte des
 comptes de tiers (`verifierComptesCollectifs`, au CONTRÔLEUR seul, comme le
 sommeil · refus qui nomme les comptes ; modules et imports non touchés ; un
-collectif sans individuel reste ouvert). UN JOURNAL DE BANQUE OU DE CAISSE A
+collectif sans individuel reste ouvert ; à la modification, seul un compte que
+la pièce ne portait pas est jugé ; réimputation et fusion jugent le compte
+d'arrivée). DEUX ISSUES, jamais un enfermement · un montant DÉJÀ porté au
+collectif (à-nouveau, import, saisie d'avant) se reporte par une pièce qui ne
+porte que ce collectif et ses comptes de tiers ; le 416 qu'une créance
+douteuse non annulée tient reste ouvert (correction M9). Le reclassement en
+créance douteuse propose le 416 PROPRE au client (`compte416DuTiers`), servi
+à l'écran. Numéros choisis sous verrou du dossier, conflit d'unicité nommé ;
+un principal posé sur le collectif commun reçoit son compte, le collectif
+reste rattaché sans la marque. UN JOURNAL DE BANQUE OU DE CAISSE A
 SON PROPRE COMPTE · celui d'un autre journal est refusé au choix, jamais
 reproché à un dossier qui le partage déjà.
 
