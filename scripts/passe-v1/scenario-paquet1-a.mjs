@@ -1055,15 +1055,19 @@ async function pointB2(R, variante = 'CONCORDANTE') {
   });
   if (!ctx.ok) return;
   await etape(R, `${P} · aperçu de l'ouverture suivante, puis clôture de 2026`, async () => {
+    // Second tour, BLOQUANT 1 · le négatif est inscrit le 15/02, hors du
+    // premier jour · la position nulle ne conclut plus seule, le cabinet
+    // déclare. Ici l'ouverture exacte n'a pas été ressaisie · « Rectifier »,
+    // le report entier passe.
     const apercu = await c.lire('Aperçu de l’ouverture 2027', `/exercices/${n}/ouverture-suivante`);
-    R.egal(`${P} · aperçu · aucune déclaration requise (l'OD et son négatif se soldent)`, false, apercu?.declarationRequise ?? null);
+    R.egal(`${P} · aperçu · déclaration requise (négatif inscrit le 15/02, hors du premier jour)`, true, apercu?.declarationRequise ?? null);
+    R.egal(`${P} · aperçu · le négatif tardif est nommé avec sa date`, '2027-02-15', apercu?.negatifsTardifs?.[0]?.date ?? null);
     const r = await c.req('POST', `/exercices/${n}/cloturer`, {});
-    R.egal(`${P} · clôture de 2026 sans déclaration · passe`, true, r.statut < 400);
-    if (r.statut >= 400) {
-      R.note(`${P} · clôture refusée (${r.statut}) · ${JSON.stringify(r.corps).slice(0, 400)}`);
-      const rect = await c.geste('Clôture de 2026 en déclarant « Rectifier »', 'POST', `/exercices/${n}/cloturer`, { ouvertureImportee: 'RECTIFIER' });
-      R.note(`${P} · clôture avec RECTIFIER · ${rect ? 'passée' : 'refusée'}`);
-    }
+    const msg = String(r.corps?.message ?? '');
+    R.egal(`${P} · clôture sans déclaration · refusée, le négatif et sa date nommés, les deux issues dites`, true,
+      r.statut === 400 && /15\/02\/2027/.test(msg) && /Conserver/.test(msg) && /Rectifier/.test(msg));
+    const rect = await c.geste('Clôture de 2026 en déclarant « Rectifier » (ouverture non ressaisie)', 'POST', `/exercices/${n}/cloturer`, { ouvertureImportee: 'RECTIFIER' });
+    R.egal(`${P} · clôture avec RECTIFIER · passe`, true, Boolean(rect));
     await rechargerExercices(c);
   });
   await etape(R, `${P} · 2027 porte le bilan de clôture de 2026, une fois`, async () => {
@@ -1207,7 +1211,7 @@ async function pointRelectureM2(R, referentiel, variante) {
 // ==============================================================================
 //
 // La requête est LUE dans la fiche de la ligne (bloc `requete-m5` de
-// AVANCEMENT-paquet1-a.md) · le banc éprouve celle qui sera remise, jamais une
+// docs/requetes-production-paquet-1.md) · le banc éprouve celle qui sera remise, jamais une
 // copie. Un dossier par voie (contre-passation du MODULE, ou faite À LA MAIN et
 // déclarée), deux temps sur le même dossier.
 //  (1) NE DÉCLENCHE PAS · contre-passation au 01/01/2027 ET bilan d'ouverture
@@ -1230,7 +1234,7 @@ async function pointRelectureM2(R, referentiel, variante) {
 function requeteM5(marque = 'requete-m5') {
   const copie = process.env.PAQUET1_A_COPIE;
   if (!copie) throw new Error('PAQUET1_A_COPIE absente · la fiche qui porte la requête est introuvable');
-  const fiche = readFileSync(`${copie}/AVANCEMENT-paquet1-a.md`, 'utf8');
+  const fiche = readFileSync(`${copie}/docs/requetes-production-paquet-1.md`, 'utf8');
   const debut = fiche.indexOf(`<!-- ${marque} `);
   if (debut < 0) throw new Error(`bloc ${marque} absent de la fiche`);
   const ouverture = fiche.indexOf('```sql\n', debut);
@@ -1239,10 +1243,30 @@ function requeteM5(marque = 'requete-m5') {
   return fiche.slice(ouverture + 7, fermeture);
 }
 
+/**
+ * Un bloc de plusieurs instructions (BEGIN TRANSACTION READ ONLY · requête ·
+ * ROLLBACK), passé par l'entrée standard · `-c` ne rendrait que la sortie de
+ * la dernière instruction.
+ */
+function psqlScript(sql) {
+  const url = process.env.PASSE_DATABASE_URL;
+  if (!url) throw new Error('PASSE_DATABASE_URL absente · la requête ne peut pas se lire');
+  try {
+    return execFileSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-qtA'], { encoding: 'utf8', input: sql }).trim();
+  } catch (e) {
+    throw new Error(`psql a échoué (code ${e.status ?? '?'}) · ${String(e.stderr ?? '').slice(0, 300)}`);
+  }
+}
+
+/** Les lignes rendues par un bloc de la fiche, séparées par « | ». */
+function lignesDuBloc(marque) {
+  const sortie = psqlScript(requeteM5(marque));
+  return sortie ? sortie.split('\n').filter(Boolean).map((l) => l.split('|')) : [];
+}
+
 /** Les lignes rendues par la requête m5 · [dossierId, dossier, exercice, pièce, voie, réévaluation, contre-passation, lignes, comptes]. */
 function lignesM5() {
-  const sortie = psql(requeteM5());
-  return sortie ? sortie.split('\n').filter(Boolean).map((l) => l.split('|')) : [];
+  return lignesDuBloc('requete-m5');
 }
 
 async function pointRelectureM5(R, voie) {
@@ -1357,22 +1381,44 @@ async function pointRelectureM5(R, voie) {
     R.note(`${P} · rendu · ${ligne ? `${ligne[1]} · ${ligne[2]} · pièce ${ligne[3]} · ${ligne[8]}` : 'rien'}`);
     const montants = (ligne?.[8] ?? '').split(', ').map((x) => x.split(' ')[1]).sort();
     R.egal(`${P} · montants rendus · 50 000 et 100 000, deux fois chacun`, '100000.00,100000.00,50000.00,50000.00', montants.join(','));
+    // Second tour · la déclaration RETIRÉE après la clôture (la trace garde
+    // l'écriture) · la requête la rend encore, voie dite.
+    if (voie !== 'MODULE') {
+      const retrait = await c.geste('Retrait de la déclaration de contre-passation', 'DELETE', `/devises/reevaluations/${ctx.reeval.reevaluationId}/contre-passation-manuelle`, {
+        motif: 'Déclaration retirée après la clôture (banc paquet 1, m5, second tour)',
+      });
+      R.egal(`${P} · la déclaration est retirée`, true, Boolean(retrait));
+      const apres = lignesM5().filter((l) => l[0] === ctx.dossierId);
+      R.egal(`${P} · déclaration retirée · la requête rend encore ce dossier, une ligne`, 1, apres.length);
+      R.egal(`${P} · déclaration retirée · voie dite`, 'DECLAREE (retirée)', apres[0]?.[4] ?? null);
+      R.egal(`${P} · déclaration retirée · la contre-passation nommée, quatre lignes`, `${ctx.contrePassation}|4`, `${apres[0]?.[6] ?? ''}|${apres[0]?.[7] ?? ''}`);
+    }
   });
 
   // (3) LE JUMEAU « Conserver » · main ne passait alors aucun report, et le
   // motif s'écrivait sur 2026. Reconstitué par le seul motif (la requête ne
   // lit que lui et la contre-passation de la réévaluation de 2026 en 2027).
-  await etape(R, `${P} · (3) jumeau « Conserver » · la requête rend l'exercice dont la clôture a conservé la contre-passation`, async () => {
-    const conserves = () => {
-      const s = psql(requeteM5('requete-m5-conserver'));
-      return (s ? s.split('\n').filter(Boolean).map((l) => l.split('|')) : []).filter((l) => l[0] === ctx.dossierId);
-    };
+  // Second tour · la contre-passation doit être SEULE au premier jour (sinon
+  // la conservation a pu viser une autre ouverture), et datée ou valorisée au
+  // premier jour.
+  await etape(R, `${P} · (3) jumeau « Conserver » · la requête rend l'exercice dont la clôture a conservé la seule contre-passation`, async () => {
+    const conserves = () => lignesDuBloc('requete-m5-conserver').filter((l) => l[0] === ctx.dossierId);
     R.egal(`${P} · jumeau · rien avant (2026 clôturé par « Rectifier », aucun motif de conservation)`, 0, conserves().length);
     psql(`UPDATE exercices SET "motifOuvertureSuivanteConservee" = 'Ouverture conservée (sortie de main reconstituée, banc m5)' WHERE id = '${n}'`);
+    R.egal(`${P} · jumeau · import et report au premier jour · la conservation a pu les viser, rien n'est rendu (aucun faux positif)`, 0, conserves().length);
+    // Sortie de main reconstituée « contre-passation seule » · les autres
+    // écritures d'ouverture du premier jour (import, report) redatées au 02/01.
+    const autres = psql(
+      `UPDATE ecritures SET date = '2027-01-02' WHERE "exerciceId" = '${ctx.n1}' AND date = '2027-01-01' ` +
+        `AND id <> '${ctx.contrePassation}' AND NOT "estANouveauProvisoire" RETURNING id`,
+    );
+    R.egal(`${P} · jumeau · import et report redatés`, true, autres.split('\n').filter(Boolean).length >= 2);
     const rendus = conserves();
-    R.egal(`${P} · jumeau · la requête rend 2026, une ligne`, 1, rendus.length);
-    R.egal(`${P} · jumeau · voie nommée`, voie === 'MODULE' ? 'MODULE' : 'DECLAREE', rendus[0]?.[4] ?? null);
+    R.egal(`${P} · jumeau · contre-passation seule au premier jour · la requête rend 2026, une ligne`, 1, rendus.length);
+    R.egal(`${P} · jumeau · voie nommée`, voie === 'MODULE' ? 'MODULE' : 'DECLAREE (retirée)', rendus[0]?.[4] ?? null);
     R.egal(`${P} · jumeau · la contre-passation nommée`, ctx.contrePassation, rendus[0]?.[5] ?? null);
+    psql(`UPDATE ecritures SET date = '2027-01-03' WHERE id = '${ctx.contrePassation}'`);
+    R.egal(`${P} · jumeau · contre-passation hors du premier jour · rien n'est rendu`, 0, conserves().length);
   });
 }
 
