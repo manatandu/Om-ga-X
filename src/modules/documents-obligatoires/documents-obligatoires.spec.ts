@@ -368,6 +368,41 @@ describe('Rapport d’activité · établissement', () => {
     expect(r.tresorerie).toMatchObject({ boucle: false });
   });
 
+  /**
+   * PAQUET 1, RELECTURE M1 (reproduit sur vraie base le 2026-10-09) · un
+   * tableau dont l'ouverture et la variation sont laissées vides n'a pas pu
+   * se contrôler · le rapport figeait « ouverture 0 · variation 0 · NON
+   * bouclé », l'état non fidèle qu'il croyait dénoncer. Il fige null, le
+   * contrôle non effectué, et le motif avec la raison des postes vides.
+   */
+  it('fige un contrôle NON EFFECTUÉ comme tel · ouverture et variation null, motif et raison des postes vides', async () => {
+    const { rapport } = services(JeuEtatsFinanciersSycebnl.ASSOCIATIONS_ORDRES_PROFESSIONNELS, undefined, {
+      postesVides: ['ZA', 'FM', 'ZF', 'ZG'],
+      postesNonCalculables: [
+        { ref: 'ZA', raison: 'Ouverture passée en OD (OD n° 1).' },
+        { ref: 'FM', raison: 'Ouverture passée en OD (OD n° 1).' },
+      ],
+      controle: {
+        tresorerieOuverture: null,
+        variation: null,
+        tresorerieClotureParFlux: null,
+        tresorerieClotureParBilan: 12_500_000,
+        ecart: null,
+        coherent: null,
+        motifNonControlable: 'Contrôle non effectué · ZA et ZF laissées vides.',
+      },
+    });
+    const r = await rapport.etablir('t1', 'u1', RAPPORT_COMPLET);
+    expect(r.tresorerie).toEqual({
+      tableau: 'TFT_ASSOCIATIONS',
+      ouverture: null,
+      variation: null,
+      cloture: 12_500_000,
+      boucle: null,
+      motifNonControlable: 'Contrôle non effectué · ZA et ZF laissées vides. Ouverture passée en OD (OD n° 1).',
+    });
+  });
+
   it('versionne au lieu d’écraser', async () => {
     const { rapport } = services();
     await rapport.etablir('t1', 'u1', RAPPORT_COMPLET);

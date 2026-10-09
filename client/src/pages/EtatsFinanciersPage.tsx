@@ -34,6 +34,7 @@ import type {
 import { parametrePaiementsEnInstance } from '../lib/paiements-en-instance';
 import { montant } from '../lib/montants';
 import { montantDuPosteDeFlux, postesParMotif } from '../lib/postes-de-flux-vides';
+import { STYLE_CONTROLE_FLUX, issueDuControleDesFlux, motifDuControleNonEffectue } from '../lib/controle-flux';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
 import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
@@ -652,21 +653,26 @@ function EtatsSystemeNormalPage() {
                 )}
               </div>
 
+              {/* Trois issues (relecture M1) · ZA ou ZF laissée vide, le
+                  contrôle n'est pas effectué, jamais un écart chiffré sur des
+                  zéros (`issueDuControleDesFlux`). */}
               <div
                 className={`flex flex-col gap-1 mt-3 px-3.5 py-2.5 border ${
-                  tft.controle.coherent ? 'border-positive/30 bg-positive-soft' : 'border-danger/30 bg-danger-soft'
+                  STYLE_CONTROLE_FLUX[issueDuControleDesFlux(tft.controle.coherent)].cadre
                 }`}
               >
                 <div className="flex items-start gap-2">
                   <IconCheck
                     width={14}
                     height={14}
-                    className={`mt-0.5 shrink-0 ${tft.controle.coherent ? 'text-positive' : 'text-danger'}`}
+                    className={`mt-0.5 shrink-0 ${STYLE_CONTROLE_FLUX[issueDuControleDesFlux(tft.controle.coherent)].icone}`}
                   />
                   <span className="font-mono text-[11.5px] font-medium">
-                    {tft.controle.coherent
-                      ? "L'ÉTAT BOUCLE · trésorerie de clôture identique par cumul des flux et par lecture du bilan"
-                      : `ÉCART DE ${montant(tft.controle.ecart)} · la ventilation FA-FQ ne couvre pas tout le mouvement de trésorerie`}
+                    {issueDuControleDesFlux(tft.controle.coherent) === 'NON_EFFECTUE'
+                      ? motifDuControleNonEffectue(tft.controle.motifNonControlable)
+                      : tft.controle.coherent
+                        ? "L'ÉTAT BOUCLE · trésorerie de clôture identique par cumul des flux et par lecture du bilan"
+                        : `ÉCART DE ${montant(tft.controle.ecart)} · la ventilation FA-FQ ne couvre pas tout le mouvement de trésorerie`}
                   </span>
                 </div>
                 <div className="pl-[22px] font-mono text-[11px] text-text-dim">

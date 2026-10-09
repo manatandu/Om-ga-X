@@ -5,6 +5,7 @@ import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements
 import { ExerciceService } from '../exercice/exercice.service';
 import {
   CompteDuPoste,
+  ControleTableauDesFlux,
   LigneBalancePourEtat,
   MOTIF_EXERCICE_INTROUVABLE,
   MOTIF_RESULTAT_N1_NON_TENU,
@@ -13,6 +14,7 @@ import {
   chargerLignes,
   chargerOuverture,
   comparatifDuBilan,
+  controleDuTableauDesFlux,
   correspond,
   exerciceCloture,
   exercicePrecedentCloture,
@@ -389,14 +391,8 @@ export interface TableauFluxTresorerieSyscohada {
   mentionOuverture: string | null;
   /** Ceux de la colonne N-1, laissés vides pour la même raison (audit final F14). */
   postesNonCalculablesN1: PosteNonCalculable[];
-  controle: {
-    tresorerieOuverture: number;
-    variation: number;
-    tresorerieClotureParFlux: number;
-    tresorerieClotureParBilan: number;
-    ecart: number;
-    coherent: boolean;
-  };
+  /** Contrôle non effectué (`coherent: null`) quand ZA ou ZG est laissée vide (paquet 1, relecture M1). */
+  controle: ControleTableauDesFlux;
 }
 
 // ---------------------------------------------------------------------------
@@ -1661,12 +1657,20 @@ export class EtatsFinanciersSyscohadaService {
     // indépendant. Un écart n'est PAS corrigé : il chiffre exactement ce que la
     // ventilation FA à FQ ne couvre pas, et `comptesNonVentiles` en nomme la
     // cause avec son montant.
-    const tresorerieClotureParFlux = resN.parRef.get('ZH')!.montant;
     const tresorerieClotureParBilan = CONTROLE_ZH_PAR_LE_BILAN.reduce(
       (s, terme) => s + this.evaluerTerme(terme, resN.ctx).reduce((t, c) => t + c.montant, 0),
       0,
     );
-    const ecart = tresorerieClotureParFlux - tresorerieClotureParBilan;
+    // ZA ou ZG laissée vide (ouverture passée en OD au premier jour) ·
+    // contrôle non effectué, jamais un écart chiffré sur des zéros (paquet 1,
+    // relecture M1, `controleDuTableauDesFlux`).
+    const controle = controleDuTableauDesFlux({
+      ouverture: { ref: 'ZA', montant: resN.parRef.get('ZA')!.montant },
+      variation: { ref: 'ZG', montant: resN.parRef.get('ZG')!.montant },
+      clotureParFlux: { ref: 'ZH', montant: resN.parRef.get('ZH')!.montant },
+      clotureParBilan: tresorerieClotureParBilan,
+      vides: resN.nonCalcules,
+    });
 
     return {
       lignes,
@@ -1694,14 +1698,7 @@ export class EtatsFinanciersSyscohadaService {
             ? mentionComparatifSurOuverture('SYSCOHADA')
             : mentionOuverturePresumeeNulle('SYSCOHADA'),
       postesNonCalculablesN1: resN1?.postesNonCalculables ?? [],
-      controle: {
-        tresorerieOuverture: resN.parRef.get('ZA')!.montant,
-        variation: resN.parRef.get('ZG')!.montant,
-        tresorerieClotureParFlux,
-        tresorerieClotureParBilan,
-        ecart,
-        coherent: Math.abs(ecart) < 0.01,
-      },
+      controle,
     };
   }
 }

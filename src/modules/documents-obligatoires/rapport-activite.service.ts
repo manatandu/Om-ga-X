@@ -27,11 +27,22 @@ export interface TresorerieDuRapport {
    * juste pour elles, faux pour tout autre dossier.
    */
   tableau?: TableauTresorerieRapport;
-  ouverture: number;
-  variation: number;
+  /**
+   * `null` quand le tableau laisse l'ouverture ou la variation VIDE (ouverture
+   * passée en OD au premier jour, paquet 1, relecture M1) · jamais un zéro.
+   */
+  ouverture: number | null;
+  variation: number | null;
   cloture: number;
-  /** `true` si les deux égalités de contrôle du TFT concordent (Partie 4 ch. 1 §4). */
-  boucle: boolean;
+  /**
+   * `true` si les deux égalités de contrôle du TFT concordent (Partie 4 ch. 1
+   * §4), `false` sur un écart constaté, `null` quand le contrôle n'a pas pu
+   * se faire · figé « non bouclé », un tableau vide passait pour un état non
+   * fidèle (art. 24, deuxième tiret).
+   */
+  boucle: boolean | null;
+  /** Pourquoi le contrôle n'a pas été effectué, avec la raison des postes vides. Absent sur un rapport plus ancien. */
+  motifNonControlable?: string | null;
 }
 
 /** « AUSCGIE, article 138 (transmission…) » se cite « AUSCGIE, article 138 ». */
@@ -392,12 +403,18 @@ export class RapportActiviteService {
       tableau === 'TFT_SYSCOHADA_NORMAL'
         ? await this.etatsSyscohada.tableauFluxTresorerie(tenantId, exerciceId)
         : await this.etatsFinanciers.tableauFluxTresorerie(tenantId, exerciceId);
+    // Le motif FIGÉ avec les chiffres dit aussi pourquoi les postes sont
+    // vides · le rapport n'emporte pas la liste des postes du tableau.
+    const raisons = [...new Set((tft.postesNonCalculables ?? []).filter((p) => (tft.postesVides ?? []).includes(p.ref)).map((p) => p.raison))];
     return {
       tableau,
       ouverture: tft.controle.tresorerieOuverture,
       variation: tft.controle.variation,
       cloture: tft.controle.tresorerieClotureParBilan,
       boucle: tft.controle.coherent,
+      // Posé seulement quand le contrôle n'a pas été effectué · la forme
+      // figée d'un tableau contrôlé ne change pas.
+      ...(tft.controle.motifNonControlable ? { motifNonControlable: [tft.controle.motifNonControlable, ...raisons].join(' ') } : {}),
     };
   }
 

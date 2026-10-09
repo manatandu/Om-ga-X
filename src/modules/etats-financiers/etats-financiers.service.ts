@@ -11,6 +11,7 @@ import {
   chargerLignes,
   chargerOuverture,
   comparatifDuBilan,
+  controleDuTableauDesFlux,
   correspond,
   exerciceCloture,
   exercicePrecedentCloture,
@@ -985,16 +986,17 @@ export class EtatsFinanciersService {
       postesVides: [...resN.nonCalcules],
       postesNonCalculables: resN.postesNonCalculables,
       postesNonCalculablesN1: resN1?.postesNonCalculables ?? [],
-      controle: {
-        tresorerieOuverture: resN.tresorerieOuverture,
-        variation: resN.parRef.get('ZF')!.montant,
-        tresorerieClotureParFlux: resN.tresorerieClotureParFlux,
-        tresorerieClotureParBilan: resN.tresorerieClotureParBilan,
-        ecart: resN.ecart,
-        // Les deux égalités du texte officiel sont vérifiées ensemble : si
-        // elles concordent, le tableau boucle.
-        coherent: Math.abs(resN.ecart) < 0.01,
-      },
+      // Les deux égalités du texte officiel sont vérifiées ensemble : si
+      // elles concordent, le tableau boucle. ZA ou ZF laissée vide (A7) ·
+      // contrôle non effectué, jamais un écart chiffré sur des zéros
+      // (relecture M1, `controleDuTableauDesFlux`).
+      controle: controleDuTableauDesFlux({
+        ouverture: { ref: 'ZA', montant: resN.tresorerieOuverture },
+        variation: { ref: 'ZF', montant: resN.parRef.get('ZF')!.montant },
+        clotureParFlux: { ref: 'ZG', montant: resN.tresorerieClotureParFlux },
+        clotureParBilan: resN.tresorerieClotureParBilan,
+        vides: resN.nonCalcules,
+      }),
     };
   }
 

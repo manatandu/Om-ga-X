@@ -440,6 +440,66 @@ describe('Paquet 1, A7 · TFT des associations · les postes vides au classeur',
       ['INFO', 'ZA, FA, FM', 'Tableau des flux · colonne N-1', MOTIF_N1],
     ]);
   });
+
+  // RELECTURE M1 (reproduit sur vraie base le 2026-10-09) · ZA et ZF vides,
+  // le contrôle n'est pas effectué · la liasse portait « Écart de bouclage de
+  // -12500000.00 » à traiter, et CONTROLES jugeait à zéro une formule qui
+  // lisait la cellule vide de ZG.
+  const MOTIF_CONTROLE = 'Contrôle non effectué · la trésorerie d’ouverture (ZA) est laissée vide.';
+  const nonControlable = (exportService: ExportService) => {
+    const etats = (exportService as unknown as { etatsFinanciersService: EtatsFinanciersService }).etatsFinanciersService;
+    const reel = etats.tableauFluxTresorerie.bind(etats);
+    jest.spyOn(etats, 'tableauFluxTresorerie').mockImplementation(async (t: string, e: string) => {
+      const tft = await reel(t, e);
+      return {
+        ...tft,
+        postesVides: ['ZA', 'FM', 'ZD', 'ZF', 'ZG'],
+        postesNonCalculables: [{ ref: 'FM', raison: MOTIF }],
+        controle: {
+          ...tft.controle,
+          tresorerieOuverture: null,
+          variation: null,
+          tresorerieClotureParFlux: null,
+          ecart: null,
+          coherent: null,
+          motifNonControlable: MOTIF_CONTROLE,
+        },
+      };
+    });
+    return exportService;
+  };
+
+  it('contrôle non effectué · aucune anomalie « à traiter » sur ZG, le motif dit en information', async () => {
+    const { buffer } = await nonControlable(fabriquerExport()).liasseCompleteExcel('t1', 'e1');
+    const an = (await ouvrir(buffer)).getWorksheet('ANOMALIES')!;
+    const lignes: string[][] = [];
+    an.eachRow((row) => lignes.push([1, 2, 3, 4].map((c) => String(row.getCell(c).value ?? ''))));
+    expect(lignes.filter((l) => l[0] === 'A_TRAITER' && l[1] === 'ZG')).toEqual([]);
+    expect(lignes).toContainEqual(['INFO', 'ZG', 'Tableau des flux de trésorerie', MOTIF_CONTROLE]);
+  });
+
+  it('contrôle non effectué · CONTROLES ne lit pas la cellule vide de ZG et ne juge aucune ligne du tableau à zéro', async () => {
+    const { buffer } = await nonControlable(fabriquerExport()).liasseCompleteExcel('t1', 'e1');
+    const ctl = (await ouvrir(buffer)).getWorksheet('CONTROLES')!;
+    const lignesTft: Array<{ intitule: string; valeur: unknown; attendu: unknown }> = [];
+    ctl.eachRow((row, n) => {
+      const intitule = String(row.getCell(1).value ?? '');
+      if (n > 1 && /TFT/.test(intitule)) lignesTft.push({ intitule, valeur: row.getCell(2).value, attendu: row.getCell(3).value });
+    });
+    expect(lignesTft.length).toBe(2);
+    for (const l of lignesTft) {
+      expect(l.attendu).toBe('');
+      expect(typeof l.valeur).toBe('string');
+    }
+  });
+
+  it('contrôle non effectué · l’export du seul tableau dit le motif, jamais un écart de bouclage', async () => {
+    const { buffer } = await nonControlable(fabriquerExport()).tableauFluxTresorerieExcel('t1', 'e1');
+    const textes: string[] = [];
+    (await ouvrir(buffer)).getWorksheet('TFT')!.eachRow((row) => row.eachCell((c) => textes.push(String(c.value ?? ''))));
+    expect(textes).toContain(MOTIF_CONTROLE);
+    expect(textes.some((t) => /écart de bouclage/i.test(t))).toBe(false);
+  });
 });
 
 describe('liasse complète · le classeur entier du modèle', () => {

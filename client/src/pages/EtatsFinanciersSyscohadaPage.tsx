@@ -20,6 +20,7 @@ import {
   type TableauFluxTresorerieSyscohada,
 } from '../lib/types';
 import { montant } from '../lib/montants';
+import { STYLE_CONTROLE_FLUX, issueDuControleDesFlux, motifDuControleNonEffectue } from '../lib/controle-flux';
 import { libelleExercice } from '../lib/libelle-exercice';
 import { ComparatifN1 } from '../components/ComparatifN1';
 import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
@@ -764,21 +765,25 @@ function EtatsSyscohadaSystemeNormal() {
                   trésorerie-passif). L'écart est présenté, jamais corrigé ·
                   il chiffre exactement ce que la ventilation FA à FQ ne
                   couvre pas. */}
+              {/* Trois issues (relecture M1) · ZA ou ZG laissée vide, le
+                  contrôle n'est pas effectué (`issueDuControleDesFlux`). */}
               <div
                 className={`flex flex-col gap-1 mt-3 px-3.5 py-2.5 border ${
-                  tft.controle.coherent ? 'border-positive/30 bg-positive-soft' : 'border-danger/30 bg-danger-soft'
+                  STYLE_CONTROLE_FLUX[issueDuControleDesFlux(tft.controle.coherent)].cadre
                 }`}
               >
                 <div className="flex items-start gap-2">
                   <IconCheck
                     width={14}
                     height={14}
-                    className={`mt-0.5 shrink-0 ${tft.controle.coherent ? 'text-positive' : 'text-danger'}`}
+                    className={`mt-0.5 shrink-0 ${STYLE_CONTROLE_FLUX[issueDuControleDesFlux(tft.controle.coherent)].icone}`}
                   />
                   <span className="font-mono text-[11.5px] font-medium min-w-0 break-words">
-                    {tft.controle.coherent
-                      ? "CONTRÔLE ZH VÉRIFIÉ · trésorerie nette au 31 décembre identique par le cumul des flux et par lecture du bilan"
-                      : `ÉCART DE ${montant(tft.controle.ecart)} · la ventilation FA à FQ ne couvre pas tout le mouvement de trésorerie`}
+                    {issueDuControleDesFlux(tft.controle.coherent) === 'NON_EFFECTUE'
+                      ? motifDuControleNonEffectue(tft.controle.motifNonControlable)
+                      : tft.controle.coherent
+                        ? "CONTRÔLE ZH VÉRIFIÉ · trésorerie nette au 31 décembre identique par le cumul des flux et par lecture du bilan"
+                        : `ÉCART DE ${montant(tft.controle.ecart)} · la ventilation FA à FQ ne couvre pas tout le mouvement de trésorerie`}
                   </span>
                 </div>
                 <div className="pl-[22px] font-mono text-[11px] text-text-dim break-words">

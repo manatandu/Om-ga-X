@@ -2213,12 +2213,16 @@ export class ExportService {
     ]);
     const classeur = this.nouveauClasseur();
     const { dernier } = this.feuilleTftEtafi(classeur, tft, ident);
+    // Contrôle non effectué (ZA ou ZF laissée vide, relecture M1) · le motif,
+    // jamais un écart chiffré sur des zéros.
     ligneControleSousEtat(
       classeur.getWorksheet('TFT')!,
       dernier + 1,
-      tft.controle.coherent
-        ? 'Contrôle : le TFT boucle avec la trésorerie du bilan (ZG = trésorerie actif N - trésorerie passif N).'
-        : `CONTRÔLE : écart de bouclage de ${tft.controle.ecart.toLocaleString('fr-FR')} avec la trésorerie du bilan.`,
+      tft.controle.coherent === null
+        ? (tft.controle.motifNonControlable ?? 'Contrôle non effectué.')
+        : tft.controle.coherent
+          ? 'Contrôle : le TFT boucle avec la trésorerie du bilan (ZG = trésorerie actif N - trésorerie passif N).'
+          : `CONTRÔLE : écart de bouclage de ${(tft.controle.ecart ?? 0).toLocaleString('fr-FR')} avec la trésorerie du bilan.`,
     );
     numeroterPages(classeur);
     return {
@@ -3601,9 +3605,16 @@ export class ExportService {
       ],
       [
         'Évolution de la trésorerie (figée du Tableau des flux)',
+        // Ouverture ou variation laissée vide par le tableau (relecture M1) ·
+        // « non servie », et le contrôle non effectué dit son motif, jamais
+        // « non bouclé ».
         conformite.tresorerie
-          ? `ouverture ${conformite.tresorerie.ouverture} · variation ${conformite.tresorerie.variation} · clôture ${conformite.tresorerie.cloture}` +
-            (conformite.tresorerie.boucle ? ' · tableau bouclé' : ' · ⚠ TABLEAU NON BOUCLÉ à cette date')
+          ? `ouverture ${conformite.tresorerie.ouverture ?? 'non servie'} · variation ${conformite.tresorerie.variation ?? 'non servie'} · clôture ${conformite.tresorerie.cloture}` +
+            (conformite.tresorerie.boucle === null
+              ? ` · contrôle non effectué : ${conformite.tresorerie.motifNonControlable ?? 'ouverture ou variation laissée vide'}`
+              : conformite.tresorerie.boucle
+                ? ' · tableau bouclé'
+                : ' · ⚠ TABLEAU NON BOUCLÉ à cette date')
           : '·',
       ],
     ];
@@ -5440,7 +5451,11 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const controles: Array<[string, string | number, string | number]> = [
+    // ZG laissée vide (relecture M1) · sa cellule est vide, et une formule
+    // qui la lirait rendrait toute la trésorerie du bilan en écart. La ligne
+    // dit le contrôle non effectué, sans attendu.
+    const tftNonControlable = tft.controle.coherent === null;
+    const controles: Array<[string, string | number | { texte: string }, string | number]> = [
       // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
       // lignes de compte.
       ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
@@ -5452,19 +5467,21 @@ export class ExportService {
       ['Résultat net (compte de résultat, XE)', `Résultat!D${rangsCr.get('XE')}`, ''],
       ['Résultat net logé au bilan (CH)', resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!D${rangsPassif.get('CH')}`, bilan), ''],
       ['Écart résultat CR / bilan (doit être 0)', 'B8-B9', 0],
-      ['Trésorerie nette au 31/12 (TFT, ZG)', `TFT!E${rangsTft.get('ZG')}`, ''],
+      ['Trésorerie nette au 31/12 (TFT, ZG)', tftNonControlable ? { texte: 'Laissée vide · voir ANOMALIES' } : `TFT!E${rangsTft.get('ZG')}`, ''],
       [
         'Trésorerie nette au 31/12 (bilan, BX - DX)',
         `'Bilan-Actif'!F${rangsActif.get('BX')}-'Bilan-Passif'!D${rangsPassif.get('DX')}`,
         '',
       ],
-      ['Écart trésorerie TFT / bilan (doit être 0)', 'B11-B12', 0],
+      tftNonControlable
+        ? ['Écart trésorerie TFT / bilan · contrôle non effectué', { texte: 'Non contrôlable' }, '']
+        : ['Écart trésorerie TFT / bilan (doit être 0)', 'B11-B12', 0],
     ];
     let rc = 1;
     for (const [lab, val, attendu] of controles) {
       rc += 1;
       ctl.getCell(rc, 1).value = lab;
-      ctl.getCell(rc, 2).value = typeof val === 'string' ? { formula: val } : val;
+      ctl.getCell(rc, 2).value = typeof val === 'string' ? { formula: val } : typeof val === 'number' ? val : val.texte;
       ctl.getCell(rc, 3).value = attendu;
       styleLigne(ctl, rc, 1, 3, 'normal', [2]);
     }
@@ -5495,13 +5512,24 @@ export class ExportService {
         'Rattacher les comptes de gestion listés ci-dessous à un poste officiel.',
       ]);
     }
-    if (!tft.controle.coherent) {
+    // Un écart CONSTATÉ seulement · un contrôle non effectué (ZA ou ZF
+    // laissée vide) n'est pas un écart, il se dit avec son motif (M1).
+    if (tft.controle.coherent === false) {
       anomalies.push([
         'A_TRAITER',
         'ZG',
         'Tableau des flux de trésorerie',
-        `Écart de bouclage de ${tft.controle.ecart.toFixed(2)} avec la trésorerie du bilan.`,
+        `Écart de bouclage de ${(tft.controle.ecart ?? 0).toFixed(2)} avec la trésorerie du bilan.`,
         'Examiner les comptes non ventilés du tableau.',
+      ]);
+    }
+    if (tft.controle.coherent === null) {
+      anomalies.push([
+        'INFO',
+        'ZG',
+        'Tableau des flux de trésorerie',
+        tft.controle.motifNonControlable ?? 'Contrôle non effectué.',
+        'Lever la cause des postes laissés vides (lignes suivantes) ; le contrôle se fera alors.',
       ]);
     }
     // Les postes laissés vides et leur motif (paquet 1, A3 et A7), une ligne
@@ -5810,6 +5838,7 @@ export class ExportService {
     ws.getRow(r).height = 22;
 
     let rangVariationBf = 0;
+    const videsN = new Set(tft.postesVides);
     for (const l of tft.lignes) {
       r += 1;
       ws.getRow(r).height = 22;
@@ -5823,7 +5852,10 @@ export class ExportService {
       else rangVariationBf = r;
       ws.getCell(r, 1).value = l.ref;
       ws.getCell(r, 2).value = l.libelle;
-      ws.getCell(r, 4).value = l.montant;
+      // Un poste laissé VIDE (ouverture passée en OD, A7) reste une cellule
+      // vide en colonne N · son 0 servi n'est pas un montant, et la ligne de
+      // contrôle de la liasse l'aurait lu comme tel (relecture M1).
+      if (!videsN.has(l.ref)) ws.getCell(r, 4).value = l.montant;
       if (l.montantN1 !== undefined) ws.getCell(r, 5).value = l.montantN1;
       ws.getCell(r, 6).value = l.repere ?? REP_TFT_SYSCOHADA[l.ref] ?? '';
       styleLigne(ws, r, 1, NB, NIVEAUX_TFT_SYSCOHADA[l.ref] ?? (l.estTotal ? 'inter' : 'normal'), [4, 5], 1);
@@ -5851,6 +5883,8 @@ export class ExportService {
       if (!rang) continue;
       for (const [lettre, col] of colonnes) {
         if (col === 5 && montantsN1.get(total.ref ?? '') === undefined) continue;
+        // De même en colonne N · un total d'un poste laissé vide est vide.
+        if (col === 4 && total.ref && videsN.has(total.ref)) continue;
         const termes = total.deRefs.map((ref) => (rangs.has(ref) ? `${lettre}${rangs.get(ref)}` : '0'));
         ws.getCell(rang, col).value = { formula: termes.join('+') };
       }
@@ -5875,9 +5909,14 @@ export class ExportService {
   private controlesTftSyscohada(
     tft: Awaited<ReturnType<EtatsFinanciersSyscohadaService['tableauFluxTresorerie']>>,
   ): string {
-    const bouclage = tft.controle.coherent
-      ? `Contrôle du modèle : ZH = Trésorerie actif N - Trésorerie passif N (BT - DT) = ${tft.controle.tresorerieClotureParBilan.toLocaleString('fr-FR')}.`
-      : `CONTRÔLE : ZH par les flux (${tft.controle.tresorerieClotureParFlux.toLocaleString('fr-FR')}) diffère de BT - DT du bilan (${tft.controle.tresorerieClotureParBilan.toLocaleString('fr-FR')}) de ${tft.controle.ecart.toLocaleString('fr-FR')} · l'écart chiffre ce que la ventilation FA à FQ ne couvre pas, il n'est pas corrigé.`;
+    // ZA ou ZG laissée vide (relecture M1) · le contrôle n'est pas effectué,
+    // le motif le dit, jamais un écart chiffré sur des zéros.
+    const bouclage =
+      tft.controle.coherent === null
+        ? (tft.controle.motifNonControlable ?? 'Contrôle non effectué.')
+        : tft.controle.coherent
+          ? `Contrôle du modèle : ZH = Trésorerie actif N - Trésorerie passif N (BT - DT) = ${tft.controle.tresorerieClotureParBilan.toLocaleString('fr-FR')}.`
+          : `CONTRÔLE : ZH par les flux (${(tft.controle.tresorerieClotureParFlux ?? 0).toLocaleString('fr-FR')}) diffère de BT - DT du bilan (${tft.controle.tresorerieClotureParBilan.toLocaleString('fr-FR')}) de ${(tft.controle.ecart ?? 0).toLocaleString('fr-FR')} · l'écart chiffre ce que la ventilation FA à FQ ne couvre pas, il n'est pas corrigé.`;
     const nonVentiles =
       tft.comptesNonVentiles.length > 0
         ? ` ${tft.comptesNonVentiles.length} compte(s) de trésorerie non ventilé(s) : ` +
@@ -7075,7 +7114,10 @@ export class ExportService {
     ctl.getCell(1, 2).value = 'Valeur';
     ctl.getCell(1, 3).value = 'Attendu';
     entetesBande(ctl, 1, 1, 1, 3);
-    const controles: Array<[string, string | number, string | number]> = [
+    // ZH laissée vide (relecture M1) · même règle qu'aux associations, la
+    // ligne dit le contrôle non effectué, sans attendu.
+    const tftNonControlable = tft.controle.coherent === null;
+    const controles: Array<[string, string | number | { texte: string }, string | number]> = [
       // Les soldes cumulés NETS de la présentation FPM (G, H), sur les seules
       // lignes de compte.
       ['Total solde de clôture débit balance', sommeColonneBalance(NOM_BALANCE, corpsN, 'G'), ''],
@@ -7087,13 +7129,19 @@ export class ExportService {
       ['RÉSULTAT NET du compte de résultat (XI)', `Résultat!D${rangsCr.get('XI')}`, ''],
       ["Résultat net logé au bilan (CJ)", resultatDeLExerciceLogeAuBilan(`'Bilan-Passif'!D${rangsPassif.get('CJ')}`, bilan), ''],
       ['Écart résultat CR / bilan (doit être 0)', 'B8-B9', 0],
-      ['Trésorerie nette au 31 Décembre par les flux (TFT, ZH)', `TFT!D${rangsTft.get('ZH')}`, ''],
+      [
+        'Trésorerie nette au 31 Décembre par les flux (TFT, ZH)',
+        tftNonControlable ? { texte: 'Laissée vide · voir ANOMALIES' } : `TFT!D${rangsTft.get('ZH')}`,
+        '',
+      ],
       [
         'Contrôle du modèle : Trésorerie actif N - Trésorerie passif N (BT - DT)',
         `'Bilan-Actif'!F${rangsActif.get('BT')}-'Bilan-Passif'!D${rangsPassif.get('DT')}`,
         '',
       ],
-      ['Écart de bouclage du TFT (doit être 0)', 'B11-B12', 0],
+      tftNonControlable
+        ? ['Écart de bouclage du TFT · contrôle non effectué', { texte: 'Non contrôlable' }, '']
+        : ['Écart de bouclage du TFT (doit être 0)', 'B11-B12', 0],
       [
         'Résultat par les classes 6/7/8 (avant clôture)',
         bilan.controle.resultatClasses678,
@@ -7116,7 +7164,7 @@ export class ExportService {
       // (« Résultat!D51 », « 'Bilan-Passif'!D17 ») · écrites en TEXTE, elles
       // rendaient chaque écart de la feuille « #VALUE! », et la ligne
       // « Écart résultat CR / bilan » ne pouvait dire ni l'égalité ni l'écart.
-      ctl.getCell(rc, 2).value = typeof val === 'string' ? { formula: val } : val;
+      ctl.getCell(rc, 2).value = typeof val === 'string' ? { formula: val } : typeof val === 'number' ? val : val.texte;
       ctl.getCell(rc, 3).value = attendu;
       styleLigne(ctl, rc, 1, 3, 'normal', [2]);
     }
@@ -7149,13 +7197,24 @@ export class ExportService {
         'Rattacher les comptes de gestion listés ci-dessous à un poste du ch. 7.',
       ]);
     }
-    if (!tft.controle.coherent) {
+    // Un écart CONSTATÉ seulement (relecture M1) · un contrôle non effectué
+    // se dit avec son motif.
+    if (tft.controle.coherent === false) {
       anomalies.push([
         'A_TRAITER',
         'ZH',
         'Tableau des flux de trésorerie',
-        `Écart de ${tft.controle.ecart.toFixed(2)} entre ZH par les flux et BT - DT du bilan · l’écart chiffre ce que la ventilation FA à FQ ne couvre pas.`,
+        `Écart de ${(tft.controle.ecart ?? 0).toFixed(2)} entre ZH par les flux et BT - DT du bilan · l’écart chiffre ce que la ventilation FA à FQ ne couvre pas.`,
         'Examiner les comptes non ventilés ci-dessous.',
+      ]);
+    }
+    if (tft.controle.coherent === null) {
+      anomalies.push([
+        'INFO',
+        'ZH',
+        'Tableau des flux de trésorerie',
+        tft.controle.motifNonControlable ?? 'Contrôle non effectué.',
+        'Lever la cause des postes laissés vides (lignes du tableau des flux ci-dessous) ; le contrôle se fera alors.',
       ]);
     }
     for (const c of bilan.comptesNonRattaches) {

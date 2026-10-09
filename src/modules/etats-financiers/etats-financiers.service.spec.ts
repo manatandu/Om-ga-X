@@ -1871,6 +1871,26 @@ describe('Paquet 1, A7 · TFT des associations · une ouverture passée en OD au
     expect(tft.comptesNonVentiles.map((c: any) => c.numero)).not.toContain('13100000');
   });
 
+  // RELECTURE M1 (reproduit sur vraie base le 2026-10-09 · « écart » de
+  // -12 500 000 servi en rouge, porté à traiter à la liasse) · ZA et ZF vides,
+  // le contrôle n'est pas effectué, jamais un écart chiffré sur des zéros.
+  it('le contrôle du tableau n’est pas effectué · coherent et écart null, motif dit', async () => {
+    const service = serviceAvecExercices({ e1: lignes as never }, [{ id: 'e1', dateDebut: new Date('2026-01-01') }]);
+    odDuPremierJour(service);
+    const tft: any = await service.tableauFluxTresorerie('t1', 'e1');
+    expect(tft.controle).toEqual({
+      tresorerieOuverture: null,
+      variation: null,
+      tresorerieClotureParFlux: null,
+      tresorerieClotureParBilan: 12_500_000,
+      ecart: null,
+      coherent: null,
+      motifNonControlable: expect.stringContaining('Contrôle non effectué'),
+    });
+    expect(tft.controle.motifNonControlable).toContain('(ZA)');
+    expect(tft.controle.motifNonControlable).toContain('(ZF)');
+  });
+
   it('la colonne N-1 suit la même règle · ses postes vides restent vides, jamais des zéros', async () => {
     const service = serviceAvecExercices(
       { eN1: lignes as never, eN: [ligneF('52110000', ClasseCompte.CLASSE_5, 0, 0, [12_500_000, 0])] as never },

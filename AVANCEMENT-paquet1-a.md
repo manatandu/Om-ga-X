@@ -616,6 +616,42 @@ avec le test qui l'aurait attrapé, rejoué après, un commit par constat.
 - Test · `ouverture-passee.spec.ts`, câblage du service (OD et négatif ·
   `null` ; OD seule · pièce nommée).
 
+### M1 · ZA ou la variation laissées vides · le contrôle du tableau des flux n'est pas effectué
+
+- Vérifié · le contrôle (`controle.coherent`, `ecart`) relisait les postes
+  vides comme des zéros, et trois reprises le suivaient · bandeau rouge de
+  l'écran, liasse (ANOMALIES « à traiter », CONTROLES jugeant à zéro une
+  formule qui lit la cellule vide de ZG), rapport d'activité (ouverture 0,
+  variation 0, « non bouclé »). Même défaut au SYSCOHADA (ZA, ZG, ZH), dont la
+  feuille TFT écrivait en plus 0 dans les cellules N des postes vides et des
+  totaux qui en dépendent.
+- Lu au texte · le modèle confronte la trésorerie de clôture par les flux
+  (G + A) à celle du bilan (SYCEBNL Partie 4 ch. 1 § 4 ; AUDCIF Titre IX
+  ch. 5, ZH « Contrôle : Trésorerie actif N - Trésorerie passif N ») · sans
+  A ou sans G, le premier terme n'est pas connu, ni bouclage ni écart.
+- AVANT (copie à e9ee485) · A7 SYCEBNL · `coherent` false, écart -12 500 000,
+  ouverture 0, variation 0 ; liasse « Écart de bouclage de -12500000.00 » à
+  traiter, CONTROLES juge « Écart trésorerie TFT / bilan » ; rapport
+  [0, 0, false]. A7 SYSCOHADA · écart -12 000 000, ouverture 0, variation
+  500 000 ; liasse « Écart de -12000000.00 entre ZH par les flux et BT - DT »,
+  CONTROLES juge « Écart de bouclage du TFT » ; export « diffère de BT - DT ».
+- Correction · `controleDuTableauDesFlux` (commun aux deux référentiels) ·
+  ZA ou la variation vide, `coherent`, `ecart` et la clôture par les flux à
+  `null`, l'ouverture ou la variation inconnue à `null`, motif dit. Liasses ·
+  anomalie « à traiter » sur un écart CONSTATÉ seulement, le contrôle non
+  effectué en information avec son motif ; lignes de CONTROLES écrites en
+  texte, sans attendu. Feuille TFT SYSCOHADA · cellule N vide pour un poste
+  vide, total sans formule. Rapport · ouverture, variation et `boucle` à
+  `null`, motif figé avec la raison des postes vides (posé seulement dans ce
+  cas, la forme d'un tableau contrôlé ne change pas), « non servie » à
+  l'export. Écran · trois issues (`client/src/lib/controle-flux.ts`), en
+  avertissement, jamais dans la couleur d'un écart.
+- APRÈS · 43 contrôles sur 45 au point A7, les deux restants sont ceux de M2.
+- Tests · `etats-financiers.communs.spec.ts` (trois cas), deux services,
+  `liasse-etafi.spec.ts` et `liasse-syscohada.spec.ts` (ANOMALIES, CONTROLES,
+  export seul, cellules vides), `documents-obligatoires.spec.ts` (rapport),
+  `client/src/lib/controle-flux.spec.ts` (issues et câblage des trois écrans).
+
 ## Reste
 
 Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse).

@@ -16,6 +16,7 @@ import type {
 } from '../lib/types';
 import { corpsSectionsRapport, textesDuRapport } from '../lib/rapport-sections';
 import { montant } from '../lib/montants';
+import { STYLE_CONTROLE_FLUX, issueDuControleDesFlux, motifDuControleNonEffectue } from '../lib/controle-flux';
 import { libelleExercice } from '../lib/libelle-exercice';
 
 /**
@@ -431,7 +432,13 @@ export function DocumentsObligatoiresPage() {
           {confRap.tresorerie && (
             <div
               className={`border px-3.5 py-2.5 mb-2.5 ${
-                confRap.tresorerie.boucle ? 'border-border bg-surface' : 'border-danger/30 bg-danger-soft'
+                // Trois issues (relecture M1) · un contrôle non effectué
+                // n'est pas un tableau « non bouclé ».
+                issueDuControleDesFlux(confRap.tresorerie.boucle) === 'NON_EFFECTUE'
+                  ? STYLE_CONTROLE_FLUX.NON_EFFECTUE.cadre
+                  : confRap.tresorerie.boucle
+                    ? 'border-border bg-surface'
+                    : 'border-danger/30 bg-danger-soft'
               }`}
             >
               <div className="text-[11px] font-bold text-text-dim mb-1">
@@ -447,10 +454,17 @@ export function DocumentsObligatoiresPage() {
                 <span>
                   Clôture : <span className="font-mono font-bold">{montant(confRap.tresorerie.cloture)}</span>
                 </span>
-                <span className={confRap.tresorerie.boucle ? 'text-positive' : 'text-danger font-bold'}>
-                  {confRap.tresorerie.boucle ? 'Tableau bouclé' : '⚠ Tableau NON bouclé à cette date'}
-                </span>
+                {issueDuControleDesFlux(confRap.tresorerie.boucle) === 'NON_EFFECTUE' ? (
+                  <span className="text-warning font-bold">Contrôle non effectué</span>
+                ) : (
+                  <span className={confRap.tresorerie.boucle ? 'text-positive' : 'text-danger font-bold'}>
+                    {confRap.tresorerie.boucle ? 'Tableau bouclé' : '⚠ Tableau NON bouclé à cette date'}
+                  </span>
+                )}
               </div>
+              {issueDuControleDesFlux(confRap.tresorerie.boucle) === 'NON_EFFECTUE' && (
+                <p className="text-[11px] mt-1">{motifDuControleNonEffectue(confRap.tresorerie.motifNonControlable)}</p>
+              )}
             </div>
           )}
 

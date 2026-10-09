@@ -936,6 +936,15 @@ describe('EtatsFinanciersSyscohadaService', () => {
       const bilan = await service.bilan('t1', 'e1');
       expect({ comparatif: bilan.comparatif, bz: bilan.totalActifN1 }).toEqual({ comparatif: null, bz: undefined });
       expect(bilan.mentionComparatif).toContain('OD n° 1');
+      // RELECTURE M1 · ZA et ZG vides, le contrôle de ZH n'est pas effectué ·
+      // jamais un écart chiffré sur des zéros (sur vraie base, -12 000 000).
+      expect({ coherent: tft.controle.coherent, ecart: tft.controle.ecart, zhFlux: tft.controle.tresorerieClotureParFlux }).toEqual({
+        coherent: null,
+        ecart: null,
+        zhFlux: null,
+      });
+      expect(tft.controle.tresorerieClotureParBilan).toBe(200);
+      expect(tft.controle.motifNonControlable).toContain('(ZH)');
     });
 
     it('un report tenu ou un exercice précédent · l’OD du premier jour n’est pas cherchée', async () => {

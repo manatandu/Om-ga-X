@@ -5,6 +5,7 @@ import { ExerciceService } from '../exercice/exercice.service';
 import {
   brouillardDuPrecedentNonTenu,
   chargerOuverture,
+  controleDuTableauDesFlux,
   mentionExercicePrecedentVide,
   motifColonneN1NonTenue,
   trouverExerciceN1,
@@ -152,5 +153,69 @@ describe('l’exercice précédent qui ne tient rien · vide ou au brouillard', 
     expect(es.nombreAuBrouillard).not.toHaveBeenCalled();
     await expect(brouillardDuPrecedentNonTenu(es, 't1', 'e0', false)).resolves.toBe(4);
     expect(es.nombreAuBrouillard).toHaveBeenCalledWith('t1', 'e0');
+  });
+});
+
+/**
+ * PAQUET 1, RELECTURE M1 · le contrôle du tableau des flux ne se chiffre pas
+ * sur des postes vides. Lus comme des zéros, ZA et ZF vides rendaient un
+ * « écart » de toute la trésorerie (-12 500 000 sur vraie base), affiché en
+ * rouge, porté à traiter à la liasse et figé « non bouclé » au rapport.
+ */
+describe('controleDuTableauDesFlux (relecture M1)', () => {
+  const base = {
+    ouverture: { ref: 'ZA', montant: 0 },
+    variation: { ref: 'ZF', montant: 0 },
+    clotureParFlux: { ref: 'ZG', montant: 0 },
+    clotureParBilan: 12_500_000,
+  };
+
+  it('ZA et ZF vides · ni bouclage ni écart, montants inconnus à null, motif qui nomme les deux', () => {
+    const c = controleDuTableauDesFlux({ ...base, vides: new Set(['ZA', 'FM', 'ZF', 'ZG']) });
+    expect(c).toEqual({
+      tresorerieOuverture: null,
+      variation: null,
+      tresorerieClotureParFlux: null,
+      tresorerieClotureParBilan: 12_500_000,
+      ecart: null,
+      coherent: null,
+      motifNonControlable: expect.stringContaining('(ZA) et la variation de la trésorerie (ZF) sont laissées vides'),
+    });
+  });
+
+  it('la seule variation vide · l’ouverture connue est rendue, le contrôle reste non effectué', () => {
+    const c = controleDuTableauDesFlux({ ...base, ouverture: { ref: 'ZA', montant: 300 }, vides: new Set(['ZF', 'ZG']) });
+    expect(c).toMatchObject({ tresorerieOuverture: 300, variation: null, ecart: null, coherent: null });
+    const v = controleDuTableauDesFlux({
+      ...base,
+      ouverture: { ref: 'ZA', montant: 300 },
+      variation: { ref: 'ZG', montant: 0 },
+      clotureParFlux: { ref: 'ZH', montant: 300 },
+      vides: new Set(['ZG']),
+    });
+    expect(v.motifNonControlable).toContain('la variation de la trésorerie (ZG) est laissée vide');
+    expect(v.motifNonControlable).toContain('(ZH)');
+  });
+
+  it('rien de vide · le contrôle se fait comme avant, bouclage et écart constaté', () => {
+    expect(
+      controleDuTableauDesFlux({
+        ...base,
+        ouverture: { ref: 'ZA', montant: 12_000_000 },
+        variation: { ref: 'ZF', montant: 500_000 },
+        clotureParFlux: { ref: 'ZG', montant: 12_500_000 },
+        vides: new Set(),
+      }),
+    ).toEqual({
+      tresorerieOuverture: 12_000_000,
+      variation: 500_000,
+      tresorerieClotureParFlux: 12_500_000,
+      tresorerieClotureParBilan: 12_500_000,
+      ecart: 0,
+      coherent: true,
+      motifNonControlable: null,
+    });
+    const ecart = controleDuTableauDesFlux({ ...base, clotureParFlux: { ref: 'ZG', montant: 12_400_000 }, vides: new Set(['FM']) });
+    expect({ ecart: ecart.ecart, coherent: ecart.coherent }).toEqual({ ecart: -100_000, coherent: false });
   });
 });

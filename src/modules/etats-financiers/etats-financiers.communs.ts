@@ -275,6 +275,74 @@ export function motifOuverturePasseeEnOd(o: OuverturePasseeEnOd, referentiel: 'S
   );
 }
 
+/**
+ * LE CONTRÔLE DU TABLEAU DES FLUX NE SE CHIFFRE PAS SUR DES POSTES VIDES
+ * (paquet 1, relecture M1, 2026-10-09). Le modèle confronte la trésorerie de
+ * clôture obtenue par les flux (ouverture plus variation) à celle du bilan
+ * (SYCEBNL Partie 4 ch. 1 § 4, « Trésorerie nette au 31 Décembre (G+A) » ;
+ * AUDCIF Titre IX ch. 5, ZH « Contrôle : Trésorerie actif N – Trésorerie
+ * passif N »). Quand l'ouverture ou la variation est laissée VIDE (ouverture
+ * passée en OD au premier jour, A7), le premier terme n'est pas connu · lus
+ * comme des zéros, ils rendaient un écart de toute la trésorerie (-12 500 000
+ * sur un dossier qui en tient 12 500 000), affiché en rouge, porté « à
+ * traiter » à la liasse et figé « non bouclé » au rapport d'activité. Le
+ * contrôle n'est alors NI réussi NI en échec · `coherent` et l'écart valent
+ * `null`, et le motif le dit, sans la raison des postes vides, que
+ * `postesNonCalculables` porte déjà.
+ */
+export interface ControleTableauDesFlux {
+  /** `null` quand le poste d'ouverture est laissé vide. */
+  tresorerieOuverture: number | null;
+  /** `null` quand le total de la variation est laissé vide. */
+  variation: number | null;
+  /** `null` dès qu'un des deux termes manque · jamais une somme de zéros. */
+  tresorerieClotureParFlux: number | null;
+  tresorerieClotureParBilan: number;
+  ecart: number | null;
+  /** `true` boucle, `false` écart constaté, `null` contrôle non effectué. */
+  coherent: boolean | null;
+  motifNonControlable: string | null;
+}
+
+export function controleDuTableauDesFlux(p: {
+  ouverture: { ref: string; montant: number };
+  variation: { ref: string; montant: number };
+  clotureParFlux: { ref: string; montant: number };
+  clotureParBilan: number;
+  vides: ReadonlySet<string>;
+}): ControleTableauDesFlux {
+  const ouvertureVide = p.vides.has(p.ouverture.ref);
+  const variationVide = p.vides.has(p.variation.ref);
+  if (!ouvertureVide && !variationVide) {
+    const ecart = p.clotureParFlux.montant - p.clotureParBilan;
+    return {
+      tresorerieOuverture: p.ouverture.montant,
+      variation: p.variation.montant,
+      tresorerieClotureParFlux: p.clotureParFlux.montant,
+      tresorerieClotureParBilan: p.clotureParBilan,
+      ecart,
+      coherent: Math.abs(ecart) < 0.01,
+      motifNonControlable: null,
+    };
+  }
+  const termes = [
+    ouvertureVide ? `la trésorerie d'ouverture (${p.ouverture.ref})` : null,
+    variationVide ? `la variation de la trésorerie (${p.variation.ref})` : null,
+  ].filter((t): t is string => t !== null);
+  const sujet = termes.length > 1 ? `${termes.join(' et ')} sont laissées vides` : `${termes[0]} est laissée vide`;
+  return {
+    tresorerieOuverture: ouvertureVide ? null : p.ouverture.montant,
+    variation: variationVide ? null : p.variation.montant,
+    tresorerieClotureParFlux: null,
+    tresorerieClotureParBilan: p.clotureParBilan,
+    ecart: null,
+    coherent: null,
+    motifNonControlable:
+      `Contrôle non effectué · ${sujet}, la trésorerie de clôture par les flux (${p.clotureParFlux.ref}) n'est pas connue ` +
+      "et ne se confronte pas à celle du bilan. Ce n'est ni un écart ni un bouclage.",
+  };
+}
+
 /** L'ouverture présumée nulle d'une entité qui naît · dite, jamais tue. */
 export function mentionOuverturePresumeeNulle(referentiel: 'SYSCOHADA' | 'SYCEBNL'): string {
   return referentiel === 'SYCEBNL'
