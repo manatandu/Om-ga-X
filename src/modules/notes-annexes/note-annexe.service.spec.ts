@@ -198,6 +198,8 @@ function service(
       Promise.resolve((e && virementsParExercice[e]) || new Map())),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    // Second tour, B1 · aucune ouverture au premier jour, donc aucun négatif tardif.
+    positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, e: string | null) =>
       Promise.resolve((e && reevaluationsParExercice[e]) || new Map())),
   } as unknown as EcritureService;
@@ -2435,6 +2437,8 @@ describe('passe R2 · B3, la NOTE 34 SYSCOHADA est calculée depuis les trois é
       mouvementsDeCoutsEmpruntIncorpores: jest.fn().mockResolvedValue(new Map()),
       // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
       ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+      // Second tour, B1 · aucune ouverture au premier jour, donc aucun négatif tardif.
+      positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
       mouvementsDeReevaluation: jest.fn().mockResolvedValue(new Map()),
     } as unknown as EcritureService;
     const exercice = {

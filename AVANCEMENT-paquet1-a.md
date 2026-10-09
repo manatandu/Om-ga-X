@@ -1112,6 +1112,9 @@ mention nomme le négatif et sa date et l'issue (bilan d'un dossier repris en
 à-nouveau, la voie de `motifOuverturePasseeEnOd`). APRÈS (S1E, deux
 référentiels) · mention dite ; M4 inchangé. `positionDOuvertureAuPremierJour`
 lit la position comme la clôture ; specs des deux tableaux et du câblage.
+La doublure d'`EcritureService` de `note-annexe.service.spec.ts` (deux
+endroits) n'avait pas la méthode · 21 tests tombaient sur e86f6c2, vus au
+contrôle final et complétés (doublure complétée, aucun test retouché).
 
 ### BLOQUANT 2 · une ouverture inscrite en négatif ne retient plus l'arrêt à la dissolution (d540291)
 
