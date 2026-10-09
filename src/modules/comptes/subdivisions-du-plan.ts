@@ -125,3 +125,40 @@ export function racinesSousLeCompteSeme(referentiel: Referentiel, numero: string
 export function comptesDImputationSemes(referentiel: Referentiel, prefixe: string): string[] {
   return [...racinesDu(referentiel).racineDuDetail.keys()].filter((n) => n.startsWith(prefixe)).sort();
 }
+
+/**
+ * LE NUMÉRO QU'UN SOUS-COMPTE PRENDRAIT sous un compte d'imputation semé ·
+ * le premier libre sous sa racine, à la longueur du dossier (52110000 →
+ * 52110001), jamais un numéro semé, ni un numéro rangé sous une racine semée
+ * plus profonde (le 8311 du SYCEBNL relève du 8311, pas du 831). Null quand
+ * le numéro n'est pas un compte d'imputation semé, ou quand plus rien n'est
+ * libre à cette longueur. Le numéro n'est PAS réservé · la création le
+ * rejuge (unicité en base).
+ */
+export function sousComptePropose(
+  referentiel: Referentiel,
+  numeroSeme: string,
+  longueur: number,
+  existants: Iterable<string>,
+): string | null {
+  const racine = racineDuCompteSeme(referentiel, numeroSeme);
+  if (racine === null) return null;
+  const largeur = longueur - racine.length;
+  if (largeur < 1) return null;
+  const { semes } = racinesDu(referentiel);
+  const plusProfondes = racinesSousLeCompteSeme(referentiel, numeroSeme);
+  const pris = new Set(existants);
+  const max = 10 ** largeur - 1;
+  for (let i = 1; i <= max; i++) {
+    const numero = racine + String(i).padStart(largeur, '0');
+    if (pris.has(numero) || semes.has(numero)) continue;
+    if (plusProfondes.some((r) => numero.startsWith(r))) continue;
+    return numero;
+  }
+  return null;
+}
+
+/** Tous les numéros semés du référentiel, totaux compris · le plan officiel tel que le dossier l'a reçu. */
+export function numerosSemes(referentiel: Referentiel): string[] {
+  return [...racinesDu(referentiel).semes];
+}

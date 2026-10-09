@@ -48,6 +48,55 @@ export async function comptesProposes<C extends { id: string; estRetenu: boolean
   return { proposes, ecartes: comptes.length - proposes.length };
 }
 
+/**
+ * LE COMPTE PERSONNALISÉ (décision de Manasse du 2026-10-09 · « seuls les
+ * numéros personnalisés sont ceux qui s'affichent et permettent de passer les
+ * écritures »). Personnalisé = la règle ci-dessus, et elle seule · RETENU par
+ * le cabinet, qui a ADOPTÉ un compte du plan officiel (même numéro, son
+ * intitulé) ou l'a CRÉÉ (un sous-compte, le compte d'un tiers ou d'un
+ * journal), ou UTILISÉ, c'est-à-dire adopté D'OFFICE · par l'écriture qu'un
+ * module y passe (paie, TVA, clôture, impôt, amortissements), par un journal,
+ * un tiers, un taux de taxe ou une famille d'immobilisations qui le porte.
+ * Aucun texte n'impose la règle · l'AUDCIF, art. 18, al. 3, laisse à l'entité
+ * la FACULTÉ d'ouvrir « toutes subdivisions nécessaires ». C'est une règle
+ * d'organisation d'OmegaX, et le refus le dit sans citer d'article.
+ *
+ * Seuls les comptes d'IMPUTATION sont jugés · un compte Total est refusé à
+ * la saisie par sa propre règle (`controlesDEntree`), jamais par celle-ci.
+ */
+export async function comptesNonPersonnalises(
+  prisma: unknown,
+  tenantId: string,
+  ids: string[],
+): Promise<{ id: string; numero: string; intitule: string }[]> {
+  const uniques = [...new Set(ids)];
+  if (uniques.length === 0) return [];
+  const p = prisma as {
+    compte: {
+      findMany: (a: unknown) => Promise<{ id: string; numero: string; intitule: string; estRetenu: boolean; typeCompte: string }[]>;
+    };
+  };
+  const comptes = await p.compte.findMany({
+    where: { tenantId, id: { in: uniques }, estRetenu: false, typeCompte: 'DETAIL' },
+    select: { id: true, numero: true, intitule: true, estRetenu: true, typeCompte: true },
+    orderBy: { numero: 'asc' },
+  });
+  if (comptes.length === 0) return [];
+  const utilises = await comptesUtilises(prisma, tenantId, comptes.map((c) => c.id));
+  return comptes.filter((c) => !estPropose(c, utilises)).map(({ id, numero, intitule }) => ({ id, numero, intitule }));
+}
+
+/** Le refus nommé · le ou les comptes, et le geste qui lève le refus. */
+export function motifComptesNonPersonnalises(comptes: { numero: string; intitule: string }[], geste: string): string | null {
+  if (comptes.length === 0) return null;
+  const noms = comptes.slice(0, 5).map((c) => `${c.numero} ${c.intitule}`).join(', ');
+  const suite = comptes.length > 5 ? ` et ${comptes.length - 5} autre(s)` : '';
+  return (
+    `Compte non personnalisé : ${noms}${suite} · ${geste} ne se fait que sur un compte personnalisé du dossier. ` +
+    'Personnalisez-le d\'abord dans Plan comptable · adoptez le compte du plan tel quel, ou ouvrez un sous-compte sous lui.'
+  );
+}
+
 /*
   La liste des routes qui servent une liste de choix vit dans
   `listes-de-comptes.ts`, un module SANS IMPORT · le spec de l'écran

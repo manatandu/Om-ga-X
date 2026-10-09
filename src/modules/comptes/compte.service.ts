@@ -13,6 +13,7 @@ import { naturesDuDossier } from './natures-compte.service';
 import { LIBELLES_NATURE, natureDe } from './natures-compte';
 import { classeDuNumero } from './classe-du-numero';
 import { comptesUtilises, estPropose } from './comptes-proposes';
+import { compteSemeSubdivise, numerosSemes, racineDuCompteSeme, sousComptePropose } from './subdivisions-du-plan';
 
 /**
  * Comptes ouverts au lettrage à la création d'un dossier.
@@ -172,17 +173,88 @@ export class CompteService {
     // de son numéro »), puis à la règle d'avant hors de toute nature · un
     // compte de tiers créé à la main se comporte comme ceux du plan semé.
     const nature = natureDe(dto.numero, await naturesDuDossier(this.prisma, tenantId));
+    // UN SOUS-COMPTE FONCTIONNE COMME SON COMPTE DU PLAN (décision de Manasse
+    // du 2026-10-09, point 4 · « ces comptes personnalisés fonctionnent
+    // exactement comme leur compte racine ») · les états, la TVA et les
+    // contrôles le lisent déjà par sa racine ; ses RÉGLAGES (lettrage, report
+    // à-nouveau, taux de taxe par défaut, comportement de gestion, traitement
+    // fiscal proposé) sont repris du compte du plan qu'il subdivise, sauf ce
+    // que la création précise. Le rattachement à un bailleur et la
+    // contrepartie de l'État ne se reprennent pas · ils nomment UN fonds, et
+    // le sous-compte peut être celui d'un autre bailleur.
+    const numeroDuPlan = compteSemeSubdivise(tenant.referentiel, dto.numero);
+    const duPlan = numeroDuPlan
+      ? await this.prisma.compte.findUnique({
+          where: { tenantId_numero: { tenantId, numero: numeroDuPlan } },
+          select: {
+            lettrable: true,
+            modeReportANouveau: true,
+            tauxTvaDefautId: true,
+            comportementGestion: true,
+            partVariableGestionPct: true,
+            codeRetraitementFiscal: true,
+          },
+        })
+      : null;
     return this.prisma.compte.create({
       data: {
         ...dto,
         classe,
         tenantId,
-        lettrable: dto.lettrable ?? nature?.lettrable ?? estLettrableParDefaut(dto.numero),
-        ...(dto.modeReportANouveau ?? nature?.modeReportANouveau
-          ? { modeReportANouveau: dto.modeReportANouveau ?? nature?.modeReportANouveau }
+        lettrable: dto.lettrable ?? duPlan?.lettrable ?? nature?.lettrable ?? estLettrableParDefaut(dto.numero),
+        ...(dto.modeReportANouveau ?? duPlan?.modeReportANouveau ?? nature?.modeReportANouveau
+          ? { modeReportANouveau: dto.modeReportANouveau ?? duPlan?.modeReportANouveau ?? nature?.modeReportANouveau }
+          : {}),
+        ...(duPlan
+          ? {
+              tauxTvaDefautId: dto.tauxTvaDefautId !== undefined ? dto.tauxTvaDefautId : duPlan.tauxTvaDefautId,
+              // Non portés par la création · repris tels quels, modifiables ensuite.
+              comportementGestion: duPlan.comportementGestion,
+              partVariableGestionPct: duPlan.partVariableGestionPct,
+              codeRetraitementFiscal:
+                dto.codeRetraitementFiscal !== undefined ? dto.codeRetraitementFiscal : duPlan.codeRetraitementFiscal,
+            }
           : {}),
       },
     });
+  }
+
+  /**
+   * LE SOUS-COMPTE PROPOSÉ sous un compte d'imputation du plan · « choisir
+   * le numéro de compte du plan, puis le personnaliser » (décision de Manasse
+   * du 2026-10-09). Le premier numéro libre sous sa racine, à la longueur du
+   * dossier, et l'intitulé du compte du plan à reprendre ou remplacer. Rien
+   * n'est réservé · la création rejuge le numéro.
+   */
+  async sousComptePropose(tenantId: string, compteId: string) {
+    const [dossier, compte] = await Promise.all([
+      this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true, longueurCompte: true } }),
+      this.prisma.compte.findFirst({ where: { id: compteId, tenantId }, select: { numero: true, intitule: true, typeCompte: true } }),
+    ]);
+    if (!compte) throw new NotFoundException('Compte introuvable pour ce dossier.');
+    const racine = racineDuCompteSeme(dossier.referentiel, compte.numero);
+    if (racine === null || compte.typeCompte !== TypeCompteDetailTotal.DETAIL) {
+      return {
+        numero: null,
+        intitule: compte.intitule,
+        motif:
+          `Le compte ${compte.numero} n'est pas un compte d'imputation du plan · un sous-compte s'ouvre sous un ` +
+          "compte d'imputation du plan officiel.",
+      };
+    }
+    const existants = await this.prisma.compte.findMany({
+      where: { tenantId, numero: { startsWith: racine } },
+      select: { numero: true },
+    });
+    const numero = sousComptePropose(dossier.referentiel, compte.numero, dossier.longueurCompte, existants.map((c) => c.numero));
+    return {
+      numero,
+      intitule: compte.intitule,
+      motif: numero
+        ? null
+        : `Plus aucun numéro libre sous le compte ${compte.numero} à ${dossier.longueurCompte} chiffres · allongez ` +
+          'les numéros de compte (Structure > Paramètres du dossier).',
+    };
   }
 
   /**
@@ -234,7 +306,16 @@ export class CompteService {
    * plan entier a été retenu par la migration.
    */
   async neRetenirQueLesUtilises(tenantId: string) {
-    const { count } = await this.prisma.compte.updateMany({ where: { tenantId, estRetenu: true }, data: { estRetenu: false } });
+    // LES COMPTES DU PLAN OFFICIEL SEULEMENT (décision de Manasse du
+    // 2026-10-09) · un compte que le cabinet a CRÉÉ (sous-compte, compte d'un
+    // tiers ou d'un journal) est personnalisé par sa création, même inutilisé
+    // · le dépersonnaliser fermerait à la saisie le sous-compte qu'il vient
+    // d'ouvrir.
+    const { referentiel } = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
+    const { count } = await this.prisma.compte.updateMany({
+      where: { tenantId, estRetenu: true, numero: { in: numerosSemes(referentiel) } },
+      data: { estRetenu: false },
+    });
     return { comptesDesretenus: count };
   }
 

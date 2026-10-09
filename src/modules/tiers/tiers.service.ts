@@ -1,3 +1,4 @@
+import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../comptes/comptes-proposes';
 import { BadRequestException, ConflictException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { libelleReference, referencesVers, refuserSiReferences, reporterReferences } from '../../common/suppression/references';
 import { coordonneesAComblement, motifRefusFusionTiers } from './fusion-tiers';
@@ -620,6 +621,17 @@ export class TiersService {
     if (compte.classe !== ClasseCompte.CLASSE_4) {
       throw new BadRequestException('Seul un compte de classe 4 (Tiers) peut être rattaché à un tiers');
     }
+    // UN TIERS NE SE RATTACHE QU'À UN COMPTE PERSONNALISÉ (décision de Manasse
+    // du 2026-10-09 · « on crée d'abord ce compte tiers dans le plan de
+    // compte ») · rattaché, le compte deviendrait utilisé, donc personnalisé
+    // d'office, et la règle se contournerait par le rattachement même. Le
+    // compte ouvert avec le tiers (panoplie, numéro choisi) l'est par
+    // construction.
+    const motifPersonnalise = motifComptesNonPersonnalises(
+      await comptesNonPersonnalises(this.prisma, tenantId, [compte.id]),
+      'le rattachement à un tiers',
+    );
+    if (motifPersonnalise) throw new BadRequestException(motifPersonnalise);
     const dejaRattache = await this.prisma.tiersCompte.findUnique({ where: { compteId: dto.compteId } });
     if (dejaRattache && dejaRattache.tiersId !== tiersId) {
       throw new ConflictException('Ce compte est déjà rattaché à un autre tiers');

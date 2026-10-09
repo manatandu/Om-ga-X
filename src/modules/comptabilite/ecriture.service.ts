@@ -40,6 +40,7 @@ import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements
 import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
 import { compteDeLaFamille, type FamilleTiers } from './familles-tiers';
 import { compteSemeSubdivise, racineDuCompteSeme, racinesSousLeCompteSeme } from '../comptes/subdivisions-du-plan';
+import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../comptes/comptes-proposes';
 
 /**
  * Une ligne est au débit si son montant est porté du côté débit · quel que
@@ -704,6 +705,29 @@ export class EcritureService {
       `Compte en sommeil : ${endormis.map((c) => c.numero).join(', ')} · confirmez la saisie ` +
         'ou réactivez le compte dans le plan comptable.',
     );
+  }
+
+  /**
+   * SEULS LES COMPTES PERSONNALISÉS SE SAISISSENT (décision de Manasse du
+   * 2026-10-09, `comptes/comptes-proposes.ts`) · un compte du plan officiel
+   * que le cabinet n'a ni adopté, ni subdivisé, et que rien n'utilise encore
+   * ne reçoit pas de ligne saisie. Appelée par le CONTRÔLEUR seulement, comme
+   * le collectif et le sommeil · l'écriture qu'un module passe (paie, TVA,
+   * clôture, impôt, imports) ADOPTE D'OFFICE le compte qu'elle mouvemente,
+   * qui devient utilisé, donc personnalisé, et le Plan comptable le dit.
+   *
+   * La modification qui n'apporte aucun compte nouveau n'est pas jugée · un
+   * compte déjà porté par la pièce est utilisé, donc personnalisé.
+   */
+  async verifierComptesPersonnalises(
+    tenantId: string,
+    lignes: { compteId: string }[] | undefined,
+    geste = 'une saisie',
+  ) {
+    if (!lignes || lignes.length === 0) return;
+    const non = await comptesNonPersonnalises(this.prisma, tenantId, lignes.map((l) => l.compteId));
+    const motif = motifComptesNonPersonnalises(non, geste);
+    if (motif) throw new BadRequestException(motif);
   }
 
   /**

@@ -1,3 +1,4 @@
+import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../comptes/comptes-proposes';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { referencesVers, refuserSiReferences } from '../../common/suppression/references';
 import { PrismaService } from '../../common/prisma.service';
@@ -285,6 +286,15 @@ export class JournalService {
         `Le compte ${compte.numero} est un compte Total · il ne reçoit aucune écriture, choisissez un compte de détail.`,
       );
     }
+    // LE COMPTE EXISTANT D'UN JOURNAL EST UN COMPTE PERSONNALISÉ (décision de
+    // Manasse du 2026-10-09) · porté par le journal, le compte deviendrait
+    // utilisé, donc personnalisé d'office, et la règle se contournerait par
+    // le choix même. Le compte ouvert avec le journal l'est par construction.
+    const motifPersonnalise = motifComptesNonPersonnalises(
+      await comptesNonPersonnalises(this.prisma, tenantId, [compteId]),
+      'le rattachement à un journal',
+    );
+    if (motifPersonnalise) throw new BadRequestException(motifPersonnalise);
     // UN COMPTE PAR JOURNAL DE BANQUE OU DE CAISSE (décision de Manasse du
     // 2026-10-09 · « chaque journal banque ou caisse doit être rattaché à un
     // numéro de compte personnalisé ») · deux journaux sur un même 52 mêlent

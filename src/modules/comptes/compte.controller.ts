@@ -48,6 +48,12 @@ export class CompteController {
     return this.compteService.renvoisDuPlan(user.tenantId);
   }
 
+  /** Le sous-compte proposé sous un compte du plan · « Personnaliser » au Plan comptable. */
+  @Get(':id/sous-compte-propose')
+  async sousComptePropose(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.compteService.sousComptePropose(user.tenantId, id);
+  }
+
   /** Ne retenir que les comptes utilisés · voir CompteService. */
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post('ne-retenir-que-les-utilises')
