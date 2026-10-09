@@ -751,3 +751,9 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   son nom et rattaché au même tiers, dont la fiche lit la position entière ;
   de même pour le fournisseur au 40. Les numéros exacts se relisent dans les
   deux plans avant tout code (un numéro, deux sens).
+  Seconde précision (2026-10-09) · pas seulement le client, TOUT TIERS porte
+  sa panoplie logique de sous-comptes, selon sa nature · fournisseur (40),
+  client et adhérent (41), salarié (42), organismes sociaux (43), État (44),
+  associés et bailleurs (45, 46), débiteurs et créditeurs divers (47), chacun
+  avec ses sous-comptes de factures, d'avances, de produits ou charges à
+  régulariser et de créances douteuses, tous rattachés au même tiers.
