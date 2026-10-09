@@ -259,6 +259,10 @@ en 403 dans un référentiel, jouées dans l'autre). AVANT (`p1c-avant.json`,
 `main` e31f4de) · 537 contrôles, 118 écarts (le scénario a gagné depuis les
 contrôles « condition dite » de C4 et la traversée de clôture de C3).
 
+Après le second tour (commit 739149d) · `p1c-apres-tout.json` (base
+`p1c_apres_tout`, port 8783) · tous les points, C3 à S9, sur une base neuve ·
+616 contrôles, 0 écart, 0 erreur HTTP.
+
 ## Premier tour de relecture (échecs silencieux) · sept constats
 
 Points `S1` à `S7` du scénario (`PAQUET1_C_POINTS=S1`…), un commit par
@@ -795,6 +799,7 @@ PAQUET1_C_POINTS=S9 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_ap
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json
+/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_tout 8783 paquet1-c /tmp/claude-0/sim/p1c-apres-tout.json
 # Relevé R1, en production (endpoint DIRECT, jamais affiché)
 # SELECT count(*) FROM provisions_risques_charges p JOIN exercices e ON e.id = p."exerciceId" WHERE e."tenantId" <> p."tenantId";
 # S'il rend des lignes · lecture, purge en une transaction et contrôle, relevé R1, étapes 2 à 4 (Manasse, jamais la session)
