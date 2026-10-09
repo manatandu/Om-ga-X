@@ -17,7 +17,10 @@ PAQUET1_A_COPIE=/home/user/Comptaflow PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10
 PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6,B2,M4,m2,m5 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
 # m5 · les deux requêtes de la fiche (blocs requete-m5 et requete-m5-conserver),
 # en lecture seule, sur une base jetable du banc
-PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,m5 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_m5 8767 paquet1-a /tmp/claude-0/sim/p1a-m5.json
+PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,m5 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_m5b 8767 paquet1-a /tmp/claude-0/sim/p1a-m5b.json
+# Second tour · AVANT (cette copie au commit 6931093) et APRÈS, puis tout le banc
+PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=S1,S1E,S2,B2 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_st_avant 8763 paquet1-a /tmp/claude-0/sim/p1a-st-avant.json
+PAQUET1_A_COPIE=/home/user/wt-p1a /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_st_final 8768 paquet1-a /tmp/claude-0/sim/p1a-st-final.json
 # Specs touchés
 npx tsc --noEmit
 npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/cloture-annuelle.spec.ts \
@@ -26,7 +29,8 @@ npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/clot
 npx jest src/modules/etats-financiers src/modules/etats-financiers-syscohada src/modules/exports
 npx jest src/modules/comptabilite/balance.spec.ts src/modules/notes-annexes src/modules/consolidation src/modules/ifrs
 cd client && npx tsc --noEmit && npx vitest run src/components/resultat-anterieur-non-vire.spec.ts src/lib/postes-de-flux-vides.spec.ts \
-  src/components/notes-part-non-ventilee.spec.ts src/components/notes-ecarts-saisie.spec.ts src/specs-sans-react.spec.ts
+  src/components/notes-part-non-ventilee.spec.ts src/components/notes-ecarts-saisie.spec.ts src/specs-sans-react.spec.ts \
+  src/lib/ouverture-suivante.spec.ts src/lib/accords-dissolution.spec.ts
 ```
 
 ## Fait
@@ -1045,14 +1049,142 @@ dossier. Non codé · à la décision du coordinateur.
 
 
 
+## Relecture 2 (second et dernier tour, 2026-10-09)
+
+Deux BLOQUANTS (CLAUDE.md § 11, la ligne reprend pour eux seuls) et trois
+changements à la requête de m5. L'AVANT de chaque bloquant est cette copie
+construite au commit qui précède la correction (6931093, `main` refusé par la
+garde de l'environnement dès le premier tour), base `p1a_st_avant` · 39
+contrôles, 17 écarts. L'APRÈS, chaque correction sur sa base, puis tout le
+banc sur `p1a_st_final` · 379 contrôles sur 379.
+
+### BLOQUANT 1 · une ouverture annulée après le premier jour fait déclarer (cae053b)
+
+Introduit par B2 · le négatif lié entre au périmètre quelle que soit sa date,
+et l'OD du premier jour qu'il annule s'y solde · la clôture et l'aperçu
+concluaient seuls « nulle, report entier ». « Corriger » depuis le Journal
+date le négatif du jour (`new Date()`), et la position exacte ressaisie le
+même jour tombe hors du périmètre.
+
+AVANT (S1, 2026 tenu, capital 10 400 000 en banque ; 2027 · OD fausse au
+01/01 de 10 500 000, négatif au 15/03, exact repassé au 15/03) · aperçu sans
+déclaration, clôture passée seule (« se soldent à zéro sur chaque compte · le
+report entier est passé »), banque 2027 à 20 800 000 et capital à
+-20 800 000 au lieu de 10 400 000, balance bouclée. Sans ressaisie, même
+silence (le montant était juste par chance).
+
+DÉCISION PAR LA LOI · AUDCIF art. 20, al. 2 (« l'enregistrement exact est
+ensuite opéré », non exclu par l'art. 3 du SYCEBNL) et art. 34 (SYCEBNL
+art. 16, 4)) · le négatif appelle une ressaisie, et le texte ne dit pas où ;
+OmegaX ne la reconnaît pas (aucune liaison) · le cabinet DÉCLARE. Une
+position nulle qui contient un négatif lié NI DATÉ NI VALORISÉ au premier jour
+(`negatifsTardifs`, le premier jour lu comme le périmètre le lit) ne conclut
+plus seule · refus qui nomme le négatif et sa date et les deux issues ;
+« Conserver » (motif exigé) · rien n'est passé, la ressaisie fait
+l'ouverture, positions et négatif gardés sur l'exercice ; « Rectifier » · le
+report entier, rien inscrit en négatif. Un report vide n'a rien à doubler,
+aucune déclaration. Même règle à l'aperçu (`declarationRequise`,
+`negatifsTardifs`), et l'écran ne dit plus « soldées à zéro · le report
+entier sera passé » dans ce cas (`client/src/lib/ouverture-suivante.ts`,
+titre et libellés des deux choix propres au cas). Le report PROVISOIRE ne
+passe rien d'ici la clôture, comme pour une ouverture divergente. Le refus
+d'une ouverture divergente nomme aussi un négatif tardif, « Rectifier l'import »
+la compterait deux fois après une ressaisie. Négatif daté ou valorisé au
+premier jour · inchangé (R10), sa ressaisie entre au périmètre.
+
+APRÈS · S1 ressaisi · aperçu `declarationRequise`, négatif du 2027-03-15
+nommé ; clôture sans déclaration refusée (15/03/2027, Conserver, Rectifier) ;
+« Conserver » · banque 10 400 000, capital -10 400 000, balance équilibrée.
+S1 non ressaisi · même refus ; « Rectifier » · banque 10 400 000. B2 (deux
+variantes, négatif au 15/02) · REPRISES, la déclaration est désormais exigée ·
+refus nommé puis « Rectifier » · banque 10 500 000, capital, 13 et balance
+inchangés. Specs · `cloture-annuelle.spec.ts` (refus, Rectifier, Conserver,
+négatif du premier jour ; les trois premiers tombent sur l'ancien code),
+`ouverture-passee.spec.ts` (`negatifsTardifs`, position NULLE qui les dit),
+`client/src/lib/ouverture-suivante.spec.ts`.
+
+JUMEAU AUX ÉTATS (e86f6c2) · premier exercice 2027 sans précédent, même OD
+annulée le 15/03 et même ressaisie · AVANT, tableau des flux FK (ou FM)
+10 400 000, ZA à 0, mention « présumée nulle » sans le négatif. Rien ne
+distingue cette ressaisie d'un vrai apport de l'exercice (M4 · apport du
+02/03 encaissé) · le montant ne se corrige pas d'office, il se DIT · la
+mention nomme le négatif et sa date et l'issue (bilan d'un dossier repris en
+à-nouveau, la voie de `motifOuverturePasseeEnOd`). APRÈS (S1E, deux
+référentiels) · mention dite ; M4 inchangé. `positionDOuvertureAuPremierJour`
+lit la position comme la clôture ; specs des deux tableaux et du câblage.
+
+### BLOQUANT 2 · une ouverture inscrite en négatif ne retient plus l'arrêt à la dissolution (d540291)
+
+Présent sur `main` · l'arrêt, son annulation et le rattachement refusaient
+dès qu'une écriture restait au périmètre (`passee.ecritures.length > 0`) en
+conseillant « validée, inscrivez-la en négatif » · le négatif inscrit, le
+refus tenait toujours. AVANT (S2, 2026 tenu, 2027 ouvert, OD d'ouverture au
+01/01/2027, dissolution au 30/06/2026) · OD seule · refus et conseil ;
+négatif au 01/01 · même refus ; négatif au 15/03 · même refus, et le champ
+d'accord rejeté par le DTO.
+
+DÉCISION · même prédicat que la clôture (`issueOuvertureQuiSeDeplace`) · une
+écriture au brouillard, refus inchangé ; position nulle, le geste passe
+(déplacée au milieu de l'exercice, elle ne pèse rien, R10) ; sinon refus
+inchangé. Règle du BLOQUANT 1 transposée · nulle par un négatif inscrit après
+le premier jour, une ressaisie doublerait le report que la clôture passera au
+nouveau premier jour (AUDCIF art. 34) · refus qui nomme le négatif et sa date
+et les deux issues (inscrire aussi la ressaisie en négatif, art. 20, al. 2 ;
+ou relancer « en confirmant que l'ouverture annulée n'est pas ressaisie »),
+levé par `ouvertureAnnuleeNonRessaisie` (DTO, contrôleur, trois gestes). À
+l'écran, la relance avec accord est écrite une fois
+(`client/src/lib/accords-dissolution.ts`) pour les deux accords (actes de la
+période, ouverture annulée), marqueurs relus dans le serveur par le spec.
+
+APRÈS (S2) · négatif au 01/01 · l'arrêt passe ; exercice de liquidation du
+01/07/2026, banque 10 000 000 et capital une fois après la clôture de 2026.
+Négatif au 15/03 · refus qui le nomme (« OD n° 3 du 15/03/2027 »), puis
+l'arrêt passe sur l'accord ; mêmes soldes. Specs ·
+`arret-dissolution.spec.ts` (arrêt au premier jour et au 15/03, brouillard,
+annulation et rattachement ; trois tombent sur l'ancien code),
+`client/src/lib/accords-dissolution.spec.ts`.
+
+### m5 · trois changements aux deux requêtes (99c192d)
+
+Écrits au constat m5 ci-dessus (SECOND TOUR) · déclaration retirée lue par
+« Rectifier », contre-passation au premier jour et seule pour « Conserver »,
+lecture seule par transaction annulée. Rejoués, 94 contrôles sur 94.
+
+### Hors périmètre, au suivi du coordinateur (NON corrigés, par consigne)
+
+- MAJEUR · le livre d'inventaire fige 0,00 sur les postes vides du tableau
+  des flux (`export.service.ts:3511`, `feuilleEtatFige`).
+- Mineur 3 · l'écran SYSCOHADA affiche 0,00 sur un poste vide.
+- Mineur 4 · `cleDeLectureDeBalance` avec une date invalide.
+- Mineur 5 · les conversions `as unknown as LecteurOuverturePassee`.
+
+
 ## Reste
 
-Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse), et
-les onze constats de la relecture 1 (B1, B2, M1 à M4, m1 à m5). À la décision
-du coordinateur · passer les deux requêtes de m5 sur la production, et dire
-s'il faut un contrôle (proposition au constat m5).
+Rien · les dix points sont traités (A5 sans défaut, A6 remonté à Manasse), les
+onze constats de la relecture 1 (B1, B2, M1 à M4, m1 à m5), et les deux
+BLOQUANTS du second tour avec les trois changements de m5. À la décision du
+coordinateur · passer les deux requêtes de m5 sur la production (en lecture
+seule, transaction annulée), et dire s'il faut un contrôle (proposition au
+constat m5). Le MAJEUR et les mineurs 3 à 5 du second tour vont à son suivi.
 
 ## Relevés (voisins, non codés)
+
+- Second tour, B1 · LIMITE ÉCRITE · un négatif daté du premier jour laisse la
+  position nulle conclure seule (R10) ; une ressaisie datée plus tard la
+  doublerait encore · le cas suit la règle du coordinateur (négatif « NON daté
+  ni valorisé au premier jour »), le premier jour lu comme le périmètre le lit
+  (égalité exacte de la date).
+- Second tour, B1 · une position CONCORDANTE qui contient un négatif tardif
+  (un import juste et une OD fausse annulée plus tard) conclut « rien
+  ajouté » · juste pour l'ouverture ; une ressaisie de l'OD fausse serait une
+  opération de l'exercice. Non codé.
+- Second tour, jumeau aux états · la mention des négatifs tardifs n'est dite
+  que pour la colonne N du tableau des flux (mêmes conditions que l'OD du
+  premier jour) ; la colonne N-1 garde son motif d'avant.
+- Second tour, B1 · la bulle « Bilan d'ouverture importé » du cadre de
+  déclaration garde son texte général (Rectifier inscrit l'import en négatif)
+  · le titre et les deux libellés disent le cas de l'ouverture annulée.
 
 - A8 · (levé par la relecture m4, voir plus haut) la contre-passation
   DÉCLARÉE était encore lue comme une ouverture par le 585 du groupe et par
