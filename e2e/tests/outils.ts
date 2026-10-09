@@ -27,7 +27,18 @@ export async function appelApi<T>(
   chemin: string,
   corps?: unknown,
   entetes: Record<string, string> = {},
+  options: { personnaliserAvant?: boolean } = {},
 ): Promise<T> {
+  // SEULS LES COMPTES PERSONNALISÉS SE SAISISSENT (décision de Manasse du
+  // 2026-10-09) · dans un dossier neuf, le plan semé ne l'est pas, et le
+  // cabinet adopte d'abord au Plan comptable les comptes qu'il saisit. Le
+  // parcours fait de même avant chaque saisie, réimputation ou fusion ;
+  // `personnaliserAvant: false` laisse le refus se voir
+  // (comptes-personnalises.e2e.ts).
+  if (options.personnaliserAvant !== false) {
+    const aAdopter = comptesSaisis(methode, chemin, corps);
+    for (const id of aAdopter) await appelApi(page, 'PATCH', `/comptes/${id}`, { estRetenu: true }, entetes, { personnaliserAvant: false });
+  }
   return page.evaluate(
     async ({ api, methode, chemin, corps, entetes }) => {
       const csrf = localStorage.getItem('omegax:csrf');
@@ -49,6 +60,18 @@ export async function appelApi<T>(
     },
     { api: API, methode, chemin, corps, entetes },
   ) as Promise<T>;
+}
+
+/** Les comptes qu'une saisie, une réimputation ou une fusion porte · les seuls que le serveur juge. */
+function comptesSaisis(methode: string, chemin: string, corps: unknown): string[] {
+  const c = corps as { lignes?: { compteId?: string | null }[]; compteCibleId?: string } | undefined;
+  if (!c) return [];
+  const saisie = (methode === 'POST' && chemin === '/ecritures') || (methode === 'PATCH' && /^\/ecritures\/[^/]+$/.test(chemin));
+  if (saisie) return [...new Set((c.lignes ?? []).map((l) => l.compteId).filter((x): x is string => !!x))];
+  if (methode === 'POST' && (chemin === '/ecritures/reimputation' || chemin === '/ecritures/fusion-comptes') && c.compteCibleId) {
+    return [c.compteCibleId];
+  }
+  return [];
 }
 
 export interface Dossier {

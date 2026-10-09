@@ -3133,11 +3133,41 @@ liste de choix de comptes demande `retenus=true`, à `/comptes` comme aux routes
 des immobilisations (comptes du bien, contreparties d'acquisition, fonds de fin
 de projet), et le serveur rend les retenus ET tout compte UTILISÉ par une seule
 règle (`comptes/comptes-proposes.ts` sur `identifiantsUtilises`, « tout lien
-retient »). Semé non retenu, créé retenu, existants gardés. Jamais un refus ·
-états, imports et écritures automatiques lisent tout le plan (§ 7), un numéro
-TAPÉ se résout dans tout le plan (saisie, inventaire). Une liste vide dit
-« retenez-le dans Plan comptable » ou « ouvrez-le », un choix unique se
-présélectionne. NON FILTRÉE · la liste où le texte, et le serveur par un refus
+retient »). Semé non retenu, créé retenu. LE RETENU OU UTILISÉ EST LE COMPTE
+PERSONNALISÉ, ET SEUL IL SE SAISIT (décision de Manasse du 2026-10-09, quatre
+réponses · « seuls les numéros personnalisés sont ceux qui s'affichent et
+permettent de passer les écritures ») · aucun texte ne l'impose (AUDCIF art.
+18, al. 3, « peut ouvrir toutes subdivisions nécessaires »), règle
+d'organisation d'OmegaX. (1) PERSONNALISER = ADOPTER le compte du plan tel
+quel (retenu, intitulé du cabinet) ou OUVRIR UN SOUS-COMPTE sous lui
+(`GET /comptes/:id/sous-compte-propose`, `sousComptePropose`, premier libre
+sous la racine officielle, jamais sous une racine semée plus profonde),
+boîte « Personnaliser » du Plan comptable (`ModalePersonnaliser`). (2) LES
+ÉCRITURES AUTOMATIQUES ADOPTENT D'OFFICE · modules, clôture, imports ne sont
+pas jugés, le compte qu'ils mouvementent devient utilisé, et la colonne
+« Personnalisé » du Plan comptable le DIT (« D'office »). (3) DEUX VOIES pour
+un tiers ou une banque · le compte ouvert depuis la fiche (panoplie, compte
+né avec le journal) l'est par construction, le rattachement d'un compte
+existant exige un compte personnalisé (`rattacherCompte`,
+`verifierCompteTresorerie`) · sans quoi la règle se contournerait par le
+rattachement même. (4) DOSSIERS EXISTANTS · la migration
+`20270164000000_comptes_personnalises` remet NON RETENUS les comptes
+d'imputation semés des dossiers dont aucun compte n'était non retenu (plan
+entier retenu par défaut, jamais choisi) ; ceux qui servent restent
+personnalisés d'office, les comptes CRÉÉS ne sont jamais touchés, et « Ne
+garder que les comptes utilisés » ne touche plus qu'au plan officiel. La
+SAISIE, la réimputation et la cible d'une fusion refusent un compte
+d'imputation non personnalisé (`verifierComptesPersonnalises`, au CONTRÔLEUR,
+avant le collectif) en le nommant, avec le geste qui lève le refus ; la
+grille de saisie ne prend plus un compte non personnalisé tapé en entier et
+le nomme ; l'inventaire, qui compte et ne saisit pas, le prend tel que tapé.
+UN SOUS-COMPTE FONCTIONNE COMME SON COMPTE DU PLAN · états, TVA et contrôles
+le lisent par sa racine, et `CompteService.creer` reprend du compte du plan
+qu'il subdivise lettrage, report, taxe par défaut, comportement de gestion
+et traitement fiscal proposé, sauf ce que la création précise ; jamais le
+bailleur ni la contrepartie de l'État, qui nomment UN fonds. Les états et
+les imports lisent tout le plan (§ 7). Une liste vide dit « personnalisez-le
+dans Plan comptable » ou « ouvrez-le », un choix unique se présélectionne. NON FILTRÉE · la liste où le texte, et le serveur par un refus
 nommé, n'admet qu'UNE racine que l'opération mouvemente souvent la PREMIÈRE
 (contrepartie de l'octroi d'une subvention, destinations de l'affectation, 12
 de l'imputation d'ouverture, 167 ET 4861 du legs, 29 de la division du bien) ;
