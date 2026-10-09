@@ -190,7 +190,10 @@ le 2026-10-08 · le gel tient jusqu'à la fin du pilote, avec UNE exception, le
 PAQUET 1 (décision de Manasse du 2026-10-08, « Lève le gel pour lui et attaque
 le paquet 1 ») · les vingt-quatre points du suivi que touche un dossier du
 pilote, en trois lignes, chacun reproduit sur vraie base avant d'être corrigé
-et rejoué après (`docs/plan-version-1.md`, § 7). Rien d'autre n'entre.
+et rejoué après (`docs/plan-version-1.md`, § 7) ; puis la ligne
+TIERS-PANOPLIE (décision de Manasse du 2026-10-09, « Lève le gel pour la
+fonction de chaque tiers et numéro personnalisée, et corrige », même plan,
+§ 8). Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
 qu'un autre ait réussi. Un push sur `main` en déclenche plusieurs à la fois,
@@ -3262,7 +3265,20 @@ le tiers, même transaction, premier numéro libre sous la racine, longueur du
 dossier, réglages du collectif, rattaché comme principal ; `Compte.collectifId`
 RESTRICT (un collectif qui porte des individuels ne se supprime pas). La balance
 générale les fond sur le collectif par ce lien, jamais par le numéro ; le détail
-reste à la balance auxiliaire.
+reste à la balance auxiliaire. LA PANOPLIE (décision de Manasse du 2026-10-09) ·
+chaque tiers naît avec TOUS les comptes de son type, chacun sous son collectif
+et lié à lui, au même rang que le principal quand il est libre
+(`PANOPLIES_TIERS`, numéros lus dans les deux semis · fournisseur 4011, 4081,
+4091 ; client SYSCOHADA 4111, 4181, 4191, 4161, 4162 ; client-usager SYCEBNL
+412, 4182, 4192, 4162 ; adhérent 411, 4181, 4191, 4161 · un numéro, deux sens
+au 4181 et au 4161) ; un dossier existant se COMPLÈTE au bouton, jamais
+d'office (par tiers, ou tout le dossier par tranches de cent) ; le salarié
+n'entre pas encore. UNE LIGNE SAISIE NE VA JAMAIS AU COLLECTIF qui porte des
+comptes de tiers (`verifierComptesCollectifs`, au CONTRÔLEUR seul, comme le
+sommeil · refus qui nomme les comptes ; modules et imports non touchés ; un
+collectif sans individuel reste ouvert). UN JOURNAL DE BANQUE OU DE CAISSE A
+SON PROPRE COMPTE · celui d'un autre journal est refusé au choix, jamais
+reproché à un dossier qui le partage déjà.
 
 **Natures de compte (point 14).** Sept, pas une de plus · Stock, Clients,
 Fournisseurs, Banque, Caisse, Charges, Produits (`comptes/natures-compte.ts`,

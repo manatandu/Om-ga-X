@@ -757,3 +757,10 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   associés et bailleurs (45, 46), débiteurs et créditeurs divers (47), chacun
   avec ses sous-comptes de factures, d'avances, de produits ou charges à
   régulariser et de créances douteuses, tous rattachés au même tiers.
+  TRAITÉ EN PARTIE (2026-10-09, ligne tiers-panoplie, `docs/plan-version-1.md`
+  § 8) · fournisseur, client et adhérent portent leur panoplie (40 et 41), la
+  saisie refuse le collectif qui porte des comptes de tiers, un journal de
+  trésorerie a son propre compte. RESTE · le salarié (42, « pas pour
+  l'instant »), les organismes sociaux, l'État, les associés et bailleurs,
+  les débiteurs et créditeurs divers (43 à 47), dont les sous-comptes se
+  relisent dans les deux plans avant tout code.

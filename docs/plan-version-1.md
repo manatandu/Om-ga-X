@@ -221,3 +221,25 @@ corrigés ; les majeurs de la relecture ciblée et les mineurs sont au suivi
    · aucune fuite, une réponse fausse.
 4. L'observation « Société unipersonnelle à associé unique » du résultat
    fiscal est servie à toute SARL, SA ou SAS, unipersonnelle ou non.
+
+## 8. Ligne tiers-panoplie · le gel levé pour elle (2026-10-09)
+
+Décision de Manasse du 2026-10-09 · « Lève le gel pour la fonction de chaque
+tiers et numéro personnalisée, et corrige ». Trois réponses de Manasse le même
+jour · les dossiers existants se complètent par un bouton « Compléter », jamais
+d'office ; une ligne saisie sur un collectif qui porte des comptes de tiers est
+refusée en le disant ; le salarié n'entre pas encore (« Pas pour l'instant »).
+
+- **Panoplie** (`tiers/collectifs-tiers.ts`, `PANOPLIES_TIERS`), numéros lus dans
+  les deux semis · fournisseur 4011, 4081, 4091 aux deux plans ; client
+  SYSCOHADA 4111, 4181, 4191, 4161, 4162 ; client-usager SYCEBNL 412, 4182,
+  4192, 4162 ; adhérent SYCEBNL 411, 4181, 4191, 4161. Chaque compte au même
+  rang que le principal quand il est libre, lié à son collectif.
+- **Saisie** · `EcritureService.verifierComptesCollectifs`, au contrôleur seul ;
+  modules et imports non touchés ; un collectif sans compte individuel reste
+  ouvert.
+- **Trésorerie** · un journal de banque ou de caisse ne prend pas le compte
+  d'un autre, jugé au choix du compte seulement.
+- **Scénario sur vraie base** · `e2e/tests/tiers-panoplie.e2e.ts`, à travers la
+  clôture de N et l'imputation de l'avance en N+1.
+
