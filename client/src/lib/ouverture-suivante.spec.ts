@@ -1,6 +1,5 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { describe, expect, it } from 'vitest';
 import { issueSansDeclaration, libellesChoix, negatifsTardifsLisibles, titreDeclaration, type ApercuOuverture } from './ouverture-suivante';
 
 /**

@@ -53,7 +53,7 @@ for (const referentiel of ['SYSCOHADA', 'SYCEBNL'] as const) {
     });
 
     // Au brouillard, la clôture le refuse et nomme le geste ouvert.
-    await expect(appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`, {})).rejects.toThrow(/au premier jour des écritures au brouillard/);
+    await expect(appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`, {})).rejects.toThrow(/au premier jour \(ou en correction d.une écriture du premier jour\) des écritures au brouillard/);
     await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: suivant.id, dateLimite: debut });
     // Validé et divergent · refus sans déclaration.
     await expect(appelApi(page, 'POST', `/exercices/${exercice.id}/cloturer`, {})).rejects.toThrow(/qui diffère du bilan de clôture/);
