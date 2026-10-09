@@ -5,8 +5,7 @@ import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
-import type { GroupesLusLigneALigne as GroupesLusLigneALigneServis } from '../lib/types';
-import { montant as montantTotal, montantOuVide as montant } from '../lib/montants';
+import { TableauBalanceAgee, type BalanceAgee } from '../components/TableauBalanceAgee';
 
 /**
  * BALANCE ÂGÉE · l'antériorité des créances et dettes non lettrées, tiers par
@@ -26,58 +25,6 @@ import { montant as montantTotal, montantOuVide as montant } from '../lib/montan
  * populations, débiteurs et créditeurs ventilés, soldes en sens inverse, et
  * le solde net des trois recoupe la balance auxiliaire.
  */
-
-interface TrancheAgee {
-  cle: string;
-  libellePeriode: string;
-  libelleAge: string;
-}
-
-interface LigneAgee {
-  cle: string;
-  libelle: string;
-  codeTiers: string;
-  numero: string;
-  montants: number[];
-  solde: number;
-}
-
-interface BalanceAgee {
-  dateReference: string;
-  debutExercice: string;
-  type: string;
-  tranches: TrancheAgee[];
-  /** Ventilés · solde débiteur dans le sens normal du périmètre. */
-  debiteurs: LigneAgee[];
-  /** Ventilés · solde créditeur dans le sens normal (dette fournisseur, sociale, fiscale). */
-  crediteurs: LigneAgee[];
-  /** Non ventilés · sens contraire au périmètre. */
-  sensInverse: LigneAgee[];
-  /**
-   * Solde nul · des pièces ouvertes qui se compensent (paquet 1, B3), en
-   * aucun sens, sans tranches et hors de tout total · à lettrer.
-   */
-  soldesNuls: LigneAgee[];
-  /** Groupes de lettrage lus ligne à ligne (paquet 1, B5). */
-  groupesLusLigneALigne?: GroupesLusLigneALigneServis;
-  totaux: {
-    parTranche: number[];
-    parTrancheCrediteurs: number[];
-    debiteurs: number;
-    crediteurs: number;
-    sensInverse: number;
-    net: number;
-  };
-  /**
-   * CE QUE L'ANTÉRIORITÉ VEUT DIRE DANS CE PÉRIMÈTRE. Sur un 40 ou un 41,
-   * une ligne ancienne est un délai de règlement dépassé ; sur un compte de
-   * personnel, d'organismes sociaux ou d'État, il n'y a aucun crédit
-   * commercial et un solde à la clôture est la situation normale. Le même
-   * tableau se lirait de travers sans cette phrase.
-   */
-  lecture: string;
-  libellePerimetre: string;
-}
 
 type TypeTiers =
   | 'TOUS'
@@ -165,57 +112,6 @@ export function BalanceAgeePage() {
     );
   };
 
-  // La grille suit le NOMBRE de tranches renvoyé · il varie avec la longueur
-  // de l'exercice (un exercice de moins de cinq mois n'a pas de bloc « reste
-  // de l'exercice »), et le figer casserait l'alignement en silence.
-  const nbTranches = donnees?.tranches.length ?? 0;
-  const grille = {
-    display: 'grid',
-    gridTemplateColumns: `minmax(220px,1fr) repeat(${nbTranches + 1}, 116px)`,
-    gap: '10px',
-  } as const;
-
-  // `soldeNul` · le solde s'écrit « 0,00 » · vide, il se lirait comme une
-  // absence de solde, alors que c'est la réponse.
-  const ligne = (l: LigneAgee, ventile: boolean, soldeNul = false) => (
-    <div
-      key={l.cle}
-      style={grille}
-      className="px-3.5 py-[4px] items-center border-b border-border/50 text-[11.5px]"
-    >
-      <span className="truncate" title={l.libelle}>
-        {l.libelle}
-      </span>
-      {donnees!.tranches.map((t, i) => (
-        <span key={t.cle} className="font-mono text-right">
-          {ventile ? montant(l.montants[i] ?? 0) : ''}
-        </span>
-      ))}
-      <span className="font-mono text-right font-semibold">{soldeNul ? montantTotal(0) : montant(l.solde)}</span>
-    </div>
-  );
-
-  const intercalaire = (titre: string) => (
-    <div className="px-3.5 py-1 text-[10.5px] italic text-text-dim bg-surface-alt border-y border-border/60">
-      {titre}
-    </div>
-  );
-
-  // Une ligne de total par population · `parTranche` nul pour les soldes en
-  // sens inverse, qui n'ont pas de tranches à additionner. Un total nul se
-  // dit « 0,00 » · vide, il se lirait comme une absence.
-  const ligneTotal = (libelle: string, parTranche: number[] | null, total: number) => (
-    <div style={grille} className="px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
-      <span>{libelle}</span>
-      {donnees!.tranches.map((t, i) => (
-        <span key={t.cle} className="font-mono text-right">
-          {parTranche ? montant(parTranche[i] ?? 0) : ''}
-        </span>
-      ))}
-      <span className="font-mono text-right">{montantTotal(total)}</span>
-    </div>
-  );
-
   return (
     <div className="p-2">
       <EnteteImpression titre="Balance âgée" />
@@ -276,95 +172,7 @@ export function BalanceAgeePage() {
       )}
 
       <div className="border border-border bg-surface shadow-posee overflow-x-auto">
-        {donnees && (
-          <>
-            <div
-              style={grille}
-              className="px-3.5 pt-1.5 text-[10.5px] italic text-text-dim border-b border-border/40"
-            >
-              <span />
-              {donnees.tranches.map((t) => (
-                <span key={t.cle} className="text-right">
-                  {t.libelleAge}
-                </span>
-              ))}
-              <span />
-            </div>
-            <div
-              style={grille}
-              className="px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark"
-            >
-              <span>TIERS</span>
-              {donnees.tranches.map((t) => (
-                <span key={t.cle} className="text-right">
-                  {t.libellePeriode}
-                </span>
-              ))}
-              <span className="text-right">SOLDE</span>
-            </div>
-          </>
-        )}
-
-        {donnees &&
-          donnees.debiteurs.length === 0 &&
-          donnees.crediteurs.length === 0 &&
-          donnees.sensInverse.length === 0 &&
-          donnees.soldesNuls.length === 0 && (
-            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
-              Aucune échéance non lettrée sur les comptes de tiers de cet exercice.
-            </div>
-          )}
-
-        {donnees && donnees.debiteurs.length > 0 && (
-          <>
-            {(donnees.crediteurs.length > 0 || donnees.sensInverse.length > 0 || donnees.soldesNuls.length > 0) &&
-              intercalaire('Soldes débiteurs')}
-            {donnees.debiteurs.map((l) => ligne(l, true))}
-            {ligneTotal('Total débiteurs', donnees.totaux.parTranche, donnees.totaux.debiteurs)}
-          </>
-        )}
-
-        {donnees && donnees.crediteurs.length > 0 && (
-          <>
-            {intercalaire('Soldes créditeurs')}
-            {donnees.crediteurs.map((l) => ligne(l, true))}
-            {ligneTotal('Total créditeurs', donnees.totaux.parTrancheCrediteurs, donnees.totaux.crediteurs)}
-          </>
-        )}
-
-        {donnees && donnees.sensInverse.length > 0 && (
-          <>
-            {intercalaire('Soldes en sens inverse · non ventilés par antériorité')}
-            {donnees.sensInverse.map((l) => ligne(l, false))}
-            {ligneTotal('Total soldes en sens inverse', null, donnees.totaux.sensInverse)}
-          </>
-        )}
-
-        {/* Paquet 1, B3 · un solde nul n'est en aucun sens · à part, sans
-            total, le net n'en bouge pas. */}
-        {donnees && donnees.soldesNuls.length > 0 && (
-          <>
-            {intercalaire('Soldes nuls · pièces ouvertes qui se compensent, à lettrer')}
-            {donnees.soldesNuls.map((l) => ligne(l, false, true))}
-          </>
-        )}
-
-        {donnees &&
-          (donnees.debiteurs.length > 0 ||
-            donnees.crediteurs.length > 0 ||
-            donnees.sensInverse.length > 0 ||
-            donnees.soldesNuls.length > 0) && (
-            <div
-              style={grille}
-              className="px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold"
-            >
-              <span>Solde net</span>
-              {donnees.tranches.map((t) => (
-                <span key={t.cle} />
-              ))}
-              <span className="font-mono text-right">{montantTotal(donnees.totaux.net)}</span>
-            </div>
-          )}
+        {donnees && <TableauBalanceAgee donnees={donnees} />}
       </div>
       {/* Paquet 1, B5 · les groupes lus ligne à ligne · leur total est dans les
           tranches, leur répartition par ancienneté ne l'est pas. */}

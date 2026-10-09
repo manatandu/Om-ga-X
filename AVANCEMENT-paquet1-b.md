@@ -190,6 +190,26 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   `lib/groupes-lus-ligne-a-ligne.spec.ts` (texte et câblage des sept écrans)
   et `components/GroupesLusLigneALigne.spec.tsx` (rendu).
 
+### B4 · la grille de la balance âgée sans rôles de tableau
+
+- AVANT (copie `main`) · `client/src/pages/BalanceAgeePage.tsx` ne porte
+  aucun `role=` ni `aria-` (0 et 0) · la grille CSS se lit, à l'aide
+  technique, comme une suite de textes sans en-têtes.
+- Correction · le tableau sort de la page dans
+  `client/src/components/TableauBalanceAgee.tsx` (mêmes classes, même rendu)
+  et porte le motif « table » de WAI-ARIA · `table` nommé (`aria-label`,
+  `aria-colcount`), deux `rowgroup`, deux rangées d'en-têtes de colonne (âge,
+  puis tiers, périodes, solde), une rangée par tiers dont le libellé est
+  l'en-tête de rangée, totaux et solde net en rangées, intercalaires et
+  message « aucune échéance » en rangées d'une cellule (`aria-colspan`).
+- Tests · `client/src/components/TableauBalanceAgee.spec.tsx` (huit cas ·
+  rendu statique relu en arbre, chaque rangée dans un groupe, chaque cellule
+  dans une rangée, largeur de chaque rangée égale au nombre de colonnes,
+  en-têtes de colonne et de rangée, intercalaires, tableau vide) ; retirer
+  le rôle d'une rangée de tiers fait tomber trois cas.
+- Pas de rejeu sur base · point d'écran, sans montant (le serveur et ses
+  réponses ne bougent pas).
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -239,6 +259,11 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   directement intelligible ») ; plafond de vingt groupes
   nommés, convention d'OmegaX, le total toujours dit (§ 8 bis).
 
+- B4 · aucun texte du corpus · référence technique WAI-ARIA 1.2 (motif
+  « table » · `table`, `rowgroup`, `row`, `columnheader`, `rowheader`,
+  `cell`, `aria-colspan`, `aria-colcount`), choisie plutôt qu'un `<table>`
+  pour garder le rendu de la grille à l'identique.
+
 - B9 · aucune source ne fixe la fenêtre de dates d'un rapprochement · le
   défaut (15) et la borne (120) sont des conventions d'OmegaX, celles que
   l'écran porte déjà (`RapprochementDetailPage`, champ de 0 à 120).
@@ -262,7 +287,7 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
 
 ## Reste
 
-B4, B8 ; puis rejeu APRÈS de tous les points
+B8 ; puis rejeu APRÈS de tous les points
 (`npm run build`, `cd client && npm run build`, puis
 `/tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1b p1b_apres 8772 paquet1-b /tmp/claude-0/sim/p1b-apres.json`).
 
@@ -271,5 +296,5 @@ B4, B8 ; puis rejeu APRÈS de tous les points
 ```bash
 npx tsc --noEmit
 npx jest src/modules/inventaire src/modules/controles/charge-sans-tiers src/modules/rapprochement src/modules/comptabilite/balance-agee src/modules/exports/balance-agee-export src/modules/lettrage/reste-des-lignes-ouvertes src/modules/relances
-cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts src/lib/groupes-lus-ligne-a-ligne.spec.ts src/components/GroupesLusLigneALigne.spec.tsx src/pages
+cd client && npx tsc --noEmit && npx vitest run src/lib/cloture-campagne.spec.ts src/lib/groupes-lus-ligne-a-ligne.spec.ts src/components/GroupesLusLigneALigne.spec.tsx src/components/TableauBalanceAgee.spec.tsx src/pages
 ```
