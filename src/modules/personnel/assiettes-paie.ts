@@ -54,6 +54,15 @@
  */
 
 import { auCentime, enCentimes } from './au-centime';
+import {
+  ZERO,
+  depuisNombre,
+  maximum,
+  moins,
+  plus,
+  versNombre,
+  type DecimalExact,
+} from '../../common/decimal-exact';
 
 /**
  * Les natures qu'un élément de paie peut prendre. La liste d'INCLUSION du
@@ -421,8 +430,24 @@ export function assietteSociale(elements: readonly ElementPaie[]): {
   montantFc: number;
   horsRemuneration: readonly ElementHorsRemuneration[];
 } {
+  const { montant, horsRemuneration } = assietteSocialeExacte(elements);
+  return { montantFc: versNombre(montant), horsRemuneration };
+}
+
+/**
+ * LA MÊME ASSIETTE, EN VALEUR EXACTE (second tour de relecture du paquet 1,
+ * ligne C, BLOQUANT du millier). Cinq lignes qui font 880 000 FC
+ * s'additionnaient en flottant à 879 999,9999999999 · la base de l'impôt qui
+ * en descend (art. 70 et 71) tombait sous son millier à l'arrondi de
+ * l'art. 118. La somme se prend en décimal exact (`common/decimal-exact.ts`) ;
+ * le verdict n'en reçoit que le flottant le plus proche.
+ */
+function assietteSocialeExacte(elements: readonly ElementPaie[]): {
+  montant: DecimalExact;
+  horsRemuneration: readonly ElementHorsRemuneration[];
+} {
   const horsRemuneration: ElementHorsRemuneration[] = [];
-  let montantFc = 0;
+  let montant = ZERO;
 
   for (const element of elements) {
     if (estHorsRemuneration(element.nature)) {
@@ -435,10 +460,10 @@ export function assietteSociale(elements: readonly ElementPaie[]): {
       });
       continue;
     }
-    montantFc += element.montantFc;
+    montant = plus(montant, depuisNombre(element.montantFc));
   }
 
-  return { montantFc, horsRemuneration };
+  return { montant, horsRemuneration };
 }
 
 /**
@@ -454,12 +479,49 @@ export function assiettes(
   elements: readonly ElementPaie[],
   parametres: ParametresAssiettes = {},
 ): VerdictAssiettes {
-  const sociale = assietteSociale(elements);
+  const { retenuesArticle71Fc, ...reste } = parametres;
+  return assiettesExactes(elements, {
+    ...reste,
+    retenuesArticle71: depuisNombre(retenuesArticle71Fc ?? 0),
+  }).verdict;
+}
+
+/** Les mêmes paramètres, les retenues de l'article 71 en valeur exacte. */
+export type ParametresAssiettesExactes = Omit<ParametresAssiettes, 'retenuesArticle71Fc'> & {
+  readonly retenuesArticle71?: DecimalExact;
+};
+
+/**
+ * Le verdict, et les deux assiettes en VALEUR EXACTE, qui n'entrent jamais dans
+ * le verdict (une `bigint` ne se fige pas en JSON, `common/decimal-exact.ts`).
+ * La simulation s'en sert pour la quote-part ouvrière et pour l'arrondi au
+ * millier de l'art. 118, qui ne se prennent pas sur un flottant.
+ */
+export type AssiettesExactes = {
+  readonly verdict: VerdictAssiettes;
+  readonly socialeExacte: DecimalExact;
+  /** La base nette de l'art. 70 · `null` quand le verdict la dit non chiffrée. */
+  readonly netteExacte: DecimalExact | null;
+};
+
+export function assiettesExactes(
+  elements: readonly ElementPaie[],
+  parametres: ParametresAssiettesExactes = {},
+): AssiettesExactes {
+  const sociale = assietteSocialeExacte(elements);
+  const socialeFc = versNombre(sociale.montant);
   const sortsFiscaux: SortFiscal[] = [];
   const abstentions: Abstention[] = [];
   const reserves: string[] = [];
 
-  let brutFiscalFc = 0;
+  // LE BRUT FISCAL S'ADDITIONNE EN VALEUR EXACTE (second tour de relecture du
+  // paquet 1, BLOQUANT du millier) · chaque part imposable est un montant au
+  // centime (la ligne saisie, ou l'excédent ramené par `auCentime`), et leur
+  // somme flottante glissait sous un millier exact.
+  let brutFiscal = ZERO;
+  const ajouterImposable = (fc: number) => {
+    brutFiscal = plus(brutFiscal, depuisNombre(fc));
+  };
   let indetermine = false;
 
   // LES PLAFONDS DE L'ARTICLE 69 PORTENT SUR LA GRANDEUR DU SALARIÉ, pas sur
@@ -494,7 +556,7 @@ export function assiettes(
     if (!immunite) {
       // Article 68 · tout le reste est imposable, avantages en nature compris,
       // « comptés pour leur valeur réelle » (dernier alinéa).
-      brutFiscalFc += element.montantFc;
+      ajouterImposable(element.montantFc);
       sortsFiscaux.push({
         libelle: element.libelle,
         montantFc: element.montantFc,
@@ -541,7 +603,7 @@ export function assiettes(
       const immunise = Math.min(element.montantFc, auCentime(Math.min(element.montantFc, plafondRestantFc)));
       tauxLegalRestantFc = auCentime(plafondRestantFc - immunise);
       const excedent = auCentime(element.montantFc - immunise);
-      brutFiscalFc += excedent;
+      ajouterImposable(excedent);
       sortsFiscaux.push({
         libelle: element.libelle,
         montantFc: element.montantFc,
@@ -577,7 +639,7 @@ export function assiettes(
         continue;
       }
       const imposableFc = atteste ? 0 : element.montantFc;
-      brutFiscalFc += imposableFc;
+      ajouterImposable(imposableFc);
       sortsFiscaux.push({
         libelle: element.libelle,
         montantFc: element.montantFc,
@@ -598,13 +660,13 @@ export function assiettes(
     // Le plafond se dit au millième quand il en porte un (30 % d'un nombre
     // de centimes) · arrondi au centime, 39 321,699 s'affichait 39 321,70
     // à côté d'un total de 39 321,70 dit au-dessus.
-    const remunerationCentimes = enCentimes(sociale.montantFc);
+    const remunerationCentimes = enCentimes(socialeFc);
     const conditionRemplie = enCentimes(totalLogementFc) * 100 <= remunerationCentimes * PLAFOND_LOGEMENT_POUR_CENT;
     const plafondMillimes = remunerationCentimes * PLAFOND_LOGEMENT_POUR_CENT / 10;
     const plafondFc = plafondMillimes / 1000;
     const plafondAffiche = Number.isInteger(plafondMillimes / 10) ? plafondFc.toFixed(2) : plafondFc.toFixed(3);
     const imposableFc = conditionRemplie ? 0 : element.montantFc;
-    brutFiscalFc += imposableFc;
+    ajouterImposable(imposableFc);
     sortsFiscaux.push({
       libelle: element.libelle,
       montantFc: element.montantFc,
@@ -625,12 +687,13 @@ export function assiettes(
     reserves.push(
       "BASE DES 30 % · l'article 69, 8, a) dit « de la rémunération » sans la définir. OmegaX la prend au sens de " +
         "l'article 7, point 8 du Code du travail, qui en exclut justement le logement, soit " +
-        `${sociale.montantFc.toFixed(2)} FC. Une lecture qui y inclurait le logement élargirait le plafond.`,
+        `${socialeFc.toFixed(2)} FC. Une lecture qui y inclurait le logement élargirait le plafond.`,
     );
   }
 
-  const retenuesArticle71Fc = Math.max(0, parametres.retenuesArticle71Fc ?? 0);
-  const assietteFiscaleBruteFc = indetermine ? null : brutFiscalFc;
+  const retenues71 = maximum(ZERO, parametres.retenuesArticle71 ?? ZERO);
+  const retenuesArticle71Fc = versNombre(retenues71);
+  const assietteFiscaleBruteFc = indetermine ? null : versNombre(brutFiscal);
   const quotePartNonChiffree = parametres.quotePartOuvriereNonChiffree ?? null;
   const motifAssietteNetteNonChiffree =
     assietteFiscaleBruteFc !== null && quotePartNonChiffree
@@ -638,10 +701,11 @@ export function assiettes(
         "à une caisse de pension officielle (loi n° 23/053, art. 70 et 71), et la quote-part ouvrière de la CNSS " +
         `ne l'est pas · ${quotePartNonChiffree} L'impôt et le net ne se chiffrent donc pas non plus.`
       : null;
-  const assietteFiscaleNetteFc =
+  const netteExacte =
     assietteFiscaleBruteFc === null || motifAssietteNetteNonChiffree !== null
       ? null
-      : Math.max(0, assietteFiscaleBruteFc - retenuesArticle71Fc);
+      : maximum(ZERO, moins(brutFiscal, retenues71));
+  const assietteFiscaleNetteFc = netteExacte === null ? null : versNombre(netteExacte);
 
   if (retenuesArticle71Fc > 0) {
     reserves.push(
@@ -653,14 +717,18 @@ export function assiettes(
   }
 
   return {
-    assietteSocialeFc: sociale.montantFc,
-    horsRemuneration: sociale.horsRemuneration,
-    assietteFiscaleBruteFc,
-    sortsFiscaux,
-    retenuesArticle71Fc,
-    assietteFiscaleNetteFc,
-    motifAssietteNetteNonChiffree,
-    abstentions,
-    reserves: [...new Set(reserves)],
+    verdict: {
+      assietteSocialeFc: socialeFc,
+      horsRemuneration: sociale.horsRemuneration,
+      assietteFiscaleBruteFc,
+      sortsFiscaux,
+      retenuesArticle71Fc,
+      assietteFiscaleNetteFc,
+      motifAssietteNetteNonChiffree,
+      abstentions,
+      reserves: [...new Set(reserves)],
+    },
+    socialeExacte: sociale.montant,
+    netteExacte,
   };
 }

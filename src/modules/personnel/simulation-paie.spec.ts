@@ -1051,3 +1051,65 @@ describe('C1 · la simulation ne chiffre ni base nette, ni impôt, ni net sous a
     expect(res.net.netAPayerFc).not.toBeNull();
   });
 });
+
+/**
+ * SECOND TOUR DE RELECTURE DU PAQUET 1, LIGNE C, BLOQUANT · l'arrondi au
+ * millier INFÉRIEUR de la loi n° 23/053, art. 118 se prenait sur un flottant.
+ * Cinq lignes qui font 880 000 FC s'additionnaient à 879 999,9999999999, la
+ * quote-part ouvrière à 43 999,99999999999, et le revenu annualisé
+ * 10 031 999,999999998 tombait au millier 10 031 000 · 105 900 FC retenus au
+ * lieu de 106 000, figés dans le bulletin, le décompte final et le 447.
+ */
+describe('Second tour, BLOQUANT · le millier de l’art. 118 se prend sur la valeur exacte', () => {
+  const cinqLignes = [51_905.39, 53_651.71, 168_138.49, 68_332.09, 537_972.32];
+  const enLignes = (montants: readonly number[]) =>
+    montants.map((montantFc, i) => ({
+      nature: i === 0 ? 'SALAIRE_OU_TRAITEMENT' : 'PRIME',
+      libelle: `Ligne ${i + 1}`,
+      montantFc,
+    }));
+  const mars2026 = (montants: readonly number[], over: Partial<SimulationPaieDto> = {}) =>
+    dto({
+      moisDePaie: '2026-03',
+      natureEmployeurInpp: 'PRIVE',
+      effectif: 30,
+      personnesACharge: 0,
+      elements: enLignes(montants),
+      ...over,
+    } as Partial<SimulationPaieDto>);
+
+  it('témoin · la somme flottante des cinq lignes tombe sous 880 000, celle de leurs centimes non', () => {
+    expect(cinqLignes.reduce((a, b) => a + b, 0)).toBeLessThan(880_000);
+    expect(cinqLignes.reduce((a, b) => a + Math.round(b * 100), 0)).toBe(88_000_000);
+  });
+
+  it('cinq lignes de 880 000 FC retiennent 106 000 FC, comme une seule ligne de 880 000', async () => {
+    const { svc } = service();
+    const res = await svc.simulerPaie('t-1', null, mars2026(cinqLignes));
+    expect(res.assiettes.assietteSocialeFc).toBe(880_000);
+    expect(res.cotisations.totalTravailleurFc).toBe(44_000);
+    expect(res.assiettes.assietteFiscaleNetteFc).toBe(836_000);
+    expect(res.retenue?.revenuAnnualiseFc).toBe(10_032_000);
+    expect(res.retenue?.annuel.assietteArrondieFc).toBe(10_032_000);
+    expect(res.retenue?.retenueFc).toBe(106_000);
+
+    const uneLigne = await service().svc.simulerPaie('t-1', null, mars2026([880_000]));
+    expect(uneLigne.retenue?.retenueFc).toBe(106_000);
+  });
+
+  it('un revenu à 999,9964 FC sous le millier n’est pas remonté au millier · aucun arrondi au centime d’abord', async () => {
+    // 0,0003 FC d'autres versements de l'article 71 · base nette 835 999,9997,
+    // annualisée 10 031 999,9964. Arrondie d'abord au centime, elle rendrait
+    // 10 032 000,00 et un impôt sur un millier que le salarié n'a pas.
+    const { svc } = service();
+    const res = await svc.simulerPaie('t-1', null, mars2026([880_000], { retenuesArticle71Fc: 0.0003 }));
+    expect(res.retenue?.annuel.assietteArrondieFc).toBe(10_031_000);
+    expect(res.retenue?.retenueFc).toBe(105_900);
+  });
+
+  it('le verdict figé reste du JSON · aucune valeur exacte n’en sort', async () => {
+    const { svc } = service();
+    const res = await svc.simulerPaie('t-1', null, mars2026(cinqLignes));
+    expect(() => JSON.stringify(res)).not.toThrow();
+  });
+});

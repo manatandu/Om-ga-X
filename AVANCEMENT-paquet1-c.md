@@ -496,6 +496,107 @@ dissolution ; `main` sert d'ailleurs l'observation sans condition, voir S2).
 dissolution, la dissolution reste vide, la condition tombe. S2 et C4 rejoués
 après le changement de texte · 18 concordances (`p1c-s7-s2c4-apres.json`).
 
+## Second tour de relecture · un BLOQUANT et son jumeau
+
+Points `S8` et `S9` du scénario, un commit par correction, reproduits contre
+`main` 2e606ec (ligne B intégrée, base `p1c_avant`, port 8781) puis rejoués
+sur la copie (base `p1c_apres`, port 8782). m2 (montants à plus de deux
+décimales hors `ElementPaieDto.montantFc`), m3 (observation de l'art. 63 à
+une entreprise du portefeuille de l'État) et m4 (CLAUDE.md) vont au suivi par
+le coordinateur · non touchés ici.
+
+### S8 · BLOQUANT · l'arrondi au millier de l'art. 118 sur la valeur exacte
+
+Loi n° 23/053, art. 118 relu (compétence `fiscalite-rdc`) · l'impôt se calcule
+« sur le revenu net global arrondi au millier de francs congolais inférieur » ;
+art. 70 et 71 · base nette de la quote-part ouvrière ; art. 119 · retenue
+mensuelle (mensualisation de l'éditeur, mois × 12). `bareme-irpp.ts` prenait
+ce plancher par `Math.floor` sur un FLOTTANT, nourri de la somme flottante des
+lignes (`assiettes-paie.ts`) moins la quote-part flottante (`cotisations-paie.ts`,
+base × taux / 100). Cinq lignes, mars 2026, privé, 30 salariés, aucune personne
+à charge · 51 905,39 + 53 651,71 + 168 138,49 + 68 332,09 + 537 972,32 =
+880 000,00, que le flottant rend 879 999,9999999999 ; quote-part
+43 999,99999999999 ; base 835 999,9999999999 ; annualisée 10 031 999,999999998,
+arrondie à 10 031 000 · retenue 105 900 FC au lieu de 106 000 (une ligne de
+880 000 rend 106 000), figée au bulletin, au décompte final et au 4472. Le
+premier tour (S1) avait déclaré « PAS DE DÉFAUT » sur ce plafond en tenant
+l'assiette pour un millier exact · c'est son calcul qui ne l'était pas.
+
+**Choix de la correction, et pourquoi pas une autre.** (1) Ramener au centime
+avant le plancher (`Math.floor(enCentimes(m) / 100 000) × 1 000`, proposée par
+le relecteur) n'est PAS sûr · la quote-part porte un demi-millième (5 % d'une
+base au centime, grille 0,0005), les retenues saisies de l'art. 71
+(`SimulationPaieDto.retenuesArticle71Fc`, `@IsNumber()` sans limite de
+décimales), le taux et le SMIG du cabinet (`baremes-dossier.ts`, aucune limite)
+en portent autant qu'on veut · un revenu annualisé de 10 031 999,9964 (base
+835 999,9997, 0,0003 FC d'autres retenues) s'arrondirait au centime à
+10 032 000,00 et gagnerait un millier qu'il n'a pas. (2) Ramener sur une grille
+plus fine ne se démontre pas davantage · la grille dépend de saisies sans borne,
+et l'erreur du flottant (de l'ordre de 1e-8 à 1e-6 FC entre 1e7 et 1e9) peut
+excéder la distance au millier. (3) Arrondir la quote-part ou les retenues au
+centime changerait le revenu imposable · aucun texte lu n'en fixe l'arrondi (la
+loi n° 16/009 n'arrondit que les pensions et rentes) · écarté, et c'est écrit
+au code. **Retenu · le calcul EXACT, sans convention** ·
+`src/common/decimal-exact.ts` (entiers `bigint` à échelle décimale, module sans
+import) · la valeur d'un nombre est son écriture décimale par `String(x)`
+(ECMA-262, Number::toString, la plus courte qui redonne le flottant), soit
+EXACTEMENT le montant saisi dès qu'il a au plus quinze chiffres significatifs
+(DBL_DIG = 15), et les montants que le moteur forme au centime (`auCentime`, la
+conversion des dollars) en sont. Somme des lignes (sociale et part imposable de
+chaque ligne), base de la CNSS (assiette ou SMIG × jours), chaque cotisation
+(base × taux / 100), quote-part, retenues de l'art. 71, base nette,
+annualisation × 12 et plancher au millier se prennent en décimal exact ; le
+verdict (figé en JSON par le bulletin, une `bigint` ne s'y sérialise pas) n'en
+reçoit que le flottant le plus proche (`versNombre`). Les fonctions publiques
+gardent leur signature et la forme de leurs verdicts (`assiettes`,
+`cotisations`, `plancherCnss`, `netAPayer`) ; la simulation appelle leurs
+jumeaux exacts (`assiettesExactes`, `cotisationsExactes`) et passe la base nette
+exacte à `retenueMensuelle`, qui l'accepte comme un nombre ; un montant non
+chiffré (`null`) lève, jamais un zéro (`exact`).
+
+**Les autres paliers, cherchés.** (a) **Art. 150 sur la retenue de paie** ·
+SÛR une fois l'assiette un millier exact, et démontré au commentaire de
+`detailMensuel` · tranches et plafond rendent des francs entiers (multiples de
+30), la réduction de l'art. 123 un multiple de 0,6 ; l'impôt mensuel est soit
+exact (impôt annuel entier, seul cas où la fraction vaut 0,5), soit à au moins
+0,0167 de toute frontière. Gelé par un rejeu en entiers (`bareme-irpp.spec.ts`,
+40 050 couples assiette × personnes à charge, zéro écart). (b) **Art. 150 de
+la fiscalité** (IS 30 %, minimum 1 %, petite entreprise 1 % et 2 %, minimum du
+régime réel, `fiscalite.service.ts`) · SÛR · toutes les bases entrent ARRONDIES
+AU CENTIME (`arrondir`, `chiffreAffairesMinimumPremierExercice`), et la seule
+frontière qui compte (première décimale 5) exige une base en FRANCS ENTIERS
+pour ces trois taux (1 % · base ≡ 50 mod 100 ; 2 % · 25 mod 50 ; 30 % ·
+(10N + 5) / 3) · base exacte en binaire, produit à moins d'un demi-ulp,
+rendu exactement N,5. Sondé · 7 millions de bases à la frontière jusqu'à
+10^13 FC, zéro écart (`art150c.mjs`, `art150d.mjs` du bloc-notes) · une base
+SOMMÉE en flottant, elle, basculait (21 399 et 31 512 cas, `art150b.mjs`) ·
+c'est l'arrondi au centime à la source qui la protège, à ne pas retirer. (c)
+**Seuils de l'art. 107 et 109** (25 000 000 et 300 000 000) · comparés au
+chiffre d'affaires arrondi au centime, un entier exact · sûrs. (d) Quotité
+saisissable (bornes continues), conversion des dollars (ramenée au millionième
+de centime puis au centime supérieur), décompte final (jours et années
+entiers), tranches INPP (effectif entier) · sans palier sur un flottant. (e)
+Plancher de la CNSS et 30 % du logement · déjà jugés en centimes (S1), sur des
+flottants désormais au plus près de la valeur exacte.
+
+**Tests.** `src/common/decimal-exact.spec.ts` (lecture des écritures à
+exposant, opérations, plancher qui ne remonte pas 10 031 999,9964, centimes au
+demi vers le haut) ; `simulation-paie.spec.ts`, describe « Second tour,
+BLOQUANT » · témoin (somme flottante des cinq lignes sous 880 000, celle des
+centimes à 88 000 000), cinq lignes = une ligne = 106 000 FC, 999,9964 non
+remonté, verdict sérialisable · le test des cinq lignes TOMBE sur l'ancien code
+(« Expected 880000, Received 879999.9999999999 », éprouvé sur une copie de
+a60e044) ; `bareme-irpp.spec.ts` · la même chaîne sur les fonctions pures, et
+le rejeu en entiers de l'art. 150.
+
+**AVANT, `main`** (`p1c-s8-avant.json`, point S8) · 7 contrôles, 5 écarts ·
+simulation [879 999,9999999999 ; 43 999,99999999999 ; 835 999,9999999999],
+annualisé 10 031 999,999999998, assiette 10 031 000, retenue 105 900 ;
+bulletin émis IRPP 105 900, net 730 100 ; 4472 au journal -105 900. **APRÈS**
+(`p1c-s8-apres.json`) · 7 concordances · 880 000, 44 000, 836 000, 10 032 000,
+106 000 (cinq lignes comme une), bulletin IRPP 106 000, net 730 000, 4472
+-106 000.
+
 ## Reste (au coordinateur, à l'intégration)
 
 - Committer le scénario `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-c.mjs`.
@@ -627,6 +728,10 @@ PAQUET1_C_POINTS=S6 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_ap
 (cd client && npx vitest run src/pages/associe-unique-hors-dissolution.spec.ts)
 PAQUET1_C_POINTS=S7 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s7-avant.json
 PAQUET1_C_POINTS=S7 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s7-apres.json
+# Second tour · S8 (millier de l'art. 118), AVANT puis APRÈS
+npx jest src/common/decimal-exact.spec.ts src/modules/personnel/bareme-irpp.spec.ts src/modules/personnel/simulation-paie.spec.ts
+PAQUET1_C_POINTS=S8 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-s8-avant.json
+PAQUET1_C_POINTS=S8 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8782 paquet1-c /tmp/claude-0/sim/p1c-s8-apres.json
 # Rejeu complet (les quatre points), et AVANT sur main
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres 8788 paquet1-c /tmp/claude-0/sim/p1c-apres.json
 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1c_avant 8781 paquet1-c /tmp/claude-0/sim/p1c-avant.json

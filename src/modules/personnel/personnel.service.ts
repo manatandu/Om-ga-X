@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { NatureBulletinPaie, Prisma, StatutBulletinPaie, StatutEcriture, TypeContratTravail } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { depuisNombre, plus } from '../../common/decimal-exact';
 import {
   ContratTravailDto,
   DecompteFinalDto,
@@ -11,14 +12,14 @@ import {
   TerminerContratDto,
 } from './dto/personnel.dto';
 import {
-  assiettes,
+  assiettesExactes,
   NATURES_FOURNIES_EN_NATURE,
   type ElementPaie,
   type NatureElementPaie,
   type TauxLegalNonCalcule,
 } from './assiettes-paie';
 import { RESERVE_REGIME_NON_DECLARE, baremeApplicableAuMois, regimeApplicable, retenueMensuelle } from './bareme-irpp';
-import { cotisations, netAPayer, type NatureEmployeurInpp, type RegimeCnss } from './cotisations-paie';
+import { cotisationsExactes, netAPayer, type NatureEmployeurInpp, type RegimeCnss } from './cotisations-paie';
 import { NATURES_SANS_IMPUTATION, estVerseEnEspeces, passationPaie, type Referentiel } from './passation-paie';
 import {
   LITTERA_ARTICLE_112,
@@ -1223,11 +1224,17 @@ export class PersonnelService {
     const tauxLegalAllocationsNonCalcule =
       tauxLegalAllocationsFamilialesFc === null ? this.tauxLegalNonCalcule(dto, annexesSmig) : null;
 
-    const premierPassage = assiettes(elements, {
+    // LES MONTANTS QUI DESCENDENT VERS L'ARRONDI AU MILLIER DE L'ART. 118 SE
+    // PORTENT EN VALEUR EXACTE (second tour de relecture du paquet 1, BLOQUANT
+    // du millier) · assiette sociale, quote-part ouvrière, retenues de
+    // l'article 71, base nette. Le flottant faisait de cinq lignes de
+    // 880 000 FC un revenu annualisé de 10 031 999,999999998, arrondi à
+    // 10 031 000 · cent francs de retenue en moins sur le bulletin et au 447.
+    const premierPassage = assiettesExactes(elements, {
       tauxLegalAllocationsFamilialesFc,
       tauxLegalAllocationsNonCalcule,
     });
-    const lesCotisations = cotisations(premierPassage.assietteSocialeFc, {
+    const { verdict: lesCotisations, totalTravailleurExact } = cotisationsExactes(premierPassage.socialeExacte, {
       moisDePaie: dto.moisDePaie,
       versionsDossier: versionsDuDossier(versionsBaremes),
       natureEmployeurInpp: (dto.natureEmployeurInpp as NatureEmployeurInpp | undefined) ?? null,
@@ -1250,17 +1257,17 @@ export class PersonnelService {
     // de pension complémentaire, une assurance-maladie souscrite sous le
     // patronage de l'employeur). La quote-part ouvrière de la CNSS, elle, est
     // calculée · la faire saisir en plus la compterait deux fois.
-    const retenuesArticle71Fc =
-      lesCotisations.totalTravailleurFc + Math.max(0, dto.retenuesArticle71Fc ?? 0);
+    const retenuesArticle71 = plus(totalTravailleurExact, depuisNombre(Math.max(0, dto.retenuesArticle71Fc ?? 0)));
 
-    const deuxAssiettes = assiettes(elements, {
+    const secondPassage = assiettesExactes(elements, {
       tauxLegalAllocationsFamilialesFc,
       tauxLegalAllocationsNonCalcule,
-      retenuesArticle71Fc,
+      retenuesArticle71,
       // CONSTAT C1 · sous abstention de la CNSS, la quote-part ouvrière n'est
       // pas chiffrée · ni la base nette, ni l'impôt, ni le net ne le sont.
       quotePartOuvriereNonChiffree: lesCotisations.quotePartOuvriereNonChiffree,
     });
+    const deuxAssiettes = secondPassage.verdict;
 
     // TROIS RAISONS DE NE PAS CHIFFRER LA RETENUE, et aucune n'est une panne.
     // Le barème hors de sa période, une assiette indéterminée, et c'est tout ·
@@ -1271,10 +1278,10 @@ export class PersonnelService {
     // s'abstient plutôt que de retenir l'article 118 (audit final F105).
     const regime = regimeApplicable(dto.regimeSalarial ?? 'BAREME_ARTICLE_118');
     const retenue =
-      borne.applicable && regime.calculable && deuxAssiettes.assietteFiscaleNetteFc !== null
+      borne.applicable && regime.calculable && secondPassage.netteExacte !== null
         ? retenueMensuelle(
             dto.moisDePaie,
-            deuxAssiettes.assietteFiscaleNetteFc,
+            secondPassage.netteExacte,
             dto.personnesACharge ?? 0,
           )
         : null;

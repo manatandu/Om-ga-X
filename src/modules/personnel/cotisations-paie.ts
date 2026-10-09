@@ -1,5 +1,15 @@
 import { MULTIPLICATEURS_ARTICLE_7, annexeApplicable, type Annexe } from './bareme-smig';
 import { enCentimes } from './au-centime';
+import {
+  ZERO,
+  depuisNombre,
+  fois,
+  maximum,
+  pourCent,
+  somme,
+  versNombre,
+  type DecimalExact,
+} from '../../common/decimal-exact';
 import { motifRefusReductionInpp, reserveReductionInpp } from '../retenues/inpp-trimestriel';
 
 /**
@@ -517,7 +527,25 @@ export function plancherCnss(
   joursPayes?: number | null,
   annexesSmig: readonly Annexe[] = [],
 ): PlancherCnss {
-  const assiette = Math.max(0, assietteSocialeFc);
+  return plancherCnssExact(moisDePaie, depuisNombre(assietteSocialeFc), joursPayes, annexesSmig).plancher;
+}
+
+/**
+ * Le plancher, et la base de la CNSS en VALEUR EXACTE (second tour de
+ * relecture du paquet 1, BLOQUANT du millier) · la quote-part ouvrière qui en
+ * sort se déduit du revenu imposable (loi n° 23/053, art. 71), dont l'arrondi
+ * au millier de l'art. 118 ne se prend pas sur un flottant. La base exacte
+ * reste hors du verdict, que le bulletin fige en JSON.
+ */
+function plancherCnssExact(
+  moisDePaie: string,
+  assietteSociale: DecimalExact,
+  joursPayes?: number | null,
+  annexesSmig: readonly Annexe[] = [],
+): { plancher: PlancherCnss; baseExacte: DecimalExact | null } {
+  const assietteExacte = maximum(ZERO, assietteSociale);
+  const assiette = versNombre(assietteExacte);
+  const sur = (plancher: PlancherCnss, baseExacte: DecimalExact | null) => ({ plancher, baseExacte });
   const applicable = annexeApplicable(moisDePaie, annexesSmig);
   const annexe = applicable.annexe;
   if (!annexe) {
@@ -525,45 +553,55 @@ export function plancherCnss(
     // décret n° 18/017 est au corpus et transcrit ; ce qui manque est, selon
     // le mois, l'annexe de ses paliers, le secteur du dossier, ou le texte
     // d'avant 2018. Le barème dit lequel.
-    return {
-      baseFc: assiette,
-      plancherFc: null,
-      applique: false,
-      message: `PLANCHER NON VÉRIFIÉ · ${applicable.explication} (${SOURCES_PLANCHER}).`,
-    };
+    return sur(
+      {
+        baseFc: assiette,
+        plancherFc: null,
+        applique: false,
+        message: `PLANCHER NON VÉRIFIÉ · ${applicable.explication} (${SOURCES_PLANCHER}).`,
+      },
+      assietteExacte,
+    );
   }
   const jours = joursPayes ?? MULTIPLICATEURS_ARTICLE_7.MOIS;
   // LE TAUX PAYÉ DE L'ANNEXE DU MOIS · 14 500 FC de mai à décembre 2025
   // (annexe 1, décret n° 25/22, art. 3), 21 500 FC depuis janvier 2026
   // (annexe 2), ou la grille du cabinet (décision T4).
-  const plancher = annexe.smigJournalierFc * jours;
+  const plancherExact = fois(depuisNombre(annexe.smigJournalierFc), depuisNombre(jours));
+  const plancher = versNombre(plancherExact);
   // « EN AUCUN CAS » SOUS LE SMIG · le seuil se juge en CENTIMES ENTIERS
   // (premier tour de relecture du paquet 1, constat 1). Cinq lignes qui font
   // 21 500 × 26 = 559 000 FC s'additionnaient à 558 999,9999999999 · « sous le
   // plancher », et la CNSS, l'impôt et le net d'un salaire AU minimum ne se
   // chiffraient plus.
   if (enCentimes(assiette) >= enCentimes(plancher)) {
-    return { baseFc: assiette, plancherFc: plancher, applique: false, message: null };
+    return sur({ baseFc: assiette, plancherFc: plancher, applique: false, message: null }, assietteExacte);
   }
   if (joursPayes === undefined || joursPayes === null) {
-    return {
-      baseFc: null,
-      plancherFc: null,
-      applique: false,
-      message:
-        `ASSIETTE SOUS LE PLANCHER · ${assiette} FC contre ${plancher} FC pour un mois entier. Mois incomplet ` +
-        `ou rémunération sous le minimum : déclarez les jours payés du mois, et le plancher sera celui de ces ` +
-        `jours (${SOURCES_PLANCHER}).`,
-    };
+    return sur(
+      {
+        baseFc: null,
+        plancherFc: null,
+        applique: false,
+        message:
+          `ASSIETTE SOUS LE PLANCHER · ${assiette} FC contre ${plancher} FC pour un mois entier. Mois incomplet ` +
+          `ou rémunération sous le minimum : déclarez les jours payés du mois, et le plancher sera celui de ces ` +
+          `jours (${SOURCES_PLANCHER}).`,
+      },
+      null,
+    );
   }
-  return {
-    baseFc: plancher,
-    plancherFc: plancher,
-    applique: true,
-    message:
-      `PLANCHER APPLIQUÉ · la base de la CNSS est relevée de ${assiette} FC au SMIG de ${jours} jour(s) payé(s), ` +
-      `${plancher} FC (${SOURCES_PLANCHER}). Le relèvement porte sur la base, les taux restent ceux du décret.`,
-  };
+  return sur(
+    {
+      baseFc: plancher,
+      plancherFc: plancher,
+      applique: true,
+      message:
+        `PLANCHER APPLIQUÉ · la base de la CNSS est relevée de ${assiette} FC au SMIG de ${jours} jour(s) payé(s), ` +
+        `${plancher} FC (${SOURCES_PLANCHER}). Le relèvement porte sur la base, les taux restent ceux du décret.`,
+    },
+    plancherExact,
+  );
 }
 
 /**
@@ -579,13 +617,38 @@ export function cotisations(
   assietteSocialeFc: number,
   parametres: ParametresCotisations,
 ): VerdictCotisations {
+  return cotisationsExactes(depuisNombre(assietteSocialeFc), parametres).verdict;
+}
+
+/**
+ * Le verdict, et la QUOTE-PART OUVRIÈRE EN VALEUR EXACTE (second tour de
+ * relecture du paquet 1, BLOQUANT du millier). Elle entre dans les retenues de
+ * l'article 71 et ferme la base de l'impôt, que l'art. 118 arrondit au millier
+ * inférieur · 879 999,9999999999 × 5 / 100 rendait 43 999,99999999999, et la
+ * base annualisée 10 031 999,999999998 perdait un millier entier. Chaque ligne
+ * se calcule en décimal exact (base × taux / 100), le verdict n'en reçoit que
+ * le flottant le plus proche ; la valeur exacte reste hors du verdict, que le
+ * bulletin fige en JSON. Aucun arrondi n'est posé sur la quote-part · aucun
+ * texte lu n'en fixe un (la loi n° 16/009 n'arrondit que les pensions et les
+ * rentes), et en poser un changerait le revenu imposable.
+ */
+export function cotisationsExactes(
+  assietteSociale: DecimalExact,
+  parametres: ParametresCotisations,
+): { verdict: VerdictCotisations; totalTravailleurExact: DecimalExact } {
   const lignes: LigneCotisation[] = [];
+  const montantsExacts: DecimalExact[] = [];
   const abstentions: string[] = [];
   const reserves: string[] = [];
-  const assiette = Math.max(0, assietteSocialeFc);
+  const assietteExacte = maximum(ZERO, assietteSociale);
   // LE PLANCHER NE VAUT QUE POUR LA CNSS · ni l'INPP ni l'ONEM n'en portent
   // (audit final F112). La base de la CNSS peut donc différer de l'assiette.
-  const plancher = plancherCnss(parametres.moisDePaie, assiette, parametres.joursPayes, parametres.annexesSmig);
+  const { plancher, baseExacte: baseCnssExacte } = plancherCnssExact(
+    parametres.moisDePaie,
+    assietteExacte,
+    parametres.joursPayes,
+    parametres.annexesSmig,
+  );
   const sourceCnss =
     "Assiette routée par l'article 13 de la loi n° 16/009 vers l'article 7, litera h du Code du travail, et recopiée à l'article 17, point 1 de l'arrêté n° 146/2018.";
 
@@ -597,16 +660,18 @@ export function cotisations(
     tauxPourCent: number,
     source: string,
     reserve: string | null,
-    base: number = assiette,
+    base: DecimalExact = assietteExacte,
   ) => {
+    const montantExact = pourCent(base, depuisNombre(tauxPourCent));
+    montantsExacts.push(montantExact);
     lignes.push({
       cle,
       libelle,
       organisme,
       charge,
       tauxPourCent,
-      assietteFc: base,
-      montantFc: (base * tauxPourCent) / 100,
+      assietteFc: versNombre(base),
+      montantFc: versNombre(montantExact),
       source,
       reserve,
     });
@@ -629,7 +694,7 @@ export function cotisations(
     // Une version saisie par le cabinet porte SA référence, et la réserve le dit.
     const srcCnss = cnss.saisieCabinet ? `${cnss.reference} (saisi par le cabinet).` : `${cnss.reference}. ${sourceCnss}`;
     const reserveCnss = cnss.saisieCabinet ? RESERVE_BAREME_CABINET : null;
-    const baseCnss = plancher.baseFc as number;
+    const baseCnss = baseCnssExacte as DecimalExact;
     if (plancher.message) reserves.push(`CNSS · ${plancher.message}`);
     const apprenti = parametres.regimeCnss === 'APPRENTI';
     if (parametres.regimeCnss === null || parametres.regimeCnss === undefined) {
@@ -657,7 +722,9 @@ export function cotisations(
     const coefficient = 1 + (majoration ?? 0) / 100;
     // Le plafond du texte, jamais le coefficient appliqué.
     if (coefficient > MAJORATION_RISQUES_PROFESSIONNELS_MAXIMUM) throw new RangeError('Majoration au-delà du double.');
-    const tauxRp = cnss.risquesProfessionnels * coefficient;
+    // Le taux majoré, en décimal exact puis rendu au flottant le plus proche ·
+    // 1,7 × 1,5 ne doit pas porter le bruit du produit flottant dans la base.
+    const tauxRp = versNombre(fois(depuisNombre(cnss.risquesProfessionnels), depuisNombre(coefficient)));
     const reservesRp = [
       reserveCnss,
       majoration !== null ? reserveMajorationRisquesProfessionnels(majoration) : null,
@@ -736,22 +803,23 @@ export function cotisations(
     poser('onem', 'ONEM · contribution patronale', 'ONEM', 'EMPLOYEUR', onem.tauxPourCent, onem.source, reserveOnem);
   }
 
-  const totalEmployeurFc = lignes
-    .filter((l) => l.charge === 'EMPLOYEUR')
-    .reduce((n, l) => n + l.montantFc, 0);
-  const totalTravailleurFc = lignes
-    .filter((l) => l.charge === 'TRAVAILLEUR')
-    .reduce((n, l) => n + l.montantFc, 0);
+  const totalExact = (charge: ChargeCotisation) =>
+    somme(montantsExacts.filter((_, i) => lignes[i].charge === charge));
+  const totalEmployeurFc = versNombre(totalExact('EMPLOYEUR'));
+  const totalTravailleurExact = totalExact('TRAVAILLEUR');
 
   return {
-    lignes,
-    totalEmployeurFc,
-    totalTravailleurFc,
-    coutEmployeurSupplementaireFc: totalEmployeurFc,
-    abstentions,
-    quotePartOuvriereNonChiffree,
-    plancherCnss: plancher,
-    reserves,
+    verdict: {
+      lignes,
+      totalEmployeurFc,
+      totalTravailleurFc: versNombre(totalTravailleurExact),
+      coutEmployeurSupplementaireFc: totalEmployeurFc,
+      abstentions,
+      quotePartOuvriereNonChiffree,
+      plancherCnss: plancher,
+      reserves,
+    },
+    totalTravailleurExact,
   };
 }
 
