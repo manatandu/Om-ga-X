@@ -14,10 +14,10 @@
  */
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { cloturer, compte, ecriture, etape, nouveauDossier, validerJusqua } from './lib.mjs';
+import { balance, cloturer, compte, ecriture, etape, nouveauDossier, solde, validerJusqua } from './lib.mjs';
 
 const BQ = '52110000';
-const POINTS = (process.env.PAQUET1_C_POINTS ?? 'C3,C4,C1,C2,S1,S2,S3,S4,S5,S6,S7').split(',').map((s) => s.trim()).filter(Boolean);
+const POINTS = (process.env.PAQUET1_C_POINTS ?? 'C3,C4,C1,C2,S1,S2,S3,S4,S5,S6,S7,S8,S9').split(',').map((s) => s.trim()).filter(Boolean);
 
 /** Le message d'une réponse, quelle que soit sa forme. */
 const messageDe = (r) => {
@@ -888,8 +888,141 @@ async function pointS7(R) {
   });
 }
 
+// ==============================================================================
+// S8 · SECOND TOUR DE RELECTURE, BLOQUANT · LE MILLIER DE L'ART. 118 SUR LA VALEUR EXACTE
+// ==============================================================================
+//
+// Loi n° 23/053, art. 118 · l'impôt est calculé « sur le revenu net global
+// arrondi au millier de francs congolais inférieur » ; art. 70 et 71 · la base
+// est nette de la quote-part ouvrière de la CNSS (5 %, décret n° 18/041,
+// art. 3) ; art. 119 · retenue mensuelle (mensualisation de l'éditeur, revenu
+// du mois × 12). Mars 2026, employeur privé de 30 salariés, aucune personne à
+// charge. Cinq lignes · 51 905,39 + 53 651,71 + 168 138,49 + 68 332,09 +
+// 537 972,32 = 880 000,00 FC exactement. Calcul à la main · quote-part
+// 880 000 × 5 % = 44 000 ; base nette 836 000 ; annualisée 10 032 000, déjà
+// au millier ; barème · 1 944 000 × 3 % = 58 320, (10 032 000 − 1 944 000) ×
+// 15 % = 1 213 200, total 1 271 520 ; ÷ 12 = 105 960 ; art. 150 · tranche 60
+// ≥ 50, centaine supérieure · 106 000 FC. Le flottant additionnait les lignes
+// à 879 999,9999999999, annualisait à 10 031 999,999999998, arrondissait à
+// 10 031 000 · (10 031 000 − 1 944 000) × 15 % = 1 213 050, + 58 320 =
+// 1 271 370, ÷ 12 = 105 947,5, art. 150 · 105 900 FC. Le bulletin émis et la
+// paie du mois au journal (447) portaient 105 900. Attendu · 106 000 partout,
+// comme pour une seule ligne de 880 000.
+
+const CINQ_LIGNES_880 = [51_905.39, 53_651.71, 168_138.49, 68_332.09, 537_972.32];
+
+async function pointS8(R) {
+  R.scenario = 'paquet1-c · S8';
+  await etape(R, 'S8 · millier de l’art. 118 sur la valeur exacte', async () => {
+    const c = await nouveauDossier(R, 'Paquet 1 S8 · Kasaï Mines SARL', { referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'p1c-s8', exercice: ['2026-01-01', '2026-12-31'] });
+    await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await c.geste('Activation du module de paie', 'PATCH', '/dossier/modules', { modulesActives: ['PAIE'] });
+    const n = c.exercices.get('2026').id;
+    const base = { moisDePaie: '2026-03', natureEmployeurInpp: 'PRIVE', effectif: 30, regimeSalarial: 'BAREME_ARTICLE_118', personnesACharge: 0 };
+    const enLignes = (montants) => montants.map((montantFc, i) => ({ nature: i === 0 ? 'SALAIRE_OU_TRAITEMENT' : 'PRIME', libelle: `Élément ${i + 1}`, montantFc }));
+
+    const cinq = await c.geste('Simulation · cinq lignes de 880 000 FC', 'POST', '/personnel/simulation', { ...base, elements: enLignes(CINQ_LIGNES_880) });
+    R.egal('S8 · cinq lignes · [assiette sociale, quote-part, base nette]', [880_000, 44_000, 836_000],
+      [cinq?.assiettes?.assietteSocialeFc ?? null, cinq?.cotisations?.totalTravailleurFc ?? null, cinq?.assiettes?.assietteFiscaleNetteFc ?? null]);
+    R.egal('S8 · cinq lignes · [revenu annualisé, assiette de l’art. 118]', [10_032_000, 10_032_000],
+      [cinq?.retenue?.revenuAnnualiseFc ?? null, cinq?.retenue?.annuel?.assietteArrondieFc ?? null]);
+    R.egal('S8 · cinq lignes · retenue du mois 106 000 FC', 106_000, cinq?.retenue?.retenueFc ?? null);
+    const une = await c.geste('Simulation · une ligne de 880 000 FC', 'POST', '/personnel/simulation', { ...base, elements: enLignes([880_000]) });
+    R.egal('S8 · une ligne de 880 000 · retenue du mois 106 000 FC (la même)', 106_000, une?.retenue?.retenueFc ?? null);
+
+    const s = await c.geste('Salarié KABONGO', 'POST', '/personnel/salaries', { nom: 'KABONGO', sexe: 'MASCULIN', nationalite: 'congolaise', lieuNaissance: 'Mbuji-Mayi' });
+    if (!s) return;
+    await c.geste('Contrat KABONGO', 'POST', `/personnel/salaries/${s.id}/contrats`, {
+      type: 'DUREE_INDETERMINEE', lieuExecution: 'Mbuji-Mayi', dateEntreeEnVigueur: '2026-01-01', natureTravail: 'Ingénieur des mines',
+      classeProfessionnelle: 15, periodiciteRemuneration: 'MOIS', remunerationBase: 51_905.39, deviseRemuneration: 'CDF',
+    });
+    const { personnesACharge: _pac, moisDePaie: _m, ...sansMois } = base;
+    const b = await c.geste('Bulletin de mars 2026 de KABONGO (cinq lignes)', 'POST', `/personnel/salaries/${s.id}/bulletins`, { moisDePaie: '2026-03', ...sansMois, personnesACharge: 0, elements: enLignes(CINQ_LIGNES_880) });
+    R.egal('S8 · bulletin émis · [assiette sociale, quote-part, IRPP, net]', [880_000, 44_000, 106_000, 730_000],
+      [b?.assietteSocialeFc ?? null, b?.cotisationsTravailleurFc ?? null, b?.irppFc ?? null, b?.netAPayerFc ?? null].map((x) => (x === null ? null : Number(x))));
+    const p = await c.geste('Passation de la paie de mars 2026', 'POST', '/personnel/paie-du-mois/2026-03/comptabilisation', { exerciceId: n, journalId: c.od?.id, date: '2026-03-31' });
+    R.egal('S8 · paie du mois passée au journal', true, Boolean(p));
+    await validerJusqua(c, n, '2026-03-31');
+    const bal = await balance(c, n);
+    R.egal('S8 · 4472 au journal · 106 000 FC d’impôt retenu (solde créditeur)', -106_000, solde(bal, '4472'));
+  });
+}
+
+// ==============================================================================
+// S9 · SECOND TOUR, JUMEAU m1 · LE NET NÉGATIF EN CENTIMES SUR LA VALEUR EXACTE
+// ==============================================================================
+//
+// Code du travail, art. 112 · les retenues d'avance ne dépassent pas ce qui
+// est dû ; OmegaX refuse un net négatif (le 422 de la passation mentirait).
+// Le net se jugeait sur le flottant · cinq lignes de 880 000 FC laissaient
+// 729 999,9999999999 (730 099,9999999999 sur main, impôt de 105 900), et une
+// retenue d'avance ÉGALE AU NET AFFICHÉ au centime rendait -1,16e-10 ·
+// refusée « dépassent ce qui reste dû ». Attendu · la retenue égale au net
+// affiché passe, net 0, bulletin émis à 0, 4211 crédité de la retenue.
+// Convention de l'éditeur (dite au code) · le net se juge en centimes par la
+// règle de la colonne Decimal(18,2) où le bulletin le fige (demi-centime loin
+// de zéro) · 600 000,10 FC laissent un net exact de 503 900,095 (quote-part
+// 30 000,005), affiché 503 900,10 · une retenue de 503 900,10 (net exact
+// -0,005, figé -0,01) est refusée, 503 900,09 passe (net 0,005, figé 0,01).
+
+/** Le net affiché · au centime, le demi-centime loin de zéro (montants.ts). */
+const affiche = (x) => (Math.sign(x) * Math.round(Math.abs(x) * 100)) / 100;
+
+async function pointS9(R) {
+  R.scenario = 'paquet1-c · S9';
+  await etape(R, 'S9 · net négatif jugé en centimes sur la valeur exacte', async () => {
+    const c = await nouveauDossier(R, 'Paquet 1 S9 · Ituri Logistique SARL', { referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: 'p1c-s9', exercice: ['2026-01-01', '2026-12-31'] });
+    await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await c.geste('Activation du module de paie', 'PATCH', '/dossier/modules', { modulesActives: ['PAIE'] });
+    const n = c.exercices.get('2026').id;
+    const base = { moisDePaie: '2026-03', natureEmployeurInpp: 'PRIVE', effectif: 30, regimeSalarial: 'BAREME_ARTICLE_118', personnesACharge: 0 };
+    const enLignes = (montants) => montants.map((montantFc, i) => ({ nature: i === 0 ? 'SALAIRE_OU_TRAITEMENT' : 'PRIME', libelle: `Élément ${i + 1}`, montantFc }));
+    const s = await c.geste('Salarié BAHATI', 'POST', '/personnel/salaries', { nom: 'BAHATI', sexe: 'FEMININ', nationalite: 'congolaise', lieuNaissance: 'Bunia' });
+    if (!s) return;
+    await c.geste('Contrat BAHATI', 'POST', `/personnel/salaries/${s.id}/contrats`, {
+      type: 'DUREE_INDETERMINEE', lieuExecution: 'Bunia', dateEntreeEnVigueur: '2026-01-01', natureTravail: 'Responsable logistique',
+      classeProfessionnelle: 15, periodiciteRemuneration: 'MOIS', remunerationBase: 51_905.39, deviseRemuneration: 'CDF',
+    });
+    const av = await c.geste('Avance sur salaire de BAHATI', 'POST', `/personnel/salaries/${s.id}/avances`, {
+      type: 'AVANCE', dateOctroi: '2026-03-02', montantFc: 2_000_000, objet: 'Avance pour frais de scolarité', pieceJustificative: 'Demande signée du 1er mars 2026',
+    });
+    if (!av) return;
+    await ecriture(c, 'Versement de l’avance de BAHATI', n, '2026-03-02', 'Avance sur salaire BAHATI', [['42110000', 2_000_000, 0], ['52110000', 0, 2_000_000]], { journal: c.journal('BQ') ?? c.od });
+    const simuler = (montants, retenue) => c.req('POST', `/personnel/simulation?salarieId=${s.id}`, {
+      ...base, elements: enLignes(montants), ...(retenue === undefined ? {} : { retenuesAvances: [{ avanceId: av.id, montantFc: retenue }] }),
+    });
+
+    // Le net affiché de cinq lignes, sans retenue · la retenue le prend tel quel.
+    const sans = await simuler(CINQ_LIGNES_880);
+    const netAffiche = affiche(Number(sans.corps?.net?.netAPayerFc));
+    R.note(`S9 · net affiché des cinq lignes sans retenue · ${netAffiche}`);
+    const egale = await simuler(CINQ_LIGNES_880, netAffiche);
+    R.egal('S9 · retenue égale au net affiché des cinq lignes · acceptée', true, egale.statut < 300);
+    R.egal('S9 · retenue égale au net affiché · net exactement 0', 0, egale.statut < 300 ? egale.corps?.net?.netAPayerFc ?? null : `refusée ${egale.statut} · ${egale.corps?.message ?? ''}`);
+    const b = await c.geste('Bulletin de mars 2026 de BAHATI (retenue égale au net affiché)', 'POST', `/personnel/salaries/${s.id}/bulletins`, {
+      ...base, elements: enLignes(CINQ_LIGNES_880), retenuesAvances: [{ avanceId: av.id, montantFc: netAffiche }],
+    });
+    R.egal('S9 · bulletin émis · net 0', 0, b ? Number(b.netAPayerFc) : null);
+    const p = await c.geste('Passation de la paie de mars 2026', 'POST', '/personnel/paie-du-mois/2026-03/comptabilisation', { exerciceId: n, journalId: c.od?.id, date: '2026-03-31' });
+    R.egal('S9 · paie du mois passée au journal', true, Boolean(p));
+    await validerJusqua(c, n, '2026-03-31');
+    const bal = await balance(c, n);
+    R.egal('S9 · 422 soldé (net 0) et 4211 diminué de la retenue', [0, 2_000_000 - netAffiche], [solde(bal, '422'), solde(bal, '4211')]);
+
+    // La frontière de la convention · un net exact qui finit en demi-centime.
+    const demi = await simuler([600_000.1]);
+    R.egal('S9 · 600 000,10 · [quote-part, retenue d’impôt, net exact]', [30_000.005, 66_100, 503_900.095],
+      [demi.corps?.cotisations?.totalTravailleurFc ?? null, demi.corps?.retenue?.retenueFc ?? null, demi.corps?.net?.netAPayerFc ?? null]);
+    const trop = await simuler([600_000.1], 503_900.1);
+    R.egal('S9 · retenue de 503 900,10 (net exact -0,005, figé -0,01) · refusée 400 avec son issue', [400, true],
+      [trop.statut, /réduisez-les/.test(trop.corps?.message ?? '')]);
+    const juste = await simuler([600_000.1], 503_900.09);
+    R.egal('S9 · retenue de 503 900,09 (net exact 0,005) · acceptée', true, juste.statut < 300);
+  });
+}
+
 export default async function scenarioPaquet1C(registre) {
-  const table = { C3: pointC3, C4: pointC4, C1: pointC1, C2: pointC2, S1: pointS1, S2: pointS2, S3: pointS3, S4: pointS4, S5: pointS5, S6: pointS6, S7: pointS7 };
+  const table = { C3: pointC3, C4: pointC4, C1: pointC1, C2: pointC2, S1: pointS1, S2: pointS2, S3: pointS3, S4: pointS4, S5: pointS5, S6: pointS6, S7: pointS7, S8: pointS8, S9: pointS9 };
   for (const p of POINTS) {
     const fn = table[p];
     if (!fn) continue;
