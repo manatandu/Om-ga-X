@@ -366,6 +366,10 @@ const SELECT_ECRITURE_CONTROLEE = {
   reevaluationEcarts: { select: { id: true } },
   reevaluationExtourne: { select: { id: true } },
   corrigeEcriture: { select: { reevaluationEcarts: { select: { id: true } }, reevaluationExtourne: { select: { id: true } } } },
+  // Paquet 1, B1 · le redressement d'un manquant d'inventaire se reconnaît à
+  // sa LIAISON (`EcartInventaire.ecritureId`), jamais au libellé · l'écart
+  // lu dit quelle ligne de crédit il justifie (compte inventorié, montant).
+  ecartsInventaire: { select: { ecart: true, compte: { select: { numero: true } } } },
   // Ligne A7 ter, B2 · les écritures que tient une créance douteuse (son
   // reclassement, ses pertes et recouvrements, ses revues) se reconnaissent
   // par leur LIAISON, avec l'état d'annulation de l'acte et de la créance.
@@ -424,6 +428,77 @@ function estEcritureDeConversion(e: EcritureControlee): boolean {
     e.reevaluationExtourne != null ||
     (e.corrigeEcriture != null &&
       (e.corrigeEcriture.reevaluationEcarts != null || e.corrigeEcriture.reevaluationExtourne != null))
+  );
+}
+
+/**
+ * LES LIGNES QU'UN REDRESSEMENT D'INVENTAIRE JUSTIFIE (paquet 1, B1) · une
+ * écriture rattachée à un écart d'inventaire porte, par construction du
+ * rattachement (`InventaireService.rattacherEcritureRedressement`), une ligne
+ * qui CRÉDITE le compte inventorié du montant manquant. Pour une caisse, cette
+ * ligne est un crédit de trésorerie sans tiers, et c'est voulu · le manquant
+ * est constaté, arbitré « à la charge de l'entreprise » par la sous-commission
+ * (CPCC, étape 5), puis comptabilisé (étape 6) ; il n'y a personne à payer.
+ * Le contrôle des charges sans tiers le prenait pour un achat réglé au
+ * comptant. On retire donc cette ligne-là (compte inventorié, montant exact,
+ * une ligne par écart lié) · une autre dépense de trésorerie glissée dans la
+ * même pièce reste lue, et signalée.
+ *
+ * SA CONTREPARTIE DE CHARGE SORT AVEC ELLE (relecture « échecs silencieux » du
+ * paquet 1, mineur 6). Restée lue, elle gonflait le montant de l'occurrence
+ * et se nommait parmi les comptes · une pièce qui redresse 5 000 au 658 et
+ * paie 2 000 de fournitures au 6052 sortait à 7 000, « 65800000, 60520000 ».
+ * La contrepartie n'est pas contrôlée au rattachement (la proposition la
+ * laisse vide, décision de la sous-commission) · est retirée UNE ligne de
+ * charge (classe 6 ou 8) débitée du montant exact du manquant, et seulement
+ * si la ligne de crédit a été trouvée · une contrepartie scindée en deux
+ * lignes reste lue, comme une ligne de crédit fondue. Une contrepartie hors
+ * des charges (un tiers, le responsable du manquant) n'est pas une charge et
+ * n'a rien à retirer.
+ */
+function lignesHorsRedressementInventaire(e: EcritureControlee): EcritureControlee['lignes'] {
+  // Une doublure ou une lecture sans la liaison rend `undefined` · rien n'est
+  // retiré, l'écriture est lue entière.
+  const ecarts = e.ecartsInventaire ?? [];
+  if (ecarts.length === 0) return e.lignes;
+  const restantes = [...e.lignes];
+  const centimes = (x: unknown) => Math.round(Number(x) * 100);
+  for (const ecart of ecarts) {
+    const manquant = Math.round(Math.abs(Number(ecart.ecart)) * 100);
+    const i = restantes.findIndex(
+      (l) => l.compte.numero.startsWith(ecart.compte.numero) && centimes(l.credit) === manquant && centimes(l.debit) === 0,
+    );
+    if (i === -1) continue;
+    restantes.splice(i, 1);
+    const j = restantes.findIndex(
+      (l) =>
+        (l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8')) &&
+        centimes(l.debit) === manquant &&
+        centimes(l.credit) === 0,
+    );
+    if (j !== -1) restantes.splice(j, 1);
+  }
+  return restantes;
+}
+
+/**
+ * DES FRAIS FINANCIERS PRÉLEVÉS EN TRÉSORERIE (paquet 1, B2) · la fiche du
+ * compte 67 des DEUX plans fait débiter le compte « des frais dus et des
+ * pertes financières constatées, par le crédit des comptes de tiers concernés
+ * ou des comptes de trésorerie » (AUDCIF Titre VII, compte 67 ; SYCEBNL
+ * Partie 2 ch. 3, compte 67), sauf le 679 (dotations, par le crédit du 59) ;
+ * et ses éléments de contrôle sont « les relevés de banque ; décomptes
+ * d'intérêt ». Les intérêts prélevés par la banque ne sont donc pas l'oubli
+ * d'un fournisseur · le signal reste (rien ne dit ici que le relevé et le
+ * décompte existent, ni que la pièce ne mêle pas autre chose), mais il NOMME
+ * ce cas admis par le texte, et sa pièce. Seules les écritures dont TOUTES
+ * les charges sont au 67 (hors 679) sont nommées · un loyer ou un achat
+ * glissé dans la même pièce reste un oubli de tiers.
+ */
+function chargesToutesAu67HorsDotations(lignesDeCharge: EcritureControlee['lignes']): boolean {
+  return (
+    lignesDeCharge.length > 0 &&
+    lignesDeCharge.every((l) => l.compte.numero.startsWith('67') && !l.compte.numero.startsWith('679'))
   );
 }
 
@@ -1643,12 +1718,15 @@ export class ControlesService {
         }
 
         if (!auSystemeMinimal) {
-          const aUneCharge = e.lignes.some(
+          // B1 · la ligne de crédit qu'un redressement d'inventaire justifie
+          // sort de la lecture, elle seule.
+          const lignesLues = lignesHorsRedressementInventaire(e);
+          const aUneCharge = lignesLues.some(
             (l) =>
               (l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8')) &&
               Number(l.debit) - Number(l.credit) > 0.005,
           );
-          const aUneTresorerieCreditee = e.lignes.some(
+          const aUneTresorerieCreditee = lignesLues.some(
             (l) =>
               l.compte.numero.startsWith('5') &&
               !l.compte.numero.startsWith('59') &&
@@ -2066,17 +2144,36 @@ export class ControlesService {
             'Passez deux écritures : la charge par le crédit du tiers (compte 40 fournisseur, 42 personnel, 43 organismes sociaux, 44 État selon le cas), puis le règlement par le débit de ce tiers et le crédit de la trésorerie.' +
             (tenant.referentiel === Referentiel.SYCEBNL ? ' C’est le schéma des § 2.2 et 2.4 de la Partie 3, ch. 3.' : ''),
           ...nombreSiTronque(parcours.chargesDirectes),
-          occurrences: chargesDirectes.map((e) => ({
-            reference: `${e.journal.code} n° ${e.numeroPiece ?? '·'}`,
-            detail: `${e.libelle} · ${e.lignes
+          occurrences: chargesDirectes.map((e) => {
+            // Mineur 6 · montant, comptes et cas nommé se lisent sur les mêmes
+            // lignes que la détection · le redressement d'un manquant (sa
+            // ligne de crédit et sa contrepartie de charge) n'y entre pas.
+            const lignesLues = lignesHorsRedressementInventaire(e);
+            const lignesDeCharge = lignesLues.filter(
+              (l) =>
+                (l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8')) &&
+                Number(l.debit) - Number(l.credit) > 0.005,
+            );
+            const comptes = lignesLues
               .filter((l) => l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8'))
               .map((l) => l.compte.numero)
-              .join(', ')} soldé(s) directement en trésorerie`,
-            montant: e.lignes
-              .filter((l) => l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8'))
-              .reduce((s2, l) => s2 + Number(l.debit) - Number(l.credit), 0),
-            date: e.date.toISOString().slice(0, 10),
-          })),
+              .join(', ');
+            // B2 · le cas que la fiche du compte 67 admet est NOMMÉ, et sa
+            // pièce avec lui · le signal reste.
+            const fraisFinanciers = chargesToutesAu67HorsDotations(lignesDeCharge)
+              ? ' · frais financiers, que la fiche du compte 67 fait débiter « par le crédit des comptes de tiers ' +
+                'concernés ou des comptes de trésorerie » · à justifier par le relevé de banque et le décompte ' +
+                "d'intérêt (éléments de contrôle du compte 67)"
+              : '';
+            return {
+              reference: `${e.journal.code} n° ${e.numeroPiece ?? '·'}`,
+              detail: `${e.libelle} · ${comptes} soldé(s) directement en trésorerie${fraisFinanciers}`,
+              montant: lignesLues
+                .filter((l) => l.compte.numero.startsWith('6') || l.compte.numero.startsWith('8'))
+                .reduce((s2, l) => s2 + Number(l.debit) - Number(l.credit), 0),
+              date: e.date.toISOString().slice(0, 10),
+            };
+          }),
         });
       }
     }

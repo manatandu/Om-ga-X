@@ -1132,7 +1132,15 @@ transaction, unité de l'aperçu rejouée (409 si elle a changé), `etabliLe` po
 après la lecture ; mentions écrites par le serveur (écart au jour du comptage,
 solde créditeur cité de la fiche du 57, espèces reconstituées négatives) ;
 concordance relue sur quatre totaux, les validations postérieures au PV
-comptées à part.
+comptées à part. CAMPAGNE DE CAISSES SEULES (paquet 1, B10) · elle se clôt dès
+le recensement (`verifierCampagneDeCaissesSeules` · aucune fiche, au moins un
+PV, aucun PV à écart) ; un PV à écart passe par la fiche de la caisse,
+rapprochée puis arbitrée (CPCC, étapes 4 et 5), et une campagne sans comptage
+ne se clôt pas (AUDCIF art. 42) ; la clôture relit statut, fiches et PV sous
+`SELECT … FOR UPDATE` de la campagne, dans sa transaction. Le refus nomme la
+valeur à porter sur la fiche (`valeurAPorterSurLaFiche`) · comptée après la
+clôture, les espèces reconstituées que le PV a figées, jamais les espèces
+comptées.
 
 **Composant « révisions majeures ».** AUDCIF art. 38-2, Titre VIII ch. 5 § 1 :
 amorti « JUSQU'À LA PROCHAINE RÉVISION », puis chaque révision réalisée « amorti[e]
@@ -2283,6 +2291,9 @@ crédit (fiches des comptes 40 et 41 · un 409 ou un 419 n'a pas d'antériorité
 43, 44 et 47 dans les deux sens, « 40 et 41 » sur TOUS les comptes du tiers · trois
 populations (débiteurs et créditeurs ventilés, sens inverse), le net les additionne ;
 jusque-là toute dette fournisseur partait « en sens inverse, non ventilée ».
+Une ligne au solde NUL n'est d'aucune population (paquet 1, B3 · `soldesNuls`,
+comptée, hors des totaux, le net inchangé). La grille porte les rôles d'un
+tableau (WAI-ARIA 1.2, B4), son rendu inchangé.
 
 **Réévaluation.** L'Ordonnance-loi n° 89/017 du 18 février 1989 (art. 16 et 20,
 « avant le 30 avril », 100 000 CDF par jour) est abrogée (loi n° 23/053, art. 152
@@ -2692,7 +2703,17 @@ répartit que LU EN ENTIER dans la borne de l'état (à cheval sur N-1, ligne à
 ligne) ; à-nouveaux reconduits lus à leur pièce d'origine ; une facture et son
 négatif s'annulent entre eux ; négatif sans origine ou à deux origines, reste
 négatif en devise, part déclarée au-delà de la facture · ligne à ligne,
-consigné au journal du serveur.
+consigné au journal du serveur, et DIT À L'ÉCRAN (paquet 1, B5) · servis par
+état (`groupesLusLigneALigne`, motif par groupe, vingt nommés au plus et le
+total toujours dit, convention d'OmegaX ; AUDCIF art. 22, 1°). Un groupe
+d'à-nouveaux lettré à la main sans groupe de N reconduit (B7) lit chaque
+à-nouveau à la date de SA PIÈCE d'origine (`originesDesANouveaux`, Code civil,
+Livre III, art. 154), tout ou rien · une seule origine introuvable et le
+groupe entier se lit ligne à ligne, nommé `A_NOUVEAU_SANS_ORIGINE`. Les
+relances réclament le NET d'un groupe qui ne se répartit pas, à l'échéance
+de sa plus ancienne facture ouverte (M2), et nomment le groupe soldé dans sa
+devise dont l'écart réalisé n'est pas passé (B6, AUDCIF art. 55), jamais
+réclamé au client.
 
 **Pré-lettrage · « l'une propose, l'autre confirme ».** « Un rapprochement par
 montant est une PRÉSOMPTION DU LOGICIEL » (`OrigineLettrage`) · même division du
@@ -3027,7 +3048,10 @@ somme. Déjà pointé · `RAPPROCHEMENT_A_NOUVEAU_POINTE`, jamais rouvert d'offi
 (`aNouveauEnTrop` épargne le premier d'avant la règle). RÉOUVERTURE ·
 administrateur (`POST /rapprochements/:id/rouvrir`), motif, journal d'audit, SEUL
 le dernier clos du compte, ni avec un en cours ni à travers une période figée
-(`motifLigneFigee`) ; il se reclôt, ne s'annule pas.
+(`motifLigneFigee`) ; il se reclôt, ne s'annule pas. FENÊTRE DES PROPOSITIONS
+(paquet 1, B9) · facultative, quinze jours à défaut, de 0 à 120
+(`PropositionsRapprochementDto`, conventions d'OmegaX, celles de l'écran),
+illisible ou hors plage refusée en 400 nommé.
 
 **Banque à rapprocher et période sans clôture informatique (ligne A13,
 2026-10-03).** `controles/banque-et-cloture-informatique.ts`, deux contrôles
@@ -3970,6 +3994,12 @@ déclenche rien, mais le 7041 est « Ventes de produits résiduels » au SYSCOHA
 test relit les deux semis (F2b). Le diagnostic se relit sur l'ENREGISTRÉ, jamais sur
 le DTO, aux trois portes `lister`, `creer`, `modifier` (un intitulé seul n'envoie
 aucune ligne), par le chemin de `lister` ; câblage testé avec la règle (F4a).
+`CHARGE_SANS_TIERS` (paquet 1, B1 et B2) · le redressement d'un manquant
+d'inventaire arbitré à la charge de l'entité se reconnaît à sa LIAISON
+(`EcartInventaire.ecritureId`), et seule la ligne qu'elle justifie sort de la
+lecture ; une pièce dont toutes les charges sont au 67 (hors 679) reste
+signalée, NOMMÉE comme le cas que la fiche du compte 67 des deux plans admet
+(« par le crédit […] des comptes de trésorerie », relevé de banque).
 
 **Ordre des lignes proposées · débits puis crédits**, comme le Guide (tableau à cinq
 colonnes). Ordre interne lu au texte · Application 1, débit 2443, 601, 605 PUIS

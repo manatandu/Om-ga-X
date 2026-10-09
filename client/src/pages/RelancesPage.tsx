@@ -3,6 +3,8 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
 import { Aide } from '../components/chrome/Aide';
+import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
+import { raisonGroupesLusLigneALigne } from '../lib/groupes-lus-ligne-a-ligne';
 import type { BilanEmissionRelances, BilanRepriseCourrier, LettreRelance, NiveauRelance, PositionRelance, TypeRelance } from '../lib/types';
 import { libelleRemise, phraseEmission, tonRemise } from '../lib/remise-courriel';
 import { EVENEMENT_FILE_COURRIER, SUITE_REPRISE_HORS_FILE, cumulerReprises, reprendreEncore, resumeReprise } from '../lib/courrier-file';
@@ -360,6 +362,27 @@ function PositionsRelances() {
                 {p.tiersId && !p.tiersEmail && (
                   <span className="ml-1 text-[10.5px] text-warning font-semibold">sans adresse</span>
                 )}
+                {/* Un groupe de lettrage du compte dont la répartition entre
+                    factures n'est pas sûre (paquet 1, B5), nommé avec son
+                    motif (mineur 7). */}
+                {(p.groupesLusLigneALigne?.total ?? 0) > 0 && (
+                  <span
+                    className="ml-1 text-[10.5px] text-warning font-semibold"
+                    title={raisonGroupesLusLigneALigne(p.groupesLusLigneALigne, 'relance') ?? undefined}
+                  >
+                    répartition incertaine
+                  </span>
+                )}
+                {/* Une facture soldée dans sa devise n'est pas réclamée · son
+                    écart de change reste à passer au lettrage (paquet 1, B6). */}
+                {(p.ecartsChangeNonPasses ?? []).length > 0 && (
+                  <span
+                    className="ml-1 text-[10.5px] text-warning font-semibold"
+                    title={(p.ecartsChangeNonPasses ?? []).map((e) => `Groupe ${e.code} · ${e.libelle}`).join('\n')}
+                  >
+                    écart de change à passer
+                  </span>
+                )}
                 {/* L'EXCLUSION SE VOIT, elle ne fait pas disparaître la ligne ·
                     un tiers hors circuit doit toujours, et une liste qui le
                     cacherait laisserait croire le poste apuré. */}
@@ -393,6 +416,15 @@ function PositionsRelances() {
                 )}
               </span>
             </div>
+            {deplie.has(p.compteId) && (
+              <GroupesLusLigneALigne groupes={p.groupesLusLigneALigne} lecture="relance" className="px-3 py-0.5 bg-chrome-alt/50 border-b border-border/30" />
+            )}
+            {deplie.has(p.compteId) &&
+              (p.ecartsChangeNonPasses ?? []).map((e) => (
+                <div key={`ecart-${e.code}`} className="px-3 py-0.5 text-[11.5px] text-warning bg-chrome-alt/50 border-b border-border/30">
+                  Groupe {e.code} · {e.libelle}
+                </div>
+              ))}
             {deplie.has(p.compteId) &&
               p.lignes.map((l, i) => (
                 <div key={i} className={`${grille} px-3 py-0.5 text-[11.5px] bg-chrome-alt/50 border-b border-border/30`}>

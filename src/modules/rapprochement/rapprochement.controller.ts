@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -13,6 +13,7 @@ import {
   OuvrirRapprochementDto,
   PointerDto,
   PointerEncoursDto,
+  PropositionsRapprochementDto,
   RouvrirRapprochementDto,
 } from './dto/rapprochement.dto';
 import { RoleUtilisateur } from '@prisma/client';
@@ -125,9 +126,10 @@ export class RapprochementController {
   async proposer(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Query('fenetreJours', new ParseIntPipe({ optional: true })) fenetreJours?: number,
+    @Query() requete: PropositionsRapprochementDto,
   ) {
-    return this.rapprochementService.proposer(user.tenantId, id, fenetreJours);
+    // Absente, la fenêtre prend le défaut du service (paquet 1, B9).
+    return this.rapprochementService.proposer(user.tenantId, id, requete.fenetreJours);
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)

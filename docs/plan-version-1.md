@@ -166,6 +166,10 @@ que le corpus ne tranche pas remonte à Manasse.
 
 ### Ligne B · tiers, lettrage, trésorerie (`travail/paquet1-b`)
 
+INTÉGRÉE le 2026-10-09 · rejouée sur vraie base (112 contrôles, 49 écarts
+avant, 0 après), deux tours de relecture, aucun BLOQUANT ; le majeur et les
+huit mineurs du second tour sont au suivi (« Relevés en attente »).
+
 1. `CHARGE_SANS_TIERS` se lève sur le redressement du manquant de caisse que
    l'inventaire demande et retient.
 2. `CHARGE_SANS_TIERS` se lève sur des intérêts d'emprunt prélevés par la

@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Prisma, StatutEcriture } from '@prisma/client';
+import { originesDesReports, type LigneReportee } from '../relances/date-origine-des-reports';
+import { ECRITURE_D_A_NOUVEAU } from './paires-a-cheval';
 import {
   LOT_GROUPES,
   SELECT_ORIGINE,
@@ -8,6 +10,7 @@ import {
   type GroupeAOrdonner,
   type LigneDeGroupe,
   type OrigineDeLigne,
+  type ResteSelonLaLoi,
 } from './reconduction-lettrage';
 
 /**
@@ -35,7 +38,9 @@ import {
  * relecture, M1). Une ligne d'à-nouveau d'un groupe reconduit s'y lit à sa
  * pièce d'ORIGINE (date et ligne, `originesDesLignes`) · sans elle, deux
  * factures reportées le même premier jour s'ordonnaient par un identifiant
- * tiré au hasard (relecture TypeScript, bloquant 1). Les factures sont les lignes du sens du
+ * tiré au hasard (relecture TypeScript, bloquant 1). Celle d'un groupe posé à
+ * la main en N+1 aussi, par la clé du report au détail (`originesDesANouveaux`,
+ * paquet 1, B7) · sans elle, les deux factures s'éteignaient au prorata. Les factures sont les lignes du sens du
  * solde du groupe (débit pour une créance, crédit pour une dette) ; les autres
  * lignes du groupe ne pèsent plus rien, leur montant est dans le reste des
  * factures.
@@ -78,7 +83,53 @@ export interface PoidsDesLignes {
   poids: Map<string, number>;
   /** Les groupes dont les restes ne rendent pas le solde · lus ligne à ligne. */
   nonRepartis: string[];
+  /**
+   * Les groupes que l'état NOMME, chacun avec son motif (paquet 1, B5 ;
+   * relecture « échecs silencieux », mineur 7) · ceux de `nonRepartis`, et
+   * ceux dont un à-nouveau n'a pas retrouvé son origine (M1).
+   */
+  motifs: Map<string, MotifGroupeNomme>;
+  /**
+   * LE GROUPE LU COMME UN TOUT, pour qui réclame une somme (relecture « échecs
+   * silencieux » du paquet 1, M2) · pour chaque groupe de `nonRepartis`, son
+   * net (en unités, débit moins crédit) et la ligne qui le porte · la facture
+   * encore ouverte la plus ancienne (`factureOuverteLaPlusAncienne`). Les
+   * états à colonnes gardent la lecture ligne à ligne, dite ; la relance, qui
+   * filtre par échéance, lit le groupe ENTIER à cette ligne.
+   */
+  enBloc: Map<string, { ligneId: string; net: number }>;
 }
+
+/**
+ * POURQUOI UN GROUPE EST NOMMÉ (relecture « échecs silencieux » du paquet 1,
+ * mineur 7) · l'écran disait pour tous « écart de change non passé », faux
+ * pour une facture en devise réglée en PARTIE · l'écart réalisé ne se passe
+ * qu'au groupe SOLDÉ (AUDCIF art. 55 ; ligne A6, « Groupe soldé en devise et
+ * non en francs · écart PROPOSÉ au lettrage »). Chaque groupe porte le sien.
+ *
+ *  · `NEGATIF_SANS_ORIGINE` · une inscription en négatif sans sa ligne
+ *    d'origine parmi les lignes lues (ou avec plusieurs) ;
+ *  · `IMPUTATION_DECLAREE_NON_LUE` · une part déclarée (art. 151 et 153)
+ *    au-delà de la facture, ou dans un groupe en devise ;
+ *  · `DEVISE_SOLDEE_ECART_NON_PASSE` · factures soldées dans leur devise et
+ *    non en francs · l'écart réalisé n'est pas passé (art. 55) ;
+ *  · `DEVISE_REGLEE_EN_PARTIE` · une facture en devise réglée en partie à un
+ *    autre cours · son reste au coût historique ne rend pas le solde en
+ *    francs, et rien n'est encore à passer ;
+ *  · `RESTE_NON_REPARTI` · des restes qui ne rendent pas le solde, sans
+ *    devise ;
+ *  · `A_NOUVEAU_SANS_ORIGINE` · un groupe à plusieurs factures dont une ligne
+ *    d'à-nouveau n'a pas retrouvé sa pièce dans l'exercice précédent · ses
+ *    lignes d'à-nouveau s'imputent à la date du report (relecture « échecs
+ *    silencieux », M1 · servi comme les autres, jamais au seul journal).
+ */
+export type MotifGroupeNomme =
+  | 'NEGATIF_SANS_ORIGINE'
+  | 'IMPUTATION_DECLAREE_NON_LUE'
+  | 'DEVISE_SOLDEE_ECART_NON_PASSE'
+  | 'DEVISE_REGLEE_EN_PARTIE'
+  | 'RESTE_NON_REPARTI'
+  | 'A_NOUVEAU_SANS_ORIGINE';
 
 const journal = new Logger('RestesDesLignesOuvertes');
 
@@ -197,6 +248,19 @@ export function poidsDesLignesOuvertes(
 ): PoidsDesLignes {
   const poids = new Map<string, number>();
   const nonRepartis: string[] = [];
+  const motifs = new Map<string, MotifGroupeNomme>();
+  const enBloc = new Map<string, { ligneId: string; net: number }>();
+  const nommerLeGroupe = (
+    lettrageId: string,
+    motif: MotifGroupeNomme,
+    net: number,
+    candidates: readonly LigneOuverte[],
+    restes?: ReadonlyMap<string, ResteSelonLaLoi>,
+  ) => {
+    nonRepartis.push(lettrageId);
+    motifs.set(lettrageId, motif);
+    enBloc.set(lettrageId, { ligneId: factureOuverteLaPlusAncienne(candidates, origines, net, restes), net: net / 100 });
+  };
   for (const [lettrageId, membres] of groupesAPlusieurs(lignes)) {
     // Lu en partie · la lecture ligne à ligne est celle de l'état, sans
     // réserve (la paire à cheval a sa propre lecture là où elle compte).
@@ -212,7 +276,7 @@ export function poidsDesLignesOuvertes(
     // origine parmi les lignes lues ne se répartit pas.
     const annulees = annulerLesNegatifs(membres);
     if (annulees === null) {
-      nonRepartis.push(lettrageId);
+      nommerLeGroupe(lettrageId, 'NEGATIF_SANS_ORIGINE', net, membres);
       continue;
     }
     for (const id of annulees) poids.set(id, 0);
@@ -237,7 +301,7 @@ export function poidsDesLignesOuvertes(
     const imputees = imputerLesDeclarations(lues, sens, declarations);
     if (imputees === null) {
       for (const id of annulees) poids.delete(id);
-      nonRepartis.push(lettrageId);
+      nommerLeGroupe(lettrageId, 'IMPUTATION_DECLAREE_NON_LUE', net, restantes);
       continue;
     }
     const restes = restesParLImputationLegale(imputees, sens);
@@ -247,7 +311,7 @@ export function poidsDesLignesOuvertes(
     // jamais une créance négative dans une colonne (mineur 3).
     if (totalRestes !== Math.abs(net) || [...restes.values()].some((r) => r.francs < 0)) {
       for (const id of annulees) poids.delete(id);
-      nonRepartis.push(lettrageId);
+      nommerLeGroupe(lettrageId, motifDuReste(restes), net, restantes, restes);
       continue;
     }
     const signe = sens === 'DEBIT' ? 1 : -1;
@@ -256,10 +320,139 @@ export function poidsDesLignesOuvertes(
       poids.set(l.id, reste ? signe * reste.francs : 0);
     }
   }
-  return { poids, nonRepartis };
+  return { poids, nonRepartis, motifs, enBloc };
+}
+
+/**
+ * LA FACTURE ENCORE OUVERTE LA PLUS ANCIENNE d'un groupe qui ne se répartit
+ * pas sûrement (M2) · celle à l'échéance de laquelle la relance réclame le
+ * net du groupe. Les factures sont les lignes du sens du net. Celles qui
+ * restent ouvertes se lisent sur les restes de l'imputation légale quand ils
+ * existent (Code civil, Livre III, art. 154 · leur somme ne rend pas le net,
+ * mais l'ordre légal dit lesquelles sont éteintes), sinon ce sont les plus
+ * récentes qui couvrent le net (l'imputation éteint les plus anciennes
+ * d'abord). Parmi elles, la plus ancienne par son échéance, à défaut par sa
+ * date (sa pièce d'origine pour un à-nouveau). Jamais une ligne du sens du
+ * règlement · un groupe sans facture du sens du net (un négatif seul) se lit
+ * à sa première ligne.
+ */
+export function factureOuverteLaPlusAncienne(
+  membres: readonly LigneOuverte[],
+  origines: ReadonlyMap<string, OrigineDeLigne>,
+  net: number,
+  restes?: ReadonlyMap<string, ResteSelonLaLoi>,
+): string {
+  const colonne = (l: LigneOuverte) => centimes(net > 0 ? l.debit : l.credit);
+  const dateDe = (l: LigneOuverte) => (origines.get(l.id)?.date ?? l.ecriture.date).getTime();
+  const factures = membres.filter((l) => colonne(l) > 0);
+  if (factures.length === 0) return membres[0].id;
+  let ouvertes = restes ? factures.filter((f) => (restes.get(f.id)?.francs ?? 0) > 0 || (restes.get(f.id)?.devise ?? 0) > 0) : [];
+  if (ouvertes.length === 0) {
+    ouvertes = [];
+    let couvert = 0;
+    for (const f of [...factures].sort((a, b) => dateDe(b) - dateDe(a) || b.id.localeCompare(a.id))) {
+      if (couvert >= Math.abs(net)) break;
+      ouvertes.push(f);
+      couvert += colonne(f);
+    }
+  }
+  const echeanceDe = (l: LigneOuverte) => l.dateEcheance?.getTime() ?? dateDe(l);
+  return [...ouvertes].sort((a, b) => echeanceDe(a) - echeanceDe(b) || dateDe(a) - dateDe(b) || a.id.localeCompare(b.id))[0].id;
+}
+
+/**
+ * Le motif d'un groupe dont les restes ne rendent pas le solde · une facture
+ * en devise encore ouverte DANS SA DEVISE est réglée en partie ; toutes
+ * soldées dans leur devise, c'est l'écart réalisé qui manque ; sans facture
+ * en devise, un reste non réparti.
+ */
+function motifDuReste(restes: ReadonlyMap<string, { francs: number; devise: number | null }>): MotifGroupeNomme {
+  // Les restes ne portent une devise que pour une FACTURE en devise.
+  const enDevise = [...restes.values()].filter((r) => r.devise !== null);
+  if (enDevise.length === 0) return 'RESTE_NON_REPARTI';
+  return enDevise.some((r) => (r.devise ?? 0) > 0) ? 'DEVISE_REGLEE_EN_PARTIE' : 'DEVISE_SOLDEE_ECART_NON_PASSE';
 }
 
 type LecteurDeGroupes = { lettrage: { findMany: (args: Prisma.LettrageFindManyArgs) => Promise<unknown[]> } };
+
+/**
+ * LES GROUPES LUS LIGNE À LIGNE, SERVIS (paquet 1, B5). Un groupe dont le reste
+ * ne se répartit pas sûrement entre ses factures (`nonRepartis`) garde la
+ * lecture ligne à ligne · le total de l'état reste exact, mais la répartition
+ * par échéance de CE groupe ne l'est plus (la facture à son échéance, le
+ * règlement sans échéance ou dans la sienne). Consigné au seul journal du
+ * serveur, le lecteur de l'état ne le voyait pas · chaque état qui le lit le
+ * SERT, borné (`PLAFOND_GROUPES_NOMMES`, le total dit), et l'écran le dit en
+ * une ligne. Jamais un zéro · un état sans groupe lu ligne à ligne sert
+ * `total: 0`, et c'est une lecture faite, pas une absence.
+ */
+export const PLAFOND_GROUPES_NOMMES = 20;
+
+export interface GroupesLusLigneALigne {
+  /** Tous les groupes lus ligne à ligne par l'état. */
+  total: number;
+  /**
+   * Les premiers, par compte puis code (le code tel que le lettrage
+   * l'affiche), chacun avec son motif (mineur 7).
+   */
+  groupes: Array<{ code: string; compte: string; motif: MotifGroupeNomme }>;
+  /** Vrai quand `groupes` n'en nomme qu'une partie. */
+  tronque: boolean;
+}
+
+interface GroupeNomme {
+  id: string;
+  code: string;
+  compteId: string;
+  compte: string;
+  motif: MotifGroupeNomme;
+}
+
+/** Les groupes nommés, lus par tranches · un groupe d'un autre dossier n'est pas rendu. */
+async function lireGroupesNommes(db: unknown, tenantId: string, motifs: ReadonlyMap<string, MotifGroupeNomme>): Promise<GroupeNomme[]> {
+  const lus: GroupeNomme[] = [];
+  const uniques = [...motifs.keys()];
+  for (let i = 0; i < uniques.length; i += LOT_GROUPES) {
+    const tranche = (await (db as LecteurDeGroupes).lettrage.findMany({
+      where: { tenantId, id: { in: uniques.slice(i, i + LOT_GROUPES) } },
+      select: { id: true, code: true, compteId: true, compte: { select: { numero: true } } },
+    })) as Array<{ id: string; code: string; compteId: string; compte: { numero: string } }>;
+    for (const g of tranche) lus.push({ id: g.id, code: g.code.toLowerCase(), compteId: g.compteId, compte: g.compte.numero, motif: motifs.get(g.id)! });
+  }
+  return lus.sort((a, b) => a.compte.localeCompare(b.compte) || a.code.localeCompare(b.code));
+}
+
+function nommer(groupes: readonly GroupeNomme[], total: number): GroupesLusLigneALigne {
+  return {
+    total,
+    groupes: groupes.slice(0, PLAFOND_GROUPES_NOMMES).map((g) => ({ code: g.code, compte: g.compte, motif: g.motif })),
+    tronque: total > PLAFOND_GROUPES_NOMMES,
+  };
+}
+
+/**
+ * Les groupes nommés d'un état, servis avec leur motif · `total` est le
+ * nombre de groupes reçus.
+ */
+export async function groupesLusLigneALigne(
+  db: unknown,
+  tenantId: string,
+  motifs: ReadonlyMap<string, MotifGroupeNomme>,
+): Promise<GroupesLusLigneALigne> {
+  if (motifs.size === 0) return { total: 0, groupes: [], tronque: false };
+  return nommer(await lireGroupesNommes(db, tenantId, motifs), motifs.size);
+}
+
+/** Les mêmes, compte par compte (relances · une position par compte). */
+export async function groupesLusLigneALigneParCompte(
+  db: unknown,
+  tenantId: string,
+  motifs: ReadonlyMap<string, MotifGroupeNomme>,
+): Promise<Map<string, GroupesLusLigneALigne>> {
+  const parCompte = new Map<string, GroupeNomme[]>();
+  for (const g of await lireGroupesNommes(db, tenantId, motifs)) parCompte.set(g.compteId, [...(parCompte.get(g.compteId) ?? []), g]);
+  return new Map([...parCompte].map(([compteId, groupes]) => [compteId, nommer(groupes, groupes.length)]));
+}
 type LecteurDeDeclarations = { imputationPaiement: { findMany: (args: Prisma.ImputationPaiementFindManyArgs) => Promise<unknown[]> } };
 
 /**
@@ -275,7 +468,8 @@ export interface BorneDeLEtat {
 /**
  * Le poids des lignes lues · les groupes lus en partie exclus, les origines
  * des lignes d'à-nouveau des groupes RECONDUITS relues (un groupe de N+1 nomme
- * celui de N qu'il reconduit), le tout par tranches · rien n'est lu quand
+ * celui de N qu'il reconduit), puis celles des autres lignes d'à-nouveau des
+ * groupes (`originesDesANouveaux`), le tout par tranches · rien n'est lu quand
  * aucun groupe n'en porte deux lignes.
  */
 export async function poidsDesLignesLues(
@@ -289,6 +483,7 @@ export async function poidsDesLignesLues(
   const ids = [...groupes.keys()];
   const origines = new Map<string, OrigineDeLigne>();
   const exclus = new Set<string>();
+  const sansOrigine: string[] = [];
   for (let i = 0; i < ids.length; i += LOT_GROUPES) {
     const tranche = ids.slice(i, i + LOT_GROUPES);
     const [comptes, reconduits] = await Promise.all([
@@ -312,6 +507,8 @@ export async function poidsDesLignesLues(
     const dansLaBorne = new Map(comptes.map((c) => [c.lettrageId, c._count._all]));
     for (const id of tranche) if (dansLaBorne.get(id) !== groupes.get(id)!.length) exclus.add(id);
     if (reconduits.length > 0) for (const [id, o] of await originesDesLignes(db, tenantId, reconduits)) origines.set(id, o);
+    const lus = tranche.filter((id) => !exclus.has(id)).map((id) => [id, groupes.get(id)!] as const);
+    for (const id of await originesDesANouveaux(db, tenantId, lus, origines)) sansOrigine.push(id);
   }
   // Les parts déclarées des paiements des groupes (art. 151 et 153), non
   // retirées, par tranches des lignes.
@@ -329,6 +526,11 @@ export async function poidsDesLignesLues(
     }
   }
   const p = poidsDesLignesOuvertes(lignes, origines, exclus, declarations);
+  // SERVI, JAMAIS AU SEUL JOURNAL (M1) · le groupe dont un à-nouveau n'a pas
+  // retrouvé sa pièce est nommé avec son motif, sauf s'il est déjà lu ligne
+  // à ligne (sa lecture ne dépend alors d'aucune date, et son motif est
+  // celui-là).
+  for (const id of sansOrigine) if (!p.motifs.has(id)) p.motifs.set(id, 'A_NOUVEAU_SANS_ORIGINE');
   // CONSIGNÉ, JAMAIS TU · un groupe qui garde la lecture ligne à ligne
   // laisse son règlement hors des colonnes, comme avant la règle ; le total
   // de l'état reste exact, et le journal du serveur nomme les groupes.
@@ -340,7 +542,138 @@ export async function poidsDesLignesLues(
         (p.nonRepartis.length > 20 ? ' …' : ''),
     );
   }
+  if (sansOrigine.length > 0) {
+    journal.warn(
+      `${etat} · ${sansOrigine.length} groupe(s) de lettrage à plusieurs factures dont une ligne d'à-nouveau n'a pas retrouvé ` +
+        `sa pièce d'origine (aucune origine sûre à la clé du report dans l'exercice précédent) · ` +
+        `leurs lignes d'à-nouveau s'imputent à la date du report (Code civil, Livre III, art. 154, lu sur cette date), et l'état les nomme · ` +
+        `${sansOrigine.slice(0, 20).join(', ')}` +
+        (sansOrigine.length > 20 ? ' …' : ''),
+    );
+  }
   return p;
+}
+
+type LecteurDesANouveaux = {
+  ligneEcriture: { findMany: (args: Prisma.LigneEcritureFindManyArgs) => Promise<unknown[]> };
+};
+
+interface LigneDAnouveauLue {
+  id: string;
+  compteId: string;
+  debit: Prisma.Decimal | number;
+  credit: Prisma.Decimal | number;
+  libelle: string | null;
+  dateEcheance: Date | null;
+  compte?: { numero: string } | null;
+  ecriture?: { date: Date; estANouveauProvisoire?: boolean; estGenereeParCloture?: boolean; estSoldeDesComptesDeGestion?: boolean } | null;
+}
+
+/**
+ * L'ORIGINE DES LIGNES D'À-NOUVEAU D'UN GROUPE POSÉ EN N+1 (paquet 1, B7).
+ * Un groupe lettré à la main sur des lignes d'à-nouveau, sans groupe de N
+ * qu'il reconduise, n'a pas de `lettrageReconduitId` · ses lignes d'à-nouveau
+ * portaient toutes la date du report, et l'imputation de l'art. 154 (« sur la
+ * plus ancienne », puis « proportionnellement ») éteignait deux factures de
+ * mars et de septembre au PRORATA. Chaque ligne d'à-nouveau qu'aucune
+ * reconduction ne date retrouve sa pièce d'origine par la clé du report au
+ * détail (`originesDesReports`, la règle des relances), de proche en proche.
+ *
+ * TOUT OU RIEN, PAR GROUPE · un groupe dont une ligne d'à-nouveau n'a pas
+ * retrouvé son origine garde la date du report pour TOUTES, celles que la
+ * reconduction avait datées comprises (relecture « échecs silencieux »,
+ * mineur 1) · la seule origine manquante, laissée au 1er janvier, passerait
+ * pour la plus récente et la facture la plus ancienne resterait due. Le
+ * groupe est rendu (`sansOrigine`), NOMMÉ par l'état avec son motif (M1) et
+ * consigné. Les lignes relues sont filtrées EN MÉMOIRE (identifiant demandé,
+ * écriture d'à-nouveau) · une lecture qui rendrait plus que demandé n'invente
+ * aucun report.
+ */
+async function originesDesANouveaux(
+  db: unknown,
+  tenantId: string,
+  groupes: ReadonlyArray<readonly [string, readonly LigneOuverte[]]>,
+  origines: Map<string, OrigineDeLigne>,
+): Promise<string[]> {
+  // TOUTES les lignes des groupes sont relues pour savoir lesquelles sont
+  // des à-nouveaux · celles que la reconduction a déjà datées comprises
+  // (relecture « échecs silencieux », mineur 1), le tout ou rien les vise.
+  const membres = new Set(groupes.flatMap(([, ms]) => ms.map((l) => l.id)));
+  if (membres.size === 0) return [];
+  const lues = (await (db as LecteurDesANouveaux).ligneEcriture.findMany({
+    where: { id: { in: [...membres] }, ecriture: { tenantId, OR: ECRITURE_D_A_NOUVEAU } },
+    select: {
+      id: true,
+      compteId: true,
+      debit: true,
+      credit: true,
+      libelle: true,
+      dateEcheance: true,
+      compte: { select: { numero: true } },
+      ecriture: { select: { date: true, estANouveauProvisoire: true, estGenereeParCloture: true, estSoldeDesComptesDeGestion: true } },
+    },
+  })) as LigneDAnouveauLue[];
+  const estANouveau = (l: LigneDAnouveauLue) =>
+    l.ecriture?.estANouveauProvisoire === true || (l.ecriture?.estGenereeParCloture === true && l.ecriture.estSoldeDesComptesDeGestion !== true);
+  const aNouveaux = lues.filter((l) => membres.has(l.id) && estANouveau(l) && l.compte && l.ecriture);
+  // Seules celles qu'aucune reconduction ne date se cherchent par la clé.
+  const aChercher = aNouveaux.filter((l) => !origines.has(l.id));
+  if (aChercher.length === 0) return [];
+  // Par date de report · chaque date nomme l'exercice qui la précède.
+  const parDate = new Map<number, LigneDAnouveauLue[]>();
+  for (const l of aChercher) parDate.set(l.ecriture!.date.getTime(), [...(parDate.get(l.ecriture!.date.getTime()) ?? []), l]);
+  const trouvees = new Map<string, OrigineDeLigne>();
+  for (const [date, lignes] of parDate) {
+    const { origines: o } = await originesDesReports(
+      db as Parameters<typeof originesDesReports>[0],
+      tenantId,
+      new Date(date),
+      lignes.map(
+        (l): LigneReportee => ({
+          id: l.id,
+          compteId: l.compteId,
+          numeroCompte: l.compte!.numero,
+          debit: Number(l.debit),
+          credit: Number(l.credit),
+          libelle: l.libelle,
+          dateEcheance: l.dateEcheance,
+          date: l.ecriture!.date,
+          provisoire: l.ecriture!.estANouveauProvisoire === true,
+        }),
+      ),
+    );
+    for (const [id, origine] of o) trouvees.set(id, origine);
+  }
+  // Le groupe de chaque ligne est celui des lignes REÇUES, jamais celui que
+  // la lecture rendrait.
+  const groupeDe = new Map(groupes.flatMap(([lettrageId, ms]) => ms.map((l) => [l.id, lettrageId] as const)));
+  const aNouveauxParGroupe = new Map<string, string[]>();
+  for (const l of aNouveaux) {
+    const lettrageId = groupeDe.get(l.id)!;
+    aNouveauxParGroupe.set(lettrageId, [...(aNouveauxParGroupe.get(lettrageId) ?? []), l.id]);
+  }
+  const membresDe = new Map(groupes);
+  const sansOrigine: string[] = [];
+  for (const [lettrageId, ids] of aNouveauxParGroupe) {
+    if (ids.every((id) => origines.has(id) || trouvees.has(id))) {
+      for (const id of ids) if (trouvees.has(id)) origines.set(id, trouvees.get(id)!);
+      continue;
+    }
+    // TOUT OU RIEN SUR TOUTES LES LIGNES D'À-NOUVEAU DU GROUPE (mineur 1) ·
+    // un groupe reconduit complété à la main par une autre ligne
+    // d'à-nouveau gardait les origines de la reconduction · ses factures
+    // datées de leur pièce passaient avant celle restée au 1er janvier, et
+    // l'ordre mêlé éteignait la récente pour l'ancienne. Toutes reviennent
+    // à la date du report.
+    for (const id of ids) origines.delete(id);
+    // Rien n'est à départager quand le groupe ne porte qu'une facture (ou se
+    // solde) · l'imputation n'a pas de choix, la date n'y change rien.
+    const ms = membresDe.get(lettrageId) ?? [];
+    const net = ms.reduce((t, l) => t + centimes(l.debit) - centimes(l.credit), 0);
+    const factures = ms.filter((l) => (net > 0 ? centimes(l.debit) > 0 : centimes(l.credit) > 0));
+    if (net !== 0 && factures.length > 1) sansOrigine.push(lettrageId);
+  }
+  return sansOrigine;
 }
 
 type LecteurDeLignes = {
@@ -386,7 +719,8 @@ type LecteurDeLignesLettrees = {
  * sans échéance n'est dans aucune part · son écart reste dans le reste du
  * compte, que la note dit sous son nom. Les sommes demandées à la base ne
  * changent pas · seules les lignes des groupes que la lecture porte à
- * plusieurs sont relues, par tranches.
+ * plusieurs sont relues, par tranches. Les groupes lus ligne à ligne sont
+ * rendus avec leur motif (`nommes`), que la note sert (paquet 1, B5).
  */
 export async function ecartsDesGroupesParEcheance(
   db: unknown,
@@ -394,10 +728,10 @@ export async function ecartsDesGroupesParEcheance(
   ouvertes: Prisma.LigneEcritureWhereInput,
   dateFin: Date,
   etat: string,
-): Promise<Map<string, { nonEchu: number; echu: number }>> {
+): Promise<{ ecarts: Map<string, { nonEchu: number; echu: number }>; nommes: Map<string, MotifGroupeNomme> }> {
   const ecarts = new Map<string, { nonEchu: number; echu: number }>();
   const ids = [...(await groupesLusAPlusieurs(db, ouvertes))];
-  if (ids.length === 0) return ecarts;
+  if (ids.length === 0) return { ecarts, nommes: new Map() };
   const lues: Array<LigneOuverte & { compteId: string }> = [];
   for (let i = 0; i < ids.length; i += LOT_GROUPES) {
     lues.push(
@@ -429,5 +763,5 @@ export async function ecartsDesGroupesParEcheance(
     else e.echu += ecart;
     ecarts.set(l.compteId, e);
   }
-  return ecarts;
+  return { ecarts, nommes: p.motifs };
 }

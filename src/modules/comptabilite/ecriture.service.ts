@@ -31,7 +31,7 @@ import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
 import { designationLettrage, estTenueParUnLettrage } from '../lettrage/ligne-lettree';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
-import { groupesLusAPlusieurs, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
+import { groupesLusAPlusieurs, groupesLusLigneALigne, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
 import { ancienneteJours, brouillardInvalidable, enRetardDeCentralisation, JOURS_CENTRALISATION } from './centralisation-brouillard';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
@@ -252,7 +252,8 @@ export type SensNormalAgee = 'DEBITEUR' | 'CREDITEUR' | 'LES_DEUX' | 'SELON_LE_C
 /**
  * Une ligne (un tiers, à défaut un compte) se ventile-t-elle ? Un solde nul
  * ne se ventile jamais · des pièces ouvertes qui se compensent ne disent aucun
- * retard, et restent montrées avec les soldes non ventilés. Sous « 40 et 41 »,
+ * retard, et sont montrées À PART (`soldesNuls` de la balance âgée, paquet 1,
+ * B3), jamais parmi les soldes en sens inverse. Sous « 40 et 41 »,
  * le sens se lit sur TOUS les comptes de la ligne (relecture du 2026-10-08) ·
  * lu sur le premier compte rencontré, un tiers rattaché à un 401 ET à un 411
  * changeait de section selon l'ordre de lecture de la base. Mêlée, la ligne
@@ -2823,6 +2824,9 @@ export class EcritureService {
       // la règle, mais elle fausse la projection si beaucoup de lignes en
       // relèvent. Le compte est donné pour que le lecteur en juge.
       lignesSansEcheance,
+      // Les groupes de lettrage lus ligne à ligne, leur reste ne se
+      // répartissant pas sûrement (paquet 1, B5) · servis, l'écran les dit.
+      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, poids.motifs),
     };
   }
 
@@ -2987,6 +2991,10 @@ export class EcritureService {
     const parCle = new Map<string, LigneAgee>();
     // Les comptes de chaque ligne, pour lire son sens normal (`ligneVentilee`).
     const comptesDeLaCle = new Map<string, Set<string>>();
+    // Les pièces ouvertes de chaque ligne · deux ou plus qui se compensent font
+    // une ligne au solde nul, gardée même quand elles tombent dans la même
+    // tranche (relecture du paquet 1, mineur 5).
+    const piecesOuvertes = new Map<string, number>();
     for (const l of lignes) {
       const net = poidsOuMontant(poids, l);
       if (Math.abs(net) < 0.005) continue;
@@ -3017,12 +3025,23 @@ export class EcritureService {
       const comptes = comptesDeLaCle.get(cle) ?? new Set<string>();
       comptes.add(l.compte.numero);
       comptesDeLaCle.set(cle, comptes);
+      piecesOuvertes.set(cle, (piecesOuvertes.get(cle) ?? 0) + 1);
     }
 
     const arrondir = (x: number) => Math.round(x * 100) / 100;
+    // UNE LIGNE QUI PORTE DEUX PIÈCES OUVERTES RESTE, MÊME À SOLDE NUL
+    // (relecture « échecs silencieux » du paquet 1, mineur 5) · le filtre ne
+    // gardait une ligne à solde nul que si une tranche restait non nulle ; une
+    // facture et son règlement non lettrés dans la MÊME tranche s'y annulaient,
+    // et le tiers sortait de l'état sans un mot, quand B3 le rend à part.
     const toutes = [...parCle.values()]
       .map((c) => ({ ...c, montants: c.montants.map(arrondir), solde: arrondir(c.solde) }))
-      .filter((c) => Math.abs(c.solde) >= 0.005 || c.montants.some((m) => Math.abs(m) >= 0.005));
+      .filter(
+        (c) =>
+          Math.abs(c.solde) >= 0.005 ||
+          c.montants.some((m) => Math.abs(m) >= 0.005) ||
+          (piecesOuvertes.get(c.cle) ?? 0) >= 2,
+      );
 
     // TROIS POPULATIONS, chacune son total · les débiteurs et les créditeurs
     // VENTILÉS (sens normal du périmètre, `ligneVentilee`), et les soldes en
@@ -3033,8 +3052,21 @@ export class EcritureService {
       ligneVentilee(perimetre.sensNormal, [...(comptesDeLaCle.get(c.cle) ?? [c.numero])], c.solde);
     const debiteurs = toutes.filter((c) => c.solde > 0 && ventilee(c)).sort((a, b) => b.solde - a.solde);
     const crediteurs = toutes.filter((c) => c.solde < 0 && ventilee(c)).sort((a, b) => a.solde - b.solde);
+    // UN SOLDE NUL N'EST EN AUCUN SENS (paquet 1, B3) · des pièces ouvertes
+    // qui se compensent (une facture et son règlement non lettrés entre eux)
+    // ne disent ni retard ni avance. Rangées parmi les soldes en sens
+    // inverse, elles s'y lisaient comme un client créditeur ou un
+    // fournisseur débiteur, sous un titre faux. Elles sont rendues à part,
+    // sans tranches et hors de tout total, sous un titre NEUTRE (mineur 5) ·
+    // « à lettrer » était faux d'un tiers dont la dette au 401 compense la
+    // créance au 411 · deux comptes ne se lettrent pas entre eux.
+    const soldeNul = (c: LigneAgee) => Math.abs(c.solde) < 0.005;
+    const soldesNuls = toutes
+      .filter(soldeNul)
+      .map((c) => ({ ...c, montants: [] as number[], solde: 0 }))
+      .sort((a, b) => a.libelle.localeCompare(b.libelle));
     const sensInverse = toutes
-      .filter((c) => !ventilee(c))
+      .filter((c) => !soldeNul(c) && !ventilee(c))
       // Un client créditeur n'a pas d'antériorité de créance, un fournisseur
       // débiteur pas de retard de paiement · leurs tranches sont vidées
       // plutôt que rendues, pour qu'aucune lecture ne les additionne.
@@ -3061,6 +3093,13 @@ export class EcritureService {
       debiteurs,
       crediteurs,
       sensInverse,
+      // Hors de tout total · leur solde est nul, le net n'en bouge pas.
+      soldesNuls,
+      // Les groupes de lettrage lus ligne à ligne, leur reste ne se
+      // répartissant pas sûrement entre leurs factures (paquet 1, B5) · leur
+      // total est dans les tranches, leur répartition par ancienneté ne
+      // l'est pas · servis, l'écran les dit.
+      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, poids.motifs),
       totaux: {
         // Par tranche, au signe de la balance (débit moins crédit) · les
         // créditeurs ventilés y sont négatifs, comme leur solde.

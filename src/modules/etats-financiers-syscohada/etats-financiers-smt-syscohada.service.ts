@@ -77,7 +77,7 @@ import {
   type PartsDuResultatAuBilan,
 } from '../etats-financiers/resultat-de-l-exercice';
 import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
-import { ecartsDesGroupesParEcheance } from '../lettrage/reste-des-lignes-ouvertes';
+import { ecartsDesGroupesParEcheance, groupesLusLigneALigne, type MotifGroupeNomme } from '../lettrage/reste-des-lignes-ouvertes';
 import { chargerCampagneStocks, lignesNoteStocks, motifQuantitesNote2 } from '../etats-financiers/stocks-depuis-inventaire';
 import { compteInscritALaDate } from '../immobilisations/immobilisation-en-cours';
 
@@ -1503,9 +1503,9 @@ export class EtatsFinanciersSmtSyscohadaService {
     tenantId: string,
     exercice: { id: string; dateFin: Date },
     compteIds: string[],
-  ): Promise<Map<string, PartsEcheanceSmtSyscohada>> {
+  ): Promise<{ parCompte: Map<string, PartsEcheanceSmtSyscohada>; nommes: Map<string, MotifGroupeNomme> }> {
     const parCompte = new Map<string, PartsEcheanceSmtSyscohada>();
-    if (compteIds.length === 0) return parCompte;
+    if (compteIds.length === 0) return { parCompte, nommes: new Map() };
 
     const exerciceId = exercice.id;
     const lignesOuvertes: Prisma.LigneEcritureWhereInput = {
@@ -1548,13 +1548,14 @@ export class EtatsFinanciersSmtSyscohadaService {
     // silencieux » de la simulation du 2026-10-08, majeur 8) · sans quoi la
     // facture comptait entière en « non échu » et le règlement lettré avec
     // elle tombait dans le reste, en négatif, sous un motif faux.
-    for (const [compteId, e] of await ecartsDesGroupesParEcheance(this.prisma, tenantId, lignesOuvertes, exercice.dateFin, 'NOTE 3 du SMT (SYSCOHADA)')) {
+    const { ecarts, nommes } = await ecartsDesGroupesParEcheance(this.prisma, tenantId, lignesOuvertes, exercice.dateFin, 'NOTE 3 du SMT (SYSCOHADA)');
+    for (const [compteId, e] of ecarts) {
       const parts = parCompte.get(compteId) ?? { ...PARTS_ECHEANCE_NULLES_SMT_SYSCOHADA };
       parts.nonEchu += e.nonEchu;
       parts.echu += e.echu;
       parCompte.set(compteId, parts);
     }
-    return parCompte;
+    return { parCompte, nommes };
   }
 
   /**
@@ -1656,7 +1657,7 @@ export class EtatsFinanciersSmtSyscohadaService {
         ).filter((id): id is string => Boolean(id)),
       ),
     ];
-    const parts = await this.partsParEcheance(
+    const { parCompte: parts, nommes } = await this.partsParEcheance(
       tenantId,
       { id: exerciceId, dateFin: exercice.dateFin },
       compteIdsVentilables,
@@ -1727,6 +1728,9 @@ export class EtatsFinanciersSmtSyscohadaService {
       motifEcheances: echeancesTenues
         ? null
         : "Le Titre X intitule cette note « État des créances et des dettes non échues au 31 décembre » (ch. 1 § 2 et ch. 3). Une ligne de tiers sans date d'échéance n'est ni échue ni non échue : elle est portée à part, jamais rangée d'office dans le non échu. Renseignez la date d'échéance sur les lignes de tiers, et tenez les comptes de tiers en report à-nouveau mode DÉTAIL, pour que la ventilation soit complète. Les dépréciations 49 et 59 et les provisions 499 et 599, qui n'ont aucun terme à porter, restent par nature en part non ventilée.",
+      // Les groupes de lettrage dont le reste ne se répartit pas sûrement,
+      // lus ligne à ligne (paquet 1, B5) · servis, l'écran les dit.
+      groupesLusLigneALigne: await groupesLusLigneALigne(this.prisma, tenantId, nommes),
       // Les deux lignes du compte de résultat que cette note justifie.
       // La NOTE 3 détaille TOUT le poste, mais la variation portée au compte
       // de résultat ne prend que les tiers d'exploitation (passe R2, C1).

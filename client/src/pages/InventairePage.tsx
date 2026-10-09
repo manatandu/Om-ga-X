@@ -21,6 +21,7 @@ import type {
 import { montant } from '../lib/montants';
 import { compteDuNumeroTape, RETENUS } from '../lib/comptes-proposes';
 import { cheminEdition, LIBELLE_DECISION_ECART } from '../lib/editions-inventaire';
+import { peutCloreLaCampagne } from '../lib/cloture-campagne';
 import { EditionInventaireImprimee } from '../components/EditionsInventaire';
 
 /**
@@ -420,7 +421,9 @@ export function InventairePage() {
                           </button>
                         </>
                       )}
-                      {detail.statut === 'ARBITRAGE' && (
+                      {/* À l'arbitrage, ou au recensement d'une campagne de
+                          caisses seules (paquet 1, B10, `peutCloreLaCampagne`). */}
+                      {peutCloreLaCampagne(detail) && (
                         <button
                           type="button"
                           onClick={() => agir(() => api.post(`/inventaire/${detail.id}/clore`, {}))}

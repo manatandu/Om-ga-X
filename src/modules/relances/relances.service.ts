@@ -8,9 +8,15 @@ import { CreerNiveauDto, EmettreRelancesDto, ModifierNiveauDto, PLAFOND_COMPTES_
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { jourDeKinshasa } from '../../common/echeance';
-import { poidsDesLignesLues, poidsOuMontant } from '../lettrage/reste-des-lignes-ouvertes';
+import {
+  groupesLusLigneALigneParCompte,
+  poidsDesLignesLues,
+  poidsOuMontant,
+  type GroupesLusLigneALigne,
+} from '../lettrage/reste-des-lignes-ouvertes';
 import { pairesACheval, type PairesACheval } from '../lettrage/paires-a-cheval';
 import { datesOrigineDesReports } from './date-origine-des-reports';
+import { groupesSoldesEnDevise } from './groupes-soldes-en-devise';
 
 const JOUR = 86_400_000;
 
@@ -221,6 +227,24 @@ export interface PositionRelance {
     montant: number;
     retardJours: number;
   }[];
+  /**
+   * LES FACTURES SOLDÉES DANS LEUR DEVISE dont l'écart de change réalisé
+   * n'est pas passé (paquet 1, B6 ; AUDCIF art. 55) · leurs lignes ne sont
+   * ni réclamées ni retranchées, et l'écart est NOMMÉ pour le cabinet. Jamais
+   * imprimé dans la lettre · c'est une écriture de l'entité, pas une dette du
+   * client.
+   */
+  ecartsChangeNonPasses: { code: string; ecart: number; libelle: string }[];
+  /**
+   * Les groupes de lettrage du compte dont la répartition entre factures
+   * n'est pas sûre (paquet 1, B5), chacun avec son motif · ceux qui ne se
+   * répartissent pas se réclament pour leur NET, à l'échéance de leur
+   * facture encore ouverte la plus ancienne (relecture, M2) ; ceux dont un
+   * à-nouveau n'a pas retrouvé sa pièce s'imputent à la date du report (M1).
+   * Le dû est exact, l'échéance réclamée de ces groupes n'est pas sûre.
+   * Servis, l'écran les dit.
+   */
+  groupesLusLigneALigne: GroupesLusLigneALigne;
 }
 
 /**
@@ -439,16 +463,21 @@ export class RelancesService {
       paires = await pairesACheval(this.prisma, { tenantId, exercice, compte: { OR: racines.map((r) => ({ numero: { startsWith: r } })) } });
     }
 
-    // UNE LIGNE REPORTÉE SANS ÉCHÉANCE GARDE LA DATE DE SA PIÈCE (constat
-    // REL-ANOUVEAU, `date-origine-des-reports.ts`) · sans elle, la facture de
-    // N était réclamée « échue » depuis le jour de l'à-nouveau.
-    const reportsSansEcheance = lues.filter(
-      (l) =>
-        !l.dateEcheance &&
-        (l.ecriture.estANouveauProvisoire === true || (l.ecriture.estGenereeParCloture === true && l.ecriture.estSoldeDesComptesDeGestion !== true)),
+    // UNE LIGNE REPORTÉE GARDE LA DATE DE SA PIÈCE (constat REL-ANOUVEAU,
+    // `date-origine-des-reports.ts`) · sans elle, la facture de N sans
+    // échéance était réclamée « échue » depuis le jour de l'à-nouveau. Avec
+    // une échéance aussi (relecture « échecs silencieux » du paquet 1,
+    // voisin) · l'échéance range le retard, mais la date de la PIÈCE borne
+    // les relances qui comptent (audit final F169, `piecePlusAncienne`) et
+    // s'imprime dans la lettre · datée du jour de l'à-nouveau, la mise en
+    // demeure envoyée en N sortait du décompte et le niveau repartait, la
+    // même mise en demeure resuggérée en N+1. La clé du report porte
+    // l'échéance qu'il recopie.
+    const reports = lues.filter(
+      (l) => l.ecriture.estANouveauProvisoire === true || (l.ecriture.estGenereeParCloture === true && l.ecriture.estSoldeDesComptesDeGestion !== true),
     );
     let datesOrigine = new Map<string, Date>();
-    if (reportsSansEcheance.length) {
+    if (reports.length) {
       const exercice = await this.prisma.exercice.findFirst({
         where: { id: params.exerciceId, tenantId },
         select: { dateDebut: true },
@@ -458,13 +487,16 @@ export class RelancesService {
         this.prisma as unknown as Prisma.TransactionClient,
         tenantId,
         exercice.dateDebut,
-        reportsSansEcheance.map((l) => ({
+        reports.map((l) => ({
           id: l.id,
           compteId: l.compte.id,
           numeroCompte: l.compte.numero,
           debit: Number(l.debit),
           credit: Number(l.credit),
           libelle: l.libelle,
+          dateEcheance: l.dateEcheance,
+          date: l.ecriture.date,
+          provisoire: l.ecriture.estANouveauProvisoire === true,
         })),
       );
     }
@@ -477,10 +509,38 @@ export class RelancesService {
     // par la règle du Règlement des tiers (`poidsDesLignesLues`), après la
     // paire à cheval qui a sa propre lecture.
     const poids = await poidsDesLignesLues(this.prisma, tenantId, lues, {}, 'Relances');
+    // UNE FACTURE SOLDÉE DANS SA DEVISE NE SE RÉCLAME PLUS (paquet 1, B6) ·
+    // le groupe que le règlement a soldé dans la devise de la facture, et
+    // non en francs, porte un écart de change réalisé que l'entité passe
+    // (AUDCIF art. 55) · lu ligne à ligne, il réclamait au client la perte de
+    // change, ou retranchait le gain d'une autre dette. Ses lignes ne se
+    // réclament pas, et l'écart est nommé sur la position du compte
+    // (`groupes-soldes-en-devise.ts`).
+    const soldesEnDevise = await groupesSoldesEnDevise(this.prisma, tenantId, lues);
+    // Les groupes lus ligne à ligne (paquet 1, B5), hors de ceux que la règle
+    // précédente ne réclame pas · nommés sur la position de leur compte.
+    const lusLigneALigne = await groupesLusLigneALigneParCompte(
+      this.prisma,
+      tenantId,
+      new Map([...poids.motifs].filter(([id]) => !soldesEnDevise.has(id))),
+    );
     const parCompte = new Map<string, PositionRelance>();
     const traiter = (l: LigneLue) => {
       if (paires?.absorbees.has(l.id)) return;
-      const net = paires?.reste.get(l.id)?.francs ?? poidsOuMontant(poids, l);
+      if (l.lettrageId && soldesEnDevise.has(l.lettrageId)) return;
+      // UN GROUPE QUI NE SE RÉPARTIT PAS SE RÉCLAME POUR SON NET (relecture
+      // « échecs silencieux » du paquet 1, M2) · lu ligne à ligne, chaque
+      // ligne passait le filtre de l'état pour elle-même · en PRÉVENTIF la
+      // facture en devise réglée en partie était réclamée entière (le
+      // règlement, daté du passé, écarté), en RAPPEL le règlement se
+      // retranchait d'une AUTRE facture échue, le dû devenait négatif et le
+      // compte sortait des positions. Le groupe se lit comme un TOUT · son net,
+      // porté par sa facture encore ouverte la plus ancienne (Code civil,
+      // Livre III, art. 154 · `factureOuverteLaPlusAncienne`), à son échéance ;
+      // ses autres lignes ne se réclament pas.
+      const bloc = l.lettrageId ? poids.enBloc.get(l.lettrageId) : undefined;
+      if (bloc && bloc.ligneId !== l.id) return;
+      const net = paires?.reste.get(l.id)?.francs ?? bloc?.net ?? poidsOuMontant(poids, l);
       if (Math.abs(net) < 0.005) return;
       const datePiece = datesOrigine.get(l.id) ?? l.ecriture.date;
       const echeance = l.dateEcheance ?? datePiece;
@@ -519,6 +579,8 @@ export class RelancesService {
           niveauSuggere: null,
           derniereRelance: null,
           lignes: [],
+          ecartsChangeNonPasses: [],
+          groupesLusLigneALigne: lusLigneALigne.get(l.compte.id) ?? { total: 0, groupes: [], tronque: false },
         } satisfies PositionRelance);
 
       acc.montantDu += net;
@@ -538,6 +600,13 @@ export class RelancesService {
       parCompte.set(l.compte.id, acc);
     };
     for (const l of lues) traiter(l);
+    // L'écart se nomme sur la position du compte quand le compte doit encore
+    // autre chose · sans rien d'autre à réclamer, aucune relance ne part, et
+    // l'écart reste nommé au lettrage du compte et refusé à la clôture
+    // (`ecartsRealisesNonConstates`, D3 d'A6).
+    for (const g of soldesEnDevise.values()) {
+      parCompte.get(g.compteId)?.ecartsChangeNonPasses.push({ code: g.code, ecart: g.ecart, libelle: g.libelle });
+    }
 
     // LES RELANCES QUI COMPTENT SONT CELLES DE LA DETTE OUVERTE (audit final
     // F169) · la dernière relance d'un compte, même vieille d'un an et d'une

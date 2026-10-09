@@ -184,12 +184,44 @@ Manasse (« on verra ça plus tard », 2026-10-03).
 | D1 | Où imprimer les coûts d'emprunt incorporés et la justification d'une préparation courte, aucune rubrique officielle ne les portant (AUDCIF Titre VIII ch. 7 § 1.2 et section 3 ; Titre IX ch. 6) | RÉGLÉE le 2026-10-02, faite (F18) · encadré en lecture seule sous la note « Informations obligatoires » (NOTE 2 SYSCOHADA et associations, NOTE 1 projets), rien écrit dans la saisie |
 | D2 | Libellé « Réglé par » · la liste admet aussi un fournisseur, un apport ou un fonds | RÉGLÉE le 2026-10-02 · libellé « Contrepartie », noms de code gardés |
 | D3 | Refuser au serveur la sortie d'un bien de projet sur un compte de fonds en sommeil (aujourd'hui seulement retiré de la liste) | RÉGLÉE le 2026-10-02 · refus nommé au serveur (`motifRefusSortieProjet`, `compteFondsEnSommeil`) |
-| D4 | Brancher Resend pour que la file de courrier parte réellement | le transport SMTP existe déjà · Manasse pose les six secrets API_SMTP_* et API_COURRIER_EXPEDITEUR dans GitHub, aucun code |
+| D4 | Brancher Resend pour que la file de courrier parte réellement | RÉGLÉE · les six secrets API_SMTP_* et API_COURRIER_EXPEDITEUR sont posés dans GitHub (dit par Manasse pendant le paquet 1), aucun code ; la remise réelle se constate au premier courrier |
 | D5 | Au SYCEBNL, offrir le 219 et le 229 pour un bien en cours | TRANCHÉ OUI par Manasse le 2026-10-01 · fait |
 | D6 | Notes 3A (SYSCOHADA), 5A et 3A (SYCEBNL) · la mise en service comptée en augmentation ET en diminution | TRANCHÉ OUI (corriger) par Manasse le 2026-10-01 · ligne E5 |
 | D7 | Créances douteuses (A7 ter, mineur 8) · au SYCEBNL, sous la méthode des cotisations à l'ENCAISSEMENT, un impayé d'adhérent (4131 chèques impayés, 4133 autres valeurs impayées) se reclasse-t-il au 4161 ? Lu · la fiche SYCEBNL du compte 41 (« Les chèques, effets à payer et autres valeurs revenus impayés doivent être enregistrés dans le compte 413 ») et le cadre conceptuel § 5.4.2.1 (cotisations « comptabilisées lors de leur encaissement effectif » faute de droit d'agir) · aucun ne dit si une valeur remise puis revenue impayée a été encaissée, les deux textes ne se hiérarchisent pas | RÉGLÉE PAR LA LOI le 2026-10-07, CODÉE et intégrée le même jour (M8, M9) (`docs/decisions-par-la-loi-2026-10-07-bis.md`, point 5) · sous l'encaissement, une valeur revenue impayée n'a jamais été encaissée (fiche SYCEBNL du compte 51 ; cadre conceptuel § 5.4.2.1) · le 4131 et le 4133 sont REFUSÉS comme le 411, l'avertissement devient un refus nommé ; reclassements déjà passés signalés, jamais défaits d'office · CODÉE sur `travail/decisions-loi-3` (refus du reclassement, de la déclaration et de la perte au 6512 ; contrôle `CREANCE_ADHERENT_RECLASSEE_SOUS_ENCAISSEMENT`), à intégrer · PREMIÈRE RELECTURE (2026-10-07) · M8, la méthode qui juge la perte, la dotation (refusée, reprise ouverte) et le contrôle est celle du JOUR DU RECLASSEMENT, figée au geste ou reconstituée sur le journal d'audit, sinon dite inconnue sans refus ; M9, « Corriger par le résultat » désigne l'écriture du cabinet qui solde la créance d'un exercice clos (cadre conceptuel § 3.3.1.2.4) et la sort du module · limite écrite, le contrôle ne lit que le dossier qui déclare l'encaissement aujourd'hui |
 
 ## Relevés en attente (hors liste tant que Manasse ne les y met pas)
+
+- **PAQUET 1, LIGNE B (2026-10-09), second et dernier tour de relecture, non
+  corrigés (règle des deux tours, CLAUDE.md § 11).** Aucun BLOQUANT.
+  - **MAJEUR** · B7 incomplet · un bilan d'ouverture IMPORTÉ dans un exercice
+    qui a un précédent (N-1 gardé pour les comparatifs) se cherche encore dans
+    ce précédent (`relances/date-origine-des-reports.ts`, origine posée
+    seulement sans exercice précédent ; l'import porte `estGenereeParCloture`)
+    · le groupe posé en N+1 retombe au prorata (art. 154) et la relance
+    surévalue le retard ; en N, un groupe qui porte la ligne d'import est nommé
+    « à-nouveau sans pièce d'origine » alors que sa date est certaine. NOMMÉ,
+    pas silencieux. Correction proposée · une ligne d'écriture d'import de
+    bilan d'ouverture (`reference === 'IMPORT'`, `estGenereeParCloture`)
+    arrête la chaîne et EST l'origine, à la date de son écriture.
+  - **MINEURS** · (1) un PV de caisse ou une fiche peut entrer dans une
+    campagne close (`etablirPvCaisse`, `creerFiche` lisent le statut hors
+    transaction · `FOR SHARE` puis relecture) ; (2) `caissesNonComptees`
+    additionne en mémoire dans la transaction de clôture (§ 8 bis ·
+    `groupBy`) ; (3) `valeurAPorterSurLaFiche`, caisse comptée AVANT la
+    clôture · la valeur dite fait entrer les mouvements intercalés dans
+    l'écart ; (4) infobulles de `groupes-lus-ligne-a-ligne.ts` (« le dû est
+    exact » faux en rappel et en préventif ; « au prorata » inexact quand les
+    échéances diffèrent) ; (5) balance âgée, échéancier et les deux SMT gardent
+    l'ancien tableau à côté d'un refus de rechargement (défaut antérieur) ;
+    (6) motifs des groupes nommés sans spec miroir client contre serveur ;
+    (7) deux en-têtes de colonne vides dans `TableauBalanceAgee.tsx` ;
+    (8) bloc JSDoc orphelin dans `client/src/lib/types.ts`.
+  - **VOISINS** · une campagne MIXTE (fiches et PV de caisse à écart, sans
+    fiche de la caisse) se clôt avec le manquant du PV jamais décidé ; les
+    frais bancaires (631) prélevés sur relevé ne sont pas nommés par
+    `CHARGE_SANS_TIERS` (fiche des comptes 62 et 63) ; le classeur de la
+    balance âgée et la liasse des notes ne disent pas les groupes lus ligne à
+    ligne.
 
 - **SIMULATION DU LOGICIEL COMPLET (2026-10-08), constats hors version 1, non
   corrigés (gel).** Treize lots joués par l'API sur base jetable, 2026 et 2027

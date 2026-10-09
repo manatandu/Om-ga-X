@@ -1,4 +1,4 @@
-import { RoleMembreInventaire, StatutCampagneInventaire } from '@prisma/client';
+import { Prisma, RoleMembreInventaire, StatutCampagneInventaire } from '@prisma/client';
 import { InventaireService } from './inventaire.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -29,8 +29,10 @@ type Etat = {
   sousCommission?: Record<string, unknown> | null;
   compte?: Record<string, unknown> | null;
   lignesCaisse?: { debit: number; credit: number; compte: { id: string; numero: string; intitule: string } }[];
-  pvCaisse?: { compteId: string }[];
+  pvCaisse?: Record<string, unknown>[];
   ecartsSansDecision?: number;
+  /** Les fiches de comptage · le faux HONORE le dossier et la campagne du filtre (paquet 1, B10). */
+  fiches?: { tenantId: string; campagneId: string }[];
   /** Le solde du livre-journal de la caisse à la date du comptage (ligne A10). */
   soldeLivre?: number;
 };
@@ -41,7 +43,15 @@ function service(etat: Etat = {}) {
   );
   const prisma = {
     campagneInventaire: {
-      findFirst: jest.fn().mockResolvedValue(etat.campagne ?? null),
+      // Le faux HONORE la sélection de l'exercice · le refus d'une caisse à
+      // l'écart lit la date de clôture (relecture du paquet 1, mineur 4).
+      findFirst: jest.fn().mockImplementation((a?: { select?: { exercice?: unknown } }) =>
+        Promise.resolve(
+          etat.campagne && a?.select?.exercice
+            ? { exercice: { dateFin: new Date('2025-12-31T00:00:00Z') } }
+            : (etat.campagne ?? null),
+        ),
+      ),
       update: jest.fn().mockImplementation((a: { data: unknown }) => Promise.resolve({ id: 'camp1', ...(a.data as object) })),
       // Le PV d'une caisse ouvre le recensement d'une campagne en préparation
       // (audit final F134) · le faux honore le statut du filtre.
@@ -80,10 +90,21 @@ function service(etat: Etat = {}) {
       create: creerPv,
     },
     ecartInventaire: { count: jest.fn().mockResolvedValue(etat.ecartsSansDecision ?? 0) },
+    ficheInventaire: {
+      count: jest.fn().mockImplementation((a: { where: { tenantId?: string; campagneId?: string } }) =>
+        Promise.resolve(
+          (etat.fiches ?? []).filter((f) => f.tenantId === a.where.tenantId && f.campagneId === a.where.campagneId).length,
+        ),
+      ),
+    },
+    // Le verrou de la campagne à la clôture (relecture du paquet 1, mineur 3) ·
+    // le faux le prend sans rien bloquer ; la course est jouée plus bas, sur
+    // une doublure qui sérialise.
+    $queryRaw: jest.fn().mockResolvedValue([]),
     // Lecture du solde et création du PV dans UNE transaction (seconde passe A10).
     $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
   } as unknown as PrismaService;
-  return { svc: new InventaireService(prisma, {} as unknown as EcritureService), creerPv };
+  return { svc: new InventaireService(prisma, {} as unknown as EcritureService), creerPv, prisma };
 }
 
 const CAMPAGNE = {
@@ -313,5 +334,241 @@ describe('la couverture des caisses · la question composite rendue mécanique',
       ecartsSansDecision: 2,
     });
     await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/sans décision/);
+  });
+});
+
+/**
+ * LA CAMPAGNE QUI NE COMPTE QUE SA CAISSE (paquet 1, B10). Une association
+ * sans stock inventorie sa seule caisse · le PV fait le comptage et la
+ * comparaison, aucune fiche n'est à rapprocher, et `rapprocher` refuse une
+ * campagne sans fiche. Elle restait au recensement, la clôture étant réservée
+ * à l'arbitrage · « statut RECENSEMENT, l'opération n'est possible qu'en
+ * ARBITRAGE », relevé sur vraie base avant correction.
+ */
+describe('une campagne de caisses seules se clôt depuis le recensement', () => {
+  const ligne = (id: string, numero: string, debit: number) => ({
+    debit,
+    credit: 0,
+    compte: { id, numero, intitule: `Caisse ${numero}` },
+  });
+  const CAISSE_SEULE = [ligne('c1', '57100000', 1_300_000)];
+
+  it('se clôt quand son seul PV ne porte aucun écart', async () => {
+    const { svc } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    await expect(svc.clore('t1', 'camp1', 'u1')).resolves.toMatchObject({ statut: StatutCampagneInventaire.CLOTUREE });
+  });
+
+  it('refuse un PV qui porte un écart, et nomme la caisse et l’issue (CPCC, étape 5)', async () => {
+    const { svc } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [
+        {
+          compteId: 'c1',
+          ecart: -5_000,
+          dateComptage: new Date('2025-12-31T00:00:00Z'),
+          especesComptees: 1_295_000,
+          soldeALaCloture: null,
+          encaissementsPosterieurs: null,
+          decaissementsPosterieurs: null,
+          modeComparaison: 'FRANCS',
+          compte: { numero: '57100000' },
+        },
+      ],
+      fiches: [],
+    });
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/57100000/);
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/fiche de la caisse.*arbitrez/);
+    // Comptée à la clôture · la fiche porte les espèces comptées (mineur 4).
+    const refus = await svc.clore('t1', 'camp1', 'u1').catch((e: Error) => e.message);
+    expect(String(refus).replace(/\s/g, '')).toContain('lesespècescomptées,1295000,00');
+  });
+
+  it('nomme la valeur à porter sur la fiche · reconstituée à la clôture pour une caisse comptée après (mineur 4)', async () => {
+    const { svc } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [
+        {
+          compteId: 'c1',
+          ecart: -10_000,
+          dateComptage: new Date('2026-01-05T00:00:00Z'),
+          especesComptees: 1_190_000,
+          soldeALaCloture: 1_300_000,
+          encaissementsPosterieurs: 0,
+          decaissementsPosterieurs: 100_000,
+          modeComparaison: 'FRANCS',
+          compte: { numero: '57100000' },
+        },
+      ],
+      fiches: [],
+    });
+    const refus = await svc.clore('t1', 'camp1', 'u1').catch((e: Error) => e.message);
+    expect(String(refus).replace(/\s/g, '')).toContain('reconstituéeàlaclôture,figéesurleprocès-verbal,1290000,00');
+    expect(refus).toMatch(/jamais les espèces comptées/);
+    expect(refus).toMatch(/fiche de la caisse.*arbitrez/);
+  });
+
+  it('refuse une campagne où rien n’a été compté (AUDCIF art. 42)', async () => {
+    const { svc } = service({ campagne: CAMPAGNE, pvCaisse: [], fiches: [] });
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/Rien n'a été compté/);
+  });
+
+  it('garde le rapprochement pour une campagne qui a des fiches · seules celles de SA campagne comptent', async () => {
+    const avecFiche = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [{ tenantId: 't1', campagneId: 'camp1' }],
+    });
+    await expect(avecFiche.svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/1 fiche\(s\) de comptage à rapprocher/);
+
+    // Une fiche d'une AUTRE campagne ne retient pas celle-ci · le faux honore le filtre.
+    const ficheAilleurs = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: CAISSE_SEULE,
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [{ tenantId: 't1', campagneId: 'autre' }],
+    });
+    await expect(ficheAilleurs.svc.clore('t1', 'camp1', 'u1')).resolves.toBeDefined();
+  });
+
+  it('relit encore les caisses non comptées · une seconde caisse sans PV refuse', async () => {
+    const { svc } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: [...CAISSE_SEULE, ligne('c2', '57200000', 400_000)],
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/57200000/);
+  });
+
+  it('reste fermée en préparation', async () => {
+    const { svc } = service({
+      campagne: { ...CAMPAGNE, statut: StatutCampagneInventaire.PREPARATION },
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    await expect(svc.clore('t1', 'camp1', 'u1')).rejects.toThrow(/RECENSEMENT ou ARBITRAGE/);
+  });
+});
+
+/**
+ * DEUX CLÔTURES SIMULTANÉES (relecture « échecs silencieux » du paquet 1,
+ * mineur 3). Les contrôles se lisaient hors transaction et l'écriture visait le
+ * seul identifiant · sur vraie base, six campagnes sur six fermées DEUX fois
+ * (201 et 201), la seconde réécrivant la date et l'auteur de la première.
+ * La doublure joue la base · `$queryRaw` (le `FOR UPDATE`) tient un verrou
+ * jusqu'à la fin de la transaction qui l'a pris, et `update` honore le statut
+ * de son filtre (P2025 sinon, comme Prisma).
+ */
+describe('deux clôtures simultanées · une seule passe', () => {
+  function baseSerialisee() {
+    const campagne: Record<string, unknown> = { ...CAMPAGNE };
+    let verrou: Promise<void> = Promise.resolve();
+    const ecritures: unknown[] = [];
+    const lignes = [{ debit: 1_300_000, credit: 0, compte: { id: 'c1', numero: '57100000', intitule: 'Caisse' } }];
+    const client = () => {
+      // Le verrou appartient à la transaction · relâché à sa fin, réussie ou non.
+      let liberer: () => void = () => undefined;
+      return {
+        liberer: () => liberer(),
+        $queryRaw: jest.fn().mockImplementation(async () => {
+          const precedent = verrou;
+          verrou = new Promise<void>((r) => (liberer = r));
+          await precedent;
+          return [{ id: 'camp1' }];
+        }),
+        campagneInventaire: {
+          findFirst: jest.fn().mockImplementation(async () => ({ ...campagne })),
+          update: jest.fn().mockImplementation(async (a: { where: { statut?: string }; data: Record<string, unknown> }) => {
+            // L'écriture est retardée d'un tour · sans verrou, la seconde clôture
+            // lit le statut avant que la première ne l'écrive.
+            await new Promise((r) => setImmediate(r));
+            if (a.where.statut !== undefined && a.where.statut !== campagne.statut) {
+              throw new Prisma.PrismaClientKnownRequestError('Record to update not found.', {
+                code: 'P2025',
+                clientVersion: 'doublure',
+              });
+            }
+            Object.assign(campagne, a.data);
+            ecritures.push(a.data);
+            return { ...campagne };
+          }),
+        },
+        ficheInventaire: { count: jest.fn().mockResolvedValue(0) },
+        procesVerbalComptageCaisse: {
+          findMany: jest.fn().mockResolvedValue([{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }]),
+        },
+        ecartInventaire: { count: jest.fn().mockResolvedValue(0) },
+        ligneEcriture: { findMany: jest.fn().mockResolvedValue(lignes) },
+      };
+    };
+    const prisma = {
+      ...client(),
+      $transaction: jest.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = client();
+        try {
+          return await fn(tx);
+        } finally {
+          tx.liberer();
+        }
+      }),
+    };
+    return { prisma, campagne, ecritures };
+  }
+
+  it('la seconde attend la première, relit CLOTUREE et reçoit le refus ordinaire', async () => {
+    const { prisma, campagne, ecritures } = baseSerialisee();
+    const svc = new InventaireService(prisma as unknown as PrismaService, {} as unknown as EcritureService);
+    const [a, b] = await Promise.allSettled([svc.clore('t1', 'camp1', 'u1'), svc.clore('t1', 'camp1', 'u2')]);
+    const reussies = [a, b].filter((r) => r.status === 'fulfilled');
+    const refusees = [a, b].filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    expect(reussies).toHaveLength(1);
+    expect(refusees).toHaveLength(1);
+    expect(String(refusees[0].reason?.message)).toMatch(/statut CLOTUREE/);
+    expect(ecritures).toHaveLength(1);
+    expect(campagne.statut).toBe(StatutCampagneInventaire.CLOTUREE);
+  });
+});
+
+describe('une écriture de clôture qui ne trouve plus le statut lu · 409 nommé', () => {
+  it('P2025 sur le statut lu devient un ConflictException qui dit quoi faire', async () => {
+    const { svc, prisma } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: [{ debit: 1_300_000, credit: 0, compte: { id: 'c1', numero: '57100000', intitule: 'Caisse' } }],
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    const maj = (prisma as unknown as { campagneInventaire: { update: jest.Mock } }).campagneInventaire.update;
+    maj.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Record to update not found.', { code: 'P2025', clientVersion: 'doublure' }),
+    );
+    const refus = svc.clore('t1', 'camp1', 'u1');
+    await expect(refus).rejects.toMatchObject({ status: 409 });
+    await expect(svc.clore('t1', 'camp1', 'u1')).resolves.toBeDefined();
+    // L'écriture vise le statut LU, pas le seul identifiant.
+    expect(maj.mock.calls[0][0].where).toEqual({ id: 'camp1', tenantId: 't1', statut: StatutCampagneInventaire.RECENSEMENT });
+  });
+
+  it('le verrou de la campagne est pris AVANT la lecture de son statut, dans la transaction', async () => {
+    const { svc, prisma } = service({
+      campagne: CAMPAGNE,
+      lignesCaisse: [{ debit: 1_300_000, credit: 0, compte: { id: 'c1', numero: '57100000', intitule: 'Caisse' } }],
+      pvCaisse: [{ compteId: 'c1', ecart: 0, compte: { numero: '57100000' } }],
+      fiches: [],
+    });
+    await svc.clore('t1', 'camp1', 'u1');
+    const p = prisma as unknown as { $queryRaw: jest.Mock; $transaction: jest.Mock; campagneInventaire: { findFirst: jest.Mock } };
+    expect(p.$transaction).toHaveBeenCalled();
+    const sql = (p.$queryRaw.mock.calls[0][0] as TemplateStringsArray).join('?');
+    expect(sql).toMatch(/FROM "campagnes_inventaire" WHERE "id" = \? AND "tenantId" = \? FOR UPDATE/);
+    expect(p.$queryRaw.mock.calls[0].slice(1)).toEqual(['camp1', 't1']);
+    expect(p.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(p.campagneInventaire.findFirst.mock.invocationCallOrder[0]);
   });
 });

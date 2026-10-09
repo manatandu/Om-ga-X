@@ -38,6 +38,7 @@ import {
   mentionsDuPv,
   sommesDansLUnite,
   type UniteComparaison,
+  valeurAPorterSurLaFiche,
   valideesDepuisLePv,
 } from './solde-caisse-au-comptage';
 import { libelleLieuBien } from './lieu-sur-fiche';
@@ -252,8 +253,13 @@ export class InventaireService {
         };
   }
 
-  private async campagneOuverte(tenantId: string, id: string, statutsAdmis: StatutCampagneInventaire[]) {
-    const campagne = await this.prisma.campagneInventaire.findFirst({ where: { id, tenantId } });
+  private async campagneOuverte(
+    tenantId: string,
+    id: string,
+    statutsAdmis: StatutCampagneInventaire[],
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const campagne = await db.campagneInventaire.findFirst({ where: { id, tenantId } });
     if (!campagne) throw new NotFoundException("Campagne d'inventaire introuvable.");
     if (!statutsAdmis.includes(campagne.statut)) {
       throw new ForbiddenException(
@@ -546,7 +552,15 @@ export class InventaireService {
       where: { tenantId, campagneId },
       include: { compte: { select: { numero: true, intitule: true } } },
     });
-    if (fiches.length === 0) throw new BadRequestException('Aucune fiche à rapprocher.');
+    if (fiches.length === 0) {
+      // Une campagne qui ne compte que des caisses n'a rien à rapprocher · le
+      // refus le dit et nomme son issue (paquet 1, B10), sans quoi le
+      // cabinet cherchait une fiche à créer pour une caisse déjà comptée.
+      throw new BadRequestException(
+        'Aucune fiche à rapprocher. Une campagne qui ne compte que des caisses, par leurs procès-verbaux sans écart, ' +
+          'se clôt sans rapprochement (« Clore la campagne »).',
+      );
+    }
 
     const nonValorisees = fiches.filter((f) => f.valeurInventaire === null);
     if (nonValorisees.length > 0) {
@@ -1205,14 +1219,18 @@ export class InventaireService {
    * à compter, et l'exiger ferait du bruit sur chaque dossier qui a soldé une
    * caisse d'agence. C'est un choix, et il est ici plutôt que caché.
    */
-  async caissesNonComptees(tenantId: string, campagneId: string) {
-    const campagne = await this.prisma.campagneInventaire.findFirst({
+  async caissesNonComptees(
+    tenantId: string,
+    campagneId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const campagne = await db.campagneInventaire.findFirst({
       where: { id: campagneId, tenantId },
       select: { id: true, exerciceId: true },
     });
     if (!campagne) throw new NotFoundException('Campagne introuvable.');
 
-    const lignes = await this.prisma.ligneEcriture.findMany({
+    const lignes = await db.ligneEcriture.findMany({
       where: {
         compte: { tenantId, numero: { startsWith: '57' } },
         ecriture: { tenantId, exerciceId: campagne.exerciceId },
@@ -1225,7 +1243,7 @@ export class InventaireService {
       acc.solde += Number(l.debit) - Number(l.credit);
       soldes.set(l.compte.id, acc);
     }
-    const pv = await this.prisma.procesVerbalComptageCaisse.findMany({
+    const pv = await db.procesVerbalComptageCaisse.findMany({
       where: { tenantId, campagneId },
       select: { compteId: true },
     });
@@ -1241,30 +1259,158 @@ export class InventaireService {
    * CLÔTURE · plus rien ne bouge. Refusée tant qu'un écart n'est pas arbitré :
    * un écart laissé sans décision est la seule chose que l'étape 5 interdit,
    * et c'est aussi celle qui se perd le plus facilement.
+   *
+   * LES CONTRÔLES ET L'ÉCRITURE NE FONT QU'UN (relecture « échecs
+   * silencieux » du paquet 1, mineur 3). Lus hors transaction, puis écrits
+   * par un `update` sur le seul identifiant, ils laissaient passer deux
+   * clôtures simultanées · relevé sur vraie base, six campagnes sur six closes
+   * DEUX fois (201 et 201), la seconde réécrivant la date et l'auteur de la
+   * première, et une fiche ou un procès-verbal arrivé entre les contrôles et
+   * l'écriture entrait dans une campagne déjà jugée. La campagne est donc
+   * VERROUILLÉE en tête de transaction (`FOR UPDATE`) · une seconde clôture
+   * attend, puis relit le statut CLÔTURÉE et reçoit le refus ordinaire ; une
+   * fiche ou un procès-verbal de la campagne attend aussi (sa clé étrangère
+   * demande un verrou que celui-ci exclut), et les contrôles lisent sous ce
+   * verrou. L'écriture reste UNITAIRE, sur le statut lu · le journal d'audit
+   * garde l'avant et l'après (un `updateMany` n'y laisserait que le filtre et
+   * le compte), et si le statut a changé malgré tout, P2025 devient un 409
+   * nommé, jamais une erreur brute.
    */
   async clore(tenantId: string, campagneId: string, userId: string) {
-    await this.campagneOuverte(tenantId, campagneId, [StatutCampagneInventaire.ARBITRAGE]);
-    const enSuspens = await this.prisma.ecartInventaire.count({
-      where: { tenantId, campagneId, decision: null },
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "campagnes_inventaire" WHERE "id" = ${campagneId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+      const campagne = await this.campagneOuverte(
+        tenantId,
+        campagneId,
+        [StatutCampagneInventaire.RECENSEMENT, StatutCampagneInventaire.ARBITRAGE],
+        tx,
+      );
+      if (campagne.statut === StatutCampagneInventaire.RECENSEMENT) {
+        await this.verifierCampagneDeCaissesSeules(tenantId, campagneId, tx);
+      }
+      const enSuspens = await tx.ecartInventaire.count({
+        where: { tenantId, campagneId, decision: null },
+      });
+      if (enSuspens > 0) {
+        throw new ForbiddenException(
+          `${enSuspens} écart(s) sans décision · la sous-commission doit trancher chacun avant la clôture (CPCC, étape 5).`,
+        );
+      }
+      const caissesOubliees = await this.caissesNonComptees(tenantId, campagneId, tx);
+      if (caissesOubliees.length > 0) {
+        throw new ForbiddenException(
+          `${caissesOubliees.length} caisse(s) à solde non nul sans procès-verbal de comptage ` +
+            `(${caissesOubliees.map((c) => c.numero).join(', ')}). Le CPCC demande « a-t-on tenu compte de la ` +
+            'caisse siège, de la caisse agence, de la caisse de secours ? » · un « oui » global ne dit rien de ' +
+            "celle qu'on a oubliée, et une caisse non comptée à la clôture ne se recompte plus jamais.",
+        );
+      }
+      try {
+        return await tx.campagneInventaire.update({
+          where: { id: campagneId, tenantId, statut: campagne.statut },
+          data: { statut: StatutCampagneInventaire.CLOTUREE, clotureeLe: new Date(), clotureePar: userId },
+        });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          throw new ConflictException(
+            `Cette campagne a quitté le statut ${campagne.statut} pendant sa clôture · un autre geste est passé ` +
+              'entre-temps. Rechargez la campagne pour voir son état, puis relancez la clôture si elle reste à faire.',
+          );
+        }
+        throw err;
+      }
     });
-    if (enSuspens > 0) {
+  }
+
+  /**
+   * LA CAMPAGNE QUI NE COMPTE QUE DES CAISSES (paquet 1, B10) · une association
+   * sans stock ni bien inventorie sa seule caisse · le procès-verbal de
+   * comptage fait à lui seul les étapes 2 à 4 du CPCC (recensement,
+   * valorisation, comparaison au solde du livre-journal, figé sur le PV) ·
+   * aucune fiche n'est à rapprocher, et `rapprocher` refuse une campagne sans
+   * fiche. Elle restait au recensement, et la clôture, réservée à l'arbitrage,
+   * lui était fermée sans issue.
+   *
+   * Elle se clôt donc depuis le recensement, aux trois conditions qui gardent
+   * les refus voulus. (1) AUCUNE FICHE · une fiche se rapproche de la balance
+   * avant toute décision (étape 4), et ce chemin-là reste celui de
+   * l'arbitrage. (2) AU MOINS UN PROCÈS-VERBAL · une campagne où rien n'a été
+   * compté ne se clôt pas, elle n'a dressé aucun inventaire (AUDCIF art. 42).
+   * (3) AUCUN ÉCART DE CAISSE · « les écarts négatifs sont à la charge de
+   * l'entreprise, et la sous-commission doit déterminer le responsable de
+   * chaque type d'écart » (CPCC, étape 5) · un manquant ou un excédent figé
+   * sur un PV n'est jamais clos sans décision, et sa décision se prend par la
+   * voie de tout compte · la fiche de la caisse, rapprochée puis arbitrée.
+   * Les caisses non comptées sont relues ensuite par `clore`, comme pour toute
+   * campagne.
+   */
+  private async verifierCampagneDeCaissesSeules(
+    tenantId: string,
+    campagneId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const [fiches, pvs, campagne] = await Promise.all([
+      db.ficheInventaire.count({ where: { tenantId, campagneId } }),
+      db.procesVerbalComptageCaisse.findMany({
+        where: { tenantId, campagneId },
+        select: {
+          ecart: true,
+          dateComptage: true,
+          especesComptees: true,
+          soldeALaCloture: true,
+          encaissementsPosterieurs: true,
+          decaissementsPosterieurs: true,
+          modeComparaison: true,
+          devise: { select: { code: true } },
+          compte: { select: { numero: true } },
+        },
+      }),
+      db.campagneInventaire.findFirst({
+        where: { id: campagneId, tenantId },
+        select: { exercice: { select: { dateFin: true } } },
+      }),
+    ]);
+    if (fiches > 0) {
       throw new ForbiddenException(
-        `${enSuspens} écart(s) sans décision · la sous-commission doit trancher chacun avant la clôture (CPCC, étape 5).`,
+        `${fiches} fiche(s) de comptage à rapprocher · la campagne passe par le rapprochement avec la balance, puis ` +
+          "l'arbitrage des écarts, avant la clôture (CPCC, étapes 4 et 5). Seule une campagne qui ne compte que des " +
+          'caisses, par leurs procès-verbaux, se clôt sans rapprochement.',
       );
     }
-    const caissesOubliees = await this.caissesNonComptees(tenantId, campagneId);
-    if (caissesOubliees.length > 0) {
+    if (pvs.length === 0) {
       throw new ForbiddenException(
-        `${caissesOubliees.length} caisse(s) à solde non nul sans procès-verbal de comptage ` +
-          `(${caissesOubliees.map((c) => c.numero).join(', ')}). Le CPCC demande « a-t-on tenu compte de la ` +
-          'caisse siège, de la caisse agence, de la caisse de secours ? » · un « oui » global ne dit rien de ' +
-          "celle qu'on a oubliée, et une caisse non comptée à la clôture ne se recompte plus jamais.",
+        "Rien n'a été compté dans cette campagne · ni fiche ni procès-verbal de comptage de caisse. Une campagne " +
+          "ne se clôt qu'une fois l'inventaire dressé (AUDCIF art. 42).",
       );
     }
-    return this.prisma.campagneInventaire.update({
-      where: { id: campagneId },
-      data: { statut: StatutCampagneInventaire.CLOTUREE, clotureeLe: new Date(), clotureePar: userId },
-    });
+    const avecEcart = pvs.filter((pv) => Math.abs(Number(pv.ecart)) > 0.005);
+    if (avecEcart.length > 0) {
+      // La valeur que la fiche doit porter, caisse par caisse (relecture du
+      // paquet 1, mineur 4) · « portez le comptage » fabriquait, pour une
+      // caisse comptée après la clôture, l'écart des mouvements intercalés.
+      const dateCloture = campagne?.exercice?.dateFin ?? null;
+      const valeurs = avecEcart.map((pv) =>
+        valeurAPorterSurLaFiche(
+          {
+            numero: pv.compte.numero,
+            dateComptage: pv.dateComptage,
+            especesComptees: Number(pv.especesComptees),
+            soldeALaCloture: pv.soldeALaCloture != null ? Number(pv.soldeALaCloture) : null,
+            encaissementsPosterieurs: pv.encaissementsPosterieurs != null ? Number(pv.encaissementsPosterieurs) : null,
+            decaissementsPosterieurs: pv.decaissementsPosterieurs != null ? Number(pv.decaissementsPosterieurs) : null,
+            unite: pv.modeComparaison === ModeComparaisonCaisse.DEVISE ? (pv.devise?.code ?? null) : null,
+          },
+          dateCloture,
+        ),
+      );
+      throw new ForbiddenException(
+        `${avecEcart.length} caisse(s) à l'écart non arbitré (${avecEcart.map((pv) => pv.compte.numero).join(', ')}) · ` +
+          "« les écarts négatifs sont à la charge de l'entreprise, et la sous-commission doit déterminer le " +
+          "responsable » (CPCC, étape 5). L'écart d'une caisse s'arbitre comme celui de tout compte · portez sur une " +
+          "fiche de la caisse la valeur dite ci-après, rapprochez-la de la balance, puis arbitrez l'écart avant la " +
+          `clôture. ${valeurs.join(' ; ')}.`,
+      );
+    }
   }
 
   async lister(tenantId: string, exerciceId?: string) {

@@ -1330,11 +1330,37 @@ export interface LigneFicheRecapitulative {
   rubriquesEnAttente: RubriqueEnAttente[];
 }
 
+/**
+ * Les groupes de lettrage qu'un état a lus ligne à ligne, leur reste ne se
+ * répartissant pas sûrement entre leurs factures (paquet 1, B5) · servis
+ * bornés, le total dit.
+ */
+/**
+ * Pourquoi un groupe de lettrage est nommé (paquet 1, B5 ; relecture
+ * « échecs silencieux », mineur 7) · servi par le serveur
+ * (`lettrage/reste-des-lignes-ouvertes.ts`).
+ */
+export type MotifGroupeNomme =
+  | 'NEGATIF_SANS_ORIGINE'
+  | 'IMPUTATION_DECLAREE_NON_LUE'
+  | 'DEVISE_SOLDEE_ECART_NON_PASSE'
+  | 'DEVISE_REGLEE_EN_PARTIE'
+  | 'RESTE_NON_REPARTI'
+  | 'A_NOUVEAU_SANS_ORIGINE';
+
+export interface GroupesLusLigneALigne {
+  total: number;
+  groupes: { code: string; compte: string; motif: MotifGroupeNomme }[];
+  tronque: boolean;
+}
+
 export interface ResultatNotesJeu {
   notes: NoteCalculee[];
   exerciceN1Disponible: boolean;
   /** Rattachements du dossier que plus aucune rubrique rattachable ne lit (passe R6). */
   rattachementsSansRubrique?: { codeNote: string; cleRubrique: string; compteId: string; numero: string }[];
+  /** Groupes lus ligne à ligne par la ventilation par échéance (paquet 1, B5). */
+  groupesLusLigneALigne?: GroupesLusLigneALigne;
   ficheRecapitulative: LigneFicheRecapitulative[];
   couverture: { transcrites: number; attendues: number };
 }
@@ -2402,6 +2428,14 @@ export interface PositionRelance {
    */
   tiersEmail: string | null;
   lignes: { date: string; echeance: string | null; libelle: string; montant: number; retardJours: number }[];
+  /**
+   * Les factures soldées dans leur devise dont l'écart de change réalisé
+   * n'est pas passé · ni réclamées ni retranchées, l'écart nommé (AUDCIF
+   * art. 55). Jamais dans la lettre.
+   */
+  ecartsChangeNonPasses?: { code: string; ecart: number; libelle: string }[];
+  /** Groupes du compte lus ligne à ligne (paquet 1, B5). */
+  groupesLusLigneALigne?: GroupesLusLigneALigne;
 }
 
 /**
@@ -2642,6 +2676,8 @@ export interface NotesSmt {
     echeancesTenues: boolean;
     /** Servi par le serveur quand la ventilation est incomplète, null sinon. */
     motifEcheances: string | null;
+    /** Groupes lus ligne à ligne (paquet 1, B5). */
+    groupesLusLigneALigne?: GroupesLusLigneALigne;
   };
   note5: {
     rubriques: { cle: string; libelle: string; montant: number; comptes: CompteDuPoste[] }[];
@@ -2832,6 +2868,8 @@ export interface Echeancier {
   nombreDetails?: number;
   alerte: { tranche: string; libelle: string; tresorerieProjetee: number; message: string } | null;
   lignesSansEcheance: number;
+  /** Groupes lus ligne à ligne (paquet 1, B5). */
+  groupesLusLigneALigne?: GroupesLusLigneALigne;
 }
 
 // --------------------------------------------------------------------------
@@ -3918,6 +3956,8 @@ export interface NotesSmtSyscohada {
     echeancesTenues: boolean;
     /** Ce qu'il faut saisir pour que la note dise ce que son intitulé annonce. */
     motifEcheances: string;
+    /** Groupes lus ligne à ligne (paquet 1, B5). */
+    groupesLusLigneALigne?: GroupesLusLigneALigne;
     variationSv2: number;
     variationSv3: number;
     /** Anomalie du texte officiel : « la variation en pourcentage » alimenterait le compte de résultat. */

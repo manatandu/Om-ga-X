@@ -82,7 +82,7 @@ const enDate = ({ value }: { value: unknown }) =>
  * « 1e2 » comme 100 et « » comme 0. Le reste reste tel quel et tombe sur
  * `@IsInt`, qui le refuse.
  */
-const enEntier = ({ value }: { value: unknown }) =>
+export const enEntier = ({ value }: { value: unknown }) =>
   typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
 
 /**

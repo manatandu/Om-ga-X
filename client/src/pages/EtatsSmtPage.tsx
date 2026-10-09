@@ -5,6 +5,7 @@ import { lacuneEcheancesNote3 } from '../lib/note3-echeances-smt';
 import { useExercice } from '../lib/exercice';
 import { IconCheck, IconExport } from '../components/chrome/icons';
 import { Aide } from '../components/chrome/Aide';
+import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
 import { ReglementsNonRattaches } from '../components/ReglementsNonRattaches';
 import { ComparatifN1 } from '../components/ComparatifN1';
 import { AvisResultatAnterieurNonVire } from '../components/ResultatAnterieurNonVire';
@@ -796,6 +797,8 @@ export function EtatsSmtPage() {
               échu » qui répond au titre de la note. Les trois parts la totalisent toujours.
               {notes.note3.motifEcheances ? ` ${notes.note3.motifEcheances}` : ''}
             </p>
+            {/* Paquet 1, B5 · les groupes lus ligne à ligne. */}
+            <GroupesLusLigneALigne groupes={notes.note3.groupesLusLigneALigne} className="px-4 pb-2" />
             </div>
           </div>
 
