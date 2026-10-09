@@ -138,11 +138,15 @@ test('SYSCOHADA · un client et sa panoplie traversent la clôture, le collectif
   // À l'écran · la fenêtre de création propose le numéro, et le numéro saisi est celui qui s'ouvre.
   await page.goto('/#/tiers');
   await page.getByRole('button', { name: 'Nouveau tiers' }).click();
-  const champNumero = page.locator('#numero-compte-tiers');
+  const champNumero = page.locator('form').getByLabel('N° de compte');
   await expect(champNumero).toHaveValue('41110001');
   await page.getByPlaceholder('ex. CLI-0001').fill('BETA');
-  await champNumero.fill('41110251');
   await page.locator('form').getByRole('textbox').nth(1).fill('Beta');
+  // Un numéro pris est refusé DANS la fenêtre, là où il se corrige.
+  await champNumero.fill('41110250');
+  await page.getByRole('button', { name: 'Créer le tiers' }).click();
+  await expect(page.locator('form').getByRole('alert')).toContainText('Le compte 41110250 existe déjà dans ce dossier');
+  await champNumero.fill('41110251');
   await page.getByRole('button', { name: 'Créer le tiers' }).click();
   await expect(page.getByText(/Tiers BETA créé avec ses comptes 41110251, 41810251/)).toBeVisible();
 

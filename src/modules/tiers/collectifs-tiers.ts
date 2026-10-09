@@ -214,8 +214,12 @@ export function rangSousRacine(numero: string, racine: string): number | null {
  *  · À LA LONGUEUR DU DOSSIER (`Tenant.longueurCompte`), comme les numéros
  *    qu'OmegaX ouvre lui-même · convention d'OmegaX, aucun texte ne fixe la
  *    longueur d'une subdivision. Deux numéros de même longueur ne sont
- *    jamais le début l'un de l'autre, et la lecture par début de numéro
- *    (§ 7 du règlement) ne mêle pas deux tiers.
+ *    jamais le début l'un de l'autre. LIMITE ÉCRITE · un dossier dont les
+ *    numéros ont été élargis garde ses comptes plus courts (« élargir ne
+ *    renumérote rien »), et l'un d'eux peut être le début d'un numéro neuf,
+ *    choisi ou proposé, comme le collectif l'est déjà de ses premiers
+ *    individuels · une recherche par racine les lirait ensemble (relevé en
+ *    attente au suivi).
  *
  * Rend le motif du refus, ou null. L'unicité dans le dossier se juge à part,
  * sous le verrou de la panoplie.

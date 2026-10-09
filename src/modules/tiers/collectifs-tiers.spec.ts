@@ -265,6 +265,28 @@ describe('création du tiers et de son compte', () => {
     expect(crees.map((c) => c.numero)).toEqual(['41200037', '41820037', '41920037', '41620037']);
   });
 
+  it('un rang trop long pour la racine d’un sous-compte cède au premier libre, et c’est dit', async () => {
+    const { service, crees } = monter(Referentiel.SYCEBNL, [
+      { id: 'c412', numero: '41200000' },
+      { id: 'c4182', numero: '41820000' },
+      { id: 'c4192', numero: '41920000' },
+      { id: 'c4162', numero: '41620000' },
+    ]);
+    const t = await service.creer('t1', { type: TypeTiers.CLIENT, code: 'C1', nom: 'Usager', numeroCompte: '41212345' });
+    expect(crees.map((c) => c.numero)).toEqual(['41212345', '41820001', '41920001', '41620001']);
+    expect(t.panoplie?.horsRang.map((h) => h.numero)).toEqual(['41820001', '41920001', '41620001']);
+  });
+
+  it('un numéro ouvert à la main sans tiers est refusé, et le refus nomme l’issue du rattachement', async () => {
+    const { service } = monter(Referentiel.SYSCOHADA, [
+      { id: 'c4011', numero: '40110000' },
+      { id: 'repris', numero: '40110250' },
+    ]);
+    await expect(
+      service.creer('t1', { type: TypeTiers.FOURNISSEUR, code: 'F1', nom: 'Soco', numeroCompte: '40110250' }),
+    ).rejects.toThrow(/existe déjà dans ce dossier .* rattachez-lui ce compte comme principal/);
+  });
+
   it('un numéro choisi déjà ouvert est refusé en le disant, rien n’est créé', async () => {
     const { service, crees } = monter(Referentiel.SYSCOHADA, [
       { id: 'c4011', numero: '40110000' },

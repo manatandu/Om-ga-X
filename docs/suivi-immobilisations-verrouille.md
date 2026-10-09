@@ -765,6 +765,10 @@ Manasse (« on verra ça plus tard », 2026-10-03).
   saisie refuse le collectif qui porte des comptes de tiers, un journal de
   trésorerie a son propre compte ; le numéro du compte principal se choisit
   à la création, proposé par OmegaX (même jour, « Choisi à la création »).
+  Relevé en attente du numéro choisi (non bloquant) · un dossier dont les
+  numéros ont été élargis garde ses comptes plus courts, et l'un d'eux peut
+  être le début d'un numéro neuf, choisi ou proposé (le collectif l'est déjà
+  de ses premiers individuels) · une recherche par racine les lirait ensemble.
   RESTE · le salarié (42, « pas pour l'instant »), les organismes sociaux, l'État, les associés et bailleurs,
   les débiteurs et créditeurs divers (43 à 47), dont les sous-comptes se
   relisent dans les deux plans avant tout code.

@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsEmail, IsEnum, IsOptional, IsString, IsUUID, Matches, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, ValidateIf } from 'class-validator';
 import { TypeTiers } from '@prisma/client';
 import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
 
@@ -36,6 +36,7 @@ export class CreerTiersDto {
    */
   @FacultatifNonNul("Un numéro de compte choisi est un numéro · omettez le champ pour garder celui qu'OmegaX propose.")
   @IsString()
+  @IsNotEmpty({ message: "Un numéro de compte choisi ne peut pas être vide · omettez le champ pour garder celui qu'OmegaX propose." })
   numeroCompte?: string;
 
   /*
@@ -244,13 +245,13 @@ export class ModifierTiersDto {
   dateRevocationAutorisationDebits?: string | null;
 }
 
-/** Complétion des panoplies du dossier, par tranches · `apres` est le curseur rendu par l'appel précédent. */
 /** Le type du tiers à créer · `GET /tiers/numero-propose` y lit le collectif de son compte principal. */
 export class NumeroProposeDto {
   @IsEnum(TypeTiers, { message: 'Type de tiers inconnu' })
   type!: TypeTiers;
 }
 
+/** Complétion des panoplies du dossier, par tranches · `apres` est le curseur rendu par l'appel précédent. */
 export class CompletionPanopliesDto {
   @IsOptional()
   @IsUUID()

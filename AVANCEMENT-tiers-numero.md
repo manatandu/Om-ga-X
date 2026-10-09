@@ -15,10 +15,21 @@ le numéro du compte principal d'un tiers est proposé par OmegaX et modifiable
   sans « Ouvrir ses comptes » = 400.
 - `GET /tiers/numero-propose?type=` (rangée dans `ROUTES_QUI_NE_SONT_PAS_DES_LISTES`).
 
+- Écran (TiersPage) · champ prérempli par la lecture attachée au type, envoyé
+  seulement s'il diffère ; refus affiché DANS la fenêtre (role="alert") ;
+  lecture échouée · champ ouvert et vide, bouton « Relire ».
+- Premier tour de relecture (écran, échecs silencieux) · deux MAJEUR corrigés
+  (refus sous le voile, champ perdu sur échec), mineurs corrigés · sous-comptes
+  hors rang nommés (`horsRang`), proposition prise entre-temps dite, 409 qui
+  nomme l'issue d'un compte ouvert sans tiers, 409 d'unicité qui nomme le
+  numéro choisi, vide refusé, bulle sans exemple d'un seul référentiel.
+- Scénario sur vraie base (tiers-panoplie.e2e.ts) · 41110250 traverse la
+  clôture, refus dans la fenêtre puis 41110251 ouvert à l'écran.
+
 ## Reste
-- Écran de création (TiersPage) · champ prérempli, envoyé seulement s'il change.
-- Scénario sur vraie base (tiers-panoplie.e2e.ts) à travers la clôture.
-- Relectures (silent-failure-hunter, typescript, react), docs, intégration.
+- Relecture serveur (typescript-reviewer) du premier tour, second tour,
+  bloc § 3 complet, intégration sur main, déploiement vérifié.
+- Relevé en attente · préfixe d'un compte court après élargissement.
 
 ## Vérification
 npx tsc --noEmit ; npx jest src/modules/tiers src/modules/comptes ;

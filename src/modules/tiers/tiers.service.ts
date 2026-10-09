@@ -42,6 +42,12 @@ export interface PanoplieTiers {
   crees: { role: RolePanoplie; numero: string; collectif: string }[];
   dejaPresents: number;
   impossibles: { collectif: string; motif: string }[];
+  /**
+   * Sous-comptes ouverts HORS DU RANG du principal · rang déjà pris sous
+   * leur collectif, ou trop long pour sa racine (au SYCEBNL, le 412 laisse
+   * cinq chiffres au rang, le 4182 quatre). Dits, jamais tus.
+   */
+  horsRang: { collectif: string; numero: string }[];
 }
 
 export interface NumeroPropose {
@@ -64,13 +70,15 @@ export interface CompletionPanoplies {
  * UN CONFLIT D'UNICITÉ SE DIT · une autre saisie a pris le numéro ou le code
  * entre la lecture et l'écriture. Le 500 brut laissait croire à une panne.
  */
-function conflitDeNumeroNomme(e: unknown): never {
+function conflitDeNumeroNomme(e: unknown, numeroChoisi?: string): never {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
     const cible = JSON.stringify(e.meta?.target ?? '');
     throw new ConflictException(
-      cible.includes('numero')
-        ? "Un numéro de compte de la panoplie vient d'être ouvert par une autre saisie · relancez la demande."
-        : "Ce tiers vient d'être créé par une autre saisie · relancez la demande.",
+      !cible.includes('numero')
+        ? "Ce tiers vient d'être créé par une autre saisie · relancez la demande."
+        : numeroChoisi
+          ? `Le ${numeroChoisi}, ou un numéro de sa panoplie, vient d'être ouvert par une autre saisie · relancez, ou choisissez un autre numéro.`
+          : "Un numéro de compte de la panoplie vient d'être ouvert par une autre saisie · relancez la demande.",
     );
   }
   throw e;
@@ -174,7 +182,7 @@ export class TiersService {
           ? null
           : await this.poserPanoplie(tx, tenantId, tiers, { silencieux: true, numeroPrincipal: numeroCompte });
       return { ...tiers, compteIndividuel: panoplie?.principal ?? null, panoplie };
-    }).catch(conflitDeNumeroNomme);
+    }).catch((e) => conflitDeNumeroNomme(e, numeroCompte));
   }
 
   /**
@@ -337,7 +345,7 @@ export class TiersService {
       const motif = motifRefusNumeroChoisi(options.numeroPrincipal, panoplie[0].collectif, longueurCompte, referentiel);
       if (motif) throw new BadRequestException(motif);
     }
-    const resultat: PanoplieTiers = { principal: null, crees: [], dejaPresents: 0, impossibles: [] };
+    const resultat: PanoplieTiers = { principal: null, crees: [], dejaPresents: 0, impossibles: [], horsRang: [] };
     let rang: number | null = null;
     // UN PRINCIPAL POSÉ SUR LE COLLECTIF N'EST PAS UN COMPTE DU TIERS · un
     // tiers ancien rattaché au 41110000 commun recevait « déjà présent » et
@@ -368,14 +376,21 @@ export class TiersService {
       }
       const existants = await tx.compte.findMany({
         where: { tenantId, numero: { startsWith: racine } },
-        select: { numero: true },
+        select: { id: true, numero: true },
       });
       const choisi = role.role === 'PRINCIPAL' ? options.numeroPrincipal : undefined;
       // PRIS, LE NUMÉRO CHOISI EST REFUSÉ, jamais remplacé par le suivant · le
       // cabinet a nommé ce compte, et un autre numéro passerait inaperçu.
-      if (choisi !== undefined && existants.some((c) => c.numero === choisi)) {
+      // Ouvert à la main sans tiers (une reprise), le refus nomme l'issue.
+      const pris = choisi !== undefined ? existants.find((c) => c.numero === choisi) : undefined;
+      if (pris) {
+        const tenuParUnTiers = await tx.tiersCompte.findFirst({ where: { compteId: pris.id }, select: { id: true } });
         throw new ConflictException(
-          `Le compte ${choisi} existe déjà dans ce dossier · choisissez un autre numéro, ou laissez celui qu'OmegaX propose.`,
+          `Le compte ${choisi} existe déjà dans ce dossier · choisissez un autre numéro, ou laissez celui qu'OmegaX propose.` +
+            (tenuParUnTiers
+              ? ''
+              : ' S\'il est le compte de ce tiers, créez le tiers sans « Ouvrir ses comptes », rattachez-lui ce compte comme ' +
+                'principal, puis complétez ses comptes depuis sa fiche · ses sous-comptes prendront son rang.'),
         );
       }
       const numero =
@@ -410,6 +425,8 @@ export class TiersService {
       if (principal) {
         resultat.principal = { id: compte.id, numero: compte.numero, collectif: collectif.numero };
         rang = rangSousRacine(compte.numero, racine);
+      } else if (rang !== null && rangSousRacine(compte.numero, racine) !== rang) {
+        resultat.horsRang.push({ collectif: collectif.numero, numero: compte.numero });
       }
       resultat.crees.push({ role: role.role, numero: compte.numero, collectif: collectif.numero });
     }

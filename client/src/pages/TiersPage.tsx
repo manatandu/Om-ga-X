@@ -1,4 +1,4 @@
-import { Fragment, FormEvent, useEffect, useMemo, useState, useRef } from 'react';
+import { Fragment, FormEvent, useEffect, useId, useMemo, useState, useRef } from 'react';
 import { ModaleFusion } from '../components/ModaleFusion';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
@@ -63,7 +63,15 @@ interface Panoplie {
   crees: { role: string; numero: string; collectif: string }[];
   dejaPresents: number;
   impossibles: { collectif: string; motif: string }[];
+  /** Sous-comptes ouverts hors du rang du principal (rang pris, ou trop long sous leur collectif). */
+  horsRang?: { collectif: string; numero: string }[];
 }
+
+/** La lecture du numéro proposé, attachée au type qu'elle vise. */
+type LectureNumero =
+  | { type: TypeTiers; etat: 'en-cours' }
+  | { type: TypeTiers; etat: 'lu'; r: NumeroPropose }
+  | { type: TypeTiers; etat: 'echec'; message: string };
 
 interface CompletionPanoplies {
   tiersLus: number;
@@ -77,7 +85,13 @@ const TYPES_A_PANOPLIE: TypeTiers[] = ['FOURNISSEUR', 'CLIENT', 'ADHERENT'];
 
 /** Ce qui n'a pas pu naître, dit à la suite du message · jamais tu. */
 function motifsImpossibles(p: Panoplie): string {
-  return p.impossibles.length > 0 ? ` Non ouverts · ${p.impossibles.map((i) => i.motif).join(' ')}` : '';
+  const horsRang = p.horsRang ?? [];
+  return (
+    (p.impossibles.length > 0 ? ` Non ouverts · ${p.impossibles.map((i) => i.motif).join(' ')}` : '') +
+    (horsRang.length > 0
+      ? ` Hors du rang du principal (rang pris ou trop long sous le collectif) · ${horsRang.map((h) => h.numero).join(', ')}.`
+      : '')
+  );
 }
 
 interface TableauxTiers {
@@ -312,39 +326,62 @@ export function TiersPage() {
   const [creerCompteIndividuel, setCreerCompteIndividuel] = useState(true);
 
   // LE NUMÉRO DU COMPTE PRINCIPAL, PROPOSÉ PUIS MODIFIABLE (décision de
-  // Manasse du 2026-10-09) · relu à chaque ouverture de la fenêtre et à
-  // chaque type, la proposition d'un autre collectif n'ayant plus de sens.
-  // Une réponse arrivée après un changement de type est jetée.
-  const [numeroPropose, setNumeroPropose] = useState<NumeroPropose | null>(null);
+  // Manasse du 2026-10-09) · relu à chaque ouverture de la fenêtre, à chaque
+  // type (la proposition d'un autre collectif n'a plus de sens) et à la
+  // demande après un échec. La lecture porte le type qu'elle vise · une
+  // réponse d'un autre type n'est jamais montrée, même le temps d'une image,
+  // et une réponse arrivée après un changement est jetée. Cocher ou décocher
+  // « Ouvrir ses comptes » ne relit rien et garde le numéro saisi.
+  const [lectureNumero, setLectureNumero] = useState<LectureNumero | null>(null);
   const [numeroSaisi, setNumeroSaisi] = useState('');
-  const [erreurNumero, setErreurNumero] = useState<string | null>(null);
+  const [relectureNumero, setRelectureNumero] = useState(0);
+  const [erreurCreation, setErreurCreation] = useState<string | null>(null);
+  const idNumero = useId();
+  const idMessageNumero = useId();
+  const lecture = lectureNumero?.type === type ? lectureNumero : null;
+  const numeroPropose = lecture?.etat === 'lu' ? lecture.r : null;
   useEffect(() => {
-    if (!nouveauOuvert || !creerCompteIndividuel) return;
+    if (!nouveauOuvert) return;
     let actif = true;
-    setNumeroPropose(null);
+    setLectureNumero({ type, etat: 'en-cours' });
     setNumeroSaisi('');
-    setErreurNumero(null);
     api
       .get<NumeroPropose>(`/tiers/numero-propose?type=${type}`)
       .then((r) => {
         if (!actif) return;
-        setNumeroPropose(r);
+        setLectureNumero({ type, etat: 'lu', r });
         setNumeroSaisi(r.numero ?? '');
       })
       .catch((err) => {
-        if (actif) setErreurNumero(err instanceof ApiError ? err.message : 'Numéro proposé illisible');
+        if (!actif) return;
+        // Le champ reste ouvert et vide · le numéro saisi part, et le serveur le juge.
+        setLectureNumero({
+          type,
+          etat: 'echec',
+          message: `Numéro proposé illisible · ${err instanceof ApiError ? err.message : 'serveur injoignable'}`,
+        });
       });
     return () => {
       actif = false;
     };
-  }, [nouveauOuvert, creerCompteIndividuel, type]);
+  }, [nouveauOuvert, type, relectureNumero]);
+
+  const ouvrirNouveau = () => {
+    setLectureNumero(null);
+    setNumeroSaisi('');
+    setErreurCreation(null);
+    setNouveauOuvert(true);
+  };
 
   const onCreerTiers = async (e: FormEvent) => {
     e.preventDefault();
     setErreur(null);
+    setErreurCreation(null);
     setInfo(null);
     setEnvoi(true);
-    const numeroCompte = creerCompteIndividuel ? numeroAEnvoyer(numeroSaisi, numeroPropose) : undefined;
+    // Pendant la lecture, le champ est fermé et vide · rien ne part, le serveur prend le premier libre.
+    const numeroCompte =
+      creerCompteIndividuel && lecture?.etat !== 'en-cours' ? numeroAEnvoyer(numeroSaisi, numeroPropose) : undefined;
     try {
       const cree = await api.post<{ compteIndividuel: { numero: string; collectif: string } | null; panoplie: Panoplie | null }>('/tiers', {
         type,
@@ -354,9 +391,16 @@ export function TiersPage() {
         ...(numeroCompte ? { numeroCompte } : {}),
         ...(modeleReglementId ? { modeleReglementId } : {}),
       });
+      // LA PROPOSITION PRISE ENTRE-TEMPS SE DIT · le serveur a ouvert le
+      // premier libre, qui n'est plus le numéro que la fenêtre montrait.
+      const ouvert = cree.compteIndividuel?.numero;
+      const propositionPrise =
+        numeroCompte === undefined && numeroPropose?.numero && numeroSaisi.trim() !== '' && ouvert && ouvert !== numeroPropose.numero
+          ? ` Le ${numeroPropose.numero} proposé venait d'être pris · compte ouvert sous ${ouvert}.`
+          : '';
       setInfo(
         cree.panoplie && cree.panoplie.crees.length > 0
-          ? `Tiers ${code} créé avec ses comptes ${cree.panoplie.crees.map((c) => c.numero).join(', ')}.${motifsImpossibles(cree.panoplie)}`
+          ? `Tiers ${code} créé avec ses comptes ${cree.panoplie.crees.map((c) => c.numero).join(', ')}.${propositionPrise}${motifsImpossibles(cree.panoplie)}`
           : `Tiers ${code} créé, sans compte · rattachez-en un dans sa fiche.${cree.panoplie ? motifsImpossibles(cree.panoplie) : ''}`,
       );
       setCode('');
@@ -365,7 +409,10 @@ export function TiersPage() {
       setNouveauOuvert(false);
       await charger();
     } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Impossible de créer ce tiers');
+      // DANS LA FENÊTRE, là où se corrige le numéro · le bandeau de la page
+      // est sous le voile, et le refus d'un numéro pris passait pour un clic
+      // sans effet.
+      setErreurCreation(err instanceof ApiError ? err.message : 'Impossible de créer ce tiers');
     } finally {
       setEnvoi(false);
     }
@@ -718,7 +765,7 @@ export function TiersPage() {
           {estAdmin && (
           <button
             type="button"
-            onClick={() => setNouveauOuvert(true)}
+            onClick={ouvrirNouveau}
             className="bg-sel text-white px-3.5 py-1 text-[11.5px] font-semibold"
           >
             Nouveau tiers
@@ -1223,32 +1270,58 @@ export function TiersPage() {
                   </label>
                   {creerCompteIndividuel && (
                     <>
-                      <label htmlFor="numero-compte-tiers" className="text-[11.5px] text-right">N° de compte :</label>
-                      {erreurNumero ? (
-                        <span className="text-[11.5px] text-danger">{erreurNumero}</span>
-                      ) : numeroPropose && !numeroPropose.numero ? (
-                        <span className="text-[11.5px] text-text-dim">{numeroPropose.motif}</span>
+                      {numeroPropose && !numeroPropose.numero ? (
+                        <>
+                          <span className="text-[11.5px] text-right">N° de compte :</span>
+                          <span className="text-[11.5px] text-warning">
+                            {numeroPropose.motif ?? 'Aucun numéro ne peut être proposé pour ce type de tiers.'}
+                          </span>
+                        </>
                       ) : (
-                        <span className="flex items-center gap-1.5">
-                          <input
-                            id="numero-compte-tiers"
-                            value={numeroSaisi}
-                            onChange={(e) => setNumeroSaisi(e.target.value)}
-                            inputMode="numeric"
-                            disabled={!numeroPropose}
-                            placeholder={numeroPropose ? '' : 'Lecture…'}
-                            className="border border-border-dark px-2.5 py-1.5 text-[12px] w-[130px] disabled:bg-chrome"
-                          />
-                          <Aide
-                            titre="Numéro du compte"
-                            texte="OmegaX propose le premier numéro libre sous le collectif du type. Vous pouvez le garder ou en saisir un autre : des chiffres seuls, commençant par la racine du collectif, à la longueur des comptes du dossier, et libre. Les sous-comptes du tiers prennent le même rang (le client 41110250 a son avance au 41910250). Un champ vidé reprend le numéro proposé."
-                            source="AUDCIF art. 18 et Titre VII, structure décimale des comptes ; SYCEBNL, Partie 2 ch. 2, section 1"
-                          />
-                        </span>
+                        <>
+                          <label htmlFor={idNumero} className="text-[11.5px] text-right">N° de compte :</label>
+                          <span className="flex items-center gap-1.5">
+                            <input
+                              id={idNumero}
+                              value={lecture && lecture.etat !== 'en-cours' ? numeroSaisi : ''}
+                              onChange={(e) => setNumeroSaisi(e.target.value)}
+                              inputMode="numeric"
+                              disabled={!lecture || lecture.etat === 'en-cours'}
+                              placeholder={!lecture || lecture.etat === 'en-cours' ? 'Lecture…' : ''}
+                              aria-describedby={lecture?.etat === 'echec' ? idMessageNumero : undefined}
+                              className="border border-border-dark px-2.5 py-1.5 text-[12px] w-[130px] disabled:bg-chrome"
+                            />
+                            <Aide
+                              titre="Numéro du compte"
+                              texte="OmegaX propose le premier numéro libre sous le collectif du type. Vous pouvez en saisir un autre : des chiffres seuls, commençant par la racine du collectif, à la longueur des comptes du dossier, et libre. Les sous-comptes du tiers (factures, avances, créances douteuses) prennent le même rang quand il est libre sous leur collectif. Gardé ou vidé, le numéro est fixé au moment de créer : le premier libre à cet instant."
+                              source="AUDCIF art. 18 et Titre VII, structure décimale des comptes ; SYCEBNL, Partie 2 ch. 2, section 1"
+                            />
+                          </span>
+                          {lecture?.etat === 'echec' && (
+                            <>
+                              <span />
+                              <span id={idMessageNumero} role="alert" className="flex items-center gap-2 text-[11.5px] text-danger">
+                                {lecture.message}
+                                <button
+                                  type="button"
+                                  onClick={() => setRelectureNumero((n) => n + 1)}
+                                  className="border border-border-dark bg-chrome hover:bg-chrome-alt px-2 py-0.5 text-[11px] text-text"
+                                >
+                                  Relire
+                                </button>
+                              </span>
+                            </>
+                          )}
+                        </>
                       )}
                     </>
                   )}
                 </div>
+                {erreurCreation && (
+                  <p role="alert" className="mt-3 text-[11.5px] text-danger">
+                    {erreurCreation}
+                  </p>
+                )}
                 <div className="flex justify-end gap-2 mt-4">
                   <button type="button" onClick={() => setNouveauOuvert(false)} className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px]">
                     Annuler
