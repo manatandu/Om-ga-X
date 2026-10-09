@@ -11,8 +11,8 @@ Ordre de travail · A8, A1, A9, A5, A6.
 # Scénario (non committé ici, tenu par le coordinateur)
 #   /home/user/wt-passe/scripts/passe-v1/scenario-paquet1-a.mjs
 # AVANT (main) et APRÈS (cette copie, après npm run build)
-PAQUET1_A_COPIE=/home/user/Comptaflow PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
-PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
+PAQUET1_A_COPIE=/home/user/Comptaflow PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9 /tmp/claude-0/sim/verifier-ligne.sh /home/user/Comptaflow p1a_avant 8761 paquet1-a /tmp/claude-0/sim/p1a-avant.json
+PAQUET1_A_COPIE=/home/user/wt-p1a PAQUET1_A_POINTS=A8,A8M,A1,A4,A7,A3,A2,A10,A9 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1a p1a_apres 8762 paquet1-a /tmp/claude-0/sim/p1a-apres.json
 # Specs touchés
 npx tsc --noEmit
 npx jest src/modules/exercice/ouverture-passee.spec.ts src/modules/exercice/cloture-annuelle.spec.ts \
@@ -393,9 +393,62 @@ APRÈS · 4 contrôles sur 4 (`/tmp/claude-0/sim/p1a-a10-apres.json`), client
 construit (la phrase est dans le paquet de `NotesAnnexesPage`). Aucune
 clôture à traverser · le point est d'écran, le serveur n'est pas touché.
 
+### A9 · la feuille CONTROLES de la liasse projet ne tient plus XC à zéro
+
+REPRODUIT sur vraie base contre `main` (SYCEBNL, projets de développement).
+Décaissement du bailleur 10 000 000 au 462 ; missions 2 500 000 payées par la
+banque et neutralisées (D 462 / C 702) ; intérêts du dépôt 120 000 au 7747,
+non neutralisés · XC = 120 000, CC = 120 000. AVANT (main) · la feuille
+CONTROLES portait « Solde du compte d'exploitation (XC · doit boucler à 0 en
+régime normal) », Attendu 0, et aucune ligne ne lisait CC ; l'export du
+compte d'exploitation seul imprimait « CONTRÔLE : XC = 120 000 · le compte
+d'exploitation ne boucle pas à zéro ». 14 écarts sur 47
+(`/tmp/claude-0/sim/p1a-a9-avant.json`), en 2026, 2026 relu après la clôture
+et 2027.
+
+DÉCISION PAR LA LOI · SYCEBNL Partie 4 ch. 3, tableaux de correspondance ·
+XC « SOLDE DES OPERATIONS DE L'EXERCICE (+excédent, -déficit) XA - XB » ; CC
+« Solde des opérations de l'exercice (+ ou déficit -) », « 13 (131 ou
+139) » ; CB « Report à nouveau (+ ou -) » pour le recevoir. La fiche du
+compte 13 (Partie 2 ch. 3) le dit « toujours nul », parce que chaque charge
+engagée sur les fonds d'administration est neutralisée par le 702 (Partie 3
+ch. 3 § 2.2, note (2), « neutralité de l'opération (engagement des
+charges) ») ; le corpus lui-même passe un produit hors de cette
+neutralisation (prix de cession au 82, Partie 3 ch. 3 § 2.5.1). Un XC non nul
+n'est donc pas une égalité tombée · les lignes « Attendu 0 » de CONTROLES
+sont des égalités qui doivent tenir, et celle du texte est XC = CC, le même
+« solde des opérations de l'exercice » imprimé dans les deux états. « Régime
+normal » n'est dans aucun texte. Un XC non nul reste « à vérifier » à la
+feuille ANOMALIES (la fiche du compte 13 le dit nul quand tout est
+neutralisé).
+
+CORRECTION ·
+- `ExportService.liasseProjetsEtafi`, feuille CONTROLES · XC lu (Attendu
+  vide), CC lu sur la ligne CC de `Bilan-Passif`, « Écart compte
+  d'exploitation / bilan (XC-CC, doit être 0) » ; l'écart de réconciliation
+  suit ses deux lignes (B12-B13).
+- `compteExploitationProjetExcel` · la ligne sous l'état dit le solde
+  (« XC = 0. » ; non nul, « à expliquer en Notes (produit ou charge hors de
+  la neutralisation par le 702) »), sans « régime normal » ni « ne boucle
+  pas ».
+- Commentaires de doctrine · `correspondance-projet-compte-exploitation.ts`
+  et `EtatsFinanciersProjetService.compteExploitation` disent la lecture.
+
+TESTS · `liasse-etafi.spec.ts`, « Paquet 1, A9 » (balance de projet à
+120 000 d'intérêts) · XC sans attente, CC lu au passif (120 000), écart sur
+ses deux lignes, aucun « régime normal » ; chaque écart de la feuille se lit
+sur les deux lignes qui le précèdent ; la ligne de l'export seul, non nul et
+nul. Les trois tombent sur le service d'avant.
+
+APRÈS · 50 contrôles sur 50 (`/tmp/claude-0/sim/p1a-a9-apres.json`), à
+travers la clôture de 2026 · 2026 relu clos, XC = CC = 120 000, écart 0 ;
+2027, l'affectation au 121 encore au brouillard, l'écart XC-CC vaut −120 000
+(le 13 porte encore le solde de 2026, que CC lit et XC non) ; affectation
+validée, XC = CC = 0.
+
 ## Reste
 
-A9, A5, A6.
+A5, A6.
 
 ## Relevés (voisins, non codés)
 
@@ -444,3 +497,9 @@ A9, A5, A6.
   cellule) et `natureNonVentilee` (mouvements de provision de la note 30 dont
   la contrepartie ne relève d'aucune des trois natures). Même forme que A10,
   non codés (hors du point).
+- A9 · l'écran des états du projet (`EtatsFinanciersPage`) dit encore
+  « XC = … (≈ 0) · régime normal pour ce jeu », et le type client
+  `CompteExploitationProjet.solde` « attendu à 0 en régime normal » · la
+  branche non nulle dit déjà « pas nécessairement une erreur ». La feuille
+  ANOMALIES garde son « à vérifier » sur un XC non nul, avec « ne boucle pas
+  à zéro ». Non codés (hors du point, l'écran n'était pas visé).

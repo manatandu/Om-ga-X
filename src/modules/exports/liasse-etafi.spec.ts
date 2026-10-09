@@ -145,9 +145,15 @@ const EXERCICES = [
   { id: 'e0', tenantId: 't1', dateDebut: new Date('2025-01-01T00:00:00Z'), dateFin: new Date('2025-12-31T00:00:00Z') },
 ];
 
-function fabriquerExport(jeu: JeuEtatsFinanciersSycebnl = TENANT.jeuEtatsFinanciersSycebnl): ExportService {
-  const balances: Record<string, LigneBalanceStub[]> =
-    jeu === JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT
+function fabriquerExport(
+  jeu: JeuEtatsFinanciersSycebnl = TENANT.jeuEtatsFinanciersSycebnl,
+  // Balances par exercice qui remplacent celles du jeu · un cas qui a besoin
+  // d'un dossier propre (paquet 1, A9) sans toucher aux balances communes.
+  surcharge?: Record<string, LigneBalanceStub[]>,
+): ExportService {
+  const balances: Record<string, LigneBalanceStub[]> = surcharge
+    ? surcharge
+    : jeu === JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT
       ? { e1: BALANCE_PROJET_N, e0: BALANCE_PROJET_N1 }
       : jeu === JeuEtatsFinanciersSycebnl.SYSTEME_MINIMAL_TRESORERIE
         ? { e1: BALANCE_SMT_N }
@@ -823,6 +829,111 @@ describe('liasse complète · jeu projets de développement', () => {
     ]);
     // RA ne renvoie qu'à la note 9 · la note 14 ne porte pas le 702.
     expect(ce.getCell(rangsCe.get('RA')!, 3).value).toBe('9');
+  });
+});
+
+/**
+ * PAQUET 1, A9 (reproduit sur vraie base le 2026-10-09) · la feuille
+ * CONTROLES de la liasse projet tenait XC à zéro (« doit boucler à 0 en
+ * régime normal », Attendu 0) sur un projet au solde de 120 000 (intérêts du
+ * dépôt, non neutralisés par le 702). SYCEBNL Partie 4 ch. 3 imprime XC
+ * « (+excédent, -déficit) » et CC « (+ ou déficit -) » · l'égalité qui doit
+ * tenir est XC = CC, le même solde dans les deux états ; XC reste une valeur
+ * lue. Projet · 400 000 reçus au 462, 250 000 de charges neutralisées au 702,
+ * 120 000 d'intérêts au 7747 · XC = CC = 120 000.
+ */
+const BALANCE_PROJET_INTERETS: LigneBalanceStub[] = [
+  ligne('46210000', ClasseCompte.CLASSE_4, 0, 0, 250_000, 400_000),
+  ligne('70210000', ClasseCompte.CLASSE_7, 0, 0, 0, 250_000),
+  ligne('60410000', ClasseCompte.CLASSE_6, 0, 0, 180_000, 0),
+  ligne('66110000', ClasseCompte.CLASSE_6, 0, 0, 70_000, 0),
+  ligne('77470000', ClasseCompte.CLASSE_7, 0, 0, 0, 120_000),
+  ligne('52110000', ClasseCompte.CLASSE_5, 0, 0, 520_000, 250_000),
+];
+
+describe('Paquet 1, A9 · la feuille CONTROLES de la liasse projet ne tient pas XC à zéro', () => {
+  /** Les lignes de CONTROLES · intitulé, formule ou valeur, attendu, par rang. */
+  const lignesControles = (wb: ExcelJS.Workbook) => {
+    const ws = wb.getWorksheet('CONTROLES')!;
+    const lignes: Array<{ rang: number; intitule: string; formule?: string; valeur: unknown; attendu: unknown }> = [];
+    ws.eachRow((row, rang) => {
+      if (rang === 1) return;
+      const v = row.getCell(2).value as { formula?: string } | null;
+      lignes.push({
+        rang,
+        intitule: String(row.getCell(1).value ?? ''),
+        formule: v && typeof v === 'object' && 'formula' in v ? v.formula : undefined,
+        valeur: v,
+        attendu: row.getCell(3).value,
+      });
+    });
+    return lignes;
+  };
+  const rangDeRef = (ws: ExcelJS.Worksheet, ref: string) => {
+    let rang = 0;
+    ws.eachRow((row, n) => {
+      if (row.getCell(1).value === ref) rang = n;
+    });
+    return rang;
+  };
+
+  it('XC est une valeur lue, CC est lu au bilan, et leur écart est l’égalité attendue', async () => {
+    const exportService = fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, { e1: BALANCE_PROJET_INTERETS, e0: [] });
+    const wb = await ouvrir((await exportService.liasseCompleteExcel('t1', 'e1')).buffer);
+    const lignes = lignesControles(wb);
+    const xc = lignes.find((l) => /\(XC\)$/.test(l.intitule))!;
+    const cc = lignes.find((l) => /\(CC\)$/.test(l.intitule))!;
+    const ecart = lignes.find((l) => /XC-CC/.test(l.intitule))!;
+    expect(xc).toBeDefined();
+    expect(cc).toBeDefined();
+    expect(ecart).toBeDefined();
+    // XC n'est plus tenu à zéro · aucune attente sur sa ligne.
+    expect(xc.attendu === null || xc.attendu === '').toBe(true);
+    expect(xc.formule).toBe(`'Compte Exploitation'!D${rangDeRef(wb.getWorksheet('Compte Exploitation')!, 'XC')}`);
+    // CC est lu sur la ligne CC du passif, qui porte les 120 000.
+    const passif = wb.getWorksheet('Bilan-Passif')!;
+    const rangCc = rangDeRef(passif, 'CC');
+    expect(cc.formule).toBe(`'Bilan-Passif'!D${rangCc}`);
+    expect(passif.getCell(rangCc, 4).value).toBe(120_000);
+    // L'égalité porte sur les deux lignes qui la précèdent.
+    expect(ecart.formule).toBe(`B${xc.rang}-B${cc.rang}`);
+    expect(ecart.attendu).toBe(0);
+    expect(lignes.filter((l) => /régime normal/.test(l.intitule))).toEqual([]);
+  });
+
+  it('chaque écart de la feuille se lit sur les deux lignes qui le précèdent', async () => {
+    // Trois lignes insérées décalent les rangs · une formule restée sur
+    // « B10-B11 » comparerait alors la trésorerie à la mauvaise ligne.
+    const exportService = fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, { e1: BALANCE_PROJET_INTERETS, e0: [] });
+    const wb = await ouvrir((await exportService.liasseCompleteExcel('t1', 'e1')).buffer);
+    const ecarts = lignesControles(wb).filter((l) => l.formule && /^B\d+-B\d+$/.test(l.formule));
+    expect(ecarts.map((l) => l.intitule)).toEqual([
+      'Écart balance (doit être 0)',
+      'Écart bilan actif - passif (doit être 0)',
+      "Écart compte d'exploitation / bilan (XC-CC, doit être 0)",
+      'Écart réconciliation / balance (doit être 0)',
+    ]);
+    for (const l of ecarts) expect(l.formule).toBe(`B${l.rang - 2}-B${l.rang - 1}`);
+  });
+
+  it('le compte d’exploitation exporté seul dit le solde sans le juger à zéro', async () => {
+    const lire = async (surcharge?: Record<string, LigneBalanceStub[]>) => {
+      const exportService = fabriquerExport(JeuEtatsFinanciersSycebnl.PROJETS_DEVELOPPEMENT, surcharge);
+      const wb = await ouvrir((await exportService.compteExploitationProjetExcel('t1', 'e1')).buffer);
+      const textes: string[] = [];
+      wb.getWorksheet('Compte Exploitation')!.eachRow((row) =>
+        row.eachCell((cell) => {
+          if (typeof cell.value === 'string' && /XC =/.test(cell.value)) textes.push(cell.value);
+        }),
+      );
+      return textes;
+    };
+    const [nonNul] = await lire({ e1: BALANCE_PROJET_INTERETS, e0: [] });
+    expect(nonNul).toMatch(/^Solde des opérations de l'exercice : XC = 120\s?000 · non nul, à expliquer en Notes/);
+    expect(nonNul).not.toMatch(/régime normal|ne boucle pas/);
+    // Les fonds consommés égalent les charges · XC = 0, dit sans « régime normal ».
+    const sansInterets = BALANCE_PROJET_INTERETS.filter((l) => l.numero !== '77470000');
+    expect(await lire({ e1: sansInterets, e0: [] })).toEqual(['Solde des opérations de l’exercice : XC = 0.']);
   });
 });
 

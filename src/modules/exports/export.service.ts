@@ -2358,9 +2358,12 @@ export class ExportService {
     ligneControleSousEtat(
       classeur.getWorksheet('Compte Exploitation')!,
       Math.max(...rangs.values()) + 2,
+      // Le solde se DIT, il n'est pas jugé à zéro (paquet 1, A9) · Partie 4
+      // ch. 3 l'imprime « (+excédent, -déficit) » ; non nul, il est hors de la
+      // neutralisation des charges par le 702 que la fiche du compte 13 décrit.
       ce.controle.boucleAZero
-        ? 'Contrôle : le compte d’exploitation boucle à zéro (XC = 0), régime normal du jeu projets.'
-        : `CONTRÔLE : XC = ${ce.solde.toLocaleString('fr-FR')} · le compte d'exploitation ne boucle pas à zéro (voir Notes).`,
+        ? 'Solde des opérations de l’exercice : XC = 0.'
+        : `Solde des opérations de l'exercice : XC = ${ce.solde.toLocaleString('fr-FR')} · non nul, à expliquer en Notes (produit ou charge hors de la neutralisation par le 702).`,
     );
     numeroterPages(classeur);
     return {
@@ -5029,6 +5032,23 @@ export class ExportService {
     construireTableCommentaires(classeur, parties, ident);
 
     // CONTROLES · les recoupements croisés propres à ce jeu.
+    //
+    // LE SOLDE DES OPÉRATIONS N'EST PAS TENU À ZÉRO (paquet 1, A9, reproduit
+    // sur vraie base le 2026-10-09). SYCEBNL Partie 4 ch. 3, tableaux de
+    // correspondance · XC « SOLDE DES OPERATIONS DE L'EXERCICE (+excédent,
+    // -déficit) XA - XB », CC « Solde des opérations de l'exercice (+ ou
+    // déficit -) », « 13 (131 ou 139) », et CB « Report à nouveau (+ ou -) »
+    // pour le recevoir. La fiche du compte 13 le dit « toujours nul » parce que
+    // chaque charge engagée sur les fonds d'administration est neutralisée par
+    // le 702 (Partie 3 ch. 3 § 2.2, note (2)) ; un produit hors de cette
+    // neutralisation (intérêts du dépôt, prix de cession au 82 du § 2.5.1) le
+    // rend non nul, et la liasse comparait alors à zéro « en régime normal »
+    // un projet au solde de 120 000. Les lignes « Attendu 0 » sont des
+    // égalités qui doivent tenir · XC y reste une valeur lue, et l'égalité est
+    // celle du même solde dans les deux états, XC au compte d'exploitation et
+    // CC au bilan (un compte de gestion qu'aucun poste du compte
+    // d'exploitation ne lit, un résultat antérieur resté au 13, les écartent).
+    // Un XC non nul reste « à vérifier » à la feuille ANOMALIES.
     const ctl = classeur.addWorksheet('CONTROLES');
     ctl.getCell(1, 1).value = 'Contrôle';
     ctl.getCell(1, 2).value = 'Valeur';
@@ -5043,11 +5063,13 @@ export class ExportService {
       ['Total général actif (BZ)', `'Bilan-Actif'!D${rangsActif.get('BZ')}`, ''],
       ['Total général passif (DZ)', `'Bilan-Passif'!D${rangsPassif.get('DZ')}`, ''],
       ['Écart bilan actif - passif (doit être 0)', 'B5-B6', 0],
-      ["Solde du compte d'exploitation (XC · doit boucler à 0 en régime normal)", `'Compte Exploitation'!D${rangsCe.get('XC')}`, 0],
+      ["Solde des opérations de l'exercice, compte d'exploitation (XC)", `'Compte Exploitation'!D${rangsCe.get('XC')}`, ''],
+      ["Solde des opérations de l'exercice, bilan (CC)", `'Bilan-Passif'!D${rangsPassif.get('CC')}`, ''],
+      ["Écart compte d'exploitation / bilan (XC-CC, doit être 0)", 'B8-B9', 0],
       ['Contrôle emplois-ressources (VII · V - VI, doit être 0)', `'Emplois-Ressources'!D${terRangs.get('GZ')}`, 0],
       ['Trésorerie fin (réconciliation, G)', `'Reconciliation tresorerie'!C${rangsRecon.get('G')}`, ''],
       ['Trésorerie balance (classe 5 nette)', recon.controle.tresorerieBalance, ''],
-      ['Écart réconciliation / balance (doit être 0)', 'B10-B11', 0],
+      ['Écart réconciliation / balance (doit être 0)', 'B12-B13', 0],
     ];
     let rc = 1;
     for (const [lab, val, attendu] of controles) {

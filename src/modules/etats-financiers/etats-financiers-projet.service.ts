@@ -409,8 +409,10 @@ export class EtatsFinanciersProjetService {
       motifComparatifAbsent: !exerciceN1Id && ouvertureTenue(ouvertureN) ? MOTIF_RESULTAT_N1_NON_TENU : null,
       comptesNonRattaches: resN.comptesNonRattaches,
       controle: {
-        // XC doit valoir 0 en régime normal (voir note de tête de fichier) ·
-        // exposé, jamais forcé à zéro artificiellement.
+        // XC nul quand chaque charge est neutralisée par le 702 (fiche du
+        // compte 13) · exposé, jamais forcé à zéro, et jamais une égalité ·
+        // Partie 4 ch. 3 l'imprime « (+excédent, -déficit) » (paquet 1, A9,
+        // `correspondance-projet-compte-exploitation.ts`).
         boucleAZero: Math.abs(solde) < 0.01,
       },
     };
