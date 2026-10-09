@@ -10,13 +10,14 @@ import { apparierAuxOrigines, datesOrigineDesReports, originesDesReports, type L
 
 const d = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
-const report = (id: string, debit: number, libelle: string): LigneReportee => ({
+const report = (id: string, debit: number, libelle: string, date = '2027-01-01'): LigneReportee => ({
   id,
   compteId: 'c1',
   numeroCompte: '41110001',
   debit,
   credit: 0,
   libelle: `RAN détail 41110001 · ${libelle}`,
+  date: d(date),
 });
 
 const origine = (id: string, debit: number, libelle: string, date: string, estReport = false): LigneCandidate => ({
@@ -104,7 +105,7 @@ describe('date d’origine des reports · la lecture sur plusieurs exercices', (
 
   it('remonte d’exercice en exercice jusqu’à la pièce, et rattache la facture de l’année', async () => {
     const dates = await datesOrigineDesReports(client as never, 't1', d('2027-01-01'), [
-      { id: 'r27a', compteId: 'c1', numeroCompte: '41110001', debit: 1_300_000, credit: 0, libelle: 'RAN détail 41110001 · Facture FV-001' },
+      { id: 'r27a', compteId: 'c1', numeroCompte: '41110001', debit: 1_300_000, credit: 0, libelle: 'RAN détail 41110001 · Facture FV-001', date: d('2027-01-01') },
       {
         id: 'r27b',
         compteId: 'c1',
@@ -112,6 +113,7 @@ describe('date d’origine des reports · la lecture sur plusieurs exercices', (
         debit: 500_000,
         credit: 0,
         libelle: 'RAN détail 41110001 · RAN détail 41110001 · Facture FV-2025-9',
+        date: d('2027-01-01'),
       },
     ]);
     expect(dates.get('r27a')).toEqual(d('2026-03-01'));
@@ -121,7 +123,7 @@ describe('date d’origine des reports · la lecture sur plusieurs exercices', (
 
   it('une ligne sans origine retrouvée n’a pas de date · la relance garde celle de l’écriture', async () => {
     const dates = await datesOrigineDesReports(client as never, 't1', d('2027-01-01'), [
-      { id: 'r27c', compteId: 'c1', numeroCompte: '41110001', debit: 7_000, credit: 0, libelle: 'RAN détail 41110001 · Inconnue' },
+      { id: 'r27c', compteId: 'c1', numeroCompte: '41110001', debit: 7_000, credit: 0, libelle: 'RAN détail 41110001 · Inconnue', date: d('2027-01-01') },
     ]);
     expect(dates.has('r27c')).toBe(false);
   });
@@ -202,10 +204,70 @@ describe('date d’origine des reports · l’échéance et le libellé recopié
     expect(introuvables).toEqual(['r-inconnu']);
   });
 
-  it('sans exercice précédent (premier exercice tenu), rien n’est à chercher · ni origine, ni introuvable', async () => {
-    const { origines, introuvables } = await originesDesReports(client([]) as never, 't1', d('2026-01-01'), [report('r0', 7_000, 'Ouverture')]);
-    expect(origines.size).toBe(0);
+});
+
+/**
+ * RELECTURE « ÉCHECS SILENCIEUX » DU PAQUET 1, M1 · LE PREMIER EXERCICE TENU.
+ * Rejoué sur vraie base (scénario paquet1-b, M1) · 2026, premier exercice,
+ * ouvert par un bilan importé (F0, 1 000 000) ; F1, 1 000 000 du 01/03/2026 ;
+ * leurs deux reports lettrés à la main en 2027 avec un règlement de
+ * 1 000 000. La chaîne de F0 s'arrêtait sur la ligne importée (elle-même un
+ * à-nouveau, sans exercice précédent) · ni origine ni introuvable, le groupe
+ * tombait au prorata, 500 000 réclamés sur chacune.
+ */
+describe('date d’origine des reports · le premier exercice tenu (relecture, M1)', () => {
+  const exercices = [{ id: 'e2026', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') }];
+  const lignes2026 = [
+    // La ligne du bilan d'ouverture importé · un à-nouveau, sans libellé de
+    // ligne (l'import n'en porte pas), daté de la reprise.
+    { id: 'imp', debit: 1_000_000, libelle: null, libelleEcriture: 'Bilan d’ouverture · ouverture.csv', date: d('2026-01-01'), report: true },
+    { id: 'f1', debit: 1_000_000, libelle: 'Facture FV-1', libelleEcriture: 'Facture FV-1', date: d('2026-03-01'), report: false },
+  ];
+  const client = {
+    exercice: {
+      findFirst: async (a: { where: { dateFin: { lt: Date } } }) =>
+        exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
+    },
+    ligneEcriture: {
+      findMany: async (a: { where: { ecriture: { exerciceId: string } }; cursor?: unknown }) =>
+        a.cursor || a.where.ecriture.exerciceId !== 'e2026'
+          ? []
+          : lignes2026.map((l) => ({
+              id: l.id,
+              compteId: 'c1',
+              debit: l.debit,
+              credit: 0,
+              libelle: l.libelle,
+              dateEcheance: null,
+              ecriture: { date: l.date, libelle: l.libelleEcriture, estGenereeParCloture: l.report, estANouveauProvisoire: false },
+            })),
+    },
+  };
+
+  it('le report de la ligne importée remonte à elle, et elle EST l’origine, à la date de son écriture', async () => {
+    const { origines, introuvables } = await originesDesReports(client as never, 't1', d('2027-01-01'), [
+      report('r-imp', 1_000_000, 'Bilan d’ouverture · ouverture.csv'),
+      report('r-f1', 1_000_000, 'Facture FV-1'),
+    ]);
+    expect(origines.get('r-imp')).toEqual({ date: d('2026-01-01'), id: 'imp' });
+    expect(origines.get('r-f1')).toEqual({ date: d('2026-03-01'), id: 'f1' });
     expect(introuvables).toEqual([]);
+  });
+
+  it('dans le premier exercice lui-même, la ligne d’ouverture est sa propre origine', async () => {
+    const { origines, introuvables } = await originesDesReports(client as never, 't1', d('2026-01-01'), [
+      { id: 'imp', compteId: 'c1', numeroCompte: '41110001', debit: 1_000_000, credit: 0, libelle: null, date: d('2026-01-01') },
+    ]);
+    expect(origines.get('imp')).toEqual({ date: d('2026-01-01'), id: 'imp' });
+    expect(introuvables).toEqual([]);
+  });
+
+  it('une ligne d’à-nouveau d’un exercice qui A un précédent se cherche dans ce précédent, et introuvable elle est rendue', async () => {
+    // 2027 a un précédent (2026) · une ligne qui n'y a pas de pièce sûre n'est
+    // pas prise pour sa propre origine.
+    const { origines, introuvables } = await originesDesReports(client as never, 't1', d('2027-01-01'), [report('r-x', 5_000, 'Inconnue')]);
+    expect(origines.size).toBe(0);
+    expect(introuvables).toEqual(['r-x']);
   });
 });
 

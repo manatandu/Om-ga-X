@@ -486,6 +486,7 @@ export class RelancesService {
           debit: Number(l.debit),
           credit: Number(l.credit),
           libelle: l.libelle,
+          date: l.ecriture.date,
         })),
       );
     }

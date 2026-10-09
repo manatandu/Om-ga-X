@@ -422,6 +422,8 @@ describe('poids des lignes ouvertes · les à-nouveaux d’un groupe posé à la
     expect(p.poids.get('an-b')).toBe(500_000);
     expect(p.poids.get('an-c')).toBe(500_000);
     expect(warn.mock.calls.some(([m]) => String(m).includes('pièce d\'origine') && String(m).includes('g'))).toBe(true);
+    // SERVI, jamais au seul journal (relecture « échecs silencieux », M1).
+    expect([...p.motifs]).toEqual([['g', 'A_NOUVEAU_SANS_ORIGINE']]);
   });
 
   it('une seule facture dans le groupe · rien à départager, rien de consigné', async () => {
@@ -429,6 +431,45 @@ describe('poids des lignes ouvertes · les à-nouveaux d’un groupe posé à la
     const base = [report('an-c', 1_000_000, '2026-06-30', 'Facture inconnue'), reglement('reg', 400_000, '2027-02-15')];
     const p = await lire(base);
     expect(p.poids.get('an-c')).toBe(600_000);
+    expect(warn).not.toHaveBeenCalled();
+    expect(p.motifs.size).toBe(0);
+  });
+
+  /**
+   * RELECTURE « ÉCHECS SILENCIEUX », M1 · le cas du pilote. 2026 est le
+   * PREMIER exercice tenu, ouvert par un bilan importé (une ligne par compte,
+   * sans libellé de ligne ni date de pièce) · la chaîne du report de la ligne
+   * importée s'arrêtait sur elle sans origine, et le groupe tombait au
+   * prorata, 500 000 réclamés sur chaque facture.
+   */
+  it('premier exercice tenu · la ligne du bilan importé est l’origine, la plus ancienne, et s’éteint d’abord', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    // Le dossier ne tient que 2026 et 2027 · 2026 n'a pas de précédent.
+    const base = [
+      { ...ligne('imp', 1_000_000, 0, '2026-01-01', null, '2025-11-30'), exerciceId: 'e2026', libelle: null, aNouveau: true },
+      de2026('f1', 1_000_000, '2026-03-01', '2026-03-31', 'Facture FV-1'),
+      report('an-imp', 1_000_000, '2025-11-30', 'Pièce sans libellé de ligne'),
+      report('an-f1', 1_000_000, '2026-03-31', 'Facture FV-1'),
+      reglement('reg', 1_000_000, '2027-02-15'),
+    ];
+    const p = await lire(base);
+    expect(p.poids.get('an-imp')).toBe(0);
+    expect(p.poids.get('an-f1')).toBe(1_000_000);
+    expect(p.motifs.size).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('dans le premier exercice lui-même, la ligne importée d’un groupe n’en fait pas un groupe sans origine', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const base = [
+      { ...ligne('imp', 600_000, 0, '2026-01-01', 'g', null), exerciceId: 'e2026', libelle: null, aNouveau: true },
+      { ...ligne('f', 400_000, 0, '2026-04-01', 'g', '2026-04-30'), exerciceId: 'e2026', libelle: 'Facture' },
+      { ...ligne('reg', 0, 700_000, '2026-05-15', 'g'), exerciceId: 'e2026', libelle: 'Règlement' },
+    ];
+    const p = await poidsDesLignesLues(lecteur(base, [exercices[0]]), 't', base, { dateMax: d('2026-12-31') }, 'essai');
+    expect(p.poids.get('imp')).toBe(0);
+    expect(p.poids.get('f')).toBe(300_000);
+    expect(p.motifs.size).toBe(0);
     expect(warn).not.toHaveBeenCalled();
   });
 

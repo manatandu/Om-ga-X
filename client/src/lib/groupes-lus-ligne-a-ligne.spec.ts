@@ -64,6 +64,15 @@ describe('raisonGroupesLusLigneALigne', () => {
     );
   });
 
+  it('un à-nouveau sans pièce d’origine · imputé à la date du report (relecture, M1)', () => {
+    const g = { total: 1, groupes: [{ code: 'ad', compte: '41110002', motif: 'A_NOUVEAU_SANS_ORIGINE' as const }], tronque: false };
+    expect(texteGroupesLusLigneALigne(g)).toBe('1 groupe de lettrage à la répartition incertaine · ad (41110002, à-nouveau sans pièce d’origine)');
+    expect(raisonGroupesLusLigneALigne(g)).toBe(
+      "Une ligne d'à-nouveau n'a pas retrouvé sa pièce d'origine dans l'exercice précédent · les lignes d'à-nouveau du groupe s'imputent à la date du report, au prorata entre elles. " +
+        "Le total est exact ; la répartition par échéance de ces groupes n'est pas sûre.",
+    );
+  });
+
   it('un motif par cas présent, une fois chacun, et la réserve des groupes non nommés', () => {
     const r = raisonGroupesLusLigneALigne({
       total: 30,

@@ -232,6 +232,56 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   `reste-des-lignes-ouvertes.spec.ts` ; retirer le statut des deux
   `partsParEcheance` fait tomber trois cas des specs des services SMT.
 
+## Premier tour de relecture (échecs silencieux) · deux majeurs, sept mineurs, un voisin
+
+Chaque constat vérifié dans le code, reproduit sur vraie base contre `main`
+(base `p1b_avant`, port 8771) et contre cette copie AVANT correction, corrigé
+avec son test, rejoué APRÈS (base `p1b_apres`, port 8772). Points du
+scénario · `M1`, `M1B`, `M2`, `MIN2`, `MIN4`, `MIN5`, `MIN6`, `VOISIN`
+(`/tmp/claude-0/sim/p1b-relecture-avant.json` contre `main`,
+`p1b-relecture-branche.json` contre la copie avant correction).
+
+### Spec cassé par B4 (trouvé en relançant les specs voisins)
+
+- `balance-agee-modele.spec.ts` relisait la seule page · depuis B4 la grille
+  vit dans `TableauBalanceAgee` · cinq tests tombaient. Le spec relit page ET
+  composant, et vérifie que la page rend ce composant. Commit 8e1604b.
+
+### Mineur 7 · le motif de chaque groupe nommé
+
+- Vérifié · l'infobulle disait « écart de change non passé » pour tout
+  groupe ; une facture en devise réglée en PARTIE n'a aucun écart à passer
+  (AUDCIF art. 55 ; ligne A6, l'écart au groupe soldé).
+- AVANT · `main` ne sert rien (lu `[null, null]`) ; la copie sert le groupe
+  sans motif (lu `[1, null]`).
+- Correction · `MotifGroupeNomme` servi par groupe (négatif sans origine,
+  imputation déclarée illisible, soldé en devise avec écart non passé, réglé
+  en partie en devise, reste non réparti) ; l'écran nomme le motif court et
+  l'infobulle la raison de chaque motif présent. Commit cbe6c63.
+- APRÈS · voir le rejeu final.
+
+### M1 · le premier exercice tenu, ouvert par un bilan importé
+
+- Vérifié · l'import d'une balance ne porte que compte, montants et devise
+  (ni date de pièce, ni libellé de ligne, ni échéance) ; la chaîne d'un
+  report s'arrêtait sur la ligne importée (`if (!precedent) break`), ni
+  origine ni introuvable · le groupe tombait au prorata, et seul un `warn`
+  le disait, aussi à tort dans le premier exercice.
+- AVANT (main et copie) · C11 réclamé `[500 000, 500 000]`, échéance la plus
+  ancienne 30/11/2025, retard 470 jours, au lieu d'une ligne de 1 000 000
+  (F1), 31/03/2026, 349 jours. Le groupe sans origine de C21 (dossier gardant
+  2025) n'était servi nulle part (`main` · null ; copie · total 0).
+- Décision · la ligne d'à-nouveau d'un exercice SANS exercice précédent EST
+  l'origine, à la date de son écriture · la date la plus tardive que ses
+  pièces puissent porter (un bilan d'ouverture reprend la clôture d'avant) ;
+  rangée à cette date elle passe avant toute pièce de l'exercice (Code civil,
+  Livre III, art. 154, « sur la plus ancienne ») ; deux lignes d'ouverture de
+  même date au prorata (« toutes choses égales »). L'échéance ne date pas la
+  dette, elle dit si elle est échue. Un exercice qui a un précédent cherche
+  toujours dans ce précédent ; introuvable, le groupe est NOMMÉ
+  (`A_NOUVEAU_SANS_ORIGINE`), servi comme ceux de B5.
+- APRÈS · M1 (8 contrôles) et la part M1 de M1B concordent.
+
 ## Décisions, avec leur source
 
 - B10 · la décision sur un écart de caisse passe par la fiche de la caisse,
@@ -301,9 +351,6 @@ Scénario · `/home/user/wt-passe/scripts/passe-v1/scenario-paquet1-b.mjs`
   modèles de saisie les nomme comme cas légitime. Non touché (B2 vise les
   intérêts).
 
-- Lettrage · un groupe d'à-nouveaux à plusieurs factures dont une origine
-  n'est pas retrouvée (B7, tout ou rien) garde la date du report et n'est
-  consigné qu'au journal du serveur, jamais servi à l'écran comme ceux de B5.
 - Exports · le classeur de la balance âgée et la liasse des notes ne disent
   pas les groupes lus ligne à ligne (B5 ne vise que les écrans).
 

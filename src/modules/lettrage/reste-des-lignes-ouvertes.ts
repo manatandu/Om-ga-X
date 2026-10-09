@@ -84,7 +84,8 @@ export interface PoidsDesLignes {
   nonRepartis: string[];
   /**
    * Les groupes que l'état NOMME, chacun avec son motif (paquet 1, B5 ;
-   * relecture « échecs silencieux », mineur 7) · ceux de `nonRepartis`.
+   * relecture « échecs silencieux », mineur 7) · ceux de `nonRepartis`, et
+   * ceux dont un à-nouveau n'a pas retrouvé son origine (M1).
    */
   motifs: Map<string, MotifGroupeNomme>;
 }
@@ -106,14 +107,19 @@ export interface PoidsDesLignes {
  *    autre cours · son reste au coût historique ne rend pas le solde en
  *    francs, et rien n'est encore à passer ;
  *  · `RESTE_NON_REPARTI` · des restes qui ne rendent pas le solde, sans
- *    devise.
+ *    devise ;
+ *  · `A_NOUVEAU_SANS_ORIGINE` · un groupe à plusieurs factures dont une ligne
+ *    d'à-nouveau n'a pas retrouvé sa pièce dans l'exercice précédent · ses
+ *    lignes d'à-nouveau s'imputent à la date du report (relecture « échecs
+ *    silencieux », M1 · servi comme les autres, jamais au seul journal).
  */
 export type MotifGroupeNomme =
   | 'NEGATIF_SANS_ORIGINE'
   | 'IMPUTATION_DECLAREE_NON_LUE'
   | 'DEVISE_SOLDEE_ECART_NON_PASSE'
   | 'DEVISE_REGLEE_EN_PARTIE'
-  | 'RESTE_NON_REPARTI';
+  | 'RESTE_NON_REPARTI'
+  | 'A_NOUVEAU_SANS_ORIGINE';
 
 const journal = new Logger('RestesDesLignesOuvertes');
 
@@ -465,6 +471,11 @@ export async function poidsDesLignesLues(
     }
   }
   const p = poidsDesLignesOuvertes(lignes, origines, exclus, declarations);
+  // SERVI, JAMAIS AU SEUL JOURNAL (M1) · le groupe dont un à-nouveau n'a pas
+  // retrouvé sa pièce est nommé avec son motif, sauf s'il est déjà lu ligne
+  // à ligne (sa lecture ne dépend alors d'aucune date, et son motif est
+  // celui-là).
+  for (const id of sansOrigine) if (!p.motifs.has(id)) p.motifs.set(id, 'A_NOUVEAU_SANS_ORIGINE');
   // CONSIGNÉ, JAMAIS TU · un groupe qui garde la lecture ligne à ligne
   // laisse son règlement hors des colonnes, comme avant la règle ; le total
   // de l'état reste exact, et le journal du serveur nomme les groupes.
@@ -479,8 +490,8 @@ export async function poidsDesLignesLues(
   if (sansOrigine.length > 0) {
     journal.warn(
       `${etat} · ${sansOrigine.length} groupe(s) de lettrage à plusieurs factures dont une ligne d'à-nouveau n'a pas retrouvé ` +
-        `sa pièce d'origine (aucune origine sûre à la clé du report, ou pièce antérieure au premier exercice tenu) · ` +
-        `leurs lignes d'à-nouveau s'imputent à la date du report (Code civil, Livre III, art. 154, lu sur cette date) · ` +
+        `sa pièce d'origine (aucune origine sûre à la clé du report dans l'exercice précédent) · ` +
+        `leurs lignes d'à-nouveau s'imputent à la date du report (Code civil, Livre III, art. 154, lu sur cette date), et l'état les nomme · ` +
         `${sansOrigine.slice(0, 20).join(', ')}` +
         (sansOrigine.length > 20 ? ' …' : ''),
     );
@@ -517,7 +528,7 @@ interface LigneDAnouveauLue {
  * retrouvé son origine garde la date du report pour TOUTES · la seule
  * origine manquante, laissée au 1er janvier, passerait pour la plus récente
  * et la facture la plus ancienne resterait due. Le groupe est rendu
- * (`sansOrigine`) et consigné, jamais tu. Les lignes que la reconduction a
+ * (`sansOrigine`), NOMMÉ par l'état avec son motif (M1) et consigné. Les lignes que la reconduction a
  * datées gardent leur origine. Les lignes relues sont filtrées EN MÉMOIRE
  * (identifiant demandé, écriture d'à-nouveau) · une lecture qui rendrait
  * plus que demandé n'invente aucun report.
@@ -565,6 +576,7 @@ async function originesDesANouveaux(
           credit: Number(l.credit),
           libelle: l.libelle,
           dateEcheance: l.dateEcheance,
+          date: l.ecriture!.date,
         }),
       ),
     );

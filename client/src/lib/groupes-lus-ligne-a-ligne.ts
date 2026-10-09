@@ -14,7 +14,9 @@ import type { GroupesLusLigneALigne, MotifGroupeNomme } from './types';
  * l'infobulle disait pour tous « écart de change non passé », faux pour une
  * facture en devise réglée en PARTIE · l'écart réalisé ne se passe qu'au
  * groupe soldé (AUDCIF art. 55 ; ligne A6). Le motif court suit le groupe, la
- * raison de chaque motif présent va dans l'infobulle.
+ * raison de chaque motif présent va dans l'infobulle. Un groupe dont une
+ * ligne d'à-nouveau n'a pas retrouvé sa pièce est nommé de même (relecture,
+ * M1), jamais laissé au seul journal du serveur.
  */
 export const LIBELLE_MOTIF: Record<MotifGroupeNomme, string> = {
   NEGATIF_SANS_ORIGINE: 'négatif sans son origine',
@@ -22,6 +24,7 @@ export const LIBELLE_MOTIF: Record<MotifGroupeNomme, string> = {
   DEVISE_SOLDEE_ECART_NON_PASSE: 'soldé en devise, écart de change non passé',
   DEVISE_REGLEE_EN_PARTIE: 'facture en devise réglée en partie',
   RESTE_NON_REPARTI: 'reste non réparti',
+  A_NOUVEAU_SANS_ORIGINE: 'à-nouveau sans pièce d’origine',
 };
 
 const RAISON_MOTIF: Record<MotifGroupeNomme, string> = {
@@ -33,6 +36,8 @@ const RAISON_MOTIF: Record<MotifGroupeNomme, string> = {
   DEVISE_REGLEE_EN_PARTIE:
     "Une facture en devise réglée en partie à un autre cours · son reste au coût historique ne rend pas le solde en francs, et l'écart réalisé ne se passe qu'au groupe soldé · le groupe est lu ligne à ligne.",
   RESTE_NON_REPARTI: 'Des restes qui ne rendent pas le solde du groupe · le groupe est lu ligne à ligne.',
+  A_NOUVEAU_SANS_ORIGINE:
+    "Une ligne d'à-nouveau n'a pas retrouvé sa pièce d'origine dans l'exercice précédent · les lignes d'à-nouveau du groupe s'imputent à la date du report, au prorata entre elles.",
 };
 
 export function texteGroupesLusLigneALigne(g: GroupesLusLigneALigne | null | undefined): string | null {

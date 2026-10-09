@@ -1345,7 +1345,8 @@ export type MotifGroupeNomme =
   | 'IMPUTATION_DECLAREE_NON_LUE'
   | 'DEVISE_SOLDEE_ECART_NON_PASSE'
   | 'DEVISE_REGLEE_EN_PARTIE'
-  | 'RESTE_NON_REPARTI';
+  | 'RESTE_NON_REPARTI'
+  | 'A_NOUVEAU_SANS_ORIGINE';
 
 export interface GroupesLusLigneALigne {
   total: number;

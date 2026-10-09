@@ -39,6 +39,28 @@ import { cleDeLigne, cleDuReport } from '../devises/declaration-devise-a-nouveau
  * identifiants les échangeait. Le libellé de l'origine est celui que le report
  * recopie · celui de la ligne, sinon celui de l'écriture
  * (`lireComptesDuReport`).
+ *
+ * LE PREMIER EXERCICE TENU (relecture « échecs silencieux » du paquet 1, M1 ·
+ * le cas du pilote, un dossier repris par un bilan d'ouverture importé). Une
+ * ligne d'à-nouveau de l'exercice qui n'a pas d'exercice précédent dans le
+ * dossier n'a nulle part où chercher sa pièce · elle EST l'origine. La chaîne
+ * s'y arrêtait sans rien rendre (ni origine, ni introuvable), et le groupe de
+ * deux factures reportées tombait au prorata, la facture reprise du bilan
+ * d'ouverture rangée avec celle de l'année. COMMENT L'IMPORT STOCKE LA PIÈCE ·
+ * une ligne par compte, montants et devise seuls (`ImportService`, balance) ·
+ * ni date de pièce, ni libellé de ligne, ni échéance (celle-ci n'existe que si
+ * le cabinet la complète au brouillard). LA RÈGLE · la date de son ÉCRITURE
+ * (le premier jour de l'exercice, ou la date de reprise) est la date la plus
+ * TARDIVE que ses pièces puissent porter, un bilan d'ouverture reprenant la
+ * clôture de la période d'avant · rangée à cette date, elle passe avant toute
+ * pièce de l'exercice (Code civil, Livre III, art. 154, « sur la plus
+ * ancienne »), et deux lignes d'ouverture de même date s'imputent au prorata
+ * (« toutes choses égales, elle se fait proportionnellement »). L'échéance
+ * ne date pas la dette · elle dit si la dette est échue à la date du
+ * paiement, ce que l'imputation lit à part (`restesParLImputationLegale`).
+ * Une ligne d'à-nouveau d'un exercice qui A un précédent (un bilan importé
+ * dans un dossier qui garde son exercice d'avant) se cherche toujours dans
+ * ce précédent · introuvable, elle est rendue comme telle, et le groupe nommé.
  */
 
 export const PROFONDEUR_MAX = 10;
@@ -53,11 +75,15 @@ export interface LigneReportee {
   libelle: string | null;
   /** L'échéance, que le report au détail recopie · absente, aucune. */
   dateEcheance?: Date | null;
+  /**
+   * La date de son écriture · elle date l'origine quand la ligne n'a pas
+   * d'exercice précédent où chercher sa pièce (premier exercice tenu, M1).
+   */
+  date: Date;
 }
 
 /** Une ligne candidate de l'exercice précédent. */
 export interface LigneCandidate extends LigneReportee {
-  date: Date;
   /** Elle-même un report d'à-nouveau · on remonte encore d'un exercice. */
   estReport: boolean;
 }
@@ -122,9 +148,9 @@ export async function datesOrigineDesReports(
  * la ligne reportée ; `introuvables`, celles qu'un exercice précédent aurait
  * dû porter et où aucune origine sûre n'a été retrouvée (clé absente, ou
  * portée par un nombre différent de lignes des deux côtés). Une ligne dont la
- * chaîne s'arrête sur un report SANS exercice précédent (bilan d'ouverture
- * importé au premier exercice tenu) n'est dans aucune des deux · rien n'est
- * à chercher.
+ * chaîne atteint une ligne d'à-nouveau SANS exercice précédent (bilan
+ * d'ouverture du premier exercice tenu) a pour origine cette ligne, à la date
+ * de son écriture (M1, en tête du fichier).
  */
 export async function originesDesReports(
   client: Client,
@@ -144,7 +170,11 @@ export async function originesDesReports(
       orderBy: { dateFin: 'desc' },
       select: { id: true, dateDebut: true },
     });
-    if (!precedent) break;
+    if (!precedent) {
+      // Le premier exercice tenu · la ligne d'ouverture EST l'origine (M1).
+      for (const e of enCours) origines.set(e.depart, { date: e.ligne.date, id: e.ligne.id });
+      break;
+    }
     const comptes = [...new Set(enCours.map((e) => e.ligne.compteId))];
     const numeros = new Map(enCours.map((e) => [e.ligne.compteId, e.ligne.numeroCompte]));
     const candidates: LigneCandidate[] = [];
