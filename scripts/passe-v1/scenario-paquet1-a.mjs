@@ -21,7 +21,7 @@ import {
 } from './lib.mjs';
 
 const BQ = '52110000';
-const POINTS = (process.env.PAQUET1_A_POINTS ?? 'A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6').split(',').map((s) => s.trim()).filter(Boolean);
+const POINTS = (process.env.PAQUET1_A_POINTS ?? 'A8,A8M,A1,A4,A7,A3,A2,A10,A9,A5,A6,B2').split(',').map((s) => s.trim()).filter(Boolean);
 
 /** Une devise USD du dossier, créée si le semis ne l'a pas, et ses cours. */
 async function dollar(c, cours) {
@@ -902,6 +902,85 @@ async function pointA10(R) {
   });
 }
 
+// ==============================================================================
+// RELECTURE B2 · UNE OD D'OUVERTURE DU PREMIER JOUR CORRIGÉE PAR UN NÉGATIF
+// DATÉ PLUS TARD reste-t-elle une ouverture ?
+// ==============================================================================
+//
+// AUDCIF art. 20, al. 2 · « Toute correction d'erreur commise et découverte sur
+// l'exercice en cours s'effectue exclusivement par inscription en négatif des
+// éléments erronés ; l'enregistrement exact est ensuite opéré. » ; art. 34 · le
+// bilan d'ouverture correspond au bilan de clôture précédent. Une OD de bilan
+// passée au 01/01/2027 puis annulée en entier par son négatif (fenêtre
+// Journal, « Corriger », le 15/02/2027) ne laisse AUCUNE position d'ouverture ·
+// la clôture de 2026 doit passer son report entier, sans déclaration, et 2027
+// porter le bilan de clôture de 2026, une fois.
+//
+// Chiffres · 2026 · capital 10 000 000 encaissé, produit 500 000 encaissé ·
+// banque 10 500 000, résultat 500 000. OD du 01/01/2027 · banque 10 500 000 /
+// capital 10 000 000 / 13 500 000, puis son négatif au 15/02/2027. Après la
+// clôture · banque 10 500 000, capital -10 000 000, 13 -500 000.
+//
+// Deux variantes · l'OD CONCORDE avec le report (la clôture la croyait déjà
+// passée et n'ajoutait rien, 2027 restait à zéro), ou elle en DIFFÈRE
+// (3 000 000 de banque et de capital · la clôture exigeait une déclaration, et
+// RECTIFIER retranchait l'OD une seconde fois).
+async function pointB2(R, variante = 'CONCORDANTE') {
+  const P = variante === 'CONCORDANTE' ? 'B2' : 'B2 (divergente)';
+  R.scenario = `paquet1-a · ${P}`;
+  const c = await nouveauDossier(R, `Paquet 1 ${P} · OD d’ouverture corrigée`, {
+    referentiel: 'SYSCOHADA', systeme: 'NORMAL', cle: variante === 'CONCORDANTE' ? 'p1a-b2' : 'p1a-b2d', exercice: ['2026-01-01', '2026-12-31'],
+  });
+  const n = c.exercices.get('2026').id;
+  const bq = c.journal('BQ') ?? c.od;
+  const ctx = {};
+  await etape(R, `${P} · 2026, puis 2027 ouvert, OD d'ouverture au 01/01/2027 et son négatif au 15/02/2027`, async () => {
+    await c.geste('Forme SARL', 'PATCH', '/dossier/forme-syscohada', { formeJuridiqueSyscohada: 'SOCIETE_RESPONSABILITE_LIMITEE' });
+    await ecriture(c, 'Capital libéré', n, '2026-01-02', 'Apport des associés', [[BQ, 10_000_000, 0], ['10130000', 0, 10_000_000]], { journal: bq });
+    await ecriture(c, 'Produit 2026', n, '2026-06-30', 'Produit de 2026', [[BQ, 500_000, 0], ['70110000', 0, 500_000]], { journal: bq });
+    await validerJusqua(c, n, '2026-12-31');
+    await c.geste('Nouvel exercice avec reports provisoires', 'POST', `/exercices/${n}/a-nouveaux-provisoires`, {});
+    await rechargerExercices(c);
+    ctx.n1 = c.exercices.get('2027')?.id;
+    if (!ctx.n1) return R.note(`${P} · 2027 absent`);
+    const lignesOd = variante === 'CONCORDANTE'
+      ? [[BQ, 10_500_000, 0], ['10130000', 0, 10_000_000], ['13100000', 0, 500_000]]
+      : [[BQ, 3_000_000, 0], ['10130000', 0, 3_000_000]];
+    const od = await ecriture(c, 'OD d’ouverture au 01/01/2027', ctx.n1, '2027-01-01', 'Bilan d’ouverture saisi en OD', lignesOd);
+    await validerJusqua(c, ctx.n1, '2027-01-01');
+    const neg = od?.id
+      ? await c.geste('Correction de l’OD par inscription en négatif', 'POST', `/ecritures/${od.id}/correction`, {
+          date: '2027-02-15',
+          motifCorrection: 'OD d’ouverture passée à tort · le report de clôture de 2026 en tiendra lieu (banc paquet 1, B2)',
+        })
+      : null;
+    await validerJusqua(c, ctx.n1, '2027-02-15');
+    ctx.ok = Boolean(neg?.id);
+    R.egal(`${P} · le négatif de l'OD est passé au 15/02/2027`, true, ctx.ok);
+  });
+  if (!ctx.ok) return;
+  await etape(R, `${P} · aperçu de l'ouverture suivante, puis clôture de 2026`, async () => {
+    const apercu = await c.lire('Aperçu de l’ouverture 2027', `/exercices/${n}/ouverture-suivante`);
+    R.egal(`${P} · aperçu · aucune déclaration requise (l'OD et son négatif se soldent)`, false, apercu?.declarationRequise ?? null);
+    const r = await c.req('POST', `/exercices/${n}/cloturer`, {});
+    R.egal(`${P} · clôture de 2026 sans déclaration · passe`, true, r.statut < 400);
+    if (r.statut >= 400) {
+      R.note(`${P} · clôture refusée (${r.statut}) · ${JSON.stringify(r.corps).slice(0, 400)}`);
+      const rect = await c.geste('Clôture de 2026 en déclarant « Rectifier »', 'POST', `/exercices/${n}/cloturer`, { ouvertureImportee: 'RECTIFIER' });
+      R.note(`${P} · clôture avec RECTIFIER · ${rect ? 'passée' : 'refusée'}`);
+    }
+    await rechargerExercices(c);
+  });
+  await etape(R, `${P} · 2027 porte le bilan de clôture de 2026, une fois`, async () => {
+    await rechargerComptes(c);
+    const b = await balance(c, ctx.n1);
+    R.montant(`${P} · 2027 · banque (report seul, l'OD et son négatif se soldent)`, 10_500_000, solde(b, BQ));
+    R.montant(`${P} · 2027 · capital`, -10_000_000, solde(b, '10130000'));
+    R.montant(`${P} · 2027 · résultat 2026 au 13`, -500_000, solde(b, '13'));
+    R.montant(`${P} · 2027 · balance équilibrée`, 0, b ? b.totalDebit - b.totalCredit : NaN);
+  });
+}
+
 export default async function scenarioPaquet1A(registre) {
   const table = {
     A8: (r) => pointA8(r, 'MODULE'),
@@ -930,6 +1009,10 @@ export default async function scenarioPaquet1A(registre) {
     A9: (r) => pointA9(r),
     A5: (r) => pointA5(r),
     A6: (r) => pointA6(r),
+    B2: async (r) => {
+      await pointB2(r, 'CONCORDANTE');
+      await pointB2(r, 'DIVERGENTE');
+    },
   };
   for (const p of POINTS) {
     const fn = table[p];
