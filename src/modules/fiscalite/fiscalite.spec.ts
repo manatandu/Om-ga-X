@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FormeJuridiqueSyscohada, Prisma, Referentiel, SensRetraitementFiscal, TypeCompteDetailTotal } from '@prisma/client';
-import { FiscaliteService, arrondirImpotArt150, observationBilansSuccessifs } from './fiscalite.service';
+import {
+  COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE,
+  FiscaliteService,
+  arrondirImpotArt150,
+  observationBilansSuccessifs,
+  unipersonnaliteDeLArticle63,
+} from './fiscalite.service';
 import { CATALOGUE_RETRAITEMENTS, CODE_LIBRE } from './catalogue-retraitements';
 import { motifsRefusConstat } from './ecriture-impot-resultat';
 import { chiffreAffairesMinimumPremierExercice } from './periode-creation';
@@ -1017,14 +1023,63 @@ describe('passe F5 · observations du Titre 3', () => {
     });
   });
 
-  it("signale à une SARL l'anomalie de l'art. 63, al. 2, 1° sans quitter l'IS, et pas à une SNC", async () => {
-    const sarl = await service({ forme: FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE, balances: { N: [ligne('70110000', -20_000_000)] } }).s.resultatFiscal('t1', 'N');
-    const snc = await service({ forme: FormeJuridiqueSyscohada.SOCIETE_NOM_COLLECTIF, balances: { N: [ligne('70110000', -20_000_000)] } }).s.resultatFiscal('t1', 'N');
-    expect([sarl.regime, sarl.observations.some((o) => o.includes('art. 63, al. 2, 1°')), snc.observations.some((o) => o.includes('art. 63, al. 2, 1°'))]).toEqual([
-      'IMPOT_SOCIETES',
-      true,
-      false,
-    ]);
+  // PAQUET 1, C4 · l'observation se sert sur les FAITS déclarés, jamais sur
+  // la seule forme. Ce test la disait servie à toute SARL (il gelait le
+  // défaut) · une SARL à plusieurs associés lisait qu'elle était
+  // « unipersonnelle à associé unique personne physique ». Art. 63, al. 2,
+  // 1° · associé ou actionnaire UNIQUE, PERSONNE PHYSIQUE ; le dossier ne
+  // déclare l'unicité que d'une SAS (AUSCGIE art. 853-2) et la personne
+  // morale de l'associé unique (art. 201, al. 4).
+  it("sert l'anomalie de l'art. 63, al. 2, 1° à la seule SASU déclarée, sans quitter l'IS, jamais sur la forme seule", async () => {
+    const lire = async (forme: FormeJuridiqueSyscohada, tenant: Record<string, unknown> = {}) => {
+      const r = await service({ forme, tenant, balances: { N: [ligne('70110000', -20_000_000)] } }).s.resultatFiscal('t1', 'N');
+      const obs = r.observations.filter((o) => o.includes('art. 63, al. 2, 1°'));
+      return [r.regime, obs.length, obs.some((o) => o.includes(COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE))];
+    };
+    const F = FormeJuridiqueSyscohada;
+    expect({
+      sarlSansFait: await lire(F.SOCIETE_RESPONSABILITE_LIMITEE),
+      sarlAssociePm: await lire(F.SOCIETE_RESPONSABILITE_LIMITEE, { associeUniquePersonneMorale: true }),
+      sarlNonPm: await lire(F.SOCIETE_RESPONSABILITE_LIMITEE, { associeUniquePersonneMorale: false }),
+      saSansFait: await lire(F.SOCIETE_ANONYME),
+      sasUniciteNonDite: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: null }),
+      sasPluripersonnelle: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: false }),
+      sasuNatureNonDite: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: true, associeUniquePersonneMorale: null }),
+      sasuPersonnePhysique: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: true, associeUniquePersonneMorale: false }),
+      sasuPersonneMorale: await lire(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, { associeUniqueSas: true, associeUniquePersonneMorale: true }),
+      snc: await lire(F.SOCIETE_NOM_COLLECTIF),
+    }).toEqual({
+      sarlSansFait: ['IMPOT_SOCIETES', 0, false],
+      sarlAssociePm: ['IMPOT_SOCIETES', 0, false],
+      // « Non personne morale » ne dit pas qu'elle est unipersonnelle.
+      sarlNonPm: ['IMPOT_SOCIETES', 0, false],
+      saSansFait: ['IMPOT_SOCIETES', 0, false],
+      sasUniciteNonDite: ['IMPOT_SOCIETES', 0, false],
+      sasPluripersonnelle: ['IMPOT_SOCIETES', 0, false],
+      sasuNatureNonDite: ['IMPOT_SOCIETES', 1, true],
+      sasuPersonnePhysique: ['IMPOT_SOCIETES', 1, false],
+      sasuPersonneMorale: ['IMPOT_SOCIETES', 0, false],
+      snc: ['IMPOT_SOCIETES', 0, false],
+    });
+  });
+
+  it('unipersonnaliteDeLArticle63 · la règle seule, forme par forme', () => {
+    const F = FormeJuridiqueSyscohada;
+    const u = (formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null, associeUniqueSas?: boolean | null, associeUniquePersonneMorale?: boolean | null) =>
+      unipersonnaliteDeLArticle63({ formeJuridiqueSyscohada, associeUniqueSas, associeUniquePersonneMorale });
+    expect([
+      u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, true, false),
+      u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, true, null),
+      u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, true, undefined),
+      u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, true, true),
+      u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, false, false),
+      u(F.SOCIETE_PAR_ACTIONS_SIMPLIFIEE, null, false),
+      // Le fait de la SAS posé sur une autre forme ne vaut rien (le service
+      // du dossier le refuse d'ailleurs, AUSCGIE art. 853-2).
+      u(F.SOCIETE_ANONYME, true, false),
+      u(F.SOCIETE_RESPONSABILITE_LIMITEE, true, false),
+      u(null, true, false),
+    ]).toEqual(['ASSOCIE_PERSONNE_PHYSIQUE', 'NATURE_NON_DECLAREE', 'NATURE_NON_DECLAREE', null, null, null, null, null, null]);
   });
 });
 

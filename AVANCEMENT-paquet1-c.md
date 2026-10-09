@@ -105,9 +105,57 @@ Compte dans l'adresse (service) · GET /ecritures/grand-livre/:compteId, GET
 /exports/grand-livre/:compteId, GET /relances/releve/:compteId (les deux
 justificatifs de solde rendaient déjà 404).
 
+### C4 · l'observation « société unipersonnelle » sur les faits déclarés
+
+**Reproduit AVANT** (`p1c-avant.json`, 6 écarts) · l'observation de
+l'art. 63, al. 2, 1° était servie à TOUTE SA, SARL ou SAS, sur la seule
+forme (`regimeSelonForme`) · lu AVANT « servie » (`true`) pour · SARL sans
+fait ; SARL à associé unique personne morale ; SA sans fait ; SAS dont
+l'unicité n'est pas dite ; SAS déclarée pluripersonnelle ; SASU à associé
+personne morale. Le test `fiscalite.spec.ts` gelait le défaut (« signale à
+une SARL l'anomalie de l'art. 63 »).
+
+**Texte lu** (`fiscalite-rdc`, `code-general-2026`, loi n° 23/053) · art. 3
+(SA, SARL, SAS imposables à l'IS « même unipersonnelles ») ; art. 63, al. 2,
+1° (« l'associé unique d'une société à responsabilité limitée ou [...]
+l'actionnaire unique d'une société anonyme ou d'une société par action
+simplifiée, lorsque cet associé ou cet actionnaire est une personne
+physique »). AUSCGIE (`auscgie-acte-uniforme`) · art. 853-2, al. 2 (la SAS qui
+« ne comprend qu'un associé », SASU) ; art. 309, al. 2 (SARL « instituée par
+une personne physique ou morale ») ; art. 385, al. 2 (« La société anonyme
+peut ne comprendre qu'un seul actionnaire »).
+
+**Décision par la loi.** L'art. 63 pose DEUX faits, l'unicité et la personne
+physique. Le dossier en déclare deux, pour la SAS seulement ·
+`associeUniqueSas` (art. 853-2) et `associeUniquePersonneMorale` (art. 201,
+al. 4). Servie · SASU déclarée dont l'associé est déclaré non personne morale
+(donc personne physique) ; SASU dont la nature n'est pas déclarée, AVEC la
+condition dite (`COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE`). Jamais servie ·
+SARL, SA (aucun fait ne dit l'unicité à associé personne physique), SAS non
+déclarée unipersonnelle (« pas encore dit » n'est pas « oui »), SASU à associé
+personne morale (l'art. 63 vise la personne physique). Aucun fait créé.
+
+**Correction.** `src/modules/fiscalite/fiscalite.service.ts` ·
+`unipersonnaliteDeLArticle63` (règle pure), `regimeSelonForme` reçoit les deux
+faits du dossier, `resultatFiscal` les passe.
+
+**Tests.** `fiscalite.spec.ts` · le test qui gelait le défaut est remplacé par
+la table complète (dix cas, régime IS gardé, SNC sans observation) et la règle
+pure est jouée seule (neuf cas).
+
+**Rejoué APRÈS** (`p1c-apres-c4.json`) · 10 contrôles, 10 concordances (les
+six écarts d'AVANT, plus la condition dite ou non).
+
+**Proposition (non codée).** Un fait pour la SARL et la SA unipersonnelles
+(AUSCGIE art. 309, al. 2 ; art. 385, al. 2), par exemple « associé ou
+actionnaire unique » OUI / NON / PAS_ENCORE_DIT, sans défaut · avec
+`associeUniquePersonneMorale`, il permettrait de servir l'observation à la
+SARL et à la SA à associé unique personne physique, que le dossier ne sait
+pas dire aujourd'hui (elle ne leur est donc jamais servie). Décision de
+Manasse (ajout d'un champ, hors gel).
+
 ## Reste
 
-- C4 · observation « société unipersonnelle » conditionnée au fait déclaré.
 - C1 · plafond de l'art. 69, 1 au centime.
 - C2 · message d'abstention des allocations familiales sans nom interne.
 - Rejeu APRÈS complet (C3, C4, C1, C2), compte rendu final.
@@ -158,6 +206,8 @@ npx jest src/common/exercice-requis.spec.ts src/common/exercice-requis-routes.sp
   src/modules/exports/grand-livre-complet-en-flux.spec.ts
 npx jest src/common src/modules/groupe src/modules/relances src/modules/modeles-saisie \
   src/modules/comptabilite src/modules/provisions src/modules/analytique src/modules/controles
+npx jest src/modules/fiscalite
 npm run build
+PAQUET1_C_POINTS=C4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c4 8785 paquet1-c /tmp/claude-0/sim/p1c-apres-c4.json
 PAQUET1_C_POINTS=C3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c3 8783 paquet1-c /tmp/claude-0/sim/p1c-apres-c3.json
 ```

@@ -155,6 +155,47 @@ export const OBSERVATIONS_PHYSIQUE_PASSE_F5 = {
 export const OBSERVATION_UNIPERSONNELLE_PASSE_F5 =
   "Société unipersonnelle à associé ou actionnaire unique personne physique : le Titre 2, art. 3 la soumet à l'impôt sur les sociétés « même unipersonnelle », quand l'art. 63, al. 2, 1° soumet cet associé personnellement à l'IRPP, par renvoi au régime des sociétés de personnes qui n'ont pas opté pour l'IS. Aucune source lue n'articule les deux textes · le calcul reste à l'IS, et le point est à faire trancher.";
 
+/** Complément servi quand la SASU est déclarée mais pas la nature de son associé (C4). */
+export const COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE =
+  "La nature de l'associé unique n'est pas déclarée (identité du dossier, « associé unique personne morale ») · l'observation ne vaut que s'il est une personne physique.";
+
+/**
+ * QUAND L'OBSERVATION DE L'ART. 63, AL. 2, 1° SE SERT (paquet 1, ligne C,
+ * point C4, passe V1 n° 2). Elle était servie à TOUTE SA, SARL ou SAS, sur la
+ * seule forme · une société à plusieurs associés lisait qu'elle était
+ * « unipersonnelle à associé unique personne physique ».
+ *
+ * Le texte vise « l'associé unique d'une société à responsabilité limitée ou
+ * […] l'actionnaire unique d'une société anonyme ou d'une société par action
+ * simplifiée, lorsque cet associé ou cet actionnaire est une personne
+ * physique » (loi n° 23/053, art. 63, al. 2, 1°) · DEUX faits, l'unicité et
+ * la personne physique. Le dossier n'en porte que deux, et pour la SAS
+ * seulement :
+ *  · `associeUniqueSas` · la SAS qui « ne comprend qu'un associé », la SASU
+ *    (AUSCGIE art. 853-2, al. 2), propre à la SAS ;
+ *  · `associeUniquePersonneMorale` · tous les titres détenus par un associé
+ *    unique PERSONNE MORALE (art. 201, al. 4), pour toute société
+ *    commerciale. Sur une SASU déclarée, « non » dit donc que l'associé
+ *    unique est une personne physique.
+ * Rien ne dit qu'une SARL ou une SA est unipersonnelle À ASSOCIÉ PERSONNE
+ * PHYSIQUE (l'art. 309 et l'art. 385 de l'AUSCGIE le permettent, aucun champ
+ * ne le déclare) · l'observation ne leur est pas servie. « Pas encore dit »
+ * n'est pas « oui » · une SAS dont l'unicité n'est pas déclarée ne la reçoit
+ * pas ; une SASU dont la nature de l'associé n'est pas déclarée la reçoit,
+ * avec la condition dite ; une SASU à associé personne morale ne la reçoit
+ * pas (l'art. 63 vise la personne physique).
+ */
+export function unipersonnaliteDeLArticle63(t: {
+  formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null;
+  associeUniqueSas?: boolean | null;
+  associeUniquePersonneMorale?: boolean | null;
+}): 'ASSOCIE_PERSONNE_PHYSIQUE' | 'NATURE_NON_DECLAREE' | null {
+  if (t.formeJuridiqueSyscohada !== FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE) return null;
+  if (t.associeUniqueSas !== true) return null;
+  if (t.associeUniquePersonneMorale === true) return null;
+  return t.associeUniquePersonneMorale === false ? 'ASSOCIE_PERSONNE_PHYSIQUE' : 'NATURE_NON_DECLAREE';
+}
+
 /**
  * C02 · LE CHIFFRE D'AFFAIRES QUE LE MODULE LIT, DIT À CHAQUE ENDROIT OÙ IL
  * SERT. L'art. 57 assied le minimum sur le chiffre d'affaires « déclaré »,
@@ -1484,6 +1525,7 @@ export class FiscaliteService {
     forme: FormeJuridiqueSyscohada | null,
     chiffreAffaires: number,
     chiffresAffairesAnterieurs: number[],
+    faits: { associeUniqueSas?: boolean | null; associeUniquePersonneMorale?: boolean | null } = {},
   ): { regime: RegimeImposition; observations: string[] } {
     const observations: string[] = [];
     const physique = forme !== null && FORMES_PERSONNES_PHYSIQUES.includes(forme);
@@ -1536,9 +1578,15 @@ export class FiscaliteService {
         break;
       case FormeJuridiqueSyscohada.SOCIETE_ANONYME:
       case FormeJuridiqueSyscohada.SOCIETE_RESPONSABILITE_LIMITEE:
-      case FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE:
-        observations.push(OBSERVATION_UNIPERSONNELLE_PASSE_F5);
+      case FormeJuridiqueSyscohada.SOCIETE_PAR_ACTIONS_SIMPLIFIEE: {
+        // Servie sur les FAITS déclarés, jamais sur la seule forme (C4).
+        const unipersonnalite = unipersonnaliteDeLArticle63({ formeJuridiqueSyscohada: forme, ...faits });
+        if (unipersonnalite === 'ASSOCIE_PERSONNE_PHYSIQUE') observations.push(OBSERVATION_UNIPERSONNELLE_PASSE_F5);
+        if (unipersonnalite === 'NATURE_NON_DECLAREE') {
+          observations.push(`${OBSERVATION_UNIPERSONNELLE_PASSE_F5} ${COMPLEMENT_NATURE_ASSOCIE_NON_DECLAREE}`);
+        }
         break;
+      }
       // LA FORME NE DIT NI LA NATURE NI LA RÉSIDENCE DU PROPRIÉTAIRE (passe
       // O1a). L'AUSCGIE, art. 116, fait de la succursale l'établissement
       // « d'une société ou d'une personne physique », et l'art. 118 dit
@@ -1764,6 +1812,7 @@ export class FiscaliteService {
       tenant.formeJuridiqueSyscohada,
       brut.chiffreAffaires,
       chiffresAffairesAnterieurs,
+      { associeUniqueSas: tenant.associeUniqueSas, associeUniquePersonneMorale: tenant.associeUniquePersonneMorale },
     );
     observations.push(...this.avertissementsReportDeficitaire(deficitAnterieur));
     // C15 · le déficit d'avant la loi se dit dans la vue qui l'IMPUTE, pas
