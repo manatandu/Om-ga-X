@@ -108,15 +108,14 @@ describe('chrome à 360 px', () => {
     expect(src).toMatch(/w-full sm:w-\[168px\] sm:flex-shrink-0/);
   });
 
-  it("la porte d'ouverture ne se réclame pas d'un seul référentiel", () => {
+  it("la porte d'ouverture ne se réclame d'aucun référentiel", () => {
     const src = lire('../../pages/AuthPage.tsx');
     // Aucun dossier n'est ouvert à cet écran : le référentiel y est INCONNU.
-    // Annoncer « entités à but non lucratif · SYCEBNL » mentait à tout dossier
-    // SYSCOHADA (CLAUDE.md §6 : les deux référentiels ne partagent rien).
-    expect(src).toContain('Comptabilité OHADA · SYCEBNL et SYSCOHADA');
-    // La négation vise la LIGNE DE TEXTE affichée, pas la prose : le
-    // commentaire qui explique l'incident cite forcément l'ancienne mention.
-    expect(src).not.toMatch(/^\s*Comptabilité des entités à but non lucratif/m);
+    // Le sous-titre « Comptabilité OHADA · SYCEBNL et SYSCOHADA » est retiré
+    // (décision de Manasse du 2026-10-09) ; « entités à but non lucratif ·
+    // SYCEBNL » mentait déjà à tout dossier SYSCOHADA. La négation vise la
+    // LIGNE DE TEXTE affichée, pas la prose des commentaires.
+    expect(src).not.toMatch(/^\s*Comptabilité (OHADA|des entités à but non lucratif)/m);
   });
 });
 

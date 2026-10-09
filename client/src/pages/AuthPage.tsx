@@ -6,7 +6,7 @@ import { Aide } from '../components/chrome/Aide';
 import { PanneauSurSite } from '../components/PanneauSurSite';
 import { creationPremierDossierProposee, type EtatSurSite } from '../lib/sur-site';
 import { LogotypeOmegaX, SymboleOmegaX } from '../components/chrome/Logo';
-import { DossierRecent, lireDossiersRecents, oublierDossier } from '../lib/dossiersRecents';
+import { lireDossiersRecents } from '../lib/dossiersRecents';
 import { corpsConnexion, issueConnexion, type ReponseConnexion } from '../lib/connexion';
 import { apresDeconnexion } from '../lib/deconnexion';
 import { messageConnexion } from '../lib/message-connexion';
@@ -42,13 +42,11 @@ import { messageConnexion } from '../lib/message-connexion';
  *    n'est pas une transposition de Sage, c'est une survivance. Ce que Sage
  *    fait vraiment ici, c'est demander « quel dossier, et qui êtes-vous » ·
  *    une seule fenêtre y suffit.
- *  - Les Favoris deviennent les DOSSIERS RÉCENTS, mémorisés dans le
- *    navigateur (voir `lib/dossiersRecents.ts`) · un nom et une adresse,
- *    jamais un mot de passe.
- *  - Comme chez Sage, quelqu'un qui revient ne repasse pas par la porte : s'il
- *    a déjà ouvert un dossier sur ce navigateur, on l'amène directement à la
- *    fenêtre d'identification de son dernier dossier, avec un retour possible
- *    vers les deux choix.
+ *  - Les Favoris de Sage ne sont plus listés ici (décision de Manasse du
+ *    2026-10-09, « Tu as compliqué la page de connexion ») · un compte
+ *    n'ouvre qu'un dossier, et l'adresse du dernier dossier ouvert sur ce
+ *    navigateur est préremplie (`lib/dossiersRecents.ts`, jamais un mot de
+ *    passe). Qui revient n'a que son mot de passe à taper.
  */
 
 function IconOeil({ ouvert }: { ouvert: boolean }) {
@@ -85,11 +83,10 @@ function CerclesDecoratifs() {
 }
 
 export function AuthPage() {
-  // Lu une seule fois, au montage : la liste ne change qu'à l'initiative de
-  // l'utilisateur (retrait d'un raccourci) ou après une connexion réussie,
-  // moment où l'on quitte cette page de toute façon.
-  const [recents, setRecents] = useState<DossierRecent[]>(() => lireDossiersRecents());
-  const [dossierVise, setDossierVise] = useState<DossierRecent | null>(() => lireDossiersRecents()[0] ?? null);
+  // L'ADRESSE DU DERNIER DOSSIER OUVERT SUR CET APPAREIL est préremplie ·
+  // rien d'autre ne s'affiche (décision de Manasse du 2026-10-09, « Tu as
+  // compliqué la page de connexion »). Un compte n'ouvre qu'un dossier ; la
+  // liste des dossiers récents et le cadre « Dossier » répétaient l'adresse.
   const [email, setEmail] = useState(() => lireDossiersRecents()[0]?.email ?? '');
   const [motDePasse, setMotDePasse] = useState('');
   const [surSite, setSurSite] = useState<EtatSurSite | null>(null);
@@ -108,25 +105,6 @@ export function AuthPage() {
   const [avisSession, setAvisSession] = useState<string | null>(null);
   const { seConnecter, motifDeconnexion } = useAuth();
   const navigate = useNavigate();
-
-  /** Choisir un dossier récent · cela ne change plus d'écran, cela remplit. */
-  const ouvrirDossier = (d: DossierRecent | null) => {
-    setErreur(null);
-    setDossierVise(d);
-    setEmail(d?.email ?? '');
-    setMotDePasse('');
-    setCodeRequis(false);
-    setCode('');
-  };
-
-  const retirer = (email: string) => {
-    const restants = oublierDossier(email);
-    setRecents(restants);
-    if (dossierVise?.email === email) {
-      setDossierVise(null);
-      setEmail('');
-    }
-  };
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -172,9 +150,6 @@ export function AuthPage() {
   // assistant ne doivent pas avoir deux styles de saisie.
   const champClasse =
     'w-full rounded-[4px] border border-border bg-surface px-2.5 py-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-sel/25 focus:border-sel';
-
-  const dateCourte = (iso: string) =>
-    new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
 
   return (
     // `font-marque` sur TOUT l'écran d'ouverture, et sur lui seul parmi les
@@ -237,17 +212,6 @@ export function AuthPage() {
                 serait plus un. Le tracé porte son propre libellé accessible.
               */}
               <LogotypeOmegaX hauteur={21} className="mt-2.5 text-white" />
-              {/*
-                Aucun dossier n'est ouvert à cet écran : le référentiel est
-                donc INCONNU, et annoncer « entités à but non lucratif ·
-                SYCEBNL » mentait à tout dossier SYSCOHADA · la porte
-                d'entrée d'un logiciel qui tient les deux ne peut pas se
-                réclamer d'un seul. Les deux référentiels relèvent de
-                l'OHADA, c'est le seul dénominateur exact.
-              */}
-              <div className="mt-1 text-[11px] text-[var(--chrome-text-dim)] leading-[1.5]">
-                Comptabilité OHADA · SYCEBNL et SYSCOHADA
-              </div>
             </div>
             <div className="sm:flex sm:flex-col sm:gap-3">
               {/* Le filet de clôture, seul élément graphique dérivé de la marque
@@ -264,25 +228,6 @@ export function AuthPage() {
       {/* Un seul écran · quel dossier, et qui êtes-vous.                     */}
       {/* ------------------------------------------------------------------ */}
       <div className="w-full">
-        {dossierVise && (
-          <div className="mb-4 flex items-center justify-between gap-2 rounded-[4px] border border-border bg-chrome px-3.5 py-2.5">
-            <span className="min-w-0">
-              <span className="block text-[11px] font-bold text-text-dim">Dossier</span>
-              <span className="block text-[12px] font-bold truncate">{dossierVise.nom}</span>
-            </span>
-            {/* Remplace l'ancien « &lt; Ouvrir un autre dossier » qui renvoyait à
-                la porte · il n'y a plus d'écran derrière, seulement un champ
-                à vider. */}
-            <button
-              type="button"
-              onClick={() => ouvrirDossier(null)}
-              className="flex-shrink-0 px-2 py-1 text-[11.5px] text-text-dim hover:text-sel"
-            >
-              Un autre dossier
-            </button>
-          </div>
-        )}
-
         <PanneauSurSite onEtat={setSurSite} />
         {/* Les rangées du formulaire arrivent l'une après l'autre
             (`anim-cascade`, index.css) · 22 ms d'écart, rien de plus. */}
@@ -292,7 +237,7 @@ export function AuthPage() {
             <input
               type="email"
               required
-              autoFocus={!dossierVise}
+              autoFocus={!email}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={champClasse}
@@ -305,7 +250,7 @@ export function AuthPage() {
               <input
                 type={motDePasseVisible ? 'text' : 'password'}
                 required
-                autoFocus={Boolean(dossierVise)}
+                autoFocus={Boolean(email)}
                 value={motDePasse}
                 onChange={(e) => setMotDePasse(e.target.value)}
                 className={`${champClasse} pr-9`}
@@ -323,7 +268,14 @@ export function AuthPage() {
 
           {codeRequis && (
             <label className="flex flex-col gap-1.5">
-              <span className="text-[11.5px] font-semibold text-text-dim">Code de vérification</span>
+              <span className="text-[11.5px] font-semibold text-text-dim flex items-center gap-1.5">
+                Code de l'application d'authentification
+                <Aide
+                  titre="Code de l'application d'authentification"
+                  texte="Ce compte a activé la vérification en deux étapes (Fichier > Mon compte). Saisissez les six chiffres affichés par l'application d'authentification du téléphone (Google Authenticator, Microsoft Authenticator…), ou l'un des codes de secours remis à l'activation. Le code change toutes les trente secondes."
+                  source="RFC 6238 (codes à usage unique fondés sur le temps) ; exigée pour la console de l'éditeur"
+                />
+              </span>
               <input
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -331,7 +283,7 @@ export function AuthPage() {
                 autoFocus
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                placeholder="Six chiffres, ou un code de secours"
+                placeholder="6 chiffres"
                 className={champClasse}
               />
             </label>
@@ -385,64 +337,16 @@ export function AuthPage() {
           </div>
         </form>
 
-        {/* LES FAVORIS DE SAGE · ils étaient sur l'écran de porte, ils sont
-            maintenant ici, sous le formulaire, là où ils servent : un clic
-            remplit l'adresse au lieu de la retaper. */}
-        {recents.length > 0 && (
-          <div className="mt-5">
-            <div className="text-[11.5px] font-bold text-text-dim mb-1.5 px-0.5 flex items-center gap-1.5">
-              Dossiers récents
-              <Aide
-                titre="Dossiers récents"
-                texte="Ces raccourcis ne sont enregistrés que sur cet appareil et ne contiennent aucun mot de passe."
-                source="OmegaX"
-              />
-            </div>
-            <div className="rounded-[4px] border border-border bg-surface overflow-hidden">
-              {recents.map((d) => (
-                <div key={d.email} className="flex items-center gap-2 border-b border-border last:border-b-0">
-                  <button
-                    type="button"
-                    onClick={() => ouvrirDossier(d)}
-                    className={`flex-1 min-w-0 text-left px-3.5 py-2.5 hover:bg-sel-soft ${
-                      dossierVise?.email === d.email ? 'bg-sel-soft' : ''
-                    }`}
-                  >
-                    <span className="block text-[12px] font-semibold truncate">{d.nom}</span>
-                    <span className="block text-[11.5px] text-text-dim truncate">
-                      {d.email} · ouvert le {dateCourte(d.derniereOuverture)}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => retirer(d.email)}
-                    title="Retirer ce raccourci de cet appareil"
-                    className="px-3 text-[11.5px] text-text-dim hover:text-danger"
-                  >
-                    Retirer
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* L'auto-inscription est fermée · la règle doit rester dite, mais une
-            ligne y suffit : elle occupait un tiers de l'écran. */}
-        {surSite?.surSite ? (
-          // Sur site, la création n'est ouverte qu'au poste neuf (audit final
-          // F44) · c'est la seule porte vers le premier dossier. Les suivants
-          // naissent dans la fenêtre Restitution du dossier d'installation.
-          creationPremierDossierProposee(surSite) && (
-            <div className="mt-4 text-[11.5px]">
-              <a href="#/inscription" className="underline">
-                Créer un dossier sur cette installation
-              </a>
-            </div>
-          )
-        ) : (
-          <div className="mt-4 text-[11.5px] text-text-dim">
-            Pas encore de dossier ? L'ouverture se fait avec VMG Consulting.
+        {/* Sur site, la création n'est ouverte qu'au poste neuf (audit final
+            F44) · c'est la seule porte vers le premier dossier. Les suivants
+            naissent dans la fenêtre Restitution du dossier d'installation. En
+            ligne, aucune phrase · l'ouverture d'un dossier se fait avec VMG
+            Consulting, hors de cet écran (décision de Manasse du 2026-10-09). */}
+        {surSite?.surSite && creationPremierDossierProposee(surSite) && (
+          <div className="mt-4 text-[11.5px]">
+            <a href="#/inscription" className="underline">
+              Créer un dossier sur cette installation
+            </a>
           </div>
         )}
         {/*

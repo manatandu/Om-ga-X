@@ -20,17 +20,12 @@ describe('ouverture du dossier · un seul écran', () => {
     expect(page).not.toContain('setEcran');
   });
 
-  it('les dossiers récents survivent · ils portaient toute la valeur de la porte', () => {
-    // Ce sont les Favoris du menu Fichier de Sage. Les perdre en supprimant
-    // l'écran aurait fait retaper l'adresse à chaque ouverture.
-    expect(page).toContain('Dossiers récents');
-    expect(page).toContain('ouvrirDossier(d)');
-  });
-
-  it('la règle d’ouverture d’un dossier reste dite, en une ligne', () => {
-    // L'auto-inscription est fermée (CLAUDE.md §8) · retirer le pavé ne doit
-    // pas retirer l'information, sinon un visiteur ne sait plus quoi faire.
-    expect(page).toContain('VMG Consulting');
+  it('l’adresse du dernier dossier ouvert est préremplie, sans liste à côté', () => {
+    // Décision de Manasse du 2026-10-09 (« Tu as compliqué la page de
+    // connexion ») · la liste des dossiers récents et le cadre « Dossier »
+    // sont retirés ; qui revient ne retape pas son adresse pour autant.
+    expect(page).toMatch(/useState\(\(\) => lireDossiersRecents\(\)\[0\]\?\.email \?\? ''\)/);
+    expect(page).not.toContain('ouvrirDossier(');
   });
 });
 
