@@ -53,6 +53,8 @@
  * ici.
  */
 
+import { auCentime } from './au-centime';
+
 /**
  * Les natures qu'un élément de paie peut prendre. La liste d'INCLUSION du
  * Code du travail est ouverte (« Elle comprend NOTAMMENT ») ; sa liste
@@ -466,9 +468,18 @@ export function assiettes(
         });
         continue;
       }
-      const immunise = Math.min(element.montantFc, Math.max(0, tauxLegalRestantFc ?? tauxLegal));
-      tauxLegalRestantFc = (tauxLegalRestantFc ?? tauxLegal) - immunise;
-      const excedent = element.montantFc - immunise;
+      // AU CENTIME (paquet 1, C1, passe V1 n° 2) · le taux légal est un
+      // produit de flottants (796,30 × 26 × 3 = 62 111,399999999994), et la
+      // consommation ligne à ligne en ajoute d'autres (62 111,40 − 20 000,10).
+      // Une allocation EXACTEMENT égale au taux légal laissait un excédent de
+      // 7,3e-12 FC, imposable, et le motif « Seul l'excédent de 0.00 FC est
+      // imposable ». Les montants de la paie vivent au centime (Decimal 18,2) ·
+      // plafond, part immunisée, reste et excédent y sont ramenés. La règle du
+      // plafond n'est pas touchée (seul l'excédent est repris).
+      const plafondRestantFc = auCentime(Math.max(0, tauxLegalRestantFc ?? tauxLegal));
+      const immunise = auCentime(Math.min(element.montantFc, plafondRestantFc));
+      tauxLegalRestantFc = auCentime(plafondRestantFc - immunise);
+      const excedent = auCentime(element.montantFc - immunise);
       brutFiscalFc += excedent;
       sortsFiscaux.push({
         libelle: element.libelle,

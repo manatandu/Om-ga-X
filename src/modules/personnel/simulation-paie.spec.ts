@@ -527,6 +527,29 @@ describe("Le « taux légal » des allocations familiales, calculé et non saisi
     expect(res.tauxLegalAllocationsFamilialesFc).toBeCloseTo(796.3 * 26 * 3, 6);
   });
 
+  it("C1 · le rend AU CENTIME, et une allocation égale au taux légal n'a aucun excédent imposable", async () => {
+    // 796,30 × 26 × 3 vaut 62 111,399999999994 en flottant · le taux légal
+    // servi est 62 111,40, et l'allocation de ce montant est entièrement
+    // immunisée (paquet 1, C1 · le motif disait « excédent de 0.00 FC »).
+    const { svc } = service();
+    const res = await svc.simulerPaie(
+      't-1',
+      null,
+      dto({
+        elements: [
+          { nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire', montantFc: 1_000_000 },
+          { nature: 'ALLOCATIONS_FAMILIALES_LEGALES', libelle: 'Allocations', montantFc: 62_111.4 },
+        ],
+        enfantsBeneficiairesAllocations: 3,
+      } as Partial<SimulationPaieDto>),
+    );
+    expect(res.tauxLegalAllocationsFamilialesFc).toBe(62_111.4);
+    const sort = res.assiettes.sortsFiscaux.find((x) => x.libelle === 'Allocations');
+    expect(sort?.imposableFc).toBe(0);
+    expect(sort?.motif).toContain("L'allocation est entièrement immunisée.");
+    expect(res.assiettes.assietteFiscaleBruteFc).toBe(1_000_000);
+  });
+
   it('PASSE D2 · sur un mois incomplet, le plafond suit les jours ouvrant droit (mention 28)', async () => {
     const { svc } = service();
     const res = await svc.simulerPaie(

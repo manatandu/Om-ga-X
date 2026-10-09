@@ -286,6 +286,73 @@ describe("Le « taux légal » de l'article 69, 1", () => {
   });
 });
 
+/**
+ * LE PLAFOND SE JUGE AU CENTIME (paquet 1, ligne C, point C1, passe V1 n° 2).
+ *
+ * Le taux légal est un produit de flottants · 796,30 × 26 × 3 vaut
+ * 62 111,399999999994 en JavaScript, et non 62 111,40. Une allocation
+ * EXACTEMENT égale au taux légal laissait un excédent de 7,3e-12 FC, compté
+ * dans l'assiette fiscale, et le motif disait « Seul l'excédent de 0.00 FC est
+ * imposable » · un montant nul présenté comme imposable. Les cas se jouent
+ * sur le taux tel que le flottant le rend (`TAUX_FLOTTANT`), pas sur une
+ * valeur déjà ramenée au centime, sans quoi le test ne verrait pas le défaut.
+ */
+describe("C1 · le plafond de l'article 69, 1 se juge au centime", () => {
+  const TAUX_FLOTTANT = 796.3 * 26 * 3;
+  const allocation = (libelle: string, montantFc: number): ElementPaie => ({
+    nature: 'ALLOCATIONS_FAMILIALES_LEGALES',
+    libelle,
+    montantFc,
+  });
+
+  it("le témoin · le flottant ne rend pas le taux légal au centime", () => {
+    // Si ce témoin tombe un jour, le cas ci-dessous ne prouve plus rien.
+    expect(TAUX_FLOTTANT).not.toBe(62_111.4);
+    expect(62_111.4 - TAUX_FLOTTANT).toBeGreaterThan(0);
+  });
+
+  it("une allocation égale au taux légal est entièrement immunisée, rien n'est imposable", () => {
+    const verdict = assiettes([salaire(1_000_000), allocation('Allocations', 62_111.4)], {
+      tauxLegalAllocationsFamilialesFc: TAUX_FLOTTANT,
+    });
+    const sort = verdict.sortsFiscaux.find((x) => x.libelle === 'Allocations');
+    expect(sort?.imposableFc).toBe(0);
+    expect(sort?.motif).toContain("L'allocation est entièrement immunisée.");
+    expect(sort?.motif).not.toMatch(/excédent de 0\.00/);
+    expect(verdict.assietteFiscaleBruteFc).toBe(1_000_000);
+  });
+
+  it("cinq centimes au-delà du taux légal · seuls ces cinq centimes sont imposables", () => {
+    const verdict = assiettes([salaire(1_000_000), allocation('Allocations', 62_111.45)], {
+      tauxLegalAllocationsFamilialesFc: TAUX_FLOTTANT,
+    });
+    const sort = verdict.sortsFiscaux.find((x) => x.libelle === 'Allocations');
+    expect(sort?.imposableFc).toBe(0.05);
+    expect(sort?.motif).toContain("Seul l'excédent de 0.05 FC est imposable.");
+    expect(verdict.assietteFiscaleBruteFc).toBe(1_000_000.05);
+  });
+
+  it("deux lignes qui font ensemble le taux légal · ni l'une ni l'autre n'est imposable", () => {
+    // La consommation ligne à ligne ajoutait son propre bruit
+    // (62 111,40 − 20 000,10 = 42 111,299999999996).
+    const verdict = assiettes(
+      [salaire(1_000_000), allocation('Alloc. 1', 20_000.1), allocation('Alloc. 2', 42_111.3)],
+      { tauxLegalAllocationsFamilialesFc: TAUX_FLOTTANT },
+    );
+    expect(verdict.sortsFiscaux.filter((x) => x.libelle.startsWith('Alloc.')).map((x) => x.imposableFc)).toEqual([0, 0]);
+    expect(verdict.sortsFiscaux.some((x) => /excédent de 0\.00/.test(x.motif))).toBe(false);
+    expect(verdict.assietteFiscaleBruteFc).toBe(1_000_000);
+  });
+
+  it("la règle du plafond ne bouge pas · au-delà, l'excédent entier est repris", () => {
+    const verdict = assiettes([salaire(1_000_000), allocation('Allocations', 100_000)], {
+      tauxLegalAllocationsFamilialesFc: TAUX_FLOTTANT,
+    });
+    expect(verdict.sortsFiscaux.find((x) => x.libelle === 'Allocations')?.imposableFc).toBe(37_888.6);
+    expect(verdict.assietteFiscaleBruteFc).toBe(1_037_888.6);
+  });
+});
+
 describe("Les articles 70 et 71 · l'ordre de calcul", () => {
   it("déduit les retenues de l'article 71 APRÈS l'article 69, jamais avant", () => {
     const verdict = assiettes(

@@ -898,7 +898,11 @@ export class PersonnelService {
     // PASSE D2 · les jours qui OUVRENT DROIT (mention 28 du modèle de 2008),
     // quand ils sont déclarés · un mois incomplet mensualisé à 26 jours
     // plaçait le plafond trop haut, et l'excédent imposable n'était pas repris.
-    return a.valeur.totalFc * (dto.joursAllocationsFamiliales ?? MULTIPLICATEURS_ARTICLE_7.MOIS);
+    // AU CENTIME (paquet 1, C1) · la colonne 19 est donnée au centime et se
+    // multiplie par des entiers (enfants, jours) · le produit exact a deux
+    // décimales, le flottant en porte quinze (62 111,399999999994 pour
+    // 796,30 × 3 × 26). Ramené au centime, il redevient le taux légal.
+    return auCentime(a.valeur.totalFc * (dto.joursAllocationsFamiliales ?? MULTIPLICATEURS_ARTICLE_7.MOIS));
   }
 
   /** La réserve du plafond calculé · sur quels jours, et ce qu'il faut déclarer. */

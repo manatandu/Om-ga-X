@@ -154,9 +154,51 @@ SARL et à la SA à associé unique personne physique, que le dossier ne sait
 pas dire aujourd'hui (elle ne leur est donc jamais servie). Décision de
 Manasse (ajout d'un champ, hors gel).
 
+### C1 · le plafond de l'art. 69, 1 se juge au centime
+
+**Reproduit AVANT** (`p1c-avant.json`, 10 contrôles, 6 écarts) · dossier
+SYSCOHADA, simulation de mars 2026, salaire 1 000 000, trois enfants
+bénéficiaires, taux légal calculé (annexe 2 du décret n° 25/22, colonne 19,
+796,30 × 26 × 3) ·
+- allocation 62 111,40 · imposable lu `7.275957614183426e-12` (attendu 0),
+  motif sans « entièrement immunisée », motif « Seul l'excédent de 0.00 FC
+  est imposable » ;
+- allocation 62 111,45 · imposable lu `0.05000000000291038` (attendu 0,05) ;
+- deux lignes 20 000,10 + 42 111,30 · imposables lus `[0, 7.275957614183426e-12]`,
+  motif « excédent de 0.00 FC ».
+Les bases fiscales brutes concordaient déjà (1 000 000 et 1 000 000,05) · le
+bruit restait sous le centime de la base, il se voyait au motif et à la ligne.
+
+**Cause.** Le taux légal est un produit de flottants (796,3 × 26 × 3 =
+62 111,399999999994) et la consommation ligne à ligne du plafond en ajoute
+(62 111,40 − 20 000,10 = 42 111,299999999996).
+
+**Correction.** `src/modules/personnel/au-centime.ts` (nouveau, sans import) ·
+le porteur `auCentime` de la paie y descend depuis `decompte-final-emis.ts`,
+qui le réexporte (l'importer de là depuis les assiettes aurait noué un cycle
+assiettes → décompte émis → passation → assiettes). `assiettes-paie.ts` ·
+plafond restant, part immunisée, reste et excédent ramenés au centime ; la
+règle du plafond (« dans la mesure où elles ne dépassent pas les taux
+légaux », seul l'excédent repris) n'est pas touchée. `personnel.service.ts` ·
+le taux légal calculé est rendu au centime (la colonne 19 est au centime,
+transcrite ou tirée de la grille du cabinet par `arrondiAnnexe` ; enfants et
+jours sont entiers, le produit exact a deux décimales). Un taux SAISI par le
+cabinet reste tel quel (les assiettes le ramènent au centime). Écran · rien à
+changer, `PersonnelPage.tsx` écrit déjà ces montants par `lib/montants.ts`.
+
+**Tests.** `assiettes-paie.spec.ts` · bloc « C1 · le plafond de l'article 69,
+1 se juge au centime », joué sur le taux tel que le flottant le rend (témoin
+qui le vérifie), quatre cas · égal au taux (imposable 0, « entièrement
+immunisée », base 1 000 000), cinq centimes au-delà (0,05, motif, base
+1 000 000,05), deux lignes ([0, 0], base 1 000 000), excédent entier repris
+(37 888,60). `simulation-paie.spec.ts` · le service rend 62 111,40 exactement
+et l'allocation de ce montant est entièrement immunisée. Sans la correction,
+cinq de ces tests tombent (vérifié en retirant les deux fichiers corrigés).
+
+**Rejoué APRÈS** (`p1c-apres-c1.json`) · 10 contrôles, 10 concordances.
+
 ## Reste
 
-- C1 · plafond de l'art. 69, 1 au centime.
 - C2 · message d'abstention des allocations familiales sans nom interne.
 - Rejeu APRÈS complet (C3, C4, C1, C2), compte rendu final.
 
@@ -207,7 +249,9 @@ npx jest src/common/exercice-requis.spec.ts src/common/exercice-requis-routes.sp
 npx jest src/common src/modules/groupe src/modules/relances src/modules/modeles-saisie \
   src/modules/comptabilite src/modules/provisions src/modules/analytique src/modules/controles
 npx jest src/modules/fiscalite
+npx jest src/modules/personnel
 npm run build
+PAQUET1_C_POINTS=C1 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c1 8786 paquet1-c /tmp/claude-0/sim/p1c-apres-c1.json
 PAQUET1_C_POINTS=C4 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c4 8785 paquet1-c /tmp/claude-0/sim/p1c-apres-c4.json
 PAQUET1_C_POINTS=C3 /tmp/claude-0/sim/verifier-ligne.sh /home/user/wt-p1c p1c_apres_c3 8783 paquet1-c /tmp/claude-0/sim/p1c-apres-c3.json
 ```

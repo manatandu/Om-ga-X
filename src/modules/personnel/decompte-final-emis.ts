@@ -46,6 +46,7 @@
 
 import type { NatureElementPaie } from './assiettes-paie';
 import { estVerseEnEspeces } from './passation-paie';
+import { auCentime } from './au-centime';
 import { PREFIXE_GRATIFICATION_STIPULEE, type RubriqueDecompte, type VerdictDecompteFinal } from './decompte-final';
 
 /**
@@ -182,8 +183,8 @@ export type ElementDecompte = {
   readonly reserve: string | null;
 };
 
-/** Au centime, comme la base garde les montants (Decimal 18,2). */
-export const auCentime = (fc: number): number => Math.round(fc * 100) / 100;
+/** Au centime, comme la base garde les montants · porteur unique dans `au-centime.ts`, réexporté ici. */
+export { auCentime };
 
 export const MOTIF_GRATIFICATION = 'Déclarez la gratification, zéro compris.';
 
