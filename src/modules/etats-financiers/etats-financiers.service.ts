@@ -20,6 +20,8 @@ import {
   exercicePrecedentCloture,
   exercicePrecedentTenu,
   lireOuverturePasseeEnOd,
+  lireNegatifsTardifsDeLOuverture,
+  avecNegatifsTardifs,
   mentionComparatifSurOuverture,
   mentionExercicePrecedentVide,
   mentionOuverturePresumeeNulle,
@@ -862,11 +864,14 @@ export class EtatsFinanciersService {
     // PAQUET 1, A7 · une ouverture saisie en OD au premier jour, sans exercice
     // précédent tenu ni report, n'est lue ni comme flux ni comme ouverture
     // (même règle que le tableau du SYSCOHADA) · cherchée pour chaque colonne.
-    const [ouverturePasseeN, ouverturePasseeN1] = await Promise.all([
+    const [ouverturePasseeN, ouverturePasseeN1, negatifsTardifsN] = await Promise.all([
       lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, ouvertureN),
       exerciceN1Id
         ? lireOuverturePasseeEnOd(this.ecritureService, tenantId, exerciceN1Id, n2Tenu ? exerciceN2Id : null, ouvertureN1)
         : Promise.resolve(null),
+      // Second tour, jumeau du BLOQUANT 1 · une ouverture annulée après le
+      // premier jour, dont la ressaisie se lit ici comme des flux · dite.
+      lireNegatifsTardifsDeLOuverture(this.ecritureService, tenantId, exerciceId, n1Tenu ? exerciceN1Id : null, ouvertureN),
     ]);
     // Le motif de l'OD dit l'exercice précédent qui EXISTE sans rien tenir,
     // et l'issue de son brouillard (paquet 1, relecture m2) · jamais « sans
@@ -995,15 +1000,19 @@ export class EtatsFinanciersService {
       // l'exercice précédent n'en tient pas · même mention que le tableau du
       // SYSCOHADA · le report (dossier repris), rien (présumée nulle, dit), ou
       // une OD du premier jour (motif, postes vides, paquet 1, A7).
-      mentionOuverture: n1Tenu
-        ? null
-        : exerciceN1Id && !ouverturePasseeN
-          ? mentionExercicePrecedentVide('SYCEBNL', ouvertureTenue(ouvertureN), brouillardN1, closN1NonTenu)
-          : ouverturePasseeN
-            ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYCEBNL', precedentN)
-            : ouvertureTenue(ouvertureN)
-              ? mentionComparatifSurOuverture('SYCEBNL')
-              : mentionOuverturePresumeeNulle('SYCEBNL'),
+      mentionOuverture: avecNegatifsTardifs(
+        n1Tenu
+          ? null
+          : exerciceN1Id && !ouverturePasseeN
+            ? mentionExercicePrecedentVide('SYCEBNL', ouvertureTenue(ouvertureN), brouillardN1, closN1NonTenu)
+            : ouverturePasseeN
+              ? motifOuverturePasseeEnOd(ouverturePasseeN, 'SYCEBNL', precedentN)
+              : ouvertureTenue(ouvertureN)
+                ? mentionComparatifSurOuverture('SYCEBNL')
+                : mentionOuverturePresumeeNulle('SYCEBNL'),
+        negatifsTardifsN,
+        'SYCEBNL',
+      ),
       // Les postes laissés VIDES, jamais des zéros (paquet 1, A7), et leur
       // motif · colonne N, puis colonne N-1.
       postesVides: [...resN.nonCalcules],

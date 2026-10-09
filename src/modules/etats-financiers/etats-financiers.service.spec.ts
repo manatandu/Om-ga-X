@@ -73,6 +73,8 @@ function serviceAvecExercices(
     ),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    // Second tour, jumeau du BLOQUANT 1 · rien d'annulé hors du premier jour.
+    positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
     // Paquet 1, A2 · aucune écriture au brouillard par DÉFAUT.
     nombreAuBrouillard: jest.fn().mockResolvedValue(0),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
@@ -1059,6 +1061,19 @@ describe('EtatsFinanciersService · tableau de flux de trésorerie', () => {
     expect(ref(tft, 'FA').montant).toBe(900);
     expect(ref(tft, 'ZG').montant).toBe(900);
     expect(tft.controle.coherent).toBe(true);
+  });
+
+  // SECOND TOUR DE RELECTURE DU PAQUET 1, jumeau du BLOQUANT 1 · même lecture
+  // que le tableau du SYSCOHADA, article du SYCEBNL.
+  it('second tour, B1 · l’ouverture annulée par un négatif du 15/03 · la mention le dit, article du SYCEBNL', async () => {
+    const service = serviceAvecExercices({
+      eN: [ligneF('70100000', ClasseCompte.CLASSE_7, 0, 900), ligneF('52110000', ClasseCompte.CLASSE_5, 900, 0)],
+    });
+    const ecritures = (service as unknown as { ecritureService: { positionDOuvertureAuPremierJour: jest.Mock } }).ecritureService;
+    ecritures.positionDOuvertureAuPremierJour.mockResolvedValue({ etat: 'NULLE', negatifsTardifs: [{ piece: 'OD n° 2', date: new Date('2027-03-15') }] });
+    const tft = await service.tableauFluxTresorerie('t1', 'eN');
+    expect(tft.mentionOuverture).toMatch(/OD n° 2 du 15\/03\/2027.*flux de l'exercice.*SYCEBNL art\. 16, 4\)/);
+    expect(ref(tft, 'ZA').montant).toBe(0);
   });
 
   it('AUCUN compte n’est réclamé par deux postes de flux · ni en flux, ni en contrepartie', async () => {

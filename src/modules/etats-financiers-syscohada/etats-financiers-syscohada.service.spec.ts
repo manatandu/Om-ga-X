@@ -100,6 +100,8 @@ function serviceAvecExercices(
     }),
     // Bloquant 2 · aucune ouverture saisie en OD au premier jour.
     ouverturePasseeAuPremierJour: jest.fn().mockResolvedValue(null),
+    // Second tour, jumeau du BLOQUANT 1 · rien d'annulé hors du premier jour.
+    positionDOuvertureAuPremierJour: jest.fn().mockResolvedValue({ etat: 'AUCUNE' }),
     // Paquet 1, A2 · aucune écriture au brouillard par DÉFAUT.
     nombreAuBrouillard: jest.fn().mockResolvedValue(0),
     mouvementsDeReevaluation: jest.fn().mockImplementation((_t: string, exerciceId: string | null) =>
@@ -914,6 +916,21 @@ describe('EtatsFinanciersSyscohadaService', () => {
     it('premier exercice d’une société qui naît · l’ouverture présumée nulle est DITE', async () => {
       const tft = await serviceAvecBalance([ligne('10130000', C1, 0, 1000), ligne('52110000', C5, 1000, 0)]).tableauFluxTresorerie('t1', 'e1');
       expect(tft.mentionOuverture).toContain('présumée nulle');
+    });
+
+    // SECOND TOUR DE RELECTURE DU PAQUET 1, jumeau du BLOQUANT 1 · l'OD du
+    // premier jour annulée par son négatif du 15/03, l'ouverture exacte
+    // ressaisie le même jour · elle se lit ici comme un apport de l'exercice
+    // (FK) et ZA reste à zéro. Rien ne la distingue d'un vrai apport (M4) ·
+    // la mention le DIT, négatif et date nommés.
+    it('second tour, B1 · l’ouverture annulée par un négatif du 15/03 · la mention nomme le négatif, sa date et la lecture en flux', async () => {
+      const service = serviceAvecBalance([ligne('10130000', C1, 0, 1000), ligne('52110000', C5, 1000, 0)]);
+      const ecritures = (service as unknown as { ecritureService: { positionDOuvertureAuPremierJour: jest.Mock } }).ecritureService;
+      ecritures.positionDOuvertureAuPremierJour.mockResolvedValue({ etat: 'NULLE', negatifsTardifs: [{ piece: 'OD n° 2', date: new Date('2027-03-15') }] });
+      const tft = await service.tableauFluxTresorerie('t1', 'e1');
+      expect(tft.mentionOuverture).toContain('présumée nulle');
+      expect(tft.mentionOuverture).toMatch(/annulée par son négatif inscrit plus tard \(OD n° 2 du 15\/03\/2027\).*flux de l'exercice.*AUDCIF art\. 34/);
+      expect(ecritures.positionDOuvertureAuPremierJour).toHaveBeenCalledWith('t1', 'e1');
     });
 
     // BLOQUANT 2 DE LA RELECTURE DU 2026-10-07 · le bilan d'ouverture d'un

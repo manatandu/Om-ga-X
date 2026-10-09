@@ -258,6 +258,19 @@ describe('B2 · une ouverture qui se solde n’est pas une ouverture (`ouverture
     expect(await service([odOuverture, negatif]).ouverturePasseeAuPremierJour('t', 'n1')).toBeNull();
     expect(await service([odOuverture]).ouverturePasseeAuPremierJour('t', 'n1')).toEqual({ nombre: 1, pieces: ['OD n° 2'] });
   });
+
+  it('second tour, B1 · le câblage des états · `positionDOuvertureAuPremierJour` dit le négatif inscrit après le premier jour', async () => {
+    const service = new EcritureService(
+      { ...lecteur([odOuverture, negatif]), exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'n1', dateDebut: N1.dateDebut }) } } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    expect(await service.positionDOuvertureAuPremierJour('t', 'n1')).toEqual({
+      etat: 'NULLE',
+      negatifsTardifs: [{ piece: 'OD n° 3', date: new Date('2027-02-15') }],
+    });
+  });
 });
 
 /**

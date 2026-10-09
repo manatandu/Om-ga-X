@@ -25,7 +25,7 @@ import { libelleReference, referencesVers } from '../../common/suppression/refer
 import { ModifierEcritureDto, ValiderJusquaDto } from './dto/brouillard.dto';
 import { JournalService } from '../journaux/journal.service';
 import { ExerciceService, refuserSiPeriodeClose } from '../exercice/exercice.service';
-import { LecteurOuverturePassee, ouverturePasseeNonNulle } from '../exercice/ouverture-passee';
+import { LecteurOuverturePassee, PositionDOuverturePassee, ouverturePasseeNonNulle, positionDOuverturePassee } from '../exercice/ouverture-passee';
 import { AnalytiqueService } from '../analytique/analytique.service';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { coursDeLaLigne, motifRefusLigneEnDevise, porteUneDevise } from './ligne-en-devise';
@@ -3660,6 +3660,20 @@ export class EcritureService {
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
     if (!exercice) return null;
     return ouverturePasseeNonNulle(this.prisma as unknown as LecteurOuverturePassee, tenantId, exercice, { validees: true });
+  }
+
+  /**
+   * La même position, qui dit en plus d'une position NULLE les négatifs
+   * inscrits hors du premier jour (second tour de relecture du paquet 1,
+   * BLOQUANT 1, `negatifsTardifs`) · une ouverture annulée le 15/03 et
+   * ressaisie le même jour se lit, aux états d'un exercice sans précédent,
+   * comme des flux de l'exercice ; les états le NOMMENT. `AUCUNE` · aucun
+   * exercice de ce dossier sous cet identifiant, ou rien au premier jour.
+   */
+  async positionDOuvertureAuPremierJour(tenantId: string, exerciceId: string): Promise<PositionDOuverturePassee> {
+    const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { id: true, dateDebut: true } });
+    if (!exercice) return { etat: 'AUCUNE' };
+    return positionDOuverturePassee(this.prisma as unknown as LecteurOuverturePassee, tenantId, exercice, { validees: true });
   }
 
   /**

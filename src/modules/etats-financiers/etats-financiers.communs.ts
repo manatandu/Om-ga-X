@@ -3,6 +3,7 @@ import { ClasseCompte, StatutExercice, TypeCompteDetailTotal } from '@prisma/cli
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { avantSoldeDesComptesDeGestion } from '../comptabilite/balance-trois-colonnes';
+import { NegatifTardif, negatifsTardifsLisibles } from '../exercice/ouverture-passee';
 import { MOTIF_EXERCICE_INTROUVABLE } from '../../common/exercice-introuvable';
 
 /**
@@ -296,6 +297,56 @@ export async function lireOuverturePasseeEnOd(
 ): Promise<OuverturePasseeEnOd | null> {
   if (exerciceN1Id || ouvertureTenue(ouvertureN)) return null;
   return ecritureService.ouverturePasseeAuPremierJour(tenantId, exerciceId);
+}
+
+/**
+ * SECOND TOUR DE RELECTURE DU PAQUET 1, JUMEAU DU BLOQUANT 1 · une ouverture
+ * saisie en OD au premier jour et annulée par son négatif inscrit plus tard
+ * (« Corriger » depuis le Journal, date du jour) se solde à zéro · l'entité
+ * est lue comme naissante (M4). Mais « l'enregistrement exact est ensuite
+ * opéré » (AUDCIF art. 20, al. 2), le jour du négatif, hors du premier jour ·
+ * le tableau des flux d'un exercice sans précédent le lit alors comme des flux
+ * de l'exercice (apport, acquisitions) et la trésorerie d'ouverture reste à
+ * zéro. OmegaX ne distingue pas cette ressaisie d'une vraie opération de
+ * l'exercice (l'apport du 02/03 de M4) · il le DIT, nomme le négatif et sa
+ * date, et l'issue (le bilan d'un dossier repris passe en à-nouveau, la voie
+ * de `motifOuverturePasseeEnOd`). Lus aux mêmes
+ * conditions que l'ouverture en OD · aucun exercice précédent tenu, aucun
+ * report.
+ */
+export async function lireNegatifsTardifsDeLOuverture(
+  ecritureService: EcritureService,
+  tenantId: string,
+  exerciceId: string,
+  exerciceN1Id: string | null,
+  ouvertureN: readonly LigneBalancePourEtat[],
+): Promise<NegatifTardif[]> {
+  if (exerciceN1Id || ouvertureTenue(ouvertureN)) return [];
+  const position = await ecritureService.positionDOuvertureAuPremierJour(tenantId, exerciceId);
+  return position.etat === 'NULLE' ? position.negatifsTardifs : [];
+}
+
+/** La phrase ajoutée à la mention d'ouverture du tableau des flux · `null` sans négatif tardif. */
+export function mentionNegatifsTardifs(negatifs: readonly NegatifTardif[], referentiel: 'SYSCOHADA' | 'SYCEBNL'): string | null {
+  if (negatifs.length === 0) return null;
+  const article = referentiel === 'SYCEBNL' ? 'SYCEBNL art. 16, 4)' : 'AUDCIF art. 34';
+  return (
+    `L'ouverture saisie au premier jour est annulée par son négatif inscrit plus tard (${negatifsTardifsLisibles(negatifs)}) · ` +
+    "si la position exacte a été ressaisie après le premier jour, elle se lit ici comme des flux de l'exercice et la trésorerie " +
+    "d'ouverture reste à zéro. Si c'est le bilan d'ouverture d'un dossier repris, annulez la ressaisie par son négatif et passez " +
+    `le bilan en à-nouveau (import du bilan d'ouverture) ; si ce sont des opérations de l'exercice, ce tableau les lit justement (${article} ; AUDCIF art. 20, al. 2).`
+  );
+}
+
+/** La mention d'ouverture du tableau des flux, complétée des négatifs tardifs. */
+export function avecNegatifsTardifs(
+  mention: string | null,
+  negatifs: readonly NegatifTardif[],
+  referentiel: 'SYSCOHADA' | 'SYCEBNL',
+): string | null {
+  const ajout = mentionNegatifsTardifs(negatifs, referentiel);
+  if (!ajout) return mention;
+  return mention ? `${mention} ${ajout}` : ajout;
 }
 
 /**
