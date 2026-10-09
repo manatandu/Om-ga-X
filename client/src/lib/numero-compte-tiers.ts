@@ -21,7 +21,7 @@ export interface NumeroPropose {
  * « choisie » · prise entre-temps par une autre saisie, elle serait refusée
  * au lieu de céder au numéro suivant, que personne n'a demandé de garder.
  */
-export function numeroAEnvoyer(saisi: string, propose: NumeroPropose | null): string | undefined {
+export function numeroAEnvoyer(saisi: string, propose: { numero: string | null } | null): string | undefined {
   const numero = saisi.trim();
   if (numero === '') return undefined;
   if (propose?.numero && numero === propose.numero) return undefined;

@@ -19,6 +19,10 @@ describe('cheminsAViderApres · ce qu’une écriture rend faux', () => {
     expect(cheminsAViderApres('/journaux?actifs=true')).toEqual(['/journaux']);
   });
 
+  it('la création d’un journal, qui peut ouvrir son compte, vide aussi le plan de comptes', () => {
+    expect(trie(cheminsAViderApres('/journaux'))).toEqual(trie(['/journaux', '/comptes']));
+  });
+
   it('la création d’un tiers et de son compte individuel vide le plan de comptes', () => {
     expect(cheminsAViderApres('/tiers')).toEqual(['/comptes']);
     expect(cheminsAViderApres('/tiers/t1/panoplie')).toEqual(['/comptes']);

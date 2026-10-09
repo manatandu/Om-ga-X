@@ -25,7 +25,7 @@ function dansLaFamille(chemin: string, prefixe: string): boolean {
 }
 
 /** Les écritures qui touchent un référentiel caché par un autre chemin que le sien. */
-const ECRITURES_INDIRECTES: readonly { prefixe: string; vide: readonly string[] }[] = [
+const ECRITURES_INDIRECTES: readonly { prefixe: string; vide: readonly string[]; exact?: boolean }[] = [
   // L'import crée des comptes, et peut créer des journaux, sans jamais
   // toucher un chemin /comptes ou /journaux.
   { prefixe: '/import', vide: CHEMINS_CACHES },
@@ -33,6 +33,10 @@ const ECRITURES_INDIRECTES: readonly { prefixe: string; vide: readonly string[] 
   // (tiers/collectifs-tiers.ts), `/tiers/:id/panoplie` et `/tiers/panoplies`
   // en ouvrent après coup, et la fusion de deux tiers reporte leurs comptes.
   { prefixe: '/tiers', vide: ['/comptes'] },
+  // Un journal de banque ou de caisse peut ouvrir son compte propre à sa
+  // création (journaux/compte-propre-du-journal.ts) · la création seule, au
+  // chemin exact ; modifier ou retirer un journal n'ouvre aucun compte.
+  { prefixe: '/journaux', vide: ['/comptes'], exact: true },
   // La fusion de deux comptes met le compte absorbé en sommeil
   // (comptabilite/reimputation.ts).
   { prefixe: '/ecritures/fusion-comptes', vide: ['/comptes'] },
@@ -46,7 +50,7 @@ export function cheminsAViderApres(chemin: string): string[] {
   const vides = new Set<string>();
   for (const prefixe of CHEMINS_CACHES) if (dansLaFamille(chemin, prefixe)) vides.add(prefixe);
   for (const e of ECRITURES_INDIRECTES) {
-    if (dansLaFamille(chemin, e.prefixe)) for (const c of e.vide) vides.add(c);
+    if (e.exact ? chemin === e.prefixe : dansLaFamille(chemin, e.prefixe)) for (const c of e.vide) vides.add(c);
   }
   return [...vides];
 }

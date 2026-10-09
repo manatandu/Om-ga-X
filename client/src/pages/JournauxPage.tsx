@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useId, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
@@ -14,6 +14,12 @@ import {
   perimetreEdition,
 } from '../lib/editions-structures';
 import { PortailModale } from '../components/PortailModale';
+import {
+  corpsCompteDuJournal,
+  type CompteDuJournalPropose,
+  type CompteDuPlan,
+  type ModeCompteJournal,
+} from '../lib/compte-propre-journal';
 
 /**
  * CODES JOURNAUX · la fenêtre Structure → Codes journaux de Sage 100 i7 :
@@ -39,6 +45,23 @@ export function JournauxPage() {
   const [intitule, setIntitule] = useState('');
   const [type, setType] = useState<TypeJournal>('GENERAL');
   const [compteTresorerieId, setCompteTresorerieId] = useState('');
+  // LE COMPTE PROPRE DU JOURNAL (décision de Manasse du 2026-10-09) · ouvert
+  // à sa création sous un compte du plan de la classe 5, à défaut ; un compte
+  // existant reste un choix.
+  const [modeCompte, setModeCompte] = useState<ModeCompteJournal>('OUVRIR');
+  const [comptesDuPlan, setComptesDuPlan] = useState<CompteDuPlan[] | null>(null);
+  const [erreurComptesDuPlan, setErreurComptesDuPlan] = useState<string | null>(null);
+  const [sousId, setSousId] = useState('');
+  const [numeroCompte, setNumeroCompte] = useState('');
+  // La proposition est rattachée au compte du plan qui l'a demandée · une
+  // réponse arrivée après un autre choix ne s'affiche pas.
+  const [lectureNumero, setLectureNumero] = useState<{
+    sousId: string;
+    propose: CompteDuJournalPropose | null;
+    erreur: string | null;
+  } | null>(null);
+  const idNumero = useId();
+  const idSous = useId();
   // Continue par journal à défaut, comme au serveur (audit final F59) · en
   // manuelle aucune pièce ne reçoit de numéro, la saisie n'en portant aucun.
   const [numerotation, setNumerotation] = useState<NumerotationPiece>('CONTINUE_JOURNAL');
@@ -66,10 +89,44 @@ export function JournauxPage() {
       },
       (err) => setErreurComptes(err instanceof ApiError ? err.message : 'serveur injoignable'),
     );
+    // Les comptes du plan sous lesquels ouvrir · lus par leur numéro, jamais
+    // par la règle des comptes retenus (comptes/listes-de-comptes.ts).
+    api.get<CompteDuPlan[]>('/journaux/comptes-du-plan').then(
+      (c) => {
+        setComptesDuPlan(c);
+        setErreurComptesDuPlan(null);
+      },
+      (err) => setErreurComptesDuPlan(err instanceof ApiError ? err.message : 'serveur injoignable'),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estAdmin]);
   // Un seul compte de trésorerie proposé se présélectionne (§ 9 ter).
   usePreselectionUnique(comptesTresorerie, compteTresorerieId, setCompteTresorerieId);
+  usePreselectionUnique(comptesDuPlan, sousId, setSousId);
+
+  // LE NUMÉRO PROPOSÉ SOUS LE COMPTE DU PLAN CHOISI · relu à chaque choix ;
+  // le champ prend la proposition, que le cabinet garde ou remplace.
+  useEffect(() => {
+    if (!nouveauOuvert || type !== 'TRESORERIE' || modeCompte !== 'OUVRIR' || !sousId) return;
+    let actif = true;
+    setLectureNumero(null);
+    api.get<CompteDuJournalPropose>(`/journaux/compte-propose?sousId=${encodeURIComponent(sousId)}`).then(
+      (p) => {
+        if (!actif) return;
+        setLectureNumero({ sousId, propose: p, erreur: null });
+        setNumeroCompte(p.numero ?? '');
+      },
+      (err) => {
+        if (!actif) return;
+        setLectureNumero({ sousId, propose: null, erreur: err instanceof ApiError ? err.message : 'serveur injoignable' });
+        setNumeroCompte('');
+      },
+    );
+    return () => {
+      actif = false;
+    };
+  }, [nouveauOuvert, type, modeCompte, sousId]);
+  const propositionDuChoix = lectureNumero && lectureNumero.sousId === sousId ? lectureNumero : null;
 
   if (!estAdmin) {
     return (
@@ -91,12 +148,22 @@ export function JournauxPage() {
         intitule,
         type,
         numerotation,
-        ...(type === 'TRESORERIE' ? { compteTresorerieId } : {}),
+        ...(type === 'TRESORERIE'
+          ? corpsCompteDuJournal(modeCompte, {
+              sousId,
+              numeroSaisi: numeroCompte,
+              propose: propositionDuChoix?.propose ?? null,
+              compteTresorerieId,
+            })
+          : {}),
       });
       setCode('');
       setIntitule('');
       setType('GENERAL');
       setCompteTresorerieId('');
+      setModeCompte('OUVRIR');
+      setNumeroCompte('');
+      setLectureNumero(null);
       setNumerotation('CONTINUE_JOURNAL');
       setNouveauOuvert(false);
       await charger();
@@ -230,7 +297,7 @@ export function JournauxPage() {
                 className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]"
               >
                 <span>Nouveau code journal</span>
-                <button type="button" onClick={() => setNouveauOuvert(false)} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c]">
+                <button type="button" disabled={envoi} onClick={() => setNouveauOuvert(false)} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c] disabled:opacity-50">
                   ✕
                 </button>
               </div>
@@ -285,6 +352,89 @@ export function JournauxPage() {
                   )}
                   {type === 'TRESORERIE' && (
                     <>
+                      <span className="text-[11.5px] text-right">Compte du journal :</span>
+                      <div role="radiogroup" aria-label="Compte du journal" className="flex gap-4 text-[11.5px]">
+                        <label className="flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name="mode-compte-journal"
+                            checked={modeCompte === 'OUVRIR'}
+                            onChange={() => setModeCompte('OUVRIR')}
+                          />
+                          Ouvrir son compte
+                        </label>
+                        <label className="flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name="mode-compte-journal"
+                            checked={modeCompte === 'EXISTANT'}
+                            onChange={() => setModeCompte('EXISTANT')}
+                          />
+                          Compte existant
+                        </label>
+                      </div>
+                    </>
+                  )}
+                  {type === 'TRESORERIE' && modeCompte === 'OUVRIR' && (
+                    <>
+                      <label htmlFor={idSous} className="text-[11.5px] text-right">
+                        Sous le compte :
+                      </label>
+                      <select
+                        id={idSous}
+                        required
+                        value={sousId}
+                        onChange={(e) => setSousId(e.target.value)}
+                        className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
+                      >
+                        <option value="">Sélectionner</option>
+                        {(comptesDuPlan ?? []).map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.numero} · {c.intitule}
+                          </option>
+                        ))}
+                      </select>
+                      {(erreurComptesDuPlan || (comptesDuPlan && comptesDuPlan.length === 0)) && (
+                        <>
+                          <span />
+                          <span className={`text-[11px] ${erreurComptesDuPlan ? 'text-danger' : 'text-warning'}`}>
+                            {erreurComptesDuPlan
+                              ? `Comptes du plan illisibles · ${erreurComptesDuPlan}`
+                              : 'Aucun compte de trésorerie du plan actif dans ce dossier · réactivez-en un dans le plan comptable.'}
+                          </span>
+                        </>
+                      )}
+                      <label htmlFor={idNumero} className="text-[11.5px] text-right">
+                        N° de compte :
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id={idNumero}
+                          required
+                          inputMode="numeric"
+                          value={numeroCompte}
+                          onChange={(e) => setNumeroCompte(e.target.value)}
+                          disabled={!sousId || !propositionDuChoix}
+                          className="border border-border-dark px-2.5 py-1.5 text-[12px] w-[140px]"
+                        />
+                        <Aide
+                          titre="Numéro du compte du journal"
+                          texte="OmegaX propose le premier numéro libre sous le compte du plan choisi · gardez-le, ou remplacez-le par un numéro de même longueur qui commence par le sien. Le compte naît avec le journal."
+                          source="Le numéro d'un compte divisionnaire commence toujours par celui du compte dont il est une subdivision (AUDCIF, Titre VII ; SYCEBNL, Partie 2 ch. 2)."
+                        />
+                      </div>
+                      {propositionDuChoix && (propositionDuChoix.erreur || propositionDuChoix.propose?.motif) && (
+                        <>
+                          <span />
+                          <span className="text-[11px] text-danger">
+                            {propositionDuChoix.erreur ?? propositionDuChoix.propose?.motif}
+                          </span>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {type === 'TRESORERIE' && modeCompte === 'EXISTANT' && (
+                    <>
                       <label className="text-[11.5px] text-right">Compte de trésorerie :</label>
                       <select
                         required
@@ -320,8 +470,9 @@ export function JournauxPage() {
                 <div className="flex justify-end gap-2 mt-4">
                   <button
                     type="button"
+                    disabled={envoi}
                     onClick={() => setNouveauOuvert(false)}
-                    className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px]"
+                    className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px] disabled:opacity-50"
                   >
                     Annuler
                   </button>
