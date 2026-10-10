@@ -122,3 +122,28 @@ télémétrie (dont le refus de conserver l'adresse IP).
   travail/virement-fonds et travail/passe-v1 (39 commits en avance sur main,
   À VÉRIFIER avant toute suppression).
 - Prochain sujet avec Manasse : relevés de sécurité.
+
+## Décision de Manasse du 2026-10-10 · « faire comme les autres logiciels »
+
+Après relevé des pratiques (Zoho Books, Odoo, Sage ; sources citées dans la
+conversation, à re-citer dans le plan), Manasse veut le parcours habituel :
+
+- EN LIGNE : le client s'inscrit seul sur le site vitrine, essai gratuit limité
+  dans le temps, puis abonnement mensuel ou annuel payé en ligne
+  (mobile money : M-Pesa, Orange Money, Airtel Money, par un agrégateur), accès
+  ouvert ou prolongé automatiquement à la réception de l'avis de paiement.
+- SUR SITE : installateur Windows plus fichier de licence signé (déjà construit ;
+  reste la paire de clés de licence et un premier essai du paquet sur un vrai PC).
+
+À FAIRE AVANT TOUT CODE (le gel tient) :
+1. Phrase expresse de Manasse « Lève le gel pour X » pour chaque fonction :
+   inscription libre + essai, paiement en ligne, formulaire de demande.
+2. Rouvrir l'inscription publique est un RENVERSEMENT d'une décision
+   (INSCRIPTION_PUBLIQUE fermée) · le dire dans le plan et le CLAUDE.md.
+   Garde-fous à prévoir : courriel vérifié, limitation de débit, dossier d'essai
+   isolé, aucune donnée d'autrui visible (règle VMG).
+3. Choix du prestataire de paiement utilisable en RDC, des monnaies (CDF et USD) et
+   des frais : décision commerciale de Manasse, frais à vérifier auprès des
+   opérateurs (les sources lues ne concordent pas).
+4. Grille des offres : essai (durée à choisir), mensuel, annuel, sur site
+   (perpétuelle plus maintenance, ou annuelle) · à décider par Manasse.
