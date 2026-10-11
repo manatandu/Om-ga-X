@@ -4951,18 +4951,17 @@ silence, geste juste refusé sans issue, dossier enfermé) fait reprendre la
 ligne, le reste va aux « Relevés en attente » de la liste.
 
 **Pack `replica-*` (`.claude/skills/`, MIT, décision de Manasse du
-2026-10-11).** Onze compétences tierces de rétro-ingénierie d'une application,
-posées telles quelles (licence : `replica-LICENSE.txt`), AUCUN outil réseau.
-Elles servent à LIRE un logiciel de référence, jamais à en recopier le code, les
-textes ou les images (méthode « salle propre », dite par le pack lui-même). EMPLOI
-ADMIS · `replica-recon` (carte des écrans, flux et matrice `features.csv` d'un
+2026-10-11).** Quatre compétences tierces de lecture d'un logiciel de
+référence, posées telles quelles (licence : `replica-LICENSE.txt`), AUCUN outil
+réseau · `replica-recon` (carte des écrans, flux et matrice `features.csv` d'un
 logiciel comme Sage, à partir de ses manuels et de comptes que Manasse possède),
 `replica-diff` (score de parité sur cette matrice), `replica-test` (plan et
 rapports de défauts, en complément de `e2e-testing`), `replica-entrepreneur`
-(lecture d'avis publics, chacun avec son lien). EMPLOI RÉSERVÉ · `replica-design`
-et `replica-launch` pour le site vitrine, charte `docs/charte-omegax.md` d'abord.
-EMPLOI REFUSÉ, sans demande expresse de Manasse · `replica-architect`,
-`replica-build`, `replica-backend`, `replica-brand` et `replica-deploy`, qui
-choisiraient une pile, un hébergeur ou un nom contre §§ 2, 5 et 9 bis, et dont
-le déploiement contourne le portillon et la branche `main`. Un résultat du pack
-ne tranche aucun compte ni article (§ 1) et ne lève pas le gel (§ 5).
+(lecture d'avis publics, chacun avec son lien). Elles servent à LIRE, jamais à
+recopier le code, les textes ou les images d'un logiciel (méthode « salle
+propre », dite par le pack lui-même). Les sept autres du pack (architect,
+build, backend, brand, deploy, design, launch) ont été RETIRÉES le même jour
+sur décision de Manasse : elles choisiraient une pile, un hébergeur ou un nom
+contre §§ 2, 5 et 9 bis, et `replica-deploy` contourne le portillon et la
+branche `main`. Ne pas les réinstaller sans demande expresse. Un résultat du
+pack ne tranche aucun compte ni article (§ 1) et ne lève pas le gel (§ 5).
