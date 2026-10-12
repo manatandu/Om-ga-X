@@ -147,3 +147,22 @@ conversation, à re-citer dans le plan), Manasse veut le parcours habituel :
    opérateurs (les sources lues ne concordent pas).
 4. Grille des offres : essai (durée à choisir), mensuel, annuel, sur site
    (perpétuelle plus maintenance, ou annuelle) · à décider par Manasse.
+
+## Ajouts du 2026-10-12
+
+- Pack replica-* posé sur la branche travail/replica-skill (commit 1021419), SIX
+  compétences : recon, diff, test, entrepreneur, design et launch (les cinq autres
+  retirées). À FUSIONNER sur main avec le premier fichier de suivi de la
+  comparaison Sage (bloc § 3 joué à ce moment). Emploi : lire Sage (manuels de
+  Drive, dont le Guide de 44 pages, puis le gros manuel de 27 Mo, à essayer, à
+  couper en parties sinon), jamais copier. design et launch : site vitrine seul.
+- Plugin PostHog (130 compétences) : conseillé de le désactiver dans ce projet, rien
+  dans le dépôt ; à réactiver pour mesurer le parcours d'essai si l'inscription libre
+  est décidée. Règle de télémétrie du § 8 de CLAUDE.md inchangée.
+- Politique de confidentialité (client/src/pages/ConfidentialitePage.tsx, 8 sections,
+  mise à jour du 7 octobre 2026) : comparer à la pratique des autres logiciels
+  (Zoho : résumé d'abord, deux parties, contact du délégué). Écarts à examiner :
+  adresse postale et courriel de contact non arrêtés par VMG (dits dans le texte),
+  pas de résumé en tête. LE CONTENU SE TRANCHE PAR LA LOI, pas par le RGPD :
+  lire la compétence droit-numerique-ua-rdc-corpus (ordonnance-loi n° 23/10 du
+  13 mars 2023) avant toute modification.
