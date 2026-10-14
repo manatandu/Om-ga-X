@@ -1,6 +1,7 @@
 import {
   EtatDeLaFiche,
   champsAEffetDemandes,
+  exerciceClosQuiPorteLaFiche,
   motifRefusModificationAEffet,
   motifRefusSuppression,
   propositionDeDuplication,
@@ -177,5 +178,39 @@ describe('la fiche née d’une écriture déjà passée (fonction n° 68)', () 
     const lue = motifRefusModificationAEffet({ ...nee, usages: [{ modele: 'DotationAmortissement', champ: 'immobilisationId', nombre: 1 }] });
     expect(lue).toMatch(/révision du plan/);
     expect(lue).not.toMatch(/recréez-la/);
+  });
+});
+
+describe('l’exercice clos ne porte que la fiche qui existait à sa clôture (relecture M4, précisée)', () => {
+  const fiche = new Date('2027-02-10T10:00:00Z');
+  const fin2026 = new Date('2026-12-31');
+  it('clos APRÈS la fiche · il l’a portée', () => {
+    expect(exerciceClosQuiPorteLaFiche({ ficheCreeeLe: fiche, debutDuJournal: new Date('2026-01-01'), clos: [{ dateFin: fin2026, clotures: [new Date('2027-03-01')] }] })).toEqual(fin2026);
+  });
+  it('clos AVANT la fiche (bien repris saisi au bilan d’ouverture de N+1) · aucun état arrêté ne l’a lue', () => {
+    expect(exerciceClosQuiPorteLaFiche({ ficheCreeeLe: fiche, debutDuJournal: new Date('2026-01-01'), clos: [{ dateFin: fin2026, clotures: [new Date('2027-01-20')] }] })).toBeNull();
+  });
+  it('clos, rouvert puis reclos après la fiche · la dernière clôture la porte', () => {
+    expect(
+      exerciceClosQuiPorteLaFiche({ ficheCreeeLe: fiche, debutDuJournal: new Date('2026-01-01'), clos: [{ dateFin: fin2026, clotures: [new Date('2027-01-20'), new Date('2027-03-01')] }] }),
+    ).toEqual(fin2026);
+  });
+  it('sans maillon de clôture · antérieure au journal ; le doute fige quand le journal ne précède pas la fiche', () => {
+    expect(exerciceClosQuiPorteLaFiche({ ficheCreeeLe: fiche, debutDuJournal: new Date('2026-06-01'), clos: [{ dateFin: fin2026, clotures: [] }] })).toBeNull();
+    expect(exerciceClosQuiPorteLaFiche({ ficheCreeeLe: fiche, debutDuJournal: new Date('2027-03-01'), clos: [{ dateFin: fin2026, clotures: [] }] })).toEqual(fin2026);
+    expect(exerciceClosQuiPorteLaFiche({ ficheCreeeLe: fiche, debutDuJournal: null, clos: [{ dateFin: fin2026, clotures: [] }] })).toEqual(fin2026);
+  });
+  it('le premier exercice qui la porte, dans l’ordre des clôtures', () => {
+    const fin2027 = new Date('2027-12-31');
+    expect(
+      exerciceClosQuiPorteLaFiche({
+        ficheCreeeLe: fiche,
+        debutDuJournal: new Date('2026-01-01'),
+        clos: [
+          { dateFin: fin2026, clotures: [new Date('2027-01-20')] },
+          { dateFin: fin2027, clotures: [new Date('2028-01-15')] },
+        ],
+      }),
+    ).toEqual(fin2027);
   });
 });

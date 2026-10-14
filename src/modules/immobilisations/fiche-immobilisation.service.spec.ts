@@ -19,6 +19,8 @@ function fabrique(
     usages?: Record<string, number>;
     nee?: boolean;
     exerciceClosQuiLaPorte?: boolean;
+    /** La clôture de cet exercice précède la création de la fiche. */
+    clotureAvantLaFiche?: boolean;
     numerotation?: 'CONTINUE_JOURNAL' | 'MENSUELLE';
   } = {},
 ) {
@@ -35,6 +37,7 @@ function fabrique(
     compteEnCoursId: null,
     dateAcquisition: new Date('2026-01-01'),
     dateMiseEnService: new Date('2026-01-01'),
+    createdAt: new Date('2026-01-01T09:00:00Z'),
     valeurOrigine: 12_000_000,
     valeurResiduelle: 0,
     dureeAmortissementAns: 4,
@@ -98,14 +101,31 @@ function fabrique(
     // porté le bien (relecture M4) ne rend rien, sauf quand le cas le pose.
     exercice: {
       findFirst: jest.fn().mockImplementation(({ where }: { where: { statut?: string } }) =>
+        Promise.resolve(where?.statut === 'CLOTURE' ? null : { id: 'ex-n', statut: 'OUVERT' }),
+      ),
+      findMany: jest.fn().mockImplementation(({ where }: { where: { statut?: string } }) =>
+        Promise.resolve(where?.statut === 'CLOTURE' && options.exerciceClosQuiLaPorte ? [{ id: 'ex-clos', dateFin: new Date('2026-12-31') }] : []),
+      ),
+    },
+    // Le journal d'audit · la clôture de l'exercice clos, POSTÉRIEURE à la
+    // fiche (créée le 2026-01-01) sauf quand le cas la pose avant ; la
+    // doublure honore l'exercice et le filtre sur l'état d'après.
+    evenementAudit: {
+      findMany: jest.fn().mockImplementation(({ where }: { where: { entite: string; entiteId: { in: string[] }; apres: { equals: string } } }) =>
         Promise.resolve(
-          where?.statut === 'CLOTURE'
-            ? options.exerciceClosQuiLaPorte
-              ? { id: 'ex-clos', statut: 'CLOTURE', dateFin: new Date('2026-12-31') }
-              : null
-            : { id: 'ex-n', statut: 'OUVERT' },
+          where.entite === 'Exercice' && where.entiteId.in.includes('ex-clos') && where.apres.equals === 'CLOTURE'
+            ? [
+                {
+                  entiteId: 'ex-clos',
+                  action: 'MODIFICATION',
+                  avant: { statut: 'OUVERT' },
+                  horodatage: options.clotureAvantLaFiche ? new Date('2025-12-01T00:00:00Z') : new Date('2027-02-01T00:00:00Z'),
+                },
+              ]
+            : [],
         ),
       ),
+      findFirst: jest.fn().mockResolvedValue({ horodatage: new Date('2025-01-01T00:00:00Z') }),
     },
     annulationTraitementImmobilisation: {
       count: jest.fn().mockResolvedValue(0),
@@ -157,10 +177,17 @@ describe('le bien repris qu’un exercice clos a porté (relecture M4)', () => {
     expect(prisma.immobilisation.update).not.toHaveBeenCalled();
     expect(prisma.immobilisation.deleteMany).not.toHaveBeenCalled();
     expect(ecritures.creer).not.toHaveBeenCalled();
-    // La lecture vise l'exercice clos qui finit au plus tôt à l'acquisition.
-    expect(prisma.exercice.findFirst).toHaveBeenCalledWith(
+    // La lecture vise les exercices clos qui finissent au plus tôt à l'acquisition.
+    expect(prisma.exercice.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: 't-1', statut: 'CLOTURE', dateFin: { gte: new Date('2026-01-01') } } }),
     );
+  });
+
+  it('une fiche créée APRÈS la clôture n’a été lue par aucun état arrêté · elle se corrige et se retire', async () => {
+    const { service, prisma } = fabrique({ repris: true, exerciceClosQuiLaPorte: true, clotureAvantLaFiche: true });
+    await expect(service.modifier('t-1', 'u-1', ID, { amortissementAnterieur: 1_000_000 })).resolves.toBeDefined();
+    expect(prisma.immobilisation.update).toHaveBeenCalled();
+    await expect(service.supprimer('t-1', ID)).resolves.toEqual({ supprime: true });
   });
 
   it('sans exercice clos qui le porte, la désignation comme la valeur restent modifiables', async () => {

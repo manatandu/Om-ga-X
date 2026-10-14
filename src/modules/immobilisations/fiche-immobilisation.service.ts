@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ModeAmortissement, NumerotationPiece, Prisma, StatutEcriture, StatutExercice, StatutImmobilisation } from '@prisma/client';
+import { ActionAudit, ModeAmortissement, NumerotationPiece, Prisma, StatutEcriture, StatutExercice, StatutImmobilisation } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { referencesVers } from '../../common/suppression/references';
@@ -12,6 +12,7 @@ import type { ModifierImmobilisationDto } from './dto/fiche-immobilisation.dto';
 import {
   EtatDeLaFiche,
   champsAEffetDemandes,
+  exerciceClosQuiPorteLaFiche,
   motifRefusModificationAEffet,
   motifRefusSuppression,
   propositionDeDuplication,
@@ -322,13 +323,10 @@ export class FicheImmobilisationService {
     ].filter((x): x is string => !!x);
     const neeDUneEcriturePassee = !!fiche.ligneAcquisitionId;
     // Relecture M4 · le premier exercice CLÔTURÉ qui finit au plus tôt à la
-    // date d'acquisition a porté le bien à ses états, écriture d'acquisition
-    // ou non (un bien repris n'en a pas).
-    const closQuiLaPorte = await db.exercice.findFirst({
-      where: { tenantId, statut: StatutExercice.CLOTURE, dateFin: { gte: fiche.dateAcquisition } },
-      orderBy: { dateFin: 'asc' },
-      select: { dateFin: true },
-    });
+    // date d'acquisition, et dont la clôture a suivi la fiche, a porté le
+    // bien à ses états, écriture d'acquisition ou non (un bien repris n'en a
+    // pas) · la règle est `exerciceClosQuiPorteLaFiche`.
+    const closQuiLaPorte = await this.exerciceClosQuiLaPorte(db, tenantId, fiche);
     const origineParticuliere = neeDUneEcriturePassee
       ? "d'une écriture déjà passée au journal"
       : fiche.natureAcquisitionAleatoire
@@ -356,12 +354,52 @@ export class FicheImmobilisationService {
       neeDUneEcriturePassee,
       usages,
       annulationsRetenant,
-      exerciceClosQuiLaPorte: closQuiLaPorte ? closQuiLaPorte.dateFin.toISOString().slice(0, 10) : null,
+      exerciceClosQuiLaPorte: closQuiLaPorte ? closQuiLaPorte.toISOString().slice(0, 10) : null,
       renouvelle: fiche.composantRemplaceId
         ? ((await db.immobilisation.findFirst({ where: { id: fiche.composantRemplaceId, tenantId }, select: { designation: true } }))?.designation ?? '·')
         : null,
     };
     return { fiche, acquisition, contrepartieId, etat };
+  }
+
+  /**
+   * Les exercices clôturés qui finissent au plus tôt à la date d'acquisition,
+   * et le moment de leur clôture lu au journal d'audit · deux lectures
+   * bornées, jamais le journal entier. Un maillon de clôture est celui qui
+   * fait passer l'exercice à CLOTURE (création déjà close, ou modification
+   * dont l'état d'avant ne l'était pas) · une retouche d'un exercice déjà
+   * clos (date d'arrêté) n'en est pas une.
+   */
+  private async exerciceClosQuiLaPorte(db: Db, tenantId: string, fiche: { dateAcquisition: Date; createdAt: Date }): Promise<Date | null> {
+    const clos = await db.exercice.findMany({
+      where: { tenantId, statut: StatutExercice.CLOTURE, dateFin: { gte: fiche.dateAcquisition } },
+      orderBy: { dateFin: 'asc' },
+      select: { id: true, dateFin: true },
+      take: 50,
+    });
+    if (clos.length === 0) return null;
+    const [maillons, premier] = await Promise.all([
+      db.evenementAudit.findMany({
+        where: {
+          tenantId,
+          entite: 'Exercice',
+          entiteId: { in: clos.map((e) => e.id) },
+          action: { in: [ActionAudit.CREATION, ActionAudit.MODIFICATION] },
+          apres: { path: ['statut'], equals: StatutExercice.CLOTURE },
+        },
+        orderBy: { rang: 'desc' },
+        select: { entiteId: true, horodatage: true, action: true, avant: true },
+        take: 500,
+      }),
+      db.evenementAudit.findFirst({ where: { tenantId }, orderBy: { rang: 'asc' }, select: { horodatage: true } }),
+    ]);
+    const etaitClos = (avant: unknown) => !!avant && typeof avant === 'object' && (avant as { statut?: unknown }).statut === StatutExercice.CLOTURE;
+    const clotures = maillons.filter((m) => m.action === ActionAudit.CREATION || !etaitClos(m.avant));
+    return exerciceClosQuiPorteLaFiche({
+      ficheCreeeLe: fiche.createdAt,
+      debutDuJournal: premier?.horodatage ?? null,
+      clos: clos.map((e) => ({ dateFin: e.dateFin, clotures: clotures.filter((m) => m.entiteId === e.id).map((m) => m.horodatage) })),
+    });
   }
 
   /**

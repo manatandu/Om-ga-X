@@ -106,7 +106,8 @@ export interface EtatDeLaFiche {
    * (note des immobilisations, livre d'inventaire, AUDCIF art. 19). Relecture
    * M4 · un bien REPRIS n'a pas d'écriture d'acquisition, et rien ne le
    * disait porté par un exercice clos · sa valeur et son amortissement
-   * antérieur se modifiaient, sa fiche se supprimait.
+   * antérieur se modifiaient, sa fiche se supprimait. Un exercice ne porte
+   * que la fiche qui existait à sa clôture (`exerciceClosQuiPorteLaFiche`).
    */
   exerciceClosQuiLaPorte: string | null;
   /**
@@ -116,6 +117,35 @@ export interface EtatDeLaFiche {
    * supprimée, l'ancien composant resterait sorti sans ce qui le remplace.
    */
   renouvelle: string | null;
+}
+
+/**
+ * L'EXERCICE CLOS QUI A PORTÉ LA FICHE (relecture M4, précisée) · le premier
+ * exercice clôturé, finissant au plus tôt à la date d'acquisition, DONT LA
+ * CLÔTURE EST POSTÉRIEURE À LA FICHE · ses états (note des immobilisations,
+ * livre d'inventaire, AUDCIF art. 19) l'ont lue, et une erreur s'y corrige
+ * dans l'exercice en cours (art. 20, al. 3 et 4). Une fiche créée APRÈS la
+ * clôture (le bien repris oublié, saisi au bilan d'ouverture de N+1) n'a été
+ * lue par aucun état arrêté · la figer d'emblée enfermait la faute de frappe
+ * de sa saisie, sans modification ni retrait possibles.
+ *
+ * Le moment de la clôture se lit au journal d'audit (`clotures`, les
+ * maillons qui ont fait passer l'exercice à CLOTURE). Un exercice sans
+ * maillon de clôture a été clos avant le début du journal · il précède la
+ * fiche si le journal la précède ; sinon le moment est inconnu, et la fiche
+ * est tenue pour portée · le doute fige, jamais il ne délie.
+ */
+export function exerciceClosQuiPorteLaFiche(p: {
+  ficheCreeeLe: Date;
+  debutDuJournal: Date | null;
+  clos: readonly { dateFin: Date; clotures: readonly Date[] }[];
+}): Date | null {
+  const creee = p.ficheCreeeLe.getTime();
+  for (const e of p.clos) {
+    if (e.clotures.some((h) => h.getTime() > creee)) return e.dateFin;
+    if (e.clotures.length === 0 && (p.debutDuJournal === null || p.debutDuJournal.getTime() > creee)) return e.dateFin;
+  }
+  return null;
 }
 
 function motifExerciceClosQuiLaPorte(cloture: string, geste: 'modifier' | 'supprimer'): string {
