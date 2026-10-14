@@ -299,14 +299,59 @@ retrait, retirée du modèle puis retirée, rang 1 repris, renommée.
 
 ## Reste
 
-- e2e `sage-l1-situation`, `sage-l1-totaux`, `sage-l1-impression`, `sage-l1-lettre`,
-  `sage-l1-compte-en-saisie`, `sage-l1-assistant`, `sage-l1-sequences` · à jouer.
-- Bloc du § 3 des deux côtés ; specs de structure.
+- Rien des sept fonctions. Les sept parcours navigateur passent sous Chromium
+  (`sage-l1-situation`, `-totaux`, `-impression`, `-lettre`,
+  `-compte-en-saisie`, `-assistant`, `-sequences`), et les parcours voisins
+  rejoués sans régression (`ecrans` aux deux référentiels, `saisie-par-piece`,
+  `lettrage-cloture`, `comptes-personnalises`, `comptes`, `parcours`,
+  `cloture`). WebKit n'est pas installé sur la machine · il tourne en CI.
+- Largeurs · fenêtres nouvelles ou touchées relevées à 390 et 1440 px
+  (séquences, assistant du compte et du journal, lettrage, paramètres,
+  journal, bulle et boîte du compte créé en saisie), aucun débord de page ;
+  à 390 px la bulle « Créer le compte » vit dans la grille de saisie, qui
+  défile déjà en largeur.
+- À l'intégration · deux fichiers de la ligne L4 touchés pour une lecture
+  chacune (`immobilisations/immobilisation.service.ts`,
+  `immobilisations/subvention-rattachee.service.ts`, `...HORS_SITUATION`) ;
+  `lecture-bornee.spec.ts` compte 158 modèles avec `SequenceSaisie` et
+  `ImpressionJournal` (à rejouer si une autre ligne ajoute des tables) ;
+  `chrome-etroit.spec.ts` compte 17 commandes sous Structure.
+
+## Questions pour Manasse
+
+Aucune ne bloque · le corpus ne régit aucun de ces choix, qui sont
+d'organisation ou de produit.
+
+1. #19 · Sage range aussi les RUBRIQUES DE PAIE par séquence (P_SEQUENCE est
+   une page de la Paie). Faut-il les ranger de même dans OmegaX
+   (`personnel/`, ligne L5), sur les mêmes séquences ou sur des séquences
+   propres à la paie ?
+2. #12 · Sage peut inclure les journaux de situation dans une balance ou un
+   grand livre de SIMULATION. D-L1-12 les tient hors de tout livre et état ;
+   elles se lisent dans leur journal. Faut-il une balance de simulation à
+   part, dite sans valeur légale (comme le second jeu en monnaie
+   fonctionnelle) ?
+3. #14 · Sous l'option, le comptable et l'aide-comptable (par héritage)
+   créent le compte en saisie, alors que « Nouveau compte » au Plan
+   comptable reste à l'administrateur. L'option est ouverte par
+   l'administrateur, qui délègue ainsi. Faut-il réserver le geste au
+   comptable (`@ReserveAuComptable()`), ou à l'administrateur seul ?
 
 ## Décisions
 
-- D-L1-12 (ci-dessus), par la loi.
+- D-L1-12 (ci-dessus), par la loi · AUDCIF art. 16 al. 2, 17 3°, 19, 22 2° et 3°.
 - D-L1-60 (ci-dessus), par la loi · AUDCIF art. 22, 1°, 3° et 7°.
+- #16 · seule règle lue, le CPCC (ch. 6, « un seul repère ») · tenue par
+  l'unicité de la lettre sur le compte, refus nommé.
+- #14 · aucun texte ne régit le geste (AUDCIF art. 18, al. 3 ; SYCEBNL
+  Partie 2 ch. 2, section 1, l'art. 18 étant écarté par son art. 3) · règle
+  d'organisation d'OmegaX, celle des comptes personnalisés, en option fermée
+  par défaut.
+- #11, #18 · préférences du poste (architecture, lignes 11 et 18), aucune
+  donnée du dossier.
+- #19 · lecture de P_SEQUENCE (Structure des fichiers de Sage, p. 558, 559,
+  565, 594) transposée aux modèles de saisie, à leur place
+  (`modeles-saisie/`).
 
 ## Commandes de vérification
 
@@ -317,6 +362,9 @@ NODE_OPTIONS=--max-old-space-size=2048 npm run build
 npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
   --shadow-database-url postgresql://jetable:jetable@localhost:5432/omegax_sage_l1_ombre --exit-code
 (cd client && npx tsc --noEmit && npm test && NODE_OPTIONS=--max-old-space-size=2048 npm run build)
+# Navigateur · serveur compilé sur 8081 (base omegax_sage_l1), client servi sur 4181 (relais /api)
+(cd e2e && OMEGAX_APP=http://localhost:4181 OMEGAX_API=http://localhost:4181/api \
+  PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npx playwright test tests/sage-l1-*.e2e.ts)
 ```
 
 ## Pour CLAUDE.md
