@@ -24,6 +24,7 @@ const vierge: EtatDeLaFiche = {
   neeDUneEcriturePassee: false,
   usages: [],
   annulationsRetenant: 0,
+  exerciceClosQuiLaPorte: null,
 };
 
 describe('les champs à effet', () => {
@@ -101,6 +102,38 @@ describe('la duplication', () => {
     expect(p).not.toHaveProperty('numeroInventaire');
     expect(p).not.toHaveProperty('compteContrepartieId');
     expect(p.valeurOrigine).toBe(12_000_000);
+  });
+});
+
+describe('un exercice clôturé a porté le bien (relecture M4)', () => {
+  // Un bien REPRIS n'a pas d'écriture d'acquisition · rien ne le disait porté
+  // par un exercice clos, et sa valeur, son amortissement antérieur et la
+  // fiche elle-même se changeaient sous des états déjà arrêtés.
+  const repris: EtatDeLaFiche = { ...vierge, acquisition: null, exerciceClosQuiLaPorte: '2026-12-31' };
+
+  it('refuse les champs à effet d’un bien repris porté par un exercice clos, avec l’issue', () => {
+    const m = motifRefusModificationAEffet(repris);
+    expect(m).toMatch(/clos le 2026-12-31 a porté ce bien/);
+    expect(m).toMatch(/AUDCIF art\. 19/);
+    expect(m).toMatch(/AUDCIF art\. 20, al\. 3 et 4/);
+    expect(m).toMatch(/reclassement/);
+  });
+
+  it('refuse sa suppression, et dit de le sortir', () => {
+    const m = motifRefusSuppression(repris);
+    expect(m).toMatch(/clos le 2026-12-31 a porté ce bien/);
+    expect(m).toMatch(/se sort/);
+  });
+
+  it('refuse le retrait d’une fiche née d’une écriture passée que l’exercice clos a portée', () => {
+    expect(
+      motifRefusSuppression({ ...vierge, neeDUneEcriturePassee: true, acquisition: { ...vierge.acquisition!, validee: true }, exerciceClosQuiLaPorte: '2026-12-31' }),
+    ).toMatch(/ne se retire plus/);
+  });
+
+  it('laisse tout ouvert sans exercice clos qui le porte', () => {
+    expect(motifRefusModificationAEffet({ ...repris, exerciceClosQuiLaPorte: null })).toBeNull();
+    expect(motifRefusSuppression({ ...repris, exerciceClosQuiLaPorte: null })).toBeNull();
   });
 });
 

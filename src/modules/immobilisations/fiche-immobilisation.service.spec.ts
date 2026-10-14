@@ -12,7 +12,9 @@ import { FicheImmobilisationService } from './fiche-immobilisation.service';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 
-function fabrique(options: { statut?: 'BROUILLARD' | 'VALIDEE'; repris?: boolean; usages?: Record<string, number>; nee?: boolean } = {}) {
+function fabrique(
+  options: { statut?: 'BROUILLARD' | 'VALIDEE'; repris?: boolean; usages?: Record<string, number>; nee?: boolean; exerciceClosQuiLaPorte?: boolean } = {},
+) {
   const statut = options.statut ?? 'BROUILLARD';
   const fiche = {
     id: ID,
@@ -82,7 +84,19 @@ function fabrique(options: { statut?: 'BROUILLARD' | 'VALIDEE'; repris?: boolean
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
-    exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex-n', statut: 'OUVERT' }) },
+    // La doublure honore la requête · la lecture de l'exercice CLÔTURÉ qui a
+    // porté le bien (relecture M4) ne rend rien, sauf quand le cas le pose.
+    exercice: {
+      findFirst: jest.fn().mockImplementation(({ where }: { where: { statut?: string } }) =>
+        Promise.resolve(
+          where?.statut === 'CLOTURE'
+            ? options.exerciceClosQuiLaPorte
+              ? { id: 'ex-clos', statut: 'CLOTURE', dateFin: new Date('2026-12-31') }
+              : null
+            : { id: 'ex-n', statut: 'OUVERT' },
+        ),
+      ),
+    },
     annulationTraitementImmobilisation: {
       count: jest.fn().mockResolvedValue(0),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -119,6 +133,26 @@ function fabrique(options: { statut?: 'BROUILLARD' | 'VALIDEE'; repris?: boolean
   const service = new FicheImmobilisationService(prisma as never, immobilisations as never, ecritures as never);
   return { service, prisma: base, immobilisations, ecritures };
 }
+
+describe('le bien repris qu’un exercice clos a porté (relecture M4)', () => {
+  it('ses champs à effet et sa suppression sont refusés, rien n’est écrit', async () => {
+    const { service, prisma, ecritures } = fabrique({ repris: true, exerciceClosQuiLaPorte: true });
+    await expect(service.modifier('t-1', 'u-1', ID, { amortissementAnterieur: 1_000_000 })).rejects.toThrow(/clos le 2026-12-31 a porté ce bien/);
+    await expect(service.supprimer('t-1', ID)).rejects.toThrow(/clos le 2026-12-31 a porté ce bien/);
+    expect(prisma.immobilisation.update).not.toHaveBeenCalled();
+    expect(prisma.immobilisation.deleteMany).not.toHaveBeenCalled();
+    expect(ecritures.creer).not.toHaveBeenCalled();
+    // La lecture vise l'exercice clos qui finit au plus tôt à l'acquisition.
+    expect(prisma.exercice.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 't-1', statut: 'CLOTURE', dateFin: { gte: new Date('2026-01-01') } } }),
+    );
+  });
+
+  it('sans exercice clos qui le porte, la désignation comme la valeur restent modifiables', async () => {
+    const { service } = fabrique({ repris: true });
+    await expect(service.modifier('t-1', 'u-1', ID, { designation: 'Camion repris' })).resolves.toBeDefined();
+  });
+});
 
 describe('la modification d’une fiche', () => {
   it('les champs libres passent sur une écriture validée, sans toucher au journal', async () => {
@@ -173,7 +207,9 @@ describe('la modification d’une fiche', () => {
 
   it('un bien repris n’a pas d’écriture · la fiche seule change', async () => {
     const { service, prisma, ecritures } = fabrique({ repris: true });
-    prisma.exercice.findFirst.mockResolvedValue({ id: 'ex-n' });
+    prisma.exercice.findFirst.mockImplementation(({ where }: { where: { statut?: string } }) =>
+      Promise.resolve(where?.statut === 'CLOTURE' ? null : { id: 'ex-n' }),
+    );
     await service.modifier('t-1', 'u-1', ID, { dureeAmortissementAns: 5 });
     expect(ecritures.creer).not.toHaveBeenCalled();
     expect(prisma.immobilisation.update.mock.calls[0][0].data).toMatchObject({ dureeAmortissementAns: 5 });

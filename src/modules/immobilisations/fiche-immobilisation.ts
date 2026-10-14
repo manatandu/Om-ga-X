@@ -100,6 +100,25 @@ export interface EtatDeLaFiche {
   usages: UsageDuBien[];
   /** Annulations de traitements dont une écriture reste retenue (inscrite en négatif). */
   annulationsRetenant: number;
+  /**
+   * La clôture (AAAA-MM-JJ) du premier exercice CLÔTURÉ du dossier qui finit
+   * au plus tôt à la date d'acquisition, ou null · ce bien figure à ses états
+   * (note des immobilisations, livre d'inventaire, AUDCIF art. 19). Relecture
+   * M4 · un bien REPRIS n'a pas d'écriture d'acquisition, et rien ne le
+   * disait porté par un exercice clos · sa valeur et son amortissement
+   * antérieur se modifiaient, sa fiche se supprimait.
+   */
+  exerciceClosQuiLaPorte: string | null;
+}
+
+function motifExerciceClosQuiLaPorte(cloture: string, geste: 'modifier' | 'supprimer'): string {
+  return geste === 'modifier'
+    ? `L’exercice clos le ${cloture} a porté ce bien à ses états (note des immobilisations, livre d’inventaire, AUDCIF ` +
+        'art. 19) · valeur, compte, dates et plan ne se modifient plus depuis la fiche ; une erreur d’un exercice clos se ' +
+        'corrige dans l’exercice en cours (AUDCIF art. 20, al. 3 et 4). Le compte se change par un reclassement, la durée ' +
+        'et le mode par une révision du plan.'
+    : `L’exercice clos le ${cloture} a porté ce bien à ses états (note des immobilisations, livre d’inventaire, AUDCIF ` +
+        'art. 19) · la fiche ne se supprime plus. Un bien qui n’existe plus se sort (mise au rebut, destruction, vol).';
 }
 
 /**
@@ -122,7 +141,7 @@ export function motifRefusModificationAEffet(e: EtatDeLaFiche): string | null {
     // la voie la plus courte est de la retirer et de la recréer depuis la
     // même ligne, que le retrait rend à la liste.
     const issue =
-      e.usages.length > 0 || e.annulationsRetenant > 0 || e.acquisition?.exerciceClos
+      e.usages.length > 0 || e.annulationsRetenant > 0 || e.acquisition?.exerciceClos || e.exerciceClosQuiLaPorte
         ? 'La durée et le mode se changent par une révision du plan, le compte par un reclassement.'
         : 'Pour un autre plan, retirez la fiche (l’écriture reste au journal) et recréez-la depuis la même ligne ; ' +
           'une mise en service différée se pose par « Mettre en service ».';
@@ -141,6 +160,7 @@ export function motifRefusModificationAEffet(e: EtatDeLaFiche): string | null {
   if (e.acquisition?.exerciceClos) {
     return 'L’écriture d’acquisition est dans un exercice clôturé · la fiche ne se modifie plus (AUDCIF art. 20, al. 3).';
   }
+  if (e.exerciceClosQuiLaPorte) return motifExerciceClosQuiLaPorte(e.exerciceClosQuiLaPorte, 'modifier');
   if (e.usages.length > 0) {
     return (
       `Des traitements ont lu cette fiche · ${e.usages.map(libelleUsage).join(', ')}. Ils ont été calculés sur les valeurs ` +
@@ -171,6 +191,9 @@ export function motifRefusSuppression(e: EtatDeLaFiche): string | null {
     if (e.acquisition?.exerciceClos) {
       return 'L’écriture dont la fiche est née est dans un exercice clôturé · le bien figure à ses états, la fiche ne se retire plus.';
     }
+    if (e.exerciceClosQuiLaPorte) {
+      return `L’exercice clos le ${e.exerciceClosQuiLaPorte} a porté ce bien à ses états (AUDCIF art. 19) · la fiche ne se retire plus.`;
+    }
   } else if (e.acquisition?.validee) {
     return (
       `L’écriture d’acquisition (pièce n° ${e.acquisition.numeroPiece ?? '·'}) est validée · la fiche ne se supprime plus ` +
@@ -178,6 +201,7 @@ export function motifRefusSuppression(e: EtatDeLaFiche): string | null {
     );
   }
   if (e.acquisition?.exerciceClos) return 'L’écriture d’acquisition est dans un exercice clôturé · la fiche ne se supprime plus.';
+  if (e.exerciceClosQuiLaPorte) return motifExerciceClosQuiLaPorte(e.exerciceClosQuiLaPorte, 'supprimer');
   if (e.usages.length > 0) {
     return `La fiche est utilisée · ${e.usages.map(libelleUsage).join(', ')}. Annulez ou retirez d’abord ces usages.`;
   }

@@ -290,6 +290,14 @@ export class FicheImmobilisationService {
       fiche.ecritureSortieEcartReevaluationId ? "le transfert de l'écart de réévaluation" : null,
     ].filter((x): x is string => !!x);
     const neeDUneEcriturePassee = !!fiche.ligneAcquisitionId;
+    // Relecture M4 · le premier exercice CLÔTURÉ qui finit au plus tôt à la
+    // date d'acquisition a porté le bien à ses états, écriture d'acquisition
+    // ou non (un bien repris n'en a pas).
+    const closQuiLaPorte = await db.exercice.findFirst({
+      where: { tenantId, statut: StatutExercice.CLOTURE, dateFin: { gte: fiche.dateAcquisition } },
+      orderBy: { dateFin: 'asc' },
+      select: { dateFin: true },
+    });
     const origineParticuliere = neeDUneEcriturePassee
       ? "d'une écriture déjà passée au journal"
       : fiche.natureAcquisitionAleatoire
@@ -317,6 +325,7 @@ export class FicheImmobilisationService {
       neeDUneEcriturePassee,
       usages,
       annulationsRetenant,
+      exerciceClosQuiLaPorte: closQuiLaPorte ? closQuiLaPorte.dateFin.toISOString().slice(0, 10) : null,
     };
     return { fiche, acquisition, contrepartieId, etat };
   }
