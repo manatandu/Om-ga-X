@@ -293,3 +293,8 @@ fonctions seules.
   (journaux et saisie), L4 (immobilisations) et L5 (paie), puis s'arrêter. Les
   six autres lignes (L2, L3, L6 à L9) attendent son choix, coût réel sous les
   yeux ; rien n'y est commencé.
+- **Essais et parité à la fin** (décision de Manasse du 2026-10-14) · une fois
+  L1, L4 et L5 intégrées, un passage de replica-test sur leurs fonctions
+  (défauts cherchés en parcourant les écrans) et un passage de replica-diff sur
+  `docs/comparaison-sage/reproduction/features.csv` (score de parité avec Sage,
+  ce qui manque), avant l'arrêt.
