@@ -145,9 +145,31 @@ n° 67, 66, 68, 73, 18.
   « Renumérotation des biens » (aperçu puis « Renuméroter », `estAdmin`).
 - FUSION NON LIVRÉE, PAR LA LOI · voir les décisions.
 
+### N° 18 · assistant de création d'un bien (commit « Immobilisations · assistant de création d'un bien »)
+
+- Bouton « Assistant » de l'onglet Biens (`peutEcrire`), fenêtre en
+  `PortailModale` (`AssistantCreationBien.tsx`) · huit étapes
+  (Désignation, Compte, Origine, Dates, Valeur, Financement, Amortissement,
+  Récapitulatif), le financement sauté pour un bien repris. Chaque étape ne
+  dit que ce qui lui MANQUE pour avancer (`manqueDeLEtape`) ; on revient sur
+  une étape franchie, on n'en saute aucune.
+- AUCUNE ROUTE NI RÈGLE À LUI · le corps est celui du formulaire
+  (`corpsCreationBien`, `lib/assistant-bien.ts`), envoyé à
+  `POST /immobilisations`, jugé par les mêmes contrôles (`preparerFiche`) ;
+  le refus du serveur se dit au récapitulatif. Les listes sont celles du
+  formulaire (comptes du bien personnalisés, financements admis par le
+  compte, journaux, lieux, barème avec l'avertissement d'écart).
+- Création enchaînée · « Créer un autre bien » repart de la première étape en
+  gardant compte, nature, lieu, dates, financement et plan, et vide
+  désignation, numéro et valeurs (convention d'OmegaX, dite dans l'aide).
+- Les cas qui demandent plus qu'une fiche ordinaire (composant,
+  location-acquisition, incorporel à durée non limitée, frais de
+  développement, bien inscrit en cours) restent au formulaire complet, et
+  l'aide le dit.
+
 ## Reste
 
-- N° 18 · assistant de création d'un bien.
+- Rien de la liste. Suite complète en tranches sur l'arbre final.
 
 ## Décisions prises, avec leur article
 
@@ -284,6 +306,14 @@ n° 67, 66, 68, 73, 18.
   13 800 000 contre 12 800 000, la ligne sans fiche restée dans N,
   amortissements concordants, trois dotations de N+1 à passer).
 
+- `scenario-18.mjs` (SYCEBNL) · le corps de l'assistant pour un bien acquis
+  (serveur 4 800 000, 2442 porté par l'écriture du module, dotation de N
+  900 000 à 9/12), clôture, puis un bien repris en N+1 (aucune écriture,
+  dotation 500 000 sur le reste de 1 000 000), 2442 reporté à 4 800 000.
+  Le test navigateur `sage-l4-assistant` parcourt les huit étapes, crée le
+  bien (2451 à 8 000 000), enchaîne un second en « repris » acquis dans
+  l'exercice, que le serveur refuse au récapitulatif sans rien créer.
+
 ## Bloc § 3
 
 - N° 67 · serveur `tsc` 0 erreur, `nest build` vert ; jest ciblé sur l'arbre
@@ -327,6 +357,15 @@ n° 67, 66, 68, 73, 18.
   `tsc` 0 erreur, vitest des specs de structure et de la ligne verts,
   `vite build` vert ; e2e `sage-l4-maintenance` vert sous Chromium.
 
+- N° 18 · client `tsc` 0 erreur, vitest complet 257 fichiers et 2037 tests (dont
+  `assistant-bien.spec.ts`, `ecriture-masquee`, `modales-dans-l-ecran`,
+  `titres-formels`), `vite build` vert ; les cinq e2e de la ligne
+  (`sage-l4-annulation`, `-fiche`, `-depuis-ecritures`, `-maintenance`,
+  `-assistant`) verts sous Chromium sur le client construit de l'arbre final.
+  Aucun code serveur. Un échec de lecture des financements admis se dit à
+  côté de la liste, qui reste « non lue » (jamais « aucun financement
+  admis »).
+
 ## Commandes de vérification
 
 ```bash
@@ -335,7 +374,7 @@ for s in 1 2 3 4 5 6; do npx jest --shard=$s/6 --maxWorkers=1 --workerIdleMemory
 npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
 npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "$OMBRE" --exit-code
-cd e2e && npx playwright test tests/sage-l4-annulation.e2e.ts tests/sage-l4-fiche.e2e.ts tests/sage-l4-depuis-ecritures.e2e.ts tests/sage-l4-maintenance.e2e.ts
+cd e2e && npx playwright test tests/sage-l4-annulation.e2e.ts tests/sage-l4-fiche.e2e.ts tests/sage-l4-depuis-ecritures.e2e.ts tests/sage-l4-maintenance.e2e.ts tests/sage-l4-assistant.e2e.ts
 ```
 
 ## Pour CLAUDE.md
@@ -415,6 +454,16 @@ N'EST PAS SERVIE (AUDCIF, fiche du compte 18 · opérations symétriques par
 les comptes de liaison ; un bien « repris sans écriture » chez l'un resterait
 chez l'autre).
 
+**Assistant de création d'un bien (ligne sage-l4, n° 18).**
+`client/src/lib/assistant-bien.ts`, `AssistantCreationBien.tsx` · huit
+étapes sur le CORPS DU FORMULAIRE, envoyé à `POST /immobilisations` · aucune
+route ni règle à lui, le refus du serveur dit au récapitulatif. Une étape ne
+dit que ce qui lui manque ; un bien repris saute le financement. Création
+enchaînée · la série garde compte, nature, lieu, dates, financement et plan,
+vide désignation, numéro et valeurs. Composant, location-acquisition,
+incorporel non limité, frais de développement et bien en cours restent au
+formulaire complet.
+
 ## Pour build-log.md
 
 - n° 67 · 2026-10-14 · fait · rien ne manque au périmètre ; plus dur que
@@ -434,3 +483,6 @@ chez l'autre).
   la veut symétrique par les comptes de liaison, question posée) ; plus dur
   que prévu · lire un écart sans en fabriquer (dotation non passée, bien
   sorti, reclassement postérieur).
+- n° 18 · 2026-10-14 · fait · rien ne manque au périmètre (les cas
+  particuliers restent au formulaire, dit) ; plus dur que prévu · ne rien
+  dupliquer du formulaire, d'où le corps sorti dans `lib/assistant-bien.ts`.

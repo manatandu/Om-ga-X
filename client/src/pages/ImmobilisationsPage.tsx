@@ -17,6 +17,7 @@ import { BasculeDureeLimitee } from '../components/BasculeDureeLimitee';
 import { RevisionPlanAmortissement } from '../components/RevisionPlanAmortissement';
 import { FicheImmobilisation } from '../components/FicheImmobilisation';
 import { CreationDepuisEcritures } from '../components/CreationDepuisEcritures';
+import { AssistantCreationBien } from '../components/AssistantCreationBien';
 import { MaintenanceImmobilisations, RenumerotationImmobilisations } from '../components/MaintenanceImmobilisations';
 import type { PropositionDuplication } from '../components/FicheImmobilisationGeneral';
 import { CoutsEmpruntIncorpores } from '../components/CoutsEmpruntIncorpores';
@@ -197,6 +198,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [afficherFormImmo, setAfficherFormImmo] = useState(false);
   // Ligne sage-l4, n° 68 · la fenêtre « Créer depuis les écritures ».
   const [creationDepuisEcritures, setCreationDepuisEcritures] = useState(false);
+  // Ligne sage-l4, n° 18 · l'assistant de création d'un bien.
+  const [assistantOuvert, setAssistantOuvert] = useState(false);
 
   const [sortieOuvertePour, setSortieOuvertePour] = useState<string | null>(null);
   const [echangeOuvertPour, setEchangeOuvertPour] = useState<string | null>(null);
@@ -1033,6 +1036,16 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                 Nouvelle immobilisation
               </button>
             )}
+            {/* Ligne sage-l4, n° 18 · l'assistant, à côté du formulaire qu'il découpe. */}
+            {!afficherFormImmo && (
+              <button
+                type="button"
+                onClick={() => setAssistantOuvert(true)}
+                className="order-first px-3 py-[3px] border border-border-dark rounded-[3px] text-[11.5px] hover:bg-surface-alt"
+              >
+                Assistant
+              </button>
+            )}
             {/* Ligne sage-l4, n° 68 · à gauche du bouton principal (`order-first`). */}
             {!afficherFormImmo && (
               <button
@@ -1044,6 +1057,23 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
               </button>
             )}
           </div>
+        )}
+        {peutEcrire && assistantOuvert && (
+          <AssistantCreationBien
+            comptesBien={comptesBien}
+            journaux={journaux}
+            lieux={lieux}
+            bareme={bareme}
+            exerciceId={exerciceCourant?.id}
+            finExercice={exerciceCourant?.dateFin}
+            unitesServies={unitesServies}
+            syscohada={syscohada}
+            onFermer={() => setAssistantOuvert(false)}
+            onCree={(message) => {
+              setInfo(message);
+              void charger();
+            }}
+          />
         )}
         {peutEcrire && creationDepuisEcritures && (
           <CreationDepuisEcritures
