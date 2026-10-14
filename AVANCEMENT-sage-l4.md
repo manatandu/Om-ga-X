@@ -176,6 +176,62 @@ n° 67, 66, 68, 73, 18.
   rendre une liste vide sans un mot (CLAUDE.md § 9 ter, « null n'est pas
   vide »). Même règle posée dans l'assistant (n° 18).
 
+### Relecture, premier tour (un BLOQUANT, cinq MAJEURS, des MINEURS)
+
+- B1 · la reprise de subvention du MÊME exercice, passée après la
+  réévaluation, relit le brut et le cumul réévalués · elle bloque désormais
+  l'annulation de la réévaluation (`DEPENDANTS.REEVALUATION.REPRISE_SUBVENTION`
+  en `strict: false`), qui la nomme et attend qu'elle s'annule d'abord. La
+  reprise de la provision spéciale reste en `strict: true` (elle ne lit que
+  les réévaluations des exercices ANTÉRIEURS). Commit « reprise de subvention
+  du même exercice ».
+- M3 · la révision prospective posée par une réévaluation libre (méthode 2)
+  se reconnaît à sa LIAISON (`RevisionPlanAmortissement.reevaluationBilanId`,
+  RESTRICT, migration `20270174020000_revision_posee_par_reevaluation` avec
+  reprise de l'existant), jamais à sa date · une révision du cabinet datée de
+  la même clôture n'est plus prise pour elle.
+- M4 · un bien REPRIS (sans écriture d'acquisition) qu'un exercice CLÔTURÉ a
+  porté à ses états est figé (champs à effet et suppression), motif nommé
+  (AUDCIF art. 19 ; correction par l'exercice en cours, art. 20, al. 3 et 4).
+  PRÉCISÉ sur vraie base · un exercice ne porte que la fiche qui existait à
+  sa CLÔTURE (moment lu au journal d'audit, `exerciceClosQuiPorteLaFiche`) ·
+  le bien repris saisi au bilan d'ouverture de N+1 après la clôture de N
+  restait sinon enfermé avec sa faute de frappe. Sans maillon de clôture, la
+  clôture précède le journal ; si le journal ne précède pas la fiche, le
+  doute fige.
+- M2 · la liste n° 68 ne propose plus · la pièce CORRIGÉE par un négatif
+  (`correction: null`), la pièce qui porte une ligne NÉGATIVE sur un compte
+  de bien (correction, réimputation), la pièce qui crédite un 28, un 29, un
+  106, un 154 ou un compte de bien que les fiches des comptes 21 à 24
+  n'admettent pas en contrepartie (reprise de bilan d'ouverture,
+  reclassement, réévaluation passés à la main), chacune avec son issue ; une
+  contrepartie non admise d'une autre classe et le même montant inscrit en
+  négatif ailleurs sont AVERTIS ; la pièce du PREMIER JOUR hors achats et
+  trésorerie demande que le cabinet CONFIRME une acquisition de ce jour,
+  sinon bien repris (`confirmerPremierJour`).
+- M5 · la donation et l'exécution d'un engagement LISENT la pièce sans la
+  produire · elles ne refusent plus la création de la fiche
+  (`DETENTEURS_QUI_NE_REFUSENT_PAS`).
+- Mineurs · verrou de la fiche (`SELECT … FOR UPDATE`) pris par la dotation
+  et par l'annulation, dans le même ordre ; message de l'exercice clôturé
+  (art. 20, al. 2, 3 et 4, relu) ; la réévaluation ne relit que les biens
+  qu'elle a changés (écart non nul) ; `arret-dissolution.ts` dit l'annulation
+  de la réévaluation et de la reprise de provision spéciale, et
+  l'annulation d'un traitement suit son écriture
+  (`ACTES_QUI_SUIVENT_LEUR_ECRITURE`) ; la pièce du brouillard se retouche
+  EN PLACE (même numéro, aucun trou ; nouvelle pièce seulement si la
+  numérotation MENSUELLE change de mois) ; suppression par identifiant
+  (pré-image au journal d'audit) ; une fiche née d'un renouvellement garde
+  sa trace (suppression refusée) ; renumérotation refusée pendant une
+  campagne d'inventaire ouverte ; écrans · fermeture de la fiche gardée
+  (envoi en cours, saisie non enregistrée), « Renoncer » à la suppression,
+  barème non lu dit, maintenance vidée au changement d'exercice, assistant
+  (Entrée avance, focus d'étape et sur « Créer le bien », montants tapés
+  avec leurs espaces) ; l'onglet Traitements lit actes et écritures en lot.
+  `tenuesParUnAutreModule` garde sa lecture par moitiés (une seule lecture
+  quand aucune pièce de la page n'est tenue) · la rendre ligne à ligne
+  demanderait de réécrire `detenteursDe`, partagé avec les autres lignes.
+
 ## Reste
 
 - Rien de la liste. La fusion des fiches d'un autre dossier du groupe (n° 73)
@@ -233,6 +289,20 @@ n° 67, 66, 68, 73, 18.
   renumérotation et NOMMÉE par la maintenance, sans contrainte en base · une
   contrainte unique ferait échouer la migration d'un dossier qui porte déjà
   des doublons.
+
+- Relecture M4 · « qu'un exercice clos a porté » se lit à la CLÔTURE ·
+  AUDCIF art. 19 (le livre d'inventaire et les états arrêtés lisent les
+  biens existants à la clôture) et art. 20, al. 3 et 4 (l'erreur d'un
+  exercice clos se corrige dans l'exercice en cours) · une fiche créée après
+  la clôture n'a été lue par aucun état arrêté ; elle se corrige et se
+  retire tant que rien ne l'a lue. Le moment de la clôture se lit au journal
+  d'audit (AUDCIF art. 22, 5° et 6°) ; sans lui, la fiche est figée.
+- Relecture M2 · les fiches des comptes 21 à 24 (AUDCIF Titre VII) disent
+  les contreparties d'une acquisition ; un crédit au 28, au 29 (amortissement,
+  dépréciation), au 106 ou au 154 (écart de réévaluation, provision spéciale,
+  Titre VIII ch. 28) ou à un autre compte de bien n'en est pas une · lu aux
+  deux plans (SYCEBNL Partie 2 ch. 2), comptes semés relus. La correction par
+  inscription en négatif (art. 20, al. 2) retire la pièce d'origine.
 
 ## Questions pour Manasse
 
@@ -323,6 +393,32 @@ n° 67, 66, 68, 73, 18.
   Le test navigateur `sage-l4-assistant` parcourt les huit étapes, crée le
   bien (2451 à 8 000 000), enchaîne un second en « repris » acquis dans
   l'exercice, que le serveur refuse au récapitulatif sans rien créer.
+
+- Relecture, premier tour · tous les scénarios ci-dessus REJOUÉS verts sur
+  le serveur construit de l'arbre corrigé, et cinq ajoutés ou étendus ·
+  `scenario-66.mjs` (la pièce du brouillard garde son numéro après la
+  modification ; un bien repris saisi AVANT la clôture de N est figé en N+1,
+  valeur et retrait refusés, désignation libre ; celui saisi APRÈS reste
+  modifiable et se dote sur le cumul modifié) ; `scenario-67-subvention.mjs`
+  (B1 · bien reçu contre le 1411, réévaluation de N puis reprise au 799
+  172 413,79 sur la valeur réévaluée ; l'annulation de la réévaluation nomme
+  la reprise et attend ; reprise annulée, réévaluation annulée, 799, 1061
+  vides et 2441 à 1 000 000 ; reprise repassée 200 000, clôture, 1411 à
+  600 000 créditeur en N+1) ; `scenario-67-methode2.mjs` (M3 · révision du
+  cabinet datée du 31/12 sur un bien, réévaluation libre méthode 2 · une
+  seule révision LIÉE, celle du bien réévalué ; l'annulation retire la seule
+  révision liée, celle du cabinet intacte avec son effet ; la reprise de la
+  migration, rejouée après avoir retiré la liaison, relie la révision du
+  bien réévalué et laisse celle du cabinet) ; `scenario-68-relecture.mjs`
+  (M2 et M5 · pièce corrigée absente et refusée au serveur, son négatif
+  jamais proposé, pièce exacte proposée ; réimputation 2441 vers 2444
+  refusée, l'origine avertie ; reclassement à la main, réévaluation au 1061
+  et reprise de bilan d'ouverture (crédit du 2844) refusés ; acquisition du
+  1er janvier en OD refusée sans confirmation, créée avec ; contrepartie au
+  401 avertie ; au SYCEBNL, pièce lue par une donation proposée, fiche née,
+  correction refusée en nommant la fiche) ; `scenario-73.mjs` étendu (une
+  campagne d'inventaire ouverte en N+1 refuse l'aperçu et la
+  renumérotation, numéros en place).
 
 ## Bloc § 3
 
@@ -417,6 +513,11 @@ d'avant la réévaluation (`valeurResiduelleAvant`, gardée depuis cette ligne ;
 une ancienne réévaluation sans elle et à valeur résiduelle non nulle refuse),
 écart imputé rendu à la dernière ligne entamée, provision spéciale rendue
 ligne à ligne. Le contrôle 15 bis écarte l'origine d'un traitement annulé.
+La reprise de subvention du MÊME exercice, qui relit la valeur réévaluée,
+s'annule avant la réévaluation (relecture B1) ; la révision posée par une
+réévaluation méthode 2 se reconnaît à sa LIAISON (`reevaluationBilanId`,
+RESTRICT), jamais à sa date ; dotation et annulation prennent le verrou de la
+fiche (`SELECT … FOR UPDATE`, ordre fixe).
 
 **Modifier, supprimer ou dupliquer la fiche d'un bien (ligne sage-l4, n° 66,
 décision D7).** AUDCIF art. 20 et 22, 2° (`immobilisations/fiche-immobilisation.ts`,
@@ -428,10 +529,14 @@ annulations du n° 67) et aucune origine particulière (legs, prix global,
 location-acquisition, prix aléatoire) ; sinon reclassement ou révision du
 plan, motif servi par le serveur. LES CONTRÔLES SONT CEUX DE LA CRÉATION ·
 `creer` scindé en `preparerFiche` (contrôles seuls) et l'écriture, rejoué sur
-la fiche entière ; l'écriture d'acquisition du brouillard est REMPLACÉE
-(l'ancienne retirée filtrée sur le statut, 409 si validée entre-temps, la
-nouvelle retirée en cas d'échec), jamais une fiche à une valeur et un journal
-à une autre. Suppression sans écriture retenue · la fiche part avec son
+la fiche entière ; l'écriture d'acquisition du brouillard est retouchée EN
+PLACE (`modifierPieceDuModule`, même numéro, aucun trou ; 409 si validée
+entre-temps), remplacée seulement quand la numérotation MENSUELLE change de
+mois, jamais une fiche à une valeur et un journal à une autre. Un exercice
+CLÔTURÉ qui a porté la fiche (clôture postérieure à la fiche, lue au journal
+d'audit, `exerciceClosQuiPorteLaFiche`) la fige, bien repris compris
+(AUDCIF art. 19 ; art. 20, al. 3 et 4) ; une fiche née d'un renouvellement
+ne se supprime pas (sa trace). Suppression sans écriture retenue · la fiche part avec son
 écriture du brouillard et ses annulations sans écriture. Duplication · la
 copie servie (`GET :id/duplication`) remplit le formulaire de création, rien
 n'est écrit avant la confirmation. L'écran n'envoie que les champs CHANGÉS
@@ -453,7 +558,13 @@ module ou tenue par un autre module, pièce de plusieurs biens qui crédite un
 FONDS (reprise non répartissable). Mise en service jamais posée d'office.
 Une telle fiche ne retouche ni valeur, ni compte, ni date, et SE RETIRE sans
 toucher l'écriture tant que rien ne la lit (lecture de D7) ; la correction de
-l'écriture nomme cette issue.
+l'écriture nomme cette issue. Ne sont pas des acquisitions (relecture M2) ·
+la pièce corrigée par un négatif et son négatif, la réimputation, la pièce
+qui crédite un 28, 29, 106, 154 ou un compte de bien non admis (reprise de
+bilan d'ouverture, reclassement, réévaluation à la main) ; contrepartie non
+admise d'une autre classe AVERTIE ; pièce du premier jour hors achats et
+trésorerie CONFIRMÉE (`confirmerPremierJour`), sinon bien repris. Donation et
+exécution d'engagement lisent la pièce sans la refuser (M5).
 
 **Renumérotation et maintenance du registre (ligne sage-l4, n° 73).**
 `immobilisations/maintenance-immobilisations.ts`, `MaintenanceImmobilisationsService`
@@ -461,7 +572,8 @@ l'écriture nomme cette issue.
 confirmation par l'administrateur), plan REJOUÉ sous un verrou par dossier,
 une mise à jour unitaire par fiche (journal d'audit) ; un bien SORTI garde
 son numéro et le compte pour l'unicité, une collision est refusée et
-nommée. Unicité · convention d'OmegaX, tenue par la renumérotation et nommée
+nommée, et refusée pendant une campagne d'inventaire ouverte (ses fiches
+comptent sur les numéros en place). Unicité · convention d'OmegaX, tenue par la renumérotation et nommée
 par la maintenance, aucune contrainte en base. La maintenance LIT ·
 registre relu par `tableauAmortissements` contre la balance de l'exercice,
 compte par compte, brut au compte inscrit à la clôture, amortissement au
@@ -476,7 +588,8 @@ chez l'autre).
 `client/src/lib/assistant-bien.ts`, `AssistantCreationBien.tsx` · huit
 étapes sur le CORPS DU FORMULAIRE, envoyé à `POST /immobilisations` · aucune
 route ni règle à lui, le refus du serveur dit au récapitulatif. Une étape ne
-dit que ce qui lui manque ; un bien repris saute le financement. Création
+dit que ce qui lui manque ; un bien repris saute le financement ; Entrée
+avance, le focus suit l'étape, un montant tapé avec ses espaces se lit. Création
 enchaînée · la série garde compte, nature, lieu, dates, financement et plan,
 vide désignation, numéro et valeurs. Composant, location-acquisition,
 incorporel non limité, frais de développement et bien en cours restent au
