@@ -26,9 +26,12 @@ export function MaintenanceImmobilisations({ exerciceId }: { exerciceId: string 
   const jeton = useRef(0);
 
   const lire = () => {
-    if (!exerciceId) return;
+    // Une lecture d'un autre exercice ne montre jamais celle de l'exercice
+    // quitté · la table se vide d'abord (relecture de la ligne).
     const n = ++jeton.current;
+    setLue(null);
     setErreur(null);
+    if (!exerciceId) return;
     api.get<MaintenanceLue>(`/immobilisations/maintenance?exerciceId=${exerciceId}`).then(
       (m) => {
         if (n === jeton.current) setLue(m);

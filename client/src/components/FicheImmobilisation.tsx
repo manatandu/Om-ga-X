@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortailModale } from './PortailModale';
 import { ecouterEchap } from '../lib/echap';
+import { useGardeFermeture } from '../lib/fenetres';
 import { TraitementsImmobilisation } from './TraitementsImmobilisation';
 import { FicheImmobilisationGeneral, type PropositionDuplication } from './FicheImmobilisationGeneral';
 
@@ -31,20 +32,45 @@ export function FicheImmobilisation({
 }) {
   const [onglet, setOnglet] = useState<OngletFiche>('general');
   const fermer = useRef<HTMLButtonElement>(null);
+  // LA FERMETURE SE GARDE (relecture de la ligne · CLAUDE.md, Échap et la
+  // fermeture, F177) · un envoi en cours la tient ; une saisie non
+  // enregistrée la fait confirmer, ici comme pour la fenêtre qui porte la fiche.
+  const [travail, setTravail] = useState({ occupe: false, nonEnregistre: false });
+  const travailCourant = useRef(travail);
+  travailCourant.current = travail;
+  const motifGarde = travail.occupe
+    ? 'Un enregistrement de la fiche est en cours.'
+    : travail.nonEnregistre
+      ? 'Des modifications de la fiche ne sont pas enregistrées · elles seraient perdues.'
+      : null;
+  useGardeFermeture(motifGarde);
+  const peutQuitter = useCallback(() => {
+    const t = travailCourant.current;
+    if (t.occupe) return false;
+    return !t.nonEnregistre || window.confirm('Des modifications de la fiche ne sont pas enregistrées · elles seraient perdues.\n\nContinuer quand même ?');
+  }, []);
+  const fermerSiLibre = useCallback(() => {
+    if (peutQuitter()) onFermer();
+  }, [peutQuitter, onFermer]);
+  const changerDOnglet = (o: OngletFiche) => {
+    if (o === onglet || !peutQuitter()) return;
+    setTravail({ occupe: false, nonEnregistre: false });
+    setOnglet(o);
+  };
 
   useEffect(
     () =>
       ecouterEchap(() => {
-        onFermer();
+        fermerSiLibre();
         return true;
       }),
-    [onFermer],
+    [fermerSiLibre],
   );
   useEffect(() => fermer.current?.focus({ preventScroll: true }), []);
 
   return (
     <PortailModale>
-      <div className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4" onClick={onFermer}>
+      <div className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4" onClick={fermerSiLibre}>
         <div
           role="dialog"
           aria-modal="true"
@@ -58,7 +84,7 @@ export function FicheImmobilisation({
               ref={fermer}
               type="button"
               aria-label="Fermer la fiche"
-              onClick={onFermer}
+              onClick={fermerSiLibre}
               className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-danger text-[12px]"
             >
               ✕
@@ -71,7 +97,7 @@ export function FicheImmobilisation({
                 type="button"
                 role="tab"
                 aria-selected={onglet === o.cle}
-                onClick={() => setOnglet(o.cle)}
+                onClick={() => changerDOnglet(o.cle)}
                 className={`onglet ${onglet === o.cle ? 'onglet-actif' : ''}`}
               >
                 {o.libelle}
@@ -80,9 +106,9 @@ export function FicheImmobilisation({
           </div>
           <div className="p-3.5" role="tabpanel">
             {onglet === 'general' && (
-              <FicheImmobilisationGeneral bien={bien} onFait={onFait} onDupliquer={onDupliquer} onSupprime={onSupprime} />
+              <FicheImmobilisationGeneral bien={bien} onFait={onFait} onDupliquer={onDupliquer} onSupprime={onSupprime} onEtatTravail={setTravail} />
             )}
-            {onglet === 'traitements' && <TraitementsImmobilisation bien={bien} onFait={onFait} />}
+            {onglet === 'traitements' && <TraitementsImmobilisation bien={bien} onFait={onFait} onEtatTravail={setTravail} />}
           </div>
         </div>
       </div>

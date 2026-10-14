@@ -80,10 +80,23 @@ export function etapesDe(s: Pick<SaisieAssistant, 'repris'>): EtapeAssistant[] {
   return ETAPES.map((e) => e.cle).filter((cle) => !(cle === 'financement' && s.repris));
 }
 
-const nombre = (x: string) => (x.trim() === '' ? null : Number(x.replace(',', '.')));
+/**
+ * UN MONTANT TAPÉ AVEC SES ESPACES SE LIT · « 8 000 000 » ou « 1 200 000,50 »,
+ * tels que `lib/montants.ts` les écrit (espace, espace insécable U+00A0,
+ * espace fine insécable U+202F), rendaient `NaN` · l'étape refusait d'avancer
+ * sur un montant juste, ou le corps partait faux. Vide · null, jamais zéro.
+ */
+export function lireMontant(x: string): number | null {
+  const net = x.replace(/[\s\u00a0\u202f]/g, '');
+  return net === '' ? null : Number(net.replace(',', '.'));
+}
 const positif = (x: string) => {
-  const n = nombre(x);
+  const n = lireMontant(x);
   return n !== null && Number.isFinite(n) && n > 0;
+};
+const positifOuNul = (x: string) => {
+  const n = lireMontant(x);
+  return n !== null && Number.isFinite(n) && n >= 0;
 };
 
 /** Ce qui manque pour quitter l'étape, ou null · jamais une règle de fond, que le serveur tient. */
@@ -101,7 +114,8 @@ export function manqueDeLEtape(etape: EtapeAssistant, s: SaisieAssistant): strin
       return null;
     case 'valeur':
       if (!positif(s.valeurOrigine)) return "Indiquez la valeur d'origine, positive.";
-      if (s.valeurResiduelle.trim() && !(Number(s.valeurResiduelle.replace(',', '.')) >= 0)) return 'La valeur résiduelle est un montant positif ou nul.';
+      if (s.valeurResiduelle.trim() && !positifOuNul(s.valeurResiduelle)) return 'La valeur résiduelle est un montant positif ou nul.';
+      if (s.repris && s.amortissementAnterieur.trim() && !positifOuNul(s.amortissementAnterieur)) return 'L’amortissement déjà pratiqué est un montant positif ou nul.';
       return null;
     case 'financement':
       if (s.repris) return null;
@@ -134,13 +148,13 @@ export function corpsCreationBien(s: SaisieAssistant, exerciceId: string | undef
     ...(s.natureFiscaleCle ? { natureFiscaleCle: s.natureFiscaleCle } : {}),
     dateAcquisition: s.dateAcquisition,
     ...(s.pasEncoreEnService ? {} : { dateMiseEnService: s.dateMiseEnService }),
-    valeurOrigine: Number(s.valeurOrigine.replace(',', '.')),
-    ...(s.valeurResiduelle.trim() ? { valeurResiduelle: Number(s.valeurResiduelle.replace(',', '.')) } : {}),
+    valeurOrigine: lireMontant(s.valeurOrigine),
+    ...(s.valeurResiduelle.trim() ? { valeurResiduelle: lireMontant(s.valeurResiduelle) } : {}),
     ...(s.dureeAmortissementAns.trim() ? { dureeAmortissementAns: Number(s.dureeAmortissementAns) } : {}),
     modeAmortissement: s.modeAmortissement,
-    ...(unites ? { unitesOeuvrePrevues: Number(s.unitesOeuvrePrevues.replace(',', '.')), uniteOeuvreLibelle: s.uniteOeuvreLibelle.trim() } : {}),
+    ...(unites ? { unitesOeuvrePrevues: lireMontant(s.unitesOeuvrePrevues), uniteOeuvreLibelle: s.uniteOeuvreLibelle.trim() } : {}),
     ...(s.repris
-      ? { repris: true, amortissementAnterieur: s.amortissementAnterieur.trim() ? Number(s.amortissementAnterieur.replace(',', '.')) : 0 }
+      ? { repris: true, amortissementAnterieur: s.amortissementAnterieur.trim() ? lireMontant(s.amortissementAnterieur) : 0 }
       : { compteContrepartieId: s.compteContrepartieId, journalId: s.journalId }),
     // Cochée, la clause est déclarée ; décochée, le serveur la déduit d'une dette au 4816.
     ...(s.reserveDePropriete ? { reserveDePropriete: true } : {}),

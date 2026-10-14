@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { PortailModale } from './PortailModale';
 import { Aide } from './chrome/Aide';
 import { ecouterEchap } from '../lib/echap';
@@ -13,6 +13,7 @@ import {
   corpsCreationBien,
   ETAPES,
   etapesDe,
+  lireMontant,
   manqueDeLEtape,
   saisieEnchainee,
   saisieVierge,
@@ -64,6 +65,8 @@ export function AssistantCreationBien({
   const [cree, setCree] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const fermer = useRef<HTMLButtonElement>(null);
+  const corps = useRef<HTMLDivElement>(null);
+  const creerBouton = useRef<HTMLButtonElement>(null);
 
   useEffect(
     () =>
@@ -73,7 +76,19 @@ export function AssistantCreationBien({
       }),
     [onFermer, envoi],
   );
-  useEffect(() => fermer.current?.focus({ preventScroll: true }), []);
+  // LE FOCUS SUIT L'ÉTAPE · le premier champ de chaque étape (la case
+  // cochée d'un choix), « Créer le bien » au récapitulatif, « Créer un autre
+  // bien » une fois créé · sans quoi le clavier restait sur un champ disparu
+  // et Entrée ne menait nulle part. À défaut, la croix de fermeture.
+  useEffect(() => {
+    const cible =
+      etape === 'recapitulatif' && !cree
+        ? creerBouton.current
+        : corps.current?.querySelector<HTMLElement>(
+            cree ? 'button[data-enchainer]' : 'input[type=radio]:checked, input:not([disabled]):not([type=radio]), select:not([disabled])',
+          );
+    (cible ?? fermer.current)?.focus({ preventScroll: true });
+  }, [etape, cree]);
   // Un seul compte de bien personnalisé se présélectionne.
   useEffect(() => {
     if (!s.compteImmobilisationId && comptesBien) {
@@ -116,6 +131,19 @@ export function AssistantCreationBien({
   const contrepartie = (contreparties ?? []).find((c) => c.id === s.compteContrepartieId) ?? null;
   const journal = journaux.find((j) => j.id === s.journalId) ?? null;
   const lieu = lieux.find((l) => l.id === s.lieuId) ?? null;
+  const avancer = () => {
+    if (!manque && etape !== 'recapitulatif') setEtape(etapes[rang + 1]);
+  };
+  // ENTRÉE AVANCE, comme dans l'assistant de Sage · sur un champ seulement ;
+  // un bouton garde son Entrée (« Précédent », « Créer le bien »), et le
+  // récapitulatif ne crée qu'au bouton, jamais par une touche tapée ailleurs.
+  const surTouche = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    const balise = (e.target as HTMLElement).tagName;
+    if (balise !== 'INPUT' && balise !== 'SELECT') return;
+    e.preventDefault();
+    avancer();
+  };
 
   const creer = async () => {
     setErreur(null);
@@ -140,10 +168,10 @@ export function AssistantCreationBien({
     ['Origine', s.repris ? 'Repris au bilan d’ouverture' : 'Acquis dans l’exercice'],
     ['Acquisition', s.dateAcquisition ? new Date(s.dateAcquisition).toLocaleDateString('fr-FR') : '·'],
     ['Mise en service', s.pasEncoreEnService ? 'Pas encore' : s.dateMiseEnService ? new Date(s.dateMiseEnService).toLocaleDateString('fr-FR') : '·'],
-    ['Valeur d’origine', s.valeurOrigine ? montant(Number(s.valeurOrigine.replace(',', '.'))) : '·'],
-    ['Valeur résiduelle', s.valeurResiduelle ? montant(Number(s.valeurResiduelle.replace(',', '.'))) : '·'],
+    ['Valeur d’origine', montant(lireMontant(s.valeurOrigine))],
+    ['Valeur résiduelle', montant(lireMontant(s.valeurResiduelle))],
     ...(s.repris
-      ? ([['Amortissement déjà pratiqué', s.amortissementAnterieur ? montant(Number(s.amortissementAnterieur.replace(',', '.'))) : montant(0)]] as [string, string][])
+      ? ([['Amortissement déjà pratiqué', montant(lireMontant(s.amortissementAnterieur) ?? 0)]] as [string, string][])
       : ([
           ['Financement', contrepartie ? `${contrepartie.numero} · ${contrepartie.intitule}` : '·'],
           ['Journal', journal ? `${journal.code} · ${journal.intitule}` : '·'],
@@ -199,7 +227,7 @@ export function AssistantCreationBien({
             ))}
           </ol>
 
-          <div className="p-3.5 text-[11.5px]">
+          <div ref={corps} className="p-3.5 text-[11.5px]" onKeyDown={surTouche}>
             {cree ? (
               <div>
                 <div className="text-positive mb-3">Bien « {cree} » créé.</div>
@@ -209,6 +237,7 @@ export function AssistantCreationBien({
                   </button>
                   <button
                     type="button"
+                    data-enchainer
                     onClick={() => {
                       setS((x) => saisieEnchainee(x));
                       setCree(null);
@@ -227,7 +256,7 @@ export function AssistantCreationBien({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className={`${etiquette} sm:col-span-2`}>
                       Désignation
-                      <input autoFocus value={s.designation} onChange={(e) => poser('designation', e.target.value)} className={champ} />
+                      <input value={s.designation} onChange={(e) => poser('designation', e.target.value)} className={champ} />
                     </label>
                     <label className={etiquette}>
                       N° inventaire
@@ -428,14 +457,14 @@ export function AssistantCreationBien({
                     <button
                       type="button"
                       disabled={!!manque}
-                      onClick={() => setEtape(etapes[rang + 1])}
+                      onClick={avancer}
                       className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50"
                     >
                       Suivant
                     </button>
                   ) : (
                     peutEcrire && (
-                      <button type="button" disabled={envoi} onClick={() => void creer()} className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50">
+                      <button ref={creerBouton} type="button" disabled={envoi} onClick={() => void creer()} className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50">
                         {envoi ? 'Création…' : 'Créer le bien'}
                       </button>
                     )

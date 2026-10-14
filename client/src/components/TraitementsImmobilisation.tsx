@@ -46,9 +46,12 @@ const date = (d: string) => new Date(d).toLocaleDateString('fr-FR');
 export function TraitementsImmobilisation({
   bien,
   onFait,
+  onEtatTravail,
 }: {
   bien: { id: string; designation: string };
   onFait: (message: string) => void;
+  /** L'annulation en cours et le motif tapé · la fenêtre de la fiche tient sa fermeture sur eux. */
+  onEtatTravail?: (etat: { occupe: boolean; nonEnregistre: boolean }) => void;
 }) {
   const { peutValider } = useAuth();
   // null tant que la liste n'est pas lue · « aucun traitement » ne se dit que sur une liste lue.
@@ -60,6 +63,8 @@ export function TraitementsImmobilisation({
   const [motif, setMotif] = useState('');
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const motifTape = !!choisi && motif.trim().length > 0;
+  useEffect(() => onEtatTravail?.({ occupe: envoi, nonEnregistre: motifTape }), [envoi, motifTape, onEtatTravail]);
   const champMotif = useRef<HTMLTextAreaElement>(null);
   // Une réponse arrivée après un rechargement plus récent est jetée.
   const jeton = useRef(0);

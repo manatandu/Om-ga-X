@@ -52,11 +52,14 @@ export function FicheImmobilisationGeneral({
   onFait,
   onDupliquer,
   onSupprime,
+  onEtatTravail,
 }: {
   bien: { id: string; designation: string };
   onFait: (message: string) => void;
   onDupliquer: (proposition: PropositionDuplication) => void;
   onSupprime: (message: string) => void;
+  /** L'envoi en cours et les modifications non enregistrées · la fenêtre de la fiche tient sa fermeture sur eux. */
+  onEtatTravail?: (etat: { occupe: boolean; nonEnregistre: boolean }) => void;
 }) {
   const { peutEcrire } = useAuth();
   const [etat, setEtat] = useState<EtatFiche | null>(null);
@@ -86,6 +89,11 @@ export function FicheImmobilisationGeneral({
   }, [bien.id]);
   useEffect(() => charger(), [charger]);
 
+  // CE QUE LA FERMETURE PERDRAIT (relecture de la ligne) · un envoi en cours,
+  // ou une saisie qui diffère de la fiche lue, dits à la fenêtre de la fiche.
+  const nonEnregistre = !!etat && !!saisie && Object.keys(corpsModification(etat.valeurs, saisie).corps).length > 0;
+  useEffect(() => onEtatTravail?.({ occupe: envoi, nonEnregistre }), [envoi, nonEnregistre, onEtatTravail]);
+
   const effetOuvert = !!etat?.modificationAEffet.ouverte && peutEcrire;
   // Les listes de comptes ne servent qu'aux champs à effet · lues seulement s'ils s'ouvrent.
   useEffect(() => {
@@ -95,6 +103,17 @@ export function FicheImmobilisationGeneral({
       .get<CompteDuBien[]>(`/immobilisations/comptes-du-bien?${RETENUS}`)
       .then((c) => vivant && setComptesBien(c))
       .catch((e) => vivant && setErreur(e instanceof ApiError ? e.message : 'Comptes du bien illisibles'));
+    return () => {
+      vivant = false;
+    };
+  }, [effetOuvert]);
+  // LA NATURE EST UN CHAMP LIBRE (relecture de la ligne) · elle se modifie à
+  // tout moment, champs à effet fermés compris · le barème se lit donc pour
+  // qui peut écrire, sans attendre que la valeur s'ouvre ; non lu, il le dit.
+  useEffect(() => {
+    if (!peutEcrire) return;
+    let vivant = true;
+    setEchecBareme(null);
     api
       .get<NatureBaremeFiscal[]>('/immobilisations/bareme-fiscal')
       .then((b) => vivant && setBareme(b))
@@ -102,7 +121,7 @@ export function FicheImmobilisationGeneral({
     return () => {
       vivant = false;
     };
-  }, [effetOuvert]);
+  }, [peutEcrire]);
   const compteBienId = saisie?.compteImmobilisationId ?? '';
   const repris = !!etat?.valeurs.repris;
   useEffect(() => {
@@ -330,9 +349,20 @@ export function FicheImmobilisationGeneral({
               {etat.neeDUneEcriturePassee ? 'Retirer la fiche' : 'Supprimer la fiche'}
             </button>
           ) : (
-            <button type="button" onClick={() => void supprimer()} disabled={envoi} className="px-3 py-[3px] rounded-[3px] bg-danger text-white font-semibold">
-              {etat.neeDUneEcriturePassee ? 'Confirmer le retrait' : 'Confirmer la suppression'}
-            </button>
+            <>
+              {/* On renonce à la suppression sans fermer la fiche (relecture de la ligne). */}
+              <button
+                type="button"
+                onClick={() => setConfirmerSuppression(false)}
+                disabled={envoi}
+                className="px-3 py-[3px] border border-border-dark rounded-[3px] disabled:opacity-40"
+              >
+                Renoncer
+              </button>
+              <button type="button" onClick={() => void supprimer()} disabled={envoi} className="px-3 py-[3px] rounded-[3px] bg-danger text-white font-semibold">
+                {etat.neeDUneEcriturePassee ? 'Confirmer le retrait' : 'Confirmer la suppression'}
+              </button>
+            </>
           )}
           <button type="submit" disabled={envoi} className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50">
             {envoi ? 'Enregistrement…' : 'Enregistrer'}

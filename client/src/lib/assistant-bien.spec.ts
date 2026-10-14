@@ -1,4 +1,4 @@
-import { corpsCreationBien, etapesDe, ETAPES, manqueDeLEtape, saisieEnchainee, saisieVierge } from './assistant-bien';
+import { corpsCreationBien, etapesDe, ETAPES, lireMontant, manqueDeLEtape, saisieEnchainee, saisieVierge } from './assistant-bien';
 
 /**
  * L'ASSISTANT DE CRÉATION D'UN BIEN (ligne sage-l4, n° 18). Ce qui
@@ -65,6 +65,28 @@ describe('le corps envoyé', () => {
     const corps = corpsCreationBien({ ...base(), pasEncoreEnService: true }, 'ex-n');
     expect(corps).not.toHaveProperty('dateMiseEnService');
     expect(corps).not.toHaveProperty('dureeAmortissementAns');
+  });
+});
+
+describe('un montant tapé avec ses espaces', () => {
+  it('se lit · espace, espace insécable et espace fine, virgule décimale', () => {
+    expect(lireMontant('8 000 000')).toBe(8_000_000);
+    expect(lireMontant('1\u00a0200\u00a0000,50')).toBe(1_200_000.5);
+    expect(lireMontant('2\u202f500')).toBe(2_500);
+    expect(lireMontant('  ')).toBeNull();
+  });
+
+  it('fait avancer l’étape et part juste dans le corps, jamais NaN', () => {
+    const s = { ...base(), valeurOrigine: '12 000 000', valeurResiduelle: '1\u00a0000' };
+    expect(manqueDeLEtape('valeur', s)).toBeNull();
+    expect(corpsCreationBien(s, 'ex-n')).toMatchObject({ valeurOrigine: 12_000_000, valeurResiduelle: 1_000 });
+    const repris = corpsCreationBien({ ...base(), repris: true, amortissementAnterieur: '3 000 000' }, 'ex-n');
+    expect(repris).toMatchObject({ amortissementAnterieur: 3_000_000 });
+  });
+
+  it('un montant illisible arrête l’étape', () => {
+    expect(manqueDeLEtape('valeur', { ...base(), valeurOrigine: '12 000 abc' })).toMatch(/valeur d'origine/);
+    expect(manqueDeLEtape('valeur', { ...base(), repris: true, amortissementAnterieur: 'trois' })).toMatch(/déjà pratiqué/);
   });
 });
 
