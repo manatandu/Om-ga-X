@@ -20,6 +20,7 @@ import { lireJournalDeSaisie, urlJournalDeSaisie, type ReponseJournal } from '..
 import { useGardeFermeture } from '../lib/fenetres';
 import { compteDuNumeroTape, comptesPourLaFrappe, RETENUS } from '../lib/comptes-proposes';
 import { libelleRenvoiDiscordant, remplacementsProposes, type RenvoiDiscordant } from '../lib/regle-compte-saisie';
+import { lireMasquerTotaux, memoriserMasquerTotaux } from '../lib/totaux-saisie';
 
 /**
  * SAISIE DES JOURNAUX · l'écran central du logiciel, calqué sur
@@ -227,6 +228,13 @@ export function SaisiePage() {
   const [parPiece, setParPiece] = useState(false);
   const [datePiece, setDatePiece] = useState('');
   const [rangPiece, setRangPiece] = useState(0);
+  // MASQUER LES TOTAUX (ligne sage-l1, fonction 11) · préférence du poste ·
+  // l'état d'équilibre de la pièce reste toujours montré (lib/totaux-saisie.ts).
+  const [masquerTotaux, setMasquerTotaux] = useState(lireMasquerTotaux);
+  const basculerTotaux = (masquer: boolean) => {
+    setMasquerTotaux(masquer);
+    memoriserMasquerTotaux(masquer);
+  };
 
   // Journal ouvert (étape 2)
   const [ecritures, setEcritures] = useState<Ecriture[]>([]);
@@ -1369,6 +1377,13 @@ export function SaisiePage() {
         <div className="text-[12px] font-bold leading-tight">
           Journal {journal?.code} · {journal?.intitule} · {parPiece ? 'saisie par pièce' : periode?.libelle}
         </div>
+        <label
+          className="ml-auto mr-3 flex items-center gap-1.5 text-[11.5px]"
+          title="Préférence de ce poste · les totaux du journal et de la pièce se cachent, l'équilibre de la pièce reste affiché et une pièce déséquilibrée ne s'enregistre pas"
+        >
+          <input type="checkbox" checked={masquerTotaux} onChange={(e) => basculerTotaux(e.target.checked)} />
+          Masquer les totaux
+        </label>
         <button
           type="button"
           onClick={() => {
@@ -1628,14 +1643,16 @@ export function SaisiePage() {
           </div>
         )}
 
-        {/* Totaux du journal */}
-        <div style={grilleStyle} className={`${grille} px-3 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
-          <span style={{ gridColumn: `span ${4 + axesGrille.length}` }} />
-          <span className="text-right text-[11px] text-text-dim self-center">Totaux journal</span>
-          <span className="font-mono text-right">{totauxJournal ? totauxJournal.debit.toLocaleString('fr-FR') : ''}</span>
-          <span className="font-mono text-right">{totauxJournal ? totauxJournal.credit.toLocaleString('fr-FR') : ''}</span>
-          <span />
-        </div>
+        {/* Totaux du journal · masquables par le poste (fonction 11) */}
+        {!masquerTotaux && (
+          <div style={grilleStyle} className={`${grille} px-3 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>
+            <span style={{ gridColumn: `span ${4 + axesGrille.length}` }} />
+            <span className="text-right text-[11px] text-text-dim self-center">Totaux journal</span>
+            <span className="font-mono text-right">{totauxJournal ? totauxJournal.debit.toLocaleString('fr-FR') : ''}</span>
+            <span className="font-mono text-right">{totauxJournal ? totauxJournal.credit.toLocaleString('fr-FR') : ''}</span>
+            <span />
+          </div>
+        )}
       </div>
 
       {/* ------- Pièce en cours ------- */}
@@ -2088,14 +2105,17 @@ export function SaisiePage() {
             </div>
           )}
 
-          {/* Pied de la pièce : totaux, équilibre, boutons de bas d'écran Sage */}
-          <div style={grilleStyle} className={`${grille} px-3 py-1.5 bg-surface-alt text-[11.5px] font-bold border-b border-border`}>
-            <span className="col-span-4" />
-            <span className="text-right text-[11px] text-text-dim self-center">Totaux pièce</span>
-            <span className="font-mono text-right">{totalDebitPiece.toLocaleString('fr-FR')}</span>
-            <span className="font-mono text-right">{totalCreditPiece.toLocaleString('fr-FR')}</span>
-            <span />
-          </div>
+          {/* Pied de la pièce : totaux, équilibre, boutons de bas d'écran Sage ·
+              les totaux se masquent (fonction 11), l'équilibre jamais. */}
+          {!masquerTotaux && (
+            <div style={grilleStyle} className={`${grille} px-3 py-1.5 bg-surface-alt text-[11.5px] font-bold border-b border-border`}>
+              <span className="col-span-4" />
+              <span className="text-right text-[11px] text-text-dim self-center">Totaux pièce</span>
+              <span className="font-mono text-right">{totalDebitPiece.toLocaleString('fr-FR')}</span>
+              <span className="font-mono text-right">{totalCreditPiece.toLocaleString('fr-FR')}</span>
+              <span />
+            </div>
+          )}
 
           {/* ------------------------------------------------------------------
               CODE TAXE PAR DÉFAUT · la bande est la voie du régime PROPOSE

@@ -95,10 +95,25 @@ simulation de l'exercice clos refusée ; suppression admise. Hérité · une
 au livre-journal, sa correction en négatif est refusée (elle se saisit dans
 un journal ordinaire).
 
+### #11 · Masquer les totaux de la saisie (M1-82 p. 19)
+
+Préférence DU POSTE (architecture, ligne 11), jamais une donnée du dossier ·
+case « Masquer les totaux » dans l'en-tête du journal ouvert (Traitement >
+Saisie des journaux), retenue sous `try/catch` (`client/src/lib/totaux-saisie.ts`,
+clé `omegax.saisie.masquerTotaux`). Cochée, les lignes « Totaux journal » et
+« Totaux pièce » se cachent ; l'état d'équilibre de la pièce (« Pièce
+équilibrée », solde à débiter ou à créditer) reste TOUJOURS affiché, le
+bouton d'enregistrement reste refusé à une pièce déséquilibrée, et le serveur
+refuse toute écriture dont les débits ne valent pas les crédits. Aucune
+écriture touchée · pas de scénario sur base. Choix assumé · Sage pose
+l'option sur le code journal ; la ligne 11 de l'architecture la range en
+préférence du poste, c'est elle qui est suivie. Tests ·
+`client/src/lib/totaux-saisie.spec.ts`, e2e `sage-l1-totaux`.
+
 ## Reste
 
 - #12 · e2e `sage-l1-situation` écrit, à jouer avec le montage local.
-- #11, #60, #16, #14, #19, #18.
+- #60, #16, #14, #19, #18.
 - Bloc du § 3 des deux côtés ; specs de structure.
 
 ## Décisions
@@ -134,5 +149,9 @@ Le validé hérité n'est pas retouché, il est nommé
 
 ## Pour build-log.md
 
-- 2026-10-14 · sage-l1 #12 · journal de situation · statut SITUATION, garde
-  Prisma, lectures écartées, clôture et numérotation.
+- 2026-10-14 · sage-l1 #12 · fait · journal de situation · statut SITUATION, garde
+  Prisma, lectures écartées, clôture et numérotation · plus dur que prévu ·
+  une centaine de lectures du brouillard à relire une à une, et les doublures
+  des contrôles (le constat relevé pendant le parcours, sans seconde requête).
+- 2026-10-14 · sage-l1 #11 · fait · masquer les totaux, préférence du poste,
+  l'équilibre toujours montré.
