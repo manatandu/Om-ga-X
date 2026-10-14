@@ -27,6 +27,8 @@ type Ecriture = {
   journal: { code: string };
   /** L'écriture qui solde les classes 6 à 8 à la clôture, VALIDÉE depuis l'audit final F4. */
   estSoldeDesComptesDeGestion?: boolean;
+  /** Validée à défaut · une simulation d'un journal de situation (ligne sage-l1, fonction 12) porte SITUATION. */
+  statut?: 'BROUILLARD' | 'VALIDEE' | 'SITUATION';
 };
 type Ligne = { id: string; ecritureId: string; compteId: string; libelle: string | null; debit: number; credit: number };
 type Ventilation = { id: string; ligneEcritureId: string; planId: string; debit: number; credit: number };
@@ -63,6 +65,15 @@ function doublure(d: Donnees) {
     Object.entries(w).every(([cle, v]) => {
       if (cle === 'tenantId' || cle === 'exerciceId') return e[cle] === v;
       if (cle === 'estSoldeDesComptesDeGestion') return (e.estSoldeDesComptesDeGestion ?? false) === v;
+      if (cle === 'statut') {
+        const statut = e.statut ?? 'VALIDEE';
+        if (typeof v === 'string') return statut === v;
+        return Object.entries(v as Record<string, unknown>).every(([op, x]) => {
+          if (op === 'not' && typeof x === 'string') return statut !== x;
+          if (op === 'in') return (x as string[]).includes(statut);
+          return inconnu('statut', op);
+        });
+      }
       if (cle === 'date')
         return Object.entries(v as Record<string, Date>).every(([op, borne]) => {
           if (op === 'gte') return e.date.getTime() >= borne.getTime();
@@ -229,6 +240,8 @@ function lectureDAvant(d: Donnees, plan: Plan, du: Date, au: Date) {
     return (
       e.tenantId === 't1' &&
       e.exerciceId === 'e1' &&
+      // Depuis la ligne sage-l1 (fonction 12), une simulation n'est d'aucune lecture.
+      (e.statut ?? 'VALIDEE') !== 'SITUATION' &&
       e.date.getTime() >= du.getTime() &&
       e.date.getTime() <= au.getTime() &&
       classes.includes(c.classe)
@@ -294,6 +307,9 @@ function dossierOrdinaire(): Donnees {
     { id: 'E4', tenantId: 't1', exerciceId: 'e1', date: new Date('2026-03-10'), numeroPiece: null, libelle: 'Réimputation', journal: { code: 'OD' } },
     // Hors de la fenêtre demandée (fin au 30 juin).
     { id: 'E5', tenantId: 't1', exerciceId: 'e1', date: new Date('2026-09-15'), numeroPiece: 3, libelle: 'Hors fenêtre', journal: { code: 'AC' } },
+    // Une simulation d'un journal de situation, dans la fenêtre · ni cumul
+    // général, ni ligne à ventiler (ligne sage-l1, fonction 12).
+    { id: 'ES', tenantId: 't1', exerciceId: 'e1', date: new Date('2026-02-01'), numeroPiece: 1, libelle: 'Simulation', journal: { code: 'SIT' }, statut: 'SITUATION' },
     // Un autre dossier sur le même identifiant d'exercice · seule la borne
     // du dossier l'écarte.
     { id: 'EX', tenantId: 't2', exerciceId: 'e1', date: new Date('2026-02-01'), numeroPiece: 1, libelle: 'Voisin', journal: { code: 'AC' } },
@@ -318,6 +334,8 @@ function dossierOrdinaire(): Donnees {
     { id: 'L08', ecritureId: 'E4', compteId: 'c6', libelle: null, debit: 120, credit: 0 },
     // Hors fenêtre.
     { id: 'L09', ecritureId: 'E5', compteId: 'c6', libelle: null, debit: 999, credit: 0 },
+    // Simulation, sans ventilation.
+    { id: 'LS', ecritureId: 'ES', compteId: 'c6', libelle: null, debit: 333, credit: 0 },
     // Autre dossier.
     { id: 'LX', ecritureId: 'EX', compteId: 'c6', libelle: null, debit: 5000, credit: 0 },
   ];
@@ -386,7 +404,7 @@ describe('Contrôle des cumuls · les cumuls à la base, la liste bornée (F186)
       planId: 'p1',
     });
     // Généraux · L01 + L02 + L06 + L07 + L08 au débit, L04 au crédit (le
-    // tiers, la ligne hors fenêtre et le voisin n'y sont pas).
+    // tiers, la ligne hors fenêtre, la simulation et le voisin n'y sont pas).
     expect(proj.mouvementsGenerauxDebit).toBeCloseTo(1000 + 250.5 + 600 - 120 + 120, 6);
     expect(proj.mouvementsGenerauxCredit).toBeCloseTo(800, 6);
     // Ventilés · v1 et v5 seulement · v3 porte sur un tiers, v6 est hors
