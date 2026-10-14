@@ -152,7 +152,15 @@ const DEPENDANTS: Record<NatureTraitement, Partial<Record<NatureActe, { strict: 
     DEPRECIATION: { strict: false },
     REVISION_PLAN: { strict: false },
     REEVALUATION: { strict: false },
-    REPRISE_SUBVENTION: { strict: true },
+    // La reprise de subvention du MÊME exercice, passée après la réévaluation,
+    // relit le brut et le cumul réévalués (`RepriseSubventionService`, valeur
+    // d'origine et amortissements hors dotations) · annulée la réévaluation,
+    // elle resterait au 799 sur une valeur que la fiche ne porte plus. Elle
+    // s'annule donc d'abord. La reprise de la provision spéciale, elle, ne lit
+    // que les réévaluations des exercices ANTÉRIEURS (`lignesReevaluation`
+    // filtrées sur `dateFin < clôture`) · seule celle d'un exercice postérieur
+    // en dépend.
+    REPRISE_SUBVENTION: { strict: false },
     REPRISE_PROVISION_REEVALUATION: { strict: true },
     SORTIE: { strict: false },
     RECLASSEMENT: { strict: false },

@@ -88,6 +88,22 @@ describe('les actes qui dépendent du traitement annulé', () => {
     expect(actesQuiEnDependent(reev, [reev, dot])).toEqual([]);
     expect(actesQuiEnDependent(reev, [reev, dot, dotN1]).map((a) => a.id)).toEqual(['dotN1']);
   });
+
+  it('la reprise de subvention de N passée APRÈS la réévaluation de N a lu la valeur réévaluée · elle bloque son annulation', () => {
+    // Relecture de la ligne, B1 · strict, la réévaluation s'annulait et la
+    // reprise restait au 799 sur un brut que la fiche ne porte plus.
+    const reev = acte({ nature: 'REEVALUATION', id: 'reev', creeLe: t('12:00') });
+    const repriseApres = acte({ nature: 'REPRISE_SUBVENTION', id: 'rsApres', creeLe: t('13:00') });
+    const repriseAvant = acte({ nature: 'REPRISE_SUBVENTION', id: 'rsAvant', creeLe: t('11:00') });
+    expect(actesQuiEnDependent(reev, [reev, repriseAvant, repriseApres]).map((a) => a.id)).toEqual(['rsApres']);
+    expect(motifRefusAnnulation({ exerciceClos: false, dependants: actesQuiEnDependent(reev, [reev, repriseApres]) })).toMatch(
+      /Annulez d’abord le plus récent \(rsApres\)/,
+    );
+    // La reprise de la provision spéciale du même exercice ne lit pas la
+    // réévaluation de cet exercice · elle ne la bloque pas.
+    const provision = acte({ nature: 'REPRISE_PROVISION_REEVALUATION', id: 'rp', creeLe: t('13:00') });
+    expect(actesQuiEnDependent(reev, [reev, provision])).toEqual([]);
+  });
 });
 
 describe('le motif du refus', () => {
