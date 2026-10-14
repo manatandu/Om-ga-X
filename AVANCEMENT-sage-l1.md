@@ -317,6 +317,19 @@ retrait, retirée du modèle puis retirée, rang 1 repris, renommée.
   `ImpressionJournal` (à rejouer si une autre ligne ajoute des tables) ;
   `chrome-etroit.spec.ts` compte 17 commandes sous Structure.
 
+## Bloc du § 3 (2026-10-14, après la dernière fonction)
+
+- Serveur · `tsc --noEmit` sans erreur ; jest en six tranches successives,
+  12 414 tests (1 711, 1 968, 1 959, 2 503, 1 951, 2 322). Six specs tombées,
+  toutes parce qu'elles gelaient une requête ou une doublure d'avant la
+  fonction 12 (le filtre `statut: { not: 'SITUATION' }`) · corrigées, chacune
+  rejouée verte, et les doublures COMPLÉTÉES (opérateur `not`, statut), jamais
+  contournées, avec une simulation ajoutée aux jeux d'essai du groupe et du
+  contrôle des cumuls pour prouver qu'elle n'est pas lue ; `nest build` passe ;
+  migrations sans écart avec le schéma.
+- Client · `tsc --noEmit` sans erreur, vitest 2 023 tests (255 fichiers),
+  `vite build` passe.
+
 ## Questions pour Manasse
 
 Aucune ne bloque · le corpus ne régit aucun de ces choix, qui sont
