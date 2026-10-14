@@ -808,8 +808,15 @@ describe('créances douteuses · service', () => {
     // L'exercice a son à-nouveau · le solde du client se lit dans lui seul, à la date.
     expect(prisma.ligneEcriture.aggregate.mock.calls[0][0].where).toEqual({
       compte: { tenantId: 't', id: 'cli' },
-      // B1 · l'à-nouveau provisoire n'entre jamais dans un solde.
-      ecriture: { tenantId: 't', exerciceId: { in: ['ex-26'] }, date: { lte: new Date('2026-11-15') }, estANouveauProvisoire: false },
+      // B1 · l'à-nouveau provisoire n'entre jamais dans un solde, une
+      // simulation (journal de situation, ligne sage-l1, fonction 12) non plus.
+      ecriture: {
+        tenantId: 't',
+        exerciceId: { in: ['ex-26'] },
+        date: { lte: new Date('2026-11-15') },
+        estANouveauProvisoire: false,
+        statut: { not: 'SITUATION' },
+      },
     });
     expect(prisma.verrouCreancesDouteuses.create).toHaveBeenCalled();
     expect(prisma.verrouCreancesDouteuses.deleteMany).toHaveBeenLastCalledWith({ where: { tenantId: 't', id: 'verrou-1' } });
@@ -2440,6 +2447,8 @@ describe('créances douteuses · service', () => {
         // M9 · la correction par le résultat reprend la dépréciation du module.
         creanceDouteuseCorrection: { is: null },
         NOT: { corrigeEcriture: { is: { ajustementCreanceDouteuse: { isNot: null } } } },
+        // Une simulation (ligne sage-l1, fonction 12) n'est pas au 491.
+        statut: { not: 'SITUATION' },
       },
     });
   });
