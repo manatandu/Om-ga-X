@@ -59,6 +59,12 @@ test('SYSCOHADA · la fiche naît d’une ligne validée, sans écriture, et se 
   // La mise en service est PROPOSÉE à la date de la pièce, visible.
   await expect(formulaire.getByLabel('Mise en service')).toHaveValue(debut);
   await formulaire.getByLabel('Durée (ans)').fill('4');
+  // Relecture M2 · une pièce du PREMIER JOUR passée en opérations diverses
+  // est le plus souvent la reprise du bilan d'ouverture · la création attend
+  // que le cabinet confirme une acquisition faite ce jour-là.
+  await expect(formulaire.getByText(/premier jour de l'exercice, au journal OD/)).toBeVisible();
+  await expect(formulaire.getByRole('button', { name: 'Créer la fiche' })).toBeDisabled();
+  await formulaire.getByLabel('C’est une acquisition faite ce jour-là').check();
   await formulaire.getByRole('button', { name: 'Créer la fiche' }).click();
   await expect(page.getByText(/Fiche « Camion E2E » créée depuis la pièce n° \d+ · aucune écriture passée\./)).toBeVisible();
   // La ligne sort de la liste relue.

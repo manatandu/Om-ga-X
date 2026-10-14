@@ -51,7 +51,8 @@ test('SYSCOHADA · la fiche se modifie au brouillard, se duplique, se supprime, 
 
   await page.goto('/#/immobilisations');
   await page.getByRole('button', { name: 'Fiche', exact: true }).click();
-  const fiche = page.getByRole('dialog', { name: 'Fiche · Camion F e2e' });
+  // Le titre suit la désignation enregistrée · la fiche se retrouve par son début.
+  const fiche = page.getByRole('dialog', { name: /^Fiche · Camion F/ });
   await expect(fiche.getByRole('tab', { name: 'Général' })).toHaveAttribute('aria-selected', 'true');
   // Au brouillard · valeur et désignation se modifient, l'écriture suit.
   await expect(fiche.getByLabel('Valeur d’origine')).toBeEnabled();
@@ -79,7 +80,21 @@ test('SYSCOHADA · la fiche se modifie au brouillard, se duplique, se supprime, 
   await expect(ficheModifiee.getByLabel('Valeur d’origine')).toBeDisabled();
   await expect(ficheModifiee.getByRole('button', { name: 'Supprimer la fiche' })).toBeDisabled();
   await expect(ficheModifiee.getByLabel('Désignation')).toBeEnabled();
+  // Relecture · une saisie non enregistrée garde la fermeture · Échap la
+  // demande, refusée la fiche reste, acceptée elle se ferme sans rien écrire.
+  await ficheModifiee.getByLabel('Désignation').fill('Camion F renommé');
+  const questions: string[] = [];
+  page.once('dialog', (d) => {
+    questions.push(d.message());
+    void d.dismiss();
+  });
   await page.keyboard.press('Escape');
+  await expect.poll(() => questions.length).toBe(1);
+  expect(questions[0]).toMatch(/ne sont pas enregistrées/);
+  await expect(ficheModifiee).toBeVisible();
+  page.once('dialog', (d) => void d.accept());
+  await page.keyboard.press('Escape');
+  await expect(ficheModifiee).toBeHidden();
 
   // Un second bien, au brouillard, se supprime avec son écriture.
   await appelApi(page, 'POST', '/immobilisations', {
@@ -100,6 +115,11 @@ test('SYSCOHADA · la fiche se modifie au brouillard, se duplique, se supprime, 
   // n'ont pas d'ordre garanti dans la liste (tri par date d'acquisition).
   await page.getByText('Camion G e2e', { exact: true }).locator('xpath=..').getByRole('button', { name: 'Fiche', exact: true }).click();
   const ficheG = page.getByRole('dialog', { name: 'Fiche · Camion G e2e' });
+  // « Renoncer » referme la confirmation sans rien supprimer.
+  await ficheG.getByRole('button', { name: 'Supprimer la fiche' }).click();
+  await ficheG.getByRole('button', { name: 'Renoncer' }).click();
+  await expect(ficheG.getByRole('button', { name: 'Confirmer la suppression' })).toHaveCount(0);
+  expect(await balance2451()).toBe(20_000_000);
   await ficheG.getByRole('button', { name: 'Supprimer la fiche' }).click();
   await ficheG.getByRole('button', { name: 'Confirmer la suppression' }).click();
   await expect(page.getByText(/Fiche « Camion G e2e » supprimée/)).toBeVisible();

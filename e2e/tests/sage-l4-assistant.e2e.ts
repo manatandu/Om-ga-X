@@ -33,9 +33,12 @@ test('SYSCOHADA · l’assistant crée un bien en huit étapes, puis un second e
 
   // 1. Désignation · on n'avance pas sans elle.
   await expect(suivant).toBeDisabled();
+  // Le focus est au premier champ de l'étape, et Entrée avance (relecture).
+  await expect(assistant.getByLabel('Désignation')).toBeFocused();
   await assistant.getByLabel('Désignation').fill('Camion assistant');
-  await suivant.click();
+  await page.keyboard.press('Enter');
   // 2. Compte.
+  await expect(assistant.getByLabel('Compte du bien')).toBeFocused();
   await assistant.getByLabel('Compte du bien').selectOption(c2451.id);
   await suivant.click();
   // 3. Origine · acquis dans l'exercice.
@@ -45,7 +48,8 @@ test('SYSCOHADA · l’assistant crée un bien en huit étapes, puis un second e
   await assistant.getByLabel('Mise en service').fill(debut);
   await suivant.click();
   // 5. Valeur.
-  await assistant.getByLabel('Valeur d’origine').fill('8000000');
+  // Un montant tapé avec ses espaces se lit (relecture).
+  await assistant.getByLabel('Valeur d’origine').fill('8 000 000');
   await suivant.click();
   // 6. Financement · la liste du formulaire, et le journal.
   const financement = assistant.getByLabel('Financement');
@@ -58,6 +62,8 @@ test('SYSCOHADA · l’assistant crée un bien en huit étapes, puis un second e
   await suivant.click();
   // 8. Récapitulatif, puis création par la route du formulaire.
   await expect(assistant.getByRole('cell', { name: 'Camion assistant' })).toBeVisible();
+  await expect(assistant.getByRole('cell', { name: /8\s000\s000,00/ })).toBeVisible();
+  await expect(assistant.getByRole('button', { name: 'Créer le bien' })).toBeFocused();
   await assistant.getByRole('button', { name: 'Créer le bien' }).click();
   await expect(assistant.getByText('Bien « Camion assistant » créé.')).toBeVisible();
   expect(await mouvement2451()).toBe(8_000_000);
