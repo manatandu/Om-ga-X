@@ -113,6 +113,7 @@ export function RepartitionAnalytique({ salarieId }: { salarieId: string }) {
               </tbody>
             </table>
           </div>
+          {lu.plansTronques && <div className="text-warning mt-1">Liste des plans tronquée aux cinquante premiers.</div>}
           {lu.tronque && (
             <div className="text-warning mt-1">
               Liste tronquée · {lu.versions.length} répartitions lues sur {lu.total}.

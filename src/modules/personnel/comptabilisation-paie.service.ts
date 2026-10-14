@@ -151,7 +151,7 @@ export class ComptabilisationPaieService {
       return {
         ...vide,
         reserves: [
-          'VENTILATION NON PROPOSÉE · les répartitions en vigueur ce mois dépassent la borne de lecture · les lignes ' +
+          'VENTILATION NON PROPOSÉE · les plans analytiques actifs ou les répartitions en vigueur ce mois dépassent la borne de lecture · les lignes ' +
             "partent sans ventilation, à reprendre ligne à ligne (Ventilation d'une ligne).",
         ],
       };

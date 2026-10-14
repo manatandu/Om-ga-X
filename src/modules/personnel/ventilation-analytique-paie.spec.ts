@@ -265,6 +265,18 @@ describe("la ventilation de l'écriture de paie", () => {
     });
     expect(sommeil.parLigne[i]).toEqual([]);
     expect(sommeil.reserves.join(' ')).toMatch(/DORMANTE/);
+    // Une part illisible ne se lit pas comme zéro · la ligne part non ventilée.
+    const illisible = ventilerLaPaie({
+      mois: '2026-12',
+      referentiel: 'SYSCOHADA',
+      lignes: p.lignes,
+      bulletins,
+      plans: [PROJ],
+      sections: SECTIONS,
+      versions: [version('a', 's1', 'p-proj', '2026-01', [['p1', 49.995], ['p2', 50.005]])],
+    });
+    expect(illisible.parLigne[i]).toEqual([]);
+    expect(illisible.nonVentilees.find((n) => n.index === i)?.motif).toMatch(/illisible/);
   });
 
   it("la reprise en négatif d'un bulletin annulé ne se ventile pas d'office, et le dit", () => {

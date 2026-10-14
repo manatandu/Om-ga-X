@@ -113,6 +113,7 @@ export class RepartitionsAnalytiquesPaieService {
         sectionsTronquees: p.sections.length > PLAFOND_SECTIONS_PAR_PLAN,
       })),
       plansTronques: plans.length === PLAFOND_PLANS_LUS,
+      // (La passation, elle, refuse de ventiler au-delà · `pourLaPassation`.)
       versions: versions.map((v) => ({
         id: v.id,
         planId: v.planId,
@@ -233,9 +234,11 @@ export class RepartitionsAnalytiquesPaieService {
   ): Promise<{ plans: PlanConnu[]; sections: SectionConnue[]; versions: VersionRepartition[]; obligatoires: string[] } | null> {
     const plans = await this.prisma.planAnalytique.findMany({
       where: { tenantId, estActif: true },
-      take: PLAFOND_PLANS_LUS,
+      take: PLAFOND_PLANS_LUS + 1,
       select: { id: true, code: true, classesVentilees: true, estActif: true, ventilationObligatoire: true },
     });
+    // Au-delà de la borne, un plan ignoré laisserait ses lignes sans ventilation sans le dire.
+    if (plans.length > PLAFOND_PLANS_LUS) return null;
     if (plans.length === 0 || salarieIds.length === 0) {
       return { plans, sections: [], versions: [], obligatoires: plans.filter((p) => p.ventilationObligatoire).map((p) => p.code) };
     }

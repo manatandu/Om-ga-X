@@ -53,6 +53,8 @@ export function QuestionnairePaie(p: {
   const { estAdmin, peutEcrire } = useAuth();
   const [lu, setLu] = useState<Lu | null>(null);
   const [effectifRegistre, setEffectifRegistre] = useState<number | null>(null);
+  // La proposition du registre ne bloque pas le questionnaire, mais son échec se DIT.
+  const [erreurEffectif, setErreurEffectif] = useState('');
   const [erreurLecture, setErreurLecture] = useState('');
   const [reponses, setReponses] = useState<ReponsesPaie>(REPONSES_VIDES);
   const [page, setPage] = useState(0);
@@ -68,10 +70,13 @@ export function QuestionnairePaie(p: {
     const parametres = new URLSearchParams({ ...(salarieId ? { salarieId } : {}), ...(mois ? { mois } : {}) }).toString();
     Promise.all([
       api.get<Lu>(`/personnel/questionnaire-paie${parametres ? `?${parametres}` : ''}`),
-      // La proposition du registre · un échec la tait, il ne bloque pas le questionnaire.
+      // La proposition du registre · un échec ne bloque pas le questionnaire, il se dit sur sa question.
       api.get<{ effectif: number }>('/personnel/effectif').then(
         (e) => e.effectif,
-        () => null,
+        (e: unknown) => {
+          if (moi === jeton.current) setErreurEffectif(e instanceof ApiError ? e.message : 'Lecture refusée.');
+          return null;
+        },
       ),
     ]).then(
       ([l, eff]) => {
@@ -236,6 +241,9 @@ export function QuestionnairePaie(p: {
             </div>
           )}
           {/* Les PROPOSITIONS · écrites au seul clic, jamais d'office. */}
+          {q.cle === 'effectifInpp' && erreurEffectif && (
+            <div className="text-warning">Effectif du registre illisible · {erreurEffectif}</div>
+          )}
           {q.cle === 'effectifInpp' && (
             <div className="flex flex-wrap gap-2">
               {effectifRegistre !== null && effectifRegistre > 0 && (

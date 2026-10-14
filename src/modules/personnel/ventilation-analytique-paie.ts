@@ -334,7 +334,13 @@ export function ventilerLaPaie(params: {
             };
             continue;
           }
-          const points = enPointsDeBase(r.pourcentage) ?? 0;
+          // Deux décimales au plus, tenues par la base (Decimal 5,2) · une part
+          // illisible ne se lit pas comme zéro, la ligne part non ventilée.
+          const points = enPointsDeBase(r.pourcentage);
+          if (points === null) {
+            motif = { cause: 'SECTION_HORS_USAGE', texte: `la part de la section ${s.code} dans la répartition de ${b.nomComplet} est illisible` };
+            continue;
+          }
           exactes.set(s.id, (exactes.get(s.id) ?? 0n) + BigInt(centimes) * BigInt(points));
         }
       }
