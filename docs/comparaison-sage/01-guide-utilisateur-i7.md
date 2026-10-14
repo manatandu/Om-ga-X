@@ -40,7 +40,7 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 | 7 | Bouton « Gérer » vers l'interrogation du compte | 5 | FIDÈLE | `PlanComptesPage.tsx`, bouton Gérer. |
 | 8 | Numéro unique | 5 | FIDÈLE | Clé unique (dossier, numéro). |
 | 9 | Longueur des numéros fixée à la création, jamais modifiable | 5 | DIFFÉRENT, VOULU | Longueur modifiable vers le haut, jamais sous le plus long numéro ouvert (CLAUDE.md, « Longueur de compte paramétrable »). |
-| 10 | Type Détail ou Total, figé après validation | 5 | PARTIEL | Les deux types existent ; le refus de changer de type après création n'a pas été lu. |
+| 10 | Type Détail ou Total, figé après validation | 5 | DIFFÉRENT, À TRIER | Le type reste modifiable ; seul le passage d'un compte déjà mouvementé en Total est refusé (`compte.service.ts`). |
 | 11 | Intitulé (35 caractères) | 5 | FIDÈLE | Longueur maximale non vérifiée. |
 | 12 | Abrégé (17 caractères, classement et recherche) | 5 | ABSENT | Aucun champ sur `Compte`. |
 | 13 | Nature du compte déduite du numéro | 5 | FIDÈLE | Sept natures par fourchettes (`NatureCompte`). |
@@ -49,7 +49,7 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 | 16 | Compte reporting | 6 | ABSENT | Déjà noté faute de source (comparaison du 2026-09-25, point 19). |
 | 17 | Code taxe par défaut | 6 | FIDÈLE | `tauxTvaDefaut`. |
 | 18 | Volet Champs libres (bloc-notes par compte) | 6 | ABSENT | |
-| 19 | Grille analytique appliquée au compte | 6 | NON VÉRIFIÉ | Des clés de répartition existent ; leur rattachement à un compte n'a pas été lu. |
+| 19 | Grille analytique appliquée au compte | 6 | ABSENT | Les clés de répartition d'OmegaX répartissent une section sur d'autres ; aucune n'est rattachée à un compte général. |
 | 20 | Saisir dans la devise, devise par défaut du compte | 7 | DIFFÉRENT, À TRIER | Une ligne en devise se saisit sur tout compte (CLAUDE.md F49) ; aucun réglage par compte. |
 | 21 | Saisie du compte tiers obligatoire | 7 | DIFFÉRENT, VOULU | Pas d'option ; la saisie refuse le collectif qui porte des comptes de tiers (décision de Manasse du 2026-10-09). |
 | 22 | Date d'échéance et mode de règlement obligatoires | 7 | ABSENT | L'échéance d'une ligne reste facultative. |
@@ -67,7 +67,7 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 |---|---|---|---|---|
 | 30 | Liste des tiers : créer, consulter, modifier, supprimer | 9 | FIDÈLE | Structure réservée à l'administrateur, consultation ouverte (décision du 2026-09-26). |
 | 31 | Numéro du tiers unique | 9 | FIDÈLE | Code unique par dossier ; numéro de compte choisi à la création. |
-| 32 | Type Client, Fournisseur, Salarié, Autre | 10 | FIDÈLE | Plus Adhérent (SYCEBNL). Type figé après création non vérifié. |
+| 32 | Type Client, Fournisseur, Salarié, Autre | 10 | FIDÈLE | Plus Adhérent (SYCEBNL). Type figé : absent du DTO de modification. |
 | 33 | Intitulé | 10 | FIDÈLE | |
 | 34 | Classement (17 caractères) | 10 | ABSENT | |
 | 35 | Compte collectif proposé selon le type, principal automatique | 10 | DIFFÉRENT, VOULU | Compte individuel sous le collectif, et toute la panoplie du type (décisions du 2026-09-25 et du 2026-10-09). |
@@ -101,7 +101,7 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 | # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
 | 60 | Sections : créer, consulter, modifier, supprimer | 15 | FIDÈLE | |
-| 61 | Numéro en majuscules, longueur paramétrée | 15 | NON VÉRIFIÉ | |
+| 61 | Numéro en majuscules, longueur paramétrée | 15 | DIFFÉRENT, À TRIER | Code libre, ni mis en majuscules ni borné en longueur. |
 | 62 | Type Détail ou Total | 15 | FIDÈLE | Le Total ne reçoit ni budget ni ventilation. |
 | 63 | Intitulé | 16 | FIDÈLE | |
 | 64 | Classement | 16 | ABSENT | |
@@ -109,9 +109,9 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 | 66 | Plusieurs plans analytiques | 16 | FIDÈLE | Plus dates de section et bailleur. |
 | 67 | Plan IFRS | 16 | DIFFÉRENT, VOULU | Voir ligne 52. |
 | 68 | Saut de ligne ou de page | 16 | ABSENT | |
-| 69 | Report à-nouveau de la section | 16 | NON VÉRIFIÉ | |
+| 69 | Report à-nouveau de la section | 16 | ABSENT | Seuls les budgets des sections se reportent sur l'exercice suivant. |
 | 70 | Mise en sommeil de la section | 16 | FIDÈLE | |
-| 71 | Budget de section : sens, global, réparti par période | 17 | PARTIEL | Annuel et mensuel ; ni quantité, ni prévision faible ou forte. Sens charge ou produit non vérifié. |
+| 71 | Budget de section : sens, global, réparti par période | 17 | PARTIEL | Annuel et mensuel ; ni sens charge ou produit, ni quantité, ni prévision faible ou forte. |
 | 72 | Informations libres de la section | 17 | ABSENT | |
 | 73 | Cumuls de la section | 17 | DIFFÉRENT, À TRIER | Dans la balance analytique, pas sur la fiche. |
 
@@ -120,9 +120,9 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 | # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
 | 74 | Code, créer, modifier, supprimer | 18 | FIDÈLE | |
-| 75 | Types Achats, Ventes, Trésorerie, Général, Situation | 18 | FIDÈLE | Les cinq. Type figé après création non vérifié. |
+| 75 | Types Achats, Ventes, Trésorerie, Général, Situation | 18 | FIDÈLE | Les cinq. Type figé : absent du DTO de modification. |
 | 76 | Curseur placé au débit ou au crédit selon le type et la nature | 18 | ABSENT | |
-| 77 | Journal de situation ni clôturable ni compactable | 19 | NON VÉRIFIÉ | |
+| 77 | Journal de situation ni clôturable ni compactable | 19 | ABSENT | Le type Situation existe ; aucune règle ne l'écarte de la clôture. |
 | 78 | Intitulé | 19 | FIDÈLE | |
 | 79 | Numérotation : manuelle, continue par journal, continue pour le fichier, mensuelle | 19 | FIDÈLE | Les quatre modes, et les trous de séquence nommés. |
 | 80 | Protection du numéro de pièce | 19 | ABSENT | |
@@ -140,17 +140,17 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 |---|---|---|---|---|
 | 88 | Saisie des écritures et Journaux de saisie | 21 | FIDÈLE | Grille journal par mois, chaque case dans son état. |
 | 89 | Fenêtre multi-échéance selon le modèle de règlement | 23 | ABSENT | L'échéance se saisit ligne par ligne. |
-| 90 | Tabulation entre zones, Entrée pour valider la ligne | 21 | NON VÉRIFIÉ | |
+| 90 | Tabulation entre zones, Entrée pour valider la ligne | 21 | PARTIEL | La tabulation passe d'une zone à l'autre ; Entrée choisit le compte dans la liste, elle ne valide pas la ligne. |
 | 91 | Modifier ou supprimer une écriture non lettrée, non rapprochée, non clôturée | 22 | DIFFÉRENT, VOULU | En plus, seule une écriture au brouillard se modifie (AUDCIF art. 22, 2°). |
 | 92 | Appeler un libellé pré-enregistré | 22 | FIDÈLE | |
-| 93 | Bouton de saisie analytique | 22 | NON VÉRIFIÉ | La ventilation existe ; sa fenêtre en saisie n'a pas été lue. |
+| 93 | Bouton de saisie analytique (fenêtre de ventilation) | 22 | DIFFÉRENT, À TRIER | Une colonne par axe dans la grille, la ligne entière sur une section ; le partage entre sections se fait ailleurs (ligne 100). |
 | 94 | Visualiser ou modifier une pièce | 22 | FIDÈLE | Saisie par pièce, Précédent et Suivant. |
 | 95 | Interroger le compte général ou tiers depuis la saisie (double-clic) | 22, 26 | ABSENT | Le double-clic n'existe que sur la grille des journaux. |
 | 96 | Équilibrer la pièce | 22 | FIDÈLE | Bouton Équilibrer de `SaisiePage.tsx`. |
 | 97 | Changer de journal ou de période | 22 | FIDÈLE | |
 | 98 | Imprimer le brouillard | 22 | FIDÈLE | État Brouillard. |
 | 99 | Ventilation analytique si le journal et le compte l'autorisent | 23 | DIFFÉRENT, À TRIER | Voir ligne 24. |
-| 100 | Modifier une ventilation analytique | 24 | NON VÉRIFIÉ | |
+| 100 | Modifier une ventilation analytique | 24 | DIFFÉRENT, À TRIER | Possible depuis l'écran des états analytiques, pas depuis la saisie. |
 
 ## Modèles de saisie (p. 25 et 26)
 
@@ -169,7 +169,7 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 | 106 | Prochaine lettre proposée | 27 | FIDÈLE | |
 | 107 | Lettrer seulement si le solde est nul | 28 | DIFFÉRENT, VOULU | Le groupe partiel est admis (CLAUDE.md F50). |
 | 108 | Délettrer par la lettre | 28 | FIDÈLE | |
-| 109 | Extrait de compte tiers imprimé | 29 | NON VÉRIFIÉ | Aucun état nommé « extrait » trouvé ; le grand livre des tiers existe. |
+| 109 | Extrait de compte tiers imprimé | 29 | DIFFÉRENT, À TRIER | Aucun état « extrait » ; le relevé de Rappel et relevé, et l'impression de la fenêtre d'interrogation, en tiennent lieu. |
 | 110 | Justificatif du solde | 29 | FIDÈLE | État Justificatif de solde. |
 
 ## Rappels et relevés (p. 30 et 31)
@@ -198,7 +198,7 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 | 120 | Échéances sélectionnées par critères | 35 | FIDÈLE | |
 | 121 | Transmettre les règlements par la messagerie | 35 | ABSENT | |
 | 122 | Regrouper plusieurs factures d'un tiers sur un règlement | 36 | FIDÈLE | Une pièce par tiers. |
-| 123 | Imprimer la proposition de règlement | 36 | NON VÉRIFIÉ | |
+| 123 | Imprimer la proposition de règlement | 36 | DIFFÉRENT, À TRIER | Pas d'état dédié ; « Fichier, Imprimer la fenêtre… » imprime l'écran tel qu'il est. |
 | 124 | Générer les écritures | 36 | FIDÈLE | Lettrage posé aussitôt. |
 | 125 | Règlement partiel | 36 | FIDÈLE | Plus que le dû refusé. |
 | 126 | Date limite des échéances traitées | 36 | FIDÈLE | Champ « jusqu'au ». |
@@ -209,7 +209,7 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 | # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
 | 128 | Rapprochement manuel : journal, date, pièce de trésorerie, cocher | 38 | FIDÈLE | Plus import du relevé et correspondances proposées. |
-| 129 | Imprimer le rapprochement | 38 | NON VÉRIFIÉ | |
+| 129 | Imprimer le rapprochement | 38 | DIFFÉRENT, À TRIER | Pas d'état de rapprochement dédié ; même impression de la fenêtre. |
 
 ## Écritures d'abonnement (p. 39)
 
@@ -226,7 +226,7 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 | 133 | Impression dans un fichier | 40 | FIDÈLE | Exports au format tableur. |
 | 134 | Grand livre des comptes | 41 | FIDÈLE | |
 | 135 | Balance des comptes | 41 | FIDÈLE | |
-| 136 | Balance âgée, tranches paramétrables, date de référence | 41 | PARTIEL | Tranches présentes ; leur paramétrage n'a pas été vérifié. |
+| 136 | Balance âgée, tranches paramétrables, date de référence | 41 | DIFFÉRENT, À TRIER | Colonnes fixes par périodes calendaires (cinq mois, le reste de l'exercice, l'antérieur), choisies pour les dossiers de révision ; rien à paramétrer. |
 | 137 | Journal centralisé | 41 | ABSENT | Le mot n'apparaît nulle part dans le code. |
 | 138 | Balance des tiers | 41 | FIDÈLE | Balance auxiliaire. |
 | 139 | Grand livre des tiers | 41 | FIDÈLE | Présentation des modèles FPM, par famille de tiers. |
@@ -249,10 +249,10 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 
 ## Bilan du manuel
 
-150 fonctions relevées : 66 FIDÈLE, 11 DIFFÉRENT VOULU, 14 DIFFÉRENT À TRIER,
-10 PARTIEL, 39 ABSENT, 10 NON VÉRIFIÉ.
+150 fonctions relevées : 66 FIDÈLE, 11 DIFFÉRENT VOULU, 22 DIFFÉRENT À TRIER,
+9 PARTIEL, 42 ABSENT, 0 NON VÉRIFIÉ (les dix lignes d'abord
+non vérifiées ont été lues dans le code dans un second passage, le même jour).
 
 ## Ce qui reste à faire sur ce manuel
 
-- Lever les NON VÉRIFIÉ en ouvrant les écrans concernés.
 - Manasse trie les ABSENT et les DIFFÉRENT, À TRIER.
