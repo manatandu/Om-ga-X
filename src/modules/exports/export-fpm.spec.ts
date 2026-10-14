@@ -161,8 +161,10 @@ function service(options: { compte?: number; lignes?: Ligne[]; balanceSans?: str
     exercice: { findFirst: jest.fn(async ({ where }: any) => (where.id === 'ex' && where.tenantId === 't1' ? EXERCICE : null)) },
     ecriture: {
       count: jest.fn(async ({ where }: any) => {
-        expect(where).toMatchObject({ tenantId: 't1', exerciceId: 'ex', statut: { not: 'VALIDEE' } });
-        return new Set(lignes.filter((l) => l.ecriture.statut !== 'VALIDEE').map((l) => l.ecriture)).size;
+        // Le brouillard SEUL · une écriture de situation n'en est pas un
+        // (ligne sage-l1, fonction 12).
+        expect(where).toMatchObject({ tenantId: 't1', exerciceId: 'ex', statut: 'BROUILLARD' });
+        return new Set(lignes.filter((l) => l.ecriture.statut === 'BROUILLARD').map((l) => l.ecriture)).size;
       }),
     },
     ligneEcriture: {
@@ -172,7 +174,9 @@ function service(options: { compte?: number; lignes?: Ligne[]; balanceSans?: str
         options.compte ?? lignes.filter((l) => !where.compteId || where.compteId.in.includes(l.compteId)).length,
       ),
       findMany: jest.fn(async ({ where, take, cursor, skip }: any) => {
-        expect(where.ecriture).toEqual({ tenantId: 't1', exerciceId: 'ex' });
+        // Le grand livre du compte · tout l'exercice, hors écritures de
+        // situation (ligne sage-l1, fonction 12).
+        expect(where.ecriture).toEqual({ tenantId: 't1', exerciceId: 'ex', statut: { not: 'SITUATION' } });
         const filtrees = lignes.filter((l) => !where.compteId || where.compteId.in.includes(l.compteId));
         const depart = cursor ? filtrees.findIndex((l) => l.id === cursor.id) + (skip ?? 0) : 0;
         return filtrees.slice(depart, depart + take);

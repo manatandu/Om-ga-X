@@ -163,6 +163,8 @@ export class ExportController {
           ...criteres,
         },
         ouvrir,
+        // Le journal entier exporté s'enregistre comme imprimé (sage-l1, 60).
+        user.userId,
       ),
     );
   }

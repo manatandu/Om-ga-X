@@ -1,6 +1,7 @@
 import { HORS_SITUATION, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
 import { nombreSaisi } from '../notes-annexes/controles-saisie-notes';
-import { Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import { enregistrerImpression, estUneRecherche, periodeCouverte } from '../journaux/impressions-journal';
 import { immatriculationDesLivres, numeroRegistreLiasse } from '../tenant/mentions-immatriculation';
 import { REFS_DE_SOLDE } from '../etats-financiers/correspondance-projet-emplois-ressources';
 import type { Writable } from 'stream';
@@ -15,7 +16,7 @@ import {
   type IdentiteEtat,
   segmentIdentification,
 } from './classeur-en-flux';
-import { JeuEtatsFinanciersSycebnl, Prisma, Referentiel, SystemeComptableSyscohada } from '@prisma/client';
+import { FormeImpressionJournal, JeuEtatsFinanciersSycebnl, Prisma, Referentiel, SystemeComptableSyscohada } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../common/prisma.service';
 import { monnaieDuJeuLegal } from '../../common/monnaie-de-tenue';
@@ -399,6 +400,8 @@ export function anomalieResultatAnterieurNonVire(bilan: {
 
 @Injectable()
 export class ExportService {
+  private readonly logger = new Logger(ExportService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ecritureService: EcritureService,
@@ -788,6 +791,9 @@ export class ExportService {
       inclureBrouillard?: boolean;
     } & CriteresRecherche,
     ouvrir: (nomFichier: string) => Writable,
+    // L'auteur de l'export · le journal entier d'un exercice exporté est une
+    // impression du journal, enregistrée (ligne sage-l1, fonction 60).
+    imprimePar?: string,
   ): Promise<{ lignes: number }> {
     const where = perimetreJournal(tenantId, filtres);
     await this.verifierVolume({ ecriture: where }, 'Journal');
@@ -889,7 +895,55 @@ export class ExportService {
     ligneTotal.commit();
 
     await flux.terminer(derniereDonnee);
+    await this.marquerJournalImprime(tenantId, filtres, imprimePar);
     return { lignes: nbLignes };
+  }
+
+  /**
+   * LE JOURNAL EXPORTÉ EST UN JOURNAL IMPRIMÉ (ligne sage-l1, fonction 60 ·
+   * AUDCIF art. 22, 1° et 7°) · le journal ENTIER d'un exercice, d'un journal
+   * ou de tous, jamais une recherche. Enregistré APRÈS la dernière ligne
+   * écrite · un export interrompu n'atteste rien. Un échec d'enregistrement
+   * ne défait jamais un classeur déjà remis · il est consigné, et le journal
+   * reste à imprimer, ce que l'état des journaux de saisie dit.
+   */
+  private async marquerJournalImprime(
+    tenantId: string,
+    filtres: { exerciceId?: string; journalId?: string; dateDebut?: string; dateFin?: string } & CriteresRecherche,
+    imprimePar?: string,
+  ) {
+    if (!imprimePar || !filtres.exerciceId || estUneRecherche(filtres)) return;
+    try {
+      const exercice = await this.prisma.exercice.findFirst({
+        where: { id: filtres.exerciceId, tenantId },
+        select: { id: true, dateDebut: true, dateFin: true },
+      });
+      if (!exercice) return;
+      const periode = periodeCouverte(exercice, filtres);
+      const nombreEcritures = await this.prisma.ecriture.count({
+        where: perimetreJournal(tenantId, {
+          exerciceId: exercice.id,
+          ...(filtres.journalId ? { journalId: filtres.journalId } : {}),
+          dateDebut: periode.dateDebut.toISOString().slice(0, 10),
+          dateFin: periode.dateFin.toISOString().slice(0, 10),
+        }),
+      });
+      await enregistrerImpression(this.prisma, {
+        tenantId,
+        exerciceId: exercice.id,
+        journalId: filtres.journalId ?? null,
+        dateDebut: periode.dateDebut,
+        dateFin: periode.dateFin,
+        forme: FormeImpressionJournal.EXPORT,
+        nombreEcritures,
+        imprimePar,
+      });
+    } catch (erreur) {
+      this.logger.error(
+        `Journal exporté sans être enregistré comme imprimé (dossier ${tenantId}, exercice ${filtres.exerciceId}) · ` +
+          (erreur instanceof Error ? erreur.message : String(erreur)),
+      );
+    }
   }
 
   /**

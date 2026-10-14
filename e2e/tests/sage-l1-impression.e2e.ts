@@ -1,0 +1,47 @@
+import { expect, test } from '@playwright/test';
+import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
+
+/**
+ * LE JOURNAL MARQUÉ IMPRIMÉ (ligne sage-l1, fonction 60 · décision par la
+ * loi, AUDCIF art. 22, 1°, 3° et 7°). Le dossier qui a choisi l'option
+ * refuse de clôturer une période dont des écritures validées ne figurent sur
+ * aucune impression faite après leur validation ; « Imprimer le journal »
+ * enregistre l'impression (numérotée, datée) au serveur avant d'ouvrir la
+ * boîte d'impression, et la clôture passe ensuite.
+ */
+interface Exercice { id: string; dateDebut: string; dateFin: string }
+
+test('SYSCOHADA · la clôture attend l’impression du journal, et l’impression s’enregistre', async ({ page }) => {
+  const pannes = surveiller(page);
+  const dossier = await creerDossier(page, { referentiel: 'SYSCOHADA', nom: 'Impression e2e', montant: 3_000 });
+  await seConnecter(page, dossier.email);
+
+  const exercice = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).find((e) => e.id === dossier.exerciceId)!;
+  await appelApi(page, 'PATCH', '/dossier/refus-cloture-non-imprime', { refusClotureJournalNonImprime: true });
+  await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: exercice.id, dateLimite: exercice.dateFin.slice(0, 10) });
+  const fin = exercice.dateFin.slice(0, 10);
+
+  // Validée, jamais imprimée · la clôture de période est refusée et nomme le mois.
+  await expect(
+    appelApi(page, 'POST', `/exercices/${exercice.id}/clotures/periode`, { dateLimite: fin }),
+  ).rejects.toThrow(/non imprimé/);
+
+  // La boîte d'impression du navigateur ne s'ouvre pas sous Playwright · le
+  // geste compte par ce que le serveur enregistre AVANT elle.
+  await page.goto('/#/journal?onglet=journal');
+  await page.evaluate(() => {
+    window.print = () => undefined;
+  });
+  await page.getByRole('button', { name: 'Imprimer le journal' }).click();
+  await expect(page.getByText(/Impression n° 1 du journal enregistrée/)).toBeVisible();
+
+  const liste = await appelApi<{ impressions: { numero: number; forme: string }[]; total: number }>(
+    page,
+    'GET',
+    `/impressions-journal?exerciceId=${exercice.id}`,
+  );
+  expect(liste.impressions.map((i) => [i.numero, i.forme])).toEqual([[1, 'IMPRESSION']]);
+  await appelApi(page, 'POST', `/exercices/${exercice.id}/clotures/periode`, { dateLimite: fin });
+
+  expect(pannes).toEqual([]);
+});

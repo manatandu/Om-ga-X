@@ -635,6 +635,16 @@ model Tenant {
   // par son art. 16, 2) côté EBNL, puisque son art. 3 exclut justement l'art. 69
   // de l'AUDCIF.
   doubleRegardValidation Boolean @default(false)
+  // REFUS DE CLÔTURER UN JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60 ;
+  // décision D3 de la reproduction). Une OPTION, désactivée par défaut, comme
+  // le double regard · l'AUDCIF art. 22, 3° impose la clôture informatique et
+  // ne la subordonne à aucune impression ; l'art. 22, 1° et 7° veut des
+  // données restituées sur papier et des états numérotés et datés, que
+  // l'impression enregistrée (`ImpressionJournal`) atteste. Cochée, une
+  // clôture (partielle, totale, de période, annuelle) est refusée tant qu'une
+  // écriture validée de la période n'a pas été imprimée APRÈS sa validation ·
+  // l'issue est immédiate, imprimer le journal.
+  refusClotureJournalNonImprime Boolean @default(false)
 
   assujettiTva               Boolean           @default(false)
   // LA QUESTION A-T-ELLE ÉTÉ RÉPONDUE ? `assujettiTva` vaut faux par défaut et
@@ -849,6 +859,7 @@ model Tenant {
   comptesVirementFonds         CompteVirementFonds[]
   virementsFonds               VirementFonds[]
   piecesVirementFonds          PieceVirementFonds[]
+  impressionsJournaux          ImpressionJournal[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -1365,6 +1376,7 @@ model Journal {
   ribsBanque        RibBanque[]
   virementsFondsOrigine     VirementFonds[] @relation("VirementFondsJournalOrigine")
   virementsFondsDestination VirementFonds[] @relation("VirementFondsJournalDestination")
+  impressions               ImpressionJournal[]
 
   @@unique([tenantId, code])
   @@map("journaux")
@@ -1684,6 +1696,7 @@ model Exercice {
   simulationsReference            SimulationBudgetaire[]             @relation("SimulationReference")
   simulationsCible                SimulationBudgetaire[]             @relation("SimulationCible")
   virementsFonds                  VirementFonds[]
+  impressionsJournaux             ImpressionJournal[]
 
   @@unique([tenantId, dateDebut, dateFin])
   @@map("exercices")
@@ -10157,3 +10170,45 @@ model PieceVirementFonds {
   @@index([tenantId, virementId])
   @@map("pieces_virement_fonds")
 }
+
+// Ligne sage-l1 · journal marqué imprimé (fonction 60)
+
+/// La forme sous laquelle le journal a été remis · la boîte d'impression du
+/// navigateur, ou le classeur exporté par le serveur.
+enum FormeImpressionJournal {
+  IMPRESSION
+  EXPORT
+}
+
+/// UNE IMPRESSION DU JOURNAL, ENREGISTRÉE PAR LE SERVEUR (ligne sage-l1,
+/// fonction 60 · Sage 100 i7 marque le journal « imprimé »). AUDCIF art. 22,
+/// 1° (les données « puissent être restituées sur papier ») et 7° (« les
+/// états périodiques fournis soient numérotés et datés ») · un numéro continu
+/// par dossier, la date, l'auteur, l'exercice, le journal (ou tous) et la
+/// période couverts. Une écriture validée APRÈS l'impression rend sa période
+/// « non imprimée » à nouveau · la comparaison porte sur `imprimeAt`.
+/// Jamais retouchée, jamais supprimée · un acte, au journal d'audit.
+model ImpressionJournal {
+  id              String                 @id @default(uuid())
+  tenantId        String
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
+  numero          Int
+  exerciceId      String
+  exercice        Exercice               @relation(fields: [exerciceId], references: [id])
+  // Null · le journal de TOUS les journaux du dossier pour la période.
+  journalId       String?
+  journal         Journal?               @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  dateDebut       DateTime
+  dateFin         DateTime
+  forme           FormeImpressionJournal
+  // Les pièces que l'impression portait, comptées par le serveur au moment
+  // de l'enregistrement · ce qu'elle atteste, jamais un chiffre du client.
+  nombreEcritures Int
+  imprimeAt       DateTime               @default(now())
+  imprimePar      String
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, exerciceId, journalId])
+  @@map("impressions_journaux")
+}
+

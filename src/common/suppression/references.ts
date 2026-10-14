@@ -64,6 +64,7 @@ const LIBELLES: Record<string, string> = {
   'Facture.tiersId': 'factures',
   'Devis.tiersId': 'devis',
   'Cloture.journalId': 'clôtures de journal',
+  'ImpressionJournal.journalId': 'impressions du journal',
   'RibBanque.journalId': 'RIB bancaire rattaché (Structure > Banques)',
   'VentilationAnalytique.sectionId': 'ventilations analytiques',
   'LigneOdAnalytique.sectionId': "lignes d'OD analytique",

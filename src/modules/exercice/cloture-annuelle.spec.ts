@@ -649,7 +649,13 @@ describe('AU1 · la clôture reporte le lettrage du provisoire sur le définitif
 describe('Clôture de période · bornée à l’exercice', () => {
   const service = () => {
     const create = jest.fn().mockResolvedValue({});
-    const prisma = { exercice: { findFirst: jest.fn().mockResolvedValue(N) }, cloture: { create } };
+    // Le dossier ne refuse pas la clôture d'un journal non imprimé (option de
+    // la ligne sage-l1, fonction 60, désactivée par défaut).
+    const prisma = {
+      exercice: { findFirst: jest.fn().mockResolvedValue(N) },
+      cloture: { create },
+      tenant: { findUnique: jest.fn().mockResolvedValue({ refusClotureJournalNonImprime: false }) },
+    };
     return { s: new ExerciceService(prisma as never, {} as never), create };
   };
 

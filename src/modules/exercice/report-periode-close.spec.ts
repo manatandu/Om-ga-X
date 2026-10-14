@@ -162,6 +162,7 @@ describe('la clôture totale est bornée à sa date limite (Sage i7, « pour le 
     const prisma = {
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: J('2026-01-01'), dateFin: J('2026-12-31') }) },
       cloture: { findFirst: jest.fn().mockResolvedValue(null), create: cree },
+      tenant: { findUnique: jest.fn().mockResolvedValue({ refusClotureJournalNonImprime: false }) },
     };
     const journaux = { trouver: jest.fn().mockResolvedValue({ id: 'j1', code: 'VTE' }) };
     return { svc: new ExerciceService(prisma, journaux), cree };

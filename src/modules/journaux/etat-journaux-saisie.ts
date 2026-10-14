@@ -1,5 +1,6 @@
 import { StatutEcriture } from '@prisma/client';
 import { ClotureActive, motifLigneFigee } from '../exercice/gel-cloture';
+import { jourCouvert, type ImpressionLue } from './impressions-journal';
 
 /**
  * FENÊTRE DES JOURNAUX DE SAISIE (point 17 de la comparaison Sage i7).
@@ -11,19 +12,24 @@ import { ClotureActive, motifLigneFigee } from '../exercice/gel-cloture';
  * auxquels correspond le journal » avec un indicateur de « l'état du journal :
  * Brouillard, Non imprimé, Journal, Non clôturé, Clôturé ».
  *
- * QUATRE ÉTATS SONT SERVIS, ET UN NE L'EST PAS.
+ * CINQ ÉTATS SONT SERVIS, PLUS CELUI DU JOURNAL DE SITUATION.
  *  · VIDE · aucune écriture sur le mois ;
  *  · BROUILLARD · au moins une écriture n'est pas validée · c'est là que le
  *    travail n'est pas fini (AUDCIF art. 22, 2°, validation « au terme de
  *    chaque période qui ne peut excéder un mois ») ;
- *  · JOURNAL · toutes les écritures du mois sont validées ;
+ *  · NON IMPRIMÉ · toutes les écritures du mois sont validées, et l'une
+ *    d'elles au moins ne figure sur aucune impression du journal faite après
+ *    sa validation (ligne sage-l1, fonction 60, `impressions-journal.ts`) ;
+ *  · JOURNAL · toutes les écritures du mois sont validées et imprimées ;
  *  · CLÔTURÉ · le mois ENTIER est figé, par la règle unique de
  *    `gel-cloture.ts` lue sur son dernier jour (exercice clôturé, clôture
  *    totale du journal, clôture de période). Une clôture qui s'arrête au
  *    milieu du mois ne clôt pas le mois · la date jusqu'où il est figé est
  *    rendue à part, et l'état reste celui des écritures.
- * « NON IMPRIMÉ » N'EST PAS SERVI · OmegaX ne tient aucune trace de
- * l'impression d'un journal, et l'état se déduirait de rien.
+ * « NON IMPRIMÉ » EST SERVI DEPUIS LA LIGNE SAGE-L1 (fonction 60) · le
+ * serveur enregistre l'impression et l'export du journal ; sans la liste des
+ * impressions (appel ancien), l'état ne se déduit de rien et le mois validé
+ * reste JOURNAL.
  *
  * L'À-NOUVEAU PROVISOIRE NE MET PAS LE MOIS EN BROUILLARD. Il reste au
  * brouillard par construction (il ne se valide jamais, voir le point 11) :
@@ -37,7 +43,7 @@ import { ClotureActive, motifLigneFigee } from '../exercice/gel-cloture';
  * qui porte des écritures · elles ne sont ni un brouillard à valider ni des
  * pièces du livre-journal, et une clôture de période ne fige pas ce journal.
  */
-export type EtatMoisJournal = 'VIDE' | 'BROUILLARD' | 'JOURNAL' | 'CLOTURE' | 'SITUATION';
+export type EtatMoisJournal = 'VIDE' | 'BROUILLARD' | 'NON_IMPRIME' | 'JOURNAL' | 'CLOTURE' | 'SITUATION';
 
 export interface MoisExercice {
   /** Premier jour du mois, AAAA-MM-01. */
@@ -52,6 +58,8 @@ export interface ComptageJour {
   statut: StatutEcriture;
   estANouveauProvisoire: boolean;
   nombre: number;
+  /** La dernière validation du jour · ce qu'une impression doit couvrir (fonction 60). */
+  derniereValidation?: Date | null;
 }
 
 export interface CaseJournalMois {
@@ -100,22 +108,32 @@ export function grilleJournauxSaisie(
   comptages: ComptageJour[],
   clotures: ClotureActive[],
   exerciceClos: boolean,
+  // Les impressions de l'exercice (fonction 60) · absentes, aucun mois n'est
+  // dit « non imprimé », faute de quoi le juger.
+  impressions?: readonly ImpressionLue[],
 ): Array<{ journalId: string; cases: CaseJournalMois[] }> {
   const cle = (journalId: string, date: string) => `${journalId}|${date.slice(0, 7)}`;
-  const cumul = new Map<string, { nombre: number; brouillard: number; provisoire: number; situation: number }>();
+  const cumul = new Map<string, { nombre: number; brouillard: number; provisoire: number; situation: number; nonImprime: number }>();
   for (const c of comptages) {
     const k = cle(c.journalId, jour(c.date));
-    const v = cumul.get(k) ?? { nombre: 0, brouillard: 0, provisoire: 0, situation: 0 };
+    const v = cumul.get(k) ?? { nombre: 0, brouillard: 0, provisoire: 0, situation: 0, nonImprime: 0 };
     v.nombre += c.nombre;
     if (c.estANouveauProvisoire) v.provisoire += c.nombre;
     else if (c.statut === StatutEcriture.BROUILLARD) v.brouillard += c.nombre;
     else if (c.statut === StatutEcriture.SITUATION) v.situation += c.nombre;
+    else if (
+      impressions &&
+      c.statut === StatutEcriture.VALIDEE &&
+      !jourCouvert({ journalId: c.journalId, date: c.date, derniereValidation: c.derniereValidation ?? c.date }, impressions)
+    ) {
+      v.nonImprime += c.nombre;
+    }
     cumul.set(k, v);
   }
   return journaux.map((j) => ({
     journalId: j.id,
     cases: mois.map((m) => {
-      const v = cumul.get(cle(j.id, m.debut)) ?? { nombre: 0, brouillard: 0, provisoire: 0, situation: 0 };
+      const v = cumul.get(cle(j.id, m.debut)) ?? { nombre: 0, brouillard: 0, provisoire: 0, situation: 0, nonImprime: 0 };
       const journalSituation = j.type === 'SITUATION';
       const figeFin = motifLigneFigee(
         { journalId: j.id, date: new Date(`${m.fin}T00:00:00.000Z`), exerciceClos, journalSituation },
@@ -129,7 +147,9 @@ export function grilleJournauxSaisie(
             ? 'SITUATION'
             : v.brouillard > 0
               ? 'BROUILLARD'
-              : 'JOURNAL';
+              : v.nonImprime > 0
+                ? 'NON_IMPRIME'
+                : 'JOURNAL';
       return {
         mois: m.debut.slice(0, 7),
         etat,

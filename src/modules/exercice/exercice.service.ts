@@ -1,4 +1,5 @@
 import { HORS_SITUATION, estJournalDeSituation, motifJournalDeSituationNonCloturable } from '../comptabilite/ecritures-de-situation';
+import { moisNonImprimes, motifClotureNonImprimee } from '../journaux/impressions-journal';
 import { ecartsRealisesNonConstates, motifClotureEcartsNonConstates } from '../reglements/ecarts-non-constates';
 import { estContigu, motifCreationNonContigue, motifSuivantNonContigu } from './exercice-contigu';
 import { lignesReporteesAuDetail } from './lignes-reportees-au-detail';
@@ -1724,6 +1725,7 @@ export class ExerciceService {
     const journal = await this.journalService.trouver(tenantId, dto.journalId);
     // UN JOURNAL DE SITUATION NE SE CLÔTURE PAS (ligne sage-l1, fonction 12).
     if (estJournalDeSituation(journal)) throw new BadRequestException(motifJournalDeSituationNonCloturable(journal.code));
+    await this.refuserSiNonImprime(tenantId, exerciceId, journal.id, new Date(dto.dateLimite));
     return this.prisma.cloture.create({
       data: {
         tenantId,
@@ -1752,6 +1754,7 @@ export class ExerciceService {
     if (dateLimite < exercice.dateDebut || dateLimite > exercice.dateFin) {
       throw new BadRequestException("La date de la clôture totale tombe hors de l'exercice.");
     }
+    await this.refuserSiNonImprime(tenantId, exerciceId, journal.id, dateLimite);
     const dejaClos = await this.prisma.cloture.findFirst({
       where: {
         tenantId,
@@ -1795,6 +1798,7 @@ export class ExerciceService {
           "posez-la depuis l'exercice qui contient cette date.",
       );
     }
+    await this.refuserSiNonImprime(tenantId, exerciceId, null, dateLimite);
     return this.prisma.cloture.create({
       data: {
         tenantId,
@@ -1806,6 +1810,22 @@ export class ExerciceService {
         createdBy: userId,
       },
     });
+  }
+
+  /**
+   * LE REFUS DE CLÔTURER UN JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60 ;
+   * décision D3) · une option du dossier, désactivée par défaut. Cochée, une
+   * clôture partielle, totale ou de période est refusée tant qu'une écriture
+   * validée du journal (ou de tous, pour la période), jusqu'à la date, ne
+   * figure sur aucune impression faite après sa validation. L'AUDCIF art. 22,
+   * 3° n'impose pas l'impression · c'est l'organisation que le dossier se
+   * donne, et l'issue est immédiate (imprimer, art. 22, 1° et 7°).
+   */
+  private async refuserSiNonImprime(tenantId: string, exerciceId: string, journalId: string | null, jusquau: Date) {
+    const dossier = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { refusClotureJournalNonImprime: true } });
+    if (dossier?.refusClotureJournalNonImprime !== true) return;
+    const nonImprimes = await moisNonImprimes(this.prisma as never, { tenantId, exerciceId, journalId, jusquau });
+    if (nonImprimes.total > 0) throw new BadRequestException(motifClotureNonImprimee(nonImprimes));
   }
 
   async listerClotures(tenantId: string, exerciceId: string) {
@@ -2096,6 +2116,9 @@ export class ExerciceService {
         // admet le 585 des virements entre dossiers (`refuserBilanDesequilibre`).
         dossierMereId: true,
         _count: { select: { cellules: true } },
+        // Ligne sage-l1, fonction 60 · l'option qui refuse de clôturer un
+        // journal non imprimé, lue dans la même lecture que le reste.
+        refusClotureJournalNonImprime: true,
       },
     });
     const { referentiel } = dossier;
@@ -2168,6 +2191,12 @@ export class ExerciceService {
         `${enBrouillard} écriture(s) sont encore en brouillard sur cet exercice. Validez-les ou supprimez-les avant ` +
           "de clôturer : la clôture ne lit que le livre-journal, et ce qui reste en brouillard serait perdu du résultat.",
       );
+    }
+    // LE JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60) · seulement quand
+    // le dossier l'a demandé ; l'issue est immédiate, imprimer le journal.
+    if (dossier.refusClotureJournalNonImprime === true) {
+      const nonImprimes = await moisNonImprimes(this.prisma as never, { tenantId, exerciceId, journalId: null, jusquau: exercice.dateFin });
+      if (nonImprimes.total > 0) throw new BadRequestException(motifClotureNonImprimee(nonImprimes));
     }
 
     // L'ÉCART DE CHANGE RÉALISÉ SE CONSTATE DANS SON EXERCICE (décision D3 ·

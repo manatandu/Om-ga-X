@@ -11,6 +11,7 @@ import {
   ModifierFormeSyscohadaDto,
   ModifierIdentiteDto,
   ModifierDoubleRegardDto,
+  ModifierRefusClotureNonImprimeDto,
   ModifierModulesDto,
   ModifierJeuEtatsDto,
   ModifierLongueurCompteDto,
@@ -173,6 +174,16 @@ export class TenantController {
     @Body() dto: ModifierDoubleRegardDto,
   ) {
     return this.tenantService.modifierDoubleRegard(user.tenantId, dto.doubleRegardValidation);
+  }
+
+  /** Refus de clôturer un journal non imprimé · ligne sage-l1, fonction 60. */
+  @Patch('refus-cloture-non-imprime')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierRefusClotureNonImprime(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ModifierRefusClotureNonImprimeDto,
+  ) {
+    return this.tenantService.modifierRefusClotureNonImprime(user.tenantId, dto.refusClotureJournalNonImprime);
   }
 
   /** Modules affichés · voir `tenant/modules-optionnels.ts`. */

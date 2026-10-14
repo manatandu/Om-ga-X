@@ -35,6 +35,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   CompteVirementFonds: 'Compte de passage des virements',
   VirementFonds: 'Virement de fonds',
   PieceVirementFonds: "Pièce d'un virement de fonds",
+  ImpressionJournal: 'Impression du journal',
   RibTiers: "RIB d'un tiers",
   OrdreVirement: 'Ordre de virement',
   Bailleur: 'Bailleur',

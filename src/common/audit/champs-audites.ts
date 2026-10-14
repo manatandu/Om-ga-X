@@ -151,6 +151,10 @@ export const MODELES_AUDITES = new Set<string>([
   'CompteVirementFonds',
   'VirementFonds',
   'PieceVirementFonds',
+  // L'impression du journal (ligne sage-l1, fonction 60) · numérotée et
+  // datée (AUDCIF art. 22, 7°), elle atteste que le journal a été restitué ;
+  // retouchée après coup, elle attesterait une impression qui n'a pas eu lieu.
+  'ImpressionJournal',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',

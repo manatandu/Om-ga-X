@@ -158,9 +158,10 @@ describe('le service · écriture, plafond lu au journal, valeur d’entrée aug
       ],
     });
     expect(mises).toEqual([{ where: { id: 'b1' }, data: { valeurOrigine: { increment: 10_000_000 } } }]);
-    // Le plafond lit les 671 et 672 de l'exercice, hors solde des comptes de gestion.
+    // Le plafond lit les 671 et 672 de l'exercice, hors solde des comptes de
+    // gestion, jamais une écriture de situation (ligne sage-l1, fonction 12).
     const where = (prisma.ligneEcriture as { aggregate: jest.Mock }).aggregate.mock.calls[0][0].where;
-    expect(where.ecriture).toEqual({ tenantId: 't', exerciceId: 'e26', estSoldeDesComptesDeGestion: false });
+    expect(where.ecriture).toEqual({ tenantId: 't', exerciceId: 'e26', estSoldeDesComptesDeGestion: false, statut: { not: 'SITUATION' } });
     expect(where.OR).toEqual([{ compte: { numero: { startsWith: '671' } } }, { compte: { numero: { startsWith: '672' } } }]);
   });
 

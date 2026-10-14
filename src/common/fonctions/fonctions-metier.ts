@@ -149,6 +149,8 @@ export const CONTROLEURS_HORS_PROFIL: Record<string, string> = {
   PlateformeController: "Console de l'opérateur, hors de tout dossier.",
   UtilisateurController: "Gestion des accès · réservée à l'administrateur, que le profil ne restreint jamais.",
   SurSiteController: "Licence et sauvegardes du poste d'une installation sur site · l'installation, pas un dossier.",
+  ImpressionsJournalController:
+    "Trace de l'impression du journal (ligne sage-l1, fonction 60) · imprimer est une lecture, ouverte à qui lit le journal, que le profil ne ferme pas.",
 };
 
 const METHODES_QUI_ECRIVENT = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

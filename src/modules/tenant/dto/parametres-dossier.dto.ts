@@ -516,6 +516,17 @@ export class ModifierDoubleRegardDto {
 }
 
 /**
+ * REFUSER DE CLÔTURER UN JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60 ;
+ * décision D3) · une option, désactivée par défaut, comme le double regard ·
+ * l'AUDCIF art. 22, 3° impose la clôture informatique sans la subordonner à
+ * une impression. Voir `journaux/impressions-journal.ts`.
+ */
+export class ModifierRefusClotureNonImprimeDto {
+  @IsBoolean()
+  refusClotureJournalNonImprime!: boolean;
+}
+
+/**
  * LONGUEUR MAXIMALE DES NUMÉROS DE COMPTE DU DOSSIER · plage de Sage, 3 à 13
  * chiffres (skill `sage-i7`, comptabilité générale). La même plage que celle
  * du DTO de création de compte, qui valide le format sans connaître le dossier.

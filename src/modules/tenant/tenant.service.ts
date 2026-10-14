@@ -206,6 +206,8 @@ export class TenantService {
       // exclu par l'art. 3). Servir `null` à un dossier SYSCOHADA ferait
       // disparaître de son écran une option qui le concerne.
       doubleRegardValidation: tenant.doubleRegardValidation,
+      // Ligne sage-l1, fonction 60 · aux deux référentiels, comme le double regard.
+      refusClotureJournalNonImprime: tenant.refusClotureJournalNonImprime,
       attestationExemptionIs: tenant.attestationExemptionIs,
       dateAttestationExemptionIs: tenant.dateAttestationExemptionIs,
       formeJuridique: siSycebnl(tenant.referentiel, tenant.formeJuridique),
@@ -1194,6 +1196,16 @@ export class TenantService {
       throw new NotFoundException('Dossier introuvable');
     }
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { modulesActives: normaliserModules(modulesActives) } });
+    return this.parametres(tenantId);
+  }
+
+  /** Le refus de clôturer un journal non imprimé (ligne sage-l1, fonction 60), option du dossier. */
+  async modifierRefusClotureNonImprime(tenantId: string, refusClotureJournalNonImprime: boolean) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Dossier introuvable');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { refusClotureJournalNonImprime } });
     return this.parametres(tenantId);
   }
 

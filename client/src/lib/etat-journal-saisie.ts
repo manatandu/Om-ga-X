@@ -1,10 +1,12 @@
 /**
  * États d'une case de la fenêtre des journaux de saisie (point 17, Sage i7).
  * Le serveur les calcule (`journaux/etat-journaux-saisie.ts`) ; l'écran ne
- * fait que les nommer. « Non imprimé » n'existe pas ici · OmegaX ne trace pas
- * l'impression d'un journal.
+ * fait que les nommer. « Non imprimé » · toutes les écritures du mois sont
+ * validées, et l'une au moins ne figure sur aucune impression du journal faite
+ * après sa validation (ligne sage-l1, fonction 60 · le serveur enregistre
+ * l'impression et l'export du journal).
  */
-export type EtatMoisJournal = 'VIDE' | 'BROUILLARD' | 'JOURNAL' | 'CLOTURE' | 'SITUATION';
+export type EtatMoisJournal = 'VIDE' | 'BROUILLARD' | 'NON_IMPRIME' | 'JOURNAL' | 'CLOTURE' | 'SITUATION';
 
 export interface CaseJournalMois {
   mois: string;
@@ -27,7 +29,8 @@ export interface LigneGrilleSaisie {
 export const ETATS_JOURNAL: Record<EtatMoisJournal, { sigle: string; libelle: string; classe: string }> = {
   VIDE: { sigle: '', libelle: 'Aucune écriture', classe: '' },
   BROUILLARD: { sigle: 'B', libelle: 'Brouillard', classe: 'bg-warning-soft text-warning' },
-  JOURNAL: { sigle: 'J', libelle: 'Journal (tout validé)', classe: 'bg-positive-soft text-positive' },
+  NON_IMPRIME: { sigle: 'N', libelle: 'Non imprimé', classe: 'bg-warning-soft text-text' },
+  JOURNAL: { sigle: 'J', libelle: 'Journal (validé et imprimé)', classe: 'bg-positive-soft text-positive' },
   CLOTURE: { sigle: 'C', libelle: 'Clôturé', classe: 'bg-chrome-alt text-text-dim' },
   // Journal de situation (ligne sage-l1, fonction 12) · ni brouillard à
   // valider ni pièces du livre-journal.

@@ -110,15 +110,75 @@ l'option sur le code journal ; la ligne 11 de l'architecture la range en
 préférence du poste, c'est elle qui est suivie. Tests ·
 `client/src/lib/totaux-saisie.spec.ts`, e2e `sage-l1-totaux`.
 
+### #60 · Journal marqué « imprimé » et refus de clôturer un journal non imprimé (M2-67, M3-29)
+
+DÉCISION PAR LA LOI (D-L1-60, 2026-10-14, AUDCIF art. 22 lu dans la
+compétence) · le 3° impose une clôture informatique « au moins
+trimestrielle » et ne la subordonne à AUCUNE impression ; le 1° veut des
+données qui « puissent être restituées sur papier ou sous une forme
+directement intelligible » ; le 7° veut des « états périodiques fournis »
+« numérotés et datés ». D'où · (1) l'impression du journal est ENREGISTRÉE
+par le serveur, numérotée (suite continue par dossier, sous verrou du
+dossier) et datée, avec son auteur, l'exercice, le journal (ou tous), la
+période couverte et le nombre de pièces qu'il compte lui-même ; (2) le
+refus de clôturer un journal non imprimé est une OPTION du dossier,
+désactivée par défaut (`Tenant.refusClotureJournalNonImprime`, Paramètres du
+dossier, administrateur seul), parce que l'imposer ferait d'une préférence
+d'organisation une condition que la loi ne pose pas ; l'issue est immédiate,
+imprimer le journal ; (3) une écriture VALIDÉE APRÈS l'impression rend sa
+période non imprimée (dernière validation du jour contre l'heure de
+l'impression qui le couvre). Une recherche (compte, montant, libellé, pièce,
+référence) n'est pas le journal · ni imprimée ni enregistrée. Le journal de
+situation (fonction 12) n'a rien à imprimer.
+
+CODÉ ·
+- `ImpressionJournal` (fin du schéma, `// Ligne sage-l1`), migration
+  `20270171010000_impressions_journaux` (table, énumération
+  `FormeImpressionJournal` IMPRESSION / EXPORT, colonne du dossier), au
+  journal d'audit, cloisonnée, index du dossier, liens RESTRICT ;
+- `journaux/impressions-journal.ts` · `moisNonImprimes` (regroupement en
+  base par journal et jour, `_max.valideeAt`), `motifClotureNonImprimee`
+  (mois nommés, vingt-quatre au plus et le total dit), `periodeCouverte`,
+  `enregistrerImpression`, `estUneRecherche` ;
+- `POST /impressions-journal` (impression de la fenêtre, refusée sur une
+  recherche ou au-delà du plafond de la fenêtre, l'export rendant tout),
+  `GET /impressions-journal` (liste bornée à 200, total, `tronque`) ;
+- l'export Excel du journal entier s'enregistre en forme EXPORT après le
+  dernier octet (un échec d'enregistrement est consigné, jamais l'export
+  défait) ;
+- clôtures partielle, totale, de période et annuelle refusent, sous
+  l'option, tant qu'un jour validé n'est couvert par aucune impression
+  postérieure ;
+- état des journaux de saisie · case `NON_IMPRIME` (« N »), entre le
+  brouillard et le validé imprimé ; « Non imprimé » n'est plus « non servi » ;
+- écran · bouton « Imprimer le journal » (enregistre puis ouvre la boîte),
+  option dans Paramètres du dossier avec sa bulle, légende de l'état.
+
+Tests · `journaux/impressions-journal.spec.ts`, `etat-journaux-saisie.spec.ts`,
+`client/src/lib/etat-journal-saisie.spec.ts` (six états), e2e
+`sage-l1-impression`.
+
+Scénario sur vraie base (2026-10-14, `l1-s60.mjs`, serveur compilé, port
+8081), 0 écart · option posée ; février validé « N » ; clôture de période
+refusée en nommant « OD 02/2026 » ; impression n° 1 (une pièce) → « J »,
+clôture admise ; export du journal enregistré n° 2 EXPORT (deux pièces),
+export d'une recherche non enregistré ; période à l'envers refusée ; mai
+validé après l'export → « N » ; clôture annuelle refusée en nommant
+« OD 05/2026 » ; impression n° 3 de l'exercice (trois pièces) → clôture
+annuelle admise ; report N+1 banque 600 000 ; en N+1, clôture de période
+refusée puis admise après impression ; option retirée, la clôture n'attend
+plus.
+
 ## Reste
 
-- #12 · e2e `sage-l1-situation` écrit, à jouer avec le montage local.
-- #60, #16, #14, #19, #18.
+- #12 et #60 · e2e `sage-l1-situation` et `sage-l1-impression` écrits, à jouer.
+- #16, #14, #19, #18.
 - Bloc du § 3 des deux côtés ; specs de structure.
 
 ## Décisions
 
 - D-L1-12 (ci-dessus), par la loi.
+- D-L1-60 (ci-dessus), par la loi · AUDCIF art. 22, 1°, 3° et 7°.
 
 ## Commandes de vérification
 
@@ -147,6 +207,16 @@ une clôture de période, hors de la numérotation du fichier (`modeEffectif`).
 Le validé hérité n'est pas retouché, il est nommé
 (`JOURNAL_DE_SITUATION_AU_LIVRE_JOURNAL`).
 
+**Journal marqué imprimé (ligne sage-l1, fonction 60, décision par la loi du
+2026-10-14).** AUDCIF art. 22, 1° (restitution sur papier), 3° (la clôture
+informatique n'attend aucune impression) et 7° (états périodiques numérotés
+et datés) · l'impression ou l'export du journal entier s'ENREGISTRE
+(`ImpressionJournal`, numéro continu par dossier, auteur, période, pièces) ;
+le refus de clôturer un journal non imprimé est une OPTION du dossier,
+fausse par défaut (`refusClotureJournalNonImprime`) ; une écriture validée
+après l'impression rend son jour non imprimé (`moisNonImprimes`) ; une
+recherche n'est pas le journal. Case « N » de l'état des journaux de saisie.
+
 ## Pour build-log.md
 
 - 2026-10-14 · sage-l1 #12 · fait · journal de situation · statut SITUATION, garde
@@ -155,3 +225,5 @@ Le validé hérité n'est pas retouché, il est nommé
   des contrôles (le constat relevé pendant le parcours, sans seconde requête).
 - 2026-10-14 · sage-l1 #11 · fait · masquer les totaux, préférence du poste,
   l'équilibre toujours montré.
+- 2026-10-14 · sage-l1 #60 · fait · journal imprimé enregistré, refus de clôture en
+  option, case « Non imprimé » · comme prévu.

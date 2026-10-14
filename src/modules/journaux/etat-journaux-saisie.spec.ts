@@ -105,10 +105,18 @@ describe('Journaux de saisie · la grille journal × mois', () => {
         },
       },
       cloture: { findMany: async () => [] },
+      // Les impressions du journal (ligne sage-l1, fonction 60), bornées à l'exercice.
+      impressionJournal: {
+        findMany: async (a: unknown) => {
+          appels.impressions = a;
+          return [];
+        },
+      },
     } as never);
     const r = await service.grilleSaisie('t1', 'e1');
     expect(appels.exercice).toMatchObject({ where: { id: 'e1', tenantId: 't1' } });
-    expect(appels.groupBy).toMatchObject({ where: { tenantId: 't1', exerciceId: 'e1' } });
+    expect(appels.groupBy).toMatchObject({ where: { tenantId: 't1', exerciceId: 'e1' }, _max: { valideeAt: true } });
+    expect(appels.impressions).toMatchObject({ where: { tenantId: 't1', exerciceId: 'e1' } });
     expect(r.mois).toHaveLength(12);
     expect(r.journaux[0].cases[4]).toMatchObject({ mois: '2026-05', etat: 'BROUILLARD', enBrouillard: 2 });
   });

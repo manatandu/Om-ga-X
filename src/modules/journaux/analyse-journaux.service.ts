@@ -436,7 +436,7 @@ export class AnalyseJournauxService {
   async grilleSaisie(tenantId: string, exerciceId: string) {
     const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId } });
     if (!exercice) throw new NotFoundException('Exercice introuvable');
-    const [journaux, comptages, clotures] = await Promise.all([
+    const [journaux, comptages, clotures, impressions] = await Promise.all([
       this.prisma.journal.findMany({
         where: { tenantId },
         orderBy: { code: 'asc' },
@@ -446,11 +446,19 @@ export class AnalyseJournauxService {
         by: ['journalId', 'date', 'statut', 'estANouveauProvisoire'],
         where: { tenantId, exerciceId },
         _count: { _all: true },
+        // La dernière validation du jour · l'impression doit la suivre (fonction 60).
+        _max: { valideeAt: true },
       }),
       this.prisma.cloture.findMany({
         where: { tenantId, annuleeAt: null },
         select: { granularite: true, journalId: true, dateLimite: true },
       }) as Promise<ClotureActive[]>,
+      // Les impressions de l'exercice (ligne sage-l1, fonction 60) · une ligne
+      // par impression, bornée par l'exercice.
+      this.prisma.impressionJournal.findMany({
+        where: { tenantId, exerciceId },
+        select: { journalId: true, dateDebut: true, dateFin: true, imprimeAt: true },
+      }),
     ]);
     const mois = moisDeLExercice(exercice.dateDebut, exercice.dateFin);
     const grille = grilleJournauxSaisie(
@@ -462,9 +470,11 @@ export class AnalyseJournauxService {
         statut: c.statut,
         estANouveauProvisoire: c.estANouveauProvisoire,
         nombre: c._count._all,
+        derniereValidation: c._max?.valideeAt ?? null,
       })),
       clotures,
       exercice.statut === StatutExercice.CLOTURE,
+      impressions,
     );
     return {
       mois: mois.map((m) => m.debut.slice(0, 7)),

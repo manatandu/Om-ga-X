@@ -333,6 +333,38 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     }
   };
 
+  // IMPRIMER LE JOURNAL (ligne sage-l1, fonction 60) · le serveur enregistre
+  // l'impression AVANT la boîte d'impression (numéro, date, auteur, période),
+  // ce qui marque le journal « imprimé ». Une recherche (compte, montant,
+  // libellé, pièce, référence) n'est pas le journal, et une fenêtre tronquée
+  // n'en montre qu'une partie · l'impression est alors refusée ici et au
+  // serveur ; l'export, lui, rend tout et s'enregistre de même.
+  const rechercheActive = useMemo(
+    () => (['recherche', 'compte', 'montant', 'montantMax', 'numeroPiece', 'reference'] as const).some((k) => filtresAppliques[k].trim() !== ''),
+    [filtresAppliques],
+  );
+  const [impressionEnCours, setImpressionEnCours] = useState(false);
+  const imprimerJournal = async () => {
+    if (!exerciceCourant) return;
+    setErreur(null);
+    setInfo(null);
+    setImpressionEnCours(true);
+    try {
+      const r = await api.post<{ numero: number }>('/impressions-journal', {
+        exerciceId: exerciceCourant.id,
+        ...(filtresAppliques.journalId ? { journalId: filtresAppliques.journalId } : {}),
+        ...(filtresAppliques.dateDebut ? { dateDebut: filtresAppliques.dateDebut } : {}),
+        ...(filtresAppliques.dateFin ? { dateFin: filtresAppliques.dateFin } : {}),
+      });
+      setInfo(`Impression n° ${r.numero} du journal enregistrée.`);
+      window.print();
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'Impression du journal impossible');
+    } finally {
+      setImpressionEnCours(false);
+    }
+  };
+
   const exporterJournal = () => {
     if (!exerciceCourant) return;
     // Le journal exporté est exactement celui affiché, filtres compris.
@@ -497,6 +529,22 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               className="border border-border bg-surface px-3 py-1.5 text-[11.5px] font-bold hover:bg-surface-alt"
             >
               Réimputer…
+            </button>
+          )}
+          {onglet === 'journal' && (
+            <button
+              onClick={imprimerJournal}
+              disabled={impressionEnCours || rechercheActive || troncature !== null || !exerciceCourant}
+              title={
+                rechercheActive
+                  ? 'Une recherche n’est pas le journal · retirez les critères pour imprimer le journal de la période'
+                  : troncature !== null
+                    ? 'La fenêtre ne montre qu’une partie du journal · exportez-le en Excel'
+                    : 'Enregistre l’impression du journal (numéro, date, auteur), puis ouvre la boîte d’impression'
+              }
+              className="ecran-seul flex items-center gap-1.5 border border-border bg-surface px-3 py-1.5 text-[11.5px] font-bold hover:bg-surface-alt disabled:opacity-50"
+            >
+              {impressionEnCours ? 'Enregistrement…' : 'Imprimer le journal'}
             </button>
           )}
           {onglet === 'journal' && boutonExport('Exporter Excel', exporterJournal)}

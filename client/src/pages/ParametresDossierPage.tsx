@@ -442,6 +442,26 @@ export function ParametresDossierPage() {
     }
   };
 
+  // Ligne sage-l1, fonction 60 · refuser de clôturer un journal non imprimé.
+  const changerRefusNonImprime = async (actif: boolean) => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      setParams(
+        await api.patch<ParametresDossier>('/dossier/refus-cloture-non-imprime', { refusClotureJournalNonImprime: actif }),
+      );
+      setInfo(
+        actif
+          ? 'Un journal non imprimé ne se clôture plus · imprimez ou exportez le journal de la période avant de clôturer.'
+          : 'La clôture n’attend plus l’impression du journal.',
+      );
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Modification impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
   const changerDoubleRegard = async (actif: boolean) => {
     setEnvoi(true);
     setErreur(null);
@@ -1781,6 +1801,23 @@ export function ParametresDossierPage() {
                         ? 'AUCUN TEXTE N’IMPOSE cette séparation · procédure que l’entité se donne (SYCEBNL art. 16, 2) ; l’art. 69 de l’AUDCIF est exclu par l’art. 3 du SYCEBNL).'
                         : 'AUCUN TEXTE N’IMPOSE cette séparation · procédure que l’entité se donne (AUDCIF art. 69).'}
                     </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-[11.5px]">
+                  <input
+                    type="checkbox"
+                    className="mt-[3px]"
+                    checked={params.refusClotureJournalNonImprime}
+                    disabled={!estAdmin || envoi}
+                    onChange={(e) => changerRefusNonImprime(e.target.checked)}
+                  />
+                  <span>
+                    Refuser de clôturer un journal non imprimé{' '}
+                    <Aide
+                      titre="Journal non imprimé"
+                      texte="Cochée, une clôture (partielle, totale, de période ou de l’exercice) est refusée tant qu’une écriture validée de la période ne figure sur aucune impression du journal faite après sa validation. L’impression se fait depuis le journal (« Imprimer le journal ») ou par son export Excel · le serveur l’enregistre, numérotée et datée, avec son auteur et la période. Une écriture validée après l’impression rend sa période « non imprimée » à nouveau. Aucun texte n’impose l’impression avant la clôture · l’AUDCIF art. 22, 3° impose la clôture informatique, et l’art. 22, 1° et 7° veut des données restituées sur papier et des états numérotés et datés ; c’est l’organisation que le dossier se donne."
+                      source="AUDCIF art. 22, 1°, 3° et 7°"
+                    />
                   </span>
                 </label>
                 <label className="block text-[11.5px]">

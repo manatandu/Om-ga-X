@@ -240,7 +240,9 @@ describe('Journal exporté en flux', () => {
 
   it('sans le paramètre · le brouillard reste inclus, comme à l’écran', async () => {
     const { findMany } = await exporter(3);
-    expect(findMany.mock.calls[0][0].where?.statut).toBeUndefined();
+    // Le brouillard reste · seules les écritures de situation, qui ne sont
+    // pas au livre-journal, sortent (ligne sage-l1, fonction 12).
+    expect(findMany.mock.calls[0][0].where?.statut).toEqual({ not: 'SITUATION' });
   });
 
   it('la route d’export lit le paramètre et le transmet', () => {

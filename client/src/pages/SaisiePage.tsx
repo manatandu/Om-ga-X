@@ -1314,7 +1314,7 @@ export function SaisiePage() {
                 <p className="text-[11.5px] text-danger mb-2">État des journaux par mois illisible · {erreurGrille}</p>
               )}
               <div className="flex gap-3 mb-3 text-[10.5px] text-text-dim">
-                {(['BROUILLARD', 'SITUATION', 'JOURNAL', 'CLOTURE'] as const).map((e) => (
+                {(['BROUILLARD', 'NON_IMPRIME', 'SITUATION', 'JOURNAL', 'CLOTURE'] as const).map((e) => (
                   <span key={e} className="flex items-center gap-1">
                     <span className={`inline-block w-[16px] text-center font-bold ${ETATS_JOURNAL[e].classe}`}>{ETATS_JOURNAL[e].sigle}</span>
                     {ETATS_JOURNAL[e].libelle}

@@ -117,6 +117,8 @@ export const MODELES_CLOISONNES = new Set<string>([
   'CompteVirementFonds',
   'VirementFonds',
   'PieceVirementFonds',
+  // Ligne sage-l1, fonction 60 · les impressions du journal.
+  'ImpressionJournal',
   'RibTiers',
   'RubriquePaie',
   'VersionBaremePaie',

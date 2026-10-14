@@ -1801,6 +1801,8 @@ export interface ParametresDossier {
    * concerne.
    */
   doubleRegardValidation: boolean;
+  /** Ligne sage-l1, fonction 60 · refus de clôturer un journal non imprimé (option, faux par défaut). */
+  refusClotureJournalNonImprime: boolean;
   /** Forme juridique de la loi n° 004/2001 · `null` hors SYCEBNL. */
   formeJuridique: FormeJuridiqueEbnl | null;
   formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null;

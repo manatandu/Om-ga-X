@@ -10,8 +10,13 @@ describe('Journaux de saisie · la case', () => {
     );
   });
 
-  it('les quatre états servis, « non imprimé » absent', () => {
-    expect(Object.keys(ETATS_JOURNAL).sort()).toEqual(['BROUILLARD', 'CLOTURE', 'JOURNAL', 'VIDE']);
+  // « Non imprimé » est servi depuis la ligne sage-l1 (fonction 60, le
+  // serveur enregistre l'impression du journal), « Situation » depuis la
+  // fonction 12 (le journal de situation, hors du livre-journal).
+  it('les six états servis, chacun nommé', () => {
+    expect(Object.keys(ETATS_JOURNAL).sort()).toEqual(['BROUILLARD', 'CLOTURE', 'JOURNAL', 'NON_IMPRIME', 'SITUATION', 'VIDE']);
+    expect(ETATS_JOURNAL.NON_IMPRIME.libelle).toBe('Non imprimé');
+    expect(ETATS_JOURNAL.SITUATION.libelle).toBe('Situation');
   });
 });
 

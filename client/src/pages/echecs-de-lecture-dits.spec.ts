@@ -239,7 +239,9 @@ describe('saisie des journaux · état par mois, devises, axes et modèles illis
       expect({ message, trouve: i > -1 }).toEqual({ message, trouve: true });
       expect(source.indexOf(suite, i)).toBeGreaterThan(i);
     };
-    avant('État des journaux par mois illisible · {erreurGrille}', "(['BROUILLARD', 'JOURNAL', 'CLOTURE'] as const)");
+    // La légende des états, ancrée sur son rendu et non sur la liste de ses
+    // états (qui s'allonge · situation, non imprimé, ligne sage-l1).
+    avant('État des journaux par mois illisible · {erreurGrille}', '{ETATS_JOURNAL[e].libelle}');
     avant('Modèles de saisie illisibles · {erreurModeles}', '{peutEcrire && modeles.length > 0 && (');
     avant('Axes analytiques illisibles · {erreurAnalytique}', '{/* Zone de saisie de la ligne');
     avant('Devises illisibles · {erreurDevises}', '{devises.length > 0 && (');

@@ -182,6 +182,7 @@ export function editionParametres(
     ['Assujetti à la TVA', p.assujettissementTva == null ? 'non renseigné' : ouiNon(p.assujettissementTva)],
     ['Vente de biens ou de services', p.venteBiensServices == null ? 'non renseigné' : ouiNon(p.venteBiensServices)],
     ['Double regard à la validation', ouiNon(p.doubleRegardValidation)],
+    ['Refus de clôturer un journal non imprimé', ouiNon(p.refusClotureJournalNonImprime)],
   );
   return { colonnes: ['Rubrique', 'Valeur'], lignes };
 }
