@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 
 /**
  * LA LIGNE DU COMPTE CLIENT D'UN RECLASSEMENT AU 416 NE SE LETTRE PAS (ligne
@@ -100,8 +101,10 @@ export async function lignesReclasseesDuCompte(db: LecteurLignes, tenantId: stri
   // M4 · et le REPORT au détail de cette ligne, à l'exercice suivant, qui ne
   // porte aucune liaison · sans lui, en N+1, les passes par montant
   // rapprochaient le report de la facture et celui du reclassement.
+  // Un report naît de la clôture, jamais dans un journal de situation · une
+  // simulation qui porterait ce libellé n'en est pas un (ligne sage-l1).
   const ouverts = (await db.ligneEcriture.findMany({
-    where: { compteId, lettrageId: null, libelle: { startsWith: PREFIXE_REPORT_DETAIL }, ecriture: { tenantId } },
+    where: { compteId, lettrageId: null, libelle: { startsWith: PREFIXE_REPORT_DETAIL }, ecriture: { tenantId, ...HORS_SITUATION } },
     select: SELECT_LIGNE_DE_REPORT,
   })) as LigneDeReportLue[];
   for (const id of await reportsDuReclassement(db, tenantId, ouverts)) reclassees.add(id);
