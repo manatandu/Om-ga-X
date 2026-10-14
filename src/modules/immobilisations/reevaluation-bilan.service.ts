@@ -509,6 +509,9 @@ export class ReevaluationBilanService {
                 motif:
                   'Réévaluation libre, méthode 2 (AUDCIF Titre VIII ch. 28 § 4.3.1 et § 4.3.2) · la valeur nette réévaluée ' +
                   'devient la valeur brute, amortie sur les annuités restantes à compter de l’ouverture de l’exercice suivant.',
+                // Relecture M3 · la révision se reconnaît à cette liaison,
+                // jamais à sa date (une révision du cabinet du même jour).
+                reevaluationBilanId: reevaluation.id,
                 createdBy: userId,
               },
             });

@@ -119,3 +119,81 @@ describe("l'annulation d'une dotation", () => {
     await expect(service.annuler('t-1', 'u-1', DTO)).rejects.toThrow(/lettrées/);
   });
 });
+
+describe('la révision posée par une réévaluation se reconnaît à sa liaison (relecture M3)', () => {
+  const revision = (reevaluationBilanId: string | null) => ({
+    id: '22222222-2222-4222-8222-222222222222',
+    immobilisationId: 'bien-1',
+    exerciceId: EX_N.id,
+    nature: 'PROSPECTIVE',
+    // La date de la clôture, comme celle que pose la méthode 2 · la date
+    // seule ne dit plus rien de l'auteur.
+    dateDecision: EX_N.dateFin,
+    dureeAvantAns: 5,
+    dureeApresAns: 3,
+    motif: 'Révision du cabinet',
+    montantReprise: null,
+    ecritureId: null,
+    reevaluationBilanId,
+    createdAt: new Date('2026-12-31T15:00:00Z'),
+    createdBy: 'u-1',
+    exercice: EX_N,
+  });
+  const preparer = (reevaluationBilanId: string | null) => {
+    const f = fabrique({ statut: 'BROUILLARD' });
+    const r = revision(reevaluationBilanId);
+    f.prisma.revisionPlanAmortissement = {
+      findFirst: jest.fn().mockResolvedValue(r),
+      findMany: jest.fn().mockResolvedValue([]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    };
+    f.prisma.immobilisation.findFirst = jest.fn().mockResolvedValue({
+      id: 'bien-1',
+      dureeAmortissementAns: 3,
+      reprisesAmortissement: 0,
+      dateEffetRevisionPlan: new Date('2027-01-01'),
+      dureeResiduelleRevisee: 3,
+    });
+    f.prisma.immobilisation.update = jest.fn().mockResolvedValue({});
+    return f;
+  };
+  const DTO_REVISION = { nature: 'REVISION_PLAN' as const, acteId: '22222222-2222-4222-8222-222222222222', motif: 'Durée erronée' };
+
+  it('une révision prospective du CABINET datée de la clôture s’annule comme la sienne · jamais prise pour celle de la réévaluation', async () => {
+    const { service, prisma } = preparer(null);
+    await expect(service.annuler('t-1', 'u-1', DTO_REVISION)).resolves.toMatchObject({ annule: true, nature: 'REVISION_PLAN' });
+    expect(prisma.revisionPlanAmortissement.deleteMany).toHaveBeenCalledWith({ where: { id: DTO_REVISION.acteId, tenantId: 't-1' } });
+    // La durée d'avant revient sur la fiche.
+    expect(prisma.immobilisation.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ dureeAmortissementAns: 5 }) }));
+  });
+
+  it('la révision LIÉE à la réévaluation ne s’annule pas seule', async () => {
+    const { service, prisma } = preparer('reev-1');
+    await expect(service.annuler('t-1', 'u-1', DTO_REVISION)).rejects.toThrow(/avec la réévaluation/);
+    expect(prisma.revisionPlanAmortissement.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('la réévaluation ne relit que les révisions qui lui sont liées', async () => {
+    const { service, prisma } = preparer('reev-1');
+    prisma.reevaluationBilan = {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'reev-1',
+        exerciceId: EX_N.id,
+        exercice: EX_N,
+        type: 'LIBRE',
+        methodeLibre: 'ELIMINATION',
+        neutraliteFiscale: false,
+        dateReevaluation: EX_N.dateFin,
+        decision: 'PV',
+        traitementFiscal: 'x',
+        totalEcart: 100,
+        ecritureId: 'ecr-r',
+        createdAt: new Date('2026-12-31T12:00:00Z'),
+        lignes: [{ immobilisationId: 'bien-1', amortissementsApres: 0 }],
+      }),
+    };
+    await service.annuler('t-1', 'u-1', { nature: 'REEVALUATION', acteId: 'reev-1', motif: 'Erreur de coefficient' }).catch(() => undefined);
+    const lecture = prisma.revisionPlanAmortissement.findMany.mock.calls.find(([a]: [{ where: Record<string, unknown> }]) => 'reevaluationBilanId' in a.where);
+    expect(lecture?.[0].where).toEqual({ tenantId: 't-1', reevaluationBilanId: 'reev-1' });
+  });
+});

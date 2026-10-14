@@ -352,7 +352,7 @@ export class AnnulationTraitementService {
       case 'REVISION_PLAN': {
         const r = await db.revisionPlanAmortissement.findFirst({ where: { id: acteId, tenantId }, include: { exercice: true } });
         if (!r) throw introuvable();
-        const deReevaluation = await this.revisionPoseeParReevaluation(db, tenantId, r);
+        const deReevaluation = posteeParUneReevaluation(r);
         return {
           nature,
           acteId,
@@ -814,7 +814,7 @@ export class AnnulationTraitementService {
     });
     const lues: RevisionLue[] = [];
     for (const r of revisions) {
-      const deReevaluation = await this.revisionPoseeParReevaluation(db, tenantId, r);
+      const deReevaluation = posteeParUneReevaluation(r);
       lues.push({
         id: r.id,
         nature: r.nature,
@@ -828,51 +828,26 @@ export class AnnulationTraitementService {
     return lues;
   }
 
-  /**
-   * LA RÉVISION QU'UNE RÉÉVALUATION LIBRE (MÉTHODE 2) A POSÉE · prospective,
-   * sans écriture, datée de la clôture de l'exercice de l'opération, sur un
-   * bien qu'elle a réévalué par élimination (`reevaluation-bilan.service.ts`).
-   */
-  private async revisionPoseeParReevaluation(
-    db: Db,
-    tenantId: string,
-    r: { immobilisationId: string; exerciceId: string; nature: NatureRevisionPlan; ecritureId: string | null; dateDecision: Date },
-  ): Promise<boolean> {
-    if (r.nature !== NatureRevisionPlan.PROSPECTIVE || r.ecritureId !== null) return false;
-    const ligne = await db.ligneReevaluationBilan.findFirst({
-      where: {
-        tenantId,
-        immobilisationId: r.immobilisationId,
-        amortissementsApres: 0,
-        reevaluation: { exerciceId: r.exerciceId, methodeLibre: 'ELIMINATION', dateReevaluation: r.dateDecision },
-      },
-      select: { id: true },
-    });
-    return !!ligne;
-  }
-
-  private async revisionsPoseesPar(
-    db: Db,
-    tenantId: string,
-    reev: { exerciceId: string; methodeLibre: string | null; dateReevaluation: Date; lignes: Array<{ immobilisationId: string; amortissementsApres: unknown }> },
-  ): Promise<string[]> {
-    if (reev.methodeLibre !== 'ELIMINATION') return [];
-    const biens = reev.lignes.filter((l) => n(l.amortissementsApres) === 0).map((l) => l.immobilisationId);
-    if (biens.length === 0) return [];
+  private async revisionsPoseesPar(db: Db, tenantId: string, reev: { id: string }): Promise<string[]> {
     const revisions = await db.revisionPlanAmortissement.findMany({
-      where: {
-        tenantId,
-        immobilisationId: { in: biens },
-        exerciceId: reev.exerciceId,
-        nature: NatureRevisionPlan.PROSPECTIVE,
-        ecritureId: null,
-        dateDecision: reev.dateReevaluation,
-      },
+      where: { tenantId, reevaluationBilanId: reev.id },
       select: { id: true },
       take: PLAFOND_ACTES,
     });
     return revisions.map((r) => r.id);
   }
+}
+
+/**
+ * LA RÉVISION QU'UNE RÉÉVALUATION LIBRE (MÉTHODE 2) A POSÉE · reconnue par sa
+ * LIAISON (`reevaluationBilanId`, posée par `reevaluation-bilan.service.ts`
+ * et, pour les révisions d'avant, par la migration
+ * `20270174020000_revision_posee_par_reevaluation`), jamais par sa date ·
+ * relecture M3, une révision prospective du cabinet datée de la même clôture
+ * passait pour celle de la réévaluation et partait avec elle sans acte.
+ */
+export function posteeParUneReevaluation(r: { reevaluationBilanId: string | null }): boolean {
+  return r.reevaluationBilanId !== null;
 }
 
 /** Le détail d'une reprise de la provision spéciale, tel que la reprise l'a figé. */

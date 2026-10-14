@@ -4784,12 +4784,22 @@ model RevisionPlanAmortissement {
   ecritureId String?   @unique
   ecriture   Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
 
+  /// Ligne sage-l4, relecture M3 · la réévaluation libre (méthode 2) qui a
+  /// POSÉ cette révision, nulle pour une révision du cabinet. Reconnue par
+  /// cette liaison, jamais par sa date · une révision prospective du cabinet
+  /// datée de la même clôture passait pour celle de la réévaluation et partait
+  /// avec elle sans acte. RESTRICT déclaré · la réévaluation ne quitte sa
+  /// table qu'après la révision qu'elle a posée.
+  reevaluationBilanId String?
+  reevaluationBilan   ReevaluationBilan? @relation(fields: [reevaluationBilanId], references: [id], onDelete: Restrict)
+
   createdAt DateTime @default(now())
   createdBy String
 
   @@index([tenantId])
   @@index([immobilisationId])
   @@index([exerciceId])
+  @@index([reevaluationBilanId])
   @@map("revisions_plans_amortissement")
 }
 
@@ -9416,6 +9426,8 @@ model ReevaluationBilan {
   ecriture   Ecriture @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
 
   lignes LigneReevaluationBilan[]
+  /// Les révisions prospectives posées par la méthode 2 (relecture M3).
+  revisionsPosees RevisionPlanAmortissement[]
 
   createdAt DateTime @default(now())
   createdBy String
