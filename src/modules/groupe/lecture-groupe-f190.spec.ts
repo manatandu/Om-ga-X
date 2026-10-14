@@ -27,7 +27,7 @@ import { GroupeService } from './groupe.service';
  *    du siège · une cellule oubliée du périmètre fait lever.
  */
 
-type Statut = 'BROUILLARD' | 'VALIDEE';
+type Statut = 'BROUILLARD' | 'VALIDEE' | 'SITUATION';
 interface CompteF {
   id: string;
   tenantId: string;
@@ -62,7 +62,8 @@ type Filtre = Record<string, unknown>;
 
 /**
  * Le filtre tel que Prisma l'applique · une clé indéfinie ne filtre pas,
- * `in`, `equals`, `OR` et `AND` s'appliquent, et tout autre opérateur LÈVE ·
+ * `in`, `equals`, `not` (sur une valeur simple), `OR` et `AND` s'appliquent,
+ * et tout autre opérateur LÈVE ·
  * une doublure qui ignorerait un filtre validerait une requête que la base
  * n'exécuterait pas ainsi.
  */
@@ -76,6 +77,8 @@ function correspond(objet: Record<string, unknown>, filtre: Filtre): boolean {
       return Object.entries(attendu as Filtre).every(([operateur, x]) => {
         if (operateur === 'in') return (x as unknown[]).includes(valeur);
         if (operateur === 'equals') return valeur === x;
+        // Écritures de situation écartées (ligne sage-l1, fonction 12) · `{ not: 'SITUATION' }`.
+        if (operateur === 'not' && (x === null || typeof x !== 'object')) return valeur !== x;
         throw new Error(`doublure · opérateur non simulé « ${operateur} » sur ${cle}`);
       });
     }
@@ -235,6 +238,8 @@ const BASE: Base = {
     ecriture('a-nul', 'd-a', 'a-26', 'mouvement', '2026-07-07'),
     ecriture('a-tot', 'd-a', 'a-26', 'mouvement', '2026-08-08'),
     ecriture('a-clo', 'd-a', 'a-26', 'cloture', '2026-12-31'),
+    // Une simulation d'un journal de situation · aucune balance ne la lit.
+    ecriture('a-sit', 'd-a', 'a-26', 'mouvement', '2026-09-30', 'SITUATION'),
     ecriture('a-ancien', 'd-a', 'a-25', 'mouvement', '2025-04-04'),
     ecriture('b-mv', 'd-b', 'b-26', 'mouvement', '2026-03-03'),
     ecriture('b-mv2', 'd-b', 'b-26', 'mouvement', '2026-09-09', 'BROUILLARD'),
@@ -257,6 +262,8 @@ const BASE: Base = {
     ligne('a-tot', 'd-a', '52', 5, 0),
     ligne('a-tot', 'd-a', '70100000', 0, 5),
     ligne('a-clo', 'd-a', '70100000', 338.33, 0),
+    ligne('a-sit', 'd-a', '52110000', 777, 0),
+    ligne('a-sit', 'd-a', '70100000', 0, 777),
     ligne('a-clo', 'd-a', '60100000', 0, 0.2),
     ligne('a-clo', 'd-a', '13100000', 0, 338.13),
     ligne('a-ancien', 'd-a', '52110000', 777, 0),
@@ -312,6 +319,8 @@ describe('F190 · la balance lue par tranches est celle du service des écriture
       // Les trois colonnes, et rien de l'exercice voisin.
       expect(a.lignes.find((l) => l.numero === '52110000')).toMatchObject({ reportDebit: 1000.1, mouvementDebit: 333.33, mouvementCredit: 0.2 });
       expect(a.lignes.find((l) => l.numero === '70100000')).toMatchObject({ clotureDebit: 338.33, mouvementCredit: 338.33 });
+      // Ni la simulation du journal de situation (777 au 52 et au 70).
+      expect(a.lignes.find((l) => l.numero === '52110000')!.totalDebit).toBe(1000.1 + 333.33);
       // La cellule C, lue sur 2025, ne voit rien de 2026.
       const c = (await balancesDesDossiers(prisma as never, COUPLES)).get('d-c')!;
       expect(c.totaux).toEqual({ debit: 10, credit: 10 });
@@ -351,6 +360,8 @@ describe('F190 · les comptages de la supervision et de la liasse', () => {
       ecriture('v', 'd-a', 'a-26', 'mouvement', '2026-03-01'),
       ecriture('b', 'd-a', 'a-26', 'mouvement', '2026-11-30', 'BROUILLARD'),
       ecriture('p', 'd-a', 'a-26', 'report', '2026-01-01', 'BROUILLARD', true),
+      // Une simulation postérieure · ni écriture, ni brouillard, ni dernière date.
+      ecriture('s', 'd-a', 'a-26', 'mouvement', '2026-12-15', 'SITUATION'),
       // Un autre exercice du même dossier · jamais compté.
       ecriture('ancien', 'd-a', 'a-25', 'mouvement', '2025-12-31', 'BROUILLARD'),
       ecriture('w', 'd-b', 'b-26', 'mouvement', '2026-02-02'),
