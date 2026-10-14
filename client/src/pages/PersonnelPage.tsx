@@ -6,6 +6,8 @@ import { Aide } from '../components/chrome/Aide';
 import { OngletBulletins } from './BulletinsPaie';
 import { OngletBaremesPaie } from '../components/BaremesPaie';
 import { OngletRubriquesAvances, type AvanceSalaire, type RubriquePaie } from '../components/RubriquesAvancesPaie';
+import { OngletCongesPaie } from '../components/paie/CongesPaie';
+import { dateCourte, jours as joursConge, motifCongeNonPortable, type CongeDuMois } from '../lib/conges-paie';
 import { libelleListeBornee } from '../lib/liste-bornee-personnel';
 import { TITRE_BLOC_PAIE } from './PaieDuMois';
 import { BaremeMensuelIrpp, type DetailMensuelIrpp } from './BaremeMensuelIrpp';
@@ -239,6 +241,8 @@ interface Simulation {
     reserves?: string[];
   };
   retenuesAvances?: { avanceId: string; littera: string; libelle: string; montantFc: number; soldeAvantFc: number }[];
+  /** LIGNE SAGE-L5 · les allocations de congé que le serveur a rejouées et ajoutées aux éléments. */
+  allocationsConge?: { congeId: string; du: string; au: string; jours: number; tauxJournalier: number; devise: 'CDF' | 'USD'; montant: number }[];
   reserveRetenuesAvances?: string | null;
   /** « Sans excéder la portion saisissable » (AUPSRVE, art. 188) · confrontée, jamais refusée. */
   reserveSaisies?: string | null;
@@ -604,6 +608,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const [avisModele, setAvisModele] = useState<string[]>([]);
   const [avancesSalarie, setAvancesSalarie] = useState<AvanceSalaire[]>([]);
   const [retenuesAvances, setRetenuesAvances] = useState<Record<string, string>>({});
+  // LIGNE SAGE-L5 · les congés dont le bulletin du mois peut porter
+  // l'allocation. Null tant que la liste n'est pas LUE ; seul l'identifiant
+  // part au serveur, qui rejoue le montant.
+  const [congesDuMois, setCongesDuMois] = useState<CongeDuMois[] | null>(null);
+  const [congesPortes, setCongesPortes] = useState<Record<string, boolean>>({});
   const [tous, setTous] = useState(false);
   // Les contrats saisis avec un montant et sans monnaie, comptés par le
   // serveur sur le dossier entier · null tant que le registre n'est pas lu,
@@ -796,6 +805,26 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   }, [onglet, selection]);
 
   useEffect(() => {
+    setCongesPortes({});
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
+      setCongesDuMois(null);
+      return;
+    }
+    let actuel = true;
+    api.get<CongeDuMois[]>(`/personnel/salaries/${selection}/conges/du-mois/${moisDePaie}`).then(
+      (r) => actuel && setCongesDuMois(r),
+      (e: ApiError) => {
+        if (!actuel) return;
+        setCongesDuMois(null);
+        setErreur(e.message);
+      },
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, selection, moisDePaie]);
+
+  useEffect(() => {
     if (onglet === 'confrontation') {
       api.get<Confrontation>('/personnel/confrontation').then(setConfrontation, (e: ApiError) =>
         setErreur(e.message),
@@ -880,6 +909,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
               .filter(([, v]) => (nombre(v) ?? 0) > 0)
               .map(([avanceId, v]) => ({ avanceId, montantFc: nombre(v) as number })),
           }
+        : {}),
+      // LIGNE SAGE-L5 · le congé seul part ; l'allocation est rejouée au
+      // serveur par le moteur du décompte final (art. 142).
+      ...(Object.values(congesPortes).some(Boolean)
+        ? { allocationsConge: Object.entries(congesPortes).filter(([, oui]) => oui).map(([congeId]) => ({ congeId })) }
         : {}),
     };
     return corps;
@@ -1345,7 +1379,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         </div>
       )}
 
-      <div className="ecran-seul flex gap-1 mb-2 text-[11.5px]">
+      <div className="ecran-seul flex flex-wrap gap-1 mb-2 text-[11.5px]">
         {(
           ONGLETS_PERSONNEL
         ).map((o) => (
@@ -1368,6 +1402,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     ? 'Simulation'
                     : o === 'bulletins'
                       ? 'Bulletins'
+                      : o === 'conges'
+                      ? 'Congés'
                       : o === 'rubriques'
                       ? 'Rubriques et avances'
                       : o === 'baremes'
@@ -2827,6 +2863,45 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
+          {selection && congesDuMois && congesDuMois.length > 0 && (
+            <div className="border border-border px-3 py-2 mt-2">
+              <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
+                Allocations de congé du mois
+                <Aide
+                  titre="Allocations de congé du mois"
+                  texte="Les congés posés dans l'onglet Congés dont l'allocation est rattachée à ce mois. Cochée, l'allocation entre au bulletin comme élément « Allocation ou indemnité de congé », au montant que le serveur rejoue (rémunération journalière et moyenne des douze mois, par jour de congé). Un congé déjà porté par un bulletin émis, ou dont l'allocation n'est pas chiffrée, ne se coche pas. L'émission lie le congé au bulletin ; annuler le bulletin le libère."
+                  source="Code du travail, art. 142 et 145"
+                />
+              </div>
+              <table className="w-full">
+                <tbody>
+                  {congesDuMois.map((c) => {
+                    const motif = motifCongeNonPortable(c, deviseStipulation);
+                    return (
+                      <tr key={c.id} className="border-t border-border/40">
+                        <td className="py-1 pr-2">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              disabled={motif !== null}
+                              checked={congesPortes[c.id] === true}
+                              onChange={(e) => setCongesPortes((p) => ({ ...p, [c.id]: e.target.checked }))}
+                            />
+                            Congé du {dateCourte(c.du)} au {dateCourte(c.au)} · {joursConge(c.allocation.jours)} jour(s)
+                          </label>
+                        </td>
+                        <td className="py-1 pr-2 text-right">
+                          {c.allocation.montant === null ? '' : `${fc(c.allocation.montant)} ${c.allocation.devise ?? ''}`}
+                        </td>
+                        <td className="py-1 text-right text-text-dim">{motif ?? ''}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div className="flex gap-2 mt-2">
             <button
               type="button"
@@ -3090,6 +3165,16 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     sortent de la rémunération, pas de ce que l’employeur paie.
                   </strong>
                 </div>
+                {simulation.allocationsConge && simulation.allocationsConge.length > 0 && (
+                  <ul className="mt-1.5 text-[11px]">
+                    {simulation.allocationsConge.map((a) => (
+                      <li key={a.congeId}>
+                        Allocation de congé du {dateCourte(a.du)} au {dateCourte(a.au)} · {joursConge(a.jours)} jour(s) à {fc(a.tauxJournalier)} ·{' '}
+                        {fc(a.montant)} {a.devise}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {simulation.retenuesAvances && simulation.retenuesAvances.length > 0 && (
                   <ul className="mt-1.5 text-[11px]">
                     {simulation.retenuesAvances.map((r) => (
@@ -3376,6 +3461,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         <OngletBulletins moisInitial={moisDePaie} peutEcrire={peutEcrire} />
       )}
 
+      {onglet === 'conges' && <OngletCongesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'rubriques' && <OngletRubriquesAvances salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <OngletBaremesPaie peutEcrire={peutEcrire} />}
 
