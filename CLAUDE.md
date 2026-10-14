@@ -195,7 +195,11 @@ TIERS-PANOPLIE (décision de Manasse du 2026-10-09, « Lève le gel pour la
 fonction de chaque tiers et numéro personnalisée, et corrige », même plan,
 § 8) ; puis, le même jour, les COMPTES PERSONNALISÉS et le VIREMENT DE FONDS,
 fonctions nouvelles que Manasse a demandées expressément (§ 6), une demande
-expresse valant levée du gel pour elle seule. Rien d'autre n'entre.
+expresse valant levée du gel pour elle seule ; puis les 41 ABSENCES DE SAGE
+qu'il a cochées « À faire » le 2026-10-14 (« Execute ce que j'ai coché »,
+même plan, § 9), reproduites chacune à sa place par
+`docs/comparaison-sage/reproduction/`, les 61 autres gardées pour plus tard.
+Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
 qu'un autre ait réussi. Un push sur `main` en déclenche plusieurs à la fois,

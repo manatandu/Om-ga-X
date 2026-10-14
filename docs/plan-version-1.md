@@ -262,3 +262,29 @@ refusée en le disant ; le salarié n'entre pas encore (« Pas pour l'instant »
   report en N+1 de ce qui était resté au compte du plan. Hors de la ligne,
   au suivi · ouvrir le compte propre d'un journal EXISTANT ; les numéros des
   tiers 43 à 47 ; le salarié.
+
+## 9. Absences de Sage cochées · le gel levé pour elles (2026-10-14)
+
+Décision de Manasse du 2026-10-14. Sur la page de tri des 103 absences de la
+comparaison avec Sage, il a coché 41 fonctions « À faire », une « Écartée »
+(ligne 77, adresses du salarié) et laissé les autres ; puis · « Execute ce
+que j'ai coché, et garde ce que je n'ai coché pour plus tard. Et garde aussi
+tes conseils pour me repérer plus tard » ; puis · « utilise le skill de
+duplication pour reproduire ces fonctions. Mets chaque chose à sa place, ne
+mélange pas de choses ». Sa demande expresse lève le gel pour ces 41
+fonctions seules.
+
+- **À faire** (41) · lignes 1, 3, 11, 12, 14, 16, 18, 19, 22, 24, 27, 31,
+  32, 36, 37, 39, 40, 45, 46, 47, 50, 59, 60, 66, 67, 68, 73, 75, 78, 79,
+  85, 88, 90, 91, 94, 95, 96, 99, 100, 101, 102 de
+  `docs/comparaison-sage/15-absents-a-trier.md`.
+- **Plus tard** (61) · toutes les autres, gardées au suivi, non codées.
+- **Écartée** (1) · ligne 77.
+- **Conseils** · la colonne « Conseil du 2026-10-14 » de la même liste garde
+  l'avis donné avant le tri ; là où le tri s'en écarte, le tri vaut.
+- **Conduite** · `docs/comparaison-sage/reproduction/` (carte, architecture,
+  matrice, journal), neuf lignes de travail par famille, décisions prises par
+  la loi avant tout code (`architecture.md`, D1 à D11), dont deux qui
+  reviennent sur une règle écrite · l'ordre de virement depuis un RIB en
+  devise (D1, loi n° 23/053 art. 141, 1°) et le refus de clôturer un journal
+  non imprimé, en option du dossier (D3, AUDCIF art. 22, 3°).
