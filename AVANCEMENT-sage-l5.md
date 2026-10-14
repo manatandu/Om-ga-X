@@ -74,9 +74,40 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
     mois ». Parcours `e2e/tests/sage-l5-arrets.e2e.ts`. Aucune écriture ·
     pas de scénario de clôture.
 
+- **75 · banques du salarié et paiement des salaires** · fait.
+  - Serveur · `Salarie.modePaiement` (virement, chèque, espèces, `null` =
+    pas encore dit), `RibSalarie` (structure, administrateur seul, journal
+    d'audit, numéros masqués), `PaiementSalaires` et `LignePaiementSalaire`
+    (migration `20270175000500_paiement_salaires`), moteur pur
+    `personnel/paiement-salaires.ts` (journal selon le mode, billetage par
+    les plus grosses coupures d'abord, échéance de l'art. 99, reste à payer
+    après un bulletin annulé déjà payé, numéros de chèque),
+    `ribs-salaries.service.ts`, `paiement-salaires.service.ts`,
+    `paiement-salaires.controller.ts`. L'ordre de virement passe par le
+    module existant (`OrdresVirementService.preparerSalaries`, `creerDans`,
+    `annulerDans` · une ligne d'ordre paie un tiers OU un salarié, contrainte
+    de la base), et les ordres de salaires sont refusés à l'aide-comptable
+    (liste, décomptes, détail, impression, annulation). Écriture D 422 / C
+    trésorerie AGRÉGÉE au brouillard, retenue par le paiement
+    (`detenteurs-ecriture.ts`), annulée avec motif (brouillard retiré,
+    validée en négatif, ordre annulé avec elle).
+  - Écran · section « Paiement du salaire » du registre
+    (`components/paie/PaiementDuSalarie.tsx`), bloc « Paiement des salaires
+    du mois » de l'onglet Bulletins (`components/paie/PaiementSalaires.tsx`),
+    `useEnvoiPaie` et `BoutonsPaie` partagés (`ModalePaie.tsx`).
+  - Parcours `e2e/tests/sage-l5-paiement.e2e.ts`, SUR VRAIE BASE À TRAVERS
+    UNE CLÔTURE · décembre 2026 passé au journal, 2026 clôturé, le 422
+    ouvert en 2027 au crédit des deux nets (2 × 649 300), payés le 5 janvier
+    2027 par virement (ordre n° 1, KASONGO à son RIB) et en espèces
+    (billetage), validés · 422 soldé, caisse à − 649 300 ; espèces annulées
+    en négatif · 422 à − 649 300, caisse à zéro, bulletin de nouveau à
+    payer ; virement annulé avec son ordre. SYCEBNL · paiement au brouillard
+    annulé, pièce retirée, puis bulletin annulé et réémis plus haut qui ne
+    paie que la différence.
+
 ## Reste
 
-- 75, 88, 85.
+- 88, 85.
 - 79 · le décompte final ne relit pas encore le compteur pour proposer les
   mois non couverts par un congé (saisis à la main, comme avant) ; un congé
   porté au bulletin et une indemnité compensatoire au décompte du même mois
@@ -157,6 +188,40 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   partielle, de l'employeur qui verse une partie (art. 139, al. 3, maternité).
   Rien n'est présumé · chaque indemnité se DÉCLARE avec sa pièce, au mois de
   son versement ; sans déclaration, les deux tiers du Code restent proposés.
+- **D75-a · le mode de paiement se convient et se déclare** · art. 98, al. 2
+  (« au temps et au lieu convenus ») · par salarié, sans défaut, « pas
+  encore dit » tant qu'il ne l'est pas, et alors le salarié n'entre dans
+  aucun paiement. Virement et chèque paient « en espèces » au sens de
+  l'art. 98, al. 1, qui oppose la monnaie à la NATURE (même opposition à
+  l'art. 105) · lecture d'OmegaX, dite dans le schéma et la bulle.
+- **D75-b · l'écriture** · fiche du compte 42 des deux plans (AUDCIF,
+  Titre VII ; SYCEBNL, Partie 2 ch. 3) · « Débité […] des rémunérations
+  versées au personnel, par le crédit des comptes de trésorerie », le 422
+  lu par `compteDuRole('REMUNERATIONS_DUES')`. La trésorerie suit le mode ·
+  une caisse (fiche du compte 57, « paiement effectué en espèces ») pour
+  les espèces, un autre compte de trésorerie pour le virement et le chèque.
+  Une banque en devise est refusée (les nets figés sont en francs, F49).
+  L'écriture est AGRÉGÉE (un D 422, un C trésorerie) · le journal se lit par
+  l'aide-comptable, à qui le personnel est fermé ; le détail est sur la
+  fiche et sur l'ordre, qu'il ne lit pas.
+- **D75-c · le chèque porte son numéro** (AUDCIF art. 17, 3° et 5°, que
+  l'art. 3 du SYCEBNL n'écarte pas) · un par salarié, jamais deux fois le
+  même.
+- **D75-d · un salaire ne se paie pas deux fois** · un bulletin payé ne se
+  repaie pas (index unique sur les lignes non annulées) ; un bulletin annulé
+  déjà payé et réémis ne paie que la différence, un trop-perçu se dit sans
+  se compenser (fiche du compte 42, aucune compensation entre ce qui est dû
+  au personnel et ce qu'il doit).
+- **D75-e · l'échéance** · art. 99, al. 2, « dans les six jours suivant la
+  période » · six jours de CALENDRIER (l'art. 100, au même chapitre, dit
+  « jours ouvrables » quand il les veut), affichée, jamais un refus ; les
+  deux jours ouvrables de l'art. 100 pour le décompte final sont dits dans
+  la bulle, non calculés.
+- **D75-f · le billetage** · aucun texte ne l'exige, ajout de l'éditeur
+  comme la ventilation par coupure du procès-verbal de caisse · coupures
+  DÉCLARÉES (aucune liste de billets au corpus), proposées depuis le dernier
+  paiement en espèces, plus grosses d'abord, reste dit, figé avec le
+  paiement.
 - **D8-d · mise à pied** · « jusqu'à concurrence de deux fois quinze jours
   par an » (art. 57, 5°) lu comme deux mesures d'au plus quinze jours de
   calendrier par année civile ; au-delà, refus nommé.
@@ -188,11 +253,12 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
 ```bash
 npx jest --maxWorkers=1 src/modules/personnel/conges-acquis.spec.ts src/modules/personnel/conges-bulletin.spec.ts
 npx jest --maxWorkers=1 src/modules/personnel/absences.spec.ts src/modules/personnel/heures-majorees.spec.ts
-(cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts)
+npx jest --maxWorkers=1 src/modules/personnel/paiement-salaires.spec.ts src/modules/reglements/ordres-virement-paie.spec.ts
+(cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts src/lib/paiement-salaires.spec.ts)
 # montage local (CLAUDE.md § 10), ports 8085 et 4185, puis
 (cd e2e && OMEGAX_APP=http://localhost:4185 OMEGAX_API=http://localhost:4185/api \
   PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test tests/sage-l5-conges.e2e.ts tests/sage-l5-absences.e2e.ts tests/sage-l5-heures.e2e.ts \
-  tests/sage-l5-arrets.e2e.ts)
+  tests/sage-l5-arrets.e2e.ts tests/sage-l5-paiement.e2e.ts)
 DATABASE_URL=postgresql://jetable:jetable@localhost:5432/omegax_sage_l5 npx prisma migrate diff \
   --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
   --shadow-database-url postgresql://jetable:jetable@localhost:5432/omegax_sage_l5_ombre --exit-code

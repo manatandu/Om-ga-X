@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { Aide } from '../chrome/Aide';
-import { CHAMP_PAIE, ChampPaie, ModalePaie } from './ModalePaie';
+import { BoutonsPaie as Boutons, CHAMP_PAIE, ChampPaie, ModalePaie, useEnvoiPaie as useEnvoi } from './ModalePaie';
 import { dateCourte, jours } from '../../lib/conges-paie';
 import { montant as fc } from '../../lib/montants';
 import {
@@ -246,37 +246,6 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
         />
       )}
     </div>
-  );
-}
-
-function useEnvoi(onFait: () => void) {
-  const [envoi, setEnvoi] = useState(false);
-  const [erreur, setErreur] = useState<string | null>(null);
-  const envoyer = async (fn: () => Promise<unknown>) => {
-    setEnvoi(true);
-    setErreur(null);
-    try {
-      await fn();
-      setEnvoi(false);
-      onFait();
-    } catch (e) {
-      setEnvoi(false);
-      setErreur(e instanceof ApiError ? e.message : 'Opération refusée.');
-    }
-  };
-  return { envoi, erreur, setErreur, envoyer };
-}
-
-function Boutons({ envoi, onFermer, valider }: { envoi: boolean; onFermer: () => void; valider: string }) {
-  return (
-    <>
-      <button type="button" className="border border-border px-3 py-1" disabled={envoi} onClick={onFermer}>
-        Fermer
-      </button>
-      <button type="submit" className="bg-sel text-white font-semibold px-3 py-1 rounded-full disabled:opacity-50" disabled={envoi}>
-        {envoi ? 'Envoi…' : valider}
-      </button>
-    </>
   );
 }
 

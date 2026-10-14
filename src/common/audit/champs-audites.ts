@@ -226,6 +226,11 @@ export const MODELES_AUDITES = new Set<string>([
   // Une indemnité de la Caisse déduite ou reçue par subrogation change ce que
   // le bulletin propose.
   'IndemniteCaisseAbsence',
+  // Un RIB de salarié modifié en silence détourne un salaire (comme RibTiers) ·
+  // un paiement des salaires passe une pièce au journal, et son annulation
+  // rend les bulletins payables · la trace dit qui et quand.
+  'RibSalarie',
+  'PaiementSalaires',
 
   // ══ CLASSEMENT DU 2026-09-27 · tables de même nature que les précédentes,
   // restées hors du journal sans décision (audit serveur, point I4). ══
@@ -358,6 +363,8 @@ export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
   CoupureComptee: 'Ventilation par coupure du PV de comptage, journalisé · le total compté est sur le PV.',
   LigneFacture: 'Lignes de la facture, journalisée, écrites avec elle et jamais retouchées seules.',
   LigneDevis: 'Lignes du devis, journalisé, écrites avec lui et jamais retouchées seules.',
+  LignePaiementSalaire:
+    "Lignes du paiement des salaires, journalisé, écrites avec lui · seule son annulation, elle-même journalisée, leur recopie sa date.",
   LigneOrdreVirement:
     "Lignes de l'ordre de virement, journalisé, recopiées à la date de l'ordre et jamais modifiées.",
   RetenueAvanceBulletin: "Retenue née avec le bulletin émis, journalisé · un bulletin ne se modifie pas, il s'annule.",
@@ -494,6 +501,13 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // La nature, les dates et l'annulation restent, ce sont elles que la trace
   // doit dire.
   AbsenceSalarie: ['piece', 'observation'],
+  // Ligne sage-l5 · les coordonnées d'un salarié sont une donnée de la
+  // personne, que l'aide-comptable ne lit pas · la trace dit qu'un RIB a
+  // changé, qui l'a changé et quand, et la banque ; les numéros sont masqués.
+  RibSalarie: ['titulaire', 'codeBanque', 'codeGuichet', 'numeroCompte', 'cle', 'iban', 'codeBic', 'commentaire'],
+  // Le paiement reste IDENTIFIABLE (mois, mode, journal, pièce, annulation) ·
+  // son montant et le billetage par salarié sont masqués, comme le bulletin.
+  PaiementSalaires: ['total', 'billetage'],
   // Le bulletin reste IDENTIFIABLE (numéro, mois, nom, statut, dates, motif
   // d'annulation) · ses MONTANTS et le détail du calcul ne le sont pas, pour
   // la même raison que la rémunération du contrat.

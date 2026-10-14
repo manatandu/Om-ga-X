@@ -14,5 +14,7 @@ import { LotsVirementService } from './lots-virement.service';
   imports: [LicenceModule, JwtAuthModule, ComptabiliteModule, LettrageModule],
   controllers: [ReglementsController, OrdresVirementController, LotsVirementController],
   providers: [ReglementsService, OrdresVirementService, LotsVirementService],
+  // Le paiement des salaires (ligne sage-l5) fait naître ses ordres par ce module · aucun second.
+  exports: [OrdresVirementService],
 })
 export class ReglementsModule {}

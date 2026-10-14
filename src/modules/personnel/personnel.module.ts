@@ -15,11 +15,34 @@ import { AbsencesController } from './absences.controller';
 import { AbsencesService } from './absences.service';
 import { MajorationsHeuresController } from './majorations-heures.controller';
 import { MajorationsHeuresService } from './majorations-heures.service';
+import { ReglementsModule } from '../reglements/reglements.module';
+import { PaiementSalairesController } from './paiement-salaires.controller';
+import { PaiementSalairesService } from './paiement-salaires.service';
+import { RibsSalariesService } from './ribs-salaries.service';
 
 @Module({
-  imports: [LicenceModule, JwtAuthModule, ComptabiliteModule],
-  controllers: [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController],
-  providers: [PersonnelService, ComptabilisationPaieService, AvancesRubriquesService, BaremesPaieService, CongesService, AbsencesService, MajorationsHeuresService],
+  // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
+  imports: [LicenceModule, JwtAuthModule, ComptabiliteModule, ReglementsModule],
+  controllers: [
+    PersonnelController,
+    AvancesRubriquesController,
+    BaremesPaieController,
+    CongesController,
+    AbsencesController,
+    MajorationsHeuresController,
+    PaiementSalairesController,
+  ],
+  providers: [
+    PersonnelService,
+    ComptabilisationPaieService,
+    AvancesRubriquesService,
+    BaremesPaieService,
+    CongesService,
+    AbsencesService,
+    MajorationsHeuresService,
+    PaiementSalairesService,
+    RibsSalariesService,
+  ],
   exports: [PersonnelService],
 })
 export class PersonnelModule {}

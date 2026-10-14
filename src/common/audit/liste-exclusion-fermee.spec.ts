@@ -147,6 +147,13 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'conges',
       // Ligne sage-l5 · ses absences (fonction 78) · la relation seule.
       'absences',
+      // Ligne sage-l5 · fonction 75 · le mode de paiement CONVENU est un fait
+      // de gestion (art. 98, al. 2), admis ; RIB, lignes de paiement et
+      // d'ordre de virement · les relations seules.
+      'modePaiement',
+      'ribs',
+      'lignesPaiement',
+      'ordresVirement',
       'createdAt',
       'createdBy',
       'updatedAt',
@@ -239,6 +246,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'retenuesAvance',
       // Ligne sage-l5 · les congés dont il porte l'allocation · la relation seule.
       'allocationsConge',
+      // Ligne sage-l5 · les paiements qui ont versé son net · la relation seule.
+      'lignesPaiement',
     ],
     // LIGNE SAGE-L5 · LE CONGÉ DU SALARIÉ · le journal dit ses dates, son
     // rattachement à un bulletin, sa prise au-delà du solde et son
@@ -311,6 +320,37 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'creePar',
       'createdAt',
       'retenues',
+    ],
+    // LIGNE SAGE-L5, FONCTION 75 · LE RIB D'UN SALARIÉ · le journal dit qu'il
+    // a changé, qui l'a changé et quand, la banque et la devise ; les
+    // numéros, le titulaire et le commentaire sont masqués.
+    RibSalarie: ['id', 'tenantId', 'tenant', 'salarieId', 'salarie', 'banque', 'devise', 'estPrincipal', 'createdAt'],
+    // LE PAIEMENT DES SALAIRES · identifiable (mois, mode, journal, pièce,
+    // ordre, annulation) ; le total et le billetage sont masqués.
+    PaiementSalaires: [
+      'id',
+      'tenantId',
+      'tenant',
+      'moisDePaie',
+      'mode',
+      'exerciceId',
+      'exercice',
+      'journalId',
+      'journal',
+      'date',
+      'ecritureId',
+      'ecriture',
+      'ecritureNegatifId',
+      'ecritureNegatif',
+      'piecePassee',
+      'ordreVirementId',
+      'ordreVirement',
+      'creePar',
+      'createdAt',
+      'annuleLe',
+      'annulePar',
+      'motifAnnulation',
+      'lignes',
     ],
   };
 

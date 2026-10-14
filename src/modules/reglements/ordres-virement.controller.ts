@@ -9,6 +9,13 @@ import { OrdresVirementService } from './ordres-virement.service';
 import { AnnulerOrdreDto, ListerOrdresDto } from './ordres-virement.dto';
 
 /**
+ * LE PERSONNEL EST FERMÉ À L'AIDE-COMPTABLE, lecture comprise
+ * (common/guards/roles-cantonnes.ts) · un ordre qui paie des salaires nomme
+ * chaque salarié et son net (ligne sage-l5, fonction 75).
+ */
+const personnelOuvert = (user: AuthenticatedUser) => user.role !== RoleUtilisateur.AIDE_COMPTABLE;
+
+/**
  * Les ordres de virement, onglet de la fenêtre Règlement des tiers. Lus par
  * tous ; imprimer et annuler reviennent au cabinet qui tient le dossier, comme
  * le règlement lui-même. Aucune route de création ici · l'ordre naît avec ses
@@ -22,23 +29,23 @@ export class OrdresVirementController {
   /** Filtrable par état (`?statut=A_IMPRIMER`), un état inconnu étant un 400. */
   @Get()
   lister(@CurrentUser() user: AuthenticatedUser, @Query() filtre: ListerOrdresDto) {
-    return this.ordres.lister(user.tenantId, filtre.statut);
+    return this.ordres.lister(user.tenantId, filtre.statut, personnelOuvert(user));
   }
 
   @Get(':id')
   detail(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.ordres.detail(user.tenantId, id);
+    return this.ordres.detail(user.tenantId, id, personnelOuvert(user));
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   @Post(':id/impression')
   imprimer(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.ordres.imprimer(user.tenantId, id, user.email);
+    return this.ordres.imprimer(user.tenantId, id, user.email, personnelOuvert(user));
   }
 
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   @Post(':id/annulation')
   annuler(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AnnulerOrdreDto) {
-    return this.ordres.annuler(user.tenantId, id, user.email, dto.motif);
+    return this.ordres.annuler(user.tenantId, id, user.email, dto.motif, personnelOuvert(user));
   }
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { BaremeMensuelIrpp, type DetailMensuelIrpp } from './BaremeMensuelIrpp';
 import { PaieDuMois } from './PaieDuMois';
+import { PaiementSalaires } from '../components/paie/PaiementSalaires';
 import { Aide } from '../components/chrome/Aide';
 import { ecartDuDecompte, elementsDuBulletin, montantAffiche, retenuesDuBulletin } from '../lib/bulletin-affiche';
 import { natureDuBulletin, type NatureBulletin } from '../lib/decompte-emis';
@@ -239,6 +240,9 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
       {/* Passer la paie au journal écrit au livre-journal · le comptable
           seulement, pas le gestionnaire de paie (roles-cantonnes.ts). */}
       <PaieDuMois mois={mois} apresChangement={charger} />
+
+      {/* Ligne sage-l5, fonction 75 · payer les bulletins émis du mois. */}
+      <PaiementSalaires mois={mois} />
 
       {ouvert && (
         <div className="border border-border bg-surface px-5 py-4">

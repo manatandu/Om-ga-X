@@ -130,6 +130,10 @@ export const MODELES_CLOISONNES = new Set<string>([
   'AbsenceSalarie',
   'MajorationHeures',
   'IndemniteCaisseAbsence',
+  // Ligne sage-l5 · banques du salarié et paiement des salaires (fonction 75).
+  'RibSalarie',
+  'PaiementSalaires',
+  'LignePaiementSalaire',
   'OrdreVirement',
   'LigneOrdreVirement',
   'LotVirement',

@@ -855,6 +855,10 @@ model Tenant {
   absencesSalaries             AbsenceSalarie[]
   majorationsHeures            MajorationHeures[]
   indemnitesCaisseAbsences     IndemniteCaisseAbsence[]
+  // Ligne sage-l5 · fonction 75, banques du salarié et paiement des salaires.
+  ribsSalaries                 RibSalarie[]
+  paiementsSalaires            PaiementSalaires[]
+  lignesPaiementSalaires       LignePaiementSalaire[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -1371,6 +1375,8 @@ model Journal {
   ribsBanque        RibBanque[]
   virementsFondsOrigine     VirementFonds[] @relation("VirementFondsJournalOrigine")
   virementsFondsDestination VirementFonds[] @relation("VirementFondsJournalDestination")
+  // Ligne sage-l5 · le journal de trésorerie d'où les salaires sont payés.
+  paiementsSalaires         PaiementSalaires[]
 
   @@unique([tenantId, code])
   @@map("journaux")
@@ -1690,6 +1696,8 @@ model Exercice {
   simulationsReference            SimulationBudgetaire[]             @relation("SimulationReference")
   simulationsCible                SimulationBudgetaire[]             @relation("SimulationCible")
   virementsFonds                  VirementFonds[]
+  // Ligne sage-l5 · les paiements de salaires passés dans l'exercice.
+  paiementsSalaires               PaiementSalaires[]
 
   @@unique([tenantId, dateDebut, dateFin])
   @@map("exercices")
@@ -1937,6 +1945,10 @@ model Ecriture {
   virementFondsDestination        VirementFonds? @relation("VirementFondsEcritureDestination")
   virementFondsNegatifOrigine     VirementFonds? @relation("VirementFondsNegatifOrigine")
   virementFondsNegatifDestination VirementFonds? @relation("VirementFondsNegatifDestination")
+  /// Ligne sage-l5 · le paiement des salaires (D 422 / C trésorerie) et son
+  /// inscription en négatif à l'annulation.
+  paiementSalaires                PaiementSalaires? @relation("PaiementSalairesEcriture")
+  paiementSalairesNegatif         PaiementSalaires? @relation("PaiementSalairesNegatif")
 
   @@index([tenantId, exerciceId, date])
   @@index([tenantId, statut], map: "ecritures_statut_idx")
@@ -7635,6 +7647,14 @@ model Salarie {
   repriseConges RepriseCongesSalarie?
   absences      AbsenceSalarie[]
   conges        CongeSalarie[]
+  // Ligne sage-l5 · fonction 75 · le mode de paiement CONVENU (Code du
+  // travail, art. 98, al. 2, « au temps et au lieu convenus »), déclaré,
+  // jamais présumé · `null` = pas encore dit, et le salarié n'entre dans
+  // aucun paiement tant qu'il ne l'est pas.
+  modePaiement   ModePaiementSalaire?
+  ribs           RibSalarie[]
+  lignesPaiement LignePaiementSalaire[]
+  ordresVirement LigneOrdreVirement[]
 
   createdAt DateTime @default(now())
   createdBy String
@@ -7958,6 +7978,8 @@ model BulletinPaie {
   retenuesAvance RetenueAvanceBulletin[]
   // Ligne sage-l5 · les congés dont ce bulletin porte l'allocation (art. 142, 145).
   allocationsConge CongeSalarie[]
+  // Ligne sage-l5 · les paiements qui ont versé son net (fonction 75).
+  lignesPaiement   LignePaiementSalaire[]
 
   @@unique([tenantId, numero])
   @@index([tenantId, ecritureId])
@@ -8860,6 +8882,8 @@ model OrdreVirement {
   creePar               String
   createdAt             DateTime             @default(now())
   lignes                LigneOrdreVirement[]
+  // Ligne sage-l5 · le paiement des salaires qui a fait naître l'ordre.
+  paiementsSalaires     PaiementSalaires[]
 
   @@unique([tenantId, numero])
   @@map("ordres_virement")
@@ -8873,8 +8897,13 @@ model LigneOrdreVirement {
   tenant         Tenant        @relation(fields: [tenantId], references: [id])
   ordreId        String
   ordre          OrdreVirement @relation(fields: [ordreId], references: [id], onDelete: Cascade)
-  tiersId        String
-  tiers          Tiers         @relation(fields: [tiersId], references: [id], onDelete: Restrict)
+  /// Le bénéficiaire est un TIERS (Règlement des tiers) ou un SALARIÉ (paiement
+  /// des salaires, ligne sage-l5, fonction 75) · l'un ou l'autre, jamais les
+  /// deux (contrainte de la base). Un salarié payé ne se supprime pas.
+  tiersId        String?
+  tiers          Tiers?        @relation(fields: [tiersId], references: [id], onDelete: Restrict)
+  salarieId      String?
+  salarie        Salarie?      @relation(fields: [salarieId], references: [id], onDelete: Restrict)
   beneficiaire   String
   banque         String
   coordonnees    String
@@ -8894,6 +8923,7 @@ model LigneOrdreVirement {
 
   @@index([ordreId])
   @@index([tenantId, ecritureId])
+  @@index([tenantId, salarieId])
   @@map("lignes_ordre_virement")
 }
 
@@ -10357,4 +10387,110 @@ model IndemniteCaisseAbsence {
 
   @@index([tenantId, absenceId, mois])
   @@map("indemnites_caisse_absences")
+}
+
+// Ligne sage-l5 · fonction 75 · banques du salarié et paiement des salaires.
+
+/// LE MODE DE PAIEMENT CONVENU avec le salarié (Code du travail, art. 98,
+/// al. 2, « au temps et au lieu convenus »). Les trois paient la rémunération
+/// « en espèces » au sens de l'art. 98, al. 1, qui oppose la monnaie aux
+/// avantages « en nature » (même opposition à l'art. 105) · lecture d'OmegaX.
+enum ModePaiementSalaire {
+  VIREMENT
+  CHEQUE
+  ESPECES
+}
+
+/// COORDONNÉES BANCAIRES D'UN SALARIÉ · une STRUCTURE, écrite par
+/// l'administrateur seul et au journal d'audit, comme les RIB des tiers · un
+/// RIB modifié en silence détourne un salaire. Mêmes règles de saisie
+/// (`motifRefusRibTiers`), un PRINCIPAL par salarié, le premier d'office.
+model RibSalarie {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  salarieId    String
+  salarie      Salarie  @relation(fields: [salarieId], references: [id], onDelete: Cascade)
+  banque       String   @db.VarChar(120)
+  titulaire    String?  @db.VarChar(120)
+  codeBanque   String?  @db.VarChar(20)
+  codeGuichet  String?  @db.VarChar(20)
+  numeroCompte String?  @db.VarChar(34)
+  cle          String?  @db.VarChar(4)
+  iban         String?  @db.VarChar(42)
+  codeBic      String?  @db.VarChar(11)
+  devise       String?  @db.VarChar(3)
+  estPrincipal Boolean  @default(false)
+  commentaire  String?  @db.VarChar(200)
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, salarieId])
+  @@map("ribs_salaries")
+}
+
+/// LE PAIEMENT DES SALAIRES D'UN MOIS, par un mode et depuis un journal de
+/// trésorerie · une écriture D 422 / C trésorerie au brouillard (fiche du
+/// compte 42 des deux plans · « débité […] des rémunérations versées au
+/// personnel, par le crédit des comptes de trésorerie »), l'ordre de virement
+/// du module existant pour un virement, le billetage figé pour des espèces.
+/// Il RETIENT son écriture ; il s'annule avec son motif, jamais supprimé.
+model PaiementSalaires {
+  id                String                 @id @default(uuid())
+  tenantId          String
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id])
+  /// AAAA-MM · le mois de paie des bulletins payés.
+  moisDePaie        String                 @db.VarChar(7)
+  mode              ModePaiementSalaire
+  exerciceId        String
+  exercice          Exercice               @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  journalId         String
+  journal           Journal                @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  date              DateTime               @db.Date
+  total             Decimal                @db.Decimal(18, 2)
+  ecritureId        String?                @unique
+  ecriture          Ecriture?              @relation("PaiementSalairesEcriture", fields: [ecritureId], references: [id], onDelete: Restrict)
+  ecritureNegatifId String?                @unique
+  ecritureNegatif   Ecriture?              @relation("PaiementSalairesNegatif", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
+  /// Journal et numéro de la pièce, recopiés · l'annulation au brouillard
+  /// retire la pièce, la fiche dit encore ce qu'elle portait.
+  piecePassee       String                 @db.VarChar(60)
+  ordreVirementId   String?
+  ordreVirement     OrdreVirement?         @relation(fields: [ordreVirementId], references: [id], onDelete: Restrict)
+  /// Espèces · les coupures déclarées et la ventilation de chaque net, figées.
+  billetage         Json?
+  creePar           String
+  createdAt         DateTime               @default(now())
+  annuleLe          DateTime?
+  annulePar         String?
+  motifAnnulation   String?                @db.VarChar(500)
+  lignes            LignePaiementSalaire[]
+
+  @@index([tenantId, moisDePaie])
+  @@map("paiements_salaires")
+}
+
+/// UN SALARIÉ PAYÉ · le bulletin dont il verse le net (ou ce qui en reste
+/// après un bulletin annulé déjà payé), et la référence du chèque. Un
+/// bulletin n'est payé qu'une fois · l'index unique ne compte que les lignes
+/// non annulées (NULLS NOT DISTINCT), l'annulation du paiement leur recopiant
+/// sa date.
+model LignePaiementSalaire {
+  id         String           @id @default(uuid())
+  tenantId   String
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  paiementId String
+  paiement   PaiementSalaires @relation(fields: [paiementId], references: [id], onDelete: Cascade)
+  bulletinId String
+  bulletin   BulletinPaie     @relation(fields: [bulletinId], references: [id], onDelete: Restrict)
+  salarieId  String
+  salarie    Salarie          @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  nomComplet String           @db.VarChar(200)
+  montant    Decimal          @db.Decimal(18, 2)
+  reference  String?          @db.VarChar(60)
+  annuleLe   DateTime?
+
+  @@unique([bulletinId, annuleLe])
+  @@index([tenantId, salarieId])
+  @@index([paiementId])
+  @@map("lignes_paiement_salaires")
 }

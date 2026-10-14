@@ -1,4 +1,5 @@
-import { FormEvent, ReactNode, useEffect, useRef } from 'react';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { ApiError } from '../../lib/api';
 import { PortailModale } from '../PortailModale';
 import { ecouterEchap } from '../../lib/echap';
 
@@ -88,3 +89,39 @@ export function ChampPaie({ libelle, children }: { libelle: string; children: Re
 }
 
 export const CHAMP_PAIE = 'border border-border bg-surface px-1.5 py-1 text-[11.5px] w-full focus:outline-none focus:border-accent';
+
+/**
+ * L'ENVOI D'UNE MODALE · un seul envoi à la fois, le refus du serveur dit tel
+ * quel dans la modale, qui ne se ferme qu'une fois le geste fait.
+ */
+export function useEnvoiPaie(onFait: () => void) {
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const envoyer = async (fn: () => Promise<unknown>) => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await fn();
+      setEnvoi(false);
+      onFait();
+    } catch (e) {
+      setEnvoi(false);
+      setErreur(e instanceof ApiError ? e.message : 'Opération refusée.');
+    }
+  };
+  return { envoi, erreur, setErreur, envoyer };
+}
+
+/** Fermer et valider, au pied d'une modale. */
+export function BoutonsPaie({ envoi, onFermer, valider }: { envoi: boolean; onFermer: () => void; valider: string }) {
+  return (
+    <>
+      <button type="button" className="border border-border px-3 py-1" disabled={envoi} onClick={onFermer}>
+        Fermer
+      </button>
+      <button type="submit" className="bg-sel text-white font-semibold px-3 py-1 rounded-full disabled:opacity-50" disabled={envoi}>
+        {envoi ? 'Envoi…' : valider}
+      </button>
+    </>
+  );
+}

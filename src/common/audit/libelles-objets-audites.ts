@@ -94,6 +94,8 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   AbsenceSalarie: 'Absence du personnel',
   MajorationHeures: 'Majoration des heures',
   IndemniteCaisseAbsence: "Indemnité de la Caisse sur un arrêt",
+  RibSalarie: "Coordonnées bancaires d'un salarié",
+  PaiementSalaires: 'Paiement des salaires',
   TiersCompte: "Rattachement d'un compte à un tiers",
   ModeleReglement: 'Modèle de règlement',
   RattachementNote: "Rattachement d'une note annexe",
