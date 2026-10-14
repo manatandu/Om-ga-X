@@ -34,6 +34,8 @@ function champ(v: unknown, f: unknown): boolean {
   }
   return Object.entries(f as Rangee).every(([op, x]) => {
     if (op === 'in') return (x as unknown[]).includes(v);
+    // Le statut hors situation (ligne sage-l1, fonction 12).
+    if (op === 'not' && (x === null || typeof x !== 'object')) return (v ?? null) !== x;
     throw new Error(`évaluateur : opérateur « ${op} » non honoré`);
   });
 }
@@ -70,6 +72,7 @@ const bilan = (numero: string) => ({ compte: { classe: ClasseCompte.CLASSE_4, nu
 const ecriture = (x: Rangee): Rangee => ({
   tenantId: 't',
   exerciceId: 'n1',
+  statut: 'VALIDEE',
   date: N1.dateDebut,
   dateValeur: null,
   estANouveauProvisoire: false,
@@ -86,6 +89,11 @@ const ecriture = (x: Rangee): Rangee => ({
 describe('A8 · la contre-passation d’une réévaluation n’est pas une ouverture', () => {
   it('une ouverture saisie en OD au premier jour reste dans le périmètre (AU2 inchangé)', () => {
     expect(evaluer(ecriture({}), filtre)).toBe(true);
+  });
+
+  it('une écriture de situation n’est jamais une ouverture, le filtre le dit de lui-même (ligne sage-l1)', () => {
+    expect(evaluer(ecriture({ statut: 'SITUATION' }), filtre)).toBe(false);
+    expect(evaluer(ecriture({ statut: 'BROUILLARD' }), filtre)).toBe(true);
   });
 
   it('la contre-passation du MODULE, reconnue par sa liaison, en sort', () => {
