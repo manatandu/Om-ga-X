@@ -214,13 +214,14 @@ function dossier(
         return Promise.resolve([...parCompte].map(([compteId, t]) => ({ compteId, _sum: t })));
       }),
       fields: { credit: 'credit' },
-      aggregate: jest.fn((arg: { where: { compte: { numero: { startsWith: string } }; ecriture: { exerciceId: string | { in: string[] }; statut?: string } }; _sum?: unknown }) => {
+      aggregate: jest.fn((arg: { where: { compte: { numero: { startsWith: string } }; ecriture: { exerciceId: string | { in: string[] }; statut?: string | { not: string } } }; _sum?: unknown }) => {
         agregats.push(arg);
         // Le solde d'OUVERTURE se demande en somme · l'à-nouveau de l'exercice, au statut demandé.
         if (arg._sum && (arg.where.ecriture as { estGenereeParCloture?: boolean }).estGenereeParCloture === false) {
           // TOUS STATUTS (septième passe, M5) · la réévaluation passe sa provision au brouillard ; un solde
-          // reconstitué sur le seul livre-journal la perdrait et rouvrirait p4-B1.
-          expect(arg.where.ecriture).not.toHaveProperty('statut');
+          // reconstitué sur le seul livre-journal la perdrait et rouvrirait p4-B1. Seule la simulation d'un
+          // journal de situation (ligne sage-l1, fonction 12) en sort · elle n'enregistre aucune opération.
+          expect(arg.where.ecriture.statut).toEqual({ not: 'SITUATION' });
           // Le solde reconstitué · toutes les écritures de l'exercice, hors à-nouveau.
           const somme = ecrites
             .filter((e) => e.exerciceId === arg.where.ecriture.exerciceId && !e.aNouveau)
