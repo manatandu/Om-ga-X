@@ -237,7 +237,7 @@ function soldeEnDevise(
 /** Le refus de lettrer une ligne d'une écriture de situation. */
 export const MOTIF_LETTRAGE_SITUATION =
   "Une ligne d'une écriture de situation ne se lettre pas · elle n'enregistre aucune opération et n'est pas au " +
-  "livre-journal (AUDCIF art. 19 ; art. 22, 2°). Lettrez les pièces réelles qui se répondent.";
+  "livre-journal (AUDCIF art. 19 ; art. 22, 1°). Lettrez les pièces réelles qui se répondent.";
 
 @Injectable()
 export class LettrageService {

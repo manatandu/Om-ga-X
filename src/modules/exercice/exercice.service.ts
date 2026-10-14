@@ -2194,9 +2194,19 @@ export class ExerciceService {
       where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD },
     });
     if (enBrouillard > 0) {
+      // Celles d'un journal de situation ne se valident pas (relecture M3) ·
+      // l'issue « validez-les » les aurait laissées sans geste possible.
+      const enSituation = await this.prisma.ecriture.count({
+        where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD, journal: { type: TypeJournal.SITUATION } },
+      });
       throw new BadRequestException(
         `${enBrouillard} écriture(s) sont encore en brouillard sur cet exercice. Validez-les ou supprimez-les avant ` +
-          "de clôturer : la clôture ne lit que le livre-journal, et ce qui reste en brouillard serait perdu du résultat.",
+          "de clôturer : la clôture ne lit que le livre-journal, et ce qui reste en brouillard serait perdu du résultat." +
+          (enSituation > 0
+            ? ` Dont ${enSituation} dans un journal de situation, où elles ne se valident pas · défaites ce qui les tient ` +
+              '(lettrage, pointage, rattachement d’un module) puis supprimez-les, et ressaisissez dans un journal ' +
+              'ordinaire celles qui enregistrent une opération.'
+            : ''),
       );
     }
     // LE JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60) · seulement quand

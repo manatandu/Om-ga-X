@@ -3,7 +3,7 @@ import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
 
 /**
  * LE JOURNAL DE SITUATION (ligne sage-l1, fonction 12 · décision par la loi,
- * AUDCIF art. 19 ; art. 22, 2° et 3°). Une écriture saisie dans un journal de
+ * AUDCIF art. 19 ; art. 22, 1° à 3°). Une écriture saisie dans un journal de
  * situation naît au statut SITUATION, ne se valide pas, n'entre ni à la
  * balance ni au livre-journal, et l'état des journaux de saisie la montre
  * sous son propre sigle. Le journal ne se clôture pas.

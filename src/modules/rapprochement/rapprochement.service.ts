@@ -141,7 +141,7 @@ export function filtreEcarteDuPointage(regle: RegleOuverture): Prisma.EcritureWh
 /** Le refus d'une ligne d'une écriture de situation. */
 export const MOTIF_POINTAGE_SITUATION =
   "Une écriture de situation n'est pas une opération de la banque · elle n'enregistre aucune opération et n'est pas au " +
-  'livre-journal (AUDCIF art. 19 ; art. 22, 2°). Pointez la pièce réelle.';
+  'livre-journal (AUDCIF art. 19 ; art. 22, 1°). Pointez la pièce réelle.';
 
 /** Le refus nomme la raison du cas · l'ouverture déjà dans le solde de départ, repris ou déclaré. */
 export function motifRefusANouveau(regle: RegleOuverture): string {

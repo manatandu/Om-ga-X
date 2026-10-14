@@ -1585,6 +1585,10 @@ export class ControlesService {
     // Ligne sage-l1, fonction 12 · les écritures VALIDÉES dans un journal de
     // situation avant que la règle ne soit posée, relevées au passage.
     const valideesEnSituation = new Collecte<EcritureControlee>(PLAFOND_OCCURRENCES);
+    // Relecture du premier tour, M3 · celles restées AU BROUILLARD dans un
+    // journal de situation, que la reprise y a laissées parce qu'une lettre,
+    // un pointage ou un module les tenait.
+    const brouillardEnSituation = new Collecte<EcritureControlee>(PLAFOND_OCCURRENCES);
     const soldesTiers = new Map<string, number>();
     // A7 ter, mineur 1 · les comptes clients d'ORIGINE d'une créance reclassée en vigueur.
     const comptesCreanceReclassee = new Set<string>();
@@ -1643,6 +1647,7 @@ export class ControlesService {
           journauxEcrits.set(e.journalId, { journalId: e.journalId, code: e.journal.code });
         }
         if (e.statut === StatutEcriture.VALIDEE && e.journal.type === TypeJournal.SITUATION) valideesEnSituation.ajouter(e);
+        if (e.statut === StatutEcriture.BROUILLARD && e.journal.type === TypeJournal.SITUATION) brouillardEnSituation.ajouter(e);
         for (const l of e.lignes) {
           debit += Number(l.debit);
           credit += Number(l.credit);
@@ -1799,6 +1804,7 @@ export class ControlesService {
       cotisationsMouvementees,
       validesParLeurAuteur,
       valideesEnSituation,
+      brouillardEnSituation,
       soldesTiers,
       comptesCreanceReclassee,
       comptesClasse9,
@@ -4095,7 +4101,7 @@ export class ControlesService {
     // ------------------------------------------------------------------
     // ÉCRITURES VALIDÉES DANS UN JOURNAL DE SITUATION (ligne sage-l1,
     // fonction 12). Une écriture de situation n'enregistre aucune opération
-    // et n'entre jamais au livre-journal (AUDCIF art. 19 ; art. 22, 2°) ·
+    // et n'entre jamais au livre-journal (AUDCIF art. 19 ; art. 22, 1°) ·
     // aucun contrôle ne la lit, et l'état des journaux de saisie la montre.
     // Celles VALIDÉES avant que la règle ne soit posée, elles, sont au
     // livre-journal et aux états, et rien ne les dévalide (art. 22, 2°) ·
@@ -4115,6 +4121,36 @@ export class ControlesService {
           'lignes en négatif (AUDCIF art. 20, al. 2) ; si elles en enregistrent une, elles restent.',
         ...nombreSiTronque(parcours.valideesEnSituation),
         occurrences: valideesEnSituation.map((e) => ({
+          reference: `${e.journal.code} n° ${e.numeroPiece ?? ''}`,
+          detail: e.libelle,
+          date: e.date.toISOString().slice(0, 10),
+        })),
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // ÉCRITURES AU BROUILLARD DANS UN JOURNAL DE SITUATION (relecture du
+    // premier tour, M3 · migration `20270171040000_ecritures_de_situation_tenues`).
+    // Saisies avant la règle, elles étaient tenues par une lettre, un
+    // pointage ou un module · la reprise les a laissées au brouillard plutôt
+    // que de les faire disparaître des lectures, car le logiciel ne sait pas
+    // si elles enregistrent une opération (art. 22, 1°). Elles ne se valident
+    // pas dans ce journal, et la clôture refuse tout brouillard · les issues
+    // sont dites, aucune n'est jouée d'office.
+    const brouillardEnSituation = parcours.brouillardEnSituation.elements;
+    if (brouillardEnSituation.length > 0) {
+      anomalies.push({
+        code: 'JOURNAL_DE_SITUATION_AU_BROUILLARD',
+        gravite: 'AVERTISSEMENT',
+        libelle: 'Écritures au brouillard dans un journal de situation',
+        consequence:
+          "Saisies avant la règle des écritures de situation, elles sont tenues par une lettre, un pointage ou un module · " +
+          'elles ne se valident pas dans ce journal, et la clôture de l’exercice refuse tout brouillard.',
+        action:
+          'Défaites ce qui la tient (délettrer, dépointer, détacher du module), puis supprimez-la · si elle enregistre une ' +
+          'opération, ressaisissez-la dans un journal ordinaire et validez-la là.',
+        ...nombreSiTronque(parcours.brouillardEnSituation),
+        occurrences: brouillardEnSituation.map((e) => ({
           reference: `${e.journal.code} n° ${e.numeroPiece ?? ''}`,
           detail: e.libelle,
           date: e.date.toISOString().slice(0, 10),

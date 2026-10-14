@@ -14,6 +14,7 @@ import {
   garderJournalDeSituation,
   motifEcartJournalDeSituation,
 } from '../../common/journal-de-situation/extension-journal-de-situation';
+import { dansContexteAudit, journaliserDansTransaction } from '../../common/audit/contexte-audit';
 import { filtresDesTroisColonnes } from './balance-trois-colonnes';
 import { motifLigneFigee } from '../exercice/gel-cloture';
 import { grilleJournauxSaisie } from '../journaux/etat-journaux-saisie';
@@ -97,8 +98,17 @@ describe('l’invariant tenu sur le client Prisma', () => {
     ];
     const findMany = jest.fn(async (a: { where: { id: { in: string[] } } }) => journaux.filter((j) => a.where.id.in.includes(j.id)));
     const groupBy = jest.fn().mockResolvedValue(groupes);
-    return { base: { journal: { findMany }, ecriture: { groupBy } } as never, findMany, groupBy };
+    // `update` et `upsert` visent UNE écriture · relue par une lecture unitaire.
+    const findFirst = jest.fn().mockResolvedValue(groupes[0] ?? null);
+    return { base: { journal: { findMany }, ecriture: { groupBy, findFirst } } as never, findMany, groupBy, findFirst };
   }
+  /** Un client de base qui tombe s'il est lu · la lecture doit passer par la transaction. */
+  const baseInterdite = () => {
+    const tombe = jest.fn(async () => {
+      throw new Error('seconde connexion · lu hors de la transaction en cours');
+    });
+    return { journal: { findMany: tombe }, ecriture: { groupBy: tombe, findFirst: tombe } } as never;
+  };
   const query = jest.fn().mockResolvedValue('fait');
   const appeler = (b: never, operation: string, args: unknown) =>
     garderJournalDeSituation(b, { model: 'Ecriture', operation, args, query });
@@ -137,6 +147,53 @@ describe('l’invariant tenu sur le client Prisma', () => {
     await expect(appeler(b, 'update', { where: { id: 'a' }, data: { journalId: 'jOd' } })).rejects.toThrow(
       MESSAGE_ECRITURE_DE_SITUATION_HORS_DE_SON_JOURNAL,
     );
+  });
+
+  it('dans une transaction, lit par elle et borne chaque lecture au dossier de l’écriture (relecture M2)', async () => {
+    // Lue sur le client de base, la lecture prenait une seconde connexion
+    // pendant que la transaction tenait la première (P2024 sous charge), et
+    // ne voyait pas l'écriture que la transaction venait de créer.
+    const { base: tx, findMany, groupBy, findFirst } = base([{ journalId: 'jSit', statut: 'SITUATION', tenantId: 't1' } as never]);
+    const dansLaTransaction = (operation: string, args: unknown) =>
+      dansContexteAudit({ acteurEmail: 'a@b.c', tenantId: 't1' }, () =>
+        journaliserDansTransaction(tx, () => appeler(baseInterdite(), operation, args)),
+      );
+    await expect(dansLaTransaction('create', { data: { tenantId: 't1', journalId: 'jSit' } })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 't1', id: { in: ['jSit'] } } }),
+    );
+    await expect(dansLaTransaction('update', { where: { id: 'a' }, data: { statut: 'VALIDEE' } })).rejects.toThrow('SIT');
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 'a' },
+      select: { journalId: true, statut: true, tenantId: true },
+    });
+    await expect(
+      dansLaTransaction('updateMany', { where: { tenantId: 't1', id: { in: ['a'] } }, data: { statut: 'VALIDEE' } }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(groupBy).toHaveBeenCalledWith({
+      by: ['journalId', 'statut', 'tenantId'],
+      where: { tenantId: 't1', id: { in: ['a'] } },
+    });
+  });
+
+  it('hors de toute transaction, ou sans dossier au contexte, la lecture reste sur le client de base', async () => {
+    const { base: b, findMany } = base();
+    await expect(appeler(b, 'create', { data: { tenantId: 't1', journalId: 'jSit' } })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(findMany).toHaveBeenCalledTimes(1);
+    // Sans dossier ni sortie déclarée, la garde de cloisonnement refuserait
+    // toute collection lue par la transaction · la création qu'on juge passe,
+    // elle, sans borne · on lit donc comme elle.
+    const { base: tx, findMany: luParTx } = base();
+    const { base: b2, findMany: luParBase } = base();
+    await expect(
+      journaliserDansTransaction(tx, () => appeler(b2, 'create', { data: { tenantId: 't1', journalId: 'jSit' } })),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(luParTx).not.toHaveBeenCalled();
+    expect(luParBase).toHaveBeenCalledTimes(1);
   });
 
   it('une modification qui ne touche ni statut ni journal ne lit rien de plus', async () => {
@@ -263,6 +320,25 @@ describe('le contrôle nomme les écritures validées dans un journal de situati
     expect(corps).toContain('where: { tenantId, exerciceId, ...HORS_SITUATION }');
     expect(corps).toMatch(/e\.statut === StatutEcriture\.VALIDEE && e\.journal\.type === TypeJournal\.SITUATION\) valideesEnSituation\.ajouter\(e\)/);
     expect(src).toContain("code: 'JOURNAL_DE_SITUATION_AU_LIVRE_JOURNAL'");
+  });
+
+  it('celles restées au brouillard par la reprise (tenues) sont nommées, et la clôture dit leur issue (relecture M3)', () => {
+    const src = SOURCE('src/modules/controles/controles.service.ts');
+    const debut = src.indexOf('private async parcourirEcrituresControlees(');
+    const corps = src.slice(debut, src.indexOf('\n  }\n', debut));
+    expect(corps).toMatch(
+      /e\.statut === StatutEcriture\.BROUILLARD && e\.journal\.type === TypeJournal\.SITUATION\) brouillardEnSituation\.ajouter\(e\)/,
+    );
+    expect(src).toContain("code: 'JOURNAL_DE_SITUATION_AU_BROUILLARD'");
+    const exercice = SOURCE('src/modules/exercice/exercice.service.ts');
+    const cloturer = exercice.slice(exercice.indexOf('  async cloturer('));
+    const corpsCloture = cloturer.slice(0, cloturer.indexOf('\n  }\n'));
+    expect(corpsCloture).toContain('statut: StatutEcriture.BROUILLARD, journal: { type: TypeJournal.SITUATION }');
+    // La reprise qui les y laisse · lettrées, pointées ou tenues par une clé
+    // étrangère, remises au brouillard.
+    const migration = SOURCE('prisma/migrations/20270171040000_ecritures_de_situation_tenues/migration.sql');
+    expect(migration).toContain('UPDATE "ecritures" SET "statut" = \'BROUILLARD\' WHERE "id" = ANY (tenues);');
+    expect(migration).toMatch(/"lettrageId" IS NOT NULL OR l\."lettre" IS NOT NULL OR l\."rapprochementId" IS NOT NULL/);
   });
 });
 
