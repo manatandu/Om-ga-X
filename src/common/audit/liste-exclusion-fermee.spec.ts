@@ -154,6 +154,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'ribs',
       'lignesPaiement',
       'ordresVirement',
+      // Ligne sage-l5 · fonction 88 · la répartition analytique, la relation seule.
+      'repartitionsAnalytiques',
       'createdAt',
       'createdBy',
       'updatedAt',

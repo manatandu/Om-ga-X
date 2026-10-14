@@ -150,8 +150,12 @@ const ORDRE_DES_BLOCS: readonly BlocDuMois[] = [
   'REPRISE_EN_NEGATIF',
 ];
 
-/** Le compte qui porte le TOTAL de chaque bloc, et son sens. */
-const TOTAL_DU_BLOC: Readonly<
+/**
+ * Le compte qui porte le TOTAL de chaque bloc, et son sens · lu aussi par la
+ * ventilation analytique de la paie (`ventilation-analytique-paie.ts`), qui
+ * relie chaque ligne aux parts des bulletins.
+ */
+export const TOTAL_DU_BLOC: Readonly<
   Record<
     BlocPaie,
     {

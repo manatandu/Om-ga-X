@@ -134,6 +134,9 @@ export const MODELES_CLOISONNES = new Set<string>([
   'RibSalarie',
   'PaiementSalaires',
   'LignePaiementSalaire',
+  // Ligne sage-l5 · fonction 88, la répartition analytique de la paie.
+  'RepartitionAnalytiquePaie',
+  'LigneRepartitionAnalytiquePaie',
   'OrdreVirement',
   'LigneOrdreVirement',
   'LotVirement',

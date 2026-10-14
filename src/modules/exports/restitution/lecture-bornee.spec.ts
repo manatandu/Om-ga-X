@@ -105,8 +105,10 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // avec les majorations des heures, 161 avec les indemnités de la Caisse
     // déclarées sur un arrêt, bornées par leur tenantId (même ligne), 164
     // avec les RIB des salariés, les paiements des salaires et leurs lignes,
-    // bornés par leur tenantId (même ligne, fonction 75).
-    expect(modeles).toHaveLength(164);
+    // bornés par leur tenantId (même ligne, fonction 75), 166 avec les
+    // répartitions analytiques de la paie et leurs lignes, bornées par leur
+    // tenantId (même ligne, fonction 88).
+    expect(modeles).toHaveLength(166);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

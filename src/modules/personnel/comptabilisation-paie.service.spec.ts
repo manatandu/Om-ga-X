@@ -99,7 +99,9 @@ function monter(
       if (liberer) await liberer(tx);
     }),
   };
-  const service = new ComptabilisationPaieService(prisma as never, ecritures as never);
+  // FONCTION 88 · aucun plan analytique · la ventilation ne lit rien de plus.
+  const repartitions = { pourLaPassation: jest.fn().mockResolvedValue({ plans: [], sections: [], versions: [], obligatoires: [] }) };
+  const service = new ComptabilisationPaieService(prisma as never, ecritures as never, repartitions as never);
   return { service, prisma, ecritures, tx };
 }
 
@@ -263,7 +265,7 @@ describe('défaire la passation', () => {
       },
     });
     const journal = new EcritureService(prisma as never, {} as never, {} as never, {} as never);
-    const service = new ComptabilisationPaieService(prisma as never, journal);
+    const service = new ComptabilisationPaieService(prisma as never, journal, {} as never);
     await expect(service.annulerComptabilisation('t1', 'e1')).rejects.toThrow(/pointée/);
     expect(tx.bulletinPaie.updateMany).not.toHaveBeenCalled();
     expect(tx.ecriture.deleteMany).not.toHaveBeenCalled();

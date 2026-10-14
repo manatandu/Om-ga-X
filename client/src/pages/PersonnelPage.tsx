@@ -11,6 +11,7 @@ import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
 import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
 import { MajorationsHeuresPaie } from '../components/paie/MajorationsHeuresPaie';
 import { PaiementDuSalarie } from '../components/paie/PaiementDuSalarie';
+import { RepartitionAnalytique } from '../components/paie/RepartitionAnalytique';
 import { heuresPourLeBulletin, LIGNE_HEURES_VIERGE, type LigneHeures, type ListeMajorations } from '../lib/heures-majorees';
 import { dateCourte, jours as joursConge, motifCongeNonPortable, type CongeDuMois } from '../lib/conges-paie';
 import { libelleListeBornee } from '../lib/liste-bornee-personnel';
@@ -2152,6 +2153,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                 )}
                 {/* Ligne sage-l5, fonction 75 · le mode convenu et les RIB du salarié. */}
                 <PaiementDuSalarie salarieId={choisi.id} />
+                {/* Ligne sage-l5, fonction 88 · sa répartition entre sections analytiques. */}
+                <RepartitionAnalytique salarieId={choisi.id} />
               </div>
             )}
           </div>

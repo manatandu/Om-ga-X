@@ -105,9 +105,31 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
     annulé, pièce retirée, puis bulletin annulé et réémis plus haut qui ne
     paie que la différence.
 
+- **88 · ventilation analytique de la paie** · fait.
+  - Serveur · `RepartitionAnalytiquePaie` et `LigneRepartitionAnalytiquePaie`
+    (migration `20270175000600_repartition_analytique_paie`, une version par
+    salarié, plan et mois d'effet, retirée avec motif, index unique NULLS
+    NOT DISTINCT), moteur pur `personnel/ventilation-analytique-paie.ts`
+    (`motifRefusRepartition`, `versionDuMois`, `partsDesBulletins`,
+    `ventilerLaPaie`), `repartitions-analytiques-paie.service.ts` et
+    `.controller.ts` (mêmes droits que le registre). La passation du mois
+    (`comptabilisation-paie.service.ts`) lit les versions en vigueur au MOIS
+    DE PAIE et pose les ventilations sur les lignes de l'écriture ; un plan
+    à ventilation obligatoire refuse d'avance, en nommant les salariés.
+  - Écran · section « Répartition analytique » du registre
+    (`components/paie/RepartitionAnalytique.tsx`, `lib/repartition-analytique.ts`),
+    colonne « Analytique » de la paie du mois (`pages/PaieDuMois.tsx`).
+  - Parcours `e2e/tests/sage-l5-ventilation.e2e.ts`, SUR VRAIE BASE À
+    TRAVERS UNE CLÔTURE · décembre 2026 ventilé 30 / 70 (66110000 ·
+    P1 468 000, P2 1 092 000), contrôle des cumuls à zéro, 2026 clôturé,
+    janvier 2027 à 50 / 50 sous la nouvelle version, décembre inchangé ; le
+    bulletin de décembre annulé et réémis repassé dans 2027 suit la version
+    de DÉCEMBRE (P1 480 000, P2 320 000), sa reprise en négatif part sans
+    ventilation, comptée exactement par le contrôle des cumuls.
+
 ## Reste
 
-- 88, 85.
+- 85.
 - 79 · le décompte final ne relit pas encore le compteur pour proposer les
   mois non couverts par un congé (saisis à la main, comme avant) ; un congé
   porté au bulletin et une indemnité compensatoire au décompte du même mois
@@ -222,6 +244,23 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   DÉCLARÉES (aucune liste de billets au corpus), proposées depuis le dernier
   paiement en espèces, plus grosses d'abord, reste dit, figé avec le
   paiement.
+- **D88-a · aucun texte ne régit la répartition** · la comptabilité
+  analytique est de libre usage (classes 92 à 99 des deux plans, « libre
+  usage »). Répartition par salarié, pourcentages à deux décimales qui font
+  exactement 100, version par mois de paie, arrondi au plus fort reste ·
+  conventions d'OmegaX, dites dans la bulle. Ce qui ne se discute pas vient
+  des règles existantes · sections Détail actives du plan, plan qui ventile
+  la classe (`motifRefusClasseVentilee`, la classe 6 exigée à la
+  déclaration), une ligne ventilée en totalité sur un plan ou pas du tout.
+- **D88-b · le mois de paie décide de la version**, jamais la date de la
+  passation · un bulletin de décembre repassé en janvier suit la
+  répartition de décembre.
+- **D88-c · rien n'est réparti au prorata des autres** · un salarié sans
+  répartition, une répartition vide, une section passée en sommeil, une
+  ligne qui mêle une reprise en négatif · la ligne part sans ventilation sur
+  ce plan, nommée avec sa cause (audit final F141 · porter sur une section
+  une dépense qu'elle n'a pas). La reprise en négatif se ventile à la main
+  (Ventilation d'une ligne), sur la pièce d'origine.
 - **D8-d · mise à pied** · « jusqu'à concurrence de deux fois quinze jours
   par an » (art. 57, 5°) lu comme deux mesures d'au plus quinze jours de
   calendrier par année civile ; au-delà, refus nommé.
@@ -254,11 +293,12 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
 npx jest --maxWorkers=1 src/modules/personnel/conges-acquis.spec.ts src/modules/personnel/conges-bulletin.spec.ts
 npx jest --maxWorkers=1 src/modules/personnel/absences.spec.ts src/modules/personnel/heures-majorees.spec.ts
 npx jest --maxWorkers=1 src/modules/personnel/paiement-salaires.spec.ts src/modules/reglements/ordres-virement-paie.spec.ts
-(cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts src/lib/paiement-salaires.spec.ts)
+npx jest --maxWorkers=1 src/modules/personnel/ventilation-analytique-paie.spec.ts src/modules/personnel/comptabilisation-paie.service.spec.ts
+(cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts src/lib/paiement-salaires.spec.ts src/lib/repartition-analytique.spec.ts)
 # montage local (CLAUDE.md § 10), ports 8085 et 4185, puis
 (cd e2e && OMEGAX_APP=http://localhost:4185 OMEGAX_API=http://localhost:4185/api \
   PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test tests/sage-l5-conges.e2e.ts tests/sage-l5-absences.e2e.ts tests/sage-l5-heures.e2e.ts \
-  tests/sage-l5-arrets.e2e.ts tests/sage-l5-paiement.e2e.ts)
+  tests/sage-l5-arrets.e2e.ts tests/sage-l5-paiement.e2e.ts tests/sage-l5-ventilation.e2e.ts)
 DATABASE_URL=postgresql://jetable:jetable@localhost:5432/omegax_sage_l5 npx prisma migrate diff \
   --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
   --shadow-database-url postgresql://jetable:jetable@localhost:5432/omegax_sage_l5_ombre --exit-code

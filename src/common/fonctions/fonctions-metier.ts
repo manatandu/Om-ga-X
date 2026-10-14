@@ -106,6 +106,7 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   MajorationsHeuresController: FonctionMetier.PAIE,
   // Ligne sage-l5 · le paiement du salarié et des salaires, de la fenêtre Personnel.
   PaiementSalairesController: FonctionMetier.PAIE,
+  RepartitionsAnalytiquesPaieController: FonctionMetier.PAIE,
   ExerciceController: FonctionMetier.CLOTURE,
   AffectationController: FonctionMetier.CLOTURE,
   NoteAnnexeController: FonctionMetier.CLOTURE,

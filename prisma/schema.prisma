@@ -859,6 +859,9 @@ model Tenant {
   ribsSalaries                 RibSalarie[]
   paiementsSalaires            PaiementSalaires[]
   lignesPaiementSalaires       LignePaiementSalaire[]
+  // Ligne sage-l5 · fonction 88, ventilation analytique de la paie.
+  repartitionsAnalytiquesPaie       RepartitionAnalytiquePaie[]
+  lignesRepartitionsAnalytiquesPaie LigneRepartitionAnalytiquePaie[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -2914,6 +2917,8 @@ model PlanAnalytique {
   sections        SectionAnalytique[]
   odAnalytiques   OdAnalytique[]
   clesRepartition CleRepartition[]
+  // Ligne sage-l5 · fonction 88 · les répartitions de la paie sur ce plan.
+  repartitionsPaie RepartitionAnalytiquePaie[]
 
   @@unique([tenantId, code])
   @@map("plans_analytiques")
@@ -2957,6 +2962,8 @@ model SectionAnalytique {
   clesSource      CleRepartition[]        @relation("CleSource")
   lignesCle       LigneCleRepartition[]
   coutsProduction CoutProductionDeclare[]
+  // Ligne sage-l5 · fonction 88 · les répartitions de la paie qui la nomment.
+  repartitionsPaie LigneRepartitionAnalytiquePaie[]
 
   @@unique([planId, code])
   @@index([tenantId])
@@ -7655,6 +7662,8 @@ model Salarie {
   ribs           RibSalarie[]
   lignesPaiement LignePaiementSalaire[]
   ordresVirement LigneOrdreVirement[]
+  // Ligne sage-l5 · fonction 88 · sa répartition entre sections analytiques.
+  repartitionsAnalytiques RepartitionAnalytiquePaie[]
 
   createdAt DateTime @default(now())
   createdBy String
@@ -10493,4 +10502,54 @@ model LignePaiementSalaire {
   @@index([tenantId, salarieId])
   @@index([paiementId])
   @@map("lignes_paiement_salaires")
+}
+
+// Ligne sage-l5 · fonction 88 · la ventilation analytique de la paie.
+
+/// LA RÉPARTITION D'UN SALARIÉ ENTRE LES SECTIONS D'UN PLAN, à partir d'un
+/// mois de paie · ses lignes font 100 %, une version VIDE dit qu'à partir de
+/// ce mois il ne se répartit plus sur ce plan. La passation du mois lit la
+/// plus récente en vigueur et l'applique aux lignes de l'écriture de paie
+/// (`ventilation-analytique-paie.ts`). Une version ne se modifie pas · elle se
+/// retire avec son motif, et l'index unique ne compte que les non retirées
+/// (NULLS NOT DISTINCT). Convention d'OmegaX, aucun texte ne la régit.
+model RepartitionAnalytiquePaie {
+  id           String                           @id @default(uuid())
+  tenantId     String
+  tenant       Tenant                           @relation(fields: [tenantId], references: [id])
+  salarieId    String
+  salarie      Salarie                          @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  planId       String
+  plan         PlanAnalytique                   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  /// AAAA-MM · premier mois de paie où elle vaut.
+  moisEffet    String                           @db.VarChar(7)
+  creePar      String
+  createdAt    DateTime                         @default(now())
+  retireLe     DateTime?
+  retirePar    String?
+  motifRetrait String?                          @db.VarChar(500)
+  lignes       LigneRepartitionAnalytiquePaie[]
+
+  @@unique([salarieId, planId, moisEffet, retireLe])
+  @@index([tenantId, salarieId])
+  @@index([planId])
+  @@map("repartitions_analytiques_paie")
+}
+
+/// UNE SECTION ET SA PART · section Détail du plan de la répartition, deux
+/// décimales, écrite avec la répartition et jamais retouchée seule.
+model LigneRepartitionAnalytiquePaie {
+  id            String                    @id @default(uuid())
+  tenantId      String
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id])
+  repartitionId String
+  repartition   RepartitionAnalytiquePaie @relation(fields: [repartitionId], references: [id], onDelete: Cascade)
+  sectionId     String
+  section       SectionAnalytique         @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  pourcentage   Decimal                   @db.Decimal(5, 2)
+
+  @@index([tenantId, repartitionId])
+  @@index([repartitionId])
+  @@index([sectionId])
+  @@map("lignes_repartitions_analytiques_paie")
 }

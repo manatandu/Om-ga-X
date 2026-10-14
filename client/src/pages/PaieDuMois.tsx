@@ -53,6 +53,16 @@ interface PropositionPaieDuMois {
   sommeDesNetsFc: number;
   reserves: string[];
   pieces: { id: string; numeroPiece: number | null; date: string; statut: 'BROUILLARD' | 'VALIDEE' }[];
+  /** Ligne sage-l5, fonction 88 · la ventilation analytique que la passation posera. */
+  ventilation?: VentilationProposee;
+}
+
+/** Aligné sur les lignes · ce que le serveur a réparti, et ce qui part sans ventilation, avec la cause. */
+interface VentilationProposee {
+  parLigne: { planId: string; planCode: string; sectionId: string; sectionCode: string; montantFc: number }[][];
+  nonVentilees: { index: number; compte: string; intitule: string; planCode: string; cause: string; motif: string }[];
+  reserves: string[];
+  obligatoires: string[];
 }
 
 const dernierJour = (mois: string) => {
@@ -160,6 +170,15 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
     ),
   ];
   const negatifsEnAttente = p.negatifsAPasser.length > 0;
+  // Fonction 88 · la colonne ne paraît que si le dossier ventile la paie ;
+  // un plan à ventilation obligatoire refuse d'avance la ligne qui partirait sans elle.
+  const ventilation = p.ventilation;
+  // Un plan sur lequel AUCUNE répartition n'est déclarée (le plan PROJ semé à
+  // la création du dossier, souvent) se dit d'une phrase, sans colonne.
+  const analytique =
+    !!ventilation &&
+    (ventilation.parLigne.some((v) => v.length > 0) || ventilation.nonVentilees.some((n) => n.cause !== 'AUCUNE_REPARTITION_DU_PLAN'));
+  const bloquantes = (ventilation?.nonVentilees ?? []).filter((n) => ventilation!.obligatoires.includes(n.planCode));
 
   return (
     <div className="ecran-seul border border-border px-3.5 py-2.5 mt-3">
@@ -248,6 +267,7 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
                   <th className="py-1">Intitulé</th>
                   <th className="py-1 text-right">Débit</th>
                   <th className="py-1 text-right">Crédit</th>
+                  {analytique && <th className="py-1 pl-2">Analytique</th>}
                 </tr>
               </thead>
               <tbody>
@@ -255,7 +275,7 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
                   <Fragment key={i}>
                     {(i === 0 || tout[i - 1].bloc !== l.bloc) && (
                       <tr>
-                        <td colSpan={4} className="pt-2 pb-1 font-semibold">
+                        <td colSpan={analytique ? 5 : 4} className="pt-2 pb-1 font-semibold">
                           {TITRE_BLOC_PAIE[l.bloc]}
                         </td>
                       </tr>
@@ -265,6 +285,22 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
                       <td className="py-1 pr-2">{l.intitule}</td>
                       <td className="py-1 pr-2 text-right font-mono">{l.sens === 'DEBIT' ? fc(l.montantFc) : ''}</td>
                       <td className="py-1 text-right font-mono">{l.sens === 'CREDIT' ? fc(l.montantFc) : ''}</td>
+                      {analytique && (
+                        <td className="py-1 pl-2 text-[11px]">
+                          {(ventilation?.parLigne[i] ?? []).map((v) => (
+                            <div key={`${v.planId}-${v.sectionId}`}>
+                              {v.planCode} {v.sectionCode} · {fc(v.montantFc)}
+                            </div>
+                          ))}
+                          {(ventilation?.nonVentilees ?? [])
+                            .filter((n) => n.index === i)
+                            .map((n) => (
+                              <div key={n.planCode} className="text-warning" title={n.motif}>
+                                {n.planCode} · non ventilée ({n.motif})
+                              </div>
+                            ))}
+                        </td>
+                      )}
                     </tr>
                   </Fragment>
                 ))}
@@ -276,6 +312,7 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
                   </td>
                   <td className="py-1 pr-2 text-right font-mono">{fc(p.totalDebitFc)}</td>
                   <td className="py-1 text-right font-mono">{fc(p.totalCreditFc)}</td>
+                  {analytique && <td />}
                 </tr>
               </tfoot>
             </table>
@@ -283,6 +320,13 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
           <div className="text-text-dim mt-1">
             Solde du 422 après l’écriture : {fc(p.solde422Fc)} FC, net à payer des bulletins : {fc(p.sommeDesNetsFc)} FC.
           </div>
+
+          {bloquantes.length > 0 && (
+            <div role="alert" className="border border-warning/40 bg-warning-soft text-warning px-3 py-1.5 mt-2">
+              Le plan {[...new Set(bloquantes.map((n) => n.planCode))].join(', ')} exige la ventilation · {bloquantes.length} ligne(s)
+              partiraient sans elle. Déclarez la répartition des salariés nommés (Registre du personnel, Répartition analytique).
+            </div>
+          )}
 
           {peutValider && (
             <div className="flex flex-wrap items-end gap-3 mt-2.5">
@@ -309,7 +353,9 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
               )}
               <button
                 type="button"
-                disabled={!journalId || !date || !exerciceCourant || enCours || !p.equilibree || (negatifsEnAttente && !reprendreNegatifs)}
+                disabled={
+                  !journalId || !date || !exerciceCourant || enCours || !p.equilibree || (negatifsEnAttente && !reprendreNegatifs) || bloquantes.length > 0
+                }
                 onClick={passer}
                 className="bg-sel text-white rounded-[3px] px-3 py-[3px] text-[11.5px] font-semibold hover:opacity-90 disabled:opacity-40"
               >
@@ -321,7 +367,7 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
       )}
 
       <ul className="mt-2 text-[11px] text-text-dim">
-        {p.reserves.map((r, i) => (
+        {[...p.reserves, ...(ventilation?.reserves ?? [])].map((r, i) => (
           <li key={i} className="py-0.5 border-t border-border/40">
             {r}
           </li>

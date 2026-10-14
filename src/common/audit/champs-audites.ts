@@ -231,6 +231,10 @@ export const MODELES_AUDITES = new Set<string>([
   // rend les bulletins payables · la trace dit qui et quand.
   'RibSalarie',
   'PaiementSalaires',
+  // Ligne sage-l5, fonction 88 · la répartition analytique d'un salarié dit
+  // sur quelles sections la paie portera ses charges · qui l'a déclarée,
+  // retirée, et pourquoi.
+  'RepartitionAnalytiquePaie',
 
   // ══ CLASSEMENT DU 2026-09-27 · tables de même nature que les précédentes,
   // restées hors du journal sans décision (audit serveur, point I4). ══
@@ -363,6 +367,7 @@ export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
   CoupureComptee: 'Ventilation par coupure du PV de comptage, journalisé · le total compté est sur le PV.',
   LigneFacture: 'Lignes de la facture, journalisée, écrites avec elle et jamais retouchées seules.',
   LigneDevis: 'Lignes du devis, journalisé, écrites avec lui et jamais retouchées seules.',
+  LigneRepartitionAnalytiquePaie: LIGNES_DE_LA_TETE,
   LignePaiementSalaire:
     "Lignes du paiement des salaires, journalisé, écrites avec lui · seule son annulation, elle-même journalisée, leur recopie sa date.",
   LigneOrdreVirement:
