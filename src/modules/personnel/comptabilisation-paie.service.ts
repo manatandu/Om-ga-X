@@ -180,7 +180,11 @@ export class ComptabilisationPaieService {
   ): Promise<VentilationProposee> {
     const vide: VentilationProposee = { parLigne: lignes.map(() => []), nonVentilees: [], reserves: [], obligatoires: [] };
     if (lignes.length === 0) return vide;
-    const lu = await this.repartitions.pourLaPassation(tenantId, mois, [...new Set(aPasser.map((b) => b.salarieId))]);
+    // Relecture M3 · les répartitions des salariés que la pièce d'origine
+    // d'une reprise a passés se lisent aussi · sans elles, la pièce ne se
+    // refait pas (le scénario sur vraie base l'a montré, la doublure non).
+    const salaries = [...aPasser.map((b) => b.salarieId), ...reprises.flatMap((r) => (r.portes ?? []).map((b) => b.salarieId))];
+    const lu = await this.repartitions.pourLaPassation(tenantId, mois, [...new Set(salaries)]);
     if (!lu) {
       return {
         ...vide,

@@ -107,6 +107,18 @@ function monter(
 
 const dto = { exerciceId: 'ex1', journalId: 'j-od', date: '2026-03-31' };
 
+describe('relecture M3 · la reprise en négatif lit les répartitions des salariés de sa pièce d’origine', () => {
+  it('les salariés des bulletins que la pièce d’origine a passés sont lus avec ceux du mois', async () => {
+    const annule = { ...bulletin(1, 'e-orig'), statut: 'ANNULE', salarieId: 's-annule' };
+    const reemis = { ...bulletin(2), salarieId: 's-reemis' };
+    const { service } = monter({ bulletins: [annule, reemis] });
+    const repartitions = (service as unknown as { repartitions: { pourLaPassation: jest.Mock } }).repartitions;
+    const p = await service.proposition('t1', '2026-03');
+    expect(p.reprises.map((r) => r.mode)).toEqual(['EXACTE']);
+    expect(repartitions.pourLaPassation).toHaveBeenCalledWith('t1', '2026-03', expect.arrayContaining(['s-annule', 's-reemis']));
+  });
+});
+
 describe('passer la paie du mois', () => {
   it("poste UNE écriture, avec les lignes de la proposition, et le mois en libellé", async () => {
     const { service, ecritures } = monter();
