@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
+import { useGardeFermeture } from '../lib/fenetres';
 import { ecouterEchap } from '../lib/echap';
 import { montant as fmt } from '../lib/montants';
 import { montantSaisi } from '../lib/montant-saisi';
@@ -72,7 +73,11 @@ export function VirementsFondsPage() {
   const [liste, setListe] = useState<Liste | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // Le virement est passé, mais quelque chose n'a pas suivi (la pièce jointe) ·
+  // dit à part du succès, jamais noyé dans le bandeau vert.
+  const [avertissement, setAvertissement] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+  const [envoiJoindre, setEnvoiJoindre] = useState<string | null>(null);
   const [aAnnuler, setAAnnuler] = useState<VirementServi | null>(null);
 
   const [origineId, setOrigineId] = useState('');
@@ -90,21 +95,35 @@ export function VirementsFondsPage() {
   const [joindreA, setJoindreA] = useState<string | null>(null);
 
   // Une réponse d'un exercice quitté est jetée · elle afficherait les virements
-  // d'un autre exercice sous le sélecteur de celui-ci.
+  // d'un autre exercice sous le sélecteur de celui-ci. Le jeton seul ne suffit
+  // pas · un `charger` capturé avant le changement (après un envoi) relisait
+  // l'ancien exercice avec le jeton le plus récent ; la réponse n'est donc
+  // appliquée que si elle vise encore l'exercice affiché.
+  const exerciceId = exerciceCourant?.id ?? null;
+  const exerciceAffiche = useRef(exerciceId);
+  exerciceAffiche.current = exerciceId;
   const jeton = useRef(0);
   const charger = useCallback(async () => {
-    if (!exerciceCourant) return;
     const n = ++jeton.current;
+    if (!exerciceId) return;
     try {
-      const l = await api.get<Liste>(`/virements-fonds?exerciceId=${exerciceCourant.id}`);
-      if (n === jeton.current) setListe(l);
+      const l = await api.get<Liste>(`/virements-fonds?exerciceId=${exerciceId}`);
+      if (n === jeton.current && exerciceId === exerciceAffiche.current) {
+        setListe(l);
+        setErreur(null);
+      }
     } catch (err) {
-      if (n === jeton.current) setErreur(err instanceof ApiError ? err.message : 'Virements illisibles');
+      if (n === jeton.current && exerciceId === exerciceAffiche.current) setErreur(err instanceof ApiError ? err.message : 'Virements illisibles');
     }
-  }, [exerciceCourant]);
+  }, [exerciceId]);
 
+  // Sur l'IDENTIFIANT seul · l'objet de l'exercice est recalculé à chaque
+  // relecture du contexte, et le formulaire, démonté, perdait le scan choisi.
   useEffect(() => {
     setListe(null);
+    setErreur(null);
+    setInfo(null);
+    setAvertissement(null);
     void charger();
   }, [charger]);
 
@@ -115,18 +134,22 @@ export function VirementsFondsPage() {
   const passage = sens ? liste?.comptesDePassage.find((c) => c.sens === sens)?.compte ?? null : null;
   const porteurExige = sens !== null && caisseEnJeu(sens);
   const valeur = montantSaisi(somme);
-  const pret =
-    !!exerciceCourant &&
-    !!origine &&
-    !!destination &&
-    origine.id !== destination.id &&
-    !!jour &&
-    valeur !== null &&
-    valeur > 0 &&
-    reference.trim() !== '' &&
-    !!datePiece &&
-    objet.trim().length >= 3 &&
-    (!porteurExige || porteur.trim() !== '');
+  const exerciceClos = exerciceCourant?.statut === 'CLOTURE';
+  // CE QUI MANQUE, dit · un bouton grisé ne disait pas quoi corriger.
+  const manque = (): string | null => {
+    if (!origine) return 'Choisissez la banque ou la caisse d’origine.';
+    if (!destination) return 'Choisissez la banque ou la caisse de destination.';
+    if (!jour) return 'La date du virement est exigée.';
+    if (valeur === null || valeur <= 0) return 'Le montant doit être un nombre positif.';
+    if (Math.round(valeur * 100) / 100 !== valeur) return 'Le montant se saisit au centime près.';
+    if (!reference.trim()) return 'La référence de la pièce justificative est exigée.';
+    if (!datePiece) return 'La date de la pièce justificative est exigée.';
+    if (objet.trim().length < 3) return 'L’objet est exigé · trois caractères au moins.';
+    if (porteurExige && !porteur.trim()) return 'Une caisse est en jeu · nommez le porteur des espèces.';
+    return null;
+  };
+  const formulaireEntame = !!(somme || reference || objet || porteur || observations);
+  useGardeFermeture(formulaireEntame ? 'Un virement est en cours de saisie et n’est pas passé.' : null);
 
   const joindre = async (virementId: string, fichier: File) => {
     // Refus immédiat · le serveur refuse de toute façon au-delà de 5 Mo.
@@ -138,9 +161,22 @@ export function VirementsFondsPage() {
 
   const passer = async (e: FormEvent) => {
     e.preventDefault();
-    if (!pret || !exerciceCourant || valeur === null) return;
+    if (!exerciceCourant) return;
+    const motif = manque();
+    if (motif || valeur === null) {
+      setErreur(motif ?? 'Le montant doit être un nombre positif.');
+      return;
+    }
+    // LE SCAN SE JUGE AVANT LE VIREMENT · refusé après, il laissait un
+    // virement passé sans sa pièce.
+    const fichierChoisi = champFichier.current?.files?.[0];
+    if (fichierChoisi && fichierChoisi.size > TAILLE_MAX) {
+      setErreur('Le scan dépasse 5 Mo · réduisez-le ou numérisez-le en plus basse définition. Rien n’est passé.');
+      return;
+    }
     setErreur(null);
     setInfo(null);
+    setAvertissement(null);
     setEnvoi(true);
     try {
       const v = await api.post<VirementServi & { comptePassage: { numero: string } }>('/virements-fonds', {
@@ -157,15 +193,15 @@ export function VirementsFondsPage() {
         ...(observations.trim() ? { observations: observations.trim() } : {}),
       });
       let message = `Virement passé · ${v.piecesPassees ?? 'deux pièces'}, au compte ${v.comptePassage.numero}.`;
-      const fichier = champFichier.current?.files?.[0];
-      if (fichier) {
+      if (fichierChoisi) {
         try {
-          await joindre(v.id, fichier);
+          await joindre(v.id, fichierChoisi);
           message += ' Pièce jointe.';
         } catch (err) {
-          // Le virement EST passé · le dire, et dire ce qui manque, sans le
-          // présenter comme un échec du virement.
-          message += ` La pièce n'est pas jointe · ${err instanceof ApiError ? err.message : 'envoi impossible'} Joignez-la depuis la liste.`;
+          // Le virement EST passé · le dire, et dire ce qui manque, à part.
+          setAvertissement(
+            `La pièce n'est pas jointe (${err instanceof ApiError ? err.message.replace(/\.$/, '') : 'envoi impossible'}) · joignez-la depuis la liste.`,
+          );
         }
       }
       setInfo(message);
@@ -189,6 +225,8 @@ export function VirementsFondsPage() {
     if (!fichier || !id) return;
     setErreur(null);
     setInfo(null);
+    setAvertissement(null);
+    setEnvoiJoindre(id);
     try {
       await joindre(id, fichier);
       setInfo('Pièce jointe au virement.');
@@ -196,6 +234,7 @@ export function VirementsFondsPage() {
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Pièce non jointe');
     } finally {
+      setEnvoiJoindre(null);
       if (champJoindre.current) champJoindre.current.value = '';
     }
   };
@@ -221,16 +260,28 @@ export function VirementsFondsPage() {
 
   return (
     <div className="p-3 space-y-3 text-[11.5px]">
-      {erreur && <div className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">{erreur}</div>}
+      {erreur && (
+        <div role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
+          {erreur}
+        </div>
+      )}
       {info && <div className="text-positive bg-positive-soft border border-positive/30 px-3 py-2">{info}</div>}
+      {avertissement && (
+        <div role="alert" className="text-warning bg-warning-soft border border-warning/30 px-3 py-2">
+          {avertissement}
+        </div>
+      )}
+      {!exerciceCourant && <p className="text-text-dim">Aucun exercice · ouvrez-en un dans Exercices.</p>}
+      {exerciceCourant && !liste && !erreur && <p className="text-text-dim">Chargement…</p>}
       {liste && journaux.length < 2 && (
         <p className="text-warning">
-          Un virement va d'un journal de banque ou de caisse à un autre · ce dossier en a {journaux.length === 0 ? 'aucun' : 'un seul'} avec son
-          compte. Créez-le dans Structure › Journaux.
+          Un virement va d'un journal de banque ou de caisse à un autre · ce dossier{' '}
+          {journaux.length === 0 ? "n'en a aucun" : "n'en a qu'un"} avec son compte. Les journaux se créent dans Structure › Codes journaux.
         </p>
       )}
+      {liste && exerciceClos && <p className="text-text-dim">Exercice clôturé · ses virements se consultent, aucun ne se passe ni ne s'annule.</p>}
 
-      {peutEcrire && liste && journaux.length >= 2 && (
+      {peutEcrire && liste && journaux.length >= 2 && !exerciceClos && (
         <form onSubmit={passer} className="border border-border bg-surface p-3 space-y-2">
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-0.5 min-w-[220px] flex-1">
@@ -313,7 +364,7 @@ export function VirementsFondsPage() {
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-0.5 min-w-[200px]">
-              <span className="text-text-dim">Porteur des espèces{porteurExige ? '' : ' (facultatif)'}</span>
+              <span className="text-text-dim">Porteur des espèces{porteurExige ? ' (exigé)' : ' (facultatif)'}</span>
               <input required={porteurExige} maxLength={120} value={porteur} onChange={(e) => setPorteur(e.target.value)} className="border border-border px-2 py-[2px]" />
             </label>
             <label className="flex flex-col gap-0.5 min-w-[220px] flex-1">
@@ -324,7 +375,7 @@ export function VirementsFondsPage() {
               <span className="text-text-dim">Scan de la pièce (facultatif)</span>
               <input ref={champFichier} type="file" accept={FORMATS} className="text-[11px]" aria-label="Scan de la pièce" />
             </label>
-            <button type="submit" disabled={envoi || !pret} className="ml-auto bg-sel text-white font-semibold px-4 py-1.5 disabled:opacity-40">
+            <button type="submit" disabled={envoi} className="ml-auto bg-sel text-white font-semibold px-4 py-1.5 disabled:opacity-40">
               {envoi ? '…' : 'Passer le virement'}
             </button>
           </div>
@@ -348,7 +399,9 @@ export function VirementsFondsPage() {
                 <th className="text-left px-2 py-1">Objet</th>
                 <th className="text-left px-2 py-1">Pièces passées</th>
                 <th className="text-right px-2 py-1 w-[120px]">Montant</th>
-                <th className="text-left px-2 py-1 w-[150px]" />
+                <th className="text-left px-2 py-1 w-[150px]">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -378,23 +431,33 @@ export function VirementsFondsPage() {
                   <td className="px-2 py-1 text-right">{fmt(v.montant)}</td>
                   <td className="px-2 py-1">
                     {v.annuleLe ? (
-                      <span title={v.motifAnnulation ?? undefined}>Annulé le {new Date(v.annuleLe).toLocaleDateString('fr-FR')}</span>
+                      <span>
+                        Annulé le {new Date(v.annuleLe).toLocaleDateString('fr-FR')}
+                        {v.motifAnnulation && <div className="text-text-dim">{v.motifAnnulation}</div>}
+                      </span>
                     ) : (
                       <span className="flex gap-2.5">
                         {peutEcrire && (
                           <button
                             type="button"
+                            disabled={envoiJoindre !== null}
+                            aria-label={`Joindre une pièce au virement du ${date(v.date)}`}
                             onClick={() => {
                               setJoindreA(v.id);
                               champJoindre.current?.click();
                             }}
-                            className="text-sel hover:underline"
+                            className="text-sel hover:underline disabled:opacity-40"
                           >
-                            Joindre
+                            {envoiJoindre === v.id ? 'Envoi…' : 'Joindre'}
                           </button>
                         )}
-                        {peutValider && (
-                          <button type="button" onClick={() => setAAnnuler(v)} className="text-danger hover:underline">
+                        {peutValider && !exerciceClos && (
+                          <button
+                            type="button"
+                            aria-label={`Annuler le virement du ${date(v.date)}`}
+                            onClick={() => setAAnnuler(v)}
+                            className="text-danger hover:underline"
+                          >
                             Annuler
                           </button>
                         )}
@@ -466,8 +529,19 @@ function ModaleAnnulation({
     setErreur(null);
     setEnvoi(true);
     try {
-      await api.post(`/virements-fonds/${virement.id}/annuler`, { motif: motif.trim() });
-      await onFait('Virement annulé · ses pièces au brouillard sont retirées, les validées sont inscrites en négatif.');
+      const r = await api.post<{ ecritureNegatifOrigineId: string | null; ecritureNegatifDestinationId: string | null; piecesPassees: string | null }>(
+        `/virements-fonds/${virement.id}/annuler`,
+        { motif: motif.trim() },
+      );
+      // CE QUI EST ARRIVÉ, dit · le serveur rend les négatifs qu'il a inscrits.
+      const negatifs = [r.ecritureNegatifOrigineId, r.ecritureNegatifDestinationId].filter(Boolean).length;
+      await onFait(
+        negatifs === 0
+          ? 'Virement annulé · ses deux pièces étaient au brouillard, elles sont retirées.'
+          : negatifs === 2
+            ? `Virement annulé · ses deux pièces validées sont inscrites en négatif (${r.piecesPassees ?? ''}).`
+            : `Virement annulé · une pièce retirée du brouillard, l'autre inscrite en négatif (${r.piecesPassees ?? ''}).`,
+      );
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Annulation impossible');
     } finally {
