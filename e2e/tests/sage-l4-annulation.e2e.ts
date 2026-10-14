@@ -46,6 +46,7 @@ test('SYSCOHADA · la fiche du bien annule sa dotation au brouillard, et refuse 
   await page.getByRole('button', { name: 'Fiche', exact: true }).click();
   const fiche = page.getByRole('dialog', { name: 'Fiche · Camion L4 e2e' });
   await expect(fiche).toBeVisible();
+  await fiche.getByRole('tab', { name: 'Traitements' }).click();
   await expect(fiche.getByRole('tab', { name: 'Traitements' })).toHaveAttribute('aria-selected', 'true');
   await expect(fiche.getByText('Aucune annulation sur ce bien.')).toBeVisible();
   const ligneDotation = fiche.getByRole('row', { name: /Dotation de l'exercice clos le/ });
@@ -85,6 +86,7 @@ test('SYSCOHADA · la fiche du bien annule sa dotation au brouillard, et refuse 
   await expect(fiche).toBeHidden();
   await page.getByRole('button', { name: 'Fiche', exact: true }).click();
   await expect(fiche).toBeVisible();
+  await fiche.getByRole('tab', { name: 'Traitements' }).click();
   const dotation = fiche.getByRole('row', { name: /^Dotation de l'exercice clos le/ });
   await expect(dotation.getByRole('button', { name: 'Annuler' })).toBeDisabled();
   await expect(dotation).toContainText('Annulez d’abord le plus récent');

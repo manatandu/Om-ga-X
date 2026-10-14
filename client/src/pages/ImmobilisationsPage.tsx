@@ -16,6 +16,7 @@ import { ChampReglePar } from '../components/ChampReglePar';
 import { BasculeDureeLimitee } from '../components/BasculeDureeLimitee';
 import { RevisionPlanAmortissement } from '../components/RevisionPlanAmortissement';
 import { FicheImmobilisation } from '../components/FicheImmobilisation';
+import type { PropositionDuplication } from '../components/FicheImmobilisationGeneral';
 import { CoutsEmpruntIncorpores } from '../components/CoutsEmpruntIncorpores';
 import { AcquisitionPrixAleatoire, SoldeDetteAleatoire } from '../components/AcquisitionPrixAleatoire';
 import { ReserveProprieteBien, BiensSousReserveDePropriete } from '../components/ReserveProprieteImmobilisations';
@@ -518,6 +519,32 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
     };
   }, [syscohada, iDateAcquisition]);
   const unitesServies = !(utilisateur?.tenant?.referentiel === 'SYSCOHADA' && utilisateur?.tenant?.systemeComptableSyscohada === 'MINIMAL_TRESORERIE');
+
+  // DUPLIQUER UNE FICHE (ligne sage-l4, n° 66) · la copie servie par le
+  // serveur remplit le formulaire de création, que le cabinet confirme · la
+  // nouvelle fiche passe par la même route et les mêmes contrôles. Dates,
+  // numéro d'inventaire et financement restent à saisir (un autre bien).
+  const dupliquerFiche = (p: PropositionDuplication) => {
+    setFicheOuvertePour(null);
+    setIRepris(false);
+    setEstComposant(false);
+    setIPasEncoreEnService(false);
+    setIDesignation(p.designation);
+    setINumeroInventaire('');
+    setICompteBienId(p.compteImmobilisationId);
+    setIModeAcquisition('');
+    setICompteContrepartie('');
+    setINatureFiscale(p.natureFiscaleCle ?? '');
+    setILieuId(p.lieuId ?? '');
+    setIValeurOrigine(String(p.valeurOrigine));
+    setIValeurResiduelle(String(p.valeurResiduelle));
+    setIDuree(String(p.dureeAmortissementAns));
+    setIMode(p.modeAmortissement as 'LINEAIRE' | 'UNITES_DOEUVRE' | 'DEGRESSIF');
+    setIUnites(p.unitesOeuvrePrevues === null ? '' : String(p.unitesOeuvrePrevues));
+    setIUniteLibelle(p.uniteOeuvreLibelle ?? '');
+    setAfficherFormImmo(true);
+    setInfo('Copie préparée dans « Nouvelle immobilisation » · vérifiez les dates et le financement, puis enregistrez.');
+  };
 
   const onCreerImmo = async (e: FormEvent) => {
     e.preventDefault();
@@ -2009,6 +2036,12 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                     bien={immo}
                     onFermer={() => setFicheOuvertePour(null)}
                     onFait={(message) => {
+                      setInfo(message);
+                      void charger();
+                    }}
+                    onDupliquer={dupliquerFiche}
+                    onSupprime={(message) => {
+                      setFicheOuvertePour(null);
                       setInfo(message);
                       void charger();
                     }}

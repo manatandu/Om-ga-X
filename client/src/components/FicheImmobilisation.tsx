@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { PortailModale } from './PortailModale';
 import { ecouterEchap } from '../lib/echap';
 import { TraitementsImmobilisation } from './TraitementsImmobilisation';
+import { FicheImmobilisationGeneral, type PropositionDuplication } from './FicheImmobilisationGeneral';
 
-export type OngletFiche = 'traitements';
+export type OngletFiche = 'general' | 'traitements';
 
-const ONGLETS_FICHE: readonly { cle: OngletFiche; libelle: string }[] = [{ cle: 'traitements', libelle: 'Traitements' }];
+const ONGLETS_FICHE: readonly { cle: OngletFiche; libelle: string }[] = [
+  { cle: 'general', libelle: 'Général' },
+  { cle: 'traitements', libelle: 'Traitements' },
+];
 
 /**
  * LA FICHE D'UN BIEN, en fenêtre posée sur la liste (ligne sage-l4) · ce qui
@@ -16,12 +20,16 @@ export function FicheImmobilisation({
   bien,
   onFermer,
   onFait,
+  onDupliquer,
+  onSupprime,
 }: {
   bien: { id: string; designation: string };
   onFermer: () => void;
   onFait: (message: string) => void;
+  onDupliquer: (proposition: PropositionDuplication) => void;
+  onSupprime: (message: string) => void;
 }) {
-  const [onglet, setOnglet] = useState<OngletFiche>('traitements');
+  const [onglet, setOnglet] = useState<OngletFiche>('general');
   const fermer = useRef<HTMLButtonElement>(null);
 
   useEffect(
@@ -71,6 +79,9 @@ export function FicheImmobilisation({
             ))}
           </div>
           <div className="p-3.5" role="tabpanel">
+            {onglet === 'general' && (
+              <FicheImmobilisationGeneral bien={bien} onFait={onFait} onDupliquer={onDupliquer} onSupprime={onSupprime} />
+            )}
             {onglet === 'traitements' && <TraitementsImmobilisation bien={bien} onFait={onFait} />}
           </div>
         </div>

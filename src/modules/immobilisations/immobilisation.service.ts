@@ -550,6 +550,35 @@ export function planDuBien(immo: {
   };
 }
 
+/** Ce que seules les opérations internes passent à la création d'une fiche · jamais exposé au DTO. */
+export type InterneCreationFiche = {
+  /**
+   * Réservé à `renouveler` · le composant que celui-ci remplace. Il n'est
+   * PAS exposé au DTO : la chaîne des remplacements se constate, elle ne se
+   * déclare pas, et un client qui la poserait à la main pourrait relier deux
+   * biens qui n'ont rien à voir.
+   */
+  composantRemplaceId?: string;
+  /**
+   * Réservé à la location-acquisition · les lignes de crédit qui
+   * remplacent la contrepartie unique (dette de location-acquisition, et
+   * contrepartie des coûts directs nets, négative pour un débit). Les
+   * comptes ont été vérifiés par `creerEnLocationAcquisition`.
+   */
+  lignesCredit?: { compteId: string; montant: number }[];
+  /** Libellé de l'écriture d'acquisition, à défaut « Acquisition · … ». */
+  libelle?: string;
+  /** Lot 8 · la modalité de ventilation d'un prix global, gardée pour les Notes annexes (art. 38). */
+  modaliteVentilation?: string;
+  /** Lot 15 · acquisition à prix aléatoire, vérifiée par `acquerirAPrixAleatoire`. */
+  acquisitionAleatoire?: {
+    nature: NatureAcquisitionAleatoire;
+    fondement: FondementValeurAleatoire;
+    source: string;
+    detteInitiale: number;
+  };
+};
+
 @Injectable()
 export class ImmobilisationService {
   constructor(
@@ -2294,34 +2323,120 @@ export class ImmobilisationService {
     tenantId: string,
     userId: string,
     dto: CreerImmobilisationDto,
-    /**
-     * Réservé à `renouveler` · le composant que celui-ci remplace. Il n'est
-     * PAS exposé au DTO : la chaîne des remplacements se constate, elle ne se
-     * déclare pas, et un client qui la poserait à la main pourrait relier deux
-     * biens qui n'ont rien à voir.
-     */
-    interne: {
-      composantRemplaceId?: string;
-      /**
-       * Réservé à la location-acquisition · les lignes de crédit qui
-       * remplacent la contrepartie unique (dette de location-acquisition, et
-       * contrepartie des coûts directs nets, négative pour un débit). Les
-       * comptes ont été vérifiés par `creerEnLocationAcquisition`.
-       */
-      lignesCredit?: { compteId: string; montant: number }[];
-      /** Libellé de l'écriture d'acquisition, à défaut « Acquisition · … ». */
-      libelle?: string;
-      /** Lot 8 · la modalité de ventilation d'un prix global, gardée pour les Notes annexes (art. 38). */
-      modaliteVentilation?: string;
-      /** Lot 15 · acquisition à prix aléatoire, vérifiée par `acquerirAPrixAleatoire`. */
-      acquisitionAleatoire?: {
-        nature: NatureAcquisitionAleatoire;
-        fondement: FondementValeurAleatoire;
-        source: string;
-        detteInitiale: number;
-      };
-    } = {},
+    interne: InterneCreationFiche = {},
   ) {
+    // LES CONTRÔLES DE LA FICHE, puis l'écriture et la fiche · séparés pour
+    // que la modification d'une fiche (ligne sage-l4, n° 66) rejoue les MÊMES
+    // contrôles, sans seconde copie des règles.
+    const {
+      famille,
+      dateAcquisition,
+      dateMiseEnService,
+      compteEnCours,
+      natureFiscaleCle,
+      mode,
+      principal,
+      dureeIncorporel,
+      reserveDePropriete,
+      criteresRd,
+      dateReunionCriteres,
+    } = await this.preparerFiche(tenantId, dto, interne);
+
+    // L'ÉCRITURE VIENT APRÈS TOUS LES CONTRÔLES (audit final F29) · le mode,
+    // le SMT et le lieu refusaient APRÈS l'écriture d'acquisition, qui
+    // restait au journal sans bien pour la porter. Un bien repris n'en a
+    // aucune (F32) · il est déjà au bilan d'ouverture.
+    const ecritureAcquisition = dto.repris
+      ? null
+      : await this.ecritureService.creer(tenantId, userId, {
+          exerciceId: dto.exerciceId,
+          journalId: dto.journalId!,
+          date: dto.dateAcquisition,
+          libelle: (interne.libelle ?? `Acquisition · ${dto.designation}`).slice(0, 190),
+          lignes: [
+            // Le bien entre là où il est INSCRIT · l'en-cours s'il n'est pas achevé.
+            { compteId: compteEnCours?.id ?? famille.compteImmobilisationId, debit: dto.valeurOrigine, credit: 0 },
+            ...(interne.lignesCredit
+              ? interne.lignesCredit
+                  .filter((l) => Math.abs(l.montant) > EPSILON)
+                  .map((l) =>
+                    l.montant > 0
+                      ? { compteId: l.compteId, debit: 0, credit: l.montant }
+                      : { compteId: l.compteId, debit: -l.montant, credit: 0 },
+                  )
+              : [{ compteId: dto.compteContrepartieId!, debit: 0, credit: dto.valeurOrigine }]),
+          ],
+        });
+
+    let immobilisation;
+    try {
+      immobilisation = await this.prisma.immobilisation.create({
+        data: {
+          tenantId,
+          familleId: famille.id,
+          designation: dto.designation,
+          numeroInventaire: dto.numeroInventaire,
+          lieuId: dto.lieuId ?? null,
+          compteImmobilisationId: famille.compteImmobilisationId,
+          compteAmortissementId: famille.compteAmortissementId,
+          compteDotationId: famille.compteDotationId,
+          compteEnCoursId: compteEnCours?.id ?? null,
+          dateAcquisition,
+          dateMiseEnService,
+          natureFiscaleCle,
+          valeurOrigine: dto.valeurOrigine,
+          valeurResiduelle: dto.valeurResiduelle ?? 0,
+          dureeAmortissementAns: dto.dureeAmortissementAns ?? famille.dureeAmortissementAns,
+          amortissementAnterieur: dto.amortissementAnterieur ?? 0,
+          modeAmortissement: mode,
+          unitesOeuvrePrevues: mode === ModeAmortissement.UNITES_DOEUVRE ? dto.unitesOeuvrePrevues : null,
+          uniteOeuvreLibelle:
+            mode === ModeAmortissement.UNITES_DOEUVRE ? (dto.uniteOeuvreLibelle?.trim() ?? null) : null,
+          ecritureAcquisitionId: ecritureAcquisition?.id ?? null,
+          createdBy: userId,
+          // Rattachement au principal · null pour une structure. Le composant
+          // garde son PROPRE plan d'amortissement, c'est tout l'objet du
+          // chapitre 4 : « un plan d'amortissement propre à chacun de ces
+          // éléments est retenu ».
+          immobilisationPrincipaleId: principal?.id ?? null,
+          typeComposant: principal ? (dto.typeComposant ?? TypeComposant.COMPOSANT) : null,
+          justificationDecomposition: principal ? (dto.justificationDecomposition ?? null) : null,
+          composantRemplaceId: interne.composantRemplaceId ?? null,
+          modaliteVentilation: interne.modaliteVentilation?.slice(0, 1000) ?? null,
+          dureeNonLimitee: dureeIncorporel.dureeNonLimitee,
+          justificationDureeNonLimitee: dureeIncorporel.justification,
+          fondementDureeDixAns: dureeIncorporel.fondementDureeDixAns,
+          reserveDePropriete,
+          ...(interne.acquisitionAleatoire
+            ? {
+                natureAcquisitionAleatoire: interne.acquisitionAleatoire.nature,
+                fondementValeurAleatoire: interne.acquisitionAleatoire.fondement,
+                sourceValeurAleatoire: interne.acquisitionAleatoire.source.slice(0, 1000),
+                detteAleatoireInitiale: interne.acquisitionAleatoire.detteInitiale,
+              }
+            : {}),
+          criteresFraisDeveloppement: criteresRd ?? undefined,
+          dateReunionCriteresDeveloppement: criteresRd ? dateReunionCriteres : null,
+          coutFuturDemantelement: dto.coutFuturDemantelement ?? null,
+          tauxActualisationDemantelementPourcent: dto.tauxActualisationDemantelementPourcent ?? null,
+        },
+        include: { dotations: true },
+      });
+    } catch (err) {
+      // Une fiche refusée ne laisse pas son écriture d'acquisition au journal.
+      if (ecritureAcquisition) await this.annulerEcritureOrpheline(ecritureAcquisition.id);
+      throw err;
+    }
+    return versImmobilisation(immobilisation);
+  }
+
+  /**
+   * LES CONTRÔLES D'UNE FICHE DE BIEN, sans rien écrire · servis à la
+   * création et à la modification (ligne sage-l4, n° 66), pour qu'une fiche
+   * modifiée passe exactement les règles d'une fiche créée. Peut faire naître
+   * la famille du compte (`famillePourCompte`), comme la création.
+   */
+  async preparerFiche(tenantId: string, dto: CreerImmobilisationDto, interne: InterneCreationFiche = {}) {
     // LE COMPTE DU BIEN OU LA FAMILLE (compte-du-bien.ts) · l'un des deux,
     // jamais les deux, pour qu'aucun des deux ne contredise l'autre en silence.
     if (!!dto.familleId === !!dto.compteImmobilisationId) {
@@ -2703,93 +2818,22 @@ export class ImmobilisationService {
     });
     if (parametresDemantelement) throw new BadRequestException(parametresDemantelement);
 
-    // L'ÉCRITURE VIENT APRÈS TOUS LES CONTRÔLES (audit final F29) · le mode,
-    // le SMT et le lieu refusaient APRÈS l'écriture d'acquisition, qui
-    // restait au journal sans bien pour la porter. Un bien repris n'en a
-    // aucune (F32) · il est déjà au bilan d'ouverture.
-    const ecritureAcquisition = dto.repris
-      ? null
-      : await this.ecritureService.creer(tenantId, userId, {
-          exerciceId: dto.exerciceId,
-          journalId: dto.journalId!,
-          date: dto.dateAcquisition,
-          libelle: (interne.libelle ?? `Acquisition · ${dto.designation}`).slice(0, 190),
-          lignes: [
-            // Le bien entre là où il est INSCRIT · l'en-cours s'il n'est pas achevé.
-            { compteId: compteEnCours?.id ?? famille.compteImmobilisationId, debit: dto.valeurOrigine, credit: 0 },
-            ...(interne.lignesCredit
-              ? interne.lignesCredit
-                  .filter((l) => Math.abs(l.montant) > EPSILON)
-                  .map((l) =>
-                    l.montant > 0
-                      ? { compteId: l.compteId, debit: 0, credit: l.montant }
-                      : { compteId: l.compteId, debit: -l.montant, credit: 0 },
-                  )
-              : [{ compteId: dto.compteContrepartieId!, debit: 0, credit: dto.valeurOrigine }]),
-          ],
-        });
-
-    let immobilisation;
-    try {
-      immobilisation = await this.prisma.immobilisation.create({
-        data: {
-          tenantId,
-          familleId: famille.id,
-          designation: dto.designation,
-          numeroInventaire: dto.numeroInventaire,
-          lieuId: dto.lieuId ?? null,
-          compteImmobilisationId: famille.compteImmobilisationId,
-          compteAmortissementId: famille.compteAmortissementId,
-          compteDotationId: famille.compteDotationId,
-          compteEnCoursId: compteEnCours?.id ?? null,
-          dateAcquisition,
-          dateMiseEnService,
-          natureFiscaleCle,
-          valeurOrigine: dto.valeurOrigine,
-          valeurResiduelle: dto.valeurResiduelle ?? 0,
-          dureeAmortissementAns: dto.dureeAmortissementAns ?? famille.dureeAmortissementAns,
-          amortissementAnterieur: dto.amortissementAnterieur ?? 0,
-          modeAmortissement: mode,
-          unitesOeuvrePrevues: mode === ModeAmortissement.UNITES_DOEUVRE ? dto.unitesOeuvrePrevues : null,
-          uniteOeuvreLibelle:
-            mode === ModeAmortissement.UNITES_DOEUVRE ? (dto.uniteOeuvreLibelle?.trim() ?? null) : null,
-          ecritureAcquisitionId: ecritureAcquisition?.id ?? null,
-          createdBy: userId,
-          // Rattachement au principal · null pour une structure. Le composant
-          // garde son PROPRE plan d'amortissement, c'est tout l'objet du
-          // chapitre 4 : « un plan d'amortissement propre à chacun de ces
-          // éléments est retenu ».
-          immobilisationPrincipaleId: principal?.id ?? null,
-          typeComposant: principal ? (dto.typeComposant ?? TypeComposant.COMPOSANT) : null,
-          justificationDecomposition: principal ? (dto.justificationDecomposition ?? null) : null,
-          composantRemplaceId: interne.composantRemplaceId ?? null,
-          modaliteVentilation: interne.modaliteVentilation?.slice(0, 1000) ?? null,
-          dureeNonLimitee: dureeIncorporel.dureeNonLimitee,
-          justificationDureeNonLimitee: dureeIncorporel.justification,
-          fondementDureeDixAns: dureeIncorporel.fondementDureeDixAns,
-          reserveDePropriete,
-          ...(interne.acquisitionAleatoire
-            ? {
-                natureAcquisitionAleatoire: interne.acquisitionAleatoire.nature,
-                fondementValeurAleatoire: interne.acquisitionAleatoire.fondement,
-                sourceValeurAleatoire: interne.acquisitionAleatoire.source.slice(0, 1000),
-                detteAleatoireInitiale: interne.acquisitionAleatoire.detteInitiale,
-              }
-            : {}),
-          criteresFraisDeveloppement: criteresRd ?? undefined,
-          dateReunionCriteresDeveloppement: criteresRd ? dateReunionCriteres : null,
-          coutFuturDemantelement: dto.coutFuturDemantelement ?? null,
-          tauxActualisationDemantelementPourcent: dto.tauxActualisationDemantelementPourcent ?? null,
-        },
-        include: { dotations: true },
-      });
-    } catch (err) {
-      // Une fiche refusée ne laisse pas son écriture d'acquisition au journal.
-      if (ecritureAcquisition) await this.annulerEcritureOrpheline(ecritureAcquisition.id);
-      throw err;
-    }
-    return versImmobilisation(immobilisation);
+    return {
+      famille,
+      dateAcquisition,
+      dateMiseEnService,
+      compteEnCours,
+      natureFiscaleCle,
+      mode,
+      principal,
+      dureeIncorporel,
+      reserveDePropriete,
+      criteresRd,
+      dateReunionCriteres,
+      numeroContrepartie,
+    };
   }
+
 
   /**
    * Annuité de dotation pour `exercice`, compte tenu du cumul déjà passé.
