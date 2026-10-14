@@ -2,6 +2,7 @@ import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { OrigineLettrage, Prisma, StatutEcriture, StatutExercice, StatutLettrage } from '@prisma/client';
+import { lettreBienFormee, motifLettreDejaEmployee, MOTIF_FORMAT_LETTRE, normaliserLettre } from './lettre-choisie';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { lignesFigees, refuserSiLignesFigees } from '../exercice/gel-cloture';
@@ -295,27 +296,34 @@ export class LettrageService {
     const tronque = total > lignes.length;
     // Tranche montrée · les groupes se restreignent à ceux de ses lignes, plus
     // les PARTIELS, qui restent à compléter où qu'ils soient.
-    const lettrages = await this.prisma.lettrage.findMany({
-      where: {
-        compteId,
-        tenantId,
-        ...(tronque
-          ? {
-              OR: [
-                { statut: StatutLettrage.PARTIEL },
-                { id: { in: [...new Set(lignes.map((l) => l.lettrageId).filter((id): id is string => id !== null))] } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    const [lettrages, prochaineLettre] = await Promise.all([
+      this.prisma.lettrage.findMany({
+        where: {
+          compteId,
+          tenantId,
+          ...(tronque
+            ? {
+                OR: [
+                  { statut: StatutLettrage.PARTIEL },
+                  { id: { in: [...new Set(lignes.map((l) => l.lettrageId).filter((id): id is string => id !== null))] } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      // La lettre que le prochain lettrage manuel prendra si le comptable
+      // n'en choisit pas une autre (ligne sage-l1, fonction 16) · proposée à
+      // l'écran, jamais réservée.
+      this.prochaineLettre(this.prisma as unknown as Prisma.TransactionClient, tenantId, compteId),
+    ]);
 
     return {
       tronque,
       total,
       plafond: PLAFOND_LIGNES_LETTRAGE,
       totaux: { debit: Number(agregat._sum.debit ?? 0), credit: Number(agregat._sum.credit ?? 0) },
+      prochaineLettre,
       compte: { id: compte.id, numero: compte.numero, intitule: compte.intitule, lettrable: compte.lettrable },
       lignes: lignes.map((l) => ({
         id: l.id,
@@ -415,6 +423,33 @@ export class LettrageService {
     const codes = [...groupes.map((g) => g.code), ...lignes.map((l) => l.lettre!)];
     const maxIndex = codes.reduce((max, c) => Math.max(max, lettreVersIndex(c)), 0);
     return indexVersLettre(maxIndex + 1);
+  }
+
+  /**
+   * UNE LETTRE CHOISIE DÉJÀ EMPLOYÉE SUR LE COMPTE EST REFUSÉE, NOMMÉE (ligne
+   * sage-l1, fonction 16) · par un groupe (soldé ou partiel), ou par une
+   * lettre posée sur des lignes (dossiers repris avant le modèle Lettrage,
+   * même double lecture que `prochaineLettre`).
+   */
+  private async refuserLettreEmployee(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    compte: { id: string; numero: string },
+    lettre: string,
+  ): Promise<void> {
+    const [groupe, ligne] = await Promise.all([
+      tx.lettrage.findFirst({ where: { tenantId, compteId: compte.id, code: lettre }, select: { statut: true } }),
+      tx.ligneEcriture.findFirst({ where: { compteId: compte.id, lettre, ecriture: { tenantId } }, select: { id: true } }),
+    ]);
+    if (!groupe && !ligne) return;
+    throw new BadRequestException(
+      motifLettreDejaEmployee({
+        lettre,
+        compteNumero: compte.numero,
+        statutGroupe: groupe ? (groupe.statut === StatutLettrage.SOLDE ? 'SOLDE' : 'PARTIEL') : null,
+        lettreProposee: await this.prochaineLettre(tx, tenantId, compte.id),
+      }),
+    );
   }
 
   /**
@@ -619,9 +654,13 @@ export class LettrageService {
     compteId: string,
     ligneIds: string[],
     userId: string,
-    options: { autoriserPartiel?: boolean; ecartChangeRealise?: number } = {},
+    options: { autoriserPartiel?: boolean; ecartChangeRealise?: number; lettre?: string | null } = {},
   ) {
     const compte = await this.trouverCompteLettrable(tenantId, compteId);
+    // LA LETTRE CHOISIE (ligne sage-l1, fonction 16) · sa forme se juge ici
+    // aussi, un appelant interne ne passant pas par le DTO.
+    const lettreChoisie = options.lettre ? normaliserLettre(options.lettre) : null;
+    if (lettreChoisie !== null && !lettreBienFormee(lettreChoisie)) throw new BadRequestException(MOTIF_FORMAT_LETTRE);
 
     return avecRetrySerialisable(
       this.prisma,
@@ -668,14 +707,21 @@ export class LettrageService {
           );
         }
 
-        const groupe = await this.creerGroupe(tx, {
-          tenantId,
-          compteId,
-          ligneIds,
-          origine: OrigineLettrage.MANUEL,
-          userId,
-          ecartChangeRealise: options.ecartChangeRealise,
-        });
+        // Relue DANS la transaction sérialisable · deux lettrages simultanés
+        // qui choisiraient la même lettre ne passent pas tous les deux.
+        if (lettreChoisie !== null) await this.refuserLettreEmployee(tx, tenantId, compte, lettreChoisie);
+        const groupe = await this.creerGroupe(
+          tx,
+          {
+            tenantId,
+            compteId,
+            ligneIds,
+            origine: OrigineLettrage.MANUEL,
+            userId,
+            ecartChangeRealise: options.ecartChangeRealise,
+          },
+          lettreChoisie !== null ? () => lettreChoisie : undefined,
+        );
         return {
           lettre: groupe.statut === StatutLettrage.SOLDE ? groupe.code : groupe.code.toLowerCase(),
           statut: groupe.statut,

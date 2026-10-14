@@ -23,7 +23,11 @@ function harnais(total: number, aggregat = { debit: 0, credit: 0 }) {
   const prisma = {
     compte: { findFirst: jest.fn().mockResolvedValue({ id: 'c1', numero: '41110000', intitule: 'C', lettrable: true }) },
     ligneEcriture: {
-      findMany: jest.fn().mockResolvedValue(lignes),
+      // La doublure honore le filtre des lignes lettrées · la lettre suivante
+      // du compte (ligne sage-l1, fonction 16) ne lit que celles-là.
+      findMany: jest.fn().mockImplementation(({ where }: any) =>
+        Promise.resolve(where?.lettre?.not === null ? lignes.filter((l) => l.lettre !== null) : lignes),
+      ),
       count: jest.fn().mockResolvedValue(total),
       aggregate: jest.fn().mockResolvedValue({ _sum: aggregat }),
     },

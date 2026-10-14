@@ -141,6 +141,7 @@ function service(
     ligneEcriture: {
       findMany: jest.fn().mockImplementation(({ where }: any) => Promise.resolve(filtrer(where))),
       count: jest.fn().mockImplementation(({ where }: any) => Promise.resolve(filtrer(where).length)),
+      findFirst: jest.fn().mockImplementation(({ where }: any) => Promise.resolve(filtrer(where)[0] ?? null)),
       updateMany: jest.fn().mockImplementation(({ where, data }: any) => {
         const cibles = filtrer(where);
         for (const l of cibles) Object.assign(l, data);
@@ -220,6 +221,59 @@ describe('Lettrage partiel', () => {
     const { service: s, groupes } = service([ligne('a', 500, 0), ligne('b', 0, 500), ligne('c', 100, 0)]);
     await s.lettrerManuel('t1', 'c1', ['a', 'b'], 'u1');
     await expect(s.completer('t1', groupes[0].id, ['c'])).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// La lettre choisie à la main (ligne sage-l1, fonction 16)
+// ---------------------------------------------------------------------------
+
+describe('Lettre de lettrage choisie à la main', () => {
+  it('sans lettre choisie, le groupe prend la suivante du compte', async () => {
+    const { service: s } = service([ligne('a', 500, 0), ligne('b', 0, 500), ligne('c', 300, 0), ligne('d', 0, 300)]);
+    expect((await s.lettrerManuel('t1', 'c1', ['a', 'b'], 'u1')).lettre).toBe('A');
+    expect((await s.lettrerManuel('t1', 'c1', ['c', 'd'], 'u1')).lettre).toBe('B');
+  });
+
+  it('la lettre choisie est posée, rangée en majuscules, et la suite repart après elle', async () => {
+    const { service: s, groupes, lignes } = service([ligne('a', 500, 0), ligne('b', 0, 500), ligne('c', 300, 0), ligne('d', 0, 300)]);
+    const r = await s.lettrerManuel('t1', 'c1', ['a', 'b'], 'u1', { lettre: 'kz' });
+    expect(r.lettre).toBe('KZ');
+    expect(groupes[0].code).toBe('KZ');
+    expect(lignes.filter((l) => l.lettre === 'KZ').map((l) => l.id)).toEqual(['a', 'b']);
+    // La suite automatique continue après la plus haute lettre du compte.
+    expect((await s.lettrerManuel('t1', 'c1', ['c', 'd'], 'u1')).lettre).toBe('LA');
+  });
+
+  it('une lettre choisie sur un partiel s’affiche en minuscules, rangée en majuscules', async () => {
+    const { service: s, groupes } = service([ligne('a', 1000, 0), ligne('b', 0, 600)]);
+    const r = await s.lettrerManuel('t1', 'c1', ['a', 'b'], 'u1', { autoriserPartiel: true, lettre: 'M' });
+    expect(r.lettre).toBe('m');
+    expect(groupes[0].code).toBe('M');
+  });
+
+  it('une lettre déjà employée par un groupe du compte est REFUSÉE en la nommant, rien n’est lettré', async () => {
+    const { service: s, groupes, lignes } = service([ligne('a', 500, 0), ligne('b', 0, 500), ligne('c', 300, 0), ligne('d', 0, 300)]);
+    await s.lettrerManuel('t1', 'c1', ['a', 'b'], 'u1', { lettre: 'Q' });
+    const refus = s.lettrerManuel('t1', 'c1', ['c', 'd'], 'u1', { lettre: 'q' });
+    await expect(refus).rejects.toBeInstanceOf(BadRequestException);
+    await expect(s.lettrerManuel('t1', 'c1', ['c', 'd'], 'u1', { lettre: 'Q' })).rejects.toThrow(
+      /« Q » est déjà employée sur le compte 41100000 par un lettrage soldé.*« R »/,
+    );
+    expect(groupes).toHaveLength(1);
+    expect(lignes.filter((l) => l.lettrageId !== null).map((l) => l.id)).toEqual(['a', 'b']);
+  });
+
+  it('une lettre posée sur des lignes sans groupe (dossier repris) est refusée aussi', async () => {
+    const { service: s } = service([ligne('x', 100, 0, { lettre: 'D' }), ligne('a', 500, 0), ligne('b', 0, 500)]);
+    await expect(s.lettrerManuel('t1', 'c1', ['a', 'b'], 'u1', { lettre: 'D' })).rejects.toThrow(/sur des lignes déjà lettrées/);
+  });
+
+  it('une lettre mal formée est refusée, même par un appelant qui ne passe pas par le DTO', async () => {
+    const { service: s, groupes } = service([ligne('a', 500, 0), ligne('b', 0, 500)]);
+    await expect(s.lettrerManuel('t1', 'c1', ['a', 'b'], 'u1', { lettre: 'A1' })).rejects.toThrow(/une à quatre lettres/);
+    await expect(s.lettrerManuel('t1', 'c1', ['a', 'b'], 'u1', { lettre: 'ABCDE' })).rejects.toThrow(/une à quatre lettres/);
+    expect(groupes).toHaveLength(0);
   });
 });
 

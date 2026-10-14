@@ -33,6 +33,7 @@ export class LettrageController {
   ) {
     return this.lettrageService.lettrerManuel(user.tenantId, compteId, dto.ligneIds, user.userId, {
       autoriserPartiel: dto.autoriserPartiel,
+      lettre: dto.lettre,
     });
   }
 

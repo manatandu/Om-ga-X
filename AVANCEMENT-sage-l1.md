@@ -169,10 +169,41 @@ annuelle admise ; report N+1 banque 600 000 ; en N+1, clôture de période
 refusée puis admise après impression ; option retirée, la clôture n'attend
 plus.
 
+### #16 · Changer à la main la prochaine lettre de lettrage (M3-19, p. 36)
+
+Aucun texte ne régit le repère du lettrage · le CPCC (ch. 6) n'exige qu'« un
+seul repère » par groupe, et c'est la seule règle tenue (`@@unique([compteId,
+code])`, refusée en la nommant avant la base). Traitement > Interrogation et
+lettrage · le champ « Lettre » à côté de « Lettrer la sélection » montre la
+lettre proposée (la suivante du compte, servie par `GET
+/comptes/:id/lettrage`, `prochaineLettre`) ; tapée, une autre lettre est
+posée sur le lettrage manuel (`LettrerDto.lettre`). Une à quatre lettres
+(la suite automatique n'en atteint une quatrième qu'au-delà de 18 278
+groupes), rangée en majuscules (la minuscule n'est que l'affichage d'un
+groupe partiel). Refus nommé · lettre déjà employée sur le compte, par un
+groupe (soldé ou partiel) ou par des lignes lettrées sans groupe (dossiers
+repris), avec la lettre proposée ; relue dans la transaction sérialisable.
+La suite automatique repart après la plus haute lettre du compte · une
+lettre libre plus basse (un trou) reste admise. Le lettrage automatique, le
+pré-lettrage et les modules gardent la lettre proposée.
+
+Code · `lettrage/lettre-choisie.ts`, `LettrageService.lettrerManuel`
+(`refuserLettreEmployee`), `lister` (`prochaineLettre`), écran
+`LettragePage`. Tests · `lettre-choisie.spec.ts` (forme, DTO, motif),
+`lettrage.service.spec.ts` (six cas), `lettrage-fenetre-bornee.spec.ts`
+(doublure qui honore le filtre des lignes lettrées), e2e `sage-l1-lettre`.
+
+Scénario sur vraie base (2026-10-14, `l1-s16.mjs`), 0 écart · lettre
+proposée A ; lettrage F1 en « k » → K soldé ; proposée L ; K refusée en
+nommant le compte 40110001 et la lettre proposée ; « K2 » refusée (forme) ;
+F2 sans choix → L ; clôture de N ; en N+1, la facture F3 par l'à-nouveau et
+son avoir · K refusée (employée en N), B (trou) admise, proposée M ; compte
+du tiers soldé.
+
 ## Reste
 
-- #12 et #60 · e2e `sage-l1-situation` et `sage-l1-impression` écrits, à jouer.
-- #16, #14, #19, #18.
+- #12, #60, #16 · e2e `sage-l1-situation`, `sage-l1-impression`, `sage-l1-lettre` écrits, à jouer.
+- #14, #19, #18.
 - Bloc du § 3 des deux côtés ; specs de structure.
 
 ## Décisions
@@ -217,6 +248,13 @@ fausse par défaut (`refusClotureJournalNonImprime`) ; une écriture validée
 après l'impression rend son jour non imprimé (`moisNonImprimes`) ; une
 recherche n'est pas le journal. Case « N » de l'état des journaux de saisie.
 
+**Lettre de lettrage choisie (ligne sage-l1, fonction 16, 2026-10-14).** Le
+lettrage manuel prend la lettre que le comptable tape (`LettrerDto.lettre`,
+une à quatre lettres, rangée en majuscules), sinon la proposée
+(`prochaineLettre`, la suivante du compte) ; une lettre déjà employée sur le
+compte (groupe ou lignes reprises) est refusée en la nommant (CPCC, ch. 6,
+« un seul repère »), relue dans la transaction.
+
 ## Pour build-log.md
 
 - 2026-10-14 · sage-l1 #12 · fait · journal de situation · statut SITUATION, garde
@@ -227,3 +265,5 @@ recherche n'est pas le journal. Case « N » de l'état des journaux de saisie.
   l'équilibre toujours montré.
 - 2026-10-14 · sage-l1 #60 · fait · journal imprimé enregistré, refus de clôture en
   option, case « Non imprimé » · comme prévu.
+- 2026-10-14 · sage-l1 #16 · fait · lettre de lettrage choisie, refus nommé d'une lettre
+  déjà employée · comme prévu.

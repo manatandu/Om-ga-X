@@ -342,6 +342,8 @@ export interface EtatLettrage {
   tronque?: boolean;
   total?: number;
   totaux?: { debit: number; credit: number };
+  /** La lettre que le prochain lettrage manuel prendra si aucune n'est choisie (ligne sage-l1, fonction 16). */
+  prochaineLettre?: string;
 }
 
 /**

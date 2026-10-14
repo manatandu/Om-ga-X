@@ -114,6 +114,10 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
   const [info, setInfo] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [autoriserPartiel, setAutoriserPartiel] = useState(false);
+  // LA LETTRE CHOISIE À LA MAIN (ligne sage-l1, fonction 16) · vide, le
+  // groupe prend la lettre proposée par le serveur ; le serveur refuse une
+  // lettre déjà employée sur le compte, en la nommant.
+  const [lettreChoisie, setLettreChoisie] = useState('');
   // Groupe partiel que la sélection viendra compléter · null = créer un
   // nouveau groupe.
   const [completerId, setCompleterId] = useState<string | null>(null);
@@ -202,9 +206,11 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
   const soldeNul = Math.abs(soldeSelection) < 0.005;
   // Compléter un groupe : une seule ligne suffit. Créer un groupe : deux au
   // moins, et le solde doit être nul sauf si le partiel est demandé.
+  // Même forme qu'au serveur (lettrage/lettre-choisie.ts) · une à quatre lettres.
+  const lettreMalFormee = !completerId && lettreChoisie.trim() !== '' && !/^[A-Za-z]{1,4}$/.test(lettreChoisie.trim());
   const selectionLettrable = completerId
     ? lignesSelectionnees.length >= 1
-    : lignesSelectionnees.length >= 2 && (soldeNul || autoriserPartiel);
+    : lignesSelectionnees.length >= 2 && (soldeNul || autoriserPartiel) && !lettreMalFormee;
 
   const executer = async (action: () => Promise<string>) => {
     setEnvoi(true);
@@ -235,8 +241,9 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
       }
       const r = await api.post<{ lettre: string; statut: string; solde: number; ecartChange: number | null; nombreLignes: number }>(
         `/comptes/${compteId}/lettrage`,
-        { ligneIds: [...selection], autoriserPartiel },
+        { ligneIds: [...selection], autoriserPartiel, ...(lettreChoisie.trim() ? { lettre: lettreChoisie.trim().toUpperCase() } : {}) },
       );
+      setLettreChoisie('');
       const change = r.ecartChange !== null && r.ecartChange !== 0
         ? ` Écart de change réalisé : ${montant(r.ecartChange)}.`
         : '';
@@ -836,6 +843,27 @@ export function LettragePage({ compteId: compteIdProp }: { compteId?: string } =
                 </select>
               </label>
             )}
+
+            {!completerId && (
+              <label className="flex items-center gap-1.5 text-[11.5px]">
+                Lettre
+                <input
+                  value={lettreChoisie}
+                  onChange={(e) => setLettreChoisie(e.target.value.toUpperCase())}
+                  placeholder={etat?.prochaineLettre ?? ''}
+                  maxLength={4}
+                  aria-label="Lettre du lettrage"
+                  aria-invalid={lettreMalFormee}
+                  className="w-[56px] border border-border-dark bg-surface px-2 py-1 text-[11.5px] uppercase"
+                />
+                <Aide
+                  titre="Lettre du lettrage"
+                  texte={`Laissée vide, le lettrage prend la lettre proposée${etat?.prochaineLettre ? ` (« ${etat.prochaineLettre} »)` : ''}, la suivante du compte. Une autre lettre se choisit ici, d’une à quatre lettres · une lettre déjà employée sur le compte est refusée, un repère ne réunissant qu'un seul groupe.`}
+                  source="Sage i7, Interrogation et lettrage ; CPCC, ch. 6, « un seul repère »"
+                />
+              </label>
+            )}
+            {lettreMalFormee && <span className="text-[11px] text-danger">Une à quatre lettres, sans chiffre ni accent.</span>}
 
             {!completerId && (
               <label className="flex items-center gap-1.5 text-[11.5px]" title="« La somme des montants lettrés au débit peut être égale, supérieure ou inférieure à celle des montants lettrés au crédit » (CPCC, ch. 6)">

@@ -1,4 +1,5 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Matches, ValidateNested } from 'class-validator';
+import { FORMAT_LETTRE_CHOISIE, MOTIF_FORMAT_LETTRE } from '../lettre-choisie';
 import { Type } from 'class-transformer';
 import { OrigineLettrage } from '@prisma/client';
 
@@ -20,6 +21,17 @@ export class LettrerDto {
   @IsOptional()
   @IsBoolean()
   autoriserPartiel?: boolean;
+
+  /**
+   * LA LETTRE CHOISIE À LA MAIN (ligne sage-l1, fonction 16 · Sage i7,
+   * Interrogation et lettrage, « changer la prochaine lettre »). Absente, le
+   * groupe prend la lettre proposée (la suivante du compte). Le serveur la
+   * refuse si elle sert déjà sur le compte (`motifLettreDejaEmployee`).
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(FORMAT_LETTRE_CHOISIE, { message: MOTIF_FORMAT_LETTRE })
+  lettre?: string;
 }
 
 /** Complète un groupe PARTIEL · une seule ligne suffit (le règlement du solde). */
