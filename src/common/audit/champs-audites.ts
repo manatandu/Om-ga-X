@@ -155,6 +155,9 @@ export const MODELES_AUDITES = new Set<string>([
   // datée (AUDCIF art. 22, 7°), elle atteste que le journal a été restitué ;
   // retouchée après coup, elle attesterait une impression qui n'a pas eu lieu.
   'ImpressionJournal',
+  // Ligne sage-l1, fonction 19 · une séquence de saisie est une structure du
+  // dossier, comme les modèles qu'elle range.
+  'SequenceSaisie',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',

@@ -242,6 +242,8 @@ export function AppShell() {
             { label: 'Libellés', chemin: '/libelles', onClick: () => navigate('/libelles') },
             { label: 'Taux de taxes', chemin: '/taux-tva', onClick: () => navigate('/taux-tva') },
             { label: 'Modèles de saisie', chemin: '/modeles-saisie', onClick: () => navigate('/modeles-saisie') },
+            // Ligne sage-l1, fonction 19 · Sage, séquences de saisie (P_SEQUENCE).
+            { label: 'Séquences de saisie', chemin: '/sequences-saisie', onClick: () => navigate('/sequences-saisie') },
           ],
         },
         {

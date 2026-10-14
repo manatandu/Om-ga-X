@@ -261,11 +261,46 @@ Tests · `client/src/lib/assistant-creation.spec.ts`, e2e `sage-l1-assistant`
 préférence relue après rechargement). Aucune écriture touchée · pas de
 scénario sur base.
 
+### #19 · Séquences de saisie (M6-142, Sage P_SEQUENCE)
+
+LECTURE (relue dans « Structure des fichiers », p. 558, 559, 565 et 594, le
+2026-10-14) · P_SEQUENCE est une page de paramètres de la Paie Maestria ·
+dix intitulés de séquence (SQ_Sequence01 à 10, 35 caractères), et chaque
+élément à saisir porte la sienne (N_Sequence, 0 = aucune · F_RUBRIQUE et les
+rubriques variables du salarié, index par séquence) · la saisie se fait par
+séquence. Ce n'est PAS un choix de colonnes. La lecture la plus fidèle que la
+ligne puisse tenir, à la place que l'architecture lui donne (Structure >
+Paramètres de saisie, `modeles-saisie/`) · dix séquences nommées par dossier
+(`SequenceSaisie`, rang 1 à 10, intitulé de 35 caractères au plus, unique),
+chaque MODÈLE DE SAISIE dans une séquence ou aucune
+(`ModeleSaisie.sequenceSaisieId`, RESTRICT déclaré), et la barre « Appeler un
+modèle » de la saisie propose les modèles d'une séquence (« Toutes », une
+séquence, « Sans séquence »). Les modèles sont à la saisie des journaux ce
+que les rubriques sont au bulletin. LES RUBRIQUES DE PAIE NE SONT PAS
+RANGÉES · elles vivent dans `personnel/`, tenu par la ligne L5 ; les y ranger
+par séquence est une question pour l'intégration (ci-dessous).
+
+Code · migration `20270171030000_sequences_saisie`,
+`modeles-saisie/sequences-saisie.ts` (règles), `.service.ts`,
+`.controller.ts` (`/sequences-saisie`, administrateur et comptable comme les
+modèles), création au premier rang libre sous verrou du dossier, onzième
+refusée, intitulé pris refusé (409 nommé), retrait refusé tant qu'un modèle
+est rangé (409 qui les compte) ; au journal d'audit, cloisonnée, fonction
+STRUCTURE. Écran · `SequencesSaisiePage` (Structure > Paramètres de saisie >
+Séquences de saisie), colonne et choix de la séquence dans Modèles de
+saisie, choix de la séquence dans la saisie.
+
+Tests · `modeles-saisie/sequences-saisie.spec.ts`, `chrome-etroit.spec.ts`
+(17 commandes sous Structure), `lecture-bornee.spec.ts` (158 modèles), e2e
+`sage-l1-sequences`. Aucune écriture touchée · essai de l'API sur vraie base
+(`l1-s19.mjs`), 0 écart · rangs 1 et 2, intitulé pris et de 36 caractères
+refusés, onzième refusée, modèle rangé et lu, séquence occupée refusée au
+retrait, retirée du modèle puis retirée, rang 1 repris, renommée.
+
 ## Reste
 
-- #12, #60, #16, #14, #18 · e2e `sage-l1-situation`, `sage-l1-impression`, `sage-l1-lettre`,
-  `sage-l1-compte-en-saisie`, `sage-l1-assistant` écrits, à jouer.
-- #19.
+- e2e `sage-l1-situation`, `sage-l1-totaux`, `sage-l1-impression`, `sage-l1-lettre`,
+  `sage-l1-compte-en-saisie`, `sage-l1-assistant`, `sage-l1-sequences` · à jouer.
 - Bloc du § 3 des deux côtés ; specs de structure.
 
 ## Décisions
@@ -329,6 +364,13 @@ Préférence du poste (`lib/assistant-creation.ts`) · la création d'un compte
 et d'un code journal par étapes, les mêmes champs et la même route ; « Créer
 et continuer » garde la boîte ouverte pour le suivant.
 
+**Séquences de saisie (ligne sage-l1, fonction 19, 2026-10-14).** Sage,
+P_SEQUENCE · dix séquences nommées par dossier (`SequenceSaisie`, 35
+caractères), chaque modèle de saisie dans une séquence ou aucune (RESTRICT),
+la barre « Appeler un modèle » de la saisie les propose par séquence ; une
+séquence qui range un modèle ne se retire pas. Les rubriques de paie, que
+Sage range aussi par séquence, ne le sont pas encore.
+
 ## Pour build-log.md
 
 - 2026-10-14 · sage-l1 #12 · fait · journal de situation · statut SITUATION, garde
@@ -345,3 +387,5 @@ et continuer » garde la boîte ouverte pour le suivant.
   plan, jamais sous un collectif de tiers · comme prévu.
 - 2026-10-14 · sage-l1 #18 · fait · assistant de création d'un compte et d'un journal,
   création enchaînée, préférence du poste · comme prévu.
+- 2026-10-14 · sage-l1 #19 · fait · séquences de saisie sur les modèles, saisie par
+  séquence · lecture de P_SEQUENCE (paie) transposée aux modèles, rubriques de paie laissées à L5.

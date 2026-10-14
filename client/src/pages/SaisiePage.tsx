@@ -99,6 +99,9 @@ interface RenvoiDuPlan {
   texte: string;
 }
 
+/** Le choix « sans séquence » de la saisie par séquence · jamais l'identifiant d'une séquence. */
+const AUCUNE_SEQUENCE = 'aucune';
+
 /** Un modèle de saisie du dossier, servi par /modeles-saisie. */
 interface ModeleSaisie {
   id: string;
@@ -107,6 +110,10 @@ interface ModeleSaisie {
   journalCode: string | null;
   /** Modèle rattaché à un TYPE de journal (Sage : « modèles de saisie de type ACHATS »). */
   typeJournal?: string | null;
+  /** La séquence de saisie qui le range (ligne sage-l1, fonction 19) · null, aucune. */
+  sequenceSaisieId?: string | null;
+  sequenceNumero?: number | null;
+  sequenceIntitule?: string | null;
   lignes: Array<{
     ordre: number;
     compteId: string;
@@ -309,6 +316,30 @@ export function SaisiePage() {
   const [erreurModeles, setErreurModeles] = useState<string | null>(null);
   const modeles = modelesLus ?? AUCUN_MODELE;
   const [modeleChoisi, setModeleChoisi] = useState('');
+  // LA SAISIE PAR SÉQUENCE (ligne sage-l1, fonction 19 · Sage, P_SEQUENCE) ·
+  // les séquences qui rangent les modèles du journal, lues sur les modèles
+  // eux-mêmes ; '' = toutes, AUCUNE_SEQUENCE = les modèles sans séquence.
+  const [sequenceChoisie, setSequenceChoisie] = useState('');
+  const sequencesDesModeles = useMemo(() => {
+    const vues = new Map<string, { id: string; numero: number; intitule: string }>();
+    for (const m of modeles) {
+      if (m.sequenceSaisieId && m.sequenceIntitule && m.sequenceNumero != null) {
+        vues.set(m.sequenceSaisieId, { id: m.sequenceSaisieId, numero: m.sequenceNumero, intitule: m.sequenceIntitule });
+      }
+    }
+    return [...vues.values()].sort((a, b) => a.numero - b.numero);
+  }, [modeles]);
+  // Un autre journal ne range peut-être pas la séquence choisie · elle
+  // retombe alors sur « toutes », jamais sur une liste vide sans raison.
+  const sequenceEffective =
+    sequenceChoisie === AUCUNE_SEQUENCE || sequencesDesModeles.some((q) => q.id === sequenceChoisie) ? sequenceChoisie : '';
+  const modelesDeLaSequence = useMemo(
+    () =>
+      sequenceEffective === ''
+        ? modeles
+        : modeles.filter((m) => (sequenceEffective === AUCUNE_SEQUENCE ? !m.sequenceSaisieId : m.sequenceSaisieId === sequenceEffective)),
+    [modeles, sequenceEffective],
+  );
   // Montants des lignes « Saisir » demandés à l'appel du modèle, par ordre.
   const [saisiesModele, setSaisiesModele] = useState<Record<number, string>>({});
   // LES FICHES DU RÉFÉRENTIEL · chargées une fois par ouverture de la
@@ -1425,6 +1456,27 @@ export function SaisiePage() {
       {peutEcrire && modeles.length > 0 && (
         <div className="flex items-center gap-2 mb-2 bg-chrome border border-border px-2.5 py-1.5">
           <span className="text-[11.5px] text-text-dim flex-shrink-0">Appeler un modèle</span>
+          {sequencesDesModeles.length > 0 && (
+            <select
+              value={sequenceEffective}
+              onChange={(e) => {
+                setSequenceChoisie(e.target.value);
+                setModeleChoisi('');
+                setSaisiesModele({});
+              }}
+              aria-label="Séquence de saisie"
+              title="Séquence de saisie · les modèles qu'elle range"
+              className="w-[170px] flex-shrink-0 border border-border bg-surface px-2 py-1 text-[11.5px]"
+            >
+              <option value="">Toutes les séquences</option>
+              {sequencesDesModeles.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {q.numero} · {q.intitule}
+                </option>
+              ))}
+              {modeles.some((m) => !m.sequenceSaisieId) && <option value={AUCUNE_SEQUENCE}>Sans séquence</option>}
+            </select>
+          )}
           <select
             value={modeleChoisi}
             onChange={(e) => {
@@ -1443,7 +1495,7 @@ export function SaisiePage() {
             className="flex-1 min-w-0 border border-border bg-surface px-2 py-1 text-[11.5px]"
           >
             <option value="">Modèle de saisie…</option>
-            {modeles.map((m) => (
+            {modelesDeLaSequence.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.intitule}
                 {m.journalCode || m.typeJournal ? '' : ' · tous journaux'}

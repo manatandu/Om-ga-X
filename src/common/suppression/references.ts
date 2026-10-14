@@ -65,6 +65,7 @@ const LIBELLES: Record<string, string> = {
   'Devis.tiersId': 'devis',
   'Cloture.journalId': 'clôtures de journal',
   'ImpressionJournal.journalId': 'impressions du journal',
+  'ModeleSaisie.sequenceSaisieId': 'modèles de saisie',
   'RibBanque.journalId': 'RIB bancaire rattaché (Structure > Banques)',
   'VentilationAnalytique.sectionId': 'ventilations analytiques',
   'LigneOdAnalytique.sectionId': "lignes d'OD analytique",

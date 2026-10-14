@@ -18,6 +18,8 @@ const PlanComptesPage = lazy(() => import('../pages/PlanComptesPage').then((m) =
 const JournauxPage = lazy(() => import('../pages/JournauxPage').then((m) => ({ default: m.JournauxPage })));
 const BanquesPage = lazy(() => import('../pages/BanquesPage').then((m) => ({ default: m.BanquesPage })));
 const LibellesPage = lazy(() => import('../pages/LibellesPage').then((m) => ({ default: m.LibellesPage })));
+// Ligne sage-l1, fonction 19 · les séquences de saisie.
+const SequencesSaisiePage = lazy(() => import('../pages/SequencesSaisiePage').then((m) => ({ default: m.SequencesSaisiePage })));
 const EtatsPersonnalisesPage = lazy(() =>
   import('../pages/EtatsPersonnalisesPage').then((m) => ({ default: m.EtatsPersonnalisesPage })),
 );
@@ -338,6 +340,12 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Modèles de saisie',
     titreCourt: 'Modèles',
     rendre: () => <ModelesSaisiePage />,
+  },
+  {
+    motif: /^\/sequences-saisie$/,
+    titre: 'Séquences de saisie',
+    titreCourt: 'Séquences',
+    rendre: () => <SequencesSaisiePage />,
   },
   {
     motif: /^\/declaration-tva$/,

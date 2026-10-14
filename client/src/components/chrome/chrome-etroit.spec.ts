@@ -383,7 +383,9 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
   const nom = (l: LigneMenu) => (l.sorte === 'groupe' ? l.groupe.titre : l.item.label);
 
   for (const [menu, debut, fin, auRepos, total] of [
-    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 16],
+    // 2026-10-14 · « Séquences de saisie » sous « Paramètres de saisie »
+    // (ligne sage-l1, fonction 19) · repos inchangé.
+    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 17],
     // 2026-09-27 · le registre des donateurs entre dans le groupe
     // « Déclarations et registres » (repos inchangé), qui reçoit aussi la
     // déclaration de TVA, les engagements et les exonérations venus d'État.

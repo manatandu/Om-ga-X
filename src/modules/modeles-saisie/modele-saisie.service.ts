@@ -62,6 +62,7 @@ export class ModeleSaisieService {
       },
       include: {
         journal: { select: { id: true, code: true, intitule: true } },
+        sequenceSaisie: { select: { id: true, numero: true, intitule: true } },
         lignes: {
           orderBy: { ordre: 'asc' },
           include: { compte: { select: { id: true, numero: true, intitule: true } } },
@@ -77,6 +78,10 @@ export class ModeleSaisieService {
       typeJournal: m.typeJournal,
       journalCode: m.journal?.code ?? null,
       journalIntitule: m.journal?.intitule ?? null,
+      // La séquence de saisie qui range le modèle (ligne sage-l1, fonction 19).
+      sequenceSaisieId: m.sequenceSaisieId,
+      sequenceNumero: m.sequenceSaisie?.numero ?? null,
+      sequenceIntitule: m.sequenceSaisie?.intitule ?? null,
       estActif: m.estActif,
       lignes: m.lignes.map((l) => ({
         ordre: l.ordre,
@@ -99,6 +104,7 @@ export class ModeleSaisieService {
   async creer(tenantId: string, userId: string, dto: CreerModeleSaisieDto) {
     await this.verifierLignes(tenantId, dto.lignes);
     if (dto.journalId) await this.verifierJournal(tenantId, dto.journalId);
+    if (dto.sequenceSaisieId) await this.verifierSequence(tenantId, dto.sequenceSaisieId);
 
     const modele = await this.prisma.modeleSaisie.create({
       data: {
@@ -106,6 +112,7 @@ export class ModeleSaisieService {
         intitule: dto.intitule.trim(),
         journalId: dto.journalId ?? null,
         typeJournal: dto.journalId ? null : (dto.typeJournal ?? null),
+        sequenceSaisieId: dto.sequenceSaisieId ?? null,
         createdBy: userId,
         lignes: { create: dto.lignes.map((l, ordre) => this.versLigne(l, ordre)) },
       },
@@ -119,6 +126,7 @@ export class ModeleSaisieService {
     if (!existant) throw new NotFoundException('Modèle de saisie introuvable');
     if (dto.lignes) await this.verifierLignes(tenantId, dto.lignes);
     if (dto.journalId) await this.verifierJournal(tenantId, dto.journalId);
+    if (dto.sequenceSaisieId) await this.verifierSequence(tenantId, dto.sequenceSaisieId);
 
     // Les lignes sont REMPLACÉES en bloc, dans une transaction · les
     // modifier une à une laisserait, entre deux requêtes, un modèle
@@ -136,6 +144,7 @@ export class ModeleSaisieService {
           ...(dto.intitule !== undefined ? { intitule: dto.intitule.trim() } : {}),
           ...(dto.journalId !== undefined ? { journalId: dto.journalId } : {}),
           ...(dto.typeJournal !== undefined ? { typeJournal: dto.typeJournal } : {}),
+          ...(dto.sequenceSaisieId !== undefined ? { sequenceSaisieId: dto.sequenceSaisieId } : {}),
           ...(dto.estActif !== undefined ? { estActif: dto.estActif } : {}),
         },
         select: { id: true },
@@ -189,6 +198,12 @@ export class ModeleSaisieService {
       fonction: l.fonction ?? 'SAISIR',
       tauxTvaId: l.tauxTvaId ?? null,
     } as never;
+  }
+
+  /** Une séquence d'un autre dossier n'existe pas (ligne sage-l1, fonction 19). */
+  private async verifierSequence(tenantId: string, sequenceSaisieId: string) {
+    const sequence = await this.prisma.sequenceSaisie.findFirst({ where: { id: sequenceSaisieId, tenantId }, select: { id: true } });
+    if (!sequence) throw new NotFoundException('Séquence de saisie introuvable pour ce dossier.');
   }
 
   private async verifierJournal(tenantId: string, journalId: string) {

@@ -60,6 +60,11 @@ export class CreerModeleSaisieDto {
   @IsEnum(TypeJournal)
   typeJournal?: TypeJournal;
 
+  /** La séquence de saisie qui range le modèle (ligne sage-l1, fonction 19) · absente, aucune. */
+  @IsOptional()
+  @IsString()
+  sequenceSaisieId?: string;
+
   @IsArray()
   // DEUX LIGNES AU MOINS · un modèle d'une seule ligne ne pose aucune
   // contrepartie, il ne fait donc gagner qu'un compte sur deux et laisse la
@@ -84,6 +89,11 @@ export class ModifierModeleSaisieDto {
   @IsOptional()
   @IsEnum(TypeJournal)
   typeJournal?: TypeJournal | null;
+
+  /** La séquence de saisie (ligne sage-l1, fonction 19) · null la retire, absente la laisse. */
+  @IsOptional()
+  @IsString()
+  sequenceSaisieId?: string | null;
 
   @IsOptional()
   @IsBoolean()

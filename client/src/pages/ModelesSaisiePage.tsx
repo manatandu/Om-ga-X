@@ -51,6 +51,10 @@ interface ModeleSaisie {
   typeJournal: string | null;
   journalCode: string | null;
   journalIntitule: string | null;
+  /** La séquence de saisie qui range le modèle (ligne sage-l1, fonction 19) · null, aucune. */
+  sequenceSaisieId: string | null;
+  sequenceNumero: number | null;
+  sequenceIntitule: string | null;
   estActif: boolean;
   lignes: Array<{
     ordre: number;
@@ -71,6 +75,13 @@ interface ModeleSaisie {
   avertissements: string[];
 }
 
+/** Une séquence de saisie du dossier (Structure > Paramètres de saisie > Séquences de saisie). */
+interface SequenceSaisie {
+  id: string;
+  numero: number;
+  intitule: string;
+}
+
 const LIGNE_VIDE: LigneModele = { compteId: '', sens: 'DEBIT', libelle: '', montant: '', fonction: 'SAISIR', tauxTvaId: '' };
 
 export function ModelesSaisiePage() {
@@ -89,6 +100,12 @@ export function ModelesSaisiePage() {
   const [edite, setEdite] = useState<string | null>(null);
   const [intitule, setIntitule] = useState('');
   const [journalId, setJournalId] = useState('');
+  // La séquence du modèle (ligne sage-l1, fonction 19) · '' = aucune. La
+  // liste des séquences se lit à part · son refus se dit sans priver l'écran
+  // des modèles.
+  const [sequenceId, setSequenceId] = useState('');
+  const [sequences, setSequences] = useState<SequenceSaisie[] | null>(null);
+  const [erreurSequences, setErreurSequences] = useState<string | null>(null);
   const [lignes, setLignes] = useState<LigneModele[]>([{ ...LIGNE_VIDE }, { ...LIGNE_VIDE, sens: 'CREDIT' }]);
 
   const charger = async () => {
@@ -114,12 +131,20 @@ export function ModelesSaisiePage() {
 
   useEffect(() => {
     charger();
+    api.get<SequenceSaisie[]>('/sequences-saisie').then(
+      (l) => {
+        setSequences(l);
+        setErreurSequences(null);
+      },
+      (e) => setErreurSequences(e instanceof ApiError ? e.message : 'serveur injoignable'),
+    );
   }, []);
 
   const reinitialiser = () => {
     setEdite(null);
     setIntitule('');
     setJournalId('');
+    setSequenceId('');
     setLignes([{ ...LIGNE_VIDE }, { ...LIGNE_VIDE, sens: 'CREDIT' }]);
   };
 
@@ -127,6 +152,7 @@ export function ModelesSaisiePage() {
     setEdite(m.id);
     setIntitule(m.intitule);
     setJournalId(m.journalId ?? (m.typeJournal ? `type:${m.typeJournal}` : ''));
+    setSequenceId(m.sequenceSaisieId ?? '');
     setLignes(
       m.lignes.map((l) => ({
         compteId: l.compteId,
@@ -149,6 +175,8 @@ export function ModelesSaisiePage() {
       ...(journalId.startsWith('type:')
         ? { typeJournal: journalId.slice(5), ...(edite ? { journalId: null } : {}) }
         : { journalId: journalId || (edite ? null : undefined), ...(edite ? { typeJournal: null } : {}) }),
+      // Vide · aucune séquence ; en modification, vide la retire.
+      sequenceSaisieId: sequenceId || (edite ? null : undefined),
       lignes: lignes
         .filter((l) => l.compteId)
         .map((l) => ({
@@ -226,7 +254,22 @@ export function ModelesSaisiePage() {
                   </option>
                 ))}
               </select>
+              <select
+                value={sequenceId}
+                onChange={(e) => setSequenceId(e.target.value)}
+                aria-label="Séquence de saisie"
+                disabled={sequences === null}
+                className={`${champ} w-[180px]`}
+              >
+                <option value="">Aucune séquence</option>
+                {(sequences ?? []).map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.numero} · {q.intitule}
+                  </option>
+                ))}
+              </select>
             </div>
+            {erreurSequences && <div className="text-[11px] text-danger">Séquences de saisie illisibles · {erreurSequences}</div>}
 
             {comptes && comptes.length === 0 && (
               <div className="text-[11px] text-warning">{motifAucunCompteRetenu(comptes, 'de détail')}</div>
@@ -348,7 +391,7 @@ export function ModelesSaisiePage() {
         // qui emportait alors titre, onglets et boutons hors de l'écran.
         className="border border-border bg-surface shadow-posee max-w-[900px] overflow-x-auto"
       >
-        <div className="entete-colonnes grid grid-cols-[1.4fr_150px_70px_130px] min-w-[550px] gap-2 px-3 py-1.5 bg-surface-alt border-b border-border-dark text-[11px] font-bold text-text-dim">
+        <div className="entete-colonnes grid grid-cols-[1.4fr_150px_130px_70px_130px] min-w-[690px] gap-2 px-3 py-1.5 bg-surface-alt border-b border-border-dark text-[11px] font-bold text-text-dim">
           <span className="flex items-center gap-1">
             Modèle
             <Aide
@@ -358,6 +401,7 @@ export function ModelesSaisiePage() {
             />
           </span>
           <span>Journal</span>
+          <span>Séquence</span>
           <span className="text-right">Lignes</span>
           <span />
         </div>
@@ -368,7 +412,7 @@ export function ModelesSaisiePage() {
         )}
         {modeles.map((m) => (
           <div key={m.id} className="border-b border-border/50 last:border-b-0">
-            <div className="grid grid-cols-[1.4fr_150px_70px_130px] min-w-[550px] gap-2 px-3 py-[5px] items-center text-[11.5px]">
+            <div className="grid grid-cols-[1.4fr_150px_130px_70px_130px] min-w-[690px] gap-2 px-3 py-[5px] items-center text-[11.5px]">
               <span className={m.estActif ? '' : 'text-text-dim line-through'}>
                 {m.intitule}
                 {m.avertissements.length > 0 && (
@@ -378,6 +422,7 @@ export function ModelesSaisiePage() {
                 )}
               </span>
               <span className="text-text-dim">{m.journalCode ?? 'Tous'}</span>
+              <span className="text-text-dim truncate">{m.sequenceIntitule ? `${m.sequenceNumero} · ${m.sequenceIntitule}` : '·'}</span>
               <span className="text-right font-mono">{m.lignes.length}</span>
               <span className="flex gap-2 justify-end">
                 {peutEcrire && (

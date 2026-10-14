@@ -100,8 +100,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // les virements de fonds, leurs comptes de passage et leurs pièces
     // jointes, bornés par leur tenantId (demande de Manasse du 2026-10-09),
     // 157 avec les impressions du journal, bornées par leur tenantId (ligne
-    // sage-l1, fonction 60).
-    expect(modeles).toHaveLength(157);
+    // sage-l1, fonction 60), 158 avec les séquences de saisie, bornées par
+    // leur tenantId (ligne sage-l1, fonction 19).
+    expect(modeles).toHaveLength(158);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

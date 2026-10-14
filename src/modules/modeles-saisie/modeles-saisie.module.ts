@@ -4,6 +4,8 @@ import { LicenceModule } from '../licence/licence.module';
 import { JwtAuthModule } from '../auth/jwt-auth.module';
 import { ModeleSaisieService } from './modele-saisie.service';
 import { ModeleSaisieController } from './modele-saisie.controller';
+import { SequencesSaisieService } from './sequences-saisie.service';
+import { SequencesSaisieController } from './sequences-saisie.controller';
 
 // LicenceModule et JwtAuthModule sont ICI parce que le contrôleur pose
 // LicenceGuard et JwtAuthGuard · un module qui les oublie fait échouer la
@@ -11,8 +13,8 @@ import { ModeleSaisieController } from './modele-saisie.controller';
 // (incident du 2026-09-02, CLAUDE.md §5).
 @Module({
   imports: [PrismaModule, LicenceModule, JwtAuthModule],
-  controllers: [ModeleSaisieController],
-  providers: [ModeleSaisieService],
+  controllers: [ModeleSaisieController, SequencesSaisieController],
+  providers: [ModeleSaisieService, SequencesSaisieService],
   exports: [ModeleSaisieService],
 })
 export class ModelesSaisieModule {}

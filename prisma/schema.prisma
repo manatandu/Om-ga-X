@@ -866,6 +866,7 @@ model Tenant {
   virementsFonds               VirementFonds[]
   piecesVirementFonds          PieceVirementFonds[]
   impressionsJournaux          ImpressionJournal[]
+  sequencesSaisie              SequenceSaisie[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -3676,6 +3677,14 @@ model ModeleSaisie {
   /// tous les journaux. Les deux ne se posent pas ensemble · un modèle vise un
   /// journal précis OU un type, jamais les deux à la fois.
   typeJournal TypeJournal?
+
+  /// LA SÉQUENCE DE SAISIE du modèle (ligne sage-l1, fonction 19 · le
+  /// N_Sequence de Sage, 0 = aucune) · null, le modèle n'est dans aucune.
+  /// `Restrict` déclaré · une séquence qui porte des modèles ne se supprime
+  /// pas, sans quoi Prisma poserait SET NULL et les modèles quitteraient
+  /// leur séquence en silence.
+  sequenceSaisieId String?
+  sequenceSaisie   SequenceSaisie? @relation(fields: [sequenceSaisieId], references: [id], onDelete: Restrict)
 
   estActif  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -10218,3 +10227,25 @@ model ImpressionJournal {
   @@map("impressions_journaux")
 }
 
+// Ligne sage-l1 · séquences de saisie (fonction 19)
+
+/// UNE SÉQUENCE DE SAISIE (ligne sage-l1, fonction 19 · Sage 100, table
+/// P_SEQUENCE, « Séquence de saisie », SQ_Sequence01 à SQ_Sequence10, un
+/// intitulé de 35 caractères au plus ; chaque élément à saisir porte la
+/// sienne, N_Sequence, 0 = aucune). Au plus dix par dossier, numérotées de 1
+/// à 10 ; les modèles de saisie s'y rangent, et la saisie les propose par
+/// séquence. Une structure du dossier, au journal d'audit.
+model SequenceSaisie {
+  id        String         @id @default(uuid())
+  tenantId  String
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+  numero    Int
+  intitule  String
+  createdAt DateTime       @default(now())
+  createdBy String
+  modeles   ModeleSaisie[]
+
+  @@unique([tenantId, numero])
+  @@unique([tenantId, intitule])
+  @@map("sequences_saisie")
+}
