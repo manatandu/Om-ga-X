@@ -17,6 +17,7 @@ import { AbsencesController } from '../../modules/personnel/absences.controller'
 import { MajorationsHeuresController } from '../../modules/personnel/majorations-heures.controller';
 import { PaiementSalairesController } from '../../modules/personnel/paiement-salaires.controller';
 import { RepartitionsAnalytiquesPaieController } from '../../modules/personnel/repartitions-analytiques-paie.controller';
+import { QuestionnairePaieController } from '../../modules/personnel/questionnaire-paie.controller';
 import { EcritureController } from '../../modules/comptabilite/ecriture.controller';
 import { AffectationController } from '../../modules/affectation/affectation.controller';
 import { GroupeController } from '../../modules/groupe/groupe.controller';
@@ -199,7 +200,7 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
   };
 
   it('le module du personnel lui est ouvert en entier, par la classe · et lui seul', () => {
-    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, PaiementSalairesController, RepartitionsAnalytiquesPaieController]) {
+    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController]) {
       expect([classe.name, acces(classe)?.gestionnairePaie]).toEqual([classe.name, true]);
     }
     for (const classe of [AuthController, ExerciceController, DevisesController]) {
@@ -257,6 +258,8 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
       // Ligne sage-l5 · le paiement du salarié et des salaires (fonction 75).
       'modules/personnel/paiement-salaires.controller.ts',
       'modules/personnel/personnel.controller.ts',
+      // Ligne sage-l5 · le questionnaire de paie (fonction 85).
+      'modules/personnel/questionnaire-paie.controller.ts',
       // Ligne sage-l5 · la répartition analytique du salarié (fonction 88).
       'modules/personnel/repartitions-analytiques-paie.controller.ts',
     ]);

@@ -12,6 +12,7 @@ import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/abs
 import { MajorationsHeuresPaie } from '../components/paie/MajorationsHeuresPaie';
 import { PaiementDuSalarie } from '../components/paie/PaiementDuSalarie';
 import { RepartitionAnalytique } from '../components/paie/RepartitionAnalytique';
+import { QuestionnairePaie } from '../components/paie/QuestionnairePaie';
 import { heuresPourLeBulletin, LIGNE_HEURES_VIERGE, type LigneHeures, type ListeMajorations } from '../lib/heures-majorees';
 import { dateCourte, jours as joursConge, motifCongeNonPortable, type CongeDuMois } from '../lib/conges-paie';
 import { libelleListeBornee } from '../lib/liste-bornee-personnel';
@@ -758,6 +759,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // ARTICLE 121, ALINÉA 2 · vide = non déclaré, le serveur retient le droit
   // commun ET le dit ; un forfait abstient la retenue (audit final F105).
   const [regimeSalarial, setRegimeSalarial] = useState('');
+  // Ligne sage-l5, fonction 85 · le questionnaire de paie, ouvert depuis la simulation.
+  const [questionnaireOuvert, setQuestionnaireOuvert] = useState(false);
 
   const charger = useCallback(() => {
     const parametres = [tous ? 'tous=true' : '', aCompleter ? 'aCompleter=true' : ''].filter(Boolean).join('&');
@@ -2367,6 +2370,27 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                 source="Code du travail, art. 7, point 8 · loi n° 23/053, art. 68 et 69"
               />
             </div>
+
+            {/* Ligne sage-l5, fonction 85 · l'assistant qui pose les questions de la paie. */}
+            <button type="button" className="border border-border px-2.5 py-1 mb-2" onClick={() => setQuestionnaireOuvert(true)}>
+              Questionnaire de paie…
+            </button>
+            {questionnaireOuvert && (
+              <QuestionnairePaie
+                salarieId={selection || null}
+                mois={moisDePaie}
+                simulation={{ natureInpp, effectifInpp, regimeSalarial, classePro, personnesACharge, enfantsAllocations }}
+                onSimulation={(v) => {
+                  if (v.natureInpp !== undefined) setNatureInpp(v.natureInpp as '' | 'PUBLIC' | 'PRIVE');
+                  if (v.effectifInpp !== undefined) setEffectifInpp(v.effectifInpp);
+                  if (v.regimeSalarial !== undefined) setRegimeSalarial(v.regimeSalarial);
+                  if (v.classePro !== undefined) setClassePro(v.classePro);
+                  if (v.personnesACharge !== undefined) setPersonnesACharge(v.personnesACharge);
+                  if (v.enfantsAllocations !== undefined) setEnfantsAllocations(v.enfantsAllocations);
+                }}
+                onFermer={() => setQuestionnaireOuvert(false)}
+              />
+            )}
 
             <div className="flex flex-wrap gap-3 items-end mb-2.5">
               <label className="flex flex-col gap-0.5">

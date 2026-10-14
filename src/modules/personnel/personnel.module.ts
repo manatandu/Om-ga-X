@@ -21,6 +21,8 @@ import { PaiementSalairesService } from './paiement-salaires.service';
 import { RibsSalariesService } from './ribs-salaries.service';
 import { RepartitionsAnalytiquesPaieController } from './repartitions-analytiques-paie.controller';
 import { RepartitionsAnalytiquesPaieService } from './repartitions-analytiques-paie.service';
+import { QuestionnairePaieController } from './questionnaire-paie.controller';
+import { QuestionnairePaieService } from './questionnaire-paie.service';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
@@ -34,6 +36,7 @@ import { RepartitionsAnalytiquesPaieService } from './repartitions-analytiques-p
     MajorationsHeuresController,
     PaiementSalairesController,
     RepartitionsAnalytiquesPaieController,
+    QuestionnairePaieController,
   ],
   providers: [
     PersonnelService,
@@ -46,6 +49,7 @@ import { RepartitionsAnalytiquesPaieService } from './repartitions-analytiques-p
     PaiementSalairesService,
     RibsSalariesService,
     RepartitionsAnalytiquesPaieService,
+    QuestionnairePaieService,
   ],
   exports: [PersonnelService],
 })

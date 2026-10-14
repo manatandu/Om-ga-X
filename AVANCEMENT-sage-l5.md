@@ -127,9 +127,24 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
     de DÉCEMBRE (P1 480 000, P2 320 000), sa reprise en négatif part sans
     ventilation, comptée exactement par le contrôle des cumuls.
 
+- **85 · questionnaire société et salarié** · fait.
+  - Serveur · lecture seule, `questionnaire-paie.service.ts` et
+    `.controller.ts` (`GET /personnel/questionnaire-paie`, mêmes droits de
+    lecture que le registre, le gestionnaire de paie compris) · paramètres
+    du dossier tels quels, salarié et contrat qui couvre le mois, aucun repli.
+  - Écran · assistant « Questionnaire de paie… » de l'onglet Simulation
+    (`components/paie/QuestionnairePaie.tsx`, `lib/questionnaire-paie.ts`) ·
+    dix questions, une par page, « pas encore dit » à chacune, propositions au
+    seul clic (effectif du registre, effectif permanent, classe du contrat),
+    récapitulatif qui dit où chaque réponse s'écrira, puis chaque écriture par
+    SA route · `PATCH /dossier/regime` (administrateur), mode de paiement,
+    monnaie du contrat (complétée une fois), champs de la simulation.
+  - Parcours `e2e/tests/sage-l5-questionnaire.e2e.ts`. Aucune écriture
+    comptable · pas de scénario de clôture.
+
 ## Reste
 
-- 85.
+- Rien des cinq fonctions. Bloc du § 3 à repasser en entier avant l'intégration.
 - 79 · le décompte final ne relit pas encore le compteur pour proposer les
   mois non couverts par un congé (saisis à la main, comme avant) ; un congé
   porté au bulletin et une indemnité compensatoire au décompte du même mois
@@ -261,11 +276,30 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   ce plan, nommée avec sa cause (audit final F141 · porter sur une section
   une dépense qu'elle n'a pas). La reprise en négatif se ventile à la main
   (Ventilation d'une ligne), sur la pièce d'origine.
+- **D85-a · le questionnaire n'écrit que des champs qui existent**, sans
+  règle ni valeur par défaut (consigne de la ligne) · paramètres du dossier,
+  fiche du salarié, contrat, champs de la simulation du mois. Une question
+  sans réponse reste « pas encore dit » ; une proposition ne s'écrit qu'au
+  clic (« l'effectif est proposé, jamais substitué »).
+- **D85-b · une valeur enregistrée ne s'efface pas par le questionnaire** ·
+  l'effectif permanent n'admet pas `null` (zéro est une réponse), la monnaie
+  du contrat se complète une fois et ne se change plus (audit final F226) ;
+  laissée sans réponse, la valeur est GARDÉE et le récapitulatif le dit. Les
+  champs de la simulation, saisie du mois, se vident.
 - **D8-d · mise à pied** · « jusqu'à concurrence de deux fois quinze jours
   par an » (art. 57, 5°) lu comme deux mesures d'au plus quinze jours de
   calendrier par année civile ; au-delà, refus nommé.
 
 ## Questions pour Manasse
+
+- **Q3 · la nature de l'employeur pour l'INPP, le régime de la retenue, la
+  classe et les personnes à charge se ressaisissent chaque mois** · ce sont
+  des champs de la simulation (le bulletin émis les fige), et la consigne de
+  la fonction 85 interdisait d'en créer · le questionnaire les remplit pour
+  la simulation en cours. Aucun texte ne règle où les tenir · faut-il les
+  garder au dossier (nature INPP) et au salarié (régime, personnes à charge)
+  pour qu'ils se proposent d'un mois à l'autre ? Choix d'organisation, à
+  Manasse.
 
 - **Q2 · la maternité, deux textes** · le Code (art. 130, art. 59) fait
   devoir à l'employeur les deux tiers de la rémunération pendant quatorze
@@ -294,11 +328,12 @@ npx jest --maxWorkers=1 src/modules/personnel/conges-acquis.spec.ts src/modules/
 npx jest --maxWorkers=1 src/modules/personnel/absences.spec.ts src/modules/personnel/heures-majorees.spec.ts
 npx jest --maxWorkers=1 src/modules/personnel/paiement-salaires.spec.ts src/modules/reglements/ordres-virement-paie.spec.ts
 npx jest --maxWorkers=1 src/modules/personnel/ventilation-analytique-paie.spec.ts src/modules/personnel/comptabilisation-paie.service.spec.ts
-(cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts src/lib/paiement-salaires.spec.ts src/lib/repartition-analytique.spec.ts)
+npx jest --maxWorkers=1 src/modules/personnel/questionnaire-paie.spec.ts src/modules/analytique/suppression-et-exercice-clos.spec.ts
+(cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts src/lib/paiement-salaires.spec.ts src/lib/repartition-analytique.spec.ts src/lib/questionnaire-paie.spec.ts)
 # montage local (CLAUDE.md § 10), ports 8085 et 4185, puis
 (cd e2e && OMEGAX_APP=http://localhost:4185 OMEGAX_API=http://localhost:4185/api \
   PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test tests/sage-l5-conges.e2e.ts tests/sage-l5-absences.e2e.ts tests/sage-l5-heures.e2e.ts \
-  tests/sage-l5-arrets.e2e.ts tests/sage-l5-paiement.e2e.ts tests/sage-l5-ventilation.e2e.ts)
+  tests/sage-l5-arrets.e2e.ts tests/sage-l5-paiement.e2e.ts tests/sage-l5-ventilation.e2e.ts tests/sage-l5-questionnaire.e2e.ts)
 DATABASE_URL=postgresql://jetable:jetable@localhost:5432/omegax_sage_l5 npx prisma migrate diff \
   --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
   --shadow-database-url postgresql://jetable:jetable@localhost:5432/omegax_sage_l5_ombre --exit-code
@@ -306,8 +341,43 @@ DATABASE_URL=postgresql://jetable:jetable@localhost:5432/omegax_sage_l5 npx pris
 
 ## Pour CLAUDE.md
 
-(à écrire à la fin de la ligne)
+À insérer au § 6, après **P9 · PAIE DU MOIS AU JOURNAL** (ligne sage-l5,
+fonctions de Sage cochées le 2026-10-14) ·
+
+**Ligne sage-l5 · la paie de Sage (2026-10-14).** CONGÉS ACQUIS (fonction 79,
+`conges-acquis.ts`) · compteur par période annuelle de DATE À DATE, mois de
+service acquis sur bulletin émis, droits nés à l'expiration de l'année
+(art. 140, al. 3), tranche d'ancienneté et allocation de l'art. 142 par le
+moteur du décompte final (`allocationDeConge`), reprise DÉCLARÉE avec sa
+source, congé au-delà du solde dit, jamais refusé. ABSENCES (fonction 78,
+`absences.ts`) · treize causes du Code, chacune son régime (deux tiers des
+art. 105, 106, 130 ; circonstance art. 146 ; art. 93 ; art. 59), proposées au
+bulletin, jamais substituées ; heures majorées à taux DÉCLARÉ avec sa source
+(aucun au corpus) ; indemnité de la Caisse sur un arrêt DÉCLARÉE avec sa
+pièce · déduite (accident du travail, art. 106, al. 2) ou subrogée (arrêté
+n° 146/2018, art. 139, al. 2 et 3), la maladie ordinaire n'en ouvre aucune.
+PAIEMENT DES SALAIRES (fonction 75) · mode CONVENU (art. 98, al. 2), RIB du
+salarié = structure (administrateur, journal d'audit, numéros masqués) ;
+écriture AGRÉGÉE D 422 / C trésorerie au brouillard (fiche du compte 42),
+ordre de virement par le module existant (une ligne paie un tiers OU un
+salarié, contrainte de la base ; ordres de salaires refusés à
+l'aide-comptable), billetage déclaré, un bulletin payé une fois (NULLS NOT
+DISTINCT), annulation motivée en négatif. VENTILATION ANALYTIQUE (fonction 88,
+`ventilation-analytique-paie.ts`) · répartition par salarié et par plan,
+versions par MOIS DE PAIE, pourcentages qui font 100, sections Détail
+actives d'un plan qui ventile la classe 6 ; la passation pose la part de
+chaque bulletin au centime (plus fort reste) ; rien n'est réparti au prorata
+des autres, la ligne part non ventilée et la cause est dite ; la reprise en
+négatif se ventile à la main. QUESTIONNAIRE (fonction 85) · lit, puis écrit
+les seuls champs qui existent par leurs routes, « pas encore dit » à chaque
+question, une valeur enregistrée jamais effacée.
 
 ## Pour build-log.md
 
-(à écrire à la fin de la ligne)
+- 2026-10-14 · ligne sage-l5 « paie » · fonctions 79 (congés acquis), 78
+  (absences, heures majorées, arrêts et indemnités de la Caisse), 75
+  (banques du salarié, paiement des salaires), 88 (ventilation analytique de
+  la paie), 85 (questionnaire société et salarié) · migrations
+  `20270175000100` à `20270175000600`, parcours navigateur
+  `e2e/tests/sage-l5-*.e2e.ts`, scénarios sur vraie base à travers la
+  clôture 2026 / 2027 pour 75 et 88.
