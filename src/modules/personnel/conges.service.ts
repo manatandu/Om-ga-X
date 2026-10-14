@@ -18,7 +18,9 @@ import { allocationDeConge } from './decompte-final';
 import type { Referentiel } from './passation-paie';
 import { AllocationCongeDto, CongeSalarieDto, RepriseCongesDto } from './dto/conges.dto';
 import { serviceEnCours, type ContratLu } from './service-du-salarie';
-import { lireAbsencesPourConges, type LecteurAbsences } from './absences-lecture';
+import { absencesDuSalarie, lireAbsencesPourConges, type LecteurAbsences } from './absences-lecture';
+import { NATURES_ABSENCE } from './absences';
+import { jourDeKinshasaIso } from '../../common/echeance';
 
 export { serviceEnCours, lireAbsencesPourConges };
 export type { LecteurAbsences };
@@ -270,7 +272,10 @@ export class CongesService {
 
   /** Le compteur, les congés et les propositions d'un salarié à une date. */
   async compteur(tenantId: string, salarieId: string, aLaBrut?: string) {
-    const aLa = aLaBrut ? aLaBrut.slice(0, 10) : iso(new Date());
+    // Le jour du compteur est celui de Kinshasa (UTC+1), jamais celui de
+    // l'horloge UTC du serveur · entre 23 h et minuit UTC, le compteur
+    // aurait été lu la veille (relecture L5, mineur 7 ; `common/echeance.ts`).
+    const aLa = aLaBrut ? aLaBrut.slice(0, 10) : jourDeKinshasaIso(new Date());
     if (!jourUtc(aLa)) throw new BadRequestException('La date de lecture du compteur se lit AAAA-MM-JJ.');
     const f = await lireFaits(this.prisma, tenantId, salarieId, this.lireAbsences);
     const faits = faitsDuCompteur(f, aLa);
@@ -418,22 +423,58 @@ export class CongesService {
     if (!couvre) throw new BadRequestException("Aucun contrat ne couvre le congé du début à la fin · un congé s'exécute pendant le contrat.");
     const chevauche = f.conges.find((c) => !c.annuleLe && c.du.getTime() <= au.getTime() && c.au.getTime() >= du.getTime());
     if (chevauche) throw new BadRequestException(`Le congé chevauche celui du ${iso(chevauche.du)} au ${iso(chevauche.au)}.`);
+    // M2 DE LA RELECTURE · UN JOUR N'A QU'UNE CAUSE, dans les deux sens. Le
+    // congé ne se pose pas sur une absence déjà déclarée, sauf la maladie,
+    // dont les jours « ne sont pas comptés comme jours de congé » (Code du
+    // travail, art. 141, al. 4) · c'est le seul cas où le texte fait
+    // coexister les deux. Jumeau du refus de `AbsencesService.creer`.
+    const absences = await absencesDuSalarie(this.prisma, tenantId, salarieId);
+    const absenceChevauchee = absences.find((a) => !NATURES_ABSENCE[a.nature].maladie && a.du <= iso(au) && a.au >= iso(du));
+    if (absenceChevauchee) {
+      throw new BadRequestException(
+        `Le congé chevauche l'absence du ${absenceChevauchee.du} au ${absenceChevauchee.au} (${NATURES_ABSENCE[absenceChevauchee.nature].libelle}) · un jour n'a qu'une cause, et seule la maladie survenue pendant un congé s'y déclare (Code du travail, art. 141, al. 4). Annulez ou corrigez l'absence, ou posez le congé hors de ses jours.`,
+      );
+    }
     const jours = joursDuConge({ du: iso(du), au: iso(au), joursVoyage: dto.joursVoyage ?? 0, joursMaladie: f.absences.joursMaladie });
     if ('refus' in jours) throw new BadRequestException(jours.refus);
     if (jours.jours <= 0) throw new BadRequestException("Le congé ne compte aucun jour ouvrable · rien ne s'en retranche.");
     this.verifierAllocation(dto, f.salarie.contrats, du);
 
     // LE SOLDE AU DÉPART · droits nés à la date du départ, moins les autres
-    // congés posés avant lui.
-    const faits = faitsDuCompteur({ ...f, conges: f.conges.filter((c) => c.du.getTime() < du.getTime()) }, iso(du));
-    const compteur = 'refus' in faits ? null : compteurConges(faits);
-    const solde = compteur && !('refus' in compteur) ? compteur.solde : null;
+    // congés posés avant lui. MINEUR 5 DE LA RELECTURE · un congé posé à une
+    // date ANTÉRIEURE à des congés déjà posés consomme aussi les droits dont
+    // ceux-ci vivaient · chaque congé postérieur garde sa marge (solde à son
+    // départ, congés antérieurs compris, moins ses propres jours), et le
+    // nouveau congé ne la dépasse pas. Sans quoi deux congés passaient chacun
+    // sur un solde qui ne comptait pas l'autre.
+    const soldeA = (t: Date): number | null => {
+      const faits = faitsDuCompteur({ ...f, conges: f.conges.filter((c) => c.du.getTime() < t.getTime()) }, iso(t));
+      const compteur = 'refus' in faits ? null : compteurConges(faits);
+      return compteur && !('refus' in compteur) ? compteur.solde : null;
+    };
+    let solde = soldeA(du);
+    let borneePar: { du: Date; au: Date } | null = null;
+    const posterieurs = f.conges.filter((c) => !c.annuleLe && c.du.getTime() > au.getTime()).sort((x, y) => x.du.getTime() - y.du.getTime());
+    for (const c of posterieurs) {
+      if (solde === null) break;
+      const j = joursDe(c, f.absences.joursMaladie);
+      const soldeDuPosterieur = soldeA(c.du);
+      const marge = soldeDuPosterieur === null || 'refus' in j ? null : soldeDuPosterieur - j.jours;
+      if (marge === null) {
+        solde = null;
+        borneePar = c;
+      } else if (marge < solde) {
+        solde = marge;
+        borneePar = c;
+      }
+    }
     const auDela = solde === null || jours.jours > solde;
     if (auDela && dto.auDelaDuSolde !== true) {
+      const posterieur = borneePar ? `, compte tenu du congé déjà posé du ${iso(borneePar.du)} au ${iso(borneePar.au)}` : '';
       throw new BadRequestException(
         solde === null
-          ? `Le solde des congés nés au ${iso(du)} n'est pas chiffré · cochez « Au-delà du solde » et dites pourquoi pour poser ce congé.`
-          : `Le congé compte ${jours.jours} jour(s) et le solde des droits nés au ${iso(du)} est de ${solde} · le droit naît à l'expiration de l'année de services (article 140, alinéa 3). Cochez « Au-delà du solde » et dites pourquoi pour le poser quand même.`,
+          ? `Le solde des congés nés au ${iso(du)} n'est pas chiffré${posterieur} · cochez « Au-delà du solde » et dites pourquoi pour poser ce congé.`
+          : `Le congé compte ${jours.jours} jour(s) et le solde des droits nés au ${iso(du)} est de ${Math.max(0, solde)}${posterieur} · le droit naît à l'expiration de l'année de services (article 140, alinéa 3). Cochez « Au-delà du solde » et dites pourquoi pour le poser quand même.`,
       );
     }
     if (dto.auDelaDuSolde && (dto.motifAuDelaDuSolde ?? '').trim().length < 3) {
