@@ -33,7 +33,7 @@ ont été lus dans le code le même jour, sur la branche
 | 7 | Onglet Options : pays de la société | 8 | FIDÈLE | `Tenant.pays`, « RD Congo » par défaut. |
 | 8 | Natures de compte par fourchettes | 8 | FIDÈLE | Voir M2-2. |
 | 9 | Types de tiers : clients, fournisseurs, salariés | 8 | FIDÈLE | `TypeTiers` : adhérent, client, fournisseur, salarié, autre. |
-| 10 | Ouvrir et fermer un dossier par le menu Fichier ; nom du dossier et exercice en barre de titre | 9 | DIFFÉRENT, VOULU | Le dossier s'ouvre à la connexion de son utilisateur et se ferme à la déconnexion. Son nom s'affiche en barre de titre (`AppShell.tsx:681`) et en barre d'état ; l'exercice se choisit au sélecteur. |
+| 10 | Ouvrir et fermer un dossier par le menu Fichier ; nom du dossier et exercice en barre de titre | 9 | DIFFÉRENT, VOULU | Voir M1-1 : le dossier se choisit à la connexion ; « Ouvrir un autre dossier… » et « Fermer le dossier (déconnexion) » au menu Fichier. Son nom s'affiche en barre de titre (`AppShell.tsx:681`) et en barre d'état ; l'exercice se choisit au sélecteur. |
 | 11 | Maintenance après une coupure de courant (« ce dossier est déjà ouvert ») | 10, 11 | DIFFÉRENT, VOULU | Voir M1-150. |
 
 ## Structure du dossier (p. 12 à 22)
