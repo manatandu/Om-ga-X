@@ -364,13 +364,66 @@ function joursDeCirconstanceNonDus(absences: readonly AbsenceLue[]): Set<JourIso
 }
 
 /** Art. 106 · les deux tiers « pendant les six premiers mois de la suspension », comptés de date à date depuis son premier jour. */
-const finDesSixMois = (du: JourIso): JourIso => iso(plusMois(jourUtc(du) as Date, 6));
+export const finDesSixMois = (du: JourIso): JourIso => iso(plusMois(jourUtc(du) as Date, 6));
+
+/**
+ * LE PREMIER JOUR DE LA SUSPENSION qu'une fiche continue · M1 de la relecture
+ * (premier tour). Un arrêt se renouvelle par fiches successives (un
+ * certificat par période) ; les six mois de l'art. 106 (« les six premiers
+ * mois de la suspension du contrat ») et de l'art. 60, a) (« six mois
+ * ininterrompus d'incapacité ») courent du premier jour de la SUSPENSION,
+ * jamais de chaque fiche · sans quoi un accident du travail renouvelé tous
+ * les mois restait aux deux tiers sans fin, et la résiliation ouverte par
+ * l'art. 60, a) ne se disait jamais.
+ *
+ * Deux fiches de MÊME nature font une seule suspension quand aucun jour
+ * ouvrable du Code ne les sépare (art. 7, point 9 · seuls dimanches et jours
+ * fériés entre elles, jours où le travailleur n'avait pas à reprendre) et
+ * qu'aucune demi-journée ne marque la jointure (le travailleur a alors
+ * travaillé une moitié du jour, la suspension s'est interrompue). Lecture
+ * d'OmegaX, dite · le Code ne définit pas la contiguïté de deux certificats.
+ */
+export function debutsDesSuspensions(absences: readonly AbsenceLue[]): Map<string, JourIso> {
+  const debuts = new Map<string, JourIso>();
+  const parNature = new Map<NatureAbsence, AbsenceLue[]>();
+  for (const a of absences) parNature.set(a.nature, [...(parNature.get(a.nature) ?? []), a]);
+  for (const liste of parNature.values()) {
+    const tries = [...liste].sort((x, y) => x.du.localeCompare(y.du) || x.au.localeCompare(y.au));
+    let precedente: AbsenceLue | null = null;
+    let debut: JourIso | null = null;
+    for (const a of tries) {
+      if (precedente && debut && seSuivent(precedente, a)) {
+        debuts.set(a.id, debut);
+        // La fiche qui finit le plus tard porte la jointure suivante.
+        if (a.au > precedente.au) precedente = a;
+      } else {
+        debut = a.du;
+        debuts.set(a.id, a.du);
+        precedente = a;
+      }
+    }
+  }
+  return debuts;
+}
+
+/** Aucun jour ouvrable entre la fin de l'une et le début de l'autre, aucune demi-journée à la jointure. */
+function seSuivent(avant: AbsenceLue, apres: AbsenceLue): boolean {
+  if (avant.demiJourneeFin || apres.demiJourneeDebut) return false;
+  if (apres.du <= avant.au) return true;
+  const fin = jourUtc(avant.au);
+  const debut = jourUtc(apres.du);
+  if (!fin || !debut) return false;
+  for (let i = 1, d = plusJours(fin, 1); d.getTime() < debut.getTime(); i += 1, d = plusJours(fin, i)) {
+    if (i > 31 || estJourOuvrableDuCode(d)) return false;
+  }
+  return true;
+}
 
 /** Le régime d'UN jour d'une absence · le plafond de l'art. 146 et la limite de l'art. 106 jouent ici. */
-function regimeDuJour(a: AbsenceLue, jour: JourIso, circonstanceNonDue: Set<JourIso>): RegimeRemuneration {
+function regimeDuJour(a: AbsenceLue, jour: JourIso, circonstanceNonDue: Set<JourIso>, debutSuspension: JourIso): RegimeRemuneration {
   const def = NATURES_ABSENCE[a.nature];
   if (a.nature === 'CONGE_DE_CIRCONSTANCE' && circonstanceNonDue.has(jour)) return 'NON_DUE';
-  if (a.nature === 'ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE' && jour >= finDesSixMois(a.du)) return 'NON_DUE';
+  if (a.nature === 'ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE' && jour >= finDesSixMois(debutSuspension)) return 'NON_DUE';
   return def.regime;
 }
 
@@ -384,6 +437,7 @@ export type JourDuMois = { readonly jour: JourIso; readonly absenceId: string; r
  */
 export function joursOuvrablesDuMois(absences: readonly AbsenceLue[], mois: string, subrogees: ReadonlySet<string> = new Set()): JourDuMois[] {
   const nonDus = joursDeCirconstanceNonDus(absences);
+  const debuts = debutsDesSuspensions(absences);
   const sortie: JourDuMois[] = [];
   for (const a of absences) {
     if (a.au.slice(0, 7) < mois || a.du.slice(0, 7) > mois) continue;
@@ -391,7 +445,7 @@ export function joursOuvrablesDuMois(absences: readonly AbsenceLue[], mois: stri
     if ('refus' in jours) continue;
     for (const j of jours) {
       if (!j.ouvrable || j.jour.slice(0, 7) !== mois) continue;
-      const regime = regimeDuJour(a, j.jour, nonDus);
+      const regime = regimeDuJour(a, j.jour, nonDus, debuts.get(a.id) ?? a.du);
       sortie.push({ jour: j.jour, absenceId: a.id, nature: a.nature, poids: j.poids, regime: regime === 'DEUX_TIERS' && subrogees.has(a.id) ? 'DUE' : regime });
     }
   }

@@ -5,6 +5,7 @@ import { contratCouvrantLeMois, moisValide } from './bulletin-paie';
 import {
   EVENEMENTS_CIRCONSTANCE,
   NATURES_ABSENCE,
+  debutsDesSuspensions,
   iso,
   joursDeLAbsence,
   joursOuvrables,
@@ -20,19 +21,25 @@ import { PLAFOND_ABSENCES_SALARIE, absencesDuSalarie, congesPayesDuMois } from '
 import { AbsenceSalarieDto, IndemniteCaisseDto } from './dto/absences.dto';
 import { Prisma } from '@prisma/client';
 
-/** Ce que le texte dit d'un arrêt qui dure · une information, jamais un refus. */
-function informationsDeLArret(nature: string, du: Date, au: Date): string[] {
-  const sixMois = plusMois(du, 6);
+/**
+ * Ce que le texte dit d'un arrêt qui dure · une information, jamais un refus.
+ * M1 de la relecture · les six mois courent du premier jour de la
+ * SUSPENSION, que les fiches contiguës de même nature prolongent
+ * (`debutsDesSuspensions`), jamais de la fiche seule.
+ */
+export function informationsDeLArret(nature: string, debutSuspension: Date, du: Date, au: Date): string[] {
+  const sixMois = plusMois(debutSuspension, 6);
   if (au.getTime() < sixMois.getTime()) return [];
   const le = iso(sixMois);
+  const depuis = debutSuspension.getTime() < du.getTime() ? ` (suspension continue depuis le ${iso(debutSuspension)})` : '';
   if (nature === 'MALADIE_OU_ACCIDENT') {
     return [
-      `Six mois ininterrompus d'incapacité au ${le} · l'employeur peut notifier la résiliation, avec une indemnité égale au préavis (Code du travail, art. 60, a).`,
+      `Six mois ininterrompus d'incapacité au ${le}${depuis} · l'employeur peut notifier la résiliation, avec une indemnité égale au préavis (Code du travail, art. 60, a).`,
     ];
   }
   if (nature === 'ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE') {
     return [
-      `Les deux tiers dus par l'employeur s'arrêtent au ${le}, après six mois (Code du travail, art. 106) ; l'indemnité journalière de la Caisse continue jusqu'à la guérison ou jusqu'à la rente qui la remplace (arrêté n° 146/2018, art. 87, 88 et 166).`,
+      `Les deux tiers dus par l'employeur s'arrêtent au ${le}, après six mois${depuis} (Code du travail, art. 106) ; l'indemnité journalière de la Caisse continue jusqu'à la guérison ou jusqu'à la rente qui la remplace (arrêté n° 146/2018, art. 87, 88 et 166).`,
     ];
   }
   return [];
@@ -66,9 +73,13 @@ export class AbsencesService {
       }),
       this.prisma.absenceSalarie.count({ where: { tenantId, salarieId } }),
     ]);
+    // M1 · les suspensions se lisent sur les fiches non annulées, toutes
+    // lues (`absencesDuSalarie`, même borne que le moteur du bulletin).
+    const debuts = debutsDesSuspensions(await absencesDuSalarie(this.prisma, tenantId, salarieId));
     return {
       absences: lignes.map((a) => {
         const jours = joursDeLAbsence({ du: iso(a.du), au: iso(a.au), demiJourneeDebut: a.demiJourneeDebut, demiJourneeFin: a.demiJourneeFin });
+        const debut = debuts.get(a.id);
         const def = NATURES_ABSENCE[a.nature];
         return {
           id: a.id,
@@ -88,7 +99,8 @@ export class AbsencesService {
           annuleLe: a.annuleLe,
           motifAnnulation: a.motifAnnulation,
           creePar: a.creePar,
-          informations: a.annuleLe ? [] : informationsDeLArret(a.nature, a.du, a.au),
+          debutSuspension: a.annuleLe ? null : (debut ?? iso(a.du)),
+          informations: a.annuleLe ? [] : informationsDeLArret(a.nature, debut ? new Date(`${debut}T00:00:00.000Z`) : a.du, a.du, a.au),
           indemnitesCaisse: a.indemnitesCaisse.map((i) => ({
             id: i.id,
             mois: i.mois,

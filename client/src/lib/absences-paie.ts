@@ -37,6 +37,8 @@ export interface AbsenceLue {
   joursCalendaires: number | null;
   annuleLe: string | null;
   motifAnnulation: string | null;
+  /** Premier jour de la suspension que la fiche continue (fiches contiguës de même nature) · `null` si annulée. */
+  debutSuspension: string | null;
   /** Ce que le texte dit d'un arrêt qui dure (art. 60, a ; art. 106) · information. */
   informations: string[];
   indemnitesCaisse: IndemniteCaisseLue[];

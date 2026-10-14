@@ -1,5 +1,7 @@
+import { informationsDeLArret } from './absences.service';
 import {
   absencesPourLeCompteur,
+  debutsDesSuspensions,
   joursDeLAbsence,
   joursOuvrables,
   joursOuvrablesDuMois,
@@ -194,5 +196,51 @@ describe('étape 3 · les indemnités journalières de la Caisse sur un arrêt',
     expect(new Set(jours.map((j) => j.regime))).toEqual(new Set(['DUE']));
     const p = propositionDuMois({ jours, salaireMensuel: 780_000, moyenneMensuelleArticle66: null, aRecevoirDeLaCaisse: 180_000 });
     expect([p.salaireDesJoursDus, p.indemniteDeuxTiers, p.aRecevoirDeLaCaisse]).toEqual([780_000, 0, 180_000]);
+  });
+});
+
+describe('M1 · les six mois courent du premier jour de la SUSPENSION, fiches contiguës comprises (art. 106 ; art. 60, a)', () => {
+  const mensuelles = (nature: NatureAbsence) => [
+    absence(nature, '2026-01-05', '2026-01-31'),
+    absence(nature, '2026-02-01', '2026-02-28'),
+    absence(nature, '2026-03-01', '2026-03-31'),
+    absence(nature, '2026-04-01', '2026-04-30'),
+    absence(nature, '2026-05-01', '2026-05-31'),
+    absence(nature, '2026-06-01', '2026-06-30'),
+    absence(nature, '2026-07-01', '2026-07-31'),
+  ];
+
+  it('un accident du travail renouvelé chaque mois n’est plus aux deux tiers après le 5 juillet · comme une fiche unique', () => {
+    const at = mensuelles('ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE');
+    const juillet = joursOuvrablesDuMois(at, '2026-07');
+    expect(juillet.find((j) => j.jour === '2026-07-04')?.regime).toBe('DEUX_TIERS');
+    expect(juillet.find((j) => j.jour === '2026-07-06')?.regime).toBe('NON_DUE');
+    expect(new Set(debutsDesSuspensions(at).values())).toEqual(new Set(['2026-01-05']));
+  });
+
+  it('un dimanche entre deux fiches ne rompt pas la suspension, un samedi ouvrable la rompt, une demi-journée aussi', () => {
+    const dimanche = [absence('MALADIE_OU_ACCIDENT', '2026-01-05', '2026-01-31'), absence('MALADIE_OU_ACCIDENT', '2026-02-02', '2026-02-27')];
+    expect([...debutsDesSuspensions(dimanche).values()]).toEqual(['2026-01-05', '2026-01-05']);
+    const samedi = [absence('MALADIE_OU_ACCIDENT', '2026-01-05', '2026-01-30'), absence('MALADIE_OU_ACCIDENT', '2026-02-02', '2026-02-27')];
+    expect([...debutsDesSuspensions(samedi).values()]).toEqual(['2026-01-05', '2026-02-02']);
+    const demi = [
+      absence('MALADIE_OU_ACCIDENT', '2026-01-05', '2026-01-31', { demiJourneeFin: true }),
+      absence('MALADIE_OU_ACCIDENT', '2026-02-01', '2026-02-27'),
+    ];
+    expect([...debutsDesSuspensions(demi).values()]).toEqual(['2026-01-05', '2026-02-01']);
+  });
+
+  it('deux natures ne se chaînent pas · une maladie suivie d’un accident du travail ouvre une autre suspension', () => {
+    const deux = [absence('MALADIE_OU_ACCIDENT', '2026-01-05', '2026-01-31'), absence('ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE', '2026-02-01', '2026-02-27')];
+    expect([...debutsDesSuspensions(deux).values()]).toEqual(['2026-01-05', '2026-02-01']);
+  });
+
+  it('l’information de l’art. 60, a) s’allume sur la fiche qui passe les six mois de la suspension, et dit depuis quand', () => {
+    const d = (j: string) => new Date(`${j}T00:00:00.000Z`);
+    expect(informationsDeLArret('MALADIE_OU_ACCIDENT', d('2026-07-01'), d('2026-07-01'), d('2026-07-31'))).toEqual([]);
+    const infos = informationsDeLArret('MALADIE_OU_ACCIDENT', d('2026-01-05'), d('2026-07-01'), d('2026-07-31'));
+    expect(infos.join(' ')).toContain('art. 60, a');
+    expect(infos.join(' ')).toContain('depuis le 2026-01-05');
+    expect(infos.join(' ')).toContain('2026-07-05');
   });
 });

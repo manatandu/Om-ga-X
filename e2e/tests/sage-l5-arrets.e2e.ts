@@ -56,6 +56,16 @@ test('SYSCOHADA · indemnité de la Caisse déclarée à l’écran, déduite ou
   const atLong = absences.find((a) => a.du.startsWith('2025-02-03'))!;
   expect(atLong.informations.join(' ')).toContain('art. 106');
 
+  // M1 de la relecture · une maladie renouvelée par deux certificats
+  // contigus (un dimanche entre les deux) est UNE suspension · les six mois
+  // de l'art. 60, a) courent du 1er septembre 2025, et l'information
+  // s'allume sur la seconde fiche, qui seule n'en compte que quatre.
+  await declarer({ nature: 'MALADIE_OU_ACCIDENT', du: '2025-09-01', au: '2025-11-29', piece: 'Certificat du Dr Ilunga' });
+  await declarer({ nature: 'MALADIE_OU_ACCIDENT', du: '2025-12-01', au: '2026-03-31', piece: 'Certificat du Dr Ilunga, renouvellement' });
+  const renouvelee = (await lister()).find((a) => a.du.startsWith('2025-12-01'))!;
+  expect(renouvelee.informations.join(' ')).toContain('art. 60, a');
+  expect(renouvelee.informations.join(' ')).toContain('depuis le 2025-09-01');
+
   // À l'écran · l'indemnité de la Caisse sur l'accident du travail, déduite.
   await page.goto('/#/personnel?onglet=absences');
   await expect(page.getByText('Accident du travail ou maladie professionnelle').first()).toBeVisible();
