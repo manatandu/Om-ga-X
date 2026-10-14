@@ -597,9 +597,17 @@ describe('1 et 4 · l’extinction se borne au solde du compte de dette (relectu
     const { svc, prisma } = harnais({ immo: bienViager, mouvementsDette: { credit: 240_000_000, debit: 100_000_000 } });
     await svc.solderDetteAleatoire('t1', 'u1', 'i1', dto);
     const where = (prisma.ligneEcriture.aggregate.mock.calls[0][0] as { where: Faux }).where;
+    // Les simulations d'un journal de situation (ligne sage-l1, fonction 12)
+    // n'enregistrent aucune opération · elles ne bornent pas la dette.
     expect(where).toEqual({
       compteId: 'c1681',
-      ecriture: { tenantId: 't1', date: { lte: new Date('2026-12-15') }, estGenereeParCloture: false, estANouveauProvisoire: false },
+      ecriture: {
+        tenantId: 't1',
+        date: { lte: new Date('2026-12-15') },
+        estGenereeParCloture: false,
+        estANouveauProvisoire: false,
+        statut: { not: 'SITUATION' },
+      },
     });
   });
 
