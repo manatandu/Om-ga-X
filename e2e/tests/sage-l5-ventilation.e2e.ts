@@ -14,8 +14,12 @@ import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
  * partage 50 / 50, et décembre, déjà passé, ne bouge pas. Puis le bulletin de
  * décembre de KASONGO est annulé et réémis à 800 000 FC, et décembre se
  * repasse dans 2027 · le réémis suit la répartition de DÉCEMBRE (60 / 40, le
- * mois de paie, jamais la date de passation), la reprise en négatif part
- * sans ventilation, et le contrôle des cumuls compte exactement ces lignes.
+ * mois de paie, jamais la date de passation), et la reprise en négatif se
+ * ventile comme la pièce d'origine · la part de KASONGO, refaite par les
+ * répartitions de décembre, en négatif sur P1 et P2, P2 de MUTOMBO non
+ * touché (relecture M3 · elle partait sans ventilation, et un plan à
+ * ventilation obligatoire refusait la paie du mois sans issue). Aucune ligne
+ * de plus sans ventilation au contrôle des cumuls.
  */
 interface Exercice { id: string; dateDebut: string; dateFin: string; statut: string }
 interface Journal { id: string; code: string; type: string }
@@ -193,27 +197,41 @@ test('SYCEBNL · répartition par salarié appliquée à la passation, version p
     ['P1', 480_000],
     ['P2', 320_000],
   ]);
-  const sansVentilation = reprise.ventilation.nonVentilees.filter((n) => n.planCode === 'PROJ');
-  expect(sansVentilation.length).toBeGreaterThan(0);
-  expect(sansVentilation.every((n) => n.cause === 'REPRISE_EN_NEGATIF')).toBe(true);
-  expect(reprise.ventilation.reserves.join(' ')).toMatch(/REPRISE EN NÉGATIF · ses lignes ne se ventilent pas d'office/);
+  // La reprise du bulletin annulé · 780 000 de KASONGO, en négatif, 60 / 40.
+  const iNegatif = reprise.lignes.findIndex((l) => l.compte === '66110000' && l.negatif);
+  expect(reprise.ventilation.parLigne[iNegatif].map((v) => [v.sectionCode, v.montantFc])).toEqual([
+    ['P1', -468_000],
+    ['P2', -312_000],
+  ]);
+  expect(reprise.ventilation.nonVentilees.filter((n) => n.planCode === 'PROJ')).toEqual([]);
+  reprise.lignes.forEach((l, i) => {
+    if (l.compte.startsWith('6')) {
+      expect(reprise.ventilation.parLigne[i].filter((v) => v.planCode === 'PROJ').reduce((n, v) => n + centimes(v.montantFc), 0)).toBe(centimes(l.montantFc));
+    }
+  });
+  const avantReprise = await controle(suivant.id);
+  // PROJ à ventilation OBLIGATOIRE · la reprise se ventilant comme sa pièce
+  // d'origine, la paie du mois passe (elle était refusée, l'issue proposée,
+  // « déclarez la répartition », ne levant rien).
+  await appelApi(page, 'PATCH', `/analytique/plans/${proj.id}`, { ventilationObligatoire: true });
   await appelApi(page, 'POST', '/personnel/paie-du-mois/2026-12/comptabilisation', {
     exerciceId: suivant.id,
     journalId: od.id,
     date: '2027-01-31',
     inscrireNegatifs: true,
   });
+  await appelApi(page, 'PATCH', `/analytique/plans/${proj.id}`, { ventilationObligatoire: false });
 
-  // 2027 · la balance analytique est la somme des deux passations, et le
-  // contrôle des cumuls compte EXACTEMENT les lignes de la reprise, laissées
-  // sans ventilation (elles se ventilent à la main, ligne par ligne).
+  // 2027 · la balance analytique est la somme des deux passations, reprise
+  // en négatif comprise, et le contrôle des cumuls ne compte aucune ligne de
+  // plus sans ventilation.
   const b2027 = await balanceAnalytique(suivant.id);
   expect([debitDe(b2027, 'P1'), debitDe(b2027, 'P2')]).toEqual([
     projDe(jan, 'P1') + projDe(reprise, 'P1'),
     projDe(jan, 'P2') + projDe(reprise, 'P2'),
   ]);
   const c2027 = await controle(suivant.id);
-  expect(c2027.nombreSansRepartition).toBe(sansVentilation.length);
+  expect(c2027.nombreSansRepartition).toBe(avantReprise.nombreSansRepartition);
 
   expect(pannes).toEqual([]);
 });

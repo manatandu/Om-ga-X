@@ -60,7 +60,7 @@ interface PropositionPaieDuMois {
 /** Aligné sur les lignes · ce que le serveur a réparti, et ce qui part sans ventilation, avec la cause. */
 interface VentilationProposee {
   parLigne: { planId: string; planCode: string; sectionId: string; sectionCode: string; montantFc: number }[][];
-  nonVentilees: { index: number; compte: string; intitule: string; planCode: string; cause: string; motif: string }[];
+  nonVentilees: { index: number; compte: string; intitule: string; planCode: string; cause: string; motif: string; issue: string }[];
   reserves: string[];
   obligatoires: string[];
 }
@@ -324,7 +324,7 @@ export function PaieDuMois({ mois, apresChangement }: { mois: string; apresChang
           {bloquantes.length > 0 && (
             <div role="alert" className="border border-warning/40 bg-warning-soft text-warning px-3 py-1.5 mt-2">
               Le plan {[...new Set(bloquantes.map((n) => n.planCode))].join(', ')} exige la ventilation · {bloquantes.length} ligne(s)
-              partiraient sans elle. Déclarez la répartition des salariés nommés (Registre du personnel, Répartition analytique).
+              partiraient sans elle. {[...new Set(bloquantes.map((n) => n.issue))].join(' ')}
             </div>
           )}
 

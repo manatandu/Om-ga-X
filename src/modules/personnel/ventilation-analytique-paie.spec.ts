@@ -1,6 +1,7 @@
 import { propositionPaieDuMois, type BulletinAComptabiliser, type LigneDuMois } from './comptabilisation-paie';
 import {
   enPointsDeBase,
+  issueDeLaCause,
   motifRefusRepartition,
   ventilerLaPaie,
   versionDuMois,
@@ -278,23 +279,95 @@ describe("la ventilation de l'écriture de paie", () => {
     expect(illisible.parLigne[i]).toEqual([]);
     expect(illisible.nonVentilees.find((n) => n.index === i)?.motif).toMatch(/illisible/);
   });
+});
 
-  it("la reprise en négatif d'un bulletin annulé ne se ventile pas d'office, et le dit", () => {
-    const lignesOrigine = propositionPaieDuMois('2026-11', 'SYSCOHADA', [bulletin(9, 's1') as BulletinAComptabiliser]).lignes.map((l) => ({
-      compte: l.compte,
-      intitule: l.intitule,
-      debit: l.sens === 'DEBIT' ? l.montantFc : 0,
-      credit: l.sens === 'CREDIT' ? l.montantFc : 0,
-    }));
-    const annule: BulletinAComptabiliser = {
-      ...bulletin(9, 's1'),
-      statut: 'ANNULE',
+describe('relecture M3 · la reprise en négatif se ventile comme la pièce d’origine', () => {
+  const VERSIONS = [version('a', 's1', 'p-proj', '2026-01', [['p1', 60], ['p2', 40]]), version('b', 's2', 'p-proj', '2026-01', [['p3', 100]])];
+  /** L'écriture d'origine telle qu'au journal · ses lignes et, si demandé, la ventilation que la passation lui a donnée. */
+  const origineDe = (passes: BulletinVentile[], ventilee: boolean) => {
+    const p = propositionPaieDuMois('2026-11', 'SYSCOHADA', passes);
+    const v = ventilerLaPaie({ mois: '2026-11', referentiel: 'SYSCOHADA', lignes: p.lignes, bulletins: passes, plans: [PROJ], sections: SECTIONS, versions: VERSIONS });
+    return {
       ecritureId: 'e-origine',
-      origine: { ecritureId: 'e-origine', numeroPiece: '4', lignes: lignesOrigine },
+      numeroPiece: '4',
+      lignes: p.lignes.map((l, k) => ({
+        compte: l.compte,
+        intitule: l.intitule,
+        debit: l.sens === 'DEBIT' ? l.montantFc : 0,
+        credit: l.sens === 'CREDIT' ? l.montantFc : 0,
+        ventilations: ventilee ? v.parLigne[k].map((x) => ({ planId: x.planId, sectionId: x.sectionId, montant: x.montantFc })) : [],
+      })),
     };
+  };
+  const ventiler = (p: ReturnType<typeof propositionPaieDuMois>, passes: BulletinVentile[], tous: BulletinVentile[]) =>
+    ventilerLaPaie({
+      mois: '2026-11',
+      referentiel: 'SYSCOHADA',
+      lignes: p.lignes,
+      bulletins: passes,
+      plans: [PROJ],
+      sections: SECTIONS,
+      versions: VERSIONS,
+      reprises: p.reprises.map((r) => ({
+        mode: r.mode,
+        origine: tous.find((b) => b.id === r.bulletinIds[0])!.origine!,
+        bulletins: tous.filter((b) => r.bulletinIds.includes(b.id)),
+        portes: tous.filter((b) => b.ecritureId === r.ecritureId),
+      })),
+    });
+
+  it('RECOPIÉE (la pièce ne portait que lui) · chaque ligne reçoit, en négatif, la ventilation de sa ligne d’origine', () => {
+    const origine = origineDe([bulletin(9, 's1')], true);
+    const annule: BulletinVentile = { ...bulletin(9, 's1'), statut: 'ANNULE', ecritureId: 'e-origine', origine };
     const reemis = bulletin(10, 's1', 1_020_000);
     const p = propositionPaieDuMois('2026-11', 'SYSCOHADA', [annule, reemis]);
+    expect(p.reprises.map((r) => r.mode)).toEqual(['EXACTE']);
+    const v = ventiler(p, [reemis], [annule, reemis]);
+    const k = p.lignes.findIndex((l) => l.bloc === 'REPRISE_EN_NEGATIF' && l.compte === '66110000');
+    expect(v.parLigne[k].map((x) => [x.sectionCode, x.montantFc])).toEqual([['P1', -600_000], ['P2', -400_000]]);
+    // Chaque ligne de classe 6 se ventile en entier, au centime, aucune ne part sans.
+    for (const [index, l] of p.lignes.entries()) {
+      if (!l.compte.startsWith('6')) continue;
+      expect(centimes(v.parLigne[index].reduce((n, x) => n + x.montantFc, 0))).toBe(centimes(l.montantFc));
+    }
+    expect(v.nonVentilees).toEqual([]);
+  });
+
+  it('RECOPIÉE, pièce d’origine non ventilée · la cause vraie et l’issue qui la lève, jamais « déclarez la répartition »', () => {
+    const origine = origineDe([bulletin(9, 's1')], false);
+    const annule: BulletinVentile = { ...bulletin(9, 's1'), statut: 'ANNULE', ecritureId: 'e-origine', origine };
+    const reemis = bulletin(10, 's1', 1_020_000);
+    const p = propositionPaieDuMois('2026-11', 'SYSCOHADA', [annule, reemis]);
+    const v = ventiler(p, [reemis], [annule, reemis]);
+    const causes = new Set(v.nonVentilees.map((n) => n.cause));
+    expect(causes).toEqual(new Set(['ORIGINE_NON_VENTILEE']));
+    expect(v.nonVentilees[0].motif).toContain("pièce d'origine n° 4");
+    expect(v.reserves.join(' ')).toContain("Ventilez d'abord la pièce d'origine");
+    expect(issueDeLaCause('ORIGINE_NON_VENTILEE')).toContain("levez l'obligation de ventilation du plan");
+  });
+
+  it('REJOUÉE (la pièce portait deux salariés sur deux projets) · la part de l’annulé se reprend sur SES sections, jamais au prorata', () => {
+    const passes = [bulletin(9, 's1'), bulletin(11, 's2')].map((b) => ({ ...b, ecritureId: 'e-origine' }));
+    const origine = origineDe([bulletin(9, 's1'), bulletin(11, 's2')], true);
+    const annule: BulletinVentile = { ...passes[0], statut: 'ANNULE', origine };
+    const autre: BulletinVentile = { ...passes[1], origine: null };
+    const reemis = bulletin(10, 's1', 1_020_000);
+    const p = propositionPaieDuMois('2026-11', 'SYSCOHADA', [annule, autre, reemis]);
     expect(p.refus).toEqual([]);
+    expect(p.reprises.map((r) => r.mode)).toEqual(['REJEU']);
+    const v = ventiler(p, [reemis], [{ ...annule }, autre, reemis]);
+    const k = p.lignes.findIndex((l) => l.negatif && l.compte === '66110000');
+    // Le salarié 1 était à 60/40 sur P1 et P2 · P3, le projet du salarié 2, n'est pas touché.
+    expect(v.parLigne[k].map((x) => [x.sectionCode, x.montantFc])).toEqual([['P1', -600_000], ['P2', -400_000]]);
+    expect(v.nonVentilees).toEqual([]);
+  });
+
+  it('REJOUÉE, répartition changée depuis la pièce d’origine · rien ne se devine, la cause est dite', () => {
+    const passes = [bulletin(9, 's1'), bulletin(11, 's2')].map((b) => ({ ...b, ecritureId: 'e-origine' }));
+    const origine = origineDe([bulletin(9, 's1'), bulletin(11, 's2')], true);
+    const annule: BulletinVentile = { ...passes[0], statut: 'ANNULE', origine };
+    const reemis = bulletin(10, 's1', 1_020_000);
+    const p = propositionPaieDuMois('2026-11', 'SYSCOHADA', [annule, passes[1], reemis]);
     const v = ventilerLaPaie({
       mois: '2026-11',
       referentiel: 'SYSCOHADA',
@@ -302,13 +375,12 @@ describe("la ventilation de l'écriture de paie", () => {
       bulletins: [reemis],
       plans: [PROJ],
       sections: SECTIONS,
-      versions: [version('a', 's1', 'p-proj', '2026-01', [['p1', 100]])],
+      // Le salarié 1 passe à 100 % sur P1 à partir de novembre · la pièce d'origine ne se refait plus.
+      versions: [...VERSIONS, version('c', 's1', 'p-proj', '2026-11', [['p1', 100]])],
+      reprises: [{ mode: 'REJEU', origine, bulletins: [annule], portes: [annule, passes[1]] }],
     });
-    const negatives = p.lignes.map((l, k) => ({ l, k })).filter(({ l }) => l.negatif && l.compte.startsWith('6'));
-    expect(negatives.length).toBeGreaterThan(0);
-    for (const { k } of negatives) expect(v.parLigne[k]).toEqual([]);
-    // La ligne positive du bulletin réémis se ventile, elle.
-    expect(v.parLigne[ligneDe(p.lignes, '66110000')].map((x) => x.montantFc)).toEqual([1_020_000]);
-    expect(v.reserves.join(' ')).toMatch(/REPRISE EN NÉGATIF · ses lignes ne se ventilent pas d'office/);
+    const k = p.lignes.findIndex((l) => l.negatif && l.compte === '66110000');
+    expect(v.parLigne[k]).toEqual([]);
+    expect(v.nonVentilees.find((n) => n.index === k)?.cause).toBe('ORIGINE_NON_RECONSTITUEE');
   });
 });

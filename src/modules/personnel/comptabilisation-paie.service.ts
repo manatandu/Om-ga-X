@@ -12,7 +12,13 @@ import {
 import type { Referentiel } from './passation-paie';
 import { ComptabilisationPaieDto } from './dto/personnel.dto';
 import { RepartitionsAnalytiquesPaieService } from './repartitions-analytiques-paie.service';
-import { ventilerLaPaie, type BulletinVentile, type VentilationDeLaPaie } from './ventilation-analytique-paie';
+import {
+  issueDeLaCause,
+  ventilerLaPaie,
+  type BulletinVentile,
+  type RepriseAVentiler,
+  type VentilationDeLaPaie,
+} from './ventilation-analytique-paie';
 
 /**
  * LIGNE SAGE-L5, FONCTION 88 · ce que la proposition dit de la ventilation
@@ -74,7 +80,15 @@ export class ComptabilisationPaieService {
           select: {
             id: true,
             numeroPiece: true,
-            lignes: { select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } } },
+            lignes: {
+              select: {
+                debit: true,
+                credit: true,
+                compte: { select: { numero: true, intitule: true } },
+                // Relecture M3 · la reprise se ventile comme la pièce d'origine.
+                ventilations: { select: { planId: true, sectionId: true, debit: true, credit: true } },
+              },
+            },
           },
         })
       : [];
@@ -89,6 +103,12 @@ export class ComptabilisationPaieService {
             intitule: l.compte.intitule,
             debit: Number(l.debit),
             credit: Number(l.credit),
+            // Le montant ventilé, du côté de la ligne.
+            ventilations: (l.ventilations ?? []).map((v) => ({
+              planId: v.planId,
+              sectionId: v.sectionId,
+              montant: Number(l.debit) !== 0 ? Number(v.debit) : Number(v.credit),
+            })),
           })),
         },
       ]),
@@ -127,7 +147,20 @@ export class ComptabilisationPaieService {
     const aPasser: BulletinVentile[] = lus
       .filter((b) => proposition.aPasser.some((a) => a.id === b.id))
       .map((b) => ({ ...b, salarieId: salarieDe.get(b.id) as string }));
-    const ventilation = await this.ventilation(tenantId, mois, tenant.referentiel as Referentiel, proposition.lignes, aPasser);
+    const reprises: RepriseAVentiler[] = proposition.reprises.flatMap((r) => {
+      const origine = origineDe.get(r.ecritureId);
+      if (!origine) return [];
+      return [
+        {
+          mode: r.mode,
+          origine,
+          bulletins: lus.filter((b) => r.bulletinIds.includes(b.id)),
+          // Tous les bulletins que la pièce d'origine a passés, annulés compris.
+          portes: lus.filter((b) => b.ecritureId === r.ecritureId).map((b) => ({ ...b, salarieId: salarieDe.get(b.id) as string })),
+        },
+      ];
+    });
+    const ventilation = await this.ventilation(tenantId, mois, tenant.referentiel as Referentiel, proposition.lignes, aPasser, reprises);
     return { ...proposition, pieces, ventilation };
   }
 
@@ -143,6 +176,7 @@ export class ComptabilisationPaieService {
     referentiel: Referentiel,
     lignes: Parameters<typeof ventilerLaPaie>[0]['lignes'],
     aPasser: readonly BulletinVentile[],
+    reprises: readonly RepriseAVentiler[] = [],
   ): Promise<VentilationProposee> {
     const vide: VentilationProposee = { parLigne: lignes.map(() => []), nonVentilees: [], reserves: [], obligatoires: [] };
     if (lignes.length === 0) return vide;
@@ -157,7 +191,7 @@ export class ComptabilisationPaieService {
       };
     }
     if (lu.plans.length === 0) return vide;
-    const v = ventilerLaPaie({ mois, referentiel, lignes, bulletins: aPasser, plans: lu.plans, sections: lu.sections, versions: lu.versions });
+    const v = ventilerLaPaie({ mois, referentiel, lignes, bulletins: aPasser, plans: lu.plans, sections: lu.sections, versions: lu.versions, reprises });
     return { ...v, obligatoires: lu.obligatoires };
   }
 
@@ -241,11 +275,14 @@ export class ComptabilisationPaieService {
     // façon, sans nommer le salarié dont la répartition manque.
     const bloquantes = p.ventilation.nonVentilees.filter((n) => p.ventilation.obligatoires.includes(n.planCode));
     if (bloquantes.length > 0) {
+      // RELECTURE M3 · l'issue suit la CAUSE · une reprise dont la pièce
+      // d'origine n'est pas ventilée ne se lève pas en déclarant une
+      // répartition.
+      const issues = [...new Set(bloquantes.map((n) => issueDeLaCause(n.cause)))];
       throw new BadRequestException({
         message:
           `La paie de ${mois} n'est pas passée · le(s) plan(s) ${[...new Set(bloquantes.map((n) => n.planCode))].join(', ')} ` +
-          `exige(nt) la ventilation, et ${bloquantes.length} ligne(s) partiraient sans elle. Déclarez la répartition des ` +
-          'salariés nommés (Registre du personnel, Répartition analytique).',
+          `exige(nt) la ventilation, et ${bloquantes.length} ligne(s) partiraient sans elle. ${issues.join(' ')}`,
         motifs: bloquantes.map((n) => `${n.compte} · ${n.intitule} · plan ${n.planCode} · ${n.motif}`),
       });
     }
