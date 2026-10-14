@@ -6,7 +6,14 @@ jour de mars 2013, 703 pages (Drive, id 1_BTjaaQiwXYPiXtPZ8-5huzW4Z8w1Q3Y).
 Le texte a été extrait du PDF puis lu en entier le 2026-10-14 : les pages 1 à
 36 et les jointures par la session, les pages 37 à 628 par trois relevés
 parallèles, chacun allé jusqu'à la dernière ligne de sa plage. Les pages 630
-à 632, 656 à 658 et 673 à 674 ne portent que des titres.
+à 632, 656 à 658 et 673 à 674 ne portent que des titres en texte : ce sont
+des schémas de jointures, lus ensuite en image le même jour (comptabilité :
+tiers et écritures, budgets et écritures, taxes ; gestion commerciale :
+lignes de documents, articles, familles ; paie : salariés et paramètres).
+Ils relient des tables déjà comparées ligne par ligne et n'ajoutent aucune
+fonction ; ils confirment les lignes 171 et 172. Seule la page 630 se lit
+sans réserve ; sur les sept autres, des traits sans libellé et des
+cardinalités restent illisibles, et rien n'en est tiré.
 
 Ce manuel ne décrit pas des écrans mais les tables de la base de données de
 Sage 100 : Comptabilité, Gestion commerciale, Immobilisations, Moyens de
