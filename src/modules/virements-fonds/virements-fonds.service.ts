@@ -272,7 +272,11 @@ export class VirementsFondsService {
           // brouillard est redonné à la pièce suivante (numérotation tirée du
           // maximum), et la fiche le désignait encore.
           piecesPassees: `${v.piecesPassees ?? ''} · ${
-            numerosNegatifs.length > 0 ? `inscrites en négatif (${numerosNegatifs.join(', ')})` : 'retirées du brouillard, numéros libérés'
+            numerosNegatifs.length === 0
+              ? 'retirées du brouillard, numéros libérés'
+              : numerosNegatifs.length === 1 && ids.length === 2
+                ? `une retirée du brouillard, une inscrite en négatif (${numerosNegatifs[0]})`
+                : `inscrites en négatif (${numerosNegatifs.join(', ')})`
           }`.slice(0, 190),
           // Une pièce validée reste au journal, que le virement retient avec
           // son négatif · la retirer laisserait le négatif seul.
