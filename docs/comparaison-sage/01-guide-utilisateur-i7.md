@@ -3,6 +3,11 @@
 Manuel 1 de la comparaison complète demandée par Manasse le 2026-10-09.
 Source : « Guide de l'utilisateur, Sage 100 Comptabilité i7 », 44 pages
 (Drive, id 1p0AZjvBs7LCkvbev2m0Y2TZX6UhO1ixY), lu en entier le 2026-10-14.
+Les 29 pages qui portent une capture d'écran ont été lues ensuite en image,
+le même jour : elles confirment les lignes du texte et en ajoutent huit
+(section « Vu sur les captures seulement »). Quelques captures sont coupées
+ou masquées par une bulle (p. 1, 4, 9, 21, 24, 27, 33 et 38) ; rien n'est
+tiré de ce qui ne s'y lit pas.
 Méthode : une ligne par fonction que le Guide décrit, sa page, puis le statut
 d'OmegaX LU DANS LE CODE le même jour (schéma Prisma, DTO, écrans, menu de
 `AppShell.tsx`), jamais de mémoire. Une ligne qui n'a pas pu être lue dans le
@@ -247,11 +252,25 @@ Manasse trie, et chaque fonction absente qu'il retient demande sa phrase
 |---|---|---|---|---|
 | 150 | Programme de maintenance du fichier comptable | 44 | DIFFÉRENT, VOULU | En ligne, la base est gérée et sauvegardée chaque nuit ; sur site, sauvegardes et copies avant mise à jour. |
 
+## Vu sur les captures seulement
+
+| # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
+|---|---|---|---|---|
+| 151 | Accueil IntuiSage : onglets Accueil, Favoris, Indicateurs ; liens vers le guide, le tutoriel, les nouveautés, le manuel, la base de connaissances ; actualités et agenda fiscal | 1, 3 | PARTIEL | L'accueil reprend la barre verticale et les onglets Accueil, Favoris et Indicateurs (`AccueilPage.tsx`) ; les échéances fiscales sont au tableau de bord. Ni tutoriel, ni manuel, ni actualités. |
+| 152 | Barre d'outils commune : ajouter, consulter, modifier, supprimer, précédent, suivant, rechercher, atteindre, calculette | 1 | PARTIEL | Calculette et navigation dans la barre de titre (`OutilsChrome.tsx`) ; pas de barre d'outils commune. |
+| 153 | Immatriculation du tiers (Siret, code NAF) | 9 | PARTIEL | Numéro d'impôt du tiers (`Tiers.numeroImpot`) ; aucun autre identifiant. |
+| 154 | Bandeau de la saisie : ancien solde, mouvements, nouveau solde ; totaux du journal et solde à équilibrer | 21 | PARTIEL | Totaux du journal sur la période, lus par le serveur, et solde de la pièce (`SaisiePage.tsx`) ; ni ancien ni nouveau solde. |
+| 155 | Menu Actions de la saisie : analytique, registre, visualisation de la pièce, informations libres, lettrage, interrogation, documents rattachés | 22 | PARTIEL | Visualisation de la pièce et colonne analytique par axe ; ni registre, ni informations libres, ni lettrage, ni interrogation, ni documents depuis la saisie (lignes 93 à 95). |
+| 156 | Rappels : ajouter une écriture à un dossier de recouvrement, facturer des frais d'impayés | 31 | ABSENT | Voir M10-51 et M10-54. |
+| 157 | Régularisation à une date de mois, extournée au premier jour du mois suivant | 34 | DIFFÉRENT, VOULU | La contre-passation se fait à l'ouverture de l'exercice (fiches des comptes 40 et 41, « À l'ouverture de l'exercice, ces écritures sont contre-passées »). |
+| 158 | Budget de règlement : plafond de la sélection, montant à régler et écart | 35, 36 | PARTIEL | Voir M10-104. |
+
 ## Bilan du manuel
 
-150 fonctions relevées : 66 FIDÈLE, 11 DIFFÉRENT VOULU, 22 DIFFÉRENT À TRIER,
-9 PARTIEL, 42 ABSENT, 0 NON VÉRIFIÉ (les dix lignes d'abord
-non vérifiées ont été lues dans le code dans un second passage, le même jour).
+158 fonctions relevées : 66 FIDÈLE, 12 DIFFÉRENT VOULU, 22 DIFFÉRENT À TRIER,
+15 PARTIEL, 43 ABSENT, 0 NON VÉRIFIÉ (les dix lignes d'abord
+non vérifiées ont été lues dans le code dans un second passage, le même jour ;
+les huit dernières viennent des captures).
 
 ## Ce qui reste à faire sur ce manuel
 
