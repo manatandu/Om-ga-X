@@ -1741,6 +1741,16 @@ export class EcritureService {
   }
 
   /**
+   * Les modules qui tiennent AU MOINS UNE de ces écritures · la même liste que
+   * `detenteursDeLEcriture`, lue en une fois sur un lot (ligne sage-l4,
+   * fonction n° 68, qui cherche par moitiés lesquelles d'une page sont tenues).
+   */
+  async detenteursDesEcritures(tenantId: string, ecritureIds: string[]): Promise<DetenteurEcriture[]> {
+    return ecritureIds.length === 0 ? [] : this.detenteursDe(tenantId, ecritureIds);
+  }
+
+
+  /**
    * Le refus nommé · `geste` dit ce qui est refusé (« se supprime », « se
    * modifie », « se réimpute », « se corrige »), et le message renvoie au
    * module, seul à savoir défaire ou reprendre son opération.
@@ -2174,7 +2184,7 @@ export class EcritureService {
           include: {
             exercice: true,
             journal: true,
-            immobilisationAcquisition: { select: { id: true } },
+            immobilisationsAcquisition: { select: { id: true }, take: 1 },
             immobilisationSortie: { select: { id: true } },
             dotationAmortissement: { select: { id: true } },
           },
@@ -2202,7 +2212,7 @@ export class EcritureService {
             exerciceClos: l.ecriture.exercice.statut === StatutExercice.CLOTURE,
             estGenereeParCloture: l.ecriture.estGenereeParCloture,
             tenueParImmobilisation: !!(
-              l.ecriture.immobilisationAcquisition ||
+              l.ecriture.immobilisationsAcquisition.length > 0 ||
               l.ecriture.immobilisationSortie ||
               l.ecriture.dotationAmortissement
             ),
@@ -2429,7 +2439,7 @@ export class EcritureService {
         journal: true,
         exercice: true,
         correction: { select: { id: true, numeroPiece: true } },
-        immobilisationAcquisition: { select: { id: true, designation: true } },
+        immobilisationsAcquisition: { select: { id: true, designation: true, ligneAcquisitionId: true }, take: 1 },
         immobilisationSortie: { select: { id: true, designation: true } },
         dotationAmortissement: { select: { id: true } },
       },
@@ -2613,7 +2623,7 @@ export class EcritureService {
     correction: { numeroPiece: number | null } | null;
     exercice: { statut: StatutExercice };
     lignes: { lettre: string | null; lettrageId: string | null; rapprochementId: string | null }[];
-    immobilisationAcquisition: { designation: string } | null;
+    immobilisationsAcquisition: { designation: string; ligneAcquisitionId: string | null }[];
     immobilisationSortie: { designation: string } | null;
     dotationAmortissement: { id: string } | null;
   }) {
@@ -2665,10 +2675,21 @@ export class EcritureService {
           "aux capitaux propres d'ouverture (fenêtre Exercices).",
       );
     }
-    if (e.immobilisationAcquisition || e.immobilisationSortie) {
-      const immo = e.immobilisationAcquisition ?? e.immobilisationSortie!;
+    const acquisition = e.immobilisationsAcquisition[0] ?? null;
+    // Une fiche NÉE de cette écriture déjà passée (fonction n° 68) ne l'a pas
+    // écrite · l'issue est de la retirer, de corriger, puis de la recréer
+    // depuis la ligne exacte.
+    if (acquisition?.ligneAcquisitionId) {
       throw new BadRequestException(
-        `Cette écriture porte ${e.immobilisationAcquisition ? "l'acquisition" : 'la sortie'} de l'immobilisation ` +
+        `La fiche d'immobilisation « ${acquisition.designation} » est née de cette écriture. Retirez d'abord la fiche ` +
+          "(Structure > Immobilisations, onglet Général · l'écriture reste au journal), corrigez l'écriture, puis " +
+          'recréez la fiche depuis la ligne exacte (« Créer depuis les écritures »).',
+      );
+    }
+    if (acquisition || e.immobilisationSortie) {
+      const immo = acquisition ?? e.immobilisationSortie!;
+      throw new BadRequestException(
+        `Cette écriture porte ${acquisition ? "l'acquisition" : 'la sortie'} de l'immobilisation ` +
           `« ${immo.designation} ». La corriger seule laisserait la fiche d'immobilisation et son plan ` +
           "d'amortissement en place, désormais sans écriture exacte en face : passez par le module Immobilisations.",
       );

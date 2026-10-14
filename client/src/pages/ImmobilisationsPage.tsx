@@ -16,6 +16,7 @@ import { ChampReglePar } from '../components/ChampReglePar';
 import { BasculeDureeLimitee } from '../components/BasculeDureeLimitee';
 import { RevisionPlanAmortissement } from '../components/RevisionPlanAmortissement';
 import { FicheImmobilisation } from '../components/FicheImmobilisation';
+import { CreationDepuisEcritures } from '../components/CreationDepuisEcritures';
 import type { PropositionDuplication } from '../components/FicheImmobilisationGeneral';
 import { CoutsEmpruntIncorpores } from '../components/CoutsEmpruntIncorpores';
 import { AcquisitionPrixAleatoire, SoldeDetteAleatoire } from '../components/AcquisitionPrixAleatoire';
@@ -193,6 +194,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [lieux, setLieux] = useState<LieuBien[]>([]);
   const [iLieuId, setILieuId] = useState('');
   const [afficherFormImmo, setAfficherFormImmo] = useState(false);
+  // Ligne sage-l4, n° 68 · la fenêtre « Créer depuis les écritures ».
+  const [creationDepuisEcritures, setCreationDepuisEcritures] = useState(false);
 
   const [sortieOuvertePour, setSortieOuvertePour] = useState<string | null>(null);
   const [echangeOuvertPour, setEchangeOuvertPour] = useState<string | null>(null);
@@ -1019,7 +1022,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
 
       <div role="tabpanel" hidden={onglet !== 'biens'}>
         {peutEcrire && (
-          <div className="flex items-center justify-end mb-1.5 max-w-[1100px]">
+          <div className="flex items-center justify-end gap-2 mb-1.5 max-w-[1100px]">
             {/* Les immobilisations s'ouvrent aussi au comptable ; les lieux,
                 réservés à l'administrateur, ont leur onglet. La famille n'est
                 plus saisie · elle suit le compte du bien (compte-du-bien.ts,
@@ -1029,7 +1032,28 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                 Nouvelle immobilisation
               </button>
             )}
+            {/* Ligne sage-l4, n° 68 · à gauche du bouton principal (`order-first`). */}
+            {!afficherFormImmo && (
+              <button
+                type="button"
+                onClick={() => setCreationDepuisEcritures(true)}
+                className="order-first px-3 py-[3px] border border-border-dark rounded-[3px] text-[11.5px] hover:bg-surface-alt"
+              >
+                Créer depuis les écritures
+              </button>
+            )}
           </div>
+        )}
+        {peutEcrire && creationDepuisEcritures && (
+          <CreationDepuisEcritures
+            syscohada={syscohada}
+            unitesServies={unitesServies}
+            onFermer={() => setCreationDepuisEcritures(false)}
+            onFait={(message) => {
+              setInfo(message);
+              void charger();
+            }}
+          />
         )}
         {reconstitution && (
           <div className="border border-border bg-surface px-3.5 py-2.5 mb-3 max-w-[1100px] text-[11.5px]">

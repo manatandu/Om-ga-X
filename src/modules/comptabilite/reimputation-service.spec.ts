@@ -29,7 +29,7 @@ function ligne(id: string, statut: StatutEcriture, extra: Record<string, unknown
       reference: 'FA-1',
       estGenereeParCloture: false,
       exercice: { statut: StatutExercice.OUVERT, dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') },
-      immobilisationAcquisition: null,
+      immobilisationsAcquisition: [],
       immobilisationSortie: null,
       dotationAmortissement: null,
     },

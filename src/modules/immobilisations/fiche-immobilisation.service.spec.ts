@@ -12,7 +12,7 @@ import { FicheImmobilisationService } from './fiche-immobilisation.service';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 
-function fabrique(options: { statut?: 'BROUILLARD' | 'VALIDEE'; repris?: boolean; usages?: Record<string, number> } = {}) {
+function fabrique(options: { statut?: 'BROUILLARD' | 'VALIDEE'; repris?: boolean; usages?: Record<string, number>; nee?: boolean } = {}) {
   const statut = options.statut ?? 'BROUILLARD';
   const fiche = {
     id: ID,
@@ -35,6 +35,7 @@ function fabrique(options: { statut?: 'BROUILLARD' | 'VALIDEE'; repris?: boolean
     amortissementAnterieur: 0,
     statut: 'EN_SERVICE',
     ecritureAcquisitionId: options.repris ? null : 'ecr-acq',
+    ligneAcquisitionId: options.nee ? 'l-2451' : null,
     ecritureMiseEnServiceId: null,
     ecritureSortieId: null,
     ecritureProduitCessionId: null,
@@ -200,5 +201,30 @@ describe('la suppression d’une fiche', () => {
   it('refuse une fiche dont l’écriture est validée, ou qu’un usage retient', async () => {
     await expect(fabrique({ statut: 'VALIDEE' }).service.supprimer('t-1', ID)).rejects.toThrow(/se sort/);
     await expect(fabrique({ usages: { ficheInventaire: 2 } }).service.supprimer('t-1', ID)).rejects.toThrow(/fiches d'inventaire \(2\)/);
+  });
+});
+
+describe('la fiche née d’une écriture déjà passée (fonction n° 68)', () => {
+  it('se retire seule · l’écriture validée du journal n’est jamais touchée', async () => {
+    const { service, prisma } = fabrique({ statut: 'VALIDEE', nee: true });
+    await expect(service.supprimer('t-1', ID)).resolves.toEqual({ supprime: true });
+    expect(prisma.immobilisation.deleteMany).toHaveBeenCalledWith({ where: { id: ID, tenantId: 't-1' } });
+    expect(prisma.ecriture.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.ligneEcriture.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('refuse un champ à effet en nommant l’origine · rien n’est écrit', async () => {
+    const { service, prisma, ecritures } = fabrique({ statut: 'VALIDEE', nee: true });
+    await expect(service.modifier('t-1', 'u-1', ID, { dureeAmortissementAns: 5 })).rejects.toThrow(/née d’une écriture déjà passée/);
+    expect(prisma.immobilisation.update).not.toHaveBeenCalled();
+    expect(ecritures.creer).not.toHaveBeenCalled();
+  });
+
+  it('dit son origine à l’écran', async () => {
+    const { service } = fabrique({ statut: 'VALIDEE', nee: true });
+    const etat = await service.etat('t-1', ID);
+    expect(etat.neeDUneEcriturePassee).toBe(true);
+    expect(etat.suppression.ouverte).toBe(true);
+    expect(etat.modificationAEffet.ouverte).toBe(false);
   });
 });

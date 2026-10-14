@@ -96,7 +96,9 @@ test('SYSCOHADA · la fiche se modifie au brouillard, se duplique, se supprime, 
   });
   expect(await balance2451()).toBe(20_000_000);
   await page.reload();
-  await page.getByRole('button', { name: 'Fiche', exact: true }).nth(1).click();
+  // La ligne du bien par sa désignation · deux biens acquis le même jour
+  // n'ont pas d'ordre garanti dans la liste (tri par date d'acquisition).
+  await page.getByText('Camion G e2e', { exact: true }).locator('xpath=..').getByRole('button', { name: 'Fiche', exact: true }).click();
   const ficheG = page.getByRole('dialog', { name: 'Fiche · Camion G e2e' });
   await ficheG.getByRole('button', { name: 'Supprimer la fiche' }).click();
   await ficheG.getByRole('button', { name: 'Confirmer la suppression' }).click();

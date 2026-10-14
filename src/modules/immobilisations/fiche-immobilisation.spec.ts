@@ -21,6 +21,7 @@ const vierge: EtatDeLaFiche = {
   acquisition: { validee: false, numeroPiece: 4, nombreLignes: 2, exerciceClos: false },
   motifLignesTenues: null,
   origineParticuliere: null,
+  neeDUneEcriturePassee: false,
   usages: [],
   annulationsRetenant: 0,
 };
@@ -100,5 +101,39 @@ describe('la duplication', () => {
     expect(p).not.toHaveProperty('numeroInventaire');
     expect(p).not.toHaveProperty('compteContrepartieId');
     expect(p.valeurOrigine).toBe(12_000_000);
+  });
+});
+
+describe('la fiche née d’une écriture déjà passée (fonction n° 68)', () => {
+  // L'écriture est VALIDÉE (la création l'exige) · elle n'est pas celle du
+  // module. Lue comme une acquisition du module, la fiche ne se retirerait
+  // jamais, et un mauvais choix de ligne enfermerait le bien.
+  const nee: EtatDeLaFiche = {
+    ...vierge,
+    acquisition: { ...vierge.acquisition!, validee: true, nombreLignes: 3 },
+    origineParticuliere: "d'une écriture déjà passée au journal",
+    neeDUneEcriturePassee: true,
+    motifLignesTenues: 'Une ligne de l’écriture est lettrée.',
+  };
+
+  it('se retire sans usage, l’écriture validée et lettrée restant au journal', () => {
+    expect(motifRefusSuppression(nee)).toBeNull();
+  });
+
+  it('ne se retire plus quand son écriture est dans un exercice clôturé, ni sous un usage', () => {
+    expect(motifRefusSuppression({ ...nee, acquisition: { ...nee.acquisition!, exerciceClos: true } })).toMatch(/exercice clôturé/);
+    expect(motifRefusSuppression({ ...nee, usages: [{ modele: 'DotationAmortissement', champ: 'immobilisationId', nombre: 1 }] })).toMatch(
+      /dotations \(1\)/,
+    );
+    expect(motifRefusSuppression({ ...nee, autresEcritures: ["l'écriture de sortie"] })).toMatch(/sortie/);
+  });
+
+  it('ne retouche ni valeur, ni compte, ni date · l’issue dépend de ce qui l’a lue', () => {
+    const libre = motifRefusModificationAEffet(nee);
+    expect(libre).toMatch(/née d’une écriture déjà passée au journal \(pièce n° 4\)/);
+    expect(libre).toMatch(/recréez-la depuis la même ligne/);
+    const lue = motifRefusModificationAEffet({ ...nee, usages: [{ modele: 'DotationAmortissement', champ: 'immobilisationId', nombre: 1 }] });
+    expect(lue).toMatch(/révision du plan/);
+    expect(lue).not.toMatch(/recréez-la/);
   });
 });

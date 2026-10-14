@@ -570,6 +570,15 @@ export type InterneCreationFiche = {
   libelle?: string;
   /** Lot 8 · la modalité de ventilation d'un prix global, gardée pour les Notes annexes (art. 38). */
   modaliteVentilation?: string;
+  /**
+   * Ligne sage-l4, n° 68 · la fiche naît d'une ligne d'une écriture DÉJÀ
+   * PASSÉE et validée, vérifiée par `CreationDepuisEcrituresService` · aucune
+   * écriture n'est passée, la fiche retient celle-là. Le financement est
+   * celui que l'écriture porte · la liste fermée des contreparties ne juge
+   * que ce que le module passe lui-même (AUDCIF art. 22, 2° · une écriture
+   * validée ne se retouche pas).
+   */
+  ecritureExistante?: { ecritureId: string; ligneId: string };
   /** Lot 15 · acquisition à prix aléatoire, vérifiée par `acquerirAPrixAleatoire`. */
   acquisitionAleatoire?: {
     nature: NatureAcquisitionAleatoire;
@@ -2346,7 +2355,8 @@ export class ImmobilisationService {
     // le SMT et le lieu refusaient APRÈS l'écriture d'acquisition, qui
     // restait au journal sans bien pour la porter. Un bien repris n'en a
     // aucune (F32) · il est déjà au bilan d'ouverture.
-    const ecritureAcquisition = dto.repris
+    // Ligne sage-l4, n° 68 · née d'une écriture déjà passée, la fiche n'en passe aucune.
+    const ecritureAcquisition = dto.repris || interne.ecritureExistante
       ? null
       : await this.ecritureService.creer(tenantId, userId, {
           exerciceId: dto.exerciceId,
@@ -2392,7 +2402,8 @@ export class ImmobilisationService {
           unitesOeuvrePrevues: mode === ModeAmortissement.UNITES_DOEUVRE ? dto.unitesOeuvrePrevues : null,
           uniteOeuvreLibelle:
             mode === ModeAmortissement.UNITES_DOEUVRE ? (dto.uniteOeuvreLibelle?.trim() ?? null) : null,
-          ecritureAcquisitionId: ecritureAcquisition?.id ?? null,
+          ecritureAcquisitionId: interne.ecritureExistante?.ecritureId ?? ecritureAcquisition?.id ?? null,
+          ligneAcquisitionId: interne.ecritureExistante?.ligneId ?? null,
           createdBy: userId,
           // Rattachement au principal · null pour une structure. Le composant
           // garde son PROPRE plan d'amortissement, c'est tout l'objet du
@@ -2592,14 +2603,14 @@ export class ImmobilisationService {
             "acquis dans l'exercice n'a encore été amorti nulle part.",
         );
       }
-      if (interne.lignesCredit) {
+      if (interne.lignesCredit || interne.ecritureExistante) {
         if (!dto.journalId) throw new BadRequestException("Indiquez le journal de l'écriture d'entrée du bien.");
       } else if (!dto.compteContrepartieId || !dto.journalId) {
         throw new BadRequestException(
           "Indiquez le financement (compte de contrepartie) et le journal de l'écriture d'acquisition.",
         );
       }
-      if (!interne.lignesCredit) {
+      if (!interne.lignesCredit && !interne.ecritureExistante) {
         const compteContrepartie = await this.prisma.compte.findFirst({
           where: { id: dto.compteContrepartieId, tenantId },
         });

@@ -1889,7 +1889,9 @@ model Ecriture {
   // écriture donnée est SOIT une acquisition, SOIT une sortie d'au plus une
   // immobilisation (jamais les deux), d'où deux relations 1-1 distinctes
   // plutôt qu'une seule generic "écriture liée à une immobilisation".
-  immobilisationAcquisition    Immobilisation?             @relation("ImmoEcritureAcquisition")
+  // Ligne sage-l4, n° 68 · une écriture DÉJÀ PASSÉE peut porter plusieurs
+  // biens, un par ligne (facture de plusieurs biens), d'où la liste.
+  immobilisationsAcquisition   Immobilisation[]            @relation("ImmoEcritureAcquisition")
   immobilisationSortie         Immobilisation?             @relation("ImmoEcritureSortie")
   immobilisationProduitCession Immobilisation?             @relation("ImmoEcritureProduitCession")
   immobilisationMiseEnService  Immobilisation?             @relation("ImmoEcritureMiseEnService")
@@ -2111,6 +2113,8 @@ model LigneEcriture {
   // et la ligne de la facture qu'il paie.
   imputationsDuPaiement ImputationPaiement[] @relation("ImputationPaiementReglement")
   imputationsSurFacture ImputationPaiement[] @relation("ImputationPaiementFacture")
+  /// Ligne sage-l4, n° 68 · le bien né de cette ligne d'acquisition déjà passée.
+  immobilisationAcquise Immobilisation? @relation("ImmoLigneAcquisition")
 
   // Multidevise · `debit`/`credit` restent TOUJOURS exprimés dans la monnaie
   // de tenue du dossier, seule monnaie dans laquelle la comptabilité est
@@ -4481,8 +4485,18 @@ model Immobilisation {
   // porté par le bilan d'ouverture, et une écriture le doublerait (audit
   // final F32). RESTRICT déclaré · sur une relation facultative Prisma
   // poserait SET NULL, et l'écriture partirait sans que la fiche le dise.
-  ecritureAcquisitionId    String?   @unique
+  // PLUS UNIQUE depuis la ligne sage-l4 (n° 68) · une écriture déjà passée
+  // qui porte plusieurs biens fait naître une fiche par LIGNE, chacune
+  // retenant la même écriture ; l'écriture que le module passe, elle, reste
+  // à un bien (une pièce par fiche, comme avant).
+  ecritureAcquisitionId    String?
   ecritureAcquisition      Ecriture? @relation("ImmoEcritureAcquisition", fields: [ecritureAcquisitionId], references: [id], onDelete: Restrict)
+  /// Ligne sage-l4, n° 68 · la LIGNE d'une écriture déjà passée (validée)
+  /// dont la fiche est née · une ligne, un bien. Null pour une fiche dont le
+  /// module a passé l'écriture, ou repris. RESTRICT · la ligne validée est
+  /// indélébile (AUDCIF art. 22, 2°), et la fiche ne se dénoue jamais seule.
+  ligneAcquisitionId       String?        @unique
+  ligneAcquisition         LigneEcriture? @relation("ImmoLigneAcquisition", fields: [ligneAcquisitionId], references: [id], onDelete: Restrict)
   // Écriture de sortie (solde des comptes 2/28, VCN sur 81) · null tant que
   // le bien est EN_SERVICE.
   ecritureSortieId         String?   @unique
@@ -4629,6 +4643,7 @@ model Immobilisation {
   // AUDIT FINAL F261 · le registre, les dotations, les contrôles et
   // l'inventaire lisent les biens par le dossier, le plus souvent EN_SERVICE ·
   // l'index du principal ne porte pas le dossier.
+  @@index([ecritureAcquisitionId])
   @@index([tenantId, statut])
   @@map("immobilisations")
 }

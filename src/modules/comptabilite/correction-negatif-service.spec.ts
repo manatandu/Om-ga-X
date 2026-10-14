@@ -26,7 +26,7 @@ function service(surcharge: Record<string, unknown> = {}) {
     estGenereeParCloture: false,
     corrigeEcritureId: null,
     correction: null,
-    immobilisationAcquisition: null,
+    immobilisationsAcquisition: [],
     immobilisationSortie: null,
     dotationAmortissement: null,
     lignes: [

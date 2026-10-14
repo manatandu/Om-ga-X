@@ -12,6 +12,8 @@ import { Aide } from './chrome/Aide';
 interface EtatFiche {
   valeurs: ValeursFiche;
   acquisition: { numeroPiece: number | null; statut: string; journalId: string } | null;
+  /** Née d'une écriture déjà passée au journal (fonction n° 68) · l'écriture n'est pas la sienne. */
+  neeDUneEcriturePassee?: boolean;
   modificationAEffet: { ouverte: boolean; motif: string | null };
   suppression: { ouverte: boolean; motif: string | null };
 }
@@ -160,7 +162,11 @@ export function FicheImmobilisationGeneral({
     setErreur(null);
     try {
       await api.delete(`/immobilisations/${bien.id}`);
-      onSupprime(`Fiche « ${bien.designation} » supprimée${etat?.acquisition ? ', avec son écriture d’acquisition du brouillard' : ''}.`);
+      onSupprime(
+        etat?.neeDUneEcriturePassee
+          ? `Fiche « ${bien.designation} » retirée · son écriture reste au journal, et sa ligne revient à « Créer depuis les écritures ».`
+          : `Fiche « ${bien.designation} » supprimée${etat?.acquisition ? ', avec son écriture d’acquisition du brouillard' : ''}.`,
+      );
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'La suppression a échoué');
       setConfirmerSuppression(false);
@@ -181,13 +187,14 @@ export function FicheImmobilisationGeneral({
         Fiche du bien
         <Aide
           titre="Modifier la fiche"
-          texte="La désignation, le numéro d'inventaire et la nature se modifient à tout moment. Valeur, compte, dates et plan fondent l'écriture d'acquisition et les dotations · ils se modifient tant qu'aucune écriture du bien n'est validée et qu'aucun traitement ne les a lus, et l'écriture d'acquisition du brouillard est alors remplacée. Ensuite, le compte se change par un reclassement, la durée et le mode par une révision du plan. La fiche se supprime tant qu'aucune écriture n'est retenue."
+          texte="La désignation, le numéro d'inventaire et la nature se modifient à tout moment. Valeur, compte, dates et plan fondent l'écriture d'acquisition et les dotations · ils se modifient tant qu'aucune écriture du bien n'est validée et qu'aucun traitement ne les a lus, et l'écriture d'acquisition du brouillard est alors remplacée. Ensuite, le compte se change par un reclassement, la durée et le mode par une révision du plan. La fiche se supprime tant qu'aucune écriture n'est retenue. Née d'une écriture déjà passée, elle se retire tant qu'aucun traitement ne l'a lue · l'écriture reste au journal et sa ligne revient à « Créer depuis les écritures »."
           source="AUDCIF, art. 20 et 22"
         />
       </div>
       {etat.acquisition && (
         <div className="mb-2 text-text-dim">
-          Écriture d’acquisition · pièce n° {etat.acquisition.numeroPiece ?? '·'} · {etat.acquisition.statut === 'BROUILLARD' ? 'brouillard' : 'validée'}
+          {etat.neeDUneEcriturePassee ? 'Née de l’écriture déjà passée' : 'Écriture d’acquisition'} · pièce n°{' '}
+          {etat.acquisition.numeroPiece ?? '·'} · {etat.acquisition.statut === 'BROUILLARD' ? 'brouillard' : 'validée'}
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -231,7 +238,7 @@ export function FicheImmobilisationGeneral({
             ))}
           </select>
         </label>
-        {!v.repris && (
+        {!v.repris && !etat.neeDUneEcriturePassee && (
           <label className={etiquette}>
             Financement
             <select value={saisie.compteContrepartieId} disabled={effetFige} onChange={(e) => poser('compteContrepartieId', e.target.value)} className={champ}>
@@ -313,14 +320,14 @@ export function FicheImmobilisationGeneral({
               type="button"
               onClick={() => setConfirmerSuppression(true)}
               disabled={envoi || !etat.suppression.ouverte}
-              title={etat.suppression.motif ?? 'Supprimer la fiche'}
+              title={etat.suppression.motif ?? (etat.neeDUneEcriturePassee ? 'Retirer la fiche' : 'Supprimer la fiche')}
               className="px-3 py-[3px] border border-border-dark rounded-[3px] text-danger disabled:opacity-40"
             >
-              Supprimer la fiche
+              {etat.neeDUneEcriturePassee ? 'Retirer la fiche' : 'Supprimer la fiche'}
             </button>
           ) : (
             <button type="button" onClick={() => void supprimer()} disabled={envoi} className="px-3 py-[3px] rounded-[3px] bg-danger text-white font-semibold">
-              Confirmer la suppression
+              {etat.neeDUneEcriturePassee ? 'Confirmer le retrait' : 'Confirmer la suppression'}
             </button>
           )}
           <button type="submit" disabled={envoi} className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50">

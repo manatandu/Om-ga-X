@@ -90,6 +90,12 @@ export interface EtatDeLaFiche {
   motifLignesTenues: string | null;
   /** Une opération qui a fait naître la fiche et que la modification ne sait pas rejouer. */
   origineParticuliere: string | null;
+  /**
+   * La fiche est née d'une ligne d'une écriture DÉJÀ PASSÉE au journal
+   * (fonction n° 68, `ligneAcquisitionId`) · l'écriture n'est pas celle du
+   * module, la fiche la retient sans l'avoir écrite.
+   */
+  neeDUneEcriturePassee: boolean;
   /** Usages du bien hors annulations de traitements. */
   usages: UsageDuBien[];
   /** Annulations de traitements dont une écriture reste retenue (inscrite en négatif). */
@@ -108,6 +114,21 @@ export function motifRefusModificationAEffet(e: EtatDeLaFiche): string | null {
     return (
       `La fiche porte déjà ${e.autresEcritures.join(', ')} · valeur, compte, dates et plan ne se modifient plus depuis la ` +
       'fiche (AUDCIF art. 22, 2°). Le compte se change par un reclassement, la durée et le mode par une révision du plan.'
+    );
+  }
+  if (e.neeDUneEcriturePassee) {
+    // La valeur, le compte et la date sont ceux de la LIGNE · la fiche n'a
+    // rien écrit et ne réécrit rien (AUDCIF art. 22, 2°). Avant tout usage,
+    // la voie la plus courte est de la retirer et de la recréer depuis la
+    // même ligne, que le retrait rend à la liste.
+    const issue =
+      e.usages.length > 0 || e.annulationsRetenant > 0 || e.acquisition?.exerciceClos
+        ? 'La durée et le mode se changent par une révision du plan, le compte par un reclassement.'
+        : 'Pour un autre plan, retirez la fiche (l’écriture reste au journal) et recréez-la depuis la même ligne ; ' +
+          'une mise en service différée se pose par « Mettre en service ».';
+    return (
+      `La fiche est née d’une écriture déjà passée au journal (pièce n° ${e.acquisition?.numeroPiece ?? '·'}) · valeur, compte ` +
+      `et date d’acquisition sont ceux de sa ligne, la fiche ne les retouche pas. ${issue}`
     );
   }
   if (e.acquisition?.validee) {
@@ -139,7 +160,18 @@ export function motifRefusSuppression(e: EtatDeLaFiche): string | null {
   if (e.autresEcritures.length > 0) {
     return `La fiche porte ${e.autresEcritures.join(', ')} · elle ne se supprime plus (AUDCIF art. 22, 2°).`;
   }
-  if (e.acquisition?.validee) {
+  // UNE FICHE NÉE D'UNE ÉCRITURE DÉJÀ PASSÉE SE RETIRE (fonction n° 68,
+  // lecture de la décision D7) · l'écriture n'est pas la sienne, elle était
+  // au journal avant elle et y reste intacte ; le retrait défait le seul lien
+  // et rend la ligne à la liste « Créer depuis les écritures ». Le lettrage
+  // ou le pointage de cette écriture ne la regarde donc pas. Ce qui la
+  // retient reste ce qui retient toute fiche · une écriture du module, un
+  // usage, un exercice clôturé.
+  if (e.neeDUneEcriturePassee) {
+    if (e.acquisition?.exerciceClos) {
+      return 'L’écriture dont la fiche est née est dans un exercice clôturé · le bien figure à ses états, la fiche ne se retire plus.';
+    }
+  } else if (e.acquisition?.validee) {
     return (
       `L’écriture d’acquisition (pièce n° ${e.acquisition.numeroPiece ?? '·'}) est validée · la fiche ne se supprime plus ` +
       '(AUDCIF art. 22, 2°). Un bien qui n’existe plus se sort (mise au rebut, destruction, vol).'
@@ -155,7 +187,7 @@ export function motifRefusSuppression(e: EtatDeLaFiche): string | null {
       'les retient ne se supprime pas (AUDCIF art. 22, 2°).'
     );
   }
-  if (e.motifLignesTenues) return e.motifLignesTenues;
+  if (e.motifLignesTenues && !e.neeDUneEcriturePassee) return e.motifLignesTenues;
   return null;
 }
 

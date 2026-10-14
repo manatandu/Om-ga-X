@@ -51,7 +51,7 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
       findFirst: jest.fn().mockResolvedValue({
         id: 'e1', statut, exercice: EXERCICE, exerciceId: 'ex', tenantId: 't1', lignes: [], journalId: 'j1',
         journal: { id: 'j1', code: 'OD' }, date: new Date('2026-03-04'), libelle: 'Pièce', correction: null,
-        corrigeEcritureId: null, estGenereeParCloture: false, immobilisationAcquisition: null,
+        corrigeEcritureId: null, estGenereeParCloture: false, immobilisationsAcquisition: [],
         immobilisationSortie: null, dotationAmortissement: null,
       }),
       delete: jest.fn().mockResolvedValue({}),
@@ -69,7 +69,7 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
           ecriture: {
             id: 'e1', statut, exerciceId: 'ex', journalId: 'j1', date: new Date('2026-03-04'),
             estGenereeParCloture: false, exercice: EXERCICE, journal: { code: 'OD' },
-            immobilisationAcquisition: null, immobilisationSortie: null, dotationAmortissement: null,
+            immobilisationsAcquisition: [], immobilisationSortie: null, dotationAmortissement: null,
           },
         },
       ]),

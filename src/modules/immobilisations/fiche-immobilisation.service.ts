@@ -61,6 +61,7 @@ export class FicheImmobilisationService {
         amortissementAnterieur: n(f.amortissementAnterieur),
         repris: !f.ecritureAcquisitionId,
       },
+      neeDUneEcriturePassee: lu.etat.neeDUneEcriturePassee,
       acquisition: lu.acquisition
         ? { numeroPiece: lu.acquisition.numeroPiece, statut: lu.acquisition.statut, journalId: lu.acquisition.journalId }
         : null,
@@ -222,7 +223,9 @@ export class FicheImmobilisationService {
       });
       const r = await tx.immobilisation.deleteMany({ where: { id, tenantId } });
       if (r.count !== 1) throw new ConflictException('La fiche a été retirée par un autre geste.');
-      if (lu.acquisition) {
+      // Née d'une écriture déjà passée (n° 68), la fiche part seule · l'écriture
+      // était au journal avant elle et y reste, sa ligne revient à la liste.
+      if (lu.acquisition && !lu.etat.neeDUneEcriturePassee) {
         await tx.ligneEcriture.deleteMany({ where: { ecritureId: lu.acquisition.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
         const e = await tx.ecriture.deleteMany({ where: { id: lu.acquisition.id, tenantId, statut: StatutEcriture.BROUILLARD } });
         if (e.count !== 1) {
@@ -286,7 +289,10 @@ export class FicheImmobilisationService {
       fiche.ecritureSoldeDetteAleatoireId ? 'le solde de la dette aléatoire' : null,
       fiche.ecritureSortieEcartReevaluationId ? "le transfert de l'écart de réévaluation" : null,
     ].filter((x): x is string => !!x);
-    const origineParticuliere = fiche.natureAcquisitionAleatoire
+    const neeDUneEcriturePassee = !!fiche.ligneAcquisitionId;
+    const origineParticuliere = neeDUneEcriturePassee
+      ? "d'une écriture déjà passée au journal"
+      : fiche.natureAcquisitionAleatoire
       ? "d'une acquisition à prix aléatoire (rente viagère ou redevances)"
       : fiche.modaliteVentilation
         ? "de la ventilation d'un prix global"
@@ -308,6 +314,7 @@ export class FicheImmobilisationService {
         ? motifLignesTenues(acquisition.lignes, "l'écriture d'acquisition", 'modifier ou supprimer la fiche')
         : null,
       origineParticuliere,
+      neeDUneEcriturePassee,
       usages,
       annulationsRetenant,
     };

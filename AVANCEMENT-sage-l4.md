@@ -71,9 +71,51 @@ n° 67, 66, 68, 73, 18.
   serveur, boutons Dupliquer, Supprimer la fiche, Enregistrer sous
   `peutEcrire`), corps limité aux champs CHANGÉS (`lib/fiche-immobilisation.ts`).
 
+### N° 68 · créer les biens depuis les écritures déjà passées (commit « Immobilisations · créer les biens depuis les écritures »)
+
+- `GET /immobilisations/ecritures-a-transformer` · les lignes au DÉBIT d'un
+  compte de bien (21 à 24, et 20 au SYCEBNL, `estCompteDeBien`), d'écritures
+  VALIDÉES d'un exercice OUVERT, hors clôture et hors à-nouveau provisoire,
+  qu'aucune fiche ne porte, les plus récentes d'abord, bornées à 200 avec
+  `total` et `tronque` ; chaque ligne dit ce qui la refuse
+  (`motifRefusLigneACreer`).
+- `POST /immobilisations/depuis-ecriture` (`@Roles` admin et comptable,
+  comme la création) · la fiche naît par `ImmobilisationService.creer`
+  (mêmes contrôles, `preparerFiche`), compte, valeur, date et journal lus sur
+  la ligne, AUCUNE écriture passée (`interne.ecritureExistante`) ; la fiche
+  RETIENT l'écriture (`ecritureAcquisitionId`, devenu non unique · une pièce
+  de plusieurs biens fait plusieurs fiches) et sa LIGNE
+  (`Immobilisation.ligneAcquisitionId`, unique, RESTRICT, migration
+  `20270174010000_biens_depuis_les_ecritures`). Désignation reprise du
+  libellé, mise en service jamais posée d'office (l'écran propose la date de
+  la pièce), réserve de propriété déduite d'une dette au 4816 de la pièce.
+- Refus nommés · ligne déjà rattachée (une ligne, un bien ; l'unicité
+  tranche une course en 409), brouillard, exercice clôturé ou à-nouveau
+  (renvoi au bien repris), crédit, compte hors des comptes de bien, en-cours
+  (2x9), écriture que le module a passée ou qu'un autre module tient, pièce
+  de PLUSIEURS biens qui crédite un FONDS (la reprise du fonds lit les lignes
+  de l'écriture d'acquisition et ne se répartirait pas · issue nommée,
+  corriger la pièce en une pièce par bien).
+- Avec le n° 66 · la fiche née d'une écriture déjà passée ne retouche ni
+  valeur, ni compte, ni date (motif avec l'issue · la retirer et la recréer
+  depuis la ligne tant que rien ne l'a lue, sinon révision du plan ou
+  reclassement) ; elle SE RETIRE sans toucher l'écriture, validée et même
+  lettrée, tant qu'aucun usage, aucune écriture du module et aucun exercice
+  clôturé ne la retient · la ligne revient à la liste.
+- La correction d'une écriture dont une fiche est née nomme l'issue
+  (retirer la fiche, corriger, recréer depuis la ligne exacte).
+- Écran · « Créer depuis les écritures » à côté de « Nouvelle
+  immobilisation » (`peutEcrire`), fenêtre en `PortailModale`
+  (`CreationDepuisEcritures.tsx`, `lib/creation-depuis-ecritures.ts`),
+  motif de chaque ligne refusée, formulaire désignation, inventaire, mise en
+  service, durée, mode ; la fiche dit « Née de l'écriture déjà passée » et
+  offre « Retirer la fiche ».
+- Le test navigateur du n° 66 visait le second bien par son rang · deux biens
+  acquis le même jour n'ont pas d'ordre garanti (tri par date
+  d'acquisition), il le vise désormais par sa désignation.
+
 ## Reste
 
-- N° 68 · créer les biens à partir des écritures déjà passées.
 - N° 73 · fusion, renumérotation, maintenance.
 - N° 18 · assistant de création d'un bien.
 
@@ -95,6 +137,17 @@ n° 67, 66, 68, 73, 18.
   la suppression (art. 22, 2°). Rôles · ceux de la création (administrateur,
   comptable).
 
+- N° 68 · une ligne, une fiche (décision de la ligne) · `ligneAcquisitionId`
+  porte UNE ligne ; un bien dont le coût est réparti sur plusieurs lignes du
+  même compte se corrige d'abord au journal (AUDCIF art. 20, al. 2), dit dans
+  l'aide. Lecture de D7 pour la fiche née d'une écriture déjà passée · D7
+  interdit la suppression d'une fiche qui retient une écriture parce que
+  l'écriture lui DOIT son existence ; ici elle était au journal avant la
+  fiche et y reste intacte, le retrait ne défait que le lien (rien n'est
+  écrit ni retiré du livre-journal, art. 22, 2°). Sans ce retrait, une ligne
+  choisie par erreur enfermait le bien. Un exercice clôturé, un usage ou une
+  écriture du module le refusent comme pour toute fiche.
+
 ## Questions pour Manasse
 
 - Aucune pour la n° 67 · le corpus tranche.
@@ -104,6 +157,11 @@ n° 67, 66, 68, 73, 18.
   d'acquisition inscrite en négatif puis exacte, AUDCIF art. 20, al. 2, tant
   qu'aucun traitement n'a lu la fiche) ? Aujourd'hui, la fiche le dit et rien
   n'est corrigé.
+
+- N° 68 · lecture de D7 à confirmer · la fiche née d'une écriture déjà
+  passée se RETIRE (l'écriture reste au journal), alors que D7 dit
+  « suppression seulement sans écriture retenue ». Retenue, mais pas écrite
+  par elle · voir les décisions.
 
 ## Relevés hors de la ligne
 
@@ -135,6 +193,23 @@ n° 67, 66, 68, 73, 18.
   repris de N+1 modifié avant dotation (dotation 2 000 000 sur le cumul
   modifié), 2451 de N+1 = 24 000 000.
 
+- `scenario-68.mjs` (SYSCOHADA, N 2026 puis N+1 2027) · trois pièces
+  passées à la main (E1 camion 12 000 000 et ordinateurs 3 000 000 contre le
+  4812, E2 remorque au brouillard, E3 deux biens contre le 1411), liste
+  (E2 absente, E3 refusée « plusieurs biens et un fonds »), deux fiches nées
+  de E1 sans écriture (nombre de pièces et 2451 à 15 000 000 inchangés),
+  second geste sur la même ligne refusé, correction de E1 refusée avec
+  l'issue, valeur figée et désignation libre, retrait des ordinateurs (E1
+  intacte, la ligne revient), dotation de N 2 250 000 (9/12), fiche lue
+  refusée au retrait, contrôles 15, 15 bis et réévaluation muets, clôture,
+  ligne de N refusée (bien repris), dotation de N+1 3 000 000, 2451 de N+1 =
+  14 000 000, 2845 = 5 250 000 créditeur.
+- `scenario-68-fonds.mjs` (SYCEBNL) · ordinateurs reçus d'un organisme
+  international (D 2442 / C 1417 3 000 000), fiche née de la ligne, dotation
+  1 000 000, reprise du 14 proposée et passée à 1 000 000 en N puis en N+1
+  (la subvention lue sur l'écriture dont la fiche est née), 1417 à
+  1 000 000 créditeur et 2442 à 3 000 000 en N+1.
+
 ## Bloc § 3
 
 - N° 67 · serveur `tsc` 0 erreur, `nest build` vert ; jest ciblé sur l'arbre
@@ -157,6 +232,17 @@ n° 67, 66, 68, 73, 18.
   de `immobilisations.e2e.ts` verts sous Chromium (la création scindée ne
   change rien sur vraie base).
 
+- N° 68 · serveur `tsc` 0 erreur, `nest build` vert, `prisma migrate diff`
+  sans écart ; jest ciblé sur l'arbre du commit (99 suites, 1856 tests ·
+  `src/modules/immobilisations`, les specs touchées de `comptabilite` et
+  `lettrage`, `cloisonnement`, `fonctions`, `audit`, `suppression`,
+  `exploitation`, `cadratins`, `ecritures-reservees`, `exercice-requis`,
+  `fichiers-sans-appelant`, `lecture-bornee`, et les specs de structure du
+  client) tout vert ; client `tsc` 0 erreur, vitest 255 fichiers et 2027
+  tests, `vite build` vert ; e2e
+  `sage-l4-depuis-ecritures`, `sage-l4-fiche`, `sage-l4-annulation` et les
+  29 parcours de `immobilisations.e2e.ts` verts sous Chromium.
+
 ## Commandes de vérification
 
 ```bash
@@ -165,7 +251,7 @@ for s in 1 2 3 4 5 6; do npx jest --shard=$s/6 --maxWorkers=1 --workerIdleMemory
 npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
 npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "$OMBRE" --exit-code
-cd e2e && npx playwright test tests/sage-l4-annulation.e2e.ts
+cd e2e && npx playwright test tests/sage-l4-annulation.e2e.ts tests/sage-l4-fiche.e2e.ts tests/sage-l4-depuis-ecritures.e2e.ts
 ```
 
 ## Pour CLAUDE.md
@@ -210,6 +296,24 @@ copie servie (`GET :id/duplication`) remplit le formulaire de création, rien
 n'est écrit avant la confirmation. L'écran n'envoie que les champs CHANGÉS
 (`lib/fiche-immobilisation.ts`).
 
+**Créer les biens depuis les écritures déjà passées (ligne sage-l4, n° 68).**
+AUDCIF art. 20, 22, 2° et 35 (`immobilisations/creation-depuis-ecritures.ts`,
+`CreationDepuisEcrituresService`) · la liste sert les lignes au débit d'un
+compte de bien (21 à 24, et 20 au SYCEBNL), VALIDÉES, d'un exercice ouvert,
+qu'aucune fiche ne porte, bornée avec `total` et `tronque`, chacune avec son
+refus. La fiche naît par `ImmobilisationService.creer` (mêmes contrôles),
+compte, valeur, date et journal lus sur la LIGNE, SANS ÉCRITURE NOUVELLE
+(une seconde doublerait le brut sur une balance bouclée) · elle retient
+l'écriture (`ecritureAcquisitionId`, non unique, une pièce de plusieurs
+biens fait plusieurs fiches) et sa ligne (`ligneAcquisitionId`, unique,
+RESTRICT). Une ligne, un bien ; refus · brouillard, exercice clôturé ou
+à-nouveau (bien repris), crédit, compte hors bien, en-cours, écriture du
+module ou tenue par un autre module, pièce de plusieurs biens qui crédite un
+FONDS (reprise non répartissable). Mise en service jamais posée d'office.
+Une telle fiche ne retouche ni valeur, ni compte, ni date, et SE RETIRE sans
+toucher l'écriture tant que rien ne la lit (lecture de D7) ; la correction de
+l'écriture nomme cette issue.
+
 ## Pour build-log.md
 
 - n° 67 · 2026-10-14 · fait · rien ne manque au périmètre ; plus dur que
@@ -220,3 +324,7 @@ n'est écrit avant la confirmation. L'écran n'envoie que les champs CHANGÉS
   d'acquisition déjà VALIDÉE (question posée) ; plus dur que prévu · ne
   réécrire aucun contrôle de la création, d'où la scission de `creer` en
   `preparerFiche`.
+- n° 68 · 2026-10-14 · fait · manque un bien réparti sur plusieurs lignes
+  (une ligne, une fiche · corriger la pièce) ; plus dur que prévu · le lien
+  d'acquisition était UNIQUE (une pièce, un bien), et la fiche née d'une
+  écriture déjà passée devait se retirer sans la toucher.
