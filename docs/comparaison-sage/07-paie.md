@@ -18,6 +18,18 @@ leur texte vient de l'outil de lecture de Drive, qui s'arrête en cours de
 route. Pour les lire en entier, il faut les découper en morceaux de moins
 de 10 Mo.
 
+Les captures d'écran de V8, CI et PÉD ont été lues ensuite en image, le
+14 octobre : 27 pages de V8, 81 de CI et 155 de PÉD, toutes celles qui en
+portent. Elles confirment les lignes ci-dessus, en précisent quatre (28, 58,
+59 et 61) et en ajoutent quatre (section « Vu sur les captures seulement »).
+Aucun nom, matricule ni numéro de personne n'en a été repris. Plusieurs
+captures sont en partie illisibles (pages du PDF : V8 5 à 7, 13, 16, 20, 21,
+23 à 25 ; CI 4, 11 ; PÉD 58, 125, 128, 137) ; rien n'est tiré de ce qui ne
+s'y lit pas. Dans les tableaux, les pages de V8 et de CI restent les pages
+imprimées, qui suivent d'une unité celles du PDF. Les
+captures de RÉF et de LIV n'ont pas été lues : comme leur texte, elles
+demandent le PDF entier, que le connecteur Drive ne livre pas.
+
 Trois documents sont français (PÉD, RÉF) ou ivoiriens (CI, LIV), un est de
 2017 sans pays dit (V8, qui cite la CNSS et l'IPTS). Leurs taux, barèmes et
 déclarations (CSG, DUCS, DADS-U, IGR, contribution nationale) ne sont pas
@@ -73,7 +85,7 @@ aucune ligne n'est restée non vérifiée.
 | # | Fonction Sage | Pages | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
 | 27 | État civil et immatriculation | V8 6 ; PÉD 51, 52 ; RÉF 232 à 293 ; CI 54 à 62 | FIDÈLE | `Salarie` : nom, postnom, prénoms, sexe, naissance, nationalité, numéro CNSS, conjoint, selon l'art. 212 du Code du travail. |
-| 28 | Coordonnées : adresses, banques, mode de paiement | V8 6 ; PÉD 52, 53 | ABSENT | |
+| 28 | Coordonnées : adresses, banques, mode de paiement | V8 6 ; PÉD 52, 53 | ABSENT | Les captures (V8 p. 6 ; CI p. 58 ; PÉD p. 53, 125) montrent deux banques par salarié, la répartition du net entre elles, la banque payeuse de l'établissement et le mode de paiement (virement, chèque, espèces). La fiche `Salarie` n'a ni banque ni mode de paiement. |
 | 29 | Contrat, entrée, sortie, ancienneté calculée | V8 7 ; PÉD 53 à 55 | PARTIEL | Contrat aux quinze énonciations de l'art. 212, avec ses requalifications (`ContratTravail`). L'ancienneté n'est pas calculée. |
 | 30 | Poste : emploi, statut, classification | V8 8 ; PÉD 53 à 55 | PARTIEL | Nature du travail, catégorie et classe sur le contrat. |
 | 31 | Page Paie : bulletin modèle, salaire de base, horaire | V8 9 ; PÉD 55 à 57 | PARTIEL | Rémunération de base, périodicité et monnaie sur le contrat ; le bulletin modèle se choisit au bulletin. Pas d'horaire. |
@@ -118,15 +130,15 @@ aucune ligne n'est restée non vérifiée.
 
 | # | Fonction Sage | Pages | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
-| 58 | Acomptes et avances : saisie, ordre de paiement, génération dans la paie | RÉF 618 à 633 ; CI 75 à 77 ; PÉD 37 | PARTIEL | Avances et acomptes retenus aux bulletins (`AvanceSalaire`) ; le versement est une écriture de trésorerie du cabinet. Pas d'ordre de paiement. |
-| 59 | Prêts au personnel : tableau d'amortissement, déblocage des fonds, impact en paie | CI 67 à 69 ; RÉF 518, 636 | PARTIEL | Prêt au 272 avec retenue mensuelle et solde calculé sur les bulletins non annulés. Ni tableau d'amortissement ni déblocage. |
+| 58 | Acomptes et avances : saisie, ordre de paiement, génération dans la paie | RÉF 618 à 633 ; CI 75 à 77 ; PÉD 37 | PARTIEL | Avances et acomptes retenus aux bulletins (`AvanceSalaire`) ; le versement est une écriture de trésorerie du cabinet. Pas d'ordre de paiement. Les captures (CI p. 75 à 77) montrent l'acompte régulier ou exceptionnel, l'état des ordres de paiement avec la banque de chaque salarié, et la génération sur la rubrique d'avance. |
+| 59 | Prêts au personnel : tableau d'amortissement, déblocage des fonds, impact en paie | CI 67 à 69 ; RÉF 518, 636 | PARTIEL | Prêt au 272 avec retenue mensuelle et solde calculé sur les bulletins non annulés. Ni tableau d'amortissement ni déblocage. Les captures (CI p. 67 à 69) montrent aussi le type de prêt, le taux d'intérêt, les paliers et le mode de paiement du déblocage : le prêt d'OmegaX ne porte pas d'intérêt (`AvanceSalaire`). |
 | 60 | Paiement des salaires : ordres de paiement, virements, chèques, billetage | RÉF 676 à 687 ; V8 19 | ABSENT | Le net est porté au 422 ; son paiement se saisit en trésorerie. |
 
 ## Clôtures et passation comptable
 
 | # | Fonction Sage | Pages | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
-| 61 | Modélisation comptable : comptes, journaux, structure des pièces (part salariale, part patronale), sélection et montants par ligne | PÉD 108 à 115 ; RÉF 518 à 544 | DIFFÉRENT, VOULU | Comptes fixés par référentiel, compte par compte (`passation-paie.ts`), en trois temps : brut, retenues, charges patronales, puis impôts et taxes sur salaires. |
+| 61 | Modélisation comptable : comptes, journaux, structure des pièces (part salariale, part patronale), sélection et montants par ligne | PÉD 108 à 115 ; RÉF 518 à 544 | DIFFÉRENT, VOULU | Comptes fixés par référentiel, compte par compte (`passation-paie.ts`), en trois temps : brut, retenues, charges patronales, puis impôts et taxes sur salaires. Les captures (PÉD p. 39, 109 à 115) montrent un compte d'attente général et analytique : OmegaX n'en a pas, et refuse la passation si le solde du 422 n'est pas le net, sans ligne de bouclage. |
 | 62 | Passation comptable : journal de contrôle, fichier vers la comptabilité, simulation ou définitive | V8 21 ; PÉD 115 à 118 ; RÉF 757 à 763 | FIDÈLE | La paie du mois passe directement au journal, sans fichier, au brouillard, et se reprend en négatif après l'annulation d'un bulletin (`comptabilisation-paie.ts`). |
 | 63 | Ventilation analytique de la paie, pointages | RÉF 316, 525 à 533, 759 | ABSENT | |
 | 64 | Clôture mensuelle (forcée ou non), clôture intermédiaire, ouverture du mois, clôture annuelle | V8 20 à 22 ; PÉD 85 à 87, 119 ; RÉF 687 à 695 | DIFFÉRENT, VOULU | Aucune période de paie à clôturer : un bulletin émis est indélébile et s'annule avec son motif. |
@@ -146,10 +158,20 @@ aucune ligne n'est restée non vérifiée.
 | 73 | Sortie vers Excel et autres formats | RÉF 35, 37 | ABSENT | Aucun export du module Personnel. |
 | 74 | Calendrier, workflow (mise à jour, purge, consultation des événements) | RÉF 147, 633, 765 à 767 | ABSENT | |
 
+## Vu sur les captures seulement
+
+| # | Fonction Sage | Pages | OmegaX | Où, ou pourquoi |
+|---|---|---|---|---|
+| 75 | Installation avec clé d'authentification, enregistrement de la société, code d'accès ; identification à l'ouverture (mode d'authentification, monoposte) | PÉD 18 à 31 ; V8 3 ; CI 2 | DIFFÉRENT, VOULU | En ligne, rien à installer ; sur site, une licence en fichier signé (`src/modules/sur-site/`). Chaque utilisateur se connecte à son compte, double authentification offerte (CLAUDE.md, § 8). |
+| 76 | Compte auxiliaire individuel du salarié, sous le collectif 421, choisi sur sa fiche | PÉD 59, 60, 109 ; V8 11 | ABSENT | Le net va au 422 global. Le salarié n'a pas de compte individuel, et la panoplie des comptes de tiers ne le couvre pas encore (décision de Manasse du 2026-10-09). Voir M6-171. |
+| 77 | Assistant de préparation des bulletins : méthode du taux journalier ou horaire pour les absences (accident du travail, maladie, maternité), durée mensuelle, jours de congé acquis par mois, heures par jour | CI 8, 9 ; PÉD 45 | ABSENT | Ni absences ni acquisition mensuelle du congé (lignes 47 et 49). |
+| 78 | Modification de la valeur d'une rubrique au bulletin, avec rappel ou régularisation sur une période antérieure | V8 15 ; CI 54 | PARTIEL | Les éléments du bulletin se saisissent en montant, sous leur nature. Une erreur d'un mois passé ne se régularise pas au bulletin suivant : le bulletin émis s'annule et se réémet (P9). |
+
 ## Bilan du manuel
 
-74 fonctions relevées : 9 FIDÈLE, 14 DIFFÉRENT VOULU, 0 DIFFÉRENT À TRIER,
-26 PARTIEL, 25 ABSENT, 0 NON VÉRIFIÉ.
+78 fonctions relevées, dont quatre vues sur les captures seulement :
+9 FIDÈLE, 15 DIFFÉRENT VOULU, 0 DIFFÉRENT À TRIER, 27 PARTIEL, 27 ABSENT,
+0 NON VÉRIFIÉ.
 
 OmegaX calcule une paie congolaise juste et la passe au journal, mais il ne
 gère pas le temps de travail. Absences, heures supplémentaires par taux,
