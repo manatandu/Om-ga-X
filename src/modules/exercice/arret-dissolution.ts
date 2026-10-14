@@ -59,6 +59,12 @@ export const ACTES_QUI_SUIVENT_LEUR_ECRITURE: readonly ActeQuiSuitSonEcriture[] 
   // Sa seconde pièce, quand la perte récupère la TVA (point D) · même exercice
   // que la première, datées du même jour.
   { modele: 'mouvementCreanceDouteuse', libelle: 'perte d’une créance douteuse (seconde pièce)', colonne: 'ecriturePerteId', unicite: null },
+  // Ligne sage-l4 (relecture) · l'annulation d'un traitement d'immobilisation
+  // porte l'exercice de l'acte annulé, que DATE son écriture d'origine (validée,
+  // retenue, inscrite en négatif) · elle la suit. Une annulation sans écriture
+  // (retirée au brouillard) n'a rien qui la date · elle reste à l'exercice de
+  // l'acte, simple trace du journal d'audit.
+  { modele: 'annulationTraitementImmobilisation', libelle: 'annulation d’un traitement d’immobilisation', colonne: 'ecritureOrigineId', unicite: null },
 ];
 
 /**
@@ -126,8 +132,20 @@ export const ACTES_DE_LA_PERIODE: readonly ActeDeLaPeriode[] = [
     actif: { annuleeLe: null },
     issue: 'annulez-la (Devises, réévaluations, « Annuler »)',
   },
-  { modele: 'reevaluationBilan', libelle: 'réévaluation des immobilisations', colonne: 'ecritureId' },
-  { modele: 'repriseProvisionReevaluation', libelle: 'reprise de la provision spéciale de réévaluation', colonne: 'ecritureId' },
+  // Ligne sage-l4 (n° 67) · la réévaluation des immobilisations et la reprise
+  // de la provision spéciale s'annulent depuis la fiche d'un de leurs biens.
+  {
+    modele: 'reevaluationBilan',
+    libelle: 'réévaluation des immobilisations',
+    colonne: 'ecritureId',
+    issue: 'annulez-la (fiche d’un de ses biens, onglet Traitements, « Annuler »)',
+  },
+  {
+    modele: 'repriseProvisionReevaluation',
+    libelle: 'reprise de la provision spéciale de réévaluation',
+    colonne: 'ecritureId',
+    issue: 'annulez-la (fiche d’un de ses biens, onglet Traitements, « Annuler »)',
+  },
   {
     modele: 'constatImpotResultat',
     libelle: 'constat de l’impôt sur le résultat',
