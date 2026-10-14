@@ -3003,18 +3003,31 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
-          {selection && absencesDuMois && absencesDuMois.absences.length > 0 && (
+          {selection && absencesDuMois && (absencesDuMois.absences.length > 0 || absencesDuMois.conges.length > 0) && (
             <div className="border border-border px-3 py-2 mt-2">
               <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
-                Absences du mois
+                Absences et congés du mois
                 <Aide
-                  titre="Absences du mois"
-                  texte="Les absences déclarées dans l'onglet Absences qui touchent ce mois, en jours ouvrables. Pour un salaire au mois, le serveur propose le salaire des jours dus (vingt-six jours payés par mois, un jour non payé ou payé aux deux tiers retranchant 1/26) et l'indemnité d'incapacité, aux deux tiers du salaire et de la moyenne mensuelle des douze mois de commissions, primes, gratifications et participations. Les jours fériés d'une absence restent payés à plein. Reprendre au bulletin remplace le montant de la ligne de salaire et ajoute l'indemnité ; rien n'est posé tant que la proposition ne se chiffre pas. Les jours payés pour la sécurité sociale se saisissent à part."
-                  source="Code du travail, art. 59, 66, 93, 105, 106, 130 et 146 · décret n° 25/22, art. 7, par analogie"
+                  titre="Absences et congés du mois"
+                  texte="Les absences déclarées dans l'onglet Absences et les congés posés dans l'onglet Congés qui touchent ce mois, en jours ouvrables. Pour un salaire au mois, le serveur propose le salaire des jours dus (vingt-six jours payés par mois, un jour non payé, payé aux deux tiers ou payé par l'allocation de congé retranchant 1/26) et l'indemnité d'incapacité, aux deux tiers du salaire et de la moyenne mensuelle des douze mois de commissions, primes, gratifications et participations. Pendant le congé, l'allocation remplace le salaire, elle ne s'y ajoute pas · un congé à cheval sur deux mois retranche de chaque mois ses propres jours, quel que soit le bulletin qui porte l'allocation, et l'émission refuse un salaire plein avec des jours de congé dans le mois. Les jours fériés restent payés à plein. Reprendre au bulletin remplace le montant de la ligne de salaire et ajoute l'indemnité ; rien n'est posé tant que la proposition ne se chiffre pas. Les jours payés pour la sécurité sociale se saisissent à part."
+                  source="Code du travail, art. 59, 66, 93, 105, 106, 130, 142 et 146 · arrêté du 8 août 2008, mentions 6, 14, 17 et 28 · décret n° 25/22, art. 7, par analogie"
                 />
               </div>
               <table className="w-full">
                 <tbody>
+                  {absencesDuMois.conges.map((c) => (
+                    <tr key={c.id} className="border-t border-border/40">
+                      <td className="py-1 pr-2">
+                        Congé du {dateCourte(c.du)} au {dateCourte(c.au)}
+                      </td>
+                      <td className="py-1 pr-2 text-right">
+                        {c.joursDeConge === null ? `jusqu'à ${joursConge(c.ouvrablesDuMois)}` : joursConge(c.joursDeConge)} jour(s) de congé ce mois
+                      </td>
+                      <td className="py-1 text-right text-text-dim">
+                        {c.portePar !== null ? `Allocation au bulletin n° ${c.portePar}` : `Allocation au bulletin de ${c.moisDePaie}`}
+                      </td>
+                    </tr>
+                  ))}
                   {absencesDuMois.absences.map((a) => (
                     <tr key={a.id} className="border-t border-border/40">
                       <td className="py-1 pr-2">
@@ -3047,6 +3060,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                   <span>
                     Salaire des jours dus {fc(absencesDuMois.proposition.salaireDesJoursDus)} {absencesDuMois.devise ?? ''} ·{' '}
                     {absencesDuMois.proposition.joursPayesAPlein} jour(s) payé(s) à plein
+                    {absencesDuMois.proposition.joursDeConge > 0 ? ` · ${joursConge(absencesDuMois.proposition.joursDeConge)} jour(s) payé(s) par l'allocation de congé` : ''}
                     {absencesDuMois.proposition.joursDeuxTiers > 0 && absencesDuMois.proposition.indemniteDeuxTiers !== null
                       ? ` · indemnité d'incapacité ${fc(absencesDuMois.proposition.indemniteDeuxTiers)} ${absencesDuMois.devise ?? ''}`
                       : ''}
@@ -3084,8 +3098,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                 Allocations de congé du mois
                 <Aide
                   titre="Allocations de congé du mois"
-                  texte="Les congés posés dans l'onglet Congés dont l'allocation est rattachée à ce mois. Cochée, l'allocation entre au bulletin comme élément « Allocation ou indemnité de congé », au montant que le serveur rejoue (rémunération journalière et moyenne des douze mois, par jour de congé). Un congé déjà porté par un bulletin émis, ou dont l'allocation n'est pas chiffrée, ne se coche pas. L'émission lie le congé au bulletin ; annuler le bulletin le libère."
-                  source="Code du travail, art. 142 et 145"
+                  texte="Les congés posés dans l'onglet Congés dont l'allocation est rattachée à ce mois. Cochée, l'allocation entre au bulletin comme élément « Allocation ou indemnité de congé », au montant que le serveur rejoue (rémunération journalière et moyenne des douze mois, par jour de congé). Elle REMPLACE le salaire des jours de congé, elle ne s'y ajoute pas · reprenez le salaire des jours hors congé proposé dans « Absences et congés du mois » ; l'émission refuse un salaire plein avec des jours de congé dans le mois. Un congé déjà porté par un bulletin émis, ou dont l'allocation n'est pas chiffrée, ne se coche pas. L'émission lie le congé au bulletin ; annuler le bulletin le libère."
+                  source="Code du travail, art. 93, 142 et 145 · arrêté du 8 août 2008, mentions 6, 14 et 28"
                 />
               </div>
               <table className="w-full">

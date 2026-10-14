@@ -71,6 +71,8 @@ export interface PropositionDuMois {
   joursDeuxTiers: number;
   joursNonDus: number;
   joursNonTranches: number;
+  /** Jours du mois payés par l'allocation de congé, hors du salaire (art. 142). */
+  joursDeConge: number;
   joursPayesAPlein: number | null;
   salaireDesJoursDus: number | null;
   indemniteDeuxTiers: number | null;
@@ -85,7 +87,20 @@ export interface AbsencesDuMois {
   devise: string | null;
   salaireMensuel: number | null;
   absences: { id: string; nature: string; libelle: string; du: string; au: string; joursDuMois: number; regimes: RegimeRemuneration[] }[];
+  /** Les congés payés qui touchent le mois · leurs jours sortent du salaire (art. 142). */
+  conges: CongeDuMoisPaye[];
   proposition: PropositionDuMois;
+}
+
+export interface CongeDuMoisPaye {
+  id: string;
+  du: string;
+  au: string;
+  /** `null` · congé à cheval portant des jours de voyage, dont aucune date ne dit le mois. */
+  joursDeConge: number | null;
+  ouvrablesDuMois: number;
+  moisDePaie: string;
+  portePar: number | null;
 }
 
 /** Ce que l'employeur doit pour les jours de l'absence, tel que l'écran le dit. */

@@ -159,6 +159,8 @@ import {
   type AllocationPortee,
 } from './conges.service';
 import { heuresAPorter, type HeuresPortee } from './majorations-heures.service';
+import { motifRefusSalairePleinPendantLeConge } from './absences';
+import { congesPayesDuMois } from './absences-lecture';
 
 /**
  * LA SAISIE RELUE PAR LE SERVEUR · le DTO, plus ce que le serveur y ajoute et
@@ -1740,6 +1742,8 @@ export class PersonnelService {
     // retenues d'avance telles que le registre les donne, jamais telles que
     // le navigateur les a envoyées.
     const { dto: saisie } = await this.resoudreSaisie(tenantId, salarieId, dto);
+    const motifConge = await this.motifSalairePendantLeConge(tenantId, salarieId, contrat, dto.moisDePaie, saisie);
+    if (motifConge) throw new BadRequestException(`Bulletin non émis · ${motifConge}`);
     const simulation = await this.simulerPaie(tenantId, salarieId, saisie, maintenant);
     const motifs = motifsRefusEmission(simulation);
     if (motifs.length > 0) {
@@ -1760,6 +1764,33 @@ export class PersonnelService {
       calculEnPlus: {},
     });
     return this.lireBulletin(tenantId, cree.id);
+  }
+
+  /**
+   * B1 DE LA RELECTURE (premier tour) · LE SALAIRE PLEIN ET L'ALLOCATION DE
+   * CONGÉ POUR LES MÊMES JOURS. L'allocation de l'art. 142 remplace la
+   * rémunération pendant le congé · un bulletin qui paie le salaire mensuel
+   * entier d'un mois où des jours de congé sont payés par l'allocation (portée
+   * par lui ou par le bulletin du départ, art. 145) paie ces jours deux fois.
+   * Refus nommé, avec le salaire des jours hors congé (`absences.ts`). Rien
+   * n'est opposé hors d'un salaire au mois du contrat, dans la monnaie du
+   * bulletin · il n'y a alors rien de certain à comparer.
+   */
+  private async motifSalairePendantLeConge(
+    tenantId: string,
+    salarieId: string,
+    contrat: { remunerationBase: Prisma.Decimal | null; periodiciteRemuneration: string | null; deviseRemuneration: string | null },
+    mois: string,
+    saisie: SimulationPaieDto,
+  ): Promise<string | null> {
+    const devise = saisie.deviseStipulation ?? 'CDF';
+    if (contrat.periodiciteRemuneration !== 'MOIS' || contrat.remunerationBase === null || contrat.deviseRemuneration !== devise) return null;
+    const conges = await congesPayesDuMois(this.prisma, tenantId, salarieId, mois);
+    if (conges.length === 0) return null;
+    const salaire = saisie.elements
+      .filter((e) => e.nature === 'SALAIRE_OU_TRAITEMENT')
+      .reduce((n, e) => n + Number((devise === 'USD' ? e.montantUsd : e.montantFc) ?? 0), 0);
+    return motifRefusSalairePleinPendantLeConge({ mois, conges, salaireDuBulletin: salaire, salaireMensuel: Number(contrat.remunerationBase), devise });
   }
 
   /**
@@ -2086,6 +2117,13 @@ export class PersonnelService {
     // zéro · un plancher silencieux ferait un arriéré plus grand que la paie.
     const negatifs = motifsElementsNegatifs(saisie.elements);
     if (negatifs.length > 0) throw refusNomme('Décompte final non émis', negatifs);
+    // B1 · le salaire du mois de cessation ne paie pas les jours de congé que
+    // l'allocation a payés (art. 142), comme au bulletin du mois.
+    const motifConge = await this.motifSalairePendantLeConge(tenantId, salarieId, contrat, mois, saisie);
+    if (motifConge) {
+      if (!pourEmettre) return { etat: 'NON_CHIFFRE' as const, motifs: [motifConge] };
+      throw refusNomme('Décompte final non émis', [motifConge]);
+    }
     const elementsDuMois = saisie.elements.map((e) => ({
       nature: e.nature as NatureElementPaie,
       montantFc: e.montantFc,

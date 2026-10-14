@@ -13,8 +13,12 @@ import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
  * ouvrables ; son allocation (art. 142) est rejouée au serveur à 12 × 40 000
  * FC, la rémunération mensuelle ramenée au jour par 26 et une moyenne des
  * douze mois DÉCLARÉE nulle (sept bulletins seulement, la moyenne ne se
- * propose pas), puis portée par le bulletin d'août, qui la verse en plus du
- * salaire. Le congé porté ne s'annule pas ; le bulletin annulé le libère.
+ * propose pas), puis portée par le bulletin d'août. L'allocation REMPLACE le
+ * salaire des douze jours (art. 142 ; livre de paie, mentions 6, 14 et 28) ·
+ * le salaire plein avec l'allocation est refusé, le bulletin verse 560 000 de
+ * salaire des quatorze jours hors congé et 480 000 d'allocation, 1 040 000 en
+ * tout (relecture de la ligne, B1 · il en versait 1 520 000). Le congé porté
+ * ne s'annule pas ; le bulletin annulé le libère.
  */
 interface Periode { du: string; au: string; etat: string; moisAcquis: number; joursAcquis: number | null }
 interface Compteur { periodes: Periode[]; droitsNes: number | null; pris: number; solde: number | null; enCours: number | null }
@@ -117,12 +121,26 @@ test('SYSCOHADA · congés acquis par bulletin, posés à l’écran, portés au
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await page.setViewportSize({ width: 1440, height: 900 });
 
-  // Le bulletin d'août porte l'allocation rejouée · 1 040 000 + 480 000.
+  // L'allocation remplace le salaire des jours de congé · le salaire plein
+  // avec l'allocation se refuse, la proposition du mois retranche les douze
+  // jours (1 040 000 × 14 ÷ 26 = 560 000), et le bulletin verse 1 040 000.
   const [conge] = (await lire()).conges;
   expect(conge.allocation).toMatchObject({ jours: 12, montant: 480_000, devise: 'CDF' });
-  const aout = await appelApi<Bulletin>(page, 'POST', `/personnel/salaries/${salarie.id}/bulletins`, paie('2026-08', { allocationsConge: [{ congeId: conge.id }] }));
+  await expect(
+    appelApi(page, 'POST', `/personnel/salaries/${salarie.id}/bulletins`, paie('2026-08', { allocationsConge: [{ congeId: conge.id }] })),
+  ).rejects.toThrow(/art\. 142/);
+  const mois = await appelApi<{ proposition: { joursDeConge: number; joursPayesAPlein: number; salaireDesJoursDus: number } }>(
+    page,
+    'GET',
+    `/personnel/salaries/${salarie.id}/absences/mois/2026-08`,
+  );
+  expect(mois.proposition).toMatchObject({ joursDeConge: 12, joursPayesAPlein: 14, salaireDesJoursDus: 560_000 });
+  const aout = await appelApi<Bulletin>(page, 'POST', `/personnel/salaries/${salarie.id}/bulletins`, {
+    ...paie('2026-08', { allocationsConge: [{ congeId: conge.id }] }),
+    elements: [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire des jours hors congé', montantFc: mois.proposition.salaireDesJoursDus }],
+  });
   const { bulletins } = await appelApi<{ bulletins: Bulletin[] }>(page, 'GET', '/personnel/bulletins?mois=2026-08');
-  expect(bulletins.find((b) => b.id === aout.id)?.totalVerseFc).toBe(1_520_000);
+  expect(bulletins.find((b) => b.id === aout.id)?.totalVerseFc).toBe(1_040_000);
   const apres = await lire();
   const c1 = apres.compteur as Compteur;
   expect([c1.droitsNes, c1.pris, c1.solde]).toEqual([12, 12, 0]);

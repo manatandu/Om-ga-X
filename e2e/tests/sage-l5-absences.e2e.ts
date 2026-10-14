@@ -83,7 +83,7 @@ test('SYSCOHADA · absences déclarées à l’écran, proposition du mois repri
   await page.getByRole('button', { name: 'Simulation', exact: true }).click();
   await page.getByLabel('Mois de paie').fill('2026-08');
   await page.getByLabel('Salarié (facultatif)').selectOption({ label: 'MBALA Grace' });
-  await expect(page.getByText('Absences du mois')).toBeVisible();
+  await expect(page.getByText('Absences et congés du mois')).toBeVisible();
   await page.getByLabel('Moyenne mensuelle des douze mois').fill('0');
   await expect(page.getByText(/Salaire des jours dus 630\s000,00 CDF/)).toBeVisible();
   await page.getByRole('button', { name: 'Reprendre au bulletin' }).click();

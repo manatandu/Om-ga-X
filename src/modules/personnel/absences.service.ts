@@ -16,7 +16,7 @@ import {
   type AbsenceLue,
 } from './absences';
 import { plusMois } from './remuneration-du-delai';
-import { PLAFOND_ABSENCES_SALARIE, absencesDuSalarie } from './absences-lecture';
+import { PLAFOND_ABSENCES_SALARIE, absencesDuSalarie, congesPayesDuMois } from './absences-lecture';
 import { AbsenceSalarieDto, IndemniteCaisseDto } from './dto/absences.dto';
 import { Prisma } from '@prisma/client';
 
@@ -203,7 +203,10 @@ export class AbsencesService {
     const contrat = contratCouvrantLeMois(salarie.contrats, mois);
     const salaireMensuel =
       contrat && contrat.periodiciteRemuneration === 'MOIS' && contrat.remunerationBase !== null ? Number(contrat.remunerationBase) : null;
-    const proposition = propositionDuMois({ jours, salaireMensuel, moyenneMensuelleArticle66: moyenne, deductionsParAbsence, aRecevoirDeLaCaisse });
+    // B1 · les jours de congé payé du mois sortent du salaire · l'allocation
+    // les paie (art. 142), où qu'elle soit portée.
+    const conges = await congesPayesDuMois(this.prisma, tenantId, salarieId, mois, absences);
+    const proposition = propositionDuMois({ jours, salaireMensuel, moyenneMensuelleArticle66: moyenne, deductionsParAbsence, aRecevoirDeLaCaisse, conges });
     const duMois = absences.filter((a) => a.au.slice(0, 7) >= mois && a.du.slice(0, 7) <= mois);
     return {
       mois,
@@ -221,6 +224,15 @@ export class AbsencesService {
           regimes: [...new Set(siens.map((j) => j.regime))],
         };
       }),
+      conges: conges.map((c) => ({
+        id: c.id,
+        du: c.du,
+        au: c.au,
+        joursDeConge: c.joursDeConge,
+        ouvrablesDuMois: c.ouvrablesDuMois,
+        moisDePaie: c.moisDePaie,
+        portePar: c.portePar,
+      })),
       proposition,
     };
   }

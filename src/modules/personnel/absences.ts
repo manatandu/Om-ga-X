@@ -44,7 +44,7 @@
  * absence restent payés à plein (art. 93) · ils ne sont ni retenus ni payés
  * aux deux tiers, lecture protectrice dite à l'écran.
  */
-import { natureDuJour } from './jours-du-code-du-travail';
+import { estJourOuvrableDuCode, natureDuJour } from './jours-du-code-du-travail';
 import { JOURS_DU_MOIS_REMUNERES, plusMois } from './remuneration-du-delai';
 
 export type JourIso = string;
@@ -398,6 +398,106 @@ export function joursOuvrablesDuMois(absences: readonly AbsenceLue[], mois: stri
   return sortie;
 }
 
+/** Un congé payé lu pour la paie d'un mois · posé dans l'onglet Congés (fonction 79), non annulé. */
+export type CongeLu = { readonly id: string; readonly du: JourIso; readonly au: JourIso; readonly joursVoyage: number };
+
+export type CongeDuMois = {
+  readonly id: string;
+  readonly du: JourIso;
+  readonly au: JourIso;
+  /** Jours ouvrables du congé dans ce mois, jours de maladie retranchés (art. 141, al. 4). */
+  readonly ouvrablesDuMois: number;
+  /**
+   * Jours de ce mois payés par l'allocation (livre de paie, mention 14) ·
+   * `null` quand le congé est à cheval sur deux mois et porte des jours de
+   * voyage, dont aucune date ne dit le mois.
+   */
+  readonly joursDeConge: number | null;
+  /** Le moins que le congé paie dans ce mois · ce que l'émission oppose au salaire. */
+  readonly auMoins: number;
+};
+
+/**
+ * LES JOURS DE CONGÉ PAYÉ D'UN MOIS · B1 de la relecture (premier tour).
+ * « Pendant toute la durée du congé, le travailleur a droit à une allocation
+ * égale à la rémunération dont il jouit au moment du départ en congé »
+ * (Code du travail, art. 142) · l'allocation REMPLACE le salaire de ces
+ * jours, elle ne s'y ajoute pas. Le livre de paie les range dans deux
+ * colonnes disjointes, jours payés à 100 % (mention 6) et jours de congés
+ * payés (mention 14), qui s'additionnent aux jours payés aux deux tiers
+ * (mention 17) dans le total des jours (mention 28 · arrêté
+ * n° 12/CAB.MIN/ETPS/042 du 8 août 2008). Un même jour ne figure donc qu'une
+ * fois.
+ *
+ * Jours comptés comme l'allocation les compte (`joursDuConge`) · ouvrables du
+ * Code, maladie retranchée (art. 141, al. 4), jours de voyage hors du congé
+ * (al. 3). Les jours de voyage restent au salaire · ni l'art. 141 ni l'art. 93
+ * ne les retirent de la rémunération, lecture protectrice (P5). Un congé à
+ * cheval sur deux mois compte dans chaque mois SES jours, quel que soit le
+ * bulletin qui porte l'allocation (art. 145 · elle se paie avant le départ) ;
+ * s'il porte des jours de voyage, leur mois n'est écrit nulle part · rien
+ * n'est proposé, et l'émission n'oppose que ce qui est certain.
+ */
+export function congesDuMois(conges: readonly CongeLu[], mois: string, joursMaladie: ReadonlySet<JourIso>): CongeDuMois[] {
+  const sortie: CongeDuMois[] = [];
+  for (const c of conges) {
+    if (c.au.slice(0, 7) < mois || c.du.slice(0, 7) > mois) continue;
+    const du = jourUtc(c.du);
+    const au = jourUtc(c.au);
+    if (!du || !au || au.getTime() < du.getTime()) continue;
+    let ouvrablesDuMois = 0;
+    for (let i = 0, d = du; d.getTime() <= au.getTime() && i <= JOURS_AU_PLUS; i += 1, d = plusJours(du, i)) {
+      if (iso(d).slice(0, 7) !== mois || !estJourOuvrableDuCode(d) || joursMaladie.has(iso(d))) continue;
+      ouvrablesDuMois += 1;
+    }
+    const voyage = Math.max(0, c.joursVoyage);
+    const aCheval = c.du.slice(0, 7) !== c.au.slice(0, 7);
+    const auMoins = Math.max(0, ouvrablesDuMois - voyage);
+    sortie.push({
+      id: c.id,
+      du: c.du,
+      au: c.au,
+      ouvrablesDuMois,
+      joursDeConge: aCheval && voyage > 0 ? null : aCheval ? ouvrablesDuMois : auMoins,
+      auMoins,
+    });
+  }
+  return sortie;
+}
+
+/**
+ * LE SALAIRE PLEIN PAYÉ AVEC L'ALLOCATION POUR LES MÊMES JOURS, refusé à
+ * l'émission · B1 de la relecture. Le salaire du bulletin (éléments
+ * « Salaire ou traitement ») ne paie au plus que les jours hors congé · le
+ * salaire mensuel du contrat × (26 − jours de congé du mois) ÷ 26, vingt-six
+ * jours payés par mois (décret n° 25/22, art. 7, par analogie, comme la
+ * proposition des absences). N'est opposé que ce qui est certain · le moins
+ * que le congé paie dans le mois, un salaire au mois du contrat, dans la
+ * monnaie du bulletin. `null` quand rien ne s'oppose.
+ */
+export function motifRefusSalairePleinPendantLeConge(p: {
+  readonly mois: string;
+  readonly conges: readonly CongeDuMois[];
+  readonly salaireDuBulletin: number;
+  readonly salaireMensuel: number | null;
+  readonly devise: string;
+}): string | null {
+  const auMoins = Math.min(JOURS_DU_MOIS_REMUNERES, p.conges.reduce((n, c) => n + c.auMoins, 0));
+  if (auMoins <= 0 || p.salaireMensuel === null) return null;
+  const plafond = arrondi((p.salaireMensuel * (JOURS_DU_MOIS_REMUNERES - auMoins)) / JOURS_DU_MOIS_REMUNERES);
+  if (Math.round(p.salaireDuBulletin * 100) <= Math.round(plafond * 100)) return null;
+  const quels = p.conges
+    .filter((c) => c.auMoins > 0)
+    .map((c) => `du ${c.du} au ${c.au}`)
+    .join(', ');
+  const f = (n: number) => n.toFixed(2);
+  return (
+    `Le bulletin de ${p.mois} paie ${f(p.salaireDuBulletin)} ${p.devise} de salaire alors que ${auMoins} jour(s) de ce mois sont payés par l'allocation de congé (congé ${quels}) · ` +
+    `pendant le congé, l'allocation remplace la rémunération, elle ne s'y ajoute pas (Code du travail, art. 142 et 93 ; livre de paie, arrêté du 8 août 2008, mentions 6, 14 et 28). ` +
+    `Le salaire des jours hors congé est au plus ${f(plafond)} ${p.devise} (${f(p.salaireMensuel)} × ${JOURS_DU_MOIS_REMUNERES - auMoins} ÷ ${JOURS_DU_MOIS_REMUNERES}) · reprenez la proposition « Absences et congés du mois », ou annulez le congé s'il n'a pas été pris.`
+  );
+}
+
 export type PropositionDuMois = {
   /** Jours ouvrables du mois payés aux deux tiers (livre de paie, mention 17). */
   readonly joursDeuxTiers: number;
@@ -405,6 +505,8 @@ export type PropositionDuMois = {
   readonly joursNonDus: number;
   /** Jours ouvrables d'une cause dont l'arrêté de l'art. 58 manque · rien n'est tranché. */
   readonly joursNonTranches: number;
+  /** Jours du mois payés par l'allocation de congé (mention 14), hors du salaire (art. 142). */
+  readonly joursDeConge: number;
   /** Jours payés à 100 % sur les vingt-six du mois (mention 6) · `null` quand rien ne se propose. */
   readonly joursPayesAPlein: number | null;
   /** Salaire du mois réduit des jours non dus et des jours à deux tiers · `null` avec son motif. */
@@ -435,6 +537,8 @@ export function propositionDuMois(p: {
   /** Étape 3 · indemnités de la Caisse du mois, déduites (accident du travail) par arrêt. */
   readonly deductionsParAbsence?: ReadonlyMap<string, number>;
   readonly aRecevoirDeLaCaisse?: number;
+  /** B1 · les congés payés du mois (`congesDuMois`) · leurs jours sortent du salaire. */
+  readonly conges?: readonly CongeDuMois[];
 }): PropositionDuMois {
   const somme = (r: RegimeRemuneration) => p.jours.filter((j) => j.regime === r).reduce((n, j) => n + j.poids, 0);
   const joursDeuxTiers = somme('DEUX_TIERS');
@@ -447,11 +551,19 @@ export function propositionDuMois(p: {
     );
   }
   if (p.salaireMensuel === null) motifs.push("Le contrat n'est pas payé au mois, ou sa rémunération n'est pas renseignée · rien n'est proposé.");
+  const conges = p.conges ?? [];
+  const nonPlaces = conges.filter((c) => c.joursDeConge === null);
+  for (const c of nonPlaces) {
+    motifs.push(
+      `Le congé du ${c.du} au ${c.au} est à cheval sur deux mois et porte des jours de voyage, dont aucune date ne dit le mois (art. 141, al. 3) · rien n'est proposé, le salaire du mois se saisit, au plus ${c.ouvrablesDuMois} jour(s) de congé retranchés.`,
+    );
+  }
+  const joursDeConge = conges.reduce((n, c) => n + (c.joursDeConge ?? 0), 0);
   if (joursDeuxTiers > 0 && p.moyenneMensuelleArticle66 === null) {
     motifs.push("La moyenne mensuelle des douze mois (art. 66, auquel renvoie l'art. 105) n'est pas déclarée · l'indemnité d'incapacité ne se chiffre pas.");
   }
-  const retenus = Math.min(JOURS_DU_MOIS_REMUNERES, joursDeuxTiers + joursNonDus);
-  const bloque = joursNonTranches > 0 || p.salaireMensuel === null;
+  const retenus = Math.min(JOURS_DU_MOIS_REMUNERES, joursDeuxTiers + joursNonDus + joursDeConge);
+  const bloque = joursNonTranches > 0 || p.salaireMensuel === null || nonPlaces.length > 0;
   const salaireDesJoursDus = bloque ? null : arrondi(((p.salaireMensuel as number) * (JOURS_DU_MOIS_REMUNERES - retenus)) / JOURS_DU_MOIS_REMUNERES);
   const indemniteBrute =
     bloque || (joursDeuxTiers > 0 && p.moyenneMensuelleArticle66 === null)
@@ -473,6 +585,7 @@ export function propositionDuMois(p: {
     joursDeuxTiers,
     joursNonDus,
     joursNonTranches,
+    joursDeConge,
     joursPayesAPlein: bloque ? null : JOURS_DU_MOIS_REMUNERES - retenus,
     salaireDesJoursDus,
     indemniteDeuxTiers,
@@ -482,6 +595,7 @@ export function propositionDuMois(p: {
     explication: bloque
       ? null
       : `Salaire mensuel × (26 − ${retenus}) ÷ 26` +
+        (joursDeConge > 0 ? ` ; ${joursDeConge} jour(s) de congé payés par l'allocation, qui remplace le salaire de ces jours (art. 142)` : '') +
         (joursDeuxTiers > 0 ? ` ; indemnité d'incapacité = (salaire mensuel + moyenne de l'art. 66) × ${joursDeuxTiers} × 2/3 ÷ 26` : '') +
         (deductionsCaisse > 0 ? `, moins ${deductionsCaisse} versés par la Caisse (art. 106, al. 2)` : '') +
         ' · vingt-six jours payés par mois (décret n° 25/22, art. 7, par analogie), jours fériés de l’absence payés à plein (art. 93).',
