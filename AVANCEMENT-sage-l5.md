@@ -144,7 +144,19 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
 
 ## Reste
 
-- Rien des cinq fonctions. Bloc du § 3 à repasser en entier avant l'intégration.
+- Rien des cinq fonctions.
+
+## Bloc du § 3, passé au 2026-10-14 (après le commit `10d8f9c`)
+
+- Serveur · `npx tsc --noEmit` sans erreur ; `npx jest` en six tranches
+  (`--maxWorkers=1 --workerIdleMemoryLimit=800MB`) · 854 suites, 12 476
+  tests, tous verts (143/1 729, 143/2 009, 142/1 942, 142/2 532, 142/1 911,
+  142/2 353) ; `npm run build` sans erreur ; dérive des migrations nulle
+  (`prisma migrate diff --exit-code`).
+- Client · `npx tsc --noEmit` sans erreur ; `npm test` · 259 fichiers,
+  2 040 tests, tous verts ; `npm run build` sans erreur.
+- Navigateur (Chromium, montage local, base jetable) · les huit parcours
+  `sage-l5-*` verts, plus `ecrans`, `parcours` et `cloture` (sept tests).
 - 79 · le décompte final ne relit pas encore le compteur pour proposer les
   mois non couverts par un congé (saisis à la main, comme avant) ; un congé
   porté au bulletin et une indemnité compensatoire au décompte du même mois
