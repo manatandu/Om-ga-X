@@ -234,10 +234,15 @@ export function motifRefusAnnulation(entree: {
   dependants: readonly ActeDuBien[];
 }): string | null {
   if (entree.exerciceClos) {
+    // AUDCIF art. 20, relu dans la compétence · al. 2, l'inscription en négatif
+    // pour l'erreur « commise et découverte sur l'exercice en cours » ; al. 3,
+    // l'erreur SIGNIFICATIVE d'un exercice antérieur « par ajustement du compte
+    // report à nouveau » ; al. 4, l'information dans les Notes annexes.
     return (
       "L'exercice de ce traitement est clôturé · son erreur ne se corrige plus par inscription en négatif, qui ne vaut que " +
-      "pour l'erreur « commise et découverte sur l'exercice en cours » ; elle relève du report à nouveau (AUDCIF art. 20, " +
-      'al. 2 et 3), et d’une information aux Notes annexes.'
+      "pour l'erreur « commise et découverte sur l'exercice en cours » (AUDCIF art. 20, al. 2). Significative, elle se " +
+      'corrige par ajustement du report à nouveau (al. 3) ; dans tous les cas, elle fait l’objet d’une information dans les ' +
+      'Notes annexes (al. 4).'
     );
   }
   if (entree.transfertMiseEnService) {

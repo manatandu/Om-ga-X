@@ -58,6 +58,7 @@ function fabrique(options: { statut: 'BROUILLARD' | 'VALIDEE'; dotationsSuivante
     annulationTraitementImmobilisation: { create: jest.fn().mockResolvedValue({ id: 'ann-1' }) },
   };
   prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
+  prisma.$queryRaw = jest.fn().mockResolvedValue([]);
   const ecritures = { inscrireEnNegatifPourAnnulation: jest.fn().mockResolvedValue({ id: 'neg-1', numeroPiece: 9, date: new Date('2026-12-31') }) };
   const service = new AnnulationTraitementService(prisma as never, ecritures as never);
   return { service, prisma, ecritures, dotation };
@@ -195,5 +196,47 @@ describe('la révision posée par une réévaluation se reconnaît à sa liaison
     await service.annuler('t-1', 'u-1', { nature: 'REEVALUATION', acteId: 'reev-1', motif: 'Erreur de coefficient' }).catch(() => undefined);
     const lecture = prisma.revisionPlanAmortissement.findMany.mock.calls.find(([a]: [{ where: Record<string, unknown> }]) => 'reevaluationBilanId' in a.where);
     expect(lecture?.[0].where).toEqual({ tenantId: 't-1', reevaluationBilanId: 'reev-1' });
+  });
+});
+
+describe('la réévaluation ne relit que les biens qu’elle a changés (relecture, mineur)', () => {
+  it('un bien recensé sans écart ne la bloque pas par ses actes suivants', async () => {
+    const f = fabrique({ statut: 'BROUILLARD' });
+    f.prisma.reevaluationBilan = {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'reev-1',
+        exerciceId: EX_N.id,
+        exercice: EX_N,
+        type: 'LEGALE',
+        methodeLibre: null,
+        neutraliteFiscale: false,
+        dateReevaluation: EX_N.dateFin,
+        decision: 'PV',
+        traitementFiscal: 'x',
+        totalEcart: 100,
+        ecritureId: 'ecr-r',
+        createdAt: new Date('2026-12-31T12:00:00Z'),
+        lignes: [
+          { immobilisationId: 'bien-1', ecart: 100, amortissementsApres: 40, amortissementsAvant: 0, brutAvant: 1000, brutApres: 1100 },
+          { immobilisationId: 'terrain', ecart: 0, amortissementsApres: 0, amortissementsAvant: 0, brutAvant: 500, brutApres: 500 },
+        ],
+      }),
+    };
+    await f.service.annuler('t-1', 'u-1', { nature: 'REEVALUATION', acteId: 'reev-1', motif: 'Erreur de coefficient' }).catch(() => undefined);
+    const lecture = f.prisma.dotationAmortissement.findMany.mock.calls[0][0];
+    expect(lecture.where.immobilisationId).toEqual({ in: ['bien-1'] });
+  });
+});
+
+describe('l’annulation prend le verrou des fiches avant de juger (relecture)', () => {
+  it('SELECT … FOR UPDATE sur les biens de l’acte, avant la lecture des actes qui en dépendent', async () => {
+    const { service, prisma } = fabrique({ statut: 'BROUILLARD' });
+    await service.annuler('t-1', 'u-1', DTO);
+    const sql = (prisma.$queryRaw.mock.calls[0][0] as string[]).join('?');
+    expect(sql).toMatch(/FROM "immobilisations" WHERE "tenantId" = \? AND id IN \(\?\) ORDER BY id FOR UPDATE/);
+    // Le verrou précède la relecture des actes dans la transaction.
+    const ordreVerrou = prisma.$queryRaw.mock.invocationCallOrder[0];
+    const lectures = prisma.dotationAmortissement.findMany.mock.invocationCallOrder;
+    expect(lectures.some((o: number) => o > ordreVerrou)).toBe(true);
   });
 });

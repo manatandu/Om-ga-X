@@ -110,7 +110,10 @@ describe('le motif du refus', () => {
   it("refuse dans un exercice clôturé, en citant l'art. 20", () => {
     const m = motifRefusAnnulation({ exerciceClos: true, dependants: [] });
     expect(m).toMatch(/clôturé/);
-    expect(m).toMatch(/AUDCIF art\. 20/);
+    expect(m).toMatch(/AUDCIF art\. 20, al\. 2/);
+    // Relecture · al. 3 pour l'erreur significative, al. 4 pour les Notes annexes.
+    expect(m).toMatch(/report à nouveau \(al\. 3\)/);
+    expect(m).toMatch(/Notes annexes \(al\. 4\)/);
   });
 
   it("nomme l'acte postérieur et dit d'annuler à partir du plus récent", () => {

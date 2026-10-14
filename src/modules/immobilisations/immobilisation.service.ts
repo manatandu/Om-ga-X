@@ -320,6 +320,37 @@ function versImmobilisation<
 
 const CODE_CONTRAINTE_UNIQUE = 'P2002';
 
+/**
+ * CE QUI FAIT LA DOTATION D'UN BIEN · relu sous le verrou de la fiche avant
+ * d'enregistrer (ligne sage-l4, relecture). Une annulation de traitement
+ * (dotation, dépréciation, révision, réévaluation) qui passe entre le calcul
+ * et l'enregistrement change la base · sans cette relecture, la dotation de
+ * N+1 restait calculée sur un cumul que le journal ne porte plus.
+ */
+function empreinteDuPlan(i: {
+  valeurOrigine: unknown;
+  valeurResiduelle: unknown;
+  dureeAmortissementAns: number;
+  dateEffetRevisionPlan?: Date | null;
+  dureeResiduelleRevisee?: number | null;
+  amortissementsReevaluation?: unknown;
+  reprisesAmortissement?: unknown;
+  dotations?: ReadonlyArray<{ id?: string; exerciceId?: string; montant: unknown }>;
+  depreciations?: ReadonlyArray<{ id?: string; sens?: string; montant: unknown }>;
+}): string {
+  return JSON.stringify([
+    Number(i.valeurOrigine),
+    Number(i.valeurResiduelle),
+    i.dureeAmortissementAns,
+    i.dateEffetRevisionPlan ? new Date(i.dateEffetRevisionPlan).getTime() : null,
+    i.dureeResiduelleRevisee ?? null,
+    Number(i.amortissementsReevaluation ?? 0),
+    Number(i.reprisesAmortissement ?? 0),
+    (i.dotations ?? []).map((d) => [d.id ?? d.exerciceId ?? null, Number(d.montant)]).sort(),
+    (i.depreciations ?? []).map((d) => [d.id ?? null, d.sens ?? null, Number(d.montant)]).sort(),
+  ]);
+}
+
 function estConflitUnicite(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === CODE_CONTRAINTE_UNIQUE;
 }
@@ -3899,9 +3930,24 @@ export class ImmobilisationService {
       ],
     });
 
+    const empreinte = empreinteDuPlan(immo);
     try {
-      const dotation = await this.prisma.dotationAmortissement.create({
-        data: { immobilisationId: id, exerciceId: dto.exerciceId, montant, ecritureId: ecriture.id },
+      // SOUS LE VERROU DE LA FICHE (relecture de la ligne sage-l4) · le même
+      // que prend l'annulation d'un traitement (`AnnulationTraitementService`)
+      // · ce que la dotation a lu est relu, et une base qui a bougé entre le
+      // calcul et l'enregistrement ne laisse rien au journal.
+      const dotation = await transactionJournalisee(this.prisma, async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "immobilisations" WHERE id = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+        const relue = await tx.immobilisation.findFirst({ where: { id, tenantId }, include: { dotations: true, depreciations: true } });
+        if (!relue || empreinteDuPlan(relue) !== empreinte) {
+          throw new ConflictException(
+            'La fiche du bien a changé pendant le calcul de la dotation (un traitement annulé ou passé entre-temps) · rien ' +
+              "n'est passé. Relancez la dotation.",
+          );
+        }
+        return tx.dotationAmortissement.create({
+          data: { immobilisationId: id, exerciceId: dto.exerciceId, montant, ecritureId: ecriture.id },
+        });
       });
       return versDotation(dotation);
     } catch (err) {
@@ -3909,6 +3955,7 @@ export class ImmobilisationService {
         await this.annulerEcritureOrpheline(ecriture.id);
         throw new ConflictException('Une dotation a déjà été passée pour cette immobilisation sur cet exercice');
       }
+      if (err instanceof ConflictException) await this.annulerEcritureOrpheline(ecriture.id);
       throw err;
     }
   }

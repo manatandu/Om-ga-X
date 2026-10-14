@@ -190,6 +190,14 @@ export class AnnulationTraitementService {
 
     return transactionJournalisee(this.prisma, async (tx) => {
       const c = await this.cible(tx, tenantId, dto.nature, dto.acteId);
+      // LE VERROU DES FICHES (relecture de la ligne sage-l4) · le même que
+      // prend `passerDotation` avant d'enregistrer · une dotation calculée
+      // pendant l'annulation se relit après elle, et l'acte suivant qu'elle
+      // aurait posé est vu ici avant de juger.
+      if (c.biens.length > 0) {
+        const ids = [...c.biens].sort();
+        await tx.$queryRaw`SELECT id FROM "immobilisations" WHERE "tenantId" = ${tenantId} AND id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
+      }
       const refusDansTx = this.motifPour(c, await this.actesDesBiens(tx, tenantId, c.biens));
       if (refusDansTx) throw new BadRequestException(refusDansTx);
 
@@ -423,7 +431,10 @@ export class AnnulationTraitementService {
           nature,
           acteId,
           immobilisationId: null,
-          biens: [...new Set(r.lignes.map((l) => l.immobilisationId))],
+          // Les seuls biens que l'opération a changés (écart positif, la même
+          // borne que le rétablissement) · un bien recensé sans écart (terrain
+          // à k' = 1, bien amorti) ne la bloque pas par ses actes suivants.
+          biens: [...new Set(r.lignes.filter((l) => n(l.ecart) > 0.004).map((l) => l.immobilisationId))],
           exercice: r.exercice,
           creeLe: r.createdAt,
           montant: n(r.totalEcart),
