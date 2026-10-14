@@ -17,6 +17,7 @@ import { BasculeDureeLimitee } from '../components/BasculeDureeLimitee';
 import { RevisionPlanAmortissement } from '../components/RevisionPlanAmortissement';
 import { FicheImmobilisation } from '../components/FicheImmobilisation';
 import { CreationDepuisEcritures } from '../components/CreationDepuisEcritures';
+import { MaintenanceImmobilisations, RenumerotationImmobilisations } from '../components/MaintenanceImmobilisations';
 import type { PropositionDuplication } from '../components/FicheImmobilisationGeneral';
 import { CoutsEmpruntIncorpores } from '../components/CoutsEmpruntIncorpores';
 import { AcquisitionPrixAleatoire, SoldeDetteAleatoire } from '../components/AcquisitionPrixAleatoire';
@@ -2601,6 +2602,15 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
               L'acquisition à prix global et la clôture des contrats de location-acquisition se saisissent avec un profil qui écrit.
             </div>
           )}
+          {/* Ligne sage-l4, n° 73 · le registre entier, jamais un bien · la
+              maintenance se lit par tous, la renumérotation à l'administrateur. */}
+          <MaintenanceImmobilisations exerciceId={exerciceCourant?.id} />
+          <RenumerotationImmobilisations
+            onFait={(message) => {
+              setInfo(message);
+              void charger();
+            }}
+          />
         </div>
       )}
 

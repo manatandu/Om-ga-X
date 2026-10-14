@@ -114,9 +114,39 @@ n° 67, 66, 68, 73, 18.
   acquis le même jour n'ont pas d'ordre garanti (tri par date
   d'acquisition), il le vise désormais par sa désignation.
 
+### N° 73 · renumérotation et maintenance du registre (commit « Immobilisations · renumérotation et maintenance du registre »)
+
+- RENUMÉROTATION · `GET /immobilisations/renumerotation` (aperçu, rien
+  d'écrit, 200 changements servis avec `tronque`) et `POST` (administrateur
+  seul, geste de structure) · préfixe, premier numéro, largeur, ordre
+  (acquisition, ou compte puis acquisition, la saisie départageant deux biens
+  du même jour), périmètre (biens en service sans numéro, ou tous les biens en
+  service). Le plan est REJOUÉ sous un verrou par dossier
+  (`pg_advisory_xact_lock`), jamais reçu de l'écran ; une mise à jour
+  UNITAIRE par fiche (journal d'audit), aucune pour une fiche déjà à son
+  numéro. Un bien SORTI garde son numéro (il figure sous lui aux états des
+  exercices qui l'ont vu) et ce numéro compte pour l'unicité · un numéro
+  nouveau déjà porté hors du périmètre est REFUSÉ, nommé, jamais contourné
+  en sautant un rang. Refus nommés · largeur trop courte, préfixe illisible,
+  périmètre vide, plus de 5 000 biens d'un geste.
+- MAINTENANCE · `GET /immobilisations/maintenance?exerciceId=` · le registre
+  (relu par `tableauAmortissements`, le calcul de l'état et de la dotation,
+  jamais un second) face à la balance de l'exercice (brouillard compris),
+  compte par compte · comptes de biens (au compte où le bien est inscrit à la
+  clôture) et comptes d'amortissement (cumul COMPTABILISÉ · la dotation de
+  l'exercice pas encore passée est dite à part, jamais lue comme un écart).
+  Un bien sorti dans l'exercice a quitté ses comptes. Chaque compte de bien
+  dit ses lignes au débit sans fiche dans l'exercice (le filtre même du
+  n° 68). Nommés aussi · les biens reclassés après la clôture (le tableau les
+  range sous leur compte actuel), les numéros d'inventaire en double, les
+  biens en service sans numéro. Rien n'est corrigé.
+- Écran · onglet Opérations de la fenêtre Immobilisations (le registre
+  entier, jamais un bien) · tableau « Registre et balance », formulaire
+  « Renumérotation des biens » (aperçu puis « Renuméroter », `estAdmin`).
+- FUSION NON LIVRÉE, PAR LA LOI · voir les décisions.
+
 ## Reste
 
-- N° 73 · fusion, renumérotation, maintenance.
 - N° 18 · assistant de création d'un bien.
 
 ## Décisions prises, avec leur article
@@ -148,6 +178,30 @@ n° 67, 66, 68, 73, 18.
   choisie par erreur enfermait le bien. Un exercice clôturé, un usage ou une
   écriture du module le refusent comme pour toute fiche.
 
+- N° 73 · LA FUSION DES FICHES D'UN AUTRE DOSSIER DU GROUPE N'EST PAS
+  LIVRÉE. Le siège et l'établissement sont une seule entité tenue en
+  plusieurs comptabilités · « toutes les opérations réalisées entre le siège
+  et l'établissement y sont enregistrées comme s'il s'agissait d'un tiers
+  […] de manière symétrique, dans la même période comptable et sur la base
+  des mêmes pièces justificatives : les comptes de liaison sont égaux et de
+  sens contraire dans les deux comptabilités » (AUDCIF, Titre VII, fiche du
+  compte 18). Reprendre les fiches d'un autre dossier « en biens repris sans
+  écriture » mettrait au registre du dossier qui reçoit des biens absents de
+  sa balance (un bien repris est, par définition, au bilan d'ouverture, audit
+  final F32) et les laisserait au dossier qui cède · deux registres pour un
+  bien, aucune écriture de liaison. Au SYCEBNL, le 58 ne porte que les
+  virements de trésorerie (fiche du compte 58, « mouvements de virement
+  entre les comptes de trésorerie »), et aucun texte lu ne régit le
+  transfert d'un bien entre deux dossiers d'une même association. Le
+  transfert propre est une opération nouvelle (sortie chez l'un, entrée chez
+  l'autre, par le compte de liaison des deux côtés), remontée en question.
+- N° 73 · l'unicité des numéros d'inventaire est une convention d'OmegaX
+  (code d'immobilisation de Sage) · aucun texte ne fixe la forme d'un
+  numéro (AUDCIF art. 42 impose le recensement). Elle est tenue par la
+  renumérotation et NOMMÉE par la maintenance, sans contrainte en base · une
+  contrainte unique ferait échouer la migration d'un dossier qui porte déjà
+  des doublons.
+
 ## Questions pour Manasse
 
 - Aucune pour la n° 67 · le corpus tranche.
@@ -162,6 +216,12 @@ n° 67, 66, 68, 73, 18.
   passée se RETIRE (l'écriture reste au journal), alors que D7 dit
   « suppression seulement sans écriture retenue ». Retenue, mais pas écrite
   par elle · voir les décisions.
+
+- N° 73 · faut-il un TRANSFERT D'UN BIEN ENTRE DEUX DOSSIERS DU GROUPE
+  (sortie chez le cédant, entrée chez le cessionnaire, par le compte de
+  liaison des deux côtés, AUDCIF Titre VII, fiche du compte 18) ? C'est ce
+  que serait une « fusion » propre ; au SYCEBNL aucun texte lu ne le régit.
+  Non codé.
 
 ## Relevés hors de la ligne
 
@@ -210,6 +270,20 @@ n° 67, 66, 68, 73, 18.
   (la subvention lue sur l'écriture dont la fiche est née), 1417 à
   1 000 000 créditeur et 2442 à 3 000 000 en N+1.
 
+- `scenario-73.mjs` (SYSCOHADA, N 2026 puis N+1 2027) · trois biens par le
+  module (camion 12 000 000, ordinateur 3 000 000 numéroté IMM-0001, moto
+  800 000) et une remorque passée à la main (1 000 000) · maintenance de N
+  (2451 au registre 12 800 000, à la balance 13 800 000, écart 1 000 000
+  nommé par sa ligne sans fiche, 2441 concordant, trois dotations à passer
+  pour 3 916 666,67 dites à part), dotation de l'ordinateur (2844
+  concordant à 1 000 000), renumérotation « sans numéro » refusée sur
+  IMM-0001 (porté par l'ordinateur) sans rien écrire, puis à partir de 2
+  (camion IMM-0002), puis tout le parc en V-001 à V-003 dans l'ordre
+  d'acquisition (au journal d'audit), doublon V-001 posé à la main et
+  nommé sans correction, clôture, maintenance de N+1 (2451 reporté à
+  13 800 000 contre 12 800 000, la ligne sans fiche restée dans N,
+  amortissements concordants, trois dotations de N+1 à passer).
+
 ## Bloc § 3
 
 - N° 67 · serveur `tsc` 0 erreur, `nest build` vert ; jest ciblé sur l'arbre
@@ -243,6 +317,16 @@ n° 67, 66, 68, 73, 18.
   `sage-l4-depuis-ecritures`, `sage-l4-fiche`, `sage-l4-annulation` et les
   29 parcours de `immobilisations.e2e.ts` verts sous Chromium.
 
+- N° 73 · serveur `tsc` 0 erreur, `nest build` vert ; jest ciblé sur
+  l'arbre du commit (125 suites, 2090 tests · `src/modules/immobilisations`,
+  `src/common`, `src/modules/comptes`, `casse-en-silence`, `ecriture-masquee`,
+  `maintenance-immobilisations`) · une suite tombée, `comptes-proposes`, la
+  route de maintenance lisant des comptes sans être rangée ; rangée parmi les
+  routes qui ne servent pas de liste (`listes-de-comptes.ts`), puis
+  `comptes-proposes` et `comptes-retenus-ecrans` relancés verts ; client
+  `tsc` 0 erreur, vitest des specs de structure et de la ligne verts,
+  `vite build` vert ; e2e `sage-l4-maintenance` vert sous Chromium.
+
 ## Commandes de vérification
 
 ```bash
@@ -251,7 +335,7 @@ for s in 1 2 3 4 5 6; do npx jest --shard=$s/6 --maxWorkers=1 --workerIdleMemory
 npm run build
 cd client && npx tsc --noEmit && npm test && npm run build
 npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "$OMBRE" --exit-code
-cd e2e && npx playwright test tests/sage-l4-annulation.e2e.ts tests/sage-l4-fiche.e2e.ts tests/sage-l4-depuis-ecritures.e2e.ts
+cd e2e && npx playwright test tests/sage-l4-annulation.e2e.ts tests/sage-l4-fiche.e2e.ts tests/sage-l4-depuis-ecritures.e2e.ts tests/sage-l4-maintenance.e2e.ts
 ```
 
 ## Pour CLAUDE.md
@@ -314,6 +398,23 @@ Une telle fiche ne retouche ni valeur, ni compte, ni date, et SE RETIRE sans
 toucher l'écriture tant que rien ne la lit (lecture de D7) ; la correction de
 l'écriture nomme cette issue.
 
+**Renumérotation et maintenance du registre (ligne sage-l4, n° 73).**
+`immobilisations/maintenance-immobilisations.ts`, `MaintenanceImmobilisationsService`
+· la renumérotation n'écrit que des numéros d'inventaire (aperçu, puis
+confirmation par l'administrateur), plan REJOUÉ sous un verrou par dossier,
+une mise à jour unitaire par fiche (journal d'audit) ; un bien SORTI garde
+son numéro et le compte pour l'unicité, une collision est refusée et
+nommée. Unicité · convention d'OmegaX, tenue par la renumérotation et nommée
+par la maintenance, aucune contrainte en base. La maintenance LIT ·
+registre relu par `tableauAmortissements` contre la balance de l'exercice,
+compte par compte, brut au compte inscrit à la clôture, amortissement au
+cumul COMPTABILISÉ (dotation non passée dite à part), lignes sans fiche par
+le filtre du n° 68, reclassés après la clôture, doublons et biens sans
+numéro nommés · rien n'est corrigé. LA FUSION D'UN AUTRE DOSSIER DU GROUPE
+N'EST PAS SERVIE (AUDCIF, fiche du compte 18 · opérations symétriques par
+les comptes de liaison ; un bien « repris sans écriture » chez l'un resterait
+chez l'autre).
+
 ## Pour build-log.md
 
 - n° 67 · 2026-10-14 · fait · rien ne manque au périmètre ; plus dur que
@@ -328,3 +429,8 @@ l'écriture nomme cette issue.
   (une ligne, une fiche · corriger la pièce) ; plus dur que prévu · le lien
   d'acquisition était UNIQUE (une pièce, un bien), et la fiche née d'une
   écriture déjà passée devait se retirer sans la toucher.
+- n° 73 · 2026-10-14 · partiel · renumérotation et maintenance faites ; la
+  fusion des fiches d'un autre dossier du groupe n'est pas servie (la loi
+  la veut symétrique par les comptes de liaison, question posée) ; plus dur
+  que prévu · lire un écart sans en fabriquer (dotation non passée, bien
+  sorti, reclassement postérieur).
