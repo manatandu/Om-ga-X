@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { contratCouvrantLeMois, moisValide } from './bulletin-paie';
@@ -208,9 +208,14 @@ export class AbsencesService {
     for (const i of indemnites.filter((x) => x.traitement === 'DEDUITE')) {
       deductionsParAbsence.set(i.absenceId, (deductionsParAbsence.get(i.absenceId) ?? 0) + Number(i.montant));
     }
-    const aRecevoirDeLaCaisse = indemnites
-      .filter((i) => i.traitement === 'SUBROGATION' || i.traitement === 'SUBROGATION_PARTIELLE')
-      .reduce((n, i) => n + Number(i.montant), 0);
+    // Mineur 2 · la subrogation TOTALE se reçoit à la hauteur de l'indemnité
+    // (art. 139, al. 2), la PARTIELLE à la limite de la partie versée
+    // (al. 3), bornée par arrêt dans `propositionDuMois`.
+    const aRecevoirDeLaCaisse = indemnites.filter((i) => i.traitement === 'SUBROGATION').reduce((n, i) => n + Number(i.montant), 0);
+    const subrogationsPartielles = new Map<string, number>();
+    for (const i of indemnites.filter((x) => x.traitement === 'SUBROGATION_PARTIELLE')) {
+      subrogationsPartielles.set(i.absenceId, (subrogationsPartielles.get(i.absenceId) ?? 0) + Number(i.montant));
+    }
     const jours = joursOuvrablesDuMois(absences, mois, subrogees);
     const contrat = contratCouvrantLeMois(salarie.contrats, mois);
     const salaireMensuel =
@@ -218,7 +223,16 @@ export class AbsencesService {
     // B1 · les jours de congé payé du mois sortent du salaire · l'allocation
     // les paie (art. 142), où qu'elle soit portée.
     const conges = await congesPayesDuMois(this.prisma, tenantId, salarieId, mois, absences);
-    const proposition = propositionDuMois({ jours, salaireMensuel, moyenneMensuelleArticle66: moyenne, deductionsParAbsence, aRecevoirDeLaCaisse, conges });
+    const proposition = propositionDuMois({
+      jours,
+      salaireMensuel,
+      moyenneMensuelleArticle66: moyenne,
+      deductionsParAbsence,
+      aRecevoirDeLaCaisse,
+      subrogationsPartielles,
+      conges,
+      mois,
+    });
     const duMois = absences.filter((a) => a.au.slice(0, 7) >= mois && a.du.slice(0, 7) <= mois);
     return {
       mois,
@@ -255,6 +269,19 @@ export class AbsencesService {
    * par mois ; elle s'annule pour se corriger.
    */
   async declarerIndemniteCaisse(tenantId: string, userEmail: string, absenceId: string, dto: IndemniteCaisseDto) {
+    try {
+      return await this.declarerIndemniteCaisseLue(tenantId, userEmail, absenceId, dto);
+    } catch (e) {
+      // Mineur 3 · l'index unique (arrêt, mois, non annulée) tient ce que la
+      // lecture préalable ne tient pas entre deux déclarations simultanées.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException("Une indemnité de la Caisse est déjà déclarée sur cet arrêt pour ce mois · annulez-la d'abord.");
+      }
+      throw e;
+    }
+  }
+
+  private async declarerIndemniteCaisseLue(tenantId: string, userEmail: string, absenceId: string, dto: IndemniteCaisseDto) {
     return transactionJournalisee(this.prisma, async (tx) => {
       const a = await tx.absenceSalarie.findFirst({
         where: { id: absenceId, tenantId },

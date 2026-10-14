@@ -44,7 +44,7 @@
  * absence restent payés à plein (art. 93) · ils ne sont ni retenus ni payés
  * aux deux tiers, lecture protectrice dite à l'écran.
  */
-import { estJourOuvrableDuCode, natureDuJour } from './jours-du-code-du-travail';
+import { estJourOuvrableDuCode, estJourRemunere, natureDuJour } from './jours-du-code-du-travail';
 import { JOURS_DU_MOIS_REMUNERES, plusMois } from './remuneration-du-delai';
 
 export type JourIso = string;
@@ -569,8 +569,14 @@ export type PropositionDuMois = {
   readonly indemniteDeuxTiers: number | null;
   /** Indemnités de la Caisse déduites de l'indemnité d'un accident du travail (art. 106, al. 2). */
   readonly deductionsCaisse: number;
-  /** Indemnités de la Caisse que l'employeur subrogé reçoit (arrêté n° 146/2018, art. 139 et 146). */
-  readonly aRecevoirDeLaCaisse: number;
+  /**
+   * Indemnités de la Caisse que l'employeur subrogé reçoit (arrêté n° 146/2018,
+   * art. 139 et 146) · la subrogation PARTIELLE bornée à la partie versée
+   * (al. 3) · `null` quand cette partie ne se chiffre pas.
+   */
+  readonly aRecevoirDeLaCaisse: number | null;
+  /** Base du mois · vingt-six, ou les jours payables du mois quand l'absence le couvre en entier (mineur 1). */
+  readonly baseDuMois: number;
   readonly motifs: readonly string[];
   readonly explication: string | null;
 };
@@ -590,7 +596,12 @@ export function propositionDuMois(p: {
   readonly moyenneMensuelleArticle66: number | null;
   /** Étape 3 · indemnités de la Caisse du mois, déduites (accident du travail) par arrêt. */
   readonly deductionsParAbsence?: ReadonlyMap<string, number>;
+  /** Subrogation TOTALE (art. 139, al. 2) · « à la hauteur de l'indemnité due ». */
   readonly aRecevoirDeLaCaisse?: number;
+  /** Subrogation PARTIELLE par arrêt (art. 139, al. 3) · bornée à la partie versée par l'employeur. */
+  readonly subrogationsPartielles?: ReadonlyMap<string, number>;
+  /** Le mois `AAAA-MM` · sans lui, la base reste vingt-six. */
+  readonly mois?: string;
   /** B1 · les congés payés du mois (`congesDuMois`) · leurs jours sortent du salaire. */
   readonly conges?: readonly CongeDuMois[];
 }): PropositionDuMois {
@@ -616,13 +627,22 @@ export function propositionDuMois(p: {
   if (joursDeuxTiers > 0 && p.moyenneMensuelleArticle66 === null) {
     motifs.push("La moyenne mensuelle des douze mois (art. 66, auquel renvoie l'art. 105) n'est pas déclarée · l'indemnité d'incapacité ne se chiffre pas.");
   }
-  const retenus = Math.min(JOURS_DU_MOIS_REMUNERES, joursDeuxTiers + joursNonDus + joursDeConge);
+  // MINEUR 1 DE LA RELECTURE · LE MOIS ENTIER D'ABSENCE. Le forfait de
+  // vingt-six jours (décret n° 25/22, art. 7, par analogie) suppose un mois
+  // où l'on travaille ; un février d'incapacité n'a que vingt-quatre jours
+  // du lundi au samedi, et les deux jours du forfait au-delà se payaient à
+  // plein · une incapacité de tout le mois rendait plus que les deux tiers
+  // (art. 105, 106, 130). Quand l'absence couvre tous les jours ouvrables du
+  // mois, la base est celle des jours PAYABLES du mois (lundi au samedi,
+  // fériés compris · art. 93, ils restent payés à plein), jamais vingt-six.
+  const base = p.mois ? baseDuMois(p.mois, p.jours.reduce((n, j) => n + j.poids, 0) + joursDeConge) : JOURS_DU_MOIS_REMUNERES;
+  const retenus = Math.min(base, joursDeuxTiers + joursNonDus + joursDeConge);
   const bloque = joursNonTranches > 0 || p.salaireMensuel === null || nonPlaces.length > 0;
-  const salaireDesJoursDus = bloque ? null : arrondi(((p.salaireMensuel as number) * (JOURS_DU_MOIS_REMUNERES - retenus)) / JOURS_DU_MOIS_REMUNERES);
+  const salaireDesJoursDus = bloque ? null : arrondi(((p.salaireMensuel as number) * (base - retenus)) / base);
   const indemniteBrute =
     bloque || (joursDeuxTiers > 0 && p.moyenneMensuelleArticle66 === null)
       ? null
-      : arrondi((((p.salaireMensuel as number) + (p.moyenneMensuelleArticle66 ?? 0)) * Math.min(JOURS_DU_MOIS_REMUNERES, joursDeuxTiers) * 2) / (3 * JOURS_DU_MOIS_REMUNERES));
+      : arrondi((((p.salaireMensuel as number) + (p.moyenneMensuelleArticle66 ?? 0)) * Math.min(base, joursDeuxTiers) * 2) / (3 * base));
   // ART. 106, AL. 2 · l'indemnité de la Caisse se déduit de la part de
   // l'indemnité qui revient à SON arrêt, jamais au-delà.
   let deductionsCaisse = 0;
@@ -635,28 +655,70 @@ export function propositionDuMois(p: {
     deductionsCaisse = arrondi(deductionsCaisse);
   }
   const indemniteDeuxTiers = indemniteBrute === null ? null : arrondi(indemniteBrute - deductionsCaisse);
+  // MINEUR 2 DE LA RELECTURE · LA SUBROGATION PARTIELLE · « Si l'employeur
+  // n'a payé qu'une partie de la rémunération, il est subrogé à la limite de
+  // la partie versée » (arrêté n° 146/2018, art. 139, al. 3) · la partie
+  // versée pour l'arrêt est sa part des deux tiers du mois, jamais plus ; le
+  // surplus déclaré revient au travailleur, et c'est dit.
+  let aRecevoirDeLaCaisse: number | null = arrondi(p.aRecevoirDeLaCaisse ?? 0);
+  for (const [absenceId, montant] of p.subrogationsPartielles ?? new Map<string, number>()) {
+    if (indemniteBrute === null || aRecevoirDeLaCaisse === null) {
+      aRecevoirDeLaCaisse = null;
+      motifs.push(
+        "La somme à recevoir de la Caisse par subrogation partielle se borne à la partie versée par l'employeur (arrêté n° 146/2018, art. 139, al. 3) · elle ne se chiffre pas tant que les deux tiers du mois ne se chiffrent pas.",
+      );
+      break;
+    }
+    const siens = p.jours.filter((j) => j.absenceId === absenceId && j.regime === 'DEUX_TIERS').reduce((n, j) => n + j.poids, 0);
+    const partieVersee = joursDeuxTiers > 0 ? arrondi((indemniteBrute * siens) / joursDeuxTiers) : 0;
+    const retenu = Math.min(Math.max(0, montant), partieVersee);
+    if (montant > partieVersee + 0.005) {
+      motifs.push(
+        `L'indemnité de la Caisse déclarée (${montant.toFixed(2)}) dépasse la partie versée par l'employeur pour cet arrêt (${partieVersee.toFixed(2)}) · l'employeur n'est subrogé qu'à la limite de la partie versée (arrêté n° 146/2018, art. 139, al. 3), le surplus revient au travailleur.`,
+      );
+    }
+    aRecevoirDeLaCaisse = arrondi(aRecevoirDeLaCaisse + retenu);
+  }
   return {
     joursDeuxTiers,
     joursNonDus,
     joursNonTranches,
     joursDeConge,
-    joursPayesAPlein: bloque ? null : JOURS_DU_MOIS_REMUNERES - retenus,
+    joursPayesAPlein: bloque ? null : base - retenus,
     salaireDesJoursDus,
     indemniteDeuxTiers,
     deductionsCaisse,
-    aRecevoirDeLaCaisse: arrondi(p.aRecevoirDeLaCaisse ?? 0),
+    aRecevoirDeLaCaisse,
+    baseDuMois: base,
     motifs,
     explication: bloque
       ? null
-      : `Salaire mensuel × (26 − ${retenus}) ÷ 26` +
+      : `Salaire mensuel × (${base} − ${retenus}) ÷ ${base}` +
+        (base !== JOURS_DU_MOIS_REMUNERES ? ` · l'absence couvre le mois entier, la base est celle de ses ${base} jours payables` : '') +
         (joursDeConge > 0 ? ` ; ${joursDeConge} jour(s) de congé payés par l'allocation, qui remplace le salaire de ces jours (art. 142)` : '') +
-        (joursDeuxTiers > 0 ? ` ; indemnité d'incapacité = (salaire mensuel + moyenne de l'art. 66) × ${joursDeuxTiers} × 2/3 ÷ 26` : '') +
+        (joursDeuxTiers > 0 ? ` ; indemnité d'incapacité = (salaire mensuel + moyenne de l'art. 66) × ${joursDeuxTiers} × 2/3 ÷ ${base}` : '') +
         (deductionsCaisse > 0 ? `, moins ${deductionsCaisse} versés par la Caisse (art. 106, al. 2)` : '') +
         ' · vingt-six jours payés par mois (décret n° 25/22, art. 7, par analogie), jours fériés de l’absence payés à plein (art. 93).',
   };
 }
 
 const arrondi = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * La base du mois · vingt-six, sauf quand les jours couverts (absences et
+ * congés, demi-journées pesées) atteignent tous les jours OUVRABLES du mois ·
+ * alors ses jours PAYABLES, du lundi au samedi, fériés compris (mineur 1).
+ */
+function baseDuMois(mois: string, couverts: number): number {
+  const [a, m] = mois.split('-').map(Number);
+  let ouvrables = 0;
+  let payables = 0;
+  for (let d = new Date(Date.UTC(a, m - 1, 1)); d.getUTCMonth() === m - 1; d = plusJours(d, 1)) {
+    if (estJourOuvrableDuCode(d)) ouvrables += 1;
+    if (estJourRemunere(d)) payables += 1;
+  }
+  return ouvrables > 0 && couverts >= ouvrables ? payables : JOURS_DU_MOIS_REMUNERES;
+}
 
 /**
  * CE QUE LES ABSENCES FONT AU COMPTEUR DES CONGÉS (art. 141, al. 2 et 4) ·

@@ -276,16 +276,15 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'creePar',
       'createdAt',
     ],
-    // LIGNE SAGE-L5 · L'ABSENCE DU SALARIÉ · le journal dit sa nature, ses
-    // dates et son annulation ; la pièce (certificat médical) et
-    // l'observation sont masquées.
+    // LIGNE SAGE-L5 · L'ABSENCE DU SALARIÉ · le journal dit ses dates et son
+    // annulation ; la nature (relecture, mineur 4), la pièce (certificat
+    // médical) et l'observation sont masquées.
     AbsenceSalarie: [
       'id',
       'tenantId',
       'tenant',
       'salarieId',
       'salarie',
-      'nature',
       'du',
       'au',
       'demiJourneeDebut',
@@ -298,6 +297,23 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'createdAt',
       // Étape 3 · les indemnités de la Caisse déclarées sur l'arrêt · la relation seule.
       'indemnitesCaisse',
+    ],
+    // RELECTURE L5, MINEUR 4 · L'INDEMNITÉ DE LA CAISSE · le journal dit son
+    // arrêt, son mois, son traitement et son annulation ; le montant et la
+    // pièce sont masqués, comme la rémunération.
+    IndemniteCaisseAbsence: [
+      'id',
+      'tenantId',
+      'tenant',
+      'absenceId',
+      'absence',
+      'mois',
+      'traitement',
+      'annuleLe',
+      'annulePar',
+      'motifAnnulation',
+      'creePar',
+      'createdAt',
     ],
     // L'AVANCE AU SALARIÉ · le journal dit qu'elle existe, de quel type, à
     // quelle date et sur quelle pièce ; le montant et l'objet sont masqués,
@@ -421,6 +437,21 @@ describe('la liste d’exclusion est fermée sur User', () => {
     // journal de ce qu'on vient précisément y chercher.
     expect(m.type).toBe('DUREE_DETERMINEE');
     expect(m.emploiPermanent).toBe(false);
+  });
+
+  it('RELECTURE L5, MINEUR 4 · la nature d’une absence et l’indemnité de la Caisse ne se lisent pas au journal', () => {
+    const absence = masquer(
+      { id: 'a-1', salarieId: 's-1', nature: 'MATERNITE', du: new Date('2026-08-03'), au: new Date('2026-11-08'), piece: 'Certificat' },
+      colonnesExclues('AbsenceSalarie'),
+    ) as Record<string, unknown>;
+    expect([absence.nature, absence.piece]).toEqual([MARQUEUR_MASQUE, MARQUEUR_MASQUE]);
+    expect(absence.salarieId).toBe('s-1');
+    const indemnite = masquer(
+      { id: 'i-1', absenceId: 'a-1', mois: '2026-08', montant: 180_000, traitement: 'SUBROGATION', piece: 'Bordereau CNSS 118' },
+      colonnesExclues('IndemniteCaisseAbsence'),
+    ) as Record<string, unknown>;
+    expect([indemnite.montant, indemnite.piece]).toEqual([MARQUEUR_MASQUE, MARQUEUR_MASQUE]);
+    expect([indemnite.mois, indemnite.traitement]).toEqual(['2026-08', 'SUBROGATION']);
   });
 
   it('UN ENFANT NE SE NOMME PAS AU JOURNAL · seul son rattachement y reste', () => {

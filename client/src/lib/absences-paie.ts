@@ -79,7 +79,10 @@ export interface PropositionDuMois {
   salaireDesJoursDus: number | null;
   indemniteDeuxTiers: number | null;
   deductionsCaisse: number;
-  aRecevoirDeLaCaisse: number;
+  /** `null` · la subrogation partielle ne se borne pas tant que les deux tiers ne se chiffrent pas. */
+  aRecevoirDeLaCaisse: number | null;
+  /** Vingt-six, ou les jours payables du mois quand l'absence le couvre en entier. */
+  baseDuMois: number;
   motifs: string[];
   explication: string | null;
 }

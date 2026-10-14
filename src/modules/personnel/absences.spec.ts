@@ -244,3 +244,45 @@ describe('M1 · les six mois courent du premier jour de la SUSPENSION, fiches co
     expect(infos.join(' ')).toContain('2026-07-05');
   });
 });
+
+describe('mineur 1 · un mois ENTIER d’incapacité ne rend jamais plus que les deux tiers (art. 105)', () => {
+  it('février 2026, vingt-quatre jours du lundi au samedi · 0 de salaire et 2/3 de 520 000, pas 40 000 + 320 000', () => {
+    const fevrier = joursOuvrablesDuMois([absence('MALADIE_OU_ACCIDENT', '2026-02-01', '2026-02-28')], '2026-02');
+    const p = propositionDuMois({ jours: fevrier, salaireMensuel: 520_000, moyenneMensuelleArticle66: 0, mois: '2026-02' });
+    expect([p.baseDuMois, p.joursDeuxTiers, p.joursPayesAPlein, p.salaireDesJoursDus, p.indemniteDeuxTiers]).toEqual([24, 24, 0, 0, 346_666.67]);
+    expect(p.salaireDesJoursDus! + p.indemniteDeuxTiers!).toBeCloseTo((520_000 * 2) / 3, 2);
+    // Sans le mois, l'ancien forfait payait deux jours fantômes à plein.
+    const ancien = propositionDuMois({ jours: fevrier, salaireMensuel: 520_000, moyenneMensuelleArticle66: 0 });
+    expect(ancien.salaireDesJoursDus! + ancien.indemniteDeuxTiers!).toBe(360_000);
+  });
+
+  it('une absence partielle garde les vingt-six jours du forfait', () => {
+    const jours = joursOuvrablesDuMois([absence('MALADIE_OU_ACCIDENT', '2026-02-10', '2026-02-12')], '2026-02');
+    const p = propositionDuMois({ jours, salaireMensuel: 520_000, moyenneMensuelleArticle66: 0, mois: '2026-02' });
+    expect([p.baseDuMois, p.salaireDesJoursDus, p.indemniteDeuxTiers]).toEqual([26, 460_000, 40_000]);
+  });
+
+  it('juin 2026 entier · le 30, férié, reste payé à plein (art. 93), sur ses vingt-six jours payables', () => {
+    const juin = joursOuvrablesDuMois([absence('MALADIE_OU_ACCIDENT', '2026-06-01', '2026-06-30')], '2026-06');
+    const p = propositionDuMois({ jours: juin, salaireMensuel: 520_000, moyenneMensuelleArticle66: 0, mois: '2026-06' });
+    expect([p.baseDuMois, p.joursDeuxTiers, p.joursPayesAPlein, p.salaireDesJoursDus]).toEqual([26, 25, 1, 20_000]);
+  });
+});
+
+describe('mineur 2 · la subrogation partielle se borne à la partie versée (arrêté n° 146/2018, art. 139, al. 3)', () => {
+  const maternite = absence('MATERNITE', '2026-08-03', '2026-08-08');
+  const jours = joursOuvrablesDuMois([maternite], '2026-08');
+
+  it('200 000 déclarés pour 120 000 versés par l’employeur · 120 000 à recevoir, le surplus dit au travailleur', () => {
+    const p = propositionDuMois({ jours, salaireMensuel: 780_000, moyenneMensuelleArticle66: 0, subrogationsPartielles: new Map([[maternite.id, 200_000]]) });
+    expect([p.indemniteDeuxTiers, p.aRecevoirDeLaCaisse]).toEqual([120_000, 120_000]);
+    expect(p.motifs.join(' ')).toContain('art. 139, al. 3');
+  });
+
+  it('100 000 déclarés passent entiers ; sans les deux tiers chiffrés, la somme à recevoir n’est pas un zéro', () => {
+    const p = propositionDuMois({ jours, salaireMensuel: 780_000, moyenneMensuelleArticle66: 0, subrogationsPartielles: new Map([[maternite.id, 100_000]]) });
+    expect([p.aRecevoirDeLaCaisse, p.motifs]).toEqual([100_000, []]);
+    const sansMoyenne = propositionDuMois({ jours, salaireMensuel: 780_000, moyenneMensuelleArticle66: null, subrogationsPartielles: new Map([[maternite.id, 100_000]]) });
+    expect(sansMoyenne.aRecevoirDeLaCaisse).toBeNull();
+  });
+});

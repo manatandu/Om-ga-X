@@ -503,9 +503,16 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // Ligne sage-l5 · la pièce d'une absence nomme un certificat médical et
   // l'observation peut en dire le contenu · le journal d'audit se lit par
   // tout le dossier, l'aide-comptable compris, à qui le personnel est fermé.
-  // La nature, les dates et l'annulation restent, ce sont elles que la trace
-  // doit dire.
-  AbsenceSalarie: ['piece', 'observation'],
+  // LA NATURE AUSSI (relecture L5, mineur 4) · « maladie », « maternité »,
+  // « incarcération » disent l'état de santé ou la situation d'une personne,
+  // pas sa relation de travail. Les dates et l'annulation restent, ce sont
+  // elles que la trace doit dire.
+  AbsenceSalarie: ['nature', 'piece', 'observation'],
+  // Relecture L5, mineur 4 · l'indemnité journalière de la Caisse est une
+  // prestation versée à la personne (arrêté n° 146/2018, art. 63 et 87),
+  // masquée comme la rémunération ; sa pièce nomme le bordereau. Le mois, le
+  // traitement et l'annulation restent.
+  IndemniteCaisseAbsence: ['montant', 'piece'],
   // Ligne sage-l5 · les coordonnées d'un salarié sont une donnée de la
   // personne, que l'aide-comptable ne lit pas · la trace dit qu'un RIB a
   // changé, qui l'a changé et quand, et la banque ; les numéros sont masqués.

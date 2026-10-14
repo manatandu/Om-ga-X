@@ -10394,6 +10394,10 @@ model IndemniteCaisseAbsence {
   creePar         String
   createdAt       DateTime                  @default(now())
 
+  /// Relecture L5, mineur 3 · une indemnité NON ANNULÉE par arrêt et par
+  /// mois, tenue par la base (NULLS NOT DISTINCT dans la migration) · deux
+  /// déclarations simultanées passaient la lecture préalable toutes deux.
+  @@unique([absenceId, mois, annuleLe])
   @@index([tenantId, absenceId, mois])
   @@map("indemnites_caisse_absences")
 }
