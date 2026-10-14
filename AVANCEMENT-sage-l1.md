@@ -317,6 +317,51 @@ retrait, retirée du modèle puis retirée, rang 1 repris, renommée.
   `ImpressionJournal` (à rejouer si une autre ligne ajoute des tables) ;
   `chrome-etroit.spec.ts` compte 17 commandes sous Structure.
 
+## Relecture du premier tour (2026-10-14) · trois BLOQUANTS, six MAJEURS, six MINEURS
+
+Commits `09229fe`, `824f28d`, `f4ce10a`, `baab0ba` (signés, poussés).
+
+- LE FILET D'ABORD (recommandation du relecteur) ·
+  `comptabilite/lectures-hors-situation.spec.ts` découpe chaque appel
+  `ecriture` et `ligneEcriture` (lectures, agrégats, comptes, maillons sur
+  plusieurs lignes) et chaque requête brute de `src/`, isole le `where` par
+  la structure de l'appel, et exige un statut · en clair, par un filtre nommé
+  dont la définition le pose (relue par sa structure), par une variable qui y
+  remonte, par une catégorie structurelle sans négation, ou par une exception
+  de liste fermée (fichier, fonction, appel, nombre exact, motif). Il a
+  attrapé, au-delà des constats, le report à-nouveau et sa confrontation,
+  l'ouverture passée, le solde de caisse au comptage, le volume des exports,
+  le rapport d'activité, la subvention rattachée, le lettrage automatique, le
+  report du reclassement. Rejoué contre le défaut B1 remis en place · il
+  tombe.
+- B1 relances (positions) · B2 éliminations du groupe (jeu d'essai avec une
+  simulation) · B3 inventaire, emballages (candidates filtrées, rattachement
+  refusé, détachement admis, écrans « (situation) ») et le même refus pour
+  le don, la facture, le mouvement de stock, la contre-passation déclarée
+  (`motifSimulationNonRattachable`).
+- M1 règlement des tiers · échéances filtrées, refus nommé AVANT la première
+  pièce. M2 extension · lit par la transaction en cours, bornée par le
+  dossier de l'écriture jugée (`lecteurDe`). M3 · migration
+  `20270171040000_ecritures_de_situation_tenues` + contrôle
+  `JOURNAL_DE_SITUATION_AU_BROUILLARD` + refus de clôture qui dit l'issue.
+  M4 garde du 623 · M5 caisses à compter · M6 impressions (voir décisions).
+- m1 · le champ de l'art. 22 par son 1° (module, messages, aide). m2 · la page
+  imprimée porte numéro et date (`flushSync` avant la boîte, retirés à
+  `afterprint`) ; l'export, enregistré APRÈS sa dernière ligne, ne peut pas
+  porter le sien · son numéro se lit dans la liste des impressions. m3
+  rapprochement · m4 séquences (409 sur P2003, champ rendu) · m5
+  réimputation · m6 facture d'origine.
+- Tests qui gèlent chaque défaut · relances, groupe, inventaire, emballages,
+  dons, factures, magasin, devises, règlements, location, caisses,
+  réimputation, séquences, impressions (enregistrement, export, rattachement,
+  arrêt et annulation), extension (lecture par la transaction), contrôle et
+  migration ; navigateur · `sage-l1-impression` (journal vide, numéro sur la
+  page), `sage-l1-sequences` (renommage refusé).
+- M3 éprouvé sur vraie base · la migration rejouée dans une transaction
+  annulée sur `omegax_sage_l1` (une simulation lettrée, une tenue par une clé
+  étrangère, une libre) · les deux premières reviennent au brouillard, la
+  troisième reste en situation ; puis appliquée, `migrate diff` sans écart.
+
 ## Bloc du § 3 (2026-10-14, après la dernière fonction)
 
 - Serveur · `tsc --noEmit` sans erreur ; jest en six tranches successives,
@@ -352,7 +397,24 @@ d'organisation ou de produit.
 
 ## Décisions
 
-- D-L1-12 (ci-dessus), par la loi · AUDCIF art. 16 al. 2, 17 3°, 19, 22 2° et 3°.
+- D-L1-12 (ci-dessus), par la loi · AUDCIF art. 16 al. 2, 17 3°, 19, 22 1°
+  à 3° · le champ de l'art. 22 est fixé par son 1° (« les données relatives à
+  toute opération donnant lieu à enregistrement ») ; son 2°, lu seul, se
+  lirait contre la règle. La migration 20270171000001 cite le 2° · appliquée,
+  elle ne se retouche pas, et le module le dit (relecture m1).
+- M3, par la loi · une simulation reprise que tient une lettre, un pointage
+  ou une clé étrangère revient au BROUILLARD · le brouillard n'est pas au
+  livre-journal (art. 22, 2°), le logiciel ne sait pas si elle enregistre une
+  opération (art. 22, 1°), et délettrer ou dépointer d'office défairait des
+  gestes du cabinet que l'art. 20 (correction des écritures) ne vise pas ·
+  nommées par le contrôle, issues dites (défaire ce qui la tient, supprimer,
+  ressaisir dans un journal ordinaire).
+- M6, par la loi · un journal sans pièce n'a rien à attester, rien n'est
+  enregistré ; une impression ne se supprime jamais (art. 22, 7° · son numéro
+  reviendrait au suivant) · elle suit l'exercice qui reprend sa période
+  (`rattacherLesImpressions`, mises à jour unitaires au journal d'audit) et
+  n'occupe plus l'exercice ; un journal dont une impression compte des pièces
+  ne se supprime pas (la trace le nomme), la mise en sommeil reste l'issue.
 - D-L1-60 (ci-dessus), par la loi · AUDCIF art. 22, 1°, 3° et 7°.
 - #16 · seule règle lue, le CPCC (ch. 6, « un seul repère ») · tenue par
   l'unicité de la lettre sur le compte, refus nommé.
@@ -394,13 +456,22 @@ Prisma (`extension-journal-de-situation.ts`) · seule la saisie y écrit.
 Valider et corriger en négatif refusés ; journal non clôturable, non figé par
 une clôture de période, hors de la numérotation du fichier (`modeEffectif`).
 Le validé hérité n'est pas retouché, il est nommé
-(`JOURNAL_DE_SITUATION_AU_LIVRE_JOURNAL`).
+(`JOURNAL_DE_SITUATION_AU_LIVRE_JOURNAL`) ; le brouillard hérité qu'une
+lettre, un pointage ou un module tenait reste au brouillard
+(`20270171040000`), nommé (`JOURNAL_DE_SITUATION_AU_BROUILLARD`). Aucune
+simulation ne se rattache à un acte (`motifSimulationNonRattachable`).
+L'extension lit par la transaction en cours. TOUTE LECTURE DES ÉCRITURES
+POSE UN STATUT · `lectures-hors-situation.spec.ts` découpe chaque appel et
+tient la liste fermée des exceptions, au nombre près.
 
 **Journal marqué imprimé (ligne sage-l1, fonction 60, décision par la loi du
 2026-10-14).** AUDCIF art. 22, 1° (restitution sur papier), 3° (la clôture
 informatique n'attend aucune impression) et 7° (états périodiques numérotés
 et datés) · l'impression ou l'export du journal entier s'ENREGISTRE
-(`ImpressionJournal`, numéro continu par dossier, auteur, période, pièces) ;
+(`ImpressionJournal`, numéro continu par dossier, auteur, période, pièces),
+jamais un journal sans pièce, la page imprimée portant son numéro et sa date ;
+une impression ne se supprime jamais, elle suit l'exercice qui reprend sa
+période (`rattacherLesImpressions`) ;
 le refus de clôturer un journal non imprimé est une OPTION du dossier,
 fausse par défaut (`refusClotureJournalNonImprime`) ; une écriture validée
 après l'impression rend son jour non imprimé (`moisNonImprimes`) ; une
