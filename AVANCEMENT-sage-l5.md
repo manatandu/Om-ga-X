@@ -9,7 +9,8 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
 
 ## Fait
 
-- **79 · congés acquis chaque mois** · en cours.
+- **79 · congés acquis chaque mois** · fait (commits `ec51871` serveur,
+  `3026d91` écran, puis le parcours navigateur).
   - Serveur · moteur pur `personnel/conges-acquis.ts` (compteur par période
     annuelle de date à date, mois de service acquis sur bulletin émis,
     tranche d'ancienneté de `decompte-final.ts`, reprise déclarée, signal de
@@ -19,12 +20,22 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
     tables `RepriseCongesSalarie` et `CongeSalarie` (migration
     `20270175000100_conges_acquis`), allocation portée au bulletin
     (`allocationsConge` de la saisie, rejouée au serveur, liée à l'émission).
+  - Écran · onglet Congés de la fenêtre Personnel (`components/paie/CongesPaie.tsx`,
+    modale commune `components/paie/ModalePaie.tsx`), bloc « Allocations de
+    congé du mois » de l'onglet Simulation (`lib/conges-paie.ts`).
+  - Parcours navigateur `e2e/tests/sage-l5-conges.e2e.ts` (reprise déclarée à
+    l'écran, compteur, refus au-delà du solde, congé posé à l'écran, allocation
+    portée au bulletin d'août, 1 040 000 + 480 000, congé porté non annulable,
+    bulletin annulé qui le libère). Aucune écriture n'est passée par la
+    fonction · pas de scénario de clôture à jouer.
 
 ## Reste
 
-- 79 · écran (onglet Congés de la fenêtre Personnel, bloc des allocations
-  dans l'onglet Simulation), parcours navigateur, scénario sur vraie base.
 - 78, 75, 88, 85.
+- 79 · le décompte final ne relit pas encore le compteur pour proposer les
+  mois non couverts par un congé (saisis à la main, comme avant) ; un congé
+  porté au bulletin et une indemnité compensatoire au décompte du même mois
+  sont refusés ensemble par la garde du double compte (A8, m).
 
 ## Décisions prises par la loi
 
@@ -53,6 +64,10 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   `jours-du-code-du-travail.ts`), moins les jours de voyage déclarés
   (art. 141, al. 3) et les jours de maladie (al. 4) ; paiement au plus tard
   le dernier jour ouvrable avant le départ (art. 145), dit.
+- **D9-g · aucun bulletin avant 2026** · l'impôt n'est calculé qu'à partir du
+  1er janvier 2026 (loi n° 23/053, `LOI_IRPP.entreeEnVigueur`), donc aucun
+  bulletin antérieur ne s'émet · les mois de service d'avant se DÉCLARENT par
+  la reprise, avec leur source, jamais présumés.
 - **D9-f · continuité du service** · contrats renouvelés ou qui se suivent
   sans un jour d'écart · convention d'OmegaX, dite (le Code ne définit pas la
   continuité, l'« employeur substitué » ne se lit sur aucun contrat).
@@ -71,6 +86,10 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
 
 ```bash
 npx jest --maxWorkers=1 src/modules/personnel/conges-acquis.spec.ts src/modules/personnel/conges-bulletin.spec.ts
+(cd client && npx vitest run src/lib/conges-paie.spec.ts)
+# montage local (CLAUDE.md § 10), ports 8085 et 4185, puis
+(cd e2e && OMEGAX_APP=http://localhost:4185 OMEGAX_API=http://localhost:4185/api \
+  PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test tests/sage-l5-conges.e2e.ts)
 DATABASE_URL=postgresql://jetable:jetable@localhost:5432/omegax_sage_l5 npx prisma migrate diff \
   --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
   --shadow-database-url postgresql://jetable:jetable@localhost:5432/omegax_sage_l5_ombre --exit-code
