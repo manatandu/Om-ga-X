@@ -73,6 +73,9 @@ const LIBELLES: Record<string, string> = {
   'LigneCleRepartition.sectionCibleId': 'clés de répartition (section receveuse)',
   'CleRepartition.planId': 'clés de répartition',
   'CoutProductionDeclare.sectionId': 'données du coût de production',
+  // Ligne sage-l5, fonction 88 · la répartition analytique d'un salarié retient sa section et son plan.
+  'LigneRepartitionAnalytiquePaie.sectionId': 'répartitions analytiques de la paie',
+  'RepartitionAnalytiquePaie.planId': 'répartitions analytiques de la paie',
 };
 
 function relationsVers(cible: string, exclure: string[]) {
