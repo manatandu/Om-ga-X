@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ModeAmortissement, Prisma, StatutEcriture, StatutExercice, StatutImmobilisation } from '@prisma/client';
+import { ModeAmortissement, NumerotationPiece, Prisma, StatutEcriture, StatutExercice, StatutImmobilisation } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { referencesVers } from '../../common/suppression/references';
@@ -146,21 +146,31 @@ export class FicheImmobilisationService {
     // LES CONTRÔLES DE LA CRÉATION, tels quels · aucune règle n'est réécrite ici.
     const p = await this.immobilisations.preparerFiche(tenantId, fusion, { composantRemplaceId: f.composantRemplaceId ?? undefined });
 
-    // La nouvelle écriture d'acquisition naît d'abord, au brouillard, comme à
-    // la création · l'ancienne ne part qu'avec la mise à jour de la fiche,
-    // dans la même transaction. Un échec retire la nouvelle.
-    const nouvelle = repris
-      ? null
-      : await this.ecritures.creer(tenantId, userId, {
-          exerciceId,
-          journalId: fusion.journalId!,
-          date: fusion.dateAcquisition,
-          libelle: lu.acquisition?.libelle ?? `Acquisition · ${fusion.designation}`.slice(0, 190),
-          lignes: [
-            { compteId: p.compteEnCours?.id ?? p.famille.compteImmobilisationId, debit: fusion.valeurOrigine, credit: 0 },
-            { compteId: fusion.compteContrepartieId!, debit: 0, credit: fusion.valeurOrigine },
-          ],
-        });
+    const libelleAcquisition = lu.acquisition?.libelle ?? `Acquisition · ${fusion.designation}`.slice(0, 190);
+    const lignesAcquisition = [
+      { compteId: p.compteEnCours?.id ?? p.famille.compteImmobilisationId, debit: fusion.valeurOrigine, credit: 0 },
+      { compteId: fusion.compteContrepartieId!, debit: 0, credit: fusion.valeurOrigine },
+    ];
+    // LA PIÈCE DU BROUILLARD SE RETOUCHE EN PLACE (relecture de la ligne) ·
+    // elle garde son numéro, et la séquence du journal n'a pas de trou. Elle
+    // ne se remplace que si elle change d'exercice, ou de mois dans un journal
+    // numéroté par mois · la neuve naît alors d'abord, au brouillard, comme à
+    // la création, l'ancienne ne part qu'avec la mise à jour de la fiche, et
+    // un échec retire la neuve.
+    const enPlace =
+      !!lu.acquisition &&
+      exerciceId === lu.acquisition.exerciceId &&
+      !(lu.acquisition.journal.numerotation === NumerotationPiece.MENSUELLE && fusion.dateAcquisition.slice(0, 7) !== jourIso(lu.acquisition.date).slice(0, 7));
+    const nouvelle =
+      repris || enPlace
+        ? null
+        : await this.ecritures.creer(tenantId, userId, {
+            exerciceId,
+            journalId: fusion.journalId!,
+            date: fusion.dateAcquisition,
+            libelle: libelleAcquisition,
+            lignes: lignesAcquisition,
+          });
     try {
       await transactionJournalisee(this.prisma, async (tx) => {
         // Relue dans la transaction · un traitement passé entre-temps refuse.
@@ -190,7 +200,14 @@ export class FicheImmobilisationService {
             ...(nouvelle ? { ecritureAcquisition: { connect: { id: nouvelle.id } } } : {}),
           },
         });
-        if (relu.acquisition) {
+        if (enPlace && relu.acquisition) {
+          const fait = await this.ecritures.modifierPieceDuModule(tx, tenantId, relu.acquisition.id, {
+            date: fusion.dateAcquisition,
+            libelle: libelleAcquisition,
+            lignes: lignesAcquisition,
+          });
+          if (!fait) throw new ConflictException("La pièce d'acquisition a changé pendant la modification · relancez-la.");
+        } else if (relu.acquisition) {
           // Une et une seule, ENCORE au brouillard, sinon rien ne part (409).
           await tx.ligneEcriture.deleteMany({
             where: { ecritureId: relu.acquisition.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } },
@@ -218,11 +235,23 @@ export class FicheImmobilisationService {
       const lu = await this.lire(tx, tenantId, id);
       const motif = motifRefusSuppression(lu.etat);
       if (motif) throw new BadRequestException(motif);
-      await tx.annulationTraitementImmobilisation.deleteMany({
+      // UNE À UNE, PAR IDENTIFIANT (relecture de la ligne) · le journal d'audit
+      // ne garde la pré-image que d'une suppression unitaire ; un `deleteMany`
+      // n'y laisserait que filtre et compte.
+      const annulations = await tx.annulationTraitementImmobilisation.findMany({
         where: { tenantId, immobilisationId: id, ecritureOrigineId: null, ecritureNegatifId: null },
+        select: { id: true },
+        take: 1000,
       });
-      const r = await tx.immobilisation.deleteMany({ where: { id, tenantId } });
-      if (r.count !== 1) throw new ConflictException('La fiche a été retirée par un autre geste.');
+      for (const a of annulations) await tx.annulationTraitementImmobilisation.delete({ where: { id: a.id } });
+      try {
+        await tx.immobilisation.delete({ where: { id } });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+          throw new ConflictException('La fiche a été retirée par un autre geste.');
+        }
+        throw err;
+      }
       // Née d'une écriture déjà passée (n° 68), la fiche part seule · l'écriture
       // était au journal avant elle et y reste, sa ligne revient à la liste.
       if (lu.acquisition && !lu.etat.neeDUneEcriturePassee) {
@@ -268,6 +297,8 @@ export class FicheImmobilisationService {
             journalId: true,
             exerciceId: true,
             libelle: true,
+            date: true,
+            journal: { select: { numerotation: true } },
             exercice: { select: { statut: true } },
             lignes: { select: { compteId: true, debit: true, credit: true, lettre: true, lettrageId: true, rapprochementId: true } },
           },
@@ -326,6 +357,9 @@ export class FicheImmobilisationService {
       usages,
       annulationsRetenant,
       exerciceClosQuiLaPorte: closQuiLaPorte ? closQuiLaPorte.dateFin.toISOString().slice(0, 10) : null,
+      renouvelle: fiche.composantRemplaceId
+        ? ((await db.immobilisation.findFirst({ where: { id: fiche.composantRemplaceId, tenantId }, select: { designation: true } }))?.designation ?? '·')
+        : null,
     };
     return { fiche, acquisition, contrepartieId, etat };
   }

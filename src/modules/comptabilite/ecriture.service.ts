@@ -1477,6 +1477,50 @@ export class EcritureService {
   }
 
   /**
+   * LA PIÈCE D'UN MODULE RETOUCHÉE EN PLACE, AU BROUILLARD (ligne sage-l4,
+   * relecture de la fonction n° 66) · le module qui TIENT l'écriture (la fiche
+   * d'immobilisation et son acquisition) la corrige dans SA transaction, aux
+   * mêmes contrôles d'entrée que la saisie, en gardant son NUMÉRO DE PIÈCE ·
+   * remplacer la pièce par une neuve laissait un trou dans la séquence que
+   * l'analyse des journaux nomme (AUDCIF art. 22, 3°). Rend `false`, sans rien
+   * écrire, quand la pièce changerait de mois dans un journal numéroté par
+   * mois · le numéro du mois d'arrivée se prend alors à la création, sous sa
+   * transaction sérialisable, et le module repasse la pièce.
+   */
+  async modifierPieceDuModule(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    ecritureId: string,
+    dto: { date: string; libelle?: string; lignes: LigneEcritureDto[] },
+  ): Promise<boolean> {
+    const ecriture = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, include: { journal: true } });
+    if (!ecriture || ecriture.statut !== StatutEcriture.BROUILLARD) {
+      throw new ConflictException("L'écriture a été validée ou retirée pendant la modification · rien n'est modifié.");
+    }
+    const { date, sectionsParId } = await this.controlesDEntree(
+      tenantId,
+      { exerciceId: ecriture.exerciceId, journalId: ecriture.journalId, date: new Date(dto.date), lignes: dto.lignes },
+      tx,
+    );
+    const changeDeMois =
+      ecriture.journal.numerotation === NumerotationPiece.MENSUELLE &&
+      (date.getUTCFullYear() !== ecriture.date.getUTCFullYear() || date.getUTCMonth() !== ecriture.date.getUTCMonth());
+    if (changeDeMois) return false;
+    await relireLExerciceDansLaTransaction(tx, tenantId, ecriture.exerciceId, date);
+    await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+    await tx.ecriture.update({
+      where: { id: ecritureId },
+      data: {
+        date,
+        ...(dto.libelle ? { libelle: dto.libelle } : {}),
+        lignes: { create: dto.lignes.map((l) => donneesLigneSaisie(l, sectionsParId)) },
+      },
+      select: { id: true },
+    });
+    return true;
+  }
+
+  /**
    * Supprime une écriture en brouillard. Une écriture validée ne se supprime
    * pas · et une écriture qu'un AUTRE MODULE tient ne se supprime pas non plus.
    *

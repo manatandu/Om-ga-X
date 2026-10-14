@@ -13,7 +13,14 @@ import { FicheImmobilisationService } from './fiche-immobilisation.service';
 const ID = '11111111-1111-4111-8111-111111111111';
 
 function fabrique(
-  options: { statut?: 'BROUILLARD' | 'VALIDEE'; repris?: boolean; usages?: Record<string, number>; nee?: boolean; exerciceClosQuiLaPorte?: boolean } = {},
+  options: {
+    statut?: 'BROUILLARD' | 'VALIDEE';
+    repris?: boolean;
+    usages?: Record<string, number>;
+    nee?: boolean;
+    exerciceClosQuiLaPorte?: boolean;
+    numerotation?: 'CONTINUE_JOURNAL' | 'MENSUELLE';
+  } = {},
 ) {
   const statut = options.statut ?? 'BROUILLARD';
   const fiche = {
@@ -65,6 +72,8 @@ function fabrique(
     journalId: 'j-od',
     exerciceId: 'ex-n',
     libelle: 'Acquisition · Camion',
+    date: new Date('2026-01-01'),
+    journal: { numerotation: options.numerotation ?? 'CONTINUE_JOURNAL' },
     exercice: { statut: 'OUVERT' },
     lignes: [
       { compteId: 'c-2451', debit: 12_000_000, credit: 0, lettre: null, lettrageId: null, rapprochementId: null },
@@ -76,6 +85,7 @@ function fabrique(
     immobilisation: {
       findFirst: jest.fn().mockResolvedValue(fiche),
       update: jest.fn().mockResolvedValue(fiche),
+      delete: jest.fn().mockResolvedValue(fiche),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       count: jest.fn().mockResolvedValue(0),
     },
@@ -99,6 +109,8 @@ function fabrique(
     },
     annulationTraitementImmobilisation: {
       count: jest.fn().mockResolvedValue(0),
+      findMany: jest.fn().mockResolvedValue([{ id: 'ann-1' }]),
+      delete: jest.fn().mockResolvedValue({}),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
   };
@@ -129,7 +141,10 @@ function fabrique(
       numeroContrepartie: '52110000',
     }),
   };
-  const ecritures = { creer: jest.fn().mockResolvedValue({ id: 'ecr-nouvelle' }) };
+  const ecritures = {
+    creer: jest.fn().mockResolvedValue({ id: 'ecr-nouvelle' }),
+    modifierPieceDuModule: jest.fn().mockResolvedValue(true),
+  };
   const service = new FicheImmobilisationService(prisma as never, immobilisations as never, ecritures as never);
   return { service, prisma: base, immobilisations, ecritures };
 }
@@ -174,9 +189,29 @@ describe('la modification d’une fiche', () => {
     await expect(service.modifier('t-1', 'u-1', ID, { valeurOrigine: 15_000_000 })).rejects.toThrow(/dotations \(1\)/);
   });
 
-  it('au brouillard · rejoue les contrôles de la création et REMPLACE l’écriture d’acquisition', async () => {
+  it('au brouillard · rejoue les contrôles de la création et RETOUCHE la pièce d’acquisition en place, son numéro gardé', async () => {
     const { service, prisma, immobilisations, ecritures } = fabrique();
     await service.modifier('t-1', 'u-1', ID, { valeurOrigine: 15_000_000 });
+    expect(immobilisations.preparerFiche.mock.calls[0][1]).toMatchObject({ valeurOrigine: 15_000_000, compteContrepartieId: 'c-521', exerciceId: 'ex-n' });
+    // Relecture de la ligne · aucune pièce neuve, aucun trou dans la séquence du journal.
+    expect(ecritures.creer).not.toHaveBeenCalled();
+    expect(ecritures.modifierPieceDuModule).toHaveBeenCalledWith(expect.anything(), 't-1', 'ecr-acq', {
+      date: '2026-01-01',
+      libelle: 'Acquisition · Camion',
+      lignes: [
+        { compteId: 'c-2451', debit: 15_000_000, credit: 0 },
+        { compteId: 'c-521', debit: 0, credit: 15_000_000 },
+      ],
+    });
+    expect(prisma.immobilisation.update.mock.calls[0][0].data).toMatchObject({ valeurOrigine: 15_000_000 });
+    expect(prisma.immobilisation.update.mock.calls[0][0].data.ecritureAcquisition).toBeUndefined();
+    expect(prisma.ecriture.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('changée de mois dans un journal numéroté par mois · la pièce se REMPLACE, contrôles de la création rejoués', async () => {
+    const { service, prisma, immobilisations, ecritures } = fabrique({ numerotation: 'MENSUELLE' });
+    await service.modifier('t-1', 'u-1', ID, { valeurOrigine: 15_000_000, dateAcquisition: '2026-02-10' });
+    expect(ecritures.modifierPieceDuModule).not.toHaveBeenCalled();
     // Les contrôles de la création, sur la fiche entière · contrepartie et journal relus sur l'écriture.
     expect(immobilisations.preparerFiche.mock.calls[0][1]).toMatchObject({
       compteImmobilisationId: 'c-2451',
@@ -199,9 +234,9 @@ describe('la modification d’une fiche', () => {
   });
 
   it('l’ancienne écriture validée entre-temps · 409, et la nouvelle est retirée du brouillard', async () => {
-    const { service, prisma } = fabrique();
+    const { service, prisma } = fabrique({ numerotation: 'MENSUELLE' });
     prisma.ecriture.deleteMany.mockResolvedValueOnce({ count: 0 });
-    await expect(service.modifier('t-1', 'u-1', ID, { valeurOrigine: 15_000_000 })).rejects.toThrow(ConflictException);
+    await expect(service.modifier('t-1', 'u-1', ID, { valeurOrigine: 15_000_000, dateAcquisition: '2026-02-10' })).rejects.toThrow(ConflictException);
     expect(prisma.ecriture.deleteMany).toHaveBeenLastCalledWith({ where: { id: 'ecr-nouvelle', tenantId: 't-1', statut: 'BROUILLARD' } });
   });
 
@@ -226,12 +261,16 @@ describe('la suppression d’une fiche', () => {
   it('au brouillard · la fiche part avec son écriture, filtrée sur le statut', async () => {
     const { service, prisma } = fabrique();
     await expect(service.supprimer('t-1', ID)).resolves.toEqual({ supprime: true });
-    expect(prisma.immobilisation.deleteMany).toHaveBeenCalledWith({ where: { id: ID, tenantId: 't-1' } });
+    // Une suppression UNITAIRE · le journal d'audit en garde la pré-image.
+    expect(prisma.immobilisation.delete).toHaveBeenCalledWith({ where: { id: ID } });
+    expect(prisma.immobilisation.deleteMany).not.toHaveBeenCalled();
     expect(prisma.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'ecr-acq', tenantId: 't-1', statut: 'BROUILLARD' } });
-    // Les annulations qui ne retiennent rien partent avec elle.
-    expect(prisma.annulationTraitementImmobilisation.deleteMany).toHaveBeenCalledWith({
-      where: { tenantId: 't-1', immobilisationId: ID, ecritureOrigineId: null, ecritureNegatifId: null },
-    });
+    // Les annulations qui ne retiennent rien partent avec elle, une à une.
+    expect(prisma.annulationTraitementImmobilisation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 't-1', immobilisationId: ID, ecritureOrigineId: null, ecritureNegatifId: null } }),
+    );
+    expect(prisma.annulationTraitementImmobilisation.delete).toHaveBeenCalledWith({ where: { id: 'ann-1' } });
+    expect(prisma.annulationTraitementImmobilisation.deleteMany).not.toHaveBeenCalled();
   });
 
   it('refuse une fiche dont l’écriture est validée, ou qu’un usage retient', async () => {
@@ -244,7 +283,7 @@ describe('la fiche née d’une écriture déjà passée (fonction n° 68)', () 
   it('se retire seule · l’écriture validée du journal n’est jamais touchée', async () => {
     const { service, prisma } = fabrique({ statut: 'VALIDEE', nee: true });
     await expect(service.supprimer('t-1', ID)).resolves.toEqual({ supprime: true });
-    expect(prisma.immobilisation.deleteMany).toHaveBeenCalledWith({ where: { id: ID, tenantId: 't-1' } });
+    expect(prisma.immobilisation.delete).toHaveBeenCalledWith({ where: { id: ID } });
     expect(prisma.ecriture.deleteMany).not.toHaveBeenCalled();
     expect(prisma.ligneEcriture.deleteMany).not.toHaveBeenCalled();
   });

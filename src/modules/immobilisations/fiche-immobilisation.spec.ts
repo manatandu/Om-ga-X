@@ -25,6 +25,7 @@ const vierge: EtatDeLaFiche = {
   usages: [],
   annulationsRetenant: 0,
   exerciceClosQuiLaPorte: null,
+  renouvelle: null,
 };
 
 describe('les champs à effet', () => {
@@ -102,6 +103,14 @@ describe('la duplication', () => {
     expect(p).not.toHaveProperty('numeroInventaire');
     expect(p).not.toHaveProperty('compteContrepartieId');
     expect(p.valeurOrigine).toBe(12_000_000);
+  });
+});
+
+describe('la fiche née d’un renouvellement (relecture, mineur)', () => {
+  it('ne se supprime pas · elle porte la trace du renouvellement ; elle se modifie au brouillard', () => {
+    const e: EtatDeLaFiche = { ...vierge, renouvelle: 'Moteur 1' };
+    expect(motifRefusSuppression(e)).toMatch(/renouvellement de « Moteur 1 »/);
+    expect(motifRefusModificationAEffet(e)).toBeNull();
   });
 });
 

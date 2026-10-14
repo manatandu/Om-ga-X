@@ -109,6 +109,13 @@ export interface EtatDeLaFiche {
    * antérieur se modifiaient, sa fiche se supprimait.
    */
   exerciceClosQuiLaPorte: string | null;
+  /**
+   * La fiche est née du RENOUVELLEMENT d'un composant (`renouveler`,
+   * `composantRemplaceId`) · la désignation du composant remplacé, ou null.
+   * Elle porte la trace du renouvellement (AUDCIF Titre VIII ch. 4 § 4.1) ·
+   * supprimée, l'ancien composant resterait sorti sans ce qui le remplace.
+   */
+  renouvelle: string | null;
 }
 
 function motifExerciceClosQuiLaPorte(cloture: string, geste: 'modifier' | 'supprimer'): string {
@@ -202,6 +209,13 @@ export function motifRefusSuppression(e: EtatDeLaFiche): string | null {
   }
   if (e.acquisition?.exerciceClos) return 'L’écriture d’acquisition est dans un exercice clôturé · la fiche ne se supprime plus.';
   if (e.exerciceClosQuiLaPorte) return motifExerciceClosQuiLaPorte(e.exerciceClosQuiLaPorte, 'supprimer');
+  if (e.renouvelle) {
+    return (
+      `La fiche est née du renouvellement de « ${e.renouvelle} » et en porte la trace (AUDCIF Titre VIII ch. 4 § 4.1) · ` +
+      'supprimée, le composant remplacé resterait sorti sans ce qui le remplace. Corrigez-la par la modification tant que ' +
+      'son écriture d’acquisition est au brouillard.'
+    );
+  }
   if (e.usages.length > 0) {
     return `La fiche est utilisée · ${e.usages.map(libelleUsage).join(', ')}. Annulez ou retirez d’abord ces usages.`;
   }
