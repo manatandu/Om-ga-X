@@ -415,11 +415,29 @@ export class RetenueAvanceDto {
   montantFc!: number;
 }
 
+/**
+ * LIGNE SAGE-L5, FONCTION 79 · un congé dont ce bulletin porte l'allocation
+ * de l'art. 142. Le client ne nomme que le congé · le montant est rejoué au
+ * serveur (`allocationsAPorter`).
+ */
+export class AllocationCongePorteeDto {
+  @IsUUID('4')
+  congeId!: string;
+}
+
 export class SimulationPaieDto {
   /** Mois de paie au format AAAA-MM · il borne le barème et le SMIG. */
   @IsString()
   @MaxLength(7)
   moisDePaie!: string;
+
+  /** Ligne sage-l5 · les congés du mois dont le bulletin porte l'allocation (art. 142, 145). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(12)
+  @ValidateNested({ each: true })
+  @Type(() => AllocationCongePorteeDto)
+  allocationsConge?: AllocationCongePorteeDto[];
 
   /** Retenues d'avance, d'acompte et de prêt · le salarié doit être nommé. */
   @IsOptional()

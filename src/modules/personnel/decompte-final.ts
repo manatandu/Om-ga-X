@@ -493,6 +493,52 @@ export type VerdictConge = {
 };
 
 /**
+ * LE JOUR D'ANCIENNETÉ DE L'ARTICLE 141 · « Elle augmente d'un jour ouvrable
+ * par tranche de cinq années d'ancienneté chez le même employeur ou
+ * l'employeur substitué ». Une seule écriture de la règle, servie au décompte
+ * final (`congeLegal`) et au compteur des congés acquis chaque mois
+ * (`conges-acquis.ts`, ligne sage-l5) · deux calculs du même jour auraient
+ * divergé au premier correctif.
+ */
+export const trancheDAnciennete = (anneesAnciennete: number): number =>
+  Math.floor(Math.max(0, anneesAnciennete) / CONGE_TRANCHE_ANNEES) * CONGE_AJOUT_PAR_TRANCHE_JOURS;
+
+/**
+ * L'ALLOCATION DE CONGÉ DE L'ARTICLE 142 · « une allocation égale à la
+ * rémunération dont il jouit au moment du départ en congé », les commissions,
+ * primes, prestations supplémentaires et participation entrant « sur la
+ * moyenne des avantages payés pour les douze mois précédant le congé »
+ * (al. 2). Le livre de paie la porte par jour (mentions 14 à 16 de l'arrêté
+ * du 8 août 2008), la moyenne mensuelle ramenée au jour à 1/26
+ * (`REGLE_MOYENNE_AU_JOUR`).
+ *
+ * UN SEUL MOTEUR pour l'indemnité compensatoire du décompte final (art. 144,
+ * « calculée conformément à l'article 142 ») et pour l'allocation que porte
+ * le bulletin du mois du départ (ligne sage-l5, congés acquis chaque mois).
+ * Un taux journalier ou une moyenne absents rendent `null`, jamais zéro ·
+ * zéro est une réponse que le cabinet donne, pas un défaut.
+ */
+export function allocationDeConge(p: {
+  jours: number;
+  remunerationJournaliereFc: number | null;
+  moyenneMensuelleArticle142Fc: number | null;
+}): { montantFc: number | null; tauxJournalierFc: number | null; motif: string | null } {
+  if (p.remunerationJournaliereFc === null) {
+    return { montantFc: null, tauxJournalierFc: null, motif: "Le taux journalier de la rémunération n'est pas renseigné." };
+  }
+  if (p.moyenneMensuelleArticle142Fc === null) {
+    return {
+      montantFc: null,
+      tauxJournalierFc: null,
+      motif:
+        "La moyenne des douze mois de l'article 142, alinéa 2 n'est pas renseignée · elle entre dans l'allocation de chaque jour de congé (zéro est une réponse).",
+    };
+  }
+  const tauxJournalierFc = p.remunerationJournaliereFc + p.moyenneMensuelleArticle142Fc / JOURS_PAR_MOIS_DE_MOYENNE;
+  return { montantFc: p.jours * tauxJournalierFc, tauxJournalierFc, motif: null };
+}
+
+/**
  * LE CONGÉ LÉGAL, ARTICLE 141, ET C'EST UN PLANCHER AUSSI · « AU MOINS ».
  *
  * L'âge commande le taux, et dans le sens qu'on n'attend pas · c'est le
@@ -533,7 +579,7 @@ export function congeLegal(params: {
   const anciennete = Math.max(0, params.anneesAnciennete);
   const reste = mois % 12;
   const anneesCompletes = (mois - reste) / 12;
-  const tranches = (a: number) => Math.floor(Math.max(0, a) / CONGE_TRANCHE_ANNEES) * CONGE_AJOUT_PAR_TRANCHE_JOURS;
+  const tranches = trancheDAnciennete;
   // La période en cours finit à la cessation, à l'ancienneté déclarée · elle
   // reçoit la tranche entière dès qu'elle compte un mois entier (T6). Les
   // années complètes non prises la précèdent, une année d'ancienneté chacune.
@@ -1278,6 +1324,13 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
   const reserveConge =
     "ARTICLE 142 · l'allocation se calcule sur « la rémunération », et l'article 7, point 8 en exclut « l'indemnité de logement ou le logement en nature » · ni l'une ni l'autre n'y entre. L'article 142 exclut en outre le logement de la conversion en espèces des avantages en nature, « EXCEPTION FAITE SEULEMENT POUR LE LOGEMENT ». Le séminaire CPCC porte une « indemnité congé / logement » que le texte n'ouvre pas ; une indemnité de logement restant due pendant le congé relève du contrat (art. 138), hors de l'indemnité compensatoire.";
   const fondementConge = `Article 144 · « en cas de résiliation du contrat, QUEL QUE SOIT LE MOMENT où celle-ci intervient, le congé est remplacé par une indemnité compensatoire calculée conformément à l'article 142 ». ${conge.joursOuvrables} jours ouvrables × (taux journalier + moyenne de l'art. 142, al. 2), ${LIVRE_DE_PAIE_CONGE_PAR_JOUR} ; ${conversionMoyenne}.`;
+  // L'ALLOCATION DE L'ARTICLE 142, PAR SON MOTEUR (`allocationDeConge`) · le
+  // même que celui de l'allocation portée au bulletin du mois du départ.
+  const allocation = allocationDeConge({
+    jours: conge.joursOuvrables,
+    remunerationJournaliereFc: jour,
+    moyenneMensuelleArticle142Fc: saisi(params.moyenneMensuelleArticle142Fc),
+  });
   if (jour === null) {
     rubriques.push({ cle: 'conge', libelle: 'Indemnité compensatrice de congé', montantFc: null, fondement: fondementConge, reserve: "Le taux journalier du contrat n'est pas renseigné." });
   } else if (moyenne142 === null) {
@@ -1293,7 +1346,7 @@ export function decompteFinal(params: ParametresDecompte): VerdictDecompteFinal 
     rubriques.push({
       cle: 'conge',
       libelle: 'Indemnité compensatrice de congé',
-      montantFc: conge.joursOuvrables * (jour + moyenne142),
+      montantFc: allocation.montantFc,
       fondement: fondementConge,
       reserve: reserveConge,
     });

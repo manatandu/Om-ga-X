@@ -213,6 +213,11 @@ export const MODELES_AUDITES = new Set<string>([
   // bulletins à venir · la trace dit qui l'a posé, sur quel texte, et qui l'a
   // retiré.
   'VersionBaremePaie',
+  // LIGNE SAGE-L5 · une reprise de congés retouchée change un solde sans
+  // qu'aucun bulletin ne bouge ; un congé posé, annulé ou rattaché à un
+  // bulletin change l'allocation payée · la trace dit qui et quand.
+  'RepriseCongesSalarie',
+  'CongeSalarie',
 
   // ══ CLASSEMENT DU 2026-09-27 · tables de même nature que les précédentes,
   // restées hors du journal sans décision (audit serveur, point I4). ══
@@ -471,6 +476,10 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   EnfantACharge: ['nom', 'postNom', 'prenoms', 'dateNaissance'],
   ContratTravail: ['remunerationBase', 'avantagesConvenus'],
   AvanceSalaire: ['montantFc', 'retenueMensuelleFc', 'objet'],
+  // Ligne sage-l5 · le taux journalier et la moyenne des primes sont la
+  // RÉMUNÉRATION, masquée comme celle du contrat ; les dates et le motif
+  // restent, ce sont eux que la trace doit dire.
+  CongeSalarie: ['remunerationJournaliere', 'moyenneMensuelleArticle142'],
   // Le bulletin reste IDENTIFIABLE (numéro, mois, nom, statut, dates, motif
   // d'annulation) · ses MONTANTS et le détail du calcul ne le sont pas, pour
   // la même raison que la rémunération du contrat.

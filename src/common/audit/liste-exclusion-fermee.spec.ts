@@ -142,6 +142,9 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'bulletins',
       // Le lien vers ses avances · la relation, jamais un montant.
       'avances',
+      // Ligne sage-l5 · sa reprise de congés et ses congés · les relations seules.
+      'repriseConges',
+      'conges',
       'createdAt',
       'createdBy',
       'updatedAt',
@@ -232,6 +235,33 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'ecritureNegatif',
       // Les retenues d'avance portées par le bulletin · la relation seule.
       'retenuesAvance',
+      // Ligne sage-l5 · les congés dont il porte l'allocation · la relation seule.
+      'allocationsConge',
+    ],
+    // LIGNE SAGE-L5 · LE CONGÉ DU SALARIÉ · le journal dit ses dates, son
+    // rattachement à un bulletin, sa prise au-delà du solde et son
+    // annulation ; le taux journalier et la moyenne des primes sont masqués,
+    // comme la rémunération du contrat.
+    CongeSalarie: [
+      'id',
+      'tenantId',
+      'tenant',
+      'salarieId',
+      'salarie',
+      'du',
+      'au',
+      'joursVoyage',
+      'moisDePaie',
+      'deviseAllocation',
+      'auDelaDuSolde',
+      'motifAuDelaDuSolde',
+      'bulletinId',
+      'bulletin',
+      'annuleLe',
+      'annulePar',
+      'motifAnnulation',
+      'creePar',
+      'createdAt',
     ],
     // L'AVANCE AU SALARIÉ · le journal dit qu'elle existe, de quel type, à
     // quelle date et sur quelle pièce ; le montant et l'objet sont masqués,

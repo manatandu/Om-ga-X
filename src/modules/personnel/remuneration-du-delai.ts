@@ -64,7 +64,7 @@ const jourUtc = (s: string): Date | null => {
 };
 const plusJours = (d: Date, n: number) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n));
 /** Date à date, le mois d'arrivée plus court s'arrêtant à son dernier jour (même lecture que l'art. 258). */
-const plusMois = (d: Date, n: number) => {
+export const plusMois = (d: Date, n: number) => {
   const dernier = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n + 1, 0)).getUTCDate();
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, Math.min(d.getUTCDate(), dernier)));
 };

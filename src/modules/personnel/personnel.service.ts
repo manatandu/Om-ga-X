@@ -150,6 +150,21 @@ import {
 import { lireParLots, pageApres, PremiersSelon } from '../../common/lecture-par-lots';
 import { PLAFOND_CONTRATS_PAR_FICHE, PLAFOND_ENFANTS_PAR_FICHE, PLAFOND_GRILLES_SMIG } from './bornes-registre';
 import type { GrillesSmigNonLues } from './regles-contrat-travail';
+import {
+  NATURE_ALLOCATION_CONGE,
+  allocationsAPorter,
+  libelleAllocation,
+  lierCongesAuBulletin,
+  lireAbsencesPourConges,
+  type AllocationPortee,
+} from './conges.service';
+
+/**
+ * LA SAISIE RELUE PAR LE SERVEUR · le DTO, plus ce que le serveur y ajoute et
+ * qu'aucun client ne peut envoyer (le `ValidationPipe` refuse tout champ non
+ * déclaré) · les allocations de congé rejouées (ligne sage-l5).
+ */
+type SaisieRelue = SimulationPaieDto & { allocationsCongePortees?: AllocationPortee[] };
 
 /**
  * LES BORNES DES LISTES DE TRAVAIL DU REGISTRE (audit final F259, § 8 bis).
@@ -1045,6 +1060,38 @@ export class PersonnelService {
       });
     }
 
+    // LIGNE SAGE-L5, FONCTION 79 · L'ALLOCATION DE CONGÉ (art. 142) que ce
+    // bulletin porte, rejouée au serveur par le moteur du décompte final. Le
+    // client ne nomme que le congé ; l'élément s'ajoute ici, et la liste
+    // portée (`allocationsCongePortees`, hors de tout DTO) passe à
+    // l'émission, qui lie chaque congé à son bulletin. La saisie relue ne
+    // porte plus la demande · relue une seconde fois (simulerPaie après
+    // l'émission), elle n'ajouterait pas l'élément deux fois.
+    const demandeesConges = dto.allocationsConge ?? [];
+    let allocationsCongePortees: AllocationPortee[] = (dto as SaisieRelue).allocationsCongePortees ?? [];
+    if (demandeesConges.length) {
+      if (!salarieId) throw new BadRequestException("Une allocation de congé se rapporte à un salarié · choisissez-le.");
+      if (!moisValide(dto.moisDePaie)) throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
+      const devise = dto.deviseStipulation ?? 'CDF';
+      allocationsCongePortees = await allocationsAPorter(
+        this.prisma,
+        tenantId,
+        salarieId,
+        dto.moisDePaie,
+        demandeesConges.map((a) => a.congeId),
+        devise,
+        lireAbsencesPourConges,
+      );
+      elements = [
+        ...elements,
+        ...allocationsCongePortees.map((a) =>
+          devise === 'USD'
+            ? { nature: NATURE_ALLOCATION_CONGE, libelle: libelleAllocation(a), montantUsd: a.montant, montantFc: undefined as unknown as number }
+            : { nature: NATURE_ALLOCATION_CONGE, libelle: libelleAllocation(a), montantFc: a.montant },
+        ),
+      ];
+    }
+
     const demandees = dto.retenuesAvances ?? [];
     const retenuesAvances: {
       avanceId: string;
@@ -1107,7 +1154,10 @@ export class PersonnelService {
         `« ${horsChamp.libelle} » · seuls le logement, le transport et les soins se déclarent fournis en nature.`,
       );
     }
-    return { dto: { ...dto, elements }, retenuesAvances };
+    return {
+      dto: { ...dto, elements, allocationsConge: undefined, allocationsCongePortees } as SaisieRelue,
+      retenuesAvances,
+    };
   }
 
   /**
@@ -1396,6 +1446,9 @@ export class PersonnelService {
       quotite,
       // ARTICLE 112, c) ET f) · figées avec le bulletin, relues par P9.
       retenuesAvances,
+      // LIGNE SAGE-L5 · les congés dont ce bulletin porte l'allocation, figés
+      // avec lui ; l'émission les lie au bulletin dans sa transaction.
+      allocationsConge: (dtoStipule as SaisieRelue).allocationsCongePortees ?? [],
       reserveRetenuesAvances: retenuesAvances.length ? RESERVE_QUOTITE_AVANCES : null,
       // « Sans excéder la portion saisissable » (AUPSRVE, art. 188) · confrontée,
       // jamais refusée (passe O4-C2). La plus large des quotités chiffrées ·
@@ -1803,6 +1856,11 @@ export class PersonnelService {
           await tx.retenueAvanceBulletin.create({
             data: { tenantId, avanceId: r.avanceId, bulletinId: cree.id, montantFc: r.montantFc },
           });
+        }
+        // LIGNE SAGE-L5 · les congés dont ce bulletin porte l'allocation, liés
+        // sous le même verrou · un congé porté entre-temps refuse l'émission.
+        if (simulation.allocationsConge.length) {
+          await lierCongesAuBulletin(tx, tenantId, cree.id, simulation.allocationsConge);
         }
         return cree;
       });

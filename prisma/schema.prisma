@@ -849,6 +849,9 @@ model Tenant {
   comptesVirementFonds         CompteVirementFonds[]
   virementsFonds               VirementFonds[]
   piecesVirementFonds          PieceVirementFonds[]
+  // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
+  reprisesConges               RepriseCongesSalarie[]
+  congesSalaries               CongeSalarie[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -7625,6 +7628,9 @@ model Salarie {
   enfants   EnfantACharge[]
   bulletins BulletinPaie[]
   avances   AvanceSalaire[]
+  // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
+  repriseConges RepriseCongesSalarie?
+  conges        CongeSalarie[]
 
   createdAt DateTime @default(now())
   createdBy String
@@ -7946,6 +7952,8 @@ model BulletinPaie {
   ecritureNegatif   Ecriture? @relation("NegatifBulletinPaie", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
 
   retenuesAvance RetenueAvanceBulletin[]
+  // Ligne sage-l5 · les congés dont ce bulletin porte l'allocation (art. 142, 145).
+  allocationsConge CongeSalarie[]
 
   @@unique([tenantId, numero])
   @@index([tenantId, ecritureId])
@@ -10145,4 +10153,72 @@ model PieceVirementFonds {
   @@unique([virementId, empreinte])
   @@index([tenantId, virementId])
   @@map("pieces_virement_fonds")
+}
+
+// Ligne sage-l5 · congés acquis chaque mois (fonction 79 de la comparaison
+// avec Sage, décision D9). Code du travail, art. 140 à 145 ; règles dans
+// `src/modules/personnel/conges-acquis.ts`.
+
+/// LA REPRISE DES CONGÉS ACQUIS AVANT OmegaX · une par salarié. Le compteur
+/// lit les bulletins émis ; ce qui précède le premier bulletin d'OmegaX
+/// (dossier repris en cours de route) se DÉCLARE, avec sa source, jamais ne
+/// se devine. Au journal d'audit · une reprise retouchée change un solde de
+/// congé sans qu'aucun bulletin ne bouge.
+model RepriseCongesSalarie {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  tenant               Tenant   @relation(fields: [tenantId], references: [id])
+  salarieId            String   @unique
+  salarie              Salarie  @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  /// Dernier jour couvert par la déclaration.
+  arreteAu             DateTime @db.Date
+  /// Jours de congé nés (art. 140, al. 3) et non pris à cette date.
+  joursNesNonPris      Decimal  @db.Decimal(6, 1)
+  /// Mois entiers de service déjà accomplis dans la période annuelle en cours.
+  moisEnCoursAccomplis Int
+  source               String   @db.VarChar(300)
+  declarePar           String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([tenantId, salarieId])
+  @@map("reprises_conges_salaries")
+}
+
+/// UN CONGÉ PRIS OU POSÉ · ses dates, ses jours de voyage (art. 141, al. 3) et
+/// ce qui fonde son allocation (art. 142) · le taux journalier de la
+/// rémunération au départ et la moyenne mensuelle des douze mois, dans la
+/// monnaie du contrat. Les jours se COMPTENT (jours ouvrables du Code, moins
+/// maladie et voyage), ils ne se saisissent pas. Le bulletin qui porte
+/// l'allocation se lie ici ; annulé, le congé redevient à porter. Un congé ne
+/// se supprime pas, il s'annule avec son motif.
+model CongeSalarie {
+  id                         String        @id @default(uuid())
+  tenantId                   String
+  tenant                     Tenant        @relation(fields: [tenantId], references: [id])
+  salarieId                  String
+  salarie                    Salarie       @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  du                         DateTime      @db.Date
+  au                         DateTime      @db.Date
+  joursVoyage                Int           @default(0)
+  /// AAAA-MM · le bulletin du mois qui porte l'allocation (art. 145, payée au départ).
+  moisDePaie                 String        @db.VarChar(7)
+  /// CDF ou USD · la monnaie de la rémunération convenue, celle du bulletin.
+  deviseAllocation           String?       @db.VarChar(3)
+  remunerationJournaliere    Decimal?      @db.Decimal(18, 2)
+  moyenneMensuelleArticle142 Decimal?      @db.Decimal(18, 2)
+  /// Pris au-delà des droits nés (art. 140, al. 3) · dit, avec son motif.
+  auDelaDuSolde              Boolean       @default(false)
+  motifAuDelaDuSolde         String?       @db.VarChar(500)
+  bulletinId                 String?
+  bulletin                   BulletinPaie? @relation(fields: [bulletinId], references: [id], onDelete: Restrict)
+  annuleLe                   DateTime?
+  annulePar                  String?
+  motifAnnulation            String?       @db.VarChar(500)
+  creePar                    String
+  createdAt                  DateTime      @default(now())
+
+  @@index([tenantId, salarieId, du])
+  @@index([tenantId, bulletinId])
+  @@map("conges_salaries")
 }

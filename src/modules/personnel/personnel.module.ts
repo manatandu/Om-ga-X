@@ -9,11 +9,13 @@ import { AvancesRubriquesController } from './avances-rubriques.controller';
 import { AvancesRubriquesService } from './avances-rubriques.service';
 import { BaremesPaieController } from './baremes-paie.controller';
 import { BaremesPaieService } from './baremes-paie.service';
+import { CongesController } from './conges.controller';
+import { CongesService } from './conges.service';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule, ComptabiliteModule],
-  controllers: [PersonnelController, AvancesRubriquesController, BaremesPaieController],
-  providers: [PersonnelService, ComptabilisationPaieService, AvancesRubriquesService, BaremesPaieService],
+  controllers: [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController],
+  providers: [PersonnelService, ComptabilisationPaieService, AvancesRubriquesService, BaremesPaieService, CongesService],
   exports: [PersonnelService],
 })
 export class PersonnelModule {}

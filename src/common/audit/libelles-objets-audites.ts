@@ -89,6 +89,8 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   RubriquePaie: 'Rubrique de paie',
   AvanceSalaire: 'Avance ou prêt au personnel',
   VersionBaremePaie: 'Barème de paie',
+  RepriseCongesSalarie: 'Reprise des congés acquis',
+  CongeSalarie: 'Congé du personnel',
   TiersCompte: "Rattachement d'un compte à un tiers",
   ModeleReglement: 'Modèle de règlement',
   RattachementNote: "Rattachement d'une note annexe",
