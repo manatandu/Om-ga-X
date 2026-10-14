@@ -34,7 +34,8 @@ export interface LigneAReimputer {
   lettrageId: string | null;
   rapprochementId: string | null;
   tauxTvaId: string | null;
-  statut: 'BROUILLARD' | 'VALIDEE';
+  /** SITUATION · une écriture de situation, réimputée en place comme le brouillard. */
+  statut: 'BROUILLARD' | 'VALIDEE' | 'SITUATION';
   exerciceClos: boolean;
   estGenereeParCloture: boolean;
   /** Une immobilisation (acquisition, sortie, dotation) tient l'écriture. */

@@ -1,3 +1,4 @@
+import { HORS_SITUATION, estJournalDeSituation, motifJournalDeSituationNonCloturable } from '../comptabilite/ecritures-de-situation';
 import { ecartsRealisesNonConstates, motifClotureEcartsNonConstates } from '../reglements/ecarts-non-constates';
 import { estContigu, motifCreationNonContigue, motifSuivantNonContigu } from './exercice-contigu';
 import { lignesReporteesAuDetail } from './lignes-reportees-au-detail';
@@ -1721,6 +1722,8 @@ export class ExerciceService {
   async clorePartielle(tenantId: string, exerciceId: string, userId: string, dto: ClorePartielleDto) {
     await this.trouverExercice(tenantId, exerciceId);
     const journal = await this.journalService.trouver(tenantId, dto.journalId);
+    // UN JOURNAL DE SITUATION NE SE CLÔTURE PAS (ligne sage-l1, fonction 12).
+    if (estJournalDeSituation(journal)) throw new BadRequestException(motifJournalDeSituationNonCloturable(journal.code));
     return this.prisma.cloture.create({
       data: {
         tenantId,
@@ -1744,6 +1747,7 @@ export class ExerciceService {
   async cloreTotale(tenantId: string, exerciceId: string, userId: string, dto: CloreTotaleDto) {
     const exercice = await this.trouverExercice(tenantId, exerciceId);
     const journal = await this.journalService.trouver(tenantId, dto.journalId);
+    if (estJournalDeSituation(journal)) throw new BadRequestException(motifJournalDeSituationNonCloturable(journal.code));
     const dateLimite = dto.dateLimite ? new Date(dto.dateLimite) : exercice.dateFin;
     if (dateLimite < exercice.dateDebut || dateLimite > exercice.dateFin) {
       throw new BadRequestException("La date de la clôture totale tombe hors de l'exercice.");
@@ -1973,9 +1977,16 @@ export class ExerciceService {
   // `db` · la transaction de l'appelant, quand il en tient une (relecture du
   // point D, mineur 10 · une seconde connexion prise pendant une transaction
   // ouverte attendait la libération du pool).
-  cloturesApplicables(tenantId: string, journalId: string, db?: Prisma.TransactionClient) {
-    return (db ?? this.prisma).cloture.findMany({
-      where: { tenantId, annuleeAt: null, OR: [{ journalId }, { journalId: null }] },
+  async cloturesApplicables(tenantId: string, journalId: string, db?: Prisma.TransactionClient) {
+    const client = db ?? this.prisma;
+    // UNE CLÔTURE DE PÉRIODE NE FIGE PAS UN JOURNAL DE SITUATION (ligne
+    // sage-l1, fonction 12) · elle porte sur la chronologie des opérations du
+    // livre-journal (AUDCIF art. 22, 3°), qu'il ne tient pas. Ses propres
+    // clôtures, posées avant la règle, restent lues · rien n'est rouvert.
+    const journal = await client.journal.findFirst({ where: { id: journalId, tenantId }, select: { type: true } });
+    const situation = journal ? estJournalDeSituation(journal) : false;
+    return client.cloture.findMany({
+      where: { tenantId, annuleeAt: null, OR: situation ? [{ journalId }] : [{ journalId }, { journalId: null }] },
     });
   }
 
@@ -2203,8 +2214,11 @@ export class ExerciceService {
 
         // Tout l'exercice · le brouillard vient d'être refusé plus haut. Les
         // comptes au SOLDE et de gestion sont lus en sommes, ceux au DÉTAIL
-        // ligne à ligne (audit final F185, `lireComptesDuReport`).
-        let comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId }, referentiel);
+        // ligne à ligne (audit final F185, `lireComptesDuReport`). JAMAIS les
+        // écritures de situation (ligne sage-l1, fonction 12) · le refus du
+        // brouillard ne les arrête pas, elles n'en sont pas, et lues ici elles
+        // entraient au résultat soldé et au report à-nouveau de N+1.
+        let comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId, ...HORS_SITUATION }, referentiel);
         const solde = (c: CompteRan) => auCentime(soldeDuCompte(c));
 
         // Journal support des écritures générées · on réutilise le journal
@@ -2247,7 +2261,7 @@ export class ExerciceService {
               lignes: { create: virement.lignes },
             },
           });
-          comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId }, referentiel);
+          comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId, ...HORS_SITUATION }, referentiel);
           if (virement.compteDestination) {
             messagesVirement.push(
               `Résultat de l'exercice précédent non affecté viré au report à nouveau · ${libelleDuSens(referentiel, virement.montant)} de ` +
@@ -2650,7 +2664,7 @@ export class ExerciceService {
     // à confronter. Avec un négatif tardif, la clôture fera déclarer (second
     // tour, BLOQUANT 1) · l'aperçu dit les positions que le report porterait.
     if (nulle && dejaPassee.negatifsTardifs.length === 0) return { ...base, ouvertureNulle: true };
-    const comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId }, referentiel);
+    const comptes = await lireComptesDuReport(tx, tenantId, { tenantId, exerciceId, ...HORS_SITUATION }, referentiel);
     const delta = resultatDesComptesDeGestion(comptes);
     const resultat =
       Math.abs(delta) > EPSILON ? { compteId: (await this.trouverCompteResultat(tenantId, tx, delta > 0, referentiel)).id, montant: delta } : null;
@@ -3750,7 +3764,9 @@ async function issueDeLOuverture(
       messages: [`L'ouverture déjà passée dans l'exercice suivant (${pieces}) correspond au bilan de clôture, par compte et par devise · aucun report n'est ajouté.`],
     };
   }
-  const ecrituresDeN = await tx.ecriture.count({ where: { tenantId: p.tenantId, exerciceId: p.exerciceId, estSoldeDesComptesDeGestion: false } });
+  const ecrituresDeN = await tx.ecriture.count({
+    where: { tenantId: p.tenantId, exerciceId: p.exerciceId, estSoldeDesComptesDeGestion: false, ...HORS_SITUATION },
+  });
   if (ecrituresDeN === 0) {
     return {
       ...rien,

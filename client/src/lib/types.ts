@@ -1990,7 +1990,9 @@ export interface EtatBudgetaire {
 // Brouillard et validation · voir StatutEcriture dans prisma/schema.prisma
 // ---------------------------------------------------------------------------
 
-export type StatutEcriture = 'BROUILLARD' | 'VALIDEE';
+// SITUATION · écriture d'un journal de situation, qui ne se valide pas et
+// n'entre jamais au livre-journal (ligne sage-l1, fonction 12).
+export type StatutEcriture = 'BROUILLARD' | 'VALIDEE' | 'SITUATION';
 
 export interface LigneBrouillard {
   id: string;

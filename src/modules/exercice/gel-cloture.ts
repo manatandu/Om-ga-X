@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { GranulariteCloture, Prisma, StatutExercice } from '@prisma/client';
+import { GranulariteCloture, Prisma, StatutExercice, TypeJournal } from '@prisma/client';
 
 /**
  * CE QU'UNE CLÔTURE FIGE AU-DELÀ DE LA SAISIE · le lettrage et l'analytique.
@@ -41,6 +41,13 @@ export interface LigneAGeler {
   journalCode?: string;
   date: Date;
   exerciceClos: boolean;
+  /**
+   * Le journal est de type Situation (ligne sage-l1, fonction 12) · une
+   * clôture de période ne le fige pas, il ne tient aucune opération du
+   * livre-journal (AUDCIF art. 22, 3°). L'exercice clôturé le fige, comme
+   * tout le reste.
+   */
+  journalSituation?: boolean;
 }
 
 const jour = (d: Date) => d.toISOString().slice(0, 10);
@@ -55,7 +62,7 @@ export function motifLigneFigee(ligne: LigneAGeler, clotures: ClotureActive[]): 
       const code = ligne.journalCode ? ` ${ligne.journalCode}` : '';
       return `le journal${code} est clôturé totalement · « les journaux ne seront plus modifiables »`;
     }
-    if (c.granularite === GranulariteCloture.PERIODE && ligne.date <= c.dateLimite) {
+    if (c.granularite === GranulariteCloture.PERIODE && !ligne.journalSituation && ligne.date <= c.dateLimite) {
       return `la période jusqu'au ${jour(c.dateLimite)} est clôturée pour tous les journaux`;
     }
   }
@@ -70,7 +77,7 @@ interface ClientGel {
 
 interface LigneLue {
   id: string;
-  ecriture: { date: Date; journalId: string; journal: { code: string }; exercice: { statut: StatutExercice } };
+  ecriture: { date: Date; journalId: string; journal: { code: string; type: TypeJournal }; exercice: { statut: StatutExercice } };
 }
 
 /**
@@ -93,7 +100,7 @@ export async function lignesFigees(
       select: {
         id: true,
         ecriture: {
-          select: { date: true, journalId: true, journal: { select: { code: true } }, exercice: { select: { statut: true } } },
+          select: { date: true, journalId: true, journal: { select: { code: true, type: true } }, exercice: { select: { statut: true } } },
         },
       },
     }) as Promise<LigneLue[]>,
@@ -107,6 +114,7 @@ export async function lignesFigees(
       {
         journalId: l.ecriture.journalId,
         journalCode: l.ecriture.journal.code,
+        journalSituation: l.ecriture.journal.type === TypeJournal.SITUATION,
         date: l.ecriture.date,
         exerciceClos: l.ecriture.exercice.statut === StatutExercice.CLOTURE,
       },

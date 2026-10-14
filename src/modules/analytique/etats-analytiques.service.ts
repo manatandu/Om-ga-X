@@ -1,3 +1,4 @@
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { ClasseCompte, Prisma, TypeCompteDetailTotal } from '@prisma/client';
@@ -120,7 +121,7 @@ export class EtatsAnalytiquesService {
   private async cumulsPlan(tenantId: string, planId: string, exerciceId: string, du: Date, au: Date) {
     const ventilations = await this.prisma.ventilationAnalytique.groupBy({
       by: ['sectionId'],
-      where: { planId, ligne: { ecriture: { tenantId, exerciceId, date: { gte: du, lte: au } } } },
+      where: { planId, ligne: { ecriture: { tenantId, exerciceId, date: { gte: du, lte: au }, ...HORS_SITUATION } } },
       _sum: { debit: true, credit: true },
     });
     const v = new Map(
@@ -195,7 +196,7 @@ export class EtatsAnalytiquesService {
     const ventilations = await this.prisma.ventilationAnalytique.findMany({
       where: {
         sectionId: params.sectionId,
-        ligne: { ecriture: { tenantId, exerciceId: params.exerciceId, date: { gte: du, lte: au } } },
+        ligne: { ecriture: { tenantId, exerciceId: params.exerciceId, date: { gte: du, lte: au }, ...HORS_SITUATION } },
       },
       include: {
         ligne: {
@@ -316,6 +317,8 @@ export class EtatsAnalytiquesService {
           exerciceId: params.exerciceId,
           date: { gte: du, lte: au },
           estSoldeDesComptesDeGestion: false,
+          // Jamais une écriture de situation (ligne sage-l1, fonction 12).
+          ...HORS_SITUATION,
         },
         compte: { classe: { in: classes } },
       };

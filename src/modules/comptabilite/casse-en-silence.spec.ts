@@ -213,8 +213,10 @@ describe('2 · toute écriture reçoit le numéro que son journal impose', () =>
     const fichier = journauxDeLaSequenceDuFichier(
       journauxDefaut(Referentiel.SYSCOHADA),
     ).map((j) => j.code);
+    // Jamais un journal de situation · la séquence numérote les pièces du
+    // livre-journal (ligne sage-l1, fonction 12).
     expect({ filtre: where.journal, fichier }).toEqual({
-      filtre: { numerotation: NumerotationPiece.CONTINUE_FICHIER },
+      filtre: { numerotation: NumerotationPiece.CONTINUE_FICHIER, type: { not: 'SITUATION' } },
       fichier: ['OD'],
     });
   });

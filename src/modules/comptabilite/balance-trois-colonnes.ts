@@ -1,4 +1,5 @@
 import { ClasseCompte, TypeCompteDetailTotal } from '@prisma/client';
+import { HORS_SITUATION } from './ecritures-de-situation';
 
 /**
  * LA BALANCE EN TROIS COLONNES · un seul calcul, deux lecteurs (audit final
@@ -18,12 +19,21 @@ import { ClasseCompte, TypeCompteDetailTotal } from '@prisma/client';
  * ouverture, ni un mouvement de l'exercice.
  */
 
-/** Les trois filtres d'écriture, posés sur un même filtre de départ. */
+/**
+ * Les trois filtres d'écriture, posés sur un même filtre de départ.
+ *
+ * JAMAIS UNE ÉCRITURE DE SITUATION (ligne sage-l1, fonction 12) · un filtre
+ * de départ qui ne dit pas son statut prend le livre-journal ET le
+ * brouillard, jamais les simulations d'un journal de situation, qu'aucune
+ * balance ne lit (AUDCIF art. 19). Un filtre qui pose son statut le garde ·
+ * le livre-journal seul les écarte déjà.
+ */
 export function filtresDesTroisColonnes<F extends object>(filtreEcriture: F) {
+  const base = ('statut' in filtreEcriture ? filtreEcriture : { ...filtreEcriture, ...HORS_SITUATION }) as F;
   return {
-    reports: { ...filtreEcriture, estGenereeParCloture: true, estSoldeDesComptesDeGestion: false },
-    mouvements: { ...filtreEcriture, estGenereeParCloture: false },
-    clotures: { ...filtreEcriture, estSoldeDesComptesDeGestion: true },
+    reports: { ...base, estGenereeParCloture: true, estSoldeDesComptesDeGestion: false },
+    mouvements: { ...base, estGenereeParCloture: false },
+    clotures: { ...base, estSoldeDesComptesDeGestion: true },
   };
 }
 

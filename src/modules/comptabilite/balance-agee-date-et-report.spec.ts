@@ -85,7 +85,8 @@ describe('F52 · la balance âgée décrit la situation à la date de référenc
     await s.balanceAgee('t', { exerciceId: 'ex', dateReference: '2026-06-30' });
     const where = findMany.mock.calls[0][0].where;
     const ref = new Date('2026-06-30');
-    expect(where.ecriture).toEqual({ tenantId: 't', exerciceId: 'ex', date: { lte: ref } });
+    // Brouillard compris, jamais une écriture de situation (ligne sage-l1, fonction 12).
+    expect(where.ecriture).toEqual({ tenantId: 't', exerciceId: 'ex', date: { lte: ref }, statut: { not: 'SITUATION' } });
     expect(where.AND).toEqual([ouverteALaCloture(ref)]);
     // L'ancien filtre écartait toute ligne lettrée, même par un règlement postérieur.
     expect(where.lettre).toBeUndefined();

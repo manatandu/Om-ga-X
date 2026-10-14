@@ -1,6 +1,7 @@
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
-import { OrigineLettrage, Prisma, StatutExercice, StatutLettrage } from '@prisma/client';
+import { OrigineLettrage, Prisma, StatutEcriture, StatutExercice, StatutLettrage } from '@prisma/client';
 import { avecRetrySerialisable } from '../../common/prisma-retry.util';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { lignesFigees, refuserSiLignesFigees } from '../exercice/gel-cloture';
@@ -232,6 +233,11 @@ function soldeEnDevise(
   return Math.round(total * 100) / 100;
 }
 
+/** Le refus de lettrer une ligne d'une écriture de situation. */
+export const MOTIF_LETTRAGE_SITUATION =
+  "Une ligne d'une écriture de situation ne se lettre pas · elle n'enregistre aucune opération et n'est pas au " +
+  "livre-journal (AUDCIF art. 19 ; art. 22, 2°). Lettrez les pièces réelles qui se répondent.";
+
 @Injectable()
 export class LettrageService {
   constructor(private readonly prisma: PrismaService) {}
@@ -268,7 +274,9 @@ export class LettrageService {
     const compte = await this.trouverCompte(tenantId, compteId);
     const where: Prisma.LigneEcritureWhereInput = {
       compteId,
-      ecriture: { tenantId },
+      // Jamais une écriture de situation · elle ne se lettre pas et ne pèse
+      // dans aucun solde (ligne sage-l1, fonction 12).
+      ecriture: { tenantId, ...HORS_SITUATION },
       ...(nonLettreesSeulement ? { lettre: null } : {}),
     };
     // UNE FENÊTRE DE TRAVAIL MONTRE UNE TRANCHE, ET LE DIT (audit final F185)
@@ -556,7 +564,8 @@ export class LettrageService {
       lettrageId: string | null;
       // EXIGÉ par le type (AU1) · un appelant qui ne le lirait pas laisserait
       // passer l'à-nouveau provisoire sans que rien ne le dise.
-      ecriture: { tenantId: string; date: Date; estANouveauProvisoire: boolean };
+      // Le statut, exigé de même (ligne sage-l1, fonction 12).
+      ecriture: { tenantId: string; date: Date; estANouveauProvisoire: boolean; statut: StatutEcriture };
     }>,
     attendu: { compteId: string; tenantId: string; nombre: number },
   ) {
@@ -577,6 +586,12 @@ export class LettrageService {
       // automatique et le pré-lettrage ne le proposaient pas (A6 bis, m1).
       if (l.ecriture.estANouveauProvisoire) {
         throw new BadRequestException(motifLettrageANouveauProvisoire());
+      }
+      // UNE ÉCRITURE DE SITUATION NE SE LETTRE PAS (ligne sage-l1, fonction
+      // 12) · lettrée avec une facture, une simulation la dirait réglée aux
+      // relances, à la balance âgée et au moteur de la TVA à l'encaissement.
+      if (l.ecriture.statut === StatutEcriture.SITUATION) {
+        throw new BadRequestException(MOTIF_LETTRAGE_SITUATION);
       }
       if (l.lettrageId) {
         const jour = l.ecriture.date.toISOString().slice(0, 10);
@@ -1206,7 +1221,7 @@ export class LettrageService {
     // ne se remplacerait plus, et la clôture de l'exercice précédent serait
     // refusée (`retirerANouveauProvisoire`).
     const candidates = await db.ligneEcriture.findMany({
-      where: { compteId, lettrageId: null, ecriture: { tenantId, estANouveauProvisoire: false } },
+      where: { compteId, lettrageId: null, ecriture: { tenantId, estANouveauProvisoire: false, ...HORS_SITUATION } },
       // La DATE et le LIBELLÉ sont chargés pour le pré-lettrage, qui doit
       // montrer à l'humain ce qu'il confirme · une liste d'identifiants ne se
       // confirme pas, et proposer sans donner à lire reviendrait à demander un
@@ -1467,7 +1482,7 @@ export class LettrageService {
           debit: l.credit,
           credit: l.debit,
           deviseId: l.deviseId,
-          ecriture: { tenantId, exerciceId: l.ecriture.exerciceId, estANouveauProvisoire: false },
+          ecriture: { tenantId, exerciceId: l.ecriture.exerciceId, estANouveauProvisoire: false, ...HORS_SITUATION },
         },
         select: { id: true, debit: true, credit: true, libelle: true, dateEcheance: true, ecriture: { select: { date: true, libelle: true } } },
         take: 20,
@@ -1597,6 +1612,7 @@ export class LettrageService {
                   tenantId: true,
                   date: true,
                   exerciceId: true,
+                  statut: true,
                   estANouveauProvisoire: true,
                   estGenereeParCloture: true,
                   estSoldeDesComptesDeGestion: true,

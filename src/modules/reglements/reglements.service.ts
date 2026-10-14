@@ -1,3 +1,4 @@
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, StatutLettrage, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -650,7 +651,7 @@ export class ReglementsService {
       const x = prepares.find((p) => p.r.compteId === c.compteId);
       if (!x) continue;
       const s = await this.prisma.ligneEcriture.aggregate({
-        where: { compteId: c.compteId, ecriture: { tenantId, exerciceId: dto.exerciceId } },
+        where: { compteId: c.compteId, ecriture: { tenantId, exerciceId: dto.exerciceId, ...HORS_SITUATION } },
         _sum: { debit: true, credit: true },
       });
       const net = Number(s._sum.debit ?? 0) - Number(s._sum.credit ?? 0);

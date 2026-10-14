@@ -3,7 +3,8 @@ import { LOT_ECRITURES, lireParLots, pageApres } from '../../common/lecture-par-
 import { NumerotationPiece, StatutEcriture, StatutExercice, TypeCompteDetailTotal } from '@prisma/client';
 import { ClotureActive } from '../exercice/gel-cloture';
 import { grilleJournauxSaisie, moisDeLExercice } from './etat-journaux-saisie';
-import { journauxDeLaSequenceDuFichier } from './numerotation-piece';
+import { journauxDeLaSequenceDuFichier, modeEffectif } from './numerotation-piece';
+import { filtreDuStatut } from '../comptabilite/ecritures-de-situation';
 import { PrismaService } from '../../common/prisma.service';
 import {
   EXPLICATION_PERIMETRE,
@@ -125,7 +126,8 @@ export class AnalyseJournauxService {
             exerciceId: params.exerciceId,
             // Le report à-nouveau n'est pas une activité de l'exercice (règle 2).
             estGenereeParCloture: false,
-            ...(params.inclureBrouillard ? {} : { statut: StatutEcriture.VALIDEE }),
+            // Jamais les écritures de situation (ligne sage-l1, fonction 12).
+            ...filtreDuStatut(params.inclureBrouillard === true),
           },
         },
         _sum: { debit: true, credit: true },
@@ -268,7 +270,9 @@ export class AnalyseJournauxService {
           c.debit += Number(l.debit);
           c.credit += Number(l.credit);
         }
-        if (e.statut !== StatutEcriture.VALIDEE) c.enBrouillard++;
+        // Une écriture de SITUATION n'est pas un brouillard en attente (ligne
+        // sage-l1) · son journal la porte, aucune validation ne l'attend.
+        if (e.statut === StatutEcriture.BROUILLARD) c.enBrouillard++;
         if (e.estGenereeParCloture) c.deCloture++;
         if (!c.premiere || e.date < c.premiere) c.premiere = e.date;
         if (!c.derniere || e.date > c.derniere) c.derniere = e.date;
@@ -316,7 +320,9 @@ export class AnalyseJournauxService {
 
     const lignes: LigneAnalyseJournal[] = journaux.map((j) => {
       const c = parJournal.get(j.id);
-      const perimetre = perimetreDeLaSequence(j.numerotation);
+      // Le mode EFFECTIF · un journal de situation posé en numérotation du
+      // fichier avant la règle numérote sur lui seul (ligne sage-l1).
+      const perimetre = perimetreDeLaSequence(modeEffectif(j));
       let rattaches = 0;
 
       // La séquence n'est cherchée QUE sur le périmètre où elle est continue.

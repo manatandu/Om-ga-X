@@ -1,3 +1,4 @@
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, Injectable, PayloadTooLargeException } from '@nestjs/common';
 import { Prisma, Referentiel, StatutEcriture } from '@prisma/client';
 import type { Writable } from 'stream';
@@ -123,7 +124,9 @@ export class ExportFpmService {
     const [tenant, identite, auBrouillard] = await Promise.all([
       this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } }),
       this.exportService.identiteEtat(tenantId, { exerciceId }),
-      this.prisma.ecriture.count({ where: { tenantId, exerciceId, statut: { not: StatutEcriture.VALIDEE } } }),
+      // Le BROUILLARD seul · une écriture de situation n'est pas un brouillard
+      // et n'entre pas au classeur (ligne sage-l1, fonction 12).
+      this.prisma.ecriture.count({ where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD } }),
     ]);
     return {
       identite,
@@ -175,7 +178,7 @@ export class ExportFpmService {
     rechange: string,
   ): Promise<void> {
     const lignesDeGrandLivre = await this.prisma.ligneEcriture.count({
-      where: { ecriture: { tenantId, exerciceId }, ...(compteIds ? { compteId: { in: compteIds } } : {}) },
+      where: { ecriture: { tenantId, exerciceId, ...HORS_SITUATION }, ...(compteIds ? { compteId: { in: compteIds } } : {}) },
     });
     const total = lignesDeBalance + lignesDeGrandLivre;
     if (total > MAX_LIGNES_EXPORT) {
@@ -202,7 +205,7 @@ export class ExportFpmService {
     let curseur: string | undefined;
     for (;;) {
       const lot = await this.prisma.ligneEcriture.findMany({
-        where: { ecriture: { tenantId, exerciceId }, ...(filtreComptes ? { compteId: { in: filtreComptes } } : {}) },
+        where: { ecriture: { tenantId, exerciceId, ...HORS_SITUATION }, ...(filtreComptes ? { compteId: { in: filtreComptes } } : {}) },
         include: {
           compte: { select: { id: true, numero: true, intitule: true } },
           ecriture: { include: { journal: { select: { code: true } } } },

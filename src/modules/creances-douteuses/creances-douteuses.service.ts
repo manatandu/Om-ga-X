@@ -101,6 +101,7 @@ import {
   RetirerDesignationDto,
   RevoirDepreciationDto,
 } from './dto/creances-douteuses.dto';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => Number(v ?? 0);
 
@@ -158,7 +159,12 @@ const A_NOUVEAU = { estGenereeParCloture: true, estSoldeDesComptesDeGestion: fal
  * l'exercice précédent qu'il recopie ; le compter en plus porterait le report
  * DEUX fois.
  */
-const HORS_REPORT_PROVISOIRE = { estANouveauProvisoire: false } as const;
+const HORS_REPORT_PROVISOIRE = {
+  estANouveauProvisoire: false,
+  // Ni une écriture de situation, qui n'enregistre aucune opération et ne
+  // porte aucun solde (ligne sage-l1, fonction 12 · AUDCIF art. 19).
+  ...HORS_SITUATION,
+} as const;
 
 const INCLURE_CREANCE = {
   compteCreance: { select: { id: true, numero: true, intitule: true, tiersCompte: { select: { tiers: { select: { nom: true } } } } } },

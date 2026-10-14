@@ -1711,9 +1711,20 @@ model Exercice {
 // négatif. C'est cette frontière, et elle seule, que la validation déplace ·
 // tant qu'elle n'est pas franchie, corriger une faute de frappe ne coûte pas
 // une contre-écriture.
+//
+// SITUATION (ligne sage-l1, fonction 12 de la reproduction de Sage) · l'écriture
+// d'un journal de type Situation, et elle seule. Une simulation n'enregistre
+// aucune opération : elle n'est pas un des « mouvements de l'exercice » que
+// reçoit le livre-journal (AUDCIF art. 19), enregistrés « opération par
+// opération » à la date de leur pièce (art. 16, al. 2 ; art. 17, 3°). Elle ne
+// se valide donc jamais (art. 22, 2°), n'attend aucune validation (ce n'est
+// pas un brouillard), et aucun livre ni état ne la lit · seul son journal.
+// L'invariant « statut SITUATION si et seulement si journal de situation » est
+// tenu par `src/common/journal-de-situation/`.
 enum StatutEcriture {
   BROUILLARD
   VALIDEE
+  SITUATION
 }
 
 model Ecriture {

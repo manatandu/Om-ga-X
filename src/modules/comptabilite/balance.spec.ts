@@ -255,7 +255,8 @@ describe('Balance générale', () => {
     expect(groupBy.mock.calls[0][0].where.ecriture.statut).toBe('VALIDEE');
     const { svc: svc2, groupBy: g2 } = service([], []);
     await svc2.balance('t1', 'e1');
-    expect(g2.mock.calls[0][0].where.ecriture.statut).toBeUndefined();
+    // Le brouillard entre ; une écriture de situation jamais (ligne sage-l1, fonction 12).
+    expect(g2.mock.calls[0][0].where.ecriture.statut).toEqual({ not: 'SITUATION' });
   });
 
   /**

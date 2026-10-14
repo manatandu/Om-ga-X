@@ -1,3 +1,4 @@
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -67,7 +68,7 @@ export class TestEcrituresJournalService {
         // ajoutaient un mouvement à chaque compte touché, et un compte de
         // charge servi deux fois cessait d'être « rarement utilisé » sur tout
         // exercice clos.
-        where: { ecriture: { tenantId, exerciceId, estGenereeParCloture: false } },
+        where: { ecriture: { tenantId, exerciceId, estGenereeParCloture: false, ...HORS_SITUATION } },
         _count: { _all: true },
       }),
     ]);
@@ -139,7 +140,9 @@ export class TestEcrituresJournalService {
     await lireParLots(
       (curseur) =>
         this.prisma.ecriture.findMany({
-          where: { tenantId, exerciceId },
+          // Jamais une écriture de situation · elle n'est pas au livre-journal
+          // et l'auditeur n'a rien à y tester (ligne sage-l1, fonction 12).
+          where: { tenantId, exerciceId, ...HORS_SITUATION },
           include: { lignes: { include: { compte: { select: { numero: true, intitule: true } } } }, journal: true },
           ...pageApres(curseur, LOT_ECRITURES),
         }),

@@ -36,6 +36,14 @@ import { groupesLusAPlusieurs, groupesLusLigneALigne, poidsDesLignesLues, poidsO
 import { ancienneteJours, brouillardInvalidable, enRetardDeCentralisation, JOURS_CENTRALISATION } from './centralisation-brouillard';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
+import {
+  HORS_SITUATION,
+  estJournalDeSituation,
+  filtreDuStatut,
+  motifJournalDeSituationReserveALaSaisie,
+  motifSituationNeSeValidePas,
+  statutDeNaissance,
+} from './ecritures-de-situation';
 import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements-mise-en-service';
 import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
 import { compteDeLaFamille, type FamilleTiers } from './familles-tiers';
@@ -165,7 +173,15 @@ export function perimetreJournal(
 ): Prisma.EcritureWhereInput {
   return {
     tenantId,
-    ...(filtres.inclureBrouillard === false ? { statut: StatutEcriture.VALIDEE } : {}),
+    // LES ÉCRITURES DE SITUATION ne se lisent que dans LEUR journal (ligne
+    // sage-l1, fonction 12) · le journal filtré sur un journal de situation
+    // les rend, toute autre lecture les écarte. Un journal ordinaire n'en
+    // porte aucune (invariant tenu à l'écriture).
+    ...(filtres.inclureBrouillard === false
+      ? { statut: StatutEcriture.VALIDEE }
+      : filtres.journalId
+        ? {}
+        : HORS_SITUATION),
     ...(filtres.exerciceId ? { exerciceId: filtres.exerciceId } : {}),
     ...(filtres.journalId ? { journalId: filtres.journalId } : {}),
     ...(filtres.dateDebut || filtres.dateFin
@@ -429,6 +445,13 @@ export interface PieceEntree {
    * restent joués.
    */
   exigerVentilationObligatoire?: boolean;
+  /**
+   * VRAI POUR LA SEULE SAISIE (formulaire, modification, import d'écritures) ·
+   * un journal de situation ne reçoit que des écritures saisies, jamais
+   * l'opération d'un traitement (`ecritures-de-situation.ts`). Faux par
+   * défaut · un module qui viserait ce journal est refusé en le nommant.
+   */
+  journalDeSituationAdmis?: boolean;
 }
 
 /**
@@ -1026,6 +1049,9 @@ export class EcritureService {
     if (!journal.estActif) {
       throw new BadRequestException(`Le journal ${journal.code} est en sommeil`);
     }
+    if (estJournalDeSituation(journal) && !piece.journalDeSituationAdmis) {
+      throw new BadRequestException(motifJournalDeSituationReserveALaSaisie(journal.code));
+    }
 
     let sectionsParId = new Map<string, { planId: string; code: string; planCode: string }>();
     if (piece.lignes) {
@@ -1141,8 +1167,14 @@ export class EcritureService {
     return { exercice, journal, date, dateValeur, sectionsParId };
   }
 
-  async creer(tenantId: string, createdBy: string, dto: CreerEcritureDto) {
-    return (await this.creerAvec(tenantId, createdBy, dto, async () => undefined)).ecriture;
+  /**
+   * `saisie` · vrai pour la seule saisie du journal (contrôleur), la seule
+   * porte d'un journal de situation · ses écritures y naissent au statut
+   * SITUATION (`ecritures-de-situation.ts`). Un traitement qui appelle
+   * `creer` ne le pose pas, et un journal de situation lui est refusé.
+   */
+  async creer(tenantId: string, createdBy: string, dto: CreerEcritureDto, options: { saisie?: boolean } = {}) {
+    return (await this.creerAvec(tenantId, createdBy, dto, async () => undefined, options)).ecriture;
   }
 
   /**
@@ -1160,8 +1192,9 @@ export class EcritureService {
     createdBy: string,
     dto: CreerEcritureDto,
     suite: (tx: Prisma.TransactionClient, ecriture: { id: string }) => Promise<T>,
+    options: { saisie?: boolean } = {},
   ) {
-    const r = await this.creerPlusieursAvec(tenantId, createdBy, [dto], (tx, [ecriture]) => suite(tx, ecriture));
+    const r = await this.creerPlusieursAvec(tenantId, createdBy, [dto], (tx, [ecriture]) => suite(tx, ecriture), options);
     return { ecriture: r.ecritures[0], suite: r.suite };
   }
 
@@ -1181,9 +1214,12 @@ export class EcritureService {
     createdBy: string,
     dtos: readonly CreerEcritureDto[],
     suite: (tx: Prisma.TransactionClient, ecritures: Array<{ id: string; lignes: Array<{ id: string; compteId: string }> }>) => Promise<T>,
+    options: { saisie?: boolean } = {},
   ) {
     const controles: Array<{ dto: CreerEcritureDto } & Awaited<ReturnType<EcritureService['controlesDEntree']>>> = [];
-    for (const dto of dtos) controles.push({ dto, ...(await this.controlesDEntree(tenantId, dto)) });
+    for (const dto of dtos) {
+      controles.push({ dto, ...(await this.controlesDEntree(tenantId, { ...dto, journalDeSituationAdmis: options.saisie === true })) });
+    }
 
     // Le calcul du numéro de pièce (lire le max actuel, l'incrémenter) et la
     // création de l'écriture doivent former une seule opération atomique :
@@ -1211,6 +1247,10 @@ export class EcritureService {
                 libelle: dto.libelle,
                 reference: dto.reference,
                 createdBy,
+                // Une écriture saisie dans un journal de situation naît hors
+                // du livre-journal · jamais au brouillard, qu'elle ne quitte
+                // pas (`ecritures-de-situation.ts`).
+                statut: statutDeNaissance(journal),
                 lignes: { create: dto.lignes.map((l) => donneesLigneSaisie(l, sectionsParId)) },
               },
               include: { lignes: true, journal: true },
@@ -1423,6 +1463,8 @@ export class EcritureService {
       journalId: ecriture.journalId,
       date: dto.date ? new Date(dto.date) : ecriture.date,
       lignes: dto.lignes,
+      // La modification est une saisie · elle ne change pas de journal.
+      journalDeSituationAdmis: true,
     });
 
     // UN JOURNAL MENSUEL NUMÉROTE PAR MOIS (audit final F58) · une pièce
@@ -1498,7 +1540,7 @@ export class EcritureService {
    */
   async supprimer(tenantId: string, ecritureId: string, pourLeModule?: SuppressionPourLeModule) {
     const tolere = pourLeModule?.lettrageTolere ?? null;
-    await this.trouverEnBrouillard(tenantId, ecritureId, tolere);
+    const lue = await this.trouverEnBrouillard(tenantId, ecritureId, tolere);
     await this.verifierAucunModuleNeLaTient(tenantId, [ecritureId], 'se supprime', pourLeModule?.detenteur);
     await transactionJournalisee(this.prisma, async (tx) => {
       // Le module libère son marqueur DANS la même transaction · jamais
@@ -1526,8 +1568,12 @@ export class EcritureService {
       // irréversible. Lignes et tête ne partent que si l'écriture est ENCORE
       // au brouillard, une et une seule, sinon 409 et rien ne part (le
       // retrait d'un mouvement de créance douteuse passe par ici aussi).
-      await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
-      const { count } = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
+      // L'écriture de SITUATION se supprime comme un brouillard · elle n'est
+      // au livre-journal à aucun titre (`ecritures-de-situation.ts`). Le
+      // filtre reprend le statut LU · jamais un VALIDÉ, quel que soit le cas.
+      const supprimable = lue.statut === StatutEcriture.SITUATION ? StatutEcriture.SITUATION : StatutEcriture.BROUILLARD;
+      await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: supprimable } } });
+      const { count } = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: supprimable } });
       if (count !== 1) {
         throw new ConflictException(
           "L'écriture a été validée ou retirée pendant sa suppression · elle n'est plus au brouillard, rien n'a été supprimé. " +
@@ -1820,6 +1866,15 @@ export class EcritureService {
     }
     const dejaValidees = ecritures.filter((e) => e.statut === StatutEcriture.VALIDEE);
     const aValider = ecritures.filter((e) => e.statut === StatutEcriture.BROUILLARD);
+    // UNE ÉCRITURE DE SITUATION NE SE VALIDE PAS (ligne sage-l1, fonction 12) ·
+    // refusée en la nommant, jamais écartée sans un mot · la réponse « 0
+    // validée » serait lue comme un lot déjà centralisé.
+    const situations = ecritures.filter((e) => e.statut === StatutEcriture.SITUATION);
+    if (situations.length > 0) {
+      throw new BadRequestException(
+        motifSituationNeSeValidePas(situations.slice(0, 5).map((e) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`)),
+      );
+    }
 
     for (const e of aValider) {
       // Le report PROVISOIRE ne se valide jamais · validé, il ne pourrait plus
@@ -2215,7 +2270,10 @@ export class EcritureService {
     // affectation…) affirmerait ensuite une imputation qui n'est plus la sienne.
     await this.verifierAucunModuleNeLaTient(tenantId, lignes.map((l) => l.ecritureId), 'se réimpute');
 
-    const auBrouillard = lignes.filter((l) => l.ecriture.statut === StatutEcriture.BROUILLARD);
+    // L'écriture de SITUATION change de compte en place, comme le brouillard ·
+    // elle n'est au livre-journal à aucun titre (ligne sage-l1). Une fusion
+    // de comptes emporte donc aussi ses lignes, sans négatif.
+    const auBrouillard = lignes.filter((l) => l.ecriture.statut !== StatutEcriture.VALIDEE);
     // LE VERROU DE PÉRIODE VAUT AUSSI AU BROUILLARD (F3). Il n'était vérifié
     // que pour les lignes validées · une ligne au brouillard d'une période
     // close changeait de compte alors que `modifier` l'aurait refusé. La ligne
@@ -2436,6 +2494,26 @@ export class EcritureService {
         "Cette écriture est encore en brouillard : elle n'est pas entrée au livre-journal. " +
           "Modifiez-la directement plutôt que d'y ajouter une inscription en négatif, qui laisserait " +
           'deux écritures là où il n\'y a qu\'une saisie à reprendre.',
+      );
+    }
+    // UNE ÉCRITURE DE SITUATION se modifie ou se supprime · elle n'est au
+    // livre-journal à aucun titre (ligne sage-l1, fonction 12).
+    if (origine.statut === StatutEcriture.SITUATION) {
+      throw new BadRequestException(
+        "Cette écriture est une écriture de situation : elle n'est pas au livre-journal. Modifiez-la ou supprimez-la " +
+          'directement, une inscription en négatif ne corrige que ce que le livre-journal a reçu (AUDCIF art. 20, al. 2).',
+      );
+    }
+    // VALIDÉE AVANT LA RÈGLE dans un journal de situation · elle est au
+    // livre-journal (art. 22, 2°, rien ne se dévalide), et son journal ne
+    // reçoit plus que des écritures de situation · le négatif se saisit
+    // ailleurs, et le refus le dit plutôt que de laisser la garde du client
+    // Prisma parler d'une saisie que personne n'a demandée.
+    if (estJournalDeSituation(origine.journal)) {
+      throw new BadRequestException(
+        `L'écriture ${origine.journal.code} n° ${origine.numeroPiece ?? '·'} a été validée dans un journal de situation ` +
+          "avant que ses écritures ne sortent du livre-journal · elle y est entrée et reste aux états. Pour l'annuler, " +
+          "saisissez dans un journal ordinaire une pièce qui inscrit ses lignes en négatif (AUDCIF art. 20, al. 2).",
       );
     }
 
@@ -2947,7 +3025,7 @@ export class EcritureService {
     // n'en garder qu'une somme.
     const tresorerie = await this.prisma.ligneEcriture.aggregate({
       where: {
-        ecriture: { tenantId, exerciceId: params.exerciceId },
+        ecriture: { tenantId, exerciceId: params.exerciceId, ...HORS_SITUATION },
         compte: { numero: { startsWith: '5' }, NOT: { numero: { startsWith: '59' } } },
       },
       _sum: { debit: true, credit: true },
@@ -2983,7 +3061,7 @@ export class EcritureService {
     );
     let lignesSansEcheance = 0;
     const ouvertes: Prisma.LigneEcritureWhereInput = {
-      ecriture: { tenantId, exerciceId: params.exerciceId },
+      ecriture: { tenantId, exerciceId: params.exerciceId, ...HORS_SITUATION },
       lettre: null,
       OR: ['40', '41', '42', '43', '44'].map((r) => ({ compte: { numero: { startsWith: r } } })),
     };
@@ -3224,7 +3302,7 @@ export class EcritureService {
           // postérieur ne la soldait pas encore. La date qui compte est celle
           // des écritures du groupe, jamais celle du lettrage · même règle
           // que les notes par échéance (lettrage/ouverte-a-la-cloture.ts).
-          ecriture: { tenantId, exerciceId: params.exerciceId, date: { lte: ref } },
+          ecriture: { tenantId, exerciceId: params.exerciceId, date: { lte: ref }, ...HORS_SITUATION },
           AND: [ouverteALaCloture(ref)],
           OR: racines.map((r) => ({ compte: { numero: { startsWith: r } } })),
           // LES EXCLUSIONS DU PÉRIMÈTRE · voir `PERIMETRES_BALANCE_AGEE`.
@@ -3445,6 +3523,8 @@ export class EcritureService {
       ecriture: {
         tenantId,
         date: { lte: arret },
+        // Jamais une écriture de situation (ligne sage-l1, fonction 12).
+        ...HORS_SITUATION,
         // Les à-nouveaux de clôture sont exclus · voir le piège ci-dessus.
         // Ceux du premier exercice portent le bilan d'ouverture et restent.
         // L'écriture qui SOLDE les classes 6 à 8 reste toujours (audit
@@ -3515,7 +3595,7 @@ export class EcritureService {
 
     // --- Recoupement, par l'autre chemin ---------------------------------
     const agregat = await this.prisma.ligneEcriture.aggregate({
-      where: { compteId: compte.id, ecriture: { tenantId, exerciceId: params.exerciceId } },
+      where: { compteId: compte.id, ecriture: { tenantId, exerciceId: params.exerciceId, ...HORS_SITUATION } },
       _sum: { debit: true, credit: true },
     });
     const soldeBalance = arrondir(Number(agregat._sum.debit ?? 0) - Number(agregat._sum.credit ?? 0));
@@ -3597,7 +3677,7 @@ export class EcritureService {
       ...exercices.map((e) =>
         this.prisma.ligneEcriture.groupBy({
           by: ['compteId'],
-          where: { ecriture: { tenantId, exerciceId: e.id, estSoldeDesComptesDeGestion: false } },
+          where: { ecriture: { tenantId, exerciceId: e.id, estSoldeDesComptesDeGestion: false, ...HORS_SITUATION } },
           _sum: { debit: true, credit: true },
         }),
       ),
@@ -3645,7 +3725,10 @@ export class EcritureService {
       throw new NotFoundException(MOTIF_COMPTE_INTROUVABLE_GRAND_LIVRE);
     }
 
-    const perimetreEcriture = { tenantId, ...(exerciceId ? { exerciceId } : {}) };
+    // Livre-journal et brouillard, jamais une écriture de situation (ligne
+    // sage-l1, fonction 12 · AUDCIF art. 19, le grand-livre reporte les
+    // mouvements de l'exercice).
+    const perimetreEcriture = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
 
     // LA FENÊTRE EST BORNÉE (ligne FPM, second tour, relevé E) · le grand
     // livre d'UN compte s'ouvre à l'écran quand le livre complet y est refusé,
@@ -3698,7 +3781,10 @@ export class EcritureService {
    * ligne ne les référence.
    */
   async grandLivreComplet(tenantId: string, exerciceId?: string) {
-    const perimetreEcriture = { tenantId, ...(exerciceId ? { exerciceId } : {}) };
+    // Livre-journal et brouillard, jamais une écriture de situation (ligne
+    // sage-l1, fonction 12 · AUDCIF art. 19, le grand-livre reporte les
+    // mouvements de l'exercice).
+    const perimetreEcriture = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
 
     // UN GRAND LIVRE NE SE TRONQUE PAS · c'est un livre obligatoire, et un
     // livre amputé en silence est un document faux. Au-delà du plafond on
@@ -3878,7 +3964,9 @@ export class EcritureService {
     const filtreEcriture = {
       tenantId,
       exerciceId,
-      ...(inclureBrouillard ? {} : { statut: StatutEcriture.VALIDEE }),
+      // Livre-journal seul, ou livre-journal et brouillard · jamais une
+      // écriture de situation (ligne sage-l1, fonction 12).
+      ...filtreDuStatut(inclureBrouillard),
       ...(arreteAu ? { date: { lte: arreteAu } } : {}),
       ...(avantLe ? { AND: [{ date: { lt: avantLe } }] } : {}),
     };
@@ -4134,7 +4222,7 @@ export class EcritureService {
     const filtreEcriture = {
       tenantId,
       exerciceId: { in: idsFenetre },
-      ...(inclureBrouillard ? {} : { statut: StatutEcriture.VALIDEE }),
+      ...filtreDuStatut(inclureBrouillard),
     };
 
     const [comptes, ouverture, mouvements] = await Promise.all([

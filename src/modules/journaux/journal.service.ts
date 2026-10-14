@@ -10,6 +10,7 @@ import { comptesDImputationSemes, racineDuCompteSeme } from '../comptes/subdivis
 import { prochainNumeroIndividuel } from '../tiers/collectifs-tiers';
 import { motifRefusCompteDeTresorerie, motifRefusNumeroDuJournal } from './compte-propre-du-journal';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { motifSituationHorsSequenceDuFichier } from '../comptabilite/ecritures-de-situation';
 
 /** Le compte propre d'un journal ouvert sous ce numéro vient d'être pris · refus nommé. */
 function conflitDuCompteOuvert(e: unknown, numero: string, code: string, numeroChoisi: boolean): never {
@@ -102,6 +103,9 @@ export class JournalService {
     }
     if (dto.type === TypeJournal.TRESORERIE && !dto.compteTresorerieId && !dto.ouvrirCompteSousId) {
       throw new BadRequestException('Un journal de type Trésorerie doit avoir un compte de trésorerie associé');
+    }
+    if (dto.type === TypeJournal.SITUATION && dto.numerotation === NumerotationPiece.CONTINUE_FICHIER) {
+      throw new BadRequestException(motifSituationHorsSequenceDuFichier(dto.code));
     }
     const existant = await this.prisma.journal.findUnique({ where: { tenantId_code: { tenantId, code: dto.code } } });
     if (existant) {
@@ -341,6 +345,9 @@ export class JournalService {
     // Une contrepartie de trésorerie n'a de sens que sur un journal de
     // trésorerie · cochée sur un journal d'achats, elle solderait chaque charge
     // contre une banque que le journal ne porte pas.
+    if (journal.type === TypeJournal.SITUATION && dto.numerotation === NumerotationPiece.CONTINUE_FICHIER) {
+      throw new BadRequestException(motifSituationHorsSequenceDuFichier(journal.code));
+    }
     if (dto.contrepartieChaqueLigne === true && journal.type !== TypeJournal.TRESORERIE) {
       throw new BadRequestException(
         `La contrepartie à chaque ligne ne vaut que pour un journal de trésorerie · ${journal.code} est un journal ${journal.type.toLowerCase()}.`,
@@ -357,7 +364,7 @@ export class JournalService {
    */
   async prochainNumeroPiece(
     tenantId: string,
-    journal: { id: string; numerotation: NumerotationPiece },
+    journal: { id: string; numerotation: NumerotationPiece; type?: TypeJournal },
     exerciceId: string,
     date: Date,
     tx: Prisma.TransactionClient | PrismaService = this.prisma,

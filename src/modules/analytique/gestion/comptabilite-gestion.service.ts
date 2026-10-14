@@ -1,3 +1,4 @@
+import { HORS_SITUATION } from '../../comptabilite/ecritures-de-situation';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ClasseCompte, ComportementGestion, Prisma, StatutExercice, TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma.service';
@@ -286,7 +287,7 @@ export class ComptabiliteGestionService {
             sectionId,
             // La clôture qui solde les classes 6 à 8 ne porte aucune
             // ventilation ; le filtre le garantit plutôt que de le supposer.
-            ligne: { ecriture: { tenantId, exerciceId, date: { gte: du, lte: au }, estSoldeDesComptesDeGestion: false } },
+            ligne: { ecriture: { tenantId, exerciceId, date: { gte: du, lte: au }, estSoldeDesComptesDeGestion: false, ...HORS_SITUATION } },
           },
           select: { id: true, debit: true, credit: true, ligne: { select: { compteId: true } } },
           ...pageApres(curseur, LOT_LECTURE),

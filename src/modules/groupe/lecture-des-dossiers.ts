@@ -1,3 +1,4 @@
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { StatutEcriture } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import {
@@ -174,6 +175,9 @@ export async function comptagesDesDossiers(
       where: {
         tenantId: { in: tranche.map((c) => c.tenantId) },
         OR: tranche.map(({ tenantId, exerciceId }) => ({ tenantId, exerciceId })),
+        // Une écriture de situation n'est ni tenue ni au brouillard (ligne
+        // sage-l1, fonction 12).
+        ...HORS_SITUATION,
       },
       _count: { _all: true },
       _max: { date: true },

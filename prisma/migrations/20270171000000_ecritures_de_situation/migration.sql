@@ -1,0 +1,12 @@
+-- ÉCRITURES DE SITUATION (ligne sage-l1, fonction 12 de la reproduction de
+-- Sage). Une écriture d'un journal de type Situation n'enregistre aucune
+-- opération · elle n'est pas un des « mouvements de l'exercice » que reçoit le
+-- livre-journal (AUDCIF art. 19 ; art. 16, al. 2 ; art. 17, 3°). Elle ne se
+-- valide donc jamais (art. 22, 2°), et ce n'est pas non plus un brouillard qui
+-- attend sa validation · d'où un troisième statut, qui la tient hors de tout
+-- livre, de toute clôture et de tout état.
+--
+-- Ajout de valeur seulement, dans sa propre migration · une valeur ajoutée à
+-- un type ne s'emploie qu'une fois la transaction qui l'a créée validée, et la
+-- reprise des écritures existantes suit dans la migration suivante.
+ALTER TYPE "StatutEcriture" ADD VALUE IF NOT EXISTS 'SITUATION';

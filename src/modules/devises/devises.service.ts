@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { PrismaService } from '../../common/prisma.service';
 import { Prisma, Referentiel, StatutEcriture, StatutExercice } from '@prisma/client';
 import { EcritureService } from '../comptabilite/ecriture.service';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { groupesDenoues, lectureDesGroupes, motifDateReevaluation, motifHorsReevaluation, motifPositionDenouee } from './perimetre-reevaluation';
@@ -974,7 +975,7 @@ export class DevisesService {
     };
     const lignes = await this.prisma.ligneEcriture.findMany({
       where: {
-        ecriture: { tenantId, exerciceId: dto.exerciceId, date: { lte: date } },
+        ecriture: { tenantId, exerciceId: dto.exerciceId, date: { lte: date }, ...HORS_SITUATION },
         deviseId: { not: null },
         // Une ligne lettrée est soldée : sa créance n'existe plus, il n'y a
         // rien à réévaluer · sauf par un groupe qui sort de l'exercice ou
@@ -2736,6 +2737,7 @@ export class DevisesService {
     // son négatif) s'annule au lu, et n'est ni lue ni proposée.
     const horsModule = {
       estGenereeParCloture: false,
+      ...HORS_SITUATION,
       estANouveauProvisoire: false,
       estSoldeDesComptesDeGestion: false,
       corrigeEcritureId: null,
@@ -2871,7 +2873,7 @@ export class DevisesService {
       const s = new Map<string, number>();
       const groupes = await this.prisma.ligneEcriture.groupBy({
         by: ['compteId'],
-        where: { compteId: { in: comptes }, ecriture: { tenantId, estANouveauProvisoire: false, ...ecriture } },
+        where: { compteId: { in: comptes }, ecriture: { tenantId, estANouveauProvisoire: false, ...HORS_SITUATION, ...ecriture } },
         _sum: { debit: true, credit: true },
       });
       for (const g of groupes) s.set(g.compteId, (s.get(g.compteId) ?? 0) + centimesDe({ debit: g._sum.debit ?? 0, credit: g._sum.credit ?? 0 }));
@@ -3649,6 +3651,7 @@ export class DevisesService {
             date: { lte: date },
             estGenereeParCloture: false,
             estANouveauProvisoire: false,
+            ...HORS_SITUATION,
             ...(idsDuModule.length > 0 ? { id: { notIn: idsDuModule } } : {}),
             NOT: ECRITURES_D_UNE_REEVALUATION_ANNULEE,
           },
@@ -3681,6 +3684,7 @@ export class DevisesService {
               exerciceId: { in: anterieursOuverts.map((x) => x.id) },
               estGenereeParCloture: false,
               estANouveauProvisoire: false,
+              ...HORS_SITUATION,
               ...(idsDuModule.length > 0 ? { id: { notIn: idsDuModule } } : {}),
               NOT: ECRITURES_D_UNE_REEVALUATION_ANNULEE,
             },
@@ -4057,7 +4061,7 @@ export class DevisesService {
       const r = await this.prisma.ligneEcriture.aggregate({
         where: {
           compte: { tenantId, numero: { startsWith: racine } },
-          ecriture: { tenantId, exerciceId: exercice.id, estGenereeParCloture: false },
+          ecriture: { tenantId, exerciceId: exercice.id, estGenereeParCloture: false, ...HORS_SITUATION },
         },
         _sum: { debit: true, credit: true },
       });
@@ -4402,6 +4406,7 @@ export class DevisesService {
       tenantId,
       exerciceId: reeval.exerciceId,
       date: { lte: reeval.dateReevaluation },
+      ...HORS_SITUATION,
       OR: [
         { createdAt: { lte: reeval.createdAt } },
         ...(exercice

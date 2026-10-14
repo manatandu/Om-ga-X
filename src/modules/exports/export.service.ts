@@ -1,3 +1,4 @@
+import { HORS_SITUATION, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
 import { nombreSaisi } from '../notes-annexes/controles-saisie-notes';
 import { Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { immatriculationDesLivres, numeroRegistreLiasse } from '../tenant/mentions-immatriculation';
@@ -857,7 +858,7 @@ export class ExportService {
             lettre: l.lettre ?? '',
             correction: etatCorrection,
             motifCorrection: e.motifCorrection ?? '',
-            statut: e.statut === 'VALIDEE' ? 'Validée' : 'Brouillard',
+            statut: libelleDuStatut(e.statut),
             saisieLe: e.createdAt,
             saisiePar: courriel(e.createdBy),
             valideeLe: e.valideeAt,
@@ -1052,7 +1053,9 @@ export class ExportService {
     exerciceId: string | undefined,
     ouvrir: (nomFichier: string) => Writable,
   ): Promise<{ lignes: number }> {
-    const perimetre = { tenantId, ...(exerciceId ? { exerciceId } : {}) };
+    // Jamais une écriture de situation (ligne sage-l1, fonction 12) · le
+    // grand-livre reporte les mouvements de l'exercice (AUDCIF art. 19).
+    const perimetre = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
     await this.verifierVolume({ ecriture: perimetre }, 'Grand livre complet');
     const identite = await this.identiteEtat(tenantId, { exerciceId });
 
@@ -1127,7 +1130,7 @@ export class ExportService {
           credit: Number(l.credit) || null,
           solde: Math.round(solde * 100) / 100,
           lettre: l.lettre ?? '',
-          statut: l.ecriture.statut === 'VALIDEE' ? 'Validée' : 'Brouillard',
+          statut: libelleDuStatut(l.ecriture.statut),
         });
       }
       if (lot.length < LOT_EXPORT) break;
@@ -3367,7 +3370,7 @@ export class ExportService {
         reference: e.reference ?? '',
         libelle: e.libelle,
         montant: e.montant,
-        statut: e.statut === 'VALIDEE' ? 'Validée' : 'Brouillard',
+        statut: libelleDuStatut(e.statut),
         saisieLe: e.saisieLe,
         saisiePar: e.saisiePar,
         roleAuteur: e.roleAuteur ?? '',

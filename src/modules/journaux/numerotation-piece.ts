@@ -1,4 +1,4 @@
-import { NumerotationPiece, Prisma } from '@prisma/client';
+import { NumerotationPiece, Prisma, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 
 /**
@@ -45,19 +45,38 @@ export const NUMEROTATION_DU_FICHIER = NumerotationPiece.CONTINUE_FICHIER;
  */
 export const NUMEROTATION_PAR_DEFAUT = NumerotationPiece.CONTINUE_JOURNAL;
 
+/**
+ * Le journal porte-t-il la séquence du fichier ? JAMAIS UN JOURNAL DE
+ * SITUATION (ligne sage-l1, fonction 12) · la séquence numérote les pièces du
+ * livre-journal (AUDCIF art. 17, 3°), et une simulation qui y prendrait un
+ * numéro le retirerait aux pièces réelles, ou y laisserait un trou une fois
+ * supprimée. Un journal de situation en numérotation du fichier, posé avant
+ * la règle, numérote sur lui seul, comme en continu par journal.
+ */
+export function porteLaSequenceDuFichier(journal: { numerotation: NumerotationPiece; type?: TypeJournal }): boolean {
+  return journal.numerotation === NUMEROTATION_DU_FICHIER && journal.type !== TypeJournal.SITUATION;
+}
+
 /** Les journaux qui portent la séquence du fichier. */
-export function journauxDeLaSequenceDuFichier<J extends { numerotation: NumerotationPiece }>(journaux: J[]): J[] {
-  return journaux.filter((j) => j.numerotation === NUMEROTATION_DU_FICHIER);
+export function journauxDeLaSequenceDuFichier<J extends { numerotation: NumerotationPiece; type?: TypeJournal }>(journaux: J[]): J[] {
+  return journaux.filter(porteLaSequenceDuFichier);
+}
+
+/** Le mode qui numérote réellement les pièces de ce journal. */
+export function modeEffectif(journal: { numerotation: NumerotationPiece; type?: TypeJournal }): NumerotationPiece {
+  return journal.numerotation === NUMEROTATION_DU_FICHIER && !porteLaSequenceDuFichier(journal)
+    ? NumerotationPiece.CONTINUE_JOURNAL
+    : journal.numerotation;
 }
 
 export async function prochainNumeroPiece(
   tx: Prisma.TransactionClient | PrismaService,
   tenantId: string,
-  journal: { id: string; numerotation: NumerotationPiece },
+  journal: { id: string; numerotation: NumerotationPiece; type?: TypeJournal },
   exerciceId: string,
   date: Date,
 ): Promise<number | null> {
-  switch (journal.numerotation) {
+  switch (modeEffectif(journal)) {
     case NumerotationPiece.MANUELLE:
       return null;
 
@@ -76,7 +95,7 @@ export async function prochainNumeroPiece(
       // pendant que l'analyse des journaux ne relisait que les journaux du
       // fichier · elle annonçait des trous que personne n'avait creusés.
       const max = await tx.ecriture.aggregate({
-        where: { tenantId, exerciceId, journal: { numerotation: NUMEROTATION_DU_FICHIER } },
+        where: { tenantId, exerciceId, journal: { numerotation: NUMEROTATION_DU_FICHIER, type: { not: TypeJournal.SITUATION } } },
         _max: { numeroPiece: true },
       });
       return (max._max.numeroPiece ?? 0) + 1;
@@ -108,7 +127,7 @@ export function numeroteurDeLot(
   tx: Prisma.TransactionClient | PrismaService,
   tenantId: string,
   exerciceId: string,
-): (journal: { id: string; numerotation: NumerotationPiece }, date: Date) => Promise<number | null> {
+): (journal: { id: string; numerotation: NumerotationPiece; type?: TypeJournal }, date: Date) => Promise<number | null> {
   const prochains = new Map<string, number>();
   return async (journal, date) => {
     const cle = serieDeNumerotation(journal, date);
@@ -121,8 +140,8 @@ export function numeroteurDeLot(
 }
 
 /** La série à laquelle une pièce appartient, selon le mode de son journal. */
-function serieDeNumerotation(journal: { id: string; numerotation: NumerotationPiece }, date: Date): string | null {
-  switch (journal.numerotation) {
+function serieDeNumerotation(journal: { id: string; numerotation: NumerotationPiece; type?: TypeJournal }, date: Date): string | null {
+  switch (modeEffectif(journal)) {
     case NumerotationPiece.MANUELLE:
       return null;
     case NumerotationPiece.CONTINUE_JOURNAL:

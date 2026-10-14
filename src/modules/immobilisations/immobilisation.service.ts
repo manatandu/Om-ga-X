@@ -167,6 +167,7 @@ import {
   motifRefusRevision,
   tauxDegressifLoi,
 } from './revision-plan-amortissement';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 
 const EPSILON = 0.005;
 
@@ -5819,7 +5820,7 @@ export class ImmobilisationService {
     // location-acquisition (672) de l'exercice, au journal, hors solde des
     // comptes de gestion à la clôture ; moins ce qui y a déjà été incorporé.
     const filtreCouts = {
-      ecriture: { tenantId, exerciceId: exercice.id, estSoldeDesComptesDeGestion: false },
+      ecriture: { tenantId, exerciceId: exercice.id, estSoldeDesComptesDeGestion: false, ...HORS_SITUATION },
       OR: [{ compte: { numero: { startsWith: '671' } } }, { compte: { numero: { startsWith: '672' } } }],
     };
     const [couts, deja, compteCredit] = await Promise.all([
@@ -6047,7 +6048,7 @@ export class ImmobilisationService {
       const cumul = await this.prisma.ligneEcriture.aggregate({
         where: {
           compteId: ligneDette.compteId,
-          ecriture: { tenantId, date: { lte: date }, estGenereeParCloture: false, estANouveauProvisoire: false },
+          ecriture: { tenantId, date: { lte: date }, estGenereeParCloture: false, estANouveauProvisoire: false, ...HORS_SITUATION },
         },
         _sum: { debit: true, credit: true },
       });

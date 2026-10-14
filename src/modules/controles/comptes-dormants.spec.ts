@@ -71,6 +71,11 @@ function correspond(l: Ligne, filtre: Record<string, unknown>): boolean {
     if (attendu && typeof attendu === 'object' && 'gte' in (attendu as object)) {
       return (valeur as Date).getTime() >= ((attendu as { gte: Date }).gte).getTime();
     }
+    // `statut: { not: 'SITUATION' }` · une écriture de situation n'est jamais
+    // lue (ligne sage-l1, fonction 12) ; les lignes d'ici n'en sont pas.
+    if (attendu && typeof attendu === 'object' && 'not' in (attendu as object)) {
+      return valeur !== (attendu as { not: unknown }).not;
+    }
     return valeur === attendu;
   });
 }

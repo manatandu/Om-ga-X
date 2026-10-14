@@ -164,7 +164,8 @@ describe('Palmarès des comptes', () => {
 
     const ouvert = service({ comptes: COMPTES, groupes: [] });
     await ouvert.service.palmaresComptes('t1', { exerciceId: 'e1', inclureBrouillard: true });
-    expect(ouvert.prisma.ligneEcriture.groupBy.mock.calls[0][0].where.ecriture.statut).toBeUndefined();
+    // Le brouillard entre ; une écriture de situation jamais (ligne sage-l1, fonction 12).
+    expect(ouvert.prisma.ligneEcriture.groupBy.mock.calls[0][0].where.ecriture.statut).toEqual({ not: 'SITUATION' });
   });
 });
 

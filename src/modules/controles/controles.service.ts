@@ -1,3 +1,4 @@
+import { HORS_SITUATION, filtreDuStatut } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { STOCK_PROVENANT_D_IMMOBILISATIONS } from '../stocks/nomenclature-stocks';
 import { PrismaService } from '../../common/prisma.service';
@@ -17,6 +18,7 @@ import {
   StatutExoneration,
   SystemeComptableSyscohada,
   TypeCompteDetailTotal,
+  TypeJournal,
 } from '@prisma/client';
 import { JOURS_ALERTE_RENOUVELLEMENT } from '../exonerations/correspondance-exonerations';
 import { regleAuditeur, type RegleAuditeur } from './regles-auditeur';
@@ -358,7 +360,7 @@ const SELECT_ECRITURE_CONTROLEE = {
   // Ligne A13 · le journal écrit (clôture informatique) et le compte de
   // banque mouvementé (rapprochement) se relèvent dans la même lecture.
   journalId: true,
-  journal: { select: { code: true } },
+  journal: { select: { code: true, type: true } },
   // Ligne A13, seconde relecture (B-α) · l'écriture d'écarts d'une
   // réévaluation, sa contre-passation, et leurs inscriptions en négatif
   // (`corrigeEcriture`) se reconnaissent par leur LIAISON, jamais par le
@@ -763,7 +765,7 @@ export class ControlesService {
         this.prisma.ligneEcriture.findMany({
           where: {
             compteId: { in: comptesCaisse.map((c) => c.id) },
-            ecriture: { tenantId, exerciceId },
+            ecriture: { tenantId, ...HORS_SITUATION, exerciceId },
           },
           select: { id: true, compteId: true, debit: true, credit: true, ecriture: { select: { date: true } } },
           ...pageApres(curseur, LOT_LECTURE),
@@ -850,7 +852,7 @@ export class ControlesService {
         ecriture: {
           tenantId,
           exerciceId,
-          ...(options.inclureBrouillard === false ? { statut: StatutEcriture.VALIDEE } : {}),
+          ...filtreDuStatut(options.inclureBrouillard !== false),
         },
       },
       select: {
@@ -1015,7 +1017,8 @@ export class ControlesService {
     // Borné à la fin du mois (audit final F8) · le 31 mars moins un mois
     // n'est pas le 3 mars.
     const seuil = ajouterMois(new Date(), -moisSansMouvement);
-    const horsCloture = { tenantId, estGenereeParCloture: false };
+    // Jamais une écriture de situation (ligne sage-l1, fonction 12).
+    const horsCloture = { tenantId, estGenereeParCloture: false, ...HORS_SITUATION };
 
     const [mouvements, soldesDeGestion, ouverture, reports, recents] = await Promise.all([
       this.prisma.ligneEcriture.groupBy({
@@ -1026,7 +1029,7 @@ export class ControlesService {
       }),
       this.prisma.ligneEcriture.groupBy({
         by: ['compteId'],
-        where: { ecriture: { tenantId, estSoldeDesComptesDeGestion: true } },
+        where: { ecriture: { tenantId, ...HORS_SITUATION, estSoldeDesComptesDeGestion: true } },
         _sum: { debit: true, credit: true },
       }),
       premier
@@ -1048,7 +1051,7 @@ export class ControlesService {
       // mouvementés, ils ne sont pas « jamais servis ».
       this.prisma.ligneEcriture.groupBy({
         by: ['compteId'],
-        where: { ecriture: { tenantId, estGenereeParCloture: true } },
+        where: { ecriture: { tenantId, ...HORS_SITUATION, estGenereeParCloture: true } },
         _count: { _all: true },
       }),
       this.prisma.ligneEcriture.groupBy({
@@ -1579,6 +1582,9 @@ export class ControlesService {
     const horsModele = new Collecte<EcritureControlee>(PLAFOND_OCCURRENCES);
     const cotisationsMouvementees = new Collecte<EcritureControlee>(PLAFOND_OCCURRENCES);
     const validesParLeurAuteur = new Collecte<EcritureControlee>(PLAFOND_OCCURRENCES);
+    // Ligne sage-l1, fonction 12 · les écritures VALIDÉES dans un journal de
+    // situation avant que la règle ne soit posée, relevées au passage.
+    const valideesEnSituation = new Collecte<EcritureControlee>(PLAFOND_OCCURRENCES);
     const soldesTiers = new Map<string, number>();
     // A7 ter, mineur 1 · les comptes clients d'ORIGINE d'une créance reclassée en vigueur.
     const comptesCreanceReclassee = new Set<string>();
@@ -1615,7 +1621,10 @@ export class ControlesService {
     await lireParLots(
       (curseur) =>
         this.prisma.ecriture.findMany({
-          where: { tenantId, exerciceId },
+          // Jamais une écriture de situation · aucun contrôle ne lit une
+          // simulation (ligne sage-l1, fonction 12), le contrôle qui les nomme
+          // les compte à part.
+          where: { tenantId, exerciceId, ...HORS_SITUATION },
           select: SELECT_ECRITURE_CONTROLEE,
           ...pageApres(curseur, LOT_ECRITURES),
         }),
@@ -1627,9 +1636,13 @@ export class ControlesService {
         // une écriture que la clôture informatique aurait à figer, et le
         // compter ferait réclamer une clôture au journal d'à-nouveau d'un
         // dossier qui n'y a rien saisi (première relecture, i).
-        if (!e.estANouveauProvisoire && !journauxEcrits.has(e.journalId)) {
+        // Un journal de SITUATION ne se clôture pas (ligne sage-l1, fonction
+        // 12) · ses écritures validées d'avant la règle ne lui font pas
+        // réclamer une clôture qu'il refuserait.
+        if (!e.estANouveauProvisoire && e.journal.type !== TypeJournal.SITUATION && !journauxEcrits.has(e.journalId)) {
           journauxEcrits.set(e.journalId, { journalId: e.journalId, code: e.journal.code });
         }
+        if (e.statut === StatutEcriture.VALIDEE && e.journal.type === TypeJournal.SITUATION) valideesEnSituation.ajouter(e);
         for (const l of e.lignes) {
           debit += Number(l.debit);
           credit += Number(l.credit);
@@ -1785,6 +1798,7 @@ export class ControlesService {
       horsModele,
       cotisationsMouvementees,
       validesParLeurAuteur,
+      valideesEnSituation,
       soldesTiers,
       comptesCreanceReclassee,
       comptesClasse9,
@@ -2751,7 +2765,7 @@ export class ControlesService {
         // SANS LE SOLDE DE CLÔTURE (régression de l'audit final F4) · validé,
         // il remet le 637 à zéro sur tout exercice clos, et un virement jamais
         // passé se lisait comme fait.
-        ecriture: { tenantId, exerciceId, estSoldeDesComptesDeGestion: false },
+        ecriture: { tenantId, ...HORS_SITUATION, exerciceId, estSoldeDesComptesDeGestion: false },
       },
       select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
     });
@@ -2834,7 +2848,7 @@ export class ControlesService {
     const lignes29 = await this.prisma.ligneEcriture.findMany({
       where: {
         compte: { tenantId, numero: { startsWith: '29' } },
-        ecriture: { tenantId, exerciceId },
+        ecriture: { tenantId, ...HORS_SITUATION, exerciceId },
       },
       select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
     });
@@ -2964,6 +2978,7 @@ export class ControlesService {
           ecriture: {
             tenantId,
             exerciceId,
+            ...HORS_SITUATION,
             estGenereeParCloture: false,
             estANouveauProvisoire: false,
             id: { notIn: [...retenues] },
@@ -3046,7 +3061,7 @@ export class ControlesService {
         // Ligne A15 · l'écriture qui transfère le 106 d'un bien sorti à une
         // réserve est, elle aussi, celle du module · comptée, son débit
         // masquerait un crédit posé à la main sur le même compte.
-        ecriture: { tenantId, exerciceId, reevaluationBilan: null, immobilisationSortieEcartReevaluation: null },
+        ecriture: { tenantId, ...HORS_SITUATION, exerciceId, reevaluationBilan: null, immobilisationSortieEcartReevaluation: null },
       },
       select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
     });
@@ -3121,7 +3136,7 @@ export class ControlesService {
         compte: { tenantId, OR: [{ numero: { startsWith: '613' } }, { numero: { startsWith: '781' } }] },
         // SANS LE SOLDE DE CLÔTURE (régression de l'audit final F4) · validé,
         // il remet le 613 à zéro et fait bouger le 781 sur tout exercice clos.
-        ecriture: { tenantId, exerciceId, estSoldeDesComptesDeGestion: false },
+        ecriture: { tenantId, ...HORS_SITUATION, exerciceId, estSoldeDesComptesDeGestion: false },
       },
       select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
     });
@@ -3192,7 +3207,7 @@ export class ControlesService {
       const lignesRegul = await this.prisma.ligneEcriture.findMany({
         where: {
           compte: { tenantId, OR: [{ numero: { startsWith: '476' } }, { numero: { startsWith: '477' } }] },
-          ecriture: { tenantId, exerciceId: { in: [exerciceId, exercicePrecedent.id] } },
+          ecriture: { tenantId, ...HORS_SITUATION, exerciceId: { in: [exerciceId, exercicePrecedent.id] } },
         },
         select: {
           debit: true,
@@ -3261,7 +3276,7 @@ export class ControlesService {
         const lignes419 = await this.prisma.ligneEcriture.findMany({
           where: {
             compte: { tenantId, numero: { startsWith: '419' } },
-            ecriture: { tenantId, exerciceId: exercicePrecedent.id },
+            ecriture: { tenantId, ...HORS_SITUATION, exerciceId: exercicePrecedent.id },
           },
           select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
         });
@@ -3316,7 +3331,7 @@ export class ControlesService {
       const lignes462 = await this.prisma.ligneEcriture.findMany({
         where: {
           compte: { tenantId, numero: { startsWith: '462' } },
-          ecriture: { tenantId, exerciceId },
+          ecriture: { tenantId, ...HORS_SITUATION, exerciceId },
         },
         select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
       });
@@ -3626,6 +3641,7 @@ export class ControlesService {
         ecriture: {
           tenantId,
           exerciceId,
+          ...HORS_SITUATION,
           estGenereeParCloture: false,
           motifImputationOuverture: null,
           //
@@ -3804,7 +3820,7 @@ export class ControlesService {
           where: {
             debit: { gt: 0 },
             compte: { tenantId, numero: { startsWith: '22' } },
-            ecriture: { tenantId, date: { in: dates } },
+            ecriture: { tenantId, ...HORS_SITUATION, date: { in: dates } },
           },
           select: { ecriture: { select: { date: true } } },
         }),
@@ -4077,6 +4093,36 @@ export class ControlesService {
     }
 
     // ------------------------------------------------------------------
+    // ÉCRITURES VALIDÉES DANS UN JOURNAL DE SITUATION (ligne sage-l1,
+    // fonction 12). Une écriture de situation n'enregistre aucune opération
+    // et n'entre jamais au livre-journal (AUDCIF art. 19 ; art. 22, 2°) ·
+    // aucun contrôle ne la lit, et l'état des journaux de saisie la montre.
+    // Celles VALIDÉES avant que la règle ne soit posée, elles, sont au
+    // livre-journal et aux états, et rien ne les dévalide (art. 22, 2°) ·
+    // c'est dit, jamais retouché. Relevées pendant le parcours, sans seconde
+    // lecture.
+    const valideesEnSituation = parcours.valideesEnSituation.elements;
+    if (valideesEnSituation.length > 0) {
+      anomalies.push({
+        code: 'JOURNAL_DE_SITUATION_AU_LIVRE_JOURNAL',
+        gravite: 'AVERTISSEMENT',
+        libelle: 'Écritures validées dans un journal de situation',
+        consequence:
+          "Validées avant que les écritures de situation ne sortent du livre-journal, elles y sont entrées et figurent " +
+          "aux états · l'art. 22, 2° de l'AUDCIF interdit de les dévalider.",
+        action:
+          "Si elles ne correspondent à aucune opération, saisissez dans un journal ordinaire une pièce qui inscrit leurs " +
+          'lignes en négatif (AUDCIF art. 20, al. 2) ; si elles en enregistrent une, elles restent.',
+        ...nombreSiTronque(parcours.valideesEnSituation),
+        occurrences: valideesEnSituation.map((e) => ({
+          reference: `${e.journal.code} n° ${e.numeroPiece ?? ''}`,
+          detail: e.libelle,
+          date: e.date.toISOString().slice(0, 10),
+        })),
+      });
+    }
+
+    // ------------------------------------------------------------------
     // RÉÉVALUATION · la déclaration spéciale que rien ne rappelait.
     //
     // CE CONTRÔLE EST NÉ D'UNE VÉRIFICATION, PAS D'UNE DEMANDE. Le relevé de
@@ -4114,7 +4160,7 @@ export class ControlesService {
     if (ex.dateFin >= ENTREE_EN_VIGUEUR_LOI_23_053) {
       const lignesReevaluation = await this.prisma.ligneEcriture.findMany({
         where: {
-          ecriture: { tenantId, exerciceId },
+          ecriture: { tenantId, ...HORS_SITUATION, exerciceId },
           OR: COMPTES_REEVALUATION.map((r) => ({ compte: { tenantId, numero: { startsWith: r } } })),
         },
         select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
@@ -4193,7 +4239,7 @@ export class ControlesService {
         // SANS LE SOLDE DE CLÔTURE (régression de l'audit final F4) · validé,
         // il solde le 603 et le 72 sur tout exercice clos, et leurs cumuls
         // ne diraient plus ce que l'exercice a passé.
-        ecriture: { tenantId, exerciceId, estSoldeDesComptesDeGestion: false },
+        ecriture: { tenantId, ...HORS_SITUATION, exerciceId, estSoldeDesComptesDeGestion: false },
         OR: racinesStocks.map((r) => ({ compte: { tenantId, numero: { startsWith: r } } })),
       },
       select: { debit: true, credit: true, compte: { select: { numero: true, intitule: true } } },
@@ -5087,7 +5133,7 @@ export class ControlesService {
         [false, true].map((genere) =>
           this.prisma.ligneEcriture.groupBy({
             by: ['compteId'],
-            where: { compteId: { in: ids }, ecriture: { tenantId, exerciceId, estGenereeParCloture: genere } },
+            where: { compteId: { in: ids }, ecriture: { tenantId, ...HORS_SITUATION, exerciceId, estGenereeParCloture: genere } },
             _sum: { debit: true, credit: true },
             _count: { _all: true },
           }),

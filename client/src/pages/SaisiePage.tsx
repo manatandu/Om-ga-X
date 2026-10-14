@@ -1306,7 +1306,7 @@ export function SaisiePage() {
                 <p className="text-[11.5px] text-danger mb-2">État des journaux par mois illisible · {erreurGrille}</p>
               )}
               <div className="flex gap-3 mb-3 text-[10.5px] text-text-dim">
-                {(['BROUILLARD', 'JOURNAL', 'CLOTURE'] as const).map((e) => (
+                {(['BROUILLARD', 'SITUATION', 'JOURNAL', 'CLOTURE'] as const).map((e) => (
                   <span key={e} className="flex items-center gap-1">
                     <span className={`inline-block w-[16px] text-center font-bold ${ETATS_JOURNAL[e].classe}`}>{ETATS_JOURNAL[e].sigle}</span>
                     {ETATS_JOURNAL[e].libelle}
@@ -1538,6 +1538,11 @@ export function SaisiePage() {
                   {i === 0 && e.statut === 'BROUILLARD' && (
                     <span className="ml-1 text-[11px] font-bold text-warning" title="En brouillard · pas encore au livre-journal">
                       B
+                    </span>
+                  )}
+                  {i === 0 && e.statut === 'SITUATION' && (
+                    <span className="ml-1 text-[11px] font-bold text-sel" title="Écriture de situation · elle ne se valide pas et n'entre jamais au livre-journal">
+                      S
                     </span>
                   )}
                 </span>

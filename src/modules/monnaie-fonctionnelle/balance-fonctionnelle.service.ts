@@ -1,3 +1,4 @@
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
@@ -489,7 +490,8 @@ export class BalanceFonctionnelleService {
   ): Promise<void> {
     return lireParLots(
       (curseur) =>
-        this.prisma.ecriture.findMany({ where: { tenantId, ...filtre }, select: SELECT_ECRITURE, ...pageApres(curseur, LOT_ECRITURES) }),
+        // Jamais une écriture de situation (ligne sage-l1, fonction 12).
+        this.prisma.ecriture.findMany({ where: { tenantId, ...filtre, ...HORS_SITUATION }, select: SELECT_ECRITURE, ...pageApres(curseur, LOT_ECRITURES) }),
       traiter,
       LOT_ECRITURES,
     );

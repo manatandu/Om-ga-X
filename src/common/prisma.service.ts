@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { extensionAudit } from './audit/extension-audit';
 import { extensionCloisonnement } from './cloisonnement/extension-cloisonnement';
 import { extensionPerimetreJournaux } from './perimetre/extension-perimetre-journaux';
+import { extensionJournalDeSituation } from './journal-de-situation/extension-journal-de-situation';
 import { lireEtatDuPooling, messageDePooling } from './pooling-base';
 
 /**
@@ -49,8 +50,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     const nu: PrismaClient = this;
     // Le périmètre de saisie par journal se pose après le cloisonnement · une
     // écriture d'un autre dossier est refusée par lui d'abord, avec son motif.
+    // L'invariant des écritures de situation (ligne sage-l1, fonction 12) se
+    // pose après eux · un refus de dossier ou de périmètre se dit d'abord.
     const etendu = this.$extends(extensionCloisonnement(this))
       .$extends(extensionPerimetreJournaux(this))
+      .$extends(extensionJournalDeSituation(this))
       .$extends(extensionAudit(this)) as unknown as this;
     // `defineProperty` et non une affectation · le champ doit être posé sur
     // l'objet ÉTENDU que le constructeur retourne (c'est lui que Nest

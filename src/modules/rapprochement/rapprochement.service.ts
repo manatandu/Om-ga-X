@@ -119,18 +119,28 @@ export function estFondueDansLeDepart(ecriture: { date: Date }, regle: RegleOuve
 
 /** À-nouveau ou fondue · ce que la chaîne ne pointe pas. */
 export function estEcarteeDuPointage(
-  ecriture: { estGenereeParCloture: boolean; estSoldeDesComptesDeGestion: boolean; date: Date },
+  ecriture: { estGenereeParCloture: boolean; estSoldeDesComptesDeGestion: boolean; date: Date; statut?: StatutEcriture },
   regle: RegleOuverture,
 ): boolean {
-  return estANouveauEcarte(ecriture) || estFondueDansLeDepart(ecriture, regle);
+  return ecriture.statut === StatutEcriture.SITUATION || estANouveauEcarte(ecriture) || estFondueDansLeDepart(ecriture, regle);
 }
 
-/** La même règle en filtre, pour que la liste, le décompte et les propositions ne puissent pas diverger du refus. */
+/**
+ * La même règle en filtre, pour que la liste, le décompte et les propositions
+ * ne puissent pas diverger du refus. Une écriture de SITUATION n'est jamais
+ * une opération de la banque (ligne sage-l1, fonction 12).
+ */
 export function filtreEcarteDuPointage(regle: RegleOuverture): Prisma.EcritureWhereInput {
+  const situation: Prisma.EcritureWhereInput = { statut: StatutEcriture.SITUATION };
   return regle.dateDepart === null
-    ? filtreANouveauEcarte()
-    : { OR: [filtreANouveauEcarte(), { date: { lt: regle.dateDepart } }] };
+    ? { OR: [filtreANouveauEcarte(), situation] }
+    : { OR: [filtreANouveauEcarte(), situation, { date: { lt: regle.dateDepart } }] };
 }
+
+/** Le refus d'une ligne d'une écriture de situation. */
+export const MOTIF_POINTAGE_SITUATION =
+  "Une écriture de situation n'est pas une opération de la banque · elle n'enregistre aucune opération et n'est pas au " +
+  'livre-journal (AUDCIF art. 19 ; art. 22, 2°). Pointez la pièce réelle.';
 
 /** Le refus nomme la raison du cas · l'ouverture déjà dans le solde de départ, repris ou déclaré. */
 export function motifRefusANouveau(regle: RegleOuverture): string {
@@ -149,9 +159,10 @@ export function motifRefusFondue(date: Date, dateDepart: Date): string {
 
 /** Le motif d'une ligne écartée, ou null si elle se pointe. */
 export function motifRefusPointage(
-  ecriture: { estGenereeParCloture: boolean; estSoldeDesComptesDeGestion: boolean; date: Date },
+  ecriture: { estGenereeParCloture: boolean; estSoldeDesComptesDeGestion: boolean; date: Date; statut: StatutEcriture },
   regle: RegleOuverture,
 ): string | null {
+  if (ecriture.statut === StatutEcriture.SITUATION) return MOTIF_POINTAGE_SITUATION;
   if (estANouveauEcarte(ecriture)) return motifRefusANouveau(regle);
   if (regle.dateDepart !== null && estFondueDansLeDepart(ecriture, regle)) return motifRefusFondue(ecriture.date, regle.dateDepart);
   return null;
@@ -1066,7 +1077,7 @@ export class RapprochementService {
         : await this.prisma.ligneEcriture.findMany({
             where: { id: { in: idsCompte }, ecriture: { tenantId } },
             include: {
-              ecriture: { select: { estGenereeParCloture: true, estSoldeDesComptesDeGestion: true, exerciceId: true, date: true } },
+              ecriture: { select: { estGenereeParCloture: true, estSoldeDesComptesDeGestion: true, exerciceId: true, date: true, statut: true } },
             },
           });
     if (compte.length !== idsCompte.length) {

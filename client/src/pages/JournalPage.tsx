@@ -382,6 +382,9 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       motifCorrection: e.motifCorrection,
       estGenereeParCloture: e.estGenereeParCloture ?? false,
       enBrouillard: e.statut === 'BROUILLARD',
+      // Une écriture de situation ne se corrige pas en négatif · elle n'est
+      // jamais entrée au livre-journal (ligne sage-l1, fonction 12).
+      enSituation: e.statut === 'SITUATION',
     })),
   ), [ecritures]);
 
@@ -420,6 +423,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     corrige: { numeroPiece: number | null } | null;
     motifCorrection: string | null;
     estGenereeParCloture: boolean;
+    enSituation: boolean;
   }) => {
     if (l.annuleePar) {
       return (
@@ -436,7 +440,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       );
     }
     // Corriger contre-passe une écriture VALIDÉE · réservé au comptable.
-    if (!peutValider || l.estGenereeParCloture) return null;
+    if (!peutValider || l.estGenereeParCloture || l.enSituation) return null;
     return (
       <button onClick={() => setACorriger({ id: l.ecritureId, libelle: l.libelle })} className="text-sel hover:underline">
         Corriger
@@ -784,6 +788,14 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                     title="En brouillard · pas encore entrée au livre-journal"
                   >
                     Brouillard
+                  </span>
+                )}
+                {l.premiereLigne && l.enSituation && (
+                  <span
+                    className="text-[11px] font-bold text-sel bg-sel-soft border border-sel/40 rounded-[3px] px-1"
+                    title="Écriture de situation · elle ne se valide pas et n'entre jamais au livre-journal"
+                  >
+                    Situation
                   </span>
                 )}
                 {l.premiereLigne && etatCorrection(l)}

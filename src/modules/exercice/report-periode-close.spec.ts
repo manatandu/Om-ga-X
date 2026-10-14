@@ -118,10 +118,26 @@ describe('le refus nomme la voie que le texte ouvre', () => {
   it('une date en période close est refusée, et le message dit comment la reporter', async () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { ExerciceService } = require('./exercice.service');
-    const prisma = { cloture: { findMany: jest.fn().mockResolvedValue([periode('2026-03-31')]) } };
+    const prisma = {
+      cloture: { findMany: jest.fn().mockResolvedValue([periode('2026-03-31')]) },
+      journal: { findFirst: jest.fn().mockResolvedValue({ type: 'GENERAL' }) },
+    };
     const svc = new ExerciceService(prisma, {} as never);
     await expect(svc.verifierEcritureAutorisee('t1', 'j1', J('2026-03-15'))).rejects.toThrow(/art\. 22, 4°/);
     await expect(svc.premierJourOuvert('t1', 'j1', J('2026-03-15'))).resolves.toEqual(J('2026-04-01'));
+  });
+
+  // Ligne sage-l1, fonction 12 · la clôture de période porte sur la
+  // chronologie des opérations du livre-journal (AUDCIF art. 22, 3°) · un
+  // journal de situation n'en tient aucune, la requête ne lit que SES clôtures.
+  it('une clôture de période ne vise pas un journal de situation', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ExerciceService } = require('./exercice.service');
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma = { cloture: { findMany }, journal: { findFirst: jest.fn().mockResolvedValue({ type: 'SITUATION' }) } };
+    const svc = new ExerciceService(prisma, {} as never);
+    await expect(svc.verifierEcritureAutorisee('t1', 'jSit', J('2026-03-15'))).resolves.toBeUndefined();
+    expect(findMany.mock.calls[0][0].where.OR).toEqual([{ journalId: 'jSit' }]);
   });
 });
 
@@ -131,7 +147,10 @@ describe('la clôture totale est bornée à sa date limite (Sage i7, « pour le 
   const totale = (limite: string): ClotureActive => ({ granularite: GranulariteCloture.TOTALE, journalId: 'j1', dateLimite: J(limite) });
 
   it('refuse la saisie jusqu’à la date, pas après, et pas dans un autre journal', async () => {
-    const prisma = { cloture: { findMany: jest.fn().mockResolvedValue([totale('2026-01-31')]) } };
+    const prisma = {
+      cloture: { findMany: jest.fn().mockResolvedValue([totale('2026-01-31')]) },
+      journal: { findFirst: jest.fn().mockResolvedValue({ type: 'VENTES' }) },
+    };
     const svc = new ExerciceService(prisma, {} as never);
     await expect(svc.verifierEcritureAutorisee('t1', 'j1', J('2026-01-15'))).rejects.toThrow(/clôturé totalement jusqu'au 2026-01-31/);
     await expect(svc.verifierEcritureAutorisee('t1', 'j1', J('2026-02-01'))).resolves.toBeUndefined();

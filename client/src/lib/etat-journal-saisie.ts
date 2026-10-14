@@ -4,7 +4,7 @@
  * fait que les nommer. « Non imprimé » n'existe pas ici · OmegaX ne trace pas
  * l'impression d'un journal.
  */
-export type EtatMoisJournal = 'VIDE' | 'BROUILLARD' | 'JOURNAL' | 'CLOTURE';
+export type EtatMoisJournal = 'VIDE' | 'BROUILLARD' | 'JOURNAL' | 'CLOTURE' | 'SITUATION';
 
 export interface CaseJournalMois {
   mois: string;
@@ -29,6 +29,9 @@ export const ETATS_JOURNAL: Record<EtatMoisJournal, { sigle: string; libelle: st
   BROUILLARD: { sigle: 'B', libelle: 'Brouillard', classe: 'bg-warning-soft text-warning' },
   JOURNAL: { sigle: 'J', libelle: 'Journal (tout validé)', classe: 'bg-positive-soft text-positive' },
   CLOTURE: { sigle: 'C', libelle: 'Clôturé', classe: 'bg-chrome-alt text-text-dim' },
+  // Journal de situation (ligne sage-l1, fonction 12) · ni brouillard à
+  // valider ni pièces du livre-journal.
+  SITUATION: { sigle: 'S', libelle: 'Situation', classe: 'bg-sel-soft text-sel' },
 };
 
 /** L'infobulle d'une case · ce qu'elle contient, et ce qui la fige. */

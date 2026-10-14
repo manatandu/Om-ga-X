@@ -23,6 +23,7 @@ import {
   type PartDeclaree,
   type ReglementEnFrancs,
 } from './declaration-devise-a-nouveau';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 
 /** La référence que portent les pièces de correction · elles sortent de la liste. */
 export const REFERENCE_DECLARATION_DEVISE = 'DECLARATION-DEVISE';
@@ -294,6 +295,8 @@ export class DeclarationDeviseANouveauService {
         tenantId,
         estANouveauProvisoire: false,
         estSoldeDesComptesDeGestion: false,
+        // Une écriture de situation n'a rien réglé (ligne sage-l1, fonction 12).
+        ...HORS_SITUATION,
         ...(horsMouvements.length > 0 ? { id: { notIn: horsMouvements } } : {}),
         OR: [
           { estGenereeParCloture: false, date: { gte: l.ecriture.date } },

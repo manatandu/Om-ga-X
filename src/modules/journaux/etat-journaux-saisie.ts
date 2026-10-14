@@ -32,7 +32,12 @@ import { ClotureActive, motifLigneFigee } from '../exercice/gel-cloture';
  * mois qui ne porte que lui reste VIDE · « tout validé » serait faux.
  */
 
-export type EtatMoisJournal = 'VIDE' | 'BROUILLARD' | 'JOURNAL' | 'CLOTURE';
+/**
+ * SITUATION (ligne sage-l1, fonction 12) · le mois d'un journal de situation
+ * qui porte des écritures · elles ne sont ni un brouillard à valider ni des
+ * pièces du livre-journal, et une clôture de période ne fige pas ce journal.
+ */
+export type EtatMoisJournal = 'VIDE' | 'BROUILLARD' | 'JOURNAL' | 'CLOTURE' | 'SITUATION';
 
 export interface MoisExercice {
   /** Premier jour du mois, AAAA-MM-01. */
@@ -90,44 +95,48 @@ function figeJusquauDansLeMois(
 
 /** La grille journal × mois. `journaux` fixe l'ordre des lignes. */
 export function grilleJournauxSaisie(
-  journaux: Array<{ id: string }>,
+  journaux: Array<{ id: string; type?: string }>,
   mois: MoisExercice[],
   comptages: ComptageJour[],
   clotures: ClotureActive[],
   exerciceClos: boolean,
 ): Array<{ journalId: string; cases: CaseJournalMois[] }> {
   const cle = (journalId: string, date: string) => `${journalId}|${date.slice(0, 7)}`;
-  const cumul = new Map<string, { nombre: number; brouillard: number; provisoire: number }>();
+  const cumul = new Map<string, { nombre: number; brouillard: number; provisoire: number; situation: number }>();
   for (const c of comptages) {
     const k = cle(c.journalId, jour(c.date));
-    const v = cumul.get(k) ?? { nombre: 0, brouillard: 0, provisoire: 0 };
+    const v = cumul.get(k) ?? { nombre: 0, brouillard: 0, provisoire: 0, situation: 0 };
     v.nombre += c.nombre;
     if (c.estANouveauProvisoire) v.provisoire += c.nombre;
     else if (c.statut === StatutEcriture.BROUILLARD) v.brouillard += c.nombre;
+    else if (c.statut === StatutEcriture.SITUATION) v.situation += c.nombre;
     cumul.set(k, v);
   }
   return journaux.map((j) => ({
     journalId: j.id,
     cases: mois.map((m) => {
-      const v = cumul.get(cle(j.id, m.debut)) ?? { nombre: 0, brouillard: 0, provisoire: 0 };
+      const v = cumul.get(cle(j.id, m.debut)) ?? { nombre: 0, brouillard: 0, provisoire: 0, situation: 0 };
+      const journalSituation = j.type === 'SITUATION';
       const figeFin = motifLigneFigee(
-        { journalId: j.id, date: new Date(`${m.fin}T00:00:00.000Z`), exerciceClos },
+        { journalId: j.id, date: new Date(`${m.fin}T00:00:00.000Z`), exerciceClos, journalSituation },
         clotures,
       );
       const etat: EtatMoisJournal = figeFin
         ? 'CLOTURE'
         : v.nombre - v.provisoire === 0
           ? 'VIDE'
-          : v.brouillard > 0
-            ? 'BROUILLARD'
-            : 'JOURNAL';
+          : v.situation > 0
+            ? 'SITUATION'
+            : v.brouillard > 0
+              ? 'BROUILLARD'
+              : 'JOURNAL';
       return {
         mois: m.debut.slice(0, 7),
         etat,
         nombreEcritures: v.nombre,
         enBrouillard: v.brouillard,
         aNouveauProvisoire: v.provisoire,
-        figeJusquau: figeFin ? null : figeJusquauDansLeMois(j.id, m, clotures),
+        figeJusquau: figeFin ? null : figeJusquauDansLeMois(j.id, m, journalSituation ? clotures.filter((c) => c.granularite !== 'PERIODE') : clotures),
       };
     }),
   }));

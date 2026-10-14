@@ -25,6 +25,7 @@ import {
   ventilerAuProrata,
   type Ref,
 } from './subvention-rattachee';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => Number(v ?? 0);
 const centimes = (x: number) => Math.round(x * 100) / 100;
@@ -306,7 +307,7 @@ export class SubventionRattacheeService {
     // solde, et le compterait autant de fois).
     const [credits, rattache] = await Promise.all([
       this.prisma.ligneEcriture.aggregate({
-        where: { compteId: compte.id, ecriture: { tenantId, estGenereeParCloture: false } },
+        where: { compteId: compte.id, ecriture: { tenantId, estGenereeParCloture: false, ...HORS_SITUATION } },
         _sum: { credit: true },
       }),
       this.prisma.subventionImmobilisation.aggregate({ where: { tenantId, compteSubventionId: compte.id }, _sum: { montant: true } }),
