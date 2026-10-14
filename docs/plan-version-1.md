@@ -288,3 +288,8 @@ fonctions seules.
   reviennent sur une règle écrite · l'ordre de virement depuis un RIB en
   devise (D1, loi n° 23/053 art. 141, 1°) et le refus de clôturer un journal
   non imprimé, en option du dossier (D3, AUDCIF art. 22, 3°).
+- **Arrêt après trois lignes** (décision de Manasse du 2026-10-14, devant le
+  coût) · finir et intégrer le virement de fonds, puis les lignes L1
+  (journaux et saisie), L4 (immobilisations) et L5 (paie), puis s'arrêter. Les
+  six autres lignes (L2, L3, L6 à L9) attendent son choix, coût réel sous les
+  yeux ; rien n'y est commencé.
