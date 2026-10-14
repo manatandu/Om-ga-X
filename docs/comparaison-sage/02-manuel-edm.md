@@ -8,6 +8,11 @@ Comptabilité i7 », Enfants Du Monde (E.D.M), cabinet MICROFA, juin 2023,
 projet (plan analytique PROJETS, budget par section, journaux de situation
 pour les engagements).
 
+Les captures d'écran de ce manuel n'ont pas pu être lues : le fichier
+dépasse la limite de téléchargement de Drive (10 Mo), et l'outil de lecture
+de Drive ne rend que le texte. Les lignes ci-dessous viennent du seul texte
+(constat du 2026-10-14, cascade des captures).
+
 Méthode et légende : celles du manuel 1 (`01-guide-utilisateur-i7.md`).
 Seules sont reprises ici les fonctions que le manuel 1 ne décrit pas, ou que
 l'EDM décrit plus finement ; un renvoi « M1-n » désigne la ligne n du

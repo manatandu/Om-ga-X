@@ -6,6 +6,11 @@ Source : « Formation Sage (SAARI) Comptabilité 100 ou génération i7 »,
 2026-10-14. Manuel de formation pas à pas (ETS KKB, clients MAQUIS CANARI et
 BONPRIX, fournisseurs SOLIBRA et BRASSIVOIRE).
 
+Les captures d'écran de ce manuel n'ont pas pu être lues : le
+téléchargement du fichier (8 Mo) a fait tomber la connexion à Drive, et
+l'outil de lecture de Drive ne rend que le texte. Les lignes ci-dessous
+viennent du seul texte (constat du 2026-10-14, cascade des captures).
+
 Méthode et légende : celles du manuel 1. Seules sont reprises les fonctions
 que les manuels 1 et 2 ne décrivent pas, ou que celui-ci décrit plus
 finement ; « M1-n » et « M2-n » renvoient aux lignes des deux premiers

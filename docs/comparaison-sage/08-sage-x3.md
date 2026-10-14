@@ -9,7 +9,9 @@ jusqu'à la page 81. Le sommaire est lu en entier, le corps des pages 4 à 81
 aussi (chapitres 1 à 3 et début du chapitre 4). Les chapitres 4.3 à 13 ne
 sont connus que par leurs titres : ils sont comparés à part, sur l'intitulé
 seul, et c'est dit sur chaque ligne. Le texte extrait est brouillé par
-endroits (pages 28 à 31, 41 et 42, numéros de page du sommaire).
+endroits (pages 28 à 31, 41 et 42, numéros de page du sommaire). Faute de
+téléchargement, les captures d'écran n'ont pas pu être lues (constat du
+2026-10-14, cascade des captures).
 
 Sage X3 est un progiciel de gestion intégré qui se paramètre et se
 développe : dictionnaire des tables, écrans, objets, fenêtres, formules,
