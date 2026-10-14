@@ -3020,6 +3020,12 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     {absencesDuMois.proposition.joursDeuxTiers > 0 && absencesDuMois.proposition.indemniteDeuxTiers !== null
                       ? ` · indemnité d'incapacité ${fc(absencesDuMois.proposition.indemniteDeuxTiers)} ${absencesDuMois.devise ?? ''}`
                       : ''}
+                    {absencesDuMois.proposition.deductionsCaisse > 0
+                      ? ` · après déduction de ${fc(absencesDuMois.proposition.deductionsCaisse)} ${absencesDuMois.devise ?? ''} versés par la Caisse`
+                      : ''}
+                    {absencesDuMois.proposition.aRecevoirDeLaCaisse > 0
+                      ? ` · ${fc(absencesDuMois.proposition.aRecevoirDeLaCaisse)} ${absencesDuMois.devise ?? ''} à recevoir de la Caisse par subrogation`
+                      : ''}
                   </span>
                   <button
                     type="button"

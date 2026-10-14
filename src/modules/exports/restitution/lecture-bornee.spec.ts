@@ -102,8 +102,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // 158 avec la reprise des congés et les congés du personnel, bornés par
     // leur tenantId (ligne sage-l5, fonction 79), 159 avec les absences du
     // personnel, bornées par leur tenantId (ligne sage-l5, fonction 78), 160
-    // avec les majorations des heures, bornées par leur tenantId (même ligne).
-    expect(modeles).toHaveLength(160);
+    // avec les majorations des heures, 161 avec les indemnités de la Caisse
+    // déclarées sur un arrêt, bornées par leur tenantId (même ligne).
+    expect(modeles).toHaveLength(161);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

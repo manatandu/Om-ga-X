@@ -93,6 +93,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   CongeSalarie: 'Congé du personnel',
   AbsenceSalarie: 'Absence du personnel',
   MajorationHeures: 'Majoration des heures',
+  IndemniteCaisseAbsence: "Indemnité de la Caisse sur un arrêt",
   TiersCompte: "Rattachement d'un compte à un tiers",
   ModeleReglement: 'Modèle de règlement',
   RattachementNote: "Rattachement d'une note annexe",

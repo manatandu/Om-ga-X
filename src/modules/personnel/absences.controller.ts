@@ -7,7 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AccesRolesCantonnes } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { AbsencesService } from './absences.service';
-import { AbsenceSalarieDto, AnnulationAbsenceDto } from './dto/absences.dto';
+import { AbsenceSalarieDto, AnnulationAbsenceDto, IndemniteCaisseDto } from './dto/absences.dto';
 
 /**
  * LIGNE SAGE-L5, FONCTION 78 · les absences du salarié (Code du travail,
@@ -54,5 +54,17 @@ export class AbsencesController {
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   annuler(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AnnulationAbsenceDto) {
     return this.absences.annuler(user.tenantId, user.email, id, dto.motif);
+  }
+
+  @Post('absences/:id/indemnites-caisse')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  declarerIndemniteCaisse(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: IndemniteCaisseDto) {
+    return this.absences.declarerIndemniteCaisse(user.tenantId, user.email, id, dto);
+  }
+
+  @Post('indemnites-caisse/:id/annulation')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  annulerIndemniteCaisse(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AnnulationAbsenceDto) {
+    return this.absences.annulerIndemniteCaisse(user.tenantId, user.email, id, dto.motif);
   }
 }

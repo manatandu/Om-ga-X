@@ -4,6 +4,7 @@ import {
   joursOuvrables,
   joursOuvrablesDuMois,
   motifRefusAbsence,
+  motifRefusIndemniteCaisse,
   NATURES_ABSENCE,
   propositionDuMois,
   type AbsenceLue,
@@ -150,5 +151,48 @@ describe('ce que les absences font au compteur des congés (art. 141, al. 2 et 4
     expect(r.joursHorsService).toEqual([{ du: '2026-07-05', au: '2026-08-31', motif: expect.stringContaining('six mois') }]);
     const at = absencesPourLeCompteur([absence('ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE', '2026-01-05', '2026-08-31')], '2026-01-01');
     expect(at.joursHorsService).toEqual([]);
+  });
+});
+
+describe('étape 3 · les indemnités journalières de la Caisse sur un arrêt', () => {
+  const ij = (p: Partial<Parameters<typeof motifRefusIndemniteCaisse>[0]> = {}) =>
+    motifRefusIndemniteCaisse({
+      nature: 'ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE',
+      du: '2026-08-03',
+      au: '2026-09-30',
+      mois: '2026-08',
+      montant: 25_000,
+      traitement: 'DEDUITE',
+      piece: 'Bordereau CNSS n° 12',
+      dejaDeclareCeMois: false,
+      ...p,
+    });
+
+  it('chaque traitement a son texte · la maladie n’en ouvre aucun, la déduction est à l’accident du travail, la subrogation partielle à la maternité', () => {
+    expect(ij()).toBeNull();
+    expect(ij({ nature: 'MALADIE_OU_ACCIDENT' })).toContain('aucune indemnité journalière de la Caisse');
+    expect(ij({ nature: 'MATERNITE' })).toContain('art. 106, al. 2');
+    expect(ij({ traitement: 'SUBROGATION_PARTIELLE' })).toContain('art. 139, al. 3');
+    expect(ij({ nature: 'MATERNITE', traitement: 'SUBROGATION_PARTIELLE' })).toBeNull();
+    expect(ij({ mois: '2026-10' })).toContain("hors de l'arrêt");
+    expect(ij({ piece: '' })).toContain('pièce');
+    expect(ij({ dejaDeclareCeMois: true })).toContain('déjà déclarée');
+  });
+
+  it('déduite (art. 106, al. 2), elle réduit l’indemnité de SON arrêt, jamais au-delà · 60 000 − 25 000', () => {
+    const at = absence('ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE', '2026-08-10', '2026-08-12');
+    const jours = joursOuvrablesDuMois([at], '2026-08');
+    const p = propositionDuMois({ jours, salaireMensuel: 780_000, moyenneMensuelleArticle66: 0, deductionsParAbsence: new Map([[at.id, 25_000]]) });
+    expect([p.indemniteDeuxTiers, p.deductionsCaisse]).toEqual([35_000, 25_000]);
+    const trop = propositionDuMois({ jours, salaireMensuel: 780_000, moyenneMensuelleArticle66: 0, deductionsParAbsence: new Map([[at.id, 100_000]]) });
+    expect([trop.indemniteDeuxTiers, trop.deductionsCaisse]).toEqual([0, 60_000]);
+  });
+
+  it('sous subrogation totale, les jours de l’arrêt sont payés à plein et l’indemnité est à recevoir de la Caisse', () => {
+    const maternite = absence('MATERNITE', '2026-08-03', '2026-08-08');
+    const jours = joursOuvrablesDuMois([maternite], '2026-08', new Set([maternite.id]));
+    expect(new Set(jours.map((j) => j.regime))).toEqual(new Set(['DUE']));
+    const p = propositionDuMois({ jours, salaireMensuel: 780_000, moyenneMensuelleArticle66: null, aRecevoirDeLaCaisse: 180_000 });
+    expect([p.salaireDesJoursDus, p.indemniteDeuxTiers, p.aRecevoirDeLaCaisse]).toEqual([780_000, 0, 180_000]);
   });
 });

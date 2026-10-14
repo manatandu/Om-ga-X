@@ -37,6 +37,34 @@ export interface AbsenceLue {
   joursCalendaires: number | null;
   annuleLe: string | null;
   motifAnnulation: string | null;
+  /** Ce que le texte dit d'un arrêt qui dure (art. 60, a ; art. 106) · information. */
+  informations: string[];
+  indemnitesCaisse: IndemniteCaisseLue[];
+}
+
+export type TraitementIndemniteCaisse = 'DEDUITE' | 'SUBROGATION' | 'SUBROGATION_PARTIELLE';
+
+export interface IndemniteCaisseLue {
+  id: string;
+  mois: string;
+  montant: number;
+  traitement: TraitementIndemniteCaisse;
+  piece: string;
+  annuleLe: string | null;
+  motifAnnulation: string | null;
+}
+
+export const LIBELLE_TRAITEMENT: Record<TraitementIndemniteCaisse, string> = {
+  DEDUITE: 'Déduite de l’indemnité',
+  SUBROGATION: 'Subrogation, rémunération entière',
+  SUBROGATION_PARTIELLE: 'Subrogation, deux tiers versés',
+};
+
+/** Les traitements ouverts à une cause · chacun son texte (art. 106, al. 2 ; arrêté n° 146/2018, art. 139 et 146). */
+export function traitementsOuverts(nature: string): TraitementIndemniteCaisse[] {
+  if (nature === 'ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE') return ['DEDUITE', 'SUBROGATION'];
+  if (nature === 'MATERNITE') return ['SUBROGATION', 'SUBROGATION_PARTIELLE'];
+  return [];
 }
 
 export interface PropositionDuMois {
@@ -46,6 +74,8 @@ export interface PropositionDuMois {
   joursPayesAPlein: number | null;
   salaireDesJoursDus: number | null;
   indemniteDeuxTiers: number | null;
+  deductionsCaisse: number;
+  aRecevoirDeLaCaisse: number;
   motifs: string[];
   explication: string | null;
 }

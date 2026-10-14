@@ -129,6 +129,7 @@ export const MODELES_CLOISONNES = new Set<string>([
   'CongeSalarie',
   'AbsenceSalarie',
   'MajorationHeures',
+  'IndemniteCaisseAbsence',
   'OrdreVirement',
   'LigneOrdreVirement',
   'LotVirement',

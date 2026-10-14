@@ -854,6 +854,7 @@ model Tenant {
   congesSalaries               CongeSalarie[]
   absencesSalaries             AbsenceSalarie[]
   majorationsHeures            MajorationHeures[]
+  indemnitesCaisseAbsences     IndemniteCaisseAbsence[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -10274,6 +10275,8 @@ model AbsenceSalarie {
   motifAnnulation   String?              @db.VarChar(500)
   creePar           String
   createdAt         DateTime             @default(now())
+  /// Étape 3 · les indemnités journalières de la Caisse déclarées sur l'arrêt.
+  indemnitesCaisse  IndemniteCaisseAbsence[]
 
   @@index([tenantId, salarieId, du])
   @@map("absences_salaries")
@@ -10312,4 +10315,46 @@ model MajorationHeures {
 
   @@index([tenantId, nature])
   @@map("majorations_heures")
+}
+
+// Ligne sage-l5 · fonction 78, étape 3 · les arrêts et les indemnités de la Caisse.
+
+/// Ce que l'employeur fait de l'indemnité journalière de la Caisse ·
+/// DEDUITE (accident du travail, Code du travail, art. 106, al. 2 ·
+/// « L'employeur est autorisé à déduire mensuellement les sommes versées au
+/// travailleur par l'Institut ») ; SUBROGATION (l'employeur continue à payer
+/// toute la rémunération et reçoit l'indemnité, arrêté n° 146/2018, art. 139,
+/// al. 2 pour la maternité, art. 146, al. 3 pour l'incapacité temporaire) ;
+/// SUBROGATION_PARTIELLE (maternité · « Si l'employeur n'a payé qu'une partie
+/// de la rémunération, il est subrogé à la limite de la partie versée »,
+/// art. 139, al. 3).
+enum TraitementIndemniteCaisse {
+  DEDUITE
+  SUBROGATION
+  SUBROGATION_PARTIELLE
+}
+
+/// UNE INDEMNITÉ JOURNALIÈRE DE LA CAISSE pour un mois d'arrêt · déclarée par
+/// le cabinet avec sa pièce (décision ou bordereau de la Caisse), jamais
+/// calculée · la Caisse la liquide (arrêté n° 146/2018, art. 63 et 87). Elle
+/// s'annule avec son motif, au journal d'audit.
+model IndemniteCaisseAbsence {
+  id              String                    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant                    @relation(fields: [tenantId], references: [id])
+  absenceId       String
+  absence         AbsenceSalarie            @relation(fields: [absenceId], references: [id], onDelete: Restrict)
+  /// AAAA-MM · le mois de paie dont la proposition la lit.
+  mois            String                    @db.VarChar(7)
+  montant         Decimal                   @db.Decimal(18, 2)
+  traitement      TraitementIndemniteCaisse
+  piece           String                    @db.VarChar(300)
+  annuleLe        DateTime?
+  annulePar       String?
+  motifAnnulation String?                   @db.VarChar(500)
+  creePar         String
+  createdAt       DateTime                  @default(now())
+
+  @@index([tenantId, absenceId, mois])
+  @@map("indemnites_caisse_absences")
 }

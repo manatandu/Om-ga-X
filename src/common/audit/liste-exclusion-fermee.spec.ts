@@ -285,6 +285,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'motifAnnulation',
       'creePar',
       'createdAt',
+      // Étape 3 · les indemnités de la Caisse déclarées sur l'arrêt · la relation seule.
+      'indemnitesCaisse',
     ],
     // L'AVANCE AU SALARIÉ · le journal dit qu'elle existe, de quel type, à
     // quelle date et sur quelle pièce ; le montant et l'objet sont masqués,

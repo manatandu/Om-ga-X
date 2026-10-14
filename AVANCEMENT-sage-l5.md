@@ -54,11 +54,29 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
     compteurs libres d'heures effectuées et feuilles de temps de Sage
     (aucun texte ne les régit ; le contrôle des 45 heures par semaine
     suppose un relevé hebdomadaire que la paie mensuelle n'a pas).
-  - Étape 3, arrêts et indemnités journalières de la CNSS · à faire.
+  - Étape 3, arrêts et indemnités journalières de la Caisse · faite. Table
+    `IndemniteCaisseAbsence` (migration
+    `20270175000400_indemnites_caisse_absences`), une indemnité par arrêt et
+    par mois, déclarée avec sa PIÈCE de la Caisse, annulée avec motif,
+    jamais supprimée ; trois traitements, chacun son texte
+    (`motifRefusIndemniteCaisse`) · DÉDUITE de l'indemnité de l'employeur
+    (accident du travail, Code du travail art. 106, al. 2, bornée à la part
+    de l'indemnité qui revient à SON arrêt), SUBROGATION pour la
+    rémunération entière (art. 139, al. 2 et 146, al. 3 de l'arrêté
+    n° 146/2018 · les jours se paient à plein, la somme est à recevoir de la
+    Caisse), SUBROGATION PARTIELLE dans la limite des deux tiers versés
+    (maternité, art. 139, al. 3). La maladie ordinaire n'ouvre aucune
+    indemnité de la Caisse (arrêté art. 63 et 87, refus nommé). Informations
+    d'un arrêt qui dure (art. 60, a · art. 106 et arrêté art. 87, 88, 166),
+    jamais un refus. Écran · bouton « Indemnité de la Caisse » sur les
+    arrêts qui en ouvrent une, indemnités sous la ligne avec leur
+    annulation, déduction et somme à recevoir dites dans « Absences du
+    mois ». Parcours `e2e/tests/sage-l5-arrets.e2e.ts`. Aucune écriture ·
+    pas de scénario de clôture.
 
 ## Reste
 
-- 78 étapes 2 et 3, 75, 88, 85.
+- 75, 88, 85.
 - 79 · le décompte final ne relit pas encore le compteur pour proposer les
   mois non couverts par un congé (saisis à la main, comme avant) ; un congé
   porté au bulletin et une indemnité compensatoire au décompte du même mois
@@ -130,6 +148,15 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   des heures supplémentaires) ; le taux horaire se déclare (45 heures par
   semaine et 8 par jour donnent deux conversions, et le décret n° 25/22 n'en
   écrit aucune) ; aucun plafond d'heures (art. 120, b), arrêté absent).
+- **D8-f · l'indemnité de la Caisse sur un arrêt** · l'employeur doit les
+  deux tiers (Code, art. 105, 106, 130) et la Caisse sert ses indemnités
+  journalières (arrêté n° 146/2018, art. 62, 63, 87) · elles ne se confondent
+  que par un texte · la DÉDUCTION de l'art. 106, al. 2 (accident du travail
+  seul, « l'employeur peut déduire »), la SUBROGATION de l'employeur qui paie
+  toute la rémunération (arrêté art. 139, al. 2 ; art. 146, al. 3) et celle,
+  partielle, de l'employeur qui verse une partie (art. 139, al. 3, maternité).
+  Rien n'est présumé · chaque indemnité se DÉCLARE avec sa pièce, au mois de
+  son versement ; sans déclaration, les deux tiers du Code restent proposés.
 - **D8-d · mise à pied** · « jusqu'à concurrence de deux fois quinze jours
   par an » (art. 57, 5°) lu comme deux mesures d'au plus quinze jours de
   calendrier par année civile ; au-delà, refus nommé.
@@ -141,9 +168,13 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   semaines ; l'arrêté n° 146/2018 (art. 63) fait payer par la Caisse une
   indemnité journalière égale à l'intégralité de la rémunération journalière
   moyenne des trois derniers mois, et subroge l'employeur qui paie toute la
-  rémunération (art. 139). Le corpus ne dit pas comment les deux se
-  combinent (cumul, imputation) · OmegaX propose les deux tiers du Code et
-  nomme l'indemnité de la Caisse (étape 3).
+  rémunération (art. 139, al. 2) ou, à la limite de la partie versée,
+  celui qui en paie une partie (al. 3). Ces deux cas sont servis (D8-f).
+  Reste NON TRANCHÉ · la Caisse paie la salariée directement, sans
+  subrogation · l'employeur doit-il encore les deux tiers du Code, en plus
+  de l'indemnité intégrale de la Caisse ? Aucun texte lu ne dit le cumul ni
+  l'imputation (l'art. 106, al. 2, qui permet de déduire, ne vise que
+  l'accident du travail). OmegaX propose les deux tiers et ne déduit rien.
 - **Q1 · un jour hors service rend-il le mois non entier ?** L'art. 141, al. 2
   énumère les services pris en considération (prestation, repos hebdomadaire,
   congé payé, fériés, incapacité jusqu'à six mois par an). Lecture retenue,
@@ -160,7 +191,8 @@ npx jest --maxWorkers=1 src/modules/personnel/absences.spec.ts src/modules/perso
 (cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts)
 # montage local (CLAUDE.md § 10), ports 8085 et 4185, puis
 (cd e2e && OMEGAX_APP=http://localhost:4185 OMEGAX_API=http://localhost:4185/api \
-  PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test tests/sage-l5-conges.e2e.ts tests/sage-l5-absences.e2e.ts tests/sage-l5-heures.e2e.ts)
+  PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test tests/sage-l5-conges.e2e.ts tests/sage-l5-absences.e2e.ts tests/sage-l5-heures.e2e.ts \
+  tests/sage-l5-arrets.e2e.ts)
 DATABASE_URL=postgresql://jetable:jetable@localhost:5432/omegax_sage_l5 npx prisma migrate diff \
   --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
   --shadow-database-url postgresql://jetable:jetable@localhost:5432/omegax_sage_l5_ombre --exit-code

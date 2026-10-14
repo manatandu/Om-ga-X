@@ -1,4 +1,4 @@
-import { lignesProposees, type PropositionDuMois } from './absences-paie';
+import { lignesProposees, traitementsOuverts, type PropositionDuMois } from './absences-paie';
 
 // Aucun import de « vitest » · convention du dépôt.
 
@@ -18,6 +18,8 @@ const proposition = (p: Partial<PropositionDuMois> = {}): PropositionDuMois => (
   joursPayesAPlein: 21,
   salaireDesJoursDus: 420_000,
   indemniteDeuxTiers: 40_000,
+  deductionsCaisse: 0,
+  aRecevoirDeLaCaisse: 0,
   motifs: [],
   explication: null,
   ...p,
@@ -44,5 +46,13 @@ describe('la proposition du mois reprise au bulletin', () => {
   it('sans ligne de salaire, en crée une en tête', () => {
     const r = lignesProposees([], proposition({ joursDeuxTiers: 0, indemniteDeuxTiers: 0 }), vierge, enChamp)!;
     expect(r.map((l) => [l.nature, l.libelle, l.montantFc])).toEqual([['SALAIRE_OU_TRAITEMENT', 'Salaire des jours dus', '420000.00']]);
+  });
+});
+
+describe('les traitements de l’indemnité de la Caisse ouverts à une cause', () => {
+  it('la déduction à l’accident du travail, la subrogation partielle à la maternité, rien à la maladie', () => {
+    expect(traitementsOuverts('ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE')).toEqual(['DEDUITE', 'SUBROGATION']);
+    expect(traitementsOuverts('MATERNITE')).toEqual(['SUBROGATION', 'SUBROGATION_PARTIELLE']);
+    expect(traitementsOuverts('MALADIE_OU_ACCIDENT')).toEqual([]);
   });
 });

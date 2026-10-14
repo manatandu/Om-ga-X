@@ -223,6 +223,9 @@ export const MODELES_AUDITES = new Set<string>([
   'AbsenceSalarie',
   // Un taux de majoration change la paie de chaque bulletin qui le porte.
   'MajorationHeures',
+  // Une indemnité de la Caisse déduite ou reçue par subrogation change ce que
+  // le bulletin propose.
+  'IndemniteCaisseAbsence',
 
   // ══ CLASSEMENT DU 2026-09-27 · tables de même nature que les précédentes,
   // restées hors du journal sans décision (audit serveur, point I4). ══

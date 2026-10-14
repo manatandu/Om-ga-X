@@ -1,5 +1,5 @@
-import { NatureAbsenceSalarie } from '@prisma/client';
-import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { NatureAbsenceSalarie, TraitementIndemniteCaisse } from '@prisma/client';
+import { IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, Matches, MaxLength, Min, MinLength } from 'class-validator';
 
 /**
  * LIGNE SAGE-L5, FONCTION 78 · une absence déclarée. Les jours se comptent au
@@ -46,4 +46,23 @@ export class AnnulationAbsenceDto {
   @MinLength(3)
   @MaxLength(500)
   motif!: string;
+}
+
+/** Étape 3 · une indemnité journalière de la Caisse sur un arrêt, déclarée avec sa pièce. */
+export class IndemniteCaisseDto {
+  @IsString()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Le mois se lit AAAA-MM.' })
+  mois!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  montant!: number;
+
+  @IsEnum(TraitementIndemniteCaisse)
+  traitement!: TraitementIndemniteCaisse;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  piece!: string;
 }

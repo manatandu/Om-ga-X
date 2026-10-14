@@ -3,7 +3,16 @@ import { api, ApiError } from '../../lib/api';
 import { Aide } from '../chrome/Aide';
 import { CHAMP_PAIE, ChampPaie, ModalePaie } from './ModalePaie';
 import { dateCourte, jours } from '../../lib/conges-paie';
-import { LIBELLE_REGIME, type AbsenceLue, type Catalogue } from '../../lib/absences-paie';
+import { montant as fc } from '../../lib/montants';
+import {
+  LIBELLE_REGIME,
+  LIBELLE_TRAITEMENT,
+  traitementsOuverts,
+  type AbsenceLue,
+  type Catalogue,
+  type IndemniteCaisseLue,
+  type TraitementIndemniteCaisse,
+} from '../../lib/absences-paie';
 
 /**
  * LIGNE SAGE-L5, FONCTION 78, ÉTAPE 1 · L'ONGLET ABSENCES DE LA FENÊTRE
@@ -13,7 +22,11 @@ import { LIBELLE_REGIME, type AbsenceLue, type Catalogue } from '../../lib/absen
  */
 
 type SalarieMin = { id: string; nom: string; postNom?: string | null; prenoms?: string | null };
-type Modale = { genre: 'declarer' } | { genre: 'annuler'; absence: AbsenceLue };
+type Modale =
+  | { genre: 'declarer' }
+  | { genre: 'annuler'; absence: AbsenceLue }
+  | { genre: 'caisse'; absence: AbsenceLue }
+  | { genre: 'annulerCaisse'; indemnite: IndemniteCaisseLue };
 
 const nomDe = (s: SalarieMin) => [s.nom, s.postNom, s.prenoms].filter(Boolean).join(' ');
 
@@ -106,7 +119,7 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
       {liste && (
         <section>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px]">
+            <table className="w-full min-w-[900px]">
               <thead>
                 <tr>
                   <th className="text-left px-2 py-1">Cause</th>
@@ -115,7 +128,7 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
                   <th className="text-right px-2 py-1">Jours ouvrables</th>
                   <th className="text-left px-2 py-1">Rémunération</th>
                   <th className="text-left px-2 py-1">Pièce</th>
-                  <th className="px-2 py-1 w-[90px]" />
+                  <th className="px-2 py-1 w-[200px]" />
                 </tr>
               </thead>
               <tbody>
@@ -137,6 +150,25 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
                           · annulée
                         </span>
                       )}
+                      {a.informations.map((t, i) => (
+                        <div key={i} className="text-[11px] text-warning">
+                          {t}
+                        </div>
+                      ))}
+                      {a.indemnitesCaisse.map((ij) => (
+                        <div key={ij.id} className={`text-[11px] ${ij.annuleLe ? 'text-text-dim line-through' : 'text-text-dim'}`}>
+                          Caisse {ij.mois} · {fc(ij.montant)} · {LIBELLE_TRAITEMENT[ij.traitement]} · {ij.piece}
+                          {peutEcrire && !ij.annuleLe && (
+                            <button
+                              type="button"
+                              className="ml-2 text-danger hover:underline no-underline"
+                              onClick={() => setModale({ genre: 'annulerCaisse', indemnite: ij })}
+                            >
+                              Annuler
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </td>
                     <td className="px-2 py-1">
                       {dateCourte(a.du)}
@@ -150,6 +182,11 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
                     <td className="px-2 py-1">{LIBELLE_REGIME[a.regime]}</td>
                     <td className="px-2 py-1">{a.piece ?? ''}</td>
                     <td className="px-2 py-1 text-right">
+                      {peutEcrire && !a.annuleLe && traitementsOuverts(a.nature).length > 0 && (
+                        <button type="button" className="text-sel hover:underline mr-2" onClick={() => setModale({ genre: 'caisse', absence: a })}>
+                          Indemnité de la Caisse
+                        </button>
+                      )}
                       {peutEcrire && !a.annuleLe && (
                         <button type="button" className="text-danger hover:underline" onClick={() => setModale({ genre: 'annuler', absence: a })}>
                           Annuler
@@ -169,6 +206,28 @@ export function OngletAbsencesPaie({ salaries, peutEcrire }: { salaries: Salarie
         <ModaleDeclarer
           salarieId={salarieId}
           catalogue={catalogue}
+          onFermer={() => setModale(null)}
+          onFait={() => {
+            setModale(null);
+            charger();
+          }}
+        />
+      )}
+      {modale?.genre === 'caisse' && (
+        <ModaleCaisse
+          absence={modale.absence}
+          onFermer={() => setModale(null)}
+          onFait={() => {
+            setModale(null);
+            charger();
+          }}
+        />
+      )}
+      {modale?.genre === 'annulerCaisse' && (
+        <ModaleMotif
+          titre={`Annuler l'indemnité de la Caisse de ${modale.indemnite.mois}`}
+          valider="Annuler l'indemnité"
+          chemin={`/personnel/indemnites-caisse/${modale.indemnite.id}/annulation`}
           onFermer={() => setModale(null)}
           onFait={() => {
             setModale(null);
@@ -326,6 +385,75 @@ function ModaleAnnuler({ absence, onFermer, onFait }: { absence: AbsenceLue; onF
       onValider={valider}
       pied={<Boutons envoi={envoi} onFermer={onFermer} valider="Annuler l'absence" />}
     >
+      <ChampPaie libelle="Motif">
+        <textarea rows={2} value={motif} onChange={(e) => setMotif(e.target.value)} className={CHAMP_PAIE} />
+      </ChampPaie>
+    </ModalePaie>
+  );
+}
+
+function ModaleCaisse({ absence, onFermer, onFait }: { absence: AbsenceLue; onFermer: () => void; onFait: () => void }) {
+  const ouverts = traitementsOuverts(absence.nature);
+  const [f, setF] = useState<{ mois: string; montant: string; traitement: string; piece: string }>({ mois: absence.du.slice(0, 7), montant: '', traitement: ouverts[0] ?? '', piece: '' });
+  const { envoi, erreur, setErreur, envoyer } = useEnvoi(onFait);
+  const valider = () => {
+    const montant = Number(f.montant.replace(/\s/g, '').replace(',', '.'));
+    if (!f.mois || !Number.isFinite(montant) || montant <= 0 || !f.traitement || f.piece.trim().length < 3) {
+      setErreur('Le mois, le montant, le traitement et la pièce de la Caisse se déclarent ensemble.');
+      return;
+    }
+    void envoyer(() =>
+      api.post(`/personnel/absences/${absence.id}/indemnites-caisse`, {
+        mois: f.mois,
+        montant,
+        traitement: f.traitement as TraitementIndemniteCaisse,
+        piece: f.piece.trim(),
+      }),
+    );
+  };
+  return (
+    <ModalePaie
+      titre={`Indemnité de la Caisse · ${absence.libelle.toLowerCase()} du ${dateCourte(absence.du)}`}
+      envoi={envoi}
+      erreur={erreur}
+      onFermer={onFermer}
+      onValider={valider}
+      pied={<Boutons envoi={envoi} onFermer={onFermer} valider="Déclarer" />}
+    >
+      <ChampPaie libelle="Mois">
+        <input type="month" value={f.mois} onChange={(e) => setF({ ...f, mois: e.target.value })} className={CHAMP_PAIE} />
+      </ChampPaie>
+      <ChampPaie libelle="Montant versé par la Caisse">
+        <input inputMode="decimal" value={f.montant} onChange={(e) => setF({ ...f, montant: e.target.value })} className={CHAMP_PAIE} />
+      </ChampPaie>
+      <ChampPaie libelle="Traitement">
+        <select value={f.traitement} onChange={(e) => setF({ ...f, traitement: e.target.value })} className={CHAMP_PAIE}>
+          {ouverts.map((t) => (
+            <option key={t} value={t}>
+              {LIBELLE_TRAITEMENT[t]}
+            </option>
+          ))}
+        </select>
+      </ChampPaie>
+      <ChampPaie libelle="Pièce de la Caisse">
+        <input placeholder="Décision, bordereau de paiement" value={f.piece} onChange={(e) => setF({ ...f, piece: e.target.value })} className={CHAMP_PAIE} />
+      </ChampPaie>
+    </ModalePaie>
+  );
+}
+
+function ModaleMotif({ titre, valider: libelleValider, chemin, onFermer, onFait }: { titre: string; valider: string; chemin: string; onFermer: () => void; onFait: () => void }) {
+  const [motif, setMotif] = useState('');
+  const { envoi, erreur, setErreur, envoyer } = useEnvoi(onFait);
+  const valider = () => {
+    if (motif.trim().length < 3) {
+      setErreur("L'annulation se fait avec son motif.");
+      return;
+    }
+    void envoyer(() => api.post(chemin, { motif: motif.trim() }));
+  };
+  return (
+    <ModalePaie titre={titre} envoi={envoi} erreur={erreur} onFermer={onFermer} onValider={valider} pied={<Boutons envoi={envoi} onFermer={onFermer} valider={libelleValider} />}>
       <ChampPaie libelle="Motif">
         <textarea rows={2} value={motif} onChange={(e) => setMotif(e.target.value)} className={CHAMP_PAIE} />
       </ChampPaie>

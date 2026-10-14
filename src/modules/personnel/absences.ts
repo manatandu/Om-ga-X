@@ -376,8 +376,13 @@ function regimeDuJour(a: AbsenceLue, jour: JourIso, circonstanceNonDue: Set<Jour
 
 export type JourDuMois = { readonly jour: JourIso; readonly absenceId: string; readonly nature: NatureAbsence; readonly poids: number; readonly regime: RegimeRemuneration };
 
-/** Les jours OUVRABLES d'absence qui tombent dans un mois `AAAA-MM`, avec leur régime. */
-export function joursOuvrablesDuMois(absences: readonly AbsenceLue[], mois: string): JourDuMois[] {
+/**
+ * Les jours OUVRABLES d'absence qui tombent dans un mois `AAAA-MM`, avec leur
+ * régime. Un arrêt sous SUBROGATION (étape 3) · l'employeur qui « continue à
+ * payer la rémunération » (arrêté n° 146/2018, art. 139 et 146) paie ses
+ * jours à plein, et reçoit l'indemnité de la Caisse.
+ */
+export function joursOuvrablesDuMois(absences: readonly AbsenceLue[], mois: string, subrogees: ReadonlySet<string> = new Set()): JourDuMois[] {
   const nonDus = joursDeCirconstanceNonDus(absences);
   const sortie: JourDuMois[] = [];
   for (const a of absences) {
@@ -386,7 +391,8 @@ export function joursOuvrablesDuMois(absences: readonly AbsenceLue[], mois: stri
     if ('refus' in jours) continue;
     for (const j of jours) {
       if (!j.ouvrable || j.jour.slice(0, 7) !== mois) continue;
-      sortie.push({ jour: j.jour, absenceId: a.id, nature: a.nature, poids: j.poids, regime: regimeDuJour(a, j.jour, nonDus) });
+      const regime = regimeDuJour(a, j.jour, nonDus);
+      sortie.push({ jour: j.jour, absenceId: a.id, nature: a.nature, poids: j.poids, regime: regime === 'DEUX_TIERS' && subrogees.has(a.id) ? 'DUE' : regime });
     }
   }
   return sortie;
@@ -403,8 +409,12 @@ export type PropositionDuMois = {
   readonly joursPayesAPlein: number | null;
   /** Salaire du mois réduit des jours non dus et des jours à deux tiers · `null` avec son motif. */
   readonly salaireDesJoursDus: number | null;
-  /** Les deux tiers des jours d'incapacité (art. 105, 106, 130), moyenne de l'art. 66 comprise. */
+  /** Les deux tiers des jours d'incapacité (art. 105, 106, 130), moyenne de l'art. 66 comprise, indemnités de la Caisse déduites. */
   readonly indemniteDeuxTiers: number | null;
+  /** Indemnités de la Caisse déduites de l'indemnité d'un accident du travail (art. 106, al. 2). */
+  readonly deductionsCaisse: number;
+  /** Indemnités de la Caisse que l'employeur subrogé reçoit (arrêté n° 146/2018, art. 139 et 146). */
+  readonly aRecevoirDeLaCaisse: number;
   readonly motifs: readonly string[];
   readonly explication: string | null;
 };
@@ -422,6 +432,9 @@ export function propositionDuMois(p: {
   readonly jours: readonly JourDuMois[];
   readonly salaireMensuel: number | null;
   readonly moyenneMensuelleArticle66: number | null;
+  /** Étape 3 · indemnités de la Caisse du mois, déduites (accident du travail) par arrêt. */
+  readonly deductionsParAbsence?: ReadonlyMap<string, number>;
+  readonly aRecevoirDeLaCaisse?: number;
 }): PropositionDuMois {
   const somme = (r: RegimeRemuneration) => p.jours.filter((j) => j.regime === r).reduce((n, j) => n + j.poids, 0);
   const joursDeuxTiers = somme('DEUX_TIERS');
@@ -440,10 +453,22 @@ export function propositionDuMois(p: {
   const retenus = Math.min(JOURS_DU_MOIS_REMUNERES, joursDeuxTiers + joursNonDus);
   const bloque = joursNonTranches > 0 || p.salaireMensuel === null;
   const salaireDesJoursDus = bloque ? null : arrondi(((p.salaireMensuel as number) * (JOURS_DU_MOIS_REMUNERES - retenus)) / JOURS_DU_MOIS_REMUNERES);
-  const indemniteDeuxTiers =
+  const indemniteBrute =
     bloque || (joursDeuxTiers > 0 && p.moyenneMensuelleArticle66 === null)
       ? null
       : arrondi((((p.salaireMensuel as number) + (p.moyenneMensuelleArticle66 ?? 0)) * Math.min(JOURS_DU_MOIS_REMUNERES, joursDeuxTiers) * 2) / (3 * JOURS_DU_MOIS_REMUNERES));
+  // ART. 106, AL. 2 · l'indemnité de la Caisse se déduit de la part de
+  // l'indemnité qui revient à SON arrêt, jamais au-delà.
+  let deductionsCaisse = 0;
+  if (indemniteBrute !== null && joursDeuxTiers > 0 && p.deductionsParAbsence) {
+    for (const [absenceId, montant] of p.deductionsParAbsence) {
+      const siens = p.jours.filter((j) => j.absenceId === absenceId && j.regime === 'DEUX_TIERS').reduce((n, j) => n + j.poids, 0);
+      const part = arrondi((indemniteBrute * siens) / joursDeuxTiers);
+      deductionsCaisse += Math.min(Math.max(0, montant), part);
+    }
+    deductionsCaisse = arrondi(deductionsCaisse);
+  }
+  const indemniteDeuxTiers = indemniteBrute === null ? null : arrondi(indemniteBrute - deductionsCaisse);
   return {
     joursDeuxTiers,
     joursNonDus,
@@ -451,11 +476,14 @@ export function propositionDuMois(p: {
     joursPayesAPlein: bloque ? null : JOURS_DU_MOIS_REMUNERES - retenus,
     salaireDesJoursDus,
     indemniteDeuxTiers,
+    deductionsCaisse,
+    aRecevoirDeLaCaisse: arrondi(p.aRecevoirDeLaCaisse ?? 0),
     motifs,
     explication: bloque
       ? null
       : `Salaire mensuel × (26 − ${retenus}) ÷ 26` +
         (joursDeuxTiers > 0 ? ` ; indemnité d'incapacité = (salaire mensuel + moyenne de l'art. 66) × ${joursDeuxTiers} × 2/3 ÷ 26` : '') +
+        (deductionsCaisse > 0 ? `, moins ${deductionsCaisse} versés par la Caisse (art. 106, al. 2)` : '') +
         ' · vingt-six jours payés par mois (décret n° 25/22, art. 7, par analogie), jours fériés de l’absence payés à plein (art. 93).',
   };
 }
@@ -520,4 +548,47 @@ export function absencesPourLeCompteur(
     }
   }
   return { joursHorsService, joursMaladie };
+}
+
+/** Les causes qui ouvrent une indemnité journalière de la Caisse (arrêté n° 146/2018, art. 63 et 87). */
+export const NATURES_INDEMNISEES_PAR_LA_CAISSE: ReadonlySet<NatureAbsence> = new Set(['ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE', 'MATERNITE']);
+
+/**
+ * LE MOTIF DE REFUS D'UNE INDEMNITÉ DE LA CAISSE déclarée sur un arrêt, ou
+ * `null`. Trois traitements, chacun son texte · DÉDUITE (accident du
+ * travail, art. 106, al. 2), SUBROGATION de l'employeur qui paie toute la
+ * rémunération (arrêté n° 146/2018, art. 139, al. 2 ; art. 146, al. 3, ses
+ * jours alors payés à plein), SUBROGATION PARTIELLE de l'employeur qui ne paie
+ * que les deux tiers du Code (maternité, art. 139, al. 3, ses jours restant
+ * aux deux tiers). La maladie non professionnelle n'en ouvre aucune · la Caisse ne
+ * couvre que les pensions, les risques professionnels et les prestations aux
+ * familles (maternité comprise) ; l'employeur en porte seul les deux tiers
+ * (art. 105). La déduction de l'art. 106, al. 2 ne vise que l'accident du
+ * travail ou la maladie professionnelle.
+ */
+export function motifRefusIndemniteCaisse(p: {
+  nature: NatureAbsence;
+  du: JourIso;
+  au: JourIso;
+  mois: string;
+  montant: number;
+  traitement: 'DEDUITE' | 'SUBROGATION' | 'SUBROGATION_PARTIELLE';
+  piece: string;
+  dejaDeclareCeMois: boolean;
+}): string | null {
+  if (!NATURES_INDEMNISEES_PAR_LA_CAISSE.has(p.nature)) {
+    return `${NATURES_ABSENCE[p.nature].libelle} · aucune indemnité journalière de la Caisse ; seuls l'accident du travail, la maladie professionnelle et la maternité en ouvrent une (arrêté n° 146/2018, art. 63 et 87).`;
+  }
+  if (p.traitement === 'DEDUITE' && p.nature !== 'ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE') {
+    return "La déduction des sommes versées par la Caisse ne vise que l'accident du travail ou la maladie professionnelle (Code du travail, art. 106, al. 2).";
+  }
+  if (p.traitement === 'SUBROGATION_PARTIELLE' && p.nature !== 'MATERNITE') {
+    return "La subrogation dans la limite de la partie versée ne vise que l'indemnité de maternité (arrêté n° 146/2018, art. 139, al. 3).";
+  }
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.mois)) return 'Le mois se lit AAAA-MM.';
+  if (p.mois < p.du.slice(0, 7) || p.mois > p.au.slice(0, 7)) return `Le mois ${p.mois} est hors de l'arrêt du ${p.du} au ${p.au}.`;
+  if (!Number.isFinite(p.montant) || p.montant <= 0) return "Le montant de l'indemnité est strictement positif.";
+  if (p.piece.trim().length < 3) return "La pièce de la Caisse se déclare (décision, bordereau de paiement).";
+  if (p.dejaDeclareCeMois) return "Une indemnité de la Caisse est déjà déclarée sur cet arrêt pour ce mois · annulez-la d'abord.";
+  return null;
 }
