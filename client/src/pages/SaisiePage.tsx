@@ -21,6 +21,7 @@ import { useGardeFermeture } from '../lib/fenetres';
 import { compteDuNumeroTape, comptesPourLaFrappe, RETENUS } from '../lib/comptes-proposes';
 import { libelleRenvoiDiscordant, remplacementsProposes, type RenvoiDiscordant } from '../lib/regle-compte-saisie';
 import { lireMasquerTotaux, memoriserMasquerTotaux } from '../lib/totaux-saisie';
+import { ModaleCompteEnSaisie } from '../components/ModaleCompteEnSaisie';
 
 /**
  * SAISIE DES JOURNAUX · l'écran central du logiciel, calqué sur
@@ -344,6 +345,11 @@ export function SaisiePage() {
   // Assujettissement du dossier · décide si la TVA s'ajoute d'office (voir
   // modeCalculTva). `null` tant qu'il n'est pas lu : on ne présume rien.
   const [assujettiTva, setAssujettiTva] = useState<boolean | null>(null);
+  // L'OPTION DU DOSSIER « créer un compte pendant la saisie » (ligne sage-l1,
+  // fonction 14) · lue avec les paramètres ; faute de lecture, l'offre ne
+  // s'affiche pas (le serveur refuserait de toute façon sans l'option).
+  const [creationCompteEnSaisie, setCreationCompteEnSaisie] = useState(false);
+  const [compteACreer, setCompteACreer] = useState<string | null>(null);
   // Annonce de la ligne de TVA ajoutée d'office · une taxe posée sans un mot
   // passerait inaperçue jusqu'à la déclaration.
   const [tvaAjoutee, setTvaAjoutee] = useState<{ message: string; compteId: string; tauxTvaId: string } | null>(null);
@@ -660,6 +666,13 @@ export function SaisiePage() {
     };
   }, [idTapeNonPersonnalise]);
   const comptesFiltres = useMemo(() => frappe.map((f) => f.compte), [frappe]);
+  // UN NUMÉRO INCONNU DU PLAN DU DOSSIER (ligne sage-l1, fonction 14) · sous
+  // l'option, la grille offre de le créer ; le serveur dit s'il le peut.
+  const numeroInconnu = useMemo(() => {
+    const n = compteSaisie.trim();
+    if (!creationCompteEnSaisie || !peutEcrire || !/^\d{3,13}$/.test(n)) return null;
+    return comptes.some((c) => c.numero === n) ? null : n;
+  }, [compteSaisie, comptes, creationCompteEnSaisie, peutEcrire]);
 
   const choisirCompte = (c: Compte) => {
     setCompteChoisi(c);
@@ -1012,9 +1025,14 @@ export function SaisiePage() {
         setErreurTauxTva(e instanceof Error ? e.message : "Les taux de TVA n'ont pas pu être lus.");
       },
     );
-    api
-      .get<{ assujettiTva: boolean }>('/dossier/parametres')
-      .then((p) => !annule && setAssujettiTva(p.assujettiTva), () => !annule && setAssujettiTva(null));
+    api.get<{ assujettiTva: boolean; creationCompteEnSaisie?: boolean }>('/dossier/parametres').then(
+      (p) => {
+        if (annule) return;
+        setAssujettiTva(p.assujettiTva);
+        setCreationCompteEnSaisie(p.creationCompteEnSaisie === true);
+      },
+      () => !annule && setAssujettiTva(null),
+    );
     return () => {
       annule = true;
     };
@@ -1898,6 +1916,22 @@ export function SaisiePage() {
                   {tapeNonPersonnalise.numero} {tapeNonPersonnalise.intitule} · compte non personnalisé · l’administrateur du dossier le personnalise dans Plan comptable pour qu’il se saisisse.
                 </div>
               )}
+              {numeroInconnu && !compteChoisi && !(pickerOuvert && comptesFiltres.length > 0) && (
+                <div
+                  role="status"
+                  className="absolute left-0 top-full z-20 w-[380px] flex items-center gap-2 text-[11px] bg-surface px-2 py-1 border border-border-dark shadow-flottante"
+                >
+                  <span>Compte {numeroInconnu} inconnu du plan du dossier.</span>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setCompteACreer(numeroInconnu)}
+                    className="text-sel font-semibold hover:underline"
+                  >
+                    Créer le compte
+                  </button>
+                </div>
+              )}
               {compteChoisi && !pickerOuvert && (
                 <div className="absolute left-0 top-full text-[11px] text-positive bg-surface px-1 border border-border border-t-0 truncate max-w-full z-10">
                   {compteChoisi.intitule}
@@ -2324,6 +2358,31 @@ export function SaisiePage() {
 
       {peutEcrire && modaleModeles && (
         <ModelesSaisieModale comptes={comptes} comptesProposes={comptesProposesLus ?? undefined} onInserer={insererModele} onFermer={() => setModaleModeles(false)} />
+      )}
+
+      {peutEcrire && compteACreer !== null && (
+        <ModaleCompteEnSaisie
+          numeroTape={compteACreer}
+          onFermer={() => setCompteACreer(null)}
+          onCree={(cree) => {
+            // Créé · la grille le prend aussitôt, puis le plan se relit (la
+            // création a vidé le cache de /comptes). Une relecture refusée se
+            // dit, sans faire croire que la création a échoué.
+            setCompteACreer(null);
+            choisirCompte(cree);
+            Promise.all([
+              api.get<Compte[]>('/comptes?actifsSeuls=true&typeCompte=DETAIL'),
+              api.get<Compte[]>(`/comptes?actifsSeuls=true&typeCompte=DETAIL&${RETENUS}`),
+            ]).then(
+              ([plan, proposes]) => {
+                setComptesLus(plan);
+                setComptesProposesLus(proposes);
+                setErreurComptes(null);
+              },
+              (e) => setErreurComptes(e instanceof Error ? e.message : "Le plan de comptes n'a pas pu être relu."),
+            );
+          }}
+        />
       )}
     </div>
   );

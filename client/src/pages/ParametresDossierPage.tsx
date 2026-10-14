@@ -442,6 +442,24 @@ export function ParametresDossierPage() {
     }
   };
 
+  // Ligne sage-l1, fonction 14 · créer un compte pendant la saisie.
+  const changerCreationCompteEnSaisie = async (actif: boolean) => {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      setParams(await api.patch<ParametresDossier>('/dossier/creation-compte-en-saisie', { creationCompteEnSaisie: actif }));
+      setInfo(
+        actif
+          ? 'Un numéro inconnu tapé en saisie peut s’ouvrir comme sous-compte d’un compte du plan.'
+          : 'Les comptes ne se créent plus pendant la saisie · Plan comptable.',
+      );
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Modification impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
   // Ligne sage-l1, fonction 60 · refuser de clôturer un journal non imprimé.
   const changerRefusNonImprime = async (actif: boolean) => {
     setEnvoi(true);
@@ -1817,6 +1835,23 @@ export function ParametresDossierPage() {
                       titre="Journal non imprimé"
                       texte="Cochée, une clôture (partielle, totale, de période ou de l’exercice) est refusée tant qu’une écriture validée de la période ne figure sur aucune impression du journal faite après sa validation. L’impression se fait depuis le journal (« Imprimer le journal ») ou par son export Excel · le serveur l’enregistre, numérotée et datée, avec son auteur et la période. Une écriture validée après l’impression rend sa période « non imprimée » à nouveau. Aucun texte n’impose l’impression avant la clôture · l’AUDCIF art. 22, 3° impose la clôture informatique, et l’art. 22, 1° et 7° veut des données restituées sur papier et des états numérotés et datés ; c’est l’organisation que le dossier se donne."
                       source="AUDCIF art. 22, 1°, 3° et 7°"
+                    />
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-[11.5px]">
+                  <input
+                    type="checkbox"
+                    className="mt-[3px]"
+                    checked={params.creationCompteEnSaisie}
+                    disabled={!estAdmin || envoi}
+                    onChange={(e) => changerCreationCompteEnSaisie(e.target.checked)}
+                  />
+                  <span>
+                    Créer un compte pendant la saisie{' '}
+                    <Aide
+                      titre="Compte créé pendant la saisie"
+                      texte="Cochée, un numéro tapé dans la grille de saisie et inconnu du dossier s’ouvre, sur confirmation, comme sous-compte du compte d’imputation du plan qu’il subdivise · il en reprend les réglages et naît personnalisé. Ni un numéro hors plan, ni un compte de tiers, qui naît avec sa fiche. Décochée, le plan reste la structure de l’administrateur (Plan comptable)."
+                      source="AUDCIF art. 18, al. 3 ; SYCEBNL Partie 2 ch. 2, section 1 · règle d’organisation d’OmegaX"
                     />
                   </span>
                 </label>

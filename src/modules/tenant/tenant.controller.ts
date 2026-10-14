@@ -12,6 +12,7 @@ import {
   ModifierIdentiteDto,
   ModifierDoubleRegardDto,
   ModifierRefusClotureNonImprimeDto,
+  ModifierCreationCompteEnSaisieDto,
   ModifierModulesDto,
   ModifierJeuEtatsDto,
   ModifierLongueurCompteDto,
@@ -174,6 +175,16 @@ export class TenantController {
     @Body() dto: ModifierDoubleRegardDto,
   ) {
     return this.tenantService.modifierDoubleRegard(user.tenantId, dto.doubleRegardValidation);
+  }
+
+  /** Création d'un compte pendant la saisie · ligne sage-l1, fonction 14. */
+  @Patch('creation-compte-en-saisie')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierCreationCompteEnSaisie(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ModifierCreationCompteEnSaisieDto,
+  ) {
+    return this.tenantService.modifierCreationCompteEnSaisie(user.tenantId, dto.creationCompteEnSaisie);
   }
 
   /** Refus de clôturer un journal non imprimé · ligne sage-l1, fonction 60. */

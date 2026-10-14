@@ -1,5 +1,5 @@
 import { renvoisDuPlanSyscohada } from './renvois-plan-syscohada';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { referencesVers, refuserSiReferences } from '../../common/suppression/references';
 import { PrismaService } from '../../common/prisma.service';
 import { refuserBailleurHorsSycebnl } from '../../common/bailleur-referentiel';
@@ -8,7 +8,8 @@ import { ClasseCompte, Prisma, Referentiel, TypeCompteDetailTotal, TypeJournal }
 import { PLAN_COMPTES_SYCEBNL } from './compte-seed';
 import { CATALOGUE_RETRAITEMENTS } from '../fiscalite/catalogue-retraitements';
 import { PLAN_COMPTES_SYSCOHADA } from './compte-seed-syscohada';
-import { CreerCompteDto, ModifierCompteDto } from './dto/creer-compte.dto';
+import { CreerCompteDto, CreerCompteEnSaisieDto, ModifierCompteDto } from './dto/creer-compte.dto';
+import { MOTIF_OPTION_FERMEE, motifRefusCompteEnSaisie, type CompteDuPlanLu } from './compte-en-saisie';
 import { naturesDuDossier } from './natures-compte.service';
 import { LIBELLES_NATURE, natureDe } from './natures-compte';
 import { classeDuNumero } from './classe-du-numero';
@@ -266,6 +267,81 @@ export class CompteService {
           : {}),
       },
     });
+  }
+
+  /**
+   * LE NUMÉRO TAPÉ EN SAISIE, JUGÉ (ligne sage-l1, fonction 14) · le compte
+   * du plan qu'il subdiviserait, ou le motif qui le refuse. Une lecture · rien
+   * n'est réservé, la création rejuge tout.
+   */
+  async propositionEnSaisie(tenantId: string, numero: string) {
+    const n = (numero ?? '').trim();
+    const { motif, compteDuPlan } = await this.jugerCompteEnSaisie(tenantId, n);
+    return {
+      numero: n,
+      // L'intitulé du compte du plan, proposé · le comptable le garde ou le remplace.
+      intitule: compteDuPlan?.intitule ?? '',
+      compteDuPlan: compteDuPlan ? { numero: compteDuPlan.numero, intitule: compteDuPlan.intitule } : null,
+      motif,
+    };
+  }
+
+  /**
+   * CRÉER UN COMPTE PENDANT LA SAISIE (ligne sage-l1, fonction 14) · sous
+   * l'option du dossier, un sous-compte d'un compte d'imputation du plan, par
+   * la création ordinaire (`creer` · longueur, classe, réglages repris du
+   * compte du plan), né personnalisé (« créé retenu »). Voir
+   * `compte-en-saisie.ts` pour ce qui est refusé et pourquoi.
+   */
+  async creerEnSaisie(tenantId: string, dto: CreerCompteEnSaisieDto) {
+    const numero = dto.numero.trim();
+    const intitule = dto.intitule.trim();
+    if (!intitule) throw new BadRequestException("L'intitulé du compte est obligatoire.");
+    const { motif, optionFermee } = await this.jugerCompteEnSaisie(tenantId, numero);
+    if (optionFermee) throw new ForbiddenException(MOTIF_OPTION_FERMEE);
+    if (motif) throw new BadRequestException(motif);
+    try {
+      return await this.creer(tenantId, { numero, intitule, typeCompte: TypeCompteDetailTotal.DETAIL });
+    } catch (e) {
+      // Deux saisies qui créent le même numéro au même instant · la base
+      // refuse la seconde, et le refus se dit au lieu d'une panne.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException(`Le compte ${numero} vient d'être créé dans ce dossier · choisissez-le dans la liste.`);
+      }
+      throw e;
+    }
+  }
+
+  private async jugerCompteEnSaisie(
+    tenantId: string,
+    numero: string,
+  ): Promise<{ motif: string | null; optionFermee: boolean; compteDuPlan: CompteDuPlanLu | null }> {
+    const dossier = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { referentiel: true, longueurCompte: true, creationCompteEnSaisie: true },
+    });
+    if (!dossier.creationCompteEnSaisie) return { motif: MOTIF_OPTION_FERMEE, optionFermee: true, compteDuPlan: null };
+    const numeroDuPlan = /^\d+$/.test(numero) ? compteSemeSubdivise(dossier.referentiel, numero) : null;
+    const [existant, compteDuPlan] = await Promise.all([
+      /^\d+$/.test(numero)
+        ? this.prisma.compte.findUnique({ where: { tenantId_numero: { tenantId, numero } }, select: { id: true } })
+        : Promise.resolve(null),
+      numeroDuPlan
+        ? this.prisma.compte.findUnique({
+            where: { tenantId_numero: { tenantId, numero: numeroDuPlan } },
+            select: { numero: true, intitule: true, typeCompte: true, estActif: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    const motif = motifRefusCompteEnSaisie({
+      referentiel: dossier.referentiel,
+      numero,
+      longueurCompte: dossier.longueurCompte,
+      existe: existant !== null,
+      numeroDuPlan,
+      compteDuPlan,
+    });
+    return { motif, optionFermee: false, compteDuPlan };
   }
 
   /**

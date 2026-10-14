@@ -5,7 +5,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { CompteService } from './compte.service';
-import { CreerCompteDto, ModifierCompteDto } from './dto/creer-compte.dto';
+import { CreerCompteDto, CreerCompteEnSaisieDto, ModifierCompteDto } from './dto/creer-compte.dto';
 import { ClasseCompte, RoleUtilisateur, TypeCompteDetailTotal } from '@prisma/client';
 
 // Consultation ouverte aux trois rôles ; gestion du plan de comptes réservée
@@ -52,6 +52,26 @@ export class CompteController {
   @Get(':id/sous-compte-propose')
   async sousComptePropose(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.compteService.sousComptePropose(user.tenantId, id);
+  }
+
+  /**
+   * LE NUMÉRO TAPÉ EN SAISIE, JUGÉ (ligne sage-l1, fonction 14) · le compte du
+   * plan qu'il subdiviserait, ou le motif qui le refuse. Une lecture.
+   */
+  @Get('en-saisie/proposition')
+  async propositionEnSaisie(@CurrentUser() user: AuthenticatedUser, @Query('numero') numero?: string) {
+    return this.compteService.propositionEnSaisie(user.tenantId, numero ?? '');
+  }
+
+  /**
+   * CRÉER UN COMPTE PENDANT LA SAISIE (ligne sage-l1, fonction 14) · qui
+   * saisit, sous l'option du dossier, que le serveur relit (`creerEnSaisie`).
+   * Le plan reste la structure de l'administrateur hors de ce geste.
+   */
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  @Post('en-saisie')
+  async creerEnSaisie(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreerCompteEnSaisieDto) {
+    return this.compteService.creerEnSaisie(user.tenantId, dto);
   }
 
   /** Ne retenir que les comptes utilisés · voir CompteService. */

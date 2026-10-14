@@ -645,6 +645,12 @@ model Tenant {
   // écriture validée de la période n'a pas été imprimée APRÈS sa validation ·
   // l'issue est immédiate, imprimer le journal.
   refusClotureJournalNonImprime Boolean @default(false)
+  // CRÉER UN COMPTE PENDANT LA SAISIE (ligne sage-l1, fonction 14 · Sage i7,
+  // une option du dossier). Fermée par défaut · le plan reste la structure de
+  // l'administrateur tant qu'il ne l'ouvre pas. Ouverte, la grille de saisie
+  // offre d'ouvrir le numéro tapé inconnu du dossier comme SOUS-COMPTE d'un
+  // compte d'imputation du plan (`comptes/compte-en-saisie.ts`), personnalisé.
+  creationCompteEnSaisie Boolean @default(false)
 
   assujettiTva               Boolean           @default(false)
   // LA QUESTION A-T-ELLE ÉTÉ RÉPONDUE ? `assujettiTva` vaut faux par défaut et

@@ -208,6 +208,8 @@ export class TenantService {
       doubleRegardValidation: tenant.doubleRegardValidation,
       // Ligne sage-l1, fonction 60 · aux deux référentiels, comme le double regard.
       refusClotureJournalNonImprime: tenant.refusClotureJournalNonImprime,
+      // Ligne sage-l1, fonction 14 · aux deux référentiels.
+      creationCompteEnSaisie: tenant.creationCompteEnSaisie,
       attestationExemptionIs: tenant.attestationExemptionIs,
       dateAttestationExemptionIs: tenant.dateAttestationExemptionIs,
       formeJuridique: siSycebnl(tenant.referentiel, tenant.formeJuridique),
@@ -1196,6 +1198,16 @@ export class TenantService {
       throw new NotFoundException('Dossier introuvable');
     }
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { modulesActives: normaliserModules(modulesActives) } });
+    return this.parametres(tenantId);
+  }
+
+  /** La création d'un compte pendant la saisie (ligne sage-l1, fonction 14), option du dossier. */
+  async modifierCreationCompteEnSaisie(tenantId: string, creationCompteEnSaisie: boolean) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Dossier introuvable');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { creationCompteEnSaisie } });
     return this.parametres(tenantId);
   }
 

@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsOptional, IsString, Matches } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { FacultatifNonNul } from '../../../common/facultatif-non-nul';
 import { ClasseCompte, ModeReportANouveau, TypeCompteDetailTotal } from '@prisma/client';
 
@@ -112,4 +112,19 @@ export class ModifierCompteDto {
   @IsOptional()
   @IsString()
   tauxTvaDefautId?: string | null;
+}
+
+/**
+ * LE COMPTE CRÉÉ PENDANT LA SAISIE (ligne sage-l1, fonction 14) · le numéro
+ * tapé et son intitulé, rien d'autre · ses réglages viennent du compte du
+ * plan qu'il subdivise (`CompteService.creer`), son type est DÉTAIL. Le
+ * serveur juge le numéro (`comptes/compte-en-saisie.ts`).
+ */
+export class CreerCompteEnSaisieDto {
+  @Matches(/^\d{3,13}$/, { message: 'Le numéro de compte doit être numérique (3 à 13 chiffres)' })
+  numero!: string;
+
+  @IsString()
+  @MaxLength(200)
+  intitule!: string;
 }

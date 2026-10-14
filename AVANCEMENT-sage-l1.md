@@ -200,10 +200,47 @@ F2 sans choix → L ; clôture de N ; en N+1, la facture F3 par l'à-nouveau et
 son avoir · K refusée (employée en N), B (trou) admise, proposée M ; compte
 du tiers soldé.
 
+### #14 · Créer un compte pendant la saisie (M10-17, p. 31)
+
+Aucun texte ne régit le geste · l'AUDCIF art. 18, al. 3 (« peut ouvrir
+toutes subdivisions nécessaires ») et, au SYCEBNL dont l'art. 3 écarte
+l'art. 18, la Partie 2 ch. 2, section 1 laissent l'entité subdiviser. Règle
+d'organisation d'OmegaX, la même que « Personnaliser » au Plan comptable
+(décision de Manasse du 2026-10-09) · une OPTION du dossier, fermée par
+défaut (`Tenant.creationCompteEnSaisie`, migration
+`20270171020000_creation_compte_en_saisie`, Paramètres du dossier,
+administrateur). Ouverte, un numéro tapé dans la grille et inconnu du
+dossier offre « Créer le compte » ; la boîte (`ModaleCompteEnSaisie`) lit le
+jugement du serveur (`GET /comptes/en-saisie/proposition`) · le compte du
+plan qu'il subdivise et son intitulé repris, ou le motif. `POST
+/comptes/en-saisie` (administrateur et comptable, l'aide-comptable par
+héritage) rejuge et crée par `CompteService.creer` (longueur du dossier,
+classe, réglages repris du compte du plan), DÉTAIL, né personnalisé ; la
+grille le prend aussitôt, le cache de /comptes se vide (famille /comptes).
+Refus nommés (`comptes/compte-en-saisie.ts`) · option fermée (403), numéro
+existant, trop long, ne subdivisant aucun compte d'imputation du plan, compte
+du plan absent, total ou en sommeil, et SOUS UN COLLECTIF DE TIERS (toute
+panoplie, convention d'OmegaX · le compte d'un tiers naît avec sa fiche).
+Ouvert, il subdivise le compte du plan, que la saisie refuse ensuite
+(règle des comptes personnalisés, dite dans la bulle).
+
+Tests · `comptes/compte-en-saisie.spec.ts` (motifs aux deux référentiels,
+toutes les panoplies, service), `listes-de-comptes.ts` (route rangée), e2e
+`sage-l1-compte-en-saisie`.
+
+Scénario sur vraie base (2026-10-14, `l1-s14.mjs`), 0 écart · option fermée
+→ 403 et proposition qui le dit ; ouverte, 60510005 proposé sous 60510000
+« Fournitures non stockables - Eau » ; 40110009 refusé (collectif
+fournisseurs) ; existant et trop long refusés ; créé DÉTAIL, personnalisé,
+classe 6, proposé à la saisie ; 120 000 passés dessus en N, le 60510000
+subdivisé refusé à la saisie ; clôture · banque reportée −120 000, charge non
+reportée ; 30 000 passés en N+1 ; option refermée → 403.
+
 ## Reste
 
-- #12, #60, #16 · e2e `sage-l1-situation`, `sage-l1-impression`, `sage-l1-lettre` écrits, à jouer.
-- #14, #19, #18.
+- #12, #60, #16, #14 · e2e `sage-l1-situation`, `sage-l1-impression`, `sage-l1-lettre`,
+  `sage-l1-compte-en-saisie` écrits, à jouer.
+- #19, #18.
 - Bloc du § 3 des deux côtés ; specs de structure.
 
 ## Décisions
@@ -255,6 +292,13 @@ une à quatre lettres, rangée en majuscules), sinon la proposée
 compte (groupe ou lignes reprises) est refusée en la nommant (CPCC, ch. 6,
 « un seul repère »), relue dans la transaction.
 
+**Compte créé pendant la saisie (ligne sage-l1, fonction 14, 2026-10-14).**
+Option du dossier, fermée par défaut (`creationCompteEnSaisie`) · un numéro
+inconnu tapé en saisie s'ouvre, sur confirmation, en SOUS-COMPTE d'un compte
+d'imputation du plan, par `CompteService.creer`, né personnalisé
+(`POST /comptes/en-saisie`, administrateur et comptable). Jamais hors plan,
+jamais sous un collectif de tiers (`comptes/compte-en-saisie.ts`).
+
 ## Pour build-log.md
 
 - 2026-10-14 · sage-l1 #12 · fait · journal de situation · statut SITUATION, garde
@@ -267,3 +311,5 @@ compte (groupe ou lignes reprises) est refusée en la nommant (CPCC, ch. 6,
   option, case « Non imprimé » · comme prévu.
 - 2026-10-14 · sage-l1 #16 · fait · lettre de lettrage choisie, refus nommé d'une lettre
   déjà employée · comme prévu.
+- 2026-10-14 · sage-l1 #14 · fait · compte créé en saisie sous option, sous-compte du
+  plan, jamais sous un collectif de tiers · comme prévu.

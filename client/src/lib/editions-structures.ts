@@ -183,6 +183,7 @@ export function editionParametres(
     ['Vente de biens ou de services', p.venteBiensServices == null ? 'non renseigné' : ouiNon(p.venteBiensServices)],
     ['Double regard à la validation', ouiNon(p.doubleRegardValidation)],
     ['Refus de clôturer un journal non imprimé', ouiNon(p.refusClotureJournalNonImprime)],
+    ['Création de comptes pendant la saisie', ouiNon(p.creationCompteEnSaisie)],
   );
   return { colonnes: ['Rubrique', 'Valeur'], lignes };
 }

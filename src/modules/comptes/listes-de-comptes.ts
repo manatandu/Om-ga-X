@@ -100,6 +100,8 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
   '/comptes/renvois': 'renvois annexés au plan SYSCOHADA, du texte, aucun compte à choisir',
   '/comptes/:id/sous-compte-propose':
     "numéro proposé pour un sous-compte à ouvrir sous le compte du plan choisi, un seul numéro et jamais une liste",
+  '/comptes/en-saisie/proposition':
+    "jugement du numéro tapé en saisie pour un compte à créer (ligne sage-l1, fonction 14), le compte du plan qu'il subdiviserait ou le motif, jamais une liste",
   '/journaux/compte-propose':
     "numéro proposé pour le compte propre d'un journal à créer, lu sous le compte du plan choisi, un seul numéro et jamais une liste",
   '/tiers/numero-propose':

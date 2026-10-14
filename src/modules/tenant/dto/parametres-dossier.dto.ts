@@ -554,3 +554,12 @@ export class ModifierModulesDto {
   @IsEnum(ModuleOptionnel, { each: true })
   modulesActives!: ModuleOptionnel[];
 }
+
+/**
+ * CRÉER UN COMPTE PENDANT LA SAISIE (ligne sage-l1, fonction 14) · une
+ * option du dossier, fermée par défaut. Voir `comptes/compte-en-saisie.ts`.
+ */
+export class ModifierCreationCompteEnSaisieDto {
+  @IsBoolean()
+  creationCompteEnSaisie!: boolean;
+}
