@@ -166,3 +166,12 @@ conversation, à re-citer dans le plan), Manasse veut le parcours habituel :
   pas de résumé en tête. LE CONTENU SE TRANCHE PAR LA LOI, pas par le RGPD :
   lire la compétence droit-numerique-ua-rdc-corpus (ordonnance-loi n° 23/10 du
   13 mars 2023) avant toute modification.
+
+## Ajout du 2026-10-14
+
+- LOGO DE VMG CONSULTING reçu de Manasse (« garde ça pour plus tard »), rangé
+  tel quel dans docs/marque-vmg/logo-vmg-consulting.png (PNG 1024 x 1024, fond
+  blanc). Aucun usage décidé. Ne pas le confondre avec la marque OmegaX, dont le
+  signe et le logotype sont des tracés engendrés (§ 9 bis). Usage possible plus
+  tard, sur décision de Manasse : site vitrine, pièces émises par VMG (factures
+  d'abonnement), console de l'éditeur.
