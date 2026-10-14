@@ -218,6 +218,9 @@ export const MODELES_AUDITES = new Set<string>([
   // bulletin change l'allocation payée · la trace dit qui et quand.
   'RepriseCongesSalarie',
   'CongeSalarie',
+  // Une absence change un solde de congé et la proposition d'un bulletin
+  // sans qu'aucun montant ne la nomme.
+  'AbsenceSalarie',
 
   // ══ CLASSEMENT DU 2026-09-27 · tables de même nature que les précédentes,
   // restées hors du journal sans décision (audit serveur, point I4). ══
@@ -480,6 +483,12 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // RÉMUNÉRATION, masquée comme celle du contrat ; les dates et le motif
   // restent, ce sont eux que la trace doit dire.
   CongeSalarie: ['remunerationJournaliere', 'moyenneMensuelleArticle142'],
+  // Ligne sage-l5 · la pièce d'une absence nomme un certificat médical et
+  // l'observation peut en dire le contenu · le journal d'audit se lit par
+  // tout le dossier, l'aide-comptable compris, à qui le personnel est fermé.
+  // La nature, les dates et l'annulation restent, ce sont elles que la trace
+  // doit dire.
+  AbsenceSalarie: ['piece', 'observation'],
   // Le bulletin reste IDENTIFIABLE (numéro, mois, nom, statut, dates, motif
   // d'annulation) · ses MONTANTS et le détail du calcul ne le sont pas, pour
   // la même raison que la rémunération du contrat.

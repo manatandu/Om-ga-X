@@ -17,6 +17,11 @@ import {
 import { allocationDeConge } from './decompte-final';
 import type { Referentiel } from './passation-paie';
 import { AllocationCongeDto, CongeSalarieDto, RepriseCongesDto } from './dto/conges.dto';
+import { serviceEnCours, type ContratLu } from './service-du-salarie';
+import { lireAbsencesPourConges, type LecteurAbsences } from './absences-lecture';
+
+export { serviceEnCours, lireAbsencesPourConges };
+export type { LecteurAbsences };
 
 /**
  * LIGNE SAGE-L5, FONCTION 79 · le compteur des congés acquis chaque mois, la
@@ -46,39 +51,6 @@ const moisPrecedent = (mois: string, n: number) => {
   return iso(d).slice(0, 7);
 };
 
-type ContratLu = {
-  id: string;
-  dateEntreeEnVigueur: Date;
-  dateFin: Date | null;
-  renouvelleDeId: string | null;
-  remunerationBase: Prisma.Decimal | null;
-  periodiciteRemuneration: string | null;
-  deviseRemuneration: string | null;
-};
-
-/**
- * LE SERVICE CHEZ LE MÊME EMPLOYEUR (art. 140, al. 3 ; art. 141) · les
- * contrats renouvelés (art. 41) ou qui se suivent sans un jour d'écart forment
- * un seul service ; un contrat repris après une interruption en ouvre un
- * autre. Convention d'OmegaX, dite à l'écran · le Code ne définit pas la
- * continuité de service, et l'« employeur substitué » ne se lit sur aucun
- * contrat.
- */
-export function serviceEnCours(contrats: readonly ContratLu[]): { origine: Date; fin: Date | null; contrats: ContratLu[] } | null {
-  if (contrats.length === 0) return null;
-  const tries = [...contrats].sort((a, b) => a.dateEntreeEnVigueur.getTime() - b.dateEntreeEnVigueur.getTime());
-  let groupe: ContratLu[] = [tries[0]];
-  for (const c of tries.slice(1)) {
-    const precedent = groupe[groupe.length - 1];
-    const lendemain = precedent.dateFin ? precedent.dateFin.getTime() + 86_400_000 : null;
-    const continu = c.renouvelleDeId === precedent.id || lendemain === null || c.dateEntreeEnVigueur.getTime() <= lendemain;
-    groupe = continu ? [...groupe, c] : [c];
-  }
-  const dernier = groupe[groupe.length - 1];
-  const finOuverte = groupe.some((c) => c.dateFin === null);
-  return { origine: groupe[0].dateEntreeEnVigueur, fin: finOuverte ? null : dernier.dateFin, contrats: groupe };
-}
-
 /**
  * LE TAUX JOURNALIER PROPOSÉ, jamais substitué · la rémunération convenue
  * ramenée au jour par les multiplicateurs du décret n° 25/22, art. 7 (6, 26,
@@ -106,24 +78,6 @@ export function tauxJournalierPropose(contrat: Pick<ContratLu, 'remunerationBase
         : `Rémunération du contrat ramenée au jour par ${diviseur} (décret n° 25/22, art. 7, par analogie).`,
   };
 }
-
-/**
- * LES ABSENCES QUI ENTRENT DANS LE COMPTEUR · les jours qui ne sont pas un
- * service au sens de l'art. 141, al. 2, et les jours de maladie qui ne
- * comptent pas comme jours de congé (al. 4). Tenus par la fonction 78.
- */
-export type AbsencesPourLesConges = {
-  joursHorsService: { du: JourIso; au: JourIso; motif: string }[];
-  joursMaladie: Set<JourIso>;
-};
-
-export type LecteurAbsences = (db: Db, tenantId: string, salarieId: string) => Promise<AbsencesPourLesConges>;
-
-/** Sans la fonction 78, aucun jour n'est retranché · remplacé par le lecteur des absences. */
-export const AUCUNE_ABSENCE: LecteurAbsences = async () => ({ joursHorsService: [], joursMaladie: new Set() });
-
-/** LE lecteur des absences, un seul pour le compteur et pour l'émission du bulletin. */
-export const lireAbsencesPourConges: LecteurAbsences = AUCUNE_ABSENCE;
 
 /** Ce que le compteur lit en base · un salarié, borné au dossier. */
 async function lireFaits(db: Db, tenantId: string, salarieId: string, lireAbsences: LecteurAbsences) {

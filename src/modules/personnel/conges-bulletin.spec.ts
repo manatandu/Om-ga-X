@@ -36,6 +36,9 @@ function prismaAvec(conges: ReturnType<typeof conge>[]) {
       findMany: jest.fn(async (args: { where: { id: { in: string[] } } }) => conges.filter((c) => args.where.id.in.includes(c.id))),
     },
     rubriquePaie: { findMany: jest.fn().mockResolvedValue([]) },
+    // Le lecteur des absences (fonction 78) · aucune absence, aucun contrat.
+    absenceSalarie: { findMany: jest.fn().mockResolvedValue([]) },
+    contratTravail: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
 }
 

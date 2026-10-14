@@ -14,6 +14,7 @@ export const ONGLETS_PERSONNEL = [
   'simulation',
   'bulletins',
   'conges',
+  'absences',
   'rubriques',
   'baremes',
   'decompte',

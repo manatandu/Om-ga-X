@@ -7,6 +7,8 @@ import { OngletBulletins } from './BulletinsPaie';
 import { OngletBaremesPaie } from '../components/BaremesPaie';
 import { OngletRubriquesAvances, type AvanceSalaire, type RubriquePaie } from '../components/RubriquesAvancesPaie';
 import { OngletCongesPaie } from '../components/paie/CongesPaie';
+import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
+import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
 import { dateCourte, jours as joursConge, motifCongeNonPortable, type CongeDuMois } from '../lib/conges-paie';
 import { libelleListeBornee } from '../lib/liste-bornee-personnel';
 import { TITRE_BLOC_PAIE } from './PaieDuMois';
@@ -613,6 +615,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // part au serveur, qui rejoue le montant.
   const [congesDuMois, setCongesDuMois] = useState<CongeDuMois[] | null>(null);
   const [congesPortes, setCongesPortes] = useState<Record<string, boolean>>({});
+  // LIGNE SAGE-L5, FONCTION 78 · les absences du mois et la proposition du
+  // serveur · reprise au clic, jamais substituée. La moyenne de l'art. 66 se
+  // déclare (zéro est une réponse).
+  const [absencesDuMois, setAbsencesDuMois] = useState<AbsencesDuMois | null>(null);
+  const [moyenneArticle66, setMoyenneArticle66] = useState('');
   const [tous, setTous] = useState(false);
   // Les contrats saisis avec un montant et sans monnaie, comptés par le
   // serveur sur le dossier entier · null tant que le registre n'est pas lu,
@@ -823,6 +830,26 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       actuel = false;
     };
   }, [onglet, selection, moisDePaie]);
+
+  useEffect(() => {
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
+      setAbsencesDuMois(null);
+      return;
+    }
+    let actuel = true;
+    const moyenne = moyenneArticle66.trim() ? `?moyenne=${encodeURIComponent(moyenneArticle66.trim().replace(/\s/g, ''))}` : '';
+    api.get<AbsencesDuMois>(`/personnel/salaries/${selection}/absences/mois/${moisDePaie}${moyenne}`).then(
+      (r) => actuel && setAbsencesDuMois(r),
+      (e: ApiError) => {
+        if (!actuel) return;
+        setAbsencesDuMois(null);
+        setErreur(e.message);
+      },
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, selection, moisDePaie, moyenneArticle66]);
 
   useEffect(() => {
     if (onglet === 'confrontation') {
@@ -1404,6 +1431,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                       ? 'Bulletins'
                       : o === 'conges'
                       ? 'Congés'
+                      : o === 'absences'
+                      ? 'Absences'
                       : o === 'rubriques'
                       ? 'Rubriques et avances'
                       : o === 'baremes'
@@ -2863,6 +2892,75 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
+          {selection && absencesDuMois && absencesDuMois.absences.length > 0 && (
+            <div className="border border-border px-3 py-2 mt-2">
+              <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
+                Absences du mois
+                <Aide
+                  titre="Absences du mois"
+                  texte="Les absences déclarées dans l'onglet Absences qui touchent ce mois, en jours ouvrables. Pour un salaire au mois, le serveur propose le salaire des jours dus (vingt-six jours payés par mois, un jour non payé ou payé aux deux tiers retranchant 1/26) et l'indemnité d'incapacité, aux deux tiers du salaire et de la moyenne mensuelle des douze mois de commissions, primes, gratifications et participations. Les jours fériés d'une absence restent payés à plein. Reprendre au bulletin remplace le montant de la ligne de salaire et ajoute l'indemnité ; rien n'est posé tant que la proposition ne se chiffre pas. Les jours payés pour la sécurité sociale se saisissent à part."
+                  source="Code du travail, art. 59, 66, 93, 105, 106, 130 et 146 · décret n° 25/22, art. 7, par analogie"
+                />
+              </div>
+              <table className="w-full">
+                <tbody>
+                  {absencesDuMois.absences.map((a) => (
+                    <tr key={a.id} className="border-t border-border/40">
+                      <td className="py-1 pr-2">
+                        {a.libelle} du {dateCourte(a.du)} au {dateCourte(a.au)}
+                      </td>
+                      <td className="py-1 pr-2 text-right">{joursConge(a.joursDuMois)} jour(s) ouvrable(s) ce mois</td>
+                      <td className="py-1 text-right text-text-dim">{a.regimes.map((r) => LIBELLE_REGIME[r]).join(', ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {absencesDuMois.proposition.joursDeuxTiers > 0 && (
+                <label className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <span className="text-text-dim">Moyenne mensuelle des douze mois</span>
+                  <input
+                    inputMode="decimal"
+                    value={moyenneArticle66}
+                    onChange={(e) => setMoyenneArticle66(e.target.value)}
+                    className="border border-border bg-transparent px-1.5 py-0.5 w-[140px] text-right"
+                  />
+                </label>
+              )}
+              {absencesDuMois.proposition.motifs.map((m, i) => (
+                <div key={i} className="text-warning mt-1">
+                  {m}
+                </div>
+              ))}
+              {absencesDuMois.proposition.salaireDesJoursDus !== null && (
+                <div className="flex flex-wrap items-center gap-2 mt-1.5" title={absencesDuMois.proposition.explication ?? undefined}>
+                  <span>
+                    Salaire des jours dus {fc(absencesDuMois.proposition.salaireDesJoursDus)} {absencesDuMois.devise ?? ''} ·{' '}
+                    {absencesDuMois.proposition.joursPayesAPlein} jour(s) payé(s) à plein
+                    {absencesDuMois.proposition.joursDeuxTiers > 0 && absencesDuMois.proposition.indemniteDeuxTiers !== null
+                      ? ` · indemnité d'incapacité ${fc(absencesDuMois.proposition.indemniteDeuxTiers)} ${absencesDuMois.devise ?? ''}`
+                      : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-sel hover:underline disabled:opacity-40"
+                    disabled={absencesDuMois.devise !== null && absencesDuMois.devise !== deviseStipulation}
+                    title={
+                      absencesDuMois.devise !== null && absencesDuMois.devise !== deviseStipulation
+                        ? `Le contrat est stipulé en ${absencesDuMois.devise}, le bulletin en ${deviseStipulation}.`
+                        : undefined
+                    }
+                    onClick={() => {
+                      const nouvelles = lignesProposees(lignes, absencesDuMois.proposition, { ...LIGNE_VIERGE }, montantPourChamp);
+                      if (nouvelles) setLignes(nouvelles);
+                    }}
+                  >
+                    Reprendre au bulletin
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {selection && congesDuMois && congesDuMois.length > 0 && (
             <div className="border border-border px-3 py-2 mt-2">
               <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
@@ -3462,6 +3560,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       )}
 
       {onglet === 'conges' && <OngletCongesPaie salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'absences' && <OngletAbsencesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'rubriques' && <OngletRubriquesAvances salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <OngletBaremesPaie peutEcrire={peutEcrire} />}
 

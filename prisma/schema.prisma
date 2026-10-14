@@ -852,6 +852,7 @@ model Tenant {
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
   reprisesConges               RepriseCongesSalarie[]
   congesSalaries               CongeSalarie[]
+  absencesSalaries             AbsenceSalarie[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -7630,6 +7631,7 @@ model Salarie {
   avances   AvanceSalaire[]
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
   repriseConges RepriseCongesSalarie?
+  absences      AbsenceSalarie[]
   conges        CongeSalarie[]
 
   createdAt DateTime @default(now())
@@ -10221,4 +10223,57 @@ model CongeSalarie {
   @@index([tenantId, salarieId, du])
   @@index([tenantId, bulletinId])
   @@map("conges_salaries")
+}
+
+// Ligne sage-l5 · fonction 78, étape 1 · les absences du salarié.
+
+/// Les causes d'absence que le Code du travail nomme · les huit causes de
+/// suspension de l'art. 57, le congé de circonstance (art. 146), l'absence non
+/// autorisée et l'empêchement du fait de l'employeur (art. 93). Ce que chacune
+/// fait au bulletin et au compteur des congés vit dans `personnel/absences.ts`.
+enum NatureAbsenceSalarie {
+  MALADIE_OU_ACCIDENT
+  ACCIDENT_DU_TRAVAIL_OU_MALADIE_PROFESSIONNELLE
+  MATERNITE
+  CONGE_DE_CIRCONSTANCE
+  EMPECHEMENT_DU_FAIT_DE_L_EMPLOYEUR
+  ABSENCE_NON_AUTORISEE
+  MISE_A_PIED
+  OBLIGATIONS_MILITAIRES
+  REQUISITION
+  MANDAT_PUBLIC
+  GREVE_OU_LOCK_OUT
+  INCARCERATION
+  FORCE_MAJEURE
+}
+
+/// UNE ABSENCE · sa nature, ses dates, une demi-journée au premier ou au
+/// dernier jour, la pièce que le texte suppose (certificat médical, décision,
+/// constat de l'Inspecteur). Les jours se COMPTENT (jours ouvrables du Code),
+/// ils ne se saisissent pas. Une absence ne se modifie ni ne se supprime ·
+/// elle s'annule avec son motif, au journal d'audit, puisqu'elle change un
+/// solde de congé et un bulletin sans qu'aucun montant ne la nomme.
+model AbsenceSalarie {
+  id                String               @id @default(uuid())
+  tenantId          String
+  tenant            Tenant               @relation(fields: [tenantId], references: [id])
+  salarieId         String
+  salarie           Salarie              @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  nature            NatureAbsenceSalarie
+  du                DateTime             @db.Date
+  au                DateTime             @db.Date
+  demiJourneeDebut  Boolean              @default(false)
+  demiJourneeFin    Boolean              @default(false)
+  /// Congé de circonstance · l'événement de l'art. 146.
+  evenement         String?              @db.VarChar(60)
+  piece             String?              @db.VarChar(300)
+  observation       String?              @db.VarChar(500)
+  annuleLe          DateTime?
+  annulePar         String?
+  motifAnnulation   String?              @db.VarChar(500)
+  creePar           String
+  createdAt         DateTime             @default(now())
+
+  @@index([tenantId, salarieId, du])
+  @@map("absences_salaries")
 }

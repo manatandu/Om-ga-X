@@ -145,6 +145,8 @@ describe('la liste d’exclusion est fermée sur User', () => {
       // Ligne sage-l5 · sa reprise de congés et ses congés · les relations seules.
       'repriseConges',
       'conges',
+      // Ligne sage-l5 · ses absences (fonction 78) · la relation seule.
+      'absences',
       'createdAt',
       'createdBy',
       'updatedAt',
@@ -257,6 +259,27 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'motifAuDelaDuSolde',
       'bulletinId',
       'bulletin',
+      'annuleLe',
+      'annulePar',
+      'motifAnnulation',
+      'creePar',
+      'createdAt',
+    ],
+    // LIGNE SAGE-L5 · L'ABSENCE DU SALARIÉ · le journal dit sa nature, ses
+    // dates et son annulation ; la pièce (certificat médical) et
+    // l'observation sont masquées.
+    AbsenceSalarie: [
+      'id',
+      'tenantId',
+      'tenant',
+      'salarieId',
+      'salarie',
+      'nature',
+      'du',
+      'au',
+      'demiJourneeDebut',
+      'demiJourneeFin',
+      'evenement',
       'annuleLe',
       'annulePar',
       'motifAnnulation',

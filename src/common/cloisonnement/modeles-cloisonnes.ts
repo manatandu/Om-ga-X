@@ -127,6 +127,7 @@ export const MODELES_CLOISONNES = new Set<string>([
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
   'RepriseCongesSalarie',
   'CongeSalarie',
+  'AbsenceSalarie',
   'OrdreVirement',
   'LigneOrdreVirement',
   'LotVirement',
