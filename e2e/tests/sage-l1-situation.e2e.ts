@@ -53,8 +53,11 @@ test('SYSCOHADA · une simulation reste hors du livre-journal et se montre à pa
 
   // L'état des journaux de saisie la montre sous son sigle, et la légende le nomme.
   await page.goto('/#/saisie');
-  await expect(page.getByText('Situation', { exact: true }).first()).toBeVisible();
-  await expect(page.locator('[title*="Situation · 1 écriture"]').first()).toBeVisible();
+  const caseDuMois = page.getByRole('button', { name: `SIT Avril ${date.slice(0, 4)}`, exact: true });
+  await expect(caseDuMois).toHaveText('S');
+  await expect(caseDuMois).toHaveAttribute('title', /Situation · 1 écriture/);
+  // La légende porte le sigle puis son libellé dans le même élément.
+  await expect(page.getByText(/^S\s?Situation$/)).toBeVisible();
 
   expect(pannes).toEqual([]);
 });

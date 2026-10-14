@@ -46,7 +46,7 @@ test('SYSCOHADA · la lettre choisie est posée, une lettre déjà prise est ref
 
   await page.goto('/#/lettrage');
   await page.getByLabel('Compte à consulter').selectOption(fournisseur.id);
-  const lettre = page.getByLabel('Lettre du lettrage');
+  const lettre = page.getByRole('textbox', { name: 'Lettre du lettrage' });
   // Rien encore lettré sur le compte · la lettre proposée est la première.
   await expect(lettre).toHaveAttribute('placeholder', 'A');
   const cocher = async (libelle: string) =>

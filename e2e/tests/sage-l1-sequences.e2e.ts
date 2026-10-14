@@ -19,7 +19,7 @@ test('SYSCOHADA · une séquence range un modèle, et la saisie propose les mod�
   await page.goto('/#/sequences-saisie');
   await expect(page.getByText('Aucune séquence.')).toBeVisible();
   await page.getByLabel('Intitulé de la nouvelle séquence').fill('Achats du mois');
-  await page.getByRole('button', { name: 'Ajouter' }).click();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
   await expect(page.getByLabel('Intitulé de la séquence 1')).toHaveValue('Achats du mois');
   const [sequence] = await appelApi<Sequence[]>(page, 'GET', '/sequences-saisie');
 
@@ -51,7 +51,7 @@ test('SYSCOHADA · une séquence range un modèle, et la saisie propose les mod�
 
   // Une séquence qui range un modèle ne se retire pas · le refus le dit.
   await page.goto('/#/sequences-saisie');
-  await page.getByRole('button', { name: 'Supprimer' }).click();
+  await page.getByRole('button', { name: 'Supprimer', exact: true }).click();
   await expect(page.getByText('La séquence « Achats du mois » range 1 modèle(s) de saisie')).toBeVisible();
 
   expect(pannes).toEqual([]);
