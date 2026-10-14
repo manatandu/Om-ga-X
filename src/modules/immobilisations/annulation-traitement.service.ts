@@ -96,15 +96,30 @@ export class AnnulationTraitementService {
     const bien = await this.prisma.immobilisation.findFirst({ where: { id: immobilisationId, tenantId }, select: { id: true } });
     if (!bien) throw new NotFoundException('Immobilisation introuvable pour ce dossier.');
     const cibles = await this.ciblesDuBien(this.prisma, tenantId, immobilisationId);
-    const resultat = [];
-    for (const c of cibles) {
-      const actes = await this.actesDesBiens(this.prisma, tenantId, c.biens);
-      const ecriture = c.ecritureId
-        ? await this.prisma.ecriture.findFirst({
-            where: { id: c.ecritureId, tenantId },
+    // UNE LECTURE PAR ENSEMBLE DE BIENS ET UNE POUR LES ÉCRITURES (relecture
+    // de la ligne, performance) · les traitements d'un bien portent presque
+    // tous ce seul bien, et chaque traitement relisait ses actes et son
+    // écriture · une vingtaine de requêtes par ligne de l'onglet.
+    const actesParBiens = new Map<string, Promise<ActeDuBien[]>>();
+    const actesDe = (biens: string[]) => {
+      const cle = [...biens].sort().join('|');
+      if (!actesParBiens.has(cle)) actesParBiens.set(cle, this.actesDesBiens(this.prisma, tenantId, biens));
+      return actesParBiens.get(cle)!;
+    };
+    const idsEcritures = [...new Set(cibles.map((c) => c.ecritureId).filter((x): x is string => !!x))];
+    const ecritures = new Map(
+      (idsEcritures.length === 0
+        ? []
+        : await this.prisma.ecriture.findMany({
+            where: { tenantId, id: { in: idsEcritures } },
             select: { id: true, numeroPiece: true, statut: true, lignes: { select: { lettre: true, lettrageId: true, rapprochementId: true } } },
           })
-        : null;
+      ).map((e) => [e.id, e]),
+    );
+    const resultat = [];
+    for (const c of cibles) {
+      const actes = await actesDe(c.biens);
+      const ecriture = c.ecritureId ? (ecritures.get(c.ecritureId) ?? null) : null;
       const motif =
         this.motifPour(c, actes) ??
         (ecriture && ecriture.statut !== StatutEcriture.BROUILLARD

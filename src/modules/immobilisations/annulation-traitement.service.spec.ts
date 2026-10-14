@@ -240,3 +240,35 @@ describe('l’annulation prend le verrou des fiches avant de juger (relecture)',
     expect(lectures.some((o: number) => o > ordreVerrou)).toBe(true);
   });
 });
+
+describe('l’onglet Traitements lit en lot (relecture, performance)', () => {
+  it('une lecture des actes par ensemble de biens, une seule lecture des écritures', async () => {
+    const { service, prisma } = fabrique({ statut: 'VALIDEE' });
+    const cible = (acteId: string, ecritureId: string, biens: string[]) => ({
+      nature: 'DOTATION',
+      acteId,
+      immobilisationId: biens.length === 1 ? biens[0] : null,
+      biens,
+      exercice: { id: 'ex-n', dateFin: new Date('2026-12-31'), statut: 'OUVERT' },
+      creeLe: new Date('2026-12-31T10:00:00Z'),
+      montant: 1,
+      ecritureId,
+      libelle: 'x',
+      acte: {},
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = service as any;
+    jest.spyOn(s, 'ciblesDuBien').mockResolvedValue([cible('a', 'ecr-1', ['bien-1']), cible('b', 'ecr-2', ['bien-1']), cible('c', 'ecr-3', ['bien-2', 'bien-1'])]);
+    const actes = jest.spyOn(s, 'actesDesBiens').mockResolvedValue([]);
+    prisma.ecriture.findMany = jest.fn().mockImplementation(({ where }) =>
+      Promise.resolve(where.id.in.map((id: string) => ({ id, numeroPiece: 1, statut: 'VALIDEE', lignes: [] }))),
+    );
+    const { traitements } = await service.traitementsDuBien('t-1', 'bien-1');
+    expect(traitements).toHaveLength(3);
+    expect(actes).toHaveBeenCalledTimes(2);
+    expect(prisma.ecriture.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.ecriture.findMany.mock.calls[0][0].where).toMatchObject({ tenantId: 't-1', id: { in: ['ecr-1', 'ecr-2', 'ecr-3'] } });
+    expect(prisma.ecriture.findFirst).not.toHaveBeenCalled();
+    expect(traitements.map((t: { ecriture: { id: string } | null }) => t.ecriture?.id).sort()).toEqual(['ecr-1', 'ecr-2', 'ecr-3']);
+  });
+});
