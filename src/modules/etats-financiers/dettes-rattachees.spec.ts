@@ -64,7 +64,9 @@ function grandLivre(ecritures: Ecr[], lignes: Lgn[]) {
     const c = cond as Record<string, unknown>;
     if ('in' in c) return (c.in as unknown[]).includes(v);
     if ('not' in c) {
-      if (c.not !== null) throw new Error('not non nul non honoré');
+      // `{ not: null }` · présent ; `{ not: valeur }` · différent (le statut
+      // hors situation, ligne sage-l1).
+      if (c.not !== null) return v !== c.not;
       return v !== null && v !== undefined;
     }
     if ('startsWith' in c) return typeof v === 'string' && v.startsWith(c.startsWith as string);
@@ -271,6 +273,28 @@ describe('La dette « concernée » se lit sur ses pièces (B4)', () => {
     // Clôture de 2027 · réglée et lettrée, plus rien.
     const fin27 = await dettesALaCloture(db, 't', EX27, DETTES);
     expect(fin27).toEqual([]);
+  });
+
+  it('une SIMULATION jumelle de la facture ne rend pas l’origine ambiguë (ligne sage-l1, relecture m6)', async () => {
+    // Même compte, même montant, même libellé, antérieure au report · lue,
+    // elle faisait deux candidates et la dette restait sans poste.
+    const db = grandLivre(
+      [
+        ecriture('b', 'e26', '2026-11-15', 'Facture B fournitures'),
+        ecriture('s', 'e26', '2026-11-20', 'Facture B fournitures', { statut: StatutEcriture.SITUATION }),
+        ecriture('an', 'e27', '2027-01-01', 'Report à-nouveau', { estGenereeParCloture: true }),
+      ],
+      [
+        ligne('b1', 'b', '60110000', 500_000, 0),
+        ligne('b9', 'b', '40110000', 0, 500_000),
+        ligne('s1', 's', '61810000', 500_000, 0),
+        ligne('s9', 's', '40110000', 0, 500_000),
+        ligne('an1', 'an', '40110000', 0, 500_000, { libelle: 'RAN détail 40110000 · Facture B fournitures' }),
+      ],
+    );
+    const debut27 = await dettesParPoste(db, 't', await dettesALOuverture(db, 't', 'e27', DETTES), POSTES);
+    expect(Object.fromEntries(debut27.parRef)).toEqual({ FM: 500_000 });
+    expect(debut27.nonRattache).toBe(0);
   });
 
   it('une paire à cheval éteint l’à-nouveau · la facture de N réglée en N+1 et lettrée avec elle', async () => {
