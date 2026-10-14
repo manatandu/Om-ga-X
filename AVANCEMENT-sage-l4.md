@@ -178,7 +178,8 @@ n° 67, 66, 68, 73, 18.
 
 ## Reste
 
-- Rien de la liste. Suite complète en tranches sur l'arbre final.
+- Rien de la liste. La fusion des fiches d'un autre dossier du groupe (n° 73)
+  attend la réponse de Manasse (voir les questions).
 
 ## Décisions prises, avec leur article
 
@@ -374,6 +375,14 @@ n° 67, 66, 68, 73, 18.
   Aucun code serveur. Un échec de lecture des financements admis se dit à
   côté de la liste, qui reste « non lue » (jamais « aucun financement
   admis »).
+
+- ARBRE FINAL (commit « Immobilisations · un échec de lecture n'est pas une
+  liste vide ») · serveur `tsc` 0 erreur, `nest build` vert, `prisma migrate
+  diff` sans écart ; SUITE COMPLÈTE en six tranches · 850 suites, 12 460
+  tests, tous verts (142 / 1 707, 142 / 1 978, 142 / 1 967, 142 / 2 526,
+  141 / 1 945, 141 / 2 337) ; client `tsc` 0 erreur, vitest 257 fichiers et
+  2 037 tests, `vite build` vert ; les cinq e2e de la ligne verts sous
+  Chromium.
 
 ## Commandes de vérification
 
