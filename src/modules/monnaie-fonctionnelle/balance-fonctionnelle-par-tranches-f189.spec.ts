@@ -336,11 +336,14 @@ describe('F189 · l’à-nouveau ne se relit que s’il faut le convertir', () =
     ]);
     const lu = lectures.filter((l) => l.where.estGenereeParCloture === true);
     expect(lu).toHaveLength(1);
+    // Les simulations d'un journal de situation (ligne sage-l1, fonction 12)
+    // ne sont lues par aucun jeu, le second non plus.
     expect(lu[0].where).toEqual({
       tenantId: 't1',
       exerciceId: 'ex27',
       estGenereeParCloture: true,
       estSoldeDesComptesDeGestion: false,
+      statut: { not: 'SITUATION' },
     });
   });
 });
