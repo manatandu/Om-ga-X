@@ -3,8 +3,12 @@
 Manuel 9 de la comparaison complète demandée par Manasse le 2026-10-09.
 Source : « Sage 100 et Sage Paie, Édition Pilotée, Prise en main rapide »,
 Sage, 2011, 50 pages (Drive, id 1AkccBQaOQTaDBZXaAYVkJwT9NG_0SKBZ). Lu en
-entier le 2026-10-14 après extraction du texte du PDF. Les pages 4, 21 et 32
-n'ont presque pas de texte (captures d'écran).
+entier le 2026-10-14 après extraction du texte du PDF. Les 26 pages qui
+portent une capture d'écran ont été lues ensuite en image, le même jour :
+elles précisent le tableau de bord et ajoutent quatre lignes (section « Vu
+sur les captures seulement »). Plusieurs captures ont de petits caractères
+ou une liste coupée (p. 7, 11, 14, 16 à 18, 31, 35 à 38, 40) ; rien n'est
+tiré de ce qui ne s'y lit pas.
 
 L'Édition pilotée est la couche de pilotage de Sage 100. Elle comprend un
 guide interactif, un catalogue d'états, un tableau de bord, une vue
@@ -42,7 +46,7 @@ et aucune ligne n'est restée non vérifiée.
 
 | # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
-| 15 | Tableau de bord comptable (chiffre d'affaires, charges, analytique, trésorerie), avec un onglet qui en explique le calcul | 34, 35 | PARTIEL | Le tableau de bord affiche la trésorerie disponible, les produits, les charges, le résultat provisoire et les échéances fiscales. Chaque montant porte sa note de calcul (`DashboardPage.tsx`). Pas d'analytique ni de graphique. |
+| 15 | Tableau de bord comptable (chiffre d'affaires, charges, analytique, trésorerie), avec un onglet qui en explique le calcul | 34, 35 | PARTIEL | Le tableau de bord affiche la trésorerie disponible, les produits, les charges, le résultat provisoire et les échéances fiscales. Chaque montant porte sa note de calcul (`DashboardPage.tsx`). Pas d'analytique ni de graphique. La capture de la p. 35 montre en plus la marge, la comparaison à N-1 au mois et en cumul, le suivi par centre de profit et l'équilibre financier (besoin en fonds de roulement, retards de paiement) : rien de cela n'est au tableau de bord. |
 | 16 | Vue interactive : indicateurs suivis par exercice, en cumul ou par mois, sur cinq années, avec leur contribution au résultat | 35, 36 | PARTIEL | Les états personnalisés donnent un historique sur cinq exercices (`moteur-etat-personnalise.ts`). Il n'y a pas de vue animée, et rien au mois. |
 | 17 | Vue interactive et simulateur de la gestion commerciale (chiffre d'affaires et marge par catégorie, famille, représentant) | 37, 40, 41 | ABSENT | OmegaX ne tient pas de gestion commerciale. |
 | 18 | Simulateur comptable : croissance du chiffre d'affaires, poids des charges, compte d'exploitation simulé, réalisé comparé à l'hypothèse, jauge de couleur, simulations enregistrées, chargées ou supprimées, par période ou par hypothèse | 38, 39 | FIDÈLE | Simulateur budgétaire (`simulations/simulateur-budgetaire.ts`, `SimulationBudgetaire`) : produits selon la croissance, charges au réalisé tant qu'aucun taux n'est déclaré, prévu au prorata des jours jusqu'à la date d'arrêté, seuils de couleur, simulations enregistrées, modifiées ou supprimées. |
@@ -58,15 +62,25 @@ et aucune ligne n'est restée non vérifiée.
 | 23 | Impression | 47 | FIDÈLE | Impression de la fenêtre (voir M1-109). |
 | 24 | Création et personnalisation d'états : requêtes, sources combinées, ruptures, formules, graphiques, exploration, mise en forme | 48 | PARTIEL | Les états personnalisés se définissent par lignes de comptes et totaux (`etats-personnalises/`). Ils n'ont ni requêtes, ni graphiques, ni exploration. |
 
+## Vu sur les captures seulement
+
+| # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
+|---|---|---|---|---|
+| 25 | Catalogue comptable : soldes intermédiaires de gestion (mensuels, sur trois périodes, multi-sociétés), évolution des charges sur cinq ans, rentabilité par section analytique | 14, 16, 22 | PARTIEL | Le compte de résultat SYSCOHADA porte la cascade des soldes (AUDCIF art. 31) ; l'évolution des soldes et les états personnalisés couvrent cinq exercices. Rien au mois, sur trois périodes ni par section. |
+| 26 | Axes d'alerte : évolutions anormales des postes de charges et de produits, décroissance d'activité, dégradation de rentabilité, rentabilité négative | 14, 16 | ABSENT | Aucun signalement d'évolution anormale ; l'évolution des soldes se lit sans seuil. |
+| 27 | Comparaison de deux périodes choisies, compte par compte, avec écart et pourcentage ; onglets diminution, augmentation, stabilité | 44, 45 | PARTIEL | La colonne N-1 des états et les états personnalisés comparent des exercices entiers (`moteur-etat-personnalise.ts`) ; pas deux périodes libres. |
+| 28 | Personnalisation des indicateurs clés | 28, 32, 33 | ABSENT | L'onglet Indicateurs de l'accueil rend une liste fixe (`AccueilPage.tsx`). |
+
 ## Bilan du manuel
 
-24 fonctions relevées : 7 FIDÈLE, 2 DIFFÉRENT VOULU, 0 DIFFÉRENT À TRIER,
-10 PARTIEL, 5 ABSENT, 0 NON VÉRIFIÉ.
+28 fonctions relevées : 7 FIDÈLE, 2 DIFFÉRENT VOULU, 0 DIFFÉRENT À TRIER,
+12 PARTIEL, 7 ABSENT, 0 NON VÉRIFIÉ.
 
 Le simulateur comptable a son équivalent fidèle. OmegaX n'a pas de cube : ses
 états se calculent en direct sur la base. Les manques portent sur la
 présentation : classement des états par objectif métier, graphiques, vue
-animée des indicateurs, outil de requête.
+animée des indicateurs, outil de requête. Les captures y ajoutent les alertes
+sur les évolutions anormales et les indicateurs personnalisables.
 
 ## Ce qui reste à faire sur ce manuel
 
