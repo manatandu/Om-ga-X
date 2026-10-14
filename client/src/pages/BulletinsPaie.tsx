@@ -34,6 +34,8 @@ interface LigneBulletin {
   emisLe: string;
   remisLe: string | null;
   annuleLe: string | null;
+  /** Relecture M5 · annulé, ce que le bulletin a déjà versé, avec ses pièces · `null` s'il n'a rien versé. */
+  versements?: { montant: number; avertissement: string } | null;
 }
 
 interface ListeBulletins {
@@ -257,6 +259,7 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
           {ouvert.statut === 'ANNULE' && (
             <div className="border border-danger/30 bg-danger-soft px-3 py-2 mb-3">
               <strong>Annulé</strong> le {jour(ouvert.annuleLe)} · {ouvert.motifAnnulation}
+              {ouvert.versements && <div className="mt-1">{ouvert.versements.avertissement}</div>}
             </div>
           )}
 

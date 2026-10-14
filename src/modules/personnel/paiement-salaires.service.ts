@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ModePaiementSalaire, Prisma, StatutEcriture, StatutExercice, StatutOrdreVirement, TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { jourDeKinshasa } from '../../common/echeance';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { OrdresVirementService, type LigneAOrdonner } from '../reglements/ordres-virement.service';
@@ -55,18 +56,25 @@ export class PaiementSalairesService {
     private readonly ordres: OrdresVirementService,
   ) {}
 
-  /** Les lignes NON ANNULÉES des paiements du mois · ce qui a déjà été versé, par bulletin et par salarié. */
+  /**
+   * Les lignes NON ANNULÉES des paiements du mois · ce qui a déjà été versé,
+   * par bulletin et par salarié. MINEUR 6 DE LA RELECTURE · la somme se
+   * demande à la base, groupée par bulletin (§ 8 bis) · la lecture bornée à
+   * 8 000 lignes, sans le dire, aurait laissé un versement hors du compte et
+   * proposé de payer deux fois.
+   */
   private async dejaPayes(tenantId: string, mois: string) {
-    const lignes = await this.prisma.lignePaiementSalaire.findMany({
+    const groupes = await this.prisma.lignePaiementSalaire.groupBy({
+      by: ['bulletinId', 'salarieId'],
       where: { tenantId, annuleLe: null, paiement: { moisDePaie: mois } },
-      select: { bulletinId: true, salarieId: true, montant: true },
-      take: PLAFOND_BULLETINS_DU_MOIS * 4,
+      _sum: { montant: true },
     });
     const parBulletin = new Map<string, number>();
     const parSalarie = new Map<string, { bulletinId: string; montant: number }[]>();
-    for (const l of lignes) {
-      parBulletin.set(l.bulletinId, (parBulletin.get(l.bulletinId) ?? 0) + nombre(l.montant));
-      parSalarie.set(l.salarieId, [...(parSalarie.get(l.salarieId) ?? []), { bulletinId: l.bulletinId, montant: nombre(l.montant) }]);
+    for (const g of groupes) {
+      const montant = nombre(g._sum.montant ?? 0);
+      parBulletin.set(g.bulletinId, (parBulletin.get(g.bulletinId) ?? 0) + montant);
+      parSalarie.set(g.salarieId, [...(parSalarie.get(g.salarieId) ?? []), { bulletinId: g.bulletinId, montant }]);
     }
     /** Ce qu'un AUTRE bulletin du même salarié et du même mois a déjà versé (bulletin annulé et réémis). */
     const autres = (salarieId: string, bulletinId: string) =>
@@ -159,6 +167,31 @@ export class PaiementSalairesService {
       });
     }
 
+    // M5 DE LA RELECTURE · UN BULLETIN PAYÉ PUIS ANNULÉ, SANS BULLETIN ÉMIS DU
+    // MÊME SALARIÉ CE MOIS · son versement reste au journal (D 422 / C
+    // trésorerie) et rien ne le nommait. Réémis, le bulletin suivant
+    // l'absorbe (`dejaPayeAutres`) ; sans lui, il est dit ici, avec sa pièce.
+    const emisParSalarie = new Set(lus.filter((b) => b.statut === 'EMIS').map((b) => b.salarieId));
+    const annulesPayes = lus.filter((b) => b.statut !== 'EMIS' && deja.parBulletin.has(b.id) && !emisParSalarie.has(b.salarieId));
+    const versementsSansBulletin = annulesPayes.length
+      ? await this.versementsDesBulletins(
+          tenantId,
+          annulesPayes.map((b) => ({ id: b.id, numero: b.numero, nomComplet: b.nomComplet })),
+        )
+      : [];
+
+    // M4 DE LA RELECTURE · LE 422 CONFRONTÉ À CE QUI SE PROPOSE · un salaire
+    // payé hors de ce module (D 422 / C trésorerie saisi à la main) restait
+    // « à payer ». Le module ne voit que ses propres paiements ; le 422 voit
+    // tout. Ce que la proposition offre pour des bulletins PASSÉS au journal
+    // ne peut dépasser ce que le 422 porte encore (fiche du compte 42 des deux
+    // plans · crédité des rémunérations dues, débité de leur paiement).
+    // Condition nécessaire, pas suffisante · elle avertit, sans refuser.
+    const confrontation422 = await this.confronterAu422(
+      tenantId,
+      aPayer.filter((l) => l.passeAuJournal).reduce((n, l) => n + centimes(l.montant), 0) / 100,
+    );
+
     const coupuresProposees = ((dernierEnEspeces?.billetage as unknown as BilletageDuPaiement | null)?.coupures ?? []).map(Number);
     const coupures = coupuresDemandees && coupuresDemandees.length ? coupuresDemandees : coupuresProposees;
     const enEspeces = aPayer.filter((l) => l.mode === ModePaiementSalaire.ESPECES);
@@ -169,6 +202,8 @@ export class PaiementSalairesService {
       echeanceArticle99: echeanceArticle99(mois),
       aPayer,
       tropPayes,
+      versementsSansBulletin,
+      confrontation422,
       tronque,
       paiements: paiements.map((p) => ({
         id: p.id,
@@ -195,6 +230,66 @@ export class PaiementSalairesService {
       })),
       coupuresProposees,
       billetage,
+    };
+  }
+
+  /**
+   * Les versements non annulés de bulletins donnés, avec leur pièce · ce que
+   * le journal porte pour eux.
+   */
+  async versementsDesBulletins(tenantId: string, bulletins: readonly { id: string; numero: number; nomComplet: string }[]) {
+    const lignes = await this.prisma.lignePaiementSalaire.findMany({
+      where: { tenantId, annuleLe: null, bulletinId: { in: bulletins.map((b) => b.id) } },
+      orderBy: { paiement: { date: 'asc' } },
+      // Un bulletin se paie au plus en quelques fois · la borne est dite.
+      take: 500,
+      select: { bulletinId: true, montant: true, paiement: { select: { date: true, piecePassee: true } } },
+    });
+    return bulletins.map((b) => {
+      const siens = lignes.filter((l) => l.bulletinId === b.id);
+      return {
+        bulletinId: b.id,
+        numero: b.numero,
+        nomComplet: b.nomComplet,
+        montant: siens.reduce((n, l) => n + centimes(nombre(l.montant)), 0) / 100,
+        pieces: siens.map((l) => ({ date: l.paiement.date, piece: l.paiement.piecePassee })),
+      };
+    });
+  }
+
+  /**
+   * Le 422 au jour de Kinshasa, dans l'exercice le plus récent qui a
+   * commencé · solde créditeur, lignes de tous statuts (le paiement saisi à
+   * la main est souvent au brouillard), à-nouveau compris. `null` sans
+   * exercice ni compte lisible · jamais un zéro.
+   */
+  private async confronterAu422(tenantId: string, totalPasse: number) {
+    if (totalPasse <= 0) return null;
+    const tenant = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } });
+    if (!tenant) return null;
+    const aujourdHui = jourDeKinshasa(new Date());
+    const exercice = await this.prisma.exercice.findFirst({
+      where: { tenantId, dateDebut: { lte: aujourdHui } },
+      orderBy: { dateDebut: 'desc' },
+      select: { id: true, dateDebut: true, dateFin: true },
+    });
+    if (!exercice) return null;
+    const racine = compteDuRole('REMUNERATIONS_DUES', tenant.referentiel).replace(/0+$/, '');
+    const somme = await this.prisma.ligneEcriture.aggregate({
+      where: { compte: { tenantId, numero: { startsWith: racine } }, ecriture: { tenantId, exerciceId: exercice.id } },
+      _sum: { debit: true, credit: true },
+    });
+    const solde = (centimes(nombre(somme._sum.credit ?? 0)) - centimes(nombre(somme._sum.debit ?? 0))) / 100;
+    const ecart = (centimes(totalPasse) - centimes(solde)) / 100;
+    return {
+      compte: racine,
+      solde,
+      totalPasse,
+      exercice: { debut: exercice.dateDebut, fin: exercice.dateFin },
+      avertissement:
+        ecart > 0
+          ? `Le ${racine} (Personnel, rémunérations dues) ne porte plus que ${solde.toFixed(2)} de rémunérations dues, quand ${totalPasse.toFixed(2)} sont proposés à payer sur des bulletins passés au journal · un salaire a pu être payé hors de ce module (débit du ${racine} saisi à la main). Vérifiez le grand livre du ${racine} avant de payer ; le module ne voit que ses propres paiements.`
+          : null,
     };
   }
 

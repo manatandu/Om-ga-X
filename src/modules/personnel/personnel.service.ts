@@ -2302,8 +2302,12 @@ export class PersonnelService {
   async lireBulletin(tenantId: string, id: string) {
     const b = await this.prisma.bulletinPaie.findFirst({ where: { id, tenantId } });
     if (!b) throw new NotFoundException('Bulletin introuvable dans ce dossier.');
+    const versements = b.statut === StatutBulletinPaie.ANNULE ? await this.versementsDuBulletinAnnule(tenantId, b) : null;
     return {
       ...b,
+      // M5 DE LA RELECTURE · annulé, le bulletin dit s'il a été PAYÉ, avec sa
+      // pièce · le versement reste au journal (D 422 / C trésorerie).
+      versements,
       totalVerseFc: Number(b.totalVerseFc),
       assietteSocialeFc: Number(b.assietteSocialeFc),
       cotisationsTravailleurFc: Number(b.cotisationsTravailleurFc),
@@ -2317,6 +2321,37 @@ export class PersonnelService {
         b.nature === NatureBulletinPaie.DECOMPTE_FINAL
           ? [TEXTE_ARTICLE_103, TEXTE_INALTERABILITE, RESERVE_MODELE, DECOMPTE_A_LA_RUPTURE, RESERVE_VERSEMENT_UNIQUE, RESERVE_DU_PAR_LE_TRAVAILLEUR]
           : [TEXTE_ARTICLE_103, TEXTE_INALTERABILITE, RESERVE_MODELE],
+    };
+  }
+
+  /**
+   * M5 DE LA RELECTURE · CE QU'UN BULLETIN ANNULÉ A DÉJÀ VERSÉ. Le paiement
+   * (fonction 75) reste au journal ; réémis, le bulletin du mois l'absorbe
+   * (il ne propose que le reste à payer) ; sans successeur, le versement ne
+   * se rattache à rien, et c'est dit avec ses deux issues.
+   */
+  private async versementsDuBulletinAnnule(tenantId: string, b: { id: string; salarieId: string; moisDePaie: string }) {
+    const [lignes, successeur] = await Promise.all([
+      this.prisma.lignePaiementSalaire.findMany({
+        where: { tenantId, bulletinId: b.id, annuleLe: null },
+        orderBy: { paiement: { date: 'asc' } },
+        take: 50,
+        select: { montant: true, paiement: { select: { date: true, piecePassee: true } } },
+      }),
+      this.prisma.bulletinPaie.findFirst({
+        where: { tenantId, salarieId: b.salarieId, moisDePaie: b.moisDePaie, statut: StatutBulletinPaie.EMIS },
+        select: { numero: true },
+      }),
+    ]);
+    if (lignes.length === 0) return null;
+    const montant = lignes.reduce((n, l) => n + Math.round(Number(l.montant) * 100), 0) / 100;
+    const pieces = lignes.map((l) => `pièce ${l.paiement.piecePassee ?? '·'} du ${l.paiement.date.toISOString().slice(0, 10)}`).join(', ');
+    return {
+      montant,
+      pieces: lignes.map((l) => ({ date: l.paiement.date, piece: l.paiement.piecePassee })),
+      avertissement: successeur
+        ? `Ce bulletin a été payé (${montant.toFixed(2)}, ${pieces}) · le versement s'impute sur le bulletin n° ${successeur.numero} du même mois, qui ne propose que le reste à payer.`
+        : `Ce bulletin a été payé (${montant.toFixed(2)}, ${pieces}), et aucun bulletin émis du mois ne le remplace · le versement reste au journal sans bulletin. Réémettez le bulletin du mois, sur lequel il s'imputera, ou annulez le paiement (Paiement des salaires).`,
     };
   }
 

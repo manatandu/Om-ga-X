@@ -142,9 +142,45 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   - Parcours `e2e/tests/sage-l5-questionnaire.e2e.ts`. Aucune écriture
     comptable · pas de scénario de clôture.
 
+## Relecture, premier tour (2026-10-14) · un BLOQUANT, cinq MAJEURS, sept MINEURS, corrigés
+
+- **B1 · les jours de congé payés deux fois** (commit `408fc06`) · le
+  bulletin d'août versait le salaire mensuel ET l'allocation de douze jours
+  (1 520 000 pour un mois de 1 040 000). La proposition du mois
+  (« Absences et congés du mois ») retranche les jours de congé du mois
+  (`congesDuMois`, congé à cheval compris, quel que soit le bulletin qui
+  porte l'allocation), et l'émission du bulletin comme du décompte final
+  refuse un salaire au-delà des jours hors congé
+  (`motifRefusSalairePleinPendantLeConge`). Le parcours verse 1 040 000.
+- **M1 · les six mois de l'arrêt** (commit `bfc8954`) · courent du premier
+  jour de la SUSPENSION (`debutsDesSuspensions`), fiches contiguës de même
+  nature comprises ; l'information de l'art. 60, a) s'allume.
+- **M2 · un congé sur une absence** (commit `ab41348`) · refusé, sauf la
+  maladie (art. 141, al. 4), jumeau du refus des absences.
+- **M3 · la reprise en négatif sous un plan obligatoire** (commit
+  `b51d2b5`) · elle se ventile comme la pièce d'origine · recopiée (EXACTE),
+  ou, rejouée, par les répartitions des bulletins de la pièce refaites au
+  centime ; pièce non ventilée ou qui ne se refait pas · cause nommée et
+  issue qui lève le refus (`issueDeLaCause`), servie à l'écran.
+- **M4 · un salaire payé hors du module** · la proposition confronte au
+  solde créditeur du 422 ce qu'elle offre sur des bulletins passés au
+  journal, et avertit (`confrontation422`).
+- **M5 · un bulletin payé puis annulé** · nommé à la proposition
+  (`versementsSansBulletin`) et sur le bulletin relu (« payé, pièce … »),
+  avec ses deux issues (réémettre, annuler le paiement).
+- **Mineurs** · (1) mois entier d'absence sur ses jours payables, jamais
+  au-delà des deux tiers (`baseDuMois`) ; (2) subrogation partielle bornée à
+  la partie versée (art. 139, al. 3) ; (3) index unique (arrêt, mois,
+  annulation) NULLS NOT DISTINCT, migration `20270175000700` ; (4) nature de
+  l'absence, montant et pièce de l'indemnité de la Caisse masqués au journal
+  d'audit (commit `677dd27` pour 1 à 4) ; (5) un congé posé avant un congé
+  déjà posé se juge sur sa marge ; (6) les versements du mois se somment en
+  base (`groupBy`), sans borne muette ; (7) compteur au jour de Kinshasa, et
+  ordre de virement en francs refusé vers un RIB de salarié en devise.
+
 ## Reste
 
-- Rien des cinq fonctions.
+- Rien des cinq fonctions. Les questions Q1 à Q3 restent à Manasse.
 
 ## Bloc du § 3, passé au 2026-10-14 (après le commit `10d8f9c`)
 
@@ -302,6 +338,34 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   par an » (art. 57, 5°) lu comme deux mesures d'au plus quinze jours de
   calendrier par année civile ; au-delà, refus nommé.
 
+- **R1 · l'allocation remplace le salaire des jours de congé** (B1 de la
+  relecture) · Code du travail, art. 142 (« une allocation égale à la
+  rémunération dont il jouit au moment du départ en congé »), art. 93 ;
+  livre de paie, arrêté du 8 août 2008, mentions 6 (jours payés à 100 %),
+  14 (jours de congés payés), 17 (jours aux deux tiers), 28 (= 6 + 14 + 17) ·
+  un jour ne figure qu'une fois. Jours comptés comme l'allocation les compte
+  (ouvrables du Code, maladie retranchée, art. 141, al. 4) ; les jours de
+  voyage (al. 3) restent au salaire, lecture protectrice ; un congé à cheval
+  qui porte des jours de voyage ne se propose pas (leur mois n'est écrit
+  nulle part), l'émission n'opposant que le certain.
+- **R2 · la suspension continue** (M1) · art. 106 (« six premiers mois de
+  la suspension du contrat »), art. 60, a) (« six mois ininterrompus ») ·
+  deux fiches de même nature font une suspension quand aucun jour ouvrable
+  du Code ne les sépare et qu'aucune demi-journée ne marque la jointure ·
+  lecture d'OmegaX, dite (le Code ne définit pas la contiguïté de deux
+  certificats).
+- **R3 · le mois entier d'absence** (mineur 1) · forfait de vingt-six jours
+  (décret n° 25/22, art. 7, par analogie) remplacé, quand l'absence couvre
+  tous les jours ouvrables du mois, par les jours payables du mois (lundi au
+  samedi, fériés compris, art. 93) · un février d'incapacité rend les deux
+  tiers, pas plus.
+- **R4 · la subrogation partielle** (mineur 2) · arrêté n° 146/2018,
+  art. 139, al. 3, « à la limite de la partie versée » · la part des deux
+  tiers du mois qui revient à l'arrêt ; le surplus est dit au travailleur.
+- **R5 · la reprise en négatif se ventile comme ce qu'elle annule** (M3) ·
+  AUDCIF art. 20, al. 2 · jamais au prorata d'une ligne d'origine qui porte
+  d'autres salariés.
+
 ## Questions pour Manasse
 
 - **Q3 · la nature de l'employeur pour l'INPP, le régime de la retenue, la
@@ -341,6 +405,8 @@ npx jest --maxWorkers=1 src/modules/personnel/absences.spec.ts src/modules/perso
 npx jest --maxWorkers=1 src/modules/personnel/paiement-salaires.spec.ts src/modules/reglements/ordres-virement-paie.spec.ts
 npx jest --maxWorkers=1 src/modules/personnel/ventilation-analytique-paie.spec.ts src/modules/personnel/comptabilisation-paie.service.spec.ts
 npx jest --maxWorkers=1 src/modules/personnel/questionnaire-paie.spec.ts src/modules/analytique/suppression-et-exercice-clos.spec.ts
+npx jest --maxWorkers=1 src/modules/personnel/conge-et-salaire.spec.ts src/modules/personnel/conges-service.spec.ts \
+  src/modules/personnel/absences-service.spec.ts src/modules/personnel/paiement-salaires-service.spec.ts src/common/audit/liste-exclusion-fermee.spec.ts
 (cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts src/lib/paiement-salaires.spec.ts src/lib/repartition-analytique.spec.ts src/lib/questionnaire-paie.spec.ts)
 # montage local (CLAUDE.md § 10), ports 8085 et 4185, puis
 (cd e2e && OMEGAX_APP=http://localhost:4185 OMEGAX_API=http://localhost:4185/api \
@@ -361,7 +427,10 @@ fonctions de Sage cochées le 2026-10-14) ·
 service acquis sur bulletin émis, droits nés à l'expiration de l'année
 (art. 140, al. 3), tranche d'ancienneté et allocation de l'art. 142 par le
 moteur du décompte final (`allocationDeConge`), reprise DÉCLARÉE avec sa
-source, congé au-delà du solde dit, jamais refusé. ABSENCES (fonction 78,
+source, congé au-delà du solde dit, jamais refusé ; l'allocation REMPLACE
+le salaire des jours de congé (art. 142 ; livre de paie, mentions 6, 14 et
+28), l'émission refusant le salaire plein ; un congé ne se pose pas sur une
+absence, sauf la maladie (art. 141, al. 4). ABSENCES (fonction 78,
 `absences.ts`) · treize causes du Code, chacune son régime (deux tiers des
 art. 105, 106, 130 ; circonstance art. 146 ; art. 93 ; art. 59), proposées au
 bulletin, jamais substituées ; heures majorées à taux DÉCLARÉ avec sa source
@@ -379,8 +448,9 @@ DISTINCT), annulation motivée en négatif. VENTILATION ANALYTIQUE (fonction 88,
 versions par MOIS DE PAIE, pourcentages qui font 100, sections Détail
 actives d'un plan qui ventile la classe 6 ; la passation pose la part de
 chaque bulletin au centime (plus fort reste) ; rien n'est réparti au prorata
-des autres, la ligne part non ventilée et la cause est dite ; la reprise en
-négatif se ventile à la main. QUESTIONNAIRE (fonction 85) · lit, puis écrit
+des autres, la ligne part non ventilée et la cause est dite, avec son
+issue ; la reprise en négatif se ventile comme la pièce d'origine (recopiée,
+ou refaite par les répartitions au centime, jamais au prorata). QUESTIONNAIRE (fonction 85) · lit, puis écrit
 les seuls champs qui existent par leurs routes, « pas encore dit » à chaque
 question, une valeur enregistrée jamais effacée.
 
@@ -390,6 +460,6 @@ question, une valeur enregistrée jamais effacée.
   (absences, heures majorées, arrêts et indemnités de la Caisse), 75
   (banques du salarié, paiement des salaires), 88 (ventilation analytique de
   la paie), 85 (questionnaire société et salarié) · migrations
-  `20270175000100` à `20270175000600`, parcours navigateur
+  `20270175000100` à `20270175000700`, parcours navigateur
   `e2e/tests/sage-l5-*.e2e.ts`, scénarios sur vraie base à travers la
   clôture 2026 / 2027 pour 75 et 88.

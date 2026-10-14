@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StatutOrdreVirement } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
 import {
   coordonneesImprimees,
   motifRefusAnnulation,
@@ -110,10 +111,21 @@ export class OrdresVirementService {
     });
     const beneficiaires: PreparationOrdre['beneficiaires'] = new Map();
     const manques: string[] = [];
+    const enDevise: string[] = [];
     for (const s of salaries) {
       const principal = ribs.find((r) => r.salarieId === s.id);
       if (!principal) {
         manques.push(s.nomComplet);
+        continue;
+      }
+      // RELECTURE L5, MINEUR 7 · L'ORDRE DES SALAIRES EST EN FRANCS, monnaie
+      // de tenue, comme le compte du donneur (`motifRefusDeviseDonneur`) ·
+      // vers un compte tenu dans une autre monnaie, la banque convertirait
+      // au cours qu'elle choisit, que le bulletin ne dit pas. Une monnaie non
+      // renseignée est lue en francs, comme le RIB du journal.
+      const devise = (principal.devise ?? '').trim().toUpperCase();
+      if (devise && devise !== MONNAIE_DE_TENUE) {
+        enDevise.push(`${s.nomComplet} (${devise})`);
         continue;
       }
       beneficiaires.set(s.id, {
@@ -128,6 +140,11 @@ export class OrdresVirementService {
     if (manques.length) {
       throw new BadRequestException(
         `Ordre de virement impossible · aucun RIB principal pour ${manques.join(', ')}. Renseignez les coordonnées bancaires dans le Registre du personnel (administrateur), ou payez ces salariés par un autre mode.`,
+      );
+    }
+    if (enDevise.length) {
+      throw new BadRequestException(
+        `Ordre de virement impossible · le RIB principal de ${enDevise.join(', ')} est tenu hors de la monnaie de tenue, quand l'ordre des salaires est en ${MONNAIE_DE_TENUE} · la banque convertirait à un cours que le bulletin ne dit pas. Désignez un RIB principal en ${MONNAIE_DE_TENUE} (Registre du personnel, administrateur), ou payez ces salariés par un autre mode.`,
       );
     }
     return { donneur, beneficiaires };

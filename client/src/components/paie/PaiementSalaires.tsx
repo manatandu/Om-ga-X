@@ -177,6 +177,19 @@ export function PaiementSalaires({ mois }: { mois: string }) {
           ce net ({fc(t.netAPayer)}).
         </div>
       ))}
+      {(p.versementsSansBulletin ?? []).map((v) => (
+        <div key={v.bulletinId} role="alert" className="border border-warning/40 bg-warning/5 px-3 py-1.5 mb-1.5">
+          Bulletin n° {v.numero} · {v.nomComplet} · annulé après avoir été payé ({fc(v.montant)}
+          {v.pieces.length ? `, ${v.pieces.map((x) => `pièce ${x.piece ?? '·'} du ${dateCourte(x.date)}`).join(', ')}` : ''}), et aucun bulletin
+          émis du mois ne le remplace · le versement reste au journal sans bulletin. Réémettez le bulletin du mois, sur lequel il s’imputera, ou
+          annulez le paiement.
+        </div>
+      ))}
+      {p.confrontation422?.avertissement && (
+        <div role="alert" className="border border-warning/40 bg-warning/5 px-3 py-1.5 mb-1.5">
+          {p.confrontation422.avertissement}
+        </div>
+      )}
       {sansMode.length > 0 && (
         <div className="border border-warning/40 bg-warning/5 px-3 py-1.5 mb-1.5">
           Mode de paiement pas encore dit pour {sansMode.map((l) => l.nomComplet).join(', ')} · déclarez-le dans le Registre du personnel.

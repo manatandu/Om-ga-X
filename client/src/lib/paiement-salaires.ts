@@ -89,6 +89,10 @@ export interface PropositionPaiement {
   echeanceArticle99: string;
   aPayer: LigneAPayer[];
   tropPayes: { bulletinId: string; numero: number; salarieId: string; nomComplet: string; netAPayer: number; dejaPaye: number; excedent: number }[];
+  /** Relecture M5 · bulletins payés puis annulés, qu'aucun bulletin émis du mois ne remplace. */
+  versementsSansBulletin: { bulletinId: string; numero: number; nomComplet: string; montant: number; pieces: { date: string; piece: string | null }[] }[];
+  /** Relecture M4 · le 422 confronté à ce qui se propose sur des bulletins passés au journal · `null` sans rien à confronter. */
+  confrontation422: { compte: string; solde: number; totalPasse: number; avertissement: string | null } | null;
   tronque: boolean;
   paiements: PaiementLu[];
   journaux: JournalDePaiement[];
