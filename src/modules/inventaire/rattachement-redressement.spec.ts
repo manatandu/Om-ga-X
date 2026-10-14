@@ -51,6 +51,7 @@ function service(options: {
                 exerciceId: options.exerciceEcriture ?? 'ex1',
                 estGenereeParCloture: false,
                 statut: options.statutEcriture ?? 'BROUILLARD',
+                numeroPiece: 12,
                 lignes: options.lignes ?? CREDIT_JUSTE,
               }
             : null,
@@ -108,6 +109,14 @@ describe("rattacher l'écriture de redressement d'un manquant", () => {
     });
   });
 
+  it('refuse une écriture de situation, qui ne redresse rien (ligne sage-l1, relecture B3)', async () => {
+    // Rattachée, une simulation devenait le redressement du manquant,
+    // retenue par lui et dite « validée » au détachement.
+    const { svc, prisma } = service({ statutEcriture: 'SITUATION' });
+    await expect(svc.rattacherEcritureRedressement('t1', 'ec1', 'e1')).rejects.toThrow(/écriture de situation/);
+    expect(prisma.ecartInventaire.updateMany).not.toHaveBeenCalled();
+  });
+
   it('le perdant de deux demandes simultanées est refusé', async () => {
     const { svc } = service({ gagne: false });
     await expect(svc.rattacherEcritureRedressement('t1', 'ec1', 'e1')).rejects.toThrow(/autre demande/);
@@ -128,5 +137,14 @@ describe("détacher l'écriture de redressement", () => {
     const { svc, prisma } = service({ lien: 'e1', statutEcriture: 'VALIDEE' });
     await expect(svc.detacherEcritureRedressement('t1', 'ec1')).rejects.toThrow(/validée/);
     expect(prisma.ecartInventaire.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('une simulation rattachée avant la règle se détache, sans être dite validée (relecture B3)', async () => {
+    const { svc, prisma } = service({ lien: 'e1', statutEcriture: 'SITUATION' });
+    await svc.detacherEcritureRedressement('t1', 'ec1');
+    expect(prisma.ecartInventaire.updateMany).toHaveBeenCalledWith({
+      where: { id: 'ec1', tenantId: 't1', ecritureId: 'e1' },
+      data: { ecritureId: null },
+    });
   });
 });

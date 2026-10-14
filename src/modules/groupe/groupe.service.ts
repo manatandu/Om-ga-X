@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { fondementEliminationGroupe } from './fondement-elimination';
 import { normaliserCourriel } from '../../common/courriel';
 import { Workbook } from 'exceljs';
@@ -1091,13 +1092,16 @@ export class GroupeService {
     // borne est l'EXERCICE retenu de chaque dossier, le même univers que celui
     // des balances cumulées plus haut (brouillard compris, à-nouveaux
     // compris). Lire un univers plus large retrancherait des montants que le
-    // cumul ne contient pas.
+    // cumul ne contient pas · une simulation d'un journal de situation, que
+    // la balance n'a jamais lue, minorait ainsi le résultat combiné (ligne
+    // sage-l1, fonction 12, relecture B2).
     const lignesInternes = await this.prisma.ligneEcriture.findMany({
       where: {
         ecriture: {
           tenantId: { in: dossiersRetenus.map((d) => d.tenantId) },
           exerciceId: { in: dossiersRetenus.map((d) => d.exerciceId) },
           lignes: { some: { compteId: { in: [...compteReciproque.keys()] } } },
+          ...HORS_SITUATION,
         },
       },
       select: {

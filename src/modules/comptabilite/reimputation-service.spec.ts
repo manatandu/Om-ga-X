@@ -92,6 +92,20 @@ describe('Réimputation · le service', () => {
     expect(r).toEqual({ auBrouillard: 1, validees: 1, ecrituresPassees: [{ numeroPiece: 7, journal: 'ACH' }] });
   });
 
+  it('une pièce VALIDÉE avant la règle dans un journal de situation · refus nommé avec l’issue, rien d’écrit (ligne sage-l1, relecture m5)', async () => {
+    // Le négatif et l'exact naîtraient au brouillard dans ce journal, que la
+    // garde du client Prisma refuse en parlant d'une saisie · le refus dit
+    // ici la pièce et la voie (art. 20, al. 2, dans un journal ordinaire).
+    const v = ligne('v', StatutEcriture.VALIDEE);
+    v.ecriture.journal = { code: 'SIT', type: 'SITUATION' } as never;
+    const { s, tx } = service([ligne('b', StatutEcriture.BROUILLARD), v]);
+    await expect(
+      s.reimputer('t', 'u', { ligneIds: ['b', 'v'], compteCibleId: 'c604', date: '2026-06-30', motif: 'Mauvais compte' }),
+    ).rejects.toThrow(/SIT n° · a été validée dans un journal de situation.*journal ordinaire/);
+    expect(tx.ligneEcriture.updateMany).not.toHaveBeenCalled();
+    expect(tx.ecriture.create).not.toHaveBeenCalled();
+  });
+
   // AUDIT FINAL F1 · la devise suit la ligne, sans signe, sur les deux
   // inscriptions · sans elle, la position en devise gardait la ligne
   // déplacée sur le compte erroné et l'ignorait sur le bon.

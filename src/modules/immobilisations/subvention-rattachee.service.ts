@@ -144,7 +144,9 @@ export class SubventionRattacheeService {
     if (!compte) throw new BadRequestException('Compte de subvention introuvable pour ce dossier');
     const motifCompte = motifRefusCompteSubvention(compte.numero, compte.typeCompte === TypeCompteDetailTotal.DETAIL);
     if (motifCompte) throw new BadRequestException(motifCompte);
-    const filtre = { compteId: compte.id, credit: { gt: 0 }, ecriture: { tenantId, estGenereeParCloture: false } };
+    // Jamais une simulation · elle n'octroie aucune subvention (ligne
+    // sage-l1, fonction 12).
+    const filtre = { compteId: compte.id, credit: { gt: 0 }, ecriture: { tenantId, estGenereeParCloture: false, ...HORS_SITUATION } };
     const [lignes, credits, rattache, contreparties] = await Promise.all([
       this.prisma.ligneEcriture.findMany({
         where: filtre,

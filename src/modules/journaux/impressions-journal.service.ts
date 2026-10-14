@@ -52,6 +52,11 @@ export class ImpressionsJournalService {
           "Exportez-le en Excel · l'export le rend en entier et s'enregistre comme impression.",
       );
     }
+    // UN JOURNAL SANS PIÈCE N'A RIEN À ATTESTER (relecture M6) · la page
+    // s'imprime, rien n'est enregistré, et la réponse le dit (`numero` nul).
+    // Enregistrée, l'impression d'un journal vide le retenait (clé vers le
+    // journal) et tenait son exercice, sans rien prouver.
+    if (nombreEcritures === 0) return { numero: null, imprimeAt: null, nombreEcritures };
     return enregistrerImpression(this.prisma, {
       tenantId,
       exerciceId: exercice.id,

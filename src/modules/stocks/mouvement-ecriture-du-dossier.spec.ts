@@ -7,9 +7,9 @@ import { PrismaService } from '../../common/prisma.service';
  * Audit du serveur du 2026-09-27, F5.
  */
 
-function monter(ecritureDuDossier: boolean) {
+function monter(ecritureDuDossier: boolean, statut = 'BROUILLARD') {
   const create = jest.fn().mockResolvedValue({ id: 'm1' });
-  const findFirstEcriture = jest.fn().mockResolvedValue(ecritureDuDossier ? { id: 'e1' } : null);
+  const findFirstEcriture = jest.fn().mockResolvedValue(ecritureDuDossier ? { id: 'e1', statut, numeroPiece: 4 } : null);
   const prisma = {
     articleStock: { findFirst: jest.fn().mockResolvedValue({ id: 'a1', actif: true, code: 'ART1' }) },
     ecriture: { findFirst: findFirstEcriture },
@@ -35,5 +35,13 @@ describe('mouvement de magasin et écriture liée', () => {
     const m = monter(true);
     await m.service.enregistrerMouvement('t1', 'u', 'a1', DTO as never);
     expect(m.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ ecritureId: 'e1' }) }));
+  });
+
+  it('refuse une écriture de situation, qui ne fait entrer aucun bien (ligne sage-l1, relecture B3)', async () => {
+    // Liée, la simulation retenait le mouvement et le mouvement elle · un
+    // stock entrait au magasin sur une pièce qui n'enregistre rien.
+    const m = monter(true, 'SITUATION');
+    await expect(m.service.enregistrerMouvement('t1', 'u', 'a1', DTO as never)).rejects.toThrow(/écriture de situation/);
+    expect(m.create).not.toHaveBeenCalled();
   });
 });

@@ -17,6 +17,7 @@ import {
 import { pairesACheval, type PairesACheval } from '../lettrage/paires-a-cheval';
 import { datesOrigineDesReports } from './date-origine-des-reports';
 import { groupesSoldesEnDevise } from './groupes-soldes-en-devise';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 
 const JOUR = 86_400_000;
 
@@ -395,7 +396,10 @@ export class RelancesService {
     const lire = (curseur?: string) => this.prisma.ligneEcriture.findMany({
       ...pageApres(curseur, LOT_LECTURE),
       where: {
-        ecriture: { tenantId, exerciceId: params.exerciceId },
+        // Jamais une simulation (ligne sage-l1, fonction 12, relecture B1) ·
+        // une facture saisie dans un journal de situation n'est pas due, et
+        // le rappel la réclamerait au client.
+        ecriture: { tenantId, exerciceId: params.exerciceId, ...HORS_SITUATION },
         lettre: null,
         OR: racines.map((r) => ({ compte: { numero: { startsWith: r } } })),
       },

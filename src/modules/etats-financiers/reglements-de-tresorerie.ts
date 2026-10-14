@@ -1,3 +1,4 @@
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import type { Prisma } from '@prisma/client';
 import { CompteDuPoste, correspond } from './etats-financiers.communs';
 import { ECRITURE_D_A_NOUVEAU } from '../lettrage/paires-a-cheval';
@@ -166,7 +167,10 @@ export async function factureDOrigine(db: Lecteur, tenantId: string, an: LigneDu
         debit: Number(courante.debit),
         credit: Number(courante.credit),
         dateEcheance: courante.dateEcheance,
-        ecriture: { tenantId, date: { lt: courante.ecriture.date } },
+        // Jamais une simulation · de même compte, montant et libellé, elle
+        // rendait l'origine ambiguë et la facture introuvable (ligne sage-l1,
+        // fonction 12, relecture m6).
+        ecriture: { tenantId, date: { lt: courante.ecriture.date }, ...HORS_SITUATION },
       },
       select: SELECT_LIGNE,
       take: 50,

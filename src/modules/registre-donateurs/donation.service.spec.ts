@@ -96,6 +96,22 @@ const donPP = (montant: number, extra: Partial<any> = {}) => ({
 });
 
 // ---------------------------------------------------------------------------
+// Ligne sage-l1, relecture B3 · une simulation n'est la pièce d'aucun don
+// ---------------------------------------------------------------------------
+
+describe('une écriture de situation n’est la pièce d’aucun don', () => {
+  it('refusée à l’inscription comme à la modification, nommée par son numéro, rien n’est écrit', async () => {
+    const prisma = prismaAvec();
+    (prisma.ecriture.findFirst as jest.Mock).mockResolvedValue({ id: 'e1', statut: 'SITUATION', numeroPiece: 5 });
+    const { svc } = service([], prisma);
+    await expect(svc.inscrire('t1', 'u1', donPP(100, { ecritureId: 'e1' }) as any)).rejects.toThrow(
+      /n° 5 est une écriture de situation/,
+    );
+    expect((prisma as any)._lignes).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Article 17 · numérotation continue
 // ---------------------------------------------------------------------------
 

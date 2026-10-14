@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { HORS_SITUATION, motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
 import { EtatConsignation, Referentiel, SensConsignation, StatutEcriture } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import {
@@ -333,7 +334,9 @@ export class EmballagesService {
     if (!attente) return [];
     const lignes = await this.prisma.ligneEcriture.findMany({
       where: {
-        ecriture: { tenantId, estGenereeParCloture: false },
+        // Jamais une simulation · elle ne passe aucune consignation (ligne
+        // sage-l1, fonction 12, relecture B3), et le rattachement la refuse.
+        ecriture: { tenantId, estGenereeParCloture: false, ...HORS_SITUATION },
         compte: { numero: { startsWith: attente.compte } },
         ...(attente.sens === 'DEBIT' ? { debit: attente.montant } : { credit: attente.montant }),
       },
@@ -344,7 +347,7 @@ export class EmballagesService {
     if (ids.length === 0) return [];
     const [ecritures, dejaPrises] = await Promise.all([
       this.prisma.ecriture.findMany({
-        where: { tenantId, id: { in: ids } },
+        where: { tenantId, id: { in: ids }, ...HORS_SITUATION },
         orderBy: [{ date: 'desc' }],
         select: {
           id: true,
@@ -411,10 +414,15 @@ export class EmballagesService {
       select: {
         id: true,
         estGenereeParCloture: true,
+        statut: true,
+        numeroPiece: true,
         lignes: { select: { debit: true, credit: true, compte: { select: { numero: true } } } },
       },
     });
     if (!ecriture) throw new NotFoundException("L'écriture indiquée n'existe pas dans ce dossier.");
+    if (ecriture.statut === StatutEcriture.SITUATION) {
+      throw new BadRequestException(motifSimulationNonRattachable(`n° ${ecriture.numeroPiece ?? '·'}`, 'une consignation'));
+    }
     if (ecriture.estGenereeParCloture) {
       throw new BadRequestException(
         'Une écriture de clôture ou de report à nouveau ne passe aucune consignation · elle reprend des soldes.',
@@ -478,7 +486,9 @@ export class EmballagesService {
       where: { id: ecritureId, tenantId },
       select: { statut: true },
     });
-    if (ecriture && ecriture.statut !== StatutEcriture.BROUILLARD) {
+    // Seule une pièce VALIDÉE garde son lien · une simulation rattachée avant
+    // la règle (relecture B3) se détache comme un brouillard.
+    if (ecriture && ecriture.statut === StatutEcriture.VALIDEE) {
       throw new BadRequestException(
         "L'écriture rattachée est validée · elle est entrée au livre-journal (AUDCIF art. 22, 2°), et " +
           'son lien est la trace de ce qui a passé la consignation. Il ne se défait plus.',

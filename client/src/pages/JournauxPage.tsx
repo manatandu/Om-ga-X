@@ -278,7 +278,7 @@ export function JournauxPage() {
         <BoutonImprimer libelle="Imprimer la liste" />
         <Aide
           titre="Codes journaux"
-          texte="Le type d'un journal détermine le pré-positionnement du curseur en saisie (débit ou crédit selon la racine du compte) et n'est plus modifiable après création. Un journal de trésorerie porte son compte rattaché : la contrepartie s'y enregistre en un clic depuis la saisie. « Situation » : écritures de simulation, qui ne se valident pas et n'entrent jamais au livre-journal, à la balance, aux états ni au report à-nouveau (AUDCIF art. 19 ; art. 22, 2°) · ce journal ne se clôture pas, une clôture de période ne le fige pas, et il ne prend pas la numérotation continue pour le fichier (art. 22, 3° ; art. 17, 3°). Ses écritures se lisent dans le journal filtré sur lui."
+          texte="Le type d'un journal détermine le pré-positionnement du curseur en saisie (débit ou crédit selon la racine du compte) et n'est plus modifiable après création. Un journal de trésorerie porte son compte rattaché : la contrepartie s'y enregistre en un clic depuis la saisie. « Situation » : écritures de simulation, qui ne se valident pas et n'entrent jamais au livre-journal, à la balance, aux états ni au report à-nouveau (AUDCIF art. 19 ; art. 22, 1°, qui borne l'article aux données d'une opération) · ce journal ne se clôture pas, une clôture de période ne le fige pas, et il ne prend pas la numérotation continue pour le fichier (art. 22, 3° ; art. 17, 3°). Ses écritures se lisent dans le journal filtré sur lui."
           source="Codes journaux"
         />
         <button

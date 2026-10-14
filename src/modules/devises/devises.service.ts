@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { PrismaService } from '../../common/prisma.service';
 import { Prisma, Referentiel, StatutEcriture, StatutExercice } from '@prisma/client';
 import { EcritureService } from '../comptabilite/ecriture.service';
-import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
+import { HORS_SITUATION, motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { groupesDenoues, lectureDesGroupes, motifDateReevaluation, motifHorsReevaluation, motifPositionDenouee } from './perimetre-reevaluation';
@@ -2432,6 +2432,7 @@ export class DevisesService {
         id: true,
         numeroPiece: true,
         date: true,
+        statut: true,
         estGenereeParCloture: true,
         estANouveauProvisoire: true,
         estSoldeDesComptesDeGestion: true,
@@ -2448,6 +2449,12 @@ export class DevisesService {
     });
     if (!ecriture) throw new NotFoundException('Écriture introuvable pour ce dossier');
     const piece = `la pièce n° ${ecriture.numeroPiece ?? '·'} du ${jour(ecriture.date)}`;
+    // Une simulation ne contre-passe rien (ligne sage-l1, fonction 12) ·
+    // déclarée, elle laissait l'écart de conversion en place au bilan, la
+    // réévaluation se disant contre-passée.
+    if (ecriture.statut === StatutEcriture.SITUATION) {
+      throw new BadRequestException(motifSimulationNonRattachable(piece, "la contre-passation d'une réévaluation"));
+    }
     // En tête d'un message, la majuscule.
     const Piece = piece.charAt(0).toUpperCase() + piece.slice(1);
     if (ecriture.estGenereeParCloture || ecriture.estANouveauProvisoire || ecriture.estSoldeDesComptesDeGestion) {

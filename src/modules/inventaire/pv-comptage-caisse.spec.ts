@@ -298,6 +298,13 @@ describe('la couverture des caisses · la question composite rendue mécanique',
     expect(manquantes.map((c) => c.numero)).toEqual(['57200000']);
   });
 
+  it('une simulation sur un 57 ne fait réclamer aucun procès-verbal (ligne sage-l1, relecture M5)', async () => {
+    const { svc, prisma } = service({ campagne: CAMPAGNE, lignesCaisse: [], pvCaisse: [] });
+    await svc.caissesNonComptees('t1', 'camp1');
+    const lu = (prisma.ligneEcriture.findMany as jest.Mock).mock.calls[0][0];
+    expect(lu.where.ecriture).toMatchObject({ tenantId: 't1', statut: { not: 'SITUATION' } });
+  });
+
   it('ne réclame rien d’une caisse à solde nul · une caisse fermée n’a rien à compter', async () => {
     const { svc } = service({
       campagne: CAMPAGNE,

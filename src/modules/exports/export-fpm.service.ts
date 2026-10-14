@@ -566,9 +566,11 @@ export class ExportFpmService {
     if (prefixes.length === 0) return { avantDebit: 0, avantCredit: 0, mouvementDebit: 0, mouvementCredit: 0, solde: 0 };
     const filtres = filtresDesTroisColonnes({ tenantId, exerciceId });
     const compte = { OR: prefixes.map((p) => ({ numero: { startsWith: p } })) };
-    const somme = (ecriture: Prisma.EcritureWhereInput) =>
-      this.prisma.ligneEcriture.aggregate({ where: { ecriture, compte }, _sum: { debit: true, credit: true } });
-    const [r, m, c] = await Promise.all([somme(filtres.reports), somme(filtres.mouvements), somme(filtres.clotures)]);
+    // La colonne, jamais un filtre reçu · le filet des simulations
+    // (`lectures-hors-situation.spec.ts`) lit ici `filtresDesTroisColonnes`.
+    const somme = (colonne: 'reports' | 'mouvements' | 'clotures') =>
+      this.prisma.ligneEcriture.aggregate({ where: { ecriture: filtres[colonne], compte }, _sum: { debit: true, credit: true } });
+    const [r, m, c] = await Promise.all([somme('reports'), somme('mouvements'), somme('clotures')]);
     const n = (v: unknown) => Number(v ?? 0);
     const avantDebit = n(r._sum.debit);
     const avantCredit = n(r._sum.credit);

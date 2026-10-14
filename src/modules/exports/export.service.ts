@@ -1,4 +1,4 @@
-import { HORS_SITUATION, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
+import { HORS_SITUATION, avecStatut, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
 import { nombreSaisi } from '../notes-annexes/controles-saisie-notes';
 import { Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { enregistrerImpression, estUneRecherche, periodeCouverte } from '../journaux/impressions-journal';
@@ -551,8 +551,10 @@ export class ExportService {
    * classeurs encore bâtis en mémoire ont leur propre plafond,
    * `MAX_LIGNES_CLASSEUR_EN_MEMOIRE`.
    */
-  private async verifierVolume(where: Prisma.LigneEcritureWhereInput, quoi: string) {
-    const nb = await this.prisma.ligneEcriture.count({ where });
+  private async verifierVolume(ecriture: Prisma.EcritureWhereInput, quoi: string) {
+    // Le périmètre de l'écriture, arrêté sur son statut · ce que l'export lit,
+    // jamais une simulation qu'il ne lit pas (ligne sage-l1, fonction 12).
+    const nb = await this.prisma.ligneEcriture.count({ where: { ecriture: avecStatut(ecriture) } });
     if (nb > MAX_LIGNES_EXPORT) {
       throw new PayloadTooLargeException(
         `${quoi} : ${nb.toLocaleString('fr-FR')} lignes à exporter, au-delà de la limite de ` +
@@ -796,7 +798,7 @@ export class ExportService {
     imprimePar?: string,
   ): Promise<{ lignes: number }> {
     const where = perimetreJournal(tenantId, filtres);
-    await this.verifierVolume({ ecriture: where }, 'Journal');
+    await this.verifierVolume(where, 'Journal');
     const identite = await this.identiteEtat(tenantId, filtres);
 
     // L'auteur est un identifiant en base · un auditeur ne lit pas un uuid.
@@ -928,6 +930,10 @@ export class ExportService {
           dateFin: periode.dateFin.toISOString().slice(0, 10),
         }),
       });
+      // UN JOURNAL SANS PIÈCE N'A RIEN À ATTESTER (relecture M6) · enregistrée,
+      // l'impression d'un journal vide le retenait (clé vers le journal) et
+      // tenait son exercice, sans rien prouver.
+      if (nombreEcritures === 0) return;
       await enregistrerImpression(this.prisma, {
         tenantId,
         exerciceId: exercice.id,
@@ -1110,7 +1116,7 @@ export class ExportService {
     // Jamais une écriture de situation (ligne sage-l1, fonction 12) · le
     // grand-livre reporte les mouvements de l'exercice (AUDCIF art. 19).
     const perimetre = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
-    await this.verifierVolume({ ecriture: perimetre }, 'Grand livre complet');
+    await this.verifierVolume(perimetre, 'Grand livre complet');
     const identite = await this.identiteEtat(tenantId, { exerciceId });
 
     // LES COMPTES SANS MOUVEMENT SONT ÉCARTÉS D'ABORD, par un agrégat · c'est

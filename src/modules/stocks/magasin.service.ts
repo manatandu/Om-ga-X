@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
 import {
   ClasseCompte,
   MethodeInventaireStocks,
   SensMouvementStock,
+  StatutEcriture,
   StatutExercice,
   TypeCompteDetailTotal,
 } from '@prisma/client';
@@ -305,10 +307,15 @@ export class MagasinService {
     if (dto.ecritureId) {
       const ecriture = await this.prisma.ecriture.findFirst({
         where: { id: dto.ecritureId, tenantId },
-        select: { id: true },
+        select: { id: true, statut: true, numeroPiece: true },
       });
       if (!ecriture) {
         throw new BadRequestException("L'écriture indiquée n'existe pas dans ce dossier.");
+      }
+      // Une simulation ne fait entrer ni sortir aucun bien (ligne sage-l1,
+      // fonction 12, relecture B3) · liée, elle retiendrait le mouvement.
+      if (ecriture.statut === StatutEcriture.SITUATION) {
+        throw new BadRequestException(motifSimulationNonRattachable(`n° ${ecriture.numeroPiece ?? '·'}`, 'un mouvement de stock'));
       }
     }
     // L'ORDRE EST POSÉ PAR LE SERVEUR, JAMAIS REÇU DU CLIENT · c'est lui qui

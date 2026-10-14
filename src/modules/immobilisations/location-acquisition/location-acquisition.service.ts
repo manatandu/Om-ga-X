@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { HORS_SITUATION } from '../../comptabilite/ecritures-de-situation';
 import { Prisma, StatutExercice } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma.service';
 import { TypeSortie } from '../dto/immobilisation.dto';
@@ -198,6 +199,9 @@ export class LocationAcquisitionService {
             exerciceId,
             estSoldeDesComptesDeGestion: false,
             id: { notIn: dejaVires.map((d) => d.ecritureId) },
+            // Une simulation au 623 ne porte aucun loyer · elle ne lève pas
+            // la garde (ligne sage-l1, fonction 12, relecture M4).
+            ...HORS_SITUATION,
           },
         },
         _sum: { debit: true, credit: true },

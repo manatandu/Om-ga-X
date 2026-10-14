@@ -1,5 +1,6 @@
 import { ModeComparaisonCaisse, Prisma, StatutEcriture } from '@prisma/client';
 import { jourDeKinshasa, jourUtc } from '../../common/echeance';
+import { avecStatut } from '../comptabilite/ecritures-de-situation';
 
 /**
  * LE SOLDE D'UNE CAISSE À LA DATE DE SON COMPTAGE, ET SA RECONSTITUTION VERS
@@ -350,8 +351,11 @@ type Ecr = Prisma.EcritureWhereInput;
  * de même. Écritures d'écarts de réévaluation à part (aucun montant en devise).
  */
 export async function sommesDansLUnite(prisma: Client, compteId: string, ecriture: Ecr, unite: UniteComparaison) {
+  // Arrêté sur son statut · jamais une simulation, quel que soit l'appelant
+  // (ligne sage-l1, fonction 12) · le solde d'une caisse ne la porte pas.
+  const lue = avecStatut(ecriture);
   if (unite.mode === ModeComparaisonCaisse.DEVISE) {
-    const e: Ecr = { AND: [ecriture, HORS_ECARTS_DE_REEVALUATION] };
+    const e: Ecr = { AND: [lue, HORS_ECARTS_DE_REEVALUATION] };
     const somme = (filtre: Prisma.LigneEcritureWhereInput) =>
       prisma.ligneEcriture
         .aggregate({ where: { compteId, ecriture: e, ...filtre }, _sum: { montantDevise: true } })
@@ -366,7 +370,7 @@ export async function sommesDansLUnite(prisma: Client, compteId: string, ecritur
     return { debit: dPlus - dMoins, credit: cPlus - cMoins, nombre: n };
   }
   const s = await prisma.ligneEcriture.aggregate({
-    where: { compteId, ecriture },
+    where: { compteId, ecriture: lue },
     _sum: { debit: true, credit: true },
     _count: { _all: true },
   });

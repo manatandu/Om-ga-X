@@ -193,6 +193,18 @@ describe('enregistrer', () => {
     expect(retirerCompensation).toHaveBeenCalledWith('t', 'e1');
   });
 
+  it('une facture d’un journal de situation n’est pas due · refusée AVANT toute pièce, nommée (ligne sage-l1, relecture M1)', async () => {
+    // Le lettrage, qui refuse la simulation, tombait au milieu du lot · deux
+    // pièces de règlement déjà passées pour une dette qui n'existe pas.
+    const { service, creer, lignes } = monter();
+    const g1 = lignes.find((l) => l.id === 'g1')!;
+    Object.assign(g1.ecriture, { statut: 'SITUATION', numeroPiece: 31 });
+    await expect(
+      service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'] }, { compteId: 'c402', ligneIds: ['g1'] }] }),
+    ).rejects.toThrow(/La pièce n° 31 \(40120000\) est une écriture de situation/);
+    expect(creer).not.toHaveBeenCalled();
+  });
+
   it('un seul refus arrête le lot AVANT toute écriture', async () => {
     const { service, creer } = monter();
     await expect(

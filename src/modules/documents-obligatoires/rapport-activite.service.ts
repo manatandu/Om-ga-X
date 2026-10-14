@@ -1,3 +1,4 @@
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   JeuEtatsFinanciersSycebnl,
@@ -288,7 +289,9 @@ export class RapportActiviteService {
     // Le logiciel ne voit pas tout changement · la section reste exigée même
     // à zéro, et le cabinet y écrit « Néant ».
     const modificationsDeMethodeEnregistrees = await this.prisma.ecriture.count({
-      where: { tenantId, exerciceId: exercice.id, motifImputationOuverture: 'CHANGEMENT_METHODE' },
+      // Une simulation n'est pas un changement de méthode passé (ligne
+      // sage-l1, fonction 12).
+      where: { tenantId, exerciceId: exercice.id, motifImputationOuverture: 'CHANGEMENT_METHODE', ...HORS_SITUATION },
     });
 
     const enregistrees = (courant?.sections ?? {}) as Record<string, string | undefined>;

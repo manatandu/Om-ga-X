@@ -134,6 +134,8 @@ interface EcritureFaite {
   reevaluationEcarts?: { id: string } | null;
   reevaluationExtourne?: { id: string } | null;
   reevaluationContrePassationDeclaree?: { id: string } | null;
+  /** Par défaut, VALIDÉE. */
+  statut?: string;
 }
 const dateDe = (e: EcritureFaite) => e.date ?? e.exercice.dateDebut;
 
@@ -298,6 +300,7 @@ function monter(
           id: e.id,
           numeroPiece: e.numeroPiece ?? 1,
           date: dateDe(e),
+          statut: e.statut ?? 'VALIDEE',
           estGenereeParCloture: e.estGenereeParCloture ?? false,
           estANouveauProvisoire: false,
           estSoldeDesComptesDeGestion: false,
@@ -524,6 +527,10 @@ describe('déclarer une contre-passation faite à la main', () => {
       [{ reevaluationContrePassationDeclaree: { id: 'r0' } }, /déjà déclarée comme la contre-passation d'une autre réévaluation/],
       [{ correction: { numeroPiece: 9 } }, /neutralisée par son inscription en négatif \(pièce n° 9\)/],
       [{ estGenereeParCloture: true }, /engendrée par la clôture ou l'à-nouveau/],
+      // Ligne sage-l1, relecture B3 · une simulation ne contre-passe rien ;
+      // déclarée, l'écart restait au bilan, la réévaluation se disant
+      // contre-passée.
+      [{ statut: 'SITUATION' }, /écriture de situation/],
     ];
     for (const [defaut, motif] of cas) {
       const { svc, update } = monter({ ecritures: [...BASE_N, AN_N1, { ...OD, ...defaut }] });

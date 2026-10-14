@@ -380,6 +380,15 @@ const dto = (sur: Faux = {}) => ({
   ...sur,
 });
 
+describe('une écriture de situation ne comptabilise aucune facture (ligne sage-l1, relecture B3)', () => {
+  it('refusée, nommée par son numéro, et rien n’est créé', async () => {
+    const { svc, prisma, create } = service();
+    (prisma.ecriture as Faux).findFirst = jest.fn().mockResolvedValue({ id: 'e1', statut: 'SITUATION', numeroPiece: 9 });
+    await expect(svc.enregistrer('t', dto({ ecritureId: 'e1' }) as never)).rejects.toThrow(/n° 9 est une écriture de situation/);
+    expect(create).not.toHaveBeenCalled();
+  });
+});
+
 describe('Le service · qui est l’émetteur, et qui est la contrepartie', () => {
   it('SUR UNE VENTE, l’émetteur est le dossier', async () => {
     const { svc, create } = service();

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
 import { useAuth } from '../lib/auth';
@@ -344,19 +345,40 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     [filtresAppliques],
   );
   const [impressionEnCours, setImpressionEnCours] = useState(false);
+  // LA PAGE IMPRIMÉE PORTE SON NUMÉRO ET SA DATE (AUDCIF art. 22, 7° · « les
+  // états périodiques fournis soient numérotés et datés », relecture m2).
+  // Retirés après la boîte d'impression · une impression faite plus tard par
+  // le navigateur seul n'est pas enregistrée et ne doit pas emprunter ce
+  // numéro.
+  const [impressionNumerotee, setImpressionNumerotee] = useState<{ numero: number; imprimeAt: string } | null>(null);
+  useEffect(() => {
+    const retirer = () => setImpressionNumerotee(null);
+    window.addEventListener('afterprint', retirer);
+    return () => window.removeEventListener('afterprint', retirer);
+  }, []);
   const imprimerJournal = async () => {
     if (!exerciceCourant) return;
     setErreur(null);
     setInfo(null);
     setImpressionEnCours(true);
     try {
-      const r = await api.post<{ numero: number }>('/impressions-journal', {
+      const r = await api.post<{ numero: number | null; imprimeAt: string | null }>('/impressions-journal', {
         exerciceId: exerciceCourant.id,
         ...(filtresAppliques.journalId ? { journalId: filtresAppliques.journalId } : {}),
         ...(filtresAppliques.dateDebut ? { dateDebut: filtresAppliques.dateDebut } : {}),
         ...(filtresAppliques.dateFin ? { dateFin: filtresAppliques.dateFin } : {}),
       });
-      setInfo(`Impression n° ${r.numero} du journal enregistrée.`);
+      // Posés AVANT la boîte (`flushSync`) · rendus après elle, la page
+      // sortait sans le numéro que le serveur venait d'attribuer. Un journal
+      // sans pièce n'est pas enregistré (`numero` nul), et c'est dit.
+      flushSync(() =>
+        setImpressionNumerotee(r.numero !== null && r.imprimeAt ? { numero: r.numero, imprimeAt: r.imprimeAt } : null),
+      );
+      setInfo(
+        r.numero !== null
+          ? `Impression n° ${r.numero} du journal enregistrée.`
+          : 'Aucune pièce dans le journal de cette période · l’impression n’est pas enregistrée.',
+      );
       window.print();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Impression du journal impossible');
@@ -495,7 +517,19 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
 
   return (
     <div className="p-2">
-      <EnteteImpression titre="Journal, grand livre et balance" />
+      <EnteteImpression
+        titre="Journal, grand livre et balance"
+        sousTitre={
+          impressionNumerotee
+            ? `Impression n° ${impressionNumerotee.numero} du journal · enregistrée le ${new Date(
+                impressionNumerotee.imprimeAt,
+              ).toLocaleDateString('fr-FR')} à ${new Date(impressionNumerotee.imprimeAt).toLocaleTimeString('fr-FR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}`
+            : undefined
+        }
+      />
       <div className="flex items-center justify-end mb-1.5 gap-2">
         <div className="flex items-center gap-2">
           {onglet === 'journal' && (

@@ -11,8 +11,17 @@ import { Prisma, StatutEcriture, TypeJournal } from '@prisma/client';
  * écriture de situation (simulation, estimation, prévision) n'enregistre
  * aucune opération · elle n'est pas un mouvement de l'exercice et n'entre
  * jamais au livre-journal. Donc :
- *  · elle ne se VALIDE pas · la validation fait entrer la donnée au
- *    livre-journal, dans un traitement irréversible (art. 22, 2°) ;
+ *  · elle ne se VALIDE pas · l'art. 22 fixe son champ à son 1° · « les
+ *    données relatives à toute opération donnant lieu à enregistrement ».
+ *    Lu seul, son 2° (« toute donnée entrée fait l'objet d'une validation »)
+ *    se lirait contre la règle · une simulation est une donnée entrée, jamais
+ *    validée. Mais il porte sur les données de son 1°, et une simulation ne
+ *    se rapporte à aucune opération · elle est hors du champ de l'article, et
+ *    la validation, qui fait entrer l'opération au livre-journal dans un
+ *    traitement irréversible, n'a rien à y faire entrer (relecture du premier
+ *    tour, m1). La migration `20270171000001_ecritures_de_situation_reprises`
+ *    cite le seul 2° · appliquée, elle ne se retouche pas (Prisma en vérifie
+ *    l'empreinte), et c'est ici que se lit la décision ;
  *  · elle n'est pas un BROUILLARD · le brouillard attend sa validation, elle
  *    n'en attend aucune, et la clôture annuelle, qui refuse tout brouillard,
  *    ne l'attend pas ;
@@ -42,6 +51,17 @@ export const STATUTS_COMPTABLES: readonly StatutEcriture[] = [StatutEcriture.BRO
 export const HORS_SITUATION = { statut: { not: StatutEcriture.SITUATION } } satisfies Prisma.EcritureWhereInput;
 
 /**
+ * LE FILTRE REÇU D'UN APPELANT, ARRÊTÉ SUR SON STATUT · le statut qu'il pose
+ * est gardé (le livre-journal seul, `VALIDEE`), et à défaut la simulation est
+ * écartée · une lecture qui reçoit son filtre de l'appelant ne la laisse
+ * jamais passer parce que l'appelant l'a oubliée. Nommé par le filet
+ * `lectures-hors-situation.spec.ts`.
+ */
+export function avecStatut<F extends Prisma.EcritureWhereInput>(filtre: F): F | (F & typeof HORS_SITUATION) {
+  return 'statut' in filtre ? filtre : { ...filtre, ...HORS_SITUATION };
+}
+
+/**
  * Le statut que lit un livre ou un état · le livre-journal seul, ou le
  * livre-journal et le brouillard, jamais une situation. Une seule écriture du
  * filtre, que les lecteurs du brouillard partagent.
@@ -68,7 +88,8 @@ export function statutDeNaissance(journal: { type: TypeJournal }): StatutEcritur
 }
 
 const FONDEMENT =
-  "(AUDCIF art. 19 · le livre-journal reçoit les mouvements de l'exercice ; art. 22, 2° · la validation les y fait entrer)";
+  "(AUDCIF art. 19 · le livre-journal reçoit les mouvements de l'exercice ; art. 22, 1° · la validation ne porte que sur " +
+  'les données relatives à une opération)';
 
 /** Une écriture de situation présentée à la validation. */
 export function motifSituationNeSeValidePas(pieces: string[]): string {
@@ -77,6 +98,20 @@ export function motifSituationNeSeValidePas(pieces: string[]): string {
     `${pieces.length > 1 ? 'des écritures' : 'une écriture'} de situation · ${pieces.length > 1 ? 'elles' : 'elle'} ` +
     `n'enregistre${pieces.length > 1 ? 'nt' : ''} aucune opération et n'entre${pieces.length > 1 ? 'nt' : ''} jamais au ` +
     `livre-journal ${FONDEMENT}. Pour passer l'opération, saisissez-la dans un journal ordinaire.`
+  );
+}
+
+/**
+ * Une simulation désignée pour justifier un acte d'un module (redressement
+ * d'inventaire, consignation, don, facture, mouvement de stock, contre-passation
+ * déclarée) · elle n'enregistre aucune opération, elle ne justifie rien.
+ * Rattachée, elle se disait la pièce de l'acte, devenait retenue et ne se
+ * retirait plus (relecture du premier tour, B3).
+ */
+export function motifSimulationNonRattachable(piece: string, acte: string): string {
+  return (
+    `L'écriture ${piece} est une écriture de situation · elle n'enregistre aucune opération ${FONDEMENT} et ne ` +
+    `justifie pas ${acte}. Désignez la pièce passée dans un journal ordinaire.`
   );
 }
 

@@ -233,3 +233,47 @@ export async function enregistrerImpression(
     });
   });
 }
+
+/** Les impressions relues d'un exercice qu'on retire, par tranche · une par mise à jour unitaire. */
+const LOT_IMPRESSIONS_RATTACHEES = 500;
+
+/**
+ * UNE IMPRESSION SUIT L'EXERCICE QUI REPREND SA PÉRIODE (relecture de la
+ * ligne sage-l1, M6). Un exercice ne disparaît que par l'arrêt à la
+ * dissolution (l'exercice postérieur vide d'une société sans liquidation) et
+ * par l'annulation de l'arrêt (l'exercice de liquidation rendu) · la clé de
+ * l'impression vers son exercice (RESTRICT) refusait la suppression, et
+ * l'impression, comptée parmi les usages, ENFERMAIT l'arrêt et son annulation
+ * sans issue, aucune route ne retirant une impression.
+ *
+ * L'impression ne se SUPPRIME JAMAIS · elle atteste un état numéroté et daté
+ * (AUDCIF art. 22, 7°), et la retirer rendrait son numéro au suivant (la
+ * suite est lue sur le plus grand numéro du dossier), deux documents remis
+ * portant alors le même. Elle se RATTACHE à l'exercice qui reprend sa période,
+ * période, journal, numéro et date intacts, par une mise à jour UNITAIRE
+ * (journal d'audit · un `updateMany` n'y laisserait que filtre et compte).
+ */
+export async function rattacherLesImpressions(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  depuis: string,
+  vers: string,
+): Promise<number> {
+  let rattachees = 0;
+  let curseur: string | undefined;
+  for (;;) {
+    const lot = await tx.impressionJournal.findMany({
+      where: { tenantId, exerciceId: depuis },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+      take: LOT_IMPRESSIONS_RATTACHEES,
+      ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
+    });
+    for (const i of lot) {
+      await tx.impressionJournal.update({ where: { id: i.id }, data: { exerciceId: vers } });
+      rattachees++;
+    }
+    if (lot.length < LOT_IMPRESSIONS_RATTACHEES) return rattachees;
+    curseur = lot[lot.length - 1].id;
+  }
+}

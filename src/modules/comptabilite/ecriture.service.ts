@@ -2262,6 +2262,25 @@ export class EcritureService {
       )
       .filter((m): m is string => m !== null);
     if (refus.length) throw new BadRequestException([...new Set(refus)].join(' '));
+    // VALIDÉE AVANT LA RÈGLE dans un journal de situation (relecture du
+    // premier tour, m5) · comme pour l'inscription en négatif, le négatif et
+    // l'écriture exacte ne se passent plus dans ce journal · le refus le dit,
+    // au lieu de la garde du client Prisma qui parlerait d'une saisie.
+    const valideesEnSituation = [
+      ...new Map(
+        lignes
+          .filter((l) => l.ecriture.statut === StatutEcriture.VALIDEE && estJournalDeSituation(l.ecriture.journal))
+          .map((l) => [l.ecritureId, `${l.ecriture.journal.code} n° ${l.ecriture.numeroPiece ?? '·'}`]),
+      ).values(),
+    ];
+    if (valideesEnSituation.length > 0) {
+      throw new BadRequestException(
+        `${valideesEnSituation.join(', ')} ${valideesEnSituation.length > 1 ? 'ont été validées' : 'a été validée'} dans un ` +
+          "journal de situation avant que ses écritures ne sortent du livre-journal · elle y est entrée et reste aux états. " +
+          'Pour en corriger le compte, saisissez dans un journal ordinaire une pièce qui inscrit en négatif les lignes ' +
+          'erronées puis les passe au bon compte (AUDCIF art. 20, al. 2).',
+      );
+    }
 
     // TOUS LES DÉTENTEURS, PAS SEULEMENT LES TROIS DE L'IMMOBILISATION · audit
     // du serveur du 2026-09-27, F2. Au brouillard la ligne change de compte en

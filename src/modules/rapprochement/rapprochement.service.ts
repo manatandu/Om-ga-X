@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import {
   ClasseCompte,
   GranulariteCloture,
@@ -436,7 +437,10 @@ export class RapprochementService {
             where: {
               compteId: rapprochement.compteId,
               rapprochementId: null,
-              ecriture: { tenantId, date: { lt: regle.dateDepart }, NOT: filtreANouveauEcarte() },
+              // Une simulation n'est pas fondue dans le départ · elle n'est
+              // pas une opération de la banque (ligne sage-l1, fonction 12,
+              // relecture m3).
+              ecriture: { tenantId, date: { lt: regle.dateDepart }, NOT: filtreANouveauEcarte(), ...HORS_SITUATION },
             },
           }),
       // Les en-cours d'ouverture de la chaîne encore libres, et ceux pointés ici.

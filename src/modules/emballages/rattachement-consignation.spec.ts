@@ -63,6 +63,7 @@ function service(options: {
             ? {
                 id: 'e1',
                 statut: options.statutEcriture ?? 'BROUILLARD',
+                numeroPiece: 7,
                 estGenereeParCloture: false,
                 lignes: options.lignes ?? OUVERTURE_JUSTE,
               }
@@ -142,6 +143,12 @@ describe('rattacher une écriture à une consignation', () => {
     expect(prisma.consignation.updateMany).not.toHaveBeenCalled();
   });
 
+  it('refuse une écriture de situation, qui ne passe aucune consignation (ligne sage-l1, relecture B3)', async () => {
+    const { svc, prisma } = service({ statutEcriture: 'SITUATION' });
+    await expect(svc.rattacherEcriture('t1', 'c1', 'ouverture', 'e1')).rejects.toThrow(/écriture de situation/);
+    expect(prisma.consignation.updateMany).not.toHaveBeenCalled();
+  });
+
   it('le perdant de deux demandes simultanées est refusé', async () => {
     const { svc } = service({ gagne: false });
     await expect(svc.rattacherEcriture('t1', 'c1', 'ouverture', 'e1')).rejects.toThrow(/autre demande/);
@@ -167,5 +174,14 @@ describe('détacher une écriture de consignation', () => {
     const { svc, prisma } = service({ liens: { ecritureConsignationId: 'e1' }, statutEcriture: 'VALIDEE' });
     await expect(svc.detacherEcriture('t1', 'c1', 'ouverture')).rejects.toThrow(/validée/);
     expect(prisma.consignation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('une simulation rattachée avant la règle se détache, sans être dite validée (relecture B3)', async () => {
+    const { svc, prisma } = service({ liens: { ecritureConsignationId: 'e1' }, statutEcriture: 'SITUATION' });
+    await svc.detacherEcriture('t1', 'c1', 'ouverture');
+    expect(prisma.consignation.updateMany).toHaveBeenCalledWith({
+      where: { id: 'c1', tenantId: 't1', ecritureConsignationId: 'e1' },
+      data: { ecritureConsignationId: null },
+    });
   });
 });

@@ -1,4 +1,5 @@
 import { ModeReportANouveau, Prisma } from '@prisma/client';
+import { avecStatut } from '../comptabilite/ecritures-de-situation';
 
 /**
  * LES LIGNES QUE LE REPORT AU DÉTAIL REPORTE, UNE SEULE DÉFINITION
@@ -25,7 +26,10 @@ export function lignesReporteesAuDetail(
   ecriture: Prisma.EcritureWhereInput & { tenantId: string; exerciceId: string },
 ): Prisma.LigneEcritureWhereInput & { OR: Prisma.LigneEcritureWhereInput[] } {
   return {
-    ecriture,
+    // Jamais une simulation · le report ne la porte pas, et une pièce
+    // d'origine cherchée parmi ces lignes ne doit pas s'apparier à elle
+    // (ligne sage-l1, fonction 12, relecture du premier tour).
+    ecriture: avecStatut(ecriture),
     compte: { modeReportANouveau: ModeReportANouveau.DETAIL },
     OR: [
       { lettre: null },

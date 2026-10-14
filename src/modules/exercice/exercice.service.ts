@@ -1,5 +1,5 @@
-import { HORS_SITUATION, estJournalDeSituation, motifJournalDeSituationNonCloturable } from '../comptabilite/ecritures-de-situation';
-import { moisNonImprimes, motifClotureNonImprimee } from '../journaux/impressions-journal';
+import { HORS_SITUATION, avecStatut, estJournalDeSituation, motifJournalDeSituationNonCloturable } from '../comptabilite/ecritures-de-situation';
+import { moisNonImprimes, motifClotureNonImprimee, rattacherLesImpressions } from '../journaux/impressions-journal';
 import { ecartsRealisesNonConstates, motifClotureEcartsNonConstates } from '../reglements/ecarts-non-constates';
 import { estContigu, motifCreationNonContigue, motifSuivantNonContigu } from './exercice-contigu';
 import { lignesReporteesAuDetail } from './lignes-reportees-au-detail';
@@ -1387,6 +1387,9 @@ export class ExerciceService {
           // report provisoire avec lui (un exercice occupé a refusé plus haut).
           for (const p of etat.posterieurs) {
             await retirerANouveauProvisoire(tx, tenantId, p.id);
+            // Ses impressions du journal suivent l'exercice arrêté, le seul
+            // qui reste (relecture M6) · jamais supprimées, art. 22, 7°.
+            await rattacherLesImpressions(tx, tenantId, p.id, exercice.id);
             await tx.exercice.delete({ where: { id: p.id } });
           }
           const arrete = await tx.exercice.update({ where: { id: exercice.id }, data: { dateFin: dissolution } });
@@ -1559,6 +1562,10 @@ export class ExerciceService {
           const suivant = await tx.exercice.update({ where: { id: liquidation.id }, data: { dateDebut: lendemainDe(finOrigine) } });
           return { exercice: arrete, exerciceDeLiquidation: null, exerciceSuivant: suivant, ...rattachement, actesRetires };
         }
+        // Les impressions du journal de la liquidation suivent ses écritures
+        // vers l'exercice rendu (relecture M6) · jamais supprimées, et plus
+        // jamais comptées comme ce qui retient l'exercice.
+        await rattacherLesImpressions(tx, tenantId, liquidation.id, exercice.id);
         const references = await referencesVers(tx, 'Exercice', liquidation.id, tenantId);
         if (references.length > 0) {
           throw new BadRequestException(
@@ -2712,7 +2719,12 @@ export class ExerciceService {
         declarationRequise: report.length > 0,
       };
     }
-    const ecrituresDeN = await this.prisma.ecriture.count({ where: { tenantId, exerciceId, estSoldeDesComptesDeGestion: false } });
+    // Une simulation n'est pas une écriture de N (ligne sage-l1, fonction
+    // 12) · un exercice qui n'en porte que se lit sans écriture, et son
+    // ouverture suivante fait foi.
+    const ecrituresDeN = await this.prisma.ecriture.count({
+      where: { tenantId, exerciceId, estSoldeDesComptesDeGestion: false, ...HORS_SITUATION },
+    });
     return {
       ...base,
       exerciceSansEcriture: ecrituresDeN === 0,
@@ -3013,8 +3025,11 @@ async function lireComptesDuReport(
   // « Non nul » en deux bornes strictes plutôt qu'un NOT · une comparaison
   // à NULL n'est ni vraie ni fausse en SQL, et c'est ce que `gt` et `lt`
   // écartent sans ambiguïté, comme `!montantDevise` au calcul.
+  // Jamais une simulation, quel que soit l'appelant (ligne sage-l1,
+  // fonction 12) · le report ne porte que des opérations.
+  const ecritureLue = avecStatut(ecriture);
   const enDevise = {
-    ecriture,
+    ecriture: ecritureLue,
     deviseId: { not: null },
     OR: [{ montantDevise: { gt: 0 } }, { montantDevise: { lt: 0 } }],
   } satisfies Prisma.LigneEcritureWhereInput;
@@ -3025,7 +3040,7 @@ async function lireComptesDuReport(
       select: { id: true, numero: true, intitule: true, modeReportANouveau: true },
       orderBy: { numero: 'asc' },
     }),
-    tx.ligneEcriture.groupBy({ by: ['compteId'], where: { ecriture }, _sum: { debit: true, credit: true } }),
+    tx.ligneEcriture.groupBy({ by: ['compteId'], where: { ecriture: ecritureLue }, _sum: { debit: true, credit: true } }),
     tx.ligneEcriture.groupBy({
       by: ['compteId', 'deviseId'],
       where: { ...enDevise, debit: { gte: credit } },
@@ -3072,7 +3087,7 @@ async function lireComptesDuReport(
       tx.ligneEcriture.findMany({
         // Une seule définition, que la date d'origine d'une ligne reportée
         // relit aussi (`lignes-reportees-au-detail.ts`, mineur 2).
-        where: lignesReporteesAuDetail(ecriture),
+        where: lignesReporteesAuDetail(ecritureLue),
         select: { id: true, compteId: true, ...SELECT_LIGNE_RAN },
         ...pageApres(curseur, LOT_LECTURE),
       }),
@@ -3986,6 +4001,9 @@ async function lireEtatAvantArret(
   return { etat, posterieurs, aDeplacer, actes };
 }
 
+/** La relation de l'impression du journal vers son exercice, telle que `referencesVers` la nomme. */
+const CLE_IMPRESSION_VERS_EXERCICE = 'ImpressionJournal.exerciceId';
+
 /**
  * CE QUI OCCUPE UN EXERCICE, hors son report à-nouveau PROVISOIRE (qui se
  * retire et se recalcule) · lu dans le schéma (`referencesVers`), jamais une
@@ -3994,7 +4012,9 @@ async function lireEtatAvantArret(
  */
 async function usagesDeLExercice(client: Prisma.TransactionClient, tenantId: string, exerciceId: string): Promise<string | null> {
   const [references, provisoires] = await Promise.all([
-    referencesVers(client, 'Exercice', exerciceId, tenantId),
+    // Les impressions du journal n'occupent pas l'exercice · elles le
+    // suivent vers celui qui reste (`rattacherLesImpressions`, relecture M6).
+    referencesVers(client, 'Exercice', exerciceId, tenantId, [CLE_IMPRESSION_VERS_EXERCICE]),
     client.ecriture.count({ where: { tenantId, exerciceId, estANouveauProvisoire: true } }),
   ]);
   const reelles = references

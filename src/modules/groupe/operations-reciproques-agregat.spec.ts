@@ -43,6 +43,8 @@ interface LigneFixture {
   intitule: string;
   debit: number;
   credit: number;
+  /** VALIDEE à défaut · une simulation d'un journal de situation porte SITUATION (ligne sage-l1, fonction 12). */
+  statut?: 'BROUILLARD' | 'VALIDEE' | 'SITUATION';
 }
 
 /** Un compte réciproque : le compte, chez qui, ouvert au nom de qui. */
@@ -62,15 +64,24 @@ interface RattachementFixture {
  * les requêtes du service, par couples (dossier, exercice) · audit final F190.
  * Toutes ces lignes sont des mouvements, ni à-nouveau ni clôture.
  */
+type FiltreStatut = { not: string } | string | undefined;
 type FiltreEcritures = {
   OR: Array<{ tenantId: string; exerciceId: string }>;
   estGenereeParCloture?: boolean;
   estSoldeDesComptesDeGestion?: boolean;
+  statut?: FiltreStatut;
+};
+/** Le filtre de statut tel que la base l'applique · absent, il ne filtre pas. */
+const statutRetenu = (l: LigneFixture, f: FiltreStatut) => {
+  const statut = l.statut ?? 'VALIDEE';
+  if (f === undefined) return true;
+  return typeof f === 'string' ? statut === f : statut !== f.not;
 };
 const retenue = (l: LigneFixture, f: FiltreEcritures) =>
   f.OR.some((o) => o.tenantId === l.tenantId && o.exerciceId === l.exerciceId) &&
   f.estGenereeParCloture !== true &&
-  f.estSoldeDesComptesDeGestion !== true;
+  f.estSoldeDesComptesDeGestion !== true &&
+  statutRetenu(l, f.statut);
 
 function service(
   lignes: LigneFixture[],
@@ -139,12 +150,13 @@ function service(
               tenantId: { in: string[] };
               exerciceId: { in: string[] };
               lignes: { some: { compteId: { in: string[] } } };
+              statut?: FiltreStatut;
             };
           };
         }) => {
           const f = where.ecriture;
           const retenues = lignes.filter(
-            (l) => f.tenantId.in.includes(l.tenantId) && f.exerciceId.in.includes(l.exerciceId),
+            (l) => f.tenantId.in.includes(l.tenantId) && f.exerciceId.in.includes(l.exerciceId) && statutRetenu(l, f.statut),
           );
           const internes = new Set(
             retenues.filter((l) => f.lignes.some.compteId.in.includes(l.compteId)).map((l) => l.ecritureId),
@@ -252,6 +264,24 @@ describe('agrégat du groupe · les opérations réciproques sortent, et on voit
     );
     expect(brut.debit - a.totauxEliminations.debit).toBe(a.totaux.debit);
     expect(brut.credit - a.totauxEliminations.credit).toBe(a.totaux.credit);
+  });
+
+  it('une SIMULATION d’opération interne ne sort rien de l’agrégat · la balance ne l’a jamais lue (relecture B2)', async () => {
+    // Le siège simule, dans son journal de situation, une seconde facture
+    // interne de 300 000 · ni à la balance de chaque dossier, ni aux
+    // éliminations. Lue par l'élimination seule, elle retranchait 300 000 de
+    // produit et de créance que le cumul ne contenait pas, et le résultat
+    // combiné se trouvait minoré, balance bouclée.
+    const simulation: LigneFixture[] = [
+      { ...ligne('e-sim', 'mere', 'ex-m', 'cpt-411ant', '41110000', 'Antenne Matete', 300_000, 0), statut: 'SITUATION' },
+      { ...ligne('e-sim', 'mere', 'ex-m', 'cpt-706', '70600000', 'Prestations de services', 0, 300_000), statut: 'SITUATION' },
+    ];
+    const sans = await service(VENTE_INTERNE, DEUX_COTES).balanceAgregee('mere', 'ex-m');
+    const avec = await service([...VENTE_INTERNE, ...simulation], DEUX_COTES).balanceAgregee('mere', 'ex-m');
+    expect(avec.totauxEliminations).toEqual(sans.totauxEliminations);
+    expect(avec.totaux).toEqual(sans.totaux);
+    expect(avec.lignes).toEqual(sans.lignes);
+    expect(avec.ecartsReciprocite).toEqual([]);
   });
 
   it('la réciprocité se boucle · la créance chez l’un est la dette chez l’autre', async () => {

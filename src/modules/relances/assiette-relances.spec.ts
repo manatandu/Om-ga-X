@@ -76,6 +76,18 @@ describe('Assiette des rappels', () => {
     expect(await racinesInterrogees(Referentiel.SYSCOHADA, '40')).toEqual(['40']);
   });
 
+  it('ne relance jamais une simulation · une facture d’un journal de situation n’est pas due (relecture B1)', async () => {
+    // Saisie dans un journal de situation, une facture n'enregistre aucune
+    // opération (ligne sage-l1, fonction 12) · le rappel la réclamerait au
+    // client comme une créance. Le statut se lit dans la requête, le
+    // brouillard restant lu comme avant.
+    for (const r of [Referentiel.SYCEBNL, Referentiel.SYSCOHADA]) {
+      const { svc, findMany } = service(r);
+      await svc.positions('t1', { exerciceId: 'ex' });
+      expect(findMany.mock.calls[0][0].where.ecriture).toEqual({ tenantId: 't1', exerciceId: 'ex', statut: { not: 'SITUATION' } });
+    }
+  });
+
   it('la table couvre les deux référentiels, sans trou', () => {
     expect(Object.keys(RACINES_RELANCABLES).sort()).toEqual(['SYCEBNL', 'SYSCOHADA']);
     for (const liste of Object.values(RACINES_RELANCABLES)) {

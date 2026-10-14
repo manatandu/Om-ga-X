@@ -1,6 +1,6 @@
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma, StatutLettrage, TypeJournal } from '@prisma/client';
+import { Prisma, StatutEcriture, StatutLettrage, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { LettrageService } from '../lettrage/lettrage.service';
@@ -120,7 +120,9 @@ export class ReglementsService {
     const ordre = [{ compteId: 'asc' as const }, { ecriture: { date: 'asc' as const } }, { id: 'asc' as const }];
     const libres = await this.prisma.ligneEcriture.findMany({
       where: {
-        ecriture: { tenantId, exerciceId },
+        // Jamais une simulation · une facture d'un journal de situation n'est
+        // pas due (ligne sage-l1, fonction 12, relecture M1).
+        ecriture: { tenantId, exerciceId, ...HORS_SITUATION },
         lettrageId: null,
         compte: { tenantId, numero: { startsWith: sens === 'FOURNISSEUR' ? '40' : '41' } },
         ...(sens === 'FOURNISSEUR' ? { credit: { gt: 0 } } : { debit: { gt: 0 } }),
@@ -310,12 +312,25 @@ export class ReglementsService {
             // dossier désigne la part de chacune (jumeau 3 du point 4).
             numeroPiece: true,
             libelle: true,
+            statut: true,
           },
         },
       },
     });
     if (lignes.length !== toutesLignes.length) {
       throw new NotFoundException('Une ou plusieurs factures sont introuvables.');
+    }
+    // UNE SIMULATION N'EST PAS DUE (ligne sage-l1, fonction 12, relecture M1)
+    // · refusée AVANT la première pièce, comme tout le reste (règle 4) · le
+    // lettrage, qui la refuse aussi, tombait au milieu du lot, deux pièces
+    // déjà passées.
+    const simulees = lignes.filter((l) => l.ecriture.statut === StatutEcriture.SITUATION);
+    if (simulees.length > 0) {
+      throw new BadRequestException(
+        `${simulees.map((l) => `La pièce n° ${l.ecriture.numeroPiece ?? '·'} (${l.compte.numero})`).join(', ')} ` +
+          `${simulees.length > 1 ? 'sont des écritures' : 'est une écriture'} de situation · ${simulees.length > 1 ? 'elles' : 'elle'} ` +
+          "n'enregistre" + (simulees.length > 1 ? 'nt' : '') + " aucune opération et rien n'y est dû (AUDCIF art. 19). Aucune pièce de règlement n'est passée.",
+      );
     }
 
     // LA PAIRE À CHEVAL (A6 bis, second tour, m1) · une ligne d'à-nouveau que

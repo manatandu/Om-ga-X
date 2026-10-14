@@ -315,18 +315,21 @@ describe('date d’origine des reports · le premier exercice tenu (relecture, M
  */
 describe('date d’origine des reports · le filtre du report (relecture, mineur 2)', () => {
   const exercices = [{ id: 'e2026', dateDebut: d('2026-01-01'), dateFin: d('2026-12-31') }];
-  type Ligne = LigneEnBase & { id: string; debit: number; libelle: string; date: Date; statut: 'VALIDEE' | 'BROUILLARD' };
+  type Ligne = LigneEnBase & { id: string; debit: number; libelle: string; date: Date; statut: 'VALIDEE' | 'BROUILLARD' | 'SITUATION' };
+  /** Le statut tel que la base l'applique · une valeur, `{ not }`, ou rien. */
+  const statutRetenu = (statut: string, f: string | { not: string } | undefined) =>
+    f === undefined || (typeof f === 'string' ? statut === f : statut !== f.not);
   const client = (lignes: Ligne[]) => ({
     exercice: {
       findFirst: async (a: { where: { dateFin: { lt: Date } } }) =>
         exercices.filter((e) => e.dateFin < a.where.dateFin.lt).sort((x, y) => y.dateFin.getTime() - x.dateFin.getTime())[0] ?? null,
     },
     ligneEcriture: {
-      findMany: async (a: { where: FiltreDuReport & { ecriture: { statut?: string } }; cursor?: unknown }) =>
+      findMany: async (a: { where: FiltreDuReport & { ecriture: { statut?: string | { not: string } } }; cursor?: unknown }) =>
         a.cursor
           ? []
           : lignes
-              .filter((l) => honoreLeReport(l, a.where) && (!a.where.ecriture.statut || l.statut === a.where.ecriture.statut))
+              .filter((l) => honoreLeReport(l, a.where) && statutRetenu(l.statut, a.where.ecriture.statut))
               .map((l) => ({
                 id: l.id,
                 compteId: l.compteId,
@@ -376,11 +379,21 @@ describe('date d’origine des reports · le filtre du report (relecture, mineur
     expect(cloture.introuvables).toEqual(['r']);
   });
 
+  it('une SIMULATION ne dispute jamais sa pièce au report · le report ne la porte pas (relecture du premier tour)', async () => {
+    // Une facture validée, et sa simulation de même montant et libellé dans
+    // un journal de situation · le report de clôture lit tout l'exercice,
+    // brouillard compris, jamais la simulation (ligne sage-l1, fonction 12).
+    const lignes = [base({ id: 'f' }), base({ id: 'f-sim', date: d('2026-04-02'), statut: 'SITUATION' })];
+    const cloture = await originesDesReports(client(lignes) as never, 't1', d('2027-01-01'), [report('r', 1_000_000, 'Facture FV-1')]);
+    expect(cloture.origines.get('r')).toEqual({ date: d('2026-03-01'), id: 'f' });
+    expect(cloture.introuvables).toEqual([]);
+  });
+
   it('une seule définition · le report et la recherche des origines lisent le même filtre', () => {
     const fs = require('node:fs') as typeof import('node:fs');
     const path = require('node:path') as typeof import('node:path');
     const lire = (f: string) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    expect(lire('exercice/exercice.service.ts')).toMatch(/where: lignesReporteesAuDetail\(ecriture\),/);
+    expect(lire('exercice/exercice.service.ts')).toMatch(/where: lignesReporteesAuDetail\(ecritureLue\),/);
     expect(lire('relances/date-origine-des-reports.ts')).toMatch(/\.\.\.lignesReporteesAuDetail\(\{ tenantId, exerciceId: precedent\.id \}\),/);
   });
 });

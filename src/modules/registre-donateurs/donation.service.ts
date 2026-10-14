@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
 import { Donation, ModeLiberation, Prisma, TypeDonateur } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -129,6 +130,11 @@ export class DonationService {
     if (dto.ecritureId) {
       const ecriture = await this.prisma.ecriture.findFirst({ where: { id: dto.ecritureId, tenantId } });
       if (!ecriture) throw new BadRequestException('Écriture introuvable pour ce dossier (ecritureId).');
+      // Une simulation n'enregistre aucun don (ligne sage-l1, fonction 12,
+      // relecture B3) · rattachée, elle deviendrait la pièce du registre.
+      if (ecriture.statut === 'SITUATION') {
+        throw new BadRequestException(motifSimulationNonRattachable(`n° ${ecriture.numeroPiece ?? '·'}`, 'un don du registre'));
+      }
     }
 
     const TENTATIVES = 5;
@@ -193,6 +199,11 @@ export class DonationService {
     if (dto.ecritureId) {
       const ecriture = await this.prisma.ecriture.findFirst({ where: { id: dto.ecritureId, tenantId } });
       if (!ecriture) throw new BadRequestException('Écriture introuvable pour ce dossier (ecritureId).');
+      // Une simulation n'enregistre aucun don (ligne sage-l1, fonction 12,
+      // relecture B3) · rattachée, elle deviendrait la pièce du registre.
+      if (ecriture.statut === 'SITUATION') {
+        throw new BadRequestException(motifSimulationNonRattachable(`n° ${ecriture.numeroPiece ?? '·'}`, 'un don du registre'));
+      }
     }
     // Cohérence vérifiée sur la ligne TELLE QU'ELLE SERA, pas telle qu'elle
     // est : `dto` est partiel, et valider après l'`update` laisserait la base

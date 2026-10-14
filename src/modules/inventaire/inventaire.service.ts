@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { HORS_SITUATION, motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
 import {
   DecisionEcartInventaire,
   MethodeInventaireStocks,
@@ -793,7 +794,9 @@ export class InventaireService {
     const { ecart, attendue } = await this.ecartARattacher(tenantId, ecartId);
     const lignes = await this.prisma.ligneEcriture.findMany({
       where: {
-        ecriture: { tenantId, exerciceId: ecart.campagne.exerciceId, estGenereeParCloture: false },
+        // Jamais une simulation · elle ne redresse rien (ligne sage-l1,
+        // fonction 12, relecture B3), et le rattachement la refuse.
+        ecriture: { tenantId, exerciceId: ecart.campagne.exerciceId, estGenereeParCloture: false, ...HORS_SITUATION },
         // Même lecture du compte que `lignesManquantes` (le compte ou ses
         // subdivisions) · le sélecteur ne propose que ce que le rattachement
         // accepte.
@@ -807,7 +810,7 @@ export class InventaireService {
     if (ids.length === 0) return [];
     const [ecritures, prises] = await Promise.all([
       this.prisma.ecriture.findMany({
-        where: { tenantId, id: { in: ids } },
+        where: { tenantId, id: { in: ids }, ...HORS_SITUATION },
         orderBy: [{ date: 'desc' }],
         select: { id: true, date: true, numeroPiece: true, libelle: true, statut: true },
       }),
@@ -843,10 +846,15 @@ export class InventaireService {
       select: {
         exerciceId: true,
         estGenereeParCloture: true,
+        statut: true,
+        numeroPiece: true,
         lignes: { select: { debit: true, credit: true, compte: { select: { numero: true } } } },
       },
     });
     if (!ecriture) throw new NotFoundException("L'écriture indiquée n'existe pas dans ce dossier.");
+    if (ecriture.statut === StatutEcriture.SITUATION) {
+      throw new BadRequestException(motifSimulationNonRattachable(`n° ${ecriture.numeroPiece ?? '·'}`, 'un manquant d’inventaire'));
+    }
     if (ecriture.exerciceId !== ecart.campagne.exerciceId || ecriture.estGenereeParCloture) {
       throw new BadRequestException(
         "L'écriture de redressement appartient à l'exercice inventorié, et ce n'est pas une écriture de " +
@@ -901,7 +909,10 @@ export class InventaireService {
       where: { id: ecart.ecritureId, tenantId },
       select: { statut: true },
     });
-    if (ecriture && ecriture.statut !== StatutEcriture.BROUILLARD) {
+    // Seule une pièce VALIDÉE garde son lien · une simulation rattachée avant
+    // la règle (relecture B3) se détache comme un brouillard, et le message
+    // ne la dit jamais validée.
+    if (ecriture && ecriture.statut === StatutEcriture.VALIDEE) {
       throw new BadRequestException(
         "L'écriture de redressement est validée · elle est entrée au livre-journal (AUDCIF art. 22, 2°), " +
           'et son lien est la trace du redressement. Il ne se défait plus.',
@@ -1233,7 +1244,9 @@ export class InventaireService {
     const lignes = await db.ligneEcriture.findMany({
       where: {
         compte: { tenantId, numero: { startsWith: '57' } },
-        ecriture: { tenantId, exerciceId: campagne.exerciceId },
+        // Une simulation ne met aucune espèce en caisse · elle ne fait pas
+        // réclamer de procès-verbal (ligne sage-l1, fonction 12, relecture M5).
+        ecriture: { tenantId, exerciceId: campagne.exerciceId, ...HORS_SITUATION },
       },
       select: { debit: true, credit: true, compte: { select: { id: true, numero: true, intitule: true } } },
     });

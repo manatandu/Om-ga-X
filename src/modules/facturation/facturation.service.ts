@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { NatureFacture, Prisma, SensFacture } from '@prisma/client';
+import { motifSimulationNonRattachable } from '../comptabilite/ecritures-de-situation';
+import { NatureFacture, Prisma, SensFacture, StatutEcriture } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EmettreNoteDeCreditDto, EnregistrerFactureDto } from './dto/facture.dto';
 import {
@@ -298,9 +299,14 @@ export class FacturationService {
     if (dto.ecritureId) {
       const ecriture = await this.prisma.ecriture.findFirst({
         where: { id: dto.ecritureId, tenantId },
-        select: { id: true },
+        select: { id: true, statut: true, numeroPiece: true },
       });
       if (!ecriture) throw new NotFoundException('Écriture introuvable dans ce dossier.');
+      // Une simulation ne comptabilise aucune facture (ligne sage-l1,
+      // fonction 12, relecture B3) · la pièce se dirait passée au journal.
+      if (ecriture.statut === StatutEcriture.SITUATION) {
+        throw new BadRequestException(motifSimulationNonRattachable(`n° ${ecriture.numeroPiece ?? '·'}`, 'une facture'));
+      }
     }
 
     const doublon = await this.prisma.facture.findFirst({
@@ -449,9 +455,14 @@ export class FacturationService {
     if (dto.ecritureId) {
       const ecriture = await this.prisma.ecriture.findFirst({
         where: { id: dto.ecritureId, tenantId },
-        select: { id: true },
+        select: { id: true, statut: true, numeroPiece: true },
       });
       if (!ecriture) throw new NotFoundException('Écriture introuvable dans ce dossier.');
+      // Une simulation ne comptabilise aucune facture (ligne sage-l1,
+      // fonction 12, relecture B3) · la pièce se dirait passée au journal.
+      if (ecriture.statut === StatutEcriture.SITUATION) {
+        throw new BadRequestException(motifSimulationNonRattachable(`n° ${ecriture.numeroPiece ?? '·'}`, 'une facture'));
+      }
     }
 
     const note = await this.prisma.facture.create({

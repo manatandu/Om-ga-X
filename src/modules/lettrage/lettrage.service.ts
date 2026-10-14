@@ -1513,7 +1513,7 @@ export class LettrageService {
     // contraire, même devise, même exercice, libres) · jamais posé d'office,
     // le comptable choisit et confirme (« l'une propose, l'autre confirme »).
     const aRelettrer = await this.prisma.ligneEcriture.findMany({
-      where: { compteId, lettrageId: null, aRelettrerDepuis: { not: null }, ecriture: { tenantId } },
+      where: { compteId, lettrageId: null, aRelettrerDepuis: { not: null }, ecriture: { tenantId, ...HORS_SITUATION } },
       select: { id: true, debit: true, credit: true, deviseId: true, libelle: true, ecriture: { select: { date: true, exerciceId: true, libelle: true } } },
       orderBy: { id: 'asc' },
       take: 200,
@@ -1755,7 +1755,9 @@ export class LettrageService {
     // avant elle, un reclassement passé ou une clôture posée entre-temps
     // n'était relu par rien · `creerGroupe` ne revérifie que la liberté des
     // lignes, et le groupe facture-reclassement, ou une ligne figée, partait.
-    const ouvertes = await this.prisma.ligneEcriture.count({ where: { compteId, lettrageId: null, ecriture: { tenantId } } });
+    // Les lignes que le calcul peut apparier · jamais une simulation (ligne
+    // sage-l1, fonction 12), que `calculerPropositions` écarte aussi.
+    const ouvertes = await this.prisma.ligneEcriture.count({ where: { compteId, lettrageId: null, ecriture: { tenantId, ...HORS_SITUATION } } });
     return avecRetrySerialisable(
       this.prisma,
       async (tx) => {

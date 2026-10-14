@@ -111,6 +111,13 @@ describe('clôture d’un contrat de location-acquisition', () => {
     expect(creer).not.toHaveBeenCalled();
   });
 
+  it('le 623 se lit hors des écritures de situation · une simulation ne lève pas la garde (ligne sage-l1, relecture M4)', async () => {
+    const { svc, prisma } = monter({ exercice: E2027, anterieurs: [E2026], clotures: [{ exerciceId: 'e26', interetsCourus: 0 }] });
+    await svc.passer('t', 'u', 'k1', { exerciceId: 'e27', journalId: 'j' });
+    const lu = (prisma.ligneEcriture.aggregate as jest.Mock).mock.calls[0][0];
+    expect(lu.where.ecriture).toMatchObject({ statut: { not: 'SITUATION' } });
+  });
+
   it('un double envoi retire ses écritures et rend 409', async () => {
     const { svc, retirer } = monter({ exercice: E2027, anterieurs: [E2026], clotures: [{ exerciceId: 'e26', interetsCourus: 10 }], doublon: true });
     await expect(svc.passer('t', 'u', 'k1', { exerciceId: 'e27', journalId: 'j' })).rejects.toThrow('déjà passée');

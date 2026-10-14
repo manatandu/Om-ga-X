@@ -9,8 +9,10 @@ import {
   moisNonImprimes,
   motifClotureNonImprimee,
   periodeCouverte,
+  rattacherLesImpressions,
   type ImpressionLue,
 } from './impressions-journal';
+import { ExportService } from '../exports/export.service';
 import { grilleJournauxSaisie, moisDeLExercice } from './etat-journaux-saisie';
 import { ImpressionsJournalService } from './impressions-journal.service';
 import { PLAFOND_ECRITURES_PAR_FENETRE } from '../comptabilite/ecriture.service';
@@ -184,6 +186,18 @@ describe('l’impression de la fenêtre est enregistrée par le serveur', () => 
     });
   });
 
+  it('un journal sans pièce s’imprime sans être enregistré, et la réponse le dit (relecture M6)', async () => {
+    // Enregistrée, l'impression d'un journal vide le retenait (clé vers le
+    // journal) et tenait son exercice, sans rien attester.
+    const { s, create } = service(0);
+    await expect(s.imprimer('t', 'u', { exerciceId: 'e', journalId: 'VTE' })).resolves.toEqual({
+      numero: null,
+      imprimeAt: null,
+      nombreEcritures: 0,
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('refuse une fenêtre qui ne montrerait qu’une partie du journal, et dit d’exporter', async () => {
     const { s, create } = service(PLAFOND_ECRITURES_PAR_FENETRE + 1);
     await expect(s.imprimer('t', 'u', { exerciceId: 'e' })).rejects.toThrow(/Exportez-le en Excel/);
@@ -201,6 +215,71 @@ describe('l’export du journal entier est une impression, une recherche export�
     const marquer = src.slice(src.indexOf('private async marquerJournalImprime('));
     expect(marquer).toContain('estUneRecherche(filtres)');
     expect(marquer).toContain('this.logger.error(');
+  });
+});
+
+describe('l’export d’un journal sans pièce n’est pas une impression (relecture M6)', () => {
+  function exporteur(nombre: number) {
+    const create = jest.fn();
+    const prisma = {
+      exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e', dateDebut: J('2026-01-01'), dateFin: J('2026-12-31') }) },
+      ecriture: { count: jest.fn().mockResolvedValue(nombre) },
+      $transaction: jest.fn(async (fn: (t: unknown) => unknown) =>
+        fn({
+          $executeRaw: jest.fn().mockResolvedValue(1),
+          impressionJournal: { aggregate: jest.fn().mockResolvedValue({ _max: { numero: 2 } }), create },
+          evenementAudit: { findFirst: jest.fn(), create: jest.fn() },
+        }),
+      ),
+    };
+    const vide = {} as never;
+    const svc = new ExportService(prisma as never, vide, vide, vide, vide, vide, vide, vide, vide, vide);
+    const marquer = (svc as unknown as { marquerJournalImprime: (t: string, f: object, u: string) => Promise<void> })
+      .marquerJournalImprime;
+    return { marquer: (f: object) => marquer.call(svc, 't', f, 'u'), create };
+  }
+
+  it('rien n’est enregistré quand le périmètre ne compte aucune pièce ; une pièce suffit', async () => {
+    const vide = exporteur(0);
+    await vide.marquer({ exerciceId: 'e', journalId: 'VTE' });
+    expect(vide.create).not.toHaveBeenCalled();
+    const plein = exporteur(3);
+    await plein.marquer({ exerciceId: 'e', journalId: 'VTE' });
+    expect(plein.create).toHaveBeenCalledTimes(1);
+    expect(plein.create.mock.calls[0][0].data).toMatchObject({ numero: 3, nombreEcritures: 3, forme: 'EXPORT' });
+  });
+});
+
+describe('une impression suit l’exercice qui reprend sa période, jamais supprimée (relecture M6)', () => {
+  it('chaque impression est rattachée par une mise à jour unitaire, au journal d’audit', async () => {
+    const lues = [{ id: 'i1' }, { id: 'i2' }];
+    const findMany = jest.fn().mockResolvedValueOnce(lues);
+    const update = jest.fn().mockResolvedValue({});
+    const tx = { impressionJournal: { findMany, update } };
+    await expect(rattacherLesImpressions(tx as never, 't', 'liquidation', 'arrete')).resolves.toBe(2);
+    expect(findMany.mock.calls[0][0].where).toEqual({ tenantId: 't', exerciceId: 'liquidation' });
+    expect(update.mock.calls.map((c) => c[0])).toEqual([
+      { where: { id: 'i1' }, data: { exerciceId: 'arrete' } },
+      { where: { id: 'i2' }, data: { exerciceId: 'arrete' } },
+    ]);
+  });
+
+  it('l’arrêt et son annulation les rattachent AVANT de retirer un exercice, et elles n’occupent plus l’exercice', () => {
+    // Comptées parmi les usages, elles enfermaient l'arrêt d'une société sans
+    // liquidation ; sous la clé RESTRICT, l'annulation de l'arrêt tombait.
+    const src = readFileSync(join(__dirname, '..', 'exercice', 'exercice.service.ts'), 'utf8');
+    const suppressions = [...src.matchAll(/await tx\.exercice\.delete\(\{ where: \{ id: ([\w.]+) \} \}\);/g)];
+    expect(suppressions.length).toBe(2);
+    for (const s of suppressions) {
+      // Le CORPS de la méthode qui retire l'exercice, jusqu'à la suppression ·
+      // l'impression de CET exercice y est rattachée à l'exercice qui reste.
+      const debutMethode = src.lastIndexOf('\n  async ', s.index);
+      const corps = src.slice(debutMethode, s.index);
+      expect(corps).toContain(`await rattacherLesImpressions(tx, tenantId, ${s[1]}, exercice.id);`);
+    }
+    const usages = src.slice(src.indexOf('async function usagesDeLExercice('));
+    expect(usages.slice(0, usages.indexOf('\n}\n'))).toContain('[CLE_IMPRESSION_VERS_EXERCICE]');
+    expect(src).toContain("const CLE_IMPRESSION_VERS_EXERCICE = 'ImpressionJournal.exerciceId';");
   });
 });
 

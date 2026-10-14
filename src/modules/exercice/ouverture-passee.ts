@@ -2,6 +2,7 @@ import { ClasseCompte, Prisma, StatutEcriture, TypeJournal } from '@prisma/clien
 import { LOT_LECTURE, lireParLots, pageApres } from '../../common/lecture-par-lots';
 import { montantsAContrePasser } from '../devises/contre-passation-manuelle';
 import { partagerLignesDEcarts } from '../devises/ecarts-disponibilites';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { jourFr } from './portefeuille-etat';
 import { LigneOuverturePassee, ouvertureNulle } from './report-a-nouveau';
 
@@ -76,6 +77,10 @@ export function filtreOuverturePasseeAuPremierJour(tenantId: string, exercice: {
     exerciceId: exercice.id,
     estANouveauProvisoire: false,
     estSoldeDesComptesDeGestion: false,
+    // Jamais une simulation (ligne sage-l1, fonction 12) · elle n'est pas une
+    // position d'ouverture, et son journal n'est ni un à-nouveau ni des
+    // opérations diverses · dit ici plutôt que déduit du type de journal.
+    ...HORS_SITUATION,
     AND: [
       { OR: [DATEE_DU_PREMIER_JOUR(exercice.dateDebut), { corrigeEcriture: { is: DATEE_DU_PREMIER_JOUR(exercice.dateDebut) } }] },
       // Une ouverture de bilan ne passe JAMAIS par un journal d'achats, de
