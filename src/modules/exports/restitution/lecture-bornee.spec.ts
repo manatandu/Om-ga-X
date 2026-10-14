@@ -101,8 +101,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // jointes, bornés par leur tenantId (demande de Manasse du 2026-10-09),
     // 158 avec la reprise des congés et les congés du personnel, bornés par
     // leur tenantId (ligne sage-l5, fonction 79), 159 avec les absences du
-    // personnel, bornées par leur tenantId (ligne sage-l5, fonction 78).
-    expect(modeles).toHaveLength(159);
+    // personnel, bornées par leur tenantId (ligne sage-l5, fonction 78), 160
+    // avec les majorations des heures, bornées par leur tenantId (même ligne).
+    expect(modeles).toHaveLength(160);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

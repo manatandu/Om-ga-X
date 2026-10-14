@@ -92,6 +92,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   RepriseCongesSalarie: 'Reprise des congés acquis',
   CongeSalarie: 'Congé du personnel',
   AbsenceSalarie: 'Absence du personnel',
+  MajorationHeures: 'Majoration des heures',
   TiersCompte: "Rattachement d'un compte à un tiers",
   ModeleReglement: 'Modèle de règlement',
   RattachementNote: "Rattachement d'une note annexe",

@@ -13,11 +13,13 @@ import { CongesController } from './conges.controller';
 import { CongesService } from './conges.service';
 import { AbsencesController } from './absences.controller';
 import { AbsencesService } from './absences.service';
+import { MajorationsHeuresController } from './majorations-heures.controller';
+import { MajorationsHeuresService } from './majorations-heures.service';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule, ComptabiliteModule],
-  controllers: [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController],
-  providers: [PersonnelService, ComptabilisationPaieService, AvancesRubriquesService, BaremesPaieService, CongesService, AbsencesService],
+  controllers: [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController],
+  providers: [PersonnelService, ComptabilisationPaieService, AvancesRubriquesService, BaremesPaieService, CongesService, AbsencesService, MajorationsHeuresService],
   exports: [PersonnelService],
 })
 export class PersonnelModule {}

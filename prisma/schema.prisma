@@ -853,6 +853,7 @@ model Tenant {
   reprisesConges               RepriseCongesSalarie[]
   congesSalaries               CongeSalarie[]
   absencesSalaries             AbsenceSalarie[]
+  majorationsHeures            MajorationHeures[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -10276,4 +10277,39 @@ model AbsenceSalarie {
 
   @@index([tenantId, salarieId, du])
   @@map("absences_salaries")
+}
+
+// Ligne sage-l5 · fonction 78, étape 2 · les heures majorées.
+
+/// Heures supplémentaires (Code du travail, art. 119 et 120, e)), travail de
+/// nuit (art. 124), travail du samedi, du dimanche ou d'un férié (arrêté du
+/// 8 août 2008, mention 11).
+enum NatureMajorationHeures {
+  HEURES_SUPPLEMENTAIRES
+  TRAVAIL_DE_NUIT
+  TRAVAIL_REPOS_OU_FERIE
+}
+
+/// UN TAUX DE MAJORATION DÉCLARÉ PAR LE CABINET, avec sa source · les arrêtés
+/// des art. 120, e) et 124 du Code du travail ne sont pas au corpus, aucun
+/// taux n'est livré. Une majoration ne se modifie ni ne se supprime · elle se
+/// désactive, au journal d'audit, puisqu'elle change la paie de chaque
+/// bulletin qui la porte.
+model MajorationHeures {
+  id           String                 @id @default(uuid())
+  tenantId     String
+  tenant       Tenant                 @relation(fields: [tenantId], references: [id])
+  nature       NatureMajorationHeures
+  libelle      String                 @db.VarChar(120)
+  tauxPourCent Decimal                @db.Decimal(7, 2)
+  source       String                 @db.VarChar(300)
+  dateEffet    DateTime               @db.Date
+  actif        Boolean                @default(true)
+  desactiveLe  DateTime?
+  desactivePar String?
+  creePar      String
+  createdAt    DateTime               @default(now())
+
+  @@index([tenantId, nature])
+  @@map("majorations_heures")
 }

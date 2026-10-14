@@ -9,6 +9,8 @@ import { OngletRubriquesAvances, type AvanceSalaire, type RubriquePaie } from '.
 import { OngletCongesPaie } from '../components/paie/CongesPaie';
 import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
 import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
+import { MajorationsHeuresPaie } from '../components/paie/MajorationsHeuresPaie';
+import { heuresPourLeBulletin, LIGNE_HEURES_VIERGE, type LigneHeures, type ListeMajorations } from '../lib/heures-majorees';
 import { dateCourte, jours as joursConge, motifCongeNonPortable, type CongeDuMois } from '../lib/conges-paie';
 import { libelleListeBornee } from '../lib/liste-bornee-personnel';
 import { TITRE_BLOC_PAIE } from './PaieDuMois';
@@ -620,6 +622,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // déclare (zéro est une réponse).
   const [absencesDuMois, setAbsencesDuMois] = useState<AbsencesDuMois | null>(null);
   const [moyenneArticle66, setMoyenneArticle66] = useState('');
+  // LIGNE SAGE-L5, FONCTION 78, ÉTAPE 2 · les heures majorées du mois · la
+  // majoration est choisie parmi celles du dossier, le montant rejoué au
+  // serveur.
+  const [majorations, setMajorations] = useState<ListeMajorations | null>(null);
+  const [lignesHeures, setLignesHeures] = useState<LigneHeures[]>([]);
   const [tous, setTous] = useState(false);
   // Les contrats saisis avec un montant et sans monnaie, comptés par le
   // serveur sur le dossier entier · null tant que le registre n'est pas lu,
@@ -812,6 +819,14 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   }, [onglet, selection]);
 
   useEffect(() => {
+    if (onglet !== 'simulation') return;
+    api.get<ListeMajorations>('/personnel/majorations-heures').then(setMajorations, (e: ApiError) => {
+      setMajorations(null);
+      setErreur(e.message);
+    });
+  }, [onglet]);
+
+  useEffect(() => {
     setCongesPortes({});
     if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
       setCongesDuMois(null);
@@ -942,14 +957,23 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       ...(Object.values(congesPortes).some(Boolean)
         ? { allocationsConge: Object.entries(congesPortes).filter(([, oui]) => oui).map(([congeId]) => ({ congeId })) }
         : {}),
+      // LIGNE SAGE-L5 · les heures majorées · la majoration et le montant sont
+      // relus au serveur ; une ligne incomplète ne part pas (`simuler` la dit).
+      ...(heuresPourLeBulletin(lignesHeures).lignes.length ? { heuresMajorees: heuresPourLeBulletin(lignesHeures).lignes } : {}),
     };
     return corps;
+  };
+
+  const motifHeuresIncompletes = () => {
+    const n = heuresPourLeBulletin(lignesHeures).incompletes;
+    return n > 0 ? `${n} ligne(s) d'heures majorées incomplète(s) · la majoration, les heures et le taux horaire se déclarent ensemble.` : '';
   };
 
   const simuler = () => {
     setErreur('');
     setSucces('');
     if (motifReductionInpp) return setErreur(motifReductionInpp);
+    if (motifHeuresIncompletes()) return setErreur(motifHeuresIncompletes());
     setEnCours(true);
     const corps = corpsSimulation();
     api
@@ -980,6 +1004,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
     setErreur('');
     setSucces('');
     if (motifReductionInpp) return setErreur(motifReductionInpp);
+    if (motifHeuresIncompletes()) return setErreur(motifHeuresIncompletes());
     setEnCours(true);
     api
       .post<{ numero: number; moisDePaie: string }>(`/personnel/salaries/${selection}/bulletins`, corpsSimulation())
@@ -1161,6 +1186,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const proposerRetenues = () => {
     if (!selection || motifEmissionDecompte !== null) return;
     if (motifReductionInpp) return setErreur(motifReductionInpp);
+    if (motifHeuresIncompletes()) return setErreur(motifHeuresIncompletes());
     const jeton = ++jetonPropositionRetenues.current;
     setErreur('');
     setPropositionRetenues(null);
@@ -1187,6 +1213,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
     // A8 (a, c) · la même garde que le bouton, et un seul envoi à la fois.
     if (motifEmissionDecompte !== null || emissionDecompteEnVol.current) return;
     if (motifReductionInpp) return setErreur(motifReductionInpp);
+    if (motifHeuresIncompletes()) return setErreur(motifHeuresIncompletes());
     emissionDecompteEnVol.current = true;
     const jeton = ++jetonEmissionDecompte.current;
     const nom = salarieDuDecompte ? nomComplet(salarieDuDecompte) : 'le salarié choisi';
@@ -2892,6 +2919,60 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
+          {majorations && majorations.majorations.some((m) => m.actif) && (
+            <div className="border border-border px-3 py-2 mt-2">
+              <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
+                Heures majorées du mois
+                <Aide
+                  titre="Heures majorées du mois"
+                  texte="Choisissez une majoration déclarée dans l'onglet Barèmes, le nombre d'heures et le taux horaire de base, celui du contrat ou de la convention, que le Code ne fixe pas. Le serveur rejoue le montant · une heure supplémentaire se paie entière et majorée, une heure de nuit, du samedi, du dimanche ou d'un férié faite dans l'horaire normal ne paie que son supplément. L'élément s'ajoute au bulletin comme prestation supplémentaire."
+                  source="Code du travail, art. 93, 119, 120 et 124 · arrêté n° 12/CAB.MIN/ETPS/042 du 8 août 2008, mentions 8 à 11"
+                />
+              </div>
+              {lignesHeures.map((l, i) => (
+                <div key={i} className="flex flex-wrap gap-1.5 items-center mt-1">
+                  <select
+                    aria-label={`Majoration de la ligne ${i + 1}`}
+                    value={l.majorationId}
+                    onChange={(e) => setLignesHeures(lignesHeures.map((x, j) => (j === i ? { ...x, majorationId: e.target.value } : x)))}
+                    className="border border-border bg-transparent px-1.5 py-0.5 w-[260px]"
+                  >
+                    <option value="">Majoration…</option>
+                    {majorations.majorations
+                      .filter((m) => m.actif)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.libelle} · {m.tauxPourCent.toLocaleString('fr-FR')} %
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    aria-label={`Heures de la ligne ${i + 1}`}
+                    inputMode="decimal"
+                    placeholder="Heures"
+                    value={l.heures}
+                    onChange={(e) => setLignesHeures(lignesHeures.map((x, j) => (j === i ? { ...x, heures: e.target.value } : x)))}
+                    className="border border-border bg-transparent px-1.5 py-0.5 w-[80px] text-right"
+                  />
+                  <input
+                    aria-label={`Taux horaire de la ligne ${i + 1}`}
+                    inputMode="decimal"
+                    placeholder="Taux horaire"
+                    value={l.tauxHoraire}
+                    onChange={(e) => setLignesHeures(lignesHeures.map((x, j) => (j === i ? { ...x, tauxHoraire: e.target.value } : x)))}
+                    className="border border-border bg-transparent px-1.5 py-0.5 w-[120px] text-right"
+                  />
+                  <button type="button" className="text-danger hover:underline" onClick={() => setLignesHeures(lignesHeures.filter((_, j) => j !== i))}>
+                    Retirer
+                  </button>
+                </div>
+              ))}
+              <button type="button" className="text-sel hover:underline mt-1" onClick={() => setLignesHeures([...lignesHeures, { ...LIGNE_HEURES_VIERGE }])}>
+                Ajouter des heures
+              </button>
+            </div>
+          )}
+
           {selection && absencesDuMois && absencesDuMois.absences.length > 0 && (
             <div className="border border-border px-3 py-2 mt-2">
               <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
@@ -3563,6 +3644,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       {onglet === 'absences' && <OngletAbsencesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'rubriques' && <OngletRubriquesAvances salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <OngletBaremesPaie peutEcrire={peutEcrire} />}
+      {onglet === 'baremes' && <MajorationsHeuresPaie peutEcrire={peutEcrire} />}
 
       {onglet === 'decompte' && (
         <div className="ecran-seul max-w-[1240px] text-[11.5px]">

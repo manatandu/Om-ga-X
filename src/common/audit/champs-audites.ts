@@ -221,6 +221,8 @@ export const MODELES_AUDITES = new Set<string>([
   // Une absence change un solde de congé et la proposition d'un bulletin
   // sans qu'aucun montant ne la nomme.
   'AbsenceSalarie',
+  // Un taux de majoration change la paie de chaque bulletin qui le porte.
+  'MajorationHeures',
 
   // ══ CLASSEMENT DU 2026-09-27 · tables de même nature que les précédentes,
   // restées hors du journal sans décision (audit serveur, point I4). ══

@@ -42,7 +42,18 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
     (proposition du salaire des jours dus et de l'indemnité d'incapacité,
     reprise au clic). Parcours `e2e/tests/sage-l5-absences.e2e.ts`. Aucune
     écriture · pas de scénario de clôture.
-  - Étape 2, heures effectuées et heures supplémentaires · à faire.
+  - Étape 2, heures majorées · faite. Moteur `personnel/heures-majorees.ts`
+    (heure supplémentaire entière et majorée, nuit, samedi, dimanche et
+    férié au seul supplément), table `MajorationHeures` (migration
+    `20270175000300_majorations_heures`), taux DÉCLARÉS par le cabinet avec
+    leur source (aucun au corpus), désactivés jamais supprimés ; les heures
+    du bulletin (`heuresMajorees` de la saisie) rejouées au serveur en
+    prestation supplémentaire. Écran · section « Majorations des heures » de
+    l'onglet Barèmes, bloc « Heures majorées du mois » de l'onglet
+    Simulation. Parcours `e2e/tests/sage-l5-heures.e2e.ts`. Non repris ·
+    compteurs libres d'heures effectuées et feuilles de temps de Sage
+    (aucun texte ne les régit ; le contrôle des 45 heures par semaine
+    suppose un relevé hebdomadaire que la paie mensuelle n'a pas).
   - Étape 3, arrêts et indemnités journalières de la CNSS · à faire.
 
 ## Reste
@@ -111,6 +122,14 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   l'accident du travail sans limite ; le congé de circonstance et
   l'empêchement du fait de l'employeur comptent ; les autres causes sont hors
   service. Les jours de maladie pendant un congé ne comptent pas comme congé.
+- **D8-e · heures majorées** · aucun taux au corpus (les arrêtés des
+  art. 120, e) et 124 n'y sont pas) · le taux se déclare avec sa source ;
+  l'heure supplémentaire se paie entière et majorée (art. 93 et 119), l'heure
+  de nuit, du samedi, du dimanche ou d'un férié faite dans l'horaire normal
+  au seul supplément (le salaire la paie déjà ; art. 124, « sans préjudice »
+  des heures supplémentaires) ; le taux horaire se déclare (45 heures par
+  semaine et 8 par jour donnent deux conversions, et le décret n° 25/22 n'en
+  écrit aucune) ; aucun plafond d'heures (art. 120, b), arrêté absent).
 - **D8-d · mise à pied** · « jusqu'à concurrence de deux fois quinze jours
   par an » (art. 57, 5°) lu comme deux mesures d'au plus quinze jours de
   calendrier par année civile ; au-delà, refus nommé.
@@ -137,11 +156,11 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
 
 ```bash
 npx jest --maxWorkers=1 src/modules/personnel/conges-acquis.spec.ts src/modules/personnel/conges-bulletin.spec.ts
-npx jest --maxWorkers=1 src/modules/personnel/absences.spec.ts
-(cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts)
+npx jest --maxWorkers=1 src/modules/personnel/absences.spec.ts src/modules/personnel/heures-majorees.spec.ts
+(cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts)
 # montage local (CLAUDE.md § 10), ports 8085 et 4185, puis
 (cd e2e && OMEGAX_APP=http://localhost:4185 OMEGAX_API=http://localhost:4185/api \
-  PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test tests/sage-l5-conges.e2e.ts tests/sage-l5-absences.e2e.ts)
+  PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test tests/sage-l5-conges.e2e.ts tests/sage-l5-absences.e2e.ts tests/sage-l5-heures.e2e.ts)
 DATABASE_URL=postgresql://jetable:jetable@localhost:5432/omegax_sage_l5 npx prisma migrate diff \
   --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
   --shadow-database-url postgresql://jetable:jetable@localhost:5432/omegax_sage_l5_ombre --exit-code

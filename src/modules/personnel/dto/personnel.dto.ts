@@ -425,6 +425,26 @@ export class AllocationCongePorteeDto {
   congeId!: string;
 }
 
+/**
+ * LIGNE SAGE-L5, FONCTION 78, ÉTAPE 2 · des heures majorées du mois · la
+ * majoration est celle que le cabinet a déclarée avec sa source, relue au
+ * serveur (`heuresAPorter`) ; le taux horaire est celui du contrat ou de la
+ * convention, que le Code ne fixe pas.
+ */
+export class HeuresMajoreesDto {
+  @IsUUID('4')
+  majorationId!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(744)
+  heures!: number;
+
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0.01)
+  tauxHoraire!: number;
+}
+
 export class SimulationPaieDto {
   /** Mois de paie au format AAAA-MM · il borne le barème et le SMIG. */
   @IsString()
@@ -438,6 +458,14 @@ export class SimulationPaieDto {
   @ValidateNested({ each: true })
   @Type(() => AllocationCongePorteeDto)
   allocationsConge?: AllocationCongePorteeDto[];
+
+  /** Ligne sage-l5 · les heures majorées du mois (Code du travail, art. 119, 120, e) et 124). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => HeuresMajoreesDto)
+  heuresMajorees?: HeuresMajoreesDto[];
 
   /** Retenues d'avance, d'acompte et de prêt · le salarié doit être nommé. */
   @IsOptional()

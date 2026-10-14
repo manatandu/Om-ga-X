@@ -158,13 +158,15 @@ import {
   lireAbsencesPourConges,
   type AllocationPortee,
 } from './conges.service';
+import { heuresAPorter, type HeuresPortee } from './majorations-heures.service';
 
 /**
  * LA SAISIE RELUE PAR LE SERVEUR · le DTO, plus ce que le serveur y ajoute et
  * qu'aucun client ne peut envoyer (le `ValidationPipe` refuse tout champ non
- * déclaré) · les allocations de congé rejouées (ligne sage-l5).
+ * déclaré) · les allocations de congé et les heures majorées rejouées (ligne
+ * sage-l5).
  */
-type SaisieRelue = SimulationPaieDto & { allocationsCongePortees?: AllocationPortee[] };
+type SaisieRelue = SimulationPaieDto & { allocationsCongePortees?: AllocationPortee[]; heuresPortees?: HeuresPortee[] };
 
 /**
  * LES BORNES DES LISTES DE TRAVAIL DU REGISTRE (audit final F259, § 8 bis).
@@ -1092,6 +1094,28 @@ export class PersonnelService {
       ];
     }
 
+    // LIGNE SAGE-L5, FONCTION 78, ÉTAPE 2 · LES HEURES MAJORÉES (art. 119,
+    // 120, e) et 124) · la majoration est relue dans le dossier, le montant
+    // rejoué ; l'élément s'ajoute sous la nature des prestations
+    // supplémentaires, dans la monnaie de la saisie. Même garde que les
+    // allocations · relue une seconde fois, la saisie ne les ajoute pas deux
+    // fois.
+    const demandeesHeures = dto.heuresMajorees ?? [];
+    let heuresPortees: HeuresPortee[] = (dto as SaisieRelue).heuresPortees ?? [];
+    if (demandeesHeures.length) {
+      if (!moisValide(dto.moisDePaie)) throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
+      heuresPortees = await heuresAPorter(this.prisma, tenantId, dto.moisDePaie, demandeesHeures);
+      const devise = dto.deviseStipulation ?? 'CDF';
+      elements = [
+        ...elements,
+        ...heuresPortees.map((h) =>
+          devise === 'USD'
+            ? { nature: 'PRESTATION_SUPPLEMENTAIRE', libelle: h.libelle, montantUsd: h.montant, montantFc: undefined as unknown as number }
+            : { nature: 'PRESTATION_SUPPLEMENTAIRE', libelle: h.libelle, montantFc: h.montant },
+        ),
+      ];
+    }
+
     const demandees = dto.retenuesAvances ?? [];
     const retenuesAvances: {
       avanceId: string;
@@ -1155,7 +1179,7 @@ export class PersonnelService {
       );
     }
     return {
-      dto: { ...dto, elements, allocationsConge: undefined, allocationsCongePortees } as SaisieRelue,
+      dto: { ...dto, elements, allocationsConge: undefined, allocationsCongePortees, heuresMajorees: undefined, heuresPortees } as SaisieRelue,
       retenuesAvances,
     };
   }
