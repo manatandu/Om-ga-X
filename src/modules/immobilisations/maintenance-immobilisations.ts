@@ -148,6 +148,23 @@ export function motifRefusPlan(plan: PlanDeRenumerotation, p: ParametresRenumero
   return null;
 }
 
+/**
+ * UNE CAMPAGNE D'INVENTAIRE OUVERTE FIGE LES NUMÉROS (relecture de la ligne) ·
+ * ses fiches recopient le numéro d'inventaire du bien à leur création
+ * (`InventaireService`, désignation « numéro · bien »), et le recensement
+ * (AUDCIF art. 42) se fait sur les étiquettes en place · renuméroter pendant
+ * le comptage ferait parler le registre et les fiches de deux biens
+ * différents. La renumérotation attend la clôture de la campagne.
+ */
+export function motifRefusCampagneOuverte(campagnes: { libelle: string; dateInventaire: Date; statut: string }[]): string | null {
+  const ouverte = campagnes.find((c) => c.statut !== 'CLOTUREE');
+  if (!ouverte) return null;
+  return (
+    `La campagne d’inventaire « ${ouverte.libelle} » du ${ouverte.dateInventaire.toISOString().slice(0, 10)} n’est pas clôturée · ` +
+    'ses fiches portent les numéros d’inventaire en place, et le comptage se fait sur eux. Renumérotez après sa clôture.'
+  );
+}
+
 /** Les numéros portés par plusieurs fiches · nommés par la maintenance, jamais corrigés d'office. */
 export function numerosEnDouble(fiches: { id: string; designation: string; numeroInventaire: string | null }[]) {
   const parNumero = new Map<string, { id: string; designation: string }[]>();

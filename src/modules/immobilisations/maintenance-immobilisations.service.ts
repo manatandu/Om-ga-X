@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma, Referentiel, StatutImmobilisation } from '@prisma/client';
+import { Prisma, Referentiel, StatutCampagneInventaire, StatutImmobilisation } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
@@ -11,6 +11,7 @@ import {
   FicheANumeroter,
   ParametresRenumerotation,
   motifRefusParametres,
+  motifRefusCampagneOuverte,
   motifRefusPlan,
   numerosEnDouble,
   planDeRenumerotation,
@@ -22,7 +23,7 @@ const PLAFOND_FICHES = 50_000;
 const PLAFOND_APERCU = 200;
 const PLAFOND_NOMMES = 50;
 
-type Db = Pick<PrismaService, 'immobilisation'>;
+type Db = Pick<PrismaService, 'immobilisation' | 'campagneInventaire'>;
 
 /**
  * RENUMÉROTATION ET MAINTENANCE DU REGISTRE (ligne sage-l4, fonction n° 73).
@@ -41,13 +42,14 @@ export class MaintenanceImmobilisationsService {
   async apercuRenumerotation(tenantId: string, p: ParametresRenumerotation) {
     const refus = motifRefusParametres(p);
     if (refus) throw new BadRequestException(refus);
-    const plan = planDeRenumerotation(await this.fichesANumeroter(this.prisma, tenantId), p);
+    const [fiches, campagne] = await Promise.all([this.fichesANumeroter(this.prisma, tenantId), this.campagneOuverte(this.prisma, tenantId)]);
+    const plan = planDeRenumerotation(fiches, p);
     return {
       nombre: plan.nombre,
       aChanger: plan.attributions.length,
       attributions: plan.attributions.slice(0, PLAFOND_APERCU),
       tronque: plan.attributions.length > PLAFOND_APERCU,
-      motifRefus: motifRefusPlan(plan, p),
+      motifRefus: campagne ?? motifRefusPlan(plan, p),
     };
   }
 
@@ -64,6 +66,8 @@ export class MaintenanceImmobilisationsService {
       this.prisma,
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`renumerotation-immobilisations:${tenantId}`}))`;
+        const campagne = await this.campagneOuverte(tx, tenantId);
+        if (campagne) throw new BadRequestException(campagne);
         const plan = planDeRenumerotation(await this.fichesANumeroter(tx, tenantId), p);
         const motif = motifRefusPlan(plan, p);
         if (motif) throw new BadRequestException(motif);
@@ -75,6 +79,17 @@ export class MaintenanceImmobilisationsService {
       // Une mise à jour journalisée par fiche, au plus `PLAFOND_RENUMEROTATION`.
       { timeout: 120_000 },
     );
+  }
+
+  /** Le refus d'une campagne d'inventaire non clôturée, ou null (`motifRefusCampagneOuverte`). */
+  private async campagneOuverte(db: Db, tenantId: string): Promise<string | null> {
+    const campagnes = await db.campagneInventaire.findMany({
+      where: { tenantId, statut: { not: StatutCampagneInventaire.CLOTUREE } },
+      select: { libelle: true, dateInventaire: true, statut: true },
+      orderBy: { dateInventaire: 'asc' },
+      take: 1,
+    });
+    return motifRefusCampagneOuverte(campagnes);
   }
 
   /**

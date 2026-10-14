@@ -12,7 +12,9 @@ import { MaintenanceImmobilisationsService } from './maintenance-immobilisations
 const jour = (s: string) => new Date(`${s}T00:00:00Z`);
 const P = { prefixe: 'IMM-', premierNumero: 1, largeur: 4, ordre: 'ACQUISITION' as const, perimetre: 'EN_SERVICE' as const };
 
-function fabrique(options: { fiches?: unknown[]; tableau?: unknown; balance?: unknown[]; sansFiche?: unknown[]; comptes?: unknown[] } = {}) {
+function fabrique(
+  options: { fiches?: unknown[]; tableau?: unknown; balance?: unknown[]; sansFiche?: unknown[]; comptes?: unknown[]; campagnes?: unknown[] } = {},
+) {
   const fiches = options.fiches ?? [
     {
       id: 'a',
@@ -50,6 +52,8 @@ function fabrique(options: { fiches?: unknown[]; tableau?: unknown; balance?: un
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
     ligneEcriture: { groupBy: jest.fn().mockResolvedValue(options.sansFiche ?? []) },
     compte: { findMany: jest.fn().mockResolvedValue(options.comptes ?? []) },
+    // La doublure rend les campagnes non clôturées que le cas pose.
+    campagneInventaire: { findMany: jest.fn().mockResolvedValue(options.campagnes ?? []) },
     $executeRaw: jest.fn(async () => {
       ordre.push('verrou');
       return 1;
@@ -115,6 +119,16 @@ describe('la renumérotation', () => {
     });
     await expect(service.renumeroter('t-1', P)).rejects.toThrow(/« Vieux camion »/);
     expect(prisma.immobilisation.update).not.toHaveBeenCalled();
+  });
+
+  it('une campagne d’inventaire non clôturée fige les numéros · l’aperçu le dit, la renumérotation refuse sans rien écrire', async () => {
+    const campagnes = [{ libelle: 'Inventaire 2026', dateInventaire: jour('2026-12-31'), statut: 'RECENSEMENT' }];
+    const { service, prisma } = fabrique({ campagnes });
+    const r = await service.apercuRenumerotation('t-1', P);
+    expect(r.motifRefus).toMatch(/« Inventaire 2026 » du 2026-12-31 n’est pas clôturée/);
+    await expect(service.renumeroter('t-1', P)).rejects.toThrow(/Renumérotez après sa clôture/);
+    expect(prisma.immobilisation.update).not.toHaveBeenCalled();
+    expect(prisma.campagneInventaire.findMany.mock.calls[0][0].where).toEqual({ tenantId: 't-1', statut: { not: 'CLOTUREE' } });
   });
 
   it('des paramètres illisibles sont refusés avant toute lecture', async () => {
