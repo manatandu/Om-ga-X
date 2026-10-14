@@ -376,6 +376,12 @@ export const DETENTEUR_RECUPERATION_TVA_CREANCE: DetenteurEcriture = 'une créan
 export const DETENTEUR_DEVISE_A_NOUVEAU: DetenteurEcriture = "la devise déclarée d'un à-nouveau (fenêtre Devises)";
 export const DETENTEUR_CORRECTION_CREANCE: DetenteurEcriture = 'une créance douteuse (correction par le résultat)';
 export const DETENTEUR_IMPOT_RESULTAT: DetenteurEcriture = "l'écriture de l'impôt sur le résultat (fenêtre Résultat fiscal)";
+// Ligne sage-l4 (n° 68, relecture M5) · lus par la création des biens depuis
+// les écritures, qui laisse naître la fiche d'une pièce que ces modules
+// LISENT sans l'avoir produite.
+export const DETENTEUR_ACQUISITION_IMMOBILISATION: DetenteurEcriture = 'une immobilisation (acquisition)';
+export const DETENTEUR_DONATION: DetenteurEcriture = 'une donation';
+export const DETENTEUR_EXECUTION_ENGAGEMENT: DetenteurEcriture = "l'exécution d'un engagement de dépense";
 
 /**
  * Suppression demandée PAR le module qui tient l'écriture · audit du serveur
@@ -1596,7 +1602,7 @@ export class EcritureService {
     // elle-même, déjà vérifiée pour ce dossier, qui les cloisonne.
     const parLEcriture = { ecritureId };
     const detenteursPossibles: Array<[string, Promise<number>]> = [
-      ['une immobilisation (acquisition)', this.prisma.immobilisation.count({ where: { tenantId, ecritureAcquisitionId: ecritureId } })],
+      [DETENTEUR_ACQUISITION_IMMOBILISATION, this.prisma.immobilisation.count({ where: { tenantId, ecritureAcquisitionId: ecritureId } })],
       ['une immobilisation (sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSortieId: ecritureId } })],
       ['une immobilisation (produit de cession)', this.prisma.immobilisation.count({ where: { tenantId, ecritureProduitCessionId: ecritureId } })],
       ['une immobilisation (mise en service d’un en-cours)', this.prisma.immobilisation.count({ where: { tenantId, ecritureMiseEnServiceId: ecritureId } })],
@@ -1627,14 +1633,14 @@ export class EcritureService {
       })],
       ["une échéance d'abonnement", this.prisma.echeanceAbonnement.count({ where: parLEcriture })],
       [DETENTEUR_LIQUIDATION_TVA, this.prisma.liquidationTva.count({ where: { tenantId, ecritureId } })],
-      ['une donation', this.prisma.donation.count({ where: { tenantId, ecritureId } })],
+      [DETENTEUR_DONATION, this.prisma.donation.count({ where: { tenantId, ecritureId } })],
       ['une affectation du résultat', this.prisma.affectationResultat.count({ where: { tenantId, ecritureId } })],
       // Le rattachement à un engagement de dépense. Sans ce refus nommé, la
       // clé étrangère RESTRICT renverrait une erreur brute de la base · et
       // s'il n'y avait pas de clé du tout, le reste à exécuter de l'engagement
       // REMONTERAIT tout seul, gonflant la colonne Engagement du tableau
       // d'exécution budgétaire sans que personne ne l'ait décidé.
-      ["l'exécution d'un engagement de dépense", this.prisma.executionEngagement.count({ where: parLEcriture })],
+      [DETENTEUR_EXECUTION_ENGAGEMENT, this.prisma.executionEngagement.count({ where: parLEcriture })],
       // Le mouvement de magasin, en inventaire permanent. Sans ce refus, le
       // lien se dénouerait en silence et la fiche de stock afficherait
       // « écriture non passée » sur un mouvement qui en avait une · la fiche

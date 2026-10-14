@@ -16,6 +16,10 @@ export interface LigneATransformer {
   compte: { numero: string; intitule: string };
   montant: number;
   motifRefus: string | null;
+  /** Ce qui ne refuse pas mais se dit (contrepartie non admise, même montant en négatif ailleurs). */
+  avertissements: string[];
+  /** Pièce du premier jour hors achats · le serveur exige la confirmation d'une acquisition de ce jour. */
+  confirmationRequise: string | null;
 }
 
 export interface SaisieDepuisLigne {
@@ -27,6 +31,8 @@ export interface SaisieDepuisLigne {
   modeAmortissement: '' | 'LINEAIRE' | 'UNITES_DOEUVRE' | 'DEGRESSIF';
   unitesOeuvrePrevues: string;
   uniteOeuvreLibelle: string;
+  /** Cochée par le cabinet seulement · jamais d'office (relecture M2). */
+  confirmerPremierJour: boolean;
 }
 
 /**
@@ -44,6 +50,7 @@ export function saisieDepuisLigne(l: LigneATransformer): SaisieDepuisLigne {
     modeAmortissement: '',
     unitesOeuvrePrevues: '',
     uniteOeuvreLibelle: '',
+    confirmerPremierJour: false,
   };
 }
 
@@ -60,5 +67,6 @@ export function corpsDepuisEcriture(ligneId: string, s: SaisieDepuisLigne) {
     ...(s.modeAmortissement ? { modeAmortissement: s.modeAmortissement } : {}),
     ...(unites && s.unitesOeuvrePrevues.trim() ? { unitesOeuvrePrevues: Number(s.unitesOeuvrePrevues) } : {}),
     ...(unites && s.uniteOeuvreLibelle.trim() ? { uniteOeuvreLibelle: s.uniteOeuvreLibelle.trim() } : {}),
+    ...(s.confirmerPremierJour ? { confirmerPremierJour: true } : {}),
   };
 }

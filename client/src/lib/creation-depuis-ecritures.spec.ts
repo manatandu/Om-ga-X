@@ -16,6 +16,8 @@ const ligne: LigneATransformer = {
   compte: { numero: '24510000', intitule: 'Matériel automobile' },
   montant: 12_000_000,
   motifRefus: null,
+  avertissements: [],
+  confirmationRequise: null,
 };
 
 describe('la fiche née d’une ligne', () => {
@@ -47,5 +49,10 @@ describe('la fiche née d’une ligne', () => {
       uniteOeuvreLibelle: 'km',
       dureeAmortissementAns: 5,
     });
+  });
+
+  it('la confirmation du premier jour ne part que cochée par le cabinet', () => {
+    expect(corpsDepuisEcriture('l-1', saisieDepuisLigne(ligne))).not.toHaveProperty('confirmerPremierJour');
+    expect(corpsDepuisEcriture('l-1', { ...saisieDepuisLigne(ligne), confirmerPremierJour: true })).toMatchObject({ confirmerPremierJour: true });
   });
 });

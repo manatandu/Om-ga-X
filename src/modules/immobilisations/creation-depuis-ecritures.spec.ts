@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma, Referentiel } from '@prisma/client';
-import { LigneACreer, motifRefusLigneACreer } from './creation-depuis-ecritures';
+import { LigneACreer, avertissementsLigneACreer, confirmationPremierJour, creditsQuiSortentUnBien, motifRefusLigneACreer } from './creation-depuis-ecritures';
 import { CreationDepuisEcrituresService } from './creation-depuis-ecritures.service';
 
 /**
@@ -24,6 +24,11 @@ const ordinaire: LigneACreer = {
   autresModules: [],
   lignesDeBien: 1,
   fondsAuCredit: [],
+  corrigeeParLaPiece: null,
+  credits: ['48120000'],
+  negatifSurUnCompteDeBien: false,
+  premierJourHorsAchats: null,
+  memeMontantEnNegatifAilleurs: null,
 };
 
 describe('la ligne qui fait naître un bien', () => {
@@ -70,9 +75,66 @@ describe('la ligne qui fait naître un bien', () => {
   });
 });
 
+describe('ce qui n’est pas une acquisition (relecture M2)', () => {
+  it('une écriture inscrite en négatif par sa correction ne porte plus de bien', () => {
+    expect(motifRefusLigneACreer({ ...ordinaire, corrigeeParLaPiece: '12' })).toMatch(/inscrite en négatif par la pièce n° 12/);
+  });
+
+  it('une pièce qui inscrit en négatif une ligne d’un compte de bien (réimputation, correction) est refusée, avec l’issue', () => {
+    const m = motifRefusLigneACreer({ ...ordinaire, negatifSurUnCompteDeBien: true });
+    expect(m).toMatch(/correction ou une réimputation/);
+    expect(m).toMatch(/reclassez le bien depuis sa fiche/);
+  });
+
+  it('un reclassement, un bilan d’ouverture amorti, une réévaluation à la main sont refusés · lus dans les deux plans', () => {
+    // Reclassement à la main · D 2445 / C 2441.
+    expect(motifRefusLigneACreer({ ...ordinaire, credits: ['24410000'] })).toMatch(/crédite 24410000/);
+    // Bilan d'ouverture saisi au brut · le 28 crédité.
+    expect(motifRefusLigneACreer({ ...ordinaire, credits: ['28450000', '10100000'] })).toMatch(/bien repris/);
+    // Réévaluation à la main · 106 ou 154.
+    for (const c of ['10610000', '15400000']) expect(creditsQuiSortentUnBien(Referentiel.SYSCOHADA, '24510000', [c])).toEqual([c]);
+    for (const c of ['10611000', '15400000', '29450000']) expect(creditsQuiSortentUnBien(Referentiel.SYCEBNL, '24510000', [c])).toEqual([c]);
+  });
+
+  it('l’en-cours achevé et l’avance soldée, que les fiches 21 à 25 admettent, restent des acquisitions', () => {
+    expect(creditsQuiSortentUnBien(Referentiel.SYSCOHADA, '24510000', ['24950000', '25200000', '48120000'])).toEqual([]);
+    expect(motifRefusLigneACreer({ ...ordinaire, credits: ['24950000'] })).toBeNull();
+  });
+
+  it('une contrepartie que les fiches n’admettent pas se dit, sans refuser', () => {
+    const avert = avertissementsLigneACreer({ ...ordinaire, credits: ['60100000'] });
+    expect(avert).toHaveLength(1);
+    expect(avert[0]).toMatch(/60100000 n'est pas une contrepartie d'acquisition admise/);
+    expect(motifRefusLigneACreer({ ...ordinaire, credits: ['60100000'] })).toBeNull();
+    expect(avertissementsLigneACreer(ordinaire)).toEqual([]);
+  });
+
+  it('le même montant inscrit en négatif ailleurs se dit', () => {
+    expect(avertissementsLigneACreer({ ...ordinaire, memeMontantEnNegatifAilleurs: '31' })).toEqual([expect.stringMatching(/pièce n° 31 inscrit le même montant en négatif/)]);
+  });
+
+  it('la pièce du premier jour hors achats demande une confirmation et oriente vers le bien repris', () => {
+    expect(confirmationPremierJour({ ...ordinaire, premierJourHorsAchats: 'OD' })).toMatch(/journal OD.*bien repris/s);
+    expect(confirmationPremierJour(ordinaire)).toBeNull();
+  });
+});
+
 const ID_LIGNE = '22222222-2222-4222-8222-222222222222';
 
-function ligneLue(options: { statut?: string; exercice?: string; debit?: number; avec4816?: boolean; duModule?: boolean } = {}) {
+function ligneLue(
+  options: {
+    statut?: string;
+    exercice?: string;
+    debit?: number;
+    avec4816?: boolean;
+    duModule?: boolean;
+    credit?: string;
+    premierJour?: boolean;
+    journalType?: string;
+    corrigee?: number;
+    negatifSurLeBien?: boolean;
+  } = {},
+) {
   return {
     id: ID_LIGNE,
     debit: new Prisma.Decimal(options.debit ?? 12_000_000),
@@ -84,19 +146,21 @@ function ligneLue(options: { statut?: string; exercice?: string; debit?: number;
     ecriture: {
       id: 'ecr-1',
       statut: options.statut ?? 'VALIDEE',
-      date: new Date('2026-03-15T00:00:00Z'),
+      date: new Date(options.premierJour ? '2026-01-01T00:00:00Z' : '2026-03-15T00:00:00Z'),
       numeroPiece: 7,
       libelle: 'Facture SOCAM',
       journalId: 'j-ach',
       exerciceId: 'ex-n',
       estGenereeParCloture: false,
       estANouveauProvisoire: false,
-      journal: { code: 'ACH' },
-      exercice: { statut: options.exercice ?? 'OUVERT', dateFin: new Date('2026-12-31') },
+      journal: { code: options.journalType === 'GENERAL' ? 'OD' : 'ACH', type: options.journalType ?? 'ACHATS' },
+      exercice: { statut: options.exercice ?? 'OUVERT', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') },
+      correction: options.corrigee ? { numeroPiece: options.corrigee } : null,
       immobilisationsAcquisition: options.duModule ? [{ designation: 'Camion du module', ligneAcquisitionId: null }] : [],
       lignes: [
         { debit: new Prisma.Decimal(12_000_000), credit: new Prisma.Decimal(0), compte: { numero: '24510000' } },
-        { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(12_000_000), compte: { numero: options.avec4816 ? '48160000' : '48120000' } },
+        { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(12_000_000), compte: { numero: options.credit ?? (options.avec4816 ? '48160000' : '48120000') } },
+        ...(options.negatifSurLeBien ? [{ debit: new Prisma.Decimal(-12_000_000), credit: new Prisma.Decimal(0), compte: { numero: '24410000' } }] : []),
       ],
     },
   };
@@ -110,13 +174,19 @@ function fabrique(
     tenues?: { id: string; libelles: string[] }[];
     referentiel?: Referentiel;
     total?: number;
+    negatifs?: { compteId: string; debit: Prisma.Decimal; ecriture: { id: string; numeroPiece: number } }[];
   } = {},
 ) {
   const ligne = options.ligne === undefined ? ligneLue() : options.ligne;
   const prisma = {
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: options.referentiel ?? Referentiel.SYSCOHADA }) },
     ligneEcriture: {
-      findMany: jest.fn().mockResolvedValue(options.lignes ?? (ligne ? [ligne] : [])),
+      // La doublure honore la requête · la lecture des négatifs (débit < 0)
+      // rend les siens, la liste rend les lignes candidates.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      findMany: jest.fn((a: any) =>
+        Promise.resolve(a?.where?.debit?.lt !== undefined ? (options.negatifs ?? []) : (options.lignes ?? (ligne ? [ligne] : []))),
+      ),
       count: jest.fn().mockResolvedValue(options.total ?? (ligne ? 1 : 0)),
       findFirst: jest.fn().mockResolvedValue(ligne),
     },
@@ -182,14 +252,46 @@ describe('la liste des lignes à transformer', () => {
       const l = ligneLue();
       return { ...l, id: `l-${i}`, ecriture: { ...l.ecriture, id } };
     });
-    const { service, ecritures } = fabrique({ lignes, total: 5, tenues: [{ id: 'e-4', libelles: ['une donation'] }] });
+    const { service, ecritures } = fabrique({ lignes, total: 5, tenues: [{ id: 'e-4', libelles: ["une échéance d'abonnement"] }] });
     const r = await service.lignes('t-1');
-    expect(r.lignes.map((l) => l.motifRefus)).toEqual([null, null, null, expect.stringMatching(/tenue par une donation/), null]);
+    expect(r.lignes.map((l) => l.motifRefus)).toEqual([null, null, null, expect.stringMatching(/tenue par une échéance d'abonnement/), null]);
     // Une page sans écriture tenue coûte une seule lecture.
     const sansTenue = fabrique({ lignes, total: 5 });
     await sansTenue.service.lignes('t-1');
     expect(sansTenue.ecritures.detenteursDesEcritures).toHaveBeenCalledTimes(1);
     expect(ecritures.detenteursDesEcritures.mock.calls.length).toBeLessThan(10);
+  });
+
+  it('une donation ou un engagement de dépense LIT la pièce sans la produire · la fiche naît quand même (relecture M5)', async () => {
+    const lignes = ['e-1', 'e-2'].map((id, i) => {
+      const l = ligneLue();
+      return { ...l, id: `l-${i}`, ecriture: { ...l.ecriture, id } };
+    });
+    const { service } = fabrique({
+      lignes,
+      total: 2,
+      tenues: [
+        { id: 'e-1', libelles: ['une donation'] },
+        { id: 'e-2', libelles: ["l'exécution d'un engagement de dépense"] },
+      ],
+    });
+    const r = await service.lignes('t-1');
+    expect(r.lignes.map((l) => l.motifRefus)).toEqual([null, null]);
+  });
+
+  it('la liste écarte l’écriture corrigée par un négatif, et sert avertissements et confirmation (relecture M2)', async () => {
+    const { service, prisma } = fabrique({
+      ligne: ligneLue({ premierJour: true, journalType: 'GENERAL', credit: '60100000' }),
+      negatifs: [{ compteId: 'c-2451', debit: new Prisma.Decimal(-12_000_000), ecriture: { id: 'ecr-9', numeroPiece: 31 } }],
+    });
+    const r = await service.lignes('t-1');
+    expect(prisma.ligneEcriture.findMany.mock.calls[0][0].where.ecriture.correction).toBeNull();
+    // Les négatifs cherchés ne sont ni des corrections liées ni des pièces corrigées.
+    const lectureNegatifs = prisma.ligneEcriture.findMany.mock.calls.find(([a]) => a.where.debit?.lt !== undefined);
+    expect(lectureNegatifs?.[0].where.ecriture).toMatchObject({ tenantId: 't-1', corrigeEcritureId: null, correction: null });
+    expect(r.lignes[0].motifRefus).toBeNull();
+    expect(r.lignes[0].avertissements).toEqual([expect.stringMatching(/60100000/), expect.stringMatching(/pièce n° 31/)]);
+    expect(r.lignes[0].confirmationRequise).toMatch(/journal OD/);
   });
 
   it('chaque ligne dit pourquoi elle ne peut pas faire naître un bien', async () => {
@@ -243,6 +345,37 @@ describe('la fiche née de la ligne', () => {
     const tenue = fabrique({ detenteurs: ['une immobilisation (acquisition)', 'une dotation aux amortissements'] });
     await expect(tenue.service.creer('t-1', 'u-1', { ligneId: ID_LIGNE })).rejects.toThrow(/une dotation aux amortissements/);
     expect(tenue.immobilisations.creer).not.toHaveBeenCalled();
+  });
+
+  it('refuse la pièce corrigée, la réimputation, le reclassement à la main (relecture M2)', async () => {
+    for (const [ligne, motif] of [
+      [ligneLue({ corrigee: 12 }), /pièce n° 12/],
+      [ligneLue({ negatifSurLeBien: true }), /réimputation/],
+      [ligneLue({ credit: '24410000' }), /crédite 24410000/],
+      [ligneLue({ credit: '28450000' }), /bien repris/],
+    ] as const) {
+      const f = fabrique({ ligne });
+      await expect(f.service.creer('t-1', 'u-1', { ligneId: ID_LIGNE })).rejects.toThrow(motif);
+      expect(f.immobilisations.creer).not.toHaveBeenCalled();
+    }
+  });
+
+  it('la pièce du premier jour en opérations diverses exige la confirmation, puis passe', async () => {
+    const f = fabrique({ ligne: ligneLue({ premierJour: true, journalType: 'GENERAL' }) });
+    await expect(f.service.creer('t-1', 'u-1', { ligneId: ID_LIGNE })).rejects.toThrow(/bien repris/);
+    expect(f.immobilisations.creer).not.toHaveBeenCalled();
+    await f.service.creer('t-1', 'u-1', { ligneId: ID_LIGNE, confirmerPremierJour: true });
+    expect(f.immobilisations.creer).toHaveBeenCalledTimes(1);
+    // Au journal d'achats, la pièce du premier jour est une acquisition ordinaire.
+    const achats = fabrique({ ligne: ligneLue({ premierJour: true }) });
+    await achats.service.creer('t-1', 'u-1', { ligneId: ID_LIGNE });
+    expect(achats.immobilisations.creer).toHaveBeenCalledTimes(1);
+  });
+
+  it('une donation qui a rattaché la pièce ne la refuse pas (relecture M5)', async () => {
+    const { service, immobilisations } = fabrique({ detenteurs: ['une donation', "l'exécution d'un engagement de dépense"] });
+    await service.creer('t-1', 'u-1', { ligneId: ID_LIGNE });
+    expect(immobilisations.creer).toHaveBeenCalledTimes(1);
   });
 
   it('une autre fiche née de la même écriture ne bloque pas la ligne suivante', async () => {

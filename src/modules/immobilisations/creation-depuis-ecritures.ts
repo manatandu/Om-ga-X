@@ -1,5 +1,6 @@
 import { Referentiel } from '@prisma/client';
 import { estCompteDeBien } from './compte-du-bien';
+import { contrepartieAcquisitionAdmise, motifRefusContrepartie } from './contrepartie-acquisition';
 import { estCompteEnCours } from './immobilisation-en-cours';
 
 /**
@@ -49,6 +50,50 @@ export interface LigneACreer {
   lignesDeBien: number;
   /** Comptes de fonds crédités par l'écriture. */
   fondsAuCredit: string[];
+  /**
+   * Relecture M2 · la pièce de correction qui a inscrit cette écriture en
+   * négatif (`Ecriture.correction`), ou null. Corrigée, elle ne porte plus de
+   * bien · la ligne exacte est celle de la pièce qui la remplace.
+   */
+  corrigeeParLaPiece: string | null;
+  /** Les comptes crédités par la pièce (ligne au crédit, au signe près). */
+  credits: string[];
+  /** La pièce porte une ligne EN NÉGATIF sur un compte de bien (correction, réimputation). */
+  negatifSurUnCompteDeBien: boolean;
+  /**
+   * La pièce est du premier jour de l'exercice, passée à un journal qui n'est
+   * ni d'achats ni de trésorerie · son code, ou null.
+   */
+  premierJourHorsAchats: string | null;
+  /** Une AUTRE pièce validée inscrit le même montant en négatif à ce compte · son numéro, ou null. */
+  memeMontantEnNegatifAilleurs: string | null;
+}
+
+/**
+ * LES CRÉDITS QUI FONT D'UNE PIÈCE AUTRE CHOSE QU'UNE ACQUISITION (relecture
+ * M2) · un compte de bien qui n'est pas une contrepartie admise du bien
+ * (reclassement D 2445 / C 2441, échange, mise en service passée à la main
+ * hors l'en-cours de la fiche), un amortissement (28) ou une dépréciation
+ * (29) · une reprise de bilan d'ouverture ou une sortie, un écart de
+ * réévaluation (106) ou une provision spéciale (154) · une réévaluation
+ * passée à la main. Les quatre racines sont ouvertes sous ces numéros aux
+ * deux plans (AUDCIF Titre VII, comptes 10, 15, 28 et 29 ; SYCEBNL Partie 2
+ * ch. 2) · l'en-cours achevé (2x9) et l'avance soldée (251, 252), que les
+ * fiches des comptes 21 à 25 admettent, ne sont pas visés.
+ */
+export function creditsQuiSortentUnBien(referentiel: Referentiel, numeroCompteDuBien: string, credits: readonly string[]): string[] {
+  return [
+    ...new Set(
+      credits.filter(
+        (c) =>
+          c.startsWith('28') ||
+          c.startsWith('29') ||
+          c.startsWith('106') ||
+          c.startsWith('154') ||
+          (estCompteDeBien(referentiel, c) && !contrepartieAcquisitionAdmise(referentiel, numeroCompteDuBien, c)),
+      ),
+    ),
+  ];
 }
 
 export function motifRefusLigneACreer(l: LigneACreer): string | null {
@@ -73,6 +118,28 @@ export function motifRefusLigneACreer(l: LigneACreer): string | null {
   if (l.autresModules.length > 0) {
     return `L'écriture est tenue par ${l.autresModules.join(', ')} · elle n'est pas une acquisition à reprendre.`;
   }
+  if (l.corrigeeParLaPiece !== null) {
+    return (
+      `L'écriture a été inscrite en négatif par la pièce n° ${l.corrigeeParLaPiece} (AUDCIF art. 20, al. 2) · elle ne porte ` +
+      "plus de bien. La ligne exacte est celle de la pièce passée à sa place."
+    );
+  }
+  if (l.negatifSurUnCompteDeBien) {
+    return (
+      "La pièce inscrit en négatif une ligne d'un compte de bien · c'est une correction ou une réimputation, pas une " +
+      "acquisition. Si elle déplace un bien entre deux comptes, inscrivez-la en négatif (Corriger), créez la fiche depuis la " +
+      "ligne d'origine, puis reclassez le bien depuis sa fiche · le reclassement du module passe et retient son écriture."
+    );
+  }
+  const sortants = creditsQuiSortentUnBien(l.referentiel, l.numeroCompte, l.credits);
+  if (sortants.length > 0) {
+    return (
+      `La pièce crédite ${sortants.join(', ')} · un amortissement, une dépréciation, un écart de réévaluation ou un autre ` +
+      "compte de bien ne sont pas la contrepartie d'une acquisition (fiches des comptes 21 à 24). C'est une reprise de bilan " +
+      "d'ouverture (le bien se crée en bien repris, avec son amortissement antérieur, sans écriture), un reclassement ou une " +
+      "réévaluation (passés par la fiche du bien, qui retient leur écriture)."
+    );
+  }
   if (l.lignesDeBien > 1 && l.fondsAuCredit.length > 0) {
     return (
       `L'écriture porte ${l.lignesDeBien} biens et crédite un fonds (${l.fondsAuCredit.join(', ')}) · sa reprise ne se ` +
@@ -81,4 +148,42 @@ export function motifRefusLigneACreer(l: LigneACreer): string | null {
     );
   }
   return null;
+}
+
+/**
+ * CE QUI NE REFUSE PAS, MAIS SE DIT (relecture M2) · une contrepartie que les
+ * fiches des comptes 21 à 24 n'admettent pas pour ce bien (la création par le
+ * module la refuserait, `motifRefusContrepartie`), et le même montant inscrit
+ * en négatif à ce compte par une autre pièce, qui peut l'avoir réimputée.
+ */
+export function avertissementsLigneACreer(l: LigneACreer): string[] {
+  const sortants = new Set(creditsQuiSortentUnBien(l.referentiel, l.numeroCompte, l.credits));
+  const avertissements = [...new Set(l.credits)]
+    .filter((c) => !sortants.has(c))
+    .map((c) => motifRefusContrepartie(l.referentiel, l.numeroCompte, c))
+    .filter((m): m is string => !!m);
+  if (l.memeMontantEnNegatifAilleurs !== null) {
+    avertissements.push(
+      `La pièce n° ${l.memeMontantEnNegatifAilleurs} inscrit le même montant en négatif à ce compte · si elle réimpute ou ` +
+        "corrige cette ligne, le bien ne naît pas d'elle.",
+    );
+  }
+  return avertissements;
+}
+
+/**
+ * LA PIÈCE DU PREMIER JOUR, HORS ACHATS ET TRÉSORERIE (relecture M2) · le plus
+ * souvent la reprise du bilan d'ouverture saisie en opérations diverses, dont
+ * le bien est REPRIS (audit final F32) et porte son amortissement antérieur ;
+ * née en acquisition, la fiche se doterait comme un bien neuf. Le cabinet
+ * confirme que c'est bien une acquisition de ce jour, sinon il crée le bien
+ * repris. Null quand rien n'est à confirmer.
+ */
+export function confirmationPremierJour(l: LigneACreer): string | null {
+  if (!l.premierJourHorsAchats) return null;
+  return (
+    `La pièce est du premier jour de l'exercice, au journal ${l.premierJourHorsAchats} · s'il s'agit de la reprise du bilan ` +
+    "d'ouverture, le bien est repris · créez sa fiche en bien repris (Nouvelle immobilisation, « Bien repris »), avec son " +
+    "amortissement antérieur, sans écriture. Confirmez seulement une acquisition faite ce jour-là."
+  );
 }

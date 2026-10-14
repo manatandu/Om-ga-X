@@ -1,5 +1,5 @@
 import { ModeAmortissement } from '@prisma/client';
-import { IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 
 /**
  * LA FICHE NÉE D'UNE LIGNE D'ACQUISITION DÉJÀ PASSÉE (ligne sage-l4,
@@ -61,4 +61,13 @@ export class CreerDepuisEcritureDto {
   @IsString()
   @MaxLength(60)
   uniteOeuvreLibelle?: string;
+
+  /**
+   * Relecture M2 · une pièce du premier jour de l'exercice, hors achats et
+   * trésorerie, est d'ordinaire la reprise du bilan d'ouverture (bien REPRIS)
+   * · le cabinet confirme ici une acquisition faite ce jour-là.
+   */
+  @IsOptional()
+  @IsBoolean()
+  confirmerPremierJour?: boolean;
 }

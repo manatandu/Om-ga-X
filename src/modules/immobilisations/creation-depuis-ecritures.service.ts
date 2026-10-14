@@ -1,17 +1,36 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, Referentiel, StatutEcriture, StatutExercice } from '@prisma/client';
+import { Prisma, Referentiel, StatutEcriture, StatutExercice, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
-import { EcritureService } from '../comptabilite/ecriture.service';
+import {
+  DETENTEUR_ACQUISITION_IMMOBILISATION,
+  DETENTEUR_DONATION,
+  DETENTEUR_EXECUTION_ENGAGEMENT,
+  EcritureService,
+} from '../comptabilite/ecriture.service';
 import { ImmobilisationService } from './immobilisation.service';
 import { estCompteDeBien } from './compte-du-bien';
 import { fondsDuCompte } from './reprise-subvention';
 import { RACINE_DETTE_RESERVE_PROPRIETE } from './reserve-propriete';
-import { LigneACreer, motifRefusLigneACreer } from './creation-depuis-ecritures';
+import { LigneACreer, avertissementsLigneACreer, confirmationPremierJour, motifRefusLigneACreer } from './creation-depuis-ecritures';
 import type { CreerDepuisEcritureDto } from './dto/creation-depuis-ecritures.dto';
 
 const PLAFOND_LIGNES = 200;
-/** Le libellé que `detenteursDe` donne à la fiche dont l'écriture est l'acquisition. */
-const DETENTEUR_ACQUISITION = 'une immobilisation (acquisition)';
+/**
+ * LES DÉTENTEURS QUI NE REFUSENT PAS LA FICHE · la fiche née d'une autre
+ * ligne de la même pièce (jugée par `immobilisationsAcquisition`), et les
+ * modules qui LISENT une pièce passée sans la produire · la donation du
+ * registre des donateurs (un don en nature D 2 / C 14) et l'exécution d'un
+ * engagement de dépense rattachent une écriture existante (relecture M5).
+ * Refusée, la pièce n'avait plus d'issue · « Nouvelle immobilisation »
+ * aurait passé une seconde écriture et doublé le brut au bilan.
+ */
+const DETENTEURS_QUI_NE_REFUSENT_PAS: ReadonlySet<string> = new Set([
+  DETENTEUR_ACQUISITION_IMMOBILISATION,
+  DETENTEUR_DONATION,
+  DETENTEUR_EXECUTION_ENGAGEMENT,
+]);
+/** Les journaux d'où une pièce du premier jour est d'ordinaire une acquisition. */
+const JOURNAUX_D_ACQUISITION: ReadonlySet<TypeJournal> = new Set([TypeJournal.ACHATS, TypeJournal.TRESORERIE]);
 const n = (x: unknown) => Number(x ?? 0);
 const jourIso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -41,6 +60,10 @@ export function filtreLignesDeBienSansFiche(
       ...(borne.valideesDesExercicesOuverts ? { statut: StatutEcriture.VALIDEE, exercice: { statut: StatutExercice.OUVERT } } : {}),
       estGenereeParCloture: false,
       estANouveauProvisoire: false,
+      // Relecture M2 · une écriture inscrite en négatif par sa correction ne
+      // porte plus de bien (AUDCIF art. 20, al. 2) · la ligne exacte est celle
+      // de la pièce qui la remplace.
+      correction: null,
       // L'acquisition que le module a passée · une fiche née d'une écriture
       // déjà passée porte sa ligne, pas l'écriture entière.
       immobilisationsAcquisition: { none: { ligneAcquisitionId: null } },
@@ -75,8 +98,9 @@ const SELECTION_LIGNE = {
       exerciceId: true,
       estGenereeParCloture: true,
       estANouveauProvisoire: true,
-      journal: { select: { code: true } },
-      exercice: { select: { statut: true, dateFin: true } },
+      journal: { select: { code: true, type: true } },
+      exercice: { select: { statut: true, dateDebut: true, dateFin: true } },
+      correction: { select: { numeroPiece: true } },
       immobilisationsAcquisition: { select: { designation: true, ligneAcquisitionId: true }, take: 50 },
       lignes: { select: { debit: true, credit: true, compte: { select: { numero: true } } }, take: 200 },
     },
@@ -117,12 +141,16 @@ export class CreationDepuisEcrituresService {
       }),
       this.prisma.ligneEcriture.count({ where }),
     ]);
-    const tenues = await this.tenuesParUnAutreModule(tenantId, lues.map((l) => l.ecriture.id));
+    const [tenues, negatifs] = await Promise.all([
+      this.tenuesParUnAutreModule(tenantId, lues.map((l) => l.ecriture.id)),
+      this.negatifsAilleurs(tenantId, lues),
+    ]);
     return {
       total,
       tronque: total > lues.length,
       lignes: lues.map((l) => {
-        const motifRefus = motifRefusLigneACreer(this.jugement(referentiel, l, tenues.get(l.ecriture.id) ?? []));
+        const jugee = this.jugement(referentiel, l, tenues.get(l.ecriture.id) ?? [], negatifs);
+        const motifRefus = motifRefusLigneACreer(jugee);
         return {
           ligneId: l.id,
           ecritureId: l.ecriture.id,
@@ -133,6 +161,8 @@ export class CreationDepuisEcrituresService {
           compte: { numero: l.compte.numero, intitule: l.compte.intitule },
           montant: n(l.debit),
           motifRefus,
+          avertissements: motifRefus ? [] : avertissementsLigneACreer(jugee),
+          confirmationRequise: motifRefus ? null : confirmationPremierJour(jugee),
         };
       }),
     };
@@ -145,9 +175,12 @@ export class CreationDepuisEcrituresService {
     if (!l) throw new NotFoundException('Ligne introuvable dans ce dossier.');
     // Tous les modules qui tiennent l'écriture, lus par la liste même du refus
     // de suppression · jamais une copie (`detenteursDe`).
-    const autres = (await this.ecritures.detenteursDeLEcriture(tenantId, l.ecriture.id)).filter((d) => d !== DETENTEUR_ACQUISITION);
-    const motif = motifRefusLigneACreer(this.jugement(referentiel, l, autres));
+    const autres = (await this.ecritures.detenteursDeLEcriture(tenantId, l.ecriture.id)).filter((d) => !DETENTEURS_QUI_NE_REFUSENT_PAS.has(d));
+    const jugee = this.jugement(referentiel, l, autres, await this.negatifsAilleurs(tenantId, [l]));
+    const motif = motifRefusLigneACreer(jugee);
     if (motif) throw new BadRequestException(motif);
+    const aConfirmer = confirmationPremierJour(jugee);
+    if (aConfirmer && dto.confirmerPremierJour !== true) throw new BadRequestException(aConfirmer);
 
     const reserve = l.ecriture.lignes.some((x) => n(x.credit) > 0 && x.compte.numero.startsWith(RACINE_DETTE_RESERVE_PROPRIETE));
     try {
@@ -198,7 +231,7 @@ export class CreationDepuisEcrituresService {
     const tenues = new Map<string, string[]>();
     const explorer = async (lot: string[]): Promise<void> => {
       if (lot.length === 0) return;
-      const autres = (await this.ecritures.detenteursDesEcritures(tenantId, lot)).filter((d) => d !== DETENTEUR_ACQUISITION);
+      const autres = (await this.ecritures.detenteursDesEcritures(tenantId, lot)).filter((d) => !DETENTEURS_QUI_NE_REFUSENT_PAS.has(d));
       if (autres.length === 0) return;
       if (lot.length === 1) {
         tenues.set(lot[0], autres);
@@ -212,9 +245,49 @@ export class CreationDepuisEcrituresService {
     return tenues;
   }
 
-  private jugement(referentiel: Referentiel, l: LigneLue, autresModules: string[]): LigneACreer {
+  /**
+   * LE MÊME MONTANT INSCRIT EN NÉGATIF À CE COMPTE PAR UNE AUTRE PIÈCE
+   * (relecture M2) · une réimputation ou une écriture en négatif saisie à la
+   * main, validée, d'un exercice ouvert, qui n'est ni une correction liée (son
+   * origine est déjà écartée) ni elle-même corrigée. Une seule lecture pour la
+   * page, bornée · la clé est le compte et le montant au centime.
+   */
+  private async negatifsAilleurs(tenantId: string, lignes: readonly LigneLue[]): Promise<Map<string, { ecritureId: string; numeroPiece: number | null }[]>> {
+    const comptes = [...new Set(lignes.map((l) => l.compteId))];
+    const parCle = new Map<string, { ecritureId: string; numeroPiece: number | null }[]>();
+    if (comptes.length === 0) return parCle;
+    const negatifs = await this.prisma.ligneEcriture.findMany({
+      where: {
+        compteId: { in: comptes },
+        debit: { lt: 0 },
+        ecriture: {
+          tenantId,
+          statut: StatutEcriture.VALIDEE,
+          exercice: { statut: StatutExercice.OUVERT },
+          corrigeEcritureId: null,
+          correction: null,
+        },
+      },
+      select: { compteId: true, debit: true, ecriture: { select: { id: true, numeroPiece: true } } },
+      take: 2000,
+    });
+    for (const x of negatifs) {
+      const cle = `${x.compteId}|${Math.round(-n(x.debit) * 100)}`;
+      parCle.set(cle, [...(parCle.get(cle) ?? []), { ecritureId: x.ecriture.id, numeroPiece: x.ecriture.numeroPiece }]);
+    }
+    return parCle;
+  }
+
+  private jugement(
+    referentiel: Referentiel,
+    l: LigneLue,
+    autresModules: string[],
+    negatifs: Map<string, { ecritureId: string; numeroPiece: number | null }[]>,
+  ): LigneACreer {
     const duModule = l.ecriture.immobilisationsAcquisition.find((i) => i.ligneAcquisitionId === null);
     const ref = referentiel === Referentiel.SYCEBNL ? 'SYCEBNL' : 'SYSCOHADA';
+    const ailleurs = (negatifs.get(`${l.compteId}|${Math.round(n(l.debit) * 100)}`) ?? []).find((x) => x.ecritureId !== l.ecriture.id);
+    const premierJour = jourIso(l.ecriture.date) === jourIso(l.ecriture.exercice.dateDebut);
     return {
       referentiel,
       statutEcriture: l.ecriture.statut,
@@ -229,6 +302,13 @@ export class CreationDepuisEcrituresService {
       fondsAuCredit: [
         ...new Set(l.ecriture.lignes.filter((x) => n(x.credit) > 0 && !!fondsDuCompte(ref, x.compte.numero)).map((x) => x.compte.numero)),
       ],
+      corrigeeParLaPiece: l.ecriture.correction ? String(l.ecriture.correction.numeroPiece ?? '·') : null,
+      credits: [...new Set(l.ecriture.lignes.filter((x) => n(x.credit) > 0).map((x) => x.compte.numero))],
+      negatifSurUnCompteDeBien: l.ecriture.lignes.some(
+        (x) => (n(x.debit) < 0 || n(x.credit) < 0) && estCompteDeBien(referentiel, x.compte.numero),
+      ),
+      premierJourHorsAchats: premierJour && !JOURNAUX_D_ACQUISITION.has(l.ecriture.journal.type) ? l.ecriture.journal.code : null,
+      memeMontantEnNegatifAilleurs: ailleurs ? String(ailleurs.numeroPiece ?? '·') : null,
     };
   }
 

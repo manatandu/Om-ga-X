@@ -113,7 +113,7 @@ export function CreationDepuisEcritures({
               Créer depuis les écritures
               <Aide
                 titre="Créer les biens depuis les écritures"
-                texte="Les lignes au débit d'un compte de bien, d'écritures validées d'un exercice ouvert, qu'aucune fiche ne porte encore. La fiche naît de la ligne choisie · compte, valeur et date d'acquisition sont ceux de la ligne, et aucune écriture n'est passée (une seconde doublerait la valeur au bilan). L'écriture est alors retenue par la fiche, qui se retire tant qu'aucun traitement ne l'a lue. Un bien dont le coût est porté sur plusieurs lignes, ou une pièce de plusieurs biens qui crédite un fonds, se corrige d'abord au journal en une ligne et une pièce par bien. Une acquisition d'un exercice clôturé se déclare en bien repris."
+                texte="Les lignes au débit d'un compte de bien, d'écritures validées d'un exercice ouvert, qu'aucune fiche ne porte encore. La fiche naît de la ligne choisie · compte, valeur et date d'acquisition sont ceux de la ligne, et aucune écriture n'est passée (une seconde doublerait la valeur au bilan). L'écriture est alors retenue par la fiche, qui se retire tant qu'aucun traitement ne l'a lue. Un bien dont le coût est porté sur plusieurs lignes, ou une pièce de plusieurs biens qui crédite un fonds, se corrige d'abord au journal en une ligne et une pièce par bien. Une acquisition d'un exercice clôturé se déclare en bien repris. Une pièce corrigée par un négatif, une réimputation, un reclassement, une réévaluation ou une reprise de bilan d'ouverture (amortissement crédité) ne sont pas des acquisitions · la liste les refuse et dit l'issue. Une pièce du premier jour hors achats et trésorerie demande de confirmer une acquisition de ce jour, sinon le bien se crée en bien repris."
                 source="AUDCIF art. 20, 22 et 35 ; fiches des comptes 21 à 24"
               />
             </span>
@@ -162,6 +162,11 @@ export function CreationDepuisEcritures({
                         <td>
                           {l.libelle}
                           {l.motifRefus && <span className="block text-[11px] text-warning">{l.motifRefus}</span>}
+                          {l.avertissements.map((a) => (
+                            <span key={a} className="block text-[11px] text-warning">
+                              {a}
+                            </span>
+                          ))}
                         </td>
                         <td className="text-right font-mono">{montant(l.montant)}</td>
                         <td className="text-right">
@@ -252,6 +257,19 @@ export function CreationDepuisEcritures({
                     </>
                   )}
                 </div>
+                {choisie.confirmationRequise && (
+                  <div className="mt-3">
+                    <div className="text-warning">{choisie.confirmationRequise}</div>
+                    <label className={`${etiquette} flex items-center gap-1.5 mt-1`}>
+                      <input
+                        type="checkbox"
+                        checked={saisie.confirmerPremierJour}
+                        onChange={(e) => poser('confirmerPremierJour', e.target.checked)}
+                      />
+                      C’est une acquisition faite ce jour-là
+                    </label>
+                  </div>
+                )}
                 {erreur && <div className="mt-2 text-danger">{erreur}</div>}
                 <div className="mt-3 flex gap-2 justify-end">
                   <button
@@ -265,7 +283,11 @@ export function CreationDepuisEcritures({
                   >
                     Annuler
                   </button>
-                  <button type="submit" disabled={envoi} className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50">
+                  <button
+                    type="submit"
+                    disabled={envoi || (!!choisie.confirmationRequise && !saisie.confirmerPremierJour)}
+                    className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50"
+                  >
                     {envoi ? 'Création…' : 'Créer la fiche'}
                   </button>
                 </div>
