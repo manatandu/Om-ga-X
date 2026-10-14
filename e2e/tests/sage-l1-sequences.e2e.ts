@@ -54,5 +54,16 @@ test('SYSCOHADA · une séquence range un modèle, et la saisie propose les mod�
   await page.getByRole('button', { name: 'Supprimer', exact: true }).click();
   await expect(page.getByText('La séquence « Achats du mois » range 1 modèle(s) de saisie')).toBeVisible();
 
+  // UN RENOMMAGE REFUSÉ NE RESTE PAS AFFICHÉ (relecture m4) · l'intitulé déjà
+  // pris est refusé, et le champ rend l'intitulé enregistré.
+  await page.getByLabel('Intitulé de la nouvelle séquence').fill('Paie');
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  const seconde = page.getByLabel('Intitulé de la séquence 2');
+  await expect(seconde).toHaveValue('Paie');
+  await seconde.fill('Achats du mois');
+  await seconde.blur();
+  await expect(page.getByText('Une séquence « Achats du mois » existe déjà dans ce dossier.')).toBeVisible();
+  await expect(seconde).toHaveValue('Paie');
+
   expect(pannes).toEqual([]);
 });

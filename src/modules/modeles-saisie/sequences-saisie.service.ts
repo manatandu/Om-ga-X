@@ -79,7 +79,18 @@ export class SequencesSaisieService {
     if (!existante) throw new NotFoundException('Séquence de saisie introuvable');
     const nombre = await this.prisma.modeleSaisie.count({ where: { tenantId, sequenceSaisieId: id } });
     if (nombre > 0) throw new ConflictException(motifSequenceOccupee(existante.intitule, nombre));
-    await this.prisma.sequenceSaisie.delete({ where: { id } });
+    try {
+      await this.prisma.sequenceSaisie.delete({ where: { id } });
+    } catch (e) {
+      // UN MODÈLE RANGÉ ENTRE LE COMPTE ET LA SUPPRESSION (relecture m4) · la
+      // clé étrangère refuse (P2003), et le refus se dit comme le premier,
+      // recompté, au lieu d'une erreur 500.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') {
+        const recompte = await this.prisma.modeleSaisie.count({ where: { tenantId, sequenceSaisieId: id } });
+        throw new ConflictException(motifSequenceOccupee(existante.intitule, Math.max(recompte, 1)));
+      }
+      throw e;
+    }
     return { supprime: true };
   }
 

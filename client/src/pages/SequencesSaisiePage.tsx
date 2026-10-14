@@ -42,14 +42,17 @@ export function SequencesSaisiePage() {
     });
   }, []);
 
-  const agir = async (fn: () => Promise<unknown>) => {
+  /** Rend vrai si le geste a abouti · un refus est affiché, et l'appelant rétablit ce qu'il montrait. */
+  const agir = async (fn: () => Promise<unknown>): Promise<boolean> => {
     setErreur(null);
     setEnvoi(true);
     try {
       await fn();
       await charger();
+      return true;
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Action impossible');
+      return false;
     } finally {
       setEnvoi(false);
     }
@@ -91,12 +94,26 @@ export function SequencesSaisiePage() {
               <td>
                 {peutEcrire ? (
                   <input
+                    // Remonté sur l'intitulé ENREGISTRÉ · un renommage accepté
+                    // y paraît après relecture de la liste.
+                    key={`${q.id}:${q.intitule}`}
                     aria-label={`Intitulé de la séquence ${q.numero}`}
                     defaultValue={q.intitule}
                     maxLength={LONGUEUR_MAX}
                     onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (v && v !== q.intitule) void agir(() => api.patch(`/sequences-saisie/${q.id}`, { intitule: v }));
+                      const champ = e.currentTarget;
+                      const v = champ.value.trim();
+                      // UN RENOMMAGE REFUSÉ NE RESTE PAS AFFICHÉ (relecture
+                      // m4) · le champ gardait l'intitulé refusé, qui se
+                      // lisait comme enregistré. Vidé, il rend l'intitulé.
+                      if (!v) {
+                        champ.value = q.intitule;
+                        return;
+                      }
+                      if (v === q.intitule) return;
+                      void agir(() => api.patch(`/sequences-saisie/${q.id}`, { intitule: v })).then((fait) => {
+                        if (!fait) champ.value = q.intitule;
+                      });
                     }}
                     className="w-full border border-transparent hover:border-border px-1 py-0.5"
                   />

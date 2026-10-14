@@ -32,8 +32,28 @@ test('SYSCOHADA · la clôture attend l’impression du journal, et l’impressi
   await page.evaluate(() => {
     window.print = () => undefined;
   });
+  // UN JOURNAL SANS PIÈCE N'EST PAS UNE IMPRESSION (relecture M6) · enregistrée,
+  // elle retenait le journal et tenait son exercice sans rien attester.
+  const journaux = await appelApi<{ id: string; code: string; type: string }[]>(page, 'GET', '/journaux');
+  let vide: string | null = null;
+  for (const j of journaux.filter((x) => x.type !== 'SITUATION')) {
+    const lu = await appelApi<{ total: number }>(page, 'GET', `/ecritures?exerciceId=${exercice.id}&journalId=${j.id}&limite=1`);
+    if (lu.total === 0) {
+      vide = j.id;
+      break;
+    }
+  }
+  expect(vide).not.toBeNull();
+  const sansPiece = await appelApi<{ numero: number | null }>(page, 'POST', '/impressions-journal', { exerciceId: exercice.id, journalId: vide });
+  expect(sansPiece.numero).toBeNull();
+
   await page.getByRole('button', { name: 'Imprimer le journal' }).click();
   await expect(page.getByText(/Impression n° 1 du journal enregistrée/)).toBeVisible();
+  // LA PAGE IMPRIMÉE PORTE SON NUMÉRO ET SA DATE (relecture m2) · posés avant
+  // la boîte d'impression, lus sous le média d'impression.
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.getByText(/Impression n° 1 du journal · enregistrée le \d{2}\/\d{2}\/\d{4} à \d{2}:\d{2}/)).toBeVisible();
+  await page.emulateMedia({ media: 'screen' });
 
   const liste = await appelApi<{ impressions: { numero: number; forme: string }[]; total: number }>(
     page,

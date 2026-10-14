@@ -79,6 +79,18 @@ describe('séquences de saisie · le service', () => {
     expect(p.sequenceSaisie.delete).not.toHaveBeenCalled();
     await expect(monde().svc.supprimer('t1', 'inconnue')).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('un modèle rangé entre le compte et la suppression · 409 nommé, jamais une erreur 500 (relecture m4)', async () => {
+    const { svc, p } = monde([{ id: 's1', numero: 1, intitule: 'Achats' }]);
+    p.sequenceSaisie.delete.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('clé étrangère', { code: 'P2003', clientVersion: 'x' }),
+    );
+    // Le premier compte voit zéro, le recompte voit le modèle rangé entre-temps.
+    p.modeleSaisie.count.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    const refus = svc.supprimer('t1', 's1');
+    await expect(refus).rejects.toBeInstanceOf(ConflictException);
+    await expect(svc.supprimer('t1', 's1')).resolves.toEqual({ supprime: true });
+  });
 });
 
 describe('séquences de saisie · le modèle', () => {
