@@ -167,6 +167,15 @@ n° 67, 66, 68, 73, 18.
   développement, bien inscrit en cours) restent au formulaire complet, et
   l'aide le dit.
 
+### Relecture des échecs silencieux de la ligne (commit « Immobilisations · un échec de lecture n'est pas une liste vide »)
+
+- Onglet Général de la fiche (n° 66) · un échec de lecture des financements
+  admis vidait la liste, qui disait alors « aucun compte de financement
+  personnalisé » à côté de l'erreur ; elle reste désormais NON LUE (`null`).
+  Le barème fiscal illisible le dit sous la liste des natures, au lieu de
+  rendre une liste vide sans un mot (CLAUDE.md § 9 ter, « null n'est pas
+  vide »). Même règle posée dans l'assistant (n° 18).
+
 ## Reste
 
 - Rien de la liste. Suite complète en tranches sur l'arbre final.

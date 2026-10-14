@@ -65,6 +65,8 @@ export function FicheImmobilisationGeneral({
   const [comptesBien, setComptesBien] = useState<CompteDuBien[] | null>(null);
   const [contreparties, setContreparties] = useState<ContrepartieAdmise[] | null>(null);
   const [bareme, setBareme] = useState<NatureBaremeFiscal[]>([]);
+  // Un barème illisible n'est pas un barème vide · la liste des natures le dit.
+  const [echecBareme, setEchecBareme] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmerSuppression, setConfirmerSuppression] = useState(false);
@@ -96,7 +98,7 @@ export function FicheImmobilisationGeneral({
     api
       .get<NatureBaremeFiscal[]>('/immobilisations/bareme-fiscal')
       .then((b) => vivant && setBareme(b))
-      .catch(() => vivant && setBareme([]));
+      .catch((e) => vivant && setEchecBareme(e instanceof ApiError ? e.message : 'Barème fiscal illisible'));
     return () => {
       vivant = false;
     };
@@ -112,7 +114,8 @@ export function FicheImmobilisationGeneral({
       .then((c) => vivant && setContreparties(c))
       .catch((e) => {
         if (!vivant) return;
-        setContreparties([]);
+        // La liste reste NON LUE (null) · vide, elle aurait fait dire « aucun
+        // financement admis » sur un simple échec de lecture.
         setErreur(e instanceof ApiError ? e.message : 'Contreparties admises illisibles');
       });
     return () => {
@@ -219,6 +222,7 @@ export function FicheImmobilisationGeneral({
               </option>
             ))}
           </select>
+          {echecBareme && <span className="block font-normal text-danger">{echecBareme}</span>}
         </label>
       </div>
 
