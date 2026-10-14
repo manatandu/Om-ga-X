@@ -83,6 +83,7 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   SubventionRattacheeController: FonctionMetier.IMMOBILISATIONS,
   ReevaluationBilanController: FonctionMetier.IMMOBILISATIONS,
   DemantelementController: FonctionMetier.IMMOBILISATIONS,
+  AnnulationTraitementController: FonctionMetier.IMMOBILISATIONS,
   // Reclassement, dépréciation, perte · des régularisations du compte client.
   CreancesDouteusesController: FonctionMetier.SAISIE,
   StockController: FonctionMetier.STOCKS,

@@ -128,6 +128,12 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // L'impôt sur le résultat (ligne A11) · retirée seule, l'écriture laisserait
   // l'exercice se dire constaté sans la pièce qui porte le 89 et le 441.
   'ConstatImpotResultat.ecritureId',
+  // Ligne sage-l4 · l'annulation d'un traitement d'immobilisation (fonction
+  // n° 67) · l'écriture validée annulée et son négatif · retirés ou corrigés
+  // seuls, le négatif annulerait une annuité que plus rien ne nomme, ou la
+  // dotation reviendrait sans que la fiche le sache.
+  'AnnulationTraitementImmobilisation.ecritureOrigineId',
+  'AnnulationTraitementImmobilisation.ecritureNegatifId',
 ];
 
 /**

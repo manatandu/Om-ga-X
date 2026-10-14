@@ -849,6 +849,7 @@ model Tenant {
   comptesVirementFonds         CompteVirementFonds[]
   virementsFonds               VirementFonds[]
   piecesVirementFonds          PieceVirementFonds[]
+  annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -1684,6 +1685,7 @@ model Exercice {
   simulationsReference            SimulationBudgetaire[]             @relation("SimulationReference")
   simulationsCible                SimulationBudgetaire[]             @relation("SimulationCible")
   virementsFonds                  VirementFonds[]
+  annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
 
   @@unique([tenantId, dateDebut, dateFin])
   @@map("exercices")
@@ -1931,6 +1933,8 @@ model Ecriture {
   virementFondsDestination        VirementFonds? @relation("VirementFondsEcritureDestination")
   virementFondsNegatifOrigine     VirementFonds? @relation("VirementFondsNegatifOrigine")
   virementFondsNegatifDestination VirementFonds? @relation("VirementFondsNegatifDestination")
+  annulationTraitementOrigine     AnnulationTraitementImmobilisation? @relation("AnnulationTraitementOrigine")
+  annulationTraitementNegatif     AnnulationTraitementImmobilisation? @relation("AnnulationTraitementNegatif")
 
   @@index([tenantId, exerciceId, date])
   @@index([tenantId, statut], map: "ecritures_statut_idx")
@@ -4619,6 +4623,7 @@ model Immobilisation {
   contratLocationAcquisition ContratLocationAcquisition?
   reprisesSubvention         RepriseSubventionImmobilisation[]
   subventions                SubventionImmobilisation[]
+  annulationsTraitements     AnnulationTraitementImmobilisation[]
 
   @@index([immobilisationPrincipaleId])
   // AUDIT FINAL F261 · le registre, les dotations, les contrôles et
@@ -9439,6 +9444,11 @@ model LigneReevaluationBilan {
   /// Ligne A15 · écart (106) transféré à une réserve non distribuable à la
   /// sortie du bien (AUDCIF Titre VIII ch. 28 § 6).
   ecartTransfere      Decimal  @default(0) @db.Decimal(18, 2)
+  /// Ligne sage-l4 · la valeur résiduelle de la fiche AVANT l'opération ·
+  /// multipliée par k' (décision D-41), elle ne se retrouve pas au centime
+  /// par une division, et l'annulation de la réévaluation la rétablit telle
+  /// qu'elle était. Nulle sur les réévaluations antérieures à la ligne.
+  valeurResiduelleAvant Decimal? @db.Decimal(18, 2)
 
   @@unique([reevaluationId, immobilisationId])
   @@index([tenantId, immobilisationId])
@@ -10145,4 +10155,75 @@ model PieceVirementFonds {
   @@unique([virementId, empreinte])
   @@index([tenantId, virementId])
   @@map("pieces_virement_fonds")
+}
+
+// Ligne sage-l4 · annuler une dotation ou un traitement d'immobilisation
+// (fonction n° 67 de la comparaison avec Sage, décision D6 de la
+// reproduction). AUDCIF art. 20, al. 2 · « toute correction d'erreur
+// commise et découverte sur l'exercice en cours, s'effectue EXCLUSIVEMENT
+// par l'inscription en négatif des éléments erronés ; l'enregistrement
+// exact est ensuite opéré » ; art. 22, 2° · au brouillard, l'écriture n'est
+// pas encore au livre-journal et se retire.
+
+/// Les traitements qui s'annulent · un par table du module qui retient son
+/// écriture et que le plan d'amortissement relit.
+enum NatureTraitementImmobilisation {
+  DOTATION
+  DEPRECIATION
+  REVISION_PLAN
+  DEROGATOIRE
+  REEVALUATION
+  REPRISE_SUBVENTION
+  REPRISE_PROVISION_REEVALUATION
+}
+
+/// L'ACTE D'ANNULATION, GARDÉ ENTIER. Le traitement annulé est RETIRÉ de sa
+/// table · plus de cinquante lectures du module (plan, tableaux, contrôles,
+/// notes, reprises, dérogatoire) relisent les dotations et les dépréciations,
+/// et une seule qui oublierait un filtre « non annulé » compterait deux fois
+/// une annuité inscrite en négatif, sans qu'aucun total ne bouge (CLAUDE.md
+/// § 10 bis). L'annulation garde donc ici, et au journal d'audit, ce que le
+/// modèle D6 garde sur la ligne marquée · l'enregistrement tel qu'il était
+/// (`acte`), ce qu'il avait changé sur la fiche et ce qui a été rétabli, le
+/// motif, l'auteur, la date, et le sort de chaque écriture · supprimée au
+/// brouillard, ou inscrite en négatif, l'écriture d'origine et son négatif
+/// RETENUS ici (RESTRICT).
+model AnnulationTraitementImmobilisation {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  nature NatureTraitementImmobilisation
+  /// Le bien · nul pour une opération qui porte sur plusieurs biens
+  /// (réévaluation, reprise de la provision spéciale), nommés dans `acte`.
+  immobilisationId String?
+  immobilisation   Immobilisation? @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
+  exerciceId       String
+  exercice         Exercice        @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+
+  /// L'identifiant de l'enregistrement annulé, retiré de sa table.
+  acteId  String
+  /// L'enregistrement tel qu'il était, et ce que l'annulation a rétabli.
+  acte    Json
+  montant Decimal? @db.Decimal(18, 2)
+  motif   String
+
+  /// SUPPRIMEE (brouillard), INSCRITE_EN_NEGATIF (validée) ou SANS_ECRITURE.
+  traitement         String
+  numeroPieceOrigine Int?
+
+  /// RESTRICT déclaré · l'écriture validée annulée et son négatif restent
+  /// liés à l'acte qui les explique · retirés seuls, le négatif annulerait
+  /// une annuité que plus rien ne nomme.
+  ecritureOrigineId String?   @unique
+  ecritureOrigine   Ecriture? @relation("AnnulationTraitementOrigine", fields: [ecritureOrigineId], references: [id], onDelete: Restrict)
+  ecritureNegatifId String?   @unique
+  ecritureNegatif   Ecriture? @relation("AnnulationTraitementNegatif", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
+
+  annuleeLe  DateTime @default(now())
+  annuleePar String
+
+  @@index([tenantId, immobilisationId])
+  @@index([exerciceId])
+  @@map("annulations_traitements_immobilisation")
 }

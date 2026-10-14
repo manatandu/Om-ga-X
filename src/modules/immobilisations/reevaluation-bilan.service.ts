@@ -470,6 +470,9 @@ export class ReevaluationBilanService {
             compteEcart: r.compteEcart,
             droitDeReprise: referentiel === 'SYCEBNL' ? (saisie.droitDeReprise ?? null) : null,
             motifNonReevalue: r.motifNonReevalue,
+            // Ligne sage-l4 · la valeur résiduelle d'avant, que l'annulation
+            // de l'opération rétablit (× k' ne se défait pas au centime).
+            valeurResiduelleAvant: bien.valeurResiduelle,
           })),
         });
         for (const { bien, r } of resultats) {

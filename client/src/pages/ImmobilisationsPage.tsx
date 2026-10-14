@@ -15,6 +15,7 @@ import { RemplacementImprevu } from '../components/RemplacementImprevu';
 import { ChampReglePar } from '../components/ChampReglePar';
 import { BasculeDureeLimitee } from '../components/BasculeDureeLimitee';
 import { RevisionPlanAmortissement } from '../components/RevisionPlanAmortissement';
+import { FicheImmobilisation } from '../components/FicheImmobilisation';
 import { CoutsEmpruntIncorpores } from '../components/CoutsEmpruntIncorpores';
 import { AcquisitionPrixAleatoire, SoldeDetteAleatoire } from '../components/AcquisitionPrixAleatoire';
 import { ReserveProprieteBien, BiensSousReserveDePropriete } from '../components/ReserveProprieteImmobilisations';
@@ -261,6 +262,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [iDixAns, setIDixAns] = useState<'' | 'NON_ESTIMABLE' | 'SIMPLIFICATION_SMT'>('');
   const [basculeOuvertePour, setBasculeOuvertePour] = useState<string | null>(null);
   const [revisionPlanOuvertePour, setRevisionPlanOuvertePour] = useState<string | null>(null);
+  // Ligne sage-l4 · la fiche du bien (traitements et leur annulation), en fenêtre posée.
+  const [ficheOuvertePour, setFicheOuvertePour] = useState<string | null>(null);
   const [coutsEmpruntOuvertsPour, setCoutsEmpruntOuvertsPour] = useState<string | null>(null);
   // Lot 15 · solde d'une dette aléatoire, réserve de propriété, matériel récupéré.
   const [soldeDetteOuvertPour, setSoldeDetteOuvertPour] = useState<string | null>(null);
@@ -1666,6 +1669,15 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                     {LIBELLE_STATUT[immo.statut]}
                   </span>
                   <span className="flex gap-2">
+                    {/* La fiche se lit par tous, bien sorti compris · ses gestes suivent les droits du serveur. */}
+                    <button
+                      type="button"
+                      onClick={() => setFicheOuvertePour(immo.id)}
+                      title="Ouvrir la fiche du bien et ses traitements"
+                      className="text-[11px] text-sel hover:underline"
+                    >
+                      Fiche
+                    </button>
                     {immo.statut === 'EN_SERVICE' && (
                       <>
                         {/* L'estimation est un GET qui n'écrit rien · elle reste
@@ -1992,6 +2004,16 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                   </form>
                 )}
 
+                {ficheOuvertePour === immo.id && (
+                  <FicheImmobilisation
+                    bien={immo}
+                    onFermer={() => setFicheOuvertePour(null)}
+                    onFait={(message) => {
+                      setInfo(message);
+                      void charger();
+                    }}
+                  />
+                )}
                 {revisionPlanOuvertePour === immo.id && (
                   <RevisionPlanAmortissement
                     bien={immo}

@@ -16,11 +16,13 @@ import { ReevaluationBilanController } from './reevaluation-bilan.controller';
 import { ReevaluationBilanService } from './reevaluation-bilan.service';
 import { DemantelementController } from './demantelement.controller';
 import { DemantelementService } from './demantelement.service';
+import { AnnulationTraitementController } from './annulation-traitement.controller';
+import { AnnulationTraitementService } from './annulation-traitement.service';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule, ComptabiliteModule],
-  controllers: [ImmobilisationController, DegressifController, LocationAcquisitionController, RepriseSubventionController, SubventionRattacheeController, ReevaluationBilanController, DemantelementController],
-  providers: [ImmobilisationService, DegressifService, LocationAcquisitionService, RepriseSubventionService, SubventionRattacheeService, ReevaluationBilanService, DemantelementService],
+  controllers: [ImmobilisationController, DegressifController, LocationAcquisitionController, RepriseSubventionController, SubventionRattacheeController, ReevaluationBilanController, DemantelementController, AnnulationTraitementController],
+  providers: [ImmobilisationService, DegressifService, LocationAcquisitionService, RepriseSubventionService, SubventionRattacheeService, ReevaluationBilanService, DemantelementService, AnnulationTraitementService],
   exports: [ImmobilisationService],
 })
 export class ImmobilisationsModule {}

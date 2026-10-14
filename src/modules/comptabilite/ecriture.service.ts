@@ -1660,6 +1660,11 @@ export class EcritureService {
       ['la réévaluation des immobilisations', this.prisma.reevaluationBilan.count({ where: { tenantId, ecritureId } })],
       ['la reprise de la provision spéciale de réévaluation', this.prisma.repriseProvisionReevaluation.count({ where: { tenantId, ecritureId } })],
       ['la provision pour démantèlement', this.prisma.mouvementDemantelement.count({ where: { tenantId, ecritureId } })],
+      // Ligne sage-l4 · l'annulation d'un traitement d'immobilisation retient
+      // l'écriture validée qu'elle a annulée et son négatif.
+      ["l'annulation d'un traitement d'immobilisation", this.prisma.annulationTraitementImmobilisation.count({
+        where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] },
+      })],
       // Les créances douteuses (ligne A7) · elles se retirent depuis leur
       // fenêtre, qui libère sa ligne dans la même transaction. Un reclassement
       // ANNULÉ (m2) ne retient plus · son écriture validée est neutralisée par

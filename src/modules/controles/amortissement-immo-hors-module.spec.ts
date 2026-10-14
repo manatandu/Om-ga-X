@@ -11,19 +11,29 @@ import { motifRefusDepreciationDivision20 } from '../immobilisations/comptes-du-
  * la main · seulement les crédits du 28, hors écritures que le module retient
  * et hors clôture.
  */
-interface Ligne28 { ecritureId: string; numero: string; intitule: string; credit: number; reevaluationDuModule?: boolean }
+interface Ligne28 { ecritureId: string; numero: string; intitule: string; credit: number; reevaluationDuModule?: boolean; retenueParUneAnnulation?: boolean }
 
 function service(lignes28: Ligne28[], o: { dotationsDuModule?: string[]; sortiesDuModule?: string[]; referentiel?: Referentiel } = {}) {
   const ligneFindMany = jest.fn(
-    ({ where }: { where: { compte?: { numero?: { startsWith?: string } }; ecriture?: { id?: { notIn?: string[] }; reevaluationBilan?: unknown } } }) => {
+    ({
+      where,
+    }: {
+      where: { compte?: { numero?: { startsWith?: string } }; ecriture?: { id?: { notIn?: string[] }; reevaluationBilan?: unknown; annulationTraitementOrigine?: unknown } };
+    }) => {
       if (where.compte?.numero?.startsWith !== '28') return Promise.resolve([]);
       const exclues = new Set(where.ecriture?.id?.notIn ?? []);
       // La doublure honore la requête · l'écriture de réévaluation du module
       // (lot 14) ne revient qu'à une requête qui ne l'écarte pas par sa relation.
       const sansReevaluation = !!where.ecriture && 'reevaluationBilan' in where.ecriture && where.ecriture.reevaluationBilan === null;
+      // Même chose pour l'écriture d'origine d'un traitement annulé (ligne sage-l4).
+      const sansAnnulation =
+        !!where.ecriture && 'annulationTraitementOrigine' in where.ecriture && where.ecriture.annulationTraitementOrigine === null;
       return Promise.resolve(
         lignes28
-          .filter((l) => !exclues.has(l.ecritureId) && !(sansReevaluation && l.reevaluationDuModule))
+          .filter(
+            (l) =>
+              !exclues.has(l.ecritureId) && !(sansReevaluation && l.reevaluationDuModule) && !(sansAnnulation && l.retenueParUneAnnulation),
+          )
           .map((l) => ({ credit: l.credit, compte: { numero: l.numero, intitule: l.intitule } })),
       );
     },
@@ -93,13 +103,31 @@ describe('amortissement d’immobilisation hors module (D-21)', () => {
     expect(await signale([{ ...lignes[0], reevaluationDuModule: false }])).toBeDefined();
   });
 
+  it("la dotation annulée et inscrite en négatif ne compte pas · son origine est retenue par l'annulation (ligne sage-l4)", async () => {
+    // Dotation de 3 000 000 validée, annulée · la fiche ne la porte plus, son
+    // écriture reste au journal avec son négatif. Comptée, l'origine ferait
+    // dire « hors module » d'un amortissement déjà soldé, et le cabinet le
+    // contre-passerait une seconde fois.
+    const lignes = [{ ecritureId: 'origine', numero: '28450000', intitule: 'Matériel de transport', credit: 3_000_000, retenueParUneAnnulation: true }];
+    expect(await signale(lignes)).toBeUndefined();
+    expect(await signale([{ ...lignes[0], retenueParUneAnnulation: false }])).toBeDefined();
+  });
+
   it('la lecture ne prend que les crédits, hors clôture et hors à-nouveau provisoire', async () => {
     const { svc, ligneFindMany } = service([]);
     await svc.analyser('t', 'ex');
     const appel = ligneFindMany.mock.calls.map((c) => c[0]).find((w) => w.where.compte?.numero?.startsWith === '28');
     expect(appel?.where).toMatchObject({
       credit: { gt: 0 },
-      ecriture: { tenantId: 't', exerciceId: 'ex', estGenereeParCloture: false, estANouveauProvisoire: false, reevaluationBilan: null },
+      ecriture: {
+        tenantId: 't',
+        exerciceId: 'ex',
+        estGenereeParCloture: false,
+        estANouveauProvisoire: false,
+        reevaluationBilan: null,
+        annulationTraitementOrigine: null,
+        annulationTraitementNegatif: null,
+      },
     });
   });
 
