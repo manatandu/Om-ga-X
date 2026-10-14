@@ -15,6 +15,14 @@ Méthode et légende : celles du manuel 1 (`01-guide-utilisateur-i7.md`).
 dans le code le même jour, sur la branche `travail/virement-fonds`, et aucune
 ligne n'est restée non vérifiée.
 
+Les captures d'écran ont été lues ensuite en image, le même jour : les 103
+pages des séances qui en portent, et les trois pages illustrées du manuel de
+référence (p. 1, 2 et 163), qui est un texte. Elles précisent les lignes A-10,
+A-14, A-20, A-25 et B-57, et en ajoutent trois (A-27 à A-29). Plusieurs
+captures des séances sont coupées ou en partie masquées (p. 21, 27, 29, 31,
+33, 34, 40, 60 à 63, 70, 71, 77, 83, 84, 89, 92, 102, 109, 110, 113, 114 et
+117) ; rien n'est tiré de ce qui ne s'y lit pas.
+
 ## A. Séances de formation
 
 Cours pratique de 2023 (supports de Marnouch Bouchaib, société d'exemple
@@ -36,7 +44,7 @@ pas.
 | 7 | Coefficients dégressifs saisis par l'utilisateur | 53 | DIFFÉRENT, VOULU | Les coefficients 1,5, 2 et 2,5 sont fixés par la loi n° 23/053, art. 33, et ne se saisissent pas (`amortissement-degressif.ts`). |
 | 8 | Natures de sortie : cession, mise hors service, renouvellement de composant | 54 | FIDÈLE | La liste fermée est plus large : vente, échange, rebut, destruction, vol, disparition, remise gratuite, restitution (`nature-sortie.ts`). Le renouvellement de composant a son propre geste (`POST :id/renouvellement`). |
 | 9 | Mise hors service avec « dotation aux amortissements exceptionnels » | 54, 128 à 131 | DIFFÉRENT, VOULU | La valeur nette du bien sorti va au 81 (fiche du compte 81) ; aucune dotation exceptionnelle n'est calculée. |
-| 10 | Options de sortie | 50 | FIDÈLE | La page n'est qu'une capture d'écran. Le manuel de référence en donne le détail (B-24) : la dotation de sortie court jusqu'à la date de sortie. OmegaX arrête la dotation à la sortie, mois de sortie compris (fiche du compte 81). |
+| 10 | Options de sortie | 50 | FIDÈLE | La capture montre le recalcul de la valeur de sortie, la dotation complémentaire jusqu'à la date de sortie, et la date de sortie prise dans le calcul selon le mode (oui en linéaire, exceptionnel et manuel, non en dégressif). OmegaX arrête la dotation à la sortie, mois de sortie compris, quel que soit le mode (fiche du compte 81 ; voir B-24). |
 | 11 | Comptabilisation annuelle des dotations | 55 | FIDÈLE | Une dotation par bien et par exercice (`POST :id/dotation`). |
 | 12 | Mot de passe du fichier | 56 | DIFFÉRENT, VOULU | L'accès se contrôle par utilisateur : session, rôle, double authentification. |
 
@@ -45,7 +53,7 @@ pas.
 | # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
 |---|---|---|---|---|
 | 13 | Plan comptable et codes journaux propres au module | 58 à 67 | DIFFÉRENT, VOULU | Le module se sert du plan et des journaux du dossier ; la dotation est passée dans le journal choisi. |
-| 14 | Lieux des biens | 68, 69 | FIDÈLE | `LieuBien` : création et suppression réservées à l'administrateur ; affectation d'un bien par le comptable. |
+| 14 | Lieux des biens | 68, 69 | PARTIEL | `LieuBien` : création et suppression réservées à l'administrateur ; affectation d'un bien par le comptable. Les captures montrent aussi l'adresse, le code postal, la ville et les contacts du lieu, qu'OmegaX n'a pas (voir B-45). |
 | 15 | Familles d'immobilisations : identification, amortissement, comptes | 70 à 75 | DIFFÉRENT, VOULU | Depuis la décision de Manasse du 2026-10-01, la famille suit le compte du bien : le 28 et le 68 se lisent dans le plan, et aucune famille ne se saisit (`compte-du-bien.ts`). |
 | 16 | Fiche du bien : identification, amortissement, paramètres | 77 à 82 | FIDÈLE | Désignation, numéro d'inventaire, lieu, compte, dates d'acquisition et de mise en service, valeur, durée, mode, valeur résiduelle. |
 | 17 | Bien en location avec échéancier des loyers | 83, 84 | DIFFÉRENT, VOULU | La location-acquisition entre au bilan avec sa dette (AUDCIF Titre VIII ch. 8). L'échéancier est mensuel, trimestriel, semestriel ou annuel (`location-acquisition/`). Aucune location simple n'est suivie en dehors de la comptabilité. |
@@ -56,13 +64,21 @@ pas.
 |---|---|---|---|---|
 | 18 | Quantité d'un bien et inventaire des quantités | 87 à 89 | ABSENT | La fiche du bien n'a pas de champ quantité. |
 | 19 | Fractionnement d'un bien en plusieurs fiches (valeur, quantité, lieu) | 85 à 95 | ABSENT | Pas de fractionnement. Seule une partie non identifiée d'un bien peut être détachée lors d'un remplacement (`partie-remplacee.ts`). |
-| 20 | Plan d'amortissement du bien, année par année | 98 à 102 | PARTIEL | Seul le plan fiscal dégressif est montré (`PlanFiscalDegressif.tsx`). Le plan comptable complet n'est pas affiché ; le tableau des amortissements se lit exercice par exercice. |
+| 20 | Plan d'amortissement du bien, année par année | 98 à 102 | PARTIEL | Seul le plan fiscal dégressif est montré (`PlanFiscalDegressif.tsx`). Le plan comptable complet n'est pas affiché ; le tableau des amortissements se lit exercice par exercice. Les captures (p. 98, 102) montrent le plan jusqu'à la dernière annuité, chaque ligne marquée de sa position (clôturée, calculée, saisie, simulée, dotation de sortie, révision, réévaluation…), et son impression. |
 | 21 | Calcul des amortissements de tous les biens, puis état des amortissements | 103 à 105 | PARTIEL | La dotation se passe bien par bien. Le tableau des amortissements de l'exercice signale une dotation calculée mais pas encore passée (`TableauxImmobilisationsPage.tsx`). |
 | 22 | Mise à jour de la comptabilité depuis le module | 106 à 119 | DIFFÉRENT, VOULU | Chaque geste (dotation, sortie, dépréciation) passe sa propre écriture dans le dossier ; il n'y a pas de transfert à part. |
 | 23 | Transfert vers la liasse fiscale (logiciel séparé) | 120, 121 | FIDÈLE | Il n'y a pas de transfert : les états et les notes des immobilisations sont produits dans le même dossier. Seules les notes des plus et moins-values de cession font exception (voir A-25). |
 | 24 | Cession d'une partie des unités d'un bien | 123 à 127 | ABSENT | La sortie porte sur le bien entier, faute de quantité (voir A-18). |
-| 25 | État des sorties | 127, 131 | PARTIEL | Pas d'état dédié. Le tableau des immobilisations nomme, hors total, les biens sortis dans l'exercice. Les notes des plus et moins-values de cession (NOTE 3D au SYSCOHADA, NOTE 5G aux associations) restent entièrement en saisie, alors que le module tient le brut, les amortissements et le prix de chaque bien sorti. |
+| 25 | État des sorties | 127, 131 | PARTIEL | Pas d'état dédié. Le tableau des immobilisations nomme, hors total, les biens sortis dans l'exercice. Les notes des plus et moins-values de cession (NOTE 3D au SYSCOHADA, NOTE 5G aux associations) restent entièrement en saisie, alors que le module tient le brut, les amortissements et le prix de chaque bien sorti. Les captures (p. 127, 131) montrent l'état de Sage : une rubrique par nature de sortie, quantité, valeur de sortie, valeur nette corrigée et plus ou moins-value, totaux par nature et général. |
 | 26 | Nouvel exercice ouvert après les écritures de fin d'année | 133, 134 | FIDÈLE | C'est l'exercice du dossier : pas de clôture propre au module. |
+
+### Vu sur les captures seulement
+
+| # | Fonction Sage | Page | OmegaX | Où, ou pourquoi |
+|---|---|---|---|---|
+| 27 | Date de départ de l'amortissement choisie sur la famille et sur le bien (date d'acquisition dans l'exemple), prorata au mois | 72, 80 | DIFFÉRENT, VOULU | Le plan part de la mise en service, jamais de l'acquisition : sans date de mise en service, aucune dotation (`debutAmortissement`, `incorporel-duree-non-limitee.ts`). Seule la bascule d'un incorporel à durée non limitée fixe une autre date de départ. |
+| 28 | Mise à jour de la comptabilité filtrée par nature d'écriture (dotations, sorties, virements, autres), puis proposition de clôturer les écritures transférées | 113, 114 | DIFFÉRENT, VOULU | Chaque geste passe son écriture au brouillard (`EcritureService.creer`), qui se valide avec les autres pièces (AUDCIF art. 22, 2°). La proposition de Sage cite une règle fiscale française. |
+| 29 | Date de la dernière mise à jour comptable affichée sur la fiche du bien | 81, 109 | PARTIEL | La fiche ne la porte pas. Le tableau des amortissements signale une dotation calculée mais pas encore passée (voir A-21). |
 
 ## B. Manuel de référence (311 pages)
 
@@ -149,7 +165,7 @@ traités dans les manuels 1 à 3 et ne sont rappelés ici que par renvoi.
 | 54 | Modifier ou supprimer une dotation non clôturée ; saisir une dotation à la main | 143, 145, 146, 289, 290, 293, 294 | ABSENT | Une dotation passée retient son écriture (`detenteurs-ecriture.ts`), et aucune route ne l'annule. |
 | 55 | Calcul des amortissements par plage ou par recherche, avec avertissements | 157 à 159, 161, 314 à 316, 319 | PARTIEL | Voir A-21. |
 | 56 | Annulation des calculs ; annulation des traitements (inventaire, révision, réévaluation, dérogatoires) | 159, 160, 317, 318 | ABSENT | Dotation, dépréciation, révision du plan et réévaluation retiennent toutes leur écriture, et aucune route ne permet de les retirer. |
-| 57 | Virement de poste à poste : comptes d'immobilisation et d'amortissement, une fois par exercice, avec historique et état | 163 à 166, 186 | FIDÈLE | Reclassement vers la famille d'un autre compte (`POST /immobilisations/:id/reclassement`), avec motif exigé et dépréciation suivie. La mise en service d'un bien en cours a sa colonne de virements dans les notes (`virements-mise-en-service.ts`). |
+| 57 | Virement de poste à poste : comptes d'immobilisation et d'amortissement, une fois par exercice, avec historique et état | 163 à 166, 186 | FIDÈLE | Reclassement vers la famille d'un autre compte (`POST /immobilisations/:id/reclassement`), avec motif exigé et dépréciation suivie, sans limite d'un reclassement par exercice (la limite que Sage pose, p. 163). La mise en service d'un bien en cours a sa colonne de virements dans les notes (`virements-mise-en-service.ts`). |
 | 58 | Création automatique des biens à partir des écritures comptables | 161 à 163 | ABSENT | Le bien naît dans le module, qui passe lui-même l'écriture d'acquisition, ou sans écriture s'il est repris. Une écriture déjà passée ne devient pas une fiche. Ce qui est passé hors module est signalé (`AMORTISSEMENT_IMMO_HORS_MODULE`). |
 | 59 | Fractionnement (répartition manuelle ou proportionnelle, arrondi, composé, numéros de série) | 166 à 170 | ABSENT | Voir A-19. |
 | 60 | Sortie d'un bien : nature, date, valeur hors taxes, quantité, TVA, commentaire, contrôles de date | 146 à 150, 172, 296 à 302 | PARTIEL | Nature (liste fermée), date, prix, référence et date de la pièce exigées (AUDCIF art. 17), dotation de sortie. Ni quantité ni TVA de cession. |
@@ -197,9 +213,10 @@ traités dans les manuels 1 à 3 et ne sont rappelés ici que par renvoi.
 
 ## Bilan du manuel
 
-117 fonctions relevées (26 dans les séances, 91 dans le manuel de
-référence) : 20 FIDÈLE, 36 DIFFÉRENT VOULU, 1 DIFFÉRENT À TRIER, 37 PARTIEL,
-23 ABSENT, 0 NON VÉRIFIÉ.
+120 fonctions relevées (29 dans les séances, dont trois vues sur les
+captures seulement, 91 dans le manuel de référence) : 19 FIDÈLE,
+38 DIFFÉRENT VOULU, 1 DIFFÉRENT À TRIER, 39 PARTIEL, 23 ABSENT,
+0 NON VÉRIFIÉ.
 
 Les manques qui gênent le plus la tenue d'un registre :
 
