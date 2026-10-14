@@ -11,6 +11,7 @@ import { editionPlan, perimetreEdition } from '../lib/editions-structures';
 import { Aide } from '../components/chrome/Aide';
 import { PortailModale } from '../components/PortailModale';
 import { classeDuNumero } from '../lib/classe-du-numero';
+import { ETAPES_COMPTE, LIBELLE_ETAPE_COMPTE, etapeVoisine, lireModeAssistant, memoriserModeAssistant, rangEtape, type EtapeCompte } from '../lib/assistant-creation';
 
 /**
  * PLAN COMPTABLE · la fenêtre Structure → Plan comptable de Sage 100 i7 :
@@ -112,6 +113,13 @@ export function PlanComptesPage() {
   // La classe n'est plus choisie · elle se lit dans le numéro (audit final F40).
   const classe = classeDuNumero(numero);
   const [typeCompte, setTypeCompte] = useState<TypeCompteDetailTotal>('DETAIL');
+  // LE MODE ASSISTANT (ligne sage-l1, fonction 18) · préférence du poste ;
+  // les mêmes champs, une étape à la fois. « Créer et continuer » laisse la
+  // boîte ouverte pour le compte suivant (création enchaînée de Sage).
+  const [modeAssistant, setModeAssistant] = useState(lireModeAssistant);
+  const [etapeCompte, setEtapeCompte] = useState<EtapeCompte>('NUMERO');
+  const [infoCreation, setInfoCreation] = useState<string | null>(null);
+  const champNumero = useRef<HTMLInputElement>(null);
 
   // Fiche : intitulé éditable
   const [intituleEdit, setIntituleEdit] = useState('');
@@ -229,22 +237,59 @@ export function PlanComptesPage() {
     setInfoPersonnalisation(null);
   }, [selectionId]);
 
-  const onCreer = async (e: FormEvent) => {
-    e.preventDefault();
+  const fermerNouveau = () => {
+    setNouveauOuvert(false);
+    setEtapeCompte('NUMERO');
+    setInfoCreation(null);
+  };
+
+  /**
+   * LA CRÉATION, avec ou sans enchaînement · le même corps à la même route
+   * (POST /comptes), que l'assistant soit ouvert ou non. Enchaînée, la boîte
+   * reste ouverte, vidée, à la première étape (Sage, « valider ce compte pour
+   * en créer un nouveau »).
+   */
+  const creerCompte = async (continuer: boolean) => {
     setErreur(null);
+    setInfoCreation(null);
     setEnvoi(true);
     try {
       await api.post('/comptes', { numero, intitule, typeCompte });
+      const cree = `Compte ${numero} ${intitule} créé.`;
       setNumero('');
       setIntitule('');
       setTypeCompte('DETAIL');
-      setNouveauOuvert(false);
+      setEtapeCompte('NUMERO');
+      if (continuer) {
+        setInfoCreation(cree);
+      } else {
+        setNouveauOuvert(false);
+      }
       await charger();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Impossible de créer ce compte');
     } finally {
       setEnvoi(false);
     }
+  };
+
+  // Le compte suivant se tape aussitôt · le champ du numéro reprend la main
+  // une fois la boîte revenue à la première étape.
+  useEffect(() => {
+    if (infoCreation) champNumero.current?.focus({ preventScroll: true });
+  }, [infoCreation]);
+
+  const voirEtape = (e: EtapeCompte) => !modeAssistant || etapeCompte === e;
+  const derniereEtape = !modeAssistant || etapeCompte === 'RECAPITULATIF';
+  const onCreer = (e: FormEvent) => {
+    e.preventDefault();
+    // En assistant, Entrée ou « Suivant » avance d'une étape · le navigateur a
+    // déjà jugé les champs de l'étape (required, pattern).
+    if (!derniereEtape) {
+      setEtapeCompte((et) => etapeVoisine(ETAPES_COMPTE, et, 1));
+      return;
+    }
+    void creerCompte(false);
   };
 
   const modifier = async (
@@ -347,7 +392,7 @@ export function PlanComptesPage() {
           {estAdmin && (
             <button
               type="button"
-              onClick={() => setNouveauOuvert((v) => !v)}
+              onClick={() => (nouveauOuvert ? fermerNouveau() : setNouveauOuvert(true))}
               className="bg-sel text-white px-3.5 py-1 text-[11.5px] font-semibold"
             >
               Nouveau compte
@@ -764,50 +809,100 @@ export function PlanComptesPage() {
           <div className="anim-voile fixed inset-0 z-40 bg-black/35 flex items-center justify-center p-4">
             <form
               onSubmit={onCreer}
+              aria-label="Nouveau compte général"
               className="anim-modale w-full max-w-[460px] bg-surface border border-border-dark shadow-flottante modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
               <div
                 className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]"
               >
                 <span>Nouveau compte général</span>
-                <button type="button" onClick={() => setNouveauOuvert(false)} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c]">
-                  ✕
-                </button>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={modeAssistant}
+                      onChange={(e) => {
+                        setModeAssistant(e.target.checked);
+                        memoriserModeAssistant(e.target.checked);
+                        setEtapeCompte('NUMERO');
+                      }}
+                    />
+                    Mode assistant
+                  </label>
+                  <button type="button" onClick={fermerNouveau} aria-label="Fermer" className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c]">
+                    ✕
+                  </button>
+                </div>
               </div>
               <div className="p-4">
+                {modeAssistant && (
+                  <div className="mb-3 text-[11px] text-text-dim">
+                    Étape {rangEtape(ETAPES_COMPTE, etapeCompte).rang} sur {rangEtape(ETAPES_COMPTE, etapeCompte).total} ·{' '}
+                    <span className="font-semibold text-text">{LIBELLE_ETAPE_COMPTE[etapeCompte]}</span>
+                  </div>
+                )}
+                {infoCreation && (
+                  <div role="status" className="mb-3 text-[11.5px] text-positive bg-positive-soft border border-positive/30 px-2.5 py-1.5">
+                    {infoCreation}
+                  </div>
+                )}
                 <div className="grid grid-cols-[110px_1fr] items-center gap-x-3 gap-y-2.5">
-                  <label className="text-[11.5px] text-right">Numéro :</label>
-                  <input
-                    required
-                    autoFocus
-                    pattern={`\\d{3,${longueurMax}}`}
-                    title={`3 à ${longueurMax} chiffres`}
-                    value={numero}
-                    onChange={(e) => setNumero(e.target.value)}
-                    className="border border-border-dark px-2.5 py-1.5 text-[12px] font-mono"
-                  />
-                  <label className="text-[11.5px] text-right">Intitulé :</label>
-                  <input
-                    required
-                    value={intitule}
-                    onChange={(e) => setIntitule(e.target.value)}
-                    className="border border-border-dark px-2.5 py-1.5 text-[12px]"
-                  />
-                  <label className="text-[11.5px] text-right">Classe :</label>
-                  <span className="px-2.5 py-1.5 text-[11.5px] text-text-dim">
-                    {classe ? `${classe.replace('CLASSE_', 'Classe ')} · ${libelleClasse[classe]}` : 'Premier chiffre du numéro'}
-                  </span>
-                  <label className="text-[11.5px] text-right">Type :</label>
-                  <select
-                    value={typeCompte}
-                    onChange={(e) => setTypeCompte(e.target.value as TypeCompteDetailTotal)}
-                    className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
-                  >
-                    <option value="DETAIL">Détail (mouvementable)</option>
-                    <option value="TOTAL">Total (regroupement par racine)</option>
-                  </select>
+                  {voirEtape('NUMERO') && (
+                    <>
+                      <label htmlFor="nouveau-compte-numero" className="text-[11.5px] text-right">Numéro :</label>
+                      <input
+                        id="nouveau-compte-numero"
+                        ref={champNumero}
+                        required
+                        autoFocus
+                        pattern={`\\d{3,${longueurMax}}`}
+                        title={`3 à ${longueurMax} chiffres`}
+                        value={numero}
+                        onChange={(e) => setNumero(e.target.value)}
+                        className="border border-border-dark px-2.5 py-1.5 text-[12px] font-mono"
+                      />
+                      <label htmlFor="nouveau-compte-intitule" className="text-[11.5px] text-right">Intitulé :</label>
+                      <input
+                        id="nouveau-compte-intitule"
+                        required
+                        value={intitule}
+                        onChange={(e) => setIntitule(e.target.value)}
+                        className="border border-border-dark px-2.5 py-1.5 text-[12px]"
+                      />
+                      <span className="text-[11.5px] text-right">Classe :</span>
+                      <span className="px-2.5 py-1.5 text-[11.5px] text-text-dim">
+                        {classe ? `${classe.replace('CLASSE_', 'Classe ')} · ${libelleClasse[classe]}` : 'Premier chiffre du numéro'}
+                      </span>
+                    </>
+                  )}
+                  {voirEtape('TYPE') && (
+                    <>
+                      <label htmlFor="nouveau-compte-type" className="text-[11.5px] text-right">Type :</label>
+                      <select
+                        id="nouveau-compte-type"
+                        value={typeCompte}
+                        onChange={(e) => setTypeCompte(e.target.value as TypeCompteDetailTotal)}
+                        className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
+                      >
+                        <option value="DETAIL">Détail (mouvementable)</option>
+                        <option value="TOTAL">Total (regroupement par racine)</option>
+                      </select>
+                    </>
+                  )}
+                  {modeAssistant && etapeCompte === 'RECAPITULATIF' && (
+                    <>
+                      <span className="text-[11.5px] text-right">Numéro :</span>
+                      <span className="px-2.5 py-1.5 text-[12px] font-mono">{numero}</span>
+                      <span className="text-[11.5px] text-right">Intitulé :</span>
+                      <span className="px-2.5 py-1.5 text-[12px]">{intitule}</span>
+                      <span className="text-[11.5px] text-right">Classe :</span>
+                      <span className="px-2.5 py-1.5 text-[11.5px]">{classe ? `${classe.replace('CLASSE_', 'Classe ')} · ${libelleClasse[classe]}` : '·'}</span>
+                      <span className="text-[11.5px] text-right">Type :</span>
+                      <span className="px-2.5 py-1.5 text-[11.5px]">{typeCompte === 'DETAIL' ? 'Détail (mouvementable)' : 'Total (regroupement par racine)'}</span>
+                    </>
+                  )}
                 </div>
-                <div className="flex items-center justify-end gap-2 mt-4">
+                <div className="flex items-center justify-end gap-2 mt-4 flex-wrap">
                   {typeCompte === 'TOTAL' && (
                     <span className="mr-auto">
                       <Aide
@@ -819,14 +914,42 @@ export function PlanComptesPage() {
                   )}
                   <button
                     type="button"
-                    onClick={() => setNouveauOuvert(false)}
+                    onClick={fermerNouveau}
                     className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px]"
                   >
                     Annuler
                   </button>
-                  <button type="submit" disabled={envoi} className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold disabled:opacity-50">
-                    {envoi ? 'Création…' : 'Créer le compte'}
-                  </button>
+                  {modeAssistant && etapeCompte !== 'NUMERO' && (
+                    <button
+                      type="button"
+                      onClick={() => setEtapeCompte((et) => etapeVoisine(ETAPES_COMPTE, et, -1))}
+                      className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px]"
+                    >
+                      Précédent
+                    </button>
+                  )}
+                  {derniereEtape ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={envoi}
+                        onClick={(e) => {
+                          // Le navigateur juge les champs comme pour « Créer ».
+                          if (e.currentTarget.form?.reportValidity() !== false) void creerCompte(true);
+                        }}
+                        className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px] disabled:opacity-50"
+                      >
+                        Créer et continuer
+                      </button>
+                      <button type="submit" disabled={envoi} className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold disabled:opacity-50">
+                        {envoi ? 'Création…' : 'Créer le compte'}
+                      </button>
+                    </>
+                  ) : (
+                    <button type="submit" className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold">
+                      Suivant
+                    </button>
+                  )}
                 </div>
               </div>
             </form>

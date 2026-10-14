@@ -236,11 +236,36 @@ classe 6, proposé à la saisie ; 120 000 passés dessus en N, le 60510000
 subdivisé refusé à la saisie ; clôture · banque reportée −120 000, charge non
 reportée ; 30 000 passés en N+1 ; option refermée → 403.
 
+### #18 · Assistant de création d'un compte et d'un code journal (M2-8, M3-5, M14-13)
+
+Sage 100 i7 · « Fenêtre > Mode assistant » guide la création d'un compte
+(numéro et intitulé, puis valider ou continuer) et d'un code journal (type,
+code de six caractères, intitulé, numérotation), et « valider ce compte pour
+en créer un nouveau » enchaîne les créations. Aucun texte ne régit le geste.
+Reproduit sans toucher au serveur · même route, même corps, même jugement
+(`POST /comptes`, `POST /journaux`). Le mode assistant est une PRÉFÉRENCE DU
+POSTE (`lib/assistant-creation.ts`, clé `omegax.creation.modeAssistant`,
+sous `try/catch`), case « Mode assistant » dans la barre des deux boîtes ·
+cochée, les mêmes champs une étape à la fois (compte · numéro et intitulé,
+type, récapitulatif ; journal · type, code et intitulé, numérotation, compte
+du journal pour la trésorerie seule, récapitulatif), « Précédent » et
+« Suivant », Entrée avance d'une étape après le jugement du navigateur.
+« Créer et continuer », offert avec ou sans assistant, crée puis garde la
+boîte ouverte, vidée, à la première étape, le message dit ce qui est créé ;
+pour un journal de trésorerie, le compte du plan reste choisi et le numéro
+proposé se relit. Ordre de la liste suivi sauf ici · #18 fait avant #19,
+pendant la suite complète (#19 touche le serveur).
+
+Tests · `client/src/lib/assistant-creation.spec.ts`, e2e `sage-l1-assistant`
+(un compte en trois étapes puis en formulaire, deux journaux enchaînés, la
+préférence relue après rechargement). Aucune écriture touchée · pas de
+scénario sur base.
+
 ## Reste
 
-- #12, #60, #16, #14 · e2e `sage-l1-situation`, `sage-l1-impression`, `sage-l1-lettre`,
-  `sage-l1-compte-en-saisie` écrits, à jouer.
-- #19, #18.
+- #12, #60, #16, #14, #18 · e2e `sage-l1-situation`, `sage-l1-impression`, `sage-l1-lettre`,
+  `sage-l1-compte-en-saisie`, `sage-l1-assistant` écrits, à jouer.
+- #19.
 - Bloc du § 3 des deux côtés ; specs de structure.
 
 ## Décisions
@@ -299,6 +324,11 @@ d'imputation du plan, par `CompteService.creer`, né personnalisé
 (`POST /comptes/en-saisie`, administrateur et comptable). Jamais hors plan,
 jamais sous un collectif de tiers (`comptes/compte-en-saisie.ts`).
 
+**Mode assistant de création (ligne sage-l1, fonction 18, 2026-10-14).**
+Préférence du poste (`lib/assistant-creation.ts`) · la création d'un compte
+et d'un code journal par étapes, les mêmes champs et la même route ; « Créer
+et continuer » garde la boîte ouverte pour le suivant.
+
 ## Pour build-log.md
 
 - 2026-10-14 · sage-l1 #12 · fait · journal de situation · statut SITUATION, garde
@@ -313,3 +343,5 @@ jamais sous un collectif de tiers (`comptes/compte-en-saisie.ts`).
   déjà employée · comme prévu.
 - 2026-10-14 · sage-l1 #14 · fait · compte créé en saisie sous option, sous-compte du
   plan, jamais sous un collectif de tiers · comme prévu.
+- 2026-10-14 · sage-l1 #18 · fait · assistant de création d'un compte et d'un journal,
+  création enchaînée, préférence du poste · comme prévu.

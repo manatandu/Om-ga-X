@@ -14,6 +14,7 @@ import {
   perimetreEdition,
 } from '../lib/editions-structures';
 import { PortailModale } from '../components/PortailModale';
+import { etapesJournal, etapeVoisine, LIBELLE_ETAPE_JOURNAL, lireModeAssistant, memoriserModeAssistant, rangEtape, type EtapeJournal } from '../lib/assistant-creation';
 import {
   corpsCompteDuJournal,
   type CompteDuJournalPropose,
@@ -73,6 +74,13 @@ export function JournauxPage() {
   const [numerotation, setNumerotation] = useState<NumerotationPiece>('CONTINUE_JOURNAL');
   const [erreurForm, setErreurForm] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+  // LE MODE ASSISTANT (ligne sage-l1, fonction 18) · préférence du poste ;
+  // les mêmes champs, une étape à la fois, le compte du journal n'en étant
+  // une que pour la trésorerie. « Créer et continuer » garde la boîte ouverte
+  // pour le journal suivant.
+  const [modeAssistant, setModeAssistant] = useState(lireModeAssistant);
+  const [etapeJournal, setEtapeJournal] = useState<EtapeJournal>('TYPE');
+  const [infoCreation, setInfoCreation] = useState<string | null>(null);
 
   const charger = async () => {
     try {
@@ -152,6 +160,8 @@ export function JournauxPage() {
     setLectureNumero(null);
     setNumerotation('CONTINUE_JOURNAL');
     setErreurForm(null);
+    setEtapeJournal('TYPE');
+    setInfoCreation(null);
     setNouveauOuvert(false);
   };
 
@@ -165,9 +175,31 @@ export function JournauxPage() {
     );
   }
 
-  const onCreer = async (e: FormEvent) => {
+  const etapes = etapesJournal(type);
+  // Une étape disparue (le type n'est plus la trésorerie) ramène à la première.
+  const etapeCourante: EtapeJournal = etapes.includes(etapeJournal) ? etapeJournal : 'TYPE';
+  const voir = (e: EtapeJournal) => !modeAssistant || etapeCourante === e;
+  const derniereEtape = !modeAssistant || etapeCourante === 'RECAPITULATIF';
+
+  const onCreer = (e: FormEvent) => {
     e.preventDefault();
+    // En assistant, Entrée ou « Suivant » avance d'une étape · le navigateur a
+    // déjà jugé les champs de l'étape.
+    if (!derniereEtape) {
+      setEtapeJournal(etapeVoisine(etapes, etapeCourante, 1));
+      return;
+    }
+    void creerJournal(false);
+  };
+
+  /**
+   * LA CRÉATION, avec ou sans enchaînement · le même corps à la même route
+   * (POST /journaux). Enchaînée, la boîte reste ouverte, vidée, à la première
+   * étape ; le compte du plan reste choisi, sa proposition se relisant.
+   */
+  const creerJournal = async (continuer: boolean) => {
     setErreurForm(null);
+    setInfoCreation(null);
     setEnvoi(true);
     try {
       await api.post('/journaux', {
@@ -184,7 +216,19 @@ export function JournauxPage() {
             })
           : {}),
       });
-      fermer();
+      const cree = `Journal ${code} ${intitule} créé.`;
+      if (continuer) {
+        setCode('');
+        setIntitule('');
+        setCompteTresorerieId('');
+        setNumeroCompte('');
+        setLectureNumero(null);
+        setRelire((n) => n + 1);
+        setEtapeJournal('TYPE');
+        setInfoCreation(cree);
+      } else {
+        fermer();
+      }
       await charger();
     } catch (err) {
       setErreurForm(err instanceof ApiError ? err.message : 'Impossible de créer ce journal');
@@ -316,66 +360,130 @@ export function JournauxPage() {
                 className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]"
               >
                 <span>Nouveau code journal</span>
-                <button type="button" disabled={envoi} onClick={fermer} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c] disabled:opacity-50">
-                  ✕
-                </button>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={modeAssistant}
+                      onChange={(e) => {
+                        setModeAssistant(e.target.checked);
+                        memoriserModeAssistant(e.target.checked);
+                        setEtapeJournal('TYPE');
+                      }}
+                    />
+                    Mode assistant
+                  </label>
+                  <button type="button" disabled={envoi} onClick={fermer} aria-label="Fermer" className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c] disabled:opacity-50">
+                    ✕
+                  </button>
+                </div>
               </div>
               <div className="p-4">
+                {modeAssistant && (
+                  <div className="mb-3 text-[11px] text-text-dim">
+                    Étape {rangEtape(etapes, etapeCourante).rang} sur {rangEtape(etapes, etapeCourante).total} ·{' '}
+                    <span className="font-semibold text-text">{LIBELLE_ETAPE_JOURNAL[etapeCourante]}</span>
+                  </div>
+                )}
+                {infoCreation && (
+                  <div role="status" className="mb-3 text-[11.5px] text-positive bg-positive-soft border border-positive/30 px-2.5 py-1.5">
+                    {infoCreation}
+                  </div>
+                )}
                 <div className="grid grid-cols-[130px_1fr] items-center gap-x-3 gap-y-2.5">
-                  <label className="text-[11.5px] text-right">Code :</label>
-                  <input
-                    required
-                    autoFocus
-                    maxLength={6}
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    placeholder="ACH, VEN, BQ…"
-                    className="border border-border-dark px-2.5 py-1.5 text-[12px] font-mono"
-                  />
-                  <label className="text-[11.5px] text-right">Intitulé :</label>
-                  <input
-                    required
-                    value={intitule}
-                    onChange={(e) => setIntitule(e.target.value)}
-                    className="border border-border-dark px-2.5 py-1.5 text-[12px]"
-                  />
-                  <label className="text-[11.5px] text-right">Type :</label>
-                  <select
-                    value={type}
-                    onChange={(e) => setType(e.target.value as TypeJournal)}
-                    className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
-                  >
-                    {(Object.keys(LIBELLE_TYPE) as TypeJournal[]).map((t) => (
-                      <option key={t} value={t}>
-                        {LIBELLE_TYPE[t]}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="text-[11.5px] text-right">Numérotation :</label>
-                  <select
-                    value={numerotation}
-                    onChange={(e) => setNumerotation(e.target.value as NumerotationPiece)}
-                    className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
-                  >
-                    {(Object.keys(LIBELLE_NUMEROTATION) as NumerotationPiece[]).map((n) => (
-                      <option key={n} value={n}>
-                        {LIBELLE_NUMEROTATION[n]}
-                      </option>
-                    ))}
-                  </select>
-                  {numerotation === 'MANUELLE' && (
+                  {voir('CODE') && (
+                    <>
+                      <label htmlFor="nouveau-journal-code" className="text-[11.5px] text-right">Code :</label>
+                      <input
+                        id="nouveau-journal-code"
+                        required
+                        autoFocus
+                        maxLength={6}
+                        value={code}
+                        onChange={(e) => setCode(e.target.value.toUpperCase())}
+                        placeholder="ACH, VEN, BQ…"
+                        className="border border-border-dark px-2.5 py-1.5 text-[12px] font-mono"
+                      />
+                      <label htmlFor="nouveau-journal-intitule" className="text-[11.5px] text-right">Intitulé :</label>
+                      <input
+                        id="nouveau-journal-intitule"
+                        required
+                        value={intitule}
+                        onChange={(e) => setIntitule(e.target.value)}
+                        className="border border-border-dark px-2.5 py-1.5 text-[12px]"
+                      />
+                    </>
+                  )}
+                  {voir('TYPE') && (
+                    <>
+                      <label htmlFor="nouveau-journal-type" className="text-[11.5px] text-right">Type :</label>
+                      <select
+                        id="nouveau-journal-type"
+                        autoFocus={modeAssistant}
+                        value={type}
+                        onChange={(e) => setType(e.target.value as TypeJournal)}
+                        className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
+                      >
+                        {(Object.keys(LIBELLE_TYPE) as TypeJournal[]).map((t) => (
+                          <option key={t} value={t}>
+                            {LIBELLE_TYPE[t]}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  {voir('NUMEROTATION') && (
+                    <>
+                      <label htmlFor="nouveau-journal-numerotation" className="text-[11.5px] text-right">Numérotation :</label>
+                      <select
+                        id="nouveau-journal-numerotation"
+                        value={numerotation}
+                        onChange={(e) => setNumerotation(e.target.value as NumerotationPiece)}
+                        className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
+                      >
+                        {(Object.keys(LIBELLE_NUMEROTATION) as NumerotationPiece[]).map((n) => (
+                          <option key={n} value={n}>
+                            {LIBELLE_NUMEROTATION[n]}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  {(voir('NUMEROTATION') || voir('RECAPITULATIF')) && numerotation === 'MANUELLE' && (
                     <>
                       <span />
                       <span className="text-[11px] text-warning">Les pièces de ce journal resteront sans numéro.</span>
                     </>
                   )}
-                  {type === 'SITUATION' && numerotation === 'CONTINUE_FICHIER' && (
+                  {(voir('NUMEROTATION') || voir('RECAPITULATIF')) && type === 'SITUATION' && numerotation === 'CONTINUE_FICHIER' && (
                     <>
                       <span />
                       <span className="text-[11px] text-danger">Un journal de situation ne prend pas la numérotation continue pour le fichier.</span>
                     </>
                   )}
-                  {type === 'TRESORERIE' && (
+                  {modeAssistant && etapeCourante === 'RECAPITULATIF' && (
+                    <>
+                      <span className="text-[11.5px] text-right">Code :</span>
+                      <span className="px-2.5 py-1.5 text-[12px] font-mono">{code}</span>
+                      <span className="text-[11.5px] text-right">Intitulé :</span>
+                      <span className="px-2.5 py-1.5 text-[12px]">{intitule}</span>
+                      <span className="text-[11.5px] text-right">Type :</span>
+                      <span className="px-2.5 py-1.5 text-[11.5px]">{LIBELLE_TYPE[type]}</span>
+                      <span className="text-[11.5px] text-right">Numérotation :</span>
+                      <span className="px-2.5 py-1.5 text-[11.5px]">{LIBELLE_NUMEROTATION[numerotation]}</span>
+                      {type === 'TRESORERIE' && (
+                        <>
+                          <span className="text-[11.5px] text-right">Compte :</span>
+                          <span className="px-2.5 py-1.5 text-[11.5px]">
+                            {modeCompte === 'OUVRIR'
+                              ? `Ouvert avec le journal · ${numeroCompte || 'premier numéro libre'}`
+                              : `${(comptesTresorerie ?? []).find((c) => c.id === compteTresorerieId)?.numero ?? '·'}`}
+                          </span>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {voir('COMPTE') && type === 'TRESORERIE' && (
                     <>
                       <span id={idModeCompte} className="text-[11.5px] text-right">Compte du journal :</span>
                       <div role="radiogroup" aria-labelledby={idModeCompte} className="flex gap-4 text-[11.5px]">
@@ -400,7 +508,7 @@ export function JournauxPage() {
                       </div>
                     </>
                   )}
-                  {type === 'TRESORERIE' && modeCompte === 'OUVRIR' && (
+                  {voir('COMPTE') && type === 'TRESORERIE' && modeCompte === 'OUVRIR' && (
                     <>
                       <label htmlFor={idSous} className="text-[11.5px] text-right">
                         Sous le compte :
@@ -465,7 +573,7 @@ export function JournauxPage() {
                       </span>
                     </>
                   )}
-                  {type === 'TRESORERIE' && modeCompte === 'EXISTANT' && (
+                  {voir('COMPTE') && type === 'TRESORERIE' && modeCompte === 'EXISTANT' && (
                     <>
                       <label htmlFor={idCompteExistant} className="text-[11.5px] text-right">
                         Compte de trésorerie :
@@ -511,9 +619,38 @@ export function JournauxPage() {
                   >
                     Annuler
                   </button>
-                  <button type="submit" disabled={envoi || lectureEnCours} className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold disabled:opacity-50">
-                    {envoi ? 'Création…' : 'Créer le journal'}
-                  </button>
+                  {modeAssistant && etapeCourante !== 'TYPE' && (
+                    <button
+                      type="button"
+                      disabled={envoi}
+                      onClick={() => setEtapeJournal(etapeVoisine(etapes, etapeCourante, -1))}
+                      className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px] disabled:opacity-50"
+                    >
+                      Précédent
+                    </button>
+                  )}
+                  {derniereEtape ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={envoi || lectureEnCours}
+                        onClick={(e) => {
+                          // Le navigateur juge les champs comme pour « Créer ».
+                          if (e.currentTarget.form?.reportValidity() !== false) void creerJournal(true);
+                        }}
+                        className="border border-border-dark bg-chrome hover:bg-chrome-alt px-4 py-1.5 text-[11.5px] disabled:opacity-50"
+                      >
+                        Créer et continuer
+                      </button>
+                      <button type="submit" disabled={envoi || lectureEnCours} className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold disabled:opacity-50">
+                        {envoi ? 'Création…' : 'Créer le journal'}
+                      </button>
+                    </>
+                  ) : (
+                    <button type="submit" className="bg-sel text-white px-4 py-1.5 text-[11.5px] font-semibold">
+                      Suivant
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
