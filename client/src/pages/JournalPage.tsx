@@ -9,6 +9,7 @@ import { ModaleReimputation } from '../components/ModaleReimputation';
 import type { Ecriture, Journal, LigneBalance, LigneGrandLivre } from '../lib/types';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { Aide } from '../components/chrome/Aide';
+import { SelectionsEnregistrees } from '../components/SelectionsEnregistrees';
 import { mouvementsDuJournal } from '../lib/mouvements-du-journal';
 import { montant, montantOuVide } from '../lib/montants';
 import {
@@ -760,6 +761,17 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               Réinitialiser
             </button>
           </div>
+          {/* Ligne sage-l7, fonction 59 · les filtres gardés sous un nom, au
+              dossier, et rappelés · appliqués aussitôt, comme « Appliquer ». */}
+          <SelectionsEnregistrees
+            edition="JOURNAL"
+            criteres={filtres as unknown as Record<string, unknown>}
+            onRappel={(c) => {
+              const rappeles = { ...FILTRES_VIDES, ...c } as Filtres;
+              setFiltres(rappeles);
+              setFiltresAppliques(rappeles);
+            }}
+          />
         </div>
       )}
 

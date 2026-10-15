@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { editionJournaux, editionParametres, editionPlan, editionTaux, editionTiers, perimetreEdition } from './editions-structures';
+import { editionJournaux, editionParametres, editionPlan, editionTaux, editionTiers, perimetreDesSections, perimetreEdition, perimetreSiLue } from './editions-structures';
 import type { Compte, Journal, ParametresDossier, TauxTva, Tiers } from './types';
 
 /**
@@ -33,7 +33,14 @@ describe('Éditions des structures', () => {
         { estPrincipal: true, compte: { numero: '40110001' } },
       ],
     } as unknown as Tiers;
-    expect(editionTiers([t]).lignes[0]).toEqual(['F01', 'Fournisseur', 'Fournisseur', '40110001', 'Kinshasa', '', 'A123', 'Actif']);
+    expect(editionTiers([t]).lignes[0]).toEqual(['F01', 'Fournisseur', '', 'Fournisseur', '40110001', 'Kinshasa', '', 'A123', 'Actif']);
+  });
+
+  it('la qualité du tiers s’imprime à côté de son nom (ligne sage-l2, fonction 24)', () => {
+    const t = { code: 'C01', nom: 'Client', qualite: 'Société', type: 'CLIENT', estActif: true, ville: null, telephone: null, numeroImpot: null, comptesRattaches: [] } as unknown as Tiers;
+    const e = editionTiers([t]);
+    expect(e.colonnes.slice(0, 3)).toEqual(['Code', 'Nom', 'Qualité']);
+    expect(e.lignes[0].slice(0, 3)).toEqual(['C01', 'Client', 'Société']);
   });
 
   it('la contrepartie à chaque ligne ne se dit que d’un journal de trésorerie', () => {
@@ -99,6 +106,23 @@ describe('Éditions des structures', () => {
       expect(src).toContain(fonction);
       expect(src).toContain('<BoutonImprimer');
     }
+  });
+});
+
+describe('Édition du plan analytique · des sections non lues ne s’impriment pas pour une liste vide (sage-l7, m6)', () => {
+  const plan = { code: 'PRJ', intitule: 'Projets' };
+  it('une liste non lue pour la recherche tapée ne s’imprime pas sous ses critères (second tour, 12)', () => {
+    expect(perimetreSiLue(false, 'Plan comptable', [['Recherche', '521']], 3, 'compte')).toBe(
+      "Plan comptable non lu pour cette recherche · rien n'est imprimé",
+    );
+    expect(perimetreSiLue(true, 'Plan comptable', [['Recherche', '521']], 3, 'compte')).toBe('Sélection · Recherche « 521 » · 3 comptes');
+    expect(perimetreSiLue(true, 'Plan des tiers', [['Recherche', '']], 1, 'tiers', 'tiers')).toBe('Liste complète · 1 tiers');
+  });
+
+  it('aucun axe, sections non lues, puis la liste lue', () => {
+    expect(perimetreDesSections(null, false, '', 0)).toBe("Aucun axe choisi · rien n'est imprimé");
+    expect(perimetreDesSections(plan, false, '', 0)).toBe("Sections de l'axe PRJ non lues · rien n'est imprimé");
+    expect(perimetreDesSections(plan, true, '', 3)).toBe('Sélection · Plan « PRJ · Projets » · 3 sections');
   });
 });
 

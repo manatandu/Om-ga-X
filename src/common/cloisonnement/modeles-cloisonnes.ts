@@ -120,8 +120,21 @@ export const MODELES_CLOISONNES = new Set<string>([
   'PieceVirementFonds',
   // Ligne sage-l1, fonction 60 · les impressions du journal.
   'ImpressionJournal',
+  // Ligne sage-l7, fonction 99 · l'export des écritures et son registre.
+  'ExportEcritures',
+  'EcritureExportee',
+  // Ligne sage-l7, fonction 59 · l'impression différée et les sélections enregistrées.
+  'ImpressionDifferee',
+  'SelectionEdition',
+  'ModeleEdition',
   // Ligne sage-l1, fonction 19 · les séquences de saisie.
   'SequenceSaisie',
+  // Ligne sage-l2, fonction 1 · les modes de règlement.
+  'ModeReglement',
+  // Ligne sage-l2, fonction 31 · les lieux de livraison des clients.
+  'LieuLivraison',
+  // Ligne sage-l2, fonction 27 · les modèles d'impression des tiers.
+  'ModeleImpressionTiers',
   'RibTiers',
   'RubriquePaie',
   'VersionBaremePaie',

@@ -56,17 +56,47 @@ const ecriture = (i: number) => ({
   ],
 });
 
+/** Une valeur comparable · une date par son instant. */
+const comparable = (v: unknown) => (v instanceof Date ? v.getTime() : v) as number | string;
+
 /**
- * Un faux Prisma qui PAGINE VRAIMENT · il honore `take`, `cursor` et `skip`.
- * Une doublure qui rendrait tout d'un coup validerait un service qui ne lit
- * pas par lots, et une doublure qui rendrait toujours la même chose bouclerait
- * sans fin.
+ * Le filtre de la tranche, lu comme PostgreSQL · `AND`, `OR`, égalité, nul et
+ * `gt` (la pagination par la clé, `apresLaCle`) ; le reste du périmètre (dossier,
+ * exercice, statut) est l'affaire d'autres tests et passe.
+ */
+function correspond(e: Record<string, unknown>, where: Record<string, unknown> | undefined): boolean {
+  if (!where) return true;
+  return Object.entries(where).every(([cle, attendu]) => {
+    if (cle === 'AND') return (attendu as Record<string, unknown>[]).every((w) => correspond(e, w));
+    if (cle === 'OR') return (attendu as Record<string, unknown>[]).some((w) => correspond(e, w));
+    if (!['date', 'numeroPiece', 'id'].includes(cle)) return true;
+    const v = e[cle];
+    if (attendu === null) return v === null;
+    if (attendu && typeof attendu === 'object' && !(attendu instanceof Date) && 'gt' in attendu) {
+      return v !== null && comparable(v) > comparable((attendu as { gt: unknown }).gt);
+    }
+    return v !== null && comparable(v) === comparable(attendu);
+  });
+}
+
+/**
+ * Un faux Prisma qui PAGINE VRAIMENT · il honore `take` et le filtre de la
+ * clé, dans l'ordre du service (date, pièce, identifiant). Une doublure qui
+ * rendrait tout d'un coup validerait un service qui ne lit pas par lots, et une
+ * doublure qui rendrait toujours la même chose bouclerait sans fin. Un curseur
+ * de Prisma est REFUSÉ · sa ligne relue en base peut avoir disparu (M6).
  */
 function service(nbEcritures: number) {
   const toutes = Array.from({ length: nbEcritures }, (_, i) => ecriture(i + 1));
-  const findMany = jest.fn(async ({ take, cursor, skip }: { take: number; cursor?: { id: string }; skip?: number; where?: { statut?: string } }) => {
-    const depart = cursor ? toutes.findIndex((e) => e.id === cursor.id) + (skip ?? 0) : 0;
-    return toutes.slice(depart, depart + take);
+  const findMany = jest.fn(async ({ take, cursor, where }: { take: number; cursor?: unknown; where?: Record<string, unknown> }) => {
+    if (cursor) throw new Error('Le journal exporté ne pagine plus par le curseur de Prisma (relecture M6).');
+    // Dans l'ordre du service · une date changée en route change le rang.
+    const ordre = (a: (typeof toutes)[number], b: (typeof toutes)[number]) =>
+      a.date.getTime() - b.date.getTime() || a.numeroPiece - b.numeroPiece || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    return toutes
+      .filter((e) => correspond(e as unknown as Record<string, unknown>, where))
+      .sort(ordre)
+      .slice(0, take);
   });
   const prisma = {
     ligneEcriture: { count: jest.fn().mockResolvedValue(nbEcritures * 2) },
@@ -79,7 +109,7 @@ function service(nbEcritures: number) {
     prisma as unknown as PrismaService,
     {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
   );
-  return { svc, findMany };
+  return { svc, findMany, toutes };
 }
 
 /** Exécute l'export et relit le classeur produit. */
@@ -138,24 +168,96 @@ describe('Journal exporté en flux', () => {
     }
   });
 
-  it('avance le curseur sur la DERNIÈRE écriture rendue, et saute la ligne du curseur', async () => {
-    // Sans `skip: 1`, Prisma rend de nouveau la ligne du curseur à chaque lot
-    // et l'écriture est exportée DEUX FOIS · un journal qui double des pièces
-    // est aussi faux qu'un journal qui en perd.
+  it('la tranche suivante part des VALEURS de la dernière écriture rendue · ni doublon, ni saut', async () => {
+    // Une clé posée en arrière rejoue une partie du lot précédent (des pièces
+    // en double), une clé en avant en saute. Les deux rendent un journal faux,
+    // et le lot suivant a toujours l'air normal.
     const { findMany } = await exporter(1200);
-    const suivants = findMany.mock.calls.slice(1).map(([a]) => a as { cursor?: { id: string }; skip?: number });
+    const suivants = findMany.mock.calls.slice(1).map(([a]) => a as unknown as { where: { AND: [unknown, { OR: Array<{ AND: unknown[] }> }] } });
     expect(suivants.length).toBeGreaterThan(0);
     for (const [rang, appel] of suivants.entries()) {
-      expect(appel.skip).toBe(1);
-      // LE CURSEUR EST L'IDENTIFIANT DE LA DERNIÈRE ÉCRITURE RENDUE, et le
-      // vérifier PRÉSENT ne prouve rien · première rédaction de ce test, qui
-      // laissait passer un curseur posé sur n'importe quelle ligne du lot. Un
-      // curseur en arrière rejoue une partie du lot précédent (des pièces en
-      // double), un curseur en avant en saute. Les deux rendent un journal
-      // faux, et le lot suivant a toujours l'air normal.
-      const lotPrecedent = (await findMany.mock.results[rang].value) as { id: string }[];
-      expect(appel.cursor).toEqual({ id: lotPrecedent[lotPrecedent.length - 1].id });
+      const lotPrecedent = (await findMany.mock.results[rang].value) as Array<{ id: string; date: Date; numeroPiece: number }>;
+      const fin = lotPrecedent[lotPrecedent.length - 1];
+      const branches = appel.where.AND[1].OR;
+      // La dernière branche · même date, même pièce, identifiant au-delà.
+      expect(branches[branches.length - 1].AND).toEqual([{ date: fin.date }, { numeroPiece: fin.numeroPiece }, { id: { gt: fin.id } }]);
     }
+  });
+
+  it('une écriture retirée pendant l’export ne tronque plus le journal (relecture M6)', async () => {
+    // Le brouillard supprimé pendant la production · avec le curseur de
+    // Prisma, la ligne-curseur absente rendait une tranche vide, et le journal
+    // sortait avec ses 500 premières pièces, ses totaux bouclant sur elles.
+    const { svc, findMany, toutes } = service(1200);
+    const lire = findMany.getMockImplementation()!;
+    findMany.mockImplementation(async (a) => {
+      const rendues = await lire(a);
+      if (rendues.length === 500 && findMany.mock.calls.length === 1) toutes.splice(toutes.indexOf(rendues[499]), 1);
+      return rendues;
+    });
+    const morceaux: Buffer[] = [];
+    const sortie = new Writable({
+      write(m, _e, cb) {
+        morceaux.push(Buffer.from(m));
+        cb();
+      },
+    });
+    await svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie);
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(Buffer.concat(morceaux) as never);
+    // 1 200 écritures lues (la retirée l'était déjà), deux lignes chacune.
+    expect(classeur.worksheets[0].rowCount).toBe(PREMIERE_LIGNE_DONNEES + 2400);
+  });
+
+  it('une pièce dont la date AVANCE pendant l’export ne s’écrit qu’une fois, et les totaux restent justes (relecture TypeScript, M2)', async () => {
+    const { svc, findMany, toutes } = service(1200);
+    const lire = findMany.getMockImplementation()!;
+    let deplacee: string | undefined;
+    findMany.mockImplementation(async (a) => {
+      const rendues = await lire(a);
+      // Après la première tranche, un autre poste corrige la date d'une pièce
+      // déjà lue · elle passe au 31 décembre, au-delà de la clé de la tranche.
+      if (!deplacee && rendues.length > 0) {
+        deplacee = rendues[0].id;
+        toutes.find((e) => e.id === deplacee)!.date = new Date('2026-12-31');
+      }
+      return rendues;
+    });
+    const morceaux: Buffer[] = [];
+    const sortie = new Writable({
+      write(m, _e, cb) {
+        morceaux.push(Buffer.from(m));
+        cb();
+      },
+    });
+    await svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie);
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(Buffer.concat(morceaux) as never);
+    const feuille = classeur.worksheets[0];
+    // Écrite deux fois, la pièce portait quatre lignes et le total 120 100.
+    expect(feuille.rowCount).toBe(PREMIERE_LIGNE_DONNEES + 2400);
+    const debit = feuille.getRow(PREMIERE_LIGNE_DONNEES + 2400).getCell(10).value as ExcelJS.CellFormulaValue;
+    expect(debit.result).toBe(1200 * 100);
+  });
+
+  it('une pièce dont la date RECULE pendant l’export n’est jamais relue · le livre est refusé avant ses totaux, jamais remis amputé (M2)', async () => {
+    const { svc, findMany, toutes } = service(1200);
+    const lire = findMany.getMockImplementation()!;
+    let deplacee = false;
+    findMany.mockImplementation(async (a) => {
+      const rendues = await lire(a);
+      // Après la première tranche, la dernière pièce, pas encore lue, passe
+      // au 1er janvier · en deçà de la clé, elle ne sera jamais relue.
+      if (!deplacee) {
+        deplacee = true;
+        toutes.find((e) => e.id === 'e-001200')!.date = new Date('2026-01-01');
+      }
+      return rendues;
+    });
+    const sortie = new Writable({ write: (_m, _e, cb) => cb() });
+    await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
+      /Journal : 2\s398 lignes lues sur 2\s400 comptées au départ/,
+    );
   });
 
   it('coiffe et en-tête restent en place · le flux ne les écrit qu’AVANT', async () => {

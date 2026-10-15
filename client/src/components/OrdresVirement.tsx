@@ -12,6 +12,7 @@ import {
   type StatutOrdre,
 } from '../lib/liste-ordres-virement';
 import { montant as fmt } from '../lib/montants';
+import type { AvisReglementOrdre } from '../lib/types';
 
 interface OrdreResume {
   id: string;
@@ -73,6 +74,10 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
   // sur coup, la réponse du premier arrivant après celle du second, et la
   // liste d'un état s'afficherait sous le choix de l'autre.
   const derniereLecture = useRef(0);
+  // LES AVIS DE RÈGLEMENT de l'ordre ouvert (ligne sage-l2, fonction 27) ·
+  // composés par le serveur, habillés du modèle de chaque tiers. Tant qu'ils
+  // sont affichés, ce sont eux qui s'impriment, pas l'ordre.
+  const [avis, setAvis] = useState<AvisReglementOrdre | null>(null);
 
   const recharger = () => {
     const lecture = ++derniereLecture.current;
@@ -97,6 +102,7 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
 
   const ouvrir = async (id: string) => {
     setErreur(null);
+    setAvis(null);
     try {
       setOrdre(await api.get<Ordre>(`/ordres-virement/${id}`));
       onSelection(true);
@@ -120,6 +126,8 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
   const imprimer = async () => {
     if (!ordre) return;
     setErreur(null);
+    // C'est l'ordre qui s'imprime · les avis affichés se retirent.
+    setAvis(null);
     try {
       const o = await api.post<Ordre>(`/ordres-virement/${ordre.id}/impression`, {});
       setOrdre(o);
@@ -147,9 +155,24 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
 
   const fermer = () => {
     setOrdre(null);
+    setAvis(null);
     onSelection(false);
   };
 
+  const lireAvis = async () => {
+    if (!ordre) return;
+    setErreur(null);
+    try {
+      setAvis(await api.get<AvisReglementOrdre>(`/ordres-virement/${ordre.id}/avis-reglement`));
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'Avis de règlement illisibles');
+    }
+  };
+
+  // LES AVIS DE L'ORDRE OUVERT, ET DE LUI SEUL (second tour de relecture,
+  // mineur 1) · une réponse lente arrivée après l'ouverture d'un autre ordre
+  // affichait et imprimait les avis du premier sous le second.
+  const avisDeLOrdre = avis && ordre && avis.ordre.id === ordre.id ? avis : null;
   const tenant = utilisateur?.tenant;
   const tranche = liste ? mentionTrancheOrdres(liste) : null;
   const attenteHorsListe = liste ? mentionAttenteHorsListe(liste) : null;
@@ -281,6 +304,45 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                 </tr>
               </tbody>
             </table>
+            {ordre.statut === 'IMPRIME' && (
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => (avisDeLOrdre ? setAvis(null) : void lireAvis())} className="border border-border-dark bg-chrome hover:bg-surface px-3 py-1">
+                  {avisDeLOrdre ? 'Fermer les avis' : 'Avis de règlement'}
+                </button>
+                {avisDeLOrdre && avisDeLOrdre.avis.length > 0 && (
+                  <button type="button" onClick={() => window.print()} className="bg-sel text-white font-semibold px-3 py-1">
+                    Imprimer les avis
+                  </button>
+                )}
+                <Aide
+                  titre="Avis de règlement"
+                  texte="Une lettre par fournisseur de l'ordre · ce qui lui est viré, à quelle banque, et les factures que le paiement acquitte quand le dossier les a désignées (le débiteur déclare, lorsqu'il paye, quelle dette il entend acquitter). La lettre est habillée du modèle « avis de règlement » choisi sur la fiche du tiers, sinon d'un en-tête par défaut ; elle est signée du dossier et de ses mentions. Un salaire n'a pas d'avis. L'avis suit un ordre imprimé."
+                  source="Code civil, Livre III, art. 151 · Sage 100, lettre de règlement"
+                />
+              </div>
+            )}
+            {avisDeLOrdre && (
+              <div className="space-y-2">
+                {avisDeLOrdre.avis.length === 0 && <p className="text-text-dim">Aucun avis · cet ordre ne paie aucun fournisseur.</p>}
+                {avisDeLOrdre.lignesDeSalaires > 0 && (
+                  <p className="text-text-dim">
+                    {avisDeLOrdre.lignesDeSalaires} virement{avisDeLOrdre.lignesDeSalaires > 1 ? 's' : ''} de salaire sans avis · le bulletin en tient lieu.
+                  </p>
+                )}
+                {avisDeLOrdre.avis.map((a) => (
+                  <article key={a.ligneId} className="border border-border bg-surface">
+                    <div className="px-3 py-1 bg-chrome font-semibold flex justify-between gap-2 flex-wrap">
+                      <span>
+                        {a.beneficiaire}
+                        <span className="ml-2 font-normal text-text-dim">{a.modele ? `modèle « ${a.modele} »` : 'en-tête par défaut'}</span>
+                      </span>
+                      <span>{fmt(a.montant)}</span>
+                    </div>
+                    <pre className="px-3 py-2 whitespace-pre-wrap font-sans leading-[1.6]">{a.texte}</pre>
+                  </article>
+                ))}
+              </div>
+            )}
             {peutEcrire && ordre.statut !== 'ANNULE' && (
               <div className="flex gap-3">
                 <button type="button" onClick={imprimer} className="bg-sel text-white font-semibold px-4 py-1.5">
@@ -299,68 +361,80 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
           `avec-edition` tant qu'un ordre est ouvert). */}
       {ordre && ordre.statut !== 'ANNULE' && (
         <div className="impression-seul ordre-virement text-[12px] text-black">
-          <div className="flex justify-between gap-6 mb-6">
-            <div>
-              <div className="font-bold uppercase">{tenant?.nom}</div>
-              {tenant?.mentionsSociete && <div>{tenant.mentionsSociete}</div>}
-              <div className="mt-2">Compte à débiter · {ordre.donneurBanque}</div>
-              <div>{ordre.donneurCoordonnees}</div>
-              {ordre.donneurBic && <div>BIC {ordre.donneurBic}</div>}
-            </div>
-            <div className="text-right">
-              <div className="font-bold">À l'attention de {ordre.donneurBanque}</div>
-            </div>
-          </div>
-          <div className="text-[15px] font-bold mb-1">
-            ORDRE DE VIREMENT N° {ordre.numero}
-            {ordre.nombreImpressions > 1 && ' · DUPLICATA'}
-          </div>
-          <div className="mb-4">du {jour(ordre.date)}</div>
-          <p className="mb-3">
-            Nous vous prions de bien vouloir effectuer, par le débit du compte ci-dessus, les virements suivants :
-          </p>
-          <table className="w-full border-collapse mb-3">
-            <thead>
-              <tr>
-                <th className="border border-black text-left px-1.5 py-1">Bénéficiaire</th>
-                <th className="border border-black text-left px-1.5 py-1">Banque</th>
-                <th className="border border-black text-left px-1.5 py-1">Coordonnées bancaires</th>
-                <th className="border border-black text-left px-1.5 py-1">Référence</th>
-                <th className="border border-black text-right px-1.5 py-1">Montant</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ordre.lignes.map((l) => (
-                <tr key={l.id}>
-                  <td className="border border-black px-1.5 py-1">{l.beneficiaire}</td>
-                  <td className="border border-black px-1.5 py-1">{l.banque}</td>
-                  <td className="border border-black px-1.5 py-1">
-                    {l.coordonnees}
-                    {l.codeBic && ` · BIC ${l.codeBic}`}
-                  </td>
-                  <td className="border border-black px-1.5 py-1">
-                    {l.reference ?? ''}
-                    {/* L'imputation que le dossier déclare en payant (art. 151) voyage avec le virement. */}
-                    {l.imputationDeclaree && <div>{l.imputationDeclaree}</div>}
-                  </td>
-                  <td className="border border-black px-1.5 py-1 text-right">{fmt(l.montant)}</td>
-                </tr>
-              ))}
-              <tr className="font-bold">
-                <td colSpan={4} className="border border-black px-1.5 py-1">
-                  Total ({ordre.lignes.length} virement{ordre.lignes.length > 1 ? 's' : ''})
-                </td>
-                <td className="border border-black px-1.5 py-1 text-right">{fmt(ordre.total)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div className="mb-10">Montants exprimés en francs congolais (CDF).</div>
-          <div className="flex justify-end">
-            <div className="text-center w-[260px]">
-              <div>Fait le ...................................</div>
-              <div className="mt-2">Signature(s) autorisée(s)</div>
-            </div>
-          </div>
+          {/* LES AVIS DE RÈGLEMENT · seuls imprimés tant qu'ils sont affichés,
+              un par page (ligne sage-l2, fonction 27) ; sinon l'ordre. */}
+          {avisDeLOrdre && avisDeLOrdre.avis.length > 0 ? (
+            avisDeLOrdre.avis.map((a, i) => (
+              <pre key={a.ligneId} className="whitespace-pre-wrap font-sans leading-[1.6]" style={i < avisDeLOrdre.avis.length - 1 ? { breakAfter: 'page' } : undefined}>
+                {a.texte}
+              </pre>
+            ))
+          ) : (
+            <>
+              <div className="flex justify-between gap-6 mb-6">
+                <div>
+                  <div className="font-bold uppercase">{tenant?.nom}</div>
+                  {tenant?.mentionsSociete && <div>{tenant.mentionsSociete}</div>}
+                  <div className="mt-2">Compte à débiter · {ordre.donneurBanque}</div>
+                  <div>{ordre.donneurCoordonnees}</div>
+                  {ordre.donneurBic && <div>BIC {ordre.donneurBic}</div>}
+                </div>
+                <div className="text-right">
+                  <div className="font-bold">À l'attention de {ordre.donneurBanque}</div>
+                </div>
+              </div>
+              <div className="text-[15px] font-bold mb-1">
+                ORDRE DE VIREMENT N° {ordre.numero}
+                {ordre.nombreImpressions > 1 && ' · DUPLICATA'}
+              </div>
+              <div className="mb-4">du {jour(ordre.date)}</div>
+              <p className="mb-3">
+                Nous vous prions de bien vouloir effectuer, par le débit du compte ci-dessus, les virements suivants :
+              </p>
+              <table className="w-full border-collapse mb-3">
+                <thead>
+                  <tr>
+                    <th className="border border-black text-left px-1.5 py-1">Bénéficiaire</th>
+                    <th className="border border-black text-left px-1.5 py-1">Banque</th>
+                    <th className="border border-black text-left px-1.5 py-1">Coordonnées bancaires</th>
+                    <th className="border border-black text-left px-1.5 py-1">Référence</th>
+                    <th className="border border-black text-right px-1.5 py-1">Montant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ordre.lignes.map((l) => (
+                    <tr key={l.id}>
+                      <td className="border border-black px-1.5 py-1">{l.beneficiaire}</td>
+                      <td className="border border-black px-1.5 py-1">{l.banque}</td>
+                      <td className="border border-black px-1.5 py-1">
+                        {l.coordonnees}
+                        {l.codeBic && ` · BIC ${l.codeBic}`}
+                      </td>
+                      <td className="border border-black px-1.5 py-1">
+                        {l.reference ?? ''}
+                        {/* L'imputation que le dossier déclare en payant (art. 151) voyage avec le virement. */}
+                        {l.imputationDeclaree && <div>{l.imputationDeclaree}</div>}
+                      </td>
+                      <td className="border border-black px-1.5 py-1 text-right">{fmt(l.montant)}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-bold">
+                    <td colSpan={4} className="border border-black px-1.5 py-1">
+                      Total ({ordre.lignes.length} virement{ordre.lignes.length > 1 ? 's' : ''})
+                    </td>
+                    <td className="border border-black px-1.5 py-1 text-right">{fmt(ordre.total)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div className="mb-10">Montants exprimés en francs congolais (CDF).</div>
+              <div className="flex justify-end">
+                <div className="text-center w-[260px]">
+                  <div>Fait le ...................................</div>
+                  <div className="mt-2">Signature(s) autorisée(s)</div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </>

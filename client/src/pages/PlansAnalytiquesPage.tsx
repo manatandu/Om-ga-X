@@ -1,10 +1,15 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
 import { Aide } from '../components/chrome/Aide';
 import type { Bailleur, BudgetSection, PlanAnalytique, SectionAnalytique } from '../lib/types';
 import { PortailModale } from '../components/PortailModale';
+import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImpression';
+import { EditionStructure } from '../components/EditionStructure';
+import { ChoixModeleEdition } from '../components/ChoixModeleEdition';
+import { editionAnalytique, perimetreDesSections } from '../lib/editions-structures';
+import { COLONNES_EDITION, type ModeleServi } from '../lib/modeles-edition';
 import { montant } from '../lib/montants';
 
 /**
@@ -50,8 +55,13 @@ export function PlansAnalytiquesPage() {
   const budgetModifiable = estAdmin && exerciceCourant?.statut !== 'CLOTURE';
 
   const [plans, setPlans] = useState<PlanAnalytique[] | null>(null);
+  // Le modèle de la liste imprimée (ligne sage-l7, fonction 59) · Standard par défaut.
+  const [modeleEdition, setModeleEdition] = useState<ModeleServi | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
-  const [sections, setSections] = useState<SectionAnalytique[]>([]);
+  // `null` · pas encore lues (ou leur lecture est tombée) pour l'axe choisi ·
+  // jamais la liste de l'axe d'avant, ni une liste vide (relecture m6).
+  const [sections, setSections] = useState<SectionAnalytique[] | null>(null);
+  const jetonSections = useRef(0);
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [bailleurs, setBailleurs] = useState<Bailleur[]>([]);
   const [budget, setBudget] = useState<BudgetSection | null>(null);
@@ -83,7 +93,7 @@ export function PlansAnalytiquesPage() {
   } | null>(null);
 
   const plan = plans?.find((p) => p.id === planId) ?? null;
-  const section = sections.find((s) => s.id === sectionId) ?? null;
+  const section = sections?.find((s) => s.id === sectionId) ?? null;
 
   useEffect(() => {
     api.get<PlanAnalytique[]>('/analytique/plans').then(
@@ -99,8 +109,13 @@ export function PlansAnalytiquesPage() {
   }, []);
 
   const chargerSections = async (id: string) => {
+    // Une réponse périmée (axe changé avant la réponse) est jetée · sans quoi
+    // les sections de l'axe d'avant s'affichaient, et s'imprimaient, sous le
+    // nouveau.
+    const mien = ++jetonSections.current;
     try {
       const r = await api.get<SectionAnalytique[]>(`/analytique/plans/${id}/sections`);
+      if (mien !== jetonSections.current) return;
       // Le compteur de l'axe vient de la liste des plans : sans ce
       // rafraîchissement il resterait à zéro après la création d'une section.
       api.get<PlanAnalytique[]>('/analytique/plans').then(setPlans, () => undefined);
@@ -108,12 +123,15 @@ export function PlansAnalytiquesPage() {
       setSectionId((s) => (r.some((x) => x.id === s) ? s : null));
       setErreur(null);
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : 'Chargement des sections impossible');
+      if (mien === jetonSections.current) setErreur(e instanceof ApiError ? e.message : 'Chargement des sections impossible');
     }
   };
 
   useEffect(() => {
+    // L'axe change · les sections de l'axe d'avant ne restent pas à l'écran.
+    setSections(null);
     if (planId) chargerSections(planId);
+    else jetonSections.current++;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planId]);
 
@@ -130,8 +148,9 @@ export function PlansAnalytiquesPage() {
 
   const listeFiltree = useMemo(() => {
     const q = recherche.trim().toLowerCase();
-    if (!q) return sections;
-    return sections.filter((s) => s.code.toLowerCase().includes(q) || s.intitule.toLowerCase().includes(q));
+    const lues = sections ?? [];
+    if (!q) return lues;
+    return lues.filter((s) => s.code.toLowerCase().includes(q) || s.intitule.toLowerCase().includes(q));
   }, [sections, recherche]);
 
   const creerSection = async (e: FormEvent) => {
@@ -251,7 +270,7 @@ export function PlansAnalytiquesPage() {
     try {
       await api.delete(`/analytique/plans/${plan.id}`);
       await rechargerPlans(null);
-      setSections([]);
+      setSections(null);
       setSectionId(null);
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Suppression impossible');
@@ -281,9 +300,21 @@ export function PlansAnalytiquesPage() {
   };
 
   return (
-    <div className="p-2">
+    <div className="p-2 avec-edition">
+      {/* Ligne sage-l7, fonction 59 · l'édition du plan analytique, la liste
+          à plat des sections du plan choisi, sous son modèle · le périmètre
+          dit le plan et la recherche. */}
+      <EnteteImpression titre="Plan analytique" />
+      <EditionStructure
+        edition={editionAnalytique(plan, listeFiltree)}
+        perimetre={perimetreDesSections(plan, sections !== null, recherche, listeFiltree.length)}
+        modele={modeleEdition}
+        catalogue={COLONNES_EDITION.PLAN_ANALYTIQUE}
+      />
       <div className="flex items-center justify-end mb-1.5 gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <ChoixModeleEdition edition="PLAN_ANALYTIQUE" onChange={setModeleEdition} />
+          <BoutonImprimer libelle="Imprimer la liste" />
           <Aide sujet="analytique" />
           <input
             value={recherche}
@@ -342,7 +373,7 @@ export function PlansAnalytiquesPage() {
               >
                 <span className="flex items-baseline gap-1.5">
                   {p.intitule}
-                  <span className={`font-mono text-[11px] ${planId === p.id ? 'text-white/60' : 'text-text-dim'}`}>
+                  <span className={`font-mono text-[11px] ${planId === p.id ? 'text-white/75' : 'text-text-dim'}`}>
                     {p.code}
                   </span>
                 </span>
@@ -428,12 +459,17 @@ export function PlansAnalytiquesPage() {
                 </span>
               </button>
             ))}
-            {listeFiltree.length === 0 && (
+            {/* « Aucune » ne se dit que d'une liste LUE (CLAUDE.md § 9 ter). */}
+            {sections !== null && listeFiltree.length === 0 && (
               <div className="px-3 py-4 text-[11.5px] text-text-dim italic">Aucune section</div>
+            )}
+            {sections === null && planId && (
+              <div className="px-3 py-4 text-[11.5px] text-text-dim italic">Sections non lues</div>
             )}
           </div>
           <div className="px-3 py-1.5 border-t border-border bg-chrome text-[11px] text-text-dim">
-            {listeFiltree.length} section{listeFiltree.length > 1 ? 's' : ''}
+            {/* Aucun « 0 section » sur une liste non lue (second tour, 11 · CLAUDE.md § 9 ter). */}
+            {!planId ? 'Aucun axe choisi' : sections === null ? 'Sections non lues' : `${listeFiltree.length} section${listeFiltree.length > 1 ? 's' : ''}`}
           </div>
         </section>
 

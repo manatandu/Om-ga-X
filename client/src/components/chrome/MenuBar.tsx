@@ -339,7 +339,7 @@ export function MenuBar({
         conteneur qui défile en X rogne aussi en Y, et les menus seraient
         coupés. 32 px : la hauteur d'une barre de commandes de Windows 11.
       */
-      className="relative z-40 min-h-[32px] flex flex-wrap items-center gap-0.5 px-2 py-0.5 bg-surface border-b border-border shadow-[0_1px_2px_rgba(20,47,107,0.06)] select-none"
+      className="relative z-40 min-h-[32px] flex flex-wrap items-center gap-0.5 px-2 py-0.5 bg-surface border-b border-border shadow-[0_1px_2px_rgba(42,31,92,0.06)] select-none"
     >
       {avant}
       {menus.map((m) => (

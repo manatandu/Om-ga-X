@@ -20,6 +20,10 @@ const BanquesPage = lazy(() => import('../pages/BanquesPage').then((m) => ({ def
 const LibellesPage = lazy(() => import('../pages/LibellesPage').then((m) => ({ default: m.LibellesPage })));
 // Ligne sage-l1, fonction 19 · les séquences de saisie.
 const SequencesSaisiePage = lazy(() => import('../pages/SequencesSaisiePage').then((m) => ({ default: m.SequencesSaisiePage })));
+// Ligne sage-l2, fonction 1 · les modes de règlement.
+const ModesReglementPage = lazy(() => import('../pages/ModesReglementPage').then((m) => ({ default: m.ModesReglementPage })));
+// Ligne sage-l2, fonction 27 · les modèles d'impression des tiers.
+const ModelesImpressionPage = lazy(() => import('../pages/ModelesImpressionPage').then((m) => ({ default: m.ModelesImpressionPage })));
 const EtatsPersonnalisesPage = lazy(() =>
   import('../pages/EtatsPersonnalisesPage').then((m) => ({ default: m.EtatsPersonnalisesPage })),
 );
@@ -75,6 +79,12 @@ const NotesAnnexesPage = lazy(() => import('../pages/NotesAnnexesPage').then((m)
 const RegistreDonateursPage = lazy(() => import('../pages/RegistreDonateursPage').then((m) => ({ default: m.RegistreDonateursPage })));
 const DocumentsObligatoiresPage = lazy(() => import('../pages/DocumentsObligatoiresPage').then((m) => ({ default: m.DocumentsObligatoiresPage })));
 const RestitutionPage = lazy(() => import('../pages/RestitutionPage').then((m) => ({ default: m.RestitutionPage })));
+const ExportModificationsPage = lazy(() =>
+  import('../pages/ExportModificationsPage').then((m) => ({ default: m.ExportModificationsPage })),
+);
+const ImpressionsDiffereesPage = lazy(() =>
+  import('../pages/ImpressionsDiffereesPage').then((m) => ({ default: m.ImpressionsDiffereesPage })),
+);
 const UtilisateursPage = lazy(() => import('../pages/UtilisateursPage').then((m) => ({ default: m.UtilisateursPage })));
 const ParametresDossierPage = lazy(() => import('../pages/ParametresDossierPage').then((m) => ({ default: m.ParametresDossierPage })));
 const PlansAnalytiquesPage = lazy(() => import('../pages/PlansAnalytiquesPage').then((m) => ({ default: m.PlansAnalytiquesPage })));
@@ -355,6 +365,18 @@ export const FENETRES: DefinitionFenetre[] = [
     rendre: () => <SequencesSaisiePage />,
   },
   {
+    motif: /^\/modes-reglement$/,
+    titre: 'Modes de règlement',
+    titreCourt: 'Modes',
+    rendre: () => <ModesReglementPage />,
+  },
+  {
+    motif: /^\/modeles-impression$/,
+    titre: "Modèles d'impression",
+    titreCourt: 'Impression',
+    rendre: () => <ModelesImpressionPage />,
+  },
+  {
     motif: /^\/declaration-tva$/,
     titre: 'Déclaration de TVA',
     titreCourt: 'Décl. TVA',
@@ -524,6 +546,22 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Restituer le dossier complet',
     titreCourt: 'Restitution',
     rendre: () => <RestitutionPage />,
+  },
+  {
+    // Ligne sage-l7, fonction 99 · AUCUN référentiel, comme la restitution ·
+    // l'AUDCIF art. 22 vaut aux deux, l'art. 3 du SYCEBNL ne l'écarte pas.
+    motif: /^\/exports-ecritures$/,
+    titre: 'Exporter les modifications',
+    titreCourt: 'Export modif.',
+    rendre: () => <ExportModificationsPage />,
+  },
+  {
+    // Ligne sage-l7, fonction 59 · aucun référentiel · AUDCIF art. 22, 7°,
+    // que l'art. 3 du SYCEBNL n'écarte pas.
+    motif: /^\/impressions-differees$/,
+    titre: 'Impressions différées',
+    titreCourt: 'Impr. différées',
+    rendre: () => <ImpressionsDiffereesPage />,
   },
   {
     // Notion SYCEBNL (division 46) · en SYSCOHADA le 46 porte les associés.

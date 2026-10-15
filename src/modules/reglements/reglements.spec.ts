@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { estEcheanceAReglerSur, lignesDuReglement, montantDu, motifRefusMontant, motifHorsEcheance, avertissementCreanceReclassee } from './reglement-tiers';
-import { ReglementsService } from './reglements.service';
+import { avecLeMode, ReglementsService } from './reglements.service';
 import type { OrdresVirementService } from './ordres-virement.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -83,6 +83,20 @@ function monter(
     journal: { findFirst: jest.fn(async () => ({ id: 'bq', code: 'BQ', type: 'TRESORERIE', compteTresorerieId: 'c521' })) },
     ligneEcriture: {
       findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) => lignes.filter((l) => where.id.in.includes(l.id))),
+      // L'art. 59 bis lit la facture sur sa PIÈCE (ligne sage-l2) · la doublure
+      // honore les pièces demandées et regroupe par pièce et par compte.
+      groupBy: jest.fn(async ({ where }: { where: { ecritureId: { in: string[] } } }) => {
+        const parCle = new Map<string, { ecritureId: string; compteId: string; _sum: { debit: number; credit: number } }>();
+        const piece = (x: object) => (x as { ecritureId?: string }).ecritureId;
+        for (const l of lignes.filter((x) => piece(x) !== undefined && where.ecritureId.in.includes(piece(x)!))) {
+          const cle = `${piece(l)}:${l.compteId}`;
+          const g = parCle.get(cle) ?? { ecritureId: piece(l)!, compteId: l.compteId, _sum: { debit: 0, credit: 0 } };
+          g._sum.debit += l.debit;
+          g._sum.credit += l.credit;
+          parCle.set(cle, g);
+        }
+        return [...parCle.values()];
+      }),
       // m-d · le solde net du compte, toutes ses lignes de l'exercice (la doublure honore le compte).
       aggregate: jest.fn(async ({ where }: { where: { compteId: string } }) => {
         const siennes = lignes.filter((l) => l.compteId === where.compteId);
@@ -113,6 +127,18 @@ function monter(
     },
     // Le RIB du journal se lit à chaque règlement (A6 bis, B3) · aucun ici.
     ribBanque: { findFirst: jest.fn(async () => null) },
+    // Ligne sage-l2, fonction 1 · l'art. 59 bis lit le fait déclaré du
+    // dossier (déclaré non assujetti ici, rien à dire).
+    tenant: { findFirst: jest.fn(async () => ({ assujettiTva: false, assujettissementTvaRepondu: true })) },
+    // Les modes de règlement du dossier (ligne sage-l2, fonction 1) · la doublure honore le dossier.
+    modeReglement: {
+      findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>
+        [
+          { id: 'esp', tenantId: 't', code: 'ESP', intitule: 'Espèces', nature: 'ESPECES', estActif: true, journalId: null },
+          { id: 'vir', tenantId: 't', code: 'VIR', intitule: 'Virement', nature: 'VIREMENT', estActif: true, journalId: null },
+        ].find((m) => m.id === where.id && m.tenantId === where.tenantId) ?? null,
+      ),
+    },
     // A7 ter, mineur 1 · les créances reclassées en vigueur des comptes réglés (la doublure honore les comptes).
     creanceDouteuse: {
       findMany: jest.fn(async ({ where }: { where: { compteCreanceId: { in: string[] } } }) =>
@@ -149,7 +175,7 @@ function monter(
     { lettrerManuel, delettrer, completer } as unknown as LettrageService,
     ordres as unknown as OrdresVirementService,
   );
-  return { service, creer, lettrerManuel, delettrer, completer, lignes, ordres, ordre, retirerCompensation };
+  return { service, creer, lettrerManuel, delettrer, completer, lignes, ordres, ordre, retirerCompensation, prisma };
 }
 
 const base = { sens: 'FOURNISSEUR' as const, exerciceId: 'ex', journalId: 'bq', date: '2026-09-25' };
@@ -411,6 +437,9 @@ function echeancier(
     cloture: { findMany: jest.fn(async () => []) },
     ribBanque: { findFirst: jest.fn(async () => null) },
     journal: { findFirst: jest.fn(async () => ({ id: 'bq', code: 'BQ', type: 'TRESORERIE', compteTresorerieId: 'c521' })) },
+    // Ligne sage-l2, fonction 1 · l'art. 59 bis lit le fait déclaré du
+    // dossier (déclaré non assujetti ici, rien à dire).
+    tenant: { findFirst: jest.fn(async () => ({ assujettiTva: false, assujettissementTvaRepondu: true })) },
   } as unknown as PrismaService;
   const creer = jest.fn(async (_t: string, _u: string, dto: { lignes: { compteId: string }[] }) => ({
     id: 'e1',
@@ -778,5 +807,206 @@ describe('Échéances · une facture d’un lettrage partiel est servie pour son
     const [g] = await service.echeances('t', 'ex', 'CLIENT');
     expect(g.lignes).toHaveLength(1);
     expect(g.lignes[0]).toMatchObject({ id: 'xF', montant: 14_800_000, regleParLettragePartiel: { groupe: 'b', montant: 20_000_000 } });
+  });
+});
+
+describe('le mode de règlement du lot (ligne sage-l2, fonction 1)', () => {
+  it('posé sur chaque ligne de chaque pièce, le tiers soldé comme la trésorerie', async () => {
+    const { service, creer } = monter();
+    await service.enregistrer('t', 'u', { ...base, modeReglementId: 'vir', reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] });
+    expect(creer.mock.calls[0][2].lignes).toEqual([
+      expect.objectContaining({ compteId: 'c401', debit: 600, modeReglementId: 'vir' }),
+      expect.objectContaining({ compteId: 'c521', credit: 600, modeReglementId: 'vir' }),
+    ]);
+  });
+
+  it('le mode d’un autre dossier est refusé AVANT toute pièce', async () => {
+    const { service, creer } = monter();
+    await expect(
+      service.enregistrer('t', 'u', { ...base, modeReglementId: 'inconnu', reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] }),
+    ).rejects.toThrow('introuvable');
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('art. 59 bis · une facture de 1 500 000 payée en espèces par un dossier assujetti est AVERTIE, jamais refusée', async () => {
+    const { service, creer, lignes, prisma } = monter();
+    lignes.find((l) => l.id === 'f1')!.credit = 1_500_000;
+    (prisma.tenant.findFirst as jest.Mock).mockResolvedValue({ assujettiTva: true, assujettissementTvaRepondu: true });
+    const r = await service.enregistrer('t', 'u', { ...base, modeReglementId: 'esp', reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] });
+    expect(creer).toHaveBeenCalledTimes(1);
+    expect(r.avertissements.join(' ')).toMatch(/art\. 59 bis.*art\. 74 bis/);
+  });
+
+  it('art. 59 bis · deux échéances sous le seuil se lisent sur leur PIÈCE, SOUS CONDITION, nommées une fois (M3)', async () => {
+    const { service, lignes, prisma } = monter();
+    for (const id of ['f1', 'f2']) {
+      const l = lignes.find((x) => x.id === id)!;
+      l.credit = 600_000;
+      (l as { ecritureId?: string }).ecritureId = 'eA';
+    }
+    (prisma.tenant.findFirst as jest.Mock).mockResolvedValue({ assujettiTva: true, assujettissementTvaRepondu: true });
+    const r = await service.enregistrer('t', 'u', { ...base, modeReglementId: 'esp', reglements: [{ compteId: 'c401', ligneIds: ['f1', 'f2'] }] });
+    const dit = r.avertissements.join(' ');
+    expect(dit).toMatch(/1\s200\s000,00, si ses lignes au compte sont les échéances d’une même facture/);
+    expect(dit).toMatch(/est une transaction/);
+    expect(dit.match(/art\. 59 bis/g)).toHaveLength(1);
+  });
+
+  it('art. 59 bis · la même facture payée par virement ne dit rien', async () => {
+    const { service, lignes, prisma } = monter();
+    lignes.find((l) => l.id === 'f1')!.credit = 1_500_000;
+    (prisma.tenant.findFirst as jest.Mock).mockResolvedValue({ assujettiTva: true, assujettissementTvaRepondu: true });
+    const r = await service.enregistrer('t', 'u', { ...base, modeReglementId: 'vir', reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] });
+    expect(r.avertissements.join(' ')).not.toMatch(/59 bis/);
+  });
+});
+
+/**
+ * ESCOMPTE ET ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36) · câblés dans
+ * `enregistrer` · le tiers soldé de ce que la pièce éteint, chaque montant sur
+ * son compte, tout jugé AVANT la première pièce.
+ */
+describe('l’escompte et l’écart de règlement (ligne sage-l2, fonction 36)', () => {
+  const PLAN = [
+    { id: 'c773', numero: '77300000', intitule: 'Escomptes obtenus' },
+    { id: 'c673', numero: '67300000', intitule: 'Escomptes accordés' },
+    { id: 'c6588', numero: '65880000', intitule: 'Autres charges diverses' },
+  ];
+  function avecDossier(seuil: number | null, plan = PLAN, assujetti = true) {
+    const m = monter();
+    (m.prisma.tenant.findFirst as jest.Mock).mockResolvedValue({
+      referentiel: 'SYSCOHADA',
+      seuilEcartReglement: seuil,
+      assujettiTva: assujetti,
+      assujettissementTvaRepondu: true,
+    });
+    // La doublure honore le dossier et la racine demandée.
+    (m.prisma as unknown as { compte: unknown }).compte = {
+      findMany: jest.fn(async ({ where }: { where: { tenantId: string; numero: { startsWith: string } } }) =>
+        where.tenantId === 't' ? plan.filter((c) => c.numero.startsWith(where.numero.startsWith)) : [],
+      ),
+    };
+    return m;
+  }
+
+  it('escompte obtenu · le 401 soldé de 600, 588 payés, 12 au 773 ; le lettrage est complet', async () => {
+    const { service, creer, lettrerManuel } = avecDossier(null);
+    const r = await service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12 }] });
+    expect(creer.mock.calls[0][2].lignes).toEqual([
+      expect.objectContaining({ compteId: 'c401', debit: 600 }),
+      expect.objectContaining({ compteId: 'c521', credit: 588 }),
+      expect.objectContaining({ compteId: 'c773', credit: 12 }),
+    ]);
+    expect(lettrerManuel).toHaveBeenCalledWith('t', 'c401', ['f1', 'p1-0'], 'u', { autoriserPartiel: false });
+    expect(r.reglements[0]).toEqual(expect.objectContaining({ montant: 588, escompte: 12, partiel: false }));
+    expect(r.avertissements.join(' ')).toMatch(/l'escompte de 12\.00 ne sort de la base.*art\. 29, 1°/);
+  });
+
+  it('le mode du règlement va au tiers et à la trésorerie, jamais à l’escompte (second tour, m2)', async () => {
+    const { service, creer } = avecDossier(null);
+    await service.enregistrer('t', 'u', { ...base, modeReglementId: 'vir', reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12 }] });
+    const lignes = creer.mock.calls[0][2].lignes as Array<{ compteId: string; modeReglementId?: string }>;
+    expect(lignes.map((l) => [l.compteId, l.modeReglementId ?? null])).toEqual([
+      ['c401', 'vir'],
+      ['c521', 'vir'],
+      ['c773', null],
+    ]);
+  });
+
+  it('un dossier déclaré non assujetti n’a aucune taxe à dire', async () => {
+    const { service } = avecDossier(null, PLAN, false);
+    const r = await service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12 }] });
+    expect(r.avertissements.join(' ')).not.toMatch(/TVA|base/);
+  });
+
+  it('le reste qu’un client ne paie pas, sous le seuil · 0,50 au 6588, le 411 soldé de 500', async () => {
+    const { service, creer, lettrerManuel } = avecDossier(1);
+    const r = await service.enregistrer('t', 'u', {
+      ...base,
+      sens: 'CLIENT',
+      reglements: [{ compteId: 'c411', ligneIds: ['k1'], montant: 499.5, solderEcart: true }],
+    });
+    expect(creer.mock.calls[0][2].lignes.map((l: { compteId: string; debit?: number; credit?: number }) => [l.compteId, l.debit ?? 0, l.credit ?? 0])).toEqual([
+      ['c521', 499.5, 0],
+      ['c6588', 0.5, 0],
+      ['c411', 0, 500],
+    ]);
+    expect(lettrerManuel).toHaveBeenCalledWith('t', 'c411', ['k1', 'p1-2'], 'u', { autoriserPartiel: false });
+    expect(r.reglements[0]).toEqual(expect.objectContaining({ montant: 499.5, ecartReglement: 0.5 }));
+    expect(r.avertissements.join(' ')).toMatch(/l'écart de 0\.50 abandonné au client ne réduit pas la TVA facturée/);
+  });
+
+  it('trop-payé au fournisseur soldé · l’ordre de virement porte le payé, pas la dette', async () => {
+    const { service, creer, ordres } = avecDossier(1);
+    await service.enregistrer('t', 'u', { ...base, ordreVirement: true, reglements: [{ compteId: 'c401', ligneIds: ['f1'], montant: 600.3, solderEcart: true }] });
+    expect(creer.mock.calls[0][2].lignes.map((l: { compteId: string; debit?: number; credit?: number }) => [l.compteId, l.debit ?? 0, l.credit ?? 0])).toEqual([
+      ['c401', 600, 0],
+      ['c6588', 0.3, 0],
+      ['c521', 0, 600.3],
+    ]);
+    expect((ordres.creer as jest.Mock).mock.calls[0][5]).toEqual([expect.objectContaining({ compteId: 'c401', montant: 600.3 })]);
+  });
+
+  it('sans seuil fixé, l’écart est refusé AVANT toute pièce, le geste nommé', async () => {
+    const { service, creer } = avecDossier(null);
+    await expect(
+      service.enregistrer('t', 'u', { ...base, sens: 'CLIENT', reglements: [{ compteId: 'c411', ligneIds: ['k1'], montant: 499.5, solderEcart: true }] }),
+    ).rejects.toThrow(/41110000 · Aucun seuil d'écart de règlement n'est fixé pour ce dossier · fixez-le dans Paramètres du dossier/);
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('deux comptes d’escompte possibles · le choix est demandé avant toute pièce, puis honoré', async () => {
+    const plan = [...PLAN, { id: 'c7731', numero: '77300001', intitule: 'Escomptes · banque' }, { id: 'c7732', numero: '77300002', intitule: 'Escomptes · caisse' }];
+    const { service, creer } = avecDossier(null, plan);
+    await expect(service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12 }] })).rejects.toThrow(
+      /Plusieurs comptes sous le 773 pour l'escompte obtenu \(77300001, 77300002\)/,
+    );
+    expect(creer).not.toHaveBeenCalled();
+    await service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12, compteEscompteId: 'c7732' }] });
+    expect(creer.mock.calls[0][2].lignes).toContainEqual(expect.objectContaining({ compteId: 'c7732', credit: 12 }));
+  });
+
+  it('jamais avec la part désignée de chaque facture, ni un compte sans son geste', async () => {
+    const { service, creer } = avecDossier(1);
+    await expect(
+      service.enregistrer('t', 'u', {
+        ...base,
+        ordreVirement: true,
+        reglements: [{ compteId: 'c401', ligneIds: ['f1', 'f2'], montant: 990, escompte: 10, imputation: [{ ligneId: 'f1', montant: 600 }, { ligneId: 'f2', montant: 390 }] }],
+      }),
+    ).rejects.toThrow(/ne se passe pas avec la part désignée/);
+    await expect(service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], compteEcartId: 'c6588' }] })).rejects.toThrow(
+      /n’a d’objet qu’avec « Solder l’écart »/,
+    );
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('le trop-perçu d’un client reste refusé, même avec « Solder l’écart » (Code civil, Livre III, art. 252)', async () => {
+    const { service, creer } = avecDossier(1);
+    await expect(
+      service.enregistrer('t', 'u', { ...base, sens: 'CLIENT', reglements: [{ compteId: 'c411', ligneIds: ['k1'], montant: 500.4, solderEcart: true }] }),
+    ).rejects.toThrow(/art\. 252/);
+    expect(creer).not.toHaveBeenCalled();
+  });
+});
+
+// SECOND TOUR DE RELECTURE DE LA LIGNE SAGE-L2, m2 · le mode du règlement se
+// posait aussi sur l'escompte, l'écart de règlement et l'écart de change, qui
+// ne sont pas un paiement.
+describe('le mode de règlement sur les seules lignes qui paient', () => {
+  it('le tiers et la trésorerie le reçoivent, l’escompte et l’écart non', () => {
+    const lignes = avecLeMode('vir', ['c401', 'c521'], [
+      { compteId: 'c401', debit: 1000 },
+      { compteId: 'c521', credit: 980 },
+      { compteId: 'c773', credit: 20 },
+      { compteId: 'c6588', debit: 0.5 },
+    ]);
+    expect(lignes.map((l) => [l.compteId, l.modeReglementId ?? null])).toEqual([
+      ['c401', 'vir'],
+      ['c521', 'vir'],
+      ['c773', null],
+      ['c6588', null],
+    ]);
+    expect(avecLeMode(null, ['c401'], [{ compteId: 'c401' }])).toEqual([{ compteId: 'c401' }]);
   });
 });

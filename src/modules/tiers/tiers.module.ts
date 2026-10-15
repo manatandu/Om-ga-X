@@ -5,13 +5,17 @@ import { DocumentsTiersController } from './documents-tiers.controller';
 import { DocumentsTiersService } from './documents-tiers.service';
 import { RibsTiersController } from './ribs-tiers.controller';
 import { RibsTiersService } from './ribs-tiers.service';
+import { LieuxLivraisonController } from './lieux-livraison.controller';
+import { LieuxLivraisonService } from './lieux-livraison.service';
+import { ModelesImpressionController } from './modeles-impression.controller';
+import { ModelesImpressionService } from './modeles-impression.service';
 import { LicenceModule } from '../licence/licence.module';
 import { JwtAuthModule } from '../auth/jwt-auth.module';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule],
-  controllers: [TiersController, ModeleReglementController, DocumentsTiersController, RibsTiersController],
-  providers: [TiersService, DocumentsTiersService, RibsTiersService],
+  controllers: [TiersController, ModeleReglementController, DocumentsTiersController, RibsTiersController, LieuxLivraisonController, ModelesImpressionController],
+  providers: [TiersService, DocumentsTiersService, RibsTiersService, LieuxLivraisonService, ModelesImpressionService],
   exports: [TiersService],
 })
 export class TiersModule {}

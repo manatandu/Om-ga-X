@@ -53,6 +53,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   DevisesController: FonctionMetier.STRUCTURE,
   ModeleSaisieController: FonctionMetier.STRUCTURE,
   SequencesSaisieController: FonctionMetier.STRUCTURE,
+  ModesReglementController: FonctionMetier.STRUCTURE,
+  ModelesImpressionController: FonctionMetier.STRUCTURE,
   BanquesController: FonctionMetier.STRUCTURE,
   EtatsPersonnalisesController: FonctionMetier.REVISION,
   SimulationsController: FonctionMetier.REVISION,
@@ -62,10 +64,13 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   ModeleReglementController: FonctionMetier.TIERS,
   DocumentsTiersController: FonctionMetier.TIERS,
   RibsTiersController: FonctionMetier.TIERS,
+  LieuxLivraisonController: FonctionMetier.TIERS,
   EcritureController: FonctionMetier.SAISIE,
   RegularisationController: FonctionMetier.SAISIE,
   OperationSpecifiqueController: FonctionMetier.SAISIE,
   ImportController: FonctionMetier.SAISIE,
+  // Ligne sage-l7, fonction 99 · l'export des écritures, pendant de l'import.
+  ExportModificationsController: FonctionMetier.SAISIE,
   LettrageController: FonctionMetier.LETTRAGE,
   RapprochementController: FonctionMetier.TRESORERIE,
   ReglementsController: FonctionMetier.TRESORERIE,
@@ -165,6 +170,12 @@ export const CONTROLEURS_HORS_PROFIL: Record<string, string> = {
     "Acceptation des conditions de licence au nom du client · réservée à l'administrateur, que le profil ne restreint jamais.",
   ImpressionsJournalController:
     "Trace de l'impression du journal (ligne sage-l1, fonction 60) · imprimer est une lecture, ouverte à qui lit le journal, que le profil ne ferme pas.",
+  ModelesEditionController:
+    "Modèles des éditions de travail (ligne sage-l7, fonction 59) · la présentation d'une liste imprimée, sans effet sur les livres, que le profil ne ferme pas.",
+  SelectionsEditionController:
+    "Sélections enregistrées des éditions (ligne sage-l7, fonction 59) · des critères de lecture rappelés, sans effet sur les livres, que le profil ne ferme pas.",
+  ImpressionsDiffereesController:
+    "Impression différée (ligne sage-l7, fonction 59) · demander et faire produire une édition est une lecture des livres, ouverte à qui peut les exporter, que le profil ne ferme pas.",
 };
 
 const METHODES_QUI_ECRIVENT = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

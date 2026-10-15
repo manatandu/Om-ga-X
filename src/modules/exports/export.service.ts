@@ -1,7 +1,7 @@
 import { HORS_SITUATION, avecStatut, estJournalDeSituation, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
 import { nombreSaisi } from '../notes-annexes/controles-saisie-notes';
 import { Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
-import { enregistrerImpression, estUneRecherche, periodeCouverte } from '../journaux/impressions-journal';
+import { type ImpressionAEnregistrer, enregistrerImpression, estUneRecherche, periodeCouverte } from '../journaux/impressions-journal';
 import { immatriculationDesLivres, numeroRegistreLiasse } from '../tenant/mentions-immatriculation';
 import { REFS_DE_SOLDE } from '../etats-financiers/correspondance-projet-emplois-ressources';
 import type { Writable } from 'stream';
@@ -10,6 +10,7 @@ import { perimetreJournal } from '../comptabilite/ecriture.service';
 import type { CriteresRecherche } from '../comptabilite/recherche-ecritures';
 import {
   LOT_EXPORT,
+  confronterAuDecompte,
   MAX_LIGNES_EXPORT,
   PREMIERE_LIGNE_DONNEES,
   ouvrirFeuilleEnFlux,
@@ -19,6 +20,7 @@ import {
 import { FormeImpressionJournal, JeuEtatsFinanciersSycebnl, Prisma, Referentiel, SystemeComptableSyscohada } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../common/prisma.service';
+import { apresLaCle } from '../../common/lecture-par-lots';
 import { monnaieDuJeuLegal } from '../../common/monnaie-de-tenue';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { avantSoldeDesComptesDeGestion } from '../comptabilite/balance-trois-colonnes';
@@ -398,6 +400,17 @@ export function anomalieResultatAnterieurNonVire(bilan: {
   return lignes;
 }
 
+/** Le refus de volume des livres en flux · compté par la base avant le premier octet, jamais une troncature. */
+function refuserAuDelaDuPlafond(nb: number, quoi: string): void {
+  if (nb > MAX_LIGNES_EXPORT) {
+    throw new PayloadTooLargeException(
+      `${quoi} : ${nb.toLocaleString('fr-FR')} lignes à exporter, au-delà de la limite de ` +
+        `${MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. Restreignez la période (ou le journal) ` +
+        `et relancez l'export.`,
+    );
+  }
+}
+
 @Injectable()
 export class ExportService {
   private readonly logger = new Logger(ExportService.name);
@@ -555,13 +568,7 @@ export class ExportService {
     // Le périmètre de l'écriture, arrêté sur son statut · ce que l'export lit,
     // jamais une simulation qu'il ne lit pas (ligne sage-l1, fonction 12).
     const nb = await this.prisma.ligneEcriture.count({ where: { ecriture: avecStatut(ecriture) } });
-    if (nb > MAX_LIGNES_EXPORT) {
-      throw new PayloadTooLargeException(
-        `${quoi} : ${nb.toLocaleString('fr-FR')} lignes à exporter, au-delà de la limite de ` +
-          `${MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. Restreignez la période (ou le journal) ` +
-          `et relancez l'export.`,
-      );
-    }
+    refuserAuDelaDuPlafond(nb, quoi);
   }
 
   /**
@@ -798,7 +805,13 @@ export class ExportService {
     imprimePar?: string,
   ): Promise<{ lignes: number }> {
     const where = perimetreJournal(tenantId, filtres);
-    await this.verifierVolume(where, 'Journal');
+    // LE DÉCOMPTE DE DÉPART, SUR LE FILTRE MÊME DE LA LECTURE (relecture
+    // TypeScript, M2) · il borne le volume, et le livre écrit s'y confronte
+    // avant ses totaux. `verifierVolume` arrête le statut hors situation · le
+    // livre d'un journal de situation, que la lecture rend, se serait alors
+    // refusé comme amputé.
+    const comptees = await this.prisma.ligneEcriture.count({ where: { ecriture: { ...where, tenantId } } });
+    refuserAuDelaDuPlafond(comptees, 'Journal');
     const identite = await this.identiteEtat(tenantId, filtres);
 
     // L'auteur est un identifiant en base · un auditeur ne lit pas un uuid.
@@ -821,15 +834,35 @@ export class ExportService {
     let totalDebit = 0;
     let totalCredit = 0;
     let nbLignes = 0;
-    let curseur: string | undefined;
+    // LA TRANCHE SUIVANTE PART DES VALEURS DE LA DERNIÈRE ÉCRITURE RENDUE,
+    // jamais d'un curseur relu en base (relecture « échecs silencieux » de
+    // sage-l7, M6) · un brouillard retiré pendant l'export arrêtait le curseur
+    // de Prisma, et le journal sortait amputé, ses totaux bouclant sur ce
+    // qu'il portait.
+    let derniere: { date: Date; numeroPiece: number | null; id: string } | undefined;
+    // Une pièce dont la DATE avance pendant la production revient dans une
+    // tranche suivante · écrite deux fois, le livre portait ses lignes en
+    // double et des totaux faux qui bouclaient (M2). Une pièce dont la date
+    // recule n'est jamais relue · le décompte de départ le dit.
+    const ecrites = new Set<string>();
     for (;;) {
       const lot = await this.prisma.ecriture.findMany({
         // `tenantId` répété alors que `where` le porte déjà · le balayage de
         // cloisonnement lit le CODE, pas la valeur d'une variable, et une borne
         // qu'il ne voit pas est une borne qu'un relecteur ne voit pas non plus.
-        where: { ...where, tenantId },
+        where: derniere
+          ? {
+              AND: [
+                { ...where, tenantId },
+                apresLaCle<Prisma.EcritureWhereInput>([
+                  { champ: 'date', valeur: derniere.date },
+                  { champ: 'numeroPiece', valeur: derniere.numeroPiece, nullable: true },
+                  { champ: 'id', valeur: derniere.id },
+                ]),
+              ],
+            }
+          : { ...where, tenantId },
         take: LOT_EXPORT,
-        ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
         include: {
           lignes: { include: { compte: true } },
           journal: true,
@@ -842,6 +875,8 @@ export class ExportService {
         orderBy: [{ date: 'asc' }, { numeroPiece: 'asc' }, { id: 'asc' }],
       });
       for (const e of lot) {
+        if (ecrites.has(e.id)) continue;
+        ecrites.add(e.id);
         const etatCorrection = e.correction
           ? `Annulée par la pièce n° ${e.correction.numeroPiece ?? '·'}`
           : e.corrigeEcriture
@@ -875,9 +910,13 @@ export class ExportService {
         }
       }
       if (lot.length < LOT_EXPORT) break;
-      curseur = lot[lot.length - 1].id;
+      const fin = lot[lot.length - 1];
+      derniere = { date: fin.date, numeroPiece: fin.numeroPiece, id: fin.id };
     }
 
+    // Un livre amputé ou gonflé en route ne reçoit pas de totaux · le
+    // téléchargement est coupé, l'impression différée échoue, motif dit.
+    confronterAuDecompte(nbLignes, comptees, 'Journal');
     const derniereDonnee = flux.derniereLigneDonnees();
     // LES DEUX TOTAUX SONT DÉSORMAIS LE MÊME · la formule couvre exactement les
     // lignes écrites, et la valeur jointe est leur somme. Tant que l'export
@@ -914,48 +953,65 @@ export class ExportService {
     filtres: { exerciceId?: string; journalId?: string; dateDebut?: string; dateFin?: string } & CriteresRecherche,
     imprimePar?: string,
   ) {
-    if (!imprimePar || !filtres.exerciceId || estUneRecherche(filtres)) return;
+    if (!imprimePar) return;
     try {
-      const exercice = await this.prisma.exercice.findFirst({
-        where: { id: filtres.exerciceId, tenantId },
-        select: { id: true, dateDebut: true, dateFin: true },
-      });
-      if (!exercice) return;
-      // L'export d'un journal de situation n'atteste rien du livre-journal
-      // (relecture du second tour, d) · il ne prend pas de numéro de la suite.
-      if (filtres.journalId) {
-        const journal = await this.prisma.journal.findFirst({ where: { id: filtres.journalId, tenantId }, select: { type: true } });
-        if (!journal || estJournalDeSituation(journal)) return;
-      }
-      const periode = periodeCouverte(exercice, filtres);
-      const nombreEcritures = await this.prisma.ecriture.count({
-        where: perimetreJournal(tenantId, {
-          exerciceId: exercice.id,
-          ...(filtres.journalId ? { journalId: filtres.journalId } : {}),
-          dateDebut: periode.dateDebut.toISOString().slice(0, 10),
-          dateFin: periode.dateFin.toISOString().slice(0, 10),
-        }),
-      });
-      // UN JOURNAL SANS PIÈCE N'A RIEN À ATTESTER (relecture M6) · enregistrée,
-      // l'impression d'un journal vide le retenait (clé vers le journal) et
-      // tenait son exercice, sans rien prouver.
-      if (nombreEcritures === 0) return;
-      await enregistrerImpression(this.prisma, {
-        tenantId,
-        exerciceId: exercice.id,
-        journalId: filtres.journalId ?? null,
-        dateDebut: periode.dateDebut,
-        dateFin: periode.dateFin,
-        forme: FormeImpressionJournal.EXPORT,
-        nombreEcritures,
-        imprimePar,
-      });
+      const impression = await this.impressionDuJournal(this.prisma, tenantId, filtres, imprimePar);
+      if (impression) await enregistrerImpression(this.prisma, impression);
     } catch (erreur) {
       this.logger.error(
         `Journal exporté sans être enregistré comme imprimé (dossier ${tenantId}, exercice ${filtres.exerciceId}) · ` +
           (erreur instanceof Error ? erreur.message : String(erreur)),
       );
     }
+  }
+
+  /**
+   * L'IMPRESSION QUE LE JOURNAL EXPORTÉ ATTESTE, ou `null` quand il n'atteste
+   * rien · une recherche, un journal de situation, un journal sans pièce.
+   * Lue par `client` · le serveur, ou la transaction de l'impression différée
+   * qui la range avec son fichier (relecture M4 de sage-l7).
+   */
+  async impressionDuJournal(
+    client: Pick<Prisma.TransactionClient, 'exercice' | 'journal' | 'ecriture'>,
+    tenantId: string,
+    filtres: { exerciceId?: string; journalId?: string; dateDebut?: string; dateFin?: string } & CriteresRecherche,
+    imprimePar: string,
+  ): Promise<ImpressionAEnregistrer | null> {
+    if (!filtres.exerciceId || estUneRecherche(filtres)) return null;
+    const exercice = await client.exercice.findFirst({
+      where: { id: filtres.exerciceId, tenantId },
+      select: { id: true, dateDebut: true, dateFin: true },
+    });
+    if (!exercice) return null;
+    // L'export d'un journal de situation n'atteste rien du livre-journal
+    // (relecture du second tour, d) · il ne prend pas de numéro de la suite.
+    if (filtres.journalId) {
+      const journal = await client.journal.findFirst({ where: { id: filtres.journalId, tenantId }, select: { type: true } });
+      if (!journal || estJournalDeSituation(journal)) return null;
+    }
+    const periode = periodeCouverte(exercice, filtres);
+    const nombreEcritures = await client.ecriture.count({
+      where: perimetreJournal(tenantId, {
+        exerciceId: exercice.id,
+        ...(filtres.journalId ? { journalId: filtres.journalId } : {}),
+        dateDebut: periode.dateDebut.toISOString().slice(0, 10),
+        dateFin: periode.dateFin.toISOString().slice(0, 10),
+      }),
+    });
+    // UN JOURNAL SANS PIÈCE N'A RIEN À ATTESTER (relecture M6 de sage-l1) ·
+    // enregistrée, l'impression d'un journal vide le retenait (clé vers le
+    // journal) et tenait son exercice, sans rien prouver.
+    if (nombreEcritures === 0) return null;
+    return {
+      tenantId,
+      exerciceId: exercice.id,
+      journalId: filtres.journalId ?? null,
+      dateDebut: periode.dateDebut,
+      dateFin: periode.dateFin,
+      forme: FormeImpressionJournal.EXPORT,
+      nombreEcritures,
+      imprimePar,
+    };
   }
 
   /**
@@ -1154,6 +1210,10 @@ export class ExportService {
     let compteCourant: string | null = null;
     let solde = 0;
     let nbLignes = 0;
+    // Le décompte du départ, sur le MÊME filtre que la lecture · confronté aux
+    // lignes lues avant le sommaire (`confronterAuDecompte`, sage-l7, M6).
+    const comptees = await this.prisma.ligneEcriture.count({ where: { ecriture: { ...perimetre, tenantId } } });
+    let lues = 0;
     let curseur: string | undefined;
     for (;;) {
       const lot = await this.prisma.ligneEcriture.findMany({
@@ -1173,6 +1233,7 @@ export class ExportService {
           { id: 'asc' },
         ],
       });
+      lues += lot.length;
       for (const l of lot) {
         if (!comptesMouvementes.has(l.compteId)) continue;
         // LE SOLDE PROGRESSIF SE RÉINITIALISE À CHAQUE COMPTE · le tri par
@@ -1202,6 +1263,7 @@ export class ExportService {
       if (lot.length < LOT_EXPORT) break;
       curseur = lot[lot.length - 1].id;
     }
+    confronterAuDecompte(lues, comptees, 'Grand livre complet');
 
     // Une ligne par compte, quelques centaines au plus · lue en une fois.
     const comptes = await this.prisma.compte.findMany({

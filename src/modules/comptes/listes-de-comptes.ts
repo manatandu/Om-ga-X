@@ -74,6 +74,13 @@ export const LISTES_DE_COMPTES: Readonly<Record<string, RegimeListeDeComptes>> =
       "débit du compte 416 »), seule racine admise par le serveur, et le reclassement en est souvent le premier mouvement · les " +
       'créances proposées sont celles que la balance montre débitrices, chacune déjà utilisée.',
   },
+  '/reglements/comptes-escompte-ecart': {
+    regime: 'texte',
+    motif:
+      "L'escompte se passe au 773 obtenu ou au 673 accordé que les fiches des comptes 40 et 41 des deux plans prescrivent, " +
+      "l'écart de règlement au résidu des charges diverses (6588 au SYSCOHADA, 658 au SYCEBNL), seules racines admises par le " +
+      'serveur · le premier escompte en est souvent le premier mouvement, la règle viderait la liste.',
+  },
   '/journaux/comptes-du-plan': {
     regime: 'texte',
     motif:
@@ -104,6 +111,8 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
     "jugement du numéro tapé en saisie pour un compte à créer (ligne sage-l1, fonction 14), le compte du plan qu'il subdiviserait ou le motif, jamais une liste",
   '/journaux/compte-propose':
     "numéro proposé pour le compte propre d'un journal à créer, lu sous le compte du plan choisi, un seul numéro et jamais une liste",
+  '/tiers/echeancier-de-ligne/:compteId':
+    "échéancier du modèle de règlement d'un tiers appliqué à la ligne de facture saisie (ligne sage-l2, fonction 3), sur le compte déjà choisi, jamais une liste",
   '/tiers/numero-propose':
     "numéro proposé pour le compte principal d'un tiers à créer, lu sous son collectif, un seul numéro et jamais une liste",
   '/comptes/:compteId/lettrage/:lettrageId/ecart-change':

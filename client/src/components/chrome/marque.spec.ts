@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ENCRE } from './marque-geometrie';
 
 /**
  * LA MARQUE OMEGAX · un seul dessin, tous les formats.
@@ -162,7 +163,9 @@ describe('le logotype est un TRACÉ, jamais un texte', () => {
   });
 
   it('les quatre rendus autorisés portent chacun leur couleur, et pas une autre', () => {
-    expect(lire('public/logo-omegax.svg')).toContain('fill="#142f6b"');
+    // L'ENCRE DE CACHET (décision de Manasse du 2026-10-15, « Oui vas-y ») ·
+    // une seule encre en circulation, posée par le générateur de la marque.
+    expect(lire('public/logo-omegax.svg')).toContain(`fill="${ENCRE}"`);
     expect(lire('public/logo-omegax-blanc.svg')).toContain('fill="#ffffff"');
     expect(lire('public/logo-omegax-noir.svg')).toContain('fill="#000000"');
     expect(lire('public/logo-omegax-courant.svg')).toContain('fill="currentColor"');
@@ -295,7 +298,7 @@ describe('la charte existe et pose ses rubriques', () => {
   it('les rapports de contraste sont PUBLIÉS, pas promis', () => {
     // Une charte qui dit « contraste suffisant » sans le chiffrer n'est pas
     // opposable : personne ne peut vérifier une couleur qu'on lui propose.
-    expect(charte).toContain('12,74');
+    expect(charte).toContain('14,49');
     expect(charte).toContain(':1');
   });
 

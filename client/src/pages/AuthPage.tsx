@@ -183,8 +183,8 @@ export function AuthPage() {
             Panneau de marque · le pendant du bandeau de Sage, À L'ENCRE de la
             marque et jamais au vert de Sage (CLAUDE.md § 9 ter). La marque y
             passe en BLANC EN RÉSERVE, l'un des quatre rendus de la charte
-            (§ 7.2), sur l'encre qui lui donne 12,74:1 (§ 7.3). Les deux
-            lignes de texte sont en `--chrome-text-dim` · MESURÉ à 5,78:1 sur
+            (§ 7.2), sur l'encre qui lui donne 14,49:1 (§ 7.3). Les deux
+            lignes de texte sont en `--chrome-text-dim` · MESURÉ à 6,76:1 sur
             l'encre, au-dessus du plancher AA de 4,5:1.
           */}
           <div

@@ -8,8 +8,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#eceff4",
-  "theme_color": "#142f6b",
+  "background_color": "#ededf3",
+  "theme_color": "#2a1f5c",
   "categories": [
     "business",
     "finance",

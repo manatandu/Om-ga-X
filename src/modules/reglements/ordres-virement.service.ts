@@ -9,6 +9,11 @@ import {
   motifRefusImpression,
 } from '../tiers/ribs-tiers';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { jourDeKinshasa } from '../../common/echeance';
+import { identiteSociete, mentionsEmetteur } from '../tenant/mentions-societe';
+import { cadresDesTiers } from '../tiers/modeles-impression.service';
+import { habiller } from '../tiers/modeles-impression';
+import { CADRE_AVIS_PAR_DEFAUT, documentAvisReglement, motifRefusAvis } from './avis-reglement';
 
 /**
  * Ce que l'ordre recopie · le donneur (le RIB du journal) et un bénéficiaire
@@ -327,6 +332,47 @@ export class OrdresVirementService {
       },
     });
     return this.detail(tenantId, id);
+  }
+
+  /**
+   * LES AVIS DE RÈGLEMENT D'UN ORDRE (ligne sage-l2, fonction 27) · un par
+   * ligne qui paie un TIERS, habillé du modèle « avis de règlement » de sa
+   * fiche, sinon du cadre par défaut (`avis-reglement.ts`). Rien n'est écrit ·
+   * l'avis se compose à la lecture, sur ce que l'ordre a recopié. Une ligne
+   * qui paie un salaire n'a pas d'avis · le décompte de l'art. 103 du Code du
+   * travail est le bulletin, et le nombre de ces lignes est dit.
+   */
+  async avisReglement(tenantId: string, id: string, personnelOuvert = true) {
+    const ordre = await this.detail(tenantId, id, personnelOuvert);
+    const refus = motifRefusAvis(ordre.statut);
+    if (refus) throw new BadRequestException(refus);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const jour = jourDeKinshasa(new Date());
+    // La signature d'une correspondance (AUDCG art. 59 ; AUSCGIE art. 17),
+    // comme celle des relances · le nom du dossier et ses mentions.
+    const entite = [tenant?.nom ?? '', tenant ? mentionsEmetteur(identiteSociete(tenant), jour).ligne : null].filter((x) => x).join('\n');
+    const lignesTiers = ordre.lignes.filter((l): l is typeof l & { tiersId: string } => l.tiersId !== null);
+    const cadres = await cadresDesTiers(
+      this.prisma,
+      tenantId,
+      lignesTiers.map((l) => l.tiersId),
+      'REGLEMENT',
+      { entite, jour },
+      CADRE_AVIS_PAR_DEFAUT,
+    );
+    return {
+      ordre: { id: ordre.id, numero: ordre.numero, date: ordre.date, statut: ordre.statut },
+      avis: lignesTiers.map((l) => {
+        const cadre = cadres.get(l.tiersId) ?? null;
+        const document = documentAvisReglement(
+          { montant: Number(l.montant), banque: l.banque, reference: l.reference, imputationDeclaree: l.imputationDeclaree },
+          ordre,
+          entite,
+        );
+        return { ligneId: l.id, beneficiaire: l.beneficiaire, montant: Number(l.montant), modele: cadre?.modele ?? null, texte: habiller(cadre, document) };
+      }),
+      lignesDeSalaires: ordre.lignes.length - lignesTiers.length,
+    };
   }
 
   /**

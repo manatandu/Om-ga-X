@@ -59,10 +59,13 @@ const ADMIN_SEULEMENT: Record<string, string> = {
   'components/ModalePersonnaliser.tsx': "adopter un compte du plan ou ouvrir un sous-compte, structure du plan réservée à l'administrateur",
   'pages/PlansAnalytiquesPage.tsx': "structure analytique (sections, budgets, mise en sommeil), réservée à l'administrateur",
   'pages/TauxTvaPage.tsx': "paramétrage des taux de taxe, fenêtre réservée à l'administrateur",
+  'pages/ModesReglementPage.tsx': "modes de règlement, structure du dossier réservée à l'administrateur (ligne sage-l2, fonction 1)",
   'components/FicheR2Exercice.tsx': "fiche R2 (cases ZN à ZS), route réservée à l'administrateur comme l'arrêté des comptes",
   'components/DatesPortefeuilleExercice.tsx':
     "assemblée, dépôt et procès-verbal de l'exercice, route réservée à l'administrateur comme l'arrêté des comptes",
   'components/VoletRibsTiers.tsx': "coordonnées bancaires des tiers, structure du tiers réservée à l'administrateur (un RIB changé détourne un paiement)",
+  'components/VoletLieuxLivraison.tsx': "lieux de livraison d'un client (ligne sage-l2, fonction 31), structure du tiers réservée à l'administrateur, comme ses RIB",
+  'pages/ModelesImpressionPage.tsx': "modèles d'impression des tiers, structure du dossier réservée à l'administrateur (ligne sage-l2, fonction 27)",
   'pages/TiersPage.tsx': "plan des tiers · structure (création, fusion, comptes, modèles de règlement) réservée à l'administrateur, fenêtre ouverte en consultation ; les documents suivent peutEcrire dans leur volet",
 };
 
