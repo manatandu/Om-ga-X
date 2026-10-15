@@ -464,6 +464,20 @@ export interface PieceEntree {
    * défaut · un module qui viserait ce journal est refusé en le nommant.
    */
   journalDeSituationAdmis?: boolean;
+  /**
+   * LES MODES QUE LA PIÈCE PORTAIT DÉJÀ (relecture « échecs silencieux » de la
+   * ligne sage-l2, M2) · un mode mis en sommeil APRÈS la saisie ne doit pas
+   * enfermer le brouillard qui le porte · sans quoi retoucher le libellé
+   * d'une ligne exigeait de changer son mode. Seul un mode NOUVEAU sur la
+   * pièce est refusé en sommeil, comme l'écran le dit
+   * (`client/src/lib/modes-reglement.ts`, « gardé s'il est déjà posé »).
+   */
+  modesDejaPortes?: ReadonlySet<string>;
+}
+
+/** Les modes de règlement que portent déjà les lignes d'une pièce (M2). */
+function modesPortesPar(lignes: ReadonlyArray<{ modeReglementId?: string | null }>): ReadonlySet<string> {
+  return new Set(lignes.map((l) => l.modeReglementId).filter((id): id is string => !!id));
 }
 
 /**
@@ -1103,7 +1117,7 @@ export class EcritureService {
         if (modes.length !== modeIds.length) {
           throw new BadRequestException('Un ou plusieurs modes de règlement sont introuvables pour ce dossier.');
         }
-        const enSommeil = modes.filter((m) => !m.estActif);
+        const enSommeil = modes.filter((m) => !m.estActif && !piece.modesDejaPortes?.has(m.id));
         if (enSommeil.length > 0) {
           throw new BadRequestException(
             `Le mode de règlement ${enSommeil.map((m) => m.code).join(', ')} est en sommeil · réactivez-le dans Modes de règlement, ou choisissez-en un autre.`,
@@ -1500,6 +1514,7 @@ export class EcritureService {
       lignes: dto.lignes,
       // La modification est une saisie · elle ne change pas de journal.
       journalDeSituationAdmis: true,
+      modesDejaPortes: modesPortesPar(ecriture.lignes),
     });
 
     // UN JOURNAL MENSUEL NUMÉROTE PAR MOIS (audit final F58) · une pièce
@@ -1657,13 +1672,22 @@ export class EcritureService {
     ecritureId: string,
     dto: { date: string; libelle?: string; lignes: LigneEcritureDto[] },
   ): Promise<boolean> {
-    const ecriture = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, include: { journal: true } });
+    const ecriture = await tx.ecriture.findFirst({
+      where: { id: ecritureId, tenantId },
+      include: { journal: true, lignes: { select: { modeReglementId: true } } },
+    });
     if (!ecriture || ecriture.statut !== StatutEcriture.BROUILLARD) {
       throw new ConflictException("L'écriture a été validée ou retirée pendant la modification · rien n'est modifié.");
     }
     const { date, sectionsParId } = await this.controlesDEntree(
       tenantId,
-      { exerciceId: ecriture.exerciceId, journalId: ecriture.journalId, date: new Date(dto.date), lignes: dto.lignes },
+      {
+        exerciceId: ecriture.exerciceId,
+        journalId: ecriture.journalId,
+        date: new Date(dto.date),
+        lignes: dto.lignes,
+        modesDejaPortes: modesPortesPar(ecriture.lignes),
+      },
       tx,
     );
     const changeDeMois =

@@ -132,7 +132,7 @@ describe('brouillard · ce qui se modifie et ce qui ne se modifie plus', () => {
  * remplaçait les lignes d'une écriture qu'un module tient.
  */
 describe('modifier · les mêmes contrôles et les mêmes champs que creer', () => {
-  function monde(tenus: Record<string, number> = {}) {
+  function monde(tenus: Record<string, number> = {}, ecritureEnPlace: Faux = ecriture()) {
     const update = jest.fn().mockResolvedValue({ id: 'e1' });
     const deleteMany = jest.fn().mockResolvedValue({});
     // La transaction RELIT l'écriture et son exercice (constat 10 de la
@@ -145,7 +145,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
     const tauxTva = { findMany: jest.fn().mockImplementation(({ where }: { where: { tenantId: string } }) =>
       Promise.resolve(where.tenantId === 't1' ? [] : [{ id: 'tva-voisin' }])) };
     const prisma = {
-      ecriture: { findFirst: jest.fn().mockResolvedValue(ecriture()) },
+      ecriture: { findFirst: jest.fn().mockResolvedValue(ecritureEnPlace) },
       exercice: { findFirst: jest.fn().mockResolvedValue(exerciceOuvert) },
       compte: {
         findMany: jest.fn().mockResolvedValue([
@@ -247,6 +247,41 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
       }),
     ).rejects.toThrow(/ESP est en sommeil/);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  // RELECTURE « ÉCHECS SILENCIEUX » DE LA LIGNE SAGE-L2, M2 · un mode mis en
+  // sommeil APRÈS la saisie enfermait le brouillard qui le porte · retoucher
+  // le libellé d'une ligne exigeait d'en changer le mode. Le mode déjà porté
+  // passe, un mode en sommeil NOUVEAU sur la pièce reste refusé.
+  it('garde un mode en sommeil que la pièce portait déjà, et refuse seulement celui qui est nouveau (M2)', async () => {
+    const enPlace = ecriture({
+      lignes: [
+        { id: 'l1', debit: 100, credit: 0, lettre: null, rapprochementId: null, modeReglementId: 'dormant' },
+        { id: 'l2', debit: 0, credit: 100, lettre: null, rapprochementId: null, modeReglementId: null },
+      ],
+    });
+    const garde = monde({}, enPlace);
+    await garde.svc.modifier('t1', 'e1', {
+      lignes: [
+        { compteId: 'c1', debit: 100, modeReglementId: 'dormant' },
+        { compteId: 'c2', credit: 100 },
+      ],
+    });
+    expect(garde.update.mock.calls[0][0].data.lignes.create[0]).toEqual(
+      expect.objectContaining({ modeReglementId: 'dormant' }),
+    );
+
+    // La même pièce sans le mode en sommeil · le poser est un geste NOUVEAU.
+    const neuf = monde();
+    await expect(
+      neuf.svc.modifier('t1', 'e1', {
+        lignes: [
+          { compteId: 'c1', debit: 100, modeReglementId: 'dormant' },
+          { compteId: 'c2', credit: 100 },
+        ],
+      }),
+    ).rejects.toThrow(/ESP est en sommeil/);
+    expect(neuf.update).not.toHaveBeenCalled();
   });
 
   it("refuse un taux de TVA d'un autre dossier, comme creer", async () => {
