@@ -3142,13 +3142,27 @@ PIÈCE JUSTIFICATIVE EXIGÉE · nature, référence, date, objet (AUDCIF art. 17
 d'OmegaX ; scan facultatif (`PieceVirementFonds`, mêmes règles que les documents
 des tiers, binaire hors du journal d'audit, restitué à part). Refus · journal
 hors trésorerie, en sommeil, sans compte, même journal ou même compte, montant
-au-delà du centime, journal dont le RIB est en devise (le change se passe à la
-main, F49). ANNULATION motivée (AUDCIF art. 20, al. 2) · au brouillard les deux
-pièces sont retirées (`deleteMany` filtré sur le statut, sinon 409), validées
-inscrites en négatif, la fiche MARQUÉE, jamais supprimée ; refus · ligne
-lettrée ou pointée, exercice clôturé. LE 585 ET LE 588 RESTENT OUVERTS À LA
-SAISIE (`estCompteDePassage`) · sans quoi les quatre sous-comptes fermaient le
-58500000 aux transferts du groupe SYCEBNL (G1).
+au-delà du centime (jugé sans seuil, `estAuCentime` · un écart fixe refusait
+des montants justes au-delà de cent millions), TRÉSORERIE EN DEVISE (le change
+se passe à la main, F49) · lue sur le RIB, sur la racine que le plan sème « en
+devises » (`RACINES_TRESORERIE_EN_DEVISES`, relue dans les deux semis · une
+caisse n'a jamais de RIB) ou sur une ligne en devise déjà passée au compte ;
+sinon la réévaluation de clôture (AUDCIF art. 54, 57) ignorait la ligne en
+francs. ANNULATION motivée (AUDCIF art. 20, al. 2), une seule (fiche prise par
+un `updateMany` sur les non annulées, sinon 409) · au brouillard les deux
+pièces sont retirées (lettrage et pointage RELUS dans la transaction,
+`deleteMany` filtré sur le statut, sinon 409), validées inscrites en négatif,
+la fiche MARQUÉE, jamais supprimée, sa trace disant les pièces retirées ou les
+numéros des négatifs ; refus · ligne lettrée ou pointée, exercice clôturé. Dates
+au jour (AAAA-MM-JJ), la même pour les deux pièces et la fiche ; comptes de
+passage ouverts sous verrou du dossier. Un scan déposé reste (pièce
+justificative conservée, AUDCIF art. 24), aucune route de retrait. LE 585 ET
+LE 588 RESTENT OUVERTS À LA SAISIE (`estCompteDePassage`) · sans quoi les
+quatre sous-comptes fermaient le 58500000 aux transferts du groupe SYCEBNL
+(G1) ; et les comptes de passage, reconnus par leur LIEN
+(`CompteVirementFonds`), sortent du 585 que lisent la clôture et le groupe (G1,
+`virements585DuGroupe`, `solde585`) · ils se soldent dans le dossier, ils ne
+lient pas le groupe.
 
 **Nouvelle immobilisation (2026-09-28, relevé par Manasse).** (1) CONTREPARTIE EN
 LISTE FERMÉE (`immobilisations/contrepartie-acquisition.ts`, fiches 21 à 24) ·

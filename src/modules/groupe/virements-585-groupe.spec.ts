@@ -329,7 +329,7 @@ describe('le 585 du groupe à la date de clôture', () => {
     });
     expect(prisma.ligneEcriture.aggregate.mock.calls[0][0]).toEqual({
       where: {
-        compte: { tenantId: 'SIEGE', numero: { startsWith: '585' } },
+        compte: { tenantId: 'SIEGE', numero: { startsWith: '585' }, virementFonds: { is: null } },
         ecriture: {
           tenantId: 'SIEGE',
           exerciceId: 's26',

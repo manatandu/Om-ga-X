@@ -200,8 +200,9 @@ describe('Clôture · le bilan doit s’équilibrer', () => {
         credit: 2_000_000,
       });
       await refuser('t', 'e', CELLULE);
+      // Les comptes de passage des virements de fonds sortent de la lecture (relecture du 2026-10-14, m7).
       expect(prisma.ligneEcriture.aggregate.mock.calls[1][0].where).toEqual({
-        compte: { tenantId: 't', numero: { startsWith: '585' } },
+        compte: { tenantId: 't', numero: { startsWith: '585' }, virementFonds: { is: null } },
         ecriture: { tenantId: 't', exerciceId: 'e', statut: 'VALIDEE', estSoldeDesComptesDeGestion: false },
       });
     });
