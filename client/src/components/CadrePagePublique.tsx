@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { cibleDuLien, type CheminPagePublique } from '../lib/lien-page-legale';
 
 /**
  * LES PAGES PUBLIQUES D'OMEGAX · politique de confidentialité, contrat de
@@ -23,7 +25,7 @@ export const PAGES_PUBLIQUES = [
   { chemin: '/questions-frequentes', libelle: 'Questions fréquentes' },
   { chemin: '/contrat-de-licence', libelle: 'Contrat de licence' },
   { chemin: '/confidentialite', libelle: 'Politique de confidentialité' },
-] as const;
+] as const satisfies readonly { chemin: CheminPagePublique; libelle: string }[];
 
 export function CadrePagePublique({ titre, sousTitre, children }: { titre: string; sousTitre?: string; children: ReactNode }) {
   return (
@@ -50,12 +52,48 @@ export function CadrePagePublique({ titre, sousTitre, children }: { titre: strin
   );
 }
 
+/**
+ * Le contenu est-il rendu dans une fenêtre de l'espace de travail ? Posé par
+ * `CorpsFenetreLegale`, faux partout ailleurs · la page publique n'a pas
+ * d'espace de travail à garder.
+ */
+const EnFenetreLegale = createContext(false);
+
+/**
+ * Un lien d'une page légale vers une autre, qui reste dans l'espace de travail
+ * quand il y est (second tour de relecture, M1 · `lib/lien-page-legale.ts`).
+ */
+export function LienPageLegale({ chemin, children }: { chemin: CheminPagePublique; children: ReactNode }) {
+  const enFenetre = useContext(EnFenetreLegale);
+  const navigate = useNavigate();
+  const cible = cibleDuLien(chemin, enFenetre);
+  const route = cible.routeInterne;
+  return (
+    <a
+      href={cible.href}
+      onClick={
+        route === null
+          ? undefined
+          : (e) => {
+              e.preventDefault();
+              navigate(route);
+            }
+      }
+      className="text-sel underline"
+    >
+      {children}
+    </a>
+  );
+}
+
 /** Le corps d'une page légale dans une fenêtre de l'espace de travail. */
 export function CorpsFenetreLegale({ sousTitre, children }: { sousTitre?: string; children: ReactNode }) {
   return (
-    <div className="p-3 max-w-[820px]">
-      {sousTitre && <p className="text-[11px] text-text-dim mb-3">{sousTitre}</p>}
-      {children}
-    </div>
+    <EnFenetreLegale.Provider value={true}>
+      <div className="p-3 max-w-[820px]">
+        {sousTitre && <p className="text-[11px] text-text-dim mb-3">{sousTitre}</p>}
+        {children}
+      </div>
+    </EnFenetreLegale.Provider>
   );
 }

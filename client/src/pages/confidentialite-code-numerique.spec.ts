@@ -213,7 +213,9 @@ describe('la politique complétée le 15 octobre 2026 (ligne pages-legales)', ()
   });
 
   it('renvoie au contrat pour le traitement pour compte (article 229), et la modification suit l’article 34', () => {
-    expect(deplie).toContain('href="#/contrat-de-licence"');
+    // Par LienPageLegale · dans la fenêtre, il ouvre la fenêtre du contrat sans
+    // quitter l'espace de travail (second tour, M1).
+    expect(deplie).toContain('<LienPageLegale chemin="/contrat-de-licence">contrat de licence</LienPageLegale>');
     expect(deplie).toContain('comme le veut l’article 229 du Code du numérique');
     expect(deplie).toContain('l’article 34 du Code du numérique');
     // La promesse d'un signal dans l'application, qu'aucun code ne tenait, est retirée.

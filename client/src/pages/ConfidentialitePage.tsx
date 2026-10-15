@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { EtatSurSite } from '../lib/sur-site';
-import { CadrePagePublique, CorpsFenetreLegale } from '../components/CadrePagePublique';
+import { CadrePagePublique, CorpsFenetreLegale, LienPageLegale } from '../components/CadrePagePublique';
 
 /**
  * POLITIQUE DE CONFIDENTIALITÉ · atteignable SANS CONNEXION.
@@ -349,7 +349,7 @@ export function ContenuConfidentialite() {
         </P>
         <P>
           Le traitement que VMG Consulting fait des données de vos dossiers pour le compte de votre entité est réglé
-          par l’article 9 du <a href="#/contrat-de-licence" className="text-sel underline">contrat de licence</a>,
+          par l’article 9 du <LienPageLegale chemin="/contrat-de-licence">contrat de licence</LienPageLegale>,
           comme le veut l’article 229 du Code du numérique.
         </P>
         <P>

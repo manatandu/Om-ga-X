@@ -324,3 +324,40 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
     ],
   },
 ];
+
+/**
+ * La forme cherchée d'un texte (second tour de relecture, M2) · accents et
+ * casse retirés, et toute apostrophe (droite, typographique), tout trait
+ * d'union et toute ponctuation lus comme une espace, DES DEUX CÔTÉS. Le texte
+ * des réponses s'écrit avec l'apostrophe typographique, le clavier tape la
+ * droite · « l'essai », « qu'est-ce » et « double-authentification » ne
+ * trouvaient rien.
+ */
+export function normaliserRecherche(t: string): string {
+  return t
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * Les rubriques qui répondent à une recherche · chaque mot doit se trouver
+ * dans la question, sa réponse ou le TITRE DE SA RUBRIQUE (M2 · « abonnement »
+ * ne trouvait pas la rubrique « Abonnement et licence » dont les questions ne
+ * disent pas le mot). Une rubrique sans question retenue disparaît.
+ */
+export function filtrerQuestions(rubriques: readonly RubriqueFrequente[], recherche: string): RubriqueFrequente[] {
+  const mots = normaliserRecherche(recherche).split(' ').filter(Boolean);
+  if (mots.length === 0) return [...rubriques];
+  return rubriques
+    .map((r) => ({
+      ...r,
+      questions: r.questions.filter((q) => {
+        const texte = normaliserRecherche(`${r.titre} ${q.question} ${q.reponse.join(' ')}`);
+        return mots.every((m) => texte.includes(m));
+      }),
+    }))
+    .filter((r) => r.questions.length > 0);
+}

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { QUESTIONS_FREQUENTES } from '../lib/questions-frequentes';
+import { filtrerQuestions, normaliserRecherche, QUESTIONS_FREQUENTES } from '../lib/questions-frequentes';
+import { cibleDuLien } from '../lib/lien-page-legale';
 import { mentionsAArreter, texteBrutDesConditions } from '../../../src/modules/conditions-licence/conditions-de-licence';
 
 // Aucun import de « vitest » (globales) · convention du dépôt, le spec tourne
@@ -64,6 +65,62 @@ describe('le menu « ? » ouvre les trois pages en fenêtre, et À propos', () =
       const motif = `motif: /^${f.chemin.replace(/\//g, '\\/')}$/,\n    titre: '${f.titre}'`;
       expect([f.chemin, registre.includes(motif)]).toEqual([f.chemin, true]);
     }
+  });
+});
+
+describe('un lien entre pages légales reste dans l’espace de travail quand il y est (second tour, M1)', () => {
+  it('dans une fenêtre, il ouvre la fenêtre de l’autre page · sur la page publique, la page publique', () => {
+    expect(cibleDuLien('/contrat-de-licence', true)).toEqual({ href: '#/aide/contrat-de-licence', routeInterne: '/aide/contrat-de-licence' });
+    expect(cibleDuLien('/contrat-de-licence', false)).toEqual({ href: '#/contrat-de-licence', routeInterne: null });
+  });
+
+  it('la fenêtre pose le contexte, et le lien y navigue sans quitter la zone protégée', () => {
+    const cadre = lire('src/components/CadrePagePublique.tsx');
+    const corps = cadre.slice(cadre.indexOf('export function CorpsFenetreLegale'));
+    expect(corps).toContain('<EnFenetreLegale.Provider value={true}>');
+    const lien = cadre.slice(cadre.indexOf('export function LienPageLegale'), cadre.indexOf('export function CorpsFenetreLegale'));
+    expect(lien).toContain('const enFenetre = useContext(EnFenetreLegale);');
+    expect(lien).toContain('e.preventDefault();');
+    expect(lien).toContain('navigate(route);');
+  });
+
+  it('aucun contenu légal n’écrit un lien brut vers une page publique · il passe par LienPageLegale', () => {
+    for (const fichier of ['src/pages/ConfidentialitePage.tsx', 'src/pages/ContratLicencePage.tsx', 'src/pages/QuestionsFrequentesPage.tsx', 'src/components/AcceptationConditionsLicence.tsx']) {
+      expect([fichier, /href="#\//.test(lire(fichier))]).toEqual([fichier, false]);
+    }
+    expect(lire('src/pages/ConfidentialitePage.tsx')).toContain('<LienPageLegale chemin="/contrat-de-licence">');
+  });
+});
+
+describe('la recherche dans les questions fréquentes (second tour, M2)', () => {
+  const trouve = (recherche: string) => filtrerQuestions(QUESTIONS_FREQUENTES, recherche).flatMap((r) => r.questions.map((q) => q.id));
+
+  it('l’apostrophe droite, le trait d’union et la ponctuation se lisent comme une espace, des deux côtés', () => {
+    expect(normaliserRecherche('Qu’est-ce qu\'OmegaX ?')).toBe('qu est ce qu omegax');
+    expect(normaliserRecherche('double-authentification')).toBe('double authentification');
+    for (const recherche of ['l\'essai', 'qu\'est-ce', 'double-authentification', 'l’essai', 'SECURITE']) {
+      expect([recherche, trouve(recherche).length > 0]).toEqual([recherche, true]);
+    }
+  });
+
+  it('le titre de la rubrique se cherche aussi', () => {
+    const rubrique = QUESTIONS_FREQUENTES.find((r) => r.titre === 'Abonnement et licence')!;
+    // Un mot du seul titre rend toutes les questions de la rubrique.
+    const mot = 'licence';
+    const retenues = filtrerQuestions(QUESTIONS_FREQUENTES, `${mot} abonnement`).find((r) => r.id === rubrique.id);
+    expect(retenues?.questions.length).toBe(rubrique.questions.length);
+  });
+
+  it('une recherche vide rend tout, une recherche sans réponse rien', () => {
+    expect(filtrerQuestions(QUESTIONS_FREQUENTES, '  ')).toEqual(QUESTIONS_FREQUENTES);
+    expect(filtrerQuestions(QUESTIONS_FREQUENTES, 'zzzqqq')).toEqual([]);
+  });
+
+  it('la page filtre par cette fonction, s’imprime dépliée et annonce le résultat vide (mineurs 1 et 7)', () => {
+    const page = lire('src/pages/QuestionsFrequentesPage.tsx');
+    expect(page).toContain('filtrerQuestions(QUESTIONS_FREQUENTES, recherche)');
+    expect(page).toContain('const avant = () => flushSync(() => setImpression(true));');
+    expect(page).toMatch(/<div role="status">\{rubriques\.length === 0 && <p[^>]*>Aucune question ne contient ces mots\.<\/p>\}<\/div>/);
   });
 });
 

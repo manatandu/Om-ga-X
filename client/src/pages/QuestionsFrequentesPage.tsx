@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { CadrePagePublique, CorpsFenetreLegale } from '../components/CadrePagePublique';
-import { QUESTIONS_FREQUENTES } from '../lib/questions-frequentes';
+import { filtrerQuestions, QUESTIONS_FREQUENTES } from '../lib/questions-frequentes';
 
 /**
  * QUESTIONS FRÉQUENTES · les questions et leurs réponses vivent dans
@@ -13,31 +14,18 @@ import { QUESTIONS_FREQUENTES } from '../lib/questions-frequentes';
  * doit pouvoir lire « comment obtenir un accès » avant d'en avoir un.
  */
 
-/** Les accents et la casse ne comptent pas · « echeance » trouve « échéance ». */
-function normaliser(t: string): string {
-  return t
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase();
-}
-
 export function ContenuQuestionsFrequentes() {
   const [recherche, setRecherche] = useState('');
-  const rubriques = useMemo(() => {
-    const mots = normaliser(recherche).split(/\s+/).filter(Boolean);
-    if (mots.length === 0) return QUESTIONS_FREQUENTES;
-    return QUESTIONS_FREQUENTES.map((r) => ({
-      ...r,
-      questions: r.questions.filter((q) => {
-        const texte = normaliser(`${q.question} ${q.reponse.join(' ')}`);
-        return mots.every((m) => texte.includes(m));
-      }),
-    })).filter((r) => r.questions.length > 0);
-  }, [recherche]);
-  // Une réponse repliée ne s'imprime pas · à l'impression, tout s'ouvre.
+  // Accents, casse, apostrophes, traits d'union et ponctuation ne comptent
+  // pas, et le titre de la rubrique se cherche aussi (second tour, M2).
+  const rubriques = useMemo(() => filtrerQuestions(QUESTIONS_FREQUENTES, recherche), [recherche]);
+  // Une réponse repliée ne s'imprime pas · à l'impression, tout s'ouvre. Le
+  // rendu est forcé AVANT que le navigateur ne fige la page à imprimer
+  // (second tour, mineur 1) · un état posé sans `flushSync` arrivait après
+  // l'aperçu, et la FAQ s'imprimait repliée.
   const [impression, setImpression] = useState(false);
   useEffect(() => {
-    const avant = () => setImpression(true);
+    const avant = () => flushSync(() => setImpression(true));
     const apres = () => setImpression(false);
     window.addEventListener('beforeprint', avant);
     window.addEventListener('afterprint', apres);
@@ -61,7 +49,8 @@ export function ContenuQuestionsFrequentes() {
           />
         </label>
       </div>
-      {rubriques.length === 0 && <p className="text-text-dim">Aucune question ne contient ces mots.</p>}
+      {/* Région annoncée (second tour, mineur 7) · présente d'emblée, sans quoi un lecteur d'écran ne dit pas le résultat vide. */}
+      <div role="status">{rubriques.length === 0 && <p className="text-text-dim">Aucune question ne contient ces mots.</p>}</div>
       {rubriques.map((r) => (
         <section key={r.id} id={`rubrique-${r.id}`} className="mb-3">
           <h2 className="text-[12px] font-bold mt-3 mb-1.5">{r.titre}</h2>
