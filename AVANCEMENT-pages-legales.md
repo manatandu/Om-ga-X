@@ -19,7 +19,7 @@ Branche de sauvegarde `travail/pages-legales`, partie d'`origin/main` (5e5ebcd).
 - **Acceptation en ligne** (`acceptation-conditions.ts`, `conditions-licence.service.ts`,
   `GET /conditions-licence`, `POST /conditions-licence/acceptation`
   administrateur seul) · version, date et auteur sur `Tenant` (trois colonnes
-  nullables, migration `20270176000000_acceptation_conditions_licence`, diff
+  nullables, migration `20270183000000_acceptation_conditions_licence`, diff
   Prisma « No difference detected »), donc au journal d'audit ; verrou par
   dossier, mise à jour unitaire, idempotente sur la même version ; accusé de
   réception à l'écran et courriel en file avec le texte accepté
@@ -62,7 +62,7 @@ Branche de sauvegarde `travail/pages-legales`, partie d'`origin/main` (5e5ebcd).
     et `versions/version-1.ts` (texte archivé mot pour mot, empreinte
     1a878fe6…c75d), `versions-publiees.spec.ts` (empreinte gelée, générateur
     = texte archivé, une seule version tant que la bascule n'est pas servie),
-    `Tenant.conditionsLicenceEmpreinte` (migration 20270176000100, diff
+    `Tenant.conditionsLicenceEmpreinte` (migration 20270183000100, diff
     Prisma sans écart), accusé portant l'empreinte et le texte archivé,
     versions antérieures téléchargeables. Délais de l'art. 34 modélisés
     (`delais-article-34.ts`) et tenus par chaque version.
@@ -100,7 +100,7 @@ Branche de sauvegarde `travail/pages-legales`, partie d'`origin/main` (5e5ebcd).
     en 409 un abonnement qui n'est plus celui affiché (art. 55, al. 1er) ;
     la commande acceptée est gardée avec l'acte
     (`Tenant.conditionsLicenceCommande`, JSONB, migration
-    20270176000200, diff Prisma sans écart), au journal d'audit avec lui,
+    20270183000200, diff Prisma sans écart), au journal d'audit avec lui,
     relue nulle si elle n'a pas sa forme, et recopiée dans l'accusé
     (`lignesDeLaCommande`, art. 55, al. 2).
   - Serveur M-b · un accusé en ÉCHEC ne se renvoie plus · la file le
