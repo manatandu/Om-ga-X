@@ -51,8 +51,33 @@ describe('les règles du lieu', () => {
 describe('le service · la marque principale posée dans la transaction', () => {
   function monter(type: string, existants: Array<{ id: string; intitule: string; estActif: boolean; estPrincipal?: boolean; tiersId?: string }>) {
     const ordre: string[] = [];
+    type Filtre = { id?: string; tenantId: string; tiersId?: string; estActif?: boolean; NOT?: { id: string }; intitule?: { equals: string; mode: string } };
+    // La doublure HONORE les requêtes ciblées (relecture m8) · l'homonyme
+    // par intitulé sans égard à la casse, les actifs comptés, le lieu relu.
+    const retenus = (w: Filtre) =>
+      existants.filter(
+        (l) =>
+          w.tenantId === 't' &&
+          (l.tiersId ?? 'k') === (w.tiersId ?? l.tiersId ?? 'k') &&
+          (w.NOT ? l.id !== w.NOT.id : true) &&
+          (w.estActif === undefined || l.estActif === w.estActif) &&
+          (w.intitule ? l.intitule.toLowerCase() === w.intitule.equals.toLowerCase() : true),
+      );
     const tx = {
+      $executeRaw: jest.fn(async () => {
+        ordre.push('verrou');
+        return 1;
+      }),
       lieuLivraison: {
+        findMany: jest.fn(async ({ where }: { where: Filtre }) => {
+          ordre.push('lit');
+          return retenus(where);
+        }),
+        count: jest.fn(async ({ where }: { where: Filtre }) => retenus(where).length),
+        findFirst: jest.fn(async ({ where }: { where: Filtre }) => {
+          const l = existants.find((x) => x.id === where.id);
+          return l && where.tenantId === 't' ? { estPrincipal: false, tiersId: 'k', ...l } : null;
+        }),
         updateMany: jest.fn(async () => {
           ordre.push('retire');
           return { count: 1 };
@@ -91,14 +116,33 @@ describe('le service · la marque principale posée dans la transaction', () => 
     const { service, ordre } = monter('CLIENT', []);
     const r = (await service.creer('t', 'k', { intitule: ' Siège ', ville: '  ', adresse: ' Av. du Port 4 ' })) as Record<string, unknown>;
     expect(r).toEqual(expect.objectContaining({ intitule: 'Siège', estPrincipal: true, estActif: true, ville: null, adresse: 'Av. du Port 4', tenantId: 't', tiersId: 'k' }));
-    expect(ordre).toEqual(['retire', 'cree']);
+    expect(ordre).toEqual(['verrou', 'lit', 'retire', 'cree']);
   });
 
   it('un second lieu n’est pas principal sans le demander', async () => {
     const { service, ordre } = monter('CLIENT', [{ id: 'a', intitule: 'Siège', estActif: true }]);
     const r = (await service.creer('t', 'k', { intitule: 'Entrepôt' })) as Record<string, unknown>;
     expect(r.estPrincipal).toBe(false);
-    expect(ordre).toEqual(['cree']);
+    expect(ordre).toEqual(['verrou', 'lit', 'cree']);
+  });
+
+  // RELECTURE « ÉCHECS SILENCIEUX », m8 · l'unicité ne lisait que 201 lieux,
+  // hors de la transaction · le 202e homonyme passait.
+  it('l’unicité se juge par une requête ciblée, au-delà de toute tranche, sous le verrou du client', async () => {
+    const lieux = Array.from({ length: 250 }, (_, i) => ({ id: `l${i}`, intitule: `Dépôt ${i}`, estActif: true }));
+    const { service, tx, ordre } = monter('CLIENT', lieux);
+    await expect(service.creer('t', 'k', { intitule: 'DÉPÔT 240' })).rejects.toThrow(/déjà un lieu « Dépôt 240 »/);
+    expect(tx.lieuLivraison.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tenantId: 't', tiersId: 'k', intitule: { equals: 'DÉPÔT 240', mode: 'insensitive' } }) }),
+    );
+    expect(ordre).toEqual(['verrou', 'lit']);
+  });
+
+  it('la marque principale se juge sur les lieux actifs COMPTÉS dans la transaction', async () => {
+    const lieux = Array.from({ length: 250 }, (_, i) => ({ id: `l${i}`, intitule: `Dépôt ${i}`, estActif: i !== 249 }));
+    const { service } = monter('CLIENT', lieux);
+    const r = (await service.creer('t', 'k', { intitule: 'Nouveau' })) as Record<string, unknown>;
+    expect(r.estPrincipal).toBe(false);
   });
 
   it('rendre principal un lieu retire la marque des autres ; le mettre en sommeil la lui retire', async () => {
@@ -109,7 +153,7 @@ describe('le service · la marque principale posée dans la transaction', () => 
     const deux = monter('CLIENT', lieux);
     await deux.service.modifier('t', 'b', { intitule: 'Entrepôt', estPrincipal: true });
     expect(deux.tx.lieuLivraison.updateMany).toHaveBeenCalledWith({ where: { tenantId: 't', tiersId: 'k' }, data: { estPrincipal: false } });
-    expect(deux.ordre).toEqual(['retire', 'modifie']);
+    expect(deux.ordre).toEqual(['verrou', 'lit', 'retire', 'modifie']);
     const sommeil = monter('CLIENT', lieux);
     const r = (await sommeil.service.modifier('t', 'a', { intitule: 'Siège', estActif: false })) as Record<string, unknown>;
     expect(r).toEqual(expect.objectContaining({ estActif: false, estPrincipal: false }));
