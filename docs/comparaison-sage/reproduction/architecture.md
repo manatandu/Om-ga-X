@@ -178,6 +178,10 @@ branche de sauvegarde `travail/sage-lN`, avec sa fiche
 4. Vague 4 : L8 gestion commerciale, la plus grande, qui emploie les lieux
    de livraison de L2.
 
+**Arrêt après la vague 1** (décision de Manasse du 2026-10-14, devant le
+coût) · le virement de fonds puis L1, L4 et L5 sont finis et intégrés, puis
+le travail s'arrête. Les vagues 2 à 4 attendent son choix.
+
 ## Ce qui est plus gros qu'il n'y paraît
 
 - **L8, ligne 90.** Le manuel de structure des fichiers de Sage (M6) range

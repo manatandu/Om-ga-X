@@ -9,6 +9,9 @@ import { assurerComptesDePassage } from './comptes-de-passage';
 import {
   COMPTE_DU_PLAN_585,
   COMPTES_DE_PASSAGE,
+  RACINES_TRESORERIE_EN_DEVISES,
+  estAuCentime,
+  estTresorerieEnDevises,
   lignesDuVirement,
   motifRefusVirement,
   sensDuVirement,
@@ -188,7 +191,11 @@ describe('VirementsFondsService.creer', () => {
     sens,
     compte: { id: `p-${sens}`, numero: `5850000${i + 1}`, intitule: 'x' },
   }));
-  function monter(journaux: JournalDeTresorerie[], ribs: Array<{ devise: string | null; journal: { code: string } }> = []) {
+  function monter(
+    journaux: JournalDeTresorerie[],
+    ribs: Array<{ devise: string | null; journal: { code: string } }> = [],
+    opts: { referentiel?: 'SYSCOHADA' | 'SYCEBNL'; compteEnDevise?: string } = {},
+  ) {
     const creerPlusieursAvec = jest.fn(async (_t: string, _u: string, dtos: unknown[], suite: (tx: unknown, e: unknown[]) => unknown) => {
       const tx = {
         ecriture: { findMany: async () => [{ id: 'e1', numeroPiece: '7' }, { id: 'e2', numeroPiece: '3' }] },
@@ -200,7 +207,10 @@ describe('VirementsFondsService.creer', () => {
     const prisma = {
       journal: { findMany: async () => journaux },
       ribBanque: { findMany: async () => ribs },
+      tenant: { findUniqueOrThrow: async () => ({ referentiel: opts.referentiel ?? 'SYSCOHADA' }) },
+      ligneEcriture: { findMany: async () => (opts.compteEnDevise ? [{ compteId: opts.compteEnDevise }] : []) },
       compteVirementFonds: { findMany: async () => passages },
+      $executeRaw: async () => 0,
       $transaction: async (fn: (tx: unknown) => unknown) => fn(prisma),
     };
     return { service: new VirementsFondsService(prisma as never, { creerPlusieursAvec } as never), creerPlusieursAvec };
@@ -247,6 +257,28 @@ describe('VirementsFondsService.creer', () => {
     expect(creerPlusieursAvec).not.toHaveBeenCalled();
   });
 
+  it('refuse une caisse en devises, qui ne porte jamais de RIB (relecture B1)', async () => {
+    const syscohada = monter([banque('ca', '57120001'), banque('bq', '52110000')]);
+    await expect(syscohada.service.creer('t1', 'u1', dto as never)).rejects.toThrow(/57120001 du journal CA est tenu en devise.*art\. 57.*à la main/);
+    expect(syscohada.creerPlusieursAvec).not.toHaveBeenCalled();
+    const sycebnl = monter([banque('ca', '57200001'), banque('bq', '52110000')], [], { referentiel: 'SYCEBNL' });
+    await expect(sycebnl.service.creer('t1', 'u1', dto as never)).rejects.toThrow(/57200001/);
+  });
+
+  it('refuse un compte qui porte déjà une ligne en devise, hors de toute racine « en devises »', async () => {
+    const m = monter([banque('ca', '57110000'), banque('bq', '52110000')], [], { compteEnDevise: 'c-52110000' });
+    await expect(m.service.creer('t1', 'u1', dto as never)).rejects.toThrow(/52110000 du journal BQ est tenu en devise/);
+    expect(m.creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('les deux pièces et la fiche prennent le même jour, même pour une date à heure (relecture m5)', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    const r = await service.creer('t1', 'u1', { ...dto, date: '2026-03-14' } as never);
+    const [, , pieces] = creerPlusieursAvec.mock.calls[0] as unknown as [string, string, Array<{ date: string }>];
+    expect(pieces.map((p) => p.date)).toEqual(['2026-03-14', '2026-03-14']);
+    expect((r as { date: Date }).date.toISOString().slice(0, 10)).toBe('2026-03-14');
+  });
+
   it('un RIB au franc ne gêne rien', async () => {
     const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')], [{ devise: 'cdf', journal: { code: 'BQ' } }]);
     await service.creer('t1', 'u1', dto as never);
@@ -261,6 +293,8 @@ describe('VirementsFondsService.annuler', () => {
     annuleLe?: Date | null;
     lettre?: string | null;
     supprimees?: number;
+    lettreEnCours?: string;
+    dejaPrise?: boolean;
   }) {
     const updates: Array<Record<string, unknown>> = [];
     const supprimes: string[] = [];
@@ -270,6 +304,7 @@ describe('VirementsFondsService.annuler', () => {
         findFirst: async () => ({
           id: 'v1',
           annuleLe: opts.annuleLe ?? null,
+          piecesPassees: 'BQ n° 12 · CA n° 7',
           ecritureOrigineId: 'e1',
           ecritureDestinationId: 'e2',
           exercice: { statut: opts.exercice ?? StatutExercice.OUVERT },
@@ -278,17 +313,26 @@ describe('VirementsFondsService.annuler', () => {
           updates.push(data);
           return { id: 'v1', ...data };
         },
+        updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+          updates.push(data);
+          return { count: opts.dejaPrise ? 0 : 1 };
+        },
       },
       ecriture: {
         findMany: async () =>
           ['e1', 'e2'].map((id) => ({ id, numeroPiece: id, statut: opts.statuts[id], lignes: [{ lettre: opts.lettre ?? null, lettrageId: opts.lettre ? 'g1' : null, rapprochementId: null }] })),
-        findFirst: async ({ where }: { where: { id: string } }) => ({ statut: opts.statuts[where.id] }),
+        findFirst: async ({ where }: { where: { id: string } }) => ({ statut: opts.statuts[where.id], numeroPiece: `N-${where.id}` }),
         deleteMany: async ({ where }: { where: { id: string } }) => {
           supprimes.push(where.id);
           return { count: opts.supprimees ?? 1 };
         },
       },
-      ligneEcriture: { deleteMany: async () => ({ count: 2 }) },
+      ligneEcriture: {
+        deleteMany: async () => ({ count: 2 }),
+        // Relues DANS la transaction · un lettrage posé entre la lecture et
+        // la suppression (relecture M1).
+        findMany: async () => [{ lettre: opts.lettreEnCours ?? null, lettrageId: opts.lettreEnCours ? 'g2' : null, rapprochementId: null }],
+      },
     };
     prisma.$transaction = async (fn: (tx: unknown) => unknown) => fn(prisma);
     const service = new VirementsFondsService(prisma as never, { inscrireEnNegatifPourAnnulation } as never);
@@ -331,5 +375,61 @@ describe('VirementsFondsService.annuler', () => {
     await expect(
       monter({ statuts: {}, annuleLe: new Date() }).service.annuler('t1', 'u1', 'v1', { motif: 'x y z' }),
     ).rejects.toThrow(ConflictException);
+  });
+
+  it('un lettrage posé pendant l’annulation sur une pièce au brouillard refuse, rien n’est retiré (relecture M1)', async () => {
+    const m = monter({ statuts: { e1: StatutEcriture.BROUILLARD, e2: StatutEcriture.BROUILLARD }, lettreEnCours: 'AB' });
+    await expect(m.service.annuler('t1', 'u1', 'v1', { motif: 'Doublon' })).rejects.toThrow(/lettrées/);
+    expect(m.supprimes).toEqual([]);
+  });
+
+  it('une seconde annulation concurrente dit « déjà annulé » (relecture m1)', async () => {
+    const m = monter({ statuts: { e1: StatutEcriture.BROUILLARD, e2: StatutEcriture.BROUILLARD }, dejaPrise: true });
+    await expect(m.service.annuler('t1', 'u1', 'v1', { motif: 'Doublon' })).rejects.toThrow(/déjà annulé/);
+    expect(m.supprimes).toEqual([]);
+  });
+
+  it('un motif fait d’espaces est refusé (relecture m2)', async () => {
+    const m = monter({ statuts: { e1: StatutEcriture.BROUILLARD, e2: StatutEcriture.BROUILLARD } });
+    await expect(m.service.annuler('t1', 'u1', 'v1', { motif: '     ' })).rejects.toThrow(/motif/);
+  });
+
+  it('la trace dit ce qui est arrivé aux pièces · retirées, ou inscrites en négatif avec leurs numéros (relecture m4)', async () => {
+    const brouillard = monter({ statuts: { e1: StatutEcriture.BROUILLARD, e2: StatutEcriture.BROUILLARD } });
+    await brouillard.service.annuler('t1', 'u1', 'v1', { motif: 'Doublon' });
+    expect(brouillard.updates.at(-1)!.piecesPassees).toBe('BQ n° 12 · CA n° 7 · retirées du brouillard, numéros libérés');
+    const validees = monter({ statuts: { e1: StatutEcriture.VALIDEE, e2: StatutEcriture.VALIDEE } });
+    await validees.service.annuler('t1', 'u1', 'v1', { motif: 'Doublon' });
+    expect(validees.updates.at(-1)!.piecesPassees).toBe('BQ n° 12 · CA n° 7 · inscrites en négatif (n° N-neg-e1, n° N-neg-e2)');
+  });
+});
+
+describe('La trésorerie en devises se lit dans le plan de chaque référentiel', () => {
+  it('chaque racine est semée par son plan sous un intitulé « devise »', () => {
+    for (const [ref, plan] of [
+      ['SYSCOHADA', PLAN_COMPTES_SYSCOHADA],
+      ['SYCEBNL', PLAN_COMPTES_SYCEBNL],
+    ] as const) {
+      for (const racine of RACINES_TRESORERIE_EN_DEVISES[ref]) {
+        const seme = (plan as Array<{ numero: string; intitule: string }>).find((c) => c.numero === racine.padEnd(8, "0"));
+        expect({ ref, racine, intitule: seme?.intitule }).toEqual({ ref, racine, intitule: expect.stringMatching(/devise/i) });
+      }
+    }
+  });
+
+  it('un numéro, deux sens · le 5712 est une caisse en devises au SYSCOHADA seulement', () => {
+    expect(estTresorerieEnDevises('57120001', 'SYSCOHADA')).toBe(true);
+    expect(estTresorerieEnDevises('57120001', 'SYCEBNL')).toBe(false);
+    expect(estTresorerieEnDevises('57200003', 'SYCEBNL')).toBe(true);
+    expect(estTresorerieEnDevises('52110000', 'SYSCOHADA')).toBe(false);
+  });
+});
+
+describe('Le centime se juge sans seuil (relecture M1)', () => {
+  it('admet les montants justes au-delà de cent millions, refuse le millième', () => {
+    expect(estAuCentime(136_620_326.98)).toBe(true);
+    expect(estAuCentime(999_999_999.99)).toBe(true);
+    expect(estAuCentime(1000.555)).toBe(false);
+    expect(motifRefusVirement(banque('a', '52110000'), banque('b', '52120000'), { ...DEMANDE, montant: 136_620_326.98 })).toBeNull();
   });
 });

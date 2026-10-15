@@ -1,4 +1,4 @@
-import { NaturePieceVirement, SensVirementFonds } from '@prisma/client';
+import { NaturePieceVirement, Referentiel, SensVirementFonds } from '@prisma/client';
 
 /**
  * VIREMENT DE FONDS (demande de Manasse du 2026-10-09) · d'une banque ou d'une
@@ -34,6 +34,35 @@ import { NaturePieceVirement, SensVirementFonds } from '@prisma/client';
 /** 57 · caisse ; tout autre compte de trésorerie d'un journal · banque et assimilés (52, 53, 55, 581, 582). */
 export function estUneCaisse(numeroCompte: string): boolean {
   return numeroCompte.startsWith('57');
+}
+
+/**
+ * LA TRÉSORERIE EN DEVISES, par plan · les comptes que chaque plan sème « en
+ * devises » (SYSCOHADA 52150000 « Banques en devises », 57120000 « Caisse en
+ * devises », 57220000 et 57320000 « En devises » ; SYCEBNL 52150000
+ * « Banques locales · devises », 57200000 « Caisse · devises »), relus dans
+ * les deux semis par le spec. Une caisse ne porte jamais de RIB
+ * (`banques/banques.ts`) : la devise d'un compte ne se lit donc pas sur son
+ * seul RIB. Un virement de fonds en francs sur l'un d'eux sortirait de la
+ * position en devise, que la réévaluation de clôture lit ligne à ligne
+ * (AUDCIF art. 54 et 57), et fausserait la disponibilité au bilan.
+ */
+export const RACINES_TRESORERIE_EN_DEVISES: Readonly<Record<Referentiel, readonly string[]>> = {
+  SYSCOHADA: ['5215', '5712', '5722', '5732'],
+  SYCEBNL: ['5215', '572'],
+};
+
+export function estTresorerieEnDevises(numeroCompte: string, referentiel: Referentiel): boolean {
+  return RACINES_TRESORERIE_EN_DEVISES[referentiel].some((r) => numeroCompte.startsWith(r));
+}
+
+/**
+ * AU CENTIME, sans seuil · un écart fixe (1e-6) passait sous la résolution
+ * d'un flottant au-delà d'environ 134 millions, et refusait des montants
+ * justes (136 620 326,98).
+ */
+export function estAuCentime(montant: number): boolean {
+  return Math.round(montant * 100) / 100 === montant;
 }
 
 export function sensDuVirement(numeroOrigine: string, numeroDestination: string): SensVirementFonds {
@@ -113,7 +142,7 @@ export function motifRefusVirement(
     return `Les deux journaux portent le même compte ${origine.compteTresorerie!.numero} · un virement entre eux ne déplacerait rien.`;
   }
   if (!Number.isFinite(demande.montant) || demande.montant <= 0) return 'Le montant du virement doit être positif.';
-  if (Math.abs(demande.montant * 100 - Math.round(demande.montant * 100)) > 1e-6) return 'Le montant se saisit au centime près.';
+  if (!estAuCentime(demande.montant)) return 'Le montant se saisit au centime près.';
   if (!demande.objet.trim()) return "L'objet du virement est exigé · il dit pourquoi les fonds changent de place.";
   if (!demande.referencePiece.trim()) {
     return 'La référence de la pièce justificative est exigée · une écriture porte les références de la pièce qui l’appuie (AUDCIF art. 17, 5°).';

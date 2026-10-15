@@ -407,7 +407,10 @@ export class ExerciceService {
     if (dossier.referentiel === Referentiel.SYCEBNL) {
       const virements = await this.prisma.ligneEcriture.aggregate({
         where: {
-          compte: { tenantId, numero: { startsWith: '585' } },
+          // Hors comptes de passage des virements de fonds (lien
+          // `CompteVirementFonds`) · ils se soldent dans le dossier, ils ne
+          // lient pas le groupe.
+          compte: { tenantId, numero: { startsWith: '585' }, virementFonds: { is: null } },
           ecriture: { tenantId, exerciceId, statut: StatutEcriture.VALIDEE, estSoldeDesComptesDeGestion: false },
         },
         _sum: { debit: true, credit: true },

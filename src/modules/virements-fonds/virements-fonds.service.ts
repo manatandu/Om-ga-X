@@ -11,6 +11,8 @@ import {
   COMPTES_DE_PASSAGE,
   LIBELLES_NATURE_PIECE,
   LIBELLES_SENS,
+  estTresorerieEnDevises,
+  estUneCaisse,
   lignesDuVirement,
   motifRefusVirement,
   sensDuVirement,
@@ -66,7 +68,7 @@ export class VirementsFondsService {
       this.prisma.virementFonds.count({ where: { tenantId, exerciceId } }),
     ]);
     return {
-      journaux: journaux.map((j) => ({ ...j, caisse: j.compteTresorerie ? j.compteTresorerie.numero.startsWith('57') : false })),
+      journaux: journaux.map((j) => ({ ...j, caisse: j.compteTresorerie ? estUneCaisse(j.compteTresorerie.numero) : false })),
       comptesDePassage: (Object.keys(COMPTES_DE_PASSAGE) as SensVirementFonds[]).map((sens) => ({
         sens,
         libelle: LIBELLES_SENS[sens],
@@ -110,8 +112,34 @@ export class VirementsFondsService {
           'Passez ce virement à la main, avec le montant en devise et le cours de chaque ligne.',
       );
     }
+    // UNE CAISSE NE PORTE AUCUN RIB · sa devise se lit sur le compte, rangé par
+    // le plan sous une racine « en devises », ou porteur d'une ligne en devise.
+    const dossier = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
+    const comptes = [origine!, destination!].map((j) => ({ code: j.code, ...j.compteTresorerie! }));
+    const lignesEnDevise = await this.prisma.ligneEcriture.findMany({
+      where: { compteId: { in: comptes.map((c) => c.id) }, deviseId: { not: null }, ecriture: { tenantId } },
+      select: { compteId: true },
+      distinct: ['compteId'],
+    });
+    const enDevises = comptes.find(
+      (c) => estTresorerieEnDevises(c.numero, dossier.referentiel) || lignesEnDevise.some((l) => l.compteId === c.id),
+    );
+    if (enDevises) {
+      throw new BadRequestException(
+        `Le compte ${enDevises.numero} du journal ${enDevises.code} est tenu en devise · un virement de fonds se passe en francs, ` +
+          'et la conversion des disponibilités à la clôture (AUDCIF art. 57) ne lit que les lignes en devise. ' +
+          'Passez ce virement à la main, avec le montant en devise et le cours de chaque ligne.',
+      );
+    }
     const sens = sensDuVirement(origine!.compteTresorerie!.numero, destination!.compteTresorerie!.numero);
-    const passage = (await transactionJournalisee(this.prisma, (tx) => assurerComptesDePassage(tx, tenantId)))[sens];
+    const passage = (
+      await transactionJournalisee(this.prisma, async (tx) => {
+        // DEUX PREMIERS VIREMENTS EN MÊME TEMPS calculaient le même numéro, et
+        // le second tombait en 500 sur la clé unique.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`comptes-de-passage:${tenantId}`}))`;
+        return assurerComptesDePassage(tx, tenantId);
+      })
+    )[sens];
     const reference = `${LIBELLES_NATURE_PIECE[dto.naturePiece]} ${dto.referencePiece.trim()}`.slice(0, 190);
     const libelle = `Virement de fonds ${LIBELLES_SENS[sens]} · ${dto.objet.trim()}`.slice(0, 190);
     const lignes = lignesDuVirement({
@@ -121,10 +149,13 @@ export class VirementsFondsService {
       montant: dto.montant,
       libelle,
     });
+    // UNE DATE, LA MÊME pour les deux pièces et la fiche · une heure et un
+    // décalage admis par @IsDateString mettaient la fiche au 10 et les pièces au 11.
+    const jour = dto.date.slice(0, 10);
     const piece = (journalId: string, l: typeof lignes.origine) => ({
       exerciceId: dto.exerciceId,
       journalId,
-      date: dto.date,
+      date: jour,
       libelle,
       reference,
       lignes: l,
@@ -140,7 +171,7 @@ export class VirementsFondsService {
           data: {
             tenantId,
             exerciceId: dto.exerciceId,
-            date: new Date(`${dto.date.slice(0, 10)}T00:00:00.000Z`),
+            date: new Date(`${jour}T00:00:00.000Z`),
             montant: new Prisma.Decimal(dto.montant),
             sens,
             journalOrigineId: origine!.id,
@@ -188,11 +219,19 @@ export class VirementsFondsService {
       if (tenue) throw new BadRequestException(tenue);
     }
     const motif = dto.motif.trim();
+    if (motif.length < 3) throw new BadRequestException("Le motif de l'annulation est exigé · trois caractères au moins.");
     return transactionJournalisee(this.prisma, async (tx) => {
       // Les liens se défont d'abord · une pièce que la fiche retient ne se
       // retire pas, et la fiche ne garde que ses numéros (`piecesPassees`).
-      await tx.virementFonds.update({ where: { id: v.id }, data: { ecritureOrigineId: null, ecritureDestinationId: null } });
+      // UNE SEULE ANNULATION · le second geste concurrent attend le verrou de
+      // ligne puis ne trouve plus de fiche en vigueur, et le dit.
+      const prise = await tx.virementFonds.updateMany({
+        where: { id: v.id, tenantId, annuleLe: null },
+        data: { ecritureOrigineId: null, ecritureDestinationId: null },
+      });
+      if (prise.count !== 1) throw new ConflictException('Ce virement est déjà annulé.');
       const negatifs: Record<'origine' | 'destination', string | null> = { origine: null, destination: null };
+      const numerosNegatifs: string[] = [];
       for (const [cote, ecritureId] of [
         ['origine', v.ecritureOrigineId],
         ['destination', v.ecritureDestinationId],
@@ -201,6 +240,14 @@ export class VirementsFondsService {
         const e = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, select: { statut: true } });
         if (!e) throw new ConflictException("Une pièce du virement n'existe plus · relisez le virement avant de l'annuler.");
         if (e.statut === StatutEcriture.BROUILLARD) {
+          // RELU DANS LA TRANSACTION · une ligne au brouillard se lettre ou se
+          // pointe ; lue avant, elle laissait un groupe amputé.
+          const relues = await tx.ligneEcriture.findMany({
+            where: { ecritureId, ecriture: { tenantId } },
+            select: { lettre: true, lettrageId: true, rapprochementId: true },
+          });
+          const tenue = motifLignesTenues(relues, 'une pièce du virement', 'annuler le virement');
+          if (tenue) throw new BadRequestException(tenue);
           await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
           const r = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
           if (r.count !== 1) {
@@ -211,14 +258,26 @@ export class VirementsFondsService {
         } else {
           const negatif = await this.ecritures.inscrireEnNegatifPourAnnulation(tenantId, userId, ecritureId, `Annulation du virement · ${motif}`, tx);
           negatifs[cote] = negatif.id;
+          const lu = await tx.ecriture.findFirst({ where: { id: negatif.id, tenantId }, select: { numeroPiece: true } });
+          numerosNegatifs.push(`n° ${lu?.numeroPiece ?? '·'}`);
         }
       }
       return tx.virementFonds.update({
-        where: { id: v.id },
+        where: { id: v.id, tenantId },
         data: {
           annuleLe: new Date(),
           annulePar: userId,
           motifAnnulation: motif,
+          // LA TRACE DIT CE QUI EST ARRIVÉ AUX PIÈCES · un numéro retiré du
+          // brouillard est redonné à la pièce suivante (numérotation tirée du
+          // maximum), et la fiche le désignait encore.
+          piecesPassees: `${v.piecesPassees ?? ''} · ${
+            numerosNegatifs.length === 0
+              ? 'retirées du brouillard, numéros libérés'
+              : numerosNegatifs.length === 1 && ids.length === 2
+                ? `une retirée du brouillard, une inscrite en négatif (${numerosNegatifs[0]})`
+                : `inscrites en négatif (${numerosNegatifs.join(', ')})`
+          }`.slice(0, 190),
           // Une pièce validée reste au journal, que le virement retient avec
           // son négatif · la retirer laisserait le négatif seul.
           ecritureOrigineId: negatifs.origine ? v.ecritureOrigineId : null,

@@ -41,18 +41,19 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
     ['CAISSE_CAISSE', '58500004'],
   ]);
 
-  // Une seconde banque, sous le 5215, son compte ouvert avec elle.
+  // Une seconde banque en francs, sous le 5211, son compte ouvert avec elle
+  // (le 5215 « Banques en devises » refuse un virement en francs).
   const duPlan = await appelApi<Compte[]>(page, 'GET', '/journaux/comptes-du-plan');
   await appelApi(page, 'POST', '/journaux', {
     code: 'BQ2',
     intitule: 'Rawbank',
     type: 'TRESORERIE',
-    ouvrirCompteSousId: duPlan.find((c) => c.numero === '52150000')!.id,
+    ouvrirCompteSousId: duPlan.find((c) => c.numero === '52110000')!.id,
   });
   const journaux = await appelApi<Journal[]>(page, 'GET', '/journaux');
   const j = (code: string) => journaux.find((x) => x.code === code)!;
   const [bq, ca, bq2] = [j('BQ'), j('CA'), j('BQ2')];
-  expect([bq.compteTresorerie?.numero, ca.compteTresorerie?.numero, bq2.compteTresorerie?.numero]).toEqual(['52110000', '57110000', '52150001']);
+  expect([bq.compteTresorerie?.numero, ca.compteTresorerie?.numero, bq2.compteTresorerie?.numero]).toEqual(['52110000', '57110000', '52110001']);
 
   const solde = async (exerciceId: string, numero: string) => {
     const { lignes } = await appelApi<{ lignes: LigneBalance[] }>(page, 'GET', `/ecritures/balance?exerciceId=${exerciceId}`);
@@ -61,6 +62,26 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   };
   const banqueAvant = await solde(exercice.id, '52110000');
   const base = (date: string) => ({ exerciceId: exercice.id, date, datePiece: date, naturePiece: 'ORDRE_VIREMENT', referencePiece: 'OV-001' });
+
+  // Une caisse en devises (5712) ne reçoit pas un virement en francs · la
+  // réévaluation de clôture ne lit que les lignes en devise (relecture B1).
+  await appelApi(page, 'POST', '/journaux', {
+    code: 'CAUSD',
+    intitule: 'Caisse dollars',
+    type: 'TRESORERIE',
+    ouvrirCompteSousId: duPlan.find((c) => c.numero === '57120000')!.id,
+  });
+  const causd = (await appelApi<Journal[]>(page, 'GET', '/journaux')).find((x) => x.code === 'CAUSD')!;
+  await expect(
+    appelApi(page, 'POST', '/virements-fonds', {
+      ...base(`${an}-07-09`),
+      journalOrigineId: bq.id,
+      journalDestinationId: causd.id,
+      montant: 100_000,
+      objet: 'Achat de dollars',
+      porteur: 'Kalala',
+    }),
+  ).rejects.toThrow(/tenu en devise/);
 
   // Banque vers caisse · le porteur des espèces est exigé.
   const juillet = `${an}-07-10`;
@@ -88,9 +109,9 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
     montant: 300_000,
     objet: 'Approvisionnement du compte Rawbank',
   });
-  expect(await solde(exercice.id, '52150001')).toBe(300_000);
+  expect(await solde(exercice.id, '52110001')).toBe(300_000);
   await appelApi(page, 'POST', `/virements-fonds/${v2.id}/annuler`, { motif: 'Chèque saisi deux fois' });
-  expect(await solde(exercice.id, '52150001')).toBe(0);
+  expect(await solde(exercice.id, '52110001')).toBe(0);
 
   // Banque vers banque, VALIDÉ, puis annulé · inscrit en négatif.
   const aout = `${an}-08-05`;
@@ -126,7 +147,7 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   for (const n of ['58500001', '58500002', '58500003', '58500004']) expect(await solde(exercice.id, n)).toBe(0);
   expect(await solde(exercice.id, '52110000')).toBe(banqueAvant - 400_000 + 150_000);
   expect(await solde(exercice.id, '57110000')).toBe(250_000);
-  expect(await solde(exercice.id, '52150001')).toBe(0);
+  expect(await solde(exercice.id, '52110001')).toBe(0);
 
   // La clôture ne reporte rien sur le 585, et le reste à sa valeur.
   await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: exercice.id, dateLimite: jour(exercice.dateFin) });
