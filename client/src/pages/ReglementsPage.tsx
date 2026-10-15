@@ -22,6 +22,7 @@ import { jourFr } from '../lib/jour-fr';
 import { coursPropose, devisesEtrangeres, type DeviseDuDossier } from '../lib/ligne-en-devise';
 import { comptesProposablesEcart, corpsReglementEnDevise, ecartEstime, libelleEcartRealise, natureDuCompte, nombreSaisi, type Referentiel } from '../lib/ecart-change';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
+import { journalProposeParLeMode, libelleMode, type ModeReglement } from '../lib/modes-reglement';
 
 type Sens = 'FOURNISSEUR' | 'CLIENT';
 
@@ -79,6 +80,14 @@ export function ReglementsPage() {
   const [dateReglement, setDateReglement] = useState(aujourdhui());
   const [journaux, setJournaux] = useState<Journal[]>([]);
   const [journalId, setJournalId] = useState('');
+  // LE MODE DE RÈGLEMENT DU LOT (ligne sage-l2, fonction 1) · porté sur
+  // chaque ligne de la pièce ; le serveur avertit un paiement d'au moins
+  // 1 000 000 FC à un fournisseur hors chèque, virement ou carte (O.-L.
+  // n° 10/001, art. 59 bis). Facultatif · sans lui, la nature se lit sur le
+  // compte du journal (caisse = espèces).
+  const [modes, setModes] = useState<ModeReglement[] | null>(null);
+  const [erreurModes, setErreurModes] = useState<string | null>(null);
+  const [modeId, setModeId] = useState('');
   const [groupes, setGroupes] = useState<GroupeTiers[] | null>(null);
   const [cochees, setCochees] = useState<Set<string>>(new Set());
   const [montants, setMontants] = useState<Record<string, string>>({});
@@ -126,6 +135,16 @@ export function ReglementsPage() {
   const chargerLots = () => api.get<LotVirement[]>('/lots-virement').then(setLots).catch(() => setLots([]));
   useEffect(() => {
     void chargerLots();
+  }, []);
+
+  useEffect(() => {
+    api.get<ModeReglement[]>('/modes-reglement').then(
+      (m) => {
+        setModes(m.filter((x) => x.estActif));
+        setErreurModes(null);
+      },
+      (err) => setErreurModes(`Modes de règlement non lus · ${err instanceof ApiError ? err.message : 'erreur inconnue'}`),
+    );
   }, []);
 
   useEffect(() => {
@@ -377,6 +396,7 @@ export function ReglementsPage() {
           exerciceId: exerciceCourant.id,
           journalId,
           date: dateReglement,
+          ...(modeId ? { modeReglementId: modeId } : {}),
           ...(enDeviseCoche ? { tresorerieEnDevise: true, deviseTresorerieId: deviseMoyen } : {}),
           reglements: corps,
         },
@@ -503,6 +523,28 @@ export function ReglementsPage() {
                 {journaux.map((j) => (
                   <option key={j.id} value={j.id}>
                     {j.code} · {j.intitule}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-text-dim">Mode de règlement</span>
+              <select
+                aria-label="Mode de règlement"
+                value={modeId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setModeId(id);
+                  // Le journal que le mode propose se présélectionne, s'il est offert.
+                  const propose = journalProposeParLeMode(modes?.find((m) => m.id === id), journaux);
+                  if (propose) setJournalId(propose);
+                }}
+                className="border border-border px-2 py-[3px] bg-surface"
+              >
+                <option value="">{erreurModes ?? 'Non précisé'}</option>
+                {modes?.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {libelleMode(m)}
                   </option>
                 ))}
               </select>

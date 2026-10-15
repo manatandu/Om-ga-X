@@ -1,3 +1,4 @@
+import type { ModeReglementResume } from './modes-reglement';
 export type Referentiel = 'SYCEBNL' | 'SYSCOHADA';
 /**
  * N'a de sens que si `Referentiel` = 'SYCEBNL' · son pendant SYSCOHADA est
@@ -817,6 +818,8 @@ export interface EcheanceReglement {
   valeur: string | null;
   delaiJours: number;
   echeance: ConditionEcheance;
+  /** Le mode de règlement de cette échéance (ligne sage-l2, fonction 1). */
+  modeReglementId?: string | null;
 }
 
 export interface EcheanceCalculee {
@@ -832,6 +835,8 @@ export interface ModeleReglement {
   delaiJours: number;
   echeance: ConditionEcheance;
   estActif: boolean;
+  /** Le mode d'un modèle à une seule échéance (ligne sage-l2, fonction 1). */
+  modeReglementId?: string | null;
   echeances: EcheanceReglement[];
 }
 
@@ -1025,6 +1030,9 @@ export interface Tiers {
   estActif: boolean;
   modeleReglementId: string | null;
   modeleReglement?: ModeleReglement | null;
+  /** Le mode de règlement habituel du tiers (ligne sage-l2, fonction 1). */
+  modeReglementId?: string | null;
+  modeReglement?: ModeReglementResume | null;
   comptesRattaches: TiersCompte[];
   /**
    * Coordonnées · sans elles, les lettres de relance que le logiciel compose
@@ -2031,6 +2039,8 @@ export interface LigneBrouillard {
     tauxTvaId: string | null;
     dateEcheance: string | null;
     dateVersement: string | null;
+    /** Le mode de règlement de la ligne (ligne sage-l2, fonction 1) · renvoyé à la modification. */
+    modeReglementId?: string | null;
     deviseId: string | null;
     montantDevise: number | null;
     coursApplique: number | null;

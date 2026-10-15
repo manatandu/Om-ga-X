@@ -97,6 +97,9 @@ export class TiersService {
       where: { id: tiersId, tenantId },
       include: {
         modeleReglement: true,
+        // Le mode de règlement habituel (ligne sage-l2, fonction 1) · servi
+        // avec son état, un mode mis en sommeil restant nommé sur la fiche.
+        modeReglement: { select: { id: true, code: true, intitule: true, nature: true, estActif: true } },
         // orderBy explicite : sans lui, Postgres ne garantit aucun ordre
         // stable, et l'ordre peut visiblement changer après un simple UPDATE
         // (ex. bascule du compte Principal) · repéré en testant le bouton
@@ -128,6 +131,9 @@ export class TiersService {
       where,
       include: {
         modeleReglement: true,
+        // Le mode de règlement habituel (ligne sage-l2, fonction 1) · servi
+        // avec son état, un mode mis en sommeil restant nommé sur la fiche.
+        modeReglement: { select: { id: true, code: true, intitule: true, nature: true, estActif: true } },
         // orderBy explicite : sans lui, Postgres ne garantit aucun ordre
         // stable, et l'ordre peut visiblement changer après un simple UPDATE
         // (ex. bascule du compte Principal) · repéré en testant le bouton

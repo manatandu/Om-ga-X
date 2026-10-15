@@ -22,6 +22,8 @@ import { compteDuNumeroTape, comptesPourLaFrappe, RETENUS } from '../lib/comptes
 import { libelleRenvoiDiscordant, remplacementsProposes, type RenvoiDiscordant } from '../lib/regle-compte-saisie';
 import { lireMasquerTotaux, memoriserMasquerTotaux } from '../lib/totaux-saisie';
 import { ModaleCompteEnSaisie } from '../components/ModaleCompteEnSaisie';
+import { libelleMode, type ModeReglement } from '../lib/modes-reglement';
+import { porteUneEcheance } from '../lib/echeance-saisie';
 
 /**
  * SAISIE DES JOURNAUX · l'écran central du logiciel, calqué sur
@@ -79,6 +81,13 @@ interface LignePiece {
   deviseCode?: string;
   montantDevise?: number;
   coursApplique?: number;
+  /**
+   * Le mode de règlement de la ligne (ligne sage-l2, fonction 1) · une
+   * exception, comme l'échéance, posée sur un compte de tiers. Le code ne
+   * sert qu'à l'affichage de la pièce en cours.
+   */
+  modeReglementId?: string;
+  modeCode?: string;
 }
 
 /** Une fiche du référentiel, servie par /controles/regles-comptes. */
@@ -290,6 +299,11 @@ export function SaisiePage() {
   const [libelleLigne, setLibelleLigne] = useState('');
   const [echeance, setEcheance] = useState('');
   const [versement, setVersement] = useState('');
+  // MODE DE RÈGLEMENT DE LA LIGNE (ligne sage-l2, fonction 1) · null tant que
+  // la liste n'est pas lue ; un échec se dit au lieu d'une liste vide.
+  const [modesLus, setModesLus] = useState<ModeReglement[] | null>(null);
+  const [erreurModes, setErreurModes] = useState<string | null>(null);
+  const [modeLigne, setModeLigne] = useState('');
   // OPÉRATION EN DEVISE · une exception de la ligne, comme la date de versement.
   // Null tant que la liste n'est pas lue (reste de l'audit final F255) · un
   // refus retirait le choix de la devise comme sur un dossier sans devise.
@@ -418,6 +432,13 @@ export function SaisiePage() {
         setErreurDevises(null);
       },
       (e) => setErreurDevises(e instanceof Error ? e.message : "La liste des devises n'a pas pu être lue."),
+    );
+    api.get<ModeReglement[]>('/modes-reglement').then(
+      (ms) => {
+        setModesLus(ms);
+        setErreurModes(null);
+      },
+      (e) => setErreurModes(e instanceof Error ? e.message : "La liste des modes de règlement n'a pas pu être lue."),
     );
     // Axes analytiques et leurs sections · chargés une fois, la grille en fait
     // une colonne par axe (voir docs/analytique-et-budget.md).
@@ -772,8 +793,13 @@ export function SaisiePage() {
         libelle: libelleLigne || libellePiece,
         debit: d,
         credit: c,
-        dateEcheance: echeance || undefined,
+        // L'échéance et le mode ne valent que sur un compte de tiers · restés
+        // remplis d'une ligne précédente, ils ne suivent pas sur une charge.
+        dateEcheance: (porteUneEcheance(compteChoisi.numero) && echeance) || undefined,
         dateVersement: versement || undefined,
+        ...(porteUneEcheance(compteChoisi.numero) && modeLigne
+          ? { modeReglementId: modeLigne, modeCode: modesLus?.find((m) => m.id === modeLigne)?.code }
+          : {}),
         ...enDevise,
         // On ne retient que les axes qui ventilent la classe du compte : une
         // section restée sélectionnée d'une ligne précédente ne doit pas
@@ -865,6 +891,7 @@ export function SaisiePage() {
     setCreditSaisie('');
     setEcheance('');
     setVersement('');
+    setModeLigne('');
     setDeviseSaisie('');
     setMontantDeviseSaisie('');
     setCoursSaisie('');
@@ -1219,6 +1246,7 @@ export function SaisiePage() {
           tauxTvaId: l.tauxTvaId,
           dateEcheance: l.dateEcheance,
           dateVersement: l.dateVersement,
+          modeReglementId: l.modeReglementId,
           deviseId: l.deviseId,
           montantDevise: l.montantDevise,
           coursApplique: l.coursApplique,
@@ -1814,6 +1842,13 @@ export function SaisiePage() {
                     versé le {l.dateVersement.split('-').reverse().join('/')}
                   </span>
                 )}
+                {(l.dateEcheance || l.modeCode) && (
+                  <span className="ml-1 text-[10.5px] text-text-dim" title="Échéance et mode de règlement de la ligne">
+                    {l.dateEcheance ? `échéance ${l.dateEcheance.split('-').reverse().join('/')}` : ''}
+                    {l.dateEcheance && l.modeCode ? ' · ' : ''}
+                    {l.modeCode ?? ''}
+                  </span>
+                )}
                 {l.deviseCode && l.montantDevise !== undefined && (
                   <span className="ml-1 text-[10.5px] text-text-dim" title="Opération en devise · le montant de la ligne est sa contrevaleur en francs">
                     {l.montantDevise.toLocaleString('fr-FR')} {l.deviseCode}
@@ -2081,6 +2116,46 @@ export function SaisiePage() {
               ↵
             </button>
           </div>
+
+          {/*
+            ÉCHÉANCE ET MODE DE RÈGLEMENT (ligne sage-l2, fonctions 1 et 3) ·
+            exceptions de la ligne, offertes sur un compte de tiers seulement
+            (lib/echeance-saisie.ts). Vides, la ligne n'en porte pas, et les
+            états la rangent à la date de l'écriture.
+          */}
+          {compteChoisi && porteUneEcheance(compteChoisi.numero) && (
+            <div className="px-3 py-1.5 border-b border-border bg-surface-alt/60 flex items-center gap-2 flex-wrap text-[11.5px]">
+              <label className="flex items-center gap-1.5">
+                <span className="text-text-dim">Échéance :</span>
+                <input
+                  type="date"
+                  aria-label="Échéance de la ligne"
+                  value={echeance}
+                  onChange={(e) => setEcheance(e.target.value)}
+                  className="border border-border-dark px-1.5 py-0.5 font-mono text-[11.5px]"
+                />
+              </label>
+              <label className="flex items-center gap-1.5">
+                <span className="text-text-dim">Mode de règlement :</span>
+                <select
+                  aria-label="Mode de règlement de la ligne"
+                  value={modeLigne}
+                  onChange={(e) => setModeLigne(e.target.value)}
+                  className="border border-border-dark px-1.5 py-0.5 text-[11.5px]"
+                >
+                  <option value="">{erreurModes ? 'Modes illisibles' : 'Non précisé'}</option>
+                  {(modesLus ?? [])
+                    .filter((m) => m.estActif)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {libelleMode(m)}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {erreurModes && <span className="text-danger">Modes de règlement illisibles · {erreurModes}</span>}
+            </div>
+          )}
 
           {/*
             DATE DE VERSEMENT · UNE EXCEPTION, ET ELLE EST PRÉSENTÉE COMME TELLE.

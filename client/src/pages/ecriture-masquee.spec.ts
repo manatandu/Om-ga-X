@@ -58,6 +58,7 @@ const ADMIN_SEULEMENT: Record<string, string> = {
   'components/ModalePersonnaliser.tsx': "adopter un compte du plan ou ouvrir un sous-compte, structure du plan réservée à l'administrateur",
   'pages/PlansAnalytiquesPage.tsx': "structure analytique (sections, budgets, mise en sommeil), réservée à l'administrateur",
   'pages/TauxTvaPage.tsx': "paramétrage des taux de taxe, fenêtre réservée à l'administrateur",
+  'pages/ModesReglementPage.tsx': "modes de règlement, structure du dossier réservée à l'administrateur (ligne sage-l2, fonction 1)",
   'components/FicheR2Exercice.tsx': "fiche R2 (cases ZN à ZS), route réservée à l'administrateur comme l'arrêté des comptes",
   'components/DatesPortefeuilleExercice.tsx':
     "assemblée, dépôt et procès-verbal de l'exercice, route réservée à l'administrateur comme l'arrêté des comptes",

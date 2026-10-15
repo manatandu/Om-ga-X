@@ -27,6 +27,7 @@ import { montant } from '../lib/montants';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
 import { numeroAEnvoyer, type NumeroPropose } from '../lib/numero-compte-tiers';
+import { libelleMode, modesProposables, type ModeReglement } from '../lib/modes-reglement';
 
 /**
  * PLAN DES TIERS · la fenêtre Structure → Plan tiers de Sage 100 i7 :
@@ -192,6 +193,9 @@ export function TiersPage() {
   const navigate = useNavigate();
   const [liste, setListe] = useState<Tiers[] | null>(null);
   const [modeles, setModeles] = useState<ModeleReglement[]>([]);
+  // Les modes de règlement du dossier (ligne sage-l2, fonction 1) · null tant qu'ils ne sont pas lus.
+  const [modes, setModes] = useState<ModeReglement[] | null>(null);
+  const [erreurModes, setErreurModes] = useState<string | null>(null);
   // Liste de choix (comptes de classe 4 retenus ou utilisés) · null tant qu'elle n'est pas lue.
   const [comptesLus, setComptesLus] = useState<Compte[] | null>(null);
   const [erreurComptes, setErreurComptes] = useState<string | null>(null);
@@ -213,6 +217,7 @@ export function TiersPage() {
   const [code, setCode] = useState('');
   const [nom, setNom] = useState('');
   const [modeleReglementId, setModeleReglementId] = useState('');
+  const [modeReglementId, setModeReglementId] = useState('');
   const [envoi, setEnvoi] = useState(false);
 
   // Formulaire de rattachement de compte
@@ -231,6 +236,7 @@ export function TiersPage() {
   const [valeurEch, setValeurEch] = useState('');
   const [delaiJoursEch, setDelaiJoursEch] = useState(30);
   const [echeanceEch, setEcheanceEch] = useState<ConditionEcheance>('NET');
+  const [modeEch, setModeEch] = useState('');
 
   // Simulateur d'échéancier
   const [dateFactureCalc, setDateFactureCalc] = useState(new Date().toISOString().slice(0, 10));
@@ -276,6 +282,14 @@ export function TiersPage() {
     // proposer un rattachement qu'il refusera. Vide pour un dossier hors
     // groupe, et le volet le dit alors au lieu d'offrir une liste morte.
     api.get<DossierDuGroupe[]>('/tiers/dossiers-du-groupe').then(setDossiersGroupe).catch(() => setDossiersGroupe([]));
+    // Un échec se dit (§ 9 ter) · une liste vide sur un échec ferait croire qu'aucun mode n'existe.
+    api.get<ModeReglement[]>('/modes-reglement').then(
+      (m) => {
+        setModes(m);
+        setErreurModes(null);
+      },
+      (err) => setErreurModes(err instanceof ApiError ? err.message : 'serveur injoignable'),
+    );
   }, []);
 
   // Solde des comptes rattachés (balance de l'exercice courant) · affiché
@@ -391,6 +405,7 @@ export function TiersPage() {
         creerCompteIndividuel,
         ...(numeroCompte ? { numeroCompte } : {}),
         ...(modeleReglementId ? { modeleReglementId } : {}),
+        ...(modeReglementId ? { modeReglementId } : {}),
       });
       // LA PROPOSITION PRISE ENTRE-TEMPS SE DIT · le serveur a ouvert le
       // premier libre, qui n'est plus le numéro que la fenêtre montrait.
@@ -407,6 +422,7 @@ export function TiersPage() {
       setCode('');
       setNom('');
       setModeleReglementId('');
+      setModeReglementId('');
       setNouveauOuvert(false);
       await charger();
     } catch (err) {
@@ -556,6 +572,8 @@ export function TiersPage() {
       Pick<
         Tiers,
         | 'celluleGroupeId'
+        | 'modeleReglementId'
+        | 'modeReglementId'
         | 'autoriseTvaDebits'
         | 'referenceAutorisationDebits'
         | 'dateEffetAutorisationDebits'
@@ -636,6 +654,12 @@ export function TiersPage() {
   };
 
   const modeleSelectionne = modeles.find((m) => m.id === modeleSelectionneId) ?? null;
+  /** Le mode d'un modèle ou d'une échéance, lu dans la liste du dossier · non lue, l'identifiant ne se devine pas. */
+  const nomDuMode = (id: string | null | undefined) => {
+    if (!id) return '·';
+    const m = modes?.find((x) => x.id === id);
+    return m ? libelleMode(m) : modes === null ? 'mode non lu' : 'mode inconnu';
+  };
 
   /**
    * Modifier un modèle de règlement (audit de l'interface du 2026-09-27, I11) ·
@@ -645,7 +669,7 @@ export function TiersPage() {
    */
   const modifierModele = async (
     m: ModeleReglement,
-    corps: { intitule?: string; delaiJours?: number; estActif?: boolean },
+    corps: { intitule?: string; delaiJours?: number; estActif?: boolean; modeReglementId?: string | null },
   ) => {
     setErreur(null);
     try {
@@ -680,6 +704,7 @@ export function TiersPage() {
         ...(typeEch !== 'EQUILIBRE' ? { valeur: Number(valeurEch) } : {}),
         delaiJours: delaiJoursEch,
         echeance: echeanceEch,
+        ...(modeEch ? { modeReglementId: modeEch } : {}),
       });
       setOrdreEch((n) => n + 1);
       setValeurEch('');
@@ -895,7 +920,47 @@ export function TiersPage() {
                   {tableaux.aide[tiersSelectionne.type] && <Aide sujet={tableaux.aide[tiersSelectionne.type]!} />}
                 </span>
                 <span className="text-text-dim text-right">Règlement :</span>
-                <span>{tiersSelectionne.modeleReglement?.intitule ?? 'aucun modèle'}</span>
+                {estAdmin ? (
+                  <select
+                    aria-label="Modèle de règlement du tiers"
+                    value={tiersSelectionne.modeleReglementId ?? ''}
+                    onChange={(e) => void enregistrerChamp(tiersSelectionne, { modeleReglementId: e.target.value || null })}
+                    className="border border-border px-1.5 py-0.5 bg-surface"
+                  >
+                    <option value="">Aucun modèle</option>
+                    {modeles
+                      .filter((m) => m.estActif || m.id === tiersSelectionne.modeleReglementId)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.intitule}
+                          {m.estActif ? '' : ' (en sommeil)'}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  <span>{tiersSelectionne.modeleReglement?.intitule ?? 'aucun modèle'}</span>
+                )}
+                <span className="text-text-dim text-right">Mode :</span>
+                {estAdmin && modes ? (
+                  <select
+                    aria-label="Mode de règlement du tiers"
+                    value={tiersSelectionne.modeReglementId ?? ''}
+                    onChange={(e) => void enregistrerChamp(tiersSelectionne, { modeReglementId: e.target.value || null })}
+                    className="border border-border px-1.5 py-0.5 bg-surface"
+                  >
+                    <option value="">Aucun mode</option>
+                    {modesProposables(modes, tiersSelectionne.modeReglementId).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {libelleMode(m)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span>
+                    {tiersSelectionne.modeReglement ? libelleMode(tiersSelectionne.modeReglement) : 'aucun mode'}
+                    {erreurModes && <span className="block text-danger text-[11px]">Modes illisibles · {erreurModes}</span>}
+                  </span>
+                )}
                 <span className="text-text-dim text-right">État :</span>
                 <span className={tiersSelectionne.estActif ? 'text-positive' : 'text-warning'}>
                   {tiersSelectionne.estActif ? 'Actif' : 'En sommeil'}
@@ -1257,8 +1322,20 @@ export function TiersPage() {
                   <label className="text-[11.5px] text-right">Règlement :</label>
                   <select value={modeleReglementId} onChange={(e) => setModeleReglementId(e.target.value)} className="border border-border-dark px-2.5 py-1.5 text-[11.5px]">
                     <option value="">Aucun modèle</option>
-                    {modeles.map((m) => (
+                    {modeles.filter((m) => m.estActif).map((m) => (
                       <option key={m.id} value={m.id}>{m.intitule}</option>
+                    ))}
+                  </select>
+                  <label className="text-[11.5px] text-right">Mode :</label>
+                  <select
+                    aria-label="Mode de règlement du nouveau tiers"
+                    value={modeReglementId}
+                    onChange={(e) => setModeReglementId(e.target.value)}
+                    className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
+                  >
+                    <option value="">{erreurModes ? `Modes illisibles · ${erreurModes}` : 'Aucun mode'}</option>
+                    {modesProposables(modes ?? [], null).map((m) => (
+                      <option key={m.id} value={m.id}>{libelleMode(m)}</option>
                     ))}
                   </select>
                   <span />
@@ -1406,18 +1483,37 @@ export function TiersPage() {
                         Mono-échéance : 100 % à {modeleSelectionne.delaiJours} j. ({LIBELLE_ECHEANCE[modeleSelectionne.echeance]}).
                       </div>
                     )}
+                    <label className="flex items-center gap-2 text-[11.5px] mb-2">
+                      <span className="text-text-dim">Mode du modèle</span>
+                      {estAdmin && modes ? (
+                        <select
+                          aria-label="Mode de règlement du modèle"
+                          value={modeleSelectionne.modeReglementId ?? ''}
+                          onChange={(e) => void modifierModele(modeleSelectionne, { modeReglementId: e.target.value || null })}
+                          className="border border-border-dark px-2 py-0.5 bg-surface"
+                        >
+                          <option value="">Aucun mode</option>
+                          {modesProposables(modes, modeleSelectionne.modeReglementId).map((m) => (
+                            <option key={m.id} value={m.id}>{libelleMode(m)}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{nomDuMode(modeleSelectionne.modeReglementId)}</span>
+                      )}
+                    </label>
                     {modeleSelectionne.echeances.length > 0 && (
                       <div className="border border-border mb-3 bg-surface">
                         {modeleSelectionne.echeances.map((ech) => (
                           <div
                             key={ech.id}
-                            className="grid grid-cols-[40px_130px_90px_70px_150px_70px] gap-2 items-center px-2.5 py-1 border-b border-border last:border-b-0 text-[11.5px]"
+                            className="grid grid-cols-[40px_130px_90px_70px_150px_120px_70px] gap-2 items-center px-2.5 py-1 border-b border-border last:border-b-0 text-[11.5px]"
                           >
                             <span className="font-mono">#{ech.ordre}</span>
                             <span>{LIBELLE_TYPE_ECHEANCE[ech.type]}</span>
                             <span className="text-right font-mono">{ech.valeur ?? '·'}</span>
                             <span className="text-text-dim">{ech.delaiJours} j.</span>
                             <span className="text-[11px] text-text-dim">{LIBELLE_ECHEANCE[ech.echeance]}</span>
+                            <span className="text-[11px]">{nomDuMode(ech.modeReglementId)}</span>
                             <button onClick={() => onSupprimerEcheance(ech.id)} className="text-danger text-[11px] font-semibold hover:underline w-fit">
                               Supprimer
                             </button>
@@ -1426,7 +1522,7 @@ export function TiersPage() {
                       </div>
                     )}
   
-                    <form onSubmit={onAjouterEcheance} className="grid grid-cols-6 gap-2 items-end mb-4">
+                    <form onSubmit={onAjouterEcheance} className="grid grid-cols-7 gap-2 items-end mb-4">
                       <label className="text-[11px] font-semibold text-text-dim">
                         Ordre
                         <input required type="number" min={1} value={ordreEch} onChange={(e) => setOrdreEch(Number(e.target.value))} className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px]" />
@@ -1454,6 +1550,15 @@ export function TiersPage() {
                         <select value={echeanceEch} onChange={(e) => setEcheanceEch(e.target.value as ConditionEcheance)} className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px]">
                           {(Object.keys(LIBELLE_ECHEANCE) as ConditionEcheance[]).map((c) => (
                             <option key={c} value={c}>{LIBELLE_ECHEANCE[c]}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-[11px] font-semibold text-text-dim">
+                        Mode
+                        <select aria-label="Mode de l'échéance" value={modeEch} onChange={(e) => setModeEch(e.target.value)} className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px]">
+                          <option value="">Aucun</option>
+                          {modesProposables(modes ?? [], null).map((m) => (
+                            <option key={m.id} value={m.id}>{libelleMode(m)}</option>
                           ))}
                         </select>
                       </label>

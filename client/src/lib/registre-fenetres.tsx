@@ -20,6 +20,8 @@ const BanquesPage = lazy(() => import('../pages/BanquesPage').then((m) => ({ def
 const LibellesPage = lazy(() => import('../pages/LibellesPage').then((m) => ({ default: m.LibellesPage })));
 // Ligne sage-l1, fonction 19 · les séquences de saisie.
 const SequencesSaisiePage = lazy(() => import('../pages/SequencesSaisiePage').then((m) => ({ default: m.SequencesSaisiePage })));
+// Ligne sage-l2, fonction 1 · les modes de règlement.
+const ModesReglementPage = lazy(() => import('../pages/ModesReglementPage').then((m) => ({ default: m.ModesReglementPage })));
 const EtatsPersonnalisesPage = lazy(() =>
   import('../pages/EtatsPersonnalisesPage').then((m) => ({ default: m.EtatsPersonnalisesPage })),
 );
@@ -346,6 +348,12 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Séquences de saisie',
     titreCourt: 'Séquences',
     rendre: () => <SequencesSaisiePage />,
+  },
+  {
+    motif: /^\/modes-reglement$/,
+    titre: 'Modes de règlement',
+    titreCourt: 'Modes',
+    rendre: () => <ModesReglementPage />,
   },
   {
     motif: /^\/declaration-tva$/,

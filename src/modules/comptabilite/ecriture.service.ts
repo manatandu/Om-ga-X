@@ -2407,6 +2407,9 @@ export class EcritureService {
             tauxTvaId: l.tauxTvaId ?? null,
             dateEcheance,
             dateVersement,
+            // Le mode de règlement (ligne sage-l2, fonction 1) · rendu pour
+            // que la modification ne l'efface pas.
+            modeReglementId: l.modeReglementId ?? null,
             deviseId: l.deviseId ?? null,
             montantDevise: l.montantDevise === null || l.montantDevise === undefined ? null : Number(l.montantDevise),
             coursApplique: l.coursApplique === null || l.coursApplique === undefined ? null : Number(l.coursApplique),
@@ -2602,6 +2605,7 @@ export class EcritureService {
                       credit: p.credit,
                       dateEcheance: l.dateEcheance,
                       dateVersement: l.dateVersement,
+                      modeReglementId: l.modeReglementId,
                       // La devise suit la ligne, sans signe, comme à la
                       // correction (audit final F1) · le sens de la ligne dit
                       // de quel côté elle tombe.
