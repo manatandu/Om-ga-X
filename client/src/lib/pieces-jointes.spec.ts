@@ -4,6 +4,8 @@ import {
   ADRESSES_PIECES,
   LONGUEUR_COMMENTAIRE_PIECE,
   TAILLE_MAX_PIECE,
+  messageSuppressionBrouillard,
+  motifDecompteIllisible,
   piecesDeLEcriture,
   refusAvantEnvoi,
   tailleLisible,
@@ -114,5 +116,32 @@ describe('pièces jointes · chaque objet porte son volet, chez lui', () => {
     expect(src).toMatch(/ecouterEchap\(\(\) => \{\s*if \(!occupeRef\.current\) fermerRef\.current\(\);/);
     // Une réponse périmée est jetée · jamais la liste d'un autre objet sous celui-ci.
     expect(src).toMatch(/if \(mien === jeton\.current\) setListe\(r\)/);
+  });
+});
+
+describe('pièces jointes · ce qui se détache et ce qui ne se lit pas se DIT (relecture sage-l6, mineurs 1 et 3)', () => {
+  const lire = (f: string) => readFileSync(join(CLIENT, f), 'utf8');
+
+  it('la suppression au brouillard dit les pièces détachées et où les retrouver', () => {
+    expect(messageSuppressionBrouillard(0)).toBe('Écriture supprimée du brouillard.');
+    expect(messageSuppressionBrouillard(undefined)).toBe('Écriture supprimée du brouillard.');
+    expect(messageSuppressionBrouillard(1)).toBe('Écriture supprimée du brouillard · 1 pièce jointe détachée, à retrouver dans Journal > Pièces détachées.');
+    expect(messageSuppressionBrouillard(3)).toContain('3 pièces jointes détachées');
+    // Le brouillard lit le nombre que le serveur rend, sous le nom qu'il lui donne.
+    expect(lire('pages/BrouillardPage.tsx')).toMatch(/setInfo\(messageSuppressionBrouillard\(r\?\.piecesDetachees\)\)/);
+    const serveur = readFileSync(join(SERVEUR, 'modules/comptabilite/ecriture.service.ts'), 'utf8');
+    expect(serveur).toContain('return { supprime: true, piecesDetachees };');
+  });
+
+  it('un décompte illisible se dit avec son motif, jamais une colonne muette', () => {
+    expect(motifDecompteIllisible(new Error('Délai dépassé'))).toContain('(Délai dépassé)');
+    expect(motifDecompteIllisible('x')).toContain('(réponse illisible)');
+    for (const page of ['pages/JournalPage.tsx', 'pages/SaisiePage.tsx']) {
+      const src = lire(page);
+      // L'échec pose le motif, et l'écran l'affiche · plus de second argument qui l'avale.
+      expect([page, /setErreurDecompte\(motifDecompteIllisible\(e\)\)/.test(src)]).toEqual([page, true]);
+      expect([page, /role="alert"[^>]*>\s*\{erreurDecompte\}/.test(src)]).toEqual([page, true]);
+      expect([page, /\(\) => !annule && setDecomptePieces\(null\)/.test(src)]).toEqual([page, false]);
+    }
   });
 });

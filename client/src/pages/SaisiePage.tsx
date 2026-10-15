@@ -23,6 +23,7 @@ import { libelleRenvoiDiscordant, remplacementsProposes, type RenvoiDiscordant }
 import { lireMasquerTotaux, memoriserMasquerTotaux } from '../lib/totaux-saisie';
 import { ModaleCompteEnSaisie } from '../components/ModaleCompteEnSaisie';
 import { BoutonPiecesEcriture, ModalePiecesEcriture } from '../components/PiecesJointes';
+import { motifDecompteIllisible } from '../lib/pieces-jointes';
 import { piecesDeLEcriture, type DecomptePieces } from '../lib/pieces-jointes';
 
 /**
@@ -267,6 +268,10 @@ export function SaisiePage() {
   // n'est pas lu, jamais « aucune » sur un décompte illisible.
   const [piecesOuvertes, setPiecesOuvertes] = useState<string | null>(null);
   const [decomptePieces, setDecomptePieces] = useState<DecomptePieces | null>(null);
+  // Un décompte illisible se DIT (relecture « échecs silencieux » de la ligne
+  // sage-l6, mineur 3) · la colonne PJ montre alors « Pièces jointes » sans
+  // nombre, et cette ligne dit pourquoi.
+  const [erreurDecompte, setErreurDecompte] = useState<string | null>(null);
   const [rechargementPieces, setRechargementPieces] = useState(0);
   // Les axes analytiques partent de null (reste de l'audit final F255) · un
   // refus, du plan ou des sections d'un axe, retirait la colonne de la grille
@@ -671,9 +676,14 @@ export function SaisiePage() {
     if (!ouvert || !exerciceCourant) return;
     let annule = false;
     setDecomptePieces(null);
+    setErreurDecompte(null);
     api.get<DecomptePieces>(`/pieces-jointes-ecritures/decompte?exerciceId=${exerciceCourant.id}`).then(
       (r) => !annule && setDecomptePieces(r),
-      () => !annule && setDecomptePieces(null),
+      (e: unknown) => {
+        if (annule) return;
+        setDecomptePieces(null);
+        setErreurDecompte(motifDecompteIllisible(e));
+      },
     );
     return () => {
       annule = true;
@@ -1595,6 +1605,11 @@ export function SaisiePage() {
           <span />
         </div>
 
+        {erreurDecompte && (
+          <div role="alert" className="px-3 py-1 border-b border-border text-[11.5px] text-danger">
+            {erreurDecompte}
+          </div>
+        )}
         {/* Écritures existantes de la période */}
         {parPiece && ecritures.length > 0 && (
           <div className="flex items-center gap-2 px-3 py-1 border-b border-border text-[11.5px]">

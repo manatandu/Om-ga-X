@@ -98,3 +98,24 @@ export function piecesDeLEcriture(decompte: DecomptePieces | null, ecritureId: s
   if (n !== undefined) return n;
   return decompte.tronque ? null : 0;
 }
+
+/**
+ * LE DÉCOMPTE ILLISIBLE SE DIT (relecture « échecs silencieux » de la ligne
+ * sage-l6, mineur 3) · avalé, l'échec laissait la colonne PJ sans nombre et
+ * sans raison, et l'on pouvait croire qu'aucune écriture n'en portait.
+ */
+export function motifDecompteIllisible(e: unknown): string {
+  const motif = e instanceof Error && e.message ? e.message : 'réponse illisible';
+  return `Pièces jointes · le décompte de l’exercice n’a pas pu être lu (${motif}). La colonne PJ ne dit aucun nombre tant qu’il ne l’est pas · ouvrez une écriture pour voir ses pièces.`;
+}
+
+/**
+ * CE QUE LA SUPPRESSION D'UNE ÉCRITURE AU BROUILLARD A DÉTACHÉ (mineur 1) ·
+ * ses pièces ne se perdent pas, elles se retrouvent au journal. Un retour
+ * sans le nombre (serveur d'avant la ligne) ne dit rien de plus.
+ */
+export function messageSuppressionBrouillard(piecesDetachees: number | null | undefined): string {
+  if (!piecesDetachees) return 'Écriture supprimée du brouillard.';
+  const pieces = piecesDetachees === 1 ? '1 pièce jointe détachée' : `${piecesDetachees} pièces jointes détachées`;
+  return `Écriture supprimée du brouillard · ${pieces}, à retrouver dans Journal > Pièces détachées.`;
+}

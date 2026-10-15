@@ -8,6 +8,7 @@ import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { PortailModale } from '../components/PortailModale';
 import { montantOuVide as montant } from '../lib/montants';
 import { compteDuNumeroTape } from '../lib/comptes-proposes';
+import { messageSuppressionBrouillard } from '../lib/pieces-jointes';
 import { ecouterEchap } from '../lib/echap';
 
 /**
@@ -360,8 +361,8 @@ export function BrouillardPage() {
   const supprimer = async (id: string) => {
     setErreur(null);
     try {
-      await api.delete(`/ecritures/${id}`);
-      setInfo('Écriture supprimée du brouillard.');
+      const r = await api.delete<{ supprime: boolean; piecesDetachees?: number }>(`/ecritures/${id}`);
+      setInfo(messageSuppressionBrouillard(r?.piecesDetachees));
       await charger();
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Suppression impossible');

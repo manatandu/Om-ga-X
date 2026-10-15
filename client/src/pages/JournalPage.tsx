@@ -7,6 +7,7 @@ import { IconFilter, IconExport } from '../components/chrome/icons';
 import { ModaleCorrection } from '../components/ModaleCorrection';
 import { ModaleReimputation } from '../components/ModaleReimputation';
 import { BoutonPiecesEcriture, ModalePiecesDetachees, ModalePiecesEcriture } from '../components/PiecesJointes';
+import { motifDecompteIllisible } from '../lib/pieces-jointes';
 import { piecesDeLEcriture, type DecomptePieces } from '../lib/pieces-jointes';
 import type { Ecriture, Journal, LigneBalance, LigneGrandLivre } from '../lib/types';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
@@ -188,6 +189,9 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const [piecesOuvertes, setPiecesOuvertes] = useState<string | null>(null);
   const [detacheesOuvertes, setDetacheesOuvertes] = useState(false);
   const [decomptePieces, setDecomptePieces] = useState<DecomptePieces | null>(null);
+  // Un décompte illisible se DIT (relecture « échecs silencieux » de la ligne
+  // sage-l6, mineur 3), jamais une colonne PJ muette sans raison.
+  const [erreurDecompte, setErreurDecompte] = useState<string | null>(null);
   const [rechargementPieces, setRechargementPieces] = useState(0);
   // L'écriture dont on demande la correction · `null` tant que la boîte est
   // fermée. Elle porte le libellé pour que la boîte puisse nommer ce qu'elle
@@ -248,9 +252,14 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     if (!exerciceCourant || onglet !== 'journal') return;
     let annule = false;
     setDecomptePieces(null);
+    setErreurDecompte(null);
     api.get<DecomptePieces>(`/pieces-jointes-ecritures/decompte?exerciceId=${exerciceCourant.id}`).then(
       (r) => !annule && setDecomptePieces(r),
-      () => !annule && setDecomptePieces(null),
+      (e: unknown) => {
+        if (annule) return;
+        setDecomptePieces(null);
+        setErreurDecompte(motifDecompteIllisible(e));
+      },
     );
     return () => {
       annule = true;
@@ -613,6 +622,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             >
               Pièces détachées…
             </button>
+          )}
+          {onglet === 'journal' && erreurDecompte && (
+            <span role="alert" className="text-[11.5px] text-danger">
+              {erreurDecompte}
+            </span>
           )}
           {onglet === 'journal' && boutonExport('Exporter Excel', exporterJournal)}
           {onglet === 'balance' && (
