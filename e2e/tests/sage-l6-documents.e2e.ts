@@ -156,6 +156,23 @@ test('SYSCOHADA · le document d’un salarié · au registre, servi en pièce j
     { api: API, chemin: `/personnel/pieces-jointes/${liste.pieces[0].id}/fichier` },
   );
   expect(servi).toEqual([200, 'nosniff', true, '%PDF-1.4 contrat']);
+  // LA RESTITUTION, SUR VRAIE BASE (second tour, mineur 3) · l'inventaire des
+  // pièces compté puis lu par lots, l'archive va au bout · la pièce dans son
+  // dossier, le contrôle écrit, le répertoire central de fin du ZIP présent.
+  const archive = await page.evaluate(
+    async ({ api }) => {
+      const r = await fetch(`${api}/restitution/archive`, { credentials: 'include' });
+      const octets = new Uint8Array(await r.arrayBuffer());
+      let texte = '';
+      for (const o of octets) texte += String.fromCharCode(o);
+      return { statut: r.status, texte };
+    },
+    { api: API },
+  );
+  expect(archive.statut).toBe(200);
+  expect(archive.texte).toContain(`pieces-jointes/salaries/${liste.pieces[0].id}`);
+  expect(archive.texte).toContain('controles.txt');
+  expect(archive.texte).toContain('PK\u0005\u0006');
   await retirer(page, volet, 'Contrat KABEYA.pdf');
   expect(pannes).toEqual([]);
 });
