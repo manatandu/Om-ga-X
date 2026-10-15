@@ -204,10 +204,31 @@ describe('le contrat dit ce que le code fait', () => {
     expect(texte).toContain(`Le client dispose de ${enLettres[DELAI_PAIEMENT_JOURS]} jours après la fin de l’essai`);
   });
 
-  it('la lecture seule dite au contrat est celle de LicenceGuard (lectures seules, rien ne s’enregistre)', () => {
+  it('la lecture seule dite au contrat est celle de LicenceGuard · téléchargements ouverts, impression numérotée du journal refusée (relecture, mineur 4)', () => {
     const garde = readFileSync(join(__dirname, '..', 'licence', 'licence.guard.ts'), 'utf8');
     expect(garde).toContain("const METHODES_DE_LECTURE = new Set(['GET', 'HEAD'])");
-    expect(texteBrutDesConditions()).toContain('passe en LECTURE SEULE');
+    // L'impression du journal s'enregistre par un POST derrière LicenceGuard ·
+    // le contrat disait « ils l'impriment », ce que la garde refuse.
+    const impressions = readFileSync(join(__dirname, '..', 'journaux', 'impressions-journal.controller.ts'), 'utf8');
+    expect(impressions).toContain('@UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)');
+    expect(impressions).toContain('@Post()');
+    const texte = texteBrutDesConditions();
+    expect(texte).toContain('passe en LECTURE SEULE · ses utilisateurs le consultent et en téléchargent les états et les livres');
+    expect(texte).toContain('aucune impression numérotée du journal n’y est plus admise');
+  });
+
+  it('la restitution est dite avec ses cinq réserves, celles que l’écran de restitution écrit (relecture, mineur 10)', () => {
+    // « Copie intégrale » promettait plus que l'archive ne vaut · elle-même se
+    // présente sous cinq réserves (docs/restitution-du-dossier.md).
+    const ecran = readFileSync(join(__dirname, '..', '..', '..', 'client', 'src', 'pages', 'RestitutionPage.tsx'), 'utf8');
+    for (const r of ['Elle ne remplace pas la conservation.', 'Elle n\'a pas la force probante de l\'écrit papier légalisé.', 'Ce n\'est pas une réversibilité.', 'Ce n\'est pas un instantané.', 'Les CSV ne sont pas le livre-journal.']) {
+      expect(ecran).toContain(r);
+    }
+    const texte = texteBrutDesConditions();
+    expect(texte).not.toContain('copie intégrale');
+    expect(texte).toContain(
+      'Cette archive porte cinq réserves, qu’elle écrit elle-même · elle ne remplace pas la conservation des pièces justificatives, n’a pas la force probante d’un écrit légalisé, ne se recharge pas entière dans OmegaX, n’est pas un instantané pris d’un seul coup, et ses fichiers ne sont pas le livre-journal.',
+    );
   });
 
   it('cite les textes lus, chacun par son article · Code du numérique, droit d’auteur, Code civil', () => {

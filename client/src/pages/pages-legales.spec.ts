@@ -129,6 +129,13 @@ describe('la foire aux questions dit ce que le code fait', () => {
     expect(politique).toContain('à la restauration de contrôle automatique qui l’éprouve et ne rend que des décomptes');
   });
 
+  it('dit la lecture seule telle que la garde la tient, et la restitution avec ses réserves (relecture, mineurs 4 et 10)', () => {
+    expect(reponse('q-echeance')).toContain('aucune saisie, aucune modification ni aucune impression numérotée du journal n’y est plus admise');
+    expect(reponse('q-echeance')).toContain('sous les cinq réserves qu’elle écrit elle-même');
+    expect(reponse('q-recuperer')).toContain('Le manifeste écrit cinq réserves');
+    expect(lire('src/pages/ConfidentialitePage.tsx').replace(/\s+/g, ' ')).toContain('sous les cinq réserves qu’elle écrit elle-même');
+  });
+
   it('dit le français, seul, et ne promet aucune autre langue', () => {
     expect(reponse('q-langue')).toContain('En français seulement.');
     expect(reponse('q-langue')).toContain('aucune autre langue n’est proposée');

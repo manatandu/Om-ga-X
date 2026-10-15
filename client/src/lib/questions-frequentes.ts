@@ -229,8 +229,8 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-echeance',
         question: 'Que se passe-t-il si l’abonnement n’est pas réglé ?',
         reponse: [
-          'Le client dispose de quinze jours après la fin de l’essai, puis après la fin de chaque période payée. Passé ce délai sans paiement constaté, le dossier passe en lecture seule · il se consulte, s’imprime et s’exporte, mais rien ne s’y enregistre plus. Le paiement constaté rouvre l’écriture aussitôt.',
-          'La copie intégrale du dossier reste disponible en lecture seule.',
+          'Le client dispose de quinze jours après la fin de l’essai, puis après la fin de chaque période payée. Passé ce délai sans paiement constaté, le dossier passe en lecture seule · il se consulte, et ses états et ses livres se téléchargent, mais aucune saisie, aucune modification ni aucune impression numérotée du journal n’y est plus admise. Le paiement constaté rouvre l’écriture aussitôt.',
+          'La restitution du dossier, une archive de ses données sous les cinq réserves qu’elle écrit elle-même, reste disponible en lecture seule.',
         ],
       },
       {
@@ -288,7 +288,8 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-recuperer',
         question: 'Comment récupérer toutes mes données ?',
         reponse: [
-          'L’administrateur du dossier en obtient une copie intégrale par Fichier > Restituer le dossier complet · une archive ZIP d’un fichier CSV par table, avec un manifeste et un relevé de contrôle. Chaque utilisateur exporte aussi les états et les livres.',
+          'L’administrateur du dossier en obtient une archive par Fichier > Restituer le dossier complet · un fichier ZIP d’un fichier CSV par table, avec un manifeste et un relevé de contrôle. Chaque utilisateur exporte aussi les états et les livres.',
+          'Le manifeste écrit cinq réserves · l’archive ne remplace pas la conservation des pièces justificatives, n’a pas la force probante d’un écrit légalisé, ne se recharge pas entière dans OmegaX, n’est pas un instantané pris d’un seul coup, et ses fichiers ne sont pas le livre-journal.',
           'Les livres et les pièces justificatives se conservent dix ans (AUDCIF, art. 24) · l’archive ne remplace pas cette conservation.',
         ],
       },

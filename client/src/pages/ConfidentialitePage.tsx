@@ -335,8 +335,9 @@ export function ContenuConfidentialite() {
           Vous pouvez demander à consulter, corriger, exporter ou supprimer les données qui vous concernent. L’export
           de vos dossiers est d’ailleurs prévu dans le logiciel : les états financiers, la liasse complète et les
           livres obligatoires s’exportent au format tableur sans avoir à nous le demander, et
-          <strong> Fichier &gt; Restituer le dossier complet</strong> en produit une copie intégrale, table par table,
-          en un seul fichier.
+          <strong> Fichier &gt; Restituer le dossier complet</strong> en produit une archive, table par table, en un
+          seul fichier, sous les cinq réserves qu’elle écrit elle-même (elle ne remplace notamment pas la
+          conservation des pièces justificatives).
         </P>
         <P>
           L’effacement cède devant une obligation légale qui impose de conserver les données (article 216) ; son
