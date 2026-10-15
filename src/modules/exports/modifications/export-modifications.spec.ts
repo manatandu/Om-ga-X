@@ -10,10 +10,12 @@ import {
   PiecesDistinctes,
   empreinteEcriture,
   libelleMouvement,
+  motifEnvoiNonRelu,
   mouvementDe,
   pieceDuFichier,
 } from './export-modifications';
 import { ImportService } from '../../import/import.service';
+import { lireFichier } from '../../import/lecture-fichier';
 import { TypeImport } from '../../import/dto/import.dto';
 
 /**
@@ -55,24 +57,40 @@ type Ecriture = {
   lignes: Ligne[];
 };
 
-/** Un filtre Prisma lu sur les seules formes que le service écrit. */
+/** Une valeur comparable · une date par son instant (deux `Date` égales ne sont pas `===`). */
+const comparable = (v: unknown) => (v instanceof Date ? v.getTime() : v) as number | string;
+
+/**
+ * Un filtre Prisma lu sur les seules formes que le service écrit · égalité,
+ * `in`, `not`, `gt` (dates par leur instant), nul, `AND` et `OR` (la
+ * pagination par la clé), et le filtre de relation `ecriture` des lignes.
+ */
 function correspond(ligne: Record<string, unknown>, where: Record<string, unknown> | undefined): boolean {
   if (!where) return true;
   return Object.entries(where).every(([cle, attendu]) => {
+    if (cle === 'AND') return (attendu as Record<string, unknown>[]).every((w) => correspond(ligne, w));
+    if (cle === 'OR') return (attendu as Record<string, unknown>[]).some((w) => correspond(ligne, w));
     const valeur = ligne[cle];
     if (attendu === undefined) return true;
     if (attendu === null) return valeur === null || valeur === undefined;
     if (typeof attendu === 'object' && !(attendu instanceof Date)) {
-      const a = attendu as { in?: unknown[]; not?: unknown };
+      const a = attendu as { in?: unknown[]; not?: unknown; gt?: unknown };
       if ('in' in a) return (a.in ?? []).includes(valeur);
       if ('not' in a) return valeur !== a.not;
+      if ('gt' in a) return valeur !== null && valeur !== undefined && comparable(valeur) > comparable(a.gt);
+      if (valeur && typeof valeur === 'object') return correspond(valeur as Record<string, unknown>, attendu as Record<string, unknown>);
       throw new Error(`Filtre non pris en charge par la doublure · ${cle}`);
     }
-    return valeur === attendu;
+    return comparable(valeur) === comparable(attendu);
   });
 }
 
-/** Tri et curseur, comme Prisma · ordre puis la ligne APRÈS le curseur (`skip: 1`). */
+/**
+ * Tri et curseur, COMME PRISMA · ordre, puis la ligne APRÈS le curseur
+ * (`skip: 1`) ; un curseur dont la ligne n'existe plus ne rend RIEN (c'est le
+ * défaut que la pagination par la clé corrige, relecture M6 · la doublure
+ * repartait du début et le masquait).
+ */
 function paginer<T extends { id: string }>(
   lignes: T[],
   args: { orderBy?: unknown; take?: number; cursor?: { id: string }; skip?: number },
@@ -81,15 +99,19 @@ function paginer<T extends { id: string }>(
   const triees = [...lignes].sort((a, b) => {
     for (const o of ordres) {
       const [cle, sens] = Object.entries(o)[0];
-      const va = (a as Record<string, unknown>)[cle] as Date | string | number;
-      const vb = (b as Record<string, unknown>)[cle] as Date | string | number;
-      const c = va instanceof Date ? va.getTime() - (vb as Date).getTime() : va < vb ? -1 : va > vb ? 1 : 0;
+      const va = comparable((a as Record<string, unknown>)[cle]);
+      const vb = comparable((b as Record<string, unknown>)[cle]);
+      const c = va < vb ? -1 : va > vb ? 1 : 0;
       if (c !== 0) return sens === 'asc' ? c : -c;
     }
     return 0;
   });
   let depart = 0;
-  if (args.cursor) depart = triees.findIndex((l) => l.id === args.cursor!.id) + (args.skip ?? 0);
+  if (args.cursor) {
+    const rang = triees.findIndex((l) => l.id === args.cursor!.id);
+    if (rang < 0) return [];
+    depart = rang + (args.skip ?? 0);
+  }
   return triees.slice(depart, args.take !== undefined ? depart + args.take : undefined);
 }
 
@@ -97,6 +119,7 @@ function nouveauFaux() {
   const ecritures: Ecriture[] = [];
   const registre: Array<Record<string, unknown> & { id: string }> = [];
   const exports: Array<Record<string, unknown> & { id: string; tenantId: string; numero: number }> = [];
+  const lecturesDesLignes: Array<Record<string, unknown>> = [];
   let compteur = 0;
   const id = (prefixe: string) => `${prefixe}-${String(++compteur).padStart(5, '0')}`;
   const prisma: Record<string, unknown> = {
@@ -105,14 +128,28 @@ function nouveauFaux() {
         const filtrees = ecritures.filter((e) => correspond(e as unknown as Record<string, unknown>, args.where));
         const page = paginer(filtrees, args);
         if (args.select) {
+          if (args.select._count) throw new Error("`_count` agrège toute la table des lignes (relecture M2) · le service compte par regroupement.");
           return page.map((e) => ({
             id: e.id,
             ...(args.select!.date ? { date: e.date } : {}),
             ...(args.select!.statut ? { statut: e.statut } : {}),
-            ...(args.select!._count ? { _count: { lignes: e.lignes.length } } : {}),
+            ...(args.select!.numeroPiece ? { numeroPiece: e.numeroPiece } : {}),
+            ...(args.select!.journal ? { journal: e.journal } : {}),
           }));
         }
         return page.map((e) => ({ ...e, lignes: e.lignes.map((l) => ({ ...l })) }));
+      },
+      findFirst: async (args: { where: Record<string, unknown> }) => {
+        const e = ecritures.find((x) => correspond(x as unknown as Record<string, unknown>, args.where));
+        return e ? { numeroPiece: e.numeroPiece, date: e.date, journal: e.journal } : null;
+      },
+    },
+    ligneEcriture: {
+      groupBy: async (args: { by: string[]; where: { ecritureId: { in: string[] }; ecriture?: Record<string, unknown> } }) => {
+        lecturesDesLignes.push(args.where);
+        return ecritures
+          .filter((e) => args.where.ecritureId.in.includes(e.id) && correspond(e as unknown as Record<string, unknown>, args.where.ecriture))
+          .map((e) => ({ ecritureId: e.id, _count: { _all: e.lignes.length } }));
       },
     },
     ecritureExportee: {
@@ -154,6 +191,25 @@ function nouveauFaux() {
     },
     user: { findMany: async () => [{ id: 'u1', email: 'comptable@cabinet.cd' }] },
     $executeRaw: async () => 0,
+    // Le décompte des écritures jamais parties (NOT EXISTS sur le registre),
+    // rejoué sur la doublure · dossier, statut, (date, identifiant) au moins
+    // ceux de la première qui attend.
+    $queryRaw: async (morceaux: TemplateStringsArray, ...valeurs: unknown[]) => {
+      const texte = morceaux.join('?');
+      if (!texte.includes('NOT EXISTS')) throw new Error('Requête brute non prise en charge par la doublure.');
+      const [dossier, statut, date, idDepuis] = valeurs as [string, Prisma.Sql, Date, string];
+      const brouillardCompris = statut.strings.join('?').includes('<>');
+      const connues = new Set(registre.filter((r) => r.tenantId === dossier).map((r) => r.ecritureId));
+      const n = ecritures.filter(
+        (e) =>
+          e.tenantId === dossier &&
+          !e.estANouveauProvisoire &&
+          (brouillardCompris ? e.statut !== StatutEcriture.SITUATION : e.statut === StatutEcriture.VALIDEE) &&
+          (e.date.getTime() > date.getTime() || (e.date.getTime() === date.getTime() && e.id >= idDepuis)) &&
+          !connues.has(e.id),
+      ).length;
+      return [{ n }];
+    },
   };
   prisma.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma);
   const exportService = {
@@ -186,7 +242,7 @@ function nouveauFaux() {
     return e;
   };
   const retirer = (e: Ecriture) => ecritures.splice(ecritures.indexOf(e), 1);
-  return { service, ajouter, retirer, ecritures, registre, exports };
+  return { service, ajouter, retirer, ecritures, registre, exports, lecturesDesLignes };
 }
 
 /** Relit le classeur rangé · les feuilles et leurs lignes, valeurs en texte. */
@@ -349,6 +405,37 @@ describe('export des seules modifications · registre et fichier', () => {
     expect(recap.find((l) => l[0] === 'Portée')?.[1]).toBe('Premier export');
   });
 
+  it('un envoi qui remplace ou retire une pièce est REFUSÉ ENTIER par l’import, en le nommant ; le premier envoi se relit (M3)', async () => {
+    const f = nouveauFaux();
+    const b = f.ajouter({ date: '2026-04-01', statut: StatutEcriture.BROUILLARD });
+    const c = f.ajouter({ date: '2026-04-02', statut: StatutEcriture.BROUILLARD });
+    await f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true);
+    const importService = new ImportService(null as never, null as never);
+    const tableauDe = (n: number) => lireFichier('export.xlsx', contenuRange(f, n).toString('base64'));
+    // Le premier envoi · des « Nouvelle » seulement, aucune suppression.
+    const premier = await tableauDe(1);
+    expect(premier.lignesSupprimees).toBe(0);
+    expect(motifEnvoiNonRelu(premier.colonnes, premier.lignes, 0)).toBeNull();
+
+    // Le second · une pièce modifiée, une retirée.
+    b.libelle = 'Libellé corrigé';
+    f.retirer(c);
+    await f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true);
+    const contenu = contenuRange(f, 2);
+    const analyse = await importService.analyser({ type: TypeImport.ECRITURES, nomFichier: 'export.xlsx', contenuBase64: contenu.toString('base64') } as never);
+    // Refusé AVANT toute lecture du dossier (la doublure de Prisma est nulle).
+    await expect(
+      importService.executer(DOSSIER, 'u1', {
+        type: TypeImport.ECRITURES,
+        nomFichier: 'export.xlsx',
+        contenuBase64: contenu.toString('base64'),
+        mapping: analyse.mappingPropose,
+      } as never),
+    ).rejects.toThrow(
+      /2 lignes de la colonne « Mouvement » remplacent ou renvoient une pièce déjà envoyée \(première à la ligne 2 · « Modifiée · remplace l'envoi n° 1 »\) · l'import les créerait une seconde fois ; la feuille « Supprimées » nomme 1 pièce retirée.*Rien n'est importé/,
+    );
+  });
+
   it('au-delà du plafond, l’export des modifications part par lots dans l’ordre des dates et dit ce qui attend ; le complet est refusé', async () => {
     const ancien = process.env.EXPORT_MAX_LIGNES;
     jest.resetModules();
@@ -373,6 +460,93 @@ describe('export des seules modifications · registre et fichier', () => {
       else process.env.EXPORT_MAX_LIGNES = ancien;
       jest.resetModules();
     }
+  });
+
+  it('un brouillard retiré pendant l’inventaire n’arrête plus la lecture · la tranche suivante part de la clé (M6)', async () => {
+    const f = nouveauFaux();
+    // Une tranche pleine (5 000) et deux écritures au-delà.
+    for (let i = 0; i < 5002; i++) f.ajouter({ date: `2026-01-${String(1 + (i % 28)).padStart(2, '0')}` });
+    const prisma = (f.service as unknown as { prisma: { ecriture: { findMany: (a: { select?: Record<string, unknown> }) => Promise<Array<{ id: string }>> } } }).prisma;
+    const lire = prisma.ecriture.findMany;
+    let premiere = true;
+    prisma.ecriture.findMany = async (a) => {
+      const rendues = await lire(a);
+      // Après la PREMIÈRE tranche des écritures jamais parties, sa dernière
+      // écriture est retirée (brouillard supprimé pendant la lecture).
+      if (premiere && a.select?.date && !a.select?.statut && rendues.length > 0) {
+        premiere = false;
+        f.retirer(f.ecritures.find((e) => e.id === rendues[rendues.length - 1].id)!);
+      }
+      return rendues;
+    };
+    const apercu = await f.service.apercu(DOSSIER, true);
+    // La pièce retirée était déjà lue (l'export, lui, la saute à l'écriture
+    // du fichier) · les DEUX suivantes le sont aussi. Le curseur de Prisma
+    // relisait la ligne retirée · la seconde tranche revenait vide, et
+    // l'aperçu disait 5 000, deux pièces jamais parties tues.
+    expect(apercu.nouvelles).toBe(5002);
+    expect(premiere).toBe(false);
+  });
+
+  it('les lignes se comptent par regroupement sur la tranche, et ce qui attend par la base, sans lire la suite (M2)', async () => {
+    const ancien = process.env.EXPORT_MAX_LIGNES;
+    jest.resetModules();
+    process.env.EXPORT_MAX_LIGNES = '4';
+    try {
+      const { ExportModificationsService: Service } = await import('./export-modifications.service');
+      const f = nouveauFaux();
+      const prisma = (f.service as unknown as { prisma: Record<string, { findMany?: unknown }> }).prisma;
+      const service = new Service(prisma as never, { identiteEtat: async () => ({ entite: 'X', nif: '', periode: '', devise: 'CDF' }) } as never);
+      for (let i = 1; i <= 10; i++) f.ajouter({ date: `2026-01-${String(i).padStart(2, '0')}` });
+      const apercu = await service.apercu(DOSSIER, true);
+      expect(apercu).toMatchObject({ nouvelles: 2, lignes: 4, enAttente: 8 });
+      // Le regroupement ne porte que sur les écritures de la tranche, du dossier.
+      expect(f.lecturesDesLignes.length).toBeGreaterThan(0);
+      for (const w of f.lecturesDesLignes) expect(w).toMatchObject({ ecriture: { tenantId: DOSSIER } });
+    } finally {
+      if (ancien === undefined) delete process.env.EXPORT_MAX_LIGNES;
+      else process.env.EXPORT_MAX_LIGNES = ancien;
+      jest.resetModules();
+    }
+  });
+
+  it('une pièce qu’aucun export ne peut porter est NOMMÉE, jamais dite « aucune modification » (m3)', async () => {
+    const ancien = process.env.EXPORT_MAX_LIGNES;
+    jest.resetModules();
+    process.env.EXPORT_MAX_LIGNES = '4';
+    try {
+      const { ExportModificationsService: Service } = await import('./export-modifications.service');
+      const f = nouveauFaux();
+      const prisma = (f.service as unknown as { prisma: unknown }).prisma;
+      const service = new Service(prisma as never, { identiteEtat: async () => ({ entite: 'X', nif: '', periode: '', devise: 'CDF' }) } as never);
+      const grosse = f.ajouter({ date: '2026-01-01', numeroPiece: 17 });
+      grosse.lignes = [...grosse.lignes, ...grosse.lignes, ...grosse.lignes].map((l, i) => ({ ...l, id: `g-${i}` }));
+      f.ajouter({ date: '2026-01-02' });
+      const apercu = await service.apercu(DOSSIER, true);
+      expect(apercu.horsPlafond).toMatch(/pièce n° 17 du journal BQ, du 01\/01\/2026, porte 6 lignes, au-delà du plafond de 4 lignes/);
+      expect(apercu.enAttente).toBe(1);
+      await expect(service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true)).rejects.toThrow(/pièce n° 17 du journal BQ/);
+      expect(f.exports).toHaveLength(0);
+    } finally {
+      if (ancien === undefined) delete process.env.EXPORT_MAX_LIGNES;
+      else process.env.EXPORT_MAX_LIGNES = ancien;
+      jest.resetModules();
+    }
+  });
+
+  it('un brouillard envoyé puis modifié, hors de la portée, se compte à l’aperçu et au récapitulatif (m8)', async () => {
+    const f = nouveauFaux();
+    const b = f.ajouter({ date: '2026-01-02', statut: StatutEcriture.BROUILLARD });
+    await f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true);
+    b.libelle = 'Libellé corrigé';
+    f.ajouter({ date: '2026-01-03' });
+    expect((await f.service.apercu(DOSSIER, false)).brouillardModifieHorsPortee).toBe(1);
+    // Inchangé, il ne se compte pas.
+    expect((await f.service.apercu(DOSSIER, true)).brouillardModifieHorsPortee).toBe(0);
+    const deux = await f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, false);
+    expect(deux.brouillardModifieHorsPortee).toBe(1);
+    const recap = (await relire(contenuRange(f, 2))).feuille(FEUILLE_EXPORT);
+    expect(recap.find((l) => l[0] === 'Envoyées au brouillard, modifiées depuis, hors de cette portée')?.[1]).toBe(1);
   });
 
   it('l’export complet renvoie tout, dit ce qui était déjà parti, et ne fait rien repartir ensuite', async () => {

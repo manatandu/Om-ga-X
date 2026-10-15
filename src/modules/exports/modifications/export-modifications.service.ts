@@ -3,7 +3,7 @@ import { ModeExportEcritures, Prisma, StatutEcriture } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../../common/prisma.service';
 import { transactionJournalisee } from '../../../common/audit/transaction-journalisee';
-import { LOT_LECTURE, pageApres } from '../../../common/lecture-par-lots';
+import { LOT_LECTURE, apresLaCle, idApres } from '../../../common/lecture-par-lots';
 import { HORS_SITUATION, filtreDuStatut, libelleDuStatut } from '../../comptabilite/ecritures-de-situation';
 import { ExportService } from '../export.service';
 import { LOT_EXPORT, MAX_LIGNES_EXPORT, attendreLeTuyau, segmentIdentification } from '../classeur-en-flux';
@@ -16,12 +16,14 @@ import {
   FEUILLE_ECRITURES,
   FEUILLE_EXPORT,
   FEUILLE_SUPPRIMEES,
+  MENTION_RELECTURE,
   type Mouvement,
   PiecesDistinctes,
   empreinteEcriture,
   empreinteFichier,
   libelleMouvement,
   motifExportVide,
+  motifHorsPlafond,
   mouvementDe,
   nomFichierExport,
   ordonnerLignes,
@@ -65,6 +67,10 @@ export interface InventaireExport {
   modifiees: number;
   renvoyees: number;
   enAttente: number;
+  /** La première pièce qu'aucun export ne peut porter (plus de lignes que le plafond) · elle refuse l'export. */
+  horsPlafond: Candidat | null;
+  /** Parties au brouillard, modifiées depuis, et hors de cette portée (brouillard non compris). */
+  brouillardModifieHorsPortee: number;
 }
 
 /** Le contenu d'une écriture lu en base, le seul qui part dans le fichier. */
@@ -183,7 +189,22 @@ export class ExportModificationsService {
       lignes: inv.lignes,
       enAttente: inv.enAttente,
       plafondLignes: MAX_LIGNES_EXPORT,
+      brouillardModifieHorsPortee: inv.brouillardModifieHorsPortee,
+      // Le refus que l'export opposerait, dit dès l'aperçu (relecture m3).
+      horsPlafond: inv.horsPlafond ? await this.motifDuHorsPlafond(tenantId, inv.horsPlafond) : null,
     };
+  }
+
+  /** Le refus nommé d'une pièce qu'aucun export ne peut porter · journal, numéro, date, lignes, plafond. */
+  private async motifDuHorsPlafond(tenantId: string, c: Candidat): Promise<string> {
+    const e = await this.prisma.ecriture.findFirst({
+      where: { id: c.id, tenantId },
+      select: { numeroPiece: true, date: true, journal: { select: { code: true } } },
+    });
+    return motifHorsPlafond(
+      { journal: e?.journal.code ?? '?', numeroPiece: e?.numeroPiece ?? null, date: e?.date ?? c.date, lignes: c.lignes },
+      MAX_LIGNES_EXPORT,
+    );
   }
 
   /**
@@ -197,15 +218,18 @@ export class ExportModificationsService {
     const dernier = await this.prisma.exportEcritures.aggregate({ where: { tenantId }, _max: { numero: true } });
     const dernierNumero = dernier._max.numero ?? null;
     const complet = mode === ModeExportEcritures.COMPLET;
-
     const dejaParties: Candidat[] = [];
     const supprimees: EntreeSupprimee[] = [];
+    let brouillardModifieHorsPortee = 0;
 
-    // (1) LE REGISTRE, par tranches.
+    // (1) LE REGISTRE, par tranches, PAR LA CLÉ (`idApres`) · un export rangé
+    // pendant cette lecture remplace des entrées (retirées puis recréées), et
+    // le curseur de Prisma posé sur une entrée retirée rendait une tranche
+    // vide, l'inventaire s'arrêtant sans un mot (relecture M6).
     let curseur: string | undefined;
     for (;;) {
       const lot = await this.prisma.ecritureExportee.findMany({
-        where: { tenantId, supprimeeAuNumero: null },
+        where: { tenantId, supprimeeAuNumero: null, ...idApres(curseur) },
         select: {
           id: true,
           ecritureId: true,
@@ -217,7 +241,8 @@ export class ExportModificationsService {
           piece: true,
           libelle: true,
         },
-        ...pageApres(curseur, LOT_LECTURE),
+        orderBy: { id: 'asc' },
+        take: LOT_LECTURE,
       });
       if (lot.length === 0) break;
       const presentes = await this.prisma.ecriture.findMany({
@@ -229,6 +254,11 @@ export class ExportModificationsService {
       // changer, ou être validée) ; une partie validée, seulement quand
       // l'export complet la renvoie (art. 22, 2° · elle ne change plus).
       const aRelire: string[] = [];
+      // Hors de la portée (brouillard non compris), une pièce partie au
+      // brouillard n'est ni portée ni redite · mais si elle a CHANGÉ depuis son
+      // envoi, la receveuse tient une version périmée, et le nombre se dit à
+      // l'aperçu et au récapitulatif (relecture m8).
+      const horsPortee: string[] = [];
       for (const r of lot) {
         const statut = statutPresent.get(r.ecritureId);
         if (statut === undefined) {
@@ -242,26 +272,28 @@ export class ExportModificationsService {
           });
           continue;
         }
-        // Hors de la portée (brouillard non compris) · ni relue, ni dite ;
-        // elle repartira quand la portée la reprendra.
-        if (!inclureBrouillard && statut === StatutEcriture.BROUILLARD) continue;
+        if (!inclureBrouillard && statut === StatutEcriture.BROUILLARD) {
+          horsPortee.push(r.ecritureId);
+          continue;
+        }
         if (complet || r.statutExporte === StatutEcriture.BROUILLARD) aRelire.push(r.ecritureId);
       }
-      if (aRelire.length > 0) {
-        const parId = new Map(lot.map((r) => [r.ecritureId, r]));
-        for (let i = 0; i < aRelire.length; i += LOT_EXPORT) {
-          const ids = aRelire.slice(i, i + LOT_EXPORT);
-          const contenus = await this.prisma.ecriture.findMany({
-            where: { tenantId, id: { in: ids }, estANouveauProvisoire: false, ...HORS_SITUATION },
-            include: CONTENU_ECRITURE,
-          });
-          for (const e of contenus) {
-            const r = parId.get(e.id)!;
-            const entree: EntreeRegistre = { numeroExport: r.numeroExport, statutExporte: r.statutExporte, empreinte: r.empreinte };
-            const mouvement = mouvementDe(entree, empreinteEcriture(versEchange(e)));
-            if (mouvement === 'RENVOYEE' && !complet) continue;
-            dejaParties.push({ id: e.id, date: e.date, lignes: e.lignes.length, entree, mouvement });
-          }
+      const parId = new Map(lot.map((r) => [r.ecritureId, r]));
+      const entreeDe = (id: string): EntreeRegistre => {
+        const r = parId.get(id)!;
+        return { numeroExport: r.numeroExport, statutExporte: r.statutExporte, empreinte: r.empreinte };
+      };
+      for (let i = 0; i < aRelire.length; i += LOT_EXPORT) {
+        for (const e of await this.contenus(tenantId, aRelire.slice(i, i + LOT_EXPORT))) {
+          const entree = entreeDe(e.id);
+          const mouvement = mouvementDe(entree, empreinteEcriture(versEchange(e)));
+          if (mouvement === 'RENVOYEE' && !complet) continue;
+          dejaParties.push({ id: e.id, date: e.date, lignes: e.lignes.length, entree, mouvement });
+        }
+      }
+      for (let i = 0; i < horsPortee.length; i += LOT_EXPORT) {
+        for (const e of await this.contenus(tenantId, horsPortee.slice(i, i + LOT_EXPORT))) {
+          if (mouvementDe(entreeDe(e.id), empreinteEcriture(versEchange(e))) === 'MODIFIEE') brouillardModifieHorsPortee++;
         }
       }
       if (lot.length < LOT_LECTURE) break;
@@ -273,7 +305,14 @@ export class ExportModificationsService {
     const retenues: Candidat[] = [];
     let lignes = 0;
     let enAttente = 0;
+    let horsPlafond: Candidat | null = null;
     for (const c of dejaParties) {
+      // Une pièce qu'aucun export ne peut porter n'« attend » pas · elle est
+      // nommée, et l'export refusé (relecture m3).
+      if (c.lignes > MAX_LIGNES_EXPORT) {
+        horsPlafond ??= c;
+        continue;
+      }
       if (lignes + c.lignes > MAX_LIGNES_EXPORT) {
         enAttente++;
         continue;
@@ -282,38 +321,55 @@ export class ExportModificationsService {
       lignes += c.lignes;
     }
 
-    // (2) LES ÉCRITURES JAMAIS PARTIES, dans l'ordre des dates, par tranches ·
-    // le registre est interrogé tranche par tranche, jamais tenu en mémoire.
-    let curseurEcriture: string | undefined;
+    // (2) LES ÉCRITURES JAMAIS PARTIES, dans l'ordre des dates, par tranches
+    // et PAR LA CLÉ (date, identifiant · `apresLaCle`, relecture M6) · le
+    // registre est interrogé tranche par tranche, jamais tenu en mémoire. Les
+    // lignes se comptent par un regroupement sur les SEULES écritures de la
+    // tranche · `_count` faisait agréger toute la table des lignes, tous
+    // cabinets confondus, à chaque tranche (relecture M2).
+    const portee = { tenantId, estANouveauProvisoire: false, ...filtreDuStatut(inclureBrouillard) };
+    let derniere: { date: Date; id: string } | undefined;
+    let premiereEnAttente: { date: Date; id: string } | undefined;
     for (;;) {
       const lot = await this.prisma.ecriture.findMany({
-        where: { tenantId, estANouveauProvisoire: false, ...filtreDuStatut(inclureBrouillard) },
-        select: { id: true, date: true, _count: { select: { lignes: true } } },
+        where: derniere
+          ? { AND: [{ ...portee, tenantId }, apresLaCle([{ champ: 'date', valeur: derniere.date }, { champ: 'id', valeur: derniere.id }])] }
+          : { ...portee, tenantId },
+        select: { id: true, date: true },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
         take: LOT_LECTURE,
-        ...(curseurEcriture ? { cursor: { id: curseurEcriture }, skip: 1 } : {}),
       });
       if (lot.length === 0) break;
-      const connues = await this.prisma.ecritureExportee.findMany({
-        where: { tenantId, ecritureId: { in: lot.map((e) => e.id) } },
-        select: { ecritureId: true },
-      });
+      const ids = lot.map((e) => e.id);
+      const [connues, comptes] = await Promise.all([
+        this.prisma.ecritureExportee.findMany({ where: { tenantId, ecritureId: { in: ids } }, select: { ecritureId: true } }),
+        this.prisma.ligneEcriture.groupBy({ by: ['ecritureId'], where: { ecritureId: { in: ids }, ecriture: { tenantId } }, _count: { _all: true } }),
+      ]);
       const dejaConnues = new Set(connues.map((c) => c.ecritureId));
+      const lignesDe = new Map(comptes.map((c) => [c.ecritureId, c._count._all]));
       for (const e of lot) {
         if (dejaConnues.has(e.id)) continue;
+        const n = lignesDe.get(e.id) ?? 0;
         // Une écriture ne se coupe jamais · celle qui ne tient plus sous le
         // plafond attend l'export suivant ENTIÈRE, et les suivantes aussi (on
         // ne saute pas une pièce pour en prendre une plus petite · l'ordre des
-        // dates est celui que la receveuse lit).
-        if (enAttente > 0 || lignes + e._count.lignes > MAX_LIGNES_EXPORT) {
-          enAttente++;
-          continue;
+        // dates est celui que la receveuse lit). Ce qui attend se COMPTE par
+        // la base, jamais en lisant la suite (relecture M2).
+        if (n > MAX_LIGNES_EXPORT) horsPlafond ??= { id: e.id, date: e.date, lignes: n, mouvement: 'NOUVELLE' };
+        if (enAttente > 0 || horsPlafond !== null || lignes + n > MAX_LIGNES_EXPORT) {
+          premiereEnAttente = e;
+          break;
         }
-        retenues.push({ id: e.id, date: e.date, lignes: e._count.lignes, mouvement: 'NOUVELLE' });
-        lignes += e._count.lignes;
+        retenues.push({ id: e.id, date: e.date, lignes: n, mouvement: 'NOUVELLE' });
+        lignes += n;
       }
-      if (lot.length < LOT_LECTURE) break;
-      curseurEcriture = lot[lot.length - 1].id;
+      if (premiereEnAttente || lot.length < LOT_LECTURE) break;
+      derniere = lot[lot.length - 1];
+    }
+    if (premiereEnAttente) {
+      const attendent = await this.jamaisPartiesDepuis(tenantId, inclureBrouillard, premiereEnAttente);
+      // La pièce hors plafond n'attend pas · elle est nommée à part.
+      enAttente += horsPlafond?.mouvement === 'NOUVELLE' && horsPlafond.id === premiereEnAttente.id ? attendent - 1 : attendent;
     }
 
     retenues.sort((a, b) => a.date.getTime() - b.date.getTime() || a.id.localeCompare(b.id));
@@ -326,7 +382,39 @@ export class ExportModificationsService {
       modifiees: retenues.filter((c) => c.mouvement === 'MODIFIEE').length,
       renvoyees: retenues.filter((c) => c.mouvement === 'RENVOYEE').length,
       enAttente,
+      horsPlafond,
+      brouillardModifieHorsPortee,
     };
+  }
+
+  /** Le contenu de quelques écritures, tel que le fichier le porterait. */
+  private contenus(tenantId: string, ids: string[]) {
+    return this.prisma.ecriture.findMany({
+      where: { tenantId, id: { in: ids }, estANouveauProvisoire: false, ...HORS_SITUATION },
+      include: CONTENU_ECRITURE,
+    });
+  }
+
+  /**
+   * Les écritures JAMAIS PARTIES de la portée, à partir de `depuis` compris,
+   * dans l'ordre des dates · comptées par la base (NOT EXISTS sur le
+   * registre), jamais en lisant la suite (relecture M2). Même portée que la
+   * lecture · ni à-nouveau provisoire, ni situation, brouillard selon le choix.
+   */
+  private async jamaisPartiesDepuis(tenantId: string, inclureBrouillard: boolean, depuis: { date: Date; id: string }): Promise<number> {
+    const statut = inclureBrouillard
+      ? Prisma.sql`e."statut"::text <> ${StatutEcriture.SITUATION}`
+      : Prisma.sql`e."statut"::text = ${StatutEcriture.VALIDEE}`;
+    const [ligne] = await this.prisma.$queryRaw<{ n: number }[]>`
+      SELECT COUNT(*)::int AS "n" FROM "ecritures" e
+      WHERE e."tenantId" = ${tenantId}
+        AND e."estANouveauProvisoire" = false
+        AND ${statut}
+        AND (e."date", e."id") >= (${depuis.date}, ${depuis.id})
+        AND NOT EXISTS (
+          SELECT 1 FROM "ecritures_exportees" r WHERE r."tenantId" = e."tenantId" AND r."ecritureId" = e."id"
+        )`;
+    return ligne?.n ?? 0;
   }
 
   /**
@@ -337,6 +425,7 @@ export class ExportModificationsService {
    */
   async exporter(tenantId: string, userId: string, mode: ModeExportEcritures, inclureBrouillard: boolean) {
     const inv = await this.inventaire(tenantId, mode, inclureBrouillard);
+    if (inv.horsPlafond) throw new PayloadTooLargeException(await this.motifDuHorsPlafond(tenantId, inv.horsPlafond));
     if (mode === ModeExportEcritures.COMPLET && inv.enAttente > 0) {
       throw new PayloadTooLargeException(
         `L'export complet porterait plus de ${MAX_LIGNES_EXPORT.toLocaleString('fr-FR')} lignes · il est refusé plutôt ` +
@@ -458,8 +547,11 @@ export class ExportModificationsService {
         ['Lignes', decompte.lignes],
         ['Écritures supprimées depuis leur envoi', inv.supprimees.length],
         ["Laissées pour l'export suivant (plafond de lignes)", inv.enAttente],
+        ...(inclureBrouillard
+          ? []
+          : ([['Envoyées au brouillard, modifiées depuis, hors de cette portée', inv.brouillardModifieHorsPortee]] as Array<[string, number]>)),
         ['Unité monétaire', identite.devise],
-        ['Relecture', 'La feuille « Écritures » se relit par Fichier > Importer des données, type Écritures.'],
+        ['Relecture', MENTION_RELECTURE],
       ];
       for (const [rubrique, valeur] of lignesRecap) recap.addRow({ rubrique, valeur }).commit();
       recap.commit();
@@ -552,6 +644,7 @@ export class ExportModificationsService {
       nombreSupprimees: inv.supprimees.length,
       nombreLignes: decompte.lignes,
       nombreEnAttente: inv.enAttente,
+      brouillardModifieHorsPortee: inv.brouillardModifieHorsPortee,
       nomFichier,
       taille: contenu.length,
       empreinte,

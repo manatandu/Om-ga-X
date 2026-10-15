@@ -174,16 +174,51 @@ les trois fichiers sans colonne exigée manquante.
 - Balayage de tous les menus (`ecrans.e2e.ts`) vert dans les deux
   référentiels avec les nouvelles fenêtres.
 
+### Relecture « échecs silencieux », premier tour (2026-10-15)
+
+- **M6 · un livre ne se lit plus par un curseur qui peut disparaître.** Le
+  `cursor` de Prisma relit la ligne-curseur en base · retirée pendant la
+  production (brouillard supprimé, entrée du registre remplacée), la tranche
+  suivante revenait vide et le livre sortait tronqué, ses totaux bouclant.
+  `common/lecture-par-lots.ts` · `idApres` et `apresLaCle` (pagination par
+  la CLÉ, valeurs de la dernière ligne rendue, nuls en dernier comme
+  PostgreSQL, identifiant en dernier) · journal exporté (date, pièce,
+  identifiant), inventaire de l'export des modifications (registre par
+  identifiant, écritures par date et identifiant). Le grand livre (à plat
+  et présentation du cabinet) se trie sur des champs d'autres tables · il
+  garde le curseur et se CONFRONTE au décompte pris au départ sur le même
+  filtre (`confronterAuDecompte`) · un écart refuse le livre (connexion
+  détruite au téléchargement, demande ÉCHOUÉE en différé). Doublures
+  alignées sur Prisma (un curseur absent ne rend rien). Specs ·
+  `lecture-par-lots`, `journal-en-flux`, `grand-livre-complet-en-flux`,
+  `export-fpm`, `export-modifications`.
+- **M2 · l'inventaire ne parcourt plus la table des lignes.** Les lignes se
+  comptent par `ligneEcriture.groupBy` sur les écritures de la tranche, du
+  dossier ; au-delà du plafond, ce qui attend se compte par la base
+  (`jamaisPartiesDepuis`, NOT EXISTS sur le registre), sans lire la suite.
+- **M3 · l'import refuse l'envoi qu'il ne sait pas relire.**
+  `motifEnvoiNonRelu` · une colonne « Mouvement » autre que « Nouvelle »,
+  ou une feuille « Supprimées » non vide (`Tableau.lignesSupprimees`), et
+  l'import des écritures refuse le fichier ENTIER en 400 nommé, avant toute
+  lecture du dossier. Le récapitulatif ne dit plus que le fichier « se
+  relit » (`MENTION_RELECTURE`).
+- **m3 · la pièce qu'aucun export ne peut porter est nommée** (journal,
+  numéro, date, lignes, plafond · `motifHorsPlafond`), à l'aperçu et au
+  refus, jamais « aucune modification ».
+- **m8 · le brouillard envoyé puis modifié hors de la portée se compte**
+  (`brouillardModifieHorsPortee`, aperçu, récapitulatif, résultat).
+
 ## Reste
-- Tranches 3 à 6 de la suite serveur à voir passer jusqu'au bout. Au
-  2026-10-15 · typage serveur et client verts, client `npm test` (270
-  fichiers, 2 104 tests) et `npm run build` verts, construction du serveur
-  verte, tranche 1/6 verte (149 suites, 1 777 tests), tranche 2/6 verte
-  (149 suites, 2 070 tests). En tranche 3, quatre suites sont tombées par
-  un SIGKILL du processus de test (mémoire du poste, aucune assertion) ·
-  rejouées seules, vertes (4 suites, 96 tests). Tests navigateur de la
-  ligne et balayage des menus verts sous Chromium ; WebKit non lancé
-  (absent du poste).
+- Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
+  10 MINEUR) · corrections en cours, voir « Relecture, premier tour »
+  ci-dessus. La suite serveur complète est passée par le coordinateur avant
+  l'intégration · ici, seulement les specs touchées (`--maxWorkers=1`).
+- Avant la relecture · typage serveur et client verts, client `npm test`
+  (270 fichiers, 2 104 tests) et `npm run build` verts, construction du
+  serveur verte, tranches 1/6 (149 suites, 1 777 tests) et 2/6 (149
+  suites, 2 070 tests) vertes ; tranches 3 à 6 arrêtées par le
+  coordinateur (mémoire du poste, résultats dépassés par les corrections).
+  WebKit non lancé (absent du poste).
 
 ## Décisions par la loi
 

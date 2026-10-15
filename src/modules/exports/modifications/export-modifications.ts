@@ -51,10 +51,18 @@ import { StatutEcriture } from '@prisma/client';
  * clôture · point 11), qu'aucune receveuse ne doit enregistrer. Le report de
  * la clôture, lui, part comme toute écriture.
  *
- * LE FICHIER SE RELIT PAR L'IMPORT D'OMEGAX · sa première feuille porte, en
- * tête, les colonnes que l'import des écritures reconnaît (`import.service.ts`,
- * `CHAMPS.ECRITURES`) · la ligne L9 (échanges avec l'expert-comptable, n° 102)
- * partira de ce format et de ce registre, sans les refaire.
+ * CE QUE L'IMPORT D'OMEGAX EN RELIT, ET CE QU'IL REFUSE (relecture « échecs
+ * silencieux », M3) · la première feuille porte, en tête, les colonnes que
+ * l'import des écritures reconnaît (`import.service.ts`, `CHAMPS.ECRITURES`),
+ * mais l'import ne lit ni la colonne « Mouvement », ni l'« Identifiant », ni
+ * la feuille « Supprimées » · une pièce MODIFIÉE y serait créée une seconde
+ * fois, une pièce SUPPRIMÉE y resterait. L'import relit donc un envoi qui ne
+ * porte que des pièces « Nouvelle » et aucune suppression (le premier export,
+ * typiquement), et REFUSE en le nommant tout autre envoi
+ * (`motifEnvoiNonRelu`, `import.service.ts`). La relecture complète (remplacer
+ * par l'identifiant, retirer les supprimées) est la ligne L9 (échanges avec
+ * l'expert-comptable, n° 102), qui partira de ce format et de ce registre
+ * sans les refaire.
  */
 
 /** Les feuilles du classeur d'échange. */
@@ -253,3 +261,67 @@ export function motifExportVide(dernierNumero: number | null): string {
     ? "Aucune écriture à exporter · le dossier n'a encore rien qui puisse partir."
     : `Aucune modification depuis l'export n° ${dernierNumero} · rien n'est parti, aucun numéro n'est pris.`;
 }
+
+/**
+ * UNE ÉCRITURE QU'AUCUN EXPORT NE PEUT PORTER (relecture « échecs
+ * silencieux », m3) · une écriture ne se coupe jamais, et celle qui dépasse à
+ * elle seule le plafond de lignes attendrait toujours, retenant derrière elle
+ * toutes les nouvelles · le refus disait « aucune modification ». Il la nomme.
+ */
+export function motifHorsPlafond(e: { journal: string; numeroPiece: number | null; date: Date; lignes: number }, plafond: number): string {
+  const piece = e.numeroPiece === null ? 'sans numéro' : `n° ${e.numeroPiece}`;
+  const jour = e.date.toISOString().slice(0, 10).split('-').reverse().join('/');
+  return (
+    `La pièce ${piece} du journal ${e.journal}, du ${jour}, porte ${e.lignes.toLocaleString('fr-FR')} lignes, ` +
+    `au-delà du plafond de ${plafond.toLocaleString('fr-FR')} lignes d'un export · une écriture ne se coupe pas, ` +
+    "et aucun export ne peut la porter. Rien n'est parti, aucun numéro n'est pris · les pièces qui la suivent " +
+    'attendent derrière elle.'
+  );
+}
+
+/** Le texte de l'import des écritures pour un envoi qu'il ne sait pas relire · jumeau de l'en-tête ci-dessus. */
+export const MENTION_RELECTURE =
+  "La feuille « Écritures » se relit par Fichier > Importer des données, type Écritures, seulement si toutes ses " +
+  "pièces sont « Nouvelle » et la feuille « Supprimées » vide · un envoi qui remplace ou retire une pièce est refusé " +
+  "par l'import, sa relecture complète viendra avec les échanges du cabinet.";
+
+/** L'en-tête de la colonne du mouvement, et le mouvement que l'import sait relire. */
+const ENTETE_MOUVEMENT = COLONNES_ECHANGE.find((c) => c.key === 'mouvement')!.header;
+const MOUVEMENT_RELU = libelleMouvement('NOUVELLE', undefined, StatutEcriture.VALIDEE);
+
+/**
+ * L'ENVOI QUE L'IMPORT NE SAIT PAS RELIRE (relecture « échecs silencieux »,
+ * M3) · une pièce « Modifiée » ou « Déjà envoyée » serait créée une seconde
+ * fois chez la receveuse, une pièce de la feuille « Supprimées » y resterait,
+ * sa balance bouclée. L'import des écritures REFUSE donc le fichier ENTIER,
+ * en le nommant · ni à moitié, ni en silence. `null` · rien ne s'y oppose
+ * (fichier sans colonne « Mouvement », ou seulement des « Nouvelle »).
+ */
+export function motifEnvoiNonRelu(colonnes: string[], lignes: string[][], lignesSupprimees: number): string | null {
+  const motifs: string[] = [];
+  const i = colonnes.findIndex((c) => c.trim() === ENTETE_MOUVEMENT);
+  if (i >= 0) {
+    const autres = lignes.map((l, rang) => ({ rang, m: (l[i] ?? '').trim() })).filter((x) => x.m !== '' && x.m !== MOUVEMENT_RELU);
+    if (autres.length > 0) {
+      motifs.push(
+        `${autres.length} ligne${autres.length > 1 ? 's' : ''} de la colonne « ${ENTETE_MOUVEMENT} » ` +
+          `remplace${autres.length > 1 ? 'nt' : ''} ou renvoie${autres.length > 1 ? 'nt' : ''} une pièce déjà envoyée ` +
+          `(première à la ligne ${autres[0].rang + 2} · « ${autres[0].m} ») · l'import ${autres.length > 1 ? 'les' : 'la'} ` +
+          'créerait une seconde fois',
+      );
+    }
+  }
+  if (lignesSupprimees > 0) {
+    motifs.push(
+      `la feuille « ${FEUILLE_SUPPRIMEES} » nomme ${lignesSupprimees} pièce${lignesSupprimees > 1 ? 's' : ''} retirée` +
+        `${lignesSupprimees > 1 ? 's' : ''} depuis leur envoi · l'import ne sait pas retirer une pièce`,
+    );
+  }
+  if (motifs.length === 0) return null;
+  return (
+    `Ce fichier est un export des modifications que l'import ne sait pas relire · ${motifs.join(' ; ')}. ` +
+    "Rien n'est importé. La relecture d'un tel envoi viendra avec les échanges du cabinet ; d'ici là, " +
+    'portez ces modifications à la main dans le dossier qui reçoit.'
+  );
+}
+
