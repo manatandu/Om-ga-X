@@ -135,7 +135,11 @@ export class ExportModificationsService {
 
   /** Les exports du dossier, les plus récents d'abord, l'auteur en courriel, sans le fichier. */
   async lister(tenantId: string) {
-    const [exports, total] = await Promise.all([
+    // JAMAIS `exports` comme nom de variable · compilé en CommonJS, la
+    // constante du module (`PLAFOND_EXPORTS_LISTES`) se lit `exports.…`, et une
+    // variable locale de ce nom la masquait (« Cannot access 'exports' before
+    // initialization », 500 au premier serveur réel, vert sous les tests).
+    const [lus, total] = await Promise.all([
       this.prisma.exportEcritures.findMany({
         where: { tenantId },
         orderBy: { numero: 'desc' },
@@ -160,11 +164,11 @@ export class ExportModificationsService {
       }),
       this.prisma.exportEcritures.count({ where: { tenantId } }),
     ]);
-    const courriels = await this.courriels(tenantId, exports.map((e) => e.produitPar));
+    const courriels = await this.courriels(tenantId, lus.map((e) => e.produitPar));
     return {
-      exports: exports.map((e) => ({ ...e, produitPar: courriels(e.produitPar) })),
+      exports: lus.map((e) => ({ ...e, produitPar: courriels(e.produitPar) })),
       total,
-      tronque: total > exports.length,
+      tronque: total > lus.length,
     };
   }
 

@@ -144,7 +144,12 @@ function nouveauFaux() {
         return { id: e.id };
       },
       findFirst: async ({ where }: { where: Record<string, unknown> }) => exports.find((e) => correspond(e, where)) ?? null,
-      findMany: async ({ where }: { where: Record<string, unknown> }) => exports.filter((e) => correspond(e, where)),
+      findMany: async ({ where, take, select }: { where: Record<string, unknown>; take?: number; select?: Record<string, boolean> }) =>
+        exports
+          .filter((e) => correspond(e, where))
+          .sort((a, b) => b.numero - a.numero)
+          .slice(0, take)
+          .map((e) => (select ? Object.fromEntries(Object.keys(select).filter((k) => select[k]).map((k) => [k, e[k]])) : e)),
       count: async ({ where }: { where: Record<string, unknown> }) => exports.filter((e) => correspond(e, where)).length,
     },
     user: { findMany: async () => [{ id: 'u1', email: 'comptable@cabinet.cd' }] },
@@ -380,6 +385,29 @@ describe('export des seules modifications · registre et fichier', () => {
     const lignes = (await relire(contenuRange(f, 2))).feuille(FEUILLE_ECRITURES);
     expect(lignes.slice(1).map((l) => l[14])).toEqual(['Déjà envoyée au n° 1', 'Déjà envoyée au n° 1', 'Nouvelle', 'Nouvelle']);
     await expect(f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true)).rejects.toThrow(/Aucune modification/);
+  });
+});
+
+describe('liste des exports', () => {
+  /**
+   * LA LISTE SE LIT · le 500 « Cannot access 'exports' before initialization »
+   * (une variable locale `exports` masquait celui du module compilé en
+   * CommonJS) n'a été vu qu'au premier serveur réel, faute d'un test qui
+   * appelle `lister`.
+   */
+  it('les plus récents d’abord, l’auteur en courriel, sans le fichier, le total dit', async () => {
+    const f = nouveauFaux();
+    f.ajouter({ date: '2026-01-02' });
+    await f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true);
+    f.ajouter({ date: '2026-01-03' });
+    await f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true);
+    const liste = await f.service.lister(DOSSIER);
+    expect(liste.exports.map((e) => [e.numero, e.produitPar, e.nombreNouvelles])).toEqual([
+      [2, 'comptable@cabinet.cd', 1],
+      [1, 'comptable@cabinet.cd', 1],
+    ]);
+    expect(liste.exports.every((e) => !('contenu' in e))).toBe(true);
+    expect([liste.total, liste.tronque]).toEqual([2, false]);
   });
 });
 

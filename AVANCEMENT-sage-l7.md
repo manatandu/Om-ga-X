@@ -35,17 +35,33 @@ différée, sélections enregistrées, modèles d'édition et sauts.
   motivé, cloisonnement, restitution (fichier non rendu, manifeste qui le
   dit), décompte de `lecture-bornee.spec.ts` (171), profil de fonctions
   (SAISIE).
-- Tests · `export-modifications.spec.ts` (12) · nouvelles, modifiée au
+- Tests · `export-modifications.spec.ts` (13 avec la liste) · nouvelles, modifiée au
   brouillard, réenregistrée à l'identique, validée depuis, supprimée dite
   une fois, brouillard non compris, situation et à-nouveau provisoire hors
   champ, export concurrent, relecture par l'import, plafond par lots et
   complet refusé, export complet.
 
+### #99 · fenêtre et test navigateur
+
+- Fichier > Exporter les modifications (`ExportModificationsPage.tsx`,
+  `lib/export-modifications.ts` et son spec) · aperçu du prochain export
+  (case « Brouillard compris »), « Exporter les modifications » et « Export
+  complet… » (confirmation) sous `peutValider`, téléchargement aussitôt, un
+  échec de téléchargement dit sans défaire l'export (« il se reprend depuis
+  la liste »), liste des exports (portée, décomptes, en attente, fichier
+  retéléchargeable, empreinte en infobulle), tranche dite.
+- Test navigateur `e2e/tests/sage-l7-export-modifications.e2e.ts` (vert sous
+  Chromium) · premier export, brouillard modifié et nouvelle pièce, retrait
+  dit seul, validation depuis l'envoi, export complet confirmé,
+  retéléchargement, refus d'un export vide sans numéro pris.
+- DÉFAUT TROUVÉ AU SERVEUR RÉEL · `lister` nommait une variable `exports`,
+  qui masquait celui du module compilé en CommonJS (500 « Cannot access
+  'exports' before initialization ») · renommée, et le spec appelle
+  désormais `lister` (vu tomber sur l'ancien nom avant correction).
+
 ## Reste
 
-- #99 · serveur (registre des écritures exportées, export numéroté, fichier
-  gardé), fenêtre Fichier > Exporter les modifications, test navigateur,
-  scénario sur vraie base à travers une clôture.
+- #99 · scénario sur vraie base à travers une clôture.
 - #59 · impression différée (Fichier > Impressions différées), sélections
   enregistrées, modèles d'édition et sauts de ligne ou de page.
 - Bloc du § 3 complet, tests navigateur.
@@ -120,5 +136,8 @@ différée, sélections enregistrées, modèles d'édition et sauts.
 
 ```bash
 npx tsc --noEmit && (cd client && npx tsc --noEmit)
-npx jest <specs touchés> --maxWorkers=1
+npx jest src/modules/exports/modifications --maxWorkers=1
+(cd client && npx vitest run src/lib/export-modifications.spec.ts)
+(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4307 \
+  OMEGAX_API=http://localhost:4307/api npx playwright test tests/sage-l7-export-modifications.e2e.ts)
 ```

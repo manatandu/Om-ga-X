@@ -176,6 +176,11 @@ export function AppShell() {
         ...(estAdmin
           ? [{ label: 'Restituer le dossier complet…', chemin: '/restitution', onClick: () => navigate('/restitution') }]
           : []),
+        // Ligne sage-l7, fonction 99 · Sage range l'export au menu Fichier, à
+        // côté de l'import. Ouvert à tous les rôles comme ses lectures · la
+        // fenêtre ne propose de produire un export qu'au comptable, comme le
+        // serveur (`@ReserveAuComptable`).
+        { label: 'Exporter les modifications…', chemin: '/exports-ecritures', separateurAvant: !estAdmin, onClick: () => navigate('/exports-ecritures') },
         // LA FILE DES COURRIELS EST UN OUTIL DU DOSSIER, PAS UN ÉTAT.
         //
         // Elle ne se range pas au menu « État » : rien n'y est édité, aucun

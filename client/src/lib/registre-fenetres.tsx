@@ -75,6 +75,9 @@ const NotesAnnexesPage = lazy(() => import('../pages/NotesAnnexesPage').then((m)
 const RegistreDonateursPage = lazy(() => import('../pages/RegistreDonateursPage').then((m) => ({ default: m.RegistreDonateursPage })));
 const DocumentsObligatoiresPage = lazy(() => import('../pages/DocumentsObligatoiresPage').then((m) => ({ default: m.DocumentsObligatoiresPage })));
 const RestitutionPage = lazy(() => import('../pages/RestitutionPage').then((m) => ({ default: m.RestitutionPage })));
+const ExportModificationsPage = lazy(() =>
+  import('../pages/ExportModificationsPage').then((m) => ({ default: m.ExportModificationsPage })),
+);
 const UtilisateursPage = lazy(() => import('../pages/UtilisateursPage').then((m) => ({ default: m.UtilisateursPage })));
 const ParametresDossierPage = lazy(() => import('../pages/ParametresDossierPage').then((m) => ({ default: m.ParametresDossierPage })));
 const PlansAnalytiquesPage = lazy(() => import('../pages/PlansAnalytiquesPage').then((m) => ({ default: m.PlansAnalytiquesPage })));
@@ -517,6 +520,14 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Restituer le dossier complet',
     titreCourt: 'Restitution',
     rendre: () => <RestitutionPage />,
+  },
+  {
+    // Ligne sage-l7, fonction 99 · AUCUN référentiel, comme la restitution ·
+    // l'AUDCIF art. 22 vaut aux deux, l'art. 3 du SYCEBNL ne l'écarte pas.
+    motif: /^\/exports-ecritures$/,
+    titre: 'Exporter les modifications',
+    titreCourt: 'Export modif.',
+    rendre: () => <ExportModificationsPage />,
   },
   {
     // Notion SYCEBNL (division 46) · en SYSCOHADA le 46 porte les associés.
