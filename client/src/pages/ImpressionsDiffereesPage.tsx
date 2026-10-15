@@ -117,13 +117,21 @@ export function ImpressionsDiffereesPage() {
   }, [recharger, faireProduire]);
 
   // Tant qu'une production tourne (peut-être lancée par un autre poste), la
-  // liste se relit · l'état passe de « En cours » à « Prête » sans geste.
+  // liste se relit · l'état passe de « En cours » à « Prête » sans geste. Une
+  // demande restée en attente derrière la production d'un autre poste est
+  // relancée dès que celle-ci finit · sans quoi elle attendait la prochaine
+  // ouverture de la fenêtre.
   const tourne = liste ? productionEnCours(liste) : false;
   useEffect(() => {
     if (!tourne) return;
-    const minuterie = setInterval(() => void recharger(), INTERVALLE_RELECTURE_MS);
+    const minuterie = setInterval(() => {
+      void (async () => {
+        const l = await recharger();
+        if (l && resteAProduire(l)) void faireProduire();
+      })();
+    }, INTERVALLE_RELECTURE_MS);
     return () => clearInterval(minuterie);
-  }, [tourne, recharger]);
+  }, [tourne, recharger, faireProduire]);
 
   useEffect(() => {
     if (nature !== 'JOURNAL' || journaux !== null) return;

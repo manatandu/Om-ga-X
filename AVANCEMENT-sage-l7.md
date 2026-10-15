@@ -161,6 +161,19 @@ les trois fichiers sans colonne exigée manquante.
   `e2e/tests/sage-l7-modeles-edition.e2e.ts` (vert sous Chromium, rendu
   relu sous le média d'impression).
 
+### Largeurs et relance
+
+- `e2e/tests/sage-l7-largeurs.e2e.ts` · les trois fenêtres à 390 et à
+  1440 px, aucune page qui défile de côté, la commande principale dans
+  l'écran. Il a trouvé la barre du plan comptable (et celle du plan des
+  tiers) qui sortait de l'écran par la gauche à 390 px · elle passe
+  désormais à la ligne.
+- Impressions différées · une demande restée en attente derrière la
+  production d'un autre poste est relancée par la relecture de la liste,
+  sans attendre une nouvelle ouverture de la fenêtre.
+- Balayage de tous les menus (`ecrans.e2e.ts`) vert dans les deux
+  référentiels avec les nouvelles fenêtres.
+
 ## Reste
 - Bloc du § 3 complet, tests navigateur.
 

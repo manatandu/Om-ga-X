@@ -368,7 +368,9 @@ export function PlanComptesPage() {
         catalogue={COLONNES_EDITION.PLAN_COMPTABLE}
       />
       <div className="flex items-center justify-end mb-2 shrink-0">
-        <div className="flex items-center gap-2">
+        {/* La barre passe à la ligne sous une fenêtre étroite (390 px) · sans
+            quoi ses commandes sortaient de l'écran par la gauche. */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <ChoixModeleEdition edition="PLAN_COMPTABLE" onChange={setModeleEdition} />
           <BoutonImprimer libelle="Imprimer la liste" />
           <input
