@@ -4,6 +4,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
   HORS_SITUATION,
+  avecStatut,
   filtreDuStatut,
   libelleDuStatut,
   motifSituationNeSeValidePas,
@@ -66,6 +67,13 @@ describe('les filtres partagés', () => {
     expect(libelleDuStatut(StatutEcriture.SITUATION)).toBe('Situation');
     expect(libelleDuStatut(StatutEcriture.VALIDEE)).toBe('Validée');
     expect(libelleDuStatut(StatutEcriture.BROUILLARD)).toBe('Brouillard');
+  });
+
+  it('le filtre d’un appelant garde le statut qu’il pose, et écarte la situation sinon · la valeur, pas la clé (second tour, e)', () => {
+    expect(avecStatut({ tenantId: 't1', statut: StatutEcriture.VALIDEE })).toEqual({ tenantId: 't1', statut: StatutEcriture.VALIDEE });
+    expect(avecStatut({ tenantId: 't1' })).toEqual({ tenantId: 't1', ...HORS_SITUATION });
+    // Un champ facultatif relayé tel quel · Prisma ignorerait `undefined`.
+    expect(avecStatut({ tenantId: 't1', statut: undefined })).toEqual({ tenantId: 't1', ...HORS_SITUATION });
   });
 
   it('les trois colonnes de la balance écartent la situation quand le filtre ne fixe pas de statut', () => {

@@ -57,8 +57,11 @@ export const HORS_SITUATION = { statut: { not: StatutEcriture.SITUATION } } sati
  * jamais passer parce que l'appelant l'a oubliée. Nommé par le filet
  * `lectures-hors-situation.spec.ts`.
  */
+// LA VALEUR, PAS LA CLÉ (relecture du second tour, e) · un appelant qui pose
+// `statut: undefined` (un champ facultatif relayé tel quel) avait la clé sans
+// valeur · Prisma ignore un `undefined`, et la simulation passait.
 export function avecStatut<F extends Prisma.EcritureWhereInput>(filtre: F): F | (F & typeof HORS_SITUATION) {
-  return 'statut' in filtre ? filtre : { ...filtre, ...HORS_SITUATION };
+  return filtre.statut !== undefined ? filtre : { ...filtre, ...HORS_SITUATION };
 }
 
 /**
