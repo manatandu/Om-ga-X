@@ -209,7 +209,8 @@ test('SYSCOHADA · congés acquis par bulletin, posés à l’écran, portés au
   // retranché ses neuf jours · l'annuler seul laisserait septembre amputé.
   await appelApi(page, 'POST', `/personnel/bulletins/${octobre.id}/annulation`, { motif: 'Allocation à reprendre' });
   await expect(appelApi(page, 'POST', `/personnel/conges/${pose.id}/annulation`, { motif: 'Congé non pris' })).rejects.toThrow(
-    new RegExp(`Congé non annulé · Le bulletin n° ${septembreReduit.numero} de 2026-09, émis, paie 680000\\.00 CDF.*annulez d'abord le bulletin n° ${septembreReduit.numero}, puis le congé`),
+    // L'aide de l'appel tronque le message · l'issue entière est gelée par le test du service.
+    new RegExp(`Congé non annulé · Le bulletin n° ${septembreReduit.numero} de 2026-09, émis, paie 680000\\.00 CDF.*il retranche les 9 jour\\(s\\) de ce congé`),
   );
   // L'issue nommée · septembre annulé, le congé s'annule, septembre réémis au salaire plein.
   await appelApi(page, 'POST', `/personnel/bulletins/${septembreReduit.id}/annulation`, { motif: 'Congé non pris' });

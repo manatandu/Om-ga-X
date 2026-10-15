@@ -2,7 +2,6 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ModePaiementSalaire, Prisma, StatutEcriture, StatutExercice, StatutOrdreVirement, TypeCompteDetailTotal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
-import { jourDeKinshasa } from '../../common/echeance';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { OrdresVirementService, type LigneAOrdonner } from '../reglements/ordres-virement.service';
@@ -261,16 +260,16 @@ export class PaiementSalairesService {
   }
 
   /**
-   * LE 422 TEL QU'IL EST AU JOUR DE KINSHASA, lu depuis l'exercice de la
+   * LE 422 TEL QUE LES LIVRES LE PORTENT, lu depuis l'exercice de la
    * PASSATION · second tour, point 5. Lu sur l'exercice du jour, il disait
    * chaque janvier « payé hors de ce module » d'une paie de décembre, tant
    * que N+1 n'avait pas son à-nouveau. L'exercice de l'écriture de paie se lit
-   * en entier (ouverture comprise), chaque exercice suivant déjà commencé sans
-   * sa position d'ouverture (à-nouveau provisoire, report de clôture, bilan
-   * d'ouverture · `filtreOuverturePasseeAuPremierJour`), qui ne fait que
-   * reporter le solde déjà compté. Lignes de tous statuts (le paiement saisi à
-   * la main est souvent au brouillard). `null` sans écriture ni compte
-   * lisible · jamais un zéro.
+   * en entier (ouverture comprise), chaque exercice suivant sans sa position
+   * d'ouverture (à-nouveau provisoire, report de clôture, bilan d'ouverture ·
+   * `filtreOuverturePasseeAuPremierJour`), qui ne fait que reporter le solde
+   * déjà compté ; un paiement saisi d'avance dans N+1 y est donc vu. Lignes de
+   * tous statuts (le paiement saisi à la main est souvent au brouillard).
+   * `null` sans écriture ni compte lisible · jamais un zéro.
    */
   private async confronterAu422(tenantId: string, totalPasse: number, ecritureIds: readonly string[]) {
     if (totalPasse <= 0 || ecritureIds.length === 0) return null;
@@ -284,9 +283,8 @@ export class PaiementSalairesService {
     });
     if (ecritures.length === 0) return null;
     const passation = ecritures.map((e) => e.exercice).sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime())[0];
-    const aujourdHui = jourDeKinshasa(new Date());
     const suivants = await this.prisma.exercice.findMany({
-      where: { tenantId, dateDebut: { gt: passation.dateDebut, lte: aujourdHui } },
+      where: { tenantId, dateDebut: { gt: passation.dateDebut } },
       orderBy: { dateDebut: 'asc' },
       // Un dossier n'a jamais vingt exercices ouverts au-delà de celui d'une
       // paie encore à payer · la borne est dite.

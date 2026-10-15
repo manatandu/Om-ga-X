@@ -22,6 +22,7 @@ interface Bulletin { id: string; netAPayerFc: number | string }
 interface LigneBalance { numero: string; reportCredit: number; mouvementDebit: number; mouvementCredit: number; solde: number }
 interface Proposition {
   aPayer: { bulletinId: string; nomComplet: string; montant: number; mode: string | null }[];
+  confrontation422: { solde: number; totalPasse: number; avertissement: string | null } | null;
   paiements: { id: string; mode: string; total: number; annuleLe: string | null; ordreVirement: { numero: number; statut: string } | null }[];
 }
 interface Ordre { id: string; numero: number; total: number | string; statut: string; lignes: { beneficiaire: string; salarieId: string | null; montant: number | string }[] }
@@ -100,6 +101,13 @@ test('SYSCOHADA · RIB et mode du salarié à l’écran, salaires de décembre 
     appelApi(page, 'POST', '/personnel/paiement-salaires/2026-12', { mode: 'VIREMENT', exerciceId: suivant.id, journalId: bq.id, date: '2027-01-05', bulletinIds: [bm.id] }),
   ).rejects.toThrow(/mode convenu/);
 
+  // SECOND TOUR DE LA RELECTURE, POINT 5 · le 422 se lit depuis l'exercice
+  // de la passation (2026), 2027 sans son à-nouveau · il porte les deux nets,
+  // aucun faux « payé hors de ce module ».
+  const avant = await appelApi<Proposition>(page, 'GET', '/personnel/paiement-salaires/2026-12');
+  expect(avant.confrontation422?.avertissement).toBeNull();
+  expect(avant.confrontation422?.solde).toBeCloseTo(netK + netM, 2);
+
   // À l'écran · l'onglet Bulletins, décembre · le virement de KASONGO.
   await page.goto('/#/personnel?onglet=bulletins');
   await page.reload();
@@ -155,6 +163,9 @@ test('SYSCOHADA · RIB et mode du salarié à l’écran, salaires de décembre 
   expect(lignes.find((l) => l.numero === caisse.numero)?.solde ?? 0).toBeCloseTo(0, 2);
   const relu = await lire();
   expect(relu.aPayer.map((l) => [l.nomComplet.toUpperCase(), l.montant])).toEqual([['MUTOMBO ALAIN', netM]]);
+  // Le virement de janvier 2027 est vu au 422 (hors de l'ouverture de 2027) · il ne reste que le net de MUTOMBO.
+  expect(relu.confrontation422?.avertissement).toBeNull();
+  expect(relu.confrontation422?.solde).toBeCloseTo(netM, 2);
 
   // L'annulation du virement emporte son ordre.
   await appelApi(page, 'POST', `/personnel/paiements-salaires/${virement.id}/annulation`, { motif: 'Virement rejeté par la banque' });
