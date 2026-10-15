@@ -334,7 +334,7 @@ export class RestitutionService {
     const pieces: SuiviPieces = { annoncees: nombrePieces, ecrites: 0, manquantes: [] };
     for (const inventaire of inventaires) {
       for (const piece of inventaire.lignes) {
-        archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, inventaire.modele)), {
+        archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, inventaire.modele, inventaire.dossier)), {
           name: fichierDeLaPiece(inventaire.dossier, piece.id, piece.nomFichier),
         });
       }
@@ -374,25 +374,29 @@ export class RestitutionService {
    * cabinets (vu en test). Elle est donc consignée, et `controles.txt` nomme
    * la pièce · une entrée vide sans un mot se lirait comme une pièce vide.
    * Même traitement pour une pièce retirée entre l'inventaire et sa lecture.
+   * La ligne nomme le DOSSIER de la pièce dans l'archive (relecture « échecs
+   * silencieux » de la ligne sage-l6, mineur 7) · six tables de pièces
+   * restituées, un identifiant seul ne disait plus laquelle chercher.
    */
   private async *contenuDocument(
     tenantId: string,
     id: string,
     pieces: SuiviPieces,
     modele = 'DocumentTiers',
+    dossier = 'documents-tiers',
   ): AsyncGenerator<Buffer> {
     try {
       const document = await this.delegueDesPieces(modele).findFirst({ where: { id, tenantId }, select: { contenu: true } });
       if (!document) {
-        pieces.manquantes.push(`${id} · retirée pendant l'extraction`);
+        pieces.manquantes.push(`${dossier};${id} · retirée pendant l'extraction`);
         return;
       }
       pieces.ecrites++;
       yield Buffer.from(document.contenu);
     } catch (e) {
       const motif = e instanceof Error ? e.message : String(e);
-      this.journal.warn(`Pièce ${id} non lue · ${motif}`);
-      pieces.manquantes.push(`${id} · illisible (${motif})`);
+      this.journal.warn(`Pièce ${dossier}/${id} non lue · ${motif}`);
+      pieces.manquantes.push(`${dossier};${id} · illisible (${motif})`);
     }
   }
 

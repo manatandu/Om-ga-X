@@ -401,8 +401,27 @@ describe('les documents attachés aux tiers (point 21)', () => {
     await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
     const lu = texte.join('');
     expect(lu).toContain('2 annoncé(s), 0 écrit(s)');
-    expect(lu).toContain('PIECE NON RESTITUEE;doc-1 · illisible (délai dépassé)');
-    expect(lu).toContain("PIECE NON RESTITUEE;doc-2 · retirée pendant l'extraction");
+    expect(lu).toContain('PIECE NON RESTITUEE;documents-tiers;doc-1 · illisible (délai dépassé)');
+    expect(lu).toContain("PIECE NON RESTITUEE;documents-tiers;doc-2 · retirée pendant l'extraction");
+  });
+
+  it('une pièce jointe non restituée nomme son dossier dans l’archive (relecture sage-l6, mineur 7)', async () => {
+    const { client } = prismaFactice({
+      PieceJointeSalarie: [{ id: 'pj-1', tenantId: DOSSIER, nomFichier: 'contrat.pdf' }],
+    });
+    client.pieceJointeSalarie.findFirst = async () => null;
+    const service = new RestitutionService(client);
+    const { flux } = collecteur();
+    const texte: string[] = [];
+    const controles = (service as any).controles.bind(service);
+    (service as any).controles = async function* (...a: any[]) {
+      for await (const x of controles(...a)) {
+        texte.push(x);
+        yield x;
+      }
+    };
+    await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
+    expect(texte.join('')).toContain("PIECE NON RESTITUEE;pieces-jointes/salaries;pj-1 · retirée pendant l'extraction");
   });
 });
 
