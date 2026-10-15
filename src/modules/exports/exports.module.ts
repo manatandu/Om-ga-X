@@ -14,6 +14,8 @@ import { DocumentsObligatoiresModule } from '../documents-obligatoires/documents
 import { EtatsFinanciersSyscohadaModule } from '../etats-financiers-syscohada/etats-financiers-syscohada.module';
 import { ImmobilisationsModule } from '../immobilisations/immobilisations.module';
 import { ControlesModule } from '../controles/controles.module';
+import { ExportModificationsController } from './modifications/export-modifications.controller';
+import { ExportModificationsService } from './modifications/export-modifications.service';
 
 @Module({
   // `EtatsFinanciersSyscohadaModule` fournit les DEUX moteurs SYSCOHADA
@@ -42,8 +44,10 @@ import { ControlesModule } from '../controles/controles.module';
   // contrôleur d'exports porte `LicenceGuard`, sous lequel une restitution
   // serait indisponible dans le seul cas où elle sert. Voir
   // restitution.controller.ts.
-  controllers: [ExportController, RestitutionController],
-  providers: [ExportService, ExportFpmService, RestitutionService],
+  // Ligne sage-l7, fonction 99 · l'export des seules modifications, qui écrit
+  // son classeur par le cartouche des exports (`ExportService.identiteEtat`).
+  controllers: [ExportController, RestitutionController, ExportModificationsController],
+  providers: [ExportService, ExportFpmService, RestitutionService, ExportModificationsService],
   // Exporté pour GroupeModule : la liasse du groupe en un clic reverse la
   // balance agrégée dans le dossier de combinaison puis fait produire le
   // classeur par CE service · aucun second moteur de liasse.

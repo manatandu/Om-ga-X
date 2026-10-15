@@ -161,6 +161,11 @@ export const MODELES_AUDITES = new Set<string>([
   // Ligne sage-l1, fonction 19 · une séquence de saisie est une structure du
   // dossier, comme les modèles qu'elle range.
   'SequenceSaisie',
+  // Ligne sage-l7, fonction 99 · l'export des écritures, numéroté et daté
+  // (AUDCIF art. 22, 7°) · la pièce que la receveuse cite ; retouché après
+  // coup, il attesterait un envoi qui n'a pas eu lieu. Son fichier n'est pas
+  // recopié (`COLONNES_EXCLUES_PAR_MODELE`).
+  'ExportEcritures',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',
@@ -358,6 +363,8 @@ export const MODELES_AUDITES = new Set<string>([
 const LIGNES_DE_LA_TETE =
   "Lignes d'une tête journalisée, réécrites avec elle · l'événement de la tête date et attribue la retouche.";
 export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
+  EcritureExportee:
+    "Registre de ce qu'un export a porté (ligne sage-l7, fonction 99) · une ligne par écriture envoyée, engendrée en masse par l'export, comme les lignes d'écriture ; l'export lui-même, numéroté et daté, est journalisé.",
   VerrouProvisionChange:
     "Verrou technique d'un geste sur la provision pour pertes de change (A5) · posé et retiré dans la même requête, il ne porte aucune donnée du dossier ; le geste, lui, est journalisé (déclaration, réévaluation, écritures).",
   VerrouCreancesDouteuses:
@@ -475,6 +482,9 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // Même raison pour le scan d'une pièce de virement · nom, taille et
   // empreinte la désignent sans la reproduire.
   PieceVirementFonds: ['contenu'],
+  // Le fichier d'un export des écritures (ligne sage-l7) · son nom, sa taille
+  // et son empreinte le désignent sans le reproduire.
+  ExportEcritures: ['contenu'],
 
   // LE REGISTRE DU PERSONNEL · le premier cas où l'exclusion ne protège pas
   // le LOGICIEL mais une PERSONNE.

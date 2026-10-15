@@ -49,11 +49,14 @@ Les colonnes sont celles du schéma, moins cinq, retirées à dessein :
 l'éditeur), et les trois colonnes du second facteur de connexion
 (\`User.secretDoubleAuth\`, \`User.dernierPasDoubleAuth\`,
 \`User.codesSecoursDoubleAuth\`). Aucune autre colonne n'est retirée. Les
-deux colonnes binaires du schéma n'entrent pas dans le CSV · chaque document
+colonnes binaires du schéma n'entrent pas dans le CSV · chaque document
 attaché à un tiers (\`DocumentTiers.contenu\`) sort À CÔTÉ, un fichier par
 pièce, dans \`documents-tiers/\`, et chaque pièce jointe à un virement de
 fonds (\`PieceVirementFonds.contenu\`) dans \`pieces-virements/\`, chacun sous
-son identifiant.
+son identifiant. Le fichier d'un export des écritures
+(\`ExportEcritures.contenu\`) ne sort pas · il reproduit des écritures que
+l'archive rend dans leurs propres tables, et son CSV garde son nom, sa taille
+et son empreinte.
 
 ## CE QUE CETTE ARCHIVE N'EST PAS
 

@@ -66,6 +66,8 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   RegularisationController: FonctionMetier.SAISIE,
   OperationSpecifiqueController: FonctionMetier.SAISIE,
   ImportController: FonctionMetier.SAISIE,
+  // Ligne sage-l7, fonction 99 · l'export des écritures, pendant de l'import.
+  ExportModificationsController: FonctionMetier.SAISIE,
   LettrageController: FonctionMetier.LETTRAGE,
   RapprochementController: FonctionMetier.TRESORERIE,
   ReglementsController: FonctionMetier.TRESORERIE,

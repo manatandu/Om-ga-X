@@ -881,6 +881,9 @@ model Tenant {
   repartitionsAnalytiquesPaie       RepartitionAnalytiquePaie[]
   lignesRepartitionsAnalytiquesPaie LigneRepartitionAnalytiquePaie[]
   annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
+  // Ligne sage-l7 · fonction 99, l'export des seules modifications.
+  exportsEcritures             ExportEcritures[]
+  ecrituresExportees           EcritureExportee[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -10767,4 +10770,84 @@ model AnnulationTraitementImmobilisation {
   @@index([tenantId, immobilisationId])
   @@index([exerciceId])
   @@map("annulations_traitements_immobilisation")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l7 · fonction 99, l'export des seules modifications
+// ---------------------------------------------------------------------------
+
+/// Ce que l'export a voulu envoyer · ce qui a changé depuis le dernier
+/// export, ou tout ce que la portée retient.
+enum ModeExportEcritures {
+  MODIFICATIONS
+  COMPLET
+}
+
+/// L'EXPORT DES ÉCRITURES, NUMÉROTÉ ET DATÉ (ligne sage-l7, fonction 99 ·
+/// Sage X3, « numéro d'export » · seuls les enregistrements créés ou modifiés
+/// depuis le dernier export partent). AUDCIF art. 22, 7° · « les états
+/// périodiques fournis soient numérotés et datés », et « chaque donnée entrée
+/// par transmission d'un autre système doit être appuyée d'une pièce
+/// justificative probante » · le fichier remis porte son numéro, sa date et
+/// son auteur, son empreinte (SHA-256) est gardée ici, et le fichier lui-même
+/// AUSSI · un téléchargement interrompu ne perd rien, l'envoi se retélécharge.
+/// La suite est continue par dossier et ne se réutilise jamais ; un export ne
+/// se modifie ni ne se supprime (aucune route).
+model ExportEcritures {
+  id                String              @id @default(uuid())
+  tenantId          String
+  tenant            Tenant              @relation(fields: [tenantId], references: [id])
+  numero            Int
+  mode              ModeExportEcritures
+  inclureBrouillard Boolean
+  produitAt         DateTime            @default(now())
+  produitPar        String
+  /// Écritures portées par le fichier, et leur détail · jamais envoyées
+  /// (nouvelles), changées depuis leur envoi (modifiées), le reste étant
+  /// renvoyé tel quel par un export complet.
+  nombreEcritures   Int
+  nombreNouvelles   Int
+  nombreModifiees   Int
+  /// Écritures envoyées par un export précédent qui n'existent plus · nommées
+  /// sur la feuille « Supprimées », jamais tues.
+  nombreSupprimees  Int
+  nombreLignes      Int
+  /// Ce qui restait à envoyer au-delà du plafond mesuré · laissé pour
+  /// l'export suivant, jamais amputé d'une écriture partielle.
+  nombreEnAttente   Int
+  nomFichier        String
+  taille            Int
+  empreinte         String
+  contenu           Bytes
+
+  @@unique([tenantId, numero])
+  @@map("exports_ecritures")
+}
+
+/// LE REGISTRE DE CE QUI EST PARTI · une ligne par écriture envoyée, avec ce
+/// que le fichier portait d'elle (statut, empreinte de son contenu) et de quoi
+/// la nommer quand elle n'existe plus. SANS CLÉ ÉTRANGÈRE vers l'écriture, à
+/// dessein · une écriture du brouillard retirée doit laisser sa trace ici
+/// pour être dite à l'export suivant ; une clé l'empêcherait d'être retirée
+/// (RESTRICT) ou effacerait la trace (CASCADE, SET NULL). Engendrée en masse
+/// par l'export · hors du journal d'audit, comme les lignes d'écriture.
+model EcritureExportee {
+  id                String         @id @default(uuid())
+  tenantId          String
+  tenant            Tenant         @relation(fields: [tenantId], references: [id])
+  ecritureId        String
+  /// Le dernier export qui l'a portée.
+  numeroExport      Int
+  statutExporte     StatutEcriture
+  empreinte         String
+  date              DateTime
+  journalCode       String
+  piece             String
+  libelle           String
+  /// L'export qui a dit sa suppression · elle ne se redit pas ensuite.
+  supprimeeAuNumero Int?
+
+  @@unique([tenantId, ecritureId])
+  @@index([tenantId, supprimeeAuNumero, statutExporte])
+  @@map("ecritures_exportees")
 }

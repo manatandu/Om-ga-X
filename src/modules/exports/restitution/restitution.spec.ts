@@ -320,14 +320,19 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
   it('nomme la colonne binaire sortie à côté des CSV', () => {
     const deplie = manifeste.replace(/\s+/g, ' ');
     expect(deplie).toContain(
-      "Les deux colonnes binaires du schéma n'entrent pas dans le CSV · chaque document attaché à un tiers (`DocumentTiers.contenu`) sort À CÔTÉ, un fichier par pièce, dans `documents-tiers/`, et chaque pièce jointe à un virement de fonds (`PieceVirementFonds.contenu`) dans `pieces-virements/`",
+      "Les colonnes binaires du schéma n'entrent pas dans le CSV · chaque document attaché à un tiers (`DocumentTiers.contenu`) sort À CÔTÉ, un fichier par pièce, dans `documents-tiers/`, et chaque pièce jointe à un virement de fonds (`PieceVirementFonds.contenu`) dans `pieces-virements/`",
+    );
+    // Ligne sage-l7 · le fichier d'un export des écritures ne sort pas, et
+    // le manifeste le dit plutôt que de le taire.
+    expect(deplie).toContain(
+      "Le fichier d'un export des écritures (`ExportEcritures.contenu`) ne sort pas · il reproduit des écritures que l'archive rend dans leurs propres tables",
     );
     // La prémisse relue dans le schéma · une seconde colonne binaire ferait
     // mentir la phrase.
     const binaires = Prisma.dmmf.datamodel.models.flatMap((m) =>
       m.fields.filter((f) => f.type === 'Bytes').map((f) => `${m.name}.${f.name}`),
     );
-    expect(binaires.sort()).toEqual(['DocumentTiers.contenu', 'PieceVirementFonds.contenu']);
+    expect(binaires.sort()).toEqual(['DocumentTiers.contenu', 'ExportEcritures.contenu', 'PieceVirementFonds.contenu']);
   });
 
   it('nomme les tables dont le journal d’audit ne garde aucune trace', () => {

@@ -36,6 +36,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   VirementFonds: 'Virement de fonds',
   PieceVirementFonds: "Pièce d'un virement de fonds",
   ImpressionJournal: 'Impression du journal',
+  ExportEcritures: 'Export des écritures',
   SequenceSaisie: 'Séquence de saisie',
   RibTiers: "RIB d'un tiers",
   OrdreVirement: 'Ordre de virement',

@@ -120,6 +120,9 @@ export const MODELES_CLOISONNES = new Set<string>([
   'PieceVirementFonds',
   // Ligne sage-l1, fonction 60 · les impressions du journal.
   'ImpressionJournal',
+  // Ligne sage-l7, fonction 99 · l'export des écritures et son registre.
+  'ExportEcritures',
+  'EcritureExportee',
   // Ligne sage-l1, fonction 19 · les séquences de saisie.
   'SequenceSaisie',
   'RibTiers',

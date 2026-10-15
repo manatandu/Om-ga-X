@@ -11,7 +11,35 @@ différée, sélections enregistrées, modèles d'édition et sauts.
 
 ## Fait
 
-(rien encore)
+### #99 · Export des seules modifications (M8-38, p. 51 et 52) · serveur
+
+- Tables `ExportEcritures` (numéro continu par dossier, mode, portée, auteur,
+  décomptes, fichier gardé et son empreinte SHA-256) et `EcritureExportee`
+  (registre, une ligne par écriture partie, SANS clé étrangère vers
+  l'écriture), migration `20270182000100_export_des_modifications`.
+- `exports/modifications/export-modifications.ts` (règles pures · empreinte du
+  contenu, mouvement, pièce distincte, libellés) ;
+  `export-modifications.service.ts` (inventaire par tranches, production en
+  mémoire, rangement en une transaction courte, 409 si un autre export a pris
+  le numéro) ; `fichier-en-memoire.ts` (tout ou rien, partagé avec
+  l'impression différée).
+- Routes `GET /exports-ecritures`, `GET /exports-ecritures/apercu`,
+  `POST /exports-ecritures` (`@Roles` admin et comptable,
+  `@ReserveAuComptable`), `GET /exports-ecritures/:id/fichier`.
+- Refus · export vide (aucun numéro pris), export complet au-delà du plafond
+  (« refusé plutôt qu'amputé »), export concurrent (409).
+- Fichier · feuille « Écritures » en tête de ligne 1, relue par l'import des
+  écritures (spec qui passe le fichier à `ImportService.analyser`), feuilles
+  « Supprimées » et « Export » (numéro, portée, auteur, décomptes).
+- Listes · audit (`ExportEcritures`, fichier exclu), registre hors audit
+  motivé, cloisonnement, restitution (fichier non rendu, manifeste qui le
+  dit), décompte de `lecture-bornee.spec.ts` (171), profil de fonctions
+  (SAISIE).
+- Tests · `export-modifications.spec.ts` (12) · nouvelles, modifiée au
+  brouillard, réenregistrée à l'identique, validée depuis, supprimée dite
+  une fois, brouillard non compris, situation et à-nouveau provisoire hors
+  champ, export concurrent, relecture par l'import, plafond par lots et
+  complet refusé, export complet.
 
 ## Reste
 
