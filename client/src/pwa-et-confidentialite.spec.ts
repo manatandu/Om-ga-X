@@ -35,7 +35,7 @@ describe('la PWA est réellement installable', () => {
     // La couleur de thème est celle de l'encre de la marque · une couleur de
     // thème qui diverge du carré du logo fait clignoter la barre du système
     // au lancement.
-    expect(m.theme_color).toBe('#142f6b');
+    expect(m.theme_color).toBe('#2a1f5c');
     expect(m.name).toBeTruthy();
     expect(m.short_name).toBeTruthy();
     expect(m.start_url).toBeTruthy();

@@ -192,10 +192,20 @@ des documents faits en interne.
 
 ### 7.1 La couleur de la marque
 
-**Encre OmegaX · `#142F6B`** · jeton `--a-900` dans `client/src/index.css`.
+**Encre de cachet · `#2A1F5C`** · jeton `--a-900` dans `client/src/index.css`.
 
-Ce n'est pas une nuance de plus dans l'échelle des bleus : c'est la couleur du
-logo, et le logo ne se recolorie pas.
+Ce n'est pas une nuance de plus dans l'échelle : c'est la couleur du logo, et
+le logo ne se recolorie pas.
+
+> **Changement d'encre du 15 octobre 2026** (décision de Manasse, « Oui
+> vas-y », après l'aperçu avant/après sur le vrai logiciel). L'encre passe du
+> bleu `#142F6B` au violet du cachet `#2A1F5C` · le violet des tampons
+> administratifs, qui valide une pièce. Une seule encre en circulation · le
+> générateur de la marque (`client/scripts/engendrer-marque.py`) la pose sur
+> le signe, le logotype, les icônes et la couleur de thème, et l'échelle
+> `--a-*` de l'interface la suit. Les gris sont teintés de la même encre. Les
+> couleurs de signal (vert, ocre, rouge) ne changent pas. Tous les rapports
+> ci-dessous sont remesurés sur les nouvelles valeurs.
 
 ### 7.2 Les quatre rendus autorisés, et pas un cinquième
 
@@ -217,15 +227,14 @@ fond de document, employer le filet de clôture (§ 9), qui est fait pour ça.
 
 | Fond | Encre | Blanc | Noir |
 |---|---|---|---|
-| Blanc `#ffffff` | **oui** · 12,74:1 | non · 1,00:1 | oui · 21,00:1 |
-| `--surface-alt` `#f5f7fa` | **oui** · 11,87:1 | non | oui |
-| `--bg` `#e1e7f0` | **oui** · 10,24:1 | non | oui |
-| `--mica` `#e8edf4` (barres) | **oui** · 10,83:1 | non | oui |
-| `--n-200` `#d3dae4` | oui · 9,05:1 | non | oui |
-| Encre `#142f6b` | non · 1,00:1 | **oui** · 12,74:1 | non |
-| `--chrome` `#f5f7fa` (panneaux latéraux) | **oui** · 11,87:1 | non | oui |
-| Barre de titre `#1d2a3f` (retirée le 2026-09-23) | non · 1,13:1 | oui · 14,43:1 | non |
-| Noir `#000000` | non · 1,65:1 | **oui** · 21,00:1 | non |
+| Blanc `#ffffff` | **oui** · 14,49:1 | non · 1,00:1 | oui · 21,00:1 |
+| `--surface-alt` `#f6f6f9` | **oui** · 13,44:1 | non | oui |
+| `--bg` `#ededf3` | **oui** · 12,43:1 | non | oui |
+| `--mica` `#e7e7ee` (barres) | **oui** · 11,78:1 | non | oui |
+| `--n-200` `#d6d6e0` | oui · 10,04:1 | non | oui |
+| Encre `#2a1f5c` (bandeau, barre de titre active) | non · 1,00:1 | **oui** · 14,49:1 | non |
+| `--chrome` `#f6f6f9` (panneaux latéraux) | **oui** · 13,44:1 | non | oui |
+| Noir `#000000` | non · 1,45:1 | **oui** · 21,00:1 | non |
 | Photographie, texture, dégradé | non, sauf cartouche (§ 5) | non, sauf cartouche | non |
 
 Les rapports sont **mesurés**, pas estimés (formule de luminance relative
@@ -236,21 +245,25 @@ courant : un logo moins contrasté qu'un paragraphe se lit moins bien que lui.
 
 | Couple | Rapport | Niveau |
 |---|---|---|
-| `--text` sur `--surface` | 17,46:1 | AAA |
-| `--text` sur `--bg` | 14,04:1 | AAA |
-| `--text` sur `--mica` | 14,84:1 | AAA |
-| `--text-dim` sur blanc | 6,06:1 | AA |
-| `--text-dim` sur `--surface-alt` | 5,64:1 | AA |
-| `--text-dim` sur `--bg` | 4,87:1 | AA |
-| `--text-dim` sur `--mica` | 5,15:1 | AA |
-| `--sel` sur blanc | 6,37:1 | AA |
-| Blanc sur `--sel` | 6,37:1 | AA |
+| `--text` sur `--surface` | 17,97:1 | AAA |
+| `--text` sur `--bg` | 15,41:1 | AAA |
+| `--text` sur `--mica` | 14,60:1 | AAA |
+| `--text-dim` sur blanc | 6,52:1 | AA |
+| `--text-dim` sur `--surface-alt` | 6,05:1 | AA |
+| `--text-dim` sur `--bg` | 5,59:1 | AA |
+| `--text-dim` sur `--mica` | 5,30:1 | AA |
+| `--sel` sur blanc | 8,32:1 | AAA |
+| Blanc sur `--sel` | 8,32:1 | AAA |
+| `--sel` sur `--sel-soft` (sélection) | 7,51:1 | AAA |
+| Blanc sur `--a-700` (en-tête de grille) | 10,28:1 | AAA |
+| `--chrome-text` sur l'encre (bandeau) | 12,19:1 | AAA |
+| `--chrome-text-dim` sur l'encre (bandeau) | 6,76:1 | AA |
 | `--positive` sur blanc | 6,12:1 | AA |
 | `--warning` sur blanc | 6,14:1 | AA |
 | `--danger` sur blanc | 6,21:1 | AA |
-| `--text` sur `--chrome` | 16,27:1 | AAA |
-| `--text-dim` sur `--chrome` | 5,64:1 | AA |
-| Encre sur `--chrome` | 11,87:1 | AAA |
+| `--text` sur `--chrome` | 16,66:1 | AAA |
+| `--text-dim` sur `--chrome` | 6,05:1 | AA |
+| Encre sur `--chrome` | 13,44:1 | AAA |
 | Blanc sur `#c42b1c` (fermeture survolée) | 5,66:1 | AA |
 
 **Barres de titre claires depuis le 2026-09-23.** Toutes les barres de titre

@@ -2,6 +2,7 @@ import { Suspense, memo, useCallback, useEffect, useRef } from 'react';
 import type { FenetreOuverte } from '../../lib/fenetres';
 import { FenetreCourante, useFenetresActions } from '../../lib/fenetres';
 import { echapPourLaFenetre } from '../../lib/echap';
+import { CURSEUR_BORD, geometrieRedimensionnee, type BordFenetre } from '../../lib/redimensionnement-fenetre';
 import { rendreFenetre } from '../../lib/registre-fenetres';
 import { LimiteErreur } from './LimiteErreur';
 import { LignesSquelette } from './Squelette';
@@ -16,7 +17,10 @@ import { LignesSquelette } from './Squelette';
  *    Windows, celui que la main fait sans y penser ;
  *  · la fenêtre se déplace par sa barre de titre, et seulement par elle ·
  *    la déplacer par son contenu rendrait toute sélection de texte pénible ;
- *  · poignée de redimensionnement en bas à droite ;
+ *  · chaque bord et chaque coin redimensionne la fenêtre, le curseur de
+ *    Windows le dit (décision de Manasse du 2026-10-15, « Tous les bords »,
+ *    `lib/redimensionnement-fenetre.ts`) · tirer le bord gauche ou haut
+ *    déplace aussi la fenêtre, le bord opposé restant fixe ;
  *  · un clic n'importe où dans la fenêtre la ramène au premier plan.
  *
  * Le déplacement et le redimensionnement passent par la CAPTURE DE POINTEUR
@@ -45,6 +49,24 @@ const HAUTEUR_MIN = 220;
 const MARGE_AGRANDIE = 8;
 
 /**
+ * Les huit zones de redimensionnement · bandes de 5 px le long des bords,
+ * carrés de 10 px aux coins, posés APRÈS les bandes pour les recouvrir (un
+ * coin attrapé doit étirer les deux axes). Le coin bas droit garde sa
+ * marque visible, les autres zones ne se voient qu'au curseur, comme sous
+ * Windows.
+ */
+const POIGNEES: { bord: BordFenetre; place: string }[] = [
+  { bord: 'n', place: 'top-0 left-2.5 right-2.5 h-[5px]' },
+  { bord: 's', place: 'bottom-0 left-2.5 right-2.5 h-[5px]' },
+  { bord: 'o', place: 'left-0 top-2.5 bottom-2.5 w-[5px]' },
+  { bord: 'e', place: 'right-0 top-2.5 bottom-2.5 w-[5px]' },
+  { bord: 'no', place: 'top-0 left-0 w-2.5 h-2.5' },
+  { bord: 'ne', place: 'top-0 right-0 w-2.5 h-2.5' },
+  { bord: 'so', place: 'bottom-0 left-0 w-2.5 h-2.5' },
+  { bord: 'se', place: 'bottom-0 right-0 w-4 h-4' },
+];
+
+/**
  * memo · pendant un déplacement/redimensionnement, chaque pointermove met à
  * jour le cadre d'UNE fenêtre dans le contexte : sans memo, TOUTES les
  * fenêtres ouvertes re-rendaient à chaque mouvement de souris (props
@@ -65,7 +87,7 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
    * cumulant l'erreur de la précédente.
    */
   const demarrerGeste = useCallback(
-    (e: React.PointerEvent, mode: 'deplacer' | 'redimensionner') => {
+    (e: React.PointerEvent, mode: 'deplacer' | BordFenetre) => {
       if (agrandie && mode === 'deplacer') return; // une fenêtre plein écran ne se déplace pas
       e.preventDefault();
       const cible = e.currentTarget as HTMLElement;
@@ -73,7 +95,15 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
       const departX = e.clientX;
       const departY = e.clientY;
       const depart = { ...fenetre.cadre };
-      const espace = refCadre.current?.parentElement;
+      // Le redimensionnement part de la géométrie RENDUE, pas de la stockée ·
+      // le rendu borne taille et position à l'espace de travail, et partir
+      // d'un cadre plus grand que ce qu'on voit faisait sauter la fenêtre au
+      // premier mouvement.
+      const el = refCadre.current;
+      const departRendu = el
+        ? { x: el.offsetLeft, y: el.offsetTop, largeur: el.offsetWidth, hauteur: el.offsetHeight }
+        : depart;
+      const espace = el?.parentElement;
       const largeurEspace = espace?.clientWidth ?? window.innerWidth;
       const hauteurEspace = espace?.clientHeight ?? window.innerHeight;
 
@@ -89,10 +119,15 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
             y: Math.min(Math.max(depart.y + dy, 0), hauteurEspace - HAUTEUR_TITRE),
           });
         } else {
-          deplacer(fenetre.cle, {
-            largeur: Math.max(LARGEUR_MIN, depart.largeur + dx),
-            hauteur: Math.max(HAUTEUR_MIN, depart.hauteur + dy),
-          });
+          deplacer(
+            fenetre.cle,
+            geometrieRedimensionnee(departRendu, mode, dx, dy, {
+              largeurMin: LARGEUR_MIN,
+              hauteurMin: HAUTEUR_MIN,
+              largeurEspace,
+              hauteurEspace,
+            }),
+          );
         }
       };
       const onUp = (ev: PointerEvent) => {
@@ -243,18 +278,25 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
         </LimiteErreur>
       </div>
 
-      {/* --- Poignée de redimensionnement ----------------------------------- */}
-      {!agrandie && (
-        <div
-          onPointerDown={(e) => demarrerGeste(e, 'redimensionner')}
-          title="Redimensionner"
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
-        >
-          <svg viewBox="0 0 16 16" className="w-full h-full text-border-dark">
-            <path d="M15 7L7 15M15 11l-4 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-          </svg>
-        </div>
-      )}
+      {/* --- Bords et coins de redimensionnement ---------------------------- */}
+      {!agrandie &&
+        POIGNEES.map(({ bord, place }) => (
+          <div
+            key={bord}
+            aria-hidden="true"
+            onPointerDown={(e) => demarrerGeste(e, bord)}
+            // `touch-action: none` · sans lui, le doigt fait défiler la page
+            // au lieu d'étirer la fenêtre.
+            style={{ cursor: CURSEUR_BORD[bord], touchAction: 'none' }}
+            className={`absolute z-[5] ${place}`}
+          >
+            {bord === 'se' && (
+              <svg viewBox="0 0 16 16" className="w-full h-full text-border-dark">
+                <path d="M15 7L7 15M15 11l-4 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </svg>
+            )}
+          </div>
+        ))}
     </div>
   );
 }
