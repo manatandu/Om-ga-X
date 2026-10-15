@@ -25,6 +25,9 @@ import { compteDeLEcart, referentielDuDossier } from './compte-ecart-change';
 import { lignesDeReevaluationSurLesTiers } from './lignes-de-reevaluation';
 import { avertissementExtourneManquante, issueReevaluationDejaPassee, motifReglementDejaReevalue } from './reevaluation-et-ecart-realise';
 import { OrdresVirementService, type LigneAOrdonner } from './ordres-virement.service';
+import { modeDuDossier } from './modes-reglement.service';
+import { avertissementArt59Bis, natureLueSurLeCompte } from './modes-reglement';
+import { faitAssujettissementTva } from '../tenant/faits-declares';
 import {
   avertissementImputationDuGroupe,
   echeancesDesGroupesPartiels,
@@ -276,7 +279,12 @@ export class ReglementsService {
    * cinq pièces passées et cinq non.
    */
   async enregistrer(tenantId: string, userId: string, dto: EnregistrerReglementsDto, email: string = userId) {
-    const journal = await this.prisma.journal.findFirst({ where: { id: dto.journalId, tenantId } });
+    // Le numéro du compte de trésorerie vient avec le journal · l'art. 59 bis
+    // y lit la nature du paiement quand aucun mode n'est déclaré.
+    const journal = await this.prisma.journal.findFirst({
+      where: { id: dto.journalId, tenantId },
+      include: { compteTresorerie: { select: { numero: true } } },
+    });
     if (!journal) throw new NotFoundException('Journal introuvable pour ce dossier.');
     if (journal.type !== TypeJournal.TRESORERIE || !journal.compteTresorerieId) {
       throw new BadRequestException(
@@ -285,6 +293,9 @@ export class ReglementsService {
       );
     }
     const compteTresorerieId = journal.compteTresorerieId;
+    // LE MODE DE RÈGLEMENT DU LOT (ligne sage-l2, fonction 1) · du dossier et
+    // actif, jugé AVANT la première pièce comme tout le reste (règle 4).
+    const mode = dto.modeReglementId ? await modeDuDossier(this.prisma, tenantId, dto.modeReglementId) : null;
 
     const idsComptes = dto.reglements.map((r) => r.compteId);
     if (new Set(idsComptes).size !== idsComptes.length) {
@@ -695,6 +706,41 @@ export class ReglementsService {
       if (avertissement) avertissements.push(avertissement);
     }
 
+    // L'ART. 59 BIS DE LA TVA (ligne sage-l2, fonction 1) · une facture d'au
+    // moins 1 000 000 FC payée à un fournisseur par un autre mode que le
+    // chèque, le virement ou la carte bancaire · AVERTI, jamais refusé
+    // (modes-reglement.ts). La nature vient du mode déclaré, sinon du compte
+    // de trésorerie du journal (57, 55).
+    if (dto.sens === 'FOURNISSEUR') {
+      const dossier = await this.prisma.tenant.findFirst({
+        where: { id: tenantId },
+        select: { assujettiTva: true, assujettissementTvaRepondu: true },
+      });
+      const nature = mode?.nature ?? natureLueSurLeCompte(journal.compteTresorerie?.numero ?? null);
+      for (const p of plan) {
+        const avertissement = avertissementArt59Bis({
+          sens: dto.sens,
+          date: new Date(dto.date),
+          dossierAssujetti: dossier ? faitAssujettissementTva(dossier) : null,
+          nature,
+          source: mode ? 'MODE' : 'COMPTE',
+          compte: p.compte.numero,
+          factures: p.siennes.map((l) => {
+            // LA TRANSACTION, PAS CE QUI EN RESTE · le montant entier de la
+            // facture (art. 59 bis, « toute transaction [...] d'un montant
+            // d'au moins »), lu sur la ligne d'origine, jamais sur le dû
+            // qu'un lettrage partiel ou une paire à cheval a réduit.
+            const origine = lignes.find((x) => x.id === l.id) ?? l;
+            return {
+              reference: l.ecriture.numeroPiece ? `pièce ${l.ecriture.numeroPiece}` : l.ecriture.libelle || 'facture',
+              montant: Math.abs(Number(origine.debit) - Number(origine.credit)),
+            };
+          }),
+        });
+        if (avertissement) avertissements.push(avertissement);
+      }
+    }
+
     // Le lettrage vient APRÈS la pièce · une facture figée par une clôture
     // (exercice/gel-cloture.ts) le ferait refuser une fois la pièce passée.
     // Vérifiée ici, avec le reste, avant la première écriture.
@@ -726,7 +772,7 @@ export class ReglementsService {
         // La pièce qui a notifié l'imputation au fournisseur (M6) suit la
         // référence du règlement, et se lit sur la pièce comptable.
         reference: [r.reference, parts && r.pieceImputation ? `imputation notifiée · ${r.pieceImputation.trim()}` : null].filter(Boolean).join(' · ') || undefined,
-        lignes: enDevise
+        lignes: avecLeMode(mode?.id ?? null, enDevise
           ? lignesDuReglementEnDevise({
               sens: dto.sens,
               compteTiersId: r.compteId,
@@ -742,7 +788,7 @@ export class ReglementsService {
             })
           : parts
             ? lignesDuReglementImpute({ compteTiersId: r.compteId, compteTresorerieId, parts, libelle })
-            : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle }),
+            : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle })),
       });
       if (parts) {
         // UNE FACTURE, UNE LIGNE QUI LA PAIE, UN GROUPE · l'imputation
@@ -1229,6 +1275,15 @@ interface ReglementEnDevise {
  * second tour, m6) · lettrée, elle empêcherait de remplacer l'à-nouveau à la
  * clôture de l'exercice précédent, qui refuse un report provisoire lettré.
  */
+/**
+ * Le mode de règlement du lot sur chaque ligne de la pièce (ligne sage-l2,
+ * fonction 1) · le tiers soldé et la trésorerie qui paie, comme Sage le pose
+ * sur les lignes du règlement. Aucun mode, les lignes restent telles.
+ */
+function avecLeMode<L extends object>(modeReglementId: string | null, lignes: L[]): Array<L & { modeReglementId?: string }> {
+  return modeReglementId ? lignes.map((l) => ({ ...l, modeReglementId })) : lignes;
+}
+
 export function motifANouveauProvisoire(numero: string): string {
   return (
     `${numero} · la ligne d'à-nouveau choisie est PROVISOIRE, l'exercice précédent n'étant pas clôturé · lettrée par ce règlement, ` +

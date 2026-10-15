@@ -23,6 +23,7 @@ import {
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { dateSaisieOuEffacement } from '../tenant/date-effacable';
 import { motifRefusPeriodeAutorisationDebits } from './periode-autorisation-debits';
+import { modeDuDossier } from '../reglements/modes-reglement.service';
 
 /**
  * Tiers (cf. docs/plan-de-construction.md §3.2) : Client/Fournisseur/Salarié/
@@ -150,6 +151,7 @@ export class TiersService {
     if (dto.modeleReglementId) {
       await this.trouverModeleReglement(tenantId, dto.modeleReglementId);
     }
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
     if (dto.celluleGroupeId) {
       await this.exigerMemeGroupe(tenantId, dto.celluleGroupeId);
     }
@@ -574,6 +576,7 @@ export class TiersService {
     if (dto.modeleReglementId) {
       await this.trouverModeleReglement(tenantId, dto.modeleReglementId);
     }
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
     // null passe sans contrôle · il DÉTACHE, et détacher ne peut jamais faire
     // sortir de l'agrégat une opération qui doit y rester.
     if (dto.celluleGroupeId) {
@@ -769,6 +772,7 @@ export class TiersService {
   }
 
   async creerModeleReglement(tenantId: string, dto: CreerModeleReglementDto) {
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
     const existant = await this.prisma.modeleReglement.findUnique({
       where: { tenantId_intitule: { tenantId, intitule: dto.intitule } },
     });
@@ -780,6 +784,7 @@ export class TiersService {
 
   async modifierModeleReglement(tenantId: string, id: string, dto: ModifierModeleReglementDto) {
     await this.trouverModeleReglement(tenantId, id);
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
     return this.prisma.modeleReglement.update({ where: { id }, data: dto });
   }
 
@@ -797,6 +802,7 @@ export class TiersService {
 
   async ajouterEcheance(tenantId: string, modeleId: string, dto: CreerEcheanceReglementDto) {
     await this.trouverModeleReglement(tenantId, modeleId);
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
 
     if (dto.type !== TypeEcheance.EQUILIBRE && dto.valeur === undefined) {
       throw new BadRequestException(`Une échéance de type ${dto.type} doit préciser une valeur`);
@@ -845,6 +851,7 @@ export class TiersService {
         valeur: dto.type === TypeEcheance.EQUILIBRE ? null : dto.valeur,
         delaiJours: dto.delaiJours,
         echeance: dto.echeance ?? ConditionEcheance.NET,
+        modeReglementId: dto.modeReglementId ?? null,
       },
     });
   }

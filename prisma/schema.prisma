@@ -881,6 +881,8 @@ model Tenant {
   repartitionsAnalytiquesPaie       RepartitionAnalytiquePaie[]
   lignesRepartitionsAnalytiquesPaie LigneRepartitionAnalytiquePaie[]
   annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
+  // Ligne sage-l2 · fonction 1, modes de règlement.
+  modesReglement               ModeReglement[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -1400,6 +1402,8 @@ model Journal {
   impressions               ImpressionJournal[]
   // Ligne sage-l5 · le journal de trésorerie d'où les salaires sont payés.
   paiementsSalaires         PaiementSalaires[]
+  // Ligne sage-l2 · le journal de trésorerie qu'un mode de règlement propose.
+  modesReglement            ModeReglement[]
 
   @@unique([tenantId, code])
   @@map("journaux")
@@ -2177,6 +2181,16 @@ model LigneEcriture {
   montantDevise Decimal? @db.Decimal(18, 2)
   coursApplique Decimal? @db.Decimal(18, 6)
 
+  /// LE MODE DE RÈGLEMENT DE LA LIGNE (ligne sage-l2, fonction 1 · Sage, le
+  /// mode de l'échéance ou du paiement sur la ligne du tiers) · celui qu'une
+  /// facture attend sur son échéance, ou celui par lequel un règlement a été
+  /// fait. Informatif · aucun montant, aucun état ne le lit ; le règlement des
+  /// tiers le confronte à l'O.-L. n° 10/001, art. 59 bis. Nul pour l'immense
+  /// majorité des lignes. `Restrict` déclaré · un mode porté par une ligne ne
+  /// se supprime pas, il se met en sommeil.
+  modeReglementId String?
+  modeReglement   ModeReglement? @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
+
   @@index([compteId, lettre])
   @@index([lettrageId])
   @@index([compteId, rapprochementId])
@@ -2188,6 +2202,10 @@ model LigneEcriture {
   @@index([ecritureId])
   // Déclaration de TVA : toutes ses sommes filtrent par taux rattaché.
   @@index([tauxTvaId])
+  // La suppression d'un mode de règlement (références comptées, clé
+  // étrangère en Restrict) lit les lignes qui le portent · sans index, la
+  // table la plus grosse du logiciel se balaierait à chaque essai.
+  @@index([modeReglementId])
   @@map("lignes_ecriture")
 }
 
@@ -2494,6 +2512,11 @@ model ModeleReglement {
   // foi et ces deux-là ne servent plus qu'à l'affichage résumé de la liste).
   delaiJours Int
   echeance   ConditionEcheance @default(NET)
+  /// Le mode de règlement de l'échéance unique (ligne sage-l2, fonction 1) ·
+  /// nul, l'échéance ne dit pas de mode. Sans effet sur un modèle fractionné,
+  /// dont chaque échéance porte le sien.
+  modeReglementId String?
+  modeReglement   ModeReglement? @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
   estActif   Boolean           @default(true)
   createdAt  DateTime          @default(now())
 
@@ -2518,6 +2541,10 @@ model EcheanceReglement {
   valeur            Decimal?          @db.Decimal(12, 2)
   delaiJours        Int
   echeance          ConditionEcheance @default(NET)
+  /// Le mode de règlement de cette échéance (ligne sage-l2, fonction 1 ·
+  /// Sage, chaque ligne du modèle porte le sien) · nul, aucun.
+  modeReglementId   String?
+  modeReglement     ModeReglement?    @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
 
   @@unique([modeleReglementId, ordre])
   @@map("echeances_reglement")
@@ -2703,6 +2730,12 @@ model Tiers {
 
   modeleReglementId String?
   modeleReglement   ModeleReglement? @relation(fields: [modeleReglementId], references: [id])
+
+  /// LE MODE DE RÈGLEMENT HABITUEL DU TIERS (ligne sage-l2, fonction 1 ·
+  /// Sage, fiche du tiers) · proposé en saisie et au règlement quand
+  /// l'échéance n'en porte pas, jamais imposé. Nul, aucun.
+  modeReglementId String?
+  modeReglement   ModeReglement? @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
 
@@ -10767,4 +10800,57 @@ model AnnulationTraitementImmobilisation {
   @@index([tenantId, immobilisationId])
   @@index([exerciceId])
   @@map("annulations_traitements_immobilisation")
+}
+
+// Ligne sage-l2 · tiers et règlements
+
+/// LA NATURE D'UN MODE DE RÈGLEMENT (ligne sage-l2, fonction 1 · Sage,
+/// P_REGLEMENT, « mode de paiement » de chaque mode). Elle seule porte une
+/// règle · l'O.-L. n° 10/001, art. 59 bis, veut qu'une transaction d'au moins
+/// 1 000 000 FC entre assujettis soit payée « par chèque, par virement ou par
+/// carte bancaire », sous peine de la perte du droit à déduction (art. 74 bis).
+/// Les autres natures (monnaie électronique comprise, que le texte ne nomme
+/// pas) n'y satisfont pas, et le règlement le dit (`modes-reglement.ts`).
+enum NatureModeReglement {
+  ESPECES
+  CHEQUE
+  VIREMENT
+  CARTE_BANCAIRE
+  MONNAIE_ELECTRONIQUE
+  EFFET_DE_COMMERCE
+  PRELEVEMENT
+  AUTRE
+}
+
+/// UN MODE DE RÈGLEMENT DU DOSSIER (ligne sage-l2, fonction 1 · Sage 100,
+/// P_REGLEMENT, trente modes au plus, chacun son intitulé, son mode de
+/// paiement et son code interbancaire). Structure du dossier, au journal
+/// d'audit · porté par la fiche du tiers, l'échéance d'un modèle de
+/// règlement, la ligne d'écriture et le règlement des tiers. Le code
+/// interbancaire est LIBRE · aucune nomenclature bancaire lue n'est
+/// applicable en RDC (décision D11 de la reproduction, normes françaises non
+/// reprises). Le journal proposé est un journal de trésorerie, choisi au
+/// règlement quand ce mode l'est.
+model ModeReglement {
+  id                String              @id @default(uuid())
+  tenantId          String
+  tenant            Tenant              @relation(fields: [tenantId], references: [id])
+  code              String
+  intitule          String
+  nature            NatureModeReglement
+  codeInterbancaire String?
+  journalId         String?
+  journal           Journal?            @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  estActif          Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  createdBy         String
+
+  tiers              Tiers[]
+  lignesEcriture     LigneEcriture[]
+  modelesReglement   ModeleReglement[]
+  echeancesReglement EcheanceReglement[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, intitule])
+  @@map("modes_reglement")
 }

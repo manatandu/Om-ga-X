@@ -436,6 +436,8 @@ export interface LigneEntree {
   deviseId?: string | null;
   montantDevise?: number | null;
   coursApplique?: number | null;
+  /** Le mode de règlement de la ligne (ligne sage-l2, fonction 1) · jugé au dossier. */
+  modeReglementId?: string | null;
 }
 
 /** Une pièce soumise aux contrôles d'entrée · voir `EcritureService.controlesDEntree`. */
@@ -540,6 +542,9 @@ export function donneesLigneSaisie(
     montantDevise: l.montantDevise,
     // Saisi, ou déduit des deux montants (audit final F49, ligne-en-devise.ts).
     coursApplique: coursDeLaLigne(l),
+    // Le mode de règlement (ligne sage-l2, fonction 1) · posé seulement s'il
+    // est donné, jugé au dossier par `controlesDEntree`.
+    ...(l.modeReglementId ? { modeReglementId: l.modeReglementId } : {}),
     ...(l.ventilations && l.ventilations.length > 0
       ? {
           ventilations: {
@@ -1083,6 +1088,26 @@ export class EcritureService {
         const tauxTrouves = await db.tauxTva.findMany({ where: { id: { in: tauxTvaIds }, tenantId } });
         if (tauxTrouves.length !== tauxTvaIds.length) {
           throw new BadRequestException('Un ou plusieurs taux de TVA sont introuvables pour ce tenant');
+        }
+      }
+
+      // LE MODE DE RÈGLEMENT D'UNE LIGNE (ligne sage-l2, fonction 1) · du
+      // dossier et actif, même raison que le taux · la clé étrangère ne
+      // vérifie que l'existence de l'identifiant, jamais son dossier.
+      const modeIds = [...new Set(piece.lignes.map((l) => l.modeReglementId).filter((id): id is string => !!id))];
+      if (modeIds.length > 0) {
+        const modes = await db.modeReglement.findMany({
+          where: { id: { in: modeIds }, tenantId },
+          select: { id: true, code: true, estActif: true },
+        });
+        if (modes.length !== modeIds.length) {
+          throw new BadRequestException('Un ou plusieurs modes de règlement sont introuvables pour ce dossier.');
+        }
+        const enSommeil = modes.filter((m) => !m.estActif);
+        if (enSommeil.length > 0) {
+          throw new BadRequestException(
+            `Le mode de règlement ${enSommeil.map((m) => m.code).join(', ')} est en sommeil · réactivez-le dans Modes de règlement, ou choisissez-en un autre.`,
+          );
         }
       }
 

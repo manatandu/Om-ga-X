@@ -122,6 +122,8 @@ export const MODELES_CLOISONNES = new Set<string>([
   'ImpressionJournal',
   // Ligne sage-l1, fonction 19 · les séquences de saisie.
   'SequenceSaisie',
+  // Ligne sage-l2, fonction 1 · les modes de règlement.
+  'ModeReglement',
   'RibTiers',
   'RubriquePaie',
   'VersionBaremePaie',

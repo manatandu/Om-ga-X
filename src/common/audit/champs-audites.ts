@@ -161,6 +161,9 @@ export const MODELES_AUDITES = new Set<string>([
   // Ligne sage-l1, fonction 19 · une séquence de saisie est une structure du
   // dossier, comme les modèles qu'elle range.
   'SequenceSaisie',
+  // Ligne sage-l2, fonction 1 · un mode de règlement est une structure du
+  // dossier (sa nature porte le contrôle de l'art. 59 bis de la TVA).
+  'ModeReglement',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',

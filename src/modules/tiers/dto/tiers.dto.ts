@@ -16,6 +16,11 @@ export class CreerTiersDto {
   @IsUUID()
   modeleReglementId?: string;
 
+  /** Le mode de règlement habituel du tiers (ligne sage-l2, fonction 1) · un mode du dossier, actif. */
+  @IsOptional()
+  @IsUUID()
+  modeReglementId?: string;
+
   /**
    * Ouvrir les comptes du tiers, son compte principal et les sous-comptes de
    * sa panoplie, chacun sous son collectif (collectifs-tiers.ts). Vrai par
@@ -165,6 +170,11 @@ export class ModifierTiersDto {
   @IsOptional()
   @IsUUID()
   modeleReglementId?: string | null;
+
+  // null explicite = le tiers n'a plus de mode de règlement habituel
+  @IsOptional()
+  @IsUUID()
+  modeReglementId?: string | null;
 
   /*
     COORDONNÉES · elles manquaient, et cela rendait inutilisable une brique

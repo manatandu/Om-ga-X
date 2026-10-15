@@ -113,6 +113,18 @@ function monter(
     },
     // Le RIB du journal se lit à chaque règlement (A6 bis, B3) · aucun ici.
     ribBanque: { findFirst: jest.fn(async () => null) },
+    // Ligne sage-l2, fonction 1 · l'art. 59 bis lit le fait déclaré du
+    // dossier (déclaré non assujetti ici, rien à dire).
+    tenant: { findFirst: jest.fn(async () => ({ assujettiTva: false, assujettissementTvaRepondu: true })) },
+    // Les modes de règlement du dossier (ligne sage-l2, fonction 1) · la doublure honore le dossier.
+    modeReglement: {
+      findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>
+        [
+          { id: 'esp', tenantId: 't', code: 'ESP', intitule: 'Espèces', nature: 'ESPECES', estActif: true, journalId: null },
+          { id: 'vir', tenantId: 't', code: 'VIR', intitule: 'Virement', nature: 'VIREMENT', estActif: true, journalId: null },
+        ].find((m) => m.id === where.id && m.tenantId === where.tenantId) ?? null,
+      ),
+    },
     // A7 ter, mineur 1 · les créances reclassées en vigueur des comptes réglés (la doublure honore les comptes).
     creanceDouteuse: {
       findMany: jest.fn(async ({ where }: { where: { compteCreanceId: { in: string[] } } }) =>
@@ -149,7 +161,7 @@ function monter(
     { lettrerManuel, delettrer, completer } as unknown as LettrageService,
     ordres as unknown as OrdresVirementService,
   );
-  return { service, creer, lettrerManuel, delettrer, completer, lignes, ordres, ordre, retirerCompensation };
+  return { service, creer, lettrerManuel, delettrer, completer, lignes, ordres, ordre, retirerCompensation, prisma };
 }
 
 const base = { sens: 'FOURNISSEUR' as const, exerciceId: 'ex', journalId: 'bq', date: '2026-09-25' };
@@ -411,6 +423,9 @@ function echeancier(
     cloture: { findMany: jest.fn(async () => []) },
     ribBanque: { findFirst: jest.fn(async () => null) },
     journal: { findFirst: jest.fn(async () => ({ id: 'bq', code: 'BQ', type: 'TRESORERIE', compteTresorerieId: 'c521' })) },
+    // Ligne sage-l2, fonction 1 · l'art. 59 bis lit le fait déclaré du
+    // dossier (déclaré non assujetti ici, rien à dire).
+    tenant: { findFirst: jest.fn(async () => ({ assujettiTva: false, assujettissementTvaRepondu: true })) },
   } as unknown as PrismaService;
   const creer = jest.fn(async (_t: string, _u: string, dto: { lignes: { compteId: string }[] }) => ({
     id: 'e1',
@@ -778,5 +793,41 @@ describe('Échéances · une facture d’un lettrage partiel est servie pour son
     const [g] = await service.echeances('t', 'ex', 'CLIENT');
     expect(g.lignes).toHaveLength(1);
     expect(g.lignes[0]).toMatchObject({ id: 'xF', montant: 14_800_000, regleParLettragePartiel: { groupe: 'b', montant: 20_000_000 } });
+  });
+});
+
+describe('le mode de règlement du lot (ligne sage-l2, fonction 1)', () => {
+  it('posé sur chaque ligne de chaque pièce, le tiers soldé comme la trésorerie', async () => {
+    const { service, creer } = monter();
+    await service.enregistrer('t', 'u', { ...base, modeReglementId: 'vir', reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] });
+    expect(creer.mock.calls[0][2].lignes).toEqual([
+      expect.objectContaining({ compteId: 'c401', debit: 600, modeReglementId: 'vir' }),
+      expect.objectContaining({ compteId: 'c521', credit: 600, modeReglementId: 'vir' }),
+    ]);
+  });
+
+  it('le mode d’un autre dossier est refusé AVANT toute pièce', async () => {
+    const { service, creer } = monter();
+    await expect(
+      service.enregistrer('t', 'u', { ...base, modeReglementId: 'inconnu', reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] }),
+    ).rejects.toThrow('introuvable');
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('art. 59 bis · une facture de 1 500 000 payée en espèces par un dossier assujetti est AVERTIE, jamais refusée', async () => {
+    const { service, creer, lignes, prisma } = monter();
+    lignes.find((l) => l.id === 'f1')!.credit = 1_500_000;
+    (prisma.tenant.findFirst as jest.Mock).mockResolvedValue({ assujettiTva: true, assujettissementTvaRepondu: true });
+    const r = await service.enregistrer('t', 'u', { ...base, modeReglementId: 'esp', reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] });
+    expect(creer).toHaveBeenCalledTimes(1);
+    expect(r.avertissements.join(' ')).toMatch(/art\. 59 bis.*art\. 74 bis/);
+  });
+
+  it('art. 59 bis · la même facture payée par virement ne dit rien', async () => {
+    const { service, lignes, prisma } = monter();
+    lignes.find((l) => l.id === 'f1')!.credit = 1_500_000;
+    (prisma.tenant.findFirst as jest.Mock).mockResolvedValue({ assujettiTva: true, assujettissementTvaRepondu: true });
+    const r = await service.enregistrer('t', 'u', { ...base, modeReglementId: 'vir', reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] });
+    expect(r.avertissements.join(' ')).not.toMatch(/59 bis/);
   });
 });
