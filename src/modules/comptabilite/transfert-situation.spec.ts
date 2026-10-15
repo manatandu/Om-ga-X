@@ -67,6 +67,8 @@ function monter(ecriture: Record<string, unknown> | null, arrivee: Record<string
     },
     exercice: { findFirst: jest.fn().mockResolvedValue(EXERCICE) },
     ligneEcriture,
+    // Les pièces jointes (ligne sage-l6) · aucune, sauf quand le cas en pose.
+    pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
   };
   const prisma = {
     ecriture: { findFirst: jest.fn().mockResolvedValue(ecriture) },
@@ -82,7 +84,7 @@ function monter(ecriture: Record<string, unknown> | null, arrivee: Record<string
     {} as unknown as ExerciceService,
     {} as AnalytiqueService,
   );
-  return { service, update, journalService, ligneEcriture, prisma };
+  return { service, update, journalService, ligneEcriture, prisma, tx };
 }
 
 describe('le transfert d’un brouillard hérité dans un journal ordinaire', () => {
@@ -115,6 +117,34 @@ describe('le transfert d’un brouillard hérité dans un journal ordinaire', ()
     expect(Object.keys(data)).not.toContain('statut');
     for (const f of Object.values(ligneEcriture)) expect(f).not.toHaveBeenCalled();
     expect(r).toMatchObject({ numeroPiece: 42, journal: { code: 'OD' } });
+  });
+
+  it('ses pièces jointes disent le nouveau journal et le nouveau numéro (relecture sage-l6, mineur 2)', async () => {
+    const { service, tx } = monter(heritee());
+    jest.spyOn(service, 'controlesDEntree').mockResolvedValue({
+      exercice: EXERCICE,
+      journal: OD,
+      date: new Date('2026-04-10'),
+      dateValeur: null,
+      sectionsParId: new Map(),
+    } as never);
+    // La relecture du brouillard, puis l'écriture transférée telle que la description la lit.
+    tx.ecriture.findFirst
+      .mockResolvedValueOnce({ statut: 'BROUILLARD', journalId: heritee().journalId, exerciceId: 'ex1' })
+      .mockResolvedValueOnce({
+        statut: 'BROUILLARD', estANouveauProvisoire: false, numeroPiece: 42, date: new Date('2026-04-10'),
+        libelle: 'Loyer', journalId: 'jOD', journal: { code: 'OD' },
+      });
+    tx.pieceJointeEcriture.count.mockResolvedValue(1);
+    tx.pieceJointeEcriture.findMany.mockResolvedValueOnce([{ id: 'pj-1' }]).mockResolvedValue([]);
+    await service.transfererDansUnJournalOrdinaire('t1', 'e1', { journalId: 'jOD' });
+    // Seules les pièces dont la description a changé, une à une.
+    expect(tx.pieceJointeEcriture.findMany.mock.calls[0][0].where).toEqual({
+      tenantId: 't1',
+      ecritureId: 'e1',
+      NOT: { ecritureDecrite: 'OD n° 42 du 10/04/2026 · Loyer' },
+    });
+    expect(tx.pieceJointeEcriture.update).toHaveBeenCalledWith({ where: { id: 'pj-1' }, data: { ecritureDecrite: 'OD n° 42 du 10/04/2026 · Loyer' } });
   });
 
   it('reportée au premier jour non clôturé, elle garde sa date d’origine en date de valeur (art. 22, 4°)', async () => {

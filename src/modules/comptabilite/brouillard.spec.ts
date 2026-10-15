@@ -140,6 +140,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
     const tx = {
       ligneEcriture: { deleteMany },
       ecriture: { update, findFirst: jest.fn().mockResolvedValue({ exerciceId: 'ex1' }) },
+      pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
       exercice: { findFirst: jest.fn().mockResolvedValue(exerciceOuvert) },
     };
     const tauxTva = { findMany: jest.fn().mockImplementation(({ where }: { where: { tenantId: string } }) =>
@@ -170,7 +171,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
       $transaction: jest.fn().mockImplementation((f: (t: unknown) => unknown) => f(tx)),
     } as Faux;
     const exercices = { verifierEcritureAutorisee: jest.fn().mockResolvedValue(undefined) };
-    return { svc: service(prisma, exercices), update, deleteMany, tauxTva };
+    return { svc: service(prisma, exercices), update, deleteMany, tauxTva, tx };
   }
 
   const LIGNES = [
@@ -199,6 +200,28 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
         ventilations: { create: [{ sectionId: 's1', planId: 'p1', debit: 655_000, credit: 0 }] },
       }),
     ]);
+  });
+
+  // Ligne sage-l6, relecture « échecs silencieux », mineur 2 · la description
+  // figée au dépôt disait encore l'ancienne date et l'ancien libellé.
+  it('la description des pièces jointes suit la date et le libellé, dans la transaction', async () => {
+    const { svc, tx } = monde();
+    tx.ecriture.findFirst
+      .mockResolvedValueOnce({ exerciceId: 'ex1' })
+      .mockResolvedValueOnce({
+        statut: 'BROUILLARD', estANouveauProvisoire: false, numeroPiece: 3, date: new Date('2026-03-15'),
+        libelle: 'Loyer de mars', journalId: 'j1', journal: { code: 'ACH' },
+      });
+    tx.pieceJointeEcriture.count.mockResolvedValue(1);
+    Object.assign(tx.pieceJointeEcriture, {
+      findMany: jest.fn().mockResolvedValueOnce([{ id: 'pj-1' }]).mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
+    });
+    await svc.modifier('t1', 'e1', { libelle: 'Loyer de mars' });
+    expect((tx.pieceJointeEcriture as any).update).toHaveBeenCalledWith({
+      where: { id: 'pj-1' },
+      data: { ecritureDecrite: 'ACH n° 3 du 15/03/2026 · Loyer de mars' },
+    });
   });
 
   it("refuse un taux de TVA d'un autre dossier, comme creer", async () => {

@@ -1,5 +1,8 @@
-import { StatutEcriture } from '@prisma/client';
+import { ConflictException } from '@nestjs/common';
+import { Prisma, StatutEcriture } from '@prisma/client';
 import type { LecteurDesPieces, ObjetLu, RegleDesPieces } from '../../common/pieces-jointes/table-des-pieces';
+import { acteurCourant } from '../../common/audit/contexte-audit';
+import { journalHorsPerimetre } from '../../common/perimetre/extension-perimetre-journaux';
 
 /**
  * LA PIÈCE JUSTIFICATIVE JOINTE À UNE ÉCRITURE (ligne sage-l6, fonction
@@ -73,11 +76,33 @@ export function motifRefusRetraitEcriture(e: EcritureDesPieces): string | null {
 }
 
 /**
+ * JOINDRE OU RETIRER LA PIÈCE D'UNE ÉCRITURE EST UNE SAISIE SUR SON JOURNAL
+ * (relecture « échecs silencieux » de la ligne sage-l6, mineur 6, décision
+ * de la ligne) · le profil de fonctions range déjà le contrôleur des pièces
+ * d'écriture en SAISIE (`fonctions-metier.ts`), et les journaux autorisés
+ * restreignent la saisie, jamais la lecture (`extension-perimetre-journaux.ts`)
+ * · le caissier qui ne tient que la caisse ne joint ni ne retire la facture
+ * d'un achat. La consultation et le téléchargement restent ouverts ; le
+ * commentaire, annotation d'OmegaX, aussi. Null quand l'acteur n'a aucune
+ * restriction (l'administrateur, ou la liste non posée).
+ */
+export function motifHorsPerimetreEcriture(journal: { id: string | null; code: string | null }): string | null {
+  const autorises = acteurCourant()?.journauxAutorises;
+  if (!journalHorsPerimetre(journal.id, autorises)) return null;
+  const ou = journal.code ? `au journal ${journal.code}` : 'à une écriture retirée depuis (pièce détachée)';
+  return (
+    `Cette pièce est jointe ${ou}, hors de votre périmètre de saisie · joindre ou retirer la pièce d'une écriture est ` +
+    "une saisie sur son journal. La consultation et le téléchargement restent ouverts ; l'administrateur du dossier " +
+    'règle les journaux autorisés dans la fenêtre Utilisateurs.'
+  );
+}
+
+/**
  * L'écriture désignée par son identifiant, dans le dossier · toute écriture
  * (brouillard, validée, situation) peut recevoir sa pièce, et c'est la règle
  * ci-dessus qui juge ce qu'elle permet.
  */
-async function lireEcritureDesPieces(db: LecteurDesPieces, tenantId: string, ecritureId: string): Promise<ObjetLu | null> {
+export async function lireEcritureDesPieces(db: LecteurDesPieces, tenantId: string, ecritureId: string): Promise<ObjetLu | null> {
   const e = await db.ecriture.findFirst({
     where: { id: ecritureId, tenantId },
     select: {
@@ -86,6 +111,7 @@ async function lireEcritureDesPieces(db: LecteurDesPieces, tenantId: string, ecr
       numeroPiece: true,
       date: true,
       libelle: true,
+      journalId: true,
       journal: { select: { code: true } },
     },
   });
@@ -94,6 +120,7 @@ async function lireEcritureDesPieces(db: LecteurDesPieces, tenantId: string, ecr
     description: descriptionDeLEcriture(e),
     motifRefusDepot: motifRefusDepotEcriture(e),
     motifRefusRetrait: motifRefusRetraitEcriture(e),
+    motifHorsPerimetre: motifHorsPerimetreEcriture({ id: e.journalId, code: e.journal.code }),
   };
 }
 
@@ -113,4 +140,108 @@ export const REGLE_PIECES_ECRITURE: RegleDesPieces = {
   designation: 'cette écriture',
   lireObjet: lireEcritureDesPieces,
   verrouiller: verrouillerEcriture,
+  // La pièce détachée n'a plus de journal · seul un utilisateur sans
+  // restriction la retire (une écriture sans journal ne se saisit pas).
+  motifHorsPerimetreDetachee: () => motifHorsPerimetreEcriture({ id: null, code: null }),
 };
+
+/** Combien de pièces une même lecture retouche au plus · les lots se suivent jusqu'au bout. */
+const LOT_PIECES = 200;
+
+/**
+ * L'ÉCRITURE QUI EN REMPLACE UNE AUTRE EMPORTE SES PIÈCES (relecture « échecs
+ * silencieux » de la ligne sage-l6, M1). Un module qui REMPLACE sa pièce au
+ * brouillard par une neuve (la fiche d'un bien dont la date d'acquisition
+ * change de mois dans un journal numéroté par mois, ou d'exercice) supprimait
+ * l'ancienne · la clé `SET NULL` détachait EN SILENCE la facture jointe, la
+ * neuve partait sans justificatif (AUDCIF art. 17, 3° ; art. 22, 7°), et la
+ * pièce détachée devenait retirable par quiconque. Appelée DANS la
+ * transaction qui retire l'ancienne, AVANT sa suppression · une mise à jour
+ * UNITAIRE par pièce (le journal d'audit garde chacune avant et après), la
+ * description refaite sur la neuve. Rend le nombre de pièces reportées.
+ */
+export async function reporterLesPieces(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  ancienneId: string,
+  nouvelleId: string,
+): Promise<number> {
+  const nouvelle = await lireEcritureDesPieces(tx, tenantId, nouvelleId);
+  if (!nouvelle) {
+    throw new ConflictException("L'écriture qui remplace la pièce a été retirée pendant le geste · rien n'est modifié.");
+  }
+  let reportees = 0;
+  // Chaque pièce reportée sort du filtre · la boucle s'arrête au premier lot vide.
+  for (;;) {
+    const lot = await tx.pieceJointeEcriture.findMany({
+      where: { tenantId, ecritureId: ancienneId },
+      orderBy: { id: 'asc' },
+      take: LOT_PIECES,
+      select: { id: true, nomFichier: true },
+    });
+    if (lot.length === 0) return reportees;
+    for (const p of lot) {
+      try {
+        await tx.pieceJointeEcriture.update({ where: { id: p.id }, data: { ecritureId: nouvelleId, ecritureDecrite: nouvelle.description } });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          throw new ConflictException(
+            `La pièce « ${p.nomFichier} » est déjà jointe à l'écriture qui remplace (même contenu) · rien n'est modifié. ` +
+              "Retirez l'un des deux exemplaires, puis relancez.",
+          );
+        }
+        throw e;
+      }
+      reportees++;
+    }
+  }
+}
+
+/**
+ * LA DESCRIPTION SUIT L'ÉCRITURE (relecture « échecs silencieux », mineur 2) ·
+ * figée au dépôt, elle disait encore l'ancien journal, l'ancien numéro ou
+ * l'ancienne date d'une écriture modifiée ou transférée au brouillard, et
+ * c'est elle que lit la pièce détachée. Refaite DANS la transaction qui
+ * change l'écriture, une pièce à la fois (journal d'audit), seulement celles
+ * dont elle a changé. Rend le nombre de pièces retouchées.
+ */
+export async function retoucherDescriptionDesPieces(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  ecritureId: string,
+): Promise<number> {
+  // La plupart des écritures n'ont aucune pièce · un décompte, et rien d'autre.
+  const nombre = await tx.pieceJointeEcriture.count({ where: { tenantId, ecritureId } });
+  return nombre === 0 ? 0 : refaireLesDescriptions(tx, tenantId, ecritureId);
+}
+
+async function refaireLesDescriptions(tx: Prisma.TransactionClient, tenantId: string, ecritureId: string): Promise<number> {
+  const e = await lireEcritureDesPieces(tx, tenantId, ecritureId);
+  if (!e) return 0;
+  let retouchees = 0;
+  for (;;) {
+    const lot = await tx.pieceJointeEcriture.findMany({
+      where: { tenantId, ecritureId, NOT: { ecritureDecrite: e.description } },
+      orderBy: { id: 'asc' },
+      take: LOT_PIECES,
+      select: { id: true },
+    });
+    if (lot.length === 0) return retouchees;
+    for (const p of lot) {
+      await tx.pieceJointeEcriture.update({ where: { id: p.id }, data: { ecritureDecrite: e.description } });
+      retouchees++;
+    }
+  }
+}
+
+/**
+ * LES PIÈCES QUE LA SUPPRESSION D'UNE ÉCRITURE AU BROUILLARD VA DÉTACHER
+ * (relecture « échecs silencieux », mineur 1) · comptées dans la transaction
+ * qui la retire, leur description refaite une dernière fois, pour que le
+ * geste le DISE et que la pièce détachée dise ce qu'elle justifiait.
+ */
+export async function preparerLesPiecesADetacher(tx: Prisma.TransactionClient, tenantId: string, ecritureId: string): Promise<number> {
+  const nombre = await tx.pieceJointeEcriture.count({ where: { tenantId, ecritureId } });
+  if (nombre > 0) await refaireLesDescriptions(tx, tenantId, ecritureId);
+  return nombre;
+}

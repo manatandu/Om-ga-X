@@ -1,4 +1,5 @@
 import { motifLignesTenues } from './lignes-tenues';
+import { preparerLesPiecesADetacher, retoucherDescriptionDesPieces } from './pieces-jointes-ecriture';
 import { ecartClasse9, motifRefusClasse9 } from './classe-9-equilibree';
 import { motifExerciceCloture } from './exercice-cloture';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -1506,7 +1507,7 @@ export class EcritureService {
         const numeroPiece = changeDeMois
           ? await this.journalService.prochainNumeroPiece(tenantId, ecriture.journal, ecriture.exerciceId, date, tx)
           : undefined;
-        return tx.ecriture.update({
+        const modifiee = await tx.ecriture.update({
           where: { id: ecritureId },
           data: {
             date,
@@ -1517,6 +1518,10 @@ export class EcritureService {
           },
           include: { lignes: { include: { compte: true } }, journal: true },
         });
+        // La description de ses pièces suit la date, le numéro et le libellé
+        // (relecture « échecs silencieux » de la ligne sage-l6, mineur 2).
+        await retoucherDescriptionDesPieces(tx, tenantId, ecritureId);
+        return modifiee;
       },
       "Trop d'opérations simultanées sur ce journal · veuillez réessayer.",
     );
@@ -1598,7 +1603,7 @@ export class EcritureService {
         const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, journal, relue.exerciceId, date, tx);
         // Mise à jour UNITAIRE · le journal d'audit en garde l'en-tête d'avant
         // (journal, numéro, date), seule trace de l'origine (art. 22, 1°).
-        return tx.ecriture.update({
+        const transferee = await tx.ecriture.update({
           where: { id: ecritureId },
           data: {
             journalId: journal.id,
@@ -1610,6 +1615,9 @@ export class EcritureService {
           },
           select: { id: true, numeroPiece: true, date: true, dateValeur: true, journal: { select: { code: true } } },
         });
+        // Ses pièces disent le nouveau journal et le nouveau numéro (mineur 2).
+        await retoucherDescriptionDesPieces(tx, tenantId, ecritureId);
+        return transferee;
       },
       `Trop d'écritures enregistrées au même instant sur le journal ${journal.code} · veuillez réessayer.`,
     );
@@ -1664,6 +1672,7 @@ export class EcritureService {
       },
       select: { id: true },
     });
+    await retoucherDescriptionDesPieces(tx, tenantId, ecritureId);
     return true;
   }
 
@@ -1697,7 +1706,7 @@ export class EcritureService {
     const tolere = pourLeModule?.lettrageTolere ?? null;
     const lue = await this.trouverEnBrouillard(tenantId, ecritureId, tolere);
     await this.verifierAucunModuleNeLaTient(tenantId, [ecritureId], 'se supprime', pourLeModule?.detenteur);
-    await transactionJournalisee(this.prisma, async (tx) => {
+    const piecesDetachees = await transactionJournalisee(this.prisma, async (tx) => {
       // Le module libère son marqueur DANS la même transaction · jamais
       // avant (un échec laisserait l'écriture sans son opération), jamais
       // après (l'écriture partie, le marqueur interdirait encore la période).
@@ -1727,6 +1736,10 @@ export class EcritureService {
       // au livre-journal à aucun titre (`ecritures-de-situation.ts`). Le
       // filtre reprend le statut LU · jamais un VALIDÉ, quel que soit le cas.
       const supprimable = lue.statut === StatutEcriture.SITUATION ? StatutEcriture.SITUATION : StatutEcriture.BROUILLARD;
+      // SES PIÈCES SE DÉTACHENT (clé SET NULL) · comptées ici, leur
+      // description refaite une dernière fois, et le geste le DIT (relecture
+      // « échecs silencieux » de la ligne sage-l6, mineur 1).
+      const detachees = await preparerLesPiecesADetacher(tx, tenantId, ecritureId);
       await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: supprimable } } });
       const { count } = await tx.ecriture.deleteMany({ where: { id: ecritureId, tenantId, statut: supprimable } });
       if (count !== 1) {
@@ -1735,8 +1748,9 @@ export class EcritureService {
             "Rechargez · une écriture validée se corrige par inscription en négatif (AUDCIF art. 20).",
         );
       }
+      return detachees;
     });
-    return { supprime: true };
+    return { supprime: true, piecesDetachees };
   }
 
   /**

@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma, RoleUtilisateur, StatutEcriture } from '@prisma/client';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { INTERCEPTORS_METADATA, EXCEPTION_FILTERS_METADATA } from '@nestjs/common/constants';
-import { PiecesJointesService } from './pieces-jointes.service';
+import { MOTIF_PIECE_RETIREE, PiecesJointesService } from './pieces-jointes.service';
+import { dansContexteAudit } from '../audit/contexte-audit';
 import { RefusEnvoi } from './refus-envoi.filter';
 import { empreinteDocument, entetesTelechargement } from './pieces-jointes';
 import { TABLES_DES_PIECES, type RegleDesPieces } from './table-des-pieces';
@@ -15,6 +16,8 @@ import { ROLES_KEY } from '../decorators/roles.decorator';
 import {
   REGLE_PIECES_ECRITURE,
   descriptionDeLEcriture,
+  reporterLesPieces,
+  retoucherDescriptionDesPieces,
   motifRefusDepotEcriture,
   motifRefusRetraitEcriture,
   type EcritureDesPieces,
@@ -75,6 +78,7 @@ function prismaFactice(opts: {
   ecritureExiste?: boolean;
   pieces?: Array<Record<string, unknown>>;
   conflit?: string;
+  journalId?: string;
 } = {}) {
   const ordre: string[] = [];
   const pieces = tableFactice(opts.pieces ?? []);
@@ -88,7 +92,10 @@ function prismaFactice(opts: {
       findFirst: jest.fn(async (a: any) => {
         ordre.push('lire');
         if (opts.ecritureExiste === false || a.where.tenantId !== 't') return null;
-        return ecriture({ statut: opts.statut ?? StatutEcriture.BROUILLARD, estANouveauProvisoire: !!opts.aNouveauProvisoire });
+        return {
+          ...ecriture({ statut: opts.statut ?? StatutEcriture.BROUILLARD, estANouveauProvisoire: !!opts.aNouveauProvisoire }),
+          journalId: opts.journalId ?? 'j-ach',
+        };
       }),
     },
     $queryRaw: jest.fn(async () => {
@@ -333,5 +340,143 @@ describe('pièces jointes · les routes', () => {
       const source = readFileSync(join(__dirname, fichier), 'utf8');
       expect([fichier, /servirLaPiece\(res, await this\.pieces\.telecharger\(/.test(source)]).toEqual([fichier, true]);
     }
+  });
+});
+
+/** Un acteur restreint aux journaux nommés, le temps d'un geste. */
+function restreintA<T>(journaux: string[] | null, geste: () => Promise<T>): Promise<T> {
+  return dansContexteAudit({ acteurEmail: 'caisse@asbl.cd', tenantId: 't', journauxAutorises: journaux }, geste);
+}
+
+describe('pièces jointes · joindre ou retirer la pièce d’une écriture est une SAISIE sur son journal (relecture sage-l6, mineur 6)', () => {
+  it('hors du périmètre, dépôt et retrait refusés en 403 nommé · la liste ferme les deux gestes', async () => {
+    const { client, pieces } = prismaFactice({ journalId: 'j-ach', pieces: [{ id: 'pj-1', tenantId: 't', ecritureId: 'e-1' }] });
+    const service = new PiecesJointesService(client);
+    const refus = restreintA(['j-caisse'], () =>
+      service.deposer('t', REGLE_PIECES_ECRITURE, 'e-1', { originalname: 'f.pdf', buffer: PDF }, null, 'u'),
+    );
+    await expect(refus).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      restreintA(['j-caisse'], () => service.deposer('t', REGLE_PIECES_ECRITURE, 'e-1', { originalname: 'f.pdf', buffer: PDF }, null, 'u')),
+    ).rejects.toThrow(/au journal ACH, hors de votre périmètre de saisie/);
+    await expect(restreintA(['j-caisse'], () => service.retirer('t', REGLE_PIECES_ECRITURE, 'pj-1'))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(pieces.create).not.toHaveBeenCalled();
+    expect(pieces.delete).not.toHaveBeenCalled();
+    const liste = await restreintA(['j-caisse'], () => service.lister('t', REGLE_PIECES_ECRITURE, 'e-1'));
+    expect(liste.depot.permis).toBe(false);
+    expect(liste.retrait.permis).toBe(false);
+    expect(liste.depot.motif).toMatch(/hors de votre périmètre/);
+  });
+
+  it('la consultation et le téléchargement restent ouverts', async () => {
+    const { client } = prismaFactice({ journalId: 'j-ach', pieces: [{ id: 'pj-1', tenantId: 't', ecritureId: 'e-1', nomFichier: 'f.pdf', typeMime: 'application/pdf', contenu: PDF }] });
+    const service = new PiecesJointesService(client);
+    await expect(restreintA(['j-caisse'], () => service.telecharger('t', 'ECRITURE', 'pj-1'))).resolves.toMatchObject({ nomFichier: 'f.pdf' });
+  });
+
+  it('dans le périmètre, ou sans restriction, rien ne change', async () => {
+    const { client, pieces } = prismaFactice({ journalId: 'j-ach', pieces: [{ id: 'pj-1', tenantId: 't', ecritureId: 'e-1' }] });
+    const service = new PiecesJointesService(client);
+    await restreintA(['j-ach'], () => service.deposer('t', REGLE_PIECES_ECRITURE, 'e-1', { originalname: 'f.pdf', buffer: PDF }, null, 'u'));
+    await restreintA(null, () => service.retirer('t', REGLE_PIECES_ECRITURE, 'pj-1'));
+    expect(pieces.create).toHaveBeenCalledTimes(1);
+    expect(pieces.delete).toHaveBeenCalledWith({ where: { id: 'pj-1' } });
+  });
+
+  it('une pièce DÉTACHÉE n’a plus de journal · seul un utilisateur sans restriction la retire', async () => {
+    const { client, pieces } = prismaFactice({ pieces: [{ id: 'pj-d', tenantId: 't', ecritureId: null }] });
+    const service = new PiecesJointesService(client);
+    await expect(restreintA(['j-caisse'], () => service.retirer('t', REGLE_PIECES_ECRITURE, 'pj-d'))).rejects.toThrow(
+      /écriture retirée depuis \(pièce détachée\), hors de votre périmètre/,
+    );
+    await restreintA(null, () => service.retirer('t', REGLE_PIECES_ECRITURE, 'pj-d'));
+    expect(pieces.delete).toHaveBeenCalledWith({ where: { id: 'pj-d' } });
+  });
+});
+
+describe('pièces jointes · un geste concurrent se dit, jamais une erreur technique (relecture sage-l6, mineur 4)', () => {
+  const p2025 = () => new Prisma.PrismaClientKnownRequestError('Record to update not found.', { code: 'P2025', clientVersion: 'x' });
+
+  it('le commentaire d’une pièce retirée entre la lecture et l’écriture · 409 nommé', async () => {
+    const { client, pieces } = prismaFactice({ pieces: [{ id: 'pj-1', tenantId: 't', ecritureId: 'e-1' }] });
+    pieces.update.mockRejectedValueOnce(p2025());
+    await expect(new PiecesJointesService(client).modifierCommentaire('t', 'ECRITURE', 'pj-1', 'Facture')).rejects.toThrow(MOTIF_PIECE_RETIREE);
+  });
+
+  it('deux retraits simultanés · le second reçoit 409 nommé', async () => {
+    const { client, pieces } = prismaFactice({ pieces: [{ id: 'pj-1', tenantId: 't', ecritureId: 'e-1' }] });
+    pieces.delete.mockRejectedValueOnce(p2025());
+    await expect(new PiecesJointesService(client).retirer('t', REGLE_PIECES_ECRITURE, 'pj-1')).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('pièces jointes · elles suivent leur écriture (relecture sage-l6, M1 et mineur 2)', () => {
+  function tx(pieces: Array<Record<string, unknown>>, ecritures: Record<string, Record<string, unknown>>) {
+    const table = tableFactice(pieces);
+    // `NOT` et `update` honorés · une pièce reportée sort du filtre de l'ancienne.
+    table.findMany.mockImplementation(async (a: any) =>
+      pieces.filter(
+        (l) =>
+          l.tenantId === a.where.tenantId &&
+          l.ecritureId === a.where.ecritureId &&
+          (!a.where.NOT || l.ecritureDecrite !== a.where.NOT.ecritureDecrite),
+      ),
+    );
+    table.update.mockImplementation(async (a: any) => {
+      const l = pieces.find((x) => x.id === a.where.id)!;
+      Object.assign(l, a.data);
+      return l as any;
+    });
+    table.count.mockImplementation(async (a: any) => pieces.filter((l) => l.tenantId === a.where.tenantId && l.ecritureId === a.where.ecritureId).length);
+    return {
+      pieceJointeEcriture: table,
+      ecriture: { findFirst: jest.fn(async (a: any) => (a.where.tenantId === 't' ? ecritures[a.where.id] ?? null : null)) },
+    } as any;
+  }
+  const neuve = { ...ecriture({ numeroPiece: 1, date: new Date('2026-02-10T00:00:00Z'), libelle: 'Acquisition · Camion', journal: { code: 'OD' } }), journalId: 'j-od' };
+
+  it('reportées de l’ancienne à la neuve, une à une, la description refaite', async () => {
+    const pieces = [
+      { id: 'pj-1', tenantId: 't', ecritureId: 'e-ancienne', nomFichier: 'a.pdf', ecritureDecrite: 'OD n° 4 du 01/01/2026 · Acquisition · Camion' },
+      { id: 'pj-2', tenantId: 't', ecritureId: 'e-ancienne', nomFichier: 'b.pdf', ecritureDecrite: 'OD n° 4 du 01/01/2026 · Acquisition · Camion' },
+      { id: 'pj-3', tenantId: 't', ecritureId: 'e-autre', nomFichier: 'c.pdf', ecritureDecrite: 'x' },
+    ];
+    const t = tx(pieces, { 'e-neuve': neuve });
+    await expect(reporterLesPieces(t, 't', 'e-ancienne', 'e-neuve')).resolves.toBe(2);
+    expect(pieces.map((p) => [p.id, p.ecritureId, p.ecritureDecrite])).toEqual([
+      ['pj-1', 'e-neuve', 'OD n° 1 du 10/02/2026 · Acquisition · Camion'],
+      ['pj-2', 'e-neuve', 'OD n° 1 du 10/02/2026 · Acquisition · Camion'],
+      ['pj-3', 'e-autre', 'x'],
+    ]);
+    expect(t.pieceJointeEcriture.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('la neuve porte déjà le même fichier · 409 qui le nomme, rien n’est modifié', async () => {
+    const t = tx([{ id: 'pj-1', tenantId: 't', ecritureId: 'e-ancienne', nomFichier: 'facture.pdf' }], { 'e-neuve': neuve });
+    t.pieceJointeEcriture.update.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'x' }),
+    );
+    await expect(reporterLesPieces(t, 't', 'e-ancienne', 'e-neuve')).rejects.toThrow(/« facture\.pdf » est déjà jointe à l'écriture qui remplace/);
+  });
+
+  it('la neuve retirée entre-temps · 409, aucune pièce ne bouge', async () => {
+    const t = tx([{ id: 'pj-1', tenantId: 't', ecritureId: 'e-ancienne', nomFichier: 'a.pdf' }], {});
+    await expect(reporterLesPieces(t, 't', 'e-ancienne', 'e-neuve')).rejects.toBeInstanceOf(ConflictException);
+    expect(t.pieceJointeEcriture.update).not.toHaveBeenCalled();
+  });
+
+  it('la description retouchée seulement où elle a changé ; sans pièce, l’écriture n’est pas relue', async () => {
+    const pieces = [
+      { id: 'pj-1', tenantId: 't', ecritureId: 'e-neuve', ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' },
+      { id: 'pj-2', tenantId: 't', ecritureId: 'e-neuve', ecritureDecrite: 'ancienne' },
+    ];
+    const t = tx(pieces, { 'e-neuve': neuve });
+    await expect(retoucherDescriptionDesPieces(t, 't', 'e-neuve')).resolves.toBe(1);
+    expect(t.pieceJointeEcriture.update).toHaveBeenCalledWith({ where: { id: 'pj-2' }, data: { ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' } });
+    const vide = tx([], { 'e-neuve': neuve });
+    await expect(retoucherDescriptionDesPieces(vide, 't', 'e-neuve')).resolves.toBe(0);
+    expect(vide.ecriture.findFirst).not.toHaveBeenCalled();
   });
 });

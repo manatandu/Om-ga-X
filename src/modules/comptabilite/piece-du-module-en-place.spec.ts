@@ -35,6 +35,8 @@ describe('EcritureService.modifierPieceDuModule', () => {
         }),
       },
       ligneEcriture: { deleteMany: async () => ({ count: retirees }) },
+      // Aucune pièce jointe · la description n'a rien à suivre (ligne sage-l6).
+      pieceJointeEcriture: { count: async () => 0 },
     };
     const s = new EcritureService({} as never, {} as never, {} as never, {} as never);
     jest.spyOn(s, 'controlesDEntree').mockResolvedValue({ date: new Date('2026-03-10T00:00:00.000Z'), sectionsParId: new Map() } as never);

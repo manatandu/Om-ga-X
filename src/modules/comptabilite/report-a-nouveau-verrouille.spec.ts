@@ -24,6 +24,7 @@ function monter(ecriture: { exerciceId: string; estGenereeParCloture: boolean },
     },
     exercice: { findFirst: jest.fn().mockResolvedValue({ id: premierId }) },
     ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({}) },
+    pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
   } as Record<string, unknown>;
   // Toute autre table ne rend qu'un comptage nul · aucun module ne tient
   // l'écriture, seul le report est en cause.
@@ -51,6 +52,6 @@ describe('report à-nouveau et journal', () => {
   it('le bilan d’ouverture du PREMIER exercice reste retouchable', async () => {
     // Il porte la reprise du dossier, saisie à la main, pas un report calculé.
     const { service } = monter({ exerciceId: 'ex2026', estGenereeParCloture: true }, 'ex2026');
-    await expect(service.supprimer('t1', 'e1')).resolves.toEqual({ supprime: true });
+    await expect(service.supprimer('t1', 'e1')).resolves.toEqual({ supprime: true, piecesDetachees: 0 });
   });
 });

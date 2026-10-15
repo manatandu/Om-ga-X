@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { FicheImmobilisationService } from './fiche-immobilisation.service';
 
 /**
@@ -97,6 +98,12 @@ function fabrique(
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    // Les pièces jointes à l'écriture d'acquisition · aucune, sauf quand le cas en pose.
+    pieceJointeEcriture: {
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
+      count: jest.fn().mockResolvedValue(0),
+    },
     // La doublure honore la requête · la lecture de l'exercice CLÔTURÉ qui a
     // porté le bien (relecture M4) ne rend rien, sauf quand le cas le pose.
     exercice: {
@@ -260,6 +267,48 @@ describe('la modification d’une fiche', () => {
     expect(prisma.immobilisation.update.mock.invocationCallOrder[0]).toBeLessThan(prisma.ecriture.deleteMany.mock.invocationCallOrder[0]);
   });
 
+  it('changée de mois · les pièces jointes de l’ancienne SUIVENT la neuve, une à une, avant sa suppression (relecture sage-l6, M1)', async () => {
+    const { service, prisma } = fabrique({ numerotation: 'MENSUELLE' });
+    prisma.ecriture.findFirst.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve({
+        ...(where.id === 'ecr-nouvelle' ? { id: 'ecr-nouvelle', numeroPiece: 1, date: new Date('2026-02-10') } : { id: 'ecr-acq', numeroPiece: 4, date: new Date('2026-01-01') }),
+        statut: 'BROUILLARD',
+        estANouveauProvisoire: false,
+        journalId: 'j-od',
+        exerciceId: 'ex-n',
+        libelle: 'Acquisition · Camion',
+        journal: { code: 'OD', numerotation: 'MENSUELLE' },
+        exercice: { statut: 'OUVERT' },
+        lignes: [
+          { compteId: 'c-2451', debit: 12_000_000, credit: 0, lettre: null, lettrageId: null, rapprochementId: null },
+          { compteId: 'c-521', debit: 0, credit: 12_000_000, lettre: null, lettrageId: null, rapprochementId: null },
+        ],
+      }),
+    );
+    prisma.pieceJointeEcriture.findMany
+      .mockResolvedValueOnce([
+        { id: 'pj-1', nomFichier: 'facture.pdf' },
+        { id: 'pj-2', nomFichier: 'bon.pdf' },
+      ])
+      .mockResolvedValue([]);
+    await service.modifier('t-1', 'u-1', ID, { valeurOrigine: 15_000_000, dateAcquisition: '2026-02-10' });
+    // Lues sur l'ANCIENNE, dans le dossier.
+    expect(prisma.pieceJointeEcriture.findMany.mock.calls[0][0].where).toEqual({ tenantId: 't-1', ecritureId: 'ecr-acq' });
+    // Une mise à jour UNITAIRE par pièce, vers la neuve, sa description refaite.
+    expect(prisma.pieceJointeEcriture.update.mock.calls).toEqual([
+      [{ where: { id: 'pj-1' }, data: { ecritureId: 'ecr-nouvelle', ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' } }],
+      [{ where: { id: 'pj-2' }, data: { ecritureId: 'ecr-nouvelle', ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' } }],
+    ]);
+    // AVANT la suppression de l'ancienne · sinon la clé SET NULL les détachait.
+    expect(prisma.pieceJointeEcriture.update.mock.invocationCallOrder[1]).toBeLessThan(prisma.ecriture.deleteMany.mock.invocationCallOrder[0]);
+  });
+
+  it('retouchée en place · aucune pièce ne bouge (la pièce garde son écriture)', async () => {
+    const { service, prisma } = fabrique();
+    await service.modifier('t-1', 'u-1', ID, { valeurOrigine: 15_000_000 });
+    expect(prisma.pieceJointeEcriture.update).not.toHaveBeenCalled();
+  });
+
   it('l’ancienne écriture validée entre-temps · 409, et la nouvelle est retirée du brouillard', async () => {
     const { service, prisma } = fabrique({ numerotation: 'MENSUELLE' });
     prisma.ecriture.deleteMany.mockResolvedValueOnce({ count: 0 });
@@ -298,6 +347,15 @@ describe('la suppression d’une fiche', () => {
     );
     expect(prisma.annulationTraitementImmobilisation.delete).toHaveBeenCalledWith({ where: { id: 'ann-1' } });
     expect(prisma.annulationTraitementImmobilisation.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('un document joint PENDANT la suppression · la clé étrangère refuse, et le refus se nomme (relecture sage-l6, mineur 4)', async () => {
+    const { service, prisma } = fabrique();
+    prisma.immobilisation.delete.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Foreign key constraint violated', { code: 'P2003', clientVersion: 'essai' }),
+    );
+    await expect(service.supprimer('t-1', ID)).rejects.toThrow(/a reçu un document ou un traitement pendant la suppression/);
+    expect(prisma.ecriture.deleteMany).not.toHaveBeenCalled();
   });
 
   it('refuse une fiche dont l’écriture est validée, ou qu’un usage retient', async () => {

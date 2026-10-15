@@ -58,6 +58,9 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
       // A7 quater, m6 · la suppression relit le brouillard dans sa transaction.
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    // Les pièces jointes de l'écriture (ligne sage-l6) · aucune, la
+    // suppression les compte pour le dire.
+    pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
     ligneEcriture: {
       deleteMany: jest.fn().mockResolvedValue({}),
       // La ligne que la réimputation déplace · son écriture est « e1 », celle
@@ -364,7 +367,27 @@ describe('3 · une écriture qu’un module tient ne se supprime pas', () => {
   });
 
   it('laisse partir une écriture que personne ne tient', async () => {
-    await expect(serviceEcriture().supprimer('t1', 'e1')).resolves.toEqual({ supprime: true });
+    await expect(serviceEcriture().supprimer('t1', 'e1')).resolves.toEqual({ supprime: true, piecesDetachees: 0 });
+  });
+
+  // Ligne sage-l6, relecture « échecs silencieux », mineurs 1 et 2 · la clé
+  // SET NULL détache ses pièces SANS ERREUR · le geste les compte dans sa
+  // transaction, AVANT le retrait, refait leur description une dernière fois,
+  // et le DIT (le brouillard l'affiche, avec l'endroit où les retrouver).
+  it('les pièces jointes qu’elle détache sont comptées, leur description refaite, et le retour les dit', async () => {
+    const s = serviceEcriture();
+    const prisma = (s as any).prisma;
+    prisma.pieceJointeEcriture.count = jest.fn().mockResolvedValue(2);
+    prisma.pieceJointeEcriture.findMany = jest.fn().mockResolvedValueOnce([{ id: 'pj-1' }, { id: 'pj-2' }]).mockResolvedValue([]);
+    prisma.pieceJointeEcriture.update = jest.fn().mockResolvedValue({});
+    prisma.ecriture.findFirst.mockResolvedValue({
+      ...(await prisma.ecriture.findFirst()),
+      numeroPiece: 9, estANouveauProvisoire: false,
+    });
+    await expect(s.supprimer('t1', 'e1')).resolves.toEqual({ supprime: true, piecesDetachees: 2 });
+    expect(prisma.pieceJointeEcriture.count).toHaveBeenCalledWith({ where: { tenantId: 't1', ecritureId: 'e1' } });
+    expect(prisma.pieceJointeEcriture.update).toHaveBeenCalledWith({ where: { id: 'pj-1' }, data: { ecritureDecrite: 'OD n° 9 du 04/03/2026 · Pièce' } });
+    expect(prisma.pieceJointeEcriture.update.mock.invocationCallOrder[1]).toBeLessThan(prisma.ecriture.deleteMany.mock.invocationCallOrder[0]);
   });
 
   // A7 QUATER, m6 · validée entre la lecture et la transaction, l'écriture ne
@@ -398,7 +421,7 @@ describe('3 · une écriture qu’un module tient ne se supprime pas', () => {
     const liberer = jest.fn().mockResolvedValue(undefined);
     await expect(
       s.supprimer('t1', 'e1', { detenteur: 'une créance douteuse (perte ou recouvrement)', liberer, lettrageTolere: 'g-A' }),
-    ).resolves.toEqual({ supprime: true });
+    ).resolves.toEqual({ supprime: true, piecesDetachees: 0 });
     expect(liberer).toHaveBeenCalled();
     // Un groupe posé entre-temps, encore là après `liberer`, refuse DANS la transaction.
     prisma.ligneEcriture.findMany.mockResolvedValue([{ lettre: 'B', lettrageId: 'g-B' }]);

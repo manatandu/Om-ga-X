@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { transactionJournalisee } from '../audit/transaction-journalisee';
@@ -94,13 +94,18 @@ export class PiecesJointesService {
       table.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: PLAFOND_PIECES_PAR_LISTE, select: SANS_CONTENU }),
       table.count({ where }),
     ]);
+    // Hors du périmètre de l'acteur, ni dépôt ni retrait · le motif le dit,
+    // et l'écran ferme les deux gestes au lieu d'attendre le 403.
+    const horsPerimetre = objet.motifHorsPerimetre ?? null;
+    const depot = horsPerimetre ?? objet.motifRefusDepot;
+    const retrait = horsPerimetre ?? objet.motifRefusRetrait;
     return {
       description: objet.description,
       pieces,
       total,
       tronque: total > pieces.length,
-      depot: { permis: objet.motifRefusDepot === null, motif: objet.motifRefusDepot },
-      retrait: { permis: objet.motifRefusRetrait === null, motif: objet.motifRefusRetrait },
+      depot: { permis: depot === null, motif: depot },
+      retrait: { permis: retrait === null, motif: retrait },
     };
   }
 
@@ -114,6 +119,7 @@ export class PiecesJointesService {
     auteur: string,
   ): Promise<PieceListee> {
     const objet = await this.objetDuDossier(this.prisma, tenantId, regle, objetId);
+    if (objet.motifHorsPerimetre) throw new ForbiddenException(objet.motifHorsPerimetre);
     if (objet.motifRefusDepot) throw new BadRequestException(objet.motifRefusDepot);
     if (!fichier) throw new BadRequestException('Aucun fichier reçu.');
     // Multer lit le nom en latin1 · voir `decoderNomMultipart`.
@@ -201,7 +207,14 @@ export class PiecesJointesService {
     const table = this.delegue(this.prisma, objet);
     const piece = await table.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!piece) throw new NotFoundException('Pièce introuvable pour ce dossier.');
-    return table.update({ where: { id }, data: { commentaire: texte || null }, select: SANS_CONTENU });
+    try {
+      return await table.update({ where: { id }, data: { commentaire: texte || null }, select: SANS_CONTENU });
+    } catch (e) {
+      // Retirée entre la lecture et la mise à jour (mineur 4 de la relecture) ·
+      // un refus nommé, jamais une erreur technique.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') throw new ConflictException(MOTIF_PIECE_RETIREE);
+      throw e;
+    }
   }
 
   /**
@@ -225,9 +238,18 @@ export class PiecesJointesService {
       if (objetId) {
         if (regle.verrouiller) await regle.verrouiller(tx, tenantId, objetId);
         const objet = await regle.lireObjet(tx, tenantId, objetId);
+        if (objet?.motifHorsPerimetre) throw new ForbiddenException(objet.motifHorsPerimetre);
         if (objet?.motifRefusRetrait) throw new ConflictException(objet.motifRefusRetrait);
+      } else {
+        const horsPerimetre = regle.motifHorsPerimetreDetachee?.() ?? null;
+        if (horsPerimetre) throw new ForbiddenException(horsPerimetre);
       }
-      await table.delete({ where: { id } });
+      try {
+        await table.delete({ where: { id } });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') throw new ConflictException(MOTIF_PIECE_RETIREE);
+        throw e;
+      }
     });
     return { retire: true };
   }
@@ -273,6 +295,9 @@ export class PiecesJointesService {
     };
   }
 }
+
+/** Une pièce retirée par un autre geste entre la lecture et l'écriture · dit, jamais une erreur technique. */
+export const MOTIF_PIECE_RETIREE = 'Cette pièce a été retirée par un autre geste pendant le vôtre · rechargez la liste.';
 
 function majuscule(texte: string): string {
   return texte.charAt(0).toUpperCase() + texte.slice(1);

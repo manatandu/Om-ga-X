@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { reporterLesPieces } from '../comptabilite/pieces-jointes-ecriture';
 import { ActionAudit, ModeAmortissement, NumerotationPiece, Prisma, StatutEcriture, StatutExercice, StatutImmobilisation } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
@@ -209,6 +210,11 @@ export class FicheImmobilisationService {
           });
           if (!fait) throw new ConflictException("La pièce d'acquisition a changé pendant la modification · relancez-la.");
         } else if (relu.acquisition) {
+          // LA NEUVE EMPORTE LES PIÈCES DE L'ANCIENNE, avant que celle-ci ne
+          // parte (relecture « échecs silencieux » de la ligne sage-l6, M1) ·
+          // la clé SET NULL détachait en silence la facture jointe, et la
+          // neuve partait sans justificatif (AUDCIF art. 17, 3° ; art. 22, 7°).
+          if (nouvelle) await reporterLesPieces(tx, tenantId, relu.acquisition.id, nouvelle.id);
           // Une et une seule, ENCORE au brouillard, sinon rien ne part (409).
           await tx.ligneEcriture.deleteMany({
             where: { ecritureId: relu.acquisition.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } },
@@ -250,6 +256,15 @@ export class FicheImmobilisationService {
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
           throw new ConflictException('La fiche a été retirée par un autre geste.');
+        }
+        // Un usage posé entre la lecture et la suppression (un document joint,
+        // un traitement) · la clé étrangère refuse, et le refus se nomme
+        // (relecture « échecs silencieux », mineur 4).
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+          throw new ConflictException(
+            "La fiche a reçu un document ou un traitement pendant la suppression · rien n'est supprimé. Rechargez la fiche : " +
+              "retirez d'abord ce qui la porte (onglet Documents), ou mettez le bien en sommeil.",
+          );
         }
         throw err;
       }

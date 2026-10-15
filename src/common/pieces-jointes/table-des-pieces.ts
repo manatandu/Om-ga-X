@@ -25,6 +25,12 @@ export interface ObjetLu {
   motifRefusDepot: string | null;
   /** Le motif qui refuse de RETIRER une pièce de cet objet, ou null. */
   motifRefusRetrait: string | null;
+  /**
+   * Le motif qui refuse dépôt ET retrait à CET acteur (403), ou null · les
+   * journaux autorisés pour la pièce d'une écriture (mineur 6 de la relecture).
+   * La consultation et le téléchargement ne le lisent pas.
+   */
+  motifHorsPerimetre?: string | null;
 }
 
 export interface RegleDesPieces {
@@ -44,6 +50,11 @@ export interface RegleDesPieces {
    * (l'écriture validée entre la lecture et le retrait). Facultatif.
    */
   verrouiller?(db: LecteurDesPieces, tenantId: string, objetId: string): Promise<void>;
+  /**
+   * Le motif qui refuse à CET acteur de retirer une pièce DÉTACHÉE (objet
+   * retiré depuis), ou null. Facultatif.
+   */
+  motifHorsPerimetreDetachee?(): string | null;
 }
 
 /**
