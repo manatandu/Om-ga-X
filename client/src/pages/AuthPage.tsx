@@ -352,7 +352,17 @@ export function AuthPage() {
           l'espace de travail n'est atteignable que par ceux qui ont déjà
           accepté, ce qui est exactement l'inverse de ce qu'on veut.
         */}
-        <div className="mt-2 text-[11px] text-text-dim">
+        {/* Même raison pour le contrat de licence, que le Code du numérique
+            veut mis à la disposition de la clientèle (art. 53, al. 1er), et
+            pour les questions fréquentes · « comment obtenir un accès » se lit
+            avant d'en avoir un. */}
+        <div className="mt-2 text-[11px] text-text-dim flex flex-wrap gap-x-3 gap-y-1">
+          <a href="#/questions-frequentes" className="underline">
+            Questions fréquentes
+          </a>
+          <a href="#/contrat-de-licence" className="underline">
+            Contrat de licence
+          </a>
           <a href="#/confidentialite" className="underline">
             Politique de confidentialité
           </a>

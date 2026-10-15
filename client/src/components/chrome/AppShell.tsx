@@ -11,6 +11,7 @@ import { MenuBar, type MenuDef } from './MenuBar';
 import { CalculetteChrome, ClocheChrome, NavigationChrome } from './OutilsChrome';
 import { StatusBar } from './StatusBar';
 import { BandeauDemonstration } from './BandeauDemonstration';
+import { BandeauConditions } from './BandeauConditions';
 import { BarreFenetres } from './BarreFenetres';
 import { Fenetre } from './Fenetre';
 import { AccueilPage } from '../../pages/AccueilPage';
@@ -613,8 +614,18 @@ export function AppShell() {
       ],
     },
     {
+      // Sage 100 i7 · « Le nom de ce menu est représenté sur la barre des menus
+      // par un point d'interrogation (?). Il permet d'obtenir de l'aide et des
+      // informations sur le programme » (Rubriques d'aide, Consulter le
+      // manuel, Sage sur le Web, À propos). Ici · les questions fréquentes, le
+      // contrat de licence et la politique de confidentialité, puis À propos.
       titre: '?',
-      items: [{ label: "À propos d’OmegaX", onClick: () => setAProposOuvert(true) }],
+      items: [
+        { label: 'Questions fréquentes', chemin: '/aide/questions-frequentes', onClick: () => navigate('/aide/questions-frequentes') },
+        { label: 'Contrat de licence', chemin: '/aide/contrat-de-licence', onClick: () => navigate('/aide/contrat-de-licence') },
+        { label: 'Politique de confidentialité', chemin: '/aide/confidentialite', onClick: () => navigate('/aide/confidentialite') },
+        { label: "À propos d’OmegaX", separateurAvant: true, onClick: () => setAProposOuvert(true) },
+      ],
     },
   ];
 
@@ -722,6 +733,8 @@ export function AppShell() {
         {/* Sous la barre de menus, au-dessus de l'espace de travail · une
             vitrine se dit fictive sur chaque écran (lib/bandeau-demonstration.ts). */}
         <BandeauDemonstration />
+        {/* Les conditions de licence à accepter, pour l'administrateur seul · un rappel, jamais une porte (BandeauConditions.tsx). */}
+        <BandeauConditions />
       </div>
 
       {/*

@@ -16,6 +16,19 @@ export default defineConfig({
     __OMEGAX_VERSION__: JSON.stringify(process.env.npm_package_version ?? null),
     __OMEGAX_COMMIT__: JSON.stringify(process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 7) : null),
     __OMEGAX_CONSTRUIT_LE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+    // LA MISE EN PRODUCTION (ligne pages-legales, 2026-10-15) · posée par le
+    // SEUL workflow qui publie l'interface (`firebase-hosting-merge.yml`,
+    // `OMEGAX_MISE_EN_PRODUCTION: oui`), dont le même job construit puis
+    // déploie · une construction qui n'est pas déployée n'est vue de
+    // personne, et celle qui l'est porte la date et le numéro de SA
+    // publication (`GITHUB_RUN_NUMBER`, posé par GitHub Actions). Partout
+    // ailleurs (construction locale, aperçu d'une demande de tirage, paquet
+    // sur site), rien · l'écran le dit au lieu d'inventer une date.
+    __OMEGAX_MISE_EN_PRODUCTION__: JSON.stringify(
+      process.env.OMEGAX_MISE_EN_PRODUCTION === 'oui'
+        ? { le: new Date().toISOString().slice(0, 10), publication: process.env.GITHUB_RUN_NUMBER ?? null }
+        : null,
+    ),
   },
   server: {
     port: 5173,

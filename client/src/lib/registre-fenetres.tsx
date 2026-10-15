@@ -99,6 +99,13 @@ const BailleursPage = lazy(() => import('../pages/BailleursPage').then((m) => ({
 const PlateformePage = lazy(() => import('../pages/PlateformePage').then((m) => ({ default: m.PlateformePage })));
 const GroupePage = lazy(() => import('../pages/GroupePage').then((m) => ({ default: m.GroupePage })));
 const CourrierPage = lazy(() => import('../pages/CourrierPage').then((m) => ({ default: m.CourrierPage })));
+// Les pages légales et l'aide (ligne pages-legales) · le même contenu que leurs
+// pages publiques, dans une fenêtre de l'espace de travail.
+const QuestionsFrequentesFenetre = lazy(() =>
+  import('../pages/QuestionsFrequentesPage').then((m) => ({ default: m.QuestionsFrequentesFenetre })),
+);
+const ContratLicenceFenetre = lazy(() => import('../pages/ContratLicencePage').then((m) => ({ default: m.ContratLicenceFenetre })));
+const ConfidentialiteFenetre = lazy(() => import('../pages/ConfidentialitePage').then((m) => ({ default: m.ConfidentialiteFenetre })));
 
 /**
  * REGISTRE DES FENÊTRES · la seule liste qui associe un chemin à ce qui
@@ -645,6 +652,29 @@ export const FENETRES: DefinitionFenetre[] = [
     titreCourt: 'Engagements',
     referentielsApplicables: ['SYCEBNL'],
     rendre: () => <EngagementsPage />,
+  },
+  // LE MENU « ? » · comme celui de Sage 100 i7 (Rubriques d'aide, Consulter le
+  // manuel, Sage sur le Web, À propos · manuel de référence de Sage 100
+  // Immobilisations i7, p. 253). Communes aux deux référentiels, ouvertes à
+  // tous les rôles du menu · ce sont des textes, aucune route ne s'y écrit,
+  // sauf l'acceptation du contrat, que le serveur réserve à l'administrateur.
+  {
+    motif: /^\/aide\/questions-frequentes$/,
+    titre: 'Questions fréquentes',
+    titreCourt: 'Questions',
+    rendre: () => <QuestionsFrequentesFenetre />,
+  },
+  {
+    motif: /^\/aide\/contrat-de-licence$/,
+    titre: 'Contrat de licence',
+    titreCourt: 'Licence',
+    rendre: () => <ContratLicenceFenetre />,
+  },
+  {
+    motif: /^\/aide\/confidentialite$/,
+    titre: 'Politique de confidentialité',
+    titreCourt: 'Confidentialité',
+    rendre: () => <ConfidentialiteFenetre />,
   },
 ];
 

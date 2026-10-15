@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
 import type { EtatSurSite } from '../../lib/sur-site';
-import { identiteConstruction, ligneVersion } from '../../lib/version';
+import { identiteConstruction, ligneLangue, ligneMiseEnProduction, ligneVersion } from '../../lib/version';
 import { BlocMarqueOmegaX } from './Logo';
 import { PortailModale } from '../PortailModale';
 
@@ -60,6 +60,14 @@ export function AProposModale({ onFermer }: { onFermer: () => void }) {
               {referentiel && LIBELLE_REFERENTIEL[referentiel] ? ` · ${LIBELLE_REFERENTIEL[referentiel]}` : ''}.
             </p>
             <p className="text-text-dim">{ligneVersion(identiteConstruction(), datePaquet)}</p>
+            {/* Mise en production et langue (demande de Manasse du
+                2026-10-15) · comme la page « À propos » d'Odoo, qui dit
+                l'édition, la version et l'échéance de la base, et la boîte
+                « About » de Frappe, qui dit chaque version installée · ce
+                qui n'est pas connu est dit, jamais remplacé. */}
+            <p className="text-text-dim">{ligneMiseEnProduction(identiteConstruction())}</p>
+            <p className="text-text-dim">{ligneLangue()}</p>
+            <p className="text-text-dim">© VMG Consulting · logiciel protégé par le droit d’auteur.</p>
           </div>
           <div className="border-t border-border px-3 py-2 flex justify-end">
             <button onClick={onFermer} className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { EtatSurSite } from '../lib/sur-site';
+import { CadrePagePublique, CorpsFenetreLegale } from '../components/CadrePagePublique';
 
 /**
  * POLITIQUE DE CONFIDENTIALITÉ · atteignable SANS CONNEXION.
@@ -22,7 +23,13 @@ import { EtatSurSite } from '../lib/sur-site';
  * dirigerait les demandes vers le vide.
  */
 
-const DATE_DE_MISE_A_JOUR = '7 octobre 2026';
+// Mise à jour du 15 octobre 2026 (ligne pages-legales) · la console de
+// l'éditeur (session longue admise, redemandée après huit heures), le
+// stockage local du navigateur, l'accès de VMG Consulting aux données et la
+// règle de modification. Une politique modifiée change sa date, comme le
+// font celles de 37signals (« Whenever we make a significant change to our
+// policies, we will refresh the date at the top of this page »).
+export const DATE_DE_MISE_A_JOUR = '15 octobre 2026';
 
 function Titre({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[12px] font-bold mt-4 mb-1.5">{children}</h2>;
@@ -32,7 +39,28 @@ function P({ children }: { children: React.ReactNode }) {
   return <p className="text-[11.5px] leading-relaxed mb-2">{children}</p>;
 }
 
+/**
+ * LA PAGE PUBLIQUE · hors de la zone protégée (App.tsx), avec son titre, sa
+ * date et le retour à l'ouverture du fichier comptable.
+ */
 export function ConfidentialitePage() {
+  return (
+    <CadrePagePublique titre="Politique de confidentialité d’OmegaX" sousTitre={`Dernière mise à jour · ${DATE_DE_MISE_A_JOUR}`}>
+      <ContenuConfidentialite />
+    </CadrePagePublique>
+  );
+}
+
+/** La même politique dans une fenêtre de l'espace de travail (menu « ? ») · la barre de titre porte le titre. */
+export function ConfidentialiteFenetre() {
+  return (
+    <CorpsFenetreLegale sousTitre={`Dernière mise à jour · ${DATE_DE_MISE_A_JOUR}`}>
+      <ContenuConfidentialite />
+    </CorpsFenetreLegale>
+  );
+}
+
+export function ContenuConfidentialite() {
   // DEUX INSTALLATIONS, DEUX RÉPONSES (audit final F176) · sur le poste d'un
   // client, aucune donnée ne part chez Neon, Cloud Run ni Firebase, et la page
   // servie par ce poste le disait pourtant. `GET /sur-site/etat` est public ·
@@ -50,13 +78,7 @@ export function ConfidentialitePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-bg py-6 px-4">
-      <div className="mx-auto max-w-[760px] bg-surface border border-border px-6 py-5">
-        <h1 className="text-[13px] font-bold">Politique de confidentialité d’OmegaX</h1>
-        <p className="text-[11px] text-text-dim mt-1 mb-3">
-          Dernière mise à jour · {DATE_DE_MISE_A_JOUR}
-        </p>
-
+    <>
         <P>
           OmegaX est un logiciel de comptabilité destiné aux associations sans but lucratif, aux organisations non
           gouvernementales et aux entreprises de la République démocratique du Congo. Il est édité et exploité par le
@@ -97,8 +119,15 @@ export function ConfidentialitePage() {
           fonctionnement du logiciel, et il n’est pas lisible par le code de la page. Sans l’option « Rester
           connecté sur cet appareil », il se ferme avec le navigateur, et la session prend fin au plus tard huit
           heures après la connexion. Avec cette option, la session dure trente jours au plus depuis la connexion,
-          et se ferme après sept jours sans utilisation. La console de l’éditeur n’admet que la session fermée avec
-          le navigateur.
+          et se ferme après sept jours sans utilisation. La console de l’éditeur redemande le mot de passe et le code
+          huit heures après la dernière connexion complète.
+        </P>
+        <P>
+          Votre navigateur garde aussi, dans son stockage local et sur cet appareil seulement, la liste des cinq
+          dossiers ouverts le plus récemment (nom du dossier, adresse de connexion, date), qui préremplit l’adresse
+          à l’ouverture, le jeton qui protège vos envois contre la falsification de requête, et vos préférences
+          d’affichage (exercice choisi, favoris de l’accueil, onglets). Rien de cela ne quitte l’appareil ; effacer
+          les données de ce site dans le navigateur le supprime.
         </P>
         <P>
           Vos données comptables ne sont <strong>ni revendues, ni cédées, ni exploitées à d’autres fins</strong> que
@@ -263,6 +292,15 @@ export function ConfidentialitePage() {
           clair. Les tentatives de connexion répétées sont ralenties, et une session est révoquée dès qu’un mot de
           passe change, qu’un accès est retiré ou qu’un rôle est modifié.
         </P>
+        <P>
+          <strong>VMG Consulting n’accède pas aux données de vos dossiers.</strong> Sa console d’exploitation ne
+          montre d’un dossier que sa fiche commerciale et sa licence ; une requête de maintenance sur la base ne
+          rend que des identifiants et des nombres, jamais un montant, un compte, un objet ni un motif ; une
+          correction de dossier se fait par vous, dans votre dossier. Le mot de passe provisoire d’un
+          administrateur, tiré au sort par le serveur, part à sa seule adresse électronique. Le fournisseur de
+          services numériques reste tenu à la confidentialité des données qu’il traite, sauf réquisition judiciaire
+          (Code du numérique, article 37).
+        </P>
 
         <Titre>6. Si vos données étaient exposées</Titre>
         {surSite ? (
@@ -307,6 +345,11 @@ export function ConfidentialitePage() {
           et 239).
         </P>
         <P>
+          Le traitement que VMG Consulting fait des données de vos dossiers pour le compte de votre entité est réglé
+          par l’article 9 du <a href="#/contrat-de-licence" className="text-sel underline">contrat de licence</a>,
+          comme le veut l’article 229 du Code du numérique.
+        </P>
+        <P>
           Pour toute autre demande, écrivez au cabinet VMG Consulting. <em>L’adresse postale du cabinet et l’adresse
           de courriel dédiée à ces demandes doivent être arrêtées par VMG Consulting et portées ici avant toute
           publication de cette page sur un magasin d’applications.</em> Elles ne sont pas inscrites d’office : une
@@ -315,16 +358,12 @@ export function ConfidentialitePage() {
 
         <Titre>8. Modifications</Titre>
         <P>
-          Cette politique peut évoluer avec le logiciel. La date de dernière mise à jour figure en tête de page, et
-          toute modification substantielle vous sera signalée dans l’application.
+          Cette politique peut évoluer avec le logiciel, et la date de sa dernière mise à jour figure en tête de
+          page. Elle fait partie de l’offre de VMG Consulting (Code du numérique, article 53, 10°) · une modification
+          de ce qu’elle engage suit l’article 15 du contrat de licence, c’est-à-dire l’article 34 du Code du
+          numérique · projet communiqué au moins trente jours ouvrables avant son entrée en vigueur.
         </P>
 
-        <div className="mt-5 pt-3 border-t border-border">
-          <a href="#/connexion" className="text-[11.5px] text-sel underline">
-            Retour à l’ouverture du fichier comptable
-          </a>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

@@ -9,6 +9,8 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ChangerMotDePassePage } from './pages/ChangerMotDePassePage';
 import { ConfidentialitePage } from './pages/ConfidentialitePage';
+import { ContratLicencePage } from './pages/ContratLicencePage';
+import { QuestionsFrequentesPage } from './pages/QuestionsFrequentesPage';
 
 function ZoneProtegee({ children }: { children: JSX.Element }) {
   const { chargement, connecte, utilisateur } = useAuth();
@@ -34,6 +36,15 @@ function Routage() {
         politique publiée, et aucun magasin d'applications ne l'accepte.
       */}
       <Route path="/confidentialite" element={<ConfidentialitePage />} />
+      {/*
+        Même raison pour le contrat de licence (Code du numérique, art. 53,
+        al. 1er · les conditions « mises à la disposition de la clientèle »)
+        et pour les questions fréquentes, qu'un visiteur lit avant d'avoir un
+        accès. Dans l'espace de travail, le menu « ? » les ouvre en fenêtre,
+        sous /aide/… (registre-fenetres.tsx).
+      */}
+      <Route path="/contrat-de-licence" element={<ContratLicencePage />} />
+      <Route path="/questions-frequentes" element={<QuestionsFrequentesPage />} />
       <Route
         path="/"
         element={

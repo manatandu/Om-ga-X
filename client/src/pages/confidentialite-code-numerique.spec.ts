@@ -170,3 +170,35 @@ describe('la politique dit la télémétrie telle qu’elle est (2026-10-07)', (
     expect(deplie).toContain('un identifiant tiré au hasard, sans lien avec votre compte ni avec votre dossier');
   });
 });
+
+describe('la politique complétée le 15 octobre 2026 (ligne pages-legales)', () => {
+  it('dit la règle de la console telle que session-longue.ts la tient · huit heures après la connexion complète', () => {
+    expect(serveur('src/modules/auth/session-longue.ts')).toContain('export const DELAI_CONSOLE_DEPUIS_AUTHENTIFICATION_S = 8 * 3600;');
+    expect(deplie).toContain('La console de l’éditeur redemande le mot de passe et le code huit heures après la dernière connexion complète.');
+  });
+
+  it('dit ce que le navigateur garde, au nombre de dossiers près', () => {
+    expect(readFileSync(join(__dirname, '..', 'lib', 'dossiersRecents.ts'), 'utf8')).toContain('const MAXIMUM = 5;');
+    expect(deplie).toContain('la liste des cinq dossiers ouverts le plus récemment (nom du dossier, adresse de connexion, date)');
+  });
+
+  it('dit que VMG Consulting n’accède pas aux données, et l’article 37', () => {
+    expect(deplie).toContain('VMG Consulting n’accède pas aux données de vos dossiers.');
+    expect(deplie).toContain('sauf réquisition judiciaire (Code du numérique, article 37)');
+  });
+
+  it('renvoie au contrat pour le traitement pour compte (article 229), et la modification suit l’article 34', () => {
+    expect(deplie).toContain('href="#/contrat-de-licence"');
+    expect(deplie).toContain('comme le veut l’article 229 du Code du numérique');
+    expect(deplie).toContain('l’article 34 du Code du numérique');
+    // La promesse d'un signal dans l'application, qu'aucun code ne tenait, est retirée.
+    expect(deplie).not.toContain('vous sera signalée dans l’application');
+  });
+
+  it('se lit aussi dans une fenêtre, sans son titre de page', () => {
+    expect(page).toContain('export function ConfidentialiteFenetre()');
+    const fenetre = page.slice(page.indexOf('export function ConfidentialiteFenetre()'), page.indexOf('export function ContenuConfidentialite()'));
+    expect(fenetre).not.toContain('<h1');
+    expect(fenetre).toContain('<ContenuConfidentialite />');
+  });
+});
