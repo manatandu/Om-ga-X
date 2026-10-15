@@ -6,6 +6,7 @@ import { useExercice } from '../lib/exercice';
 import type { Compte, Journal } from '../lib/types';
 import { Aide } from '../components/chrome/Aide';
 import { OrdresVirement } from '../components/OrdresVirement';
+import { AssistantReglement } from '../components/AssistantReglement';
 import { lignesDepuisSelection, rappelerLot, type LotVirement } from '../lib/lots-virement';
 import { montant as fmt } from '../lib/montants';
 import {
@@ -134,6 +135,9 @@ export function ReglementsPage() {
   const [avertissements, setAvertissements] = useState<string[]>([]);
   const [envoi, setEnvoi] = useState(false);
   const [onglet, setOnglet] = useState<'reglements' | 'ordres'>('reglements');
+  // L'ASSISTANT DE RÈGLEMENT (ligne sage-l2, fonction 18) · le même règlement,
+  // une étape à la fois (`components/AssistantReglement.tsx`).
+  const [assistantOuvert, setAssistantOuvert] = useState(false);
   const [avecOrdre, setAvecOrdre] = useState(false);
   const [ordreCree, setOrdreCree] = useState<string | null>(null);
   const [ordreOuvert, setOrdreOuvert] = useState(false);
@@ -667,6 +671,15 @@ export function ReglementsPage() {
             />
           </span>
         )}
+        {peutEcrire && exerciceCourant && (
+          <button
+            type="button"
+            onClick={() => setAssistantOuvert(true)}
+            className="border border-border-dark bg-chrome hover:bg-surface px-3 py-[3px] text-[11.5px] self-end"
+          >
+            Assistant de règlement…
+          </button>
+        )}
         <Aide
           titre="Règlement des tiers"
           texte="Cochez les factures à régler. OmegaX passe une pièce par tiers au journal de trésorerie choisi (40 contre 52 pour un fournisseur, 52 contre 41 pour un client) et lettre aussitôt chaque facture avec son règlement. Un montant inférieur au dû donne un règlement partiel et un lettrage partiel ; un montant supérieur est refusé, l'excédent étant une avance ou un trop-perçu. Pour un fournisseur, la part de chaque facture cochée se déclare (Code civil, Livre III, art. 151) · chaque facture est alors lettrée avec sa seule part, qui date la déduction de sa TVA ; sans parts, un règlement partiel de plusieurs factures suit l'imputation légale (art. 154 · les échues d'abord, la plus ancienne, au prorata à date égale). Les factures non parvenues, produits à recevoir et avances (408, 409, 418, 419) ne se règlent pas ici. Une facture en devise se règle dans sa devise, au cours du jour du règlement · le tiers est soldé à sa valeur d'origine, et la différence avec ce qui est payé est la perte ou le gain de change réalisé, sur sa propre ligne (656 ou 756 au SYSCOHADA ; au SYCEBNL, qui n'ouvre ni 656 ni 756, 658 Charges diverses ou 7588 Autres produits divers, résidu de ses fiches 65 et 75). L'escompte de règlement, consenti pour un paiement avant le terme, solde le tiers avec le payé · obtenu d'un fournisseur au crédit du 773, accordé à un client au débit du 673 (au SYCEBNL, au seul client-usager du 412) ; la TVA n'en est réduite que par une facture rectificative, passée à part. « Solder l'écart » passe en charge, sous le seuil fixé dans Paramètres du dossier, le reste qu'un client ne paie pas (remise, art. 132) ou le trop-payé à un fournisseur (art. 133), au 6588 au SYSCOHADA, au 658 au SYCEBNL · le trop-perçu d'un client se restitue (art. 252) et un fournisseur payé en moins n'est pas soldé par le dossier (art. 142)."
@@ -674,6 +687,20 @@ export function ReglementsPage() {
         />
       </div>
 
+      {assistantOuvert && exerciceCourant && (
+        <AssistantReglement
+          journaux={journaux}
+          modes={modes}
+          exerciceId={exerciceCourant.id}
+          finExercice={exerciceCourant.dateFin.slice(0, 10)}
+          ordresServis={ordresServis}
+          onFermer={() => setAssistantOuvert(false)}
+          onRegle={(message) => {
+            setInfo(message);
+            void charger();
+          }}
+        />
+      )}
       {erreur && <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-2">{erreur}</div>}
       {erreurComptesEE && aRegler.length > 0 && (
         <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-2">{erreurComptesEE}</div>

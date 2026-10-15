@@ -242,11 +242,31 @@ Aucun défaut trouvé.
   serveur), `e2e/tests/sage-l2-modeles-impression.e2e.ts` (vert sous
   Chromium).
 
+### n° 18 · Assistant de règlement, part règlement (fait)
+
+- `client/src/lib/assistant-reglement.ts`, `AssistantReglement.tsx` · six
+  étapes (sens, trésorerie, tiers, factures, montant, récapitulatif) sur le
+  corps du formulaire Règlement des tiers, envoyé à `POST /reglements` ·
+  aucune route ni règle à lui ; une étape ne dit que ce qui manque, le refus
+  du serveur se dit au récapitulatif, ses avertissements une fois passé.
+- Un tiers à la fois, en francs · une facture en devise renvoie au
+  formulaire complet (cours, écart réalisé), comme les parts déclarées,
+  l'escompte, l'écart de règlement et les lots. Montant prérempli au dû
+  (`montantPourChamp`), lu avec ses espaces (`lireMontant` de l'assistant
+  d'un bien). Mode de règlement qui présélectionne son journal ; ordre de
+  virement pour un fournisseur seulement.
+- « Régler un autre tiers » garde sens, date, journal, mode et ordre, et
+  relit les factures ouvertes. Bouton « Assistant de règlement… » de la
+  fenêtre Règlement des tiers (`peutEcrire`).
+- Tests · `client/src/lib/assistant-reglement.spec.ts` (9, dont chaque champ
+  envoyé relu dans le DTO du serveur),
+  `e2e/tests/sage-l2-assistant-reglement.e2e.ts` (vert sous Chromium · partiel
+  lettré, pièce lue, montant au-delà du dû refusé et dit).
+
 ## Reste
 
-1. n° 18 · assistant de règlement.
-2. Bloc du § 3 complet, tous les tests navigateur de la ligne.
-3. Avis de règlement · ni mise en file par courriel, ni avis d'un règlement
+1. Bloc du § 3 complet, tous les tests navigateur de la ligne.
+2. Avis de règlement · ni mise en file par courriel, ni avis d'un règlement
    sans ordre de virement (chèque, espèces).
 
 ## Décisions par la loi
@@ -336,6 +356,7 @@ Aucun défaut trouvé.
 |---|---|---|---|---|---|
 | 1 | 2026-10-15 | L2 | fait | le mode ne suit pas encore le report à-nouveau au détail | la modification au brouillard remplace les lignes · le mode devait être rendu au client pour ne pas s'effacer |
 | 3 | 2026-10-15 | L2 | fait | une ligne en devise ne se découpe pas d'elle-même (dit à l'écran) | le découpage en échéances passait une facture sous le seuil de l'art. 59 bis · la transaction se relit sur la pièce |
+| 18 | 2026-10-15 | L2 | fait (part règlement) | un tiers à la fois, en francs · devise, parts, escompte, écart et lots au formulaire | rien |
 | 24 | 2026-10-15 | L2 | fait | la qualité n'est pas reprise sur les lettres de relance | rien |
 | 31 | 2026-10-15 | L2 | fait | aucun document ne lit encore le lieu (la gestion commerciale le reprendra) | le bouton « Mettre en sommeil » du lieu se confondait avec celui du tiers · boutons nommés par lieu |
 | 32 | 2026-10-15 | L2 | fait | rien | rien |
@@ -346,6 +367,7 @@ Aucun défaut trouvé.
 
 - n° 1 → yes · modes de règlement (structure, tiers, modèles, saisie, règlement), avertissement de l'art. 59 bis.
 - n° 3 → yes · échéancier du modèle du tiers appliqué en saisie, fenêtre des échéances, échéancier appliqué d'office.
+- n° 18 → partial (L1 et L4 ont leurs parts) · L2 · assistant de règlement d'un tiers, six étapes, même route que le formulaire.
 - n° 24 → yes · qualité du tiers, libellé proposé et libre, sur la fiche et l'édition du plan des tiers.
 - n° 31 → yes · lieux de livraison d'un client, un principal, sur la fiche du tiers.
 - n° 32 → yes · duplication d'un tiers vers le formulaire de création, ce qui n'est pas repris nommé.
@@ -358,7 +380,7 @@ Aucun défaut trouvé.
 cd /home/user/wt-sage-l2
 npx tsc --noEmit && (cd client && npx tsc --noEmit)
 npx jest src/modules/reglements src/modules/tiers src/modules/relances src/modules/comptabilite/brouillard.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
-(cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/modeles-impression.spec.ts src/lib/comptes-retenus-ecrans.spec.ts)
+(cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/modeles-impression.spec.ts src/lib/assistant-reglement.spec.ts src/lib/comptes-retenus-ecrans.spec.ts)
 # e2e · serveur sur 8302 (base l2_e2e), aperçu sur 4302
-(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts tests/sage-l2-qualite.e2e.ts tests/sage-l2-livraison.e2e.ts tests/sage-l2-duplication.e2e.ts tests/sage-l2-modeles-impression.e2e.ts)
+(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts tests/sage-l2-qualite.e2e.ts tests/sage-l2-livraison.e2e.ts tests/sage-l2-duplication.e2e.ts tests/sage-l2-modeles-impression.e2e.ts tests/sage-l2-assistant-reglement.e2e.ts)
 ```
