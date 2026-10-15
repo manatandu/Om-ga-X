@@ -5,6 +5,17 @@ virement de fonds (`AVANCEMENT-virement-fonds.md`), retirée à son intégration
 Elles ne concernent pas cette ligne : sujets à reprendre, décisions de Manasse
 et travaux à sa charge. Recopiées telles quelles pour que rien ne se perde.
 
+## Relevés en attente · essais de parité des lignes sage-l1, l4, l5 (2026-10-15)
+
+- B-PAR-01 (S3, pas BLOQUANT) · deux lettrages envoyés en même temps sur un
+  même compte, même lettre choisie ou lettre proposée · le second rend une
+  500 au lieu du refus nommé « Trop de lettrages effectués au même instant
+  sur ce compte · veuillez réessayer. ». La contrainte unique (compteId,
+  code) tient la base juste ; le garde sérialisable
+  (`common/prisma-retry.util.ts`) ne reconnaît que P2034, pas la P2002 du
+  heurt sur la lettre. Antérieur à la ligne sage-l1. Correction proposée et
+  reproduction · `docs/comparaison-sage/reproduction/bugs.md`.
+
 ## Questions à Manasse · saisie, ligne sage-l1
 
 Aucune ne bloque · le corpus ne régit aucun de ces choix, d'organisation ou

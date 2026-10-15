@@ -11,6 +11,9 @@ construction, essais, écart), ramenée à un logiciel qui existe déjà.
 | `architecture.md` | Les règles, les décisions prises par la loi avant de coder, la place de chaque fonction dans les menus et dans le code, les lignes de travail et leur ordre. |
 | `features.csv` | La matrice : une ligne par fonction, sa ligne de travail, sa priorité, et la colonne `clone` (no, partial, yes) tenue à jour. |
 | `build-log.md` | Le journal de construction : une entrée par fonction finie ou partielle, ce qui manque, ce qui a été plus dur que prévu. |
+| `test-plan.md` | Les essais des fonctions construites, cas par cas (parcours, bords, refus), ce qui les éprouve et ce qui a tourné. |
+| `bugs.md` | Les défauts reproduits par ces essais, au format de la compétence de réplication, et ceux qui restent à vérifier. |
+| `parity.md` | Le score de parité sur la matrice, ce qui reste dans l'ordre de construction, les différences de comportement gardées à dessein. |
 
 Priorité : `must` pour les quatorze fonctions conseillées « À faire » avant
 le tri, `could` pour les trois plus lourdes (gestion commerciale complète,
