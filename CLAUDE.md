@@ -3584,11 +3584,75 @@ forme de société ; retrait permis. (3) Mention absente DITE, jamais remplacée
 
 **Journaux de saisie et historique des rappels (2026-09-25, point 17).** (1) État
 d'une case unique (`journaux/etat-journaux-saisie.ts`), gel lu par `gel-cloture.ts`
-au DERNIER jour du mois, sinon « figé jusqu'au » ; « Non imprimé » non servi. (2)
+au DERNIER jour du mois, sinon « figé jusqu'au » ; « Non imprimé » servi depuis la ligne sage-l1 (case N). (2)
 L'à-nouveau provisoire ne fait ni brouillard ni « tout validé » · case VIDE, « AN ».
 (3) Comptage par jour (`groupBy`). (4) Historique des rappels en tranche qui se dit
 · total et somme sur tout le périmètre, `tronque` au-delà de 500, montant figé à
 l'émission. Frais d'impayé et pénalités de Sage non servis.
+
+**Journal de situation (ligne sage-l1, fonction 12, décision par la loi du
+2026-10-14).** AUDCIF art. 19, 16 al. 2, 17 3°, 22 2° et 3° · une écriture de
+situation n'enregistre aucune opération · statut `SITUATION`, ni brouillard ni
+validée, jamais au livre-journal, à la balance, au grand livre, aux états, à la
+clôture ni au report (`HORS_SITUATION`, `filtreDuStatut`). L'invariant « statut
+SITUATION si et seulement si journal de situation » est tenu sur le client
+Prisma (`extension-journal-de-situation.ts`) · seule la saisie y écrit.
+Valider et corriger en négatif refusés ; journal non clôturable, non figé par
+une clôture de période, hors de la numérotation du fichier (`modeEffectif`).
+Le validé hérité n'est pas retouché, il est nommé
+(`JOURNAL_DE_SITUATION_AU_LIVRE_JOURNAL`) ; le brouillard hérité qu'une
+lettre, un pointage ou un module tenait reste au brouillard
+(`20270171040000`, clés lues dans `pg_constraint`), nommé
+(`JOURNAL_DE_SITUATION_AU_BROUILLARD`), et SE TRANSFÈRE dans un journal
+ordinaire (`transfererDansUnJournalOrdinaire`, AUDCIF art. 22, 1° à 4° ·
+journal, numéro et, sur demande, date au premier jour non clôturé ;
+lignes, lettrage, pointage et modules gardés), où il se valide ; la
+validation par période l'écarte en le comptant. Aucune simulation ne se
+rattache à un acte (`motifSimulationNonRattachable`) ni ne prend un numéro
+d'impression. L'extension lit par la transaction en cours. TOUTE LECTURE DES
+ÉCRITURES POSE UN STATUT AU NIVEAU DE L'ÉCRITURE · `lectures-hors-situation.spec.ts`
+découpe chaque appel, lit le filtre par sa structure (jamais le statut de
+l'exercice ou du lettrage, une variable en position de filtre seulement) et
+tient la liste fermée des exceptions, au nombre près.
+
+**Journal marqué imprimé (ligne sage-l1, fonction 60, décision par la loi du
+2026-10-14).** AUDCIF art. 22, 1° (restitution sur papier), 3° (la clôture
+informatique n'attend aucune impression) et 7° (états périodiques numérotés
+et datés) · l'impression ou l'export du journal entier s'ENREGISTRE
+(`ImpressionJournal`, numéro continu par dossier, auteur, période, pièces),
+jamais un journal sans pièce, la page imprimée portant son numéro et sa date ;
+une impression ne se supprime jamais, elle suit l'exercice qui reprend sa
+période (`rattacherLesImpressions`) ;
+le refus de clôturer un journal non imprimé est une OPTION du dossier,
+fausse par défaut (`refusClotureJournalNonImprime`) ; une écriture validée
+après l'impression rend son jour non imprimé (`moisNonImprimes`) ; une
+recherche n'est pas le journal. Case « N » de l'état des journaux de saisie.
+
+**Lettre de lettrage choisie (ligne sage-l1, fonction 16, 2026-10-14).** Le
+lettrage manuel prend la lettre que le comptable tape (`LettrerDto.lettre`,
+une à quatre lettres, rangée en majuscules), sinon la proposée
+(`prochaineLettre`, la suivante du compte) ; une lettre déjà employée sur le
+compte (groupe ou lignes reprises) est refusée en la nommant (CPCC, ch. 6,
+« un seul repère »), relue dans la transaction.
+
+**Compte créé pendant la saisie (ligne sage-l1, fonction 14, 2026-10-14).**
+Option du dossier, fermée par défaut (`creationCompteEnSaisie`) · un numéro
+inconnu tapé en saisie s'ouvre, sur confirmation, en SOUS-COMPTE d'un compte
+d'imputation du plan, par `CompteService.creer`, né personnalisé
+(`POST /comptes/en-saisie`, administrateur et comptable). Jamais hors plan,
+jamais sous un collectif de tiers (`comptes/compte-en-saisie.ts`).
+
+**Mode assistant de création (ligne sage-l1, fonction 18, 2026-10-14).**
+Préférence du poste (`lib/assistant-creation.ts`) · la création d'un compte
+et d'un code journal par étapes, les mêmes champs et la même route ; « Créer
+et continuer » garde la boîte ouverte pour le suivant.
+
+**Séquences de saisie (ligne sage-l1, fonction 19, 2026-10-14).** Sage,
+P_SEQUENCE · dix séquences nommées par dossier (`SequenceSaisie`, 35
+caractères), chaque modèle de saisie dans une séquence ou aucune (RESTRICT),
+la barre « Appeler un modèle » de la saisie les propose par séquence ; une
+séquence qui range un modèle ne se retire pas. Les rubriques de paie, que
+Sage range aussi par séquence, ne le sont pas encore.
 
 **Éditions des structures (2026-09-25, point 18).** `lib/editions-structures.ts`.
 (1) Liste À PLAT, jamais l'écran imprimé (`avec-edition` · une arborescence ou un

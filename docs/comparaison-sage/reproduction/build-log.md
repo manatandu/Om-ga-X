@@ -17,3 +17,10 @@ ici et à Manasse, jamais livrée à moitié sans le dire.
 | 75 | 2026-10-14 | L5 | fait | rien au périmètre | une ligne d'ordre paie un tiers OU un salarié ; le 422 lu après la clôture sans l'ouverture des exercices suivants |
 | 88 | 2026-10-14 | L5 | fait | le pointage des heures par section (voir 78) | la reprise en négatif d'une pièce rejouée se ventile comme l'origine, jamais au prorata |
 | 85 | 2026-10-14 | L5 | fait | la tenue des réponses d'un mois à l'autre (question posée) | n'écrire que les champs qui existent, par leurs routes |
+| 12 | 2026-10-14 | L1 | fait | rien au périmètre | une centaine de lectures du brouillard relues une à une ; le brouillard hérité qui enfermait le dossier, sorti par le transfert dans un journal ordinaire |
+| 11 | 2026-10-14 | L1 | fait | rien au périmètre | l'équilibre reste toujours montré, totaux masqués ou non |
+| 60 | 2026-10-14 | L1 | fait | rien au périmètre | une écriture validée après l'impression rend son jour non imprimé |
+| 16 | 2026-10-14 | L1 | fait | rien au périmètre | une lettre déjà employée sur le compte, groupes et lignes reprises comprises |
+| 14 | 2026-10-14 | L1 | fait | qui peut créer le compte en saisie (question posée) | jamais hors plan ni sous un collectif de tiers |
+| 18 | 2026-10-14 | L1 | partiel | le règlement guidé (ligne L2) | compte et journal par étapes sur les mêmes routes, création enchaînée |
+| 19 | 2026-10-14 | L1 | fait | les rubriques de paie par séquence (question posée) | lecture de P_SEQUENCE (paie) transposée aux modèles de saisie |

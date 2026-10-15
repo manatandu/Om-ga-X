@@ -5,6 +5,24 @@ virement de fonds (`AVANCEMENT-virement-fonds.md`), retirée à son intégration
 Elles ne concernent pas cette ligne : sujets à reprendre, décisions de Manasse
 et travaux à sa charge. Recopiées telles quelles pour que rien ne se perde.
 
+## Questions à Manasse · saisie, ligne sage-l1
+
+Aucune ne bloque · le corpus ne régit aucun de ces choix, d'organisation ou
+de produit.
+
+- #19 · Sage range aussi les RUBRIQUES DE PAIE par séquence (P_SEQUENCE est
+  une page de la Paie). Les ranger de même dans OmegaX, sur les mêmes
+  séquences que les modèles de saisie ou sur des séquences propres à la paie ?
+- #12 · Sage peut inclure les journaux de situation dans une balance ou un
+  grand livre de SIMULATION. OmegaX les tient hors de tout livre et état ;
+  elles se lisent dans leur journal. Faut-il une balance de simulation à
+  part, dite sans valeur légale (comme le second jeu en monnaie
+  fonctionnelle) ?
+- #14 · sous l'option, le comptable et l'aide-comptable (par héritage)
+  créent le compte en saisie, alors que « Nouveau compte » au Plan comptable
+  reste à l'administrateur, qui délègue en ouvrant l'option. Réserver le
+  geste au comptable (`@ReserveAuComptable()`), ou à l'administrateur seul ?
+
 ## Relevés en attente · paie, ligne sage-l5 (second tour non bloquant)
 
 - Congé À CHEVAL qui porte des jours de voyage (Code du travail, art. 141,

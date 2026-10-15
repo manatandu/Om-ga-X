@@ -1,12 +1,12 @@
 n,fonction,renvois,ligne,priorite,clone,note
 1,"Mode de règlement (chèque, virement, espèces) sur le tiers et en saisie ; codes interbancaires",M5-8 M6-19 M10-44 M13-31,L2,must,no,
 3,Échéance calculée d'office par le modèle de règlement du tiers ; fenêtre multi-échéance ; validation automatique des règlements,M3-14 M1-89 M1-46,L2,must,no,
-11,Masquer les totaux d'un journal,M1-82,L1,should,no,
-12,Journal de situation ni clôturable ni compactable,M1-77 M2-70,L1,must,no,
-14,Créer un compte pendant la saisie,M10-17,L1,should,no,
-16,Changer à la main la prochaine lettre de lettrage,M3-19,L1,should,no,
-18,"Mode assistant : création guidée d'un compte, d'un journal, d'un bien, d'un règlement ; création enchaînée",M2-8 M3-5 M4-B-42 M5-17 M14-13,L1 L2 L4,should,partial,"L4 · assistant de création d'un bien fait ; compte, journal et règlement aux lignes L1 et L2"
-19,Séquences de saisie,M6-142,L1,should,no,
+11,Masquer les totaux d'un journal,M1-82,L1,should,yes,"préférence du poste, l'équilibre toujours montré"
+12,Journal de situation ni clôturable ni compactable,M1-77 M2-70,L1,must,yes,"statut SITUATION hors livre-journal, balance, états, clôture et report ; transfert du brouillard hérité dans un journal ordinaire"
+14,Créer un compte pendant la saisie,M10-17,L1,should,yes,"option du dossier, sous-compte d'un compte du plan, jamais sous un collectif de tiers"
+16,Changer à la main la prochaine lettre de lettrage,M3-19,L1,should,yes,"lettre tapée ou proposée, refus nommé d'une lettre déjà employée"
+18,"Mode assistant : création guidée d'un compte, d'un journal, d'un bien, d'un règlement ; création enchaînée",M2-8 M3-5 M4-B-42 M5-17 M14-13,L1 L2 L4,should,partial,"L4 · assistant de création d'un bien ; L1 · compte et journal par étapes, création enchaînée ; règlement à la ligne L2"
+19,Séquences de saisie,M6-142,L1,should,yes,dix séquences nommées sur les modèles de saisie ; rubriques de paie non rangées (question posée)
 22,"Documents rattachés aux écritures, aux sections, aux biens et aux salariés",M6-74 M10-98 M6-76 M4-B-48 M7-37,L6,must,no,
 24,"Qualité du tiers (société, indépendant…)",M1-36,L2,should,no,
 27,"Modèles d'impression propres au tiers (extrait, règlement, rappel)",M1-55 M6-46,L2,should,no,
@@ -21,7 +21,7 @@ n,fonction,renvois,ligne,priorite,clone,note
 47,"Trésorerie : taux de référence, financements, placements, OPCVM",M6-129 M6-137 M6-139,L3,should,no,
 50,Longueur fixe des codes de section,M14-5,L6,must,no,
 59,"Modèles d'édition, sauts de ligne ou de page, impression différée, sélections enregistrées",M2-34 M1-27 M1-50 M1-68 M10-62 M1-132 M8-57,L7,should,no,
-60,Journal marqué « imprimé » ; refus de clôturer un journal non imprimé,M2-67 M3-29,L1,should,no,
+60,Journal marqué « imprimé » ; refus de clôturer un journal non imprimé,M2-67 M3-29,L1,should,yes,impression ou export enregistré et numéroté ; refus de clôturer un journal non imprimé en option du dossier
 66,"Modifier, supprimer ou dupliquer une fiche",M4-B-41,L4,must,yes,
 67,"Annuler une dotation ou un traitement (inventaire, révision, réévaluation, dérogatoire)",M4-B-54 M4-B-56,L4,must,yes,
 68,Créer les biens à partir des écritures déjà passées,M4-B-58,L4,must,yes,
