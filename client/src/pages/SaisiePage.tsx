@@ -24,15 +24,22 @@ import { lireMasquerTotaux, memoriserMasquerTotaux } from '../lib/totaux-saisie'
 import { ModaleCompteEnSaisie } from '../components/ModaleCompteEnSaisie';
 import { libelleMode, type ModeReglement } from '../lib/modes-reglement';
 import {
+  attentesSurLaPiece,
   decouperLigne,
   echeancesNonNulles,
   echeancesSaisissables,
+  enfiler,
   etatDeLaLigneAttendue,
+  fenetresPresentes,
+  lignesAEcheancierDecale,
+  motifEcheanciersDecales,
   motifEcheanciersEnAttente,
   motifEcheancesSaisies,
   porteUneEcheance,
+  signatureDecalage,
   type EcheanceSaisie,
   type EcheancierDeLigne,
+  type FenetreAttendue,
 } from '../lib/echeance-saisie';
 import { FenetreEcheances } from '../components/FenetreEcheances';
 
@@ -99,6 +106,15 @@ interface LignePiece {
    */
   modeReglementId?: string;
   modeCode?: string;
+  /**
+   * LA DATE DE LA PIÈCE POUR LAQUELLE L'ÉCHÉANCIER DU TIERS A ÉTÉ CALCULÉ
+   * (second tour de relecture, M2) · le modèle compte ses délais depuis elle ;
+   * la pièce redatée ensuite ne part pas sans que l'écart soit dit. Jamais
+   * envoyé.
+   */
+  echeancierDu?: string;
+  /** L'échéancier du tiers n'a pas pu être calculé (pièce sans date, lecture manquée) · jamais envoyé. */
+  echeancierNonCalcule?: boolean;
   /**
    * Repère de la ligne dans la pièce en cours, jamais envoyé · l'échéancier
    * du modèle (fonction 3) revient du serveur après coup et retrouve SA
@@ -306,9 +322,13 @@ export function SaisiePage() {
   // après coup, et ne s'applique qu'à une ligne encore là, telle qu'elle était.
   const lignesRef = useRef<LignePiece[]>(lignes);
   lignesRef.current = lignes;
-  // Les échéanciers demandés et pas encore revenus · la pièce ne part pas
-  // avant eux, sans quoi elle partait sans l'échéance annoncée ensuite.
-  const [echeanciersEnAttente, setEcheanciersEnAttente] = useState(0);
+  // Les échéanciers demandés et pas encore revenus, PAR LIGNE (second tour,
+  // mineur 3) · la pièce ne part pas avant eux, sans quoi elle partait sans
+  // l'échéance annoncée ensuite ; seule une ligne encore présente retient.
+  const [clesEnLecture, setClesEnLecture] = useState<string[]>([]);
+  const clesEnLectureRef = useRef<string[]>(clesEnLecture);
+  clesEnLectureRef.current = clesEnLecture;
+  const echeanciersEnAttente = attentesSurLaPiece(clesEnLecture, lignes);
   // LA PIÈCE N'A PAS DE BROUILLON (audit final F177) · composée et non
   // enregistrée, elle partait sur un Échap ou un clic sur la croix. La
   // fermeture de la fenêtre le demande désormais.
@@ -333,14 +353,17 @@ export function SaisiePage() {
   // qu'il a fait de la dernière ligne de facture, dit au-dessus de la saisie,
   // et la fenêtre des échéances quand le modèle en compte plusieurs.
   const [annonceEcheance, setAnnonceEcheance] = useState<string | null>(null);
-  const [fenetreEcheances, setFenetreEcheances] = useState<{
-    cle: string;
-    compte: string;
-    libelle: string;
-    montant: number;
-    modele: string;
-    initiales: EcheanceSaisie[];
-  } | null>(null);
+  // LE MODE POSÉ D'OFFICE sur une ligne (mode habituel du tiers, mode du
+  // modèle) · il se retire d'un clic (second tour, mineur 4).
+  const [modeDOffice, setModeDOffice] = useState<{ cle: string; numero: string; code: string } | null>(null);
+  // LES FENÊTRES DES ÉCHÉANCES ATTENDUES, en FILE (second tour, M1 et mineur
+  // 2) · annoncées avec « Ouvrir les échéances », jamais ouvertes en pleine
+  // frappe, jamais écrasées par la réponse d'une autre ligne.
+  const [fileEcheances, setFileEcheances] = useState<FenetreAttendue[]>([]);
+  const [fenetreOuverte, setFenetreOuverte] = useState(false);
+  // La confirmation d'enregistrer des échéances calculées pour une autre date
+  // · elle ne vaut que pour les lignes et la date qu'elle a vues (M2).
+  const [decalageAccepte, setDecalageAccepte] = useState<string | null>(null);
   const compteurCle = useRef(0);
   // OPÉRATION EN DEVISE · une exception de la ligne, comme la date de versement.
   // Null tant que la liste n'est pas lue (reste de l'audit final F255) · un
@@ -424,7 +447,10 @@ export function SaisiePage() {
    * une facture d'association exonérée, elle passerait inaperçue jusqu'à la
    * déclaration.
    */
-  const [propositionTva, setPropositionTva] = useState<{ index: number; compteId: string; tauxTvaId: string } | null>(null);
+  // La ligne HT visée par sa CLÉ, jamais par son rang (second tour, mineur
+  // 5) · une ligne retirée ou un découpage avant elle déplaçait le rang, et
+  // la proposition visait une autre ligne ou disparaissait sans un mot.
+  const [propositionTva, setPropositionTva] = useState<{ cle: string; compteId: string; tauxTvaId: string } | null>(null);
   // Assujettissement du dossier · décide si la TVA s'ajoute d'office (voir
   // modeCalculTva). `null` tant qu'il n'est pas lu : on ne présume rien.
   const [assujettiTva, setAssujettiTva] = useState<boolean | null>(null);
@@ -818,21 +844,33 @@ export function SaisiePage() {
     enDevise: boolean;
   }) => {
     if (!exerciceCourant) return;
+    const modifier = (f: (x: LignePiece) => LignePiece) => setLignes((prev) => prev.map((x) => (x.cle === l.cle ? f(x) : x)));
     const datee = dateDeLaPiece({ parPiece, datePiece, periode, jour, exercice: exerciceCourant });
-    if ('motif' in datee) return;
+    if ('motif' in datee) {
+      // UNE PIÈCE SANS DATE NE CALCULE RIEN, ET LE DIT (second tour, M2) · la
+      // ligne est marquée, et l'échéancier se calcule quand la date arrive.
+      modifier((x) => ({ ...x, echeancierNonCalcule: true }));
+      setAnnonceEcheance(`${l.numero} · échéancier non calculé · indiquez d'abord la date de la pièce.`);
+      return;
+    }
+    const du = datee.date;
     let r: EcheancierDeLigne;
-    setEcheanciersEnAttente((n) => n + 1);
+    setClesEnLecture((c) => [...c, l.cle]);
     try {
-      const q = new URLSearchParams({ date: datee.date, montant: String(l.montant), sens: l.sens });
+      const q = new URLSearchParams({ date: du, montant: String(l.montant), sens: l.sens });
       if (journal?.type) q.set('typeJournal', journal.type);
       r = await api.get<EcheancierDeLigne>(`/tiers/echeancier-de-ligne/${l.compteId}?${q.toString()}`);
     } catch (e) {
       if (etatDeLaLigneAttendue(lignesRef.current, l) !== 'ABSENTE') {
-        setAnnonceEcheance(`Échéancier du tiers non lu · ${e instanceof ApiError ? e.message : 'serveur injoignable'}.`);
+        modifier((x) => ({ ...x, echeancierNonCalcule: true }));
+        setAnnonceEcheance(`${l.numero} · échéancier du tiers non lu · ${e instanceof ApiError ? e.message : 'serveur injoignable'}.`);
       }
       return;
     } finally {
-      setEcheanciersEnAttente((n) => n - 1);
+      setClesEnLecture((c) => {
+        const i = c.indexOf(l.cle);
+        return i < 0 ? c : [...c.slice(0, i), ...c.slice(i + 1)];
+      });
     }
     // LA RÉPONSE PEUT ARRIVER APRÈS COUP (relecture M1) · ligne retirée ou
     // pièce abandonnée, rien ne s'applique ni ne s'annonce ; ligne retouchée,
@@ -840,17 +878,23 @@ export function SaisiePage() {
     const etat = etatDeLaLigneAttendue(lignesRef.current, l);
     if (etat === 'ABSENTE') return;
     if (etat === 'CHANGEE') {
+      modifier((x) => ({ ...x, echeancierNonCalcule: undefined }));
       setAnnonceEcheance(`${l.numero} · échéancier du tiers non appliqué · la ligne a changé pendant sa lecture ; saisissez l'échéance à la main.`);
       return;
     }
-    const modifier = (f: (x: LignePiece) => LignePiece) => setLignes((prev) => prev.map((x) => (x.cle === l.cle ? f(x) : x)));
     if (r.echeances.length === 0) {
-      if (r.applicable && r.modele && r.motif) setAnnonceEcheance(`${l.numero} · ${r.motif}`);
-      if (r.modeHabituel && !l.modeTape) {
-        const mode = r.modeHabituel;
-        modifier((x) => ({ ...x, modeReglementId: mode.id, modeCode: mode.code }));
-        setAnnonceEcheance(`${l.numero} · mode ${mode.code} du tiers ${r.tiers?.code ?? ''} posé sur la ligne.`);
+      // LES DEUX ANNONCES SE JOIGNENT, ET LE MODE HABITUEL NE VA QU'À LA LIGNE
+      // D'UNE FACTURE (second tour, mineur 4) · le motif du modèle était
+      // écrasé par celle du mode, posé jusque sur un règlement.
+      const dites: string[] = [];
+      if (r.applicable && r.modele && r.motif) dites.push(r.motif);
+      const mode = r.applicable && !l.modeTape ? r.modeHabituel : null;
+      modifier((x) => ({ ...x, echeancierNonCalcule: undefined, ...(mode ? { modeReglementId: mode.id, modeCode: mode.code } : {}) }));
+      if (mode) {
+        dites.push(`mode ${mode.code} du tiers ${r.tiers?.code ?? ''} posé sur la ligne`);
+        setModeDOffice({ cle: l.cle, numero: l.numero, code: mode.code });
       }
+      if (dites.length) setAnnonceEcheance(`${l.numero} · ${dites.join(' · ')}.`);
       return;
     }
     const modele = r.modele?.intitule ?? '';
@@ -859,14 +903,19 @@ export function SaisiePage() {
     const utiles = echeancesNonNulles(r.echeances);
     if (utiles.length === 1) {
       const [e] = utiles;
+      const modeDuModele = l.modeTape || !e.modeReglementId ? null : { id: e.modeReglementId, code: e.modeCode ?? undefined };
       modifier((x) => ({
         ...x,
         dateEcheance: e.dateEcheance,
-        ...(l.modeTape || !e.modeReglementId ? {} : { modeReglementId: e.modeReglementId, modeCode: e.modeCode ?? undefined }),
+        echeancierDu: du,
+        echeancierNonCalcule: undefined,
+        ...(modeDuModele ? { modeReglementId: modeDuModele.id, modeCode: modeDuModele.code } : {}),
       }));
+      if (modeDuModele?.code) setModeDOffice({ cle: l.cle, numero: l.numero, code: modeDuModele.code });
       setAnnonceEcheance(`${l.numero} · échéance au ${e.dateEcheance.split('-').reverse().join('/')} (modèle « ${modele} »).`);
       return;
     }
+    modifier((x) => ({ ...x, echeancierNonCalcule: undefined }));
     if (l.enDevise) {
       setAnnonceEcheance(
         `${l.numero} · le modèle « ${modele} » compte ${utiles.length} échéances ; une ligne en devise ne se découpe pas d'elle-même · saisissez une ligne par échéance, ou l'échéance à la main.`,
@@ -877,22 +926,55 @@ export function SaisiePage() {
     if (r.validationAutomatique) {
       // LE CHEMIN D'OFFICE PASSE PAR LA MÊME RÈGLE QUE LA FENÊTRE (relecture
       // m1) · un découpage qui ne refait pas la ligne au centime ne se pose
-      // pas seul ; la fenêtre s'ouvre, le motif dit.
+      // pas seul ; la fenêtre s'annonce, le motif dit.
       const motif = motifEcheancesSaisies(initiales, l.montant);
       if (!motif) {
-        appliquerDecoupage(l.cle, initiales);
+        appliquerDecoupage(l.cle, initiales, du);
         setAnnonceEcheance(`${l.numero} · ligne découpée en ${initiales.length} échéances (modèle « ${modele} », appliqué d'office).`);
         return;
       }
       setAnnonceEcheance(`${l.numero} · le modèle « ${modele} » ne s'applique pas d'office · ${motif}`);
     }
-    setFenetreEcheances({ cle: l.cle, compte: l.numero, libelle: l.libelle, montant: l.montant, modele, initiales });
+    setFileEcheances((file) => enfiler(file, { cle: l.cle, compte: l.numero, libelle: l.libelle, montant: l.montant, modele, initiales, du }));
   };
 
-  const appliquerDecoupage = (cle: string, echeances: EcheanceSaisie[]) => {
+  const appliquerDecoupage = (cle: string, echeances: EcheanceSaisie[], du: string) => {
     const codeDuMode = (id: string) => modesLus?.find((m) => m.id === id)?.code;
-    setLignes((prev) => prev.flatMap((x) => (x.cle === cle ? decouperLigne(x, echeances, codeDuMode) : [x])));
+    setLignes((prev) =>
+      prev.flatMap((x) => (x.cle === cle ? decouperLigne({ ...x, echeancierDu: du, echeancierNonCalcule: undefined }, echeances, codeDuMode) : [x])),
+    );
   };
+
+  // LA DATE DE LA PIÈCE ARRIVE OU CHANGE (second tour, M2) · les lignes dont
+  // l'échéancier n'a pas pu être calculé le reçoivent maintenant ; celles
+  // calculées pour une autre date sont nommées sous la saisie et à
+  // l'enregistrement (`lignesAEcheancierDecale`).
+  const dateCourante = (() => {
+    if (!exerciceCourant) return null;
+    const d = dateDeLaPiece({ parPiece, datePiece, periode, jour, exercice: exerciceCourant });
+    return 'motif' in d ? null : d.date;
+  })();
+  useEffect(() => {
+    if (!dateCourante) return;
+    for (const x of lignesRef.current) {
+      if (!x.echeancierNonCalcule || !x.cle || clesEnLectureRef.current.includes(x.cle)) continue;
+      void appliquerEcheancier({
+        cle: x.cle,
+        compteId: x.compteId,
+        numero: x.numero,
+        libelle: x.libelle,
+        montant: x.debit || x.credit,
+        sens: x.debit > 0 ? 'DEBIT' : 'CREDIT',
+        modeTape: x.modeReglementId ? { id: x.modeReglementId, code: x.modeCode } : undefined,
+        enDevise: !!x.deviseId,
+      });
+    }
+    // Seule l'arrivée d'une date relance le calcul · `appliquerEcheancier` lit
+    // l'état courant à son appel.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateCourante]);
+  const fenetresAttendues = fenetresPresentes(fileEcheances, lignes);
+  const echeancesDecalees = dateCourante ? lignesAEcheancierDecale(lignes, dateCourante) : [];
 
   const validerLigne = () => {
     setErreur(null);
@@ -1040,7 +1122,7 @@ export function SaisiePage() {
     } else if (mode !== 'AUCUN' && compteChoisi.tauxTvaDefautId) {
       // PROPOSE, ou AUTO impossible (compte de taxe non rattaché) · la bande
       // s'affiche avec son motif plutôt qu'un silence.
-      setPropositionTva({ index: lignes.length, compteId: compteChoisi.id, tauxTvaId: compteChoisi.tauxTvaDefautId });
+      setPropositionTva({ cle, compteId: compteChoisi.id, tauxTvaId: compteChoisi.tauxTvaDefautId });
     } else {
       setPropositionTva(null);
     }
@@ -1060,6 +1142,14 @@ export function SaisiePage() {
   };
 
   const retirerLigne = (i: number) => {
+    // Ce que la ligne retirée attendait ne retient plus rien (second tour,
+    // mineur 3).
+    const cle = lignes[i]?.cle;
+    if (cle) {
+      setClesEnLecture((c) => c.filter((x) => x !== cle));
+      setFileEcheances((file) => file.filter((f) => f.cle !== cle));
+      setModeDOffice((m) => (m?.cle === cle ? null : m));
+    }
     setLignes((prev) => prev.filter((_, idx) => idx !== i));
     setPropositionTva(null);
   };
@@ -1134,7 +1224,7 @@ export function SaisiePage() {
    */
   const apercuTva = useMemo(() => {
     if (!propositionTva) return null;
-    const ligneHt = lignes[propositionTva.index];
+    const ligneHt = lignes.find((x) => x.cle === propositionTva.cle);
     if (!ligneHt || ligneHt.compteId !== propositionTva.compteId) return null;
     const taux = tauxTvaListe.find((t) => t.id === propositionTva.tauxTvaId);
     if (!taux) return null;
@@ -1361,7 +1451,11 @@ export function SaisiePage() {
 
   const abandonnerPiece = () => {
     setLignes([]);
-    setFenetreEcheances(null);
+    setClesEnLecture([]);
+    setFileEcheances([]);
+    setFenetreOuverte(false);
+    setModeDOffice(null);
+    setDecalageAccepte(null);
     setAnnonceEcheance(null);
     setTvaAjoutee(null);
     setReference('');
@@ -1377,9 +1471,10 @@ export function SaisiePage() {
   // jamais un booléen positionnel : `onClick={enregistrerPiece}` passerait
   // l'événement du clic comme demande.
   const enregistrerPiece = async (
-    { reporterAuPremierJourOuvert = false, confirmerComptesEnSommeil = false } = {} as {
+    { reporterAuPremierJourOuvert = false, confirmerComptesEnSommeil = false, garderEcheancesDecalees = false } = {} as {
       reporterAuPremierJourOuvert?: boolean;
       confirmerComptesEnSommeil?: boolean;
+      garderEcheancesDecalees?: boolean;
     },
   ) => {
     if (!exerciceCourant || !journal) return;
@@ -1398,11 +1493,20 @@ export function SaisiePage() {
       setErreur('La pièce doit comporter au moins deux lignes et être équilibrée (débit = crédit).');
       return;
     }
-    const attente = motifEcheanciersEnAttente(echeanciersEnAttente);
+    const attente = motifEcheanciersEnAttente(echeanciersEnAttente, fenetresAttendues.length);
     if (attente) {
       setErreur(attente);
       return;
     }
+    // L'ÉCHÉANCIER CALCULÉ POUR UNE AUTRE DATE SE DIT (second tour, M2) · la
+    // confirmation ne vaut que pour les lignes et la date qu'elle a vues.
+    const decales = lignesAEcheancierDecale(lignes, datee.date);
+    const signature = signatureDecalage(decales, datee.date);
+    if (decales.length > 0 && !garderEcheancesDecalees && decalageAccepte !== signature) {
+      setErreur(motifEcheanciersDecales(decales, datee.date));
+      return;
+    }
+    if (decales.length > 0) setDecalageAccepte(signature);
     setEnvoi(true);
     try {
       const { date } = datee;
@@ -1442,6 +1546,9 @@ export function SaisiePage() {
       setLignes([]);
       setTvaAjoutee(null);
       setAnnonceEcheance(null);
+      setModeDOffice(null);
+      setFileEcheances([]);
+      setDecalageAccepte(null);
       setReference('');
       setLibellePiece('');
       setRechargement((n) => n + 1);
@@ -2068,31 +2175,88 @@ export function SaisiePage() {
           {annonceEcheance && (
             <div role="status" className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-border/50 bg-sel-soft text-[11.5px] text-sel">
               <span>{annonceEcheance}</span>
-              <button type="button" onClick={() => setAnnonceEcheance(null)} className="border border-sel/40 bg-surface px-2 py-[1px]">
+              {modeDOffice && lignes.some((x) => x.cle === modeDOffice.cle) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const m = modeDOffice;
+                    setLignes((prev) => prev.map((x) => (x.cle === m.cle ? { ...x, modeReglementId: undefined, modeCode: undefined } : x)));
+                    setModeDOffice(null);
+                    setAnnonceEcheance(`${m.numero} · mode ${m.code} retiré de la ligne.`);
+                  }}
+                  className="border border-sel/40 bg-surface px-2 py-[1px]"
+                >
+                  Retirer le mode {modeDOffice.code}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setAnnonceEcheance(null);
+                  setModeDOffice(null);
+                }}
+                className="border border-sel/40 bg-surface px-2 py-[1px]"
+              >
                 Compris
               </button>
             </div>
           )}
-          {fenetreEcheances && (
+          {/* LA FILE DES DÉCOUPAGES ATTENDUS (second tour, M1 et mineur 2) ·
+              annoncée, jamais ouverte en pleine frappe ; la fenêtre ne
+              s'ouvre que sur le geste, une ligne à la fois, avec SA clé. */}
+          {fenetresAttendues.length > 0 && (
+            <div role="status" className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-border/50 bg-warning-soft text-[11.5px] text-warning">
+              <span>
+                {fenetresAttendues[0].compte} · le modèle « {fenetresAttendues[0].modele} » découpe la ligne en {fenetresAttendues[0].initiales.length}{' '}
+                échéances
+                {fenetresAttendues.length > 1 ? ` · ${fenetresAttendues.length - 1} autre${fenetresAttendues.length > 2 ? 's' : ''} ligne${fenetresAttendues.length > 2 ? 's' : ''} en attente` : ''}.
+              </span>
+              <button type="button" onClick={() => setFenetreOuverte(true)} className="border border-warning/40 bg-surface px-2 py-[1px]">
+                Ouvrir les échéances
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const f = fenetresAttendues[0];
+                  setFileEcheances((file) => file.filter((x) => x.cle !== f.cle));
+                  setAnnonceEcheance(`${f.compte} · ligne gardée entière, sans échéance.`);
+                }}
+                className="border border-warning/40 bg-surface px-2 py-[1px]"
+              >
+                Garder la ligne entière
+              </button>
+            </div>
+          )}
+          {echeancesDecalees.length > 0 && dateCourante && (
+            <div role="status" className="px-3 py-1.5 border-b border-border/50 bg-warning-soft text-[11.5px] text-warning">
+              {motifEcheanciersDecales(echeancesDecalees, dateCourante)}
+            </div>
+          )}
+          {fenetreOuverte && fenetresAttendues.length > 0 && (
             <FenetreEcheances
-              compte={fenetreEcheances.compte}
-              libelle={fenetreEcheances.libelle}
-              montantLigne={fenetreEcheances.montant}
-              modele={fenetreEcheances.modele}
-              initiales={fenetreEcheances.initiales}
+              key={fenetresAttendues[0].cle}
+              compte={fenetresAttendues[0].compte}
+              libelle={fenetresAttendues[0].libelle}
+              montantLigne={fenetresAttendues[0].montant}
+              modele={fenetresAttendues[0].modele}
+              initiales={fenetresAttendues[0].initiales}
               modes={modesLus}
               erreurModes={erreurModes}
               onAppliquer={(echeances) => {
-                appliquerDecoupage(fenetreEcheances.cle, echeances);
-                setAnnonceEcheance(`${fenetreEcheances.compte} · ligne découpée en ${echeances.length} échéances.`);
-                setFenetreEcheances(null);
+                const f = fenetresAttendues[0];
+                appliquerDecoupage(f.cle, echeances, f.du);
+                setAnnonceEcheance(`${f.compte} · ligne découpée en ${echeances.length} échéances.`);
+                setFileEcheances((file) => file.filter((x) => x.cle !== f.cle));
+                setFenetreOuverte(false);
                 compteRef.current?.focus();
               }}
               onFermer={() => {
                 // Fermer n'est pas un geste muet (relecture m4) · la ligne
                 // reste entière et sans échéance, et c'est dit.
-                setAnnonceEcheance(`${fenetreEcheances.compte} · ligne gardée entière, sans échéance.`);
-                setFenetreEcheances(null);
+                const f = fenetresAttendues[0];
+                setAnnonceEcheance(`${f.compte} · ligne gardée entière, sans échéance.`);
+                setFileEcheances((file) => file.filter((x) => x.cle !== f.cle));
+                setFenetreOuverte(false);
                 compteRef.current?.focus();
               }}
             />
@@ -2342,6 +2506,14 @@ export function SaisiePage() {
                   aria-label="Échéance de la ligne"
                   value={echeance}
                   onChange={(e) => setEcheance(e.target.value)}
+                  // Entrée valide la ligne depuis ses exceptions aussi
+                  // (second tour, mineur 16), comme depuis les montants.
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      validerLigne();
+                    }
+                  }}
                   className="border border-border-dark px-1.5 py-0.5 font-mono text-[11.5px]"
                 />
               </label>
@@ -2351,6 +2523,12 @@ export function SaisiePage() {
                   aria-label="Mode de règlement de la ligne"
                   value={modeLigne}
                   onChange={(e) => setModeLigne(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      validerLigne();
+                    }
+                  }}
                   className="border border-border-dark px-1.5 py-0.5 text-[11.5px]"
                 >
                   <option value="">{erreurModes ? 'Modes illisibles' : 'Non précisé'}</option>
@@ -2631,7 +2809,7 @@ export function SaisiePage() {
             <button
               type="button"
               onClick={() => enregistrerPiece()}
-              disabled={envoi || !equilibree || echeanciersEnAttente > 0}
+              disabled={envoi || !equilibree || echeanciersEnAttente > 0 || fenetresAttendues.length > 0}
               className="bg-sel text-white px-4 py-1 text-[11.5px] font-semibold disabled:opacity-50"
             >
               {envoi ? 'Enregistrement…' : 'Enregistrer la pièce'}
@@ -2656,6 +2834,18 @@ export function SaisiePage() {
                 className="px-2.5 py-1 border border-border bg-surface text-text"
               >
                 Reporter au premier jour de la période ouverte
+              </button>
+            </div>
+          )}
+          {peutEcrire && erreur.startsWith('Échéancier du tiers à revoir') && (
+            <div className="mt-2">
+              <button
+                type="button"
+                disabled={envoi}
+                onClick={() => enregistrerPiece({ garderEcheancesDecalees: true })}
+                className="px-2.5 py-1 border border-border bg-surface text-text"
+              >
+                Enregistrer avec ces échéances
               </button>
             </div>
           )}

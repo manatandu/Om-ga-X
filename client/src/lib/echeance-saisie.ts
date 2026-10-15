@@ -81,10 +81,89 @@ export function etatDeLaLigneAttendue(
  * enregistrée avant la réponse, elle partait sans l'échéance que l'écran
  * annonçait ensuite. Null quand rien n'est attendu.
  */
-export function motifEcheanciersEnAttente(enAttente: number): string | null {
-  return enAttente > 0
-    ? 'L’échéancier du tiers est en cours de lecture · la pièce s’enregistre une fois la ligne échéancée.'
-    : null;
+export function motifEcheanciersEnAttente(enLecture: number, aDecider = 0): string | null {
+  if (enLecture > 0) return 'L’échéancier du tiers est en cours de lecture · la pièce s’enregistre une fois la ligne échéancée.';
+  if (aDecider > 0) {
+    return aDecider > 1
+      ? `${aDecider} lignes attendent leur découpage en échéances · ouvrez les échéances, ou gardez chaque ligne entière.`
+      : 'Une ligne attend son découpage en échéances · ouvrez les échéances, ou gardez la ligne entière.';
+  }
+  return null;
+}
+
+/**
+ * LES LIGNES QUI ATTENDENT ENCORE, PARMI CELLES DE LA PIÈCE (second tour de
+ * relecture, mineur 3) · une clé attendue n'arrête la pièce que si sa ligne
+ * y est encore ; une ligne retirée ou une pièce abandonnée ne retient rien.
+ */
+export function attentesSurLaPiece(cles: Iterable<string>, lignes: ReadonlyArray<{ cle?: string }>): number {
+  const presentes = new Set(lignes.map((l) => l.cle).filter((c): c is string => !!c));
+  let n = 0;
+  for (const c of new Set(cles)) if (presentes.has(c)) n += 1;
+  return n;
+}
+
+/** Une fenêtre des échéances attendue · la ligne, le modèle, le découpage proposé, la date qui l'a calculé. */
+export interface FenetreAttendue {
+  cle: string;
+  compte: string;
+  libelle: string;
+  montant: number;
+  modele: string;
+  initiales: EcheanceSaisie[];
+  /** La date de la pièce pour laquelle l'échéancier a été calculé. */
+  du: string;
+}
+
+/**
+ * UNE FILE, JAMAIS UNE FENÊTRE ÉCRASÉE (second tour de relecture, M1) · la
+ * réponse d'une seconde ligne remplaçait la fenêtre ouverte de la première ·
+ * l'en-tête disait B, les dates restaient celles de A, et « Appliquer »
+ * posait les échéances de A sur B. Chaque ligne a sa place, une nouvelle
+ * réponse pour la même ligne remplace la sienne seulement.
+ */
+export function enfiler(file: readonly FenetreAttendue[], f: FenetreAttendue): FenetreAttendue[] {
+  return [...file.filter((x) => x.cle !== f.cle), f];
+}
+
+/** Les fenêtres dont la ligne est encore dans la pièce, dans leur ordre. */
+export function fenetresPresentes(file: readonly FenetreAttendue[], lignes: ReadonlyArray<{ cle?: string }>): FenetreAttendue[] {
+  const presentes = new Set(lignes.map((l) => l.cle));
+  return file.filter((f) => presentes.has(f.cle));
+}
+
+/**
+ * L'ÉCHÉANCIER CALCULÉ POUR UNE AUTRE DATE (second tour de relecture, M2) ·
+ * le modèle de règlement compte ses délais depuis la date de la pièce. Une
+ * ligne échéancée au jour 1 d'une saisie par période, ou dont l'échéancier
+ * n'a pas pu être calculé (pièce sans date, lecture manquée), ne part pas
+ * sans que la différence soit dite.
+ */
+export function lignesAEcheancierDecale(
+  lignes: ReadonlyArray<{ numero: string; echeancierDu?: string; echeancierNonCalcule?: boolean }>,
+  datePiece: string,
+): Array<{ numero: string; du: string | null }> {
+  return lignes.flatMap((l): Array<{ numero: string; du: string | null }> => {
+    if (l.echeancierNonCalcule) return [{ numero: l.numero, du: null }];
+    return l.echeancierDu && l.echeancierDu !== datePiece ? [{ numero: l.numero, du: l.echeancierDu }] : [];
+  });
+}
+
+const enFrancais = (iso: string) => iso.split('-').reverse().join('/');
+
+/** Le refus nommé, null quand tout est calculé pour la date de la pièce. */
+export function motifEcheanciersDecales(decales: ReadonlyArray<{ numero: string; du: string | null }>, datePiece: string): string | null {
+  if (decales.length === 0) return null;
+  const noms = decales.map((d) => (d.du ? `${d.numero} (calculé au ${enFrancais(d.du)})` : `${d.numero} (non calculé)`));
+  return (
+    `Échéancier du tiers à revoir · la pièce est datée du ${enFrancais(datePiece)} · ${noms.join(', ')}. ` +
+    'Retirez et ressaisissez ces lignes pour le recalculer, ou enregistrez-les avec ces échéances.'
+  );
+}
+
+/** Ce qu'une confirmation a vu · elle ne vaut que pour ces lignes à cette date. */
+export function signatureDecalage(decales: ReadonlyArray<{ numero: string; du: string | null }>, datePiece: string): string {
+  return JSON.stringify([datePiece, decales]);
 }
 
 /** Un montant tapé avec ses espaces et sa virgule, en centimes entiers ; illisible, null. */
