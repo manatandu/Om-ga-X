@@ -3734,12 +3734,15 @@ Préférence du poste (`lib/assistant-creation.ts`) · la création d'un compte
 et d'un code journal par étapes, les mêmes champs et la même route ; « Créer
 et continuer » garde la boîte ouverte pour le suivant.
 
-**Séquences de saisie (ligne sage-l1, fonction 19, 2026-10-14).** Sage,
-P_SEQUENCE · dix séquences nommées par dossier (`SequenceSaisie`, 35
-caractères), chaque modèle de saisie dans une séquence ou aucune (RESTRICT),
-la barre « Appeler un modèle » de la saisie les propose par séquence ; une
-séquence qui range un modèle ne se retire pas. Les rubriques de paie, que
-Sage range aussi par séquence, ne le sont pas encore.
+**Séquences de saisie (ligne sage-l1, fonction 19, 2026-10-14).** Chez Sage,
+la table P_SEQUENCE est celle de la PAIE · elle range les rubriques du
+bulletin. OmegaX la TRANSPOSE aux modèles de saisie (lecture retenue,
+`modeles-saisie/sequences-saisie.ts`) · dix séquences nommées par dossier
+(`SequenceSaisie`, 35 caractères), chaque modèle de saisie dans une séquence
+ou aucune (RESTRICT), la barre « Appeler un modèle » de la saisie les propose
+par séquence ; une séquence qui range un modèle ne se retire pas. Les
+rubriques de paie, que Sage range par séquence, ne le sont pas encore
+(question au suivi).
 
 **Éditions des structures (2026-09-25, point 18).** `lib/editions-structures.ts`.
 (1) Liste À PLAT, jamais l'écran imprimé (`avec-edition` · une arborescence ou un
