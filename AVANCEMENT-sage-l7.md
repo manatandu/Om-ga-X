@@ -110,9 +110,30 @@ les trois fichiers sans colonne exigée manquante.
   `lib/impressions-differees.spec.ts` ; navigateur
   `e2e/tests/sage-l7-impressions-differees.e2e.ts` (vert sous Chromium).
 
+### #59, partie 2 · sélections enregistrées
+
+- Table `SelectionEdition` (édition JOURNAL ou IMPRESSION_DIFFEREE, nom
+  unique par édition et dossier, critères relus, auteur, dates), migration
+  `20270182000300_selections_edition`.
+- `exports/selections/` · règles pures (`CRITERES_PAR_EDITION`,
+  `criteresSelectionOuMotif` · clé inconnue, type faux et exercice refusés,
+  valeur vide non gardée ; `nomOuMotif`), service (liste bornée qui dit son
+  total, journal retiré DIT au rappel, nom en double refusé avec ses deux
+  issues, remplacer et supprimer unitaires), contrôleur (`GET ?edition=`,
+  `POST`, `PUT :id`, `DELETE :id` au comptable et à l'administrateur).
+- Écran · `components/SelectionsEnregistrees.tsx` dans les filtres du
+  journal (rappel appliqué aussitôt) et dans le formulaire des impressions
+  différées ; enregistrer, remplacer (même nom) et supprimer sous
+  `peutEcrire`.
+- Listes · audit et libellé, cloisonnement, profil de fonctions (hors
+  profil, motif), décompte de `lecture-bornee.spec.ts` (173).
+- Tests · `selections-edition.spec.ts` (7, dont les critères du journal
+  relus dans `JournalPage.tsx`, `interface Filtres`), client
+  `lib/selections-edition.spec.ts`, navigateur
+  `e2e/tests/sage-l7-selections.e2e.ts` (vert sous Chromium).
+
 ## Reste
-- #59 · sélections enregistrées, modèles d'édition et sauts de ligne ou de
-  page.
+- #59 · modèles d'édition et sauts de ligne ou de page.
 - Bloc du § 3 complet, tests navigateur.
 
 ## Décisions par la loi
@@ -165,6 +186,16 @@ les trois fichiers sans colonne exigée manquante.
   elle ne repart plus ; sa correction (inscription en négatif, art. 20,
   al. 2) part comme une écriture nouvelle.
 
+- **L7-5 · Une sélection enregistrée se garde au DOSSIER, jamais au poste
+  (décision de la ligne · aucun texte ne la régit).** Elle nomme des objets
+  du dossier (un journal, des dates) qui n'ont de sens que là ; un dossier
+  se travaille à plusieurs et sur plusieurs postes, et le réviseur reprend
+  la sélection du comptable pour refaire la même édition ; le stockage du
+  navigateur se perd (données effacées, fenêtre privée, autre poste) et ne
+  porte que des commodités propres au poste (CLAUDE.md, stockage du
+  navigateur). Elle ne garde jamais l'exercice · elle se rappelle sur
+  l'exercice choisi.
+
 ## Questions à Manasse
 
 (aucune encore)
@@ -185,7 +216,7 @@ les trois fichiers sans colonne exigée manquante.
 
 ```bash
 npx tsc --noEmit && (cd client && npx tsc --noEmit)
-npx jest src/modules/exports/modifications src/modules/exports/impression-differee --maxWorkers=1
+npx jest src/modules/exports/modifications src/modules/exports/impression-differee src/modules/exports/selections --maxWorkers=1
 (cd client && npx vitest run src/lib/export-modifications.spec.ts)
 (cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4307 \
   OMEGAX_API=http://localhost:4307/api npx playwright test tests/sage-l7-*.e2e.ts)

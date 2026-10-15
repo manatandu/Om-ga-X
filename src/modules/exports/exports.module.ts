@@ -18,6 +18,8 @@ import { ExportModificationsController } from './modifications/export-modificati
 import { ExportModificationsService } from './modifications/export-modifications.service';
 import { ImpressionsDiffereesController } from './impression-differee/impression-differee.controller';
 import { ImpressionDiffereeService } from './impression-differee/impression-differee.service';
+import { SelectionsEditionController } from './selections/selections-edition.controller';
+import { SelectionsEditionService } from './selections/selections-edition.service';
 
 @Module({
   // `EtatsFinanciersSyscohadaModule` fournit les DEUX moteurs SYSCOHADA
@@ -48,9 +50,23 @@ import { ImpressionDiffereeService } from './impression-differee/impression-diff
   // restitution.controller.ts.
   // Ligne sage-l7, fonction 99 · l'export des seules modifications, qui écrit
   // son classeur par le cartouche des exports (`ExportService.identiteEtat`).
-  // Fonction 59 · l'impression différée, produite par les moteurs des exports.
-  controllers: [ExportController, RestitutionController, ExportModificationsController, ImpressionsDiffereesController],
-  providers: [ExportService, ExportFpmService, RestitutionService, ExportModificationsService, ImpressionDiffereeService],
+  // Fonction 59 · l'impression différée, produite par les moteurs des exports,
+  // et les sélections enregistrées des éditions.
+  controllers: [
+    ExportController,
+    RestitutionController,
+    ExportModificationsController,
+    ImpressionsDiffereesController,
+    SelectionsEditionController,
+  ],
+  providers: [
+    ExportService,
+    ExportFpmService,
+    RestitutionService,
+    ExportModificationsService,
+    ImpressionDiffereeService,
+    SelectionsEditionService,
+  ],
   // Exporté pour GroupeModule : la liasse du groupe en un clic reverse la
   // balance agrégée dans le dossier de combinaison puis fait produire le
   // classeur par CE service · aucun second moteur de liasse.

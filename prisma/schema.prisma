@@ -884,8 +884,9 @@ model Tenant {
   // Ligne sage-l7 · fonction 99, l'export des seules modifications.
   exportsEcritures             ExportEcritures[]
   ecrituresExportees           EcritureExportee[]
-  // Ligne sage-l7 · fonction 59, l'impression différée.
+  // Ligne sage-l7 · fonction 59, l'impression différée et les sélections enregistrées.
   impressionsDifferees         ImpressionDifferee[]
+  selectionsEdition            SelectionEdition[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -10908,4 +10909,36 @@ model ImpressionDifferee {
   @@unique([tenantId, numero])
   @@index([tenantId, etat, demandeLe])
   @@map("impressions_differees")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l7 · fonction 59, les sélections enregistrées
+// ---------------------------------------------------------------------------
+
+/// L'édition dont la sélection garde les critères.
+enum EditionSelection {
+  JOURNAL
+  IMPRESSION_DIFFEREE
+}
+
+/// UNE SÉLECTION ENREGISTRÉE (ligne sage-l7, fonction 59) · les critères
+/// d'une édition gardés sous un nom et rappelés. AU DOSSIER, jamais au poste ·
+/// elle nomme des objets du dossier (un journal, des dates), le dossier se
+/// travaille à plusieurs et sur plusieurs postes, et un critère gardé dans le
+/// navigateur se perd avec ses données (fiche de la ligne). Elle ne garde
+/// jamais l'exercice · elle se rappelle sur l'exercice choisi.
+model SelectionEdition {
+  id       String           @id @default(uuid())
+  tenantId String
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
+  edition  EditionSelection
+  nom      String
+  /// Les critères, relus par le serveur clé par clé.
+  criteres Json
+  creePar  String
+  creeLe   DateTime         @default(now())
+  modifieLe DateTime        @default(now())
+
+  @@unique([tenantId, edition, nom])
+  @@map("selections_edition")
 }

@@ -170,6 +170,9 @@ export const MODELES_AUDITES = new Set<string>([
   // (AUDCIF art. 22, 7°) · demandée, produite, échouée ou fichier retiré, chaque
   // pas se lit au journal ; son fichier n'est pas recopié.
   'ImpressionDifferee',
+  // Même ligne · une sélection enregistrée est une structure de travail du
+  // dossier, que tous rappellent, comme une séquence de saisie.
+  'SelectionEdition',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',

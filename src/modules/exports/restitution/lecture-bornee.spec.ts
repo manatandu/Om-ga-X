@@ -114,8 +114,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // tenantId (ligne sage-l1, fonction 19) ; 171 avec les exports des
     // écritures et leur registre, bornés par leur tenantId (ligne sage-l7,
     // fonction 99) ; 172 avec les impressions différées, bornées par leur
-    // tenantId (même ligne, fonction 59).
-    expect(modeles).toHaveLength(172);
+    // tenantId (même ligne, fonction 59), 173 avec les sélections
+    // enregistrées des éditions, bornées par leur tenantId (même fonction).
+    expect(modeles).toHaveLength(173);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

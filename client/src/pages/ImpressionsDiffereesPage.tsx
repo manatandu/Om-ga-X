@@ -5,6 +5,7 @@ import { useExercice } from '../lib/exercice';
 import { libelleExercice } from '../lib/libelle-exercice';
 import type { Journal } from '../lib/types';
 import { Aide } from '../components/chrome/Aide';
+import { SelectionsEnregistrees } from '../components/SelectionsEnregistrees';
 import { tailleLisible } from '../lib/export-modifications';
 import {
   LIBELLES_NATURE,
@@ -250,6 +251,21 @@ export function ImpressionsDiffereesPage() {
                 Avec les grands livres
               </label>
             )}
+            <SelectionsEnregistrees
+              edition="IMPRESSION_DIFFEREE"
+              criteres={{ nature, journalId, dateDebut, dateFin, inclureBrouillard, format, grandsLivres }}
+              onRappel={(c) => {
+                // Posés sur les valeurs par défaut du formulaire · un critère
+                // absent de la sélection revient à son défaut.
+                setNature((c.nature as NatureImpression | undefined) ?? 'GRAND_LIVRE');
+                setJournalId(typeof c.journalId === 'string' ? c.journalId : '');
+                setDateDebut(typeof c.dateDebut === 'string' ? c.dateDebut : '');
+                setDateFin(typeof c.dateFin === 'string' ? c.dateFin : '');
+                setInclureBrouillard(c.inclureBrouillard !== false);
+                setFormat(c.format === 'plat' ? 'plat' : 'fpm');
+                setGrandsLivres(c.grandsLivres !== false);
+              }}
+            />
             <button
               type="button"
               onClick={() => void demander()}

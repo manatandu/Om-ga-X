@@ -123,8 +123,9 @@ export const MODELES_CLOISONNES = new Set<string>([
   // Ligne sage-l7, fonction 99 · l'export des écritures et son registre.
   'ExportEcritures',
   'EcritureExportee',
-  // Ligne sage-l7, fonction 59 · l'impression différée.
+  // Ligne sage-l7, fonction 59 · l'impression différée et les sélections enregistrées.
   'ImpressionDifferee',
+  'SelectionEdition',
   // Ligne sage-l1, fonction 19 · les séquences de saisie.
   'SequenceSaisie',
   'RibTiers',
