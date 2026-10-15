@@ -44,7 +44,7 @@ Migrations dans la plage `20270180000100` et suivantes.
   `e2e/tests/sage-l2-modes.e2e.ts` (vert sous Chromium).
 - Commits · 5bca551 (serveur), et le commit de l'écran.
 
-### n° 3 · Échéancier du modèle de règlement en saisie (fait, scénario sur vraie base à passer)
+### n° 3 · Échéancier du modèle de règlement en saisie (fait)
 
 - Calcul unique en centimes entiers (`tiers/echeancier-modele.ts`) · servi au
   simulateur du modèle et à la saisie ; la dernière échéance prend le reste,
@@ -74,16 +74,37 @@ Migrations dans la plage `20270180000100` et suivantes.
   simulateur ne dit plus « aucune saisie ne l'applique »),
   `e2e/tests/sage-l2-echeances.e2e.ts` (vert sous Chromium).
 
+### Scénario sur vraie base · fonctions 1 et 3 à travers une clôture (vert)
+
+Serveur compilé, base PostgreSQL jetable (`l2_e2e`), par l'API seule
+(script de la session, `scenario-l2-13.mjs`). N = 2026, fournisseur au
+modèle « moitié à 30 jours au virement, le reste à 60 », mode habituel
+chèque. Échéancier de la ligne du 10 décembre 2026 de 1 160 000 · 580 000 au
+9 janvier 2027 (VIR), 580 000 au 8 février 2027 (CHQ) ; un 401 au débit ne
+reçoit rien. Pièce passée découpée, validée, N clôturé · report N+1 du
+fournisseur 1 160 000 au crédit ; l'échéancier de N+1 lit les deux
+échéances reportées à leurs dates. Règlement de la première au virement le
+15 janvier (aucun avertissement), de la seconde en espèces le 10 février ·
+AVERTIE au titre de l'art. 59 bis, sur la facture d'origine de 1 160 000.
+Chaque ligne des deux pièces porte son mode ; fournisseur soldé (report
+1 160 000, débits 1 160 000), banque et caisse créditées de 580 000 chacune,
+plus rien à décaisser ; le mode porté ne se supprime pas.
+
+**Défaut trouvé sur vraie base, corrigé et gelé** · la ligne d'à-nouveau de
+580 000 réglée en espèces se lisait seule, sous le seuil, et la facture de
+1 160 000 de N échappait à l'art. 59 bis · elle se lit désormais sur sa pièce
+d'origine (`transactions-art-59-bis.ts`, `originesDesReports`, la règle des
+relances), gelé par `transactions-art-59-bis.spec.ts`.
+
 ## Reste
 
-1. Scénario sur vraie base des fonctions 1 et 3 à travers une clôture.
-2. n° 36 · écart de règlement sous un seuil, escompte financier.
-3. n° 24 · qualité du tiers.
-4. n° 31 · lieux de livraison des clients.
-5. n° 32 · duplication d'un tiers.
-6. n° 27 · modèles d'impression propres au tiers.
-7. n° 18 · assistant de règlement.
-8. Scénarios sur vraie base (n° 1, 3, 36), tests navigateur, bloc du § 3.
+1. n° 36 · écart de règlement sous un seuil, escompte financier (et son scénario sur vraie base).
+2. n° 24 · qualité du tiers.
+3. n° 31 · lieux de livraison des clients.
+4. n° 32 · duplication d'un tiers.
+5. n° 27 · modèles d'impression propres au tiers.
+6. n° 18 · assistant de règlement.
+7. Bloc du § 3 complet, tous les tests navigateur de la ligne.
 
 ## Décisions par la loi
 
