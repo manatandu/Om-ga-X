@@ -263,15 +263,66 @@ Aucun défaut trouvé.
   `e2e/tests/sage-l2-assistant-reglement.e2e.ts` (vert sous Chromium · partiel
   lettré, pièce lue, montant au-delà du dû refusé et dit).
 
+### Relecture « échecs silencieux », premier tour (corrigée, 2026-10-15)
+
+Aucun BLOQUANT, trois MAJEUR, neuf MINEUR, chacun corrigé avec le test qui
+l'aurait attrapé, un commit signé par correction ou groupe cohérent.
+
+- **M1** · `SaisiePage.tsx`, `lib/echeance-saisie.ts` · la réponse de
+  l'échéancier pouvait arriver après l'enregistrement, le retrait de la ligne
+  ou l'abandon de la pièce. Échéanciers attendus COMPTÉS, « Enregistrer la
+  pièce » désactivé et refusé tant qu'il en reste
+  (`motifEcheanciersEnAttente`), réponse appliquée et annoncée sur une ligne
+  encore là et intacte seulement (`etatDeLaLigneAttendue` · absente, rien ;
+  changée, dit) ; l'abandon ferme la fenêtre des échéances.
+- **M2** · `EcritureService.controlesDEntree` · un mode mis en sommeil après
+  la saisie enfermait le brouillard · `modesDejaPortes` (lu par `modifier` et
+  `modifierPieceDuModule`) admet le mode déjà porté, refuse le nouveau.
+- **M3** · `reglements/transactions-art-59-bis.ts` · la ligne se juge seule
+  (une facture ou l'une de ses échéances) ; la pièce qui ne passe le seuil
+  que par ses autres lignes au compte est avertie SOUS CONDITION (« si ses
+  lignes au compte sont les échéances d'une même facture ») ; l'à-nouveau
+  sans facture d'origine retrouvée (bilan d'ouverture, report au solde,
+  origine elle-même un à-nouveau) est NOMMÉ « seuil de l'art. 59 bis non
+  jugé », jamais compté pour une transaction (`classerTransactions`) ; la
+  facture se lit dans son sens, jamais nette d'un avoir de la même pièce.
+- **m1** · échéances nulles écartées (`echeancesNonNulles`), découpage
+  d'office passé par `motifEcheancesSaisies`, la fenêtre s'ouvrant sinon.
+- **m2** · Ctrl+D donne un repère neuf à la copie.
+- **m3** · la fenêtre des échéances reçoit la liste des modes (`null` tant
+  que non lue) et son échec ; le mode servi se nomme par son code
+  (`EcheanceSaisie.modeCode`), repris au découpage.
+- **m4** · fermer la fenêtre dit « ligne gardée entière, sans échéance ».
+- **m5** · l'assistant de règlement reçoit et dit l'échec de lecture des modes.
+- **m6** · `lib/geste-puis-relecture.ts` · un geste réussi reste réussi quand
+  la relecture échoue, dite à part (Modes de règlement, Modèles d'impression).
+- **m7** · tout ce qui est entre accolades est un jeton · « {montant total} »,
+  « { tiers } » et « {} » refusés en les nommant.
+- **m8** · lieux de livraison jugés sous un verrou consultatif par client dans
+  leur transaction · lieu relu, homonyme par requête ciblée (sans égard à la
+  casse, confirmé par la règle pure), lieux actifs comptés.
+- **m9** · prélèvement, effet de commerce, monnaie électronique et autre mode
+  avertis SOUS RÉSERVE (le texte ne nomme que chèque, virement et carte).
+- Vérifié · `npx tsc --noEmit` des deux côtés, construction du serveur et du
+  client ; Jest `--maxWorkers=1` sur les specs touchées (brouillard,
+  pièce du module en place, lectures hors situation, ligne lettrée, report
+  verrouillé, casse en silence, changement de mois, comptes personnalisés,
+  transactions de l'art. 59 bis, modes de règlement, règlements, écart de
+  change réalisé, modèles d'impression, lieux de livraison) ; Vitest sur les
+  38 fichiers qui relisent les sources touchées (511 tests) ; sous Chromium,
+  `sage-l2-echeances`, `-modes`, `-livraison`, `-modeles-impression` et
+  `-assistant-reglement` (5 verts) contre le serveur reconstruit.
+
 ## Reste
 
 1. Bloc du § 3 · passés · `npx tsc --noEmit` des deux côtés, `npm test` et
-   `npm run build` du client (274 fichiers, 2127 tests), construction du
-   serveur, les huit tests navigateur de la ligne et le balayage des menus
-   (`ecrans.e2e.ts`, deux référentiels), sous Chromium. RESTE · la suite
-   serveur complète en six tranches, lancée et non terminée au moment du
-   compte rendu (spécifiques de la ligne et gardes structurelles au vert ·
-   tiers, règlements, relances, common, restitution).
+   `npm run build` du client (274 fichiers, 2127 tests avant la relecture),
+   construction du serveur, les huit tests navigateur de la ligne et le
+   balayage des menus (`ecrans.e2e.ts`, deux référentiels), sous Chromium.
+   RESTE · la suite serveur complète, que le coordinateur passe lui-même
+   avant l'intégration (les tranches lancées ici ont été arrêtées faute de
+   mémoire · tranche 1, quatre spécifications du client en échec sous la
+   charge, vertes seules ; tranche 2, 44 vertes au moment de l'arrêt).
 2. Avis de règlement · ni mise en file par courriel, ni avis d'un règlement
    sans ordre de virement (chèque, espèces).
 
@@ -286,6 +337,13 @@ Aucun défaut trouvé.
   le 27 février 2013 (note de la compilation DGI), soit le 27 mai 2013. Le
   module de TVA n'est pas touché (la perte de déduction reste la lacune
   nommée de la passe F2b).
+- **n° 1 · ce que l'art. 59 bis mesure (relecture M3).** « Toute
+  transaction [...] d'un montant d'au moins 1.000.000,00 » · la transaction
+  est la facture. OmegaX ne l'affirme que sur ce que la pièce dit · la ligne
+  de facture (ou d'échéance) seule ; la pièce à plusieurs lignes au compte,
+  sous condition ; l'à-nouveau sans facture retrouvée, non jugé. Les modes
+  que le texte ne nomme pas (prélèvement, effet de commerce, monnaie
+  électronique, autre) sont avertis sous réserve, jamais dits en infraction.
 - **n° 1 · code interbancaire libre.** Aucune nomenclature bancaire du corpus
   ne s'impose en RDC (décision D11 de la reproduction).
 
@@ -346,11 +404,12 @@ Aucun défaut trouvé.
 
 ## Questions à Manasse
 
-- **Monnaie électronique et art. 59 bis.** Le texte nomme chèque, virement et
-  carte bancaire, et lui seul ; un paiement par monnaie électronique (M-Pesa,
-  Orange Money) n'y figure pas. OmegaX l'avertit comme les espèces. Aucun
-  arrêté d'application lu ne l'assimile au virement ; si la DGI l'admet, il
-  suffit d'ajouter la nature à `NATURES_ADMISES_ART_59_BIS`.
+- **Monnaie électronique, prélèvement et effet de commerce face à l'art. 59
+  bis** (question portée par le coordinateur). Le texte nomme chèque,
+  virement et carte bancaire, et eux seuls ; les autres modes n'y figurent
+  pas. OmegaX les avertit SOUS RÉSERVE (relecture m9), les espèces sans
+  réserve. Aucun arrêté d'application lu ne les assimile ; s'ils sont admis,
+  il suffit d'ajouter leur nature à `NATURES_ADMISES_ART_59_BIS`.
 
 ## Pour CLAUDE.md
 
@@ -361,9 +420,14 @@ Aucun défaut trouvé.
 fiche du tiers, le modèle de règlement et ses échéances, la ligne de saisie
 et le règlement ; un paiement d'au moins 1 000 000 FC à un fournisseur hors
 chèque, virement ou carte est AVERTI (O.-L. n° 10/001, art. 59 bis et 74
-bis, dès le 27 mai 2013), jamais refusé. L'ÉCHÉANCIER DU MODÈLE découpe la
-ligne de facture en saisie (fenêtre des échéances, ou d'office sur la
-fiche). ESCOMPTE ET ÉCART (`reglements/ecart-escompte.ts`) · obtenu D 40 /
+bis, dès le 27 mai 2013), jamais refusé · la transaction est la ligne de
+facture seule, la pièce à plusieurs lignes SOUS CONDITION, l'à-nouveau sans
+facture retrouvée NON JUGÉ, les modes que le texte ne nomme pas SOUS
+RÉSERVE ; un mode mis en sommeil reste admis sur le brouillard qui le
+portait. L'ÉCHÉANCIER DU MODÈLE découpe la ligne de facture en saisie
+(fenêtre des échéances, ou d'office sur la fiche, par la même règle,
+échéances nulles écartées) ; la pièce ne part pas avant lui, et sa réponse
+ne vaut que pour une ligne encore là, intacte. ESCOMPTE ET ÉCART (`reglements/ecart-escompte.ts`) · obtenu D 40 /
 C 773, accordé D 673 / C 41 (au SYCEBNL, le seul 412) ; l'écart se tranche
 par le Code civil, Livre III · remise d'un reste client (art. 132) ou
 renonciation au trop-payé fournisseur (art. 133) en charge, 6588 au
@@ -371,13 +435,13 @@ SYSCOHADA, 658 au SYCEBNL, sous `Tenant.seuilEcartReglement` SANS défaut ;
 trop-perçu d'un client (art. 252) et fournisseur payé en moins (art. 142)
 REFUSÉS ; aucune ligne de taxe (art. 29, point 1 ; décret art. 79), dit.
 QUALITÉ du tiers, libellé qui ne décide rien ; LIEUX DE LIVRAISON d'un
-client (`LieuLivraison`, un principal) ; DUPLICATION vers le formulaire de
+client (`LieuLivraison`, un principal, jugé sous un verrou du client) ; DUPLICATION vers le formulaire de
 création, sans Numéro Impôt, RIB, documents, lieux, cellule, autorisation aux
 débits ni exclusion des relances, nommés. MODÈLES D'IMPRESSION
 (`tiers/modeles-impression.ts`, F_COMPTETMODELE) · extrait, avis de
 règlement, rappel, choisis sur la fiche dans la zone de leur nature ; le
-modèle HABILLE le document ({document} exigé une fois, jeton inconnu
-refusé), jamais il ne le remplace ni n'en retire la signature ; il habille
+modèle HABILLE le document ({document} exigé une fois, tout ce qui est
+entre accolades sans être un jeton admis refusé), jamais il ne le remplace ni n'en retire la signature ; il habille
 relances, relevé et l'avis de règlement d'un ordre IMPRIMÉ, qui transmet
 l'imputation déclarée en payant (art. 151). L'ASSISTANT DE RÈGLEMENT envoie
 le corps du formulaire, un tiers en francs, sans règle propre.
@@ -411,8 +475,8 @@ le corps du formulaire, un tiers en francs, sans règle propre.
 ```bash
 cd /home/user/wt-sage-l2
 npx tsc --noEmit && (cd client && npx tsc --noEmit)
-npx jest src/modules/reglements src/modules/tiers src/modules/relances src/modules/comptabilite/brouillard.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
-(cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/modeles-impression.spec.ts src/lib/assistant-reglement.spec.ts src/lib/comptes-retenus-ecrans.spec.ts)
+npx jest src/modules/reglements src/modules/tiers src/modules/relances src/modules/comptabilite/brouillard.spec.ts src/modules/comptabilite/piece-du-module-en-place.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
+(cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/modeles-impression.spec.ts src/lib/assistant-reglement.spec.ts src/lib/comptes-retenus-ecrans.spec.ts src/lib/echeance-saisie.spec.ts src/lib/geste-puis-relecture.spec.ts)
 # e2e · serveur sur 8302 (base l2_e2e), aperçu sur 4302
 (cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts tests/sage-l2-qualite.e2e.ts tests/sage-l2-livraison.e2e.ts tests/sage-l2-duplication.e2e.ts tests/sage-l2-modeles-impression.e2e.ts tests/sage-l2-assistant-reglement.e2e.ts)
 ```
