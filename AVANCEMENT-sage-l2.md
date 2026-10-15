@@ -313,10 +313,76 @@ l'aurait attrapé, un commit signé par correction ou groupe cohérent.
   `sage-l2-echeances`, `-modes`, `-livraison`, `-modeles-impression` et
   `-assistant-reglement` (5 verts) contre le serveur reconstruit.
 
+### Relecture du code serveur et des écrans, second tour (corrigée, 2026-10-15)
+
+Dernier tour (CLAUDE.md § 11). Serveur · aucun BLOQUANT, aucun MAJEUR, huit
+MINEUR. Écrans · aucun BLOQUANT, quatre MAJEUR, seize MINEUR. Tous corrigés,
+chacun avec le test qui l'aurait attrapé ; aucun ne part aux relevés en
+attente.
+
+Écrans (quatre commits) ·
+- **M1** · `SaisiePage.tsx`, `lib/echeance-saisie.ts` · la réponse d'une
+  seconde ligne écrasait la fenêtre ouverte de la première (« Appliquer »
+  posait les échéances de A sur B) · les découpages attendus font une FILE
+  (`enfiler`, `fenetresPresentes`), la fenêtre porte la clé de sa ligne et
+  ne s'ouvre que sur « Ouvrir les échéances » (mineur 2).
+- **M2** · une pièce sans date sortait sans échéancier et sans un mot · la
+  ligne retient la date de son échéancier (`echeancierDu`), une pièce sans
+  date le dit et le calcule quand la date arrive, les lignes calculées pour
+  une autre date sont nommées (`lignesAEcheancierDecale`,
+  `motifEcheanciersDecales`) et l'enregistrement se confirme.
+- **M3** · `TiersPage.tsx` · les modèles de règlement partaient de [] et un
+  échec de lecture disait « Aucun modèle » · null et erreur, sélecteur sur
+  liste lue seulement.
+- **M4** · `AssistantReglement.tsx`, `ReglementsPage.tsx` · « aucun journal,
+  créez-le » sur un échec ou avant la lecture · null et erreur transmis,
+  le seul choix présélectionné à l'arrivée.
+- Mineurs · 1 (avis de l'ordre ouvert seul), 3 (attente par ligne, purgée),
+  4 (motif et mode joints, mode sur la facture seule), 5 (proposition de
+  TVA par la clé de sa ligne), 6 (focus au récapitulatif), 7 (date au jour
+  de Kinshasa, bornée à l'exercice), 8 (échec des modes dit à l'échéance du
+  modèle), 9 (qualité refusée rétablie), 10 (« Repris de » complet), 11
+  (formulaire d'échéance à l'étroit), 12 (lieu · focus, envoi unique,
+  relecture dite), 13 (modèles d'impression lus une fois, « modèle non
+  lu »), 14 (seuil non lu n'est pas « aucun seuil »), 15 (seuil prérempli
+  par `montantPourChamp`), 16 (Entrée valide la ligne ; brouillon de modèle
+  d'impression gardé avant d'écraser).
+
+Serveur (quatre commits) ·
+- **m1** · `lignesAvecEscompteEtEcart` reçoit escompte et écart avec leur
+  compte (`MontantAuCompte`, ou null) et le plan rendu par
+  `planDuReglement`, jamais un objet refait.
+- **m2** · le mode du règlement sur le tiers et la trésorerie seuls
+  (`avecLeMode(mode, [tiers, trésorerie], lignes)`), jamais sur l'escompte,
+  l'écart ni le change ; JSDoc de `motifANouveauProvisoire` rendue.
+- **m3** · intitulé d'un mode unique sans égard à la casse, sous le verrou du
+  dossier, création et retouche (`refuserIntitulePris`).
+- **m4** · `@Max(SEUIL_ECART_REGLEMENT_MAX)` nommé (DECIMAL(18,2)).
+- **m5** · la fusion prend le verrou des lieux des deux clients, ordre fixe ;
+  un renommé déjà pris prend un rang (`renommagesALaFusion`).
+- **m6** · la doc du mode au-dessus de `model ModeReglement`.
+- **m7** · P2003 entre contrôle et écriture · 409 qui nomme la référence
+  (`tiers/reference-retiree.ts`), tiers, modèles de règlement, échéances,
+  modes.
+- **m8** · index sur `tiers.modeReglementId`, les trois modèles d'impression
+  du tiers, `modeles_reglement.modeReglementId` et
+  `echeances_reglement.modeReglementId` · migrations 20270180000100 et
+  20270180000600 COMPLÉTÉES (jamais appliquées hors des bases jetables,
+  absentes de `main`) ; `prisma migrate diff` contre une base d'ombre
+  jetable · aucune différence ; `index-des-references-sage-l2.spec.ts`.
+- Vérifié · `npx tsc --noEmit` des deux côtés ; Jest `--maxWorkers=1` sur
+  `src/modules/reglements`, `src/modules/tiers`, le DTO du seuil, comptes
+  personnalisés, cadratins, citations, fichiers sans appelant, DTO hors
+  contrôleurs, décimales, facultatif non nul, transaction journalisée,
+  borne par la valeur, casse en silence, index du dossier, lecture bornée
+  (tout vert) ; Vitest entier (277 fichiers, 2165 tests) ; serveur et client
+  reconstruits, base e2e recréée et migrée, les huit tests navigateur de la
+  ligne verts sous Chromium, serveur et aperçu arrêtés par leur pid.
+
 ## Reste
 
 1. Bloc du § 3 · passés · `npx tsc --noEmit` des deux côtés, `npm test` et
-   `npm run build` du client (274 fichiers, 2127 tests avant la relecture),
+   `npm run build` du client (277 fichiers, 2165 tests après le second tour),
    construction du serveur, les huit tests navigateur de la ligne et le
    balayage des menus (`ecrans.e2e.ts`, deux référentiels), sous Chromium.
    RESTE · la suite serveur complète, que le coordinateur passe lui-même
@@ -325,6 +391,13 @@ l'aurait attrapé, un commit signé par correction ou groupe cohérent.
    charge, vertes seules ; tranche 2, 44 vertes au moment de l'arrêt).
 2. Avis de règlement · ni mise en file par courriel, ni avis d'un règlement
    sans ordre de virement (chèque, espèces).
+
+## Relevés en attente
+
+Aucun du second tour · les quatre MAJEUR et les seize MINEUR des écrans, les
+huit MINEUR du serveur sont corrigés. Restent hors relecture, déjà au point 2
+de « Reste » · l'avis de règlement ni mis en file par courriel, ni servi sans
+ordre de virement.
 
 ## Décisions par la loi
 
@@ -475,7 +548,9 @@ le corps du formulaire, un tiers en francs, sans règle propre.
 ```bash
 cd /home/user/wt-sage-l2
 npx tsc --noEmit && (cd client && npx tsc --noEmit)
-npx jest src/modules/reglements src/modules/tiers src/modules/relances src/modules/comptabilite/brouillard.spec.ts src/modules/comptabilite/piece-du-module-en-place.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
+npx jest src/modules/reglements src/modules/tiers src/modules/relances src/modules/tenant/seuil-ecart-reglement-dto.spec.ts src/common/cloisonnement/index-du-dossier.spec.ts src/modules/comptabilite/brouillard.spec.ts src/modules/comptabilite/piece-du-module-en-place.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
+# migrations · contre une base d'ombre JETABLE, jamais la production
+npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "<base d'ombre jetable>" --exit-code
 (cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/modeles-impression.spec.ts src/lib/assistant-reglement.spec.ts src/lib/comptes-retenus-ecrans.spec.ts src/lib/echeance-saisie.spec.ts src/lib/geste-puis-relecture.spec.ts)
 # e2e · serveur sur 8302 (base l2_e2e), aperçu sur 4302
 (cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts tests/sage-l2-qualite.e2e.ts tests/sage-l2-livraison.e2e.ts tests/sage-l2-duplication.e2e.ts tests/sage-l2-modeles-impression.e2e.ts tests/sage-l2-assistant-reglement.e2e.ts)
