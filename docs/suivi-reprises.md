@@ -5,6 +5,35 @@ virement de fonds (`AVANCEMENT-virement-fonds.md`), retirée à son intégration
 Elles ne concernent pas cette ligne : sujets à reprendre, décisions de Manasse
 et travaux à sa charge. Recopiées telles quelles pour que rien ne se perde.
 
+## Relevés en attente · paie, ligne sage-l5 (second tour non bloquant)
+
+- Congé À CHEVAL qui porte des jours de voyage (Code du travail, art. 141,
+  al. 3) · aucune date ne dit le mois de ces jours ; la proposition
+  s'abstient et la garde n'oppose que le certain. La règle de placement
+  reste à trancher.
+- Reconstitution d'une reprise rejouée (M3) par les répartitions des
+  salariés de la pièce d'origine · elle refuse quand la pièce ne se refait
+  pas au centime ; cas limites (répartition déclarée après coup, salarié
+  sorti du plan) à relire.
+
+### Questions à Manasse (ligne sage-l5)
+
+- Q1 · un jour hors service rend-il le mois non entier ? L'art. 141, al. 2
+  énumère les services pris en considération. Lecture retenue, littérale ·
+  un mois qui contient un jour de mise à pied ou d'absence non rémunérée
+  n'acquiert rien, nommé à l'écran avec le jour en cause. Le texte ne dit
+  pas s'il faut plutôt compter les jours et les convertir.
+- Q2 · la maternité, Caisse qui paie la salariée sans subrogation · le Code
+  (art. 130, art. 59) fait devoir les deux tiers à l'employeur, l'arrêté
+  n° 146/2018 (art. 63) fait payer par la Caisse l'intégralité de la
+  rémunération journalière moyenne. Aucun texte lu ne dit le cumul ni
+  l'imputation (l'art. 106, al. 2 ne vise que l'accident du travail).
+  OmegaX propose les deux tiers et ne déduit rien.
+- Q3 · nature de l'employeur pour l'INPP, régime de la retenue, classe et
+  personnes à charge se ressaisissent chaque mois (champs de la simulation,
+  figés par le bulletin émis). Les garder au dossier et au salarié pour
+  qu'ils se proposent d'un mois à l'autre ? Choix d'organisation.
+
 ## Relevés en attente · immobilisations, ligne sage-l4 (second tour non bloquant)
 
 - Renumérotation refusée pour TOUTE campagne d'inventaire non clôturée, de
