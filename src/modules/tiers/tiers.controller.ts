@@ -70,6 +70,12 @@ export class TiersController {
     return this.tiersService.echeancierDeLigne(user.tenantId, compteId, dto);
   }
 
+  /** La copie d'un tiers pour le formulaire de création (ligne sage-l2, fonction 32) · rien n'est écrit. */
+  @Get(':id/duplication')
+  async duplication(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tiersService.duplication(user.tenantId, id);
+  }
+
   @Get(':id')
   async obtenir(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.tiersService.obtenir(user.tenantId, id);

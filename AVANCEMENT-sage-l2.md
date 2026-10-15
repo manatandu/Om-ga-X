@@ -189,12 +189,28 @@ Aucun défaut trouvé.
   champs relus dans le DTO), `ecriture-masquee.spec.ts`,
   `e2e/tests/sage-l2-livraison.e2e.ts` (vert sous Chromium).
 
+### n° 32 · Duplication d'un tiers (fait)
+
+- `GET /tiers/:id/duplication` (lecture, `tiers/duplication-tiers.ts`) · le
+  corps du formulaire de création · type, nom, qualité, coordonnées (adresse,
+  boîte postale, ville, pays, téléphone, courriel, contact), modèle et mode
+  de règlement actifs, échéancier d'office ; code vide. Rien n'est écrit ;
+  la création passe par `POST /tiers` (mêmes contrôles, même panoplie).
+- Non repris, et nommés avec leur motif · code, comptes, Numéro Impôt,
+  coordonnées bancaires, documents, lieux de livraison, cellule du groupe,
+  autorisation aux débits, exclusion des relances, modèle ou mode en
+  sommeil. `CreerTiersDto` reçoit `validationAutomatiqueEcheances`.
+- Écran · fiche du tiers, « Dupliquer… » (administrateur) · la fenêtre
+  « Copie de CODE » remplie, la ligne « Non repris · … ».
+- Tests · `duplication-tiers.spec.ts` (5, dont le corps passé au DTO de
+  création en liste blanche), `client/src/lib/duplication-tiers.spec.ts` (3),
+  `e2e/tests/sage-l2-duplication.e2e.ts` (vert sous Chromium).
+
 ## Reste
 
-1. n° 32 · duplication d'un tiers.
-2. n° 27 · modèles d'impression propres au tiers.
-3. n° 18 · assistant de règlement.
-4. Bloc du § 3 complet, tous les tests navigateur de la ligne.
+1. n° 27 · modèles d'impression propres au tiers.
+2. n° 18 · assistant de règlement.
+3. Bloc du § 3 complet, tous les tests navigateur de la ligne.
 
 ## Décisions par la loi
 
@@ -239,6 +255,10 @@ Aucun défaut trouvé.
 - **n° 31 · aucun texte ne régit le lieu de livraison.** Sage n'en donne que
   la table (F_LIVRAISON) · client seulement, intitulé unique, un principal
   sont des règles d'OmegaX, dites dans la bulle ; aucun effet comptable.
+- **n° 32 · ce qui identifie une personne ne se copie pas.** Le Numéro Impôt
+  (la liste annuelle des fournisseurs l'exige pour chacun, LPF art. 47 ter),
+  le RIB, l'autorisation aux débits (décision nominative, O.-L. n° 10/001,
+  art. 26) restent sur le tiers d'origine.
 - **n° 36 · seuil sans défaut.** Aucun texte n'en fixe · `null`, aucun écart
   ne se passe, et le refus le dit.
 - **n° 36 · TVA.** L'escompte et la remise ne sortent de la base que s'ils
@@ -269,6 +289,7 @@ Aucun défaut trouvé.
 | 3 | 2026-10-15 | L2 | fait | une ligne en devise ne se découpe pas d'elle-même (dit à l'écran) | le découpage en échéances passait une facture sous le seuil de l'art. 59 bis · la transaction se relit sur la pièce |
 | 24 | 2026-10-15 | L2 | fait | la qualité n'est pas reprise sur les lettres de relance | rien |
 | 31 | 2026-10-15 | L2 | fait | aucun document ne lit encore le lieu (la gestion commerciale le reprendra) | le bouton « Mettre en sommeil » du lieu se confondait avec celui du tiers · boutons nommés par lieu |
+| 32 | 2026-10-15 | L2 | fait | rien | rien |
 | 36 | 2026-10-15 | L2 | fait | ni escompte ni écart sur un règlement en devise ou à parts désignées (refus nommés) ; l'écart en produit de Sage n'est pas repris (art. 252) | la part de taxe de l'escompte reste en attente sous l'encaissement, dite plutôt que régularisée |
 
 ## Pour features.csv
@@ -277,6 +298,7 @@ Aucun défaut trouvé.
 - n° 3 → yes · échéancier du modèle du tiers appliqué en saisie, fenêtre des échéances, échéancier appliqué d'office.
 - n° 24 → yes · qualité du tiers, libellé proposé et libre, sur la fiche et l'édition du plan des tiers.
 - n° 31 → yes · lieux de livraison d'un client, un principal, sur la fiche du tiers.
+- n° 32 → yes · duplication d'un tiers vers le formulaire de création, ce qui n'est pas repris nommé.
 - n° 36 → yes · escompte obtenu ou accordé au règlement, écart de règlement soldé en charge sous le seuil du dossier (jamais en produit).
 
 ## Commandes de vérification
@@ -287,5 +309,5 @@ npx tsc --noEmit && (cd client && npx tsc --noEmit)
 npx jest src/modules/reglements src/modules/tiers src/modules/comptabilite/brouillard.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
 (cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/comptes-retenus-ecrans.spec.ts)
 # e2e · serveur sur 8302 (base l2_e2e), aperçu sur 4302
-(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts tests/sage-l2-qualite.e2e.ts tests/sage-l2-livraison.e2e.ts)
+(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts tests/sage-l2-qualite.e2e.ts tests/sage-l2-livraison.e2e.ts tests/sage-l2-duplication.e2e.ts)
 ```

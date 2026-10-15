@@ -4,6 +4,7 @@ import { libelleReference, referencesVers, refuserSiReferences, reporterReferenc
 import { coordonneesAComblement, motifRefusFusionTiers } from './fusion-tiers';
 import { normaliserQualite } from './qualite-tiers';
 import { intituleRenomme } from './lieux-livraison';
+import { copieDuTiers, type CopieDuTiers } from './duplication-tiers';
 import {
   numeroIndividuelAligne,
   panoplieDuTiers,
@@ -199,6 +200,28 @@ export class TiersService {
           : await this.poserPanoplie(tx, tenantId, tiers, { silencieux: true, numeroPrincipal: numeroCompte });
       return { ...tiers, compteIndividuel: panoplie?.principal ?? null, panoplie };
     }).catch((e) => conflitDeNumeroNomme(e, numeroCompte));
+  }
+
+  /**
+   * LA COPIE D'UN TIERS (ligne sage-l2, fonction 32) · le corps du formulaire
+   * de création, rien n'est écrit (`duplication-tiers.ts`) ; ce qui n'est pas
+   * repris est nommé avec son motif.
+   */
+  async duplication(tenantId: string, tiersId: string): Promise<CopieDuTiers> {
+    const t = await this.trouver(tenantId, tiersId);
+    const [ribs, documents, lieux] = await Promise.all([
+      this.prisma.ribTiers.count({ where: { tenantId, tiersId } }),
+      this.prisma.documentTiers.count({ where: { tenantId, tiersId } }),
+      this.prisma.lieuLivraison.count({ where: { tenantId, tiersId } }),
+    ]);
+    return copieDuTiers(
+      {
+        ...t,
+        modeleReglement: t.modeleReglement ? { id: t.modeleReglement.id, estActif: t.modeleReglement.estActif } : null,
+        modeReglement: t.modeReglement ? { id: t.modeReglement.id, estActif: t.modeReglement.estActif } : null,
+      },
+      { ribs, documents, lieux },
+    );
   }
 
   /**

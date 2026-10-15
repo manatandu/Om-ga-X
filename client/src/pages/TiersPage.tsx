@@ -30,6 +30,7 @@ import { usePreselectionUnique } from '../lib/preselection-unique';
 import { numeroAEnvoyer, type NumeroPropose } from '../lib/numero-compte-tiers';
 import { libelleMode, modesProposables, type ModeReglement } from '../lib/modes-reglement';
 import { LONGUEUR_QUALITE, QUALITES_PROPOSEES, qualiteAEnvoyer } from '../lib/qualite-tiers';
+import { champsReprisHorsFormulaire, nonReprisEnClair, type CopieDuTiers } from '../lib/duplication-tiers';
 
 /**
  * PLAN DES TIERS · la fenêtre Structure → Plan tiers de Sage 100 i7 :
@@ -211,6 +212,9 @@ export function TiersPage() {
   const [filtreType, setFiltreType] = useState<TypeTiers | ''>('');
   const [selectionId, setSelectionId] = useState<string | null>(null);
   const [nouveauOuvert, setNouveauOuvert] = useState(false);
+  // LA COPIE D'UN TIERS (ligne sage-l2, fonction 32) · servie par le serveur,
+  // elle remplit le formulaire de création ; `null` hors duplication.
+  const [copie, setCopie] = useState<CopieDuTiers | null>(null);
   const champRecherche = useRef<HTMLInputElement>(null);
   const [modelesOuverts, setModelesOuverts] = useState(false);
 
@@ -384,10 +388,37 @@ export function TiersPage() {
   }, [nouveauOuvert, type, relectureNumero]);
 
   const ouvrirNouveau = () => {
+    // Un formulaire laissé par une copie ne garde rien de l'autre tiers.
+    if (copie) {
+      setCopie(null);
+      setNom('');
+      setModeleReglementId('');
+      setModeReglementId('');
+    }
     setLectureNumero(null);
     setNumeroSaisi('');
     setErreurCreation(null);
     setNouveauOuvert(true);
+  };
+
+  /** Dupliquer · la copie remplit le formulaire, rien n'est écrit avant « Créer le tiers ». */
+  const dupliquer = async (t: Tiers) => {
+    setErreur(null);
+    try {
+      const c = await api.get<CopieDuTiers>(`/tiers/${t.id}/duplication`);
+      setCopie(c);
+      setType(c.corps.type);
+      setCode('');
+      setNom(c.corps.nom);
+      setModeleReglementId(c.corps.modeleReglementId ?? '');
+      setModeReglementId(c.corps.modeReglementId ?? '');
+      setLectureNumero(null);
+      setNumeroSaisi('');
+      setErreurCreation(null);
+      setNouveauOuvert(true);
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Copie du tiers illisible');
+    }
   };
 
   const onCreerTiers = async (e: FormEvent) => {
@@ -408,6 +439,7 @@ export function TiersPage() {
         ...(numeroCompte ? { numeroCompte } : {}),
         ...(modeleReglementId ? { modeleReglementId } : {}),
         ...(modeReglementId ? { modeReglementId } : {}),
+        ...(copie ? champsReprisHorsFormulaire(copie) : {}),
       });
       // LA PROPOSITION PRISE ENTRE-TEMPS SE DIT · le serveur a ouvert le
       // premier libre, qui n'est plus le numéro que la fenêtre montrait.
@@ -425,6 +457,7 @@ export function TiersPage() {
       setNom('');
       setModeleReglementId('');
       setModeReglementId('');
+      setCopie(null);
       setNouveauOuvert(false);
       await charger();
     } catch (err) {
@@ -1038,6 +1071,13 @@ export function TiersPage() {
               </button>
               <button
                 type="button"
+                onClick={() => void dupliquer(tiersSelectionne)}
+                className="ml-2 border border-border-dark bg-chrome hover:bg-chrome-alt px-3 py-1 text-[11.5px] mb-3"
+              >
+                Dupliquer…
+              </button>
+              <button
+                type="button"
                 onClick={() => setFusionOuverte(true)}
                 className="ml-2 border border-border-dark bg-chrome hover:bg-chrome-alt px-3 py-1 text-[11.5px] mb-3"
               >
@@ -1363,7 +1403,7 @@ export function TiersPage() {
               <div
                 className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]"
               >
-                <span>Nouveau tiers</span>
+                <span>{copie ? `Copie de ${copie.origine}` : 'Nouveau tiers'}</span>
                 <button type="button" disabled={envoi} onClick={() => setNouveauOuvert(false)} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c]">✕</button>
               </div>
               <div className="p-4">
@@ -1462,6 +1502,11 @@ export function TiersPage() {
                     </>
                   )}
                 </div>
+                {copie && (
+                  <p className="mt-3 text-[11px] text-text-dim">
+                    Repris de {copie.origine} · nom, qualité, coordonnées et règlement. Non repris · {nonReprisEnClair(copie)}.
+                  </p>
+                )}
                 {erreurCreation && (
                   <p role="alert" className="mt-3 text-[11.5px] text-danger">
                     {erreurCreation}

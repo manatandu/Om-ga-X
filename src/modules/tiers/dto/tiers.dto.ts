@@ -86,6 +86,14 @@ export class CreerTiersDto {
   @IsString()
   contact?: string;
 
+  /**
+   * L'échéancier du modèle appliqué sans fenêtre (ligne sage-l2, fonction 3),
+   * dès la création · la copie d'un tiers (fonction 32) le reprend.
+   */
+  @FacultatifNonNul('L’échéancier appliqué sans fenêtre vaut vrai ou faux · omettez le champ pour le laisser faux.')
+  @IsBoolean()
+  validationAutomatiqueEcheances?: boolean;
+
   /** La qualité du tiers (ligne sage-l2, fonction 24) · un libellé, jamais une règle (`qualite-tiers.ts`). */
   @IsOptional()
   @IsString()
