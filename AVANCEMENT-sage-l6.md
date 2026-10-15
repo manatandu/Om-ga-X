@@ -47,9 +47,22 @@ Branche de sauvegarde · `travail/sage-l6`. Fiche retirée à l'intégration.
   il ne retient plus que la suppression) ; le libellé du champ de longueur
   activait la bulle d'aide à chaque clic.
 
+- **Bloc du § 3 (étape 5), sur 29b2967.** `npx tsc --noEmit` des deux côtés ;
+  serveur en six tranches l'une après l'autre (`--maxWorkers=1
+  --workerIdleMemoryLimit=800MB`) · 148 + 148 + 148 + 148 + 147 + 147 suites,
+  1786 + 2073 + 2014 + 2633 + 1960 + 2357 tests verts ; douze suites de la
+  tranche 6 tuées par le système (SIGKILL, mémoire prise par les suites des
+  autres lignes lancées en même temps), relancées seules · vertes ; client
+  `npm test` 2103 tests, `npm run build` des deux côtés (racine sous
+  `--max-old-space-size=3072`). Migrations confrontées au schéma sur
+  `l6_ombre` · aucune différence.
+
 ## Reste
-- Bloc du § 3 complet (six tranches du serveur, client, constructions).
-- WebKit non éprouvé ici (absent de la machine).
+- WebKit non éprouvé ici (absent de la machine) · le job `tests-navigateur.yml`
+  le jouera.
+- Relectures `silent-failure-hunter`, `typescript-reviewer` et
+  `react-reviewer` non faites par cette session (aucun agent à disposition) ·
+  à lancer avant l'intégration.
 
 ## Décisions par la loi
 
