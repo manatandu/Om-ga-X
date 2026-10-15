@@ -47,6 +47,7 @@ import { InventaireModule } from './modules/inventaire/inventaire.module';
 import { CircularisationModule } from './modules/circularisation/circularisation.module';
 import { FaiblessesModule } from './modules/faiblesses/faiblesses.module';
 import { MandatAuditeurModule } from './modules/mandat-auditeur/mandat-auditeur.module';
+import { ConditionsLicenceModule } from './modules/conditions-licence/conditions-licence.module';
 import { AccordCadreModule } from './modules/accord-cadre/accord-cadre.module';
 import { ConsolidationModule } from './modules/consolidation/consolidation.module';
 import { IfrsModule } from './modules/ifrs/ifrs.module';
@@ -127,6 +128,8 @@ import { SurSiteModule } from './modules/sur-site/sur-site.module';
     CircularisationModule,
     FaiblessesModule,
     MandatAuditeurModule,
+    // Conditions de licence et leur acceptation en ligne (ligne pages-legales).
+    ConditionsLicenceModule,
     AccordCadreModule,
     ConsolidationModule,
     IfrsModule,

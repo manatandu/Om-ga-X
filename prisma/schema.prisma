@@ -567,6 +567,20 @@ model Tenant {
   // tromperait de cible.
   estDemonstration Boolean @default(false)
 
+  /// L'ACCEPTATION DES CONDITIONS DE LICENCE (ligne pages-legales,
+  /// 2026-10-15) · Code du numérique (ordonnance-loi n° 23/10 du 13 mars
+  /// 2023), art. 55 · « le contrat par voie électronique est valablement
+  /// conclu si le client accepte l'offre ». La DERNIÈRE version acceptée pour
+  /// le dossier, quand, et par qui (courriel recopié au jour de l'acte, qui
+  /// peut changer ensuite). L'historique est au journal d'audit · `Tenant`
+  /// est audité, et chaque acceptation y laisse son maillon avec l'adresse
+  /// réseau de son auteur. Nullable, sans défaut · `null` = jamais acceptée,
+  /// l'état vrai de tout dossier né avant la ligne
+  /// (`conditions-licence/acceptation-conditions.ts`).
+  conditionsLicenceVersion      Int?
+  conditionsLicenceAccepteesLe  DateTime?
+  conditionsLicenceAccepteesPar String?
+
   // Longueur du numéro de compte · paramètre "longueur du plan comptable"
   // chez Sage 100 (dossier > Structure > Paramètres), 3 à 13 caractères,
   // configurable PAR DOSSIER (voir skill sage-i7, comptabilite-generale.md).
