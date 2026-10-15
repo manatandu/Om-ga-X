@@ -12,7 +12,7 @@ import { ChoixModeleEdition } from '../components/ChoixModeleEdition';
 import { COLONNES_EDITION, type ModeleServi } from '../lib/modeles-edition';
 import { VoletDocumentsTiers } from '../components/VoletDocumentsTiers';
 import { VoletRibsTiers } from '../components/VoletRibsTiers';
-import { editionTiers, libelleTypeTiers, perimetreEdition } from '../lib/editions-structures';
+import { editionTiers, libelleTypeTiers, perimetreSiLue } from '../lib/editions-structures';
 import type {
   Compte,
   ConditionEcheance,
@@ -244,14 +244,22 @@ export function TiersPage() {
   // La liste est chargée SANS filtre de type : le filtre de gauche (façon
   // Sage) se fait localement, ce qui permet d'afficher les compteurs par
   // type sans requêtes supplémentaires.
+  // Jeton contre la réponse périmée, recherche LUE (second tour, 12, jumeau de m6).
+  const jetonTiers = useRef(0);
+  const [rechercheLue, setRechercheLue] = useState<string | null>(null);
   const charger = async () => {
+    const mien = ++jetonTiers.current;
+    const demandee = recherche;
     try {
       const params = new URLSearchParams();
       if (recherche) params.set('recherche', recherche);
-      setListe(await api.get<Tiers[]>(`/tiers?${params.toString()}`));
+      const lus = await api.get<Tiers[]>(`/tiers?${params.toString()}`);
+      if (mien !== jetonTiers.current) return;
+      setListe(lus);
+      setRechercheLue(demandee);
       setErreur(null);
     } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Impossible de charger les tiers');
+      if (mien === jetonTiers.current) setErreur(err instanceof ApiError ? err.message : 'Impossible de charger les tiers');
     }
   };
 
@@ -732,8 +740,10 @@ export function TiersPage() {
       {/* La liste IMPRIMÉE est celle que l'écran montre · le périmètre dit
           donc la recherche et le type retenus. */}
       <EditionStructure
-        edition={editionTiers(listeFiltree)}
-        perimetre={perimetreEdition(
+        edition={editionTiers(liste !== null && rechercheLue === recherche ? listeFiltree : [])}
+        perimetre={perimetreSiLue(
+          liste !== null && rechercheLue === recherche,
+          'Plan des tiers',
           [
             ['Recherche', recherche],
             ['Type', filtreType ? libelleTypeTiers(filtreType) : null],

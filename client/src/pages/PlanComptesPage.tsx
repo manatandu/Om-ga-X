@@ -9,7 +9,7 @@ import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImp
 import { EditionStructure } from '../components/EditionStructure';
 import { ChoixModeleEdition } from '../components/ChoixModeleEdition';
 import { COLONNES_EDITION, type ModeleServi } from '../lib/modeles-edition';
-import { editionPlan, perimetreEdition } from '../lib/editions-structures';
+import { editionPlan, perimetreSiLue } from '../lib/editions-structures';
 import { Aide } from '../components/chrome/Aide';
 import { PortailModale } from '../components/PortailModale';
 import { classeDuNumero } from '../lib/classe-du-numero';
@@ -103,6 +103,12 @@ export function PlanComptesPage() {
     utilisateur?.tenant.referentiel === 'SYSCOHADA' ? LIBELLE_CLASSE_SYSCOHADA : LIBELLE_CLASSE_SYCEBNL;
   const [comptes, setComptes] = useState<Compte[] | null>(null);
   const [recherche, setRecherche] = useState('');
+  // La recherche pour laquelle `comptes` a été LU, et le jeton qui jette une
+  // réponse périmée (second tour, 12 · jumeau de m6) · une réponse lente de
+  // la recherche d'avant remplaçait celle du jour, et l'édition imprimait
+  // l'une sous les critères de l'autre.
+  const [rechercheLue, setRechercheLue] = useState<string | null>(null);
+  const jetonComptes = useRef(0);
   const [classeFiltre, setClasseFiltre] = useState<ClasseCompte>('CLASSE_1');
   const [selectionId, setSelectionId] = useState<string | null>(null);
   const [nouveauOuvert, setNouveauOuvert] = useState(false);
@@ -132,7 +138,17 @@ export function PlanComptesPage() {
     // `usage` · la fenêtre dit quels comptes sont utilisés, ceux que les
     // listes de choix proposent même non retenus (Compte.estRetenu).
     const params = recherche ? `&recherche=${encodeURIComponent(recherche)}` : '';
-    setComptes(await api.get<Compte[]>(`/comptes?usage=true${params}`));
+    const mien = ++jetonComptes.current;
+    const demandee = recherche;
+    try {
+      const lus = await api.get<Compte[]>(`/comptes?usage=true${params}`);
+      if (mien !== jetonComptes.current) return;
+      setComptes(lus);
+      setRechercheLue(demandee);
+    } catch (e) {
+      // Une lecture périmée qui tombe ne se dit pas · seule la dernière compte.
+      if (mien === jetonComptes.current) throw e;
+    }
   };
 
   useEffect(() => {
@@ -362,8 +378,8 @@ export function PlanComptesPage() {
     <div className="p-2 flex flex-col h-full avec-edition">
       <EnteteImpression titre="Plan comptable" />
       <EditionStructure
-        edition={editionPlan(comptes ?? [])}
-        perimetre={perimetreEdition([['Recherche', recherche]], comptes?.length ?? 0, 'compte')}
+        edition={editionPlan(comptes !== null && rechercheLue === recherche ? comptes : [])}
+        perimetre={perimetreSiLue(comptes !== null && rechercheLue === recherche, 'Plan comptable', [['Recherche', recherche]], comptes?.length ?? 0, 'compte')}
         modele={modeleEdition}
         catalogue={COLONNES_EDITION.PLAN_COMPTABLE}
       />

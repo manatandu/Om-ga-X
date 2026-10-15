@@ -468,7 +468,8 @@ export function PlansAnalytiquesPage() {
             )}
           </div>
           <div className="px-3 py-1.5 border-t border-border bg-chrome text-[11px] text-text-dim">
-            {listeFiltree.length} section{listeFiltree.length > 1 ? 's' : ''}
+            {/* Aucun « 0 section » sur une liste non lue (second tour, 11 · CLAUDE.md § 9 ter). */}
+            {!planId ? 'Aucun axe choisi' : sections === null ? 'Sections non lues' : `${listeFiltree.length} section${listeFiltree.length > 1 ? 's' : ''}`}
           </div>
         </section>
 

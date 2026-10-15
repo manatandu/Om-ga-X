@@ -167,10 +167,6 @@ export function editionTaux(taux: TauxTva[]): Edition {
 }
 
 /**
- * Ce que la liste couvre · les critères qui l'ont produite, dans l'ordre où
- * l'écran les pose. Aucun critère, c'est la liste complète.
- */
-/**
  * LE PÉRIMÈTRE DE L'ÉDITION DU PLAN ANALYTIQUE (relecture « échecs
  * silencieux » de sage-l7, m6) · des sections NON LUES (axe qui change, lecture
  * tombée) ne s'impriment pas comme une « Liste complète · 0 section », ni
@@ -194,6 +190,29 @@ export function perimetreDesSections(
   );
 }
 
+/**
+ * LE PÉRIMÈTRE D'UNE LISTE RELUE À CHAQUE RECHERCHE (relecture des écrans,
+ * second tour, 12 · jumeau de `perimetreDesSections`) · le plan comptable ou
+ * le plan des tiers PAS ENCORE LU pour la recherche tapée (réponse en route,
+ * lecture tombée) ne s'imprime pas sous ses critères · l'édition aurait porté
+ * la liste de la recherche d'avant sous la recherche du jour.
+ */
+export function perimetreSiLue(
+  lue: boolean,
+  quoi: string,
+  criteres: Array<[string, string | null | undefined]>,
+  nombre: number,
+  unite: string,
+  pluriel?: string,
+): string {
+  if (!lue) return `${quoi} non lu pour cette recherche · rien n'est imprimé`;
+  return perimetreEdition(criteres, nombre, unite, pluriel);
+}
+
+/**
+ * Ce que la liste couvre · les critères qui l'ont produite, dans l'ordre où
+ * l'écran les pose. Aucun critère, c'est la liste complète.
+ */
 export function perimetreEdition(
   criteres: Array<[string, string | null | undefined]>,
   nombre: number,

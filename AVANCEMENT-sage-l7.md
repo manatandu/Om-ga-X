@@ -410,6 +410,17 @@ Coordinateur · aucun BLOQUANT ni MAJEUR, 14 MINEUR.
   un envoi est en cours.
 - **10 · « Lecture… » sans fin.** Le choix des sélections dit « Non lues »
   quand la lecture a échoué.
+- **11 · « 0 section » sur une liste non lue.** Le pied du plan analytique
+  dit « Aucun axe choisi » ou « Sections non lues » plutôt qu'un nombre.
+- **12 · jumeau de m6, plan comptable et plan des tiers.** Une réponse lente
+  de la recherche d'avant remplaçait celle du jour, et l'édition imprimait
+  une liste sous les critères d'une autre. Un jeton jette la réponse
+  périmée, la recherche LUE est gardée, et l'édition d'une liste pas encore
+  lue pour la recherche tapée ne s'imprime pas (`perimetreSiLue` · « non lu
+  pour cette recherche · rien n'est imprimé »). Correction minimale dans
+  `TiersPage.tsx`, que touche aussi sage-l2. Au passage, le commentaire de
+  `perimetreEdition`, resté au-dessus de `perimetreDesSections`, revient
+  au-dessus de sa fonction.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,

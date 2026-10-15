@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { editionJournaux, editionParametres, editionPlan, editionTaux, editionTiers, perimetreDesSections, perimetreEdition } from './editions-structures';
+import { editionJournaux, editionParametres, editionPlan, editionTaux, editionTiers, perimetreDesSections, perimetreEdition, perimetreSiLue } from './editions-structures';
 import type { Compte, Journal, ParametresDossier, TauxTva, Tiers } from './types';
 
 /**
@@ -104,6 +104,14 @@ describe('Éditions des structures', () => {
 
 describe('Édition du plan analytique · des sections non lues ne s’impriment pas pour une liste vide (sage-l7, m6)', () => {
   const plan = { code: 'PRJ', intitule: 'Projets' };
+  it('une liste non lue pour la recherche tapée ne s’imprime pas sous ses critères (second tour, 12)', () => {
+    expect(perimetreSiLue(false, 'Plan comptable', [['Recherche', '521']], 3, 'compte')).toBe(
+      "Plan comptable non lu pour cette recherche · rien n'est imprimé",
+    );
+    expect(perimetreSiLue(true, 'Plan comptable', [['Recherche', '521']], 3, 'compte')).toBe('Sélection · Recherche « 521 » · 3 comptes');
+    expect(perimetreSiLue(true, 'Plan des tiers', [['Recherche', '']], 1, 'tiers', 'tiers')).toBe('Liste complète · 1 tiers');
+  });
+
   it('aucun axe, sections non lues, puis la liste lue', () => {
     expect(perimetreDesSections(null, false, '', 0)).toBe("Aucun axe choisi · rien n'est imprimé");
     expect(perimetreDesSections(plan, false, '', 0)).toBe("Sections de l'axe PRJ non lues · rien n'est imprimé");
