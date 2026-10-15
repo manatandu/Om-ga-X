@@ -1507,7 +1507,15 @@ export class EcritureService {
       (date.getUTCFullYear() !== ecriture.date.getUTCFullYear() || date.getUTCMonth() !== ecriture.date.getUTCMonth());
     if (changeDeMois) return false;
     await relireLExerciceDansLaTransaction(tx, tenantId, ecriture.exerciceId, date);
-    await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+    // UNE VALIDATION CONCURRENTE ne laisse rien passer (second tour de
+    // relecture de la ligne sage-l4) · validée entre la lecture et le retrait,
+    // la pièce ne perd aucune ligne (filtre sur le brouillard), et l'ajout des
+    // nouvelles lui donnait DEUX FOIS l'acquisition. Une pièce au brouillard
+    // porte au moins deux lignes · aucune retirée, la pièce a changé de statut.
+    const retirees = await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+    if (retirees.count === 0) {
+      throw new ConflictException("L'écriture a été validée pendant la modification · rien n'est modifié.");
+    }
     await tx.ecriture.update({
       where: { id: ecritureId },
       data: {
