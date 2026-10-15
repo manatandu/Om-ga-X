@@ -306,6 +306,20 @@ describe('la suppression d’une fiche', () => {
   });
 });
 
+describe('les documents de la fiche (ligne sage-l6, fonction n° 22)', () => {
+  it('ne figent pas la fiche · ce ne sont pas des traitements, la valeur se modifie encore au brouillard', async () => {
+    const { service, prisma } = fabrique({ usages: { pieceJointeImmobilisation: 2 } });
+    await service.modifier('t-1', 'u-1', ID, { valeurOrigine: 15_000_000 });
+    expect(prisma.immobilisation.update.mock.calls[0][0].data).toMatchObject({ valeurOrigine: 15_000_000 });
+  });
+
+  it('retiennent la suppression, qui les perdrait · le refus les compte et dit l’issue', async () => {
+    const { service, prisma } = fabrique({ usages: { pieceJointeImmobilisation: 2 } });
+    await expect(service.supprimer('t-1', ID)).rejects.toThrow(/porte 2 document\(s\) joint\(s\) · retirez-les d’abord/);
+    expect(prisma.immobilisation.delete).not.toHaveBeenCalled();
+  });
+});
+
 describe('la fiche née d’une écriture déjà passée (fonction n° 68)', () => {
   it('se retire seule · l’écriture validée du journal n’est jamais touchée', async () => {
     const { service, prisma } = fabrique({ statut: 'VALIDEE', nee: true });

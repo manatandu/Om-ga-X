@@ -780,7 +780,9 @@ export function PlansAnalytiquesPage() {
                   />
                   Porte le budget
                 </label>
-                <label className="text-[11.5px] font-semibold text-text-dim col-span-2">
+                {/* Un bloc, pas un <label> · un libellé active son premier contrôle,
+                    ici la bulle d'aide, à chaque clic sur « Retenir ». */}
+                <div className="text-[11.5px] font-semibold text-text-dim col-span-2">
                   <span className="flex items-center gap-1.5">
                     Longueur des codes de section
                     <Aide
@@ -789,7 +791,9 @@ export function PlansAnalytiquesPage() {
                       source="Sage i7, longueur des sections analytiques · SYCEBNL Partie 2 ch. 3, classe 9 (découpage à la convenance de l'entité)"
                     />
                   </span>
+                  {/* Nommé en propre, aucun libellé ne l'entoure. */}
                   <select
+                    aria-label="Longueur des codes de section"
                     value={axe.longueurSections}
                     onChange={(e) => setAxe((a) => (a ? { ...a, longueurSections: e.target.value } : a))}
                     className="mt-1 w-full border border-border rounded-[3px] px-2.5 py-1.5 text-[12px] font-normal"
@@ -823,7 +827,7 @@ export function PlansAnalytiquesPage() {
                       </button>
                     </span>
                   )}
-                </label>
+                </div>
               </div>
               <div className="flex justify-end gap-2 px-4 py-3 border-t border-border bg-chrome">
                 <button

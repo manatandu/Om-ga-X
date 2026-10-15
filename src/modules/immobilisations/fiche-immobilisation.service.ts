@@ -308,7 +308,11 @@ export class FicheImmobilisationService {
     // Les usages du bien, lus dans le schéma · une table ajoutée demain qui
     // pointe une fiche la retiendra sans que personne ait à y penser.
     const refs = await referencesVers(db, 'Immobilisation', id, tenantId);
-    const usages = refs.filter((r) => r.modele !== 'AnnulationTraitementImmobilisation');
+    // Les documents joints (ligne sage-l6, fonction n° 22) ne sont pas des
+    // traitements · ils ne figent ni la valeur, ni le compte, ni les dates ;
+    // ils ne retiennent que la suppression (`motifRefusSuppression`).
+    const usages = refs.filter((r) => r.modele !== 'AnnulationTraitementImmobilisation' && r.modele !== 'PieceJointeImmobilisation');
+    const documents = refs.filter((r) => r.modele === 'PieceJointeImmobilisation').reduce((s, r) => s + r.nombre, 0);
     const annulationsRetenant = await db.annulationTraitementImmobilisation.count({
       where: { tenantId, immobilisationId: id, OR: [{ ecritureOrigineId: { not: null } }, { ecritureNegatifId: { not: null } }] },
     });
@@ -355,6 +359,7 @@ export class FicheImmobilisationService {
       usages,
       annulationsRetenant,
       exerciceClosQuiLaPorte: closQuiLaPorte ? closQuiLaPorte.toISOString().slice(0, 10) : null,
+      documents,
       renouvelle: fiche.composantRemplaceId
         ? ((await db.immobilisation.findFirst({ where: { id: fiche.composantRemplaceId, tenantId }, select: { designation: true } }))?.designation ?? '·')
         : null,

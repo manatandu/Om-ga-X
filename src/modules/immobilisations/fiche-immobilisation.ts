@@ -117,6 +117,12 @@ export interface EtatDeLaFiche {
    * supprimée, l'ancien composant resterait sorti sans ce qui le remplace.
    */
   renouvelle: string | null;
+  /**
+   * Les documents joints à la fiche (ligne sage-l6, fonction n° 22) · ce ne
+   * sont pas des traitements, ils ne figent pas la fiche ; ils retiennent
+   * seulement sa SUPPRESSION, qui les perdrait. Absent = aucun.
+   */
+  documents?: number;
 }
 
 /**
@@ -254,6 +260,11 @@ export function motifRefusSuppression(e: EtatDeLaFiche): string | null {
       `${e.annulationsRetenant} traitement(s) annulé(s) de ce bien gardent leur écriture et son négatif au journal · la fiche qui ` +
       'les retient ne se supprime pas (AUDCIF art. 22, 2°).'
     );
+  }
+  // Ligne sage-l6, fonction n° 22 · un document ne se perd jamais avec la
+  // fiche, en silence · on le retire d'abord, de l'onglet Documents.
+  if ((e.documents ?? 0) > 0) {
+    return `La fiche porte ${e.documents} document(s) joint(s) · retirez-les d’abord, depuis l’onglet Documents de la fiche.`;
   }
   if (e.motifLignesTenues && !e.neeDUneEcriturePassee) return e.motifLignesTenues;
   return null;

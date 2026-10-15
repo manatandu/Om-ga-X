@@ -34,10 +34,22 @@ Branche de sauvegarde · `travail/sage-l6`. Fiche retirée à l'intégration.
   champ « Longueur des codes de section » de l'axe, refus du serveur montré,
   longueur suggérée par les sections, frappe du code bornée.
 
-## Reste
+- **Tests navigateur et vraie base (étape 4).** `e2e/tests/sage-l6-pieces-ecriture.e2e.ts`
+  (au journal · dépôt, refus d'un faux PDF, téléchargement, retrait au
+  brouillard ; écriture retirée, pièce détachée ; validée, retrait fermé aux
+  deux bouts ; à-nouveau provisoire refusé ; clôture de N, pièce relue au même
+  octet, toujours non retirable, dépôt encore admis), `sage-l6-documents.e2e.ts`
+  (section, bien, salarié · joints, lus, retirés, suppression refusée et
+  nommée, audit sans le nom du document), `sage-l6-longueur-sections.e2e.ts`.
+  Vert sous Chromium sur base jetable (`l6_e2e`, serveur 8306, relais 4306).
+  Trouvé en route et corrigé · le document d'un bien comptait comme un
+  traitement et figeait la valeur de la fiche (`fiche-immobilisation.service.ts`,
+  il ne retient plus que la suppression) ; le libellé du champ de longueur
+  activait la bulle d'aide à chaque clic.
 
-- n° 22 · tests navigateur, scénario sur vraie base à travers une clôture.
-- Bloc du § 3 complet, tests navigateur `e2e/tests/sage-l6-*.e2e.ts`.
+## Reste
+- Bloc du § 3 complet (six tranches du serveur, client, constructions).
+- WebKit non éprouvé ici (absent de la machine).
 
 ## Décisions par la loi
 

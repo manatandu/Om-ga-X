@@ -184,7 +184,8 @@ export function VoletPiecesJointes({
   const aide = AIDES[objet];
 
   return (
-    <section aria-label={titre} className="text-[11.5px]">
+    // La région se nomme par son objet · deux volets ouverts dans deux fenêtres ne se confondent pas.
+    <section aria-label={AIDES[objet].titre} className="text-[11.5px]">
       <div className="text-[11px] font-bold text-text-dim mb-1.5 flex items-center gap-1.5">
         {titre}
         {liste && liste.total > 0 && <span className="font-normal">({liste.total})</span>}
