@@ -198,7 +198,10 @@ fonctions nouvelles que Manasse a demandées expressément (§ 6), une demande
 expresse valant levée du gel pour elle seule ; puis les 41 ABSENCES DE SAGE
 qu'il a cochées « À faire » le 2026-10-14 (« Execute ce que j'ai coché »,
 même plan, § 9), reproduites chacune à sa place par
-`docs/comparaison-sage/reproduction/`, les 61 autres gardées pour plus tard.
+`docs/comparaison-sage/reproduction/`, les 61 autres gardées pour plus tard ;
+puis, le 2026-10-15, la charte « Encre de cachet » et le redimensionnement
+des fenêtres par tous leurs bords, demandés expressément (« Oui vas-y, fais
+aussi en sorte de régler les tailles de fenêtres », « Tous les bords »).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -4867,6 +4870,17 @@ Trois choses à ne pas défaire :
   de la charte a trouvé un `--text-dim` à 3,98:1 sur le fond de l'application,
   sous le plancher AA, que personne n'avait vu en deux ans.
 
+**L'ENCRE EST CELLE DU CACHET depuis le 2026-10-15** (décision de Manasse,
+« Oui vas-y », après l'aperçu avant/après sur le logiciel) · `#2a1f5c` au
+lieu de `#142f6b`, 14,49:1 sur blanc. UNE seule encre en circulation · le
+générateur la pose sur le signe, le logotype et les icônes (`ENCRE_HEX`), la
+couleur de thème du manifeste et de `index.html` la recopie (relue contre
+`ENCRE` par `pwa-et-confidentialite.spec.ts`), l'échelle `--a-*` et les gris
+de `index.css` la suivent,
+les couleurs de signal restent. Changer d'encre, c'est changer le générateur
+ET remesurer la table du § 7 de la charte, jamais retoucher un fichier
+engendré.
+
 ## 9 ter. L'interface · le modèle est Sage, pas une invention
 
 Décidé par Manasse le 2026-09-25 : « réfère-toi aux logiciels qui existent
@@ -4882,9 +4896,9 @@ OmegaX, JAMAIS le vert de Sage.
 - **Bandeau à l'encre de la marque.** La barre de titre, la barre verticale de
   l'accueil et la barre de titre de la fenêtre ACTIVE sont `--bandeau`
   (`--a-900`), texte et symbole en blanc (logo blanc prévu par la charte sur
-  fond sombre). La barre de menus est blanche, survol bleu clair.
+  fond sombre). La barre de menus est blanche, survol à la teinte claire de l'encre.
 - **Grille blanche, en-tête plein.** Les tableaux sont blancs sur la fenêtre
-  (`--fenetre`, gris bleuté très clair), l'en-tête est plein en `--a-700`
+  (`--fenetre`, gris très clair teinté de l'encre), l'en-tête est plein en `--a-700`
   texte blanc, les lignes séparées par un filet, sans quadrillage vertical ni
   zébrure, total sur `--a-50` (`index.css`, bloc TABLEAUX). Le bouton
   principal (`bg-sel`) est une pilule, comme le « + Créer » de Sage Active.
