@@ -72,6 +72,10 @@ const LIBELLES: Record<string, string> = {
   'ModeleReglement.modeReglementId': 'modèles de règlement',
   'EcheanceReglement.modeReglementId': 'échéances de modèles de règlement',
   'LieuLivraison.tiersId': 'lieux de livraison',
+  // Ligne sage-l2, fonction 27 · le modèle d'impression choisi sur la fiche d'un tiers.
+  'Tiers.modeleImpressionExtraitId': "tiers (modèle de l'extrait de compte)",
+  'Tiers.modeleImpressionReglementId': "tiers (modèle de l'avis de règlement)",
+  'Tiers.modeleImpressionRappelId': 'tiers (modèle du rappel)',
   'RibBanque.journalId': 'RIB bancaire rattaché (Structure > Banques)',
   'VentilationAnalytique.sectionId': 'ventilations analytiques',
   'LigneOdAnalytique.sectionId': "lignes d'OD analytique",

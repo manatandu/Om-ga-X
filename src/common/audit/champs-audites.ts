@@ -167,6 +167,10 @@ export const MODELES_AUDITES = new Set<string>([
   // Ligne sage-l2, fonction 31 · un lieu de livraison est une structure du
   // tiers, comme ses RIB.
   'LieuLivraison',
+  // Ligne sage-l2, fonction 27 · un modèle d'impression habille les lettres
+  // que les tiers reçoivent · un texte retouché en silence changerait ce
+  // qu'on leur écrit.
+  'ModeleImpressionTiers',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',

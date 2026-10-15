@@ -11,6 +11,7 @@ import { EditionStructure } from '../components/EditionStructure';
 import { VoletDocumentsTiers } from '../components/VoletDocumentsTiers';
 import { VoletRibsTiers } from '../components/VoletRibsTiers';
 import { VoletLieuxLivraison } from '../components/VoletLieuxLivraison';
+import { VoletModelesImpression } from '../components/VoletModelesImpression';
 import { editionTiers, libelleTypeTiers, perimetreEdition } from '../lib/editions-structures';
 import type {
   Compte,
@@ -615,6 +616,9 @@ export function TiersPage() {
         | 'referenceAutorisationDebits'
         | 'dateEffetAutorisationDebits'
         | 'dateRevocationAutorisationDebits'
+        | 'modeleImpressionExtraitId'
+        | 'modeleImpressionReglementId'
+        | 'modeleImpressionRappelId'
       >
     >,
   ) => {
@@ -1379,6 +1383,13 @@ export function TiersPage() {
                 </form>
                 )}
               </div>
+
+              {/* Modèles d'impression du tiers (ligne sage-l2, fonction 27) */}
+              <VoletModelesImpression
+                key={`impression-${tiersSelectionne.id}`}
+                tiers={tiersSelectionne}
+                onChanger={(donnees) => enregistrerChamp(tiersSelectionne, donnees)}
+              />
 
               {/* Lieux de livraison · d'un client seulement (ligne sage-l2, fonction 31) */}
               {tiersSelectionne.type === 'CLIENT' && (

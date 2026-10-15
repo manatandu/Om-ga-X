@@ -317,6 +317,7 @@ model Tenant {
   createdAt                 DateTime                   @default(now())
   ribsTiers                 RibTiers[]
   lieuxLivraison            LieuLivraison[]
+  modelesImpressionTiers    ModeleImpressionTiers[]
   ordresVirement            OrdreVirement[]
   lignesOrdreVirement       LigneOrdreVirement[]
   lotsVirement              LotVirement[]
@@ -2757,6 +2758,19 @@ model Tiers {
   /// ligne de facture selon le modèle de règlement sans présenter la fenêtre
   /// des échéances, et l'annonce. Faux par défaut · la fenêtre se présente.
   validationAutomatiqueEcheances Boolean @default(false)
+
+  /// LES MODÈLES D'IMPRESSION PROPRES AU TIERS (ligne sage-l2, fonction 27 ·
+  /// Sage, volet « Modèles d'impression » de la fiche, F_COMPTETMODELE) · un
+  /// par document, extrait de compte, avis de règlement, rappel. Le modèle
+  /// HABILLE le document (`tiers/modeles-impression.ts`), il ne le remplace
+  /// jamais. Nul, le document part sans habillage. RESTRICT · un modèle porté
+  /// par un tiers ne se supprime pas, et le refus le nomme.
+  modeleImpressionExtraitId   String?
+  modeleImpressionExtrait     ModeleImpressionTiers? @relation("ModeleImpressionExtrait", fields: [modeleImpressionExtraitId], references: [id], onDelete: Restrict)
+  modeleImpressionReglementId String?
+  modeleImpressionReglement   ModeleImpressionTiers? @relation("ModeleImpressionReglement", fields: [modeleImpressionReglementId], references: [id], onDelete: Restrict)
+  modeleImpressionRappelId    String?
+  modeleImpressionRappel      ModeleImpressionTiers? @relation("ModeleImpressionRappel", fields: [modeleImpressionRappelId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
 
@@ -10882,6 +10896,40 @@ model LieuLivraison {
 
   @@index([tenantId, tiersId])
   @@map("lieux_livraison")
+}
+
+/// LE DOCUMENT QU'UN MODÈLE D'IMPRESSION HABILLE (ligne sage-l2, fonction 27 ·
+/// Sage, modèles d'impression du tiers) · l'extrait de compte (le relevé de
+/// Rappel et relevé), l'avis de règlement (joint à un ordre de virement), le
+/// rappel (relances préventives et rappels).
+enum NatureModeleImpression {
+  EXTRAIT
+  REGLEMENT
+  RAPPEL
+}
+
+/// UN MODÈLE D'IMPRESSION DU DOSSIER (ligne sage-l2, fonction 27) · un texte
+/// qui porte le jeton {document} une fois et une seule, là où s'imprime le
+/// document que le logiciel compose, et autour duquel le cabinet écrit ce
+/// qu'un tiers attend (référence de contrat, service destinataire, formule).
+/// Règles dans `tiers/modeles-impression.ts`. Structure du dossier, tenue par
+/// l'administrateur, au journal d'audit.
+model ModeleImpressionTiers {
+  id        String                 @id @default(uuid())
+  tenantId  String
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id])
+  nature    NatureModeleImpression
+  intitule  String                 @db.VarChar(35)
+  texte     String
+  createdAt DateTime               @default(now())
+  createdBy String
+
+  tiersExtrait   Tiers[] @relation("ModeleImpressionExtrait")
+  tiersReglement Tiers[] @relation("ModeleImpressionReglement")
+  tiersRappel    Tiers[] @relation("ModeleImpressionRappel")
+
+  @@unique([tenantId, nature, intitule])
+  @@map("modeles_impression_tiers")
 }
 
 model ModeReglement {

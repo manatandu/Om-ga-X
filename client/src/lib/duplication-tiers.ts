@@ -24,6 +24,10 @@ export interface CopieDuTiers {
     modeleReglementId?: string;
     modeReglementId?: string;
     validationAutomatiqueEcheances?: true;
+    /** Les modèles d'impression (fonction 27) · repris, envoyés tels quels. */
+    modeleImpressionExtraitId?: string;
+    modeleImpressionReglementId?: string;
+    modeleImpressionRappelId?: string;
   };
   nonRepris: Array<{ champ: string; motif: string }>;
 }

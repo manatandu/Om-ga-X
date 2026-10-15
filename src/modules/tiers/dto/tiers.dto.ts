@@ -22,6 +22,22 @@ export class CreerTiersDto {
   modeReglementId?: string;
 
   /**
+   * Les modèles d'impression du tiers (ligne sage-l2, fonction 27) · un
+   * modèle du dossier, de la nature de sa zone (`modeles-impression.ts`).
+   */
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionExtraitId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionReglementId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionRappelId?: string;
+
+  /**
    * Ouvrir les comptes du tiers, son compte principal et les sous-comptes de
    * sa panoplie, chacun sous son collectif (collectifs-tiers.ts). Vrai par
    * défaut, comme la proposition de Sage ; faux pour rattacher ensuite un
@@ -189,6 +205,19 @@ export class ModifierTiersDto {
   @IsOptional()
   @IsUUID()
   modeReglementId?: string | null;
+
+  // null explicite = le document part sans habillage (ligne sage-l2, fonction 27)
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionExtraitId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionReglementId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionRappelId?: string | null;
 
   /*
     COORDONNÉES · elles manquaient, et cela rendait inutilisable une brique

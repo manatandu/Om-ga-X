@@ -23,13 +23,19 @@ describe('la copie d’un tiers', () => {
     expect(champsReprisHorsFormulaire(copie)).toEqual({ qualite: 'Société', ville: 'Goma', validationAutomatiqueEcheances: true });
   });
 
+  it('les modèles d’impression repris partent avec la création (fonction 27)', () => {
+    expect(champsReprisHorsFormulaire({ ...copie, corps: { ...copie.corps, modeleImpressionRappelId: 'r1' } })).toEqual(
+      expect.objectContaining({ modeleImpressionRappelId: 'r1' }),
+    );
+  });
+
   it('ce qui n’est pas repris se dit, avec son motif', () => {
     expect(nonReprisEnClair(copie)).toBe('Code (unique dans le dossier · à saisir) ; Numéro Impôt (identifiant propre à chaque contribuable)');
   });
 
   it('la forme de la copie est celle du serveur', () => {
     const serveur = readFileSync(join(__dirname, '../../../src/modules/tiers/duplication-tiers.ts'), 'utf8');
-    for (const champ of ['qualite?: string;', 'contact?: string;', 'modeReglementId?: string;', 'validationAutomatiqueEcheances?: true;', "code: '';"]) {
+    for (const champ of ['qualite?: string;', 'contact?: string;', 'modeReglementId?: string;', 'validationAutomatiqueEcheances?: true;', 'modeleImpressionRappelId?: string;', "code: '';"]) {
       expect(serveur).toContain(champ);
     }
   });

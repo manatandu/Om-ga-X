@@ -24,6 +24,10 @@ export interface FicheTiers {
   contact: string | null;
   /** Ligne sage-l2, fonction 24 · un libellé, qui comble le vide comme une coordonnée. */
   qualite?: string | null;
+  /** Ligne sage-l2, fonction 27 · le modèle d'impression choisi, qui comble le vide de même. */
+  modeleImpressionExtraitId?: string | null;
+  modeleImpressionReglementId?: string | null;
+  modeleImpressionRappelId?: string | null;
 }
 
 export function motifRefusFusionTiers(source: FicheTiers, cible: FicheTiers): string | null {
@@ -37,7 +41,22 @@ export function motifRefusFusionTiers(source: FicheTiers, cible: FicheTiers): st
   return null;
 }
 
-const COORDONNEES = ['adresse', 'boitePostale', 'ville', 'pays', 'telephone', 'email', 'numeroImpot', 'contact', 'qualite'] as const;
+const COORDONNEES = [
+  'adresse',
+  'boitePostale',
+  'ville',
+  'pays',
+  'telephone',
+  'email',
+  'numeroImpot',
+  'contact',
+  'qualite',
+  // Les modèles d'impression (ligne sage-l2, fonction 27) · la fiche conservée
+  // garde les siens, le doublon ne pose le sien que là où elle n'en a pas.
+  'modeleImpressionExtraitId',
+  'modeleImpressionReglementId',
+  'modeleImpressionRappelId',
+] as const;
 
 /**
  * Les coordonnées que la fiche conservée n'a pas et que le doublon porte · la

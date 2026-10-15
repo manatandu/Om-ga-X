@@ -22,6 +22,8 @@ const LibellesPage = lazy(() => import('../pages/LibellesPage').then((m) => ({ d
 const SequencesSaisiePage = lazy(() => import('../pages/SequencesSaisiePage').then((m) => ({ default: m.SequencesSaisiePage })));
 // Ligne sage-l2, fonction 1 · les modes de règlement.
 const ModesReglementPage = lazy(() => import('../pages/ModesReglementPage').then((m) => ({ default: m.ModesReglementPage })));
+// Ligne sage-l2, fonction 27 · les modèles d'impression des tiers.
+const ModelesImpressionPage = lazy(() => import('../pages/ModelesImpressionPage').then((m) => ({ default: m.ModelesImpressionPage })));
 const EtatsPersonnalisesPage = lazy(() =>
   import('../pages/EtatsPersonnalisesPage').then((m) => ({ default: m.EtatsPersonnalisesPage })),
 );
@@ -354,6 +356,12 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Modes de règlement',
     titreCourt: 'Modes',
     rendre: () => <ModesReglementPage />,
+  },
+  {
+    motif: /^\/modeles-impression$/,
+    titre: "Modèles d'impression",
+    titreCourt: 'Impression',
+    rendre: () => <ModelesImpressionPage />,
   },
   {
     motif: /^\/declaration-tva$/,

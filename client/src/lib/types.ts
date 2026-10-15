@@ -1051,6 +1051,10 @@ export interface Tiers {
   contact: string | null;
   /** La qualité du tiers (ligne sage-l2, fonction 24) · un libellé, jamais une règle. */
   qualite?: string | null;
+  /** Les modèles d'impression du tiers (ligne sage-l2, fonction 27) · un par document, nul sans habillage. */
+  modeleImpressionExtraitId?: string | null;
+  modeleImpressionReglementId?: string | null;
+  modeleImpressionRappelId?: string | null;
   /**
    * CE TIERS EST UNE AUTRE CELLULE DU MÊME GROUPE D'ÉTABLISSEMENTS · un groupe
    * est UNE SEULE personne morale tenue en plusieurs dossiers, et une vente du
@@ -2513,8 +2517,29 @@ export interface LettreRelance {
   tiers: string;
   montant: number;
   texte: string;
+  /** Le modèle d'impression du tiers qui a habillé la lettre (ligne sage-l2, fonction 27), ou null. */
+  modeleImpression?: string | null;
   /** Ce qu'il est advenu de la remise · voir `RemiseLettre` (relances.service.ts). */
   remise: RemiseCourriel;
+}
+
+/**
+ * LE CADRE D'UN DOCUMENT (ligne sage-l2, fonction 27) · le texte du modèle du
+ * tiers coupé autour du document, jetons remplacés par le serveur. `modele`
+ * nul · le cadre par défaut du document.
+ */
+export interface CadreImpression {
+  modele: string | null;
+  avant: string;
+  apres: string;
+}
+
+/** Les avis de règlement d'un ordre de virement (GET /ordres-virement/:id/avis-reglement). */
+export interface AvisReglementOrdre {
+  ordre: { id: string; numero: number; date: string; statut: string };
+  avis: { ligneId: string; beneficiaire: string; montant: number; modele: string | null; texte: string }[];
+  /** Les lignes qui paient un salaire · aucun avis, le bulletin en tient lieu. */
+  lignesDeSalaires: number;
 }
 
 /**

@@ -206,11 +206,48 @@ Aucun défaut trouvé.
   création en liste blanche), `client/src/lib/duplication-tiers.spec.ts` (3),
   `e2e/tests/sage-l2-duplication.e2e.ts` (vert sous Chromium).
 
+### n° 27 · Modèles d'impression propres au tiers (fait)
+
+- Table `ModeleImpressionTiers` (migration `20270180000600`) · nature
+  (extrait de compte, avis de règlement, rappel), intitulé unique dans sa
+  nature sans égard à la casse, texte ; cent par dossier ; au journal
+  d'audit, cloisonnée. Trois zones sur la fiche du tiers
+  (`modeleImpressionExtraitId`, `…ReglementId`, `…RappelId`, RESTRICT) ·
+  modèle du dossier et de la nature de sa zone, sinon refus nommé.
+- LE MODÈLE HABILLE LE DOCUMENT, IL NE LE REMPLACE JAMAIS
+  (`tiers/modeles-impression.ts`) · le jeton {document} exigé une fois et une
+  seule, aucun jeton inconnu (il s'imprimerait tel quel) ; jetons {tiers},
+  {code}, {qualite}, {contact}, {adresse}, {entite}, {date} remplacés en une
+  passe sur le seul texte du modèle (un libellé de facture qui écrit
+  « {tiers} » reste tel quel).
+- Où il sert · relances préventives et rappels (modèle de rappel) et relevé
+  (modèle d'extrait), à l'émission (`RelancesService.emettre`, lettre du
+  niveau habillée, l'historique et le courriel portent le même texte) et au
+  relevé de compte à l'écran (cadre coupé autour du tableau) ; avis de
+  règlement d'un ordre de virement IMPRIMÉ (`GET
+  /ordres-virement/:id/avis-reglement`, `reglements/avis-reglement.ts`), un
+  par fournisseur, l'imputation déclarée en payant transmise telle que
+  l'ordre l'a recopiée, signé du dossier et de ses mentions, en-tête par
+  défaut sans modèle ; aucun avis pour un salaire (compté).
+- Duplication · les modèles sont repris ; fusion · ceux du doublon ne
+  comblent que les zones vides.
+- Écrans · Structure > Paramètres de saisie > Modèles d'impression
+  (administrateur ; refus du serveur dit, garde de fermeture) ; volet de la
+  fiche du tiers ; Rappel et relevé (modèle nommé sur la lettre, cadre du
+  relevé) ; ordre de virement, « Avis de règlement » puis « Imprimer les
+  avis » (un par page, à la place de l'ordre).
+- Tests · `modeles-impression.spec.ts` (19), `modele-impression-relances.spec.ts`
+  (3), `avis-reglement.spec.ts` (8), duplication et fusion,
+  `client/src/lib/modeles-impression.spec.ts` (miroir du schéma et du
+  serveur), `e2e/tests/sage-l2-modeles-impression.e2e.ts` (vert sous
+  Chromium).
+
 ## Reste
 
-1. n° 27 · modèles d'impression propres au tiers.
-2. n° 18 · assistant de règlement.
-3. Bloc du § 3 complet, tous les tests navigateur de la ligne.
+1. n° 18 · assistant de règlement.
+2. Bloc du § 3 complet, tous les tests navigateur de la ligne.
+3. Avis de règlement · ni mise en file par courriel, ni avis d'un règlement
+   sans ordre de virement (chèque, espèces).
 
 ## Décisions par la loi
 
@@ -259,6 +296,18 @@ Aucun défaut trouvé.
   (la liste annuelle des fournisseurs l'exige pour chacun, LPF art. 47 ter),
   le RIB, l'autorisation aux débits (décision nominative, O.-L. n° 10/001,
   art. 26) restent sur le tiers d'origine.
+- **n° 27 · l'avis transmet l'imputation du débiteur.** Code civil, Livre
+  III, art. 151 (« Le débiteur de plusieurs dettes a le droit de déclarer,
+  lorsqu'il paye, quelle dette il entend acquitter ») · l'avis porte les
+  factures et les parts que la ligne de l'ordre a recopiées, sans rien
+  recalculer. Sans parts déclarées, il n'en dit rien (aucune imputation de
+  l'art. 154 n'est affirmée au créancier).
+- **n° 27 · le modèle ne peut pas retirer la signature.** La correspondance
+  de l'entité porte ses mentions (AUDCG art. 59 ; AUSCGIE art. 17) · elles
+  sont dans le DOCUMENT (`{entite}` des relances, signature de l'avis), que
+  le modèle habille ; d'où {document} exigé. Le reste (jetons, avis après
+  l'impression de l'ordre seulement) est convention d'OmegaX, dite dans la
+  bulle.
 - **n° 36 · seuil sans défaut.** Aucun texte n'en fixe · `null`, aucun écart
   ne se passe, et le refus le dit.
 - **n° 36 · TVA.** L'escompte et la remise ne sortent de la base que s'ils
@@ -290,6 +339,7 @@ Aucun défaut trouvé.
 | 24 | 2026-10-15 | L2 | fait | la qualité n'est pas reprise sur les lettres de relance | rien |
 | 31 | 2026-10-15 | L2 | fait | aucun document ne lit encore le lieu (la gestion commerciale le reprendra) | le bouton « Mettre en sommeil » du lieu se confondait avec celui du tiers · boutons nommés par lieu |
 | 32 | 2026-10-15 | L2 | fait | rien | rien |
+| 27 | 2026-10-15 | L2 | fait | l'avis de règlement ne part pas en courriel, et rien pour un règlement sans ordre de virement | un appel de forme `composer(…});` gelé par un test de structure · la lettre composée d'abord, habillée ensuite |
 | 36 | 2026-10-15 | L2 | fait | ni escompte ni écart sur un règlement en devise ou à parts désignées (refus nommés) ; l'écart en produit de Sage n'est pas repris (art. 252) | la part de taxe de l'escompte reste en attente sous l'encaissement, dite plutôt que régularisée |
 
 ## Pour features.csv
@@ -299,6 +349,7 @@ Aucun défaut trouvé.
 - n° 24 → yes · qualité du tiers, libellé proposé et libre, sur la fiche et l'édition du plan des tiers.
 - n° 31 → yes · lieux de livraison d'un client, un principal, sur la fiche du tiers.
 - n° 32 → yes · duplication d'un tiers vers le formulaire de création, ce qui n'est pas repris nommé.
+- n° 27 → yes · modèles d'impression du dossier (extrait, avis de règlement, rappel) choisis sur la fiche du tiers, qui habillent relances, relevé et avis de règlement.
 - n° 36 → yes · escompte obtenu ou accordé au règlement, écart de règlement soldé en charge sous le seuil du dossier (jamais en produit).
 
 ## Commandes de vérification
@@ -306,8 +357,8 @@ Aucun défaut trouvé.
 ```bash
 cd /home/user/wt-sage-l2
 npx tsc --noEmit && (cd client && npx tsc --noEmit)
-npx jest src/modules/reglements src/modules/tiers src/modules/comptabilite/brouillard.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
-(cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/comptes-retenus-ecrans.spec.ts)
+npx jest src/modules/reglements src/modules/tiers src/modules/relances src/modules/comptabilite/brouillard.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
+(cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/modeles-impression.spec.ts src/lib/comptes-retenus-ecrans.spec.ts)
 # e2e · serveur sur 8302 (base l2_e2e), aperçu sur 4302
-(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts tests/sage-l2-qualite.e2e.ts tests/sage-l2-livraison.e2e.ts tests/sage-l2-duplication.e2e.ts)
+(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts tests/sage-l2-qualite.e2e.ts tests/sage-l2-livraison.e2e.ts tests/sage-l2-duplication.e2e.ts tests/sage-l2-modeles-impression.e2e.ts)
 ```

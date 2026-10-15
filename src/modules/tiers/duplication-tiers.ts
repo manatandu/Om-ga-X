@@ -19,7 +19,8 @@ import type { TypeTiers } from '@prisma/client';
  * les débits (décision nominative du Directeur Général des Impôts, O.-L.
  * n° 10/001, art. 26) ; l'exclusion des relances (motif propre à ce tiers).
  * Un modèle ou un mode de règlement en sommeil n'est pas repris non plus ·
- * la création le refuserait.
+ * la création le refuserait. Les modèles d'impression (fonction 27) sont
+ * repris · un choix de présentation, qui ne nomme personne.
  */
 
 export interface TiersADupliquer {
@@ -41,6 +42,9 @@ export interface TiersADupliquer {
   validationAutomatiqueEcheances: boolean;
   modeleReglement: { id: string; estActif: boolean } | null;
   modeReglement: { id: string; estActif: boolean } | null;
+  modeleImpressionExtraitId: string | null;
+  modeleImpressionReglementId: string | null;
+  modeleImpressionRappelId: string | null;
 }
 
 export interface CopieDuTiers {
@@ -60,6 +64,9 @@ export interface CopieDuTiers {
     modeleReglementId?: string;
     modeReglementId?: string;
     validationAutomatiqueEcheances?: true;
+    modeleImpressionExtraitId?: string;
+    modeleImpressionReglementId?: string;
+    modeleImpressionRappelId?: string;
   };
   nonRepris: Array<{ champ: string; motif: string }>;
 }
@@ -81,6 +88,10 @@ export function copieDuTiers(t: TiersADupliquer, decomptes: { ribs: number; docu
   if (t.modeleReglement?.estActif && t.validationAutomatiqueEcheances) corps.validationAutomatiqueEcheances = true;
   if (t.modeReglement?.estActif) corps.modeReglementId = t.modeReglement.id;
   else if (t.modeReglement) nonRepris.push({ champ: 'Mode de règlement', motif: 'en sommeil' });
+  for (const c of ['modeleImpressionExtraitId', 'modeleImpressionReglementId', 'modeleImpressionRappelId'] as const) {
+    const v = t[c];
+    if (v) corps[c] = v;
+  }
   if (t.numeroImpot) nonRepris.push({ champ: 'Numéro Impôt', motif: 'identifiant propre à chaque contribuable' });
   if (decomptes.ribs > 0) nonRepris.push({ champ: 'Coordonnées bancaires', motif: 'un RIB recopié ferait payer le mauvais tiers' });
   if (decomptes.documents > 0) nonRepris.push({ champ: 'Documents', motif: 'pièces de l’autre tiers' });

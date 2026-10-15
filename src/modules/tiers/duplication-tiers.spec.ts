@@ -31,6 +31,9 @@ const source = (x: Partial<TiersADupliquer> = {}): TiersADupliquer => ({
   validationAutomatiqueEcheances: true,
   modeleReglement: { id: 'm1', estActif: true },
   modeReglement: { id: 'vir', estActif: true },
+  modeleImpressionExtraitId: null,
+  modeleImpressionReglementId: null,
+  modeleImpressionRappelId: null,
   ...x,
 });
 
@@ -69,6 +72,12 @@ describe('la copie d’un tiers', () => {
       'Autorisation aux débits',
       'Exclusion des relances',
     ]);
+  });
+
+  it('les modèles d’impression sont repris (fonction 27) · un choix de présentation', () => {
+    const c = copieDuTiers(source({ modeleImpressionRappelId: 'r1', modeleImpressionReglementId: 'a1' }), { ribs: 0, documents: 0, lieux: 0 });
+    expect(c.corps).toEqual(expect.objectContaining({ modeleImpressionRappelId: 'r1', modeleImpressionReglementId: 'a1' }));
+    expect(c.corps).not.toHaveProperty('modeleImpressionExtraitId');
   });
 
   it('un modèle ou un mode en sommeil n’est pas repris · la création le refuserait', () => {

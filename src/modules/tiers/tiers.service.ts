@@ -28,6 +28,7 @@ import { transactionJournalisee } from '../../common/audit/transaction-journalis
 import { dateSaisieOuEffacement } from '../tenant/date-effacable';
 import { motifRefusPeriodeAutorisationDebits } from './periode-autorisation-debits';
 import { modeDuDossier } from '../reglements/modes-reglement.service';
+import { modeleDuDossierPourLaZone } from './modeles-impression.service';
 import { echeancierDuModele, motifSansEcheancierDuModele } from './echeancier-modele';
 
 /**
@@ -163,6 +164,7 @@ export class TiersService {
       await this.trouverModeleReglement(tenantId, dto.modeleReglementId);
     }
     if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
+    await this.verifierModelesImpression(tenantId, dto);
     if (dto.celluleGroupeId) {
       await this.exigerMemeGroupe(tenantId, dto.celluleGroupeId);
     }
@@ -632,6 +634,7 @@ export class TiersService {
       await this.trouverModeleReglement(tenantId, dto.modeleReglementId);
     }
     if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
+    await this.verifierModelesImpression(tenantId, dto);
     // null passe sans contrôle · il DÉTACHE, et détacher ne peut jamais faire
     // sortir de l'agrégat une opération qui doit y rester.
     if (dto.celluleGroupeId) {
@@ -826,6 +829,20 @@ export class TiersService {
       include: { echeances: { orderBy: { ordre: 'asc' } } },
       orderBy: { intitule: 'asc' },
     });
+  }
+
+  /**
+   * LES MODÈLES D'IMPRESSION CHOISIS SUR LA FICHE (ligne sage-l2, fonction
+   * 27) · chacun du dossier et de la nature de sa zone. `null` passe sans
+   * contrôle · il retire le modèle, le document part sans habillage.
+   */
+  private async verifierModelesImpression(
+    tenantId: string,
+    dto: { modeleImpressionExtraitId?: string | null; modeleImpressionReglementId?: string | null; modeleImpressionRappelId?: string | null },
+  ) {
+    if (dto.modeleImpressionExtraitId) await modeleDuDossierPourLaZone(this.prisma, tenantId, dto.modeleImpressionExtraitId, 'EXTRAIT');
+    if (dto.modeleImpressionReglementId) await modeleDuDossierPourLaZone(this.prisma, tenantId, dto.modeleImpressionReglementId, 'REGLEMENT');
+    if (dto.modeleImpressionRappelId) await modeleDuDossierPourLaZone(this.prisma, tenantId, dto.modeleImpressionRappelId, 'RAPPEL');
   }
 
   async creerModeleReglement(tenantId: string, dto: CreerModeleReglementDto) {

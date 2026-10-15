@@ -386,8 +386,9 @@ describe('menus « Structure » et « Traitement » regroupés', () => {
     // 2026-10-14 · « Séquences de saisie » sous « Paramètres de saisie »
     // (ligne sage-l1, fonction 19) · repos inchangé.
     // 2026-10-15 · « Modes de règlement » sous « Paramètres de saisie »
-    // (ligne sage-l2, fonction 1) · repos inchangé.
-    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 18],
+    // (ligne sage-l2, fonction 1) · repos inchangé. Même jour, « Modèles
+    // d'impression » au même groupe (fonction 27) · repos inchangé.
+    ['Structure', "titre: 'Structure',", "titre: 'Traitement',", 9, 19],
     // 2026-09-27 · le registre des donateurs entre dans le groupe
     // « Déclarations et registres » (repos inchangé), qui reçoit aussi la
     // déclaration de TVA, les engagements et les exonérations venus d'État.
