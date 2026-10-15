@@ -24,7 +24,12 @@ export default defineConfig({
   retries: 0,
   timeout: 300_000,
   expect: { timeout: 15_000 },
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  // LE RAPPORTEUR `github` (2026-10-15) · il écrit chaque test tombé en
+  // annotation du job, lisible par l'API des check-runs. Le journal du job et
+  // l'artefact du rapport sont servis par un autre hôte, que l'environnement
+  // de travail n'atteint pas · sans annotation, un échec sur `main` ne disait
+  // que « exit code 1 », sans nommer le test.
+  reporter: process.env.CI ? [['list'], ['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: process.env.OMEGAX_APP ?? 'http://localhost:4173',
     viewport: { width: 1366, height: 900 },
