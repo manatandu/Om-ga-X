@@ -407,13 +407,14 @@ describe('grilles à colonnes fixes sur un écran de 360 px', () => {
 describe('les écrans qui débordaient le plus', () => {
   const lire = (p: string) => readFileSync(join(PAGES, p), 'utf8');
 
-  it('le journal général donne ses neuf colonnes au conteneur, pas à la fenêtre', () => {
+  it('le journal général donne ses dix colonnes au conteneur, pas à la fenêtre', () => {
     // 722 px de colonnes fixes + 8 gouttières de 10 px + 28 px de marges =
     // 830 px pour 326 disponibles. C'est la plus large grille du logiciel : la
-    // page partait de 504 px vers la droite, DATE compris.
+    // page partait de 504 px vers la droite, DATE compris. Ligne sage-l6 · la
+    // colonne des pièces jointes (44 px et sa gouttière) porte le minimum à 1 030 px.
     const src = lire('JournalPage.tsx');
     expect(src).toMatch(/className="border border-border bg-surface shadow-posee rounded-t-none overflow-x-auto"/);
-    expect(src).toMatch(/grid-cols-\[68px_46px_52px_92px_120px_1fr_108px_108px_128px\] min-w-\[980px\]/);
+    expect(src).toMatch(/grid-cols-\[68px_46px_52px_92px_120px_1fr_108px_108px_44px_128px\] min-w-\[1030px\]/);
   });
 
   it("le registre des immobilisations aussi, avec sa colonne d'amortissement", () => {

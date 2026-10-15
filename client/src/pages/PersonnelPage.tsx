@@ -11,6 +11,7 @@ import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
 import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
 import { MajorationsHeuresPaie } from '../components/paie/MajorationsHeuresPaie';
 import { PaiementDuSalarie } from '../components/paie/PaiementDuSalarie';
+import { VoletPiecesJointes } from '../components/PiecesJointes';
 import { RepartitionAnalytique } from '../components/paie/RepartitionAnalytique';
 import { QuestionnairePaie } from '../components/paie/QuestionnairePaie';
 import { heuresPourLeBulletin, LIGNE_HEURES_VIERGE, type LigneHeures, type ListeMajorations } from '../lib/heures-majorees';
@@ -2172,6 +2173,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                 <PaiementDuSalarie salarieId={choisi.id} />
                 {/* Ligne sage-l5, fonction 88 · sa répartition entre sections analytiques. */}
                 <RepartitionAnalytique salarieId={choisi.id} />
+                {/* Ligne sage-l6, fonction n° 22 · les documents du salarié, aux droits du registre. */}
+                <div className="border-t border-border pt-2.5 mt-3">
+                  <VoletPiecesJointes key={choisi.id} objet="SALARIE" objetId={choisi.id} peutEcrire={peutEcrire} />
+                </div>
               </div>
             )}
           </div>

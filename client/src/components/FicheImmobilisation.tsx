@@ -4,12 +4,16 @@ import { ecouterEchap } from '../lib/echap';
 import { useGardeFermeture } from '../lib/fenetres';
 import { TraitementsImmobilisation } from './TraitementsImmobilisation';
 import { FicheImmobilisationGeneral, type PropositionDuplication } from './FicheImmobilisationGeneral';
+import { VoletPiecesJointes } from './PiecesJointes';
+import { useAuth } from '../lib/auth';
 
-export type OngletFiche = 'general' | 'traitements';
+export type OngletFiche = 'general' | 'traitements' | 'documents';
 
 const ONGLETS_FICHE: readonly { cle: OngletFiche; libelle: string }[] = [
   { cle: 'general', libelle: 'Général' },
   { cle: 'traitements', libelle: 'Traitements' },
+  // Ligne sage-l6, fonction n° 22 · le volet Documents de la fiche du bien (Sage i7).
+  { cle: 'documents', libelle: 'Documents' },
 ];
 
 /**
@@ -31,6 +35,7 @@ export function FicheImmobilisation({
   onSupprime: (message: string) => void;
 }) {
   const [onglet, setOnglet] = useState<OngletFiche>('general');
+  const { peutEcrire } = useAuth();
   const fermer = useRef<HTMLButtonElement>(null);
   // LA FERMETURE SE GARDE (relecture de la ligne · CLAUDE.md, Échap et la
   // fermeture, F177) · un envoi en cours la tient ; une saisie non
@@ -109,6 +114,14 @@ export function FicheImmobilisation({
               <FicheImmobilisationGeneral bien={bien} onFait={onFait} onDupliquer={onDupliquer} onSupprime={onSupprime} onEtatTravail={setTravail} />
             )}
             {onglet === 'traitements' && <TraitementsImmobilisation bien={bien} onFait={onFait} onEtatTravail={setTravail} />}
+            {onglet === 'documents' && (
+              <VoletPiecesJointes
+                objet="IMMOBILISATION"
+                objetId={bien.id}
+                peutEcrire={peutEcrire}
+                onOccupe={(occupe) => setTravail({ occupe, nonEnregistre: false })}
+              />
+            )}
           </div>
         </div>
       </div>

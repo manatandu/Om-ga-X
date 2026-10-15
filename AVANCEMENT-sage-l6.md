@@ -17,11 +17,18 @@ Branche de sauvegarde · `travail/sage-l6`. Fiche retirée à l'intégration.
   Contrôleurs chez chaque objet · `comptabilite/`, `analytique/`,
   `immobilisations/`, `personnel/` (rôles cantonnés du registre).
 
+- **n° 22, écrans (étape 2).** `client/src/components/PiecesJointes.tsx`
+  (volet commun, boîte d'une écriture, boîte des pièces détachées, bouton
+  « PJ n »), `client/src/lib/pieces-jointes.ts` (adresses de chaque objet,
+  relues contre les contrôleurs par `pieces-jointes.spec.ts`). Saisie et
+  journal (colonne PJ sur la première ligne de chaque écriture, décompte de
+  l'exercice, « Pièces détachées… » au journal), fiche de la section (plans
+  analytiques), onglet « Documents » de la fiche du bien, fiche du salarié
+  (registre du personnel).
+
 ## Reste
 
-- n° 22 · écrans (saisie, journal, pièces détachées, plans analytiques, fiche
-  du bien, registre du personnel), tests navigateur, scénario sur vraie base à
-  travers une clôture.
+- n° 22 · tests navigateur, scénario sur vraie base à travers une clôture.
 - n° 50 · longueur fixe des codes de section (schéma, migration
   `20270181000200`, service, écran, tests).
 - Bloc du § 3 complet, tests navigateur `e2e/tests/sage-l6-*.e2e.ts`.

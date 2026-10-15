@@ -22,6 +22,8 @@ import { compteDuNumeroTape, comptesPourLaFrappe, RETENUS } from '../lib/comptes
 import { libelleRenvoiDiscordant, remplacementsProposes, type RenvoiDiscordant } from '../lib/regle-compte-saisie';
 import { lireMasquerTotaux, memoriserMasquerTotaux } from '../lib/totaux-saisie';
 import { ModaleCompteEnSaisie } from '../components/ModaleCompteEnSaisie';
+import { BoutonPiecesEcriture, ModalePiecesEcriture } from '../components/PiecesJointes';
+import { piecesDeLEcriture, type DecomptePieces } from '../lib/pieces-jointes';
 
 /**
  * SAISIE DES JOURNAUX · l'écran central du logiciel, calqué sur
@@ -260,6 +262,12 @@ export function SaisiePage() {
   // de l'audit final F255).
   const [ecrituresLues, setEcrituresLues] = useState(false);
   const [rechargement, setRechargement] = useState(0);
+  // PIÈCES JOINTES (ligne sage-l6, fonction n° 22) · l'écriture dont la boîte
+  // est ouverte, et le décompte des pièces de l'exercice · null tant qu'il
+  // n'est pas lu, jamais « aucune » sur un décompte illisible.
+  const [piecesOuvertes, setPiecesOuvertes] = useState<string | null>(null);
+  const [decomptePieces, setDecomptePieces] = useState<DecomptePieces | null>(null);
+  const [rechargementPieces, setRechargementPieces] = useState(0);
   // Les axes analytiques partent de null (reste de l'audit final F255) · un
   // refus, du plan ou des sections d'un axe, retirait la colonne de la grille
   // comme sur un dossier sans analytique, et la ventilation obligatoire ne se
@@ -656,6 +664,21 @@ export function SaisiePage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ouvert, journalId, indexPeriode, parPiece, exerciceCourant?.id, rechargement]);
+
+  // Le décompte des pièces jointes de l'exercice · relu avec les écritures et
+  // à chaque dépôt ou retrait ; une réponse périmée est jetée.
+  useEffect(() => {
+    if (!ouvert || !exerciceCourant) return;
+    let annule = false;
+    setDecomptePieces(null);
+    api.get<DecomptePieces>(`/pieces-jointes-ecritures/decompte?exerciceId=${exerciceCourant.id}`).then(
+      (r) => !annule && setDecomptePieces(r),
+      () => !annule && setDecomptePieces(null),
+    );
+    return () => {
+      annule = true;
+    };
+  }, [ouvert, exerciceCourant?.id, rechargement, rechargementPieces]);
 
   // ------- Pièce en cours -------
   const totalDebitPiece = lignes.reduce((s, l) => s + l.debit, 0);
@@ -1257,7 +1280,7 @@ export function SaisiePage() {
   // axe, elle retrouve exactement sa largeur d'origine.
   const grille = 'grid gap-2';
   const grilleStyle = {
-    gridTemplateColumns: `44px 58px 92px 108px ${axesGrille.map(() => '104px ').join('')}1fr 112px 112px 30px`,
+    gridTemplateColumns: `44px 58px 92px 108px ${axesGrille.map(() => '104px ').join('')}1fr 112px 112px 40px`,
   } as const;
 
   // ============ ÉTAPE 1 · choix du journal et de la période ============
@@ -1647,7 +1670,11 @@ export function SaisiePage() {
                 <span className="font-mono text-right">
                   {Number(l.credit) !== 0 ? Number(l.credit).toLocaleString('fr-FR') : ''}
                 </span>
-                <span />
+                <span className="flex justify-end">
+                  {i === 0 && (
+                    <BoutonPiecesEcriture nombre={piecesDeLEcriture(decomptePieces, e.id)} onOuvrir={() => setPiecesOuvertes(e.id)} />
+                  )}
+                </span>
               </div>
             ));
           })}
@@ -2410,6 +2437,15 @@ export function SaisiePage() {
 
       {peutEcrire && modaleModeles && (
         <ModelesSaisieModale comptes={comptes} comptesProposes={comptesProposesLus ?? undefined} onInserer={insererModele} onFermer={() => setModaleModeles(false)} />
+      )}
+
+      {piecesOuvertes && (
+        <ModalePiecesEcriture
+          ecritureId={piecesOuvertes}
+          peutEcrire={peutEcrire}
+          onFermer={() => setPiecesOuvertes(null)}
+          onChange={() => setRechargementPieces((n) => n + 1)}
+        />
       )}
 
       {peutEcrire && compteACreer !== null && (

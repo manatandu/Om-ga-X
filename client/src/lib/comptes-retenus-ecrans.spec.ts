@@ -297,6 +297,8 @@ describe('comptes retenus à l’écran · chaque lecture de comptes, quelle que
       'construite par `adresseContrepartiesAdmises` (lib/regle-par.ts), qui pose `retenus=true` · vérifié sur la fonction elle-même',
     'components/OrdresVirement.tsx :: cheminListeOrdres(filtre)':
       'la liste des ordres de virement, construite par `cheminListeOrdres` selon le filtre d’état · aucun compte n’y est servi',
+    'components/PiecesJointes.tsx :: adresses.liste(objetId)':
+      'les pièces jointes d’un objet (écriture, section, bien, salarié), construites par `ADRESSES_PIECES` (lib/pieces-jointes.ts) · aucune liste de comptes',
     'pages/InventairePage.tsx :: chemin':
       'les trois éditions de l’inventaire (fiches de comptage, procès-verbaux), construites par `cheminEdition` (lib/editions-inventaire.ts) · aucune liste de comptes',
     'pages/SaisiePage.tsx :: urlJournalDeSaisie({ exerciceId: exerciceCourant.id, journalId: journal.id, debut, fin })':

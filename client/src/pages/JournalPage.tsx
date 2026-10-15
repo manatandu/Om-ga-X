@@ -6,6 +6,8 @@ import { useAuth } from '../lib/auth';
 import { IconFilter, IconExport } from '../components/chrome/icons';
 import { ModaleCorrection } from '../components/ModaleCorrection';
 import { ModaleReimputation } from '../components/ModaleReimputation';
+import { BoutonPiecesEcriture, ModalePiecesDetachees, ModalePiecesEcriture } from '../components/PiecesJointes';
+import { piecesDeLEcriture, type DecomptePieces } from '../lib/pieces-jointes';
 import type { Ecriture, Journal, LigneBalance, LigneGrandLivre } from '../lib/types';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { Aide } from '../components/chrome/Aide';
@@ -179,7 +181,14 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   // à l'écran une balance qui contient encore le compte annulé.
   const [rechargement, setRechargement] = useState(0);
   const charger = () => setRechargement((n) => n + 1);
-  const { peutValider } = useAuth();
+  const { peutValider, peutEcrire } = useAuth();
+  // PIÈCES JOINTES (ligne sage-l6, fonction n° 22) · la boîte d'une écriture,
+  // celle des pièces détachées, et le décompte de l'exercice (null tant qu'il
+  // n'est pas lu · jamais « aucune » sur un décompte illisible).
+  const [piecesOuvertes, setPiecesOuvertes] = useState<string | null>(null);
+  const [detacheesOuvertes, setDetacheesOuvertes] = useState(false);
+  const [decomptePieces, setDecomptePieces] = useState<DecomptePieces | null>(null);
+  const [rechargementPieces, setRechargementPieces] = useState(0);
   // L'écriture dont on demande la correction · `null` tant que la boîte est
   // fermée. Elle porte le libellé pour que la boîte puisse nommer ce qu'elle
   // s'apprête à annuler, plutôt que de dire « cette écriture ».
@@ -234,6 +243,19 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       annule = true;
     };
   }, [exerciceCourant?.id, filtresAppliques, rechargement, onglet]);
+
+  useEffect(() => {
+    if (!exerciceCourant || onglet !== 'journal') return;
+    let annule = false;
+    setDecomptePieces(null);
+    api.get<DecomptePieces>(`/pieces-jointes-ecritures/decompte?exerciceId=${exerciceCourant.id}`).then(
+      (r) => !annule && setDecomptePieces(r),
+      () => !annule && setDecomptePieces(null),
+    );
+    return () => {
+      annule = true;
+    };
+  }, [exerciceCourant?.id, rechargement, rechargementPieces, onglet]);
 
   useEffect(() => {
     if (!exerciceCourant || onglet !== 'balance') return;
@@ -583,6 +605,15 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               {impressionEnCours ? 'Enregistrement…' : 'Imprimer le journal'}
             </button>
           )}
+          {onglet === 'journal' && (
+            <button
+              onClick={() => setDetacheesOuvertes(true)}
+              title="Pièces jointes d’écritures retirées au brouillard"
+              className="border border-border bg-surface px-3 py-1.5 text-[11.5px] font-bold hover:bg-surface-alt"
+            >
+              Pièces détachées…
+            </button>
+          )}
           {onglet === 'journal' && boutonExport('Exporter Excel', exporterJournal)}
           {onglet === 'balance' && (
             <>
@@ -818,7 +849,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           // qui emportait alors titre, onglets et boutons hors de l'écran.
           className="border border-border bg-surface shadow-posee rounded-t-none overflow-x-auto"
         >
-          <div className="entete-colonnes grid grid-cols-[68px_46px_52px_92px_120px_1fr_108px_108px_128px] min-w-[980px] gap-2.5 px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark">
+          <div className="entete-colonnes grid grid-cols-[68px_46px_52px_92px_120px_1fr_108px_108px_44px_128px] min-w-[1030px] gap-2.5 px-3.5 py-1.5 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark">
             <span>Date</span>
             <span>Jrn</span>
             <span className="text-right">Pièce</span>
@@ -827,6 +858,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             <span>Libellé écriture</span>
             <span className="text-right">Débit</span>
             <span className="text-right">Crédit</span>
+            <span title="Pièces jointes">PJ</span>
             <span title="AUDCIF, art. 20">CORRECTION</span>
           </div>
           {lignesJournal.length === 0 && (
@@ -837,7 +869,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           {lignesJournal.map((l) => (
             <div
               key={l.key}
-              className={`grid grid-cols-[68px_46px_52px_92px_120px_1fr_108px_108px_128px] min-w-[980px] gap-2.5 px-3.5 py-[3px] items-center text-[11.5px] border-b border-border/50 ${
+              className={`grid grid-cols-[68px_46px_52px_92px_120px_1fr_108px_108px_44px_128px] min-w-[1030px] gap-2.5 px-3.5 py-[3px] items-center text-[11.5px] border-b border-border/50 ${
                 l.premiereLigne ? 'border-t border-t-border' : ''
               } ${l.annuleePar ? 'opacity-55 line-through decoration-danger/60' : ''}`}
             >
@@ -865,6 +897,14 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               </span>
               <span className="font-mono text-right">{montantOuVide(l.debit)}</span>
               <span className="font-mono text-right">{montantOuVide(l.credit)}</span>
+              <span className="no-underline">
+                {l.premiereLigne && (
+                  <BoutonPiecesEcriture
+                    nombre={piecesDeLEcriture(decomptePieces, l.ecritureId)}
+                    onOuvrir={() => setPiecesOuvertes(l.ecritureId)}
+                  />
+                )}
+              </span>
               <span className="text-[11px] no-underline flex items-center gap-1.5 justify-end">
                 {l.premiereLigne && l.enBrouillard && (
                   <span
@@ -886,11 +926,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               </span>
             </div>
           ))}
-          <div className="grid grid-cols-[68px_46px_52px_92px_120px_1fr_108px_108px_128px] min-w-[980px] gap-2.5 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
+          <div className="grid grid-cols-[68px_46px_52px_92px_120px_1fr_108px_108px_44px_128px] min-w-[1030px] gap-2.5 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold">
             <span className="col-span-5" />
             <span className="text-right text-[11px] text-text-dim self-center">Totaux de la période</span>
             <span className="font-mono text-right">{montant(totaux.debit)}</span>
             <span className="font-mono text-right">{montant(totaux.credit)}</span>
+            <span />
             <span />
           </div>
         </div>
@@ -1133,6 +1174,16 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           }}
         />
       )}
+
+      {piecesOuvertes && (
+        <ModalePiecesEcriture
+          ecritureId={piecesOuvertes}
+          peutEcrire={peutEcrire}
+          onFermer={() => setPiecesOuvertes(null)}
+          onChange={() => setRechargementPieces((n) => n + 1)}
+        />
+      )}
+      {detacheesOuvertes && <ModalePiecesDetachees peutEcrire={peutEcrire} onFermer={() => setDetacheesOuvertes(false)} />}
 
       {aCorriger && (
         <ModaleCorrection

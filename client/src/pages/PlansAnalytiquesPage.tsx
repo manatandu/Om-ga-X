@@ -6,6 +6,7 @@ import { Aide } from '../components/chrome/Aide';
 import type { Bailleur, BudgetSection, PlanAnalytique, SectionAnalytique } from '../lib/types';
 import { PortailModale } from '../components/PortailModale';
 import { montant } from '../lib/montants';
+import { VoletPiecesJointes } from '../components/PiecesJointes';
 
 /**
  * PLANS ANALYTIQUES · Structure → Plan analytique de Sage 100 i7, dans la
@@ -31,7 +32,7 @@ function jour(iso: string | null): string {
 }
 
 export function PlansAnalytiquesPage() {
-  const { estAdmin, utilisateur } = useAuth();
+  const { estAdmin, peutEcrire, utilisateur } = useAuth();
   /*
     LE BAILLEUR N'EXISTE QU'EN SYCEBNL, et cette page l'affichait aux deux.
     Le serveur ne sème l'axe Bailleurs qu'en SYCEBNL et refuse la route
@@ -529,6 +530,12 @@ export function PlansAnalytiquesPage() {
                   )}
                 </div>
               )}
+
+              {/* Documents de la section (ligne sage-l6, fonction n° 22) · une
+                  section qui en porte un ne se supprime pas tant qu'il reste. */}
+              <div className="border-t border-border pt-3">
+                <VoletPiecesJointes key={section.id} objet="SECTION" objetId={section.id} peutEcrire={peutEcrire} />
+              </div>
 
               {estAdmin && (
                 <div className="border-t border-border pt-3">
