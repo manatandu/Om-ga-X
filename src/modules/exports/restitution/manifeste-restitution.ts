@@ -53,13 +53,15 @@ colonnes binaires du schéma n'entrent pas dans le CSV · chaque document
 attaché à un tiers (\`DocumentTiers.contenu\`) sort À CÔTÉ, un fichier par
 pièce, dans \`documents-tiers/\`, et chaque pièce jointe à un virement de
 fonds (\`PieceVirementFonds.contenu\`) dans \`pieces-virements/\`, chacun sous
-son identifiant. Le fichier d'un export des écritures
-(\`ExportEcritures.contenu\`) ne sort pas · il reproduit des écritures que
-l'archive rend dans leurs propres tables, et son CSV garde son nom, sa taille
-et son empreinte. Le fichier d'une impression différée
-(\`ImpressionDifferee.contenu\`) ne sort pas non plus · c'est une édition des
-livres que l'archive rend, et son CSV garde la demande, son numéro, son nom,
-sa taille et son empreinte.
+son identifiant. Le fichier de chaque export des écritures
+(\`ExportEcritures.contenu\`) sort de même dans \`exports-ecritures/\` · il
+porte les écritures TELLES QU'ELLES ÉTAIENT à leur envoi, et une écriture
+envoyée au brouillard, modifiée ou retirée depuis, n'est plus dans les
+tables de l'archive sous cette forme. Le fichier de chaque impression
+différée prête (\`ImpressionDifferee.contenu\`) sort dans
+\`impressions-differees/\` · c'est l'édition telle qu'elle a été produite ;
+une impression dont le fichier a été retiré n'a plus que sa ligne (numéro,
+nom, taille, empreinte).
 
 ## CE QUE CETTE ARCHIVE N'EST PAS
 

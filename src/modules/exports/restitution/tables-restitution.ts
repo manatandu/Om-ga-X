@@ -196,3 +196,22 @@ export function fichierDuDocument(id: string, nomFichier: string): string {
 export function fichierDeLaPieceVirement(id: string, nomFichier: string): string {
   return `pieces-virements/${id}-${nomFichier.replace(/[\\/]/g, '_')}`;
 }
+
+/**
+ * L'entrée d'archive du fichier d'un export des écritures (ligne sage-l7,
+ * fonction 99), et celle d'une impression différée PRÊTE (fonction 59) ·
+ * préfixées de leur identifiant, qui les relie à leur ligne de
+ * `tables/export-ecritures.csv` et `tables/impression-differee.csv`
+ * (empreinte comprise). Elles sortent À CÔTÉ (relecture « échecs
+ * silencieux », m7) · un export porte les écritures TELLES QU'ELLES ÉTAIENT
+ * à son envoi, et un brouillard modifié ou retiré depuis n'est plus dans les
+ * tables de l'archive sous cette forme.
+ */
+export function fichierDeLExport(id: string, nomFichier: string): string {
+  return `exports-ecritures/${id}-${nomFichier.replace(/[\\/]/g, '_')}`;
+}
+
+export function fichierDeLImpression(id: string, nomFichier: string): string {
+  return `impressions-differees/${id}-${nomFichier.replace(/[\\/]/g, '_')}`;
+}
+

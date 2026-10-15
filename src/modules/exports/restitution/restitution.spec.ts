@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import { RestitutionService } from './restitution.service';
 import { Prisma } from '@prisma/client';
-import { TABLES_RESTITUEES, colonnesDuModele, fichierDeLaTable, fichierDuDocument } from './tables-restitution';
+import { TABLES_RESTITUEES, colonnesDuModele, fichierDeLaTable, fichierDuDocument, fichierDeLExport, fichierDeLImpression } from './tables-restitution';
 import { NON_AUDITES_MOTIVES, colonnesNonRestituables } from '../../../common/audit/champs-audites';
 import { analyserCsv } from '../../import/lecture-fichier';
 import { ecrireManifeste } from './manifeste-restitution';
@@ -322,14 +322,16 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
     expect(deplie).toContain(
       "Les colonnes binaires du schéma n'entrent pas dans le CSV · chaque document attaché à un tiers (`DocumentTiers.contenu`) sort À CÔTÉ, un fichier par pièce, dans `documents-tiers/`, et chaque pièce jointe à un virement de fonds (`PieceVirementFonds.contenu`) dans `pieces-virements/`",
     );
-    // Ligne sage-l7 · le fichier d'un export des écritures ne sort pas, et
-    // le manifeste le dit plutôt que de le taire.
+    // Ligne sage-l7 (relecture m7) · le fichier d'un export des écritures
+    // SORT, il porte les écritures telles qu'elles étaient à leur envoi · la
+    // phrase qui disait que les tables les rendaient était fausse d'un
+    // brouillard modifié ou retiré depuis.
     expect(deplie).toContain(
-      "Le fichier d'un export des écritures (`ExportEcritures.contenu`) ne sort pas · il reproduit des écritures que l'archive rend dans leurs propres tables",
+      "Le fichier de chaque export des écritures (`ExportEcritures.contenu`) sort de même dans `exports-ecritures/` · il porte les écritures TELLES QU'ELLES ÉTAIENT à leur envoi",
     );
-    // Ligne sage-l7, fonction 59 · le fichier d'une impression différée non plus.
+    // Ligne sage-l7, fonction 59 · le fichier d'une impression différée prête aussi.
     expect(deplie).toContain(
-      "Le fichier d'une impression différée (`ImpressionDifferee.contenu`) ne sort pas non plus · c'est une édition des livres que l'archive rend",
+      "Le fichier de chaque impression différée prête (`ImpressionDifferee.contenu`) sort dans `impressions-differees/`",
     );
     // La prémisse relue dans le schéma · une seconde colonne binaire ferait
     // mentir la phrase.
@@ -381,6 +383,32 @@ describe('les documents attachés aux tiers (point 21)', () => {
     expect(lus).toEqual([{ id: 'doc-1', tenantId: DOSSIER }]);
   });
 
+  it('les fichiers des exports des écritures et des impressions prêtes sortent à côté, lus dans le dossier seul (m7)', async () => {
+    const { client } = prismaFactice({
+      ExportEcritures: [{ id: 'exp-1', tenantId: DOSSIER, nomFichier: 'ecritures-export-0001.xlsx' }],
+      ImpressionDifferee: [{ id: 'imp-1', tenantId: DOSSIER, nomFichier: 'journal.xlsx' }],
+    });
+    const lus: unknown[] = [];
+    client.exportEcritures.findFirst = async ({ where }: any) => {
+      lus.push(where);
+      return { contenu: Buffer.from('ENVOI-1') };
+    };
+    client.impressionDifferee.findFirst = async ({ where }: any) => {
+      lus.push(where);
+      return { contenu: Buffer.from('JOURNAL-IMPRIME') };
+    };
+    const service = new RestitutionService(client);
+    const { flux, buffer } = collecteur();
+    await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
+    const zip = buffer().toString('latin1');
+    expect(zip).toContain(fichierDeLExport('exp-1', 'ecritures-export-0001.xlsx'));
+    expect(zip).toContain(fichierDeLImpression('imp-1', 'journal.xlsx'));
+    expect(lus).toEqual([
+      { id: 'exp-1', tenantId: DOSSIER },
+      { id: 'imp-1', tenantId: DOSSIER },
+    ]);
+  });
+
   it('un nom qui porte un séparateur ne crée pas de sous-dossier dans l’archive', () => {
     expect(fichierDuDocument('x', 'a/b\\c.pdf')).toBe('documents-tiers/x-a_b_c.pdf');
   });
@@ -408,7 +436,7 @@ describe('les documents attachés aux tiers (point 21)', () => {
     };
     await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
     const lu = texte.join('');
-    expect(lu).toContain('2 annoncé(s), 0 écrit(s)');
+    expect(lu).toContain('· 2 annoncé(s), 0 écrit(s)');
     expect(lu).toContain('PIECE NON RESTITUEE;doc-1 · illisible (délai dépassé)');
     expect(lu).toContain("PIECE NON RESTITUEE;doc-2 · retirée pendant l'extraction");
   });

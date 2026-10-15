@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ActionAudit, Prisma } from '@prisma/client';
+import { ActionAudit, EtatImpressionDifferee, Prisma } from '@prisma/client';
 // `import = require` et non un import par défaut · `esModuleInterop` est
 // désactivé dans ce dépôt (seul `allowSyntheticDefaultImports` l'est, qui ne
 // vaut qu'au typage). Un import par défaut compilerait en
@@ -24,6 +24,8 @@ import {
   fichierDeLaTable,
   fichierDuDocument,
   fichierDeLaPieceVirement,
+  fichierDeLExport,
+  fichierDeLImpression,
   ordreDuModele,
 } from './tables-restitution';
 import { ecrireManifeste } from './manifeste-restitution';
@@ -334,7 +336,25 @@ export class RestitutionService {
       orderBy: { id: 'asc' },
       select: { id: true, nomFichier: true },
     });
-    const pieces: SuiviPieces = { annoncees: documents.length + piecesVirement.length, ecrites: 0, manquantes: [] };
+    // LES FICHIERS DES EXPORTS DES ÉCRITURES ET DES IMPRESSIONS DIFFÉRÉES
+    // PRÊTES (relecture m7 de sage-l7) · un export porte les écritures telles
+    // qu'elles étaient à son envoi ; un brouillard modifié ou retiré depuis
+    // n'est plus dans les tables sous cette forme. Même lecture, un à la fois.
+    const fichiersExports = await this.prisma.exportEcritures.findMany({
+      where: { tenantId },
+      orderBy: { id: 'asc' },
+      select: { id: true, nomFichier: true },
+    });
+    const fichiersImpressions = await this.prisma.impressionDifferee.findMany({
+      where: { tenantId, etat: EtatImpressionDifferee.PRETE, fichierRetireLe: null },
+      orderBy: { id: 'asc' },
+      select: { id: true, nomFichier: true },
+    });
+    const pieces: SuiviPieces = {
+      annoncees: documents.length + piecesVirement.length + fichiersExports.length + fichiersImpressions.length,
+      ecrites: 0,
+      manquantes: [],
+    };
     for (const document of documents) {
       archive.append(Readable.from(this.contenuDocument(tenantId, document.id, pieces)), {
         name: fichierDuDocument(document.id, document.nomFichier),
@@ -343,6 +363,16 @@ export class RestitutionService {
     for (const piece of piecesVirement) {
       archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, 'virement')), {
         name: fichierDeLaPieceVirement(piece.id, piece.nomFichier),
+      });
+    }
+    for (const e of fichiersExports) {
+      archive.append(Readable.from(this.contenuDocument(tenantId, e.id, pieces, 'export')), {
+        name: fichierDeLExport(e.id, e.nomFichier),
+      });
+    }
+    for (const i of fichiersImpressions) {
+      archive.append(Readable.from(this.contenuDocument(tenantId, i.id, pieces, 'impression')), {
+        name: fichierDeLImpression(i.id, i.nomFichier ?? 'impression.xlsx'),
       });
     }
 
@@ -354,7 +384,8 @@ export class RestitutionService {
     // distinguait plus d'une complète. Il attend l'événement `entry` de
     // chacune des entrées qui le précèdent (émis une fois l'entrée écrite),
     // ou l'arrêt de l'archive. Rien n'est gardé en mémoire.
-    const avantLeControle = 1 + 1 + TABLES_RESTITUEES.length + documents.length + piecesVirement.length;
+    const avantLeControle =
+      1 + 1 + TABLES_RESTITUEES.length + documents.length + piecesVirement.length + fichiersExports.length + fichiersImpressions.length;
     let traitees = 0;
     let signalerToutEcrit: () => void = () => undefined;
     const toutEcrit = new Promise<void>((resoudre) => (signalerToutEcrit = resoudre));
@@ -385,14 +416,20 @@ export class RestitutionService {
     tenantId: string,
     id: string,
     pieces: SuiviPieces,
-    origine: 'tiers' | 'virement' = 'tiers',
+    origine: 'tiers' | 'virement' | 'export' | 'impression' = 'tiers',
   ): AsyncGenerator<Buffer> {
     try {
       const document =
         origine === 'tiers'
           ? await this.prisma.documentTiers.findFirst({ where: { id, tenantId }, select: { contenu: true } })
-          : await this.prisma.pieceVirementFonds.findFirst({ where: { id, tenantId }, select: { contenu: true } });
-      if (!document) {
+          : origine === 'virement'
+            ? await this.prisma.pieceVirementFonds.findFirst({ where: { id, tenantId }, select: { contenu: true } })
+            : origine === 'export'
+              ? await this.prisma.exportEcritures.findFirst({ where: { id, tenantId }, select: { contenu: true } })
+              : await this.prisma.impressionDifferee.findFirst({ where: { id, tenantId }, select: { contenu: true } });
+      // Une impression dont le fichier a été retiré pendant l'extraction n'a
+      // plus de contenu · nommée comme une pièce retirée, jamais une entrée vide.
+      if (!document || document.contenu === null) {
         pieces.manquantes.push(`${id} · retirée pendant l'extraction`);
         return;
       }
@@ -432,7 +469,7 @@ export class RestitutionService {
       yield `${modele};${a};${e};${a === e ? 'conforme' : 'ECART'}\r\n`;
     }
     yield `\r\n${ecarts === 0 ? 'Aucun écart.' : `${ecarts} table(s) en écart.`}\r\n`;
-    yield `\r\nDocuments attachés aux tiers · ${pieces.annoncees} annoncé(s), ${pieces.ecrites} écrit(s).\r\n`;
+    yield `\r\nFichiers sortis à côté des tables (documents des tiers, pièces des virements, exports des écritures, impressions différées) · ${pieces.annoncees} annoncé(s), ${pieces.ecrites} écrit(s).\r\n`;
     for (const m of pieces.manquantes) yield `PIECE NON RESTITUEE;${m}\r\n`;
   }
 }
