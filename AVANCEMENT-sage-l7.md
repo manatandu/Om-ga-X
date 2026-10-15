@@ -207,6 +207,31 @@ les trois fichiers sans colonne exigée manquante.
   refus, jamais « aucune modification ».
 - **m8 · le brouillard envoyé puis modifié hors de la portée se compte**
   (`brouillardModifieHorsPortee`, aperçu, récapitulatif, résultat).
+- **M4 · le journal produit en différé ne se marque imprimé qu'une fois
+  RANGÉ.** Le moteur est appelé sans auteur ; `ranger` enregistre
+  l'impression du journal (`ExportService.impressionDuJournal`,
+  `enregistrerImpressionDans`) dans SA transaction, après la mise à PRÊTE ·
+  ensemble ou pas du tout.
+- **m4 · un rangement qui échoue rend la demande ÉCHOUÉE**, motif nommé
+  (`MOTIF_NON_RANGEE`), consigné · elle ne reste plus « en cours ».
+- **M5 · le motif d'interruption n'affirme plus un redémarrage** (« non
+  terminée dans le délai de requête du serveur »). Le délai par défaut de
+  Cloud Run n'a pas pu être LU (documentation officielle inaccessible depuis
+  le poste, politique réseau) · trente minutes restent, écrit en
+  commentaire ; le délai réel et le processeur hors requête vont à Manasse
+  par le coordinateur. Workflow de déploiement non touché.
+- **m1, m2 · `produireEnMemoire`** · un moteur qui rend la main sans fermer
+  son fichier est une panne (plus d'archive inachevée rangée) ; plus de
+  rejet non traité quand le tuyau tombe (`fichier-en-memoire.spec.ts`,
+  le test m2 vérifié rouge sans la correction).
+- **m5 · listes paginées par le numéro** (`pagination-par-numero.ts`,
+  `?avant=`, `plusAnciensAvant`) · un ancien export ou une ancienne
+  impression se retrouve et se retélécharge.
+- **m7 · la restitution sort les fichiers des exports et des impressions
+  prêtes** à côté des tables (`exports-ecritures/`,
+  `impressions-differees/`), le manifeste le dit exactement · la phrase qui
+  disait que les tables les rendaient était fausse d'un brouillard modifié
+  ou retiré.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,

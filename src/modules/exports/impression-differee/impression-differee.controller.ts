@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { RoleUtilisateur } from '@prisma/client';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
@@ -8,6 +8,7 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { ImpressionDiffereeService } from './impression-differee.service';
 import { DemanderImpressionDto } from './dto/demander-impression.dto';
+import { lireAvant } from '../pagination-par-numero';
 
 const TYPE_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -25,8 +26,8 @@ export class ImpressionsDiffereesController {
   constructor(private readonly service: ImpressionDiffereeService) {}
 
   @Get()
-  async lister(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.lister(user.tenantId);
+  async lister(@CurrentUser() user: AuthenticatedUser, @Query('avant') avant?: string) {
+    return this.service.lister(user.tenantId, lireAvant(avant));
   }
 
   @Post()

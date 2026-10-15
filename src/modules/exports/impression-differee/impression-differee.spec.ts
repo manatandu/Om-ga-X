@@ -6,6 +6,7 @@ import { ImpressionDiffereeService } from './impression-differee.service';
 import {
   DELAI_PRODUCTION_MS,
   MOTIF_INTERROMPUE,
+  MOTIF_NON_RANGEE,
   criteresOuMotif,
   estInterrompue,
   libelleDemande,
@@ -36,9 +37,10 @@ function correspond(ligne: Record<string, unknown>, where: Record<string, unknow
     if (attendu === undefined) return true;
     if (attendu === null) return valeur === null || valeur === undefined;
     if (typeof attendu === 'object' && !(attendu instanceof Date)) {
-      const a = attendu as { in?: unknown[]; lt?: Date };
+      const a = attendu as { in?: unknown[]; lt?: Date | number };
       if ('in' in a) return (a.in ?? []).includes(valeur);
-      if ('lt' in a) return valeur instanceof Date && valeur.getTime() < a.lt!.getTime();
+      if ('lt' in a && typeof a.lt === 'number') return typeof valeur === 'number' && valeur < a.lt;
+      if ('lt' in a) return valeur instanceof Date && valeur.getTime() < (a.lt as Date).getTime();
       throw new Error(`Filtre non pris en charge par la doublure · ${cle}`);
     }
     return valeur === attendu;
@@ -51,8 +53,9 @@ const choisir = (d: Demande, select?: Record<string, boolean>) =>
 /** Le moteur d'un livre · écrit un fichier, refuse avant le premier octet, ou tombe en route. */
 type Comportement = { contenu: string } | { refus: string } | { panneApres: string };
 
-function nouveauFaux(comportement: Comportement = { contenu: 'CLASSEUR-COMPLET' }) {
+function nouveauFaux(comportement: Comportement = { contenu: 'CLASSEUR-COMPLET' }, options: { impressionJournalTombe?: boolean } = {}) {
   const demandes: Demande[] = [];
+  const impressionsJournal: Array<Record<string, unknown>> = [];
   let compteur = 0;
   const appels: Array<{ moteur: string; args: unknown[] }> = [];
   const prisma: Record<string, unknown> = {
@@ -107,6 +110,14 @@ function nouveauFaux(comportement: Comportement = { contenu: 'CLASSEUR-COMPLET' 
         return choisir(d, select);
       },
     },
+    impressionJournal: {
+      aggregate: async () => ({ _max: { numero: impressionsJournal.length || null } }),
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        if (options.impressionJournalTombe) throw new Error('verrou de la suite des impressions perdu');
+        impressionsJournal.push(data);
+        return data;
+      },
+    },
     $executeRaw: async () => 0,
     // Le verrou de ligne · relu sur l'identifiant ET le dossier, comme la requête.
     $queryRaw: async (_textes: TemplateStringsArray, id: string, tenantId: string) => {
@@ -114,7 +125,20 @@ function nouveauFaux(comportement: Comportement = { contenu: 'CLASSEUR-COMPLET' 
       return d ? [{ etat: d.etat, commenceLe: d.commenceLe }] : [];
     },
   };
-  prisma.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma);
+  // UNE TRANSACTION QUI ÉCHOUE NE LAISSE RIEN · la doublure rend l'état
+  // d'avant, comme PostgreSQL (le rangement et l'impression du journal vont
+  // ensemble ou pas du tout, relecture M4).
+  prisma.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => {
+    const avant = demandes.map((d) => ({ ...d }));
+    const impressionsAvant = impressionsJournal.length;
+    try {
+      return await fn(prisma);
+    } catch (erreur) {
+      demandes.splice(0, demandes.length, ...avant);
+      impressionsJournal.length = impressionsAvant;
+      throw erreur;
+    }
+  };
 
   const moteur =
     (nom: string) =>
@@ -130,10 +154,18 @@ function nouveauFaux(comportement: Comportement = { contenu: 'CLASSEUR-COMPLET' 
       sortie.end(Buffer.from(comportement.contenu));
       return { lignes: 3 };
     };
-  const exportService = { journalExcelEnFlux: moteur('journal'), grandLivreCompletExcelEnFlux: moteur('grand-livre-plat') };
+  const exportService = {
+    journalExcelEnFlux: moteur('journal'),
+    grandLivreCompletExcelEnFlux: moteur('grand-livre-plat'),
+    // Ce que le journal produit atteste · lu par la transaction qui range.
+    impressionDuJournal: async (client: unknown, tenantId: string, filtres: { exerciceId: string; journalId?: string }, imprimePar: string) => {
+      expect(client).toBe(prisma);
+      return { tenantId, exerciceId: filtres.exerciceId, journalId: filtres.journalId ?? null, imprimePar, nombreEcritures: 3 };
+    },
+  };
   const exportFpm = { grandLivreEnFlux: moteur('grand-livre-fpm'), balanceGeneraleEnFlux: moteur('balance') };
   const service = new ImpressionDiffereeService(prisma as never, exportService as never, exportFpm as never);
-  return { service, demandes, appels };
+  return { service, demandes, appels, impressionsJournal };
 }
 
 describe('impression différée · demande, production, fichier', () => {
@@ -184,13 +216,36 @@ describe('impression différée · demande, production, fichier', () => {
     expect((await f.service.traiter(DOSSIER)).traitee).toBeNull();
   });
 
-  it('le journal produit s’enregistre comme imprimé au nom de qui l’a demandé', async () => {
+  it('le journal produit s’enregistre comme imprimé au nom de qui l’a demandé, une fois son fichier RANGÉ (M4)', async () => {
     const f = nouveauFaux();
     await f.service.demander(DOSSIER, 'u1', NatureImpressionDifferee.JOURNAL, { exerciceId: EXERCICE });
     await f.service.traiter(DOSSIER);
     expect(f.appels[0].args[0]).toBe(DOSSIER);
     expect(f.appels[0].args[1]).toEqual({ exerciceId: EXERCICE, journalId: undefined, dateDebut: undefined, dateFin: undefined, inclureBrouillard: true });
-    expect(f.appels[0].args[3]).toBe('u1');
+    // Le moteur ne reçoit AUCUN auteur · il ne marque rien avant le rangement.
+    expect(f.appels[0].args).toHaveLength(3);
+    expect(f.demandes[0].etat).toBe(EtatImpressionDifferee.PRETE);
+    expect(f.impressionsJournal).toEqual([expect.objectContaining({ tenantId: DOSSIER, numero: 1, exerciceId: EXERCICE, imprimePar: 'u1' })]);
+  });
+
+  it('une panne en production ne marque pas le journal imprimé (M4)', async () => {
+    const f = nouveauFaux({ panneApres: 'DEBUT' });
+    await f.service.demander(DOSSIER, 'u1', NatureImpressionDifferee.JOURNAL, { exerciceId: EXERCICE });
+    await f.service.traiter(DOSSIER);
+    expect([f.demandes[0].etat, f.impressionsJournal]).toEqual([EtatImpressionDifferee.ECHOUEE, []]);
+  });
+
+  it('un rangement qui échoue rend la demande ÉCHOUÉE, motif nommé, sans fichier ni journal imprimé (M4, m4)', async () => {
+    const f = nouveauFaux({ contenu: 'JOURNAL' }, { impressionJournalTombe: true });
+    await f.service.demander(DOSSIER, 'u1', NatureImpressionDifferee.JOURNAL, { exerciceId: EXERCICE });
+    const r = await f.service.traiter(DOSSIER);
+    expect(r.traitee).toMatchObject({ etat: EtatImpressionDifferee.ECHOUEE, motifEchec: MOTIF_NON_RANGEE });
+    expect([f.demandes[0].contenu, f.demandes[0].nomFichier, f.impressionsJournal]).toEqual([null, null, []]);
+  });
+
+  it('le motif d’interruption n’affirme aucun redémarrage (M5)', () => {
+    expect(MOTIF_INTERROMPUE).toMatch(/non terminée dans le délai de requête du serveur/);
+    expect(MOTIF_INTERROMPUE).not.toMatch(/redémarr|arrêté/);
   });
 
   it('un refus de volume avant le premier octet rend la demande ÉCHOUÉE, le motif du moteur gardé tel quel', async () => {
@@ -273,7 +328,16 @@ describe('impression différée · demande, production, fichier', () => {
       [1, EtatImpressionDifferee.PRETE, 'comptable@cabinet.cd'],
     ]);
     expect(l.impressions.every((i) => !('contenu' in i))).toBe(true);
-    expect([l.total, l.tronque, l.enAttente]).toEqual([2, false, 1]);
+    expect([l.total, l.tronque, l.enAttente, l.plusAnciensAvant]).toEqual([2, false, 1, null]);
+  });
+
+  it('la liste se poursuit par le numéro · une demande ancienne se retrouve toujours (m5)', async () => {
+    const f = nouveauFaux();
+    for (let i = 0; i < 52; i++) await f.service.demander(DOSSIER, 'u1', NatureImpressionDifferee.BALANCE, { exerciceId: EXERCICE });
+    const premiere = await f.service.lister(DOSSIER);
+    expect([premiere.impressions.length, premiere.impressions[0].numero, premiere.plusAnciensAvant, premiere.tronque]).toEqual([50, 52, 3, true]);
+    const suite = await f.service.lister(DOSSIER, premiere.plusAnciensAvant!);
+    expect([suite.impressions.map((i) => i.numero), suite.plusAnciensAvant]).toEqual([[2, 1], null]);
   });
 });
 

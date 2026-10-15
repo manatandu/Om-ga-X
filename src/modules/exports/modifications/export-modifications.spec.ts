@@ -74,9 +74,10 @@ function correspond(ligne: Record<string, unknown>, where: Record<string, unknow
     if (attendu === undefined) return true;
     if (attendu === null) return valeur === null || valeur === undefined;
     if (typeof attendu === 'object' && !(attendu instanceof Date)) {
-      const a = attendu as { in?: unknown[]; not?: unknown; gt?: unknown };
+      const a = attendu as { in?: unknown[]; not?: unknown; gt?: unknown; lt?: unknown };
       if ('in' in a) return (a.in ?? []).includes(valeur);
       if ('not' in a) return valeur !== a.not;
+      if ('lt' in a) return valeur !== null && valeur !== undefined && comparable(valeur) < comparable(a.lt);
       if ('gt' in a) return valeur !== null && valeur !== undefined && comparable(valeur) > comparable(a.gt);
       if (valeur && typeof valeur === 'object') return correspond(valeur as Record<string, unknown>, attendu as Record<string, unknown>);
       throw new Error(`Filtre non pris en charge par la doublure · ${cle}`);
@@ -502,7 +503,7 @@ describe('export des seules modifications · registre et fichier', () => {
       expect(apercu).toMatchObject({ nouvelles: 2, lignes: 4, enAttente: 8 });
       // Le regroupement ne porte que sur les écritures de la tranche, du dossier.
       expect(f.lecturesDesLignes.length).toBeGreaterThan(0);
-      for (const w of f.lecturesDesLignes) expect(w).toMatchObject({ ecriture: { tenantId: DOSSIER } });
+      for (const w of f.lecturesDesLignes) expect(w).toMatchObject({ ecriture: { tenantId: DOSSIER, statut: { not: StatutEcriture.SITUATION } } });
     } finally {
       if (ancien === undefined) delete process.env.EXPORT_MAX_LIGNES;
       else process.env.EXPORT_MAX_LIGNES = ancien;
@@ -581,7 +582,19 @@ describe('liste des exports', () => {
       [1, 'comptable@cabinet.cd', 1],
     ]);
     expect(liste.exports.every((e) => !('contenu' in e))).toBe(true);
-    expect([liste.total, liste.tronque]).toEqual([2, false]);
+    expect([liste.total, liste.tronque, liste.plusAnciensAvant]).toEqual([2, false, null]);
+  });
+
+  it('la liste se poursuit par le numéro · un ancien export se retrouve et se retélécharge (m5)', async () => {
+    const f = nouveauFaux();
+    for (let n = 1; n <= 52; n++) {
+      f.exports.push({ id: `exp-${n}`, tenantId: DOSSIER, numero: n, produitPar: 'u1', nomFichier: `ecritures-export-${n}.xlsx`, contenu: Buffer.from(`envoi ${n}`) });
+    }
+    const premiere = await f.service.lister(DOSSIER);
+    expect([premiere.exports.length, premiere.exports[0].numero, premiere.plusAnciensAvant, premiere.tronque]).toEqual([50, 52, 3, true]);
+    const suite = await f.service.lister(DOSSIER, premiere.plusAnciensAvant!);
+    expect([suite.exports.map((e) => e.numero), suite.plusAnciensAvant]).toEqual([[2, 1], null]);
+    expect((await f.service.fichier(DOSSIER, 'exp-1')).contenu.toString()).toBe('envoi 1');
   });
 });
 

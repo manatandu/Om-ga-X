@@ -1,7 +1,7 @@
 import { HORS_SITUATION, avecStatut, estJournalDeSituation, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
 import { nombreSaisi } from '../notes-annexes/controles-saisie-notes';
 import { Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
-import { enregistrerImpression, estUneRecherche, periodeCouverte } from '../journaux/impressions-journal';
+import { type ImpressionAEnregistrer, enregistrerImpression, estUneRecherche, periodeCouverte } from '../journaux/impressions-journal';
 import { immatriculationDesLivres, numeroRegistreLiasse } from '../tenant/mentions-immatriculation';
 import { REFS_DE_SOLDE } from '../etats-financiers/correspondance-projet-emplois-ressources';
 import type { Writable } from 'stream';
@@ -932,48 +932,65 @@ export class ExportService {
     filtres: { exerciceId?: string; journalId?: string; dateDebut?: string; dateFin?: string } & CriteresRecherche,
     imprimePar?: string,
   ) {
-    if (!imprimePar || !filtres.exerciceId || estUneRecherche(filtres)) return;
+    if (!imprimePar) return;
     try {
-      const exercice = await this.prisma.exercice.findFirst({
-        where: { id: filtres.exerciceId, tenantId },
-        select: { id: true, dateDebut: true, dateFin: true },
-      });
-      if (!exercice) return;
-      // L'export d'un journal de situation n'atteste rien du livre-journal
-      // (relecture du second tour, d) · il ne prend pas de numéro de la suite.
-      if (filtres.journalId) {
-        const journal = await this.prisma.journal.findFirst({ where: { id: filtres.journalId, tenantId }, select: { type: true } });
-        if (!journal || estJournalDeSituation(journal)) return;
-      }
-      const periode = periodeCouverte(exercice, filtres);
-      const nombreEcritures = await this.prisma.ecriture.count({
-        where: perimetreJournal(tenantId, {
-          exerciceId: exercice.id,
-          ...(filtres.journalId ? { journalId: filtres.journalId } : {}),
-          dateDebut: periode.dateDebut.toISOString().slice(0, 10),
-          dateFin: periode.dateFin.toISOString().slice(0, 10),
-        }),
-      });
-      // UN JOURNAL SANS PIÈCE N'A RIEN À ATTESTER (relecture M6) · enregistrée,
-      // l'impression d'un journal vide le retenait (clé vers le journal) et
-      // tenait son exercice, sans rien prouver.
-      if (nombreEcritures === 0) return;
-      await enregistrerImpression(this.prisma, {
-        tenantId,
-        exerciceId: exercice.id,
-        journalId: filtres.journalId ?? null,
-        dateDebut: periode.dateDebut,
-        dateFin: periode.dateFin,
-        forme: FormeImpressionJournal.EXPORT,
-        nombreEcritures,
-        imprimePar,
-      });
+      const impression = await this.impressionDuJournal(this.prisma, tenantId, filtres, imprimePar);
+      if (impression) await enregistrerImpression(this.prisma, impression);
     } catch (erreur) {
       this.logger.error(
         `Journal exporté sans être enregistré comme imprimé (dossier ${tenantId}, exercice ${filtres.exerciceId}) · ` +
           (erreur instanceof Error ? erreur.message : String(erreur)),
       );
     }
+  }
+
+  /**
+   * L'IMPRESSION QUE LE JOURNAL EXPORTÉ ATTESTE, ou `null` quand il n'atteste
+   * rien · une recherche, un journal de situation, un journal sans pièce.
+   * Lue par `client` · le serveur, ou la transaction de l'impression différée
+   * qui la range avec son fichier (relecture M4 de sage-l7).
+   */
+  async impressionDuJournal(
+    client: Pick<Prisma.TransactionClient, 'exercice' | 'journal' | 'ecriture'>,
+    tenantId: string,
+    filtres: { exerciceId?: string; journalId?: string; dateDebut?: string; dateFin?: string } & CriteresRecherche,
+    imprimePar: string,
+  ): Promise<ImpressionAEnregistrer | null> {
+    if (!filtres.exerciceId || estUneRecherche(filtres)) return null;
+    const exercice = await client.exercice.findFirst({
+      where: { id: filtres.exerciceId, tenantId },
+      select: { id: true, dateDebut: true, dateFin: true },
+    });
+    if (!exercice) return null;
+    // L'export d'un journal de situation n'atteste rien du livre-journal
+    // (relecture du second tour, d) · il ne prend pas de numéro de la suite.
+    if (filtres.journalId) {
+      const journal = await client.journal.findFirst({ where: { id: filtres.journalId, tenantId }, select: { type: true } });
+      if (!journal || estJournalDeSituation(journal)) return null;
+    }
+    const periode = periodeCouverte(exercice, filtres);
+    const nombreEcritures = await client.ecriture.count({
+      where: perimetreJournal(tenantId, {
+        exerciceId: exercice.id,
+        ...(filtres.journalId ? { journalId: filtres.journalId } : {}),
+        dateDebut: periode.dateDebut.toISOString().slice(0, 10),
+        dateFin: periode.dateFin.toISOString().slice(0, 10),
+      }),
+    });
+    // UN JOURNAL SANS PIÈCE N'A RIEN À ATTESTER (relecture M6 de sage-l1) ·
+    // enregistrée, l'impression d'un journal vide le retenait (clé vers le
+    // journal) et tenait son exercice, sans rien prouver.
+    if (nombreEcritures === 0) return null;
+    return {
+      tenantId,
+      exerciceId: exercice.id,
+      journalId: filtres.journalId ?? null,
+      dateDebut: periode.dateDebut,
+      dateFin: periode.dateFin,
+      forme: FormeImpressionJournal.EXPORT,
+      nombreEcritures,
+      imprimePar,
+    };
   }
 
   /**

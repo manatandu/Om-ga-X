@@ -8,6 +8,7 @@ import { HORS_SITUATION, filtreDuStatut, libelleDuStatut } from '../../comptabil
 import { ExportService } from '../export.service';
 import { LOT_EXPORT, MAX_LIGNES_EXPORT, attendreLeTuyau, segmentIdentification } from '../classeur-en-flux';
 import { produireEnMemoire } from '../fichier-en-memoire';
+import { pageDeNumeros } from '../pagination-par-numero';
 import {
   COLONNES_ECHANGE,
   COLONNES_SUPPRIMEES,
@@ -140,16 +141,18 @@ export class ExportModificationsService {
   ) {}
 
   /** Les exports du dossier, les plus récents d'abord, l'auteur en courriel, sans le fichier. */
-  async lister(tenantId: string) {
+  async lister(tenantId: string, avant?: number) {
     // JAMAIS `exports` comme nom de variable · compilé en CommonJS, la
     // constante du module (`PLAFOND_EXPORTS_LISTES`) se lit `exports.…`, et une
     // variable locale de ce nom la masquait (« Cannot access 'exports' before
     // initialization », 500 au premier serveur réel, vert sous les tests).
-    const [lus, total] = await Promise.all([
+    const [lusEtSurplus, total] = await Promise.all([
       this.prisma.exportEcritures.findMany({
-        where: { tenantId },
+        where: { tenantId, ...(avant !== undefined ? { numero: { lt: avant } } : {}) },
         orderBy: { numero: 'desc' },
-        take: PLAFOND_EXPORTS_LISTES,
+        // Un de plus que la page · il dit qu'il en reste de plus anciens, à
+        // retélécharger par la page suivante (relecture m5).
+        take: PLAFOND_EXPORTS_LISTES + 1,
         select: {
           id: true,
           numero: true,
@@ -170,11 +173,13 @@ export class ExportModificationsService {
       }),
       this.prisma.exportEcritures.count({ where: { tenantId } }),
     ]);
+    const { page: lus, plusAnciensAvant } = pageDeNumeros(lusEtSurplus, PLAFOND_EXPORTS_LISTES);
     const courriels = await this.courriels(tenantId, lus.map((e) => e.produitPar));
     return {
       exports: lus.map((e) => ({ ...e, produitPar: courriels(e.produitPar) })),
       total,
       tronque: total > lus.length,
+      plusAnciensAvant,
     };
   }
 
@@ -198,7 +203,7 @@ export class ExportModificationsService {
   /** Le refus nommé d'une pièce qu'aucun export ne peut porter · journal, numéro, date, lignes, plafond. */
   private async motifDuHorsPlafond(tenantId: string, c: Candidat): Promise<string> {
     const e = await this.prisma.ecriture.findFirst({
-      where: { id: c.id, tenantId },
+      where: { id: c.id, tenantId, ...HORS_SITUATION },
       select: { numeroPiece: true, date: true, journal: { select: { code: true } } },
     });
     return motifHorsPlafond(
@@ -343,7 +348,11 @@ export class ExportModificationsService {
       const ids = lot.map((e) => e.id);
       const [connues, comptes] = await Promise.all([
         this.prisma.ecritureExportee.findMany({ where: { tenantId, ecritureId: { in: ids } }, select: { ecritureId: true } }),
-        this.prisma.ligneEcriture.groupBy({ by: ['ecritureId'], where: { ecritureId: { in: ids }, ecriture: { tenantId } }, _count: { _all: true } }),
+        this.prisma.ligneEcriture.groupBy({
+          by: ['ecritureId'],
+          where: { ecritureId: { in: ids }, ecriture: { tenantId, ...HORS_SITUATION } },
+          _count: { _all: true },
+        }),
       ]);
       const dejaConnues = new Set(connues.map((c) => c.ecritureId));
       const lignesDe = new Map(comptes.map((c) => [c.ecritureId, c._count._all]));

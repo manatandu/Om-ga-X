@@ -9,6 +9,7 @@ import { ReserveAuComptable } from '../../../common/decorators/acces-roles-canto
 import { CurrentUser, AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { ExportModificationsService } from './export-modifications.service';
 import { ExporterEcrituresDto } from './dto/exporter-ecritures.dto';
+import { lireAvant } from '../pagination-par-numero';
 
 const TYPE_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -34,8 +35,8 @@ export class ExportModificationsController {
   constructor(private readonly service: ExportModificationsService) {}
 
   @Get()
-  async lister(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.lister(user.tenantId);
+  async lister(@CurrentUser() user: AuthenticatedUser, @Query('avant') avant?: string) {
+    return this.service.lister(user.tenantId, lireAvant(avant));
   }
 
   @Get('apercu')

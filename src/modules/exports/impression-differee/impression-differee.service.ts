@@ -7,6 +7,8 @@ import { transactionJournalisee } from '../../../common/audit/transaction-journa
 import { ExportService } from '../export.service';
 import { ExportFpmService } from '../export-fpm.service';
 import { produireEnMemoire } from '../fichier-en-memoire';
+import { pageDeNumeros } from '../pagination-par-numero';
+import { enregistrerImpressionDans } from '../../journaux/impressions-journal';
 import {
   type CriteresBalance,
   type CriteresGrandLivre,
@@ -14,6 +16,7 @@ import {
   type CriteresJournal,
   DELAI_PRODUCTION_MS,
   MOTIF_INTERROMPUE,
+  MOTIF_NON_RANGEE,
   PLAFOND_IMPRESSIONS_LISTEES,
   criteresOuMotif,
   estInterrompue,
@@ -140,7 +143,7 @@ export class ImpressionDiffereeService {
       let resultat: { etat: 'PRETE'; nomFichier: string; contenu: Buffer } | { etat: 'ECHOUEE'; motif: string };
       try {
         const { nomFichier, contenu } = await produireEnMemoire((ouvrir) =>
-          this.produire(tenantId, prise.nature, prise.criteres as unknown as CriteresImpression, prise.demandePar, ouvrir),
+          this.produire(tenantId, prise.nature, prise.criteres as unknown as CriteresImpression, ouvrir),
         );
         resultat = { etat: 'PRETE', nomFichier, contenu };
       } catch (erreur) {
@@ -151,24 +154,37 @@ export class ImpressionDiffereeService {
         }
         resultat = { etat: 'ECHOUEE', motif: motifEchecDe(erreur) };
       }
-      traitee = await this.ranger(tenantId, prise.id, prise.commenceLe, resultat);
+      try {
+        traitee = await this.ranger(tenantId, prise, resultat);
+      } catch (erreur) {
+        // UN FICHIER QUI NE SE RANGE PAS NE LAISSE PAS LA DEMANDE EN COURS
+        // (relecture m4) · elle passe ÉCHOUÉE, motif nommé, et c'est consigné ;
+        // sans cela elle restait « en cours » jusqu'au délai d'interruption.
+        this.logger.error(
+          `Impression différée ${prise.id} · le résultat n'a pas pu être rangé`,
+          erreur instanceof Error ? erreur.stack : String(erreur),
+        );
+        traitee = await this.ranger(tenantId, prise, { etat: 'ECHOUEE', motif: MOTIF_NON_RANGEE });
+      }
     }
     const enAttente = await this.prisma.impressionDifferee.count({ where: { tenantId, etat: EtatImpressionDifferee.EN_ATTENTE } });
     return { traitee, enAttente };
   }
 
   /** Les demandes du dossier, les plus récentes d'abord, sans leur fichier. */
-  async lister(tenantId: string) {
-    const [lues, total, enAttente] = await Promise.all([
+  async lister(tenantId: string, avant?: number) {
+    const [lusEtSurplus, total, enAttente] = await Promise.all([
       this.prisma.impressionDifferee.findMany({
-        where: { tenantId },
+        where: { tenantId, ...(avant !== undefined ? { numero: { lt: avant } } : {}) },
         orderBy: { numero: 'desc' },
-        take: PLAFOND_IMPRESSIONS_LISTEES,
+        // Un de plus que la page · il dit qu'il en reste de plus anciens (m5).
+        take: PLAFOND_IMPRESSIONS_LISTEES + 1,
         select: RESUME,
       }),
       this.prisma.impressionDifferee.count({ where: { tenantId } }),
       this.prisma.impressionDifferee.count({ where: { tenantId, etat: EtatImpressionDifferee.EN_ATTENTE } }),
     ]);
+    const { page: lues, plusAnciensAvant } = pageDeNumeros(lusEtSurplus, PLAFOND_IMPRESSIONS_LISTEES);
     const auteurs = await this.prisma.user.findMany({
       where: { tenantId, id: { in: [...new Set(lues.map((d) => d.demandePar))] } },
       select: { id: true, email: true },
@@ -184,6 +200,7 @@ export class ImpressionDiffereeService {
       })),
       total,
       tronque: total > lues.length,
+      plusAnciensAvant,
       enAttente,
     };
   }
@@ -232,25 +249,15 @@ export class ImpressionDiffereeService {
     tenantId: string,
     nature: NatureImpressionDifferee,
     criteres: CriteresImpression,
-    demandePar: string,
     ouvrir: (nomFichier: string) => Writable,
   ): Promise<unknown> {
     if (nature === NatureImpressionDifferee.JOURNAL) {
-      const c = criteres as CriteresJournal;
-      return this.exportService.journalExcelEnFlux(
-        tenantId,
-        {
-          exerciceId: c.exerciceId,
-          journalId: c.journalId ?? undefined,
-          dateDebut: c.dateDebut ?? undefined,
-          dateFin: c.dateFin ?? undefined,
-          inclureBrouillard: c.inclureBrouillard,
-        },
-        ouvrir,
-        // Le journal entier produit s'enregistre comme imprimé, au nom de qui
-        // l'a demandé (ligne sage-l1, fonction 60), comme l'export direct.
-        demandePar,
-      );
+      // SANS auteur · le moteur ne marque pas le journal imprimé ici. Le
+      // journal produit ne s'enregistre comme imprimé (ligne sage-l1,
+      // fonction 60) qu'une fois son fichier RANGÉ, dans la même transaction
+      // (`ranger`, relecture M4) · marqué avant, un rangement manqué laissait
+      // un journal « imprimé » sans document remis.
+      return this.exportService.journalExcelEnFlux(tenantId, filtresDuJournal(criteres as CriteresJournal), ouvrir);
     }
     if (nature === NatureImpressionDifferee.GRAND_LIVRE) {
       const c = criteres as CriteresGrandLivre;
@@ -269,10 +276,10 @@ export class ImpressionDiffereeService {
    */
   private async ranger(
     tenantId: string,
-    id: string,
-    commenceLe: Date,
+    prise: { id: string; commenceLe: Date; nature: NatureImpressionDifferee; criteres: Prisma.JsonValue; demandePar: string },
     resultat: { etat: 'PRETE'; nomFichier: string; contenu: Buffer } | { etat: 'ECHOUEE'; motif: string },
   ) {
+    const { id, commenceLe } = prise;
     return transactionJournalisee(
       this.prisma,
       async (tx) => {
@@ -283,7 +290,7 @@ export class ImpressionDiffereeService {
           this.logger.warn(`Impression différée ${id} · production finie après son interruption déclarée, rien n'est rangé.`);
           return tx.impressionDifferee.findFirst({ where: { id, tenantId }, select: RESUME });
         }
-        return tx.impressionDifferee.update({
+        const rangee = await tx.impressionDifferee.update({
           where: { id },
           data:
             resultat.etat === 'PRETE'
@@ -298,6 +305,20 @@ export class ImpressionDiffereeService {
               : { etat: EtatImpressionDifferee.ECHOUEE, produitLe: new Date(), motifEchec: resultat.motif },
           select: RESUME,
         });
+        // LE JOURNAL PRODUIT ET RANGÉ EST UN JOURNAL IMPRIMÉ (ligne sage-l1,
+        // fonction 60 ; AUDCIF art. 22, 7°), au nom de qui l'a demandé, dans
+        // la transaction qui range son fichier · l'un sans l'autre jamais
+        // (relecture M4).
+        if (resultat.etat === 'PRETE' && prise.nature === NatureImpressionDifferee.JOURNAL) {
+          const impression = await this.exportService.impressionDuJournal(
+            tx,
+            tenantId,
+            filtresDuJournal(prise.criteres as unknown as CriteresJournal),
+            prise.demandePar,
+          );
+          if (impression) await enregistrerImpressionDans(tx, impression);
+        }
+        return rangee;
       },
       { timeout: DELAI_RANGEMENT_MS, maxWait: 10_000 },
     );
@@ -326,3 +347,15 @@ export class ImpressionDiffereeService {
     }
   }
 }
+
+/** Les filtres du moteur du journal, tirés des critères figés de la demande. */
+function filtresDuJournal(c: CriteresJournal) {
+  return {
+    exerciceId: c.exerciceId,
+    journalId: c.journalId ?? undefined,
+    dateDebut: c.dateDebut ?? undefined,
+    dateFin: c.dateFin ?? undefined,
+    inclureBrouillard: c.inclureBrouillard,
+  };
+}
+

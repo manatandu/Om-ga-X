@@ -19,10 +19,22 @@ import { NatureImpressionDifferee } from '@prisma/client';
 
 /**
  * Au-delà, une production commencée et jamais finie est dite INTERROMPUE ·
- * le processus qui la tenait est tombé (redémarrage, arrêt d'instance), rien
- * n'a été rangé. Convention d'OmegaX · trente minutes couvrent largement le
- * plus long export mesuré sous le plafond, 319 s pour 197 000 lignes
- * (balance et feuilles, banc du 2026-10-04, docs/capacite-mesuree.md).
+ * rien n'a été rangé, et on ne sait pas pourquoi (délai de la requête qui la
+ * portait dépassé, instance arrêtée, processus tombé) · le motif n'affirme
+ * donc aucun redémarrage (relecture M5). Convention d'OmegaX · trente
+ * minutes couvrent le plus long export mesuré sous le plafond, 319 s pour
+ * 197 000 lignes (balance et feuilles, banc du 2026-10-04,
+ * docs/capacite-mesuree.md).
+ *
+ * LE DÉLAI DE REQUÊTE DE CLOUD RUN N'A PAS ÉTÉ LU · le déploiement ne pose
+ * aucun `--timeout`, le service a donc celui que Cloud Run donne par défaut,
+ * et sa documentation officielle (cloud.google.com/run/docs/configuring/
+ * request-timeout, redirigée vers docs.cloud.google.com) est restée
+ * inaccessible depuis l'environnement de développement le 2026-10-15
+ * (politique réseau). Aucun chiffre n'est donc repris de mémoire · les
+ * trente minutes restent, et le délai réel, avec l'allocation du processeur
+ * hors requête, est une décision portée à Manasse. Une production plus longue
+ * que le délai de requête ne finit pas · elle est dite interrompue ici.
  */
 export const DELAI_PRODUCTION_MS = 30 * 60 * 1000;
 
@@ -30,7 +42,11 @@ export const DELAI_PRODUCTION_MS = 30 * 60 * 1000;
 export const PLAFOND_IMPRESSIONS_LISTEES = 50;
 
 export const MOTIF_INTERROMPUE =
-  "Production interrompue avant la fin (serveur arrêté ou redémarré) · rien n'a été rangé, demandez l'édition de nouveau.";
+  "Production non terminée dans le délai de requête du serveur · rien n'a été rangé, demandez l'édition de nouveau.";
+
+/** Le livre produit mais le fichier jamais rangé (relecture m4) · rien n'est gardé. */
+export const MOTIF_NON_RANGEE =
+  "Le livre a été produit, mais son fichier n'a pas pu être rangé · rien n'est gardé, demandez l'édition de nouveau.";
 
 export interface CriteresJournal {
   exerciceId: string;
