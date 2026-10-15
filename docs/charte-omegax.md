@@ -202,8 +202,10 @@ le logo ne se recolorie pas.
 > bleu `#142F6B` au violet du cachet `#2A1F5C` · le violet des tampons
 > administratifs, qui valide une pièce. Une seule encre en circulation · le
 > générateur de la marque (`client/scripts/engendrer-marque.py`) la pose sur
-> le signe, le logotype, les icônes et la couleur de thème, et l'échelle
-> `--a-*` de l'interface la suit. Les gris sont teintés de la même encre. Les
+> le signe, le logotype et les icônes ; la couleur de thème du manifeste et
+> de `index.html` la recopie, relue contre `ENCRE` par
+> `pwa-et-confidentialite.spec.ts` ; l'échelle `--a-*` de l'interface la
+> suit. Les gris sont teintés de la même encre. Les
 > couleurs de signal (vert, ocre, rouge) ne changent pas. Tous les rapports
 > ci-dessous sont remesurés sur les nouvelles valeurs.
 
@@ -265,13 +267,18 @@ courant : un logo moins contrasté qu'un paragraphe se lit moins bien que lui.
 | `--text-dim` sur `--chrome` | 6,05:1 | AA |
 | Encre sur `--chrome` | 13,44:1 | AAA |
 | Blanc sur `#c42b1c` (fermeture survolée) | 5,66:1 | AA |
+| Blanc sur `--a-500` (haut du bouton principal) | 6,00:1 | AA |
+| Blanc sur `--a-700` (bas du bouton principal survolé) | 10,28:1 | AAA |
+| Blanc à 75 % sur `--sel` (code du plan choisi) | 5,46:1 | AA |
+| Anneau de focus (`--sel` à 60 %) contre blanc | 3,13:1 | AA non textuel |
 
-**Barres de titre claires depuis le 2026-09-23.** Toutes les barres de titre
-(bandeau de l'espace de travail, fenêtres, boîtes de dialogue, écran
-d'ouverture) sont passées au fond `--surface`, comme sous Windows 11 : le
-signe porte l'encre, la barre ne la porte plus. Les deux couples
-`--chrome-text` sur barre de titre (12,50:1 et 6,55:1) ne sont donc plus
-employés. Seul le bouton de fermeture garde une couleur propre au survol,
+**Barres de titre claires du 2026-09-23 au 2026-09-25.** Toutes les barres
+de titre étaient passées au fond `--surface`, comme sous Windows 11. Depuis
+le 2026-09-25 (rendu de Sage, règlement intérieur § 9 ter), le bandeau, la
+barre verticale de l'accueil et la barre de titre de la fenêtre ACTIVE
+reprennent l'encre (`--bandeau`), texte en blanc · ce sont les couples
+« Blanc sur encre » de la table 7.3 et `--chrome-text-dim` sur l'encre de la
+table 7.4 (écran d'ouverture) qui valent aujourd'hui. Seul le bouton de fermeture garde une couleur propre au survol,
 le rouge `#c42b1c` de Windows 11, mesuré ci-dessus.
 
 **Fond teinté façon Mica, le même jour.** Tout blanc, l'écran perdait ses

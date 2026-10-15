@@ -1,6 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CURSEUR_BORD, MARGES_ESPACE, geometrieRedimensionnee, type BordFenetre } from './redimensionnement-fenetre';
+import {
+  CURSEUR_BORD,
+  MARGES_ESPACE,
+  estLeBoutonPrincipal,
+  geometrieRedimensionnee,
+  suivreGeste,
+  type BordFenetre,
+} from './redimensionnement-fenetre';
 
 // Aucun import de « vitest » · convention du dépôt.
 
@@ -72,7 +79,17 @@ describe('redimensionner une fenêtre par tous ses bords', () => {
     expect(src).toContain(`left: \`clamp(${MARGES_ESPACE.gauche}px,`);
     expect(src).toContain(`calc(100% - ${MARGES_ESPACE.droite}px - \${largeur}))\``);
     expect(src).toContain(`top: \`clamp(${MARGES_ESPACE.haut}px,`);
-    expect(src).toContain(`calc(100% - ${MARGES_ESPACE.bas}px - \${hauteur}))\``);
+    expect(src).toContain(`calc(100% - ${MARGES_ESPACE.bas}px - \${hauteur}))\``);    // Les PLAFONDS de taille aussi · à 16 px en hauteur pour 8 px de marges
+    // verticales, le bas d'une fenêtre tirée par le haut remontait de 8 px.
+    expect(src).toContain(`calc(100% - ${MARGES_ESPACE.gauche + MARGES_ESPACE.droite}px))\``);
+    expect(src).toContain(`calc(100% - ${MARGES_ESPACE.haut + MARGES_ESPACE.bas}px))\``);
+  });
+
+  it('tirée jusqu’en haut puis jusqu’en bas, la fenêtre remplit la hauteur que le rendu admet', () => {
+    const n = geometrieRedimensionnee(DEPART, 'n', 0, -5000, LIMITES);
+    const s = geometrieRedimensionnee(n, 's', 0, 5000, LIMITES);
+    expect(s.y).toBe(0);
+    expect(s.hauteur).toBe(LIMITES.hauteurEspace - MARGES_ESPACE.haut - MARGES_ESPACE.bas);
   });
 
   it('la fenêtre porte une poignée sur chacun des huit bords et coins', () => {
@@ -80,5 +97,27 @@ describe('redimensionner une fenêtre par tous ses bords', () => {
     expect(src).toContain('geometrieRedimensionnee(');
     const poignees = src.slice(src.indexOf('const POIGNEES'), src.indexOf('];', src.indexOf('const POIGNEES')));
     for (const b of ['n', 's', 'e', 'o', 'ne', 'no', 'se', 'so']) expect(poignees).toContain(`bord: '${b}'`);
+  });
+
+  it('seul le bouton principal de la souris démarre un geste', () => {
+    expect(estLeBoutonPrincipal('mouse', 0)).toBe(true);
+    expect(estLeBoutonPrincipal('mouse', 2)).toBe(false);
+    expect(estLeBoutonPrincipal('touch', 0)).toBe(true);
+    expect(estLeBoutonPrincipal('pen', 0)).toBe(true);
+  });
+
+  it('un geste annulé ne rejoue plus rien au survol suivant', () => {
+    for (const fin of ['pointercancel', 'lostpointercapture', 'pointerup']) {
+      const cible = new EventTarget();
+      let appels = 0;
+      suivreGeste(cible, 1, () => {
+        appels += 1;
+      });
+      cible.dispatchEvent(new Event('pointermove'));
+      expect(appels).toBe(1);
+      cible.dispatchEvent(new Event(fin));
+      cible.dispatchEvent(new Event('pointermove'));
+      expect(appels).toBe(1);
+    }
   });
 });

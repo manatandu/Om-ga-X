@@ -4873,8 +4873,10 @@ Trois choses à ne pas défaire :
 **L'ENCRE EST CELLE DU CACHET depuis le 2026-10-15** (décision de Manasse,
 « Oui vas-y », après l'aperçu avant/après sur le logiciel) · `#2a1f5c` au
 lieu de `#142f6b`, 14,49:1 sur blanc. UNE seule encre en circulation · le
-générateur la pose sur le signe, le logotype, les icônes et la couleur de
-thème (`ENCRE_HEX`), l'échelle `--a-*` et les gris de `index.css` la suivent,
+générateur la pose sur le signe, le logotype et les icônes (`ENCRE_HEX`), la
+couleur de thème du manifeste et de `index.html` la recopie (relue contre
+`ENCRE` par `pwa-et-confidentialite.spec.ts`), l'échelle `--a-*` et les gris
+de `index.css` la suivent,
 les couleurs de signal restent. Changer d'encre, c'est changer le générateur
 ET remesurer la table du § 7 de la charte, jamais retoucher un fichier
 engendré.

@@ -202,8 +202,8 @@
      4,60 sur `--bg`). Table complète dans `docs/charte-omegax.md`.
      Assombri une seconde fois le 2026-09-23 (#626c7d devenu #5a6373), quand
      le fond a pris la teinte bleutée de Windows 11 : à #626c7d il tombait à
-     4,26:1 sur le nouveau `--bg`. Il fait désormais 4,87 sur `--bg`, 5,15 sur
-     `--mica`, 6,06 sur blanc. */
+     4,26:1 sur le nouveau `--bg`. Teinté de l'encre de cachet le 2026-10-15
+     (#5c5c70), il fait 5,59 sur `--bg`, 5,30 sur `--mica`, 6,52 sur blanc. */
   --n-500: #5c5c70;
   --n-600: #525266;
   --n-700: #3d3d4e;
@@ -316,7 +316,10 @@
     0 24px 48px -12px rgba(21, 26, 34, 0.3),
     0 48px 80px -24px rgba(21, 26, 34, 0.22);
 
-  --anneau-focus: 0 0 0 3px color-mix(in srgb, var(--sel) 26%, transparent);
+  /* L'anneau de focus est un contraste NON TEXTUEL (WCAG 1.4.11, 3:1 contre
+     le blanc qui l'entoure) · à 26 % de `--sel` il mesurait 1,55:1, et à
+     60 % il mesure 3,13:1 (2026-10-15, `docs/charte-omegax.md` § 7.4). */
+  --anneau-focus: 0 0 0 3px color-mix(in srgb, var(--sel) 60%, transparent);
 
   /* Courbes · une seule famille, pour que tout le logiciel bouge de la
      même façon. `sortie` pour ce qui apparaît, `ressort` pour ce que
@@ -566,8 +569,11 @@ main table tfoot th {
       inset 0 1px 0 rgba(255, 255, 255, 0.18),
       0 1px 2px rgba(21, 26, 34, 0.16);
   }
+  /* Le survol FONCE (a-600 à a-700, blanc à 8,32 puis 10,28:1) · il
+     éclaircissait vers a-400, où le texte blanc de 11,5 px tombait à 3,63:1,
+     sous le plancher AA (mesuré le 2026-10-15). */
   .btn-principal:hover:not(:disabled) {
-    background: linear-gradient(180deg, var(--a-400), var(--a-500));
+    background: linear-gradient(180deg, var(--a-600), var(--a-700));
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.22),
       0 3px 10px -2px color-mix(in srgb, var(--a-600) 45%, transparent);

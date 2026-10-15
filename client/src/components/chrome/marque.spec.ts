@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ENCRE } from './marque-geometrie';
 
 /**
  * LA MARQUE OMEGAX · un seul dessin, tous les formats.
@@ -164,8 +165,7 @@ describe('le logotype est un TRACÉ, jamais un texte', () => {
   it('les quatre rendus autorisés portent chacun leur couleur, et pas une autre', () => {
     // L'ENCRE DE CACHET (décision de Manasse du 2026-10-15, « Oui vas-y ») ·
     // une seule encre en circulation, posée par le générateur de la marque.
-    expect(lire('public/logo-omegax.svg')).toContain('fill="#2a1f5c"');
-    expect(lire('public/logo-omegax.svg')).not.toContain('#142f6b');
+    expect(lire('public/logo-omegax.svg')).toContain(`fill="${ENCRE}"`);
     expect(lire('public/logo-omegax-blanc.svg')).toContain('fill="#ffffff"');
     expect(lire('public/logo-omegax-noir.svg')).toContain('fill="#000000"');
     expect(lire('public/logo-omegax-courant.svg')).toContain('fill="currentColor"');

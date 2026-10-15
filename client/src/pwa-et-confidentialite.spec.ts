@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ENCRE } from './components/chrome/marque-geometrie';
 
 /**
  * LES TROIS PRÉREQUIS COMMUNS À TOUS LES MAGASINS D'APPLICATIONS.
@@ -28,6 +29,10 @@ describe('la PWA est réellement installable', () => {
     expect(html).toContain('rel="manifest"');
     expect(html).toContain('/manifest.webmanifest');
     expect(html).toContain('name="theme-color"');
+    // La couleur de thème de la page est l'encre ENGENDRÉE de la marque ·
+    // recopiée à la main, elle seule restait à l'ancienne encre le jour où
+    // le générateur changeait.
+    expect(html).toContain(`<meta name="theme-color" content="${ENCRE}" />`);
   });
 
   it('le manifeste porte les champs sans lesquels aucun navigateur ne propose l’installation', () => {
@@ -35,7 +40,7 @@ describe('la PWA est réellement installable', () => {
     // La couleur de thème est celle de l'encre de la marque · une couleur de
     // thème qui diverge du carré du logo fait clignoter la barre du système
     // au lancement.
-    expect(m.theme_color).toBe('#2a1f5c');
+    expect(m.theme_color).toBe(ENCRE);
     expect(m.name).toBeTruthy();
     expect(m.short_name).toBeTruthy();
     expect(m.start_url).toBeTruthy();

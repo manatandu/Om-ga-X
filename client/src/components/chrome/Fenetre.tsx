@@ -2,7 +2,7 @@ import { Suspense, memo, useCallback, useEffect, useRef } from 'react';
 import type { FenetreOuverte } from '../../lib/fenetres';
 import { FenetreCourante, useFenetresActions } from '../../lib/fenetres';
 import { echapPourLaFenetre } from '../../lib/echap';
-import { CURSEUR_BORD, geometrieRedimensionnee, type BordFenetre } from '../../lib/redimensionnement-fenetre';
+import { CURSEUR_BORD, estLeBoutonPrincipal, geometrieRedimensionnee, suivreGeste, type BordFenetre } from '../../lib/redimensionnement-fenetre';
 import { rendreFenetre } from '../../lib/registre-fenetres';
 import { LimiteErreur } from './LimiteErreur';
 import { LignesSquelette } from './Squelette';
@@ -49,20 +49,30 @@ const HAUTEUR_MIN = 220;
 const MARGE_AGRANDIE = 8;
 
 /**
- * Les huit zones de redimensionnement · bandes de 5 px le long des bords,
- * carrés de 10 px aux coins, posés APRÈS les bandes pour les recouvrir (un
- * coin attrapé doit étirer les deux axes). Le coin bas droit garde sa
- * marque visible, les autres zones ne se voient qu'au curseur, comme sous
- * Windows.
+ * Les huit zones de redimensionnement · bandes le long des bords, carrés de
+ * 10 px aux coins, posés APRÈS les bandes pour les recouvrir (un coin attrapé
+ * doit étirer les deux axes). Le coin bas droit garde sa marque visible, les
+ * autres zones ne se voient qu'au curseur, comme sous Windows.
+ *
+ * Les bandes droite et basse sont posées SUR LA BORDURE (`-right-px`,
+ * `-bottom-px`, 4 px dont 3 utiles sous le cadre) · plus larges, elles
+ * prenaient la moitié du pouce des barres de défilement du contenu (barre
+ * de 10 px, pouce visible de 3 px centré à 5 px du bord, `index.css`), et
+ * viser le pouce d'un grand livre étirait la fenêtre une fois sur deux.
+ *
+ * Sous 640 px, seul le coin bas droit reste · une fenêtre y tient déjà
+ * toute la largeur (`LARGEUR_MIN` dépasse l'espace), et des bandes de 5 px
+ * en `touch-action: none` aux bords de l'écran avalaient les glissés du
+ * doigt sans rien changer.
  */
 const POIGNEES: { bord: BordFenetre; place: string }[] = [
-  { bord: 'n', place: 'top-0 left-2.5 right-2.5 h-[5px]' },
-  { bord: 's', place: 'bottom-0 left-2.5 right-2.5 h-[5px]' },
-  { bord: 'o', place: 'left-0 top-2.5 bottom-2.5 w-[5px]' },
-  { bord: 'e', place: 'right-0 top-2.5 bottom-2.5 w-[5px]' },
-  { bord: 'no', place: 'top-0 left-0 w-2.5 h-2.5' },
-  { bord: 'ne', place: 'top-0 right-0 w-2.5 h-2.5' },
-  { bord: 'so', place: 'bottom-0 left-0 w-2.5 h-2.5' },
+  { bord: 'n', place: 'hidden sm:block top-0 left-2.5 right-2.5 h-[5px]' },
+  { bord: 's', place: 'hidden sm:block -bottom-px left-2.5 right-2.5 h-[4px]' },
+  { bord: 'o', place: 'hidden sm:block left-0 top-2.5 bottom-2.5 w-[5px]' },
+  { bord: 'e', place: 'hidden sm:block -right-px top-2.5 bottom-2.5 w-[4px]' },
+  { bord: 'no', place: 'hidden sm:block top-0 left-0 w-2.5 h-2.5' },
+  { bord: 'ne', place: 'hidden sm:block top-0 right-0 w-2.5 h-2.5' },
+  { bord: 'so', place: 'hidden sm:block bottom-0 left-0 w-2.5 h-2.5' },
   { bord: 'se', place: 'bottom-0 right-0 w-4 h-4' },
 ];
 
@@ -88,6 +98,9 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
    */
   const demarrerGeste = useCallback(
     (e: React.PointerEvent, mode: 'deplacer' | BordFenetre) => {
+      // Le bouton principal seul · un clic droit sur un bord démarrait un
+      // geste dont le menu contextuel avalait parfois le `pointerup`.
+      if (!estLeBoutonPrincipal(e.pointerType, e.button)) return;
       if (agrandie && mode === 'deplacer') return; // une fenêtre plein écran ne se déplace pas
       e.preventDefault();
       const cible = e.currentTarget as HTMLElement;
@@ -130,13 +143,11 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
           );
         }
       };
-      const onUp = (ev: PointerEvent) => {
-        cible.releasePointerCapture(ev.pointerId);
-        cible.removeEventListener('pointermove', onMove);
-        cible.removeEventListener('pointerup', onUp);
-      };
-      cible.addEventListener('pointermove', onMove);
-      cible.addEventListener('pointerup', onUp);
+      // La fin du geste est GARANTIE · un `pointercancel` (geste système au
+      // bord de l'écran, second doigt) n'est suivi d'aucun `pointerup`, et
+      // l'écouteur restait attaché · la souris qui survolait ensuite le bord
+      // rejouait l'ancien geste. Voir `suivreGeste`.
+      suivreGeste(cible, e.pointerId, onMove);
     },
     [agrandie, deplacer, fenetre.cadre, fenetre.cle],
   );
@@ -169,7 +180,10 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
         // qui reste à droite de sa position · garer une fenêtre contre un
         // bord, geste MDI voulu, ne doit pas la rétrécir).
         const largeur = `min(${fenetre.cadre.largeur}px, calc(100% - 16px))`;
-        const hauteur = `min(${fenetre.cadre.hauteur}px, calc(100% - 16px))`;
+        // Hauteur bornée par les MÊMES marges que la position (0 en haut,
+        // 8 en bas, `MARGES_ESPACE`) · bornée à 16, une fenêtre tirée par le
+        // haut jusqu'au bord remontait son bas de 8 px.
+        const hauteur = `min(${fenetre.cadre.hauteur}px, calc(100% - 8px))`;
         return {
           // La POSITION doit être bornée elle aussi, et pas seulement la
           // taille. À 360 px, une fenêtre restaurée gardait son `x` de
@@ -205,7 +219,9 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
       <div
         onPointerDown={(e) => demarrerGeste(e, 'deplacer')}
         onDoubleClick={() => basculerAgrandissement(fenetre.cle)}
-        style={{ height: HAUTEUR_TITRE }}
+        // `touch-action: none` · sans lui, le doigt qui tire la barre fait
+        // défiler la page et le navigateur annule le geste.
+        style={{ height: HAUTEUR_TITRE, touchAction: 'none' }}
         /*
           BARRE DE TITRE CLAIRE, À LA WINDOWS 11 (2026-09-23). Elle était un
           bandeau bleu nuit, celui de Sage et de Windows 7 · c'est ce qui

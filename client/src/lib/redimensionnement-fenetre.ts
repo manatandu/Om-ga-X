@@ -91,3 +91,55 @@ export const CURSEUR_BORD: Record<BordFenetre, string> = {
   no: 'nwse-resize',
   se: 'nwse-resize',
 };
+
+/**
+ * Seul le bouton principal démarre un geste de souris. Un clic droit sur un
+ * bord démarrait un redimensionnement, et le menu contextuel avalait parfois
+ * le `pointerup` qui devait le finir. Le doigt et le stylet n'ont pas de
+ * bouton à filtrer.
+ */
+export function estLeBoutonPrincipal(typePointeur: string, bouton: number): boolean {
+  return typePointeur !== 'mouse' || bouton === 0;
+}
+
+/** L'élément qui a capturé le pointeur, réduit à ce que le geste lui demande. */
+export interface CibleDeGeste extends EventTarget {
+  hasPointerCapture?(idPointeur: number): boolean;
+  releasePointerCapture?(idPointeur: number): void;
+}
+
+/**
+ * Suit un geste jusqu'à sa fin, quelle qu'elle soit.
+ *
+ * Un `pointercancel` (geste système au bord de l'écran, second doigt, boîte
+ * de dialogue du système) n'est suivi d'AUCUN `pointerup` (norme Pointer
+ * Events) · n'écouter que `pointerup` laissait `surMouvement` attaché, et la
+ * souris qui survolait ensuite le bord rejouait l'ancien geste, la fenêtre se
+ * redimensionnant sous un simple survol. `lostpointercapture`, émis après
+ * `pointerup` comme après `pointercancel`, ferme tous les cas.
+ *
+ * Rend la fonction qui termine le geste, pour un appelant qui voudrait
+ * l'arrêter lui-même.
+ */
+export function suivreGeste(
+  cible: CibleDeGeste,
+  idPointeur: number,
+  surMouvement: (ev: PointerEvent) => void,
+): () => void {
+  const mouvement = surMouvement as unknown as EventListener;
+  const finir = () => {
+    cible.removeEventListener('pointermove', mouvement);
+    cible.removeEventListener('pointerup', relacher);
+    cible.removeEventListener('pointercancel', finir);
+    cible.removeEventListener('lostpointercapture', finir);
+  };
+  const relacher = () => {
+    if (cible.hasPointerCapture?.(idPointeur)) cible.releasePointerCapture?.(idPointeur);
+    finir();
+  };
+  cible.addEventListener('pointermove', mouvement);
+  cible.addEventListener('pointerup', relacher);
+  cible.addEventListener('pointercancel', finir);
+  cible.addEventListener('lostpointercapture', finir);
+  return finir;
+}
