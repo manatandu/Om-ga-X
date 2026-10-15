@@ -29,6 +29,12 @@ import { TypeImport } from '../../import/dto/import.dto';
  * (fiche de la ligne) rejoue le tout à travers une clôture.
  */
 
+// Plusieurs cas rechargent le service sous un autre plafond ou d'autres
+// tranches (`jest.resetModules`) · sous une suite chargée, ce rechargement
+// seul a dépassé les cinq secondes par défaut de Jest (2026-10-15), sans
+// qu'aucune assertion ait changé.
+jest.setTimeout(60_000);
+
 const DOSSIER = 'dossier-1';
 const AUTRE = 'dossier-2';
 
