@@ -372,6 +372,13 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   mémoire résidente le dépasse (tampons hors tas, moteur de Prisma, fichier
   en mémoire puis passé en paramètre). Aucune comparaison avec la mémoire
   de Cloud Run, non lue ici.
+- **Vérifié sur vraie base (2026-10-15, serveur compilé, PostgreSQL 16).**
+  Reproduction B1 du coordinateur rejouée sur le service corrigé (tranches
+  de sept, une pièce déplacée en route) · 1 100 écritures retenues pour
+  1 100 distinctes ; M1 · empreinte inchangée après un lettrage qui déplace
+  la ligne, la pièce ne repart pas ; scénario du n° 99 à travers la clôture
+  rejoué vert après les corrections, et de nouveau à la fin du second tour
+  des écrans.
 
 ### Relecture des écrans, second tour (2026-10-15)
 
@@ -429,6 +436,15 @@ Coordinateur · aucun BLOQUANT ni MAJEUR, 14 MINEUR.
   de la file entre au passage dans le contrôle des libellés de commande
   (`libelles-et-titres.spec.ts`), qui ne lisait pas sa forme précédente.
 
+- **Vérifié (2026-10-15).** Typages serveur, client et `e2e/` verts ;
+  client `vitest` entier (deux ouvriers) · 275 fichiers, 2 134 tests verts ;
+  tests navigateur de la ligne sous Chromium, serveur compilé sur `l7_e2e`
+  derrière le relais de `vite preview` · 5 sur 5 verts (export des
+  modifications, impressions différées, largeurs à 390 et 1 440 px, modèles
+  d'édition, sélections) ; scénario du n° 99 à travers la clôture rejoué
+  vert. Tests de 11, 12 et 13 vus rouges sans leur correction. WebKit non lancé
+  (absent du poste).
+
 #### Relevés en attente (second tour des écrans)
 
 Gardés à la demande du coordinateur · aucun ne fausse un montant, ne refuse
@@ -459,6 +475,10 @@ un geste juste ni n'enferme un dossier, et aucun ne tient en une ligne.
   (il était resté au-dessus de `perimetreDesSections`).
 
 ## Reste
+- Second tour (relecture TypeScript, relecture des écrans) · tout corrigé,
+  sauf les relevés en attente 3, 5, 9 et 14 (ci-dessus), gardés à la
+  demande du coordinateur. Suite serveur complète et WebKit au coordinateur
+  avant l'intégration.
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
   10 MINEUR) · les seize corrigés, voir « Relecture, premier tour »
   ci-dessus. La suite serveur complète est passée par le coordinateur avant
@@ -623,6 +643,10 @@ for k in 1 2 3 4 5 6; do npx jest --shard=$k/6 --maxWorkers=1 --workerIdleMemory
 npx jest src/common/lecture-par-lots.spec.ts src/modules/exports src/modules/import \
   src/modules/journaux/impressions-journal.spec.ts src/modules/comptabilite/lectures-hors-situation.spec.ts --maxWorkers=1
 (cd client && npx vitest run --maxWorkers=2)
+# second tour des écrans, specs nouvelles
+(cd client && npx vitest run src/lib/impressions-differees.spec.ts src/lib/export-modifications.spec.ts \
+  src/pages/impressions-differees-ecran.spec.ts src/components/gestes-destructeurs-l7.spec.ts \
+  src/pages/editions-lues-l7.spec.ts src/lib/editions-structures.spec.ts src/components/chrome/menu-fichier-l7.spec.ts)
 # scénarios sur vraie base (scratchpad de la session) · scenario-99.cjs,
 # scenario-m6.cjs (volume), scenario-plafond.cjs (serveur EXPORT_MAX_LIGNES=4)
 ```
