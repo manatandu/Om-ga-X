@@ -77,9 +77,42 @@ et les deux écritures de clôture une fois chacune, E2 deux fois
 vivantes et 1 retirée ; l'import des écritures d'un second dossier analyse
 les trois fichiers sans colonne exigée manquante.
 
+### #59, partie 1 · impression différée (Fichier > Impressions différées)
+
+- Table `ImpressionDifferee` (numéro continu par dossier, livre, critères
+  relus, libellé figé, état EN_ATTENTE, EN_COURS, PRETE, ECHOUEE, dates de
+  demande, de début et de production, motif, fichier et empreinte, fichier
+  retirable), migration `20270182000200_impression_differee`.
+- `exports/impression-differee/` · règles pures (`criteresOuMotif`,
+  `libelleDemande`, `motifEchecDe`, `estInterrompue`, délai de trente
+  minutes), service (demande sous verrou par dossier ; `traiter` déclare
+  interrompues les productions tombées, prend la plus ancienne demande, une
+  à la fois par dossier, la produit HORS transaction par le moteur de
+  l'export du même livre via `produireEnMemoire`, et ne range que si la
+  demande est encore celle prise, relue `FOR UPDATE`), contrôleur
+  (`GET`, `POST`, `POST traiter` ouverts à la lecture seule comme
+  l'impression du journal, `POST :id/retirer-fichier` au comptable,
+  `GET :id/fichier`).
+- Trois livres · journal (journal, dates, brouillard ; le journal entier
+  produit s'enregistre comme imprimé au nom du demandeur), grand livre
+  (présentation du cabinet ou à plat), balance (avec ou sans grands livres).
+- La production se fait DANS une requête · Cloud Run n'alloue le processeur
+  que pendant les requêtes ; la fenêtre relance `traiter` après la demande
+  et tant qu'il en reste, relit la liste pendant qu'une production tourne.
+- Listes · audit (fichier exclu, libellé), cloisonnement, profil de fonctions
+  (hors profil, motif), restitution (fichier non rendu, manifeste qui le
+  dit, colonnes binaires relues), décompte de `lecture-bornee.spec.ts` (172).
+- Tests · `impression-differee.spec.ts` (15) · numéro et libellé, refus
+  avant tout numéro, production et empreinte, journal au nom du demandeur,
+  refus de volume tel quel, panne en route sans fichier partiel, une à la
+  fois, interruption lue puis déclarée, production finie après son
+  interruption non rangée, fichier retiré, liste ; client
+  `lib/impressions-differees.spec.ts` ; navigateur
+  `e2e/tests/sage-l7-impressions-differees.e2e.ts` (vert sous Chromium).
+
 ## Reste
-- #59 · impression différée (Fichier > Impressions différées), sélections
-  enregistrées, modèles d'édition et sauts de ligne ou de page.
+- #59 · sélections enregistrées, modèles d'édition et sauts de ligne ou de
+  page.
 - Bloc du § 3 complet, tests navigateur.
 
 ## Décisions par la loi
@@ -152,8 +185,8 @@ les trois fichiers sans colonne exigée manquante.
 
 ```bash
 npx tsc --noEmit && (cd client && npx tsc --noEmit)
-npx jest src/modules/exports/modifications --maxWorkers=1
+npx jest src/modules/exports/modifications src/modules/exports/impression-differee --maxWorkers=1
 (cd client && npx vitest run src/lib/export-modifications.spec.ts)
 (cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4307 \
-  OMEGAX_API=http://localhost:4307/api npx playwright test tests/sage-l7-export-modifications.e2e.ts)
+  OMEGAX_API=http://localhost:4307/api npx playwright test tests/sage-l7-*.e2e.ts)
 ```

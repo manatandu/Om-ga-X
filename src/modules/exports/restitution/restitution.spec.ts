@@ -327,12 +327,21 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
     expect(deplie).toContain(
       "Le fichier d'un export des écritures (`ExportEcritures.contenu`) ne sort pas · il reproduit des écritures que l'archive rend dans leurs propres tables",
     );
+    // Ligne sage-l7, fonction 59 · le fichier d'une impression différée non plus.
+    expect(deplie).toContain(
+      "Le fichier d'une impression différée (`ImpressionDifferee.contenu`) ne sort pas non plus · c'est une édition des livres que l'archive rend",
+    );
     // La prémisse relue dans le schéma · une seconde colonne binaire ferait
     // mentir la phrase.
     const binaires = Prisma.dmmf.datamodel.models.flatMap((m) =>
       m.fields.filter((f) => f.type === 'Bytes').map((f) => `${m.name}.${f.name}`),
     );
-    expect(binaires.sort()).toEqual(['DocumentTiers.contenu', 'ExportEcritures.contenu', 'PieceVirementFonds.contenu']);
+    expect(binaires.sort()).toEqual([
+      'DocumentTiers.contenu',
+      'ExportEcritures.contenu',
+      'ImpressionDifferee.contenu',
+      'PieceVirementFonds.contenu',
+    ]);
   });
 
   it('nomme les tables dont le journal d’audit ne garde aucune trace', () => {

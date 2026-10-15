@@ -56,7 +56,10 @@ fonds (\`PieceVirementFonds.contenu\`) dans \`pieces-virements/\`, chacun sous
 son identifiant. Le fichier d'un export des écritures
 (\`ExportEcritures.contenu\`) ne sort pas · il reproduit des écritures que
 l'archive rend dans leurs propres tables, et son CSV garde son nom, sa taille
-et son empreinte.
+et son empreinte. Le fichier d'une impression différée
+(\`ImpressionDifferee.contenu\`) ne sort pas non plus · c'est une édition des
+livres que l'archive rend, et son CSV garde la demande, son numéro, son nom,
+sa taille et son empreinte.
 
 ## CE QUE CETTE ARCHIVE N'EST PAS
 

@@ -884,6 +884,8 @@ model Tenant {
   // Ligne sage-l7 · fonction 99, l'export des seules modifications.
   exportsEcritures             ExportEcritures[]
   ecrituresExportees           EcritureExportee[]
+  // Ligne sage-l7 · fonction 59, l'impression différée.
+  impressionsDifferees         ImpressionDifferee[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -10850,4 +10852,60 @@ model EcritureExportee {
   @@unique([tenantId, ecritureId])
   @@index([tenantId, supprimeeAuNumero, statutExporte])
   @@map("ecritures_exportees")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l7 · fonction 59, l'impression différée
+// ---------------------------------------------------------------------------
+
+/// Le livre que la demande produit · ceux que l'export produit déjà en flux,
+/// par le même moteur, sous le même plafond.
+enum NatureImpressionDifferee {
+  JOURNAL
+  GRAND_LIVRE
+  BALANCE
+}
+
+enum EtatImpressionDifferee {
+  EN_ATTENTE
+  EN_COURS
+  PRETE
+  ECHOUEE
+}
+
+/// UNE IMPRESSION DIFFÉRÉE (ligne sage-l7, fonction 59 ; décision L7-2) ·
+/// demandée maintenant, produite ensuite par le moteur de l'export du même
+/// livre, retrouvée plus tard. Numérotée et datée (AUDCIF art. 22, 7°), la
+/// suite est continue par dossier et ne se réutilise jamais ; la demande ne
+/// se supprime pas, seul son fichier peut se retirer. Jamais un fichier
+/// partiel · un refus de volume ou une panne la rend ÉCHOUÉE, motif dit.
+/// Aucune clé vers l'exercice · ses critères le nomment, et une demande ne
+/// doit pas retenir un exercice qu'un geste légitime retire.
+model ImpressionDifferee {
+  id          String                   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant                   @relation(fields: [tenantId], references: [id])
+  numero      Int
+  nature      NatureImpressionDifferee
+  /// Les critères de la demande, relus par le serveur.
+  criteres    Json
+  /// Ce que la demande imprime, en clair, figé à la demande.
+  libelle     String
+  etat        EtatImpressionDifferee   @default(EN_ATTENTE)
+  demandeLe   DateTime                 @default(now())
+  demandePar  String
+  commenceLe  DateTime?
+  produitLe   DateTime?
+  motifEchec  String?
+  nomFichier  String?
+  taille      Int?
+  empreinte   String?
+  contenu     Bytes?
+  /// Le fichier retiré pour libérer la place · la demande, son numéro et son
+  /// empreinte restent.
+  fichierRetireLe DateTime?
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, etat, demandeLe])
+  @@map("impressions_differees")
 }

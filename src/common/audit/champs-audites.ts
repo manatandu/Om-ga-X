@@ -166,6 +166,10 @@ export const MODELES_AUDITES = new Set<string>([
   // coup, il attesterait un envoi qui n'a pas eu lieu. Son fichier n'est pas
   // recopié (`COLONNES_EXCLUES_PAR_MODELE`).
   'ExportEcritures',
+  // Ligne sage-l7, fonction 59 · l'impression différée, numérotée et datée
+  // (AUDCIF art. 22, 7°) · demandée, produite, échouée ou fichier retiré, chaque
+  // pas se lit au journal ; son fichier n'est pas recopié.
+  'ImpressionDifferee',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',
@@ -485,6 +489,8 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // Le fichier d'un export des écritures (ligne sage-l7) · son nom, sa taille
   // et son empreinte le désignent sans le reproduire.
   ExportEcritures: ['contenu'],
+  // Le fichier d'une impression différée (ligne sage-l7, fonction 59) · même raison.
+  ImpressionDifferee: ['contenu'],
 
   // LE REGISTRE DU PERSONNEL · le premier cas où l'exclusion ne protège pas
   // le LOGICIEL mais une PERSONNE.

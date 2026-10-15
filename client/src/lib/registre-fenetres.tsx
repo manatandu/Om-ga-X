@@ -78,6 +78,9 @@ const RestitutionPage = lazy(() => import('../pages/RestitutionPage').then((m) =
 const ExportModificationsPage = lazy(() =>
   import('../pages/ExportModificationsPage').then((m) => ({ default: m.ExportModificationsPage })),
 );
+const ImpressionsDiffereesPage = lazy(() =>
+  import('../pages/ImpressionsDiffereesPage').then((m) => ({ default: m.ImpressionsDiffereesPage })),
+);
 const UtilisateursPage = lazy(() => import('../pages/UtilisateursPage').then((m) => ({ default: m.UtilisateursPage })));
 const ParametresDossierPage = lazy(() => import('../pages/ParametresDossierPage').then((m) => ({ default: m.ParametresDossierPage })));
 const PlansAnalytiquesPage = lazy(() => import('../pages/PlansAnalytiquesPage').then((m) => ({ default: m.PlansAnalytiquesPage })));
@@ -528,6 +531,14 @@ export const FENETRES: DefinitionFenetre[] = [
     titre: 'Exporter les modifications',
     titreCourt: 'Export modif.',
     rendre: () => <ExportModificationsPage />,
+  },
+  {
+    // Ligne sage-l7, fonction 59 · aucun référentiel · AUDCIF art. 22, 7°,
+    // que l'art. 3 du SYCEBNL n'écarte pas.
+    motif: /^\/impressions-differees$/,
+    titre: 'Impressions différées',
+    titreCourt: 'Impr. différées',
+    rendre: () => <ImpressionsDiffereesPage />,
   },
   {
     // Notion SYCEBNL (division 46) · en SYSCOHADA le 46 porte les associés.

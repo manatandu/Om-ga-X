@@ -218,6 +218,10 @@ export function AppShell() {
         // s'imprime est exactement ce qui est à l'écran · aucun second moteur
         // de rendu, donc aucune divergence possible entre les deux.
         { label: 'Imprimer la fenêtre…', separateurAvant: true, onClick: () => window.print() },
+        // Ligne sage-l7, fonction 59 · Sage range l'impression différée au
+        // menu Fichier, à côté de l'impression · ouverte à tous les rôles qui
+        // exportent les livres, comme ses routes.
+        { label: 'Impressions différées', chemin: '/impressions-differees', onClick: () => navigate('/impressions-differees') },
         // Les réglages de SON PROPRE compte (mot de passe, double
         // authentification, adresse, sessions) · SANS garde de rôle, comme
         // leurs routes. Ils ne vivaient que dans la fenêtre des utilisateurs,
