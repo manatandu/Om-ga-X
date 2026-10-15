@@ -32,11 +32,13 @@
  *     et 20° (garanties légales), « fournies avant que le client [...]
  *     passe commande » (art. 54, al. 2). Tant que `mentionsAArreter()` n'est
  *     pas vide, le serveur refuse l'acceptation (`acceptation-conditions.ts`).
- *  3. UNE VERSION ACCEPTÉE NE SE RÉÉCRIT JAMAIS · un changement fait une
+ *  3. UNE VERSION PUBLIÉE NE SE RÉÉCRIT JAMAIS · un changement fait une
  *     VERSION NOUVELLE, numérotée et datée, soumise à l'art. 34 (projet
  *     communiqué trente jours ouvrables avant, résiliation sans pénalité
- *     jusqu'à soixante jours ouvrables après). Le texte d'une version déjà
- *     acceptée reste ici, archivé (art. 53, 9°).
+ *     jusqu'à soixante jours ouvrables après). Le texte de chaque version
+ *     publiée est archivé mot pour mot, avec son empreinte, dans
+ *     `versions-publiees.ts` (art. 53, 9°) ; un spec gèle chaque empreinte, et
+ *     retoucher ce fichier sans publier de version nouvelle le fait tomber.
  */
 
 /** La version en vigueur · un numéro et une date, jamais l'une sans l'autre. */
@@ -386,7 +388,7 @@ export function articlesDesConditions(
       alineas: [
         `VMG Consulting ne modifie unilatéralement les présentes conditions que pour les raisons qu’elles indiquent, ou à la suite d’un changement de la législation ou d’une décision de l’Autorité de Régulation du Numérique (${CODE_NUMERIQUE}, art. 34). Les raisons que le présent contrat admet · (${A_ARRETER}).`,
         'Le projet de modification est communiqué au client par écrit ou sur un autre support durable au moins trente jours ouvrables avant son entrée en vigueur. Tant qu’il n’a pas expressément accepté les nouvelles conditions, le client peut résilier le contrat sans pénalité ni droit au dédommagement, jusqu’à soixante jours ouvrables après l’entrée en vigueur de la modification, qui ne prend effet qu’à l’issue de ce délai (art. 34).',
-        'Chaque version porte un numéro et une date. Une version acceptée n’est jamais réécrite.',
+        'Chaque version porte un numéro, une date et l’empreinte de son texte (SHA-256). Une version publiée n’est jamais réécrite · un changement fait une version nouvelle, et le texte de chaque version publiée reste consultable dans OmegaX.',
       ],
     },
     {
@@ -413,11 +415,11 @@ export function articlesDesConditions(
           liste: [
             'l’administrateur du dossier ouvre le présent texte depuis le menu « ? » ; la version, sa date et l’abonnement du dossier y sont rappelés ;',
             'il vérifie ces éléments, et peut se retirer sans rien accepter · tant qu’il n’a pas confirmé, rien n’est enregistré (art. 53, 3°, et art. 55, al. 1er) ;',
-            'il coche la case qui dit avoir lu les conditions, puis confirme l’acceptation au nom du client ;',
+            'il coche la case qui dit avoir lu les conditions, puis confirme l’acceptation au nom du client · OmegaX vérifie que le texte lu est celui que le service tient en vigueur, même version et même empreinte, et sinon demande de recharger la page ;',
             'OmegaX en accuse aussitôt réception à l’écran · version acceptée, date, heure et auteur · et met en file, à l’adresse de l’administrateur, un courriel qui porte le même accusé et, en pièce jointe, le texte accepté (art. 55, al. 2, et art. 56, al. 1er).',
           ],
         },
-        'L’acceptation est enregistrée dans le dossier, avec son auteur, sa date et l’adresse réseau d’où elle a été faite, au journal d’audit. Le texte de chaque version acceptée reste consultable et imprimable (art. 53, 9°).',
+        'L’acceptation est enregistrée dans le dossier, avec la version et l’empreinte du texte accepté, son auteur, sa date et l’adresse réseau d’où elle a été faite, au journal d’audit. Le texte de chaque version acceptée reste consultable et imprimable (art. 53, 9°).',
         `L’offre est valable tant qu’elle est accessible en ligne (art. 53, al. 2, et art. 53, 4°). Le contrat ne se forme que par le consentement de la partie qui s’oblige (Code civil, Livre III, art. 8) · sans acceptation, le présent texte ne lie pas le client, et son accès au dossier n’en est pas interrompu (${CODE_NUMERIQUE}, art. 30, al. 3).`,
       ],
     },

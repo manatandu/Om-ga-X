@@ -6,8 +6,10 @@ import {
   texteBrutDesConditions,
   VERSION_CONDITIONS_LICENCE,
 } from '../../../src/modules/conditions-licence/conditions-de-licence';
+import { VERSIONS_PUBLIEES } from '../../../src/modules/conditions-licence/versions-publiees';
 import { CadrePagePublique, CorpsFenetreLegale } from '../components/CadrePagePublique';
 import { AcceptationConditionsLicence } from '../components/AcceptationConditionsLicence';
+import { telechargerTexteDeVersion } from '../components/telechargerContrat';
 
 /**
  * LE CONTRAT DE LICENCE D'OMEGAX · le texte vient du module partagé
@@ -72,15 +74,7 @@ export function ContenuContratLicence() {
  * même fichier que la pièce jointe de l'accusé de réception.
  */
 export function telechargerTexteDuContrat() {
-  const blob = new Blob([texteBrutDesConditions()], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const lien = document.createElement('a');
-  lien.href = url;
-  lien.download = `conditions-de-licence-omegax-version-${VERSION_CONDITIONS_LICENCE.numero}.txt`;
-  document.body.appendChild(lien);
-  lien.click();
-  lien.remove();
-  URL.revokeObjectURL(url);
+  telechargerTexteDeVersion(VERSION_CONDITIONS_LICENCE.numero, texteBrutDesConditions());
 }
 
 function BoutonTexte() {
@@ -91,12 +85,39 @@ function BoutonTexte() {
   );
 }
 
+/**
+ * LES VERSIONS ANTÉRIEURES, LUES DANS L'ARCHIVE (relecture M2) · le contrat
+ * promet que le texte de chaque version publiée reste consultable (articles
+ * 15 et 18 ; Code du numérique, art. 53, 9°). Rien tant qu'une seule version
+ * a été publiée.
+ */
+function VersionsAnterieures() {
+  const anterieures = VERSIONS_PUBLIEES.filter((v) => v.numero !== VERSION_CONDITIONS_LICENCE.numero);
+  if (anterieures.length === 0) return null;
+  return (
+    <section className="ecran-seul mt-5 text-[11.5px]" aria-label="Versions antérieures">
+      <h2 className="text-[12px] font-bold mb-1.5">Versions antérieures</h2>
+      <ul className="list-disc pl-5 space-y-1">
+        {anterieures.map((v) => (
+          <li key={v.numero}>
+            Version {v.numero} du {v.dateLisible} ·{' '}
+            <button type="button" onClick={() => telechargerTexteDeVersion(v.numero, v.texte)} className="text-sel underline">
+              Télécharger le texte
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** La page publique, hors de la zone protégée. */
 export function ContratLicencePage() {
   return (
     <CadrePagePublique titre="Contrat de licence d’OmegaX" sousTitre={LIGNE_VERSION}>
       <BoutonTexte />
       <ContenuContratLicence />
+      <VersionsAnterieures />
     </CadrePagePublique>
   );
 }
@@ -107,6 +128,7 @@ export function ContratLicenceFenetre() {
     <CorpsFenetreLegale sousTitre={LIGNE_VERSION}>
       <BoutonTexte />
       <ContenuContratLicence />
+      <VersionsAnterieures />
       <AcceptationConditionsLicence />
     </CorpsFenetreLegale>
   );

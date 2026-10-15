@@ -168,12 +168,42 @@ describe('le contrat de licence se lit sur la page tel que le serveur le joint',
     expect(fenetre).toContain('<AcceptationConditionsLicence />');
   });
 
-  it('l’acceptation se fait par la route du serveur, case cochée, version lue', () => {
+  it('l’acceptation envoie le numéro et l’empreinte du texte AFFICHÉ, jamais ceux que le serveur rend (relecture M1)', () => {
+    // Le défaut gelé ici jusqu'à la relecture · `version: etat.version.numero`
+    // renvoyait au serveur sa propre version, et une page restée ouverte sur
+    // un autre texte l'acceptait quand même.
     const bloc = lire('src/components/AcceptationConditionsLicence.tsx');
-    expect(bloc).toMatch(/api\.post<[^>]*>\('\/conditions-licence\/acceptation', \{/);
-    expect(bloc).toContain('version: etat.version.numero,');
-    expect(bloc).toContain('lu: true,');
-    expect(bloc).toContain('{etat.aAccepter && estAdmin && (');
+    expect(bloc).toContain('const VERSION_AFFICHEE = VERSION_CONDITIONS_LICENCE.numero;');
+    expect(bloc).toContain('const EMPREINTE_AFFICHEE = empreinteEnVigueur();');
+    const envoi = bloc.slice(bloc.indexOf("'/conditions-licence/acceptation', {"));
+    expect(envoi.slice(0, 200)).toContain('version: VERSION_AFFICHEE,');
+    expect(envoi.slice(0, 200)).toContain('empreinte: EMPREINTE_AFFICHEE,');
+    expect(envoi.slice(0, 200)).toContain('lu: true,');
+  });
+
+  it('un texte qui n’est pas celui du service n’offre pas l’acceptation, et demande de recharger la page', () => {
+    const bloc = lire('src/components/AcceptationConditionsLicence.tsx');
+    expect(bloc).toContain(
+      'const texteAJour = etat !== null && etat.version.numero === VERSION_AFFICHEE && etat.version.empreinte === EMPREINTE_AFFICHEE;',
+    );
+    expect(bloc).toContain('{etat.aAccepter && estAdmin && texteAJour && (');
+    expect(bloc).toContain('rechargez la page avant d’accepter.');
+    expect(bloc).toContain('onClick={() => window.location.reload()}');
+  });
+
+  it('l’accusé dit ce que devient le courriel · sans messagerie, il ne part pas (relecture, mineurs 5 et 14)', () => {
+    const bloc = lire('src/components/AcceptationConditionsLicence.tsx');
+    expect(bloc).toContain('il ne partira qu’une fois une messagerie configurée');
+    expect(bloc).toContain("'/conditions-licence/accuse'");
+    expect(bloc).toContain('{estAdmin && etat.renvoiAccusePossible && (');
+    // Un auteur absent ne s'affiche jamais comme une case vide (mineur 6).
+    expect(bloc).toContain('{etat.acceptation.par ?? AUTEUR_NON_ENREGISTRE}');
+  });
+
+  it('les versions antérieures se lisent dans l’archive des versions publiées (relecture M2)', () => {
+    const page = lire('src/pages/ContratLicencePage.tsx');
+    expect(page).toContain('VERSIONS_PUBLIEES.filter((v) => v.numero !== VERSION_CONDITIONS_LICENCE.numero)');
+    expect(page).toContain('telechargerTexteDeVersion(v.numero, v.texte)');
   });
 
   it('le rappel de l’espace de travail ne ferme rien · une ligne, pour l’administrateur, servie par le serveur', () => {

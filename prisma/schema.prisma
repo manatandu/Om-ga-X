@@ -580,6 +580,9 @@ model Tenant {
   conditionsLicenceVersion      Int?
   conditionsLicenceAccepteesLe  DateTime?
   conditionsLicenceAccepteesPar String?
+  /// SHA-256 du texte accepté (`versions-publiees.ts`) · le numéro seul ne dit
+  /// pas QUEL texte (relecture de la ligne pages-legales, M2).
+  conditionsLicenceEmpreinte    String?
 
   // Longueur du numéro de compte · paramètre "longueur du plan comptable"
   // chez Sage 100 (dossier > Structure > Paramètres), 3 à 13 caractères,

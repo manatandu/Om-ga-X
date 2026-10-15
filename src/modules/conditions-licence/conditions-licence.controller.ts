@@ -38,6 +38,13 @@ export class ConditionsLicenceController {
   @Roles(RoleUtilisateur.ADMIN_CABINET)
   @Post('acceptation')
   accepter(@CurrentUser() user: AuthenticatedUser, @Body() dto: AccepterConditionsDto) {
-    return this.conditions.accepter(user.tenantId, { userId: user.userId, email: user.email }, dto.version);
+    return this.conditions.accepter(user.tenantId, { userId: user.userId, email: user.email }, dto.version, dto.empreinte);
+  }
+
+  /** Renvoyer l'accusé de réception d'une acceptation · l'administrateur du dossier, comme l'acceptation. */
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  @Post('accuse')
+  renvoyerAccuse(@CurrentUser() user: AuthenticatedUser) {
+    return this.conditions.renvoyerAccuse(user.tenantId, { userId: user.userId, email: user.email });
   }
 }
