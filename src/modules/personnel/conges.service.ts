@@ -21,6 +21,7 @@ import { serviceEnCours, type ContratLu } from './service-du-salarie';
 import { absencesDuSalarie, lireAbsencesPourConges, type LecteurAbsences } from './absences-lecture';
 import { NATURES_ABSENCE } from './absences';
 import { jourDeKinshasaIso } from '../../common/echeance';
+import { bulletinsQuiRetranchentLeConge, confronterLesBulletinsEmis } from './salaire-pendant-le-conge';
 
 export { serviceEnCours, lireAbsencesPourConges };
 export type { LecteurAbsences };
@@ -238,6 +239,31 @@ export async function allocationsAPorter(
     if (a.devise !== deviseStipulation) {
       throw new BadRequestException(`${quand} · l'allocation est en ${a.devise}, le bulletin en ${deviseStipulation} · une seule monnaie par bulletin.`);
     }
+    // B1, SECOND TOUR · LES AUTRES MOIS DU CONGÉ. Un bulletin déjà émis d'un
+    // mois que le congé touche (septembre, quand l'allocation du congé du 10
+    // au 25 septembre part au bulletin d'octobre) a pu payer ces jours au
+    // salaire · l'allocation les paierait une seconde fois (Code du travail,
+    // art. 142). Relu sur sa saisie figée et son contrat ; le mois du bulletin
+    // qui porte, l'émission le juge elle-même.
+    const autres = await confronterLesBulletinsEmis(
+      db,
+      tenantId,
+      salarieId,
+      {
+        id: c.id,
+        du: iso(c.du),
+        au: iso(c.au),
+        joursVoyage: c.joursVoyage,
+        remunerationJournaliere: nombre(c.remunerationJournaliere),
+        deviseAllocation: c.deviseAllocation,
+      },
+      {
+        saufMois: moisDePaie,
+        issue: (numero, mois) =>
+          `annulez le bulletin n° ${numero} et réémettez le bulletin de ${mois} en reprenant la proposition « Absences et congés du mois », puis portez l'allocation au bulletin de ${moisDePaie}.`,
+      },
+    );
+    if (autres.refus.length) throw new BadRequestException(`${quand} · ${autres.refus.join(' ')}`);
     portees.push({ congeId: c.id, du: iso(c.du), au: iso(c.au), jours: a.jours, tauxJournalier: a.tauxJournalier, devise: a.devise as 'CDF' | 'USD', montant: a.montant });
   }
   return portees;
@@ -480,6 +506,27 @@ export class CongesService {
     if (dto.auDelaDuSolde && (dto.motifAuDelaDuSolde ?? '').trim().length < 3) {
       throw new BadRequestException('Un congé au-delà du solde se pose avec son motif.');
     }
+    // B1, SECOND TOUR · LE CONGÉ POSÉ APRÈS UN BULLETIN ÉMIS. Chaque bulletin
+    // déjà émis d'un mois que le congé touche est relu sur sa saisie figée ·
+    // s'il paie le salaire des jours que l'allocation paiera (art. 142), le
+    // congé est refusé, avec le bulletin et l'issue (annuler, poser, réémettre).
+    const surLesBulletins = await confronterLesBulletinsEmis(
+      this.prisma,
+      tenantId,
+      salarieId,
+      {
+        du: iso(du),
+        au: iso(au),
+        joursVoyage: dto.joursVoyage ?? 0,
+        remunerationJournaliere: dto.remunerationJournaliere ?? null,
+        deviseAllocation: dto.deviseAllocation ?? null,
+      },
+      {
+        issue: (numero, mois) =>
+          `annulez le bulletin n° ${numero}, posez le congé, puis réémettez le bulletin de ${mois} en reprenant la proposition « Absences et congés du mois ».`,
+      },
+    );
+    if (surLesBulletins.refus.length) throw new BadRequestException(`Congé non posé · ${surLesBulletins.refus.join(' ')}`);
     const cree = await this.prisma.congeSalarie.create({
       data: {
         tenantId,
@@ -497,7 +544,13 @@ export class CongesService {
       },
       select: { id: true },
     });
-    return { id: cree.id, jours: jours.jours, ...(await this.compteur(tenantId, salarieId)) };
+    return {
+      id: cree.id,
+      jours: jours.jours,
+      ...(await this.compteur(tenantId, salarieId)),
+      // Second tour, point 2 · un bulletin que rien ne confronte au congé est dit.
+      avertissements: surLesBulletins.avertissements,
+    };
   }
 
   /** Les éléments de l'allocation · dans la monnaie du contrat, quand il la porte. */
@@ -546,8 +599,18 @@ export class CongesService {
           `L'allocation de ce congé est portée par le bulletin n° ${c.bulletin!.numero} · annulez d'abord le bulletin, puis le congé.`,
         );
       }
+      // B1, SECOND TOUR · le bulletin émis d'un mois que le congé touche a
+      // retranché ses jours du salaire (la garde l'y oblige) · annulé seul, le
+      // congé laisserait ces jours sans salaire ni allocation, en silence.
+      const retranches = await bulletinsQuiRetranchentLeConge(tx, tenantId, c.salarieId, {
+        id: c.id,
+        du: iso(c.du),
+        au: iso(c.au),
+        joursVoyage: c.joursVoyage,
+      });
+      if (retranches.refus.length) throw new BadRequestException(`Congé non annulé · ${retranches.refus.join(' ')}`);
       await tx.congeSalarie.update({ where: { id: c.id }, data: { annuleLe: new Date(), annulePar: userEmail, motifAnnulation: motif.trim() } });
-      return { annule: true, salarieId: c.salarieId };
+      return { annule: true, salarieId: c.salarieId, avertissements: retranches.avertissements };
     });
   }
 

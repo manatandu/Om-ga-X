@@ -717,6 +717,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const emissionDecompteEnVol = useRef(false);
   const jetonEmissionDecompte = useRef(0);
   const [avertissementsDecompte, setAvertissementsDecompte] = useState<string[]>([]);
+  // Second tour de la relecture L5, point 2 · ce que la garde du salaire
+  // pendant le congé n'a pu confronter revient avec l'émission, et se DIT.
+  // Rattachés au message de succès qui les a portés · un autre message les tait.
+  const [avertissementsBulletin, setAvertissementsBulletin] = useState<{ pour: string; textes: string[] } | null>(null);
   const initiativeDuMotif = (motif: string) =>
     motif === 'DEMISSION' ? 'TRAVAILLEUR' : motif === 'LICENCIEMENT' ? 'EMPLOYEUR' : null;
   const [enfantsAllocations, setEnfantsAllocations] = useState('');
@@ -1008,14 +1012,17 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
     if (!selection) return;
     setErreur('');
     setSucces('');
+    setAvertissementsBulletin(null);
     if (motifReductionInpp) return setErreur(motifReductionInpp);
     if (motifHeuresIncompletes()) return setErreur(motifHeuresIncompletes());
     setEnCours(true);
     api
-      .post<{ numero: number; moisDePaie: string }>(`/personnel/salaries/${selection}/bulletins`, corpsSimulation())
+      .post<{ numero: number; moisDePaie: string; avertissements?: string[] }>(`/personnel/salaries/${selection}/bulletins`, corpsSimulation())
       .then(
         (b) => {
-          setSucces(`Bulletin n° ${b.numero} émis pour ${b.moisDePaie}. Il ne se modifie plus : une erreur se corrige en l’annulant.`);
+          const message = `Bulletin n° ${b.numero} émis pour ${b.moisDePaie}. Il ne se modifie plus : une erreur se corrige en l’annulant.`;
+          setSucces(message);
+          setAvertissementsBulletin({ pour: message, textes: b.avertissements ?? [] });
           setEnCours(false);
         },
         (e: ApiError) => {
@@ -1436,6 +1443,13 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         <div className="border border-ok/30 bg-ok-soft px-3.5 py-2 mb-2.5 text-[11.5px] max-w-[1240px]">
           {succes}
         </div>
+      )}
+      {succes && avertissementsBulletin?.pour === succes && avertissementsBulletin.textes.length > 0 && (
+        <ul role="status" className="border border-warning/30 bg-warning-soft text-warning px-3.5 py-2 mb-2.5 text-[11.5px] max-w-[1240px] list-disc pl-7">
+          {avertissementsBulletin.textes.map((a) => (
+            <li key={a}>{a}</li>
+          ))}
+        </ul>
       )}
 
       <div className="ecran-seul flex flex-wrap gap-1 mb-2 text-[11.5px]">

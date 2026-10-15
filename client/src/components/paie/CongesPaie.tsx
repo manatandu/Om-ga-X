@@ -41,12 +41,19 @@ export function OngletCongesPaie({ salaries, peutEcrire }: { salaries: SalarieMi
   const [erreur, setErreur] = useState('');
   const [ouverte, setOuverte] = useState<number | null>(null);
   const [modale, setModale] = useState<Modale | null>(null);
+  // Second tour de la relecture L5, point 2 · ce que la garde du salaire
+  // pendant le congé n'a pu confronter (bulletin journalier, sans monnaie)
+  // revient avec la pose ou l'annulation, et se DIT.
+  const [avis, setAvis] = useState<string[]>([]);
   // Une réponse périmée (salarié ou date changés entre-temps) est jetée.
   const jeton = useRef(0);
 
   useEffect(() => {
     if (!salarieId && salaries.length === 1) setSalarieId(salaries[0].id);
   }, [salaries, salarieId]);
+  useEffect(() => {
+    setAvis([]);
+  }, [salarieId]);
 
   const charger = useCallback(() => {
     const j = ++jeton.current;
@@ -74,8 +81,9 @@ export function OngletCongesPaie({ salaries, peutEcrire }: { salaries: SalarieMi
   }, [salarieId, aLa]);
   useEffect(charger, [charger]);
 
-  const apresGeste = () => {
+  const apresGeste = (reponse?: unknown) => {
     setModale(null);
+    setAvis(avertissementsDe(reponse));
     charger();
   };
 
@@ -123,6 +131,13 @@ export function OngletCongesPaie({ salaries, peutEcrire }: { salaries: SalarieMi
         <div role="alert" className="border border-danger/30 bg-danger-soft text-danger px-3 py-2">
           {erreur}
         </div>
+      )}
+      {avis.length > 0 && (
+        <ul role="status" className="border border-warning/30 bg-warning-soft text-warning px-3 py-2 list-disc pl-6">
+          {avis.map((a) => (
+            <li key={a}>{a}</li>
+          ))}
+        </ul>
       )}
       {!salarieId &&
         (salaries.length === 0 ? (
@@ -343,17 +358,23 @@ function PeriodeLigne({ periode: p, ouverte, basculer }: { periode: PeriodeDeCon
   );
 }
 
-/** L'envoi d'une modale · l'erreur du serveur reste dans la modale, avec son motif. */
-function useEnvoi(onFait: () => void) {
+/** Les avertissements d'une réponse du serveur · une liste de textes, jamais autre chose. */
+function avertissementsDe(reponse: unknown): string[] {
+  const a = (reponse as { avertissements?: unknown } | null | undefined)?.avertissements;
+  return Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string') : [];
+}
+
+/** L'envoi d'une modale · l'erreur du serveur reste dans la modale, avec son motif ; la réponse remonte au geste. */
+function useEnvoi(onFait: (reponse?: unknown) => void) {
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const envoyer = async (fn: () => Promise<unknown>) => {
     setEnvoi(true);
     setErreur(null);
     try {
-      await fn();
+      const reponse = await fn();
       setEnvoi(false);
-      onFait();
+      onFait(reponse);
     } catch (e) {
       setEnvoi(false);
       setErreur(e instanceof ApiError ? e.message : 'Opération refusée.');
@@ -384,7 +405,7 @@ function ModaleReprise({
   salarieId: string;
   reprise: ReponseConges['reprise'];
   onFermer: () => void;
-  onFait: () => void;
+  onFait: (reponse?: unknown) => void;
 }) {
   const [f, setF] = useState({
     arreteAu: reprise?.arreteAu ?? '',
@@ -520,7 +541,7 @@ function useAllocation(salarieId: string, du: string, initial?: { devise: string
   return { champs, corps };
 }
 
-function ModaleConge({ salarieId, onFermer, onFait }: { salarieId: string; onFermer: () => void; onFait: () => void }) {
+function ModaleConge({ salarieId, onFermer, onFait }: { salarieId: string; onFermer: () => void; onFait: (reponse?: unknown) => void }) {
   const [f, setF] = useState({ du: '', au: '', joursVoyage: '', moisDePaie: '', auDela: false, motif: '' });
   const [moisTouche, setMoisTouche] = useState(false);
   const allocation = useAllocation(salarieId, f.du);
@@ -587,7 +608,7 @@ function ModaleConge({ salarieId, onFermer, onFait }: { salarieId: string; onFer
   );
 }
 
-function ModaleAllocation({ salarieId, conge, onFermer, onFait }: { salarieId: string; conge: CongeLu; onFermer: () => void; onFait: () => void }) {
+function ModaleAllocation({ salarieId, conge, onFermer, onFait }: { salarieId: string; conge: CongeLu; onFermer: () => void; onFait: (reponse?: unknown) => void }) {
   const allocation = useAllocation(salarieId, conge.du, {
     devise: conge.deviseAllocation,
     taux: conge.remunerationJournaliere,
@@ -608,7 +629,7 @@ function ModaleAllocation({ salarieId, conge, onFermer, onFait }: { salarieId: s
   );
 }
 
-function ModaleAnnulation({ conge, onFermer, onFait }: { conge: CongeLu; onFermer: () => void; onFait: () => void }) {
+function ModaleAnnulation({ conge, onFermer, onFait }: { conge: CongeLu; onFermer: () => void; onFait: (reponse?: unknown) => void }) {
   const [motif, setMotif] = useState('');
   const { envoi, erreur, setErreur, envoyer } = useEnvoi(onFait);
   const valider = () => {

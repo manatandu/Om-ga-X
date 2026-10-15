@@ -161,5 +161,62 @@ test('SYSCOHADA · congés acquis par bulletin, posés à l’écran, portés au
   await page.reload();
   await expect(page.getByText('Annulé', { exact: true })).toBeVisible();
 
+  // SECOND TOUR DE LA RELECTURE, B1 · LE CONGÉ POSÉ APRÈS LE BULLETIN ÉMIS
+  // D'UN MOIS QU'IL TOUCHE. Septembre est émis au salaire plein, puis un congé
+  // du jeudi 10 au samedi 19 septembre (neuf jours ouvrables du Code) est posé
+  // avec son allocation au bulletin d'octobre · refusé, à l'écran, le bulletin
+  // de septembre et l'issue nommés (les neuf jours auraient été payés deux
+  // fois, art. 142).
+  const septembre = await appelApi<Bulletin>(page, 'POST', `/personnel/salaries/${salarie.id}/bulletins`, paie('2026-09'));
+  await page.getByRole('button', { name: 'Poser un congé' }).click();
+  await modale.getByLabel('Premier jour').fill('2026-09-10');
+  await modale.getByLabel('Dernier jour').fill('2026-09-19');
+  await modale.getByLabel("Bulletin qui porte l'allocation").fill('2026-10');
+  await modale.getByRole('button', { name: 'Poser le congé' }).click();
+  await expect(modale.getByText(new RegExp(`Congé non posé · Le bulletin n° ${septembre.numero} de 2026-09, déjà émis, paie 1040000\\.00 CDF`))).toBeVisible();
+  await expect(modale.getByText(new RegExp(`annulez le bulletin n° ${septembre.numero}, posez le congé, puis réémettez le bulletin de 2026-09`))).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(modale).toBeHidden();
+
+  // L'issue · septembre annulé, le congé posé, septembre réémis au salaire des
+  // jours hors congé (1 040 000 × 17 ÷ 26 = 680 000, la proposition du mois),
+  // le salaire plein refusé ; octobre porte l'allocation de neuf jours.
+  await appelApi(page, 'POST', `/personnel/bulletins/${septembre.id}/annulation`, { motif: 'Congé de septembre à retrancher' });
+  const pose = await appelApi<{ id: string }>(page, 'POST', `/personnel/salaries/${salarie.id}/conges`, {
+    du: '2026-09-10',
+    au: '2026-09-19',
+    moisDePaie: '2026-10',
+    deviseAllocation: 'CDF',
+    remunerationJournaliere: 40_000,
+    moyenneMensuelleArticle142: 0,
+  });
+  await expect(appelApi(page, 'POST', `/personnel/salaries/${salarie.id}/bulletins`, paie('2026-09'))).rejects.toThrow(/art\. 142/);
+  const moisSept = await appelApi<{ proposition: { joursDeConge: number; salaireDesJoursDus: number } }>(
+    page,
+    'GET',
+    `/personnel/salaries/${salarie.id}/absences/mois/2026-09`,
+  );
+  expect(moisSept.proposition).toMatchObject({ joursDeConge: 9, salaireDesJoursDus: 680_000 });
+  const septembreReduit = await appelApi<Bulletin>(page, 'POST', `/personnel/salaries/${salarie.id}/bulletins`, {
+    ...paie('2026-09'),
+    elements: [{ nature: 'SALAIRE_OU_TRAITEMENT', libelle: 'Salaire des jours hors congé', montantFc: 680_000 }],
+  });
+  const octobre = await appelApi<Bulletin>(page, 'POST', `/personnel/salaries/${salarie.id}/bulletins`, paie('2026-10', { allocationsConge: [{ congeId: pose.id }] }));
+  const { bulletins: oct } = await appelApi<{ bulletins: Bulletin[] }>(page, 'GET', '/personnel/bulletins?mois=2026-10');
+  expect(oct.find((b) => b.id === octobre.id)?.totalVerseFc).toBe(1_040_000 + 9 * 40_000);
+
+  // LE SENS INVERSE · octobre annulé libère le congé, mais septembre a
+  // retranché ses neuf jours · l'annuler seul laisserait septembre amputé.
+  await appelApi(page, 'POST', `/personnel/bulletins/${octobre.id}/annulation`, { motif: 'Allocation à reprendre' });
+  await expect(appelApi(page, 'POST', `/personnel/conges/${pose.id}/annulation`, { motif: 'Congé non pris' })).rejects.toThrow(
+    new RegExp(`Congé non annulé · Le bulletin n° ${septembreReduit.numero} de 2026-09, émis, paie 680000\\.00 CDF.*annulez d'abord le bulletin n° ${septembreReduit.numero}, puis le congé`),
+  );
+  // L'issue nommée · septembre annulé, le congé s'annule, septembre réémis au salaire plein.
+  await appelApi(page, 'POST', `/personnel/bulletins/${septembreReduit.id}/annulation`, { motif: 'Congé non pris' });
+  await appelApi(page, 'POST', `/personnel/conges/${pose.id}/annulation`, { motif: 'Congé non pris' });
+  const septembrePlein = await appelApi<Bulletin>(page, 'POST', `/personnel/salaries/${salarie.id}/bulletins`, paie('2026-09'));
+  const { bulletins: sept } = await appelApi<{ bulletins: Bulletin[] }>(page, 'GET', '/personnel/bulletins?mois=2026-09');
+  expect(sept.find((b) => b.id === septembrePlein.id)?.totalVerseFc).toBe(1_040_000);
+
   expect(pannes).toEqual([]);
 });

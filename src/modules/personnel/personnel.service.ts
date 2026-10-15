@@ -159,8 +159,7 @@ import {
   type AllocationPortee,
 } from './conges.service';
 import { heuresAPorter, type HeuresPortee } from './majorations-heures.service';
-import { motifRefusSalairePleinPendantLeConge } from './absences';
-import { congesPayesDuMois } from './absences-lecture';
+import { confronterLesBulletinsEmis, confronterSalaireAuxConges } from './salaire-pendant-le-conge';
 
 /**
  * LA SAISIE RELUE PAR LE SERVEUR · le DTO, plus ce que le serveur y ajoute et
@@ -1742,8 +1741,8 @@ export class PersonnelService {
     // retenues d'avance telles que le registre les donne, jamais telles que
     // le navigateur les a envoyées.
     const { dto: saisie } = await this.resoudreSaisie(tenantId, salarieId, dto);
-    const motifConge = await this.motifSalairePendantLeConge(tenantId, salarieId, contrat, dto.moisDePaie, saisie);
-    if (motifConge) throw new BadRequestException(`Bulletin non émis · ${motifConge}`);
+    const conge = await this.motifSalairePendantLeConge(tenantId, salarieId, contrat, dto.moisDePaie, saisie);
+    if (conge.refus) throw new BadRequestException(`Bulletin non émis · ${conge.refus}`);
     const simulation = await this.simulerPaie(tenantId, salarieId, saisie, maintenant);
     const motifs = motifsRefusEmission(simulation);
     if (motifs.length > 0) {
@@ -1763,7 +1762,10 @@ export class PersonnelService {
       entree: saisie,
       calculEnPlus: {},
     });
-    return this.lireBulletin(tenantId, cree.id);
+    // Second tour, point 2 · la garde qui ne compare rien le DIT au cabinet,
+    // avec l'émission, jamais un silence.
+    const emis = await this.lireBulletin(tenantId, cree.id);
+    return conge.avertissements.length ? { ...emis, avertissements: conge.avertissements } : emis;
   }
 
   /**
@@ -1774,7 +1776,10 @@ export class PersonnelService {
    * par lui ou par le bulletin du départ, art. 145) paie ces jours deux fois.
    * Refus nommé, avec le salaire des jours hors congé (`absences.ts`). Rien
    * n'est opposé hors d'un salaire au mois du contrat, dans la monnaie du
-   * bulletin · il n'y a alors rien de certain à comparer.
+   * bulletin · il n'y a alors rien de certain à comparer, et c'est DIT
+   * (second tour, point 2), avec l'émission. Le congé posé après un bulletin
+   * émis est jugé à sa pose et au report de son allocation
+   * (`salaire-pendant-le-conge.ts`).
    */
   private async motifSalairePendantLeConge(
     tenantId: string,
@@ -1782,16 +1787,49 @@ export class PersonnelService {
     contrat: { remunerationBase: Prisma.Decimal | null; periodiciteRemuneration: string | null; deviseRemuneration: string | null },
     mois: string,
     saisie: SimulationPaieDto,
-  ): Promise<string | null> {
+  ): Promise<{ refus: string | null; avertissements: string[] }> {
     const devise = saisie.deviseStipulation ?? 'CDF';
-    if (contrat.periodiciteRemuneration !== 'MOIS' || contrat.remunerationBase === null || contrat.deviseRemuneration !== devise) return null;
-    const conges = await congesPayesDuMois(this.prisma, tenantId, salarieId, mois);
-    if (conges.length === 0) return null;
     const salaire = saisie.elements
       .filter((e) => e.nature === 'SALAIRE_OU_TRAITEMENT')
       .reduce((n, e) => n + Number((devise === 'USD' ? e.montantUsd : e.montantFc) ?? 0), 0);
-    return motifRefusSalairePleinPendantLeConge({ mois, conges, salaireDuBulletin: salaire, salaireMensuel: Number(contrat.remunerationBase), devise });
+    const avertissements: string[] = [];
+    // Second tour · le mois du bulletin, confronté aux congés qui le touchent
+    // (base et référence de la proposition, points 1 et 3) ; la garde qui ne
+    // compare rien le dit (point 2).
+    const r = await confronterSalaireAuxConges(this.prisma, tenantId, salarieId, { mois, salaire, devise, contrat });
+    if (r.refus) return { refus: r.refus, avertissements };
+    if (r.avertissement) avertissements.push(r.avertissement);
+    // B1, SECOND TOUR · les AUTRES mois des congés dont ce bulletin porte
+    // l'allocation · leur refus est déjà levé par `allocationsAPorter` ; ici
+    // ce qui ne se compare pas (bulletin non mensuel ou illisible) est dit.
+    const portees = (saisie as SaisieRelue).allocationsCongePortees ?? [];
+    if (portees.length) {
+      const conges = await this.prisma.congeSalarie.findMany({
+        where: { tenantId, salarieId, id: { in: portees.map((a) => a.congeId) } },
+        take: portees.length,
+        select: { id: true, du: true, au: true, joursVoyage: true, remunerationJournaliere: true, deviseAllocation: true },
+      });
+      for (const c of conges) {
+        const autres = await confronterLesBulletinsEmis(
+          this.prisma,
+          tenantId,
+          salarieId,
+          {
+            id: c.id,
+            du: c.du.toISOString().slice(0, 10),
+            au: c.au.toISOString().slice(0, 10),
+            joursVoyage: c.joursVoyage,
+            remunerationJournaliere: c.remunerationJournaliere === null ? null : Number(c.remunerationJournaliere),
+            deviseAllocation: c.deviseAllocation,
+          },
+          { saufMois: mois, issue: (numero) => `annulez le bulletin n° ${numero} et réémettez-le, puis émettez celui-ci.` },
+        );
+        avertissements.push(...autres.avertissements);
+      }
+    }
+    return { refus: null, avertissements };
   }
+
 
   /**
    * FIGER UN DOUBLE DU LIVRE DE PAIE · bulletin du mois ou décompte final
@@ -1989,7 +2027,9 @@ export class PersonnelService {
         avertissementsDecompteEmis: avertissements,
       },
     });
-    return { ...(await this.lireBulletin(tenantId, cree.id)), avertissements };
+    // Second tour, point 2 · ce que la garde des congés n'a pu confronter est
+    // dit au cabinet dans la réponse, jamais imprimé sur le décompte remis.
+    return { ...(await this.lireBulletin(tenantId, cree.id)), avertissements: [...avertissements, ...p.avertissementsConge] };
   }
 
   /**
@@ -2119,10 +2159,10 @@ export class PersonnelService {
     if (negatifs.length > 0) throw refusNomme('Décompte final non émis', negatifs);
     // B1 · le salaire du mois de cessation ne paie pas les jours de congé que
     // l'allocation a payés (art. 142), comme au bulletin du mois.
-    const motifConge = await this.motifSalairePendantLeConge(tenantId, salarieId, contrat, mois, saisie);
-    if (motifConge) {
-      if (!pourEmettre) return { etat: 'NON_CHIFFRE' as const, motifs: [motifConge] };
-      throw refusNomme('Décompte final non émis', [motifConge]);
+    const conge = await this.motifSalairePendantLeConge(tenantId, salarieId, contrat, mois, saisie);
+    if (conge.refus) {
+      if (!pourEmettre) return { etat: 'NON_CHIFFRE' as const, motifs: [conge.refus] };
+      throw refusNomme('Décompte final non émis', [conge.refus]);
     }
     const elementsDuMois = saisie.elements.map((e) => ({
       nature: e.nature as NatureElementPaie,
@@ -2225,6 +2265,8 @@ export class PersonnelService {
       verdict,
       faits,
       indemnites,
+      // Second tour, point 2 · la garde des congés qui ne compare rien le dit.
+      avertissementsConge: conge.avertissements,
     };
   }
 

@@ -1,6 +1,6 @@
 import type { NatureAbsenceSalarie, Prisma } from '@prisma/client';
 import type { PrismaService } from '../../common/prisma.service';
-import { absencesPourLeCompteur, congesDuMois, type AbsenceLue, type CongeDuMois, type JourIso } from './absences';
+import { absencesPourLeCompteur, congesDuMois, type AbsenceLue, type CongeConfronte, type JourIso } from './absences';
 import { serviceEnCours } from './service-du-salarie';
 
 /**
@@ -74,7 +74,7 @@ export async function congesPayesDuMois(
   salarieId: string,
   mois: string,
   absences?: readonly AbsenceLue[],
-): Promise<(CongeDuMois & { moisDePaie: string; portePar: number | null })[]> {
+): Promise<(CongeConfronte & { moisDePaie: string; portePar: number | null })[]> {
   const [a, m] = mois.split('-').map(Number);
   const debut = new Date(Date.UTC(a, m - 1, 1));
   const fin = new Date(Date.UTC(a, m, 0));
@@ -82,7 +82,16 @@ export async function congesPayesDuMois(
     where: { tenantId, salarieId, annuleLe: null, du: { lte: fin }, au: { gte: debut } },
     orderBy: { du: 'asc' },
     take: PLAFOND_CONGES_DU_MOIS,
-    select: { id: true, du: true, au: true, joursVoyage: true, moisDePaie: true, bulletin: { select: { numero: true, statut: true } } },
+    select: {
+      id: true,
+      du: true,
+      au: true,
+      joursVoyage: true,
+      moisDePaie: true,
+      remunerationJournaliere: true,
+      deviseAllocation: true,
+      bulletin: { select: { numero: true, statut: true } },
+    },
   });
   if (lignes.length === 0) return [];
   const lues = absences ?? (await absencesDuSalarie(db, tenantId, salarieId));
@@ -94,6 +103,13 @@ export async function congesPayesDuMois(
   );
   return calcules.map((c) => {
     const l = lignes.find((x) => x.id === c.id)!;
-    return { ...c, moisDePaie: l.moisDePaie, portePar: l.bulletin?.statut === 'EMIS' ? l.bulletin.numero : null };
+    return {
+      ...c,
+      moisDePaie: l.moisDePaie,
+      portePar: l.bulletin?.statut === 'EMIS' ? l.bulletin.numero : null,
+      // Second tour, point 1 · le taux déclaré au congé élève la référence de la garde.
+      remunerationJournaliere: l.remunerationJournaliere === null ? null : Number(l.remunerationJournaliere),
+      deviseAllocation: l.deviseAllocation,
+    };
   });
 }

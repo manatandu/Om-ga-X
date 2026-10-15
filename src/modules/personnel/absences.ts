@@ -519,36 +519,177 @@ export function congesDuMois(conges: readonly CongeLu[], mois: string, joursMala
   return sortie;
 }
 
+/** Un congé du mois tel que la garde le lit · le taux journalier déclaré au congé, s'il l'est, élève la référence (second tour, point 1). */
+export type CongeConfronte = CongeDuMois & {
+  /** Rémunération journalière déclarée au congé (art. 142), dans la monnaie de son allocation. */
+  readonly remunerationJournaliere?: number | null;
+  readonly deviseAllocation?: string | null;
+};
+
 /**
- * LE SALAIRE PLEIN PAYÉ AVEC L'ALLOCATION POUR LES MÊMES JOURS, refusé à
- * l'émission · B1 de la relecture. Le salaire du bulletin (éléments
- * « Salaire ou traitement ») ne paie au plus que les jours hors congé · le
- * salaire mensuel du contrat × (26 − jours de congé du mois) ÷ 26, vingt-six
- * jours payés par mois (décret n° 25/22, art. 7, par analogie, comme la
- * proposition des absences). N'est opposé que ce qui est certain · le moins
- * que le congé paie dans le mois, un salaire au mois du contrat, dans la
- * monnaie du bulletin. `null` quand rien ne s'oppose.
+ * LE SALAIRE DES JOURS HORS CONGÉ, au plus · la référence mensuelle × (base −
+ * jours de congé) ÷ base. La base est celle de la proposition « Absences et
+ * congés du mois » (`baseDuMois`) · vingt-six jours payés par mois (décret
+ * n° 25/22, art. 7, par analogie), sauf quand absences et congés couvrent tous
+ * les jours ouvrables du mois, alors ses jours payables (second tour, point 3 ·
+ * un mois de vingt-sept jours payables couvert en entier faisait refuser la
+ * proposition qu'on venait de suivre). La RÉFÉRENCE est la plus grande du
+ * salaire mensuel du contrat et du taux journalier déclaré au congé × 26 · « la
+ * rémunération dont il jouit au moment du départ en congé » (art. 142), que le
+ * contrat enregistré peut ne plus dire (second tour, point 1).
+ */
+function plafondHorsConge(p: {
+  readonly mois: string;
+  readonly auMoins: number;
+  readonly joursAbsenceDuMois: number;
+  readonly salaireMensuel: number;
+  readonly conges: readonly CongeConfronte[];
+  readonly devise: string;
+}) {
+  const base = baseDuMois(p.mois, p.joursAbsenceDuMois + p.auMoins);
+  const retenus = Math.min(base, p.auMoins);
+  const declares = p.conges
+    .filter((c) => c.auMoins > 0 && c.remunerationJournaliere != null && c.deviseAllocation === p.devise)
+    .map((c) => arrondi((c.remunerationJournaliere as number) * JOURS_DU_MOIS_REMUNERES));
+  const duConge = declares.length ? Math.max(...declares) : 0;
+  const reference = Math.max(p.salaireMensuel, duConge);
+  return {
+    base,
+    retenus,
+    reference,
+    referenceDuConge: duConge > p.salaireMensuel,
+    plafond: arrondi((reference * (base - retenus)) / base),
+  };
+}
+
+/**
+ * Le geste qui lève le refus quand la référence est le contrat · il peut ne
+ * plus dire la rémunération du départ (second tour, point 1).
+ */
+const ISSUE_CONTRAT_EN_VIGUEUR =
+  " Si la rémunération a changé depuis le contrat enregistré, saisissez d'abord le contrat en vigueur au registre du personnel, ou déclarez au congé la rémunération journalière du départ.";
+
+/**
+ * LE SALAIRE PLEIN PAYÉ AVEC L'ALLOCATION POUR LES MÊMES JOURS, refusé · B1 de
+ * la relecture. Le salaire du bulletin (éléments « Salaire ou traitement »)
+ * ne paie au plus que les jours hors congé (`plafondHorsConge`). N'est opposé
+ * que ce qui est certain · le moins que le congé paie dans le mois, un salaire
+ * au mois du contrat, dans la monnaie du bulletin. `null` quand rien ne
+ * s'oppose. Second tour · la même règle juge un bulletin DÉJÀ ÉMIS quand un
+ * congé vient après lui (`bulletinEmis`, son numéro et l'issue du geste).
  */
 export function motifRefusSalairePleinPendantLeConge(p: {
   readonly mois: string;
-  readonly conges: readonly CongeDuMois[];
+  readonly conges: readonly CongeConfronte[];
   readonly salaireDuBulletin: number;
   readonly salaireMensuel: number | null;
   readonly devise: string;
+  /** Jours ouvrables du mois couverts par une absence, demi-journées pesées · la base de la proposition. */
+  readonly joursAbsenceDuMois?: number;
+  /** Le bulletin déjà émis qu'un congé posé après lui confronte, et l'issue du geste refusé. */
+  readonly bulletinEmis?: { readonly numero: number; readonly issue: string };
 }): string | null {
-  const auMoins = Math.min(JOURS_DU_MOIS_REMUNERES, p.conges.reduce((n, c) => n + c.auMoins, 0));
+  const auMoins = p.conges.reduce((n, c) => n + c.auMoins, 0);
   if (auMoins <= 0 || p.salaireMensuel === null) return null;
-  const plafond = arrondi((p.salaireMensuel * (JOURS_DU_MOIS_REMUNERES - auMoins)) / JOURS_DU_MOIS_REMUNERES);
-  if (Math.round(p.salaireDuBulletin * 100) <= Math.round(plafond * 100)) return null;
+  const h = plafondHorsConge({
+    mois: p.mois,
+    auMoins,
+    joursAbsenceDuMois: p.joursAbsenceDuMois ?? 0,
+    salaireMensuel: p.salaireMensuel,
+    conges: p.conges,
+    devise: p.devise,
+  });
+  if (Math.round(p.salaireDuBulletin * 100) <= Math.round(h.plafond * 100)) return null;
   const quels = p.conges
     .filter((c) => c.auMoins > 0)
     .map((c) => `du ${c.du} au ${c.au}`)
     .join(', ');
   const f = (n: number) => n.toFixed(2);
+  const sujet = p.bulletinEmis ? `Le bulletin n° ${p.bulletinEmis.numero} de ${p.mois}, déjà émis,` : `Le bulletin de ${p.mois}`;
+  const issue = p.bulletinEmis ? p.bulletinEmis.issue : "reprenez la proposition « Absences et congés du mois », ou annulez le congé s'il n'a pas été pris.";
+  const reference = h.referenceDuConge ? 'rémunération journalière déclarée au congé × 26' : 'salaire mensuel du contrat';
+  const base = h.base !== JOURS_DU_MOIS_REMUNERES ? ` ; absences et congés couvrent le mois, la base est celle de ses ${h.base} jours payables` : '';
   return (
-    `Le bulletin de ${p.mois} paie ${f(p.salaireDuBulletin)} ${p.devise} de salaire alors que ${auMoins} jour(s) de ce mois sont payés par l'allocation de congé (congé ${quels}) · ` +
+    `${sujet} paie ${f(p.salaireDuBulletin)} ${p.devise} de salaire alors que ${h.retenus} jour(s) de ce mois sont payés par l'allocation de congé (congé ${quels}) · ` +
     `pendant le congé, l'allocation remplace la rémunération, elle ne s'y ajoute pas (Code du travail, art. 142 et 93 ; livre de paie, arrêté du 8 août 2008, mentions 6, 14 et 28). ` +
-    `Le salaire des jours hors congé est au plus ${f(plafond)} ${p.devise} (${f(p.salaireMensuel)} × ${JOURS_DU_MOIS_REMUNERES - auMoins} ÷ ${JOURS_DU_MOIS_REMUNERES}) · reprenez la proposition « Absences et congés du mois », ou annulez le congé s'il n'a pas été pris.`
+    `Le salaire des jours hors congé est au plus ${f(h.plafond)} ${p.devise} (${f(h.reference)} × ${h.base - h.retenus} ÷ ${h.base}, ${reference}${base}) · ${issue}` +
+    (h.referenceDuConge ? '' : ISSUE_CONTRAT_EN_VIGUEUR)
+  );
+}
+
+/**
+ * B1, SECOND TOUR · UN CONGÉ QU'UN BULLETIN ÉMIS A RETRANCHÉ NE S'ANNULE PAS
+ * SEUL. Le bulletin d'un mois que le congé touche ne paie au plus que les jours
+ * hors congé · annulé, le congé laisserait ces jours sans salaire ni
+ * allocation, en silence. Le bulletin a retranché les jours de ce congé quand
+ * son salaire ne dépasse pas le plafond calculé avec eux (même base, salaire
+ * du contrat) · refus nommé, avec l'issue. `null` sinon.
+ */
+export function motifRefusAnnulationDuCongeRetranche(p: {
+  readonly mois: string;
+  readonly numero: number;
+  readonly conge: CongeDuMois;
+  readonly salaireDuBulletin: number;
+  readonly salaireMensuel: number;
+  readonly devise: string;
+  readonly joursAbsenceDuMois?: number;
+}): string | null {
+  if (p.conge.auMoins <= 0) return null;
+  const h = plafondHorsConge({
+    mois: p.mois,
+    auMoins: p.conge.auMoins,
+    joursAbsenceDuMois: p.joursAbsenceDuMois ?? 0,
+    salaireMensuel: p.salaireMensuel,
+    conges: [],
+    devise: p.devise,
+  });
+  if (Math.round(p.salaireDuBulletin * 100) > Math.round(h.plafond * 100)) return null;
+  const f = (n: number) => n.toFixed(2);
+  return (
+    `Le bulletin n° ${p.numero} de ${p.mois}, émis, paie ${f(p.salaireDuBulletin)} ${p.devise} de salaire, au plus le salaire des jours hors de ce congé (${f(h.plafond)} ${p.devise}) · ` +
+    `il retranche les ${h.retenus} jour(s) de ce congé en ${p.mois}, que l'allocation paie (Code du travail, art. 142). Annulé seul, le congé laisserait ces jours sans salaire ni allocation · ` +
+    `annulez d'abord le bulletin n° ${p.numero}, puis le congé, et réémettez le bulletin de ${p.mois} avec le salaire de ces jours.`
+  );
+}
+
+/**
+ * POURQUOI LA GARDE NE COMPARE RIEN · second tour, point 2. Hors d'un salaire
+ * au mois du contrat, dans la monnaie du bulletin, il n'y a rien de certain à
+ * opposer · la garde se tait, et le DIT. `null` quand elle compare.
+ */
+export function raisonDeLaGardeMuette(
+  contrat: { readonly remunerationBase: unknown; readonly periodiciteRemuneration: string | null; readonly deviseRemuneration: string | null } | null,
+  devise: string,
+): string | null {
+  if (!contrat) return 'aucun contrat ne couvre le mois';
+  if (!contrat.periodiciteRemuneration) return "la périodicité de la rémunération n'est pas renseignée au contrat";
+  if (contrat.periodiciteRemuneration !== 'MOIS') {
+    const quelle = contrat.periodiciteRemuneration === 'JOUR' ? 'à la journée' : contrat.periodiciteRemuneration === 'SEMAINE' ? 'à la semaine' : "à l'année";
+    return `le contrat est payé ${quelle}, pas au mois`;
+  }
+  if (contrat.remunerationBase === null || contrat.remunerationBase === undefined) return "la rémunération n'est pas renseignée au contrat";
+  if (!contrat.deviseRemuneration) return "la monnaie de la rémunération n'est pas renseignée au contrat";
+  if (contrat.deviseRemuneration !== devise) return `le contrat est stipulé en ${contrat.deviseRemuneration}, le bulletin en ${devise}`;
+  return null;
+}
+
+/** L'avertissement de la garde muette · les jours de congé du mois, et pourquoi rien ne les confronte au salaire. */
+export function avertissementGardeMuette(p: {
+  readonly mois: string;
+  readonly conges: readonly CongeDuMois[];
+  readonly raison: string;
+  readonly numero?: number;
+}): string | null {
+  const jours = p.conges.reduce((n, c) => n + c.auMoins, 0);
+  if (jours <= 0) return null;
+  const quels = p.conges
+    .filter((c) => c.auMoins > 0)
+    .map((c) => `du ${c.du} au ${c.au}`)
+    .join(', ');
+  const sujet = p.numero !== undefined ? `Le bulletin n° ${p.numero} de ${p.mois}` : `Le bulletin de ${p.mois}`;
+  return (
+    `${sujet} n'est pas confronté aux ${jours} jour(s) de congé de ce mois (congé ${quels}) · ${p.raison}. ` +
+    `Vérifiez que son salaire ne paie pas ces jours · l'allocation de congé les paie (Code du travail, art. 142).`
   );
 }
 
