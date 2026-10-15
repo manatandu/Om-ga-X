@@ -88,7 +88,7 @@ test('SYSCOHADA · facture et acompte lettrés en partiel en N · reconduits à 
   // L'ÉCRAN · la facture est servie pour son reste, et dit ce que le lettrage en a réglé.
   await page.reload();
   await page.goto('/#/reglements');
-  await page.getByLabel(/^Règlement/).selectOption('CLIENT');
+  await page.getByLabel('Sens du règlement').selectOption('CLIENT');
   await page.getByLabel('Échéances jusqu\'au').fill(jour(N1.dateFin));
   await expect(page.getByText(/déjà réglés dans le lettrage partiel b/)).toBeVisible();
   await page.getByLabel('Journal de trésorerie').selectOption(tresorerie.id);
