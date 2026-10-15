@@ -3166,6 +3166,47 @@ l'art. 154, et c'est DIT. L'imputation se déclare AU FOURNISSEUR « lorsqu'il p
 `LigneOrdreVirement.imputationDeclaree`), sinon la référence de la pièce qui la lui a
 notifiée est exigée (`pieceImputation`, recopiée à la référence de la pièce).
 
+**Ligne sage-l2 · tiers et règlements (2026-10-15).** MODES DE RÈGLEMENT
+(`reglements/modes-reglement.ts`, trente au plus, P_REGLEMENT, intitulé
+unique sans égard à la casse) · sur la fiche du tiers, le modèle de
+règlement et ses échéances, la ligne de saisie et le règlement, où il ne se
+pose que sur le tiers et la trésorerie, jamais sur l'escompte ni l'écart ;
+un paiement d'au moins 1 000 000 FC à un fournisseur hors chèque, virement
+ou carte est AVERTI (O.-L. n° 10/001, art. 59 bis et 74 bis, dès le 27 mai
+2013), jamais refusé · la transaction est la ligne de facture seule, la
+pièce à plusieurs lignes SOUS CONDITION, l'à-nouveau sans facture retrouvée
+NON JUGÉ, les modes que le texte ne nomme pas SOUS RÉSERVE (question au
+suivi) ; un mode mis en sommeil reste admis sur le brouillard qui le
+portait. L'ÉCHÉANCIER DU MODÈLE découpe la ligne de facture en saisie
+(fenêtre des échéances, une par ligne en file, ouverte sur demande, ou
+d'office sur la fiche, par la même règle, échéances nulles écartées) ; la
+ligne retient la date de son échéancier, une pièce sans date le dit, une
+date changée nomme les lignes à revoir ; la pièce ne part pas avant lui, et
+sa réponse ne vaut que pour une ligne encore là, intacte. ESCOMPTE ET ÉCART
+(`reglements/ecart-escompte.ts`) · obtenu D 40 / C 773, accordé D 673 /
+C 41 (au SYCEBNL, le seul 412), chacun avec son compte ; l'écart se tranche
+par le Code civil, Livre III · remise d'un reste client (art. 132) ou
+renonciation au trop-payé fournisseur (art. 133) en charge, 6588 au
+SYSCOHADA, 658 au SYCEBNL, sous `Tenant.seuilEcartReglement` SANS défaut,
+borné à la colonne ; trop-perçu d'un client (art. 252) et fournisseur payé
+en moins (art. 142) REFUSÉS ; aucune ligne de taxe (art. 29, point 1 ;
+décret art. 79), dit. QUALITÉ du tiers, libellé qui ne décide rien ; LIEUX
+DE LIVRAISON d'un client (`LieuLivraison`, un principal, jugé sous un verrou
+du client, que la fusion prend aussi pour les deux clients, un renommé déjà
+pris recevant un rang) ; DUPLICATION vers le formulaire de création, sans
+Numéro Impôt, RIB, documents, lieux, cellule, autorisation aux débits ni
+exclusion des relances, nommés. MODÈLES D'IMPRESSION
+(`tiers/modeles-impression.ts`, F_COMPTETMODELE) · extrait, avis de
+règlement, rappel, choisis sur la fiche dans la zone de leur nature ; le
+modèle HABILLE le document ({document} exigé une fois, tout ce qui est entre
+accolades sans être un jeton admis refusé), jamais il ne le remplace ni n'en
+retire la signature ; il habille relances, relevé et l'avis de règlement
+d'un ordre IMPRIMÉ, qui transmet l'imputation déclarée en payant
+(art. 151). Un mode, un modèle ou un journal retiré entre le contrôle et
+l'écriture rend un 409 qui le nomme (`tiers/reference-retiree.ts`), jamais
+une erreur 500. L'ASSISTANT DE RÈGLEMENT envoie le corps du formulaire, un
+tiers en francs, sans règle propre.
+
 **Virement de fonds (2026-10-09, demande de Manasse).** Traitement > Tiers et
 trésorerie (`virements-fonds/`) · banque ou caisse vers une autre, chacune dans
 SON journal. LE COMPTE DE PASSAGE EST LE 585, JAMAIS LE 581 que la demande
