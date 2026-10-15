@@ -272,7 +272,8 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-vmg-voit',
         question: 'VMG Consulting voit-il les données de mon dossier ?',
         reponse: [
-          'Non. La console de VMG Consulting ne montre d’un dossier que sa fiche commerciale et sa licence ; elle ne lit ni ses écritures, ni ses tiers, ni ses salariés. Sur une installation sur site, VMG Consulting n’a accès à rien.',
+          'VMG Consulting ne consulte pas le contenu de vos dossiers. Ses accès techniques à la base se limitent à la sauvegarde chiffrée de chaque nuit, dont elle détient la clé, à la restauration de contrôle automatique qui l’éprouve et ne rend que des décomptes, et aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres. Sa console ne montre d’un dossier que sa fiche commerciale et sa licence.',
+          'Sur une installation sur site, la base reste sur l’ordinateur de l’entité, et VMG Consulting n’y a pas accès.',
         ],
       },
       {

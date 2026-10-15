@@ -115,6 +115,20 @@ describe('la foire aux questions dit ce que le code fait', () => {
     expect(reponse('q-formules')).toContain('Essentiel (1 dossier, 2 utilisateurs · tenue, états financiers, notes)');
   });
 
+  it('dit la pratique de VMG Consulting sur les données, comme la politique de confidentialité, jamais une impossibilité', () => {
+    // Relecture B1 · la FAQ répondait « Non. » à « VMG voit-il mes données ? »
+    // alors que la sauvegarde de chaque nuit lit toute la base et la
+    // restaure pour contrôle. La réponse dit ce que VMG fait et nomme ses
+    // accès, les mêmes que la politique.
+    const r = reponse('q-vmg-voit');
+    expect(r.startsWith('VMG Consulting ne consulte pas le contenu de vos dossiers.')).toBe(true);
+    expect(r).toContain('la sauvegarde chiffrée de chaque nuit, dont elle détient la clé');
+    expect(r).toContain('la restauration de contrôle automatique');
+    expect(r).toContain('requêtes de maintenance');
+    const politique = lire('src/pages/ConfidentialitePage.tsx').replace(/\s+/g, ' ');
+    expect(politique).toContain('à la restauration de contrôle automatique qui l’éprouve et ne rend que des décomptes');
+  });
+
   it('dit le français, seul, et ne promet aucune autre langue', () => {
     expect(reponse('q-langue')).toContain('En français seulement.');
     expect(reponse('q-langue')).toContain('aucune autre langue n’est proposée');

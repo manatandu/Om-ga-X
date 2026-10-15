@@ -182,8 +182,20 @@ describe('la politique complétée le 15 octobre 2026 (ligne pages-legales)', ()
     expect(deplie).toContain('la liste des cinq dossiers ouverts le plus récemment (nom du dossier, adresse de connexion, date)');
   });
 
-  it('dit que VMG Consulting n’accède pas aux données, et l’article 37', () => {
-    expect(deplie).toContain('VMG Consulting n’accède pas aux données de vos dossiers.');
+  it('dit la PRATIQUE de VMG Consulting et nomme chacun de ses accès techniques que les workflows ouvrent vraiment, et l’article 37', () => {
+    // Relecture « échecs silencieux » de la ligne pages-legales, B1 · la page
+    // disait que VMG « n'accède pas » aux données, quand la sauvegarde de
+    // chaque nuit lit toute la base et la restaure pour contrôle, et qu'une
+    // requête de production la lit aussi. Une impossibilité technique
+    // affirmée à tort est opposable · la page dit ce que VMG fait, et chaque
+    // accès que le dépôt ouvre est nommé à côté de son workflow.
+    expect(deplie).toContain('VMG Consulting ne consulte pas le contenu de vos dossiers.');
+    const sauvegarde = serveur('.github/workflows/sauvegarde-base.yml');
+    expect(sauvegarde).toContain('pg_dump');
+    expect(sauvegarde).toContain('pg_restore');
+    expect(deplie).toContain('Ses accès techniques à la base se limitent à la sauvegarde chiffrée de chaque nuit, dont elle détient la clé, à la restauration de contrôle automatique');
+    expect(serveur('.github/workflows/requetes-production.yml')).toContain('docs/requetes-production-paquet-1.md');
+    expect(deplie).toContain('aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres');
     expect(deplie).toContain('sauf réquisition judiciaire (Code du numérique, article 37)');
   });
 

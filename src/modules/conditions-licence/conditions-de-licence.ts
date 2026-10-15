@@ -285,7 +285,7 @@ export function articlesDesConditions(editeur: IdentiteEditeur = EDITEUR, reclam
           ],
         },
         `Le transfert de données personnelles hors de la République démocratique du Congo reste régi par les articles 201 et 202 du Code du numérique · la politique de confidentialité dit où en est la qualification de sa base juridique.`,
-        `VMG Consulting est tenue à la confidentialité des données qu’elle traite, sauf réquisition judiciaire (${CODE_NUMERIQUE}, art. 37). Sa console d’exploitation ne montre d’un dossier que sa fiche commerciale et sa licence ; elle ne lit ni ses écritures, ni ses tiers, ni ses salariés.`,
+        `VMG Consulting est tenue à la confidentialité des données qu’elle traite, sauf réquisition judiciaire (${CODE_NUMERIQUE}, art. 37). Elle ne consulte pas le contenu des dossiers · ses accès techniques à la base se limitent à la sauvegarde chiffrée, dont elle détient la clé, à la restauration de contrôle automatique qui l’éprouve et ne rend que des décomptes, et aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres. Sa console d’exploitation ne montre d’un dossier que sa fiche commerciale et sa licence.`,
         'À tout moment, et même lorsque le dossier est en lecture seule, l’administrateur du dossier en obtient une copie intégrale par la commande Restituer le dossier complet, et chaque utilisateur en exporte les états et les livres.',
         `Ce que deviennent les données d’un dossier après la fin du contrat, au-delà des obligations légales de conservation · (${A_ARRETER}).`,
       ],

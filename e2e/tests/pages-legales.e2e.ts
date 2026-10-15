@@ -44,7 +44,7 @@ test('sans session, les trois pages s’ouvrent depuis l’écran d’ouverture'
 
   await page.getByRole('link', { name: 'Politique de confidentialité' }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Politique de confidentialité d’OmegaX' })).toBeVisible();
-  await expect(page.getByText('VMG Consulting n’accède pas aux données de vos dossiers.')).toBeVisible();
+  await expect(page.getByText('VMG Consulting ne consulte pas le contenu de vos dossiers.')).toBeVisible();
 
   await page.getByRole('link', { name: 'Retour à l’ouverture du fichier comptable' }).click();
   await expect(page.getByRole('button', { name: 'Ouvrir le dossier' })).toBeVisible();

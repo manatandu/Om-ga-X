@@ -293,13 +293,15 @@ export function ContenuConfidentialite() {
           passe change, qu’un accès est retiré ou qu’un rôle est modifié.
         </P>
         <P>
-          <strong>VMG Consulting n’accède pas aux données de vos dossiers.</strong> Sa console d’exploitation ne
-          montre d’un dossier que sa fiche commerciale et sa licence ; une requête de maintenance sur la base ne
-          rend que des identifiants et des nombres, jamais un montant, un compte, un objet ni un motif ; une
-          correction de dossier se fait par vous, dans votre dossier. Le mot de passe provisoire d’un
-          administrateur, tiré au sort par le serveur, part à sa seule adresse électronique. Le fournisseur de
-          services numériques reste tenu à la confidentialité des données qu’il traite, sauf réquisition judiciaire
-          (Code du numérique, article 37).
+          <strong>VMG Consulting ne consulte pas le contenu de vos dossiers.</strong> Ses accès techniques à la
+          base se limitent à la sauvegarde chiffrée de chaque nuit, dont elle détient la clé, à la restauration de
+          contrôle automatique qui l’éprouve et ne rend que des décomptes et le contrôle de l’équilibre des
+          écritures, et aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres, jamais un
+          montant, un compte, un objet ni un motif. Sa console d’exploitation ne montre d’un dossier que sa fiche
+          commerciale et sa licence ; une correction de dossier se fait par vous, dans votre dossier. Le mot de
+          passe provisoire d’un administrateur, tiré au sort par le serveur, part à sa seule adresse électronique.
+          Le fournisseur de services numériques reste tenu à la confidentialité des données qu’il traite, sauf
+          réquisition judiciaire (Code du numérique, article 37).
         </P>
 
         <Titre>6. Si vos données étaient exposées</Titre>

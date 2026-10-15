@@ -189,6 +189,13 @@ describe('le contrat dit ce que le code fait', () => {
     for (const x of a) expect(x.titre).not.toMatch(/\b(art\.|article)\s*\d|§\s*\d/i);
   });
 
+  it('dit la pratique de VMG Consulting sur les données des dossiers et nomme ses accès techniques, jamais une impossibilité (relecture B1)', () => {
+    const texte = texteBrutDesConditions();
+    expect(texte).toContain('Elle ne consulte pas le contenu des dossiers · ses accès techniques à la base se limitent à la sauvegarde chiffrée');
+    expect(texte).toContain('la restauration de contrôle automatique qui l’éprouve');
+    expect(texte).toContain('aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres');
+  });
+
   it('dit la langue du contrat, le français seul (art. 53, 8°)', () => {
     expect(texteBrutDesConditions()).toContain('langue du contrat · français');
     expect(texteBrutDesConditions()).toContain('en français, seule langue proposée');
