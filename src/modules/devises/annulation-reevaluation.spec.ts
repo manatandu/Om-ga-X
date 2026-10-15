@@ -82,8 +82,12 @@ describe('annuler une réévaluation des devises (D6)', () => {
     await service.annulerReevaluation('t', 'u', 'r1', 'Cours du 31/12 corrigé');
     expect(inscrire).toHaveBeenCalledTimes(1);
     expect(inscrire).toHaveBeenCalledWith('t', 'u', 'ecarts', 'Cours du 31/12 corrigé', tx);
-    expect(tx.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'prov', tenantId: 't' } });
-    expect(tx.ecriture.deleteMany).not.toHaveBeenCalledWith({ where: { id: 'ecarts', tenantId: 't' } });
+    // ENCORE AU BROUILLARD seulement (relecture sage-l6, mineur 8) · jamais l'écriture validée.
+    expect(tx.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'prov', tenantId: 't', statut: StatutEcriture.BROUILLARD } });
+    expect(tx.ligneEcriture.deleteMany).toHaveBeenCalledWith({
+      where: { ecritureId: 'prov', ecriture: { tenantId: 't', statut: StatutEcriture.BROUILLARD } },
+    });
+    expect(tx.ecriture.deleteMany).toHaveBeenCalledTimes(1);
     // M2 · un `update` UNITAIRE, que le journal d'audit relit avant et après.
     const marque = tx.reevaluation.update.mock.calls[0][0];
     expect(marque.where).toEqual({ id: 'r1', tenantId: 't', annuleeLe: null });
@@ -92,6 +96,15 @@ describe('annuler une réévaluation des devises (D6)', () => {
       expect.objectContaining({ role: 'ECARTS', traitement: 'INSCRITE_EN_NEGATIF', negatifId: 'neg-ecarts' }),
       expect.objectContaining({ role: 'PROVISION', traitement: 'SUPPRIMEE' }),
     ]);
+  });
+
+  it('le brouillard validé PENDANT l’annulation · 409 nommé, rien n’est annulé (relecture sage-l6, mineur 8 · AUDCIF art. 22, 2°)', async () => {
+    const { service, tx } = monter({});
+    tx.ecriture.deleteMany.mockResolvedValueOnce({ count: 0 });
+    await expect(service.annulerReevaluation('t', 'u', 'r1', 'motif')).rejects.toThrow(
+      /L'écriture de provision n° .* a été validée ou retirée pendant l'annulation · rien n'est annulé/,
+    );
+    expect(tx.reevaluation.findFirstOrThrow).not.toHaveBeenCalled();
   });
 
   it('avec la contre-passation en N+1 · elle est annulée aussi', async () => {

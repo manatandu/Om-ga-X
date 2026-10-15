@@ -3501,10 +3501,23 @@ export class DevisesService {
         }
         throw e;
       }
+      // ENCORE AU BROUILLARD, une et une seule (relecture « échecs
+      // silencieux » de la ligne sage-l6, mineur 8 · règle M1 d'A7) · lue
+      // avant la transaction, l'écriture a pu être validée entre-temps (lot de
+      // validation, autre poste), et la suppression non filtrée retirait une
+      // écriture entrée au livre-journal, que l'art. 22, 2° de l'AUDCIF rend
+      // irréversible, en détachant ses pièces. Validée, rien ne part (409) ·
+      // l'annulation relancée l'inscrit en négatif.
       for (const f of fait) {
         if (f.traitement !== 'SUPPRIMEE') continue;
-        await tx.ligneEcriture.deleteMany({ where: { ecritureId: f.ecritureId } });
-        await tx.ecriture.deleteMany({ where: { id: f.ecritureId, tenantId } });
+        await tx.ligneEcriture.deleteMany({ where: { ecritureId: f.ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+        const r = await tx.ecriture.deleteMany({ where: { id: f.ecritureId, tenantId, statut: StatutEcriture.BROUILLARD } });
+        if (r.count !== 1) {
+          throw new ConflictException(
+            `L'écriture ${NOMS[f.role as keyof typeof NOMS]} n° ${f.numeroPiece ?? '·'} a été validée ou retirée pendant l'annulation · ` +
+              "rien n'est annulé. Relancez l'annulation · validée, elle s'inscrira en négatif (AUDCIF art. 20, al. 2).",
+          );
+        }
       }
       return tx.reevaluation.findFirstOrThrow({ where: { id: reeval.id, tenantId } });
     });

@@ -885,3 +885,41 @@ describe('Affectation · la forme juridique est celle de l’exercice (art. 182 
     ).rejects.toThrow(/NULLE/);
   });
 });
+
+/**
+ * RELECTURE « ÉCHECS SILENCIEUX » DE LA LIGNE SAGE-L6, MINEUR 8 (règle M1
+ * d'A7). Le statut de l'écriture d'affectation était lu AVANT la
+ * transaction · validée entre-temps (lot de validation, autre poste), elle
+ * partait du livre-journal (AUDCIF art. 22, 2°) avec ses pièces jointes.
+ */
+describe('Affectation · la suppression ne retire que ce qui est ENCORE au brouillard', () => {
+  function monter(compte: number) {
+    const tx = {
+      affectationResultat: { delete: jest.fn().mockResolvedValue({}) },
+      ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      ecriture: { deleteMany: jest.fn().mockResolvedValue({ count: compte }), delete: jest.fn() },
+    };
+    const prisma = {
+      affectationResultat: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'a1', ecriture: { id: 'e-aff', statut: 'BROUILLARD', numeroPiece: 7 } }),
+      },
+      $transaction: jest.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
+    };
+    return { svc: new AffectationService(prisma as unknown as PrismaService, {} as EcritureService), tx };
+  }
+
+  it('au brouillard · la décision et son écriture partent, filtrées sur le statut', async () => {
+    const { svc, tx } = monter(1);
+    await expect(svc.supprimer('t1', 'a1')).resolves.toEqual({ supprime: true });
+    expect(tx.ecriture.deleteMany).toHaveBeenCalledWith({ where: { id: 'e-aff', tenantId: 't1', statut: 'BROUILLARD' } });
+    expect(tx.ligneEcriture.deleteMany).toHaveBeenCalledWith({
+      where: { ecritureId: 'e-aff', ecriture: { tenantId: 't1', statut: 'BROUILLARD' } },
+    });
+    expect(tx.ecriture.delete).not.toHaveBeenCalled();
+  });
+
+  it('validée entre la lecture et la transaction · 409 nommé, rien ne part', async () => {
+    const { svc } = monter(0);
+    await expect(svc.supprimer('t1', 'a1')).rejects.toThrow(/pièce n° 7\) a été validée ou retirée pendant la suppression · rien n'est supprimé/);
+  });
+});

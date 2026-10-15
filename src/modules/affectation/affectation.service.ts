@@ -399,8 +399,21 @@ export class AffectationService {
     await transactionJournalisee(this.prisma, async (tx) => {
       await tx.affectationResultat.delete({ where: { id } });
       if (affectation.ecriture) {
-        await tx.ligneEcriture.deleteMany({ where: { ecritureId: affectation.ecriture.id } });
-        await tx.ecriture.delete({ where: { id: affectation.ecriture.id } });
+        // ENCORE AU BROUILLARD, une et une seule (relecture « échecs
+        // silencieux » de la ligne sage-l6, mineur 8 · règle M1 d'A7) · lu
+        // avant la transaction, le statut a pu passer à validé entre-temps, et
+        // la suppression retirait une écriture du livre-journal (AUDCIF
+        // art. 22, 2°). Rien ne part alors, la décision comprise (409).
+        await tx.ligneEcriture.deleteMany({
+          where: { ecritureId: affectation.ecriture.id, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } },
+        });
+        const r = await tx.ecriture.deleteMany({ where: { id: affectation.ecriture.id, tenantId, statut: StatutEcriture.BROUILLARD } });
+        if (r.count !== 1) {
+          throw new ConflictException(
+            `L'écriture d'affectation (pièce n° ${affectation.ecriture.numeroPiece ?? '·'}) a été validée ou retirée pendant la ` +
+              "suppression · rien n'est supprimé. Validée, elle se corrige par inscription en négatif (AUDCIF art. 20).",
+          );
+        }
       }
     });
     return { supprime: true };
