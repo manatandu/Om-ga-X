@@ -70,6 +70,9 @@ test('SYSCOHADA · le document d’un bien · onglet Documents, la fiche reste m
     `/immobilisations/contreparties-acquisition?compteImmobilisationId=${vehicule.id}`,
   );
   const od = (await appelApi<Array<{ id: string; code: string }>>(page, 'GET', '/journaux')).find((j) => j.code === 'OD')!;
+  // Relecture « échecs silencieux », M1 · un journal numéroté par MOIS, pour
+  // que la date d'acquisition déplacée d'un mois REMPLACE l'écriture.
+  await appelApi(page, 'PATCH', `/journaux/${od.id}`, { numerotation: 'MENSUELLE' });
   const bien = await appelApi<{ id: string }>(page, 'POST', '/immobilisations', {
     compteImmobilisationId: vehicule.id,
     designation: 'Camion D e2e',
@@ -82,6 +85,39 @@ test('SYSCOHADA · le document d’un bien · onglet Documents, la fiche reste m
     journalId: od.id,
     exerciceId: exercice.id,
   });
+  // La facture jointe à l'écriture d'acquisition SUIT l'écriture qui la
+  // remplace · jamais détachée en silence.
+  const acquisitionDe = async () =>
+    (await appelApi<Array<{ id: string; ecritureAcquisitionId: string | null }>>(page, 'GET', '/immobilisations')).find((b) => b.id === bien.id)!
+      .ecritureAcquisitionId!;
+  const ancienne = await acquisitionDe();
+  const facture = await page.evaluate(
+    async ({ api, chemin }) => {
+      const csrf = localStorage.getItem('omegax:csrf') ?? '';
+      const corps = new FormData();
+      corps.append('fichier', new Blob(['%PDF-1.4 facture camion'], { type: 'application/pdf' }), 'Facture camion.pdf');
+      const r = await fetch(api + chemin, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf }, body: corps });
+      return r.status;
+    },
+    { api: API, chemin: `/ecritures/${ancienne}/pieces-jointes` },
+  );
+  expect(facture).toBe(201);
+  const moisSuivant = (() => {
+    const d = new Date(`${exercice.dateDebut.slice(0, 10)}T00:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() + 1, 10);
+    return d.toISOString().slice(0, 10);
+  })();
+  await appelApi(page, 'PATCH', `/immobilisations/${bien.id}`, { dateAcquisition: moisSuivant, dateMiseEnService: moisSuivant });
+  const neuve = await acquisitionDe();
+  expect(neuve).not.toBe(ancienne);
+  const suivies = await appelApi<{ description: string; pieces: Array<{ id: string; nomFichier: string }> }>(page, 'GET', `/ecritures/${neuve}/pieces-jointes`);
+  expect(suivies.pieces.map((p) => p.nomFichier)).toEqual(['Facture camion.pdf']);
+  expect(suivies.description).toContain(moisSuivant.split('-').reverse().join('/'));
+  const detachees = await appelApi<{ pieces: Array<{ nomFichier: string }> }>(page, 'GET', '/pieces-jointes-ecritures/detachees');
+  expect(detachees.pieces.map((p) => p.nomFichier)).not.toContain('Facture camion.pdf');
+  // Retirée au brouillard avant la suite · la suppression de la fiche l'aurait détachée.
+  await appelApi(page, 'DELETE', `/pieces-jointes-ecritures/${suivies.pieces[0].id}`);
+
   await page.goto('/#/immobilisations');
   await page.getByRole('button', { name: 'Fiche', exact: true }).click();
   const fiche = page.getByRole('dialog', { name: 'Fiche · Camion D e2e' });

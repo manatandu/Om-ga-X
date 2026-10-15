@@ -115,9 +115,13 @@ test('SYCEBNL · la pièce se joint au journal, se garde validée, survit à la 
   // La même pièce deux fois sur la même écriture · conflit nommé.
   const doublon = await deposer(page, `/ecritures/${aRetirer.id}/pieces-jointes`, 'Reçu (2).pdf', '%PDF-1.4 reçu');
   expect([doublon.statut, doublon.texte.includes('déjà joint')]).toEqual([409, true]);
-  await appelApi(page, 'DELETE', `/ecritures/${aRetirer.id}`);
+  // Relecture « échecs silencieux », mineurs 1 et 2 · l'écriture corrigée au
+  // brouillard, la description de sa pièce suit ; supprimée, la réponse dit la
+  // pièce détachée.
+  await appelApi(page, 'PATCH', `/ecritures/${aRetirer.id}`, { libelle: 'Recette saisie par erreur (corrigée)' });
+  expect(await appelApi(page, 'DELETE', `/ecritures/${aRetirer.id}`)).toEqual({ supprime: true, piecesDetachees: 1 });
   const detachees = await appelApi<{ pieces: { nomFichier: string; ecritureDecrite: string }[]; total: number }>(page, 'GET', '/pieces-jointes-ecritures/detachees');
-  expect(detachees.pieces.map((p) => [p.nomFichier, p.ecritureDecrite.endsWith('Recette saisie par erreur')])).toEqual([['Reçu.pdf', true]]);
+  expect(detachees.pieces.map((p) => [p.nomFichier, p.ecritureDecrite.endsWith('Recette saisie par erreur (corrigée)')])).toEqual([['Reçu.pdf', true]]);
   await rechargerAuRepos(page);
   await page.getByRole('button', { name: 'Pièces détachées…' }).click();
   const boiteDetachees = page.getByRole('dialog', { name: 'Pièces détachées' });
