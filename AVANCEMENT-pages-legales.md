@@ -47,6 +47,44 @@ Branche de sauvegarde `travail/pages-legales`, partie d'`origin/main` (5e5ebcd).
   `libelles-et-titres.spec.ts`, `ecriture-masquee.spec.ts` ;
   `e2e/tests/pages-legales.e2e.ts` (deux tests, verts en local sous Chromium) ;
   balayage `ecrans.e2e.ts` vert en local dans les deux référentiels.
+- **Relecture « échecs silencieux », premier tour (2026-10-15)** · 1 BLOQUANT,
+  4 MAJEUR, 14 MINEUR, tous corrigés, chacun avec son test.
+  - B1 · politique, FAQ et contrat (art. 9) disent la PRATIQUE · VMG ne
+    consulte pas le contenu des dossiers, ses accès techniques se limitent
+    à la sauvegarde chiffrée (clé détenue par VMG), à sa restauration de
+    contrôle (décomptes seulement) et aux requêtes de maintenance
+    (identifiants et nombres) ; les specs nomment chaque accès à côté de son
+    workflow.
+  - M1 · l'écran envoie le numéro et l'empreinte du texte de SON code ; un
+    texte différent de celui du service n'offre pas l'acceptation et
+    demande de recharger la page ; le serveur refuse (409).
+  - M2 · `empreinte.ts` (SHA-256 pur, les deux côtés), `versions-publiees.ts`
+    et `versions/version-1.ts` (texte archivé mot pour mot, empreinte
+    1a878fe6…c75d), `versions-publiees.spec.ts` (empreinte gelée, générateur
+    = texte archivé, une seule version tant que la bascule n'est pas servie),
+    `Tenant.conditionsLicenceEmpreinte` (migration 20270176000100, diff
+    Prisma sans écart), accusé portant l'empreinte et le texte archivé,
+    versions antérieures téléchargeables. Délais de l'art. 34 modélisés
+    (`delais-article-34.ts`) et tenus par chaque version.
+  - M3 · art. 53, 6°, 16° et 20° écrits « (à arrêter par VMG Consulting) »
+    aux articles 7, 13 et 12, et dans `mentionsAArreter` (neuf mentions).
+  - M4 · en ligne, hors éditeur et démonstration, l'acceptation se ferme
+    sans abonnement (motif nommé) et sur une licence PERPETUEL_SAAS ; une
+    cellule lit l'abonnement de son siège.
+  - Mineurs · chemin de la clôture, Personnaliser réservé à l'administrateur,
+    impression nuancée, lecture seule exacte (impression numérotée du
+    journal refusée, téléchargements ouverts), accusé en erreur au journal
+    avec dossier et version et « Renvoyer l'accusé », auteur absent dit,
+    jour de Kinshasa pour la mise en production, « rien n'est transmis à un
+    tiers », périmètre du journal d'audit, cinq réserves de la restitution,
+    spec nommé, huit heures « par défaut », échec de lecture du rappel dit,
+    accusé sans messagerie dit.
+  - Vérifié · specs touchées serveur (conditions de licence, routes,
+    rôles, restitution, audit, cadratins, règlement intérieur), `npm test`
+    client (267 fichiers, 2 122 tests), `tsc` des deux côtés, `npm run
+    build` serveur, tests navigateur `pages-legales`, `ecrans` (deux
+    référentiels) et `rester-connecte` verts sous Chromium. La suite Jest
+    complète n'a pas été relancée pour ce tour (consigne du coordinateur).
 - **Bloc du § 3, 2026-10-15** · serveur · `tsc` sans erreur, Jest en six
   tranches (884 suites, 12 887 tests ; 21 suites du client qui n'avaient pas
   démarré sous la charge de la machine, quatre tranches en parallèle, rejouées
@@ -61,6 +99,9 @@ Branche de sauvegarde `travail/pages-legales`, partie d'`origin/main` (5e5ebcd).
   déploiement à relire (la ligne touche `src/**` et `prisma/**`).
 - Date de déploiement du SERVEUR dans « À propos » · non servie (seule celle
   de l'interface a une source réelle, le workflow de publication).
+- La bascule d'une version du contrat à la suivante (art. 34) · non servie
+  tant qu'une seule version existe, et `versions-publiees.spec.ts` le tient.
+- Second tour de relecture, le cas échéant.
 
 ## Sources réelles lues (le 2026-10-15)
 
@@ -129,7 +170,23 @@ recopiées au dépôt.
 10. **Durée et fin** · Code civil, art. 33 et 82 ; **droit applicable** · art. 3
     du Code du numérique, Code civil, art. 7.
 11. **Mise en production** · lue sur la chaîne de publication seule, jamais
-    inventée (CLAUDE.md § 9 ter, « À propos » dit ce qui est installé).
+    inventée (CLAUDE.md § 9 ter, « À propos » dit ce qui est installé),
+    au jour de Kinshasa.
+12. **L'offre dit aussi** les modalités de paiement (art. 53, 6°), l'existence
+    ou l'absence d'un droit de rétractation (16°) et les garanties légales
+    (20°) · tant que l'un manque, l'acceptation reste fermée (art. 54, al. 2).
+13. **Pas d'acceptation en ligne sans prix** · art. 53, 5° et art. 55,
+    al. 1er · un dossier en ligne sans abonnement, ni à lui ni à son siège,
+    et une licence perpétuelle hébergée (que le contrat ne décrit pas) ne
+    l'ouvrent pas.
+14. **Une version publiée ne se réécrit pas** (contrat, art. 15 ; art. 53,
+    9°) · texte archivé, empreinte gelée, empreinte enregistrée avec
+    l'acceptation. Compléter une mention « à arrêter » change le texte · c'est
+    PUBLIER UNE VERSION 2, la version 1 restant archivée.
+15. **Les jours ouvrables de l'art. 34** · le Code ne les définit pas ;
+    OmegaX les compte du lundi au vendredi, sans les jours fériés de
+    l'ordonnance n° 23-042, la lecture qui rend le délai le plus long pour
+    l'utilisateur (règle de protection, CLAUDE.md P5).
 
 ## Décisions à prendre par Manasse
 
@@ -168,6 +225,24 @@ recopiées au dépôt.
 18. Date de déploiement du serveur dans « À propos » ; menu « ? » du
     gestionnaire de paie (il n'en a pas aujourd'hui, les pages restent
     publiques depuis l'écran d'ouverture).
+19. Licence perpétuelle hébergée (PERPETUEL_SAAS) · ses conditions et son
+    prix ; le contrat ne connaît que l'abonnement et le sur site, et
+    l'acceptation en ligne de ces dossiers reste fermée.
+20. Modalités de paiement (art. 53, 6°) · les moyens de paiement acceptés.
+21. Droit de rétractation (art. 53, 16°) · son existence ou son absence pour
+    le présent contrat, et ses conditions d'exercice (voir le point 12).
+22. Garanties légales de conformité, des vices cachés et d'éviction (art. 53,
+    20°) · leur énoncé (voir le point 13).
+23. Dossiers d'un paquet Cabinet et anciens dossiers sans abonnement · le
+    rattachement d'un abonnement depuis la console, sans quoi leur
+    acceptation reste fermée.
+24. Compléter les mentions publiera la version 2 · fixer sa date de
+    communication et d'entrée en vigueur (art. 34), et faire coder avant elle
+    la bascule de la version 1 à la 2 (acceptation de la 1 maintenue jusqu'à
+    la prise d'effet de la 2), que `versions-publiees.spec.ts` exige.
+25. Relevé · l'art. 53, 7° (modalités et délais de fourniture du service)
+    n'est pas dans la garde · à relire avec VMG (accès ouvert à la création du
+    dossier, essai).
 
 ## Paragraphe prêt pour CLAUDE.md
 
@@ -178,21 +253,36 @@ recopiées au dépôt.
 > confidentialité sont PUBLICS (écran d'ouverture, cadre imprimable) et
 > ouverts en fenêtre par le menu « ? ». LE CONTRAT EST UN MODULE PUR
 > (`conditions-licence/conditions-de-licence.ts`), une seule rédaction pour
-> l'écran et la pièce jointe, versionnée et datée ; ce que nul texte ne fixe
-> et que VMG n'a pas arrêté s'écrit « (à arrêter par VMG Consulting) »,
-> jamais un blanc. L'ACCEPTATION EN LIGNE (Code du numérique, art. 55, 56)
-> est tenue par le serveur · version, date et auteur sur le dossier, au
-> journal d'audit, accusé à l'écran et courriel portant le texte, par
-> l'administrateur seul ; FERMÉE tant que l'identité de l'éditeur (art. 52),
-> les réclamations (art. 53, 13° et 14°) ou le prix (art. 53, 5°) manquent
-> (art. 54, al. 2), jamais pour le dossier de l'éditeur ni une
-> démonstration ; elle n'interrompt jamais l'accès (art. 30, al. 3). Le
-> logiciel est une œuvre protégée (art. 47 ; ordonnance-loi n° 86-033,
-> art. 1er et 96). La FAQ ne dit un délai que confronté au code
+> l'écran et la pièce jointe ; ce que nul texte ne fixe et que VMG n'a pas
+> arrêté s'écrit « (à arrêter par VMG Consulting) », jamais un blanc. UNE
+> VERSION PUBLIÉE NE SE RÉÉCRIT PAS (contrat, art. 15 ; art. 53, 9°) · son
+> texte est archivé mot pour mot (`versions-publiees.ts`, `versions/`), son
+> empreinte SHA-256 (`empreinte.ts`, pur, les deux côtés) gelée par
+> `versions-publiees.spec.ts`, qui exige que le générateur rende le texte de
+> la version en vigueur · compléter une mention, c'est publier une version
+> nouvelle, aux délais de l'art. 34 (`delais-article-34.ts`, jours ouvrables
+> du lundi au vendredi sans les fériés, la lecture la plus longue), et le
+> spec refuse une seconde version tant que la bascule n'est pas servie.
+> L'ACCEPTATION EN LIGNE (art. 55, 56) est tenue par le serveur · version,
+> EMPREINTE, date et auteur sur le dossier, au journal d'audit, accusé à
+> l'écran et courriel portant le texte archivé, renvoyable sans doublon, par
+> l'administrateur seul ; l'écran envoie le numéro et l'empreinte du texte
+> de SON code, et un texte différent de celui du service demande de
+> recharger la page. FERMÉE tant que l'identité de l'éditeur (art. 52), le
+> paiement, les réclamations, la rétractation ou les garanties légales
+> (art. 53, 6°, 13°, 14°, 16°, 20°) manquent (art. 54, al. 2), et en ligne
+> sans abonnement (une cellule lit celui de son siège) ou sous une licence
+> perpétuelle hébergée (art. 53, 5°) ; jamais pour le dossier de l'éditeur
+> ni une démonstration ; elle n'interrompt jamais l'accès (art. 30, al. 3).
+> Le logiciel est une œuvre protégée (art. 47 ; ordonnance-loi n° 86-033,
+> art. 1er et 96). VMG DIT SA PRATIQUE, jamais une impossibilité · elle ne
+> consulte pas le contenu des dossiers, et chacun de ses accès techniques
+> (sauvegarde, restauration de contrôle, requêtes de maintenance) est nommé
+> à côté de son workflow. La FAQ ne dit un délai que confronté au code
 > (`pages-legales.spec.ts`). « À propos » dit la mise en production de
 > l'interface que la publication pose (`OMEGAX_MISE_EN_PRODUCTION`,
-> `firebase-hosting-merge.yml`), sinon « non renseignée », et la langue
-> (français, seule).
+> `firebase-hosting-merge.yml`, jour de Kinshasa), sinon « non
+> renseignée », et la langue (français, seule).
 
 ## Commandes de vérification
 
@@ -200,7 +290,7 @@ recopiées au dépôt.
 # Serveur (racine)
 npx tsc --noEmit
 npx jest --shard=1/6 --maxWorkers=1 --workerIdleMemoryLimit=800MB   # … jusqu'à 6/6
-npx jest src/modules/conditions-licence
+npx jest src/modules/conditions-licence --maxWorkers=1   # conditions et versions publiées
 npm run build
 npx prisma migrate diff --from-migrations prisma/migrations \
   --to-schema-datamodel prisma/schema.prisma \
