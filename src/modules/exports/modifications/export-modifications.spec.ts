@@ -122,6 +122,7 @@ function nouveauFaux() {
   const registre: Array<Record<string, unknown> & { id: string }> = [];
   const exports: Array<Record<string, unknown> & { id: string; tenantId: string; numero: number }> = [];
   const lecturesDesLignes: Array<Record<string, unknown>> = [];
+  const lecturesDuRegistre: Array<Record<string, unknown>> = [];
   // Appelé après chaque tranche des écritures JAMAIS PARTIES rendue au
   // service · un test y simule un autre poste qui modifie la base pendant
   // l'inventaire (M6, B1), quelle que soit la requête qui lit la tranche.
@@ -135,7 +136,6 @@ function nouveauFaux() {
         const page = paginer(filtrees, args);
         if (args.select) {
           if (args.select._count) throw new Error("`_count` agrège toute la table des lignes (relecture M2) · le service compte par regroupement.");
-          if (args.select.date && !args.select.statut) crochets.surTrancheJamaisParties?.(page.map((e) => ({ id: e.id, date: e.date })));
           return page.map((e) => ({
             id: e.id,
             ...(args.select!.date ? { date: e.date } : {}),
@@ -160,8 +160,10 @@ function nouveauFaux() {
       },
     },
     ecritureExportee: {
-      findMany: async (args: { where: Record<string, unknown>; orderBy?: unknown; take?: number; cursor?: { id: string }; skip?: number }) =>
-        paginer(registre.filter((r) => correspond(r, args.where)), args).map((r) => ({ ...r })),
+      findMany: async (args: { where: Record<string, unknown>; orderBy?: unknown; take?: number; cursor?: { id: string }; skip?: number }) => {
+        lecturesDuRegistre.push(args.where);
+        return paginer(registre.filter((r) => correspond(r, args.where)), args).map((r) => ({ ...r }));
+      },
       deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
         const avant = registre.length;
         for (let i = registre.length - 1; i >= 0; i--) if (correspond(registre[i], where)) registre.splice(i, 1);
@@ -198,24 +200,67 @@ function nouveauFaux() {
     },
     user: { findMany: async () => [{ id: 'u1', email: 'comptable@cabinet.cd' }] },
     $executeRaw: async () => 0,
-    // Le décompte des écritures jamais parties (NOT EXISTS sur le registre),
-    // rejoué sur la doublure · dossier, statut, (date, identifiant) au moins
-    // ceux de la première qui attend.
+    // Les trois lectures par la base, rejouées sur la doublure · une tranche
+    // des écritures jamais parties (anti-jointure sur le registre, après la
+    // clé), leur décompte depuis la première qui attend, et les entrées du
+    // registre parties puis absentes. Les valeurs se lisent dans l'ordre où
+    // la requête les pose.
     $queryRaw: async (morceaux: TemplateStringsArray, ...valeurs: unknown[]) => {
       const texte = morceaux.join('?');
-      if (!texte.includes('NOT EXISTS')) throw new Error('Requête brute non prise en charge par la doublure.');
-      const [dossier, statut, date, idDepuis] = valeurs as [string, Prisma.Sql, Date, string];
-      const brouillardCompris = statut.strings.join('?').includes('<>');
-      const connues = new Set(registre.filter((r) => r.tenantId === dossier).map((r) => r.ecritureId));
-      const n = ecritures.filter(
-        (e) =>
-          e.tenantId === dossier &&
-          !e.estANouveauProvisoire &&
-          (brouillardCompris ? e.statut !== StatutEcriture.SITUATION : e.statut === StatutEcriture.VALIDEE) &&
-          (e.date.getTime() > date.getTime() || (e.date.getTime() === date.getTime() && e.id >= idDepuis)) &&
-          !connues.has(e.id),
-      ).length;
-      return [{ n }];
+      const dansLaPortee = (e: Ecriture, dossier: string, brouillardCompris: boolean) =>
+        e.tenantId === dossier &&
+        !e.estANouveauProvisoire &&
+        e.statut !== StatutEcriture.SITUATION &&
+        (brouillardCompris || e.statut === StatutEcriture.VALIDEE);
+      const jamaisParties = (dossier: string) => {
+        const connues = new Set(registre.filter((r) => r.tenantId === dossier).map((r) => r.ecritureId));
+        return (e: Ecriture) => !connues.has(e.id);
+      };
+      const ordre = (a: Ecriture, b: Ecriture) => a.date.getTime() - b.date.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      if (texte.includes('COUNT(*)')) {
+        const [dossier, , brouillardCompris, , date, idDepuis] = valeurs as [string, string, boolean, string, Date, string];
+        const inconnue = jamaisParties(dossier);
+        const n = ecritures.filter(
+          (e) =>
+            dansLaPortee(e, dossier, brouillardCompris) &&
+            inconnue(e) &&
+            (e.date.getTime() > date.getTime() || (e.date.getTime() === date.getTime() && e.id >= idDepuis)),
+        ).length;
+        return [{ n }];
+      }
+      if (texte.includes('SELECT e."id", e."date"')) {
+        const [dossier, , brouillardCompris, , borne, limite] = valeurs as [string, string, boolean, string, Prisma.Sql, number];
+        const [date, idApres] = borne.values as [Date?, string?];
+        const inconnue = jamaisParties(dossier);
+        const rendues = ecritures
+          .filter(
+            (e) =>
+              dansLaPortee(e, dossier, brouillardCompris) &&
+              inconnue(e) &&
+              (!date || e.date.getTime() > date.getTime() || (e.date.getTime() === date.getTime() && e.id > idApres!)),
+          )
+          .sort(ordre)
+          .slice(0, limite)
+          .map((e) => ({ id: e.id, date: e.date }));
+        crochets.surTrancheJamaisParties?.(rendues);
+        return rendues;
+      }
+      if (texte.includes('FROM "ecritures_exportees" r')) {
+        const [dossier, statut, apres, , limite] = valeurs as [string, string, string, string, number];
+        return registre
+          .filter(
+            (r) =>
+              r.tenantId === dossier &&
+              (r.supprimeeAuNumero === null || r.supprimeeAuNumero === undefined) &&
+              r.statutExporte === statut &&
+              r.id > apres &&
+              !ecritures.some((e) => e.id === r.ecritureId && e.tenantId === dossier && !e.estANouveauProvisoire && e.statut !== StatutEcriture.SITUATION),
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .slice(0, limite)
+          .map((r) => ({ ...r }));
+      }
+      throw new Error('Requête brute non prise en charge par la doublure.');
     },
   };
   prisma.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma);
@@ -249,7 +294,7 @@ function nouveauFaux() {
     return e;
   };
   const retirer = (e: Ecriture) => ecritures.splice(ecritures.indexOf(e), 1);
-  return { service, ajouter, retirer, ecritures, registre, exports, lecturesDesLignes, crochets };
+  return { service, ajouter, retirer, ecritures, registre, exports, lecturesDesLignes, lecturesDuRegistre, crochets };
 }
 
 /** Relit le classeur rangé · les feuilles et leurs lignes, valeurs en texte. */
@@ -475,18 +520,13 @@ describe('export des seules modifications · registre et fichier', () => {
     const f = nouveauFaux();
     // Une tranche pleine (5 000) et deux écritures au-delà.
     for (let i = 0; i < 5002; i++) f.ajouter({ date: `2026-01-${String(1 + (i % 28)).padStart(2, '0')}` });
-    const prisma = (f.service as unknown as { prisma: { ecriture: { findMany: (a: { select?: Record<string, unknown> }) => Promise<Array<{ id: string }>> } } }).prisma;
-    const lire = prisma.ecriture.findMany;
     let premiere = true;
-    prisma.ecriture.findMany = async (a) => {
-      const rendues = await lire(a);
+    f.crochets.surTrancheJamaisParties = (rendues) => {
       // Après la PREMIÈRE tranche des écritures jamais parties, sa dernière
       // écriture est retirée (brouillard supprimé pendant la lecture).
-      if (premiere && a.select?.date && !a.select?.statut && rendues.length > 0) {
-        premiere = false;
-        f.retirer(f.ecritures.find((e) => e.id === rendues[rendues.length - 1].id)!);
-      }
-      return rendues;
+      if (!premiere || rendues.length === 0) return;
+      premiere = false;
+      f.retirer(f.ecritures.find((e) => e.id === rendues[rendues.length - 1].id)!);
     };
     const apercu = await f.service.apercu(DOSSIER, true);
     // La pièce retirée était déjà lue (l'export, lui, la saute à l'écriture
@@ -495,6 +535,32 @@ describe('export des seules modifications · registre et fichier', () => {
     // l'aperçu disait 5 000, deux pièces jamais parties tues.
     expect(apercu.nouvelles).toBe(5002);
     expect(premiere).toBe(false);
+  });
+
+  it('l’aperçu ne relit que le brouillard parti, et ne compte que les lignes des pièces jamais parties (mineur 1)', async () => {
+    const f = nouveauFaux();
+    for (let i = 1; i <= 6; i++) f.ajouter({ date: `2026-01-0${i}` });
+    f.ajouter({ date: '2026-01-07', statut: StatutEcriture.BROUILLARD });
+    const retiree = f.ajouter({ date: '2026-01-07', statut: StatutEcriture.BROUILLARD });
+    await f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true);
+    f.retirer(retiree);
+    const nouvelle = f.ajouter({ date: '2026-01-08' });
+    f.lecturesDesLignes.length = 0;
+    f.lecturesDuRegistre.length = 0;
+    const apercu = await f.service.apercu(DOSSIER, true);
+    expect(apercu).toMatchObject({ nouvelles: 1, modifiees: 0, supprimees: 1 });
+    // Le regroupement des lignes ne porte que sur la pièce jamais partie · il
+    // portait sur les huit pièces du dossier, envoyées comprises.
+    expect(f.lecturesDesLignes.map((w) => (w.ecritureId as { in: string[] }).in)).toEqual([[nouvelle.id]]);
+    // Le registre ne se relit que pour le brouillard parti · il se relisait
+    // en entier, validées comprises, à chaque aperçu.
+    expect(f.lecturesDuRegistre.length).toBeGreaterThan(0);
+    for (const w of f.lecturesDuRegistre) expect(w).toMatchObject({ tenantId: DOSSIER, supprimeeAuNumero: null, statutExporte: StatutEcriture.BROUILLARD });
+    // L'export complet, lui, relit tout le registre, statut par statut.
+    f.lecturesDuRegistre.length = 0;
+    const complet = await f.service.inventaire(DOSSIER, ModeExportEcritures.COMPLET, true);
+    expect(complet.renvoyees).toBe(7);
+    expect(new Set(f.lecturesDuRegistre.map((w) => w.statutExporte))).toEqual(new Set(Object.values(StatutEcriture)));
   });
 
   it('une pièce jamais partie dont la date avance pendant l’inventaire est retenue UNE fois, et part une fois (B1)', async () => {

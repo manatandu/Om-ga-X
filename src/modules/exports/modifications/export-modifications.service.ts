@@ -3,8 +3,8 @@ import { ModeExportEcritures, Prisma, StatutEcriture } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../../common/prisma.service';
 import { transactionJournalisee } from '../../../common/audit/transaction-journalisee';
-import { LOT_LECTURE, apresLaCle, idApres } from '../../../common/lecture-par-lots';
-import { HORS_SITUATION, filtreDuStatut, libelleDuStatut } from '../../comptabilite/ecritures-de-situation';
+import { LOT_LECTURE, idApres } from '../../../common/lecture-par-lots';
+import { HORS_SITUATION, libelleDuStatut } from '../../comptabilite/ecritures-de-situation';
 import { ExportService } from '../export.service';
 import { LOT_EXPORT, MAX_LIGNES_EXPORT, attendreLeTuyau, segmentIdentification } from '../classeur-en-flux';
 import { produireEnMemoire } from '../fichier-en-memoire';
@@ -224,86 +224,78 @@ export class ExportModificationsService {
     const dernierNumero = dernier._max.numero ?? null;
     const complet = mode === ModeExportEcritures.COMPLET;
     const dejaParties: Candidat[] = [];
-    const supprimees: EntreeSupprimee[] = [];
     let brouillardModifieHorsPortee = 0;
 
-    // (1) LE REGISTRE, par tranches, PAR LA CLÉ (`idApres`) · un export rangé
-    // pendant cette lecture remplace des entrées (retirées puis recréées), et
-    // le curseur de Prisma posé sur une entrée retirée rendait une tranche
-    // vide, l'inventaire s'arrêtant sans un mot (relecture M6).
-    let curseur: string | undefined;
-    for (;;) {
-      const lot = await this.prisma.ecritureExportee.findMany({
-        where: { tenantId, supprimeeAuNumero: null, ...idApres(curseur) },
-        select: {
-          id: true,
-          ecritureId: true,
-          numeroExport: true,
-          statutExporte: true,
-          empreinte: true,
-          date: true,
-          journalCode: true,
-          piece: true,
-          libelle: true,
-        },
-        orderBy: { id: 'asc' },
-        take: LOT_LECTURE,
-      });
-      if (lot.length === 0) break;
-      const presentes = await this.prisma.ecriture.findMany({
-        where: { tenantId, id: { in: lot.map((r) => r.ecritureId) }, estANouveauProvisoire: false, ...HORS_SITUATION },
-        select: { id: true, statut: true },
-      });
-      const statutPresent = new Map(presentes.map((e) => [e.id, e.statut]));
-      // Ce qui se relit · une écriture partie au brouillard, toujours (elle a pu
-      // changer, ou être validée) ; une partie validée, seulement quand
-      // l'export complet la renvoie (art. 22, 2° · elle ne change plus).
-      const aRelire: string[] = [];
-      // Hors de la portée (brouillard non compris), une pièce partie au
-      // brouillard n'est ni portée ni redite · mais si elle a CHANGÉ depuis son
-      // envoi, la receveuse tient une version périmée, et le nombre se dit à
-      // l'aperçu et au récapitulatif (relecture m8).
-      const horsPortee: string[] = [];
-      for (const r of lot) {
-        const statut = statutPresent.get(r.ecritureId);
-        if (statut === undefined) {
-          supprimees.push({
-            ecritureId: r.ecritureId,
-            numeroExport: r.numeroExport,
-            date: r.date,
-            journalCode: r.journalCode,
-            piece: r.piece,
-            libelle: r.libelle,
-          });
-          continue;
+    // (1) LE REGISTRE, CE QUI SE RELIT, par tranches et PAR LA CLÉ
+    // (`idApres` · un export rangé pendant cette lecture remplace des entrées,
+    // et le curseur de Prisma posé sur une entrée retirée rendait une tranche
+    // vide, relecture M6). Une pièce partie au brouillard se relit toujours
+    // (elle a pu changer, ou être validée) ; une partie validée, seulement
+    // quand l'export complet la renvoie (art. 22, 2° · elle ne change plus).
+    // L'export des modifications ne lit donc que les entrées du brouillard
+    // (relecture TypeScript, mineur 1 · il relisait tout le registre à chaque
+    // aperçu), statut par statut, chacun servi par l'index (dossier,
+    // suppression, statut, identifiant) dans l'ordre de la clé. Les
+    // supprimées se lisent à part, par la base (2).
+    const statutsARelire = complet ? Object.values(StatutEcriture) : [StatutEcriture.BROUILLARD];
+    for (const statutExporte of statutsARelire) {
+      let curseur: string | undefined;
+      for (;;) {
+        const lot = await this.prisma.ecritureExportee.findMany({
+          where: { tenantId, supprimeeAuNumero: null, statutExporte, ...idApres(curseur) },
+          select: { id: true, ecritureId: true, numeroExport: true, statutExporte: true, empreinte: true },
+          // L'ordre de l'INDEX entier, colonnes à égalité comprises · « par
+          // l'identifiant » seul, PostgreSQL ne lit pas `IS NULL` comme une
+          // égalité, triait chaque tranche ou parcourait la clé primaire de
+          // tous les cabinets (vu au plan d'exécution, 400 000 entrées).
+          orderBy: [{ tenantId: 'asc' }, { supprimeeAuNumero: 'asc' }, { statutExporte: 'asc' }, { id: 'asc' }],
+          take: LOT_LECTURE,
+        });
+        if (lot.length === 0) break;
+        const presentes = await this.prisma.ecriture.findMany({
+          where: { tenantId, id: { in: lot.map((r) => r.ecritureId) }, estANouveauProvisoire: false, ...HORS_SITUATION },
+          select: { id: true, statut: true },
+        });
+        const statutPresent = new Map(presentes.map((e) => [e.id, e.statut]));
+        const aRelire: string[] = [];
+        // Hors de la portée (brouillard non compris), une pièce partie au
+        // brouillard n'est ni portée ni redite · mais si elle a CHANGÉ depuis
+        // son envoi, la receveuse tient une version périmée, et le nombre se
+        // dit à l'aperçu et au récapitulatif (relecture m8).
+        const horsPortee: string[] = [];
+        for (const r of lot) {
+          const statut = statutPresent.get(r.ecritureId);
+          // Absente · une supprimée, que la lecture (2) nomme.
+          if (statut === undefined) continue;
+          if (!inclureBrouillard && statut === StatutEcriture.BROUILLARD) horsPortee.push(r.ecritureId);
+          else aRelire.push(r.ecritureId);
         }
-        if (!inclureBrouillard && statut === StatutEcriture.BROUILLARD) {
-          horsPortee.push(r.ecritureId);
-          continue;
+        const parId = new Map(lot.map((r) => [r.ecritureId, r]));
+        const entreeDe = (id: string): EntreeRegistre => {
+          const r = parId.get(id)!;
+          return { numeroExport: r.numeroExport, statutExporte: r.statutExporte, empreinte: r.empreinte };
+        };
+        for (let i = 0; i < aRelire.length; i += LOT_EXPORT) {
+          for (const e of await this.contenus(tenantId, aRelire.slice(i, i + LOT_EXPORT))) {
+            const entree = entreeDe(e.id);
+            const mouvement = mouvementDe(entree, empreinteEcriture(versEchange(e)));
+            if (mouvement === 'RENVOYEE' && !complet) continue;
+            dejaParties.push({ id: e.id, date: e.date, lignes: e.lignes.length, entree, mouvement });
+          }
         }
-        if (complet || r.statutExporte === StatutEcriture.BROUILLARD) aRelire.push(r.ecritureId);
+        for (let i = 0; i < horsPortee.length; i += LOT_EXPORT) {
+          for (const e of await this.contenus(tenantId, horsPortee.slice(i, i + LOT_EXPORT))) {
+            if (mouvementDe(entreeDe(e.id), empreinteEcriture(versEchange(e))) === 'MODIFIEE') brouillardModifieHorsPortee++;
+          }
+        }
+        if (lot.length < LOT_LECTURE) break;
+        curseur = lot[lot.length - 1].id;
       }
-      const parId = new Map(lot.map((r) => [r.ecritureId, r]));
-      const entreeDe = (id: string): EntreeRegistre => {
-        const r = parId.get(id)!;
-        return { numeroExport: r.numeroExport, statutExporte: r.statutExporte, empreinte: r.empreinte };
-      };
-      for (let i = 0; i < aRelire.length; i += LOT_EXPORT) {
-        for (const e of await this.contenus(tenantId, aRelire.slice(i, i + LOT_EXPORT))) {
-          const entree = entreeDe(e.id);
-          const mouvement = mouvementDe(entree, empreinteEcriture(versEchange(e)));
-          if (mouvement === 'RENVOYEE' && !complet) continue;
-          dejaParties.push({ id: e.id, date: e.date, lignes: e.lignes.length, entree, mouvement });
-        }
-      }
-      for (let i = 0; i < horsPortee.length; i += LOT_EXPORT) {
-        for (const e of await this.contenus(tenantId, horsPortee.slice(i, i + LOT_EXPORT))) {
-          if (mouvementDe(entreeDe(e.id), empreinteEcriture(versEchange(e))) === 'MODIFIEE') brouillardModifieHorsPortee++;
-        }
-      }
-      if (lot.length < LOT_LECTURE) break;
-      curseur = lot[lot.length - 1].id;
     }
+
+    // (2) LES SUPPRIMÉES · parties, et absentes aujourd'hui · lues par la base
+    // (anti-jointure), jamais en relisant le registre entier (mineur 1).
+    const supprimees = await this.supprimeesDepuisLeurEnvoi(tenantId);
 
     // Le budget de lignes · modifications (et renvois de l'export complet) d'abord.
     dejaParties.sort((a, b) => a.date.getTime() - b.date.getTime() || a.id.localeCompare(b.id));
@@ -326,13 +318,13 @@ export class ExportModificationsService {
       lignes += c.lignes;
     }
 
-    // (2) LES ÉCRITURES JAMAIS PARTIES, dans l'ordre des dates, par tranches
-    // et PAR LA CLÉ (date, identifiant · `apresLaCle`, relecture M6) · le
-    // registre est interrogé tranche par tranche, jamais tenu en mémoire. Les
-    // lignes se comptent par un regroupement sur les SEULES écritures de la
-    // tranche · `_count` faisait agréger toute la table des lignes, tous
-    // cabinets confondus, à chaque tranche (relecture M2).
-    const portee = { tenantId, estANouveauProvisoire: false, ...filtreDuStatut(inclureBrouillard) };
+    // (3) LES ÉCRITURES JAMAIS PARTIES, dans l'ordre des dates, par tranches
+    // et PAR LA CLÉ (date, identifiant), lues par la base · une anti-jointure
+    // sur le registre ne rend que les inconnues (mineur 1 · chaque tranche
+    // lisait toutes les écritures du dossier, puis le registre pour les
+    // écarter), et leurs lignes se comptent par un regroupement sur ELLES
+    // SEULES (`_count` faisait agréger toute la table des lignes, tous
+    // cabinets confondus, relecture M2).
     let derniere: { date: Date; id: string } | undefined;
     let premiereEnAttente: { date: Date; id: string } | undefined;
     // UNE ÉCRITURE SE RETIENT UNE FOIS (relecture TypeScript, B1) · la clé de
@@ -341,30 +333,20 @@ export class ExportModificationsService {
     // revient dans une tranche suivante. Retenue deux fois, elle partait deux
     // fois sous la même clé de pièce, toutes deux « Nouvelle », et l'import
     // les fondait en UNE pièce aux montants doublés, équilibrée donc admise.
+    // Une pièce dont la date RECULE, ou qui naît pendant la lecture, attend
+    // l'export suivant, comme toute saisie concurrente.
     const vues = new Set<string>(dejaParties.map((c) => c.id));
     for (;;) {
-      const lot = await this.prisma.ecriture.findMany({
-        where: derniere
-          ? { AND: [{ ...portee, tenantId }, apresLaCle([{ champ: 'date', valeur: derniere.date }, { champ: 'id', valeur: derniere.id }])] }
-          : { ...portee, tenantId },
-        select: { id: true, date: true },
-        orderBy: [{ date: 'asc' }, { id: 'asc' }],
-        take: LOT_LECTURE,
-      });
+      const lot = await this.jamaisPartiesApres(tenantId, inclureBrouillard, derniere);
       if (lot.length === 0) break;
-      const ids = lot.map((e) => e.id);
-      const [connues, comptes] = await Promise.all([
-        this.prisma.ecritureExportee.findMany({ where: { tenantId, ecritureId: { in: ids } }, select: { ecritureId: true } }),
-        this.prisma.ligneEcriture.groupBy({
-          by: ['ecritureId'],
-          where: { ecritureId: { in: ids }, ecriture: { tenantId, ...HORS_SITUATION } },
-          _count: { _all: true },
-        }),
-      ]);
-      const dejaConnues = new Set(connues.map((c) => c.ecritureId));
+      const comptes = await this.prisma.ligneEcriture.groupBy({
+        by: ['ecritureId'],
+        where: { ecritureId: { in: lot.map((e) => e.id) }, ecriture: { tenantId, ...HORS_SITUATION } },
+        _count: { _all: true },
+      });
       const lignesDe = new Map(comptes.map((c) => [c.ecritureId, c._count._all]));
       for (const e of lot) {
-        if (dejaConnues.has(e.id) || vues.has(e.id)) continue;
+        if (vues.has(e.id)) continue;
         vues.add(e.id);
         const n = lignesDe.get(e.id) ?? 0;
         // Une écriture ne se coupe jamais · celle qui ne tient plus sous le
@@ -413,25 +395,87 @@ export class ExportModificationsService {
   }
 
   /**
+   * Une tranche des écritures JAMAIS PARTIES de la portée, après la clé
+   * (date, identifiant), dans l'ordre des dates · anti-jointure sur le
+   * registre (NOT EXISTS), servie par son index unique (dossier, écriture).
+   * Ni à-nouveau provisoire, ni situation, brouillard selon le choix · le
+   * statut écrit en clair dans la requête, comme le filet des lectures le
+   * relit (`lectures-hors-situation.spec.ts`).
+   */
+  private async jamaisPartiesApres(
+    tenantId: string,
+    inclureBrouillard: boolean,
+    apres: { date: Date; id: string } | undefined,
+  ): Promise<Array<{ id: string; date: Date }>> {
+    const borne = apres ? Prisma.sql`AND (e."date", e."id") > (${apres.date}, ${apres.id})` : Prisma.empty;
+    const lot = await this.prisma.$queryRaw`
+      SELECT e."id", e."date" FROM "ecritures" e
+      WHERE e."tenantId" = ${tenantId}
+        AND e."estANouveauProvisoire" = false
+        AND e."statut"::text <> ${StatutEcriture.SITUATION}
+        AND (${inclureBrouillard} OR e."statut"::text = ${StatutEcriture.VALIDEE})
+        ${borne}
+        AND NOT EXISTS (
+          SELECT 1 FROM "ecritures_exportees" r WHERE r."tenantId" = e."tenantId" AND r."ecritureId" = e."id"
+        )
+      ORDER BY e."date", e."id"
+      LIMIT ${LOT_LECTURE}`;
+    return lot as Array<{ id: string; date: Date }>;
+  }
+
+  /**
    * Les écritures JAMAIS PARTIES de la portée, à partir de `depuis` compris,
    * dans l'ordre des dates · comptées par la base (NOT EXISTS sur le
    * registre), jamais en lisant la suite (relecture M2). Même portée que la
-   * lecture · ni à-nouveau provisoire, ni situation, brouillard selon le choix.
+   * lecture.
    */
   private async jamaisPartiesDepuis(tenantId: string, inclureBrouillard: boolean, depuis: { date: Date; id: string }): Promise<number> {
-    const statut = inclureBrouillard
-      ? Prisma.sql`e."statut"::text <> ${StatutEcriture.SITUATION}`
-      : Prisma.sql`e."statut"::text = ${StatutEcriture.VALIDEE}`;
-    const [ligne] = await this.prisma.$queryRaw<{ n: number }[]>`
+    const lignes = await this.prisma.$queryRaw`
       SELECT COUNT(*)::int AS "n" FROM "ecritures" e
       WHERE e."tenantId" = ${tenantId}
         AND e."estANouveauProvisoire" = false
-        AND ${statut}
+        AND e."statut"::text <> ${StatutEcriture.SITUATION}
+        AND (${inclureBrouillard} OR e."statut"::text = ${StatutEcriture.VALIDEE})
         AND (e."date", e."id") >= (${depuis.date}, ${depuis.id})
         AND NOT EXISTS (
           SELECT 1 FROM "ecritures_exportees" r WHERE r."tenantId" = e."tenantId" AND r."ecritureId" = e."id"
         )`;
-    return ligne?.n ?? 0;
+    return (lignes as Array<{ n: number }>)[0]?.n ?? 0;
+  }
+
+  /**
+   * Les entrées du registre PARTIES et ABSENTES aujourd'hui (brouillard
+   * retiré), pas encore dites supprimées · anti-jointure sur les écritures
+   * (même portée que la relecture · ni à-nouveau provisoire, ni situation),
+   * statut par statut et par la clé de l'entrée, dans l'ordre de l'index
+   * (dossier, suppression, statut, identifiant) · la lecture ne parcourt que
+   * le registre du dossier, jamais la clé primaire de tous les cabinets.
+   */
+  private async supprimeesDepuisLeurEnvoi(tenantId: string): Promise<EntreeSupprimee[]> {
+    const supprimees: EntreeSupprimee[] = [];
+    for (const statutExporte of Object.values(StatutEcriture)) {
+      let apres = '';
+      for (;;) {
+        const lot = (await this.prisma.$queryRaw`
+          SELECT r."id", r."ecritureId", r."numeroExport", r."date", r."journalCode", r."piece", r."libelle"
+          FROM "ecritures_exportees" r
+          WHERE r."tenantId" = ${tenantId} AND r."supprimeeAuNumero" IS NULL
+            AND r."statutExporte" = CAST(${statutExporte} AS "StatutEcriture") AND r."id" > ${apres}
+            AND NOT EXISTS (
+              SELECT 1 FROM "ecritures" e
+              WHERE e."id" = r."ecritureId" AND e."tenantId" = r."tenantId"
+                AND e."estANouveauProvisoire" = false AND e."statut"::text <> ${StatutEcriture.SITUATION}
+            )
+          ORDER BY r."tenantId", r."supprimeeAuNumero", r."statutExporte", r."id"
+          LIMIT ${LOT_LECTURE}`) as Array<EntreeSupprimee & { id: string }>;
+        for (const r of lot) {
+          supprimees.push({ ecritureId: r.ecritureId, numeroExport: r.numeroExport, date: r.date, journalCode: r.journalCode, piece: r.piece, libelle: r.libelle });
+        }
+        if (lot.length < LOT_LECTURE) break;
+        apres = lot[lot.length - 1].id;
+      }
+    }
+    return supprimees;
   }
 
   /**

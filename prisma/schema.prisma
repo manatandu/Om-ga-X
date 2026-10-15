@@ -10852,7 +10852,8 @@ model EcritureExportee {
   supprimeeAuNumero Int?
 
   @@unique([tenantId, ecritureId])
-  @@index([tenantId, supprimeeAuNumero, statutExporte])
+  /// La relecture du registre, statut par statut, dans l'ordre de la clé.
+  @@index([tenantId, supprimeeAuNumero, statutExporte, id], map: "ecritures_exportees_a_relire_idx")
   @@map("ecritures_exportees")
 }
 

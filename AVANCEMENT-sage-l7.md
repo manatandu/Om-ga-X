@@ -297,6 +297,24 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   refusé), ensemble des pièces écrites, confrontation au décompte avant la
   ligne des totaux · 409 nommé, téléchargement coupé, impression différée
   échouée.
+- **Mineur 1 · l'inventaire relisait tout le dossier à chaque aperçu.** Les
+  écritures jamais parties se lisent par une anti-jointure sur le registre
+  (NOT EXISTS, par tranches, clé (date, identifiant)), et le regroupement
+  des lignes ne porte que sur elles ; les supprimées par une anti-jointure
+  sur les écritures, statut par statut ; le registre ne se relit que pour
+  le brouillard parti (tout, statut par statut, à l'export complet). Index
+  du registre prolongé de l'identifiant (`ecritures_exportees_a_relire_idx`,
+  migration `20270182000500`, `migrate diff` sans écart) et lectures
+  rangées dans l'ordre ENTIER de l'index · PostgreSQL ne lit pas `IS NULL`
+  comme une égalité, et « par l'identifiant » seul triait la tranche ou
+  parcourait la clé primaire de tous les cabinets. Plans relus sur base
+  jetable à 400 000 entrées · supprimées en parcours d'index ordonné et
+  anti-jointure par boucle (5 000 en 14 ms) ; relecture du brouillard par
+  l'index (tri d'une tranche de 5 000 choisi par le coût, parcours ordonné
+  sans tri à 90 000). Les écritures jamais parties restent une lecture du
+  dossier par la base (aucun index (dossier, date, identifiant)), une seule
+  tranche quand l'envoi est à jour · dit, non changé. Le statut est écrit
+  en clair dans chaque requête brute, comme le filet le relit.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
