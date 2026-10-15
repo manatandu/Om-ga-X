@@ -239,19 +239,79 @@ les trois fichiers sans colonne exigée manquante.
 
 ## Questions à Manasse
 
-(aucune encore)
+- Aucune question de droit · L7-1 à L7-4 sont tranchées par les textes lus,
+  L7-5 (sélections au dossier) est un choix d'organisation d'OmegaX qu'aucun
+  texte ne régit · à revoir s'il préfère des sélections propres à chaque
+  utilisateur.
+- À savoir · Cloud Run n'alloue le processeur que pendant les requêtes (le
+  déploiement ne demande pas l'inverse) ; l'impression différée se produit
+  donc DANS une requête que la fenêtre relance. Une demande faite puis la
+  fenêtre fermée avant que la requête ne parte attend la prochaine
+  ouverture de la fenêtre ; si une production « à fond de cale », sans
+  fenêtre ouverte, est voulue, il faudrait un processeur alloué en
+  permanence (`--no-cpu-throttling`) ou une tâche planifiée · décision
+  d'exploitation, non prise ici.
+- À savoir · les fichiers des exports et des impressions différées sont
+  rangés en base (Neon) · le retrait du fichier d'une impression est servi,
+  celui d'un export des modifications ne l'est pas (sa pièce est celle que
+  la receveuse cite) ; le volume reste à surveiller.
 
 ## Pour CLAUDE.md
 
-(à écrire en fin de ligne)
+**Ligne sage-l7 · éditions et exports (2026-10-15).** EXPORT DES SEULES
+MODIFICATIONS (fonction 99, Fichier > Exporter les modifications,
+`exports/modifications/`) · numéro continu par dossier, date, auteur et
+empreinte SHA-256 du fichier, gardé en base et retéléchargeable (AUDCIF
+art. 22, 7°) ; un REGISTRE par écriture partie (`EcritureExportee`, SANS clé
+étrangère · une écriture du brouillard retirée y laisse sa trace) ; part ce
+qui n'est jamais parti, le brouillard modifié depuis son envoi (« Modifiée ·
+remplace l'envoi n° k »), et les retraits, nommés sur la feuille
+« Supprimées » ; « modifiée » se lit sur l'origine, le contenu et
+l'imputation (art. 22, 1°), jamais le lettrage ni le pointage, et une
+écriture validée ne change plus (art. 22, 2°) · partie validée, elle ne
+repart pas, sa correction en négatif part comme une écriture nouvelle
+(décisions L7-3, L7-4). Ni simulation ni à-nouveau provisoire. Au-delà du
+plafond, par lots dans l'ordre des dates, ce qui attend dit ; le complet
+refusé plutôt qu'amputé ; un export vide ne prend aucun numéro ; deux
+exports concurrents, 409. Feuille « Écritures » relue par l'import des
+écritures (en-tête en ligne 1, une pièce par écriture, identifiant et
+mouvement en colonnes · la porte de la fonction 102). JAMAIS `exports` COMME
+NOM DE VARIABLE dans un fichier qui exporte · compilé en CommonJS, il masque
+celui du module (500 au premier serveur réel, vert sous les tests).
+IMPRESSION DIFFÉRÉE (fonction 59, Fichier > Impressions différées,
+`exports/impression-differee/`) · journal, grand livre ou balance demandés
+maintenant, numérotés et datés, produits par le moteur de leur export et sous
+son plafond (`produireEnMemoire`, tout ou rien), retrouvés plus tard ; un
+refus ou une panne rend la demande ÉCHOUÉE, motif dit, jamais un fichier
+partiel ; une à la fois par dossier ; produite DANS une requête (Cloud Run
+n'alloue le processeur que pendant les requêtes), la fenêtre relançant
+`traiter` ; au-delà de trente minutes une production tombée est déclarée
+interrompue, et un processus qui finit après ne range rien (relu
+`FOR UPDATE`) ; le journal entier produit s'enregistre comme imprimé au nom
+du demandeur ; le fichier se retire, la demande reste (décision L7-2).
+SÉLECTIONS ENREGISTRÉES (`exports/selections/`) · au DOSSIER, jamais au
+poste (décision L7-5), critères relus clé par clé, jamais l'exercice, un
+journal retiré dit au rappel ; filtres du journal et formulaire des
+impressions différées. MODÈLES D'ÉDITION ET SAUTS (`exports/modeles-edition/`)
+· les ÉDITIONS DE TRAVAIL seules (plan comptable, plan des tiers, plan
+analytique) · jamais un état financier (AUDCIF Titre IX ch. 2, contexture à
+l'identique) ni un livre obligatoire (art. 20, al. 1, sans blanc ; art. 22,
+1°) (décision L7-1) ; les colonnes qui identifient la ligne ne se retirent
+pas, les autres se taisent dans l'ordre de l'édition ; le saut sépare les
+groupes (classe, type de tiers, rubrique) par une ligne blanche ou une page,
+l'en-tête repris ; catalogue tenu en MIROIR serveur et écran.
 
 ## Pour build-log.md
 
-(à écrire en fin de ligne)
+| 99 | 2026-10-15 | L7 | fait | rien au périmètre · la reprise par l'expert-comptable (n° 102, L9) n'est pas faite, sa porte reste ouverte (identifiant et mouvement de chaque écriture, feuille des supprimées, fichier relu par l'import) | dire un retrait sans clé étrangère vers l'écriture ; décider ce que « modifiée » veut dire d'une écriture validée (art. 22, 1° et 2°) ; une variable `exports` qui masquait le module compilé, vue au seul serveur réel |
+| 59 | 2026-10-15 | L7 | fait | rien au périmètre | trancher ce qui se personnalise (états financiers et livres obligatoires exclus) ; produire dans une requête parce que Cloud Run n'alloue le processeur que pendant les requêtes, avec l'interruption d'une production tombée ; la barre du plan comptable qui sortait de l'écran à 390 px |
 
 ## Pour features.csv
 
-(à écrire en fin de ligne)
+```
+59,"Modèles d'édition, sauts de ligne ou de page, impression différée, sélections enregistrées",M2-34 M1-27 M1-50 M1-68 M10-62 M1-132 M8-57,L7,should,yes,"modèles et sauts des éditions de travail (jamais états financiers ni livres obligatoires) ; impression différée numérotée, produite par le moteur de l'export, jamais partielle ; sélections au dossier"
+99,Export des seules modifications depuis le dernier export,M8-38,L7,should,yes,"export numéroté, fichier gardé et empreinte ; registre par écriture, retraits nommés, brouillard modifié renvoyé ; relu par l'import"
+```
 
 ## Commandes de vérification
 
