@@ -47,6 +47,11 @@ Branche de sauvegarde `travail/pages-legales`, partie d'`origin/main` (5e5ebcd).
   `libelles-et-titres.spec.ts`, `ecriture-masquee.spec.ts` ;
   `e2e/tests/pages-legales.e2e.ts` (deux tests, verts en local sous Chromium) ;
   balayage `ecrans.e2e.ts` vert en local dans les deux référentiels.
+- **Bloc du § 3, 2026-10-15** · serveur · `tsc` sans erreur, Jest en six
+  tranches (884 suites, 12 887 tests ; 21 suites du client qui n'avaient pas
+  démarré sous la charge de la machine, quatre tranches en parallèle, rejouées
+  à part et vertes), `npm run build` ; client · `tsc`, `npm test` (267
+  fichiers, 2 113 tests), `npm run build`.
 
 ## Reste
 
