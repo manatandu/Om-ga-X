@@ -1,4 +1,4 @@
-import { appliquerModele, COLONNES_EDITION } from './modeles-edition';
+import { appliquerModele, avecLeModele, COLONNES_EDITION, type ModeleServi } from './modeles-edition';
 import { editionAnalytique, editionPlan, editionTiers } from './editions-structures';
 import type { Compte, SectionAnalytique, Tiers } from './types';
 
@@ -76,4 +76,14 @@ describe('modèles d’édition · la liste imprimée sous un modèle', () => {
       expect(e.groupes).toHaveLength(e.lignes.length);
     }
   });
+
+  it('le modèle enregistré entre dans la liste quand la relecture tombe · remplacé ou ajouté (m9)', () => {
+    const m = (id: string, nom: string) => ({ id, nom, edition: 'PLAN_COMPTABLE', colonnes: [], saut: 'AUCUN' }) as unknown as ModeleServi;
+    const liste = { modeles: [m('a', 'A')], total: 1, tronque: false };
+    expect(avecLeModele(liste, m('a', 'A bis')).modeles.map((x) => x.nom)).toEqual(['A bis']);
+    const ajoute = avecLeModele(liste, m('b', 'B'));
+    expect([ajoute.modeles.map((x) => x.id), ajoute.total]).toEqual([['a', 'b'], 2]);
+    expect(avecLeModele(null, m('c', 'C'))).toEqual({ modeles: [m('c', 'C')], total: 1, tronque: false });
+  });
 });
+

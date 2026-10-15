@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiError } from '../lib/api';
+import { api } from '../lib/api';
+import { messageOuDefaut } from '../lib/message-refus';
 import { useAuth } from '../lib/auth';
 import { ecouterEchap } from '../lib/echap';
 import { Aide } from './chrome/Aide';
@@ -12,6 +13,7 @@ import {
   type ListeModeles,
   type ModeleServi,
   type SautEdition,
+  avecLeModele,
 } from '../lib/modeles-edition';
 
 /**
@@ -42,7 +44,7 @@ export function ChoixModeleEdition({
       setErreurLecture(null);
       return l;
     } catch (e) {
-      setErreurLecture(e instanceof ApiError ? e.message : "Les modèles d'édition n'ont pas pu être lus.");
+      setErreurLecture(messageOuDefaut(e, "Les modèles d'édition n'ont pas pu être lus."));
       return null;
     }
   }, [edition]);
@@ -96,19 +98,33 @@ export function ChoixModeleEdition({
           {erreurLecture}
         </p>
       )}
+      {liste?.tronque && (
+        <p className="text-[11.5px] text-warning">
+          {liste.modeles.length} modèles proposés sur {liste.total} · les autres ne sont pas listés.
+        </p>
+      )}
       {ouverte && (
         <ModalePersonnaliser
           edition={edition}
           liste={liste}
           depart={modeleChoisi}
           onFermer={() => setOuverte(false)}
-          onEnregistre={async (id) => {
+          onEnregistre={async (modele) => {
+            // LE MODÈLE ENREGISTRÉ RESTE CHOISI, MÊME SI LA RELECTURE TOMBE
+            // (relecture m9) · il est connu par la réponse du serveur ; sans
+            // cela l'édition repassait en « Standard » sous un choix affiché.
             const l = await recharger();
-            choisir(id, l);
+            if (l) choisir(modele.id, l);
+            else {
+              setListe((avant) => avecLeModele(avant, modele));
+              setChoisi(modele.id);
+              onChange(modele);
+            }
             setOuverte(false);
           }}
-          onSupprime={async () => {
+          onSupprime={async (id) => {
             const l = await recharger();
+            if (!l) setListe((avant) => (avant ? { ...avant, modeles: avant.modeles.filter((m) => m.id !== id), total: Math.max(0, avant.total - 1) } : avant));
             choisir('', l);
             setOuverte(false);
           }}
@@ -130,8 +146,8 @@ function ModalePersonnaliser({
   liste: ListeModeles | null;
   depart: ModeleServi | null;
   onFermer: () => void;
-  onEnregistre: (id: string) => Promise<void>;
-  onSupprime: () => Promise<void>;
+  onEnregistre: (modele: ModeleServi) => Promise<void>;
+  onSupprime: (id: string) => Promise<void>;
 }) {
   const catalogue = COLONNES_EDITION[edition];
   const [nom, setNom] = useState(depart?.nom ?? '');
@@ -162,14 +178,14 @@ function ModalePersonnaliser({
     setErreur(null);
     try {
       if (homonyme) {
-        await api.put(`/modeles-edition/${homonyme.id}`, { colonnes, saut });
-        await onEnregistre(homonyme.id);
+        const remplace = await api.put<ModeleServi>(`/modeles-edition/${homonyme.id}`, { colonnes, saut });
+        await onEnregistre(remplace);
       } else {
         const cree = await api.post<ModeleServi>('/modeles-edition', { edition, nom: nom.trim(), colonnes, saut });
-        await onEnregistre(cree.id);
+        await onEnregistre(cree);
       }
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "Le modèle n'a pas pu être enregistré.");
+      setErreur(messageOuDefaut(e, "Le modèle n'a pas pu être enregistré."));
       setEnvoi(false);
     }
   }
@@ -180,9 +196,9 @@ function ModalePersonnaliser({
     setErreur(null);
     try {
       await api.delete(`/modeles-edition/${depart.id}`);
-      await onSupprime();
+      await onSupprime(depart.id);
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "Le modèle n'a pas pu être supprimé.");
+      setErreur(messageOuDefaut(e, "Le modèle n'a pas pu être supprimé."));
       setEnvoi(false);
     }
   }

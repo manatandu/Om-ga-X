@@ -84,6 +84,21 @@ export interface ListeModeles {
   tronque: boolean;
 }
 
+/**
+ * La liste avec le modèle que le serveur vient de rendre · remplacé s'il y
+ * était, ajouté sinon. Sert quand la relecture tombe après un enregistrement
+ * réussi (relecture m9) · le choix affiché garde son modèle.
+ */
+export function avecLeModele(liste: ListeModeles | null, modele: ModeleServi): ListeModeles {
+  if (!liste) return { modeles: [modele], total: 1, tronque: false };
+  const present = liste.modeles.some((m) => m.id === modele.id);
+  return {
+    ...liste,
+    modeles: present ? liste.modeles.map((m) => (m.id === modele.id ? modele : m)) : [...liste.modeles, modele],
+    total: present ? liste.total : liste.total + 1,
+  };
+}
+
 export interface BlocEdition {
   titre: string | null;
   lignes: string[][];
