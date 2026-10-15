@@ -340,6 +340,10 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   création ne rendait que l'identifiant, et l'extension d'audit garde ce
   que la création rend. Elle rend l'export entier sans son fichier
   (`EXPORT_SANS_FICHIER`, que la liste reprend, dossier excepté).
+- **Mineur 5 · un remplacement sans saut effaçait le saut du modèle.** Le
+  service posait AUCUN quand le champ manquait, et `@IsOptional()` laissait
+  passer `null` (CLAUDE.md § 9). Absent, le saut enregistré est gardé ;
+  `null` est refusé par `@FacultatifNonNul` à la porte, et par le service.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,

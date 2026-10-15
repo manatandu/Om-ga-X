@@ -3,6 +3,9 @@ import { join } from 'node:path';
 import { EditionModele, Prisma, SautEdition } from '@prisma/client';
 import { ModelesEditionService } from './modeles-edition.service';
 import { COLONNES_PAR_EDITION, modeleOuMotif } from './modeles-edition';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { CreerModeleEditionDto, RemplacerModeleEditionDto } from './dto/modele-edition.dto';
 
 /**
  * LES MODÈLES D'ÉDITION (ligne sage-l7, fonction 59 ; décision L7-1) · trois
@@ -73,6 +76,29 @@ describe('modèles d’édition · au dossier', () => {
     await expect(f.service.supprimer(AUTRE, m.id)).rejects.toThrow(/introuvable/);
     await f.service.supprimer(DOSSIER, m.id);
     expect(f.lignes).toHaveLength(0);
+  });
+});
+
+describe('modèles d’édition · le saut absent n’est pas le saut nul (mineur 5)', () => {
+  it('un remplacement sans saut garde le saut de page du modèle', async () => {
+    const f = nouveauFaux();
+    const m = await f.service.creer(DOSSIER, 'u1', EditionModele.PLAN_ANALYTIQUE, { nom: 'Par page', colonnes: [], saut: SautEdition.PAGE });
+    await f.service.remplacer(DOSSIER, m.id, { colonnes: ['bailleur'] });
+    // Il posait AUCUN · le modèle perdait son saut au premier changement de colonnes.
+    expect(f.lignes[0]).toMatchObject({ colonnes: ['bailleur'], saut: SautEdition.PAGE });
+  });
+
+  it('un saut nul est refusé, à la porte comme au service, jamais lu comme « Aucun »', async () => {
+    const remplacement = await validate(plainToInstance(RemplacerModeleEditionDto, { colonnes: [], saut: null }));
+    expect(remplacement.map((e) => e.property)).toEqual(['saut']);
+    const creation = await validate(plainToInstance(CreerModeleEditionDto, { edition: EditionModele.PLAN_ANALYTIQUE, nom: 'X', colonnes: [], saut: null }));
+    expect(creation.map((e) => e.property)).toEqual(['saut']);
+    // Absent, il passe la porte.
+    expect(await validate(plainToInstance(RemplacerModeleEditionDto, { colonnes: [] }))).toHaveLength(0);
+    const f = nouveauFaux();
+    const m = await f.service.creer(DOSSIER, 'u1', EditionModele.PLAN_ANALYTIQUE, { nom: 'Par page', colonnes: [], saut: SautEdition.PAGE });
+    await expect(f.service.remplacer(DOSSIER, m.id, { colonnes: [], saut: null })).rejects.toThrow(/Saut inconnu/);
+    expect(f.lignes[0]).toMatchObject({ saut: SautEdition.PAGE });
   });
 });
 

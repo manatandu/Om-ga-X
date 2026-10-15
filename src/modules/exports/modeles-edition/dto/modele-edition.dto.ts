@@ -1,5 +1,6 @@
 import { EditionModele } from '@prisma/client';
-import { IsArray, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsEnum, IsString } from 'class-validator';
+import { FacultatifNonNul } from '../../../../common/facultatif-non-nul';
 
 /** Un modèle d'édition · nom, colonnes et saut relus par le service (`modeleOuMotif`). */
 export class CreerModeleEditionDto {
@@ -12,7 +13,9 @@ export class CreerModeleEditionDto {
   @IsArray({ message: 'Les colonnes du modèle sont exigées.' })
   colonnes!: unknown[];
 
-  @IsOptional()
+  // FACULTATIF NE VEUT PAS DIRE NULLABLE (CLAUDE.md § 9) · `null` passait
+  // `@IsOptional()` et posait AUCUN (relecture TypeScript, mineur 5).
+  @FacultatifNonNul('Saut nul refusé · omettez le champ pour « Aucun », ou envoyez AUCUN, LIGNE ou PAGE.')
   @IsString({ message: 'Saut inconnu · AUCUN, LIGNE ou PAGE.' })
   saut?: string;
 }
@@ -22,7 +25,8 @@ export class RemplacerModeleEditionDto {
   @IsArray({ message: 'Les colonnes du modèle sont exigées.' })
   colonnes!: unknown[];
 
-  @IsOptional()
+  // Absent, le saut enregistré est GARDÉ · `null` l'effaçait en AUCUN.
+  @FacultatifNonNul('Saut nul refusé · omettez le champ pour garder le saut du modèle, ou envoyez AUCUN, LIGNE ou PAGE.')
   @IsString({ message: 'Saut inconnu · AUCUN, LIGNE ou PAGE.' })
   saut?: string;
 }

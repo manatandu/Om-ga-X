@@ -101,6 +101,8 @@ export function modeleOuMotif(
     if (demandees.has(cle)) return { motif: `Colonne en double · « ${cle} ».` };
     demandees.add(cle);
   }
+  // `null` n'est pas l'absence · refusé ici comme à la porte (mineur 5).
+  if (brut.saut === null) return { motif: 'Saut inconnu · AUCUN, LIGNE ou PAGE.' };
   const saut = brut.saut ?? SautEdition.AUCUN;
   if (!(Object.values(SautEdition) as unknown[]).includes(saut)) return { motif: 'Saut inconnu · AUCUN, LIGNE ou PAGE.' };
   return {

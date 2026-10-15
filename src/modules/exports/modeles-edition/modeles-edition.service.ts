@@ -45,7 +45,10 @@ export class ModelesEditionService {
     if ('motif' in lu) throw new BadRequestException(lu.motif);
     return this.prisma.modeleEdition.update({
       where: { id: existant.id },
-      data: { colonnes: lu.colonnes, saut: lu.saut, modifieLe: new Date() },
+      // Un remplacement sans saut GARDE celui du modèle (relecture
+      // TypeScript, mineur 5) · il posait AUCUN, et un modèle à saut de page
+      // le perdait au premier changement de colonnes.
+      data: { colonnes: lu.colonnes, ...(brut.saut === undefined ? {} : { saut: lu.saut }), modifieLe: new Date() },
       select: CHAMPS,
     });
   }
