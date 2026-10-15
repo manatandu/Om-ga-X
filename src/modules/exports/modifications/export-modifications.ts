@@ -132,22 +132,34 @@ export interface EcritureEchange {
 
 const jourIso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
+/** Ce qu'une ligne porte dans le fichier, dans l'ordre des colonnes · ce que l'empreinte lit. */
+function contenuDeLaLigne(l: LigneEchange) {
+  return [l.compte, l.libelle ?? null, l.debit, l.credit, l.devise, l.montantDevise, l.cours, l.echeance] as const;
+}
+
 /**
  * L'ordre des lignes dans le fichier · débits puis crédits, comme le Guide
- * présente une écriture, puis le compte, puis le montant · un ordre qui ne
- * dépend ni de l'insertion en base ni de l'identifiant (une ligne retirée et
- * recréée à l'identique garde sa place).
+ * présente une écriture, puis TOUT le contenu de la ligne (compte, libellé,
+ * montants, devise, montant en devise, cours, échéance), comparé caractère
+ * par caractère.
+ *
+ * UN ORDRE TOTAL SUR LE CONTENU (relecture TypeScript, M1) · deux lignes que
+ * le seul ordre (sens, compte, montants, libellé) laissait à égalité, l'une
+ * à échéance du 31 mars, l'autre du 30 avril, gardaient l'ordre où la base
+ * les rendait, et la base les rend dans l'ordre physique · un lettrage
+ * réécrit la ligne, la déplace, et l'empreinte changeait sans que rien de
+ * l'écriture eût changé. La pièce repartait « Modifiée » (contre L7-4) et
+ * l'import refusait l'envoi entier. Deux lignes à contenu identique sont
+ * indiscernables · leur ordre entre elles ne change ni le fichier ni
+ * l'empreinte. Jamais `localeCompare` · il suit la version d'ICU du serveur,
+ * et une mise à jour de Node aurait changé l'ordre, donc toutes les
+ * empreintes du registre.
  */
 export function ordonnerLignes<L extends LigneEchange>(lignes: L[]): L[] {
-  const sens = (l: L) => (Number(l.debit) !== 0 ? 0 : 1);
-  return [...lignes].sort(
-    (a, b) =>
-      sens(a) - sens(b) ||
-      a.compte.localeCompare(b.compte) ||
-      a.debit.localeCompare(b.debit) ||
-      a.credit.localeCompare(b.credit) ||
-      (a.libelle ?? '').localeCompare(b.libelle ?? ''),
-  );
+  return lignes
+    .map((l) => ({ l, sens: Number(l.debit) !== 0 ? 0 : 1, cle: JSON.stringify(contenuDeLaLigne(l)) }))
+    .sort((a, b) => a.sens - b.sens || (a.cle < b.cle ? -1 : a.cle > b.cle ? 1 : 0))
+    .map((x) => x.l);
 }
 
 /**
@@ -166,7 +178,7 @@ export function empreinteEcriture(e: EcritureEchange): string {
     reference: e.reference ?? null,
     libelle: e.libelle,
     statut: e.statut,
-    lignes: ordonnerLignes(e.lignes).map((l) => [l.compte, l.libelle ?? null, l.debit, l.credit, l.devise, l.montantDevise, l.cours, l.echeance]),
+    lignes: ordonnerLignes(e.lignes).map(contenuDeLaLigne),
   };
   return createHash('sha256').update(JSON.stringify(contenu)).digest('hex');
 }

@@ -12,6 +12,7 @@ import {
   libelleMouvement,
   motifEnvoiNonRelu,
   mouvementDe,
+  ordonnerLignes,
   pieceDuFichier,
 } from './export-modifications';
 import { ImportService } from '../../import/import.service';
@@ -671,6 +672,32 @@ describe('règles pures de l’export des modifications', () => {
     expect(empreinteEcriture({ ...base, dateValeur: new Date('2025-12-31T00:00:00Z') })).not.toBe(a);
     // L'échéance d'une ligne est du contenu.
     expect(empreinteEcriture({ ...base, lignes: [{ ...base.lignes[0], echeance: '2026-02-01' }, base.lignes[1]] })).not.toBe(a);
+  });
+
+  it('deux lignes qui ne diffèrent que par l’échéance, la devise ou le cours, lues dans les deux ordres, gardent l’empreinte et l’ordre du fichier (M1)', () => {
+    // Un lettrage réécrit une ligne, et la base rend les lignes dans un autre
+    // ordre · l'écriture n'a pas changé, son empreinte ne doit pas changer.
+    const echeances = {
+      ...base,
+      lignes: [
+        { compte: '411', libelle: null, debit: '50.00', credit: '0.00', devise: null, montantDevise: null, cours: null, echeance: '2026-03-31' },
+        { compte: '411', libelle: null, debit: '50.00', credit: '0.00', devise: null, montantDevise: null, cours: null, echeance: '2026-04-30' },
+        { compte: '701', libelle: null, debit: '0.00', credit: '100.00', devise: null, montantDevise: null, cours: null, echeance: null },
+      ],
+    };
+    const inverse = { ...echeances, lignes: [echeances.lignes[1], echeances.lignes[0], echeances.lignes[2]] };
+    expect(empreinteEcriture(inverse)).toBe(empreinteEcriture(echeances));
+    expect(ordonnerLignes(inverse.lignes).map((l) => l.echeance)).toEqual(['2026-03-31', '2026-04-30', null]);
+    // De même pour deux lignes en devise qui ne diffèrent que par leur cours.
+    const devises = {
+      ...base,
+      lignes: [
+        { compte: '411', libelle: null, debit: '50.00', credit: '0.00', devise: 'USD', montantDevise: '20.00', cours: '2500', echeance: null },
+        { compte: '411', libelle: null, debit: '50.00', credit: '0.00', devise: 'USD', montantDevise: '20.00', cours: '2500.5', echeance: null },
+        { compte: '701', libelle: null, debit: '0.00', credit: '100.00', devise: null, montantDevise: null, cours: null, echeance: null },
+      ],
+    };
+    expect(empreinteEcriture({ ...devises, lignes: [...devises.lignes].reverse() })).toBe(empreinteEcriture(devises));
   });
 
   it('le mouvement se lit contre le registre', () => {

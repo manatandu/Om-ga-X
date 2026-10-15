@@ -281,6 +281,13 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   donc admise. L'inventaire tient l'ensemble des écritures déjà vues, la
   production saute une pièce déjà écrite. Test à tranches de deux
   (`LOT_LECTURE` remplacé par `jest.doMock`), aperçu et fichier relu.
+- **M1 · l'empreinte suivait l'ordre physique des lignes.** L'ordre canonique
+  ne départageait que sens, compte, montants et libellé · deux lignes à
+  échéances (ou cours, ou devise) différentes restaient dans l'ordre rendu
+  par la base, qu'un lettrage change. La pièce repartait « Modifiée » sans
+  avoir changé, contre L7-4, et l'import refusait l'envoi entier. Ordre
+  TOTAL sur tout le contenu de la ligne, comparé caractère par caractère
+  (jamais `localeCompare`, qui suit la version d'ICU).
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
