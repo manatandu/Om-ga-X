@@ -1,3 +1,5 @@
+import { ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AnalytiqueService } from './analytique.service';
 import { ExerciceService } from '../exercice/exercice.service';
 import { PrismaService } from '../../common/prisma.service';
@@ -41,7 +43,7 @@ function prismaSuppression(usages: { engagements?: number; ventilations?: number
   const prisma = {
     sectionAnalytique: {
       findFirst: jest.fn().mockResolvedValue({ id: 's1', code: 'EAU', plan: { code: 'PROJ' } }),
-      findMany: jest.fn().mockResolvedValue([{ id: 's1' }]),
+      findMany: jest.fn().mockResolvedValue([{ id: 's1', code: 'EAU' }]),
       delete: tx.sectionAnalytique.delete,
       deleteMany: tx.sectionAnalytique.deleteMany,
       count: jest.fn().mockResolvedValue(0),
@@ -60,7 +62,13 @@ function prismaSuppression(usages: { engagements?: number; ventilations?: number
     ligneRepartitionAnalytiquePaie: { count: compteur(usages.repartitionsPaie, 'sectionId') },
     repartitionAnalytiquePaie: { count: compteur(undefined, 'planId') },
     // Ligne sage-l6, fonction n° 22 · le document d'une section la retient.
-    pieceJointeSection: { count: compteur(usages.documents, 'sectionId') },
+    pieceJointeSection: {
+      count: compteur(usages.documents, 'sectionId'),
+      // Les sections du plan qui portent un document, nommées au refus (mineur 5).
+      groupBy: jest.fn(({ where }: { where: { sectionId: { in: string[] } } }) =>
+        Promise.resolve(usages.documents && where.sectionId.in.includes('s1') ? [{ sectionId: 's1' }] : []),
+      ),
+    },
     budgetSection: {
       deleteMany: tx.budgetSection.deleteMany,
       count: jest.fn(({ where }: { where: { exercice?: { statut: string } } }) =>
@@ -121,6 +129,37 @@ describe('F142 · une section utilisée ne se supprime pas, et le refus la nomme
   it('un plan qui porte des OD se nomme aussi', async () => {
     const { prisma } = prismaSuppression({ ods: 1 });
     await expect(service(prisma).supprimerPlan('t1', 'p1')).rejects.toThrow(/OD analytiques \(1\)/);
+  });
+
+  it('un plan dont une section porte un document NOMME la section (relecture sage-l6, mineur 5)', async () => {
+    const { prisma, ops } = prismaSuppression({ documents: 2 });
+    await expect(service(prisma).supprimerPlan('t1', 'p1')).rejects.toThrow(
+      /Sections qui portent un document \(1\) · EAU\. Retirez-les depuis le volet Documents de chaque section, ou mettez le plan en sommeil\./,
+    );
+    expect(ops).toEqual([]);
+  });
+
+  it('au-delà de vingt sections porteuses, vingt codes et le total dit', async () => {
+    const { prisma } = prismaSuppression({ documents: 1 });
+    const sections = Array.from({ length: 23 }, (_, i) => ({ id: `s${i + 1}`, code: `S${String(i + 1).padStart(2, '0')}` }));
+    (prisma.sectionAnalytique as { findMany: jest.Mock }).findMany.mockResolvedValue(sections);
+    (prisma.pieceJointeSection as { groupBy: jest.Mock }).groupBy.mockResolvedValue(sections.map((x) => ({ sectionId: x.id })));
+    await expect(service(prisma).supprimerPlan('t1', 'p1')).rejects.toThrow(/Sections qui portent un document \(23\) · S01, S02,.* S20 et 3 autre\(s\)\./);
+  });
+
+  it('un document joint PENDANT la suppression · 409 nommé, jamais une erreur technique (mineur 4)', async () => {
+    const fk = new Prisma.PrismaClientKnownRequestError('Foreign key constraint violated', { code: 'P2003', clientVersion: 'x' });
+    const plan = prismaSuppression();
+    (plan.prisma.planAnalytique as { delete: jest.Mock }).delete.mockRejectedValueOnce(fk);
+    await expect(service(plan.prisma).supprimerPlan('t1', 'p1')).rejects.toThrow(/Le plan PROJ a reçu un usage .* pendant sa suppression/);
+    const section = prismaSuppression();
+    (section.prisma.sectionAnalytique as { delete: jest.Mock }).delete.mockRejectedValueOnce(fk);
+    await expect(service(section.prisma).supprimerSection('t1', 's1')).rejects.toBeInstanceOf(ConflictException);
+    const retiree = prismaSuppression();
+    (retiree.prisma.sectionAnalytique as { delete: jest.Mock }).delete.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Record to delete does not exist.', { code: 'P2025', clientVersion: 'x' }),
+    );
+    await expect(service(retiree.prisma).supprimerSection('t1', 's1')).rejects.toThrow(/Un autre geste a déjà supprimé la section EAU/);
   });
 
   it('un plan libre part avec ses sections, dans une seule transaction', async () => {

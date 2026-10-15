@@ -26,6 +26,26 @@ import {
 } from './longueur-sections';
 
 /** Chiffre de classe d'un compte : CLASSE_6 donne 6. */
+/**
+ * UN USAGE POSÉ ENTRE LE DÉCOMPTE ET LA SUPPRESSION (relecture « échecs
+ * silencieux » de la ligne sage-l6, mineur 4) · un document joint à une
+ * section pendant la suppression de son plan, une écriture ventilée · la clé
+ * étrangère refuse (P2003) ; la ligne retirée par un autre geste rend P2025.
+ * Les deux se disent, jamais une erreur technique, et rien n'est supprimé.
+ */
+function conflitDeSuppressionAnalytique(err: unknown, objet: string): never {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+    throw new ConflictException(
+      `${objet.charAt(0).toUpperCase()}${objet.slice(1)} a reçu un usage (document joint, ventilation, engagement) pendant ` +
+        "sa suppression · rien n'est supprimé. Rechargez pour voir ce qui retient la suppression.",
+    );
+  }
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+    throw new ConflictException(`Un autre geste a déjà supprimé ${objet} · rechargez.`);
+  }
+  throw err;
+}
+
 function chiffreClasse(classe: ClasseCompte): string {
   return classe.replace('CLASSE_', '');
 }
@@ -233,7 +253,7 @@ export class AnalytiqueService {
     // Le plan se juge sur lui-même ET sur toutes ses sections (audit final
     // F142) · un engagement sur l'une d'elles faisait tomber la suppression
     // sur une erreur de clé étrangère, sans nom.
-    const sections = await this.prisma.sectionAnalytique.findMany({ where: { planId, tenantId }, select: { id: true } });
+    const sections = await this.prisma.sectionAnalytique.findMany({ where: { planId, tenantId }, select: { id: true, code: true } });
     const ids = sections.map((x) => x.id);
     const refs = [
       ...(await referencesVers(this.prisma, 'PlanAnalytique', planId, tenantId, ['SectionAnalytique.planId'])),
@@ -242,13 +262,49 @@ export class AnalytiqueService {
     const budgetsClos = ids.length
       ? await this.prisma.budgetSection.count({ where: { sectionId: { in: ids }, exercice: { statut: StatutExercice.CLOTURE } } })
       : 0;
-    this.refuserSuppressionAnalytique(`Le plan ${plan.code} ne peut plus être supprimé`, refs, budgetsClos, 'Mettez-le en sommeil.');
+    const documents = ids.length ? await this.sectionsQuiPortentUnDocument(tenantId, sections) : null;
+    this.refuserSuppressionAnalytique(
+      `Le plan ${plan.code} ne peut plus être supprimé`,
+      refs,
+      budgetsClos,
+      documents
+        ? `${documents} Retirez-les depuis le volet Documents de chaque section, ou mettez le plan en sommeil.`
+        : 'Mettez-le en sommeil.',
+    );
     // Les budgets partent avec leurs sections (onDelete: Cascade) · tout ou rien.
-    await transactionJournalisee(this.prisma, async (tx) => {
-      await tx.sectionAnalytique.deleteMany({ where: { planId, tenantId } });
-      await tx.planAnalytique.delete({ where: { id: planId } });
-    });
+    try {
+      await transactionJournalisee(this.prisma, async (tx) => {
+        await tx.sectionAnalytique.deleteMany({ where: { planId, tenantId } });
+        await tx.planAnalytique.delete({ where: { id: planId } });
+      });
+    } catch (err) {
+      conflitDeSuppressionAnalytique(err, `le plan ${plan.code}`);
+    }
     return { supprime: true };
+  }
+
+  /**
+   * LES SECTIONS DU PLAN QUI PORTENT UN DOCUMENT, nommées (relecture « échecs
+   * silencieux », mineur 5) · le refus disait « documents joints (n) » sans
+   * dire où ils sont, et le cabinet devait ouvrir chaque section. Vingt
+   * codes au plus (convention d'OmegaX, comme les autres refus nommés), le
+   * total toujours dit. Null quand aucune section n'en porte.
+   */
+  private async sectionsQuiPortentUnDocument(tenantId: string, sections: Array<{ id: string; code: string }>): Promise<string | null> {
+    const groupes = await this.prisma.pieceJointeSection.groupBy({
+      by: ['sectionId'],
+      where: { tenantId, sectionId: { in: sections.map((x) => x.id) } },
+      orderBy: { sectionId: 'asc' },
+    });
+    if (groupes.length === 0) return null;
+    const codes = new Map(sections.map((x) => [x.id, x.code]));
+    const nommees = groupes
+      .map((g) => codes.get(g.sectionId) ?? g.sectionId)
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+    const NOMMEES_AU_PLUS = 20;
+    const liste = nommees.slice(0, NOMMEES_AU_PLUS).join(', ');
+    const reste = nommees.length > NOMMEES_AU_PLUS ? ` et ${nommees.length - NOMMEES_AU_PLUS} autre(s)` : '';
+    return `Sections qui portent un document (${nommees.length}) · ${liste}${reste}.`;
   }
 
   /**
@@ -360,10 +416,14 @@ export class AnalytiqueService {
       where: { sectionId, exercice: { statut: StatutExercice.CLOTURE } },
     });
     this.refuserSuppressionAnalytique(`La section ${section.code} ne peut plus être supprimée`, refs, budgetsClos, 'Mettez-la en sommeil.');
-    await transactionJournalisee(this.prisma, async (tx) => {
-      await tx.budgetSection.deleteMany({ where: { sectionId } });
-      await tx.sectionAnalytique.delete({ where: { id: sectionId } });
-    });
+    try {
+      await transactionJournalisee(this.prisma, async (tx) => {
+        await tx.budgetSection.deleteMany({ where: { sectionId } });
+        await tx.sectionAnalytique.delete({ where: { id: sectionId } });
+      });
+    } catch (err) {
+      conflitDeSuppressionAnalytique(err, `la section ${section.code}`);
+    }
     return { supprime: true };
   }
 
