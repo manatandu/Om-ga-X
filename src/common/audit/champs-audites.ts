@@ -164,6 +164,9 @@ export const MODELES_AUDITES = new Set<string>([
   // Ligne sage-l2, fonction 1 · un mode de règlement est une structure du
   // dossier (sa nature porte le contrôle de l'art. 59 bis de la TVA).
   'ModeReglement',
+  // Ligne sage-l2, fonction 31 · un lieu de livraison est une structure du
+  // tiers, comme ses RIB.
+  'LieuLivraison',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',

@@ -63,6 +63,7 @@ const ADMIN_SEULEMENT: Record<string, string> = {
   'components/DatesPortefeuilleExercice.tsx':
     "assemblée, dépôt et procès-verbal de l'exercice, route réservée à l'administrateur comme l'arrêté des comptes",
   'components/VoletRibsTiers.tsx': "coordonnées bancaires des tiers, structure du tiers réservée à l'administrateur (un RIB changé détourne un paiement)",
+  'components/VoletLieuxLivraison.tsx': "lieux de livraison d'un client (ligne sage-l2, fonction 31), structure du tiers réservée à l'administrateur, comme ses RIB",
   'pages/TiersPage.tsx': "plan des tiers · structure (création, fusion, comptes, modèles de règlement) réservée à l'administrateur, fenêtre ouverte en consultation ; les documents suivent peutEcrire dans leur volet",
 };
 

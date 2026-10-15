@@ -71,6 +71,7 @@ const LIBELLES: Record<string, string> = {
   'LigneEcriture.modeReglementId': "lignes d'écriture portant ce mode",
   'ModeleReglement.modeReglementId': 'modèles de règlement',
   'EcheanceReglement.modeReglementId': 'échéances de modèles de règlement',
+  'LieuLivraison.tiersId': 'lieux de livraison',
   'RibBanque.journalId': 'RIB bancaire rattaché (Structure > Banques)',
   'VentilationAnalytique.sectionId': 'ventilations analytiques',
   'LigneOdAnalytique.sectionId': "lignes d'OD analytique",

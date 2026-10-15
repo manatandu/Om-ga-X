@@ -10,6 +10,7 @@ import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImp
 import { EditionStructure } from '../components/EditionStructure';
 import { VoletDocumentsTiers } from '../components/VoletDocumentsTiers';
 import { VoletRibsTiers } from '../components/VoletRibsTiers';
+import { VoletLieuxLivraison } from '../components/VoletLieuxLivraison';
 import { editionTiers, libelleTypeTiers, perimetreEdition } from '../lib/editions-structures';
 import type {
   Compte,
@@ -1338,6 +1339,11 @@ export function TiersPage() {
                 </form>
                 )}
               </div>
+
+              {/* Lieux de livraison · d'un client seulement (ligne sage-l2, fonction 31) */}
+              {tiersSelectionne.type === 'CLIENT' && (
+                <VoletLieuxLivraison key={`livraison-${tiersSelectionne.id}`} tiersId={tiersSelectionne.id} />
+              )}
 
               {/* Coordonnées bancaires · RIB des tiers, recopiés par l'ordre de virement */}
               <VoletRibsTiers key={`rib-${tiersSelectionne.id}`} tiersId={tiersSelectionne.id} />

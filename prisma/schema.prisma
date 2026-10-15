@@ -316,6 +316,7 @@ model Tenant {
   systemeComptableSyscohada SystemeComptableSyscohada?
   createdAt                 DateTime                   @default(now())
   ribsTiers                 RibTiers[]
+  lieuxLivraison            LieuLivraison[]
   ordresVirement            OrdreVirement[]
   lignesOrdreVirement       LigneOrdreVirement[]
   lotsVirement              LotVirement[]
@@ -2770,6 +2771,8 @@ model Tiers {
   devis                Devis[]
   documents            DocumentTiers[]
   ribs                 RibTiers[]
+  /// Lieux de livraison d'un client (ligne sage-l2, fonction 31).
+  lieuxLivraison       LieuLivraison[]
   lignesOrdreVirement  LigneOrdreVirement[]
   abonnements          AbonnementCabinet[]
 
@@ -10851,6 +10854,36 @@ enum NatureModeReglement {
 /// applicable en RDC (décision D11 de la reproduction, normes françaises non
 /// reprises). Le journal proposé est un journal de trésorerie, choisi au
 /// règlement quand ce mode l'est.
+/// LIEU DE LIVRAISON D'UN CLIENT (ligne sage-l2, fonction 31 · Sage,
+/// F_LIVRAISON) · une adresse où le client reçoit ses marchandises, à côté
+/// de l'adresse de la fiche, qui reste celle des factures et des relances.
+/// Partie de la fiche du tiers (structure, administrateur, journal d'audit)
+/// · supprimée avec lui (Cascade, comme ses RIB), reportée par la fusion.
+/// Un seul PRINCIPAL par client, le premier d'office ; un lieu en sommeil ne
+/// l'est jamais (`tiers/lieux-livraison.ts`). Aucun effet comptable.
+model LieuLivraison {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  tiersId      String
+  tiers        Tiers    @relation(fields: [tiersId], references: [id], onDelete: Cascade)
+  intitule     String   @db.VarChar(35)
+  adresse      String?
+  complement   String?
+  boitePostale String?
+  ville        String?
+  pays         String?
+  contact      String?
+  telephone    String?
+  email        String?
+  estPrincipal Boolean  @default(false)
+  estActif     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, tiersId])
+  @@map("lieux_livraison")
+}
+
 model ModeReglement {
   id                String              @id @default(uuid())
   tenantId          String

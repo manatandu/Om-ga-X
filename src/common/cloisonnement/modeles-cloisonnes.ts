@@ -124,6 +124,8 @@ export const MODELES_CLOISONNES = new Set<string>([
   'SequenceSaisie',
   // Ligne sage-l2, fonction 1 · les modes de règlement.
   'ModeReglement',
+  // Ligne sage-l2, fonction 31 · les lieux de livraison des clients.
+  'LieuLivraison',
   'RibTiers',
   'RubriquePaie',
   'VersionBaremePaie',

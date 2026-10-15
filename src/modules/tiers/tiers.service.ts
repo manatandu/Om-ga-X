@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, HttpException, Injectable, NotF
 import { libelleReference, referencesVers, refuserSiReferences, reporterReferences } from '../../common/suppression/references';
 import { coordonneesAComblement, motifRefusFusionTiers } from './fusion-tiers';
 import { normaliserQualite } from './qualite-tiers';
+import { intituleRenomme } from './lieux-livraison';
 import {
   numeroIndividuelAligne,
   panoplieDuTiers,
@@ -512,13 +513,16 @@ export class TiersService {
     }
     refuserSiReferences(
       `Le tiers ${tiers.code}`,
-      await referencesVers(this.prisma, 'Tiers', tiers.id, tenantId, ['TiersCompte.tiersId', 'RibTiers.tiersId']),
+      await referencesVers(this.prisma, 'Tiers', tiers.id, tenantId, ['TiersCompte.tiersId', 'RibTiers.tiersId', 'LieuLivraison.tiersId']),
     );
     // Ses RIB lui appartiennent comme ses rattachements · un ordre de virement
     // qui en a recopié un, lui, RETIENT le tiers (LigneOrdreVirement, compté
     // par references.ts), et la copie sur l'ordre ne dépend pas du RIB.
     await transactionJournalisee(this.prisma, async (tx) => {
       await tx.ribTiers.deleteMany({ where: { tenantId, tiersId: tiers.id } });
+      // Ses lieux de livraison aussi (ligne sage-l2, fonction 31) · un document
+      // qui en aurait recopié un retiendrait le lieu, et le refus le nommerait.
+      await tx.lieuLivraison.deleteMany({ where: { tenantId, tiersId: tiers.id } });
       await tx.tiersCompte.deleteMany({ where: { tiersId: tiers.id } });
       await tx.tiers.delete({ where: { id: tiers.id } });
     });
@@ -552,6 +556,24 @@ export class TiersService {
       // principal de la fiche conservée, pas sur celui du doublon.
       if ((await tx.ribTiers.count({ where: { tenantId, tiersId: cible.id, estPrincipal: true } })) > 0) {
         await tx.ribTiers.updateMany({ where: { tenantId, tiersId: source.id }, data: { estPrincipal: false } });
+      }
+      // Même règle pour les lieux de livraison (ligne sage-l2, fonction 31) ·
+      // un seul principal chez le client conservé.
+      if ((await tx.lieuLivraison.count({ where: { tenantId, tiersId: cible.id, estPrincipal: true } })) > 0) {
+        await tx.lieuLivraison.updateMany({ where: { tenantId, tiersId: source.id }, data: { estPrincipal: false } });
+      }
+      // Un lieu du doublon de même intitulé qu'un lieu conservé prend le code
+      // du doublon · deux « Entrepôt » ne se distingueraient plus, et le
+      // service refuserait ensuite toute retouche de l'un ou de l'autre.
+      const intitulesConserves = new Set(
+        (await tx.lieuLivraison.findMany({ where: { tenantId, tiersId: cible.id }, select: { intitule: true } })).map((l) =>
+          l.intitule.toLocaleLowerCase('fr'),
+        ),
+      );
+      for (const l of await tx.lieuLivraison.findMany({ where: { tenantId, tiersId: source.id }, select: { id: true, intitule: true } })) {
+        if (intitulesConserves.has(l.intitule.toLocaleLowerCase('fr'))) {
+          await tx.lieuLivraison.update({ where: { id: l.id }, data: { intitule: intituleRenomme(l.intitule, source.code) } });
+        }
       }
       // UNE PIÈCE DÉJÀ DÉTENUE PAR LA FICHE CONSERVÉE N'EST PAS REPORTÉE · deux
       // doublons portent souvent le même RCCM, et le report violerait l'unicité
