@@ -42,7 +42,11 @@ test('SYSCOHADA · une édition demandée maintenant se retrouve prête, numéro
   expect(imprimes.impressions.length).toBe(1);
 
   // Retirer le fichier · la demande reste, numérotée, son fichier ne se sert plus.
+  // Le retrait se confirme en ligne (relecture des écrans, second tour, 7).
   await page.getByRole('button', { name: "Retirer le fichier de l'impression n° 1" }).click();
+  await expect(ligneBalance).toContainText('Prête');
+  await expect(ligneBalance).not.toContainText('fichier retiré');
+  await page.getByRole('button', { name: "Confirmer le retrait du fichier de l'impression n° 1" }).click();
   await expect(ligneBalance).toContainText('Prête · fichier retiré');
   await expect(page.getByRole('button', { name: "Télécharger l'impression n° 1" })).toHaveCount(0);
   const liste = await appelApi<{ impressions: { numero: number; etat: string; fichierRetireLe: string | null }[] }>(

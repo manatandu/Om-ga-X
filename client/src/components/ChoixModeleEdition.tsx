@@ -157,6 +157,9 @@ function ModalePersonnaliser({
   const [saut, setSaut] = useState<SautEdition>(depart?.saut ?? 'AUCUN');
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  // UN GESTE DESTRUCTEUR SE CONFIRME EN LIGNE (relecture des écrans, second
+  // tour, 7) · le modèle est partagé par tout le dossier.
+  const [confirmerSuppression, setConfirmerSuppression] = useState(false);
   const envoiRef = useRef(false);
   envoiRef.current = envoi;
   const fermerRef = useRef(onFermer);
@@ -252,16 +255,37 @@ function ModalePersonnaliser({
             </fieldset>
           </div>
           <div className="flex flex-wrap justify-end gap-2 px-3 pb-3">
-            {depart && (
-              <button
-                type="button"
-                onClick={() => void supprimer()}
-                disabled={envoi}
-                className="mr-auto border border-border px-3 py-1.5 text-danger hover:bg-surface-alt disabled:opacity-40"
-              >
-                Supprimer le modèle
-              </button>
-            )}
+            {depart &&
+              (confirmerSuppression ? (
+                <span className="mr-auto flex flex-wrap items-center gap-2">
+                  <span className="text-danger">Supprimer « {depart.nom} » pour tout le dossier ?</span>
+                  <button
+                    type="button"
+                    onClick={() => void supprimer()}
+                    disabled={envoi}
+                    className="border border-danger/40 px-3 py-1.5 text-danger hover:bg-danger-soft disabled:opacity-40"
+                  >
+                    {envoi ? 'Suppression…' : 'Oui, supprimer'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmerSuppression(false)}
+                    disabled={envoi}
+                    className="border border-border px-3 py-1.5 hover:bg-surface-alt disabled:opacity-40"
+                  >
+                    Non
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmerSuppression(true)}
+                  disabled={envoi}
+                  className="mr-auto border border-border px-3 py-1.5 text-danger hover:bg-surface-alt disabled:opacity-40"
+                >
+                  Supprimer le modèle
+                </button>
+              ))}
             <button type="button" onClick={onFermer} disabled={envoi} className="border border-border px-3 py-1.5 hover:bg-surface-alt">
               Annuler
             </button>

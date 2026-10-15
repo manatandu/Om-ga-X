@@ -33,6 +33,9 @@ export function SelectionsEnregistrees({
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // UN GESTE DESTRUCTEUR SE CONFIRME EN LIGNE (second tour, 7) · la sélection
+  // est partagée par tout le dossier.
+  const [confirmerSuppression, setConfirmerSuppression] = useState(false);
 
   const recharger = useCallback(async () => {
     try {
@@ -49,6 +52,7 @@ export function SelectionsEnregistrees({
 
   function rappeler(id: string) {
     setChoisie(id);
+    setConfirmerSuppression(false);
     setErreur(null);
     setInfo(null);
     const s = liste?.selections.find((x) => x.id === id);
@@ -61,6 +65,8 @@ export function SelectionsEnregistrees({
   const homonyme: SelectionServie | undefined = nom !== null ? liste?.selections.find((s) => s.nom === nom.trim()) : undefined;
 
   async function enregistrer() {
+    // Entrée pressée pendant l'envoi ne double pas l'enregistrement (second tour, 8).
+    if (envoi) return;
     if (nom === null) return;
     setEnvoi(true);
     setErreur(null);
@@ -99,6 +105,7 @@ export function SelectionsEnregistrees({
       setErreur(messageOuDefaut(e, "La sélection n'a pas pu être supprimée."));
     } finally {
       setEnvoi(false);
+      setConfirmerSuppression(false);
     }
   }
 
@@ -113,7 +120,8 @@ export function SelectionsEnregistrees({
             disabled={!liste || liste.selections.length === 0}
             className="border border-border bg-surface px-2 py-1 text-[11.5px] min-w-[180px]"
           >
-            <option value="">{liste === null ? 'Lecture…' : liste.selections.length === 0 ? 'Aucune sélection' : 'Choisir…'}</option>
+            {/* Une lecture échouée n'est pas « Lecture… » sans fin (second tour, 10). */}
+            <option value="">{liste === null ? (erreurLecture ? 'Non lues' : 'Lecture…') : liste.selections.length === 0 ? 'Aucune sélection' : 'Choisir…'}</option>
             {liste?.selections.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.nom}
@@ -130,16 +138,39 @@ export function SelectionsEnregistrees({
             Enregistrer la sélection…
           </button>
         )}
-        {peutEcrire && nom === null && choisie && (
-          <button
-            type="button"
-            onClick={() => void supprimer()}
-            disabled={envoi}
-            className="border border-border bg-surface px-3 py-1.5 text-[11.5px] font-bold text-danger hover:bg-chrome disabled:opacity-40"
-          >
-            Supprimer la sélection
-          </button>
-        )}
+        {peutEcrire &&
+          nom === null &&
+          choisie &&
+          (confirmerSuppression ? (
+            <span className="flex flex-wrap items-center gap-2 text-[11.5px]">
+              <span className="text-danger">Supprimer la sélection pour tout le dossier ?</span>
+              <button
+                type="button"
+                onClick={() => void supprimer()}
+                disabled={envoi}
+                className="border border-danger/40 bg-surface px-3 py-1.5 font-bold text-danger hover:bg-danger-soft disabled:opacity-40"
+              >
+                {envoi ? 'Suppression…' : 'Oui, supprimer'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmerSuppression(false)}
+                disabled={envoi}
+                className="border border-border bg-surface px-3 py-1.5 font-bold hover:bg-chrome disabled:opacity-40"
+              >
+                Non
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmerSuppression(true)}
+              disabled={envoi}
+              className="border border-border bg-surface px-3 py-1.5 text-[11.5px] font-bold text-danger hover:bg-chrome disabled:opacity-40"
+            >
+              Supprimer la sélection
+            </button>
+          ))}
         {peutEcrire && nom !== null && (
           <>
             <label className="flex flex-col gap-0.5">

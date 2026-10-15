@@ -72,6 +72,10 @@ export function ImpressionsDiffereesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [suiteEnCours, setSuiteEnCours] = useState(false);
+  // UN RETRAIT SE CONFIRME EN LIGNE, et son bouton se grise pendant l'envoi
+  // (second tour, 7) · l'identifiant de la demande visée.
+  const [aRetirer, setARetirer] = useState<string | null>(null);
+  const [retraitEnCours, setRetraitEnCours] = useState<string | null>(null);
   const enTraitement = useRef(false);
   const monte = useRef(true);
   // LA RELANCE SUSPENDUE PAR UN REFUS NOMMÉ (second tour, 1) · lue par la
@@ -252,12 +256,19 @@ export function ImpressionsDiffereesPage() {
   }
 
   async function retirerFichier(i: ImpressionServie) {
+    if (retraitEnCours) return;
     setErreur(null);
+    setRetraitEnCours(i.id);
     try {
       await api.post(`/impressions-differees/${i.id}/retirer-fichier`);
       await recharger();
     } catch (e) {
       setErreur(messageOuDefaut(e, "Le fichier n'a pas pu être retiré."));
+    } finally {
+      if (monte.current) {
+        setRetraitEnCours(null);
+        setARetirer(null);
+      }
     }
   }
 
@@ -436,16 +447,39 @@ export function ImpressionsDiffereesPage() {
                             Télécharger
                           </button>
                           {i.taille !== null && <span className="text-text-dim">{tailleLisible(i.taille)}</span>}
-                          {peutEcrire && (
-                            <button
-                              type="button"
-                              onClick={() => void retirerFichier(i)}
-                              className="text-danger hover:underline"
-                              aria-label={`Retirer le fichier de l'impression n° ${i.numero}`}
-                            >
-                              Retirer le fichier
-                            </button>
-                          )}
+                          {peutEcrire &&
+                            (aRetirer === i.id ? (
+                              <span className="flex flex-wrap items-center gap-2">
+                                <span className="text-danger">Retirer le fichier ?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => void retirerFichier(i)}
+                                  disabled={retraitEnCours !== null}
+                                  className="text-danger font-semibold hover:underline disabled:opacity-40"
+                                  aria-label={`Confirmer le retrait du fichier de l'impression n° ${i.numero}`}
+                                >
+                                  {retraitEnCours === i.id ? 'Retrait…' : 'Oui, retirer'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setARetirer(null)}
+                                  disabled={retraitEnCours !== null}
+                                  className="hover:underline disabled:opacity-40"
+                                >
+                                  Non
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setARetirer(i.id)}
+                                disabled={retraitEnCours !== null}
+                                className="text-danger hover:underline disabled:opacity-40"
+                                aria-label={`Retirer le fichier de l'impression n° ${i.numero}`}
+                              >
+                                Retirer le fichier
+                              </button>
+                            ))}
                         </span>
                       )}
                       {i.fichierRetireLe && <span className="text-text-dim">Retiré le {dateHeure(i.fichierRetireLe)}</span>}

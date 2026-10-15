@@ -402,6 +402,14 @@ Coordinateur · aucun BLOQUANT ni MAJEUR, 14 MINEUR.
   celui-là n'est plus au dossier, le choix porte son option
   (`optionJournalHorsListe` · « Journal non lu », « Journal introuvable dans
   ce dossier ») ; l'erreur de lecture des journaux tombe au succès.
+- **7 · gestes destructeurs.** Retirer le fichier d'une impression,
+  supprimer une sélection ou un modèle d'édition (partagés par le dossier)
+  se confirment en ligne (« Oui, … » / « Non »), et le bouton qui envoie se
+  grise pendant l'envoi ; tests navigateur de la ligne mis à jour.
+- **8 · Entrée pendant l'envoi.** `enregistrer` d'une sélection s'arrête si
+  un envoi est en cours.
+- **10 · « Lecture… » sans fin.** Le choix des sélections dit « Non lues »
+  quand la lecture a échoué.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,

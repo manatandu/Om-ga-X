@@ -47,7 +47,10 @@ test('SYSCOHADA · une sélection du journal s’enregistre au dossier, se rappe
   expect(lues.selections[0].criteres).not.toHaveProperty('exerciceId');
 
   // Supprimée, elle ne se propose plus.
+  // La suppression se confirme en ligne (relecture des écrans, second tour, 7).
   await page.getByRole('button', { name: 'Supprimer la sélection' }).click();
+  await expect(page.getByText('Supprimer la sélection pour tout le dossier ?')).toBeVisible();
+  await page.getByRole('button', { name: 'Oui, supprimer' }).click();
   await expect(page.getByText('Sélection « Banque » supprimée.')).toBeVisible();
   await expect(page.getByLabel('Sélection enregistrée')).toBeDisabled();
 
