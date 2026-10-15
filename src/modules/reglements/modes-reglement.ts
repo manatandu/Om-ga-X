@@ -163,5 +163,19 @@ export function avertissementArt59Bis(p: {
         'assujettis perdrait le droit à déduction de sa TVA (art. 74 bis) · vérifiez son montant sur la pièce.',
     );
   }
+  // LA RÉSERVE DES MODES QUE LE TEXTE NE NOMME PAS (relecture « échecs
+  // silencieux » de la ligne sage-l2, m9) · l'art. 59 bis cite le chèque, le
+  // virement et la carte bancaire, et rien d'autre. Les espèces y dérogent
+  // sans doute possible ; le prélèvement, l'effet de commerce, la monnaie
+  // électronique ou un autre mode ne sont ni admis ni exclus par un mot ·
+  // averti sans que la dérogation soit tranchée, et c'est dit (question
+  // portée à Manasse).
+  if (p.nature !== NatureModeReglement.ESPECES) {
+    phrases.push(
+      `Réserve · ${p.source === 'COMPTE' ? 'ce mode' : `le mode « ${LIBELLES_NATURES[p.nature].toLowerCase()} »`} n’est pas ` +
+        'nommé par l’art. 59 bis, qui ne cite que le chèque, le virement et la carte bancaire · averti faute de texte ' +
+        'qui l’admette, sans qu’OmegaX tranche qu’il y déroge.',
+    );
+  }
   return phrases.join(' ');
 }

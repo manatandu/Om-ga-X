@@ -55,6 +55,24 @@ describe('art. 59 bis · la liste fermée du texte', () => {
     expect(avertissementArt59Bis({ ...base, nature: NatureModeReglement.MONNAIE_ELECTRONIQUE })).not.toBeNull();
   });
 
+  // RELECTURE « ÉCHECS SILENCIEUX », m9 · le prélèvement et l'effet de
+  // commerce étaient avertis comme des espèces · le texte ne les nomme ni ne
+  // les exclut, et l'avis le dit.
+  it.each([
+    NatureModeReglement.PRELEVEMENT,
+    NatureModeReglement.EFFET_DE_COMMERCE,
+    NatureModeReglement.MONNAIE_ELECTRONIQUE,
+    NatureModeReglement.AUTRE,
+  ])('%s · averti SOUS RÉSERVE, le texte ne nommant que le chèque, le virement et la carte', (nature) => {
+    const a = avertissementArt59Bis({ ...base, nature });
+    expect(a).toContain('Réserve');
+    expect(a).toContain('ne cite que le chèque, le virement et la carte bancaire');
+  });
+
+  it('les espèces dérogent sans réserve', () => {
+    expect(avertissementArt59Bis(base)).not.toContain('Réserve');
+  });
+
   it('un CLIENT qui paie en espèces ne coûte rien au dossier · la sanction frappe celui qui déduit', () => {
     expect(avertissementArt59Bis({ ...base, sens: 'CLIENT' })).toBeNull();
   });
