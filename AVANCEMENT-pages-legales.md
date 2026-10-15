@@ -91,6 +91,60 @@ Branche de sauvegarde `travail/pages-legales`, partie d'`origin/main` (5e5ebcd).
   à part et vertes), `npm run build` ; client · `tsc`, `npm test` (267
   fichiers, 2 113 tests), `npm run build`.
 
+- **Second et dernier tour de relecture, 2026-10-15** (serveur · 2 MAJEUR,
+  3 MINEUR ; écrans · 2 MAJEUR, 10 MINEUR ; tous corrigés, aucun reporté).
+  - Serveur M-a · l'écran envoie l'empreinte de l'abonnement AFFICHÉ
+    (`empreinteCommande`, formule, options, périodicité, dates, lignes,
+    total, siège, dans un ordre fixe), le service relit dossier, licence et
+    abonnement DANS la transaction, APRÈS le verrou du dossier, et refuse
+    en 409 un abonnement qui n'est plus celui affiché (art. 55, al. 1er) ;
+    la commande acceptée est gardée avec l'acte
+    (`Tenant.conditionsLicenceCommande`, JSONB, migration
+    20270176000200, diff Prisma sans écart), au journal d'audit avec lui,
+    relue nulle si elle n'a pas sa forme, et recopiée dans l'accusé
+    (`lignesDeLaCommande`, art. 55, al. 2).
+  - Serveur M-b · un accusé en ÉCHEC ne se renvoie plus · la file le
+    retente d'elle-même (`filtreEligibles`, relu par le spec) ; seuls
+    l'abandonné et le jamais mis en file se renvoient.
+  - Serveur m-1 · le renvoi passe sous le même verrou, dans
+    `transactionJournalisee`, l'accusé relu dedans et écrit par
+    `ecrireEnFileSansTenter(tx, …)` ; m-2 · trois écarts, trois messages
+    (page plus ancienne · recharger ; page plus récente · « le service
+    n'est pas encore à jour » ; même numéro, autre texte) ; m-3 · types
+    générés par Prisma, surcharge de `jour`, unions littérales
+    (`TYPES_LICENCE`, `STATUTS_MESSAGE`, `StatutAccuse` avec
+    `NON_MIS_EN_FILE`) confrontées aux enums par `satisfies` dans les deux
+    sens, plus de `as number` dans `empreinte.ts`.
+  - Écrans M1 · dans une fenêtre, le lien de la politique vers le contrat
+    ouvre la fenêtre du contrat par la navigation de l'espace de travail
+    (`LienPageLegale`, `lib/lien-page-legale.ts`, contexte posé par
+    `CorpsFenetreLegale`) · la page publique garde son lien public.
+  - Écrans M2 · la recherche de la FAQ lit apostrophes (droite et
+    typographique), traits d'union et ponctuation comme une espace, des deux
+    côtés, et cherche le titre de la rubrique (`filtrerQuestions`,
+    `normaliserRecherche`).
+  - Écrans mineurs · FAQ imprimée dépliée (`flushSync` au `beforeprint`) ;
+    rappel lisible en entier à 390 px ; refus d'acceptation qui relit l'état
+    et décoche la case, cas « service pas encore à jour » avec « Réessayer » ;
+    un seul instant, au jour de Kinshasa, pour la construction et la mise en
+    production ; tableau de l'abonnement à en-têtes, dates en toutes
+    lettres ; consignes adressées au rôle (l'administrateur accepte et
+    renvoie, les autres lisent) ; focus sur l'accusé, résultat vide de la
+    FAQ annoncé ; pages publiques chargées à la demande ; assertion
+    d'absence du test navigateur placée après la lecture de l'état, objet
+    de l'appel découpé par sa structure ; « À propos » en boîte de dialogue
+    (Échap, focus sur « Fermer »).
+  - Vérifié · serveur `tsc`, `npm run build`, specs touchées
+    (`conditions-licence`, cloisonnement, audit, cadratins) avec
+    `--maxWorkers=1` ; client `tsc`, `npm test` (268 fichiers, 2 142
+    tests), specs touchées aussi sous le jest de la racine ; tests
+    navigateur `pages-legales`, `rester-connecte` et `ecrans` (deux
+    référentiels) verts sous Chromium. Sur VRAIE base (serveur compilé,
+    base jetable) · la commande JSONB se relit à l'identique, le renvoi
+    passe sous le verrou dans une transaction réelle (SANS_TRANSPORT), le
+    second renvoi est refusé (409), l'accusé en file recopie la commande,
+    le renvoi sur ÉCHEC est refusé et celui sur ABANDON passe.
+
 ## Reste
 
 - Les décisions de Manasse ci-dessous ; tant qu'elles manquent, l'acceptation
@@ -101,7 +155,7 @@ Branche de sauvegarde `travail/pages-legales`, partie d'`origin/main` (5e5ebcd).
   de l'interface a une source réelle, le workflow de publication).
 - La bascule d'une version du contrat à la suivante (art. 34) · non servie
   tant qu'une seule version existe, et `versions-publiees.spec.ts` le tient.
-- Second tour de relecture, le cas échéant.
+- Relevés en attente · aucun (le second tour est clos, tout corrigé).
 
 ## Sources réelles lues (le 2026-10-15)
 
@@ -243,6 +297,15 @@ recopiées au dépôt.
 25. Relevé · l'art. 53, 7° (modalités et délais de fourniture du service)
     n'est pas dans la garde · à relire avec VMG (accès ouvert à la création du
     dossier, essai).
+26. Abonnement modifié APRÈS l'acceptation (formule, option, prix) · la
+    commande acceptée reste celle gardée avec l'acte, et rien ne redemande
+    l'acceptation. Lu · art. 55, al. 1er (le client vérifie « les détails
+    de sa commande » avant d'accepter) et al. 2 (accusé de « la commande »).
+    Le texte ne dit pas si un changement de formule par l'opérateur est une
+    commande nouvelle à accepter, ou l'exécution du contrat accepté (art. 34
+    pour une modification à l'initiative de l'éditeur) · à trancher avec un
+    juriste, puis à coder (relire l'empreinte de la commande en vigueur
+    contre celle gardée, et rouvrir l'acceptation au besoin).
 
 ## Paragraphe prêt pour CLAUDE.md
 
@@ -264,11 +327,19 @@ recopiées au dépôt.
 > du lundi au vendredi sans les fériés, la lecture la plus longue), et le
 > spec refuse une seconde version tant que la bascule n'est pas servie.
 > L'ACCEPTATION EN LIGNE (art. 55, 56) est tenue par le serveur · version,
-> EMPREINTE, date et auteur sur le dossier, au journal d'audit, accusé à
-> l'écran et courriel portant le texte archivé, renvoyable sans doublon, par
-> l'administrateur seul ; l'écran envoie le numéro et l'empreinte du texte
-> de SON code, et un texte différent de celui du service demande de
-> recharger la page. FERMÉE tant que l'identité de l'éditeur (art. 52), le
+> EMPREINTE, date, auteur ET COMMANDE ACCEPTÉE (`conditionsLicenceCommande`)
+> sur le dossier, au journal d'audit, accusé à l'écran et courriel portant
+> la commande et le texte archivé, par l'administrateur seul. L'écran envoie
+> le numéro et l'empreinte du texte de SON code, et l'empreinte de
+> l'abonnement qu'il AFFICHE (`empreinteCommande`) · le service relit tout
+> SOUS LE VERROU du dossier et refuse en 409 un texte ou un abonnement qui
+> ne sont plus ceux affichés ; une page plus ancienne se recharge, une page
+> plus récente que le service attend le service. L'ACCUSÉ SE RENVOIE sous
+> le même verrou, dans la transaction, s'il n'a jamais pu entrer en file ou
+> si la file l'a ABANDONNÉ · jamais en ÉCHEC (la file le retente d'elle-même)
+> ni en file ou parti, ce qui ferait un doublon. Dans une fenêtre, un lien
+> entre pages légales ouvre la fenêtre de l'autre page, jamais la route
+> publique, qui démonterait l'espace de travail (`LienPageLegale`). FERMÉE tant que l'identité de l'éditeur (art. 52), le
 > paiement, les réclamations, la rétractation ou les garanties légales
 > (art. 53, 6°, 13°, 14°, 16°, 20°) manquent (art. 54, al. 2), et en ligne
 > sans abonnement (une cellule lit celui de son siège) ou sous une licence
@@ -290,7 +361,7 @@ recopiées au dépôt.
 # Serveur (racine)
 npx tsc --noEmit
 npx jest --shard=1/6 --maxWorkers=1 --workerIdleMemoryLimit=800MB   # … jusqu'à 6/6
-npx jest src/modules/conditions-licence --maxWorkers=1   # conditions et versions publiées
+npx jest src/modules/conditions-licence --maxWorkers=1   # conditions, commande, accusé, versions publiées
 npm run build
 npx prisma migrate diff --from-migrations prisma/migrations \
   --to-schema-datamodel prisma/schema.prisma \
@@ -298,10 +369,10 @@ npx prisma migrate diff --from-migrations prisma/migrations \
 
 # Client (client/)
 npx tsc --noEmit
-npx vitest run src/pages/pages-legales.spec.ts src/lib/version.spec.ts
+npx vitest run src/pages/pages-legales.spec.ts src/lib/version.spec.ts src/lib/acceptation-conditions-ecran.spec.ts src/pages/confidentialite-code-numerique.spec.ts
 npm test
 npm run build
 
 # Navigateur (e2e/, montage du § 10)
-npx playwright test tests/pages-legales.e2e.ts tests/ecrans.e2e.ts
+npx playwright test tests/pages-legales.e2e.ts tests/ecrans.e2e.ts tests/rester-connecte.e2e.ts
 ```
