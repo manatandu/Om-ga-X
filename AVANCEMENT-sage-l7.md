@@ -268,6 +268,20 @@ les trois fichiers sans colonne exigée manquante.
   pièce de six lignes nommée à l'aperçu et refusée en 413, aucun numéro
   pris. Tests navigateur de la ligne (5) verts sous Chromium.
 
+### Relecture TypeScript, second tour (2026-10-15)
+
+Coordinateur · 1 BLOQUANT, 2 MAJEUR, 8 MINEUR, le BLOQUANT et M1 reproduits
+par lui sur base jetable. Chaque correction a son test, rouge sans elle.
+
+- **B1 · une pièce jamais partie retenue deux fois.** Sa date avançait
+  pendant l'inventaire (brouillard corrigé sur un autre poste) · la clé
+  (date, identifiant) la relisait dans une tranche suivante, le fichier la
+  portait deux fois sous la même clé de pièce, « Nouvelle » deux fois, et
+  l'import fondait les deux en UNE pièce aux montants doublés, équilibrée
+  donc admise. L'inventaire tient l'ensemble des écritures déjà vues, la
+  production saute une pièce déjà écrite. Test à tranches de deux
+  (`LOT_LECTURE` remplacé par `jest.doMock`), aperçu et fichier relu.
+
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
   10 MINEUR) · les seize corrigés, voir « Relecture, premier tour »

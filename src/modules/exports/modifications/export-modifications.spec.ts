@@ -121,6 +121,10 @@ function nouveauFaux() {
   const registre: Array<Record<string, unknown> & { id: string }> = [];
   const exports: Array<Record<string, unknown> & { id: string; tenantId: string; numero: number }> = [];
   const lecturesDesLignes: Array<Record<string, unknown>> = [];
+  // Appelé après chaque tranche des écritures JAMAIS PARTIES rendue au
+  // service · un test y simule un autre poste qui modifie la base pendant
+  // l'inventaire (M6, B1), quelle que soit la requête qui lit la tranche.
+  const crochets: { surTrancheJamaisParties?: (rendues: Array<{ id: string; date: Date }>) => void } = {};
   let compteur = 0;
   const id = (prefixe: string) => `${prefixe}-${String(++compteur).padStart(5, '0')}`;
   const prisma: Record<string, unknown> = {
@@ -130,6 +134,7 @@ function nouveauFaux() {
         const page = paginer(filtrees, args);
         if (args.select) {
           if (args.select._count) throw new Error("`_count` agrège toute la table des lignes (relecture M2) · le service compte par regroupement.");
+          if (args.select.date && !args.select.statut) crochets.surTrancheJamaisParties?.(page.map((e) => ({ id: e.id, date: e.date })));
           return page.map((e) => ({
             id: e.id,
             ...(args.select!.date ? { date: e.date } : {}),
@@ -243,12 +248,14 @@ function nouveauFaux() {
     return e;
   };
   const retirer = (e: Ecriture) => ecritures.splice(ecritures.indexOf(e), 1);
-  return { service, ajouter, retirer, ecritures, registre, exports, lecturesDesLignes };
+  return { service, ajouter, retirer, ecritures, registre, exports, lecturesDesLignes, crochets };
 }
 
 /** Relit le classeur rangé · les feuilles et leurs lignes, valeurs en texte. */
-async function relire(contenu: Buffer) {
-  const classeur = new ExcelJS.Workbook();
+async function relire(contenu: Buffer, moteur: typeof ExcelJS = ExcelJS) {
+  // Après `jest.resetModules()`, le classeur se relit par un ExcelJS chargé
+  // de nouveau · l'ancien chargerait ses flux dans le nouveau registre.
+  const classeur = new moteur.Workbook();
   await classeur.xlsx.load(contenu as unknown as ArrayBuffer);
   const feuille = (nom: string) => {
     const f = classeur.getWorksheet(nom);
@@ -487,6 +494,47 @@ describe('export des seules modifications · registre et fichier', () => {
     // l'aperçu disait 5 000, deux pièces jamais parties tues.
     expect(apercu.nouvelles).toBe(5002);
     expect(premiere).toBe(false);
+  });
+
+  it('une pièce jamais partie dont la date avance pendant l’inventaire est retenue UNE fois, et part une fois (B1)', async () => {
+    jest.resetModules();
+    // Des tranches de deux écritures · la frontière de tranche, sans en
+    // fabriquer cinq mille.
+    jest.doMock('../../../common/lecture-par-lots', () => ({ ...jest.requireActual('../../../common/lecture-par-lots'), LOT_LECTURE: 2 }));
+    try {
+      const { ExportModificationsService: Service } = await import('./export-modifications.service');
+      const f = nouveauFaux();
+      const prisma = (f.service as unknown as { prisma: unknown }).prisma;
+      const service = new Service(prisma as never, { identiteEtat: async () => ({ entite: 'X', nif: '', periode: '', devise: 'CDF' }) } as never);
+      for (let i = 1; i <= 5; i++) f.ajouter({ date: `2026-01-0${i}` });
+      let deplacee: string | undefined;
+      f.crochets.surTrancheJamaisParties = (rendues) => {
+        // Après la PREMIÈRE tranche, un autre poste corrige la date d'une pièce
+        // déjà lue · elle passe au 31 décembre, au-delà de la clé de la tranche.
+        if (deplacee || rendues.length === 0) return;
+        deplacee = rendues[0].id;
+        f.ecritures.find((e) => e.id === deplacee)!.date = new Date('2026-12-31T00:00:00Z');
+      };
+      const apercu = await service.apercu(DOSSIER, true);
+      expect(deplacee).toBeDefined();
+      // Retenue deux fois, elle se comptait six fois sur cinq pièces.
+      expect(apercu).toMatchObject({ nouvelles: 5, lignes: 10 });
+
+      // L'export · la pièce déplacée (de nouveau, la première lue) part une fois.
+      for (const e of f.ecritures) e.date = new Date(`2026-01-0${1 + f.ecritures.indexOf(e)}T00:00:00Z`);
+      deplacee = undefined;
+      const envoi = await service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true);
+      expect(deplacee).toBeDefined();
+      expect(envoi).toMatchObject({ nombreEcritures: 5, nombreNouvelles: 5, nombreLignes: 10 });
+      const lignes = (await relire(contenuRange(f, 1), await import('exceljs'))).feuille(FEUILLE_ECRITURES).slice(1);
+      // Ses deux lignes, une fois · deux fois, l'import fondait les deux en
+      // une pièce aux montants doublés.
+      expect(lignes.filter((l) => l[15] === deplacee)).toHaveLength(2);
+      expect(f.registre.filter((r) => r.ecritureId === deplacee)).toHaveLength(1);
+    } finally {
+      jest.dontMock('../../../common/lecture-par-lots');
+      jest.resetModules();
+    }
   });
 
   it('les lignes se comptent par regroupement sur la tranche, et ce qui attend par la base, sans lire la suite (M2)', async () => {

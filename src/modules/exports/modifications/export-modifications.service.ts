@@ -335,6 +335,13 @@ export class ExportModificationsService {
     const portee = { tenantId, estANouveauProvisoire: false, ...filtreDuStatut(inclureBrouillard) };
     let derniere: { date: Date; id: string } | undefined;
     let premiereEnAttente: { date: Date; id: string } | undefined;
+    // UNE ÉCRITURE SE RETIENT UNE FOIS (relecture TypeScript, B1) · la clé de
+    // la tranche est (date, identifiant), et une pièce jamais partie dont la
+    // date AVANCE pendant la lecture (brouillard corrigé sur un autre poste)
+    // revient dans une tranche suivante. Retenue deux fois, elle partait deux
+    // fois sous la même clé de pièce, toutes deux « Nouvelle », et l'import
+    // les fondait en UNE pièce aux montants doublés, équilibrée donc admise.
+    const vues = new Set<string>(dejaParties.map((c) => c.id));
     for (;;) {
       const lot = await this.prisma.ecriture.findMany({
         where: derniere
@@ -357,7 +364,8 @@ export class ExportModificationsService {
       const dejaConnues = new Set(connues.map((c) => c.ecritureId));
       const lignesDe = new Map(comptes.map((c) => [c.ecritureId, c._count._all]));
       for (const e of lot) {
-        if (dejaConnues.has(e.id)) continue;
+        if (dejaConnues.has(e.id) || vues.has(e.id)) continue;
+        vues.add(e.id);
         const n = lignesDe.get(e.id) ?? 0;
         // Une écriture ne se coupe jamais · celle qui ne tient plus sous le
         // plafond attend l'export suivant ENTIÈRE, et les suivantes aussi (on
@@ -479,6 +487,9 @@ export class ExportModificationsService {
           // partie, rien à dire ; partie avant, le registre la nommera
           // supprimée à l'export suivant.
           if (!e || (!inclureBrouillard && e.statut === StatutEcriture.BROUILLARD)) continue;
+          // Jamais deux fois la même pièce dans le fichier, quoi que l'inventaire
+          // ait rendu (B1) · l'import fondrait les deux en une, montants doublés.
+          if (ecrites.has(e.id)) continue;
           const echange = versEchange(e);
           const empreinte = empreinteEcriture(echange);
           // Le mouvement se relit sur ce qui part · une pièce changée entre
