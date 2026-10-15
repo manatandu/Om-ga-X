@@ -43,6 +43,39 @@ describe('produireEnMemoire · tout ou rien', () => {
     }
   });
 
+  it('un tuyau qui tombe PENDANT que le moteur écrit encore ne laisse aucun rejet non traité (mineur 2)', async () => {
+    const rejets: unknown[] = [];
+    const ecouter = (r: unknown) => rejets.push(r);
+    process.on('unhandledRejection', ecouter);
+    try {
+      await expect(
+        produireEnMemoire(async (ouvrir) => {
+          ouvrir('livre.xlsx').destroy(new Error('tuyau rompu'));
+          // Le moteur poursuit (une lecture en base) avant de constater la panne ·
+          // la boucle d'événements tourne, et la fermeture rejetée attendait sans
+          // gestionnaire.
+          await new Promise((r) => setTimeout(r, 30));
+          throw new Error('moteur tombé');
+        }),
+      ).rejects.toThrow('moteur tombé');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(rejets).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', ecouter);
+    }
+  });
+
+  it('un tuyau en erreur et un moteur qui rend la main · la panne du tuyau remonte, jamais un fichier rangé', async () => {
+    await expect(
+      produireEnMemoire(async (ouvrir) => {
+        const s = ouvrir('livre.xlsx');
+        s.end(Buffer.from('abc'));
+        s.destroy(new Error('tuyau rompu'));
+        await new Promise((r) => setTimeout(r, 10));
+      }),
+    ).rejects.toThrow(/tuyau rompu|sans terminer son fichier/);
+  });
+
   it('un moteur qui n’ouvre aucun fichier n’a rien produit', async () => {
     await expect(produireEnMemoire(async () => undefined)).rejects.toThrow(/sans terminer son fichier|aucun fichier/);
   });

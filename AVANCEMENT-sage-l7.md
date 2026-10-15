@@ -315,6 +315,13 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   dossier par la base (aucun index (dossier, date, identifiant)), une seule
   tranche quand l'envoi est à jour · dit, non changé. Le statut est écrit
   en clair dans chaque requête brute, comme le filet le relit.
+- **Mineur 2 · le correctif m2 ne couvrait pas un tuyau tombé en cours
+  d'écriture.** La fermeture du fichier en mémoire recevait son
+  gestionnaire au retour du moteur seulement · un tuyau tombé pendant que
+  le moteur lisait encore laissait un rejet non traité, qui fait tomber le
+  processus. Le gestionnaire est posé à la naissance de la promesse, et
+  `await fermee` relit toujours le rejet (test rouge sans, attente de 30 ms
+  dans le moteur).
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
