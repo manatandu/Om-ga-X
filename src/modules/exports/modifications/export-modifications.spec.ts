@@ -129,6 +129,7 @@ function nouveauFaux() {
   const exports: Array<Record<string, unknown> & { id: string; tenantId: string; numero: number }> = [];
   const lecturesDesLignes: Array<Record<string, unknown>> = [];
   const lecturesDuRegistre: Array<Record<string, unknown>> = [];
+  const creationsRendues: Array<Record<string, unknown>> = [];
   // Appelé après chaque tranche des écritures JAMAIS PARTIES rendue au
   // service · un test y simule un autre poste qui modifie la base pendant
   // l'inventaire (M6, B1), quelle que soit la requête qui lit la tranche.
@@ -190,10 +191,13 @@ function nouveauFaux() {
         const nums = exports.filter((e) => correspond(e, where)).map((e) => e.numero);
         return { _max: { numero: nums.length ? Math.max(...nums) : null } };
       },
-      create: async ({ data }: { data: Record<string, unknown> }) => {
+      create: async ({ data, select }: { data: Record<string, unknown>; select?: Record<string, boolean> }) => {
         const e = { id: id('exp'), ...data } as (typeof exports)[number];
         exports.push(e);
-        return { id: e.id };
+        // Ce que Prisma rend, et que le journal d'audit garde · les colonnes choisies.
+        const rendu = select ? Object.fromEntries(Object.keys(select).filter((k) => select[k]).map((k) => [k, e[k]])) : { ...e };
+        creationsRendues.push(rendu);
+        return rendu;
       },
       findFirst: async ({ where }: { where: Record<string, unknown> }) => exports.find((e) => correspond(e, where)) ?? null,
       findMany: async ({ where, take, select }: { where: Record<string, unknown>; take?: number; select?: Record<string, boolean> }) =>
@@ -300,7 +304,7 @@ function nouveauFaux() {
     return e;
   };
   const retirer = (e: Ecriture) => ecritures.splice(ecritures.indexOf(e), 1);
-  return { service, ajouter, retirer, ecritures, registre, exports, lecturesDesLignes, lecturesDuRegistre, crochets };
+  return { service, ajouter, retirer, ecritures, registre, exports, lecturesDesLignes, lecturesDuRegistre, creationsRendues, crochets };
 }
 
 /** Relit le classeur rangé · les feuilles et leurs lignes, valeurs en texte. */
@@ -410,6 +414,17 @@ describe('export des seules modifications · registre et fichier', () => {
     await expect(f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true)).rejects.toThrow(
       /Aucune écriture à exporter/,
     );
+  });
+
+  it('la création rend au journal d’audit l’export entier sans son fichier · numéro, empreinte, auteur (mineur 4)', async () => {
+    const f = nouveauFaux();
+    f.ajouter({ date: '2026-01-02' });
+    const envoi = await f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true);
+    expect(f.creationsRendues).toHaveLength(1);
+    const rendu = f.creationsRendues[0];
+    // L'extension d'audit garde ce que la création rend · il ne rendait que l'identifiant.
+    expect(rendu).toMatchObject({ tenantId: DOSSIER, numero: 1, empreinte: envoi.empreinte, produitPar: 'u1', nombreEcritures: 1, nomFichier: envoi.nomFichier });
+    expect(rendu).not.toHaveProperty('contenu');
   });
 
   it('un autre export rangé pendant la production refuse le second, sans numéro pris', async () => {

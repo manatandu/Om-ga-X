@@ -33,6 +33,33 @@ import {
 /** Au-delà, la liste des exports se tronque et le dit (CLAUDE.md § 8 bis). */
 export const PLAFOND_EXPORTS_LISTES = 50;
 
+/**
+ * Un export sans son fichier · ce que la liste rend, et ce que la création
+ * rend au journal d'audit (relecture TypeScript, mineur 4 · la création ne
+ * rendait que l'identifiant, et le journal d'audit gardait un export sans
+ * numéro, sans empreinte ni auteur). Le fichier n'est jamais relu ici · il
+ * est exclu du journal d'audit, et le rendre le chargerait en mémoire une
+ * seconde fois.
+ */
+const EXPORT_SANS_FICHIER = {
+  id: true,
+  tenantId: true,
+  numero: true,
+  mode: true,
+  inclureBrouillard: true,
+  produitAt: true,
+  produitPar: true,
+  nombreEcritures: true,
+  nombreNouvelles: true,
+  nombreModifiees: true,
+  nombreSupprimees: true,
+  nombreLignes: true,
+  nombreEnAttente: true,
+  nomFichier: true,
+  taille: true,
+  empreinte: true,
+} satisfies Prisma.ExportEcrituresSelect;
+
 /** Tranches d'écriture du registre dans la transaction · loin sous le plafond de paramètres de PostgreSQL. */
 const TRANCHE_REGISTRE = 2000;
 
@@ -153,23 +180,7 @@ export class ExportModificationsService {
         // Un de plus que la page · il dit qu'il en reste de plus anciens, à
         // retélécharger par la page suivante (relecture m5).
         take: PLAFOND_EXPORTS_LISTES + 1,
-        select: {
-          id: true,
-          numero: true,
-          mode: true,
-          inclureBrouillard: true,
-          produitAt: true,
-          produitPar: true,
-          nombreEcritures: true,
-          nombreNouvelles: true,
-          nombreModifiees: true,
-          nombreSupprimees: true,
-          nombreLignes: true,
-          nombreEnAttente: true,
-          nomFichier: true,
-          taille: true,
-          empreinte: true,
-        },
+        select: { ...EXPORT_SANS_FICHIER, tenantId: false },
       }),
       this.prisma.exportEcritures.count({ where: { tenantId } }),
     ]);
@@ -658,7 +669,7 @@ export class ExportModificationsService {
             empreinte,
             contenu,
           },
-          select: { id: true },
+          select: EXPORT_SANS_FICHIER,
         });
         const ids = [...ecrites.keys()];
         for (let i = 0; i < ids.length; i += TRANCHE_REGISTRE) {

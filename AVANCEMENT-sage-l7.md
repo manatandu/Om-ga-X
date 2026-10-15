@@ -336,6 +336,10 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   une vraie application Express · 409 et motif sans en-têtes de classeur,
   connexion coupée après le premier octet, moteur arrêté par la fermeture ;
   deux rouges sous l'ancien envoi.
+- **Mineur 4 · le journal d'audit gardait un export sans numéro.** La
+  création ne rendait que l'identifiant, et l'extension d'audit garde ce
+  que la création rend. Elle rend l'export entier sans son fichier
+  (`EXPORT_SANS_FICHIER`, que la liste reprend, dossier excepté).
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
