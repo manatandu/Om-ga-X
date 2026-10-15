@@ -142,6 +142,9 @@ describe('pièces jointes · ce qui se détache et ce qui ne se lit pas se DIT (
       expect([page, /setErreurDecompte\(motifDecompteIllisible\(e\)\)/.test(src)]).toEqual([page, true]);
       expect([page, /role="alert"[^>]*>\s*\{erreurDecompte\}/.test(src)]).toEqual([page, true]);
       expect([page, /\(\) => !annule && setDecomptePieces\(null\)/.test(src)]).toEqual([page, false]);
+      // Sur sa PROPRE ligne (un bloc), jamais glissée dans la barre de boutons (second tour, mineur 4).
+      expect([page, /erreurDecompte && \(\s*<div role="alert"/.test(src)]).toEqual([page, true]);
+      expect([page, /<span role="alert"[^>]*>\s*\{erreurDecompte\}/.test(src)]).toEqual([page, false]);
     }
   });
 });

@@ -623,11 +623,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               Pièces détachées…
             </button>
           )}
-          {onglet === 'journal' && erreurDecompte && (
-            <span role="alert" className="text-[11.5px] text-danger">
-              {erreurDecompte}
-            </span>
-          )}
           {onglet === 'journal' && boutonExport('Exporter Excel', exporterJournal)}
           {onglet === 'balance' && (
             <>
@@ -670,6 +665,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           )}
         </div>
       </div>
+      {/* Sur sa propre ligne, comme à la saisie (second tour de relecture, mineur 4). */}
+      {onglet === 'journal' && erreurDecompte && (
+        <div role="alert" className="mb-1.5 border border-danger/30 bg-danger-soft px-3 py-1 text-[11.5px] text-danger">
+          {erreurDecompte}
+        </div>
+      )}
 
       {info && (
         <div className="mb-2 text-[11.5px] text-positive bg-positive-soft border border-positive/30 px-3 py-2">{info}</div>
