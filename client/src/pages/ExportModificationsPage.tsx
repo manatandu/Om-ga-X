@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiError } from '../lib/api';
+import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Aide } from '../components/chrome/Aide';
+import { issueIncertaine, messageOuDefaut } from '../lib/message-refus';
 import {
   apercuVide,
+  messageBrouillardHorsPortee,
   messageEnAttente,
   porteeDeLExport,
+  poursuivreListe,
   resumeApercu,
   tailleLisible,
   type ApercuExport,
@@ -19,20 +22,18 @@ import {
  * (ligne sage-l7, fonction 99 ; Sage, M8-38, p. 51 et 52).
  *
  * Ce qui a changé depuis le dernier export part dans un fichier NUMÉROTÉ et
- * DATÉ (AUDCIF art. 22, 7°), que l'import des écritures d'OmegaX relit · les
- * écritures nouvelles, celles du brouillard modifiées depuis leur envoi, et
- * les retraits, nommés à part. Le serveur tient le registre de ce qui est
- * parti et GARDE le fichier · un téléchargement interrompu ne perd rien, il
- * se reprend depuis la liste. L'écran ne recompte rien.
+ * DATÉ (AUDCIF art. 22, 7°) · les écritures nouvelles, celles du brouillard
+ * modifiées depuis leur envoi, et les retraits, nommés à part. L'import des
+ * écritures d'OmegaX ne relit qu'un envoi de pièces nouvelles · celui qui
+ * remplace ou retire une pièce, il le refuse en le nommant (relecture M3).
+ * Le serveur tient le registre de ce qui est parti et GARDE le fichier · un
+ * téléchargement interrompu ne perd rien, il se reprend depuis la liste.
+ * L'écran ne recompte rien.
  *
  * Produire un export prend un numéro et marque des écritures comme parties ·
  * c'est un acte du comptable (`peutValider`, comme `@ReserveAuComptable` au
  * serveur). La liste et les fichiers se lisent par tous.
  */
-
-function messageDe(e: unknown, defaut: string): string {
-  return e instanceof ApiError ? e.message : defaut;
-}
 
 function dateHeure(iso: string): string {
   const d = new Date(iso);
@@ -46,6 +47,7 @@ export function ExportModificationsPage() {
   const [erreurApercu, setErreurApercu] = useState<string | null>(null);
   const [liste, setListe] = useState<ListeExports | null>(null);
   const [erreurListe, setErreurListe] = useState<string | null>(null);
+  const [suiteEnCours, setSuiteEnCours] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [confirmerComplet, setConfirmerComplet] = useState(false);
   const [resultat, setResultat] = useState<ExportServi | null>(null);
@@ -63,7 +65,7 @@ export function ExportModificationsPage() {
       const a = await api.get<ApercuExport>(`/exports-ecritures/apercu?inclureBrouillard=${avecBrouillard}`);
       if (mien === jetonApercu.current) setApercu(a);
     } catch (e) {
-      if (mien === jetonApercu.current) setErreurApercu(messageDe(e, "L'aperçu du prochain export n'a pas pu être lu."));
+      if (mien === jetonApercu.current) setErreurApercu(messageOuDefaut(e, "L'aperçu du prochain export n'a pas pu être lu."));
     }
   }, []);
 
@@ -72,9 +74,25 @@ export function ExportModificationsPage() {
     try {
       setListe(await api.get<ListeExports>('/exports-ecritures'));
     } catch (e) {
-      setErreurListe(messageDe(e, "La liste des exports n'a pas pu être lue."));
+      setErreurListe(messageOuDefaut(e, "La liste des exports n'a pas pu être lue."));
     }
   }, []);
+
+  // LA PAGE SUIVANTE, VERS LES PLUS ANCIENS (relecture m5) · un ancien envoi
+  // se retrouve et se retélécharge, la liste ne s'arrêtant plus aux cinquante.
+  async function chargerPlusAnciens() {
+    if (!liste || liste.plusAnciensAvant === null) return;
+    setSuiteEnCours(true);
+    setErreurListe(null);
+    try {
+      const suite = await api.get<ListeExports>(`/exports-ecritures?avant=${liste.plusAnciensAvant}`);
+      setListe((l) => (l ? poursuivreListe(l, suite) : suite));
+    } catch (e) {
+      setErreurListe(messageOuDefaut(e, "Les exports plus anciens n'ont pas pu être lus."));
+    } finally {
+      setSuiteEnCours(false);
+    }
+  }
 
   useEffect(() => {
     void chargerApercu(brouillard);
@@ -99,13 +117,23 @@ export function ExportModificationsPage() {
         await api.telecharger(`/exports-ecritures/${r.id}/fichier`, r.nomFichier);
       } catch (e) {
         setErreurTelechargement(
-          `L'export n° ${r.numero} est enregistré, mais son fichier n'a pas pu être téléchargé (${messageDe(e, 'échec du téléchargement')}) · il se reprend depuis la liste.`,
+          `L'export n° ${r.numero} est enregistré, mais son fichier n'a pas pu être téléchargé (${messageOuDefaut(e, 'échec du téléchargement')}) · il se reprend depuis la liste.`,
         );
       }
       void chargerListe();
       void chargerApercu(brouillard);
     } catch (e) {
-      setErreur(messageDe(e, "L'export n'a pas abouti."));
+      // UNE PANNE DU RÉSEAU OU UN 5xx NE DIT PAS SI L'EXPORT EST RANGÉ
+      // (relecture M1) · un 504 du relais arrive quand le serveur a pu finir.
+      // La liste et l'aperçu sont relus, et l'écran le dit au lieu de conclure.
+      const message = messageOuDefaut(e, "L'export n'a pas abouti.");
+      setErreur(
+        issueIncertaine(e)
+          ? `${message} · un export a pu être rangé malgré l'erreur, vérifiez la liste ci-dessous avant de relancer.`
+          : message,
+      );
+      void chargerListe();
+      void chargerApercu(brouillard);
     } finally {
       setEnvoi(false);
     }
@@ -116,11 +144,16 @@ export function ExportModificationsPage() {
     try {
       await api.telecharger(`/exports-ecritures/${e.id}/fichier`, e.nomFichier);
     } catch (err) {
-      setErreurTelechargement(`Le fichier de l'export n° ${e.numero} n'a pas pu être téléchargé · ${messageDe(err, 'échec du téléchargement')}`);
+      setErreurTelechargement(`Le fichier de l'export n° ${e.numero} n'a pas pu être téléchargé · ${messageOuDefaut(err, 'échec du téléchargement')}`);
     }
   }
 
   const attente = apercu ? messageEnAttente(apercu.enAttente) : null;
+  const horsPortee = apercu && !brouillard ? messageBrouillardHorsPortee(apercu.brouillardModifieHorsPortee) : null;
+  // LE BOUTON NE DÉPEND PAS D'UN APERÇU RÉUSSI (relecture M2) · un aperçu
+  // en échec ou encore en lecture ne bloque pas l'export ; seul un aperçu LU
+  // qui ne porte rien (et ne nomme aucune pièce hors plafond) le grise.
+  const rienAExporter = apercu !== null && apercuVide(apercu) && apercu.horsPlafond === null;
 
   return (
     <div className="p-2 max-w-[1040px] text-[11.5px] flex flex-col gap-2.5">
@@ -138,7 +171,7 @@ export function ExportModificationsPage() {
           </label>
           <Aide
             titre="Export des seules modifications"
-            texte="Part ce qui a changé depuis l'export précédent · les écritures jamais envoyées, celles du brouillard modifiées depuis leur envoi (elles repartent entières, marquées « remplace l'envoi n° k »), et celles du brouillard retirées depuis, nommées sur la feuille « Supprimées ». Une écriture validée ne change plus · envoyée validée, elle ne repart pas, et sa correction en négatif part comme une écriture nouvelle. Le lettrage et le pointage ne sont pas des modifications. Chaque export porte un numéro continu, sa date, son auteur et l'empreinte de son fichier, que le serveur garde. Au-delà du plafond de lignes, l'export part par lots et dit ce qui attend. Le journal de situation et l'à-nouveau provisoire ne partent jamais."
+            texte="Part ce qui a changé depuis l'export précédent · les écritures jamais envoyées, celles du brouillard modifiées depuis leur envoi (elles repartent entières, marquées « remplace l'envoi n° k »), et celles du brouillard retirées depuis, nommées sur la feuille « Supprimées ». Une écriture validée ne change plus · envoyée validée, elle ne repart pas, et sa correction en négatif part comme une écriture nouvelle. Le lettrage et le pointage ne sont pas des modifications. Chaque export porte un numéro continu, sa date, son auteur et l'empreinte de son fichier, que le serveur garde. Au-delà du plafond de lignes, l'export part par lots et dit ce qui attend. Le journal de situation et l'à-nouveau provisoire ne partent jamais. L'import des écritures d'OmegaX relit un envoi de pièces nouvelles ; un envoi qui remplace ou retire une pièce, il le refuse en le nommant."
             source="AUDCIF art. 20, al. 2 ; art. 22, 1°, 2° et 7°."
           />
         </div>
@@ -158,6 +191,12 @@ export function ExportModificationsPage() {
               · {resumeApercu(apercu)}
             </p>
             {attente && <p className="text-warning">{attente}</p>}
+            {apercu.horsPlafond && (
+              <p role="alert" className="text-danger">
+                {apercu.horsPlafond}
+              </p>
+            )}
+            {horsPortee && <p className="text-warning">{horsPortee}</p>}
           </>
         )}
 
@@ -166,7 +205,7 @@ export function ExportModificationsPage() {
             <button
               type="button"
               onClick={() => void exporter('MODIFICATIONS')}
-              disabled={envoi || !apercu || apercuVide(apercu)}
+              disabled={envoi || rienAExporter}
               className="bg-sel text-white font-semibold px-3 py-1.5 disabled:opacity-40"
             >
               {envoi && !confirmerComplet ? 'Export en cours…' : 'Exporter les modifications'}
@@ -299,6 +338,18 @@ export function ExportModificationsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {liste && liste.plusAnciensAvant !== null && (
+          <div className="px-3.5 py-2">
+            <button
+              type="button"
+              onClick={() => void chargerPlusAnciens()}
+              disabled={suiteEnCours}
+              className="border border-border px-3 py-1 hover:bg-sel-soft disabled:opacity-40"
+            >
+              {suiteEnCours ? 'Lecture…' : 'Exports plus anciens'}
+            </button>
           </div>
         )}
       </section>

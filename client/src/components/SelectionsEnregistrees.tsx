@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError } from '../lib/api';
+import { api } from '../lib/api';
+import { messageOuDefaut } from '../lib/message-refus';
 import { useAuth } from '../lib/auth';
 import { Aide } from './chrome/Aide';
 import { criteresRappeles, type EditionSelection, type ListeSelections, type SelectionServie } from '../lib/selections-edition';
@@ -38,7 +39,7 @@ export function SelectionsEnregistrees({
       setListe(await api.get<ListeSelections>(`/selections-edition?edition=${edition}`));
       setErreurLecture(null);
     } catch (e) {
-      setErreurLecture(e instanceof ApiError ? e.message : "Les sélections enregistrées n'ont pas pu être lues.");
+      setErreurLecture(messageOuDefaut(e, "Les sélections enregistrées n'ont pas pu être lues."));
     }
   }, [edition]);
 
@@ -77,7 +78,7 @@ export function SelectionsEnregistrees({
       setNom(null);
       await recharger();
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "La sélection n'a pas pu être enregistrée.");
+      setErreur(messageOuDefaut(e, "La sélection n'a pas pu être enregistrée."));
     } finally {
       setEnvoi(false);
     }
@@ -95,7 +96,7 @@ export function SelectionsEnregistrees({
       setChoisie('');
       await recharger();
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "La sélection n'a pas pu être supprimée.");
+      setErreur(messageOuDefaut(e, "La sélection n'a pas pu être supprimée."));
     } finally {
       setEnvoi(false);
     }

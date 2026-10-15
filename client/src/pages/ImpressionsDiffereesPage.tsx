@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiError } from '../lib/api';
+import { api } from '../lib/api';
+import { issueIncertaine, messageOuDefaut } from '../lib/message-refus';
 import { useAuth } from '../lib/auth';
 import { useExercice } from '../lib/exercice';
 import { libelleExercice } from '../lib/libelle-exercice';
@@ -10,7 +11,10 @@ import { tailleLisible } from '../lib/export-modifications';
 import {
   LIBELLES_NATURE,
   criteresDeLaDemande,
+  garderLesPlusAnciennes,
   libelleEtat,
+  messageLicenceEchue,
+  poursuivreImpressions,
   productionEnCours,
   resteAProduire,
   type ImpressionServie,
@@ -33,10 +37,6 @@ import {
  * Demander est une lecture des livres, ouverte à tous les rôles qui les
  * exportent ; retirer un fichier rangé est réservé à qui écrit (`peutEcrire`).
  */
-
-function messageDe(e: unknown, defaut: string): string {
-  return e instanceof ApiError ? e.message : defaut;
-}
 
 function dateHeure(iso: string | null): string {
   if (!iso) return '·';
@@ -64,6 +64,7 @@ export function ImpressionsDiffereesPage() {
   const [envoi, setEnvoi] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [suiteEnCours, setSuiteEnCours] = useState(false);
   const enTraitement = useRef(false);
   const monte = useRef(true);
 
@@ -78,12 +79,13 @@ export function ImpressionsDiffereesPage() {
     try {
       const l = await api.get<ListeImpressions>('/impressions-differees');
       if (monte.current) {
-        setListe(l);
+        // Les plus anciennes déjà chargées restent (relecture m5).
+        setListe((avant) => garderLesPlusAnciennes(avant, l));
         setErreurListe(null);
       }
       return l;
     } catch (e) {
-      if (monte.current) setErreurListe(messageDe(e, "La liste des impressions n'a pas pu être lue."));
+      if (monte.current) setErreurListe(messageOuDefaut(e, "La liste des impressions n'a pas pu être lue."));
       return null;
     }
   }, []);
@@ -103,11 +105,34 @@ export function ImpressionsDiffereesPage() {
         if (!r.traitee || r.enAttente === 0) break;
       }
     } catch (e) {
-      if (monte.current) setErreur(messageDe(e, "La production n'a pas pu être lancée."));
+      // UNE PANNE DU RÉSEAU OU UN 5xx NE DIT PAS SI LA PRODUCTION A TOURNÉ
+      // (relecture M5) · un 504 du relais arrive pendant qu'elle se poursuit
+      // ou après qu'elle a fini. La liste est relue, elle dit l'état ; seul
+      // un refus nommé du serveur se dit comme un échec.
+      if (issueIncertaine(e)) {
+        await recharger();
+      } else if (monte.current) {
+        setErreur([messageOuDefaut(e, "La production n'a pas pu être lancée."), messageLicenceEchue(e)].filter(Boolean).join(' '));
+      }
     } finally {
       enTraitement.current = false;
     }
   }, [recharger]);
+
+  // LA PAGE SUIVANTE, VERS LES PLUS ANCIENNES (relecture m5).
+  async function chargerPlusAnciennes() {
+    if (!liste || liste.plusAnciensAvant === null) return;
+    setSuiteEnCours(true);
+    setErreurListe(null);
+    try {
+      const suite = await api.get<ListeImpressions>(`/impressions-differees?avant=${liste.plusAnciensAvant}`);
+      setListe((l) => (l ? poursuivreImpressions(l, suite) : suite));
+    } catch (e) {
+      setErreurListe(messageOuDefaut(e, "Les impressions plus anciennes n'ont pas pu être lues."));
+    } finally {
+      setSuiteEnCours(false);
+    }
+  }
 
   useEffect(() => {
     void (async () => {
@@ -137,7 +162,7 @@ export function ImpressionsDiffereesPage() {
     if (nature !== 'JOURNAL' || journaux !== null) return;
     api.get<Journal[]>('/journaux').then(
       (j) => monte.current && setJournaux(j.filter((x) => x.type !== 'SITUATION')),
-      (e) => monte.current && setErreurJournaux(messageDe(e, "La liste des journaux n'a pas pu être lue.")),
+      (e) => monte.current && setErreurJournaux(messageOuDefaut(e, "La liste des journaux n'a pas pu être lue.")),
     );
   }, [nature, journaux]);
 
@@ -163,7 +188,14 @@ export function ImpressionsDiffereesPage() {
       await recharger();
       void faireProduire();
     } catch (e) {
-      setErreur(messageDe(e, "La demande n'a pas pu être enregistrée."));
+      const motif = messageOuDefaut(e, "La demande n'a pas pu être enregistrée.");
+      if (issueIncertaine(e)) {
+        // Sans réponse lisible, la demande a pu être enregistrée · la liste le dit (relecture M1).
+        setErreur(`${motif} · une demande a pu être enregistrée malgré l'erreur, vérifiez la liste ci-dessous avant de la refaire.`);
+        await recharger();
+      } else {
+        setErreur([motif, messageLicenceEchue(e)].filter(Boolean).join(' '));
+      }
     } finally {
       setEnvoi(false);
     }
@@ -174,7 +206,7 @@ export function ImpressionsDiffereesPage() {
     try {
       await api.telecharger(`/impressions-differees/${i.id}/fichier`, i.nomFichier ?? `impression-${i.numero}.xlsx`);
     } catch (e) {
-      setErreur(`Le fichier de l'impression n° ${i.numero} n'a pas pu être téléchargé · ${messageDe(e, 'échec du téléchargement')}`);
+      setErreur(`Le fichier de l'impression n° ${i.numero} n'a pas pu être téléchargé · ${messageOuDefaut(e, 'échec du téléchargement')}`);
     }
   }
 
@@ -184,7 +216,7 @@ export function ImpressionsDiffereesPage() {
       await api.post(`/impressions-differees/${i.id}/retirer-fichier`);
       await recharger();
     } catch (e) {
-      setErreur(messageDe(e, "Le fichier n'a pas pu être retiré."));
+      setErreur(messageOuDefaut(e, "Le fichier n'a pas pu être retiré."));
     }
   }
 
@@ -195,7 +227,7 @@ export function ImpressionsDiffereesPage() {
           <h2 className="text-[11.5px] font-bold">Nouvelle demande</h2>
           <Aide
             titre="Impression différée"
-            texte="L'édition est demandée maintenant et produite ensuite par le serveur, par le même moteur que l'export du livre et sous le même plafond de lignes. Chaque demande prend un numéro de la suite du dossier et garde sa date de demande et sa date de production. Au-delà du plafond, ou sur une panne, la demande est « Échouée » avec son motif · aucun fichier partiel n'est rangé. Fermer la fenêtre n'annule rien · la production reprend à la prochaine ouverture. Le journal entier produit s'enregistre comme imprimé. Retirer un fichier libère la place du dossier · la demande, son numéro et l'empreinte du fichier restent."
+            texte="L'édition est demandée maintenant et produite ensuite par le serveur, par le même moteur que l'export du livre et sous le même plafond de lignes. Chaque demande prend un numéro de la suite du dossier et garde sa date de demande et sa date de production. Au-delà du plafond, ou sur une panne, la demande est « Échouée » avec son motif · aucun fichier partiel n'est rangé. Fermer la fenêtre n'annule rien · la production reprend à la prochaine ouverture. Le journal entier produit s'enregistre comme imprimé une fois son fichier rangé. Retirer un fichier libère la place du dossier · la demande, son numéro et l'empreinte du fichier restent. Une licence échue (dossier en lecture seule) ne produit plus d'impression différée · le livre se télécharge alors directement depuis sa fenêtre."
             source="AUDCIF art. 22, 6° et 7°."
           />
         </div>
@@ -372,6 +404,18 @@ export function ImpressionsDiffereesPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {liste && liste.plusAnciensAvant !== null && (
+          <div className="px-3.5 py-2">
+            <button
+              type="button"
+              onClick={() => void chargerPlusAnciennes()}
+              disabled={suiteEnCours}
+              className="border border-border px-3 py-1 hover:bg-sel-soft disabled:opacity-40"
+            >
+              {suiteEnCours ? 'Lecture…' : 'Impressions plus anciennes'}
+            </button>
           </div>
         )}
       </section>

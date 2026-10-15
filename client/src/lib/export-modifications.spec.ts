@@ -1,9 +1,29 @@
-import { apercuVide, messageEnAttente, porteeDeLExport, resumeApercu, tailleLisible, type ApercuExport } from './export-modifications';
+import {
+  apercuVide,
+  messageBrouillardHorsPortee,
+  messageEnAttente,
+  porteeDeLExport,
+  poursuivreListe,
+  resumeApercu,
+  tailleLisible,
+  type ApercuExport,
+  type ExportServi,
+} from './export-modifications';
 
 // Pas d'import de « vitest » · convention du dépôt (le jest de la racine
 // ramasse aussi client/src, describe/it/expect arrivent par les globales).
 
-const vide: ApercuExport = { dernierNumero: null, nouvelles: 0, modifiees: 0, supprimees: 0, lignes: 0, enAttente: 0, plafondLignes: 200_000 };
+const vide: ApercuExport = {
+  dernierNumero: null,
+  nouvelles: 0,
+  modifiees: 0,
+  supprimees: 0,
+  lignes: 0,
+  enAttente: 0,
+  plafondLignes: 200_000,
+  brouillardModifieHorsPortee: 0,
+  horsPlafond: null,
+};
 
 describe('export des seules modifications · ce que la fenêtre en dit', () => {
   it('la portée reprend les mots de la feuille « Export » du fichier', () => {
@@ -40,5 +60,20 @@ describe('export des seules modifications · ce que la fenêtre en dit', () => {
     expect(tailleLisible(800)).toBe('800 o');
     expect(tailleLisible(2049)).toBe('3 Ko');
     expect(tailleLisible(3 * 1024 * 1024)).toBe('3 Mo');
+  });
+
+  it('un brouillard modifié hors de la portée se dit, rien quand il n’y en a pas (m8)', () => {
+    expect(messageBrouillardHorsPortee(0)).toBeNull();
+    expect(messageBrouillardHorsPortee(1)).toMatch(/^1 écriture envoyée au brouillard a changé depuis/);
+    expect(messageBrouillardHorsPortee(3)).toMatch(/^3 écritures envoyées au brouillard ont changé depuis/);
+  });
+
+  it('la page suivante s’ajoute sous les plus récents, sans doublon, et dit s’il en reste (m5)', () => {
+    const e = (n: number) => ({ id: `e${n}`, numero: n }) as ExportServi;
+    const premiere = { exports: [e(3), e(2)], total: 3, tronque: true, plusAnciensAvant: 2 };
+    const suite = { exports: [e(2), e(1)], total: 3, tronque: false, plusAnciensAvant: null };
+    const lue = poursuivreListe(premiere, suite);
+    expect(lue.exports.map((x) => x.numero)).toEqual([3, 2, 1]);
+    expect([lue.tronque, lue.plusAnciensAvant]).toEqual([false, null]);
   });
 });

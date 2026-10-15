@@ -1,3 +1,5 @@
+import { statutDe } from './message-refus';
+
 /**
  * IMPRESSIONS DIFFÉRÉES (ligne sage-l7, fonction 59) · ce que la fenêtre dit
  * d'une demande, écrit une fois et tenu par son spec. Les règles vivent au
@@ -31,7 +33,52 @@ export interface ListeImpressions {
   impressions: ImpressionServie[];
   total: number;
   tronque: boolean;
+  /** Le numéro à partir duquel la liste se poursuit vers les plus anciennes, ou rien (relecture m5). */
+  plusAnciensAvant: number | null;
   enAttente: number;
+}
+
+/** La page suivante ajoutée à la liste lue, sans doublon. */
+export function poursuivreImpressions(liste: ListeImpressions, suite: ListeImpressions): ListeImpressions {
+  const vues = new Set(liste.impressions.map((i) => i.id));
+  return {
+    ...suite,
+    impressions: [...liste.impressions, ...suite.impressions.filter((i) => !vues.has(i.id))],
+    tronque: suite.plusAnciensAvant !== null,
+  };
+}
+
+/**
+ * La première page relue (la fenêtre la relit pendant une production) GARDE
+ * les plus anciennes déjà chargées · sans quoi chaque relecture repliait la
+ * liste sur ses cinquante premières.
+ */
+export function garderLesPlusAnciennes(avant: ListeImpressions | null, premiere: ListeImpressions): ListeImpressions {
+  if (!avant || premiere.plusAnciensAvant === null) return premiere;
+  const borne = premiere.plusAnciensAvant;
+  const anciennes = avant.impressions.filter((i) => i.numero < borne);
+  if (anciennes.length === 0) return premiere;
+  return {
+    ...premiere,
+    impressions: [...premiere.impressions, ...anciennes],
+    tronque: avant.plusAnciensAvant !== null,
+    plusAnciensAvant: avant.plusAnciensAvant,
+  };
+}
+
+/**
+ * UNE LICENCE ÉCHUE NE PRODUIT PLUS D'IMPRESSION DIFFÉRÉE (relecture m10 ;
+ * décision de Manasse du 2026-10-09 · un dossier échu passe en lecture seule,
+ * GET et HEAD) · demander et faire produire s'écrivent, et le serveur les
+ * refuse. L'export DIRECT des livres, servi en lecture, reste ouvert · la
+ * fenêtre le dit à côté du refus.
+ */
+export function messageLicenceEchue(e: unknown): string | null {
+  if (statutDe(e) !== 403 || !(e instanceof Error) || !/lecture seule/i.test(e.message)) return null;
+  return (
+    "Une licence échue ne produit plus d'impression différée · téléchargez le livre directement depuis sa " +
+    "fenêtre (Journal, Grand livre, Balance), dont l'export reste ouvert en lecture."
+  );
 }
 
 export const LIBELLES_NATURE: Record<NatureImpression, string> = {

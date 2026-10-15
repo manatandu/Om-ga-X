@@ -18,6 +18,10 @@ export interface ApercuExport {
   lignes: number;
   enAttente: number;
   plafondLignes: number;
+  /** Envoyées au brouillard, modifiées depuis, hors de la portée choisie (brouillard non compris). */
+  brouillardModifieHorsPortee: number;
+  /** Le refus nommé d'une pièce qu'aucun export ne peut porter, servi par le serveur. */
+  horsPlafond: string | null;
 }
 
 export interface ExportServi {
@@ -42,6 +46,30 @@ export interface ListeExports {
   exports: ExportServi[];
   total: number;
   tronque: boolean;
+  /** Le numéro à partir duquel la liste se poursuit vers les plus anciens, ou rien. */
+  plusAnciensAvant: number | null;
+}
+
+/** La page suivante ajoutée à la liste lue · les plus récents restent en tête. */
+export function poursuivreListe(liste: ListeExports, suite: ListeExports): ListeExports {
+  const vus = new Set(liste.exports.map((e) => e.id));
+  return {
+    exports: [...liste.exports, ...suite.exports.filter((e) => !vus.has(e.id))],
+    total: suite.total,
+    tronque: suite.plusAnciensAvant !== null,
+    plusAnciensAvant: suite.plusAnciensAvant,
+  };
+}
+
+/**
+ * Une pièce envoyée au brouillard, modifiée depuis, que la portée choisie
+ * (livre-journal seul) ne renvoie pas · la receveuse tient une version
+ * périmée, et c'est dit (relecture m8).
+ */
+export function messageBrouillardHorsPortee(n: number): string | null {
+  if (n <= 0) return null;
+  return `${entier(n)} écriture${n > 1 ? 's' : ''} envoyée${n > 1 ? 's' : ''} au brouillard ${n > 1 ? 'ont' : 'a'} changé depuis ` +
+    "et ne repart pas sans le brouillard · cochez « Brouillard compris » pour l'envoyer.";
 }
 
 /**

@@ -1,4 +1,14 @@
-import { criteresDeLaDemande, libelleEtat, productionEnCours, resteAProduire, type ImpressionServie, type ListeImpressions } from './impressions-differees';
+import {
+  criteresDeLaDemande,
+  garderLesPlusAnciennes,
+  libelleEtat,
+  messageLicenceEchue,
+  poursuivreImpressions,
+  productionEnCours,
+  resteAProduire,
+  type ImpressionServie,
+  type ListeImpressions,
+} from './impressions-differees';
 
 // Pas d'import de « vitest » · convention du dépôt (le jest de la racine
 // ramasse aussi client/src, describe/it/expect arrivent par les globales).
@@ -20,7 +30,13 @@ const base: ImpressionServie = {
   fichierRetireLe: null,
   interrompue: false,
 };
-const liste = (impressions: ImpressionServie[], enAttente = 0): ListeImpressions => ({ impressions, total: impressions.length, tronque: false, enAttente });
+const liste = (impressions: ImpressionServie[], enAttente = 0): ListeImpressions => ({
+  impressions,
+  total: impressions.length,
+  tronque: false,
+  plusAnciensAvant: null,
+  enAttente,
+});
 
 const champs = {
   exerciceId: 'e',
@@ -58,4 +74,27 @@ describe('impressions différées · ce que la fenêtre en dit', () => {
     expect(criteresDeLaDemande('GRAND_LIVRE', { ...champs, format: 'plat' })).toEqual({ exerciceId: 'e', format: 'plat' });
     expect(criteresDeLaDemande('BALANCE', { ...champs, grandsLivres: false })).toEqual({ exerciceId: 'e', grandsLivres: false });
   });
+
+  it('la page suivante s’ajoute ; une relecture de la première page garde les plus anciennes chargées (m5)', () => {
+    const i = (n: number) => ({ ...base, id: `i${n}`, numero: n });
+    const premiere = { ...liste([i(4), i(3)]), total: 4, tronque: true, plusAnciensAvant: 3 };
+    const toute = poursuivreImpressions(premiere, { ...liste([i(2), i(1)]), total: 4 });
+    expect([toute.impressions.map((x) => x.numero), toute.tronque, toute.plusAnciensAvant]).toEqual([[4, 3, 2, 1], false, null]);
+    const relue = garderLesPlusAnciennes(toute, { ...liste([{ ...i(4), etat: 'PRETE' }, i(3)]), total: 4, tronque: true, plusAnciensAvant: 3 });
+    expect([relue.impressions.map((x) => x.numero), relue.impressions[0].etat, relue.plusAnciensAvant]).toEqual([[4, 3, 2, 1], 'PRETE', null]);
+    expect(garderLesPlusAnciennes(null, premiere)).toBe(premiere);
+  });
+
+  it('une licence échue se dit à côté du refus, et renvoie vers l’export direct (m10)', () => {
+    class ErreurApi extends Error {
+      constructor(public status: number, message: string) {
+        super(message);
+      }
+    }
+    const refus = new ErreurApi(403, "Abonnement expiré · le dossier est en lecture seule : consultation et impression possibles, aucune modification jusqu'au renouvellement de l'abonnement.");
+    expect(messageLicenceEchue(refus)).toMatch(/Une licence échue ne produit plus d'impression différée · téléchargez le livre directement/);
+    expect(messageLicenceEchue(new ErreurApi(403, 'Accès refusé : licence invalide'))).toBeNull();
+    expect(messageLicenceEchue(new TypeError('Failed to fetch'))).toBeNull();
+  });
 });
+
