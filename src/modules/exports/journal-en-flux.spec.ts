@@ -90,7 +90,13 @@ function service(nbEcritures: number) {
   const toutes = Array.from({ length: nbEcritures }, (_, i) => ecriture(i + 1));
   const findMany = jest.fn(async ({ take, cursor, where }: { take: number; cursor?: unknown; where?: Record<string, unknown> }) => {
     if (cursor) throw new Error('Le journal exporté ne pagine plus par le curseur de Prisma (relecture M6).');
-    return toutes.filter((e) => correspond(e as unknown as Record<string, unknown>, where)).slice(0, take);
+    // Dans l'ordre du service · une date changée en route change le rang.
+    const ordre = (a: (typeof toutes)[number], b: (typeof toutes)[number]) =>
+      a.date.getTime() - b.date.getTime() || a.numeroPiece - b.numeroPiece || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    return toutes
+      .filter((e) => correspond(e as unknown as Record<string, unknown>, where))
+      .sort(ordre)
+      .slice(0, take);
   });
   const prisma = {
     ligneEcriture: { count: jest.fn().mockResolvedValue(nbEcritures * 2) },
@@ -201,6 +207,57 @@ describe('Journal exporté en flux', () => {
     await classeur.xlsx.load(Buffer.concat(morceaux) as never);
     // 1 200 écritures lues (la retirée l'était déjà), deux lignes chacune.
     expect(classeur.worksheets[0].rowCount).toBe(PREMIERE_LIGNE_DONNEES + 2400);
+  });
+
+  it('une pièce dont la date AVANCE pendant l’export ne s’écrit qu’une fois, et les totaux restent justes (relecture TypeScript, M2)', async () => {
+    const { svc, findMany, toutes } = service(1200);
+    const lire = findMany.getMockImplementation()!;
+    let deplacee: string | undefined;
+    findMany.mockImplementation(async (a) => {
+      const rendues = await lire(a);
+      // Après la première tranche, un autre poste corrige la date d'une pièce
+      // déjà lue · elle passe au 31 décembre, au-delà de la clé de la tranche.
+      if (!deplacee && rendues.length > 0) {
+        deplacee = rendues[0].id;
+        toutes.find((e) => e.id === deplacee)!.date = new Date('2026-12-31');
+      }
+      return rendues;
+    });
+    const morceaux: Buffer[] = [];
+    const sortie = new Writable({
+      write(m, _e, cb) {
+        morceaux.push(Buffer.from(m));
+        cb();
+      },
+    });
+    await svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie);
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(Buffer.concat(morceaux) as never);
+    const feuille = classeur.worksheets[0];
+    // Écrite deux fois, la pièce portait quatre lignes et le total 120 100.
+    expect(feuille.rowCount).toBe(PREMIERE_LIGNE_DONNEES + 2400);
+    const debit = feuille.getRow(PREMIERE_LIGNE_DONNEES + 2400).getCell(10).value as ExcelJS.CellFormulaValue;
+    expect(debit.result).toBe(1200 * 100);
+  });
+
+  it('une pièce dont la date RECULE pendant l’export n’est jamais relue · le livre est refusé avant ses totaux, jamais remis amputé (M2)', async () => {
+    const { svc, findMany, toutes } = service(1200);
+    const lire = findMany.getMockImplementation()!;
+    let deplacee = false;
+    findMany.mockImplementation(async (a) => {
+      const rendues = await lire(a);
+      // Après la première tranche, la dernière pièce, pas encore lue, passe
+      // au 1er janvier · en deçà de la clé, elle ne sera jamais relue.
+      if (!deplacee) {
+        deplacee = true;
+        toutes.find((e) => e.id === 'e-001200')!.date = new Date('2026-01-01');
+      }
+      return rendues;
+    });
+    const sortie = new Writable({ write: (_m, _e, cb) => cb() });
+    await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
+      /Journal : 2\s398 lignes lues sur 2\s400 comptées au départ/,
+    );
   });
 
   it('coiffe et en-tête restent en place · le flux ne les écrit qu’AVANT', async () => {

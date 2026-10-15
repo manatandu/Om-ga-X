@@ -400,6 +400,17 @@ export function anomalieResultatAnterieurNonVire(bilan: {
   return lignes;
 }
 
+/** Le refus de volume des livres en flux · compté par la base avant le premier octet, jamais une troncature. */
+function refuserAuDelaDuPlafond(nb: number, quoi: string): void {
+  if (nb > MAX_LIGNES_EXPORT) {
+    throw new PayloadTooLargeException(
+      `${quoi} : ${nb.toLocaleString('fr-FR')} lignes à exporter, au-delà de la limite de ` +
+        `${MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. Restreignez la période (ou le journal) ` +
+        `et relancez l'export.`,
+    );
+  }
+}
+
 @Injectable()
 export class ExportService {
   private readonly logger = new Logger(ExportService.name);
@@ -557,13 +568,7 @@ export class ExportService {
     // Le périmètre de l'écriture, arrêté sur son statut · ce que l'export lit,
     // jamais une simulation qu'il ne lit pas (ligne sage-l1, fonction 12).
     const nb = await this.prisma.ligneEcriture.count({ where: { ecriture: avecStatut(ecriture) } });
-    if (nb > MAX_LIGNES_EXPORT) {
-      throw new PayloadTooLargeException(
-        `${quoi} : ${nb.toLocaleString('fr-FR')} lignes à exporter, au-delà de la limite de ` +
-          `${MAX_LIGNES_EXPORT.toLocaleString('fr-FR')}. Restreignez la période (ou le journal) ` +
-          `et relancez l'export.`,
-      );
-    }
+    refuserAuDelaDuPlafond(nb, quoi);
   }
 
   /**
@@ -800,7 +805,13 @@ export class ExportService {
     imprimePar?: string,
   ): Promise<{ lignes: number }> {
     const where = perimetreJournal(tenantId, filtres);
-    await this.verifierVolume(where, 'Journal');
+    // LE DÉCOMPTE DE DÉPART, SUR LE FILTRE MÊME DE LA LECTURE (relecture
+    // TypeScript, M2) · il borne le volume, et le livre écrit s'y confronte
+    // avant ses totaux. `verifierVolume` arrête le statut hors situation · le
+    // livre d'un journal de situation, que la lecture rend, se serait alors
+    // refusé comme amputé.
+    const comptees = await this.prisma.ligneEcriture.count({ where: { ecriture: { ...where, tenantId } } });
+    refuserAuDelaDuPlafond(comptees, 'Journal');
     const identite = await this.identiteEtat(tenantId, filtres);
 
     // L'auteur est un identifiant en base · un auditeur ne lit pas un uuid.
@@ -829,6 +840,11 @@ export class ExportService {
     // de Prisma, et le journal sortait amputé, ses totaux bouclant sur ce
     // qu'il portait.
     let derniere: { date: Date; numeroPiece: number | null; id: string } | undefined;
+    // Une pièce dont la DATE avance pendant la production revient dans une
+    // tranche suivante · écrite deux fois, le livre portait ses lignes en
+    // double et des totaux faux qui bouclaient (M2). Une pièce dont la date
+    // recule n'est jamais relue · le décompte de départ le dit.
+    const ecrites = new Set<string>();
     for (;;) {
       const lot = await this.prisma.ecriture.findMany({
         // `tenantId` répété alors que `where` le porte déjà · le balayage de
@@ -859,6 +875,8 @@ export class ExportService {
         orderBy: [{ date: 'asc' }, { numeroPiece: 'asc' }, { id: 'asc' }],
       });
       for (const e of lot) {
+        if (ecrites.has(e.id)) continue;
+        ecrites.add(e.id);
         const etatCorrection = e.correction
           ? `Annulée par la pièce n° ${e.correction.numeroPiece ?? '·'}`
           : e.corrigeEcriture
@@ -896,6 +914,9 @@ export class ExportService {
       derniere = { date: fin.date, numeroPiece: fin.numeroPiece, id: fin.id };
     }
 
+    // Un livre amputé ou gonflé en route ne reçoit pas de totaux · le
+    // téléchargement est coupé, l'impression différée échoue, motif dit.
+    confronterAuDecompte(nbLignes, comptees, 'Journal');
     const derniereDonnee = flux.derniereLigneDonnees();
     // LES DEUX TOTAUX SONT DÉSORMAIS LE MÊME · la formule couvre exactement les
     // lignes écrites, et la valeur jointe est leur somme. Tant que l'export

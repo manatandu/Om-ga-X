@@ -288,6 +288,15 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   avoir changé, contre L7-4, et l'import refusait l'envoi entier. Ordre
   TOTAL sur tout le contenu de la ligne, comparé caractère par caractère
   (jamais `localeCompare`, qui suit la version d'ICU).
+- **M2 · le journal exporté omettait ou doublait une pièce dont la date
+  change en route.** Le journal paginé par la clé relisait une pièce dont la
+  date avance (lignes en double, totaux faux qui bouclaient) et ne relisait
+  jamais celle dont la date recule (livre amputé). Décompte des lignes au
+  départ SUR LE FILTRE MÊME DE LA LECTURE (celui de `verifierVolume` arrête
+  le statut hors situation, et le livre d'un journal de situation se serait
+  refusé), ensemble des pièces écrites, confrontation au décompte avant la
+  ligne des totaux · 409 nommé, téléchargement coupé, impression différée
+  échouée.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
