@@ -100,15 +100,52 @@ Branche de sauvegarde · `travail/sage-l6`. Fiche retirée à l'intégration.
 
 ## Pour CLAUDE.md
 
-(à écrire à la fin de la ligne)
+**Pièces jointes des écritures, sections, biens et salariés (ligne sage-l6,
+fonction n° 22).** Un mécanisme, `common/pieces-jointes/` (type lu dans les
+octets, 5 Mo, SHA-256 contre le doublon par objet, `attachment` et `nosniff`,
+nom borné en points de code, 413 en français), employé CHEZ CHAQUE OBJET par
+une `RegleDesPieces` · `comptabilite/`, `analytique/`, `immobilisations/`,
+`personnel/` ; documents des tiers et pièces des virements inchangés
+(réexport). Une table par objet, cloisonnée, auditée sans `contenu`, restituée
+dans `pieces-jointes/<objet>/` (le manifeste ne dit plus qu'OmegaX ne tient
+aucune pièce d'écriture · une garantie négative vieillit). DÉCISION PAR LA LOI
+· la pièce d'une écriture se DÉPOSE toujours, validée et exercice clôturé
+compris (AUDCIF art. 17, 3° ; joindre ne touche ni origine, ni contenu, ni
+imputation, art. 22, 1°), sauf sur l'à-nouveau provisoire ; elle se RETIRE au
+brouillard et en situation seulement · validée, elle se conserve (art. 22, 2°,
+6° et 7° ; art. 24 ; ordonnance-loi n° 23/10 du 13 mars 2023, art. 216),
+jugé sous le verrou de l'écriture (`SELECT … FOR UPDATE`). L'écriture retirée
+au brouillard laisse sa pièce DÉTACHÉE (`SET NULL`, `ecritureDecrite` figée au
+dépôt, laissée partir dans `detenteurs-ecriture.ts`), lue dans « Pièces
+détachées » du journal. Section et bien · documents libres, qui retiennent la
+SUPPRESSION (refus nommé) et jamais la modification · un document n'est pas un
+traitement. Salarié · aux droits du registre (rôles cantonnés), se retire
+toujours (Code du numérique, art. 215 et 216), nom et commentaire hors du
+journal d'audit. Écran · colonne PJ de la saisie et du journal (décompte de
+l'exercice, inconnu jamais « aucune »), volet nommé par son objet.
+
+**Longueur fixe des codes de section (ligne sage-l6, fonction n° 50).**
+`PlanAnalytique.longueurSections`, null = libre, OPTION du plan sans défaut
+(SYCEBNL Partie 2 ch. 3, classe 9, sous-section 2 · découpage « à sa
+convenance » ; Partie 4 ch. 3, section 2 · « nomenclature budgétaire du
+projet »). Les sections DÉTAIL font exactement N caractères (points de code),
+les rubriques TOTAL strictement moins · la rubrique « 1 » n'absorbe plus en
+silence une feuille « 10 » d'une autre longueur. Posée seulement si toutes les
+sections la respectent (refus qui en nomme vingt et dit le total), JAMAIS par
+renumérotation ; pose et création sous le verrou du plan, relevé par tranches,
+un seul prédicat (`longueur-sections.ts`) pour l'aperçu
+(`GET /analytique/plans/:id/longueur-sections`), la pose et la création.
+Bornes 2 à 13, convention d'OmegaX, tenues aussi par la base.
 
 ## Pour build-log.md
 
-(à écrire à la fin de la ligne)
+| 22 | 2026-10-15 | L6 | fait | WebKit non éprouvé localement | la règle de retrait de l'écriture, tranchée par la loi et jugée sous verrou ; la pièce d'une écriture retirée au brouillard, détachée plutôt que retenue ; le document du bien qui figeait la fiche, vu sur vraie base seulement |
+| 50 | 2026-10-15 | L6 | fait | le choix plan ou dossier (question posée) | une longueur qui ne casse pas les rubriques emboîtées (feuilles exactes, rubriques plus courtes) ; jamais de renumérotation, d'où le refus nommé |
 
 ## Pour features.csv
 
-(à écrire à la fin de la ligne)
+- 22 → yes · « mécanisme commun `common/pieces-jointes/`, écriture (saisie, journal, pièces détachées), section, bien, salarié ; retrait fermé à l'écriture validée (AUDCIF art. 22, 24) »
+- 50 → yes · « par plan analytique, option sans défaut ; feuilles exactes, rubriques plus courtes, jamais renuméroté »
 
 ## Commandes de vérification
 

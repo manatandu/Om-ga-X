@@ -9,8 +9,9 @@ import { API, appelApi, creerDossier, seConnecter, surveiller } from './outils';
  * l'onglet Documents de la fiche du bien, et dans la fiche du salarié
  * (registre du personnel). Chaque document se joint, se lit, se commente et
  * se retire ; une section ou une fiche qui porte un document ne se supprime
- * pas sans que le refus le nomme. Le document du salarié n'entre pas au
- * journal d'audit par son nom.
+ * pas sans que le refus le nomme, et un document ne fige jamais la fiche du
+ * bien. Le document du salarié n'entre pas au journal d'audit par son nom.
+ * Un test par objet, chacun dans son dossier.
  */
 interface Exercice { id: string; dateDebut: string }
 
@@ -31,28 +32,35 @@ async function retirer(page: Page, volet: Locator, nom: string) {
   await expect(volet.getByText('Aucune pièce jointe.')).toBeVisible();
 }
 
-test('SYSCOHADA · documents de la section, du bien et du salarié · joints, lus, retirés, et la suppression qui le dit', async ({ page }) => {
-  test.setTimeout(300_000);
-  const pannes = surveiller(page);
-  const dossier = await creerDossier(page, { referentiel: 'SYSCOHADA', nom: 'Documents L6 e2e', montant: 10_000 });
+/** Un dossier neuf, ouvert à l'écran. */
+async function ouvrir(page: Page, nom: string, paie = false) {
+  const dossier = await creerDossier(page, { referentiel: 'SYSCOHADA', nom, montant: 10_000 });
   await seConnecter(page, dossier.email);
-  await appelApi(page, 'PATCH', '/dossier/modules', { modulesActives: ['PAIE'] });
+  if (paie) await appelApi(page, 'PATCH', '/dossier/modules', { modulesActives: ['PAIE'] });
+  return dossier;
+}
 
-  // --- La section analytique.
+test('SYSCOHADA · le document d’une section · joint, retiré, et la suppression qui le nomme', async ({ page }) => {
+  const pannes = surveiller(page);
+  await ouvrir(page, 'Section L6 e2e');
   const [plan] = await appelApi<Array<{ id: string; code: string }>>(page, 'GET', '/analytique/plans');
   const section = await appelApi<{ id: string }>(page, 'POST', `/analytique/plans/${plan.id}/sections`, { code: 'EAU01', intitule: 'Adduction d’eau' });
   await page.goto('/#/plans-analytiques');
   await page.getByRole('button', { name: /EAU01/ }).click();
-  const voletSection = page.getByRole('region', { name: 'Documents de la section' });
-  await expect(voletSection.getByText('Aucune pièce jointe.')).toBeVisible();
-  await joindre(voletSection, 'Convention.pdf', '%PDF-1.4 convention', 'Convention signée');
+  const volet = page.getByRole('region', { name: 'Documents de la section' });
+  await expect(volet.getByText('Aucune pièce jointe.')).toBeVisible();
+  await joindre(volet, 'Convention.pdf', '%PDF-1.4 convention', 'Convention signée');
   page.once('dialog', (d) => void d.accept());
   await page.getByRole('button', { name: 'Supprimer la section' }).click();
   await expect(page.getByText(/documents joints \(volet Documents de la section\) \(1\)/)).toBeVisible();
-  await retirer(page, voletSection, 'Convention.pdf');
+  await retirer(page, volet, 'Convention.pdf');
   await appelApi(page, 'DELETE', `/analytique/sections/${section.id}`);
+  expect(pannes).toEqual([]);
+});
 
-  // --- Le bien · onglet Documents de sa fiche.
+test('SYSCOHADA · le document d’un bien · onglet Documents, la fiche reste modifiable, sa suppression le nomme', async ({ page }) => {
+  const pannes = surveiller(page);
+  const dossier = await ouvrir(page, 'Bien L6 e2e');
   const [exercice] = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).filter((e) => e.id === dossier.exerciceId);
   const comptes = await appelApi<Array<{ id: string; numero: string }>>(page, 'GET', '/immobilisations/comptes-du-bien');
   const vehicule = comptes.find((c) => c.numero === '24510000')!;
@@ -79,18 +87,25 @@ test('SYSCOHADA · documents de la section, du bien et du salarié · joints, lu
   const fiche = page.getByRole('dialog', { name: 'Fiche · Camion D e2e' });
   await fiche.getByRole('tab', { name: 'Documents' }).click();
   await joindre(fiche, 'Carte grise.pdf', '%PDF-1.4 carte grise', 'Carte grise du camion');
+  // Un document n'est pas un traitement · la valeur se modifie encore au brouillard.
+  await appelApi(page, 'PATCH', `/immobilisations/${bien.id}`, { valeurOrigine: 9_500_000 });
   // La fiche qui porte un document ne se supprime pas · le refus le nomme.
   await expect(appelApi(page, 'DELETE', `/immobilisations/${bien.id}`)).rejects.toThrow(/porte 1 document\(s\) joint\(s\)/);
   await retirer(page, fiche, 'Carte grise.pdf');
   await page.keyboard.press('Escape');
   await expect(fiche).toBeHidden();
+  await appelApi(page, 'DELETE', `/immobilisations/${bien.id}`);
+  expect(pannes).toEqual([]);
+});
 
-  // --- Le salarié · sa fiche au registre du personnel.
+test('SYSCOHADA · le document d’un salarié · au registre, servi en pièce jointe, hors du journal d’audit par son nom', async ({ page }) => {
+  const pannes = surveiller(page);
+  await ouvrir(page, 'Salarié L6 e2e', true);
   const salarie = await appelApi<{ id: string }>(page, 'POST', '/personnel/salaries', { nom: 'KABEYA', prenoms: 'Marie', sexe: 'FEMININ', dateNaissance: '1990-02-03' });
   await page.goto('/#/personnel?onglet=registre');
   await page.getByRole('row').filter({ hasText: 'KABEYA Marie' }).click();
-  const voletSalarie = page.getByRole('region', { name: 'Documents du salarié' });
-  await joindre(voletSalarie, 'Contrat KABEYA.pdf', '%PDF-1.4 contrat', 'Contrat signé');
+  const volet = page.getByRole('region', { name: 'Documents du salarié' });
+  await joindre(volet, 'Contrat KABEYA.pdf', '%PDF-1.4 contrat', 'Contrat signé');
   // Le journal d'audit garde l'acte, jamais le nom ni le commentaire du document.
   const audit = JSON.stringify(await appelApi<unknown>(page, 'GET', '/journal-audit?entite=PieceJointeSalarie'));
   expect(audit).toContain('PieceJointeSalarie');
@@ -100,12 +115,11 @@ test('SYSCOHADA · documents de la section, du bien et du salarié · joints, lu
   const servi = await page.evaluate(
     async ({ api, chemin }) => {
       const r = await fetch(api + chemin, { credentials: 'include' });
-      return [r.status, r.headers.get('x-content-type-options'), await r.text()];
+      return [r.status, r.headers.get('x-content-type-options'), r.headers.get('content-disposition')?.startsWith('attachment;'), await r.text()];
     },
     { api: API, chemin: `/personnel/pieces-jointes/${liste.pieces[0].id}/fichier` },
   );
-  expect(servi).toEqual([200, 'nosniff', '%PDF-1.4 contrat']);
-  await retirer(page, voletSalarie, 'Contrat KABEYA.pdf');
-
+  expect(servi).toEqual([200, 'nosniff', true, '%PDF-1.4 contrat']);
+  await retirer(page, volet, 'Contrat KABEYA.pdf');
   expect(pannes).toEqual([]);
 });
