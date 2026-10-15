@@ -8,6 +8,7 @@ import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { OrdresVirementService, type LigneAOrdonner } from '../reglements/ordres-virement.service';
 import { coordonneesImprimees } from '../tiers/ribs-tiers';
 import { compteDuRole } from './passation-paie';
+import { filtreOuverturePasseeAuPremierJour } from '../exercice/ouverture-passee';
 import {
   MODES_PAIEMENT,
   billetageDuPaiement,
@@ -187,9 +188,11 @@ export class PaiementSalairesService {
     // ne peut dépasser ce que le 422 porte encore (fiche du compte 42 des deux
     // plans · crédité des rémunérations dues, débité de leur paiement).
     // Condition nécessaire, pas suffisante · elle avertit, sans refuser.
+    const passes = aPayer.filter((l) => l.passeAuJournal);
     const confrontation422 = await this.confronterAu422(
       tenantId,
-      aPayer.filter((l) => l.passeAuJournal).reduce((n, l) => n + centimes(l.montant), 0) / 100,
+      passes.reduce((n, l) => n + centimes(l.montant), 0) / 100,
+      lus.filter((b) => b.ecritureId !== null && passes.some((l) => l.bulletinId === b.id)).map((b) => b.ecritureId as string),
     );
 
     const coupuresProposees = ((dernierEnEspeces?.billetage as unknown as BilletageDuPaiement | null)?.coupures ?? []).map(Number);
@@ -258,37 +261,61 @@ export class PaiementSalairesService {
   }
 
   /**
-   * Le 422 au jour de Kinshasa, dans l'exercice le plus récent qui a
-   * commencé · solde créditeur, lignes de tous statuts (le paiement saisi à
-   * la main est souvent au brouillard), à-nouveau compris. `null` sans
-   * exercice ni compte lisible · jamais un zéro.
+   * LE 422 TEL QU'IL EST AU JOUR DE KINSHASA, lu depuis l'exercice de la
+   * PASSATION · second tour, point 5. Lu sur l'exercice du jour, il disait
+   * chaque janvier « payé hors de ce module » d'une paie de décembre, tant
+   * que N+1 n'avait pas son à-nouveau. L'exercice de l'écriture de paie se lit
+   * en entier (ouverture comprise), chaque exercice suivant déjà commencé sans
+   * sa position d'ouverture (à-nouveau provisoire, report de clôture, bilan
+   * d'ouverture · `filtreOuverturePasseeAuPremierJour`), qui ne fait que
+   * reporter le solde déjà compté. Lignes de tous statuts (le paiement saisi à
+   * la main est souvent au brouillard). `null` sans écriture ni compte
+   * lisible · jamais un zéro.
    */
-  private async confronterAu422(tenantId: string, totalPasse: number) {
-    if (totalPasse <= 0) return null;
+  private async confronterAu422(tenantId: string, totalPasse: number, ecritureIds: readonly string[]) {
+    if (totalPasse <= 0 || ecritureIds.length === 0) return null;
     const tenant = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { referentiel: true } });
     if (!tenant) return null;
+    const ids = [...new Set(ecritureIds)];
+    const ecritures = await this.prisma.ecriture.findMany({
+      where: { tenantId, id: { in: ids } },
+      take: ids.length,
+      select: { exercice: { select: { id: true, dateDebut: true, dateFin: true } } },
+    });
+    if (ecritures.length === 0) return null;
+    const passation = ecritures.map((e) => e.exercice).sort((a, b) => a.dateDebut.getTime() - b.dateDebut.getTime())[0];
     const aujourdHui = jourDeKinshasa(new Date());
-    const exercice = await this.prisma.exercice.findFirst({
-      where: { tenantId, dateDebut: { lte: aujourdHui } },
-      orderBy: { dateDebut: 'desc' },
+    const suivants = await this.prisma.exercice.findMany({
+      where: { tenantId, dateDebut: { gt: passation.dateDebut, lte: aujourdHui } },
+      orderBy: { dateDebut: 'asc' },
+      // Un dossier n'a jamais vingt exercices ouverts au-delà de celui d'une
+      // paie encore à payer · la borne est dite.
+      take: 20,
       select: { id: true, dateDebut: true, dateFin: true },
     });
-    if (!exercice) return null;
     const racine = compteDuRole('REMUNERATIONS_DUES', tenant.referentiel).replace(/0+$/, '');
-    const somme = await this.prisma.ligneEcriture.aggregate({
-      where: { compte: { tenantId, numero: { startsWith: racine } }, ecriture: { tenantId, exerciceId: exercice.id } },
-      _sum: { debit: true, credit: true },
-    });
-    const solde = (centimes(nombre(somme._sum.credit ?? 0)) - centimes(nombre(somme._sum.debit ?? 0))) / 100;
-    const ecart = (centimes(totalPasse) - centimes(solde)) / 100;
+    const solde = async (ecriture: Prisma.EcritureWhereInput) => {
+      const s = await this.prisma.ligneEcriture.aggregate({
+        where: { compte: { tenantId, numero: { startsWith: racine } }, ecriture },
+        _sum: { debit: true, credit: true },
+      });
+      return centimes(nombre(s._sum.credit ?? 0)) - centimes(nombre(s._sum.debit ?? 0));
+    };
+    let soldeCentimes = await solde({ tenantId, exerciceId: passation.id });
+    for (const f of suivants) {
+      soldeCentimes += (await solde({ tenantId, exerciceId: f.id, estANouveauProvisoire: false })) - (await solde(filtreOuverturePasseeAuPremierJour(tenantId, f)));
+    }
+    const soldeLu = soldeCentimes / 100;
+    const ecart = (centimes(totalPasse) - soldeCentimes) / 100;
+    const dernier = suivants.length ? suivants[suivants.length - 1] : passation;
     return {
       compte: racine,
-      solde,
+      solde: soldeLu,
       totalPasse,
-      exercice: { debut: exercice.dateDebut, fin: exercice.dateFin },
+      exercice: { debut: passation.dateDebut, fin: dernier.dateFin },
       avertissement:
         ecart > 0
-          ? `Le ${racine} (Personnel, rémunérations dues) ne porte plus que ${solde.toFixed(2)} de rémunérations dues, quand ${totalPasse.toFixed(2)} sont proposés à payer sur des bulletins passés au journal · un salaire a pu être payé hors de ce module (débit du ${racine} saisi à la main). Vérifiez le grand livre du ${racine} avant de payer ; le module ne voit que ses propres paiements.`
+          ? `Le ${racine} (Personnel, rémunérations dues) ne porte plus que ${soldeLu.toFixed(2)} de rémunérations dues, quand ${totalPasse.toFixed(2)} sont proposés à payer sur des bulletins passés au journal · un salaire a pu être payé hors de ce module (débit du ${racine} saisi à la main). Vérifiez le grand livre du ${racine} avant de payer ; le module ne voit que ses propres paiements.`
           : null,
     };
   }

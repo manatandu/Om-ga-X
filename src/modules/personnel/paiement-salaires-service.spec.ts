@@ -33,7 +33,18 @@ const bulletin = (p: Record<string, unknown>) => ({
   ...p,
 });
 
-function service(p: { bulletins: unknown[]; groupes?: unknown[]; versements?: unknown[]; solde422?: { debit: number; credit: number } }) {
+const EXERCICE_2025 = { id: 'x-2025', dateDebut: new Date('2025-01-01T00:00:00Z'), dateFin: new Date('2025-12-31T00:00:00Z') };
+const EXERCICE_2026 = { id: 'x-2026', dateDebut: new Date('2026-01-01T00:00:00Z'), dateFin: new Date('2026-12-31T00:00:00Z') };
+
+function service(p: {
+  bulletins: unknown[];
+  groupes?: unknown[];
+  versements?: unknown[];
+  solde422?: { debit: number; credit: number };
+  exercicePassation?: typeof EXERCICE_2026;
+  suivants?: (typeof EXERCICE_2026)[];
+  aggregate?: jest.Mock;
+}) {
   const groupBy = jest.fn().mockResolvedValue(p.groupes ?? []);
   const prisma = {
     bulletinPaie: { findMany: jest.fn().mockResolvedValue(p.bulletins) },
@@ -41,13 +52,14 @@ function service(p: { bulletins: unknown[]; groupes?: unknown[]; versements?: un
     paiementSalaires: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null) },
     journal: { findMany: jest.fn().mockResolvedValue([]) },
     tenant: { findFirst: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
-    exercice: {
-      findFirst: jest.fn().mockResolvedValue({ id: 'x-2026', dateDebut: new Date('2026-01-01T00:00:00Z'), dateFin: new Date('2026-12-31T00:00:00Z') }),
-    },
+    ecriture: { findMany: jest.fn().mockResolvedValue([{ exercice: p.exercicePassation ?? EXERCICE_2026 }]) },
+    exercice: { findMany: jest.fn().mockResolvedValue(p.suivants ?? []) },
     ligneEcriture: {
-      aggregate: jest.fn().mockResolvedValue({
-        _sum: { debit: new Prisma.Decimal(p.solde422?.debit ?? 0), credit: new Prisma.Decimal(p.solde422?.credit ?? 900_000) },
-      }),
+      aggregate:
+        p.aggregate ??
+        jest.fn().mockResolvedValue({
+          _sum: { debit: new Prisma.Decimal(p.solde422?.debit ?? 0), credit: new Prisma.Decimal(p.solde422?.credit ?? 900_000) },
+        }),
     },
   } as unknown as PrismaService;
   return { svc: new PaiementSalairesService(prisma, {} as EcritureService, {} as OrdresVirementService), groupBy, prisma };
@@ -64,6 +76,40 @@ describe('M4 · le 422 confronté à ce qui se propose sur des bulletins passés
     const { svc } = service({ bulletins: [bulletin({})], solde422: { debit: 900_000, credit: 900_000 } });
     const p = await svc.proposition('t', '2026-08');
     expect(p.aPayer).toHaveLength(1);
+    expect(p.confrontation422?.avertissement).toMatch(/ne porte plus que 0\.00 .* payé hors de ce module/);
+  });
+});
+
+describe('second tour, point 5 · le 422 se lit depuis l’exercice de la passation, jamais celui du jour', () => {
+  // La paie de décembre 2025 est passée dans 2025 et se paie en janvier 2026.
+  // 2026 porte l'à-nouveau du 422 (900 000), qui ne fait que reporter le
+  // solde déjà compté dans 2025.
+  const sommes = (p: { tout2025: [number, number]; tout2026: [number, number]; ouverture2026: [number, number] }) =>
+    jest.fn().mockImplementation(({ where }: { where: { ecriture: Record<string, unknown> } }) => {
+      const e = where.ecriture;
+      const [debit, credit] = 'AND' in e ? p.ouverture2026 : e.exerciceId === 'x-2025' ? p.tout2025 : p.tout2026;
+      return Promise.resolve({ _sum: { debit: new Prisma.Decimal(debit), credit: new Prisma.Decimal(credit) } });
+    });
+
+  it('décembre payé en janvier, à-nouveau passé · le 422 porte 900 000, rien à dire', async () => {
+    const aggregate = sommes({ tout2025: [0, 900_000], tout2026: [0, 900_000], ouverture2026: [0, 900_000] });
+    const { svc } = service({ bulletins: [bulletin({})], exercicePassation: EXERCICE_2025, suivants: [EXERCICE_2026], aggregate });
+    const p = await svc.proposition('t', '2025-12');
+    expect(p.confrontation422).toMatchObject({ solde: 900_000, totalPasse: 900_000, avertissement: null });
+  });
+
+  it('janvier sans à-nouveau encore (N non clôturé) · le 422 de la passation porte 900 000, aucun faux « payé hors module »', async () => {
+    const aggregate = sommes({ tout2025: [0, 900_000], tout2026: [0, 0], ouverture2026: [0, 0] });
+    const { svc } = service({ bulletins: [bulletin({})], exercicePassation: EXERCICE_2025, suivants: [EXERCICE_2026], aggregate });
+    const p = await svc.proposition('t', '2025-12');
+    expect(p.confrontation422?.avertissement).toBeNull();
+    expect(p.confrontation422?.solde).toBe(900_000);
+  });
+
+  it('payé à la main en janvier (D 422 hors de l’ouverture) · le 422 est soldé, et c’est dit', async () => {
+    const aggregate = sommes({ tout2025: [0, 900_000], tout2026: [900_000, 900_000], ouverture2026: [0, 900_000] });
+    const { svc } = service({ bulletins: [bulletin({})], exercicePassation: EXERCICE_2025, suivants: [EXERCICE_2026], aggregate });
+    const p = await svc.proposition('t', '2025-12');
     expect(p.confrontation422?.avertissement).toMatch(/ne porte plus que 0\.00 .* payé hors de ce module/);
   });
 });
