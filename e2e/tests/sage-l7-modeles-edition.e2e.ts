@@ -16,7 +16,7 @@ test('SYSCOHADA · le plan comptable s’imprime sous un modèle du dossier, une
 
   await page.goto('/#/comptes');
   await expect(page.getByRole('combobox', { name: "Modèle d'édition" })).toHaveValue('');
-  await page.getByRole('button', { name: 'Personnaliser…' }).click();
+  await page.getByRole('button', { name: "Personnaliser l'édition…" }).click();
   const boite = page.getByRole('dialog', { name: "Personnaliser l'édition" });
   await boite.getByLabel('Nom du modèle').fill('Liste courte');
   // Les colonnes qui identifient la ligne ne se décochent pas.

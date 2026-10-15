@@ -29,7 +29,7 @@ test('SYSCOHADA · export des modifications, impressions différées et modèle 
     const fenetres: Array<[string, string, string]> = [
       ['/#/exports-ecritures', 'Exporter les modifications', 'Fermer Exporter les modifications'],
       ['/#/impressions-differees', "Demander l'impression", 'Fermer Impressions différées'],
-      ['/#/comptes', 'Personnaliser…', 'Fermer Plan comptable'],
+      ['/#/comptes', "Personnaliser l'édition…", 'Fermer Plan comptable'],
     ];
     for (const [adresse, commande, fermer] of fenetres) {
       await page.goto(adresse);

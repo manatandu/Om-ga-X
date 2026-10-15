@@ -84,7 +84,7 @@ export function ChoixModeleEdition({
             onClick={() => setOuverte(true)}
             className="border border-border bg-surface px-2.5 py-1 text-[11.5px] font-bold hover:bg-surface-alt"
           >
-            Personnaliser…
+            Personnaliser l'édition…
           </button>
         )}
         <Aide
