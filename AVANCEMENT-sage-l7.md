@@ -59,9 +59,25 @@ différée, sélections enregistrées, modèles d'édition et sauts.
   'exports' before initialization ») · renommée, et le spec appelle
   désormais `lister` (vu tomber sur l'ancien nom avant correction).
 
-## Reste
+### #99 · scénario sur vraie base à travers une clôture (vert le 2026-10-15)
 
-- #99 · scénario sur vraie base à travers une clôture.
+Serveur compilé sur `l7_scenario`, appelé par son API, base relue par psql.
+N · E1 validée, E2 et E3 au brouillard · export n° 1 (brouillard compris) ·
+3 nouvelles, 6 lignes. E2 corrigée au brouillard (55 000 au lieu de 50 000),
+E3 retirée, E4 saisie, tout validé ; N+1 ouvert par les à-nouveaux
+provisoires · export n° 2 (brouillard compris) · 1 nouvelle, 1 modifiée,
+1 retrait, 4 lignes, aucun à-nouveau provisoire parti. Clôture de N, E5 en
+N+1 · export n° 3 (livre-journal) · 3 nouvelles (solde des comptes de
+gestion, à-nouveau définitif, E5), 7 lignes ; export n° 4 refusé (« aucune
+modification depuis l'export n° 3 »). Relu dans les trois fichiers · chaque
+écriture de la base partie à son dernier envoi avec ses lignes et son débit
+d'aujourd'hui, rien d'autre que le retrait nommé (E3, au n° 2), E1, E4, E5
+et les deux écritures de clôture une fois chacune, E2 deux fois
+(« Modifiée · remplace l'envoi n° 1 · validée depuis »), registre à 6
+vivantes et 1 retirée ; l'import des écritures d'un second dossier analyse
+les trois fichiers sans colonne exigée manquante.
+
+## Reste
 - #59 · impression différée (Fichier > Impressions différées), sélections
   enregistrées, modèles d'édition et sauts de ligne ou de page.
 - Bloc du § 3 complet, tests navigateur.
