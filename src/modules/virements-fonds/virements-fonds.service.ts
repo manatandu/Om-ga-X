@@ -5,6 +5,7 @@ import { transactionJournalisee } from '../../common/audit/transaction-journalis
 import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
+import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { assurerComptesDePassage } from './comptes-de-passage';
 import { empreinteDocument, identifierType, motifRefusDocument, nettoyerNomFichier, decoderNomMultipart } from '../tiers/documents-tiers';
 import {
@@ -116,8 +117,12 @@ export class VirementsFondsService {
     // le plan sous une racine « en devises », ou porteur d'une ligne en devise.
     const dossier = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } });
     const comptes = [origine!, destination!].map((j) => ({ code: j.code, ...j.compteTresorerie! }));
+    // Une SIMULATION en devise ne dit rien du compte (ligne sage-l1, second
+    // tour, c) · une écriture de situation n'enregistre aucune opération
+    // (`ecritures-de-situation.ts`), et lue ici elle faisait refuser le
+    // virement d'une caisse en francs.
     const lignesEnDevise = await this.prisma.ligneEcriture.findMany({
-      where: { compteId: { in: comptes.map((c) => c.id) }, deviseId: { not: null }, ecriture: { tenantId } },
+      where: { compteId: { in: comptes.map((c) => c.id) }, deviseId: { not: null }, ecriture: { tenantId, ...HORS_SITUATION } },
       select: { compteId: true },
       distinct: ['compteId'],
     });

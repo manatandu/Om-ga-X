@@ -11,7 +11,7 @@ import { PERIMETRES_BALANCE_AGEE, PLAFOND_LIGNES_GRAND_LIVRE, type PerimetreBala
 import { CreerEcritureDto, ImputationOuvertureDto } from './dto/creer-ecriture.dto';
 import { CorrigerEcritureDto } from './dto/corriger-ecriture.dto';
 import { FusionnerComptesDto, ReimputerDto } from './dto/reimputer.dto';
-import { ModifierEcritureDto, ValiderEcrituresDto, ValiderJusquaDto } from './dto/brouillard.dto';
+import { ModifierEcritureDto, TransfererEcritureDto, ValiderEcrituresDto, ValiderJusquaDto } from './dto/brouillard.dto';
 import { RoleUtilisateur } from '@prisma/client';
 import { ReserveAuComptable } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { EXERCICE_FACULTATIF, EXERCICE_REQUIS } from '../../common/exercice-requis';
@@ -142,6 +142,22 @@ export class EcritureController {
     await this.ecritureService.verifierComptesPersonnalises(user.tenantId, dto.lignes);
     await this.ecritureService.verifierComptesEnSommeil(user.tenantId, dto.lignes, dto.confirmerComptesEnSommeil);
     return this.ecritureService.modifier(user.tenantId, id, dto);
+  }
+
+  /**
+   * TRANSFÈRE DANS UN JOURNAL ORDINAIRE le brouillard qu'un journal de
+   * situation a gardé (`ecritures-de-situation.ts`). Un geste de SAISIE ·
+   * il ne valide rien, la validation reste réservée au comptable ; mêmes
+   * rôles que la modification du brouillard.
+   */
+  @Post(':id/transfert')
+  @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
+  async transferer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TransfererEcritureDto,
+  ) {
+    return this.ecritureService.transfererDansUnJournalOrdinaire(user.tenantId, id, dto);
   }
 
   /** Supprime une écriture EN BROUILLARD. */

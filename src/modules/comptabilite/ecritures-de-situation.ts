@@ -141,3 +141,80 @@ export function motifSituationHorsSequenceDuFichier(code: string): string {
     'mensuelle ou manuelle.'
   );
 }
+
+/**
+ * LE BROUILLARD HÉRITÉ D'UN JOURNAL DE SITUATION SE TRANSFÈRE DANS UN JOURNAL
+ * ORDINAIRE (relecture du second tour, BLOQUANT · décision par la loi).
+ *
+ * La reprise des écritures tenues (`20270171040000_ecritures_de_situation_tenues`)
+ * laisse au brouillard, dans leur journal de situation, celles qu'une lettre,
+ * un pointage ou un module tient · saisies avant la règle, elles peuvent
+ * enregistrer une opération. Elles ne s'y valident pas (l'invariant le
+ * refuse), et défaire ce qui les tient n'est pas toujours possible (lettrage
+ * figé par une clôture de période, rapprochement clos qui n'est pas le
+ * dernier, mouvement de stock qui a servi une sortie, journal clôturé
+ * totalement avant la règle) · la clôture annuelle refusait alors sans issue.
+ * Sur `main`, elles se validaient sur place.
+ *
+ * Le geste · TRANSFÉRER la pièce dans un journal ordinaire du dossier, où elle
+ * se valide comme toute pièce. Ce qu'en dit l'AUDCIF :
+ *  · art. 22, 1° · « l'indication de l'origine, du contenu et de
+ *    l'imputation » · lignes, comptes, montants, lettrage, pointage et liens
+ *    des modules sont GARDÉS tels quels, l'auteur et la date de saisie aussi ;
+ *    le journal et le numéro d'origine restent au journal d'audit, qui
+ *    enregistre la tête de l'écriture avant et après (`Ecriture` y est suivie) ;
+ *  · art. 22, 2° · l'irréversibilité frappe la donnée VALIDÉE · un brouillard
+ *    n'est pas au livre-journal, il se modifie, et le transfert n'en valide
+ *    rien · la validation reste un geste à part, réservé au comptable ;
+ *  · art. 22, 3° et 4° · la chronologie du journal d'ARRIVÉE est tenue ·
+ *    la pièce y prend le numéro suivant (art. 17, 3°), et datée d'une période
+ *    qu'une clôture fige dans ce journal, elle est enregistrée au premier jour
+ *    de la période non encore clôturée, sa date de valeur mentionnée
+ *    distinctement · sur DEMANDE, comme à la saisie, jamais au-delà de
+ *    l'exercice. Les clôtures du journal de SITUATION ne la retiennent pas ·
+ *    elles portent sur la chronologie d'opérations enregistrées, et une pièce
+ *    qui n'est pas entrée au livre-journal n'en fait pas partie (même lecture
+ *    que `cloturesApplicables`, qui ne fige pas ce journal par une clôture de
+ *    période).
+ */
+export const ISSUE_TRANSFERT =
+  'transférez-la dans un journal ordinaire (Brouillard, « Transférer »), où elle se valide comme toute pièce · ' +
+  'ses lignes, son lettrage, son pointage et ses liens aux modules restent tels quels';
+
+/** La pièce présentée au transfert n'est pas un brouillard hérité d'un journal de situation. */
+export function motifTransfertSansObjet(piece: string, statut: StatutEcriture | string, situation: boolean): string | null {
+  if (!situation) {
+    return `L'écriture ${piece} n'est pas dans un journal de situation · le transfert ne sert qu'au brouillard qu'un tel journal a gardé.`;
+  }
+  if (statut === StatutEcriture.SITUATION) {
+    return (
+      `L'écriture ${piece} est une écriture de situation · elle n'enregistre aucune opération ${FONDEMENT} et ne se ` +
+      "transfère pas. Pour passer l'opération, saisissez-la dans un journal ordinaire."
+    );
+  }
+  if (statut === StatutEcriture.VALIDEE) {
+    return (
+      `L'écriture ${piece} est validée · elle est entrée au livre-journal et ne change plus de journal (AUDCIF ` +
+      'art. 22, 2°). Le contrôle des écritures validées dans un journal de situation dit la voie de correction.'
+    );
+  }
+  return null;
+}
+
+/** Le journal d'arrivée choisi est lui-même un journal de situation. */
+export function motifArriveeDeSituation(code: string): string {
+  return (
+    `Le journal ${code} est un journal de situation · ses écritures ne se valident pas. Choisissez un journal ` +
+    "ordinaire, celui où l'opération aurait dû être saisie."
+  );
+}
+
+/** Le brouillard hérité présenté à la validation, nommé avec son issue. */
+export function motifBrouillardHeriteNeSeValidePas(pieces: string[]): string {
+  const plusieurs = pieces.length > 1;
+  return (
+    `${plusieurs ? 'Les écritures' : "L'écriture"} ${pieces.join(', ')} ${plusieurs ? 'sont restées' : 'est restée'} au ` +
+    `brouillard dans un journal de situation · ${plusieurs ? 'elles ne se valident' : 'elle ne se valide'} pas dans ce ` +
+    `journal ${FONDEMENT}. ${ISSUE_TRANSFERT.charAt(0).toUpperCase()}${ISSUE_TRANSFERT.slice(1)}.`
+  );
+}

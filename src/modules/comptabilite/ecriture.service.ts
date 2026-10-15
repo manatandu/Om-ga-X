@@ -38,10 +38,14 @@ import { transactionJournalisee } from '../../common/audit/transaction-journalis
 import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
 import {
   HORS_SITUATION,
+  ISSUE_TRANSFERT,
   estJournalDeSituation,
   filtreDuStatut,
+  motifArriveeDeSituation,
+  motifBrouillardHeriteNeSeValidePas,
   motifJournalDeSituationReserveALaSaisie,
   motifSituationNeSeValidePas,
+  motifTransfertSansObjet,
   statutDeNaissance,
 } from './ecritures-de-situation';
 import { AUCUN_VIREMENT, VirementsParCompte } from '../immobilisations/virements-mise-en-service';
@@ -1513,6 +1517,99 @@ export class EcritureService {
   }
 
   /**
+   * TRANSFÉRER DANS UN JOURNAL ORDINAIRE le brouillard qu'un journal de
+   * situation a gardé (relecture du second tour, BLOQUANT · décision par la
+   * loi dans `ecritures-de-situation.ts`, AUDCIF art. 22, 1° à 4°).
+   *
+   * Seuls changent le JOURNAL, le NUMÉRO DE PIÈCE (le suivant du journal
+   * d'arrivée, comme à la saisie) et, sur demande, la DATE (premier jour non
+   * clôturé du journal d'arrivée, la date d'origine gardée en date de
+   * valeur). Les LIGNES ne sont pas touchées · leur lettrage, leur pointage,
+   * leur ventilation et les modules qui tiennent la pièce la retrouvent telle
+   * quelle, et c'est ce qui sort le dossier de l'impasse (délettrer ou
+   * dépointer est parfois impossible). L'auteur et la date de saisie restent,
+   * le journal d'audit garde l'en-tête d'avant.
+   *
+   * Contrôles d'en-tête de la saisie (`controlesDEntree`) · exercice ouvert,
+   * journal d'arrivée actif, ordinaire, et ouvert à la date (verrous de
+   * période du journal d'arrivée, report de l'art. 22, 4° sur demande).
+   * Les lignes ne sont pas recontrôlées · elles ne sont pas ressaisies, et
+   * un compte devenu total ou mis en sommeil depuis enfermerait de nouveau la
+   * pièce, que la validation relit de toute façon (équilibre).
+   */
+  async transfererDansUnJournalOrdinaire(
+    tenantId: string,
+    ecritureId: string,
+    dto: { journalId: string; reporterAuPremierJourOuvert?: boolean },
+  ) {
+    const ecriture = await this.prisma.ecriture.findFirst({
+      where: { id: ecritureId, tenantId },
+      select: {
+        id: true,
+        statut: true,
+        exerciceId: true,
+        journalId: true,
+        numeroPiece: true,
+        date: true,
+        dateValeur: true,
+        journal: { select: { code: true, type: true } },
+      },
+    });
+    if (!ecriture) throw new NotFoundException('Écriture introuvable pour ce dossier.');
+    const piece = `${ecriture.journal.code} n° ${ecriture.numeroPiece ?? '·'}`;
+    const sansObjet = motifTransfertSansObjet(piece, ecriture.statut, estJournalDeSituation(ecriture.journal));
+    if (sansObjet) throw new BadRequestException(sansObjet);
+    const arrivee = await this.journalService.trouver(tenantId, dto.journalId);
+    if (estJournalDeSituation(arrivee)) throw new BadRequestException(motifArriveeDeSituation(arrivee.code));
+
+    // Mêmes contrôles d'en-tête que la saisie, sur le journal d'ARRIVÉE ·
+    // exercice ouvert, journal actif, date dans l'exercice et hors d'une
+    // période close (report de l'art. 22, 4° sur demande, jamais au-delà de
+    // l'exercice).
+    const { journal, date, dateValeur } = await this.controlesDEntree(tenantId, {
+      exerciceId: ecriture.exerciceId,
+      journalId: arrivee.id,
+      date: ecriture.date,
+      reporterAuPremierJourOuvert: dto.reporterAuPremierJourOuvert === true,
+    });
+
+    return avecRetrySerialisable(
+      this.prisma,
+      async (tx) => {
+        // RELUE DANS LA TRANSACTION · validée, supprimée ou déjà transférée
+        // entre-temps (un second clic, un autre poste), elle ne se transfère
+        // pas une seconde fois · le numéro tiré serait un trou de plus.
+        const relue = await tx.ecriture.findFirst({
+          where: { id: ecritureId, tenantId },
+          select: { statut: true, journalId: true, exerciceId: true },
+        });
+        if (!relue || relue.statut !== StatutEcriture.BROUILLARD || relue.journalId !== ecriture.journalId) {
+          throw new ConflictException(
+            `L'écriture ${piece} a changé depuis la lecture (validée, supprimée ou déjà transférée) · rechargez le brouillard.`,
+          );
+        }
+        await relireLExerciceDansLaTransaction(tx, tenantId, relue.exerciceId, date);
+        const numeroPiece = await this.journalService.prochainNumeroPiece(tenantId, journal, relue.exerciceId, date, tx);
+        // Mise à jour UNITAIRE · le journal d'audit en garde l'en-tête d'avant
+        // (journal, numéro, date), seule trace de l'origine (art. 22, 1°).
+        return tx.ecriture.update({
+          where: { id: ecritureId },
+          data: {
+            journalId: journal.id,
+            numeroPiece,
+            date,
+            // Reportée, elle garde sa date réelle · la date de valeur déjà
+            // portée (une pièce déjà reportée) prime sur la date d'origine.
+            ...(dateValeur ? { dateValeur: ecriture.dateValeur ?? dateValeur } : {}),
+          },
+          select: { id: true, numeroPiece: true, date: true, dateValeur: true, journal: { select: { code: true } } },
+        });
+      },
+      `Trop d'écritures enregistrées au même instant sur le journal ${journal.code} · veuillez réessayer.`,
+    );
+  }
+
+  /**
    * Supprime une écriture en brouillard. Une écriture validée ne se supprime
    * pas · et une écriture qu'un AUTRE MODULE tient ne se supprime pas non plus.
    *
@@ -1859,7 +1956,7 @@ export class EcritureService {
   ) {
     const ecritures = await this.prisma.ecriture.findMany({
       where: { id: { in: ecritureIds }, tenantId },
-      include: { lignes: true, exercice: { select: { statut: true } }, journal: { select: { code: true } } },
+      include: { lignes: true, exercice: { select: { statut: true } }, journal: { select: { code: true, type: true } } },
     });
     if (ecritures.length !== ecritureIds.length) {
       throw new NotFoundException('Une ou plusieurs écritures sont introuvables pour ce dossier.');
@@ -1873,6 +1970,16 @@ export class EcritureService {
     if (situations.length > 0) {
       throw new BadRequestException(
         motifSituationNeSeValidePas(situations.slice(0, 5).map((e) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`)),
+      );
+    }
+    // LE BROUILLARD HÉRITÉ D'UN JOURNAL DE SITUATION (relecture du second
+    // tour, BLOQUANT) · l'invariant refuserait sa validation au milieu du lot,
+    // sous un motif qui ne dit pas l'issue. Il est nommé avec elle · le
+    // transfert dans un journal ordinaire (`ecritures-de-situation.ts`).
+    const heritees = aValider.filter((e) => estJournalDeSituation(e.journal));
+    if (heritees.length > 0) {
+      throw new BadRequestException(
+        motifBrouillardHeriteNeSeValidePas(heritees.slice(0, 5).map((e) => `${e.journal.code} n° ${e.numeroPiece ?? '·'}`)),
       );
     }
 
@@ -1946,6 +2053,9 @@ export class EcritureService {
       refuseesSecondRegard: ecartees.length,
       sousDerogation: visa ? validables.length : 0,
       motifRefus: ecartees.length > 0 ? this.motifDoubleRegard(dossier.referentiel) : null,
+      // Une sélection explicite les refuse en les nommant (ci-dessus) · seule
+      // la validation par période les écarte en les comptant.
+      ecarteesJournalDeSituation: 0,
     };
   }
 
@@ -2011,18 +2121,34 @@ export class EcritureService {
     ]);
     if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
     if (dto.journalId && !journal) throw new NotFoundException('Journal introuvable pour ce dossier.');
-    const ecritures = await this.prisma.ecriture.findMany({
-      where: {
-        tenantId,
-        exerciceId: dto.exerciceId,
-        statut: StatutEcriture.BROUILLARD,
-        // Le report provisoire attend la clôture, pas une validation par lot.
-        estANouveauProvisoire: false,
-        date: { lte: new Date(dto.dateLimite) },
-        ...(dto.journalId ? { journalId: dto.journalId } : {}),
-      },
-      select: { id: true },
-    });
+    const perimetre: Prisma.EcritureWhereInput = {
+      tenantId,
+      exerciceId: dto.exerciceId,
+      statut: StatutEcriture.BROUILLARD,
+      // Le report provisoire attend la clôture, pas une validation par lot.
+      estANouveauProvisoire: false,
+      date: { lte: new Date(dto.dateLimite) },
+      ...(dto.journalId ? { journalId: dto.journalId } : {}),
+    };
+    // LE BROUILLARD HÉRITÉ D'UN JOURNAL DE SITUATION EST ÉCARTÉ ET COMPTÉ
+    // (relecture du second tour, a) · pris dans le lot, il faisait refuser la
+    // période entière par l'invariant, et une seule pièce héritée empêchait de
+    // centraliser le mois (AUDCIF art. 22, 2°, « au terme de chaque période
+    // qui ne peut excéder un mois »). Même parti que le double regard · le
+    // refus écarte, il ne jette pas, et le compteur le dit avec l'issue.
+    const [ecritures, heritees] = await Promise.all([
+      this.prisma.ecriture.findMany({
+        where: { ...perimetre, tenantId, journal: { type: { not: TypeJournal.SITUATION } } },
+        select: { id: true },
+      }),
+      this.prisma.ecriture.count({ where: { ...perimetre, tenantId, journal: { type: TypeJournal.SITUATION } } }),
+    ]);
+    const ecarteesJournalDeSituation = heritees;
+    const motifEcarteesJournalDeSituation =
+      heritees > 0
+        ? `${heritees} écriture(s) restée(s) au brouillard dans un journal de situation ne se valident pas dans ce ` +
+          `journal · ${ISSUE_TRANSFERT}.`
+        : null;
     if (ecritures.length === 0) {
       // FORME COMPLÈTE, et c'est ce qui casserait en silence : un retour à
       // trois champs ferait lire `undefined` au client sur le compteur des
@@ -2034,14 +2160,17 @@ export class EcritureService {
         refuseesSecondRegard: 0,
         sousDerogation: 0,
         motifRefus: null,
+        ecarteesJournalDeSituation,
+        motifEcarteesJournalDeSituation,
       };
     }
-    return this.valider(
+    const resultat = await this.valider(
       tenantId,
       valideeBy,
       ecritures.map((e) => e.id),
       dto,
     );
+    return { ...resultat, ecarteesJournalDeSituation, motifEcarteesJournalDeSituation };
   }
 
   /**
@@ -2115,7 +2244,7 @@ export class EcritureService {
       where: { ...where, tenantId },
       take: PLAFOND_ECRITURES_PAR_FENETRE,
       include: {
-        journal: { select: { code: true, intitule: true } },
+        journal: { select: { code: true, intitule: true, type: true } },
         lignes: {
           include: {
             compte: { select: { numero: true, intitule: true } },
@@ -2138,6 +2267,10 @@ export class EcritureService {
         journal: e.journal.code,
         journalIntitule: e.journal.intitule,
         numeroPiece: e.numeroPiece,
+        // Restée au brouillard dans un journal de situation (reprise des
+        // écritures tenues) · elle ne s'y valide pas, l'écran offre son
+        // transfert dans un journal ordinaire.
+        journalDeSituation: estJournalDeSituation(e.journal),
         libelle: e.libelle,
         reference: e.reference,
         debit,

@@ -122,3 +122,17 @@ export class ValiderJusquaDto {
   @MaxLength(300)
   secondRegardMotif?: string;
 }
+
+/**
+ * Transfert d'un brouillard hérité d'un journal de situation dans un journal
+ * ordinaire (`EcritureService.transfererDansUnJournalOrdinaire`). Le report au
+ * premier jour non clôturé se DEMANDE, comme à la saisie (AUDCIF art. 22, 4°).
+ */
+export class TransfererEcritureDto {
+  @IsUUID()
+  journalId!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  reporterAuPremierJourOuvert?: boolean;
+}

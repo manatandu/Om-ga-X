@@ -2198,7 +2198,9 @@ export class ExerciceService {
     });
     if (enBrouillard > 0) {
       // Celles d'un journal de situation ne se valident pas (relecture M3) ·
-      // l'issue « validez-les » les aurait laissées sans geste possible.
+      // l'issue est leur transfert dans un journal ordinaire (second tour,
+      // BLOQUANT), « défaites ce qui les tient » laissant parfois le dossier
+      // sans geste (lettrage figé, rapprochement clos).
       const enSituation = await this.prisma.ecriture.count({
         where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD, journal: { type: TypeJournal.SITUATION } },
       });
@@ -2206,9 +2208,9 @@ export class ExerciceService {
         `${enBrouillard} écriture(s) sont encore en brouillard sur cet exercice. Validez-les ou supprimez-les avant ` +
           "de clôturer : la clôture ne lit que le livre-journal, et ce qui reste en brouillard serait perdu du résultat." +
           (enSituation > 0
-            ? ` Dont ${enSituation} dans un journal de situation, où elles ne se valident pas · défaites ce qui les tient ` +
-              '(lettrage, pointage, rattachement d’un module) puis supprimez-les, et ressaisissez dans un journal ' +
-              'ordinaire celles qui enregistrent une opération.'
+            ? ` Dont ${enSituation} dans un journal de situation, où elles ne se valident pas · transférez-les dans ` +
+              'un journal ordinaire (Brouillard, « Transférer »), où elles se valident comme toute pièce, leurs ' +
+              'lignes, lettrage, pointage et liens aux modules gardés tels quels.'
             : ''),
       );
     }

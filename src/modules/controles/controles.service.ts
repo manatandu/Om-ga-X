@@ -1,4 +1,4 @@
-import { HORS_SITUATION, filtreDuStatut } from '../comptabilite/ecritures-de-situation';
+import { HORS_SITUATION, ISSUE_TRANSFERT, filtreDuStatut } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { STOCK_PROVENANT_D_IMMOBILISATIONS } from '../stocks/nomenclature-stocks';
 import { PrismaService } from '../../common/prisma.service';
@@ -4135,8 +4135,8 @@ export class ControlesService {
     // pointage ou un module · la reprise les a laissées au brouillard plutôt
     // que de les faire disparaître des lectures, car le logiciel ne sait pas
     // si elles enregistrent une opération (art. 22, 1°). Elles ne se valident
-    // pas dans ce journal, et la clôture refuse tout brouillard · les issues
-    // sont dites, aucune n'est jouée d'office.
+    // pas dans ce journal, et la clôture refuse tout brouillard · l'issue est
+    // dite (le transfert dans un journal ordinaire), jamais jouée d'office.
     const brouillardEnSituation = parcours.brouillardEnSituation.elements;
     if (brouillardEnSituation.length > 0) {
       anomalies.push({
@@ -4146,9 +4146,15 @@ export class ControlesService {
         consequence:
           "Saisies avant la règle des écritures de situation, elles sont tenues par une lettre, un pointage ou un module · " +
           'elles ne se valident pas dans ce journal, et la clôture de l’exercice refuse tout brouillard.',
+        // L'issue est le TRANSFERT (relecture du second tour, BLOQUANT) ·
+        // délettrer ou dépointer est parfois impossible (lettrage figé par une
+        // clôture de période, rapprochement clos), et l'issue d'avant laissait
+        // le dossier sans geste. Une pièce qui n'enregistre aucune opération,
+        // transférée, se corrige ensuite comme toute pièce.
         action:
-          'Défaites ce qui la tient (délettrer, dépointer, détacher du module), puis supprimez-la · si elle enregistre une ' +
-          'opération, ressaisissez-la dans un journal ordinaire et validez-la là.',
+          `Si elle enregistre une opération, ${ISSUE_TRANSFERT}. Sinon, transférée et validée, elle se corrige par ` +
+          'inscription en négatif (AUDCIF art. 20, al. 2) ; libre de toute lettre, de tout pointage et de tout module, ' +
+          'elle se supprime aussi.',
         ...nombreSiTronque(parcours.brouillardEnSituation),
         occurrences: brouillardEnSituation.map((e) => ({
           reference: `${e.journal.code} n° ${e.numeroPiece ?? ''}`,

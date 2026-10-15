@@ -326,6 +326,7 @@ describe('validation', () => {
       refuseesSecondRegard: 0,
       sousDerogation: 0,
       motifRefus: null,
+      ecarteesJournalDeSituation: 0,
     });
     // La borne de dossier est exigée dans le filtre, pas seulement supposée
     // depuis la sélection qui précède · c'est ce que vérifie la garde de

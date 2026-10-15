@@ -140,6 +140,7 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'verifierComptesCollectifs', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'trouverEnBrouillard', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'modifier', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'transfererDansUnJournalOrdinaire', appel: 'ecriture.findFirst', nombre: 2, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'supprimer', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'retirerCompensation', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'valider', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
@@ -220,6 +221,7 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/tva/taux-tva.service.ts', fonction: 'calculerProrata', appel: 'ligneEcriture.aggregate', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'creer', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
 ];
 
 // ---------------------------------------------------------------------------
