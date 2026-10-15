@@ -288,7 +288,9 @@ function FenetreInterne({ fenetre, active }: { fenetre: FenetreOuverte; active: 
             // `touch-action: none` · sans lui, le doigt fait défiler la page
             // au lieu d'étirer la fenêtre.
             style={{ cursor: CURSEUR_BORD[bord], touchAction: 'none' }}
-            className={`absolute z-[5] ${place}`}
+            // Au-dessus des en-têtes collantes du contenu (z-10), qui
+            // couvraient sinon la bande gauche et la bande droite.
+            className={`absolute z-[25] ${place}`}
           >
             {bord === 'se' && (
               <svg viewBox="0 0 16 16" className="w-full h-full text-border-dark">
