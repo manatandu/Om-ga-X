@@ -178,9 +178,59 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
   base (`groupBy`), sans borne muette ; (7) compteur au jour de Kinshasa, et
   ordre de virement en francs refusé vers un RIB de salarié en devise.
 
+## Relecture, second tour (2026-10-15) · un BLOQUANT et quatre points, corrigés
+
+- **B1 · le congé posé après le bulletin émis d'un mois qu'il touche**
+  (commit `e6502fe`) · la garde du premier tour ne jugeait que le bulletin
+  qu'on émettait · septembre émis à 1 040 000, puis un congé de septembre
+  posé avec son allocation au bulletin d'octobre, payait ces jours deux
+  fois en silence ; et, dans l'autre sens, un congé annulé après qu'un
+  bulletin a retranché ses jours laissait ce mois amputé. Une règle, trois
+  portes (`salaire-pendant-le-conge.ts`) · à la POSE du congé, chaque
+  bulletin déjà émis d'un mois qu'il touche est relu sur sa saisie FIGÉE et
+  son contrat (`confronterLesBulletinsEmis`), refus nommé avec l'issue
+  (annuler le bulletin n° X, poser le congé, réémettre) ; au REPORT de
+  l'allocation sur un bulletin (`allocationsAPorter`), les autres mois du
+  congé, de même ; à l'ANNULATION du congé, refus tant qu'un bulletin émis
+  d'un mois touché a retranché ses jours (`bulletinsQuiRetranchentLeConge`,
+  salaire au plus le plafond calculé avec eux), issue nommée (annuler le
+  bulletin, puis le congé, réémettre). Gelé par
+  `salaire-pendant-le-conge.spec.ts` (doublure qui honore la requête) et
+  par le parcours `sage-l5-conges` (refus à l'écran dans la modale, issue
+  suivie, sens inverse refusé puis levé).
+- **Point 1 · la référence** · la plus grande du salaire mensuel du contrat
+  et de la rémunération journalière déclarée au congé × 26 (art. 142,
+  « la rémunération dont il jouit au moment du départ ») ; quand c'est le
+  contrat, le refus nomme l'issue « saisissez d'abord le contrat en
+  vigueur ».
+- **Point 2 · la garde muette se dit** · hors salaire au mois, sans
+  rémunération ou sans monnaie au contrat, ou dans une autre monnaie que le
+  bulletin, rien ne se compare · l'émission (bulletin, décompte final hors
+  du document remis), la pose et l'annulation du congé le DISENT
+  (`raisonDeLaGardeMuette`, `avertissementGardeMuette`), servis à l'écran
+  (Personnel, onglet Congés).
+- **Point 3 · même base des deux côtés** · la garde prend la base de la
+  proposition (`baseDuMois` · absences et congés qui couvrent tous les jours
+  ouvrables du mois, base de ses jours payables) · décembre 2026 entier en
+  congé, la proposition de 1 040 000 ÷ 27 passe, un centime de plus non.
+- **Point 5 · le 422 de la passation** (commits `3fb9f53`, `afd49d4`) · lu
+  depuis l'exercice de l'écriture de paie, puis chaque exercice suivant
+  sans sa position d'ouverture (`filtreOuverturePasseeAuPremierJour`) ·
+  plus de faux « payé hors de ce module » chaque janvier, et le paiement
+  saisi dans N+1 est vu. Gelé par le test du service et par le parcours
+  `sage-l5-paiement` à travers la clôture 2026 / 2027.
+
 ## Reste
 
 - Rien des cinq fonctions. Les questions Q1 à Q3 restent à Manasse.
+- AU SUIVI (second tour, non bloquants) · (4) le congé À CHEVAL qui porte
+  des jours de voyage · aucune date ne dit le mois de ces jours (art. 141,
+  al. 3), la proposition s'abstient et la garde n'oppose que le certain ;
+  la règle de placement reste à trancher. (6) La reconstitution d'une
+  reprise rejouée (M3) par les répartitions des salariés de la pièce
+  d'origine · elle refuse quand la pièce ne se refait pas au centime ; ses
+  cas limites (répartition déclarée après coup, salarié sorti du plan)
+  restent à relire.
 
 ## Bloc du § 3, passé au 2026-10-15 (après le commit `4f85ef0`, relecture du premier tour)
 
@@ -366,6 +416,23 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
 - **R5 · la reprise en négatif se ventile comme ce qu'elle annule** (M3) ·
   AUDCIF art. 20, al. 2 · jamais au prorata d'une ligne d'origine qui porte
   d'autres salariés.
+- **R6 · un jour se paie une fois, quel que soit l'ordre de saisie** (B1,
+  second tour) · Code du travail, art. 142 ; arrêté du 8 août 2008,
+  mentions 6, 14 et 28 · la garde juge aussi les bulletins DÉJÀ émis des
+  mois que touche le congé, sur leur saisie figée, à la pose et au report
+  de l'allocation ; un bulletin a « retranché » un congé quand son salaire
+  ne dépasse pas le plafond calculé avec ses jours, et le congé ne s'annule
+  pas tant qu'il tient (sans quoi ces jours n'auraient ni salaire ni
+  allocation). Un bulletin émis au salaire plein d'avant la règle n'a rien
+  retranché · l'annulation passe.
+- **R7 · la référence du salaire** (point 1) · art. 142, « la rémunération
+  dont il jouit au moment du départ en congé » · la plus grande du contrat
+  et de la rémunération journalière déclarée au congé × 26 (décret
+  n° 25/22, art. 7, par analogie), dans la monnaie du bulletin.
+- **R8 · le 422 se lit tel que les livres le portent** (point 5) · fiche du
+  compte 42 des deux plans · depuis l'exercice de la passation, les
+  exercices suivants sans leur position d'ouverture, qui ne fait que
+  reporter (AUDCIF art. 34 ; SYCEBNL art. 16, 4)).
 
 ## Questions pour Manasse
 
@@ -407,7 +474,8 @@ npx jest --maxWorkers=1 src/modules/personnel/paiement-salaires.spec.ts src/modu
 npx jest --maxWorkers=1 src/modules/personnel/ventilation-analytique-paie.spec.ts src/modules/personnel/comptabilisation-paie.service.spec.ts
 npx jest --maxWorkers=1 src/modules/personnel/questionnaire-paie.spec.ts src/modules/analytique/suppression-et-exercice-clos.spec.ts
 npx jest --maxWorkers=1 src/modules/personnel/conge-et-salaire.spec.ts src/modules/personnel/conges-service.spec.ts \
-  src/modules/personnel/absences-service.spec.ts src/modules/personnel/paiement-salaires-service.spec.ts src/common/audit/liste-exclusion-fermee.spec.ts
+  src/modules/personnel/absences-service.spec.ts src/modules/personnel/paiement-salaires-service.spec.ts src/common/audit/liste-exclusion-fermee.spec.ts \
+  src/modules/personnel/salaire-pendant-le-conge.spec.ts
 (cd client && npx vitest run src/lib/conges-paie.spec.ts src/lib/absences-paie.spec.ts src/lib/heures-majorees.spec.ts src/lib/paiement-salaires.spec.ts src/lib/repartition-analytique.spec.ts src/lib/questionnaire-paie.spec.ts)
 # montage local (CLAUDE.md § 10), ports 8085 et 4185, puis
 (cd e2e && OMEGAX_APP=http://localhost:4185 OMEGAX_API=http://localhost:4185/api \
@@ -430,7 +498,12 @@ service acquis sur bulletin émis, droits nés à l'expiration de l'année
 moteur du décompte final (`allocationDeConge`), reprise DÉCLARÉE avec sa
 source, congé au-delà du solde dit, jamais refusé ; l'allocation REMPLACE
 le salaire des jours de congé (art. 142 ; livre de paie, mentions 6, 14 et
-28), l'émission refusant le salaire plein ; un congé ne se pose pas sur une
+28), l'émission refusant le salaire plein, dans les DEUX ordres de saisie ·
+le congé posé ou porté après le bulletin émis d'un mois qu'il touche relit
+ce bulletin sur sa saisie figée, et un congé dont un bulletin émis a
+retranché les jours ne s'annule pas seul (`salaire-pendant-le-conge.ts`) ;
+référence au plus grand du contrat et du taux déclaré au congé × 26, même
+base que la proposition, garde muette DITE ; un congé ne se pose pas sur une
 absence, sauf la maladie (art. 141, al. 4). ABSENCES (fonction 78,
 `absences.ts`) · treize causes du Code, chacune son régime (deux tiers des
 art. 105, 106, 130 ; circonstance art. 146 ; art. 93 ; art. 59), proposées au
@@ -444,7 +517,9 @@ salarié = structure (administrateur, journal d'audit, numéros masqués) ;
 ordre de virement par le module existant (une ligne paie un tiers OU un
 salarié, contrainte de la base ; ordres de salaires refusés à
 l'aide-comptable), billetage déclaré, un bulletin payé une fois (NULLS NOT
-DISTINCT), annulation motivée en négatif. VENTILATION ANALYTIQUE (fonction 88,
+DISTINCT), annulation motivée en négatif ; le 422 confronté à ce qui se
+propose, lu depuis l'exercice de la passation, les suivants sans leur
+ouverture. VENTILATION ANALYTIQUE (fonction 88,
 `ventilation-analytique-paie.ts`) · répartition par salarié et par plan,
 versions par MOIS DE PAIE, pourcentages qui font 100, sections Détail
 actives d'un plan qui ventile la classe 6 ; la passation pose la part de
