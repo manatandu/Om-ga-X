@@ -263,3 +263,28 @@ conversation, à re-citer dans le plan), Manasse veut le parcours habituel :
   signe et le logotype sont des tracés engendrés (§ 9 bis). Usage possible plus
   tard, sur décision de Manasse : site vitrine, pièces émises par VMG (factures
   d'abonnement), console de l'éditeur.
+
+## Questions à Manasse · éditions et exports, ligne sage-l7
+
+- Sélections enregistrées · rangées au DOSSIER (décision L7-5, choix
+  d'organisation d'OmegaX qu'aucun texte ne régit) · à revoir s'il préfère
+  des sélections propres à chaque utilisateur.
+- Impression différée · Cloud Run n'alloue le processeur que pendant les
+  requêtes ; la production se fait donc dans une requête que la fenêtre
+  relance. Une production sans fenêtre ouverte demanderait un processeur
+  alloué en permanence (`--no-cpu-throttling`) ou une tâche planifiée ·
+  décision d'exploitation, non prise.
+- Les fichiers des exports et des impressions différées sont rangés en base
+  (Neon) · le volume reste à surveiller.
+
+## Relevés en attente · éditions et exports, ligne sage-l7
+
+- Relectures sans jeton (export des modifications, impressions différées) ·
+  deux relectures croisées peuvent poser la plus ancienne en dernier, la
+  suivante remet la liste juste.
+- L'échec d'un téléchargement s'affiche en tête de fenêtre, pas sur sa
+  ligne (il nomme le numéro).
+- La mise au point retombe sur la page quand le contrôle qui la tenait
+  disparaît (sélection enregistrée, confirmation refermée).
+- L'édition du plan comptable et du plan des tiers se recalcule à chaque
+  rendu (un `useMemo` à poser).

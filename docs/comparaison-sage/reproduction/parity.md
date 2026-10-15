@@ -1,16 +1,16 @@
 # Parité · les 41 absences de Sage cochées « À faire »
 
 Mesuré le 2026-10-15 sur `main` (`a503f49`), après l'intégration des lignes
-sage-l4, sage-l5 et sage-l1, puis recompté à l'intégration de sage-l2 (même
-barème, même fichier), par l'outil de la compétence de réplication
+sage-l4, sage-l5 et sage-l1, puis recompté à l'intégration de sage-l2 et de
+sage-l7 (même barème, même fichier), par l'outil de la compétence de réplication
 (`parity.py`, pondération must 3, should 2, could 1, partiel compté pour
 moitié) sur `features.csv` · colonnes relues sous les noms qu'il attend
 (ligne en domaine, fonction, priorité, clone, note), rien d'autre changé.
 
 ## Le score
 
-**Parité fonctionnelle · 58,6 sur 100.** 41 fonctions comptées, **10 des 14
-« must » faites** (39,2 et 7 avant sage-l2).
+**Parité fonctionnelle · 62,9 sur 100.** 41 fonctions comptées, **10 des 14
+« must » faites** (58,6 avant sage-l7, 39,2 et 7 avant sage-l2).
 
 | Ligne | Fonctions | Score | État |
 |---|---|---|---|
@@ -21,7 +21,7 @@ moitié) sur `features.csv` · colonnes relues sous les noms qu'il attend
 | L2 · tiers et règlements | 7 | 100 | intégrée le 2026-10-15 (monnaie électronique, prélèvement et effet de commerce face à l'art. 59 bis, question posée) |
 | L3 · banque et trésorerie | 6 | 0 | non commencée |
 | L6 · documents et analytique | 2 | 0 | non commencée |
-| L7 · éditions et exports | 2 | 0 | non commencée |
+| L7 · éditions et exports | 2 | 100 | intégrée le 2026-10-15 (reprise par l'expert-comptable, n° 102, laissée à L9) |
 | L8 · gestion commerciale | 3 | 0 | non commencée |
 | L9 · cabinet et plateforme | 5 | 0 | non commencée |
 

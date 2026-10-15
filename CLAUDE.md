@@ -2911,6 +2911,49 @@ formules de CONTROLE BALANCE et de CONTROLES lisent les rangs écrits, jamais
 une position, et `relecture-balances-liasse.ts` les rejoue dans le classeur
 produit. Les autres feuilles gardent la charte ETAFI.
 
+**Ligne sage-l7 · éditions et exports (2026-10-15).** EXPORT DES SEULES
+MODIFICATIONS (fonction 99, Fichier > Exporter les modifications,
+`exports/modifications/`) · numéro continu par dossier, date, auteur et
+empreinte SHA-256 du fichier, gardé en base et retéléchargeable (AUDCIF
+art. 22, 7°) ; un REGISTRE par écriture partie (`EcritureExportee`, SANS clé
+étrangère · une écriture du brouillard retirée y laisse sa trace) ; part ce
+qui n'est jamais parti, le brouillard modifié depuis son envoi (« Modifiée ·
+remplace l'envoi n° k »), et les retraits, nommés sur la feuille
+« Supprimées » ; « modifiée » se lit sur l'origine, le contenu et
+l'imputation (art. 22, 1°), jamais le lettrage ni le pointage, et une
+écriture validée ne change plus (art. 22, 2°) · partie validée, elle ne
+repart pas, sa correction en négatif part comme une écriture nouvelle
+(décisions L7-3, L7-4). Ni simulation ni à-nouveau provisoire. Au-delà du
+plafond, par lots dans l'ordre des dates, ce qui attend dit ; le complet
+refusé plutôt qu'amputé ; un export vide ne prend aucun numéro ; deux
+exports concurrents, 409. Feuille « Écritures » relue par l'import des
+écritures (en-tête en ligne 1, une pièce par écriture, identifiant et
+mouvement en colonnes · la porte de la fonction 102). JAMAIS `exports` COMME
+NOM DE VARIABLE dans un fichier qui exporte · compilé en CommonJS, il masque
+celui du module (500 au premier serveur réel, vert sous les tests).
+IMPRESSION DIFFÉRÉE (fonction 59, Fichier > Impressions différées,
+`exports/impression-differee/`) · journal, grand livre ou balance demandés
+maintenant, numérotés et datés, produits par le moteur de leur export et sous
+son plafond (`produireEnMemoire`, tout ou rien), retrouvés plus tard ; un
+refus ou une panne rend la demande ÉCHOUÉE, motif dit, jamais un fichier
+partiel ; une à la fois par dossier ; produite DANS une requête (Cloud Run
+n'alloue le processeur que pendant les requêtes), la fenêtre relançant
+`traiter` ; au-delà de trente minutes une production tombée est déclarée
+interrompue, et un processus qui finit après ne range rien (relu
+`FOR UPDATE`) ; le journal entier produit s'enregistre comme imprimé au nom
+du demandeur ; le fichier se retire, la demande reste (décision L7-2).
+SÉLECTIONS ENREGISTRÉES (`exports/selections/`) · au DOSSIER, jamais au
+poste (décision L7-5), critères relus clé par clé, jamais l'exercice, un
+journal retiré dit au rappel ; filtres du journal et formulaire des
+impressions différées. MODÈLES D'ÉDITION ET SAUTS (`exports/modeles-edition/`)
+· les ÉDITIONS DE TRAVAIL seules (plan comptable, plan des tiers, plan
+analytique) · jamais un état financier (AUDCIF Titre IX ch. 2, contexture à
+l'identique) ni un livre obligatoire (art. 20, al. 1, sans blanc ; art. 22,
+1°) (décision L7-1) ; les colonnes qui identifient la ligne ne se retirent
+pas, les autres se taisent dans l'ordre de l'édition ; le saut sépare les
+groupes (classe, type de tiers, rubrique) par une ligne blanche ou une page,
+l'en-tête repris ; catalogue tenu en MIROIR serveur et écran.
+
 **Comparabilité de la colonne N-1.** « Lorsque l'un des postes chiffrés d'un état
 financier N'EST PAS COMPARABLE à celui de l'exercice précédent, c'est CE DERNIER
 QUI DOIT ÊTRE ADAPTÉ. L'absence de comparabilité ou l'adaptation des chiffres EST

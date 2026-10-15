@@ -20,7 +20,7 @@ n,fonction,renvois,ligne,priorite,clone,note
 46,"Conditions bancaires par RIB, autorisations de financement, unions de comptes",M6-58 M6-136,L3,should,no,
 47,"Trésorerie : taux de référence, financements, placements, OPCVM",M6-129 M6-137 M6-139,L3,should,no,
 50,Longueur fixe des codes de section,M14-5,L6,must,no,
-59,"Modèles d'édition, sauts de ligne ou de page, impression différée, sélections enregistrées",M2-34 M1-27 M1-50 M1-68 M10-62 M1-132 M8-57,L7,should,no,
+59,"Modèles d'édition, sauts de ligne ou de page, impression différée, sélections enregistrées",M2-34 M1-27 M1-50 M1-68 M10-62 M1-132 M8-57,L7,should,yes,"modèles et sauts des éditions de travail (jamais états financiers ni livres obligatoires) ; impression différée numérotée, produite par le moteur de l'export, jamais partielle ; sélections au dossier"
 60,Journal marqué « imprimé » ; refus de clôturer un journal non imprimé,M2-67 M3-29,L1,should,yes,impression ou export enregistré et numéroté ; refus de clôturer un journal non imprimé en option du dossier
 66,"Modifier, supprimer ou dupliquer une fiche",M4-B-41,L4,must,yes,
 67,"Annuler une dotation ou un traitement (inventaire, révision, réévaluation, dérogatoire)",M4-B-54 M4-B-56,L4,must,yes,
@@ -36,7 +36,7 @@ n,fonction,renvois,ligne,priorite,clone,note
 94,Modes d'arrondi,M6-81,L8,should,no,
 95,"Utilisateurs connectés, messagerie interne, lecture des cumuls du module",M4-B-31 M13-37,L9,should,no,
 96,Langue de l'application,M8-25,L9,could,no,
-99,Export des seules modifications depuis le dernier export,M8-38,L7,should,no,
+99,Export des seules modifications depuis le dernier export,M8-38,L7,should,yes,"export numéroté, fichier gardé et empreinte ; registre par écriture, retraits nommés, brouillard modifié renvoyé ; relu par l'import"
 100,"Personnalisation des écrans, éditeur de formules, workflow de notification",M8-40 M8-45 M8-56 M8-61,L9,could,no,
 101,"Organisation du cabinet en niveaux, collaborateurs rattachés",M6-165,L9,should,no,
 102,"Écritures échangées avec l'expert-comptable, journaux synchronisés",M10-88,L9,should,no,
