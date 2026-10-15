@@ -347,6 +347,11 @@ describe('le contrôle nomme les écritures validées dans un journal de situati
     const migration = SOURCE('prisma/migrations/20270171040000_ecritures_de_situation_tenues/migration.sql');
     expect(migration).toContain('UPDATE "ecritures" SET "statut" = \'BROUILLARD\' WHERE "id" = ANY (tenues);');
     expect(migration).toMatch(/"lettrageId" IS NOT NULL OR l\."lettre" IS NOT NULL OR l\."rapprochementId" IS NOT NULL/);
+    // Les clés lues dans `pg_constraint`, qui ne filtre pas par les droits du
+    // rôle, et une lecture vide qui arrête tout (second tour, f).
+    expect(migration).toContain("c.confrelid = '\"ecritures\"'::regclass");
+    expect(migration).toContain('FROM pg_constraint c');
+    expect(migration).toMatch(/IF cles = 0 THEN\s+RAISE EXCEPTION/);
   });
 });
 

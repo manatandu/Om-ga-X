@@ -30,20 +30,32 @@
 --    défaire seul ; le précédent AU1 ne le fait qu'à la clôture, faute de
 --    ligne qui remplace, et l'écrit sur l'exercice · ici rien ne remplace
 --    rien.
--- L'issue reste au cabinet · défaire ce qui la tient (délettrer, dépointer,
--- détacher du module) puis la supprimer, et la ressaisir dans un journal
--- ordinaire si elle enregistre une opération.
+-- L'issue reste au cabinet · la TRANSFÉRER dans un journal ordinaire, où elle
+-- se valide comme toute pièce, ses lignes, lettrage, pointage et liens aux
+-- modules gardés (second tour, BLOQUANT · `ecritures-de-situation.ts`) ;
+-- délettrer ou dépointer, souvent impossible une fois une période close,
+-- n'est plus le seul chemin.
 --
 -- « RETENUE » SE LIT SUR TOUTES LES CLÉS ÉTRANGÈRES VERS LES ÉCRITURES (hors
 -- leurs propres lignes), lues dans le catalogue de la base · plus large que la
 -- liste des détenteurs (`detenteurs-ecriture.ts`), du côté qui ne fait rien
 -- disparaître. Une écriture de situation que rien ne tient reste une
 -- simulation.
+--
+-- LE CATALOGUE EST `pg_constraint`, ET UNE LECTURE VIDE ARRÊTE TOUT (second
+-- tour, f) · lues par `information_schema`, les clés ne se voient que des
+-- tables dont le rôle de migration est PROPRIÉTAIRE ou détient un droit ; un
+-- rôle qui n'en verrait aucune laissait passer en simulation des écritures
+-- que des modules tiennent, sans un mot. `pg_constraint` ne filtre pas par
+-- les droits, et zéro clé lue (il y en a des dizaines) n'est pas une base
+-- sans détenteur, c'est une lecture fausse · la migration lève, rien n'est
+-- touché.
 DO $$
 DECLARE
   fk RECORD;
   tenues text[] := ARRAY[]::text[];
   lues text[];
+  cles integer := 0;
 BEGIN
   SELECT coalesce(array_agg(DISTINCT e."id"), ARRAY[]::text[])
     INTO lues
@@ -56,26 +68,26 @@ BEGIN
   tenues := tenues || lues;
 
   FOR fk IN
-    SELECT kcu.table_name AS t, kcu.column_name AS c
-      FROM information_schema.table_constraints tc
-      JOIN information_schema.key_column_usage kcu
-        ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
-      JOIN information_schema.constraint_column_usage ccu
-        ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
-     WHERE tc.constraint_type = 'FOREIGN KEY'
-       AND tc.table_schema = current_schema()
-       AND ccu.table_name = 'ecritures'
-       AND ccu.column_name = 'id'
-       AND kcu.table_name <> 'lignes_ecriture'
+    SELECT c.conrelid::regclass AS t, a.attname AS c
+      FROM pg_constraint c
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+     WHERE c.contype = 'f'
+       AND c.confrelid = '"ecritures"'::regclass
+       AND c.conrelid <> '"lignes_ecriture"'::regclass
   LOOP
+    cles := cles + 1;
     EXECUTE format(
-      'SELECT coalesce(array_agg(DISTINCT e."id"), ARRAY[]::text[]) FROM %I r ' ||
+      'SELECT coalesce(array_agg(DISTINCT e."id"), ARRAY[]::text[]) FROM %s r ' ||
       'JOIN "ecritures" e ON e."id" = r.%I JOIN "journaux" j ON j."id" = e."journalId" ' ||
       'WHERE j."type" = %L AND e."statut" = %L',
       fk.t, fk.c, 'SITUATION', 'SITUATION'
     ) INTO lues;
     tenues := tenues || lues;
   END LOOP;
+
+  IF cles = 0 THEN
+    RAISE EXCEPTION 'Aucune clé étrangère vers les écritures n''a été lue dans le catalogue · la reprise des écritures tenues ne peut pas juger ce que les modules retiennent, rien n''est touché.';
+  END IF;
 
   UPDATE "ecritures" SET "statut" = 'BROUILLARD' WHERE "id" = ANY (tenues);
 END $$;
