@@ -38,8 +38,13 @@ export interface ListeImpressions {
   enAttente: number;
 }
 
-/** La page suivante ajoutée à la liste lue, sans doublon. */
-export function poursuivreImpressions(liste: ListeImpressions, suite: ListeImpressions): ListeImpressions {
+/**
+ * La page suivante ajoutée à la liste lue, sans doublon · JETÉE si la liste
+ * ne finit plus à la borne `avant` avec laquelle elle a été demandée (relue
+ * entre-temps), jumeau de l'export des modifications (second tour, 4).
+ */
+export function poursuivreImpressions(liste: ListeImpressions, suite: ListeImpressions, avant: number): ListeImpressions {
+  if (liste.plusAnciensAvant !== avant) return liste;
   const vues = new Set(liste.impressions.map((i) => i.id));
   return {
     ...suite,

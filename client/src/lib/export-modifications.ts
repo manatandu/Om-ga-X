@@ -50,14 +50,40 @@ export interface ListeExports {
   plusAnciensAvant: number | null;
 }
 
-/** La page suivante ajoutée à la liste lue · les plus récents restent en tête. */
-export function poursuivreListe(liste: ListeExports, suite: ListeExports): ListeExports {
+/**
+ * La page suivante ajoutée à la liste lue · les plus récents restent en tête.
+ * `avant`, la borne avec laquelle la suite a été DEMANDÉE · si la liste a été
+ * relue entre-temps et ne finit plus là, la suite est JETÉE (relecture des
+ * écrans, second tour, 4) · ajoutée sous une première page relue, elle
+ * laissait un trou, un export disparu de la liste sans un mot.
+ */
+export function poursuivreListe(liste: ListeExports, suite: ListeExports, avant: number): ListeExports {
+  if (liste.plusAnciensAvant !== avant) return liste;
   const vus = new Set(liste.exports.map((e) => e.id));
   return {
     exports: [...liste.exports, ...suite.exports.filter((e) => !vus.has(e.id))],
     total: suite.total,
     tronque: suite.plusAnciensAvant !== null,
     plusAnciensAvant: suite.plusAnciensAvant,
+  };
+}
+
+/**
+ * La première page relue (après un export) GARDE les plus anciens déjà
+ * chargés, comme la liste des impressions (`garderLesPlusAnciennes`) · elle
+ * les remplaçait, et une suite demandée avant la relecture s'ajoutait sous la
+ * nouvelle première page, un export de moins entre les deux (second tour, 4).
+ */
+export function garderLesPlusAnciens(avant: ListeExports | null, premiere: ListeExports): ListeExports {
+  if (!avant || premiere.plusAnciensAvant === null) return premiere;
+  const borne = premiere.plusAnciensAvant;
+  const anciens = avant.exports.filter((e) => e.numero < borne);
+  if (anciens.length === 0) return premiere;
+  return {
+    ...premiere,
+    exports: [...premiere.exports, ...anciens],
+    tronque: avant.plusAnciensAvant !== null,
+    plusAnciensAvant: avant.plusAnciensAvant,
   };
 }
 

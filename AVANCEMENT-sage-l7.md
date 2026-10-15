@@ -390,6 +390,13 @@ Coordinateur · aucun BLOQUANT ni MAJEUR, 14 MINEUR.
   fermeture, et une réouverture en lançait une seconde. Aide · la production
   commencée se termine au serveur, les demandes en attente reprennent à la
   prochaine ouverture.
+- **4 · un export disparaissait de la liste quand « plus anciens » croisait
+  une relecture.** La relecture après un export remplaçait la liste, et la
+  suite demandée avant s'ajoutait sous la nouvelle première page, un export
+  de moins entre les deux. La relecture garde les plus anciens chargés
+  (`garderLesPlusAnciens`, comme les impressions), et une suite qui ne
+  prolonge plus la liste à la borne demandée est jetée ; jumeau dans les
+  impressions différées (`poursuivreImpressions`).
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,

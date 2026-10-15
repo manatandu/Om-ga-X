@@ -91,11 +91,14 @@ describe('impressions différées · ce que la fenêtre en dit', () => {
   it('la page suivante s’ajoute ; une relecture de la première page garde les plus anciennes chargées (m5)', () => {
     const i = (n: number) => ({ ...base, id: `i${n}`, numero: n });
     const premiere = { ...liste([i(4), i(3)]), total: 4, tronque: true, plusAnciensAvant: 3 };
-    const toute = poursuivreImpressions(premiere, { ...liste([i(2), i(1)]), total: 4 });
+    const toute = poursuivreImpressions(premiere, { ...liste([i(2), i(1)]), total: 4 }, 3);
     expect([toute.impressions.map((x) => x.numero), toute.tronque, toute.plusAnciensAvant]).toEqual([[4, 3, 2, 1], false, null]);
     const relue = garderLesPlusAnciennes(toute, { ...liste([{ ...i(4), etat: 'PRETE' }, i(3)]), total: 4, tronque: true, plusAnciensAvant: 3 });
     expect([relue.impressions.map((x) => x.numero), relue.impressions[0].etat, relue.plusAnciensAvant]).toEqual([[4, 3, 2, 1], 'PRETE', null]);
     expect(garderLesPlusAnciennes(null, premiere)).toBe(premiere);
+    // Une suite qui ne prolonge plus la liste (relue entre-temps) est jetée (second tour, 4).
+    const relueSansAnciennes = { ...liste([i(5), i(4)]), total: 5, tronque: true, plusAnciensAvant: 4 };
+    expect(poursuivreImpressions(relueSansAnciennes, { ...liste([i(2), i(1)]), total: 5 }, 3)).toBe(relueSansAnciennes);
   });
 
   it('une licence échue se dit à côté du refus, et renvoie vers l’export direct (m10)', () => {

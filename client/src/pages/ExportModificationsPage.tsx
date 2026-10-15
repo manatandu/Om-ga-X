@@ -5,6 +5,7 @@ import { Aide } from '../components/chrome/Aide';
 import { issueIncertaine, messageOuDefaut } from '../lib/message-refus';
 import {
   apercuVide,
+  garderLesPlusAnciens,
   messageBrouillardHorsPortee,
   messageEnAttente,
   porteeDeLExport,
@@ -72,7 +73,9 @@ export function ExportModificationsPage() {
   const chargerListe = useCallback(async () => {
     setErreurListe(null);
     try {
-      setListe(await api.get<ListeExports>('/exports-ecritures'));
+      const premiere = await api.get<ListeExports>('/exports-ecritures');
+      // Les plus anciens déjà chargés restent (second tour, 4).
+      setListe((avant) => garderLesPlusAnciens(avant, premiere));
     } catch (e) {
       setErreurListe(messageOuDefaut(e, "La liste des exports n'a pas pu être lue."));
     }
@@ -82,11 +85,13 @@ export function ExportModificationsPage() {
   // se retrouve et se retélécharge, la liste ne s'arrêtant plus aux cinquante.
   async function chargerPlusAnciens() {
     if (!liste || liste.plusAnciensAvant === null) return;
+    const avant = liste.plusAnciensAvant;
     setSuiteEnCours(true);
     setErreurListe(null);
     try {
-      const suite = await api.get<ListeExports>(`/exports-ecritures?avant=${liste.plusAnciensAvant}`);
-      setListe((l) => (l ? poursuivreListe(l, suite) : suite));
+      const suite = await api.get<ListeExports>(`/exports-ecritures?avant=${avant}`);
+      // Jetée si la liste a été relue entre-temps (second tour, 4).
+      setListe((l) => (l ? poursuivreListe(l, suite, avant) : l));
     } catch (e) {
       setErreurListe(messageOuDefaut(e, "Les exports plus anciens n'ont pas pu être lus."));
     } finally {

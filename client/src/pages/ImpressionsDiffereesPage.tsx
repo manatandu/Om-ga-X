@@ -142,11 +142,13 @@ export function ImpressionsDiffereesPage() {
   // LA PAGE SUIVANTE, VERS LES PLUS ANCIENNES (relecture m5).
   async function chargerPlusAnciennes() {
     if (!liste || liste.plusAnciensAvant === null) return;
+    const avant = liste.plusAnciensAvant;
     setSuiteEnCours(true);
     setErreurListe(null);
     try {
-      const suite = await api.get<ListeImpressions>(`/impressions-differees?avant=${liste.plusAnciensAvant}`);
-      setListe((l) => (l ? poursuivreImpressions(l, suite) : suite));
+      const suite = await api.get<ListeImpressions>(`/impressions-differees?avant=${avant}`);
+      // Jetée si la liste a été relue entre-temps (second tour, 4).
+      setListe((l) => (l ? poursuivreImpressions(l, suite, avant) : l));
     } catch (e) {
       setErreurListe(messageOuDefaut(e, "Les impressions plus anciennes n'ont pas pu être lues."));
     } finally {
