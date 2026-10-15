@@ -58,24 +58,31 @@ test('avec session, le menu « ? » ouvre les pages en fenêtre, et l’acceptat
   const dossier = await creerDossier(page, { referentiel: 'SYCEBNL', nom: 'Pages légales e2e', montant: 1000 });
   await seConnecter(page, dossier.email);
 
-  // Le rappel ne s'affiche pas · l'acceptation est fermée.
-  await expect(page.getByText('Les conditions de licence en vigueur n’ont pas encore été acceptées pour ce dossier.')).toHaveCount(0);
-
   await page.getByRole('button', { name: '?', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Contrat de licence' }).click();
   await expect(page.getByText('Acceptation par ce dossier')).toBeVisible();
   await expect(page.getByText('Aucune acceptation enregistrée pour ce dossier.')).toBeVisible();
   await expect(page.getByText(/L’acceptation en ligne s’ouvrira quand l’offre dira ce que la loi exige/)).toBeVisible();
+  // Le rappel ne s'affiche pas · l'acceptation est fermée. Vérifié APRÈS que
+  // l'état a été lu et rendu (second tour, mineur 9) · plus tôt, l'absence
+  // passait avant même que le bandeau ait reçu sa réponse.
+  await expect(page.getByText('Les conditions de licence en vigueur n’ont pas encore été acceptées pour ce dossier.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Accepter les conditions' })).toHaveCount(0);
   // Le serveur sert la version en vigueur avec l'empreinte de son texte, et
-  // refuse de même l'acceptation du bon texte, en le disant.
+  // refuse de même l'acceptation du bon texte, en le disant · la fermeture de
+  // l'art. 54 se juge avant l'abonnement affiché (second tour, M-a).
   const etat = await appelApi<{ version: { numero: number; empreinte: string } }>(page, 'GET', '/conditions-licence');
   expect(etat.version.empreinte).toMatch(/^[0-9a-f]{64}$/);
+  const empreinteCommande = '0'.repeat(64);
+  await expect(
+    appelApi(page, 'POST', '/conditions-licence/acceptation', { version: etat.version.numero, empreinte: etat.version.empreinte, empreinteCommande, lu: true }),
+  ).rejects.toThrow(/409 .*art\. 54, al\. 2/);
+  // Sans empreinte du texte, ou de l'abonnement affiché, l'acceptation reçue
+  // est mal formée (relecture M1 ; second tour, M-a).
+  await expect(appelApi(page, 'POST', '/conditions-licence/acceptation', { version: etat.version.numero, empreinteCommande, lu: true })).rejects.toThrow(/400/);
   await expect(
     appelApi(page, 'POST', '/conditions-licence/acceptation', { version: etat.version.numero, empreinte: etat.version.empreinte, lu: true }),
-  ).rejects.toThrow(/409 .*art\. 54, al\. 2/);
-  // Sans empreinte, l'acceptation reçue est mal formée (relecture M1).
-  await expect(appelApi(page, 'POST', '/conditions-licence/acceptation', { version: etat.version.numero, lu: true })).rejects.toThrow(/400/);
+  ).rejects.toThrow(/400/);
 
   await page.getByRole('button', { name: '?', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Questions fréquentes' }).click();

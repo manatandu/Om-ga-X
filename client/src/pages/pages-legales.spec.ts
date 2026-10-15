@@ -203,25 +203,57 @@ describe('le contrat de licence se lit sur la page tel que le serveur le joint',
     const bloc = lire('src/components/AcceptationConditionsLicence.tsx');
     expect(bloc).toContain('const VERSION_AFFICHEE = VERSION_CONDITIONS_LICENCE.numero;');
     expect(bloc).toContain('const EMPREINTE_AFFICHEE = empreinteEnVigueur();');
-    const envoi = bloc.slice(bloc.indexOf("'/conditions-licence/acceptation', {"));
-    expect(envoi.slice(0, 200)).toContain('version: VERSION_AFFICHEE,');
-    expect(envoi.slice(0, 200)).toContain('empreinte: EMPREINTE_AFFICHEE,');
-    expect(envoi.slice(0, 200)).toContain('lu: true,');
+    // L'OBJET de l'appel, découpé par sa structure (CLAUDE.md § 10, second
+    // tour, mineur 9) · jamais une distance en caractères.
+    const debut = bloc.indexOf("'/conditions-licence/acceptation', {");
+    expect(debut).toBeGreaterThan(0);
+    const envoi = bloc.slice(debut, bloc.indexOf('});', debut));
+    expect(envoi).toContain('version: VERSION_AFFICHEE,');
+    expect(envoi).toContain('empreinte: EMPREINTE_AFFICHEE,');
+    expect(envoi).toContain('lu: true,');
+    // L'abonnement AFFICHÉ, celui que le serveur confronte sous le verrou (second tour, M-a).
+    expect(envoi).toContain('empreinteCommande: empreinteCommande(etat.commande),');
+  });
+
+  it('une acceptation refusée relit l’état et décoche la case · on revoit le prix avant de reprendre (second tour, mineur 3)', () => {
+    const bloc = lire('src/components/AcceptationConditionsLicence.tsx');
+    const accepter = bloc.slice(bloc.indexOf('async function accepter()'), bloc.indexOf('async function renvoyerAccuse()'));
+    const refus = accepter.slice(accepter.indexOf('} catch (e) {'), accepter.indexOf('} finally {'));
+    expect(refus).toContain('setLu(false);');
+    expect(refus).toContain('relire();');
+    const renvoi = bloc.slice(bloc.indexOf('async function renvoyerAccuse()'));
+    expect(renvoi.slice(renvoi.indexOf('} catch (e) {'), renvoi.indexOf('} finally {'))).toContain('relire();');
+  });
+
+  it('l’accusé reçoit le focus quand il paraît (second tour, mineur 7)', () => {
+    const bloc = lire('src/components/AcceptationConditionsLicence.tsx');
+    expect(bloc).toContain('if (accuse) refAccuse.current?.focus();');
+    expect(bloc).toContain('<div ref={refAccuse} tabIndex={-1} role="status"');
+  });
+
+  it('l’abonnement s’affiche en tableau à en-têtes, dates en toutes lettres (second tour, mineur 5)', () => {
+    const bloc = lire('src/components/AcceptationConditionsLicence.tsx');
+    for (const titre of ['Désignation', 'Quantité', 'Prix unitaire']) expect(bloc).toMatch(new RegExp(`<th scope="col"[^>]*>${titre}</th>`));
+    expect(bloc).toContain('dateEnLettres(etat.commande.debut)');
+    expect(bloc).toContain('dateEnLettres(etat.commande.finEssai)');
   });
 
   it('un texte qui n’est pas celui du service n’offre pas l’acceptation, et demande de recharger la page', () => {
     const bloc = lire('src/components/AcceptationConditionsLicence.tsx');
-    expect(bloc).toContain(
-      'const texteAJour = etat !== null && etat.version.numero === VERSION_AFFICHEE && etat.version.empreinte === EMPREINTE_AFFICHEE;',
-    );
+    expect(bloc).toContain('const ecart = etat ? ecartDeTexte(etat.version, { numero: VERSION_AFFICHEE, empreinte: EMPREINTE_AFFICHEE }) : null;');
+    expect(bloc).toContain("const texteAJour = ecart === 'A_JOUR';");
     expect(bloc).toContain('{etat.aAccepter && estAdmin && texteAJour && (');
-    expect(bloc).toContain('rechargez la page avant d’accepter.');
+    expect(bloc).toContain('phraseEcartDeTexte(ecart, etat.version.numero, VERSION_AFFICHEE, estAdmin)');
     expect(bloc).toContain('onClick={() => window.location.reload()}');
+    // Une page plus récente que le service ne recharge pas, elle relit (second tour, m-2).
+    expect(bloc).toContain("{ecart === 'SERVICE_EN_RETARD' ? (");
+    expect(bloc).toContain('onClick={relire}');
   });
 
   it('l’accusé dit ce que devient le courriel · sans messagerie, il ne part pas (relecture, mineurs 5 et 14)', () => {
     const bloc = lire('src/components/AcceptationConditionsLicence.tsx');
-    expect(bloc).toContain('il ne partira qu’une fois une messagerie configurée');
+    // Les phrases sont dans `lib/acceptation-conditions-ecran.ts`, éprouvées par son spec.
+    expect(bloc).toContain('phraseAccuse(statutAccuse, estAdmin)');
     expect(bloc).toContain("'/conditions-licence/accuse'");
     expect(bloc).toContain('{estAdmin && etat.renvoiAccusePossible && (');
     // Un auteur absent ne s'affiche jamais comme une case vide (mineur 6).

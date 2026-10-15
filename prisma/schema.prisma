@@ -583,6 +583,14 @@ model Tenant {
   /// SHA-256 du texte accepté (`versions-publiees.ts`) · le numéro seul ne dit
   /// pas QUEL texte (relecture de la ligne pages-legales, M2).
   conditionsLicenceEmpreinte    String?
+  /// L'ABONNEMENT VÉRIFIÉ ET ACCEPTÉ avec les conditions (second tour de
+  /// relecture, M-a ; Code du numérique, art. 55, al. 1er) · formule,
+  /// options, périodicité, lignes et total, figés à l'acte et recopiés dans
+  /// l'accusé. Le prix de la console peut changer ensuite, la commande
+  /// acceptée non. `null` sans abonnement (installation sur site) et pour
+  /// toute acceptation antérieure à la colonne. Écrit par le seul
+  /// `ConditionsLicenceService`.
+  conditionsLicenceCommande     Json?
 
   // Longueur du numéro de compte · paramètre "longueur du plan comptable"
   // chez Sage 100 (dossier > Structure > Paramètres), 3 à 13 caractères,

@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { AUTEUR_NON_ENREGISTRE, type EtatConditions } from '../../../src/modules/conditions-licence/acceptation-conditions';
+import {
+  AUTEUR_NON_ENREGISTRE,
+  empreinteCommande,
+  type EtatConditions,
+  type StatutAccuse,
+} from '../../../src/modules/conditions-licence/acceptation-conditions';
 import { VERSION_CONDITIONS_LICENCE } from '../../../src/modules/conditions-licence/conditions-de-licence';
 import { empreinteEnVigueur, versionPubliee } from '../../../src/modules/conditions-licence/versions-publiees';
+import { dateEnLettres, ecartDeTexte, phraseAccuse, phraseEcartDeTexte } from '../lib/acceptation-conditions-ecran';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { montant } from '../lib/montants';
@@ -22,7 +28,13 @@ import { telechargerTexteDeVersion } from './telechargerContrat';
  * chargé dans CETTE page, jamais ceux que le serveur rend · une page restée
  * ouverte pendant une mise en production aurait sinon fait accepter un texte
  * qu'elle n'affichait pas. Quand les deux diffèrent, rien ne s'accepte, et
- * l'écran demande de recharger la page.
+ * l'écran demande de recharger la page, ou d'attendre le service quand c'est
+ * la page qui est la plus récente (second tour, m-2).
+ *
+ * L'ABONNEMENT AFFICHÉ EST CELUI QUI S'ACCEPTE (second tour, M-a) · l'écran
+ * envoie l'empreinte de la commande qu'il montre, le serveur la confronte à
+ * celle qu'il relit sous le verrou. Refusée, l'acceptation relit l'état, et
+ * la case est décochée · l'administrateur revoit le prix avant de reprendre.
  *
  * QUATRE ÉTATS, CHACUN DIT · pas encore lu (rien n'est affiché comme « aucune
  * acceptation » avant la réponse), lecture en échec (le motif), acceptation
@@ -35,23 +47,6 @@ import { telechargerTexteDeVersion } from './telechargerContrat';
 const VERSION_AFFICHEE = VERSION_CONDITIONS_LICENCE.numero;
 const EMPREINTE_AFFICHEE = empreinteEnVigueur();
 
-/** Ce que devient un accusé, dit comme le statut de la file le dit. */
-function phraseAccuse(statut: string | null): string {
-  switch (statut) {
-    case 'ENVOYE':
-      return 'Le courriel portant cet accusé et le texte accepté est parti.';
-    case 'EN_ATTENTE':
-      return 'Un courriel portant cet accusé et le texte accepté est en file, à l’adresse de l’auteur de l’acceptation (Fichier > Courriers sortants).';
-    case 'SANS_TRANSPORT':
-      return 'Un courriel portant cet accusé et le texte accepté est en file, mais aucune messagerie n’est configurée pour l’envoi · il ne partira qu’une fois une messagerie configurée (Fichier > Courriers sortants).';
-    case 'ECHEC':
-    case 'ABANDONNE':
-      return 'Le courriel portant cet accusé n’a pas pu partir · il peut être renvoyé.';
-    default:
-      return 'Le courriel d’accusé de réception n’a pas pu être mis en file · le texte reste téléchargeable ci-dessus, et l’accusé peut être renvoyé.';
-  }
-}
-
 export function AcceptationConditionsLicence() {
   const { estAdmin, utilisateur } = useAuth();
   const [etat, setEtat] = useState<EtatConditions | null>(null);
@@ -59,25 +54,37 @@ export function AcceptationConditionsLicence() {
   const [lu, setLu] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [accuse, setAccuse] = useState<{ deja: boolean; statut: string | null } | null>(null);
+  const [accuse, setAccuse] = useState<{ deja: boolean; statut: StatutAccuse | null } | null>(null);
   const jeton = useRef(0);
+  const refAccuse = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  /** Lit l'état servi · au montage, après un refus, et sur « Réessayer ». Une réponse périmée est jetée par jeton. */
+  function relire() {
     const n = ++jeton.current;
+    setErreurLecture(null);
     api
       .get<EtatConditions>('/conditions-licence')
       .then((e) => n === jeton.current && setEtat(e))
       .catch((e) => n === jeton.current && setErreurLecture(e instanceof ApiError ? e.message : 'Lecture impossible.'));
-  }, []);
+  }
+
+  useEffect(relire, []);
+
+  // L'accusé reçoit le focus quand il paraît (second tour, mineur 7) · la case
+  // et le bouton d'acceptation disparaissent avec l'acte, le focus serait perdu.
+  useEffect(() => {
+    if (accuse) refAccuse.current?.focus();
+  }, [accuse]);
 
   async function accepter() {
     if (!etat || !lu) return;
     setEnvoi(true);
     setErreur(null);
     try {
-      const r = await api.post<{ etat: EtatConditions; deja: boolean; accuse: { statut: string } | null }>('/conditions-licence/acceptation', {
+      const r = await api.post<{ etat: EtatConditions; deja: boolean; accuse: { statut: StatutAccuse } | null }>('/conditions-licence/acceptation', {
         version: VERSION_AFFICHEE,
         empreinte: EMPREINTE_AFFICHEE,
+        empreinteCommande: empreinteCommande(etat.commande),
         lu: true,
       });
       setEtat(r.etat);
@@ -86,6 +93,11 @@ export function AcceptationConditionsLicence() {
       window.dispatchEvent(new Event('omegax:conditions-acceptees'));
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Acceptation impossible.');
+      // L'état a pu changer (prix, version, acceptation faite ailleurs) · il
+      // est relu, et la case décochée, pour que rien ne se reprenne sur ce
+      // que l'écran montrait avant le refus (second tour, mineur 3).
+      setLu(false);
+      relire();
     } finally {
       setEnvoi(false);
     }
@@ -95,11 +107,12 @@ export function AcceptationConditionsLicence() {
     setEnvoi(true);
     setErreur(null);
     try {
-      const r = await api.post<{ etat: EtatConditions; accuse: { statut: string } | null }>('/conditions-licence/accuse', {});
+      const r = await api.post<{ etat: EtatConditions; accuse: { statut: StatutAccuse } | null }>('/conditions-licence/accuse', {});
       setEtat(r.etat);
       setAccuse({ deja: false, statut: r.accuse?.statut ?? null });
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Renvoi impossible.');
+      relire();
     } finally {
       setEnvoi(false);
     }
@@ -109,7 +122,8 @@ export function AcceptationConditionsLicence() {
     new Date(iso).toLocaleString('fr-FR', { timeZone: 'Africa/Kinshasa', dateStyle: 'long', timeStyle: 'short' });
 
   // Le texte de cette page est-il celui que le service tient en vigueur ?
-  const texteAJour = etat !== null && etat.version.numero === VERSION_AFFICHEE && etat.version.empreinte === EMPREINTE_AFFICHEE;
+  const ecart = etat ? ecartDeTexte(etat.version, { numero: VERSION_AFFICHEE, empreinte: EMPREINTE_AFFICHEE }) : null;
+  const texteAJour = ecart === 'A_JOUR';
   // Une version acceptée qui n'est plus celle affichée reste lisible (contrat, article 18).
   const accepteeArchivee =
     etat?.acceptation && etat.acceptation.version !== VERSION_AFFICHEE ? versionPubliee(etat.acceptation.version) : null;
@@ -152,15 +166,18 @@ export function AcceptationConditionsLicence() {
             </button>
           )}
 
-          {!texteAJour && (
+          {ecart && ecart !== 'A_JOUR' && (
             <div role="alert" className="mb-2 text-warning">
-              <p>
-                Le texte affiché (version {VERSION_AFFICHEE}) n’est pas celui que le service tient en vigueur (version {etat.version.numero}) ·
-                rechargez la page avant d’accepter.
-              </p>
-              <button type="button" onClick={() => window.location.reload()} className="text-sel underline font-semibold">
-                Recharger la page
-              </button>
+              <p>{phraseEcartDeTexte(ecart, etat.version.numero, VERSION_AFFICHEE, estAdmin)}</p>
+              {ecart === 'SERVICE_EN_RETARD' ? (
+                <button type="button" onClick={relire} className="text-sel underline font-semibold">
+                  Réessayer
+                </button>
+              ) : (
+                <button type="button" onClick={() => window.location.reload()} className="text-sel underline font-semibold">
+                  Recharger la page
+                </button>
+              )}
             </div>
           )}
 
@@ -170,12 +187,19 @@ export function AcceptationConditionsLicence() {
               <p>
                 {etat.commande.formule}
                 {etat.commande.options.length > 0 ? ` · options ${etat.commande.options.join(', ')}` : ''} ·{' '}
-                {etat.commande.periodicite === 'ANNUELLE' ? 'annuel' : 'mensuel'} · depuis le {etat.commande.debut}
-                {etat.commande.finEssai ? ` · essai jusqu’au ${etat.commande.finEssai}` : ''}
+                {etat.commande.periodicite === 'ANNUELLE' ? 'annuel' : 'mensuel'} · depuis le {dateEnLettres(etat.commande.debut)}
+                {etat.commande.finEssai ? ` · essai jusqu’au ${dateEnLettres(etat.commande.finEssai)}` : ''}
                 {etat.commande.actif ? '' : ' · suspendu'}.
               </p>
               {etat.commande.lignes ? (
                 <table className="mt-1">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="pr-3 text-left">Désignation</th>
+                      <th scope="col" className="pr-3 text-right">Quantité</th>
+                      <th scope="col" className="text-right">Prix unitaire</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {etat.commande.lignes.map((l, i) => (
                       <tr key={i}>
@@ -230,7 +254,7 @@ export function AcceptationConditionsLicence() {
           )}
 
           {etat.acceptation && etat.aJour && (accuse || etat.accuse || etat.renvoiAccusePossible) && (
-            <div role="status" className="mt-2 border border-sel/30 bg-sel-soft px-3 py-2">
+            <div ref={refAccuse} tabIndex={-1} role="status" className="mt-2 border border-sel/30 bg-sel-soft px-3 py-2">
               <p className="font-semibold">Accusé de réception</p>
               {accuse && (
                 <p>
@@ -238,7 +262,7 @@ export function AcceptationConditionsLicence() {
                   {horodatage(etat.acceptation.le)} (heure de Kinshasa), par {etat.acceptation.par ?? AUTEUR_NON_ENREGISTRE}.
                 </p>
               )}
-              {!(accuse && accuse.deja) && <p>{phraseAccuse(statutAccuse)}</p>}
+              {!(accuse && accuse.deja) && <p>{phraseAccuse(statutAccuse, estAdmin)}</p>}
               {estAdmin && etat.renvoiAccusePossible && (
                 <button type="button" disabled={envoi} onClick={renvoyerAccuse} className="mt-1 text-sel underline font-semibold disabled:opacity-50">
                   Renvoyer l’accusé

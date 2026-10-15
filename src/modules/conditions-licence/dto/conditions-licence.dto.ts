@@ -19,6 +19,15 @@ export class AccepterConditionsDto {
   @Matches(MOTIF_EMPREINTE, { message: 'L’empreinte du texte lu doit compter 64 chiffres hexadécimaux.' })
   empreinte!: string;
 
+  /**
+   * L'empreinte de l'ABONNEMENT que l'écran a affiché (`empreinteCommande`,
+   * second tour de relecture, M-a) · comparée sous le verrou à la commande
+   * que le service relit. Un prix changé dans la console entre l'affichage et
+   * le clic est refusé (Code du numérique, art. 55, al. 1er).
+   */
+  @Matches(MOTIF_EMPREINTE, { message: 'L’empreinte de l’abonnement affiché doit compter 64 chiffres hexadécimaux.' })
+  empreinteCommande!: string;
+
   /** La case « J'ai lu les conditions » · l'acceptation est un acte exprès (Code civil, Livre III, art. 8, consentement). */
   @Equals(true, { message: 'Cochez la case qui dit avoir lu les conditions avant de les accepter.' })
   lu!: boolean;

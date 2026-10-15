@@ -34,7 +34,11 @@ const rotr = (x: number, n: number): number => (x >>> n) | (x << (32 - n));
 function enUtf8(texte: string): number[] {
   const octets: number[] = [];
   for (const caractere of texte) {
-    const c = caractere.codePointAt(0) as number;
+    // Un caractère itéré n'est jamais vide · sans conversion forcée, une
+    // absence ferait tomber le calcul au lieu de hacher autre chose (second
+    // tour, m-3).
+    const c = caractere.codePointAt(0);
+    if (c === undefined) throw new Error('Caractère vide dans le texte à hacher.');
     if (c < 0x80) octets.push(c);
     else if (c < 0x800) octets.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
     else if (c < 0x10000) octets.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));

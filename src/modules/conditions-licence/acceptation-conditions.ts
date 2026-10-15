@@ -4,6 +4,7 @@ import {
   verdictPeriode,
 } from '../plateforme/abonnements/facturation-abonnements';
 import { mentionsAArreter, VERSION_CONDITIONS_LICENCE } from './conditions-de-licence';
+import { sha256Hex } from './empreinte';
 import { empreinteEnVigueur } from './versions-publiees';
 
 /**
@@ -34,6 +35,21 @@ import { empreinteEnVigueur } from './versions-publiees';
  *    JAMAIS une condition d'accès au dossier. Rien ici ne ferme une route.
  */
 
+/**
+ * LES TYPES DE LICENCE QUE CE MODULE CONNAÎT · une union littérale, le module
+ * étant partagé avec l'écran, qui n'importe pas `@prisma/client`. Le service la
+ * confronte à l'enum `TypeLicence` par `satisfies`, dans les deux sens
+ * (relecture, m-3) · un type ajouté au schéma fait tomber la compilation.
+ */
+export const TYPES_LICENCE = ['ABONNEMENT', 'PERPETUEL_SAAS', 'PERPETUEL_ONPREMISE', 'PROPRIETAIRE'] as const;
+export type TypeLicenceConnue = (typeof TYPES_LICENCE)[number];
+
+/** Les statuts d'un message de la file (`StatutMessage`), confrontés de même par le service. */
+export const STATUTS_MESSAGE = ['EN_ATTENTE', 'SANS_TRANSPORT', 'ENVOYE', 'ECHEC', 'ABANDONNE'] as const;
+export type StatutMessageConnu = (typeof STATUTS_MESSAGE)[number];
+/** Le statut d'un accusé rendu à l'écran · celui de la file, ou `NON_MIS_EN_FILE` quand il n'a pas pu y entrer. */
+export type StatutAccuse = StatutMessageConnu | 'NON_MIS_EN_FILE';
+
 export interface AcceptationEnregistree {
   version: number;
   /**
@@ -46,6 +62,13 @@ export interface AcceptationEnregistree {
   le: string;
   /** Courriel de l'administrateur, recopié au jour de l'acte · `null` s'il n'a pas été enregistré. */
   par: string | null;
+  /**
+   * L'abonnement que l'administrateur a vérifié et accepté, figé avec
+   * l'acceptation (relecture, M-a ; art. 55, al. 1er) · le prix de la console
+   * peut changer ensuite, la commande acceptée non. `null` sans abonnement
+   * (installation sur site) ou pour une acceptation qui ne l'a pas gardée.
+   */
+  commande: DetailCommande | null;
 }
 
 /** Ce qui s'écrit à la place d'un auteur absent · jamais une chaîne vide, qui se lirait comme un nom (relecture, mineur 6). */
@@ -80,7 +103,7 @@ export interface DetailCommande {
 export interface ContexteAcceptation {
   mentions: string[];
   /** Le type de la licence du dossier, `null` sans licence. */
-  typeLicence: string | null;
+  typeLicence: TypeLicenceConnue | null;
   estDemonstration: boolean;
   surSite: boolean;
   /** L'abonnement du dossier, ou celui de son siège pour une cellule ; `null` sans abonnement. */
@@ -142,27 +165,71 @@ export function estAJour(
 }
 
 /**
+ * L'EMPREINTE DE LA COMMANDE AFFICHÉE (relecture, M-a) · formule, options,
+ * périodicité, dates, lignes et total, dans un ordre fixe. L'écran la calcule
+ * sur la commande qu'il montre, le serveur sur celle qu'il relit sous le
+ * verrou · un prix changé dans la console entre la lecture et le clic ne fait
+ * pas accepter un prix que l'administrateur n'a pas vu. Sans abonnement, une
+ * empreinte fixe · l'écran l'envoie de même.
+ */
+export function empreinteCommande(c: DetailCommande | null): string {
+  if (c === null) return sha256Hex('aucune commande');
+  return sha256Hex(
+    JSON.stringify([
+      c.formule,
+      c.options,
+      c.periodicite,
+      c.debut,
+      c.finEssai,
+      c.lignes === null ? null : c.lignes.map((l) => [l.designation, l.quantite, l.prixUnitaireUsd]),
+      c.totalUsd,
+      c.duSiege,
+    ]),
+  );
+}
+
+/**
  * Le refus d'une acceptation reçue · le texte affiché à l'administrateur doit
  * être celui que le service tient en vigueur, même NUMÉRO et même EMPREINTE
- * (il a lu CE texte), et le dossier doit pouvoir accepter. `null` =
- * l'acceptation passe. L'écran envoie le numéro et l'empreinte de SON texte,
- * celui du code qu'il a chargé (relecture M1) · une page restée ouverte sur
- * une construction plus ancienne, ou plus récente, ne fait rien accepter.
+ * (il a lu CE texte), le dossier doit pouvoir accepter, et la commande
+ * affichée doit être celle que le serveur relit. `null` = l'acceptation passe.
+ * L'écran envoie le numéro et l'empreinte de SON texte, celui du code qu'il a
+ * chargé (relecture M1). Trois écarts, trois messages (relecture, m-2) · une
+ * page plus RÉCENTE que le service (mise en production en cours) n'a pas à
+ * être rechargée, c'est le service qui n'est pas encore à jour.
  */
 export function motifRefusAcceptation(
   versionLue: number,
   empreinteLue: string,
+  empreinteCommandeLue: string,
   c: ContexteAcceptation,
   versionEnVigueur: number = VERSION_CONDITIONS_LICENCE.numero,
   empreinte: string = empreinteEnVigueur(),
 ): string | null {
-  if (!Number.isInteger(versionLue) || versionLue !== versionEnVigueur || empreinteLue !== empreinte) {
+  if (!Number.isInteger(versionLue) || versionLue < versionEnVigueur) {
     return (
-      `Le texte lu (version ${String(versionLue)}) n’est pas celui que le service tient en vigueur (version ${versionEnVigueur}) · ` +
+      `La page affiche la version ${String(versionLue)} des conditions, et le service tient en vigueur la version ${versionEnVigueur} · ` +
       'rechargez la page et relisez la version en vigueur avant de l’accepter.'
     );
   }
-  return motifAcceptationFermee(c);
+  if (versionLue > versionEnVigueur) {
+    return (
+      `La page affiche la version ${versionLue} des conditions, que le service ne tient pas encore (il est à la version ${versionEnVigueur}) · ` +
+      'le service n’est pas encore à jour, réessayez dans quelques minutes.'
+    );
+  }
+  if (empreinteLue !== empreinte) {
+    return (
+      `Le texte affiché diffère de celui que le service tient pour la même version ${versionEnVigueur} · ` +
+      'rechargez la page et relisez-le avant de l’accepter.'
+    );
+  }
+  const fermee = motifAcceptationFermee(c);
+  if (fermee) return fermee;
+  if (empreinteCommandeLue !== empreinteCommande(c.commande)) {
+    return 'L’abonnement affiché n’est plus celui du dossier · relisez-le avant d’accepter (Code du numérique, art. 55, al. 1er).';
+  }
+  return null;
 }
 
 /**
@@ -191,27 +258,26 @@ export function detailCommande(a: AbonnementAFacturer, duSiege = false): DetailC
 
 /** Le dernier accusé de réception mis en file pour l'acceptation en vigueur. */
 export interface AccuseEnFile {
-  /** Le statut du message · EN_ATTENTE, SANS_TRANSPORT, ENVOYE, ECHEC ou ABANDONNE. */
-  statut: string;
+  statut: StatutMessageConnu;
   /** ISO 8601 · sa mise en file. */
   le: string;
 }
 
-/** Les statuts d'un accusé qui partira ou est parti · un renvoi en ferait un doublon. */
-const ACCUSE_EN_COURS_OU_PARTI = new Set(['EN_ATTENTE', 'SANS_TRANSPORT', 'ENVOYE']);
-
 /**
  * Pourquoi l'accusé ne se renvoie pas, ou `null` (relecture, mineur 5) · il y
- * faut une acceptation du texte en vigueur, et aucun accusé en file, parti ou
- * en attente d'une messagerie. Un accusé en échec ou abandonné, ou jamais mis
- * en file, se renvoie.
+ * faut une acceptation du texte en vigueur, et que l'accusé n'ait JAMAIS pu
+ * entrer en file ou que la file l'ait ABANDONNÉ. Un accusé en ÉCHEC n'est pas
+ * renvoyable · la file reprend d'elle-même les échecs (`filtreEligibles` du
+ * courrier), et un renvoi doublait le courriel (second tour, M-b). En attente,
+ * sans messagerie ou parti, non plus.
  */
 export function motifRefusRenvoiAccuse(a: AcceptationEnregistree | null, aJour: boolean, dernier: AccuseEnFile | null): string | null {
   if (!a || !aJour) return 'Aucune acceptation du texte en vigueur n’est enregistrée pour ce dossier · il n’y a pas d’accusé à renvoyer.';
-  if (dernier && ACCUSE_EN_COURS_OU_PARTI.has(dernier.statut)) {
-    return 'Un accusé de réception de cette acceptation est déjà en file ou parti · le renvoyer ferait un doublon.';
+  if (dernier === null || dernier.statut === 'ABANDONNE') return null;
+  if (dernier.statut === 'ECHEC') {
+    return 'L’accusé de réception n’est pas parti au dernier essai · la file le retente d’elle-même, le renvoyer ferait un doublon.';
   }
-  return null;
+  return 'Un accusé de réception de cette acceptation est déjà en file ou parti · le renvoyer ferait un doublon.';
 }
 
 /** La vue que l'écran reçoit · tout est servi, rien n'est recalculé à l'écran. */
