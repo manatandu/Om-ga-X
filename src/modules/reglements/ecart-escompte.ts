@@ -209,30 +209,43 @@ export interface LigneDuReglement {
   libelle: string;
 }
 
-/** La pièce · le tiers, la trésorerie, l'escompte et l'écart, chacun sur sa ligne, équilibrée au centime. */
+/** Un montant et le compte qui le reçoit · jamais l'un sans l'autre. */
+export interface MontantAuCompte {
+  montant: number;
+  compteId: string;
+}
+
+/**
+ * La pièce · le tiers, la trésorerie, l'escompte et l'écart, chacun sur sa
+ * ligne, équilibrée au centime. L'escompte et l'écart viennent AVEC leur
+ * compte (second tour de relecture, m1) · un montant sans compte ne se
+ * compose plus, et le plan est celui que `planDuReglement` a rendu, jamais un
+ * objet refait à côté.
+ */
 export function lignesAvecEscompteEtEcart(p: {
   sens: SensReglement;
   compteTiersId: string;
   compteTresorerieId: string;
   montant: number;
   plan: PlanDuReglement;
-  escompte: number;
-  compteEscompteId: string | null;
-  compteEcartId: string | null;
+  escompte: MontantAuCompte | null;
+  ecart: MontantAuCompte | null;
   libelle: string;
 }): LigneDuReglement[] {
   const { libelle } = p;
   const lignes: LigneDuReglement[] = [];
+  const escompte = p.escompte && p.escompte.montant > 0 ? p.escompte : null;
+  const ecart = p.ecart && p.ecart.montant > 0 ? p.ecart : null;
   if (p.sens === 'FOURNISSEUR') {
     lignes.push({ compteId: p.compteTiersId, debit: p.plan.tiers, libelle });
-    if (p.plan.ecart > 0) lignes.push({ compteId: p.compteEcartId!, debit: p.plan.ecart, libelle: `Écart de règlement · ${libelle}`.slice(0, 190) });
+    if (ecart) lignes.push({ compteId: ecart.compteId, debit: ecart.montant, libelle: `Écart de règlement · ${libelle}`.slice(0, 190) });
     lignes.push({ compteId: p.compteTresorerieId, credit: p.montant, libelle });
-    if (p.escompte > 0) lignes.push({ compteId: p.compteEscompteId!, credit: p.escompte, libelle: `Escompte obtenu · ${libelle}`.slice(0, 190) });
+    if (escompte) lignes.push({ compteId: escompte.compteId, credit: escompte.montant, libelle: `Escompte obtenu · ${libelle}`.slice(0, 190) });
     return lignes;
   }
   lignes.push({ compteId: p.compteTresorerieId, debit: p.montant, libelle });
-  if (p.escompte > 0) lignes.push({ compteId: p.compteEscompteId!, debit: p.escompte, libelle: `Escompte accordé · ${libelle}`.slice(0, 190) });
-  if (p.plan.ecart > 0) lignes.push({ compteId: p.compteEcartId!, debit: p.plan.ecart, libelle: `Écart de règlement · ${libelle}`.slice(0, 190) });
+  if (escompte) lignes.push({ compteId: escompte.compteId, debit: escompte.montant, libelle: `Escompte accordé · ${libelle}`.slice(0, 190) });
+  if (ecart) lignes.push({ compteId: ecart.compteId, debit: ecart.montant, libelle: `Écart de règlement · ${libelle}`.slice(0, 190) });
   lignes.push({ compteId: p.compteTiersId, credit: p.plan.tiers, libelle });
   return lignes;
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { estEcheanceAReglerSur, lignesDuReglement, montantDu, motifRefusMontant, motifHorsEcheance, avertissementCreanceReclassee } from './reglement-tiers';
-import { ReglementsService } from './reglements.service';
+import { avecLeMode, ReglementsService } from './reglements.service';
 import type { OrdresVirementService } from './ordres-virement.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
@@ -902,6 +902,17 @@ describe('l’escompte et l’écart de règlement (ligne sage-l2, fonction 36)'
     expect(r.avertissements.join(' ')).toMatch(/l'escompte de 12\.00 ne sort de la base.*art\. 29, 1°/);
   });
 
+  it('le mode du règlement va au tiers et à la trésorerie, jamais à l’escompte (second tour, m2)', async () => {
+    const { service, creer } = avecDossier(null);
+    await service.enregistrer('t', 'u', { ...base, modeReglementId: 'vir', reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12 }] });
+    const lignes = creer.mock.calls[0][2].lignes as Array<{ compteId: string; modeReglementId?: string }>;
+    expect(lignes.map((l) => [l.compteId, l.modeReglementId ?? null])).toEqual([
+      ['c401', 'vir'],
+      ['c521', 'vir'],
+      ['c773', null],
+    ]);
+  });
+
   it('un dossier déclaré non assujetti n’a aucune taxe à dire', async () => {
     const { service } = avecDossier(null, PLAN, false);
     const r = await service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12 }] });
@@ -976,5 +987,26 @@ describe('l’escompte et l’écart de règlement (ligne sage-l2, fonction 36)'
       service.enregistrer('t', 'u', { ...base, sens: 'CLIENT', reglements: [{ compteId: 'c411', ligneIds: ['k1'], montant: 500.4, solderEcart: true }] }),
     ).rejects.toThrow(/art\. 252/);
     expect(creer).not.toHaveBeenCalled();
+  });
+});
+
+// SECOND TOUR DE RELECTURE DE LA LIGNE SAGE-L2, m2 · le mode du règlement se
+// posait aussi sur l'escompte, l'écart de règlement et l'écart de change, qui
+// ne sont pas un paiement.
+describe('le mode de règlement sur les seules lignes qui paient', () => {
+  it('le tiers et la trésorerie le reçoivent, l’escompte et l’écart non', () => {
+    const lignes = avecLeMode('vir', ['c401', 'c521'], [
+      { compteId: 'c401', debit: 1000 },
+      { compteId: 'c521', credit: 980 },
+      { compteId: 'c773', credit: 20 },
+      { compteId: 'c6588', debit: 0.5 },
+    ]);
+    expect(lignes.map((l) => [l.compteId, l.modeReglementId ?? null])).toEqual([
+      ['c401', 'vir'],
+      ['c521', 'vir'],
+      ['c773', null],
+      ['c6588', null],
+    ]);
+    expect(avecLeMode(null, ['c401'], [{ compteId: 'c401' }])).toEqual([{ compteId: 'c401' }]);
   });
 });

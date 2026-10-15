@@ -134,9 +134,8 @@ describe('le règlement, son escompte et son écart', () => {
       compteTresorerieId: '521',
       montant: 980,
       plan: { tiers: 1000, ecart: 0, partiel: false },
-      escompte: 20,
-      compteEscompteId: '773',
-      compteEcartId: null,
+      escompte: { montant: 20, compteId: '773' },
+      ecart: null,
       libelle: 'Règlement',
     });
     expect(f).toEqual([
@@ -151,9 +150,8 @@ describe('le règlement, son escompte et son écart', () => {
       compteTresorerieId: '521',
       montant: 979.5,
       plan: { tiers: 1000, ecart: 0.5, partiel: false },
-      escompte: 20,
-      compteEscompteId: '673',
-      compteEcartId: '6588',
+      escompte: { montant: 20, compteId: '673' },
+      ecart: { montant: 0.5, compteId: '6588' },
       libelle: 'Règlement',
     });
     expect(k.map((l) => [l.compteId, l.debit ?? 0, l.credit ?? 0])).toEqual([

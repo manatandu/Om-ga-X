@@ -39,6 +39,7 @@ import {
   planDuReglement,
   roleEscompte,
   type CompteCandidat,
+  type PlanDuReglement,
   type RoleEcartEscompte,
 } from './ecart-escompte';
 import { faitAssujettissementTva } from '../tenant/faits-declares';
@@ -494,6 +495,8 @@ export class ReglementsService {
       ecart: number;
       compteEscompteId: string | null;
       compteEcartId: string | null;
+      /** Le plan que `planDuReglement` a rendu, tel quel (second tour, m1) · null sans escompte ni écart. */
+      plan: PlanDuReglement | null;
       enDevise: ReglementEnDevise | null;
       reduite: boolean;
       /** Les parts désignées par le dossier (jumeau 3 du point 4), une ligne au tiers chacune. */
@@ -581,6 +584,7 @@ export class ReglementsService {
         let ecart = 0;
         let compteEscompteId: string | null = null;
         let compteEcartId: string | null = null;
+        let plan: PlanDuReglement | null = null;
         if (avecEscompteOuEcart) {
           if (referentiel === null) referentiel = await referentielDuDossier(this.prisma, tenantId);
           if (seuilDuDossier === undefined) seuilDuDossier = await this.seuilEcartReglement(tenantId);
@@ -595,6 +599,7 @@ export class ReglementsService {
             seuil: seuilDuDossier,
           });
           if ('motif' in planE) throw new BadRequestException(`${numero} · ${planE.motif}`);
+          plan = planE;
           tiers = planE.tiers;
           ecart = planE.ecart;
           if (escompte > 0) compteEscompteId = await compteDuRoleOuRefus(numero, roleEscompte(dto.sens), p.r.compteEscompteId);
@@ -666,6 +671,7 @@ export class ReglementsService {
           ecart,
           compteEscompteId,
           compteEcartId,
+          plan,
           enDevise: null,
           reduite: p.reduite,
           parts,
@@ -738,6 +744,7 @@ export class ReglementsService {
         ecart: 0,
         compteEscompteId: null,
         compteEcartId: null,
+        plan: null,
         enDevise,
         reduite: p.reduite,
         parts: null,
@@ -907,7 +914,7 @@ export class ReglementsService {
 
     const resultats = [];
     const aOrdonner: LigneAOrdonner[] = [];
-    for (const { r, compte, du, montant, tiers, escompte, ecart, compteEscompteId, compteEcartId, enDevise, reduite, parts, groupe } of prepares) {
+    for (const { r, compte, du, montant, tiers, escompte, ecart, compteEscompteId, compteEcartId, plan, enDevise, reduite, parts, groupe } of prepares) {
       const libelle = `Règlement ${compte.tiersCompte?.tiers.nom ?? compte.intitule}`.slice(0, 190);
       const ecriture = await this.ecritures.creer(tenantId, userId, {
         exerciceId: dto.exerciceId,
@@ -917,7 +924,7 @@ export class ReglementsService {
         // La pièce qui a notifié l'imputation au fournisseur (M6) suit la
         // référence du règlement, et se lit sur la pièce comptable.
         reference: [r.reference, parts && r.pieceImputation ? `imputation notifiée · ${r.pieceImputation.trim()}` : null].filter(Boolean).join(' · ') || undefined,
-        lignes: avecLeMode(mode?.id ?? null, enDevise
+        lignes: avecLeMode(mode?.id ?? null, [r.compteId, compteTresorerieId], enDevise
           ? lignesDuReglementEnDevise({
               sens: dto.sens,
               compteTiersId: r.compteId,
@@ -933,16 +940,15 @@ export class ReglementsService {
             })
           : parts
             ? lignesDuReglementImpute({ compteTiersId: r.compteId, compteTresorerieId, parts, libelle })
-            : escompte > 0 || ecart > 0
+            : plan && (escompte > 0 || ecart > 0)
               ? lignesAvecEscompteEtEcart({
                   sens: dto.sens,
                   compteTiersId: r.compteId,
                   compteTresorerieId,
                   montant,
-                  plan: { tiers, ecart, partiel: false },
-                  escompte,
-                  compteEscompteId,
-                  compteEcartId,
+                  plan,
+                  escompte: compteEscompteId ? { montant: escompte, compteId: compteEscompteId } : null,
+                  ecart: compteEcartId ? { montant: ecart, compteId: compteEcartId } : null,
                   libelle,
                 })
               : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle })),
@@ -1480,21 +1486,30 @@ interface ReglementEnDevise {
  * second tour, m6) · lettrée, elle empêcherait de remplacer l'à-nouveau à la
  * clôture de l'exercice précédent, qui refuse un report provisoire lettré.
  */
-/**
- * Le mode de règlement du lot sur chaque ligne de la pièce (ligne sage-l2,
- * fonction 1) · le tiers soldé et la trésorerie qui paie, comme Sage le pose
- * sur les lignes du règlement. Aucun mode, les lignes restent telles.
- */
-function avecLeMode<L extends object>(modeReglementId: string | null, lignes: L[]): Array<L & { modeReglementId?: string }> {
-  return modeReglementId ? lignes.map((l) => ({ ...l, modeReglementId })) : lignes;
-}
-
 export function motifANouveauProvisoire(numero: string): string {
   return (
     `${numero} · la ligne d'à-nouveau choisie est PROVISOIRE, l'exercice précédent n'étant pas clôturé · lettrée par ce règlement, ` +
     "elle ferait refuser la clôture de cet exercice, qui remplace l'à-nouveau provisoire. Attendez sa clôture, ou saisissez le règlement " +
     "au journal de trésorerie et lettrez-le avec la ligne d'à-nouveau définitif une fois l'exercice clôturé."
   );
+}
+
+/**
+ * Le mode de règlement du lot sur les lignes qui PAIENT (ligne sage-l2,
+ * fonction 1) · le tiers soldé et la trésorerie qui paie, comme Sage le pose
+ * sur les lignes du règlement. Jamais sur l'escompte (773, 673), l'écart de
+ * règlement (6588, 658) ni l'écart de change réalisé (second tour de
+ * relecture, m2) · ces lignes ne sont pas un paiement, et le mode les ferait
+ * lire comme tel. Aucun mode, les lignes restent telles.
+ */
+export function avecLeMode<L extends { compteId: string }>(
+  modeReglementId: string | null,
+  comptesQuiPaient: readonly string[],
+  lignes: L[],
+): Array<L & { modeReglementId?: string }> {
+  if (!modeReglementId) return lignes;
+  const paient = new Set(comptesQuiPaient);
+  return lignes.map((l) => (paient.has(l.compteId) ? { ...l, modeReglementId } : l));
 }
 
 /**
