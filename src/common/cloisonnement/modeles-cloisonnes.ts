@@ -126,6 +126,7 @@ export const MODELES_CLOISONNES = new Set<string>([
   // Ligne sage-l7, fonction 59 · l'impression différée et les sélections enregistrées.
   'ImpressionDifferee',
   'SelectionEdition',
+  'ModeleEdition',
   // Ligne sage-l1, fonction 19 · les séquences de saisie.
   'SequenceSaisie',
   'RibTiers',

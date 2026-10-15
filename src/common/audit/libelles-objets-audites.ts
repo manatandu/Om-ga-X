@@ -39,6 +39,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   ExportEcritures: 'Export des écritures',
   ImpressionDifferee: 'Impression différée',
   SelectionEdition: "Sélection d'une édition",
+  ModeleEdition: "Modèle d'édition",
   SequenceSaisie: 'Séquence de saisie',
   RibTiers: "RIB d'un tiers",
   OrdreVirement: 'Ordre de virement',

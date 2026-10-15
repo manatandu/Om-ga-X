@@ -5,6 +5,11 @@ import { useExercice } from '../lib/exercice';
 import { Aide } from '../components/chrome/Aide';
 import type { Bailleur, BudgetSection, PlanAnalytique, SectionAnalytique } from '../lib/types';
 import { PortailModale } from '../components/PortailModale';
+import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImpression';
+import { EditionStructure } from '../components/EditionStructure';
+import { ChoixModeleEdition } from '../components/ChoixModeleEdition';
+import { editionAnalytique, perimetreEdition } from '../lib/editions-structures';
+import { COLONNES_EDITION, type ModeleServi } from '../lib/modeles-edition';
 import { montant } from '../lib/montants';
 
 /**
@@ -50,6 +55,8 @@ export function PlansAnalytiquesPage() {
   const budgetModifiable = estAdmin && exerciceCourant?.statut !== 'CLOTURE';
 
   const [plans, setPlans] = useState<PlanAnalytique[] | null>(null);
+  // Le modèle de la liste imprimée (ligne sage-l7, fonction 59) · Standard par défaut.
+  const [modeleEdition, setModeleEdition] = useState<ModeleServi | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
   const [sections, setSections] = useState<SectionAnalytique[]>([]);
   const [sectionId, setSectionId] = useState<string | null>(null);
@@ -281,9 +288,28 @@ export function PlansAnalytiquesPage() {
   };
 
   return (
-    <div className="p-2">
+    <div className="p-2 avec-edition">
+      {/* Ligne sage-l7, fonction 59 · l'édition du plan analytique, la liste
+          à plat des sections du plan choisi, sous son modèle · le périmètre
+          dit le plan et la recherche. */}
+      <EnteteImpression titre="Plan analytique" />
+      <EditionStructure
+        edition={editionAnalytique(plan, listeFiltree)}
+        perimetre={perimetreEdition(
+          [
+            ['Plan', plan ? `${plan.code} · ${plan.intitule}` : null],
+            ['Recherche', recherche],
+          ],
+          listeFiltree.length,
+          'section',
+        )}
+        modele={modeleEdition}
+        catalogue={COLONNES_EDITION.PLAN_ANALYTIQUE}
+      />
       <div className="flex items-center justify-end mb-1.5 gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <ChoixModeleEdition edition="PLAN_ANALYTIQUE" onChange={setModeleEdition} />
+          <BoutonImprimer libelle="Imprimer la liste" />
           <Aide sujet="analytique" />
           <input
             value={recherche}

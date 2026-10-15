@@ -887,6 +887,7 @@ model Tenant {
   // Ligne sage-l7 · fonction 59, l'impression différée et les sélections enregistrées.
   impressionsDifferees         ImpressionDifferee[]
   selectionsEdition            SelectionEdition[]
+  modelesEdition               ModeleEdition[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -10941,4 +10942,46 @@ model SelectionEdition {
 
   @@unique([tenantId, edition, nom])
   @@map("selections_edition")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l7 · fonction 59, les modèles d'édition et les sauts
+// ---------------------------------------------------------------------------
+
+/// Les éditions de TRAVAIL qu'un modèle personnalise · jamais un état
+/// financier ni un livre obligatoire (décision L7-1).
+enum EditionModele {
+  PLAN_COMPTABLE
+  PLAN_TIERS
+  PLAN_ANALYTIQUE
+}
+
+/// Ce qui sépare deux groupes à l'impression (classe, type de tiers,
+/// rubrique analytique).
+enum SautEdition {
+  AUCUN
+  LIGNE
+  PAGE
+}
+
+/// UN MODÈLE D'ÉDITION PERSONNALISÉ (ligne sage-l7, fonction 59 ; décision
+/// L7-1) · les colonnes facultatives gardées d'une édition de travail, et le
+/// saut entre ses groupes. Le modèle standard n'est pas rangé (toutes les
+/// colonnes, aucun saut) ; les colonnes qui identifient la ligne (numéro ou
+/// code, intitulé ou nom) ne se retirent jamais.
+model ModeleEdition {
+  id        String        @id @default(uuid())
+  tenantId  String
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+  edition   EditionModele
+  nom       String
+  /// Les clés des colonnes FACULTATIVES gardées, dans l'ordre de l'édition.
+  colonnes  String[]
+  saut      SautEdition   @default(AUCUN)
+  creePar   String
+  creeLe    DateTime      @default(now())
+  modifieLe DateTime      @default(now())
+
+  @@unique([tenantId, edition, nom])
+  @@map("modeles_edition")
 }

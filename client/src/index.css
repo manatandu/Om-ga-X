@@ -1197,6 +1197,12 @@ summary:focus-visible {
   .edition-structure thead {
     display: table-header-group;
   }
+  /* Modèle d'édition (ligne sage-l7, fonction 59) · un groupe par page,
+     l'en-tête des colonnes repris sur chacune. */
+  .edition-saut-page {
+    break-before: page;
+    page-break-before: always;
+  }
 
   /* Le conteneur d'application est en h-screen + overflow auto à l'écran :
      sans cette libération, l'impression s'arrêterait à la première page. */

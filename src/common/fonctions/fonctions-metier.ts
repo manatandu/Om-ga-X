@@ -165,6 +165,8 @@ export const CONTROLEURS_HORS_PROFIL: Record<string, string> = {
   SurSiteController: "Licence et sauvegardes du poste d'une installation sur site · l'installation, pas un dossier.",
   ImpressionsJournalController:
     "Trace de l'impression du journal (ligne sage-l1, fonction 60) · imprimer est une lecture, ouverte à qui lit le journal, que le profil ne ferme pas.",
+  ModelesEditionController:
+    "Modèles des éditions de travail (ligne sage-l7, fonction 59) · la présentation d'une liste imprimée, sans effet sur les livres, que le profil ne ferme pas.",
   SelectionsEditionController:
     "Sélections enregistrées des éditions (ligne sage-l7, fonction 59) · des critères de lecture rappelés, sans effet sur les livres, que le profil ne ferme pas.",
   ImpressionsDiffereesController:

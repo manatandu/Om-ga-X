@@ -8,6 +8,8 @@ import { IconCheck } from '../components/chrome/icons';
 import { Aide } from '../components/chrome/Aide';
 import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImpression';
 import { EditionStructure } from '../components/EditionStructure';
+import { ChoixModeleEdition } from '../components/ChoixModeleEdition';
+import { COLONNES_EDITION, type ModeleServi } from '../lib/modeles-edition';
 import { VoletDocumentsTiers } from '../components/VoletDocumentsTiers';
 import { VoletRibsTiers } from '../components/VoletRibsTiers';
 import { editionTiers, libelleTypeTiers, perimetreEdition } from '../lib/editions-structures';
@@ -191,6 +193,8 @@ export function TiersPage() {
   const { exerciceCourant } = useExercice();
   const navigate = useNavigate();
   const [liste, setListe] = useState<Tiers[] | null>(null);
+  // Le modèle de la liste imprimée (ligne sage-l7, fonction 59) · Standard par défaut.
+  const [modeleEdition, setModeleEdition] = useState<ModeleServi | null>(null);
   const [modeles, setModeles] = useState<ModeleReglement[]>([]);
   // Liste de choix (comptes de classe 4 retenus ou utilisés) · null tant qu'elle n'est pas lue.
   const [comptesLus, setComptesLus] = useState<Compte[] | null>(null);
@@ -738,9 +742,12 @@ export function TiersPage() {
           'tiers',
           'tiers',
         )}
+        modele={modeleEdition}
+        catalogue={COLONNES_EDITION.PLAN_TIERS}
       />
       <div className="flex items-center justify-end mb-2 shrink-0">
         <div className="flex items-center gap-2">
+          <ChoixModeleEdition edition="PLAN_TIERS" onChange={setModeleEdition} />
           <BoutonImprimer libelle="Imprimer la liste" />
           <input
             ref={champRecherche}

@@ -173,6 +173,8 @@ export const MODELES_AUDITES = new Set<string>([
   // Même ligne · une sélection enregistrée est une structure de travail du
   // dossier, que tous rappellent, comme une séquence de saisie.
   'SelectionEdition',
+  // Même ligne · un modèle d'édition décide de ce que le dossier imprime.
+  'ModeleEdition',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',

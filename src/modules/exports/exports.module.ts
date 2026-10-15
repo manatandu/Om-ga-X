@@ -20,6 +20,8 @@ import { ImpressionsDiffereesController } from './impression-differee/impression
 import { ImpressionDiffereeService } from './impression-differee/impression-differee.service';
 import { SelectionsEditionController } from './selections/selections-edition.controller';
 import { SelectionsEditionService } from './selections/selections-edition.service';
+import { ModelesEditionController } from './modeles-edition/modeles-edition.controller';
+import { ModelesEditionService } from './modeles-edition/modeles-edition.service';
 
 @Module({
   // `EtatsFinanciersSyscohadaModule` fournit les DEUX moteurs SYSCOHADA
@@ -51,13 +53,14 @@ import { SelectionsEditionService } from './selections/selections-edition.servic
   // Ligne sage-l7, fonction 99 · l'export des seules modifications, qui écrit
   // son classeur par le cartouche des exports (`ExportService.identiteEtat`).
   // Fonction 59 · l'impression différée, produite par les moteurs des exports,
-  // et les sélections enregistrées des éditions.
+  // les sélections enregistrées et les modèles des éditions de travail.
   controllers: [
     ExportController,
     RestitutionController,
     ExportModificationsController,
     ImpressionsDiffereesController,
     SelectionsEditionController,
+    ModelesEditionController,
   ],
   providers: [
     ExportService,
@@ -66,6 +69,7 @@ import { SelectionsEditionService } from './selections/selections-edition.servic
     ExportModificationsService,
     ImpressionDiffereeService,
     SelectionsEditionService,
+    ModelesEditionService,
   ],
   // Exporté pour GroupeModule : la liasse du groupe en un clic reverse la
   // balance agrégée dans le dossier de combinaison puis fait produire le

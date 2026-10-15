@@ -1,4 +1,6 @@
-import type { Compte, Journal, NumerotationPiece, TauxTva, Tiers, TypeJournal, TypeTiers } from './types';
+import type { Compte, Journal, NumerotationPiece, PlanAnalytique, SectionAnalytique, TauxTva, Tiers, TypeJournal, TypeTiers } from './types';
+import { COLONNES_EDITION } from './modeles-edition';
+import { classeDuNumero } from './classe-du-numero';
 
 /**
  * ÉDITIONS DES STRUCTURES (point 18 de la comparaison Sage i7).
@@ -18,6 +20,13 @@ import type { Compte, Journal, NumerotationPiece, TauxTva, Tiers, TypeJournal, T
 export interface Edition {
   colonnes: string[];
   lignes: string[][];
+  /**
+   * Les clés des colonnes, pour les éditions qu'un modèle personnalise
+   * (ligne sage-l7, fonction 59 · `modeles-edition.ts`).
+   */
+  cles?: string[];
+  /** Le groupe de chaque ligne, que le saut d'un modèle sépare · sa clé de tri et son titre. */
+  groupes?: Array<{ cle: string; titre: string }>;
 }
 
 export const LIBELLE_TYPE_JOURNAL: Record<TypeJournal, string> = {
@@ -49,9 +58,19 @@ const etat = (actif: boolean) => (actif ? 'Actif' : 'En sommeil');
 const parCode = <T,>(cle: (x: T) => string) => (a: T, b: T) => cle(a).localeCompare(cle(b), 'fr');
 
 export function editionPlan(comptes: Compte[]): Edition {
+  const tries = [...comptes].sort(parCode((c) => c.numero));
   return {
-    colonnes: ['N° de compte', 'Intitulé', 'Type', 'Nature', 'Report à-nouveau', 'Lettrable', 'État'],
-    lignes: [...comptes].sort(parCode((c) => c.numero)).map((c) => [
+    colonnes: COLONNES_EDITION.PLAN_COMPTABLE.map((c) => c.libelle),
+    cles: COLONNES_EDITION.PLAN_COMPTABLE.map((c) => c.cle),
+    // « Le numéro de chacune des classes 1 à 9 constitue le premier chiffre
+    // des numéros de la classe » (AUDCIF Titre VII ch. 2, rôle du premier
+    // chiffre), lu par la règle de l'écran (`classeDuNumero`) · le saut d'un
+    // modèle sépare les classes.
+    groupes: tries.map((c) => {
+      const classe = classeDuNumero(c.numero);
+      return classe ? { cle: classe, titre: `Classe ${classe.slice(-1)}` } : { cle: '~', titre: 'Hors classe' };
+    }),
+    lignes: tries.map((c) => [
       c.numero,
       c.intitule,
       c.typeCompte === 'TOTAL' ? 'Total' : 'Détail',
@@ -63,10 +82,16 @@ export function editionPlan(comptes: Compte[]): Edition {
   };
 }
 
+/** L'ordre des groupes de tiers à l'impression · celui de la fiche. */
+const RANG_TYPE_TIERS: Record<TypeTiers, number> = { ADHERENT: 1, CLIENT: 2, FOURNISSEUR: 3, SALARIE: 4, AUTRE: 5 };
+
 export function editionTiers(tiers: Tiers[]): Edition {
+  const tries = [...tiers].sort(parCode((t) => t.code));
   return {
-    colonnes: ['Code', 'Nom', 'Type', 'Compte principal', 'Ville', 'Téléphone', 'N° impôt', 'État'],
-    lignes: [...tiers].sort(parCode((t) => t.code)).map((t) => [
+    colonnes: COLONNES_EDITION.PLAN_TIERS.map((c) => c.libelle),
+    cles: COLONNES_EDITION.PLAN_TIERS.map((c) => c.cle),
+    groupes: tries.map((t) => ({ cle: String(RANG_TYPE_TIERS[t.type]), titre: LIBELLE_TYPE_TIERS[t.type] })),
+    lignes: tries.map((t) => [
       t.code,
       t.nom,
       LIBELLE_TYPE_TIERS[t.type],
@@ -75,6 +100,39 @@ export function editionTiers(tiers: Tiers[]): Edition {
       t.telephone ?? '',
       t.numeroImpot ?? '',
       etat(t.estActif),
+    ]),
+  };
+}
+
+/**
+ * Le plan analytique · les sections d'un plan. Le groupe est la RUBRIQUE de
+ * premier niveau · la section TOTAL au code le plus court qui commence le
+ * code de la ligne (une rubrique agrège les sections dont le code commence
+ * par le sien, `analytique/rubriques-budgetaires.ts`) ; sans elle, « Hors
+ * rubrique », rangé en dernier.
+ */
+export function editionAnalytique(plan: Pick<PlanAnalytique, 'code' | 'intitule'> | null, sections: SectionAnalytique[]): Edition {
+  const tries = [...sections].sort(parCode((s) => s.code));
+  const rubriques = tries
+    .filter((s) => s.type === 'TOTAL')
+    .sort((a, b) => a.code.length - b.code.length || a.code.localeCompare(b.code, 'fr'));
+  const date = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR') : '');
+  return {
+    colonnes: COLONNES_EDITION.PLAN_ANALYTIQUE.map((c) => c.libelle),
+    cles: COLONNES_EDITION.PLAN_ANALYTIQUE.map((c) => c.cle),
+    groupes: tries.map((s) => {
+      const r = rubriques.find((x) => s.code.startsWith(x.code));
+      // « ~ » se range après tout code · la ligne sans rubrique vient en dernier.
+      return r ? { cle: r.code, titre: `${plan ? `${plan.code} · ` : ''}Rubrique ${r.code} · ${r.intitule}` } : { cle: '~', titre: 'Hors rubrique' };
+    }),
+    lignes: tries.map((s) => [
+      s.code,
+      s.intitule,
+      s.type === 'TOTAL' ? 'Total' : 'Détail',
+      s.bailleur ? `${s.bailleur.code} · ${s.bailleur.nom}` : '',
+      date(s.dateDebut),
+      date(s.dateFin),
+      s.estActive ? 'Active' : 'En sommeil',
     ]),
   };
 }

@@ -7,6 +7,8 @@ import { useAuth } from '../lib/auth';
 import type { ClasseCompte, Compte, ModeReportANouveau, TauxTva, TypeCompteDetailTotal } from '../lib/types';
 import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImpression';
 import { EditionStructure } from '../components/EditionStructure';
+import { ChoixModeleEdition } from '../components/ChoixModeleEdition';
+import { COLONNES_EDITION, type ModeleServi } from '../lib/modeles-edition';
 import { editionPlan, perimetreEdition } from '../lib/editions-structures';
 import { Aide } from '../components/chrome/Aide';
 import { PortailModale } from '../components/PortailModale';
@@ -86,6 +88,8 @@ const estComptePrincipalOfficiel = (c: Pick<Compte, 'typeCompte' | 'numero'>) =>
 
 export function PlanComptesPage() {
   const [tauxTva, setTauxTva] = useState<TauxTva[]>([]);
+  // Le modèle de la liste imprimée (ligne sage-l7, fonction 59) · Standard par défaut.
+  const [modeleEdition, setModeleEdition] = useState<ModeleServi | null>(null);
   // CATALOGUE FISCAL · chargé seulement pour un dossier SYSCOHADA · une
   // entité à but non lucratif est exemptée d'impôt sur les sociétés (loi
   // n° 23/053, art. 5), la question du retraitement ne s'y pose pas.
@@ -360,9 +364,12 @@ export function PlanComptesPage() {
       <EditionStructure
         edition={editionPlan(comptes ?? [])}
         perimetre={perimetreEdition([['Recherche', recherche]], comptes?.length ?? 0, 'compte')}
+        modele={modeleEdition}
+        catalogue={COLONNES_EDITION.PLAN_COMPTABLE}
       />
       <div className="flex items-center justify-end mb-2 shrink-0">
         <div className="flex items-center gap-2">
+          <ChoixModeleEdition edition="PLAN_COMPTABLE" onChange={setModeleEdition} />
           <BoutonImprimer libelle="Imprimer la liste" />
           <input
             ref={champRecherche}

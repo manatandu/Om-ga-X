@@ -132,8 +132,36 @@ les trois fichiers sans colonne exigée manquante.
   `lib/selections-edition.spec.ts`, navigateur
   `e2e/tests/sage-l7-selections.e2e.ts` (vert sous Chromium).
 
+### #59, partie 3 · modèles d'édition et sauts (décision L7-1)
+
+- Table `ModeleEdition` (édition PLAN_COMPTABLE, PLAN_TIERS ou
+  PLAN_ANALYTIQUE, nom unique par édition et dossier, colonnes facultatives
+  gardées, saut AUCUN, LIGNE ou PAGE), migration
+  `20270182000400_modeles_edition`. Aucun modèle pour un état financier ni
+  un livre obligatoire.
+- `exports/modeles-edition/` · catalogue des colonnes par édition (deux
+  colonnes qui identifient, jamais retirées), `modeleOuMotif` (nom, «
+  Standard » réservé, colonne inconnue ou en double, saut), service et
+  contrôleur (`GET ?edition=`, `POST`, `PUT :id`, `DELETE :id` au comptable
+  et à l'administrateur).
+- Écran · `lib/modeles-edition.ts` (catalogue en MIROIR, relu par le spec du
+  serveur ; `appliquerModele` · colonnes tues, tri stable par groupe, un
+  bloc par groupe, aucune ligne retirée), `EditionStructure` sous un modèle
+  (ligne blanche, ou une table par groupe avec l'en-tête repris et
+  `.edition-saut-page` à l'impression ; le périmètre nomme le modèle),
+  `ChoixModeleEdition` (Standard ou modèle du dossier ; « Personnaliser… »
+  sous `peutEcrire`, boîte en `PortailModale`) au plan comptable (groupe ·
+  classe, lue par `classeDuNumero`, AUDCIF Titre VII ch. 2), au plan des
+  tiers (groupe · type) et au plan analytique, qui gagne son édition
+  imprimée (`editionAnalytique`, groupe · rubrique de premier niveau).
+- Listes · audit et libellé, cloisonnement, profil de fonctions (hors
+  profil, motif), décompte de `lecture-bornee.spec.ts` (174).
+- Tests · `modeles-edition.spec.ts` (6, dont le miroir), client
+  `lib/modeles-edition.spec.ts` (6), navigateur
+  `e2e/tests/sage-l7-modeles-edition.e2e.ts` (vert sous Chromium, rendu
+  relu sous le média d'impression).
+
 ## Reste
-- #59 · modèles d'édition et sauts de ligne ou de page.
 - Bloc du § 3 complet, tests navigateur.
 
 ## Décisions par la loi
@@ -216,7 +244,7 @@ les trois fichiers sans colonne exigée manquante.
 
 ```bash
 npx tsc --noEmit && (cd client && npx tsc --noEmit)
-npx jest src/modules/exports/modifications src/modules/exports/impression-differee src/modules/exports/selections --maxWorkers=1
+npx jest src/modules/exports --maxWorkers=1
 (cd client && npx vitest run src/lib/export-modifications.spec.ts)
 (cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4307 \
   OMEGAX_API=http://localhost:4307/api npx playwright test tests/sage-l7-*.e2e.ts)
