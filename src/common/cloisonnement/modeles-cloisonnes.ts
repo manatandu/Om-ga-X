@@ -218,8 +218,9 @@ export const MODELES_PORTES_PAR_LEUR_PARENT = new Set<string>([
 
 /**
  * LES MODÈLES QUI N'APPARTIENNENT À AUCUN DOSSIER · le registre de l'éditeur,
- * lu par la console de l'opérateur, et par un dossier pour SON seul abonnement
- * (conditions de licence, ligne pages-legales). Ils ne portent pas de `tenantId`,
+ * lu par la console de l'opérateur, et par un dossier pour SON seul abonnement,
+ * ou celui de son siège pour une cellule (conditions de licence, ligne
+ * pages-legales). Ils ne portent pas de `tenantId`,
  * n'entrent dans aucune archive de restitution (ce n'est pas une donnée du
  * client) et la liste est FERMÉE · un modèle ajouté ici sans motif ferait
  * sortir une table de tout contrôle.
@@ -228,7 +229,7 @@ export const MODELES_HORS_DOSSIER: Record<string, string> = {
   LicenceSurSiteEmise: 'registre des licences sur site émises par VMG, lu par la console de l’opérateur',
   FormuleAbonnement: 'grille des formules et prix de l’abonnement OmegaX, tenue par l’éditeur',
   AbonnementCabinet:
-    'abonnement d’un dossier client, donnée de l’éditeur sur son client · le dossier lit le sien, sur sa clé, avant d’accepter les conditions de licence (formule, options et dates, jamais le tiers facturé)',
+    'abonnement d’un dossier client, donnée de l’éditeur sur son client · le dossier lit le sien, sur sa clé, ou une cellule celui de son siège, avant d’accepter les conditions de licence (formule, options et dates, jamais le tiers facturé)',
   OptionAbonnement: 'options souscrites par un abonnement, portées par lui',
   FactureAbonnement: 'lien entre une période facturée et la facture née dans le dossier de l’éditeur',
 };

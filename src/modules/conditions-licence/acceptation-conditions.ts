@@ -63,6 +63,8 @@ export interface DetailCommande {
   /** Pourquoi le prix n'est pas rendu (prix non fixé), ou null. */
   motifPrix: string | null;
   actif: boolean;
+  /** Vrai quand l'abonnement est celui du siège du groupe, lu pour une cellule. */
+  duSiege: boolean;
 }
 
 export interface ContexteAcceptation {
@@ -71,6 +73,7 @@ export interface ContexteAcceptation {
   typeLicence: string | null;
   estDemonstration: boolean;
   surSite: boolean;
+  /** L'abonnement du dossier, ou celui de son siège pour une cellule ; `null` sans abonnement. */
   commande: DetailCommande | null;
 }
 
@@ -90,6 +93,25 @@ export function motifAcceptationFermee(c: ContexteAcceptation): string | null {
   // seulement, une installation sur site ne lit pas la licence du dossier.
   if (!c.surSite && c.typeLicence === 'PROPRIETAIRE') return 'Le dossier de l’éditeur ne contracte pas avec lui-même.';
   if (c.estDemonstration) return 'Un dossier de démonstration ne porte aucun contrat.';
+  // EN LIGNE, LE CONTRAT NE CONNAÎT QUE L'ABONNEMENT (article 6) · une licence
+  // perpétuelle hébergée n'a ni formule ni prix dans le texte, et une offre
+  // acceptée sans prix ne vaut pas offre (art. 53, 5° ; art. 55, al. 1er).
+  // Relecture « échecs silencieux », M4 · l'acceptation s'ouvrait sur ces
+  // dossiers, sans aucun prix à vérifier. Sur site, le fichier signé tient
+  // la licence (article 8) · aucun abonnement n'y est lu.
+  if (!c.surSite && c.typeLicence === 'PERPETUEL_SAAS') {
+    return (
+      'Ce dossier tient une licence perpétuelle hébergée, que les présentes conditions ne décrivent pas · ' +
+      'ses conditions et son prix sont à arrêter par VMG Consulting avant toute acceptation en ligne ' +
+      '(Code du numérique, art. 53, 5°, et art. 55, al. 1er).'
+    );
+  }
+  if (!c.surSite && c.commande === null) {
+    return (
+      'Aucun abonnement n’est rattaché à ce dossier, ni à son siège · l’offre doit dire le prix avant son acceptation ' +
+      '(Code du numérique, art. 53, 5°, et art. 55, al. 1er). VMG Consulting rattache l’abonnement depuis sa console.'
+    );
+  }
   if (c.commande && c.commande.motifPrix) {
     return `L’offre doit dire le prix de l’abonnement de ce dossier avant son acceptation (Code du numérique, art. 53, 5°) · ${c.commande.motifPrix}`;
   }
@@ -127,7 +149,7 @@ export function motifRefusAcceptation(
  * L'abonnement suspendu se montre quand même, prix compris · la suspension
  * est un geste de l'opérateur, pas une absence d'offre.
  */
-export function detailCommande(a: AbonnementAFacturer): DetailCommande {
+export function detailCommande(a: AbonnementAFacturer, duSiege = false): DetailCommande {
   const periode = premierePeriodeFacturable(a.debut, a.finEssai);
   const v = verdictPeriode({ ...a, actif: true }, periode);
   return {
@@ -140,6 +162,7 @@ export function detailCommande(a: AbonnementAFacturer): DetailCommande {
     totalUsd: v.du ? v.totalUsd : null,
     motifPrix: v.du ? null : v.motif,
     actif: a.actif,
+    duSiege,
   };
 }
 

@@ -43,12 +43,25 @@ const OFFRE_COMPLETE: ElementsDeLOffre = {
   garantiesLegales: 'Exemple de clause de garanties légales.',
 };
 
+const formule = (prixMensuelUsd: number | null) => ({ code: 'ESSENTIEL', libelle: 'Essentiel', type: 'FORMULE' as const, prixMensuelUsd, prixAnnuelUsd: null });
+const abonnement = (prix: number | null) => ({
+  formule: formule(prix),
+  options: [],
+  dossiersSupplementaires: 0,
+  periodicite: 'MENSUELLE' as const,
+  debut: '2026-10-01',
+  finEssai: '2026-10-31',
+  actif: true,
+});
+/** Un abonnement au prix fixé · ce qu'un dossier en ligne doit avoir pour accepter (relecture M4). */
+const COMMANDE = detailCommande(abonnement(25));
+
 const contexte = (c: Partial<ContexteAcceptation> = {}): ContexteAcceptation => ({
   mentions: [],
   typeLicence: 'ABONNEMENT',
   estDemonstration: false,
   surSite: false,
-  commande: null,
+  commande: COMMANDE,
   ...c,
 });
 
@@ -119,6 +132,22 @@ describe('qui peut accepter, et quoi', () => {
     expect(motifAcceptationFermee(contexte({ typeLicence: 'PROPRIETAIRE', surSite: true }))).toBeNull();
   });
 
+  it('en ligne, sans abonnement rattaché, l’acceptation est fermée et le dit · le prix précède l’acceptation (relecture M4)', () => {
+    // Anciens dossiers, cellules, dossiers d'un paquet Cabinet · aucun
+    // abonnement à eux, et l'acceptation s'ouvrait sans aucun prix à vérifier.
+    expect(motifAcceptationFermee(contexte({ commande: null }))).toContain('Aucun abonnement n’est rattaché à ce dossier, ni à son siège');
+    expect(motifAcceptationFermee(contexte({ commande: null }))).toContain('art. 53, 5°');
+    // Sur site, le fichier signé tient la licence · aucun abonnement n'y est lu.
+    expect(motifAcceptationFermee(contexte({ commande: null, surSite: true }))).toBeNull();
+  });
+
+  it('une licence perpétuelle hébergée n’a pas d’offre dans le contrat · fermée, nommée (relecture M4)', () => {
+    const m = motifAcceptationFermee(contexte({ typeLicence: 'PERPETUEL_SAAS' }));
+    expect(m).toContain('licence perpétuelle hébergée');
+    expect(m).toContain('à arrêter par VMG Consulting');
+    expect(motifAcceptationFermee(contexte({ typeLicence: 'PERPETUEL_SAAS', surSite: true }))).toBeNull();
+  });
+
   it('seule la version en vigueur s’accepte · une page restée ouverte sur une autre ne fait rien accepter', () => {
     const v = VERSION_CONDITIONS_LICENCE.numero;
     expect(motifRefusAcceptation(v, contexte())).toBeNull();
@@ -127,7 +156,7 @@ describe('qui peut accepter, et quoi', () => {
   });
 
   it('l’état ne demande l’acceptation que si elle est ouverte et pas déjà faite', () => {
-    const ouverte = { typeLicence: 'ABONNEMENT', estDemonstration: false, surSite: false, commande: null, mentions: [] };
+    const ouverte = { typeLicence: 'ABONNEMENT', estDemonstration: false, surSite: false, commande: COMMANDE, mentions: [] };
     expect(etatConditions(null, ouverte).aAccepter).toBe(true);
     const faite = { version: VERSION_CONDITIONS_LICENCE.numero, le: '2026-10-15T09:00:00.000Z', par: 'admin@exemple.cd' };
     expect(etatConditions(faite, ouverte)).toMatchObject({ aJour: true, aAccepter: false });
@@ -141,16 +170,6 @@ describe('qui peut accepter, et quoi', () => {
 });
 
 describe('les détails de la commande viennent du moteur de la facture (art. 53, 5° ; art. 55, al. 1er)', () => {
-  const formule = (prixMensuelUsd: number | null) => ({ code: 'ESSENTIEL', libelle: 'Essentiel', type: 'FORMULE' as const, prixMensuelUsd, prixAnnuelUsd: null });
-  const abonnement = (prix: number | null) => ({
-    formule: formule(prix),
-    options: [],
-    dossiersSupplementaires: 0,
-    periodicite: 'MENSUELLE' as const,
-    debut: '2026-10-01',
-    finEssai: '2026-10-31',
-    actif: true,
-  });
 
   it('un prix fixé rend les lignes et le total de la première période facturable', () => {
     const d = detailCommande(abonnement(25));
@@ -255,7 +274,22 @@ describe('le service d’acceptation', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { ConditionsLicenceService } = require('./conditions-licence.service') as typeof import('./conditions-licence.service');
 
-  function monde(tenant: Record<string, unknown> = {}, courrier?: { mettreEnFile: jest.Mock }) {
+  /** Une ligne d'abonnement telle que Prisma la rend · prix fixé, sauf `null` passé. */
+  const LIGNE_ABONNEMENT = {
+    periodicite: 'MENSUELLE',
+    debut: new Date('2026-10-01T00:00:00Z'),
+    finEssai: new Date('2026-10-31T00:00:00Z'),
+    actif: true,
+    dossiersSupplementaires: 0,
+    formule: { code: 'ESSENTIEL', libelle: 'Essentiel', type: 'FORMULE', prixMensuelUsd: { toString: () => '25' }, prixAnnuelUsd: null },
+    options: [],
+  };
+
+  function monde(
+    tenant: Record<string, unknown> = {},
+    courrier?: { mettreEnFile: jest.Mock },
+    abonnementLu: Record<string, unknown> | null = LIGNE_ABONNEMENT,
+  ) {
     const t: Record<string, unknown> = {
       nom: 'Association Exemple',
       estDemonstration: false,
@@ -263,6 +297,7 @@ describe('le service d’acceptation', () => {
       conditionsLicenceAccepteesLe: null,
       conditionsLicenceAccepteesPar: null,
       licence: { type: 'ABONNEMENT' },
+      dossierMereId: null,
       ...tenant,
     };
     const tx = {
@@ -274,7 +309,7 @@ describe('le service d’acceptation', () => {
     };
     const prisma = {
       tenant: { findUnique: jest.fn(async () => ({ ...t })) },
-      abonnementCabinet: { findUnique: jest.fn(async () => null) },
+      abonnementCabinet: { findUnique: jest.fn(async () => abonnementLu) },
       $transaction: jest.fn(async (fn: (x: typeof tx) => Promise<unknown>) => fn(tx)),
     };
     const s = new ConditionsLicenceService(prisma as never, courrier as never);
@@ -330,6 +365,24 @@ describe('le service d’acceptation', () => {
     const r = await m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1);
     expect(m.t.conditionsLicenceVersion).toBe(1);
     expect(r.accuse).toEqual({ statut: 'NON_MIS_EN_FILE' });
+  });
+
+  it('une cellule lit l’abonnement de son siège, et le dit (relecture M4)', async () => {
+    module.mentionsAArreter.mockReturnValue([]);
+    const m = monde({ dossierMereId: 'siege-1' });
+    const e = await m.s.etat('cellule-1');
+    expect((m.prisma.abonnementCabinet.findUnique.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toEqual({ cabinetId: 'siege-1' });
+    expect(e.commande).toMatchObject({ duSiege: true, totalUsd: 25 });
+    expect(e.aAccepter).toBe(true);
+  });
+
+  it('sans abonnement, ni à lui ni à son siège, l’acceptation est refusée · rien n’est écrit (relecture M4)', async () => {
+    module.mentionsAArreter.mockReturnValue([]);
+    const courrier = { mettreEnFile: jest.fn() };
+    const m = monde({}, courrier, null);
+    await expect(m.s.accepter('t1', { userId: 'u1', email: 'admin@exemple.cd' }, 1)).rejects.toThrow('Aucun abonnement n’est rattaché');
+    expect(m.tx.tenant.update).not.toHaveBeenCalled();
+    expect(courrier.mettreEnFile).not.toHaveBeenCalled();
   });
 
   it('l’état lu sert la commande sans le tiers facturé du dossier de l’éditeur', async () => {

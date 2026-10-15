@@ -90,7 +90,7 @@ export function AcceptationConditionsLicence() {
 
           {etat.commande && (
             <div className="mb-2">
-              <p className="font-semibold mb-1">Abonnement du dossier</p>
+              <p className="font-semibold mb-1">{etat.commande.duSiege ? 'Abonnement du siège du groupe' : 'Abonnement du dossier'}</p>
               <p>
                 {etat.commande.formule}
                 {etat.commande.options.length > 0 ? ` · options ${etat.commande.options.join(', ')}` : ''} ·{' '}

@@ -39,14 +39,20 @@ export class ConditionsLicenceService {
     @Optional() private readonly courrier?: CourrierService,
   ) {}
 
-  /** L'abonnement du dossier, au format du moteur de facturation · `null` sans abonnement. */
-  private async commande(tenantId: string): Promise<DetailCommande | null> {
-    // Lu par le dossier lui-même, sur SA clé (`cabinetId`) · un modèle hors
-    // dossier (`MODELES_HORS_DOSSIER`), que la console de l'éditeur tient. Seuls
-    // la formule, les options et les dates sortent · jamais le tiers facturé,
-    // qui est une fiche du dossier de l'éditeur.
+  /**
+   * L'abonnement du dossier, au format du moteur de facturation · `null` sans
+   * abonnement. UNE CELLULE N'A PAS D'ABONNEMENT À ELLE · sa licence est celle
+   * de son siège (`licenceDeCellule`), et c'est l'abonnement du siège qu'elle
+   * lit (relecture M4) · lire le sien la laissait toujours sans prix.
+   */
+  private async commande(tenantId: string, dossierMereId: string | null): Promise<DetailCommande | null> {
+    // Lu sur la clé du dossier (`cabinetId`), ou de son siège · un modèle
+    // hors dossier (`MODELES_HORS_DOSSIER`), que la console de l'éditeur
+    // tient. Seuls la formule, les options et les dates sortent · jamais le
+    // tiers facturé, qui est une fiche du dossier de l'éditeur.
+    const cabinetId = dossierMereId ?? tenantId;
     const a = await this.prisma.abonnementCabinet.findUnique({
-      where: { cabinetId: tenantId },
+      where: { cabinetId },
       select: {
         periodicite: true,
         debut: true,
@@ -74,7 +80,7 @@ export class ConditionsLicenceService {
       finEssai: jour(a.finEssai),
       actif: a.actif,
     };
-    return detailCommande(aFacturer);
+    return detailCommande(aFacturer, dossierMereId !== null);
   }
 
   private async lire(tenantId: string): Promise<{ acceptation: AcceptationEnregistree | null; contexte: ContexteAcceptation; nom: string }> {
@@ -83,6 +89,7 @@ export class ConditionsLicenceService {
       select: {
         nom: true,
         estDemonstration: true,
+        dossierMereId: true,
         conditionsLicenceVersion: true,
         conditionsLicenceAccepteesLe: true,
         conditionsLicenceAccepteesPar: true,
@@ -103,7 +110,7 @@ export class ConditionsLicenceService {
       typeLicence: t.licence?.type ?? null,
       estDemonstration: t.estDemonstration === true,
       surSite: estSurSite(),
-      commande: await this.commande(tenantId),
+      commande: await this.commande(tenantId, t.dossierMereId),
     };
     return { acceptation, contexte, nom: t.nom };
   }
