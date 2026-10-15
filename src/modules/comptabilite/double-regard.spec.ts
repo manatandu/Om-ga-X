@@ -195,12 +195,14 @@ describe('le message est aiguillé, et ne transpose pas', () => {
 });
 
 describe('validerJusqua rend la forme COMPLÈTE, même à vide', () => {
-  it('le retour anticipé porte les cinq champs', async () => {
+  it('le retour anticipé porte les sept champs', async () => {
     // C'EST LE CAS QUI CASSE EN SILENCE. À quatre champs, l'écran lit
     // `undefined` sur le compteur des écartées, n'affiche rien, et annonce
     // « Rien à valider » sur un brouillard qui vient d'être refusé en entier.
+    // Ligne sage-l1 · le brouillard hérité d'un journal de situation, écarté
+    // et COMPTÉ, s'y ajoute avec son motif.
     const prisma = {
-      ecriture: { findMany: jest.fn().mockResolvedValue([]) },
+      ecriture: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'ex' }) },
     } as Faux;
     const r = await service(prisma).validerJusqua('t1', 'moi', {
@@ -213,6 +215,8 @@ describe('validerJusqua rend la forme COMPLÈTE, même à vide', () => {
       refuseesSecondRegard: 0,
       sousDerogation: 0,
       motifRefus: null,
+      ecarteesJournalDeSituation: 0,
+      motifEcarteesJournalDeSituation: null,
     });
   });
 });
@@ -225,7 +229,7 @@ describe("validerJusqua refuse l'exercice ou le journal d'un autre dossier (lign
     return {
       findMany,
       prisma: {
-        ecriture: { findMany },
+        ecriture: { findMany, count: jest.fn().mockResolvedValue(0) },
         exercice: {
           findFirst: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>
             where.id === 'exA' && where.tenantId === 'tA' ? { id: 'exA' } : null,
