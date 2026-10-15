@@ -564,6 +564,9 @@ export class ModifierCreationCompteEnSaisieDto {
   creationCompteEnSaisie!: boolean;
 }
 
+/** La borne du seuil · sous la colonne DECIMAL(18,2) et sous la précision exacte d'un double. */
+export const SEUIL_ECART_REGLEMENT_MAX = 999_999_999_999_999;
+
 /**
  * LE SEUIL DE L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36) · un montant
  * strictement positif au centime, ou `null` pour le retirer (aucun écart ne se
@@ -574,5 +577,11 @@ export class ModifierSeuilEcartReglementDto {
   @ValidateIf((_, v) => v !== null)
   @IsNumber({ maxDecimalPlaces: 2 }, { message: "Le seuil de l'écart de règlement est un montant au centime, ou vide pour le retirer." })
   @IsPositive({ message: "Le seuil de l'écart de règlement est strictement positif · videz-le pour n'en fixer aucun." })
+  // LA COLONNE EST EN DECIMAL(18,2) (second tour de relecture, m4) · au-delà,
+  // la base refusait en 500 ; la borne est celle des montants fiscaux, sous
+  // la précision exacte d'un nombre de l'écran.
+  @Max(SEUIL_ECART_REGLEMENT_MAX, {
+    message: `Le seuil de l'écart de règlement est au plus ${SEUIL_ECART_REGLEMENT_MAX.toLocaleString('fr-FR')}.`,
+  })
   seuilEcartReglement!: number | null;
 }
