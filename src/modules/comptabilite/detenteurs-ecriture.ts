@@ -170,6 +170,12 @@ export const RELATIONS_VERS_UNE_LIGNE: Readonly<Record<string, string>> = {
 
 /** Colonnes dont l'écriture peut partir, avec le motif de la décision. */
 export const ECRITURE_LAISSEE_PARTIR: Readonly<Record<string, string>> = {
+  // Ligne sage-l6, fonction 22.
+  'PieceJointeEcriture.ecritureId':
+    "SET NULL · la pièce justificative ne fait pas l'écriture, elle la justifie · seule une écriture au brouillard se " +
+    "retire (AUDCIF art. 22, 2°), par la saisie ou par le module qui l'a passée, et la pièce reste alors DÉTACHÉE, jamais " +
+    "perdue (art. 24), sa description figée au dépôt (`ecritureDecrite`) ; retenir l'écriture interdirait de la modifier " +
+    "et ferait tomber en erreur brute chaque annulation de module au brouillard",
   'LigneEcriture.ecritureId':
     "ce sont les lignes de l'écriture elle-même · elles partent avec leur tête, et c'est ce que la suppression veut dire",
   'Ecriture.corrigeEcritureId':

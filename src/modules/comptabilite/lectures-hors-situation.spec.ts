@@ -148,6 +148,9 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/analytique/analytique.service.ts', fonction: 'effacerVentilation', appel: 'ligneEcriture.findFirst', nombre: 1, motif: 'SUIT_SA_LIGNE' },
   { fichier: 'src/modules/analytique/engagement.service.ts', fonction: 'rattacherExecution', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/analytique/engagement.service.ts', fonction: 'rattacherExecution', appel: 'ligneEcriture.aggregate', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  // Ligne sage-l6 · la pièce jointe se dépose sur une écriture désignée par son identifiant, simulation comprise (une
+  // simulation se justifie comme une opération) ; la règle du retrait lit son statut, elle ne le filtre pas.
+  { fichier: 'src/modules/comptabilite/pieces-jointes-ecriture.ts', fonction: 'lireEcritureDesPieces', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'verifierComptesCollectifs', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'trouverEnBrouillard', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'modifier', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },

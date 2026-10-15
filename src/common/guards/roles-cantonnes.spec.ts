@@ -18,6 +18,7 @@ import { MajorationsHeuresController } from '../../modules/personnel/majorations
 import { PaiementSalairesController } from '../../modules/personnel/paiement-salaires.controller';
 import { RepartitionsAnalytiquesPaieController } from '../../modules/personnel/repartitions-analytiques-paie.controller';
 import { QuestionnairePaieController } from '../../modules/personnel/questionnaire-paie.controller';
+import { PiecesJointesSalarieController } from '../../modules/personnel/pieces-jointes-salarie.controller';
 import { EcritureController } from '../../modules/comptabilite/ecriture.controller';
 import { AffectationController } from '../../modules/affectation/affectation.controller';
 import { GroupeController } from '../../modules/groupe/groupe.controller';
@@ -200,7 +201,7 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
   };
 
   it('le module du personnel lui est ouvert en entier, par la classe · et lui seul', () => {
-    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController]) {
+    for (const classe of [PersonnelController, AvancesRubriquesController, BaremesPaieController, CongesController, AbsencesController, MajorationsHeuresController, PaiementSalairesController, RepartitionsAnalytiquesPaieController, QuestionnairePaieController, PiecesJointesSalarieController]) {
       expect([classe.name, acces(classe)?.gestionnairePaie]).toEqual([classe.name, true]);
     }
     for (const classe of [AuthController, ExerciceController, DevisesController]) {
@@ -258,6 +259,8 @@ describe('les portes du gestionnaire de paie · une liste FERMÉE (audit de coh�
       // Ligne sage-l5 · le paiement du salarié et des salaires (fonction 75).
       'modules/personnel/paiement-salaires.controller.ts',
       'modules/personnel/personnel.controller.ts',
+      // Ligne sage-l6 · les documents du salarié font partie de son dossier (fonction 22).
+      'modules/personnel/pieces-jointes-salarie.controller.ts',
       // Ligne sage-l5 · le questionnaire de paie (fonction 85).
       'modules/personnel/questionnaire-paie.controller.ts',
       // Ligne sage-l5 · la répartition analytique du salarié (fonction 88).

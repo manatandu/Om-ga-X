@@ -24,10 +24,12 @@ import { CreationDepuisEcrituresController } from './creation-depuis-ecritures.c
 import { MaintenanceImmobilisationsController } from './maintenance-immobilisations.controller';
 import { MaintenanceImmobilisationsService } from './maintenance-immobilisations.service';
 import { CreationDepuisEcrituresService } from './creation-depuis-ecritures.service';
+import { PiecesJointesModule } from '../../common/pieces-jointes/pieces-jointes.module';
+import { PiecesJointesImmobilisationController } from './pieces-jointes-immobilisation.controller';
 
 @Module({
-  imports: [LicenceModule, JwtAuthModule, ComptabiliteModule],
-  controllers: [ImmobilisationController, DegressifController, LocationAcquisitionController, RepriseSubventionController, SubventionRattacheeController, ReevaluationBilanController, DemantelementController, AnnulationTraitementController, FicheImmobilisationController, CreationDepuisEcrituresController, MaintenanceImmobilisationsController],
+  imports: [LicenceModule, JwtAuthModule, ComptabiliteModule, PiecesJointesModule],
+  controllers: [ImmobilisationController, DegressifController, LocationAcquisitionController, RepriseSubventionController, SubventionRattacheeController, ReevaluationBilanController, DemantelementController, AnnulationTraitementController, FicheImmobilisationController, CreationDepuisEcrituresController, MaintenanceImmobilisationsController, PiecesJointesImmobilisationController],
   providers: [ImmobilisationService, DegressifService, LocationAcquisitionService, RepriseSubventionService, SubventionRattacheeService, ReevaluationBilanService, DemantelementService, AnnulationTraitementService, FicheImmobilisationService, CreationDepuisEcrituresService, MaintenanceImmobilisationsService],
   exports: [ImmobilisationService],
 })

@@ -196,3 +196,28 @@ export function fichierDuDocument(id: string, nomFichier: string): string {
 export function fichierDeLaPieceVirement(id: string, nomFichier: string): string {
   return `pieces-virements/${id}-${nomFichier.replace(/[\\/]/g, '_')}`;
 }
+
+/**
+ * LES TABLES QUI PORTENT UNE PIÈCE, et le dossier de l'archive où chacune sort
+ * À CÔTÉ des CSV (ligne sage-l6, fonction 22, après les documents des tiers et
+ * les pièces des virements). Une table qui porte une colonne binaire et qui
+ * manquerait ici sortirait sans ses fichiers, et l'archive se dirait complète ·
+ * `restitution.spec.ts` confronte cette liste aux colonnes `Bytes` du schéma.
+ */
+export const TABLES_DE_PIECES: ReadonlyArray<{ modele: string; dossier: string }> = [
+  { modele: 'DocumentTiers', dossier: 'documents-tiers' },
+  { modele: 'PieceVirementFonds', dossier: 'pieces-virements' },
+  { modele: 'PieceJointeEcriture', dossier: 'pieces-jointes/ecritures' },
+  { modele: 'PieceJointeSection', dossier: 'pieces-jointes/sections' },
+  { modele: 'PieceJointeImmobilisation', dossier: 'pieces-jointes/immobilisations' },
+  { modele: 'PieceJointeSalarie', dossier: 'pieces-jointes/salaries' },
+];
+
+/**
+ * L'entrée d'archive d'une pièce de l'une de ces tables · même règle que les
+ * deux précédentes, préfixée de son identifiant, qui la relie à sa ligne du
+ * CSV de sa table (empreinte SHA-256 comprise).
+ */
+export function fichierDeLaPiece(dossier: string, id: string, nomFichier: string): string {
+  return `${dossier}/${id}-${nomFichier.replace(/[\\/]/g, '_')}`;
+}

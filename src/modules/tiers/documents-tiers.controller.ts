@@ -1,22 +1,4 @@
-import {
-  ArgumentsHost,
-  BadRequestException,
-  Body,
-  Catch,
-  Controller,
-  Delete,
-  ExceptionFilter,
-  Get,
-  Param,
-  Patch,
-  PayloadTooLargeException,
-  Post,
-  Res,
-  UploadedFile,
-  UseFilters,
-  UseGuards,
-  UseInterceptors,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Res, UploadedFile, UseFilters, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { RoleUtilisateur } from '@prisma/client';
@@ -26,44 +8,14 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { DocumentsTiersService } from './documents-tiers.service';
+import { RefusEnvoi } from '../../common/pieces-jointes/refus-envoi.filter';
 import { TAILLE_MAX_DOCUMENT, dispositionTelechargement } from './documents-tiers';
 import { CommentaireDocumentDto, DeposerDocumentDto } from './dto/documents-tiers.dto';
 
-/**
- * Les refus de multer, redits en français. Multer coupe la réception au-delà
- * de 5 Mo (« File too large ») · la limite est posée À LA RÉCEPTION pour
- * qu'un envoi de 500 Mo ne soit jamais tenu en mémoire. Ses autres refus
- * (fichier en trop, champ inattendu, envoi tronqué) sortent en 400 dans sa
- * langue ; ils sont traduits ici. Tout autre 400, dont ceux du service, déjà
- * en français, passe tel quel.
- */
-export const REFUS_MULTER: Readonly<Record<string, string>> = {
-  'Too many files': 'Une seule pièce à la fois.',
-  'Unexpected field': 'Le fichier doit être envoyé dans le champ « fichier ».',
-  'Too many fields': "Trop de champs dans l'envoi · seuls le fichier et le commentaire sont attendus.",
-  'Too many parts': "Trop de champs dans l'envoi · seuls le fichier et le commentaire sont attendus.",
-  'Field value too long': "Un champ de l'envoi est trop long.",
-  'Field name too long': "Un champ de l'envoi est trop long.",
-  'Field name missing': "L'envoi est mal formé.",
-};
-
-const ENVOI_MAL_FORME = /^(Multipart: |Malformed part header|Unexpected end of )/;
-
-@Catch(PayloadTooLargeException, BadRequestException)
-export class RefusEnvoi implements ExceptionFilter {
-  catch(e: PayloadTooLargeException | BadRequestException, hote: ArgumentsHost) {
-    const reponse = hote.switchToHttp().getResponse<Response>();
-    if (e instanceof PayloadTooLargeException) {
-      reponse
-        .status(413)
-        .json({ statusCode: 413, message: 'Le fichier dépasse 5 Mo · réduisez-le ou numérisez-le en plus basse définition.' });
-      return;
-    }
-    const traduit =
-      REFUS_MULTER[e.message] ?? (ENVOI_MAL_FORME.test(e.message) ? "L'envoi est mal formé ou interrompu · recommencez." : null);
-    reponse.status(400).json(traduit ? { statusCode: 400, message: traduit } : e.getResponse());
-  }
-}
+// Les refus de multer, redits en français, vivent avec le mécanisme commun
+// des pièces jointes (ligne sage-l6) · réexportés ici pour les appelants
+// d'avant la mise en commun.
+export { REFUS_MULTER, RefusEnvoi } from '../../common/pieces-jointes/refus-envoi.filter';
 
 /**
  * Le volet « Documents » de la fiche tiers. Consultation ouverte à tous les

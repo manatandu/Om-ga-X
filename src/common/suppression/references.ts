@@ -49,6 +49,10 @@ const LIBELLES: Record<string, string> = {
   'Relance.tiersId': 'relances',
   'Consignation.tiersId': 'consignations',
   'DocumentTiers.tiersId': 'documents attachés (volet Documents de la fiche)',
+  // Ligne sage-l6 · un document retient son objet · le retirer d'abord.
+  'PieceJointeSection.sectionId': 'documents joints (volet Documents de la section)',
+  'PieceJointeImmobilisation.immobilisationId': 'documents joints (volet Documents de la fiche)',
+  'PieceJointeSalarie.salarieId': 'documents joints (volet Documents de la fiche)',
   'AmortissementDerogatoire.exerciceId': 'amortissements dérogatoires',
   'AvanceSalaire.salarieId': 'avances et prêts au personnel',
   'RibTiers.tiersId': 'coordonnées bancaires (volet de la fiche)',

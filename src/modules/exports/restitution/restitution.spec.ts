@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import { RestitutionService } from './restitution.service';
 import { Prisma } from '@prisma/client';
-import { TABLES_RESTITUEES, colonnesDuModele, fichierDeLaTable, fichierDuDocument } from './tables-restitution';
+import { TABLES_DE_PIECES, TABLES_RESTITUEES, colonnesDuModele, fichierDeLaPiece, fichierDeLaTable, fichierDuDocument } from './tables-restitution';
 import { NON_AUDITES_MOTIVES, colonnesNonRestituables } from '../../../common/audit/champs-audites';
 import { analyserCsv } from '../../import/lecture-fichier';
 import { ecrireManifeste } from './manifeste-restitution';
@@ -308,10 +308,14 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
     expect(deplie).toContain("Elle ne satisfait pas à elle seule à l'obligation de conservation");
     expect(deplie).toContain("Ce n'est pas une réversibilité");
     expect(deplie).toContain("Ce n'est pas un instantané");
-    // Audit final F97 · les documents des tiers SONT archivés ; ce que le
-    // logiciel ne tient pas, ce sont les pièces des écritures.
-    expect(deplie).toContain('OmegaX ne tient pas les pièces justificatives des écritures');
-    expect(deplie).toContain('restitués dans `documents-tiers/`');
+    // Audit final F97, puis ligne sage-l6 (fonction 22) · les pièces jointes
+    // SONT archivées, écritures comprises ; ce que le logiciel ne garde pas,
+    // ce sont les ORIGINAUX, et il ne vérifie pas qu'une écriture a sa pièce.
+    // UNE GARANTIE NÉGATIVE VIEILLIT · « OmegaX ne tient pas les pièces des
+    // écritures » serait devenu faux le jour où elles se joignent.
+    expect(deplie).toContain('OmegaX garde les COPIES numériques que le cabinet joint aux écritures');
+    expect(deplie).toContain('restituées dans `pieces-jointes/`, `documents-tiers/` et `pieces-virements/`');
+    expect(deplie).toContain('Les originaux, papier ou électroniques, restent la conservation.');
     expect(deplie).toContain("trois imports ciblés lisent un relevé bancaire, la balance d'une entité consolidée");
     // Aucun délai affiché · le CPCC constate l'absence de délai fixe unique.
     expect(manifeste).not.toMatch(/conserver cette archive pendant/i);
@@ -320,14 +324,16 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
   it('nomme la colonne binaire sortie à côté des CSV', () => {
     const deplie = manifeste.replace(/\s+/g, ' ');
     expect(deplie).toContain(
-      "Les deux colonnes binaires du schéma n'entrent pas dans le CSV · chaque document attaché à un tiers (`DocumentTiers.contenu`) sort À CÔTÉ, un fichier par pièce, dans `documents-tiers/`, et chaque pièce jointe à un virement de fonds (`PieceVirementFonds.contenu`) dans `pieces-virements/`",
+      "Les colonnes binaires du schéma n'entrent pas dans le CSV · chaque pièce sort À CÔTÉ, un fichier par pièce, sous son identifiant",
     );
-    // La prémisse relue dans le schéma · une seconde colonne binaire ferait
-    // mentir la phrase.
+    // La prémisse relue dans le schéma · une colonne binaire de plus ferait
+    // mentir la phrase, et sortirait sans ses fichiers si `TABLES_DE_PIECES`
+    // ne la nommait pas.
     const binaires = Prisma.dmmf.datamodel.models.flatMap((m) =>
       m.fields.filter((f) => f.type === 'Bytes').map((f) => `${m.name}.${f.name}`),
     );
-    expect(binaires.sort()).toEqual(['DocumentTiers.contenu', 'PieceVirementFonds.contenu']);
+    expect(binaires.sort()).toEqual(TABLES_DE_PIECES.map((t) => `${t.modele}.contenu`).sort());
+    for (const t of TABLES_DE_PIECES) expect(deplie).toContain(`\`${t.modele}.contenu\``);
   });
 
   it('nomme les tables dont le journal d’audit ne garde aucune trace', () => {
@@ -503,5 +509,45 @@ describe('une table illisible arrête l’archive sans arrêter le serveur', () 
     await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
     expect(flux.destroyed).toBe(true);
     expect(flux.errored?.message).toBe(`table ${table} non lue · connexion perdue`);
+  });
+});
+
+/**
+ * LES PIÈCES JOINTES AUX ÉCRITURES, AUX SECTIONS, AUX BIENS ET AUX SALARIÉS
+ * (ligne sage-l6, fonction 22) · même règle que les documents des tiers · le
+ * binaire sort à côté, sous son identifiant, lu dans le dossier seul ; le CSV
+ * garde l'empreinte qui relie le fichier.
+ */
+describe('les pièces jointes de la ligne sage-l6', () => {
+  it('le CSV de chaque table ne porte jamais le binaire', () => {
+    for (const modele of ['PieceJointeEcriture', 'PieceJointeSection', 'PieceJointeImmobilisation', 'PieceJointeSalarie']) {
+      const colonnes = colonnesDuModele(modele);
+      expect([modele, colonnes.includes('contenu')]).toEqual([modele, false]);
+      expect(colonnes).toEqual(expect.arrayContaining(['id', 'nomFichier', 'empreinte', 'taille']));
+    }
+  });
+
+  it('chaque pièce sort dans le sous-dossier de son objet, lue par son identifiant et le dossier', async () => {
+    const { client } = prismaFactice({
+      PieceJointeEcriture: [{ id: 'pe-1', tenantId: DOSSIER, nomFichier: 'facture.pdf' }],
+      PieceJointeSalarie: [{ id: 'ps-1', tenantId: DOSSIER, nomFichier: 'contrat.pdf' }],
+    });
+    const lus: unknown[] = [];
+    for (const delegue of ['pieceJointeEcriture', 'pieceJointeSalarie']) {
+      client[delegue].findFirst = async ({ where }: any) => {
+        lus.push(where);
+        return { contenu: Buffer.from('PIECE') };
+      };
+    }
+    const service = new RestitutionService(client);
+    const { flux, buffer } = collecteur();
+    await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
+    const archive = buffer().toString('latin1');
+    expect(archive).toContain(fichierDeLaPiece('pieces-jointes/ecritures', 'pe-1', 'facture.pdf'));
+    expect(archive).toContain(fichierDeLaPiece('pieces-jointes/salaries', 'ps-1', 'contrat.pdf'));
+    expect(lus).toEqual([
+      { id: 'pe-1', tenantId: DOSSIER },
+      { id: 'ps-1', tenantId: DOSSIER },
+    ]);
   });
 });

@@ -22,8 +22,8 @@ import {
   borneDuModele,
   colonnesDuModele,
   fichierDeLaTable,
-  fichierDuDocument,
-  fichierDeLaPieceVirement,
+  TABLES_DE_PIECES,
+  fichierDeLaPiece,
   ordreDuModele,
 } from './tables-restitution';
 import { ecrireManifeste } from './manifeste-restitution';
@@ -319,31 +319,25 @@ export class RestitutionService {
       });
     }
 
-    // LES DOCUMENTS ATTACHÉS AUX TIERS (point 21) · un fichier par entrée,
-    // chacun lu au moment où l'archive l'écrit. `archiver` consomme ses
-    // entrées une à une, si bien qu'une seule pièce est en mémoire à la fois,
-    // quel que soit leur nombre.
-    const documents = await this.prisma.documentTiers.findMany({
-      where: { tenantId },
-      orderBy: { id: 'asc' },
-      select: { id: true, nomFichier: true },
-    });
-    // LES PIÈCES JOINTES AUX VIREMENTS DE FONDS · même lecture, une à la fois.
-    const piecesVirement = await this.prisma.pieceVirementFonds.findMany({
-      where: { tenantId },
-      orderBy: { id: 'asc' },
-      select: { id: true, nomFichier: true },
-    });
-    const pieces: SuiviPieces = { annoncees: documents.length + piecesVirement.length, ecrites: 0, manquantes: [] };
-    for (const document of documents) {
-      archive.append(Readable.from(this.contenuDocument(tenantId, document.id, pieces)), {
-        name: fichierDuDocument(document.id, document.nomFichier),
-      });
+    // LES PIÈCES · documents des tiers (point 21), pièces des virements de
+    // fonds, pièces jointes aux écritures, aux sections, aux biens et aux
+    // salariés (ligne sage-l6) · un fichier par entrée, chacun lu au moment où
+    // l'archive l'écrit. `archiver` consomme ses entrées une à une, si bien
+    // qu'une seule pièce est en mémoire à la fois, quel que soit leur nombre.
+    const inventaires = [];
+    for (const table of TABLES_DE_PIECES) {
+      const delegue = this.delegueDesPieces(table.modele);
+      const lignes = await delegue.findMany({ where: { tenantId }, orderBy: { id: 'asc' }, select: { id: true, nomFichier: true } });
+      inventaires.push({ ...table, lignes });
     }
-    for (const piece of piecesVirement) {
-      archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, 'virement')), {
-        name: fichierDeLaPieceVirement(piece.id, piece.nomFichier),
-      });
+    const nombrePieces = inventaires.reduce((t, i) => t + i.lignes.length, 0);
+    const pieces: SuiviPieces = { annoncees: nombrePieces, ecrites: 0, manquantes: [] };
+    for (const inventaire of inventaires) {
+      for (const piece of inventaire.lignes) {
+        archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, inventaire.modele)), {
+          name: fichierDeLaPiece(inventaire.dossier, piece.id, piece.nomFichier),
+        });
+      }
     }
 
     // APPENDU EN DERNIER, ET LU QUAND TOUT LE RESTE EST ÉCRIT. `archiver` 7
@@ -354,7 +348,7 @@ export class RestitutionService {
     // distinguait plus d'une complète. Il attend l'événement `entry` de
     // chacune des entrées qui le précèdent (émis une fois l'entrée écrite),
     // ou l'arrêt de l'archive. Rien n'est gardé en mémoire.
-    const avantLeControle = 1 + 1 + TABLES_RESTITUEES.length + documents.length + piecesVirement.length;
+    const avantLeControle = 1 + 1 + TABLES_RESTITUEES.length + nombrePieces;
     let traitees = 0;
     let signalerToutEcrit: () => void = () => undefined;
     const toutEcrit = new Promise<void>((resoudre) => (signalerToutEcrit = resoudre));
@@ -385,13 +379,10 @@ export class RestitutionService {
     tenantId: string,
     id: string,
     pieces: SuiviPieces,
-    origine: 'tiers' | 'virement' = 'tiers',
+    modele = 'DocumentTiers',
   ): AsyncGenerator<Buffer> {
     try {
-      const document =
-        origine === 'tiers'
-          ? await this.prisma.documentTiers.findFirst({ where: { id, tenantId }, select: { contenu: true } })
-          : await this.prisma.pieceVirementFonds.findFirst({ where: { id, tenantId }, select: { contenu: true } });
+      const document = await this.delegueDesPieces(modele).findFirst({ where: { id, tenantId }, select: { contenu: true } });
       if (!document) {
         pieces.manquantes.push(`${id} · retirée pendant l'extraction`);
         return;
@@ -403,6 +394,19 @@ export class RestitutionService {
       this.journal.warn(`Pièce ${id} non lue · ${motif}`);
       pieces.manquantes.push(`${id} · illisible (${motif})`);
     }
+  }
+
+  /**
+   * Le délégué Prisma d'une table de pièces · lu par son nom, comme
+   * `lignesCsv` lit chaque table. Chaque table de `TABLES_DE_PIECES` porte
+   * `tenantId` (garde de cloisonnement) et les quatre colonnes lues ici.
+   */
+  private delegueDesPieces(modele: string) {
+    const nom = modele.charAt(0).toLowerCase() + modele.slice(1);
+    return (this.prisma as unknown as Record<string, {
+      findMany: (a: object) => Promise<Array<{ id: string; nomFichier: string }>>;
+      findFirst: (a: object) => Promise<{ contenu: Uint8Array } | null>;
+    }>)[nom];
   }
 
   private async *controlesApres(
@@ -432,7 +436,7 @@ export class RestitutionService {
       yield `${modele};${a};${e};${a === e ? 'conforme' : 'ECART'}\r\n`;
     }
     yield `\r\n${ecarts === 0 ? 'Aucun écart.' : `${ecarts} table(s) en écart.`}\r\n`;
-    yield `\r\nDocuments attachés aux tiers · ${pieces.annoncees} annoncé(s), ${pieces.ecrites} écrit(s).\r\n`;
+    yield `\r\nPièces jointes et documents · ${pieces.annoncees} annoncé(s), ${pieces.ecrites} écrit(s).\r\n`;
     for (const m of pieces.manquantes) yield `PIECE NON RESTITUEE;${m}\r\n`;
   }
 }

@@ -49,11 +49,15 @@ Les colonnes sont celles du schéma, moins cinq, retirées à dessein :
 l'éditeur), et les trois colonnes du second facteur de connexion
 (\`User.secretDoubleAuth\`, \`User.dernierPasDoubleAuth\`,
 \`User.codesSecoursDoubleAuth\`). Aucune autre colonne n'est retirée. Les
-deux colonnes binaires du schéma n'entrent pas dans le CSV · chaque document
-attaché à un tiers (\`DocumentTiers.contenu\`) sort À CÔTÉ, un fichier par
-pièce, dans \`documents-tiers/\`, et chaque pièce jointe à un virement de
-fonds (\`PieceVirementFonds.contenu\`) dans \`pieces-virements/\`, chacun sous
-son identifiant.
+colonnes binaires du schéma n'entrent pas dans le CSV · chaque pièce sort À
+CÔTÉ, un fichier par pièce, sous son identifiant · les documents attachés aux
+tiers (\`DocumentTiers.contenu\`) dans \`documents-tiers/\`, les pièces jointes
+aux virements de fonds (\`PieceVirementFonds.contenu\`) dans
+\`pieces-virements/\`, et les pièces jointes aux écritures, aux sections
+analytiques, aux biens et aux salariés (\`PieceJointeEcriture.contenu\`,
+\`PieceJointeSection.contenu\`, \`PieceJointeImmobilisation.contenu\`,
+\`PieceJointeSalarie.contenu\`) dans \`pieces-jointes/\`, un sous-dossier par
+objet.
 
 ## CE QUE CETTE ARCHIVE N'EST PAS
 
@@ -61,12 +65,12 @@ son identifiant.
 art. 24 veut que « les livres comptables ou les documents qui en tiennent lieu,
 ainsi que les pièces justificatives » soient conservés dix ans, et l'art. 17,
 3° veut les pièces « datées, conservées, classées dans un ordre défini dans le
-manuel ». OmegaX ne tient pas les pièces justificatives des écritures · il ne
-garde que les documents attachés aux fiches des tiers, restitués dans
-\`documents-tiers/\`, que rien ne rattache à une écriture, et les pièces jointes
-aux virements de fonds, restituées dans \`pieces-virements/\`, rattachées au
-virement qui porte ses deux écritures. Les classeurs papier restent la
-conservation.
+manuel ». OmegaX garde les COPIES numériques que le cabinet joint aux
+écritures, aux fiches et aux virements, restituées dans \`pieces-jointes/\`,
+\`documents-tiers/\` et \`pieces-virements/\` · il ne vérifie ni que chaque
+écriture porte sa pièce, ni qu'une copie vaut l'original, et une écriture sans
+pièce jointe n'en reste pas moins justifiée par sa pièce d'origine. Les
+originaux, papier ou électroniques, restent la conservation.
 
 **Elle n'a pas la force probante de l'écrit papier légalisé.** Le Code du
 numérique (ordonnance-loi n° 23/10 du 13 mars 2023) pose que « L'écrit

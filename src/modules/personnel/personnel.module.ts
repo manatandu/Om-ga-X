@@ -23,10 +23,12 @@ import { RepartitionsAnalytiquesPaieController } from './repartitions-analytique
 import { RepartitionsAnalytiquesPaieService } from './repartitions-analytiques-paie.service';
 import { QuestionnairePaieController } from './questionnaire-paie.controller';
 import { QuestionnairePaieService } from './questionnaire-paie.service';
+import { PiecesJointesModule } from '../../common/pieces-jointes/pieces-jointes.module';
+import { PiecesJointesSalarieController } from './pieces-jointes-salarie.controller';
 
 @Module({
   // ReglementsModule · le paiement des salaires fait naître ses ordres de virement par le module existant.
-  imports: [LicenceModule, JwtAuthModule, ComptabiliteModule, ReglementsModule],
+  imports: [LicenceModule, JwtAuthModule, ComptabiliteModule, ReglementsModule, PiecesJointesModule],
   controllers: [
     PersonnelController,
     AvancesRubriquesController,
@@ -37,6 +39,8 @@ import { QuestionnairePaieService } from './questionnaire-paie.service';
     PaiementSalairesController,
     RepartitionsAnalytiquesPaieController,
     QuestionnairePaieController,
+    // Ligne sage-l6 · les documents de la fiche du salarié (fonction 22).
+    PiecesJointesSalarieController,
   ],
   providers: [
     PersonnelService,

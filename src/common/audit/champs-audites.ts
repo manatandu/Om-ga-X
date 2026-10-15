@@ -154,6 +154,12 @@ export const MODELES_AUDITES = new Set<string>([
   'CompteVirementFonds',
   'VirementFonds',
   'PieceVirementFonds',
+  // Ligne sage-l6, fonction 22 · les pièces jointes · qui a déposé ou retiré
+  // quoi, et sur quel objet. Le binaire n'y entre jamais (liste ci-dessous).
+  'PieceJointeEcriture',
+  'PieceJointeSection',
+  'PieceJointeImmobilisation',
+  'PieceJointeSalarie',
   // L'impression du journal (ligne sage-l1, fonction 60) · numérotée et
   // datée (AUDCIF art. 22, 7°), elle atteste que le journal a été restitué ;
   // retouchée après coup, elle attesterait une impression qui n'a pas eu lieu.
@@ -475,6 +481,17 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   // Même raison pour le scan d'une pièce de virement · nom, taille et
   // empreinte la désignent sans la reproduire.
   PieceVirementFonds: ['contenu'],
+  // Ligne sage-l6 · même raison pour les pièces des écritures, des sections
+  // et des biens · nom, taille et empreinte les désignent.
+  PieceJointeEcriture: ['contenu'],
+  PieceJointeSection: ['contenu'],
+  PieceJointeImmobilisation: ['contenu'],
+  // LA PIÈCE D'UN SALARIÉ · le NOM et le COMMENTAIRE aussi. « Certificat
+  // médical » ou « arrêt maladie » disent l'état de santé d'une personne, et
+  // le journal d'audit se lit par tout le dossier, l'aide-comptable compris, à
+  // qui le personnel est fermé (même raison que `AbsenceSalarie`). La taille,
+  // le type et l'empreinte désignent la pièce sans rien dire d'elle.
+  PieceJointeSalarie: ['contenu', 'nomFichier', 'commentaire'],
 
   // LE REGISTRE DU PERSONNEL · le premier cas où l'exclusion ne protège pas
   // le LOGICIEL mais une PERSONNE.

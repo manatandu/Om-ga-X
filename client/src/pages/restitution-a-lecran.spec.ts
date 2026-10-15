@@ -21,9 +21,11 @@ describe('l’écran de restitution annonce ses réserves', () => {
 
   it('dit qu’elle ne remplace pas la conservation, pièces justificatives comprises', () => {
     expect(deplie).toContain("Elle ne remplace pas la conservation.");
-    // Audit final F97 · les documents des tiers sont archivés, pas les pièces des écritures.
-    expect(deplie).toContain('OmegaX ne tient pas les pièces justificatives des écritures');
-    expect(deplie).toContain('seuls les documents attachés aux tiers sont archivés');
+    // Audit final F97, puis ligne sage-l6 (fonction 22) · les pièces jointes
+    // aux écritures sont archivées ; ce sont des COPIES, les originaux restent
+    // la conservation.
+    expect(deplie).toContain('OmegaX garde les copies numériques que le cabinet joint aux écritures et aux fiches');
+    expect(deplie).toContain('les originaux restent la conservation');
     expect(deplie).toContain('art. 24');
   });
 

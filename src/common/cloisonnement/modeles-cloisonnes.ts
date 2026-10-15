@@ -118,6 +118,12 @@ export const MODELES_CLOISONNES = new Set<string>([
   'CompteVirementFonds',
   'VirementFonds',
   'PieceVirementFonds',
+  // Ligne sage-l6, fonction 22 · les pièces jointes aux écritures, aux
+  // sections, aux biens et aux salariés, chacune bornée par son tenantId.
+  'PieceJointeEcriture',
+  'PieceJointeSection',
+  'PieceJointeImmobilisation',
+  'PieceJointeSalarie',
   // Ligne sage-l1, fonction 60 · les impressions du journal.
   'ImpressionJournal',
   // Ligne sage-l1, fonction 19 · les séquences de saisie.

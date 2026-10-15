@@ -156,6 +156,9 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'ordresVirement',
       // Ligne sage-l5 · fonction 88 · la répartition analytique, la relation seule.
       'repartitionsAnalytiques',
+      // Ligne sage-l6 · fonction 22 · les documents du salarié, la relation seule
+      // (nom, commentaire et binaire exclus de leur propre table).
+      'piecesJointes',
       'createdAt',
       'createdBy',
       'updatedAt',

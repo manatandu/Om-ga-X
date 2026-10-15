@@ -42,11 +42,11 @@ export function RestitutionPage() {
         <h2 className="text-[11.5px] font-bold mb-1.5">Ce que cette archive n'est pas</h2>
         <ul className="text-[11.5px] text-text-dim list-disc pl-4 space-y-1.5 leading-[1.6]">
           <li>
-            <strong>Elle ne remplace pas la conservation.</strong> OmegaX ne tient pas les pièces
-            justificatives des écritures · seuls les documents attachés aux tiers sont archivés,
-            dans <code>documents-tiers/</code>. L'AUDCIF art. 24 vise « les livres comptables ou
-            les documents qui en tiennent lieu, ainsi que les pièces justificatives » · les
-            classeurs papier restent la conservation.
+            <strong>Elle ne remplace pas la conservation.</strong> OmegaX garde les copies
+            numériques que le cabinet joint aux écritures et aux fiches, archivées à côté des
+            tables · une écriture sans pièce jointe reste justifiée par sa pièce d'origine. L'AUDCIF
+            art. 24 vise « les livres comptables ou les documents qui en tiennent lieu, ainsi que
+            les pièces justificatives » · les originaux restent la conservation.
           </li>
           <li>
             {/* Passe D4 (D4-A1, D4-B1) · la réserve citait les notes du CPCC de

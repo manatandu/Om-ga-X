@@ -33,11 +33,15 @@ manifeste les présente comme telles.
 
 ## Les cinq réserves, écrites à l'écran et dans le manifeste
 
-1. **Elle ne remplace pas la conservation** · OmegaX ne tient pas les pièces
-   justificatives des écritures, alors que l'art. 17, 3° les veut datées,
-   conservées et classées, et que l'art. 24 les vise expressément. Seuls les
-   documents attachés aux tiers (`DocumentTiers.contenu`, la seule colonne
-   binaire du schéma) sont archivés, à côté des CSV, dans `documents-tiers/`.
+1. **Elle ne remplace pas la conservation** · l'art. 17, 3° veut les pièces
+   justificatives datées, conservées et classées, et l'art. 24 les vise
+   expressément. OmegaX garde les COPIES numériques que le cabinet joint aux
+   écritures, aux tiers, aux sections, aux biens, aux salariés et aux
+   virements de fonds (les colonnes binaires du schéma), archivées à côté des
+   CSV dans `pieces-jointes/`, `documents-tiers/` et `pieces-virements/`
+   (ligne sage-l6, fonction 22) · il ne vérifie ni que chaque écriture porte
+   sa pièce, ni qu'une copie vaut l'original. Les originaux restent la
+   conservation.
 2. **Elle n'a pas la force probante de l'écrit papier légalisé** · le Code du
    numérique (ordonnance-loi n° 23/10 du 13 mars 2023, en vigueur à sa
    promulgation, art. 390) donne à l'écrit électronique « la même valeur

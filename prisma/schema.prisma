@@ -881,6 +881,12 @@ model Tenant {
   repartitionsAnalytiquesPaie       RepartitionAnalytiquePaie[]
   lignesRepartitionsAnalytiquesPaie LigneRepartitionAnalytiquePaie[]
   annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
+  // Ligne sage-l6 · fonction 22, pièces jointes aux écritures, aux sections,
+  // aux biens et aux salariés (`common/pieces-jointes/`).
+  piecesJointesEcritures       PieceJointeEcriture[]
+  piecesJointesSections        PieceJointeSection[]
+  piecesJointesImmobilisations PieceJointeImmobilisation[]
+  piecesJointesSalaries        PieceJointeSalarie[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -1989,6 +1995,8 @@ model Ecriture {
   paiementSalairesNegatif         PaiementSalaires? @relation("PaiementSalairesNegatif")
   annulationTraitementOrigine     AnnulationTraitementImmobilisation? @relation("AnnulationTraitementOrigine")
   annulationTraitementNegatif     AnnulationTraitementImmobilisation? @relation("AnnulationTraitementNegatif")
+  /// Ligne sage-l6 · les pièces justificatives jointes à l'écriture.
+  piecesJointes                   PieceJointeEcriture[]
 
   @@index([tenantId, exerciceId, date])
   @@index([tenantId, statut], map: "ecritures_statut_idx")
@@ -3003,6 +3011,8 @@ model SectionAnalytique {
   coutsProduction CoutProductionDeclare[]
   // Ligne sage-l5 · fonction 88 · les répartitions de la paie qui la nomment.
   repartitionsPaie LigneRepartitionAnalytiquePaie[]
+  // Ligne sage-l6 · fonction 22 · les documents de la section.
+  piecesJointes    PieceJointeSection[]
 
   @@unique([planId, code])
   @@index([tenantId])
@@ -4702,6 +4712,8 @@ model Immobilisation {
   reprisesSubvention         RepriseSubventionImmobilisation[]
   subventions                SubventionImmobilisation[]
   annulationsTraitements     AnnulationTraitementImmobilisation[]
+  // Ligne sage-l6 · fonction 22 · les documents de la fiche du bien.
+  piecesJointes              PieceJointeImmobilisation[]
 
   @@index([immobilisationPrincipaleId])
   // AUDIT FINAL F261 · le registre, les dotations, les contrôles et
@@ -7733,6 +7745,8 @@ model Salarie {
   ordresVirement LigneOrdreVirement[]
   // Ligne sage-l5 · fonction 88 · sa répartition entre sections analytiques.
   repartitionsAnalytiques RepartitionAnalytiquePaie[]
+  // Ligne sage-l6 · fonction 22 · les documents de la fiche du personnel.
+  piecesJointes           PieceJointeSalarie[]
 
   createdAt DateTime @default(now())
   createdBy String
@@ -10767,4 +10781,118 @@ model AnnulationTraitementImmobilisation {
   @@index([tenantId, immobilisationId])
   @@index([exerciceId])
   @@map("annulations_traitements_immobilisation")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l6 · fonction 22 · LES PIÈCES JOINTES (Sage · F_ECRITURECMEDIA,
+// F_COMPTEAMEDIA, documents de la fiche du bien et du personnel). Le
+// mécanisme est écrit une fois (`src/common/pieces-jointes/`), chaque objet
+// le range chez lui · une table par objet, comme `DocumentTiers` et
+// `PieceVirementFonds`, pour que chacun porte SA clé (RESTRICT ou SET NULL)
+// et SA liste d'exclusion au journal d'audit.
+// ---------------------------------------------------------------------------
+
+/// La pièce justificative jointe à une écriture (AUDCIF art. 17, 3° ;
+/// art. 22, 7°). Elle ne RETIENT pas l'écriture (`detenteurs-ecriture.ts`) ·
+/// une écriture retirée au brouillard, par la saisie ou par le module qui
+/// l'a passée, la laisse DÉTACHÉE (`ecritureId` posé à null), jamais perdue
+/// (art. 24, conservation dix ans) ; `ecritureDecrite` dit ce qu'elle
+/// justifiait, figé au dépôt.
+model PieceJointeEcriture {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  ecritureId      String?
+  ecriture        Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: SetNull)
+  /// Journal, numéro de pièce, date et libellé de l'écriture au dépôt.
+  ecritureDecrite String
+  nomFichier  String
+  typeMime    String
+  taille      Int
+  /// SHA-256 du contenu · refuse un doublon sur le même objet et permet de
+  /// vérifier qu'une pièce restituée est celle qui a été déposée.
+  empreinte   String
+  commentaire String?  @db.VarChar(69)
+  contenu     Bytes
+  deposePar   String?
+  createdAt   DateTime @default(now())
+
+  @@unique([ecritureId, empreinte])
+  @@index([tenantId, ecritureId])
+  @@map("pieces_jointes_ecritures")
+}
+
+/// Le document d'une section analytique (convention de financement, budget
+/// du bailleur, rapport). Il RETIENT la section · une section qui porte un
+/// document ne se supprime pas (`references.ts`, refus nommé).
+model PieceJointeSection {
+  id        String            @id @default(uuid())
+  tenantId  String
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  sectionId String
+  section   SectionAnalytique @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  nomFichier  String
+  typeMime    String
+  taille      Int
+  /// SHA-256 du contenu · refuse un doublon sur le même objet et permet de
+  /// vérifier qu'une pièce restituée est celle qui a été déposée.
+  empreinte   String
+  commentaire String?  @db.VarChar(69)
+  contenu     Bytes
+  deposePar   String?
+  createdAt   DateTime @default(now())
+
+  @@unique([sectionId, empreinte])
+  @@index([tenantId, sectionId])
+  @@map("pieces_jointes_sections")
+}
+
+/// Le document de la fiche d'un bien (facture, acte, photo, garantie). Il
+/// RETIENT la fiche · une fiche qui porte un document ne se supprime pas.
+model PieceJointeImmobilisation {
+  id               String         @id @default(uuid())
+  tenantId         String
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  immobilisationId String
+  immobilisation   Immobilisation @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
+  nomFichier  String
+  typeMime    String
+  taille      Int
+  /// SHA-256 du contenu · refuse un doublon sur le même objet et permet de
+  /// vérifier qu'une pièce restituée est celle qui a été déposée.
+  empreinte   String
+  commentaire String?  @db.VarChar(69)
+  contenu     Bytes
+  deposePar   String?
+  createdAt   DateTime @default(now())
+
+  @@unique([immobilisationId, empreinte])
+  @@index([tenantId, immobilisationId])
+  @@map("pieces_jointes_immobilisations")
+}
+
+/// Le document de la fiche d'un salarié (contrat, pièce d'identité, diplôme,
+/// certificat). DONNÉES PERSONNELLES · lu et déposé aux droits du registre du
+/// personnel (rôles cantonnés), nom et commentaire hors du journal d'audit,
+/// retrait toujours permis (ordonnance-loi n° 23/10 du 13 mars 2023, art. 215).
+model PieceJointeSalarie {
+  id        String  @id @default(uuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  salarieId String
+  salarie   Salarie @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  nomFichier  String
+  typeMime    String
+  taille      Int
+  /// SHA-256 du contenu · refuse un doublon sur le même objet et permet de
+  /// vérifier qu'une pièce restituée est celle qui a été déposée.
+  empreinte   String
+  commentaire String?  @db.VarChar(69)
+  contenu     Bytes
+  deposePar   String?
+  createdAt   DateTime @default(now())
+
+  @@unique([salarieId, empreinte])
+  @@index([tenantId, salarieId])
+  @@map("pieces_jointes_salaries")
 }

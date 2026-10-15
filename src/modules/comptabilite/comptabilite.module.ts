@@ -6,10 +6,13 @@ import { JwtAuthModule } from '../auth/jwt-auth.module';
 import { JournauxModule } from '../journaux/journaux.module';
 import { ExerciceModule } from '../exercice/exercice.module';
 import { AnalytiqueModule } from '../analytique/analytique.module';
+import { PiecesJointesModule } from '../../common/pieces-jointes/pieces-jointes.module';
+import { PiecesJointesEcritureController } from './pieces-jointes-ecriture.controller';
 
 @Module({
-  imports: [LicenceModule, JwtAuthModule, JournauxModule, ExerciceModule, AnalytiqueModule],
-  controllers: [EcritureController],
+  imports: [LicenceModule, JwtAuthModule, JournauxModule, ExerciceModule, AnalytiqueModule, PiecesJointesModule],
+  // Ligne sage-l6 · les pièces justificatives des écritures (fonction 22).
+  controllers: [EcritureController, PiecesJointesEcritureController],
   providers: [EcritureService],
   exports: [EcritureService],
 })

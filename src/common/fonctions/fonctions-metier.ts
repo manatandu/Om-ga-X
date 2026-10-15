@@ -61,6 +61,11 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   TiersController: FonctionMetier.TIERS,
   ModeleReglementController: FonctionMetier.TIERS,
   DocumentsTiersController: FonctionMetier.TIERS,
+  // Ligne sage-l6, fonction 22 · chaque pièce jointe suit la fonction de son objet.
+  PiecesJointesEcritureController: FonctionMetier.SAISIE,
+  PiecesJointesSectionController: FonctionMetier.ANALYTIQUE,
+  PiecesJointesImmobilisationController: FonctionMetier.IMMOBILISATIONS,
+  PiecesJointesSalarieController: FonctionMetier.PAIE,
   RibsTiersController: FonctionMetier.TIERS,
   EcritureController: FonctionMetier.SAISIE,
   RegularisationController: FonctionMetier.SAISIE,
