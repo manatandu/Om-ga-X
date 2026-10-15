@@ -254,12 +254,28 @@ les trois fichiers sans colonne exigée manquante.
   `impressions-differees/`), le manifeste le dit exactement · la phrase qui
   disait que les tables les rendaient était fausse d'un brouillard modifié
   ou retiré.
+- **Vérifié sur vraie base (2026-10-15, serveur compilé, PostgreSQL 16).**
+  Scénario du n° 99 à travers la clôture rejoué vert, plus l'import ·
+  l'envoi n° 2 (une pièce modifiée, une retirée) refusé ENTIER en 400 nommé,
+  les n° 1 et 3 (« Nouvelle » seulement) importés. Volume · 1 100 écritures
+  (plus de deux tranches de 500), journal exporté complet (2 200 lignes,
+  1 100 pièces, débit au franc), grand livre à plat (2 200 lignes) et du
+  cabinet produits, aperçu de l'export (1 100 nouvelles) ; l'impression
+  différée du journal ne marque le journal imprimé qu'une fois rangée (une
+  impression de plus, pas à la demande) ; liste paginée (50, puis 2 et 1),
+  `?avant=x` refusé en 400. Plafond à 4 lignes (second serveur,
+  `EXPORT_MAX_LIGNES=4`) · attente comptée par la base (3, puis 1, puis 0),
+  pièce de six lignes nommée à l'aperçu et refusée en 413, aucun numéro
+  pris. Tests navigateur de la ligne (5) verts sous Chromium.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
-  10 MINEUR) · corrections en cours, voir « Relecture, premier tour »
+  10 MINEUR) · les seize corrigés, voir « Relecture, premier tour »
   ci-dessus. La suite serveur complète est passée par le coordinateur avant
-  l'intégration · ici, seulement les specs touchées (`--maxWorkers=1`).
+  l'intégration · ici, seulement les specs touchées (`--maxWorkers=1`), la
+  suite client entière (`vitest`, deux ouvriers), les typages et les
+  constructions. Délai de requête de Cloud Run et processeur hors requête ·
+  décision de Manasse, portée par le coordinateur.
 - Avant la relecture · typage serveur et client verts, client `npm test`
   (270 fichiers, 2 104 tests) et `npm run build` verts, construction du
   serveur verte, tranches 1/6 (149 suites, 1 777 tests) et 2/6 (149
@@ -413,4 +429,10 @@ npx jest src/modules/exports --maxWorkers=1
   OMEGAX_API=http://localhost:4307/api npx playwright test tests/sage-l7-*.e2e.ts)
 # suite serveur entière, une tranche après l'autre
 for k in 1 2 3 4 5 6; do npx jest --shard=$k/6 --maxWorkers=1 --workerIdleMemoryLimit=800MB; done
+# relecture « échecs silencieux », specs touchées
+npx jest src/common/lecture-par-lots.spec.ts src/modules/exports src/modules/import \
+  src/modules/journaux/impressions-journal.spec.ts src/modules/comptabilite/lectures-hors-situation.spec.ts --maxWorkers=1
+(cd client && npx vitest run --maxWorkers=2)
+# scénarios sur vraie base (scratchpad de la session) · scenario-99.cjs,
+# scenario-m6.cjs (volume), scenario-plafond.cjs (serveur EXPORT_MAX_LIGNES=4)
 ```
