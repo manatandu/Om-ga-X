@@ -223,7 +223,8 @@ export class ImpressionDiffereeService {
     if (!d.contenu || !d.nomFichier) {
       throw new ConflictException(`Le fichier de l'impression n° ${d.numero} a été retiré · demandez l'édition de nouveau.`);
     }
-    return { nomFichier: d.nomFichier, contenu: Buffer.from(d.contenu) };
+    // Le tampon rendu par Prisma, tel quel · jamais une seconde copie (mineur 8).
+    return { nomFichier: d.nomFichier, contenu: d.contenu };
   }
 
   /**

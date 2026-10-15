@@ -743,7 +743,9 @@ export class ExportModificationsService {
   async fichier(tenantId: string, id: string): Promise<{ nomFichier: string; contenu: Buffer }> {
     const exp = await this.prisma.exportEcritures.findFirst({ where: { id, tenantId }, select: { nomFichier: true, contenu: true } });
     if (!exp) throw new NotFoundException('Export introuvable pour ce dossier.');
-    return { nomFichier: exp.nomFichier, contenu: Buffer.from(exp.contenu) };
+    // Le tampon rendu par Prisma, tel quel · `Buffer.from` en faisait une
+    // seconde copie, le fichier deux fois en mémoire (mineur 8).
+    return { nomFichier: exp.nomFichier, contenu: exp.contenu };
   }
 
   /** L'auteur en courriel · un utilisateur retiré du dossier se dit tel. */

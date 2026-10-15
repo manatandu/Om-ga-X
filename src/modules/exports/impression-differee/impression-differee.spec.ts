@@ -209,6 +209,8 @@ describe('impression différée · demande, production, fichier', () => {
     expect(r.traitee!.empreinte).toBe(createHash('sha256').update('BALANCE-ET-SES-FEUILLES').digest('hex'));
     const { contenu, nomFichier } = await f.service.fichier(DOSSIER, f.demandes[0].id);
     expect([nomFichier, contenu.toString()]).toEqual(['balance.xlsx', 'BALANCE-ET-SES-FEUILLES']);
+    // Le tampon rangé, tel quel, jamais recopié (mineur 8).
+    expect(contenu).toBe(f.demandes[0].contenu);
 
     const r2 = await f.service.traiter(DOSSIER);
     expect(r2.traitee).toMatchObject({ numero: 2, etat: EtatImpressionDifferee.PRETE });

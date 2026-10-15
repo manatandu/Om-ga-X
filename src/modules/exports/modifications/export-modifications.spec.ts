@@ -743,6 +743,8 @@ describe('liste des exports', () => {
     const suite = await f.service.lister(DOSSIER, premiere.plusAnciensAvant!);
     expect([suite.exports.map((e) => e.numero), suite.plusAnciensAvant]).toEqual([[2, 1], null]);
     expect((await f.service.fichier(DOSSIER, 'exp-1')).contenu.toString()).toBe('envoi 1');
+    // Le tampon rangé, tel quel, jamais recopié (mineur 8).
+    expect((await f.service.fichier(DOSSIER, 'exp-1')).contenu).toBe(f.exports.find((e) => e.id === 'exp-1')!.contenu);
   });
 });
 

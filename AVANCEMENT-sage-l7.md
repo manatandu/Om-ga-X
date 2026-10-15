@@ -356,6 +356,22 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   lieu d'une conversion · des critères qui ne se relisent plus rendent la
   demande ÉCHOUÉE, motif dit, sans appeler le moteur ; `estInterrompue`
   prend l'énumération.
+- **Mineur 8 · le fichier rendu était recopié.** `fichier()` (export des
+  modifications, impression différée) rend le tampon de Prisma tel quel
+  (`toBe` au spec). MÉMOIRE MESURÉE (2026-10-15, base jetable PostgreSQL 16,
+  serveur compilé lancé avec `--max-old-space-size=460`, 100 000 écritures
+  validées de deux lignes, soit 200 000 lignes, le plafond ; pic de mémoire
+  résidente `VmHWM`, remis à zéro avant chaque geste, serveur relancé entre
+  les mesures) · journal en flux direct, pour comparaison, 296 Mio (34,6 s,
+  18,6 Mo) ; impression différée du même journal, produite en mémoire,
+  677 Mio (37,8 s) ; export complet des modifications 688 Mio (49,6 s,
+  15,3 Mo) ; premier export des modifications, sur des lignes fraîchement
+  insérées et après un aperçu de 4,6 s, 670 Mio (123,8 s) ;
+  retéléchargement 1,6 s. Transaction de rangement la plus longue observée
+  11 s (délai 120 s). Le tas V8 borné à 460 Mio a tenu à chaque fois ; la
+  mémoire résidente le dépasse (tampons hors tas, moteur de Prisma, fichier
+  en mémoire puis passé en paramètre). Aucune comparaison avec la mémoire
+  de Cloud Run, non lue ici.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
