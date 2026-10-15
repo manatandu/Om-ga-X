@@ -1,5 +1,6 @@
 import {
   criteresDeLaDemande,
+  doitFaireProduire,
   garderLesPlusAnciennes,
   libelleEtat,
   messageLicenceEchue,
@@ -62,6 +63,18 @@ describe('impressions différées · ce que la fenêtre en dit', () => {
     expect(resteAProduire(liste([{ ...base, etat: 'EN_COURS' }]))).toBe(false);
     expect(productionEnCours(liste([{ ...base, etat: 'EN_COURS' }]))).toBe(true);
     expect(productionEnCours(liste([{ ...base, etat: 'PRETE' }]))).toBe(false);
+  });
+
+  it('la relance ne part que s’il reste à produire, qu’aucune production ne tourne et qu’aucun refus ne l’a suspendue (second tour, 1)', () => {
+    const attente = liste([base], 1);
+    expect(doitFaireProduire(attente, false)).toBe(true);
+    // Une production tourne (un autre poste, ou le serveur après un 504) · on relit seulement.
+    expect(doitFaireProduire(liste([{ ...base, id: 'i2', numero: 2, etat: 'EN_COURS' }, base], 1), false)).toBe(false);
+    // Une production tombée se fait déclarer par le traitement.
+    expect(doitFaireProduire(liste([{ ...base, etat: 'EN_COURS', interrompue: true }]), false)).toBe(true);
+    // Un refus nommé suspend la relance jusqu'au prochain geste.
+    expect(doitFaireProduire(attente, true)).toBe(false);
+    expect(doitFaireProduire(liste([{ ...base, etat: 'PRETE' }]), false)).toBe(false);
   });
 
   it('les critères envoyés sont ceux du livre demandé, et eux seuls', () => {

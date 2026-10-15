@@ -104,8 +104,29 @@ export function resteAProduire(liste: ListeImpressions): boolean {
   return liste.enAttente > 0 || liste.impressions.some((i) => i.etat === 'EN_COURS' && i.interrompue);
 }
 
+/**
+ * Une production tourne ou attend · la fenêtre relit alors la liste. Lue sur
+ * la PREMIÈRE PAGE relue seulement (relecture des écrans, second tour, 1) ·
+ * les pages plus anciennes ne se relisent pas, et une demande qu'elles
+ * montraient encore « En attente » faisait relire la liste sans fin.
+ */
 export function productionEnCours(liste: ListeImpressions): boolean {
   return liste.impressions.some((i) => i.etat === 'EN_ATTENTE' || (i.etat === 'EN_COURS' && !i.interrompue));
+}
+
+/**
+ * FAIRE PRODUIRE, OU SEULEMENT RELIRE (relecture des écrans, second tour, 1).
+ * Le traitement ne se relance que s'il reste à produire, qu'AUCUNE production
+ * ne tourne déjà (un autre poste, ou le serveur qui finit après un 504 · il
+ * en produit une à la fois par dossier, la relance n'aurait rien fait que
+ * l'occuper) et que la relance n'est pas SUSPENDUE · un refus nommé (licence
+ * échue, droit) la suspend jusqu'au prochain geste, sans quoi le même refus
+ * repartait toutes les quatre secondes.
+ */
+export function doitFaireProduire(premiere: ListeImpressions, suspendue: boolean): boolean {
+  if (suspendue) return false;
+  if (premiere.impressions.some((i) => i.etat === 'EN_COURS' && !i.interrompue)) return false;
+  return resteAProduire(premiere);
 }
 
 /** Les critères que la demande envoie, selon le livre · rien d'autre ne part. */

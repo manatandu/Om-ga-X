@@ -11,6 +11,7 @@ import { tailleLisible } from '../lib/export-modifications';
 import {
   LIBELLES_NATURE,
   criteresDeLaDemande,
+  doitFaireProduire,
   garderLesPlusAnciennes,
   libelleEtat,
   messageLicenceEchue,
@@ -32,7 +33,9 @@ import {
  * un refus ou une panne la rend « Échouée », motif dit, jamais un fichier
  * partiel. La production se fait dans une requête du serveur, que la fenêtre
  * relance tant qu'une demande attend · fermer la fenêtre n'annule rien, la
- * production attendra la prochaine ouverture.
+ * production commencée se termine au serveur, et les demandes en attente
+ * reprennent à la prochaine ouverture (la boucle s'arrête au démontage,
+ * relecture des écrans, second tour, 2).
  *
  * Demander est une lecture des livres, ouverte à tous les rôles qui les
  * exportent ; retirer un fichier rangé est réservé à qui écrit (`peutEcrire`).
@@ -60,6 +63,9 @@ export function ImpressionsDiffereesPage() {
   const [journaux, setJournaux] = useState<Journal[] | null>(null);
   const [erreurJournaux, setErreurJournaux] = useState<string | null>(null);
   const [liste, setListe] = useState<ListeImpressions | null>(null);
+  // La PREMIÈRE PAGE telle que relue la dernière fois · elle seule dit si une
+  // production tourne (les pages plus anciennes ne se relisent pas).
+  const [premiere, setPremiere] = useState<ListeImpressions | null>(null);
   const [erreurListe, setErreurListe] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -67,6 +73,14 @@ export function ImpressionsDiffereesPage() {
   const [suiteEnCours, setSuiteEnCours] = useState(false);
   const enTraitement = useRef(false);
   const monte = useRef(true);
+  // LA RELANCE SUSPENDUE PAR UN REFUS NOMMÉ (second tour, 1) · lue par la
+  // boucle (référence) et montrée à l'écran (état), levée par un geste.
+  const suspendueRef = useRef(false);
+  const [suspendue, setSuspendue] = useState(false);
+  const suspendre = useCallback((oui: boolean) => {
+    suspendueRef.current = oui;
+    setSuspendue(oui);
+  }, []);
 
   useEffect(() => {
     monte.current = true;
@@ -81,6 +95,7 @@ export function ImpressionsDiffereesPage() {
       if (monte.current) {
         // Les plus anciennes déjà chargées restent (relecture m5).
         setListe((avant) => garderLesPlusAnciennes(avant, l));
+        setPremiere(l);
         setErreurListe(null);
       }
       return l;
@@ -99,7 +114,9 @@ export function ImpressionsDiffereesPage() {
     if (enTraitement.current) return;
     enTraitement.current = true;
     try {
-      for (let i = 0; i < 20; i++) {
+      // LA BOUCLE S'ARRÊTE AU DÉMONTAGE (second tour, 2) · elle survivait à
+      // la fermeture de la fenêtre, et une réouverture en lançait une seconde.
+      for (let i = 0; i < 20 && monte.current; i++) {
         const r = await api.post<{ traitee: ImpressionServie | null; enAttente: number }>('/impressions-differees/traiter');
         await recharger();
         if (!r.traitee || r.enAttente === 0) break;
@@ -112,12 +129,15 @@ export function ImpressionsDiffereesPage() {
       if (issueIncertaine(e)) {
         await recharger();
       } else if (monte.current) {
+        // Un refus nommé ne se répète pas toutes les quatre secondes · la
+        // relance attend le prochain geste (second tour, 1).
+        suspendre(true);
         setErreur([messageOuDefaut(e, "La production n'a pas pu être lancée."), messageLicenceEchue(e)].filter(Boolean).join(' '));
       }
     } finally {
       enTraitement.current = false;
     }
-  }, [recharger]);
+  }, [recharger, suspendre]);
 
   // LA PAGE SUIVANTE, VERS LES PLUS ANCIENNES (relecture m5).
   async function chargerPlusAnciennes() {
@@ -137,7 +157,7 @@ export function ImpressionsDiffereesPage() {
   useEffect(() => {
     void (async () => {
       const l = await recharger();
-      if (l && resteAProduire(l)) void faireProduire();
+      if (monte.current && l && doitFaireProduire(l, suspendueRef.current)) void faireProduire();
     })();
   }, [recharger, faireProduire]);
 
@@ -146,17 +166,26 @@ export function ImpressionsDiffereesPage() {
   // demande restée en attente derrière la production d'un autre poste est
   // relancée dès que celle-ci finit · sans quoi elle attendait la prochaine
   // ouverture de la fenêtre.
-  const tourne = liste ? productionEnCours(liste) : false;
+  // Lue sur la première page seulement (second tour, 1).
+  const tourne = premiere ? productionEnCours(premiere) : false;
   useEffect(() => {
     if (!tourne) return;
     const minuterie = setInterval(() => {
       void (async () => {
+        if (!monte.current) return;
         const l = await recharger();
-        if (l && resteAProduire(l)) void faireProduire();
+        if (monte.current && l && doitFaireProduire(l, suspendueRef.current)) void faireProduire();
       })();
     }, INTERVALLE_RELECTURE_MS);
     return () => clearInterval(minuterie);
   }, [tourne, recharger, faireProduire]);
+
+  /** Le geste qui lève la suspension · relancer la production de ce qui attend. */
+  function relancerLaProduction() {
+    setErreur(null);
+    suspendre(false);
+    void faireProduire();
+  }
 
   useEffect(() => {
     if (nature !== 'JOURNAL' || journaux !== null) return;
@@ -186,6 +215,8 @@ export function ImpressionsDiffereesPage() {
       });
       setMessage(`Impression n° ${d.numero} demandée · elle se retrouve ci-dessous dès qu'elle est prête.`);
       await recharger();
+      // Demander est un geste · il lève la suspension de la relance.
+      suspendre(false);
       void faireProduire();
     } catch (e) {
       const motif = messageOuDefaut(e, "La demande n'a pas pu être enregistrée.");
@@ -227,7 +258,7 @@ export function ImpressionsDiffereesPage() {
           <h2 className="text-[11.5px] font-bold">Nouvelle demande</h2>
           <Aide
             titre="Impression différée"
-            texte="L'édition est demandée maintenant et produite ensuite par le serveur, par le même moteur que l'export du livre et sous le même plafond de lignes. Chaque demande prend un numéro de la suite du dossier et garde sa date de demande et sa date de production. Au-delà du plafond, ou sur une panne, la demande est « Échouée » avec son motif · aucun fichier partiel n'est rangé. Fermer la fenêtre n'annule rien · la production reprend à la prochaine ouverture. Le journal entier produit s'enregistre comme imprimé une fois son fichier rangé. Retirer un fichier libère la place du dossier · la demande, son numéro et l'empreinte du fichier restent. Une licence échue (dossier en lecture seule) ne produit plus d'impression différée · le livre se télécharge alors directement depuis sa fenêtre."
+            texte="L'édition est demandée maintenant et produite ensuite par le serveur, par le même moteur que l'export du livre et sous le même plafond de lignes. Chaque demande prend un numéro de la suite du dossier et garde sa date de demande et sa date de production. Au-delà du plafond, ou sur une panne, la demande est « Échouée » avec son motif · aucun fichier partiel n'est rangé. Fermer la fenêtre n'annule rien · la production commencée se termine au serveur, et les demandes en attente reprennent à la prochaine ouverture. Le journal entier produit s'enregistre comme imprimé une fois son fichier rangé. Retirer un fichier libère la place du dossier · la demande, son numéro et l'empreinte du fichier restent. Une licence échue (dossier en lecture seule) ne produit plus d'impression différée · le livre se télécharge alors directement depuis sa fenêtre."
             source="AUDCIF art. 22, 6° et 7°."
           />
         </div>
@@ -329,6 +360,14 @@ export function ImpressionsDiffereesPage() {
         {erreur && (
           <p role="alert" className="border border-danger/30 bg-danger-soft px-3 py-2">
             {erreur}
+          </p>
+        )}
+        {suspendue && premiere && resteAProduire(premiere) && (
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="text-warning">La production est suspendue après ce refus · des demandes attendent.</span>
+            <button type="button" onClick={relancerLaProduction} className="border border-border px-3 py-1 hover:bg-sel-soft">
+              Relancer la production
+            </button>
           </p>
         )}
       </section>

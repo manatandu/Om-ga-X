@@ -373,6 +373,24 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   en mémoire puis passé en paramètre). Aucune comparaison avec la mémoire
   de Cloud Run, non lue ici.
 
+### Relecture des écrans, second tour (2026-10-15)
+
+Coordinateur · aucun BLOQUANT ni MAJEUR, 14 MINEUR.
+
+- **1 et 2 · la relance de la production.** Elle partait toutes les quatre
+  secondes même quand une production tournait déjà (un autre poste, ou le
+  serveur qui finit après un 504) ou après un refus nommé (sous licence
+  échue, un 403 toutes les quatre secondes), et « tourne » se lisait sur la
+  liste entière, pages anciennes jamais relues comprises. La règle
+  `doitFaireProduire` (rien ne tourne, il reste à produire, aucune
+  suspension) décide de chaque relance ; un refus nommé SUSPEND la relance
+  jusqu'au prochain geste (demander, « Relancer la production ») ; « tourne »
+  se lit sur la première page relue. La boucle s'arrête au démontage
+  (`monte.current` à chaque tour et dans la minuterie) · elle survivait à la
+  fermeture, et une réouverture en lançait une seconde. Aide · la production
+  commencée se termine au serveur, les demandes en attente reprennent à la
+  prochaine ouverture.
+
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
   10 MINEUR) · les seize corrigés, voir « Relecture, premier tour »
