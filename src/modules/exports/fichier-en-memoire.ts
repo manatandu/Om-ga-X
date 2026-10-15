@@ -33,13 +33,21 @@ export async function produireEnMemoire(
       return sortie;
     });
   } catch (erreur) {
+    // La fermeture n'est plus attendue · son rejet éventuel (le tuyau en
+    // erreur) ne doit pas finir en rejet non traité qui ferait tomber le
+    // processus (relecture m2).
+    fermee.catch(() => {});
     sortie.destroy();
     throw erreur;
   }
   // Le moteur ferme le tuyau en terminant le classeur (`commit`) ; un moteur
-  // qui rendrait la main sans l'avoir fermé laisserait un fichier inachevé ·
-  // on le ferme ici, et l'archive incomplète se lirait comme illisible.
-  if (!sortie.writableEnded) sortie.end();
+  // qui rend la main SANS l'avoir fermé n'a pas fini son fichier · le fermer
+  // ici rangeait une archive inachevée comme un livre complet (relecture m1).
+  if (!sortie.writableEnded) {
+    fermee.catch(() => {});
+    sortie.destroy();
+    throw new Error("Le moteur d'export a rendu la main sans terminer son fichier · rien n'est rangé.");
+  }
   await fermee;
   if (nomFichier === null) {
     throw new Error("Le moteur d'export n'a ouvert aucun fichier · rien n'a été produit.");
