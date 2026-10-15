@@ -111,7 +111,20 @@ describe('la politique décrit le logiciel tel qu’il est (passe D4)', () => {
     expect(deplie).toContain(`se ferme après ${enLettres[jours('DUREE_INACTIVITE_SESSION_LONGUE_S')]} jours sans utilisation`);
     // Session courte · cookie de session, et l'échéance du jeton.
     expect(serveur('src/modules/auth/auth.module.ts')).toContain("config.get<string>('JWT_EXPIRES_IN', '8h')");
-    expect(deplie).toContain('il se ferme avec le navigateur, et la session prend fin au plus tard huit heures après la connexion');
+    // La durée vient de JWT_EXPIRES_IN, que la production reçoit par un secret
+    // (`API_JWT_EXPIRES_IN`) · huit heures n'est que la valeur PAR DÉFAUT, et
+    // la page le dit (relecture de la ligne pages-legales, mineur 12).
+    expect(serveur('.github/workflows/deploy-cloud-run.yml')).toContain('JWT_EXPIRES_IN: ${{ secrets.API_JWT_EXPIRES_IN }}');
+    expect(deplie).toContain(
+      'il se ferme avec le navigateur, et la session prend fin au plus tard au terme de la durée de session du service, huit heures par défaut, après la connexion',
+    );
+  });
+
+  it('dit que le stockage local n’est transmis à aucun tiers, pas qu’il ne quitte jamais l’appareil (relecture, mineur 8)', () => {
+    // Le jeton qui protège les envois part au serveur d'OmegaX à chaque
+    // écriture (en-tête X-CSRF-Token) · « rien ne quitte l'appareil » était faux.
+    expect(readFileSync(join(__dirname, '..', 'lib', 'api.ts'), 'utf8')).toContain('X-CSRF-Token');
+    expect(deplie).toContain('Rien de cela n’est transmis à un tiers ;');
   });
 
   it('dit « chiffrés en transit », et le http du réseau local sur site (D4-A3, C7, D1)', () => {

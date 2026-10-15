@@ -108,7 +108,10 @@ describe('la foire aux questions dit ce que le code fait', () => {
     expect(constante(s, 'DUREE_MAXIMALE_SESSION_LONGUE_S')).toBe('30 * SECONDES_PAR_JOUR');
     expect(constante(s, 'DUREE_INACTIVITE_SESSION_LONGUE_S')).toBe('7 * SECONDES_PAR_JOUR');
     expect(reponse('q-rester-connecte')).toContain('trente jours au plus, et se ferme après sept jours sans utilisation');
-    expect(reponse('q-rester-connecte')).toContain('au plus tard huit heures après la connexion');
+    // Huit heures est la valeur PAR DÉFAUT de JWT_EXPIRES_IN, que la production
+    // reçoit d'un secret · la FAQ le dit (relecture, mineur 12).
+    expect(serveur('src/modules/auth/auth.module.ts')).toContain("config.get<string>('JWT_EXPIRES_IN', '8h')");
+    expect(reponse('q-rester-connecte')).toContain('au terme de la durée de session du service, huit heures par défaut');
   });
 
   it('la grille des formules vient du contrat, qui la confronte à la console', () => {
@@ -134,6 +137,31 @@ describe('la foire aux questions dit ce que le code fait', () => {
     expect(reponse('q-echeance')).toContain('sous les cinq réserves qu’elle écrit elle-même');
     expect(reponse('q-recuperer')).toContain('Le manifeste écrit cinq réserves');
     expect(lire('src/pages/ConfidentialitePage.tsx').replace(/\s+/g, ' ')).toContain('sous les cinq réserves qu’elle écrit elle-même');
+  });
+
+  it('dit les chemins et les droits tels que l’interface les tient (relecture, mineurs 1, 2, 3, 9)', () => {
+    const shell = lire('src/components/chrome/AppShell.tsx');
+    const cloture = shell.slice(shell.indexOf("titre: 'Clôture'"));
+    expect(cloture.slice(0, cloture.indexOf('],'))).toContain(`label: "Fin d'exercice…", chemin: '/exercice'`);
+    expect(reponse('q-cloture')).toContain('Par la commande Fin d’exercice… du menu Traitement > Clôture.');
+    // Le bouton Personnaliser n'est offert qu'à l'administrateur.
+    const plan = lire('src/pages/PlanComptesPage.tsx');
+    const bouton = plan.slice(0, plan.indexOf('setPersonnaliserOuvert(true);'));
+    expect(bouton.slice(bouton.lastIndexOf('{estAdmin'))).toMatch(/^\{estAdmin && selection\.duPlan/);
+    expect(reponse('q-compte-refuse')).toContain('le bouton Personnaliser de sa fiche, qui lui est réservé');
+    // L'impression · la fenêtre active, sans boutons, et une structure à plat (index.css).
+    const css = lire('src/index.css');
+    expect(css).toContain('.fenetre-inactive {');
+    expect(css).toContain('.avec-edition > *:not(.impression-seul) {');
+    expect(reponse('q-imprimer')).toContain('Ce qui s’imprime est la fenêtre active, mise en page pour le papier');
+    // Le journal d'audit · réservé à l'administrateur, et ce qu'il couvre.
+    expect(serveur('src/common/audit/journal-audit.controller.ts')).toContain('@Roles(RoleUtilisateur.ADMIN_CABINET)');
+    expect(reponse('q-qui-a-fait')).toContain('garde les actes qui touchent aux accès, à la configuration du dossier et aux actes d’exercice');
+    expect(reponse('q-qui-a-fait')).toContain('Il ne recopie pas chaque ligne d’écriture.');
+  });
+
+  it('nomme le spec qui confronte la FAQ au code (relecture, mineur 11)', () => {
+    expect(lire('src/lib/questions-frequentes.ts')).toContain('`client/src/pages/pages-legales.spec.ts`');
   });
 
   it('dit le français, seul, et ne promet aucune autre langue', () => {
@@ -211,6 +239,9 @@ describe('le contrat de licence se lit sur la page tel que le serveur le joint',
     expect(bandeau).toMatch(/\.get<EtatConditions>\('\/conditions-licence'\)/);
     expect(bandeau).toContain('if (!estAdmin || !tenantId)');
     expect(bandeau).toContain('if (!aAccepter) return null;');
+    // Un échec de lecture se dit en une ligne, jamais masqué (relecture, mineur 13).
+    expect(bandeau).toContain('setEchec(true);');
+    expect(bandeau).toContain('L’état de l’acceptation des conditions de licence n’a pas pu être lu.');
   });
 
   it('le texte brut porte la version et la langue', () => {

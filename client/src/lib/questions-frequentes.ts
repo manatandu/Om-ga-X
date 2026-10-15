@@ -18,7 +18,7 @@ import { FORMULES_DU_CONTRAT } from '../../../src/modules/conditions-licence/con
  * réponse (CLAUDE.md § 4, jamais de « bientôt disponible » faux). Les
  * chiffres repris du serveur (essai, délai de paiement, paliers du verrou,
  * durées de session, codes de secours) sont confrontés à leur source par
- * `questions-frequentes.spec.ts`.
+ * `client/src/pages/pages-legales.spec.ts`.
  */
 
 export interface QuestionFrequente {
@@ -132,7 +132,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-rester-connecte',
         question: 'Que fait la case « Rester connecté sur cet appareil » ?',
         reponse: [
-          'Décochée, la session se ferme avec le navigateur, et au plus tard huit heures après la connexion. Cochée, elle reste ouverte sur cet appareil trente jours au plus, et se ferme après sept jours sans utilisation. Ne la cochez pas sur un poste partagé.',
+          'Décochée, la session se ferme avec le navigateur, et au plus tard au terme de la durée de session du service, huit heures par défaut, après la connexion. Cochée, elle reste ouverte sur cet appareil trente jours au plus, et se ferme après sept jours sans utilisation. Ne la cochez pas sur un poste partagé.',
         ],
       },
       {
@@ -157,7 +157,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-compte-refuse',
         question: 'Pourquoi un compte du plan est-il refusé à la saisie ?',
         reponse: [
-          'Seuls les comptes personnalisés du dossier se saisissent. Ouvrez le compte dans Structure > Plan comptable et utilisez le bouton Personnaliser de sa fiche · adoptez-le tel quel, ou ouvrez un sous-compte sous lui. Un compte qu’une écriture automatique, un journal, un tiers ou un taux de taxe utilise est personnalisé d’office.',
+          'Seuls les comptes personnalisés du dossier se saisissent. L’administrateur du dossier ouvre le compte dans Structure > Plan comptable et utilise le bouton Personnaliser de sa fiche, qui lui est réservé · il l’adopte tel quel, ou ouvre un sous-compte sous lui. Un compte qu’une écriture automatique, un journal, un tiers ou un taux de taxe utilise est personnalisé d’office.',
         ],
       },
       {
@@ -180,7 +180,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-cloture',
         question: 'Comment clôturer un exercice ?',
         reponse: [
-          'Par Traitement > Fin d’exercice. Les exercices se clôturent dans l’ordre, du plus ancien au plus récent. La clôture solde les comptes de gestion et passe le report à nouveau, deux écritures qui entrent validées au livre-journal ; ce qui empêche encore de clôturer est nommé à l’écran.',
+          'Par la commande Fin d’exercice… du menu Traitement > Clôture. Les exercices se clôturent dans l’ordre, du plus ancien au plus récent. La clôture solde les comptes de gestion et passe le report à nouveau, deux écritures qui entrent validées au livre-journal ; ce qui empêche encore de clôturer est nommé à l’écran.',
         ],
       },
       {
@@ -194,7 +194,7 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-imprimer',
         question: 'Comment imprimer ou produire un fichier PDF ?',
         reponse: [
-          'Fichier > Imprimer la fenêtre ouvre la boîte d’impression du navigateur, où « Enregistrer au format PDF » produit le fichier · ce qui s’imprime est exactement ce qui est à l’écran. Les états financiers, la liasse, le journal, le grand livre et la balance s’exportent aussi au format tableur.',
+          'Fichier > Imprimer la fenêtre ouvre la boîte d’impression du navigateur, où « Enregistrer au format PDF » produit le fichier. Ce qui s’imprime est la fenêtre active, mise en page pour le papier · sans boutons ni bulles d’aide, avec l’en-tête d’impression, et une structure (plan comptable, tiers, journaux) s’imprime en liste à plat et complète, plutôt que telle que l’écran la montre. Les états financiers, la liasse, le journal, le grand livre et la balance s’exportent aussi au format tableur.',
         ],
       },
     ],
@@ -297,7 +297,8 @@ export const QUESTIONS_FREQUENTES: RubriqueFrequente[] = [
         id: 'q-qui-a-fait',
         question: 'Comment savoir qui a fait quoi dans le dossier ?',
         reponse: [
-          'Le journal d’audit, ouvert à l’administrateur dans Fichier > Journal d’audit, garde chaque acte avec son auteur, sa date et l’adresse réseau d’où il a été fait ; chaque événement porte l’empreinte du précédent, ce qui rend une retouche visible.',
+          'Le journal d’audit, ouvert à l’administrateur du dossier dans Fichier > Journal d’audit, garde les actes qui touchent aux accès, à la configuration du dossier et aux actes d’exercice, avec leur auteur, leur date et l’adresse réseau d’où ils ont été faits ; chaque événement porte l’empreinte du précédent, ce qui rend une retouche visible. Il ne recopie pas chaque ligne d’écriture.',
+          'Les écritures, elles, portent leur auteur et leurs dates de saisie et de validation, que le journal exporté restitue.',
         ],
       },
     ],

@@ -5,6 +5,14 @@ import react from '@vitejs/plugin-react';
 // n'en déclare pas) · sans cette déclaration, la construction du site tombe.
 declare const process: { env: Record<string, string | undefined> };
 
+// LE JOUR DE KINSHASA (UTC+1), comme tout le logiciel (`common/echeance.ts`) ·
+// une publication lancée après 23 h UTC est du lendemain à Kinshasa, et la
+// date de mise en production dite en UTC aurait été celle de la veille
+// (relecture de la ligne pages-legales, mineur 7). Le format `en-CA` rend
+// AAAA-MM-JJ.
+const jourDeKinshasa = (instant: Date): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kinshasa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant);
+
 export default defineConfig({
   plugins: [react()],
   // L'IDENTITÉ DE LA CONSTRUCTION (audit final F180) · « À propos » disait
@@ -26,7 +34,7 @@ export default defineConfig({
     // sur site), rien · l'écran le dit au lieu d'inventer une date.
     __OMEGAX_MISE_EN_PRODUCTION__: JSON.stringify(
       process.env.OMEGAX_MISE_EN_PRODUCTION === 'oui'
-        ? { le: new Date().toISOString().slice(0, 10), publication: process.env.GITHUB_RUN_NUMBER ?? null }
+        ? { le: jourDeKinshasa(new Date()), publication: process.env.GITHUB_RUN_NUMBER ?? null }
         : null,
     ),
   },

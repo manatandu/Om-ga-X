@@ -302,7 +302,7 @@ export function AuthPage() {
             </label>
             <Aide
               titre="Rester connecté sur cet appareil"
-              texte="Case décochée, la session se ferme avec le navigateur, et au plus tard huit heures après la connexion. Cochée, elle reste ouverte sur cet appareil trente jours au plus, et se ferme après sept jours sans utilisation. Ne la cochez pas sur un poste partagé. La console de l'éditeur redemande le mot de passe et le code huit heures après la dernière connexion. « Mon compte » déconnecte à tout moment vos autres appareils."
+              texte="Case décochée, la session se ferme avec le navigateur, et au plus tard au terme de la durée de session du service, huit heures par défaut, après la connexion. Cochée, elle reste ouverte sur cet appareil trente jours au plus, et se ferme après sept jours sans utilisation. Ne la cochez pas sur un poste partagé. La console de l'éditeur redemande le mot de passe et le code huit heures après la dernière connexion. « Mon compte » déconnecte à tout moment vos autres appareils."
               source="Règle d'OmegaX (audit final F270)."
             />
           </div>

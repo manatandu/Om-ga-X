@@ -117,8 +117,8 @@ export function ContenuConfidentialite() {
             : ' Il mesure la fréquentation de son interface de façon anonyme et signale ses erreurs techniques (section 3) ; pour cela, le navigateur garde dans son stockage local un identifiant tiré au hasard, sans lien avec votre compte ni avec votre dossier.'}{' '}
           Le seul témoin de connexion déposé est celui de votre session : il est strictement nécessaire au
           fonctionnement du logiciel, et il n’est pas lisible par le code de la page. Sans l’option « Rester
-          connecté sur cet appareil », il se ferme avec le navigateur, et la session prend fin au plus tard huit
-          heures après la connexion. Avec cette option, la session dure trente jours au plus depuis la connexion,
+          connecté sur cet appareil », il se ferme avec le navigateur, et la session prend fin au plus tard au terme
+          de la durée de session du service, huit heures par défaut, après la connexion. Avec cette option, la session dure trente jours au plus depuis la connexion,
           et se ferme après sept jours sans utilisation. La console de l’éditeur redemande le mot de passe et le code
           huit heures après la dernière connexion complète.
         </P>
@@ -126,8 +126,8 @@ export function ContenuConfidentialite() {
           Votre navigateur garde aussi, dans son stockage local et sur cet appareil seulement, la liste des cinq
           dossiers ouverts le plus récemment (nom du dossier, adresse de connexion, date), qui préremplit l’adresse
           à l’ouverture, le jeton qui protège vos envois contre la falsification de requête, et vos préférences
-          d’affichage (exercice choisi, favoris de l’accueil, onglets). Rien de cela ne quitte l’appareil ; effacer
-          les données de ce site dans le navigateur le supprime.
+          d’affichage (exercice choisi, favoris de l’accueil, onglets). Rien de cela n’est transmis à un tiers ;
+          effacer les données de ce site dans le navigateur le supprime.
         </P>
         <P>
           Vos données comptables ne sont <strong>ni revendues, ni cédées, ni exploitées à d’autres fins</strong> que

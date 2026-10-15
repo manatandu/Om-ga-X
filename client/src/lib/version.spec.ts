@@ -69,6 +69,17 @@ describe('la mise en production et la langue', () => {
     }
   });
 
+  it('la date de mise en production est le jour de Kinshasa, jamais le jour UTC (relecture, mineur 7)', () => {
+    const config = readFileSync(join(__dirname, '..', '..', 'vite.config.ts'), 'utf8');
+    expect(config).toContain("{ timeZone: 'Africa/Kinshasa', year: 'numeric', month: '2-digit', day: '2-digit' }");
+    expect(config).toContain('le: jourDeKinshasa(new Date()),');
+    // Le format retenu rend AAAA-MM-JJ, et une publication à 23 h 30 UTC est
+    // du lendemain à Kinshasa (UTC+1).
+    const f = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kinshasa', year: 'numeric', month: '2-digit', day: '2-digit' });
+    expect(f.format(new Date('2026-10-15T23:30:00Z'))).toBe('2026-10-16');
+    expect(f.format(new Date('2026-10-15T12:00:00Z'))).toBe('2026-10-15');
+  });
+
   it('la boîte À propos affiche les deux lignes', () => {
     const apropos = readFileSync(join(__dirname, '..', 'components', 'chrome', 'AProposModale.tsx'), 'utf8');
     expect(apropos).toContain('{ligneMiseEnProduction(identiteConstruction())}');
