@@ -43,6 +43,7 @@ interface ReponseReglement {
 export function AssistantReglement({
   journaux,
   modes,
+  erreurModes,
   exerciceId,
   finExercice,
   ordresServis,
@@ -51,6 +52,12 @@ export function AssistantReglement({
 }: {
   journaux: Journal[];
   modes: ModeReglement[] | null;
+  /**
+   * L'échec de lecture des modes (relecture « échecs silencieux » de la ligne
+   * sage-l2, m5) · sans lui, l'assistant offrait « Non précisé » seul, comme
+   * un dossier sans mode.
+   */
+  erreurModes: string | null;
   exerciceId: string;
   finExercice: string;
   ordresServis: boolean;
@@ -302,13 +309,14 @@ export function AssistantReglement({
                         }}
                         className={champ}
                       >
-                        <option value="">Non précisé</option>
+                        <option value="">{erreurModes ? 'Modes illisibles' : 'Non précisé'}</option>
                         {(modes ?? []).map((m) => (
                           <option key={m.id} value={m.id}>
                             {libelleMode(m)}
                           </option>
                         ))}
                       </select>
+                      {erreurModes && <span className="block font-normal text-danger">Modes de règlement illisibles · {erreurModes}</span>}
                     </label>
                     {s.sens === 'FOURNISSEUR' && ordresServis && (
                       <label className={`${etiquette} flex items-center gap-1.5 self-end pb-1.5`}>

@@ -96,3 +96,16 @@ describe('le dû, le nom, l’enchaînement', () => {
     expect(suite).toEqual(saisie({ journalId: 'bq', modeReglementId: 'vir', ordreVirement: true }));
   });
 });
+
+// RELECTURE « ÉCHECS SILENCIEUX » DE LA LIGNE SAGE-L2, m5 · l'échec de
+// lecture des modes n'atteignait pas l'assistant, qui n'offrait que « Non
+// précisé », comme un dossier sans mode.
+describe('câblage · l’échec de lecture des modes se dit dans l’assistant (m5)', () => {
+  const page = readFileSync(join(__dirname, '..', 'pages', 'ReglementsPage.tsx'), 'utf8');
+  const assistant = readFileSync(join(__dirname, '..', 'components', 'AssistantReglement.tsx'), 'utf8');
+  it('la page le passe, l’assistant le dit', () => {
+    const element = page.slice(page.indexOf('<AssistantReglement'), page.indexOf('/>', page.indexOf('<AssistantReglement')));
+    expect(element).toMatch(/erreurModes=\{erreurModes\}/);
+    expect(assistant).toMatch(/Modes de règlement illisibles · \{erreurModes\}/);
+  });
+});

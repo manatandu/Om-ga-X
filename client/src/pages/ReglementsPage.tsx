@@ -691,6 +691,7 @@ export function ReglementsPage() {
         <AssistantReglement
           journaux={journaux}
           modes={modes}
+          erreurModes={erreurModes}
           exerciceId={exerciceCourant.id}
           finExercice={exerciceCourant.dateFin.slice(0, 10)}
           ordresServis={ordresServis}
