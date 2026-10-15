@@ -288,3 +288,79 @@ conversation, à re-citer dans le plan), Manasse veut le parcours habituel :
   disparaît (sélection enregistrée, confirmation refermée).
 - L'édition du plan comptable et du plan des tiers se recalcule à chaque
   rendu (un `useMemo` à poser).
+
+## Questions à Manasse · pages légales, ligne pages-legales (2026-10-15)
+
+L'acceptation en ligne du contrat reste FERMÉE tant que les mentions
+obligatoires manquent (art. 54, al. 2) · c'est voulu. Ce que nul texte ne
+fixe est un choix commercial du cabinet ; ce qui relève d'un juriste est dit.
+
+1. Identité de l'éditeur (art. 52) · siège, courriel, téléphone, RCCM, forme,
+   identification nationale, numéro d'impôt, capital.
+2. Réclamations (art. 53, 13° et 14° ; art. 29, 5°) · adresse, modalités, et
+   si le délai de 72 heures de l'art. 65, al. 3 s'applique à OmegaX.
+3. Plafond de responsabilité (Odoo · 50 % des sommes des douze derniers mois ;
+   Basecamp · exclusion presque totale), à confronter à l'art. 51 par un
+   juriste.
+4. Juridiction compétente (Odoo · droit belge, tribunaux de Nivelles).
+5. Résiliation, préavis, reconduction (Odoo · trente jours ; Basecamp ·
+   résiliation à tout moment, sans prorata).
+6. Sort des données après la fin du contrat (Basecamp · trente puis soixante
+   jours ; Odoo · restitution ou suppression).
+7. Raisons de modification que le contrat admet (art. 34, 1°).
+8. Moyen de publication des interruptions prévues (art. 29, 4°).
+9. Assistance · canal et horaires.
+10. Publication des prix (art. 31) et politique de changement de prix au
+    regard de l'art. 34.
+11. Dépôt de garantie (art. 30, al. 2) · aucun, ou lequel.
+12. Droit de rétractation (art. 61) · le client cabinet est-il un
+    professionnel ; qualification par un juriste.
+13. Garanties légales (art. 53, 20°) selon la nature du contrat.
+14. Titularité des droits sur OmegaX · œuvre de salariés (ordonnance-loi
+    n° 86-033, art. 8, al. 2), œuvre collective (art. 10), cession écrite
+    (art. 34) ; et si la licence d'utilisation est une « cession » au sens
+    des art. 33 à 36 (art. 36, 4°, la part de 10 %).
+15. Art. 229 « instruction documentée » face à l'autorisation de l'art. 201 ·
+    à faire qualifier par un juriste.
+16. Les factures d'abonnement de VMG viennent d'un système de facturation non
+    homologué (décret n° 23/10, art. 22) · effet sur la facture de l'art. 56,
+    al. 3.
+17. Le programme d'installation sur site doit-il faire accepter le contrat
+    avant l'installation.
+18. Date de déploiement du serveur dans « À propos » ; menu « ? » du
+    gestionnaire de paie (il n'en a pas aujourd'hui, les pages restent
+    publiques depuis l'écran d'ouverture).
+19. Licence perpétuelle hébergée (PERPETUEL_SAAS) · ses conditions et son
+    prix ; le contrat ne connaît que l'abonnement et le sur site, et
+    l'acceptation en ligne de ces dossiers reste fermée.
+20. Modalités de paiement (art. 53, 6°) · les moyens de paiement acceptés.
+21. Droit de rétractation (art. 53, 16°) · son existence ou son absence pour
+    le présent contrat, et ses conditions d'exercice (voir le point 12).
+22. Garanties légales de conformité, des vices cachés et d'éviction (art. 53,
+    20°) · leur énoncé (voir le point 13).
+23. Dossiers d'un paquet Cabinet et anciens dossiers sans abonnement · le
+    rattachement d'un abonnement depuis la console, sans quoi leur
+    acceptation reste fermée.
+24. Compléter les mentions publiera la version 2 · fixer sa date de
+    communication et d'entrée en vigueur (art. 34), et faire coder avant elle
+    la bascule de la version 1 à la 2 (acceptation de la 1 maintenue jusqu'à
+    la prise d'effet de la 2), que `versions-publiees.spec.ts` exige.
+25. Relevé · l'art. 53, 7° (modalités et délais de fourniture du service)
+    n'est pas dans la garde · à relire avec VMG (accès ouvert à la création du
+    dossier, essai).
+26. Abonnement modifié APRÈS l'acceptation (formule, option, prix) · la
+    commande acceptée reste celle gardée avec l'acte, et rien ne redemande
+    l'acceptation. Lu · art. 55, al. 1er (le client vérifie « les détails
+    de sa commande » avant d'accepter) et al. 2 (accusé de « la commande »).
+    Le texte ne dit pas si un changement de formule par l'opérateur est une
+    commande nouvelle à accepter, ou l'exécution du contrat accepté (art. 34
+    pour une modification à l'initiative de l'éditeur) · à trancher avec un
+    juriste, puis à coder (relire l'empreinte de la commande en vigueur
+    contre celle gardée, et rouvrir l'acceptation au besoin).
+
+## Relevés en attente · pages légales
+
+- Date de déploiement du SERVEUR dans « À propos » · non servie (seule celle
+  de l'interface a une source réelle, le workflow de publication).
+- La bascule d'une version du contrat à la suivante (art. 34) · non servie
+  tant qu'une seule version existe, et `versions-publiees.spec.ts` le tient.

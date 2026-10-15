@@ -201,7 +201,12 @@ même plan, § 9), reproduites chacune à sa place par
 `docs/comparaison-sage/reproduction/`, les 61 autres gardées pour plus tard ;
 puis, le 2026-10-15, la charte « Encre de cachet » et le redimensionnement
 des fenêtres par tous leurs bords, demandés expressément (« Oui vas-y, fais
-aussi en sorte de régler les tailles de fenêtres », « Tous les bords »).
+aussi en sorte de régler les tailles de fenêtres », « Tous les bords ») ;
+et le même jour les pages légales (contrat de licence, foire aux questions,
+politique de confidentialité, version, mise en production et langue dans
+« À propos »), demandées expressément (« Tu pourras mettre aussi un forum
+aux questions, politique de confidentialité, termes du contrat de licence,
+indiquer la version, mise en production et langue »).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -4015,6 +4020,50 @@ l'éditeur, refus. (4) Cellules alignées sur la mère (audit final F46,
 homologué »), jamais une seconde maquette ; adresse saisie, sinon du tiers, sinon
 rien. (3) Licence en pièce jointe texte (`Message.pieceJointeTexte`). (4) Un échec
 d'envoi ne défait jamais la facture.
+
+**Pages légales et aide (ligne pages-legales, 2026-10-15, demande de
+Manasse).** Contrat de licence, foire aux questions et politique de
+confidentialité sont PUBLICS (écran d'ouverture, cadre imprimable) et
+ouverts en fenêtre par le menu « ? ». LE CONTRAT EST UN MODULE PUR
+(`conditions-licence/conditions-de-licence.ts`), une seule rédaction pour
+l'écran et la pièce jointe ; ce que nul texte ne fixe et que VMG n'a pas
+arrêté s'écrit « (à arrêter par VMG Consulting) », jamais un blanc. UNE
+VERSION PUBLIÉE NE SE RÉÉCRIT PAS (contrat, art. 15 ; art. 53, 9°) · son
+texte est archivé mot pour mot (`versions-publiees.ts`, `versions/`), son
+empreinte SHA-256 (`empreinte.ts`, pur, les deux côtés) gelée par
+`versions-publiees.spec.ts`, qui exige que le générateur rende le texte de
+la version en vigueur · compléter une mention, c'est publier une version
+nouvelle, aux délais de l'art. 34 (`delais-article-34.ts`, jours ouvrables
+du lundi au vendredi sans les fériés, la lecture la plus longue), et le
+spec refuse une seconde version tant que la bascule n'est pas servie.
+L'ACCEPTATION EN LIGNE (art. 55, 56) est tenue par le serveur · version,
+EMPREINTE, date, auteur ET COMMANDE ACCEPTÉE (`conditionsLicenceCommande`)
+sur le dossier, au journal d'audit, accusé à l'écran et courriel portant
+la commande et le texte archivé, par l'administrateur seul. L'écran envoie
+le numéro et l'empreinte du texte de SON code, et l'empreinte de
+l'abonnement qu'il AFFICHE (`empreinteCommande`) · le service relit tout
+SOUS LE VERROU du dossier et refuse en 409 un texte ou un abonnement qui
+ne sont plus ceux affichés ; une page plus ancienne se recharge, une page
+plus récente que le service attend le service. L'ACCUSÉ SE RENVOIE sous
+le même verrou, dans la transaction, s'il n'a jamais pu entrer en file ou
+si la file l'a ABANDONNÉ · jamais en ÉCHEC (la file le retente d'elle-même)
+ni en file ou parti, ce qui ferait un doublon. Dans une fenêtre, un lien
+entre pages légales ouvre la fenêtre de l'autre page, jamais la route
+publique, qui démonterait l'espace de travail (`LienPageLegale`). FERMÉE tant que l'identité de l'éditeur (art. 52), le
+paiement, les réclamations, la rétractation ou les garanties légales
+(art. 53, 6°, 13°, 14°, 16°, 20°) manquent (art. 54, al. 2), et en ligne
+sans abonnement (une cellule lit celui de son siège) ou sous une licence
+perpétuelle hébergée (art. 53, 5°) ; jamais pour le dossier de l'éditeur
+ni une démonstration ; elle n'interrompt jamais l'accès (art. 30, al. 3).
+Le logiciel est une œuvre protégée (art. 47 ; ordonnance-loi n° 86-033,
+art. 1er et 96). VMG DIT SA PRATIQUE, jamais une impossibilité · elle ne
+consulte pas le contenu des dossiers, et chacun de ses accès techniques
+(sauvegarde, restauration de contrôle, requêtes de maintenance) est nommé
+à côté de son workflow. La FAQ ne dit un délai que confronté au code
+(`pages-legales.spec.ts`). « À propos » dit la mise en production de
+l'interface que la publication pose (`OMEGAX_MISE_EN_PRODUCTION`,
+`firebase-hosting-merge.yml`, jour de Kinshasa), sinon « non
+renseignée », et la langue (français, seule).
 
 **Dossiers de démonstration (2026-09-26).** Une association (SYCEBNL), une SARL
 (SYSCOHADA), UNE par référentiel. (1) Comptes du scénario
