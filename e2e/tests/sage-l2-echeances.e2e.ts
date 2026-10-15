@@ -70,9 +70,16 @@ test('SYSCOHADA · la facture d’un fournisseur se découpe selon son modèle d
     await ligne(fournisseur.numero, 'credit', 1_160_000);
   };
 
-  // LA FENÊTRE DES ÉCHÉANCES · le modèle propose deux moitiés.
+  // LA FENÊTRE DES ÉCHÉANCES · le modèle propose deux moitiés. Elle est
+  // ANNONCÉE, jamais ouverte en pleine frappe (second tour de relecture, M1
+  // et mineur 2), et la pièce ne part pas tant qu'elle attend.
   await piece('ECH-1');
+  const annonce = page.getByRole('status').filter({ hasText: /découpe la ligne en 2 échéances/ });
+  await expect(annonce).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enregistrer la pièce' })).toBeDisabled();
   const fenetre = page.getByRole('dialog', { name: 'Échéances de la ligne' });
+  await expect(fenetre).toHaveCount(0);
+  await annonce.getByRole('button', { name: 'Ouvrir les échéances' }).click();
   await expect(fenetre).toBeVisible();
   await expect(fenetre.getByLabel("Montant de l'échéance 1")).toHaveValue('580000.00');
   await expect(fenetre.getByLabel("Date de l'échéance 1")).toHaveValue(`${annee}-04-09`);

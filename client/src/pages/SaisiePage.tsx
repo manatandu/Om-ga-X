@@ -377,6 +377,13 @@ export function SaisiePage() {
   const [debitSaisie, setDebitSaisie] = useState('');
   const [creditSaisie, setCreditSaisie] = useState('');
   const [pickerOuvert, setPickerOuvert] = useState(false);
+  // LA FERMETURE DIFFÉRÉE DE LA LISTE DES COMPTES SE DÉFAIT AU RETOUR DU
+  // FOCUS · posée à la sortie du champ (150 ms, le temps d'un clic dans la
+  // liste), elle fermait la liste APRÈS le retour du focus quand la ligne se
+  // validait vite, et Entrée ne choisissait plus rien (« Choisissez un
+  // compte »), le numéro pourtant tapé en entier. Vu sous Playwright à
+  // l'intégration de la ligne sage-l2.
+  const fermetureListeComptes = useRef<number | null>(null);
   const [pickerIndex, setPickerIndex] = useState(0);
 
   const [erreur, setErreur] = useState<string | null>(null);
@@ -2324,7 +2331,11 @@ export function SaisiePage() {
                   setPickerOuvert(true);
                   setPickerIndex(0);
                 }}
-                onFocus={() => setPickerOuvert(true)}
+                onFocus={() => {
+                  if (fermetureListeComptes.current !== null) window.clearTimeout(fermetureListeComptes.current);
+                  fermetureListeComptes.current = null;
+                  setPickerOuvert(true);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'F4') {
                     e.preventDefault();
@@ -2345,7 +2356,12 @@ export function SaisiePage() {
                     choisirCompte(comptesFiltres[pickerIndex]);
                   }
                 }}
-                onBlur={() => setTimeout(() => setPickerOuvert(false), 150)}
+                onBlur={() => {
+                  fermetureListeComptes.current = window.setTimeout(() => {
+                    fermetureListeComptes.current = null;
+                    setPickerOuvert(false);
+                  }, 150);
+                }}
                 placeholder="n° ou F4"
                 className="w-full border border-border-dark px-1.5 py-1 font-mono text-[11.5px]"
               />
