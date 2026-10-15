@@ -149,7 +149,12 @@ describe('les écrans · aucune liste « Contrepartie » ne sert le plan entier'
     };
     // La liste servie et le refus lisent la même règle.
     expect(corps('contrepartiesAcquisition')).toMatch(/racinesContrepartieAcquisition\(/);
-    expect(corps('creer')).toMatch(/motifRefusContrepartie\(/);
+    // La création passe par `preparerFiche`, qui porte la garde · la
+    // modification d'une fiche (ligne sage-l4, n° 66) rejoue la même.
+    expect(corps('creer')).toMatch(/this\.preparerFiche\(/);
+    expect(corps('preparerFiche')).toMatch(/motifRefusContrepartie\(/);
+    const fiche = readFileSync(join(__dirname, '../../../src/modules/immobilisations/fiche-immobilisation.service.ts'), 'utf8');
+    expect(fiche).toMatch(/this\.immobilisations\.preparerFiche\(/);
     // Le renouvellement passe par `creer`, le remplacement par le renouvellement.
     expect(corps('renouveler')).toMatch(/this\.creer\(/);
     expect(corps('remplacerPartieNonIdentifiee')).toMatch(/this\.renouveler\(/);

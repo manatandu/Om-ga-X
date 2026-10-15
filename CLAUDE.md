@@ -3142,13 +3142,27 @@ PIÈCE JUSTIFICATIVE EXIGÉE · nature, référence, date, objet (AUDCIF art. 17
 d'OmegaX ; scan facultatif (`PieceVirementFonds`, mêmes règles que les documents
 des tiers, binaire hors du journal d'audit, restitué à part). Refus · journal
 hors trésorerie, en sommeil, sans compte, même journal ou même compte, montant
-au-delà du centime, journal dont le RIB est en devise (le change se passe à la
-main, F49). ANNULATION motivée (AUDCIF art. 20, al. 2) · au brouillard les deux
-pièces sont retirées (`deleteMany` filtré sur le statut, sinon 409), validées
-inscrites en négatif, la fiche MARQUÉE, jamais supprimée ; refus · ligne
-lettrée ou pointée, exercice clôturé. LE 585 ET LE 588 RESTENT OUVERTS À LA
-SAISIE (`estCompteDePassage`) · sans quoi les quatre sous-comptes fermaient le
-58500000 aux transferts du groupe SYCEBNL (G1).
+au-delà du centime (jugé sans seuil, `estAuCentime` · un écart fixe refusait
+des montants justes au-delà de cent millions), TRÉSORERIE EN DEVISE (le change
+se passe à la main, F49) · lue sur le RIB, sur la racine que le plan sème « en
+devises » (`RACINES_TRESORERIE_EN_DEVISES`, relue dans les deux semis · une
+caisse n'a jamais de RIB) ou sur une ligne en devise déjà passée au compte ;
+sinon la réévaluation de clôture (AUDCIF art. 54, 57) ignorait la ligne en
+francs. ANNULATION motivée (AUDCIF art. 20, al. 2), une seule (fiche prise par
+un `updateMany` sur les non annulées, sinon 409) · au brouillard les deux
+pièces sont retirées (lettrage et pointage RELUS dans la transaction,
+`deleteMany` filtré sur le statut, sinon 409), validées inscrites en négatif,
+la fiche MARQUÉE, jamais supprimée, sa trace disant les pièces retirées ou les
+numéros des négatifs ; refus · ligne lettrée ou pointée, exercice clôturé. Dates
+au jour (AAAA-MM-JJ), la même pour les deux pièces et la fiche ; comptes de
+passage ouverts sous verrou du dossier. Un scan déposé reste (pièce
+justificative conservée, AUDCIF art. 24), aucune route de retrait. LE 585 ET
+LE 588 RESTENT OUVERTS À LA SAISIE (`estCompteDePassage`) · sans quoi les
+quatre sous-comptes fermaient le 58500000 aux transferts du groupe SYCEBNL
+(G1) ; et les comptes de passage, reconnus par leur LIEN
+(`CompteVirementFonds`), sortent du 585 que lisent la clôture et le groupe (G1,
+`virements585DuGroupe`, `solde585`) · ils se soldent dans le dossier, ils ne
+lient pas le groupe.
 
 **Nouvelle immobilisation (2026-09-28, relevé par Manasse).** (1) CONTREPARTIE EN
 LISTE FERMÉE (`immobilisations/contrepartie-acquisition.ts`, fiches 21 à 24) ·
@@ -3159,6 +3173,108 @@ trésorerie, 72 (SYSCOHADA) ; refus au serveur, liste servie par famille. (2)
 DURÉE PROPOSÉE AU BARÈME DE L'ARRÊTÉ n° 013/2025
 (`scripts/extraire-bareme-amortissement.cjs`, 131 lignes, jamais retouché) ; écart
 averti (art. 4), jamais refusé (durée d'utilité, AUDCIF art. 45).
+
+**Annuler un traitement d'immobilisation (ligne sage-l4, n° 67).** AUDCIF
+art. 20, al. 2 et 3, art. 22, 2° et 4° (`immobilisations/annulation-traitement.ts`,
+`AnnulationTraitementService`) · dotation, dépréciation, révision du plan,
+dérogatoire, réévaluation, reprises de subvention et de provision spéciale
+s'annulent avec motif, depuis la fiche du bien (`POST
+/immobilisations/traitements/annulation`, `@ReserveAuComptable`, `peutValider`).
+Au brouillard l'écriture est retirée (`deleteMany` filtré sur le statut, une
+ligne, sinon 409), validée elle est inscrite en négatif · l'ACTE QUITTE SA
+TABLE (la fiche ne le porte plus, aucun des lecteurs n'a de filtre à oublier)
+et son instantané reste dans `AnnulationTraitementImmobilisation` (journal
+d'audit, origine et négatif RETENUS). Refus · exercice clôturé (report à
+nouveau, al. 3), acte postérieur du même bien qui l'a lu (`DEPENDANTS`,
+« annuler à partir du plus récent »), acte postérieur non annulable dans
+OmegaX nommé avec son issue, ligne lettrée ou pointée, transfert de mise en
+service, révision posée par une réévaluation. La fiche est RENDUE · durée et
+état du plan relus sur les révisions qui restent, brut et valeur résiduelle
+d'avant la réévaluation (`valeurResiduelleAvant`, gardée depuis cette ligne ;
+une ancienne réévaluation sans elle et à valeur résiduelle non nulle refuse),
+écart imputé rendu à la dernière ligne entamée, provision spéciale rendue
+ligne à ligne. Le contrôle 15 bis écarte l'origine d'un traitement annulé.
+La reprise de subvention du MÊME exercice, qui relit la valeur réévaluée,
+s'annule avant la réévaluation (relecture B1) ; la révision posée par une
+réévaluation méthode 2 se reconnaît à sa LIAISON (`reevaluationBilanId`,
+RESTRICT), jamais à sa date ; dotation et annulation prennent le verrou de la
+fiche (`SELECT … FOR UPDATE`, ordre fixe).
+
+**Modifier, supprimer ou dupliquer la fiche d'un bien (ligne sage-l4, n° 66,
+décision D7).** AUDCIF art. 20 et 22, 2° (`immobilisations/fiche-immobilisation.ts`,
+`FicheImmobilisationService`) · désignation, numéro d'inventaire et nature se
+modifient à tout moment ; compte, financement, dates, valeur, plan seulement
+si l'écriture d'acquisition est au brouillard (ou absente, repris), l'exercice
+ouvert, aucun traitement n'a lu la fiche (usages lus dans le schéma, hors
+annulations du n° 67) et aucune origine particulière (legs, prix global,
+location-acquisition, prix aléatoire) ; sinon reclassement ou révision du
+plan, motif servi par le serveur. LES CONTRÔLES SONT CEUX DE LA CRÉATION ·
+`creer` scindé en `preparerFiche` (contrôles seuls) et l'écriture, rejoué sur
+la fiche entière ; l'écriture d'acquisition du brouillard est retouchée EN
+PLACE (`modifierPieceDuModule`, même numéro, aucun trou ; 409 si validée
+entre-temps), remplacée seulement quand la numérotation MENSUELLE change de
+mois, jamais une fiche à une valeur et un journal à une autre. Un exercice
+CLÔTURÉ qui a porté la fiche (clôture postérieure à la fiche, lue au journal
+d'audit, `exerciceClosQuiPorteLaFiche`) la fige, bien repris compris
+(AUDCIF art. 19 ; art. 20, al. 3 et 4) ; une fiche née d'un renouvellement
+ne se supprime pas (sa trace). Suppression sans écriture retenue · la fiche part avec son
+écriture du brouillard et ses annulations sans écriture. Duplication · la
+copie servie (`GET :id/duplication`) remplit le formulaire de création, rien
+n'est écrit avant la confirmation. L'écran n'envoie que les champs CHANGÉS
+(`lib/fiche-immobilisation.ts`).
+
+**Créer les biens depuis les écritures déjà passées (ligne sage-l4, n° 68).**
+AUDCIF art. 20, 22, 2° et 35 (`immobilisations/creation-depuis-ecritures.ts`,
+`CreationDepuisEcrituresService`) · la liste sert les lignes au débit d'un
+compte de bien (21 à 24, et 20 au SYCEBNL), VALIDÉES, d'un exercice ouvert,
+qu'aucune fiche ne porte, bornée avec `total` et `tronque`, chacune avec son
+refus. La fiche naît par `ImmobilisationService.creer` (mêmes contrôles),
+compte, valeur, date et journal lus sur la LIGNE, SANS ÉCRITURE NOUVELLE
+(une seconde doublerait le brut sur une balance bouclée) · elle retient
+l'écriture (`ecritureAcquisitionId`, non unique, une pièce de plusieurs
+biens fait plusieurs fiches) et sa ligne (`ligneAcquisitionId`, unique,
+RESTRICT). Une ligne, un bien ; refus · brouillard, exercice clôturé ou
+à-nouveau (bien repris), crédit, compte hors bien, en-cours, écriture du
+module ou tenue par un autre module, pièce de plusieurs biens qui crédite un
+FONDS (reprise non répartissable). Mise en service jamais posée d'office.
+Une telle fiche ne retouche ni valeur, ni compte, ni date, et SE RETIRE sans
+toucher l'écriture tant que rien ne la lit (lecture de D7) ; la correction de
+l'écriture nomme cette issue. Ne sont pas des acquisitions (relecture M2) ·
+la pièce corrigée par un négatif et son négatif, la réimputation, la pièce
+qui crédite un 28, 29, 106, 154 ou un compte de bien non admis (reprise de
+bilan d'ouverture, reclassement, réévaluation à la main) ; contrepartie non
+admise d'une autre classe AVERTIE ; pièce du premier jour hors achats et
+trésorerie CONFIRMÉE (`confirmerPremierJour`), sinon bien repris. Donation et
+exécution d'engagement lisent la pièce sans la refuser (M5).
+
+**Renumérotation et maintenance du registre (ligne sage-l4, n° 73).**
+`immobilisations/maintenance-immobilisations.ts`, `MaintenanceImmobilisationsService`
+· la renumérotation n'écrit que des numéros d'inventaire (aperçu, puis
+confirmation par l'administrateur), plan REJOUÉ sous un verrou par dossier,
+une mise à jour unitaire par fiche (journal d'audit) ; un bien SORTI garde
+son numéro et le compte pour l'unicité, une collision est refusée et
+nommée, et refusée pendant une campagne d'inventaire ouverte (ses fiches
+comptent sur les numéros en place). Unicité · convention d'OmegaX, tenue par la renumérotation et nommée
+par la maintenance, aucune contrainte en base. La maintenance LIT ·
+registre relu par `tableauAmortissements` contre la balance de l'exercice,
+compte par compte, brut au compte inscrit à la clôture, amortissement au
+cumul COMPTABILISÉ (dotation non passée dite à part), lignes sans fiche par
+le filtre du n° 68, reclassés après la clôture, doublons et biens sans
+numéro nommés · rien n'est corrigé. LA FUSION D'UN AUTRE DOSSIER DU GROUPE
+N'EST PAS SERVIE (AUDCIF, fiche du compte 18 · opérations symétriques par
+les comptes de liaison ; un bien « repris sans écriture » chez l'un resterait
+chez l'autre).
+
+**Assistant de création d'un bien (ligne sage-l4, n° 18).**
+`client/src/lib/assistant-bien.ts`, `AssistantCreationBien.tsx` · huit
+étapes sur le CORPS DU FORMULAIRE, envoyé à `POST /immobilisations` · aucune
+route ni règle à lui, le refus du serveur dit au récapitulatif. Une étape ne
+dit que ce qui lui manque ; un bien repris saute le financement ; Entrée
+avance, le focus suit l'étape, un montant tapé avec ses espaces se lit. Création
+enchaînée · la série garde compte, nature, lieu, dates, financement et plan,
+vide désignation, numéro et valeurs. Composant, location-acquisition,
+incorporel non limité, frais de développement et bien en cours restent au
+formulaire complet.
 
 **Comptes retenus (2026-09-28, décision de Manasse).** `Compte.estRetenu` · TOUTE
 liste de choix de comptes demande `retenus=true`, à `/comptes` comme aux routes

@@ -334,7 +334,11 @@ export class GroupeService {
       const lire585 = async (membre: string, exerciceId: string) => {
         const a = await this.prisma.ligneEcriture.aggregate({
           where: {
-            compte: { tenantId: membre, numero: { startsWith: '585' } },
+            // Les comptes de passage des VIREMENTS DE FONDS internes au dossier
+            // (reconnus par leur lien, `CompteVirementFonds`) ne sont pas la
+            // liaison du groupe · un virement validé d'un seul côté déplaçait la
+            // somme du groupe.
+            compte: { tenantId: membre, numero: { startsWith: '585' }, virementFonds: { is: null } },
             ecriture: {
               tenantId: membre,
               exerciceId,

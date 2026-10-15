@@ -51,7 +51,7 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
       findFirst: jest.fn().mockResolvedValue({
         id: 'e1', statut, exercice: EXERCICE, exerciceId: 'ex', tenantId: 't1', lignes: [], journalId: 'j1',
         journal: { id: 'j1', code: 'OD' }, date: new Date('2026-03-04'), libelle: 'Pièce', correction: null,
-        corrigeEcritureId: null, estGenereeParCloture: false, immobilisationAcquisition: null,
+        corrigeEcritureId: null, estGenereeParCloture: false, immobilisationsAcquisition: [],
         immobilisationSortie: null, dotationAmortissement: null,
       }),
       delete: jest.fn().mockResolvedValue({}),
@@ -69,7 +69,7 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
           ecriture: {
             id: 'e1', statut, exerciceId: 'ex', journalId: 'j1', date: new Date('2026-03-04'),
             estGenereeParCloture: false, exercice: EXERCICE, journal: { code: 'OD' },
-            immobilisationAcquisition: null, immobilisationSortie: null, dotationAmortissement: null,
+            immobilisationsAcquisition: [], immobilisationSortie: null, dotationAmortissement: null,
           },
         },
       ]),
@@ -96,6 +96,8 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
     reevaluationBilan: { count: compteur('reevaluationBilan') },
     repriseProvisionReevaluation: { count: compteur('repriseProvisionReevaluation') },
     mouvementDemantelement: { count: compteur('mouvementDemantelement') },
+    // Ligne sage-l4 · l'annulation d'un traitement retient l'origine et le négatif.
+    annulationTraitementImmobilisation: { count: compteur('annulationTraitementImmobilisation') },
     creanceDouteuse: { count: compteur('creanceDouteuse') },
     ajustementCreanceDouteuse: { count: compteur('ajustementCreanceDouteuse') },
     mouvementCreanceDouteuse: { count: compteur('mouvementCreanceDouteuse') },
@@ -422,6 +424,7 @@ describe('3 bis · une écriture qu’un module tient ne se retouche pas non plu
     'echeanceAbonnement', 'liquidationTva', 'donation', 'affectationResultat', 'executionEngagement',
     'mouvementStock', 'bulletinPaie', 'amortissementDerogatoire', 'ligneOrdreVirement', 'consignation',
     'ecartInventaire', 'clotureLocationAcquisition', 'repriseSubventionImmobilisation', 'reductionSubventionImmobilisation', 'revisionPlanAmortissement', 'coutEmpruntIncorpore', 'reevaluationBilan', 'repriseProvisionReevaluation', 'mouvementDemantelement', 'creanceDouteuse', 'ajustementCreanceDouteuse', 'mouvementCreanceDouteuse', 'recuperationTvaCreance', 'declarationDeviseANouveau', 'constatImpotResultat', 'virementFonds', 'paiementSalaires',
+    'annulationTraitementImmobilisation',
   ];
   const gestes: Array<[string, string, (s: EcritureService) => Promise<unknown>]> = [
     ['supprimer', 'BROUILLARD', (s) => s.supprimer('t1', 'e1')],

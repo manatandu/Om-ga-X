@@ -99,16 +99,17 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // déclarées des à-nouveaux, bornées par leur tenantId (AU3), 156 avec
     // les virements de fonds, leurs comptes de passage et leurs pièces
     // jointes, bornés par leur tenantId (demande de Manasse du 2026-10-09),
-    // 158 avec la reprise des congés et les congés du personnel, bornés par
-    // leur tenantId (ligne sage-l5, fonction 79), 159 avec les absences du
-    // personnel, bornées par leur tenantId (ligne sage-l5, fonction 78), 160
-    // avec les majorations des heures, 161 avec les indemnités de la Caisse
-    // déclarées sur un arrêt, bornées par leur tenantId (même ligne), 164
-    // avec les RIB des salariés, les paiements des salaires et leurs lignes,
-    // bornés par leur tenantId (même ligne, fonction 75), 166 avec les
-    // répartitions analytiques de la paie et leurs lignes, bornées par leur
-    // tenantId (même ligne, fonction 88).
-    expect(modeles).toHaveLength(166);
+    // 157 avec les annulations des traitements d'immobilisation, bornées par
+    // leur tenantId (ligne sage-l4) ; 159 avec la reprise des congés et les
+    // congés du personnel, bornés par leur tenantId (ligne sage-l5, fonction
+    // 79), 160 avec les absences du personnel, bornées par leur tenantId
+    // (ligne sage-l5, fonction 78), 161 avec les majorations des heures, 162
+    // avec les indemnités de la Caisse déclarées sur un arrêt, bornées par
+    // leur tenantId (même ligne), 165 avec les RIB des salariés, les paiements
+    // des salaires et leurs lignes, bornés par leur tenantId (même ligne,
+    // fonction 75), 167 avec les répartitions analytiques de la paie et leurs
+    // lignes, bornées par leur tenantId (même ligne, fonction 88).
+    expect(modeles).toHaveLength(167);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

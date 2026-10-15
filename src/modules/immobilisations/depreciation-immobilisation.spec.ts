@@ -205,6 +205,7 @@ function harnais(
     },
   } as Faux;
   prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
+  prisma.$queryRaw = jest.fn().mockResolvedValue([]);
 
   const ecritures = {
     creer: jest

@@ -1,59 +1,62 @@
-# Avancement · ligne virement de fonds
+# Suivi des reprises · notes gardées hors des lignes
 
-Demande de Manasse du 2026-10-09 · virer des fonds banque à banque, banque à
-caisse, caisse à banque, caisse à caisse, chaque côté dans son journal, avec
-pièces et informations justificatives, quatre comptes de passage par défaut.
+Notes tenues jusqu'au 2026-10-14 dans la fiche d'avancement de la ligne
+virement de fonds (`AVANCEMENT-virement-fonds.md`), retirée à son intégration.
+Elles ne concernent pas cette ligne : sujets à reprendre, décisions de Manasse
+et travaux à sa charge. Recopiées telles quelles pour que rien ne se perde.
 
-## Décisions prises, avec leur texte
+## Relevés en attente · immobilisations, ligne sage-l4 (second tour non bloquant)
 
-- **Le 585, pas le 581.** AUDCIF Titre VII, compte 58 · 581 « Régies
-  d'avance » (fonds des régisseurs), 585 « Virements de fonds », comptes de
-  passage « soldés au terme de leur utilisation » ; le SYCEBNL (Partie 2
-  ch. 3, compte 58) n'ouvre que 585 et 588. Dit à Manasse avant de coder.
-- Quatre sous-comptes 58500001 à 58500004, un par sens, personnalisés,
-  semés à la création du dossier (`seedPlan`) et migrés pour les autres
-  (`20270165000000_virements_de_fonds`), rouverts au premier virement s'il
-  en manque (`assurerComptesDePassage`).
-- Deux pièces nées ensemble · origine D 585 / C sa trésorerie, destination
-  D sa trésorerie / C 585, même date, une transaction.
-- Pièce justificative exigée · nature, référence, date, objet (AUDCIF
-  art. 17, 3° et 5°, non écartés par l'art. 3 du SYCEBNL). Porteur des
-  espèces exigé dès qu'une caisse est en jeu · convention d'OmegaX, dite.
-  Fichiers joints facultatifs, mêmes règles que les documents des tiers.
-- Annulation · brouillard supprimé, validée inscrite en négatif (AUDCIF
-  art. 20, al. 2) ; refus si une ligne est lettrée ou pointée, ou l'exercice
-  clos.
-- Journal dont le RIB est en devise refusé (monnaie de tenue, loi n° 23/053
-  art. 141, 1°).
-- 585 et 588 exemptés du refus « compte du plan subdivisé » en saisie
-  (`estCompteDePassage`), sans quoi le 58500000 se fermait dès les quatre
-  sous-comptes ouverts.
-- Gel levé pour cette fonction · à écrire au § 5 de CLAUDE.md.
+- Renumérotation refusée pour TOUTE campagne d'inventaire non clôturée, de
+  stocks ou de caisses comprise · ne compter que les campagnes dont une
+  fiche porte un bien (`maintenance-immobilisations.service.ts`).
+- SYCEBNL · une mise en service passée à la main (D 21x / C 219 ou 229) est
+  refusée par la liste n° 68 avec une issue qui ne s'y applique pas ·
+  écarter de `creditsQuiSortentUnBien` les en-cours de la même division.
+- Un bien REPRIS saisi avant la clôture de N, faux ou en double, ne se
+  corrige plus (M4) · à joindre à la question « Corriger l'entrée » posée à
+  Manasse (retrait motivé du registre ou correction à partir de N+1).
+- Une fiche née d'un renouvellement ne se supprime plus, et aucun geste
+  n'annule un renouvellement passé par erreur, même au brouillard.
+- Lectures bornées sans effet en pratique · `take: 500` sur les maillons de
+  clôture (`exerciceClosQuiPorteLaFiche`), `take: 2000` sur les négatifs de
+  `negatifsAilleurs`.
+- M4, deux réserves · (a) le repère est la clôture dans OmegaX, pas l'arrêté
+  des comptes (AUDCIF art. 23) ; (b) une clôture sans maillon d'audit est
+  tenue pour antérieure au journal · repère plus sûr, la date de création
+  des écritures que la clôture pose.
+- Hors ligne, défaut antérieur · la NOTE 1 des deux SMT et le tableau des
+  amortissements lisent les fiches sans borne sur leur création · une fiche
+  saisie après la clôture de N, datée dans N, change leur réimpression ; ne
+  lire que les fiches qui existaient à la clôture.
+- Questions de la ligne pour Manasse (fiche de la ligne) · « Corriger
+  l'entrée » d'une valeur d'acquisition validée ; retrait d'une fiche née
+  d'une écriture déjà passée (lecture de D7) ; transfert d'un bien entre
+  deux dossiers du groupe par les comptes de liaison (n° 73).
+- Relevé de la ligne · la création admet une valeur résiduelle supérieure à
+  la valeur d'origine · la borner dans `preparerFiche`.
 
-## Fait
+## Relevés en attente · virement de fonds (second tour non bloquant)
 
-- Schéma et migration (954c4d2), `prisma migrate diff` sans écart.
-- Service, contrôleur, module, listes structurelles, exemption 585/588, semis.
-- Tests du module (30), doublures complétées, serveur et client au vert.
-- Écran Traitement > Tiers et trésorerie > Virement de fonds, cache du plan.
-- Scénarios navigateur sur vraie base à travers une clôture, SYSCOHADA et
-  SYCEBNL (`e2e/tests/virements-fonds.e2e.ts`), au vert en local.
-- CLAUDE.md (paragraphe de la ligne, gel levé pour elle).
-
-## Reste
-
-1. Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer) ·
-   lancées puis arrêtées, la limite d'utilisation approchant · à relancer.
-2. Bloc § 3, intégration sur `main`, déploiement vérifié, fiche retirée.
-
-## Vérification
-
-```bash
-npx tsc --noEmit && npx jest src/modules/virements-fonds
-(cd client && npx tsc --noEmit && npm test)
-```
+- Un groupe de lettrage FIGÉ qui ne réunit que les lignes 585 d'un même
+  virement bloque son annulation ; le tolérer (`groupeTolere`, comme A7 ter
+  B2b) reste à faire.
+- Rejouer `motifRefusCompteDeTresorerie` dans `motifRefusVirement` (un journal
+  plus ancien que la règle, porté sur un 585, un 588, un 56 ou un 51, passe un
+  virement).
+- Typage · `JournalDeTresorerie.type` en `TypeJournal`, résultat discriminé au
+  lieu des assertions non nulles.
+- Numérotation des négatifs sous lecture validée (max + 1 sans index unique) ·
+  défaut hérité, commun à `constat-impot`, `devises` et `creances-douteuses`.
+- Écran · rendre le focus au bouton qui a ouvert la modale (commun à toutes les
+  modales du dépôt) ; le client n'a ni ESLint ni règles des hooks.
 
 ## Reprise après la réinitialisation (2026-10-09, demande de Manasse)
+
+État au 2026-10-14 · le point 1 est fait (`docs/comparaison-sage/`, quatorze
+manuels, tri de Manasse du même jour) ; le point 3 aussi (ligne intégrée sur
+`main`) ; restent le point 2 (plan comptable façon Sage) et le point 4
+(clôture).
 
 Ordre voulu, dans cette ligne et sans rien coder avant l'étape 1 :
 
