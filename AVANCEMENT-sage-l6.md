@@ -74,6 +74,30 @@ Branche de sauvegarde · `travail/sage-l6`. Fiche retirée à l'intégration.
   dossier de la pièce non restituée. Mineur 8 · devises et affectation,
   suppression filtrée sur le brouillard, 409 sinon.
 
+- **Relecture « échecs silencieux », second et dernier tour (étape 7).** Un
+  MAJEUR, quatre MINEURS corrigés, chacun avec son test. MAJEUR · le report
+  des pièces et la suppression au brouillard verrouillent l'écriture
+  d'ORIGINE avant de toucher ses pièces (`verrouillerEcriture`, exporté) ·
+  un seul ordre partout, écriture puis pièces ; plus de dépôt détaché sans
+  compte, plus d'interblocage avec le retrait. Mineur 1 · le retrait relit
+  la pièce après le verrou (reportée ailleurs, 409 ; détachée, règle de la
+  pièce détachée). Mineur 2 · aucune mise à jour ni suppression de pièce ne
+  rend le binaire (`select`). Mineur 3 · l'inventaire des pièces de la
+  restitution est compté puis lu par lots (`pageApres`, 500), le suivant
+  après l'écriture du précédent, le compteur des entrées posé avant la
+  première ; archive éprouvée sur vraie base. Mineur 4 · l'alerte du
+  décompte au journal sur sa propre ligne.
+
+## Relevés en attente
+
+- Le typage des délégués Prisma des tables de pièces
+  (`DelegueDesPieces`, `delegueDesPieces` · un `as unknown as Record`)
+  reste à remplacer par les types Prisma de chaque table.
+- Les boutons de liste « Commentaire » et « Retirer » du volet et des pièces
+  détachées n'ont pas d'`aria-label` qui nomme la pièce · l'ajouter impose de
+  rendre exacts les sélecteurs des tests navigateur qui lisent le nom du
+  fichier (correspondance partielle), hors de quelques lignes.
+
 ## Jumeaux cherchés (M1)
 
 - Seul chemin qui REMPLACE en un geste une écriture du brouillard par une
@@ -194,7 +218,9 @@ compte ce qu'elle détache (`piecesDetachees`, dit au brouillard). Joindre ou
 retirer la pièce d'une écriture est une SAISIE sur son journal · journaux
 autorisés jugés (403), la lecture reste ouverte. Une suppression de module
 au brouillard filtre sur le statut DANS sa transaction (devises,
-affectation, règle M1 d'A7).
+affectation, règle M1 d'A7). UN SEUL ORDRE DE VERROU, écriture puis pièces
+(retrait, report, suppression). La restitution compte puis lit ses pièces
+par lots, jamais d'un coup.
 
 **Longueur fixe des codes de section (ligne sage-l6, fonction n° 50).**
 `PlanAnalytique.longueurSections`, null = libre, OPTION du plan sans défaut
