@@ -221,6 +221,7 @@ describe('modifier · les mêmes contrôles et les mêmes champs que creer', () 
     expect((tx.pieceJointeEcriture as any).update).toHaveBeenCalledWith({
       where: { id: 'pj-1' },
       data: { ecritureDecrite: 'ACH n° 3 du 15/03/2026 · Loyer de mars' },
+      select: { id: true, ecritureId: true, ecritureDecrite: true },
     });
   });
 

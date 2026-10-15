@@ -144,7 +144,11 @@ describe('le transfert d’un brouillard hérité dans un journal ordinaire', ()
       ecritureId: 'e1',
       NOT: { ecritureDecrite: 'OD n° 42 du 10/04/2026 · Loyer' },
     });
-    expect(tx.pieceJointeEcriture.update).toHaveBeenCalledWith({ where: { id: 'pj-1' }, data: { ecritureDecrite: 'OD n° 42 du 10/04/2026 · Loyer' } });
+    expect(tx.pieceJointeEcriture.update).toHaveBeenCalledWith({
+      where: { id: 'pj-1' },
+      data: { ecritureDecrite: 'OD n° 42 du 10/04/2026 · Loyer' },
+      select: { id: true, ecritureId: true, ecritureDecrite: true },
+    });
   });
 
   it('reportée au premier jour non clôturé, elle garde sa date d’origine en date de valeur (art. 22, 4°)', async () => {

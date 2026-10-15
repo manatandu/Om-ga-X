@@ -13,6 +13,7 @@ import {
 import {
   LecteurDesPieces,
   ObjetDesPieces,
+  ObjetLu,
   PLAFOND_PIECES_PAR_LISTE,
   RegleDesPieces,
   TABLES_DES_PIECES,
@@ -235,17 +236,35 @@ export class PiecesJointesService {
       const piece = await table.findFirst({ where: { id, tenantId }, select: { id: true, [colonne]: true } });
       if (!piece) throw new NotFoundException('Pièce introuvable pour ce dossier.');
       const objetId = piece[colonne] as string | null;
+      let objet: ObjetLu | null = null;
       if (objetId) {
         if (regle.verrouiller) await regle.verrouiller(tx, tenantId, objetId);
-        const objet = await regle.lireObjet(tx, tenantId, objetId);
-        if (objet?.motifHorsPerimetre) throw new ForbiddenException(objet.motifHorsPerimetre);
-        if (objet?.motifRefusRetrait) throw new ConflictException(objet.motifRefusRetrait);
+        // RELUE APRÈS LE VERROU (second tour de relecture, mineur 1) · un
+        // report l'a pu déplacer vers l'écriture qui remplace, une suppression
+        // l'a pu détacher, entre la première lecture et le verrou. Déplacée,
+        // elle se juge sur l'autre objet · le geste s'arrête et le dit ;
+        // détachée, elle suit la règle de la pièce détachée.
+        const relue = await table.findFirst({ where: { id, tenantId }, select: { id: true, [colonne]: true } });
+        if (!relue) throw new ConflictException(MOTIF_PIECE_RETIREE);
+        const maintenant = relue[colonne] as string | null;
+        if (maintenant !== null && maintenant !== objetId) {
+          throw new ConflictException(
+            "Cette pièce a été reportée ailleurs pendant le retrait (ce qui la portait a été remplacé) · rien n'est retiré, rechargez la liste.",
+          );
+        }
+        if (maintenant !== null) objet = await regle.lireObjet(tx, tenantId, objetId);
+      }
+      if (objet) {
+        if (objet.motifHorsPerimetre) throw new ForbiddenException(objet.motifHorsPerimetre);
+        if (objet.motifRefusRetrait) throw new ConflictException(objet.motifRefusRetrait);
       } else {
+        // Détachée (dès le départ, ou pendant le geste), ou son objet disparu.
         const horsPerimetre = regle.motifHorsPerimetreDetachee?.() ?? null;
         if (horsPerimetre) throw new ForbiddenException(horsPerimetre);
       }
       try {
-        await table.delete({ where: { id } });
+        // Jamais le binaire en retour.
+        await table.delete({ where: { id }, select: { id: true } });
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') throw new ConflictException(MOTIF_PIECE_RETIREE);
         throw e;

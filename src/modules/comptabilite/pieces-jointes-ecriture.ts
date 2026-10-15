@@ -125,13 +125,18 @@ export async function lireEcritureDesPieces(db: LecteurDesPieces, tenantId: stri
 }
 
 /**
- * LE VERROU DU RETRAIT · une validation entre la lecture du statut et le
- * retrait ferait partir la pièce d'une écriture entrée au livre-journal.
- * La ligne de l'écriture est verrouillée en tête de la transaction · la
- * validation, qui la met à jour, attend la fin du retrait, et le statut lu
- * ensuite est celui que la pièce emporte.
+ * LE VERROU DE L'ÉCRITURE, TOUJOURS PRIS AVANT SES PIÈCES · une validation
+ * entre la lecture du statut et le retrait ferait partir la pièce d'une
+ * écriture entrée au livre-journal. La ligne de l'écriture est verrouillée en
+ * tête de la transaction · la validation, qui la met à jour, attend la fin du
+ * geste, et le statut lu ensuite est celui que la pièce emporte. Le dépôt
+ * concurrent attend aussi (sa clé étrangère prend un verrou partagé sur la
+ * même ligne) · il ne se glisse plus entre le report des pièces et la
+ * suppression de l'écriture. UN SEUL ORDRE, écriture puis pièces, pour le
+ * retrait, le report et la suppression (second tour de relecture, MAJEUR) ·
+ * deux ordres inverses s'interbloquaient.
  */
-async function verrouillerEcriture(db: LecteurDesPieces, tenantId: string, ecritureId: string): Promise<void> {
+export async function verrouillerEcriture(db: LecteurDesPieces, tenantId: string, ecritureId: string): Promise<void> {
   await db.$queryRaw`SELECT "id", "statut" FROM "ecritures" WHERE "id" = ${ecritureId} AND "tenantId" = ${tenantId} FOR UPDATE`;
 }
 
@@ -147,6 +152,9 @@ export const REGLE_PIECES_ECRITURE: RegleDesPieces = {
 
 /** Combien de pièces une même lecture retouche au plus · les lots se suivent jusqu'au bout. */
 const LOT_PIECES = 200;
+
+/** Ce qu'une mise à jour de pièce rend · jamais `contenu` (5 Mo par pièce). */
+const SANS_BINAIRE = { id: true, ecritureId: true, ecritureDecrite: true } as const;
 
 /**
  * L'ÉCRITURE QUI EN REMPLACE UNE AUTRE EMPORTE SES PIÈCES (relecture « échecs
@@ -166,6 +174,8 @@ export async function reporterLesPieces(
   ancienneId: string,
   nouvelleId: string,
 ): Promise<number> {
+  // L'ancienne d'abord, avant toute lecture de ses pièces (voir `verrouillerEcriture`).
+  await verrouillerEcriture(tx, tenantId, ancienneId);
   const nouvelle = await lireEcritureDesPieces(tx, tenantId, nouvelleId);
   if (!nouvelle) {
     throw new ConflictException("L'écriture qui remplace la pièce a été retirée pendant le geste · rien n'est modifié.");
@@ -182,7 +192,12 @@ export async function reporterLesPieces(
     if (lot.length === 0) return reportees;
     for (const p of lot) {
       try {
-        await tx.pieceJointeEcriture.update({ where: { id: p.id }, data: { ecritureId: nouvelleId, ecritureDecrite: nouvelle.description } });
+        // Jamais le binaire en retour · le journal d'audit lit l'écriture et la description.
+        await tx.pieceJointeEcriture.update({
+          where: { id: p.id },
+          data: { ecritureId: nouvelleId, ecritureDecrite: nouvelle.description },
+          select: SANS_BINAIRE,
+        });
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
           throw new ConflictException(
@@ -228,7 +243,7 @@ async function refaireLesDescriptions(tx: Prisma.TransactionClient, tenantId: st
     });
     if (lot.length === 0) return retouchees;
     for (const p of lot) {
-      await tx.pieceJointeEcriture.update({ where: { id: p.id }, data: { ecritureDecrite: e.description } });
+      await tx.pieceJointeEcriture.update({ where: { id: p.id }, data: { ecritureDecrite: e.description }, select: SANS_BINAIRE });
       retouchees++;
     }
   }
@@ -241,6 +256,9 @@ async function refaireLesDescriptions(tx: Prisma.TransactionClient, tenantId: st
  * geste le DISE et que la pièce détachée dise ce qu'elle justifiait.
  */
 export async function preparerLesPiecesADetacher(tx: Prisma.TransactionClient, tenantId: string, ecritureId: string): Promise<number> {
+  // L'écriture d'abord · un dépôt concurrent attend la suppression, puis
+  // tombe sur l'écriture partie (409), au lieu d'être détaché sans compte.
+  await verrouillerEcriture(tx, tenantId, ecritureId);
   const nombre = await tx.pieceJointeEcriture.count({ where: { tenantId, ecritureId } });
   if (nombre > 0) await refaireLesDescriptions(tx, tenantId, ecritureId);
   return nombre;

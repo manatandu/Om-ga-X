@@ -16,6 +16,7 @@ import { ROLES_KEY } from '../decorators/roles.decorator';
 import {
   REGLE_PIECES_ECRITURE,
   descriptionDeLEcriture,
+  preparerLesPiecesADetacher,
   reporterLesPieces,
   retoucherDescriptionDesPieces,
   motifRefusDepotEcriture,
@@ -82,6 +83,9 @@ function prismaFactice(opts: {
 } = {}) {
   const ordre: string[] = [];
   const pieces = tableFactice(opts.pieces ?? []);
+  // La lecture de la pièce entre dans l'ordre · le retrait la RELIT après le verrou.
+  const lirePiece = pieces.findFirst.getMockImplementation()!;
+  pieces.findFirst.mockImplementation(async (a: any) => (ordre.push('piece'), lirePiece(a)));
   if (opts.conflit) {
     pieces.create.mockImplementation(async () => {
       throw new Prisma.PrismaClientKnownRequestError('x', { code: opts.conflit!, clientVersion: 'x' });
@@ -204,21 +208,22 @@ describe('pièces jointes · le service commun', () => {
     const piece = { id: 'p-1', tenantId: 't', ecritureId: 'e-1' };
     const validee = prismaFactice({ statut: StatutEcriture.VALIDEE, pieces: [piece] });
     await expect(new PiecesJointesService(validee.client).retirer('t', REGLE_PIECES_ECRITURE, 'p-1')).rejects.toBeInstanceOf(ConflictException);
-    expect(validee.ordre).toEqual(['transaction', 'verrou', 'lire']);
+    // La pièce relue APRÈS le verrou (second tour, mineur 1), puis l'écriture.
+    expect(validee.ordre).toEqual(['transaction', 'piece', 'verrou', 'piece', 'lire']);
     expect(validee.pieces.appels.delete).toHaveLength(0);
 
     const brouillard = prismaFactice({ statut: StatutEcriture.BROUILLARD, pieces: [piece] });
     await new PiecesJointesService(brouillard.client).retirer('t', REGLE_PIECES_ECRITURE, 'p-1');
-    // Une à une, par identifiant · le journal d'audit garde la pré-image.
-    expect(brouillard.pieces.appels.delete).toEqual([{ where: { id: 'p-1' } }]);
+    // Une à une, par identifiant · le journal d'audit garde la pré-image ; jamais le binaire en retour.
+    expect(brouillard.pieces.appels.delete).toEqual([{ where: { id: 'p-1' }, select: { id: true } }]);
     expect(brouillard.pieces.appels.deleteMany).toHaveLength(0);
   });
 
   it('une pièce détachée (écriture retirée au brouillard) se retire sans objet à consulter', async () => {
     const { client, pieces, ordre } = prismaFactice({ pieces: [{ id: 'p-2', tenantId: 't', ecritureId: null }] });
     await new PiecesJointesService(client).retirer('t', REGLE_PIECES_ECRITURE, 'p-2');
-    expect(ordre).toEqual(['transaction']);
-    expect(pieces.appels.delete).toEqual([{ where: { id: 'p-2' } }]);
+    expect(ordre).toEqual(['transaction', 'piece']);
+    expect(pieces.appels.delete).toEqual([{ where: { id: 'p-2' }, select: { id: true } }]);
   });
 
   it('une pièce d’un autre dossier est introuvable au téléchargement, au commentaire et au retrait', async () => {
@@ -382,7 +387,7 @@ describe('pièces jointes · joindre ou retirer la pièce d’une écriture est 
     await restreintA(['j-ach'], () => service.deposer('t', REGLE_PIECES_ECRITURE, 'e-1', { originalname: 'f.pdf', buffer: PDF }, null, 'u'));
     await restreintA(null, () => service.retirer('t', REGLE_PIECES_ECRITURE, 'pj-1'));
     expect(pieces.create).toHaveBeenCalledTimes(1);
-    expect(pieces.delete).toHaveBeenCalledWith({ where: { id: 'pj-1' } });
+    expect(pieces.delete).toHaveBeenCalledWith({ where: { id: 'pj-1' }, select: { id: true } });
   });
 
   it('une pièce DÉTACHÉE n’a plus de journal · seul un utilisateur sans restriction la retire', async () => {
@@ -392,7 +397,38 @@ describe('pièces jointes · joindre ou retirer la pièce d’une écriture est 
       /écriture retirée depuis \(pièce détachée\), hors de votre périmètre/,
     );
     await restreintA(null, () => service.retirer('t', REGLE_PIECES_ECRITURE, 'pj-d'));
-    expect(pieces.delete).toHaveBeenCalledWith({ where: { id: 'pj-d' } });
+    expect(pieces.delete).toHaveBeenCalledWith({ where: { id: 'pj-d' }, select: { id: true } });
+  });
+});
+
+describe('pièces jointes · le retrait relit la pièce après le verrou (second tour, mineur 1)', () => {
+  it('reportée sur l’écriture qui remplace entre la lecture et le verrou · 409 nommé, rien ne part', async () => {
+    const { client, pieces } = prismaFactice({ pieces: [{ id: 'pj-1', tenantId: 't', ecritureId: 'e-1' }] });
+    client.$queryRaw.mockImplementationOnce(async () => {
+      pieces.lignes[0].ecritureId = 'e-neuve';
+      return [];
+    });
+    await expect(new PiecesJointesService(client).retirer('t', REGLE_PIECES_ECRITURE, 'pj-1')).rejects.toThrow(/reportée ailleurs pendant le retrait/);
+    expect(pieces.delete).not.toHaveBeenCalled();
+  });
+
+  it('détachée entre la lecture et le verrou · la règle de la pièce détachée s’applique', async () => {
+    const monter = () => {
+      const m = prismaFactice({ pieces: [{ id: 'pj-1', tenantId: 't', ecritureId: 'e-1' }] });
+      m.client.$queryRaw.mockImplementationOnce(async () => {
+        m.pieces.lignes[0].ecritureId = null;
+        return [];
+      });
+      return m;
+    };
+    const restreint = monter();
+    await expect(restreintA(['j-ach'], () => new PiecesJointesService(restreint.client).retirer('t', REGLE_PIECES_ECRITURE, 'pj-1'))).rejects.toThrow(
+      /pièce détachée/,
+    );
+    expect(restreint.pieces.delete).not.toHaveBeenCalled();
+    const libre = monter();
+    await new PiecesJointesService(libre.client).retirer('t', REGLE_PIECES_ECRITURE, 'pj-1');
+    expect(libre.pieces.delete).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -430,9 +466,17 @@ describe('pièces jointes · elles suivent leur écriture (relecture sage-l6, M1
       return l as any;
     });
     table.count.mockImplementation(async (a: any) => pieces.filter((l) => l.tenantId === a.where.tenantId && l.ecritureId === a.where.ecritureId).length);
+    const ordre: string[] = [];
+    for (const op of ['findMany', 'count', 'update'] as const) {
+      const avant = table[op].getMockImplementation()!;
+      table[op].mockImplementation(async (a: any) => (ordre.push(`pieces.${op}`), (avant as any)(a)));
+    }
     return {
+      ordre,
       pieceJointeEcriture: table,
       ecriture: { findFirst: jest.fn(async (a: any) => (a.where.tenantId === 't' ? ecritures[a.where.id] ?? null : null)) },
+      // Le verrou de l'écriture · l'ordre et l'écriture visée sont gardés.
+      $queryRaw: jest.fn(async (_gabarit: TemplateStringsArray, ...valeurs: unknown[]) => (ordre.push(`verrou ${valeurs[0]}`), [])),
     } as any;
   }
   const neuve = { ...ecriture({ numeroPiece: 1, date: new Date('2026-02-10T00:00:00Z'), libelle: 'Acquisition · Camion', journal: { code: 'OD' } }), journalId: 'j-od' };
@@ -451,6 +495,20 @@ describe('pièces jointes · elles suivent leur écriture (relecture sage-l6, M1
       ['pj-3', 'e-autre', 'x'],
     ]);
     expect(t.pieceJointeEcriture.update).toHaveBeenCalledTimes(2);
+    // Jamais le binaire en retour · l'écriture et la description, pour l'audit.
+    expect(t.pieceJointeEcriture.update.mock.calls[0][0].select).toEqual({ id: true, ecritureId: true, ecritureDecrite: true });
+  });
+
+  it('LE VERROU DE L’ANCIENNE ÉCRITURE AVANT TOUTE LECTURE DE SES PIÈCES (second tour, MAJEUR) · report et suppression', async () => {
+    const pieces = [{ id: 'pj-1', tenantId: 't', ecritureId: 'e-ancienne', nomFichier: 'a.pdf', ecritureDecrite: 'x' }];
+    const report = tx(pieces, { 'e-neuve': neuve });
+    await reporterLesPieces(report, 't', 'e-ancienne', 'e-neuve');
+    expect(report.ordre[0]).toBe('verrou e-ancienne');
+    expect(report.ordre.indexOf('verrou e-ancienne')).toBeLessThan(report.ordre.indexOf('pieces.findMany'));
+    const suppression = tx([{ id: 'pj-2', tenantId: 't', ecritureId: 'e-neuve', ecritureDecrite: 'x' }], { 'e-neuve': neuve });
+    await expect(preparerLesPiecesADetacher(suppression, 't', 'e-neuve')).resolves.toBe(1);
+    expect(suppression.ordre[0]).toBe('verrou e-neuve');
+    expect(suppression.ordre.indexOf('verrou e-neuve')).toBeLessThan(suppression.ordre.indexOf('pieces.count'));
   });
 
   it('la neuve porte déjà le même fichier · 409 qui le nomme, rien n’est modifié', async () => {
@@ -474,7 +532,11 @@ describe('pièces jointes · elles suivent leur écriture (relecture sage-l6, M1
     ];
     const t = tx(pieces, { 'e-neuve': neuve });
     await expect(retoucherDescriptionDesPieces(t, 't', 'e-neuve')).resolves.toBe(1);
-    expect(t.pieceJointeEcriture.update).toHaveBeenCalledWith({ where: { id: 'pj-2' }, data: { ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' } });
+    expect(t.pieceJointeEcriture.update).toHaveBeenCalledWith({
+      where: { id: 'pj-2' },
+      data: { ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' },
+      select: { id: true, ecritureId: true, ecritureDecrite: true },
+    });
     const vide = tx([], { 'e-neuve': neuve });
     await expect(retoucherDescriptionDesPieces(vide, 't', 'e-neuve')).resolves.toBe(0);
     expect(vide.ecriture.findFirst).not.toHaveBeenCalled();

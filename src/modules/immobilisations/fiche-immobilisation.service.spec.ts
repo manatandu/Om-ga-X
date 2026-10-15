@@ -99,6 +99,8 @@ function fabrique(
     },
     ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
     // Les pièces jointes à l'écriture d'acquisition · aucune, sauf quand le cas en pose.
+    // Le verrou de l'écriture d'origine, pris avant ses pièces (second tour, MAJEUR).
+    $queryRaw: jest.fn().mockResolvedValue([]),
     pieceJointeEcriture: {
       findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
@@ -296,9 +298,11 @@ describe('la modification d’une fiche', () => {
     expect(prisma.pieceJointeEcriture.findMany.mock.calls[0][0].where).toEqual({ tenantId: 't-1', ecritureId: 'ecr-acq' });
     // Une mise à jour UNITAIRE par pièce, vers la neuve, sa description refaite.
     expect(prisma.pieceJointeEcriture.update.mock.calls).toEqual([
-      [{ where: { id: 'pj-1' }, data: { ecritureId: 'ecr-nouvelle', ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' } }],
-      [{ where: { id: 'pj-2' }, data: { ecritureId: 'ecr-nouvelle', ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' } }],
+      [{ where: { id: 'pj-1' }, data: { ecritureId: 'ecr-nouvelle', ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' }, select: { id: true, ecritureId: true, ecritureDecrite: true } }],
+      [{ where: { id: 'pj-2' }, data: { ecritureId: 'ecr-nouvelle', ecritureDecrite: 'OD n° 1 du 10/02/2026 · Acquisition · Camion' }, select: { id: true, ecritureId: true, ecritureDecrite: true } }],
     ]);
+    // L'ancienne verrouillée AVANT la lecture de ses pièces.
+    expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(prisma.pieceJointeEcriture.findMany.mock.invocationCallOrder[0]);
     // AVANT la suppression de l'ancienne · sinon la clé SET NULL les détachait.
     expect(prisma.pieceJointeEcriture.update.mock.invocationCallOrder[1]).toBeLessThan(prisma.ecriture.deleteMany.mock.invocationCallOrder[0]);
   });

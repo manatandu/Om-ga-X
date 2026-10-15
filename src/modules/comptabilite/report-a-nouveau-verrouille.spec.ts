@@ -25,6 +25,7 @@ function monter(ecriture: { exerciceId: string; estGenereeParCloture: boolean },
     exercice: { findFirst: jest.fn().mockResolvedValue({ id: premierId }) },
     ligneEcriture: { deleteMany: jest.fn().mockResolvedValue({}) },
     pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
+    $queryRaw: jest.fn().mockResolvedValue([]),
   } as Record<string, unknown>;
   // Toute autre table ne rend qu'un comptage nul · aucun module ne tient
   // l'écriture, seul le report est en cause.

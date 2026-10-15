@@ -61,6 +61,8 @@ function serviceEcriture(detenteurs: Record<string, number> = {}, statut = 'BROU
     // Les pièces jointes de l'écriture (ligne sage-l6) · aucune, la
     // suppression les compte pour le dire.
     pieceJointeEcriture: { count: jest.fn().mockResolvedValue(0) },
+    // Le verrou de l'écriture, pris avant ses pièces (second tour, MAJEUR).
+    $queryRaw: jest.fn().mockResolvedValue([]),
     ligneEcriture: {
       deleteMany: jest.fn().mockResolvedValue({}),
       // La ligne que la réimputation déplace · son écriture est « e1 », celle
@@ -386,7 +388,13 @@ describe('3 · une écriture qu’un module tient ne se supprime pas', () => {
     });
     await expect(s.supprimer('t1', 'e1')).resolves.toEqual({ supprime: true, piecesDetachees: 2 });
     expect(prisma.pieceJointeEcriture.count).toHaveBeenCalledWith({ where: { tenantId: 't1', ecritureId: 'e1' } });
-    expect(prisma.pieceJointeEcriture.update).toHaveBeenCalledWith({ where: { id: 'pj-1' }, data: { ecritureDecrite: 'OD n° 9 du 04/03/2026 · Pièce' } });
+    expect(prisma.pieceJointeEcriture.update).toHaveBeenCalledWith({
+      where: { id: 'pj-1' },
+      data: { ecritureDecrite: 'OD n° 9 du 04/03/2026 · Pièce' },
+      select: { id: true, ecritureId: true, ecritureDecrite: true },
+    });
+    // L'écriture verrouillée AVANT le décompte de ses pièces.
+    expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(prisma.pieceJointeEcriture.count.mock.invocationCallOrder[0]);
     expect(prisma.pieceJointeEcriture.update.mock.invocationCallOrder[1]).toBeLessThan(prisma.ecriture.deleteMany.mock.invocationCallOrder[0]);
   });
 
