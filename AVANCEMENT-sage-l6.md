@@ -57,6 +57,46 @@ Branche de sauvegarde · `travail/sage-l6`. Fiche retirée à l'intégration.
   `--max-old-space-size=3072`). Migrations confrontées au schéma sur
   `l6_ombre` · aucune différence.
 
+- **Relecture « échecs silencieux », premier tour (étape 6).** Aucun
+  BLOQUANT, un MAJEUR, huit MINEURS, tous corrigés, chacun avec son test.
+  M1 · la fiche d'un bien qui change de mois (journal mensuel) ou
+  d'exercice REMPLACE son écriture d'acquisition · ses pièces suivent la
+  neuve (`reporterLesPieces`, unitaire, avant la suppression), prouvé aussi
+  sur vraie base. Mineur 1 · la suppression au brouillard compte les pièces
+  qu'elle détache (`piecesDetachees`), le brouillard le dit avec l'endroit
+  (Journal > Pièces détachées). Mineur 2 · la description suit l'écriture
+  (modifier, transfert, pièce du module retouchée, suppression). Mineur 3 ·
+  décompte illisible dit au journal et à la saisie. Mineur 4 · P2003 et
+  P2025 en 409 nommés (suppression d'un plan, d'une section, d'une fiche,
+  commentaire et retrait d'une pièce). Mineur 5 · le refus de supprimer un
+  plan nomme les sections qui portent un document. Mineur 6 · journaux
+  autorisés jugés au dépôt et au retrait (403). Mineur 7 · restitution,
+  dossier de la pièce non restituée. Mineur 8 · devises et affectation,
+  suppression filtrée sur le brouillard, 409 sinon.
+
+## Jumeaux cherchés (M1)
+
+- Seul chemin qui REMPLACE en un geste une écriture du brouillard par une
+  neuve · la modification de la fiche d'un bien (corrigé). Non jumeaux,
+  vérifiés · la comptabilisation des factures ne supprime aucune écriture ;
+  la paie défait sa passation (annulation, puis nouvelle passation, deux
+  gestes) ; l'à-nouveau provisoire relancé ou remplacé à la clôture ne porte
+  jamais de pièce (dépôt refusé) ; le dossier de combinaison du groupe,
+  régénéré à chaque appel, n'a aucun utilisateur, donc aucun dépôt ; les
+  compensations (écriture que la requête vient de créer) n'ont pas encore de
+  pièce.
+- Suppressions au brouillard qui détachent des pièces SANS le dire à l'écran
+  (le retour de `EcritureService.supprimer` porte le nombre, les écrans de
+  module ne le lisent pas encore) · annulation de la passation de la paie,
+  annulation d'une liquidation de TVA, retraits de la créance douteuse (par
+  `EcritureService.supprimer`) ; annulation du constat d'impôt, d'un
+  virement de fonds, d'une réévaluation des devises et de sa
+  contre-passation, d'un traitement d'immobilisation, d'un paiement de
+  salaires, d'une créance douteuse, retrait des actes de la période à la
+  dissolution, suppression d'une fiche de bien (et fiche devenue reprise),
+  suppression d'une affectation (requêtes directes). Les pièces ne se
+  perdent pas · elles se lisent dans Journal > Pièces détachées.
+
 ## Reste
 - WebKit non éprouvé ici (absent de la machine) · le job `tests-navigateur.yml`
   le jouera.
@@ -101,6 +141,15 @@ Branche de sauvegarde · `travail/sage-l6`. Fiche retirée à l'intégration.
    (le code d'une section ne se modifie pas, ventilations et budgets le
    citent). Bornes de 2 à 13, convention d'OmegaX.
 
+6. **Joindre ou retirer la pièce d'une écriture est une SAISIE sur son
+   journal** (décision de la relecture, mineur 6) · le profil de fonctions
+   range déjà ce contrôleur en saisie, et les journaux autorisés restreignent
+   la saisie, jamais la lecture (CLAUDE.md, priorité 5) · 403 nommé au dépôt
+   et au retrait, la liste ferme les deux gestes ; consultation,
+   téléchargement et commentaire (annotation d'OmegaX) restent ouverts ; une
+   pièce détachée n'a plus de journal, seul un utilisateur sans restriction
+   la retire.
+
 ## Questions à Manasse
 
 1. **Longueur des codes de section, par plan ou par dossier ?** Aucun texte
@@ -135,7 +184,17 @@ SUPPRESSION (refus nommé) et jamais la modification · un document n'est pas un
 traitement. Salarié · aux droits du registre (rôles cantonnés), se retire
 toujours (Code du numérique, art. 215 et 216), nom et commentaire hors du
 journal d'audit. Écran · colonne PJ de la saisie et du journal (décompte de
-l'exercice, inconnu jamais « aucune »), volet nommé par son objet.
+l'exercice, inconnu jamais « aucune », illisible DIT), volet nommé par son
+objet. LA PIÈCE SUIT SON ÉCRITURE (relecture « échecs silencieux ») · une
+écriture du brouillard REMPLACÉE par une neuve (fiche d'un bien qui change
+de mois ou d'exercice) lui passe ses pièces avant de partir
+(`reporterLesPieces`, unitaire) ; la description refaite à chaque
+modification, transfert ou retouche en place, et à la suppression, qui
+compte ce qu'elle détache (`piecesDetachees`, dit au brouillard). Joindre ou
+retirer la pièce d'une écriture est une SAISIE sur son journal · journaux
+autorisés jugés (403), la lecture reste ouverte. Une suppression de module
+au brouillard filtre sur le statut DANS sa transaction (devises,
+affectation, règle M1 d'A7).
 
 **Longueur fixe des codes de section (ligne sage-l6, fonction n° 50).**
 `PlanAnalytique.longueurSections`, null = libre, OPTION du plan sans défaut
@@ -164,6 +223,13 @@ Bornes 2 à 13, convention d'OmegaX, tenues aussi par la base.
 
 ```bash
 npx tsc --noEmit
+# Relecture « échecs silencieux » (étape 6) · specs touchées
+npx jest src/common/pieces-jointes src/modules/comptabilite/brouillard.spec.ts \
+  src/modules/comptabilite/casse-en-silence.spec.ts src/modules/comptabilite/transfert-situation.spec.ts \
+  src/modules/immobilisations/fiche-immobilisation.service.spec.ts src/modules/analytique/suppression-et-exercice-clos.spec.ts \
+  src/modules/devises/annulation-reevaluation.spec.ts src/modules/affectation/affectation.spec.ts \
+  src/modules/exports/restitution/restitution.spec.ts --maxWorkers=1
+(cd client && npx vitest run src/lib/pieces-jointes.spec.ts)
 npx jest src/common/pieces-jointes src/common/audit src/common/cloisonnement \
   src/common/guards src/modules/comptabilite/lectures-hors-situation.spec.ts \
   src/modules/exports/restitution src/modules/tiers src/modules/virements-fonds --maxWorkers=1
