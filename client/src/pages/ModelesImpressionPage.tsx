@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { avisRelectureManquee, gestePuisRelecture } from '../lib/geste-puis-relecture';
 import { useAuth } from '../lib/auth';
@@ -43,6 +43,24 @@ export function ModelesImpressionPage() {
   const [avisRelecture, setAvisRelecture] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [brouillon, setBrouillon] = useState<Brouillon | null>(null);
+  // LE BROUILLON TEL QU'OUVERT, et le formulaire qui reçoit le focus (second
+  // tour de relecture, mineur 16) · « Modifier » sur un autre modèle écrasait
+  // en silence un texte en cours.
+  const [brouillonOuvert, setBrouillonOuvert] = useState<Brouillon | null>(null);
+  const [ouvertures, setOuvertures] = useState(0);
+  const formulaire = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (ouvertures > 0) formulaire.current?.querySelector<HTMLElement>('select, input, textarea')?.focus({ preventScroll: true });
+  }, [ouvertures]);
+  /** Ouvre un brouillon · un texte en cours modifié ne se perd que sur demande. */
+  const ouvrir = (nouveau: Brouillon) => {
+    const modifie = brouillon !== null && JSON.stringify(brouillon) !== JSON.stringify(brouillonOuvert);
+    if (modifie && !window.confirm("Le modèle en cours n'est pas enregistré · l'abandonner pour celui-ci ?")) return;
+    setErreur(null);
+    setBrouillon(nouveau);
+    setBrouillonOuvert(nouveau);
+    setOuvertures((n) => n + 1);
+  };
   const [lu, setLu] = useState<string | null>(null);
   // Un modèle en cours d'écriture ne se perd pas à la fermeture de la fenêtre.
   useGardeFermeture(brouillon ? "Le modèle d'impression en cours n'est pas enregistré." : null);
@@ -112,10 +130,7 @@ export function ModelesImpressionPage() {
           <button
             type="button"
             disabled={envoi || complet}
-            onClick={() => {
-              setErreur(null);
-              setBrouillon({ id: null, nature: '', intitule: '', texte: TEXTE_DE_DEPART });
-            }}
+            onClick={() => ouvrir({ id: null, nature: '', intitule: '', texte: TEXTE_DE_DEPART })}
             className="bg-sel text-white px-3.5 py-1 text-[11.5px] font-semibold disabled:opacity-50"
           >
             Nouveau modèle
@@ -153,10 +168,7 @@ export function ModelesImpressionPage() {
                         type="button"
                         aria-label={`Modifier le modèle ${m.intitule}`}
                         disabled={envoi}
-                        onClick={() => {
-                          setErreur(null);
-                          setBrouillon({ id: m.id, nature: m.nature, intitule: m.intitule, texte: m.texte });
-                        }}
+                        onClick={() => ouvrir({ id: m.id, nature: m.nature, intitule: m.intitule, texte: m.texte })}
                         className="text-sel hover:underline disabled:opacity-50"
                       >
                         Modifier
@@ -209,7 +221,7 @@ export function ModelesImpressionPage() {
       )}
 
       {estAdmin && brouillon && (
-        <form onSubmit={enregistrer} className="mt-3 border border-border bg-surface px-3 py-2.5 flex flex-col gap-2 text-[11.5px]">
+        <form ref={formulaire} onSubmit={enregistrer} className="mt-3 border border-border bg-surface px-3 py-2.5 flex flex-col gap-2 text-[11.5px]">
           <div className="text-[11px] font-bold text-text-dim">{brouillon.id ? 'Modèle' : 'Nouveau modèle'}</div>
           <div className="flex flex-wrap gap-2 items-end">
             <label className="flex flex-col gap-0.5">

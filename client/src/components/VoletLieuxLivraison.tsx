@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { avisRelectureManquee, gestePuisRelecture } from '../lib/geste-puis-relecture';
 import { useAuth } from '../lib/auth';
 import { Aide } from './chrome/Aide';
 import { corpsDuLieu, LIEU_VIDE, saisieDuLieu, type LieuLivraison, type ListeLieux, type SaisieLieu } from '../lib/lieux-livraison';
@@ -10,6 +11,11 @@ import { corpsDuLieu, LIEU_VIDE, saisieDuLieu, type LieuLivraison, type ListeLie
  * seul, comme les RIB et le reste de la structure du tiers. Le serveur juge
  * tout (client seulement, intitulé unique, un seul principal) et l'écran dit
  * son refus.
+ *
+ * SECOND TOUR DE RELECTURE (mineur 12) · le formulaire reçoit le focus à son
+ * ouverture, un geste en cours désactive les boutons (un double clic créait
+ * deux lieux, le second refusé comme homonyme), et la relecture qui suit un
+ * geste réussi a son issue (`gestePuisRelecture`).
  */
 export function VoletLieuxLivraison({ tiersId }: { tiersId: string }) {
   const { estAdmin } = useAuth();
@@ -18,12 +24,31 @@ export function VoletLieuxLivraison({ tiersId }: { tiersId: string }) {
   /** `null` · formulaire fermé ; '' · nouveau lieu ; sinon l'identifiant du lieu retouché. */
   const [edite, setEdite] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [avisRelecture, setAvisRelecture] = useState<string | null>(null);
+  const [envoi, setEnvoi] = useState(false);
+  const premierChamp = useRef<HTMLInputElement>(null);
+  // Le formulaire ouvert reçoit le focus, au premier champ.
+  useEffect(() => {
+    if (edite !== null) premierChamp.current?.focus({ preventScroll: true });
+  }, [edite]);
 
   const lire = () => api.get<ListeLieux>(`/tiers/${tiersId}/lieux-livraison`);
-  const recharger = () =>
-    lire()
-      .then(setListe)
-      .catch((e) => setErreur(e instanceof ApiError ? e.message : 'Lieux de livraison illisibles'));
+
+  /** Rend vrai si le geste a abouti · un refus se dit, la relecture manquée à part. */
+  const agir = async (geste: () => Promise<unknown>): Promise<boolean> => {
+    if (envoi) return false;
+    setErreur(null);
+    setAvisRelecture(null);
+    setEnvoi(true);
+    try {
+      const issue = await gestePuisRelecture(geste, async () => setListe(await lire()), (e) => (e instanceof ApiError ? e.message : null));
+      if (issue.erreurGeste) setErreur(issue.erreurGeste);
+      if (issue.erreurRelecture) setAvisRelecture(avisRelectureManquee('la liste des lieux', issue.erreurRelecture));
+      return issue.fait;
+    } finally {
+      setEnvoi(false);
+    }
+  };
 
   // Une réponse arrivée après un changement de client ne s'affiche pas sous la fiche suivante.
   useEffect(() => {
@@ -39,41 +64,25 @@ export function VoletLieuxLivraison({ tiersId }: { tiersId: string }) {
 
   const enregistrer = async (e: FormEvent) => {
     e.preventDefault();
-    setErreur(null);
-    try {
-      if (edite) await api.patch(`/lieux-livraison/${edite}`, corpsDuLieu(saisie));
-      else await api.post(`/tiers/${tiersId}/lieux-livraison`, corpsDuLieu(saisie));
+    const corps = corpsDuLieu(saisie);
+    const fait = await agir(() => (edite ? api.patch(`/lieux-livraison/${edite}`, corps) : api.post(`/tiers/${tiersId}/lieux-livraison`, corps)));
+    if (fait) {
       setSaisie(LIEU_VIDE);
       setEdite(null);
-      await recharger();
-    } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Lieu non enregistré');
     }
   };
 
-  const basculer = async (l: LieuLivraison, champ: { estPrincipal: true } | { estActif: boolean }) => {
-    setErreur(null);
-    try {
-      await api.patch(`/lieux-livraison/${l.id}`, { intitule: l.intitule, ...champ });
-      await recharger();
-    } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Lieu non modifié');
-    }
-  };
+  const basculer = (l: LieuLivraison, champ: { estPrincipal: true } | { estActif: boolean }) =>
+    agir(() => api.patch(`/lieux-livraison/${l.id}`, { intitule: l.intitule, ...champ }));
 
   const retirer = async (l: LieuLivraison) => {
     if (!window.confirm(`Retirer le lieu de livraison « ${l.intitule} » ?`)) return;
-    setErreur(null);
-    try {
-      await api.delete(`/lieux-livraison/${l.id}`);
-      await recharger();
-    } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Retrait impossible');
-    }
+    await agir(() => api.delete(`/lieux-livraison/${l.id}`));
   };
 
   const champ = (cle: keyof SaisieLieu, libelle: string, largeur = 'w-full') => (
     <input
+      ref={cle === 'intitule' ? premierChamp : undefined}
       aria-label={libelle}
       placeholder={libelle}
       value={saisie[cle]}
@@ -98,6 +107,11 @@ export function VoletLieuxLivraison({ tiersId }: { tiersId: string }) {
           {erreur}
         </div>
       )}
+      {avisRelecture && (
+        <div role="status" className="text-[11px] text-warning mb-1.5">
+          {avisRelecture}
+        </div>
+      )}
       {liste === null && !erreur && <div className="text-[11.5px] text-text-dim mb-2">Lecture…</div>}
       {liste !== null && liste.lieux.length === 0 && <div className="text-[11.5px] text-text-dim mb-2">Aucun lieu de livraison.</div>}
       {liste?.tronque && (
@@ -120,6 +134,7 @@ export function VoletLieuxLivraison({ tiersId }: { tiersId: string }) {
                 <button
                   type="button"
                   aria-label={`Rendre principal le lieu ${l.intitule}`}
+                  disabled={envoi}
                   onClick={() => void basculer(l, { estPrincipal: true })}
                   className="text-[11px] text-sel hover:underline">
                   Rendre principal
@@ -139,11 +154,12 @@ export function VoletLieuxLivraison({ tiersId }: { tiersId: string }) {
               <button
                 type="button"
                 aria-label={`${l.estActif ? 'Mettre en sommeil' : 'Réactiver'} le lieu ${l.intitule}`}
+                disabled={envoi}
                 onClick={() => void basculer(l, { estActif: !l.estActif })}
                 className="text-[11px] text-sel hover:underline">
                 {l.estActif ? 'Mettre en sommeil' : 'Réactiver'}
               </button>
-              <button type="button" aria-label={`Retirer le lieu ${l.intitule}`} onClick={() => void retirer(l)} className="text-[11px] text-danger hover:underline">
+              <button type="button" aria-label={`Retirer le lieu ${l.intitule}`} disabled={envoi} onClick={() => void retirer(l)} className="text-[11px] text-danger hover:underline">
                 Retirer
               </button>
             </div>
@@ -184,8 +200,8 @@ export function VoletLieuxLivraison({ tiersId }: { tiersId: string }) {
             <button type="button" onClick={() => setEdite(null)} className="text-[11.5px] text-text-dim hover:underline">
               Annuler
             </button>
-            <button type="submit" className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1">
-              Enregistrer le lieu
+            <button type="submit" disabled={envoi} className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1 disabled:opacity-50">
+              {envoi ? 'Enregistrement…' : 'Enregistrer le lieu'}
             </button>
           </div>
         </form>

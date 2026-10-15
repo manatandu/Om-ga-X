@@ -28,6 +28,7 @@ import { LIBELLE_SYSTEME } from '../lib/systemes-syscohada';
 import { dateQuittee } from '../lib/date-quittee';
 import { lireMontant } from '../lib/imputation-reglement';
 import { montant as fmt } from '../lib/montants';
+import { montantPourChamp } from '../lib/creances-douteuses';
 import type {
   FormeJuridiqueEbnl,
   FormeJuridiqueSyscohada,
@@ -1891,7 +1892,9 @@ export function ParametresDossierPage() {
                     id="seuil-ecart-reglement"
                     inputMode="decimal"
                     disabled={!estAdmin || envoi}
-                    value={seuilSaisi ?? (params.seuilEcartReglement === null ? '' : String(params.seuilEcartReglement))}
+                    // Absent (`undefined`) comme nul · vide, jamais « undefined » ;
+                    // prérempli au centime (second tour, mineur 15).
+                    value={seuilSaisi ?? montantPourChamp(params.seuilEcartReglement)}
                     placeholder="Aucun"
                     onChange={(e) => setSeuilSaisi(e.target.value)}
                     className="w-[110px] border border-border px-1.5 py-[1px] text-right"
