@@ -2006,6 +2006,12 @@ export interface LigneBrouillard {
   createdAt: string;
   journal: string;
   journalIntitule: string;
+  /**
+   * Restée au brouillard dans un journal de situation (reprise des écritures
+   * tenues) · elle ne s'y valide pas, elle se transfère dans un journal
+   * ordinaire.
+   */
+  journalDeSituation: boolean;
   numeroPiece: number | null;
   libelle: string;
   reference: string | null;
@@ -4436,6 +4442,13 @@ export type ResultatValidation = {
   sousDerogation: number;
   /** La phrase sourcée à servir, aiguillée sur le référentiel du dossier. */
   motifRefus: string | null;
+  /**
+   * Restées au brouillard dans un journal de situation · écartées de la
+   * validation par période et comptées, jamais validées sur place.
+   */
+  ecarteesJournalDeSituation: number;
+  /** L'issue servie avec ce compteur (validation par période seulement). */
+  motifEcarteesJournalDeSituation?: string | null;
 };
 
 /**

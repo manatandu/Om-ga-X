@@ -1144,7 +1144,7 @@ function LienRedressement({ ecart, peutEcrire, agir }: { ecart: EcartInventaire;
         {candidates?.map((e) => (
           <option key={e.id} value={e.id}>
             {e.date.slice(0, 10)} · {e.numeroPiece ?? 's.n.'} · {e.libelle}
-            {e.statut === 'BROUILLARD' ? ' (brouillard)' : e.statut === 'SITUATION' ? ' (situation)' : ''}
+            {e.statut === 'BROUILLARD' ? ' (brouillard)' : ''}
           </option>
         ))}
       </select>

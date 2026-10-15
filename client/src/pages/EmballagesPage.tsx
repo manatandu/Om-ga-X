@@ -598,7 +598,7 @@ function LienEcriture({
             {candidates?.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.date} · {e.numeroPiece ?? 's.n.'} · {e.libelle}
-                {e.statut === 'BROUILLARD' ? ' (brouillard)' : e.statut === 'SITUATION' ? ' (situation)' : ''}
+                {e.statut === 'BROUILLARD' ? ' (brouillard)' : ''}
               </option>
             ))}
           </select>

@@ -8,6 +8,7 @@ import { EnteteImpression } from '../components/chrome/EnteteImpression';
 import { PortailModale } from '../components/PortailModale';
 import { montantOuVide as montant } from '../lib/montants';
 import { compteDuNumeroTape } from '../lib/comptes-proposes';
+import { ecouterEchap } from '../lib/echap';
 
 /**
  * BROUILLARD · État → Brouillard de Sage 100 i7 : « un document qui permet de
@@ -43,6 +44,17 @@ interface LigneEditee {
   libelle: string;
   debit: string;
   credit: string;
+}
+
+/**
+ * Le TRANSFERT d'un brouillard resté dans un journal de situation (reprise des
+ * écritures tenues) · journal d'arrivée ordinaire, report au premier jour non
+ * clôturé sur demande (AUDCIF art. 22, 4°). Les lignes ne bougent pas.
+ */
+interface Transfert {
+  ligne: LigneBrouillard;
+  journalId: string;
+  reporter: boolean;
 }
 
 interface EcritureEditee {
@@ -116,6 +128,8 @@ export function BrouillardPage() {
   const [edition, setEdition] = useState<EcritureEditee | null>(null);
   const [erreurEdition, setErreurEdition] = useState<string | null>(null);
   const [comptes, setComptes] = useState<Compte[] | null>(null);
+  const [transfert, setTransfert] = useState<Transfert | null>(null);
+  const [erreurTransfert, setErreurTransfert] = useState<string | null>(null);
 
   const charger = async () => {
     if (!exerciceCourant) return;
@@ -152,7 +166,12 @@ export function BrouillardPage() {
       return suivante;
     });
 
-  const selectionnables = useMemo(() => (etat?.lignes ?? []).filter((l) => l.equilibree), [etat]);
+  // Le brouillard resté dans un journal de situation ne se valide pas sur
+  // place · il se transfère d'abord (le serveur le refuse en le nommant).
+  const selectionnables = useMemo(() => (etat?.lignes ?? []).filter((l) => l.equilibree && !l.journalDeSituation), [etat]);
+  const heritees = useMemo(() => (etat?.lignes ?? []).filter((l) => l.journalDeSituation).length, [etat]);
+  // Les journaux où la pièce peut aller · ordinaires et actifs.
+  const journauxDArrivee = useMemo(() => journaux.filter((j) => j.type !== 'SITUATION' && j.estActif), [journaux]);
 
   /**
    * CE QUE L'ÉCRAN DIT APRÈS UNE VALIDATION, et pourquoi ce n'est pas un
@@ -170,15 +189,20 @@ export function BrouillardPage() {
    * le suit.
    */
   const phraseValidation = (r: ResultatValidation, siRienAFaire?: string) => {
+    // Le brouillard resté dans un journal de situation, écarté et compté par
+    // la validation par période · dit après le reste, jamais tu (la période
+    // ne passerait pas pour centralisée).
+    const situation =
+      (r.ecarteesJournalDeSituation ?? 0) > 0 ? ` ${r.motifEcarteesJournalDeSituation ?? ''}`.trimEnd() : '';
     if (r.refuseesSecondRegard > 0) {
       return (
         `${r.validees} écriture(s) entrée(s) au livre-journal, ` +
-        `${r.refuseesSecondRegard} écartée(s). ${r.motifRefus ?? ''}`
+        `${r.refuseesSecondRegard} écartée(s). ${r.motifRefus ?? ''}${situation}`
       );
     }
-    if (r.validees === 0 && siRienAFaire) return siRienAFaire;
+    if (r.validees === 0 && siRienAFaire && !situation) return siRienAFaire;
     const visa = r.sousDerogation > 0 ? ' Second regard nominatif porté au journal.' : '';
-    return `${r.validees} écriture(s) entrée(s) au livre-journal.${visa}`;
+    return `${r.validees} écriture(s) entrée(s) au livre-journal.${visa}${situation}`;
   };
 
   const validerSelection = async () => {
@@ -296,6 +320,43 @@ export function BrouillardPage() {
     }
   };
 
+  const ouvrirTransfert = (l: LigneBrouillard) => {
+    setErreurTransfert(null);
+    // Un choix unique se présélectionne.
+    setTransfert({ ligne: l, journalId: journauxDArrivee.length === 1 ? journauxDArrivee[0].id : '', reporter: false });
+  };
+
+  useEffect(() => {
+    if (!transfert) return;
+    return ecouterEchap(() => {
+      if (envoi) return true;
+      setTransfert(null);
+      return true;
+    });
+  }, [transfert, envoi]);
+
+  const transferer = async () => {
+    if (!transfert || !transfert.journalId) return;
+    setEnvoi(true);
+    setErreurTransfert(null);
+    try {
+      const r = await api.post<{ numeroPiece: number | null; journal: { code: string } }>(
+        `/ecritures/${transfert.ligne.id}/transfert`,
+        { journalId: transfert.journalId, ...(transfert.reporter ? { reporterAuPremierJourOuvert: true } : {}) },
+      );
+      setTransfert(null);
+      setInfo(
+        `Pièce ${transfert.ligne.journal} ${transfert.ligne.numeroPiece ?? '·'} transférée en ${r.journal.code} ` +
+          `${r.numeroPiece ?? '·'} · elle se valide maintenant comme toute pièce.`,
+      );
+      await charger();
+    } catch (e) {
+      setErreurTransfert(e instanceof ApiError ? e.message : 'Transfert impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
   const supprimer = async (id: string) => {
     setErreur(null);
     try {
@@ -407,6 +468,19 @@ export function BrouillardPage() {
           )}
         </div>
       )}
+      {heritees > 0 && (
+        <div className="mb-2.5 text-[11.5px] text-warning bg-warning-soft border border-warning/30 rounded-[3px] px-2.5 py-1.5 flex items-center gap-1.5">
+          <strong>
+            {heritees} pièce(s) de la liste sont restées au brouillard dans un journal de situation · elles ne s’y
+            valident pas, transférez-les dans un journal ordinaire.
+          </strong>
+          <Aide
+            titre="Brouillard d'un journal de situation"
+            texte="Saisies avant la règle des écritures de situation et tenues par une lettre, un pointage ou un module, ces pièces sont restées au brouillard. Le transfert les fait passer dans un journal ordinaire, au numéro suivant de ce journal, sans toucher à leurs lignes · lettrage, pointage et liens des modules restent tels quels. Datée d'une période close dans le journal choisi, la pièce va au premier jour non clôturé si vous le demandez, sa date d'origine gardée en date de valeur. Elle se valide ensuite comme toute pièce."
+            source="AUDCIF, art. 22, 1° à 4°"
+          />
+        </div>
+      )}
       {etat && etat.totaux.desequilibrees > 0 && (
         <div className="mb-2.5 text-[11.5px] text-danger bg-danger-soft border border-danger/30 rounded-[3px] px-2.5 py-2">
           {etat.totaux.desequilibrees} écriture(s) sont déséquilibrées et ne peuvent pas être validées. Reprenez-les
@@ -448,7 +522,7 @@ export function BrouillardPage() {
               }`}
             >
               <span>
-                {peutValider && l.equilibree && (
+                {peutValider && l.equilibree && !l.journalDeSituation && (
                   <input type="checkbox" checked={selection.has(l.id)} onChange={() => basculer(l.id)} />
                 )}
               </span>
@@ -480,6 +554,15 @@ export function BrouillardPage() {
                 {l.ancienneteJours} j
               </span>
               <span className="text-right whitespace-nowrap">
+                {peutEcrire && l.journalDeSituation && (
+                  <button
+                    onClick={() => ouvrirTransfert(l)}
+                    title="Transférer dans un journal ordinaire, où la pièce se valide"
+                    className="text-[11.5px] text-sel font-semibold hover:underline mr-2"
+                  >
+                    Transférer
+                  </button>
+                )}
                 {peutEcrire && (
                   <button
                     onClick={() => ouvrirEdition(l)}
@@ -547,6 +630,80 @@ export function BrouillardPage() {
           </div>
         )}
       </div>
+
+      {transfert && (
+        <PortailModale>
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 anim-voile">
+            <form
+              role="dialog"
+              aria-label="Transférer dans un journal ordinaire"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void transferer();
+              }}
+              className="w-full max-w-[460px] bg-surface border border-border rounded-[4px] overflow-hidden shadow-flottante anim-modale modale-bornee max-h-[calc(100dvh-2rem)] overflow-y-auto"
+            >
+              <div className="h-[32px] flex items-center justify-between px-3 bg-surface text-text border-b border-border text-[11.5px]">
+                <span>
+                  Transférer la pièce {transfert.ligne.journal} {transfert.ligne.numeroPiece ?? ''}
+                </span>
+                <Aide
+                  titre="Transférer dans un journal ordinaire"
+                  texte="La pièce change de journal et prend le numéro suivant du journal choisi. Ses lignes, son lettrage, son pointage et ses liens aux modules ne bougent pas, et le journal d'audit garde son journal et son numéro d'origine. Si sa date tombe dans une période close du journal choisi, cochez le report · elle sera enregistrée au premier jour non clôturé, sa date d'origine gardée en date de valeur, jamais au-delà de l'exercice."
+                  source="AUDCIF, art. 22, 1° à 4°"
+                />
+              </div>
+              <div className="p-3 flex flex-col gap-2.5 text-[11.5px]">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold text-text-dim">Journal d'arrivée</span>
+                  <select
+                    autoFocus
+                    required
+                    value={transfert.journalId}
+                    onChange={(e) => setTransfert({ ...transfert, journalId: e.target.value })}
+                    className="border border-border rounded-[3px] bg-surface px-2 py-1"
+                  >
+                    <option value="">Choisir un journal…</option>
+                    {journauxDArrivee.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.code} · {j.intitule}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {journauxDArrivee.length === 0 && (
+                  <div className="text-warning">
+                    Aucun journal ordinaire actif dans ce dossier · créez-en un dans Structure, Journaux, puis revenez.
+                  </div>
+                )}
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={transfert.reporter}
+                    onChange={(e) => setTransfert({ ...transfert, reporter: e.target.checked })}
+                  />
+                  <span>Reporter au premier jour non clôturé si la date tombe dans une période close</span>
+                </label>
+                {erreurTransfert && (
+                  <div className="text-danger bg-danger-soft border border-danger/30 px-2.5 py-1.5">{erreurTransfert}</div>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button type="button" disabled={envoi} onClick={() => setTransfert(null)} className="border border-border px-3 py-1">
+                    Abandonner
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={envoi || !transfert.journalId}
+                    className="bg-sel text-white font-semibold px-3.5 py-1 disabled:opacity-50"
+                  >
+                    Transférer
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </PortailModale>
+      )}
 
       {edition && (
         <PortailModale>
