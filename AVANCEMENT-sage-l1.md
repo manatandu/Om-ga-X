@@ -383,6 +383,60 @@ Commits `09229fe`, `824f28d`, `f4ce10a`, `baab0ba` (signés, poussés).
   n° 1 ; N clôturé · report du client à 500 000, rappel et échéances de N+1
   sans la simulation.
 
+## Relecture du second tour (2026-10-15) · un BLOQUANT, et les points c, a, b, d, e, f, h
+
+Copie reprise sur `c22d765` (fusion de `origin/main`, virement de fonds),
+travail par-dessus, historique intact. Commits `3d633ec`, `795ae30`,
+`eb56ecf`, `eb45639`, `76f4cbc`, `b8fad2a` (signés, poussés).
+
+- BLOQUANT · le brouillard hérité d'un journal de situation enfermait le
+  dossier (ni validation sur place, ni délettrage d'un groupe figé, ni
+  retouche d'un journal clôturé, clôture annuelle refusée). Geste
+  « Transférer dans un journal ordinaire » (`POST /ecritures/:id/transfert`,
+  `transfererDansUnJournalOrdinaire`, bouton du Brouillard) · journal,
+  numéro (le suivant du journal d'arrivée) et, sur demande, date (premier
+  jour non clôturé, date de valeur gardée) changent, jamais les lignes ·
+  lettrage, pointage, liens des modules suivent ; contrôles d'en-tête de la
+  saisie sur le journal d'arrivée ; relu dans la transaction (409) ; l'en-tête
+  d'avant reste au journal d'audit. Le contrôle
+  `JOURNAL_DE_SITUATION_AU_BROUILLARD`, le refus de clôture et la validation
+  le proposent (décision ci-dessous).
+- c · `virements-fonds` · la lecture des lignes en devise écarte les
+  simulations ; la relecture de l'annulation est rangée au filet.
+- a · la validation par période écarte et COMPTE le brouillard hérité
+  (`ecarteesJournalDeSituation`, motif avec l'issue), sans refuser le mois ;
+  une sélection qui le contient est refusée en le nommant.
+- b · le filet lit le filtre par sa STRUCTURE · le statut au niveau de
+  l'écriture (tête, clé `ecriture`, AND, OR à chaque branche, NOT, is),
+  jamais celui de l'exercice ou du lettrage ; une variable en position de
+  filtre seulement (filtre entier, `...x`, valeur de `ecriture`, branche),
+  un membre ou une fonction fléchée locale résolus ; une catégorie à chaque
+  niveau (le groupe partiel `lettrageId: { not: null }` en est). Une
+  échappée trouvée et corrigée (`reporterLesTenues`, candidates au
+  relettrage comptées sur les simulations de N+1) ; seize lectures par
+  identifiant que le mot couvrait rangées à leur motif, la fusion des
+  comptes à l'usage (elle déplace aussi les lignes des simulations).
+- d · l'impression ou l'export d'un journal de situation ne prend aucun
+  numéro de la suite (AUDCIF art. 22, 1° et 7°), la page le dit.
+- e · `avecStatut` teste la valeur (`statut: undefined` laissait passer).
+- f · la reprise des écritures tenues lit les clés dans `pg_constraint` et
+  lève si elle n'en lit aucune ; n'étant appliquée que sur la base jetable,
+  elle est réécrite en place, la base remise à neuf, `migrate diff` sans
+  dérive ; rejouée sur données (lettrée et tenue au brouillard, libre en
+  situation).
+- h · étiquette « (situation) » morte retirée (inventaire, emballages).
+- Vraie base à travers la période close et la clôture
+  (`l1-transfert.mjs`, 0 écart) · factures de février au 411 (100 000,
+  40 000, 25 000), règlements dans deux journaux d'avant la règle (avril,
+  février, avril dans un journal clôturé totalement) lettrés avec elles,
+  clôture de période au 31/03, retypage et migrations rejoués · les trois
+  restent au brouillard ; validation sur place, délettrage figé, retouche,
+  clôture annuelle refusés avec l'issue ; transfert en OD · avril à sa date,
+  février refusé sans report puis reporté au 01/04 avec sa date de valeur,
+  le journal clôturé n'arrêtant rien ; numéros suivants, lettrage gardé,
+  audit ; validation, 411 soldé, 521 à 165 000 ; N clôturé, à-nouveau 521 à
+  165 000, 411 nul, 13 à -165 000.
+
 ## Bloc du § 3 (2026-10-14, après la dernière fonction)
 
 - Serveur · `tsc --noEmit` sans erreur ; jest en six tranches successives,
@@ -428,15 +482,29 @@ d'organisation ou de produit.
   livre-journal (art. 22, 2°), le logiciel ne sait pas si elle enregistre une
   opération (art. 22, 1°), et délettrer ou dépointer d'office défairait des
   gestes du cabinet que l'art. 20 (correction des écritures) ne vise pas ·
-  nommées par le contrôle, issues dites (défaire ce qui la tient, supprimer,
-  ressaisir dans un journal ordinaire).
+  nommées par le contrôle, l'issue dite (le transfert, second tour).
 - M6, par la loi · un journal sans pièce n'a rien à attester, rien n'est
   enregistré ; une impression ne se supprime jamais (art. 22, 7° · son numéro
   reviendrait au suivant) · elle suit l'exercice qui reprend sa période
   (`rattacherLesImpressions`, mises à jour unitaires au journal d'audit) et
   n'occupe plus l'exercice ; un journal dont une impression compte des pièces
   ne se supprime pas (la trace le nomme), la mise en sommeil reste l'issue.
-- D-L1-60 (ci-dessus), par la loi · AUDCIF art. 22, 1°, 3° et 7°.
+- TRANSFERT DU BROUILLARD HÉRITÉ (second tour, BLOQUANT), par la loi ·
+  AUDCIF art. 22, 1° (origine, contenu, imputation gardés · lignes, auteur,
+  date de saisie ; l'en-tête d'avant au journal d'audit), 2° (l'irréversibilité
+  frappe le validé · un brouillard se modifie, le transfert ne valide rien),
+  3° et 4° (la chronologie du journal d'ARRIVÉE est tenue · numéro suivant,
+  période close · premier jour non clôturé sur demande, date de valeur
+  mentionnée, jamais hors de l'exercice). Les clôtures du journal de
+  situation ne retiennent pas la pièce · elles portent sur des opérations
+  enregistrées, qu'elle n'est pas (même lecture que `cloturesApplicables`).
+  Geste de saisie (mêmes rôles que la modification du brouillard), la
+  validation restant au comptable. La validation sur place, issue de
+  rechange proposée, n'est pas retenue · elle aurait fait entrer au
+  livre-journal une pièce restée dans un journal de situation, contre
+  l'invariant.
+- D-L1-60 (ci-dessus), par la loi · AUDCIF art. 22, 1°, 3° et 7° · une
+  impression de journal de situation n'entre pas dans la suite numérotée.
 - #16 · seule règle lue, le CPCC (ch. 6, « un seul repère ») · tenue par
   l'unicité de la lettre sur le compte, refus nommé.
 - #14 · aucun texte ne régit le geste (AUDCIF art. 18, al. 3 ; SYCEBNL
@@ -479,10 +547,17 @@ une clôture de période, hors de la numérotation du fichier (`modeEffectif`).
 Le validé hérité n'est pas retouché, il est nommé
 (`JOURNAL_DE_SITUATION_AU_LIVRE_JOURNAL`) ; le brouillard hérité qu'une
 lettre, un pointage ou un module tenait reste au brouillard
-(`20270171040000`), nommé (`JOURNAL_DE_SITUATION_AU_BROUILLARD`). Aucune
-simulation ne se rattache à un acte (`motifSimulationNonRattachable`).
-L'extension lit par la transaction en cours. TOUTE LECTURE DES ÉCRITURES
-POSE UN STATUT · `lectures-hors-situation.spec.ts` découpe chaque appel et
+(`20270171040000`, clés lues dans `pg_constraint`), nommé
+(`JOURNAL_DE_SITUATION_AU_BROUILLARD`), et SE TRANSFÈRE dans un journal
+ordinaire (`transfererDansUnJournalOrdinaire`, AUDCIF art. 22, 1° à 4° ·
+journal, numéro et, sur demande, date au premier jour non clôturé ;
+lignes, lettrage, pointage et modules gardés), où il se valide ; la
+validation par période l'écarte en le comptant. Aucune simulation ne se
+rattache à un acte (`motifSimulationNonRattachable`) ni ne prend un numéro
+d'impression. L'extension lit par la transaction en cours. TOUTE LECTURE DES
+ÉCRITURES POSE UN STATUT AU NIVEAU DE L'ÉCRITURE · `lectures-hors-situation.spec.ts`
+découpe chaque appel, lit le filtre par sa structure (jamais le statut de
+l'exercice ou du lettrage, une variable en position de filtre seulement) et
 tient la liste fermée des exceptions, au nombre près.
 
 **Journal marqué imprimé (ligne sage-l1, fonction 60, décision par la loi du
