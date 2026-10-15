@@ -175,7 +175,15 @@ les trois fichiers sans colonne exigée manquante.
   référentiels avec les nouvelles fenêtres.
 
 ## Reste
-- Bloc du § 3 complet, tests navigateur.
+- Tranches 3 à 6 de la suite serveur à voir passer jusqu'au bout. Au
+  2026-10-15 · typage serveur et client verts, client `npm test` (270
+  fichiers, 2 104 tests) et `npm run build` verts, construction du serveur
+  verte, tranche 1/6 verte (149 suites, 1 777 tests), tranche 2/6 verte
+  (149 suites, 2 070 tests). En tranche 3, quatre suites sont tombées par
+  un SIGKILL du processus de test (mémoire du poste, aucune assertion) ·
+  rejouées seules, vertes (4 suites, 96 tests). Tests navigateur de la
+  ligne et balayage des menus verts sous Chromium ; WebKit non lancé
+  (absent du poste).
 
 ## Décisions par la loi
 
@@ -321,4 +329,6 @@ npx jest src/modules/exports --maxWorkers=1
 (cd client && npx vitest run src/lib/export-modifications.spec.ts)
 (cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4307 \
   OMEGAX_API=http://localhost:4307/api npx playwright test tests/sage-l7-*.e2e.ts)
+# suite serveur entière, une tranche après l'autre
+for k in 1 2 3 4 5 6; do npx jest --shard=$k/6 --maxWorkers=1 --workerIdleMemoryLimit=800MB; done
 ```
