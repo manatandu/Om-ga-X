@@ -117,23 +117,51 @@ export function avertissementArt59Bis(p: {
   /** D'où la nature est lue · le mode déclaré, ou le compte de trésorerie du journal. */
   source: 'MODE' | 'COMPTE';
   compte: string;
-  /** Chaque facture réglée, son montant entier (la transaction), sa référence. */
+  /** Chaque facture réglée, jugée sur sa ligne (une facture, ou l'une de ses échéances), sa référence. */
   factures: ReadonlyArray<{ reference: string; montant: number }>;
+  /**
+   * La pièce qui ne passe le seuil que par ses AUTRES lignes au compte · ce
+   * peut être les échéances d'une facture ou plusieurs factures (relecture
+   * M3) · avis SOUS CONDITION, montant de la pièce.
+   */
+  sousCondition?: ReadonlyArray<{ reference: string; montant: number }>;
+  /** L'à-nouveau sans facture d'origine retrouvée · nommé, montant réglé, seuil non jugé (relecture M3). */
+  nonJugees?: ReadonlyArray<{ reference: string; montant: number }>;
 }): string | null {
   if (p.sens !== 'FOURNISSEUR') return null;
   if (p.dossierAssujetti === false) return null;
   if (p.nature === null || NATURES_ADMISES_ART_59_BIS.has(p.nature)) return null;
   if (p.date.getTime() < ENTREE_EN_VIGUEUR_ART_59_BIS.getTime()) return null;
-  const visees = p.factures.filter((f) => Math.round(f.montant * 100) >= SEUIL_ART_59_BIS * 100);
-  if (visees.length === 0) return null;
+  const auSeuil = (f: { montant: number }) => Math.round(f.montant * 100) >= SEUIL_ART_59_BIS * 100;
+  const visees = p.factures.filter(auSeuil);
+  const conditionnelles = (p.sousCondition ?? []).filter(auSeuil);
+  const nonJugees = p.nonJugees ?? [];
+  if (visees.length + conditionnelles.length + nonJugees.length === 0) return null;
   const fmt = (x: number) => x.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const mode = LIBELLES_NATURES[p.nature].toLowerCase();
-  return (
-    `${p.compte} · ${visees.map((f) => `${f.reference} (${fmt(f.montant)})`).join(', ')} ` +
-    `${visees.length > 1 ? 'sont des transactions' : 'est une transaction'} d’au moins ${fmt(SEUIL_ART_59_BIS)} FC, ` +
-    `payée${visees.length > 1 ? 's' : ''} ${p.source === 'COMPTE' ? 'en caisse ou en monnaie électronique (compte du journal)' : `par ${mode}`} · ` +
-    'entre assujettis, l’O.-L. n° 10/001, art. 59 bis, veut un paiement par chèque, par virement ou par carte bancaire, ' +
-    'et l’art. 74 bis retire alors le droit à déduction de la TVA supportée. Si le fournisseur est assujetti, ' +
-    'la TVA de ces factures n’est pas déductible ; OmegaX ne la retire pas de la déclaration.'
-  );
+  const payePar = p.source === 'COMPTE' ? 'en caisse ou en monnaie électronique (compte du journal)' : `par ${mode}`;
+  const phrases: string[] = [];
+  const nommees = [
+    ...visees.map((f) => `${f.reference} (${fmt(f.montant)})`),
+    ...conditionnelles.map((f) => `${f.reference} (${fmt(f.montant)}, si ses lignes au compte sont les échéances d’une même facture)`),
+  ];
+  if (nommees.length > 0) {
+    phrases.push(
+      `${p.compte} · ${nommees.join(', ')} ` +
+        `${nommees.length > 1 ? 'sont des transactions' : 'est une transaction'} d’au moins ${fmt(SEUIL_ART_59_BIS)} FC, ` +
+        `payée${nommees.length > 1 ? 's' : ''} ${payePar} · ` +
+        'entre assujettis, l’O.-L. n° 10/001, art. 59 bis, veut un paiement par chèque, par virement ou par carte bancaire, ' +
+        'et l’art. 74 bis retire alors le droit à déduction de la TVA supportée. Si le fournisseur est assujetti, ' +
+        'la TVA de ces factures n’est pas déductible ; OmegaX ne la retire pas de la déclaration.',
+    );
+  }
+  if (nonJugees.length > 0) {
+    phrases.push(
+      `${p.compte} · ${nonJugees.map((f) => `${f.reference} (${fmt(f.montant)} réglés)`).join(', ')} · ` +
+        'facture d’origine non retrouvée (à-nouveau au solde, bilan d’ouverture ou pièce introuvable) · seuil de ' +
+        `l’art. 59 bis non jugé. Payée ${payePar}, une facture d’au moins ${fmt(SEUIL_ART_59_BIS)} FC entre ` +
+        'assujettis perdrait le droit à déduction de sa TVA (art. 74 bis) · vérifiez son montant sur la pièce.',
+    );
+  }
+  return phrases.join(' ');
 }

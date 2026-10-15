@@ -837,7 +837,7 @@ describe('le mode de règlement du lot (ligne sage-l2, fonction 1)', () => {
     expect(r.avertissements.join(' ')).toMatch(/art\. 59 bis.*art\. 74 bis/);
   });
 
-  it('art. 59 bis · une facture découpée en deux échéances sous le seuil se lit sur sa PIÈCE, nommée une fois', async () => {
+  it('art. 59 bis · deux échéances sous le seuil se lisent sur leur PIÈCE, SOUS CONDITION, nommées une fois (M3)', async () => {
     const { service, lignes, prisma } = monter();
     for (const id of ['f1', 'f2']) {
       const l = lignes.find((x) => x.id === id)!;
@@ -847,8 +847,9 @@ describe('le mode de règlement du lot (ligne sage-l2, fonction 1)', () => {
     (prisma.tenant.findFirst as jest.Mock).mockResolvedValue({ assujettiTva: true, assujettissementTvaRepondu: true });
     const r = await service.enregistrer('t', 'u', { ...base, modeReglementId: 'esp', reglements: [{ compteId: 'c401', ligneIds: ['f1', 'f2'] }] });
     const dit = r.avertissements.join(' ');
-    expect(dit).toMatch(/1\s200\s000,00/);
+    expect(dit).toMatch(/1\s200\s000,00, si ses lignes au compte sont les échéances d’une même facture/);
     expect(dit).toMatch(/est une transaction/);
+    expect(dit.match(/art\. 59 bis/g)).toHaveLength(1);
   });
 
   it('art. 59 bis · la même facture payée par virement ne dit rien', async () => {

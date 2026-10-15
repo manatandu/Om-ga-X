@@ -70,6 +70,20 @@ describe('art. 59 bis · la liste fermée du texte', () => {
     expect(avertissementArt59Bis({ ...base, date: new Date('2013-05-27') })).not.toBeNull();
   });
 
+  // RELECTURE « ÉCHECS SILENCIEUX », M3 · ce que la pièce ne dit pas ne
+  // s'affirme pas · la pièce à plusieurs lignes est avertie sous condition,
+  // l'à-nouveau sans facture retrouvée nommé « seuil non jugé ».
+  it('la pièce à plusieurs lignes est avertie SOUS CONDITION, l’à-nouveau sans origine NON JUGÉ', () => {
+    const conditionnelle = avertissementArt59Bis({ ...base, factures: [], sousCondition: [{ reference: 'pièce 8', montant: 1_200_000 }] });
+    expect(conditionnelle).toMatch(/pièce 8 \(1\s200\s000,00, si ses lignes au compte sont les échéances d’une même facture\)/);
+    const nonJugee = avertissementArt59Bis({ ...base, factures: [], nonJugees: [{ reference: 'pièce 1', montant: 3_000_000 }] });
+    expect(nonJugee).toContain('facture d’origine non retrouvée');
+    expect(nonJugee).toContain('seuil de l’art. 59 bis non jugé');
+    expect(nonJugee).not.toMatch(/est une transaction/);
+    // Sous le seuil, une pièce conditionnelle ne dit rien.
+    expect(avertissementArt59Bis({ ...base, factures: [], sousCondition: [{ reference: 'p', montant: 999_999.99 }] })).toBeNull();
+  });
+
   it('sans mode ni compte qui dise la nature, rien n’est présumé', () => {
     expect(avertissementArt59Bis({ ...base, nature: null })).toBeNull();
   });

@@ -26,8 +26,8 @@ import { lignesDeReevaluationSurLesTiers } from './lignes-de-reevaluation';
 import { avertissementExtourneManquante, issueReevaluationDejaPassee, motifReglementDejaReevalue } from './reevaluation-et-ecart-realise';
 import { OrdresVirementService, type LigneAOrdonner } from './ordres-virement.service';
 import { modeDuDossier } from './modes-reglement.service';
-import { avertissementArt59Bis, NATURES_ADMISES_ART_59_BIS, natureLueSurLeCompte } from './modes-reglement';
-import { estDAnouveau, transactionsDesLignes, type TransactionReglee } from './transactions-art-59-bis';
+import { avertissementArt59Bis, NATURES_ADMISES_ART_59_BIS, natureLueSurLeCompte, SEUIL_ART_59_BIS } from './modes-reglement';
+import { classerTransactions, estDAnouveau, transactionsDesLignes, type TransactionReglee } from './transactions-art-59-bis';
 import {
   RACINES_ECART_ESCOMPTE,
   avertissementEscompteApresEcheance,
@@ -834,12 +834,16 @@ export class ReglementsService {
       const nature59 = nature !== null && !NATURES_ADMISES_ART_59_BIS.has(nature);
       const transactions = nature59 ? await transactionsDesLignes(this.prisma, { tenantId, exerciceId: dto.exerciceId, lignes }) : new Map<string, TransactionReglee>();
       for (const p of plan) {
-        // Une facture se nomme une fois, même réglée par deux de ses échéances.
-        const factures = new Map<string, { reference: string; montant: number }>();
-        for (const l of p.siennes) {
-          const t = transactions.get(l.id);
-          if (t) factures.set(t.cle, { reference: t.reference, montant: t.montant });
-        }
+        // Une facture se nomme une fois, même réglée par deux de ses
+        // échéances ; la pièce à plusieurs lignes n'est avertie que SOUS
+        // CONDITION, l'à-nouveau sans origine NON JUGÉ (relecture M3).
+        const { jugees, sousCondition, nonJugees } = classerTransactions(
+          p.siennes.flatMap((l) => {
+            const t = transactions.get(l.id);
+            return t ? [t] : [];
+          }),
+          SEUIL_ART_59_BIS,
+        );
         const avertissement = avertissementArt59Bis({
           sens: dto.sens,
           date: new Date(dto.date),
@@ -847,7 +851,9 @@ export class ReglementsService {
           nature,
           source: mode ? 'MODE' : 'COMPTE',
           compte: p.compte.numero,
-          factures: [...factures.values()],
+          factures: jugees,
+          sousCondition,
+          nonJugees,
         });
         if (avertissement) avertissements.push(avertissement);
       }
