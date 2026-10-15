@@ -6,8 +6,10 @@ import {
   articlesDesConditions,
   EDITEUR,
   FORMULES_DU_CONTRAT,
+  ElementsDeLOffre,
   IdentiteEditeur,
   mentionsAArreter,
+  OFFRE,
   RECLAMATIONS,
   texteBrutDesConditions,
   VERSION_CONDITIONS_LICENCE,
@@ -35,6 +37,11 @@ const IDENTITE_COMPLETE: IdentiteEditeur = {
   immatriculation: 'NON_ASSUJETTIE',
 };
 const RECLAMATIONS_COMPLETES = { courriel: 'reclamations@exemple.cd', telephone: '+243 000 000 001', modalites: 'Réponse sous trois jours ouvrables.' };
+const OFFRE_COMPLETE: ElementsDeLOffre = {
+  modalitesPaiement: 'Virement bancaire au compte indiqué sur la facture.',
+  droitRetractation: 'Exemple de clause de rétractation.',
+  garantiesLegales: 'Exemple de clause de garanties légales.',
+};
 
 const contexte = (c: Partial<ContexteAcceptation> = {}): ContexteAcceptation => ({
   mentions: [],
@@ -55,15 +62,36 @@ describe('l’offre dit ce que la loi exige, sinon elle ne s’accepte pas (Code
     expect(EDITEUR.telephone).toBeNull();
     expect(EDITEUR.immatriculation).toBeNull();
     expect(RECLAMATIONS).toEqual({ courriel: null, telephone: null, modalites: null });
+    expect(OFFRE).toEqual({ modalitesPaiement: null, droitRetractation: null, garantiesLegales: null });
     const manque = mentionsAArreter();
-    expect(manque.length).toBe(6);
+    expect(manque.length).toBe(9);
     expect(manque.join(' ')).toContain('art. 52, 3°');
     expect(manque.join(' ')).toContain('art. 53, 13°');
     expect(manque.join(' ')).toContain('art. 53, 14°');
   });
 
+  it('l’offre dit aussi le paiement, la rétractation et les garanties légales (art. 53, 6°, 16° et 20°) · relecture M3', () => {
+    // La garde de l'art. 54, al. 2 ne lisait que l'identité et les
+    // réclamations · une identité complète ouvrait l'acceptation sur une offre
+    // muette sur ces trois points que l'art. 53 énumère.
+    const reste = mentionsAArreter(IDENTITE_COMPLETE, RECLAMATIONS_COMPLETES);
+    expect(reste).toEqual([
+      'les modalités de paiement, notamment les moyens de paiement acceptés (art. 53, 6°)',
+      'l’existence ou l’absence d’un droit de rétractation et ses conditions d’exercice (art. 53, 16°)',
+      'les garanties légales de conformité, des vices cachés et d’éviction (art. 53, 20°)',
+    ]);
+    const texte = texteBrutDesConditions();
+    expect(texte).toContain(`Les modalités de paiement, notamment les moyens de paiement acceptés · (${A_ARRETER})`);
+    expect(texte).toContain(`L’existence ou l’absence d’un droit de rétractation pour le présent contrat, et ses conditions d’exercice · (${A_ARRETER}) (art. 53, 16°).`);
+    expect(texte).toContain(`Les garanties légales de conformité, des vices cachés et d’éviction · (${A_ARRETER})`);
+    expect(motifAcceptationFermee(contexte({ mentions: reste }))).toContain('art. 53, 6°');
+  });
+
   it('complétées, plus rien ne manque · l’immatriculation peut être déclarée sans objet (art. 52, 4°, « si elle est assujettie »)', () => {
-    expect(mentionsAArreter(IDENTITE_COMPLETE, RECLAMATIONS_COMPLETES)).toEqual([]);
+    expect(mentionsAArreter(IDENTITE_COMPLETE, RECLAMATIONS_COMPLETES, OFFRE_COMPLETE)).toEqual([]);
+    const complet = texteBrutDesConditions(IDENTITE_COMPLETE, RECLAMATIONS_COMPLETES, OFFRE_COMPLETE);
+    expect(complet).toContain('Virement bancaire au compte indiqué sur la facture.');
+    expect(complet).not.toContain(`moyens de paiement acceptés · (${A_ARRETER})`);
   });
 
   it('le texte écrit « à arrêter » à la place de chaque inconnue, et rien d’autre', () => {

@@ -28,7 +28,8 @@
  *     contacts · un contrat qui paraîtrait complet le serait à tort.
  *  2. L'OFFRE DIT CE QUE LA LOI EXIGE QU'ELLE DISE, ou elle ne s'accepte pas
  *     en ligne · Code du numérique, art. 52 (identité de l'éditeur) et
- *     art. 53, 13° et 14° (réclamations), « fournies avant que le client [...]
+ *     art. 53, 6° (paiement), 13° et 14° (réclamations), 16° (rétractation)
+ *     et 20° (garanties légales), « fournies avant que le client [...]
  *     passe commande » (art. 54, al. 2). Tant que `mentionsAArreter()` n'est
  *     pas vide, le serveur refuse l'acceptation (`acceptation-conditions.ts`).
  *  3. UNE VERSION ACCEPTÉE NE SE RÉÉCRIT JAMAIS · un changement fait une
@@ -91,6 +92,34 @@ export interface Reclamations {
 
 export const RECLAMATIONS: Reclamations = { courriel: null, telephone: null, modalites: null };
 
+/**
+ * TROIS ÉLÉMENTS DE L'OFFRE QUE LA LOI EXIGE ET QUE NI LE DÉPÔT NI UN TEXTE NE
+ * FIXENT (relecture « échecs silencieux » de la ligne pages-legales, M3) ·
+ * Code du numérique, art. 53, « L'offre énonce en outre, notamment » ·
+ *  · 6° « les modalités et délais de paiement » · le délai est celui du
+ *    moteur de facturation (article 7), les MOYENS de paiement acceptés sont
+ *    un choix de VMG Consulting ;
+ *  · 16° « l'existence ou l'absence d'un droit de rétractation et ses
+ *    conditions d'exercice » · l'art. 61 ne l'ouvre qu'entre un professionnel
+ *    et un non-professionnel, et la qualité du client cabinet reste à
+ *    qualifier (article 13) ;
+ *  · 20° « les informations relatives aux garanties légales de conformité,
+ *    garanties légales des vices cachés et garanties légales d'éviction » ·
+ *    leur régime dépend de la nature du contrat, à qualifier par un juriste.
+ * `null` = pas encore arrêté · le texte le dit, et l'acceptation reste fermée
+ * (art. 54, al. 2).
+ */
+export interface ElementsDeLOffre {
+  /** Art. 53, 6° · les moyens de paiement acceptés et leurs modalités. */
+  modalitesPaiement: string | null;
+  /** Art. 53, 16° · existence ou absence du droit de rétractation, et ses conditions d'exercice. */
+  droitRetractation: string | null;
+  /** Art. 53, 20° · garanties légales de conformité, des vices cachés et d'éviction. */
+  garantiesLegales: string | null;
+}
+
+export const OFFRE: ElementsDeLOffre = { modalitesPaiement: null, droitRetractation: null, garantiesLegales: null };
+
 /** La mention que porte tout élément non arrêté · une seule écriture, que l'écran met en évidence. */
 export const A_ARRETER = 'à arrêter par VMG Consulting';
 
@@ -98,7 +127,11 @@ export const A_ARRETER = 'à arrêter par VMG Consulting';
  * Ce que la loi exige de l'offre et qui manque encore · vide, l'acceptation
  * en ligne s'ouvre. Chaque élément nomme son article.
  */
-export function mentionsAArreter(editeur: IdentiteEditeur = EDITEUR, reclamations: Reclamations = RECLAMATIONS): string[] {
+export function mentionsAArreter(
+  editeur: IdentiteEditeur = EDITEUR,
+  reclamations: Reclamations = RECLAMATIONS,
+  offre: ElementsDeLOffre = OFFRE,
+): string[] {
   const manque: string[] = [];
   if (!editeur.siege) manque.push('l’adresse complète du siège social de l’éditeur (Code du numérique, art. 52, 3°)');
   if (!editeur.courriel) manque.push('l’adresse de courrier électronique de l’éditeur (art. 52, 3°)');
@@ -112,6 +145,13 @@ export function mentionsAArreter(editeur: IdentiteEditeur = EDITEUR, reclamation
     manque.push('le téléphone et l’adresse électronique où adresser une réclamation (art. 53, 13°)');
   }
   if (!reclamations.modalites) manque.push('les modalités de traitement des réclamations (art. 53, 14°)');
+  if (!offre.modalitesPaiement) manque.push('les modalités de paiement, notamment les moyens de paiement acceptés (art. 53, 6°)');
+  if (!offre.droitRetractation) {
+    manque.push('l’existence ou l’absence d’un droit de rétractation et ses conditions d’exercice (art. 53, 16°)');
+  }
+  if (!offre.garantiesLegales) {
+    manque.push('les garanties légales de conformité, des vices cachés et d’éviction (art. 53, 20°)');
+  }
   return manque;
 }
 
@@ -176,7 +216,11 @@ function identiteDeLEditeur(e: IdentiteEditeur): AlineaConditions[] {
  * (`facturation-abonnements.ts` · JOURS_ESSAI, DELAI_PAIEMENT_JOURS), et un
  * spec les relit.
  */
-export function articlesDesConditions(editeur: IdentiteEditeur = EDITEUR, reclamations: Reclamations = RECLAMATIONS): ArticleConditions[] {
+export function articlesDesConditions(
+  editeur: IdentiteEditeur = EDITEUR,
+  reclamations: Reclamations = RECLAMATIONS,
+  offre: ElementsDeLOffre = OFFRE,
+): ArticleConditions[] {
   return [
     {
       numero: 1,
@@ -249,6 +293,7 @@ export function articlesDesConditions(editeur: IdentiteEditeur = EDITEUR, reclam
       alineas: [
         'Un abonnement peut commencer par un essai gratuit de trente jours. Tout mois qui commence avant la fin de l’essai n’est pas facturé.',
         'Le client dispose de quinze jours après la fin de l’essai, puis après la fin de chaque période payée, pour régler la facture suivante. Passé ce délai sans paiement constaté par VMG Consulting, la licence du dossier arrive à échéance.',
+        `Les modalités de paiement, notamment les moyens de paiement acceptés · ${ouAArreter(offre.modalitesPaiement)} (${CODE_NUMERIQUE}, art. 53, 6°).`,
         'Un dossier dont la licence est échue passe en LECTURE SEULE · ses utilisateurs le consultent, l’impriment et en exportent les états, mais rien ne s’y enregistre plus. Le paiement constaté rouvre l’écriture aussitôt.',
         `Un utilisateur qui respecte les conditions contractuelles et financières souscrites ne subit pas d’interruption de fourniture du service, sauf demande expresse de sa part, force majeure ou raisons de sécurité publique (${CODE_NUMERIQUE}, art. 30, al. 3). VMG Consulting ne suspend donc entièrement un dossier que dans ces cas, ou lorsque le client manque à ses obligations.`,
       ],
@@ -314,6 +359,7 @@ export function articlesDesConditions(editeur: IdentiteEditeur = EDITEUR, reclam
       alineas: [
         `VMG Consulting est responsable de plein droit, à l’égard du client, de la bonne exécution des obligations résultant du présent contrat. Elle en est exonérée en apportant la preuve que l’inexécution, l’exécution tardive ou la mauvaise exécution est imputable soit au client, soit à un cas de force majeure, soit à un tiers à la fourniture des prestations prévues au contrat (${CODE_NUMERIQUE}, art. 51).`,
         'Il n’y a lieu à aucuns dommages-intérêts lorsque, par suite d’une force majeure ou d’un cas fortuit, une partie a été empêchée de faire ce à quoi elle était obligée (Code civil, Livre III, art. 46). Hors le cas du dol, une partie n’est tenue que des dommages-intérêts qui ont été prévus ou qu’on a pu prévoir lors du contrat (art. 48).',
+        `Les garanties légales de conformité, des vices cachés et d’éviction · ${ouAArreter(offre.garantiesLegales)} (${CODE_NUMERIQUE}, art. 53, 20°).`,
         `Un plafond de responsabilité · (${A_ARRETER}).`,
       ],
     },
@@ -322,6 +368,7 @@ export function articlesDesConditions(editeur: IdentiteEditeur = EDITEUR, reclam
       titre: 'Droit de rétractation',
       alineas: [
         `Le Code du numérique n’ouvre un droit de rétractation que dans un contrat conclu entre un professionnel et un non-professionnel (${CODE_NUMERIQUE}, art. 61), et ce droit se perd une fois le service fourni (art. 64, 2°). Le présent contrat est conclu avec une entité, pour la tenue de sa comptabilité.`,
+        `L’existence ou l’absence d’un droit de rétractation pour le présent contrat, et ses conditions d’exercice · ${ouAArreter(offre.droitRetractation)} (art. 53, 16°).`,
       ],
     },
     {
@@ -390,14 +437,18 @@ export function articlesDesConditions(editeur: IdentiteEditeur = EDITEUR, reclam
  * et le fichier que l'écran fait télécharger. Une seule écriture, depuis les
  * articles, jamais une seconde rédaction.
  */
-export function texteBrutDesConditions(editeur: IdentiteEditeur = EDITEUR, reclamations: Reclamations = RECLAMATIONS): string {
+export function texteBrutDesConditions(
+  editeur: IdentiteEditeur = EDITEUR,
+  reclamations: Reclamations = RECLAMATIONS,
+  offre: ElementsDeLOffre = OFFRE,
+): string {
   const v = VERSION_CONDITIONS_LICENCE;
   const lignes: string[] = [
     'CONDITIONS DE LICENCE D’OMEGAX',
     `Version ${v.numero} du ${v.dateLisible} · langue du contrat · ${LANGUE_DU_CONTRAT}`,
     '',
   ];
-  for (const a of articlesDesConditions(editeur, reclamations)) {
+  for (const a of articlesDesConditions(editeur, reclamations, offre)) {
     lignes.push(`${a.numero}. ${a.titre}`, '');
     for (const al of a.alineas) {
       if (typeof al === 'string') lignes.push(al, '');
