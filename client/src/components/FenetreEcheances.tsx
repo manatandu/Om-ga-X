@@ -13,6 +13,12 @@ import { PortailModale } from './PortailModale';
  * mode retouchables. « Appliquer » remplace la ligne par une ligne par
  * échéance, au centime ; « Garder une seule ligne » la laisse telle quelle,
  * sans échéance. Rien ne part au serveur avant l'enregistrement de la pièce.
+ *
+ * LE MODE SERVI SE NOMME TOUJOURS (relecture « échecs silencieux » de la
+ * ligne sage-l2, m3) · la liste des modes du dossier peut être illisible ou
+ * pas encore lue ; le mode du modèle part pourtant avec chaque échéance. Il
+ * se montre par son code, et l'échec de lecture se dit, jamais « Non
+ * précisé » pour un mode posé.
  */
 export function FenetreEcheances({
   compte,
@@ -21,6 +27,7 @@ export function FenetreEcheances({
   modele,
   initiales,
   modes,
+  erreurModes,
   onAppliquer,
   onFermer,
 }: {
@@ -29,7 +36,9 @@ export function FenetreEcheances({
   montantLigne: number;
   modele: string;
   initiales: EcheanceSaisie[];
-  modes: ModeReglement[];
+  /** Null tant que la liste n'est pas lue · un échec se dit par `erreurModes`. */
+  modes: ModeReglement[] | null;
+  erreurModes: string | null;
   onAppliquer: (echeances: EcheanceSaisie[]) => void;
   onFermer: () => void;
 }) {
@@ -48,9 +57,25 @@ export function FenetreEcheances({
   );
 
   const motif = motifEcheancesSaisies(echeances, montantLigne);
-  const changer = (i: number, champ: keyof EcheanceSaisie, valeur: string) =>
-    setEcheances((prev) => prev.map((e, j) => (j === i ? { ...e, [champ]: valeur } : e)));
-  const proposes = modes.filter((m) => m.estActif || echeances.some((e) => e.modeReglementId === m.id));
+  const changer = (i: number, champ: 'montant' | 'dateEcheance' | 'modeReglementId', valeur: string) =>
+    setEcheances((prev) =>
+      prev.map((e, j) =>
+        // Un mode choisi dans la liste se nomme par elle · le code servi ne
+        // suit pas un autre mode.
+        j === i ? { ...e, [champ]: valeur, ...(champ === 'modeReglementId' ? { modeCode: undefined } : {}) } : e,
+      ),
+    );
+  const proposes = (modes ?? []).filter((m) => m.estActif || echeances.some((e) => e.modeReglementId === m.id));
+  // Les modes servis que la liste ne porte pas (non lue, ou mode hors du
+  // dossier lu) · une option à leur code, pour que le choix affiché soit
+  // celui qui part.
+  const servisHorsListe = [
+    ...new Map(
+      echeances
+        .filter((e) => e.modeReglementId && !proposes.some((m) => m.id === e.modeReglementId))
+        .map((e) => [e.modeReglementId, e.modeCode ?? 'mode du modèle'] as const),
+    ),
+  ];
 
   return (
     <PortailModale>
@@ -128,6 +153,11 @@ export function FenetreEcheances({
                           className="w-full border border-border-dark px-1.5 py-0.5 bg-surface"
                         >
                           <option value="">Non précisé</option>
+                          {servisHorsListe.map(([id, code]) => (
+                            <option key={id} value={id}>
+                              {code}
+                            </option>
+                          ))}
                           {proposes.map((m) => (
                             <option key={m.id} value={m.id}>
                               {libelleMode(m)}
@@ -140,6 +170,11 @@ export function FenetreEcheances({
                 </tbody>
               </table>
             </div>
+            {erreurModes && (
+              <p role="status" className="text-danger">
+                Modes de règlement illisibles · {erreurModes} · le mode du modèle part avec chaque échéance, nommé par son code.
+              </p>
+            )}
             {motif && (
               <p role="status" className="text-warning">
                 {motif}
