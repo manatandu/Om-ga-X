@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -11,6 +11,7 @@ import {
   ModifierModeleReglementDto,
   CreerEcheanceReglementDto,
   CalculerEcheancesDto,
+  EcheancierDeLigneDto,
 } from './dto/modele-reglement.dto';
 import { RoleUtilisateur, TypeTiers } from '@prisma/client';
 
@@ -52,6 +53,21 @@ export class TiersController {
   @Get('numero-propose')
   async numeroPropose(@CurrentUser() user: AuthenticatedUser, @Query() dto: NumeroProposeDto) {
     return this.tiersService.numeroPropose(user.tenantId, dto.type);
+  }
+
+  /**
+   * L'échéancier de la ligne de facture en saisie (ligne sage-l2, fonction 3)
+   * · le modèle de règlement du tiers rattaché au compte, appliqué à la date
+   * et au montant de la ligne. Lecture seule ; le compte est jugé dans le
+   * dossier par le service. Déclarée avant `:id`.
+   */
+  @Get('echeancier-de-ligne/:compteId')
+  async echeancierDeLigne(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('compteId', new ParseUUIDPipe({ exceptionFactory: () => new BadRequestException('Identifiant de compte illisible.') })) compteId: string,
+    @Query() dto: EcheancierDeLigneDto,
+  ) {
+    return this.tiersService.echeancierDeLigne(user.tenantId, compteId, dto);
   }
 
   @Get(':id')

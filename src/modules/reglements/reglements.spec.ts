@@ -83,6 +83,20 @@ function monter(
     journal: { findFirst: jest.fn(async () => ({ id: 'bq', code: 'BQ', type: 'TRESORERIE', compteTresorerieId: 'c521' })) },
     ligneEcriture: {
       findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) => lignes.filter((l) => where.id.in.includes(l.id))),
+      // L'art. 59 bis lit la facture sur sa PIÈCE (ligne sage-l2) · la doublure
+      // honore les pièces demandées et regroupe par pièce et par compte.
+      groupBy: jest.fn(async ({ where }: { where: { ecritureId: { in: string[] } } }) => {
+        const parCle = new Map<string, { ecritureId: string; compteId: string; _sum: { debit: number; credit: number } }>();
+        const piece = (x: object) => (x as { ecritureId?: string }).ecritureId;
+        for (const l of lignes.filter((x) => piece(x) !== undefined && where.ecritureId.in.includes(piece(x)!))) {
+          const cle = `${piece(l)}:${l.compteId}`;
+          const g = parCle.get(cle) ?? { ecritureId: piece(l)!, compteId: l.compteId, _sum: { debit: 0, credit: 0 } };
+          g._sum.debit += l.debit;
+          g._sum.credit += l.credit;
+          parCle.set(cle, g);
+        }
+        return [...parCle.values()];
+      }),
       // m-d · le solde net du compte, toutes ses lignes de l'exercice (la doublure honore le compte).
       aggregate: jest.fn(async ({ where }: { where: { compteId: string } }) => {
         const siennes = lignes.filter((l) => l.compteId === where.compteId);
@@ -821,6 +835,20 @@ describe('le mode de règlement du lot (ligne sage-l2, fonction 1)', () => {
     const r = await service.enregistrer('t', 'u', { ...base, modeReglementId: 'esp', reglements: [{ compteId: 'c401', ligneIds: ['f1'] }] });
     expect(creer).toHaveBeenCalledTimes(1);
     expect(r.avertissements.join(' ')).toMatch(/art\. 59 bis.*art\. 74 bis/);
+  });
+
+  it('art. 59 bis · une facture découpée en deux échéances sous le seuil se lit sur sa PIÈCE, nommée une fois', async () => {
+    const { service, lignes, prisma } = monter();
+    for (const id of ['f1', 'f2']) {
+      const l = lignes.find((x) => x.id === id)!;
+      l.credit = 600_000;
+      (l as { ecritureId?: string }).ecritureId = 'eA';
+    }
+    (prisma.tenant.findFirst as jest.Mock).mockResolvedValue({ assujettiTva: true, assujettissementTvaRepondu: true });
+    const r = await service.enregistrer('t', 'u', { ...base, modeReglementId: 'esp', reglements: [{ compteId: 'c401', ligneIds: ['f1', 'f2'] }] });
+    const dit = r.avertissements.join(' ');
+    expect(dit).toMatch(/1\s200\s000,00/);
+    expect(dit).toMatch(/est une transaction/);
   });
 
   it('art. 59 bis · la même facture payée par virement ne dit rien', async () => {

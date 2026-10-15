@@ -2737,6 +2737,12 @@ model Tiers {
   modeReglementId String?
   modeReglement   ModeReglement? @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
 
+  /// L'ÉCHÉANCIER APPLIQUÉ SANS FENÊTRE (ligne sage-l2, fonction 3 · Sage,
+  /// « validation automatique des règlements ») · vrai, la saisie découpe la
+  /// ligne de facture selon le modèle de règlement sans présenter la fenêtre
+  /// des échéances, et l'annonce. Faux par défaut · la fenêtre se présente.
+  validationAutomatiqueEcheances Boolean @default(false)
+
   createdAt DateTime @default(now())
 
   comptesRattaches TiersCompte[]

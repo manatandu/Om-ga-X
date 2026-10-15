@@ -19,11 +19,13 @@ import {
   ModifierModeleReglementDto,
   CreerEcheanceReglementDto,
   CalculerEcheancesDto,
+  EcheancierDeLigneDto,
 } from './dto/modele-reglement.dto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { dateSaisieOuEffacement } from '../tenant/date-effacable';
 import { motifRefusPeriodeAutorisationDebits } from './periode-autorisation-debits';
 import { modeDuDossier } from '../reglements/modes-reglement.service';
+import { echeancierDuModele, motifSansEcheancierDuModele } from './echeancier-modele';
 
 /**
  * Tiers (cf. docs/plan-de-construction.md §3.2) : Client/Fournisseur/Salarié/
@@ -872,26 +874,13 @@ export class TiersService {
     return { id: echeanceId, supprimee: true };
   }
 
-  /** dateFacture + delaiJours (NET), ou fin du mois de dateFacture + delaiJours (FIN_DE_MOIS). */
-  private calculerDateEcheance(dateFacture: Date, delaiJours: number, condition: ConditionEcheance): Date {
-    if (condition === ConditionEcheance.NET) {
-      const d = new Date(dateFacture);
-      d.setUTCDate(d.getUTCDate() + delaiJours);
-      return d;
-    }
-    const finDeMois = new Date(Date.UTC(dateFacture.getUTCFullYear(), dateFacture.getUTCMonth() + 1, 0));
-    finDeMois.setUTCDate(finDeMois.getUTCDate() + delaiJours);
-    return finDeMois;
-  }
-
   /**
    * Calcule l'échéancier d'un modèle pour une facture donnée : une seule
    * échéance (100 % à delaiJours/echeance du modèle) si aucune ligne
    * `EcheanceReglement` n'existe, sinon le détail par échéance dans l'ordre.
-   * SIMULATION · ne persiste rien, et aucune saisie n'applique encore le
-   * modèle à une facture · la fenêtre le dit (audit final F149 ; l'ancien
-   * commentaire affirmait qu'aucune facture n'existait au modèle de données,
-   * ce qui a cessé d'être vrai avec la facturation).
+   * SIMULATION · ne persiste rien. Le calcul est celui que la saisie applique
+   * à la ligne d'une facture (`echeancier-modele.ts`, ligne sage-l2,
+   * fonction 3), une seule écriture de la règle.
    *
    * AUCUNE ÉCHÉANCE N'EST NÉGATIVE · l'Équilibre se calcule en DERNIER quel
    * que soit son rang (un modèle ancien peut le porter ailleurs), et un
@@ -903,45 +892,102 @@ export class TiersService {
       where: { modeleReglementId: modeleId },
       orderBy: { ordre: 'asc' },
     });
-    const dateFacture = new Date(dto.dateFacture);
+    return echeancierDuModele(modele, echeances, new Date(dto.dateFacture), dto.montantTotal);
+  }
 
-    if (echeances.length === 0) {
-      return [
-        {
-          ordre: 1,
-          type: null,
-          montant: dto.montantTotal,
-          dateEcheance: this.calculerDateEcheance(dateFacture, modele.delaiJours, modele.echeance),
+  /**
+   * L'ÉCHÉANCIER DE LA LIGNE DE FACTURE (ligne sage-l2, fonction 3 · Sage,
+   * « échéance calculée selon les conditions de règlement du tiers »,
+   * « fenêtre multi-échéance », « validation automatique des règlements »).
+   * La saisie le demande quand une ligne de tiers est posée ; rien n'est
+   * écrit ici. Le compte est jugé dans le dossier (404 nommé) ; une ligne qui
+   * ne reçoit pas l'échéancier d'un modèle (`motifSansEcheancierDuModele`)
+   * rend son motif et aucune échéance, comme un compte sans tiers ou un tiers
+   * sans modèle (son mode habituel est alors rendu seul).
+   */
+  async echeancierDeLigne(tenantId: string, compteId: string, dto: EcheancierDeLigneDto) {
+    const compte = await this.prisma.compte.findFirst({ where: { id: compteId, tenantId }, select: { id: true, numero: true } });
+    if (!compte) throw new NotFoundException('Compte introuvable pour ce dossier.');
+    const rattachement = await this.prisma.tiersCompte.findFirst({
+      where: { compteId, tiers: { tenantId } },
+      select: {
+        tiers: {
+          select: {
+            id: true,
+            code: true,
+            nom: true,
+            estActif: true,
+            validationAutomatiqueEcheances: true,
+            modeReglement: { select: { id: true, code: true, estActif: true } },
+            modeleReglement: {
+              select: {
+                id: true,
+                intitule: true,
+                estActif: true,
+                delaiJours: true,
+                echeance: true,
+                modeReglementId: true,
+                echeances: { orderBy: { ordre: 'asc' } },
+              },
+            },
+          },
         },
-      ];
-    }
-
-    const equilibre = echeances.find((e) => e.type === TypeEcheance.EQUILIBRE);
-    const ordreDeCalcul = equilibre ? [...echeances.filter((e) => e !== equilibre), equilibre] : echeances;
-    const montants = new Map<string, number>();
-    let reste = dto.montantTotal;
-    ordreDeCalcul.forEach((e, i) => {
-      const resteArrondi = Math.round(reste * 100) / 100;
-      let montant: number;
-      if (e.type === TypeEcheance.EQUILIBRE || i === ordreDeCalcul.length - 1) {
-        // La dernière échéance absorbe toujours le reste, même si elle
-        // n'est pas explicitement de type EQUILIBRE · évite qu'un écart
-        // d'arrondi sur les pourcentages laisse un centime non réparti.
-        montant = resteArrondi;
-      } else if (e.type === TypeEcheance.POURCENTAGE) {
-        montant = Math.min(Math.round(dto.montantTotal * (Number(e.valeur) / 100) * 100) / 100, resteArrondi);
-      } else {
-        montant = Math.min(Number(e.valeur), resteArrondi);
-      }
-      reste = Math.round((reste - montant) * 100) / 100;
-      montants.set(e.id, montant);
+      },
     });
-
-    return echeances.map((e) => ({
-      ordre: e.ordre,
-      type: e.type,
-      montant: montants.get(e.id) ?? 0,
-      dateEcheance: this.calculerDateEcheance(dateFacture, e.delaiJours, e.echeance),
-    }));
+    const tiers = rattachement?.tiers ?? null;
+    // Un mode en sommeil ne se pose plus (`modeDuDossier`) · il n'est pas proposé.
+    const modeHabituel = tiers?.modeReglement?.estActif ? tiers.modeReglement : null;
+    const base = {
+      tiers: tiers ? { id: tiers.id, code: tiers.code, nom: tiers.nom } : null,
+      modele: tiers?.modeleReglement ? { id: tiers.modeleReglement.id, intitule: tiers.modeleReglement.intitule } : null,
+      validationAutomatique: tiers?.validationAutomatiqueEcheances ?? false,
+      modeHabituel: modeHabituel ? { id: modeHabituel.id, code: modeHabituel.code } : null,
+      applicable: false,
+    };
+    // La ligne reçoit-elle un échéancier · dit à part du tiers, pour que
+    // l'écran ne parle d'un modèle inapplicable (en sommeil) que sur une
+    // ligne de facture, jamais sur une avance ou un règlement.
+    const motifLigne = motifSansEcheancierDuModele({ numero: compte.numero, sens: dto.sens, typeJournal: dto.typeJournal ?? null });
+    const motif =
+      motifLigne ??
+      (!tiers
+        ? `Le compte ${compte.numero} n'est rattaché à aucun tiers.`
+        : !tiers.modeleReglement
+          ? `Le tiers ${tiers.code} n'a pas de modèle de règlement.`
+          : !tiers.modeleReglement.estActif
+            ? `Le modèle de règlement « ${tiers.modeleReglement.intitule} » du tiers ${tiers.code} est en sommeil.`
+            : null);
+    if (motif || !tiers?.modeleReglement) return { ...base, applicable: motifLigne === null, echeances: [], motif };
+    // Les modes des échéances se lisent dans le dossier · un mode mis en
+    // sommeil depuis n'est pas posé d'office (il serait refusé à
+    // l'enregistrement), l'échéance part sans mode et c'est rendu tel quel.
+    const ids = [
+      ...new Set(
+        [tiers.modeleReglement.modeReglementId, ...tiers.modeleReglement.echeances.map((e) => e.modeReglementId)].filter(
+          (x): x is string => !!x,
+        ),
+      ),
+    ];
+    const modes = ids.length
+      ? await this.prisma.modeReglement.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, code: true, estActif: true } })
+      : [];
+    const actifs = new Map(modes.filter((m) => m.estActif).map((m) => [m.id, m.code]));
+    const echeances = echeancierDuModele(
+      tiers.modeleReglement,
+      tiers.modeleReglement.echeances,
+      new Date(dto.date),
+      dto.montant,
+      modeHabituel?.id ?? null,
+    ).map((e) => {
+      const modeId = e.modeReglementId && (actifs.has(e.modeReglementId) || e.modeReglementId === modeHabituel?.id) ? e.modeReglementId : null;
+      return {
+        ordre: e.ordre,
+        montant: e.montant,
+        dateEcheance: e.dateEcheance.toISOString().slice(0, 10),
+        modeReglementId: modeId,
+        modeCode: modeId ? (actifs.get(modeId) ?? modeHabituel?.code ?? null) : null,
+      };
+    });
+    return { ...base, applicable: true, echeances, motif: null };
   }
 }

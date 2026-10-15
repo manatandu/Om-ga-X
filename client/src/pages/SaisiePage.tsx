@@ -23,7 +23,14 @@ import { libelleRenvoiDiscordant, remplacementsProposes, type RenvoiDiscordant }
 import { lireMasquerTotaux, memoriserMasquerTotaux } from '../lib/totaux-saisie';
 import { ModaleCompteEnSaisie } from '../components/ModaleCompteEnSaisie';
 import { libelleMode, type ModeReglement } from '../lib/modes-reglement';
-import { porteUneEcheance } from '../lib/echeance-saisie';
+import {
+  decouperLigne,
+  echeancesSaisissables,
+  porteUneEcheance,
+  type EcheanceSaisie,
+  type EcheancierDeLigne,
+} from '../lib/echeance-saisie';
+import { FenetreEcheances } from '../components/FenetreEcheances';
 
 /**
  * SAISIE DES JOURNAUX · l'écran central du logiciel, calqué sur
@@ -88,6 +95,12 @@ interface LignePiece {
    */
   modeReglementId?: string;
   modeCode?: string;
+  /**
+   * Repère de la ligne dans la pièce en cours, jamais envoyé · l'échéancier
+   * du modèle (fonction 3) revient du serveur après coup et retrouve SA
+   * ligne par lui, même si d'autres lignes ont été ajoutées ou retirées.
+   */
+  cle?: string;
 }
 
 /** Une fiche du référentiel, servie par /controles/regles-comptes. */
@@ -304,6 +317,19 @@ export function SaisiePage() {
   const [modesLus, setModesLus] = useState<ModeReglement[] | null>(null);
   const [erreurModes, setErreurModes] = useState<string | null>(null);
   const [modeLigne, setModeLigne] = useState('');
+  // L'ÉCHÉANCIER DU MODÈLE DE RÈGLEMENT (ligne sage-l2, fonction 3) · ce
+  // qu'il a fait de la dernière ligne de facture, dit au-dessus de la saisie,
+  // et la fenêtre des échéances quand le modèle en compte plusieurs.
+  const [annonceEcheance, setAnnonceEcheance] = useState<string | null>(null);
+  const [fenetreEcheances, setFenetreEcheances] = useState<{
+    cle: string;
+    compte: string;
+    libelle: string;
+    montant: number;
+    modele: string;
+    initiales: EcheanceSaisie[];
+  } | null>(null);
+  const compteurCle = useRef(0);
   // OPÉRATION EN DEVISE · une exception de la ligne, comme la date de versement.
   // Null tant que la liste n'est pas lue (reste de l'audit final F255) · un
   // refus retirait le choix de la devise comme sur un dossier sans devise.
@@ -751,6 +777,80 @@ export function SaisiePage() {
     (sens === 'credit' ? creditRef : debitRef).current?.focus();
   };
 
+  /**
+   * L'ÉCHÉANCIER DU MODÈLE APPLIQUÉ À LA LIGNE QUI VIENT D'ÊTRE POSÉE (ligne
+   * sage-l2, fonction 3 · Sage, « échéance calculée d'office selon les
+   * conditions de règlement du tiers »). Une échéance · posée sur la ligne et
+   * annoncée. Plusieurs · la fenêtre des échéances, ou le découpage direct
+   * quand le tiers le demande (« Échéancier appliqué d'office »). Sans
+   * modèle, le mode habituel du tiers. Une ligne en devise ne se découpe pas
+   * (montant en devise et cours ne se répartissent pas d'eux-mêmes) · c'est
+   * dit, la ligne reste entière. Un échec de lecture se dit ; la ligne garde
+   * ce que le comptable a tapé.
+   */
+  const appliquerEcheancier = async (l: {
+    cle: string;
+    compteId: string;
+    numero: string;
+    libelle: string;
+    montant: number;
+    sens: 'DEBIT' | 'CREDIT';
+    modeTape: string | undefined;
+    enDevise: boolean;
+  }) => {
+    if (!exerciceCourant) return;
+    const datee = dateDeLaPiece({ parPiece, datePiece, periode, jour, exercice: exerciceCourant });
+    if ('motif' in datee) return;
+    let r: EcheancierDeLigne;
+    try {
+      const q = new URLSearchParams({ date: datee.date, montant: String(l.montant), sens: l.sens });
+      if (journal?.type) q.set('typeJournal', journal.type);
+      r = await api.get<EcheancierDeLigne>(`/tiers/echeancier-de-ligne/${l.compteId}?${q.toString()}`);
+    } catch (e) {
+      setAnnonceEcheance(`Échéancier du tiers non lu · ${e instanceof ApiError ? e.message : 'serveur injoignable'}.`);
+      return;
+    }
+    const modifier = (f: (x: LignePiece) => LignePiece) => setLignes((prev) => prev.map((x) => (x.cle === l.cle ? f(x) : x)));
+    if (r.echeances.length === 0) {
+      if (r.applicable && r.modele && r.motif) setAnnonceEcheance(`${l.numero} · ${r.motif}`);
+      if (r.modeHabituel && !l.modeTape) {
+        const mode = r.modeHabituel;
+        modifier((x) => ({ ...x, modeReglementId: mode.id, modeCode: mode.code }));
+        setAnnonceEcheance(`${l.numero} · mode ${mode.code} du tiers ${r.tiers?.code ?? ''} posé sur la ligne.`);
+      }
+      return;
+    }
+    const modele = r.modele?.intitule ?? '';
+    if (r.echeances.length === 1) {
+      const [e] = r.echeances;
+      modifier((x) => ({
+        ...x,
+        dateEcheance: e.dateEcheance,
+        ...(l.modeTape || !e.modeReglementId ? {} : { modeReglementId: e.modeReglementId, modeCode: e.modeCode ?? undefined }),
+      }));
+      setAnnonceEcheance(`${l.numero} · échéance au ${e.dateEcheance.split('-').reverse().join('/')} (modèle « ${modele} »).`);
+      return;
+    }
+    if (l.enDevise) {
+      setAnnonceEcheance(
+        `${l.numero} · le modèle « ${modele} » compte ${r.echeances.length} échéances ; une ligne en devise ne se découpe pas d'elle-même · saisissez une ligne par échéance, ou l'échéance à la main.`,
+      );
+      return;
+    }
+    const initiales = echeancesSaisissables(r.echeances, l.modeTape);
+    if (r.validationAutomatique) {
+      appliquerDecoupage(l.cle, initiales);
+      setAnnonceEcheance(`${l.numero} · ligne découpée en ${initiales.length} échéances (modèle « ${modele} », appliqué d'office).`);
+      return;
+    }
+    setFenetreEcheances({ cle: l.cle, compte: l.numero, libelle: l.libelle, montant: l.montant, modele, initiales });
+  };
+
+  const appliquerDecoupage = (cle: string, echeances: EcheanceSaisie[]) => {
+    const codeDuMode = (id: string) => modesLus?.find((m) => m.id === id)?.code;
+    setLignes((prev) => prev.flatMap((x) => (x.cle === cle ? decouperLigne(x, echeances, codeDuMode) : [x])));
+  };
+
   const validerLigne = () => {
     setErreur(null);
     if (!compteChoisi) {
@@ -784,9 +884,12 @@ export function SaisiePage() {
       enDevise.montantDevise = montantDevise;
       if (cours !== null) enDevise.coursApplique = cours;
     }
+    const cle = `l${++compteurCle.current}`;
+    const echeanceTapee = porteUneEcheance(compteChoisi.numero) && !!echeance;
     setLignes((prev) => [
       ...prev,
       {
+        cle,
         compteId: compteChoisi.id,
         numero: compteChoisi.numero,
         intitule: compteChoisi.intitule,
@@ -811,6 +914,21 @@ export function SaisiePage() {
         ),
       },
     ]);
+    // L'ÉCHÉANCIER DU MODÈLE DE RÈGLEMENT DU TIERS (fonction 3) · demandé au
+    // serveur pour une ligne de tiers dont l'échéance n'a pas été tapée ; il
+    // dit lui-même si la ligne le reçoit (facture sur un 40 ou un 41).
+    if (porteUneEcheance(compteChoisi.numero) && !echeanceTapee) {
+      void appliquerEcheancier({
+        cle,
+        compteId: compteChoisi.id,
+        numero: compteChoisi.numero,
+        libelle: libelleLigne || libellePiece,
+        montant: d || c,
+        sens: d > 0 ? 'DEBIT' : 'CREDIT',
+        modeTape: modeLigne || undefined,
+        enDevise: !!enDevise.deviseId,
+      });
+    }
     // CODE TAXE PAR DÉFAUT · Sage porte un taux sur la fiche compte et le
     // PROPOSE dès que ce compte est saisi. La grille ne le faisait pas : seule
     // la modale « Achat / Vente avec TVA » le lisait, et le comptable qui
@@ -915,7 +1033,16 @@ export function SaisiePage() {
       const source = prev[i];
       if (!source) return prev;
       const copie = [...prev];
-      copie.splice(i + 1, 0, { ...source, ...SANS_DEVISE, debit: 0, credit: 0, sections: { ...(source.sections ?? {}) } });
+      // La copie reçoit son propre repère · l'échéancier attendu pour la
+      // ligne source ne doit pas s'appliquer aussi à elle (fonction 3).
+      copie.splice(i + 1, 0, {
+        ...source,
+        ...SANS_DEVISE,
+        debit: 0,
+        credit: 0,
+        cle: `l${++compteurCle.current}`,
+        sections: { ...(source.sections ?? {}) },
+      });
       return copie;
     });
   };
@@ -1264,6 +1391,7 @@ export function SaisiePage() {
       );
       setLignes([]);
       setTvaAjoutee(null);
+      setAnnonceEcheance(null);
       setReference('');
       setLibellePiece('');
       setRechargement((n) => n + 1);
@@ -1887,6 +2015,34 @@ export function SaisiePage() {
             </div>
           ))}
 
+          {annonceEcheance && (
+            <div role="status" className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-border/50 bg-sel-soft text-[11.5px] text-sel">
+              <span>{annonceEcheance}</span>
+              <button type="button" onClick={() => setAnnonceEcheance(null)} className="border border-sel/40 bg-surface px-2 py-[1px]">
+                Compris
+              </button>
+            </div>
+          )}
+          {fenetreEcheances && (
+            <FenetreEcheances
+              compte={fenetreEcheances.compte}
+              libelle={fenetreEcheances.libelle}
+              montantLigne={fenetreEcheances.montant}
+              modele={fenetreEcheances.modele}
+              initiales={fenetreEcheances.initiales}
+              modes={modesLus ?? []}
+              onAppliquer={(echeances) => {
+                appliquerDecoupage(fenetreEcheances.cle, echeances);
+                setAnnonceEcheance(`${fenetreEcheances.compte} · ligne découpée en ${echeances.length} échéances.`);
+                setFenetreEcheances(null);
+                compteRef.current?.focus();
+              }}
+              onFermer={() => {
+                setFenetreEcheances(null);
+                compteRef.current?.focus();
+              }}
+            />
+          )}
           {/* AU-DESSUS de la zone de saisie · la liste des comptes s'ouvre EN
               DESSOUS après chaque ligne, et couvrait l'annonce et son bouton. */}
           {tvaAjoutee && (

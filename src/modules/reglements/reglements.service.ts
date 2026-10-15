@@ -26,7 +26,7 @@ import { lignesDeReevaluationSurLesTiers } from './lignes-de-reevaluation';
 import { avertissementExtourneManquante, issueReevaluationDejaPassee, motifReglementDejaReevalue } from './reevaluation-et-ecart-realise';
 import { OrdresVirementService, type LigneAOrdonner } from './ordres-virement.service';
 import { modeDuDossier } from './modes-reglement.service';
-import { avertissementArt59Bis, natureLueSurLeCompte } from './modes-reglement';
+import { avertissementArt59Bis, NATURES_ADMISES_ART_59_BIS, natureLueSurLeCompte } from './modes-reglement';
 import { faitAssujettissementTva } from '../tenant/faits-declares';
 import {
   avertissementImputationDuGroupe,
@@ -717,7 +717,40 @@ export class ReglementsService {
         select: { assujettiTva: true, assujettissementTvaRepondu: true },
       });
       const nature = mode?.nature ?? natureLueSurLeCompte(journal.compteTresorerie?.numero ?? null);
+      // LA TRANSACTION EST LA FACTURE ENTIÈRE · une facture découpée en
+      // échéances par son modèle de règlement (fonction 3) porte plusieurs
+      // lignes au compte du tiers, chacune sous le seuil ; l'art. 59 bis vise
+      // la transaction, lue sur la PIÈCE (ses lignes au même compte). Un
+      // à-nouveau agrège plusieurs factures · il se lit ligne à ligne, limite
+      // écrite (la pièce d'origine d'un report n'est pas relue ici).
+      const nature59 = nature !== null && !NATURES_ADMISES_ART_59_BIS.has(nature);
+      const pieces = nature59 ? [...new Set(lignes.filter((l) => !estDAnouveau(l.ecriture)).map((l) => l.ecritureId))] : [];
+      const sommes = pieces.length
+        ? await this.prisma.ligneEcriture.groupBy({
+            by: ['ecritureId', 'compteId'],
+            where: { ecritureId: { in: pieces }, ecriture: { tenantId, ...HORS_SITUATION } },
+            _sum: { debit: true, credit: true },
+          })
+        : [];
+      const totalDeLaPiece = new Map(
+        sommes.map((x) => [`${x.ecritureId}:${x.compteId}`, Math.abs(Number(x._sum.debit ?? 0) - Number(x._sum.credit ?? 0))]),
+      );
       for (const p of plan) {
+        // Une facture se nomme une fois, même réglée par deux de ses échéances.
+        const factures = new Map<string, { reference: string; montant: number }>();
+        for (const l of p.siennes) {
+          // LA TRANSACTION, PAS CE QUI EN RESTE · le montant entier de la
+          // facture (art. 59 bis, « toute transaction [...] d'un montant
+          // d'au moins »), lu sur la ligne d'origine, jamais sur le dû
+          // qu'un lettrage partiel ou une paire à cheval a réduit.
+          const origine = lignes.find((x) => x.id === l.id);
+          const ligneSeule = Math.abs(Number((origine ?? l).debit) - Number((origine ?? l).credit));
+          const cle = origine && !estDAnouveau(origine.ecriture) ? `${origine.ecritureId}:${origine.compteId}` : l.id;
+          factures.set(cle, {
+            reference: l.ecriture.numeroPiece ? `pièce ${l.ecriture.numeroPiece}` : l.ecriture.libelle || 'facture',
+            montant: Math.max(ligneSeule, totalDeLaPiece.get(cle) ?? 0),
+          });
+        }
         const avertissement = avertissementArt59Bis({
           sens: dto.sens,
           date: new Date(dto.date),
@@ -725,17 +758,7 @@ export class ReglementsService {
           nature,
           source: mode ? 'MODE' : 'COMPTE',
           compte: p.compte.numero,
-          factures: p.siennes.map((l) => {
-            // LA TRANSACTION, PAS CE QUI EN RESTE · le montant entier de la
-            // facture (art. 59 bis, « toute transaction [...] d'un montant
-            // d'au moins »), lu sur la ligne d'origine, jamais sur le dû
-            // qu'un lettrage partiel ou une paire à cheval a réduit.
-            const origine = lignes.find((x) => x.id === l.id) ?? l;
-            return {
-              reference: l.ecriture.numeroPiece ? `pièce ${l.ecriture.numeroPiece}` : l.ecriture.libelle || 'facture',
-              montant: Math.abs(Number(origine.debit) - Number(origine.credit)),
-            };
-          }),
+          factures: [...factures.values()],
         });
         if (avertissement) avertissements.push(avertissement);
       }

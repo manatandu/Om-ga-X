@@ -1033,6 +1033,8 @@ export interface Tiers {
   /** Le mode de règlement habituel du tiers (ligne sage-l2, fonction 1). */
   modeReglementId?: string | null;
   modeReglement?: ModeReglementResume | null;
+  /** L'échéancier du modèle appliqué en saisie sans fenêtre (ligne sage-l2, fonction 3). */
+  validationAutomatiqueEcheances?: boolean;
   comptesRattaches: TiersCompte[];
   /**
    * Coordonnées · sans elles, les lettres de relance que le logiciel compose

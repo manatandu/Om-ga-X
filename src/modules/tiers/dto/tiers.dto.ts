@@ -236,6 +236,11 @@ export class ModifierTiersDto {
   @IsBoolean()
   autoriseTvaDebits?: boolean;
 
+  /** L'échéancier du modèle appliqué sans fenêtre (ligne sage-l2, fonction 3) · vrai ou faux, jamais effacé. */
+  @FacultatifNonNul('L’échéancier appliqué sans fenêtre vaut vrai ou faux · omettez le champ pour le garder.')
+  @IsBoolean()
+  validationAutomatiqueEcheances?: boolean;
+
   @IsOptional()
   @IsString()
   referenceAutorisationDebits?: string | null;

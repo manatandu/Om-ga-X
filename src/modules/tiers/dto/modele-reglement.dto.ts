@@ -1,5 +1,6 @@
-import { IsBoolean, IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
-import { ConditionEcheance, TypeEcheance } from '@prisma/client';
+import { IsBoolean, IsDateString, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ConditionEcheance, TypeEcheance, TypeJournal } from '@prisma/client';
 
 export class CreerModeleReglementDto {
   @IsString()
@@ -79,4 +80,26 @@ export class CalculerEcheancesDto {
   @IsNumber()
   @Min(0.01)
   montantTotal!: number;
+}
+
+/**
+ * L'ÉCHÉANCIER DE LA LIGNE DE FACTURE EN SAISIE (ligne sage-l2, fonction 3) ·
+ * date de la pièce, montant de la ligne, son sens et le type du journal. Le
+ * compte est en paramètre de route, jugé dans le dossier par le service.
+ */
+export class EcheancierDeLigneDto {
+  @IsDateString({}, { message: 'La date de la pièce est attendue au format AAAA-MM-JJ.' })
+  date!: string;
+
+  @Type(() => Number)
+  @IsNumber({}, { message: 'Le montant de la ligne est illisible.' })
+  @Min(0.01, { message: 'Le montant de la ligne doit être positif.' })
+  montant!: number;
+
+  @IsIn(['DEBIT', 'CREDIT'], { message: 'Le sens de la ligne vaut DEBIT ou CREDIT.' })
+  sens!: 'DEBIT' | 'CREDIT';
+
+  @IsOptional()
+  @IsEnum(TypeJournal, { message: 'Type de journal inconnu.' })
+  typeJournal?: TypeJournal;
 }

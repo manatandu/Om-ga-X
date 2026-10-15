@@ -44,9 +44,39 @@ Migrations dans la plage `20270180000100` et suivantes.
   `e2e/tests/sage-l2-modes.e2e.ts` (vert sous Chromium).
 - Commits · 5bca551 (serveur), et le commit de l'écran.
 
+### n° 3 · Échéancier du modèle de règlement en saisie (fait, scénario sur vraie base à passer)
+
+- Calcul unique en centimes entiers (`tiers/echeancier-modele.ts`) · servi au
+  simulateur du modèle et à la saisie ; la dernière échéance prend le reste,
+  l'Équilibre se calcule en dernier, aucune échéance négative.
+- Route `GET /tiers/echeancier-de-ligne/:compteId?date&montant&sens&typeJournal`
+  (lecture, compte jugé dans le dossier) · rend tiers, modèle, mode habituel,
+  `applicable`, échéances (montant, date, mode actif) et le motif quand rien
+  ne s'applique. La ligne qui reçoit l'échéancier · facture sur un 40
+  (crédit) ou un 41 (débit), hors 408, 409, 416, 418, 419 et hors journal de
+  trésorerie (`motifSansEcheancierDuModele`).
+- `Tiers.validationAutomatiqueEcheances` (migration
+  `20270180000200_echeancier_du_tiers`, faux par défaut) · case
+  « Échéancier appliqué d'office » de la fiche.
+- Saisie · une ligne de tiers sans échéance tapée demande l'échéancier ; une
+  échéance · posée et annoncée ; plusieurs · fenêtre « Échéances de la ligne »
+  (`FenetreEcheances`, montants, dates, modes retouchables, refus d'un
+  découpage qui ne refait pas la ligne au centime) ou découpage direct si le
+  tiers le demande ; sans modèle, le mode habituel du tiers ; ligne en devise
+  non découpée, et c'est dit. Chaque ligne garde un repère local (`cle`) que
+  la réponse retrouve.
+- Art. 59 bis relu · la transaction est la FACTURE entière (lignes de la
+  pièce au compte du tiers), pas l'échéance · une facture de 1 200 000 en
+  deux échéances de 600 000 payée en espèces reste avertie, nommée une fois.
+- Tests · `echeancier-modele.spec.ts` (18), `reglements.spec.ts` (pièce
+  entière), `client/src/lib/echeance-saisie.spec.ts` (6),
+  `modele-reglement-aide.spec.ts` (garantie négative vieillie, la bulle du
+  simulateur ne dit plus « aucune saisie ne l'applique »),
+  `e2e/tests/sage-l2-echeances.e2e.ts` (vert sous Chromium).
+
 ## Reste
 
-1. n° 3 · échéance calculée par le modèle de règlement du tiers en saisie, fenêtre multi-échéance, validation automatique.
+1. Scénario sur vraie base des fonctions 1 et 3 à travers une clôture.
 2. n° 36 · écart de règlement sous un seuil, escompte financier.
 3. n° 24 · qualité du tiers.
 4. n° 31 · lieux de livraison des clients.
@@ -86,10 +116,12 @@ Migrations dans la plage `20270180000100` et suivantes.
 | # | Date | Ligne | État | Ce qui manque | Plus dur que prévu |
 |---|---|---|---|---|---|
 | 1 | 2026-10-15 | L2 | fait | le mode ne suit pas encore le report à-nouveau au détail | la modification au brouillard remplace les lignes · le mode devait être rendu au client pour ne pas s'effacer |
+| 3 | 2026-10-15 | L2 | fait | une ligne en devise ne se découpe pas d'elle-même (dit à l'écran) | le découpage en échéances passait une facture sous le seuil de l'art. 59 bis · la transaction se relit sur la pièce |
 
 ## Pour features.csv
 
 - n° 1 → yes · modes de règlement (structure, tiers, modèles, saisie, règlement), avertissement de l'art. 59 bis.
+- n° 3 → yes · échéancier du modèle du tiers appliqué en saisie, fenêtre des échéances, échéancier appliqué d'office.
 
 ## Commandes de vérification
 

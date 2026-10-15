@@ -574,6 +574,7 @@ export function TiersPage() {
         | 'celluleGroupeId'
         | 'modeleReglementId'
         | 'modeReglementId'
+        | 'validationAutomatiqueEcheances'
         | 'autoriseTvaDebits'
         | 'referenceAutorisationDebits'
         | 'dateEffetAutorisationDebits'
@@ -960,6 +961,26 @@ export function TiersPage() {
                     {tiersSelectionne.modeReglement ? libelleMode(tiersSelectionne.modeReglement) : 'aucun mode'}
                     {erreurModes && <span className="block text-danger text-[11px]">Modes illisibles · {erreurModes}</span>}
                   </span>
+                )}
+                {tiersSelectionne.modeleReglementId && (
+                  <>
+                    <span />
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        aria-label="Échéancier appliqué d'office"
+                        checked={tiersSelectionne.validationAutomatiqueEcheances ?? false}
+                        disabled={!estAdmin}
+                        onChange={(e) => void enregistrerChamp(tiersSelectionne, { validationAutomatiqueEcheances: e.target.checked })}
+                      />
+                      Échéancier appliqué d'office
+                      <Aide
+                        titre="Échéancier appliqué d'office"
+                        texte="En saisie, la ligne de facture de ce tiers reçoit l'échéancier de son modèle de règlement. Avec plusieurs échéances, la fenêtre des échéances se présente pour les retoucher ; cochée, la ligne est découpée sans elle, et la saisie l'annonce."
+                        source="Sage 100 · validation automatique des règlements (plan tiers)"
+                      />
+                    </label>
+                  </>
                 )}
                 <span className="text-text-dim text-right">État :</span>
                 <span className={tiersSelectionne.estActif ? 'text-positive' : 'text-warning'}>
@@ -1572,7 +1593,7 @@ export function TiersPage() {
                       {/* Audit final F149 · l'Équilibre en dernier, et le modèle simulé, pas appliqué. */}
                       <Aide
                         titre="Échéancier du modèle"
-                        texte="L'échéance Équilibre reçoit le reste : elle se place en dernier, et aucune échéance ne peut la suivre. Aucune échéance n'est négative, un pourcentage ou un montant étant borné au reste. Le modèle se simule ici ; aucune saisie ne l'applique encore à une facture."
+                        texte="L'échéance Équilibre reçoit le reste : elle se place en dernier, et aucune échéance ne peut la suivre. Aucune échéance n'est négative, un pourcentage ou un montant étant borné au reste. Le modèle se simule ici ; en saisie, la ligne de facture d'un tiers qui porte ce modèle reçoit le même échéancier, une ligne par échéance."
                         source="OmegaX"
                       />
                     </div>
