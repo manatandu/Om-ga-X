@@ -1,5 +1,3 @@
-import { useEffect, useState } from 'react';
-import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Aide } from './chrome/Aide';
 import type { Tiers } from '../lib/types';
@@ -21,30 +19,26 @@ type Zone = (typeof ZONE_DU_TIERS)[keyof typeof ZONE_DU_TIERS];
  * l'administrateur seul, comme le reste de la structure du tiers. Le serveur
  * refuse un modèle d'une autre nature ou d'un autre dossier, et l'écran dit
  * son refus (`onChanger` le rend à la fiche).
+ *
+ * LA LISTE EST LUE UNE FOIS PAR LA FENÊTRE (second tour de relecture, mineur
+ * 13) · le volet la relisait à chaque tiers choisi ; non lue, un modèle choisi
+ * se dit « modèle non lu », jamais « modèle introuvable ».
  */
 export function VoletModelesImpression({
   tiers,
+  modeles,
+  erreur,
   onChanger,
 }: {
   tiers: Tiers;
-  onChanger: (donnees: Partial<Record<Zone, string | null>>) => Promise<void>;
+  /** Null tant que la fenêtre ne l'a pas lue · son échec vient avec `erreur`. */
+  modeles: ModeleImpression[] | null;
+  erreur: string | null;
+  onChanger: (donnees: Partial<Record<Zone, string | null>>) => Promise<unknown>;
 }) {
   const { estAdmin } = useAuth();
-  const [modeles, setModeles] = useState<ModeleImpression[] | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  useEffect(() => {
-    let actuel = true;
-    api.get<ModeleImpression[]>('/modeles-impression').then(
-      (m) => actuel && setModeles(m),
-      (e) => actuel && setErreur(e instanceof ApiError ? e.message : "Modèles d'impression illisibles"),
-    );
-    return () => {
-      actuel = false;
-    };
-  }, []);
-
-  const nomDuModele = (id: string | null | undefined) => (id ? (modeles?.find((m) => m.id === id)?.intitule ?? 'modèle introuvable') : 'aucun');
+  const nomDuModele = (id: string | null | undefined) =>
+    id ? (modeles ? (modeles.find((m) => m.id === id)?.intitule ?? 'modèle introuvable') : 'modèle non lu') : 'aucun';
 
   return (
     <div className="border-t border-border pt-2.5 mb-3">

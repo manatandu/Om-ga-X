@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { champsReprisHorsFormulaire, nonReprisEnClair, type CopieDuTiers } from './duplication-tiers';
+import { champsReprisHorsFormulaire, nonReprisEnClair, reprisEnClair, type CopieDuTiers } from './duplication-tiers';
 
 // Aucun import de « vitest » · convention du dépôt.
 
@@ -26,6 +26,15 @@ describe('la copie d’un tiers', () => {
   it('les modèles d’impression repris partent avec la création (fonction 27)', () => {
     expect(champsReprisHorsFormulaire({ ...copie, corps: { ...copie.corps, modeleImpressionRappelId: 'r1' } })).toEqual(
       expect.objectContaining({ modeleImpressionRappelId: 'r1' }),
+    );
+  });
+
+  // SECOND TOUR DE RELECTURE, mineur 10 · l'échéancier d'office et les
+  // modèles d'impression partaient sans être nommés dans « Repris de ».
+  it('ce qui est repris se dit en entier, échéancier d’office et modèles d’impression compris', () => {
+    expect(reprisEnClair({ ...copie, corps: { ...copie.corps, validationAutomatiqueEcheances: undefined } })).toBe('nom, qualité, coordonnées et règlement');
+    expect(reprisEnClair({ ...copie, corps: { ...copie.corps, modeleImpressionExtraitId: 'x' } })).toBe(
+      'nom, qualité, coordonnées, règlement, échéancier appliqué d’office et modèles d’impression',
     );
   });
 

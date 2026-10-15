@@ -12,6 +12,9 @@ import { VoletDocumentsTiers } from '../components/VoletDocumentsTiers';
 import { VoletRibsTiers } from '../components/VoletRibsTiers';
 import { VoletLieuxLivraison } from '../components/VoletLieuxLivraison';
 import { VoletModelesImpression } from '../components/VoletModelesImpression';
+import { avisRelectureManquee, gestePuisRelecture } from '../lib/geste-puis-relecture';
+import { reprisEnClair } from '../lib/duplication-tiers';
+import type { ModeleImpression } from '../lib/modeles-impression';
 import { editionTiers, libelleTypeTiers, perimetreEdition } from '../lib/editions-structures';
 import type {
   Compte,
@@ -196,7 +199,17 @@ export function TiersPage() {
   const { exerciceCourant } = useExercice();
   const navigate = useNavigate();
   const [liste, setListe] = useState<Tiers[] | null>(null);
-  const [modeles, setModeles] = useState<ModeleReglement[]>([]);
+  // LES MODÈLES DE RÈGLEMENT · null tant qu'ils ne sont pas lus, avec leur
+  // propre erreur (second tour de relecture, M3) · partis de [], ils
+  // faisaient dire « Aucun modèle » d'un échec de lecture.
+  const [modeles, setModeles] = useState<ModeleReglement[] | null>(null);
+  const [erreurModeles, setErreurModeles] = useState<string | null>(null);
+  // LES MODÈLES D'IMPRESSION, lus une fois pour la fenêtre (second tour,
+  // mineur 13) · le volet les relisait à chaque tiers choisi.
+  const [modelesImpression, setModelesImpression] = useState<ModeleImpression[] | null>(null);
+  const [erreurModelesImpression, setErreurModelesImpression] = useState<string | null>(null);
+  // La relecture manquée après un geste réussi, dite à part.
+  const [avisRelecture, setAvisRelecture] = useState<string | null>(null);
   // Les modes de règlement du dossier (ligne sage-l2, fonction 1) · null tant qu'ils ne sont pas lus.
   const [modes, setModes] = useState<ModeReglement[] | null>(null);
   const [erreurModes, setErreurModes] = useState<string | null>(null);
@@ -272,8 +285,19 @@ export function TiersPage() {
 
   useEffect(() => {
     // Un échec de lecture se dit (§ 9 ter) · avalé, la liste des modèles restait vide sans un mot.
-    api.get<ModeleReglement[]>('/modeles-reglement').then(setModeles, (err) =>
-      setErreur(`Modèles de règlement illisibles · ${err instanceof ApiError ? err.message : 'serveur injoignable'}`),
+    api.get<ModeleReglement[]>('/modeles-reglement').then(
+      (m) => {
+        setModeles(m);
+        setErreurModeles(null);
+      },
+      (err) => setErreurModeles(err instanceof ApiError ? err.message : 'serveur injoignable'),
+    );
+    api.get<ModeleImpression[]>('/modeles-impression').then(
+      (m) => {
+        setModelesImpression(m);
+        setErreurModelesImpression(null);
+      },
+      (err) => setErreurModelesImpression(err instanceof ApiError ? err.message : 'serveur injoignable'),
     );
     // LISTE DE CHOIX · comptes retenus ou utilisés (`lib/comptes-proposes.ts`) ;
     // un compte déjà rattaché à un tiers est utilisé, il y reste. Un échec se dit.
@@ -621,14 +645,24 @@ export function TiersPage() {
         | 'modeleImpressionRappelId'
       >
     >,
-  ) => {
+  ): Promise<boolean> => {
+    // Rend vrai si la fiche a changé au serveur · un refus se dit et
+    // l'appelant rétablit ce qu'il montrait (second tour, mineur 9) ; la
+    // relecture manquée se dit à part, le geste restant fait.
     setErreur(null);
-    try {
-      await api.patch(`/tiers/${t.id}`, donnees);
-      await charger();
-    } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : 'Modification impossible');
-    }
+    setAvisRelecture(null);
+    const issue = await gestePuisRelecture(
+      () => api.patch(`/tiers/${t.id}`, donnees),
+      async () => {
+        const params = new URLSearchParams();
+        if (recherche) params.set('recherche', recherche);
+        setListe(await api.get<Tiers[]>(`/tiers?${params.toString()}`));
+      },
+      (e) => (e instanceof ApiError ? e.message : null),
+    );
+    if (issue.erreurGeste) setErreur(issue.erreurGeste === 'Action impossible' ? 'Modification impossible' : issue.erreurGeste);
+    if (issue.erreurRelecture) setAvisRelecture(avisRelectureManquee('la liste des tiers', issue.erreurRelecture));
+    return issue.fait;
   };
 
   // Suppression · le serveur refuse tout objet mouvementé ou utilisé, et
@@ -679,7 +713,14 @@ export function TiersPage() {
     }
   };
 
-  const rechargerModeles = async () => setModeles(await api.get<ModeleReglement[]>('/modeles-reglement'));
+  const rechargerModeles = async () => {
+    try {
+      setModeles(await api.get<ModeleReglement[]>('/modeles-reglement'));
+      setErreurModeles(null);
+    } catch (err) {
+      setErreurModeles(err instanceof ApiError ? err.message : 'serveur injoignable');
+    }
+  };
 
   const onCreerModele = async (e: FormEvent) => {
     e.preventDefault();
@@ -694,7 +735,7 @@ export function TiersPage() {
     }
   };
 
-  const modeleSelectionne = modeles.find((m) => m.id === modeleSelectionneId) ?? null;
+  const modeleSelectionne = (modeles ?? []).find((m) => m.id === modeleSelectionneId) ?? null;
   /** Le mode d'un modèle ou d'une échéance, lu dans la liste du dossier · non lue, l'identifiant ne se devine pas. */
   const nomDuMode = (id: string | null | undefined) => {
     if (!id) return '·';
@@ -854,6 +895,11 @@ export function TiersPage() {
       {info && !erreur && (
         <div className="text-[11.5px] text-positive bg-positive-soft border border-positive/30 px-3 py-1.5 mb-2 shrink-0">{info}</div>
       )}
+      {avisRelecture && (
+        <div role="status" className="text-[11.5px] text-warning bg-warning-soft border border-warning/30 px-3 py-1.5 mb-2 shrink-0">
+          {avisRelecture}
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 flex gap-2.5">
         {/* Filtre par type · la partie gauche de la fenêtre Sage */}
@@ -966,8 +1012,16 @@ export function TiersPage() {
                     readOnly={!estAdmin}
                     placeholder="société, indépendant…"
                     onBlur={(e) => {
-                      const valeur = qualiteAEnvoyer(e.target.value);
-                      if (estAdmin && valeur !== (tiersSelectionne.qualite ?? null)) void enregistrerChamp(tiersSelectionne, { qualite: valeur });
+                      const champ = e.currentTarget;
+                      const valeur = qualiteAEnvoyer(champ.value);
+                      if (estAdmin && valeur !== (tiersSelectionne.qualite ?? null)) {
+                        // Refusée, la qualité d'avant revient (second tour,
+                        // mineur 9) · le champ ne montre pas ce que la fiche n'a pas.
+                        const avant = tiersSelectionne.qualite ?? '';
+                        void enregistrerChamp(tiersSelectionne, { qualite: valeur }).then((fait) => {
+                          if (!fait) champ.value = avant;
+                        });
+                      }
                     }}
                     className="flex-1 min-w-0 border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-none focus:border-sel"
                   />
@@ -991,7 +1045,7 @@ export function TiersPage() {
                   {tableaux.aide[tiersSelectionne.type] && <Aide sujet={tableaux.aide[tiersSelectionne.type]!} />}
                 </span>
                 <span className="text-text-dim text-right">Règlement :</span>
-                {estAdmin ? (
+                {estAdmin && modeles ? (
                   <select
                     aria-label="Modèle de règlement du tiers"
                     value={tiersSelectionne.modeleReglementId ?? ''}
@@ -1009,7 +1063,10 @@ export function TiersPage() {
                       ))}
                   </select>
                 ) : (
-                  <span>{tiersSelectionne.modeleReglement?.intitule ?? 'aucun modèle'}</span>
+                  <span>
+                    {tiersSelectionne.modeleReglement?.intitule ?? 'aucun modèle'}
+                    {erreurModeles && <span className="block text-danger text-[11px]">Modèles de règlement illisibles · {erreurModeles}</span>}
+                  </span>
                 )}
                 <span className="text-text-dim text-right">Mode :</span>
                 {estAdmin && modes ? (
@@ -1388,6 +1445,8 @@ export function TiersPage() {
               <VoletModelesImpression
                 key={`impression-${tiersSelectionne.id}`}
                 tiers={tiersSelectionne}
+                modeles={modelesImpression}
+                erreur={erreurModelesImpression}
                 onChanger={(donnees) => enregistrerChamp(tiersSelectionne, donnees)}
               />
 
@@ -1430,9 +1489,15 @@ export function TiersPage() {
                   <label className="text-[11.5px] text-right">Nom :</label>
                   <input required value={nom} onChange={(e) => setNom(e.target.value)} className="border border-border-dark px-2.5 py-1.5 text-[12px]" />
                   <label className="text-[11.5px] text-right">Règlement :</label>
-                  <select value={modeleReglementId} onChange={(e) => setModeleReglementId(e.target.value)} className="border border-border-dark px-2.5 py-1.5 text-[11.5px]">
-                    <option value="">Aucun modèle</option>
-                    {modeles.filter((m) => m.estActif).map((m) => (
+                  <select
+                    aria-label="Modèle de règlement du nouveau tiers"
+                    value={modeleReglementId}
+                    disabled={modeles === null}
+                    onChange={(e) => setModeleReglementId(e.target.value)}
+                    className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
+                  >
+                    <option value="">{modeles ? 'Aucun modèle' : erreurModeles ? `Modèles illisibles · ${erreurModeles}` : 'Lecture…'}</option>
+                    {(modeles ?? []).filter((m) => m.estActif).map((m) => (
                       <option key={m.id} value={m.id}>{m.intitule}</option>
                     ))}
                   </select>
@@ -1515,7 +1580,7 @@ export function TiersPage() {
                 </div>
                 {copie && (
                   <p className="mt-3 text-[11px] text-text-dim">
-                    Repris de {copie.origine} · nom, qualité, coordonnées et règlement. Non repris · {nonReprisEnClair(copie)}.
+                    Repris de {copie.origine} · {reprisEnClair(copie)}. Non repris · {nonReprisEnClair(copie)}.
                   </p>
                 )}
                 {erreurCreation && (
@@ -1550,8 +1615,13 @@ export function TiersPage() {
               </div>
               <div className="flex-1 min-h-0 overflow-auto p-4">
                 <div className="border border-border mb-3">
-                  {modeles.length === 0 && <div className="p-2.5 text-[11.5px] text-text-dim">Aucun modèle de règlement.</div>}
-                  {modeles.map((m) => (
+                  {modeles === null && (
+                    <div className={`p-2.5 text-[11.5px] ${erreurModeles ? 'text-danger' : 'text-text-dim'}`}>
+                      {erreurModeles ? `Modèles de règlement illisibles · ${erreurModeles}` : 'Lecture…'}
+                    </div>
+                  )}
+                  {modeles?.length === 0 && <div className="p-2.5 text-[11.5px] text-text-dim">Aucun modèle de règlement.</div>}
+                  {(modeles ?? []).map((m) => (
                     <div
                       key={m.id}
                       onClick={() => setModeleSelectionneId(m.id === modeleSelectionneId ? null : m.id)}
@@ -1637,7 +1707,7 @@ export function TiersPage() {
                       </div>
                     )}
   
-                    <form onSubmit={onAjouterEcheance} className="grid grid-cols-7 gap-2 items-end mb-4">
+                    <form onSubmit={onAjouterEcheance} className="grid grid-cols-2 sm:grid-cols-7 gap-2 items-end mb-4">
                       <label className="text-[11px] font-semibold text-text-dim">
                         Ordre
                         <input required type="number" min={1} value={ordreEch} onChange={(e) => setOrdreEch(Number(e.target.value))} className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px]" />
@@ -1671,11 +1741,12 @@ export function TiersPage() {
                       <label className="text-[11px] font-semibold text-text-dim">
                         Mode
                         <select aria-label="Mode de l'échéance" value={modeEch} onChange={(e) => setModeEch(e.target.value)} className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px]">
-                          <option value="">Aucun</option>
+                          <option value="">{erreurModes ? 'Modes illisibles' : 'Aucun'}</option>
                           {modesProposables(modes ?? [], null).map((m) => (
                             <option key={m.id} value={m.id}>{libelleMode(m)}</option>
                           ))}
                         </select>
+                        {erreurModes && <span className="block font-normal text-danger">Modes de règlement illisibles · {erreurModes}</span>}
                       </label>
                       <button type="submit" className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1.5 h-fit">
                         Ajouter

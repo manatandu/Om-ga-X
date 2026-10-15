@@ -42,3 +42,17 @@ export function champsReprisHorsFormulaire(c: CopieDuTiers): Record<string, stri
 export function nonReprisEnClair(c: CopieDuTiers): string {
   return c.nonRepris.map((n) => `${n.champ} (${n.motif})`).join(' ; ');
 }
+
+/**
+ * CE QUE LA COPIE REPREND, dit en entier (second tour de relecture, mineur
+ * 10) · les modèles d'impression et l'échéancier appliqué d'office partaient
+ * avec la création sans être nommés.
+ */
+export function reprisEnClair(c: CopieDuTiers): string {
+  const repris = ['nom', 'qualité', 'coordonnées', 'règlement'];
+  if (c.corps.validationAutomatiqueEcheances) repris.push('échéancier appliqué d’office');
+  if (c.corps.modeleImpressionExtraitId || c.corps.modeleImpressionReglementId || c.corps.modeleImpressionRappelId) {
+    repris.push('modèles d’impression');
+  }
+  return `${repris.slice(0, -1).join(', ')} et ${repris[repris.length - 1]}`;
+}
