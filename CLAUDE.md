@@ -198,7 +198,10 @@ fonctions nouvelles que Manasse a demandées expressément (§ 6), une demande
 expresse valant levée du gel pour elle seule ; puis les 41 ABSENCES DE SAGE
 qu'il a cochées « À faire » le 2026-10-14 (« Execute ce que j'ai coché »,
 même plan, § 9), reproduites chacune à sa place par
-`docs/comparaison-sage/reproduction/`, les 61 autres gardées pour plus tard.
+`docs/comparaison-sage/reproduction/`, les 61 autres gardées pour plus tard ;
+puis, le 2026-10-15, la charte « Encre de cachet » et le redimensionnement
+des fenêtres par tous leurs bords, demandés expressément (« Oui vas-y, fais
+aussi en sorte de régler les tailles de fenêtres », « Tous les bords »).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -3163,6 +3166,47 @@ l'art. 154, et c'est DIT. L'imputation se déclare AU FOURNISSEUR « lorsqu'il p
 `LigneOrdreVirement.imputationDeclaree`), sinon la référence de la pièce qui la lui a
 notifiée est exigée (`pieceImputation`, recopiée à la référence de la pièce).
 
+**Ligne sage-l2 · tiers et règlements (2026-10-15).** MODES DE RÈGLEMENT
+(`reglements/modes-reglement.ts`, trente au plus, P_REGLEMENT, intitulé
+unique sans égard à la casse) · sur la fiche du tiers, le modèle de
+règlement et ses échéances, la ligne de saisie et le règlement, où il ne se
+pose que sur le tiers et la trésorerie, jamais sur l'escompte ni l'écart ;
+un paiement d'au moins 1 000 000 FC à un fournisseur hors chèque, virement
+ou carte est AVERTI (O.-L. n° 10/001, art. 59 bis et 74 bis, dès le 27 mai
+2013), jamais refusé · la transaction est la ligne de facture seule, la
+pièce à plusieurs lignes SOUS CONDITION, l'à-nouveau sans facture retrouvée
+NON JUGÉ, les modes que le texte ne nomme pas SOUS RÉSERVE (question au
+suivi) ; un mode mis en sommeil reste admis sur le brouillard qui le
+portait. L'ÉCHÉANCIER DU MODÈLE découpe la ligne de facture en saisie
+(fenêtre des échéances, une par ligne en file, ouverte sur demande, ou
+d'office sur la fiche, par la même règle, échéances nulles écartées) ; la
+ligne retient la date de son échéancier, une pièce sans date le dit, une
+date changée nomme les lignes à revoir ; la pièce ne part pas avant lui, et
+sa réponse ne vaut que pour une ligne encore là, intacte. ESCOMPTE ET ÉCART
+(`reglements/ecart-escompte.ts`) · obtenu D 40 / C 773, accordé D 673 /
+C 41 (au SYCEBNL, le seul 412), chacun avec son compte ; l'écart se tranche
+par le Code civil, Livre III · remise d'un reste client (art. 132) ou
+renonciation au trop-payé fournisseur (art. 133) en charge, 6588 au
+SYSCOHADA, 658 au SYCEBNL, sous `Tenant.seuilEcartReglement` SANS défaut,
+borné à la colonne ; trop-perçu d'un client (art. 252) et fournisseur payé
+en moins (art. 142) REFUSÉS ; aucune ligne de taxe (art. 29, point 1 ;
+décret art. 79), dit. QUALITÉ du tiers, libellé qui ne décide rien ; LIEUX
+DE LIVRAISON d'un client (`LieuLivraison`, un principal, jugé sous un verrou
+du client, que la fusion prend aussi pour les deux clients, un renommé déjà
+pris recevant un rang) ; DUPLICATION vers le formulaire de création, sans
+Numéro Impôt, RIB, documents, lieux, cellule, autorisation aux débits ni
+exclusion des relances, nommés. MODÈLES D'IMPRESSION
+(`tiers/modeles-impression.ts`, F_COMPTETMODELE) · extrait, avis de
+règlement, rappel, choisis sur la fiche dans la zone de leur nature ; le
+modèle HABILLE le document ({document} exigé une fois, tout ce qui est entre
+accolades sans être un jeton admis refusé), jamais il ne le remplace ni n'en
+retire la signature ; il habille relances, relevé et l'avis de règlement
+d'un ordre IMPRIMÉ, qui transmet l'imputation déclarée en payant
+(art. 151). Un mode, un modèle ou un journal retiré entre le contrôle et
+l'écriture rend un 409 qui le nomme (`tiers/reference-retiree.ts`), jamais
+une erreur 500. L'ASSISTANT DE RÈGLEMENT envoie le corps du formulaire, un
+tiers en francs, sans règle propre.
+
 **Virement de fonds (2026-10-09, demande de Manasse).** Traitement > Tiers et
 trésorerie (`virements-fonds/`) · banque ou caisse vers une autre, chacune dans
 SON journal. LE COMPTE DE PASSAGE EST LE 585, JAMAIS LE 581 que la demande
@@ -4867,6 +4911,17 @@ Trois choses à ne pas défaire :
   de la charte a trouvé un `--text-dim` à 3,98:1 sur le fond de l'application,
   sous le plancher AA, que personne n'avait vu en deux ans.
 
+**L'ENCRE EST CELLE DU CACHET depuis le 2026-10-15** (décision de Manasse,
+« Oui vas-y », après l'aperçu avant/après sur le logiciel) · `#2a1f5c` au
+lieu de `#142f6b`, 14,49:1 sur blanc. UNE seule encre en circulation · le
+générateur la pose sur le signe, le logotype et les icônes (`ENCRE_HEX`), la
+couleur de thème du manifeste et de `index.html` la recopie (relue contre
+`ENCRE` par `pwa-et-confidentialite.spec.ts`), l'échelle `--a-*` et les gris
+de `index.css` la suivent,
+les couleurs de signal restent. Changer d'encre, c'est changer le générateur
+ET remesurer la table du § 7 de la charte, jamais retoucher un fichier
+engendré.
+
 ## 9 ter. L'interface · le modèle est Sage, pas une invention
 
 Décidé par Manasse le 2026-09-25 : « réfère-toi aux logiciels qui existent
@@ -4882,9 +4937,9 @@ OmegaX, JAMAIS le vert de Sage.
 - **Bandeau à l'encre de la marque.** La barre de titre, la barre verticale de
   l'accueil et la barre de titre de la fenêtre ACTIVE sont `--bandeau`
   (`--a-900`), texte et symbole en blanc (logo blanc prévu par la charte sur
-  fond sombre). La barre de menus est blanche, survol bleu clair.
+  fond sombre). La barre de menus est blanche, survol à la teinte claire de l'encre.
 - **Grille blanche, en-tête plein.** Les tableaux sont blancs sur la fenêtre
-  (`--fenetre`, gris bleuté très clair), l'en-tête est plein en `--a-700`
+  (`--fenetre`, gris très clair teinté de l'encre), l'en-tête est plein en `--a-700`
   texte blanc, les lignes séparées par un filet, sans quadrillage vertical ni
   zébrure, total sur `--a-50` (`index.css`, bloc TABLEAUX). Le bouton
   principal (`bg-sel`) est une pilule, comme le « + Créer » de Sage Active.

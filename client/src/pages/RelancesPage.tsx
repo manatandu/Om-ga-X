@@ -5,7 +5,7 @@ import { useExercice } from '../lib/exercice';
 import { Aide } from '../components/chrome/Aide';
 import { GroupesLusLigneALigne } from '../components/GroupesLusLigneALigne';
 import { raisonGroupesLusLigneALigne } from '../lib/groupes-lus-ligne-a-ligne';
-import type { BilanEmissionRelances, BilanRepriseCourrier, LettreRelance, NiveauRelance, PositionRelance, TypeRelance } from '../lib/types';
+import type { BilanEmissionRelances, BilanRepriseCourrier, CadreImpression, LettreRelance, NiveauRelance, PositionRelance, TypeRelance } from '../lib/types';
 import { libelleRemise, phraseEmission, tonRemise } from '../lib/remise-courriel';
 import { EVENEMENT_FILE_COURRIER, SUITE_REPRISE_HORS_FILE, cumulerReprises, reprendreEncore, resumeReprise } from '../lib/courrier-file';
 import { EnteteImpression } from '../components/chrome/EnteteImpression';
@@ -70,13 +70,15 @@ function PositionsRelances() {
   // s'intitule « Rappel et relevé » et la route du relevé n'était appelée
   // par rien. Rendu dans la fenêtre, pour que « Imprimer la fenêtre » le
   // sorte avec l'en-tête du dossier.
-  const [releve, setReleve] = useState<(PositionRelance & { entite: string }) | null>(null);
+  // `cadre` · le modèle d'extrait du tiers (ligne sage-l2, fonction 27),
+  // coupé autour du tableau par le serveur ; nul, le relevé part nu.
+  const [releve, setReleve] = useState<(PositionRelance & { entite: string; cadre?: CadreImpression | null }) | null>(null);
   const ouvrirReleve = async (compteId: string) => {
     if (!exerciceCourant) return;
     setErreur(null);
     try {
       setReleve(
-        await api.get<PositionRelance & { entite: string }>(
+        await api.get<PositionRelance & { entite: string; cadre?: CadreImpression | null }>(
           `/relances/releve/${compteId}?exerciceId=${exerciceCourant.id}`,
         ),
       );
@@ -332,6 +334,7 @@ function PositionsRelances() {
                 {peutEcrire && (
                   <input
                     type="checkbox"
+                    aria-label={`Sélectionner le compte ${p.numero}`}
                     disabled={p.horsRelance}
                     title={p.horsRelance ? 'Tiers hors du circuit de relance' : undefined}
                     checked={selection.has(p.compteId)}
@@ -454,6 +457,14 @@ function PositionsRelances() {
                 >
                   {releve?.compteId === p.compteId ? 'Fermer le relevé' : 'Relevé de compte'}
                 </button>
+                {releve?.compteId === p.compteId && releve.cadre?.avant && (
+                  <pre
+                    title={`Modèle d'impression du tiers · ${releve.cadre.modele ?? ''}`}
+                    className="mt-2 max-w-[640px] text-[11.5px] whitespace-pre-wrap font-sans leading-[1.5]"
+                  >
+                    {releve.cadre.avant}
+                  </pre>
+                )}
                 {releve?.compteId === p.compteId && (
                   <table className="mt-2 w-full max-w-[640px] text-[11.5px] border-collapse">
                     <caption className="text-left font-semibold pb-1">
@@ -484,6 +495,9 @@ function PositionsRelances() {
                       </tr>
                     </tbody>
                   </table>
+                )}
+                {releve?.compteId === p.compteId && releve.cadre?.apres && (
+                  <pre className="mt-2 max-w-[640px] text-[11.5px] whitespace-pre-wrap font-sans leading-[1.5]">{releve.cadre.apres}</pre>
                 )}
               </div>
             )}
@@ -576,7 +590,11 @@ function PositionsRelances() {
           {lettres.map((l) => (
             <article key={l.compteId} className="border-b border-border/40">
               <div className="px-3 py-1.5 bg-chrome text-[11.5px] font-semibold flex justify-between gap-2 flex-wrap">
-                <span>{l.tiers}</span>
+                <span>
+                  {l.tiers}
+                  {/* Le modèle d'impression du tiers qui a habillé la lettre (ligne sage-l2, fonction 27). */}
+                  {l.modeleImpression && <span className="ml-2 font-normal text-text-dim">modèle « {l.modeleImpression} »</span>}
+                </span>
                 <span className="font-mono">{montant(l.montant)}</span>
               </div>
               {/* CE QU'IL EST ADVENU DE CETTE LETTRE-LÀ · une lettre sans

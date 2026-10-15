@@ -257,6 +257,10 @@ export function AppShell() {
             { label: 'Modèles de saisie', chemin: '/modeles-saisie', onClick: () => navigate('/modeles-saisie') },
             // Ligne sage-l1, fonction 19 · Sage, séquences de saisie (P_SEQUENCE).
             { label: 'Séquences de saisie', chemin: '/sequences-saisie', onClick: () => navigate('/sequences-saisie') },
+            // Ligne sage-l2, fonction 1 · Sage, modes de règlement (P_REGLEMENT).
+            { label: 'Modes de règlement', chemin: '/modes-reglement', onClick: () => navigate('/modes-reglement') },
+            // Ligne sage-l2, fonction 27 · Sage, modèles d'impression du tiers (F_COMPTETMODELE).
+            { label: "Modèles d'impression", chemin: '/modeles-impression', onClick: () => navigate('/modeles-impression') },
           ],
         },
         {

@@ -18,6 +18,8 @@ import { pairesACheval, type PairesACheval } from '../lettrage/paires-a-cheval';
 import { datesOrigineDesReports } from './date-origine-des-reports';
 import { groupesSoldesEnDevise } from './groupes-soldes-en-devise';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
+import { cadresDesTiers } from '../tiers/modeles-impression.service';
+import { habiller, natureDuNiveau } from '../tiers/modeles-impression';
 
 const JOUR = 86_400_000;
 
@@ -686,7 +688,15 @@ export class RelancesService {
       throw new NotFoundException("Ce compte n'a rien de dû sur cet exercice.");
     }
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
-    return { entite: tenant?.nom ?? '', ...position };
+    // LE MODÈLE D'EXTRAIT DU TIERS (ligne sage-l2, fonction 27) · le relevé
+    // est l'extrait de son compte ; le cadre s'imprime autour du tableau,
+    // signé comme une correspondance (AUDCG art. 59, mentions de l'émetteur).
+    const jour = jourDeKinshasa(new Date());
+    const entiteCourrier = [tenant?.nom ?? '', tenant ? mentionsEmetteur(identiteSociete(tenant), jour).ligne : null].filter((x) => x).join('\n');
+    const cadre = position.tiersId
+      ? ((await cadresDesTiers(this.prisma, tenantId, [position.tiersId], 'EXTRAIT', { entite: entiteCourrier, jour })).get(position.tiersId) ?? null)
+      : null;
+    return { entite: tenant?.nom ?? '', ...position, cadre };
   }
 
   // --- Émission ------------------------------------------------------------
@@ -811,7 +821,18 @@ export class RelancesService {
           ).map((c) => [c.id, `${c.numero} · ${c.intitule}`] as const)
         : [],
     );
-    const aEcrire: { position: PositionRelance; tiers: string; texte: string }[] = [];
+    // LE MODÈLE D'IMPRESSION DU TIERS (ligne sage-l2, fonction 27) · la lettre
+    // du niveau est le DOCUMENT, que le modèle du tiers habille (rappel pour
+    // la préventive et le rappel, extrait pour le relevé). Lu une fois pour
+    // le lot ; le texte enregistré est la lettre habillée, celle qui part.
+    const cadres = await cadresDesTiers(
+      this.prisma,
+      tenantId,
+      compteIds.flatMap((id) => positions.find((p) => p.compteId === id)?.tiersId ?? []),
+      natureDuNiveau(niveau.type),
+      { entite, jour: jourDeKinshasa(dateCourrier) },
+    );
+    const aEcrire: { position: PositionRelance; tiers: string; texte: string; modele: string | null }[] = [];
     for (const compteId of compteIds) {
       const position = positions.find((p) => p.compteId === compteId);
       // UN COMPTE SANS RIEN À RÉCLAMER DANS CET ÉTAT EST DIT, jamais sauté en
@@ -842,7 +863,7 @@ export class RelancesService {
       // le courrier nomme le compte, et la lacune se voit au lieu de
       // produire un « Cher Adhérents, » qui ne s'adresse à personne.
       const tiers = position.tiersNom ?? `titulaire du compte ${position.numero}`;
-      const texte = this.composer(niveau.modeleTexte, {
+      const lettre = this.composer(niveau.modeleTexte, {
         tiers,
         montant: position.montantDu,
         date,
@@ -850,7 +871,9 @@ export class RelancesService {
         entite,
         lignes: position.lignes,
       });
-      aEcrire.push({ position, tiers, texte });
+      const cadre = position.tiersId ? (cadres.get(position.tiersId) ?? null) : null;
+      const texte = habiller(cadre, lettre);
+      aEcrire.push({ position, tiers, texte, modele: cadre?.modele ?? null });
     }
 
     // LE JOUR DE KINSHASA DU COURRIER · une relance « du même jour » est celle
@@ -928,6 +951,8 @@ export class RelancesService {
               tiers: l.tiers,
               montant: l.position.montantDu,
               texte: l.texte,
+              // Le modèle d'impression du tiers qui a habillé la lettre, ou null.
+              modeleImpression: l.modele,
               remise: remises[rang],
             })),
             dejaEcrits: aEcrire.filter((l) => dejaIds.has(l.position.compteId)),

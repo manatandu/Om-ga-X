@@ -39,6 +39,7 @@ export const COLONNES_EDITION: Record<EditionModele, ColonneEdition[]> = {
   PLAN_TIERS: [
     { cle: 'code', libelle: 'Code', identifiante: true },
     { cle: 'nom', libelle: 'Nom', identifiante: true },
+    { cle: 'qualite', libelle: 'Qualité', identifiante: false },
     { cle: 'type', libelle: 'Type', identifiante: false },
     { cle: 'comptePrincipal', libelle: 'Compte principal', identifiante: false },
     { cle: 'ville', libelle: 'Ville', identifiante: false },

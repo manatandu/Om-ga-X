@@ -34,6 +34,33 @@ de produit.
   reste à l'administrateur, qui délègue en ouvrant l'option. Réserver le
   geste au comptable (`@ReserveAuComptable()`), ou à l'administrateur seul ?
 
+## Questions à Manasse · tiers et règlements, ligne sage-l2
+
+- #1 · MONNAIE ÉLECTRONIQUE, PRÉLÈVEMENT ET EFFET DE COMMERCE face à
+  l'art. 59 bis de l'O.-L. n° 10/001 (créé par l'O.-L. n° 13/007 du
+  23 février 2013, compilation DGI au 19/07/2026) · « Toute transaction
+  entre assujettis à la taxe sur la valeur ajoutée d'un montant d'au moins
+  1.000.000,00 de Francs congolais doit être payée par chèque, par virement
+  ou par carte bancaire » ; l'art. 74 bis sanctionne le manquement par « la
+  perte du droit à déduction de la taxe sur la valeur ajoutée supportée ».
+  Lu · la liste du texte nomme ces trois moyens et eux seuls ; l'alinéa 2
+  ne délègue au Ministre que le MONTANT, et aucun arrêté d'application lu
+  n'assimile un autre moyen. Le corpus est muet sur les trois autres modes.
+  OmegaX avertit les espèces sans réserve et ces trois modes SOUS RÉSERVE
+  (jamais un refus). Faut-il les tenir pour admis (il suffit d'ajouter leur
+  nature à `NATURES_ADMISES_ART_59_BIS`), ou garder la réserve ?
+
+## Relevés en attente · tiers et règlements, ligne sage-l2
+
+- L'avis de règlement ne part pas par courriel, et aucun avis n'est servi
+  pour un règlement sans ordre de virement (chèque, espèces) · il habille
+  aujourd'hui l'ordre de virement imprimé seulement.
+- Le mode de règlement ne suit pas encore le report à-nouveau au détail ;
+  une ligne en devise ne se découpe pas d'elle-même en échéances (dit à
+  l'écran) ; ni escompte ni écart sur un règlement en devise ou à parts
+  désignées (refus nommés) ; la qualité du tiers n'est pas reprise sur les
+  lettres de relance ; aucun document ne lit encore le lieu de livraison.
+
 ## Relevés en attente · paie, ligne sage-l5 (second tour non bloquant)
 
 - Congé À CHEVAL qui porte des jours de voyage (Code du travail, art. 141,

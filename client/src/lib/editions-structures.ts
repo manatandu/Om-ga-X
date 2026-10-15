@@ -1,6 +1,7 @@
 import type { Compte, Journal, NumerotationPiece, PlanAnalytique, SectionAnalytique, TauxTva, Tiers, TypeJournal, TypeTiers } from './types';
 import { COLONNES_EDITION } from './modeles-edition';
 import { classeDuNumero } from './classe-du-numero';
+import { montant } from './montants';
 
 /**
  * ÉDITIONS DES STRUCTURES (point 18 de la comparaison Sage i7).
@@ -94,6 +95,7 @@ export function editionTiers(tiers: Tiers[]): Edition {
     lignes: tries.map((t) => [
       t.code,
       t.nom,
+      t.qualite ?? '',
       LIBELLE_TYPE_TIERS[t.type],
       t.comptesRattaches.find((r) => r.estPrincipal)?.compte.numero ?? '',
       t.ville ?? '',
@@ -285,6 +287,8 @@ export function editionParametres(
     ['Double regard à la validation', ouiNon(p.doubleRegardValidation)],
     ['Refus de clôturer un journal non imprimé', ouiNon(p.refusClotureJournalNonImprime)],
     ['Création de comptes pendant la saisie', ouiNon(p.creationCompteEnSaisie)],
+    // Ligne sage-l2, fonction 36 · `null` est « aucun seuil », jamais zéro.
+    ["Seuil de l'écart de règlement", p.seuilEcartReglement == null ? 'aucun' : montant(p.seuilEcartReglement)],
   );
   return { colonnes: ['Rubrique', 'Valeur'], lignes };
 }

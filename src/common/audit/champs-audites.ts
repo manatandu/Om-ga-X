@@ -175,6 +175,16 @@ export const MODELES_AUDITES = new Set<string>([
   'SelectionEdition',
   // Même ligne · un modèle d'édition décide de ce que le dossier imprime.
   'ModeleEdition',
+  // Ligne sage-l2, fonction 1 · un mode de règlement est une structure du
+  // dossier (sa nature porte le contrôle de l'art. 59 bis de la TVA).
+  'ModeReglement',
+  // Ligne sage-l2, fonction 31 · un lieu de livraison est une structure du
+  // tiers, comme ses RIB.
+  'LieuLivraison',
+  // Ligne sage-l2, fonction 27 · un modèle d'impression habille les lettres
+  // que les tiers reçoivent · un texte retouché en silence changerait ce
+  // qu'on leur écrit.
+  'ModeleImpressionTiers',
   'CreanceDouteuse',
   'AjustementCreanceDouteuse',
   'MouvementCreanceDouteuse',

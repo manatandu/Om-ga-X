@@ -111,6 +111,36 @@ export class ReglementTiersDto {
   @MinLength(3)
   @MaxLength(120)
   pieceImputation?: string;
+
+  /**
+   * L'ESCOMPTE DE RÈGLEMENT (ligne sage-l2, fonction 36) · obtenu du
+   * fournisseur (crédit du 773) ou accordé au client (débit du 673), pour un
+   * paiement avant le terme (`ecart-escompte.ts`). Le tiers est soldé du payé
+   * ET de l'escompte ; sans montant, le payé est le dû moins l'escompte.
+   */
+  @FacultatifNonNul('Omettez l’escompte pour un règlement sans escompte.')
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  escompte?: number;
+
+  /**
+   * SOLDER L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36) · le reste que
+   * le client ne paie pas, ou le trop-payé au fournisseur, passé en charge
+   * sous le seuil du dossier, le tiers soldé. Jamais un écart en produit.
+   */
+  @FacultatifNonNul('Omettez « solder l’écart » ou passez false.')
+  @IsBoolean()
+  solderEcart?: boolean;
+
+  /** Le compte de l'escompte, quand plusieurs comptes de détail en tiennent lieu. */
+  @FacultatifNonNul('Omettez le compte de l’escompte quand un seul compte le porte.')
+  @IsUUID('4')
+  compteEscompteId?: string;
+
+  /** Le compte de l'écart de règlement, quand plusieurs comptes de détail en tiennent lieu. */
+  @FacultatifNonNul('Omettez le compte de l’écart quand un seul compte le porte.')
+  @IsUUID('4')
+  compteEcartId?: string;
 }
 
 export class EnregistrerReglementsDto {
@@ -159,6 +189,16 @@ export class EnregistrerReglementsDto {
   @FacultatifNonNul('Omettez la devise du moyen de paiement pour un règlement en francs.')
   @IsUUID('4')
   deviseTresorerieId?: string;
+
+  /**
+   * LE MODE DE RÈGLEMENT du lot (ligne sage-l2, fonction 1) · porté par les
+   * lignes de chaque pièce, et confronté à l'O.-L. n° 10/001, art. 59 bis
+   * (`avertissementArt59Bis`). Absent, la nature se lit sur le compte de
+   * trésorerie du journal (57 espèces, 55 monnaie électronique).
+   */
+  @FacultatifNonNul('Omettez le mode de règlement pour n’en déclarer aucun.')
+  @IsUUID('4')
+  modeReglementId?: string;
 }
 
 /**

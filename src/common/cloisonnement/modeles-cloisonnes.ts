@@ -129,6 +129,12 @@ export const MODELES_CLOISONNES = new Set<string>([
   'ModeleEdition',
   // Ligne sage-l1, fonction 19 · les séquences de saisie.
   'SequenceSaisie',
+  // Ligne sage-l2, fonction 1 · les modes de règlement.
+  'ModeReglement',
+  // Ligne sage-l2, fonction 31 · les lieux de livraison des clients.
+  'LieuLivraison',
+  // Ligne sage-l2, fonction 27 · les modèles d'impression des tiers.
+  'ModeleImpressionTiers',
   'RibTiers',
   'RubriquePaie',
   'VersionBaremePaie',

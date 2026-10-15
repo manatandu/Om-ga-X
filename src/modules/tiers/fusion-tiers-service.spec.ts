@@ -27,10 +27,13 @@ describe('Fusion de tiers · le service', () => {
       consignation: maj(),
       documentTiers: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
       ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(1) },
+      // Ligne sage-l2, fonction 31 · les lieux de livraison suivent la fiche conservée.
+      lieuLivraison: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       ligneOrdreVirement: maj(),
       abonnementCabinet: maj(),
       contratLocationAcquisition: maj(),
       tiers: { update: jest.fn().mockResolvedValue({}), delete: jest.fn().mockResolvedValue({}) },
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const prisma = {
       tiers: {
@@ -65,7 +68,8 @@ describe('Fusion de tiers · le service', () => {
       where: { bailleurTiersId: 'doublon', tenantId: 't' },
       data: { bailleurTiersId: 'garde' },
     });
-    expect(r.reporte).toHaveLength(11);
+    expect(r.reporte).toHaveLength(12);
+    expect(tx.lieuLivraison.updateMany).toHaveBeenCalledWith({ where: { tiersId: 'doublon', tenantId: 't' }, data: { tiersId: 'garde' } });
   });
 
   it('une pièce que la fiche conservée détient déjà n’est pas reportée · l’unicité (tiers, empreinte) tiendrait sinon la fusion en échec', async () => {
@@ -85,8 +89,10 @@ describe('Fusion de tiers · le service', () => {
     const tx: Record<string, unknown> = {
       tiersCompte: maj(), relance: maj(), demandeConfirmation: maj(), facture: maj(), devis: maj(), consignation: maj(),
       ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(0) }, ligneOrdreVirement: maj(), abonnementCabinet: maj(),
+      lieuLivraison: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       contratLocationAcquisition: maj(), documentTiers,
       tiers: { update: jest.fn(), delete: jest.fn() },
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const prisma = {
       tiers: {
@@ -110,8 +116,10 @@ describe('Fusion de tiers · le service', () => {
     const tx: Record<string, unknown> = {
       tiersCompte: maj(), relance: maj(), demandeConfirmation: maj(), facture: maj(), devis: maj(), consignation: maj(),
       ribTiers, ligneOrdreVirement: maj(), abonnementCabinet: maj(), contratLocationAcquisition: maj(),
+      lieuLivraison: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       documentTiers: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
       tiers: { update: jest.fn(), delete: jest.fn() },
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const prisma = {
       tiers: {
@@ -124,5 +132,41 @@ describe('Fusion de tiers · le service', () => {
     await new TiersService(prisma as never).fusionner('t', 'doublon', 'garde');
     expect(ribTiers.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { estPrincipal: false } }));
     expect(ribTiers.updateMany).toHaveBeenCalledWith({ where: { tiersId: 'doublon', tenantId: 't' }, data: { tiersId: 'garde' } });
+  });
+  it('les lieux de livraison du doublon · sans principal si la fiche gardée en a un, renommés quand l’intitulé est déjà pris (ligne sage-l2, fonction 31)', async () => {
+    const maj = () => ({ updateMany: jest.fn().mockResolvedValue({ count: 0 }) });
+    const lieuLivraison = {
+      ...maj(),
+      count: jest.fn().mockResolvedValue(1),
+      findMany: jest.fn(async ({ where }: { where: { tiersId: string } }) =>
+        where.tiersId === 'garde' ? [{ intitule: 'Entrepôt' }] : [{ id: 'l1', intitule: 'ENTREPÔT' }, { id: 'l2', intitule: 'Siège' }],
+      ),
+      update: jest.fn(),
+    };
+    const tx: Record<string, unknown> = {
+      tiersCompte: maj(), relance: maj(), demandeConfirmation: maj(), facture: maj(), devis: maj(), consignation: maj(),
+      ribTiers: { ...maj(), count: jest.fn().mockResolvedValue(0) }, ligneOrdreVirement: maj(), abonnementCabinet: maj(),
+      contratLocationAcquisition: maj(), lieuLivraison,
+      documentTiers: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
+      tiers: { update: jest.fn(), delete: jest.fn() },
+      $executeRaw: jest.fn().mockResolvedValue(1),
+    };
+    const prisma = {
+      tiers: {
+        findFirst: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(where.id === 'doublon' ? fiche('doublon', { type: 'CLIENT' }) : { ...fiche('garde', { type: 'CLIENT' }), comptesRattaches: [] }),
+        ),
+      },
+      $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
+    };
+    await new TiersService(prisma as never).fusionner('t', 'doublon', 'garde');
+    expect(lieuLivraison.updateMany).toHaveBeenCalledWith({ where: { tenantId: 't', tiersId: 'doublon' }, data: { estPrincipal: false } });
+    expect(lieuLivraison.update).toHaveBeenCalledTimes(1);
+    expect(lieuLivraison.update).toHaveBeenCalledWith({ where: { id: 'l1' }, data: { intitule: 'ENTREPÔT · DOUBLON' } });
+    // Second tour, m5 · les lieux des deux clients sous leur verrou, dans un
+    // ordre fixe, avant la lecture des intitulés.
+    const verrous = (tx.$executeRaw as jest.Mock).mock.calls.map((c: unknown[]) => c[1]);
+    expect(verrous).toEqual(['lieux-livraison:t:doublon', 'lieux-livraison:t:garde']);
+    expect((tx.$executeRaw as jest.Mock).mock.invocationCallOrder[1]).toBeLessThan(lieuLivraison.findMany.mock.invocationCallOrder[0]);
   });
 });

@@ -33,7 +33,14 @@ describe('Éditions des structures', () => {
         { estPrincipal: true, compte: { numero: '40110001' } },
       ],
     } as unknown as Tiers;
-    expect(editionTiers([t]).lignes[0]).toEqual(['F01', 'Fournisseur', 'Fournisseur', '40110001', 'Kinshasa', '', 'A123', 'Actif']);
+    expect(editionTiers([t]).lignes[0]).toEqual(['F01', 'Fournisseur', '', 'Fournisseur', '40110001', 'Kinshasa', '', 'A123', 'Actif']);
+  });
+
+  it('la qualité du tiers s’imprime à côté de son nom (ligne sage-l2, fonction 24)', () => {
+    const t = { code: 'C01', nom: 'Client', qualite: 'Société', type: 'CLIENT', estActif: true, ville: null, telephone: null, numeroImpot: null, comptesRattaches: [] } as unknown as Tiers;
+    const e = editionTiers([t]);
+    expect(e.colonnes.slice(0, 3)).toEqual(['Code', 'Nom', 'Qualité']);
+    expect(e.lignes[0].slice(0, 3)).toEqual(['C01', 'Client', 'Société']);
   });
 
   it('la contrepartie à chaque ligne ne se dit que d’un journal de trésorerie', () => {

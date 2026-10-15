@@ -2,6 +2,9 @@ import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../compte
 import { BadRequestException, ConflictException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { libelleReference, referencesVers, refuserSiReferences, reporterReferences } from '../../common/suppression/references';
 import { coordonneesAComblement, motifRefusFusionTiers } from './fusion-tiers';
+import { normaliserQualite } from './qualite-tiers';
+import { renommagesALaFusion } from './lieux-livraison';
+import { copieDuTiers, type CopieDuTiers } from './duplication-tiers';
 import {
   numeroIndividuelAligne,
   panoplieDuTiers,
@@ -19,10 +22,15 @@ import {
   ModifierModeleReglementDto,
   CreerEcheanceReglementDto,
   CalculerEcheancesDto,
+  EcheancierDeLigneDto,
 } from './dto/modele-reglement.dto';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { dateSaisieOuEffacement } from '../tenant/date-effacable';
 import { motifRefusPeriodeAutorisationDebits } from './periode-autorisation-debits';
+import { modeDuDossier } from '../reglements/modes-reglement.service';
+import { conflitSiReferenceRetiree } from './reference-retiree';
+import { modeleDuDossierPourLaZone } from './modeles-impression.service';
+import { echeancierDuModele, motifSansEcheancierDuModele } from './echeancier-modele';
 
 /**
  * Tiers (cf. docs/plan-de-construction.md §3.2) : Client/Fournisseur/Salarié/
@@ -74,6 +82,9 @@ export interface CompletionPanoplies {
  * entre la lecture et l'écriture. Le 500 brut laissait croire à une panne.
  */
 function conflitDeNumeroNomme(e: unknown, numeroChoisi?: string): never {
+  // Le mode ou le modèle choisi, retiré entre le contrôle et la création (m7).
+  const retiree = conflitSiReferenceRetiree(e);
+  if (retiree !== e) throw retiree;
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
     const cible = JSON.stringify(e.meta?.target ?? '');
     throw new ConflictException(
@@ -96,6 +107,9 @@ export class TiersService {
       where: { id: tiersId, tenantId },
       include: {
         modeleReglement: true,
+        // Le mode de règlement habituel (ligne sage-l2, fonction 1) · servi
+        // avec son état, un mode mis en sommeil restant nommé sur la fiche.
+        modeReglement: { select: { id: true, code: true, intitule: true, nature: true, estActif: true } },
         // orderBy explicite : sans lui, Postgres ne garantit aucun ordre
         // stable, et l'ordre peut visiblement changer après un simple UPDATE
         // (ex. bascule du compte Principal) · repéré en testant le bouton
@@ -127,6 +141,9 @@ export class TiersService {
       where,
       include: {
         modeleReglement: true,
+        // Le mode de règlement habituel (ligne sage-l2, fonction 1) · servi
+        // avec son état, un mode mis en sommeil restant nommé sur la fiche.
+        modeReglement: { select: { id: true, code: true, intitule: true, nature: true, estActif: true } },
         // orderBy explicite : sans lui, Postgres ne garantit aucun ordre
         // stable, et l'ordre peut visiblement changer après un simple UPDATE
         // (ex. bascule du compte Principal) · repéré en testant le bouton
@@ -150,10 +167,12 @@ export class TiersService {
     if (dto.modeleReglementId) {
       await this.trouverModeleReglement(tenantId, dto.modeleReglementId);
     }
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
+    await this.verifierModelesImpression(tenantId, dto);
     if (dto.celluleGroupeId) {
       await this.exigerMemeGroupe(tenantId, dto.celluleGroupeId);
     }
-    const { creerCompteIndividuel, numeroCompte, dateEffetAutorisationDebits, dateRevocationAutorisationDebits, ...reste } = dto;
+    const { creerCompteIndividuel, numeroCompte, dateEffetAutorisationDebits, dateRevocationAutorisationDebits, qualite, ...reste } = dto;
     // UN NUMÉRO CHOISI SANS COMPTE À OUVRIR NE SE PERD PAS EN SILENCE · le
     // cabinet croirait son compte ouvert sous ce numéro.
     if (numeroCompte !== undefined && creerCompteIndividuel === false) {
@@ -174,7 +193,8 @@ export class TiersService {
       periode.dateRevocationAutorisationDebits,
     );
     if (motif) throw new BadRequestException(motif);
-    const donnees = { ...reste, ...periode };
+    const qualiteLue = normaliserQualite(qualite);
+    const donnees = { ...reste, ...periode, ...(qualiteLue ? { qualite: qualiteLue } : {}) };
     // Le compte naît dans la même transaction que le tiers · un tiers créé
     // sans le compte qu'on lui annonce serait une fiche qui ne recevrait
     // aucune écriture, et personne ne s'en apercevrait avant la relance.
@@ -186,6 +206,28 @@ export class TiersService {
           : await this.poserPanoplie(tx, tenantId, tiers, { silencieux: true, numeroPrincipal: numeroCompte });
       return { ...tiers, compteIndividuel: panoplie?.principal ?? null, panoplie };
     }).catch((e) => conflitDeNumeroNomme(e, numeroCompte));
+  }
+
+  /**
+   * LA COPIE D'UN TIERS (ligne sage-l2, fonction 32) · le corps du formulaire
+   * de création, rien n'est écrit (`duplication-tiers.ts`) ; ce qui n'est pas
+   * repris est nommé avec son motif.
+   */
+  async duplication(tenantId: string, tiersId: string): Promise<CopieDuTiers> {
+    const t = await this.trouver(tenantId, tiersId);
+    const [ribs, documents, lieux] = await Promise.all([
+      this.prisma.ribTiers.count({ where: { tenantId, tiersId } }),
+      this.prisma.documentTiers.count({ where: { tenantId, tiersId } }),
+      this.prisma.lieuLivraison.count({ where: { tenantId, tiersId } }),
+    ]);
+    return copieDuTiers(
+      {
+        ...t,
+        modeleReglement: t.modeleReglement ? { id: t.modeleReglement.id, estActif: t.modeleReglement.estActif } : null,
+        modeReglement: t.modeReglement ? { id: t.modeReglement.id, estActif: t.modeReglement.estActif } : null,
+      },
+      { ribs, documents, lieux },
+    );
   }
 
   /**
@@ -500,13 +542,16 @@ export class TiersService {
     }
     refuserSiReferences(
       `Le tiers ${tiers.code}`,
-      await referencesVers(this.prisma, 'Tiers', tiers.id, tenantId, ['TiersCompte.tiersId', 'RibTiers.tiersId']),
+      await referencesVers(this.prisma, 'Tiers', tiers.id, tenantId, ['TiersCompte.tiersId', 'RibTiers.tiersId', 'LieuLivraison.tiersId']),
     );
     // Ses RIB lui appartiennent comme ses rattachements · un ordre de virement
     // qui en a recopié un, lui, RETIENT le tiers (LigneOrdreVirement, compté
     // par references.ts), et la copie sur l'ordre ne dépend pas du RIB.
     await transactionJournalisee(this.prisma, async (tx) => {
       await tx.ribTiers.deleteMany({ where: { tenantId, tiersId: tiers.id } });
+      // Ses lieux de livraison aussi (ligne sage-l2, fonction 31) · un document
+      // qui en aurait recopié un retiendrait le lieu, et le refus le nommerait.
+      await tx.lieuLivraison.deleteMany({ where: { tenantId, tiersId: tiers.id } });
       await tx.tiersCompte.deleteMany({ where: { tiersId: tiers.id } });
       await tx.tiers.delete({ where: { id: tiers.id } });
     });
@@ -541,6 +586,27 @@ export class TiersService {
       if ((await tx.ribTiers.count({ where: { tenantId, tiersId: cible.id, estPrincipal: true } })) > 0) {
         await tx.ribTiers.updateMany({ where: { tenantId, tiersId: source.id }, data: { estPrincipal: false } });
       }
+      // LES LIEUX DES DEUX CLIENTS SOUS LEUR VERROU (second tour de
+      // relecture, m5) · le même que celui de leur création et de leur
+      // retouche, pris dans un ordre fixe · un lieu créé pendant la fusion
+      // échappait au renommage, et deux lieux de même nom restaient.
+      for (const id of [source.id, cible.id].sort()) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lieux-livraison:${tenantId}:${id}`}))`;
+      }
+      // Même règle pour les lieux de livraison (ligne sage-l2, fonction 31) ·
+      // un seul principal chez le client conservé.
+      if ((await tx.lieuLivraison.count({ where: { tenantId, tiersId: cible.id, estPrincipal: true } })) > 0) {
+        await tx.lieuLivraison.updateMany({ where: { tenantId, tiersId: source.id }, data: { estPrincipal: false } });
+      }
+      // Un lieu du doublon de même intitulé qu'un lieu conservé prend le code
+      // du doublon, puis un rang si ce nom est pris · deux « Entrepôt » ne se
+      // distingueraient plus, et le service refuserait ensuite toute retouche
+      // de l'un ou de l'autre.
+      const conserves = (await tx.lieuLivraison.findMany({ where: { tenantId, tiersId: cible.id }, select: { intitule: true } })).map((l) => l.intitule);
+      const duDoublon = await tx.lieuLivraison.findMany({ where: { tenantId, tiersId: source.id }, select: { id: true, intitule: true } });
+      for (const [id, intitule] of renommagesALaFusion(conserves, duDoublon, source.code)) {
+        await tx.lieuLivraison.update({ where: { id }, data: { intitule } });
+      }
       // UNE PIÈCE DÉJÀ DÉTENUE PAR LA FICHE CONSERVÉE N'EST PAS REPORTÉE · deux
       // doublons portent souvent le même RCCM, et le report violerait l'unicité
       // (tiers, empreinte) : la fusion tomberait en erreur sur le cas même
@@ -574,12 +640,15 @@ export class TiersService {
     if (dto.modeleReglementId) {
       await this.trouverModeleReglement(tenantId, dto.modeleReglementId);
     }
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
+    await this.verifierModelesImpression(tenantId, dto);
     // null passe sans contrôle · il DÉTACHE, et détacher ne peut jamais faire
     // sortir de l'agrégat une opération qui doit y rester.
     if (dto.celluleGroupeId) {
       await this.exigerMemeGroupe(tenantId, dto.celluleGroupeId);
     }
-    const { dateEffetAutorisationDebits, dateRevocationAutorisationDebits, ...reste } = dto;
+    const { dateEffetAutorisationDebits, dateRevocationAutorisationDebits, qualite, ...reste } = dto;
+    const qualiteLue = normaliserQualite(qualite);
     const effet = dateSaisieOuEffacement(dateEffetAutorisationDebits);
     const revocation = dateSaisieOuEffacement(dateRevocationAutorisationDebits);
     // LA COHÉRENCE SE JUGE SUR LA FICHE QUI RÉSULTERA, pas sur la seule
@@ -596,14 +665,19 @@ export class TiersService {
       );
       if (motif) throw new BadRequestException(motif);
     }
-    return this.prisma.tiers.update({
-      where: { id: tiersId },
-      data: {
-        ...reste,
-        ...(effet === undefined ? {} : { dateEffetAutorisationDebits: effet }),
-        ...(revocation === undefined ? {} : { dateRevocationAutorisationDebits: revocation }),
-      },
-    });
+    return this.prisma.tiers
+      .update({
+        where: { id: tiersId },
+        data: {
+          ...reste,
+          ...(qualiteLue === undefined ? {} : { qualite: qualiteLue }),
+          ...(effet === undefined ? {} : { dateEffetAutorisationDebits: effet }),
+          ...(revocation === undefined ? {} : { dateRevocationAutorisationDebits: revocation }),
+        },
+      })
+      .catch((e) => {
+        throw conflitSiReferenceRetiree(e);
+      });
   }
 
   /**
@@ -768,19 +842,39 @@ export class TiersService {
     });
   }
 
+  /**
+   * LES MODÈLES D'IMPRESSION CHOISIS SUR LA FICHE (ligne sage-l2, fonction
+   * 27) · chacun du dossier et de la nature de sa zone. `null` passe sans
+   * contrôle · il retire le modèle, le document part sans habillage.
+   */
+  private async verifierModelesImpression(
+    tenantId: string,
+    dto: { modeleImpressionExtraitId?: string | null; modeleImpressionReglementId?: string | null; modeleImpressionRappelId?: string | null },
+  ) {
+    if (dto.modeleImpressionExtraitId) await modeleDuDossierPourLaZone(this.prisma, tenantId, dto.modeleImpressionExtraitId, 'EXTRAIT');
+    if (dto.modeleImpressionReglementId) await modeleDuDossierPourLaZone(this.prisma, tenantId, dto.modeleImpressionReglementId, 'REGLEMENT');
+    if (dto.modeleImpressionRappelId) await modeleDuDossierPourLaZone(this.prisma, tenantId, dto.modeleImpressionRappelId, 'RAPPEL');
+  }
+
   async creerModeleReglement(tenantId: string, dto: CreerModeleReglementDto) {
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
     const existant = await this.prisma.modeleReglement.findUnique({
       where: { tenantId_intitule: { tenantId, intitule: dto.intitule } },
     });
     if (existant) {
       throw new ConflictException(`Le modèle de règlement "${dto.intitule}" existe déjà pour ce tenant`);
     }
-    return this.prisma.modeleReglement.create({ data: { ...dto, tenantId } });
+    return this.prisma.modeleReglement.create({ data: { ...dto, tenantId } }).catch((e) => {
+      throw conflitSiReferenceRetiree(e);
+    });
   }
 
   async modifierModeleReglement(tenantId: string, id: string, dto: ModifierModeleReglementDto) {
     await this.trouverModeleReglement(tenantId, id);
-    return this.prisma.modeleReglement.update({ where: { id }, data: dto });
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
+    return this.prisma.modeleReglement.update({ where: { id }, data: dto }).catch((e) => {
+      throw conflitSiReferenceRetiree(e);
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -797,6 +891,7 @@ export class TiersService {
 
   async ajouterEcheance(tenantId: string, modeleId: string, dto: CreerEcheanceReglementDto) {
     await this.trouverModeleReglement(tenantId, modeleId);
+    if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
 
     if (dto.type !== TypeEcheance.EQUILIBRE && dto.valeur === undefined) {
       throw new BadRequestException(`Une échéance de type ${dto.type} doit préciser une valeur`);
@@ -845,7 +940,10 @@ export class TiersService {
         valeur: dto.type === TypeEcheance.EQUILIBRE ? null : dto.valeur,
         delaiJours: dto.delaiJours,
         echeance: dto.echeance ?? ConditionEcheance.NET,
+        modeReglementId: dto.modeReglementId ?? null,
       },
+    }).catch((e) => {
+      throw conflitSiReferenceRetiree(e);
     });
   }
 
@@ -859,26 +957,13 @@ export class TiersService {
     return { id: echeanceId, supprimee: true };
   }
 
-  /** dateFacture + delaiJours (NET), ou fin du mois de dateFacture + delaiJours (FIN_DE_MOIS). */
-  private calculerDateEcheance(dateFacture: Date, delaiJours: number, condition: ConditionEcheance): Date {
-    if (condition === ConditionEcheance.NET) {
-      const d = new Date(dateFacture);
-      d.setUTCDate(d.getUTCDate() + delaiJours);
-      return d;
-    }
-    const finDeMois = new Date(Date.UTC(dateFacture.getUTCFullYear(), dateFacture.getUTCMonth() + 1, 0));
-    finDeMois.setUTCDate(finDeMois.getUTCDate() + delaiJours);
-    return finDeMois;
-  }
-
   /**
    * Calcule l'échéancier d'un modèle pour une facture donnée : une seule
    * échéance (100 % à delaiJours/echeance du modèle) si aucune ligne
    * `EcheanceReglement` n'existe, sinon le détail par échéance dans l'ordre.
-   * SIMULATION · ne persiste rien, et aucune saisie n'applique encore le
-   * modèle à une facture · la fenêtre le dit (audit final F149 ; l'ancien
-   * commentaire affirmait qu'aucune facture n'existait au modèle de données,
-   * ce qui a cessé d'être vrai avec la facturation).
+   * SIMULATION · ne persiste rien. Le calcul est celui que la saisie applique
+   * à la ligne d'une facture (`echeancier-modele.ts`, ligne sage-l2,
+   * fonction 3), une seule écriture de la règle.
    *
    * AUCUNE ÉCHÉANCE N'EST NÉGATIVE · l'Équilibre se calcule en DERNIER quel
    * que soit son rang (un modèle ancien peut le porter ailleurs), et un
@@ -890,45 +975,102 @@ export class TiersService {
       where: { modeleReglementId: modeleId },
       orderBy: { ordre: 'asc' },
     });
-    const dateFacture = new Date(dto.dateFacture);
+    return echeancierDuModele(modele, echeances, new Date(dto.dateFacture), dto.montantTotal);
+  }
 
-    if (echeances.length === 0) {
-      return [
-        {
-          ordre: 1,
-          type: null,
-          montant: dto.montantTotal,
-          dateEcheance: this.calculerDateEcheance(dateFacture, modele.delaiJours, modele.echeance),
+  /**
+   * L'ÉCHÉANCIER DE LA LIGNE DE FACTURE (ligne sage-l2, fonction 3 · Sage,
+   * « échéance calculée selon les conditions de règlement du tiers »,
+   * « fenêtre multi-échéance », « validation automatique des règlements »).
+   * La saisie le demande quand une ligne de tiers est posée ; rien n'est
+   * écrit ici. Le compte est jugé dans le dossier (404 nommé) ; une ligne qui
+   * ne reçoit pas l'échéancier d'un modèle (`motifSansEcheancierDuModele`)
+   * rend son motif et aucune échéance, comme un compte sans tiers ou un tiers
+   * sans modèle (son mode habituel est alors rendu seul).
+   */
+  async echeancierDeLigne(tenantId: string, compteId: string, dto: EcheancierDeLigneDto) {
+    const compte = await this.prisma.compte.findFirst({ where: { id: compteId, tenantId }, select: { id: true, numero: true } });
+    if (!compte) throw new NotFoundException('Compte introuvable pour ce dossier.');
+    const rattachement = await this.prisma.tiersCompte.findFirst({
+      where: { compteId, tiers: { tenantId } },
+      select: {
+        tiers: {
+          select: {
+            id: true,
+            code: true,
+            nom: true,
+            estActif: true,
+            validationAutomatiqueEcheances: true,
+            modeReglement: { select: { id: true, code: true, estActif: true } },
+            modeleReglement: {
+              select: {
+                id: true,
+                intitule: true,
+                estActif: true,
+                delaiJours: true,
+                echeance: true,
+                modeReglementId: true,
+                echeances: { orderBy: { ordre: 'asc' } },
+              },
+            },
+          },
         },
-      ];
-    }
-
-    const equilibre = echeances.find((e) => e.type === TypeEcheance.EQUILIBRE);
-    const ordreDeCalcul = equilibre ? [...echeances.filter((e) => e !== equilibre), equilibre] : echeances;
-    const montants = new Map<string, number>();
-    let reste = dto.montantTotal;
-    ordreDeCalcul.forEach((e, i) => {
-      const resteArrondi = Math.round(reste * 100) / 100;
-      let montant: number;
-      if (e.type === TypeEcheance.EQUILIBRE || i === ordreDeCalcul.length - 1) {
-        // La dernière échéance absorbe toujours le reste, même si elle
-        // n'est pas explicitement de type EQUILIBRE · évite qu'un écart
-        // d'arrondi sur les pourcentages laisse un centime non réparti.
-        montant = resteArrondi;
-      } else if (e.type === TypeEcheance.POURCENTAGE) {
-        montant = Math.min(Math.round(dto.montantTotal * (Number(e.valeur) / 100) * 100) / 100, resteArrondi);
-      } else {
-        montant = Math.min(Number(e.valeur), resteArrondi);
-      }
-      reste = Math.round((reste - montant) * 100) / 100;
-      montants.set(e.id, montant);
+      },
     });
-
-    return echeances.map((e) => ({
-      ordre: e.ordre,
-      type: e.type,
-      montant: montants.get(e.id) ?? 0,
-      dateEcheance: this.calculerDateEcheance(dateFacture, e.delaiJours, e.echeance),
-    }));
+    const tiers = rattachement?.tiers ?? null;
+    // Un mode en sommeil ne se pose plus (`modeDuDossier`) · il n'est pas proposé.
+    const modeHabituel = tiers?.modeReglement?.estActif ? tiers.modeReglement : null;
+    const base = {
+      tiers: tiers ? { id: tiers.id, code: tiers.code, nom: tiers.nom } : null,
+      modele: tiers?.modeleReglement ? { id: tiers.modeleReglement.id, intitule: tiers.modeleReglement.intitule } : null,
+      validationAutomatique: tiers?.validationAutomatiqueEcheances ?? false,
+      modeHabituel: modeHabituel ? { id: modeHabituel.id, code: modeHabituel.code } : null,
+      applicable: false,
+    };
+    // La ligne reçoit-elle un échéancier · dit à part du tiers, pour que
+    // l'écran ne parle d'un modèle inapplicable (en sommeil) que sur une
+    // ligne de facture, jamais sur une avance ou un règlement.
+    const motifLigne = motifSansEcheancierDuModele({ numero: compte.numero, sens: dto.sens, typeJournal: dto.typeJournal ?? null });
+    const motif =
+      motifLigne ??
+      (!tiers
+        ? `Le compte ${compte.numero} n'est rattaché à aucun tiers.`
+        : !tiers.modeleReglement
+          ? `Le tiers ${tiers.code} n'a pas de modèle de règlement.`
+          : !tiers.modeleReglement.estActif
+            ? `Le modèle de règlement « ${tiers.modeleReglement.intitule} » du tiers ${tiers.code} est en sommeil.`
+            : null);
+    if (motif || !tiers?.modeleReglement) return { ...base, applicable: motifLigne === null, echeances: [], motif };
+    // Les modes des échéances se lisent dans le dossier · un mode mis en
+    // sommeil depuis n'est pas posé d'office (il serait refusé à
+    // l'enregistrement), l'échéance part sans mode et c'est rendu tel quel.
+    const ids = [
+      ...new Set(
+        [tiers.modeleReglement.modeReglementId, ...tiers.modeleReglement.echeances.map((e) => e.modeReglementId)].filter(
+          (x): x is string => !!x,
+        ),
+      ),
+    ];
+    const modes = ids.length
+      ? await this.prisma.modeReglement.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, code: true, estActif: true } })
+      : [];
+    const actifs = new Map(modes.filter((m) => m.estActif).map((m) => [m.id, m.code]));
+    const echeances = echeancierDuModele(
+      tiers.modeleReglement,
+      tiers.modeleReglement.echeances,
+      new Date(dto.date),
+      dto.montant,
+      modeHabituel?.id ?? null,
+    ).map((e) => {
+      const modeId = e.modeReglementId && (actifs.has(e.modeReglementId) || e.modeReglementId === modeHabituel?.id) ? e.modeReglementId : null;
+      return {
+        ordre: e.ordre,
+        montant: e.montant,
+        dateEcheance: e.dateEcheance.toISOString().slice(0, 10),
+        modeReglementId: modeId,
+        modeCode: modeId ? (actifs.get(modeId) ?? modeHabituel?.code ?? null) : null,
+      };
+    });
+    return { ...base, applicable: true, echeances, motif: null };
   }
 }

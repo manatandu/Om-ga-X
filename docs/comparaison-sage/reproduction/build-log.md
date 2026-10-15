@@ -24,3 +24,11 @@ ici et à Manasse, jamais livrée à moitié sans le dire.
 | 14 | 2026-10-14 | L1 | fait | qui peut créer le compte en saisie (question posée) | jamais hors plan ni sous un collectif de tiers |
 | 18 | 2026-10-14 | L1 | partiel | le règlement guidé (ligne L2) | compte et journal par étapes sur les mêmes routes, création enchaînée |
 | 19 | 2026-10-14 | L1 | fait | les rubriques de paie par séquence (question posée) | lecture de P_SEQUENCE (paie) transposée aux modèles de saisie |
+| 1 | 2026-10-15 | L2 | fait | le mode ne suit pas encore le report à-nouveau au détail ; monnaie électronique, prélèvement et effet de commerce face à l'art. 59 bis (question posée) | la modification au brouillard remplace les lignes · le mode devait être rendu au client pour ne pas s'effacer |
+| 3 | 2026-10-15 | L2 | fait | une ligne en devise ne se découpe pas d'elle-même (dit à l'écran) | le découpage en échéances passait une facture sous le seuil de l'art. 59 bis · la transaction se relit sur la pièce ; la réponse d'une seconde ligne écrasait la fenêtre de la première · une file, une fenêtre par ligne |
+| 18 | 2026-10-15 | L2 | fait (part règlement, la fonction est complète avec L1 et L4) | un tiers à la fois, en francs · devise, parts, escompte, écart et lots au formulaire | rien |
+| 24 | 2026-10-15 | L2 | fait | la qualité n'est pas reprise sur les lettres de relance | rien |
+| 31 | 2026-10-15 | L2 | fait | aucun document ne lit encore le lieu (la gestion commerciale le reprendra) | le bouton « Mettre en sommeil » du lieu se confondait avec celui du tiers · boutons nommés par lieu ; la fusion de deux clients sous le verrou de leurs lieux |
+| 32 | 2026-10-15 | L2 | fait | rien | rien |
+| 27 | 2026-10-15 | L2 | fait | l'avis de règlement ne part pas en courriel, et rien pour un règlement sans ordre de virement | un appel de forme `composer(…});` gelé par un test de structure · la lettre composée d'abord, habillée ensuite |
+| 36 | 2026-10-15 | L2 | fait | ni escompte ni écart sur un règlement en devise ou à parts désignées (refus nommés) ; l'écart en produit de Sage n'est pas repris (art. 252) | la part de taxe de l'escompte reste en attente sous l'encaissement, dite plutôt que régularisée |

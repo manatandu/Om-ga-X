@@ -29,4 +29,12 @@ describe('Fusion de tiers', () => {
     );
     expect(r).toEqual({ numeroImpot: 'A123' });
   });
+
+  it('un modèle d’impression du doublon ne vient que là où la fiche conservée n’en a pas (fonction 27)', () => {
+    const r = coordonneesAComblement(
+      fiche('a', { modeleImpressionRappelId: 'rappel-doublon', modeleImpressionExtraitId: 'extrait-doublon' }),
+      fiche('b', { modeleImpressionRappelId: 'rappel-conserve' }),
+    );
+    expect(r).toEqual({ modeleImpressionExtraitId: 'extrait-doublon' });
+  });
 });

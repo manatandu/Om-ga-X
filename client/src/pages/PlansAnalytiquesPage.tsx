@@ -373,7 +373,7 @@ export function PlansAnalytiquesPage() {
               >
                 <span className="flex items-baseline gap-1.5">
                   {p.intitule}
-                  <span className={`font-mono text-[11px] ${planId === p.id ? 'text-white/60' : 'text-text-dim'}`}>
+                  <span className={`font-mono text-[11px] ${planId === p.id ? 'text-white/75' : 'text-text-dim'}`}>
                     {p.code}
                   </span>
                 </span>
