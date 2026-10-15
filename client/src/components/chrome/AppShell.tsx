@@ -198,14 +198,18 @@ export function AppShell() {
         // Reste « Fichier », qui porte le dossier et ses accès · les
         // autorisations, l'import, l'impression. La file y trouve sa famille
         // immédiate : ce qui ENTRE dans le dossier (Importer) et ce qui en
-        // SORT (Courriers sortants). D'où le trait de séparation seulement
-        // quand l'import est absent, faute de quoi l'entrée se collerait à
-        // « Ouvrir un autre dossier ».
+        // SORT (Exporter les modifications, Courriers sortants). Le trait du
+        // groupe, quand l'import est absent, est porté par « Exporter les
+        // modifications… », qui précède · sans lui le groupe se collerait à
+        // « Ouvrir un autre dossier ». La file n'en porte AUCUN (relecture
+        // des écrans de sage-l7, second tour, 13) · elle en portait un
+        // second, et le non-administrateur voyait deux traits pour un seul
+        // groupe, l'export isolé entre eux.
         //
         // Ouverte à TOUS les rôles, comme la route de lecture du serveur : le
         // comptable en lecture seule qui voit sa relance « gardée » doit
         // pouvoir en lire la raison.
-        { label: 'Courriers sortants', separateurAvant: !estAdmin, chemin: '/courrier', onClick: () => navigate('/courrier') },
+        { label: 'Courriers sortants', chemin: '/courrier', separateurAvant: false, onClick: () => navigate('/courrier') },
         // Console de l'opérateur de la plateforme (le cabinet exploitant) ·
         // invisible pour tout utilisateur ordinaire, et de toute façon
         // inaccessible : le serveur relit le drapeau en base à chaque requête.

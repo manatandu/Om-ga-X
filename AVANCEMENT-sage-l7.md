@@ -421,6 +421,42 @@ Coordinateur · aucun BLOQUANT ni MAJEUR, 14 MINEUR.
   `TiersPage.tsx`, que touche aussi sage-l2. Au passage, le commentaire de
   `perimetreEdition`, resté au-dessus de `perimetreDesSections`, revient
   au-dessus de sa fonction.
+- **13 · deux traits pour un seul groupe au menu Fichier.** « Exporter les
+  modifications… » et « Courriers sortants » portaient chacun
+  `separateurAvant: !estAdmin` · le non-administrateur voyait l'export isolé
+  entre deux traits. Le trait du groupe reste sur l'export, la file n'en
+  porte aucun (`separateurAvant: false`), commentaire mis à jour ; l'entrée
+  de la file entre au passage dans le contrôle des libellés de commande
+  (`libelles-et-titres.spec.ts`), qui ne lisait pas sa forme précédente.
+
+#### Relevés en attente (second tour des écrans)
+
+Gardés à la demande du coordinateur · aucun ne fausse un montant, ne refuse
+un geste juste ni n'enferme un dossier, et aucun ne tient en une ligne.
+
+- **3 · relectures sans jeton.** `chargerListe` (export des modifications) et
+  `recharger` (impressions différées) n'ont pas de jeton · deux relectures
+  croisées (geste et minuterie) peuvent poser la plus ancienne en dernier.
+  La liste reste juste à la relecture suivante (quatre secondes quand une
+  production tourne, sinon au prochain geste) ; un jeton demande une
+  référence et deux gardes par fenêtre.
+- **5 · erreur de téléchargement loin de sa ligne.** L'échec d'un
+  téléchargement s'affiche en tête de fenêtre (`erreur`,
+  `erreurTelechargement`), pas à côté de la ligne · il nomme le numéro de
+  l'export ou de l'impression, si bien que la ligne se retrouve ; la placer
+  sur sa ligne demande un état par ligne.
+- **9 · mise au point.** Quand le champ ou le bouton qui tenait la mise au
+  point disparaît (nom de sélection enregistré ou annulé, confirmation en
+  ligne refermée), elle retombe sur la page au lieu de revenir au bouton qui
+  l'avait ouvert · une référence par contrôle.
+- **14 · appels enchaînés et `useMemo` de l'édition.** Les lectures
+  indépendantes de ces fenêtres partent déjà ensemble (liste et aperçu par
+  `void`), la boucle de production enchaîne par construction (traiter, relire,
+  traiter) ; l'édition du plan comptable et du plan des tiers
+  (`editionPlan`, `editionTiers`) se recalcule à chaque rendu · un
+  `useMemo` placé avant tout retour anticipé, avec ses dépendances.
+- **Commentaire de `perimetreEdition`.** Tenait en une ligne · fait avec 12
+  (il était resté au-dessus de `perimetreDesSections`).
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
