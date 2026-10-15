@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { avisRelectureManquee, gestePuisRelecture } from '../lib/geste-puis-relecture';
 import { useAuth } from '../lib/auth';
 import { useGardeFermeture } from '../lib/fenetres';
 import { Aide } from '../components/chrome/Aide';
@@ -38,6 +39,8 @@ export function ModelesImpressionPage() {
   const [erreurLecture, setErreurLecture] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // La relecture manquée après un geste réussi, dite à part (relecture m6).
+  const [avisRelecture, setAvisRelecture] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [brouillon, setBrouillon] = useState<Brouillon | null>(null);
   const [lu, setLu] = useState<string | null>(null);
@@ -55,19 +58,22 @@ export function ModelesImpressionPage() {
     });
   }, []);
 
-  /** Rend vrai si le geste a abouti · un refus est affiché, le brouillon reste. */
+  /**
+   * Rend vrai si le geste a abouti · un refus est affiché, le brouillon
+   * reste. La relecture qui suit a SON issue (relecture m6) · manquée, le
+   * geste reste fait, dit fait, et la liste est dite non relue.
+   */
   const agir = async (fn: () => Promise<unknown>, reussite: string): Promise<boolean> => {
     setErreur(null);
     setInfo(null);
+    setAvisRelecture(null);
     setEnvoi(true);
     try {
-      await fn();
-      await charger();
-      setInfo(reussite);
-      return true;
-    } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : 'Action impossible');
-      return false;
+      const issue = await gestePuisRelecture(fn, charger, (e) => (e instanceof ApiError ? e.message : null));
+      if (issue.erreurGeste) setErreur(issue.erreurGeste);
+      if (issue.fait) setInfo(reussite);
+      if (issue.erreurRelecture) setAvisRelecture(avisRelectureManquee("la liste des modèles d'impression", issue.erreurRelecture));
+      return issue.fait;
     } finally {
       setEnvoi(false);
     }
@@ -123,6 +129,7 @@ export function ModelesImpressionPage() {
       </div>
       {erreur && <div role="alert" className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-1.5 mb-2">{erreur}</div>}
       {info && <div className="text-[11.5px] text-positive bg-positive-soft border border-positive/30 px-3 py-1.5 mb-2">{info}</div>}
+      {avisRelecture && <div role="status" className="text-[11.5px] text-warning bg-warning-soft border border-warning/30 px-3 py-1.5 mb-2">{avisRelecture}</div>}
       <div className="overflow-x-auto">
         <table className="w-full text-[11.5px] min-w-[560px]">
           <thead>

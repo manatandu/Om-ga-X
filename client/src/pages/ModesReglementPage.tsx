@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { avisRelectureManquee, gestePuisRelecture } from '../lib/geste-puis-relecture';
 import { useAuth } from '../lib/auth';
 import type { Journal } from '../lib/types';
 import { Aide } from '../components/chrome/Aide';
@@ -20,6 +21,8 @@ export function ModesReglementPage() {
   const [erreurJournaux, setErreurJournaux] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // La relecture manquée après un geste réussi, dite à part (relecture m6).
+  const [avisRelecture, setAvisRelecture] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
 
   const [code, setCode] = useState('');
@@ -43,18 +46,21 @@ export function ModesReglementPage() {
     );
   }, []);
 
-  /** Rend vrai si le geste a abouti · un refus est affiché, et l'appelant rétablit ce qu'il montrait. */
+  /**
+   * Rend vrai si le geste a abouti · un refus est affiché, et l'appelant
+   * rétablit ce qu'il montrait. La relecture qui suit a SON issue (relecture
+   * m6) · manquée, le geste reste fait et la liste est dite non relue.
+   */
   const agir = async (fn: () => Promise<unknown>): Promise<boolean> => {
     setErreur(null);
     setInfo(null);
+    setAvisRelecture(null);
     setEnvoi(true);
     try {
-      await fn();
-      await charger();
-      return true;
-    } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : 'Action impossible');
-      return false;
+      const issue = await gestePuisRelecture(fn, charger, (e) => (e instanceof ApiError ? e.message : null));
+      if (issue.erreurGeste) setErreur(issue.erreurGeste);
+      if (issue.erreurRelecture) setAvisRelecture(avisRelectureManquee('la liste des modes de règlement', issue.erreurRelecture));
+      return issue.fait;
     } finally {
       setEnvoi(false);
     }
@@ -115,6 +121,7 @@ export function ModesReglementPage() {
       </div>
       {erreur && <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-1.5 mb-2">{erreur}</div>}
       {info && <div className="text-[11.5px] text-positive bg-positive-soft border border-positive/30 px-3 py-1.5 mb-2">{info}</div>}
+      {avisRelecture && <div role="status" className="text-[11.5px] text-warning bg-warning-soft border border-warning/30 px-3 py-1.5 mb-2">{avisRelecture}</div>}
       {erreurJournaux && <div className="text-[11.5px] text-danger mb-2">Journaux de trésorerie illisibles · {erreurJournaux}</div>}
       <div className="overflow-x-auto">
         <table className="w-full text-[11.5px] min-w-[760px]">
