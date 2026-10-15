@@ -54,7 +54,7 @@ export function BandeauConditions() {
   if (echec) {
     return (
       <div role="note" className="shrink-0 min-w-0 flex items-center justify-center gap-2 px-3 py-[3px] bg-sel-soft text-text border-b border-sel/30 text-[11.5px]">
-        <span className="truncate">L’état de l’acceptation des conditions de licence n’a pas pu être lu.</span>
+        <span className="min-w-0">L’état de l’acceptation des conditions de licence n’a pas pu être lu.</span>
         <button type="button" onClick={() => navigate('/aide/contrat-de-licence')} className="shrink-0 text-sel underline font-semibold">
           Ouvrir le contrat
         </button>
@@ -64,7 +64,7 @@ export function BandeauConditions() {
   if (!aAccepter) return null;
   return (
     <div role="note" className="shrink-0 min-w-0 flex items-center justify-center gap-2 px-3 py-[3px] bg-sel-soft text-text border-b border-sel/30 text-[11.5px]">
-      <span className="truncate">Les conditions de licence en vigueur n’ont pas encore été acceptées pour ce dossier.</span>
+      <span className="min-w-0">Les conditions de licence en vigueur n’ont pas encore été acceptées pour ce dossier.</span>
       <button type="button" onClick={() => navigate('/aide/contrat-de-licence')} className="shrink-0 text-sel underline font-semibold">
         Lire et accepter
       </button>

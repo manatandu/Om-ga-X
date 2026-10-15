@@ -333,6 +333,34 @@ describe('le contrat de licence se lit sur la page tel que le serveur le joint',
     expect(bandeau).toContain('L’état de l’acceptation des conditions de licence n’a pas pu être lu.');
   });
 
+  it('le rappel se lit en entier à l’étroit, jamais tronqué avant sa fin (second tour, mineur 2)', () => {
+    const bandeau = lire('src/components/chrome/BandeauConditions.tsx');
+    expect(bandeau).toContain('<span className="min-w-0">L’état de l’acceptation des conditions de licence n’a pas pu être lu.</span>');
+    expect(bandeau).toContain('<span className="min-w-0">Les conditions de licence en vigueur n’ont pas encore été acceptées pour ce dossier.</span>');
+  });
+
+  it('les trois pages publiques se chargent à la demande, l’attente dite (second tour, mineur 8)', () => {
+    const app = lire('src/App.tsx');
+    for (const [composant, fichier] of [
+      ['ConfidentialitePage', 'ConfidentialitePage'],
+      ['ContratLicencePage', 'ContratLicencePage'],
+      ['QuestionsFrequentesPage', 'QuestionsFrequentesPage'],
+    ]) {
+      expect(app).toContain(`const ${composant} = lazy(() => import('./pages/${fichier}')`);
+      expect(app).toContain(`element={<PagePublique><${composant} /></PagePublique>}`);
+    }
+    expect(app).toContain('<Suspense fallback=');
+  });
+
+  it('« À propos » est une boîte de dialogue · Échap la ferme, le focus va à « Fermer » (second tour, mineur 10)', () => {
+    const apropos = lire('src/components/chrome/AProposModale.tsx');
+    expect(apropos).toContain('role="dialog"');
+    expect(apropos).toContain('aria-labelledby="apropos-titre"');
+    expect(apropos).toContain('return ecouterEchap(() => {');
+    expect(apropos).toContain('refFermer.current?.focus({ preventScroll: true });');
+    expect(apropos).toContain('<button ref={refFermer} onClick={onFermer}');
+  });
+
   it('le texte brut porte la version et la langue', () => {
     expect(texteBrutDesConditions().split('\n')[1]).toMatch(/^Version \d+ du .+ · langue du contrat · français$/);
   });

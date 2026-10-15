@@ -13,6 +13,13 @@ declare const process: { env: Record<string, string | undefined> };
 const jourDeKinshasa = (instant: Date): string =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kinshasa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant);
 
+// UN SEUL INSTANT POUR LA CONSTRUCTION ET SA MISE EN PRODUCTION (second tour
+// de relecture, mineur 4) · deux `new Date()` lus au jour UTC pour l'une et
+// au jour de Kinshasa pour l'autre faisaient dire à « À propos », pour une
+// publication lancée après 23 h UTC, une construction de la veille de sa mise
+// en production.
+const CONSTRUCTION = jourDeKinshasa(new Date());
+
 export default defineConfig({
   plugins: [react()],
   // L'IDENTITÉ DE LA CONSTRUCTION (audit final F180) · « À propos » disait
@@ -23,7 +30,7 @@ export default defineConfig({
   define: {
     __OMEGAX_VERSION__: JSON.stringify(process.env.npm_package_version ?? null),
     __OMEGAX_COMMIT__: JSON.stringify(process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 7) : null),
-    __OMEGAX_CONSTRUIT_LE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+    __OMEGAX_CONSTRUIT_LE__: JSON.stringify(CONSTRUCTION),
     // LA MISE EN PRODUCTION (ligne pages-legales, 2026-10-15) · posée par le
     // SEUL workflow qui publie l'interface (`firebase-hosting-merge.yml`,
     // `OMEGAX_MISE_EN_PRODUCTION: oui`), dont le même job construit puis
@@ -34,7 +41,7 @@ export default defineConfig({
     // sur site), rien · l'écran le dit au lieu d'inventer une date.
     __OMEGAX_MISE_EN_PRODUCTION__: JSON.stringify(
       process.env.OMEGAX_MISE_EN_PRODUCTION === 'oui'
-        ? { le: jourDeKinshasa(new Date()), publication: process.env.GITHUB_RUN_NUMBER ?? null }
+        ? { le: CONSTRUCTION, publication: process.env.GITHUB_RUN_NUMBER ?? null }
         : null,
     ),
   },

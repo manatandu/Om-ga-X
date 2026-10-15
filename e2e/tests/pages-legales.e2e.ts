@@ -33,6 +33,10 @@ test('sans session, les trois pages s’ouvrent depuis l’écran d’ouverture'
   await page.getByRole('searchbox').fill('verrou');
   await expect(page.getByText('Ma connexion est refusée après plusieurs essais.')).toBeVisible();
   await expect(page.getByText('Après cinq essais manqués', { exact: false })).toBeVisible();
+  // L'apostrophe DROITE du clavier trouve le texte écrit à l'apostrophe
+  // typographique (second tour, M2).
+  await page.getByRole('searchbox').fill('l\'essai');
+  await expect(page.getByText('Combien de temps dure l’essai ?')).toBeVisible();
 
   await page.getByRole('link', { name: 'Contrat de licence' }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Contrat de licence d’OmegaX' })).toBeVisible();
@@ -93,11 +97,23 @@ test('avec session, le menu « ? » ouvre les pages en fenêtre, et l’acceptat
   await expect(page.getByText('Dernière mise à jour · 15 octobre 2026')).toBeVisible();
   // Dans une fenêtre, la barre de titre porte le titre · pas de titre de page.
   await expect(page.getByRole('heading', { level: 1, name: 'Politique de confidentialité d’OmegaX' })).toHaveCount(0);
+  // Le lien vers le contrat ouvre la FENÊTRE du contrat, sans quitter
+  // l'espace de travail (second tour, M1) · la route publique le démontait.
+  await page.getByRole('link', { name: 'contrat de licence', exact: true }).click();
+  await expect(page).toHaveURL(/#\/aide\/contrat-de-licence$/);
+  await expect(page.getByText('Acceptation par ce dossier')).toBeVisible();
+  await expect(page.getByRole('button', { name: '?', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '?', exact: true }).click();
   await page.getByRole('menuitem', { name: 'À propos d’OmegaX' }).click();
   await expect(page.getByText('Langue de l’interface · français, seule langue disponible.')).toBeVisible();
   await expect(page.getByText(/^Mise en production/)).toBeVisible();
+  // Une boîte de dialogue · le focus sur « Fermer », Échap la ferme (second tour, mineur 10).
+  const apropos = page.getByRole('dialog', { name: 'À propos d\'OmegaX' });
+  await expect(apropos).toBeVisible();
+  await expect(apropos.getByRole('button', { name: 'Fermer', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(apropos).toHaveCount(0);
 
   expect(pannes, 'exceptions et réponses 5xx').toEqual([]);
 });

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, HashRouter, Routes, useLocation } from 'react-router-dom';
 import { pageVue } from './lib/telemetrie';
 import { AuthProvider, useAuth } from './lib/auth';
@@ -8,9 +8,23 @@ import { AppShell } from './components/chrome/AppShell';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ChangerMotDePassePage } from './pages/ChangerMotDePassePage';
-import { ConfidentialitePage } from './pages/ConfidentialitePage';
-import { ContratLicencePage } from './pages/ContratLicencePage';
-import { QuestionsFrequentesPage } from './pages/QuestionsFrequentesPage';
+
+// LES PAGES PUBLIQUES SE CHARGENT À LA DEMANDE (second tour de relecture,
+// mineur 8) · le contrat, la politique et la FAQ pèsent leur texte entier, et
+// l'écran d'ouverture n'a pas à les charger pour qui ne les ouvre pas, comme
+// les fenêtres de l'espace de travail (`registre-fenetres.tsx`).
+const ConfidentialitePage = lazy(() => import('./pages/ConfidentialitePage').then((m) => ({ default: m.ConfidentialitePage })));
+const ContratLicencePage = lazy(() => import('./pages/ContratLicencePage').then((m) => ({ default: m.ContratLicencePage })));
+const QuestionsFrequentesPage = lazy(() => import('./pages/QuestionsFrequentesPage').then((m) => ({ default: m.QuestionsFrequentesPage })));
+
+/** L'attente d'une page publique chargée à la demande · dite, jamais un écran vide. */
+function PagePublique({ children }: { children: JSX.Element }) {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-[12px] text-text-dim">Chargement…</div>}>
+      {children}
+    </Suspense>
+  );
+}
 
 function ZoneProtegee({ children }: { children: JSX.Element }) {
   const { chargement, connecte, utilisateur } = useAuth();
@@ -35,7 +49,7 @@ function Routage() {
         politique de confidentialité derrière un mot de passe n'est pas une
         politique publiée, et aucun magasin d'applications ne l'accepte.
       */}
-      <Route path="/confidentialite" element={<ConfidentialitePage />} />
+      <Route path="/confidentialite" element={<PagePublique><ConfidentialitePage /></PagePublique>} />
       {/*
         Même raison pour le contrat de licence (Code du numérique, art. 53,
         al. 1er · les conditions « mises à la disposition de la clientèle »)
@@ -43,8 +57,8 @@ function Routage() {
         accès. Dans l'espace de travail, le menu « ? » les ouvre en fenêtre,
         sous /aide/… (registre-fenetres.tsx).
       */}
-      <Route path="/contrat-de-licence" element={<ContratLicencePage />} />
-      <Route path="/questions-frequentes" element={<QuestionsFrequentesPage />} />
+      <Route path="/contrat-de-licence" element={<PagePublique><ContratLicencePage /></PagePublique>} />
+      <Route path="/questions-frequentes" element={<PagePublique><QuestionsFrequentesPage /></PagePublique>} />
       <Route
         path="/"
         element={

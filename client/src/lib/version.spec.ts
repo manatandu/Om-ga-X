@@ -72,7 +72,11 @@ describe('la mise en production et la langue', () => {
   it('la date de mise en production est le jour de Kinshasa, jamais le jour UTC (relecture, mineur 7)', () => {
     const config = readFileSync(join(__dirname, '..', '..', 'vite.config.ts'), 'utf8');
     expect(config).toContain("{ timeZone: 'Africa/Kinshasa', year: 'numeric', month: '2-digit', day: '2-digit' }");
-    expect(config).toContain('le: jourDeKinshasa(new Date()),');
+    // Un seul instant, lu au jour de Kinshasa, pour la construction ET la mise
+    // en production (second tour, mineur 4) · jamais deux horloges.
+    expect(config).toContain('const CONSTRUCTION = jourDeKinshasa(new Date());');
+    expect(config).toContain('__OMEGAX_CONSTRUIT_LE__: JSON.stringify(CONSTRUCTION),');
+    expect(config).toContain('? { le: CONSTRUCTION, publication:');
     // Le format retenu rend AAAA-MM-JJ, et une publication à 23 h 30 UTC est
     // du lendemain à Kinshasa (UTC+1).
     const f = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kinshasa', year: 'numeric', month: '2-digit', day: '2-digit' });
