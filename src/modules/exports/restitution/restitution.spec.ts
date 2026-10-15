@@ -1,5 +1,5 @@
 import { Writable } from 'node:stream';
-import { RestitutionService } from './restitution.service';
+import { LOT_PIECES, RestitutionService } from './restitution.service';
 import { Prisma } from '@prisma/client';
 import { TABLES_DE_PIECES, TABLES_RESTITUEES, colonnesDuModele, fichierDeLaPiece, fichierDeLaTable, fichierDuDocument } from './tables-restitution';
 import { NON_AUDITES_MOTIVES, colonnesNonRestituables } from '../../../common/audit/champs-audites';
@@ -33,7 +33,7 @@ const LIGNE_DOSSIER: Record<string, unknown> = {
 
 /** Un client Prisma factice · on n'a besoin que de ce que l'extraction touche. */
 function prismaFactice(lignes: Record<string, Record<string, unknown>[]> = {}) {
-  const filtres: Array<{ modele: string; where: unknown; orderBy: unknown }> = [];
+  const filtres: Array<{ modele: string; where: unknown; orderBy: unknown; take?: number; cursor?: unknown }> = [];
   const maillons: Record<string, unknown>[] = [];
   // La doublure HONORE `select` · la ligne du dossier (F9) se lit avec la
   // liste des colonnes, et une doublure qui rendait toujours trois champs
@@ -51,12 +51,13 @@ function prismaFactice(lignes: Record<string, Record<string, unknown>[]> = {}) {
       // Le double HONORE `take` · sans quoi il rendrait tout d'un coup et le
       // test de pagination ne testerait rien, alors même qu'il porte sur la
       // boucle qui, mal écrite, ne se termine jamais.
-      findMany: async ({ where, orderBy, select, take }: any) => {
-        filtres.push({ modele, where, orderBy });
+      findMany: async ({ where, orderBy, select, take, cursor }: any) => {
+        filtres.push({ modele, where, orderBy, take, cursor });
         const toutes = [...(lignes[modele] ?? [])];
         const cle = Object.keys(orderBy)[0];
         toutes.sort((a, b) => String(a[cle]).localeCompare(String(b[cle])));
-        const apres = (where as Record<string, any>)[cle]?.gt;
+        // Le curseur de `pageApres` (`cursor` et `skip: 1`) comme le `gt` des tables.
+        const apres = (where as Record<string, any>)[cle]?.gt ?? cursor?.[cle];
         const restantes = apres === undefined ? toutes : toutes.filter((l) => (l[cle] as string) > apres);
         return restantes
           .slice(0, take)
@@ -403,6 +404,48 @@ describe('les documents attachés aux tiers (point 21)', () => {
     expect(lu).toContain('2 annoncé(s), 0 écrit(s)');
     expect(lu).toContain('PIECE NON RESTITUEE;documents-tiers;doc-1 · illisible (délai dépassé)');
     expect(lu).toContain("PIECE NON RESTITUEE;documents-tiers;doc-2 · retirée pendant l'extraction");
+  });
+
+  it('l’inventaire des pièces est BORNÉ · décompte, lots de LOT_PIECES, tout écrit (second tour sage-l6, mineur 3)', async () => {
+    const nombre = LOT_PIECES + 3;
+    const docs = Array.from({ length: nombre }, (_, i) => ({ id: `doc-${String(i).padStart(4, '0')}`, tenantId: DOSSIER, nomFichier: `p${i}.pdf` }));
+    const { client, filtres } = prismaFactice({ DocumentTiers: docs });
+    client.documentTiers.findFirst = async () => ({ contenu: Buffer.from('X') });
+    const service = new RestitutionService(client);
+    const { flux, buffer } = collecteur();
+    const texte: string[] = [];
+    const controles = (service as any).controles.bind(service);
+    (service as any).controles = async function* (...a: any[]) {
+      for await (const x of controles(...a)) {
+        texte.push(x);
+        yield x;
+      }
+    };
+    await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
+    const lectures = filtres.filter((f) => f.modele === 'DocumentTiers' && f.take === LOT_PIECES);
+    // Deux lots · le second repart du dernier identifiant du premier.
+    expect(lectures.map((f) => (f.cursor as { id?: string } | undefined)?.id ?? null)).toEqual([null, docs[LOT_PIECES - 1].id]);
+    expect(texte.join('')).toContain(`${nombre} annoncé(s), ${nombre} écrit(s)`);
+    expect(buffer().toString('latin1')).toContain(`doc-${String(nombre - 1).padStart(4, '0')}-p${nombre - 1}.pdf`);
+  });
+
+  it('une pièce retirée entre le décompte et la lecture est dite au contrôle', async () => {
+    const { client } = prismaFactice({ DocumentTiers: [{ id: 'doc-1', tenantId: DOSSIER, nomFichier: 'a.pdf' }] });
+    client.documentTiers.count = async () => 2;
+    client.documentTiers.findFirst = async () => ({ contenu: Buffer.from('X') });
+    const service = new RestitutionService(client);
+    const { flux } = collecteur();
+    const texte: string[] = [];
+    const controles = (service as any).controles.bind(service);
+    (service as any).controles = async function* (...a: any[]) {
+      for await (const x of controles(...a)) {
+        texte.push(x);
+        yield x;
+      }
+    };
+    await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
+    expect(texte.join('')).toContain('2 annoncé(s), 1 écrit(s)');
+    expect(texte.join('')).toContain('PIECE NON RESTITUEE;documents-tiers;1 pièce(s) · retirée(s) entre le décompte et la lecture');
   });
 
   it('une pièce jointe non restituée nomme son dossier dans l’archive (relecture sage-l6, mineur 7)', async () => {

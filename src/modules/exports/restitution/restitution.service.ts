@@ -27,11 +27,14 @@ import {
   ordreDuModele,
 } from './tables-restitution';
 import { ecrireManifeste } from './manifeste-restitution';
+import { pageApres } from '../../../common/lecture-par-lots';
 
 /** Le lot de lecture · assez grand pour ne pas multiplier les allers-retours,
  *  assez petit pour que la mémoire du serveur ne dépende pas de la taille du
  *  dossier. Même ordre de grandeur que `LOT_LECTURE` des notes annexes. */
 const LOT = 2_000;
+/** Le lot de l'inventaire des pièces · des identifiants et des noms, jamais un binaire. */
+export const LOT_PIECES = 500;
 const SEPARATEUR = ';';
 
 /**
@@ -297,6 +300,25 @@ export class RestitutionService {
       signalerArret();
     };
 
+    // LE COMPTEUR DES ENTRÉES ÉCRITES, posé AVANT la première (second tour de
+    // relecture de la ligne sage-l6, mineur 3) · `archive` émet `entry` une
+    // fois chaque entrée écrite, et un écouteur posé après des `await`
+    // pouvait manquer les premières · le contrôle aurait attendu sans fin.
+    // L'attente du lot de pièces suivant et celle du contrôle le lisent.
+    let traitees = 0;
+    let ajoutees = 0;
+    const attentes: Array<{ seuil: number; resoudre: () => void }> = [];
+    archive.on('entry', () => {
+      traitees++;
+      for (const a of attentes.filter((x) => traitees >= x.seuil)) {
+        attentes.splice(attentes.indexOf(a), 1);
+        a.resoudre();
+      }
+    });
+    const quandEcrites = (seuil: number): Promise<void> =>
+      Promise.race([traitees >= seuil ? Promise.resolve() : new Promise<void>((resoudre) => attentes.push({ seuil, resoudre })), arret]);
+
+    ajoutees++;
     archive.append(
       ecrireManifeste({
         dossier,
@@ -309,11 +331,13 @@ export class RestitutionService {
     );
 
     const ecrites: Record<string, { ecrites: number }> = { [TABLE_DU_DOSSIER]: { ecrites: 0 } };
+    ajoutees++;
     archive.append(Readable.from(this.ligneDuDossierCsv(tenantId, ecrites[TABLE_DU_DOSSIER], interrompre)), {
       name: fichierDeLaTable(TABLE_DU_DOSSIER),
     });
     for (const modele of TABLES_RESTITUEES) {
       ecrites[modele] = { ecrites: 0 };
+      ajoutees++;
       archive.append(Readable.from(this.lignesCsv(modele, tenantId, ecrites[modele], interrompre)), {
         name: fichierDeLaTable(modele),
       });
@@ -324,19 +348,32 @@ export class RestitutionService {
     // salariés (ligne sage-l6) · un fichier par entrée, chacun lu au moment où
     // l'archive l'écrit. `archiver` consomme ses entrées une à une, si bien
     // qu'une seule pièce est en mémoire à la fois, quel que soit leur nombre.
-    const inventaires = [];
-    for (const table of TABLES_DE_PIECES) {
+    // L'INVENTAIRE AUSSI EST BORNÉ (second tour de relecture, mineur 3) ·
+    // annoncé par un décompte, lu par lots (`pageApres`), et le lot suivant
+    // n'est lu qu'une fois le précédent écrit · un dossier de cent mille
+    // pièces ne tient plus leurs cent mille noms en mémoire. Une pièce
+    // retirée entre le décompte et la lecture est dite au contrôle.
+    const annonces = await Promise.all(TABLES_DE_PIECES.map((t) => this.delegueDesPieces(t.modele).count({ where: { tenantId } })));
+    const pieces: SuiviPieces = { annoncees: annonces.reduce((t, n) => t + n, 0), ecrites: 0, manquantes: [] };
+    for (const [rang, table] of TABLES_DE_PIECES.entries()) {
       const delegue = this.delegueDesPieces(table.modele);
-      const lignes = await delegue.findMany({ where: { tenantId }, orderBy: { id: 'asc' }, select: { id: true, nomFichier: true } });
-      inventaires.push({ ...table, lignes });
-    }
-    const nombrePieces = inventaires.reduce((t, i) => t + i.lignes.length, 0);
-    const pieces: SuiviPieces = { annoncees: nombrePieces, ecrites: 0, manquantes: [] };
-    for (const inventaire of inventaires) {
-      for (const piece of inventaire.lignes) {
-        archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, inventaire.modele, inventaire.dossier)), {
-          name: fichierDeLaPiece(inventaire.dossier, piece.id, piece.nomFichier),
-        });
+      let curseur: string | undefined;
+      let lues = 0;
+      while (!interrompue) {
+        const lot = await delegue.findMany({ where: { tenantId }, select: { id: true, nomFichier: true }, ...pageApres(curseur, LOT_PIECES) });
+        for (const piece of lot) {
+          ajoutees++;
+          archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, table.modele, table.dossier)), {
+            name: fichierDeLaPiece(table.dossier, piece.id, piece.nomFichier),
+          });
+        }
+        lues += lot.length;
+        if (lot.length < LOT_PIECES) break;
+        curseur = lot[lot.length - 1].id;
+        await quandEcrites(ajoutees);
+      }
+      if (lues < annonces[rang]) {
+        pieces.manquantes.push(`${table.dossier};${annonces[rang] - lues} pièce(s) · retirée(s) entre le décompte et la lecture`);
       }
     }
 
@@ -348,18 +385,9 @@ export class RestitutionService {
     // distinguait plus d'une complète. Il attend l'événement `entry` de
     // chacune des entrées qui le précèdent (émis une fois l'entrée écrite),
     // ou l'arrêt de l'archive. Rien n'est gardé en mémoire.
-    const avantLeControle = 1 + 1 + TABLES_RESTITUEES.length + nombrePieces;
-    let traitees = 0;
-    let signalerToutEcrit: () => void = () => undefined;
-    const toutEcrit = new Promise<void>((resoudre) => (signalerToutEcrit = resoudre));
-    archive.on('entry', () => {
-      traitees++;
-      if (traitees >= avantLeControle) signalerToutEcrit();
+    archive.append(Readable.from(this.controlesApres(quandEcrites(ajoutees), lignesParTable, ecrites, pieces)), {
+      name: 'controles.txt',
     });
-    archive.append(
-      Readable.from(this.controlesApres(Promise.race([toutEcrit, arret]), lignesParTable, ecrites, pieces)),
-      { name: 'controles.txt' },
-    );
 
     const fin = archive.finalize();
     // Rejetée seulement sur une archive abandonnée · déjà consignée ci-dessus.
@@ -410,6 +438,7 @@ export class RestitutionService {
     return (this.prisma as unknown as Record<string, {
       findMany: (a: object) => Promise<Array<{ id: string; nomFichier: string }>>;
       findFirst: (a: object) => Promise<{ contenu: Uint8Array } | null>;
+      count: (a: object) => Promise<number>;
     }>)[nom];
   }
 
