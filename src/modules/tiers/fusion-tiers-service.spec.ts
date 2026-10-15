@@ -33,6 +33,7 @@ describe('Fusion de tiers · le service', () => {
       abonnementCabinet: maj(),
       contratLocationAcquisition: maj(),
       tiers: { update: jest.fn().mockResolvedValue({}), delete: jest.fn().mockResolvedValue({}) },
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const prisma = {
       tiers: {
@@ -91,6 +92,7 @@ describe('Fusion de tiers · le service', () => {
       lieuLivraison: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       contratLocationAcquisition: maj(), documentTiers,
       tiers: { update: jest.fn(), delete: jest.fn() },
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const prisma = {
       tiers: {
@@ -117,6 +119,7 @@ describe('Fusion de tiers · le service', () => {
       lieuLivraison: { ...maj(), count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       documentTiers: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
       tiers: { update: jest.fn(), delete: jest.fn() },
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const prisma = {
       tiers: {
@@ -146,6 +149,7 @@ describe('Fusion de tiers · le service', () => {
       contratLocationAcquisition: maj(), lieuLivraison,
       documentTiers: { ...maj(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
       tiers: { update: jest.fn(), delete: jest.fn() },
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const prisma = {
       tiers: {
@@ -159,5 +163,10 @@ describe('Fusion de tiers · le service', () => {
     expect(lieuLivraison.updateMany).toHaveBeenCalledWith({ where: { tenantId: 't', tiersId: 'doublon' }, data: { estPrincipal: false } });
     expect(lieuLivraison.update).toHaveBeenCalledTimes(1);
     expect(lieuLivraison.update).toHaveBeenCalledWith({ where: { id: 'l1' }, data: { intitule: 'ENTREPÔT · DOUBLON' } });
+    // Second tour, m5 · les lieux des deux clients sous leur verrou, dans un
+    // ordre fixe, avant la lecture des intitulés.
+    const verrous = (tx.$executeRaw as jest.Mock).mock.calls.map((c: unknown[]) => c[1]);
+    expect(verrous).toEqual(['lieux-livraison:t:doublon', 'lieux-livraison:t:garde']);
+    expect((tx.$executeRaw as jest.Mock).mock.invocationCallOrder[1]).toBeLessThan(lieuLivraison.findMany.mock.invocationCallOrder[0]);
   });
 });

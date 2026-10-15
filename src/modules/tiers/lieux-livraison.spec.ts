@@ -5,6 +5,7 @@ import {
   motifRefusIntitule,
   motifRefusTypeLieu,
   principalApres,
+  renommagesALaFusion,
 } from './lieux-livraison';
 import { LieuxLivraisonService } from './lieux-livraison.service';
 
@@ -45,6 +46,35 @@ describe('les règles du lieu', () => {
     const long = intituleRenomme('x'.repeat(35), 'CLI-0002');
     expect(long).toHaveLength(LONGUEUR_INTITULE_LIEU);
     expect(long.endsWith(' · CLI-0002')).toBe(true);
+  });
+
+  it('à la fusion, un nom renommé déjà pris chez l’un ou l’autre client prend un rang (second tour, m5)', () => {
+    // Le client conservé porte déjà « Entrepôt · CLI-02 » · le renommé ne
+    // peut pas le reprendre, il passe à CLI-02-2.
+    const r = renommagesALaFusion(
+      ['Entrepôt', 'ENTREPÔT · CLI-02'],
+      [
+        { id: 'l1', intitule: 'entrepôt' },
+        { id: 'l2', intitule: 'Siège' },
+      ],
+      'CLI-02',
+    );
+    expect([...r]).toEqual([['l1', 'entrepôt · CLI-02-2']]);
+    // Un lieu du doublon qui garde son nom réserve ce nom · le renommé de
+    // l'autre ne le prend pas.
+    const r2 = renommagesALaFusion(
+      ['Dépôt'],
+      [
+        { id: 'a', intitule: 'Dépôt' },
+        { id: 'b', intitule: 'Dépôt · CLI-02' },
+      ],
+      'CLI-02',
+    );
+    expect(r2.get('a')).toBe('Dépôt · CLI-02-2');
+    expect(r2.has('b')).toBe(false);
+    // Deux renommés du même nom ne se rencontrent pas non plus.
+    const r3 = renommagesALaFusion(['Quai'], [{ id: 'x', intitule: 'Quai' }, { id: 'y', intitule: 'QUAI' }], 'D');
+    expect(new Set([...r3.values()].map((n) => n.toLocaleLowerCase('fr'))).size).toBe(2);
   });
 });
 

@@ -1,4 +1,5 @@
-import { NatureModeReglement } from '@prisma/client';
+import { ConflictException } from '@nestjs/common';
+import { NatureModeReglement, Prisma } from '@prisma/client';
 import type { PrismaService } from '../../common/prisma.service';
 import {
   ENTREE_EN_VIGUEUR_ART_59_BIS,
@@ -132,7 +133,22 @@ function prismaFactice(modes: ModeLu[], journaux: Array<{ id: string; tenantId: 
     $executeRaw: jest.fn(async () => 1),
     modeReglement: {
       count: jest.fn(async ({ where }: { where: { tenantId: string } }) => modes.filter((m) => m.tenantId === where.tenantId).length),
-      findMany: jest.fn(async ({ where }: { where: { tenantId: string } }) => modes.filter((m) => m.tenantId === where.tenantId)),
+      // La doublure honore la requête · borne du dossier, intitulé sans égard
+      // à la casse, mode exclu (second tour, m3).
+      findMany: jest.fn(
+        async ({ where }: { where: { tenantId: string; intitule?: { equals: string; mode: string }; NOT?: { id: string } } }) =>
+          modes.filter(
+            (m) =>
+              m.tenantId === where.tenantId &&
+              (!where.intitule || m.intitule.toLocaleLowerCase('fr') === where.intitule.equals.toLocaleLowerCase('fr')) &&
+              (!where.NOT || m.id !== where.NOT.id),
+          ),
+      ),
+      update: jest.fn(async ({ where, data }: { where: { id: string }; data: Partial<ModeLu> }) => {
+        const m = modes.find((x) => x.id === where.id) as ModeLu;
+        Object.assign(m, data);
+        return m;
+      }),
       create: jest.fn(async ({ data }: { data: Omit<ModeLu, 'id' | 'estActif' | 'journalId'> & { journalId?: string | null } }) => {
         const m = { id: `m${modes.length + 1}`, estActif: true, journalId: data.journalId ?? null, ...data };
         modes.push(m as ModeLu);
@@ -217,6 +233,44 @@ describe('ModesReglementService', () => {
     expect(r.dejaPresents).toEqual(['Chèque']);
     expect(r.crees).toHaveLength(MODES_USUELS.length - 1);
     expect(modes.filter((m) => m.tenantId === 't')).toHaveLength(MODES_USUELS.length);
+  });
+
+  it('l’intitulé est unique sans égard à la casse, à la création comme à la retouche, sous le verrou (second tour, m3)', async () => {
+    const modes: ModeLu[] = [
+      { id: 'a', tenantId: 't', code: 'ESP', intitule: 'Espèces', nature: NatureModeReglement.ESPECES, estActif: true, journalId: null },
+      { id: 'b', tenantId: 't', code: 'CHQ', intitule: 'Chèque', nature: NatureModeReglement.CHEQUE, estActif: true, journalId: null },
+    ];
+    const prisma = prismaFactice(modes);
+    const service = new ModesReglementService(prisma as unknown as PrismaService);
+    await expect(service.creer('t', 'u', { code: 'ESP2', intitule: '  espèces ', nature: NatureModeReglement.ESPECES })).rejects.toThrow(
+      'Un mode de règlement « Espèces » existe déjà dans ce dossier.',
+    );
+    expect(prisma.modeReglement.create).not.toHaveBeenCalled();
+    expect(prisma.modeReglement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 't', intitule: { equals: 'espèces', mode: 'insensitive' } } }),
+    );
+    // Retouche · prendre le nom d'un autre mode est refusé, garder le sien
+    // en changeant la casse passe.
+    await expect(service.modifier('t', 'b', { intitule: 'ESPÈCES' })).rejects.toThrow('existe déjà');
+    await expect(service.modifier('t', 'a', { intitule: 'ESPÈCES' })).resolves.toMatchObject({ intitule: 'ESPÈCES' });
+    // Le verrou précède la lecture de l'intitulé.
+    const verrou = (prisma.$executeRaw as jest.Mock).mock.invocationCallOrder.at(-1) as number;
+    expect(verrou).toBeLessThan((prisma.modeReglement.findMany as jest.Mock).mock.invocationCallOrder.at(-1) as number);
+  });
+
+  it('le journal retiré entre son contrôle et l’écriture · un 409 qui le nomme, jamais une erreur 500 (second tour, m7)', async () => {
+    const modes: ModeLu[] = [
+      { id: 'a', tenantId: 't', code: 'VIR', intitule: 'Virement', nature: NatureModeReglement.VIREMENT, estActif: true, journalId: null },
+    ];
+    const prisma = prismaFactice(modes, [{ id: 'bq', tenantId: 't', code: 'BQ', type: 'TRESORERIE' }]);
+    (prisma.modeReglement.update as jest.Mock).mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('fk', { code: 'P2003', clientVersion: 'x', meta: { field_name: 'modes_reglement_journalId_fkey (index)' } }),
+    );
+    const service = new ModesReglementService(prisma as unknown as PrismaService);
+    const refus = service.modifier('t', 'a', { journalId: 'bq' });
+    await expect(refus).rejects.toBeInstanceOf(ConflictException);
+    await expect(refus).rejects.toThrow("Le journal choisi vient d'être retiré par une autre saisie");
+    await expect(service.modifier('t', 'a', { journalId: 'bq' })).resolves.toMatchObject({ journalId: 'bq' });
   });
 
   it('un mode porté par une ligne ne se supprime pas · le refus nomme l’usage et renvoie à la mise en sommeil', async () => {

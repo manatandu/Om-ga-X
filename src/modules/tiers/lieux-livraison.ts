@@ -71,3 +71,34 @@ export function intituleRenomme(intitule: string, codeDoublon: string): string {
   const suffixe = ` · ${codeDoublon}`;
   return `${intitule.slice(0, Math.max(1, LONGUEUR_INTITULE_LIEU - suffixe.length)).trimEnd()}${suffixe}`.slice(0, LONGUEUR_INTITULE_LIEU);
 }
+
+/**
+ * LES LIEUX DU DOUBLON À LA FUSION, sans collision (second tour de relecture,
+ * m5) · un lieu renommé « Entrepôt · CLI-02 » pouvait rencontrer un lieu de ce
+ * nom chez l'un ou l'autre client. Rend, pour chaque lieu du doublon qui doit
+ * changer de nom, son nouvel intitulé · le code du doublon, puis un rang
+ * (« CLI-02-2 », « CLI-02-3 »…) jusqu'à un nom libre chez le client conservé.
+ */
+export function renommagesALaFusion(
+  conserves: readonly string[],
+  duDoublon: ReadonlyArray<{ id: string; intitule: string }>,
+  codeDoublon: string,
+): Map<string, string> {
+  const cle = (x: string) => x.toLocaleLowerCase('fr');
+  const intitulesConserves = new Set(conserves.map(cle));
+  const enCollision = duDoublon.filter((l) => intitulesConserves.has(cle(l.intitule)));
+  // Sont pris · les lieux conservés, et ceux du doublon qui gardent leur nom.
+  const pris = new Set([...intitulesConserves, ...duDoublon.filter((l) => !intitulesConserves.has(cle(l.intitule))).map((l) => cle(l.intitule))]);
+  const renommes = new Map<string, string>();
+  for (const l of enCollision) {
+    let rang = 1;
+    let nom = intituleRenomme(l.intitule, codeDoublon);
+    while (pris.has(cle(nom))) {
+      rang += 1;
+      nom = intituleRenomme(l.intitule, `${codeDoublon}-${rang}`);
+    }
+    pris.add(cle(nom));
+    renommes.set(l.id, nom);
+  }
+  return renommes;
+}

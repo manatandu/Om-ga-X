@@ -3,7 +3,7 @@ import { BadRequestException, ConflictException, HttpException, Injectable, NotF
 import { libelleReference, referencesVers, refuserSiReferences, reporterReferences } from '../../common/suppression/references';
 import { coordonneesAComblement, motifRefusFusionTiers } from './fusion-tiers';
 import { normaliserQualite } from './qualite-tiers';
-import { intituleRenomme } from './lieux-livraison';
+import { renommagesALaFusion } from './lieux-livraison';
 import { copieDuTiers, type CopieDuTiers } from './duplication-tiers';
 import {
   numeroIndividuelAligne,
@@ -28,6 +28,7 @@ import { transactionJournalisee } from '../../common/audit/transaction-journalis
 import { dateSaisieOuEffacement } from '../tenant/date-effacable';
 import { motifRefusPeriodeAutorisationDebits } from './periode-autorisation-debits';
 import { modeDuDossier } from '../reglements/modes-reglement.service';
+import { conflitSiReferenceRetiree } from './reference-retiree';
 import { modeleDuDossierPourLaZone } from './modeles-impression.service';
 import { echeancierDuModele, motifSansEcheancierDuModele } from './echeancier-modele';
 
@@ -81,6 +82,9 @@ export interface CompletionPanoplies {
  * entre la lecture et l'écriture. Le 500 brut laissait croire à une panne.
  */
 function conflitDeNumeroNomme(e: unknown, numeroChoisi?: string): never {
+  // Le mode ou le modèle choisi, retiré entre le contrôle et la création (m7).
+  const retiree = conflitSiReferenceRetiree(e);
+  if (retiree !== e) throw retiree;
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
     const cible = JSON.stringify(e.meta?.target ?? '');
     throw new ConflictException(
@@ -582,23 +586,26 @@ export class TiersService {
       if ((await tx.ribTiers.count({ where: { tenantId, tiersId: cible.id, estPrincipal: true } })) > 0) {
         await tx.ribTiers.updateMany({ where: { tenantId, tiersId: source.id }, data: { estPrincipal: false } });
       }
+      // LES LIEUX DES DEUX CLIENTS SOUS LEUR VERROU (second tour de
+      // relecture, m5) · le même que celui de leur création et de leur
+      // retouche, pris dans un ordre fixe · un lieu créé pendant la fusion
+      // échappait au renommage, et deux lieux de même nom restaient.
+      for (const id of [source.id, cible.id].sort()) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lieux-livraison:${tenantId}:${id}`}))`;
+      }
       // Même règle pour les lieux de livraison (ligne sage-l2, fonction 31) ·
       // un seul principal chez le client conservé.
       if ((await tx.lieuLivraison.count({ where: { tenantId, tiersId: cible.id, estPrincipal: true } })) > 0) {
         await tx.lieuLivraison.updateMany({ where: { tenantId, tiersId: source.id }, data: { estPrincipal: false } });
       }
       // Un lieu du doublon de même intitulé qu'un lieu conservé prend le code
-      // du doublon · deux « Entrepôt » ne se distingueraient plus, et le
-      // service refuserait ensuite toute retouche de l'un ou de l'autre.
-      const intitulesConserves = new Set(
-        (await tx.lieuLivraison.findMany({ where: { tenantId, tiersId: cible.id }, select: { intitule: true } })).map((l) =>
-          l.intitule.toLocaleLowerCase('fr'),
-        ),
-      );
-      for (const l of await tx.lieuLivraison.findMany({ where: { tenantId, tiersId: source.id }, select: { id: true, intitule: true } })) {
-        if (intitulesConserves.has(l.intitule.toLocaleLowerCase('fr'))) {
-          await tx.lieuLivraison.update({ where: { id: l.id }, data: { intitule: intituleRenomme(l.intitule, source.code) } });
-        }
+      // du doublon, puis un rang si ce nom est pris · deux « Entrepôt » ne se
+      // distingueraient plus, et le service refuserait ensuite toute retouche
+      // de l'un ou de l'autre.
+      const conserves = (await tx.lieuLivraison.findMany({ where: { tenantId, tiersId: cible.id }, select: { intitule: true } })).map((l) => l.intitule);
+      const duDoublon = await tx.lieuLivraison.findMany({ where: { tenantId, tiersId: source.id }, select: { id: true, intitule: true } });
+      for (const [id, intitule] of renommagesALaFusion(conserves, duDoublon, source.code)) {
+        await tx.lieuLivraison.update({ where: { id }, data: { intitule } });
       }
       // UNE PIÈCE DÉJÀ DÉTENUE PAR LA FICHE CONSERVÉE N'EST PAS REPORTÉE · deux
       // doublons portent souvent le même RCCM, et le report violerait l'unicité
@@ -658,15 +665,19 @@ export class TiersService {
       );
       if (motif) throw new BadRequestException(motif);
     }
-    return this.prisma.tiers.update({
-      where: { id: tiersId },
-      data: {
-        ...reste,
-        ...(qualiteLue === undefined ? {} : { qualite: qualiteLue }),
-        ...(effet === undefined ? {} : { dateEffetAutorisationDebits: effet }),
-        ...(revocation === undefined ? {} : { dateRevocationAutorisationDebits: revocation }),
-      },
-    });
+    return this.prisma.tiers
+      .update({
+        where: { id: tiersId },
+        data: {
+          ...reste,
+          ...(qualiteLue === undefined ? {} : { qualite: qualiteLue }),
+          ...(effet === undefined ? {} : { dateEffetAutorisationDebits: effet }),
+          ...(revocation === undefined ? {} : { dateRevocationAutorisationDebits: revocation }),
+        },
+      })
+      .catch((e) => {
+        throw conflitSiReferenceRetiree(e);
+      });
   }
 
   /**
@@ -853,13 +864,17 @@ export class TiersService {
     if (existant) {
       throw new ConflictException(`Le modèle de règlement "${dto.intitule}" existe déjà pour ce tenant`);
     }
-    return this.prisma.modeleReglement.create({ data: { ...dto, tenantId } });
+    return this.prisma.modeleReglement.create({ data: { ...dto, tenantId } }).catch((e) => {
+      throw conflitSiReferenceRetiree(e);
+    });
   }
 
   async modifierModeleReglement(tenantId: string, id: string, dto: ModifierModeleReglementDto) {
     await this.trouverModeleReglement(tenantId, id);
     if (dto.modeReglementId) await modeDuDossier(this.prisma, tenantId, dto.modeReglementId);
-    return this.prisma.modeleReglement.update({ where: { id }, data: dto });
+    return this.prisma.modeleReglement.update({ where: { id }, data: dto }).catch((e) => {
+      throw conflitSiReferenceRetiree(e);
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -927,6 +942,8 @@ export class TiersService {
         echeance: dto.echeance ?? ConditionEcheance.NET,
         modeReglementId: dto.modeReglementId ?? null,
       },
+    }).catch((e) => {
+      throw conflitSiReferenceRetiree(e);
     });
   }
 
