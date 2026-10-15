@@ -16,11 +16,19 @@ import { ReevaluationBilanController } from './reevaluation-bilan.controller';
 import { ReevaluationBilanService } from './reevaluation-bilan.service';
 import { DemantelementController } from './demantelement.controller';
 import { DemantelementService } from './demantelement.service';
+import { AnnulationTraitementController } from './annulation-traitement.controller';
+import { AnnulationTraitementService } from './annulation-traitement.service';
+import { FicheImmobilisationController } from './fiche-immobilisation.controller';
+import { FicheImmobilisationService } from './fiche-immobilisation.service';
+import { CreationDepuisEcrituresController } from './creation-depuis-ecritures.controller';
+import { MaintenanceImmobilisationsController } from './maintenance-immobilisations.controller';
+import { MaintenanceImmobilisationsService } from './maintenance-immobilisations.service';
+import { CreationDepuisEcrituresService } from './creation-depuis-ecritures.service';
 
 @Module({
   imports: [LicenceModule, JwtAuthModule, ComptabiliteModule],
-  controllers: [ImmobilisationController, DegressifController, LocationAcquisitionController, RepriseSubventionController, SubventionRattacheeController, ReevaluationBilanController, DemantelementController],
-  providers: [ImmobilisationService, DegressifService, LocationAcquisitionService, RepriseSubventionService, SubventionRattacheeService, ReevaluationBilanService, DemantelementService],
+  controllers: [ImmobilisationController, DegressifController, LocationAcquisitionController, RepriseSubventionController, SubventionRattacheeController, ReevaluationBilanController, DemantelementController, AnnulationTraitementController, FicheImmobilisationController, CreationDepuisEcrituresController, MaintenanceImmobilisationsController],
+  providers: [ImmobilisationService, DegressifService, LocationAcquisitionService, RepriseSubventionService, SubventionRattacheeService, ReevaluationBilanService, DemantelementService, AnnulationTraitementService, FicheImmobilisationService, CreationDepuisEcrituresService, MaintenanceImmobilisationsService],
   exports: [ImmobilisationService],
 })
 export class ImmobilisationsModule {}

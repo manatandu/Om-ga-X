@@ -50,6 +50,7 @@ const FILTRES_NOMMES: Record<string, string> = {
   luesParLePv: 'src/modules/inventaire/solde-caisse-au-comptage.ts',
   valideesDepuisLePv: 'src/modules/inventaire/solde-caisse-au-comptage.ts',
   filtreEcarteDuPointage: 'src/modules/rapprochement/rapprochement.service.ts',
+  filtreLignesDeBienSansFiche: 'src/modules/immobilisations/creation-depuis-ecritures.service.ts',
 };
 
 // ---------------------------------------------------------------------------
@@ -251,6 +252,16 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/personnel/personnel.service.ts', fonction: 'annulerBulletin', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/plateforme/garnissage-demonstration.service.ts', fonction: 'garnir', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/rapprochement/rapprochement.service.ts', fonction: 'obtenir', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  // Ligne sage-l4, intégrée avant la ligne sage-l1 · la pièce d'un module et
+  // les écritures des traitements d'un bien, désignées par leur liaison (un
+  // module n'écrit jamais dans un journal de situation), et la ligne choisie
+  // pour faire naître un bien, jugée ensuite (`motifRefusLigneACreer` nomme
+  // la simulation).
+  { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'modifierPieceDuModule', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/immobilisations/annulation-traitement.service.ts', fonction: 'traitementsDuBien', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/immobilisations/annulation-traitement.service.ts', fonction: 'annuler', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/immobilisations/creation-depuis-ecritures.service.ts', fonction: 'creer', appel: 'ligneEcriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/immobilisations/fiche-immobilisation.service.ts', fonction: 'lire', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
 ];
 
 // ---------------------------------------------------------------------------

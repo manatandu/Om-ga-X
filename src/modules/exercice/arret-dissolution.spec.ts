@@ -438,7 +438,8 @@ describe('les actes calculés sur la période ne suivent pas · nommés, refusé
       reevaluationBilan: [{ id: 'rb', tenantId: 't1', exerciceId: 'l', ecritureId: 'x' }],
     });
     await expect(service(monde).annulerArretDissolution('t1', 'n')).rejects.toThrow(
-      'réévaluation des immobilisations (sans écriture, exercice du 01/07/2026 au 31/12/2026) · aucun geste d’OmegaX ne l’annule encore',
+      // Ligne sage-l4 · la réévaluation s'annule depuis la fiche d'un de ses biens (n° 67).
+      'réévaluation des immobilisations (sans écriture, exercice du 01/07/2026 au 31/12/2026) · annulez-la (fiche d’un de ses biens, onglet Traitements, « Annuler »), puis refaites-la sur chaque exercice',
     );
     const repris = new Monde({
       exercice: [{ id: 'r', tenantId: 't1', dateDebut: jour(2027, 1, 1), dateFin: jour(2027, 12, 31), statut: 'OUVERT' }],
@@ -470,6 +471,11 @@ describe('les actes calculés sur la période ne suivent pas · nommés, refusé
     const suivent = new Set(ACTES_QUI_SUIVENT_LEUR_ECRITURE.map((a) => a.modele));
     expect(ACTES_DE_LA_PERIODE.filter((a) => suivent.has(a.modele))).toEqual([]);
     expect(suivent.has('affectationResultat')).toBe(false);
+    // Ligne sage-l4 · l'annulation d'un traitement suit son écriture d'origine.
+    expect(ACTES_QUI_SUIVENT_LEUR_ECRITURE).toContainEqual(expect.objectContaining({ modele: 'annulationTraitementImmobilisation', colonne: 'ecritureOrigineId' }));
+    for (const m of ['reevaluationBilan', 'repriseProvisionReevaluation']) {
+      expect(issueActeDeLaPeriode(ACTES_DE_LA_PERIODE.find((a) => a.modele === m)!, { auBrouillard: false, bienSorti: false })).toMatch(/onglet Traitements/);
+    }
   });
 });
 

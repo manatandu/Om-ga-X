@@ -140,6 +140,9 @@ export const MODELES_AUDITES = new Set<string>([
   'ReevaluationBilan',
   'RepriseProvisionReevaluation',
   'MouvementDemantelement',
+  // Ligne sage-l4 · l'annulation d'un traitement d'immobilisation · l'acte
+  // annulé y est gardé entier, avec le motif et le sort de ses écritures.
+  'AnnulationTraitementImmobilisation',
   // Les créances douteuses (ligne A7) · le motif, les pièces et la dépréciation
   // déclarée justifient la charge (fiche du compte 49) · retouchés après coup,
   // le dossier de révision montrerait une justification qui n'était pas celle

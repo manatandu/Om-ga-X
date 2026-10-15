@@ -128,6 +128,12 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // L'impôt sur le résultat (ligne A11) · retirée seule, l'écriture laisserait
   // l'exercice se dire constaté sans la pièce qui porte le 89 et le 441.
   'ConstatImpotResultat.ecritureId',
+  // Ligne sage-l4 · l'annulation d'un traitement d'immobilisation (fonction
+  // n° 67) · l'écriture validée annulée et son négatif · retirés ou corrigés
+  // seuls, le négatif annulerait une annuité que plus rien ne nomme, ou la
+  // dotation reviendrait sans que la fiche le sache.
+  'AnnulationTraitementImmobilisation.ecritureOrigineId',
+  'AnnulationTraitementImmobilisation.ecritureNegatifId',
 ];
 
 /**
@@ -150,6 +156,11 @@ export const RELATIONS_VERS_UNE_LIGNE: Readonly<Record<string, string>> = {
     'viendrait à la supprimer est refusé par la base au lieu de faire disparaître l’imputation de la déclaration de TVA',
   'ImputationPaiement.ligneFactureId':
     'RESTRICT · seule une facture VALIDÉE se désigne dans une imputation (`motifRefusDeclaration`) · même raison que le paiement',
+  // Ligne sage-l4, n° 68 · le bien né d'une ligne d'acquisition déjà passée.
+  'Immobilisation.ligneAcquisitionId':
+    'RESTRICT · seule une ligne VALIDÉE fait naître un bien (`motifRefusLigneACreer`), donc une ligne indélébile ; son ' +
+    'écriture est en outre retenue par la fiche (`ecritureAcquisitionId`) · un chemin qui viendrait à la supprimer est ' +
+    'refusé par la base au lieu de laisser une fiche sans la ligne qui fonde sa valeur',
 };
 
 /** Colonnes dont l'écriture peut partir, avec le motif de la décision. */

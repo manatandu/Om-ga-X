@@ -15,6 +15,11 @@ import { RemplacementImprevu } from '../components/RemplacementImprevu';
 import { ChampReglePar } from '../components/ChampReglePar';
 import { BasculeDureeLimitee } from '../components/BasculeDureeLimitee';
 import { RevisionPlanAmortissement } from '../components/RevisionPlanAmortissement';
+import { FicheImmobilisation } from '../components/FicheImmobilisation';
+import { CreationDepuisEcritures } from '../components/CreationDepuisEcritures';
+import { AssistantCreationBien } from '../components/AssistantCreationBien';
+import { MaintenanceImmobilisations, RenumerotationImmobilisations } from '../components/MaintenanceImmobilisations';
+import type { PropositionDuplication } from '../components/FicheImmobilisationGeneral';
 import { CoutsEmpruntIncorpores } from '../components/CoutsEmpruntIncorpores';
 import { AcquisitionPrixAleatoire, SoldeDetteAleatoire } from '../components/AcquisitionPrixAleatoire';
 import { ReserveProprieteBien, BiensSousReserveDePropriete } from '../components/ReserveProprieteImmobilisations';
@@ -191,6 +196,10 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [lieux, setLieux] = useState<LieuBien[]>([]);
   const [iLieuId, setILieuId] = useState('');
   const [afficherFormImmo, setAfficherFormImmo] = useState(false);
+  // Ligne sage-l4, n° 68 · la fenêtre « Créer depuis les écritures ».
+  const [creationDepuisEcritures, setCreationDepuisEcritures] = useState(false);
+  // Ligne sage-l4, n° 18 · l'assistant de création d'un bien.
+  const [assistantOuvert, setAssistantOuvert] = useState(false);
 
   const [sortieOuvertePour, setSortieOuvertePour] = useState<string | null>(null);
   const [echangeOuvertPour, setEchangeOuvertPour] = useState<string | null>(null);
@@ -261,6 +270,8 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
   const [iDixAns, setIDixAns] = useState<'' | 'NON_ESTIMABLE' | 'SIMPLIFICATION_SMT'>('');
   const [basculeOuvertePour, setBasculeOuvertePour] = useState<string | null>(null);
   const [revisionPlanOuvertePour, setRevisionPlanOuvertePour] = useState<string | null>(null);
+  // Ligne sage-l4 · la fiche du bien (traitements et leur annulation), en fenêtre posée.
+  const [ficheOuvertePour, setFicheOuvertePour] = useState<string | null>(null);
   const [coutsEmpruntOuvertsPour, setCoutsEmpruntOuvertsPour] = useState<string | null>(null);
   // Lot 15 · solde d'une dette aléatoire, réserve de propriété, matériel récupéré.
   const [soldeDetteOuvertPour, setSoldeDetteOuvertPour] = useState<string | null>(null);
@@ -515,6 +526,32 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
     };
   }, [syscohada, iDateAcquisition]);
   const unitesServies = !(utilisateur?.tenant?.referentiel === 'SYSCOHADA' && utilisateur?.tenant?.systemeComptableSyscohada === 'MINIMAL_TRESORERIE');
+
+  // DUPLIQUER UNE FICHE (ligne sage-l4, n° 66) · la copie servie par le
+  // serveur remplit le formulaire de création, que le cabinet confirme · la
+  // nouvelle fiche passe par la même route et les mêmes contrôles. Dates,
+  // numéro d'inventaire et financement restent à saisir (un autre bien).
+  const dupliquerFiche = (p: PropositionDuplication) => {
+    setFicheOuvertePour(null);
+    setIRepris(false);
+    setEstComposant(false);
+    setIPasEncoreEnService(false);
+    setIDesignation(p.designation);
+    setINumeroInventaire('');
+    setICompteBienId(p.compteImmobilisationId);
+    setIModeAcquisition('');
+    setICompteContrepartie('');
+    setINatureFiscale(p.natureFiscaleCle ?? '');
+    setILieuId(p.lieuId ?? '');
+    setIValeurOrigine(String(p.valeurOrigine));
+    setIValeurResiduelle(String(p.valeurResiduelle));
+    setIDuree(String(p.dureeAmortissementAns));
+    setIMode(p.modeAmortissement as 'LINEAIRE' | 'UNITES_DOEUVRE' | 'DEGRESSIF');
+    setIUnites(p.unitesOeuvrePrevues === null ? '' : String(p.unitesOeuvrePrevues));
+    setIUniteLibelle(p.uniteOeuvreLibelle ?? '');
+    setAfficherFormImmo(true);
+    setInfo('Copie préparée dans « Nouvelle immobilisation » · vérifiez les dates et le financement, puis enregistrez.');
+  };
 
   const onCreerImmo = async (e: FormEvent) => {
     e.preventDefault();
@@ -989,7 +1026,7 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
 
       <div role="tabpanel" hidden={onglet !== 'biens'}>
         {peutEcrire && (
-          <div className="flex items-center justify-end mb-1.5 max-w-[1100px]">
+          <div className="flex items-center justify-end gap-2 mb-1.5 max-w-[1100px]">
             {/* Les immobilisations s'ouvrent aussi au comptable ; les lieux,
                 réservés à l'administrateur, ont leur onglet. La famille n'est
                 plus saisie · elle suit le compte du bien (compte-du-bien.ts,
@@ -999,7 +1036,55 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                 Nouvelle immobilisation
               </button>
             )}
+            {/* Ligne sage-l4, n° 18 · l'assistant, à côté du formulaire qu'il découpe. */}
+            {!afficherFormImmo && (
+              <button
+                type="button"
+                onClick={() => setAssistantOuvert(true)}
+                className="order-first px-3 py-[3px] border border-border-dark rounded-[3px] text-[11.5px] hover:bg-surface-alt"
+              >
+                Assistant
+              </button>
+            )}
+            {/* Ligne sage-l4, n° 68 · à gauche du bouton principal (`order-first`). */}
+            {!afficherFormImmo && (
+              <button
+                type="button"
+                onClick={() => setCreationDepuisEcritures(true)}
+                className="order-first px-3 py-[3px] border border-border-dark rounded-[3px] text-[11.5px] hover:bg-surface-alt"
+              >
+                Créer depuis les écritures
+              </button>
+            )}
           </div>
+        )}
+        {peutEcrire && assistantOuvert && (
+          <AssistantCreationBien
+            comptesBien={comptesBien}
+            journaux={journaux}
+            lieux={lieux}
+            bareme={bareme}
+            exerciceId={exerciceCourant?.id}
+            finExercice={exerciceCourant?.dateFin}
+            unitesServies={unitesServies}
+            syscohada={syscohada}
+            onFermer={() => setAssistantOuvert(false)}
+            onCree={(message) => {
+              setInfo(message);
+              void charger();
+            }}
+          />
+        )}
+        {peutEcrire && creationDepuisEcritures && (
+          <CreationDepuisEcritures
+            syscohada={syscohada}
+            unitesServies={unitesServies}
+            onFermer={() => setCreationDepuisEcritures(false)}
+            onFait={(message) => {
+              setInfo(message);
+              void charger();
+            }}
+          />
         )}
         {reconstitution && (
           <div className="border border-border bg-surface px-3.5 py-2.5 mb-3 max-w-[1100px] text-[11.5px]">
@@ -1666,6 +1751,15 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                     {LIBELLE_STATUT[immo.statut]}
                   </span>
                   <span className="flex gap-2">
+                    {/* La fiche se lit par tous, bien sorti compris · ses gestes suivent les droits du serveur. */}
+                    <button
+                      type="button"
+                      onClick={() => setFicheOuvertePour(immo.id)}
+                      title="Ouvrir la fiche du bien et ses traitements"
+                      className="text-[11px] text-sel hover:underline"
+                    >
+                      Fiche
+                    </button>
                     {immo.statut === 'EN_SERVICE' && (
                       <>
                         {/* L'estimation est un GET qui n'écrit rien · elle reste
@@ -1992,6 +2086,22 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
                   </form>
                 )}
 
+                {ficheOuvertePour === immo.id && (
+                  <FicheImmobilisation
+                    bien={immo}
+                    onFermer={() => setFicheOuvertePour(null)}
+                    onFait={(message) => {
+                      setInfo(message);
+                      void charger();
+                    }}
+                    onDupliquer={dupliquerFiche}
+                    onSupprime={(message) => {
+                      setFicheOuvertePour(null);
+                      setInfo(message);
+                      void charger();
+                    }}
+                  />
+                )}
                 {revisionPlanOuvertePour === immo.id && (
                   <RevisionPlanAmortissement
                     bien={immo}
@@ -2522,6 +2632,15 @@ export function ImmobilisationsPage({ vueInitiale = 'biens' }: { vueInitiale?: V
               L'acquisition à prix global et la clôture des contrats de location-acquisition se saisissent avec un profil qui écrit.
             </div>
           )}
+          {/* Ligne sage-l4, n° 73 · le registre entier, jamais un bien · la
+              maintenance se lit par tous, la renumérotation à l'administrateur. */}
+          <MaintenanceImmobilisations exerciceId={exerciceCourant?.id} />
+          <RenumerotationImmobilisations
+            onFait={(message) => {
+              setInfo(message);
+              void charger();
+            }}
+          />
         </div>
       )}
 

@@ -396,6 +396,12 @@ export const DETENTEUR_RECUPERATION_TVA_CREANCE: DetenteurEcriture = 'une créan
 export const DETENTEUR_DEVISE_A_NOUVEAU: DetenteurEcriture = "la devise déclarée d'un à-nouveau (fenêtre Devises)";
 export const DETENTEUR_CORRECTION_CREANCE: DetenteurEcriture = 'une créance douteuse (correction par le résultat)';
 export const DETENTEUR_IMPOT_RESULTAT: DetenteurEcriture = "l'écriture de l'impôt sur le résultat (fenêtre Résultat fiscal)";
+// Ligne sage-l4 (n° 68, relecture M5) · lus par la création des biens depuis
+// les écritures, qui laisse naître la fiche d'une pièce que ces modules
+// LISENT sans l'avoir produite.
+export const DETENTEUR_ACQUISITION_IMMOBILISATION: DetenteurEcriture = 'une immobilisation (acquisition)';
+export const DETENTEUR_DONATION: DetenteurEcriture = 'une donation';
+export const DETENTEUR_EXECUTION_ENGAGEMENT: DetenteurEcriture = "l'exécution d'un engagement de dépense";
 
 /**
  * Suppression demandée PAR le module qui tient l'écriture · audit du serveur
@@ -1610,6 +1616,58 @@ export class EcritureService {
   }
 
   /**
+   * LA PIÈCE D'UN MODULE RETOUCHÉE EN PLACE, AU BROUILLARD (ligne sage-l4,
+   * relecture de la fonction n° 66) · le module qui TIENT l'écriture (la fiche
+   * d'immobilisation et son acquisition) la corrige dans SA transaction, aux
+   * mêmes contrôles d'entrée que la saisie, en gardant son NUMÉRO DE PIÈCE ·
+   * remplacer la pièce par une neuve laissait un trou dans la séquence que
+   * l'analyse des journaux nomme (AUDCIF art. 22, 3°). Rend `false`, sans rien
+   * écrire, quand la pièce changerait de mois dans un journal numéroté par
+   * mois · le numéro du mois d'arrivée se prend alors à la création, sous sa
+   * transaction sérialisable, et le module repasse la pièce.
+   */
+  async modifierPieceDuModule(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    ecritureId: string,
+    dto: { date: string; libelle?: string; lignes: LigneEcritureDto[] },
+  ): Promise<boolean> {
+    const ecriture = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, include: { journal: true } });
+    if (!ecriture || ecriture.statut !== StatutEcriture.BROUILLARD) {
+      throw new ConflictException("L'écriture a été validée ou retirée pendant la modification · rien n'est modifié.");
+    }
+    const { date, sectionsParId } = await this.controlesDEntree(
+      tenantId,
+      { exerciceId: ecriture.exerciceId, journalId: ecriture.journalId, date: new Date(dto.date), lignes: dto.lignes },
+      tx,
+    );
+    const changeDeMois =
+      ecriture.journal.numerotation === NumerotationPiece.MENSUELLE &&
+      (date.getUTCFullYear() !== ecriture.date.getUTCFullYear() || date.getUTCMonth() !== ecriture.date.getUTCMonth());
+    if (changeDeMois) return false;
+    await relireLExerciceDansLaTransaction(tx, tenantId, ecriture.exerciceId, date);
+    // UNE VALIDATION CONCURRENTE ne laisse rien passer (second tour de
+    // relecture de la ligne sage-l4) · validée entre la lecture et le retrait,
+    // la pièce ne perd aucune ligne (filtre sur le brouillard), et l'ajout des
+    // nouvelles lui donnait DEUX FOIS l'acquisition. Une pièce au brouillard
+    // porte au moins deux lignes · aucune retirée, la pièce a changé de statut.
+    const retirees = await tx.ligneEcriture.deleteMany({ where: { ecritureId, ecriture: { tenantId, statut: StatutEcriture.BROUILLARD } } });
+    if (retirees.count === 0) {
+      throw new ConflictException("L'écriture a été validée pendant la modification · rien n'est modifié.");
+    }
+    await tx.ecriture.update({
+      where: { id: ecritureId },
+      data: {
+        date,
+        ...(dto.libelle ? { libelle: dto.libelle } : {}),
+        lignes: { create: dto.lignes.map((l) => donneesLigneSaisie(l, sectionsParId)) },
+      },
+      select: { id: true },
+    });
+    return true;
+  }
+
+  /**
    * Supprime une écriture en brouillard. Une écriture validée ne se supprime
    * pas · et une écriture qu'un AUTRE MODULE tient ne se supprime pas non plus.
    *
@@ -1739,7 +1797,7 @@ export class EcritureService {
     // elle-même, déjà vérifiée pour ce dossier, qui les cloisonne.
     const parLEcriture = { ecritureId };
     const detenteursPossibles: Array<[string, Promise<number>]> = [
-      ['une immobilisation (acquisition)', this.prisma.immobilisation.count({ where: { tenantId, ecritureAcquisitionId: ecritureId } })],
+      [DETENTEUR_ACQUISITION_IMMOBILISATION, this.prisma.immobilisation.count({ where: { tenantId, ecritureAcquisitionId: ecritureId } })],
       ['une immobilisation (sortie)', this.prisma.immobilisation.count({ where: { tenantId, ecritureSortieId: ecritureId } })],
       ['une immobilisation (produit de cession)', this.prisma.immobilisation.count({ where: { tenantId, ecritureProduitCessionId: ecritureId } })],
       ['une immobilisation (mise en service d’un en-cours)', this.prisma.immobilisation.count({ where: { tenantId, ecritureMiseEnServiceId: ecritureId } })],
@@ -1770,14 +1828,14 @@ export class EcritureService {
       })],
       ["une échéance d'abonnement", this.prisma.echeanceAbonnement.count({ where: parLEcriture })],
       [DETENTEUR_LIQUIDATION_TVA, this.prisma.liquidationTva.count({ where: { tenantId, ecritureId } })],
-      ['une donation', this.prisma.donation.count({ where: { tenantId, ecritureId } })],
+      [DETENTEUR_DONATION, this.prisma.donation.count({ where: { tenantId, ecritureId } })],
       ['une affectation du résultat', this.prisma.affectationResultat.count({ where: { tenantId, ecritureId } })],
       // Le rattachement à un engagement de dépense. Sans ce refus nommé, la
       // clé étrangère RESTRICT renverrait une erreur brute de la base · et
       // s'il n'y avait pas de clé du tout, le reste à exécuter de l'engagement
       // REMONTERAIT tout seul, gonflant la colonne Engagement du tableau
       // d'exécution budgétaire sans que personne ne l'ait décidé.
-      ["l'exécution d'un engagement de dépense", this.prisma.executionEngagement.count({ where: parLEcriture })],
+      [DETENTEUR_EXECUTION_ENGAGEMENT, this.prisma.executionEngagement.count({ where: parLEcriture })],
       // Le mouvement de magasin, en inventaire permanent. Sans ce refus, le
       // lien se dénouerait en silence et la fiche de stock afficherait
       // « écriture non passée » sur un mouvement qui en avait une · la fiche
@@ -1803,6 +1861,11 @@ export class EcritureService {
       ['la réévaluation des immobilisations', this.prisma.reevaluationBilan.count({ where: { tenantId, ecritureId } })],
       ['la reprise de la provision spéciale de réévaluation', this.prisma.repriseProvisionReevaluation.count({ where: { tenantId, ecritureId } })],
       ['la provision pour démantèlement', this.prisma.mouvementDemantelement.count({ where: { tenantId, ecritureId } })],
+      // Ligne sage-l4 · l'annulation d'un traitement d'immobilisation retient
+      // l'écriture validée qu'elle a annulée et son négatif.
+      ["l'annulation d'un traitement d'immobilisation", this.prisma.annulationTraitementImmobilisation.count({
+        where: { tenantId, OR: [{ ecritureOrigineId: ecritureId }, { ecritureNegatifId: ecritureId }] },
+      })],
       // Les créances douteuses (ligne A7) · elles se retirent depuis leur
       // fenêtre, qui libère sa ligne dans la même transaction. Un reclassement
       // ANNULÉ (m2) ne retient plus · son écriture validée est neutralisée par
@@ -1877,6 +1940,16 @@ export class EcritureService {
   async detenteursDeLEcriture(tenantId: string, ecritureId: string): Promise<DetenteurEcriture[]> {
     return this.detenteursDe(tenantId, [ecritureId]);
   }
+
+  /**
+   * Les modules qui tiennent AU MOINS UNE de ces écritures · la même liste que
+   * `detenteursDeLEcriture`, lue en une fois sur un lot (ligne sage-l4,
+   * fonction n° 68, qui cherche par moitiés lesquelles d'une page sont tenues).
+   */
+  async detenteursDesEcritures(tenantId: string, ecritureIds: string[]): Promise<DetenteurEcriture[]> {
+    return ecritureIds.length === 0 ? [] : this.detenteursDe(tenantId, ecritureIds);
+  }
+
 
   /**
    * Le refus nommé · `geste` dit ce qui est refusé (« se supprime », « se
@@ -2357,7 +2430,7 @@ export class EcritureService {
           include: {
             exercice: true,
             journal: true,
-            immobilisationAcquisition: { select: { id: true } },
+            immobilisationsAcquisition: { select: { id: true }, take: 1 },
             immobilisationSortie: { select: { id: true } },
             dotationAmortissement: { select: { id: true } },
           },
@@ -2385,7 +2458,7 @@ export class EcritureService {
             exerciceClos: l.ecriture.exercice.statut === StatutExercice.CLOTURE,
             estGenereeParCloture: l.ecriture.estGenereeParCloture,
             tenueParImmobilisation: !!(
-              l.ecriture.immobilisationAcquisition ||
+              l.ecriture.immobilisationsAcquisition.length > 0 ||
               l.ecriture.immobilisationSortie ||
               l.ecriture.dotationAmortissement
             ),
@@ -2634,7 +2707,7 @@ export class EcritureService {
         journal: true,
         exercice: true,
         correction: { select: { id: true, numeroPiece: true } },
-        immobilisationAcquisition: { select: { id: true, designation: true } },
+        immobilisationsAcquisition: { select: { id: true, designation: true, ligneAcquisitionId: true }, take: 1 },
         immobilisationSortie: { select: { id: true, designation: true } },
         dotationAmortissement: { select: { id: true } },
       },
@@ -2838,7 +2911,7 @@ export class EcritureService {
     correction: { numeroPiece: number | null } | null;
     exercice: { statut: StatutExercice };
     lignes: { lettre: string | null; lettrageId: string | null; rapprochementId: string | null }[];
-    immobilisationAcquisition: { designation: string } | null;
+    immobilisationsAcquisition: { designation: string; ligneAcquisitionId: string | null }[];
     immobilisationSortie: { designation: string } | null;
     dotationAmortissement: { id: string } | null;
   }) {
@@ -2890,10 +2963,21 @@ export class EcritureService {
           "aux capitaux propres d'ouverture (fenêtre Exercices).",
       );
     }
-    if (e.immobilisationAcquisition || e.immobilisationSortie) {
-      const immo = e.immobilisationAcquisition ?? e.immobilisationSortie!;
+    const acquisition = e.immobilisationsAcquisition[0] ?? null;
+    // Une fiche NÉE de cette écriture déjà passée (fonction n° 68) ne l'a pas
+    // écrite · l'issue est de la retirer, de corriger, puis de la recréer
+    // depuis la ligne exacte.
+    if (acquisition?.ligneAcquisitionId) {
       throw new BadRequestException(
-        `Cette écriture porte ${e.immobilisationAcquisition ? "l'acquisition" : 'la sortie'} de l'immobilisation ` +
+        `La fiche d'immobilisation « ${acquisition.designation} » est née de cette écriture. Retirez d'abord la fiche ` +
+          "(Structure > Immobilisations, onglet Général · l'écriture reste au journal), corrigez l'écriture, puis " +
+          'recréez la fiche depuis la ligne exacte (« Créer depuis les écritures »).',
+      );
+    }
+    if (acquisition || e.immobilisationSortie) {
+      const immo = acquisition ?? e.immobilisationSortie!;
+      throw new BadRequestException(
+        `Cette écriture porte ${acquisition ? "l'acquisition" : 'la sortie'} de l'immobilisation ` +
           `« ${immo.designation} ». La corriger seule laisserait la fiche d'immobilisation et son plan ` +
           "d'amortissement en place, désormais sans écriture exacte en face : passez par le module Immobilisations.",
       );

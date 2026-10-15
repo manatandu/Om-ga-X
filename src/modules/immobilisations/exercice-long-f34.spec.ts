@@ -71,6 +71,9 @@ async function dotation(c: {
     // lisent les lignes de réévaluation avant d'écrire.
     ligneReevaluationBilan: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
   } as Faux;
+  // La dotation s'enregistre sous le verrou de la fiche (relecture de la ligne sage-l4).
+  prisma.$transaction = jest.fn((f: (tx: unknown) => unknown) => f(prisma));
+  prisma.$queryRaw = jest.fn().mockResolvedValue([]);
   const ecritures = {
     creer: jest.fn().mockImplementation((_t: string, _u: string, dto: { lignes: { debit?: number }[] }) => {
       montant = dto.lignes[0].debit ?? 0;

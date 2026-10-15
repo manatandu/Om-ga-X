@@ -5,6 +5,37 @@ virement de fonds (`AVANCEMENT-virement-fonds.md`), retirée à son intégration
 Elles ne concernent pas cette ligne : sujets à reprendre, décisions de Manasse
 et travaux à sa charge. Recopiées telles quelles pour que rien ne se perde.
 
+## Relevés en attente · immobilisations, ligne sage-l4 (second tour non bloquant)
+
+- Renumérotation refusée pour TOUTE campagne d'inventaire non clôturée, de
+  stocks ou de caisses comprise · ne compter que les campagnes dont une
+  fiche porte un bien (`maintenance-immobilisations.service.ts`).
+- SYCEBNL · une mise en service passée à la main (D 21x / C 219 ou 229) est
+  refusée par la liste n° 68 avec une issue qui ne s'y applique pas ·
+  écarter de `creditsQuiSortentUnBien` les en-cours de la même division.
+- Un bien REPRIS saisi avant la clôture de N, faux ou en double, ne se
+  corrige plus (M4) · à joindre à la question « Corriger l'entrée » posée à
+  Manasse (retrait motivé du registre ou correction à partir de N+1).
+- Une fiche née d'un renouvellement ne se supprime plus, et aucun geste
+  n'annule un renouvellement passé par erreur, même au brouillard.
+- Lectures bornées sans effet en pratique · `take: 500` sur les maillons de
+  clôture (`exerciceClosQuiPorteLaFiche`), `take: 2000` sur les négatifs de
+  `negatifsAilleurs`.
+- M4, deux réserves · (a) le repère est la clôture dans OmegaX, pas l'arrêté
+  des comptes (AUDCIF art. 23) ; (b) une clôture sans maillon d'audit est
+  tenue pour antérieure au journal · repère plus sûr, la date de création
+  des écritures que la clôture pose.
+- Hors ligne, défaut antérieur · la NOTE 1 des deux SMT et le tableau des
+  amortissements lisent les fiches sans borne sur leur création · une fiche
+  saisie après la clôture de N, datée dans N, change leur réimpression ; ne
+  lire que les fiches qui existaient à la clôture.
+- Questions de la ligne pour Manasse (fiche de la ligne) · « Corriger
+  l'entrée » d'une valeur d'acquisition validée ; retrait d'une fiche née
+  d'une écriture déjà passée (lecture de D7) ; transfert d'un bien entre
+  deux dossiers du groupe par les comptes de liaison (n° 73).
+- Relevé de la ligne · la création admet une valeur résiduelle supérieure à
+  la valeur d'origine · la borner dans `preparerFiche`.
+
 ## Relevés en attente · virement de fonds (second tour non bloquant)
 
 - Un groupe de lettrage FIGÉ qui ne réunit que les lignes 585 d'un même

@@ -45,7 +45,7 @@ function service(statut: StatutEcriture) {
     estGenereeParCloture: false,
     corrigeEcritureId: null,
     correction: null,
-    immobilisationAcquisition: null,
+    immobilisationsAcquisition: [],
     immobilisationSortie: null,
     dotationAmortissement: null,
     lignes: lignesPartielles,

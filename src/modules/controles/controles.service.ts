@@ -2989,6 +2989,15 @@ export class ControlesService {
             estANouveauProvisoire: false,
             id: { notIn: [...retenues] },
             reevaluationBilan: null,
+            // UN TRAITEMENT ANNULÉ (ligne sage-l4, fonction n° 67) · sa dotation
+            // ou sa réévaluation est retirée de la fiche, et son écriture validée
+            // reste au journal avec son négatif (AUDCIF art. 20, al. 2), toutes
+            // deux retenues par l'annulation. Le négatif ne compte pas ici (crédit
+            // négatif), l'origine si · sans ce filtre, le contrôle disait « que le
+            // module ne connaît pas » d'un amortissement soldé par son négatif, et
+            // faisait contre-passer une seconde fois.
+            annulationTraitementOrigine: null,
+            annulationTraitementNegatif: null,
           },
         },
         select: { credit: true, compte: { select: { numero: true, intitule: true } } },

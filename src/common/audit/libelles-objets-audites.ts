@@ -72,6 +72,7 @@ export const LIBELLES_OBJETS_AUDITES: Readonly<Record<string, string>> = {
   ReevaluationBilan: 'Réévaluation des immobilisations',
   RepriseProvisionReevaluation: 'Reprise de la provision spéciale de réévaluation',
   MouvementDemantelement: 'Provision pour démantèlement d’un bien',
+  AnnulationTraitementImmobilisation: 'Annulation d’un traitement d’immobilisation',
   CreanceDouteuse: 'Créance douteuse ou litigieuse',
   AjustementCreanceDouteuse: 'Revue de la dépréciation d’une créance',
   MouvementCreanceDouteuse: 'Perte ou recouvrement d’une créance douteuse',
