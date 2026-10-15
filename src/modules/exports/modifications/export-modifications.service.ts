@@ -642,7 +642,20 @@ export class ExportModificationsService {
     const enregistre = await transactionJournalisee(
       this.prisma,
       async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`exports-ecritures:${tenantId}`}))`;
+        // UN VERROU ESSAYÉ, JAMAIS ATTENDU (relecture TypeScript, mineur 6) ·
+        // le rangement d'un autre export du dossier tient le verrou le temps
+        // d'écrire son registre (jusqu'au délai de la transaction) · attendu,
+        // il retenait une connexion du pool autant de temps pour un export
+        // que le contrôle du numéro refuserait de toute façon.
+        const verrou = (await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(hashtext(${`exports-ecritures:${tenantId}`})) AS "pris"`) as Array<{
+          pris: boolean;
+        }>;
+        if (!verrou[0]?.pris) {
+          throw new ConflictException(
+            "Un autre export de ce dossier est en cours de rangement · rien n'a été rangé, aucun numéro n'est pris. " +
+              "Relancez l'export dans un instant, il partira de ce nouvel envoi.",
+          );
+        }
         const max = await tx.exportEcritures.aggregate({ where: { tenantId }, _max: { numero: true } });
         if ((max._max.numero ?? null) !== inv.dernierNumero) {
           throw new ConflictException(

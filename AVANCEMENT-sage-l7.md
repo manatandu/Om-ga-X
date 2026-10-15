@@ -344,6 +344,11 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   service posait AUCUN quand le champ manquait, et `@IsOptional()` laissait
   passer `null` (CLAUDE.md § 9). Absent, le saut enregistré est gardé ;
   `null` est refusé par `@FacultatifNonNul` à la porte, et par le service.
+- **Mineur 6 · un second export attendait le verrou du premier.** Le
+  rangement prenait `pg_advisory_xact_lock` · un second export du dossier
+  retenait une connexion jusqu'à la fin du premier (délai de 120 s) pour un
+  refus certain. `pg_try_advisory_xact_lock`, et un 409 nommé aussitôt,
+  rien rangé, aucun numéro pris.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,

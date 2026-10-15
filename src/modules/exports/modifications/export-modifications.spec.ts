@@ -133,7 +133,7 @@ function nouveauFaux() {
   // Appelé après chaque tranche des écritures JAMAIS PARTIES rendue au
   // service · un test y simule un autre poste qui modifie la base pendant
   // l'inventaire (M6, B1), quelle que soit la requête qui lit la tranche.
-  const crochets: { surTrancheJamaisParties?: (rendues: Array<{ id: string; date: Date }>) => void } = {};
+  const crochets: { surTrancheJamaisParties?: (rendues: Array<{ id: string; date: Date }>) => void; verrouTenuAilleurs?: boolean } = {};
   let compteur = 0;
   const id = (prefixe: string) => `${prefixe}-${String(++compteur).padStart(5, '0')}`;
   const prisma: Record<string, unknown> = {
@@ -217,6 +217,7 @@ function nouveauFaux() {
     // la requête les pose.
     $queryRaw: async (morceaux: TemplateStringsArray, ...valeurs: unknown[]) => {
       const texte = morceaux.join('?');
+      if (texte.includes('pg_try_advisory_xact_lock')) return [{ pris: !crochets.verrouTenuAilleurs }];
       const dansLaPortee = (e: Ecriture, dossier: string, brouillardCompris: boolean) =>
         e.tenantId === dossier &&
         !e.estANouveauProvisoire &&
@@ -425,6 +426,17 @@ describe('export des seules modifications · registre et fichier', () => {
     // L'extension d'audit garde ce que la création rend · il ne rendait que l'identifiant.
     expect(rendu).toMatchObject({ tenantId: DOSSIER, numero: 1, empreinte: envoi.empreinte, produitPar: 'u1', nombreEcritures: 1, nomFichier: envoi.nomFichier });
     expect(rendu).not.toHaveProperty('contenu');
+  });
+
+  it('un rangement en cours ailleurs refuse aussitôt, sans attendre le verrou ni prendre de numéro (mineur 6)', async () => {
+    const f = nouveauFaux();
+    f.ajouter({ date: '2026-01-02' });
+    f.crochets.verrouTenuAilleurs = true;
+    await expect(f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true)).rejects.toThrow(/en cours de rangement · rien n'a été rangé/);
+    expect([f.exports.length, f.registre.length]).toEqual([0, 0]);
+    // Le verrou libéré, le même geste passe.
+    f.crochets.verrouTenuAilleurs = false;
+    await expect(f.service.exporter(DOSSIER, 'u1', ModeExportEcritures.MODIFICATIONS, true)).resolves.toMatchObject({ numero: 1 });
   });
 
   it('un autre export rangé pendant la production refuse le second, sans numéro pris', async () => {
