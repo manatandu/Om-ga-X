@@ -16,6 +16,7 @@ import { ExportService } from '../exports/export.service';
 import { grilleJournauxSaisie, moisDeLExercice } from './etat-journaux-saisie';
 import { ImpressionsJournalService } from './impressions-journal.service';
 import { PLAFOND_ECRITURES_PAR_FENETRE } from '../comptabilite/ecriture.service';
+import { motifImpressionDeSituationNonNumerotee } from '../comptabilite/ecritures-de-situation';
 
 /**
  * LE JOURNAL MARQUÉ « IMPRIMÉ » (ligne sage-l1, fonction 60 · décision D3,
@@ -154,7 +155,7 @@ describe('l’état des journaux de saisie dit « non imprimé »', () => {
 });
 
 describe('l’impression de la fenêtre est enregistrée par le serveur', () => {
-  function service(nombre: number) {
+  function service(nombre: number, type = 'VENTES') {
     const create = jest.fn(async ({ data }: { data: unknown }) => data);
     const tx = {
       $executeRaw: jest.fn().mockResolvedValue(1),
@@ -163,7 +164,7 @@ describe('l’impression de la fenêtre est enregistrée par le serveur', () => 
     };
     const prisma = {
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e', dateDebut: J('2026-01-01'), dateFin: J('2026-12-31') }) },
-      journal: { findFirst: jest.fn().mockResolvedValue({ id: 'VTE' }) },
+      journal: { findFirst: jest.fn().mockResolvedValue({ id: 'VTE', code: type === 'SITUATION' ? 'SIT' : 'VTE', type }) },
       ecriture: { count: jest.fn().mockResolvedValue(nombre) },
       $transaction: jest.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
     };
@@ -194,8 +195,24 @@ describe('l’impression de la fenêtre est enregistrée par le serveur', () => 
       numero: null,
       imprimeAt: null,
       nombreEcritures: 0,
+      motif: "Aucune pièce dans le journal de cette période · l'impression n'est pas enregistrée.",
     });
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('un journal de situation ne prend aucun numéro de la suite des impressions (second tour, d)', async () => {
+    // La suite numérotée atteste le livre-journal (AUDCIF art. 22, 1° et 7°) ·
+    // une simulation imprimée y prenait un numéro, un trou de plus dans ce que
+    // le cabinet remet au réviseur.
+    const { s, create, prisma } = service(5, 'SITUATION');
+    await expect(s.imprimer('t', 'u', { exerciceId: 'e', journalId: 'VTE' })).resolves.toEqual({
+      numero: null,
+      imprimeAt: null,
+      nombreEcritures: null,
+      motif: motifImpressionDeSituationNonNumerotee('SIT'),
+    });
+    expect(create).not.toHaveBeenCalled();
+    expect(prisma.ecriture.count).not.toHaveBeenCalled();
   });
 
   it('refuse une fenêtre qui ne montrerait qu’une partie du journal, et dit d’exporter', async () => {
@@ -219,10 +236,11 @@ describe('l’export du journal entier est une impression, une recherche export�
 });
 
 describe('l’export d’un journal sans pièce n’est pas une impression (relecture M6)', () => {
-  function exporteur(nombre: number) {
+  function exporteur(nombre: number, type = 'VENTES') {
     const create = jest.fn();
     const prisma = {
       exercice: { findFirst: jest.fn().mockResolvedValue({ id: 'e', dateDebut: J('2026-01-01'), dateFin: J('2026-12-31') }) },
+      journal: { findFirst: jest.fn().mockResolvedValue({ type }) },
       ecriture: { count: jest.fn().mockResolvedValue(nombre) },
       $transaction: jest.fn(async (fn: (t: unknown) => unknown) =>
         fn({
@@ -247,6 +265,16 @@ describe('l’export d’un journal sans pièce n’est pas une impression (rele
     await plein.marquer({ exerciceId: 'e', journalId: 'VTE' });
     expect(plein.create).toHaveBeenCalledTimes(1);
     expect(plein.create.mock.calls[0][0].data).toMatchObject({ numero: 3, nombreEcritures: 3, forme: 'EXPORT' });
+  });
+
+  it('l’export d’un journal de situation n’est pas une impression (second tour, d)', async () => {
+    const situation = exporteur(3, 'SITUATION');
+    await situation.marquer({ exerciceId: 'e', journalId: 'SIT' });
+    expect(situation.create).not.toHaveBeenCalled();
+    // Tous les journaux · le périmètre écarte la situation, l'export s'enregistre.
+    const tous = exporteur(3, 'SITUATION');
+    await tous.marquer({ exerciceId: 'e' });
+    expect(tous.create).toHaveBeenCalledTimes(1);
   });
 });
 

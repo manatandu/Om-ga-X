@@ -4,6 +4,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { PLAFOND_ECRITURES_PAR_FENETRE, perimetreJournal } from '../comptabilite/ecriture.service';
 import { enregistrerImpression, periodeCouverte } from './impressions-journal';
 import { ImprimerJournalDto } from './dto/impression-journal.dto';
+import { estJournalDeSituation, motifImpressionDeSituationNonNumerotee } from '../comptabilite/ecritures-de-situation';
 
 /** Au-delà, la liste des impressions se tronque et le dit (§ 8 bis). */
 export const PLAFOND_IMPRESSIONS_LISTEES = 200;
@@ -33,8 +34,14 @@ export class ImpressionsJournalService {
     if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
     const journalId = dto.journalId ?? null;
     if (journalId) {
-      const journal = await this.prisma.journal.findFirst({ where: { id: journalId, tenantId }, select: { id: true } });
+      const journal = await this.prisma.journal.findFirst({ where: { id: journalId, tenantId }, select: { id: true, code: true, type: true } });
       if (!journal) throw new NotFoundException('Journal introuvable pour ce dossier.');
+      // UN JOURNAL DE SITUATION NE PREND PAS DE NUMÉRO D'IMPRESSION (relecture
+      // du second tour, d) · la suite numérotée atteste le livre-journal, et
+      // une simulation n'y est pas · la page s'imprime, rien n'est enregistré.
+      if (estJournalDeSituation(journal)) {
+        return { numero: null, imprimeAt: null, nombreEcritures: null, motif: motifImpressionDeSituationNonNumerotee(journal.code) };
+      }
     }
     const periode = periodeCouverte(exercice, dto);
     const nombreEcritures = await this.prisma.ecriture.count({
@@ -56,7 +63,14 @@ export class ImpressionsJournalService {
     // s'imprime, rien n'est enregistré, et la réponse le dit (`numero` nul).
     // Enregistrée, l'impression d'un journal vide le retenait (clé vers le
     // journal) et tenait son exercice, sans rien prouver.
-    if (nombreEcritures === 0) return { numero: null, imprimeAt: null, nombreEcritures };
+    if (nombreEcritures === 0) {
+      return {
+        numero: null,
+        imprimeAt: null,
+        nombreEcritures,
+        motif: "Aucune pièce dans le journal de cette période · l'impression n'est pas enregistrée.",
+      };
+    }
     return enregistrerImpression(this.prisma, {
       tenantId,
       exerciceId: exercice.id,

@@ -362,7 +362,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     setInfo(null);
     setImpressionEnCours(true);
     try {
-      const r = await api.post<{ numero: number | null; imprimeAt: string | null }>('/impressions-journal', {
+      const r = await api.post<{ numero: number | null; imprimeAt: string | null; motif?: string }>('/impressions-journal', {
         exerciceId: exerciceCourant.id,
         ...(filtresAppliques.journalId ? { journalId: filtresAppliques.journalId } : {}),
         ...(filtresAppliques.dateDebut ? { dateDebut: filtresAppliques.dateDebut } : {}),
@@ -374,10 +374,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       flushSync(() =>
         setImpressionNumerotee(r.numero !== null && r.imprimeAt ? { numero: r.numero, imprimeAt: r.imprimeAt } : null),
       );
+      // Sans numéro, le serveur dit pourquoi · journal sans pièce, ou journal
+      // de situation, dont l'impression n'atteste rien du livre-journal.
       setInfo(
         r.numero !== null
           ? `Impression n° ${r.numero} du journal enregistrée.`
-          : 'Aucune pièce dans le journal de cette période · l’impression n’est pas enregistrée.',
+          : r.motif ?? 'Aucune pièce dans le journal de cette période · l’impression n’est pas enregistrée.',
       );
       window.print();
     } catch (e) {

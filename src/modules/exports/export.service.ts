@@ -1,4 +1,4 @@
-import { HORS_SITUATION, avecStatut, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
+import { HORS_SITUATION, avecStatut, estJournalDeSituation, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
 import { nombreSaisi } from '../notes-annexes/controles-saisie-notes';
 import { Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { enregistrerImpression, estUneRecherche, periodeCouverte } from '../journaux/impressions-journal';
@@ -921,6 +921,12 @@ export class ExportService {
         select: { id: true, dateDebut: true, dateFin: true },
       });
       if (!exercice) return;
+      // L'export d'un journal de situation n'atteste rien du livre-journal
+      // (relecture du second tour, d) · il ne prend pas de numéro de la suite.
+      if (filtres.journalId) {
+        const journal = await this.prisma.journal.findFirst({ where: { id: filtres.journalId, tenantId }, select: { type: true } });
+        if (!journal || estJournalDeSituation(journal)) return;
+      }
       const periode = periodeCouverte(exercice, filtres);
       const nombreEcritures = await this.prisma.ecriture.count({
         where: perimetreJournal(tenantId, {

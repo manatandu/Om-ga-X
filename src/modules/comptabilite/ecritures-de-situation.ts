@@ -218,3 +218,17 @@ export function motifBrouillardHeriteNeSeValidePas(pieces: string[]): string {
     `journal ${FONDEMENT}. ${ISSUE_TRANSFERT.charAt(0).toUpperCase()}${ISSUE_TRANSFERT.slice(1)}.`
   );
 }
+
+/**
+ * L'impression ou l'export d'un journal de situation (relecture du second
+ * tour, d) · la suite numérotée des impressions atteste le journal des
+ * opérations (AUDCIF art. 22, 1° et 7°, « les états périodiques fournis soient
+ * numérotés et datés »). Une simulation n'en fait pas partie · imprimée, elle
+ * ne prend aucun numéro de la suite, et la page le dit.
+ */
+export function motifImpressionDeSituationNonNumerotee(code: string): string {
+  return (
+    `Le journal ${code} est un journal de situation · son impression n'atteste aucune opération du livre-journal et ` +
+    'ne prend pas de numéro dans la suite des impressions.'
+  );
+}
