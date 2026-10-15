@@ -65,3 +65,45 @@ test('SYSCOHADA · la clôture attend l’impression du journal, et l’impressi
 
   expect(pannes).toEqual([]);
 });
+
+test('SYSCOHADA · l’impression d’un journal de situation ne prend aucun numéro de la suite (second tour, d)', async ({ page }) => {
+  const pannes = surveiller(page);
+  const dossier = await creerDossier(page, { referentiel: 'SYSCOHADA', nom: 'Impression situation e2e', montant: 2_000 });
+  await seConnecter(page, dossier.email);
+
+  // Une simulation saisie dans un journal de situation, à côté de la pièce du dossier.
+  const sit = await appelApi<{ id: string }>(page, 'POST', '/journaux', {
+    code: 'SIM',
+    intitule: 'Simulations',
+    type: 'SITUATION',
+    numerotation: 'CONTINUE_JOURNAL',
+  });
+  const exercice = (await appelApi<Exercice[]>(page, 'GET', '/exercices')).find((e) => e.id === dossier.exerciceId)!;
+  // Les deux comptes que la pièce du dossier a mouvementés (`creerDossier`) · utilisés, donc personnalisés.
+  const plan = await appelApi<{ id: string; numero: string; typeCompte: string }[]>(page, 'GET', '/comptes?typeCompte=DETAIL');
+  const detail = (racine: string) => plan.find((c) => c.typeCompte === 'DETAIL' && c.numero.startsWith(racine))!;
+  const [a, b] = [detail('52'), detail('7')];
+  await appelApi(page, 'POST', '/ecritures', {
+    exerciceId: exercice.id,
+    journalId: sit.id,
+    date: exercice.dateDebut.slice(0, 10),
+    libelle: 'Simulation',
+    lignes: [
+      { compteId: a.id, debit: 500, credit: 0 },
+      { compteId: b.id, debit: 0, credit: 500 },
+    ],
+  });
+
+  // La suite numérotée atteste le livre-journal (AUDCIF art. 22, 1° et 7°) ·
+  // le journal de situation s'imprime sans y prendre de numéro, et la réponse le dit.
+  const r = await appelApi<{ numero: number | null; motif?: string }>(page, 'POST', '/impressions-journal', {
+    exerciceId: exercice.id,
+    journalId: sit.id,
+  });
+  expect(r.numero).toBeNull();
+  expect(r.motif).toMatch(/journal de situation/);
+  const liste = await appelApi<{ total: number }>(page, 'GET', `/impressions-journal?exerciceId=${exercice.id}`);
+  expect(liste.total).toBe(0);
+
+  expect(pannes).toEqual([]);
+});
