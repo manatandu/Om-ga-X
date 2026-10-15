@@ -80,7 +80,11 @@ export function ReglementsPage() {
   const [sens, setSens] = useState<Sens>('FOURNISSEUR');
   const [jusquau, setJusquau] = useState(aujourdhui());
   const [dateReglement, setDateReglement] = useState(aujourdhui());
-  const [journaux, setJournaux] = useState<Journal[]>([]);
+  // Null tant que non lus, avec leur erreur (second tour de relecture, M4) ·
+  // une liste vide sur un échec faisait dire « aucun journal, créez-en un »
+  // et poussait à créer un doublon.
+  const [journaux, setJournaux] = useState<Journal[] | null>(null);
+  const [erreurJournaux, setErreurJournaux] = useState<string | null>(null);
   const [journalId, setJournalId] = useState('');
   // LE MODE DE RÈGLEMENT DU LOT (ligne sage-l2, fonction 1) · porté sur
   // chaque ligne de la pièce ; le serveur avertit un paiement d'au moins
@@ -156,7 +160,9 @@ export function ReglementsPage() {
         setModes(m.filter((x) => x.estActif));
         setErreurModes(null);
       },
-      (err) => setErreurModes(`Modes de règlement non lus · ${err instanceof ApiError ? err.message : 'erreur inconnue'}`),
+      // Le motif seul · chaque écran l'introduit à sa façon (second tour,
+      // mineur 14 · « Modes de règlement illisibles · Modes de règlement non lus »).
+      (err) => setErreurModes(err instanceof ApiError ? err.message : 'erreur inconnue'),
     );
   }, []);
 
@@ -166,9 +172,10 @@ export function ReglementsPage() {
       .then((js) => {
         const tresorerie = js.filter((j) => j.type === 'TRESORERIE' && j.estActif && j.compteTresorerieId);
         setJournaux(tresorerie);
+        setErreurJournaux(null);
         setJournalId((id) => id || tresorerie[0]?.id || '');
       })
-      .catch(() => setJournaux([]));
+      .catch((err) => setErreurJournaux(err instanceof ApiError ? err.message : 'serveur injoignable'));
   }, []);
 
   // Un échec de lecture SE DIT, avec son motif (§ 9 ter) · une liste de
@@ -488,7 +495,7 @@ export function ReglementsPage() {
     setMotifsTiers({});
     setConstatsLot(r.constats);
     setAvecOrdre(true);
-    if (lot.journalId && journaux.some((j) => j.id === lot.journalId)) setJournalId(lot.journalId);
+    if (lot.journalId && (journaux ?? []).some((j) => j.id === lot.journalId)) setJournalId(lot.journalId);
   };
 
   const enregistrerLot = async () => {
@@ -571,7 +578,8 @@ export function ReglementsPage() {
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Journal de trésorerie</span>
               <select value={journalId} onChange={(e) => setJournalId(e.target.value)} className="border border-border px-2 py-[3px] bg-surface">
-                {journaux.map((j) => (
+                {journaux === null && <option value="">{erreurJournaux ? `Journaux illisibles · ${erreurJournaux}` : 'Lecture…'}</option>}
+                {(journaux ?? []).map((j) => (
                   <option key={j.id} value={j.id}>
                     {j.code} · {j.intitule}
                   </option>
@@ -587,12 +595,12 @@ export function ReglementsPage() {
                   const id = e.target.value;
                   setModeId(id);
                   // Le journal que le mode propose se présélectionne, s'il est offert.
-                  const propose = journalProposeParLeMode(modes?.find((m) => m.id === id), journaux);
+                  const propose = journalProposeParLeMode(modes?.find((m) => m.id === id), journaux ?? []);
                   if (propose) setJournalId(propose);
                 }}
                 className="border border-border px-2 py-[3px] bg-surface"
               >
-                <option value="">{erreurModes ?? 'Non précisé'}</option>
+                <option value="">{erreurModes ? `Modes de règlement non lus · ${erreurModes}` : 'Non précisé'}</option>
                 {modes?.map((m) => (
                   <option key={m.id} value={m.id}>
                     {libelleMode(m)}
@@ -690,6 +698,8 @@ export function ReglementsPage() {
       {assistantOuvert && exerciceCourant && (
         <AssistantReglement
           journaux={journaux}
+          erreurJournaux={erreurJournaux}
+          debutExercice={exerciceCourant.dateDebut.slice(0, 10)}
           modes={modes}
           erreurModes={erreurModes}
           exerciceId={exerciceCourant.id}
@@ -727,7 +737,10 @@ export function ReglementsPage() {
           {a}
         </div>
       ))}
-      {peutEcrire && journaux.length === 0 && (
+      {peutEcrire && erreurJournaux && (
+        <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-2">Journaux de trésorerie illisibles · {erreurJournaux}</div>
+      )}
+      {peutEcrire && journaux?.length === 0 && (
         <div className="text-[11.5px] text-warning bg-warning-soft border border-warning/30 px-3 py-2">
           Aucun journal de trésorerie rattaché à un compte de banque ou de caisse · créez-en un dans Codes journaux.
         </div>
@@ -896,9 +909,13 @@ export function ReglementsPage() {
                                   <label
                                     className="inline-flex items-center gap-1"
                                     title={
-                                      seuil === null
-                                        ? "Aucun seuil d'écart de règlement fixé · Paramètres du dossier"
-                                        : `L'écart se passe en charge jusqu'à ${fmt(seuil)}, le tiers soldé`
+                                      // Lecture en cours ou manquée n'est pas
+                                      // « aucun seuil » (second tour, mineur 14).
+                                      comptesEE === null
+                                        ? erreurComptesEE ?? 'Lecture du seuil d’écart de règlement…'
+                                        : seuil === null
+                                          ? "Aucun seuil d'écart de règlement fixé · Paramètres du dossier"
+                                          : `L'écart se passe en charge jusqu'à ${fmt(seuil)}, le tiers soldé`
                                     }
                                   >
                                     <input

@@ -5,6 +5,7 @@ import {
   corpsReglement,
   duDesFactures,
   ETAPES_REGLEMENT,
+  dateProposee,
   manqueDeLEtape,
   nomDuTiers,
   saisieEnchainee,
@@ -107,5 +108,42 @@ describe('câblage · l’échec de lecture des modes se dit dans l’assistant 
     const element = page.slice(page.indexOf('<AssistantReglement'), page.indexOf('/>', page.indexOf('<AssistantReglement')));
     expect(element).toMatch(/erreurModes=\{erreurModes\}/);
     expect(assistant).toMatch(/Modes de règlement illisibles · \{erreurModes\}/);
+  });
+});
+
+// SECOND TOUR DE RELECTURE DE LA LIGNE SAGE-L2 · M4, mineurs 6 et 7.
+describe('second tour · la date, les journaux et le récapitulatif de l’assistant', () => {
+  it('mineur 7 · la date proposée est le jour de Kinshasa, ramené dans l’exercice', () => {
+    expect(dateProposee('2026-10-15', '2026-01-01', '2026-12-31')).toBe('2026-10-15');
+    expect(dateProposee('2027-02-03', '2026-01-01', '2026-12-31')).toBe('2026-12-31');
+    expect(dateProposee('2025-12-31', '2026-01-01', '2026-12-31')).toBe('2026-01-01');
+  });
+
+  it('mineur 7 · une date hors de l’exercice manque à l’étape de trésorerie', () => {
+    const exercice = { debut: '2026-01-01', fin: '2026-12-31' };
+    expect(manqueDeLEtape('tresorerie', saisie({ journalId: 'bq', date: '2027-01-02' }), null, exercice)).toMatch(/hors de l'exercice \(du 01\/01\/2026 au 31\/12\/2026\)/);
+    expect(manqueDeLEtape('tresorerie', saisie({ journalId: 'bq', date: '2026-06-30' }), null, exercice)).toBeNull();
+  });
+
+  const page = readFileSync(join(__dirname, '..', 'pages', 'ReglementsPage.tsx'), 'utf8');
+  const assistant = readFileSync(join(__dirname, '..', 'components', 'AssistantReglement.tsx'), 'utf8');
+
+  it('M4 · les journaux partent de null avec leur erreur, transmise à l’assistant, qui présélectionne le seul à son arrivée', () => {
+    expect(page).toMatch(/useState<Journal\[\] \| null>\(null\)/);
+    const element = page.slice(page.indexOf('<AssistantReglement'), page.indexOf('/>', page.indexOf('<AssistantReglement')));
+    expect(element).toMatch(/erreurJournaux=\{erreurJournaux\}/);
+    expect(assistant).toMatch(/Journaux de trésorerie illisibles · \{erreurJournaux\}/);
+    expect(assistant).toMatch(/\{journaux\?\.length === 0 && /);
+    expect(assistant).toMatch(/if \(journaux\?\.length === 1\) \{/);
+  });
+
+  it('mineur 6 · le récapitulatif reçoit le focus, jamais le bouton qui règle', () => {
+    expect(assistant).toMatch(/etape === 'recapitulatif' && !regle\s*\? recapitulatif\.current/);
+    expect(assistant).toMatch(/<table ref=\{recapitulatif\} tabIndex=\{-1\}/);
+  });
+
+  it('mineur 14 · l’erreur des modes n’a qu’un préfixe, et le seuil non lu n’est pas « aucun seuil »', () => {
+    expect(page).toMatch(/setErreurModes\(err instanceof ApiError \? err\.message : 'erreur inconnue'\)/);
+    expect(page).toMatch(/comptesEE === null\s*\? erreurComptesEE \?\? 'Lecture du seuil/);
   });
 });

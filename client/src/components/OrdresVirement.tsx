@@ -169,6 +169,10 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
     }
   };
 
+  // LES AVIS DE L'ORDRE OUVERT, ET DE LUI SEUL (second tour de relecture,
+  // mineur 1) · une réponse lente arrivée après l'ouverture d'un autre ordre
+  // affichait et imprimait les avis du premier sous le second.
+  const avisDeLOrdre = avis && ordre && avis.ordre.id === ordre.id ? avis : null;
   const tenant = utilisateur?.tenant;
   const tranche = liste ? mentionTrancheOrdres(liste) : null;
   const attenteHorsListe = liste ? mentionAttenteHorsListe(liste) : null;
@@ -302,10 +306,10 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
             </table>
             {ordre.statut === 'IMPRIME' && (
               <div className="flex items-center gap-3">
-                <button type="button" onClick={() => (avis ? setAvis(null) : void lireAvis())} className="border border-border-dark bg-chrome hover:bg-surface px-3 py-1">
-                  {avis ? 'Fermer les avis' : 'Avis de règlement'}
+                <button type="button" onClick={() => (avisDeLOrdre ? setAvis(null) : void lireAvis())} className="border border-border-dark bg-chrome hover:bg-surface px-3 py-1">
+                  {avisDeLOrdre ? 'Fermer les avis' : 'Avis de règlement'}
                 </button>
-                {avis && avis.avis.length > 0 && (
+                {avisDeLOrdre && avisDeLOrdre.avis.length > 0 && (
                   <button type="button" onClick={() => window.print()} className="bg-sel text-white font-semibold px-3 py-1">
                     Imprimer les avis
                   </button>
@@ -317,15 +321,15 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
                 />
               </div>
             )}
-            {avis && (
+            {avisDeLOrdre && (
               <div className="space-y-2">
-                {avis.avis.length === 0 && <p className="text-text-dim">Aucun avis · cet ordre ne paie aucun fournisseur.</p>}
-                {avis.lignesDeSalaires > 0 && (
+                {avisDeLOrdre.avis.length === 0 && <p className="text-text-dim">Aucun avis · cet ordre ne paie aucun fournisseur.</p>}
+                {avisDeLOrdre.lignesDeSalaires > 0 && (
                   <p className="text-text-dim">
-                    {avis.lignesDeSalaires} virement{avis.lignesDeSalaires > 1 ? 's' : ''} de salaire sans avis · le bulletin en tient lieu.
+                    {avisDeLOrdre.lignesDeSalaires} virement{avisDeLOrdre.lignesDeSalaires > 1 ? 's' : ''} de salaire sans avis · le bulletin en tient lieu.
                   </p>
                 )}
-                {avis.avis.map((a) => (
+                {avisDeLOrdre.avis.map((a) => (
                   <article key={a.ligneId} className="border border-border bg-surface">
                     <div className="px-3 py-1 bg-chrome font-semibold flex justify-between gap-2 flex-wrap">
                       <span>
@@ -359,9 +363,9 @@ export function OrdresVirement({ ordreInitial, onSelection }: { ordreInitial?: s
         <div className="impression-seul ordre-virement text-[12px] text-black">
           {/* LES AVIS DE RÈGLEMENT · seuls imprimés tant qu'ils sont affichés,
               un par page (ligne sage-l2, fonction 27) ; sinon l'ordre. */}
-          {avis && avis.avis.length > 0 ? (
-            avis.avis.map((a, i) => (
-              <pre key={a.ligneId} className="whitespace-pre-wrap font-sans leading-[1.6]" style={i < avis.avis.length - 1 ? { breakAfter: 'page' } : undefined}>
+          {avisDeLOrdre && avisDeLOrdre.avis.length > 0 ? (
+            avisDeLOrdre.avis.map((a, i) => (
+              <pre key={a.ligneId} className="whitespace-pre-wrap font-sans leading-[1.6]" style={i < avisDeLOrdre.avis.length - 1 ? { breakAfter: 'page' } : undefined}>
                 {a.texte}
               </pre>
             ))

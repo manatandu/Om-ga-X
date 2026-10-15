@@ -115,3 +115,13 @@ describe("l'ordre de virement à l'écran", () => {
     expect(ordres).toContain("{ordre && ordre.statut !== 'ANNULE' && (\n        <div className=\"impression-seul");
   });
 });
+
+// SECOND TOUR DE RELECTURE DE LA LIGNE SAGE-L2, mineur 1 · une réponse lente
+// affichait et imprimait les avis d'un autre ordre que celui ouvert.
+describe('les avis de règlement de l’ordre ouvert, et de lui seul', () => {
+  it('affichés et imprimés seulement si l’ordre des avis est l’ordre ouvert', () => {
+    const src = lire('components/OrdresVirement.tsx');
+    expect(src).toMatch(/const avisDeLOrdre = avis && ordre && avis\.ordre\.id === ordre\.id \? avis : null;/);
+    expect(src).toMatch(/avisDeLOrdre && avisDeLOrdre\.avis\.length > 0 \? \(/);
+  });
+});

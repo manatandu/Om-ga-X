@@ -66,6 +66,17 @@ export interface SaisieReglement {
   reference: string;
 }
 
+/**
+ * LA DATE PROPOSÉE (second tour de relecture, mineur 7) · le jour de Kinshasa,
+ * jamais celui de l'horloge UTC du poste, ramené dans l'exercice · un
+ * exercice clos ou futur ne propose pas une date que le serveur refusera.
+ */
+export function dateProposee(jourKinshasa: string, debut: string, fin: string): string {
+  if (jourKinshasa < debut) return debut;
+  if (jourKinshasa > fin) return fin;
+  return jourKinshasa;
+}
+
 export function saisieVierge(aujourdhui: string): SaisieReglement {
   return { sens: 'FOURNISSEUR', date: aujourdhui, journalId: '', modeReglementId: '', ordreVirement: false, compteId: '', ligneIds: [], montant: '', reference: '' };
 }
@@ -86,12 +97,22 @@ export function nomDuTiers(t: Pick<TiersARegler, 'numero' | 'intitule' | 'tiers'
  * Ce qui manque pour quitter l'étape, ou null · jamais une règle de fond,
  * que le serveur tient. `tiers` est le compte choisi, tel que servi.
  */
-export function manqueDeLEtape(etape: EtapeReglement, s: SaisieReglement, tiers: TiersARegler | null): string | null {
+export function manqueDeLEtape(
+  etape: EtapeReglement,
+  s: SaisieReglement,
+  tiers: TiersARegler | null,
+  exercice?: { debut: string; fin: string },
+): string | null {
   switch (etape) {
     case 'sens':
       return null;
     case 'tresorerie':
       if (!s.date) return 'Indiquez la date du règlement.';
+      // La date dans l'exercice (mineur 7) · le serveur la refuserait au
+      // récapitulatif, après cinq étapes.
+      if (exercice && (s.date < exercice.debut || s.date > exercice.fin)) {
+        return `La date du règlement tombe hors de l'exercice (du ${exercice.debut.split('-').reverse().join('/')} au ${exercice.fin.split('-').reverse().join('/')}).`;
+      }
       return s.journalId ? null : 'Choisissez le journal de trésorerie.';
     case 'tiers':
       return s.compteId && tiers ? null : 'Choisissez le tiers à régler.';

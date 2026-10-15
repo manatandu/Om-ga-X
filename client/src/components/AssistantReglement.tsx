@@ -10,8 +10,10 @@ import { montantPourChamp } from '../lib/creances-douteuses';
 import { lireMontant } from '../lib/assistant-bien';
 import { journalProposeParLeMode, libelleMode, type ModeReglement } from '../lib/modes-reglement';
 import type { Journal } from '../lib/types';
+import { jourDeKinshasaIso } from '../lib/roles-cantonnes';
 import {
   corpsReglement,
+  dateProposee,
   duDesFactures,
   ETAPES_REGLEMENT,
   manqueDeLEtape,
@@ -42,15 +44,23 @@ interface ReponseReglement {
  */
 export function AssistantReglement({
   journaux,
+  erreurJournaux,
   modes,
   erreurModes,
   exerciceId,
+  debutExercice,
   finExercice,
   ordresServis,
   onFermer,
   onRegle,
 }: {
-  journaux: Journal[];
+  /**
+   * Null tant que la page ne les a pas lus, avec leur erreur (second tour de
+   * relecture, M4) · « aucun journal, créez-le » sur un échec poussait à
+   * créer un doublon.
+   */
+  journaux: Journal[] | null;
+  erreurJournaux: string | null;
   modes: ModeReglement[] | null;
   /**
    * L'échec de lecture des modes (relecture « échecs silencieux » de la ligne
@@ -59,14 +69,23 @@ export function AssistantReglement({
    */
   erreurModes: string | null;
   exerciceId: string;
+  debutExercice: string;
   finExercice: string;
   ordresServis: boolean;
   onFermer: () => void;
   onRegle: (message: string) => void;
 }) {
   const { peutEcrire } = useAuth();
-  const aujourdhui = new Date().toISOString().slice(0, 10);
-  const [s, setS] = useState<SaisieReglement>(() => ({ ...saisieVierge(aujourdhui), journalId: journaux.length === 1 ? journaux[0].id : '' }));
+  // Le jour de Kinshasa, dans l'exercice (second tour, mineur 7).
+  const [s, setS] = useState<SaisieReglement>(() => saisieVierge(dateProposee(jourDeKinshasaIso(new Date()), debutExercice, finExercice)));
+  // LE CHOIX UNIQUE SE PRÉSÉLECTIONNE QUAND LA LISTE ARRIVE (M4) · lue
+  // après l'ouverture, elle ne présélectionnait rien.
+  useEffect(() => {
+    if (journaux?.length === 1) {
+      const seul = journaux[0].id;
+      setS((x) => (x.journalId ? x : { ...x, journalId: seul }));
+    }
+  }, [journaux]);
   const [etape, setEtape] = useState<EtapeReglement>('sens');
   const [tiers, setTiers] = useState<TiersARegler[] | null>(null);
   // Un échec de lecture n'est pas une liste vide · « rien à régler » serait la
@@ -79,7 +98,10 @@ export function AssistantReglement({
   const [relecture, setRelecture] = useState(0);
   const fermer = useRef<HTMLButtonElement>(null);
   const corps = useRef<HTMLDivElement>(null);
-  const reglerBouton = useRef<HTMLButtonElement>(null);
+  // LE RÉCAPITULATIF SE LIT AVANT DE RÉGLER (second tour, mineur 6) · le
+  // focus allait au bouton « Régler », et deux Entrée passaient le
+  // règlement sans relecture. Il va au tableau, qu'Entrée ne règle pas.
+  const recapitulatif = useRef<HTMLTableElement>(null);
 
   useEffect(
     () =>
@@ -93,7 +115,7 @@ export function AssistantReglement({
   useEffect(() => {
     const cible =
       etape === 'recapitulatif' && !regle
-        ? reglerBouton.current
+        ? recapitulatif.current
         : corps.current?.querySelector<HTMLElement>(
             regle ? 'button[data-enchainer]' : 'input[type=radio]:checked, input:not([disabled]):not([type=radio]), select:not([disabled])',
           );
@@ -126,8 +148,8 @@ export function AssistantReglement({
   const choisi = (tiers ?? []).find((t) => t.compteId === s.compteId) ?? null;
   const du = duDesFactures(choisi, s.ligneIds);
   const rang = Math.max(0, ETAPES_REGLEMENT.findIndex((e) => e.cle === etape));
-  const manque = manqueDeLEtape(etape, s, choisi);
-  const journal = journaux.find((j) => j.id === s.journalId) ?? null;
+  const manque = manqueDeLEtape(etape, s, choisi, { debut: debutExercice, fin: finExercice });
+  const journal = (journaux ?? []).find((j) => j.id === s.journalId) ?? null;
   const mode = (modes ?? []).find((m) => m.id === s.modeReglementId) ?? null;
   const allerA = (suivante: EtapeReglement) => {
     // Le montant se préremplit au dû des factures choisies · vide, jamais zéro.
@@ -283,19 +305,20 @@ export function AssistantReglement({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className={etiquette}>
                       Date du règlement
-                      <input type="date" value={s.date} max={finExercice} onChange={(e) => poser('date', e.target.value)} className={champ} />
+                      <input type="date" value={s.date} min={debutExercice} max={finExercice} onChange={(e) => poser('date', e.target.value)} className={champ} />
                     </label>
                     <label className={etiquette}>
                       Journal de trésorerie
-                      <select value={s.journalId} onChange={(e) => poser('journalId', e.target.value)} className={champ}>
-                        <option value="">Choisir…</option>
-                        {journaux.map((j) => (
+                      <select value={s.journalId} disabled={journaux === null} onChange={(e) => poser('journalId', e.target.value)} className={champ}>
+                        <option value="">{journaux ? 'Choisir…' : erreurJournaux ? 'Journaux illisibles' : 'Lecture…'}</option>
+                        {(journaux ?? []).map((j) => (
                           <option key={j.id} value={j.id}>
                             {j.code} · {j.intitule}
                           </option>
                         ))}
                       </select>
-                      {journaux.length === 0 && <span className="block font-normal text-warning">Aucun journal de trésorerie actif avec son compte · créez-le dans Codes journaux.</span>}
+                      {erreurJournaux && <span className="block font-normal text-danger">Journaux de trésorerie illisibles · {erreurJournaux}</span>}
+                      {journaux?.length === 0 && <span className="block font-normal text-warning">Aucun journal de trésorerie actif avec son compte · créez-le dans Codes journaux.</span>}
                     </label>
                     <label className={etiquette}>
                       Mode de règlement
@@ -304,7 +327,7 @@ export function AssistantReglement({
                         onChange={(e) => {
                           const id = e.target.value;
                           // Le journal que le mode propose se présélectionne, s'il est offert.
-                          const propose = journalProposeParLeMode(modes?.find((m) => m.id === id), journaux);
+                          const propose = journalProposeParLeMode(modes?.find((m) => m.id === id), journaux ?? []);
                           setS((x) => ({ ...x, modeReglementId: id, ...(propose ? { journalId: propose } : {}) }));
                         }}
                         className={champ}
@@ -389,7 +412,7 @@ export function AssistantReglement({
                   </div>
                 )}
                 {etape === 'recapitulatif' && (
-                  <table className="w-full">
+                  <table ref={recapitulatif} tabIndex={-1} aria-label="Récapitulatif du règlement" className="w-full focus:outline-none">
                     <tbody>
                       {recap.map(([libelle, valeur]) => (
                         <tr key={libelle}>
@@ -423,7 +446,7 @@ export function AssistantReglement({
                     </button>
                   ) : (
                     peutEcrire && (
-                      <button ref={reglerBouton} type="button" disabled={envoi} onClick={() => void regler()} className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50">
+                      <button type="button" disabled={envoi} onClick={() => void regler()} className="bg-sel text-white rounded-[3px] px-3 py-[3px] font-semibold disabled:opacity-50">
                         {envoi ? 'Règlement…' : 'Passer le règlement'}
                       </button>
                     )
