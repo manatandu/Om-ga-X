@@ -227,6 +227,28 @@ les trois fichiers sans colonne exigée manquante.
 - **m5 · listes paginées par le numéro** (`pagination-par-numero.ts`,
   `?avant=`, `plusAnciensAvant`) · un ancien export ou une ancienne
   impression se retrouve et se retélécharge.
+- **M1 · un refus n'a plus de message vide** (`lib/message-refus.ts` ·
+  `messageDuRefus`, phrase d'état VIDE en HTTP/2, rabat sur le code ;
+  `messageOuDefaut` dans les quatre composants). L'export qui échoue sur une
+  panne du réseau ou un 5xx relit la liste et l'aperçu et dit « un export a
+  pu être rangé malgré l'erreur, vérifiez la liste » ; un aperçu en échec ne
+  grise plus le bouton (M2, `rienAExporter` ne lit qu'un aperçu LU).
+- **M5 (écran) · un échec réseau de `traiter` relit la liste**, sans dire que
+  la production n'a pas été lancée ; la demande dont l'issue est incertaine
+  le dit de même.
+- **m6 · plan analytique** · sections à `null` au changement d'axe, réponse
+  périmée jetée par jeton, « Aucune section » sur une liste LUE seulement,
+  périmètre de l'édition « Sections de l'axe … non lues · rien n'est
+  imprimé » (`perimetreDesSections`).
+- **m9 · le modèle enregistré reste choisi si la relecture tombe**
+  (`avecLeModele`) ; la troncature de la liste des modèles se dit.
+- **m10 · licence échue** · `LicenceGuard` inchangé (lecture seule = GET et
+  HEAD) ; le refus d'une demande ou d'une production le dit et renvoie vers
+  l'export direct du livre (`messageLicenceEchue`), l'aide aussi. LIMITE
+  écrite · un dossier échu ne produit plus d'impression différée.
+- **m5 (écran) · « Exports plus anciens », « Impressions plus anciennes »**
+  (`poursuivreListe`, `poursuivreImpressions`, `garderLesPlusAnciennes` · la
+  relecture pendant une production garde les pages chargées).
 - **m7 · la restitution sort les fichiers des exports et des impressions
   prêtes** à côté des tables (`exports-ecritures/`,
   `impressions-differees/`), le manifeste le dit exactement · la phrase qui

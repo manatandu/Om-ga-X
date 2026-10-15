@@ -170,6 +170,30 @@ export function editionTaux(taux: TauxTva[]): Edition {
  * Ce que la liste couvre · les critères qui l'ont produite, dans l'ordre où
  * l'écran les pose. Aucun critère, c'est la liste complète.
  */
+/**
+ * LE PÉRIMÈTRE DE L'ÉDITION DU PLAN ANALYTIQUE (relecture « échecs
+ * silencieux » de sage-l7, m6) · des sections NON LUES (axe qui change, lecture
+ * tombée) ne s'impriment pas comme une « Liste complète · 0 section », ni
+ * comme celles de l'axe d'avant · le périmètre le dit.
+ */
+export function perimetreDesSections(
+  plan: Pick<PlanAnalytique, 'code' | 'intitule'> | null,
+  sectionsLues: boolean,
+  recherche: string,
+  nombre: number,
+): string {
+  if (!plan) return "Aucun axe choisi · rien n'est imprimé";
+  if (!sectionsLues) return `Sections de l'axe ${plan.code} non lues · rien n'est imprimé`;
+  return perimetreEdition(
+    [
+      ['Plan', `${plan.code} · ${plan.intitule}`],
+      ['Recherche', recherche],
+    ],
+    nombre,
+    'section',
+  );
+}
+
 export function perimetreEdition(
   criteres: Array<[string, string | null | undefined]>,
   nombre: number,

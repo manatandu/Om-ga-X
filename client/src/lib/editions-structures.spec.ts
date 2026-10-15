@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { editionJournaux, editionParametres, editionPlan, editionTaux, editionTiers, perimetreEdition } from './editions-structures';
+import { editionJournaux, editionParametres, editionPlan, editionTaux, editionTiers, perimetreDesSections, perimetreEdition } from './editions-structures';
 import type { Compte, Journal, ParametresDossier, TauxTva, Tiers } from './types';
 
 /**
@@ -99,6 +99,15 @@ describe('Éditions des structures', () => {
       expect(src).toContain(fonction);
       expect(src).toContain('<BoutonImprimer');
     }
+  });
+});
+
+describe('Édition du plan analytique · des sections non lues ne s’impriment pas pour une liste vide (sage-l7, m6)', () => {
+  const plan = { code: 'PRJ', intitule: 'Projets' };
+  it('aucun axe, sections non lues, puis la liste lue', () => {
+    expect(perimetreDesSections(null, false, '', 0)).toBe("Aucun axe choisi · rien n'est imprimé");
+    expect(perimetreDesSections(plan, false, '', 0)).toBe("Sections de l'axe PRJ non lues · rien n'est imprimé");
+    expect(perimetreDesSections(plan, true, '', 3)).toBe('Sélection · Plan « PRJ · Projets » · 3 sections');
   });
 });
 
