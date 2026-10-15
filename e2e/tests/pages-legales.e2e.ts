@@ -67,8 +67,15 @@ test('avec session, le menu « ? » ouvre les pages en fenêtre, et l’acceptat
   await expect(page.getByText('Aucune acceptation enregistrée pour ce dossier.')).toBeVisible();
   await expect(page.getByText(/L’acceptation en ligne s’ouvrira quand l’offre dira ce que la loi exige/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Accepter les conditions' })).toHaveCount(0);
-  // Le serveur refuse de même, en le disant.
-  await expect(appelApi(page, 'POST', '/conditions-licence/acceptation', { version: 1, lu: true })).rejects.toThrow(/409 .*art\. 54, al\. 2/);
+  // Le serveur sert la version en vigueur avec l'empreinte de son texte, et
+  // refuse de même l'acceptation du bon texte, en le disant.
+  const etat = await appelApi<{ version: { numero: number; empreinte: string } }>(page, 'GET', '/conditions-licence');
+  expect(etat.version.empreinte).toMatch(/^[0-9a-f]{64}$/);
+  await expect(
+    appelApi(page, 'POST', '/conditions-licence/acceptation', { version: etat.version.numero, empreinte: etat.version.empreinte, lu: true }),
+  ).rejects.toThrow(/409 .*art\. 54, al\. 2/);
+  // Sans empreinte, l'acceptation reçue est mal formée (relecture M1).
+  await expect(appelApi(page, 'POST', '/conditions-licence/acceptation', { version: etat.version.numero, lu: true })).rejects.toThrow(/400/);
 
   await page.getByRole('button', { name: '?', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Questions fréquentes' }).click();
