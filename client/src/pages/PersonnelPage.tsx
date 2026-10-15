@@ -6,6 +6,15 @@ import { Aide } from '../components/chrome/Aide';
 import { OngletBulletins } from './BulletinsPaie';
 import { OngletBaremesPaie } from '../components/BaremesPaie';
 import { OngletRubriquesAvances, type AvanceSalaire, type RubriquePaie } from '../components/RubriquesAvancesPaie';
+import { OngletCongesPaie } from '../components/paie/CongesPaie';
+import { OngletAbsencesPaie } from '../components/paie/AbsencesPaie';
+import { LIBELLE_REGIME, lignesProposees, type AbsencesDuMois } from '../lib/absences-paie';
+import { MajorationsHeuresPaie } from '../components/paie/MajorationsHeuresPaie';
+import { PaiementDuSalarie } from '../components/paie/PaiementDuSalarie';
+import { RepartitionAnalytique } from '../components/paie/RepartitionAnalytique';
+import { QuestionnairePaie } from '../components/paie/QuestionnairePaie';
+import { heuresPourLeBulletin, LIGNE_HEURES_VIERGE, type LigneHeures, type ListeMajorations } from '../lib/heures-majorees';
+import { dateCourte, jours as joursConge, motifCongeNonPortable, type CongeDuMois } from '../lib/conges-paie';
 import { libelleListeBornee } from '../lib/liste-bornee-personnel';
 import { TITRE_BLOC_PAIE } from './PaieDuMois';
 import { BaremeMensuelIrpp, type DetailMensuelIrpp } from './BaremeMensuelIrpp';
@@ -239,6 +248,8 @@ interface Simulation {
     reserves?: string[];
   };
   retenuesAvances?: { avanceId: string; littera: string; libelle: string; montantFc: number; soldeAvantFc: number }[];
+  /** LIGNE SAGE-L5 · les allocations de congé que le serveur a rejouées et ajoutées aux éléments. */
+  allocationsConge?: { congeId: string; du: string; au: string; jours: number; tauxJournalier: number; devise: 'CDF' | 'USD'; montant: number }[];
   reserveRetenuesAvances?: string | null;
   /** « Sans excéder la portion saisissable » (AUPSRVE, art. 188) · confrontée, jamais refusée. */
   reserveSaisies?: string | null;
@@ -604,6 +615,21 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const [avisModele, setAvisModele] = useState<string[]>([]);
   const [avancesSalarie, setAvancesSalarie] = useState<AvanceSalaire[]>([]);
   const [retenuesAvances, setRetenuesAvances] = useState<Record<string, string>>({});
+  // LIGNE SAGE-L5 · les congés dont le bulletin du mois peut porter
+  // l'allocation. Null tant que la liste n'est pas LUE ; seul l'identifiant
+  // part au serveur, qui rejoue le montant.
+  const [congesDuMois, setCongesDuMois] = useState<CongeDuMois[] | null>(null);
+  const [congesPortes, setCongesPortes] = useState<Record<string, boolean>>({});
+  // LIGNE SAGE-L5, FONCTION 78 · les absences du mois et la proposition du
+  // serveur · reprise au clic, jamais substituée. La moyenne de l'art. 66 se
+  // déclare (zéro est une réponse).
+  const [absencesDuMois, setAbsencesDuMois] = useState<AbsencesDuMois | null>(null);
+  const [moyenneArticle66, setMoyenneArticle66] = useState('');
+  // LIGNE SAGE-L5, FONCTION 78, ÉTAPE 2 · les heures majorées du mois · la
+  // majoration est choisie parmi celles du dossier, le montant rejoué au
+  // serveur.
+  const [majorations, setMajorations] = useState<ListeMajorations | null>(null);
+  const [lignesHeures, setLignesHeures] = useState<LigneHeures[]>([]);
   const [tous, setTous] = useState(false);
   // Les contrats saisis avec un montant et sans monnaie, comptés par le
   // serveur sur le dossier entier · null tant que le registre n'est pas lu,
@@ -691,6 +717,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const emissionDecompteEnVol = useRef(false);
   const jetonEmissionDecompte = useRef(0);
   const [avertissementsDecompte, setAvertissementsDecompte] = useState<string[]>([]);
+  // Second tour de la relecture L5, point 2 · ce que la garde du salaire
+  // pendant le congé n'a pu confronter revient avec l'émission, et se DIT.
+  // Rattachés au message de succès qui les a portés · un autre message les tait.
+  const [avertissementsBulletin, setAvertissementsBulletin] = useState<{ pour: string; textes: string[] } | null>(null);
   const initiativeDuMotif = (motif: string) =>
     motif === 'DEMISSION' ? 'TRAVAILLEUR' : motif === 'LICENCIEMENT' ? 'EMPLOYEUR' : null;
   const [enfantsAllocations, setEnfantsAllocations] = useState('');
@@ -733,6 +763,8 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   // ARTICLE 121, ALINÉA 2 · vide = non déclaré, le serveur retient le droit
   // commun ET le dit ; un forfait abstient la retenue (audit final F105).
   const [regimeSalarial, setRegimeSalarial] = useState('');
+  // Ligne sage-l5, fonction 85 · le questionnaire de paie, ouvert depuis la simulation.
+  const [questionnaireOuvert, setQuestionnaireOuvert] = useState(false);
 
   const charger = useCallback(() => {
     const parametres = [tous ? 'tous=true' : '', aCompleter ? 'aCompleter=true' : ''].filter(Boolean).join('&');
@@ -794,6 +826,54 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
       },
     );
   }, [onglet, selection]);
+
+  useEffect(() => {
+    if (onglet !== 'simulation') return;
+    api.get<ListeMajorations>('/personnel/majorations-heures').then(setMajorations, (e: ApiError) => {
+      setMajorations(null);
+      setErreur(e.message);
+    });
+  }, [onglet]);
+
+  useEffect(() => {
+    setCongesPortes({});
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
+      setCongesDuMois(null);
+      return;
+    }
+    let actuel = true;
+    api.get<CongeDuMois[]>(`/personnel/salaries/${selection}/conges/du-mois/${moisDePaie}`).then(
+      (r) => actuel && setCongesDuMois(r),
+      (e: ApiError) => {
+        if (!actuel) return;
+        setCongesDuMois(null);
+        setErreur(e.message);
+      },
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, selection, moisDePaie]);
+
+  useEffect(() => {
+    if (onglet !== 'simulation' || !selection || !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDePaie)) {
+      setAbsencesDuMois(null);
+      return;
+    }
+    let actuel = true;
+    const moyenne = moyenneArticle66.trim() ? `?moyenne=${encodeURIComponent(moyenneArticle66.trim().replace(/\s/g, ''))}` : '';
+    api.get<AbsencesDuMois>(`/personnel/salaries/${selection}/absences/mois/${moisDePaie}${moyenne}`).then(
+      (r) => actuel && setAbsencesDuMois(r),
+      (e: ApiError) => {
+        if (!actuel) return;
+        setAbsencesDuMois(null);
+        setErreur(e.message);
+      },
+    );
+    return () => {
+      actuel = false;
+    };
+  }, [onglet, selection, moisDePaie, moyenneArticle66]);
 
   useEffect(() => {
     if (onglet === 'confrontation') {
@@ -881,14 +961,28 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
               .map(([avanceId, v]) => ({ avanceId, montantFc: nombre(v) as number })),
           }
         : {}),
+      // LIGNE SAGE-L5 · le congé seul part ; l'allocation est rejouée au
+      // serveur par le moteur du décompte final (art. 142).
+      ...(Object.values(congesPortes).some(Boolean)
+        ? { allocationsConge: Object.entries(congesPortes).filter(([, oui]) => oui).map(([congeId]) => ({ congeId })) }
+        : {}),
+      // LIGNE SAGE-L5 · les heures majorées · la majoration et le montant sont
+      // relus au serveur ; une ligne incomplète ne part pas (`simuler` la dit).
+      ...(heuresPourLeBulletin(lignesHeures).lignes.length ? { heuresMajorees: heuresPourLeBulletin(lignesHeures).lignes } : {}),
     };
     return corps;
+  };
+
+  const motifHeuresIncompletes = () => {
+    const n = heuresPourLeBulletin(lignesHeures).incompletes;
+    return n > 0 ? `${n} ligne(s) d'heures majorées incomplète(s) · la majoration, les heures et le taux horaire se déclarent ensemble.` : '';
   };
 
   const simuler = () => {
     setErreur('');
     setSucces('');
     if (motifReductionInpp) return setErreur(motifReductionInpp);
+    if (motifHeuresIncompletes()) return setErreur(motifHeuresIncompletes());
     setEnCours(true);
     const corps = corpsSimulation();
     api
@@ -918,13 +1012,17 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
     if (!selection) return;
     setErreur('');
     setSucces('');
+    setAvertissementsBulletin(null);
     if (motifReductionInpp) return setErreur(motifReductionInpp);
+    if (motifHeuresIncompletes()) return setErreur(motifHeuresIncompletes());
     setEnCours(true);
     api
-      .post<{ numero: number; moisDePaie: string }>(`/personnel/salaries/${selection}/bulletins`, corpsSimulation())
+      .post<{ numero: number; moisDePaie: string; avertissements?: string[] }>(`/personnel/salaries/${selection}/bulletins`, corpsSimulation())
       .then(
         (b) => {
-          setSucces(`Bulletin n° ${b.numero} émis pour ${b.moisDePaie}. Il ne se modifie plus : une erreur se corrige en l’annulant.`);
+          const message = `Bulletin n° ${b.numero} émis pour ${b.moisDePaie}. Il ne se modifie plus : une erreur se corrige en l’annulant.`;
+          setSucces(message);
+          setAvertissementsBulletin({ pour: message, textes: b.avertissements ?? [] });
           setEnCours(false);
         },
         (e: ApiError) => {
@@ -1100,6 +1198,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
   const proposerRetenues = () => {
     if (!selection || motifEmissionDecompte !== null) return;
     if (motifReductionInpp) return setErreur(motifReductionInpp);
+    if (motifHeuresIncompletes()) return setErreur(motifHeuresIncompletes());
     const jeton = ++jetonPropositionRetenues.current;
     setErreur('');
     setPropositionRetenues(null);
@@ -1126,6 +1225,7 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
     // A8 (a, c) · la même garde que le bouton, et un seul envoi à la fois.
     if (motifEmissionDecompte !== null || emissionDecompteEnVol.current) return;
     if (motifReductionInpp) return setErreur(motifReductionInpp);
+    if (motifHeuresIncompletes()) return setErreur(motifHeuresIncompletes());
     emissionDecompteEnVol.current = true;
     const jeton = ++jetonEmissionDecompte.current;
     const nom = salarieDuDecompte ? nomComplet(salarieDuDecompte) : 'le salarié choisi';
@@ -1344,8 +1444,15 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
           {succes}
         </div>
       )}
+      {succes && avertissementsBulletin?.pour === succes && avertissementsBulletin.textes.length > 0 && (
+        <ul role="status" className="border border-warning/30 bg-warning-soft text-warning px-3.5 py-2 mb-2.5 text-[11.5px] max-w-[1240px] list-disc pl-7">
+          {avertissementsBulletin.textes.map((a) => (
+            <li key={a}>{a}</li>
+          ))}
+        </ul>
+      )}
 
-      <div className="ecran-seul flex gap-1 mb-2 text-[11.5px]">
+      <div className="ecran-seul flex flex-wrap gap-1 mb-2 text-[11.5px]">
         {(
           ONGLETS_PERSONNEL
         ).map((o) => (
@@ -1368,6 +1475,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     ? 'Simulation'
                     : o === 'bulletins'
                       ? 'Bulletins'
+                      : o === 'conges'
+                      ? 'Congés'
+                      : o === 'absences'
+                      ? 'Absences'
                       : o === 'rubriques'
                       ? 'Rubriques et avances'
                       : o === 'baremes'
@@ -2057,6 +2168,10 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     </button>
                   </>
                 )}
+                {/* Ligne sage-l5, fonction 75 · le mode convenu et les RIB du salarié. */}
+                <PaiementDuSalarie salarieId={choisi.id} />
+                {/* Ligne sage-l5, fonction 88 · sa répartition entre sections analytiques. */}
+                <RepartitionAnalytique salarieId={choisi.id} />
               </div>
             )}
           </div>
@@ -2269,6 +2384,27 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                 source="Code du travail, art. 7, point 8 · loi n° 23/053, art. 68 et 69"
               />
             </div>
+
+            {/* Ligne sage-l5, fonction 85 · l'assistant qui pose les questions de la paie. */}
+            <button type="button" className="border border-border px-2.5 py-1 mb-2" onClick={() => setQuestionnaireOuvert(true)}>
+              Questionnaire de paie…
+            </button>
+            {questionnaireOuvert && (
+              <QuestionnairePaie
+                salarieId={selection || null}
+                mois={moisDePaie}
+                simulation={{ natureInpp, effectifInpp, regimeSalarial, classePro, personnesACharge, enfantsAllocations }}
+                onSimulation={(v) => {
+                  if (v.natureInpp !== undefined) setNatureInpp(v.natureInpp as '' | 'PUBLIC' | 'PRIVE');
+                  if (v.effectifInpp !== undefined) setEffectifInpp(v.effectifInpp);
+                  if (v.regimeSalarial !== undefined) setRegimeSalarial(v.regimeSalarial);
+                  if (v.classePro !== undefined) setClassePro(v.classePro);
+                  if (v.personnesACharge !== undefined) setPersonnesACharge(v.personnesACharge);
+                  if (v.enfantsAllocations !== undefined) setEnfantsAllocations(v.enfantsAllocations);
+                }}
+                onFermer={() => setQuestionnaireOuvert(false)}
+              />
+            )}
 
             <div className="flex flex-wrap gap-3 items-end mb-2.5">
               <label className="flex flex-col gap-0.5">
@@ -2827,6 +2963,188 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
             </div>
           )}
 
+          {majorations && majorations.majorations.some((m) => m.actif) && (
+            <div className="border border-border px-3 py-2 mt-2">
+              <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
+                Heures majorées du mois
+                <Aide
+                  titre="Heures majorées du mois"
+                  texte="Choisissez une majoration déclarée dans l'onglet Barèmes, le nombre d'heures et le taux horaire de base, celui du contrat ou de la convention, que le Code ne fixe pas. Le serveur rejoue le montant · une heure supplémentaire se paie entière et majorée, une heure de nuit, du samedi, du dimanche ou d'un férié faite dans l'horaire normal ne paie que son supplément. L'élément s'ajoute au bulletin comme prestation supplémentaire."
+                  source="Code du travail, art. 93, 119, 120 et 124 · arrêté n° 12/CAB.MIN/ETPS/042 du 8 août 2008, mentions 8 à 11"
+                />
+              </div>
+              {lignesHeures.map((l, i) => (
+                <div key={i} className="flex flex-wrap gap-1.5 items-center mt-1">
+                  <select
+                    aria-label={`Majoration de la ligne ${i + 1}`}
+                    value={l.majorationId}
+                    onChange={(e) => setLignesHeures(lignesHeures.map((x, j) => (j === i ? { ...x, majorationId: e.target.value } : x)))}
+                    className="border border-border bg-transparent px-1.5 py-0.5 w-[260px]"
+                  >
+                    <option value="">Majoration…</option>
+                    {majorations.majorations
+                      .filter((m) => m.actif)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.libelle} · {m.tauxPourCent.toLocaleString('fr-FR')} %
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    aria-label={`Heures de la ligne ${i + 1}`}
+                    inputMode="decimal"
+                    placeholder="Heures"
+                    value={l.heures}
+                    onChange={(e) => setLignesHeures(lignesHeures.map((x, j) => (j === i ? { ...x, heures: e.target.value } : x)))}
+                    className="border border-border bg-transparent px-1.5 py-0.5 w-[80px] text-right"
+                  />
+                  <input
+                    aria-label={`Taux horaire de la ligne ${i + 1}`}
+                    inputMode="decimal"
+                    placeholder="Taux horaire"
+                    value={l.tauxHoraire}
+                    onChange={(e) => setLignesHeures(lignesHeures.map((x, j) => (j === i ? { ...x, tauxHoraire: e.target.value } : x)))}
+                    className="border border-border bg-transparent px-1.5 py-0.5 w-[120px] text-right"
+                  />
+                  <button type="button" className="text-danger hover:underline" onClick={() => setLignesHeures(lignesHeures.filter((_, j) => j !== i))}>
+                    Retirer
+                  </button>
+                </div>
+              ))}
+              <button type="button" className="text-sel hover:underline mt-1" onClick={() => setLignesHeures([...lignesHeures, { ...LIGNE_HEURES_VIERGE }])}>
+                Ajouter des heures
+              </button>
+            </div>
+          )}
+
+          {selection && absencesDuMois && (absencesDuMois.absences.length > 0 || absencesDuMois.conges.length > 0) && (
+            <div className="border border-border px-3 py-2 mt-2">
+              <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
+                Absences et congés du mois
+                <Aide
+                  titre="Absences et congés du mois"
+                  texte="Les absences déclarées dans l'onglet Absences et les congés posés dans l'onglet Congés qui touchent ce mois, en jours ouvrables. Pour un salaire au mois, le serveur propose le salaire des jours dus (vingt-six jours payés par mois, un jour non payé, payé aux deux tiers ou payé par l'allocation de congé retranchant 1/26) et l'indemnité d'incapacité, aux deux tiers du salaire et de la moyenne mensuelle des douze mois de commissions, primes, gratifications et participations. Pendant le congé, l'allocation remplace le salaire, elle ne s'y ajoute pas · un congé à cheval sur deux mois retranche de chaque mois ses propres jours, quel que soit le bulletin qui porte l'allocation, et l'émission refuse un salaire plein avec des jours de congé dans le mois. Les jours fériés restent payés à plein. Reprendre au bulletin remplace le montant de la ligne de salaire et ajoute l'indemnité ; rien n'est posé tant que la proposition ne se chiffre pas. Les jours payés pour la sécurité sociale se saisissent à part."
+                  source="Code du travail, art. 59, 66, 93, 105, 106, 130, 142 et 146 · arrêté du 8 août 2008, mentions 6, 14, 17 et 28 · décret n° 25/22, art. 7, par analogie"
+                />
+              </div>
+              <table className="w-full">
+                <tbody>
+                  {absencesDuMois.conges.map((c) => (
+                    <tr key={c.id} className="border-t border-border/40">
+                      <td className="py-1 pr-2">
+                        Congé du {dateCourte(c.du)} au {dateCourte(c.au)}
+                      </td>
+                      <td className="py-1 pr-2 text-right">
+                        {c.joursDeConge === null ? `jusqu'à ${joursConge(c.ouvrablesDuMois)}` : joursConge(c.joursDeConge)} jour(s) de congé ce mois
+                      </td>
+                      <td className="py-1 text-right text-text-dim">
+                        {c.portePar !== null ? `Allocation au bulletin n° ${c.portePar}` : `Allocation au bulletin de ${c.moisDePaie}`}
+                      </td>
+                    </tr>
+                  ))}
+                  {absencesDuMois.absences.map((a) => (
+                    <tr key={a.id} className="border-t border-border/40">
+                      <td className="py-1 pr-2">
+                        {a.libelle} du {dateCourte(a.du)} au {dateCourte(a.au)}
+                      </td>
+                      <td className="py-1 pr-2 text-right">{joursConge(a.joursDuMois)} jour(s) ouvrable(s) ce mois</td>
+                      <td className="py-1 text-right text-text-dim">{a.regimes.map((r) => LIBELLE_REGIME[r]).join(', ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {absencesDuMois.proposition.joursDeuxTiers > 0 && (
+                <label className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <span className="text-text-dim">Moyenne mensuelle des douze mois</span>
+                  <input
+                    inputMode="decimal"
+                    value={moyenneArticle66}
+                    onChange={(e) => setMoyenneArticle66(e.target.value)}
+                    className="border border-border bg-transparent px-1.5 py-0.5 w-[140px] text-right"
+                  />
+                </label>
+              )}
+              {absencesDuMois.proposition.motifs.map((m, i) => (
+                <div key={i} className="text-warning mt-1">
+                  {m}
+                </div>
+              ))}
+              {absencesDuMois.proposition.salaireDesJoursDus !== null && (
+                <div className="flex flex-wrap items-center gap-2 mt-1.5" title={absencesDuMois.proposition.explication ?? undefined}>
+                  <span>
+                    Salaire des jours dus {fc(absencesDuMois.proposition.salaireDesJoursDus)} {absencesDuMois.devise ?? ''} ·{' '}
+                    {absencesDuMois.proposition.joursPayesAPlein} jour(s) payé(s) à plein
+                    {absencesDuMois.proposition.joursDeConge > 0 ? ` · ${joursConge(absencesDuMois.proposition.joursDeConge)} jour(s) payé(s) par l'allocation de congé` : ''}
+                    {absencesDuMois.proposition.joursDeuxTiers > 0 && absencesDuMois.proposition.indemniteDeuxTiers !== null
+                      ? ` · indemnité d'incapacité ${fc(absencesDuMois.proposition.indemniteDeuxTiers)} ${absencesDuMois.devise ?? ''}`
+                      : ''}
+                    {absencesDuMois.proposition.deductionsCaisse > 0
+                      ? ` · après déduction de ${fc(absencesDuMois.proposition.deductionsCaisse)} ${absencesDuMois.devise ?? ''} versés par la Caisse`
+                      : ''}
+                    {(absencesDuMois.proposition.aRecevoirDeLaCaisse ?? 0) > 0
+                      ? ` · ${fc(absencesDuMois.proposition.aRecevoirDeLaCaisse ?? 0)} ${absencesDuMois.devise ?? ''} à recevoir de la Caisse par subrogation`
+                      : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-sel hover:underline disabled:opacity-40"
+                    disabled={absencesDuMois.devise !== null && absencesDuMois.devise !== deviseStipulation}
+                    title={
+                      absencesDuMois.devise !== null && absencesDuMois.devise !== deviseStipulation
+                        ? `Le contrat est stipulé en ${absencesDuMois.devise}, le bulletin en ${deviseStipulation}.`
+                        : undefined
+                    }
+                    onClick={() => {
+                      const nouvelles = lignesProposees(lignes, absencesDuMois.proposition, { ...LIGNE_VIERGE }, montantPourChamp);
+                      if (nouvelles) setLignes(nouvelles);
+                    }}
+                  >
+                    Reprendre au bulletin
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {selection && congesDuMois && congesDuMois.length > 0 && (
+            <div className="border border-border px-3 py-2 mt-2">
+              <div className={`${etiquette} mb-1 flex items-center gap-1.5`}>
+                Allocations de congé du mois
+                <Aide
+                  titre="Allocations de congé du mois"
+                  texte="Les congés posés dans l'onglet Congés dont l'allocation est rattachée à ce mois. Cochée, l'allocation entre au bulletin comme élément « Allocation ou indemnité de congé », au montant que le serveur rejoue (rémunération journalière et moyenne des douze mois, par jour de congé). Elle REMPLACE le salaire des jours de congé, elle ne s'y ajoute pas · reprenez le salaire des jours hors congé proposé dans « Absences et congés du mois » ; l'émission refuse un salaire plein avec des jours de congé dans le mois. Un congé déjà porté par un bulletin émis, ou dont l'allocation n'est pas chiffrée, ne se coche pas. L'émission lie le congé au bulletin ; annuler le bulletin le libère."
+                  source="Code du travail, art. 93, 142 et 145 · arrêté du 8 août 2008, mentions 6, 14 et 28"
+                />
+              </div>
+              <table className="w-full">
+                <tbody>
+                  {congesDuMois.map((c) => {
+                    const motif = motifCongeNonPortable(c, deviseStipulation);
+                    return (
+                      <tr key={c.id} className="border-t border-border/40">
+                        <td className="py-1 pr-2">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              disabled={motif !== null}
+                              checked={congesPortes[c.id] === true}
+                              onChange={(e) => setCongesPortes((p) => ({ ...p, [c.id]: e.target.checked }))}
+                            />
+                            Congé du {dateCourte(c.du)} au {dateCourte(c.au)} · {joursConge(c.allocation.jours)} jour(s)
+                          </label>
+                        </td>
+                        <td className="py-1 pr-2 text-right">
+                          {c.allocation.montant === null ? '' : `${fc(c.allocation.montant)} ${c.allocation.devise ?? ''}`}
+                        </td>
+                        <td className="py-1 text-right text-text-dim">{motif ?? ''}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div className="flex gap-2 mt-2">
             <button
               type="button"
@@ -3090,6 +3408,16 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
                     sortent de la rémunération, pas de ce que l’employeur paie.
                   </strong>
                 </div>
+                {simulation.allocationsConge && simulation.allocationsConge.length > 0 && (
+                  <ul className="mt-1.5 text-[11px]">
+                    {simulation.allocationsConge.map((a) => (
+                      <li key={a.congeId}>
+                        Allocation de congé du {dateCourte(a.du)} au {dateCourte(a.au)} · {joursConge(a.jours)} jour(s) à {fc(a.tauxJournalier)} ·{' '}
+                        {fc(a.montant)} {a.devise}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {simulation.retenuesAvances && simulation.retenuesAvances.length > 0 && (
                   <ul className="mt-1.5 text-[11px]">
                     {simulation.retenuesAvances.map((r) => (
@@ -3376,8 +3704,11 @@ export function PersonnelPage({ adresse }: { adresse?: string } = {}) {
         <OngletBulletins moisInitial={moisDePaie} peutEcrire={peutEcrire} />
       )}
 
+      {onglet === 'conges' && <OngletCongesPaie salaries={salaries} peutEcrire={peutEcrire} />}
+      {onglet === 'absences' && <OngletAbsencesPaie salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'rubriques' && <OngletRubriquesAvances salaries={salaries} peutEcrire={peutEcrire} />}
       {onglet === 'baremes' && <OngletBaremesPaie peutEcrire={peutEcrire} />}
+      {onglet === 'baremes' && <MajorationsHeuresPaie peutEcrire={peutEcrire} />}
 
       {onglet === 'decompte' && (
         <div className="ecran-seul max-w-[1240px] text-[11.5px]">

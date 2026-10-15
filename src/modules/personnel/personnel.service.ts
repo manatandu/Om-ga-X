@@ -150,6 +150,24 @@ import {
 import { lireParLots, pageApres, PremiersSelon } from '../../common/lecture-par-lots';
 import { PLAFOND_CONTRATS_PAR_FICHE, PLAFOND_ENFANTS_PAR_FICHE, PLAFOND_GRILLES_SMIG } from './bornes-registre';
 import type { GrillesSmigNonLues } from './regles-contrat-travail';
+import {
+  NATURE_ALLOCATION_CONGE,
+  allocationsAPorter,
+  libelleAllocation,
+  lierCongesAuBulletin,
+  lireAbsencesPourConges,
+  type AllocationPortee,
+} from './conges.service';
+import { heuresAPorter, type HeuresPortee } from './majorations-heures.service';
+import { confronterLesBulletinsEmis, confronterSalaireAuxConges } from './salaire-pendant-le-conge';
+
+/**
+ * LA SAISIE RELUE PAR LE SERVEUR · le DTO, plus ce que le serveur y ajoute et
+ * qu'aucun client ne peut envoyer (le `ValidationPipe` refuse tout champ non
+ * déclaré) · les allocations de congé et les heures majorées rejouées (ligne
+ * sage-l5).
+ */
+type SaisieRelue = SimulationPaieDto & { allocationsCongePortees?: AllocationPortee[]; heuresPortees?: HeuresPortee[] };
 
 /**
  * LES BORNES DES LISTES DE TRAVAIL DU REGISTRE (audit final F259, § 8 bis).
@@ -1045,6 +1063,60 @@ export class PersonnelService {
       });
     }
 
+    // LIGNE SAGE-L5, FONCTION 79 · L'ALLOCATION DE CONGÉ (art. 142) que ce
+    // bulletin porte, rejouée au serveur par le moteur du décompte final. Le
+    // client ne nomme que le congé ; l'élément s'ajoute ici, et la liste
+    // portée (`allocationsCongePortees`, hors de tout DTO) passe à
+    // l'émission, qui lie chaque congé à son bulletin. La saisie relue ne
+    // porte plus la demande · relue une seconde fois (simulerPaie après
+    // l'émission), elle n'ajouterait pas l'élément deux fois.
+    const demandeesConges = dto.allocationsConge ?? [];
+    let allocationsCongePortees: AllocationPortee[] = (dto as SaisieRelue).allocationsCongePortees ?? [];
+    if (demandeesConges.length) {
+      if (!salarieId) throw new BadRequestException("Une allocation de congé se rapporte à un salarié · choisissez-le.");
+      if (!moisValide(dto.moisDePaie)) throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
+      const devise = dto.deviseStipulation ?? 'CDF';
+      allocationsCongePortees = await allocationsAPorter(
+        this.prisma,
+        tenantId,
+        salarieId,
+        dto.moisDePaie,
+        demandeesConges.map((a) => a.congeId),
+        devise,
+        lireAbsencesPourConges,
+      );
+      elements = [
+        ...elements,
+        ...allocationsCongePortees.map((a) =>
+          devise === 'USD'
+            ? { nature: NATURE_ALLOCATION_CONGE, libelle: libelleAllocation(a), montantUsd: a.montant, montantFc: undefined as unknown as number }
+            : { nature: NATURE_ALLOCATION_CONGE, libelle: libelleAllocation(a), montantFc: a.montant },
+        ),
+      ];
+    }
+
+    // LIGNE SAGE-L5, FONCTION 78, ÉTAPE 2 · LES HEURES MAJORÉES (art. 119,
+    // 120, e) et 124) · la majoration est relue dans le dossier, le montant
+    // rejoué ; l'élément s'ajoute sous la nature des prestations
+    // supplémentaires, dans la monnaie de la saisie. Même garde que les
+    // allocations · relue une seconde fois, la saisie ne les ajoute pas deux
+    // fois.
+    const demandeesHeures = dto.heuresMajorees ?? [];
+    let heuresPortees: HeuresPortee[] = (dto as SaisieRelue).heuresPortees ?? [];
+    if (demandeesHeures.length) {
+      if (!moisValide(dto.moisDePaie)) throw new BadRequestException('Mois de paie illisible · la forme attendue est AAAA-MM.');
+      heuresPortees = await heuresAPorter(this.prisma, tenantId, dto.moisDePaie, demandeesHeures);
+      const devise = dto.deviseStipulation ?? 'CDF';
+      elements = [
+        ...elements,
+        ...heuresPortees.map((h) =>
+          devise === 'USD'
+            ? { nature: 'PRESTATION_SUPPLEMENTAIRE', libelle: h.libelle, montantUsd: h.montant, montantFc: undefined as unknown as number }
+            : { nature: 'PRESTATION_SUPPLEMENTAIRE', libelle: h.libelle, montantFc: h.montant },
+        ),
+      ];
+    }
+
     const demandees = dto.retenuesAvances ?? [];
     const retenuesAvances: {
       avanceId: string;
@@ -1107,7 +1179,10 @@ export class PersonnelService {
         `« ${horsChamp.libelle} » · seuls le logement, le transport et les soins se déclarent fournis en nature.`,
       );
     }
-    return { dto: { ...dto, elements }, retenuesAvances };
+    return {
+      dto: { ...dto, elements, allocationsConge: undefined, allocationsCongePortees, heuresMajorees: undefined, heuresPortees } as SaisieRelue,
+      retenuesAvances,
+    };
   }
 
   /**
@@ -1396,6 +1471,9 @@ export class PersonnelService {
       quotite,
       // ARTICLE 112, c) ET f) · figées avec le bulletin, relues par P9.
       retenuesAvances,
+      // LIGNE SAGE-L5 · les congés dont ce bulletin porte l'allocation, figés
+      // avec lui ; l'émission les lie au bulletin dans sa transaction.
+      allocationsConge: (dtoStipule as SaisieRelue).allocationsCongePortees ?? [],
       reserveRetenuesAvances: retenuesAvances.length ? RESERVE_QUOTITE_AVANCES : null,
       // « Sans excéder la portion saisissable » (AUPSRVE, art. 188) · confrontée,
       // jamais refusée (passe O4-C2). La plus large des quotités chiffrées ·
@@ -1663,6 +1741,8 @@ export class PersonnelService {
     // retenues d'avance telles que le registre les donne, jamais telles que
     // le navigateur les a envoyées.
     const { dto: saisie } = await this.resoudreSaisie(tenantId, salarieId, dto);
+    const conge = await this.motifSalairePendantLeConge(tenantId, salarieId, contrat, dto.moisDePaie, saisie);
+    if (conge.refus) throw new BadRequestException(`Bulletin non émis · ${conge.refus}`);
     const simulation = await this.simulerPaie(tenantId, salarieId, saisie, maintenant);
     const motifs = motifsRefusEmission(simulation);
     if (motifs.length > 0) {
@@ -1682,8 +1762,74 @@ export class PersonnelService {
       entree: saisie,
       calculEnPlus: {},
     });
-    return this.lireBulletin(tenantId, cree.id);
+    // Second tour, point 2 · la garde qui ne compare rien le DIT au cabinet,
+    // avec l'émission, jamais un silence.
+    const emis = await this.lireBulletin(tenantId, cree.id);
+    return conge.avertissements.length ? { ...emis, avertissements: conge.avertissements } : emis;
   }
+
+  /**
+   * B1 DE LA RELECTURE (premier tour) · LE SALAIRE PLEIN ET L'ALLOCATION DE
+   * CONGÉ POUR LES MÊMES JOURS. L'allocation de l'art. 142 remplace la
+   * rémunération pendant le congé · un bulletin qui paie le salaire mensuel
+   * entier d'un mois où des jours de congé sont payés par l'allocation (portée
+   * par lui ou par le bulletin du départ, art. 145) paie ces jours deux fois.
+   * Refus nommé, avec le salaire des jours hors congé (`absences.ts`). Rien
+   * n'est opposé hors d'un salaire au mois du contrat, dans la monnaie du
+   * bulletin · il n'y a alors rien de certain à comparer, et c'est DIT
+   * (second tour, point 2), avec l'émission. Le congé posé après un bulletin
+   * émis est jugé à sa pose et au report de son allocation
+   * (`salaire-pendant-le-conge.ts`).
+   */
+  private async motifSalairePendantLeConge(
+    tenantId: string,
+    salarieId: string,
+    contrat: { remunerationBase: Prisma.Decimal | null; periodiciteRemuneration: string | null; deviseRemuneration: string | null },
+    mois: string,
+    saisie: SimulationPaieDto,
+  ): Promise<{ refus: string | null; avertissements: string[] }> {
+    const devise = saisie.deviseStipulation ?? 'CDF';
+    const salaire = saisie.elements
+      .filter((e) => e.nature === 'SALAIRE_OU_TRAITEMENT')
+      .reduce((n, e) => n + Number((devise === 'USD' ? e.montantUsd : e.montantFc) ?? 0), 0);
+    const avertissements: string[] = [];
+    // Second tour · le mois du bulletin, confronté aux congés qui le touchent
+    // (base et référence de la proposition, points 1 et 3) ; la garde qui ne
+    // compare rien le dit (point 2).
+    const r = await confronterSalaireAuxConges(this.prisma, tenantId, salarieId, { mois, salaire, devise, contrat });
+    if (r.refus) return { refus: r.refus, avertissements };
+    if (r.avertissement) avertissements.push(r.avertissement);
+    // B1, SECOND TOUR · les AUTRES mois des congés dont ce bulletin porte
+    // l'allocation · leur refus est déjà levé par `allocationsAPorter` ; ici
+    // ce qui ne se compare pas (bulletin non mensuel ou illisible) est dit.
+    const portees = (saisie as SaisieRelue).allocationsCongePortees ?? [];
+    if (portees.length) {
+      const conges = await this.prisma.congeSalarie.findMany({
+        where: { tenantId, salarieId, id: { in: portees.map((a) => a.congeId) } },
+        take: portees.length,
+        select: { id: true, du: true, au: true, joursVoyage: true, remunerationJournaliere: true, deviseAllocation: true },
+      });
+      for (const c of conges) {
+        const autres = await confronterLesBulletinsEmis(
+          this.prisma,
+          tenantId,
+          salarieId,
+          {
+            id: c.id,
+            du: c.du.toISOString().slice(0, 10),
+            au: c.au.toISOString().slice(0, 10),
+            joursVoyage: c.joursVoyage,
+            remunerationJournaliere: c.remunerationJournaliere === null ? null : Number(c.remunerationJournaliere),
+            deviseAllocation: c.deviseAllocation,
+          },
+          { saufMois: mois, issue: (numero) => `annulez le bulletin n° ${numero} et réémettez-le, puis émettez celui-ci.` },
+        );
+        avertissements.push(...autres.avertissements);
+      }
+    }
+    return { refus: null, avertissements };
+  }
+
 
   /**
    * FIGER UN DOUBLE DU LIVRE DE PAIE · bulletin du mois ou décompte final
@@ -1804,6 +1950,11 @@ export class PersonnelService {
             data: { tenantId, avanceId: r.avanceId, bulletinId: cree.id, montantFc: r.montantFc },
           });
         }
+        // LIGNE SAGE-L5 · les congés dont ce bulletin porte l'allocation, liés
+        // sous le même verrou · un congé porté entre-temps refuse l'émission.
+        if (simulation.allocationsConge.length) {
+          await lierCongesAuBulletin(tx, tenantId, cree.id, simulation.allocationsConge);
+        }
         return cree;
       });
 
@@ -1876,7 +2027,9 @@ export class PersonnelService {
         avertissementsDecompteEmis: avertissements,
       },
     });
-    return { ...(await this.lireBulletin(tenantId, cree.id)), avertissements };
+    // Second tour, point 2 · ce que la garde des congés n'a pu confronter est
+    // dit au cabinet dans la réponse, jamais imprimé sur le décompte remis.
+    return { ...(await this.lireBulletin(tenantId, cree.id)), avertissements: [...avertissements, ...p.avertissementsConge] };
   }
 
   /**
@@ -2004,6 +2157,13 @@ export class PersonnelService {
     // zéro · un plancher silencieux ferait un arriéré plus grand que la paie.
     const negatifs = motifsElementsNegatifs(saisie.elements);
     if (negatifs.length > 0) throw refusNomme('Décompte final non émis', negatifs);
+    // B1 · le salaire du mois de cessation ne paie pas les jours de congé que
+    // l'allocation a payés (art. 142), comme au bulletin du mois.
+    const conge = await this.motifSalairePendantLeConge(tenantId, salarieId, contrat, mois, saisie);
+    if (conge.refus) {
+      if (!pourEmettre) return { etat: 'NON_CHIFFRE' as const, motifs: [conge.refus] };
+      throw refusNomme('Décompte final non émis', [conge.refus]);
+    }
     const elementsDuMois = saisie.elements.map((e) => ({
       nature: e.nature as NatureElementPaie,
       montantFc: e.montantFc,
@@ -2105,6 +2265,8 @@ export class PersonnelService {
       verdict,
       faits,
       indemnites,
+      // Second tour, point 2 · la garde des congés qui ne compare rien le dit.
+      avertissementsConge: conge.avertissements,
     };
   }
 
@@ -2182,8 +2344,12 @@ export class PersonnelService {
   async lireBulletin(tenantId: string, id: string) {
     const b = await this.prisma.bulletinPaie.findFirst({ where: { id, tenantId } });
     if (!b) throw new NotFoundException('Bulletin introuvable dans ce dossier.');
+    const versements = b.statut === StatutBulletinPaie.ANNULE ? await this.versementsDuBulletinAnnule(tenantId, b) : null;
     return {
       ...b,
+      // M5 DE LA RELECTURE · annulé, le bulletin dit s'il a été PAYÉ, avec sa
+      // pièce · le versement reste au journal (D 422 / C trésorerie).
+      versements,
       totalVerseFc: Number(b.totalVerseFc),
       assietteSocialeFc: Number(b.assietteSocialeFc),
       cotisationsTravailleurFc: Number(b.cotisationsTravailleurFc),
@@ -2197,6 +2363,37 @@ export class PersonnelService {
         b.nature === NatureBulletinPaie.DECOMPTE_FINAL
           ? [TEXTE_ARTICLE_103, TEXTE_INALTERABILITE, RESERVE_MODELE, DECOMPTE_A_LA_RUPTURE, RESERVE_VERSEMENT_UNIQUE, RESERVE_DU_PAR_LE_TRAVAILLEUR]
           : [TEXTE_ARTICLE_103, TEXTE_INALTERABILITE, RESERVE_MODELE],
+    };
+  }
+
+  /**
+   * M5 DE LA RELECTURE · CE QU'UN BULLETIN ANNULÉ A DÉJÀ VERSÉ. Le paiement
+   * (fonction 75) reste au journal ; réémis, le bulletin du mois l'absorbe
+   * (il ne propose que le reste à payer) ; sans successeur, le versement ne
+   * se rattache à rien, et c'est dit avec ses deux issues.
+   */
+  private async versementsDuBulletinAnnule(tenantId: string, b: { id: string; salarieId: string; moisDePaie: string }) {
+    const [lignes, successeur] = await Promise.all([
+      this.prisma.lignePaiementSalaire.findMany({
+        where: { tenantId, bulletinId: b.id, annuleLe: null },
+        orderBy: { paiement: { date: 'asc' } },
+        take: 50,
+        select: { montant: true, paiement: { select: { date: true, piecePassee: true } } },
+      }),
+      this.prisma.bulletinPaie.findFirst({
+        where: { tenantId, salarieId: b.salarieId, moisDePaie: b.moisDePaie, statut: StatutBulletinPaie.EMIS },
+        select: { numero: true },
+      }),
+    ]);
+    if (lignes.length === 0) return null;
+    const montant = lignes.reduce((n, l) => n + Math.round(Number(l.montant) * 100), 0) / 100;
+    const pieces = lignes.map((l) => `pièce ${l.paiement.piecePassee ?? '·'} du ${l.paiement.date.toISOString().slice(0, 10)}`).join(', ');
+    return {
+      montant,
+      pieces: lignes.map((l) => ({ date: l.paiement.date, piece: l.paiement.piecePassee })),
+      avertissement: successeur
+        ? `Ce bulletin a été payé (${montant.toFixed(2)}, ${pieces}) · le versement s'impute sur le bulletin n° ${successeur.numero} du même mois, qui ne propose que le reste à payer.`
+        : `Ce bulletin a été payé (${montant.toFixed(2)}, ${pieces}), et aucun bulletin émis du mois ne le remplace · le versement reste au journal sans bulletin. Réémettez le bulletin du mois, sur lequel il s'imputera, ou annulez le paiement (Paiement des salaires).`,
     };
   }
 

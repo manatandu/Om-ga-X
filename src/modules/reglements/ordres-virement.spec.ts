@@ -136,7 +136,7 @@ describe("créer, imprimer, annuler", () => {
     const service = new OrdresVirementService(prisma as never);
     const preparation = {
       donneur: { banque: 'Rawbank', coordonnees: '0001', codeBic: null },
-      beneficiaires: new Map([['c401', { tiersId: 'tA', beneficiaire: 'A', banque: 'B', coordonnees: '1', codeBic: null }]]),
+      beneficiaires: new Map([['c401', { tiersId: 'tA', salarieId: null, beneficiaire: 'A', banque: 'B', coordonnees: '1', codeBic: null }]]),
     };
     const r = await service.creer('t', 'x@y.cd', 'bq', '2026-09-25', preparation, [
       { compteId: 'c401', montant: 100.1, reference: null, ecritureId: 'e1', pieceReglement: 'BQ 7' },

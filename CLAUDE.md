@@ -1860,6 +1860,45 @@ n'arrondit le salaire converti). Seuls les ÉLÉMENTS se convertissent, avant to
 calcul ; le bulletin fige le cours (`calcul.conversion`) et la stipulation en
 dollars.
 
+**Ligne sage-l5 · la paie de Sage (2026-10-14).** CONGÉS ACQUIS (fonction 79,
+`conges-acquis.ts`) · compteur par période annuelle de DATE À DATE, mois de
+service acquis sur bulletin émis, droits nés à l'expiration de l'année
+(art. 140, al. 3), tranche d'ancienneté et allocation de l'art. 142 par le
+moteur du décompte final (`allocationDeConge`), reprise DÉCLARÉE avec sa
+source, congé au-delà du solde dit, jamais refusé ; l'allocation REMPLACE
+le salaire des jours de congé (art. 142 ; livre de paie, mentions 6, 14 et
+28), l'émission refusant le salaire plein, dans les DEUX ordres de saisie ·
+le congé posé ou porté après le bulletin émis d'un mois qu'il touche relit
+ce bulletin sur sa saisie figée, et un congé dont un bulletin émis a
+retranché les jours ne s'annule pas seul (`salaire-pendant-le-conge.ts`) ;
+référence au plus grand du contrat et du taux déclaré au congé × 26, même
+base que la proposition, garde muette DITE ; un congé ne se pose pas sur une
+absence, sauf la maladie (art. 141, al. 4). ABSENCES (fonction 78,
+`absences.ts`) · treize causes du Code, chacune son régime (deux tiers des
+art. 105, 106, 130 ; circonstance art. 146 ; art. 93 ; art. 59), proposées au
+bulletin, jamais substituées ; heures majorées à taux DÉCLARÉ avec sa source
+(aucun au corpus) ; indemnité de la Caisse sur un arrêt DÉCLARÉE avec sa
+pièce · déduite (accident du travail, art. 106, al. 2) ou subrogée (arrêté
+n° 146/2018, art. 139, al. 2 et 3), la maladie ordinaire n'en ouvre aucune.
+PAIEMENT DES SALAIRES (fonction 75) · mode CONVENU (art. 98, al. 2), RIB du
+salarié = structure (administrateur, journal d'audit, numéros masqués) ;
+écriture AGRÉGÉE D 422 / C trésorerie au brouillard (fiche du compte 42),
+ordre de virement par le module existant (une ligne paie un tiers OU un
+salarié, contrainte de la base ; ordres de salaires refusés à
+l'aide-comptable), billetage déclaré, un bulletin payé une fois (NULLS NOT
+DISTINCT), annulation motivée en négatif ; le 422 confronté à ce qui se
+propose, lu depuis l'exercice de la passation, les suivants sans leur
+ouverture. VENTILATION ANALYTIQUE (fonction 88,
+`ventilation-analytique-paie.ts`) · répartition par salarié et par plan,
+versions par MOIS DE PAIE, pourcentages qui font 100, sections Détail
+actives d'un plan qui ventile la classe 6 ; la passation pose la part de
+chaque bulletin au centime (plus fort reste) ; rien n'est réparti au prorata
+des autres, la ligne part non ventilée et la cause est dite, avec son
+issue ; la reprise en négatif se ventile comme la pièce d'origine (recopiée,
+ou refaite par les répartitions au centime, jamais au prorata). QUESTIONNAIRE (fonction 85) · lit, puis écrit
+les seuls champs qui existent par leurs routes, « pas encore dit » à chaque
+question, une valeur enregistrée jamais effacée.
+
 **Consolidation SYSCOHADA, tranche 1 · périmètre (2026-09-24).** AUDCIF art. 74 à
 98, D4C ch. XII ; SYSCOHADA SEUL (l'art. 3 du SYCEBNL écarte les art. 73 à 113).
 Moteur PUR (`consolidation/perimetre-consolidation.ts`) joué AVANT toute écriture

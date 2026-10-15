@@ -128,6 +128,11 @@ export const COLONNES_QUI_RETIENNENT: readonly string[] = [
   // L'impôt sur le résultat (ligne A11) · retirée seule, l'écriture laisserait
   // l'exercice se dire constaté sans la pièce qui porte le 89 et le 441.
   'ConstatImpotResultat.ecritureId',
+  // Le paiement des salaires (ligne sage-l5, fonction 75) · retirée seule,
+  // la pièce laisserait les bulletins se dire payés sans le D 422, et le
+  // salaire repartirait dans le paiement suivant ; son négatif de même.
+  'PaiementSalaires.ecritureId',
+  'PaiementSalaires.ecritureNegatifId',
   // Ligne sage-l4 · l'annulation d'un traitement d'immobilisation (fonction
   // n° 67) · l'écriture validée annulée et son négatif · retirés ou corrigés
   // seuls, le négatif annulerait une annuité que plus rien ne nomme, ou la

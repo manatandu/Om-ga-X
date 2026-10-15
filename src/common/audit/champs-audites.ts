@@ -223,6 +223,28 @@ export const MODELES_AUDITES = new Set<string>([
   // bulletins à venir · la trace dit qui l'a posé, sur quel texte, et qui l'a
   // retiré.
   'VersionBaremePaie',
+  // LIGNE SAGE-L5 · une reprise de congés retouchée change un solde sans
+  // qu'aucun bulletin ne bouge ; un congé posé, annulé ou rattaché à un
+  // bulletin change l'allocation payée · la trace dit qui et quand.
+  'RepriseCongesSalarie',
+  'CongeSalarie',
+  // Une absence change un solde de congé et la proposition d'un bulletin
+  // sans qu'aucun montant ne la nomme.
+  'AbsenceSalarie',
+  // Un taux de majoration change la paie de chaque bulletin qui le porte.
+  'MajorationHeures',
+  // Une indemnité de la Caisse déduite ou reçue par subrogation change ce que
+  // le bulletin propose.
+  'IndemniteCaisseAbsence',
+  // Un RIB de salarié modifié en silence détourne un salaire (comme RibTiers) ·
+  // un paiement des salaires passe une pièce au journal, et son annulation
+  // rend les bulletins payables · la trace dit qui et quand.
+  'RibSalarie',
+  'PaiementSalaires',
+  // Ligne sage-l5, fonction 88 · la répartition analytique d'un salarié dit
+  // sur quelles sections la paie portera ses charges · qui l'a déclarée,
+  // retirée, et pourquoi.
+  'RepartitionAnalytiquePaie',
 
   // ══ CLASSEMENT DU 2026-09-27 · tables de même nature que les précédentes,
   // restées hors du journal sans décision (audit serveur, point I4). ══
@@ -355,6 +377,9 @@ export const NON_AUDITES_MOTIVES: Readonly<Record<string, string>> = {
   CoupureComptee: 'Ventilation par coupure du PV de comptage, journalisé · le total compté est sur le PV.',
   LigneFacture: 'Lignes de la facture, journalisée, écrites avec elle et jamais retouchées seules.',
   LigneDevis: 'Lignes du devis, journalisé, écrites avec lui et jamais retouchées seules.',
+  LigneRepartitionAnalytiquePaie: LIGNES_DE_LA_TETE,
+  LignePaiementSalaire:
+    "Lignes du paiement des salaires, journalisé, écrites avec lui · seule son annulation, elle-même journalisée, leur recopie sa date.",
   LigneOrdreVirement:
     "Lignes de l'ordre de virement, journalisé, recopiées à la date de l'ordre et jamais modifiées.",
   RetenueAvanceBulletin: "Retenue née avec le bulletin émis, journalisé · un bulletin ne se modifie pas, il s'annule.",
@@ -481,6 +506,30 @@ export const COLONNES_EXCLUES_PAR_MODELE: Readonly<Record<string, readonly strin
   EnfantACharge: ['nom', 'postNom', 'prenoms', 'dateNaissance'],
   ContratTravail: ['remunerationBase', 'avantagesConvenus'],
   AvanceSalaire: ['montantFc', 'retenueMensuelleFc', 'objet'],
+  // Ligne sage-l5 · le taux journalier et la moyenne des primes sont la
+  // RÉMUNÉRATION, masquée comme celle du contrat ; les dates et le motif
+  // restent, ce sont eux que la trace doit dire.
+  CongeSalarie: ['remunerationJournaliere', 'moyenneMensuelleArticle142'],
+  // Ligne sage-l5 · la pièce d'une absence nomme un certificat médical et
+  // l'observation peut en dire le contenu · le journal d'audit se lit par
+  // tout le dossier, l'aide-comptable compris, à qui le personnel est fermé.
+  // LA NATURE AUSSI (relecture L5, mineur 4) · « maladie », « maternité »,
+  // « incarcération » disent l'état de santé ou la situation d'une personne,
+  // pas sa relation de travail. Les dates et l'annulation restent, ce sont
+  // elles que la trace doit dire.
+  AbsenceSalarie: ['nature', 'piece', 'observation'],
+  // Relecture L5, mineur 4 · l'indemnité journalière de la Caisse est une
+  // prestation versée à la personne (arrêté n° 146/2018, art. 63 et 87),
+  // masquée comme la rémunération ; sa pièce nomme le bordereau. Le mois, le
+  // traitement et l'annulation restent.
+  IndemniteCaisseAbsence: ['montant', 'piece'],
+  // Ligne sage-l5 · les coordonnées d'un salarié sont une donnée de la
+  // personne, que l'aide-comptable ne lit pas · la trace dit qu'un RIB a
+  // changé, qui l'a changé et quand, et la banque ; les numéros sont masqués.
+  RibSalarie: ['titulaire', 'codeBanque', 'codeGuichet', 'numeroCompte', 'cle', 'iban', 'codeBic', 'commentaire'],
+  // Le paiement reste IDENTIFIABLE (mois, mode, journal, pièce, annulation) ·
+  // son montant et le billetage par salarié sont masqués, comme le bulletin.
+  PaiementSalaires: ['total', 'billetage'],
   // Le bulletin reste IDENTIFIABLE (numéro, mois, nom, statut, dates, motif
   // d'annulation) · ses MONTANTS et le détail du calcul ne le sont pas, pour
   // la même raison que la rémunération du contrat.

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { BaremeMensuelIrpp, type DetailMensuelIrpp } from './BaremeMensuelIrpp';
 import { PaieDuMois } from './PaieDuMois';
+import { PaiementSalaires } from '../components/paie/PaiementSalaires';
 import { Aide } from '../components/chrome/Aide';
 import { ecartDuDecompte, elementsDuBulletin, montantAffiche, retenuesDuBulletin } from '../lib/bulletin-affiche';
 import { natureDuBulletin, type NatureBulletin } from '../lib/decompte-emis';
@@ -33,6 +34,8 @@ interface LigneBulletin {
   emisLe: string;
   remisLe: string | null;
   annuleLe: string | null;
+  /** Relecture M5 · annulé, ce que le bulletin a déjà versé, avec ses pièces · `null` s'il n'a rien versé. */
+  versements?: { montant: number; avertissement: string } | null;
 }
 
 interface ListeBulletins {
@@ -240,6 +243,9 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
           seulement, pas le gestionnaire de paie (roles-cantonnes.ts). */}
       <PaieDuMois mois={mois} apresChangement={charger} />
 
+      {/* Ligne sage-l5, fonction 75 · payer les bulletins émis du mois. */}
+      <PaiementSalaires mois={mois} />
+
       {ouvert && (
         <div className="border border-border bg-surface px-5 py-4">
           {/* LE BULLETIN · c'est la partie qui s'imprime. */}
@@ -253,6 +259,7 @@ export function OngletBulletins({ moisInitial, peutEcrire }: { moisInitial: stri
           {ouvert.statut === 'ANNULE' && (
             <div className="border border-danger/30 bg-danger-soft px-3 py-2 mb-3">
               <strong>Annulé</strong> le {jour(ouvert.annuleLe)} · {ouvert.motifAnnulation}
+              {ouvert.versements && <div className="mt-1">{ouvert.versements.avertissement}</div>}
             </div>
           )}
 

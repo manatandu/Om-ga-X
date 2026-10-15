@@ -129,6 +129,19 @@ export const MODELES_CLOISONNES = new Set<string>([
   'AmortissementDerogatoire',
   'AvanceSalaire',
   'RetenueAvanceBulletin',
+  // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
+  'RepriseCongesSalarie',
+  'CongeSalarie',
+  'AbsenceSalarie',
+  'MajorationHeures',
+  'IndemniteCaisseAbsence',
+  // Ligne sage-l5 · banques du salarié et paiement des salaires (fonction 75).
+  'RibSalarie',
+  'PaiementSalaires',
+  'LignePaiementSalaire',
+  // Ligne sage-l5 · fonction 88, la répartition analytique de la paie.
+  'RepartitionAnalytiquePaie',
+  'LigneRepartitionAnalytiquePaie',
   'OrdreVirement',
   'LigneOrdreVirement',
   'LotVirement',

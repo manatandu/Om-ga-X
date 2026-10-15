@@ -201,6 +201,8 @@ function service(opts: { salarie?: unknown; actif?: unknown; max?: number | null
   const aggregate = jest.fn().mockResolvedValue({ _max: { numero: opts.max ?? null } });
   const prisma: Record<string, unknown> = {
     salarie: { findFirst: jest.fn().mockResolvedValue(opts.salarie === undefined ? SALARIE : opts.salarie) },
+    // B1 (relecture L5) · les congés du mois, lus avant d'émettre un salaire au mois.
+    congeSalarie: { findMany: jest.fn().mockResolvedValue([]) },
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ referentiel: 'SYSCOHADA' }) },
     versionBaremePaie: { findFirst: jest.fn().mockResolvedValue(null) },
     bulletinPaie: { findFirst: bulletinFindFirst, aggregate, create, update: jest.fn() },

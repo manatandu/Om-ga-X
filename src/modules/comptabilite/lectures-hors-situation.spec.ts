@@ -262,6 +262,12 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/immobilisations/annulation-traitement.service.ts', fonction: 'annuler', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/immobilisations/creation-depuis-ecritures.service.ts', fonction: 'creer', appel: 'ligneEcriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/immobilisations/fiche-immobilisation.service.ts', fonction: 'lire', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  // Ligne sage-l5, intégrée avant la ligne sage-l1 · les pièces d'un paiement
+  // des salaires et de la passation de la paie, désignées par leur liaison
+  // (le 422 qu'elles confrontent pose le statut, `avecStatut`).
+  { fichier: 'src/modules/personnel/paiement-salaires.service.ts', fonction: 'confronterAu422', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/personnel/paiement-salaires.service.ts', fonction: 'payer', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/personnel/paiement-salaires.service.ts', fonction: 'annuler', appel: 'ecriture.findFirst', nombre: 2, motif: 'PAR_IDENTIFIANT' },
 ];
 
 // ---------------------------------------------------------------------------

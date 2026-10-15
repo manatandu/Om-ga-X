@@ -142,6 +142,20 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'bulletins',
       // Le lien vers ses avances · la relation, jamais un montant.
       'avances',
+      // Ligne sage-l5 · sa reprise de congés et ses congés · les relations seules.
+      'repriseConges',
+      'conges',
+      // Ligne sage-l5 · ses absences (fonction 78) · la relation seule.
+      'absences',
+      // Ligne sage-l5 · fonction 75 · le mode de paiement CONVENU est un fait
+      // de gestion (art. 98, al. 2), admis ; RIB, lignes de paiement et
+      // d'ordre de virement · les relations seules.
+      'modePaiement',
+      'ribs',
+      'lignesPaiement',
+      'ordresVirement',
+      // Ligne sage-l5 · fonction 88 · la répartition analytique, la relation seule.
+      'repartitionsAnalytiques',
       'createdAt',
       'createdBy',
       'updatedAt',
@@ -232,6 +246,74 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'ecritureNegatif',
       // Les retenues d'avance portées par le bulletin · la relation seule.
       'retenuesAvance',
+      // Ligne sage-l5 · les congés dont il porte l'allocation · la relation seule.
+      'allocationsConge',
+      // Ligne sage-l5 · les paiements qui ont versé son net · la relation seule.
+      'lignesPaiement',
+    ],
+    // LIGNE SAGE-L5 · LE CONGÉ DU SALARIÉ · le journal dit ses dates, son
+    // rattachement à un bulletin, sa prise au-delà du solde et son
+    // annulation ; le taux journalier et la moyenne des primes sont masqués,
+    // comme la rémunération du contrat.
+    CongeSalarie: [
+      'id',
+      'tenantId',
+      'tenant',
+      'salarieId',
+      'salarie',
+      'du',
+      'au',
+      'joursVoyage',
+      'moisDePaie',
+      'deviseAllocation',
+      'auDelaDuSolde',
+      'motifAuDelaDuSolde',
+      'bulletinId',
+      'bulletin',
+      'annuleLe',
+      'annulePar',
+      'motifAnnulation',
+      'creePar',
+      'createdAt',
+    ],
+    // LIGNE SAGE-L5 · L'ABSENCE DU SALARIÉ · le journal dit ses dates et son
+    // annulation ; la nature (relecture, mineur 4), la pièce (certificat
+    // médical) et l'observation sont masquées.
+    AbsenceSalarie: [
+      'id',
+      'tenantId',
+      'tenant',
+      'salarieId',
+      'salarie',
+      'du',
+      'au',
+      'demiJourneeDebut',
+      'demiJourneeFin',
+      'evenement',
+      'annuleLe',
+      'annulePar',
+      'motifAnnulation',
+      'creePar',
+      'createdAt',
+      // Étape 3 · les indemnités de la Caisse déclarées sur l'arrêt · la relation seule.
+      'indemnitesCaisse',
+    ],
+    // RELECTURE L5, MINEUR 4 · L'INDEMNITÉ DE LA CAISSE · le journal dit son
+    // arrêt, son mois, son traitement et son annulation ; le montant et la
+    // pièce sont masqués, comme la rémunération.
+    IndemniteCaisseAbsence: [
+      'id',
+      'tenantId',
+      'tenant',
+      'absenceId',
+      'absence',
+      'mois',
+      'traitement',
+      'annuleLe',
+      'annulePar',
+      'motifAnnulation',
+      'creePar',
+      'createdAt',
     ],
     // L'AVANCE AU SALARIÉ · le journal dit qu'elle existe, de quel type, à
     // quelle date et sur quelle pièce ; le montant et l'objet sont masqués,
@@ -256,6 +338,37 @@ describe('la liste d’exclusion est fermée sur User', () => {
       'creePar',
       'createdAt',
       'retenues',
+    ],
+    // LIGNE SAGE-L5, FONCTION 75 · LE RIB D'UN SALARIÉ · le journal dit qu'il
+    // a changé, qui l'a changé et quand, la banque et la devise ; les
+    // numéros, le titulaire et le commentaire sont masqués.
+    RibSalarie: ['id', 'tenantId', 'tenant', 'salarieId', 'salarie', 'banque', 'devise', 'estPrincipal', 'createdAt'],
+    // LE PAIEMENT DES SALAIRES · identifiable (mois, mode, journal, pièce,
+    // ordre, annulation) ; le total et le billetage sont masqués.
+    PaiementSalaires: [
+      'id',
+      'tenantId',
+      'tenant',
+      'moisDePaie',
+      'mode',
+      'exerciceId',
+      'exercice',
+      'journalId',
+      'journal',
+      'date',
+      'ecritureId',
+      'ecriture',
+      'ecritureNegatifId',
+      'ecritureNegatif',
+      'piecePassee',
+      'ordreVirementId',
+      'ordreVirement',
+      'creePar',
+      'createdAt',
+      'annuleLe',
+      'annulePar',
+      'motifAnnulation',
+      'lignes',
     ],
   };
 
@@ -324,6 +437,21 @@ describe('la liste d’exclusion est fermée sur User', () => {
     // journal de ce qu'on vient précisément y chercher.
     expect(m.type).toBe('DUREE_DETERMINEE');
     expect(m.emploiPermanent).toBe(false);
+  });
+
+  it('RELECTURE L5, MINEUR 4 · la nature d’une absence et l’indemnité de la Caisse ne se lisent pas au journal', () => {
+    const absence = masquer(
+      { id: 'a-1', salarieId: 's-1', nature: 'MATERNITE', du: new Date('2026-08-03'), au: new Date('2026-11-08'), piece: 'Certificat' },
+      colonnesExclues('AbsenceSalarie'),
+    ) as Record<string, unknown>;
+    expect([absence.nature, absence.piece]).toEqual([MARQUEUR_MASQUE, MARQUEUR_MASQUE]);
+    expect(absence.salarieId).toBe('s-1');
+    const indemnite = masquer(
+      { id: 'i-1', absenceId: 'a-1', mois: '2026-08', montant: 180_000, traitement: 'SUBROGATION', piece: 'Bordereau CNSS 118' },
+      colonnesExclues('IndemniteCaisseAbsence'),
+    ) as Record<string, unknown>;
+    expect([indemnite.montant, indemnite.piece]).toEqual([MARQUEUR_MASQUE, MARQUEUR_MASQUE]);
+    expect([indemnite.mois, indemnite.traitement]).toEqual(['2026-08', 'SUBROGATION']);
   });
 
   it('UN ENFANT NE SE NOMME PAS AU JOURNAL · seul son rattachement y reste', () => {

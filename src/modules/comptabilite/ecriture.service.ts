@@ -1809,6 +1809,14 @@ export class EcritureService {
       ['un virement de fonds (journal de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureDestinationId: ecritureId } })],
       ['un virement de fonds annulé (négatif d’origine)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifOrigineId: ecritureId } })],
       ['un virement de fonds annulé (négatif de destination)', this.prisma.virementFonds.count({ where: { tenantId, ecritureNegatifDestinationId: ecritureId } })],
+      // Le paiement des salaires (ligne sage-l5, fonction 75) · retirée seule,
+      // la pièce laisserait les bulletins se dire payés sans le D 422 qui le
+      // dit, et le salaire repartirait dans le paiement suivant ; son négatif
+      // de même. Il s'annule depuis la fenêtre Personnel.
+      [
+        'le paiement des salaires (fenêtre Personnel)',
+        this.prisma.paiementSalaires.count({ where: { tenantId, OR: [{ ecritureId }, { ecritureNegatifId: ecritureId }] } }),
+      ],
       ["une dotation aux amortissements", this.prisma.dotationAmortissement.count({ where: parLEcriture })],
       ["une dépréciation d'immobilisation", this.prisma.depreciationImmobilisation.count({ where: parLEcriture })],
       // Le reclassement d'un bien · la clé est RESTRICT, et sans ce refus nommé

@@ -89,8 +89,26 @@ export type BulletinAComptabiliser = {
 export type OrigineDuBulletin = {
   readonly ecritureId: string;
   readonly numeroPiece?: string | null;
-  readonly lignes: readonly { readonly compte: string; readonly intitule: string; readonly debit: number; readonly credit: number }[];
+  readonly lignes: readonly {
+    readonly compte: string;
+    readonly intitule: string;
+    readonly debit: number;
+    readonly credit: number;
+    /**
+     * Relecture L5, M3 · les ventilations analytiques de la ligne, telles
+     * qu'au journal (montant du côté de la ligne) · la reprise en négatif
+     * se ventile comme l'écriture d'origine.
+     */
+    readonly ventilations?: readonly { readonly planId: string; readonly sectionId: string; readonly montant: number }[];
+  }[];
 };
+
+/**
+ * Relecture L5, M3 · comment chaque écriture d'origine est reprise · recopiée
+ * ligne à ligne (EXACTE) ou rejouée à la règle du jour (REJEU) · la
+ * ventilation analytique de la reprise suit l'une ou l'autre.
+ */
+export type RepriseDuMois = { readonly ecritureId: string; readonly mode: 'EXACTE' | 'REJEU'; readonly bulletinIds: readonly string[] };
 
 /**
  * Les blocs de l'écriture du mois · ceux de la passation, plus la reprise en
@@ -129,6 +147,8 @@ export type PropositionPaieDuMois = {
   }[];
   /** C2 · ceux que CETTE écriture reprendrait en négatif. */
   readonly negatifsAPasser: readonly { id: string; numero: number; nomComplet: string; ecritureId: string }[];
+  /** Relecture L5, M3 · le mode de reprise de chaque écriture d'origine. */
+  readonly reprises: readonly RepriseDuMois[];
   readonly refus: readonly { numero: number; nomComplet: string; motifs: readonly string[] }[];
   readonly lignes: readonly LigneDuMois[];
   readonly totalDebitFc: number;
@@ -150,8 +170,12 @@ const ORDRE_DES_BLOCS: readonly BlocDuMois[] = [
   'REPRISE_EN_NEGATIF',
 ];
 
-/** Le compte qui porte le TOTAL de chaque bloc, et son sens. */
-const TOTAL_DU_BLOC: Readonly<
+/**
+ * Le compte qui porte le TOTAL de chaque bloc, et son sens · lu aussi par la
+ * ventilation analytique de la paie (`ventilation-analytique-paie.ts`), qui
+ * relie chaque ligne aux parts des bulletins.
+ */
+export const TOTAL_DU_BLOC: Readonly<
   Record<
     BlocPaie,
     {
@@ -391,6 +415,14 @@ export function propositionPaieDuMois(
     }
   }
 
+  const reprises: RepriseDuMois[] = [
+    ...reprisesExactes.map((r) => ({ ecritureId: r.origine.ecritureId, mode: 'EXACTE' as const, bulletinIds: r.bulletins.map((b) => b.id) })),
+    ...[...groupesParEcriture(rejouesALaRegleDuJour)].map(([ecritureId, bs]) => ({
+      ecritureId,
+      mode: 'REJEU' as const,
+      bulletinIds: bs.map((b) => b.id),
+    })),
+  ];
   const vide = (motifReserve?: string): PropositionPaieDuMois => ({
     moisDePaie,
     referentiel,
@@ -398,6 +430,7 @@ export function propositionPaieDuMois(
     dejaPasses,
     annulesApresPassation,
     negatifsAPasser,
+    reprises,
     refus,
     lignes: [],
     totalDebitFc: 0,
@@ -504,6 +537,7 @@ export function propositionPaieDuMois(
     dejaPasses,
     annulesApresPassation,
     negatifsAPasser,
+    reprises,
     refus,
     lignes,
     totalDebitFc: enFrancs(debit),

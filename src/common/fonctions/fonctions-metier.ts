@@ -105,6 +105,13 @@ export const FONCTION_PAR_CONTROLEUR: Record<string, FonctionMetier> = {
   PersonnelController: FonctionMetier.PAIE,
   AvancesRubriquesController: FonctionMetier.PAIE,
   BaremesPaieController: FonctionMetier.PAIE,
+  // Ligne sage-l5 · le compteur des congés, du registre du personnel.
+  CongesController: FonctionMetier.PAIE,
+  AbsencesController: FonctionMetier.PAIE,
+  MajorationsHeuresController: FonctionMetier.PAIE,
+  // Ligne sage-l5 · le paiement du salarié et des salaires, de la fenêtre Personnel.
+  PaiementSalairesController: FonctionMetier.PAIE,
+  RepartitionsAnalytiquesPaieController: FonctionMetier.PAIE,
   ExerciceController: FonctionMetier.CLOTURE,
   AffectationController: FonctionMetier.CLOTURE,
   NoteAnnexeController: FonctionMetier.CLOTURE,
