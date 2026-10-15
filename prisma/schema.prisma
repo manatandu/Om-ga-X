@@ -2647,6 +2647,13 @@ model Tiers {
   numeroImpot  String?
   contact      String? // personne à qui la lettre s'adresse
 
+  /// LA QUALITÉ DU TIERS (ligne sage-l2, fonction 24 · Sage, « Qualité » de la
+  /// fiche, « société, indépendant… ») · un libellé DESCRIPTIF, 35 caractères
+  /// au plus, proposé dans une liste et libre (`tiers/qualite-tiers.ts`). Il
+  /// ne décide rien · aucun contrôle, aucun taux, aucune sanction ne le lit ;
+  /// la forme qui compte pour une règle se déclare là où la règle la lit.
+  qualite String? @db.VarChar(35)
+
   // HORS RAPPEL · Sage l'appelle « Hors rappel/relevé » et en fait une simple
   // case sur la fiche du tiers. Une case seule ne suffit pas ici, pour deux
   // raisons.

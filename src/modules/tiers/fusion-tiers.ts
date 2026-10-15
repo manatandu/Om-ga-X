@@ -22,6 +22,8 @@ export interface FicheTiers {
   email: string | null;
   numeroImpot: string | null;
   contact: string | null;
+  /** Ligne sage-l2, fonction 24 · un libellé, qui comble le vide comme une coordonnée. */
+  qualite?: string | null;
 }
 
 export function motifRefusFusionTiers(source: FicheTiers, cible: FicheTiers): string | null {
@@ -35,7 +37,7 @@ export function motifRefusFusionTiers(source: FicheTiers, cible: FicheTiers): st
   return null;
 }
 
-const COORDONNEES = ['adresse', 'boitePostale', 'ville', 'pays', 'telephone', 'email', 'numeroImpot', 'contact'] as const;
+const COORDONNEES = ['adresse', 'boitePostale', 'ville', 'pays', 'telephone', 'email', 'numeroImpot', 'contact', 'qualite'] as const;
 
 /**
  * Les coordonnées que la fiche conservée n'a pas et que le doublon porte · la

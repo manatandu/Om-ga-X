@@ -1049,6 +1049,8 @@ export interface Tiers {
   email: string | null;
   numeroImpot: string | null;
   contact: string | null;
+  /** La qualité du tiers (ligne sage-l2, fonction 24) · un libellé, jamais une règle. */
+  qualite?: string | null;
   /**
    * CE TIERS EST UNE AUTRE CELLULE DU MÊME GROUPE D'ÉTABLISSEMENTS · un groupe
    * est UNE SEULE personne morale tenue en plusieurs dossiers, et une vente du

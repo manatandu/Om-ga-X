@@ -2,6 +2,7 @@ import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../compte
 import { BadRequestException, ConflictException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { libelleReference, referencesVers, refuserSiReferences, reporterReferences } from '../../common/suppression/references';
 import { coordonneesAComblement, motifRefusFusionTiers } from './fusion-tiers';
+import { normaliserQualite } from './qualite-tiers';
 import {
   numeroIndividuelAligne,
   panoplieDuTiers,
@@ -163,7 +164,7 @@ export class TiersService {
     if (dto.celluleGroupeId) {
       await this.exigerMemeGroupe(tenantId, dto.celluleGroupeId);
     }
-    const { creerCompteIndividuel, numeroCompte, dateEffetAutorisationDebits, dateRevocationAutorisationDebits, ...reste } = dto;
+    const { creerCompteIndividuel, numeroCompte, dateEffetAutorisationDebits, dateRevocationAutorisationDebits, qualite, ...reste } = dto;
     // UN NUMÉRO CHOISI SANS COMPTE À OUVRIR NE SE PERD PAS EN SILENCE · le
     // cabinet croirait son compte ouvert sous ce numéro.
     if (numeroCompte !== undefined && creerCompteIndividuel === false) {
@@ -184,7 +185,8 @@ export class TiersService {
       periode.dateRevocationAutorisationDebits,
     );
     if (motif) throw new BadRequestException(motif);
-    const donnees = { ...reste, ...periode };
+    const qualiteLue = normaliserQualite(qualite);
+    const donnees = { ...reste, ...periode, ...(qualiteLue ? { qualite: qualiteLue } : {}) };
     // Le compte naît dans la même transaction que le tiers · un tiers créé
     // sans le compte qu'on lui annonce serait une fiche qui ne recevrait
     // aucune écriture, et personne ne s'en apercevrait avant la relance.
@@ -590,7 +592,8 @@ export class TiersService {
     if (dto.celluleGroupeId) {
       await this.exigerMemeGroupe(tenantId, dto.celluleGroupeId);
     }
-    const { dateEffetAutorisationDebits, dateRevocationAutorisationDebits, ...reste } = dto;
+    const { dateEffetAutorisationDebits, dateRevocationAutorisationDebits, qualite, ...reste } = dto;
+    const qualiteLue = normaliserQualite(qualite);
     const effet = dateSaisieOuEffacement(dateEffetAutorisationDebits);
     const revocation = dateSaisieOuEffacement(dateRevocationAutorisationDebits);
     // LA COHÉRENCE SE JUGE SUR LA FICHE QUI RÉSULTERA, pas sur la seule
@@ -611,6 +614,7 @@ export class TiersService {
       where: { id: tiersId },
       data: {
         ...reste,
+        ...(qualiteLue === undefined ? {} : { qualite: qualiteLue }),
         ...(effet === undefined ? {} : { dateEffetAutorisationDebits: effet }),
         ...(revocation === undefined ? {} : { dateRevocationAutorisationDebits: revocation }),
       },

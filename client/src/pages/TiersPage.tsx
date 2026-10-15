@@ -28,6 +28,7 @@ import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
 import { numeroAEnvoyer, type NumeroPropose } from '../lib/numero-compte-tiers';
 import { libelleMode, modesProposables, type ModeReglement } from '../lib/modes-reglement';
+import { LONGUEUR_QUALITE, QUALITES_PROPOSEES, qualiteAEnvoyer } from '../lib/qualite-tiers';
 
 /**
  * PLAN DES TIERS · la fenêtre Structure → Plan tiers de Sage 100 i7 :
@@ -575,6 +576,7 @@ export function TiersPage() {
         | 'modeleReglementId'
         | 'modeReglementId'
         | 'validationAutomatiqueEcheances'
+        | 'qualite'
         | 'autoriseTvaDebits'
         | 'referenceAutorisationDebits'
         | 'dateEffetAutorisationDebits'
@@ -912,6 +914,36 @@ export function TiersPage() {
               <div className="font-mono text-[12px] font-bold leading-tight">{tiersSelectionne.code}</div>
               <div className="text-[11.5px] mb-2.5">{tiersSelectionne.nom}</div>
               <div className="grid grid-cols-[92px_1fr] gap-x-2 gap-y-1.5 items-center mb-3">
+                <label className="text-text-dim text-right" htmlFor="tiers-qualite">
+                  Qualité :
+                </label>
+                <span className="flex items-center gap-1">
+                  <input
+                    id="tiers-qualite"
+                    list="qualites-tiers"
+                    maxLength={LONGUEUR_QUALITE}
+                    defaultValue={tiersSelectionne.qualite ?? ''}
+                    // Remonté à chaque tiers · un champ non contrôlé garderait sinon la valeur du précédent.
+                    key={`${tiersSelectionne.id}-qualite`}
+                    readOnly={!estAdmin}
+                    placeholder="société, indépendant…"
+                    onBlur={(e) => {
+                      const valeur = qualiteAEnvoyer(e.target.value);
+                      if (estAdmin && valeur !== (tiersSelectionne.qualite ?? null)) void enregistrerChamp(tiersSelectionne, { qualite: valeur });
+                    }}
+                    className="flex-1 min-w-0 border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-none focus:border-sel"
+                  />
+                  <Aide
+                    titre="Qualité du tiers"
+                    texte="Un libellé qui décrit le tiers (société, indépendant, administration…), proposé dans une liste et libre. Il ne décide rien · aucun contrôle, aucun taux ne le lit."
+                    source="Sage 100 i7, plan tiers · qualité"
+                  />
+                </span>
+                <datalist id="qualites-tiers">
+                  {QUALITES_PROPOSEES.map((q) => (
+                    <option key={q} value={q} />
+                  ))}
+                </datalist>
                 <span className="text-text-dim text-right">Type :</span>
                 <span className="flex items-center gap-1.5">
                   {tableaux.libelle[tiersSelectionne.type]}

@@ -148,14 +148,29 @@ reste 200 000 (la facture de N+1), 773 créditeur de 12 000, 6588 débiteur de
 1 100, banque -949 100 ; l'échéancier ne garde que la facture client de N+1.
 Aucun défaut trouvé.
 
+### n° 24 · Qualité du tiers (fait)
+
+- `Tiers.qualite` (migration `20270180000400_qualite_tiers`, 35 caractères,
+  nullable) · libellé DESCRIPTIF (Sage, « Qualité », « société,
+  indépendant… »), proposé dans une liste (`tiers/qualite-tiers.ts`,
+  `QUALITES_PROPOSEES`) et libre ; rangé sans blancs de bord, vide ou `null`
+  l'efface. Il ne décide rien · aucun contrôle ni taux ne le lit.
+- Création et modification (DTO bornés à 35), fusion (comble le vide comme
+  une coordonnée, jamais n'écrase), édition du plan des tiers (colonne
+  « Qualité »).
+- Écran · fiche du tiers, champ « Qualité » avec liste proposée,
+  enregistré à la sortie du champ (administrateur), bulle d'aide.
+- Tests · `qualite-tiers.spec.ts` (serveur, 6), `client/src/lib/qualite-tiers.spec.ts`
+  (miroir relu dans le serveur), `editions-structures.spec.ts`,
+  `e2e/tests/sage-l2-qualite.e2e.ts` (vert sous Chromium).
+
 ## Reste
 
-1. n° 24 · qualité du tiers.
-2. n° 31 · lieux de livraison des clients.
-3. n° 32 · duplication d'un tiers.
-4. n° 27 · modèles d'impression propres au tiers.
-5. n° 18 · assistant de règlement.
-6. Bloc du § 3 complet, tous les tests navigateur de la ligne.
+1. n° 31 · lieux de livraison des clients.
+2. n° 32 · duplication d'un tiers.
+3. n° 27 · modèles d'impression propres au tiers.
+4. n° 18 · assistant de règlement.
+5. Bloc du § 3 complet, tous les tests navigateur de la ligne.
 
 ## Décisions par la loi
 
@@ -193,6 +208,10 @@ Aucun défaut trouvé.
   son 658 étant un total), 658 « Charges diverses » au SYCEBNL, non
   subdivisé (même lecture que D2 de la ligne A6). Ni le 651 (créances
   irrécouvrables), ni le 673 (aucune avance sur le terme).
+- **n° 24 · la qualité ne décide rien.** Aucun texte du corpus ne fait
+  dépendre une règle d'une « qualité » libre du tiers · la liste est
+  proposée, jamais fermée, pour ne pas passer pour une qualification
+  juridique vérifiée.
 - **n° 36 · seuil sans défaut.** Aucun texte n'en fixe · `null`, aucun écart
   ne se passe, et le refus le dit.
 - **n° 36 · TVA.** L'escompte et la remise ne sortent de la base que s'ils
@@ -221,12 +240,14 @@ Aucun défaut trouvé.
 |---|---|---|---|---|---|
 | 1 | 2026-10-15 | L2 | fait | le mode ne suit pas encore le report à-nouveau au détail | la modification au brouillard remplace les lignes · le mode devait être rendu au client pour ne pas s'effacer |
 | 3 | 2026-10-15 | L2 | fait | une ligne en devise ne se découpe pas d'elle-même (dit à l'écran) | le découpage en échéances passait une facture sous le seuil de l'art. 59 bis · la transaction se relit sur la pièce |
+| 24 | 2026-10-15 | L2 | fait | la qualité n'est pas reprise sur les lettres de relance | rien |
 | 36 | 2026-10-15 | L2 | fait | ni escompte ni écart sur un règlement en devise ou à parts désignées (refus nommés) ; l'écart en produit de Sage n'est pas repris (art. 252) | la part de taxe de l'escompte reste en attente sous l'encaissement, dite plutôt que régularisée |
 
 ## Pour features.csv
 
 - n° 1 → yes · modes de règlement (structure, tiers, modèles, saisie, règlement), avertissement de l'art. 59 bis.
 - n° 3 → yes · échéancier du modèle du tiers appliqué en saisie, fenêtre des échéances, échéancier appliqué d'office.
+- n° 24 → yes · qualité du tiers, libellé proposé et libre, sur la fiche et l'édition du plan des tiers.
 - n° 36 → yes · escompte obtenu ou accordé au règlement, écart de règlement soldé en charge sous le seuil du dossier (jamais en produit).
 
 ## Commandes de vérification
@@ -237,5 +258,5 @@ npx tsc --noEmit && (cd client && npx tsc --noEmit)
 npx jest src/modules/reglements src/modules/tiers src/modules/comptabilite/brouillard.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
 (cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/comptes-retenus-ecrans.spec.ts)
 # e2e · serveur sur 8302 (base l2_e2e), aperçu sur 4302
-(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts)
+(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts tests/sage-l2-qualite.e2e.ts)
 ```

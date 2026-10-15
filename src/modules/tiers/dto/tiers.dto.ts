@@ -86,6 +86,12 @@ export class CreerTiersDto {
   @IsString()
   contact?: string;
 
+  /** La qualité du tiers (ligne sage-l2, fonction 24) · un libellé, jamais une règle (`qualite-tiers.ts`). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(35, { message: 'La qualité du tiers compte au plus 35 caractères.' })
+  qualite?: string;
+
   /*
     CE TIERS EST UNE AUTRE CELLULE DU MÊME GROUPE D'ÉTABLISSEMENTS.
 
@@ -215,6 +221,12 @@ export class ModifierTiersDto {
   @IsOptional()
   @IsString()
   contact?: string;
+
+  /** La qualité du tiers (ligne sage-l2, fonction 24) · vide ou null l'efface. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(35, { message: 'La qualité du tiers compte au plus 35 caractères.' })
+  qualite?: string | null;
 
   /*
     CE TIERS EST UNE AUTRE CELLULE DU MÊME GROUPE · voir CreerTiersDto pour le

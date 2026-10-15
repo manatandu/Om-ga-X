@@ -66,10 +66,11 @@ export function editionPlan(comptes: Compte[]): Edition {
 
 export function editionTiers(tiers: Tiers[]): Edition {
   return {
-    colonnes: ['Code', 'Nom', 'Type', 'Compte principal', 'Ville', 'Téléphone', 'N° impôt', 'État'],
+    colonnes: ['Code', 'Nom', 'Qualité', 'Type', 'Compte principal', 'Ville', 'Téléphone', 'N° impôt', 'État'],
     lignes: [...tiers].sort(parCode((t) => t.code)).map((t) => [
       t.code,
       t.nom,
+      t.qualite ?? '',
       LIBELLE_TYPE_TIERS[t.type],
       t.comptesRattaches.find((r) => r.estPrincipal)?.compte.numero ?? '',
       t.ville ?? '',
