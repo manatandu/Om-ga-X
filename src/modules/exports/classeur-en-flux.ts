@@ -1,5 +1,4 @@
 import { ConflictException } from '@nestjs/common';
-import { once } from 'events';
 import type { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
 
@@ -92,8 +91,9 @@ export const LOT_EXPORT = 500;
  * nombre de lignes LUES doit donc égaler celui COMPTÉ au départ, sur le même
  * filtre ; sinon le livre a changé pendant sa production (pièce retirée,
  * ajoutée, déplacée) et il est REFUSÉ, jamais remis amputé · le téléchargement
- * direct voit sa connexion détruite (`envoyerXlsxEnFlux`), l'impression
- * différée passe ÉCHOUÉE, motif dit.
+ * direct reçoit ce 409 tant que rien n'est parti (la retenue de
+ * `envoyerXlsxEnFlux`), sa connexion détruite au-delà ; l'impression différée
+ * passe ÉCHOUÉE, motif dit.
  */
 export function confronterAuDecompte(lues: number, comptees: number, quoi: string): void {
   if (lues === comptees) return;
@@ -151,7 +151,35 @@ export function segmentIdentification(identite: IdentiteEtat): string {
  * quelque chose que le serveur ne maîtrise pas.
  */
 export async function attendreLeTuyau(sortie: Writable): Promise<void> {
-  if (sortie.writableNeedDrain) await once(sortie, 'drain');
+  // UN TUYAU FERMÉ ARRÊTE LA PRODUCTION (relecture TypeScript, mineur 3) ·
+  // fermé par le poste qui a quitté le téléchargement, il ne demande plus
+  // jamais de « drain » (`writableNeedDrain` est faux sur un flux détruit),
+  // et le moteur lisait la base jusqu'au bout pour une archive que personne
+  // ne recevrait, puis attendait sans fin la fin d'un flux mort.
+  if (sortie.destroyed) throw tuyauFerme(sortie);
+  if (!sortie.writableNeedDrain) return;
+  await new Promise<void>((resoudre, rejeter) => {
+    const nettoyer = () => {
+      sortie.off('drain', vide);
+      sortie.off('close', ferme);
+      sortie.off('error', ferme);
+    };
+    const vide = () => {
+      nettoyer();
+      resoudre();
+    };
+    const ferme = () => {
+      nettoyer();
+      rejeter(tuyauFerme(sortie));
+    };
+    sortie.once('drain', vide);
+    sortie.once('close', ferme);
+    sortie.once('error', ferme);
+  });
+}
+
+function tuyauFerme(sortie: Writable): Error {
+  return new Error(`Le livre n'a plus où s'écrire · la production s'arrête${sortie.errored ? ` (${sortie.errored.message})` : ''}.`);
 }
 
 /** Ce que décrit une feuille en flux · nom, titre de la coiffe, identité, colonnes. */

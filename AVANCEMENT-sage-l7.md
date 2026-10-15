@@ -322,6 +322,20 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   processus. Le gestionnaire est posé à la naissance de la promesse, et
   `await fermee` relit toujours le rejet (test rouge sans, attente de 30 ms
   dans le moteur).
+- **Mineur 3 · le refus d'un livre qui n'avait rien envoyé coupait la
+  connexion.** `envoyerXlsxEnFlux` (sorti du contrôleur dans
+  `exports/envoi-en-flux.ts`) décidait sur « le fichier est ouvert » · le 409
+  de `confronterAuDecompte` devenait un téléchargement interrompu sans
+  motif. Le moteur écrit dans une RETENUE (256 Kio, convention d'OmegaX),
+  qui ne part qu'une fois pleine ou à la fin ; l'échec avant tout envoi
+  (`res.headersSent` faux) retire les en-têtes du classeur et remonte au
+  filtre de Nest, au-delà la connexion est détruite comme avant. Le poste
+  qui ferme le téléchargement détruit la retenue, et `attendreLeTuyau`
+  refuse un tuyau fermé (il ne demandait plus jamais de « drain », et le
+  moteur lisait la base jusqu'au bout, puis attendait sans fin). Test sur
+  une vraie application Express · 409 et motif sans en-têtes de classeur,
+  connexion coupée après le premier octet, moteur arrêté par la fermeture ;
+  deux rouges sous l'ancien envoi.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,
