@@ -10,7 +10,7 @@ import { libelleExercice } from '../../common/libelle-exercice';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { filtresDesTroisColonnes } from '../comptabilite/balance-trois-colonnes';
 import { compteDeLaFamille, divisionnaireDeLaFamille, estFamilleTiers, type FamilleTiers, sousTitreFamille } from '../comptabilite/familles-tiers';
-import { LOT_EXPORT, MAX_LIGNES_EXPORT, OPTIONS_CLASSEUR_EN_FLUX, type IdentiteEtat } from './classeur-en-flux';
+import { LOT_EXPORT, MAX_LIGNES_EXPORT, OPTIONS_CLASSEUR_EN_FLUX, confronterAuDecompte, type IdentiteEtat } from './classeur-en-flux';
 import { ExportService } from './export.service';
 import {
   COLONNES_BALANCE_FPM,
@@ -202,6 +202,12 @@ export class ExportFpmService {
     filtreComptes: string[] | null,
     traiter: (l: LigneGrandLivre) => Promise<void>,
   ): Promise<void> {
+    // Le décompte du départ, sur le MÊME filtre · le curseur relu en base
+    // s'arrête sans un mot sur une ligne retirée pendant la production, et le
+    // livre lu se confronte à ce compte avant d'être clos (sage-l7, M6).
+    const filtre = { ecriture: { tenantId, exerciceId, ...HORS_SITUATION }, ...(filtreComptes ? { compteId: { in: filtreComptes } } : {}) };
+    const comptees = await this.prisma.ligneEcriture.count({ where: filtre });
+    let lues = 0;
     let curseur: string | undefined;
     for (;;) {
       const lot = await this.prisma.ligneEcriture.findMany({
@@ -220,10 +226,12 @@ export class ExportFpmService {
           { id: 'asc' },
         ],
       });
+      lues += lot.length;
       for (const l of lot) if (compteIds.has(l.compteId)) await traiter(l);
-      if (lot.length < this.lotExport) return;
+      if (lot.length < this.lotExport) break;
       curseur = lot[lot.length - 1].id;
     }
+    confronterAuDecompte(lues, comptees, 'Grand livre');
   }
 
   /** Les rattachements des comptes de tiers · un par compte (`compteId` unique). */

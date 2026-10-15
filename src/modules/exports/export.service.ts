@@ -10,6 +10,7 @@ import { perimetreJournal } from '../comptabilite/ecriture.service';
 import type { CriteresRecherche } from '../comptabilite/recherche-ecritures';
 import {
   LOT_EXPORT,
+  confronterAuDecompte,
   MAX_LIGNES_EXPORT,
   PREMIERE_LIGNE_DONNEES,
   ouvrirFeuilleEnFlux,
@@ -19,6 +20,7 @@ import {
 import { FormeImpressionJournal, JeuEtatsFinanciersSycebnl, Prisma, Referentiel, SystemeComptableSyscohada } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../common/prisma.service';
+import { apresLaCle } from '../../common/lecture-par-lots';
 import { monnaieDuJeuLegal } from '../../common/monnaie-de-tenue';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { avantSoldeDesComptesDeGestion } from '../comptabilite/balance-trois-colonnes';
@@ -821,15 +823,30 @@ export class ExportService {
     let totalDebit = 0;
     let totalCredit = 0;
     let nbLignes = 0;
-    let curseur: string | undefined;
+    // LA TRANCHE SUIVANTE PART DES VALEURS DE LA DERNIÈRE ÉCRITURE RENDUE,
+    // jamais d'un curseur relu en base (relecture « échecs silencieux » de
+    // sage-l7, M6) · un brouillard retiré pendant l'export arrêtait le curseur
+    // de Prisma, et le journal sortait amputé, ses totaux bouclant sur ce
+    // qu'il portait.
+    let derniere: { date: Date; numeroPiece: number | null; id: string } | undefined;
     for (;;) {
       const lot = await this.prisma.ecriture.findMany({
         // `tenantId` répété alors que `where` le porte déjà · le balayage de
         // cloisonnement lit le CODE, pas la valeur d'une variable, et une borne
         // qu'il ne voit pas est une borne qu'un relecteur ne voit pas non plus.
-        where: { ...where, tenantId },
+        where: derniere
+          ? {
+              AND: [
+                { ...where, tenantId },
+                apresLaCle([
+                  { champ: 'date', valeur: derniere.date },
+                  { champ: 'numeroPiece', valeur: derniere.numeroPiece, nullable: true },
+                  { champ: 'id', valeur: derniere.id },
+                ]),
+              ],
+            }
+          : { ...where, tenantId },
         take: LOT_EXPORT,
-        ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
         include: {
           lignes: { include: { compte: true } },
           journal: true,
@@ -875,7 +892,8 @@ export class ExportService {
         }
       }
       if (lot.length < LOT_EXPORT) break;
-      curseur = lot[lot.length - 1].id;
+      const fin = lot[lot.length - 1];
+      derniere = { date: fin.date, numeroPiece: fin.numeroPiece, id: fin.id };
     }
 
     const derniereDonnee = flux.derniereLigneDonnees();
@@ -1154,6 +1172,10 @@ export class ExportService {
     let compteCourant: string | null = null;
     let solde = 0;
     let nbLignes = 0;
+    // Le décompte du départ, sur le MÊME filtre que la lecture · confronté aux
+    // lignes lues avant le sommaire (`confronterAuDecompte`, sage-l7, M6).
+    const comptees = await this.prisma.ligneEcriture.count({ where: { ecriture: { ...perimetre, tenantId } } });
+    let lues = 0;
     let curseur: string | undefined;
     for (;;) {
       const lot = await this.prisma.ligneEcriture.findMany({
@@ -1173,6 +1195,7 @@ export class ExportService {
           { id: 'asc' },
         ],
       });
+      lues += lot.length;
       for (const l of lot) {
         if (!comptesMouvementes.has(l.compteId)) continue;
         // LE SOLDE PROGRESSIF SE RÉINITIALISE À CHAQUE COMPTE · le tri par
@@ -1202,6 +1225,7 @@ export class ExportService {
       if (lot.length < LOT_EXPORT) break;
       curseur = lot[lot.length - 1].id;
     }
+    confronterAuDecompte(lues, comptees, 'Grand livre complet');
 
     // Une ligne par compte, quelques centaines au plus · lue en une fois.
     const comptes = await this.prisma.compte.findMany({

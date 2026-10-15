@@ -178,7 +178,10 @@ function service(options: { compte?: number; lignes?: Ligne[]; balanceSans?: str
         // situation (ligne sage-l1, fonction 12).
         expect(where.ecriture).toEqual({ tenantId: 't1', exerciceId: 'ex', statut: { not: 'SITUATION' } });
         const filtrees = lignes.filter((l) => !where.compteId || where.compteId.in.includes(l.compteId));
-        const depart = cursor ? filtrees.findIndex((l) => l.id === cursor.id) + (skip ?? 0) : 0;
+        // Comme Prisma · un curseur dont la ligne n'existe plus ne rend rien.
+        const rang = cursor ? filtrees.findIndex((l) => l.id === cursor.id) : -1;
+        if (cursor && rang < 0) return [];
+        const depart = cursor ? rang + (skip ?? 0) : 0;
         return filtrees.slice(depart, depart + take);
       }),
       // L'agrégat INDÉPENDANT du contrôle des tiers · il somme les lignes, il
@@ -576,6 +579,15 @@ describe('second tour · exercice clôturé, contrôle indépendant, lots, broui
     expect(['E', 'F', 'G', 'H'].map((x) => ecart.getCell(x).value)).toEqual([null, -100, 100, null]);
     const g = await lire((ouvrir) => service(options).fpm.grandLivreTiersEnFlux('t1', 'ex', 'FOURNISSEURS', ouvrir));
     expect(['F', 'G'].map((x) => ligneDe(g.worksheets[0], 'Écart').getCell(x).value)).toEqual([null, -100]);
+  });
+
+  it('relecture M6 (sage-l7) · un grand livre lu en moins que compté au départ est REFUSÉ, jamais remis amputé', async () => {
+    // Une ligne retirée pendant la production (la ligne-curseur) arrêtait la
+    // lecture · le livre se fermait sur ce qu'il portait, ses totaux bouclant.
+    const { fpm } = service({ compte: LIGNES.length + 1 });
+    await expect(lire((ouvrir) => fpm.grandLivreEnFlux('t1', 'ex', ouvrir))).rejects.toThrow(
+      new RegExp(`Grand livre : ${LIGNES.length} lignes lues sur ${LIGNES.length + 1} comptées au départ`),
+    );
   });
 
   it('relevé B · la lecture par lots avance par le curseur, `skip: 1`, sans doublon ni oubli', async () => {

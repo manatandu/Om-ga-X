@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { once } from 'events';
 import type { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
@@ -79,6 +80,29 @@ export const MAX_LIGNES_EXPORT = Number(process.env.EXPORT_MAX_LIGNES ?? 200_000
  * mémoire ne dépende plus de la taille du dossier.
  */
 export const LOT_EXPORT = 500;
+
+/**
+ * UN LIVRE LU PAR LE CURSEUR DE PRISMA SE CONFRONTE À SON DÉCOMPTE
+ * (relecture « échecs silencieux » de la ligne sage-l7, M6). Le grand livre
+ * se trie sur des champs d'AUTRES tables (numéro du compte, date et pièce de
+ * l'écriture), que la pagination par la clé (`apresLaCle`) ne pose pas sur un
+ * filtre de relation sans une sous-requête par branche, à chaque tranche · il
+ * garde le curseur, dont la ligne relue en base peut avoir disparu (brouillard
+ * retiré pendant la production), et la tranche suivante revenait VIDE. Le
+ * nombre de lignes LUES doit donc égaler celui COMPTÉ au départ, sur le même
+ * filtre ; sinon le livre a changé pendant sa production (pièce retirée,
+ * ajoutée, déplacée) et il est REFUSÉ, jamais remis amputé · le téléchargement
+ * direct voit sa connexion détruite (`envoyerXlsxEnFlux`), l'impression
+ * différée passe ÉCHOUÉE, motif dit.
+ */
+export function confronterAuDecompte(lues: number, comptees: number, quoi: string): void {
+  if (lues === comptees) return;
+  throw new ConflictException(
+    `${quoi} : ${lues.toLocaleString('fr-FR')} lignes lues sur ${comptees.toLocaleString('fr-FR')} comptées au départ · ` +
+      "des pièces ont été retirées, ajoutées ou déplacées pendant la production, et le livre n'est pas remis amputé. " +
+      'Relancez-le une fois la saisie arrêtée.',
+  );
+}
 
 /** Options mesurées · voir l'en-tête. Ne pas les changer sans refaire le banc. */
 export const OPTIONS_CLASSEUR_EN_FLUX = {
