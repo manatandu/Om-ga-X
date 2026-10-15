@@ -362,6 +362,27 @@ Commits `09229fe`, `824f28d`, `f4ce10a`, `baab0ba` (signés, poussés).
   étrangère, une libre) · les deux premières reviennent au brouillard, la
   troisième reste en situation ; puis appliquée, `migrate diff` sans écart.
 
+- Bloc du § 3 après la relecture (2026-10-15) · serveur `tsc` sans erreur ;
+  jest en six tranches, 12 443 tests verts (1 721, 1 976, 1 962, 2 505,
+  1 957, 2 322) · deux specs tombées à la première passe (doublures qui ne
+  connaissaient pas « not », `dettes-rattachees` et `ouverture-passee`),
+  complétées, chacune avec un cas de simulation, rejouées vertes, le cas de
+  `dettes-rattachees` tombant quand on retire le filtre ; `nest build` passe
+  (tas de 3 584 Mo, 2 048 ne suffit plus) ; migrations sans écart. Client ·
+  `tsc`, vitest 2 023 tests (255 fichiers), `vite build`.
+- Navigateur (Chromium) · les sept parcours `sage-l1-*` et 74 parcours voisins
+  (`ecrans` aux deux référentiels, `cloture`, `parcours`, `saisie-par-piece`,
+  `lettrage-cloture`, `lettrage-reclassement`, `comptes-personnalises`,
+  `facturation`, `magasin`, `devises`, `devise-a-nouveau`, `reglement-devise`,
+  `ouverture-suivante`, `creances-douteuses`, `virements-fonds`,
+  `documents-obligatoires`, `immobilisations`), tous verts.
+- Vraie base à travers une clôture (`l1-relecture.mjs`, 0 écart) · facture
+  réelle de 500 000 et simulation de 300 000 sur le même client · rappel à
+  500 000, échéances sans la simulation, règlement de la simulation refusé
+  sans pièce passée, journal vide non enregistré, journal écrit enregistré
+  n° 1 ; N clôturé · report du client à 500 000, rappel et échéances de N+1
+  sans la simulation.
+
 ## Bloc du § 3 (2026-10-14, après la dernière fonction)
 
 - Serveur · `tsc --noEmit` sans erreur ; jest en six tranches successives,
@@ -433,7 +454,7 @@ d'organisation ou de produit.
 ```bash
 NODE_OPTIONS=--max-old-space-size=3072 npx tsc --noEmit
 for s in 1 2 3 4 5 6; do npx jest --shard=$s/6 --maxWorkers=1 --workerIdleMemoryLimit=800MB; done
-NODE_OPTIONS=--max-old-space-size=2048 npm run build
+NODE_OPTIONS=--max-old-space-size=3584 npm run build
 npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
   --shadow-database-url postgresql://jetable:jetable@localhost:5432/omegax_sage_l1_ombre --exit-code
 (cd client && npx tsc --noEmit && npm test && NODE_OPTIONS=--max-old-space-size=2048 npm run build)
