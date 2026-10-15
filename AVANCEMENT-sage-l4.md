@@ -480,6 +480,17 @@ n° 67, 66, 68, 73, 18.
   2 037 tests, `vite build` vert ; les cinq e2e de la ligne verts sous
   Chromium.
 
+- RELECTURE, PREMIER TOUR (arbre du commit « Immobilisations · tests
+  navigateur de la relecture ») · serveur `tsc` 0 erreur, `nest build` vert,
+  `prisma migrate diff` sans écart (migration `20270174020000` comprise) ;
+  SUITE COMPLÈTE en six tranches · 851 suites, 12 500 tests, tous verts
+  (142 / 1 707, 142 / 1 978, 142 / 1 963, 142 / 2 539, 142 / 1 961,
+  141 / 2 352 ; une suite et quarante tests de plus que l'arbre précédent) ;
+  client `tsc` 0 erreur, vitest 257 fichiers et 2 041 tests, `vite build`
+  vert ; les cinq e2e de la ligne et les 32 parcours de
+  `immobilisations.e2e.ts` et `immobilisations-lot15.e2e.ts` verts sous
+  Chromium ; les neuf scénarios sur vraie base verts.
+
 ## Commandes de vérification
 
 ```bash
