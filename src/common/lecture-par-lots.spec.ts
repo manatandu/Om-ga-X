@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Collecte, PremiersSelon, apresLaCle, idApres, pageApres } from './lecture-par-lots';
 
 /**
@@ -133,7 +134,12 @@ describe('pagination par la clé · ce qui disparaît pendant le parcours ne l�
   });
 
   it('un ordre qui ne finit pas par l’identifiant est refusé · il perdrait des lignes de même clé', () => {
+    // Refusé par le type (mineur 7) comme à l'exécution.
+    // @ts-expect-error l'ordre doit finir par l'identifiant
     expect(() => apresLaCle([{ champ: 'date', valeur: jour(1) }])).toThrow(/identifiant/);
+    // Un champ que le filtre du modèle ne connaît pas ne compile pas.
+    // @ts-expect-error « datte » n'est pas un champ d'une écriture
+    expect(() => apresLaCle<Prisma.EcritureWhereInput>([{ champ: 'datte', valeur: jour(1) }, { champ: 'id', valeur: 'e-1' }])).not.toThrow();
   });
 });
 

@@ -349,6 +349,13 @@ par lui sur base jetable. Chaque correction a son test, rouge sans elle.
   retenait une connexion jusqu'à la fin du premier (délai de 120 s) pour un
   refus certain. `pg_try_advisory_xact_lock`, et un 409 nommé aussitôt,
   rien rangé, aucun numéro pris.
+- **Mineur 7 · typage.** `apresLaCle` et `CleDePage` sont génériques sur les
+  champs du filtre du modèle lu (`NoInfer`), l'identifiant exigé en dernier
+  par le type (`@ts-expect-error` gelé au spec, champ mal orthographié
+  compris) ; `traiter` relit les critères gardés par `criteresOuMotif` au
+  lieu d'une conversion · des critères qui ne se relisent plus rendent la
+  demande ÉCHOUÉE, motif dit, sans appeler le moteur ; `estInterrompue`
+  prend l'énumération.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,

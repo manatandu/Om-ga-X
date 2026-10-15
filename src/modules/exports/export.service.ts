@@ -854,7 +854,7 @@ export class ExportService {
           ? {
               AND: [
                 { ...where, tenantId },
-                apresLaCle([
+                apresLaCle<Prisma.EcritureWhereInput>([
                   { champ: 'date', valeur: derniere.date },
                   { champ: 'numeroPiece', valeur: derniere.numeroPiece, nullable: true },
                   { champ: 'id', valeur: derniere.id },

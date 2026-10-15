@@ -243,6 +243,17 @@ describe('impression différée · demande, production, fichier', () => {
     expect([f.demandes[0].contenu, f.demandes[0].nomFichier, f.impressionsJournal]).toEqual([null, null, []]);
   });
 
+  it('des critères gardés qui ne se relisent plus rendent la demande ÉCHOUÉE, motif dit, sans appeler le moteur (mineur 7)', async () => {
+    const f = nouveauFaux();
+    await f.service.demander(DOSSIER, 'u1', NatureImpressionDifferee.GRAND_LIVRE, { exerciceId: EXERCICE, format: 'plat' });
+    // Une présentation que la règle ne connaît plus · la conversion de type
+    // la passait au moteur comme si elle avait été relue.
+    f.demandes[0].criteres = { exerciceId: EXERCICE, format: 'paysage' };
+    const r = await f.service.traiter(DOSSIER);
+    expect(r.traitee).toMatchObject({ etat: EtatImpressionDifferee.ECHOUEE, motifEchec: expect.stringMatching(/^Critères de la demande illisibles · Présentation du grand livre inconnue/) });
+    expect(f.appels).toHaveLength(0);
+  });
+
   it('le motif d’interruption n’affirme aucun redémarrage (M5)', () => {
     expect(MOTIF_INTERROMPUE).toMatch(/non terminée dans le délai de requête du serveur/);
     expect(MOTIF_INTERROMPUE).not.toMatch(/redémarr|arrêté/);

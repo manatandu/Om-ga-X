@@ -141,10 +141,15 @@ export class ImpressionDiffereeService {
     let traitee = null;
     if (prise) {
       let resultat: { etat: 'PRETE'; nomFichier: string; contenu: Buffer } | { etat: 'ECHOUEE'; motif: string };
+      // LES CRITÈRES GARDÉS SE RELISENT PAR LA RÈGLE QUI LES A ADMIS
+      // (relecture TypeScript, mineur 7) · une conversion de type les prenait
+      // pour sûrs ; une demande dont les critères ne se relisent plus échoue,
+      // motif dit, au lieu d'une panne au milieu du moteur.
+      const relus = criteresOuMotif(prise.nature, objetOuVide(prise.criteres));
+      const criteres = 'criteres' in relus ? relus.criteres : null;
       try {
-        const { nomFichier, contenu } = await produireEnMemoire((ouvrir) =>
-          this.produire(tenantId, prise.nature, prise.criteres as unknown as CriteresImpression, ouvrir),
-        );
+        if (!criteres) throw new BadRequestException(`Critères de la demande illisibles · ${'motif' in relus ? relus.motif : ''}`);
+        const { nomFichier, contenu } = await produireEnMemoire((ouvrir) => this.produire(tenantId, prise.nature, criteres, ouvrir));
         resultat = { etat: 'PRETE', nomFichier, contenu };
       } catch (erreur) {
         // Le refus nommé du moteur est une réponse (plafond, exercice) ; une
@@ -155,7 +160,7 @@ export class ImpressionDiffereeService {
         resultat = { etat: 'ECHOUEE', motif: motifEchecDe(erreur) };
       }
       try {
-        traitee = await this.ranger(tenantId, prise, resultat);
+        traitee = await this.ranger(tenantId, { ...prise, criteres }, resultat);
       } catch (erreur) {
         // UN FICHIER QUI NE SE RANGE PAS NE LAISSE PAS LA DEMANDE EN COURS
         // (relecture m4) · elle passe ÉCHOUÉE, motif nommé, et c'est consigné ;
@@ -164,7 +169,7 @@ export class ImpressionDiffereeService {
           `Impression différée ${prise.id} · le résultat n'a pas pu être rangé`,
           erreur instanceof Error ? erreur.stack : String(erreur),
         );
-        traitee = await this.ranger(tenantId, prise, { etat: 'ECHOUEE', motif: MOTIF_NON_RANGEE });
+        traitee = await this.ranger(tenantId, { ...prise, criteres }, { etat: 'ECHOUEE', motif: MOTIF_NON_RANGEE });
       }
     }
     const enAttente = await this.prisma.impressionDifferee.count({ where: { tenantId, etat: EtatImpressionDifferee.EN_ATTENTE } });
@@ -276,7 +281,7 @@ export class ImpressionDiffereeService {
    */
   private async ranger(
     tenantId: string,
-    prise: { id: string; commenceLe: Date; nature: NatureImpressionDifferee; criteres: Prisma.JsonValue; demandePar: string },
+    prise: { id: string; commenceLe: Date; nature: NatureImpressionDifferee; criteres: CriteresImpression | null; demandePar: string },
     resultat: { etat: 'PRETE'; nomFichier: string; contenu: Buffer } | { etat: 'ECHOUEE'; motif: string },
   ) {
     const { id, commenceLe } = prise;
@@ -309,11 +314,11 @@ export class ImpressionDiffereeService {
         // fonction 60 ; AUDCIF art. 22, 7°), au nom de qui l'a demandé, dans
         // la transaction qui range son fichier · l'un sans l'autre jamais
         // (relecture M4).
-        if (resultat.etat === 'PRETE' && prise.nature === NatureImpressionDifferee.JOURNAL) {
+        if (resultat.etat === 'PRETE' && prise.nature === NatureImpressionDifferee.JOURNAL && prise.criteres) {
           const impression = await this.exportService.impressionDuJournal(
             tx,
             tenantId,
-            filtresDuJournal(prise.criteres as unknown as CriteresJournal),
+            filtresDuJournal(prise.criteres as CriteresJournal),
             prise.demandePar,
           );
           if (impression) await enregistrerImpressionDans(tx, impression);
@@ -359,3 +364,8 @@ function filtresDuJournal(c: CriteresJournal) {
   };
 }
 
+
+/** Les critères gardés en JSON, lus comme un objet · tout autre JSON (nul, tableau, scalaire) se relit vide et échoue. */
+function objetOuVide(valeur: Prisma.JsonValue): Record<string, unknown> {
+  return typeof valeur === 'object' && valeur !== null && !Array.isArray(valeur) ? (valeur as Record<string, unknown>) : {};
+}

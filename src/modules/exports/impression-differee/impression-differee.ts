@@ -1,5 +1,5 @@
 import { HttpException } from '@nestjs/common';
-import { NatureImpressionDifferee } from '@prisma/client';
+import { EtatImpressionDifferee, NatureImpressionDifferee } from '@prisma/client';
 
 /**
  * L'IMPRESSION DIFFÉRÉE (ligne sage-l7, fonction 59 ; décision L7-2) · règles
@@ -186,6 +186,8 @@ export function motifEchecDe(erreur: unknown): string {
 }
 
 /** Une production commencée et jamais finie, au-delà du délai. */
-export function estInterrompue(etat: string, commenceLe: Date | null, maintenant: Date): boolean {
-  return etat === 'EN_COURS' && commenceLe !== null && maintenant.getTime() - commenceLe.getTime() > DELAI_PRODUCTION_MS;
+export function estInterrompue(etat: EtatImpressionDifferee, commenceLe: Date | null, maintenant: Date): boolean {
+  // L'état de l'énumération, jamais une chaîne (mineur 7) · une faute de
+  // frappe sur « EN_COURS » rendait toute production non interrompue.
+  return etat === EtatImpressionDifferee.EN_COURS && commenceLe !== null && maintenant.getTime() - commenceLe.getTime() > DELAI_PRODUCTION_MS;
 }
