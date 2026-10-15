@@ -265,7 +265,13 @@ Aucun défaut trouvé.
 
 ## Reste
 
-1. Bloc du § 3 complet, tous les tests navigateur de la ligne.
+1. Bloc du § 3 · passés · `npx tsc --noEmit` des deux côtés, `npm test` et
+   `npm run build` du client (274 fichiers, 2127 tests), construction du
+   serveur, les huit tests navigateur de la ligne et le balayage des menus
+   (`ecrans.e2e.ts`, deux référentiels), sous Chromium. RESTE · la suite
+   serveur complète en six tranches, lancée et non terminée au moment du
+   compte rendu (spécifiques de la ligne et gardes structurelles au vert ·
+   tiers, règlements, relances, common, restitution).
 2. Avis de règlement · ni mise en file par courriel, ni avis d'un règlement
    sans ordre de virement (chèque, espèces).
 
@@ -348,7 +354,33 @@ Aucun défaut trouvé.
 
 ## Pour CLAUDE.md
 
-(paragraphe du § 6, écrit à la fin)
+À placer au § 6, après « Règlement des tiers (2026-09-25) » :
+
+**Ligne sage-l2 · tiers et règlements (2026-10-15).** MODES DE RÈGLEMENT
+(`reglements/modes-reglement.ts`, trente au plus, P_REGLEMENT) · sur la
+fiche du tiers, le modèle de règlement et ses échéances, la ligne de saisie
+et le règlement ; un paiement d'au moins 1 000 000 FC à un fournisseur hors
+chèque, virement ou carte est AVERTI (O.-L. n° 10/001, art. 59 bis et 74
+bis, dès le 27 mai 2013), jamais refusé. L'ÉCHÉANCIER DU MODÈLE découpe la
+ligne de facture en saisie (fenêtre des échéances, ou d'office sur la
+fiche). ESCOMPTE ET ÉCART (`reglements/ecart-escompte.ts`) · obtenu D 40 /
+C 773, accordé D 673 / C 41 (au SYCEBNL, le seul 412) ; l'écart se tranche
+par le Code civil, Livre III · remise d'un reste client (art. 132) ou
+renonciation au trop-payé fournisseur (art. 133) en charge, 6588 au
+SYSCOHADA, 658 au SYCEBNL, sous `Tenant.seuilEcartReglement` SANS défaut ;
+trop-perçu d'un client (art. 252) et fournisseur payé en moins (art. 142)
+REFUSÉS ; aucune ligne de taxe (art. 29, point 1 ; décret art. 79), dit.
+QUALITÉ du tiers, libellé qui ne décide rien ; LIEUX DE LIVRAISON d'un
+client (`LieuLivraison`, un principal) ; DUPLICATION vers le formulaire de
+création, sans Numéro Impôt, RIB, documents, lieux, cellule, autorisation aux
+débits ni exclusion des relances, nommés. MODÈLES D'IMPRESSION
+(`tiers/modeles-impression.ts`, F_COMPTETMODELE) · extrait, avis de
+règlement, rappel, choisis sur la fiche dans la zone de leur nature ; le
+modèle HABILLE le document ({document} exigé une fois, jeton inconnu
+refusé), jamais il ne le remplace ni n'en retire la signature ; il habille
+relances, relevé et l'avis de règlement d'un ordre IMPRIMÉ, qui transmet
+l'imputation déclarée en payant (art. 151). L'ASSISTANT DE RÈGLEMENT envoie
+le corps du formulaire, un tiers en francs, sans règle propre.
 
 ## Pour build-log.md
 
