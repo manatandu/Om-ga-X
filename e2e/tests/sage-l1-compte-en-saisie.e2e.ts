@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
+import { appelApi, creerDossier, rechargerAuRepos, seConnecter, surveiller } from './outils';
 
 /**
  * CRÉER UN COMPTE PENDANT LA SAISIE (ligne sage-l1, fonction 14 · option du
@@ -38,10 +38,7 @@ test('SYSCOHADA · un numéro inconnu tapé en saisie s’ouvre en sous-compte d
   await expect(page.getByText(`Compte ${numero} inconnu du plan du dossier.`)).toHaveCount(0);
 
   await appelApi(page, 'PATCH', '/dossier/creation-compte-en-saisie', { creationCompteEnSaisie: true });
-  // La saisie peut encore lire le numéro tapé · recharger une fenêtre qui
-  // charge coupe ses requêtes, et WebKit les rend en exceptions (run 269).
-  await page.waitForLoadState('networkidle');
-  await page.reload();
+  await rechargerAuRepos(page);
   await ouvrir();
   await compte.fill(numero);
   await expect(page.getByText(`Compte ${numero} inconnu du plan du dossier.`)).toBeVisible();

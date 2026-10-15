@@ -169,6 +169,21 @@ export async function seConnecter(page: Page, email: string) {
 }
 
 /**
+ * RECHARGE LA FENÊTRE AU REPOS, et attend qu'elle le soit de nouveau. Une
+ * fenêtre rechargée pendant qu'elle lit (cloche du courrier, démarrage guidé,
+ * état de l'installation) coupe ses requêtes, et WebKit rend chaque requête
+ * coupée en exception « due to access control checks » (run 269, et les runs
+ * du 2026-10-15 sur la paie et la saisie) · l'écran les rattrape, le moteur
+ * les signale quand même. Aller ensuite à l'adresse où l'on est déjà relance
+ * la page sous WebKit · d'où l'attente APRÈS le rechargement aussi.
+ */
+export async function rechargerAuRepos(page: Page) {
+  await page.waitForLoadState('networkidle');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+}
+
+/**
  * CE QUI NE DOIT JAMAIS ARRIVER, relevé pendant toute la durée d'un test ·
  * une exception JavaScript non rattrapée, et une réponse 5xx du serveur.
  * Un 4xx est une réponse (un refus nommé), pas une panne.

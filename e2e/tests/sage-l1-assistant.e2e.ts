@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
+import { appelApi, creerDossier, rechargerAuRepos, seConnecter, surveiller } from './outils';
 
 /**
  * LE MODE ASSISTANT DE CRÉATION (ligne sage-l1, fonction 18). Un compte et un
@@ -76,7 +76,7 @@ test('SYSCOHADA · un compte puis deux journaux par l’assistant, en création 
   ]);
 
   // La préférence du poste survit à la fenêtre.
-  await page.reload();
+  await rechargerAuRepos(page);
   await page.goto('/#/journaux');
   await page.getByRole('button', { name: 'Nouveau journal' }).click();
   await expect(page.locator('form', { hasText: 'Nouveau code journal' }).getByLabel('Mode assistant')).toBeChecked();

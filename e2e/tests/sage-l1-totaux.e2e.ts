@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
+import { appelApi, creerDossier, rechargerAuRepos, seConnecter, surveiller } from './outils';
 
 /**
  * MASQUER LES TOTAUX DE LA SAISIE (ligne sage-l1, fonction 11) · une
@@ -33,7 +33,7 @@ test('SYCEBNL · les totaux se masquent, l’équilibre reste, le choix est rete
   // L'équilibre de la pièce ne se masque jamais.
   await expect(page.getByText('Pièce vide')).toBeVisible();
 
-  await page.reload();
+  await rechargerAuRepos(page);
   await ouvrir();
   await expect(page.getByLabel('Masquer les totaux')).toBeChecked();
   await expect(page.getByText('Totaux journal')).toHaveCount(0);
