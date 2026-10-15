@@ -109,6 +109,8 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
   '/comptes/:compteId/lettrage/:lettrageId/ecart-change':
     "écart de change proposé d'un lettrage (ligne A6), le compte que le texte donne ou aucun, jamais une liste",
   '/natures-compte': 'les sept natures de compte, paramètres du dossier',
+  '/pieces-jointes-ecritures/decompte':
+    "nombre de pièces jointes par écriture de l'exercice (ligne sage-l6, fonction n° 22) · un « décompte », aucun compte servi",
   '/controles/regles-comptes': 'fiches par compte citées à la saisie, tout le plan',
   '/controles/comptes-dormants': 'contrôle de révision, tout le plan',
   '/courrier/compteurs': "compteurs de la file de courrier, aucun compte comptable",
