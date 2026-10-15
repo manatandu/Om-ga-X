@@ -16,11 +16,17 @@ import * as path from 'path';
  * FILTRE (`where`), et exige qu'il pose un statut. Il s'ancre sur la
  * STRUCTURE de l'appel (parenthèses et accolades équilibrées, chaînes et
  * commentaires sautés), jamais sur une distance (CLAUDE.md § 10). Est admis :
- *  1. un filtre qui nomme `statut`, `HORS_SITUATION` ou `filtreDuStatut` ;
+ *  1. un filtre qui pose `statut` AU NIVEAU DE L'ÉCRITURE (tête du filtre
+ *     d'une lecture des écritures, clé `ecriture` d'une lecture des lignes, à
+ *     travers `AND`, `OR` · chaque branche, `NOT` et `is`), `HORS_SITUATION`
+ *     ou `filtreDuStatut` · jamais le statut d'un exercice ou d'un lettrage
+ *     (second tour, b) ;
  *  2. un FILTRE NOMMÉ de la liste fermée ci-dessous, dont la définition est
  *     relue et doit elle-même poser le statut ;
  *  3. une variable déclarée dans la fonction englobante, ou en tête du
- *     fichier, dont l'initialisation satisfait 1, 2 ou 4 (de proche en proche) ;
+ *     fichier, dont l'initialisation satisfait 1, 2 ou 4 (de proche en proche),
+ *     lue en POSITION DE FILTRE seulement (le filtre entier, `...x`, la valeur
+ *     de `ecriture`, une branche) · jamais la valeur d'un champ ;
  *  4. une CATÉGORIE STRUCTURELLE, liste fermée · une lecture qui, par son
  *     filtre même, ne peut rencontrer aucune simulation ;
  *  5. une EXCEPTION nommée (fichier, fonction, appel, nombre, motif), liste
@@ -59,9 +65,13 @@ const CATEGORIES: Array<{ nom: string; motif: string; repond: (filtre: string) =
       'rencontre donc jamais',
     // `lettrageId: null` (les ouvertes) n'en est pas · `{ not: null }`, une
     // valeur ou une liste, si. De même la lettre et le rapprochement.
+    // Une ligne d'un groupe PARTIEL (`lettrageId: { not: null }` et
+    // `lettre: null`) est dans un groupe · elle en est (second tour, b · le
+    // filet l'admettait sur le `statut` du lettrage, qui ne trie pas la ligne).
     repond: (f) =>
-      /\b(?:lettrageId|lettre|rapprochementId)\b\s*(?::\s*(?!null\b)|[,}\n])/.test(f) &&
-      !/\b(?:lettrageId|lettre|rapprochementId)\s*:\s*null\b/.test(f),
+      /\blettrageId\s*:\s*\{\s*not\s*:\s*null\s*\}/.test(f) ||
+      (/\b(?:lettrageId|lettre|rapprochementId)\b\s*(?::\s*(?!null\b)|[,}\n])/.test(f) &&
+        !/\b(?:lettrageId|lettre|rapprochementId)\s*:\s*null\b/.test(f)),
   },
   {
     nom: 'ECRITURES_DE_CLOTURE',
@@ -220,8 +230,27 @@ const EXCEPTIONS: Exception[] = [
   { fichier: 'src/modules/tva/taux-tva.service.ts', fonction: 'modifier', appel: 'ligneEcriture.count', nombre: 1, motif: 'USAGE' },
   { fichier: 'src/modules/tva/taux-tva.service.ts', fonction: 'calculerProrata', appel: 'ligneEcriture.aggregate', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'creer', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
-  { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ecriture.findFirst', nombre: 2, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ecriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
   { fichier: 'src/modules/virements-fonds/virements-fonds.service.ts', fonction: 'annuler', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  // Second tour (b) · la lecture structurelle ne prend plus le statut du
+  // lettrage, de l'exercice ou d'une variable hors de sa position de filtre ·
+  // ces lectures, admises jusque-là par un mot, sont rangées à leur motif.
+  { fichier: 'src/modules/comptabilite/ecriture.service.ts', fonction: 'fusionnerComptes', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'USAGE' },
+  { fichier: 'src/modules/creances-douteuses/creances-douteuses.service.ts', fonction: 'annulerRevueSousVerrou', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/creances-douteuses/creances-douteuses.service.ts', fonction: 'annulerReclassementSousVerrou', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/creances-douteuses/creances-douteuses.service.ts', fonction: 'annulerMouvementSousVerrou', appel: 'ligneEcriture.findMany', nombre: 3, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/devises/devises.service.ts', fonction: 'annulerContrePassationSousVerrou', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/devises/devises.service.ts', fonction: 'annulerContrePassationSousVerrou', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/devises/devises.service.ts', fonction: 'annulerSousVerrou', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/fiscalite/constat-impot.service.ts', fonction: 'annuler', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/fiscalite/constat-impot.service.ts', fonction: 'annuler', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/immobilisations/demantelement.service.ts', fonction: 'composant', appel: 'ligneEcriture.count', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/immobilisations/reprise-subvention.service.ts', fonction: 'proposer', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/personnel/comptabilisation-paie.service.ts', fonction: 'proposition', appel: 'ecriture.findMany', nombre: 2, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/personnel/personnel.service.ts', fonction: 'annulerBulletin', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/plateforme/garnissage-demonstration.service.ts', fonction: 'garnir', appel: 'ecriture.findFirst', nombre: 1, motif: 'PAR_IDENTIFIANT' },
+  { fichier: 'src/modules/rapprochement/rapprochement.service.ts', fonction: 'obtenir', appel: 'ligneEcriture.findMany', nombre: 1, motif: 'PAR_IDENTIFIANT' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -337,28 +366,173 @@ function fonctionEnglobante(lignes: string[], n: number): { nom: string; debut: 
 
 const JETON_STATUT = /\bstatut\b|\bHORS_SITUATION\b|\bfiltreDuStatut\b/;
 
-/** Le filtre répond-il, de lui-même ou par ce qu'il nomme ? */
-function filtreAdmis(filtre: string, contexte: string, entete: string, profondeur = 0): boolean {
-  if (JETON_STATUT.test(filtre)) return true;
-  if (Object.keys(FILTRES_NOMMES).some((n) => new RegExp(`\\b${n}\\b`).test(filtre))) return true;
-  if (categorieDuFiltre(filtre)) return true;
-  if (profondeur > 4) return false;
-  const identifiants = new Set(filtre.match(/[A-Za-z_$][\w$]*/g) ?? []);
-  for (const id of identifiants) {
-    if (['tenantId', 'in', 'not', 'true', 'false', 'null'].includes(id)) continue;
-    // Dans la fonction englobante, puis au premier niveau du fichier (colonne 0).
-    const lieux: Array<[string, RegExp]> = [
-      [contexte, new RegExp(`(?:const|let)\\s+(?:\\{[^}]*\\b${id}\\b[^}]*\\}|${id})\\s*(?::[^=\\n]+)?=`, 'g')],
-      [entete, new RegExp(`^(?:export\\s+)?(?:const|let)\\s+${id}\\s*(?::[^=\\n]+)?=`, 'gm')],
-    ];
-    for (const [lieu, r] of lieux) {
-      let m: RegExpExecArray | null;
-      while ((m = r.exec(lieu))) {
-        if (filtreAdmis(expression(lieu, m.index + m[0].length, true), contexte, entete, profondeur + 1)) return true;
+/** Le texte sans ses commentaires · les chaînes gardées telles quelles. */
+function sansCommentaires(texte: string): string {
+  let sortie = '';
+  for (let j = 0; j < texte.length; j++) {
+    const s = sauter(texte, j);
+    if (s >= 0) {
+      if (texte[j] === '/') sortie += ' ';
+      else sortie += texte.slice(j, s + 1);
+      j = s;
+      continue;
+    }
+    sortie += texte[j];
+  }
+  return sortie;
+}
+
+/** Les entrées d'un objet littéral ou les éléments d'un tableau, au premier niveau. */
+function elements(texte: string): string[] {
+  const interieur = sansCommentaires(texte.trim()).slice(1, -1);
+  const resultat: string[] = [];
+  let profondeur = 0;
+  let debut = 0;
+  for (let j = 0; j < interieur.length; j++) {
+    const s = sauter(interieur, j);
+    if (s >= 0) {
+      j = s;
+      continue;
+    }
+    const c = interieur[j];
+    if ('([{'.includes(c)) profondeur++;
+    else if (')]}'.includes(c)) profondeur--;
+    else if (c === ',' && profondeur === 0) {
+      resultat.push(interieur.slice(debut, j).trim());
+      debut = j + 1;
+    }
+  }
+  resultat.push(interieur.slice(debut).trim());
+  return resultat.filter((x) => x !== '');
+}
+
+/** L'expression nue · parenthèses englobantes, `as T` et `satisfies T` de queue retirés. */
+function nue(expr: string): string {
+  let e = sansCommentaires(expr).trim();
+  for (let change = true; change; ) {
+    change = false;
+    const cast = /\s+(?:as|satisfies)\s+[\w$.<>\[\], |]+$/.exec(e);
+    if (cast) {
+      e = e.slice(0, cast.index).trim();
+      change = true;
+    }
+    if (e.startsWith('(') && argumentDeLAppel(e, 0).length === e.length) {
+      e = e.slice(1, -1).trim();
+      change = true;
+    }
+  }
+  return e;
+}
+
+/** Le ternaire de premier niveau · `[condition, si, sinon]`, ou null (`?.` et `??` sautés). */
+function ternaire(e: string): [string, string, string] | null {
+  let profondeur = 0;
+  let question = -1;
+  for (let j = 0; j < e.length; j++) {
+    const s = sauter(e, j);
+    if (s >= 0) {
+      j = s;
+      continue;
+    }
+    const c = e[j];
+    if ('([{'.includes(c)) profondeur++;
+    else if (')]}'.includes(c)) profondeur--;
+    else if (profondeur === 0 && c === '?' && e[j + 1] !== '.' && e[j + 1] !== '?' && e[j - 1] !== '?') {
+      if (question < 0) question = j;
+    } else if (profondeur === 0 && c === ':' && question >= 0) {
+      return [e.slice(0, question), e.slice(question + 1, j), e.slice(j + 1)];
+    }
+  }
+  return null;
+}
+
+type Niveau = 'ecriture' | 'ligne';
+
+/**
+ * LE FILTRE POSE-T-IL LE STATUT DE L'ÉCRITURE ? (relecture du second tour, b)
+ * · lu par sa STRUCTURE, à la place de la recherche d'un mot n'importe où.
+ * Le statut compte au niveau de l'ÉCRITURE seulement · la tête du filtre d'une
+ * lecture des écritures, la clé `ecriture` de celui d'une lecture des lignes,
+ * à travers `AND`, `OR` (chaque branche), `NOT` et `is`. Un `statut` posé sur
+ * l'exercice, le lettrage ou les lignes d'en face ne trie pas l'écriture lue.
+ * Une variable ne se résout qu'en POSITION DE FILTRE · le filtre entier, une
+ * décomposition (`...x`), la valeur de `ecriture`, une branche · jamais la
+ * valeur d'un champ (`date: { lte: x }`).
+ */
+function poseLeStatut(expr: string, niveau: Niveau, contexte: string, entete: string, profondeur = 0): boolean {
+  // `this.filtre(…)` se lit comme `filtre(…)`, `filtres[colonne]` comme `filtres.colonne`.
+  const e = nue(expr).replace(/^this\./, '').replace(/^([A-Za-z_$][\w$]*)\[[^\]]*\]$/, '$1.membre');
+  if (!e || profondeur > 6) return false;
+  // Une catégorie structurelle vaut à chaque niveau · une branche d'un `OR`,
+  // la valeur d'une variable.
+  if (categorieDuFiltre(e)) return true;
+  const t = ternaire(e);
+  if (t) return poseLeStatut(t[1], niveau, contexte, entete, profondeur + 1) && poseLeStatut(t[2], niveau, contexte, entete, profondeur + 1);
+  if (e.startsWith('{')) {
+    for (const entree of elements(e)) {
+      if (entree.startsWith('...')) {
+        if (poseLeStatut(entree.slice(3), niveau, contexte, entete, profondeur + 1)) return true;
+        continue;
       }
+      const m = /^([A-Za-z_$][\w$]*)\s*(:)?/.exec(entree);
+      if (!m) continue;
+      const cle = m[1];
+      const valeur = m[2] ? entree.slice(m[0].length) : cle;
+      if (niveau === 'ecriture' && cle === 'statut') return true;
+      if (cle === 'AND' || cle === 'NOT' || (cle === 'is' && niveau === 'ecriture')) {
+        const v = nue(valeur);
+        const branches = v.startsWith('[') ? elements(v) : [v];
+        if (branches.some((b) => poseLeStatut(b, niveau, contexte, entete, profondeur + 1))) return true;
+      }
+      if (cle === 'OR') {
+        const v = nue(valeur);
+        const branches = v.startsWith('[') ? elements(v) : [v];
+        if (branches.length > 0 && branches.every((b) => poseLeStatut(b, niveau, contexte, entete, profondeur + 1))) return true;
+      }
+      if (niveau === 'ligne' && cle === 'ecriture' && poseLeStatut(valeur, 'ecriture', contexte, entete, profondeur + 1)) return true;
+    }
+    return false;
+  }
+  if (niveau === 'ecriture' && (/^HORS_SITUATION$/.test(e) || /^filtreDuStatut\s*\(/.test(e))) return true;
+  const nom = /^([A-Za-z_$][\w$]*)/.exec(e)?.[1];
+  if (nom && Object.keys(FILTRES_NOMMES).includes(nom)) return true;
+  // L'appel d'une fonction fléchée locale (`const lus = (e) => luesParLePv(e, …)`) · son corps.
+  const appel = /^([A-Za-z_$][\w$]*)\s*\(/.exec(e);
+  if (appel) {
+    const fleche = new RegExp(`(?:const|let)\\s+${appel[1]}\\s*=\\s*(?:async\\s*)?\\([^)]*\\)\\s*(?::[^=\\n]+)?=>\\s*`, 'g');
+    for (const lieu of [contexte, entete]) {
+      let m: RegExpExecArray | null;
+      fleche.lastIndex = 0;
+      while ((m = fleche.exec(lieu))) {
+        if (poseLeStatut(expression(lieu, m.index + m[0].length, true), niveau, contexte, entete, profondeur + 1)) return true;
+      }
+    }
+    return false;
+  }
+  // Un membre (`filtres.mouvements`) se lit sur l'objet qui le porte · tiré
+  // d'un filtre nommé (`filtresDesTroisColonnes`), il en a le statut.
+  const membre = /^([A-Za-z_$][\w$]*)\.[A-Za-z_$][\w$]*$/.exec(e);
+  const id = membre ? membre[1] : e;
+  if (!/^[A-Za-z_$][\w$]*$/.test(id)) return false;
+  // Une variable · dans la fonction englobante, puis au premier niveau du
+  // fichier · déclarée seule ou décomposée (`const { mouvements } = …`).
+  const lieux: Array<[string, RegExp]> = [
+    [contexte, new RegExp(`(?:const|let)\\s+(?:\\{[^}=]*\\b${id}\\b[^}=]*\\}|${id})\\s*(?::[^=\\n]+)?=`, 'g')],
+    [entete, new RegExp(`^(?:export\\s+)?(?:const|let)\\s+${id}\\s*(?::[^=\\n]+)?=`, 'gm')],
+  ];
+  for (const [lieu, r] of lieux) {
+    let m: RegExpExecArray | null;
+    while ((m = r.exec(lieu))) {
+      if (poseLeStatut(expression(lieu, m.index + m[0].length, true), niveau, contexte, entete, profondeur + 1)) return true;
     }
   }
   return false;
+}
+
+/** Le filtre répond-il · une catégorie structurelle, ou le statut de l'écriture posé (`poseLeStatut`) ? */
+function filtreAdmisStrict(filtre: string, niveau: Niveau, contexte: string, entete: string): boolean {
+  if (categorieDuFiltre(filtre)) return true;
+  return poseLeStatut(filtre, niveau, contexte, entete);
 }
 
 /** Le bloc équilibré qui commence à l'accolade `debut` (chaînes et commentaires sautés). */
@@ -432,7 +606,7 @@ function recenser() {
       const contexte = lignes.slice(f.debut, n + 1).join('\n');
       const appel: Appel = { fichier, ligne: n + 1, fonction: f.nom, appel: `${m[1]}.${m[2]}`, filtre: filtreDeLAppel(arg) };
       appels.push(appel);
-      if (!filtreAdmis(appel.filtre, contexte, entete)) nonAdmis.push(appel);
+      if (!filtreAdmisStrict(appel.filtre, m[1] === 'ecriture' ? 'ecriture' : 'ligne', contexte, entete)) nonAdmis.push(appel);
     }
     for (const r of src.matchAll(/\$(?:queryRaw|queryRawUnsafe|executeRaw|executeRawUnsafe)\s*(?:`([^`]*)`|\()/g)) {
       const texte = r[1] ?? '';
@@ -486,6 +660,28 @@ describe('Écritures de situation · aucune lecture ne les voit sans le dire (fi
       }
     }
     expect([...corps.keys()].filter((n) => !posent.has(n))).toEqual([]);
+  });
+
+  it('le statut se lit au niveau de l’écriture, en position de filtre (second tour, b)', () => {
+    const vide = '';
+    // Le statut de l'écriture, directement, par décomposition ou dans une branche.
+    expect(poseLeStatut('{ tenantId, statut: StatutEcriture.VALIDEE }', 'ecriture', vide, vide)).toBe(true);
+    expect(poseLeStatut('{ compteId, ecriture: { tenantId, ...HORS_SITUATION } }', 'ligne', vide, vide)).toBe(true);
+    expect(poseLeStatut('{ AND: [{ date }, { statut: X }] }', 'ecriture', vide, vide)).toBe(true);
+    // Le statut d'un exercice, d'un lettrage ou de la ligne ne trie pas l'écriture lue.
+    expect(poseLeStatut('{ tenantId, exercice: { statut: StatutExercice.OUVERT } }', 'ecriture', vide, vide)).toBe(false);
+    expect(poseLeStatut("{ compteId, lettrage: { statut: 'PARTIEL' }, ecriture: { tenantId } }", 'ligne', vide, vide)).toBe(false);
+    expect(poseLeStatut('{ compteId, statut: X, ecriture: { tenantId } }', 'ligne', vide, vide)).toBe(false);
+    // Un OR ne trie que si CHAQUE branche trie.
+    expect(poseLeStatut('{ OR: [{ statut: X }, { date }] }', 'ecriture', vide, vide)).toBe(false);
+    expect(poseLeStatut('{ OR: [{ statut: X }, { statut: Y }] }', 'ecriture', vide, vide)).toBe(true);
+    // Une variable en position de filtre se résout ; en valeur d'un champ, jamais.
+    const contexte = 'const filtre = { tenantId, ...HORS_SITUATION };\nconst borne = { statut: X };';
+    expect(poseLeStatut('{ ecriture: filtre }', 'ligne', contexte, vide)).toBe(true);
+    expect(poseLeStatut('{ tenantId, date: { lte: borne } }', 'ecriture', contexte, vide)).toBe(false);
+    // Un ternaire trie si ses deux branches trient.
+    expect(poseLeStatut('x ? { statut: A } : HORS_SITUATION', 'ecriture', vide, vide)).toBe(true);
+    expect(poseLeStatut('x ? { statut: A } : {}', 'ecriture', vide, vide)).toBe(false);
   });
 
   it('chaque exception porte un motif de la liste fermée et un nombre positif', () => {

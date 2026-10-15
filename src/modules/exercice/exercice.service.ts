@@ -3404,7 +3404,9 @@ async function reporterLesTenues(
           debit: c,
           credit: d,
           deviseId: l.deviseId,
-          ecriture: { tenantId, exerciceId: exerciceSuivantId, estANouveauProvisoire: false },
+          // Une simulation ne se relettre pas (ligne sage-l1, second tour, b) ·
+          // comptée, elle promettait une ligne que le pré-lettrage écarte.
+          ecriture: { tenantId, exerciceId: exerciceSuivantId, estANouveauProvisoire: false, ...HORS_SITUATION },
         },
       });
     }
