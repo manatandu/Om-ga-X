@@ -81,7 +81,19 @@ export function PlansAnalytiquesPage() {
     classesVentilees: string;
     ventilationObligatoire: boolean;
     gererBudgets: boolean;
+    /** '' = longueur libre (ligne sage-l6, fonction n° 50). */
+    longueurSections: string;
   } | null>(null);
+  // L'APERÇU DE LA LONGUEUR, servi par le serveur (`longueur-sections.ts`) ·
+  // le refus qu'il opposerait et la longueur que les sections suggèrent,
+  // jamais recalculés ici. Null tant qu'il n'est pas lu.
+  const [apercuLongueur, setApercuLongueur] = useState<{
+    longueur: number | null;
+    motif: string | null;
+    proposee: number | null;
+    nombreSections: number;
+  } | null>(null);
+  const [erreurApercu, setErreurApercu] = useState<string | null>(null);
 
   const plan = plans?.find((p) => p.id === planId) ?? null;
   const section = sections.find((s) => s.id === sectionId) ?? null;
@@ -128,6 +140,28 @@ export function PlansAnalytiquesPage() {
       .then(setBudget, () => setBudget(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionId, exerciceCourant?.id, plan?.gererBudgets]);
+
+  // L'aperçu se relit à chaque longueur choisie, pour un axe qui existe · une
+  // réponse périmée (longueur changée depuis) est jetée.
+  const axeId = axe?.id ?? null;
+  const longueurChoisie = axe?.longueurSections ?? '';
+  useEffect(() => {
+    setApercuLongueur(null);
+    setErreurApercu(null);
+    if (!axeId) return;
+    let actuel = true;
+    api
+      .get<{ longueur: number | null; motif: string | null; proposee: number | null; nombreSections: number }>(
+        `/analytique/plans/${axeId}/longueur-sections?longueur=${encodeURIComponent(longueurChoisie)}`,
+      )
+      .then(
+        (r) => actuel && setApercuLongueur(r),
+        (e) => actuel && setErreurApercu(e instanceof ApiError ? e.message : 'Aperçu de la longueur illisible'),
+      );
+    return () => {
+      actuel = false;
+    };
+  }, [axeId, longueurChoisie]);
 
   const listeFiltree = useMemo(() => {
     const q = recherche.trim().toLowerCase();
@@ -220,6 +254,7 @@ export function PlansAnalytiquesPage() {
       classesVentilees: axe.classesVentilees.replace(/\s/g, ''),
       ventilationObligatoire: axe.ventilationObligatoire,
       gererBudgets: axe.gererBudgets,
+      longueurSections: axe.longueurSections === '' ? null : Number(axe.longueurSections),
     };
     try {
       if (axe.id) {
@@ -358,6 +393,7 @@ export function PlansAnalytiquesPage() {
               <span className="font-mono">{plan.classesVentilees.split(',').join(', ')}</span>
               {plan.ventilationObligatoire ? ' · obligatoire en saisie' : ' · signalée, non bloquante'}
               {plan.gererBudgets && ' · porte le budget'}
+              {plan.longueurSections !== null && ` · codes de ${plan.longueurSections} caractères`}
               {!plan.estActif && ' · en sommeil'}
             </div>
           )}
@@ -365,7 +401,15 @@ export function PlansAnalytiquesPage() {
             <div className="px-3 py-2 border-t border-border flex flex-wrap gap-x-2 gap-y-1 text-[11px]">
               <button
                 onClick={() =>
-                  setAxe({ id: null, code: '', intitule: '', classesVentilees: '6,7', ventilationObligatoire: false, gererBudgets: false })
+                  setAxe({
+                    id: null,
+                    code: '',
+                    intitule: '',
+                    classesVentilees: '6,7',
+                    ventilationObligatoire: false,
+                    gererBudgets: false,
+                    longueurSections: '',
+                  })
                 }
                 className="text-sel hover:underline"
               >
@@ -382,6 +426,7 @@ export function PlansAnalytiquesPage() {
                         classesVentilees: plan.classesVentilees,
                         ventilationObligatoire: plan.ventilationObligatoire,
                         gererBudgets: plan.gererBudgets,
+                        longueurSections: plan.longueurSections === null ? '' : String(plan.longueurSections),
                       })
                     }
                     className="text-sel hover:underline"
@@ -578,7 +623,17 @@ export function PlansAnalytiquesPage() {
                     autoFocus
                     value={code}
                     onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    placeholder={estSyscohada ? 'CHANTIER-01' : 'EAU-KIVU'}
+                    // Longueur fixe de l'axe (ligne sage-l6, fonction n° 50) · le serveur la rejuge.
+                    maxLength={plan?.longueurSections ? (type === 'TOTAL' ? plan.longueurSections - 1 : plan.longueurSections) : undefined}
+                    placeholder={
+                      plan?.longueurSections
+                        ? type === 'TOTAL'
+                          ? `moins de ${plan.longueurSections} caractères`
+                          : `${plan.longueurSections} caractères`
+                        : estSyscohada
+                          ? 'CHANTIER-01'
+                          : 'EAU-KIVU'
+                    }
                     className="mt-1 w-full border border-border rounded-[3px] px-2.5 py-1.5 text-[12px] font-mono font-normal"
                   />
                 </label>
@@ -725,6 +780,50 @@ export function PlansAnalytiquesPage() {
                   />
                   Porte le budget
                 </label>
+                <label className="text-[11.5px] font-semibold text-text-dim col-span-2">
+                  <span className="flex items-center gap-1.5">
+                    Longueur des codes de section
+                    <Aide
+                      titre="Longueur des codes de section"
+                      texte="Fixée, chaque section Détail de l'axe a un code d'exactement cette longueur, et chaque rubrique (section Total) un code plus court · une feuille ne peut plus se glisser sous une rubrique qui n'est pas la sienne (une rubrique « 1 » regroupe tous les codes qui commencent par 1). La longueur ne se pose que si toutes les sections existantes la respectent · aucun code n'est renuméroté. Libre, rien n'est contrôlé."
+                      source="Sage i7, longueur des sections analytiques · SYCEBNL Partie 2 ch. 3, classe 9 (découpage à la convenance de l'entité)"
+                    />
+                  </span>
+                  <select
+                    value={axe.longueurSections}
+                    onChange={(e) => setAxe((a) => (a ? { ...a, longueurSections: e.target.value } : a))}
+                    className="mt-1 w-full border border-border rounded-[3px] px-2.5 py-1.5 text-[12px] font-normal"
+                  >
+                    <option value="">Libre</option>
+                    {Array.from({ length: 12 }, (_, i) => i + 2).map((n) => (
+                      <option key={n} value={String(n)}>
+                        {n} caractères
+                      </option>
+                    ))}
+                  </select>
+                  {erreurApercu && (
+                    <span role="alert" className="block mt-1 font-normal text-danger">
+                      {erreurApercu}
+                    </span>
+                  )}
+                  {apercuLongueur?.motif && (
+                    <span role="alert" className="block mt-1 font-normal text-danger">
+                      {apercuLongueur.motif}
+                    </span>
+                  )}
+                  {apercuLongueur && !apercuLongueur.motif && apercuLongueur.proposee !== null && axe.longueurSections === '' && (
+                    <span className="block mt-1 font-normal">
+                      Les sections de l'axe ont toutes des codes de {apercuLongueur.proposee} caractères.{' '}
+                      <button
+                        type="button"
+                        onClick={() => setAxe((a) => (a ? { ...a, longueurSections: String(apercuLongueur.proposee) } : a))}
+                        className="text-sel hover:underline"
+                      >
+                        Retenir
+                      </button>
+                    </span>
+                  )}
+                </label>
               </div>
               <div className="flex justify-end gap-2 px-4 py-3 border-t border-border bg-chrome">
                 <button
@@ -736,7 +835,8 @@ export function PlansAnalytiquesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-1.5 bg-sel text-white text-[11.5px] font-semibold rounded-[3px] hover:brightness-110"
+                  disabled={!!apercuLongueur?.motif}
+                  className="px-5 py-1.5 bg-sel text-white text-[11.5px] font-semibold rounded-[3px] hover:brightness-110 disabled:opacity-50"
                 >
                   Enregistrer
                 </button>

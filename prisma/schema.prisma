@@ -2961,6 +2961,13 @@ model PlanAnalytique {
   estActif  Boolean  @default(true)
   createdAt DateTime @default(now())
 
+  /// Longueur FIXE des codes de ses sections Détail (ligne sage-l6, fonction
+  /// n° 50 · Sage, P_DOSSIER) · null = longueur libre. Ses rubriques (sections
+  /// Total) sont strictement plus courtes. Jamais posée sur un plan dont une
+  /// section existante ne la respecte pas (`longueur-sections.ts`), et aucun
+  /// code n'est renuméroté.
+  longueurSections Int?
+
   sections        SectionAnalytique[]
   odAnalytiques   OdAnalytique[]
   clesRepartition CleRepartition[]

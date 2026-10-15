@@ -22,7 +22,7 @@ type Faux = Record<string, unknown>;
  * doublure qui répondrait « un » partout validerait une liste qu'aucune
  * requête ne ramène.
  */
-function prismaSuppression(usages: { engagements?: number; ventilations?: number; lignesOd?: number; ods?: number; budgetsClos?: number; cles?: number; repartitionsPaie?: number } = {}) {
+function prismaSuppression(usages: { engagements?: number; ventilations?: number; lignesOd?: number; ods?: number; budgetsClos?: number; cles?: number; repartitionsPaie?: number; documents?: number } = {}) {
   const ops: string[] = [];
   const compteur = (n: number | undefined, champ: string) =>
     jest.fn(({ where }: { where: Record<string, unknown> }) => {
@@ -59,6 +59,8 @@ function prismaSuppression(usages: { engagements?: number; ventilations?: number
     // Ligne sage-l5, fonction 88 · la répartition analytique de la paie retient sa section et son plan.
     ligneRepartitionAnalytiquePaie: { count: compteur(usages.repartitionsPaie, 'sectionId') },
     repartitionAnalytiquePaie: { count: compteur(undefined, 'planId') },
+    // Ligne sage-l6, fonction n° 22 · le document d'une section la retient.
+    pieceJointeSection: { count: compteur(usages.documents, 'sectionId') },
     budgetSection: {
       deleteMany: tx.budgetSection.deleteMany,
       count: jest.fn(({ where }: { where: { exercice?: { statut: string } } }) =>
@@ -94,6 +96,12 @@ describe('F142 · une section utilisée ne se supprime pas, et le refus la nomme
   it('une répartition analytique de la paie retient sa section (ligne sage-l5, fonction 88), et le refus la nomme', async () => {
     const { prisma, ops } = prismaSuppression({ repartitionsPaie: 2 });
     await expect(service(prisma).supprimerSection('t1', 's1')).rejects.toThrow(/répartitions analytiques de la paie \(2\)/);
+    expect(ops).toEqual([]);
+  });
+
+  it('un document joint retient la section (ligne sage-l6, fonction n° 22), et le refus le nomme', async () => {
+    const { prisma, ops } = prismaSuppression({ documents: 2 });
+    await expect(service(prisma).supprimerSection('t1', 's1')).rejects.toThrow(/documents joints \(volet Documents de la section\) \(2\)/);
     expect(ops).toEqual([]);
   });
 

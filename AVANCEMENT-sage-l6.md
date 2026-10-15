@@ -26,11 +26,17 @@ Branche de sauvegarde · `travail/sage-l6`. Fiche retirée à l'intégration.
   analytiques), onglet « Documents » de la fiche du bien, fiche du salarié
   (registre du personnel).
 
+- **n° 50 (étape 3).** `PlanAnalytique.longueurSections` (null = libre),
+  migration `20270181000200_longueur_sections` (contrainte de 2 à 13),
+  `analytique/longueur-sections.ts` (un seul prédicat pour l'aperçu, la pose
+  et la création), pose et création sous le verrou du plan, relevé par
+  tranches, aperçu `GET /analytique/plans/:id/longueur-sections`. Écran ·
+  champ « Longueur des codes de section » de l'axe, refus du serveur montré,
+  longueur suggérée par les sections, frappe du code bornée.
+
 ## Reste
 
 - n° 22 · tests navigateur, scénario sur vraie base à travers une clôture.
-- n° 50 · longueur fixe des codes de section (schéma, migration
-  `20270181000200`, service, écran, tests).
 - Bloc du § 3 complet, tests navigateur `e2e/tests/sage-l6-*.e2e.ts`.
 
 ## Décisions par la loi
@@ -61,10 +67,24 @@ Branche de sauvegarde · `travail/sage-l6`. Fiche retirée à l'intégration.
    le registre et les bulletins. Aux droits du registre · fermé à
    l'aide-comptable, ouvert au gestionnaire de paie ; nom et commentaire hors
    du journal d'audit.
+5. **Longueur fixe des codes de section · option du plan, sans défaut.**
+   Aucun texte ne fixe la codification analytique (SYCEBNL Partie 2 ch. 3,
+   classe 9, sous-section 2 ; Partie 4 ch. 3, section 2). Elle vise les
+   sections DÉTAIL (exactement N caractères), les rubriques (Total) étant
+   strictement plus courtes ; posée seulement si toutes les sections
+   existantes la respectent, refus nommé sinon ; aucun code n'est renuméroté
+   (le code d'une section ne se modifie pas, ventilations et budgets le
+   citent). Bornes de 2 à 13, convention d'OmegaX.
 
 ## Questions à Manasse
 
-(aucune pour l'instant)
+1. **Longueur des codes de section, par plan ou par dossier ?** Aucun texte
+   ne la régit (SYCEBNL Partie 2 ch. 3, classe 9, sous-section 2 · découpage
+   « à la convenance » de l'entité ; Partie 4 ch. 3, section 2 · « nomenclature
+   budgétaire du projet »). Sage la pose au DOSSIER (P_DOSSIER) ; OmegaX la
+   pose au PLAN, parce que les codes et les rubriques vivent dans un plan et
+   qu'un axe Bailleurs n'a pas à prendre la longueur de l'axe Projets. Choix
+   d'organisation, donc le sien · à confirmer ou à renverser.
 
 ## Pour CLAUDE.md
 

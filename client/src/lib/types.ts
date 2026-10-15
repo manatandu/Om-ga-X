@@ -1884,6 +1884,8 @@ export interface PlanAnalytique {
   gererBudgets: boolean;
   ordre: number;
   estActif: boolean;
+  /** Longueur FIXE des codes de ses sections Détail (ligne sage-l6, fonction n° 50) · null = libre. */
+  longueurSections: number | null;
   _count?: { sections: number };
 }
 

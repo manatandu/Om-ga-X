@@ -40,6 +40,17 @@ export class CreerPlanAnalytiqueDto {
   @IsOptional()
   @IsInt()
   ordre?: number;
+
+  /**
+   * Longueur FIXE des codes des sections Détail (ligne sage-l6, fonction
+   * n° 50) · null = libre. Les bornes se rejugent au service
+   * (`longueur-sections.ts`), avec les sections existantes.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(13)
+  longueurSections?: number | null;
 }
 
 export class ModifierPlanAnalytiqueDto {
@@ -62,6 +73,17 @@ export class ModifierPlanAnalytiqueDto {
   @IsOptional()
   @IsBoolean()
   estActif?: boolean;
+
+  /**
+   * Longueur FIXE des codes des sections Détail (ligne sage-l6, fonction
+   * n° 50) · null = libre. Les bornes se rejugent au service
+   * (`longueur-sections.ts`), avec les sections existantes.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(13)
+  longueurSections?: number | null;
 }
 
 export class CreerSectionDto {

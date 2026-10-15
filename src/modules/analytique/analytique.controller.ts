@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LicenceGuard } from '../licence/licence.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -91,6 +91,24 @@ export class AnalytiqueController {
     @Body() dto: ModifierPlanAnalytiqueDto,
   ) {
     return this.analytique.modifierPlan(user.tenantId, planId, dto);
+  }
+
+  /**
+   * L'aperçu de la longueur des codes de section (ligne sage-l6, fonction
+   * n° 50) · `longueur` absente ou vide = longueur libre ; le même relevé que
+   * la pose, lu par l'écran avant d'enregistrer.
+   */
+  @Get('plans/:planId/longueur-sections')
+  async apercuLongueurSections(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('planId') planId: string,
+    @Query('longueur') longueur?: string,
+  ) {
+    const texte = (longueur ?? '').trim();
+    if (texte !== '' && !/^\d{1,3}$/.test(texte)) {
+      throw new BadRequestException('La longueur des codes de section est un nombre entier de caractères.');
+    }
+    return this.analytique.apercuLongueurSections(user.tenantId, planId, texte === '' ? null : Number(texte));
   }
 
   @Delete('plans/:planId')

@@ -17,6 +17,13 @@ import { motifRefusClasseVentilee, motifRefusMontantAnalytique } from './od-anal
 import { refuserSiExerciceBudgetaireClos } from './exercice-budgetaire-clos';
 import { libelleReference, referencesVers, type Reference } from '../../common/suppression/references';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
+import { lireParLots, pageApres } from '../../common/lecture-par-lots';
+import {
+  ReleveLongueurs,
+  motifRefusBornesLongueur,
+  motifRefusCodeSection,
+  motifRefusLongueurSections,
+} from './longueur-sections';
 
 /** Chiffre de classe d'un compte : CLASSE_6 donne 6. */
 function chiffreClasse(classe: ClasseCompte): string {
@@ -133,6 +140,9 @@ export class AnalytiqueService {
     if (existant) {
       throw new ConflictException(`Un plan analytique porte déjà le code ${dto.code}`);
     }
+    // Un plan neuf n'a aucune section · seule la borne se juge.
+    const bornes = dto.longueurSections == null ? null : motifRefusBornesLongueur(dto.longueurSections);
+    if (bornes) throw new BadRequestException(bornes);
     return this.prisma.planAnalytique.create({
       data: {
         tenantId,
@@ -142,13 +152,80 @@ export class AnalytiqueService {
         ventilationObligatoire: dto.ventilationObligatoire,
         gererBudgets: dto.gererBudgets,
         ordre: dto.ordre,
+        longueurSections: dto.longueurSections ?? null,
       },
     });
   }
 
+  /**
+   * LA LONGUEUR DES CODES SE POSE SOUS LE VERROU DU PLAN (ligne sage-l6,
+   * fonction n° 50) · la création d'une section le prend aussi, si bien
+   * qu'aucune section hors longueur ne naît entre le relevé et la pose. Les
+   * autres champs se modifient comme avant.
+   */
   async modifierPlan(tenantId: string, planId: string, dto: ModifierPlanAnalytiqueDto) {
-    await this.trouverPlan(tenantId, planId);
-    return this.prisma.planAnalytique.update({ where: { id: planId }, data: dto });
+    const plan = await this.trouverPlan(tenantId, planId);
+    const { longueurSections, ...autres } = dto;
+    if (longueurSections === undefined) {
+      return this.prisma.planAnalytique.update({ where: { id: planId }, data: autres });
+    }
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await this.verrouillerPlan(tx, tenantId, planId);
+      if (longueurSections !== null) {
+        const releve = await this.releverLongueurs(tx, tenantId, planId, longueurSections);
+        const motif = motifRefusLongueurSections(plan.code, longueurSections, releve);
+        if (motif) throw new BadRequestException(motif);
+      }
+      return tx.planAnalytique.update({ where: { id: planId }, data: { ...autres, longueurSections } });
+    });
+  }
+
+  /**
+   * L'APERÇU DE LA LONGUEUR, avant de la poser · le MÊME relevé que la pose
+   * (`releverLongueurs`, `motifRefusLongueurSections`), servi à l'écran qui
+   * n'en recalcule rien · la longueur demandée et son refus éventuel, les
+   * sections qui l'empêchent (bornées, le total dit), la longueur que les
+   * sections du plan suggèrent.
+   */
+  async apercuLongueurSections(tenantId: string, planId: string, longueur: number | null) {
+    const plan = await this.trouverPlan(tenantId, planId);
+    const bornes = longueur === null ? null : motifRefusBornesLongueur(longueur);
+    const releve = await this.releverLongueurs(this.prisma, tenantId, planId, bornes ? null : longueur);
+    return {
+      longueurActuelle: plan.longueurSections,
+      longueur,
+      motif: bornes ?? motifRefusLongueurSections(plan.code, longueur, releve),
+      horsLongueur: releve.horsLongueur,
+      nombreHorsLongueur: releve.nombreHorsLongueur,
+      nombreSections: releve.nombreSections,
+      proposee: releve.proposee,
+    };
+  }
+
+  /** Le relevé des sections d'un plan, par tranches · aucune collection sans borne. */
+  private async releverLongueurs(
+    db: Prisma.TransactionClient | PrismaService,
+    tenantId: string,
+    planId: string,
+    longueur: number | null,
+  ): Promise<ReleveLongueurs> {
+    const releve = new ReleveLongueurs(longueur);
+    await lireParLots(
+      (curseur) =>
+        db.sectionAnalytique.findMany({
+          where: { tenantId, planId },
+          select: { id: true, code: true, type: true },
+          ...pageApres(curseur, 5000),
+        }),
+      (section) => releve.ajouter(section),
+      5000,
+    );
+    return releve;
+  }
+
+  /** Le verrou de la ligne du plan, dans la transaction qui l'emploie. */
+  private async verrouillerPlan(db: Prisma.TransactionClient, tenantId: string, planId: string) {
+    await db.$queryRaw`SELECT "id" FROM "plans_analytiques" WHERE "id" = ${planId} AND "tenantId" = ${tenantId} FOR UPDATE`;
   }
 
   async supprimerPlan(tenantId: string, planId: string) {
@@ -209,7 +286,10 @@ export class AnalytiqueService {
   }
 
   async creerSection(tenantId: string, planId: string, dto: CreerSectionDto) {
-    await this.trouverPlan(tenantId, planId);
+    const plan = await this.trouverPlan(tenantId, planId);
+    // Refus immédiat sur la longueur lue · rejugé sous le verrou du plan.
+    const refusLongueur = motifRefusCodeSection({ code: dto.code, type: dto.type ?? TypeCompteDetailTotal.DETAIL }, plan.longueurSections);
+    if (refusLongueur) throw new BadRequestException(refusLongueur);
     const existante = await this.prisma.sectionAnalytique.findFirst({ where: { planId, code: dto.code } });
     if (existante) {
       throw new ConflictException(`Une section porte déjà le code ${dto.code} dans ce plan`);
@@ -224,18 +304,28 @@ export class AnalytiqueService {
     if (dateDebut && dateFin && dateFin < dateDebut) {
       throw new BadRequestException('La date de fin de la convention précède sa date de début');
     }
-    return this.prisma.sectionAnalytique.create({
-      data: {
-        planId,
-        tenantId,
-        code: dto.code,
-        intitule: dto.intitule,
-        type: dto.type,
-        bailleurId: dto.bailleurId,
-        dateDebut,
-        dateFin,
-      },
-      include: { bailleur: { select: { id: true, code: true, nom: true } } },
+    // LA LONGUEUR SE REJUGE SOUS LE VERROU DU PLAN · une longueur posée entre
+    // la lecture ci-dessus et la création ne laisse pas naître une section
+    // qui ne la respecte pas (ligne sage-l6, fonction n° 50).
+    return transactionJournalisee(this.prisma, async (tx) => {
+      await this.verrouillerPlan(tx, tenantId, planId);
+      const relu = await tx.planAnalytique.findFirst({ where: { id: planId, tenantId }, select: { longueurSections: true } });
+      if (!relu) throw new NotFoundException('Plan analytique introuvable pour ce dossier');
+      const motif = motifRefusCodeSection({ code: dto.code, type: dto.type ?? TypeCompteDetailTotal.DETAIL }, relu.longueurSections);
+      if (motif) throw new BadRequestException(motif);
+      return tx.sectionAnalytique.create({
+        data: {
+          planId,
+          tenantId,
+          code: dto.code,
+          intitule: dto.intitule,
+          type: dto.type,
+          bailleurId: dto.bailleurId,
+          dateDebut,
+          dateFin,
+        },
+        include: { bailleur: { select: { id: true, code: true, nom: true } } },
+      });
     });
   }
 
