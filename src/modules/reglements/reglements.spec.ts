@@ -859,3 +859,121 @@ describe('le mode de règlement du lot (ligne sage-l2, fonction 1)', () => {
     expect(r.avertissements.join(' ')).not.toMatch(/59 bis/);
   });
 });
+
+/**
+ * ESCOMPTE ET ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36) · câblés dans
+ * `enregistrer` · le tiers soldé de ce que la pièce éteint, chaque montant sur
+ * son compte, tout jugé AVANT la première pièce.
+ */
+describe('l’escompte et l’écart de règlement (ligne sage-l2, fonction 36)', () => {
+  const PLAN = [
+    { id: 'c773', numero: '77300000', intitule: 'Escomptes obtenus' },
+    { id: 'c673', numero: '67300000', intitule: 'Escomptes accordés' },
+    { id: 'c6588', numero: '65880000', intitule: 'Autres charges diverses' },
+  ];
+  function avecDossier(seuil: number | null, plan = PLAN, assujetti = true) {
+    const m = monter();
+    (m.prisma.tenant.findFirst as jest.Mock).mockResolvedValue({
+      referentiel: 'SYSCOHADA',
+      seuilEcartReglement: seuil,
+      assujettiTva: assujetti,
+      assujettissementTvaRepondu: true,
+    });
+    // La doublure honore le dossier et la racine demandée.
+    (m.prisma as unknown as { compte: unknown }).compte = {
+      findMany: jest.fn(async ({ where }: { where: { tenantId: string; numero: { startsWith: string } } }) =>
+        where.tenantId === 't' ? plan.filter((c) => c.numero.startsWith(where.numero.startsWith)) : [],
+      ),
+    };
+    return m;
+  }
+
+  it('escompte obtenu · le 401 soldé de 600, 588 payés, 12 au 773 ; le lettrage est complet', async () => {
+    const { service, creer, lettrerManuel } = avecDossier(null);
+    const r = await service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12 }] });
+    expect(creer.mock.calls[0][2].lignes).toEqual([
+      expect.objectContaining({ compteId: 'c401', debit: 600 }),
+      expect.objectContaining({ compteId: 'c521', credit: 588 }),
+      expect.objectContaining({ compteId: 'c773', credit: 12 }),
+    ]);
+    expect(lettrerManuel).toHaveBeenCalledWith('t', 'c401', ['f1', 'p1-0'], 'u', { autoriserPartiel: false });
+    expect(r.reglements[0]).toEqual(expect.objectContaining({ montant: 588, escompte: 12, partiel: false }));
+    expect(r.avertissements.join(' ')).toMatch(/l'escompte de 12\.00 ne sort de la base.*art\. 29, 1°/);
+  });
+
+  it('un dossier déclaré non assujetti n’a aucune taxe à dire', async () => {
+    const { service } = avecDossier(null, PLAN, false);
+    const r = await service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12 }] });
+    expect(r.avertissements.join(' ')).not.toMatch(/TVA|base/);
+  });
+
+  it('le reste qu’un client ne paie pas, sous le seuil · 0,50 au 6588, le 411 soldé de 500', async () => {
+    const { service, creer, lettrerManuel } = avecDossier(1);
+    const r = await service.enregistrer('t', 'u', {
+      ...base,
+      sens: 'CLIENT',
+      reglements: [{ compteId: 'c411', ligneIds: ['k1'], montant: 499.5, solderEcart: true }],
+    });
+    expect(creer.mock.calls[0][2].lignes.map((l: { compteId: string; debit?: number; credit?: number }) => [l.compteId, l.debit ?? 0, l.credit ?? 0])).toEqual([
+      ['c521', 499.5, 0],
+      ['c6588', 0.5, 0],
+      ['c411', 0, 500],
+    ]);
+    expect(lettrerManuel).toHaveBeenCalledWith('t', 'c411', ['k1', 'p1-2'], 'u', { autoriserPartiel: false });
+    expect(r.reglements[0]).toEqual(expect.objectContaining({ montant: 499.5, ecartReglement: 0.5 }));
+    expect(r.avertissements.join(' ')).toMatch(/l'écart de 0\.50 abandonné au client ne réduit pas la TVA facturée/);
+  });
+
+  it('trop-payé au fournisseur soldé · l’ordre de virement porte le payé, pas la dette', async () => {
+    const { service, creer, ordres } = avecDossier(1);
+    await service.enregistrer('t', 'u', { ...base, ordreVirement: true, reglements: [{ compteId: 'c401', ligneIds: ['f1'], montant: 600.3, solderEcart: true }] });
+    expect(creer.mock.calls[0][2].lignes.map((l: { compteId: string; debit?: number; credit?: number }) => [l.compteId, l.debit ?? 0, l.credit ?? 0])).toEqual([
+      ['c401', 600, 0],
+      ['c6588', 0.3, 0],
+      ['c521', 0, 600.3],
+    ]);
+    expect((ordres.creer as jest.Mock).mock.calls[0][5]).toEqual([expect.objectContaining({ compteId: 'c401', montant: 600.3 })]);
+  });
+
+  it('sans seuil fixé, l’écart est refusé AVANT toute pièce, le geste nommé', async () => {
+    const { service, creer } = avecDossier(null);
+    await expect(
+      service.enregistrer('t', 'u', { ...base, sens: 'CLIENT', reglements: [{ compteId: 'c411', ligneIds: ['k1'], montant: 499.5, solderEcart: true }] }),
+    ).rejects.toThrow(/41110000 · Aucun seuil d'écart de règlement n'est fixé pour ce dossier · fixez-le dans Paramètres du dossier/);
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('deux comptes d’escompte possibles · le choix est demandé avant toute pièce, puis honoré', async () => {
+    const plan = [...PLAN, { id: 'c7731', numero: '77300001', intitule: 'Escomptes · banque' }, { id: 'c7732', numero: '77300002', intitule: 'Escomptes · caisse' }];
+    const { service, creer } = avecDossier(null, plan);
+    await expect(service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12 }] })).rejects.toThrow(
+      /Plusieurs comptes sous le 773 pour l'escompte obtenu \(77300001, 77300002\)/,
+    );
+    expect(creer).not.toHaveBeenCalled();
+    await service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], escompte: 12, compteEscompteId: 'c7732' }] });
+    expect(creer.mock.calls[0][2].lignes).toContainEqual(expect.objectContaining({ compteId: 'c7732', credit: 12 }));
+  });
+
+  it('jamais avec la part désignée de chaque facture, ni un compte sans son geste', async () => {
+    const { service, creer } = avecDossier(1);
+    await expect(
+      service.enregistrer('t', 'u', {
+        ...base,
+        ordreVirement: true,
+        reglements: [{ compteId: 'c401', ligneIds: ['f1', 'f2'], montant: 990, escompte: 10, imputation: [{ ligneId: 'f1', montant: 600 }, { ligneId: 'f2', montant: 390 }] }],
+      }),
+    ).rejects.toThrow(/ne se passe pas avec la part désignée/);
+    await expect(service.enregistrer('t', 'u', { ...base, reglements: [{ compteId: 'c401', ligneIds: ['f1'], compteEcartId: 'c6588' }] })).rejects.toThrow(
+      /n’a d’objet qu’avec « Solder l’écart »/,
+    );
+    expect(creer).not.toHaveBeenCalled();
+  });
+
+  it('le trop-perçu d’un client reste refusé, même avec « Solder l’écart » (Code civil, Livre III, art. 252)', async () => {
+    const { service, creer } = avecDossier(1);
+    await expect(
+      service.enregistrer('t', 'u', { ...base, sens: 'CLIENT', reglements: [{ compteId: 'c411', ligneIds: ['k1'], montant: 500.4, solderEcart: true }] }),
+    ).rejects.toThrow(/art\. 252/);
+    expect(creer).not.toHaveBeenCalled();
+  });
+});

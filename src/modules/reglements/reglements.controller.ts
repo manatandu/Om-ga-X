@@ -29,6 +29,16 @@ export class ReglementsController {
     return this.reglements.echeances(user.tenantId, exerciceId, sens, jusquau);
   }
 
+  /**
+   * Les comptes de l'escompte et de l'écart de règlement du sens, et le
+   * seuil du dossier (ligne sage-l2, fonction 36) · voir `ecart-escompte.ts`.
+   */
+  @Get('comptes-escompte-ecart')
+  async comptesEscompteEcart(@CurrentUser() user: AuthenticatedUser, @Query('sens') sens: string) {
+    if (sens !== 'FOURNISSEUR' && sens !== 'CLIENT') throw new BadRequestException('Sens attendu : FOURNISSEUR ou CLIENT.');
+    return this.reglements.comptesEscompteEcart(user.tenantId, sens);
+  }
+
   // LECTURE_SEULE consulte les échéances ; seuls ADMIN_CABINET et COMPTABLE
   // passent un règlement.
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)

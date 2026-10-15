@@ -210,6 +210,8 @@ export class TenantService {
       refusClotureJournalNonImprime: tenant.refusClotureJournalNonImprime,
       // Ligne sage-l1, fonction 14 · aux deux référentiels.
       creationCompteEnSaisie: tenant.creationCompteEnSaisie,
+      // Ligne sage-l2, fonction 36 · aux deux référentiels ; `null` = aucun seuil fixé.
+      seuilEcartReglement: tenant.seuilEcartReglement === null ? null : Number(tenant.seuilEcartReglement),
       attestationExemptionIs: tenant.attestationExemptionIs,
       dateAttestationExemptionIs: tenant.dateAttestationExemptionIs,
       formeJuridique: siSycebnl(tenant.referentiel, tenant.formeJuridique),
@@ -1208,6 +1210,19 @@ export class TenantService {
       throw new NotFoundException('Dossier introuvable');
     }
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { creationCompteEnSaisie } });
+    return this.parametres(tenantId);
+  }
+
+  /**
+   * Le seuil de l'écart de règlement (ligne sage-l2, fonction 36) · `null`
+   * le retire. Aucune valeur par défaut (`reglements/ecart-escompte.ts`).
+   */
+  async modifierSeuilEcartReglement(tenantId: string, seuilEcartReglement: number | null) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Dossier introuvable');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { seuilEcartReglement } });
     return this.parametres(tenantId);
   }
 

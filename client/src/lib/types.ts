@@ -1817,6 +1817,12 @@ export interface ParametresDossier {
   refusClotureJournalNonImprime: boolean;
   /** Ligne sage-l1, fonction 14 · création d'un compte pendant la saisie (option, faux par défaut). */
   creationCompteEnSaisie: boolean;
+  /**
+   * Ligne sage-l2, fonction 36 · le seuil sous lequel un règlement passe
+   * l'écart en charge, le tiers soldé · `null` quand aucun n'est fixé (aucun
+   * écart ne se passe alors ; aucune valeur par défaut).
+   */
+  seuilEcartReglement: number | null;
   /** Forme juridique de la loi n° 004/2001 · `null` hors SYCEBNL. */
   formeJuridique: FormeJuridiqueEbnl | null;
   formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null;

@@ -651,6 +651,13 @@ model Tenant {
   // offre d'ouvrir le numéro tapé inconnu du dossier comme SOUS-COMPTE d'un
   // compte d'imputation du plan (`comptes/compte-en-saisie.ts`), personnalisé.
   creationCompteEnSaisie Boolean @default(false)
+  // SEUIL DE L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36 · Sage, « écart
+  // de règlement » sous un montant paramétré) · le reste qu'un règlement peut
+  // passer en charge en soldant le tiers (`reglements/ecart-escompte.ts` ·
+  // remise du reste par le dossier créancier, Code civil, Livre III, art. 132 ;
+  // trop-payé abandonné au fournisseur, art. 133). SANS VALEUR PAR DÉFAUT ·
+  // aucun texte n'en fixe ; nul, aucun écart ne se passe.
+  seuilEcartReglement Decimal? @db.Decimal(18, 2)
 
   assujettiTva               Boolean           @default(false)
   // LA QUESTION A-T-ELLE ÉTÉ RÉPONDUE ? `assujettiTva` vaut faux par défaut et

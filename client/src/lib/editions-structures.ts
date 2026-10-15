@@ -1,4 +1,5 @@
 import type { Compte, Journal, NumerotationPiece, TauxTva, Tiers, TypeJournal, TypeTiers } from './types';
+import { montant } from './montants';
 
 /**
  * ÉDITIONS DES STRUCTURES (point 18 de la comparaison Sage i7).
@@ -184,6 +185,8 @@ export function editionParametres(
     ['Double regard à la validation', ouiNon(p.doubleRegardValidation)],
     ['Refus de clôturer un journal non imprimé', ouiNon(p.refusClotureJournalNonImprime)],
     ['Création de comptes pendant la saisie', ouiNon(p.creationCompteEnSaisie)],
+    // Ligne sage-l2, fonction 36 · `null` est « aucun seuil », jamais zéro.
+    ["Seuil de l'écart de règlement", p.seuilEcartReglement == null ? 'aucun' : montant(p.seuilEcartReglement)],
   );
   return { colonnes: ['Rubrique', 'Valeur'], lignes };
 }

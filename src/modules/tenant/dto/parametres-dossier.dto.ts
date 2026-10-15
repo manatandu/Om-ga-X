@@ -1,4 +1,4 @@
-import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, MaxLength, MinLength, IsDateString, IsIn, IsInt, Max, Min, ValidateIf } from 'class-validator';
+import { ArrayUnique, IsArray, IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, MaxLength, MinLength, IsDateString, IsIn, IsInt, IsPositive, Max, Min, ValidateIf } from 'class-validator';
 import {
   FormeJuridiqueEbnl,
   FormeJuridiqueSyscohada,
@@ -562,4 +562,17 @@ export class ModifierModulesDto {
 export class ModifierCreationCompteEnSaisieDto {
   @IsBoolean()
   creationCompteEnSaisie!: boolean;
+}
+
+/**
+ * LE SEUIL DE L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36) · un montant
+ * strictement positif au centime, ou `null` pour le retirer (aucun écart ne se
+ * passe alors). Aucune valeur par défaut · aucun texte n'en fixe. Voir
+ * `reglements/ecart-escompte.ts`.
+ */
+export class ModifierSeuilEcartReglementDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: "Le seuil de l'écart de règlement est un montant au centime, ou vide pour le retirer." })
+  @IsPositive({ message: "Le seuil de l'écart de règlement est strictement positif · videz-le pour n'en fixer aucun." })
+  seuilEcartReglement!: number | null;
 }

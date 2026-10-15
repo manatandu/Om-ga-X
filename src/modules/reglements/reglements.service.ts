@@ -1,6 +1,6 @@
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma, StatutEcriture, StatutLettrage, TypeJournal } from '@prisma/client';
+import { Prisma, StatutEcriture, StatutLettrage, TypeCompteDetailTotal, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { LettrageService } from '../lettrage/lettrage.service';
@@ -28,6 +28,19 @@ import { OrdresVirementService, type LigneAOrdonner } from './ordres-virement.se
 import { modeDuDossier } from './modes-reglement.service';
 import { avertissementArt59Bis, NATURES_ADMISES_ART_59_BIS, natureLueSurLeCompte } from './modes-reglement';
 import { estDAnouveau, transactionsDesLignes, type TransactionReglee } from './transactions-art-59-bis';
+import {
+  RACINES_ECART_ESCOMPTE,
+  avertissementEscompteApresEcheance,
+  avertissementTvaEcart,
+  avertissementTvaEscompte,
+  compteDuRole,
+  comptesOfferts,
+  lignesAvecEscompteEtEcart,
+  planDuReglement,
+  roleEscompte,
+  type CompteCandidat,
+  type RoleEcartEscompte,
+} from './ecart-escompte';
 import { faitAssujettissementTva } from '../tenant/faits-declares';
 import {
   avertissementImputationDuGroupe,
@@ -475,6 +488,12 @@ export class ReglementsService {
       compte: (typeof plan)[number]['compte'];
       du: number;
       montant: number;
+      /** Ce que la pièce porte au compte du tiers · le payé, plus l'escompte et l'écart soldé (fonction 36). */
+      tiers: number;
+      escompte: number;
+      ecart: number;
+      compteEscompteId: string | null;
+      compteEcartId: string | null;
       enDevise: ReglementEnDevise | null;
       reduite: boolean;
       /** Les parts désignées par le dossier (jumeau 3 du point 4), une ligne au tiers chacune. */
@@ -483,6 +502,19 @@ export class ReglementsService {
       groupe: (typeof plan)[number]['groupe'];
     }> = [];
     const avertissementsImputation: string[] = [];
+    // L'ESCOMPTE ET L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36) · leurs
+    // comptes et le seuil du dossier se lisent une fois, avant la première
+    // pièce (règle 4), et le compte de chaque rôle se juge par
+    // `compteDuRole` · jamais deviné entre deux candidats.
+    const candidatsParRole = new Map<RoleEcartEscompte, CompteCandidat[]>();
+    let seuilDuDossier: number | null | undefined;
+    const compteDuRoleOuRefus = async (numero: string, role: RoleEcartEscompte, choisi: string | undefined) => {
+      if (referentiel === null) referentiel = await referentielDuDossier(this.prisma, tenantId);
+      if (!candidatsParRole.has(role)) candidatsParRole.set(role, await this.candidatsEcartEscompte(tenantId, referentiel, role));
+      const r = compteDuRole(referentiel, role, candidatsParRole.get(role)!, choisi);
+      if ('motif' in r) throw new BadRequestException(`${numero} · ${r.motif}`);
+      return r.compte.id;
+    };
     for (const p of plan) {
       const numero = p.compte.numero;
       const dus = new Map(p.siennes.map((l) => [l.id, montantDu({ debit: Number(l.debit), credit: Number(l.credit) }, dto.sens)]));
@@ -512,6 +544,28 @@ export class ReglementsService {
       } else if (p.r.pieceImputation !== undefined) {
         throw new BadRequestException(`${numero} · la pièce de l’imputation n’a d’objet qu’avec la part désignée de chaque facture.`);
       }
+      const avecEscompteOuEcart = p.r.escompte !== undefined || p.r.solderEcart === true;
+      if (p.r.compteEscompteId !== undefined && p.r.escompte === undefined) {
+        throw new BadRequestException(`${numero} · le compte de l’escompte n’a d’objet qu’avec un escompte.`);
+      }
+      if (p.r.compteEcartId !== undefined && p.r.solderEcart !== true) {
+        throw new BadRequestException(`${numero} · le compte de l’écart n’a d’objet qu’avec « Solder l’écart ».`);
+      }
+      if (avecEscompteOuEcart && p.r.imputation !== undefined) {
+        // La part désignée de chaque facture fait une ligne au tiers par
+        // facture · l'escompte ou l'écart n'y aurait aucune facture à réduire.
+        throw new BadRequestException(
+          `${numero} · un escompte ou un écart de règlement ne se passe pas avec la part désignée de chaque facture · réglez sans parts désignées, ou passez-le à part.`,
+        );
+      }
+      if (avecEscompteOuEcart && enDeviseP) {
+        // Le tiers en devise se solde au coût historique avec son montant en
+        // devise (AUDCIF art. 55) · un escompte ou un écart en francs seuls n'y
+        // aurait pas de devise, et la position se lirait fausse à la clôture.
+        throw new BadRequestException(
+          `${numero} · les factures choisies sont en devise · ni escompte ni écart de règlement sur ce règlement ; réglez-le dans sa devise et passez-les à part.`,
+        );
+      }
       if (!enDeviseP) {
         if (p.r.montantDevise !== undefined || p.r.coursReglement !== undefined || p.r.compteEcartChangeId !== undefined) {
           throw new BadRequestException(
@@ -520,10 +574,37 @@ export class ReglementsService {
         }
         // `undefined` seul vaut « le dû entier » · un `null` venu d'un appelant
         // qui aurait sauté le DTO tombe sous le refus du montant (A6 bis, B1).
-        const montant = p.r.montant === undefined ? p.du : p.r.montant;
+        // Avec un escompte, le dû entier MOINS l'escompte (fonction 36).
+        const escompte = p.r.escompte ?? 0;
+        const montant = p.r.montant === undefined ? Math.round((p.du - escompte) * 100) / 100 : p.r.montant;
+        let tiers = montant;
+        let ecart = 0;
+        let compteEscompteId: string | null = null;
+        let compteEcartId: string | null = null;
+        if (avecEscompteOuEcart) {
+          if (referentiel === null) referentiel = await referentielDuDossier(this.prisma, tenantId);
+          if (seuilDuDossier === undefined) seuilDuDossier = await this.seuilEcartReglement(tenantId);
+          const planE = planDuReglement({
+            sens: dto.sens,
+            referentiel,
+            numeroTiers: numero,
+            du: p.du,
+            montant,
+            escompte,
+            solderEcart: p.r.solderEcart === true,
+            seuil: seuilDuDossier,
+          });
+          if ('motif' in planE) throw new BadRequestException(`${numero} · ${planE.motif}`);
+          tiers = planE.tiers;
+          ecart = planE.ecart;
+          if (escompte > 0) compteEscompteId = await compteDuRoleOuRefus(numero, roleEscompte(dto.sens), p.r.compteEscompteId);
+          if (ecart > 0) compteEcartId = await compteDuRoleOuRefus(numero, 'ECART_REGLEMENT', p.r.compteEcartId);
+        }
         // Au-delà du reste d'un lettrage partiel, le refus NOMME le groupe et
-        // ce qu'il a déjà réglé (ligne lettrage-cloture, attendu (2)).
-        const auDelaDuReste = p.groupe ? motifRefusMontantDuGroupe(numero, montant, p.du, p.groupe.code, p.groupe.regle) : null;
+        // ce qu'il a déjà réglé (ligne lettrage-cloture, attendu (2)). Ce que
+        // le règlement ÉTEINT se compare au reste · le payé, l'escompte et
+        // l'écart soldé (fonction 36).
+        const auDelaDuReste = p.groupe ? motifRefusMontantDuGroupe(numero, tiers, p.du, p.groupe.code, p.groupe.regle) : null;
         if (auDelaDuReste) throw new BadRequestException(auDelaDuReste);
         if (p.groupe) {
           const avertissement = avertissementImputationDuGroupe({
@@ -533,12 +614,14 @@ export class ReglementsService {
             sens: dto.sens,
             choisies: p.r.ligneIds,
             date: new Date(dto.date),
-            montant,
+            montant: tiers,
             deviseId: null,
           });
           if (avertissement) avertissementsImputation.push(avertissement);
         }
-        const refus = motifRefusMontant(montant, p.du);
+        // Avec un escompte ou un écart, `planDuReglement` a déjà borné le
+        // règlement (un trop-payé fournisseur soldé sous le seuil y est admis).
+        const refus = avecEscompteOuEcart ? null : motifRefusMontant(montant, p.du);
         if (refus) throw new BadRequestException(`${numero} · ${refus}`);
         let parts: (typeof prepares)[number]['parts'] = null;
         if (p.r.imputation !== undefined) {
@@ -560,7 +643,7 @@ export class ReglementsService {
             libelle: libelles.get(x.ligneId)!,
             reference: referenceDe(x.ligneId),
           }));
-        } else if (p.siennes.length > 1 && Math.round(montant * 100) < Math.round(p.du * 100)) {
+        } else if (p.siennes.length > 1 && Math.round(tiers * 100) < Math.round(p.du * 100)) {
           // UN RÈGLEMENT PARTIEL DE PLUSIEURS FACTURES SANS PARTS · l'art. 154
           // l'impute (la plus ancienne d'abord) · DIT, jamais tu.
           avertissementsImputation.push(
@@ -573,7 +656,21 @@ export class ReglementsService {
                   'validé, sinon l’imputation légale (art. 154 · les échues d’abord, la plus ancienne, au prorata à date égale).',
           );
         }
-        prepares.push({ r: p.r, compte: p.compte, du: p.du, montant, enDevise: null, reduite: p.reduite, parts, groupe: p.groupe });
+        prepares.push({
+          r: p.r,
+          compte: p.compte,
+          du: p.du,
+          montant,
+          tiers,
+          escompte,
+          ecart,
+          compteEscompteId,
+          compteEcartId,
+          enDevise: null,
+          reduite: p.reduite,
+          parts,
+          groupe: p.groupe,
+        });
         continue;
       }
       // EN DEVISE, le reste se lit dans la devise (art. 54 et 55) · le refus
@@ -631,7 +728,21 @@ export class ReglementsService {
         [...(paires?.absorbees ?? [])],
         fileDuCout,
       );
-      prepares.push({ r: p.r, compte: p.compte, du: p.du, montant: enDevise.francsPayes, enDevise, reduite: p.reduite, parts: null, groupe: p.groupe });
+      prepares.push({
+        r: p.r,
+        compte: p.compte,
+        du: p.du,
+        montant: enDevise.francsPayes,
+        tiers: enDevise.francsPayes,
+        escompte: 0,
+        ecart: 0,
+        compteEscompteId: null,
+        compteEcartId: null,
+        enDevise,
+        reduite: p.reduite,
+        parts: null,
+        groupe: p.groupe,
+      });
     }
 
     // LA DEVISE DU MOYEN DE PAIEMENT (ligne A6) · déclarée, jamais prise sur
@@ -742,6 +853,33 @@ export class ReglementsService {
       }
     }
 
+    // L'ESCOMPTE ET L'ÉCART (ligne sage-l2, fonction 36) · la TVA qu'ils ne
+    // régularisent pas, et l'escompte consenti après le terme, DITS, jamais
+    // refusés (`ecart-escompte.ts`). Un dossier déclaré non assujetti n'a
+    // aucune taxe à dire ; « pas encore dit » le dit quand même.
+    if (prepares.some((x) => x.escompte > 0 || x.ecart > 0)) {
+      const dossier = await this.prisma.tenant.findFirst({
+        where: { id: tenantId },
+        select: { assujettiTva: true, assujettissementTvaRepondu: true },
+      });
+      const assujetti = dossier ? faitAssujettissementTva(dossier) : null;
+      for (const x of prepares) {
+        if (x.escompte > 0) {
+          const siennes = plan.find((pp) => pp.r === x.r)?.siennes ?? [];
+          const apres = avertissementEscompteApresEcheance(
+            x.compte.numero,
+            new Date(dto.date),
+            siennes.flatMap((l) =>
+              l.dateEcheance ? [{ reference: l.ecriture.numeroPiece ? `pièce ${l.ecriture.numeroPiece}` : l.ecriture.libelle || 'facture', echeance: l.dateEcheance }] : [],
+            ),
+          );
+          if (apres) avertissements.push(apres);
+          if (assujetti !== false) avertissements.push(avertissementTvaEscompte(x.compte.numero, x.escompte));
+        }
+        if (x.ecart > 0 && dto.sens === 'CLIENT' && assujetti !== false) avertissements.push(avertissementTvaEcart(x.compte.numero, x.ecart));
+      }
+    }
+
     // Le lettrage vient APRÈS la pièce · une facture figée par une clôture
     // (exercice/gel-cloture.ts) le ferait refuser une fois la pièce passée.
     // Vérifiée ici, avec le reste, avant la première écriture.
@@ -763,7 +901,7 @@ export class ReglementsService {
 
     const resultats = [];
     const aOrdonner: LigneAOrdonner[] = [];
-    for (const { r, compte, du, montant, enDevise, reduite, parts, groupe } of prepares) {
+    for (const { r, compte, du, montant, tiers, escompte, ecart, compteEscompteId, compteEcartId, enDevise, reduite, parts, groupe } of prepares) {
       const libelle = `Règlement ${compte.tiersCompte?.tiers.nom ?? compte.intitule}`.slice(0, 190);
       const ecriture = await this.ecritures.creer(tenantId, userId, {
         exerciceId: dto.exerciceId,
@@ -789,7 +927,19 @@ export class ReglementsService {
             })
           : parts
             ? lignesDuReglementImpute({ compteTiersId: r.compteId, compteTresorerieId, parts, libelle })
-            : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle })),
+            : escompte > 0 || ecart > 0
+              ? lignesAvecEscompteEtEcart({
+                  sens: dto.sens,
+                  compteTiersId: r.compteId,
+                  compteTresorerieId,
+                  montant,
+                  plan: { tiers, ecart, partiel: false },
+                  escompte,
+                  compteEscompteId,
+                  compteEcartId,
+                  libelle,
+                })
+              : lignesDuReglement({ sens: dto.sens, compteTiersId: r.compteId, compteTresorerieId, montant, libelle })),
       });
       if (parts) {
         // UNE FACTURE, UNE LIGNE QUI LA PAIE, UN GROUPE · l'imputation
@@ -872,6 +1022,8 @@ export class ReglementsService {
           partiel: complete.statut !== StatutLettrage.SOLDE,
           lettre: complete.lettre,
           ...(enDevise ? { montantDevise: enDevise.montantDevise, ecartChange: enDevise.ecart } : {}),
+          ...(escompte > 0 ? { escompte } : {}),
+          ...(ecart > 0 ? { ecartReglement: ecart } : {}),
         });
         aOrdonner.push({
           compteId: r.compteId,
@@ -886,7 +1038,9 @@ export class ReglementsService {
       // cours du jour peut dépasser le dû en francs sans solder la facture.
       // Une ligne d'à-nouveau réglée en partie par une paire garde son montant
       // entier · son lettrage avec ce règlement reste partiel (m1).
-      const partiel = (enDevise ? enDevise.partiel : Math.round(montant * 100) < Math.round(du * 100)) || reduite;
+      // Ce que la pièce ÉTEINT au compte du tiers (le payé, plus l'escompte et
+      // l'écart soldé, fonction 36) dit si le lettrage reste partiel.
+      const partiel = (enDevise ? enDevise.partiel : Math.round(tiers * 100) < Math.round(du * 100)) || reduite;
       // Un lettrage refusé malgré tout (une facture lettrée entre-temps par un
       // autre clic) retire la pièce qu'il devait accompagner · jamais un
       // règlement sans le lettrage qui dit ce qu'il a payé (audit final F56).
@@ -911,6 +1065,8 @@ export class ReglementsService {
         partiel,
         lettre: lettre.lettre,
         ...(enDevise ? { montantDevise: enDevise.montantDevise, ecartChange: enDevise.ecart } : {}),
+        ...(escompte > 0 ? { escompte } : {}),
+        ...(ecart > 0 ? { ecartReglement: ecart } : {}),
       });
       aOrdonner.push({
         compteId: r.compteId,
@@ -924,6 +1080,48 @@ export class ReglementsService {
       ? await this.ordres.creer(tenantId, email, dto.journalId, dto.date, preparation, aOrdonner)
       : null;
     return { reglements: resultats, ordre, avertissements };
+  }
+
+  /**
+   * LES COMPTES DE L'ESCOMPTE ET DE L'ÉCART DE RÈGLEMENT (ligne sage-l2,
+   * fonction 36), servis à l'écran · pour chaque rôle du sens, les comptes de
+   * détail actifs que `compteDuRole` admet, le seul proposé, ou le motif
+   * (aucun, ou plusieurs à choisir) ; et le seuil du dossier. Liste FERMÉE par
+   * les fiches (`LISTES_DE_COMPTES`, régime « texte »).
+   */
+  async comptesEscompteEcart(tenantId: string, sens: SensReglement) {
+    const referentiel = await referentielDuDossier(this.prisma, tenantId);
+    const roles: RoleEcartEscompte[] = [roleEscompte(sens), 'ECART_REGLEMENT'];
+    const servis = [];
+    for (const role of roles) {
+      const candidats = await this.candidatsEcartEscompte(tenantId, referentiel, role);
+      const choix = compteDuRole(referentiel, role, candidats, undefined);
+      servis.push({
+        role,
+        racine: RACINES_ECART_ESCOMPTE[referentiel][role],
+        comptes: comptesOfferts(referentiel, role, candidats),
+        proposeId: 'compte' in choix ? choix.compte.id : null,
+        motif: 'motif' in choix ? choix.motif : null,
+      });
+    }
+    return { seuil: await this.seuilEcartReglement(tenantId), roles: servis };
+  }
+
+  /** Les comptes de détail actifs sous la racine d'un rôle (fonction 36), bornés. */
+  private async candidatsEcartEscompte(tenantId: string, referentiel: Referentiel, role: RoleEcartEscompte): Promise<CompteCandidat[]> {
+    return this.prisma.compte.findMany({
+      where: { tenantId, typeCompte: TypeCompteDetailTotal.DETAIL, estActif: true, numero: { startsWith: RACINES_ECART_ESCOMPTE[referentiel][role] } },
+      select: { id: true, numero: true, intitule: true },
+      orderBy: { numero: 'asc' },
+      take: 200,
+    });
+  }
+
+  /** Le seuil de l'écart de règlement du dossier · `null` quand aucun n'est fixé. */
+  private async seuilEcartReglement(tenantId: string): Promise<number | null> {
+    const t = await this.prisma.tenant.findFirst({ where: { id: tenantId }, select: { seuilEcartReglement: true } });
+    if (!t) throw new NotFoundException('Dossier introuvable.');
+    return t.seuilEcartReglement === null ? null : Number(t.seuilEcartReglement);
   }
 
   /**

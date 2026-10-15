@@ -96,15 +96,66 @@ plus rien à décaisser ; le mode porté ne se supprime pas.
 d'origine (`transactions-art-59-bis.ts`, `originesDesReports`, la règle des
 relances), gelé par `transactions-art-59-bis.spec.ts`.
 
+### n° 36 · Escompte et écart de règlement (fait)
+
+- Règles pures (`reglements/ecart-escompte.ts`) · `planDuReglement` dit ce
+  que la pièce éteint au compte du tiers (payé, escompte, écart soldé) ou le
+  motif du refus ; `compteDuRole` choisit le compte de chaque rôle parmi les
+  comptes de détail actifs sous la racine (le compte du plan subdivisé
+  s'efface devant ses sous-comptes, plusieurs candidats · choix exigé, jamais
+  deviné) ; `lignesAvecEscompteEtEcart` compose la pièce (débits puis crédits).
+- `Tenant.seuilEcartReglement` (migration `20270180000300_seuil_ecart_reglement`,
+  nullable, SANS défaut) · `PATCH /dossier/seuil-ecart-reglement`
+  (administrateur), servi par les paramètres, imprimé à l'édition des
+  paramètres ; Paramètres du dossier > Régime fiscal.
+- Règlement des tiers · par tiers, `escompte`, `solderEcart`,
+  `compteEscompteId`, `compteEcartId` (DTO, `FacultatifNonNul`). Sans
+  montant, le payé est le dû moins l'escompte. Tout se juge AVANT la première
+  pièce · refus avec la part désignée de chaque facture, en devise, d'un
+  compte sans son geste, sans seuil, au-delà du seuil. Lettrage complet
+  quand le payé et l'escompte (et l'écart) éteignent le dû ; un lettrage
+  partiel complété l'est sur ce que la pièce éteint ; l'ordre de virement
+  porte le payé. Résultat · `escompte`, `ecartReglement` par tiers.
+- Avertissements, jamais des refus · la TVA que l'escompte ou la remise ne
+  régularise pas (sauf dossier déclaré non assujetti), l'escompte consenti
+  après l'échéance de la facture.
+- `GET /reglements/comptes-escompte-ecart?sens=` · comptes offerts par rôle,
+  le proposé ou le motif, et le seuil (liste au régime « texte » de
+  `listes-de-comptes.ts`). La route du n° 3
+  (`/tiers/echeancier-de-ligne/:compteId`) est rangée parmi les routes qui ne
+  sont pas des listes (oubli du commit du n° 3, trouvé par
+  `comptes-proposes.spec.ts`).
+- Écran · Règlement des tiers, par tiers en francs sans parts · « Escompte »,
+  « Solder l'écart » (fermé sans seuil), comptes à choisir quand le serveur
+  en offre plusieurs ; le payé proposé suit l'escompte ; sélecteur « Sens du
+  règlement » nommé.
+- Tests · `ecart-escompte.spec.ts` (17, dont les comptes relus dans les deux
+  semis), `reglements.spec.ts` (8 câblages), `client/src/lib/escompte-reglement.spec.ts`
+  (7), `e2e/tests/sage-l2-escompte.e2e.ts` (vert sous Chromium).
+
+### Scénario sur vraie base · fonction 36 à travers une clôture (vert)
+
+Script `scenario-l2-36.mjs` (serveur compilé, base `l2_e2e`). N = 2026 ·
+facture fournisseur de 1 160 000 (échéance 31 janvier 2027), facture client
+de 500 000, validées, N clôturé. N+1 · la facture reportée payée le 15
+janvier avec un escompte de 12 000 (1 148 000 payés, lettrage complet, TVA
+dite) ; sans seuil, l'écart refusé, le geste nommé ; seuil de 1 000 fixé, la
+créance reportée encaissée pour 499 400 se solde (600 au 6588) ; une facture
+de N+1 de 300 000 payée 300 500 se solde (500 au 6588) ; un client qui paie
+trop est refusé (art. 252). Soldes de N+1 après validation, contre le calcul
+à la main · 401 soldé (report 1 160 000 + 300 000, débits 1 460 000), 4111
+reste 200 000 (la facture de N+1), 773 créditeur de 12 000, 6588 débiteur de
+1 100, banque -949 100 ; l'échéancier ne garde que la facture client de N+1.
+Aucun défaut trouvé.
+
 ## Reste
 
-1. n° 36 · écart de règlement sous un seuil, escompte financier (et son scénario sur vraie base).
-2. n° 24 · qualité du tiers.
-3. n° 31 · lieux de livraison des clients.
-4. n° 32 · duplication d'un tiers.
-5. n° 27 · modèles d'impression propres au tiers.
-6. n° 18 · assistant de règlement.
-7. Bloc du § 3 complet, tous les tests navigateur de la ligne.
+1. n° 24 · qualité du tiers.
+2. n° 31 · lieux de livraison des clients.
+3. n° 32 · duplication d'un tiers.
+4. n° 27 · modèles d'impression propres au tiers.
+5. n° 18 · assistant de règlement.
+6. Bloc du § 3 complet, tous les tests navigateur de la ligne.
 
 ## Décisions par la loi
 
@@ -119,6 +170,38 @@ relances), gelé par `transactions-art-59-bis.spec.ts`.
   nommée de la passe F2b).
 - **n° 1 · code interbancaire libre.** Aucune nomenclature bancaire du corpus
   ne s'impose en RDC (décision D11 de la reproduction).
+
+- **n° 36 · escompte de règlement.** AUDCIF, Titre VII, compte 67 (« 673 ·
+  montant des réductions que l'entité consent sous forme d'escompte de
+  règlement aux clients qui s'acquittent de leurs factures [...] avant le
+  terme normal d'exigibilité ») ; fiches des comptes 40 et 41 des deux plans ·
+  obtenu, D 40 / C 773 ; accordé, D 673 / C 41. Au SYCEBNL, la fiche du 41
+  crédite « le compte 412 · CLIENTS-USAGERS » des escomptes accordés · un
+  adhérent (411) n'en reçoit pas, refus nommé. Comptes relus dans les deux
+  semis (77300000, 67300000).
+- **n° 36 · l'écart de règlement se tranche par le Code civil, Livre III.**
+  Le reste qu'un client ne paie pas peut être REMIS par le dossier créancier
+  (art. 132, « par la remise volontaire ») · charge ; le trop-payé à un
+  fournisseur est sujet à répétition et le dossier peut y renoncer (art. 133)
+  · charge ; le trop-perçu d'un client s'oblige à restitution (art. 252) ·
+  REFUSÉ, jamais un produit ; le dossier qui paie moins ne force pas son
+  fournisseur à recevoir en partie (art. 142) et n'est libéré que par sa
+  remise · REFUSÉ, le règlement reste partiel. Sage passe aussi l'écart
+  « en produit » · non reproduit, la source primant sur Sage.
+- **n° 36 · compte de l'écart.** Le résidu des charges diverses · 6588
+  « Autres charges diverses » au SYSCOHADA (AUDCIF, Titre VII, compte 65,
+  son 658 étant un total), 658 « Charges diverses » au SYCEBNL, non
+  subdivisé (même lecture que D2 de la ligne A6). Ni le 651 (créances
+  irrécouvrables), ni le 673 (aucune avance sur le terme).
+- **n° 36 · seuil sans défaut.** Aucun texte n'en fixe · `null`, aucun écart
+  ne se passe, et le refus le dit.
+- **n° 36 · TVA.** L'escompte et la remise ne sortent de la base que s'ils
+  figurent sur une facture initiale ou rectificative (O.-L. n° 10/001,
+  art. 29, point 1 ; décret n° 011/42, art. 79) · la pièce du règlement ne
+  porte aucune ligne de taxe, l'avertissement le dit. Limite écrite · sous le
+  régime de l'encaissement, le moteur de TVA ne lit que la trésorerie du
+  règlement ; la part de taxe de l'escompte ou de l'écart reste en attente
+  (le moteur n'est pas touché).
 
 ## Questions à Manasse
 
@@ -138,19 +221,21 @@ relances), gelé par `transactions-art-59-bis.spec.ts`.
 |---|---|---|---|---|---|
 | 1 | 2026-10-15 | L2 | fait | le mode ne suit pas encore le report à-nouveau au détail | la modification au brouillard remplace les lignes · le mode devait être rendu au client pour ne pas s'effacer |
 | 3 | 2026-10-15 | L2 | fait | une ligne en devise ne se découpe pas d'elle-même (dit à l'écran) | le découpage en échéances passait une facture sous le seuil de l'art. 59 bis · la transaction se relit sur la pièce |
+| 36 | 2026-10-15 | L2 | fait | ni escompte ni écart sur un règlement en devise ou à parts désignées (refus nommés) ; l'écart en produit de Sage n'est pas repris (art. 252) | la part de taxe de l'escompte reste en attente sous l'encaissement, dite plutôt que régularisée |
 
 ## Pour features.csv
 
 - n° 1 → yes · modes de règlement (structure, tiers, modèles, saisie, règlement), avertissement de l'art. 59 bis.
 - n° 3 → yes · échéancier du modèle du tiers appliqué en saisie, fenêtre des échéances, échéancier appliqué d'office.
+- n° 36 → yes · escompte obtenu ou accordé au règlement, écart de règlement soldé en charge sous le seuil du dossier (jamais en produit).
 
 ## Commandes de vérification
 
 ```bash
 cd /home/user/wt-sage-l2
 npx tsc --noEmit && (cd client && npx tsc --noEmit)
-npx jest src/modules/reglements src/modules/tiers src/modules/comptabilite/brouillard.spec.ts --maxWorkers=1
-(cd client && npx vitest run src/lib/modes-reglement.spec.ts)
+npx jest src/modules/reglements src/modules/tiers src/modules/comptabilite/brouillard.spec.ts src/modules/comptes/comptes-proposes.spec.ts --maxWorkers=1
+(cd client && npx vitest run src/lib/modes-reglement.spec.ts src/lib/escompte-reglement.spec.ts src/lib/comptes-retenus-ecrans.spec.ts)
 # e2e · serveur sur 8302 (base l2_e2e), aperçu sur 4302
-(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts)
+(cd e2e && PW_CHROMIUM=/opt/pw-browsers/chromium OMEGAX_APP=http://localhost:4302 OMEGAX_API=http://localhost:4302/api npx playwright test tests/sage-l2-modes.e2e.ts tests/sage-l2-echeances.e2e.ts tests/sage-l2-escompte.e2e.ts)
 ```
