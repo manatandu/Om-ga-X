@@ -2533,6 +2533,7 @@ model ModeleReglement {
   echeances EcheanceReglement[]
 
   @@unique([tenantId, intitule])
+  @@index([modeReglementId])
   @@map("modeles_reglement")
 }
 
@@ -2556,6 +2557,7 @@ model EcheanceReglement {
   modeReglement     ModeReglement?    @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
 
   @@unique([modeleReglementId, ordre])
+  @@index([modeReglementId])
   @@map("echeances_reglement")
 }
 
@@ -2796,6 +2798,13 @@ model Tiers {
   // L'agrégation du groupe interroge les tiers PAR CELLULE · sans cet index
   // elle balaie toute la table des tiers de chaque dossier à chaque agrégat.
   @@index([celluleGroupeId])
+  // Le retrait d'un mode ou d'un modèle d'impression compte les tiers qui le
+  // portent, et la clé étrangère RESTRICT les relit · sans index, chacun
+  // balaie la table des tiers (ligne sage-l2, second tour, m8).
+  @@index([modeReglementId])
+  @@index([modeleImpressionExtraitId])
+  @@index([modeleImpressionReglementId])
+  @@index([modeleImpressionRappelId])
   @@map("tiers")
 }
 
@@ -10859,15 +10868,6 @@ enum NatureModeReglement {
   AUTRE
 }
 
-/// UN MODE DE RÈGLEMENT DU DOSSIER (ligne sage-l2, fonction 1 · Sage 100,
-/// P_REGLEMENT, trente modes au plus, chacun son intitulé, son mode de
-/// paiement et son code interbancaire). Structure du dossier, au journal
-/// d'audit · porté par la fiche du tiers, l'échéance d'un modèle de
-/// règlement, la ligne d'écriture et le règlement des tiers. Le code
-/// interbancaire est LIBRE · aucune nomenclature bancaire lue n'est
-/// applicable en RDC (décision D11 de la reproduction, normes françaises non
-/// reprises). Le journal proposé est un journal de trésorerie, choisi au
-/// règlement quand ce mode l'est.
 /// LIEU DE LIVRAISON D'UN CLIENT (ligne sage-l2, fonction 31 · Sage,
 /// F_LIVRAISON) · une adresse où le client reçoit ses marchandises, à côté
 /// de l'adresse de la fiche, qui reste celle des factures et des relances.
@@ -10932,6 +10932,15 @@ model ModeleImpressionTiers {
   @@map("modeles_impression_tiers")
 }
 
+/// UN MODE DE RÈGLEMENT DU DOSSIER (ligne sage-l2, fonction 1 · Sage 100,
+/// P_REGLEMENT, trente modes au plus, chacun son intitulé, son mode de
+/// paiement et son code interbancaire). Structure du dossier, au journal
+/// d'audit · porté par la fiche du tiers, l'échéance d'un modèle de
+/// règlement, la ligne d'écriture et le règlement des tiers. Le code
+/// interbancaire est LIBRE · aucune nomenclature bancaire lue n'est
+/// applicable en RDC (décision D11 de la reproduction, normes françaises non
+/// reprises). Le journal proposé est un journal de trésorerie, choisi au
+/// règlement quand ce mode l'est.
 model ModeReglement {
   id                String              @id @default(uuid())
   tenantId          String

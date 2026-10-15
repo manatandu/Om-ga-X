@@ -46,6 +46,16 @@ CREATE UNIQUE INDEX "modes_reglement_tenantId_intitule_key" ON "modes_reglement"
 -- CreateIndex
 CREATE INDEX "lignes_ecriture_modeReglementId_idx" ON "lignes_ecriture"("modeReglementId");
 
+-- CreateIndex · le retrait d'un mode compte ceux qui le portent, et la clé
+-- étrangère RESTRICT les relit (second tour de relecture, m8).
+CREATE INDEX "tiers_modeReglementId_idx" ON "tiers"("modeReglementId");
+
+-- CreateIndex
+CREATE INDEX "modeles_reglement_modeReglementId_idx" ON "modeles_reglement"("modeReglementId");
+
+-- CreateIndex
+CREATE INDEX "echeances_reglement_modeReglementId_idx" ON "echeances_reglement"("modeReglementId");
+
 -- AddForeignKey
 ALTER TABLE "lignes_ecriture" ADD CONSTRAINT "lignes_ecriture_modeReglementId_fkey" FOREIGN KEY ("modeReglementId") REFERENCES "modes_reglement"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

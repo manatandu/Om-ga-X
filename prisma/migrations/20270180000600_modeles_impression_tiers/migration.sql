@@ -28,6 +28,16 @@ CREATE TABLE "modeles_impression_tiers" (
 -- CreateIndex
 CREATE UNIQUE INDEX "modeles_impression_tiers_tenantId_nature_intitule_key" ON "modeles_impression_tiers"("tenantId", "nature", "intitule");
 
+-- CreateIndex · le retrait d'un modèle compte les tiers qui le portent, et la
+-- clé étrangère RESTRICT les relit (second tour de relecture, m8).
+CREATE INDEX "tiers_modeleImpressionExtraitId_idx" ON "tiers"("modeleImpressionExtraitId");
+
+-- CreateIndex
+CREATE INDEX "tiers_modeleImpressionReglementId_idx" ON "tiers"("modeleImpressionReglementId");
+
+-- CreateIndex
+CREATE INDEX "tiers_modeleImpressionRappelId_idx" ON "tiers"("modeleImpressionRappelId");
+
 -- AddForeignKey
 ALTER TABLE "tiers" ADD CONSTRAINT "tiers_modeleImpressionExtraitId_fkey" FOREIGN KEY ("modeleImpressionExtraitId") REFERENCES "modeles_impression_tiers"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
