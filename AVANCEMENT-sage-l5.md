@@ -182,17 +182,18 @@ salarié et paiement des salaires), 88 (ventilation analytique de la paie),
 
 - Rien des cinq fonctions. Les questions Q1 à Q3 restent à Manasse.
 
-## Bloc du § 3, passé au 2026-10-14 (après le commit `10d8f9c`)
+## Bloc du § 3, passé au 2026-10-15 (après le commit `4f85ef0`, relecture du premier tour)
 
 - Serveur · `npx tsc --noEmit` sans erreur ; `npx jest` en six tranches
-  (`--maxWorkers=1 --workerIdleMemoryLimit=800MB`) · 854 suites, 12 476
-  tests, tous verts (143/1 729, 143/2 009, 142/1 942, 142/2 532, 142/1 911,
-  142/2 353) ; `npm run build` sans erreur ; dérive des migrations nulle
-  (`prisma migrate diff --exit-code`).
+  (`--maxWorkers=1 --workerIdleMemoryLimit=800MB`) · 858 suites, 12 516
+  tests, tous verts (143/1 731, 143/2 013, 143/1 958, 143/2 547, 143/1 909,
+  143/2 358) ; `npm run build` sans erreur ; dérive des migrations nulle
+  (`prisma migrate diff --exit-code`, migration `20270175000700` comprise).
 - Client · `npx tsc --noEmit` sans erreur ; `npm test` · 259 fichiers,
   2 040 tests, tous verts ; `npm run build` sans erreur.
 - Navigateur (Chromium, montage local, base jetable) · les huit parcours
-  `sage-l5-*` verts, plus `ecrans`, `parcours` et `cloture` (sept tests).
+  `sage-l5-*` verts (congés, absences, arrêts et ventilation rejoués après la
+  relecture), plus `ecrans`, `parcours` et `cloture`.
 - 79 · le décompte final ne relit pas encore le compteur pour proposer les
   mois non couverts par un congé (saisis à la main, comme avant) ; un congé
   porté au bulletin et une indemnité compensatoire au décompte du même mois
