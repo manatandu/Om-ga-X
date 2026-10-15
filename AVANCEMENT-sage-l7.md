@@ -397,6 +397,11 @@ Coordinateur · aucun BLOQUANT ni MAJEUR, 14 MINEUR.
   (`garderLesPlusAnciens`, comme les impressions), et une suite qui ne
   prolonge plus la liste à la borne demandée est jetée ; jumeau dans les
   impressions différées (`poursuivreImpressions`).
+- **6 · une sélection rappelée visait un journal que le choix montrait
+  « Tous les journaux ».** Tant que les journaux ne sont pas lus, ou si
+  celui-là n'est plus au dossier, le choix porte son option
+  (`optionJournalHorsListe` · « Journal non lu », « Journal introuvable dans
+  ce dossier ») ; l'erreur de lecture des journaux tombe au succès.
 
 ## Reste
 - Premier tour de relecture « échecs silencieux » (coordinateur, 6 MAJEUR,

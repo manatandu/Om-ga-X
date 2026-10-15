@@ -60,6 +60,15 @@ describe('impressions différées · la relance suit la règle et meurt avec la 
     expect(rappel('recharger')).toMatch(/setPremiere\(l\)/);
   });
 
+  it('le journal rappelé hors de la liste a son option, et l’erreur des journaux tombe au succès (6)', () => {
+    expect(page).toMatch(/const journalHorsListe = optionJournalHorsListe\(journalId, journaux\);/);
+    expect(page).toMatch(/<option value="">Tous les journaux<\/option>\s*\{journalHorsListe && <option value=\{journalId\}>\{journalHorsListe\}<\/option>\}/);
+    // L'appel `.then(` entier, jusqu'à sa fermeture à quatre espaces.
+    const debut = page.indexOf("api.get<Journal[]>('/journaux').then(");
+    const lecture = page.slice(debut, page.indexOf('\n    );', debut));
+    expect(lecture).toMatch(/setJournaux\([\s\S]*setErreurJournaux\(null\)/);
+  });
+
   it('l’aide dit ce que la fermeture laisse faire, et ce qui attend la prochaine ouverture (2)', () => {
     expect(page).toContain('la production commencée se termine au serveur, et les demandes en attente reprennent à la prochaine ouverture');
   });

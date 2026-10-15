@@ -134,6 +134,19 @@ export function doitFaireProduire(premiere: ListeImpressions, suspendue: boolean
   return resteAProduire(premiere);
 }
 
+/**
+ * LE JOURNAL RAPPELÉ QUE LA LISTE NE MONTRE PAS (relecture des écrans, second
+ * tour, 6) · une sélection enregistrée vise un journal, et tant que les
+ * journaux ne sont pas lus (ou si celui-là n'est plus au dossier), le choix
+ * s'affichait « Tous les journaux » alors que la demande partirait pour lui
+ * seul. L'option dit ce qui est choisi.
+ */
+export function optionJournalHorsListe(journalId: string, journaux: ReadonlyArray<{ id: string }> | null): string | null {
+  if (!journalId) return null;
+  if (journaux === null) return 'Journal non lu';
+  return journaux.some((j) => j.id === journalId) ? null : 'Journal introuvable dans ce dossier';
+}
+
 /** Les critères que la demande envoie, selon le livre · rien d'autre ne part. */
 export function criteresDeLaDemande(
   nature: NatureImpression,

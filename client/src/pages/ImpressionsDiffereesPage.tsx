@@ -15,6 +15,7 @@ import {
   garderLesPlusAnciennes,
   libelleEtat,
   messageLicenceEchue,
+  optionJournalHorsListe,
   poursuivreImpressions,
   productionEnCours,
   resteAProduire,
@@ -192,10 +193,17 @@ export function ImpressionsDiffereesPage() {
   useEffect(() => {
     if (nature !== 'JOURNAL' || journaux !== null) return;
     api.get<Journal[]>('/journaux').then(
-      (j) => monte.current && setJournaux(j.filter((x) => x.type !== 'SITUATION')),
+      (j) => {
+        if (!monte.current) return;
+        setJournaux(j.filter((x) => x.type !== 'SITUATION'));
+        setErreurJournaux(null);
+      },
       (e) => monte.current && setErreurJournaux(messageOuDefaut(e, "La liste des journaux n'a pas pu être lue.")),
     );
   }, [nature, journaux]);
+
+  // Le journal d'une sélection rappelée que la liste ne montre pas (second tour, 6).
+  const journalHorsListe = optionJournalHorsListe(journalId, journaux);
 
   async function demander() {
     if (!exerciceCourant) return;
@@ -288,6 +296,7 @@ export function ImpressionsDiffereesPage() {
                   <span className="text-text-dim">Journal</span>
                   <select value={journalId} onChange={(e) => setJournalId(e.target.value)} className="border border-border px-2 py-[2px]">
                     <option value="">Tous les journaux</option>
+                    {journalHorsListe && <option value={journalId}>{journalHorsListe}</option>}
                     {(journaux ?? []).map((j) => (
                       <option key={j.id} value={j.id}>
                         {j.code} · {j.intitule}

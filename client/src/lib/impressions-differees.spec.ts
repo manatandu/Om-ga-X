@@ -4,6 +4,7 @@ import {
   garderLesPlusAnciennes,
   libelleEtat,
   messageLicenceEchue,
+  optionJournalHorsListe,
   poursuivreImpressions,
   productionEnCours,
   resteAProduire,
@@ -75,6 +76,13 @@ describe('impressions différées · ce que la fenêtre en dit', () => {
     // Un refus nommé suspend la relance jusqu'au prochain geste.
     expect(doitFaireProduire(attente, true)).toBe(false);
     expect(doitFaireProduire(liste([{ ...base, etat: 'PRETE' }]), false)).toBe(false);
+  });
+
+  it('le journal rappelé que la liste ne montre pas se dit, jamais « Tous les journaux » (second tour, 6)', () => {
+    expect(optionJournalHorsListe('', null)).toBeNull();
+    expect(optionJournalHorsListe('j1', null)).toBe('Journal non lu');
+    expect(optionJournalHorsListe('j1', [{ id: 'j2' }])).toBe('Journal introuvable dans ce dossier');
+    expect(optionJournalHorsListe('j1', [{ id: 'j1' }])).toBeNull();
   });
 
   it('les critères envoyés sont ceux du livre demandé, et eux seuls', () => {
