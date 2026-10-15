@@ -109,8 +109,11 @@ test('SYSCOHADA · RIB et mode du salarié à l’écran, salaires de décembre 
   expect(avant.confrontation422?.solde).toBeCloseTo(netK + netM, 2);
 
   // À l'écran · l'onglet Bulletins, décembre · le virement de KASONGO.
-  await page.goto('/#/personnel?onglet=bulletins');
+  // Recharger D'ABORD, puis aller par le seul fragment · recharger une
+  // fenêtre qui charge coupe ses requêtes, et WebKit les rend en exceptions
+  // (« due to access control checks », run 269 et run du 2026-10-15).
   await page.reload();
+  await page.goto('/#/personnel?onglet=bulletins');
   await page.getByLabel('Mois de paie').fill('2026-12');
   await expect(page.getByText('Paiement des salaires du mois')).toBeVisible();
   await page.getByRole('button', { name: 'Virement (1)', exact: true }).click();

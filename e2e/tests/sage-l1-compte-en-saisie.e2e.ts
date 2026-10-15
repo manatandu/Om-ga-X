@@ -38,6 +38,9 @@ test('SYSCOHADA · un numéro inconnu tapé en saisie s’ouvre en sous-compte d
   await expect(page.getByText(`Compte ${numero} inconnu du plan du dossier.`)).toHaveCount(0);
 
   await appelApi(page, 'PATCH', '/dossier/creation-compte-en-saisie', { creationCompteEnSaisie: true });
+  // La saisie peut encore lire le numéro tapé · recharger une fenêtre qui
+  // charge coupe ses requêtes, et WebKit les rend en exceptions (run 269).
+  await page.waitForLoadState('networkidle');
   await page.reload();
   await ouvrir();
   await compte.fill(numero);

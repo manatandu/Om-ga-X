@@ -142,8 +142,11 @@ test('SYCEBNL · répartition par salarié appliquée à la passation, version p
   expect(projDe(dec, 'P1') + projDe(dec, 'P2')).toBe(classe6(dec));
 
   // À l'écran · la colonne Analytique de la paie du mois.
-  await page.goto('/#/personnel?onglet=bulletins');
+  // Recharger D'ABORD, puis aller par le seul fragment · recharger une
+  // fenêtre qui charge coupe ses requêtes, et WebKit les rend en exceptions
+  // (« due to access control checks », run 269 et run du 2026-10-15).
   await page.reload();
+  await page.goto('/#/personnel?onglet=bulletins');
   await page.getByLabel('Mois de paie').fill('2026-12');
   await expect(page.getByText(/PROJ P1 · 468\s000,00/)).toBeVisible();
 

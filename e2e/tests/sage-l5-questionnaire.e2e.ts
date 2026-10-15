@@ -31,8 +31,11 @@ test('SYSCOHADA · le questionnaire écrit le dossier, le salarié, le contrat e
     classeProfessionnelle: 5,
   });
 
-  await page.goto('/#/personnel?onglet=simulation');
+  // Recharger D'ABORD, puis aller par le seul fragment · recharger une
+  // fenêtre qui charge coupe ses requêtes, et WebKit les rend en exceptions
+  // (« due to access control checks », run 269 et run du 2026-10-15).
   await page.reload();
+  await page.goto('/#/personnel?onglet=simulation');
   await expect(page.getByRole('button', { name: 'Questionnaire de paie…' })).toBeVisible();
   await page.getByLabel('Mois de paie').fill('2026-10');
   await page.getByLabel('Salarié (facultatif)').selectOption({ label: 'KASONGO Jean' });
