@@ -101,9 +101,18 @@ export function motifRefusIntituleModele(
   return pris ? `Le dossier a déjà un modèle « ${pris.intitule} » pour ce document.` : null;
 }
 
+/**
+ * TOUT CE QUI EST ENTRE ACCOLADES EST UN JETON (relecture « échecs silencieux »
+ * de la ligne sage-l2, m7) · la lecture s'arrêtait aux espaces, et
+ * « {montant total} » passait le contrôle pour s'imprimer tel quel sur la
+ * lettre du tiers. Un nom à espace, vide ou mal écrit est un jeton INCONNU,
+ * refusé en le nommant.
+ */
+const MOTIF_JETON = /\{([^{}]*)\}/g;
+
 /** Les jetons écrits dans un texte, dans l'ordre, doublons compris. */
 function jetonsDuTexte(texte: string): string[] {
-  return [...texte.matchAll(/\{([^{}\s]*)\}/g)].map((m) => m[1]);
+  return [...texte.matchAll(MOTIF_JETON)].map((m) => m[1]);
 }
 
 /**
@@ -181,7 +190,7 @@ export function cadreDuModele(
     entite: contexte.entite,
     date: jourImprime(contexte.jour),
   };
-  const remplacer = (morceau: string) => morceau.replace(/\{([^{}\s]*)\}/g, (brut, nom: string) => valeurs[nom] ?? brut);
+  const remplacer = (morceau: string) => morceau.replace(MOTIF_JETON, (brut, nom: string) => valeurs[nom] ?? brut);
   const position = modele.texte.indexOf(JETON_DOCUMENT);
   // Un modèle enregistré a passé `motifRefusTexteModele` · un texte sans le
   // jeton (base retouchée à la main) habille quand même, le document APRÈS

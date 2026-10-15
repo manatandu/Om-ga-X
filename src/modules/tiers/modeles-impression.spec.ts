@@ -52,6 +52,14 @@ describe('le texte d’un modèle', () => {
     for (const j of JETONS_MODELE_IMPRESSION) expect(motif).toContain(`{${j.jeton}}`);
   });
 
+  // RELECTURE « ÉCHECS SILENCIEUX », m7 · la lecture des jetons s'arrêtait aux
+  // espaces · « {montant total} » passait, puis s'imprimait tel quel.
+  it('refuse tout ce qui est entre accolades sans être un nom admis, espaces et vide compris', () => {
+    expect(motifRefusTexteModele('Solde {montant total}\n{document}')).toMatch(/Jeton inconnu : \{montant total\}/);
+    expect(motifRefusTexteModele('À { tiers }\n{document}')).toMatch(/Jeton inconnu : \{ tiers \}/);
+    expect(motifRefusTexteModele('Vide {}\n{document}')).toMatch(/Jeton inconnu : \{\}/);
+  });
+
   it('est exigé et borné', () => {
     expect(motifRefusTexteModele('   ')).toMatch(/obligatoire/);
     expect(motifRefusTexteModele(`{document}${'x'.repeat(LONGUEUR_TEXTE_MODELE)}`)).toMatch(/au plus/);
