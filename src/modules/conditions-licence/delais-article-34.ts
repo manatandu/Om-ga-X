@@ -18,6 +18,12 @@ import type { VersionPubliee } from './versions-publiees';
  * jour de la communication comme celui de l'entrée en vigueur hors du compte.
  * Une règle de protection ne se tranche pas contre celui qu'elle protège
  * (CLAUDE.md, P5) · l'autre lecture ne raccourcit jamais ce délai-ci.
+ *
+ * SANS APPELANT DE PRODUCTION, et nommé comme tel par
+ * `fichiers-sans-appelant.spec.ts` · tant qu'une seule version est publiée,
+ * seul `versions-publiees.spec.ts` le lit, pour refuser une seconde version
+ * qui ne respecterait pas ces délais. La bascule d'une version à la suivante
+ * l'appellera quand elle sera servie.
  */
 
 const UN_JOUR_MS = 24 * 3600 * 1000;
