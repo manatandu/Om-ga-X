@@ -292,7 +292,7 @@ describe('VirementsFondsService.creer', () => {
     // période close par défaut, la date fournie quand le test la donne.
     const premierJourOuvert = jest.fn(async () => new Date(`${opts.periodeClose?.premierJourOuvert ?? '2026-04-01'}T00:00:00.000Z`));
     return {
-      service: new VirementsFondsService(prisma as never, { creerPlusieursAvec } as never, { verifierEcritureAutorisee, premierJourOuvert } as never),
+      service: new VirementsFondsService(prisma as never, { creerPlusieursAvec, verifierCaisseProvisionnee: jest.fn() } as never, { verifierEcritureAutorisee, premierJourOuvert } as never),
       creerPlusieursAvec,
       verifierEcritureAutorisee,
     };

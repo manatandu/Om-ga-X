@@ -62,6 +62,7 @@ import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
 import { compteDeLaFamille, type FamilleTiers } from './familles-tiers';
 import { compteSemeSubdivise, estCompteDePassage, racineDuCompteSeme, racinesSousLeCompteSeme } from '../comptes/subdivisions-du-plan';
 import { comptesNonPersonnalises, motifComptesNonPersonnalises } from '../comptes/comptes-proposes';
+import { verifierCaisseProvisionnee, type LigneProposee, type PieceProposee } from './caisse-provisionnee';
 
 /**
  * Une ligne est au débit si son montant est porté du côté débit · quel que
@@ -750,6 +751,56 @@ export class EcritureService {
    * ne « saisit », et une clôture ne doit jamais tomber parce qu'un compte de
    * charge mouvementé dans l'exercice a été endormi depuis.
    */
+  /**
+   * UNE CAISSE NE PAIE QUE CE QU'ELLE CONTIENT (`caisse-provisionnee.ts`,
+   * fiche du compte 57 des deux plans). Appelée par le CONTRÔLEUR, comme le
+   * sommeil, et par les modules qui PAIENT (règlement des tiers, virement de
+   * fonds, paiement des salaires) avant leur première pièce · jamais par
+   * `creer`, que la clôture, le report et les annulations empruntent.
+   * Une saisie dans un journal de situation ne fait sortir aucun billet.
+   */
+  async verifierCaisseProvisionneeEnSaisie(
+    tenantId: string,
+    dto: { exerciceId: string; journalId: string; date: string; lignes: LigneProposee[] },
+  ) {
+    const journal = await this.prisma.journal.findFirst({ where: { id: dto.journalId, tenantId }, select: { type: true } });
+    if (!journal || estJournalDeSituation(journal)) return;
+    await verifierCaisseProvisionnee(this.prisma, tenantId, dto.exerciceId, [{ date: dto.date, lignes: dto.lignes }]);
+  }
+
+  /** La règle sur des pièces déjà composées par un module (virement de fonds, paie des salaires). */
+  async verifierCaisseProvisionnee(tenantId: string, exerciceId: string, pieces: PieceProposee[]) {
+    await verifierCaisseProvisionnee(this.prisma, tenantId, exerciceId, pieces);
+  }
+
+  /** La même règle à la modification d'un brouillard · ses lignes d'avant sortent, les nouvelles entrent. */
+  async verifierCaisseProvisionneeEnModification(
+    tenantId: string,
+    ecritureId: string,
+    dto: { date?: string; lignes?: LigneProposee[] },
+  ) {
+    const ecriture = await this.prisma.ecriture.findFirst({
+      where: { id: ecritureId, tenantId, ...HORS_SITUATION },
+      select: {
+        exerciceId: true,
+        date: true,
+        lignes: { select: { compteId: true, debit: true, credit: true, deviseId: true, montantDevise: true } },
+      },
+    });
+    // Absente ou en simulation · la modification dira elle-même son refus.
+    if (!ecriture) return;
+    const lignes =
+      dto.lignes ??
+      ecriture.lignes.map((l) => ({
+        compteId: l.compteId,
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+        deviseId: l.deviseId,
+        montantDevise: l.montantDevise === null ? null : Number(l.montantDevise),
+      }));
+    await verifierCaisseProvisionnee(this.prisma, tenantId, ecriture.exerciceId, [{ date: dto.date ?? ecriture.date, lignes }], ecritureId);
+  }
+
   async verifierComptesEnSommeil(
     tenantId: string,
     lignes: { compteId: string }[] | undefined,

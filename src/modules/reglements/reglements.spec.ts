@@ -171,7 +171,7 @@ function monter(
   const delettrer = jest.fn(async () => undefined);
   const service = new ReglementsService(
     prisma,
-    { creer, retirerCompensation } as unknown as EcritureService,
+    { creer, retirerCompensation, verifierCaisseProvisionneeEnSaisie: jest.fn() } as unknown as EcritureService,
     { lettrerManuel, delettrer, completer } as unknown as LettrageService,
     ordres as unknown as OrdresVirementService,
   );
@@ -448,7 +448,7 @@ function echeancier(
   const lettrerManuel = jest.fn(async () => ({ lettre: 'b' }));
   const service = new ReglementsService(
     prisma,
-    { creer, retirerCompensation: jest.fn() } as unknown as EcritureService,
+    { creer, retirerCompensation: jest.fn(), verifierCaisseProvisionneeEnSaisie: jest.fn() } as unknown as EcritureService,
     { lettrerManuel } as unknown as LettrageService,
     {} as unknown as OrdresVirementService,
   );

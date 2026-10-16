@@ -212,8 +212,10 @@ l'EXPORT PAR PÉRIODE de la balance et du grand livre, à l'écran et en Excel
 quatre conditions proposées et acceptées · solde de départ gardé, extrait
 dit, numéroté et daté, période dans un exercice ; et le même jour le
 JOURNAL EXPORTÉ COMME L'ÉDITION DE SAGE, choisi par Manasse sur aperçu
-(« Comme Sage »), une demande expresse valant levée du gel pour elle seule.
-Rien d'autre n'entre.
+(« Comme Sage »), une demande expresse valant levée du gel pour elle seule ;
+puis le même jour la CAISSE PROVISIONNÉE (« on ne peut pas payer un tiers par
+caisse pour un montant supérieur au solde de cette caisse »), demande
+expresse de même. Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
 qu'un autre ait réussi. Un push sur `main` en déclenche plusieurs à la fois,
@@ -3369,6 +3371,27 @@ quatre sous-comptes fermaient le 58500000 aux transferts du groupe SYCEBNL
 (`CompteVirementFonds`), sortent du 585 que lisent la clôture et le groupe (G1,
 `virements585DuGroupe`, `solde585`) · ils se soldent dans le dossier, ils ne
 lient pas le groupe.
+
+**Une caisse ne paie que ce qu'elle contient (2026-10-16, demande de
+Manasse).** Fiche du compte 57 des deux plans · « le solde du compte caisse
+ne doit être que débiteur ou nul […] un solde créditeur du compte caisse
+constitue une présomption d'irrégularité de la comptabilité »
+(`comptabilite/caisse-provisionnee.ts`). Une sortie qui rendrait un 57
+CRÉDITEUR est REFUSÉE à la saisie et à la modification (au CONTRÔLEUR, comme
+le sommeil), au règlement des tiers, au virement de fonds et au paiement des
+salaires, avant la première pièce ; la banque peut être négative (découvert,
+fiche du compte 52) et le 55, « débiteur ou nul » sans présomption, garde son
+avertissement. Solde JOUR PAR JOUR sur tout l'exercice, brouillard compris,
+simulation exclue, ouverture lue sur l'à-nouveau ou, sans lui, sur les
+exercices précédents non clôturés ; une sortie ANTIDATÉE qui ferait passer
+sous zéro une sortie postérieure est refusée ; la caisse jugée dans sa devise
+quand toutes ses lignes en portent une seule ; comparé en centimes. Un
+dossier dont la caisse est DÉJÀ créditrice n'est pas enfermé · seul ce qui
+l'enfonce est refusé, l'encaissement passe. Le message nomme la caisse, la
+date, ce qui manque, et trois issues (approvisionner par un virement de
+fonds, payer par la banque, dater après l'entrée). Non jugés, et c'est
+écrit · clôture, report, imports, annulations en négatif, exercices
+postérieurs, deux saisies concurrentes.
 
 **Nouvelle immobilisation (2026-09-28, relevé par Manasse).** (1) CONTREPARTIE EN
 LISTE FERMÉE (`immobilisations/contrepartie-acquisition.ts`, fiches 21 à 24) ·

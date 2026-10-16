@@ -62,7 +62,7 @@ function service(p: {
         }),
     },
   } as unknown as PrismaService;
-  return { svc: new PaiementSalairesService(prisma, {} as EcritureService, {} as OrdresVirementService), groupBy, prisma };
+  return { svc: new PaiementSalairesService(prisma, { verifierCaisseProvisionnee: jest.fn() } as unknown as EcritureService, {} as OrdresVirementService), groupBy, prisma };
 }
 
 describe('M4 · le 422 confronté à ce qui se propose sur des bulletins passés au journal', () => {
