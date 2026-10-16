@@ -49,6 +49,11 @@ test('SYSCOHADA · le plan comptable s’imprime sous un modèle du dossier, une
   // la fenêtre du plan comptable fermée d'abord, ses commandes portant les
   // mêmes noms.
   await page.getByRole('button', { name: 'Fermer Plan comptable' }).click();
+  // La fermeture joue son mouvement de sortie avant de retirer la fenêtre
+  // (`lib/fermeture-fenetre.ts`) · on attend que son bouton de la barre des
+  // fenêtres soit parti, sans quoi la navigation qui suit trouvait encore ses
+  // commandes à côté de celles du plan analytique.
+  await expect(page.getByRole('button', { name: 'Fermer Plan comptable' })).toHaveCount(0);
   await page.goto('/#/plans-analytiques');
   await expect(page.getByRole('combobox', { name: "Modèle d'édition" })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Imprimer la liste' })).toBeVisible();
