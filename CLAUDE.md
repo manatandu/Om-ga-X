@@ -3337,7 +3337,15 @@ trésorerie, destination D sa trésorerie / C 585 · le 585 revient à zéro à
 l'entrée. La fiche `VirementFonds` retient les deux (détenteurs). DEUX
 OPÉRATIONS, DEUX PIÈCES JUSTIFICATIVES (demande de Manasse du 2026-10-16) ·
 la SORTIE des fonds au journal d'origine, leur ENTRÉE au journal de
-destination, chacune sa nature (aucune par défaut), sa référence et sa date
+destination, chacune sa nature (aucune par défaut), PROPOSÉE PAR SA
+TRÉSORERIE (demande de Manasse du 2026-10-16, `naturesProposees`, pièces de
+trésorerie du CPCC) · bon de sortie ou d'entrée de caisse ; à la sortie d'une
+banque ordre de virement, chèque, avis de débit, extrait de compte ; à son
+entrée bordereau de versement ou de remise de chèque, avis de crédit, extrait
+de compte ; « Autre pièce » en dernier partout (AUDCIF art. 17 ne ferme pas
+la liste) ; une nature d'une autre trésorerie refusée au serveur, effacée à
+l'écran au changement de journal ; « Bon de caisse » et « Avis de débit ou de
+crédit » d'avant se lisent, ne se proposent plus · sa référence et sa date
 (AUDCIF art. 17, 3° et 5° ; art. 22, 7°), la même référence admise quand un
 seul document appuie les deux ; chaque écriture DATÉE PAR SA PIÈCE (art. 16,
 al. 2), l'entrée jamais avant la sortie, les deux dans l'exercice (fiche du

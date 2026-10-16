@@ -9,12 +9,15 @@ import { assurerComptesDePassage } from './comptes-de-passage';
 import {
   COMPTE_DU_PLAN_585,
   COMPTES_DE_PASSAGE,
+  LIBELLES_NATURE_PIECE,
+  NATURES_PROPOSEES,
   RACINES_TRESORERIE_EN_DEVISES,
   estAuCentime,
   estTresorerieEnDevises,
   estUnJour,
   lignesDuVirement,
   motifRefusVirement,
+  naturesProposees,
   sensDuVirement,
   type JournalDeTresorerie,
 } from './virement-fonds';
@@ -33,7 +36,7 @@ const DEMANDE = {
   montant: 500_000,
   objet: 'Alimentation de la caisse',
   sortie: { nature: 'CHEQUE', reference: 'CHQ 0042', date: '2026-03-14' },
-  entree: { nature: 'BON_CAISSE', reference: 'PC 118', date: '2026-03-14' },
+  entree: { nature: 'BON_ENTREE_CAISSE', reference: 'PC 118', date: '2026-03-14' },
   porteur: 'Kalala',
 };
 
@@ -120,7 +123,7 @@ describe('Les refus qui ne lisent rien', () => {
     const recue = (p: Record<string, unknown>) => p as never;
     expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: recue({ reference: 'CHQ 1', date: '2026-03-14' }) })).toBe('Choisissez la nature de la pièce de la sortie des fonds.');
     expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: recue({ nature: 'CHEQUE', reference: 42, date: '2026-03-14' }) })).toMatch(/^La référence de la pièce de la sortie des fonds est exigée/);
-    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: recue({ nature: 'BON_CAISSE', reference: 'BC 1' }) })).toBe("La date de la pièce de l'entrée des fonds se donne au jour (AAAA-MM-JJ).");
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: recue({ nature: 'BON_ENTREE_CAISSE', reference: 'BC 1' }) })).toBe("La date de la pièce de l'entrée des fonds se donne au jour (AAAA-MM-JJ).");
   });
 
   it('la porte ne juge que l’objet de chaque pièce · ses refus ne portent jamais le préfixe « sortie. »', async () => {
@@ -132,7 +135,7 @@ describe('Les refus qui ne lisent rien', () => {
       montant: 1000,
       objet: 'Alimentation',
       sortie: { reference: 'CHQ 1', date: '2026-03-14' },
-      entree: { nature: 'BON_CAISSE', reference: 'BC 1', date: '2026-03-14' },
+      entree: { nature: 'BON_ENTREE_CAISSE', reference: 'BC 1', date: '2026-03-14' },
     };
     // Nature absente · la porte laisse passer, la règle la refuse en la nommant.
     await expect(pipe.transform(corps, { type: 'body', metatype: CreerVirementDto })).resolves.toBeInstanceOf(CreerVirementDto);
@@ -148,8 +151,9 @@ describe('Les refus qui ne lisent rien', () => {
   });
   it('exige le porteur dès qu’une caisse est en jeu, jamais entre deux banques', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, porteur: '' })).toMatch(/porteur/);
-    expect(motifRefusVirement(d, o, { ...DEMANDE, porteur: undefined })).toMatch(/porteur/);
-    expect(motifRefusVirement(o, banque('bq2', '52120000'), { ...DEMANDE, porteur: undefined })).toBeNull();
+    const versLaBanque = { sortie: { ...DEMANDE.sortie, nature: 'BON_SORTIE_CAISSE' }, entree: { ...DEMANDE.entree, nature: 'AVIS_CREDIT' } };
+    expect(motifRefusVirement(d, o, { ...DEMANDE, ...versLaBanque, porteur: undefined })).toMatch(/porteur/);
+    expect(motifRefusVirement(o, banque('bq2', '52120000'), { ...DEMANDE, entree: versLaBanque.entree, porteur: undefined })).toBeNull();
   });
 });
 
@@ -302,7 +306,7 @@ describe('VirementsFondsService.creer', () => {
     journalOrigineId: 'ca',
     journalDestinationId: 'bq',
     montant: 1_200_000,
-    sortie: { nature: 'BON_CAISSE' as const, reference: ' BC-77 ', date: '2026-03-14' },
+    sortie: { nature: 'BON_SORTIE_CAISSE' as const, reference: ' BC-77 ', date: '2026-03-14' },
     entree: { nature: 'BORDEREAU_VERSEMENT' as const, reference: ' BV-118 ', date: '2026-03-16' },
     objet: 'Versement de la recette',
     porteur: 'Mbuyi',
@@ -329,12 +333,12 @@ describe('VirementsFondsService.creer', () => {
     const r = (await service.creer('t1', 'u1', dto as never)) as Record<string, unknown>;
     const [, , pieces] = creerPlusieursAvec.mock.calls[0] as unknown as [string, string, Array<{ date: string; reference: string; libelle: string }>];
     expect(pieces.map((p) => [p.date, p.reference])).toEqual([
-      ['2026-03-14', 'Bon de caisse BC-77'],
+      ['2026-03-14', 'Bon de sortie de caisse BC-77'],
       ['2026-03-16', 'Bordereau de versement BV-118'],
     ]);
     // Le sens et le compte de passage ne chargent plus le libellé.
     expect(pieces[0].libelle).toBe('Virement de fonds · Versement de la recette');
-    expect(r).toMatchObject({ naturePiece: 'BON_CAISSE', referencePiece: 'BC-77', naturePieceEntree: 'BORDEREAU_VERSEMENT', referencePieceEntree: 'BV-118' });
+    expect(r).toMatchObject({ naturePiece: 'BON_SORTIE_CAISSE', referencePiece: 'BC-77', naturePieceEntree: 'BORDEREAU_VERSEMENT', referencePieceEntree: 'BV-118' });
     expect([r.date, r.datePiece, r.datePieceEntree].map((d) => (d as Date).toISOString().slice(0, 10))).toEqual(['2026-03-14', '2026-03-14', '2026-03-16']);
   });
 
@@ -649,6 +653,54 @@ describe('Le centime se juge sans seuil (relecture M1)', () => {
     expect(estAuCentime(136_620_326.98)).toBe(true);
     expect(estAuCentime(999_999_999.99)).toBe(true);
     expect(estAuCentime(1000.555)).toBe(false);
-    expect(motifRefusVirement(banque('a', '52110000'), banque('b', '52120000'), { ...DEMANDE, montant: 136_620_326.98 })).toBeNull();
+    expect(
+      motifRefusVirement(banque('a', '52110000'), banque('b', '52120000'), { ...DEMANDE, entree: { ...DEMANDE.entree, nature: 'AVIS_CREDIT' }, montant: 136_620_326.98 }),
+    ).toBeNull();
+  });
+});
+
+describe('La pièce suit sa trésorerie (demande de Manasse du 2026-10-16)', () => {
+  // Les pièces de trésorerie du CPCC · la sortie se lit sur l'origine,
+  // l'entrée sur la destination ; « Autre pièce » reste offerte, en dernier.
+  const bq = banque('bq', '52110000');
+  const ca = banque('ca', '57110000');
+  const bq2 = banque('bq2', '52120000');
+  const piece = (nature: string) => ({ nature, reference: 'P 1', date: '2026-03-14' });
+
+  it('sortie d’une caisse · le bon de sortie ; entrée d’une caisse · le bon d’entrée', () => {
+    expect(naturesProposees(SensVirementFonds.CAISSE_BANQUE, 'SORTIE')).toEqual(['BON_SORTIE_CAISSE', 'AUTRE']);
+    expect(naturesProposees(SensVirementFonds.BANQUE_CAISSE, 'ENTREE')).toEqual(['BON_ENTREE_CAISSE', 'AUTRE']);
+  });
+
+  it('sortie d’une banque · ordre, chèque, avis de débit, extrait ; entrée · bordereaux, avis de crédit, extrait', () => {
+    expect(naturesProposees(SensVirementFonds.BANQUE_CAISSE, 'SORTIE')).toEqual(['ORDRE_VIREMENT', 'CHEQUE', 'AVIS_DEBIT', 'EXTRAIT_COMPTE', 'AUTRE']);
+    expect(naturesProposees(SensVirementFonds.CAISSE_BANQUE, 'ENTREE')).toEqual([
+      'BORDEREAU_VERSEMENT',
+      'BORDEREAU_REMISE_CHEQUE',
+      'AVIS_CREDIT',
+      'EXTRAIT_COMPTE',
+      'AUTRE',
+    ]);
+    for (const parOperation of Object.values(NATURES_PROPOSEES)) for (const liste of Object.values(parOperation)) expect(liste[liste.length - 1]).toBe('AUTRE');
+  });
+
+  it('un bon de caisse sur une banque, un avis sur une caisse, se refusent en nommant les pièces admises', () => {
+    expect(motifRefusVirement(bq, ca, { ...DEMANDE, sortie: piece('BON_SORTIE_CAISSE') })).toBe(
+      "La pièce de la sortie des fonds d'une banque se choisit parmi · Ordre de virement, Chèque, Avis de débit, Extrait de compte, Autre pièce.",
+    );
+    expect(motifRefusVirement(bq, ca, { ...DEMANDE, entree: piece('AVIS_CREDIT') })).toBe(
+      "La pièce de l'entrée des fonds d'une caisse se choisit parmi · Bon d'entrée de caisse, Autre pièce.",
+    );
+    expect(motifRefusVirement(ca, bq, { ...DEMANDE, sortie: piece('CHEQUE'), entree: piece('AVIS_CREDIT') })).toMatch(/sortie des fonds d'une caisse/);
+    expect(motifRefusVirement(bq, bq2, { ...DEMANDE, entree: piece('BON_ENTREE_CAISSE') })).toMatch(/entrée des fonds d'une banque/);
+    expect(motifRefusVirement(bq, bq2, { ...DEMANDE, entree: piece('AUTRE') })).toBeNull();
+  });
+
+  it('les natures d’avant se lisent sur les virements passés, mais ne se proposent plus', () => {
+    for (const ancienne of ['BON_CAISSE', 'AVIS_DEBIT_CREDIT'] as const) {
+      expect(LIBELLES_NATURE_PIECE[ancienne]).toBeTruthy();
+      expect(motifRefusVirement(bq, ca, { ...DEMANDE, sortie: piece(ancienne) })).toMatch(/se choisit parmi/);
+      expect(motifRefusVirement(bq, ca, { ...DEMANDE, entree: piece(ancienne) })).toMatch(/se choisit parmi/);
+    }
   });
 });

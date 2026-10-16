@@ -11,8 +11,8 @@ import { PortailModale } from '../components/PortailModale';
 import {
   LIBELLES_NATURE_PIECE,
   LIBELLES_OPERATION,
-  NATURES_PIECE,
   caisseEnJeu,
+  naturesDeLaPiece,
   sensDuVirement,
   type NaturePieceVirement,
   type OperationVirementFonds,
@@ -398,6 +398,10 @@ export function VirementsFondsPage() {
     const p = pieces[o];
     const sortie = o === 'SORTIE';
     const titre = majuscule(LIBELLES_OPERATION[o]);
+    // Les pièces proposées sont celles de la trésorerie de ce côté · la sortie
+    // se lit sur l'origine, l'entrée sur la destination.
+    const journalDuCote = sortie ? origine : destination;
+    const proposees = naturesDeLaPiece(journalDuCote?.compteTresorerie?.numero ?? null, o);
     return (
       <fieldset className="border border-border p-2 flex flex-wrap items-end gap-3 min-w-0">
         <legend className="px-1 font-semibold">{titre}</legend>
@@ -405,7 +409,15 @@ export function VirementsFondsPage() {
           <span className="text-text-dim">{sortie ? 'De (banque ou caisse)' : 'Vers (banque ou caisse)'}</span>
           <select
             value={sortie ? origineId : destinationId}
-            onChange={(e) => (sortie ? setOrigineId : setDestinationId)(e.target.value)}
+            onChange={(e) => {
+              const id = e.target.value;
+              (sortie ? setOrigineId : setDestinationId)(id);
+              // La pièce suit la trésorerie de son côté · une nature qui n'est
+              // plus proposée (bon de caisse passé sur une banque) s'efface,
+              // sans quoi elle partait au serveur, qui la refuse.
+              const numero = journaux.find((j) => j.id === id)?.compteTresorerie?.numero ?? null;
+              if (p.nature && !naturesDeLaPiece(numero, o).includes(p.nature)) modifierPiece(o, { nature: '' });
+            }}
             className="border border-border px-2 py-[3px] bg-surface"
           >
             <option value="">Choisir…</option>
@@ -418,10 +430,11 @@ export function VirementsFondsPage() {
             required
             value={p.nature}
             onChange={(e) => modifierPiece(o, { nature: e.target.value as NaturePieceVirement | '' })}
+            disabled={proposees.length === 0}
             className="border border-border px-2 py-[3px] bg-surface"
           >
-            <option value="">Choisir…</option>
-            {NATURES_PIECE.map((n) => (
+            <option value="">{proposees.length === 0 ? "Choisissez d'abord la banque ou la caisse" : 'Choisir…'}</option>
+            {proposees.map((n) => (
               <option key={n} value={n}>
                 {LIBELLES_NATURE_PIECE[n]}
               </option>
