@@ -133,11 +133,31 @@ export interface JournalDeTresorerie {
   compteTresorerie: { id: string; numero: string; intitule: string } | null;
 }
 
+/**
+ * La pièce d'une opération TELLE QUE REÇUE · jugée ici, où le refus nomme
+ * l'opération ; la porte n'en vérifie que l'objet, un champ peut manquer ou
+ * ne pas être un texte.
+ */
 export interface PieceOperation {
+  nature: string;
   reference: string;
   /** Le jour, AAAA-MM-JJ. */
   date: string;
 }
+
+const JOUR = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * LE JOUR, ET UN JOUR QUI EXISTE · « 2026-02-30 » avait la forme et tombait
+ * en 500 à l'écriture ; une heure ou une semaine ISO n'est pas un jour.
+ */
+export function estUnJour(texte: string): boolean {
+  if (!JOUR.test(texte)) return false;
+  const d = new Date(`${texte}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === texte;
+}
+
+const NATURES_ADMISES: readonly string[] = Object.values(NaturePieceVirement);
 
 export interface DemandeVirement {
   montant: number;
@@ -174,13 +194,18 @@ export function motifRefusVirement(
   if (!Number.isFinite(demande.montant) || demande.montant <= 0) return 'Le montant du virement doit être positif.';
   if (!estAuCentime(demande.montant)) return 'Le montant se saisit au centime près.';
   if (!demande.objet.trim()) return "L'objet du virement est exigé · il dit pourquoi les fonds changent de place.";
+  // LES REFUS DE LA PIÈCE SE DISENT ICI, l'opération nommée · posés au DTO
+  // imbriqué, la validation les rendait préfixés « sortie. » ou « entree. ».
   for (const [piece, operation] of [
-    [demande.sortie, 'de la sortie'],
-    [demande.entree, "de l'entrée"],
+    [demande.sortie, OperationVirementFonds.SORTIE],
+    [demande.entree, OperationVirementFonds.ENTREE],
   ] as const) {
-    if (!piece.reference.trim()) {
-      return `La référence de la pièce ${operation} est exigée · chaque écriture porte les références de la pièce qui l’appuie (AUDCIF art. 17, 5°).`;
+    if (typeof piece.nature !== 'string' || !NATURES_ADMISES.includes(piece.nature)) return `Choisissez la nature de la pièce ${deLOperation(operation)}.`;
+    if (typeof piece.reference !== 'string' || !piece.reference.trim()) {
+      return `La référence de la pièce ${deLOperation(operation)} est exigée · chaque écriture porte les références de la pièce qui l’appuie (AUDCIF art. 17, 5°).`;
     }
+    if (piece.reference.trim().length > 100) return `La référence de la pièce ${deLOperation(operation)} se saisit en 100 caractères au plus.`;
+    if (typeof piece.date !== 'string' || !estUnJour(piece.date)) return `La date de la pièce ${deLOperation(operation)} se donne au jour (AAAA-MM-JJ).`;
   }
   // Le jour s'écrit AAAA-MM-JJ · l'ordre des chaînes est celui des dates.
   if (demande.entree.date < demande.sortie.date) {

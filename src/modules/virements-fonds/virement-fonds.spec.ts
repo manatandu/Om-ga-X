@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ValidationPipe } from '@nestjs/common';
 import { Prisma, SensVirementFonds, StatutEcriture, StatutExercice } from '@prisma/client';
 import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
 import { PLAN_COMPTES_SYCEBNL } from '../comptes/compte-seed';
@@ -12,11 +12,13 @@ import {
   RACINES_TRESORERIE_EN_DEVISES,
   estAuCentime,
   estTresorerieEnDevises,
+  estUnJour,
   lignesDuVirement,
   motifRefusVirement,
   sensDuVirement,
   type JournalDeTresorerie,
 } from './virement-fonds';
+import { CreerVirementDto } from './virements-fonds.dto';
 import { VirementsFondsService } from './virements-fonds.service';
 
 const banque = (id: string, numero: string, extra: Partial<JournalDeTresorerie> = {}): JournalDeTresorerie => ({
@@ -30,8 +32,8 @@ const banque = (id: string, numero: string, extra: Partial<JournalDeTresorerie> 
 const DEMANDE = {
   montant: 500_000,
   objet: 'Alimentation de la caisse',
-  sortie: { reference: 'CHQ 0042', date: '2026-03-14' },
-  entree: { reference: 'PC 118', date: '2026-03-14' },
+  sortie: { nature: 'CHEQUE', reference: 'CHQ 0042', date: '2026-03-14' },
+  entree: { nature: 'BON_CAISSE', reference: 'PC 118', date: '2026-03-14' },
   porteur: 'Kalala',
 };
 
@@ -95,7 +97,47 @@ describe('Les refus qui ne lisent rien', () => {
   it('exige l’objet et la référence de la pièce de CHAQUE opération (AUDCIF art. 17, 5°)', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, objet: '  ' })).toMatch(/objet/);
     expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: { ...DEMANDE.sortie, reference: '' } })).toMatch(/pièce de la sortie.*art\. 17, 5°/);
-    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, reference: ' ' } })).toMatch(/pièce de l'entrée.*art\. 17, 5°/);
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, reference: ' ' } })).toMatch(/pièce de l'entrée des fonds.*art\. 17, 5°/);
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, reference: 'x'.repeat(101) } })).toBe(
+      "La référence de la pièce de l'entrée des fonds se saisit en 100 caractères au plus.",
+    );
+  });
+
+  it('la nature et le jour de chaque pièce se jugent ici, l’opération nommée (jamais un préfixe « sortie. »)', () => {
+    const [o, d] = [banque('bq', '52110000'), banque('ca', '57110000')];
+    for (const nature of ['', 'VIREMENT', 'cheque']) {
+      expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: { ...DEMANDE.sortie, nature } })).toBe('Choisissez la nature de la pièce de la sortie des fonds.');
+    }
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, nature: '' } })).toBe("Choisissez la nature de la pièce de l'entrée des fonds.");
+    for (const date of ['2026', '2026-03', '2026-W11', '2026-03-15T10:00', '2026-02-30', '2026-13-01']) {
+      expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, date } })).toBe(
+        "La date de la pièce de l'entrée des fonds se donne au jour (AAAA-MM-JJ).",
+      );
+    }
+    expect(estUnJour('2028-02-29')).toBe(true);
+    expect(estUnJour('2026-02-29')).toBe(false);
+    // Un champ absent, ou qui n'est pas un texte, se refuse nommé, jamais en 500.
+    const recue = (p: Record<string, unknown>) => p as never;
+    expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: recue({ reference: 'CHQ 1', date: '2026-03-14' }) })).toBe('Choisissez la nature de la pièce de la sortie des fonds.');
+    expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: recue({ nature: 'CHEQUE', reference: 42, date: '2026-03-14' }) })).toMatch(/^La référence de la pièce de la sortie des fonds est exigée/);
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: recue({ nature: 'BON_CAISSE', reference: 'BC 1' }) })).toBe("La date de la pièce de l'entrée des fonds se donne au jour (AAAA-MM-JJ).");
+  });
+
+  it('la porte ne juge que l’objet de chaque pièce · ses refus ne portent jamais le préfixe « sortie. »', async () => {
+    const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+    const corps = {
+      exerciceId: '7f3c3e9e-2b8a-4d2a-9c41-1f1f8e6f0a11',
+      journalOrigineId: '7f3c3e9e-2b8a-4d2a-9c41-1f1f8e6f0a12',
+      journalDestinationId: '7f3c3e9e-2b8a-4d2a-9c41-1f1f8e6f0a13',
+      montant: 1000,
+      objet: 'Alimentation',
+      sortie: { reference: 'CHQ 1', date: '2026-03-14' },
+      entree: { nature: 'BON_CAISSE', reference: 'BC 1', date: '2026-03-14' },
+    };
+    // Nature absente · la porte laisse passer, la règle la refuse en la nommant.
+    await expect(pipe.transform(corps, { type: 'body', metatype: CreerVirementDto })).resolves.toBeInstanceOf(CreerVirementDto);
+    const refus = await pipe.transform({ ...corps, entree: 'BC 1' }, { type: 'body', metatype: CreerVirementDto }).catch((e: BadRequestException) => e.getResponse());
+    expect(refus).toMatchObject({ message: ["La pièce de l'entrée des fonds se donne avec sa nature, sa référence et sa date."] });
   });
   it('l’entrée suit la sortie, le même jour ou après, jamais avant (AUDCIF art. 16, al. 2)', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, date: '2026-03-16' } })).toBeNull();
@@ -271,7 +313,11 @@ describe('VirementsFondsService.creer', () => {
   it('refuse AVANT toute pièce une opération datée hors de l’exercice · le 585 se solde à la fin de l’exercice', async () => {
     const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
     await expect(service.creer('t1', 'u1', { ...dto, sortie: { ...dto.sortie, date: '2026-12-31' }, entree: { ...dto.entree, date: '2027-01-02' } } as never)).rejects.toThrow(
-      /La date de l'entrée des fonds \(02\/01\/2027\) tombe hors de l'exercice.*compte 58/,
+      /La date de l'entrée des fonds \(02\/01\/2027\) tombe hors de l'exercice.*compte 58\)\. Une entrée qui tombe sur l'exercice suivant se passe à la main\.$/,
+    );
+    // La phrase sur l'entrée ne se dit qu'à elle · une sortie d'avant l'exercice n'en a que faire.
+    await expect(service.creer('t1', 'u1', { ...dto, sortie: { ...dto.sortie, date: '2025-12-31' } } as never)).rejects.toThrow(
+      /^La date de la sortie des fonds \(31\/12\/2025\) tombe hors de l'exercice · le compte de passage se solde à la fin de l'exercice \(fiche du compte 58\)\.$/,
     );
     expect(creerPlusieursAvec).not.toHaveBeenCalled();
   });

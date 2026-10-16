@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { OperationVirementFonds, Prisma, SensVirementFonds, StatutEcriture, StatutExercice, TypeJournal } from '@prisma/client';
+import { NaturePieceVirement, OperationVirementFonds, Prisma, SensVirementFonds, StatutEcriture, StatutExercice, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
@@ -94,9 +94,17 @@ export class VirementsFondsService {
     const lus = await this.journaux(tenantId, [dto.journalOrigineId, dto.journalDestinationId]);
     const origine = lus.find((j) => j.id === dto.journalOrigineId) ?? null;
     const destination = lus.find((j) => j.id === dto.journalDestinationId) ?? null;
-    // UNE DATE, LE JOUR SEUL · le même pour l'écriture, la pièce et la fiche.
-    const sortie = { ...dto.sortie, reference: dto.sortie.reference.trim(), date: dto.sortie.date.slice(0, 10) };
-    const entree = { ...dto.entree, reference: dto.entree.reference.trim(), date: dto.entree.date.slice(0, 10) };
+    // LE JOUR TEL QUE REÇU · `motifRefusVirement` refuse ce qui n'est pas un
+    // jour (« 2026-03-15T10:00 » ne se tronque pas en silence).
+    // Les trois champs SEULS, la référence rognée quand c'est un texte · un
+    // champ absent ou d'un autre type est refusé, nommé, par la règle.
+    const lue = (p: CreerVirementDto['sortie']) => ({
+      nature: p.nature,
+      reference: typeof p.reference === 'string' ? p.reference.trim() : p.reference,
+      date: p.date,
+    });
+    const sortie = lue(dto.sortie);
+    const entree = lue(dto.entree);
     const motif = motifRefusVirement(origine, destination, {
       montant: dto.montant,
       objet: dto.objet,
@@ -105,6 +113,8 @@ export class VirementsFondsService {
       porteur: dto.porteur,
     });
     if (motif) throw new BadRequestException(motif);
+    // Nature jugée par `motifRefusVirement` · admise, elle est une des valeurs du schéma.
+    const natureDe = (p: typeof sortie) => p.nature as NaturePieceVirement;
     // LES DEUX OPÉRATIONS DANS L'EXERCICE · le compte de passage attend
     // l'entrée entre les deux dates, et il est « soldé à la fin de
     // l'exercice » (fiche du compte 58 des deux plans). Une entrée sur
@@ -122,8 +132,8 @@ export class VirementsFondsService {
       if (piece.date < debut || piece.date > fin) {
         throw new BadRequestException(
           `La date ${deLOperation(operation)} (${piece.date.split('-').reverse().join('/')}) tombe hors de l'exercice · ` +
-            "le compte de passage se solde à la fin de l'exercice (fiche du compte 58). " +
-            "Une entrée qui tombe sur l'exercice suivant se passe à la main.",
+            "le compte de passage se solde à la fin de l'exercice (fiche du compte 58)." +
+            (operation === OperationVirementFonds.ENTREE && piece.date > fin ? " Une entrée qui tombe sur l'exercice suivant se passe à la main." : ''),
         );
       }
     }
@@ -175,7 +185,7 @@ export class VirementsFondsService {
       })
     )[sens];
     // CHAQUE ÉCRITURE PORTE LA RÉFÉRENCE DE SA PIÈCE (AUDCIF art. 17, 5°).
-    const reference = (p: typeof sortie) => `${LIBELLES_NATURE_PIECE[p.nature]} ${p.reference}`.slice(0, 190);
+    const reference = (p: typeof sortie) => `${LIBELLES_NATURE_PIECE[natureDe(p)]} ${p.reference}`.slice(0, 190);
     const libelle = `Virement de fonds · ${dto.objet.trim()}`.slice(0, 190);
     const lignes = lignesDuVirement({
       compteOrigineId: origine!.compteTresorerie!.id,
@@ -208,10 +218,10 @@ export class VirementsFondsService {
             sens,
             journalOrigineId: origine!.id,
             journalDestinationId: destination!.id,
-            naturePiece: sortie.nature,
+            naturePiece: natureDe(sortie),
             referencePiece: sortie.reference,
             datePiece: new Date(`${sortie.date}T00:00:00.000Z`),
-            naturePieceEntree: entree.nature,
+            naturePieceEntree: natureDe(entree),
             referencePieceEntree: entree.reference,
             datePieceEntree: new Date(`${entree.date}T00:00:00.000Z`),
             objet: dto.objet.trim(),

@@ -1,29 +1,25 @@
-import { NaturePieceVirement } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsDefined, IsEnum, IsNumber, IsString, IsUUID, Length, Matches, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsDefined, IsNumber, IsObject, IsString, IsUUID, Length, MaxLength, Min } from 'class-validator';
 import { FacultatifNonNul } from '../../common/facultatif-non-nul';
-
-const JOUR = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * LA PIÈCE D'UNE OPÉRATION · la sortie des fonds ou leur entrée. Sa date est
  * celle de l'écriture qu'elle appuie · « celle de l'émission par l'entité de
  * la pièce justificative de l'opération, ou celle de la réception des pièces
  * d'origine externe » (AUDCIF art. 16, al. 2).
+ *
+ * RIEN NE S'Y JUGE CHAMP PAR CHAMP · nature, référence et date se jugent dans
+ * `motifRefusVirement`, qui nomme l'opération ; validés ici en objet imbriqué,
+ * leurs refus sortaient préfixés « sortie. » (« sortie.Choisissez la nature
+ * … », « sortie.reference must be a string »). La forme reste typée pour le
+ * code ; la porte ne vérifie que l'objet. AUCUNE NATURE PAR DÉFAUT · « Ordre de virement » présélectionné se
+ * retrouvait sur la pièce d'une caisse. LE JOUR, RIEN DE PLUS · @IsDateString
+ * admettait « 2026 », « 2026-03 », une semaine ISO (rendue en 500 par Prisma)
+ * ou une heure à décalage (`estUnJour`).
  */
 export class PieceOperationDto {
-  // AUCUNE NATURE PAR DÉFAUT · « Ordre de virement » présélectionné se
-  // retrouvait sur la pièce d'une caisse.
-  @IsEnum(NaturePieceVirement, { message: 'Choisissez la nature de la pièce justificative.' })
-  nature!: NaturePieceVirement;
-
-  @IsString()
-  @Length(1, 100, { message: 'La référence de la pièce se saisit en 100 caractères au plus.' })
+  nature!: string;
   reference!: string;
-
-  // LE JOUR, RIEN DE PLUS · @IsDateString admettait « 2026 », « 2026-03 »,
-  // une semaine ISO (rendue en 500 par Prisma) ou une heure à décalage.
-  @Matches(JOUR, { message: 'La date de la pièce se donne au jour (AAAA-MM-JJ).' })
   date!: string;
 }
 
@@ -46,13 +42,13 @@ export class CreerVirementDto {
 
   /** La pièce de la SORTIE · elle appuie et date l'écriture du journal d'origine. */
   @IsDefined({ message: 'La pièce de la sortie des fonds est exigée.' })
-  @ValidateNested()
+  @IsObject({ message: 'La pièce de la sortie des fonds se donne avec sa nature, sa référence et sa date.' })
   @Type(() => PieceOperationDto)
   sortie!: PieceOperationDto;
 
   /** La pièce de l'ENTRÉE · elle appuie et date l'écriture du journal de destination. */
   @IsDefined({ message: "La pièce de l'entrée des fonds est exigée." })
-  @ValidateNested()
+  @IsObject({ message: "La pièce de l'entrée des fonds se donne avec sa nature, sa référence et sa date." })
   @Type(() => PieceOperationDto)
   entree!: PieceOperationDto;
 
