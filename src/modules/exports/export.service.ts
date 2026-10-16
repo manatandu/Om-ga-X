@@ -867,6 +867,19 @@ export class ExportService {
     const sortie = ouvrir(`journal${await this.suffixeExercice(tenantId, filtres.exerciceId)}.xlsx`);
     const edition = ouvrirJournalEdition({ sortie, identite, formatJour, selection: criteresEnClair(filtres) });
 
+    // LES COLLECTIFS QUI PORTENT DES COMPTES INDIVIDUELS, lus une fois et
+    // bornés au dossier · un décompte par compte, demandé à chaque tranche,
+    // balayait la table des comptes de tous les cabinets (relecture
+    // TypeScript, M1 ; § 8 bis).
+    const collectifsPorteurs = new Set(
+      (
+        await this.prisma.compte.groupBy({
+          by: ['collectifId'],
+          where: { tenantId, collectifId: { not: null } },
+        })
+      ).map((g) => g.collectifId as string),
+    );
+
     let nbLignes = 0;
     // CE QUE LA FEUILLE JOURNAL A LU, ÉCRITURE PAR ÉCRITURE ET DANS L'ORDRE ·
     // la piste, relue ensuite, doit retrouver chacune à sa place sous la même
@@ -882,9 +895,9 @@ export class ExportService {
           include: {
             compte: {
               select: {
+                id: true,
                 numero: true,
                 tiersCompte: { select: { tiers: { select: { code: true } } } },
-                _count: { select: { individuels: true } },
               },
             },
           },
@@ -899,7 +912,7 @@ export class ExportService {
               jour: e.date,
               numeroPiece: e.numeroPiece,
               compte: l.compte.numero,
-              tiers: tiersDeLaLigne(l.compte),
+              tiers: tiersDeLaLigne(l.compte, collectifsPorteurs.has(l.compte.id)),
               libelle: libelleDeLaLigne(l, e),
               debit: Number(l.debit),
               credit: Number(l.credit),

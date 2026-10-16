@@ -81,12 +81,12 @@ const ecriture = (i: number, journal: Journal = ACHATS) => ({
   correction: null as { numeroPiece: number } | null,
   corrigeEcriture: null as { numeroPiece: number } | null,
   lignes: [
-    { debit: 100, credit: 0, libelle: 'débit', compte: { numero: '60410000', tiersCompte: null, _count: { individuels: 0 } } },
+    { debit: 100, credit: 0, libelle: 'débit', compte: { id: 'c-60410000', numero: '60410000', tiersCompte: null as { tiers: { code: string } } | null } },
     {
       debit: 0,
       credit: 100,
       libelle: 'crédit',
-      compte: { numero: '40110001', tiersCompte: { tiers: { code: 'F-KINPAP' } }, _count: { individuels: 0 } },
+      compte: { id: 'c-40110001', numero: '40110001', tiersCompte: { tiers: { code: 'F-KINPAP' } } as { tiers: { code: string } } | null },
     },
   ],
   // Le nombre de lignes que la base compterait · la piste le relit pour
@@ -137,7 +137,7 @@ function correspond(e: Record<string, unknown>, where: Record<string, unknown> |
  * avoir disparu (M6). Décomptes et blocs se lisent sur les écritures du
  * départ, comme la base les compterait avant le premier octet.
  */
-function service(depart: number | Ecriture[], journaux: Journal[] = [ACHATS]) {
+function service(depart: number | Ecriture[], journaux: Journal[] = [ACHATS], collectifs: string[] = []) {
   const toutes: Ecriture[] = typeof depart === 'number' ? Array.from({ length: depart }, (_, i) => ecriture(i + 1)) : depart;
   const findMany = jest.fn(async ({ take, cursor, where }: { take: number; cursor?: unknown; where?: Record<string, unknown> }) => {
     if (cursor) throw new Error('Le journal exporté ne pagine plus par le curseur de Prisma (relecture M6).');
@@ -170,6 +170,13 @@ function service(depart: number | Ecriture[], journaux: Journal[] = [ACHATS]) {
       findFirst: jest.fn(async ({ where }: { where: { id: string } }) => journaux.find((j) => j.id === where.id) ?? null),
     },
     user: { findMany: jest.fn().mockResolvedValue([{ id: 'u-1', email: 'comptable@vmg.cd' }]) },
+    // Les collectifs qui portent des individuels · la doublure HONORE le
+    // dossier de la requête, un autre dossier n'en voit aucun.
+    compte: {
+      groupBy: jest.fn(async ({ where }: { where: { tenantId: string } }) =>
+        where.tenantId === 't1' ? collectifs.map((collectifId) => ({ collectifId })) : [],
+      ),
+    },
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ nom: 'Dossier', numeroImpot: 'A1', devise: 'CDF' }) },
     exercice: { findFirst: jest.fn().mockResolvedValue(EXERCICE), findUnique: jest.fn().mockResolvedValue(EXERCICE) },
   };
@@ -177,7 +184,7 @@ function service(depart: number | Ecriture[], journaux: Journal[] = [ACHATS]) {
     prisma as unknown as PrismaService,
     {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
   );
-  return { svc, findMany, toutes };
+  return { svc, findMany, toutes, prisma };
 }
 
 /** Recueille le classeur en flux dans un tampon. */
@@ -459,9 +466,28 @@ describe('Journal exporté en flux', () => {
     // Le collectif reste rattaché au tiers qui l'a reçu le premier (point 13)
     // · une ligne passée au collectif ne se lit pas comme la sienne.
     const e = ecriture(1);
-    e.lignes[1].compte = { numero: '40110000', tiersCompte: { tiers: { code: 'F-PREMIER' } }, _count: { individuels: 3 } };
+    e.lignes[1].compte = { id: 'c-40110000', numero: '40110000', tiersCompte: { tiers: { code: 'F-PREMIER' } } };
     const { feuille } = await exporter([e]);
     expect(feuille.getRow(DONNEES + 1).getCell(TIERS).value ?? null).toBeNull();
+  });
+
+  it('un collectif ouvert par le cabinet se reconnaît à ses individuels, lus une fois et bornés au dossier (relecture TypeScript, M1)', async () => {
+    // Hors des collectifs semés · seul le lien des comptes individuels le dit.
+    const e = ecriture(1);
+    e.lignes[1].compte = { id: 'c-40120000', numero: '40120000', tiersCompte: { tiers: { code: 'F-PREMIER' } } };
+    const { svc, prisma } = service([e], [ACHATS], ['c-40120000']);
+    const { sortie, octets } = tampon();
+    await svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie);
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(octets() as never);
+    expect(classeur.getWorksheet('Journal')!.getRow(DONNEES + 1).getCell(TIERS).value ?? null).toBeNull();
+    // Une seule lecture, bornée au dossier de la session, et plus aucun
+    // décompte par compte dans les tranches.
+    expect(prisma.compte.groupBy).toHaveBeenCalledTimes(1);
+    expect(prisma.compte.groupBy.mock.calls[0][0].where).toEqual({ tenantId: 't1', collectifId: { not: null } });
+    for (const [a] of prisma.ecriture.findMany.mock.calls) {
+      expect(JSON.stringify((a as { include?: unknown }).include ?? {})).not.toContain('individuels');
+    }
   });
 
   it('le collectif rattaché à un tiers sans aucun compte individuel ne désigne pas ce tiers (relecture M3)', async () => {
@@ -469,9 +495,9 @@ describe('Journal exporté en flux', () => {
     // compte principal du premier fournisseur, et chaque paiement passé au
     // collectif, pour n'importe qui, sortait à son nom.
     const e = ecriture(1);
-    e.lignes[1].compte = { numero: '40110000', tiersCompte: { tiers: { code: 'F-PREMIER' } }, _count: { individuels: 0 } };
+    e.lignes[1].compte = { id: 'c-40110000', numero: '40110000', tiersCompte: { tiers: { code: 'F-PREMIER' } } };
     const client = ecriture(2);
-    client.lignes[1].compte = { numero: '41110000', tiersCompte: { tiers: { code: 'C-PREMIER' } }, _count: { individuels: 0 } };
+    client.lignes[1].compte = { id: 'c-41110000', numero: '41110000', tiersCompte: { tiers: { code: 'C-PREMIER' } } };
     const { feuille } = await exporter([e, client]);
     expect(feuille.getRow(DONNEES + 1).getCell(TIERS).value ?? null).toBeNull();
     expect(feuille.getRow(DONNEES + 3).getCell(TIERS).value ?? null).toBeNull();

@@ -207,16 +207,18 @@ const COLLECTIFS_DE_TIERS: ReadonlySet<string> = new Set(
  * comme sienne. Le collectif se reconnaît à son NUMÉRO, et pas seulement à
  * ses comptes individuels · un dossier d'avant la panoplie, jamais complété,
  * n'en a aucun, et tous les paiements du 40110000 sortaient au nom du
- * premier fournisseur (relecture « échecs silencieux », M3).
+ * premier fournisseur (relecture « échecs silencieux », M3). Un collectif
+ * ouvert par le cabinet se reconnaît à ses comptes individuels, lus UNE fois
+ * par export et bornés au dossier (relecture TypeScript, M1 · un `_count` par
+ * tranche balayait les comptes de tous les cabinets).
  */
-export function tiersDeLaLigne(compte: {
-  numero: string;
-  tiersCompte?: { tiers: { code: string } } | null;
-  _count?: { individuels: number };
-}): string {
+export function tiersDeLaLigne(
+  compte: { numero: string; tiersCompte: { tiers: { code: string } } | null },
+  porteDesIndividuels: boolean,
+): string {
   if (!compte.tiersCompte) return '';
   if (COLLECTIFS_DE_TIERS.has(compte.numero)) return '';
-  if ((compte._count?.individuels ?? 0) > 0) return '';
+  if (porteDesIndividuels) return '';
   return compte.tiersCompte.tiers.code;
 }
 

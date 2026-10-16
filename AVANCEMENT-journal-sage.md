@@ -57,7 +57,12 @@ s'intègre APRÈS l'export par période.
 - Relecture « échecs silencieux », premier tour · M1 à M3 et m1 à m6
   corrigés (b105a0e) · signatures confrontées, statuts par bloc, instant de
   lecture, collectif sans tiers, sélection dite, « & » échappés, date de
-  Kinshasa. typescript-reviewer · rapport attendu.
+  Kinshasa. typescript-reviewer · aucun BLOQUANT ; son MAJEUR (décompte
+  `_count.individuels` par tranche, sur les comptes de tous les cabinets)
+  corrigé · collectifs lus une fois, bornés au dossier. Ses mineurs (champs
+  facultatifs, statut en chaîne, saut sous « ajuster à une page », lettres
+  de colonne en dur, conversion sans commentaire) et l'ordre des lignes d'une
+  pièce (aucun rang, préexistant) vont aux relevés en attente.
 - Intégration sur `main` après export-periode ; retirer cette fiche.
 
 ## Vérification

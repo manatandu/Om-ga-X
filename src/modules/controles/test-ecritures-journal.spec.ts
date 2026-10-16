@@ -212,6 +212,8 @@ describe('la piste d’audit, restituée · AUDCIF art. 22, 1°', () => {
     const prisma = {
       ligneEcriture: { count: jest.fn().mockResolvedValue(ecritures.length * 2) },
       user: { findMany: jest.fn().mockResolvedValue([COMPTABLE, ADMIN]) },
+      // Les collectifs qui portent des individuels, lus une fois par export.
+      compte: { groupBy: jest.fn().mockResolvedValue([]) },
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ nom: 'Dossier', nif: 'A1234', deviseComptes: 'CDF' }) },
       exercice: { findFirst: jest.fn().mockResolvedValue(EXERCICE), findUnique: jest.fn().mockResolvedValue(EXERCICE) },
       // Le journal s'édite par BLOC (un par journal), puis la piste de
