@@ -39,6 +39,8 @@ s'intègre APRÈS l'export par période.
 - Une pièce retirée ou ajoutée entre les deux passages · refus nommé, jamais
   une piste qui dirait un autre livre que le journal.
 
+## Scénario sur vraie base
+
 - Scénario sur vraie base (PostgreSQL jetable, serveur compilé, migration
   sans dérive), 34 contrôles au vert · journal de N avant la clôture
   (brouillard dit et en italique, tiers, totaux par journal et de la
