@@ -60,6 +60,10 @@ l'art. 19 et n'écarte pas l'art. 22.
   <veille> », report par compte, compte seul).
 - Client · période sur Balance et Grand livre, export et « Imprimer
   l'extrait ».
+- Relectures, second tour (échecs silencieux, React) · aucun BLOQUANT ;
+  MAJEUR de l'écran corrigé (extrait non imprimé sur un écran changé pendant
+  l'enregistrement), lecture tombée dite, libellé du compte gardé, dates qui
+  suivent la période appliquée. Relecture close (deux tours).
 - Relectures, premier tour (échecs silencieux, TypeScript, React) · deux
   BLOQUANTS d'écran corrigés (chiffres d'une autre période montrés et
   imprimables ; compte à report seul masqué), règle unique balance et livre,
@@ -72,8 +76,9 @@ l'art. 19 et n'écarte pas l'art. 22.
 ## Relevés en attente (non bloquants, gardés pour la suite)
 
 - Registre des extraits sans route de lecture (`GET` borné) · lisible au
-  journal d'audit seulement ; une impression dont la boîte est annulée reste
-  « remise ».
+  journal d'audit seulement ; une impression dont la boîte est annulée, ou
+  dont l'écran a changé pendant l'enregistrement (la page ne s'imprime alors
+  pas, et c'est dit), reste « remise » au registre.
 - Licence échue (lecture seule) · « Imprimer l'extrait » refusé (POST) quand
   l'export Excel (GET) numérote · même défaut que l'impression du journal ;
   un GET qui numérote se déclenche aussi par HEAD ou préchargement.
@@ -86,7 +91,7 @@ l'art. 19 et n'écarte pas l'art. 22.
 
 ## Reste
 
-- Bloc § 3 des deux côtés, second tour de relecture, tests navigateur.
+- Bloc § 3 des deux côtés, tests navigateur.
 - Intégration sur `main` (fiche retirée), déploiement vérifié.
 
 ## Vérification
