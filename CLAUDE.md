@@ -2904,9 +2904,13 @@ pièce, compte, tiers, libellé, débit, crédit), les totaux du journal, un sau
 de page, puis les totaux de la période qui ADDITIONNENT les journaux ; le
 titre du bloc dit le brouillard, ses lignes en italique (art. 22, 2°) ; la
 date de valeur suit le libellé (« valeur au », art. 22, 4°) ; le tiers est
-celui du compte individuel, jamais d'un collectif qui en porte ; la piste
-passe dans une seconde feuille, relue en second passage et confrontée à son
-propre décompte, refusée si une pièce a bougé entre les deux.
+celui du compte individuel, jamais d'un collectif (`COLLECTIFS_DE_TIERS`) ;
+la piste passe dans une seconde feuille, relue en second passage, chaque
+écriture confrontée à la SIGNATURE que la feuille Journal en a lue (place,
+statut, dates, pièce, libellé, lignes), et chaque bloc à son décompte par
+statut · une pièce validée, ajoutée, retirée ou déplacée en route fait
+refuser le classeur, jamais deux livres sous un même fichier ; l'impression
+s'enregistre à l'INSTANT pris avant la lecture, avec les pièces comptées.
 `MAX_LIGNES_EXPORT` de 50 000 à 200 000, mesuré (`docs/capacite-mesuree.md`,
 banc du 2026-09-12, moitié du tas libre), toujours un REFUS. Les tests exigent la
 VALEUR de `numFmt` (jamais `toBeTruthy()` · ExcelJS met d'office un format

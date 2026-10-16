@@ -54,7 +54,10 @@ s'intègre APRÈS l'export par période.
 ## Reste
 
 - Bloc du § 3 des deux côtés.
-- Relectures · silent-failure-hunter, typescript-reviewer (en cours).
+- Relecture « échecs silencieux », premier tour · M1 à M3 et m1 à m6
+  corrigés (b105a0e) · signatures confrontées, statuts par bloc, instant de
+  lecture, collectif sans tiers, sélection dite, « & » échappés, date de
+  Kinshasa. typescript-reviewer · rapport attendu.
 - Intégration sur `main` après export-periode ; retirer cette fiche.
 
 ## Vérification
