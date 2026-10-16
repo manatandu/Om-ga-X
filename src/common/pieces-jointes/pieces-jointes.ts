@@ -179,14 +179,18 @@ export function dispositionTelechargement(nom: string): string {
 
 /**
  * LES EN-TÊTES D'UN TÉLÉCHARGEMENT, une fois pour tous les objets · le type
- * lu dans les octets au dépôt, `attachment` (jamais affichée dans la page) et
- * `nosniff` (le navigateur ne devine pas un autre type que celui servi).
+ * lu dans les octets au dépôt, `attachment` (jamais affichée dans la page),
+ * `nosniff` (le navigateur ne devine pas un autre type que celui servi) et
+ * `private, no-store` (relecture de la ligne sage-l6) · un contrat de
+ * travail ou une facture ne reste ni dans un cache partagé du chemin ni dans
+ * celui d'un poste commun, où la session suivante le retrouverait.
  */
 export function entetesTelechargement(piece: { nomFichier: string; typeMime: string }): Record<string, string> {
   return {
     'Content-Type': piece.typeMime,
     'Content-Disposition': dispositionTelechargement(piece.nomFichier),
     'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'private, no-store',
     'Access-Control-Expose-Headers': 'Content-Disposition',
   };
 }

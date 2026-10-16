@@ -179,6 +179,22 @@ describe('pièces jointes · le service commun', () => {
     expect(select.contenu).toBeUndefined();
   });
 
+  it.each([
+    ['ECRITURE', 'pieceJointeEcriture', { ecritureId: true, ecritureDecrite: true }],
+    ['SECTION', 'pieceJointeSection', { sectionId: true }],
+    ['IMMOBILISATION', 'pieceJointeImmobilisation', { immobilisationId: true }],
+    ['SALARIE', 'pieceJointeSalarie', { salarieId: true }],
+  ] as const)(
+    '%s · le dépôt rend la colonne de son objet, que le journal d’audit garde (relecture sage-l6, M1)',
+    async (objet, delegue, attendu) => {
+      const appels: any[] = [];
+      const client: any = { [delegue]: { create: async (a: any) => (appels.push(a), {}) } };
+      await (new PiecesJointesService(client) as any).creer(objet, 'o-1', 'ACH n° 1', { tenantId: 't' });
+      expect(appels[0].select).toMatchObject(attendu);
+      expect(appels[0].select.contenu).toBeUndefined();
+    },
+  );
+
   it('refuse sans rien écrire · à-nouveau provisoire, contenu qui contredit l’extension, envoi vide', async () => {
     const provisoire = prismaFactice({ aNouveauProvisoire: true });
     await expect(
@@ -332,9 +348,10 @@ describe('pièces jointes · les routes', () => {
     }
   });
 
-  it('le téléchargement sert attachment et nosniff, jamais inline', () => {
+  it('le téléchargement sert attachment, nosniff et aucun cache, jamais inline', () => {
     const entetes = entetesTelechargement({ nomFichier: 'Société.pdf', typeMime: 'application/pdf' });
     expect(entetes['X-Content-Type-Options']).toBe('nosniff');
+    expect(entetes['Cache-Control']).toBe('private, no-store');
     expect(entetes['Content-Disposition']).toMatch(/^attachment; /);
     for (const fichier of [
       '../../modules/comptabilite/pieces-jointes-ecriture.controller.ts',

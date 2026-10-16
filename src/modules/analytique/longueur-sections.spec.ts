@@ -108,11 +108,15 @@ function prismaFactice(plan: { id: string; code: string; longueurSections: numbe
       update: jest.fn(async (a: any) => (ordre.push('update'), { ...plan, ...a.data })),
     },
     sectionAnalytique: {
+      // La tranche suivante part de la CLÉ (`id > …`), jamais du curseur de
+      // Prisma, qui relit sa ligne et rend une tranche vide si elle a disparu.
       findMany: jest.fn(async (a: any) => {
         ordre.push('relevé');
-        expect(a.where).toEqual({ tenantId: 't', planId: plan.id });
-        const depuis = a.cursor ? lignes.findIndex((l) => l.id === a.cursor.id) + 1 : 0;
-        return lignes.slice(depuis, depuis + a.take);
+        const { id, ...reste } = a.where;
+        expect(reste).toEqual({ tenantId: 't', planId: plan.id });
+        expect(a.cursor).toBeUndefined();
+        expect(a.orderBy).toEqual({ id: 'asc' });
+        return lignes.filter((l) => id === undefined || l.id > id.gt).slice(0, a.take);
       }),
       findFirst: jest.fn(async () => null),
       create: jest.fn(async (a: any) => (ordre.push('create'), { id: 'nouvelle', ...a.data })),
@@ -121,7 +125,7 @@ function prismaFactice(plan: { id: string; code: string; longueurSections: numbe
     evenementAudit: { findFirst: jest.fn(async () => null), create: jest.fn(async () => ({})) },
   };
   client.$transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(client));
-  return { client, ordre };
+  return { client, ordre, lignes };
 }
 
 describe('longueur des codes de section · le service', () => {
@@ -167,6 +171,20 @@ describe('longueur des codes de section · le service', () => {
     expect(r).toMatchObject({ longueur: 4, nombreSections: 5003, nombreHorsLongueur: 5003, proposee: 5 });
     expect(r.motif).toContain('5003 sections');
     expect((await new AnalytiqueService(client).apercuLongueurSections('t', 'p', 1)).motif).toContain('de 2 à 13');
+  });
+
+  it('une section retirée pendant l’aperçu n’ampute pas le relevé (relecture sage-l6)', async () => {
+    const sections: Array<[string, TypeCompteDetailTotal]> = Array.from({ length: 5003 }, (_, i) => [`A${String(i).padStart(4, '0')}`, DETAIL]);
+    const { client, lignes } = prismaFactice({ id: 'p', code: 'PROJ', longueurSections: null }, sections);
+    const lire = client.sectionAnalytique.findMany.getMockImplementation();
+    client.sectionAnalytique.findMany.mockImplementation(async (a: any) => {
+      const lot = await lire(a);
+      // La dernière section de la première tranche est retirée aussitôt lue.
+      if (a.where.id === undefined) lignes.splice(4999, 1);
+      return lot;
+    });
+    const r = await new AnalytiqueService(client).apercuLongueurSections('t', 'p', 4);
+    expect(r.nombreSections).toBe(5003);
   });
 
   it('le DTO borne la longueur et admet null pour revenir au libre', async () => {

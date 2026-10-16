@@ -17,7 +17,7 @@ import { motifRefusClasseVentilee, motifRefusMontantAnalytique } from './od-anal
 import { refuserSiExerciceBudgetaireClos } from './exercice-budgetaire-clos';
 import { libelleReference, referencesVers, type Reference } from '../../common/suppression/references';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
-import { lireParLots, pageApres } from '../../common/lecture-par-lots';
+import { idApres, lireParLots } from '../../common/lecture-par-lots';
 import {
   ReleveLongueurs,
   motifRefusBornesLongueur,
@@ -222,7 +222,14 @@ export class AnalytiqueService {
     };
   }
 
-  /** Le relevé des sections d'un plan, par tranches · aucune collection sans borne. */
+  /**
+   * Le relevé des sections d'un plan, par tranches · aucune collection sans
+   * borne. LES TRANCHES SE SUIVENT PAR LA CLÉ (`idApres`), jamais par le
+   * curseur de Prisma (relecture de la ligne sage-l6) · l'aperçu se lit hors
+   * du verrou du plan, et une section-curseur retirée pendant la lecture
+   * rendait la tranche suivante vide · le relevé disait « toutes conformes »
+   * sur la moitié du plan.
+   */
   private async releverLongueurs(
     db: Prisma.TransactionClient | PrismaService,
     tenantId: string,
@@ -233,9 +240,10 @@ export class AnalytiqueService {
     await lireParLots(
       (curseur) =>
         db.sectionAnalytique.findMany({
-          where: { tenantId, planId },
+          where: { tenantId, planId, ...idApres(curseur) },
           select: { id: true, code: true, type: true },
-          ...pageApres(curseur, 5000),
+          orderBy: { id: 'asc' },
+          take: 5000,
         }),
       (section) => releve.ajouter(section),
       5000,

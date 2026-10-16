@@ -157,7 +157,11 @@ export class PiecesJointesService {
   /**
    * L'ÉCRITURE DE LA PIÈCE, UNE TABLE PAR OBJET, la colonne de l'objet nommée
    * en toutes lettres · `liaisons-ecriture-ecrites.spec.ts` exige qu'une
-   * colonne de liaison vers une écriture soit écrite quelque part.
+   * colonne de liaison vers une écriture soit écrite quelque part. LE `select`
+   * EST AUSSI CE QUE LE JOURNAL D'AUDIT GARDE du dépôt (son `apres` est le
+   * résultat de l'écriture) · sans la colonne de l'objet, le maillon disait
+   * qu'une pièce avait été jointe sans dire à quoi (relecture de la ligne
+   * sage-l6, M1). Jamais `contenu`, exclu du journal.
    */
   private creer(
     objet: ObjetDesPieces,
@@ -172,17 +176,23 @@ export class PiecesJointesService {
         // encore ce qu'elle justifiait.
         return this.prisma.pieceJointeEcriture.create({
           data: { ...commun, ecritureId: objetId, ecritureDecrite: description },
-          select: SANS_CONTENU,
+          select: { ...SANS_CONTENU, ecritureId: true, ecritureDecrite: true },
         });
       case 'SECTION':
-        return this.prisma.pieceJointeSection.create({ data: { ...commun, sectionId: objetId }, select: SANS_CONTENU });
+        return this.prisma.pieceJointeSection.create({
+          data: { ...commun, sectionId: objetId },
+          select: { ...SANS_CONTENU, sectionId: true },
+        });
       case 'IMMOBILISATION':
         return this.prisma.pieceJointeImmobilisation.create({
           data: { ...commun, immobilisationId: objetId },
-          select: SANS_CONTENU,
+          select: { ...SANS_CONTENU, immobilisationId: true },
         });
       case 'SALARIE':
-        return this.prisma.pieceJointeSalarie.create({ data: { ...commun, salarieId: objetId }, select: SANS_CONTENU });
+        return this.prisma.pieceJointeSalarie.create({
+          data: { ...commun, salarieId: objetId },
+          select: { ...SANS_CONTENU, salarieId: true },
+        });
     }
   }
 
