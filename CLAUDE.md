@@ -3840,7 +3840,9 @@ affectation, règle M1 d'A7). UN SEUL ORDRE DE VERROU, écriture puis pièces
 seule liste (`TABLES_DE_PIECES`, confrontée aux colonnes binaires du schéma ·
 documents des tiers, pièces des virements, fichiers des exports des écritures
 et des impressions différées prêtes, pièces jointes), comptées puis lues par
-lots, jamais d'un coup.
+lots, jamais d'un coup, chaque lot parti de la CLÉ du précédent (`idApres`),
+jamais du curseur de Prisma, qui rend un lot vide quand sa pièce-curseur a été
+retirée entretemps ; un inventaire illisible arrête l'archive comme une table.
 
 **RIB des tiers et ordre de virement (2026-09-26, priorité 1).** Règles d'OmegaX
 (`tiers/ribs-tiers.ts`) ; SEPA, ETEBAC non servis. (1) RIB = STRUCTURE ·

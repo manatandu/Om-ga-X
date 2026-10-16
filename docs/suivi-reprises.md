@@ -393,3 +393,18 @@ fixe est un choix commercial du cabinet ; ce qui relève d'un juriste est dit.
   pièces de l'écriture retirée sans le dire à l'écran · le nombre est rendu
   par `EcritureService.supprimer` aux seuls chemins qui passent par lui. Les
   pièces ne se perdent pas · elles se lisent dans Journal > Pièces détachées.
+- Écran (relecture React, mineurs) · le décompte des pièces du Journal et de
+  la Saisie se recharge sur une liste de dépendances incomplète ; « Retirer »
+  s'offre sur une pièce détachée à un utilisateur que le serveur refusera ;
+  le paragraphe d'explication reste affiché sur une écriture validée ; le
+  409 dit « Rechargez la liste » sans bouton Relire ; Personnel et Plans
+  analytiques ne branchent ni `onOccupe` ni `useGardeFermeture` sur le volet
+  (même constat de la relecture « échecs silencieux », mineur 2) ; le bouton
+  PJ et son dialogue n'ont ni nom accessible exact, ni retour du focus, ni
+  Échap pendant l'édition d'un commentaire ; le code de section n'a pas de
+  `minLength` et son erreur s'affiche derrière la modale ; les raccourcis de
+  la Saisie restent actifs sous le dialogue des pièces.
+- Serveur (relecture TypeScript, mineurs) · `sectionsQuiPortentUnDocument`
+  lit par une liste `in` non bornée (bornée en pratique par le plan qu'on
+  supprime) ; la restitution continue de lire la base quand le client coupe
+  la connexion, jusqu'à l'erreur d'écriture de la sortie.
