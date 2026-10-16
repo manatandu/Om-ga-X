@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { SensVirementFonds, StatutEcriture, StatutExercice } from '@prisma/client';
+import { Prisma, SensVirementFonds, StatutEcriture, StatutExercice } from '@prisma/client';
 import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
 import { PLAN_COMPTES_SYCEBNL } from '../comptes/compte-seed';
 import { comptesDuPlanSubdivises, estCompteDePassage } from '../comptes/subdivisions-du-plan';
@@ -271,7 +271,7 @@ describe('VirementsFondsService.creer', () => {
   it('refuse AVANT toute pièce une opération datée hors de l’exercice · le 585 se solde à la fin de l’exercice', async () => {
     const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
     await expect(service.creer('t1', 'u1', { ...dto, sortie: { ...dto.sortie, date: '2026-12-31' }, entree: { ...dto.entree, date: '2027-01-02' } } as never)).rejects.toThrow(
-      /entrée des fonds \(02\/01\/2027\) tombe hors de l'exercice.*compte 58/,
+      /La date de l'entrée des fonds \(02\/01\/2027\) tombe hors de l'exercice.*compte 58/,
     );
     expect(creerPlusieursAvec).not.toHaveBeenCalled();
   });
@@ -469,6 +469,24 @@ describe('VirementsFondsService.deposerPiece', () => {
       await expect(m.service.deposerPiece('t1', 'v1', operation, { originalname: 'b.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(/sortie des fonds \(SORTIE\) ou leur entrée \(ENTREE\)/);
     }
     expect(m.crees).toEqual([]);
+  });
+
+  it('le même scan joint deux fois à l’entrée est refusé en le disant, article élidé', async () => {
+    const prisma = {
+      virementFonds: { findFirst: async () => ({ id: 'v1' }) },
+      pieceVirementFonds: {
+        create: async () => {
+          throw new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'x' });
+        },
+      },
+    };
+    const service = new VirementsFondsService(prisma as never, {} as never);
+    await expect(service.deposerPiece('t1', 'v1', 'ENTREE', { originalname: 'b.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(
+      "Cette pièce est déjà jointe à l'entrée des fonds.",
+    );
+    await expect(service.deposerPiece('t1', 'v1', 'SORTIE', { originalname: 'b.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(
+      'Cette pièce est déjà jointe à la sortie des fonds.',
+    );
   });
 });
 

@@ -106,6 +106,16 @@ export const LIBELLES_OPERATION: Readonly<Record<OperationVirementFonds, string>
   ENTREE: 'entrée des fonds',
 };
 
+/** « de la sortie des fonds », « de l'entrée des fonds » · l'article s'élide devant la voyelle. */
+export function deLOperation(operation: OperationVirementFonds): string {
+  return operation === OperationVirementFonds.SORTIE ? 'de la sortie des fonds' : "de l'entrée des fonds";
+}
+
+/** « à la sortie des fonds », « à l'entrée des fonds ». */
+export function aLOperation(operation: OperationVirementFonds): string {
+  return operation === OperationVirementFonds.SORTIE ? 'à la sortie des fonds' : "à l'entrée des fonds";
+}
+
 export const LIBELLES_NATURE_PIECE: Readonly<Record<NaturePieceVirement, string>> = {
   BORDEREAU_VERSEMENT: 'Bordereau de versement',
   CHEQUE: 'Chèque',

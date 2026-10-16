@@ -11,8 +11,9 @@ import { empreinteDocument, identifierType, motifRefusDocument, nettoyerNomFichi
 import {
   COMPTES_DE_PASSAGE,
   LIBELLES_NATURE_PIECE,
-  LIBELLES_OPERATION,
   LIBELLES_SENS,
+  aLOperation,
+  deLOperation,
   estTresorerieEnDevises,
   estUneCaisse,
   lignesDuVirement,
@@ -120,7 +121,7 @@ export class VirementsFondsService {
     ] as const) {
       if (piece.date < debut || piece.date > fin) {
         throw new BadRequestException(
-          `La date de la ${LIBELLES_OPERATION[operation]} (${piece.date.split('-').reverse().join('/')}) tombe hors de l'exercice · ` +
+          `La date ${deLOperation(operation)} (${piece.date.split('-').reverse().join('/')}) tombe hors de l'exercice · ` +
             "le compte de passage se solde à la fin de l'exercice (fiche du compte 58). " +
             "Une entrée qui tombe sur l'exercice suivant se passe à la main.",
         );
@@ -363,7 +364,7 @@ export class VirementsFondsService {
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException(`Cette pièce est déjà jointe à la ${LIBELLES_OPERATION[operation]}.`);
+        throw new ConflictException(`Cette pièce est déjà jointe ${aLOperation(operation)}.`);
       }
       throw e;
     }
