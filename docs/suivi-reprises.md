@@ -135,6 +135,16 @@ de produit.
   défaut hérité, commun à `constat-impot`, `devises` et `creances-douteuses`.
 - Écran · rendre le focus au bouton qui a ouvert la modale (commun à toutes les
   modales du dépôt) ; le client n'a ni ESLint ni règles des hooks.
+- Ligne virement-pieces, second tour (2026-10-16) · l'ARRÊT À LA DISSOLUTION
+  (`arret-dissolution.ts`) fait passer à l'exercice de liquidation une entrée
+  datée après la dissolution, la sortie et la fiche `VirementFonds` restant
+  dans l'exercice arrêté · le 585 de l'exercice arrêté reste ouvert. L'arrêt
+  doit nommer et refuser un tel virement, issue « annulez-le, puis
+  repassez-le » de part et d'autre de la dissolution. Autre module, hors de
+  la ligne.
+- Même tour · le focus va au bandeau d'erreur, jamais au champ en faute ; un
+  virement au-delà des 500 de la liste n'est nommé que par sa référence dans
+  le bandeau « Scan non joint ».
 
 ## Reprise après la réinitialisation (2026-10-09, demande de Manasse)
 

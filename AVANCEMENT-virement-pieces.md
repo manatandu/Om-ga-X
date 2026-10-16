@@ -69,9 +69,21 @@ Branche de sauvegarde · `travail/virement-pieces` (partie de `main` d461c28).
   pièce, `noValidate` sur le formulaire (le refus vient du serveur, nommé),
   libellés accessibles des boutons « Joindre ».
 
+- Second tour de relecture (échecs silencieux, React) · aucun BLOQUANT ni
+  MAJEUR serveur. Corrigé · garde de fermeture pendant l'envoi (issue
+  inconnue) ; réponse perdue (réseau, 5xx) dite « le virement a pu passer »
+  et la liste relue, au lieu d'un échec qui ferait repasser le virement ;
+  scans jugés AVANT l'envoi (vide, plus de 5 Mo, format) ; scan non joint
+  nommé par opération, pièce et motif, retiré du bandeau une fois joint
+  depuis la liste ; date des écritures dite des deux côtés ; focus au
+  bandeau d'erreur ; exercice CLÔTURÉ refusé d'abord (art. 20, al. 3) ;
+  période close jusqu'à la fin de l'exercice · plus de renvoi à la saisie
+  (aucun jour n'y est ouvert), issue dite. Arrêt à la dissolution et deux
+  mineurs d'écran aux « Relevés en attente » (`docs/suivi-reprises.md`).
+
 ## Reste
 
-- Second tour de relecture, puis ses corrections s'il y a un BLOQUANT.
+- Rapport TypeScript du second tour, corrections s'il y a un BLOQUANT.
 - Bloc § 3, e2e local, intégration sur `main` après l'export par période
   (fusion de `main` d'abord).
 

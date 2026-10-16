@@ -83,9 +83,32 @@ interface PieceSaisie {
 }
 
 const PIECE_VIDE: PieceSaisie = { nature: '', reference: '', date: '' };
+
+/** Un scan choisi au passage d'un virement, que le serveur n'a pas joint. */
+interface ScanManquant {
+  virementId: string;
+  operation: OperationVirementFonds;
+  reference: string;
+  jour: string;
+  motif: string;
+}
 const OPERATIONS: readonly OperationVirementFonds[] = ['SORTIE', 'ENTREE'];
 const TAILLE_MAX = 5 * 1024 * 1024;
 const FORMATS = '.pdf,.png,.jpg,.jpeg,.docx,.xlsx,.doc,.xls';
+
+/**
+ * Ce que l'écran juge d'un scan AVANT le virement · vide, trop lourd, ou d'une
+ * extension hors de la liste (choix « Tous les fichiers »). La signature lue
+ * dans les octets reste jugée par le serveur.
+ */
+function motifRefusScan(fichier: File): string | null {
+  if (fichier.size === 0) return 'Le fichier est vide.';
+  if (fichier.size > TAILLE_MAX) return 'Le fichier dépasse 5 Mo · réduisez-le ou numérisez-le en plus basse définition.';
+  const point = fichier.name.lastIndexOf('.');
+  const extension = point >= 0 ? fichier.name.slice(point).toLowerCase() : '';
+  if (!FORMATS.split(',').includes(extension)) return 'Format non admis · PDF, PNG, JPEG, Word ou Excel.';
+  return null;
+}
 const date = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
 // « de la sortie des fonds », « de l'entrée des fonds ».
 const deLa = (o: OperationVirementFonds) => (o === 'SORTIE' ? 'de la ' : 'de l’') + LIBELLES_OPERATION[o];
@@ -100,9 +123,19 @@ export function VirementsFondsPage() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   // Le virement est passé, mais quelque chose n'a pas suivi (un scan) · dit à
-  // part du succès, jamais noyé dans le bandeau vert.
+  // part du succès, jamais noyé dans le bandeau vert. Gardé par scan manquant
+  // (second tour de l'écran, 3) · une phrase figée restait affichée à côté du
+  // « Scan joint » de la reprise, et ne nommait pas le virement.
+  const [scansManquants, setScansManquants] = useState<ScanManquant[]>([]);
+  // Une issue que l'écran ne connaît pas (réponse perdue) · dite à part.
   const [avertissement, setAvertissement] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+  // UN REFUS SE MONTRE (second tour de l'écran, 6) · sous `noValidate`, il ne
+  // vivait que dans le bandeau du haut, hors de vue d'une fenêtre défilée.
+  const bandeauErreur = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (erreur) bandeauErreur.current?.focus({ preventScroll: false });
+  }, [erreur]);
   const [envoiJoindre, setEnvoiJoindre] = useState<string | null>(null);
   const [aAnnuler, setAAnnuler] = useState<VirementServi | null>(null);
 
@@ -133,7 +166,8 @@ export function VirementsFondsPage() {
     };
     champ.addEventListener('cancel', annuler);
     return () => champ.removeEventListener('cancel', annuler);
-  });
+    // Le champ est toujours monté · un seul branchement.
+  }, []);
 
   const modifierPiece = (o: OperationVirementFonds, champ: Partial<PieceSaisie>) => setPieces((p) => ({ ...p, [o]: { ...p[o], ...champ } }));
 
@@ -167,6 +201,7 @@ export function VirementsFondsPage() {
     setErreur(null);
     setInfo(null);
     setAvertissement(null);
+    setScansManquants([]);
     void charger();
   }, [charger]);
 
@@ -202,16 +237,27 @@ export function VirementsFondsPage() {
     if (porteurExige && !porteur.trim()) return 'Une caisse est en jeu · nommez le porteur des espèces.';
     return null;
   };
-  // TOUT CE QUI SE SAISIT COMPTE · une saisie commencée par un journal, une
-  // nature, une date ou un scan se perdait à la fermeture sans être demandée.
+  // TOUT CE QUI SE SAISIT COMPTE · une saisie commencée par une nature, une
+  // date ou un scan se perdait à la fermeture sans être demandée. Les deux
+  // journaux restent choisis après un virement passé, pour le suivant · seuls,
+  // ils ne sont pas une saisie (second tour de l'écran, majeur) · la garde
+  // disait « pas passé » sous le bandeau du virement passé, et poussait à le
+  // repasser. Pendant l'envoi, l'issue n'est pas encore connue · dite telle.
   const formulaireEntame =
-    !!(somme || objet || porteur || observations || origineId || destinationId) ||
+    !!(somme || objet || porteur || observations) ||
     OPERATIONS.some((o) => !!(pieces[o].nature || pieces[o].reference || pieces[o].date || scansChoisis[o]));
-  useGardeFermeture(formulaireEntame ? 'Un virement est en cours de saisie et n’est pas passé.' : null);
+  useGardeFermeture(
+    envoi
+      ? 'Le virement est en cours d’envoi · fermer maintenant laisserait son issue inconnue.'
+      : formulaireEntame
+        ? 'Un virement est en cours de saisie et n’est pas passé.'
+        : null,
+  );
 
   const joindre = async (virementId: string, operation: OperationVirementFonds, fichier: File) => {
-    // Refus immédiat · le serveur refuse de toute façon au-delà de 5 Mo.
-    if (fichier.size > TAILLE_MAX) throw new ApiError(400, 'Le fichier dépasse 5 Mo · réduisez-le ou numérisez-le en plus basse définition.');
+    // Refus immédiat · le serveur refuse de toute façon (signature lue chez lui).
+    const motif = motifRefusScan(fichier);
+    if (motif) throw new ApiError(400, motif);
     const corps = new FormData();
     corps.append('fichier', fichier);
     await api.envoyerFichier(`/virements-fonds/${virementId}/pieces?operation=${operation}`, corps);
@@ -230,16 +276,23 @@ export function VirementsFondsPage() {
     const scans = OPERATIONS.map((o) => ({ o, fichier: scansChoisis[o] })).filter(
       (s): s is { o: OperationVirementFonds; fichier: File } => !!s.fichier,
     );
-    const tropLourd = scans.find((s) => s.fichier.size > TAILLE_MAX);
-    if (tropLourd) {
-      setErreur(`Le scan ${deLa(tropLourd.o)} dépasse 5 Mo · réduisez-le ou numérisez-le en plus basse définition. Rien n’est passé.`);
-      return;
+    // Vide, trop lourd ou d'un format hors liste · refusé après, il laissait
+    // le virement passé sans sa pièce (second tour de l'écran, 4).
+    for (const s of scans) {
+      const refus = motifRefusScan(s.fichier);
+      if (refus) {
+        setErreur(`Le scan ${deLa(s.o)} · ${refus.replace(/\.$/, '')}. Rien n’est passé.`);
+        return;
+      }
     }
     const pieceDe = (o: OperationVirementFonds) => ({ nature: pieces[o].nature, reference: pieces[o].reference.trim(), date: pieces[o].date });
     setErreur(null);
     setInfo(null);
     setAvertissement(null);
     setEnvoi(true);
+    // Passé au serveur ? Lu dans le `catch` · une réponse perdue APRÈS le
+    // virement n'est pas un virement refusé.
+    let passe = false;
     try {
       const v = await api.post<VirementServi>('/virements-fonds', {
         exerciceId: exerciceCourant.id,
@@ -252,18 +305,25 @@ export function VirementsFondsPage() {
         ...(porteur.trim() ? { porteur: porteur.trim() } : {}),
         ...(observations.trim() ? { observations: observations.trim() } : {}),
       });
+      passe = true;
       let message = `Virement passé · ${v.piecesPassees ?? 'deux pièces'}.`;
-      const manques: string[] = [];
+      const manques: ScanManquant[] = [];
       for (const s of scans) {
         try {
           await joindre(v.id, s.o, s.fichier);
           message += ` Scan joint ${aLa(s.o)}.`;
         } catch (err) {
-          manques.push(`${deLa(s.o)} (${err instanceof ApiError ? err.message.replace(/\.$/, '') : 'envoi impossible'})`);
+          manques.push({
+            virementId: v.id,
+            operation: s.o,
+            reference: pieces[s.o].reference.trim(),
+            jour: pieces[s.o].date,
+            motif: err instanceof ApiError ? err.message.replace(/\.$/, '') : 'envoi impossible',
+          });
         }
       }
       // Le virement EST passé · le dire, et dire ce qui manque, à part.
-      if (manques.length) setAvertissement(`Scan non joint · ${manques.join(' ; ')} · joignez-le depuis la liste.`);
+      setScansManquants(manques);
       setInfo(message);
       setSomme('');
       setPieces({ SORTIE: PIECE_VIDE, ENTREE: PIECE_VIDE });
@@ -274,7 +334,19 @@ export function VirementsFondsPage() {
       for (const o of OPERATIONS) if (champScan[o].current) champScan[o].current!.value = '';
       await charger();
     } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Virement non passé');
+      if (passe) {
+        // Le virement est passé, la suite a manqué · jamais « non passé ».
+        setErreur(err instanceof ApiError ? err.message : 'Liste des virements illisible');
+      } else if (err instanceof ApiError && err.status < 500) {
+        setErreur(err.message);
+      } else {
+        // RÉPONSE PERDUE OU RELAIS EN PANNE (second tour, échecs silencieux 5
+        // et écran 2) · le serveur a pu passer le virement avant que la
+        // réponse ne se perde. « Non passé » faisait repasser un doublon ;
+        // la liste est relue, et l'issue dite inconnue.
+        setAvertissement('Réponse perdue · le virement a pu passer. Relisez la liste ci-dessous avant de le repasser.');
+        void charger();
+      }
     } finally {
       setEnvoi(false);
     }
@@ -291,6 +363,8 @@ export function VirementsFondsPage() {
     try {
       await joindre(cible.id, cible.operation, fichier);
       setInfo(`Scan joint ${aLa(cible.operation)}.`);
+      // Le manque qu'il comble se retire ; l'autre, s'il y en a un, reste dit.
+      setScansManquants((m) => m.filter((x) => !(x.virementId === cible.id && x.operation === cible.operation)));
       await charger();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Pièce non jointe');
@@ -396,7 +470,11 @@ export function VirementsFondsPage() {
               type="button"
               onClick={() => {
                 setScansChoisis((s) => ({ ...s, [o]: null }));
-                if (champScan[o].current) champScan[o].current!.value = '';
+                if (champScan[o].current) {
+                  champScan[o].current!.value = '';
+                  // Le bouton disparaît · le focus revient au champ qu'il vidait.
+                  champScan[o].current!.focus();
+                }
               }}
               className="text-sel hover:underline"
               aria-label={`Retirer le scan retenu ${deLa(o)}`}
@@ -421,7 +499,11 @@ export function VirementsFondsPage() {
     const cle = `${v.id}:${o}`;
     // UN ANCIEN VIREMENT PEUT AVOIR SES ÉCRITURES À UNE AUTRE DATE QUE SA PIÈCE ·
     // passées à la date du virement, avant la séparation des deux pièces.
-    const jourEcriture = o === 'SORTIE' ? v.date : null;
+    // Un virement neuf a toujours `date` égale à la pièce de sortie ; dès
+    // qu'elles diffèrent, c'est un ancien, dont les DEUX écritures sont à
+    // `date` · dit des deux côtés (second tour, échecs silencieux 2).
+    const ancien = v.date.slice(0, 10) !== v.datePiece.slice(0, 10);
+    const jourEcriture = ancien ? v.date : null;
     return (
       <>
         {LIBELLES_NATURE_PIECE[nature]} {reference} du {date(jourPiece)}
@@ -458,18 +540,27 @@ export function VirementsFondsPage() {
   return (
     <div className="p-3 space-y-3 text-[11.5px]">
       {erreur && (
-        <div role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
+        <div ref={bandeauErreur} tabIndex={-1} role="alert" className="text-danger bg-danger-soft border border-danger/30 px-3 py-2">
           {erreur}
         </div>
       )}
-      {info && (
-        <div role="status" className="text-positive bg-positive-soft border border-positive/30 px-3 py-2">
-          {info}
-        </div>
-      )}
+      {/* La zone d'état reste montée · un lecteur d'écran n'annonce pas une
+          zone qui naît avec son texte. */}
+      <div role="status" className={info ? 'text-positive bg-positive-soft border border-positive/30 px-3 py-2' : 'sr-only'}>
+        {info ?? ''}
+      </div>
       {avertissement && (
         <div role="alert" className="text-warning bg-warning-soft border border-warning/30 px-3 py-2">
           {avertissement}
+        </div>
+      )}
+      {scansManquants.length > 0 && (
+        <div role="alert" className="text-warning bg-warning-soft border border-warning/30 px-3 py-2">
+          Scan non joint ·{' '}
+          {scansManquants
+            .map((m) => `${deLa(m.operation)}, pièce ${m.reference} du ${date(m.jour)} (${m.motif})`)
+            .join(' ; ')}{' '}
+          · joignez-le depuis la liste.
         </div>
       )}
       {!exerciceCourant && <p className="text-text-dim">Aucun exercice · ouvrez-en un dans Exercices.</p>}
@@ -519,7 +610,7 @@ export function VirementsFondsPage() {
               <input maxLength={500} value={observations} onChange={(e) => setObservations(e.target.value)} className="border border-border px-2 py-[2px]" />
             </label>
             <button type="submit" disabled={envoi} className="ml-auto bg-sel text-white font-semibold px-4 py-1.5 disabled:opacity-40">
-              {envoi ? '…' : 'Passer le virement'}
+              {envoi ? 'Envoi…' : 'Passer le virement'}
             </button>
           </div>
         </form>

@@ -250,7 +250,12 @@ describe('VirementsFondsService.creer', () => {
   function monter(
     journaux: JournalDeTresorerie[],
     ribs: Array<{ devise: string | null; journal: { code: string } }> = [],
-    opts: { referentiel?: 'SYSCOHADA' | 'SYCEBNL'; compteEnDevise?: string; periodeClose?: { journalId: string; message: string } } = {},
+    opts: {
+      referentiel?: 'SYSCOHADA' | 'SYCEBNL';
+      compteEnDevise?: string;
+      periodeClose?: { journalId: string; message: string; premierJourOuvert?: string };
+      exerciceClos?: boolean;
+    } = {},
   ) {
     const creerPlusieursAvec = jest.fn(async (_t: string, _u: string, dtos: unknown[], suite: (tx: unknown, e: unknown[]) => unknown) => {
       const tx = {
@@ -266,7 +271,11 @@ describe('VirementsFondsService.creer', () => {
       exercice: {
         findFirst: async ({ where }: { where: { id: string; tenantId: string } }) =>
           where.id === 'x1' && where.tenantId === 't1'
-            ? { dateDebut: new Date('2026-01-01T00:00:00.000Z'), dateFin: new Date('2026-12-31T00:00:00.000Z') }
+            ? {
+                dateDebut: new Date('2026-01-01T00:00:00.000Z'),
+                dateFin: new Date('2026-12-31T00:00:00.000Z'),
+                statut: opts.exerciceClos ? 'CLOTURE' : 'OUVERT',
+              }
             : null,
       },
       ribBanque: { findMany: async () => ribs },
@@ -279,8 +288,11 @@ describe('VirementsFondsService.creer', () => {
     const verifierEcritureAutorisee = jest.fn(async (_t: string, journalId: string) => {
       if (opts.periodeClose?.journalId === journalId) throw new ForbiddenException(opts.periodeClose.message);
     });
+    // Le premier jour ouvert que la saisie proposerait · le lendemain de la
+    // période close par défaut, la date fournie quand le test la donne.
+    const premierJourOuvert = jest.fn(async () => new Date(`${opts.periodeClose?.premierJourOuvert ?? '2026-04-01'}T00:00:00.000Z`));
     return {
-      service: new VirementsFondsService(prisma as never, { creerPlusieursAvec } as never, { verifierEcritureAutorisee } as never),
+      service: new VirementsFondsService(prisma as never, { creerPlusieursAvec } as never, { verifierEcritureAutorisee, premierJourOuvert } as never),
       creerPlusieursAvec,
       verifierEcritureAutorisee,
     };
@@ -367,6 +379,23 @@ describe('VirementsFondsService.creer', () => {
     await expect(service.creer('t1', 'u1', dto as never)).rejects.toThrow(
       /^Pièce de l'entrée des fonds au journal BQ · La période jusqu'au 2026-03-31 est clôturée pour tous les journaux\. Ce formulaire ne reporte pas une opération · passez ce virement à la main dans la saisie, où le report se demande\.$/,
     );
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('une période close jusqu’à la fin de l’exercice ne renvoie pas à la saisie, qui refuserait le report (second tour, 3)', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')], [], {
+      periodeClose: { journalId: 'bq', message: "La période jusqu'au 2026-12-31 est clôturée pour tous les journaux.", premierJourOuvert: '2027-01-01' },
+    });
+    await expect(service.creer('t1', 'u1', dto as never)).rejects.toThrow(
+      /^Pièce de l'entrée des fonds au journal BQ · La période jusqu'au 2026-12-31 est clôturée pour tous les journaux\. Aucun jour de cet exercice n'est plus ouvert au journal BQ · plus rien ne s'y inscrit à cette date\.$/,
+    );
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('un exercice clôturé refuse le virement avant tout autre contrôle de date (second tour, 3)', async () => {
+    const { service, creerPlusieursAvec, verifierEcritureAutorisee } = monter([banque('ca', '57110000'), banque('bq', '52110000')], [], { exerciceClos: true });
+    await expect(service.creer('t1', 'u1', dto as never)).rejects.toThrow(/^Cet exercice est clôturé · aucun virement ne s'y passe/);
+    expect(verifierEcritureAutorisee).not.toHaveBeenCalled();
     expect(creerPlusieursAvec).not.toHaveBeenCalled();
   });
 

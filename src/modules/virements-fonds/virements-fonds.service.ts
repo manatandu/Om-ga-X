@@ -121,9 +121,15 @@ export class VirementsFondsService {
     // l'exercice suivant le laisserait ouvert à la clôture.
     const exercice = await this.prisma.exercice.findFirst({
       where: { id: dto.exerciceId, tenantId },
-      select: { dateDebut: true, dateFin: true },
+      select: { dateDebut: true, dateFin: true, statut: true },
     });
     if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
+    // UN EXERCICE CLÔTURÉ D'ABORD (second tour « échecs silencieux », 3) · un
+    // onglet resté ouvert sur lui recevait, au mieux, le refus d'une période
+    // close et l'invitation à un report que la saisie refuse aussi.
+    if (exercice.statut === 'CLOTURE') {
+      throw new BadRequestException("Cet exercice est clôturé · aucun virement ne s'y passe (AUDCIF art. 20, al. 3).");
+    }
     const [debut, fin] = [exercice.dateDebut.toISOString().slice(0, 10), exercice.dateFin.toISOString().slice(0, 10)];
     for (const [piece, operation] of [
       [sortie, OperationVirementFonds.SORTIE],
@@ -188,10 +194,18 @@ export class VirementsFondsService {
         await this.exercices.verifierEcritureAutorisee(tenantId, journal.id, new Date(`${piece.date}T00:00:00.000Z`));
       } catch (e) {
         if (!(e instanceof ForbiddenException)) throw e;
-        throw new ForbiddenException(
-          `Pièce ${deLOperation(operation)} au journal ${journal.code} · ${e.message} ` +
-            'Ce formulaire ne reporte pas une opération · passez ce virement à la main dans la saisie, où le report se demande.',
-        );
+        // L'ISSUE N'EST DITE QUE SI ELLE EXISTE (second tour « échecs
+        // silencieux », 3) · le report de la saisie ne franchit jamais la fin
+        // de l'exercice ; une clôture qui la couvre laisse le geste sans issue
+        // dans cet exercice, et le renvoi à la saisie l'aurait fait échouer.
+        const premier = (await this.exercices.premierJourOuvert(tenantId, journal.id, new Date(`${piece.date}T00:00:00.000Z`)))
+          .toISOString()
+          .slice(0, 10);
+        const issue =
+          premier <= fin
+            ? 'Ce formulaire ne reporte pas une opération · passez ce virement à la main dans la saisie, où le report se demande.'
+            : `Aucun jour de cet exercice n'est plus ouvert au journal ${journal.code} · plus rien ne s'y inscrit à cette date.`;
+        throw new ForbiddenException(`Pièce ${deLOperation(operation)} au journal ${journal.code} · ${e.message} ${issue}`);
       }
     }
     const sens = sensDuVirement(origine!.compteTresorerie!.numero, destination!.compteTresorerie!.numero);
