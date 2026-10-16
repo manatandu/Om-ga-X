@@ -88,7 +88,7 @@ describe('exports des balances et grands livres', () => {
     // La route bornée d'UN compte, lue seulement sur ce refus et pour le compte choisi.
     expect(journal).toContain('!refusGrandLivre || !compteGrandLivreId) return;');
     expect(journal).toContain('`/ecritures/grand-livre/${encodeURIComponent(compteGrandLivreId)}?exerciceId=${exerciceCourant.id}${requetePeriode(periode)}`');
-    expect(journal).toContain('setSectionSeule({ ...sectionDuCompteSeul(r), report: r.report ?? null })');
+    expect(journal).toContain('setSectionSeuleLue({ cle, donnees: { ...sectionDuCompteSeul(r), report: r.report ?? null } })');
   });
 
   it('les écrans appellent ces adresses, jamais une adresse recopiée', () => {

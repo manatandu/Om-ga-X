@@ -1,5 +1,20 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { bornesDeLaPeriode, estUnExtrait, motifPeriodeSaisie, requetePeriode, titreExtrait, veille } from './periode-extrait';
+import {
+  bornesDeLaPeriode,
+  cleDeLecture,
+  estUnExtrait,
+  extraitImprimable,
+  lueePour,
+  motifPeriodeSaisie,
+  PERIODE_EXERCICE,
+  periodePourLExercice,
+  requetePeriode,
+  sectionVisible,
+  titreExtrait,
+  veille,
+} from './periode-extrait';
 
 /**
  * LA PÉRIODE À L'ÉCRAN (ligne export-periode) · la même règle que le serveur
@@ -31,5 +46,60 @@ describe('la période de la balance et du grand livre', () => {
     expect(motifPeriodeSaisie(EXERCICE, { du: '2025-12-01', au: '' })).toMatch(/tenir dans l'exercice/);
     expect(motifPeriodeSaisie(EXERCICE, { du: '2026-06-30', au: '2026-04-01' })).toMatch(/dépasse sa date de fin/);
     expect(motifPeriodeSaisie(EXERCICE, { du: '2026-04-01', au: '2026-06-30' })).toBeNull();
+  });
+});
+
+describe('ce que l’écran montre et imprime · lu pour la période affichée, jamais une autre', () => {
+  const avril = { du: '2026-04-01', au: '2026-06-30' };
+
+  it('une donnée lue pour une autre période, un autre réglage ou un autre exercice n’est pas montrée', () => {
+    const lue = { cle: cleDeLecture('ex1', PERIODE_EXERCICE, false), donnees: ['balance de l’exercice'] };
+    expect(lueePour(lue, cleDeLecture('ex1', PERIODE_EXERCICE, false))).toEqual(['balance de l’exercice']);
+    expect(lueePour(lue, cleDeLecture('ex1', avril, false))).toBeNull();
+    expect(lueePour(lue, cleDeLecture('ex1', PERIODE_EXERCICE, true))).toBeNull();
+    expect(lueePour(lue, cleDeLecture('ex2', PERIODE_EXERCICE, false))).toBeNull();
+    expect(lueePour(null, cleDeLecture('ex1', avril, false))).toBeNull();
+  });
+
+  it('la période appliquée à un exercice se lit comme l’exercice entier dans un autre', () => {
+    expect(periodePourLExercice({ exerciceId: 'ex1', ...avril }, 'ex1')).toEqual(avril);
+    expect(periodePourLExercice({ exerciceId: 'ex1', ...avril }, 'ex2')).toEqual(PERIODE_EXERCICE);
+    expect(periodePourLExercice({ exerciceId: null, ...avril }, undefined)).toEqual(PERIODE_EXERCICE);
+  });
+
+  it('UN COMPTE QUI N’A QUE SON REPORT RESTE MONTRÉ · son solde de départ n’est jamais « aucun report »', () => {
+    expect(sectionVisible({ lignes: [], report: { au: '2026-03-31', debit: 2_500_000, credit: 0 } })).toBe(true);
+    expect(sectionVisible({ lignes: [{}] })).toBe(true);
+    expect(sectionVisible({ lignes: [], report: null })).toBe(false);
+    expect(sectionVisible({ lignes: [] })).toBe(false);
+  });
+
+  it('L’EXTRAIT NE S’IMPRIME QUE SUR CE QUI EST LU · ni pendant le chargement, ni après un échec', () => {
+    const base = { extrait: true, onglet: 'balance', balanceLue: true, grandLivreLu: false, refusGrandLivre: false, sectionSeuleLue: false };
+    expect(extraitImprimable(base)).toBe(true);
+    expect(extraitImprimable({ ...base, balanceLue: false })).toBe(false);
+    expect(extraitImprimable({ ...base, extrait: false })).toBe(false);
+    expect(extraitImprimable({ ...base, onglet: 'grand-livre' })).toBe(false);
+    expect(extraitImprimable({ ...base, onglet: 'grand-livre', grandLivreLu: true })).toBe(true);
+    expect(extraitImprimable({ ...base, onglet: 'grand-livre', refusGrandLivre: true })).toBe(false);
+    expect(extraitImprimable({ ...base, onglet: 'grand-livre', refusGrandLivre: true, sectionSeuleLue: true })).toBe(true);
+    expect(extraitImprimable({ ...base, onglet: 'journal' })).toBe(false);
+  });
+
+  it('la fenêtre du journal s’en sert · aucune balance ni section gardée d’une demande à l’autre', () => {
+    const page = readFileSync(join(__dirname, '..', 'pages', 'JournalPage.tsx'), 'utf8');
+    // Les trois lectures se rangent avec leur clé, et se vident en tête de lecture.
+    expect(page).toContain('setBalanceLue({ cle, donnees: r.lignes })');
+    expect(page).toContain('setGrandLivreLu({ cle, donnees: r })');
+    expect(page).toContain('setSectionSeuleLue({ cle, donnees:');
+    expect(page).toContain('setBalanceLue(null);');
+    expect(page).toContain('const balance = lueePour(balanceLue, cleBalance);');
+    expect(page).toContain('const grandLivre = lueePour(grandLivreLu, cleGrandLivre);');
+    expect(page).toContain('const sectionSeule = lueePour(sectionSeuleLue, cleSectionSeule);');
+    // L'impression passe par la règle, et la section seule par `sectionVisible`.
+    expect(page).toContain('const imprimable = extraitImprimable({');
+    expect(page).toContain('disabled={impressionExtraitEnCours || !imprimable}');
+    expect(page.match(/sectionVisible\(sectionSeule\)/g)?.length).toBe(2);
+    expect(page).not.toMatch(/sectionSeule\.lignes\.length/);
   });
 });
