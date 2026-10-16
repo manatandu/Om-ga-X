@@ -26,7 +26,11 @@ describe('la fiche du tiers dit ses échecs de lecture', () => {
   });
 
   it('mineur 9 · une qualité refusée revient à celle de la fiche', () => {
-    expect(page).toMatch(/enregistrerChamp\(tiersSelectionne, \{ qualite: valeur \}\)\.then\(\(fait\) => \{\s*if \(!fait\) champ\.value = avant;/);
+    expect(page).toMatch(/enregistrerChamp\(tiersSelectionne, \{ qualite: valeur \}\)\.then\(\(fait\) => \{\s*if \(!fait\) \{\s*champ\.defaultValue = avant;\s*champ\.value = avant;/);
+  });
+
+  it('une qualité vidée aussitôt après une saisie part · comparée à la dernière valeur envoyée, jamais à la fiche en mémoire (WebKit, 2026-10-16)', () => {
+    expect(page).toMatch(/const avant = champ\.defaultValue;\s*if \(estAdmin && valeur !== qualiteAEnvoyer\(avant\)\) \{\s*champ\.defaultValue = valeur \?\? '';/);
   });
 
   it('mineur 11 · le formulaire d’échéance tient à l’étroit', () => {

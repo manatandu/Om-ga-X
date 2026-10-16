@@ -1033,12 +1033,21 @@ export function TiersPage() {
                     onBlur={(e) => {
                       const champ = e.currentTarget;
                       const valeur = qualiteAEnvoyer(champ.value);
-                      if (estAdmin && valeur !== (tiersSelectionne.qualite ?? null)) {
+                      // Comparée à la DERNIÈRE valeur envoyée (`defaultValue`),
+                      // jamais à la fiche en mémoire · rechargée après coup, elle
+                      // gardait l'ancienne qualité, et un champ vidé aussitôt
+                      // après une saisie n'était jamais envoyé (test navigateur
+                      // sous WebKit, 2026-10-16).
+                      const avant = champ.defaultValue;
+                      if (estAdmin && valeur !== qualiteAEnvoyer(avant)) {
+                        champ.defaultValue = valeur ?? '';
                         // Refusée, la qualité d'avant revient (second tour,
                         // mineur 9) · le champ ne montre pas ce que la fiche n'a pas.
-                        const avant = tiersSelectionne.qualite ?? '';
                         void enregistrerChamp(tiersSelectionne, { qualite: valeur }).then((fait) => {
-                          if (!fait) champ.value = avant;
+                          if (!fait) {
+                            champ.defaultValue = avant;
+                            champ.value = avant;
+                          }
                         });
                       }
                     }}
