@@ -27,19 +27,18 @@ l'art. 19 et n'écarte pas l'art. 22.
   nommé en 400 au-delà, illisible ou `du` après `au`). Une période qui couvre
   l'exercice entier N'EST PAS un extrait · balance et livre complets,
   inchangés, sans numéro.
-- **Balance de la période** · trois colonnes, chaque ligne dans une seule ·
-  « avant » = report à-nouveau (drapeau de clôture, hors solde de gestion)
-  daté au plus tard `au` + toute ligne datée avant `du` ; « mouvements » =
-  lignes ordinaires de `du` à `au` ; « clôture » = solde des comptes de
-  gestion de `du` à `au`. Une période égale à l'exercice rend EXACTEMENT la
-  balance de l'exercice (même convention, « report brut »).
-- **Grand livre de la période** · par la date · une ligne « Report au
-  <veille> » par compte (somme brute des lignes datées avant `du`), puis les
-  lignes de `du` à `au` (à-nouveau compris s'il y tombe, comme le livre de
-  l'exercice). Un compte sans ligne dans la période mais avec un report a son
-  bloc. Total du livre = total de la balance de la période (tout ce qui est
-  daté au plus tard `au`) · le contrôle « Solde à la balance générale » le
-  vérifie.
+- **Balance et grand livre de la période · UNE règle** (relecture du
+  2026-10-16, `ecrituresAvantLaPeriode` / `ecrituresDansLaPeriode`) · au
+  REPORT, ce qui est daté avant `du`, et l'à-nouveau (drapeau de clôture,
+  hors solde de gestion) daté de `du` même, sauf si `du` est le dernier jour
+  de l'exercice (virement du résultat non affecté) ; en MOUVEMENTS, le reste
+  de la période, une écriture de clôture datée dans la période comprise
+  (bilan d'ouverture importé en cours de période, virement du résultat) ; en
+  CLÔTURE, le solde des comptes de gestion de la période. La colonne « au
+  <veille> » est DATÉE · la règle « drapeau d'abord » de la première version
+  mettait au report ce que le grand livre du même classeur montrait en
+  ligne. Un compte sans ligne dans la période mais avec un report a son bloc,
+  à l'écran comme en Excel.
 - **Numérotation** · table `ExtraitPeriode` (suite continue par dossier,
   verrou du dossier), un numéro pour chaque extrait REMIS · fichier Excel
   produit, ou impression de l'écran par « Imprimer l'extrait ». Aucun lien
@@ -54,19 +53,44 @@ l'art. 19 et n'écarte pas l'art. 22.
 ## Fait
 
 - Décision écrite (CLAUDE.md § 5, plan-version-1 § 10).
+- Serveur · `periode-extrait.ts`, `filtresDesTroisColonnesDeLaPeriode`,
+  balance et grand livre de l'écran sur une période, `ExtraitPeriode`
+  (schéma, migration `20270185000100`, registres), `POST
+  /extraits-periode/impression`, exports Excel (cartouche, « Mouvements au
+  <veille> », report par compte, compte seul).
+- Client · période sur Balance et Grand livre, export et « Imprimer
+  l'extrait ».
+- Relectures, premier tour (échecs silencieux, TypeScript, React) · deux
+  BLOQUANTS d'écran corrigés (chiffres d'une autre période montrés et
+  imprimables ; compte à report seul masqué), règle unique balance et livre,
+  audit complet de l'extrait, jour de Kinshasa, extrait vide refusé avant
+  son numéro, combinaisons refusées, libellés.
+- Scénario sur vraie base à travers la clôture de N (N et N+1, soldes contre
+  le calcul à la main, numéros 1 à 5, refus, journal d'audit) · 0 écart
+  (`scratchpad/ep-scenario.mjs`). `prisma migrate diff` · aucune dérive.
+
+## Relevés en attente (non bloquants, gardés pour la suite)
+
+- Registre des extraits sans route de lecture (`GET` borné) · lisible au
+  journal d'audit seulement ; une impression dont la boîte est annulée reste
+  « remise ».
+- Licence échue (lecture seule) · « Imprimer l'extrait » refusé (POST) quand
+  l'export Excel (GET) numérote · même défaut que l'impression du journal ;
+  un GET qui numérote se déclenche aussi par HEAD ou préchargement.
+- Le refus de volume du grand livre complet se reconnaît au statut 400, pas à
+  un code · un refus de période qui arriverait en course serait lu comme un
+  refus de volume.
+- Le numéro d'un extrait exporté n'est dit qu'au fichier, pas à l'écran.
+- Pied du grand livre · l'écran dit « Total de la période » (report exclu),
+  l'Excel « Total du compte » (report inclus).
 
 ## Reste
 
-- Serveur · `periode-extrait.ts` (pur), filtres de la période dans
-  `balance-trois-colonnes.ts`, `EcritureService.balance` et grand livre,
-  `ExtraitPeriode` (schéma, migration, registres), routes écran et export,
-  FPM (cartouche, colonne « Mouvements au <veille> », report par compte).
-- Client · période sur les onglets Balance et Grand livre, export et
-  « Imprimer l'extrait ».
-- Tests · unitaires, scénario sur vraie base à travers une clôture, e2e.
-- Relectures, bloc § 3, intégration, déploiement vérifié.
+- Bloc § 3 des deux côtés, second tour de relecture, tests navigateur.
+- Intégration sur `main` (fiche retirée), déploiement vérifié.
 
 ## Vérification
 
-Bloc § 3 · `/tmp/claude-0/-home-user/ac8187b8-6ad7-5085-a3b1-d7551f9bf74d/scratchpad/l6m-bloc.sh`
-(à recopier pour cette copie).
+Bloc § 3 · `scratchpad/epb-bloc.sh` · scénario · `scratchpad/ep-serveur.sh`
+puis `node scratchpad/ep-scenario.mjs` (serveur sur 8082, base jetable
+`omegax_rs_ep`).
