@@ -27,6 +27,11 @@ describe('exports des balances et grands livres', () => {
   it('la balance porte les feuilles par compte, sauf balance seule', () => {
     expect(cheminBalance('ex', false)).toBe('/exports/balance?exerciceId=ex');
     expect(cheminBalance('ex', true)).toBe('/exports/balance?exerciceId=ex&grandsLivres=non');
+    // Une période · ses seules bornes posées (ligne export-periode).
+    expect(cheminBalance('ex', true, { du: '2026-04-01', au: '' })).toBe('/exports/balance?exerciceId=ex&grandsLivres=non&du=2026-04-01');
+    expect(cheminGrandLivre('ex', 'fpm', { du: '2026-04-01', au: '2026-06-30' }, 'c1')).toBe(
+      '/exports/grand-livre?exerciceId=ex&du=2026-04-01&au=2026-06-30&compteId=c1',
+    );
     expect(cheminBalanceTiers('ex', 'SALARIES', false)).toBe('/exports/balance-auxiliaire?exerciceId=ex&type=SALARIES');
     expect(cheminGrandLivreTiers('ex', 'AUTRES')).toBe('/exports/grand-livre-tiers?exerciceId=ex&type=AUTRES');
   });
@@ -82,15 +87,17 @@ describe('exports des balances et grands livres', () => {
     expect(journal).toContain('e instanceof ApiError && e.status === 400) setRefusGrandLivre(e.message)');
     // La route bornée d'UN compte, lue seulement sur ce refus et pour le compte choisi.
     expect(journal).toContain('!refusGrandLivre || !compteGrandLivreId) return;');
-    expect(journal).toContain('`/ecritures/grand-livre/${encodeURIComponent(compteGrandLivreId)}?exerciceId=${exerciceCourant.id}`');
-    expect(journal).toContain('setSectionSeule(sectionDuCompteSeul(r))');
+    expect(journal).toContain('`/ecritures/grand-livre/${encodeURIComponent(compteGrandLivreId)}?exerciceId=${exerciceCourant.id}${requetePeriode(periode)}`');
+    expect(journal).toContain('setSectionSeule({ ...sectionDuCompteSeul(r), report: r.report ?? null })');
   });
 
   it('les écrans appellent ces adresses, jamais une adresse recopiée', () => {
     const journal = readFileSync(join(__dirname, '..', 'pages', 'JournalPage.tsx'), 'utf8');
     const tiers = readFileSync(join(__dirname, '..', 'pages', 'BalanceAuxiliairePage.tsx'), 'utf8');
-    expect(journal).toContain('cheminBalance(exerciceCourant.id, balanceSeule)');
-    expect(journal).toContain('cheminGrandLivre(exerciceCourant.id, formatGrandLivre)');
+    // Sur une période, les bornes suivent (ligne export-periode).
+    expect(journal).toContain('cheminBalance(exerciceCourant.id, balanceSeule, periode)');
+    expect(journal).toContain('cheminGrandLivre(exerciceCourant.id, formatExporte, periode)');
+    expect(journal).toContain("cheminGrandLivre(exerciceCourant.id, 'fpm', periode, compteGrandLivreId)");
     expect(journal).toContain('onDoubleClick');
     expect(tiers).toContain('cheminBalanceTiers(exerciceCourant.id, famille, balanceSeule)');
     expect(tiers).toContain('navigate(adresseGrandLivreDuCompte(c.compteId))');
