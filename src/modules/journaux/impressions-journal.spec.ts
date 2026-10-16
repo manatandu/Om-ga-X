@@ -227,8 +227,11 @@ describe('l’export du journal entier est une impression, une recherche export�
     const src = readFileSync(join(__dirname, '..', 'exports', 'export.service.ts'), 'utf8');
     const debut = src.indexOf('async journalExcelEnFlux(');
     const corps = src.slice(debut, src.indexOf('\n  }\n', debut));
-    expect(corps.indexOf('await flux.terminer(derniereDonnee);')).toBeGreaterThan(-1);
-    expect(corps.indexOf('await this.marquerJournalImprime(')).toBeGreaterThan(corps.indexOf('await flux.terminer(derniereDonnee);'));
+    // Le journal présenté comme l'édition de Sage se termine par
+    // `edition.terminer` (totaux de la période, piste, archive close) · c'est
+    // après lui seulement que l'export s'enregistre comme imprimé.
+    expect(corps.indexOf('await edition.terminer(')).toBeGreaterThan(-1);
+    expect(corps.indexOf('await this.marquerJournalImprime(')).toBeGreaterThan(corps.indexOf('await edition.terminer('));
     const marquer = src.slice(src.indexOf('private async marquerJournalImprime('));
     expect(marquer).toContain('estUneRecherche(filtres)');
     expect(marquer).toContain('this.logger.error(');

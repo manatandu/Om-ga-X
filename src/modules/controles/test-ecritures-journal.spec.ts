@@ -214,15 +214,17 @@ describe('la piste d’audit, restituée · AUDCIF art. 22, 1°', () => {
       user: { findMany: jest.fn().mockResolvedValue([COMPTABLE, ADMIN]) },
       tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ nom: 'Dossier', nif: 'A1234', deviseComptes: 'CDF' }) },
       exercice: { findFirst: jest.fn().mockResolvedValue(EXERCICE), findUnique: jest.fn().mockResolvedValue(EXERCICE) },
-      // L'export lit désormais les écritures PAR LOTS, curseur sur
-      // l'identifiant · la doublure rend le lot puis un lot vide, sans quoi la
-      // boucle ne s'arrêterait jamais. Une doublure qui répondrait toujours la
-      // même chose bouclerait à l'infini, ce qui est déjà un enseignement.
+      // Le journal s'édite par BLOC (un par journal), puis la piste de
+      // révision le relit en second passage · décomptes et journaux lus avant
+      // le premier octet.
+      journal: { findMany: jest.fn().mockResolvedValue([{ id: 'j-ach', code: 'ACH', intitule: 'Achats', type: 'ACHATS' }]) },
+      // L'export lit les écritures PAR LOTS · un lot plus court que la
+      // tranche arrête la lecture, si bien que chaque passage n'appelle la
+      // base qu'une fois.
       ecriture: {
-        findMany: jest
-          .fn()
-          .mockResolvedValueOnce(ecritures)
-          .mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(ecritures.length),
+        groupBy: jest.fn().mockResolvedValue([{ journalId: 'j-ach', statut: 'VALIDEE', _count: { _all: ecritures.length } }]),
+        findMany: jest.fn().mockResolvedValue(ecritures),
       },
     } as Faux;
     const ecritureService = {} as Faux;
@@ -254,7 +256,11 @@ describe('la piste d’audit, restituée · AUDCIF art. 22, 1°', () => {
     ]).journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie);
     const classeur = new ExcelJS.Workbook();
     await classeur.xlsx.load(Buffer.concat(morceaux) as never);
-    const feuille = classeur.worksheets[0];
+    // La piste passe dans sa propre feuille depuis que le journal se présente
+    // comme l'édition de Sage (décision de Manasse du 2026-10-16) · elle ne
+    // disparaît pas, elle change de place.
+    const feuille = classeur.getWorksheet('Piste de révision')!;
+    expect(feuille).toBeDefined();
 
     const entetes: string[] = [];
     feuille.getRow(4).eachCell((c) => entetes.push(String(c.value ?? '')));

@@ -17,6 +17,16 @@ import {
   type IdentiteEtat,
   segmentIdentification,
 } from './classeur-en-flux';
+import {
+  COLONNES_PISTE_REVISION,
+  estHorsLivreJournal,
+  etatDeCorrection,
+  formatDuJour,
+  libelleDeLaLigne,
+  ouvrirJournalEdition,
+  type StatutsDuBloc,
+  tiersDeLaLigne,
+} from './journal-edition';
 import { FormeImpressionJournal, JeuEtatsFinanciersSycebnl, Prisma, Referentiel, SystemeComptableSyscohada } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../common/prisma.service';
@@ -477,53 +487,6 @@ export class ExportService {
   }
 
 
-  /**
-   * Colonnes du journal · sorties en constante parce que le flux doit les
-   * poser À LA CRÉATION de la feuille, avant la première ligne.
-   */
-  private static readonly COLONNES_JOURNAL: Partial<ExcelJS.Column>[] = [
-    // LES FORMATS SONT PORTÉS PAR LA COLONNE, ET POSÉS ICI · en flux, une
-    // ligne est écrite et scellée aussitôt. Un `numFmt` appliqué après coup,
-    // comme le fait `appliquerFormats` sur les classeurs en mémoire, n'a alors
-    // AUCUN effet sur les lignes déjà parties : les dates sortiraient en
-    // numéros de série et les montants sans séparateur. Éprouvé par un test
-    // qui relit le classeur produit.
-    { header: 'Date', key: 'date', width: 12, style: { numFmt: FORMAT_DATE } },
-    // AUDCIF art. 22, 4° · la date réelle d'une opération reportée au premier
-    // jour d'une période ouverte, « mentionnée distinctement ». Vide sinon.
-    { header: 'Date de valeur', key: 'dateValeur', width: 14, style: { numFmt: FORMAT_DATE } },
-    { header: 'Journal', key: 'journal', width: 10 },
-    { header: 'N° pièce', key: 'numeroPiece', width: 10 },
-    { header: 'Référence', key: 'reference', width: 16 },
-    { header: 'Libellé écriture', key: 'libelleEcriture', width: 32 },
-    { header: 'Compte', key: 'compteNumero', width: 12 },
-    { header: 'Intitulé compte', key: 'compteIntitule', width: 28 },
-    { header: 'Libellé ligne', key: 'libelleLigne', width: 32 },
-    { header: 'Débit', key: 'debit', width: 14, style: { numFmt: FORMAT_MONTANT } },
-    { header: 'Crédit', key: 'credit', width: 14, style: { numFmt: FORMAT_MONTANT } },
-    { header: 'Lettrage', key: 'lettre', width: 10 },
-    // Un journal d'audit qui tairait les annulations laisserait additionner
-    // une erreur et sa correction sans savoir laquelle est laquelle. Les deux
-    // écritures RESTENT au journal · « sans blanc ni altération d'aucune
-    // sorte » (AUDCIF art. 20, repris par le SYCEBNL Partie 2 ch. 2) · mais
-    // chacune se nomme.
-    // Titre formel, la référence reste ici (§ 9 ter du règlement intérieur ·
-    // jamais un article dans un en-tête de colonne).
-    { header: 'Correction', key: 'correction', width: 30 },
-    { header: 'Motif de la correction', key: 'motifCorrection', width: 46 },
-    // LA PISTE, RESTITUÉE · AUDCIF art. 22, 1° : les données « comprennent,
-    // lors de leur entrée, l'indication de l'ORIGINE, du contenu et de
-    // l'imputation, et puissent être RESTITUÉES sur papier ou sous une forme
-    // directement intelligible ». La DATE DE SAISIE n'est pas la date
-    // comptable. Ce n'est pas non plus la « date de valeur » de l'art. 22, 4°,
-    // qui est la date réelle d'une opération reportée hors d'une période close
-    // et qui a sa propre colonne, plus haut.
-    { header: 'Statut', key: 'statut', width: 12 },
-    { header: 'Saisie le', key: 'saisieLe', width: 18, style: { numFmt: FORMAT_DATE_HEURE } },
-    { header: 'Saisie par', key: 'saisiePar', width: 28 },
-    { header: 'Validée le', key: 'valideeLe', width: 18, style: { numFmt: FORMAT_DATE_HEURE } },
-    { header: 'Validée par', key: 'valideePar', width: 28 },
-  ];
 
 
   /**
@@ -788,6 +751,16 @@ export class ExportService {
    * en flux · plus de plafond de fenêtre, plus de classeur en mémoire, et les
    * deux totaux redeviennent le même parce qu'ils portent sur les mêmes lignes.
    *
+   * LE JOURNAL SE PRÉSENTE COMME L'ÉDITION DE SAGE (décision de Manasse du
+   * 2026-10-16, « Comme Sage ») · un bloc par journal sous son en-tête, sept
+   * colonnes (jour, pièce, compte, tiers, libellé, débit, crédit), les totaux
+   * du journal, une page par journal, et les totaux de la période en fin de
+   * feuille (`journal-edition.ts`). La piste du réviseur (statut, saisie,
+   * validation, corrections · AUDCIF art. 22, 1° ; art. 20, al. 2) ne
+   * disparaît pas · elle passe dans une seconde feuille, « Piste de
+   * révision », une ligne par écriture. La date de valeur de l'art. 22, 4°
+   * reste « mentionnée distinctement », dans le libellé de la ligne.
+   *
    * `ouvrir` est appelé UNE FOIS, quand le nom du fichier est connu et avant le
    * premier octet · c'est là que l'appelant pose ses en-têtes HTTP. Après, il
    * est trop tard : on ne rattrape pas une réponse commencée.
@@ -807,14 +780,41 @@ export class ExportService {
     imprimePar?: string,
   ): Promise<{ lignes: number }> {
     const where = perimetreJournal(tenantId, filtres);
-    // LE DÉCOMPTE DE DÉPART, SUR LE FILTRE MÊME DE LA LECTURE (relecture
-    // TypeScript, M2) · il borne le volume, et le livre écrit s'y confronte
-    // avant ses totaux. `verifierVolume` arrête le statut hors situation · le
-    // livre d'un journal de situation, que la lecture rend, se serait alors
-    // refusé comme amputé.
+    // LES DÉCOMPTES DE DÉPART, SUR LE FILTRE MÊME DE LA LECTURE (relecture
+    // TypeScript, M2) · celui des lignes borne le volume, et le journal écrit
+    // s'y confronte avant les totaux de la période ; celui des écritures, la
+    // piste de révision, relue en second passage. `verifierVolume` arrête le
+    // statut hors situation · le livre d'un journal de situation, que la
+    // lecture rend, se serait alors refusé comme amputé.
     const comptees = await this.prisma.ligneEcriture.count({ where: { ecriture: { ...where, tenantId } } });
     refuserAuDelaDuPlafond(comptees, 'Journal');
+    const ecrituresComptees = await this.prisma.ecriture.count({ where: { ...where, tenantId } });
+    // UN BLOC PAR JOURNAL (journal présenté comme l'édition de Sage, décision
+    // de Manasse du 2026-10-16) · les journaux qui portent une écriture du
+    // périmètre, et ce qu'elles sont, comptés AVANT d'écrire l'en-tête de
+    // chaque bloc · une feuille en flux ne revient pas corriger un titre.
+    const parJournal = await this.prisma.ecriture.groupBy({
+      by: ['journalId', 'statut'],
+      where: { ...where, tenantId },
+      _count: { _all: true },
+    });
+    const statuts = new Map<string, StatutsDuBloc>();
+    for (const g of parJournal) {
+      const s = statuts.get(g.journalId) ?? { validees: 0, brouillard: 0, situation: 0 };
+      if (g.statut === 'VALIDEE') s.validees += g._count._all;
+      else if (g.statut === 'SITUATION') s.situation += g._count._all;
+      else s.brouillard += g._count._all;
+      statuts.set(g.journalId, s);
+    }
+    const journaux = statuts.size
+      ? await this.prisma.journal.findMany({
+          where: { tenantId, id: { in: [...statuts.keys()] } },
+          select: { id: true, code: true, intitule: true, type: true },
+          orderBy: [{ code: 'asc' }, { id: 'asc' }],
+        })
+      : [];
     const identite = await this.identiteEtat(tenantId, filtres);
+    const formatJour = formatDuJour(await this.bornesDuJournal(tenantId, filtres));
 
     // L'auteur est un identifiant en base · un auditeur ne lit pas un uuid.
     const auteurs = await this.prisma.user.findMany({ where: { tenantId }, select: { id: true, email: true } });
@@ -825,37 +825,120 @@ export class ExportService {
       id ? (courrielParId.get(id) ?? 'utilisateur retiré du dossier') : '';
 
     const sortie = ouvrir(`journal${await this.suffixeExercice(tenantId, filtres.exerciceId)}.xlsx`);
-    const flux = ouvrirFeuilleEnFlux({
-      sortie,
-      nomFeuille: 'Journal',
-      titre: 'JOURNAL',
-      identite,
-      colonnes: ExportService.COLONNES_JOURNAL,
-    });
+    const edition = ouvrirJournalEdition({ sortie, identite, formatJour });
 
-    let totalDebit = 0;
-    let totalCredit = 0;
     let nbLignes = 0;
-    // LA TRANCHE SUIVANTE PART DES VALEURS DE LA DERNIÈRE ÉCRITURE RENDUE,
-    // jamais d'un curseur relu en base (relecture « échecs silencieux » de
-    // sage-l7, M6) · un brouillard retiré pendant l'export arrêtait le curseur
-    // de Prisma, et le journal sortait amputé, ses totaux bouclant sur ce
-    // qu'il portait.
+    if (journaux.length === 0) await edition.aucuneEcriture();
+    for (const journal of journaux) {
+      await edition.ouvrirBloc(journal, statuts.get(journal.id)!);
+      for await (const lot of this.ecrituresDuJournal(tenantId, where, journal.id, {
+        lignes: {
+          include: {
+            compte: {
+              select: {
+                numero: true,
+                tiersCompte: { select: { tiers: { select: { code: true } } } },
+                _count: { select: { individuels: true } },
+              },
+            },
+          },
+        },
+      })) {
+        for (const e of lot) {
+          for (const l of e.lignes) {
+            nbLignes++;
+            await edition.ajouterLigne({
+              jour: e.date,
+              numeroPiece: e.numeroPiece,
+              compte: l.compte.numero,
+              tiers: tiersDeLaLigne(l.compte),
+              libelle: libelleDeLaLigne(l, e),
+              debit: Number(l.debit),
+              credit: Number(l.credit),
+              horsLivreJournal: estHorsLivreJournal(e.statut),
+            });
+          }
+        }
+      }
+      await edition.fermerBloc();
+    }
+    // Un livre amputé ou gonflé en route ne reçoit pas les totaux de la
+    // période · le téléchargement est coupé, l'impression différée échoue,
+    // motif dit.
+    confronterAuDecompte(nbLignes, comptees, 'Journal');
+
+    await edition.terminer(async (ajouterFeuille) => {
+      // LA PISTE DE RÉVISION, UNE LIGNE PAR ÉCRITURE · relue en second
+      // passage, dans l'ordre du journal, et confrontée au décompte des
+      // écritures · une pièce ajoutée ou retirée entre les deux feuilles
+      // ferait dire au classeur deux livres différents.
+      const piste = ajouterFeuille({
+        nomFeuille: 'Piste de révision',
+        titre: 'PISTE DE RÉVISION DU JOURNAL',
+        identite,
+        colonnes: COLONNES_PISTE_REVISION,
+      });
+      let nbEcritures = 0;
+      for (const journal of journaux) {
+        for await (const lot of this.ecrituresDuJournal(tenantId, where, journal.id, {
+          correction: { select: { numeroPiece: true } },
+          corrigeEcriture: { select: { numeroPiece: true } },
+        })) {
+          for (const e of lot) {
+            nbEcritures++;
+            await piste.ajouter({
+              journal: journal.code,
+              date: e.date,
+              dateValeur: e.dateValeur ?? null,
+              numeroPiece: e.numeroPiece,
+              reference: e.reference ?? '',
+              libelle: e.libelle,
+              statut: libelleDuStatut(e.statut),
+              saisieLe: e.createdAt,
+              saisiePar: courriel(e.createdBy),
+              valideeLe: e.valideeAt,
+              valideePar: courriel(e.valideeBy),
+              correction: etatDeCorrection(e),
+              motifCorrection: e.motifCorrection ?? '',
+            });
+          }
+        }
+      }
+      confronterAuDecompte(nbEcritures, ecrituresComptees, 'Piste de révision du journal');
+      piste.fermer();
+    });
+    await this.marquerJournalImprime(tenantId, filtres, imprimePar);
+    return { lignes: nbLignes };
+  }
+
+  /**
+   * LES ÉCRITURES D'UN JOURNAL, PAR TRANCHES, dans l'ordre de l'édition ·
+   * date, pièce, identifiant. LA TRANCHE SUIVANTE PART DES VALEURS DE LA
+   * DERNIÈRE ÉCRITURE RENDUE, jamais d'un curseur relu en base (relecture
+   * « échecs silencieux » de sage-l7, M6) · un brouillard retiré pendant
+   * l'export arrêtait le curseur de Prisma, et le journal sortait amputé, ses
+   * totaux bouclant sur ce qu'il portait. Une pièce dont la DATE avance pendant
+   * la production revient dans une tranche suivante · elle n'est rendue
+   * qu'une fois (M2) ; une pièce dont la date recule n'est jamais relue, et le
+   * décompte de départ le dit.
+   */
+  private async *ecrituresDuJournal<I extends Prisma.EcritureInclude>(
+    tenantId: string,
+    where: Prisma.EcritureWhereInput,
+    journalId: string,
+    include: I,
+  ): AsyncGenerator<Prisma.EcritureGetPayload<{ include: I }>[]> {
     let derniere: { date: Date; numeroPiece: number | null; id: string } | undefined;
-    // Une pièce dont la DATE avance pendant la production revient dans une
-    // tranche suivante · écrite deux fois, le livre portait ses lignes en
-    // double et des totaux faux qui bouclaient (M2). Une pièce dont la date
-    // recule n'est jamais relue · le décompte de départ le dit.
-    const ecrites = new Set<string>();
+    const rendues = new Set<string>();
     for (;;) {
-      const lot = await this.prisma.ecriture.findMany({
+      const lot = (await this.prisma.ecriture.findMany({
         // `tenantId` répété alors que `where` le porte déjà · le balayage de
         // cloisonnement lit le CODE, pas la valeur d'une variable, et une borne
         // qu'il ne voit pas est une borne qu'un relecteur ne voit pas non plus.
         where: derniere
           ? {
               AND: [
-                { ...where, tenantId },
+                { ...where, tenantId, journalId },
                 apresLaCle<Prisma.EcritureWhereInput>([
                   { champ: 'date', valeur: derniere.date },
                   { champ: 'numeroPiece', valeur: derniere.numeroPiece, nullable: true },
@@ -863,83 +946,42 @@ export class ExportService {
                 ]),
               ],
             }
-          : { ...where, tenantId },
+          : { ...where, tenantId, journalId },
         take: LOT_EXPORT,
-        include: {
-          lignes: { include: { compte: true } },
-          journal: true,
-          correction: { select: { id: true, numeroPiece: true, date: true } },
-          corrigeEcriture: { select: { id: true, numeroPiece: true, date: true, libelle: true } },
-        },
+        include,
         // Même ordre total que la fenêtre · à date égale, laisser le plan
         // d'exécution décider ferait sortir deux exports du même exercice dans
         // deux ordres différents.
         orderBy: [{ date: 'asc' }, { numeroPiece: 'asc' }, { id: 'asc' }],
-      });
-      for (const e of lot) {
-        if (ecrites.has(e.id)) continue;
-        ecrites.add(e.id);
-        const etatCorrection = e.correction
-          ? `Annulée par la pièce n° ${e.correction.numeroPiece ?? '·'}`
-          : e.corrigeEcriture
-            ? `Annule la pièce n° ${e.corrigeEcriture.numeroPiece ?? '·'}`
-            : '';
-        for (const l of e.lignes) {
-          totalDebit += Number(l.debit);
-          totalCredit += Number(l.credit);
-          nbLignes++;
-          await flux.ajouter({
-            date: e.date,
-            dateValeur: e.dateValeur ?? null,
-            journal: e.journal.code,
-            numeroPiece: e.numeroPiece,
-            reference: e.reference ?? '',
-            libelleEcriture: e.libelle,
-            compteNumero: l.compte.numero,
-            compteIntitule: l.compte.intitule,
-            libelleLigne: l.libelle ?? '',
-            debit: Number(l.debit) || null,
-            credit: Number(l.credit) || null,
-            lettre: l.lettre ?? '',
-            correction: etatCorrection,
-            motifCorrection: e.motifCorrection ?? '',
-            statut: libelleDuStatut(e.statut),
-            saisieLe: e.createdAt,
-            saisiePar: courriel(e.createdBy),
-            valideeLe: e.valideeAt,
-            valideePar: courriel(e.valideeBy),
-          });
-        }
-      }
-      if (lot.length < LOT_EXPORT) break;
+      })) as Prisma.EcritureGetPayload<{ include: I }>[];
+      const nouvelles = lot.filter((e) => !rendues.has(e.id));
+      for (const e of nouvelles) rendues.add(e.id);
+      if (nouvelles.length > 0) yield nouvelles;
+      if (lot.length < LOT_EXPORT) return;
       const fin = lot[lot.length - 1];
       derniere = { date: fin.date, numeroPiece: fin.numeroPiece, id: fin.id };
     }
+  }
 
-    // Un livre amputé ou gonflé en route ne reçoit pas de totaux · le
-    // téléchargement est coupé, l'impression différée échoue, motif dit.
-    confronterAuDecompte(nbLignes, comptees, 'Journal');
-    const derniereDonnee = flux.derniereLigneDonnees();
-    // LES DEUX TOTAUX SONT DÉSORMAIS LE MÊME · la formule couvre exactement les
-    // lignes écrites, et la valeur jointe est leur somme. Tant que l'export
-    // était tronqué, ces deux-là divergeaient en silence.
-    const ligneTotal = flux.feuille.addRow({ libelleEcriture: 'TOTAUX DE LA PÉRIODE' });
-    for (const [cle, valeur] of [
-      ['debit', totalDebit],
-      ['credit', totalCredit],
-    ] as const) {
-      const col = flux.feuille.getColumn(cle).letter;
-      ligneTotal.getCell(cle).value = this.formule(
-        `SUM(${col}${PREMIERE_LIGNE_DONNEES}:${col}${derniereDonnee})`,
-        valeur,
-      );
-    }
-    ligneTotal.font = ENTETE_FONT;
-    ligneTotal.commit();
-
-    await flux.terminer(derniereDonnee);
-    await this.marquerJournalImprime(tenantId, filtres, imprimePar);
-    return { lignes: nbLignes };
+  /**
+   * LES BORNES DU JOURNAL EXPORTÉ · celles de la période demandée, sinon de
+   * l'exercice · elles décident seulement si le jour s'imprime avec son année
+   * (`formatDuJour`). Sans exercice ni période, rien n'est borné.
+   */
+  private async bornesDuJournal(
+    tenantId: string,
+    filtres: { exerciceId?: string; dateDebut?: string; dateFin?: string },
+  ): Promise<{ debut: Date; fin: Date } | null> {
+    const exercice = filtres.exerciceId
+      ? await this.prisma.exercice.findFirst({
+          where: { id: filtres.exerciceId, tenantId },
+          select: { dateDebut: true, dateFin: true },
+        })
+      : null;
+    const debut = filtres.dateDebut ? new Date(filtres.dateDebut) : exercice?.dateDebut;
+    const fin = filtres.dateFin ? new Date(filtres.dateFin) : exercice?.dateFin;
+    if (!debut || !fin || Number.isNaN(debut.getTime()) || Number.isNaN(fin.getTime())) return null;
+    return { debut, fin };
   }
 
   /**
@@ -1052,7 +1094,7 @@ export class ExportService {
       ...colonnesCompte,
       { header: 'Journal', key: 'journal', width: 10 },
       // Formats portés par la COLONNE · en flux, une ligne commise ne se
-      // reformate plus (voir COLONNES_JOURNAL).
+      // reformate plus (voir `ouvrirJournalEdition`).
       { header: 'Date écriture', key: 'date', width: 13, style: { numFmt: FORMAT_DATE } },
       { header: 'N° pièce', key: 'numeroPiece', width: 10 },
       { header: 'Réf. pièce', key: 'reference', width: 16 },

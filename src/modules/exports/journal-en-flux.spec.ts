@@ -2,10 +2,12 @@ import { Writable } from 'stream';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import * as ExcelJS from 'exceljs';
+import * as JSZip from 'jszip';
 import { ExportService } from './export.service';
 import { PrismaService } from '../../common/prisma.service';
 import { PLAFOND_ECRITURES_PAR_FENETRE, perimetreJournal } from '../comptabilite/ecriture.service';
 import { LIGNE_ENTETE, PREMIERE_LIGNE_DONNEES, OPTIONS_CLASSEUR_EN_FLUX } from './classeur-en-flux';
+import { TITRES_COLONNES_JOURNAL } from './journal-edition';
 
 // Chaque cas écrit puis relit un classeur en flux · sous une suite chargée l'un
 // d'eux a dépassé les cinq secondes par défaut de Jest (2026-10-04), sans
@@ -30,77 +32,137 @@ jest.setTimeout(30000);
  * Le livre-journal est un livre obligatoire (AUDCIF art. 22, 6°). Le grand
  * livre porte déjà, en toutes lettres, qu'« un livre amputé en silence est un
  * document FAUX » · le journal n'avait pas eu droit à la même phrase.
+ *
+ * Depuis le 2026-10-16 (décision de Manasse, « Comme Sage »), le journal se
+ * présente comme l'édition de Sage · un bloc par journal sous son en-tête,
+ * sept colonnes, les totaux du journal, et la piste du réviseur dans une
+ * seconde feuille. Les propriétés de la lecture (par lots, sans troncature,
+ * sans doublon) n'ont pas bougé · elles se relisent sur la nouvelle feuille.
  */
 
 const EXERCICE = { id: 'ex', dateDebut: new Date('2026-01-01'), dateFin: new Date('2026-12-31') };
 
+/**
+ * La feuille « Journal » d'un seul bloc · quatre lignes d'en-tête (titre et
+ * période, journal et unité, tirage, mention), les titres des sept colonnes
+ * en ligne 5, les données dès la ligne 6. Les rangs sont RÉÉCRITS ici · les
+ * importer rendrait le test d'accord avec n'importe quelle mise en page.
+ */
+const TITRES_DU_BLOC = 5;
+const DONNEES = 6;
+/** Rangs des colonnes de la feuille « Journal ». */
+const JOUR = 1;
+const PIECE = 2;
+const COMPTE = 3;
+const TIERS = 4;
+const LIBELLE = 5;
+const DEBIT = 6;
+const CREDIT = 7;
+
+type Journal = { id: string; code: string; intitule: string; type: string };
+const ACHATS: Journal = { id: 'j-ach', code: 'ACH', intitule: 'Achats', type: 'ACHATS' };
+const BANQUE: Journal = { id: 'j-bq', code: 'BQ', intitule: 'Banque', type: 'TRESORERIE' };
+
 /** Une écriture à deux lignes, équilibrée · le grain de l'export. */
-const ecriture = (i: number) => ({
+const ecriture = (i: number, journal: Journal = ACHATS) => ({
   id: `e-${String(i).padStart(6, '0')}`,
+  journalId: journal.id,
   date: new Date('2026-03-01'),
+  dateValeur: null as Date | null,
   numeroPiece: i,
   reference: `FAC-${i}`,
   libelle: `Écriture ${i}`,
   statut: 'VALIDEE',
-  motifCorrection: null,
+  motifCorrection: null as string | null,
   createdAt: new Date('2026-03-02'),
   createdBy: 'u-1',
-  valideeAt: new Date('2026-03-03'),
-  valideeBy: 'u-1',
-  journal: { code: 'ACH' },
-  correction: null,
-  corrigeEcriture: null,
+  valideeAt: new Date('2026-03-03') as Date | null,
+  valideeBy: 'u-1' as string | null,
+  correction: null as { numeroPiece: number } | null,
+  corrigeEcriture: null as { numeroPiece: number } | null,
   lignes: [
-    { debit: 100, credit: 0, lettre: null, libelle: 'débit', compte: { numero: '60410000', intitule: 'Achats' } },
-    { debit: 0, credit: 100, lettre: null, libelle: 'crédit', compte: { numero: '40100000', intitule: 'Fournisseurs' } },
+    { debit: 100, credit: 0, libelle: 'débit', compte: { numero: '60410000', tiersCompte: null, _count: { individuels: 0 } } },
+    {
+      debit: 0,
+      credit: 100,
+      libelle: 'crédit',
+      compte: { numero: '40110001', tiersCompte: { tiers: { code: 'F-KINPAP' } }, _count: { individuels: 0 } },
+    },
   ],
 });
+type Ecriture = ReturnType<typeof ecriture>;
 
 /** Une valeur comparable · une date par son instant. */
 const comparable = (v: unknown) => (v instanceof Date ? v.getTime() : v) as number | string;
 
 /**
  * Le filtre de la tranche, lu comme PostgreSQL · `AND`, `OR`, égalité, nul et
- * `gt` (la pagination par la clé, `apresLaCle`) ; le reste du périmètre (dossier,
- * exercice, statut) est l'affaire d'autres tests et passe.
+ * `gt` (la pagination par la clé, `apresLaCle`), et le journal du bloc ; le
+ * reste du périmètre (dossier, exercice, statut) est l'affaire d'autres tests
+ * et passe.
  */
 function correspond(e: Record<string, unknown>, where: Record<string, unknown> | undefined): boolean {
   if (!where) return true;
   return Object.entries(where).every(([cle, attendu]) => {
     if (cle === 'AND') return (attendu as Record<string, unknown>[]).every((w) => correspond(e, w));
     if (cle === 'OR') return (attendu as Record<string, unknown>[]).some((w) => correspond(e, w));
-    if (!['date', 'numeroPiece', 'id'].includes(cle)) return true;
+    if (!['date', 'numeroPiece', 'id', 'journalId'].includes(cle)) return true;
     const v = e[cle];
     if (attendu === null) return v === null;
-    if (attendu && typeof attendu === 'object' && !(attendu instanceof Date) && 'gt' in attendu) {
-      return v !== null && comparable(v) > comparable((attendu as { gt: unknown }).gt);
+    if (attendu && typeof attendu === 'object' && !(attendu instanceof Date)) {
+      // Les bornes · `gt` de la clé de tranche, `gte` et `lte` de la période.
+      const b = attendu as { gt?: unknown; gte?: unknown; lte?: unknown };
+      if (v === null) return false;
+      return (
+        (b.gt === undefined || comparable(v) > comparable(b.gt)) &&
+        (b.gte === undefined || comparable(v) >= comparable(b.gte)) &&
+        (b.lte === undefined || comparable(v) <= comparable(b.lte))
+      );
     }
     return v !== null && comparable(v) === comparable(attendu);
   });
 }
 
 /**
- * Un faux Prisma qui PAGINE VRAIMENT · il honore `take` et le filtre de la
- * clé, dans l'ordre du service (date, pièce, identifiant). Une doublure qui
- * rendrait tout d'un coup validerait un service qui ne lit pas par lots, et une
- * doublure qui rendrait toujours la même chose bouclerait sans fin. Un curseur
- * de Prisma est REFUSÉ · sa ligne relue en base peut avoir disparu (M6).
+ * Un faux Prisma qui PAGINE VRAIMENT · il honore `take`, le journal du bloc et
+ * le filtre de la clé, dans l'ordre du service (date, pièce, identifiant). Une
+ * doublure qui rendrait tout d'un coup validerait un service qui ne lit pas
+ * par lots, et une doublure qui rendrait toujours la même chose bouclerait
+ * sans fin. Un curseur de Prisma est REFUSÉ · sa ligne relue en base peut
+ * avoir disparu (M6). Décomptes et blocs se lisent sur les écritures du
+ * départ, comme la base les compterait avant le premier octet.
  */
-function service(nbEcritures: number) {
-  const toutes = Array.from({ length: nbEcritures }, (_, i) => ecriture(i + 1));
+function service(depart: number | Ecriture[], journaux: Journal[] = [ACHATS]) {
+  const toutes: Ecriture[] = typeof depart === 'number' ? Array.from({ length: depart }, (_, i) => ecriture(i + 1)) : depart;
   const findMany = jest.fn(async ({ take, cursor, where }: { take: number; cursor?: unknown; where?: Record<string, unknown> }) => {
     if (cursor) throw new Error('Le journal exporté ne pagine plus par le curseur de Prisma (relecture M6).');
     // Dans l'ordre du service · une date changée en route change le rang.
-    const ordre = (a: (typeof toutes)[number], b: (typeof toutes)[number]) =>
+    const ordre = (a: Ecriture, b: Ecriture) =>
       a.date.getTime() - b.date.getTime() || a.numeroPiece - b.numeroPiece || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     return toutes
       .filter((e) => correspond(e as unknown as Record<string, unknown>, where))
       .sort(ordre)
       .slice(0, take);
   });
+  const parBloc = new Map<string, { journalId: string; statut: string; _count: { _all: number } }>();
+  for (const e of toutes) {
+    const cle = `${e.journalId}|${e.statut}`;
+    const g = parBloc.get(cle) ?? { journalId: e.journalId, statut: e.statut, _count: { _all: 0 } };
+    g._count._all++;
+    parBloc.set(cle, g);
+  }
   const prisma = {
-    ligneEcriture: { count: jest.fn().mockResolvedValue(nbEcritures * 2) },
-    ecriture: { findMany },
+    ligneEcriture: { count: jest.fn().mockResolvedValue(toutes.reduce((n, e) => n + e.lignes.length, 0)) },
+    ecriture: {
+      findMany,
+      count: jest.fn().mockResolvedValue(toutes.length),
+      groupBy: jest.fn().mockResolvedValue([...parBloc.values()]),
+    },
+    journal: {
+      findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+        journaux.filter((j) => where.id.in.includes(j.id)).sort((a, b) => a.code.localeCompare(b.code)),
+      ),
+    },
     user: { findMany: jest.fn().mockResolvedValue([{ id: 'u-1', email: 'comptable@vmg.cd' }]) },
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ nom: 'Dossier', numeroImpot: 'A1', devise: 'CDF' }) },
     exercice: { findFirst: jest.fn().mockResolvedValue(EXERCICE), findUnique: jest.fn().mockResolvedValue(EXERCICE) },
@@ -112,9 +174,8 @@ function service(nbEcritures: number) {
   return { svc, findMany, toutes };
 }
 
-/** Exécute l'export et relit le classeur produit. */
-async function exporter(nbEcritures: number, filtres: Record<string, unknown> = { exerciceId: 'ex' }) {
-  const { svc, findMany } = service(nbEcritures);
+/** Recueille le classeur en flux dans un tampon. */
+function tampon() {
   const morceaux: Buffer[] = [];
   const sortie = new Writable({
     write(m, _e, cb) {
@@ -122,14 +183,41 @@ async function exporter(nbEcritures: number, filtres: Record<string, unknown> = 
       cb();
     },
   });
+  return { sortie, octets: () => Buffer.concat(morceaux) };
+}
+
+/** Exécute l'export et relit le classeur produit. */
+async function exporter(
+  depart: number | Ecriture[],
+  filtres: Record<string, unknown> = { exerciceId: 'ex' },
+  journaux: Journal[] = [ACHATS],
+) {
+  const { svc, findMany } = service(depart, journaux);
+  const { sortie, octets } = tampon();
   let nomFichier = '';
   await svc.journalExcelEnFlux('t1', filtres, (nom) => {
     nomFichier = nom;
     return sortie;
   });
   const classeur = new ExcelJS.Workbook();
-  await classeur.xlsx.load(Buffer.concat(morceaux) as never);
-  return { feuille: classeur.worksheets[0], nomFichier, findMany };
+  await classeur.xlsx.load(octets() as never);
+  return {
+    feuille: classeur.getWorksheet('Journal')!,
+    piste: classeur.getWorksheet('Piste de révision')!,
+    classeur,
+    octets: octets(),
+    nomFichier,
+    findMany,
+  };
+}
+
+/** Les rangs dont la colonne 5 porte ce texte. */
+function rangsDe(feuille: ExcelJS.Worksheet, texte: string): number[] {
+  const rangs: number[] = [];
+  feuille.eachRow((r, n) => {
+    if (r.getCell(LIBELLE).value === texte) rangs.push(n);
+  });
+  return rangs;
 }
 
 describe('Journal exporté en flux', () => {
@@ -138,13 +226,11 @@ describe('Journal exporté en flux', () => {
     // lignes par écriture : 5 000 lignes attendues, pas 4 000.
     expect(PLAFOND_ECRITURES_PAR_FENETRE).toBe(2000);
     const { feuille } = await exporter(2500);
-    // La coiffe (3) + l'en-tête (1) + les données + la ligne de totaux.
-    expect(feuille.rowCount).toBe(PREMIERE_LIGNE_DONNEES + 5000);
-    // Le classeur RELU n'a plus de clés de colonne · elles ne se rangent pas
-    // dans le fichier, ce sont des noms d'écriture. On lit donc par rang :
-    // libellé écriture = 6, débit = 10 (J), crédit = 11 · la colonne 2 est la
-    // date de valeur de l'AUDCIF art. 22, 4°.
-    expect(feuille.getRow(PREMIERE_LIGNE_DONNEES + 5000).getCell(6).value).toBe('TOTAUX DE LA PÉRIODE');
+    // L'en-tête du bloc (4) + les titres (1) + les données + les totaux du
+    // journal + une ligne blanche + les totaux de la période.
+    expect(feuille.rowCount).toBe(TITRES_DU_BLOC + 5000 + 3);
+    expect(feuille.getRow(DONNEES + 5000).getCell(LIBELLE).value).toBe('Totaux du journal ACH');
+    expect(feuille.getRow(DONNEES + 5002).getCell(LIBELLE).value).toBe('Totaux de la période');
   });
 
   it('les DEUX totaux sont le même · la formule et la valeur jointe', async () => {
@@ -152,10 +238,12 @@ describe('Journal exporté en flux', () => {
     // venait d'un agrégat sur la période entière, la formule ne couvrait que
     // les lignes écrites. Le classeur disait deux chiffres selon son lecteur.
     const { feuille } = await exporter(2500);
-    const ligneTotal = feuille.getRow(PREMIERE_LIGNE_DONNEES + 5000);
-    const debit = ligneTotal.getCell(10).value as ExcelJS.CellFormulaValue;
-    expect(debit.result).toBe(2500 * 100);
-    expect(debit.formula).toBe(`J${PREMIERE_LIGNE_DONNEES}:J${PREMIERE_LIGNE_DONNEES + 4999}`.replace(/^/, 'SUM(') + ')');
+    const duJournal = feuille.getRow(DONNEES + 5000).getCell(DEBIT).value as ExcelJS.CellFormulaValue;
+    expect(duJournal.formula).toBe(`SUM(F${DONNEES}:F${DONNEES + 4999})`);
+    expect(duJournal.result).toBe(2500 * 100);
+    const dePeriode = feuille.getRow(DONNEES + 5002).getCell(DEBIT).value as ExcelJS.CellFormulaValue;
+    expect(dePeriode.formula).toBe(`F${DONNEES + 5000}`);
+    expect(dePeriode.result).toBe(2500 * 100);
   });
 
   it('lit PAR LOTS · la mémoire ne dépend plus de la taille du dossier', async () => {
@@ -171,23 +259,32 @@ describe('Journal exporté en flux', () => {
   it('la tranche suivante part des VALEURS de la dernière écriture rendue · ni doublon, ni saut', async () => {
     // Une clé posée en arrière rejoue une partie du lot précédent (des pièces
     // en double), une clé en avant en saute. Les deux rendent un journal faux,
-    // et le lot suivant a toujours l'air normal.
+    // et le lot suivant a toujours l'air normal. Le journal se lit en DEUX
+    // passages (les lignes, puis la piste) · seul un appel qui porte une clé
+    // continue le précédent.
     const { findMany } = await exporter(1200);
-    const suivants = findMany.mock.calls.slice(1).map(([a]) => a as unknown as { where: { AND: [unknown, { OR: Array<{ AND: unknown[] }> }] } });
-    expect(suivants.length).toBeGreaterThan(0);
-    for (const [rang, appel] of suivants.entries()) {
-      const lotPrecedent = (await findMany.mock.results[rang].value) as Array<{ id: string; date: Date; numeroPiece: number }>;
+    let suites = 0;
+    for (const [rang, [a]] of findMany.mock.calls.entries()) {
+      const appel = a as unknown as { where: { AND?: [unknown, { OR: Array<{ AND: unknown[] }> }] } };
+      if (!appel.where.AND) continue;
+      suites++;
+      const lotPrecedent = (await findMany.mock.results[rang - 1].value) as Array<{ id: string; date: Date; numeroPiece: number }>;
       const fin = lotPrecedent[lotPrecedent.length - 1];
       const branches = appel.where.AND[1].OR;
       // La dernière branche · même date, même pièce, identifiant au-delà.
       expect(branches[branches.length - 1].AND).toEqual([{ date: fin.date }, { numeroPiece: fin.numeroPiece }, { id: { gt: fin.id } }]);
     }
+    // Deux tranches de suite par passage, deux passages.
+    expect(suites).toBe(4);
   });
 
-  it('une écriture retirée pendant l’export ne tronque plus le journal (relecture M6)', async () => {
+  it('une écriture retirée pendant l’export ne tronque pas le journal, et la piste qui ne la porte plus est refusée (relecture M6)', async () => {
     // Le brouillard supprimé pendant la production · avec le curseur de
     // Prisma, la ligne-curseur absente rendait une tranche vide, et le journal
-    // sortait avec ses 500 premières pièces, ses totaux bouclant sur elles.
+    // sortait avec ses 500 premières pièces, ses totaux bouclant sur elles. Le
+    // premier passage lit désormais tout (les 2 400 lignes comptées) ; le
+    // second, qui écrit la piste, ne retrouve plus la pièce · le classeur dirait
+    // deux livres différents, il est refusé, jamais remis amputé.
     const { svc, findMany, toutes } = service(1200);
     const lire = findMany.getMockImplementation()!;
     findMany.mockImplementation(async (a) => {
@@ -195,18 +292,10 @@ describe('Journal exporté en flux', () => {
       if (rendues.length === 500 && findMany.mock.calls.length === 1) toutes.splice(toutes.indexOf(rendues[499]), 1);
       return rendues;
     });
-    const morceaux: Buffer[] = [];
-    const sortie = new Writable({
-      write(m, _e, cb) {
-        morceaux.push(Buffer.from(m));
-        cb();
-      },
-    });
-    await svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie);
-    const classeur = new ExcelJS.Workbook();
-    await classeur.xlsx.load(Buffer.concat(morceaux) as never);
-    // 1 200 écritures lues (la retirée l'était déjà), deux lignes chacune.
-    expect(classeur.worksheets[0].rowCount).toBe(PREMIERE_LIGNE_DONNEES + 2400);
+    const { sortie } = tampon();
+    await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
+      /Piste de révision du journal : 1\s199 lignes lues sur 1\s200 comptées au départ/,
+    );
   });
 
   it('une pièce dont la date AVANCE pendant l’export ne s’écrit qu’une fois, et les totaux restent justes (relecture TypeScript, M2)', async () => {
@@ -223,20 +312,14 @@ describe('Journal exporté en flux', () => {
       }
       return rendues;
     });
-    const morceaux: Buffer[] = [];
-    const sortie = new Writable({
-      write(m, _e, cb) {
-        morceaux.push(Buffer.from(m));
-        cb();
-      },
-    });
+    const { sortie, octets } = tampon();
     await svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie);
     const classeur = new ExcelJS.Workbook();
-    await classeur.xlsx.load(Buffer.concat(morceaux) as never);
-    const feuille = classeur.worksheets[0];
+    await classeur.xlsx.load(octets() as never);
+    const feuille = classeur.getWorksheet('Journal')!;
     // Écrite deux fois, la pièce portait quatre lignes et le total 120 100.
-    expect(feuille.rowCount).toBe(PREMIERE_LIGNE_DONNEES + 2400);
-    const debit = feuille.getRow(PREMIERE_LIGNE_DONNEES + 2400).getCell(10).value as ExcelJS.CellFormulaValue;
+    expect(feuille.rowCount).toBe(TITRES_DU_BLOC + 2400 + 3);
+    const debit = feuille.getRow(DONNEES + 2400).getCell(DEBIT).value as ExcelJS.CellFormulaValue;
     expect(debit.result).toBe(1200 * 100);
   });
 
@@ -260,35 +343,136 @@ describe('Journal exporté en flux', () => {
     );
   });
 
-  it('coiffe et en-tête restent en place · le flux ne les écrit qu’AVANT', async () => {
-    // Une feuille en flux ne se relit pas : on ne revient pas insérer trois
-    // lignes en tête d'une feuille déjà partie sur le réseau.
+  it('l’en-tête du bloc dit le dossier, le journal, la période, l’unité et le tirage, puis les sept colonnes', async () => {
+    // La présentation de l'édition de Sage (décision de Manasse du
+    // 2026-10-16) · l'en-tête s'écrit AVANT les données, une feuille en flux
+    // ne se relit pas.
     const { feuille } = await exporter(3);
-    expect(String(feuille.getRow(1).getCell(1).value)).toContain('JOURNAL · Dossier');
-    expect(feuille.getRow(LIGNE_ENTETE).getCell(1).value).toBe('Date');
-    // AUDCIF art. 22, 4° · « sa date de valeur étant mentionnée distinctement ».
-    expect(feuille.getRow(LIGNE_ENTETE).getCell(2).value).toBe('Date de valeur');
-    expect(feuille.views[0]).toMatchObject({ state: 'frozen', ySplit: LIGNE_ENTETE });
+    expect(feuille.getRow(1).getCell(1).value).toBe('JOURNAL · Dossier');
+    expect(String(feuille.getRow(1).getCell(7).value)).toContain('2026');
+    expect(feuille.getRow(2).getCell(1).value).toBe('ACH · Achats');
+    expect(feuille.getRow(2).getCell(7).value).toBe('Tenue de compte : CDF');
+    // Le tirage à la seconde, au jour de Kinshasa (`tirageAKinshasa`).
+    expect(String(feuille.getRow(3).getCell(1).value)).toMatch(/^Tiré le \d{2}\/\d{2}\/\d{2} à \d{2}:\d{2}:\d{2}/);
+    const titres = Array.from({ length: 7 }, (_v, i) => feuille.getRow(TITRES_DU_BLOC).getCell(i + 1).value);
+    expect(titres).toEqual(['Jour', 'N° pièce', 'N° compte', 'N° tiers', 'Libellé', 'Débit', 'Crédit']);
+    expect(titres).toEqual([...TITRES_COLONNES_JOURNAL]);
+    // La page se lit à l'en-tête d'impression, que chaque page porte.
+    expect(feuille.headerFooter.oddHeader).toContain('Page &P / &N');
   });
 
-  it('l’en-tête s’écrit UNE fois · la ligne du titre ne porte que le titre (relevé de Manasse du 2026-10-16)', async () => {
+  it('les titres des colonnes s’écrivent une fois par bloc · ni en ligne 1, ni deux fois (relevé de Manasse du 2026-10-16)', async () => {
     // `columns` muni de `header` écrivait les en-têtes en ligne 1, derrière
     // le titre, et le journal les montrait deux fois.
-    const { feuille } = await exporter(3);
-    const entete = feuille.getRow(LIGNE_ENTETE);
-    const nbColonnes = entete.cellCount;
-    expect(nbColonnes).toBeGreaterThan(10);
-    const ligneTitre = feuille.getRow(1);
-    const autresQueLeTitre: unknown[] = [];
-    for (let c = 2; c <= nbColonnes; c++) {
-      const v = ligneTitre.getCell(c).value;
-      if (v !== null && v !== undefined && v !== '') autresQueLeTitre.push(v);
-    }
-    expect(autresQueLeTitre).toEqual([]);
+    const { feuille, piste } = await exporter(3);
+    const lignesDeTitres: number[] = [];
+    feuille.eachRow((r, n) => {
+      if (r.getCell(JOUR).value === 'Jour') lignesDeTitres.push(n);
+    });
+    expect(lignesDeTitres).toEqual([TITRES_DU_BLOC]);
+    // La piste garde sa coiffe · le titre seul en ligne 1, les en-têtes une
+    // fois, en ligne 4.
+    const nb = piste.getRow(LIGNE_ENTETE).cellCount;
+    expect(nb).toBe(13);
+    for (let c = 2; c <= nb; c++) expect(piste.getRow(1).getCell(c).value ?? null).toBeNull();
+    const titres = Array.from({ length: nb }, (_v, i) => piste.getRow(LIGNE_ENTETE).getCell(i + 1).value);
     // Le titre de la colonne des corrections est un titre, sans article.
-    const titres = Array.from({ length: nbColonnes }, (_v, i) => entete.getCell(i + 1).value);
     expect(titres).toContain('Correction');
     expect(titres).toContain('Motif de la correction');
+  });
+
+  it('une ligne porte le jour, la pièce, le compte, le tiers du compte individuel et son libellé', async () => {
+    const { feuille } = await exporter(1);
+    const debit = feuille.getRow(DONNEES);
+    const credit = feuille.getRow(DONNEES + 1);
+    expect((debit.getCell(JOUR).value as Date).toISOString().slice(0, 10)).toBe('2026-03-01');
+    expect(debit.getCell(PIECE).value).toBe(1);
+    expect(debit.getCell(COMPTE).value).toBe('60410000');
+    // Un compte sans tiers laisse la case vide, jamais un zéro.
+    expect(debit.getCell(TIERS).value ?? null).toBeNull();
+    expect(debit.getCell(LIBELLE).value).toBe('débit');
+    expect(debit.getCell(DEBIT).value).toBe(100);
+    expect(debit.getCell(CREDIT).value ?? null).toBeNull();
+    expect(credit.getCell(TIERS).value).toBe('F-KINPAP');
+    expect(credit.getCell(CREDIT).value).toBe(100);
+  });
+
+  it('le collectif qui porte des comptes individuels ne désigne aucun tiers', async () => {
+    // Le collectif reste rattaché au tiers qui l'a reçu le premier (point 13)
+    // · une ligne passée au collectif ne se lit pas comme la sienne.
+    const e = ecriture(1);
+    e.lignes[1].compte = { numero: '40110000', tiersCompte: { tiers: { code: 'F-PREMIER' } }, _count: { individuels: 3 } };
+    const { feuille } = await exporter([e]);
+    expect(feuille.getRow(DONNEES + 1).getCell(TIERS).value ?? null).toBeNull();
+  });
+
+  it('la date de valeur reste mentionnée distinctement · dans le libellé de la ligne (AUDCIF art. 22, 4°)', async () => {
+    const e = ecriture(1);
+    e.dateValeur = new Date('2026-02-27');
+    const sansLibelle = ecriture(2);
+    sansLibelle.lignes[0].libelle = '';
+    const { feuille, piste } = await exporter([e, sansLibelle]);
+    expect(feuille.getRow(DONNEES).getCell(LIBELLE).value).toBe('débit · valeur au 27/02/2026');
+    // Une ligne sans libellé prend celui de son écriture.
+    expect(feuille.getRow(DONNEES + 2).getCell(LIBELLE).value).toBe('Écriture 2');
+    // Et la piste lui garde sa colonne.
+    expect((piste.getRow(PREMIERE_LIGNE_DONNEES).getCell(3).value as Date).toISOString().slice(0, 10)).toBe('2026-02-27');
+  });
+
+  it('un journal par bloc, un saut de page entre eux, et les totaux de la période additionnent les journaux', async () => {
+    const ecritures = [ecriture(1), ecriture(2), ecriture(3, BANQUE)];
+    const { feuille, octets } = await exporter(ecritures, { exerciceId: 'ex' }, [ACHATS, BANQUE]);
+    const totauxAch = rangsDe(feuille, 'Totaux du journal ACH');
+    const totauxBq = rangsDe(feuille, 'Totaux du journal BQ');
+    expect(totauxAch).toEqual([DONNEES + 4]);
+    // Bloc BQ · son en-tête (4), ses titres (1), ses deux lignes, puis ses totaux.
+    expect(totauxBq).toEqual([DONNEES + 4 + 5 + 2 + 1]);
+    expect(feuille.getRow(DONNEES + 5).getCell(1).value).toBe('JOURNAL · Dossier');
+    expect(feuille.getRow(DONNEES + 6).getCell(1).value).toBe('BQ · Banque');
+    const periode = rangsDe(feuille, 'Totaux de la période')[0];
+    const debit = feuille.getRow(periode).getCell(DEBIT).value as ExcelJS.CellFormulaValue;
+    // Une somme sur toute la colonne compterait chaque montant deux fois.
+    expect(debit.formula).toBe(`F${totauxAch[0]}+F${totauxBq[0]}`);
+    expect(debit.result).toBe(300);
+    // Le saut de page se pose sous les totaux du premier journal · lu dans la
+    // feuille écrite, le lecteur d'ExcelJS ne rendant pas les sauts.
+    const xml = await (await JSZip.loadAsync(octets)).file('xl/worksheets/sheet1.xml')!.async('string');
+    expect(xml).toMatch(new RegExp(`<rowBreaks[^>]*>\\s*<brk id="${totauxAch[0]}"`));
+  });
+
+  it('le brouillard se dit au titre du bloc et s’imprime en italique · hors du livre-journal (AUDCIF art. 22, 2°)', async () => {
+    const validee = ecriture(1);
+    const brouillard = { ...ecriture(2), statut: 'BROUILLARD', valideeAt: null, valideeBy: null };
+    const { feuille } = await exporter([validee, brouillard]);
+    expect(feuille.getRow(1).getCell(1).value).toBe('JOURNAL ET BROUILLARD · Dossier');
+    expect(feuille.getRow(4).getCell(1).value).toBe('Lignes en italique · hors du livre-journal, non validées.');
+    expect(feuille.getRow(DONNEES).font?.italic ?? false).toBe(false);
+    expect(feuille.getRow(DONNEES + 2).getCell(LIBELLE).font?.italic).toBe(true);
+  });
+
+  it('la piste de révision porte une ligne par écriture · statut, saisie, validation, corrections', async () => {
+    const erronee = { ...ecriture(1), correction: { numeroPiece: 2 } };
+    const negatif = { ...ecriture(2), corrigeEcriture: { numeroPiece: 1 }, motifCorrection: 'Facture saisie deux fois' };
+    const { piste } = await exporter([erronee, negatif]);
+    const premiere = piste.getRow(PREMIERE_LIGNE_DONNEES);
+    const seconde = piste.getRow(PREMIERE_LIGNE_DONNEES + 1);
+    expect(premiere.getCell(1).value).toBe('ACH');
+    expect(premiere.getCell(4).value).toBe(1);
+    expect(premiere.getCell(7).value).toBe('Validée');
+    // L'auteur en COURRIEL · un auditeur ne lit pas un uuid.
+    expect(premiere.getCell(9).value).toBe('comptable@vmg.cd');
+    expect(premiere.getCell(12).value).toBe('Annulée par la pièce n° 2');
+    expect(seconde.getCell(12).value).toBe('Annule la pièce n° 1');
+    expect(seconde.getCell(13).value).toBe('Facture saisie deux fois');
+    expect(piste.rowCount).toBe(LIGNE_ENTETE + 2);
+  });
+
+  it('un journal sans écriture le dit · jamais un fichier vide', async () => {
+    const { feuille, piste } = await exporter([]);
+    expect(feuille.getRow(1).getCell(1).value).toBe('JOURNAL · Dossier');
+    expect(feuille.getRow(5).getCell(1).value).toBe('Aucune écriture sur la période.');
+    expect(rangsDe(feuille, 'Totaux de la période')).toHaveLength(1);
+    expect(piste.rowCount).toBe(LIGNE_ENTETE);
   });
 
   it('garde les formats de cellule · sans eux une date sort en numéro de série', async () => {
@@ -315,15 +499,23 @@ describe('Journal exporté en flux', () => {
     // Les littéraux sont RÉÉCRITS ici plutôt qu'importés : importer la
     // constante rendrait le test d'accord avec n'importe quelle valeur, y
     // compris fausse.
-    const { feuille } = await exporter(3);
-    const premiere = feuille.getRow(PREMIERE_LIGNE_DONNEES);
-    // Rangs de colonne du journal · 1 Date, 2 Date de valeur, 10 Débit,
-    // 11 Crédit, 16 Saisie le.
-    expect(premiere.getCell(1).numFmt).toBe('DD/MM/YYYY');
-    expect(premiere.getCell(2).numFmt).toBe('DD/MM/YYYY');
-    expect(premiere.getCell(10).numFmt).toBe('#,##0.00');
-    expect(premiere.getCell(11).numFmt).toBe('#,##0.00');
-    expect(premiere.getCell(16).numFmt).toBe('DD/MM/YYYY HH:mm');
+    const { feuille, piste } = await exporter(3);
+    const premiere = feuille.getRow(DONNEES);
+    // L'exercice tient en douze mois · le jour se lit sans l'année, comme sur
+    // l'édition de Sage, l'en-tête donnant la période.
+    expect(premiere.getCell(JOUR).numFmt).toBe('DD/MM');
+    expect(premiere.getCell(DEBIT).numFmt).toBe('#,##0.00');
+    expect(premiere.getCell(CREDIT).numFmt).toBe('#,##0.00');
+    // La piste · 2 Date, 3 Date de valeur, 8 Saisie le.
+    const ligne = piste.getRow(PREMIERE_LIGNE_DONNEES);
+    expect(ligne.getCell(2).numFmt).toBe('DD/MM/YYYY');
+    expect(ligne.getCell(3).numFmt).toBe('DD/MM/YYYY');
+    expect(ligne.getCell(8).numFmt).toBe('DD/MM/YYYY HH:mm');
+  });
+
+  it('au-delà de douze mois, le jour porte son année · deux 15/01 ne se confondent pas', async () => {
+    const { feuille } = await exporter(1, { exerciceId: 'ex', dateDebut: '2025-07-01', dateFin: '2026-12-31' });
+    expect(feuille.getRow(DONNEES).getCell(JOUR).numFmt).toBe('DD/MM/YY');
   });
 
   it('le périmètre du journal est celui de la fenêtre · une seule écriture du filtre', () => {

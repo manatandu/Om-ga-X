@@ -210,7 +210,9 @@ indiquer la version, mise en production et langue ») ; puis, le 2026-10-16,
 l'EXPORT PAR PÉRIODE de la balance et du grand livre, à l'écran et en Excel
 (« l'autorisation « Lève le gel pour l'export par période » »), sous les
 quatre conditions proposées et acceptées · solde de départ gardé, extrait
-dit, numéroté et daté, période dans un exercice.
+dit, numéroté et daté, période dans un exercice ; et le même jour le
+JOURNAL EXPORTÉ COMME L'ÉDITION DE SAGE, choisi par Manasse sur aperçu
+(« Comme Sage »), une demande expresse valant levée du gel pour elle seule.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -2895,6 +2897,16 @@ octet · `envoyerXlsxEnFlux` DÉTRUIT la connexion, Excel refusant le ZIP tronqu
 Grand livre complet avec feuille « Sommaire » (écrite après la dernière ligne,
 depuis l'agrégat) et colonne Statut, brouillard compris et dit (2026-09-27, audit
 final F99) ; ses deux routes exigent l'exercice (`EXERCICE_REQUIS`, F100).
+LE JOURNAL SE PRÉSENTE COMME L'ÉDITION DE SAGE (décision de Manasse du
+2026-10-16, `exports/journal-edition.ts`) · un bloc par journal sous son
+en-tête (dossier, journal, période, unité, tirage), sept colonnes (jour,
+pièce, compte, tiers, libellé, débit, crédit), les totaux du journal, un saut
+de page, puis les totaux de la période qui ADDITIONNENT les journaux ; le
+titre du bloc dit le brouillard, ses lignes en italique (art. 22, 2°) ; la
+date de valeur suit le libellé (« valeur au », art. 22, 4°) ; le tiers est
+celui du compte individuel, jamais d'un collectif qui en porte ; la piste
+passe dans une seconde feuille, relue en second passage et confrontée à son
+propre décompte, refusée si une pièce a bougé entre les deux.
 `MAX_LIGNES_EXPORT` de 50 000 à 200 000, mesuré (`docs/capacite-mesuree.md`,
 banc du 2026-09-12, moitié du tas libre), toujours un REFUS. Les tests exigent la
 VALEUR de `numFmt` (jamais `toBeTruthy()` · ExcelJS met d'office un format
@@ -5328,7 +5340,10 @@ que l'art. 22, 4° appelle la date de valeur, « mentionnée distinctement », e
 c'est l'axe du test de l'ISA 240. Le journal exporté porte donc désormais
 Statut, Saisie le, Saisie par, Validée le, Validée par · l'auteur résolu en
 COURRIEL, un auditeur ne lisant pas un uuid, et un utilisateur retiré du
-dossier nommé comme tel plutôt que laissé en case vide.
+dossier nommé comme tel plutôt que laissé en case vide. Depuis que le journal
+se présente comme l'édition de Sage (2026-10-16), ces colonnes vivent dans sa
+seconde feuille, « Piste de révision », une ligne par écriture avec ses
+corrections · déplacées, jamais retirées.
 
 **Le test des écritures de journal** (`controles/test-ecritures-journal.ts`)
 rend la sélection de l'ISA 240 § 33 a), que l'auditeur conduit

@@ -193,9 +193,12 @@ export interface ParametresFeuilleEnFlux {
 /**
  * Pose une feuille dans un classeur en flux, coiffe et en-tête compris. Une
  * feuille suivante ne s'ouvre qu'une fois la précédente FERMÉE · en flux, ses
- * lignes sont déjà parties sur le réseau.
+ * lignes sont déjà parties sur le réseau. Exportée pour le journal présenté
+ * comme l'édition de Sage (`journal-edition.ts`), dont la première feuille a
+ * sa propre mise en page et la seconde, la piste de révision, la coiffe
+ * commune.
  */
-function poserFeuille(
+export function poserFeuille(
   classeur: ExcelJS.stream.xlsx.WorkbookWriter,
   sortie: Writable,
   params: ParametresFeuilleEnFlux,

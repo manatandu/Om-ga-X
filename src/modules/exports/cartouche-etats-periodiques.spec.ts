@@ -30,6 +30,10 @@ const service = readFileSync(join(__dirname, 'export.service.ts'), 'utf8');
 const flux = readFileSync(join(__dirname, 'classeur-en-flux.ts'), 'utf8');
 const fpm = readFileSync(join(__dirname, 'presentation-fpm.ts'), 'utf8');
 const fpmService = readFileSync(join(__dirname, 'export-fpm.service.ts'), 'utf8');
+// Le journal se présente comme l'édition de Sage (décision de Manasse du
+// 2026-10-16) · son en-tête, ses titres et son pied vivent dans le module qui
+// l'imprime, jamais dans le service.
+const edition = readFileSync(join(__dirname, 'journal-edition.ts'), 'utf8');
 
 describe('exports périodiques · identification de l’état', () => {
   it('porte l’identification en pied de page sur les trois livres obligatoires', () => {
@@ -52,6 +56,12 @@ describe('exports périodiques · identification de l’état', () => {
     expect(fpm).toContain('oddFooter:');
     expect(fpm).toContain('Page &P / &N');
     expect(fpmService).toContain('this.exportService.identiteEtat(tenantId, { exerciceId })');
+    // Le journal pose les mêmes deux portes à chaque page · l'en-tête nomme
+    // l'entité, la période et la page, le pied l'identification et le tirage.
+    expect(edition).toContain('oddFooter:');
+    expect(edition).toContain('Page &P / &N');
+    expect(edition).toContain('identite.entite');
+    expect(service).toContain('ouvrirJournalEdition({ sortie, identite, formatJour })');
     // Chaque pose passe une identité résolue par `identiteEtat`, jamais un
     // littéral bricolé sur place · une nouvelle feuille exportable doit être
     // identifiée de la même façon que les trois autres. Le compte n'est pas
@@ -67,8 +77,9 @@ describe('exports périodiques · identification de l’état', () => {
     // l'est, c'est qu'aucun n'échappe à la coiffe.
     const coiffes = service.match(/this\.coifferEtat\(/g) ?? [];
     expect(coiffes.length).toBeGreaterThanOrEqual(9);
+    // Le titre du journal est celui de son bloc (`titreDuBloc`).
+    expect(edition).toContain("'JOURNAL'");
     for (const titre of [
-      "'JOURNAL'",
       "'GRAND LIVRE'",
       "'BALANCE ÂGÉE'",
       'JUSTIFICATIF DE SOLDE',
@@ -133,6 +144,7 @@ describe('exports périodiques · identification de l’état', () => {
     expect(service).toContain("livres obligatoires de\n * l'AUDCIF art. 19");
     // La règle « sans blanc ni altération » est celle de l'art. 20, que le
     // SYCEBNL reprend · l'ordre de citation compte pour un dossier SYSCOHADA.
-    expect(service).toContain('AUDCIF art. 20, repris par le SYCEBNL');
+    // Elle vit avec la piste de révision, qui nomme les corrections.
+    expect(edition).toContain('AUDCIF art. 20, repris par le SYCEBNL');
   });
 });
