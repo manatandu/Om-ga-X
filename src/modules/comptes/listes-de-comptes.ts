@@ -124,6 +124,7 @@ export const ROUTES_QUI_NE_SONT_PAS_DES_LISTES: Readonly<Record<string, string>>
   '/controles/comptes-dormants': 'contrôle de révision, tout le plan',
   '/courrier/compteurs': "compteurs de la file de courrier, aucun compte comptable",
   '/ecritures/justificatif-solde/:compteId': 'livre d’un compte déjà choisi',
+  '/ecritures/grand-livre': 'livre obligatoire, tout le plan',
   '/ecritures/grand-livre/:compteId': 'livre obligatoire, tout le plan',
   '/exports/grand-livre/:compteId': 'livre obligatoire, tout le plan',
   '/exports/justificatif-solde/:compteId': 'livre d’un compte déjà choisi',

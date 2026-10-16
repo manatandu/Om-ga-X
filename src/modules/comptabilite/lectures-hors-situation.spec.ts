@@ -42,6 +42,7 @@ const RACINE = path.resolve(__dirname, '../../..');
 // ---------------------------------------------------------------------------
 const FILTRES_NOMMES: Record<string, string> = {
   avecStatut: 'src/modules/comptabilite/ecritures-de-situation.ts',
+  baseHorsSituation: 'src/modules/comptabilite/balance-trois-colonnes.ts',
   filtresDesTroisColonnes: 'src/modules/comptabilite/balance-trois-colonnes.ts',
   filtresDesTroisColonnesDeLaPeriode: 'src/modules/comptabilite/balance-trois-colonnes.ts',
   perimetreJournal: 'src/modules/comptabilite/ecriture.service.ts',
