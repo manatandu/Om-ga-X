@@ -15,6 +15,10 @@ import { ExportFpmService, familleOuRefus } from './export-fpm.service';
 import { lirePaiementsEnInstance } from '../etats-financiers/paiements-en-instance';
 import { EXERCICE_FACULTATIF, EXERCICE_REQUIS } from '../../common/exercice-requis';
 import { JOURNAL_FACULTATIF } from '../../common/journal-du-dossier';
+import { COMPTE_FACULTATIF } from '../../common/compte-du-dossier';
+import { NatureExtraitPeriode } from '@prisma/client';
+import { EcritureService } from '../comptabilite/ecriture.service';
+import { ExtraitsPeriodeService } from './extraits-periode/extraits-periode.service';
 
 /**
  * Cloisonnement par ROUTE, pas par contrôleur : les livres, les éditions de
@@ -83,6 +87,8 @@ export class ExportController {
   constructor(
     private readonly exportService: ExportService,
     private readonly exportFpm: ExportFpmService,
+    private readonly ecritureService: EcritureService,
+    private readonly extraits: ExtraitsPeriodeService,
   ) {}
 
   // L'exercice est FACULTATIF, comme à la fenêtre du journal · sans lui, le
@@ -139,18 +145,44 @@ export class ExportController {
    * livre « à plat », filtrable et pivotable, avec son sommaire, sur
    * `format=plat`. Un format inconnu est refusé, jamais remplacé.
    */
+  //
+  // SUR UNE PÉRIODE (ligne export-periode) · `du` et `au` dans l'exercice ;
+  // l'extrait est numéroté et daté au dernier moment (AUDCIF art. 22, 7°),
+  // dans la présentation du cabinet seule · le livre « à plat » porte la
+  // feuille Sommaire de l'exercice, et un extrait sous ce nom mentirait.
+  // `compteId` · le grand livre d'UN compte (« Exporter ce compte »).
   @Get('grand-livre')
   async grandLivreComplet(
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
     @Query('format') format?: string,
+    @Query('du') du?: string,
+    @Query('au') au?: string,
+    @Query('compteId', COMPTE_FACULTATIF) compteId?: string,
   ) {
     const presentation = formatOuRefus(format);
+    const periode = await this.ecritureService.periodeDemandee(user.tenantId, exerciceId, { du, au });
+    if (presentation === 'plat' && (periode || compteId)) {
+      throw new BadRequestException(
+        "Le grand livre « à plat » couvre l'exercice entier · un extrait de période, ou le grand livre d'un seul compte, s'exporte dans la présentation du cabinet.",
+      );
+    }
+    if (presentation === 'plat') {
+      await envoyerXlsxEnFlux(res, (ouvrir) => this.exportService.grandLivreCompletExcelEnFlux(user.tenantId, exerciceId, ouvrir));
+      return;
+    }
+    if (!periode) {
+      await envoyerXlsxEnFlux(res, (ouvrir) => this.exportFpm.grandLivreEnFlux(user.tenantId, exerciceId, ouvrir, { compteId }));
+      return;
+    }
+    const libelle = await this.extraits.libelleDe(user.tenantId, NatureExtraitPeriode.GRAND_LIVRE, { compteId });
+    await this.extraits.refuserSiVide(user.tenantId, exerciceId, periode, compteId);
     await envoyerXlsxEnFlux(res, (ouvrir) =>
-      presentation === 'plat'
-        ? this.exportService.grandLivreCompletExcelEnFlux(user.tenantId, exerciceId, ouvrir)
-        : this.exportFpm.grandLivreEnFlux(user.tenantId, exerciceId, ouvrir),
+      this.extraits.produire(
+        { tenantId: user.tenantId, nature: NatureExtraitPeriode.GRAND_LIVRE, libelle, periode, etabliPar: user.userId },
+        (numeroter) => this.exportFpm.grandLivreEnFlux(user.tenantId, exerciceId, ouvrir, { extrait: { periode, numeroter }, compteId }),
+      ),
     );
   }
 
@@ -186,15 +218,33 @@ export class ExportController {
    * balance ouvre. `grandsLivres=non` rend la balance seule · le chemin de
    * rechange d'un dossier au-delà du plafond.
    */
+  //
+  // SUR UNE PÉRIODE (ligne export-periode) · « Mouvements au <veille> » garde
+  // tout ce qui précède le premier jour ; l'extrait est numéroté et daté au
+  // dernier moment, après le refus de volume.
   @Get('balance')
   async balance(
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
     @Query('grandsLivres') grandsLivres?: string,
+    @Query('du') du?: string,
+    @Query('au') au?: string,
   ) {
     const avec = grandsLivresOuRefus(grandsLivres);
-    await envoyerXlsxEnFlux(res, (ouvrir) => this.exportFpm.balanceGeneraleEnFlux(user.tenantId, exerciceId, avec, ouvrir));
+    const periode = await this.ecritureService.periodeDemandee(user.tenantId, exerciceId, { du, au });
+    if (!periode) {
+      await envoyerXlsxEnFlux(res, (ouvrir) => this.exportFpm.balanceGeneraleEnFlux(user.tenantId, exerciceId, avec, ouvrir));
+      return;
+    }
+    const libelle = await this.extraits.libelleDe(user.tenantId, NatureExtraitPeriode.BALANCE, { avecGrandsLivres: avec });
+    await this.extraits.refuserSiVide(user.tenantId, exerciceId, periode);
+    await envoyerXlsxEnFlux(res, (ouvrir) =>
+      this.extraits.produire(
+        { tenantId: user.tenantId, nature: NatureExtraitPeriode.BALANCE, libelle, periode, etabliPar: user.userId },
+        (numeroter) => this.exportFpm.balanceGeneraleEnFlux(user.tenantId, exerciceId, avec, ouvrir, { periode, numeroter }),
+      ),
+    );
   }
 
   /**

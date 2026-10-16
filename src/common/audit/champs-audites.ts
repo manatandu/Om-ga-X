@@ -181,6 +181,10 @@ export const MODELES_AUDITES = new Set<string>([
   'SelectionEdition',
   // Même ligne · un modèle d'édition décide de ce que le dossier imprime.
   'ModeleEdition',
+  // Ligne export-periode · l'extrait de période, numéroté et daté (AUDCIF
+  // art. 22, 7°) · établi, terminé ou interrompu, chaque pas se lit au
+  // journal ; retouché après coup, il attesterait un état qui n'a pas été remis.
+  'ExtraitPeriode',
   // Ligne sage-l2, fonction 1 · un mode de règlement est une structure du
   // dossier (sa nature porte le contrôle de l'art. 59 bis de la TVA).
   'ModeReglement',

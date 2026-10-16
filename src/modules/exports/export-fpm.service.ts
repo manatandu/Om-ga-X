@@ -1,5 +1,5 @@
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
-import { BadRequestException, Injectable, PayloadTooLargeException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { Prisma, Referentiel, StatutEcriture } from '@prisma/client';
 import type { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
@@ -8,7 +8,10 @@ import { exerciceDuDossierOuRefus } from '../../common/exercice-introuvable';
 import { pageApres } from '../../common/lecture-par-lots';
 import { libelleExercice } from '../../common/libelle-exercice';
 import { EcritureService } from '../comptabilite/ecriture.service';
-import { filtresDesTroisColonnes } from '../comptabilite/balance-trois-colonnes';
+import { filtresDesTroisColonnes, filtresDesTroisColonnesDeLaPeriode } from '../comptabilite/balance-trois-colonnes';
+import { jourDeKinshasa } from '../../common/echeance';
+import { ecrituresDansLaPeriode, jourFr, libellePeriode, type PeriodeExtrait, type ReportALaVeille } from '../comptabilite/periode-extrait';
+import type { ExtraitNumerote } from './extraits-periode/extraits-periode.service';
 import { compteDeLaFamille, divisionnaireDeLaFamille, estFamilleTiers, type FamilleTiers, sousTitreFamille } from '../comptabilite/familles-tiers';
 import { LOT_EXPORT, MAX_LIGNES_EXPORT, OPTIONS_CLASSEUR_EN_FLUX, confronterAuDecompte, type IdentiteEtat } from './classeur-en-flux';
 import { ExportService } from './export.service';
@@ -86,6 +89,22 @@ interface Contexte {
   suffixe: string;
   /** La mention du brouillard sous le cartouche, ou rien quand tout est validé. */
   mention?: string;
+  /** Le sous-titre de l'état · « Complète », ou l'extrait de la période. */
+  sousTitre: string;
+  /** La période de l'extrait (ligne export-periode) · absente, l'exercice entier. */
+  periode?: PeriodeExtrait;
+  /** Les bornes de l'exercice · un extrait les rappelle (condition 2). */
+  exercice: { debut: Date; fin: Date };
+}
+
+/**
+ * CE QUE L'APPELANT DONNE POUR UN EXTRAIT DE PÉRIODE (ligne export-periode) ·
+ * la période, et de quoi prendre le numéro une fois les refus passés, juste
+ * avant le premier octet (`ExtraitsPeriodeService.produire`).
+ */
+export interface DemandeDExtrait {
+  periode: PeriodeExtrait;
+  numeroter: () => Promise<ExtraitNumerote>;
 }
 
 /** Une ligne de grand livre, telle que la lecture par lots la rend. */
@@ -114,7 +133,7 @@ export class ExportFpmService {
   // Lectures communes
   // -------------------------------------------------------------------------
 
-  private async contexte(tenantId: string, exerciceId: string): Promise<Contexte> {
+  private async contexte(tenantId: string, exerciceId: string, periode?: PeriodeExtrait): Promise<Contexte> {
     const exercice = exerciceDuDossierOuRefus(
       await this.prisma.exercice.findFirst({
         where: { id: exerciceId, tenantId },
@@ -125,15 +144,22 @@ export class ExportFpmService {
       this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { referentiel: true } }),
       this.exportService.identiteEtat(tenantId, { exerciceId }),
       // Le BROUILLARD seul · une écriture de situation n'est pas un brouillard
-      // et n'entre pas au classeur (ligne sage-l1, fonction 12).
-      this.prisma.ecriture.count({ where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD } }),
+      // et n'entre pas au classeur (ligne sage-l1, fonction 12). Sur une
+      // période, celui que l'extrait porte · daté au plus tard son dernier jour.
+      this.prisma.ecriture.count({
+        where: { tenantId, exerciceId, statut: StatutEcriture.BROUILLARD, ...(periode ? { date: { lt: periode.finExclue } } : {}) },
+      }),
     ]);
+    const jourIso = (d: Date) => d.toISOString().slice(0, 10);
     return {
       identite,
       referentiel: tenant.referentiel,
-      debut: exercice.dateDebut,
-      fin: exercice.dateFin,
-      suffixe: `-${libelleExercice(exercice)}`,
+      debut: periode ? periode.du : exercice.dateDebut,
+      fin: periode ? periode.au : exercice.dateFin,
+      suffixe: `-${libelleExercice(exercice)}${periode ? `-du-${jourIso(periode.du)}-au-${jourIso(periode.au)}` : ''}`,
+      sousTitre: periode ? `Extrait ${libellePeriode(periode)}` : 'Complète',
+      periode,
+      exercice: { debut: exercice.dateDebut, fin: exercice.dateFin },
       // LE BROUILLARD SE DIT EN TÊTE (second tour, relevé D) · la balance, comme
       // les livres, se lit brouillard compris (`EcritureService.balance`), et
       // une pièce encore modifiable n'est pas au livre-journal (AUDCIF art. 22,
@@ -145,9 +171,41 @@ export class ExportFpmService {
     };
   }
 
+  /**
+   * LE CONTEXTE D'UN EXTRAIT NUMÉROTÉ (ligne export-periode, conditions 2 et
+   * 3) · le pied de chaque page porte le numéro et la période (AUDCIF art. 22,
+   * 7°), la ligne 7 dit le numéro, la date d'établissement, et pour un grand
+   * livre que le livre de l'exercice reste celui de l'exercice entier ; la
+   * mention du brouillard suit.
+   */
+  private avecExtrait(ctx: Contexte, extrait: ExtraitNumerote, livre: boolean): Contexte {
+    const numero = `Extrait n° ${extrait.numero}`;
+    // Le jour de Kinshasa, comme la date de tirage de la ligne 6 · lu en temps
+    // universel, l'extrait établi entre minuit et une heure portait la veille.
+    const etabli = `établi le ${jourFr(jourDeKinshasa(extrait.etabliLe))}`;
+    const exercice = libellePeriode({ du: ctx.exercice.debut, au: ctx.exercice.fin });
+    const precision = livre ? ` · le grand livre de l'exercice est celui ${exercice}` : '';
+    return {
+      ...ctx,
+      identite: { ...ctx.identite, periode: `${numero} · ${libellePeriode(extrait.periode)}` },
+      mention: [`${numero} ${etabli}${precision}`, ctx.mention].filter(Boolean).join(' · '),
+    };
+  }
+
+  /**
+   * LE NUMÉRO D'UN EXTRAIT, PRIS AU DERNIER MOMENT · après les refus, avant le
+   * premier octet. Sans extrait demandé, le contexte reste celui de l'exercice.
+   */
+  private async numeroterSiExtrait(ctx: Contexte, extrait: DemandeDExtrait | undefined, livre: boolean): Promise<Contexte> {
+    if (!extrait) return ctx;
+    return this.avecExtrait(ctx, await extrait.numeroter(), livre);
+  }
+
   /** La balance du dépôt, mise dans les colonnes de la présentation. */
-  private async balanceFpm(tenantId: string, exerciceId: string): Promise<LigneBalanceFpm[]> {
-    const { lignes } = await this.ecritureService.balance(tenantId, exerciceId);
+  private async balanceFpm(tenantId: string, exerciceId: string, periode?: PeriodeExtrait): Promise<LigneBalanceFpm[]> {
+    // Sur une période, « Mouvements au <veille> » garde tout ce qui précède le
+    // premier jour (`filtresDesTroisColonnesDeLaPeriode`, condition 1).
+    const { lignes } = await this.ecritureService.balance(tenantId, exerciceId, true, undefined, periode ? { periode } : {});
     return lignes.map((l) => ({
       compteId: l.compteId,
       numero: l.numero,
@@ -176,9 +234,15 @@ export class ExportFpmService {
     compteIds: string[] | null,
     quoi: string,
     rechange: string,
+    periode?: PeriodeExtrait,
   ): Promise<void> {
+    // Sur une période, les lignes de la période · le report de chaque compte
+    // en ajoute une par compte, comptées avec la balance.
     const lignesDeGrandLivre = await this.prisma.ligneEcriture.count({
-      where: { ecriture: { tenantId, exerciceId, ...HORS_SITUATION }, ...(compteIds ? { compteId: { in: compteIds } } : {}) },
+      where: {
+        ecriture: { tenantId, exerciceId, ...HORS_SITUATION, ...(periode ? { AND: [ecrituresDansLaPeriode(periode)] } : {}) },
+        ...(compteIds ? { compteId: { in: compteIds } } : {}),
+      },
     });
     const total = lignesDeBalance + lignesDeGrandLivre;
     if (total > MAX_LIGNES_EXPORT) {
@@ -201,17 +265,21 @@ export class ExportFpmService {
     compteIds: Set<string>,
     filtreComptes: string[] | null,
     traiter: (l: LigneGrandLivre) => Promise<void>,
+    periode?: PeriodeExtrait,
   ): Promise<void> {
+    // Sur une période, ses lignes seules · ce qui la précède est au report de
+    // chaque compte (`reportsALaVeille`), par la règle de la balance.
+    const dates = periode ? { AND: [ecrituresDansLaPeriode(periode)] } : {};
     // Le décompte du départ, sur le MÊME filtre · le curseur relu en base
     // s'arrête sans un mot sur une ligne retirée pendant la production, et le
     // livre lu se confronte à ce compte avant d'être clos (sage-l7, M6).
-    const filtre = { ecriture: { tenantId, exerciceId, ...HORS_SITUATION }, ...(filtreComptes ? { compteId: { in: filtreComptes } } : {}) };
+    const filtre = { ecriture: { tenantId, exerciceId, ...HORS_SITUATION, ...dates }, ...(filtreComptes ? { compteId: { in: filtreComptes } } : {}) };
     const comptees = await this.prisma.ligneEcriture.count({ where: filtre });
     let lues = 0;
     let curseur: string | undefined;
     for (;;) {
       const lot = await this.prisma.ligneEcriture.findMany({
-        where: { ecriture: { tenantId, exerciceId, ...HORS_SITUATION }, ...(filtreComptes ? { compteId: { in: filtreComptes } } : {}) },
+        where: { ecriture: { tenantId, exerciceId, ...HORS_SITUATION, ...dates }, ...(filtreComptes ? { compteId: { in: filtreComptes } } : {}) },
         include: {
           compte: { select: { id: true, numero: true, intitule: true } },
           ecriture: { include: { journal: { select: { code: true } } } },
@@ -232,6 +300,54 @@ export class ExportFpmService {
       curseur = lot[lot.length - 1].id;
     }
     confronterAuDecompte(lues, comptees, 'Grand livre');
+  }
+
+  /**
+   * LE GRAND LIVRE COMPTE PAR COMPTE, DANS L'ORDRE DE LA BALANCE · `ouvrir`
+   * est appelé pour chaque compte avant sa première ligne, avec son report à
+   * la veille sur une période (ligne export-periode, condition 1). Un compte
+   * qui n'a, dans la période, QUE son report s'ouvre aussi, à son rang · la
+   * balance de la période le porte, et son lien vers sa feuille ne doit pas
+   * mener nulle part. Les deux lectures sont rangées par la même base sur le
+   * même numéro · une ligne qui arriverait sur un compte déjà refermé ne
+   * s'écrit jamais sous un autre, elle arrête le livre.
+   */
+  private async parcourirParCompte(
+    tenantId: string,
+    exerciceId: string,
+    comptes: ReadonlyArray<{ compteId: string; numero: string }>,
+    filtreComptes: string[] | null,
+    periode: PeriodeExtrait | undefined,
+    ouvrir: (compte: { compteId: string; numero: string }, report: ReportALaVeille | null) => Promise<void>,
+    ligne: (l: LigneGrandLivre) => Promise<void>,
+  ): Promise<void> {
+    const rang = new Map(comptes.map((c, i) => [c.compteId, i]));
+    const reports = periode
+      ? await this.ecritureService.reportsALaVeille({ tenantId, exerciceId, ...HORS_SITUATION }, periode, filtreComptes)
+      : new Map<string, ReportALaVeille>();
+    let suivant = 0;
+    const ouvrirJusqua = async (i: number) => {
+      for (; suivant <= i; suivant++) {
+        const c = comptes[suivant];
+        // Hors période, seuls les comptes qui ont des lignes s'ouvrent · comme
+        // avant cette ligne de travail.
+        if (periode || suivant === i) await ouvrir(c, reports.get(c.compteId) ?? null);
+      }
+    };
+    await this.parcourirGrandLivre(
+      tenantId,
+      exerciceId,
+      new Set(rang.keys()),
+      filtreComptes,
+      async (l) => {
+        const i = rang.get(l.compteId)!;
+        if (i < suivant - 1) throw new Error(`Grand livre · la ligne ${l.id} arrive après la fermeture de son compte ${l.compte.numero}.`);
+        if (i >= suivant) await ouvrirJusqua(i);
+        await ligne(l);
+      },
+      periode,
+    );
+    if (periode) await ouvrirJusqua(comptes.length - 1);
   }
 
   /** Les rattachements des comptes de tiers · un par compte (`compteId` unique). */
@@ -288,6 +404,26 @@ export class ExportFpmService {
       async ouvrir(numero: string, nom: string): Promise<void> {
         await feuilleDe().ajouter({ date: numero, libelle: nom }, { gras: true });
         bloc = { debit: 0, credit: 0, solde: 0 };
+      },
+      /**
+       * LE REPORT À LA VEILLE (ligne export-periode, condition 1) · les sommes
+       * BRUTES de ce qui précède la période, comme la colonne « Mouvements au
+       * <veille> » de la balance · le solde progressif part de lui, et le
+       * total du compte le compte, sans quoi le contrôle contre la balance de
+       * la période tomberait.
+       */
+      async report(r: ReportALaVeille): Promise<void> {
+        if (!bloc) throw new Error('Report de grand livre écrit hors de tout bloc');
+        bloc.debit += r.debit;
+        bloc.credit += r.credit;
+        bloc.solde += r.debit - r.credit;
+        await feuilleDe().ajouter({
+          date: r.au,
+          libelle: `Report au ${jourFr(r.au)}`,
+          debit: montantFpm(r.debit),
+          credit: montantFpm(r.credit),
+          solde: montantFpm(bloc.solde),
+        });
       },
       async ligne(l: LigneGrandLivre): Promise<void> {
         if (!bloc) throw new Error('Ligne de grand livre écrite hors de tout bloc');
@@ -408,20 +544,26 @@ export class ExportFpmService {
     exerciceId: string,
     avecGrandsLivres: boolean,
     ouvrir: (nomFichier: string) => Writable,
+    extrait?: DemandeDExtrait,
   ): Promise<{ lignes: number }> {
-    const ctx = await this.contexte(tenantId, exerciceId);
-    const lignes = await this.balanceFpm(tenantId, exerciceId);
+    const periode = extrait?.periode;
+    const lu = await this.contexte(tenantId, exerciceId, periode);
+    const lignes = await this.balanceFpm(tenantId, exerciceId, periode);
     if (avecGrandsLivres) {
       await this.verifierVolume(
         tenantId,
         exerciceId,
-        lignes.length,
+        // Sur une période, chaque feuille de compte porte aussi son report.
+        lignes.length * (periode ? 2 : 1),
         null,
         'Balance avec le grand livre de chaque compte',
         "Exportez la balance seule (choix « Balance seule » à l'écran), puis le grand livre compte par compte.",
+        periode,
       );
     }
     const intitulesDivisions = await this.intitulesDesDivisions(tenantId, divisionsDeLaClasse9(lignes));
+    // Le numéro au dernier moment · tous les refus sont passés (ligne export-periode).
+    const ctx = await this.numeroterSiExtrait(lu, extrait, avecGrandsLivres);
 
     const noms = avecGrandsLivres ? nomsDeFeuilles(lignes.map((l) => l.numero), [FEUILLE_BALANCE]) : [];
     const feuilleDe = new Map(lignes.map((l, i) => [l.compteId, noms[i]]));
@@ -431,7 +573,7 @@ export class ExportFpmService {
     const feuille = poserFeuilleFpm(classeur, sortie, {
       nomFeuille: FEUILLE_BALANCE,
       titre: 'Balance des comptes',
-      sousTitre: 'Complète',
+      sousTitre: ctx.sousTitre,
       identite: ctx.identite,
       mention: ctx.mention,
       debut: ctx.debut,
@@ -452,11 +594,11 @@ export class ExportFpmService {
         tenantId,
         exerciceId,
         ctx,
-        lignes.map((l) => ({ compteId: l.compteId, nom: l.intitule, totalDebit: l.totalDebit, totalCredit: l.totalCredit })),
+        lignes.map((l) => ({ compteId: l.compteId, numero: l.numero, nom: l.intitule, totalDebit: l.totalDebit, totalCredit: l.totalCredit })),
         null,
         feuilleDe,
         ligneDuCompte,
-        { titre: 'Grand-livre des comptes', sousTitre: 'Complète', totalBloc: 'Total du compte' },
+        { titre: 'Grand-livre des comptes', sousTitre: ctx.sousTitre, totalBloc: 'Total du compte' },
       );
     }
     await classeur.commit();
@@ -485,7 +627,7 @@ export class ExportFpmService {
     tenantId: string,
     exerciceId: string,
     ctx: Contexte,
-    comptes: Array<{ compteId: string; nom: string; totalDebit: number; totalCredit: number }>,
+    comptes: Array<{ compteId: string; numero: string; nom: string; totalDebit: number; totalCredit: number }>,
     filtreComptes: string[] | null,
     feuilleDe: Map<string, string | undefined>,
     ligneDuCompte: Map<string, number>,
@@ -506,12 +648,17 @@ export class ExportFpmService {
       }
       courante?.fermer();
     };
-    await this.parcourirGrandLivre(tenantId, exerciceId, new Set(nomDe.keys()), filtreComptes, async (l) => {
-      if (l.compteId !== compteCourant) {
+    await this.parcourirParCompte(
+      tenantId,
+      exerciceId,
+      comptes,
+      filtreComptes,
+      ctx.periode,
+      async (c, report) => {
         await fermer();
-        compteCourant = l.compteId;
+        compteCourant = c.compteId;
         const feuille = poserFeuilleFpm(classeur, sortie, {
-          nomFeuille: feuilleDe.get(l.compteId) ?? l.compte.numero,
+          nomFeuille: feuilleDe.get(c.compteId) ?? c.numero,
           titre: textes.titre,
           sousTitre: textes.sousTitre,
           identite: ctx.identite,
@@ -521,15 +668,21 @@ export class ExportFpmService {
           colonnes: COLONNES_GRAND_LIVRE_FPM,
           entetes: ENTETES_GRAND_LIVRE_FPM,
           lignesEntete: 1,
-          retour: formuleLien(FEUILLE_BALANCE, `A${ligneDuCompte.get(l.compteId) ?? 1}`, 'Retour à la balance'),
+          retour: formuleLien(FEUILLE_BALANCE, `A${ligneDuCompte.get(c.compteId) ?? 1}`, 'Retour à la balance'),
         });
         courante = feuille;
         redacteur = this.redacteur(() => feuille, textes.totalBloc);
-        await redacteur.ouvrir(l.compte.numero, nomDe.get(l.compteId) ?? l.compte.intitule);
-      }
-      await redacteur!.ligne(l);
-      nb++;
-    });
+        await redacteur.ouvrir(c.numero, nomDe.get(c.compteId) ?? c.numero);
+        if (report) {
+          await redacteur.report(report);
+          nb++;
+        }
+      },
+      async (l) => {
+        await redacteur!.ligne(l);
+        nb++;
+      },
+    );
     await fermer();
     return nb;
   }
@@ -675,7 +828,7 @@ export class ExportFpmService {
         tenantId,
         exerciceId,
         ctx,
-        retenues.map((l) => ({ compteId: l.compteId, nom: l.nom, totalDebit: l.totalDebit, totalCredit: l.totalCredit })),
+        retenues.map((l) => ({ compteId: l.compteId, numero: l.numero, nom: l.nom, totalDebit: l.totalDebit, totalCredit: l.totalCredit })),
         ids,
         feuilleDe,
         ligneDuCompte,
@@ -738,29 +891,55 @@ export class ExportFpmService {
     tenantId: string,
     exerciceId: string,
     ouvrir: (nomFichier: string) => Writable,
+    options: { extrait?: DemandeDExtrait; compteId?: string } = {},
   ): Promise<{ lignes: number }> {
-    const ctx = await this.contexte(tenantId, exerciceId);
-    const lignes = await this.balanceFpm(tenantId, exerciceId);
+    const periode = options.extrait?.periode;
+    const lu = await this.contexte(tenantId, exerciceId, periode);
+    const toutes = await this.balanceFpm(tenantId, exerciceId, periode);
+    // LE GRAND LIVRE D'UN COMPTE (« Exporter ce compte ») · relu dans le
+    // dossier, 404 nommé sinon ; sans mouvement jusqu'au dernier jour, rien à
+    // remettre, et un extrait vide ne prend aucun numéro.
+    const lignes = options.compteId ? toutes.filter((l) => l.compteId === options.compteId) : toutes;
+    if (options.compteId && lignes.length === 0) {
+      const compte = await this.prisma.compte.findFirst({ where: { id: options.compteId, tenantId }, select: { numero: true } });
+      if (!compte) throw new NotFoundException('Compte introuvable dans ce dossier.');
+      throw new BadRequestException(
+        `Aucun mouvement sur le compte ${compte.numero} ${periode ? `jusqu'au ${jourFr(periode.au)}` : 'dans cet exercice'} · rien à exporter.`,
+      );
+    }
+    const filtreComptes = options.compteId ? [options.compteId] : null;
     await this.verifierVolume(
       tenantId,
       exerciceId,
-      0,
-      null,
+      periode ? lignes.length : 0,
+      filtreComptes,
       'Grand livre',
       'Exportez la balance seule, puis le grand livre compte par compte.',
+      periode,
     );
     const balance = {
       debit: arrondi(lignes.reduce((s, l) => s + l.totalDebit, 0)),
       credit: arrondi(lignes.reduce((s, l) => s + l.totalCredit, 0)),
     };
+    // Le numéro au dernier moment · tous les refus sont passés (ligne export-periode).
+    const ctx = await this.numeroterSiExtrait(lu, options.extrait, true);
+    const seul = options.compteId ? lignes[0] : null;
     return this.grandLivreSurUneFeuille(
       tenantId,
       exerciceId,
       ctx,
-      lignes.map((l) => ({ compteId: l.compteId, nom: l.intitule })),
-      null,
+      lignes.map((l) => ({ compteId: l.compteId, numero: l.numero, nom: l.intitule })),
+      filtreComptes,
       balance,
-      { fichier: `grand-livre${ctx.suffixe}.xlsx`, titre: 'Grand-livre des comptes', sousTitre: 'Complète', totalBloc: 'Total du compte', precision: '' },
+      {
+        fichier: `grand-livre${seul ? `-${seul.numero}` : ''}${ctx.suffixe}.xlsx`,
+        titre: 'Grand-livre des comptes',
+        // Le compte seul de l'exercice entier ne se dit pas « Complète » ·
+        // c'est le livre d'UN compte, jamais le grand livre de l'exercice.
+        sousTitre: seul ? (ctx.periode ? `${ctx.sousTitre} · compte ${seul.numero}` : `Compte ${seul.numero} · exercice entier`) : ctx.sousTitre,
+        totalBloc: 'Total du compte',
+        precision: '',
+      },
       ouvrir,
     );
   }
@@ -796,7 +975,7 @@ export class ExportFpmService {
       tenantId,
       exerciceId,
       ctx,
-      retenues.map((l) => ({ compteId: l.compteId, nom: l.nom })),
+      retenues.map((l) => ({ compteId: l.compteId, numero: l.numero, nom: l.nom })),
       ids,
       balance,
       {
@@ -816,7 +995,7 @@ export class ExportFpmService {
     tenantId: string,
     exerciceId: string,
     ctx: Contexte,
-    comptes: Array<{ compteId: string; nom: string }>,
+    comptes: Array<{ compteId: string; numero: string; nom: string }>,
     filtreComptes: string[] | null,
     balance: { debit: number; credit: number },
     textes: { fichier: string; titre: string; sousTitre: string; totalBloc: string; precision: string },
@@ -840,15 +1019,26 @@ export class ExportFpmService {
     const redacteur = this.redacteur(() => feuille, textes.totalBloc);
     let compteCourant: string | null = null;
     let nb = 0;
-    await this.parcourirGrandLivre(tenantId, exerciceId, new Set(nomDe.keys()), filtreComptes, async (l) => {
-      if (l.compteId !== compteCourant) {
+    await this.parcourirParCompte(
+      tenantId,
+      exerciceId,
+      comptes,
+      filtreComptes,
+      ctx.periode,
+      async (c, report) => {
         if (compteCourant) await redacteur.fermer();
-        compteCourant = l.compteId;
-        await redacteur.ouvrir(l.compte.numero, nomDe.get(l.compteId) ?? l.compte.intitule);
-      }
-      await redacteur.ligne(l);
-      nb++;
-    });
+        compteCourant = c.compteId;
+        await redacteur.ouvrir(c.numero, nomDe.get(c.compteId) ?? c.numero);
+        if (report) {
+          await redacteur.report(report);
+          nb++;
+        }
+      },
+      async (l) => {
+        await redacteur.ligne(l);
+        nb++;
+      },
+    );
     if (compteCourant) await redacteur.fermer();
     await this.ecrireFinDeLivre(feuille, redacteur.totaux(), balance, textes.precision);
     feuille.fermer();

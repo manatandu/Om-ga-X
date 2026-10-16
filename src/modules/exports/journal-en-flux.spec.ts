@@ -271,6 +271,26 @@ describe('Journal exporté en flux', () => {
     expect(feuille.views[0]).toMatchObject({ state: 'frozen', ySplit: LIGNE_ENTETE });
   });
 
+  it('l’en-tête s’écrit UNE fois · la ligne du titre ne porte que le titre (relevé de Manasse du 2026-10-16)', async () => {
+    // `columns` muni de `header` écrivait les en-têtes en ligne 1, derrière
+    // le titre, et le journal les montrait deux fois.
+    const { feuille } = await exporter(3);
+    const entete = feuille.getRow(LIGNE_ENTETE);
+    const nbColonnes = entete.cellCount;
+    expect(nbColonnes).toBeGreaterThan(10);
+    const ligneTitre = feuille.getRow(1);
+    const autresQueLeTitre: unknown[] = [];
+    for (let c = 2; c <= nbColonnes; c++) {
+      const v = ligneTitre.getCell(c).value;
+      if (v !== null && v !== undefined && v !== '') autresQueLeTitre.push(v);
+    }
+    expect(autresQueLeTitre).toEqual([]);
+    // Le titre de la colonne des corrections est un titre, sans article.
+    const titres = Array.from({ length: nbColonnes }, (_v, i) => entete.getCell(i + 1).value);
+    expect(titres).toContain('Correction');
+    expect(titres).toContain('Motif de la correction');
+  });
+
   it('garde les formats de cellule · sans eux une date sort en numéro de série', async () => {
     // `useStyles: true` est ce qui coûte le plus de temps au flux, et c'est
     // pourtant non négociable · un export comptable illisible n'est pas un

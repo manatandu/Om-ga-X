@@ -358,7 +358,9 @@ describe('le contrôle nomme les écritures validées dans un journal de situati
 describe('les lectures de travail écartent la situation', () => {
   it('le grand livre, le justificatif et le périmètre du journal le disent dans leur filtre', () => {
     const src = SOURCE('src/modules/comptabilite/ecriture.service.ts');
-    const perimetres = [...src.matchAll(/const perimetreEcriture = \{[^;]*\};/g)].map((m) => m[0]);
+    // Le grand livre porte le filtre sur le périmètre de l'EXERCICE, que la
+    // période d'un extrait ne fait que restreindre (ligne export-periode).
+    const perimetres = [...src.matchAll(/const perimetreExercice = \{[^;]*\};/g)].map((m) => m[0]);
     expect(perimetres.length).toBeGreaterThanOrEqual(2);
     for (const p of perimetres) expect(p).toContain('...HORS_SITUATION');
     expect(HORS_SITUATION).toEqual({ statut: { not: StatutEcriture.SITUATION } });

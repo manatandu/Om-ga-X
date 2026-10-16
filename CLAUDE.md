@@ -206,7 +206,11 @@ et le même jour les pages légales (contrat de licence, foire aux questions,
 politique de confidentialité, version, mise en production et langue dans
 « À propos »), demandées expressément (« Tu pourras mettre aussi un forum
 aux questions, politique de confidentialité, termes du contrat de licence,
-indiquer la version, mise en production et langue »).
+indiquer la version, mise en production et langue ») ; puis, le 2026-10-16,
+l'EXPORT PAR PÉRIODE de la balance et du grand livre, à l'écran et en Excel
+(« l'autorisation « Lève le gel pour l'export par période » »), sous les
+quatre conditions proposées et acceptées · solde de départ gardé, extrait
+dit, numéroté et daté, période dans un exercice.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -2972,6 +2976,37 @@ l'identique) ni un livre obligatoire (art. 20, al. 1, sans blanc ; art. 22,
 pas, les autres se taisent dans l'ordre de l'édition ; le saut sépare les
 groupes (classe, type de tiers, rubrique) par une ligne blanche ou une page,
 l'en-tête repris ; catalogue tenu en MIROIR serveur et écran.
+
+**Balance et grand livre d'une période (ligne export-periode, 2026-10-16,
+gel levé par Manasse).** Une période DANS un exercice (`du`, `au`, chacune
+bornée à lui, refus nommé en 400 · à cheval sur deux, l'à-nouveau du second
+compterait deux fois), à l'écran et en Excel ; l'exercice entier n'est pas
+un extrait et ne change pas. UNE RÈGLE POUR LA BALANCE ET LE LIVRE
+(`comptabilite/periode-extrait.ts`, `ecrituresAvantLaPeriode`,
+`ecrituresDansLaPeriode`, `filtresDesTroisColonnesDeLaPeriode`) · au REPORT
+ce qui est daté avant `du`, et l'à-nouveau de clôture daté de `du` même (sauf
+`du` dernier jour de l'exercice, virement du résultat non affecté) ; en
+MOUVEMENTS le reste de la période ; en CLÔTURE le solde des comptes de
+gestion de la période · une colonne « au <veille> » DATÉE, jamais « drapeau
+d'abord », sans quoi la balance mettait au report ce que le livre du même
+classeur montrait en ligne. Le SOLDE DE DÉPART reste (AUDCIF art. 19 ·
+« le solde à l'ouverture ») · un compte qui n'a que son report garde son
+bloc, à l'écran comme en Excel (`sectionVisible`). L'EXTRAIT SE DIT (art. 19 ·
+le grand livre porte « les différents mouvements de l'exercice ») · titre
+« Extrait du … » et renvoi au livre de l'exercice entier, la fenêtre
+imprimée « ce n'est pas le livre de l'exercice ». NUMÉROTÉ ET DATÉ À
+L'EXPORT EXCEL SEUL (art. 22, 7° · `ExtraitPeriode`, suite continue par
+dossier sous verrou, numéro pris après les refus et jamais pour un extrait
+vide, fichier interrompu qui GARDE son numéro, échec écrit, jour de
+Kinshasa ; création entière au journal d'audit, aucun lien vers l'exercice
+ni le compte) · « Imprimer l'extrait » RETIRÉ (décision de Manasse du
+2026-10-16, fonction non demandée), « Imprimer la fenêtre » et le journal
+marqué imprimé restent. Le brouillard reste dit (art. 22, 2°). À l'écran,
+chaque lecture se range avec sa CLÉ (exercice, période appliquée, réglage ·
+`cleDeLecture`, `lueePour`) · une balance gardée d'une période à l'autre
+montrait les chiffres de l'exercice sous le titre de la période. Le livre
+« à plat » sur une période est refusé nommé ; les balances et grands livres
+des tiers restent sur l'exercice.
 
 **Comparabilité de la colonne N-1.** « Lorsque l'un des postes chiffrés d'un état
 financier N'EST PAS COMPARABLE à celui de l'exercice précédent, c'est CE DERNIER

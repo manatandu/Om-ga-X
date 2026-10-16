@@ -123,8 +123,9 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // 177 avec les modèles d'édition, bornés par leur tenantId (même
     // fonction) ; 181 avec les pièces jointes aux écritures, aux sections,
     // aux biens et aux salariés, chacune bornée par son tenantId (ligne
-    // sage-l6, fonction 22).
-    expect(modeles).toHaveLength(181);
+    // sage-l6, fonction 22) ; 182 avec les extraits de période numérotés,
+    // bornés par leur tenantId (ligne export-periode).
+    expect(modeles).toHaveLength(182);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

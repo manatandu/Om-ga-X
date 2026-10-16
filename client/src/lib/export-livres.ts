@@ -8,17 +8,32 @@
  * sauf « balance seule », chemin de rechange au-delà du plafond de volume.
  */
 
+import { PERIODE_EXERCICE, requetePeriode, type PeriodeSaisie } from './periode-extrait';
+
 export type FormatGrandLivre = 'fpm' | 'plat';
 export type FamilleTiers = 'FOURNISSEURS' | 'CLIENTS' | 'SALARIES' | 'AUTRES';
 
-/** Le grand livre complet · `format=plat` n'est envoyé que s'il est choisi. */
-export function cheminGrandLivre(exerciceId: string, format: FormatGrandLivre): string {
-  return `/exports/grand-livre?exerciceId=${exerciceId}${format === 'plat' ? '&format=plat' : ''}`;
+/**
+ * Le grand livre complet · `format=plat` n'est envoyé que s'il est choisi.
+ * Sur une période (ligne export-periode), ses bornes posées seulement, et le
+ * compte filtré quand l'écran n'en montre qu'un · l'extrait se numérote au
+ * serveur, dans la présentation du cabinet (le livre à plat est refusé).
+ */
+export function cheminGrandLivre(
+  exerciceId: string,
+  format: FormatGrandLivre,
+  periode: PeriodeSaisie = PERIODE_EXERCICE,
+  compteId?: string,
+): string {
+  return (
+    `/exports/grand-livre?exerciceId=${exerciceId}${format === 'plat' ? '&format=plat' : ''}` +
+    `${requetePeriode(periode)}${compteId ? `&compteId=${encodeURIComponent(compteId)}` : ''}`
+  );
 }
 
-/** La balance des comptes · avec une feuille par compte, sauf balance seule. */
-export function cheminBalance(exerciceId: string, balanceSeule: boolean): string {
-  return `/exports/balance?exerciceId=${exerciceId}${balanceSeule ? '&grandsLivres=non' : ''}`;
+/** La balance des comptes · avec une feuille par compte, sauf balance seule ; sur une période, ses bornes. */
+export function cheminBalance(exerciceId: string, balanceSeule: boolean, periode: PeriodeSaisie = PERIODE_EXERCICE): string {
+  return `/exports/balance?exerciceId=${exerciceId}${balanceSeule ? '&grandsLivres=non' : ''}${requetePeriode(periode)}`;
 }
 
 /** La balance des tiers d'une famille · un classeur par famille. */

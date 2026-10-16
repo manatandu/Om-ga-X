@@ -930,6 +930,8 @@ model Tenant {
   modelesEdition                       ModeleEdition[]
   // Ligne sage-l2 · fonction 1, modes de règlement.
   modesReglement                       ModeReglement[]
+  // Ligne export-periode · les extraits de période numérotés et datés.
+  extraitsPeriode                      ExtraitPeriode[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -11363,4 +11365,46 @@ model ModeReglement {
   @@unique([tenantId, code])
   @@unique([tenantId, intitule])
   @@map("modes_reglement")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne export-periode · la balance et le grand livre d'une période
+// ---------------------------------------------------------------------------
+
+/// Ce que l'extrait porte.
+enum NatureExtraitPeriode {
+  BALANCE
+  GRAND_LIVRE
+}
+
+/// UN EXTRAIT DE PÉRIODE, NUMÉROTÉ ET DATÉ (ligne export-periode, gel levé
+/// par Manasse le 2026-10-16 · AUDCIF art. 22, 7°, « les états périodiques
+/// fournis soient numérotés et datés »). Une balance ou un grand livre lu sur
+/// une période de l'exercice, et non sur l'exercice entier, prend un numéro
+/// de la suite continue du dossier quand il est REMIS · le fichier Excel
+/// produit. Il ne se supprime jamais · son numéro serait rendu au suivant,
+/// et deux documents remis porteraient le même. AUCUNE CLÉ vers
+/// l'exercice ni le compte · le libellé et les dates figent ce que l'extrait
+/// porte, et un extrait n'enferme jamais le retrait d'un exercice (arrêt à la
+/// dissolution), comme l'impression du journal l'a fait (sage-l1, M6).
+model ExtraitPeriode {
+  id         String               @id @default(uuid())
+  tenantId   String
+  tenant     Tenant               @relation(fields: [tenantId], references: [id])
+  numero     Int
+  nature     NatureExtraitPeriode
+  /// Ce que l'extrait porte, en clair, figé à son établissement.
+  libelle    String
+  dateDebut  DateTime
+  dateFin    DateTime
+  etabliLe   DateTime             @default(now())
+  etabliPar  String
+  /// La fin d'un fichier qui s'écrit · null avec un motif, l'écriture s'est
+  /// interrompue et le numéro reste pris, l'échec dit ; null sans motif, il
+  /// s'écrit encore (ou son processus est tombé).
+  termineLe  DateTime?
+  motifEchec String?
+
+  @@unique([tenantId, numero])
+  @@map("extraits_periode")
 }

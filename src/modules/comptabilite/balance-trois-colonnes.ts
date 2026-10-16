@@ -1,5 +1,6 @@
-import { ClasseCompte, TypeCompteDetailTotal } from '@prisma/client';
+import { ClasseCompte, Prisma, TypeCompteDetailTotal } from '@prisma/client';
 import { HORS_SITUATION } from './ecritures-de-situation';
+import { ecrituresAvantLaPeriode, ecrituresDansLaPeriode, type PeriodeExtrait } from './periode-extrait';
 
 /**
  * LA BALANCE EN TROIS COLONNES · un seul calcul, deux lecteurs (audit final
@@ -19,6 +20,11 @@ import { HORS_SITUATION } from './ecritures-de-situation';
  * ouverture, ni un mouvement de l'exercice.
  */
 
+/** Le filtre de départ, son statut gardé, à défaut jamais une écriture de situation. */
+function baseHorsSituation<F extends object>(filtreEcriture: F): F {
+  return ('statut' in filtreEcriture ? filtreEcriture : { ...filtreEcriture, ...HORS_SITUATION }) as F;
+}
+
 /**
  * Les trois filtres d'écriture, posés sur un même filtre de départ.
  *
@@ -29,11 +35,45 @@ import { HORS_SITUATION } from './ecritures-de-situation';
  * le livre-journal seul les écarte déjà.
  */
 export function filtresDesTroisColonnes<F extends object>(filtreEcriture: F) {
-  const base = ('statut' in filtreEcriture ? filtreEcriture : { ...filtreEcriture, ...HORS_SITUATION }) as F;
+  const base = baseHorsSituation(filtreEcriture);
   return {
     reports: { ...base, estGenereeParCloture: true, estSoldeDesComptesDeGestion: false },
     mouvements: { ...base, estGenereeParCloture: false },
     clotures: { ...base, estSoldeDesComptesDeGestion: true },
+  };
+}
+
+/**
+ * LES MÊMES TROIS COLONNES, SUR UNE PÉRIODE DE L'EXERCICE (ligne
+ * export-periode, `periode-extrait.ts`). Chaque ligne datée au plus tard le
+ * dernier jour de la période tombe dans UNE colonne, et une seule :
+ *  · REPORT · ce qui précède la période (`ecrituresAvantLaPeriode` · daté
+ *    avant le premier jour, et l'à-nouveau du premier jour) · c'est la
+ *    colonne « Mouvements au <veille> », qui garde le solde de départ
+ *    (condition 1, AUDCIF art. 19) ;
+ *  · MOUVEMENTS · le reste de la période, une écriture de clôture datée dans
+ *    la période comprise (bilan d'ouverture importé, virement du résultat
+ *    non affecté) ;
+ *  · CLÔTURE · l'écriture qui solde les comptes de gestion, si la période la
+ *    porte.
+ * La règle est celle du grand livre (`reportsALaVeille`, lignes de la
+ * période) · une balance qui rangeait au report ce que le livre du même
+ * classeur montrait en ligne disait un solde de départ faux à sa date
+ * (relecture du 2026-10-16). Le statut vient de `filtresDesTroisColonnes`,
+ * jamais une écriture de situation.
+ */
+export function filtresDesTroisColonnesDeLaPeriode(
+  filtreEcriture: Prisma.EcritureWhereInput,
+  periode: PeriodeExtrait,
+): { reports: Prisma.EcritureWhereInput; mouvements: Prisma.EcritureWhereInput; clotures: Prisma.EcritureWhereInput } {
+  const base = baseHorsSituation(filtreEcriture);
+  const dejaEt = Array.isArray(base.AND) ? base.AND : base.AND ? [base.AND] : [];
+  const et = (...conditions: Prisma.EcritureWhereInput[]): Prisma.EcritureWhereInput => ({ ...base, AND: [...dejaEt, ...conditions] });
+  const dans = ecrituresDansLaPeriode(periode);
+  return {
+    reports: et(ecrituresAvantLaPeriode(periode)),
+    mouvements: et(dans, { estSoldeDesComptesDeGestion: false }),
+    clotures: et(dans, { estSoldeDesComptesDeGestion: true }),
   };
 }
 

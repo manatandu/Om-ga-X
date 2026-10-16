@@ -23,6 +23,23 @@ import {
   type GrandLivreDuCompte,
   sectionDuCompteSeul,
 } from '../lib/export-livres';
+import {
+  bornesDeLaPeriode,
+  cleDeLecture,
+  estUnExtrait,
+  jourFr,
+  lueePour,
+  motifPeriodeSaisie,
+  PERIODE_EXERCICE,
+  periodePourLExercice,
+  requetePeriode,
+  sectionVisible,
+  titreExtrait,
+  veille,
+  type Lu,
+  type PeriodeDeLExercice,
+  type PeriodeSaisie,
+} from '../lib/periode-extrait';
 
 type Onglet = 'journal' | 'grand-livre' | 'balance';
 
@@ -55,6 +72,12 @@ const GRILLE_GL = 'grid-cols-[66px_40px_54px_1.8fr_92px_92px_98px_54px_1fr] min-
 /** Un compte du grand livre complet, tel que le sert `GET /ecritures/grand-livre`. */
 interface SectionGrandLivre {
   compte: { id: string; numero: string; intitule: string };
+  /**
+   * Sur une période (ligne export-periode), le report à la veille · les
+   * sommes BRUTES de ce qui précède, d'où part le solde progressif. Absent ou
+   * nul, aucun report.
+   */
+  report?: { au: string; debit: number; credit: number } | null;
   lignes: LigneGrandLivre[];
   soldeFinal: number;
   totalDebit: number;
@@ -147,7 +170,9 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const [totaux, setTotaux] = useState({ debit: 0, credit: 0 });
   /** Servi quand la fenêtre ne montre qu'une tranche du journal. */
   const [troncature, setTroncature] = useState<{ montrees: number; total: number } | null>(null);
-  const [balance, setBalance] = useState<(LigneBalance & { regroupe?: number })[]>([]);
+  // La balance LUE, rangée avec ce qu'elle a demandé (`cleDeLecture`) · nulle
+  // pendant le chargement et après un échec, jamais celle d'une autre période.
+  const [balanceLue, setBalanceLue] = useState<Lu<(LigneBalance & { regroupe?: number })[]> | null>(null);
   // Balance générale façon Sage · les tiers fondus sur leur compte collectif.
   const [regrouperTiers, setRegrouperTiers] = useState(false);
   const [journaux, setJournaux] = useState<Journal[]>([]);
@@ -156,7 +181,41 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   // la présentation du cabinet et les feuilles par compte PAR DÉFAUT.
   const [formatGrandLivre, setFormatGrandLivre] = useState<FormatGrandLivre>('fpm');
   const [balanceSeule, setBalanceSeule] = useState(false);
-  const [grandLivre, setGrandLivre] = useState<SectionGrandLivre[] | null>(null);
+  const [grandLivreLu, setGrandLivreLu] = useState<Lu<SectionGrandLivre[]> | null>(null);
+  // La clé d'une lecture tombée · l'écran dit « Lecture impossible » pour
+  // elle, jamais un « Chargement… » sans fin une fois le bandeau fermé.
+  const [echecBalance, setEchecBalance] = useState<string | null>(null);
+  const [echecGrandLivre, setEchecGrandLivre] = useState<string | null>(null);
+  // LA PÉRIODE DE LA BALANCE ET DU GRAND LIVRE (ligne export-periode) · la
+  // saisie, puis ce qui est appliqué (comme les filtres du journal), chacune
+  // rangée avec son exercice (`periodePourLExercice`) · celle d'un autre
+  // exercice se lit comme l'exercice entier, dès le premier rendu. Une date
+  // jamais touchée (`null`) montre la borne de l'exercice ; effacée ou
+  // illisible en cours de frappe, elle reste vide sous les doigts.
+  const [saisieDates, setSaisieDates] = useState<{ exerciceId: string | null; du: string | null; au: string | null }>({
+    exerciceId: null,
+    du: null,
+    au: null,
+  });
+  const [periodeAppliquee, setPeriodeAppliquee] = useState<PeriodeDeLExercice>({ exerciceId: null, ...PERIODE_EXERCICE });
+  const periode = periodePourLExercice(periodeAppliquee, exerciceCourant?.id);
+  // Une saisie faite dans un autre exercice ne vaut pas ici · les champs
+  // montrent alors la période appliquée à celui-ci, celle que l'écran affiche.
+  const saisie =
+    saisieDates.exerciceId === (exerciceCourant?.id ?? null) ? saisieDates : { du: periode.du || null, au: periode.au || null };
+  const periodeSaisie: PeriodeSaisie = { du: saisie.du ?? '', au: saisie.au ?? '' };
+  const appliquerPeriode = (p: PeriodeSaisie) => setPeriodeAppliquee({ exerciceId: exerciceCourant?.id ?? null, ...p });
+  const extrait = exerciceCourant ? estUnExtrait(exerciceCourant, periode) : false;
+  const motifPeriode = exerciceCourant ? motifPeriodeSaisie(exerciceCourant, periodeSaisie) : null;
+  // Des dates saisies que l'écran ne montre pas encore · « Appliquer » le dit.
+  const saisieNonAppliquee =
+    !!exerciceCourant &&
+    JSON.stringify(bornesDeLaPeriode(exerciceCourant, periodeSaisie)) !== JSON.stringify(bornesDeLaPeriode(exerciceCourant, periode));
+  // Les clés de lecture · exercice, période appliquée, réglage.
+  const cleBalance = exerciceCourant ? cleDeLecture(exerciceCourant.id, periode, regrouperTiers) : '';
+  const cleGrandLivre = exerciceCourant ? cleDeLecture(exerciceCourant.id, periode) : '';
+  const balance = lueePour(balanceLue, cleBalance);
+  const grandLivre = lueePour(grandLivreLu, cleGrandLivre);
   /** Le motif du refus du grand livre COMPLET, quand son volume dépasse une fenêtre. */
   const [refusGrandLivre, setRefusGrandLivre] = useState<string | null>(null);
 
@@ -270,18 +329,27 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   useEffect(() => {
     if (!exerciceCourant || onglet !== 'balance') return;
     let annule = false;
+    // Rien de lu tant que la réponse n'est pas là · l'écran dit « Chargement… »
+    // plutôt que de garder les chiffres de la demande précédente.
+    setBalanceLue(null);
+    const cle = cleDeLecture(exerciceCourant.id, periode, regrouperTiers);
     api
       .get<{ lignes: (LigneBalance & { regroupe?: number })[] }>(
-        `/ecritures/balance?exerciceId=${exerciceCourant.id}${regrouperTiers ? '&regrouperTiers=1' : ''}`,
+        `/ecritures/balance?exerciceId=${exerciceCourant.id}${regrouperTiers ? '&regrouperTiers=1' : ''}${requetePeriode(periode)}`,
       )
       .then(
-        (r) => !annule && setBalance(r.lignes),
-        (e) => !annule && setErreur(e.message),
+        (r) => !annule && setBalanceLue({ cle, donnees: r.lignes }),
+        (e) => {
+          if (annule) return;
+          setEchecBalance(cle);
+          setErreur(e instanceof Error ? e.message : 'Chargement impossible');
+        },
       );
     return () => {
       annule = true;
     };
-  }, [exerciceCourant?.id, rechargement, onglet, regrouperTiers]);
+    // `periode` est recalculée à chaque rendu · ses deux dates la représentent.
+  }, [exerciceCourant?.id, rechargement, onglet, regrouperTiers, periode.du, periode.au]);
 
   // Le grand livre COMPLET est chargé une fois par visite de l'onglet · le
   // filtre par compte travaille ensuite sur ce qui est déjà là, sans requête
@@ -289,10 +357,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   useEffect(() => {
     if (!exerciceCourant || onglet !== 'grand-livre') return;
     let annule = false;
-    setGrandLivre(null);
+    setGrandLivreLu(null);
     setRefusGrandLivre(null);
-    api.get<SectionGrandLivre[]>(`/ecritures/grand-livre?exerciceId=${exerciceCourant.id}`).then(
-      (r) => !annule && setGrandLivre(r),
+    const cle = cleDeLecture(exerciceCourant.id, periode);
+    api.get<SectionGrandLivre[]>(`/ecritures/grand-livre?exerciceId=${exerciceCourant.id}${requetePeriode(periode)}`).then(
+      (r) => !annule && setGrandLivreLu({ cle, donnees: r }),
       (e) => {
         if (annule) return;
         // LE LIVRE COMPLET REFUSÉ PAR SON VOLUME (400 nommé) n'arrête pas la
@@ -300,46 +369,60 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
         // double-clic d'une balance (second tour, relevé E). Toute autre
         // panne reste une erreur.
         if (e instanceof ApiError && e.status === 400) setRefusGrandLivre(e.message);
-        else setErreur(e instanceof Error ? e.message : 'Chargement impossible');
+        else {
+          setEchecGrandLivre(cle);
+          setErreur(e instanceof Error ? e.message : 'Chargement impossible');
+        }
       },
     );
     return () => {
       annule = true;
     };
-  }, [exerciceCourant?.id, onglet, rechargement]);
+  }, [exerciceCourant?.id, onglet, rechargement, periode.du, periode.au]);
 
   // LE GRAND LIVRE D'UN SEUL COMPTE, lu seulement quand le livre complet est
   // refusé · route bornée au plafond d'une fenêtre, qui refuse à son tour, en
   // le disant, un compte trop lourd pour l'écran.
-  const [sectionSeule, setSectionSeule] = useState<SectionGrandLivre | null>(null);
+  const [sectionSeuleLue, setSectionSeuleLue] = useState<Lu<SectionGrandLivre> | null>(null);
   const [refusSectionSeule, setRefusSectionSeule] = useState<string | null>(null);
+  const cleSectionSeule = exerciceCourant ? cleDeLecture(exerciceCourant.id, periode, compteGrandLivreId) : '';
+  const sectionSeule = lueePour(sectionSeuleLue, cleSectionSeule);
   useEffect(() => {
-    setSectionSeule(null);
+    setSectionSeuleLue(null);
     setRefusSectionSeule(null);
     if (!exerciceCourant || onglet !== 'grand-livre' || !refusGrandLivre || !compteGrandLivreId) return;
     let annule = false;
+    const cle = cleDeLecture(exerciceCourant.id, periode, compteGrandLivreId);
     api
-      .get<GrandLivreDuCompte<LigneGrandLivre>>(
-        `/ecritures/grand-livre/${encodeURIComponent(compteGrandLivreId)}?exerciceId=${exerciceCourant.id}`,
+      .get<GrandLivreDuCompte<LigneGrandLivre> & { report?: SectionGrandLivre['report'] }>(
+        `/ecritures/grand-livre/${encodeURIComponent(compteGrandLivreId)}?exerciceId=${exerciceCourant.id}${requetePeriode(periode)}`,
       )
       .then(
-        (r) => !annule && setSectionSeule(sectionDuCompteSeul(r)),
+        // Le report du compte suit sa section (ligne export-periode).
+        (r) => !annule && setSectionSeuleLue({ cle, donnees: { ...sectionDuCompteSeul(r), report: r.report ?? null } }),
         (e) => !annule && setRefusSectionSeule(e instanceof Error ? e.message : 'Chargement impossible'),
       );
     return () => {
       annule = true;
     };
-  }, [exerciceCourant?.id, onglet, refusGrandLivre, compteGrandLivreId, rechargement]);
+  }, [exerciceCourant?.id, onglet, refusGrandLivre, compteGrandLivreId, rechargement, periode.du, periode.au]);
 
+  // Un compte qui n'a que son report reste montré (`sectionVisible`) · c'est
+  // son solde de départ, jamais « aucun report ».
   const sectionsAffichees = useMemo(
     () =>
       refusGrandLivre
-        ? sectionSeule && sectionSeule.lignes.length > 0
+        ? sectionSeule && sectionVisible(sectionSeule)
           ? [sectionSeule]
           : []
         : (grandLivre ?? []).filter((c) => !compteGrandLivreId || c.compte.id === compteGrandLivreId),
     [grandLivre, compteGrandLivreId, refusGrandLivre, sectionSeule],
   );
+
+  // Les comptes que la liste du grand livre propose, et le nom des comptes
+  // ouverts d'un double-clic · gardé pour la liste quand la période n'en a rien.
+  const optionsGrandLivre = refusGrandLivre ? (sectionSeule ? [sectionSeule] : []) : (grandLivre ?? []);
+  const [libellesComptes, setLibellesComptes] = useState<Record<string, string>>({});
 
   const filtreActif = useMemo(
     // Comparé aux filtres VIDES, champ par champ · comparer à '' comptait la
@@ -428,15 +511,26 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   };
   const exporterBalance = () => {
     if (!exerciceCourant) return;
-    lancerExport(cheminBalance(exerciceCourant.id, balanceSeule), 'balance.xlsx');
+    // Sur une période, l'extrait numéroté et daté par le serveur (ligne export-periode).
+    lancerExport(cheminBalance(exerciceCourant.id, balanceSeule, periode), 'balance.xlsx');
   };
   const exporterGrandLivreDuCompte = () => {
     if (!exerciceCourant || !compteGrandLivreId) return;
-    lancerExport(`/exports/grand-livre/${compteGrandLivreId}?exerciceId=${exerciceCourant.id}`, 'grand-livre.xlsx');
+    lancerExport(
+      // L'extrait d'UN compte passe par la présentation du cabinet, qui seule
+      // porte le report et le numéro ; l'exercice garde sa route d'origine.
+      extrait
+        ? cheminGrandLivre(exerciceCourant.id, 'fpm', periode, compteGrandLivreId)
+        : `/exports/grand-livre/${compteGrandLivreId}?exerciceId=${exerciceCourant.id}`,
+      'grand-livre.xlsx',
+    );
   };
+  // Le livre « à plat » couvre l'exercice entier · un extrait sort dans la
+  // présentation du cabinet, et l'écran ne propose pas le choix refusé.
+  const formatExporte: FormatGrandLivre = extrait ? 'fpm' : formatGrandLivre;
   const exporterGrandLivreComplet = () => {
     if (!exerciceCourant) return;
-    lancerExport(cheminGrandLivre(exerciceCourant.id, formatGrandLivre), 'grand-livre.xlsx');
+    lancerExport(cheminGrandLivre(exerciceCourant.id, formatExporte, periode), 'grand-livre.xlsx');
   };
 
   const lignesJournal = useMemo(() => ecritures.flatMap((e) =>
@@ -561,11 +655,90 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 hour: '2-digit',
                 minute: '2-digit',
               })}`
-            : undefined
+            : // Un extrait se DIT à l'impression de la fenêtre (condition 2) ·
+              // il ne se présente jamais pour le livre de l'exercice.
+              extrait && exerciceCourant && onglet !== 'journal'
+              ? `${titreExtrait(exerciceCourant, periode)} · ce n'est pas le livre de l'exercice`
+              : undefined
         }
       />
-      <div className="flex items-center justify-end mb-1.5 gap-2">
-        <div className="flex items-center gap-2">
+      {/* LA PÉRIODE (ligne export-periode) · balance et grand livre seulement. */}
+      {(onglet === 'balance' || onglet === 'grand-livre') && exerciceCourant && (
+        // Un formulaire · Entrée applique la période, comme les filtres du journal.
+        <form
+          className="ecran-seul flex flex-wrap items-center gap-2 mb-1.5 text-[11.5px]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (motifPeriode === null) appliquerPeriode(periodeSaisie);
+          }}
+        >
+          <label className="flex items-center gap-1.5">
+            <span className="font-bold text-text-dim">Période du</span>
+            <input
+              type="date"
+              value={saisie.du ?? bornesDeLaPeriode(exerciceCourant, PERIODE_EXERCICE).du}
+              min={bornesDeLaPeriode(exerciceCourant, PERIODE_EXERCICE).du}
+              max={bornesDeLaPeriode(exerciceCourant, PERIODE_EXERCICE).au}
+              aria-invalid={motifPeriode !== null}
+              aria-describedby={motifPeriode ? 'motif-periode' : undefined}
+              onChange={(e) => setSaisieDates({ exerciceId: exerciceCourant.id, du: e.target.value, au: saisie.au })}
+              className="border border-border bg-surface px-2 py-1 text-[11.5px]"
+            />
+          </label>
+          <label className="flex items-center gap-1.5">
+            <span className="font-bold text-text-dim">au</span>
+            <input
+              type="date"
+              value={saisie.au ?? bornesDeLaPeriode(exerciceCourant, PERIODE_EXERCICE).au}
+              min={bornesDeLaPeriode(exerciceCourant, PERIODE_EXERCICE).du}
+              max={bornesDeLaPeriode(exerciceCourant, PERIODE_EXERCICE).au}
+              aria-invalid={motifPeriode !== null}
+              aria-describedby={motifPeriode ? 'motif-periode' : undefined}
+              onChange={(e) => setSaisieDates({ exerciceId: exerciceCourant.id, du: saisie.du, au: e.target.value })}
+              className="border border-border bg-surface px-2 py-1 text-[11.5px]"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={motifPeriode !== null}
+            title={saisieNonAppliquee ? "Les dates saisies ne sont pas encore celles de l'écran" : undefined}
+            className={`border px-3 py-1 font-bold hover:bg-surface-alt disabled:opacity-50 ${
+              saisieNonAppliquee ? 'border-sel text-sel bg-surface' : 'border-border bg-surface'
+            }`}
+          >
+            Appliquer
+          </button>
+          {extrait && (
+            <button
+              type="button"
+              onClick={() => {
+                setSaisieDates({ exerciceId: exerciceCourant.id, du: null, au: null });
+                appliquerPeriode(PERIODE_EXERCICE);
+              }}
+              className="border border-border bg-surface px-3 py-1 font-bold hover:bg-surface-alt"
+            >
+              Exercice entier
+            </button>
+          )}
+          <span aria-live="polite" className="font-bold text-sel">
+            {extrait ? titreExtrait(exerciceCourant, periode) : ''}
+          </span>
+          {motifPeriode && (
+            <span id="motif-periode" role="alert" className="text-danger">
+              {motifPeriode}
+            </span>
+          )}
+          <Aide
+            titre="Balance et grand livre d'une période"
+            texte="La balance d'une période garde, dans sa colonne d'ouverture, tout ce qui précède le premier jour · à-nouveau et mouvements des mois d'avant. Le grand livre ouvre chaque compte sur son report à la veille. C'est un extrait · le grand livre obligatoire reste celui de l'exercice entier. Chaque extrait exporté en Excel reçoit un numéro et une date. Un extrait sort dans la présentation du cabinet · le livre « à plat » couvre l'exercice entier. La période tient dans l'exercice choisi."
+            source="AUDCIF art. 19 et art. 22, 7°"
+          />
+        </form>
+      )}
+      {/* Les commandes passent à la ligne sur un écran étroit · en débordant
+          par la gauche, elles sortaient de l'écran sans barre pour les rejoindre. */}
+      <div className="flex flex-wrap items-center justify-start sm:justify-end mb-1.5 gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {onglet === 'journal' && (
             <button
               onClick={() => setFiltresOuverts((v) => !v)}
@@ -648,20 +821,22 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             <>
               {compteGrandLivreId && boutonExport('Exporter ce compte', exporterGrandLivreDuCompte, false)}
               <select
-                value={formatGrandLivre}
+                value={formatExporte}
                 onChange={(e) => setFormatGrandLivre(e.target.value as FormatGrandLivre)}
                 aria-label="Présentation du grand livre exporté"
                 className="border border-border bg-surface px-2 py-1.5 text-[11.5px]"
               >
                 <option value="fpm">Présentation du cabinet</option>
-                <option value="plat">À plat, filtrable</option>
+                <option value="plat" disabled={extrait} title={extrait ? "Le livre à plat couvre l'exercice entier" : undefined}>
+                  À plat, filtrable
+                </option>
               </select>
               <Aide
                 titre="Présentation du grand livre exporté"
                 texte="« Présentation du cabinet » · un bloc par compte, ses lignes et son solde progressif, « Total du compte », puis les totaux et leur contrôle contre la balance générale. « À plat, filtrable » · une ligne par mouvement, numéro et intitulé du compte répétés, prête à filtrer ou à croiser, avec une feuille Sommaire par compte et le statut de chaque ligne."
                 source="Présentation des grands livres du cabinet"
               />
-              {boutonExport('Exporter tout le grand livre', exporterGrandLivreComplet)}
+              {boutonExport(extrait ? "Exporter l'extrait" : 'Exporter tout le grand livre', exporterGrandLivreComplet)}
             </>
           )}
         </div>
@@ -978,11 +1153,21 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             <label className="text-[11px] font-bold text-text-dim">Filtrer sur un compte</label>
             <select
               value={compteGrandLivreId}
-              onChange={(e) => setCompteGrandLivreId(e.target.value)}
+              onChange={(e) => {
+                const choisi = optionsGrandLivre.find((c) => c.compte.id === e.target.value);
+                if (choisi) setLibellesComptes((m) => ({ ...m, [choisi.compte.id]: `${choisi.compte.numero} · ${choisi.compte.intitule}` }));
+                setCompteGrandLivreId(e.target.value);
+              }}
               className="border border-border rounded-[3px] bg-surface px-2 py-[2px] text-[11.5px] font-mono"
             >
               <option value="">{refusGrandLivre ? 'aucun compte choisi' : 'tous les comptes mouvementés'}</option>
-              {(refusGrandLivre ? (sectionSeule ? [sectionSeule] : []) : (grandLivre ?? [])).map((c) => (
+              {/* Le compte choisi reste à la liste même sans section dans la
+                  période · absent des options, la liste affichait « tous les
+                  comptes » au-dessus d'un livre filtré et vide. */}
+              {compteGrandLivreId && !optionsGrandLivre.some((c) => c.compte.id === compteGrandLivreId) && (
+                <option value={compteGrandLivreId}>{libellesComptes[compteGrandLivreId] ?? 'Compte choisi'}</option>
+              )}
+              {optionsGrandLivre.map((c) => (
                 <option key={c.compte.id} value={c.compte.id}>
                   {c.compte.numero} · {c.compte.intitule}
                 </option>
@@ -1006,13 +1191,23 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           {refusSectionSeule && (
             <div className="px-3.5 py-2 text-[11.5px] text-danger border-b border-border">{refusSectionSeule}</div>
           )}
-          {!grandLivre && !refusGrandLivre && <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {!grandLivre && !refusGrandLivre && (
+            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
+              {echecGrandLivre === cleGrandLivre ? 'Lecture impossible du grand livre de cette période.' : 'Chargement…'}
+            </div>
+          )}
           {refusGrandLivre && compteGrandLivreId && !sectionSeule && !refusSectionSeule && (
             <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Chargement…</div>
           )}
-          {((grandLivre && sectionsAffichees.length === 0) || (sectionSeule && sectionSeule.lignes.length === 0)) && (
+          {((grandLivre && sectionsAffichees.length === 0) || (sectionSeule && !sectionVisible(sectionSeule))) && (
             <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
-              {sectionSeule ? 'Aucun mouvement sur ce compte pour cet exercice.' : 'Aucun mouvement sur cet exercice.'}
+              {extrait
+                ? compteGrandLivreId
+                  ? 'Aucun mouvement ni report sur ce compte pour cette période.'
+                  : 'Aucun mouvement ni report sur cette période.'
+                : compteGrandLivreId
+                  ? 'Aucun mouvement sur ce compte pour cet exercice.'
+                  : 'Aucun mouvement sur cet exercice.'}
             </div>
           )}
 
@@ -1041,6 +1236,21 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                   Contrepartie
                 </span>
               </div>
+              {section.report && (
+                // LE REPORT À LA VEILLE (ligne export-periode, condition 1) ·
+                // brut, d'où part le solde progressif de la période.
+                <div className={`grid ${GRILLE_GL} gap-2 px-3.5 py-[3px] items-center border-b border-border/50 text-[11.5px] italic`}>
+                  <span className="font-mono text-[11px] text-text-dim">{jourFr(section.report.au)}</span>
+                  <span />
+                  <span />
+                  <span>Report au {jourFr(section.report.au)}</span>
+                  <Montant valeur={section.report.debit} />
+                  <Montant valeur={section.report.credit} />
+                  <span className="font-mono text-right font-semibold">{montant(section.report.debit - section.report.credit)}</span>
+                  <span />
+                  <span />
+                </div>
+              )}
               {section.lignes.map((l) => (
                 <div
                   key={l.id}
@@ -1063,7 +1273,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               ))}
               <div className={`grid ${GRILLE_GL} gap-2 px-3.5 py-1 bg-surface-alt border-b border-border-dark text-[11.5px] font-bold`}>
                 <span className="col-span-3" />
-                <span className="text-right text-[11px] text-text-dim self-center">Total mouvements · solde final</span>
+                <span className="text-right text-[11px] text-text-dim self-center">
+                  {/* Sur un extrait, les totaux sont ceux de la période · le report n'y entre pas. */}
+                  {extrait && exerciceCourant
+                    ? `Total de la période · solde au ${jourFr(bornesDeLaPeriode(exerciceCourant, periode).au)}`
+                    : 'Total mouvements · solde final'}
+                </span>
                 <Montant valeur={section.totalDebit} />
                 <Montant valeur={section.totalCredit} />
                 <span className="font-mono text-right">{montant(section.soldeFinal)}</span>
@@ -1108,9 +1323,15 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           <div className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 pt-1.5 text-[11px] font-bold text-text-dim bg-surface-alt`}>
             <span />
             <span />
-            <span className="col-span-2 text-center border-b border-border pb-0.5">Solde d’ouverture</span>
-            <span className="col-span-2 text-center border-b border-border pb-0.5">Mouvements</span>
-            <span className="col-span-2 text-center border-b border-border pb-0.5">Solde de clôture</span>
+            {/* Sur une période, l'ouverture est le solde à la veille (report
+                gardé, condition 1) et la clôture celui du dernier jour. */}
+            <span className="col-span-2 text-center border-b border-border pb-0.5">
+              {extrait && exerciceCourant ? `Solde au ${jourFr(veille(bornesDeLaPeriode(exerciceCourant, periode).du))}` : 'Solde d’ouverture'}
+            </span>
+            <span className="col-span-2 text-center border-b border-border pb-0.5">{extrait ? 'Mouvements de la période' : 'Mouvements'}</span>
+            <span className="col-span-2 text-center border-b border-border pb-0.5">
+              {extrait && exerciceCourant ? `Solde au ${jourFr(bornesDeLaPeriode(exerciceCourant, periode).au)}` : 'Solde de clôture'}
+            </span>
           </div>
           <div className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 py-1 bg-surface-alt text-[11px] font-bold text-text-dim border-b border-border-dark`}>
             <span>N° compte</span>
@@ -1122,7 +1343,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             <span className="text-right">Débit</span>
             <span className="text-right">Crédit</span>
           </div>
-          {balance.map((l) => (
+          {balance === null && (
+            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
+              {echecBalance === cleBalance ? 'Lecture impossible de la balance de cette période.' : 'Chargement…'}
+            </div>
+          )}
+          {(balance ?? []).map((l) => (
             <div
               key={l.compteId}
               // DOUBLE-CLIC · le grand livre du compte, comme la balance de
@@ -1132,6 +1358,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 l.regroupe
                   ? undefined
                   : () => {
+                      setLibellesComptes((m) => ({ ...m, [l.compteId]: `${l.numero} · ${l.intitule}` }));
                       setCompteGrandLivreId(l.compteId);
                       setOnglet('grand-livre');
                     }
@@ -1171,7 +1398,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             // Toutes les lignes entrent dans les totaux · la balance ne rend
             // plus de sous-totalisation par compte principal, il n'y a donc
             // plus d'agrégat à écarter pour ne pas compter deux fois.
-            const cumul = (f: (l: LigneBalance) => number) => balance.reduce((s, l) => s + f(l), 0);
+            const cumul = (f: (l: LigneBalance) => number) => (balance ?? []).reduce((s, l) => s + f(l), 0);
             const ouv = (l: LigneBalance) => l.reportDebit - l.reportCredit;
             return (
               <div className={`grid ${GRILLE_BALANCE} gap-2 px-3.5 py-1.5 bg-surface-alt border-t border-border-dark text-[11.5px] font-bold`}>

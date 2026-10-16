@@ -213,11 +213,14 @@ function poserFeuille(
         `&RPage &P / &N · édité le ${new Date().toLocaleDateString('fr-FR')}`,
     },
   });
-  feuille.columns = params.colonnes;
+  // LES COLONNES SANS LEUR EN-TÊTE · `columns` muni de `header` écrit d'office
+  // une ligne d'en-tête en ligne 1, et la coiffe n'en recouvrait que la
+  // première cellule · le journal exporté portait ses en-têtes deux fois,
+  // en ligne 1 derrière le titre et en ligne 4 (relevé de Manasse du
+  // 2026-10-16). La colonne ne garde que clé, largeur et format ; l'en-tête
+  // s'écrit une fois, sous la coiffe.
+  feuille.columns = params.colonnes.map((c) => ({ key: c.key, width: c.width, style: c.style }));
 
-  // `columns` pose d'office une ligne d'en-tête en ligne 1 · elle doit devenir
-  // la ligne 4, sous la coiffe. On écrit donc la coiffe par-dessus les trois
-  // premières lignes, puis on réécrit l'en-tête à sa place.
   const edite = new Date().toLocaleDateString('fr-FR');
   const titreFeuille = feuille.getRow(1);
   titreFeuille.getCell(1).value = `${params.titre} · ${params.identite.entite}`;
