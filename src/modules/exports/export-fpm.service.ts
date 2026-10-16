@@ -9,7 +9,8 @@ import { pageApres } from '../../common/lecture-par-lots';
 import { libelleExercice } from '../../common/libelle-exercice';
 import { EcritureService } from '../comptabilite/ecriture.service';
 import { filtresDesTroisColonnes, filtresDesTroisColonnesDeLaPeriode } from '../comptabilite/balance-trois-colonnes';
-import { jourFr, libellePeriode, type PeriodeExtrait, type ReportALaVeille } from '../comptabilite/periode-extrait';
+import { jourDeKinshasa } from '../../common/echeance';
+import { ecrituresDansLaPeriode, jourFr, libellePeriode, type PeriodeExtrait, type ReportALaVeille } from '../comptabilite/periode-extrait';
 import type { ExtraitNumerote } from './extraits-periode/extraits-periode.service';
 import { compteDeLaFamille, divisionnaireDeLaFamille, estFamilleTiers, type FamilleTiers, sousTitreFamille } from '../comptabilite/familles-tiers';
 import { LOT_EXPORT, MAX_LIGNES_EXPORT, OPTIONS_CLASSEUR_EN_FLUX, confronterAuDecompte, type IdentiteEtat } from './classeur-en-flux';
@@ -179,7 +180,9 @@ export class ExportFpmService {
    */
   private avecExtrait(ctx: Contexte, extrait: ExtraitNumerote, livre: boolean): Contexte {
     const numero = `Extrait n° ${extrait.numero}`;
-    const etabli = `établi le ${jourFr(extrait.etabliLe)}`;
+    // Le jour de Kinshasa, comme la date de tirage de la ligne 6 · lu en temps
+    // universel, l'extrait établi entre minuit et une heure portait la veille.
+    const etabli = `établi le ${jourFr(jourDeKinshasa(extrait.etabliLe))}`;
     const exercice = libellePeriode({ du: ctx.exercice.debut, au: ctx.exercice.fin });
     const precision = livre ? ` · le grand livre de l'exercice est celui ${exercice}` : '';
     return {
@@ -237,7 +240,7 @@ export class ExportFpmService {
     // en ajoute une par compte, comptées avec la balance.
     const lignesDeGrandLivre = await this.prisma.ligneEcriture.count({
       where: {
-        ecriture: { tenantId, exerciceId, ...HORS_SITUATION, ...(periode ? { date: { gte: periode.du, lt: periode.finExclue } } : {}) },
+        ecriture: { tenantId, exerciceId, ...HORS_SITUATION, ...(periode ? { AND: [ecrituresDansLaPeriode(periode)] } : {}) },
         ...(compteIds ? { compteId: { in: compteIds } } : {}),
       },
     });
@@ -265,8 +268,8 @@ export class ExportFpmService {
     periode?: PeriodeExtrait,
   ): Promise<void> {
     // Sur une période, ses lignes seules · ce qui la précède est au report de
-    // chaque compte (`reportsALaVeille`).
-    const dates = periode ? { date: { gte: periode.du, lt: periode.finExclue } } : {};
+    // chaque compte (`reportsALaVeille`), par la règle de la balance.
+    const dates = periode ? { AND: [ecrituresDansLaPeriode(periode)] } : {};
     // Le décompte du départ, sur le MÊME filtre · le curseur relu en base
     // s'arrête sans un mot sur une ligne retirée pendant la production, et le
     // livre lu se confronte à ce compte avant d'être clos (sage-l7, M6).
@@ -931,7 +934,9 @@ export class ExportFpmService {
       {
         fichier: `grand-livre${seul ? `-${seul.numero}` : ''}${ctx.suffixe}.xlsx`,
         titre: 'Grand-livre des comptes',
-        sousTitre: seul ? `${ctx.sousTitre} · compte ${seul.numero}` : ctx.sousTitre,
+        // Le compte seul de l'exercice entier ne se dit pas « Complète » ·
+        // c'est le livre d'UN compte, jamais le grand livre de l'exercice.
+        sousTitre: seul ? (ctx.periode ? `${ctx.sousTitre} · compte ${seul.numero}` : `Compte ${seul.numero} · exercice entier`) : ctx.sousTitre,
         totalBloc: 'Total du compte',
         precision: '',
       },

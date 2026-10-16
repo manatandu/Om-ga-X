@@ -177,6 +177,7 @@ export class ExportController {
       return;
     }
     const libelle = await this.extraits.libelleDe(user.tenantId, NatureExtraitPeriode.GRAND_LIVRE, { compteId });
+    await this.extraits.refuserSiVide(user.tenantId, exerciceId, periode, compteId);
     await envoyerXlsxEnFlux(res, (ouvrir) =>
       this.extraits.produire(
         { tenantId: user.tenantId, nature: NatureExtraitPeriode.GRAND_LIVRE, libelle, periode, etabliPar: user.userId },
@@ -236,7 +237,8 @@ export class ExportController {
       await envoyerXlsxEnFlux(res, (ouvrir) => this.exportFpm.balanceGeneraleEnFlux(user.tenantId, exerciceId, avec, ouvrir));
       return;
     }
-    const libelle = await this.extraits.libelleDe(user.tenantId, NatureExtraitPeriode.BALANCE);
+    const libelle = await this.extraits.libelleDe(user.tenantId, NatureExtraitPeriode.BALANCE, { avecGrandsLivres: avec });
+    await this.extraits.refuserSiVide(user.tenantId, exerciceId, periode);
     await envoyerXlsxEnFlux(res, (ouvrir) =>
       this.extraits.produire(
         { tenantId: user.tenantId, nature: NatureExtraitPeriode.BALANCE, libelle, periode, etabliPar: user.userId },

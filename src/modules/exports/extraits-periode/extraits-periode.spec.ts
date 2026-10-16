@@ -357,12 +357,50 @@ describe('le registre des extraits · le numéro reste, l’échec se dit', () =
   it('l’impression de l’écran · relue sur la période du serveur, numérotée terminée ; l’exercice entier refusé', async () => {
     const s = services();
     const r = await s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.GRAND_LIVRE, du: '2026-04-01', au: '2026-06-30', compteId: 'banque' });
-    expect(r).toEqual({ numero: 1, etabliLe: expect.any(Date), libelle: 'Grand livre du compte 52110000 · Banque · du 01/04/2026 au 30/06/2026' });
+    expect(r).toEqual({
+      numero: 1,
+      etabliLe: expect.any(Date),
+      etabliLeJour: '2026-10-16',
+      libelle: 'Grand livre du compte 52110000 · Banque · du 01/04/2026 au 30/06/2026',
+    });
     expect(s.extraits[0]).toMatchObject({ forme: FormeExtraitPeriode.IMPRESSION, termineLe: expect.any(Date) });
+    // La création entre ENTIÈRE au journal d'audit · aucun `select` ne la réduit.
+    expect(s.prisma.extraitPeriode.create.mock.calls[0][0]).not.toHaveProperty('select');
     await expect(s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.BALANCE })).rejects.toThrow(/Aucune période à numéroter/);
     await expect(
       s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.GRAND_LIVRE, du: '2026-04-01', compteId: 'inconnu' }),
     ).rejects.toThrow(/Compte introuvable/);
+  });
+
+  it('UN EXTRAIT VIDE NE PREND PAS DE NUMÉRO, une combinaison que l’écran n’envoie pas est refusée nommée', async () => {
+    const s = services();
+    // La caisse n'a rien avant le 31 mars · ni report ni mouvement en janvier.
+    await expect(
+      s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.GRAND_LIVRE, du: '2026-01-02', au: '2026-01-10', compteId: 'caisse' }),
+    ).rejects.toThrow(/Aucune écriture jusqu'au 10\/01\/2026 sur ce compte/);
+    await expect(
+      s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.BALANCE, du: '2026-04-01', compteId: 'banque' }),
+    ).rejects.toThrow(/le compte ne se choisit que pour un grand livre/);
+    await expect(
+      s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.GRAND_LIVRE, du: '2026-04-01', regrouperTiers: true }),
+    ).rejects.toThrow(/ne se regroupent que dans la balance/);
+    expect(s.extraits).toEqual([]);
+    // Le dossier entier sur la même quinzaine · l'à-nouveau suffit, l'extrait se numérote.
+    const r = await s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.BALANCE, du: '2026-01-02', au: '2026-01-10' });
+    expect(r.numero).toBe(1);
+  });
+
+  it('établi le jour de Kinshasa · à 23 h 30 en temps universel, c’est déjà le lendemain', async () => {
+    const s = services();
+    s.prisma.extraitPeriode.create.mockImplementationOnce(async ({ data }: any) => {
+      const e = { id: 'x1', etabliLe: new Date('2026-10-15T23:30:00Z'), ...data };
+      s.extraits.push(e);
+      return e;
+    });
+    const { classeur } = await lire((ouvrir) =>
+      demande(s.registre, NatureExtraitPeriode.BALANCE)((d) => s.fpm.balanceGeneraleEnFlux('t1', 'ex', false, ouvrir, d)),
+    );
+    expect(String(classeur.getWorksheet('Balance')!.getCell('A7').value)).toMatch(/^Extrait n° 1 établi le 16\/10\/2026 /);
   });
 });
 

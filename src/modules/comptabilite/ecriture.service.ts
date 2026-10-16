@@ -4167,7 +4167,7 @@ export class EcritureService {
       throw new BadRequestException(
         `Ce grand livre porte ${nombreLignes.toLocaleString('fr-FR')} lignes, au-delà de ce qu'une fenêtre peut ` +
           `afficher (${PLAFOND_LIGNES_GRAND_LIVRE.toLocaleString('fr-FR')}). Ouvrez le grand livre compte par ` +
-          `compte, ou restreignez l'exercice.`,
+          `compte, ou choisissez une période plus courte.`,
       );
     }
 

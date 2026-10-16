@@ -3,7 +3,9 @@ import { FormeExtraitPeriode, NatureExtraitPeriode, Prisma } from '@prisma/clien
 import { PrismaService } from '../../../common/prisma.service';
 import { transactionJournalisee } from '../../../common/audit/transaction-journalisee';
 import { EcritureService } from '../../comptabilite/ecriture.service';
-import { libellePeriode, type PeriodeExtrait } from '../../comptabilite/periode-extrait';
+import { jourFr, libellePeriode, type PeriodeExtrait } from '../../comptabilite/periode-extrait';
+import { HORS_SITUATION } from '../../comptabilite/ecritures-de-situation';
+import { jourDeKinshasaIso } from '../../../common/echeance';
 
 /**
  * LES EXTRAITS DE PÉRIODE, NUMÉROTÉS ET DATÉS (ligne export-periode, condition
@@ -73,7 +75,10 @@ export class ExtraitsPeriodeService {
           // ne l'est qu'à son dernier octet.
           termineLe: forme === FormeExtraitPeriode.IMPRESSION ? new Date() : null,
         },
-        select: { id: true, numero: true, etabliLe: true },
+        // AUCUN `select` · le journal d'audit range le résultat de la création
+        // comme état d'après (relecture TypeScript M1) ; réduit à trois
+        // colonnes, il tairait libellé, nature, forme et dates, et une
+        // retouche après coup ne se verrait plus.
       });
     });
     return { id: cree.id, numero: cree.numero, etabliLe: cree.etabliLe, periode: d.periode };
@@ -128,7 +133,15 @@ export class ExtraitsPeriodeService {
     tenantId: string,
     userId: string,
     d: { exerciceId: string; nature: NatureExtraitPeriode; du?: string; au?: string; compteId?: string; regrouperTiers?: boolean },
-  ): Promise<{ numero: number; etabliLe: Date; libelle: string }> {
+  ): Promise<{ numero: number; etabliLe: Date; etabliLeJour: string; libelle: string }> {
+    // Une combinaison que l'écran n'envoie jamais se refuse, nommée · prise
+    // telle quelle, elle numéroterait un libellé que la page ne porte pas.
+    if (d.nature === NatureExtraitPeriode.BALANCE && d.compteId) {
+      throw new BadRequestException("Une balance porte tous les comptes · le compte ne se choisit que pour un grand livre.");
+    }
+    if (d.nature === NatureExtraitPeriode.GRAND_LIVRE && d.regrouperTiers) {
+      throw new BadRequestException('Les tiers ne se regroupent que dans la balance · le grand livre les garde compte par compte.');
+    }
     const periode = await this.ecritureService.periodeDemandee(tenantId, d.exerciceId, { du: d.du, au: d.au });
     if (!periode) {
       throw new BadRequestException(
@@ -136,18 +149,42 @@ export class ExtraitsPeriodeService {
       );
     }
     const libelle = await this.libelleDe(tenantId, d.nature, { compteId: d.compteId, regrouperTiers: d.regrouperTiers });
+    await this.refuserSiVide(tenantId, d.exerciceId, periode, d.compteId);
     const e = await this.numeroter({ tenantId, nature: d.nature, libelle, periode, etabliPar: userId }, FormeExtraitPeriode.IMPRESSION);
-    return { numero: e.numero, etabliLe: e.etabliLe, libelle: `${libelle} · ${libellePeriode(periode)}` };
+    return { numero: e.numero, etabliLe: e.etabliLe, etabliLeJour: jourDeKinshasaIso(e.etabliLe), libelle: `${libelle} · ${libellePeriode(periode)}` };
+  }
+
+  /**
+   * UN EXTRAIT VIDE NE PREND PAS DE NUMÉRO (relecture « échecs silencieux »
+   * m3) · aucune ligne de l'exercice datée au plus tard le dernier jour, ni
+   * report ni mouvement, rien à remettre · un numéro consommé pour une page
+   * vide ferait un trou dans la suite qui ne s'expliquerait par rien. Le
+   * livre-journal et le brouillard, jamais une écriture de situation, comme
+   * la balance et les livres.
+   */
+  async refuserSiVide(tenantId: string, exerciceId: string, periode: PeriodeExtrait, compteId?: string): Promise<void> {
+    const lignes = await this.prisma.ligneEcriture.count({
+      where: {
+        ...(compteId ? { compteId } : {}),
+        ecriture: { tenantId, exerciceId, ...HORS_SITUATION, date: { lt: periode.finExclue } },
+      },
+    });
+    if (lignes === 0) {
+      throw new BadRequestException(
+        `Aucune écriture jusqu'au ${jourFr(periode.au)}${compteId ? ' sur ce compte' : ''} · ni report ni mouvement, rien à numéroter.`,
+      );
+    }
   }
 
   /** Ce que l'extrait porte, en clair · le compte relu dans le dossier (404 nommé sinon). */
   async libelleDe(
     tenantId: string,
     nature: NatureExtraitPeriode,
-    o: { compteId?: string; regrouperTiers?: boolean } = {},
+    o: { compteId?: string; regrouperTiers?: boolean; avecGrandsLivres?: boolean } = {},
   ): Promise<string> {
     if (nature === NatureExtraitPeriode.BALANCE) {
-      return o.regrouperTiers ? 'Balance des comptes, tiers regroupés sur leur collectif' : 'Balance des comptes';
+      const base = o.regrouperTiers ? 'Balance des comptes, tiers regroupés sur leur collectif' : 'Balance des comptes';
+      return o.avecGrandsLivres ? `${base}, avec le grand livre de chaque compte` : base;
     }
     if (!o.compteId) return 'Grand livre des comptes';
     const compte = await this.prisma.compte.findFirst({ where: { id: o.compteId, tenantId }, select: { numero: true, intitule: true } });
