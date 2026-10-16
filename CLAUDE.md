@@ -206,7 +206,11 @@ et le même jour les pages légales (contrat de licence, foire aux questions,
 politique de confidentialité, version, mise en production et langue dans
 « À propos »), demandées expressément (« Tu pourras mettre aussi un forum
 aux questions, politique de confidentialité, termes du contrat de licence,
-indiquer la version, mise en production et langue »).
+indiquer la version, mise en production et langue ») ; puis, le 2026-10-16,
+l'EXPORT PAR PÉRIODE de la balance et du grand livre, à l'écran et en Excel
+(« l'autorisation « Lève le gel pour l'export par période » »), sous les
+quatre conditions proposées et acceptées · solde de départ gardé, extrait
+dit, numéroté et daté, période dans un exercice.
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend

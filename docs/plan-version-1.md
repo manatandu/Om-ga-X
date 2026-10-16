@@ -298,3 +298,33 @@ fonctions seules.
   (défauts cherchés en parcourant les écrans) et un passage de replica-diff sur
   `docs/comparaison-sage/reproduction/features.csv` (score de parité avec Sage,
   ce qui manque), avant l'arrêt.
+
+## 10. Export par période · le gel levé pour lui (2026-10-16)
+
+Décision de Manasse du 2026-10-16 · « l'autorisation « Lève le gel pour
+l'export par période » », en réponse à la proposition du 2026-10-15 (manuel
+EDM, lignes 32 et 41 de `docs/comparaison-sage/02-manuel-edm.md`, classées
+« partiel »). La balance et le grand livre se demandent sur une PÉRIODE de
+l'exercice, à l'écran et en Excel, sous quatre conditions :
+
+1. **Le solde de départ ne se perd jamais** · une balance « du 1er avril au
+   30 juin » garde, dans la colonne « Mouvements au 31 mars », tout ce qui
+   précède (à-nouveau et mouvements de janvier à mars) ; le grand livre ouvre
+   chaque compte sur son report à la veille. La balance arrêtée à une date
+   reste ce qu'elle est (AUDCIF art. 19 · « le solde à l'ouverture, le cumul
+   des mouvements débiteurs et créditeurs depuis l'ouverture, le solde à la
+   date considérée »).
+2. **Le titre dit l'extrait** · le grand livre obligatoire reste celui de
+   l'exercice entier (AUDCIF art. 19, « les différents mouvements de
+   l'exercice ») ; un extrait remis comme « le grand livre » serait un livre
+   amputé.
+3. **Chaque extrait est numéroté et daté** (AUDCIF art. 22, 7°, « les états
+   périodiques fournis soient numérotés et datés »), comme les impressions du
+   journal (ligne sage-l1) et les impressions différées (ligne sage-l7).
+4. **La période tient dans un exercice** · à cheval sur deux, l'à-nouveau
+   compterait deux fois ; la mention du brouillard reste.
+
+Les deux articles valent aux deux référentiels · l'art. 3 du SYCEBNL n'écarte
+de l'art. 19 que son quatrième tiret (livre d'inventaire), et n'écarte pas
+l'art. 22. Conduite · branche `travail/export-periode`, fiche
+`AVANCEMENT-export-periode.md`.
