@@ -123,7 +123,56 @@ export const LIBELLES_NATURE_PIECE: Readonly<Record<NaturePieceVirement, string>
   AVIS_DEBIT_CREDIT: 'Avis de débit ou de crédit',
   BON_CAISSE: 'Bon de caisse',
   AUTRE: 'Autre pièce',
+  BON_SORTIE_CAISSE: 'Bon de sortie de caisse',
+  BON_ENTREE_CAISSE: "Bon d'entrée de caisse",
+  AVIS_DEBIT: 'Avis de débit',
+  AVIS_CREDIT: 'Avis de crédit',
+  EXTRAIT_COMPTE: 'Extrait de compte',
+  BORDEREAU_REMISE_CHEQUE: 'Bordereau de remise de chèque',
 };
+
+/**
+ * LES PIÈCES PROPOSÉES SELON LA TRÉSORERIE ET L'OPÉRATION (demande de Manasse
+ * du 2026-10-16, listes choisies par lui) · tableau des pièces de trésorerie
+ * du CPCC (organisation comptable, opérations de trésorerie, lignes
+ * « Caisses » · « bon de sortie caisse », « bon d'entrée de caisse » ; et
+ * « Banques » · avis de débit et de crédit, extraits, bordereau de remise de
+ * chèque), complété des pièces que le dossier remplit lui-même au guichet
+ * (ordre de virement, chèque de retrait, bordereau de versement). « Autre
+ * pièce » reste en dernier · aucun texte ne ferme la liste (AUDCIF art. 17).
+ * « Avis de débit ou de crédit » et « Bon de caisse », d'avant, se lisent
+ * encore sur les virements passés et ne se proposent plus.
+ */
+export const NATURES_PROPOSEES: Readonly<
+  Record<'BANQUE' | 'CAISSE', Readonly<Record<OperationVirementFonds, readonly NaturePieceVirement[]>>>
+> = {
+  CAISSE: {
+    SORTIE: [NaturePieceVirement.BON_SORTIE_CAISSE, NaturePieceVirement.AUTRE],
+    ENTREE: [NaturePieceVirement.BON_ENTREE_CAISSE, NaturePieceVirement.AUTRE],
+  },
+  BANQUE: {
+    SORTIE: [
+      NaturePieceVirement.ORDRE_VIREMENT,
+      NaturePieceVirement.CHEQUE,
+      NaturePieceVirement.AVIS_DEBIT,
+      NaturePieceVirement.EXTRAIT_COMPTE,
+      NaturePieceVirement.AUTRE,
+    ],
+    ENTREE: [
+      NaturePieceVirement.BORDEREAU_VERSEMENT,
+      NaturePieceVirement.BORDEREAU_REMISE_CHEQUE,
+      NaturePieceVirement.AVIS_CREDIT,
+      NaturePieceVirement.EXTRAIT_COMPTE,
+      NaturePieceVirement.AUTRE,
+    ],
+  },
+};
+
+/** Les pièces d'une opération · la sortie se lit sur la trésorerie d'origine, l'entrée sur celle de destination. */
+export function naturesProposees(sens: SensVirementFonds, operation: OperationVirementFonds): readonly NaturePieceVirement[] {
+  const [origine, destination] = sens.split('_') as ['BANQUE' | 'CAISSE', 'BANQUE' | 'CAISSE'];
+  return NATURES_PROPOSEES[operation === OperationVirementFonds.SORTIE ? origine : destination][operation];
+}
 
 export interface JournalDeTresorerie {
   id: string;
@@ -250,6 +299,18 @@ export function motifRefusVirement(
     return "L'entrée des fonds est datée avant leur sortie · chaque écriture prend la date de sa pièce (AUDCIF art. 16, al. 2), et les fonds n'arrivent pas avant d'être partis.";
   }
   const sens = sensDuVirement(origine.compteTresorerie!.numero, destination.compteTresorerie!.numero);
+  // LA PIÈCE SUIT SA TRÉSORERIE · masquer à l'écran n'est pas refuser, un
+  // « Bon de sortie de caisse » sur une sortie de banque se refuse ici.
+  for (const [piece, operation] of [
+    [sortie, OperationVirementFonds.SORTIE],
+    [entree, OperationVirementFonds.ENTREE],
+  ] as const) {
+    const admises = naturesProposees(sens, operation);
+    if (!admises.includes(piece.nature)) {
+      const tresorerie = (operation === OperationVirementFonds.SORTIE ? sens.split('_')[0] : sens.split('_')[1]) === 'CAISSE' ? 'caisse' : 'banque';
+      return `La pièce ${deLOperation(operation)} d'une ${tresorerie} se choisit parmi · ${admises.map((n) => LIBELLES_NATURE_PIECE[n]).join(', ')}.`;
+    }
+  }
   if (caisseEnJeu(sens) && !(demande.porteur ?? '').trim()) {
     return 'Une caisse est en jeu · nommez la personne qui a déposé ou retiré les espèces (porteur).';
   }
