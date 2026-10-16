@@ -1,4 +1,4 @@
-import { ClasseCompte, TypeCompteDetailTotal } from '@prisma/client';
+import { ClasseCompte, Prisma, TypeCompteDetailTotal } from '@prisma/client';
 import { HORS_SITUATION } from './ecritures-de-situation';
 
 /**
@@ -34,6 +34,45 @@ export function filtresDesTroisColonnes<F extends object>(filtreEcriture: F) {
     reports: { ...base, estGenereeParCloture: true, estSoldeDesComptesDeGestion: false },
     mouvements: { ...base, estGenereeParCloture: false },
     clotures: { ...base, estSoldeDesComptesDeGestion: true },
+  };
+}
+
+/**
+ * LES MÊMES TROIS COLONNES, SUR UNE PÉRIODE DE L'EXERCICE (ligne
+ * export-periode, `periode-extrait.ts`). Chaque ligne datée au plus tard le
+ * dernier jour de la période tombe dans UNE colonne, et une seule :
+ *  · REPORT · le report à-nouveau (même drapeau que la balance de
+ *    l'exercice), PLUS toute ligne datée avant le premier jour · c'est la
+ *    colonne « Mouvements au <veille> », qui garde le solde de départ
+ *    (condition 1, AUDCIF art. 19) ;
+ *  · MOUVEMENTS · les lignes ordinaires de la période ;
+ *  · CLÔTURE · l'écriture qui solde les comptes de gestion, si la période la
+ *    porte.
+ * Une période égale à l'exercice rendrait exactement la balance de
+ * l'exercice · même convention, le report à-nouveau en tête quelle que soit
+ * sa date (bilan d'ouverture importé en cours d'année, virement du résultat
+ * non affecté), sans quoi un extrait et la balance de l'exercice ne se
+ * liraient pas l'un contre l'autre. Le statut vient de
+ * `filtresDesTroisColonnes`, jamais une écriture de situation.
+ */
+export function filtresDesTroisColonnesDeLaPeriode(
+  filtreEcriture: Prisma.EcritureWhereInput,
+  periode: { du: Date; finExclue: Date },
+): { reports: Prisma.EcritureWhereInput; mouvements: Prisma.EcritureWhereInput; clotures: Prisma.EcritureWhereInput } {
+  const { reports, mouvements, clotures } = filtresDesTroisColonnes(filtreEcriture);
+  const dejaEt = (f: Prisma.EcritureWhereInput) => (Array.isArray(f.AND) ? f.AND : f.AND ? [f.AND] : []);
+  const borne = (f: Prisma.EcritureWhereInput, condition: Prisma.EcritureWhereInput): Prisma.EcritureWhereInput => ({
+    ...f,
+    AND: [...dejaEt(f), { date: { lt: periode.finExclue } }, condition],
+  });
+  // Le report de la période · celui de l'exercice, OU toute ligne d'avant le
+  // premier jour. Les drapeaux sortent du filtre commun pour entrer dans la
+  // branche · laissés en tête, ils écarteraient les lignes d'avant la période.
+  const { estGenereeParCloture, estSoldeDesComptesDeGestion, ...commun } = reports;
+  return {
+    reports: borne(commun, { OR: [{ estGenereeParCloture, estSoldeDesComptesDeGestion }, { date: { lt: periode.du } }] }),
+    mouvements: borne(mouvements, { date: { gte: periode.du } }),
+    clotures: borne(clotures, { date: { gte: periode.du } }),
   };
 }
 

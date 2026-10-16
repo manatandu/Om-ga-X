@@ -36,7 +36,8 @@ import { ouverteALaCloture } from '../lettrage/ouverte-a-la-cloture';
 import { groupesLusAPlusieurs, groupesLusLigneALigne, poidsDesLignesLues, poidsOuMontant, type LigneOuverte } from '../lettrage/reste-des-lignes-ouvertes';
 import { ancienneteJours, brouillardInvalidable, enRetardDeCentralisation, JOURS_CENTRALISATION } from './centralisation-brouillard';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
-import { agregatsParCompte, filtresDesTroisColonnes, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
+import { agregatsParCompte, filtresDesTroisColonnes, filtresDesTroisColonnesDeLaPeriode, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
+import { periodeDeLExtrait, type PeriodeExtrait, type ReportALaVeille, veilleDe } from './periode-extrait';
 import {
   HORS_SITUATION,
   ISSUE_TRANSFERT,
@@ -4026,7 +4027,7 @@ export class EcritureService {
   }
 
   /** Grand livre d'un compte : ses lignes avec solde progressif. */
-  async grandLivre(tenantId: string, compteId: string, exerciceId?: string, plafond?: number) {
+  async grandLivre(tenantId: string, compteId: string, exerciceId?: string, plafond?: number, periode?: PeriodeExtrait) {
     const compte = await this.prisma.compte.findFirst({ where: { id: compteId, tenantId } });
     if (!compte) {
       // 404, et non plus 400 (paquet 1, C3) · un compte que le dossier ne
@@ -4039,7 +4040,10 @@ export class EcritureService {
     // Livre-journal et brouillard, jamais une écriture de situation (ligne
     // sage-l1, fonction 12 · AUDCIF art. 19, le grand-livre reporte les
     // mouvements de l'exercice).
-    const perimetreEcriture = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
+    const perimetreExercice = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
+    // SUR UNE PÉRIODE (ligne export-periode), les lignes de la période seules ·
+    // ce qui la précède entre au report, jamais perdu (condition 1).
+    const perimetreEcriture = periode ? { ...perimetreExercice, date: { gte: periode.du, lt: periode.finExclue } } : perimetreExercice;
 
     // LA FENÊTRE EST BORNÉE (ligne FPM, second tour, relevé E) · le grand
     // livre d'UN compte s'ouvre à l'écran quand le livre complet y est refusé,
@@ -4056,7 +4060,7 @@ export class EcritureService {
       }
     }
 
-    const [lignes, contreparties] = await Promise.all([
+    const [lignes, contreparties, reports] = await Promise.all([
       this.prisma.ligneEcriture.findMany({
         where: { compteId, ecriture: perimetreEcriture },
         include: { ecriture: { include: { journal: true } } },
@@ -4066,15 +4070,61 @@ export class EcritureService {
       this.chargerContreparties({
         ecriture: { ...perimetreEcriture, lignes: { some: { compteId } } },
       }),
+      periode ? this.reportsALaVeille(perimetreExercice, periode, [compteId]) : Promise.resolve(new Map<string, ReportALaVeille>()),
     ]);
 
-    let solde = 0;
+    const report = reports.get(compteId) ?? null;
+    let solde = report ? report.debit - report.credit : 0;
     const lignesAvecSolde = lignes.map((l) => {
       solde += Number(l.debit) - Number(l.credit);
       return EcritureService.versLigneGrandLivre(l, solde, contreparties);
     });
 
-    return { compte, lignes: lignesAvecSolde, soldeFinal: solde };
+    return { compte, ...(periode ? { report } : {}), lignes: lignesAvecSolde, soldeFinal: solde };
+  }
+
+  /**
+   * LA PÉRIODE DEMANDÉE À UN ÉCRAN OU À UN EXPORT (ligne export-periode) ·
+   * `null` sans date, ou quand elle couvre l'exercice entier ; refus nommé
+   * hors de l'exercice ou illisible (`periodeDeLExtrait`).
+   */
+  async periodeDemandee(tenantId: string, exerciceId: string, demande: { du?: string; au?: string }): Promise<PeriodeExtrait | null> {
+    if (!demande.du && !demande.au) return null;
+    const exercice = exerciceDuDossierOuRefus(
+      await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { dateDebut: true, dateFin: true } }),
+    );
+    return periodeDeLExtrait(exercice, demande);
+  }
+
+  /**
+   * LE REPORT À LA VEILLE DE LA PÉRIODE, par compte (ligne export-periode,
+   * condition 1) · les sommes BRUTES des lignes de l'exercice datées avant le
+   * premier jour, à-nouveau compris, demandées à la base (`groupBy`), jamais
+   * des lignes rapatriées (§ 8 bis). Un compte sans rien avant la période
+   * n'a pas de report. `compteIds` borne la lecture, `null` la laisse au
+   * dossier.
+   */
+  async reportsALaVeille(
+    perimetreExercice: Prisma.EcritureWhereInput,
+    periode: PeriodeExtrait,
+    compteIds: string[] | null,
+  ): Promise<Map<string, ReportALaVeille>> {
+    const groupes = await this.prisma.ligneEcriture.groupBy({
+      by: ['compteId'],
+      where: {
+        ...(compteIds ? { compteId: { in: compteIds } } : {}),
+        // Le statut de l'appelant prime (livre-journal seul), à défaut jamais une simulation.
+        ecriture: { ...HORS_SITUATION, ...perimetreExercice, date: { lt: periode.du } },
+      },
+      _sum: { debit: true, credit: true },
+    });
+    const parCompte = new Map<string, ReportALaVeille>();
+    for (const g of groupes) {
+      const debit = Number(g._sum.debit ?? 0);
+      const credit = Number(g._sum.credit ?? 0);
+      if (debit !== 0 || credit !== 0) parCompte.set(g.compteId, { au: veilleDe(periode.du), debit, credit });
+    }
+    return parCompte;
   }
 
   /**
@@ -4091,11 +4141,14 @@ export class EcritureService {
    * mouvement propre par construction (imposé par `creer()`), donc aucune
    * ligne ne les référence.
    */
-  async grandLivreComplet(tenantId: string, exerciceId?: string) {
+  async grandLivreComplet(tenantId: string, exerciceId?: string, periode?: PeriodeExtrait) {
     // Livre-journal et brouillard, jamais une écriture de situation (ligne
     // sage-l1, fonction 12 · AUDCIF art. 19, le grand-livre reporte les
     // mouvements de l'exercice).
-    const perimetreEcriture = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
+    const perimetreExercice = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
+    // SUR UNE PÉRIODE (ligne export-periode), les lignes de la période seules,
+    // et le report de chaque compte à la veille · jamais perdu (condition 1).
+    const perimetreEcriture = periode ? { ...perimetreExercice, date: { gte: periode.du, lt: periode.finExclue } } : perimetreExercice;
 
     // UN GRAND LIVRE NE SE TRONQUE PAS · c'est un livre obligatoire, et un
     // livre amputé en silence est un document faux. Au-delà du plafond on
@@ -4111,53 +4164,71 @@ export class EcritureService {
       );
     }
 
-    const [lignes, contreparties] = await Promise.all([
+    const [lignes, contreparties, reports] = await Promise.all([
       this.prisma.ligneEcriture.findMany({
         where: { ecriture: perimetreEcriture },
         include: { compte: true, ecriture: { include: { journal: true } } },
         orderBy: [{ compte: { numero: 'asc' } }, ...EcritureService.TRI_GRAND_LIVRE],
       }),
       this.chargerContreparties({ ecriture: perimetreEcriture }),
+      periode ? this.reportsALaVeille(perimetreExercice, periode, null) : Promise.resolve(new Map<string, ReportALaVeille>()),
     ]);
 
-    const parCompte = new Map<
-      string,
-      {
-        compte: { id: string; numero: string; intitule: string };
-        lignes: ReturnType<typeof EcritureService.versLigneGrandLivre>[];
-        solde: number;
-      }
-    >();
+    type Entree = {
+      compte: { id: string; numero: string; intitule: string };
+      report: ReportALaVeille | null;
+      lignes: ReturnType<typeof EcritureService.versLigneGrandLivre>[];
+      solde: number;
+    };
+    const parCompte = new Map<string, Entree>();
+    const ouvrir = (compte: { id: string; numero: string; intitule: string }): Entree => {
+      const report = reports.get(compte.id) ?? null;
+      const entree: Entree = {
+        compte: { id: compte.id, numero: compte.numero, intitule: compte.intitule },
+        report,
+        lignes: [],
+        // Le solde progressif part du report · la première ligne de la
+        // période se lit sur ce qui la précède, jamais sur zéro.
+        solde: report ? report.debit - report.credit : 0,
+      };
+      parCompte.set(compte.id, entree);
+      return entree;
+    };
 
     for (const l of lignes) {
-      let entree = parCompte.get(l.compteId);
-      if (!entree) {
-        entree = {
-          compte: { id: l.compte.id, numero: l.compte.numero, intitule: l.compte.intitule },
-          lignes: [],
-          solde: 0,
-        };
-        parCompte.set(l.compteId, entree);
-      }
+      const entree = parCompte.get(l.compteId) ?? ouvrir(l.compte);
       entree.solde += Number(l.debit) - Number(l.credit);
       entree.lignes.push(EcritureService.versLigneGrandLivre(l, entree.solde, contreparties));
     }
 
-    return (
-      [...parCompte.values()]
-        .map((e) => ({
-          compte: e.compte,
-          lignes: e.lignes,
-          soldeFinal: e.solde,
-          totalDebit: e.lignes.reduce((s, l) => s + l.debit, 0),
-          totalCredit: e.lignes.reduce((s, l) => s + l.credit, 0),
-        }))
-        // Même filtre que `balance()` : un compte dont tous les mouvements
-        // sont à 0/0 n'y figure pas non plus. Sans cet alignement, deux états
-        // exportés le même jour ne listent pas les mêmes comptes · écart que
-        // relèverait immédiatement un auditeur.
-        .filter((c) => c.totalDebit !== 0 || c.totalCredit !== 0)
-    );
+    // UN COMPTE SANS LIGNE DANS LA PÉRIODE GARDE SON REPORT · la balance de la
+    // période le porte (colonne « Mouvements au <veille> »), et le livre qui
+    // l'omettrait ne se lirait plus contre elle.
+    const sansLigne = [...reports.keys()].filter((id) => !parCompte.has(id));
+    if (sansLigne.length > 0) {
+      const comptes = await this.prisma.compte.findMany({ where: { tenantId, id: { in: sansLigne } }, select: { id: true, numero: true, intitule: true } });
+      for (const c of comptes) ouvrir(c);
+    }
+
+    const sections = [...parCompte.values()]
+      .map((e) => ({
+        compte: e.compte,
+        ...(periode ? { report: e.report } : {}),
+        lignes: e.lignes,
+        soldeFinal: e.solde,
+        totalDebit: e.lignes.reduce((s, l) => s + l.debit, 0),
+        totalCredit: e.lignes.reduce((s, l) => s + l.credit, 0),
+      }))
+      // Même filtre que `balance()` : un compte dont tous les mouvements
+      // sont à 0/0 n'y figure pas non plus. Sans cet alignement, deux états
+      // exportés le même jour ne listent pas les mêmes comptes · écart que
+      // relèverait immédiatement un auditeur. Sur une période, le report
+      // compte comme un mouvement, comme dans la balance de la période.
+      .filter((c) => c.totalDebit !== 0 || c.totalCredit !== 0 || (c.report && (c.report.debit !== 0 || c.report.credit !== 0)));
+    // L'ordre des numéros, report seul compris · celui de la base, qui range
+    // les lignes (`compte.numero`), sans quoi un compte sans ligne finirait
+    // en queue du livre.
+    return periode ? sections.sort((a, b) => (a.compte.numero < b.compte.numero ? -1 : a.compte.numero > b.compte.numero ? 1 : 0)) : sections;
   }
 
   /**
@@ -4264,8 +4335,14 @@ export class EcritureService {
     exerciceId: string,
     inclureBrouillard = true,
     arreteAu?: Date,
-    options: { avantLaCloture?: boolean } = {},
+    options: { avantLaCloture?: boolean; periode?: PeriodeExtrait } = {},
   ) {
+    // UNE PÉRIODE ET UNE DATE D'ARRÊTÉ NE SE CUMULENT PAS · la période porte
+    // déjà sa fin, et deux bornes hautes laisseraient la plus courte décider
+    // en silence d'un extrait qui dit l'autre.
+    if (options.periode && (arreteAu || options.avantLaCloture)) {
+      throw new Error("Balance d'une période · ni date d'arrêté ni lecture avant la clôture ne s'y ajoutent.");
+    }
     let avantLe: Date | null = null;
     if (options.avantLaCloture) {
       const exercice = await this.prisma.exercice.findFirst({ where: { id: exerciceId, tenantId }, select: { dateFin: true } });
@@ -4286,7 +4363,11 @@ export class EcritureService {
     // vit dans `balance-trois-colonnes.ts`, que la lecture du groupe appelle
     // aussi (audit final F190) · une cellule vue du siège a la même balance
     // que chez elle.
-    const filtres = filtresDesTroisColonnes(filtreEcriture);
+    // SUR UNE PÉRIODE (ligne export-periode) · « Mouvements au <veille> »
+    // garde tout ce qui précède le premier jour (`filtresDesTroisColonnesDeLaPeriode`).
+    const filtres = options.periode
+      ? filtresDesTroisColonnesDeLaPeriode(filtreEcriture, options.periode)
+      : filtresDesTroisColonnes(filtreEcriture);
     const [comptes, reports, mouvements, clotures] = await Promise.all([
       this.prisma.compte.findMany({ where: { tenantId }, orderBy: { numero: 'asc' } }),
       this.prisma.ligneEcriture.groupBy({
@@ -4442,9 +4523,9 @@ export class EcritureService {
    * générale de Sage ; le détail tiers par tiers reste à la balance
    * auxiliaire. Les totaux sont ceux de la balance compte par compte.
    */
-  async balanceRegroupeeParCollectif(tenantId: string, exerciceId: string) {
+  async balanceRegroupeeParCollectif(tenantId: string, exerciceId: string, periode?: PeriodeExtrait) {
     const [balance, individuels] = await Promise.all([
-      this.balance(tenantId, exerciceId),
+      this.balance(tenantId, exerciceId, true, undefined, periode ? { periode } : {}),
       this.prisma.compte.findMany({
         where: { tenantId, collectifId: { not: null } },
         select: { id: true, collectif: { select: { id: true, numero: true, intitule: true } } },

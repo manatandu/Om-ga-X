@@ -16,6 +16,7 @@ import { RoleUtilisateur } from '@prisma/client';
 import { ReserveAuComptable } from '../../common/decorators/acces-roles-cantonnes.decorator';
 import { EXERCICE_FACULTATIF, EXERCICE_REQUIS } from '../../common/exercice-requis';
 import { JOURNAL_FACULTATIF } from '../../common/journal-du-dossier';
+import { periodeServie } from './periode-extrait';
 
 @UseGuards(JwtAuthGuard, LicenceGuard, RolesGuard)
 @Controller('ecritures')
@@ -244,13 +245,21 @@ export class EcritureController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
     @Query('regrouperTiers') regrouperTiers?: string,
+    @Query('du') du?: string,
+    @Query('au') au?: string,
   ) {
+    // SUR UNE PÉRIODE (ligne export-periode) · `du` et `au` facultatifs, dans
+    // l'exercice, le report gardé dans la colonne d'ouverture. La réponse dit
+    // la période LUE · `null`, c'est la balance de l'exercice.
+    const periode = await this.ecritureService.periodeDemandee(user.tenantId, exerciceId, { du, au });
     // Balance générale « façon Sage » · les comptes individuels des tiers
     // fondus sur leur collectif (tiers/collectifs-tiers.ts). Le défaut ne
     // change pas : les autres écrans lisent la balance compte par compte.
-    return regrouperTiers === '1'
-      ? this.ecritureService.balanceRegroupeeParCollectif(user.tenantId, exerciceId)
-      : this.ecritureService.balance(user.tenantId, exerciceId);
+    const balance =
+      regrouperTiers === '1'
+        ? await this.ecritureService.balanceRegroupeeParCollectif(user.tenantId, exerciceId, periode ?? undefined)
+        : await this.ecritureService.balance(user.tenantId, exerciceId, true, undefined, periode ? { periode } : {});
+    return { ...balance, periode: periodeServie(periode) };
   }
 
   /** Grand livre d'un compte · voir l'onglet Grand livre du même écran. */
@@ -358,8 +367,13 @@ export class EcritureController {
   async grandLivreComplet(
     @CurrentUser() user: AuthenticatedUser,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('du') du?: string,
+    @Query('au') au?: string,
   ) {
-    return this.ecritureService.grandLivreComplet(user.tenantId, exerciceId);
+    // Sur une période, chaque compte ouvre sur son report à la veille (ligne
+    // export-periode, condition 1).
+    const periode = await this.ecritureService.periodeDemandee(user.tenantId, exerciceId, { du, au });
+    return this.ecritureService.grandLivreComplet(user.tenantId, exerciceId, periode ?? undefined);
   }
 
   // L'écran la lit quand le grand livre COMPLET y est refusé (ligne FPM,
@@ -371,7 +385,10 @@ export class EcritureController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('compteId', ParseUUIDPipe) compteId: string,
     @Query('exerciceId', EXERCICE_REQUIS) exerciceId: string,
+    @Query('du') du?: string,
+    @Query('au') au?: string,
   ) {
-    return this.ecritureService.grandLivre(user.tenantId, compteId, exerciceId, PLAFOND_LIGNES_GRAND_LIVRE);
+    const periode = await this.ecritureService.periodeDemandee(user.tenantId, exerciceId, { du, au });
+    return this.ecritureService.grandLivre(user.tenantId, compteId, exerciceId, PLAFOND_LIGNES_GRAND_LIVRE, periode ?? undefined);
   }
 }
