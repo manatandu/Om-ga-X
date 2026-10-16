@@ -83,7 +83,7 @@ Branche de sauvegarde · `travail/virement-pieces` (partie de `main` d461c28).
 
 ## Reste
 
-- Rapport TypeScript du second tour, corrections s'il y a un BLOQUANT.
+- Second tour TypeScript rendu · aucun BLOQUANT ni MAJEUR, six MINEURS rangés aux « Relevés en attente » de `docs/suivi-reprises.md`. Reste le bloc du § 3 après intégration d'export-periode, la fusion de `main`, les tests navigateur, l'intégration.
 - Bloc § 3, e2e local, intégration sur `main` après l'export par période
   (fusion de `main` d'abord).
 
