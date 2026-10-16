@@ -22,7 +22,6 @@ import { SelectionsEditionController } from './selections/selections-edition.con
 import { SelectionsEditionService } from './selections/selections-edition.service';
 import { ModelesEditionController } from './modeles-edition/modeles-edition.controller';
 import { ModelesEditionService } from './modeles-edition/modeles-edition.service';
-import { ExtraitsPeriodeController } from './extraits-periode/extraits-periode.controller';
 import { ExtraitsPeriodeService } from './extraits-periode/extraits-periode.service';
 
 @Module({
@@ -63,8 +62,6 @@ import { ExtraitsPeriodeService } from './extraits-periode/extraits-periode.serv
     ImpressionsDiffereesController,
     SelectionsEditionController,
     ModelesEditionController,
-    // Ligne export-periode · l'impression numérotée d'un extrait de l'écran.
-    ExtraitsPeriodeController,
   ],
   providers: [
     ExportService,

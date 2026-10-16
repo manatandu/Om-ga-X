@@ -80,11 +80,10 @@ export function periodePourLExercice(p: PeriodeDeLExercice, exerciceId: string |
 
 /**
  * CE QU'UNE LECTURE A DEMANDÉ · l'exercice, la période appliquée et ses
- * réglages. Une balance ou un grand livre ne se montre, et un extrait ne
- * s'imprime, que lu pour la clé COURANTE (relectures du 2026-10-16, BLOQUANT
- * 1 et MAJEUR 2) · gardé d'une période à l'autre, pendant le chargement ou
- * après un échec, il montrait les chiffres de l'exercice sous le titre « Solde
- * au 31/03 », et l'impression numérotait la nouvelle période sur l'ancienne.
+ * réglages. Une balance ou un grand livre ne se montre que lu pour la clé
+ * COURANTE (relectures du 2026-10-16, BLOQUANT 1 et MAJEUR 2) · gardé d'une
+ * période à l'autre, pendant le chargement ou après un échec, il montrait les
+ * chiffres de l'exercice sous le titre « Solde au 31/03 ».
  */
 export function cleDeLecture(exerciceId: string, p: PeriodeSaisie, ...reglages: (string | boolean)[]): string {
   return [exerciceId, p.du, p.au, ...reglages.map(String)].join('|');
@@ -104,28 +103,8 @@ export function lueePour<T>(lu: Lu<T> | null, cle: string): T | null {
  * UNE SECTION DU GRAND LIVRE SE MONTRE si elle porte une ligne OU un report
  * (relectures du 2026-10-16, BLOQUANT 2) · un compte qui n'a que son solde à
  * la veille est un solde de départ (condition 1) ; masqué, l'écran disait
- * « aucun report », et l'extrait imprimé l'attestait sous un numéro.
+ * « aucun report », et la fenêtre imprimée le répétait.
  */
 export function sectionVisible(s: { lignes: readonly unknown[]; report?: unknown }): boolean {
   return s.lignes.length > 0 || (s.report !== undefined && s.report !== null);
-}
-
-/**
- * L'EXTRAIT NE S'IMPRIME QUE SUR CE QUI EST MONTRÉ, LU POUR SA PÉRIODE ·
- * jamais pendant un chargement, après un échec, ni sur des chiffres restés
- * d'une autre période. Le grand livre refusé par son volume s'imprime par le
- * compte qu'il montre.
- */
-export function extraitImprimable(e: {
-  extrait: boolean;
-  onglet: string;
-  balanceLue: boolean;
-  grandLivreLu: boolean;
-  refusGrandLivre: boolean;
-  sectionSeuleLue: boolean;
-}): boolean {
-  if (!e.extrait) return false;
-  if (e.onglet === 'balance') return e.balanceLue;
-  if (e.onglet === 'grand-livre') return e.refusGrandLivre ? e.sectionSeuleLue : e.grandLivreLu;
-  return false;
 }

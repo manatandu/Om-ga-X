@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
@@ -27,7 +27,6 @@ import {
   bornesDeLaPeriode,
   cleDeLecture,
   estUnExtrait,
-  extraitImprimable,
   jourFr,
   lueePour,
   motifPeriodeSaisie,
@@ -217,10 +216,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const cleGrandLivre = exerciceCourant ? cleDeLecture(exerciceCourant.id, periode) : '';
   const balance = lueePour(balanceLue, cleBalance);
   const grandLivre = lueePour(grandLivreLu, cleGrandLivre);
-  /** Le numéro et la date de l'extrait imprimé · posés avant la boîte d'impression, retirés après. */
-  const [extraitImprime, setExtraitImprime] = useState<{ numero: number; etabliLe: string; etabliLeJour: string; libelle: string } | null>(
-    null,
-  );
   /** Le motif du refus du grand livre COMPLET, quand son volume dépasse une fenêtre. */
   const [refusGrandLivre, setRefusGrandLivre] = useState<string | null>(null);
 
@@ -491,10 +486,9 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       // Posés AVANT la boîte (`flushSync`) · rendus après elle, la page
       // sortait sans le numéro que le serveur venait d'attribuer. Un journal
       // sans pièce n'est pas enregistré (`numero` nul), et c'est dit.
-      flushSync(() => {
-        setExtraitImprime(null);
-        setImpressionNumerotee(r.numero !== null && r.imprimeAt ? { numero: r.numero, imprimeAt: r.imprimeAt } : null);
-      });
+      flushSync(() =>
+        setImpressionNumerotee(r.numero !== null && r.imprimeAt ? { numero: r.numero, imprimeAt: r.imprimeAt } : null),
+      );
       // Sans numéro, le serveur dit pourquoi · journal sans pièce, ou journal
       // de situation, dont l'impression n'atteste rien du livre-journal.
       setInfo(
@@ -537,77 +531,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const exporterGrandLivreComplet = () => {
     if (!exerciceCourant) return;
     lancerExport(cheminGrandLivre(exerciceCourant.id, formatExporte, periode), 'grand-livre.xlsx');
-  };
-
-  // IMPRIMER L'EXTRAIT (ligne export-periode, condition 3) · le serveur
-  // l'enregistre AVANT la boîte d'impression (numéro, date, auteur, période),
-  // et la page imprimée porte ce numéro et cette date (AUDCIF art. 22, 7°).
-  // Le grand livre d'UN compte, quand l'écran n'en montre qu'un.
-  const [impressionExtraitEnCours, setImpressionExtraitEnCours] = useState(false);
-  useEffect(() => {
-    const retirer = () => setExtraitImprime(null);
-    window.addEventListener('afterprint', retirer);
-    return () => window.removeEventListener('afterprint', retirer);
-  }, []);
-  // Une fenêtre qui ne montre rien du livre n'atteste rien · ni pendant un
-  // chargement, ni après un échec, ni sur des chiffres d'une autre période ;
-  // le grand livre refusé par son volume s'imprime par le compte qu'il montre.
-  const imprimable = extraitImprimable({
-    extrait,
-    onglet,
-    balanceLue: balance !== null,
-    grandLivreLu: grandLivre !== null,
-    refusGrandLivre: refusGrandLivre !== null,
-    sectionSeuleLue: sectionSeule !== null,
-  });
-  // Le numéro d'un extrait ne survit pas à ce qu'il nommait · une autre
-  // période, un autre onglet, compte, réglage ou exercice l'efface, même si la
-  // boîte d'impression n'a jamais dit qu'elle se refermait.
-  useEffect(() => {
-    setExtraitImprime(null);
-  }, [periode.du, periode.au, onglet, compteGrandLivreId, regrouperTiers, exerciceCourant?.id]);
-  // CE QUE L'ÉCRAN MONTRE, relu après l'enregistrement (second tour, MAJEUR
-  // 1) · un changement de période, d'onglet, de compte ou d'exercice pendant
-  // la requête aurait fait imprimer le numéro au-dessus d'autres chiffres.
-  const signatureEcran = [onglet, cleBalance, cleGrandLivre, compteGrandLivreId, String(imprimable)].join('#');
-  const ecranCourant = useRef(signatureEcran);
-  useEffect(() => {
-    ecranCourant.current = signatureEcran;
-  });
-  const imprimerExtrait = async () => {
-    if (!exerciceCourant || !extrait) return;
-    setErreur(null);
-    setInfo(null);
-    setImpressionExtraitEnCours(true);
-    const ecranDemande = signatureEcran;
-    try {
-      const r = await api.post<{ numero: number; etabliLe: string; etabliLeJour: string; libelle: string }>('/extraits-periode/impression', {
-        exerciceId: exerciceCourant.id,
-        nature: onglet === 'balance' ? 'BALANCE' : 'GRAND_LIVRE',
-        ...(periode.du ? { du: periode.du } : {}),
-        ...(periode.au ? { au: periode.au } : {}),
-        ...(onglet === 'grand-livre' && compteGrandLivreId ? { compteId: compteGrandLivreId } : {}),
-        ...(onglet === 'balance' && regrouperTiers ? { regrouperTiers: true } : {}),
-      });
-      if (ecranCourant.current !== ecranDemande) {
-        setInfo(
-          `Extrait n° ${r.numero} enregistré, mais l'écran a changé pendant l'enregistrement · ` +
-            "la page ne s'imprime pas sous ce numéro. Relancez l'impression sur l'écran voulu.",
-        );
-        return;
-      }
-      // Un seul numéro sur la page · celui du journal, s'il traînait, s'efface.
-      flushSync(() => {
-        setImpressionNumerotee(null);
-        setExtraitImprime(r);
-      });
-      setInfo(`Extrait n° ${r.numero} enregistré · ${r.libelle}.`);
-      window.print();
-    } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "Impression de l'extrait impossible");
-    } finally {
-      setImpressionExtraitEnCours(false);
-    }
   };
 
   const lignesJournal = useMemo(() => ecritures.flatMap((e) =>
@@ -732,20 +655,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 hour: '2-digit',
                 minute: '2-digit',
               })}`
-            : extraitImprime
-              ? // Le jour et l'heure de Kinshasa, ceux du registre et du classeur.
-                `Extrait n° ${extraitImprime.numero} · ${extraitImprime.libelle} · établi le ${jourFr(
-                  extraitImprime.etabliLeJour,
-                )} à ${new Date(extraitImprime.etabliLe).toLocaleTimeString('fr-FR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  timeZone: 'Africa/Kinshasa',
-                })}`
-              : // Un extrait se DIT, même imprimé hors du bouton (condition 2) ·
-                // sans numéro, il ne se présente pas pour un livre.
-                extrait && exerciceCourant && onglet !== 'journal'
-                ? `${titreExtrait(exerciceCourant, periode)} · ce n'est pas le livre de l'exercice`
-                : undefined
+            : // Un extrait se DIT à l'impression de la fenêtre (condition 2) ·
+              // il ne se présente jamais pour le livre de l'exercice.
+              extrait && exerciceCourant && onglet !== 'journal'
+              ? `${titreExtrait(exerciceCourant, periode)} · ce n'est pas le livre de l'exercice`
+              : undefined
         }
       />
       {/* LA PÉRIODE (ligne export-periode) · balance et grand livre seulement. */}
@@ -768,7 +682,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               aria-invalid={motifPeriode !== null}
               aria-describedby={motifPeriode ? 'motif-periode' : undefined}
               onChange={(e) => setSaisieDates({ exerciceId: exerciceCourant.id, du: e.target.value, au: saisie.au })}
-              disabled={impressionExtraitEnCours}
               className="border border-border bg-surface px-2 py-1 text-[11.5px]"
             />
           </label>
@@ -782,13 +695,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               aria-invalid={motifPeriode !== null}
               aria-describedby={motifPeriode ? 'motif-periode' : undefined}
               onChange={(e) => setSaisieDates({ exerciceId: exerciceCourant.id, du: saisie.du, au: e.target.value })}
-              disabled={impressionExtraitEnCours}
               className="border border-border bg-surface px-2 py-1 text-[11.5px]"
             />
           </label>
           <button
             type="submit"
-            disabled={motifPeriode !== null || impressionExtraitEnCours}
+            disabled={motifPeriode !== null}
             title={saisieNonAppliquee ? "Les dates saisies ne sont pas encore celles de l'écran" : undefined}
             className={`border px-3 py-1 font-bold hover:bg-surface-alt disabled:opacity-50 ${
               saisieNonAppliquee ? 'border-sel text-sel bg-surface' : 'border-border bg-surface'
@@ -799,7 +711,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           {extrait && (
             <button
               type="button"
-              disabled={impressionExtraitEnCours}
               onClick={() => {
                 setSaisieDates({ exerciceId: exerciceCourant.id, du: null, au: null });
                 appliquerPeriode(PERIODE_EXERCICE);
@@ -819,7 +730,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           )}
           <Aide
             titre="Balance et grand livre d'une période"
-            texte="La balance d'une période garde, dans sa colonne d'ouverture, tout ce qui précède le premier jour · à-nouveau et mouvements des mois d'avant. Le grand livre ouvre chaque compte sur son report à la veille. C'est un extrait · le grand livre obligatoire reste celui de l'exercice entier. Chaque extrait exporté ou imprimé par « Imprimer l'extrait » reçoit un numéro et une date. Un extrait sort dans la présentation du cabinet · le livre « à plat » couvre l'exercice entier. La période tient dans l'exercice choisi."
+            texte="La balance d'une période garde, dans sa colonne d'ouverture, tout ce qui précède le premier jour · à-nouveau et mouvements des mois d'avant. Le grand livre ouvre chaque compte sur son report à la veille. C'est un extrait · le grand livre obligatoire reste celui de l'exercice entier. Chaque extrait exporté en Excel reçoit un numéro et une date. Un extrait sort dans la présentation du cabinet · le livre « à plat » couvre l'exercice entier. La période tient dans l'exercice choisi."
             source="AUDCIF art. 19 et art. 22, 7°"
           />
         </form>
@@ -927,24 +838,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               />
               {boutonExport(extrait ? "Exporter l'extrait" : 'Exporter tout le grand livre', exporterGrandLivreComplet)}
             </>
-          )}
-          {(onglet === 'balance' || onglet === 'grand-livre') && extrait && (
-            <button
-              onClick={imprimerExtrait}
-              disabled={impressionExtraitEnCours || !imprimable}
-              title={
-                imprimable
-                  ? "Enregistre l'extrait (numéro, date, auteur, période), puis ouvre la boîte d'impression"
-                  : onglet === 'grand-livre' && refusGrandLivre && !compteGrandLivreId
-                    ? 'La fenêtre ne montre aucun compte · choisissez un compte, ou exportez l’extrait en Excel'
-                    : refusSectionSeule || echecBalance === cleBalance || echecGrandLivre === cleGrandLivre
-                      ? 'La fenêtre n’a pas pu lire cette période · exportez l’extrait en Excel'
-                      : 'La fenêtre n’a pas encore lu cette période · attendez la fin du chargement'
-              }
-              className="ecran-seul flex items-center gap-1.5 border border-border bg-surface px-3 py-1.5 text-[11.5px] font-bold hover:bg-surface-alt disabled:opacity-50"
-            >
-              {impressionExtraitEnCours ? 'Enregistrement…' : "Imprimer l'extrait"}
-            </button>
           )}
         </div>
       </div>
@@ -1106,21 +999,18 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       <div className="flex bg-chrome border border-border border-b-0 rounded-t-[10px] overflow-hidden">
         <button
           onClick={() => setOnglet('journal')}
-          disabled={impressionExtraitEnCours}
           className={`px-4 py-1.5 text-[11.5px] font-bold ${onglet === 'journal' ? 'bg-surface border-r border-border' : 'text-text-dim'}`}
         >
           Journal
         </button>
         <button
           onClick={() => setOnglet('grand-livre')}
-          disabled={impressionExtraitEnCours}
           className={`px-4 py-1.5 text-[11.5px] font-bold ${onglet === 'grand-livre' ? 'bg-surface border-r border-l border-border' : 'text-text-dim'}`}
         >
           Grand livre
         </button>
         <button
           onClick={() => setOnglet('balance')}
-          disabled={impressionExtraitEnCours}
           className={`px-4 py-1.5 text-[11.5px] font-bold ${onglet === 'balance' ? 'bg-surface border-r border-l border-border' : 'text-text-dim'}`}
         >
           Balance
@@ -1268,7 +1158,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                 if (choisi) setLibellesComptes((m) => ({ ...m, [choisi.compte.id]: `${choisi.compte.numero} · ${choisi.compte.intitule}` }));
                 setCompteGrandLivreId(e.target.value);
               }}
-              disabled={impressionExtraitEnCours}
               className="border border-border rounded-[3px] bg-surface px-2 py-[2px] text-[11.5px] font-mono"
             >
               <option value="">{refusGrandLivre ? 'aucun compte choisi' : 'tous les comptes mouvementés'}</option>

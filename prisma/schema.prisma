@@ -11355,19 +11355,13 @@ enum NatureExtraitPeriode {
   GRAND_LIVRE
 }
 
-/// Comment l'extrait a été remis · un fichier Excel, ou l'impression de l'écran.
-enum FormeExtraitPeriode {
-  EXCEL
-  IMPRESSION
-}
-
 /// UN EXTRAIT DE PÉRIODE, NUMÉROTÉ ET DATÉ (ligne export-periode, gel levé
 /// par Manasse le 2026-10-16 · AUDCIF art. 22, 7°, « les états périodiques
 /// fournis soient numérotés et datés »). Une balance ou un grand livre lu sur
 /// une période de l'exercice, et non sur l'exercice entier, prend un numéro
-/// de la suite continue du dossier quand il est REMIS · fichier Excel, ou
-/// impression de l'écran. Il ne se supprime jamais · son numéro serait rendu
-/// au suivant, et deux documents remis porteraient le même. AUCUNE CLÉ vers
+/// de la suite continue du dossier quand il est REMIS · le fichier Excel
+/// produit. Il ne se supprime jamais · son numéro serait rendu au suivant,
+/// et deux documents remis porteraient le même. AUCUNE CLÉ vers
 /// l'exercice ni le compte · le libellé et les dates figent ce que l'extrait
 /// porte, et un extrait n'enferme jamais le retrait d'un exercice (arrêt à la
 /// dissolution), comme l'impression du journal l'a fait (sage-l1, M6).
@@ -11377,7 +11371,6 @@ model ExtraitPeriode {
   tenant     Tenant               @relation(fields: [tenantId], references: [id])
   numero     Int
   nature     NatureExtraitPeriode
-  forme      FormeExtraitPeriode
   /// Ce que l'extrait porte, en clair, figé à son établissement.
   libelle    String
   dateDebut  DateTime

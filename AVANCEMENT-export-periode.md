@@ -40,8 +40,10 @@ l'art. 19 et n'écarte pas l'art. 22.
   ligne. Un compte sans ligne dans la période mais avec un report a son bloc,
   à l'écran comme en Excel.
 - **Numérotation** · table `ExtraitPeriode` (suite continue par dossier,
-  verrou du dossier), un numéro pour chaque extrait REMIS · fichier Excel
-  produit, ou impression de l'écran par « Imprimer l'extrait ». Aucun lien
+  verrou du dossier), un numéro pour chaque extrait REMIS · le fichier Excel
+  produit. « Imprimer l'extrait » RETIRÉ (décision de Manasse du 2026-10-16,
+  fonction non demandée) · l'écran montre et imprime la période, son en-tête
+  la dit extrait, sans numéro. Aucun lien
   vers l'exercice ni le compte (libellé figé) · un extrait ne doit jamais
   enfermer l'arrêt à la dissolution, comme l'impression du journal l'a fait
   (sage-l1, M6). Fichier interrompu · numéro gardé, échec dit, jamais
@@ -55,33 +57,29 @@ l'art. 19 et n'écarte pas l'art. 22.
 - Décision écrite (CLAUDE.md § 5, plan-version-1 § 10).
 - Serveur · `periode-extrait.ts`, `filtresDesTroisColonnesDeLaPeriode`,
   balance et grand livre de l'écran sur une période, `ExtraitPeriode`
-  (schéma, migration `20270185000100`, registres), `POST
-  /extraits-periode/impression`, exports Excel (cartouche, « Mouvements au
-  <veille> », report par compte, compte seul).
-- Client · période sur Balance et Grand livre, export et « Imprimer
-  l'extrait ».
+  (schéma, migration `20270185000100`, registre), exports Excel (cartouche,
+  « Mouvements au <veille> », report par compte, compte seul).
+- Client · période sur Balance et Grand livre, export Excel numéroté.
+- « Imprimer l'extrait » retiré de bout en bout (route, DTO, forme
+  d'extrait, bouton, tests), scénario rejoué · 0 écart, la route en 404,
+  numéros 1 à 4, `prisma migrate diff` sans dérive.
 - Relectures, second tour (échecs silencieux, React) · aucun BLOQUANT ;
-  MAJEUR de l'écran corrigé (extrait non imprimé sur un écran changé pendant
-  l'enregistrement), lecture tombée dite, libellé du compte gardé, dates qui
-  suivent la période appliquée. Relecture close (deux tours).
+  lecture tombée dite, libellé du compte gardé, dates qui suivent la période
+  appliquée. Relecture close (deux tours).
 - Relectures, premier tour (échecs silencieux, TypeScript, React) · deux
   BLOQUANTS d'écran corrigés (chiffres d'une autre période montrés et
   imprimables ; compte à report seul masqué), règle unique balance et livre,
   audit complet de l'extrait, jour de Kinshasa, extrait vide refusé avant
   son numéro, combinaisons refusées, libellés.
 - Scénario sur vraie base à travers la clôture de N (N et N+1, soldes contre
-  le calcul à la main, numéros 1 à 5, refus, journal d'audit) · 0 écart
+  le calcul à la main, numéros 1 à 4, refus, journal d'audit) · 0 écart
   (`scratchpad/ep-scenario.mjs`). `prisma migrate diff` · aucune dérive.
 
 ## Relevés en attente (non bloquants, gardés pour la suite)
 
 - Registre des extraits sans route de lecture (`GET` borné) · lisible au
-  journal d'audit seulement ; une impression dont la boîte est annulée, ou
-  dont l'écran a changé pendant l'enregistrement (la page ne s'imprime alors
-  pas, et c'est dit), reste « remise » au registre.
-- Licence échue (lecture seule) · « Imprimer l'extrait » refusé (POST) quand
-  l'export Excel (GET) numérote · même défaut que l'impression du journal ;
-  un GET qui numérote se déclenche aussi par HEAD ou préchargement.
+  journal d'audit seulement.
+- Un GET qui numérote se déclenche aussi par HEAD ou préchargement.
 - Le refus de volume du grand livre complet se reconnaît au statut 400, pas à
   un code · un refus de période qui arriverait en course serait lu comme un
   refus de volume.

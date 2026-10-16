@@ -5,7 +5,6 @@ import {
   bornesDeLaPeriode,
   cleDeLecture,
   estUnExtrait,
-  extraitImprimable,
   lueePour,
   motifPeriodeSaisie,
   PERIODE_EXERCICE,
@@ -74,18 +73,6 @@ describe('ce que l’écran montre et imprime · lu pour la période affichée, 
     expect(sectionVisible({ lignes: [] })).toBe(false);
   });
 
-  it('L’EXTRAIT NE S’IMPRIME QUE SUR CE QUI EST LU · ni pendant le chargement, ni après un échec', () => {
-    const base = { extrait: true, onglet: 'balance', balanceLue: true, grandLivreLu: false, refusGrandLivre: false, sectionSeuleLue: false };
-    expect(extraitImprimable(base)).toBe(true);
-    expect(extraitImprimable({ ...base, balanceLue: false })).toBe(false);
-    expect(extraitImprimable({ ...base, extrait: false })).toBe(false);
-    expect(extraitImprimable({ ...base, onglet: 'grand-livre' })).toBe(false);
-    expect(extraitImprimable({ ...base, onglet: 'grand-livre', grandLivreLu: true })).toBe(true);
-    expect(extraitImprimable({ ...base, onglet: 'grand-livre', refusGrandLivre: true })).toBe(false);
-    expect(extraitImprimable({ ...base, onglet: 'grand-livre', refusGrandLivre: true, sectionSeuleLue: true })).toBe(true);
-    expect(extraitImprimable({ ...base, onglet: 'journal' })).toBe(false);
-  });
-
   it('la fenêtre du journal s’en sert · aucune balance ni section gardée d’une demande à l’autre', () => {
     const page = readFileSync(join(__dirname, '..', 'pages', 'JournalPage.tsx'), 'utf8');
     // Les trois lectures se rangent avec leur clé, et se vident en tête de lecture.
@@ -96,9 +83,6 @@ describe('ce que l’écran montre et imprime · lu pour la période affichée, 
     expect(page).toContain('const balance = lueePour(balanceLue, cleBalance);');
     expect(page).toContain('const grandLivre = lueePour(grandLivreLu, cleGrandLivre);');
     expect(page).toContain('const sectionSeule = lueePour(sectionSeuleLue, cleSectionSeule);');
-    // L'impression passe par la règle, et la section seule par `sectionVisible`.
-    expect(page).toContain('const imprimable = extraitImprimable({');
-    expect(page).toContain('disabled={impressionExtraitEnCours || !imprimable}');
     // La section seule passe par `sectionVisible`, au tri des sections comme au message vide ·
     // le corps de `sectionsAffichees` est découpé, jamais lu à distance.
     const debut = page.indexOf('const sectionsAffichees = useMemo(');
@@ -106,7 +90,8 @@ describe('ce que l’écran montre et imprime · lu pour la période affichée, 
     expect(debut).toBeGreaterThan(-1);
     expect(corps).toContain('sectionSeule && sectionVisible(sectionSeule)');
     expect(page).toContain('(sectionSeule && !sectionVisible(sectionSeule))');
-    // L'écran relu après l'enregistrement · un numéro ne s'imprime pas sur un autre écran.
-    expect(page).toContain('if (ecranCourant.current !== ecranDemande) {');
+    // La fenêtre imprimée se dit extrait, jamais le livre de l'exercice
+    // (condition 2) · l'extrait ne se numérote qu'à l'export Excel.
+    expect(page).toContain("· ce n'est pas le livre de l'exercice");
   });
 });

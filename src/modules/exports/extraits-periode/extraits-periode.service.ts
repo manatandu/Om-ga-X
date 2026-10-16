@@ -1,19 +1,19 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { FormeExtraitPeriode, NatureExtraitPeriode, Prisma } from '@prisma/client';
+import { NatureExtraitPeriode, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/prisma.service';
 import { transactionJournalisee } from '../../../common/audit/transaction-journalisee';
-import { EcritureService } from '../../comptabilite/ecriture.service';
-import { jourFr, libellePeriode, type PeriodeExtrait } from '../../comptabilite/periode-extrait';
+import { jourFr, type PeriodeExtrait } from '../../comptabilite/periode-extrait';
 import { HORS_SITUATION } from '../../comptabilite/ecritures-de-situation';
-import { jourDeKinshasaIso } from '../../../common/echeance';
 
 /**
  * LES EXTRAITS DE PÉRIODE, NUMÉROTÉS ET DATÉS (ligne export-periode, condition
  * 3 · AUDCIF art. 22, 7°, « les états périodiques fournis soient numérotés et
  * datés »). Une balance ou un grand livre lu sur une période de l'exercice
  * prend un numéro de la suite continue du dossier quand il est REMIS · le
- * fichier Excel produit, ou l'impression de l'écran. La balance et le livre
- * de l'exercice entier n'en prennent pas · rien ne change pour eux.
+ * fichier Excel produit. La balance et le livre de l'exercice entier n'en
+ * prennent pas · rien ne change pour eux. L'écran montre la période sans la
+ * numéroter · ce qui se remet est le fichier (retrait d'« Imprimer
+ * l'extrait », décision de Manasse du 2026-10-16, fonction non demandée).
  *
  * LE NUMÉRO SE PREND AU DERNIER MOMENT · après les refus (volume, période),
  * juste avant le premier octet, comme l'export des modifications qui ne
@@ -46,10 +46,7 @@ export function motifInterruption(e: unknown): string {
 export class ExtraitsPeriodeService {
   private readonly logger = new Logger(ExtraitsPeriodeService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly ecritureService: EcritureService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * NUMÉROTE UN EXTRAIT · le numéro suit le dernier du dossier, sous un verrou
@@ -57,7 +54,7 @@ export class ExtraitsPeriodeService {
    * jamais le même numéro (la contrainte d'unicité le refuserait, mais en
    * erreur au lieu d'attendre).
    */
-  async numeroter(d: DemandeExtrait, forme: FormeExtraitPeriode): Promise<ExtraitNumerote & { id: string }> {
+  async numeroter(d: DemandeExtrait): Promise<ExtraitNumerote & { id: string }> {
     const cree = await transactionJournalisee(this.prisma, async (tx: Prisma.TransactionClient) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`extraits-periode:${d.tenantId}`}))`;
       const max = await tx.extraitPeriode.aggregate({ where: { tenantId: d.tenantId }, _max: { numero: true } });
@@ -66,18 +63,17 @@ export class ExtraitsPeriodeService {
           tenantId: d.tenantId,
           numero: (max._max.numero ?? 0) + 1,
           nature: d.nature,
-          forme,
           libelle: d.libelle,
           dateDebut: d.periode.du,
           dateFin: d.periode.au,
           etabliPar: d.etabliPar,
-          // L'impression de l'écran est remise à l'instant · un fichier, lui,
-          // ne l'est qu'à son dernier octet.
-          termineLe: forme === FormeExtraitPeriode.IMPRESSION ? new Date() : null,
+          // Un fichier n'est remis qu'à son dernier octet · `produire` pose
+          // la fin, ou l'échec.
+          termineLe: null,
         },
         // AUCUN `select` · le journal d'audit range le résultat de la création
         // comme état d'après (relecture TypeScript M1) ; réduit à trois
-        // colonnes, il tairait libellé, nature, forme et dates, et une
+        // colonnes, il tairait libellé, nature et dates, et une
         // retouche après coup ne se verrait plus.
       });
     });
@@ -95,7 +91,7 @@ export class ExtraitsPeriodeService {
     let id: string | null = null;
     const numeroter = async (): Promise<ExtraitNumerote> => {
       if (id) throw new Error('Un extrait de période ne se numérote qu’une fois.');
-      const e = await this.numeroter(d, FormeExtraitPeriode.EXCEL);
+      const e = await this.numeroter(d);
       id = e.id;
       return e;
     };
@@ -120,38 +116,6 @@ export class ExtraitsPeriodeService {
         );
     }
     return resultat;
-  }
-
-  /**
-   * L'IMPRESSION DE L'ÉCRAN · enregistrée AVANT la boîte d'impression, comme
-   * celle du journal (sage-l1, fonction 60), pour que la page porte son
-   * numéro et sa date. La période et le compte sont relus par le serveur ;
-   * une période égale à l'exercice n'est pas un extrait et ne prend aucun
-   * numéro (refus nommé · la balance de l'exercice s'imprime telle quelle).
-   */
-  async imprimer(
-    tenantId: string,
-    userId: string,
-    d: { exerciceId: string; nature: NatureExtraitPeriode; du?: string; au?: string; compteId?: string; regrouperTiers?: boolean },
-  ): Promise<{ numero: number; etabliLe: Date; etabliLeJour: string; libelle: string }> {
-    // Une combinaison que l'écran n'envoie jamais se refuse, nommée · prise
-    // telle quelle, elle numéroterait un libellé que la page ne porte pas.
-    if (d.nature === NatureExtraitPeriode.BALANCE && d.compteId) {
-      throw new BadRequestException("Une balance porte tous les comptes · le compte ne se choisit que pour un grand livre.");
-    }
-    if (d.nature === NatureExtraitPeriode.GRAND_LIVRE && d.regrouperTiers) {
-      throw new BadRequestException('Les tiers ne se regroupent que dans la balance · le grand livre les garde compte par compte.');
-    }
-    const periode = await this.ecritureService.periodeDemandee(tenantId, d.exerciceId, { du: d.du, au: d.au });
-    if (!periode) {
-      throw new BadRequestException(
-        "Aucune période à numéroter · la période demandée couvre l'exercice entier, dont la balance et le grand livre s'impriment tels quels.",
-      );
-    }
-    const libelle = await this.libelleDe(tenantId, d.nature, { compteId: d.compteId, regrouperTiers: d.regrouperTiers });
-    await this.refuserSiVide(tenantId, d.exerciceId, periode, d.compteId);
-    const e = await this.numeroter({ tenantId, nature: d.nature, libelle, periode, etabliPar: userId }, FormeExtraitPeriode.IMPRESSION);
-    return { numero: e.numero, etabliLe: e.etabliLe, etabliLeJour: jourDeKinshasaIso(e.etabliLe), libelle: `${libelle} · ${libellePeriode(periode)}` };
   }
 
   /**
@@ -180,11 +144,10 @@ export class ExtraitsPeriodeService {
   async libelleDe(
     tenantId: string,
     nature: NatureExtraitPeriode,
-    o: { compteId?: string; regrouperTiers?: boolean; avecGrandsLivres?: boolean } = {},
+    o: { compteId?: string; avecGrandsLivres?: boolean } = {},
   ): Promise<string> {
     if (nature === NatureExtraitPeriode.BALANCE) {
-      const base = o.regrouperTiers ? 'Balance des comptes, tiers regroupés sur leur collectif' : 'Balance des comptes';
-      return o.avecGrandsLivres ? `${base}, avec le grand livre de chaque compte` : base;
+      return o.avecGrandsLivres ? 'Balance des comptes, avec le grand livre de chaque compte' : 'Balance des comptes';
     }
     if (!o.compteId) return 'Grand livre des comptes';
     const compte = await this.prisma.compte.findFirst({ where: { id: o.compteId, tenantId }, select: { numero: true, intitule: true } });

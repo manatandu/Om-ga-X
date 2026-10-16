@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
 import { PayloadTooLargeException } from '@nestjs/common';
-import { ClasseCompte, FormeExtraitPeriode, NatureExtraitPeriode, TypeCompteDetailTotal } from '@prisma/client';
+import { ClasseCompte, NatureExtraitPeriode, TypeCompteDetailTotal } from '@prisma/client';
 import { EcritureService } from '../../comptabilite/ecriture.service';
 import { periodeDeLExtrait } from '../../comptabilite/periode-extrait';
 import { ExportService } from '../export.service';
@@ -185,7 +185,7 @@ function services() {
     prisma,
     extraits,
     fpm: new ExportFpmService(prisma as never, ecritures, exports),
-    registre: new ExtraitsPeriodeService(prisma as never, ecritures),
+    registre: new ExtraitsPeriodeService(prisma as never),
   };
 }
 
@@ -250,7 +250,7 @@ describe('la balance d’une période · le report à la veille, l’extrait num
     // La caisse n'a que son report · sa ligne reste, soldée à 50.
     const caisse = valeurs(f).find((r) => r[0] === '57110000')!;
     expect(caisse.slice(2, 8)).toEqual([50, null, null, null, 50, null]);
-    expect(s.extraits).toEqual([expect.objectContaining({ numero: 1, nature: 'BALANCE', forme: FormeExtraitPeriode.EXCEL, termineLe: expect.any(Date) })]);
+    expect(s.extraits).toEqual([expect.objectContaining({ numero: 1, nature: 'BALANCE', termineLe: expect.any(Date) })]);
   });
 
   it('LE NUMÉRO NE SE PREND QU’APRÈS LES REFUS · un export refusé par son volume ne laisse aucun trou', async () => {
@@ -354,40 +354,33 @@ describe('le registre des extraits · le numéro reste, l’échec se dit', () =
     expect(consigne).toHaveBeenCalledWith(expect.stringContaining('fichier remis, fin non écrite (base indisponible)'));
   });
 
-  it('l’impression de l’écran · relue sur la période du serveur, numérotée terminée ; l’exercice entier refusé', async () => {
+  it('le libellé relit le compte dans le dossier, et la création entre ENTIÈRE au journal d’audit', async () => {
     const s = services();
-    const r = await s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.GRAND_LIVRE, du: '2026-04-01', au: '2026-06-30', compteId: 'banque' });
-    expect(r).toEqual({
-      numero: 1,
-      etabliLe: expect.any(Date),
-      etabliLeJour: '2026-10-16',
-      libelle: 'Grand livre du compte 52110000 · Banque · du 01/04/2026 au 30/06/2026',
+    await expect(s.registre.libelleDe('t1', NatureExtraitPeriode.GRAND_LIVRE, { compteId: 'banque' })).resolves.toBe(
+      'Grand livre du compte 52110000 · Banque',
+    );
+    await expect(s.registre.libelleDe('t1', NatureExtraitPeriode.BALANCE, { avecGrandsLivres: true })).resolves.toBe(
+      'Balance des comptes, avec le grand livre de chaque compte',
+    );
+    await expect(s.registre.libelleDe('t1', NatureExtraitPeriode.GRAND_LIVRE, { compteId: 'inconnu' })).rejects.toThrow(/Compte introuvable/);
+    await s.registre.produire({ tenantId: 't1', nature: NatureExtraitPeriode.BALANCE, libelle: 'x', periode: PERIODE, etabliPar: 'u1' }, async (n) => {
+      await n();
+      return 'remis';
     });
-    expect(s.extraits[0]).toMatchObject({ forme: FormeExtraitPeriode.IMPRESSION, termineLe: expect.any(Date) });
-    // La création entre ENTIÈRE au journal d'audit · aucun `select` ne la réduit.
+    // Aucun `select` ne réduit l'état d'après que range le journal d'audit.
     expect(s.prisma.extraitPeriode.create.mock.calls[0][0]).not.toHaveProperty('select');
-    await expect(s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.BALANCE })).rejects.toThrow(/Aucune période à numéroter/);
-    await expect(
-      s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.GRAND_LIVRE, du: '2026-04-01', compteId: 'inconnu' }),
-    ).rejects.toThrow(/Compte introuvable/);
   });
 
-  it('UN EXTRAIT VIDE NE PREND PAS DE NUMÉRO, une combinaison que l’écran n’envoie pas est refusée nommée', async () => {
+  it('UN EXTRAIT VIDE NE PREND PAS DE NUMÉRO · ni report ni mouvement jusqu’au dernier jour, refus nommé', async () => {
     const s = services();
     // La caisse n'a rien avant le 31 mars · ni report ni mouvement en janvier.
-    await expect(
-      s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.GRAND_LIVRE, du: '2026-01-02', au: '2026-01-10', compteId: 'caisse' }),
-    ).rejects.toThrow(/Aucune écriture jusqu'au 10\/01\/2026 sur ce compte/);
-    await expect(
-      s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.BALANCE, du: '2026-04-01', compteId: 'banque' }),
-    ).rejects.toThrow(/le compte ne se choisit que pour un grand livre/);
-    await expect(
-      s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.GRAND_LIVRE, du: '2026-04-01', regrouperTiers: true }),
-    ).rejects.toThrow(/ne se regroupent que dans la balance/);
+    const janvier = periodeDeLExtrait(EXERCICE, { du: '2026-01-02', au: '2026-01-10' })!;
+    await expect(s.registre.refuserSiVide('t1', 'ex', janvier, 'caisse')).rejects.toThrow(
+      /Aucune écriture jusqu'au 10\/01\/2026 sur ce compte/,
+    );
     expect(s.extraits).toEqual([]);
-    // Le dossier entier sur la même quinzaine · l'à-nouveau suffit, l'extrait se numérote.
-    const r = await s.registre.imprimer('t1', 'u1', { exerciceId: 'ex', nature: NatureExtraitPeriode.BALANCE, du: '2026-01-02', au: '2026-01-10' });
-    expect(r.numero).toBe(1);
+    // Le dossier entier sur la même quinzaine · l'à-nouveau suffit.
+    await expect(s.registre.refuserSiVide('t1', 'ex', janvier)).resolves.toBeUndefined();
   });
 
   it('établi le jour de Kinshasa · à 23 h 30 en temps universel, c’est déjà le lendemain', async () => {

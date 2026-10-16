@@ -1,7 +1,7 @@
 -- Ligne export-periode · la balance et le grand livre d'une période de
 -- l'exercice (gel levé par Manasse le 2026-10-16).
 --
--- Chaque extrait remis (fichier Excel, impression de l'écran) prend un numéro
+-- Chaque extrait remis (le fichier Excel produit) prend un numéro
 -- de la suite continue du dossier et sa date (AUDCIF art. 22, 7°, « les états
 -- périodiques fournis soient numérotés et datés »). Il ne se supprime jamais.
 -- Aucune clé vers l'exercice ni le compte · le libellé et les dates figent ce
@@ -10,16 +10,12 @@
 -- CreateEnum
 CREATE TYPE "NatureExtraitPeriode" AS ENUM ('BALANCE', 'GRAND_LIVRE');
 
--- CreateEnum
-CREATE TYPE "FormeExtraitPeriode" AS ENUM ('EXCEL', 'IMPRESSION');
-
 -- CreateTable
 CREATE TABLE "extraits_periode" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
     "numero" INTEGER NOT NULL,
     "nature" "NatureExtraitPeriode" NOT NULL,
-    "forme" "FormeExtraitPeriode" NOT NULL,
     "libelle" TEXT NOT NULL,
     "dateDebut" TIMESTAMP(3) NOT NULL,
     "dateFin" TIMESTAMP(3) NOT NULL,
