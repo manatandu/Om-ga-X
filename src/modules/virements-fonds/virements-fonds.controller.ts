@@ -52,9 +52,12 @@ export class VirementsFondsController {
   deposerPiece(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
+    // L'opération que la pièce appuie · SORTIE ou ENTREE, jugée au service
+    // (refus nommé en français, là où ParseEnumPipe répond en anglais).
+    @Query('operation') operation: string | undefined,
     @UploadedFile() fichier: { originalname: string; buffer: Buffer } | undefined,
   ) {
-    return this.virements.deposerPiece(user.tenantId, id, fichier, user.email);
+    return this.virements.deposerPiece(user.tenantId, id, operation, fichier, user.email);
   }
 
   @Get('pieces-virement-fonds/:id/fichier')

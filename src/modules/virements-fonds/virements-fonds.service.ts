@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, SensVirementFonds, StatutEcriture, StatutExercice, TypeJournal } from '@prisma/client';
+import { OperationVirementFonds, Prisma, SensVirementFonds, StatutEcriture, StatutExercice, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
@@ -11,6 +11,7 @@ import { empreinteDocument, identifierType, motifRefusDocument, nettoyerNomFichi
 import {
   COMPTES_DE_PASSAGE,
   LIBELLES_NATURE_PIECE,
+  LIBELLES_OPERATION,
   LIBELLES_SENS,
   estTresorerieEnDevises,
   estUneCaisse,
@@ -63,7 +64,7 @@ export class VirementsFondsService {
           journalDestination: { select: { code: true } },
           ecritureOrigine: { select: { numeroPiece: true, statut: true } },
           ecritureDestination: { select: { numeroPiece: true, statut: true } },
-          pieces: { select: { id: true, nomFichier: true, taille: true }, orderBy: { createdAt: 'asc' } },
+          pieces: { select: { id: true, operation: true, nomFichier: true, taille: true }, orderBy: { createdAt: 'asc' } },
         },
       }),
       this.prisma.virementFonds.count({ where: { tenantId, exerciceId } }),
@@ -83,21 +84,48 @@ export class VirementsFondsService {
 
   /**
    * UN VIREMENT · tout se juge AVANT la première pièce (journaux, comptes,
-   * devise, pièce, porteur), puis les deux pièces et la fiche naissent dans
-   * UNE transaction (`creerPlusieursAvec`) · un arrêt entre deux laisserait le
-   * 585 à moitié passé, non soldé à la clôture.
+   * devise, pièces, dates, porteur), puis les deux écritures et la fiche
+   * naissent dans UNE transaction (`creerPlusieursAvec`) · un arrêt entre deux
+   * laisserait le 585 à moitié passé, non soldé à la clôture. La sortie est
+   * datée par sa pièce, l'entrée par la sienne (AUDCIF art. 16, al. 2).
    */
   async creer(tenantId: string, userId: string, dto: CreerVirementDto) {
     const lus = await this.journaux(tenantId, [dto.journalOrigineId, dto.journalDestinationId]);
     const origine = lus.find((j) => j.id === dto.journalOrigineId) ?? null;
     const destination = lus.find((j) => j.id === dto.journalDestinationId) ?? null;
+    // UNE DATE, LE JOUR SEUL · le même pour l'écriture, la pièce et la fiche.
+    const sortie = { ...dto.sortie, reference: dto.sortie.reference.trim(), date: dto.sortie.date.slice(0, 10) };
+    const entree = { ...dto.entree, reference: dto.entree.reference.trim(), date: dto.entree.date.slice(0, 10) };
     const motif = motifRefusVirement(origine, destination, {
       montant: dto.montant,
       objet: dto.objet,
-      referencePiece: dto.referencePiece,
+      sortie,
+      entree,
       porteur: dto.porteur,
     });
     if (motif) throw new BadRequestException(motif);
+    // LES DEUX OPÉRATIONS DANS L'EXERCICE · le compte de passage attend
+    // l'entrée entre les deux dates, et il est « soldé à la fin de
+    // l'exercice » (fiche du compte 58 des deux plans). Une entrée sur
+    // l'exercice suivant le laisserait ouvert à la clôture.
+    const exercice = await this.prisma.exercice.findFirst({
+      where: { id: dto.exerciceId, tenantId },
+      select: { dateDebut: true, dateFin: true },
+    });
+    if (!exercice) throw new NotFoundException('Exercice introuvable pour ce dossier.');
+    const [debut, fin] = [exercice.dateDebut.toISOString().slice(0, 10), exercice.dateFin.toISOString().slice(0, 10)];
+    for (const [piece, operation] of [
+      [sortie, OperationVirementFonds.SORTIE],
+      [entree, OperationVirementFonds.ENTREE],
+    ] as const) {
+      if (piece.date < debut || piece.date > fin) {
+        throw new BadRequestException(
+          `La date de la ${LIBELLES_OPERATION[operation]} (${piece.date.split('-').reverse().join('/')}) tombe hors de l'exercice · ` +
+            "le compte de passage se solde à la fin de l'exercice (fiche du compte 58). " +
+            "Une entrée qui tombe sur l'exercice suivant se passe à la main.",
+        );
+      }
+    }
     // UN VIREMENT SE FAIT EN FRANCS · une banque tenue en devise porte ses
     // lignes avec leur montant en devise et leur cours (F49), qu'une pièce en
     // francs perdrait, et la conversion des disponibilités à la clôture (AUDCIF
@@ -145,8 +173,9 @@ export class VirementsFondsService {
         return assurerComptesDePassage(tx, tenantId);
       })
     )[sens];
-    const reference = `${LIBELLES_NATURE_PIECE[dto.naturePiece]} ${dto.referencePiece.trim()}`.slice(0, 190);
-    const libelle = `Virement de fonds ${LIBELLES_SENS[sens]} · ${dto.objet.trim()}`.slice(0, 190);
+    // CHAQUE ÉCRITURE PORTE LA RÉFÉRENCE DE SA PIÈCE (AUDCIF art. 17, 5°).
+    const reference = (p: typeof sortie) => `${LIBELLES_NATURE_PIECE[p.nature]} ${p.reference}`.slice(0, 190);
+    const libelle = `Virement de fonds · ${dto.objet.trim()}`.slice(0, 190);
     const lignes = lignesDuVirement({
       compteOrigineId: origine!.compteTresorerie!.id,
       compteDestinationId: destination!.compteTresorerie!.id,
@@ -154,21 +183,18 @@ export class VirementsFondsService {
       montant: dto.montant,
       libelle,
     });
-    // UNE DATE, LA MÊME pour les deux pièces et la fiche · une heure et un
-    // décalage admis par @IsDateString mettaient la fiche au 10 et les pièces au 11.
-    const jour = dto.date.slice(0, 10);
-    const piece = (journalId: string, l: typeof lignes.origine) => ({
+    const ecriture = (journalId: string, p: typeof sortie, l: typeof lignes.origine) => ({
       exerciceId: dto.exerciceId,
       journalId,
-      date: jour,
+      date: p.date,
       libelle,
-      reference,
+      reference: reference(p),
       lignes: l,
     });
     const r = await this.ecritures.creerPlusieursAvec(
       tenantId,
       userId,
-      [piece(origine!.id, lignes.origine), piece(destination!.id, lignes.destination)],
+      [ecriture(origine!.id, sortie, lignes.origine), ecriture(destination!.id, entree, lignes.destination)],
       async (tx, [eo, ed]) => {
         const numeros = await tx.ecriture.findMany({ where: { id: { in: [eo.id, ed.id] }, tenantId }, select: { id: true, numeroPiece: true } });
         const numero = (id: string) => numeros.find((n) => n.id === id)?.numeroPiece ?? '·';
@@ -176,14 +202,17 @@ export class VirementsFondsService {
           data: {
             tenantId,
             exerciceId: dto.exerciceId,
-            date: new Date(`${jour}T00:00:00.000Z`),
+            date: new Date(`${sortie.date}T00:00:00.000Z`),
             montant: new Prisma.Decimal(dto.montant),
             sens,
             journalOrigineId: origine!.id,
             journalDestinationId: destination!.id,
-            naturePiece: dto.naturePiece,
-            referencePiece: dto.referencePiece.trim(),
-            datePiece: new Date(`${dto.datePiece.slice(0, 10)}T00:00:00.000Z`),
+            naturePiece: sortie.nature,
+            referencePiece: sortie.reference,
+            datePiece: new Date(`${sortie.date}T00:00:00.000Z`),
+            naturePieceEntree: entree.nature,
+            referencePieceEntree: entree.reference,
+            datePieceEntree: new Date(`${entree.date}T00:00:00.000Z`),
             objet: dto.objet.trim(),
             porteur: dto.porteur?.trim() || null,
             observations: dto.observations?.trim() || null,
@@ -294,8 +323,21 @@ export class VirementsFondsService {
     });
   }
 
-  /** PIÈCE JOINTE · le scan de la pièce justificative, contrôlé comme un document de tiers. */
-  async deposerPiece(tenantId: string, virementId: string, fichier: { originalname: string; buffer: Buffer } | undefined, email: string) {
+  /**
+   * PIÈCE JOINTE · le scan de la pièce d'UNE opération, la sortie ou l'entrée,
+   * contrôlé comme un document de tiers. Le même document peut appuyer les
+   * deux côtés · il se joint alors à chacun.
+   */
+  async deposerPiece(
+    tenantId: string,
+    virementId: string,
+    operation: string | undefined,
+    fichier: { originalname: string; buffer: Buffer } | undefined,
+    email: string,
+  ) {
+    if (operation !== OperationVirementFonds.SORTIE && operation !== OperationVirementFonds.ENTREE) {
+      throw new BadRequestException("Dites à quelle opération se joint la pièce · la sortie des fonds (SORTIE) ou leur entrée (ENTREE).");
+    }
     const v = await this.prisma.virementFonds.findFirst({ where: { id: virementId, tenantId }, select: { id: true } });
     if (!v) throw new NotFoundException('Virement introuvable pour ce dossier.');
     if (!fichier) throw new BadRequestException('Aucun fichier reçu · joignez le scan de la pièce.');
@@ -309,6 +351,7 @@ export class VirementsFondsService {
         data: {
           tenantId,
           virementId: v.id,
+          operation,
           nomFichier: nom,
           typeMime: type.typeMime,
           taille: fichier.buffer.length,
@@ -316,11 +359,11 @@ export class VirementsFondsService {
           contenu: fichier.buffer,
           deposePar: email,
         },
-        select: { id: true, nomFichier: true, taille: true, createdAt: true },
+        select: { id: true, operation: true, nomFichier: true, taille: true, createdAt: true },
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException('Cette pièce est déjà jointe à ce virement.');
+        throw new ConflictException(`Cette pièce est déjà jointe à la ${LIBELLES_OPERATION[operation]}.`);
       }
       throw e;
     }

@@ -1,4 +1,4 @@
-import { NaturePieceVirement, Referentiel, SensVirementFonds } from '@prisma/client';
+import { NaturePieceVirement, OperationVirementFonds, Referentiel, SensVirementFonds } from '@prisma/client';
 
 /**
  * VIREMENT DE FONDS (demande de Manasse du 2026-10-09) · d'une banque ou d'une
@@ -23,12 +23,19 @@ import { NaturePieceVirement, Referentiel, SensVirementFonds } from '@prisma/cli
  * revient à zéro au virement même, et la centralisation des journaux ne compte
  * jamais deux fois la même somme (la raison d'être du compte de passage).
  *
- * LA PIÈCE JUSTIFICATIVE SE DÉCLARE · nature, référence et date (AUDCIF art.
- * 17, 3° et 5° · « pièces datées », « les références de la pièce
- * justificative qui l'appuie » ; non écartés par l'art. 3 du SYCEBNL, qui
- * n'exclut de l'art. 17 que ses alinéas 7 et 8). Le PORTEUR des espèces, dès
- * qu'une caisse est en jeu, est une exigence d'OmegaX · le texte ne le nomme
- * pas, et l'écran le dit.
+ * DEUX OPÉRATIONS, DEUX PIÈCES (demande de Manasse du 2026-10-16) · la SORTIE
+ * des fonds au journal d'origine, leur ENTRÉE au journal de destination, et
+ * chaque écriture s'appuie sur SA pièce, nature, référence et date (AUDCIF
+ * art. 17, 3° et 5° · « pièces datées », « les références de la pièce
+ * justificative qui l'appuie » ; art. 22, 7°, « chaque enregistrement
+ * s'appuie sur une pièce justificative » ; non écartés par l'art. 3 du
+ * SYCEBNL, qui n'exclut de l'art. 17 que ses alinéas 7 et 8). Chaque écriture
+ * est DATÉE PAR SA PIÈCE (art. 16, al. 2 · « celle de l'émission par l'entité
+ * de la pièce justificative de l'opération, ou celle de la réception des
+ * pièces d'origine externe ») · la sortie et l'entrée peuvent tomber à deux
+ * jours, le 585 attendant l'entrée entre les deux (sa raison d'être), jamais
+ * l'entrée avant la sortie. Le PORTEUR des espèces, dès qu'une caisse est en
+ * jeu, est une exigence d'OmegaX · le texte ne le nomme pas, et l'écran le dit.
  */
 
 /** 57 · caisse ; tout autre compte de trésorerie d'un journal · banque et assimilés (52, 53, 55, 581, 582). */
@@ -94,6 +101,11 @@ export const LIBELLES_SENS: Readonly<Record<SensVirementFonds, string>> = {
   CAISSE_CAISSE: 'caisse vers caisse',
 };
 
+export const LIBELLES_OPERATION: Readonly<Record<OperationVirementFonds, string>> = {
+  SORTIE: 'sortie des fonds',
+  ENTREE: 'entrée des fonds',
+};
+
 export const LIBELLES_NATURE_PIECE: Readonly<Record<NaturePieceVirement, string>> = {
   BORDEREAU_VERSEMENT: 'Bordereau de versement',
   CHEQUE: 'Chèque',
@@ -111,18 +123,26 @@ export interface JournalDeTresorerie {
   compteTresorerie: { id: string; numero: string; intitule: string } | null;
 }
 
+export interface PieceOperation {
+  reference: string;
+  /** Le jour, AAAA-MM-JJ. */
+  date: string;
+}
+
 export interface DemandeVirement {
   montant: number;
   objet: string;
-  referencePiece: string;
+  sortie: PieceOperation;
+  entree: PieceOperation;
   porteur: string | null | undefined;
 }
 
 /**
  * LES REFUS QUI NE LISENT RIEN · deux journaux de trésorerie actifs et
  * distincts, chacun avec son compte, deux comptes distincts, un montant
- * positif au centime, une pièce et un objet écrits, le porteur des espèces
- * dès qu'une caisse est en jeu. `null` si rien ne s'y oppose.
+ * positif au centime, la pièce de chaque opération et un objet écrits,
+ * l'entrée jamais avant la sortie, le porteur des espèces dès qu'une caisse
+ * est en jeu. `null` si rien ne s'y oppose.
  */
 export function motifRefusVirement(
   origine: JournalDeTresorerie | null,
@@ -144,8 +164,17 @@ export function motifRefusVirement(
   if (!Number.isFinite(demande.montant) || demande.montant <= 0) return 'Le montant du virement doit être positif.';
   if (!estAuCentime(demande.montant)) return 'Le montant se saisit au centime près.';
   if (!demande.objet.trim()) return "L'objet du virement est exigé · il dit pourquoi les fonds changent de place.";
-  if (!demande.referencePiece.trim()) {
-    return 'La référence de la pièce justificative est exigée · une écriture porte les références de la pièce qui l’appuie (AUDCIF art. 17, 5°).';
+  for (const [piece, operation] of [
+    [demande.sortie, 'de la sortie'],
+    [demande.entree, "de l'entrée"],
+  ] as const) {
+    if (!piece.reference.trim()) {
+      return `La référence de la pièce ${operation} est exigée · chaque écriture porte les références de la pièce qui l’appuie (AUDCIF art. 17, 5°).`;
+    }
+  }
+  // Le jour s'écrit AAAA-MM-JJ · l'ordre des chaînes est celui des dates.
+  if (demande.entree.date < demande.sortie.date) {
+    return "L'entrée des fonds est datée avant leur sortie · chaque écriture prend la date de sa pièce (AUDCIF art. 16, al. 2), et les fonds n'arrivent pas avant d'être partis.";
   }
   const sens = sensDuVirement(origine.compteTresorerie!.numero, destination.compteTresorerie!.numero);
   if (caisseEnJeu(sens) && !(demande.porteur ?? '').trim()) {

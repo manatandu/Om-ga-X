@@ -27,7 +27,13 @@ const banque = (id: string, numero: string, extra: Partial<JournalDeTresorerie> 
   compteTresorerie: { id: `c-${numero}`, numero, intitule: `Compte ${numero}` },
   ...extra,
 });
-const DEMANDE = { montant: 500_000, objet: 'Alimentation de la caisse', referencePiece: 'CHQ 0042', porteur: 'Kalala' };
+const DEMANDE = {
+  montant: 500_000,
+  objet: 'Alimentation de la caisse',
+  sortie: { reference: 'CHQ 0042', date: '2026-03-14' },
+  entree: { reference: 'PC 118', date: '2026-03-14' },
+  porteur: 'Kalala',
+};
 
 describe('Le compte de passage est le 585, semé par les deux plans', () => {
   // AUDCIF Titre VII, compte 58 · 581 « Régies d'avance », 585 « Virements de
@@ -86,9 +92,14 @@ describe('Les refus qui ne lisent rien', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, montant: 10.005 })).toMatch(/centime/);
     expect(motifRefusVirement(o, d, { ...DEMANDE, montant: 10.05 })).toBeNull();
   });
-  it('exige l’objet et la référence de la pièce (AUDCIF art. 17, 5°)', () => {
+  it('exige l’objet et la référence de la pièce de CHAQUE opération (AUDCIF art. 17, 5°)', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, objet: '  ' })).toMatch(/objet/);
-    expect(motifRefusVirement(o, d, { ...DEMANDE, referencePiece: '' })).toMatch(/art\. 17, 5°/);
+    expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: { ...DEMANDE.sortie, reference: '' } })).toMatch(/pièce de la sortie.*art\. 17, 5°/);
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, reference: ' ' } })).toMatch(/pièce de l'entrée.*art\. 17, 5°/);
+  });
+  it('l’entrée suit la sortie, le même jour ou après, jamais avant (AUDCIF art. 16, al. 2)', () => {
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, date: '2026-03-16' } })).toBeNull();
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, date: '2026-03-13' } })).toMatch(/entrée des fonds est datée avant leur sortie.*art\. 16, al\. 2/);
   });
   it('exige le porteur dès qu’une caisse est en jeu, jamais entre deux banques', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, porteur: '' })).toMatch(/porteur/);
@@ -206,6 +217,7 @@ describe('VirementsFondsService.creer', () => {
     });
     const prisma = {
       journal: { findMany: async () => journaux },
+      exercice: { findFirst: async () => ({ dateDebut: new Date('2026-01-01T00:00:00.000Z'), dateFin: new Date('2026-12-31T00:00:00.000Z') }) },
       ribBanque: { findMany: async () => ribs },
       tenant: { findUniqueOrThrow: async () => ({ referentiel: opts.referentiel ?? 'SYSCOHADA' }) },
       ligneEcriture: { findMany: async () => (opts.compteEnDevise ? [{ compteId: opts.compteEnDevise }] : []) },
@@ -219,11 +231,9 @@ describe('VirementsFondsService.creer', () => {
     exerciceId: 'x1',
     journalOrigineId: 'ca',
     journalDestinationId: 'bq',
-    date: '2026-03-14',
     montant: 1_200_000,
-    naturePiece: 'BORDEREAU_VERSEMENT' as const,
-    referencePiece: ' BV-118 ',
-    datePiece: '2026-03-14',
+    sortie: { nature: 'BON_CAISSE' as const, reference: ' BC-77 ', date: '2026-03-14' },
+    entree: { nature: 'BORDEREAU_VERSEMENT' as const, reference: ' BV-118 ', date: '2026-03-16' },
     objet: 'Versement de la recette',
     porteur: 'Mbuyi',
   };
@@ -241,8 +251,35 @@ describe('VirementsFondsService.creer', () => {
       expect.objectContaining({ compteId: 'c-52110000', debit: 1_200_000, credit: 0 }),
       expect.objectContaining({ compteId: 'p-CAISSE_BANQUE', debit: 0, credit: 1_200_000 }),
     ]);
-    expect(pieces[0].reference).toBe('Bordereau de versement BV-118');
-    expect(r).toMatchObject({ sens: 'CAISSE_BANQUE', referencePiece: 'BV-118', piecesPassees: 'CA n° 7 · BQ n° 3', porteur: 'Mbuyi', montant: 1_200_000 });
+    expect(r).toMatchObject({ sens: 'CAISSE_BANQUE', piecesPassees: 'CA n° 7 · BQ n° 3', porteur: 'Mbuyi', montant: 1_200_000 });
+  });
+
+  it('chaque écriture porte la référence et la date de SA pièce, la fiche garde les deux (demande du 2026-10-16)', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    const r = (await service.creer('t1', 'u1', dto as never)) as Record<string, unknown>;
+    const [, , pieces] = creerPlusieursAvec.mock.calls[0] as unknown as [string, string, Array<{ date: string; reference: string; libelle: string }>];
+    expect(pieces.map((p) => [p.date, p.reference])).toEqual([
+      ['2026-03-14', 'Bon de caisse BC-77'],
+      ['2026-03-16', 'Bordereau de versement BV-118'],
+    ]);
+    // Le sens et le compte de passage ne chargent plus le libellé.
+    expect(pieces[0].libelle).toBe('Virement de fonds · Versement de la recette');
+    expect(r).toMatchObject({ naturePiece: 'BON_CAISSE', referencePiece: 'BC-77', naturePieceEntree: 'BORDEREAU_VERSEMENT', referencePieceEntree: 'BV-118' });
+    expect([r.date, r.datePiece, r.datePieceEntree].map((d) => (d as Date).toISOString().slice(0, 10))).toEqual(['2026-03-14', '2026-03-14', '2026-03-16']);
+  });
+
+  it('refuse AVANT toute pièce une opération datée hors de l’exercice · le 585 se solde à la fin de l’exercice', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    await expect(service.creer('t1', 'u1', { ...dto, sortie: { ...dto.sortie, date: '2026-12-31' }, entree: { ...dto.entree, date: '2027-01-02' } } as never)).rejects.toThrow(
+      /entrée des fonds \(02\/01\/2027\) tombe hors de l'exercice.*compte 58/,
+    );
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('refuse AVANT toute pièce une entrée datée avant la sortie', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    await expect(service.creer('t1', 'u1', { ...dto, entree: { ...dto.entree, date: '2026-03-10' } } as never)).rejects.toThrow(/datée avant leur sortie/);
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
   });
 
   it('refuse AVANT toute pièce un journal qui n’est pas de trésorerie', async () => {
@@ -271,9 +308,9 @@ describe('VirementsFondsService.creer', () => {
     expect(m.creerPlusieursAvec).not.toHaveBeenCalled();
   });
 
-  it('les deux pièces et la fiche prennent le même jour, même pour une date à heure (relecture m5)', async () => {
+  it('une sortie et une entrée du même jour donnent deux écritures à ce jour, la fiche aussi (relecture m5)', async () => {
     const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
-    const r = await service.creer('t1', 'u1', { ...dto, date: '2026-03-14' } as never);
+    const r = await service.creer('t1', 'u1', { ...dto, entree: { ...dto.entree, date: '2026-03-14' } } as never);
     const [, , pieces] = creerPlusieursAvec.mock.calls[0] as unknown as [string, string, Array<{ date: string }>];
     expect(pieces.map((p) => p.date)).toEqual(['2026-03-14', '2026-03-14']);
     expect((r as { date: Date }).date.toISOString().slice(0, 10)).toBe('2026-03-14');
@@ -401,6 +438,37 @@ describe('VirementsFondsService.annuler', () => {
     const validees = monter({ statuts: { e1: StatutEcriture.VALIDEE, e2: StatutEcriture.VALIDEE } });
     await validees.service.annuler('t1', 'u1', 'v1', { motif: 'Doublon' });
     expect(validees.updates.at(-1)!.piecesPassees).toBe('BQ n° 12 · CA n° 7 · inscrites en négatif (n° N-neg-e1, n° N-neg-e2)');
+  });
+});
+
+describe('VirementsFondsService.deposerPiece', () => {
+  const PDF = Buffer.from('%PDF-1.4\n% e2e\n%%EOF\n', 'latin1');
+  function monter() {
+    const crees: Array<Record<string, unknown>> = [];
+    const prisma = {
+      virementFonds: { findFirst: async () => ({ id: 'v1' }) },
+      pieceVirementFonds: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          crees.push(data);
+          return { id: 'p1', operation: data.operation, nomFichier: data.nomFichier, taille: data.taille };
+        },
+      },
+    };
+    return { service: new VirementsFondsService(prisma as never, {} as never), crees };
+  }
+
+  it('un scan se joint à UNE opération, nommée', async () => {
+    const m = monter();
+    await m.service.deposerPiece('t1', 'v1', 'ENTREE', { originalname: 'bordereau.pdf', buffer: PDF }, 'a@b.cd');
+    expect(m.crees[0]).toMatchObject({ virementId: 'v1', operation: 'ENTREE', nomFichier: 'bordereau.pdf' });
+  });
+
+  it('sans opération, ou avec une autre, le refus le dit et rien n’est déposé', async () => {
+    const m = monter();
+    for (const operation of [undefined, 'VIREMENT']) {
+      await expect(m.service.deposerPiece('t1', 'v1', operation, { originalname: 'b.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(/sortie des fonds \(SORTIE\) ou leur entrée \(ENTREE\)/);
+    }
+    expect(m.crees).toEqual([]);
   });
 });
 
