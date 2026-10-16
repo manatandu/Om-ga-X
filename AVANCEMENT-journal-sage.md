@@ -39,11 +39,20 @@ s'intègre APRÈS l'export par période.
 - Une pièce retirée ou ajoutée entre les deux passages · refus nommé, jamais
   une piste qui dirait un autre livre que le journal.
 
+- Scénario sur vraie base (PostgreSQL jetable, serveur compilé, migration
+  sans dérive), 34 contrôles au vert · journal de N avant la clôture
+  (brouillard dit et en italique, tiers, totaux par journal et de la
+  période), après la clôture (bloc du solde des comptes de gestion, totaux
+  égaux à la balance report + mouvements + clôture, sauts de page relus dans
+  le XML), N+1 (bloc de l'à-nouveau, opération reportée hors de janvier clos
+  au 1er février « valeur au 25/01 », totaux égaux à la balance brouillard
+  compris), filtre d'un journal sur un mois, impression différée du journal
+  de N (même total, piste présente).
+
 ## Reste
 
-- Bloc du § 3 des deux côtés, puis scénario sur vraie base à travers une
-  clôture (export du journal N et N+1 relu).
-- Relectures · silent-failure-hunter, typescript-reviewer.
+- Bloc du § 3 des deux côtés.
+- Relectures · silent-failure-hunter, typescript-reviewer (en cours).
 - Intégration sur `main` après export-periode ; retirer cette fiche.
 
 ## Vérification
