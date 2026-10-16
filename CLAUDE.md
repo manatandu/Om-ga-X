@@ -2837,6 +2837,20 @@ budget » ne vise que la FEUILLE mouvementée non dotée, jamais la rubrique. Ex
 · total nommé feuille par feuille dès qu'une rubrique existe, `SUM(C9:C22)` sur
 la grille VIERGE (une ligne insérée y reste comptée).
 
+**Longueur fixe des codes de section (ligne sage-l6, fonction n° 50).**
+`PlanAnalytique.longueurSections`, null = libre, OPTION du plan sans défaut
+(SYCEBNL Partie 2 ch. 3, classe 9, sous-section 2 · découpage « à sa
+convenance » ; Partie 4 ch. 3, section 2 · « nomenclature budgétaire du
+projet »). Les sections DÉTAIL font exactement N caractères (points de code),
+les rubriques TOTAL strictement moins · la rubrique « 1 » n'absorbe plus en
+silence une feuille « 10 » d'une autre longueur. Posée seulement si toutes les
+sections la respectent (refus qui en nomme vingt et dit le total), JAMAIS par
+renumérotation ; pose et création sous le verrou du plan, relevé par tranches,
+un seul prédicat (`longueur-sections.ts`) pour l'aperçu
+(`GET /analytique/plans/:id/longueur-sections`), la pose et la création.
+Bornes 2 à 13, convention d'OmegaX, tenues aussi par la base. Au PLAN et non
+au dossier comme chez Sage (P_DOSSIER) · question posée à Manasse.
+
 **Tableau emplois ressources · trois colonnes.** « REF | DESIGNATION | SOLDE
 CUMULE DEBUT EXERCICE N | EXERCICE N | SOLDE CUMULE FIN EXERCICE N » (SYCEBNL,
 Partie 4 ch. 3, Section 1) · un projet se finance sur une CONVENTION (le
@@ -3788,6 +3802,45 @@ relisant chaque action dans son bloc `estAdmin &&` par équilibrage ; documents 
 Pièce ILLISIBLE consignée dans `controles.txt` (son flux, qu'`archiver` n'écoute
 pas, arrêtait le serveur) ; pré-image sans binaire (`selectPreImage`) ; nom tronqué
 par points de code (`encodeURIComponent`).
+
+**Pièces jointes des écritures, sections, biens et salariés (ligne sage-l6,
+fonction n° 22).** Un mécanisme, `common/pieces-jointes/` (type lu dans les
+octets, 5 Mo, SHA-256 contre le doublon par objet, `attachment` et `nosniff`,
+nom borné en points de code, 413 en français), employé CHEZ CHAQUE OBJET par
+une `RegleDesPieces` · `comptabilite/`, `analytique/`, `immobilisations/`,
+`personnel/` ; documents des tiers et pièces des virements inchangés
+(réexport). Une table par objet, cloisonnée, auditée sans `contenu`, restituée
+dans `pieces-jointes/<objet>/` (le manifeste ne dit plus qu'OmegaX ne tient
+aucune pièce d'écriture · une garantie négative vieillit). DÉCISION PAR LA LOI
+· la pièce d'une écriture se DÉPOSE toujours, validée et exercice clôturé
+compris (AUDCIF art. 17, 3° ; joindre ne touche ni origine, ni contenu, ni
+imputation, art. 22, 1°), sauf sur l'à-nouveau provisoire ; elle se RETIRE au
+brouillard et en situation seulement · validée, elle se conserve (art. 22, 2°,
+6° et 7° ; art. 24 ; ordonnance-loi n° 23/10 du 13 mars 2023, art. 216),
+jugé sous le verrou de l'écriture (`SELECT … FOR UPDATE`). L'écriture retirée
+au brouillard laisse sa pièce DÉTACHÉE (`SET NULL`, `ecritureDecrite` figée au
+dépôt, laissée partir dans `detenteurs-ecriture.ts`), lue dans « Pièces
+détachées » du journal. Section et bien · documents libres, qui retiennent la
+SUPPRESSION (refus nommé) et jamais la modification · un document n'est pas un
+traitement. Salarié · aux droits du registre (rôles cantonnés), se retire
+toujours (Code du numérique, art. 215 et 216), nom et commentaire hors du
+journal d'audit. Écran · colonne PJ de la saisie et du journal (décompte de
+l'exercice, inconnu jamais « aucune », illisible DIT), volet nommé par son
+objet. LA PIÈCE SUIT SON ÉCRITURE (relecture « échecs silencieux ») · une
+écriture du brouillard REMPLACÉE par une neuve (fiche d'un bien qui change
+de mois ou d'exercice) lui passe ses pièces avant de partir
+(`reporterLesPieces`, unitaire) ; la description refaite à chaque
+modification, transfert ou retouche en place, et à la suppression, qui
+compte ce qu'elle détache (`piecesDetachees`, dit au brouillard). Joindre ou
+retirer la pièce d'une écriture est une SAISIE sur son journal · journaux
+autorisés jugés (403), la lecture reste ouverte. Une suppression de module
+au brouillard filtre sur le statut DANS sa transaction (devises,
+affectation, règle M1 d'A7). UN SEUL ORDRE DE VERROU, écriture puis pièces
+(retrait, report, suppression). La restitution lit TOUTES ses pièces par une
+seule liste (`TABLES_DE_PIECES`, confrontée aux colonnes binaires du schéma ·
+documents des tiers, pièces des virements, fichiers des exports des écritures
+et des impressions différées prêtes, pièces jointes), comptées puis lues par
+lots, jamais d'un coup.
 
 **RIB des tiers et ordre de virement (2026-09-26, priorité 1).** Règles d'OmegaX
 (`tiers/ribs-tiers.ts`) ; SEPA, ETEBAC non servis. (1) RIB = STRUCTURE ·

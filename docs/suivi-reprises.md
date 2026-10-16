@@ -364,3 +364,32 @@ fixe est un choix commercial du cabinet ; ce qui relève d'un juriste est dit.
   de l'interface a une source réelle, le workflow de publication).
 - La bascule d'une version du contrat à la suivante (art. 34) · non servie
   tant qu'une seule version existe, et `versions-publiees.spec.ts` le tient.
+
+## Questions à Manasse · pièces jointes et analytique, ligne sage-l6
+
+1. Longueur des codes de section, par plan ou par dossier ? Aucun texte ne
+   la régit (SYCEBNL Partie 2 ch. 3, classe 9, sous-section 2 · découpage
+   « à la convenance » de l'entité ; Partie 4 ch. 3, section 2 ·
+   « nomenclature budgétaire du projet »). Sage la pose au DOSSIER
+   (P_DOSSIER) ; OmegaX la pose au PLAN, parce que les codes et les
+   rubriques vivent dans un plan et qu'un axe Bailleurs n'a pas à prendre
+   la longueur de l'axe Projets. Choix d'organisation, donc le sien · à
+   confirmer ou à renverser.
+
+## Relevés en attente · pièces jointes et analytique, ligne sage-l6
+
+- Le typage des délégués Prisma des tables de pièces de la restitution
+  (`delegueDesPieces`, un `as unknown as Record`) reste à remplacer par les
+  types Prisma de chaque table.
+- Les boutons de liste « Commentaire » et « Retirer » du volet et des pièces
+  détachées n'ont pas d'`aria-label` qui nomme la pièce · l'ajouter impose de
+  rendre exacts les sélecteurs des tests navigateur qui lisent le nom du
+  fichier.
+- Les suppressions de module au brouillard (annulation de la passation de la
+  paie, d'une liquidation de TVA, d'un constat d'impôt, d'un virement de
+  fonds, d'une réévaluation des devises, d'un traitement d'immobilisation,
+  d'un paiement de salaires, d'une créance douteuse, retrait des actes de la
+  période, suppression d'une fiche de bien, d'une affectation) détachent les
+  pièces de l'écriture retirée sans le dire à l'écran · le nombre est rendu
+  par `EcritureService.supprimer` aux seuls chemins qui passent par lui. Les
+  pièces ne se perdent pas · elles se lisent dans Journal > Pièces détachées.

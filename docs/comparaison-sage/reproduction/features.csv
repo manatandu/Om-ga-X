@@ -7,7 +7,7 @@ n,fonction,renvois,ligne,priorite,clone,note
 16,Changer à la main la prochaine lettre de lettrage,M3-19,L1,should,yes,"lettre tapée ou proposée, refus nommé d'une lettre déjà employée"
 18,"Mode assistant : création guidée d'un compte, d'un journal, d'un bien, d'un règlement ; création enchaînée",M2-8 M3-5 M4-B-42 M5-17 M14-13,L1 L2 L4,should,yes,"L4 · assistant de création d'un bien ; L1 · compte et journal par étapes, création enchaînée ; L2 · assistant de règlement d'un tiers, six étapes, même route que le formulaire"
 19,Séquences de saisie,M6-142,L1,should,yes,dix séquences nommées sur les modèles de saisie ; rubriques de paie non rangées (question posée)
-22,"Documents rattachés aux écritures, aux sections, aux biens et aux salariés",M6-74 M10-98 M6-76 M4-B-48 M7-37,L6,must,no,
+22,"Documents rattachés aux écritures, aux sections, aux biens et aux salariés",M6-74 M10-98 M6-76 M4-B-48 M7-37,L6,must,yes,"mécanisme commun `common/pieces-jointes/`, écriture (saisie, journal, pièces détachées), section, bien, salarié ; retrait fermé à l'écriture validée (AUDCIF art. 22, 24)"
 24,"Qualité du tiers (société, indépendant…)",M1-36,L2,should,yes,"qualité du tiers, libellé proposé et libre, sur la fiche et l'édition du plan des tiers"
 27,"Modèles d'impression propres au tiers (extrait, règlement, rappel)",M1-55 M6-46,L2,should,yes,"modèles d'impression du dossier (extrait, avis de règlement, rappel) choisis sur la fiche du tiers, qui habillent relances, relevé et avis de règlement"
 31,Lieux de livraison des clients,M6-52,L2,should,yes,"lieux de livraison d'un client, un principal, sur la fiche du tiers"
@@ -19,7 +19,7 @@ n,fonction,renvois,ligne,priorite,clone,note
 45,Édition chaînée des extraits,M13-10,L3,should,no,
 46,"Conditions bancaires par RIB, autorisations de financement, unions de comptes",M6-58 M6-136,L3,should,no,
 47,"Trésorerie : taux de référence, financements, placements, OPCVM",M6-129 M6-137 M6-139,L3,should,no,
-50,Longueur fixe des codes de section,M14-5,L6,must,no,
+50,Longueur fixe des codes de section,M14-5,L6,must,yes,"par plan analytique, option sans défaut ; feuilles exactes, rubriques plus courtes, jamais renuméroté"
 59,"Modèles d'édition, sauts de ligne ou de page, impression différée, sélections enregistrées",M2-34 M1-27 M1-50 M1-68 M10-62 M1-132 M8-57,L7,should,yes,"modèles et sauts des éditions de travail (jamais états financiers ni livres obligatoires) ; impression différée numérotée, produite par le moteur de l'export, jamais partielle ; sélections au dossier"
 60,Journal marqué « imprimé » ; refus de clôturer un journal non imprimé,M2-67 M3-29,L1,should,yes,impression ou export enregistré et numéroté ; refus de clôturer un journal non imprimé en option du dossier
 66,"Modifier, supprimer ou dupliquer une fiche",M4-B-41,L4,must,yes,
