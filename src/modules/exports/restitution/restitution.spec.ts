@@ -65,7 +65,12 @@ function prismaFactice(lignes: Record<string, Record<string, unknown>[]> = {}) {
         const toutes = [...(lignes[modele] ?? [])];
         const cle = Object.keys(orderBy)[0];
         toutes.sort((a, b) => String(a[cle]).localeCompare(String(b[cle])));
-        // Le curseur de `pageApres` (`cursor` et `skip: 1`) comme le `gt` des tables.
+        // Le curseur de `pageApres` (`cursor` et `skip: 1`) comme le `gt` des
+        // tables. LE CURSEUR SE COMPORTE COMME CELUI DE PRISMA · il relit sa
+        // ligne en base, et une ligne-curseur disparue rend une tranche VIDE ·
+        // une doublure qui filtrait sur la valeur aurait couvert la boucle qui
+        // s'arrêtait en silence (relecture de la ligne sage-l6).
+        if (cursor && !toutes.some((l) => l[cle] === cursor[cle])) return [];
         const apres = (where as Record<string, any>)[cle]?.gt ?? cursor?.[cle];
         const restantes = apres === undefined ? toutes : toutes.filter((l) => (l[cle] as string) > apres);
         return restantes
@@ -469,10 +474,56 @@ describe('les documents attachés aux tiers (point 21)', () => {
     };
     await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
     const lectures = filtres.filter((f) => f.modele === 'DocumentTiers' && f.take === LOT_PIECES);
-    // Deux lots · le second repart du dernier identifiant du premier.
-    expect(lectures.map((f) => (f.cursor as { id?: string } | undefined)?.id ?? null)).toEqual([null, docs[LOT_PIECES - 1].id]);
+    // Deux lots · le second repart du dernier identifiant du premier, PAR LA
+    // CLÉ (`id > …` dans le filtre), jamais par le curseur de Prisma.
+    expect(lectures.map((f) => (f.where as { id?: { gt?: string } }).id?.gt ?? null)).toEqual([null, docs[LOT_PIECES - 1].id]);
+    expect(lectures.every((f) => f.cursor === undefined)).toBe(true);
     expect(texte.join('')).toContain(`${nombre} annoncé(s), ${nombre} écrit(s)`);
     expect(buffer().toString('latin1')).toContain(`doc-${String(nombre - 1).padStart(4, '0')}-p${nombre - 1}.pdf`);
+  });
+
+  it('la pièce-curseur retirée entre deux lots n’ampute pas la suite (relecture sage-l6)', async () => {
+    // Le dernier document du premier lot est retiré pendant que l'archive
+    // l'écrit. Par le curseur de Prisma, le lot suivant revenait VIDE et les
+    // trois derniers documents manquaient à l'archive sans un mot.
+    const nombre = LOT_PIECES + 3;
+    const docs = Array.from({ length: nombre }, (_, i) => ({ id: `doc-${String(i).padStart(4, '0')}`, tenantId: DOSSIER, nomFichier: `p${i}.pdf` }));
+    const { client } = prismaFactice({ DocumentTiers: docs });
+    const curseur = docs[LOT_PIECES - 1].id;
+    client.documentTiers.findFirst = async ({ where }: any) => {
+      if (where.id === curseur) {
+        docs.splice(LOT_PIECES - 1, 1);
+        return null;
+      }
+      return { contenu: Buffer.from('X') };
+    };
+    const service = new RestitutionService(client);
+    const { flux, buffer } = collecteur();
+    const texte: string[] = [];
+    const controles = (service as any).controles.bind(service);
+    (service as any).controles = async function* (...a: any[]) {
+      for await (const x of controles(...a)) {
+        texte.push(x);
+        yield x;
+      }
+    };
+    await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
+    const archive = buffer().toString('latin1');
+    for (const i of [nombre - 3, nombre - 2, nombre - 1]) {
+      expect(archive).toContain(`doc-${String(i).padStart(4, '0')}-p${i}.pdf`);
+    }
+    expect(texte.join('')).toContain(`PIECE NON RESTITUEE;documents-tiers;${curseur} · retirée pendant l'extraction`);
+  });
+
+  it('un inventaire de pièces illisible arrête l’archive, comme une table (F96)', async () => {
+    const { client } = prismaFactice({ DocumentTiers: [{ id: 'doc-1', tenantId: DOSSIER, nomFichier: 'a.pdf' }] });
+    client.documentTiers.findMany = async () => Promise.reject(new Error('connexion perdue'));
+    const service = new RestitutionService(client);
+    const { flux } = collecteur();
+    flux.on('error', () => undefined);
+    await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
+    expect(flux.destroyed).toBe(true);
+    expect(flux.errored?.message).toBe('pièces non lues · connexion perdue');
   });
 
   it('une pièce retirée entre le décompte et la lecture est dite au contrôle', async () => {

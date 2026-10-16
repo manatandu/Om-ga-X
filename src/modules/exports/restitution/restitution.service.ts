@@ -27,7 +27,7 @@ import {
   ordreDuModele,
 } from './tables-restitution';
 import { ecrireManifeste } from './manifeste-restitution';
-import { pageApres } from '../../../common/lecture-par-lots';
+import { idApres } from '../../../common/lecture-par-lots';
 
 /** Le lot de lecture · assez grand pour ne pas multiplier les allers-retours,
  *  assez petit pour que la mémoire du serveur ne dépende pas de la taille du
@@ -350,38 +350,54 @@ export class RestitutionService {
     // au moment où l'archive l'écrit. `archiver` consomme ses entrées une à
     // une, si bien qu'une seule pièce est en mémoire à la fois, quel que soit
     // leur nombre. L'INVENTAIRE AUSSI EST BORNÉ (second tour de relecture,
-    // mineur 3) · annoncé par un décompte, lu par lots (`pageApres`), et le lot
-    // suivant n'est lu qu'une fois le précédent écrit · un dossier de cent
-    // mille pièces ne tient plus leurs cent mille noms en mémoire. Une pièce
-    // retirée entre le décompte et la lecture est dite au contrôle.
-    const annonces = await Promise.all(
-      TABLES_DE_PIECES.map((t) => this.delegueDesPieces(t.modele).count({ where: { tenantId, ...t.filtre } })),
-    );
-    const pieces: SuiviPieces = { annoncees: annonces.reduce((t, n) => t + n, 0), ecrites: 0, manquantes: [] };
-    for (const [rang, table] of TABLES_DE_PIECES.entries()) {
-      const delegue = this.delegueDesPieces(table.modele);
-      let curseur: string | undefined;
-      let lues = 0;
-      while (!interrompue) {
-        const lot = await delegue.findMany({
-          where: { tenantId, ...table.filtre },
-          select: { id: true, nomFichier: true },
-          ...pageApres(curseur, LOT_PIECES),
-        });
-        for (const piece of lot) {
-          ajoutees++;
-          archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, table.modele, table.dossier)), {
-            name: fichierDeLaPiece(table.dossier, piece.id, piece.nomFichier ?? table.nomParDefaut ?? 'piece'),
+    // mineur 3) · annoncé par un décompte, lu par lots, et le lot suivant
+    // n'est lu qu'une fois le précédent écrit · un dossier de cent mille
+    // pièces ne tient plus leurs cent mille noms en mémoire. LES LOTS SE
+    // SUIVENT PAR LA CLÉ (`idApres`), JAMAIS PAR LE CURSEUR DE PRISMA
+    // (relecture de la ligne sage-l6) · le curseur relit sa ligne en base, et
+    // une pièce-curseur retirée entre deux lots (une pièce du brouillard que
+    // l'on retire pendant l'extraction) rendait le lot suivant VIDE · la
+    // boucle s'arrêtait comme sur le dernier, et tout le reste de la table
+    // manquait à l'archive remise. Une pièce retirée entre le décompte et la
+    // lecture est dite au contrôle. UN INVENTAIRE ILLISIBLE ARRÊTE L'ARCHIVE,
+    // comme une table (F96) · sans quoi la base qui tombe au milieu laissait
+    // l'archive se finaliser sans contrôle, close sur un rejet non consigné.
+    let pieces: SuiviPieces;
+    try {
+      const annonces = await Promise.all(
+        TABLES_DE_PIECES.map((t) => this.delegueDesPieces(t.modele).count({ where: { tenantId, ...t.filtre } })),
+      );
+      pieces = { annoncees: annonces.reduce((t, n) => t + n, 0), ecrites: 0, manquantes: [] };
+      for (const [rang, table] of TABLES_DE_PIECES.entries()) {
+        const delegue = this.delegueDesPieces(table.modele);
+        let curseur: string | undefined;
+        let lues = 0;
+        while (!interrompue) {
+          const lot = await delegue.findMany({
+            where: { tenantId, ...table.filtre, ...idApres(curseur) },
+            select: { id: true, nomFichier: true },
+            orderBy: { id: 'asc' },
+            take: LOT_PIECES,
           });
+          for (const piece of lot) {
+            ajoutees++;
+            archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, table.modele, table.dossier)), {
+              name: fichierDeLaPiece(table.dossier, piece.id, piece.nomFichier ?? table.nomParDefaut ?? 'piece'),
+            });
+          }
+          lues += lot.length;
+          if (lot.length < LOT_PIECES) break;
+          curseur = lot[lot.length - 1].id;
+          await quandEcrites(ajoutees);
         }
-        lues += lot.length;
-        if (lot.length < LOT_PIECES) break;
-        curseur = lot[lot.length - 1].id;
-        await quandEcrites(ajoutees);
+        if (lues < annonces[rang]) {
+          pieces.manquantes.push(`${table.dossier};${annonces[rang] - lues} pièce(s) · retirée(s) entre le décompte et la lecture`);
+        }
       }
-      if (lues < annonces[rang]) {
-        pieces.manquantes.push(`${table.dossier};${annonces[rang] - lues} pièce(s) · retirée(s) entre le décompte et la lecture`);
-      }
+    } catch (e) {
+      interrompre(new Error(`pièces non lues · ${e instanceof Error ? e.message : String(e)}`));
+      await arret;
+      return;
     }
 
     // APPENDU EN DERNIER, ET LU QUAND TOUT LE RESTE EST ÉCRIT. `archiver` 7
