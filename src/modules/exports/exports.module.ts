@@ -22,6 +22,8 @@ import { SelectionsEditionController } from './selections/selections-edition.con
 import { SelectionsEditionService } from './selections/selections-edition.service';
 import { ModelesEditionController } from './modeles-edition/modeles-edition.controller';
 import { ModelesEditionService } from './modeles-edition/modeles-edition.service';
+import { ExtraitsPeriodeController } from './extraits-periode/extraits-periode.controller';
+import { ExtraitsPeriodeService } from './extraits-periode/extraits-periode.service';
 
 @Module({
   // `EtatsFinanciersSyscohadaModule` fournit les DEUX moteurs SYSCOHADA
@@ -61,6 +63,8 @@ import { ModelesEditionService } from './modeles-edition/modeles-edition.service
     ImpressionsDiffereesController,
     SelectionsEditionController,
     ModelesEditionController,
+    // Ligne export-periode · l'impression numérotée d'un extrait de l'écran.
+    ExtraitsPeriodeController,
   ],
   providers: [
     ExportService,
@@ -70,6 +74,7 @@ import { ModelesEditionService } from './modeles-edition/modeles-edition.service
     ImpressionDiffereeService,
     SelectionsEditionService,
     ModelesEditionService,
+    ExtraitsPeriodeService,
   ],
   // Exporté pour GroupeModule : la liasse du groupe en un clic reverse la
   // balance agrégée dans le dossier de combinaison puis fait produire le

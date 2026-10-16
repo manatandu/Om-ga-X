@@ -179,6 +179,8 @@ export const CONTROLEURS_HORS_PROFIL: Record<string, string> = {
     "Modèles des éditions de travail (ligne sage-l7, fonction 59) · la présentation d'une liste imprimée, sans effet sur les livres, que le profil ne ferme pas.",
   SelectionsEditionController:
     "Sélections enregistrées des éditions (ligne sage-l7, fonction 59) · des critères de lecture rappelés, sans effet sur les livres, que le profil ne ferme pas.",
+  ExtraitsPeriodeController:
+    "Trace de l'impression d'un extrait de période (ligne export-periode) · imprimer la balance ou le grand livre d'une période est une lecture, ouverte à qui les lit, que le profil ne ferme pas.",
   ImpressionsDiffereesController:
     "Impression différée (ligne sage-l7, fonction 59) · demander et faire produire une édition est une lecture des livres, ouverte à qui peut les exporter, que le profil ne ferme pas.",
 };
