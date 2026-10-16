@@ -179,6 +179,9 @@ export const LIBELLES_ORIGINE: Record<string, string> = {
   // L'avis au titulaire quand son second facteur change (activé, retiré,
   // codes de secours renouvelés) · aucun secret dans le corps.
   DOUBLE_AUTHENTIFICATION: 'Double authentification',
+  // L'accusé de réception d'une acceptation des conditions de licence, le
+  // texte accepté joint (Code du numérique, art. 55 et 56).
+  CONDITIONS_LICENCE: 'Conditions de licence',
 };
 
 export function libelleOrigine(origine: string): string {

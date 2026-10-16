@@ -21,6 +21,9 @@ describe('EcritureService.modifierPieceDuModule', () => {
           journalId: 'j1',
           date: new Date('2026-03-10T00:00:00.000Z'),
           journal: { numerotation: NumerotationPiece.CONTINUE_JOURNAL },
+          // Les modes que la pièce porte déjà (relecture M2 de la ligne
+          // sage-l2) · la lecture les demande, la doublure les rend.
+          lignes: [],
         }),
         update: async (a: unknown) => {
           ajouts.push(a);

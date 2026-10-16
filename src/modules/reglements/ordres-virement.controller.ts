@@ -37,6 +37,12 @@ export class OrdresVirementController {
     return this.ordres.detail(user.tenantId, id, personnelOuvert(user));
   }
 
+  /** Les avis de règlement de l'ordre (ligne sage-l2, fonction 27) · une lecture, rien n'est écrit. */
+  @Get(':id/avis-reglement')
+  avisReglement(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.ordres.avisReglement(user.tenantId, id, personnelOuvert(user));
+  }
+
   @Roles(RoleUtilisateur.ADMIN_CABINET, RoleUtilisateur.COMPTABLE)
   @Post(':id/impression')
   imprimer(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

@@ -57,7 +57,15 @@ aux virements de fonds (\`PieceVirementFonds.contenu\`) dans
 analytiques, aux biens et aux salariés (\`PieceJointeEcriture.contenu\`,
 \`PieceJointeSection.contenu\`, \`PieceJointeImmobilisation.contenu\`,
 \`PieceJointeSalarie.contenu\`) dans \`pieces-jointes/\`, un sous-dossier par
-objet.
+objet. Le fichier de chaque export des écritures
+(\`ExportEcritures.contenu\`) sort de même dans \`exports-ecritures/\` · il
+porte les écritures TELLES QU'ELLES ÉTAIENT à leur envoi, et une écriture
+envoyée au brouillard, modifiée ou retirée depuis, n'est plus dans les
+tables de l'archive sous cette forme. Le fichier de chaque impression
+différée prête (\`ImpressionDifferee.contenu\`) sort dans
+\`impressions-differees/\` · c'est l'édition telle qu'elle a été produite ;
+une impression dont le fichier a été retiré n'a plus que sa ligne (numéro,
+nom, taille, empreinte).
 
 ## CE QUE CETTE ARCHIVE N'EST PAS
 

@@ -8,9 +8,16 @@ import { IconCheck } from '../components/chrome/icons';
 import { Aide } from '../components/chrome/Aide';
 import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImpression';
 import { EditionStructure } from '../components/EditionStructure';
+import { ChoixModeleEdition } from '../components/ChoixModeleEdition';
+import { COLONNES_EDITION, type ModeleServi } from '../lib/modeles-edition';
 import { VoletDocumentsTiers } from '../components/VoletDocumentsTiers';
 import { VoletRibsTiers } from '../components/VoletRibsTiers';
-import { editionTiers, libelleTypeTiers, perimetreEdition } from '../lib/editions-structures';
+import { VoletLieuxLivraison } from '../components/VoletLieuxLivraison';
+import { VoletModelesImpression } from '../components/VoletModelesImpression';
+import { avisRelectureManquee, gestePuisRelecture } from '../lib/geste-puis-relecture';
+import { reprisEnClair } from '../lib/duplication-tiers';
+import type { ModeleImpression } from '../lib/modeles-impression';
+import { editionTiers, libelleTypeTiers, perimetreSiLue } from '../lib/editions-structures';
 import type {
   Compte,
   ConditionEcheance,
@@ -27,6 +34,9 @@ import { montant } from '../lib/montants';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
 import { usePreselectionUnique } from '../lib/preselection-unique';
 import { numeroAEnvoyer, type NumeroPropose } from '../lib/numero-compte-tiers';
+import { libelleMode, modesProposables, type ModeReglement } from '../lib/modes-reglement';
+import { LONGUEUR_QUALITE, QUALITES_PROPOSEES, qualiteAEnvoyer } from '../lib/qualite-tiers';
+import { champsReprisHorsFormulaire, nonReprisEnClair, type CopieDuTiers } from '../lib/duplication-tiers';
 
 /**
  * PLAN DES TIERS · la fenêtre Structure → Plan tiers de Sage 100 i7 :
@@ -191,7 +201,22 @@ export function TiersPage() {
   const { exerciceCourant } = useExercice();
   const navigate = useNavigate();
   const [liste, setListe] = useState<Tiers[] | null>(null);
-  const [modeles, setModeles] = useState<ModeleReglement[]>([]);
+  // Le modèle de la liste imprimée (ligne sage-l7, fonction 59) · Standard par défaut.
+  const [modeleEdition, setModeleEdition] = useState<ModeleServi | null>(null);
+  // LES MODÈLES DE RÈGLEMENT · null tant qu'ils ne sont pas lus, avec leur
+  // propre erreur (second tour de relecture, M3) · partis de [], ils
+  // faisaient dire « Aucun modèle » d'un échec de lecture.
+  const [modeles, setModeles] = useState<ModeleReglement[] | null>(null);
+  const [erreurModeles, setErreurModeles] = useState<string | null>(null);
+  // LES MODÈLES D'IMPRESSION, lus une fois pour la fenêtre (second tour,
+  // mineur 13) · le volet les relisait à chaque tiers choisi.
+  const [modelesImpression, setModelesImpression] = useState<ModeleImpression[] | null>(null);
+  const [erreurModelesImpression, setErreurModelesImpression] = useState<string | null>(null);
+  // La relecture manquée après un geste réussi, dite à part.
+  const [avisRelecture, setAvisRelecture] = useState<string | null>(null);
+  // Les modes de règlement du dossier (ligne sage-l2, fonction 1) · null tant qu'ils ne sont pas lus.
+  const [modes, setModes] = useState<ModeReglement[] | null>(null);
+  const [erreurModes, setErreurModes] = useState<string | null>(null);
   // Liste de choix (comptes de classe 4 retenus ou utilisés) · null tant qu'elle n'est pas lue.
   const [comptesLus, setComptesLus] = useState<Compte[] | null>(null);
   const [erreurComptes, setErreurComptes] = useState<string | null>(null);
@@ -205,6 +230,9 @@ export function TiersPage() {
   const [filtreType, setFiltreType] = useState<TypeTiers | ''>('');
   const [selectionId, setSelectionId] = useState<string | null>(null);
   const [nouveauOuvert, setNouveauOuvert] = useState(false);
+  // LA COPIE D'UN TIERS (ligne sage-l2, fonction 32) · servie par le serveur,
+  // elle remplit le formulaire de création ; `null` hors duplication.
+  const [copie, setCopie] = useState<CopieDuTiers | null>(null);
   const champRecherche = useRef<HTMLInputElement>(null);
   const [modelesOuverts, setModelesOuverts] = useState(false);
 
@@ -213,6 +241,7 @@ export function TiersPage() {
   const [code, setCode] = useState('');
   const [nom, setNom] = useState('');
   const [modeleReglementId, setModeleReglementId] = useState('');
+  const [modeReglementId, setModeReglementId] = useState('');
   const [envoi, setEnvoi] = useState(false);
 
   // Formulaire de rattachement de compte
@@ -231,6 +260,7 @@ export function TiersPage() {
   const [valeurEch, setValeurEch] = useState('');
   const [delaiJoursEch, setDelaiJoursEch] = useState(30);
   const [echeanceEch, setEcheanceEch] = useState<ConditionEcheance>('NET');
+  const [modeEch, setModeEch] = useState('');
 
   // Simulateur d'échéancier
   const [dateFactureCalc, setDateFactureCalc] = useState(new Date().toISOString().slice(0, 10));
@@ -240,14 +270,22 @@ export function TiersPage() {
   // La liste est chargée SANS filtre de type : le filtre de gauche (façon
   // Sage) se fait localement, ce qui permet d'afficher les compteurs par
   // type sans requêtes supplémentaires.
+  // Jeton contre la réponse périmée, recherche LUE (second tour, 12, jumeau de m6).
+  const jetonTiers = useRef(0);
+  const [rechercheLue, setRechercheLue] = useState<string | null>(null);
   const charger = async () => {
+    const mien = ++jetonTiers.current;
+    const demandee = recherche;
     try {
       const params = new URLSearchParams();
       if (recherche) params.set('recherche', recherche);
-      setListe(await api.get<Tiers[]>(`/tiers?${params.toString()}`));
+      const lus = await api.get<Tiers[]>(`/tiers?${params.toString()}`);
+      if (mien !== jetonTiers.current) return;
+      setListe(lus);
+      setRechercheLue(demandee);
       setErreur(null);
     } catch (err) {
-      setErreur(err instanceof ApiError ? err.message : 'Impossible de charger les tiers');
+      if (mien === jetonTiers.current) setErreur(err instanceof ApiError ? err.message : 'Impossible de charger les tiers');
     }
   };
 
@@ -259,8 +297,19 @@ export function TiersPage() {
 
   useEffect(() => {
     // Un échec de lecture se dit (§ 9 ter) · avalé, la liste des modèles restait vide sans un mot.
-    api.get<ModeleReglement[]>('/modeles-reglement').then(setModeles, (err) =>
-      setErreur(`Modèles de règlement illisibles · ${err instanceof ApiError ? err.message : 'serveur injoignable'}`),
+    api.get<ModeleReglement[]>('/modeles-reglement').then(
+      (m) => {
+        setModeles(m);
+        setErreurModeles(null);
+      },
+      (err) => setErreurModeles(err instanceof ApiError ? err.message : 'serveur injoignable'),
+    );
+    api.get<ModeleImpression[]>('/modeles-impression').then(
+      (m) => {
+        setModelesImpression(m);
+        setErreurModelesImpression(null);
+      },
+      (err) => setErreurModelesImpression(err instanceof ApiError ? err.message : 'serveur injoignable'),
     );
     // LISTE DE CHOIX · comptes retenus ou utilisés (`lib/comptes-proposes.ts`) ;
     // un compte déjà rattaché à un tiers est utilisé, il y reste. Un échec se dit.
@@ -276,6 +325,14 @@ export function TiersPage() {
     // proposer un rattachement qu'il refusera. Vide pour un dossier hors
     // groupe, et le volet le dit alors au lieu d'offrir une liste morte.
     api.get<DossierDuGroupe[]>('/tiers/dossiers-du-groupe').then(setDossiersGroupe).catch(() => setDossiersGroupe([]));
+    // Un échec se dit (§ 9 ter) · une liste vide sur un échec ferait croire qu'aucun mode n'existe.
+    api.get<ModeReglement[]>('/modes-reglement').then(
+      (m) => {
+        setModes(m);
+        setErreurModes(null);
+      },
+      (err) => setErreurModes(err instanceof ApiError ? err.message : 'serveur injoignable'),
+    );
   }, []);
 
   // Solde des comptes rattachés (balance de l'exercice courant) · affiché
@@ -368,10 +425,37 @@ export function TiersPage() {
   }, [nouveauOuvert, type, relectureNumero]);
 
   const ouvrirNouveau = () => {
+    // Un formulaire laissé par une copie ne garde rien de l'autre tiers.
+    if (copie) {
+      setCopie(null);
+      setNom('');
+      setModeleReglementId('');
+      setModeReglementId('');
+    }
     setLectureNumero(null);
     setNumeroSaisi('');
     setErreurCreation(null);
     setNouveauOuvert(true);
+  };
+
+  /** Dupliquer · la copie remplit le formulaire, rien n'est écrit avant « Créer le tiers ». */
+  const dupliquer = async (t: Tiers) => {
+    setErreur(null);
+    try {
+      const c = await api.get<CopieDuTiers>(`/tiers/${t.id}/duplication`);
+      setCopie(c);
+      setType(c.corps.type);
+      setCode('');
+      setNom(c.corps.nom);
+      setModeleReglementId(c.corps.modeleReglementId ?? '');
+      setModeReglementId(c.corps.modeReglementId ?? '');
+      setLectureNumero(null);
+      setNumeroSaisi('');
+      setErreurCreation(null);
+      setNouveauOuvert(true);
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Copie du tiers illisible');
+    }
   };
 
   const onCreerTiers = async (e: FormEvent) => {
@@ -391,6 +475,8 @@ export function TiersPage() {
         creerCompteIndividuel,
         ...(numeroCompte ? { numeroCompte } : {}),
         ...(modeleReglementId ? { modeleReglementId } : {}),
+        ...(modeReglementId ? { modeReglementId } : {}),
+        ...(copie ? champsReprisHorsFormulaire(copie) : {}),
       });
       // LA PROPOSITION PRISE ENTRE-TEMPS SE DIT · le serveur a ouvert le
       // premier libre, qui n'est plus le numéro que la fenêtre montrait.
@@ -407,6 +493,8 @@ export function TiersPage() {
       setCode('');
       setNom('');
       setModeleReglementId('');
+      setModeReglementId('');
+      setCopie(null);
       setNouveauOuvert(false);
       await charger();
     } catch (err) {
@@ -556,20 +644,37 @@ export function TiersPage() {
       Pick<
         Tiers,
         | 'celluleGroupeId'
+        | 'modeleReglementId'
+        | 'modeReglementId'
+        | 'validationAutomatiqueEcheances'
+        | 'qualite'
         | 'autoriseTvaDebits'
         | 'referenceAutorisationDebits'
         | 'dateEffetAutorisationDebits'
         | 'dateRevocationAutorisationDebits'
+        | 'modeleImpressionExtraitId'
+        | 'modeleImpressionReglementId'
+        | 'modeleImpressionRappelId'
       >
     >,
-  ) => {
+  ): Promise<boolean> => {
+    // Rend vrai si la fiche a changé au serveur · un refus se dit et
+    // l'appelant rétablit ce qu'il montrait (second tour, mineur 9) ; la
+    // relecture manquée se dit à part, le geste restant fait.
     setErreur(null);
-    try {
-      await api.patch(`/tiers/${t.id}`, donnees);
-      await charger();
-    } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : 'Modification impossible');
-    }
+    setAvisRelecture(null);
+    const issue = await gestePuisRelecture(
+      () => api.patch(`/tiers/${t.id}`, donnees),
+      async () => {
+        const params = new URLSearchParams();
+        if (recherche) params.set('recherche', recherche);
+        setListe(await api.get<Tiers[]>(`/tiers?${params.toString()}`));
+      },
+      (e) => (e instanceof ApiError ? e.message : null),
+    );
+    if (issue.erreurGeste) setErreur(issue.erreurGeste === 'Action impossible' ? 'Modification impossible' : issue.erreurGeste);
+    if (issue.erreurRelecture) setAvisRelecture(avisRelectureManquee('la liste des tiers', issue.erreurRelecture));
+    return issue.fait;
   };
 
   // Suppression · le serveur refuse tout objet mouvementé ou utilisé, et
@@ -620,7 +725,14 @@ export function TiersPage() {
     }
   };
 
-  const rechargerModeles = async () => setModeles(await api.get<ModeleReglement[]>('/modeles-reglement'));
+  const rechargerModeles = async () => {
+    try {
+      setModeles(await api.get<ModeleReglement[]>('/modeles-reglement'));
+      setErreurModeles(null);
+    } catch (err) {
+      setErreurModeles(err instanceof ApiError ? err.message : 'serveur injoignable');
+    }
+  };
 
   const onCreerModele = async (e: FormEvent) => {
     e.preventDefault();
@@ -635,7 +747,13 @@ export function TiersPage() {
     }
   };
 
-  const modeleSelectionne = modeles.find((m) => m.id === modeleSelectionneId) ?? null;
+  const modeleSelectionne = (modeles ?? []).find((m) => m.id === modeleSelectionneId) ?? null;
+  /** Le mode d'un modèle ou d'une échéance, lu dans la liste du dossier · non lue, l'identifiant ne se devine pas. */
+  const nomDuMode = (id: string | null | undefined) => {
+    if (!id) return '·';
+    const m = modes?.find((x) => x.id === id);
+    return m ? libelleMode(m) : modes === null ? 'mode non lu' : 'mode inconnu';
+  };
 
   /**
    * Modifier un modèle de règlement (audit de l'interface du 2026-09-27, I11) ·
@@ -645,7 +763,7 @@ export function TiersPage() {
    */
   const modifierModele = async (
     m: ModeleReglement,
-    corps: { intitule?: string; delaiJours?: number; estActif?: boolean },
+    corps: { intitule?: string; delaiJours?: number; estActif?: boolean; modeReglementId?: string | null },
   ) => {
     setErreur(null);
     try {
@@ -680,6 +798,7 @@ export function TiersPage() {
         ...(typeEch !== 'EQUILIBRE' ? { valeur: Number(valeurEch) } : {}),
         delaiJours: delaiJoursEch,
         echeance: echeanceEch,
+        ...(modeEch ? { modeReglementId: modeEch } : {}),
       });
       setOrdreEch((n) => n + 1);
       setValeurEch('');
@@ -728,8 +847,10 @@ export function TiersPage() {
       {/* La liste IMPRIMÉE est celle que l'écran montre · le périmètre dit
           donc la recherche et le type retenus. */}
       <EditionStructure
-        edition={editionTiers(listeFiltree)}
-        perimetre={perimetreEdition(
+        edition={editionTiers(liste !== null && rechercheLue === recherche ? listeFiltree : [])}
+        perimetre={perimetreSiLue(
+          liste !== null && rechercheLue === recherche,
+          'Plan des tiers',
           [
             ['Recherche', recherche],
             ['Type', filtreType ? libelleTypeTiers(filtreType) : null],
@@ -738,9 +859,14 @@ export function TiersPage() {
           'tiers',
           'tiers',
         )}
+        modele={modeleEdition}
+        catalogue={COLONNES_EDITION.PLAN_TIERS}
       />
       <div className="flex items-center justify-end mb-2 shrink-0">
-        <div className="flex items-center gap-2">
+        {/* La barre passe à la ligne sous une fenêtre étroite (390 px) · sans
+            quoi ses commandes sortaient de l'écran par la gauche. */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ChoixModeleEdition edition="PLAN_TIERS" onChange={setModeleEdition} />
           <BoutonImprimer libelle="Imprimer la liste" />
           <input
             ref={champRecherche}
@@ -787,6 +913,11 @@ export function TiersPage() {
       )}
       {info && !erreur && (
         <div className="text-[11.5px] text-positive bg-positive-soft border border-positive/30 px-3 py-1.5 mb-2 shrink-0">{info}</div>
+      )}
+      {avisRelecture && (
+        <div role="status" className="text-[11.5px] text-warning bg-warning-soft border border-warning/30 px-3 py-1.5 mb-2 shrink-0">
+          {avisRelecture}
+        </div>
       )}
 
       <div className="flex-1 min-h-0 flex gap-2.5">
@@ -886,6 +1017,44 @@ export function TiersPage() {
               <div className="font-mono text-[12px] font-bold leading-tight">{tiersSelectionne.code}</div>
               <div className="text-[11.5px] mb-2.5">{tiersSelectionne.nom}</div>
               <div className="grid grid-cols-[92px_1fr] gap-x-2 gap-y-1.5 items-center mb-3">
+                <label className="text-text-dim text-right" htmlFor="tiers-qualite">
+                  Qualité :
+                </label>
+                <span className="flex items-center gap-1">
+                  <input
+                    id="tiers-qualite"
+                    list="qualites-tiers"
+                    maxLength={LONGUEUR_QUALITE}
+                    defaultValue={tiersSelectionne.qualite ?? ''}
+                    // Remonté à chaque tiers · un champ non contrôlé garderait sinon la valeur du précédent.
+                    key={`${tiersSelectionne.id}-qualite`}
+                    readOnly={!estAdmin}
+                    placeholder="société, indépendant…"
+                    onBlur={(e) => {
+                      const champ = e.currentTarget;
+                      const valeur = qualiteAEnvoyer(champ.value);
+                      if (estAdmin && valeur !== (tiersSelectionne.qualite ?? null)) {
+                        // Refusée, la qualité d'avant revient (second tour,
+                        // mineur 9) · le champ ne montre pas ce que la fiche n'a pas.
+                        const avant = tiersSelectionne.qualite ?? '';
+                        void enregistrerChamp(tiersSelectionne, { qualite: valeur }).then((fait) => {
+                          if (!fait) champ.value = avant;
+                        });
+                      }
+                    }}
+                    className="flex-1 min-w-0 border border-border rounded-[3px] bg-bg px-2 py-[3px] text-[11.5px] focus:outline-none focus:border-sel"
+                  />
+                  <Aide
+                    titre="Qualité du tiers"
+                    texte="Un libellé qui décrit le tiers (société, indépendant, administration…), proposé dans une liste et libre. Il ne décide rien · aucun contrôle, aucun taux ne le lit."
+                    source="Sage 100 i7, plan tiers · qualité"
+                  />
+                </span>
+                <datalist id="qualites-tiers">
+                  {QUALITES_PROPOSEES.map((q) => (
+                    <option key={q} value={q} />
+                  ))}
+                </datalist>
                 <span className="text-text-dim text-right">Type :</span>
                 <span className="flex items-center gap-1.5">
                   {tableaux.libelle[tiersSelectionne.type]}
@@ -895,7 +1064,70 @@ export function TiersPage() {
                   {tableaux.aide[tiersSelectionne.type] && <Aide sujet={tableaux.aide[tiersSelectionne.type]!} />}
                 </span>
                 <span className="text-text-dim text-right">Règlement :</span>
-                <span>{tiersSelectionne.modeleReglement?.intitule ?? 'aucun modèle'}</span>
+                {estAdmin && modeles ? (
+                  <select
+                    aria-label="Modèle de règlement du tiers"
+                    value={tiersSelectionne.modeleReglementId ?? ''}
+                    onChange={(e) => void enregistrerChamp(tiersSelectionne, { modeleReglementId: e.target.value || null })}
+                    className="border border-border px-1.5 py-0.5 bg-surface"
+                  >
+                    <option value="">Aucun modèle</option>
+                    {modeles
+                      .filter((m) => m.estActif || m.id === tiersSelectionne.modeleReglementId)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.intitule}
+                          {m.estActif ? '' : ' (en sommeil)'}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  <span>
+                    {tiersSelectionne.modeleReglement?.intitule ?? 'aucun modèle'}
+                    {erreurModeles && <span className="block text-danger text-[11px]">Modèles de règlement illisibles · {erreurModeles}</span>}
+                  </span>
+                )}
+                <span className="text-text-dim text-right">Mode :</span>
+                {estAdmin && modes ? (
+                  <select
+                    aria-label="Mode de règlement du tiers"
+                    value={tiersSelectionne.modeReglementId ?? ''}
+                    onChange={(e) => void enregistrerChamp(tiersSelectionne, { modeReglementId: e.target.value || null })}
+                    className="border border-border px-1.5 py-0.5 bg-surface"
+                  >
+                    <option value="">Aucun mode</option>
+                    {modesProposables(modes, tiersSelectionne.modeReglementId).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {libelleMode(m)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span>
+                    {tiersSelectionne.modeReglement ? libelleMode(tiersSelectionne.modeReglement) : 'aucun mode'}
+                    {erreurModes && <span className="block text-danger text-[11px]">Modes illisibles · {erreurModes}</span>}
+                  </span>
+                )}
+                {tiersSelectionne.modeleReglementId && (
+                  <>
+                    <span />
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        aria-label="Échéancier appliqué d'office"
+                        checked={tiersSelectionne.validationAutomatiqueEcheances ?? false}
+                        disabled={!estAdmin}
+                        onChange={(e) => void enregistrerChamp(tiersSelectionne, { validationAutomatiqueEcheances: e.target.checked })}
+                      />
+                      Échéancier appliqué d'office
+                      <Aide
+                        titre="Échéancier appliqué d'office"
+                        texte="En saisie, la ligne de facture de ce tiers reçoit l'échéancier de son modèle de règlement. Avec plusieurs échéances, la fenêtre des échéances se présente pour les retoucher ; cochée, la ligne est découpée sans elle, et la saisie l'annonce."
+                        source="Sage 100 · validation automatique des règlements (plan tiers)"
+                      />
+                    </label>
+                  </>
+                )}
                 <span className="text-text-dim text-right">État :</span>
                 <span className={tiersSelectionne.estActif ? 'text-positive' : 'text-warning'}>
                   {tiersSelectionne.estActif ? 'Actif' : 'En sommeil'}
@@ -916,6 +1148,13 @@ export function TiersPage() {
                 className="ml-2 border border-danger/40 text-danger hover:bg-danger-soft px-3 py-1 text-[11.5px] mb-3"
               >
                 Supprimer
+              </button>
+              <button
+                type="button"
+                onClick={() => void dupliquer(tiersSelectionne)}
+                className="ml-2 border border-border-dark bg-chrome hover:bg-chrome-alt px-3 py-1 text-[11.5px] mb-3"
+              >
+                Dupliquer…
               </button>
               <button
                 type="button"
@@ -1221,6 +1460,20 @@ export function TiersPage() {
                 )}
               </div>
 
+              {/* Modèles d'impression du tiers (ligne sage-l2, fonction 27) */}
+              <VoletModelesImpression
+                key={`impression-${tiersSelectionne.id}`}
+                tiers={tiersSelectionne}
+                modeles={modelesImpression}
+                erreur={erreurModelesImpression}
+                onChanger={(donnees) => enregistrerChamp(tiersSelectionne, donnees)}
+              />
+
+              {/* Lieux de livraison · d'un client seulement (ligne sage-l2, fonction 31) */}
+              {tiersSelectionne.type === 'CLIENT' && (
+                <VoletLieuxLivraison key={`livraison-${tiersSelectionne.id}`} tiersId={tiersSelectionne.id} />
+              )}
+
               {/* Coordonnées bancaires · RIB des tiers, recopiés par l'ordre de virement */}
               <VoletRibsTiers key={`rib-${tiersSelectionne.id}`} tiersId={tiersSelectionne.id} />
 
@@ -1239,7 +1492,7 @@ export function TiersPage() {
               <div
                 className="h-[32px] flex items-center justify-between px-2.5 bg-surface text-text border-b border-border text-[11.5px]"
               >
-                <span>Nouveau tiers</span>
+                <span>{copie ? `Copie de ${copie.origine}` : 'Nouveau tiers'}</span>
                 <button type="button" disabled={envoi} onClick={() => setNouveauOuvert(false)} className="-mr-2 self-stretch w-[46px] flex items-center justify-center text-text-dim hover:text-white hover:bg-[#c42b1c]">✕</button>
               </div>
               <div className="p-4">
@@ -1255,10 +1508,28 @@ export function TiersPage() {
                   <label className="text-[11.5px] text-right">Nom :</label>
                   <input required value={nom} onChange={(e) => setNom(e.target.value)} className="border border-border-dark px-2.5 py-1.5 text-[12px]" />
                   <label className="text-[11.5px] text-right">Règlement :</label>
-                  <select value={modeleReglementId} onChange={(e) => setModeleReglementId(e.target.value)} className="border border-border-dark px-2.5 py-1.5 text-[11.5px]">
-                    <option value="">Aucun modèle</option>
-                    {modeles.map((m) => (
+                  <select
+                    aria-label="Modèle de règlement du nouveau tiers"
+                    value={modeleReglementId}
+                    disabled={modeles === null}
+                    onChange={(e) => setModeleReglementId(e.target.value)}
+                    className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
+                  >
+                    <option value="">{modeles ? 'Aucun modèle' : erreurModeles ? `Modèles illisibles · ${erreurModeles}` : 'Lecture…'}</option>
+                    {(modeles ?? []).filter((m) => m.estActif).map((m) => (
                       <option key={m.id} value={m.id}>{m.intitule}</option>
+                    ))}
+                  </select>
+                  <label className="text-[11.5px] text-right">Mode :</label>
+                  <select
+                    aria-label="Mode de règlement du nouveau tiers"
+                    value={modeReglementId}
+                    onChange={(e) => setModeReglementId(e.target.value)}
+                    className="border border-border-dark px-2.5 py-1.5 text-[11.5px]"
+                  >
+                    <option value="">{erreurModes ? `Modes illisibles · ${erreurModes}` : 'Aucun mode'}</option>
+                    {modesProposables(modes ?? [], null).map((m) => (
+                      <option key={m.id} value={m.id}>{libelleMode(m)}</option>
                     ))}
                   </select>
                   <span />
@@ -1326,6 +1597,11 @@ export function TiersPage() {
                     </>
                   )}
                 </div>
+                {copie && (
+                  <p className="mt-3 text-[11px] text-text-dim">
+                    Repris de {copie.origine} · {reprisEnClair(copie)}. Non repris · {nonReprisEnClair(copie)}.
+                  </p>
+                )}
                 {erreurCreation && (
                   <p role="alert" className="mt-3 text-[11.5px] text-danger">
                     {erreurCreation}
@@ -1358,8 +1634,13 @@ export function TiersPage() {
               </div>
               <div className="flex-1 min-h-0 overflow-auto p-4">
                 <div className="border border-border mb-3">
-                  {modeles.length === 0 && <div className="p-2.5 text-[11.5px] text-text-dim">Aucun modèle de règlement.</div>}
-                  {modeles.map((m) => (
+                  {modeles === null && (
+                    <div className={`p-2.5 text-[11.5px] ${erreurModeles ? 'text-danger' : 'text-text-dim'}`}>
+                      {erreurModeles ? `Modèles de règlement illisibles · ${erreurModeles}` : 'Lecture…'}
+                    </div>
+                  )}
+                  {modeles?.length === 0 && <div className="p-2.5 text-[11.5px] text-text-dim">Aucun modèle de règlement.</div>}
+                  {(modeles ?? []).map((m) => (
                     <div
                       key={m.id}
                       onClick={() => setModeleSelectionneId(m.id === modeleSelectionneId ? null : m.id)}
@@ -1406,18 +1687,37 @@ export function TiersPage() {
                         Mono-échéance : 100 % à {modeleSelectionne.delaiJours} j. ({LIBELLE_ECHEANCE[modeleSelectionne.echeance]}).
                       </div>
                     )}
+                    <label className="flex items-center gap-2 text-[11.5px] mb-2">
+                      <span className="text-text-dim">Mode du modèle</span>
+                      {estAdmin && modes ? (
+                        <select
+                          aria-label="Mode de règlement du modèle"
+                          value={modeleSelectionne.modeReglementId ?? ''}
+                          onChange={(e) => void modifierModele(modeleSelectionne, { modeReglementId: e.target.value || null })}
+                          className="border border-border-dark px-2 py-0.5 bg-surface"
+                        >
+                          <option value="">Aucun mode</option>
+                          {modesProposables(modes, modeleSelectionne.modeReglementId).map((m) => (
+                            <option key={m.id} value={m.id}>{libelleMode(m)}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{nomDuMode(modeleSelectionne.modeReglementId)}</span>
+                      )}
+                    </label>
                     {modeleSelectionne.echeances.length > 0 && (
                       <div className="border border-border mb-3 bg-surface">
                         {modeleSelectionne.echeances.map((ech) => (
                           <div
                             key={ech.id}
-                            className="grid grid-cols-[40px_130px_90px_70px_150px_70px] gap-2 items-center px-2.5 py-1 border-b border-border last:border-b-0 text-[11.5px]"
+                            className="grid grid-cols-[40px_130px_90px_70px_150px_120px_70px] gap-2 items-center px-2.5 py-1 border-b border-border last:border-b-0 text-[11.5px]"
                           >
                             <span className="font-mono">#{ech.ordre}</span>
                             <span>{LIBELLE_TYPE_ECHEANCE[ech.type]}</span>
                             <span className="text-right font-mono">{ech.valeur ?? '·'}</span>
                             <span className="text-text-dim">{ech.delaiJours} j.</span>
                             <span className="text-[11px] text-text-dim">{LIBELLE_ECHEANCE[ech.echeance]}</span>
+                            <span className="text-[11px]">{nomDuMode(ech.modeReglementId)}</span>
                             <button onClick={() => onSupprimerEcheance(ech.id)} className="text-danger text-[11px] font-semibold hover:underline w-fit">
                               Supprimer
                             </button>
@@ -1426,7 +1726,7 @@ export function TiersPage() {
                       </div>
                     )}
   
-                    <form onSubmit={onAjouterEcheance} className="grid grid-cols-6 gap-2 items-end mb-4">
+                    <form onSubmit={onAjouterEcheance} className="grid grid-cols-2 sm:grid-cols-7 gap-2 items-end mb-4">
                       <label className="text-[11px] font-semibold text-text-dim">
                         Ordre
                         <input required type="number" min={1} value={ordreEch} onChange={(e) => setOrdreEch(Number(e.target.value))} className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px]" />
@@ -1457,6 +1757,16 @@ export function TiersPage() {
                           ))}
                         </select>
                       </label>
+                      <label className="text-[11px] font-semibold text-text-dim">
+                        Mode
+                        <select aria-label="Mode de l'échéance" value={modeEch} onChange={(e) => setModeEch(e.target.value)} className="mt-1 w-full border border-border-dark px-2 py-1 text-[11.5px]">
+                          <option value="">{erreurModes ? 'Modes illisibles' : 'Aucun'}</option>
+                          {modesProposables(modes ?? [], null).map((m) => (
+                            <option key={m.id} value={m.id}>{libelleMode(m)}</option>
+                          ))}
+                        </select>
+                        {erreurModes && <span className="block font-normal text-danger">Modes de règlement illisibles · {erreurModes}</span>}
+                      </label>
                       <button type="submit" className="bg-sel text-white text-[11.5px] font-semibold px-3 py-1.5 h-fit">
                         Ajouter
                       </button>
@@ -1467,7 +1777,7 @@ export function TiersPage() {
                       {/* Audit final F149 · l'Équilibre en dernier, et le modèle simulé, pas appliqué. */}
                       <Aide
                         titre="Échéancier du modèle"
-                        texte="L'échéance Équilibre reçoit le reste : elle se place en dernier, et aucune échéance ne peut la suivre. Aucune échéance n'est négative, un pourcentage ou un montant étant borné au reste. Le modèle se simule ici ; aucune saisie ne l'applique encore à une facture."
+                        texte="L'échéance Équilibre reçoit le reste : elle se place en dernier, et aucune échéance ne peut la suivre. Aucune échéance n'est négative, un pourcentage ou un montant étant borné au reste. Le modèle se simule ici ; en saisie, la ligne de facture d'un tiers qui porte ce modèle reçoit le même échéancier, une ligne par échéance."
                         source="OmegaX"
                       />
                     </div>

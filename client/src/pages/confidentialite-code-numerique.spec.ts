@@ -111,7 +111,20 @@ describe('la politique décrit le logiciel tel qu’il est (passe D4)', () => {
     expect(deplie).toContain(`se ferme après ${enLettres[jours('DUREE_INACTIVITE_SESSION_LONGUE_S')]} jours sans utilisation`);
     // Session courte · cookie de session, et l'échéance du jeton.
     expect(serveur('src/modules/auth/auth.module.ts')).toContain("config.get<string>('JWT_EXPIRES_IN', '8h')");
-    expect(deplie).toContain('il se ferme avec le navigateur, et la session prend fin au plus tard huit heures après la connexion');
+    // La durée vient de JWT_EXPIRES_IN, que la production reçoit par un secret
+    // (`API_JWT_EXPIRES_IN`) · huit heures n'est que la valeur PAR DÉFAUT, et
+    // la page le dit (relecture de la ligne pages-legales, mineur 12).
+    expect(serveur('.github/workflows/deploy-cloud-run.yml')).toContain('JWT_EXPIRES_IN: ${{ secrets.API_JWT_EXPIRES_IN }}');
+    expect(deplie).toContain(
+      'il se ferme avec le navigateur, et la session prend fin au plus tard au terme de la durée de session du service, huit heures par défaut, après la connexion',
+    );
+  });
+
+  it('dit que le stockage local n’est transmis à aucun tiers, pas qu’il ne quitte jamais l’appareil (relecture, mineur 8)', () => {
+    // Le jeton qui protège les envois part au serveur d'OmegaX à chaque
+    // écriture (en-tête X-CSRF-Token) · « rien ne quitte l'appareil » était faux.
+    expect(readFileSync(join(__dirname, '..', 'lib', 'api.ts'), 'utf8')).toContain('X-CSRF-Token');
+    expect(deplie).toContain('Rien de cela n’est transmis à un tiers ;');
   });
 
   it('dit « chiffrés en transit », et le http du réseau local sur site (D4-A3, C7, D1)', () => {
@@ -168,5 +181,51 @@ describe('la politique dit la télémétrie telle qu’elle est (2026-10-07)', (
     expect(deplie).toContain('Aucune erreur technique ni aucune page vue ne quitte cette installation');
     expect(deplie).toContain('Il mesure la fréquentation de son interface de façon anonyme');
     expect(deplie).toContain('un identifiant tiré au hasard, sans lien avec votre compte ni avec votre dossier');
+  });
+});
+
+describe('la politique complétée le 15 octobre 2026 (ligne pages-legales)', () => {
+  it('dit la règle de la console telle que session-longue.ts la tient · huit heures après la connexion complète', () => {
+    expect(serveur('src/modules/auth/session-longue.ts')).toContain('export const DELAI_CONSOLE_DEPUIS_AUTHENTIFICATION_S = 8 * 3600;');
+    expect(deplie).toContain('La console de l’éditeur redemande le mot de passe et le code huit heures après la dernière connexion complète.');
+  });
+
+  it('dit ce que le navigateur garde, au nombre de dossiers près', () => {
+    expect(readFileSync(join(__dirname, '..', 'lib', 'dossiersRecents.ts'), 'utf8')).toContain('const MAXIMUM = 5;');
+    expect(deplie).toContain('la liste des cinq dossiers ouverts le plus récemment (nom du dossier, adresse de connexion, date)');
+  });
+
+  it('dit la PRATIQUE de VMG Consulting et nomme chacun de ses accès techniques que les workflows ouvrent vraiment, et l’article 37', () => {
+    // Relecture « échecs silencieux » de la ligne pages-legales, B1 · la page
+    // disait que VMG « n'accède pas » aux données, quand la sauvegarde de
+    // chaque nuit lit toute la base et la restaure pour contrôle, et qu'une
+    // requête de production la lit aussi. Une impossibilité technique
+    // affirmée à tort est opposable · la page dit ce que VMG fait, et chaque
+    // accès que le dépôt ouvre est nommé à côté de son workflow.
+    expect(deplie).toContain('VMG Consulting ne consulte pas le contenu de vos dossiers.');
+    const sauvegarde = serveur('.github/workflows/sauvegarde-base.yml');
+    expect(sauvegarde).toContain('pg_dump');
+    expect(sauvegarde).toContain('pg_restore');
+    expect(deplie).toContain('Ses accès techniques à la base se limitent à la sauvegarde chiffrée de chaque nuit, dont elle détient la clé, à la restauration de contrôle automatique');
+    expect(serveur('.github/workflows/requetes-production.yml')).toContain('docs/requetes-production-paquet-1.md');
+    expect(deplie).toContain('aux requêtes de maintenance, qui ne rendent que des identifiants et des nombres');
+    expect(deplie).toContain('sauf réquisition judiciaire (Code du numérique, article 37)');
+  });
+
+  it('renvoie au contrat pour le traitement pour compte (article 229), et la modification suit l’article 34', () => {
+    // Par LienPageLegale · dans la fenêtre, il ouvre la fenêtre du contrat sans
+    // quitter l'espace de travail (second tour, M1).
+    expect(deplie).toContain('<LienPageLegale chemin="/contrat-de-licence">contrat de licence</LienPageLegale>');
+    expect(deplie).toContain('comme le veut l’article 229 du Code du numérique');
+    expect(deplie).toContain('l’article 34 du Code du numérique');
+    // La promesse d'un signal dans l'application, qu'aucun code ne tenait, est retirée.
+    expect(deplie).not.toContain('vous sera signalée dans l’application');
+  });
+
+  it('se lit aussi dans une fenêtre, sans son titre de page', () => {
+    expect(page).toContain('export function ConfidentialiteFenetre()');
+    const fenetre = page.slice(page.indexOf('export function ConfidentialiteFenetre()'), page.indexOf('export function ContenuConfidentialite()'));
+    expect(fenetre).not.toContain('<h1');
+    expect(fenetre).toContain('<ContenuConfidentialite />');
   });
 });

@@ -42,16 +42,19 @@ const LIGNES = [
   ligne('l3', 'c6', 50, 0, 'BROUILLARD'),
 ];
 
-async function exporter() {
+async function exporter(comptees = LIGNES.length) {
   const prisma = {
     ligneEcriture: {
-      count: jest.fn().mockResolvedValue(LIGNES.length),
+      count: jest.fn().mockResolvedValue(comptees),
       groupBy: jest.fn().mockResolvedValue([
         { compteId: 'c6', _sum: { debit: 150, credit: 0 } },
         { compteId: 'c4', _sum: { debit: 0, credit: 150 } },
       ]),
+      // Comme Prisma · un curseur dont la ligne n'existe plus ne rend rien.
       findMany: jest.fn(async ({ take, cursor, skip }: any) => {
-        const depart = cursor ? LIGNES.findIndex((l) => l.id === cursor.id) + (skip ?? 0) : 0;
+        const rang = cursor ? LIGNES.findIndex((l) => l.id === cursor.id) : -1;
+        if (cursor && rang < 0) return [];
+        const depart = cursor ? rang + (skip ?? 0) : 0;
         return LIGNES.slice(depart, depart + take);
       }),
     },
@@ -110,6 +113,17 @@ describe('F99 · le grand livre complet porte son sommaire et le statut de chaqu
       ['60410000', 'Achats', 150, 0, 150],
       [undefined, 'TOTAUX', 150, 150, 0],
     ]);
+  });
+});
+
+describe('relecture « échecs silencieux » de sage-l7, M6 · le grand livre lu se confronte à son décompte', () => {
+  it('des lignes lues en moins que comptées au départ · le livre est REFUSÉ, jamais remis amputé', async () => {
+    // Le curseur de Prisma posé sur une ligne retirée pendant la production
+    // rend une tranche vide · le livre s'arrêtait là, sommaire et totaux
+    // bouclant sur ce qu'il portait.
+    await expect(exporter(LIGNES.length + 600)).rejects.toThrow(
+      /Grand livre complet : 4 lignes lues sur 604 comptées au départ · .*n'est pas remis amputé/,
+    );
   });
 });
 

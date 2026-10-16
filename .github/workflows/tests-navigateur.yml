@@ -24,7 +24,12 @@ concurrency:
 jobs:
   navigateur:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # SOIXANTE MINUTES (2026-10-15) · Chromium puis WebKit, un seul travailleur
+    # (playwright.config.ts), et la suite grandit avec chaque ligne · le
+    # passage du 12d79f5 a pris 26 minutes, celui de la ligne sage-l7 a été
+    # COUPÉ à 30 avant la fin, sans qu'aucun test ait échoué. Une coupure ne
+    # dit rien des tests qui n'ont pas tourné.
+    timeout-minutes: 60
 
     # LES VERSIONS DE LA PRODUCTION (audit final F194) · PostgreSQL 18 comme
     # Neon, et Node 22 comme le Dockerfile ; ce job éprouvait 16 et 20. La

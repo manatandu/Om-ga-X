@@ -47,13 +47,84 @@ export async function lireParLots<T extends { id: string }>(
   }
 }
 
-/** Les arguments Prisma d'une tranche · ordre par identifiant, curseur exclu. */
+/**
+ * Les arguments Prisma d'une tranche · ordre par identifiant, curseur exclu.
+ *
+ * LE CURSEUR DE PRISMA RELIT LA LIGNE-CURSEUR EN BASE · supprimée pendant le
+ * parcours, la tranche suivante revient VIDE et la boucle s'arrête comme sur
+ * la dernière tranche. Pour une lecture de travail qui se relance, c'est un
+ * écran incomplet ; pour un LIVRE (journal, grand livre, export remis), c'est
+ * un document amputé en silence (CLAUDE.md § 8 bis) · ceux-là paginent par la
+ * CLÉ (`idApres`, `apresLaCle`), jamais par ce curseur.
+ */
 export function pageApres(curseur: string | undefined, taille: number) {
   return {
     orderBy: { id: 'asc' as const },
     take: taille,
     ...(curseur ? { cursor: { id: curseur }, skip: 1 } : {}),
   };
+}
+
+/**
+ * PAGINER PAR LA CLÉ (relecture « échecs silencieux » de la ligne sage-l7,
+ * M6) · la tranche suivante part des VALEURS de la dernière ligne rendue, que
+ * le parcours tient en main, et non d'une ligne qu'il faudrait relire en base.
+ * Un brouillard retiré, une entrée de registre remplacée pendant le parcours
+ * n'arrêtent plus rien · ce qui reste à lire est lu.
+ *
+ * `idApres` sert l'ordre par identifiant seul ; `apresLaCle` un ordre
+ * croissant sur plusieurs champs du modèle lu, l'identifiant en DERNIER (il
+ * rend l'ordre total). Les deux se posent DANS le `where` (sous un `AND`),
+ * jamais à côté.
+ */
+export function idApres(curseur: string | undefined): { id?: { gt: string } } {
+  return curseur ? { id: { gt: curseur } } : {};
+}
+
+/**
+ * Un champ de l'ordre de tri, avec la valeur qu'il a sur la dernière ligne
+ * rendue · `C`, les champs du filtre du modèle lu (relecture TypeScript,
+ * mineur 7) · un champ mal orthographié, ou d'un autre modèle, ne compile
+ * plus, là où Prisma l'aurait refusé à la première tranche seulement.
+ */
+export interface CleDePage<C extends string = string> {
+  champ: C;
+  valeur: string | number | Date | null;
+  /**
+   * Le champ admet le nul · PostgreSQL range les nuls EN DERNIER dans un ordre
+   * croissant (Prisma ne pose aucune clause `NULLS`) · après une valeur
+   * viennent les valeurs plus grandes PUIS les nuls ; après un nul, à ce rang,
+   * plus rien.
+   */
+  nullable?: boolean;
+}
+
+/**
+ * « Strictement après la dernière ligne rendue » pour un ordre CROISSANT sur
+ * `cles` · une branche par champ, égalité sur ceux qui le précèdent. La
+ * dernière clé doit être l'identifiant (jamais nul), sans quoi deux lignes de
+ * même clé se perdraient entre deux tranches.
+ */
+export function apresLaCle<W extends { id?: unknown } = Record<string, unknown>>(
+  // L'identifiant en DERNIER, exigé par le type comme à l'exécution.
+  cles: readonly [...CleDePage<Extract<keyof NoInfer<W>, string>>[], CleDePage<'id'>],
+): { OR: W[] } {
+  if (cles.length === 0 || cles[cles.length - 1].champ !== 'id') {
+    throw new Error("apresLaCle · l'ordre doit finir par l'identifiant, qui le rend total.");
+  }
+  const liste = cles as readonly CleDePage[];
+  const branches: W[] = [];
+  for (let i = 0; i < liste.length; i++) {
+    const c = liste[i];
+    if (c.valeur === null) continue;
+    const plusGrand = c.nullable
+      ? { OR: [{ [c.champ]: { gt: c.valeur } }, { [c.champ]: null }] }
+      : { [c.champ]: { gt: c.valeur } };
+    // Un filtre bâti sur des champs vérifiés par le type de `cles` · la seule
+    // conversion, ici, du littéral construit vers le filtre du modèle.
+    branches.push({ AND: [...liste.slice(0, i).map((p) => ({ [p.champ]: p.valeur })), plusGrand] } as unknown as W);
+  }
+  return { OR: branches };
 }
 
 /**

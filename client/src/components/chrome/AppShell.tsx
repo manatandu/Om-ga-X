@@ -11,6 +11,7 @@ import { MenuBar, type MenuDef } from './MenuBar';
 import { CalculetteChrome, ClocheChrome, NavigationChrome } from './OutilsChrome';
 import { StatusBar } from './StatusBar';
 import { BandeauDemonstration } from './BandeauDemonstration';
+import { BandeauConditions } from './BandeauConditions';
 import { BarreFenetres } from './BarreFenetres';
 import { Fenetre } from './Fenetre';
 import { AccueilPage } from '../../pages/AccueilPage';
@@ -176,6 +177,11 @@ export function AppShell() {
         ...(estAdmin
           ? [{ label: 'Restituer le dossier complet…', chemin: '/restitution', onClick: () => navigate('/restitution') }]
           : []),
+        // Ligne sage-l7, fonction 99 · Sage range l'export au menu Fichier, à
+        // côté de l'import. Ouvert à tous les rôles comme ses lectures · la
+        // fenêtre ne propose de produire un export qu'au comptable, comme le
+        // serveur (`@ReserveAuComptable`).
+        { label: 'Exporter les modifications…', chemin: '/exports-ecritures', separateurAvant: !estAdmin, onClick: () => navigate('/exports-ecritures') },
         // LA FILE DES COURRIELS EST UN OUTIL DU DOSSIER, PAS UN ÉTAT.
         //
         // Elle ne se range pas au menu « État » : rien n'y est édité, aucun
@@ -193,14 +199,18 @@ export function AppShell() {
         // Reste « Fichier », qui porte le dossier et ses accès · les
         // autorisations, l'import, l'impression. La file y trouve sa famille
         // immédiate : ce qui ENTRE dans le dossier (Importer) et ce qui en
-        // SORT (Courriers sortants). D'où le trait de séparation seulement
-        // quand l'import est absent, faute de quoi l'entrée se collerait à
-        // « Ouvrir un autre dossier ».
+        // SORT (Exporter les modifications, Courriers sortants). Le trait du
+        // groupe, quand l'import est absent, est porté par « Exporter les
+        // modifications… », qui précède · sans lui le groupe se collerait à
+        // « Ouvrir un autre dossier ». La file n'en porte AUCUN (relecture
+        // des écrans de sage-l7, second tour, 13) · elle en portait un
+        // second, et le non-administrateur voyait deux traits pour un seul
+        // groupe, l'export isolé entre eux.
         //
         // Ouverte à TOUS les rôles, comme la route de lecture du serveur : le
         // comptable en lecture seule qui voit sa relance « gardée » doit
         // pouvoir en lire la raison.
-        { label: 'Courriers sortants', separateurAvant: !estAdmin, chemin: '/courrier', onClick: () => navigate('/courrier') },
+        { label: 'Courriers sortants', chemin: '/courrier', separateurAvant: false, onClick: () => navigate('/courrier') },
         // Console de l'opérateur de la plateforme (le cabinet exploitant) ·
         // invisible pour tout utilisateur ordinaire, et de toute façon
         // inaccessible : le serveur relit le drapeau en base à chaque requête.
@@ -213,6 +223,10 @@ export function AppShell() {
         // s'imprime est exactement ce qui est à l'écran · aucun second moteur
         // de rendu, donc aucune divergence possible entre les deux.
         { label: 'Imprimer la fenêtre…', separateurAvant: true, onClick: () => window.print() },
+        // Ligne sage-l7, fonction 59 · Sage range l'impression différée au
+        // menu Fichier, à côté de l'impression · ouverte à tous les rôles qui
+        // exportent les livres, comme ses routes.
+        { label: 'Impressions différées', chemin: '/impressions-differees', onClick: () => navigate('/impressions-differees') },
         // Les réglages de SON PROPRE compte (mot de passe, double
         // authentification, adresse, sessions) · SANS garde de rôle, comme
         // leurs routes. Ils ne vivaient que dans la fenêtre des utilisateurs,
@@ -244,6 +258,10 @@ export function AppShell() {
             { label: 'Modèles de saisie', chemin: '/modeles-saisie', onClick: () => navigate('/modeles-saisie') },
             // Ligne sage-l1, fonction 19 · Sage, séquences de saisie (P_SEQUENCE).
             { label: 'Séquences de saisie', chemin: '/sequences-saisie', onClick: () => navigate('/sequences-saisie') },
+            // Ligne sage-l2, fonction 1 · Sage, modes de règlement (P_REGLEMENT).
+            { label: 'Modes de règlement', chemin: '/modes-reglement', onClick: () => navigate('/modes-reglement') },
+            // Ligne sage-l2, fonction 27 · Sage, modèles d'impression du tiers (F_COMPTETMODELE).
+            { label: "Modèles d'impression", chemin: '/modeles-impression', onClick: () => navigate('/modeles-impression') },
           ],
         },
         {
@@ -613,8 +631,18 @@ export function AppShell() {
       ],
     },
     {
+      // Sage 100 i7 · « Le nom de ce menu est représenté sur la barre des menus
+      // par un point d'interrogation (?). Il permet d'obtenir de l'aide et des
+      // informations sur le programme » (Rubriques d'aide, Consulter le
+      // manuel, Sage sur le Web, À propos). Ici · les questions fréquentes, le
+      // contrat de licence et la politique de confidentialité, puis À propos.
       titre: '?',
-      items: [{ label: "À propos d’OmegaX", onClick: () => setAProposOuvert(true) }],
+      items: [
+        { label: 'Questions fréquentes', chemin: '/aide/questions-frequentes', onClick: () => navigate('/aide/questions-frequentes') },
+        { label: 'Contrat de licence', chemin: '/aide/contrat-de-licence', onClick: () => navigate('/aide/contrat-de-licence') },
+        { label: 'Politique de confidentialité', chemin: '/aide/confidentialite', onClick: () => navigate('/aide/confidentialite') },
+        { label: "À propos d’OmegaX", separateurAvant: true, onClick: () => setAProposOuvert(true) },
+      ],
     },
   ];
 
@@ -722,6 +750,8 @@ export function AppShell() {
         {/* Sous la barre de menus, au-dessus de l'espace de travail · une
             vitrine se dit fictive sur chaque écran (lib/bandeau-demonstration.ts). */}
         <BandeauDemonstration />
+        {/* Les conditions de licence à accepter, pour l'administrateur seul · un rappel, jamais une porte (BandeauConditions.tsx). */}
+        <BandeauConditions />
       </div>
 
       {/*

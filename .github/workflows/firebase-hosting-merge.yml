@@ -37,11 +37,16 @@ jobs:
       # construction. Secret absent, la variable est vide et rien ne démarre ·
       # jamais un échec. Le paquet sur site ne les reçoit pas (rien ne part
       # d'une installation sur site, client/src/lib/telemetrie.ts).
+      # MISE EN PRODUCTION (ligne pages-legales) · ce job construit PUIS
+      # déploie, et c'est le seul · « À propos » dit la date et le numéro de
+      # cette publication (client/vite.config.ts). Ni l'aperçu d'une demande
+      # de tirage ni le paquet sur site ne posent ce drapeau.
       - run: npm run build
         working-directory: client
         env:
           VITE_SENTRY_DSN: ${{ secrets.CLIENT_SENTRY_DSN }}
           VITE_POSTHOG_CLE: ${{ secrets.CLIENT_POSTHOG_CLE }}
+          OMEGAX_MISE_EN_PRODUCTION: 'oui'
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

@@ -10,6 +10,7 @@ import { ReferentielGuard } from '../../common/guards/referentiel.guard';
 import { ReferentielsAutorises } from '../../common/decorators/referentiels.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ClasseurExporte, ExportService } from './export.service';
+import { TYPE_XLSX, envoyerXlsxEnFlux } from './envoi-en-flux';
 import { ExportFpmService, familleOuRefus } from './export-fpm.service';
 import { lirePaiementsEnInstance } from '../etats-financiers/paiements-en-instance';
 import { EXERCICE_FACULTATIF, EXERCICE_REQUIS } from '../../common/exercice-requis';
@@ -37,47 +38,6 @@ import { JOURNAL_FACULTATIF } from '../../common/journal-du-dossier';
  * dossier. Ce commentaire les rangeait encore parmi les pièces du seul
  * SYCEBNL, d'avant l'ouverture de leurs routes (audit final F223).
  */
-
-const TYPE_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-/**
- * ENVOI EN FLUX · le classeur part au fur et à mesure qu'il s'écrit.
- *
- * Ce que cela coûte, et qu'il faut assumer plutôt que découvrir : une fois le
- * premier octet parti, LES EN-TÊTES SONT ENVOYÉS. On ne peut plus répondre 500
- * ni poser un message d'erreur · le filtre d'exception de Nest n'a plus de
- * réponse à écrire.
- *
- * D'où le choix fait ici : en cas d'échec en cours de route, on DÉTRUIT la
- * réponse. Le client reçoit un téléchargement interrompu, et le fichier à
- * moitié écrit n'est pas une archive ZIP close · Excel le REFUSE au lieu de
- * l'ouvrir. C'est exactement ce qu'on veut d'un livre obligatoire : un
- * classeur tronqué qui s'ouvre est bien pire qu'un téléchargement qui échoue,
- * parce que personne ne voit ce qui manque.
- *
- * Tant que `ouvrir` n'a pas été appelé, rien n'est parti et l'erreur remonte
- * normalement · c'est là que vivent les refus de volume et les 404 d'exercice.
- */
-async function envoyerXlsxEnFlux(
-  res: Response,
-  ecrire: (ouvrir: (nomFichier: string) => Response) => Promise<unknown>,
-): Promise<void> {
-  let commence = false;
-  try {
-    await ecrire((nomFichier) => {
-      commence = true;
-      res.set({
-        'Content-Type': TYPE_XLSX,
-        'Content-Disposition': `attachment; filename="${nomFichier}"`,
-        'Access-Control-Expose-Headers': 'Content-Disposition',
-      });
-      return res;
-    });
-  } catch (erreur) {
-    if (!commence) throw erreur;
-    res.destroy(erreur instanceof Error ? erreur : undefined);
-  }
-}
 
 /**
  * Le nom de fichier est décidé par le service (il connaît l'exercice et le

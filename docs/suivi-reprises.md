@@ -34,6 +34,33 @@ de produit.
   reste à l'administrateur, qui délègue en ouvrant l'option. Réserver le
   geste au comptable (`@ReserveAuComptable()`), ou à l'administrateur seul ?
 
+## Questions à Manasse · tiers et règlements, ligne sage-l2
+
+- #1 · MONNAIE ÉLECTRONIQUE, PRÉLÈVEMENT ET EFFET DE COMMERCE face à
+  l'art. 59 bis de l'O.-L. n° 10/001 (créé par l'O.-L. n° 13/007 du
+  23 février 2013, compilation DGI au 19/07/2026) · « Toute transaction
+  entre assujettis à la taxe sur la valeur ajoutée d'un montant d'au moins
+  1.000.000,00 de Francs congolais doit être payée par chèque, par virement
+  ou par carte bancaire » ; l'art. 74 bis sanctionne le manquement par « la
+  perte du droit à déduction de la taxe sur la valeur ajoutée supportée ».
+  Lu · la liste du texte nomme ces trois moyens et eux seuls ; l'alinéa 2
+  ne délègue au Ministre que le MONTANT, et aucun arrêté d'application lu
+  n'assimile un autre moyen. Le corpus est muet sur les trois autres modes.
+  OmegaX avertit les espèces sans réserve et ces trois modes SOUS RÉSERVE
+  (jamais un refus). Faut-il les tenir pour admis (il suffit d'ajouter leur
+  nature à `NATURES_ADMISES_ART_59_BIS`), ou garder la réserve ?
+
+## Relevés en attente · tiers et règlements, ligne sage-l2
+
+- L'avis de règlement ne part pas par courriel, et aucun avis n'est servi
+  pour un règlement sans ordre de virement (chèque, espèces) · il habille
+  aujourd'hui l'ordre de virement imprimé seulement.
+- Le mode de règlement ne suit pas encore le report à-nouveau au détail ;
+  une ligne en devise ne se découpe pas d'elle-même en échéances (dit à
+  l'écran) ; ni escompte ni écart sur un règlement en devise ou à parts
+  désignées (refus nommés) ; la qualité du tiers n'est pas reprise sur les
+  lettres de relance ; aucun document ne lit encore le lieu de livraison.
+
 ## Relevés en attente · paie, ligne sage-l5 (second tour non bloquant)
 
 - Congé À CHEVAL qui porte des jours de voyage (Code du travail, art. 141,
@@ -236,3 +263,104 @@ conversation, à re-citer dans le plan), Manasse veut le parcours habituel :
   signe et le logotype sont des tracés engendrés (§ 9 bis). Usage possible plus
   tard, sur décision de Manasse : site vitrine, pièces émises par VMG (factures
   d'abonnement), console de l'éditeur.
+
+## Questions à Manasse · éditions et exports, ligne sage-l7
+
+- Sélections enregistrées · rangées au DOSSIER (décision L7-5, choix
+  d'organisation d'OmegaX qu'aucun texte ne régit) · à revoir s'il préfère
+  des sélections propres à chaque utilisateur.
+- Impression différée · Cloud Run n'alloue le processeur que pendant les
+  requêtes ; la production se fait donc dans une requête que la fenêtre
+  relance. Une production sans fenêtre ouverte demanderait un processeur
+  alloué en permanence (`--no-cpu-throttling`) ou une tâche planifiée ·
+  décision d'exploitation, non prise.
+- Les fichiers des exports et des impressions différées sont rangés en base
+  (Neon) · le volume reste à surveiller.
+
+## Relevés en attente · éditions et exports, ligne sage-l7
+
+- Relectures sans jeton (export des modifications, impressions différées) ·
+  deux relectures croisées peuvent poser la plus ancienne en dernier, la
+  suivante remet la liste juste.
+- L'échec d'un téléchargement s'affiche en tête de fenêtre, pas sur sa
+  ligne (il nomme le numéro).
+- La mise au point retombe sur la page quand le contrôle qui la tenait
+  disparaît (sélection enregistrée, confirmation refermée).
+- L'édition du plan comptable et du plan des tiers se recalcule à chaque
+  rendu (un `useMemo` à poser).
+
+## Questions à Manasse · pages légales, ligne pages-legales (2026-10-15)
+
+L'acceptation en ligne du contrat reste FERMÉE tant que les mentions
+obligatoires manquent (art. 54, al. 2) · c'est voulu. Ce que nul texte ne
+fixe est un choix commercial du cabinet ; ce qui relève d'un juriste est dit.
+
+1. Identité de l'éditeur (art. 52) · siège, courriel, téléphone, RCCM, forme,
+   identification nationale, numéro d'impôt, capital.
+2. Réclamations (art. 53, 13° et 14° ; art. 29, 5°) · adresse, modalités, et
+   si le délai de 72 heures de l'art. 65, al. 3 s'applique à OmegaX.
+3. Plafond de responsabilité (Odoo · 50 % des sommes des douze derniers mois ;
+   Basecamp · exclusion presque totale), à confronter à l'art. 51 par un
+   juriste.
+4. Juridiction compétente (Odoo · droit belge, tribunaux de Nivelles).
+5. Résiliation, préavis, reconduction (Odoo · trente jours ; Basecamp ·
+   résiliation à tout moment, sans prorata).
+6. Sort des données après la fin du contrat (Basecamp · trente puis soixante
+   jours ; Odoo · restitution ou suppression).
+7. Raisons de modification que le contrat admet (art. 34, 1°).
+8. Moyen de publication des interruptions prévues (art. 29, 4°).
+9. Assistance · canal et horaires.
+10. Publication des prix (art. 31) et politique de changement de prix au
+    regard de l'art. 34.
+11. Dépôt de garantie (art. 30, al. 2) · aucun, ou lequel.
+12. Droit de rétractation (art. 61) · le client cabinet est-il un
+    professionnel ; qualification par un juriste.
+13. Garanties légales (art. 53, 20°) selon la nature du contrat.
+14. Titularité des droits sur OmegaX · œuvre de salariés (ordonnance-loi
+    n° 86-033, art. 8, al. 2), œuvre collective (art. 10), cession écrite
+    (art. 34) ; et si la licence d'utilisation est une « cession » au sens
+    des art. 33 à 36 (art. 36, 4°, la part de 10 %).
+15. Art. 229 « instruction documentée » face à l'autorisation de l'art. 201 ·
+    à faire qualifier par un juriste.
+16. Les factures d'abonnement de VMG viennent d'un système de facturation non
+    homologué (décret n° 23/10, art. 22) · effet sur la facture de l'art. 56,
+    al. 3.
+17. Le programme d'installation sur site doit-il faire accepter le contrat
+    avant l'installation.
+18. Date de déploiement du serveur dans « À propos » ; menu « ? » du
+    gestionnaire de paie (il n'en a pas aujourd'hui, les pages restent
+    publiques depuis l'écran d'ouverture).
+19. Licence perpétuelle hébergée (PERPETUEL_SAAS) · ses conditions et son
+    prix ; le contrat ne connaît que l'abonnement et le sur site, et
+    l'acceptation en ligne de ces dossiers reste fermée.
+20. Modalités de paiement (art. 53, 6°) · les moyens de paiement acceptés.
+21. Droit de rétractation (art. 53, 16°) · son existence ou son absence pour
+    le présent contrat, et ses conditions d'exercice (voir le point 12).
+22. Garanties légales de conformité, des vices cachés et d'éviction (art. 53,
+    20°) · leur énoncé (voir le point 13).
+23. Dossiers d'un paquet Cabinet et anciens dossiers sans abonnement · le
+    rattachement d'un abonnement depuis la console, sans quoi leur
+    acceptation reste fermée.
+24. Compléter les mentions publiera la version 2 · fixer sa date de
+    communication et d'entrée en vigueur (art. 34), et faire coder avant elle
+    la bascule de la version 1 à la 2 (acceptation de la 1 maintenue jusqu'à
+    la prise d'effet de la 2), que `versions-publiees.spec.ts` exige.
+25. Relevé · l'art. 53, 7° (modalités et délais de fourniture du service)
+    n'est pas dans la garde · à relire avec VMG (accès ouvert à la création du
+    dossier, essai).
+26. Abonnement modifié APRÈS l'acceptation (formule, option, prix) · la
+    commande acceptée reste celle gardée avec l'acte, et rien ne redemande
+    l'acceptation. Lu · art. 55, al. 1er (le client vérifie « les détails
+    de sa commande » avant d'accepter) et al. 2 (accusé de « la commande »).
+    Le texte ne dit pas si un changement de formule par l'opérateur est une
+    commande nouvelle à accepter, ou l'exécution du contrat accepté (art. 34
+    pour une modification à l'initiative de l'éditeur) · à trancher avec un
+    juriste, puis à coder (relire l'empreinte de la commande en vigueur
+    contre celle gardée, et rouvrir l'acceptation au besoin).
+
+## Relevés en attente · pages légales
+
+- Date de déploiement du SERVEUR dans « À propos » · non servie (seule celle
+  de l'interface a une source réelle, le workflow de publication).
+- La bascule d'une version du contrat à la suivante (art. 34) · non servie
+  tant qu'une seule version existe, et `versions-publiees.spec.ts` le tient.

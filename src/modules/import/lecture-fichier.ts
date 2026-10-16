@@ -1,11 +1,18 @@
 import { BadRequestException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import { FEUILLE_SUPPRIMEES } from '../exports/modifications/export-modifications';
 
 /** Un fichier lu : ses en-têtes et ses lignes, valeurs déjà en texte. */
 export interface Tableau {
   colonnes: string[];
   lignes: string[][];
   separateur?: string;
+  /**
+   * Les lignes de données d'une feuille « Supprimées » (l'export des seules
+   * modifications, ligne sage-l7) · lues pour que l'import refuse un envoi qui
+   * retire des pièces, plutôt que de les laisser chez la receveuse (M3).
+   */
+  lignesSupprimees?: number;
 }
 
 /**
@@ -185,7 +192,18 @@ async function lireXlsx(contenu: Buffer): Promise<Tableau> {
 
   const nonVides = toutes.filter((l) => l.some((c) => c !== ''));
   if (nonVides.length === 0) throw new BadRequestException('La feuille est vide.');
-  return { colonnes: nonVides[0], lignes: nonVides.slice(1) };
+  // La feuille des pièces retirées d'un export des modifications · comptée,
+  // jamais lue comme des écritures (relecture M3 de sage-l7).
+  let lignesSupprimees: number | undefined;
+  const supprimees = classeur.getWorksheet(FEUILLE_SUPPRIMEES);
+  if (supprimees && supprimees !== feuille) {
+    let n = 0;
+    supprimees.eachRow((row, rang) => {
+      if (rang > 1 && (row.values as ExcelJS.CellValue[]).slice(1).some((v) => enTexte(v).trim() !== '')) n++;
+    });
+    lignesSupprimees = n;
+  }
+  return { colonnes: nonVides[0], lignes: nonVides.slice(1), ...(lignesSupprimees !== undefined ? { lignesSupprimees } : {}) };
 }
 
 /** Lit un CSV ou un XLSX selon l'extension du nom de fichier. */

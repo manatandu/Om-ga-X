@@ -104,6 +104,9 @@ function corpsModification(e: EcritureEditee) {
         tauxTvaId: o?.tauxTvaId ?? undefined,
         dateEcheance: o?.dateEcheance ?? undefined,
         dateVersement: o?.dateVersement ?? undefined,
+        // Le mode de règlement suit la ligne (ligne sage-l2, fonction 1) · le
+        // PATCH remplace les lignes, et un champ omis serait effacé.
+        modeReglementId: o?.modeReglementId ?? undefined,
         deviseId: o?.deviseId ?? undefined,
         montantDevise: o?.montantDevise ?? undefined,
         coursApplique: o?.coursApplique ?? undefined,

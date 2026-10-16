@@ -202,35 +202,42 @@ export function periodeCouverte(
  * verrou par dossier dans la transaction (deux impressions simultanées ne
  * prennent jamais le même numéro, art. 22, 7°).
  */
-export async function enregistrerImpression(
-  prisma: ClientTransactionnel,
-  p: {
-    tenantId: string;
-    exerciceId: string;
-    journalId: string | null;
-    dateDebut: Date;
-    dateFin: Date;
-    forme: FormeImpressionJournal;
-    nombreEcritures: number;
-    imprimePar: string;
-  },
-) {
-  return transactionJournalisee(prisma, async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`impressions-journal:${p.tenantId}`}))`;
-    const max = await tx.impressionJournal.aggregate({ where: { tenantId: p.tenantId }, _max: { numero: true } });
-    return tx.impressionJournal.create({
-      data: {
-        tenantId: p.tenantId,
-        numero: (max._max.numero ?? 0) + 1,
-        exerciceId: p.exerciceId,
-        journalId: p.journalId,
-        dateDebut: p.dateDebut,
-        dateFin: p.dateFin,
-        forme: p.forme,
-        nombreEcritures: p.nombreEcritures,
-        imprimePar: p.imprimePar,
-      },
-    });
+export interface ImpressionAEnregistrer {
+  tenantId: string;
+  exerciceId: string;
+  journalId: string | null;
+  dateDebut: Date;
+  dateFin: Date;
+  forme: FormeImpressionJournal;
+  nombreEcritures: number;
+  imprimePar: string;
+}
+
+export async function enregistrerImpression(prisma: ClientTransactionnel, p: ImpressionAEnregistrer) {
+  return transactionJournalisee(prisma, (tx) => enregistrerImpressionDans(tx, p));
+}
+
+/**
+ * La même, DANS une transaction déjà ouverte · l'impression différée range
+ * son fichier et l'impression du journal ensemble, ou ni l'un ni l'autre
+ * (relecture « échecs silencieux » de sage-l7, M4 · le journal se marquait
+ * imprimé avant que le fichier soit rangé).
+ */
+export async function enregistrerImpressionDans(tx: Prisma.TransactionClient, p: ImpressionAEnregistrer) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`impressions-journal:${p.tenantId}`}))`;
+  const max = await tx.impressionJournal.aggregate({ where: { tenantId: p.tenantId }, _max: { numero: true } });
+  return tx.impressionJournal.create({
+    data: {
+      tenantId: p.tenantId,
+      numero: (max._max.numero ?? 0) + 1,
+      exerciceId: p.exerciceId,
+      journalId: p.journalId,
+      dateDebut: p.dateDebut,
+      dateFin: p.dateFin,
+      forme: p.forme,
+      nombreEcritures: p.nombreEcritures,
+      imprimePar: p.imprimePar,
+    },
   });
 }
 

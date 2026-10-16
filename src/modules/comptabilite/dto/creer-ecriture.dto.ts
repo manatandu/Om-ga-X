@@ -110,6 +110,13 @@ export class LigneEcritureDto {
   @IsOptional()
   @IsNumber()
   coursApplique?: number;
+
+  // LE MODE DE RÈGLEMENT de la ligne (ligne sage-l2, fonction 1) · celui de
+  // l'échéance attendue ou du paiement fait. Informatif, jugé au dossier par
+  // `controlesDEntree` (un mode d'un autre dossier, ou en sommeil, refusé).
+  @IsOptional()
+  @IsUUID()
+  modeReglementId?: string;
 }
 
 export class CreerEcritureDto {

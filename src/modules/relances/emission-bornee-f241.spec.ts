@@ -123,6 +123,8 @@ function service(lignes: ReturnType<typeof ligne>[], options: { lectureLente?: b
       findMany: jest.fn().mockResolvedValue([NIVEAU, AUTRE_NIVEAU]),
     },
     relance: { findMany: lireRelances, createMany: creerPlusieurs },
+    // Aucun tiers n'a de modèle d'impression (ligne sage-l2, fonction 27) · la lettre part telle que le niveau la compose.
+    tiers: { findMany: jest.fn().mockResolvedValue([]) },
     message: { findMany: lireMessages },
     compte: { findMany: jest.fn().mockResolvedValue([]) },
     // Chaque transaction reçoit SON client, dont le verrou se libère à la fin

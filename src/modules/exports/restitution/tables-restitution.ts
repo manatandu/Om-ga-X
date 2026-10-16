@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { EtatImpressionDifferee, Prisma } from '@prisma/client';
 import { MODELES_CLOISONNES, MODELES_PORTES_PAR_LEUR_PARENT } from '../../../common/cloisonnement/modeles-cloisonnes';
 import { colonnesNonRestituables } from '../../../common/audit/champs-audites';
 
@@ -203,10 +203,31 @@ export function fichierDeLaPieceVirement(id: string, nomFichier: string): string
  * les pièces des virements). Une table qui porte une colonne binaire et qui
  * manquerait ici sortirait sans ses fichiers, et l'archive se dirait complète ·
  * `restitution.spec.ts` confronte cette liste aux colonnes `Bytes` du schéma.
+ *
+ * Le fichier de chaque export des écritures et celui de chaque impression
+ * différée PRÊTE (ligne sage-l7, fonctions 99 et 59, relecture « échecs
+ * silencieux », m7) sortent de même · un export porte les écritures TELLES
+ * QU'ELLES ÉTAIENT à son envoi, et un brouillard modifié ou retiré depuis
+ * n'est plus dans les tables de l'archive sous cette forme. `filtre` borne
+ * la lecture aux lignes qui ont un fichier (une impression échouée, en
+ * attente ou dont le fichier a été retiré n'en a pas) ; `nomParDefaut` nomme
+ * l'entrée d'une ligne sans nom de fichier.
  */
-export const TABLES_DE_PIECES: ReadonlyArray<{ modele: string; dossier: string }> = [
+export const TABLES_DE_PIECES: ReadonlyArray<{
+  modele: string;
+  dossier: string;
+  filtre?: Readonly<Record<string, unknown>>;
+  nomParDefaut?: string;
+}> = [
   { modele: 'DocumentTiers', dossier: 'documents-tiers' },
   { modele: 'PieceVirementFonds', dossier: 'pieces-virements' },
+  { modele: 'ExportEcritures', dossier: 'exports-ecritures' },
+  {
+    modele: 'ImpressionDifferee',
+    dossier: 'impressions-differees',
+    filtre: { etat: EtatImpressionDifferee.PRETE, fichierRetireLe: null },
+    nomParDefaut: 'impression.xlsx',
+  },
   { modele: 'PieceJointeEcriture', dossier: 'pieces-jointes/ecritures' },
   { modele: 'PieceJointeSection', dossier: 'pieces-jointes/sections' },
   { modele: 'PieceJointeImmobilisation', dossier: 'pieces-jointes/immobilisations' },
@@ -220,4 +241,14 @@ export const TABLES_DE_PIECES: ReadonlyArray<{ modele: string; dossier: string }
  */
 export function fichierDeLaPiece(dossier: string, id: string, nomFichier: string): string {
   return `${dossier}/${id}-${nomFichier.replace(/[\\/]/g, '_')}`;
+}
+
+/** L'entrée d'archive du fichier d'un export des écritures (ligne sage-l7, fonction 99). */
+export function fichierDeLExport(id: string, nomFichier: string): string {
+  return fichierDeLaPiece('exports-ecritures', id, nomFichier);
+}
+
+/** L'entrée d'archive du fichier d'une impression différée prête (ligne sage-l7, fonction 59). */
+export function fichierDeLImpression(id: string, nomFichier: string): string {
+  return fichierDeLaPiece('impressions-differees', id, nomFichier);
 }

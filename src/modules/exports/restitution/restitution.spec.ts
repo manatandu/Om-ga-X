@@ -1,7 +1,16 @@
 import { Writable } from 'node:stream';
 import { LOT_PIECES, RestitutionService } from './restitution.service';
 import { Prisma } from '@prisma/client';
-import { TABLES_DE_PIECES, TABLES_RESTITUEES, colonnesDuModele, fichierDeLaPiece, fichierDeLaTable, fichierDuDocument } from './tables-restitution';
+import {
+  TABLES_DE_PIECES,
+  TABLES_RESTITUEES,
+  colonnesDuModele,
+  fichierDeLaPiece,
+  fichierDeLaTable,
+  fichierDuDocument,
+  fichierDeLExport,
+  fichierDeLImpression,
+} from './tables-restitution';
 import { NON_AUDITES_MOTIVES, colonnesNonRestituables } from '../../../common/audit/champs-audites';
 import { analyserCsv } from '../../import/lecture-fichier';
 import { ecrireManifeste } from './manifeste-restitution';
@@ -327,6 +336,17 @@ describe('le manifeste dit ce que l’archive n’est pas', () => {
     expect(deplie).toContain(
       "Les colonnes binaires du schéma n'entrent pas dans le CSV · chaque pièce sort À CÔTÉ, un fichier par pièce, sous son identifiant",
     );
+    // Ligne sage-l7 (relecture m7) · le fichier d'un export des écritures
+    // SORT, il porte les écritures telles qu'elles étaient à leur envoi · la
+    // phrase qui disait que les tables les rendaient était fausse d'un
+    // brouillard modifié ou retiré depuis.
+    expect(deplie).toContain(
+      "Le fichier de chaque export des écritures (`ExportEcritures.contenu`) sort de même dans `exports-ecritures/` · il porte les écritures TELLES QU'ELLES ÉTAIENT à leur envoi",
+    );
+    // Ligne sage-l7, fonction 59 · le fichier d'une impression différée prête aussi.
+    expect(deplie).toContain(
+      "Le fichier de chaque impression différée prête (`ImpressionDifferee.contenu`) sort dans `impressions-differees/`",
+    );
     // La prémisse relue dans le schéma · une colonne binaire de plus ferait
     // mentir la phrase, et sortirait sans ses fichiers si `TABLES_DE_PIECES`
     // ne la nommait pas.
@@ -372,6 +392,32 @@ describe('les documents attachés aux tiers (point 21)', () => {
     await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
     expect(buffer().toString('latin1')).toContain(fichierDuDocument('doc-1', 'statuts.pdf'));
     expect(lus).toEqual([{ id: 'doc-1', tenantId: DOSSIER }]);
+  });
+
+  it('les fichiers des exports des écritures et des impressions prêtes sortent à côté, lus dans le dossier seul (m7)', async () => {
+    const { client } = prismaFactice({
+      ExportEcritures: [{ id: 'exp-1', tenantId: DOSSIER, nomFichier: 'ecritures-export-0001.xlsx' }],
+      ImpressionDifferee: [{ id: 'imp-1', tenantId: DOSSIER, nomFichier: 'journal.xlsx' }],
+    });
+    const lus: unknown[] = [];
+    client.exportEcritures.findFirst = async ({ where }: any) => {
+      lus.push(where);
+      return { contenu: Buffer.from('ENVOI-1') };
+    };
+    client.impressionDifferee.findFirst = async ({ where }: any) => {
+      lus.push(where);
+      return { contenu: Buffer.from('JOURNAL-IMPRIME') };
+    };
+    const service = new RestitutionService(client);
+    const { flux, buffer } = collecteur();
+    await service.produire(DOSSIER, { id: 'u-1', email: 'chef@asbl.cd', adresseIp: null }, flux);
+    const zip = buffer().toString('latin1');
+    expect(zip).toContain(fichierDeLExport('exp-1', 'ecritures-export-0001.xlsx'));
+    expect(zip).toContain(fichierDeLImpression('imp-1', 'journal.xlsx'));
+    expect(lus).toEqual([
+      { id: 'exp-1', tenantId: DOSSIER },
+      { id: 'imp-1', tenantId: DOSSIER },
+    ]);
   });
 
   it('un nom qui porte un séparateur ne crée pas de sous-dossier dans l’archive', () => {

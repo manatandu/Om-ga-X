@@ -198,7 +198,15 @@ fonctions nouvelles que Manasse a demandées expressément (§ 6), une demande
 expresse valant levée du gel pour elle seule ; puis les 41 ABSENCES DE SAGE
 qu'il a cochées « À faire » le 2026-10-14 (« Execute ce que j'ai coché »,
 même plan, § 9), reproduites chacune à sa place par
-`docs/comparaison-sage/reproduction/`, les 61 autres gardées pour plus tard.
+`docs/comparaison-sage/reproduction/`, les 61 autres gardées pour plus tard ;
+puis, le 2026-10-15, la charte « Encre de cachet » et le redimensionnement
+des fenêtres par tous leurs bords, demandés expressément (« Oui vas-y, fais
+aussi en sorte de régler les tailles de fenêtres », « Tous les bords ») ;
+et le même jour les pages légales (contrat de licence, foire aux questions,
+politique de confidentialité, version, mise en production et langue dans
+« À propos »), demandées expressément (« Tu pourras mettre aussi un forum
+aux questions, politique de confidentialité, termes du contrat de licence,
+indiquer la version, mise en production et langue »).
 Rien d'autre n'entre.
 
 Les workflows de `.github/workflows/` sont indépendants : aucun n'attend
@@ -2908,6 +2916,49 @@ formules de CONTROLE BALANCE et de CONTROLES lisent les rangs écrits, jamais
 une position, et `relecture-balances-liasse.ts` les rejoue dans le classeur
 produit. Les autres feuilles gardent la charte ETAFI.
 
+**Ligne sage-l7 · éditions et exports (2026-10-15).** EXPORT DES SEULES
+MODIFICATIONS (fonction 99, Fichier > Exporter les modifications,
+`exports/modifications/`) · numéro continu par dossier, date, auteur et
+empreinte SHA-256 du fichier, gardé en base et retéléchargeable (AUDCIF
+art. 22, 7°) ; un REGISTRE par écriture partie (`EcritureExportee`, SANS clé
+étrangère · une écriture du brouillard retirée y laisse sa trace) ; part ce
+qui n'est jamais parti, le brouillard modifié depuis son envoi (« Modifiée ·
+remplace l'envoi n° k »), et les retraits, nommés sur la feuille
+« Supprimées » ; « modifiée » se lit sur l'origine, le contenu et
+l'imputation (art. 22, 1°), jamais le lettrage ni le pointage, et une
+écriture validée ne change plus (art. 22, 2°) · partie validée, elle ne
+repart pas, sa correction en négatif part comme une écriture nouvelle
+(décisions L7-3, L7-4). Ni simulation ni à-nouveau provisoire. Au-delà du
+plafond, par lots dans l'ordre des dates, ce qui attend dit ; le complet
+refusé plutôt qu'amputé ; un export vide ne prend aucun numéro ; deux
+exports concurrents, 409. Feuille « Écritures » relue par l'import des
+écritures (en-tête en ligne 1, une pièce par écriture, identifiant et
+mouvement en colonnes · la porte de la fonction 102). JAMAIS `exports` COMME
+NOM DE VARIABLE dans un fichier qui exporte · compilé en CommonJS, il masque
+celui du module (500 au premier serveur réel, vert sous les tests).
+IMPRESSION DIFFÉRÉE (fonction 59, Fichier > Impressions différées,
+`exports/impression-differee/`) · journal, grand livre ou balance demandés
+maintenant, numérotés et datés, produits par le moteur de leur export et sous
+son plafond (`produireEnMemoire`, tout ou rien), retrouvés plus tard ; un
+refus ou une panne rend la demande ÉCHOUÉE, motif dit, jamais un fichier
+partiel ; une à la fois par dossier ; produite DANS une requête (Cloud Run
+n'alloue le processeur que pendant les requêtes), la fenêtre relançant
+`traiter` ; au-delà de trente minutes une production tombée est déclarée
+interrompue, et un processus qui finit après ne range rien (relu
+`FOR UPDATE`) ; le journal entier produit s'enregistre comme imprimé au nom
+du demandeur ; le fichier se retire, la demande reste (décision L7-2).
+SÉLECTIONS ENREGISTRÉES (`exports/selections/`) · au DOSSIER, jamais au
+poste (décision L7-5), critères relus clé par clé, jamais l'exercice, un
+journal retiré dit au rappel ; filtres du journal et formulaire des
+impressions différées. MODÈLES D'ÉDITION ET SAUTS (`exports/modeles-edition/`)
+· les ÉDITIONS DE TRAVAIL seules (plan comptable, plan des tiers, plan
+analytique) · jamais un état financier (AUDCIF Titre IX ch. 2, contexture à
+l'identique) ni un livre obligatoire (art. 20, al. 1, sans blanc ; art. 22,
+1°) (décision L7-1) ; les colonnes qui identifient la ligne ne se retirent
+pas, les autres se taisent dans l'ordre de l'édition ; le saut sépare les
+groupes (classe, type de tiers, rubrique) par une ligne blanche ou une page,
+l'en-tête repris ; catalogue tenu en MIROIR serveur et écran.
+
 **Comparabilité de la colonne N-1.** « Lorsque l'un des postes chiffrés d'un état
 financier N'EST PAS COMPARABLE à celui de l'exercice précédent, c'est CE DERNIER
 QUI DOIT ÊTRE ADAPTÉ. L'absence de comparabilité ou l'adaptation des chiffres EST
@@ -3162,6 +3213,47 @@ l'art. 154, et c'est DIT. L'imputation se déclare AU FOURNISSEUR « lorsqu'il p
 (relecture du 2026-10-07, M6) · l'ordre de virement l'IMPRIME (factures et parts,
 `LigneOrdreVirement.imputationDeclaree`), sinon la référence de la pièce qui la lui a
 notifiée est exigée (`pieceImputation`, recopiée à la référence de la pièce).
+
+**Ligne sage-l2 · tiers et règlements (2026-10-15).** MODES DE RÈGLEMENT
+(`reglements/modes-reglement.ts`, trente au plus, P_REGLEMENT, intitulé
+unique sans égard à la casse) · sur la fiche du tiers, le modèle de
+règlement et ses échéances, la ligne de saisie et le règlement, où il ne se
+pose que sur le tiers et la trésorerie, jamais sur l'escompte ni l'écart ;
+un paiement d'au moins 1 000 000 FC à un fournisseur hors chèque, virement
+ou carte est AVERTI (O.-L. n° 10/001, art. 59 bis et 74 bis, dès le 27 mai
+2013), jamais refusé · la transaction est la ligne de facture seule, la
+pièce à plusieurs lignes SOUS CONDITION, l'à-nouveau sans facture retrouvée
+NON JUGÉ, les modes que le texte ne nomme pas SOUS RÉSERVE (question au
+suivi) ; un mode mis en sommeil reste admis sur le brouillard qui le
+portait. L'ÉCHÉANCIER DU MODÈLE découpe la ligne de facture en saisie
+(fenêtre des échéances, une par ligne en file, ouverte sur demande, ou
+d'office sur la fiche, par la même règle, échéances nulles écartées) ; la
+ligne retient la date de son échéancier, une pièce sans date le dit, une
+date changée nomme les lignes à revoir ; la pièce ne part pas avant lui, et
+sa réponse ne vaut que pour une ligne encore là, intacte. ESCOMPTE ET ÉCART
+(`reglements/ecart-escompte.ts`) · obtenu D 40 / C 773, accordé D 673 /
+C 41 (au SYCEBNL, le seul 412), chacun avec son compte ; l'écart se tranche
+par le Code civil, Livre III · remise d'un reste client (art. 132) ou
+renonciation au trop-payé fournisseur (art. 133) en charge, 6588 au
+SYSCOHADA, 658 au SYCEBNL, sous `Tenant.seuilEcartReglement` SANS défaut,
+borné à la colonne ; trop-perçu d'un client (art. 252) et fournisseur payé
+en moins (art. 142) REFUSÉS ; aucune ligne de taxe (art. 29, point 1 ;
+décret art. 79), dit. QUALITÉ du tiers, libellé qui ne décide rien ; LIEUX
+DE LIVRAISON d'un client (`LieuLivraison`, un principal, jugé sous un verrou
+du client, que la fusion prend aussi pour les deux clients, un renommé déjà
+pris recevant un rang) ; DUPLICATION vers le formulaire de création, sans
+Numéro Impôt, RIB, documents, lieux, cellule, autorisation aux débits ni
+exclusion des relances, nommés. MODÈLES D'IMPRESSION
+(`tiers/modeles-impression.ts`, F_COMPTETMODELE) · extrait, avis de
+règlement, rappel, choisis sur la fiche dans la zone de leur nature ; le
+modèle HABILLE le document ({document} exigé une fois, tout ce qui est entre
+accolades sans être un jeton admis refusé), jamais il ne le remplace ni n'en
+retire la signature ; il habille relances, relevé et l'avis de règlement
+d'un ordre IMPRIMÉ, qui transmet l'imputation déclarée en payant
+(art. 151). Un mode, un modèle ou un journal retiré entre le contrôle et
+l'écriture rend un 409 qui le nomme (`tiers/reference-retiree.ts`), jamais
+une erreur 500. L'ASSISTANT DE RÈGLEMENT envoie le corps du formulaire, un
+tiers en francs, sans règle propre.
 
 **Virement de fonds (2026-10-09, demande de Manasse).** Traitement > Tiers et
 trésorerie (`virements-fonds/`) · banque ou caisse vers une autre, chacune dans
@@ -3647,12 +3739,15 @@ Préférence du poste (`lib/assistant-creation.ts`) · la création d'un compte
 et d'un code journal par étapes, les mêmes champs et la même route ; « Créer
 et continuer » garde la boîte ouverte pour le suivant.
 
-**Séquences de saisie (ligne sage-l1, fonction 19, 2026-10-14).** Sage,
-P_SEQUENCE · dix séquences nommées par dossier (`SequenceSaisie`, 35
-caractères), chaque modèle de saisie dans une séquence ou aucune (RESTRICT),
-la barre « Appeler un modèle » de la saisie les propose par séquence ; une
-séquence qui range un modèle ne se retire pas. Les rubriques de paie, que
-Sage range aussi par séquence, ne le sont pas encore.
+**Séquences de saisie (ligne sage-l1, fonction 19, 2026-10-14).** Chez Sage,
+la table P_SEQUENCE est celle de la PAIE · elle range les rubriques du
+bulletin. OmegaX la TRANSPOSE aux modèles de saisie (lecture retenue,
+`modeles-saisie/sequences-saisie.ts`) · dix séquences nommées par dossier
+(`SequenceSaisie`, 35 caractères), chaque modèle de saisie dans une séquence
+ou aucune (RESTRICT), la barre « Appeler un modèle » de la saisie les propose
+par séquence ; une séquence qui range un modèle ne se retire pas. Les
+rubriques de paie, que Sage range par séquence, ne le sont pas encore
+(question au suivi).
 
 **Éditions des structures (2026-09-25, point 18).** `lib/editions-structures.ts`.
 (1) Liste À PLAT, jamais l'écran imprimé (`avec-edition` · une arborescence ou un
@@ -3925,6 +4020,50 @@ l'éditeur, refus. (4) Cellules alignées sur la mère (audit final F46,
 homologué »), jamais une seconde maquette ; adresse saisie, sinon du tiers, sinon
 rien. (3) Licence en pièce jointe texte (`Message.pieceJointeTexte`). (4) Un échec
 d'envoi ne défait jamais la facture.
+
+**Pages légales et aide (ligne pages-legales, 2026-10-15, demande de
+Manasse).** Contrat de licence, foire aux questions et politique de
+confidentialité sont PUBLICS (écran d'ouverture, cadre imprimable) et
+ouverts en fenêtre par le menu « ? ». LE CONTRAT EST UN MODULE PUR
+(`conditions-licence/conditions-de-licence.ts`), une seule rédaction pour
+l'écran et la pièce jointe ; ce que nul texte ne fixe et que VMG n'a pas
+arrêté s'écrit « (à arrêter par VMG Consulting) », jamais un blanc. UNE
+VERSION PUBLIÉE NE SE RÉÉCRIT PAS (contrat, art. 15 ; art. 53, 9°) · son
+texte est archivé mot pour mot (`versions-publiees.ts`, `versions/`), son
+empreinte SHA-256 (`empreinte.ts`, pur, les deux côtés) gelée par
+`versions-publiees.spec.ts`, qui exige que le générateur rende le texte de
+la version en vigueur · compléter une mention, c'est publier une version
+nouvelle, aux délais de l'art. 34 (`delais-article-34.ts`, jours ouvrables
+du lundi au vendredi sans les fériés, la lecture la plus longue), et le
+spec refuse une seconde version tant que la bascule n'est pas servie.
+L'ACCEPTATION EN LIGNE (art. 55, 56) est tenue par le serveur · version,
+EMPREINTE, date, auteur ET COMMANDE ACCEPTÉE (`conditionsLicenceCommande`)
+sur le dossier, au journal d'audit, accusé à l'écran et courriel portant
+la commande et le texte archivé, par l'administrateur seul. L'écran envoie
+le numéro et l'empreinte du texte de SON code, et l'empreinte de
+l'abonnement qu'il AFFICHE (`empreinteCommande`) · le service relit tout
+SOUS LE VERROU du dossier et refuse en 409 un texte ou un abonnement qui
+ne sont plus ceux affichés ; une page plus ancienne se recharge, une page
+plus récente que le service attend le service. L'ACCUSÉ SE RENVOIE sous
+le même verrou, dans la transaction, s'il n'a jamais pu entrer en file ou
+si la file l'a ABANDONNÉ · jamais en ÉCHEC (la file le retente d'elle-même)
+ni en file ou parti, ce qui ferait un doublon. Dans une fenêtre, un lien
+entre pages légales ouvre la fenêtre de l'autre page, jamais la route
+publique, qui démonterait l'espace de travail (`LienPageLegale`). FERMÉE tant que l'identité de l'éditeur (art. 52), le
+paiement, les réclamations, la rétractation ou les garanties légales
+(art. 53, 6°, 13°, 14°, 16°, 20°) manquent (art. 54, al. 2), et en ligne
+sans abonnement (une cellule lit celui de son siège) ou sous une licence
+perpétuelle hébergée (art. 53, 5°) ; jamais pour le dossier de l'éditeur
+ni une démonstration ; elle n'interrompt jamais l'accès (art. 30, al. 3).
+Le logiciel est une œuvre protégée (art. 47 ; ordonnance-loi n° 86-033,
+art. 1er et 96). VMG DIT SA PRATIQUE, jamais une impossibilité · elle ne
+consulte pas le contenu des dossiers, et chacun de ses accès techniques
+(sauvegarde, restauration de contrôle, requêtes de maintenance) est nommé
+à côté de son workflow. La FAQ ne dit un délai que confronté au code
+(`pages-legales.spec.ts`). « À propos » dit la mise en production de
+l'interface que la publication pose (`OMEGAX_MISE_EN_PRODUCTION`,
+`firebase-hosting-merge.yml`, jour de Kinshasa), sinon « non
+renseignée », et la langue (français, seule).
 
 **Dossiers de démonstration (2026-09-26).** Une association (SYCEBNL), une SARL
 (SYSCOHADA), UNE par référentiel. (1) Comptes du scénario
@@ -4867,6 +5006,17 @@ Trois choses à ne pas défaire :
   de la charte a trouvé un `--text-dim` à 3,98:1 sur le fond de l'application,
   sous le plancher AA, que personne n'avait vu en deux ans.
 
+**L'ENCRE EST CELLE DU CACHET depuis le 2026-10-15** (décision de Manasse,
+« Oui vas-y », après l'aperçu avant/après sur le logiciel) · `#2a1f5c` au
+lieu de `#142f6b`, 14,49:1 sur blanc. UNE seule encre en circulation · le
+générateur la pose sur le signe, le logotype et les icônes (`ENCRE_HEX`), la
+couleur de thème du manifeste et de `index.html` la recopie (relue contre
+`ENCRE` par `pwa-et-confidentialite.spec.ts`), l'échelle `--a-*` et les gris
+de `index.css` la suivent,
+les couleurs de signal restent. Changer d'encre, c'est changer le générateur
+ET remesurer la table du § 7 de la charte, jamais retoucher un fichier
+engendré.
+
 ## 9 ter. L'interface · le modèle est Sage, pas une invention
 
 Décidé par Manasse le 2026-09-25 : « réfère-toi aux logiciels qui existent
@@ -4882,9 +5032,9 @@ OmegaX, JAMAIS le vert de Sage.
 - **Bandeau à l'encre de la marque.** La barre de titre, la barre verticale de
   l'accueil et la barre de titre de la fenêtre ACTIVE sont `--bandeau`
   (`--a-900`), texte et symbole en blanc (logo blanc prévu par la charte sur
-  fond sombre). La barre de menus est blanche, survol bleu clair.
+  fond sombre). La barre de menus est blanche, survol à la teinte claire de l'encre.
 - **Grille blanche, en-tête plein.** Les tableaux sont blancs sur la fenêtre
-  (`--fenetre`, gris bleuté très clair), l'en-tête est plein en `--a-700`
+  (`--fenetre`, gris très clair teinté de l'encre), l'en-tête est plein en `--a-700`
   texte blanc, les lignes séparées par un filet, sans quadrillage vertical ni
   zébrure, total sur `--a-50` (`index.css`, bloc TABLEAUX). Le bouton
   principal (`bg-sel`) est une pilule, comme le « + Créer » de Sage Active.

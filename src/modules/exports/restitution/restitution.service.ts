@@ -344,27 +344,34 @@ export class RestitutionService {
     }
 
     // LES PIÈCES · documents des tiers (point 21), pièces des virements de
-    // fonds, pièces jointes aux écritures, aux sections, aux biens et aux
-    // salariés (ligne sage-l6) · un fichier par entrée, chacun lu au moment où
-    // l'archive l'écrit. `archiver` consomme ses entrées une à une, si bien
-    // qu'une seule pièce est en mémoire à la fois, quel que soit leur nombre.
-    // L'INVENTAIRE AUSSI EST BORNÉ (second tour de relecture, mineur 3) ·
-    // annoncé par un décompte, lu par lots (`pageApres`), et le lot suivant
-    // n'est lu qu'une fois le précédent écrit · un dossier de cent mille
-    // pièces ne tient plus leurs cent mille noms en mémoire. Une pièce
+    // fonds, fichiers des exports des écritures et des impressions différées
+    // prêtes (ligne sage-l7), pièces jointes aux écritures, aux sections, aux
+    // biens et aux salariés (ligne sage-l6) · un fichier par entrée, chacun lu
+    // au moment où l'archive l'écrit. `archiver` consomme ses entrées une à
+    // une, si bien qu'une seule pièce est en mémoire à la fois, quel que soit
+    // leur nombre. L'INVENTAIRE AUSSI EST BORNÉ (second tour de relecture,
+    // mineur 3) · annoncé par un décompte, lu par lots (`pageApres`), et le lot
+    // suivant n'est lu qu'une fois le précédent écrit · un dossier de cent
+    // mille pièces ne tient plus leurs cent mille noms en mémoire. Une pièce
     // retirée entre le décompte et la lecture est dite au contrôle.
-    const annonces = await Promise.all(TABLES_DE_PIECES.map((t) => this.delegueDesPieces(t.modele).count({ where: { tenantId } })));
+    const annonces = await Promise.all(
+      TABLES_DE_PIECES.map((t) => this.delegueDesPieces(t.modele).count({ where: { tenantId, ...t.filtre } })),
+    );
     const pieces: SuiviPieces = { annoncees: annonces.reduce((t, n) => t + n, 0), ecrites: 0, manquantes: [] };
     for (const [rang, table] of TABLES_DE_PIECES.entries()) {
       const delegue = this.delegueDesPieces(table.modele);
       let curseur: string | undefined;
       let lues = 0;
       while (!interrompue) {
-        const lot = await delegue.findMany({ where: { tenantId }, select: { id: true, nomFichier: true }, ...pageApres(curseur, LOT_PIECES) });
+        const lot = await delegue.findMany({
+          where: { tenantId, ...table.filtre },
+          select: { id: true, nomFichier: true },
+          ...pageApres(curseur, LOT_PIECES),
+        });
         for (const piece of lot) {
           ajoutees++;
           archive.append(Readable.from(this.contenuDocument(tenantId, piece.id, pieces, table.modele, table.dossier)), {
-            name: fichierDeLaPiece(table.dossier, piece.id, piece.nomFichier),
+            name: fichierDeLaPiece(table.dossier, piece.id, piece.nomFichier ?? table.nomParDefaut ?? 'piece'),
           });
         }
         lues += lot.length;
@@ -415,7 +422,10 @@ export class RestitutionService {
   ): AsyncGenerator<Buffer> {
     try {
       const document = await this.delegueDesPieces(modele).findFirst({ where: { id, tenantId }, select: { contenu: true } });
-      if (!document) {
+      // Une impression différée dont le fichier a été retiré pendant
+      // l'extraction n'a plus de contenu (ligne sage-l7) · nommée comme une
+      // pièce retirée, jamais une entrée vide.
+      if (!document || document.contenu === null) {
         pieces.manquantes.push(`${dossier};${id} · retirée pendant l'extraction`);
         return;
       }
@@ -436,8 +446,8 @@ export class RestitutionService {
   private delegueDesPieces(modele: string) {
     const nom = modele.charAt(0).toLowerCase() + modele.slice(1);
     return (this.prisma as unknown as Record<string, {
-      findMany: (a: object) => Promise<Array<{ id: string; nomFichier: string }>>;
-      findFirst: (a: object) => Promise<{ contenu: Uint8Array } | null>;
+      findMany: (a: object) => Promise<Array<{ id: string; nomFichier: string | null }>>;
+      findFirst: (a: object) => Promise<{ contenu: Uint8Array | null } | null>;
       count: (a: object) => Promise<number>;
     }>)[nom];
   }
@@ -469,7 +479,7 @@ export class RestitutionService {
       yield `${modele};${a};${e};${a === e ? 'conforme' : 'ECART'}\r\n`;
     }
     yield `\r\n${ecarts === 0 ? 'Aucun écart.' : `${ecarts} table(s) en écart.`}\r\n`;
-    yield `\r\nPièces jointes et documents · ${pieces.annoncees} annoncé(s), ${pieces.ecrites} écrit(s).\r\n`;
+    yield `\r\nFichiers sortis à côté des tables (documents des tiers, pièces des virements, exports des écritures, impressions différées, pièces jointes) · ${pieces.annoncees} annoncé(s), ${pieces.ecrites} écrit(s).\r\n`;
     for (const m of pieces.manquantes) yield `PIECE NON RESTITUEE;${m}\r\n`;
   }
 }

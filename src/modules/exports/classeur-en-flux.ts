@@ -1,4 +1,4 @@
-import { once } from 'events';
+import { ConflictException } from '@nestjs/common';
 import type { Writable } from 'stream';
 import * as ExcelJS from 'exceljs';
 
@@ -80,6 +80,30 @@ export const MAX_LIGNES_EXPORT = Number(process.env.EXPORT_MAX_LIGNES ?? 200_000
  */
 export const LOT_EXPORT = 500;
 
+/**
+ * UN LIVRE LU PAR LE CURSEUR DE PRISMA SE CONFRONTE À SON DÉCOMPTE
+ * (relecture « échecs silencieux » de la ligne sage-l7, M6). Le grand livre
+ * se trie sur des champs d'AUTRES tables (numéro du compte, date et pièce de
+ * l'écriture), que la pagination par la clé (`apresLaCle`) ne pose pas sur un
+ * filtre de relation sans une sous-requête par branche, à chaque tranche · il
+ * garde le curseur, dont la ligne relue en base peut avoir disparu (brouillard
+ * retiré pendant la production), et la tranche suivante revenait VIDE. Le
+ * nombre de lignes LUES doit donc égaler celui COMPTÉ au départ, sur le même
+ * filtre ; sinon le livre a changé pendant sa production (pièce retirée,
+ * ajoutée, déplacée) et il est REFUSÉ, jamais remis amputé · le téléchargement
+ * direct reçoit ce 409 tant que rien n'est parti (la retenue de
+ * `envoyerXlsxEnFlux`), sa connexion détruite au-delà ; l'impression différée
+ * passe ÉCHOUÉE, motif dit.
+ */
+export function confronterAuDecompte(lues: number, comptees: number, quoi: string): void {
+  if (lues === comptees) return;
+  throw new ConflictException(
+    `${quoi} : ${lues.toLocaleString('fr-FR')} lignes lues sur ${comptees.toLocaleString('fr-FR')} comptées au départ · ` +
+      "des pièces ont été retirées, ajoutées ou déplacées pendant la production, et le livre n'est pas remis amputé. " +
+      'Relancez-le une fois la saisie arrêtée.',
+  );
+}
+
 /** Options mesurées · voir l'en-tête. Ne pas les changer sans refaire le banc. */
 export const OPTIONS_CLASSEUR_EN_FLUX = {
   useSharedStrings: false,
@@ -127,7 +151,35 @@ export function segmentIdentification(identite: IdentiteEtat): string {
  * quelque chose que le serveur ne maîtrise pas.
  */
 export async function attendreLeTuyau(sortie: Writable): Promise<void> {
-  if (sortie.writableNeedDrain) await once(sortie, 'drain');
+  // UN TUYAU FERMÉ ARRÊTE LA PRODUCTION (relecture TypeScript, mineur 3) ·
+  // fermé par le poste qui a quitté le téléchargement, il ne demande plus
+  // jamais de « drain » (`writableNeedDrain` est faux sur un flux détruit),
+  // et le moteur lisait la base jusqu'au bout pour une archive que personne
+  // ne recevrait, puis attendait sans fin la fin d'un flux mort.
+  if (sortie.destroyed) throw tuyauFerme(sortie);
+  if (!sortie.writableNeedDrain) return;
+  await new Promise<void>((resoudre, rejeter) => {
+    const nettoyer = () => {
+      sortie.off('drain', vide);
+      sortie.off('close', ferme);
+      sortie.off('error', ferme);
+    };
+    const vide = () => {
+      nettoyer();
+      resoudre();
+    };
+    const ferme = () => {
+      nettoyer();
+      rejeter(tuyauFerme(sortie));
+    };
+    sortie.once('drain', vide);
+    sortie.once('close', ferme);
+    sortie.once('error', ferme);
+  });
+}
+
+function tuyauFerme(sortie: Writable): Error {
+  return new Error(`Le livre n'a plus où s'écrire · la production s'arrête${sortie.errored ? ` (${sortie.errored.message})` : ''}.`);
 }
 
 /** Ce que décrit une feuille en flux · nom, titre de la coiffe, identité, colonnes. */

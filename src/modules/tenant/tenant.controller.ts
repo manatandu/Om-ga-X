@@ -13,6 +13,7 @@ import {
   ModifierDoubleRegardDto,
   ModifierRefusClotureNonImprimeDto,
   ModifierCreationCompteEnSaisieDto,
+  ModifierSeuilEcartReglementDto,
   ModifierModulesDto,
   ModifierJeuEtatsDto,
   ModifierLongueurCompteDto,
@@ -185,6 +186,16 @@ export class TenantController {
     @Body() dto: ModifierCreationCompteEnSaisieDto,
   ) {
     return this.tenantService.modifierCreationCompteEnSaisie(user.tenantId, dto.creationCompteEnSaisie);
+  }
+
+  /** Seuil de l'écart de règlement · ligne sage-l2, fonction 36. */
+  @Patch('seuil-ecart-reglement')
+  @Roles(RoleUtilisateur.ADMIN_CABINET)
+  async modifierSeuilEcartReglement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ModifierSeuilEcartReglementDto,
+  ) {
+    return this.tenantService.modifierSeuilEcartReglement(user.tenantId, dto.seuilEcartReglement);
   }
 
   /** Refus de clôturer un journal non imprimé · ligne sage-l1, fonction 60. */

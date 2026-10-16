@@ -44,6 +44,8 @@ export const ORIGINE_LICENCE_SUR_SITE = 'LICENCE_SUR_SITE';
 export const ORIGINE_FACTURE_ABONNEMENT = 'FACTURE_ABONNEMENT';
 /** L'avis hors bande d'un second facteur activé, retiré ou de codes de secours renouvelés (auth/avis-double-authentification.ts). */
 export const ORIGINE_DOUBLE_AUTHENTIFICATION = 'DOUBLE_AUTHENTIFICATION';
+/** L'accusé de réception d'une acceptation des conditions de licence, le texte accepté en pièce jointe (Code du numérique, art. 55, al. 2, et 56, al. 1er · conditions-licence/). */
+export const ORIGINE_CONDITIONS_LICENCE = 'CONDITIONS_LICENCE';
 
 export interface MessageAMettreEnFile {
   destinataire: string;

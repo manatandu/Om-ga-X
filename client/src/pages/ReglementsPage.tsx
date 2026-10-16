@@ -6,6 +6,7 @@ import { useExercice } from '../lib/exercice';
 import type { Compte, Journal } from '../lib/types';
 import { Aide } from '../components/chrome/Aide';
 import { OrdresVirement } from '../components/OrdresVirement';
+import { AssistantReglement } from '../components/AssistantReglement';
 import { lignesDepuisSelection, rappelerLot, type LotVirement } from '../lib/lots-virement';
 import { montant as fmt } from '../lib/montants';
 import {
@@ -22,6 +23,8 @@ import { jourFr } from '../lib/jour-fr';
 import { coursPropose, devisesEtrangeres, type DeviseDuDossier } from '../lib/ligne-en-devise';
 import { comptesProposablesEcart, corpsReglementEnDevise, ecartEstime, libelleEcartRealise, natureDuCompte, nombreSaisi, type Referentiel } from '../lib/ecart-change';
 import { motifAucunCompteRetenu, RETENUS } from '../lib/comptes-proposes';
+import { journalProposeParLeMode, libelleMode, type ModeReglement } from '../lib/modes-reglement';
+import { champsEscompteEcart, payeParDefaut, roleEscompte, roleServi, type ComptesEscompteEcart } from '../lib/escompte-reglement';
 
 type Sens = 'FOURNISSEUR' | 'CLIENT';
 
@@ -77,8 +80,20 @@ export function ReglementsPage() {
   const [sens, setSens] = useState<Sens>('FOURNISSEUR');
   const [jusquau, setJusquau] = useState(aujourdhui());
   const [dateReglement, setDateReglement] = useState(aujourdhui());
-  const [journaux, setJournaux] = useState<Journal[]>([]);
+  // Null tant que non lus, avec leur erreur (second tour de relecture, M4) ·
+  // une liste vide sur un échec faisait dire « aucun journal, créez-en un »
+  // et poussait à créer un doublon.
+  const [journaux, setJournaux] = useState<Journal[] | null>(null);
+  const [erreurJournaux, setErreurJournaux] = useState<string | null>(null);
   const [journalId, setJournalId] = useState('');
+  // LE MODE DE RÈGLEMENT DU LOT (ligne sage-l2, fonction 1) · porté sur
+  // chaque ligne de la pièce ; le serveur avertit un paiement d'au moins
+  // 1 000 000 FC à un fournisseur hors chèque, virement ou carte (O.-L.
+  // n° 10/001, art. 59 bis). Facultatif · sans lui, la nature se lit sur le
+  // compte du journal (caisse = espèces).
+  const [modes, setModes] = useState<ModeReglement[] | null>(null);
+  const [erreurModes, setErreurModes] = useState<string | null>(null);
+  const [modeId, setModeId] = useState('');
   const [groupes, setGroupes] = useState<GroupeTiers[] | null>(null);
   const [cochees, setCochees] = useState<Set<string>>(new Set());
   const [montants, setMontants] = useState<Record<string, string>>({});
@@ -106,6 +121,14 @@ export function ReglementsPage() {
   const [deviseTresorerieId, setDeviseTresorerieId] = useState('');
   const [devises, setDevises] = useState<DeviseDuDossier[]>([]);
   const [erreurDevises, setErreurDevises] = useState<string | null>(null);
+  // L'ESCOMPTE ET L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36) · saisis
+  // par tiers, leurs comptes et le seuil servis par le serveur.
+  const [escomptes, setEscomptes] = useState<Record<string, string>>({});
+  const [ecartsSoldes, setEcartsSoldes] = useState<Record<string, boolean>>({});
+  const [comptesEscompteChoisis, setComptesEscompteChoisis] = useState<Record<string, string>>({});
+  const [comptesEcartChoisis, setComptesEcartChoisis] = useState<Record<string, string>>({});
+  const [comptesEE, setComptesEE] = useState<ComptesEscompteEcart | null>(null);
+  const [erreurComptesEE, setErreurComptesEE] = useState<string | null>(null);
   const [comptesEcartLus, setComptesEcartLus] = useState<Compte[] | null>(null);
   const [erreurComptesEcart, setErreurComptesEcart] = useState<string | null>(null);
   const referentiel: Referentiel = utilisateur?.tenant?.referentiel === 'SYCEBNL' ? 'SYCEBNL' : 'SYSCOHADA';
@@ -116,6 +139,9 @@ export function ReglementsPage() {
   const [avertissements, setAvertissements] = useState<string[]>([]);
   const [envoi, setEnvoi] = useState(false);
   const [onglet, setOnglet] = useState<'reglements' | 'ordres'>('reglements');
+  // L'ASSISTANT DE RÈGLEMENT (ligne sage-l2, fonction 18) · le même règlement,
+  // une étape à la fois (`components/AssistantReglement.tsx`).
+  const [assistantOuvert, setAssistantOuvert] = useState(false);
   const [avecOrdre, setAvecOrdre] = useState(false);
   const [ordreCree, setOrdreCree] = useState<string | null>(null);
   const [ordreOuvert, setOrdreOuvert] = useState(false);
@@ -129,14 +155,27 @@ export function ReglementsPage() {
   }, []);
 
   useEffect(() => {
+    api.get<ModeReglement[]>('/modes-reglement').then(
+      (m) => {
+        setModes(m.filter((x) => x.estActif));
+        setErreurModes(null);
+      },
+      // Le motif seul · chaque écran l'introduit à sa façon (second tour,
+      // mineur 14 · « Modes de règlement illisibles · Modes de règlement non lus »).
+      (err) => setErreurModes(err instanceof ApiError ? err.message : 'erreur inconnue'),
+    );
+  }, []);
+
+  useEffect(() => {
     api
       .get<Journal[]>('/journaux')
       .then((js) => {
         const tresorerie = js.filter((j) => j.type === 'TRESORERIE' && j.estActif && j.compteTresorerieId);
         setJournaux(tresorerie);
+        setErreurJournaux(null);
         setJournalId((id) => id || tresorerie[0]?.id || '');
       })
-      .catch(() => setJournaux([]));
+      .catch((err) => setErreurJournaux(err instanceof ApiError ? err.message : 'serveur injoignable'));
   }, []);
 
   // Un échec de lecture SE DIT, avec son motif (§ 9 ter) · une liste de
@@ -168,6 +207,26 @@ export function ReglementsPage() {
       });
   }, [referentiel]);
 
+  // Les comptes de l'escompte et de l'écart du sens, et le seuil du dossier ·
+  // lus au serveur, qui seul les juge ; un échec se DIT (§ 9 ter).
+  useEffect(() => {
+    let vivant = true;
+    setComptesEE(null);
+    api
+      .get<ComptesEscompteEcart>(`/reglements/comptes-escompte-ecart?sens=${sens}`)
+      .then((c) => {
+        if (!vivant) return;
+        setComptesEE(c);
+        setErreurComptesEE(null);
+      })
+      .catch((err) => {
+        if (vivant) setErreurComptesEE(`Comptes d'escompte et d'écart non lus · ${err instanceof ApiError ? err.message : 'erreur inconnue'}`);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [sens]);
+
   // UNE RÉPONSE PÉRIMÉE EST JETÉE (relecture du 2026-10-07, mineur écran) ·
   // changer de sens ou de date relance la lecture, et la réponse d'une
   // lecture plus ancienne, arrivée après, ne remplace jamais la dernière.
@@ -194,6 +253,10 @@ export function ReglementsPage() {
       setCoursSaisis({});
       setFrancsSaisis({});
       setComptesEcart({});
+      setEscomptes({});
+      setEcartsSoldes({});
+      setComptesEscompteChoisis({});
+      setComptesEcartChoisis({});
     } catch (err) {
       if (jeton !== jetonLecture.current) return;
       setErreur(err instanceof ApiError ? err.message : 'Impossible de lire les échéances');
@@ -289,7 +352,8 @@ export function ReglementsPage() {
     if (imputation.imputation) return { montant: imputation.montant!, imputation: imputation.imputation };
     const regle = montantRegle(montants[g.compteId]);
     if (regle.motif) return { motif: regle.motif };
-    return { montant: regle.montant, du: duParCompte.get(g.compteId) ?? 0 };
+    // Sans « Réglé », le dû moins l'escompte (fonction 36), comme au serveur.
+    return { montant: regle.montant, du: payeParDefaut(duParCompte.get(g.compteId) ?? 0, escomptes[g.compteId]) };
   };
   const total = aRegler.reduce((s, g) => {
     const devise = deviseDuGroupe(g);
@@ -325,7 +389,15 @@ export function ReglementsPage() {
             ? motifPieceImputation({ avecParts: true, ordreVirement, pieceImputation: piecesImputation[g.compteId] })
             : null;
         if (motifPiece) return refuser(g, motifPiece);
+        const ee = champsEscompteEcart({
+          escompteSaisi: escomptes[g.compteId],
+          solderEcart: ecartsSoldes[g.compteId] === true,
+          compteEscompteId: comptesEscompteChoisis[g.compteId] || undefined,
+          compteEcartId: comptesEcartChoisis[g.compteId] || undefined,
+        });
+        if ('motif' in ee) return refuser(g, ee.motif);
         corps.push({
+          ...ee.champs,
           compteId: g.compteId,
           ligneIds,
           ...('imputation' in r && r.imputation
@@ -366,7 +438,7 @@ export function ReglementsPage() {
     setEnvoi(true);
     try {
       const r = await api.post<{
-        reglements: { compte: string; montant: number; partiel: boolean; lettre: string; ecartChange?: number }[];
+        reglements: { compte: string; montant: number; partiel: boolean; lettre: string; ecartChange?: number; escompte?: number; ecartReglement?: number }[];
         ordre: { id: string; numero: number } | null;
         avertissements?: string[];
       }>(
@@ -377,6 +449,7 @@ export function ReglementsPage() {
           exerciceId: exerciceCourant.id,
           journalId,
           date: dateReglement,
+          ...(modeId ? { modeReglementId: modeId } : {}),
           ...(enDeviseCoche ? { tresorerieEnDevise: true, deviseTresorerieId: deviseMoyen } : {}),
           reglements: corps,
         },
@@ -386,10 +459,15 @@ export function ReglementsPage() {
       const ecarts = r.reglements
         .filter((x) => x.ecartChange !== undefined && x.ecartChange !== 0)
         .map((x) => `${x.compte} · ${libelleEcartRealise(x.ecartChange!).toLowerCase()} de ${fmt(Math.abs(x.ecartChange!))}`);
+      const escomptesEtEcarts = r.reglements.flatMap((x) => [
+        ...(x.escompte ? [`${x.compte} · escompte de ${fmt(x.escompte)}`] : []),
+        ...(x.ecartReglement ? [`${x.compte} · écart de règlement de ${fmt(x.ecartReglement)} en charge`] : []),
+      ]);
       setInfo(
         `${r.reglements.length} règlement(s) passé(s) au brouillard et lettré(s)` +
           (partiels ? `, dont ${partiels} partiel(s) en lettrage partiel.` : '.') +
           (ecarts.length ? ` ${ecarts.join(' ; ')}.` : '') +
+          (escomptesEtEcarts.length ? ` ${escomptesEtEcarts.join(' ; ')}.` : '') +
           (r.ordre ? ` Ordre de virement n° ${r.ordre.numero} préparé, en attente d'impression.` : ''),
       );
       await charger();
@@ -417,7 +495,7 @@ export function ReglementsPage() {
     setMotifsTiers({});
     setConstatsLot(r.constats);
     setAvecOrdre(true);
-    if (lot.journalId && journaux.some((j) => j.id === lot.journalId)) setJournalId(lot.journalId);
+    if (lot.journalId && (journaux ?? []).some((j) => j.id === lot.journalId)) setJournalId(lot.journalId);
   };
 
   const enregistrerLot = async () => {
@@ -486,7 +564,7 @@ export function ReglementsPage() {
       <div className="flex flex-wrap items-end gap-3 text-[11.5px]">
         <label className="flex flex-col gap-0.5">
           <span className="text-text-dim">Règlement</span>
-          <select value={sens} onChange={(e) => setSens(e.target.value as Sens)} className="border border-border px-2 py-[3px] bg-surface">
+          <select aria-label="Sens du règlement" value={sens} onChange={(e) => setSens(e.target.value as Sens)} className="border border-border px-2 py-[3px] bg-surface">
             <option value="FOURNISSEUR">Fournisseurs à payer</option>
             <option value="CLIENT">Clients et adhérents à encaisser</option>
           </select>
@@ -500,9 +578,32 @@ export function ReglementsPage() {
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Journal de trésorerie</span>
               <select value={journalId} onChange={(e) => setJournalId(e.target.value)} className="border border-border px-2 py-[3px] bg-surface">
-                {journaux.map((j) => (
+                {journaux === null && <option value="">{erreurJournaux ? `Journaux illisibles · ${erreurJournaux}` : 'Lecture…'}</option>}
+                {(journaux ?? []).map((j) => (
                   <option key={j.id} value={j.id}>
                     {j.code} · {j.intitule}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-text-dim">Mode de règlement</span>
+              <select
+                aria-label="Mode de règlement"
+                value={modeId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setModeId(id);
+                  // Le journal que le mode propose se présélectionne, s'il est offert.
+                  const propose = journalProposeParLeMode(modes?.find((m) => m.id === id), journaux ?? []);
+                  if (propose) setJournalId(propose);
+                }}
+                className="border border-border px-2 py-[3px] bg-surface"
+              >
+                <option value="">{erreurModes ? `Modes de règlement non lus · ${erreurModes}` : 'Non précisé'}</option>
+                {modes?.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {libelleMode(m)}
                   </option>
                 ))}
               </select>
@@ -578,14 +679,43 @@ export function ReglementsPage() {
             />
           </span>
         )}
+        {peutEcrire && exerciceCourant && (
+          <button
+            type="button"
+            onClick={() => setAssistantOuvert(true)}
+            className="border border-border-dark bg-chrome hover:bg-surface px-3 py-[3px] text-[11.5px] self-end"
+          >
+            Assistant de règlement…
+          </button>
+        )}
         <Aide
           titre="Règlement des tiers"
-          texte="Cochez les factures à régler. OmegaX passe une pièce par tiers au journal de trésorerie choisi (40 contre 52 pour un fournisseur, 52 contre 41 pour un client) et lettre aussitôt chaque facture avec son règlement. Un montant inférieur au dû donne un règlement partiel et un lettrage partiel ; un montant supérieur est refusé, l'excédent étant une avance ou un trop-perçu. Pour un fournisseur, la part de chaque facture cochée se déclare (Code civil, Livre III, art. 151) · chaque facture est alors lettrée avec sa seule part, qui date la déduction de sa TVA ; sans parts, un règlement partiel de plusieurs factures suit l'imputation légale (art. 154 · les échues d'abord, la plus ancienne, au prorata à date égale). Les factures non parvenues, produits à recevoir et avances (408, 409, 418, 419) ne se règlent pas ici. Une facture en devise se règle dans sa devise, au cours du jour du règlement · le tiers est soldé à sa valeur d'origine, et la différence avec ce qui est payé est la perte ou le gain de change réalisé, sur sa propre ligne (656 ou 756 au SYSCOHADA ; au SYCEBNL, qui n'ouvre ni 656 ni 756, 658 Charges diverses ou 7588 Autres produits divers, résidu de ses fiches 65 et 75)."
-          source="Guide d'application SYSCOHADA, Partie 1 ch. 4 · SYCEBNL, fiches des comptes 40 et 41 · Code civil, Livre III, art. 151 à 154 · AUDCIF art. 55 et Titre VIII ch. 22 § 2.3 · Sage 100 i7, règlement des tiers"
+          texte="Cochez les factures à régler. OmegaX passe une pièce par tiers au journal de trésorerie choisi (40 contre 52 pour un fournisseur, 52 contre 41 pour un client) et lettre aussitôt chaque facture avec son règlement. Un montant inférieur au dû donne un règlement partiel et un lettrage partiel ; un montant supérieur est refusé, l'excédent étant une avance ou un trop-perçu. Pour un fournisseur, la part de chaque facture cochée se déclare (Code civil, Livre III, art. 151) · chaque facture est alors lettrée avec sa seule part, qui date la déduction de sa TVA ; sans parts, un règlement partiel de plusieurs factures suit l'imputation légale (art. 154 · les échues d'abord, la plus ancienne, au prorata à date égale). Les factures non parvenues, produits à recevoir et avances (408, 409, 418, 419) ne se règlent pas ici. Une facture en devise se règle dans sa devise, au cours du jour du règlement · le tiers est soldé à sa valeur d'origine, et la différence avec ce qui est payé est la perte ou le gain de change réalisé, sur sa propre ligne (656 ou 756 au SYSCOHADA ; au SYCEBNL, qui n'ouvre ni 656 ni 756, 658 Charges diverses ou 7588 Autres produits divers, résidu de ses fiches 65 et 75). L'escompte de règlement, consenti pour un paiement avant le terme, solde le tiers avec le payé · obtenu d'un fournisseur au crédit du 773, accordé à un client au débit du 673 (au SYCEBNL, au seul client-usager du 412) ; la TVA n'en est réduite que par une facture rectificative, passée à part. « Solder l'écart » passe en charge, sous le seuil fixé dans Paramètres du dossier, le reste qu'un client ne paie pas (remise, art. 132) ou le trop-payé à un fournisseur (art. 133), au 6588 au SYSCOHADA, au 658 au SYCEBNL · le trop-perçu d'un client se restitue (art. 252) et un fournisseur payé en moins n'est pas soldé par le dossier (art. 142)."
+          source="Guide d'application SYSCOHADA, Partie 1 ch. 4 · SYCEBNL, fiches des comptes 40 et 41 · AUDCIF, Titre VII, comptes 65 et 67 · Code civil, Livre III, art. 151 à 154 ; art. 132, 133, 142 et 252 · O.-L. n° 10/001, art. 29 · AUDCIF art. 55 et Titre VIII ch. 22 § 2.3 · Sage 100 i7, règlement des tiers"
         />
       </div>
 
+      {assistantOuvert && exerciceCourant && (
+        <AssistantReglement
+          journaux={journaux}
+          erreurJournaux={erreurJournaux}
+          debutExercice={exerciceCourant.dateDebut.slice(0, 10)}
+          modes={modes}
+          erreurModes={erreurModes}
+          exerciceId={exerciceCourant.id}
+          finExercice={exerciceCourant.dateFin.slice(0, 10)}
+          ordresServis={ordresServis}
+          onFermer={() => setAssistantOuvert(false)}
+          onRegle={(message) => {
+            setInfo(message);
+            void charger();
+          }}
+        />
+      )}
       {erreur && <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-2">{erreur}</div>}
+      {erreurComptesEE && aRegler.length > 0 && (
+        <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-2">{erreurComptesEE}</div>
+      )}
       {aRegler.some((g) => deviseDuGroupe(g)) &&
         [erreurDevises, erreurComptesEcart]
           .filter((e): e is string => e !== null)
@@ -607,7 +737,10 @@ export function ReglementsPage() {
           {a}
         </div>
       ))}
-      {peutEcrire && journaux.length === 0 && (
+      {peutEcrire && erreurJournaux && (
+        <div className="text-[11.5px] text-danger bg-danger-soft border border-danger/30 px-3 py-2">Journaux de trésorerie illisibles · {erreurJournaux}</div>
+      )}
+      {peutEcrire && journaux?.length === 0 && (
         <div className="text-[11.5px] text-warning bg-warning-soft border border-warning/30 px-3 py-2">
           Aucun journal de trésorerie rattaché à un compte de banque ou de caisse · créez-en un dans Codes journaux.
         </div>
@@ -660,6 +793,12 @@ export function ReglementsPage() {
               const servies = partsServies({ sens, cochees: coches });
               const somme = servies.servies ? sommeDesParts(coches, parts) : null;
               const motifRegle = montantRegle(montants[g.compteId]).motif ?? null;
+              // L'escompte et l'écart (fonction 36) · sur un règlement en
+              // francs sans parts désignées, comme au serveur.
+              const roleEsc = roleServi(comptesEE, roleEscompte(sens));
+              const roleEcart = roleServi(comptesEE, 'ECART_REGLEMENT');
+              const escompteSaisi = (escomptes[g.compteId] ?? '').trim() !== '';
+              const seuil = comptesEE?.seuil ?? null;
               return (
                 <tbody key={g.compteId}>
                   <tr className="bg-[var(--a-50)]">
@@ -733,11 +872,78 @@ export function ReglementsPage() {
                                 aria-invalid={motifRegle ? true : undefined}
                                 title={motifRegle ?? undefined}
                                 inputMode="decimal"
-                                placeholder={fmt(du)}
+                                placeholder={fmt(payeParDefaut(du, escomptes[g.compteId]))}
                                 value={montants[g.compteId] ?? ''}
                                 onChange={(e) => setMontants((m) => ({ ...m, [g.compteId]: e.target.value }))}
                                 className="w-[110px] border border-border px-1.5 py-[1px] text-right"
                               />
+                              {somme === null && (
+                                <>
+                                  <span className="text-text-dim">Escompte</span>
+                                  <input
+                                    aria-label={`Escompte · ${g.numero}`}
+                                    inputMode="decimal"
+                                    value={escomptes[g.compteId] ?? ''}
+                                    onChange={(e) => setEscomptes((m) => ({ ...m, [g.compteId]: e.target.value }))}
+                                    title={sens === 'FOURNISSEUR' ? 'Escompte obtenu pour un paiement avant le terme' : 'Escompte accordé pour un paiement avant le terme'}
+                                    className="w-[90px] border border-border px-1.5 py-[1px] text-right"
+                                  />
+                                  {escompteSaisi && roleEsc && roleEsc.comptes.length > 1 && (
+                                    <select
+                                      aria-label={`Compte de l'escompte · ${g.numero}`}
+                                      value={comptesEscompteChoisis[g.compteId] ?? ''}
+                                      onChange={(e) => setComptesEscompteChoisis((c) => ({ ...c, [g.compteId]: e.target.value }))}
+                                      className="border border-border px-1 py-[1px] bg-surface max-w-[200px]"
+                                    >
+                                      <option value="">Compte de l'escompte…</option>
+                                      {roleEsc.comptes.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                          {c.numero} · {c.intitule}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                  {escompteSaisi && roleEsc && roleEsc.comptes.length === 0 && roleEsc.motif && (
+                                    <span className="text-warning">{roleEsc.motif}</span>
+                                  )}
+                                  <label
+                                    className="inline-flex items-center gap-1"
+                                    title={
+                                      // Lecture en cours ou manquée n'est pas
+                                      // « aucun seuil » (second tour, mineur 14).
+                                      comptesEE === null
+                                        ? erreurComptesEE ?? 'Lecture du seuil d’écart de règlement…'
+                                        : seuil === null
+                                          ? "Aucun seuil d'écart de règlement fixé · Paramètres du dossier"
+                                          : `L'écart se passe en charge jusqu'à ${fmt(seuil)}, le tiers soldé`
+                                    }
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      aria-label={`Solder l'écart · ${g.numero}`}
+                                      disabled={seuil === null}
+                                      checked={ecartsSoldes[g.compteId] === true}
+                                      onChange={(e) => setEcartsSoldes((m) => ({ ...m, [g.compteId]: e.target.checked }))}
+                                    />
+                                    <span className="text-text-dim">Solder l'écart</span>
+                                  </label>
+                                  {ecartsSoldes[g.compteId] === true && roleEcart && roleEcart.comptes.length > 1 && (
+                                    <select
+                                      aria-label={`Compte de l'écart · ${g.numero}`}
+                                      value={comptesEcartChoisis[g.compteId] ?? ''}
+                                      onChange={(e) => setComptesEcartChoisis((c) => ({ ...c, [g.compteId]: e.target.value }))}
+                                      className="border border-border px-1 py-[1px] bg-surface max-w-[200px]"
+                                    >
+                                      <option value="">Compte de l'écart…</option>
+                                      {roleEcart.comptes.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                          {c.numero} · {c.intitule}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </>
+                              )}
                               {somme !== null && <span className="text-text-dim">Parts · {fmt(somme)}</span>}
                               {somme !== null && !ordreVirementDemande && (
                                 <>

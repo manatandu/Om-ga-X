@@ -26,6 +26,9 @@ import { EditionStructure } from '../components/EditionStructure';
 import { editionParametres } from '../lib/editions-structures';
 import { LIBELLE_SYSTEME } from '../lib/systemes-syscohada';
 import { dateQuittee } from '../lib/date-quittee';
+import { lireMontant } from '../lib/imputation-reglement';
+import { montant as fmt } from '../lib/montants';
+import { montantPourChamp } from '../lib/creances-douteuses';
 import type {
   FormeJuridiqueEbnl,
   FormeJuridiqueSyscohada,
@@ -160,6 +163,8 @@ export function ParametresDossierPage() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+  // Ligne sage-l2, fonction 36 · le seuil saisi, `null` tant qu'il n'est pas touché.
+  const [seuilSaisi, setSeuilSaisi] = useState<string | null>(null);
 
   // Dénomination et coordonnées · modifiables depuis la correction du
   // 2026-09-01 (elles étaient figées à la création, voir
@@ -434,6 +439,32 @@ export function ParametresDossierPage() {
       await rafraichir();
       setInfo(
         `Longueur des numéros de compte portée à ${longueur} chiffres · les comptes déjà ouverts ne changent pas.`,
+      );
+    } catch (err) {
+      setErreur(err instanceof ApiError ? err.message : 'Modification impossible');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
+  // Ligne sage-l2, fonction 36 · le seuil de l'écart de règlement ; vide, il
+  // est retiré. Un montant illisible se dit, jamais lu comme « aucun ».
+  const enregistrerSeuilEcart = async () => {
+    const lu = lireMontant(seuilSaisi ?? '');
+    if ('illisible' in lu) {
+      setErreur(`Le seuil de l’écart de règlement est illisible (« ${lu.illisible} »).`);
+      return;
+    }
+    const valeur = 'valeur' in lu ? lu.valeur : null;
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      setParams(await api.patch<ParametresDossier>('/dossier/seuil-ecart-reglement', { seuilEcartReglement: valeur }));
+      setSeuilSaisi(null);
+      setInfo(
+        valeur === null
+          ? 'Aucun seuil d’écart de règlement · aucun écart ne se passe en charge au règlement.'
+          : `Les écarts de règlement jusqu’à ${fmt(valeur)} se passent en charge, le tiers soldé.`,
       );
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Modification impossible');
@@ -1855,6 +1886,30 @@ export function ParametresDossierPage() {
                     />
                   </span>
                 </label>
+                <div className="flex flex-wrap items-center gap-2 text-[11.5px]">
+                  <label htmlFor="seuil-ecart-reglement">Seuil de l’écart de règlement</label>
+                  <input
+                    id="seuil-ecart-reglement"
+                    inputMode="decimal"
+                    disabled={!estAdmin || envoi}
+                    // Absent (`undefined`) comme nul · vide, jamais « undefined » ;
+                    // prérempli au centime (second tour, mineur 15).
+                    value={seuilSaisi ?? montantPourChamp(params.seuilEcartReglement)}
+                    placeholder="Aucun"
+                    onChange={(e) => setSeuilSaisi(e.target.value)}
+                    className="w-[110px] border border-border px-1.5 py-[1px] text-right"
+                  />
+                  {estAdmin && seuilSaisi !== null && (
+                    <button type="button" disabled={envoi} onClick={() => void enregistrerSeuilEcart()} className="border border-border px-2 py-[1px]">
+                      Enregistrer
+                    </button>
+                  )}
+                  <Aide
+                    titre="Écart de règlement"
+                    texte="Au règlement des tiers, « Solder l’écart » passe en charge, le tiers soldé, le reste qu’un client ne paie pas (le dossier le lui remet) ou le trop-payé à un fournisseur (le dossier y renonce), jusqu’à ce seuil · au 6588 au SYSCOHADA, au 658 au SYCEBNL. Le trop-perçu d’un client se restitue et ne devient jamais un produit ; un fournisseur payé moins que le dû n’est soldé que par sa remise. Aucun texte ne fixe de seuil · vide, aucun écart ne se passe."
+                    source="Code civil, Livre III, art. 132, 133, 142 et 252 · AUDCIF, Titre VII, compte 65 · SYCEBNL, fiches des comptes 65 · Sage 100 i7, écart de règlement"
+                  />
+                </div>
                 <label className="block text-[11.5px]">
                   Entité assujettie à la TVA{' '}
                   <Aide

@@ -23,8 +23,10 @@ const lire = (p: string) => readFileSync(join(RACINE, p), 'utf8');
 
 function titresDuRegistre(): Map<string, string> {
   const titres = new Map<string, string>();
-  const motif = /motif: \/\^\\\/([a-z0-9-]+)\$\/,\s*titre: (['"])(.*?)\2/g;
-  for (const m of lire('lib/registre-fenetres.tsx').matchAll(motif)) titres.set('/' + m[1], m[3]);
+  // Un chemin à plusieurs segments fixes (`/aide/contrat-de-licence`, ligne
+  // pages-legales) compte aussi · sans quoi le menu « ? » échappait au contrôle.
+  const motif = /motif: \/\^\\\/([a-z0-9-]+(?:\\\/[a-z0-9-]+)*)\$\/,\s*titre: (['"])(.*?)\2/g;
+  for (const m of lire('lib/registre-fenetres.tsx').matchAll(motif)) titres.set('/' + m[1].replace(/\\\//g, '/'), m[3]);
   return titres;
 }
 

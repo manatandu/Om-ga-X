@@ -94,6 +94,8 @@ function service(lignes: ReturnType<typeof ligne>[], tiersEnBase?: Record<string
     tiers: {
       findFirst: jest.fn().mockResolvedValue(tiersEnBase === undefined ? { id: 'ti-1', tenantId: DOSSIER } : tiersEnBase),
       update: tiersUpdate,
+      // Aucun tiers n'a de modèle d'impression (ligne sage-l2, fonction 27).
+      findMany: jest.fn().mockResolvedValue([]),
     },
     // L'émission écrit sous un verrou par dossier, dans une transaction
     // (audit final F241) · la doublure joue la transaction sur elle-même.

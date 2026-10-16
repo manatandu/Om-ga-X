@@ -14,6 +14,7 @@ import { dirname, join, normalize, relative } from 'path';
  */
 const SANS_APPELANT_DE_PRODUCTION: Record<string, string> = {
   'modules/comptabilite/detenteurs-ecriture.ts': 'table de décision confrontée par son spec à detenteursDe et au schéma',
+  'modules/conditions-licence/delais-article-34.ts': 'délais de l’art. 34 du Code du numérique, confrontés par versions-publiees.spec.ts aux versions publiées, en attente de la bascule de version',
   'modules/controles/rapprochement-guide-plan.ts': 'rapprochement des guides, en attente du contrôle des schémas d’écriture',
   'modules/controles/schemas-guide-sycebnl.ts': 'table engendrée du guide SYCEBNL, en attente du même contrôle',
   'modules/controles/schemas-guide-syscohada.ts': 'table engendrée du guide SYSCOHADA, en attente du même contrôle',

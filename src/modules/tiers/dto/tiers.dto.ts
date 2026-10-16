@@ -16,6 +16,27 @@ export class CreerTiersDto {
   @IsUUID()
   modeleReglementId?: string;
 
+  /** Le mode de règlement habituel du tiers (ligne sage-l2, fonction 1) · un mode du dossier, actif. */
+  @IsOptional()
+  @IsUUID()
+  modeReglementId?: string;
+
+  /**
+   * Les modèles d'impression du tiers (ligne sage-l2, fonction 27) · un
+   * modèle du dossier, de la nature de sa zone (`modeles-impression.ts`).
+   */
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionExtraitId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionReglementId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionRappelId?: string;
+
   /**
    * Ouvrir les comptes du tiers, son compte principal et les sous-comptes de
    * sa panoplie, chacun sous son collectif (collectifs-tiers.ts). Vrai par
@@ -80,6 +101,20 @@ export class CreerTiersDto {
   @IsOptional()
   @IsString()
   contact?: string;
+
+  /**
+   * L'échéancier du modèle appliqué sans fenêtre (ligne sage-l2, fonction 3),
+   * dès la création · la copie d'un tiers (fonction 32) le reprend.
+   */
+  @FacultatifNonNul('L’échéancier appliqué sans fenêtre vaut vrai ou faux · omettez le champ pour le laisser faux.')
+  @IsBoolean()
+  validationAutomatiqueEcheances?: boolean;
+
+  /** La qualité du tiers (ligne sage-l2, fonction 24) · un libellé, jamais une règle (`qualite-tiers.ts`). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(35, { message: 'La qualité du tiers compte au plus 35 caractères.' })
+  qualite?: string;
 
   /*
     CE TIERS EST UNE AUTRE CELLULE DU MÊME GROUPE D'ÉTABLISSEMENTS.
@@ -166,6 +201,24 @@ export class ModifierTiersDto {
   @IsUUID()
   modeleReglementId?: string | null;
 
+  // null explicite = le tiers n'a plus de mode de règlement habituel
+  @IsOptional()
+  @IsUUID()
+  modeReglementId?: string | null;
+
+  // null explicite = le document part sans habillage (ligne sage-l2, fonction 27)
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionExtraitId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionReglementId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  modeleImpressionRappelId?: string | null;
+
   /*
     COORDONNÉES · elles manquaient, et cela rendait inutilisable une brique
     déjà construite : le module de relances compose des lettres de rappel
@@ -206,6 +259,12 @@ export class ModifierTiersDto {
   @IsString()
   contact?: string;
 
+  /** La qualité du tiers (ligne sage-l2, fonction 24) · vide ou null l'efface. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(35, { message: 'La qualité du tiers compte au plus 35 caractères.' })
+  qualite?: string | null;
+
   /*
     CE TIERS EST UNE AUTRE CELLULE DU MÊME GROUPE · voir CreerTiersDto pour le
     fondement (unicité de l'entité, `groupe/fondement-elimination.ts`).
@@ -225,6 +284,11 @@ export class ModifierTiersDto {
   @IsOptional()
   @IsBoolean()
   autoriseTvaDebits?: boolean;
+
+  /** L'échéancier du modèle appliqué sans fenêtre (ligne sage-l2, fonction 3) · vrai ou faux, jamais effacé. */
+  @FacultatifNonNul('L’échéancier appliqué sans fenêtre vaut vrai ou faux · omettez le champ pour le garder.')
+  @IsBoolean()
+  validationAutomatiqueEcheances?: boolean;
 
   @IsOptional()
   @IsString()

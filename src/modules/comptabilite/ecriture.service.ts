@@ -437,6 +437,8 @@ export interface LigneEntree {
   deviseId?: string | null;
   montantDevise?: number | null;
   coursApplique?: number | null;
+  /** Le mode de règlement de la ligne (ligne sage-l2, fonction 1) · jugé au dossier. */
+  modeReglementId?: string | null;
 }
 
 /** Une pièce soumise aux contrôles d'entrée · voir `EcritureService.controlesDEntree`. */
@@ -463,6 +465,20 @@ export interface PieceEntree {
    * défaut · un module qui viserait ce journal est refusé en le nommant.
    */
   journalDeSituationAdmis?: boolean;
+  /**
+   * LES MODES QUE LA PIÈCE PORTAIT DÉJÀ (relecture « échecs silencieux » de la
+   * ligne sage-l2, M2) · un mode mis en sommeil APRÈS la saisie ne doit pas
+   * enfermer le brouillard qui le porte · sans quoi retoucher le libellé
+   * d'une ligne exigeait de changer son mode. Seul un mode NOUVEAU sur la
+   * pièce est refusé en sommeil, comme l'écran le dit
+   * (`client/src/lib/modes-reglement.ts`, « gardé s'il est déjà posé »).
+   */
+  modesDejaPortes?: ReadonlySet<string>;
+}
+
+/** Les modes de règlement que portent déjà les lignes d'une pièce (M2). */
+function modesPortesPar(lignes: ReadonlyArray<{ modeReglementId?: string | null }>): ReadonlySet<string> {
+  return new Set(lignes.map((l) => l.modeReglementId).filter((id): id is string => !!id));
 }
 
 /**
@@ -541,6 +557,9 @@ export function donneesLigneSaisie(
     montantDevise: l.montantDevise,
     // Saisi, ou déduit des deux montants (audit final F49, ligne-en-devise.ts).
     coursApplique: coursDeLaLigne(l),
+    // Le mode de règlement (ligne sage-l2, fonction 1) · posé seulement s'il
+    // est donné, jugé au dossier par `controlesDEntree`.
+    ...(l.modeReglementId ? { modeReglementId: l.modeReglementId } : {}),
     ...(l.ventilations && l.ventilations.length > 0
       ? {
           ventilations: {
@@ -1087,6 +1106,26 @@ export class EcritureService {
         }
       }
 
+      // LE MODE DE RÈGLEMENT D'UNE LIGNE (ligne sage-l2, fonction 1) · du
+      // dossier et actif, même raison que le taux · la clé étrangère ne
+      // vérifie que l'existence de l'identifiant, jamais son dossier.
+      const modeIds = [...new Set(piece.lignes.map((l) => l.modeReglementId).filter((id): id is string => !!id))];
+      if (modeIds.length > 0) {
+        const modes = await db.modeReglement.findMany({
+          where: { id: { in: modeIds }, tenantId },
+          select: { id: true, code: true, estActif: true },
+        });
+        if (modes.length !== modeIds.length) {
+          throw new BadRequestException('Un ou plusieurs modes de règlement sont introuvables pour ce dossier.');
+        }
+        const enSommeil = modes.filter((m) => !m.estActif && !piece.modesDejaPortes?.has(m.id));
+        if (enSommeil.length > 0) {
+          throw new BadRequestException(
+            `Le mode de règlement ${enSommeil.map((m) => m.code).join(', ')} est en sommeil · réactivez-le dans Modes de règlement, ou choisissez-en un autre.`,
+          );
+        }
+      }
+
       // Comptes Total (regroupement par racine, §3.1) : jamais mouvementables
       // directement · leur solde n'est qu'une agrégation des comptes Détail de
       // même préfixe numérique (voir balance() plus bas). Un appel API direct
@@ -1476,6 +1515,7 @@ export class EcritureService {
       lignes: dto.lignes,
       // La modification est une saisie · elle ne change pas de journal.
       journalDeSituationAdmis: true,
+      modesDejaPortes: modesPortesPar(ecriture.lignes),
     });
 
     // UN JOURNAL MENSUEL NUMÉROTE PAR MOIS (audit final F58) · une pièce
@@ -1640,13 +1680,22 @@ export class EcritureService {
     ecritureId: string,
     dto: { date: string; libelle?: string; lignes: LigneEcritureDto[] },
   ): Promise<boolean> {
-    const ecriture = await tx.ecriture.findFirst({ where: { id: ecritureId, tenantId }, include: { journal: true } });
+    const ecriture = await tx.ecriture.findFirst({
+      where: { id: ecritureId, tenantId },
+      include: { journal: true, lignes: { select: { modeReglementId: true } } },
+    });
     if (!ecriture || ecriture.statut !== StatutEcriture.BROUILLARD) {
       throw new ConflictException("L'écriture a été validée ou retirée pendant la modification · rien n'est modifié.");
     }
     const { date, sectionsParId } = await this.controlesDEntree(
       tenantId,
-      { exerciceId: ecriture.exerciceId, journalId: ecriture.journalId, date: new Date(dto.date), lignes: dto.lignes },
+      {
+        exerciceId: ecriture.exerciceId,
+        journalId: ecriture.journalId,
+        date: new Date(dto.date),
+        lignes: dto.lignes,
+        modesDejaPortes: modesPortesPar(ecriture.lignes),
+      },
       tx,
     );
     const changeDeMois =
@@ -2396,6 +2445,9 @@ export class EcritureService {
             tauxTvaId: l.tauxTvaId ?? null,
             dateEcheance,
             dateVersement,
+            // Le mode de règlement (ligne sage-l2, fonction 1) · rendu pour
+            // que la modification ne l'efface pas.
+            modeReglementId: l.modeReglementId ?? null,
             deviseId: l.deviseId ?? null,
             montantDevise: l.montantDevise === null || l.montantDevise === undefined ? null : Number(l.montantDevise),
             coursApplique: l.coursApplique === null || l.coursApplique === undefined ? null : Number(l.coursApplique),
@@ -2591,6 +2643,7 @@ export class EcritureService {
                       credit: p.credit,
                       dateEcheance: l.dateEcheance,
                       dateVersement: l.dateVersement,
+                      modeReglementId: l.modeReglementId,
                       // La devise suit la ligne, sans signe, comme à la
                       // correction (audit final F1) · le sens de la ligne dit
                       // de quel côté elle tombe.

@@ -7,7 +7,9 @@ import { useAuth } from '../lib/auth';
 import type { ClasseCompte, Compte, ModeReportANouveau, TauxTva, TypeCompteDetailTotal } from '../lib/types';
 import { BoutonImprimer, EnteteImpression } from '../components/chrome/EnteteImpression';
 import { EditionStructure } from '../components/EditionStructure';
-import { editionPlan, perimetreEdition } from '../lib/editions-structures';
+import { ChoixModeleEdition } from '../components/ChoixModeleEdition';
+import { COLONNES_EDITION, type ModeleServi } from '../lib/modeles-edition';
+import { editionPlan, perimetreSiLue } from '../lib/editions-structures';
 import { Aide } from '../components/chrome/Aide';
 import { PortailModale } from '../components/PortailModale';
 import { classeDuNumero } from '../lib/classe-du-numero';
@@ -86,6 +88,8 @@ const estComptePrincipalOfficiel = (c: Pick<Compte, 'typeCompte' | 'numero'>) =>
 
 export function PlanComptesPage() {
   const [tauxTva, setTauxTva] = useState<TauxTva[]>([]);
+  // Le modèle de la liste imprimée (ligne sage-l7, fonction 59) · Standard par défaut.
+  const [modeleEdition, setModeleEdition] = useState<ModeleServi | null>(null);
   // CATALOGUE FISCAL · chargé seulement pour un dossier SYSCOHADA · une
   // entité à but non lucratif est exemptée d'impôt sur les sociétés (loi
   // n° 23/053, art. 5), la question du retraitement ne s'y pose pas.
@@ -99,6 +103,12 @@ export function PlanComptesPage() {
     utilisateur?.tenant.referentiel === 'SYSCOHADA' ? LIBELLE_CLASSE_SYSCOHADA : LIBELLE_CLASSE_SYCEBNL;
   const [comptes, setComptes] = useState<Compte[] | null>(null);
   const [recherche, setRecherche] = useState('');
+  // La recherche pour laquelle `comptes` a été LU, et le jeton qui jette une
+  // réponse périmée (second tour, 12 · jumeau de m6) · une réponse lente de
+  // la recherche d'avant remplaçait celle du jour, et l'édition imprimait
+  // l'une sous les critères de l'autre.
+  const [rechercheLue, setRechercheLue] = useState<string | null>(null);
+  const jetonComptes = useRef(0);
   const [classeFiltre, setClasseFiltre] = useState<ClasseCompte>('CLASSE_1');
   const [selectionId, setSelectionId] = useState<string | null>(null);
   const [nouveauOuvert, setNouveauOuvert] = useState(false);
@@ -128,7 +138,17 @@ export function PlanComptesPage() {
     // `usage` · la fenêtre dit quels comptes sont utilisés, ceux que les
     // listes de choix proposent même non retenus (Compte.estRetenu).
     const params = recherche ? `&recherche=${encodeURIComponent(recherche)}` : '';
-    setComptes(await api.get<Compte[]>(`/comptes?usage=true${params}`));
+    const mien = ++jetonComptes.current;
+    const demandee = recherche;
+    try {
+      const lus = await api.get<Compte[]>(`/comptes?usage=true${params}`);
+      if (mien !== jetonComptes.current) return;
+      setComptes(lus);
+      setRechercheLue(demandee);
+    } catch (e) {
+      // Une lecture périmée qui tombe ne se dit pas · seule la dernière compte.
+      if (mien === jetonComptes.current) throw e;
+    }
   };
 
   useEffect(() => {
@@ -358,11 +378,16 @@ export function PlanComptesPage() {
     <div className="p-2 flex flex-col h-full avec-edition">
       <EnteteImpression titre="Plan comptable" />
       <EditionStructure
-        edition={editionPlan(comptes ?? [])}
-        perimetre={perimetreEdition([['Recherche', recherche]], comptes?.length ?? 0, 'compte')}
+        edition={editionPlan(comptes !== null && rechercheLue === recherche ? comptes : [])}
+        perimetre={perimetreSiLue(comptes !== null && rechercheLue === recherche, 'Plan comptable', [['Recherche', recherche]], comptes?.length ?? 0, 'compte')}
+        modele={modeleEdition}
+        catalogue={COLONNES_EDITION.PLAN_COMPTABLE}
       />
       <div className="flex items-center justify-end mb-2 shrink-0">
-        <div className="flex items-center gap-2">
+        {/* La barre passe à la ligne sous une fenêtre étroite (390 px) · sans
+            quoi ses commandes sortaient de l'écran par la gauche. */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ChoixModeleEdition edition="PLAN_COMPTABLE" onChange={setModeleEdition} />
           <BoutonImprimer libelle="Imprimer la liste" />
           <input
             ref={champRecherche}

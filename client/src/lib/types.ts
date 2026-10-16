@@ -1,3 +1,4 @@
+import type { ModeReglementResume } from './modes-reglement';
 export type Referentiel = 'SYCEBNL' | 'SYSCOHADA';
 /**
  * N'a de sens que si `Referentiel` = 'SYCEBNL' · son pendant SYSCOHADA est
@@ -817,6 +818,8 @@ export interface EcheanceReglement {
   valeur: string | null;
   delaiJours: number;
   echeance: ConditionEcheance;
+  /** Le mode de règlement de cette échéance (ligne sage-l2, fonction 1). */
+  modeReglementId?: string | null;
 }
 
 export interface EcheanceCalculee {
@@ -832,6 +835,8 @@ export interface ModeleReglement {
   delaiJours: number;
   echeance: ConditionEcheance;
   estActif: boolean;
+  /** Le mode d'un modèle à une seule échéance (ligne sage-l2, fonction 1). */
+  modeReglementId?: string | null;
   echeances: EcheanceReglement[];
 }
 
@@ -1025,6 +1030,11 @@ export interface Tiers {
   estActif: boolean;
   modeleReglementId: string | null;
   modeleReglement?: ModeleReglement | null;
+  /** Le mode de règlement habituel du tiers (ligne sage-l2, fonction 1). */
+  modeReglementId?: string | null;
+  modeReglement?: ModeReglementResume | null;
+  /** L'échéancier du modèle appliqué en saisie sans fenêtre (ligne sage-l2, fonction 3). */
+  validationAutomatiqueEcheances?: boolean;
   comptesRattaches: TiersCompte[];
   /**
    * Coordonnées · sans elles, les lettres de relance que le logiciel compose
@@ -1039,6 +1049,12 @@ export interface Tiers {
   email: string | null;
   numeroImpot: string | null;
   contact: string | null;
+  /** La qualité du tiers (ligne sage-l2, fonction 24) · un libellé, jamais une règle. */
+  qualite?: string | null;
+  /** Les modèles d'impression du tiers (ligne sage-l2, fonction 27) · un par document, nul sans habillage. */
+  modeleImpressionExtraitId?: string | null;
+  modeleImpressionReglementId?: string | null;
+  modeleImpressionRappelId?: string | null;
   /**
    * CE TIERS EST UNE AUTRE CELLULE DU MÊME GROUPE D'ÉTABLISSEMENTS · un groupe
    * est UNE SEULE personne morale tenue en plusieurs dossiers, et une vente du
@@ -1807,6 +1823,12 @@ export interface ParametresDossier {
   refusClotureJournalNonImprime: boolean;
   /** Ligne sage-l1, fonction 14 · création d'un compte pendant la saisie (option, faux par défaut). */
   creationCompteEnSaisie: boolean;
+  /**
+   * Ligne sage-l2, fonction 36 · le seuil sous lequel un règlement passe
+   * l'écart en charge, le tiers soldé · `null` quand aucun n'est fixé (aucun
+   * écart ne se passe alors ; aucune valeur par défaut).
+   */
+  seuilEcartReglement: number | null;
   /** Forme juridique de la loi n° 004/2001 · `null` hors SYCEBNL. */
   formeJuridique: FormeJuridiqueEbnl | null;
   formeJuridiqueSyscohada: FormeJuridiqueSyscohada | null;
@@ -2033,6 +2055,8 @@ export interface LigneBrouillard {
     tauxTvaId: string | null;
     dateEcheance: string | null;
     dateVersement: string | null;
+    /** Le mode de règlement de la ligne (ligne sage-l2, fonction 1) · renvoyé à la modification. */
+    modeReglementId?: string | null;
     deviseId: string | null;
     montantDevise: number | null;
     coursApplique: number | null;
@@ -2495,8 +2519,29 @@ export interface LettreRelance {
   tiers: string;
   montant: number;
   texte: string;
+  /** Le modèle d'impression du tiers qui a habillé la lettre (ligne sage-l2, fonction 27), ou null. */
+  modeleImpression?: string | null;
   /** Ce qu'il est advenu de la remise · voir `RemiseLettre` (relances.service.ts). */
   remise: RemiseCourriel;
+}
+
+/**
+ * LE CADRE D'UN DOCUMENT (ligne sage-l2, fonction 27) · le texte du modèle du
+ * tiers coupé autour du document, jetons remplacés par le serveur. `modele`
+ * nul · le cadre par défaut du document.
+ */
+export interface CadreImpression {
+  modele: string | null;
+  avant: string;
+  apres: string;
+}
+
+/** Les avis de règlement d'un ordre de virement (GET /ordres-virement/:id/avis-reglement). */
+export interface AvisReglementOrdre {
+  ordre: { id: string; numero: number; date: string; statut: string };
+  avis: { ligneId: string; beneficiaire: string; montant: number; modele: string | null; texte: string }[];
+  /** Les lignes qui paient un salaire · aucun avis, le bulletin en tient lieu. */
+  lignesDeSalaires: number;
 }
 
 /**

@@ -5,6 +5,21 @@ import react from '@vitejs/plugin-react';
 // n'en déclare pas) · sans cette déclaration, la construction du site tombe.
 declare const process: { env: Record<string, string | undefined> };
 
+// LE JOUR DE KINSHASA (UTC+1), comme tout le logiciel (`common/echeance.ts`) ·
+// une publication lancée après 23 h UTC est du lendemain à Kinshasa, et la
+// date de mise en production dite en UTC aurait été celle de la veille
+// (relecture de la ligne pages-legales, mineur 7). Le format `en-CA` rend
+// AAAA-MM-JJ.
+const jourDeKinshasa = (instant: Date): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Kinshasa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant);
+
+// UN SEUL INSTANT POUR LA CONSTRUCTION ET SA MISE EN PRODUCTION (second tour
+// de relecture, mineur 4) · deux `new Date()` lus au jour UTC pour l'une et
+// au jour de Kinshasa pour l'autre faisaient dire à « À propos », pour une
+// publication lancée après 23 h UTC, une construction de la veille de sa mise
+// en production.
+const CONSTRUCTION = jourDeKinshasa(new Date());
+
 export default defineConfig({
   plugins: [react()],
   // L'IDENTITÉ DE LA CONSTRUCTION (audit final F180) · « À propos » disait
@@ -15,7 +30,20 @@ export default defineConfig({
   define: {
     __OMEGAX_VERSION__: JSON.stringify(process.env.npm_package_version ?? null),
     __OMEGAX_COMMIT__: JSON.stringify(process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 7) : null),
-    __OMEGAX_CONSTRUIT_LE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+    __OMEGAX_CONSTRUIT_LE__: JSON.stringify(CONSTRUCTION),
+    // LA MISE EN PRODUCTION (ligne pages-legales, 2026-10-15) · posée par le
+    // SEUL workflow qui publie l'interface (`firebase-hosting-merge.yml`,
+    // `OMEGAX_MISE_EN_PRODUCTION: oui`), dont le même job construit puis
+    // déploie · une construction qui n'est pas déployée n'est vue de
+    // personne, et celle qui l'est porte la date et le numéro de SA
+    // publication (`GITHUB_RUN_NUMBER`, posé par GitHub Actions). Partout
+    // ailleurs (construction locale, aperçu d'une demande de tirage, paquet
+    // sur site), rien · l'écran le dit au lieu d'inventer une date.
+    __OMEGAX_MISE_EN_PRODUCTION__: JSON.stringify(
+      process.env.OMEGAX_MISE_EN_PRODUCTION === 'oui'
+        ? { le: CONSTRUCTION, publication: process.env.GITHUB_RUN_NUMBER ?? null }
+        : null,
+    ),
   },
   server: {
     port: 5173,

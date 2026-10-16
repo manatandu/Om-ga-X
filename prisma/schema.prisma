@@ -316,6 +316,8 @@ model Tenant {
   systemeComptableSyscohada SystemeComptableSyscohada?
   createdAt                 DateTime                   @default(now())
   ribsTiers                 RibTiers[]
+  lieuxLivraison            LieuLivraison[]
+  modelesImpressionTiers    ModeleImpressionTiers[]
   ordresVirement            OrdreVirement[]
   lignesOrdreVirement       LigneOrdreVirement[]
   lotsVirement              LotVirement[]
@@ -400,11 +402,11 @@ model Tenant {
   // détient malgré tout un : elle reste agent de retenue (rémunérations,
   // loyers) et doit se faire connaître à la DGI dans les quinze jours du
   // début d'activité. Voir docs/identifiants-legaux-ebnl-rdc.md § 2.1.
-  numeroImpot                       String?
+  numeroImpot                          String?
   // Identification nationale · l'Ordonnance n° 25/293/2025 la range dans le
   // « recensement des AGENTS ÉCONOMIQUES ». Aucune source du droit des ASBL
   // ne l'exige : facultative pour une EBNL, courante en pratique. § 2.5.
-  idNat                             String?
+  idNat                                String?
   // Une ASBL n'est pas commerçante (art. 1er de la loi 004/2001 : elle « ne se
   // livre pas à des opérations industrielles ou commerciales, si ce n'est à
   // titre accessoire ») et l'AUDCG (art. 35, 1°) n'immatricule au RCCM, au-delà
@@ -415,42 +417,42 @@ model Tenant {
   // celui-là. § 1. Refusé à l'ENTREPRENANT, qui « ne peut être en même temps
   // immatriculé » (AUDCG art. 64) · il porte son numéro de déclaration
   // d'activité ci-dessous.
-  rccm                              String?
+  rccm                                 String?
   // AUDCG art. 62 · le numéro de DÉCLARATION D'ACTIVITÉ de l'entreprenant, à
   // porter sur ses pièces « suivi de l'indication du RCCM et de la mention
   // "Entreprenant dispensé d'immatriculation" ». Propre à cette forme.
-  numeroDeclarationActivite         String?
+  numeroDeclarationActivite            String?
   // AUDCG art. 140 · le dossier exploite un fonds en LOCATION-GÉRANCE, qualité
   // à indiquer en tête de ses pièces avec le RCCM. null = pas encore dit ;
   // jamais pour l'entreprenant, qui ne peut en être partie (art. 138).
-  locataireGerantFonds              Boolean?
+  locataireGerantFonds                 Boolean?
   // AUSCOOP art. 19 al. 3, 74 et 77 · le numéro de la coopérative au
   // REGISTRE DES SOCIÉTÉS COOPÉRATIVES, à porter sur ses lettres et factures.
   // Champ distinct du RCCM · une coopérative ne peut être immatriculée « à
   // plusieurs registres » (art. 77 al. 1), et son numéro imprimé sous le mot
   // « RCCM » serait faux. Propre à SOCIETE_COOPERATIVE.
-  numeroRegistreCooperatives        String?
+  numeroRegistreCooperatives           String?
   // AUSCOOP art. 205 et 268 · null = pas encore dit, et le manque se dit.
-  varianteCooperative               VarianteCooperative?
+  varianteCooperative                  VarianteCooperative?
   // AUSCGIE art. 386 et 414 · le MODE D'ADMINISTRATION d'une société anonyme,
   // que la dénomination porte avec la forme (« société anonyme » ET « du mode
   // d'administration de la société tel que prévu à l'article 414 »). null =
   // pas encore dit, jamais présumé · les statuts le choisissent « de manière
   // non équivoque ». Propre à la SA · la SAS en est exclue (art. 853-3).
-  modeAdministrationSa              ModeAdministrationSa?
+  modeAdministrationSa                 ModeAdministrationSa?
   // L'ASSOCIÉ OU ACTIONNAIRE UNIQUE · SARL (AUSCGIE art. 309, al. 2), SA
   // (art. 385, al. 2), SAS (art. 853-2, al. 2, désignée « SASU »). null = pas
   // encore dit. Déclaré pour les trois depuis la décision de Manasse du
   // 2026-10-09 (paquet 1, C4, loi n° 23/053, art. 63, al. 2, 1°) ; la colonne
   // garde son nom d'origine (SAS seule jusque-là), aucune migration.
-  associeUnique                     Boolean? @map("associeUniqueSas")
+  associeUnique                        Boolean?                 @map("associeUniqueSas")
   // ENTREPRISE RELEVANT DU PORTEFEUILLE DE L'ÉTAT · O.-L. n° 13/003, art. 112
   // et 113 ; loi n° 08/010, art. 3 (« toute société dans laquelle l'État ou
   // toute personne morale de droit public détient la totalité des actions ou
   // une participation »). La qualité tient à l'actionnariat · elle ne se
   // déduit ni de la forme ni du référentiel. Fait DÉCLARÉ, SYSCOHADA seul,
   // null = pas encore dit (décision par la loi du 2026-10-04, point 1).
-  entreprisePortefeuilleEtat        Boolean?
+  entreprisePortefeuilleEtat           Boolean?
   // AUSCGIE art. 203 et 204 · « La société est en liquidation dès l'instant de
   // sa dissolution », et la mention « société en liquidation » ainsi que le nom
   // du ou des liquidateurs figurent sur tous ses actes et documents destinés
@@ -459,8 +461,8 @@ model Tenant {
   // COLONNES que la liquidation de la coopérative (AUSCOOP art. 183, « dès
   // l'instant de sa dissolution »), créées par la migration
   // 20261225000000_mentions_cooperative · un seul fait, une seule place.
-  dateDissolution                   DateTime?
-  liquidateurs                      String?
+  dateDissolution                      DateTime?
+  liquidateurs                         String?
   // LA LIQUIDATION D'UNE SOCIÉTÉ COMMERCIALE (décision par la loi du
   // 2026-10-04, point 4) · faits DÉCLARÉS à côté de la dissolution, jamais
   // déduits. La date de NOMINATION du liquidateur fait courir la publication
@@ -468,20 +470,20 @@ model Tenant {
   // RÉGIME dit si le chapitre 2 (art. 224 à 241) s'applique · il ne vaut
   // « que » dans les deux cas de l'art. 223 ; une procédure collective sort
   // du chapitre 1 (art. 203).
-  dateNominationLiquidateur         DateTime?
-  regimeLiquidation                 RegimeLiquidation?
+  dateNominationLiquidateur            DateTime?
+  regimeLiquidation                    RegimeLiquidation?
   // AUSCGIE art. 201 al. 4 et 5 · tous les titres détenus par un seul associé
   // PERSONNE MORALE · la dissolution transmet le patrimoine « sans qu'il y ait
   // lieu à liquidation ». null = pas encore dit.
-  associeUniquePersonneMorale       Boolean?
+  associeUniquePersonneMorale          Boolean?
   // LA DISSOLUTION ET SES DEUX COTISATIONS SPÉCIALES (décision par la loi du
   // 2026-10-07, point 2) · loi n° 23/053, art. 13 al. 1 et 2 ; LPF art. 16
   // (« dans le mois »). Faits DÉCLARÉS, nullables sans défaut, jamais futurs ·
   // la date de CLÔTURE de la liquidation fait courir la seconde déclaration
   // (dernier bilan de liquidation) ; les deux dates de DÉCLARATION lèvent les
   // jalons du planning, qui sans elles resteraient rouges à vie.
-  dateClotureLiquidation            DateTime?
-  dateDeclarationCotisationActivite DateTime?
+  dateClotureLiquidation               DateTime?
+  dateDeclarationCotisationActivite    DateTime?
   dateDeclarationCotisationLiquidation DateTime?
   // ENTREPRISE MINIÈRE DU PORTEFEUILLE (décision par la loi du 2026-10-07,
   // point 3) · arrêté interministériel n° 005/CAB/MIN/PF/2025 et
@@ -491,17 +493,17 @@ model Tenant {
   // dit) ; la quote-part de l'État dans le capital se DÉCLARE avec sa source,
   // en pourcentage de 0 à 100, null par défaut, jamais présumée · sans elle,
   // le montant du dividende n'est pas calculé.
-  portefeuilleSecteurMinier         Boolean?
-  quotePartEtatCapital              Decimal?  @db.Decimal(7, 4)
-  sourceQuotePartEtat               String?
+  portefeuilleSecteurMinier            Boolean?
+  quotePartEtatCapital                 Decimal?                 @db.Decimal(7, 4)
+  sourceQuotePartEtat                  String?
   // AUSCGIE art. 182 et 183 · une TRANSFORMATION prend effet au jour de la
   // décision, « ne peut avoir d'effet rétroactif », et seul l'exercice au cours
   // duquel elle intervient suit la nouvelle forme. La forme d'avant et la date
   // d'effet sont gardées pour que les exercices antérieurs se lisent sous la
   // forme qu'ils avaient (`formeApplicable`). Nulles quand la forme n'a été
   // que corrigée · une saisie erronée se corrige pour tous les exercices.
-  formeJuridiqueSyscohadaAnterieure FormeJuridiqueSyscohada?
-  dateTransformationForme           DateTime?
+  formeJuridiqueSyscohadaAnterieure    FormeJuridiqueSyscohada?
+  dateTransformationForme              DateTime?
 
   // --- Identifiants propres aux entités à but non lucratif ---------------
   // Ce qui fonde l'existence d'une ASBL n'est pas un numéro de registre mais
@@ -566,6 +568,31 @@ model Tenant {
   // par être confondu avec un vrai, et c'est la remise à zéro qui se
   // tromperait de cible.
   estDemonstration Boolean @default(false)
+
+  /// L'ACCEPTATION DES CONDITIONS DE LICENCE (ligne pages-legales,
+  /// 2026-10-15) · Code du numérique (ordonnance-loi n° 23/10 du 13 mars
+  /// 2023), art. 55 · « le contrat par voie électronique est valablement
+  /// conclu si le client accepte l'offre ». La DERNIÈRE version acceptée pour
+  /// le dossier, quand, et par qui (courriel recopié au jour de l'acte, qui
+  /// peut changer ensuite). L'historique est au journal d'audit · `Tenant`
+  /// est audité, et chaque acceptation y laisse son maillon avec l'adresse
+  /// réseau de son auteur. Nullable, sans défaut · `null` = jamais acceptée,
+  /// l'état vrai de tout dossier né avant la ligne
+  /// (`conditions-licence/acceptation-conditions.ts`).
+  conditionsLicenceVersion      Int?
+  conditionsLicenceAccepteesLe  DateTime?
+  conditionsLicenceAccepteesPar String?
+  /// SHA-256 du texte accepté (`versions-publiees.ts`) · le numéro seul ne dit
+  /// pas QUEL texte (relecture de la ligne pages-legales, M2).
+  conditionsLicenceEmpreinte    String?
+  /// L'ABONNEMENT VÉRIFIÉ ET ACCEPTÉ avec les conditions (second tour de
+  /// relecture, M-a ; Code du numérique, art. 55, al. 1er) · formule,
+  /// options, périodicité, lignes et total, figés à l'acte et recopiés dans
+  /// l'accusé. Le prix de la console peut changer ensuite, la commande
+  /// acceptée non. `null` sans abonnement (installation sur site) et pour
+  /// toute acceptation antérieure à la colonne. Écrit par le seul
+  /// `ConditionsLicenceService`.
+  conditionsLicenceCommande     Json?
 
   // Longueur du numéro de compte · paramètre "longueur du plan comptable"
   // chez Sage 100 (dossier > Structure > Paramètres), 3 à 13 caractères,
@@ -634,7 +661,7 @@ model Tenant {
   // atteint par DEUX chemins : l'AUDCIF art. 69 côté SYSCOHADA, et le SYCEBNL
   // par son art. 16, 2) côté EBNL, puisque son art. 3 exclut justement l'art. 69
   // de l'AUDCIF.
-  doubleRegardValidation Boolean @default(false)
+  doubleRegardValidation        Boolean  @default(false)
   // REFUS DE CLÔTURER UN JOURNAL NON IMPRIMÉ (ligne sage-l1, fonction 60 ;
   // décision D3 de la reproduction). Une OPTION, désactivée par défaut, comme
   // le double regard · l'AUDCIF art. 22, 3° impose la clôture informatique et
@@ -644,13 +671,20 @@ model Tenant {
   // clôture (partielle, totale, de période, annuelle) est refusée tant qu'une
   // écriture validée de la période n'a pas été imprimée APRÈS sa validation ·
   // l'issue est immédiate, imprimer le journal.
-  refusClotureJournalNonImprime Boolean @default(false)
+  refusClotureJournalNonImprime Boolean  @default(false)
   // CRÉER UN COMPTE PENDANT LA SAISIE (ligne sage-l1, fonction 14 · Sage i7,
   // une option du dossier). Fermée par défaut · le plan reste la structure de
   // l'administrateur tant qu'il ne l'ouvre pas. Ouverte, la grille de saisie
   // offre d'ouvrir le numéro tapé inconnu du dossier comme SOUS-COMPTE d'un
   // compte d'imputation du plan (`comptes/compte-en-saisie.ts`), personnalisé.
-  creationCompteEnSaisie Boolean @default(false)
+  creationCompteEnSaisie        Boolean  @default(false)
+  // SEUIL DE L'ÉCART DE RÈGLEMENT (ligne sage-l2, fonction 36 · Sage, « écart
+  // de règlement » sous un montant paramétré) · le reste qu'un règlement peut
+  // passer en charge en soldant le tiers (`reglements/ecart-escompte.ts` ·
+  // remise du reste par le dossier créancier, Code civil, Livre III, art. 132 ;
+  // trop-payé abandonné au fournisseur, art. 133). SANS VALEUR PAR DÉFAUT ·
+  // aucun texte n'en fixe ; nul, aucun écart ne se passe.
+  seuilEcartReglement           Decimal? @db.Decimal(18, 2)
 
   assujettiTva               Boolean           @default(false)
   // LA QUESTION A-T-ELLE ÉTÉ RÉPONDUE ? `assujettiTva` vaut faux par défaut et
@@ -740,58 +774,58 @@ model Tenant {
   dossierCombinaison   Tenant?  @relation("Combinaison", fields: [dossierCombinaisonId], references: [id])
   combinaisonPour      Tenant?  @relation("Combinaison")
 
-  licence                  Licence?
-  abonnementEditeur        AbonnementCabinet?              @relation("AbonnementDuCabinet")
-  comptes                  Compte[]
-  exercices                Exercice[]
-  ecritures                Ecriture[]
-  users                    User[]
-  journaux                 Journal[]
-  clotures                 Cloture[]
-  tiers                    Tiers[]
-  messages                 Message[]
+  licence                   Licence?
+  abonnementEditeur         AbonnementCabinet?              @relation("AbonnementDuCabinet")
+  comptes                   Compte[]
+  exercices                 Exercice[]
+  ecritures                 Ecriture[]
+  users                     User[]
+  journaux                  Journal[]
+  clotures                  Cloture[]
+  tiers                     Tiers[]
+  messages                  Message[]
   // Comptes de tiers ouverts, dans les AUTRES dossiers du groupe, au nom de
   // celui-ci · voir `celluleGroupeId` sur Tiers.
-  tiersCellule             Tiers[]                         @relation("TiersCelluleGroupe")
-  bailleurs                Bailleur[]
-  rattachementsNotes       RattachementNote[]
-  saisiesNotes             SaisieNote[]
-  donations                Donation[]
-  transcriptionsInventaire TranscriptionInventaire[]
-  rapportsActivite         RapportActivite[]
-  manuelsProcedures        ManuelProcedures[]
-  modelesReglement         ModeleReglement[]
-  tauxTva                  TauxTva[]
-  liquidationsTva          LiquidationTva[]
-  rapprochements           RapprochementBancaire[]
-  lignesReleveBancaire     LigneReleveBancaire[]
-  encoursOuvertureRappro   EncoursOuvertureRapprochement[]
-  famillesImmobilisation   FamilleImmobilisation[]
-  immobilisations          Immobilisation[]
-  plansAnalytiques         PlanAnalytique[]
-  sectionsAnalytiques      SectionAnalytique[]
-  engagementsDepense       EngagementDepense[]
-  odAnalytiques            OdAnalytique[]
-  lignesOdAnalytique       LigneOdAnalytique[]
-  clesRepartition          CleRepartition[]
-  lignesCleRepartition     LigneCleRepartition[]
-  coutsProductionDeclares  CoutProductionDeclare[]
+  tiersCellule              Tiers[]                         @relation("TiersCelluleGroupe")
+  bailleurs                 Bailleur[]
+  rattachementsNotes        RattachementNote[]
+  saisiesNotes              SaisieNote[]
+  donations                 Donation[]
+  transcriptionsInventaire  TranscriptionInventaire[]
+  rapportsActivite          RapportActivite[]
+  manuelsProcedures         ManuelProcedures[]
+  modelesReglement          ModeleReglement[]
+  tauxTva                   TauxTva[]
+  liquidationsTva           LiquidationTva[]
+  rapprochements            RapprochementBancaire[]
+  lignesReleveBancaire      LigneReleveBancaire[]
+  encoursOuvertureRappro    EncoursOuvertureRapprochement[]
+  famillesImmobilisation    FamilleImmobilisation[]
+  immobilisations           Immobilisation[]
+  plansAnalytiques          PlanAnalytique[]
+  sectionsAnalytiques       SectionAnalytique[]
+  engagementsDepense        EngagementDepense[]
+  odAnalytiques             OdAnalytique[]
+  lignesOdAnalytique        LigneOdAnalytique[]
+  clesRepartition           CleRepartition[]
+  lignesCleRepartition      LigneCleRepartition[]
+  coutsProductionDeclares   CoutProductionDeclare[]
   comportementsGestionFiges ComportementsGestionFiges[]
-  naturesCompte            NatureCompte[]
-  conventionsFinancement   ConventionFinancement[]
-  regularisations          Regularisation[]
-  modelesAbonnement        ModeleAbonnement[]
-  modelesSaisie            ModeleSaisie[]
-  banques                  Banque[]
-  ribsBanque               RibBanque[]
-  libellesEcriture         LibelleEcriture[]
-  etatsPersonnalises       EtatPersonnalise[]
-  documentsTiers           DocumentTiers[]
-  devises                  Devise[]
-  reevaluations            Reevaluation[]
-  niveauxRelance           NiveauRelance[]
-  relances                 Relance[]
-  lettrages                Lettrage[]
+  naturesCompte             NatureCompte[]
+  conventionsFinancement    ConventionFinancement[]
+  regularisations           Regularisation[]
+  modelesAbonnement         ModeleAbonnement[]
+  modelesSaisie             ModeleSaisie[]
+  banques                   Banque[]
+  ribsBanque                RibBanque[]
+  libellesEcriture          LibelleEcriture[]
+  etatsPersonnalises        EtatPersonnalise[]
+  documentsTiers            DocumentTiers[]
+  devises                   Devise[]
+  reevaluations             Reevaluation[]
+  niveauxRelance            NiveauRelance[]
+  relances                  Relance[]
+  lettrages                 Lettrage[]
 
   exonerations         Exoneration[]
   affectationsResultat AffectationResultat[]
@@ -840,53 +874,62 @@ model Tenant {
   lieuxBiens                       LieuBien[]
   modelesBulletin                  ModeleBulletin[]
 
-  contratsLocationAcquisition  ContratLocationAcquisition[]
-  cloturesLocationAcquisition  ClotureLocationAcquisition[]
-  reprisesSubvention           RepriseSubventionImmobilisation[]
-  subventionsImmobilisations   SubventionImmobilisation[]
-  reductionsSubvention         ReductionSubventionImmobilisation[]
-  revisionsPlanAmortissement   RevisionPlanAmortissement[]
-  coutsEmpruntIncorpores       CoutEmpruntIncorpore[]
-  reevaluationsBilan           ReevaluationBilan[]
-  lignesReevaluationBilan      LigneReevaluationBilan[]
-  reprisesProvisionReeval      RepriseProvisionReevaluation[]
-  mouvementsDemantelement      MouvementDemantelement[]
-  provisionsChangeOuverture    ProvisionChangeOuverture[]
-  verrouProvisionChange        VerrouProvisionChange?
-  creancesDouteuses            CreanceDouteuse[]
-  ajustementsCreancesDouteuses AjustementCreanceDouteuse[]
-  mouvementsCreancesDouteuses  MouvementCreanceDouteuse[]
-  facturesCreancesDouteuses    FactureCreanceDouteuse[]
-  recuperationsTvaCreances     RecuperationTvaCreance[]
-  declarationsDeviseANouveau   DeclarationDeviseANouveau[]
-  imputationsPaiements         ImputationPaiement[]
-  verrouCreancesDouteuses      VerrouCreancesDouteuses?
-  constatsImpotResultat        ConstatImpotResultat[]
-  comptesVirementFonds         CompteVirementFonds[]
-  virementsFonds               VirementFonds[]
-  piecesVirementFonds          PieceVirementFonds[]
-  impressionsJournaux          ImpressionJournal[]
-  sequencesSaisie              SequenceSaisie[]
+  contratsLocationAcquisition          ContratLocationAcquisition[]
+  cloturesLocationAcquisition          ClotureLocationAcquisition[]
+  reprisesSubvention                   RepriseSubventionImmobilisation[]
+  subventionsImmobilisations           SubventionImmobilisation[]
+  reductionsSubvention                 ReductionSubventionImmobilisation[]
+  revisionsPlanAmortissement           RevisionPlanAmortissement[]
+  coutsEmpruntIncorpores               CoutEmpruntIncorpore[]
+  reevaluationsBilan                   ReevaluationBilan[]
+  lignesReevaluationBilan              LigneReevaluationBilan[]
+  reprisesProvisionReeval              RepriseProvisionReevaluation[]
+  mouvementsDemantelement              MouvementDemantelement[]
+  provisionsChangeOuverture            ProvisionChangeOuverture[]
+  verrouProvisionChange                VerrouProvisionChange?
+  creancesDouteuses                    CreanceDouteuse[]
+  ajustementsCreancesDouteuses         AjustementCreanceDouteuse[]
+  mouvementsCreancesDouteuses          MouvementCreanceDouteuse[]
+  facturesCreancesDouteuses            FactureCreanceDouteuse[]
+  recuperationsTvaCreances             RecuperationTvaCreance[]
+  declarationsDeviseANouveau           DeclarationDeviseANouveau[]
+  imputationsPaiements                 ImputationPaiement[]
+  verrouCreancesDouteuses              VerrouCreancesDouteuses?
+  constatsImpotResultat                ConstatImpotResultat[]
+  comptesVirementFonds                 CompteVirementFonds[]
+  virementsFonds                       VirementFonds[]
+  piecesVirementFonds                  PieceVirementFonds[]
+  impressionsJournaux                  ImpressionJournal[]
+  sequencesSaisie                      SequenceSaisie[]
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
-  reprisesConges               RepriseCongesSalarie[]
-  congesSalaries               CongeSalarie[]
-  absencesSalaries             AbsenceSalarie[]
-  majorationsHeures            MajorationHeures[]
-  indemnitesCaisseAbsences     IndemniteCaisseAbsence[]
+  reprisesConges                       RepriseCongesSalarie[]
+  congesSalaries                       CongeSalarie[]
+  absencesSalaries                     AbsenceSalarie[]
+  majorationsHeures                    MajorationHeures[]
+  indemnitesCaisseAbsences             IndemniteCaisseAbsence[]
   // Ligne sage-l5 · fonction 75, banques du salarié et paiement des salaires.
-  ribsSalaries                 RibSalarie[]
-  paiementsSalaires            PaiementSalaires[]
-  lignesPaiementSalaires       LignePaiementSalaire[]
+  ribsSalaries                         RibSalarie[]
+  paiementsSalaires                    PaiementSalaires[]
+  lignesPaiementSalaires               LignePaiementSalaire[]
   // Ligne sage-l5 · fonction 88, ventilation analytique de la paie.
-  repartitionsAnalytiquesPaie       RepartitionAnalytiquePaie[]
-  lignesRepartitionsAnalytiquesPaie LigneRepartitionAnalytiquePaie[]
+  repartitionsAnalytiquesPaie          RepartitionAnalytiquePaie[]
+  lignesRepartitionsAnalytiquesPaie    LigneRepartitionAnalytiquePaie[]
   annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
   // Ligne sage-l6 · fonction 22, pièces jointes aux écritures, aux sections,
   // aux biens et aux salariés (`common/pieces-jointes/`).
-  piecesJointesEcritures       PieceJointeEcriture[]
-  piecesJointesSections        PieceJointeSection[]
-  piecesJointesImmobilisations PieceJointeImmobilisation[]
-  piecesJointesSalaries        PieceJointeSalarie[]
+  piecesJointesEcritures               PieceJointeEcriture[]
+  piecesJointesSections                PieceJointeSection[]
+  piecesJointesImmobilisations         PieceJointeImmobilisation[]
+  piecesJointesSalaries                PieceJointeSalarie[]
+  // Ligne sage-l7 · fonction 99, l'export des seules modifications.
+  exportsEcritures                     ExportEcritures[]
+  ecrituresExportees                   EcritureExportee[]
+  // Ligne sage-l7 · fonction 59, l'impression différée et les sélections enregistrées.
+  impressionsDifferees                 ImpressionDifferee[]
+  selectionsEdition                    SelectionEdition[]
+  modelesEdition                       ModeleEdition[]
+  // Ligne sage-l2 · fonction 1, modes de règlement.
+  modesReglement                       ModeReglement[]
 
   @@index([dossierMereId])
   @@map("tenants")
@@ -1396,16 +1439,18 @@ model Journal {
   contrepartieChaqueLigne Boolean  @default(false)
   createdAt               DateTime @default(now())
 
-  ecritures         Ecriture[]
-  clotures          Cloture[]
-  modelesAbonnement ModeleAbonnement[]
-  modelesSaisie     ModeleSaisie[]
-  ribsBanque        RibBanque[]
-  virementsFondsOrigine     VirementFonds[] @relation("VirementFondsJournalOrigine")
-  virementsFondsDestination VirementFonds[] @relation("VirementFondsJournalDestination")
+  ecritures                 Ecriture[]
+  clotures                  Cloture[]
+  modelesAbonnement         ModeleAbonnement[]
+  modelesSaisie             ModeleSaisie[]
+  ribsBanque                RibBanque[]
+  virementsFondsOrigine     VirementFonds[]     @relation("VirementFondsJournalOrigine")
+  virementsFondsDestination VirementFonds[]     @relation("VirementFondsJournalDestination")
   impressions               ImpressionJournal[]
   // Ligne sage-l5 · le journal de trésorerie d'où les salaires sont payés.
   paiementsSalaires         PaiementSalaires[]
+  // Ligne sage-l2 · le journal de trésorerie qu'un mode de règlement propose.
+  modesReglement            ModeReglement[]
 
   @@unique([tenantId, code])
   @@map("journaux")
@@ -1606,7 +1651,7 @@ model Exercice {
   /// champ porte alors le MOTIF de cette déclaration, au journal d'audit.
   /// Null · rien n'a été déclaré (pas d'import, import concordant, ou
   /// rectifié).
-  motifOuvertureSuivanteConservee String?
+  motifOuvertureSuivanteConservee  String?
   /// Les positions qui diffèrent, figées à la déclaration (second tour, R8) ·
   /// `{ total, tronque, ecarts: [{ numero, devise, cloture, ouverture,
   /// clotureDevise, ouvertureDevise }] }`, deux cents au plus. Le contrôle
@@ -1617,7 +1662,7 @@ model Exercice {
   /// d'à-nouveau provisoire qu'ils portaient a disparu sans équivalent ·
   /// `[{ type, compte, groupe, lignes: [{ date, montant }], motif }]`. Écrit
   /// avec l'acte de clôture, donc au journal d'audit avec son motif.
-  defaitsParLaCloture Json?
+  defaitsParLaCloture              Json?
 
   /// FICHE R2 · cases ZN à ZS (AUDCIF Titre IX ch. 2 ; décision par la loi
   /// du 2026-10-04, point 5). SYSCOHADA seul. Toutes DÉCLARÉES, nullables
@@ -1644,11 +1689,11 @@ model Exercice {
   /// Date de l'assemblée générale ordinaire statuant sur les résultats · son
   /// procès-verbal part à l'Administration des recettes non fiscales « dans
   /// les dix (10) jours qui suivent » (art. 112).
-  dateAssembleeGenerale        DateTime?
+  dateAssembleeGenerale          DateTime?
   /// Date de dépôt des états financiers à l'administration du ministère du
   /// Portefeuille · l'affectation intervient « endéans soixante (60) jours »
   /// à compter de ce dépôt (art. 113).
-  dateDepotEtatsPortefeuille   DateTime?
+  dateDepotEtatsPortefeuille     DateTime?
   /// Date à laquelle le procès-verbal de l'assemblée a été COMMUNIQUÉ à
   /// l'Administration des recettes non fiscales (art. 112) · déclarée, elle
   /// lève le jalon, qui sans elle resterait rouge pour toujours.
@@ -1660,9 +1705,9 @@ model Exercice {
   /// déclaration lève le jalon du 15 mai ; la RÉCEPTION de la note de
   /// perception fait courir les huit jours du paiement, sans elle non
   /// calculé ; le paiement lève ce second jalon.
-  dateDeclarationDividendeEtat   DateTime?
-  dateNotePerceptionDividende    DateTime?
-  datePaiementDividendeEtat      DateTime?
+  dateDeclarationDividendeEtat DateTime?
+  dateNotePerceptionDividende  DateTime?
+  datePaiementDividendeEtat    DateTime?
 
   ecritures                    Ecriture[]
   clotures                     Cloture[]
@@ -1709,25 +1754,25 @@ model Exercice {
   consommationsUniteOeuvre ConsommationUniteOeuvre[]
 
   // Détermination du résultat fiscal · SYSCOHADA seulement.
-  retraitementsFiscaux            RetraitementFiscal[]
-  dossierFiscal                   DossierFiscalExercice?
-  entitesPerimetreConsolidation   EntitePerimetreConsolidation[]
-  liensParticipationConsolidation LienParticipationConsolidation[]
-  faitsConsolidation              FaitsConsolidationExercice?
-  reciproquesConsolidation        OperationReciproqueConsolidation[]
-  resultatsInternesConsolidation  ResultatInterneConsolidation[]
-  ecartsEvaluationConsolidation   EcartEvaluationConsolidation[]
-  provisionsChangeConsolidation   ProvisionChangeConsolidation[]
-  retraitementsIfrs               RetraitementIfrs[]
-  mouvementsCapitauxPropresIfrs   MouvementCapitauxPropresIfrs[]
-  effetsChangeTresorerieIfrs      EffetChangeTresorerieIfrs[]
-  notesIfrs                       NotesIfrs[]
-  simulationsReference            SimulationBudgetaire[]             @relation("SimulationReference")
-  simulationsCible                SimulationBudgetaire[]             @relation("SimulationCible")
-  virementsFonds                  VirementFonds[]
-  impressionsJournaux             ImpressionJournal[]
+  retraitementsFiscaux                 RetraitementFiscal[]
+  dossierFiscal                        DossierFiscalExercice?
+  entitesPerimetreConsolidation        EntitePerimetreConsolidation[]
+  liensParticipationConsolidation      LienParticipationConsolidation[]
+  faitsConsolidation                   FaitsConsolidationExercice?
+  reciproquesConsolidation             OperationReciproqueConsolidation[]
+  resultatsInternesConsolidation       ResultatInterneConsolidation[]
+  ecartsEvaluationConsolidation        EcartEvaluationConsolidation[]
+  provisionsChangeConsolidation        ProvisionChangeConsolidation[]
+  retraitementsIfrs                    RetraitementIfrs[]
+  mouvementsCapitauxPropresIfrs        MouvementCapitauxPropresIfrs[]
+  effetsChangeTresorerieIfrs           EffetChangeTresorerieIfrs[]
+  notesIfrs                            NotesIfrs[]
+  simulationsReference                 SimulationBudgetaire[]               @relation("SimulationReference")
+  simulationsCible                     SimulationBudgetaire[]               @relation("SimulationCible")
+  virementsFonds                       VirementFonds[]
+  impressionsJournaux                  ImpressionJournal[]
   // Ligne sage-l5 · les paiements de salaires passés dans l'exercice.
-  paiementsSalaires               PaiementSalaires[]
+  paiementsSalaires                    PaiementSalaires[]
   annulationsTraitementsImmobilisation AnnulationTraitementImmobilisation[]
 
   @@unique([tenantId, dateDebut, dateFin])
@@ -1773,46 +1818,46 @@ enum StatutEcriture {
 }
 
 model Ecriture {
-  id                          String                             @id @default(uuid())
-  repriseSubvention           RepriseSubventionImmobilisation?
-  reductionSubvention         ReductionSubventionImmobilisation?
-  revisionPlanAmortissement   RevisionPlanAmortissement?
-  coutEmpruntIncorpore        CoutEmpruntIncorpore?
-  reevaluationBilan           ReevaluationBilan?
-  repriseProvisionReeval      RepriseProvisionReevaluation?
-  mouvementDemantelement      MouvementDemantelement?
-  creanceDouteuseReclassement CreanceDouteuse?                   @relation("CreanceDouteuseReclassement")
-  creanceDouteuseCorrection   CreanceDouteuse?                   @relation("CreanceDouteuseCorrectionResultat")
-  ajustementCreanceDouteuse   AjustementCreanceDouteuse?
-  mouvementCreanceDouteuse    MouvementCreanceDouteuse?          @relation("MouvementCreanceDouteuseEcriture")
-  mouvementCreanceDouteusePerte MouvementCreanceDouteuse?        @relation("MouvementCreanceDouteusePerte")
-  recuperationTvaCreance      RecuperationTvaCreance?
-  declarationDeviseANouveau   DeclarationDeviseANouveau?
-  constatImpotResultat        ConstatImpotResultat?
-  clotureLocationAcquisition  ClotureLocationAcquisition?        @relation("ClotureLocationAcquisitionEcriture")
-  extourneLocationAcquisition ClotureLocationAcquisition?        @relation("ClotureLocationAcquisitionExtourne")
-  tenantId                    String
-  tenant                      Tenant                             @relation(fields: [tenantId], references: [id])
-  exerciceId                  String
-  exercice                    Exercice                           @relation(fields: [exerciceId], references: [id])
-  journalId                   String
-  journal                     Journal                            @relation(fields: [journalId], references: [id])
+  id                            String                             @id @default(uuid())
+  repriseSubvention             RepriseSubventionImmobilisation?
+  reductionSubvention           ReductionSubventionImmobilisation?
+  revisionPlanAmortissement     RevisionPlanAmortissement?
+  coutEmpruntIncorpore          CoutEmpruntIncorpore?
+  reevaluationBilan             ReevaluationBilan?
+  repriseProvisionReeval        RepriseProvisionReevaluation?
+  mouvementDemantelement        MouvementDemantelement?
+  creanceDouteuseReclassement   CreanceDouteuse?                   @relation("CreanceDouteuseReclassement")
+  creanceDouteuseCorrection     CreanceDouteuse?                   @relation("CreanceDouteuseCorrectionResultat")
+  ajustementCreanceDouteuse     AjustementCreanceDouteuse?
+  mouvementCreanceDouteuse      MouvementCreanceDouteuse?          @relation("MouvementCreanceDouteuseEcriture")
+  mouvementCreanceDouteusePerte MouvementCreanceDouteuse?          @relation("MouvementCreanceDouteusePerte")
+  recuperationTvaCreance        RecuperationTvaCreance?
+  declarationDeviseANouveau     DeclarationDeviseANouveau?
+  constatImpotResultat          ConstatImpotResultat?
+  clotureLocationAcquisition    ClotureLocationAcquisition?        @relation("ClotureLocationAcquisitionEcriture")
+  extourneLocationAcquisition   ClotureLocationAcquisition?        @relation("ClotureLocationAcquisitionExtourne")
+  tenantId                      String
+  tenant                        Tenant                             @relation(fields: [tenantId], references: [id])
+  exerciceId                    String
+  exercice                      Exercice                           @relation(fields: [exerciceId], references: [id])
+  journalId                     String
+  journal                       Journal                            @relation(fields: [journalId], references: [id])
   // Numéro de pièce auto-calculé selon Journal.numerotation (null si
   // NumerotationPiece.MANUELLE · voir JournalService.prochainNumeroPiece).
-  numeroPiece                 Int?
-  date                        DateTime
+  numeroPiece                   Int?
+  date                          DateTime
   // DATE DE VALEUR · AUDCIF art. 22, 4°. Renseignée SEULEMENT quand une
   // opération datée d'une période clôturée est enregistrée au premier jour de
   // la période ouverte : `date` porte alors ce premier jour, et `dateValeur`
   // la date réelle de l'opération, « mentionnée distinctement ». Null partout
   // ailleurs · une date de valeur égale à la date ne dirait rien.
-  dateValeur                  DateTime?
-  libelle                     String
-  reference                   String? // pièce justificative (numéro de facture, référence externe...)
-  createdAt                   DateTime                           @default(now())
-  createdBy                   String // piste d'audit : jamais modifiable après clôture de l'exercice
-  lignesOrdreVirement         LigneOrdreVirement[]
-  amortissementDerogatoire    AmortissementDerogatoire?
+  dateValeur                    DateTime?
+  libelle                       String
+  reference                     String? // pièce justificative (numéro de facture, référence externe...)
+  createdAt                     DateTime                           @default(now())
+  createdBy                     String // piste d'audit : jamais modifiable après clôture de l'exercice
+  lignesOrdreVirement           LigneOrdreVirement[]
+  amortissementDerogatoire      AmortissementDerogatoire?
 
   // Brouillard tant que l'écriture n'est pas validée · voir StatutEcriture.
   // Les états de travail (journal, grand livre, balance, analytique) la
@@ -1945,14 +1990,14 @@ model Ecriture {
   // plutôt qu'une seule generic "écriture liée à une immobilisation".
   // Ligne sage-l4, n° 68 · une écriture DÉJÀ PASSÉE peut porter plusieurs
   // biens, un par ligne (facture de plusieurs biens), d'où la liste.
-  immobilisationsAcquisition   Immobilisation[]            @relation("ImmoEcritureAcquisition")
-  immobilisationSortie         Immobilisation?             @relation("ImmoEcritureSortie")
-  immobilisationProduitCession Immobilisation?             @relation("ImmoEcritureProduitCession")
-  immobilisationMiseEnService  Immobilisation?             @relation("ImmoEcritureMiseEnService")
-  immobilisationSoldeDette     Immobilisation?             @relation("ImmoEcritureSoldeDette")
-  immobilisationSortieEcartReevaluation Immobilisation?    @relation("ImmoEcritureSortieEcartReevaluation")
-  dotationAmortissement        DotationAmortissement?
-  depreciationImmobilisation   DepreciationImmobilisation? @relation("DepreciationEcriture")
+  immobilisationsAcquisition            Immobilisation[]            @relation("ImmoEcritureAcquisition")
+  immobilisationSortie                  Immobilisation?             @relation("ImmoEcritureSortie")
+  immobilisationProduitCession          Immobilisation?             @relation("ImmoEcritureProduitCession")
+  immobilisationMiseEnService           Immobilisation?             @relation("ImmoEcritureMiseEnService")
+  immobilisationSoldeDette              Immobilisation?             @relation("ImmoEcritureSoldeDette")
+  immobilisationSortieEcartReevaluation Immobilisation?             @relation("ImmoEcritureSortieEcartReevaluation")
+  dotationAmortissement                 DotationAmortissement?
+  depreciationImmobilisation            DepreciationImmobilisation? @relation("DepreciationEcriture")
 
   // Registre des donateurs (art. 17) · une écriture d'encaissement peut porter
   // PLUSIEURS libéralités (une remise de chèques, une collecte de quête), d'où
@@ -1979,20 +2024,20 @@ model Ecriture {
   facture Facture?
 
   /// P9 · les bulletins de paie que cette écriture passe au journal.
-  bulletinsPaie BulletinPaie[] @relation("PaieDuMoisBulletin")
+  bulletinsPaie                   BulletinPaie[]                      @relation("PaieDuMoisBulletin")
   /// C2 · les bulletins annulés après passation que cette écriture reprend
   /// en négatif.
-  bulletinsPaieRepris BulletinPaie[] @relation("NegatifBulletinPaie")
+  bulletinsPaieRepris             BulletinPaie[]                      @relation("NegatifBulletinPaie")
   /// Virement de fonds · la pièce du journal d'origine, celle du journal de
   /// destination, et leurs inscriptions en négatif à l'annulation.
-  virementFondsOrigine            VirementFonds? @relation("VirementFondsEcritureOrigine")
-  virementFondsDestination        VirementFonds? @relation("VirementFondsEcritureDestination")
-  virementFondsNegatifOrigine     VirementFonds? @relation("VirementFondsNegatifOrigine")
-  virementFondsNegatifDestination VirementFonds? @relation("VirementFondsNegatifDestination")
+  virementFondsOrigine            VirementFonds?                      @relation("VirementFondsEcritureOrigine")
+  virementFondsDestination        VirementFonds?                      @relation("VirementFondsEcritureDestination")
+  virementFondsNegatifOrigine     VirementFonds?                      @relation("VirementFondsNegatifOrigine")
+  virementFondsNegatifDestination VirementFonds?                      @relation("VirementFondsNegatifDestination")
   /// Ligne sage-l5 · le paiement des salaires (D 422 / C trésorerie) et son
   /// inscription en négatif à l'annulation.
-  paiementSalaires                PaiementSalaires? @relation("PaiementSalairesEcriture")
-  paiementSalairesNegatif         PaiementSalaires? @relation("PaiementSalairesNegatif")
+  paiementSalaires                PaiementSalaires?                   @relation("PaiementSalairesEcriture")
+  paiementSalairesNegatif         PaiementSalaires?                   @relation("PaiementSalairesNegatif")
   annulationTraitementOrigine     AnnulationTraitementImmobilisation? @relation("AnnulationTraitementOrigine")
   annulationTraitementNegatif     AnnulationTraitementImmobilisation? @relation("AnnulationTraitementNegatif")
   /// Ligne sage-l6 · les pièces justificatives jointes à l'écriture.
@@ -2084,8 +2129,8 @@ model LigneEcriture {
   // par `lettrageId` sans que `lettre` soit servi ; le jour où le solde
   // tombe à zéro, le groupe passe SOLDE et `lettre` est posée sur toutes ses
   // lignes d'un coup.
-  lettre     String?
-  lettrageId String?
+  lettre           String?
+  lettrageId       String?
   /// AU1, second tour (R4) · la clôture de l'exercice précédent a DÉLETTRÉ
   /// cette ligne (son groupe portait une ligne d'à-nouveau provisoire disparue
   /// sans équivalent) · date de ce délettrage. Tant qu'elle n'est pas
@@ -2093,7 +2138,7 @@ model LigneEcriture {
   /// un encaissement, décret n° 011/42, art. 57), et le pré-lettrage propose
   /// son relettrage. Null sur toute autre ligne.
   aRelettrerDepuis DateTime?
-  lettrage   Lettrage? @relation(fields: [lettrageId], references: [id])
+  lettrage         Lettrage? @relation(fields: [lettrageId], references: [id])
 
   // Taux de TVA appliqué à CETTE ligne (la ligne de TVA elle-même, pas la
   // ligne HT) · posé par la saisie guidée "Achat/Vente avec TVA" de
@@ -2174,7 +2219,7 @@ model LigneEcriture {
   imputationsDuPaiement ImputationPaiement[] @relation("ImputationPaiementReglement")
   imputationsSurFacture ImputationPaiement[] @relation("ImputationPaiementFacture")
   /// Ligne sage-l4, n° 68 · le bien né de cette ligne d'acquisition déjà passée.
-  immobilisationAcquise Immobilisation? @relation("ImmoLigneAcquisition")
+  immobilisationAcquise Immobilisation?      @relation("ImmoLigneAcquisition")
 
   // Multidevise · `debit`/`credit` restent TOUJOURS exprimés dans la monnaie
   // de tenue du dossier, seule monnaie dans laquelle la comptabilité est
@@ -2184,6 +2229,16 @@ model LigneEcriture {
   devise        Devise?  @relation(fields: [deviseId], references: [id])
   montantDevise Decimal? @db.Decimal(18, 2)
   coursApplique Decimal? @db.Decimal(18, 6)
+
+  /// LE MODE DE RÈGLEMENT DE LA LIGNE (ligne sage-l2, fonction 1 · Sage, le
+  /// mode de l'échéance ou du paiement sur la ligne du tiers) · celui qu'une
+  /// facture attend sur son échéance, ou celui par lequel un règlement a été
+  /// fait. Informatif · aucun montant, aucun état ne le lit ; le règlement des
+  /// tiers le confronte à l'O.-L. n° 10/001, art. 59 bis. Nul pour l'immense
+  /// majorité des lignes. `Restrict` déclaré · un mode porté par une ligne ne
+  /// se supprime pas, il se met en sommeil.
+  modeReglementId String?
+  modeReglement   ModeReglement? @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
 
   @@index([compteId, lettre])
   @@index([lettrageId])
@@ -2196,6 +2251,10 @@ model LigneEcriture {
   @@index([ecritureId])
   // Déclaration de TVA : toutes ses sommes filtrent par taux rattaché.
   @@index([tauxTvaId])
+  // La suppression d'un mode de règlement (références comptées, clé
+  // étrangère en Restrict) lit les lignes qui le portent · sans index, la
+  // table la plus grosse du logiciel se balaierait à chaque essai.
+  @@index([modeReglementId])
   @@map("lignes_ecriture")
 }
 
@@ -2490,25 +2549,31 @@ enum TypeEcheance {
 }
 
 model ModeleReglement {
-  id         String            @id @default(uuid())
-  tenantId   String
-  tenant     Tenant            @relation(fields: [tenantId], references: [id])
-  intitule   String // ex : "30 jours net", "60 jours fin de mois"
+  id              String            @id @default(uuid())
+  tenantId        String
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  intitule        String // ex : "30 jours net", "60 jours fin de mois"
   // Échéance unique par défaut (100 % du montant à delaiJours/echeance) ·
   // c'est le mode mono-échéance du MVP initial, toujours valable tel quel
   // tant qu'aucune ligne n'existe dans `echeances` (voir TauxTvaService...
   // pardon, TiersService.calculerEcheances : `echeances` vide → une seule
   // échéance construite à partir de ces deux champs, sinon `echeances` fait
   // foi et ces deux-là ne servent plus qu'à l'affichage résumé de la liste).
-  delaiJours Int
-  echeance   ConditionEcheance @default(NET)
-  estActif   Boolean           @default(true)
-  createdAt  DateTime          @default(now())
+  delaiJours      Int
+  echeance        ConditionEcheance @default(NET)
+  /// Le mode de règlement de l'échéance unique (ligne sage-l2, fonction 1) ·
+  /// nul, l'échéance ne dit pas de mode. Sans effet sur un modèle fractionné,
+  /// dont chaque échéance porte le sien.
+  modeReglementId String?
+  modeReglement   ModeReglement?    @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
+  estActif        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
 
   tiers     Tiers[]
   echeances EcheanceReglement[]
 
   @@unique([tenantId, intitule])
+  @@index([modeReglementId])
   @@map("modeles_reglement")
 }
 
@@ -2526,8 +2591,13 @@ model EcheanceReglement {
   valeur            Decimal?          @db.Decimal(12, 2)
   delaiJours        Int
   echeance          ConditionEcheance @default(NET)
+  /// Le mode de règlement de cette échéance (ligne sage-l2, fonction 1 ·
+  /// Sage, chaque ligne du modèle porte le sien) · nul, aucun.
+  modeReglementId   String?
+  modeReglement     ModeReglement?    @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
 
   @@unique([modeleReglementId, ordre])
+  @@index([modeReglementId])
   @@map("echeances_reglement")
 }
 
@@ -2621,6 +2691,13 @@ model Tiers {
   numeroImpot  String?
   contact      String? // personne à qui la lettre s'adresse
 
+  /// LA QUALITÉ DU TIERS (ligne sage-l2, fonction 24 · Sage, « Qualité » de la
+  /// fiche, « société, indépendant… ») · un libellé DESCRIPTIF, 35 caractères
+  /// au plus, proposé dans une liste et libre (`tiers/qualite-tiers.ts`). Il
+  /// ne décide rien · aucun contrôle, aucun taux, aucune sanction ne le lit ;
+  /// la forme qui compte pour une règle se déclare là où la règle la lit.
+  qualite String? @db.VarChar(35)
+
   // HORS RAPPEL · Sage l'appelle « Hors rappel/relevé » et en fait une simple
   // case sur la fiche du tiers. Une case seule ne suffit pas ici, pour deux
   // raisons.
@@ -2712,6 +2789,31 @@ model Tiers {
   modeleReglementId String?
   modeleReglement   ModeleReglement? @relation(fields: [modeleReglementId], references: [id])
 
+  /// LE MODE DE RÈGLEMENT HABITUEL DU TIERS (ligne sage-l2, fonction 1 ·
+  /// Sage, fiche du tiers) · proposé en saisie et au règlement quand
+  /// l'échéance n'en porte pas, jamais imposé. Nul, aucun.
+  modeReglementId String?
+  modeReglement   ModeReglement? @relation(fields: [modeReglementId], references: [id], onDelete: Restrict)
+
+  /// L'ÉCHÉANCIER APPLIQUÉ SANS FENÊTRE (ligne sage-l2, fonction 3 · Sage,
+  /// « validation automatique des règlements ») · vrai, la saisie découpe la
+  /// ligne de facture selon le modèle de règlement sans présenter la fenêtre
+  /// des échéances, et l'annonce. Faux par défaut · la fenêtre se présente.
+  validationAutomatiqueEcheances Boolean @default(false)
+
+  /// LES MODÈLES D'IMPRESSION PROPRES AU TIERS (ligne sage-l2, fonction 27 ·
+  /// Sage, volet « Modèles d'impression » de la fiche, F_COMPTETMODELE) · un
+  /// par document, extrait de compte, avis de règlement, rappel. Le modèle
+  /// HABILLE le document (`tiers/modeles-impression.ts`), il ne le remplace
+  /// jamais. Nul, le document part sans habillage. RESTRICT · un modèle porté
+  /// par un tiers ne se supprime pas, et le refus le nomme.
+  modeleImpressionExtraitId   String?
+  modeleImpressionExtrait     ModeleImpressionTiers? @relation("ModeleImpressionExtrait", fields: [modeleImpressionExtraitId], references: [id], onDelete: Restrict)
+  modeleImpressionReglementId String?
+  modeleImpressionReglement   ModeleImpressionTiers? @relation("ModeleImpressionReglement", fields: [modeleImpressionReglementId], references: [id], onDelete: Restrict)
+  modeleImpressionRappelId    String?
+  modeleImpressionRappel      ModeleImpressionTiers? @relation("ModeleImpressionRappel", fields: [modeleImpressionRappelId], references: [id], onDelete: Restrict)
+
   createdAt DateTime @default(now())
 
   comptesRattaches TiersCompte[]
@@ -2725,6 +2827,8 @@ model Tiers {
   devis                Devis[]
   documents            DocumentTiers[]
   ribs                 RibTiers[]
+  /// Lieux de livraison d'un client (ligne sage-l2, fonction 31).
+  lieuxLivraison       LieuLivraison[]
   lignesOrdreVirement  LigneOrdreVirement[]
   abonnements          AbonnementCabinet[]
 
@@ -2734,6 +2838,13 @@ model Tiers {
   // L'agrégation du groupe interroge les tiers PAR CELLULE · sans cet index
   // elle balaie toute la table des tiers de chaque dossier à chaque agrégat.
   @@index([celluleGroupeId])
+  // Le retrait d'un mode ou d'un modèle d'impression compte les tiers qui le
+  // portent, et la clé étrangère RESTRICT les relit · sans index, chacun
+  // balaie la table des tiers (ligne sage-l2, second tour, m8).
+  @@index([modeReglementId])
+  @@index([modeleImpressionExtraitId])
+  @@index([modeleImpressionReglementId])
+  @@index([modeleImpressionRappelId])
   @@map("tiers")
 }
 
@@ -2853,7 +2964,7 @@ model SaisieNote {
   /// 32 et 33 du SYSCOHADA ; décision par la loi du 2026-10-04, point 2).
   /// 0 pour toute autre rubrique · la ligne est une OCCURRENCE de la
   /// rubrique, jamais une rubrique créée (AUDCIF Titre IX ch. 6 § 1.2).
-  rang        Int      @default(0)
+  rang        Int    @default(0)
 
   /// Colonne LIBRE · le texte tel que le cabinet l'a rédigé.
   valeurTexte  String?
@@ -2862,8 +2973,8 @@ model SaisieNote {
   /// refuse un texte dans une colonne de montant comme l'inverse.
   valeurNombre Decimal? @db.Decimal(20, 2)
 
-  updatedAt DateTime @updatedAt
-  updatedBy String
+  updatedAt    DateTime @updatedAt
+  updatedBy    String
   /// MOTIF DU RETRAIT d'une saisie conservée au format à huit colonnes des
   /// notes 20B et 29B (`effectifs-seize-colonnes.ts`) · écrit par une mise à
   /// jour UNITAIRE juste avant la suppression par identifiant, pour que le
@@ -2968,9 +3079,9 @@ model PlanAnalytique {
   /// code n'est renuméroté.
   longueurSections Int?
 
-  sections        SectionAnalytique[]
-  odAnalytiques   OdAnalytique[]
-  clesRepartition CleRepartition[]
+  sections         SectionAnalytique[]
+  odAnalytiques    OdAnalytique[]
+  clesRepartition  CleRepartition[]
   // Ligne sage-l5 · fonction 88 · les répartitions de la paie sur ce plan.
   repartitionsPaie RepartitionAnalytiquePaie[]
 
@@ -3009,13 +3120,13 @@ model SectionAnalytique {
   estActive Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  budgets         BudgetSection[]
-  ventilations    VentilationAnalytique[]
-  engagements     EngagementDepense[]
-  lignesOd        LigneOdAnalytique[]
-  clesSource      CleRepartition[]        @relation("CleSource")
-  lignesCle       LigneCleRepartition[]
-  coutsProduction CoutProductionDeclare[]
+  budgets          BudgetSection[]
+  ventilations     VentilationAnalytique[]
+  engagements      EngagementDepense[]
+  lignesOd         LigneOdAnalytique[]
+  clesSource       CleRepartition[]                 @relation("CleSource")
+  lignesCle        LigneCleRepartition[]
+  coutsProduction  CoutProductionDeclare[]
   // Ligne sage-l5 · fonction 88 · les répartitions de la paie qui la nomment.
   repartitionsPaie LigneRepartitionAnalytiquePaie[]
   // Ligne sage-l6 · fonction 22 · les documents de la section.
@@ -3473,11 +3584,11 @@ model CoutProductionDeclare {
 /// changement n'a pu les toucher depuis sa clôture, puisque c'est le premier.
 /// Ses chiffres se lisent ensuite sur cet instantané, jamais sur le compte.
 model ComportementsGestionFiges {
-  id         String   @id @default(uuid())
-  tenantId   String
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
-  exerciceId String   @unique
-  exercice   Exercice @relation(fields: [exerciceId], references: [id])
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  exerciceId    String   @unique
+  exercice      Exercice @relation(fields: [exerciceId], references: [id])
   // { [compteId]: { comportement, partVariablePct } } · les seuls comptes
   // déclarés ; un compte absent était non déclaré.
   comportements Json
@@ -4571,7 +4682,7 @@ model Immobilisation {
   // retenant la même écriture ; l'écriture que le module passe, elle, reste
   // à un bien (une pièce par fiche, comme avant).
   ecritureAcquisitionId    String?
-  ecritureAcquisition      Ecriture? @relation("ImmoEcritureAcquisition", fields: [ecritureAcquisitionId], references: [id], onDelete: Restrict)
+  ecritureAcquisition      Ecriture?      @relation("ImmoEcritureAcquisition", fields: [ecritureAcquisitionId], references: [id], onDelete: Restrict)
   /// Ligne sage-l4, n° 68 · la LIGNE d'une écriture déjà passée (validée)
   /// dont la fiche est née · une ligne, un bien. Null pour une fiche dont le
   /// module a passé l'écriture, ou repris. RESTRICT · la ligne validée est
@@ -4580,13 +4691,13 @@ model Immobilisation {
   ligneAcquisition         LigneEcriture? @relation("ImmoLigneAcquisition", fields: [ligneAcquisitionId], references: [id], onDelete: Restrict)
   // Écriture de sortie (solde des comptes 2/28, VCN sur 81) · null tant que
   // le bien est EN_SERVICE.
-  ecritureSortieId         String?   @unique
-  ecritureSortie           Ecriture? @relation("ImmoEcritureSortie", fields: [ecritureSortieId], references: [id], onDelete: SetNull)
+  ecritureSortieId         String?        @unique
+  ecritureSortie           Ecriture?      @relation("ImmoEcritureSortie", fields: [ecritureSortieId], references: [id], onDelete: SetNull)
   /// L'écriture du produit de cession (audit final F130) · RETENUE, comme
   /// celle d'acquisition · supprimée depuis le journal, elle laissait la fiche
   /// porter un prix de cession qu'aucune écriture ne justifiait plus.
-  ecritureProduitCessionId String?   @unique
-  ecritureProduitCession   Ecriture? @relation("ImmoEcritureProduitCession", fields: [ecritureProduitCessionId], references: [id], onDelete: Restrict)
+  ecritureProduitCessionId String?        @unique
+  ecritureProduitCession   Ecriture?      @relation("ImmoEcritureProduitCession", fields: [ecritureProduitCessionId], references: [id], onDelete: Restrict)
 
   // LOT 15 · ACQUISITION À PRIX ALÉATOIRE (SYSCOHADA seul) · rente viagère
   // (AUDCIF Titre VIII ch. 11 § 2, dette au 1681) ou redevances sur chiffre
@@ -7734,22 +7845,22 @@ model Salarie {
   /// décompte final, ni la déclaration de l'art. 218, ni un contrôle.
   actif Boolean @default(true)
 
-  contrats  ContratTravail[]
-  enfants   EnfantACharge[]
-  bulletins BulletinPaie[]
-  avances   AvanceSalaire[]
+  contrats                ContratTravail[]
+  enfants                 EnfantACharge[]
+  bulletins               BulletinPaie[]
+  avances                 AvanceSalaire[]
   // Ligne sage-l5 · congés acquis chaque mois (fonction 79).
-  repriseConges RepriseCongesSalarie?
-  absences      AbsenceSalarie[]
-  conges        CongeSalarie[]
+  repriseConges           RepriseCongesSalarie?
+  absences                AbsenceSalarie[]
+  conges                  CongeSalarie[]
   // Ligne sage-l5 · fonction 75 · le mode de paiement CONVENU (Code du
   // travail, art. 98, al. 2, « au temps et au lieu convenus »), déclaré,
   // jamais présumé · `null` = pas encore dit, et le salarié n'entre dans
   // aucun paiement tant qu'il ne l'est pas.
-  modePaiement   ModePaiementSalaire?
-  ribs           RibSalarie[]
-  lignesPaiement LignePaiementSalaire[]
-  ordresVirement LigneOrdreVirement[]
+  modePaiement            ModePaiementSalaire?
+  ribs                    RibSalarie[]
+  lignesPaiement          LignePaiementSalaire[]
+  ordresVirement          LigneOrdreVirement[]
   // Ligne sage-l5 · fonction 88 · sa répartition entre sections analytiques.
   repartitionsAnalytiques RepartitionAnalytiquePaie[]
   // Ligne sage-l6 · fonction 22 · les documents de la fiche du personnel.
@@ -8074,7 +8185,7 @@ model BulletinPaie {
   ecritureNegatifId String?
   ecritureNegatif   Ecriture? @relation("NegatifBulletinPaie", fields: [ecritureNegatifId], references: [id], onDelete: Restrict)
 
-  retenuesAvance RetenueAvanceBulletin[]
+  retenuesAvance   RetenueAvanceBulletin[]
   // Ligne sage-l5 · les congés dont ce bulletin porte l'allocation (art. 142, 145).
   allocationsConge CongeSalarie[]
   // Ligne sage-l5 · les paiements qui ont versé son net (fonction 75).
@@ -8991,34 +9102,34 @@ model OrdreVirement {
 /// Un bénéficiaire de l'ordre · le règlement qu'il exécute (la pièce de
 /// trésorerie passée par la fenêtre Règlement des tiers) et le RIB recopié.
 model LigneOrdreVirement {
-  id             String        @id @default(uuid())
-  tenantId       String
-  tenant         Tenant        @relation(fields: [tenantId], references: [id])
-  ordreId        String
-  ordre          OrdreVirement @relation(fields: [ordreId], references: [id], onDelete: Cascade)
+  id                 String        @id @default(uuid())
+  tenantId           String
+  tenant             Tenant        @relation(fields: [tenantId], references: [id])
+  ordreId            String
+  ordre              OrdreVirement @relation(fields: [ordreId], references: [id], onDelete: Cascade)
   /// Le bénéficiaire est un TIERS (Règlement des tiers) ou un SALARIÉ (paiement
   /// des salaires, ligne sage-l5, fonction 75) · l'un ou l'autre, jamais les
   /// deux (contrainte de la base). Un salarié payé ne se supprime pas.
-  tiersId        String?
-  tiers          Tiers?        @relation(fields: [tiersId], references: [id], onDelete: Restrict)
-  salarieId      String?
-  salarie        Salarie?      @relation(fields: [salarieId], references: [id], onDelete: Restrict)
-  beneficiaire   String
-  banque         String
-  coordonnees    String
-  codeBic        String?
-  montant        Decimal       @db.Decimal(18, 2)
-  reference      String?
+  tiersId            String?
+  tiers              Tiers?        @relation(fields: [tiersId], references: [id], onDelete: Restrict)
+  salarieId          String?
+  salarie            Salarie?      @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  beneficiaire       String
+  banque             String
+  coordonnees        String
+  codeBic            String?
+  montant            Decimal       @db.Decimal(18, 2)
+  reference          String?
   /// Journal et numéro de la pièce de règlement, recopiés · l'ordre annulé
   /// libère la pièce (ecritureId à null) sans perdre ce qu'il exécutait.
-  pieceReglement String
+  pieceReglement     String
   /// L'IMPUTATION QUE LE DOSSIER DÉCLARE EN PAYANT (Code civil, Livre III,
   /// art. 151 · « lorsqu'il paye »), recopiée et IMPRIMÉE sur l'ordre · les
   /// factures et la part de chacune (relecture du 2026-10-07, M6). `null` ·
   /// règlement sans parts désignées.
   imputationDeclaree String?
-  ecritureId     String?
-  ecriture       Ecriture?     @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
+  ecritureId         String?
+  ecriture           Ecriture?     @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
 
   @@index([ordreId])
   @@index([tenantId, ecritureId])
@@ -9536,7 +9647,7 @@ model ReevaluationBilan {
   ecritureId String   @unique
   ecriture   Ecriture @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
 
-  lignes LigneReevaluationBilan[]
+  lignes          LigneReevaluationBilan[]
   /// Les révisions prospectives posées par la méthode 2 (relecture M3).
   revisionsPosees RevisionPlanAmortissement[]
 
@@ -9559,29 +9670,29 @@ model LigneReevaluationBilan {
   immobilisationId String
   immobilisation   Immobilisation    @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
 
-  categorie           String?
-  coefficient         Decimal? @db.Decimal(12, 6)
-  valeurActuelle      Decimal? @db.Decimal(18, 2)
-  coefficientRetenu   Decimal  @db.Decimal(18, 10)
-  brutAvant           Decimal  @db.Decimal(18, 2)
-  amortissementsAvant Decimal  @db.Decimal(18, 2)
-  valeurNetteAvant    Decimal  @db.Decimal(18, 2)
-  brutApres           Decimal  @db.Decimal(18, 2)
-  amortissementsApres Decimal  @db.Decimal(18, 2)
-  valeurReevaluee     Decimal  @db.Decimal(18, 2)
-  ecart               Decimal  @db.Decimal(18, 2)
+  categorie             String?
+  coefficient           Decimal? @db.Decimal(12, 6)
+  valeurActuelle        Decimal? @db.Decimal(18, 2)
+  coefficientRetenu     Decimal  @db.Decimal(18, 10)
+  brutAvant             Decimal  @db.Decimal(18, 2)
+  amortissementsAvant   Decimal  @db.Decimal(18, 2)
+  valeurNetteAvant      Decimal  @db.Decimal(18, 2)
+  brutApres             Decimal  @db.Decimal(18, 2)
+  amortissementsApres   Decimal  @db.Decimal(18, 2)
+  valeurReevaluee       Decimal  @db.Decimal(18, 2)
+  ecart                 Decimal  @db.Decimal(18, 2)
   /// Le numéro qui a reçu l'écart (1061, 1062 et leurs subdivisions, ou 154).
-  compteEcart         String?
+  compteEcart           String?
   /// SYCEBNL · bien grevé d'un droit de reprise (1062) ou non (1061).
-  droitDeReprise      Boolean?
-  motifNonReevalue    String?
+  droitDeReprise        Boolean?
+  motifNonReevalue      String?
   /// Provision spéciale (154) · le cumul déjà repris au 861 (§ 4.2.4.2).
-  provisionReprise    Decimal  @default(0) @db.Decimal(18, 2)
+  provisionReprise      Decimal  @default(0) @db.Decimal(18, 2)
   /// Écart (106) · les pertes de valeur déjà imputées (ch. 12 § 2.5).
-  ecartImpute         Decimal  @default(0) @db.Decimal(18, 2)
+  ecartImpute           Decimal  @default(0) @db.Decimal(18, 2)
   /// Ligne A15 · écart (106) transféré à une réserve non distribuable à la
   /// sortie du bien (AUDCIF Titre VIII ch. 28 § 6).
-  ecartTransfere      Decimal  @default(0) @db.Decimal(18, 2)
+  ecartTransfere        Decimal  @default(0) @db.Decimal(18, 2)
   /// Ligne sage-l4 · la valeur résiduelle de la fiche AVANT l'opération ·
   /// multipliée par k' (décision D-41), elle ne se retrouve pas au centime
   /// par une division, et l'annulation de la réévaluation la rétablit telle
@@ -9783,9 +9894,9 @@ model CreanceDouteuse {
   ecritureCorrectionResultatId String?   @unique
   ecritureCorrectionResultat   Ecriture? @relation("CreanceDouteuseCorrectionResultat", fields: [ecritureCorrectionResultatId], references: [id], onDelete: Restrict)
 
-  ajustements AjustementCreanceDouteuse[]
-  mouvements  MouvementCreanceDouteuse[]
-  factures    FactureCreanceDouteuse[]
+  ajustements      AjustementCreanceDouteuse[]
+  mouvements       MouvementCreanceDouteuse[]
+  factures         FactureCreanceDouteuse[]
   /// Ligne A7 bis, partie 2 · les récupérations de la TVA de ses factures (art. 52).
   recuperationsTva RecuperationTvaCreance[]
 
@@ -9920,14 +10031,14 @@ model ImputationPaiement {
   /// La part du paiement imputée sur cette facture.
   montant Decimal @db.Decimal(18, 2)
 
-  fondement      FondementImputationPaiement
+  fondement         FondementImputationPaiement
   /// La pièce · ordre de virement ou lettre qui cite la facture, quittance
   /// acceptée. Exigée · une déclaration sans pièce ne se vérifie pas.
-  pieceReference String
+  pieceReference    String
   /// Sa date, exigée (relecture du 2026-10-07, M3) · la déclaration de
   /// l'art. 151 se fait « lorsqu'il paye », jamais après le paiement ; la
   /// quittance de l'art. 153 constate ce que le créancier « a reçu ».
-  pieceDate      DateTime @db.Date
+  pieceDate         DateTime                    @db.Date
   /// La preuve que le débiteur a ACCEPTÉ la quittance (art. 153) · exigée
   /// pour ce fondement, nulle pour la déclaration du débiteur.
   preuveAcceptation String?
@@ -10099,11 +10210,11 @@ model ConstatImpotResultat {
 
   /// L'impôt dû de l'exercice au débit du 89110000 (loi n° 23/053, art. 56,
   /// ou l'impôt minimum de l'art. 57), figé au clic.
-  montantImpot      Decimal @db.Decimal(18, 2)
-  minimumApplique   Boolean
+  montantImpot        Decimal @db.Decimal(18, 2)
+  minimumApplique     Boolean
   /// Acomptes imputés sur la dette d'impôt (D 441 / C 4492, art. 57 bis,
   /// al. 3 LPF) · zéro quand le cabinet ne l'a pas demandé.
-  montantImpute     Decimal @default(0) @db.Decimal(18, 2)
+  montantImpute       Decimal @default(0) @db.Decimal(18, 2)
   /// EXERCICE DE LIQUIDATION (décision de Manasse du 2026-10-08, compte choisi
   /// par la loi) · la part de la première cotisation spéciale (loi n° 23/053,
   /// art. 13, al. 1) qui dépasse l'impôt calculé sur le total des bilans
@@ -10113,7 +10224,7 @@ model ConstatImpotResultat {
   tropPayeLiquidation Decimal @default(0) @db.Decimal(18, 2)
   /// Ce que le cabinet déclare quand l'assujettissement de sa forme dépend
   /// d'un fait que le dossier ne porte pas (option de l'art. 4, art. 5 et 6).
-  attestationRegime String?
+  attestationRegime   String?
 
   ecritureId String?   @unique
   ecriture   Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: Restrict)
@@ -10456,27 +10567,27 @@ enum NatureAbsenceSalarie {
 /// elle s'annule avec son motif, au journal d'audit, puisqu'elle change un
 /// solde de congé et un bulletin sans qu'aucun montant ne la nomme.
 model AbsenceSalarie {
-  id                String               @id @default(uuid())
-  tenantId          String
-  tenant            Tenant               @relation(fields: [tenantId], references: [id])
-  salarieId         String
-  salarie           Salarie              @relation(fields: [salarieId], references: [id], onDelete: Restrict)
-  nature            NatureAbsenceSalarie
-  du                DateTime             @db.Date
-  au                DateTime             @db.Date
-  demiJourneeDebut  Boolean              @default(false)
-  demiJourneeFin    Boolean              @default(false)
+  id               String                   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant                   @relation(fields: [tenantId], references: [id])
+  salarieId        String
+  salarie          Salarie                  @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  nature           NatureAbsenceSalarie
+  du               DateTime                 @db.Date
+  au               DateTime                 @db.Date
+  demiJourneeDebut Boolean                  @default(false)
+  demiJourneeFin   Boolean                  @default(false)
   /// Congé de circonstance · l'événement de l'art. 146.
-  evenement         String?              @db.VarChar(60)
-  piece             String?              @db.VarChar(300)
-  observation       String?              @db.VarChar(500)
-  annuleLe          DateTime?
-  annulePar         String?
-  motifAnnulation   String?              @db.VarChar(500)
-  creePar           String
-  createdAt         DateTime             @default(now())
+  evenement        String?                  @db.VarChar(60)
+  piece            String?                  @db.VarChar(300)
+  observation      String?                  @db.VarChar(500)
+  annuleLe         DateTime?
+  annulePar        String?
+  motifAnnulation  String?                  @db.VarChar(500)
+  creePar          String
+  createdAt        DateTime                 @default(now())
   /// Étape 3 · les indemnités journalières de la Caisse déclarées sur l'arrêt.
-  indemnitesCaisse  IndemniteCaisseAbsence[]
+  indemnitesCaisse IndemniteCaisseAbsence[]
 
   @@index([tenantId, salarieId, du])
   @@map("absences_salaries")
@@ -10755,13 +10866,13 @@ model AnnulationTraitementImmobilisation {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  nature NatureTraitementImmobilisation
+  nature           NatureTraitementImmobilisation
   /// Le bien · nul pour une opération qui porte sur plusieurs biens
   /// (réévaluation, reprise de la provision spéciale), nommés dans `acte`.
   immobilisationId String?
-  immobilisation   Immobilisation? @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
+  immobilisation   Immobilisation?                @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
   exerciceId       String
-  exercice         Exercice        @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
+  exercice         Exercice                       @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
 
   /// L'identifiant de l'enregistrement annulé, retiré de sa table.
   acteId  String
@@ -10813,16 +10924,16 @@ model PieceJointeEcriture {
   ecriture        Ecriture? @relation(fields: [ecritureId], references: [id], onDelete: SetNull)
   /// Journal, numéro de pièce, date et libellé de l'écriture au dépôt.
   ecritureDecrite String
-  nomFichier  String
-  typeMime    String
-  taille      Int
+  nomFichier      String
+  typeMime        String
+  taille          Int
   /// SHA-256 du contenu · refuse un doublon sur le même objet et permet de
   /// vérifier qu'une pièce restituée est celle qui a été déposée.
-  empreinte   String
-  commentaire String?  @db.VarChar(69)
-  contenu     Bytes
-  deposePar   String?
-  createdAt   DateTime @default(now())
+  empreinte       String
+  commentaire     String?   @db.VarChar(69)
+  contenu         Bytes
+  deposePar       String?
+  createdAt       DateTime  @default(now())
 
   @@unique([ecritureId, empreinte])
   @@index([tenantId, ecritureId])
@@ -10833,21 +10944,21 @@ model PieceJointeEcriture {
 /// du bailleur, rapport). Il RETIENT la section · une section qui porte un
 /// document ne se supprime pas (`references.ts`, refus nommé).
 model PieceJointeSection {
-  id        String            @id @default(uuid())
-  tenantId  String
-  tenant    Tenant            @relation(fields: [tenantId], references: [id])
-  sectionId String
-  section   SectionAnalytique @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+  id          String            @id @default(uuid())
+  tenantId    String
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  sectionId   String
+  section     SectionAnalytique @relation(fields: [sectionId], references: [id], onDelete: Restrict)
   nomFichier  String
   typeMime    String
   taille      Int
   /// SHA-256 du contenu · refuse un doublon sur le même objet et permet de
   /// vérifier qu'une pièce restituée est celle qui a été déposée.
   empreinte   String
-  commentaire String?  @db.VarChar(69)
+  commentaire String?           @db.VarChar(69)
   contenu     Bytes
   deposePar   String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime          @default(now())
 
   @@unique([sectionId, empreinte])
   @@index([tenantId, sectionId])
@@ -10862,16 +10973,16 @@ model PieceJointeImmobilisation {
   tenant           Tenant         @relation(fields: [tenantId], references: [id])
   immobilisationId String
   immobilisation   Immobilisation @relation(fields: [immobilisationId], references: [id], onDelete: Restrict)
-  nomFichier  String
-  typeMime    String
-  taille      Int
+  nomFichier       String
+  typeMime         String
+  taille           Int
   /// SHA-256 du contenu · refuse un doublon sur le même objet et permet de
   /// vérifier qu'une pièce restituée est celle qui a été déposée.
-  empreinte   String
-  commentaire String?  @db.VarChar(69)
-  contenu     Bytes
-  deposePar   String?
-  createdAt   DateTime @default(now())
+  empreinte        String
+  commentaire      String?        @db.VarChar(69)
+  contenu          Bytes
+  deposePar        String?
+  createdAt        DateTime       @default(now())
 
   @@unique([immobilisationId, empreinte])
   @@index([tenantId, immobilisationId])
@@ -10883,11 +10994,11 @@ model PieceJointeImmobilisation {
 /// personnel (rôles cantonnés), nom et commentaire hors du journal d'audit,
 /// retrait toujours permis (ordonnance-loi n° 23/10 du 13 mars 2023, art. 215).
 model PieceJointeSalarie {
-  id        String  @id @default(uuid())
-  tenantId  String
-  tenant    Tenant  @relation(fields: [tenantId], references: [id])
-  salarieId String
-  salarie   Salarie @relation(fields: [salarieId], references: [id], onDelete: Restrict)
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  salarieId   String
+  salarie     Salarie  @relation(fields: [salarieId], references: [id], onDelete: Restrict)
   nomFichier  String
   typeMime    String
   taille      Int
@@ -10902,4 +11013,332 @@ model PieceJointeSalarie {
   @@unique([salarieId, empreinte])
   @@index([tenantId, salarieId])
   @@map("pieces_jointes_salaries")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l7 · fonction 99, l'export des seules modifications
+// ---------------------------------------------------------------------------
+
+/// Ce que l'export a voulu envoyer · ce qui a changé depuis le dernier
+/// export, ou tout ce que la portée retient.
+enum ModeExportEcritures {
+  MODIFICATIONS
+  COMPLET
+}
+
+/// L'EXPORT DES ÉCRITURES, NUMÉROTÉ ET DATÉ (ligne sage-l7, fonction 99 ·
+/// Sage X3, « numéro d'export » · seuls les enregistrements créés ou modifiés
+/// depuis le dernier export partent). AUDCIF art. 22, 7° · « les états
+/// périodiques fournis soient numérotés et datés », et « chaque donnée entrée
+/// par transmission d'un autre système doit être appuyée d'une pièce
+/// justificative probante » · le fichier remis porte son numéro, sa date et
+/// son auteur, son empreinte (SHA-256) est gardée ici, et le fichier lui-même
+/// AUSSI · un téléchargement interrompu ne perd rien, l'envoi se retélécharge.
+/// La suite est continue par dossier et ne se réutilise jamais ; un export ne
+/// se modifie ni ne se supprime (aucune route).
+model ExportEcritures {
+  id                String              @id @default(uuid())
+  tenantId          String
+  tenant            Tenant              @relation(fields: [tenantId], references: [id])
+  numero            Int
+  mode              ModeExportEcritures
+  inclureBrouillard Boolean
+  produitAt         DateTime            @default(now())
+  produitPar        String
+  /// Écritures portées par le fichier, et leur détail · jamais envoyées
+  /// (nouvelles), changées depuis leur envoi (modifiées), le reste étant
+  /// renvoyé tel quel par un export complet.
+  nombreEcritures   Int
+  nombreNouvelles   Int
+  nombreModifiees   Int
+  /// Écritures envoyées par un export précédent qui n'existent plus · nommées
+  /// sur la feuille « Supprimées », jamais tues.
+  nombreSupprimees  Int
+  nombreLignes      Int
+  /// Ce qui restait à envoyer au-delà du plafond mesuré · laissé pour
+  /// l'export suivant, jamais amputé d'une écriture partielle.
+  nombreEnAttente   Int
+  nomFichier        String
+  taille            Int
+  empreinte         String
+  contenu           Bytes
+
+  @@unique([tenantId, numero])
+  @@map("exports_ecritures")
+}
+
+/// LE REGISTRE DE CE QUI EST PARTI · une ligne par écriture envoyée, avec ce
+/// que le fichier portait d'elle (statut, empreinte de son contenu) et de quoi
+/// la nommer quand elle n'existe plus. SANS CLÉ ÉTRANGÈRE vers l'écriture, à
+/// dessein · une écriture du brouillard retirée doit laisser sa trace ici
+/// pour être dite à l'export suivant ; une clé l'empêcherait d'être retirée
+/// (RESTRICT) ou effacerait la trace (CASCADE, SET NULL). Engendrée en masse
+/// par l'export · hors du journal d'audit, comme les lignes d'écriture.
+model EcritureExportee {
+  id                String         @id @default(uuid())
+  tenantId          String
+  tenant            Tenant         @relation(fields: [tenantId], references: [id])
+  ecritureId        String
+  /// Le dernier export qui l'a portée.
+  numeroExport      Int
+  statutExporte     StatutEcriture
+  empreinte         String
+  date              DateTime
+  journalCode       String
+  piece             String
+  libelle           String
+  /// L'export qui a dit sa suppression · elle ne se redit pas ensuite.
+  supprimeeAuNumero Int?
+
+  @@unique([tenantId, ecritureId])
+  /// La relecture du registre, statut par statut, dans l'ordre de la clé.
+  @@index([tenantId, supprimeeAuNumero, statutExporte, id], map: "ecritures_exportees_a_relire_idx")
+  @@map("ecritures_exportees")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l7 · fonction 59, l'impression différée
+// ---------------------------------------------------------------------------
+
+/// Le livre que la demande produit · ceux que l'export produit déjà en flux,
+/// par le même moteur, sous le même plafond.
+enum NatureImpressionDifferee {
+  JOURNAL
+  GRAND_LIVRE
+  BALANCE
+}
+
+enum EtatImpressionDifferee {
+  EN_ATTENTE
+  EN_COURS
+  PRETE
+  ECHOUEE
+}
+
+/// UNE IMPRESSION DIFFÉRÉE (ligne sage-l7, fonction 59 ; décision L7-2) ·
+/// demandée maintenant, produite ensuite par le moteur de l'export du même
+/// livre, retrouvée plus tard. Numérotée et datée (AUDCIF art. 22, 7°), la
+/// suite est continue par dossier et ne se réutilise jamais ; la demande ne
+/// se supprime pas, seul son fichier peut se retirer. Jamais un fichier
+/// partiel · un refus de volume ou une panne la rend ÉCHOUÉE, motif dit.
+/// Aucune clé vers l'exercice · ses critères le nomment, et une demande ne
+/// doit pas retenir un exercice qu'un geste légitime retire.
+model ImpressionDifferee {
+  id              String                   @id @default(uuid())
+  tenantId        String
+  tenant          Tenant                   @relation(fields: [tenantId], references: [id])
+  numero          Int
+  nature          NatureImpressionDifferee
+  /// Les critères de la demande, relus par le serveur.
+  criteres        Json
+  /// Ce que la demande imprime, en clair, figé à la demande.
+  libelle         String
+  etat            EtatImpressionDifferee   @default(EN_ATTENTE)
+  demandeLe       DateTime                 @default(now())
+  demandePar      String
+  commenceLe      DateTime?
+  produitLe       DateTime?
+  motifEchec      String?
+  nomFichier      String?
+  taille          Int?
+  empreinte       String?
+  contenu         Bytes?
+  /// Le fichier retiré pour libérer la place · la demande, son numéro et son
+  /// empreinte restent.
+  fichierRetireLe DateTime?
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, etat, demandeLe])
+  @@map("impressions_differees")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l7 · fonction 59, les sélections enregistrées
+// ---------------------------------------------------------------------------
+
+/// L'édition dont la sélection garde les critères.
+enum EditionSelection {
+  JOURNAL
+  IMPRESSION_DIFFEREE
+}
+
+/// UNE SÉLECTION ENREGISTRÉE (ligne sage-l7, fonction 59) · les critères
+/// d'une édition gardés sous un nom et rappelés. AU DOSSIER, jamais au poste ·
+/// elle nomme des objets du dossier (un journal, des dates), le dossier se
+/// travaille à plusieurs et sur plusieurs postes, et un critère gardé dans le
+/// navigateur se perd avec ses données (fiche de la ligne). Elle ne garde
+/// jamais l'exercice · elle se rappelle sur l'exercice choisi.
+model SelectionEdition {
+  id        String           @id @default(uuid())
+  tenantId  String
+  tenant    Tenant           @relation(fields: [tenantId], references: [id])
+  edition   EditionSelection
+  nom       String
+  /// Les critères, relus par le serveur clé par clé.
+  criteres  Json
+  creePar   String
+  creeLe    DateTime         @default(now())
+  modifieLe DateTime         @default(now())
+
+  @@unique([tenantId, edition, nom])
+  @@map("selections_edition")
+}
+
+// ---------------------------------------------------------------------------
+// Ligne sage-l7 · fonction 59, les modèles d'édition et les sauts
+// ---------------------------------------------------------------------------
+
+/// Les éditions de TRAVAIL qu'un modèle personnalise · jamais un état
+/// financier ni un livre obligatoire (décision L7-1).
+enum EditionModele {
+  PLAN_COMPTABLE
+  PLAN_TIERS
+  PLAN_ANALYTIQUE
+}
+
+/// Ce qui sépare deux groupes à l'impression (classe, type de tiers,
+/// rubrique analytique).
+enum SautEdition {
+  AUCUN
+  LIGNE
+  PAGE
+}
+
+/// UN MODÈLE D'ÉDITION PERSONNALISÉ (ligne sage-l7, fonction 59 ; décision
+/// L7-1) · les colonnes facultatives gardées d'une édition de travail, et le
+/// saut entre ses groupes. Le modèle standard n'est pas rangé (toutes les
+/// colonnes, aucun saut) ; les colonnes qui identifient la ligne (numéro ou
+/// code, intitulé ou nom) ne se retirent jamais.
+model ModeleEdition {
+  id        String        @id @default(uuid())
+  tenantId  String
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+  edition   EditionModele
+  nom       String
+  /// Les clés des colonnes FACULTATIVES gardées, dans l'ordre de l'édition.
+  colonnes  String[]
+  saut      SautEdition   @default(AUCUN)
+  creePar   String
+  creeLe    DateTime      @default(now())
+  modifieLe DateTime      @default(now())
+
+  @@unique([tenantId, edition, nom])
+  @@map("modeles_edition")
+}
+
+// Ligne sage-l2 · tiers et règlements
+
+/// LA NATURE D'UN MODE DE RÈGLEMENT (ligne sage-l2, fonction 1 · Sage,
+/// P_REGLEMENT, « mode de paiement » de chaque mode). Elle seule porte une
+/// règle · l'O.-L. n° 10/001, art. 59 bis, veut qu'une transaction d'au moins
+/// 1 000 000 FC entre assujettis soit payée « par chèque, par virement ou par
+/// carte bancaire », sous peine de la perte du droit à déduction (art. 74 bis).
+/// Les autres natures (monnaie électronique comprise, que le texte ne nomme
+/// pas) n'y satisfont pas, et le règlement le dit (`modes-reglement.ts`).
+enum NatureModeReglement {
+  ESPECES
+  CHEQUE
+  VIREMENT
+  CARTE_BANCAIRE
+  MONNAIE_ELECTRONIQUE
+  EFFET_DE_COMMERCE
+  PRELEVEMENT
+  AUTRE
+}
+
+/// LIEU DE LIVRAISON D'UN CLIENT (ligne sage-l2, fonction 31 · Sage,
+/// F_LIVRAISON) · une adresse où le client reçoit ses marchandises, à côté
+/// de l'adresse de la fiche, qui reste celle des factures et des relances.
+/// Partie de la fiche du tiers (structure, administrateur, journal d'audit)
+/// · supprimée avec lui (Cascade, comme ses RIB), reportée par la fusion.
+/// Un seul PRINCIPAL par client, le premier d'office ; un lieu en sommeil ne
+/// l'est jamais (`tiers/lieux-livraison.ts`). Aucun effet comptable.
+model LieuLivraison {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  tiersId      String
+  tiers        Tiers    @relation(fields: [tiersId], references: [id], onDelete: Cascade)
+  intitule     String   @db.VarChar(35)
+  adresse      String?
+  complement   String?
+  boitePostale String?
+  ville        String?
+  pays         String?
+  contact      String?
+  telephone    String?
+  email        String?
+  estPrincipal Boolean  @default(false)
+  estActif     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, tiersId])
+  @@map("lieux_livraison")
+}
+
+/// LE DOCUMENT QU'UN MODÈLE D'IMPRESSION HABILLE (ligne sage-l2, fonction 27 ·
+/// Sage, modèles d'impression du tiers) · l'extrait de compte (le relevé de
+/// Rappel et relevé), l'avis de règlement (joint à un ordre de virement), le
+/// rappel (relances préventives et rappels).
+enum NatureModeleImpression {
+  EXTRAIT
+  REGLEMENT
+  RAPPEL
+}
+
+/// UN MODÈLE D'IMPRESSION DU DOSSIER (ligne sage-l2, fonction 27) · un texte
+/// qui porte le jeton {document} une fois et une seule, là où s'imprime le
+/// document que le logiciel compose, et autour duquel le cabinet écrit ce
+/// qu'un tiers attend (référence de contrat, service destinataire, formule).
+/// Règles dans `tiers/modeles-impression.ts`. Structure du dossier, tenue par
+/// l'administrateur, au journal d'audit.
+model ModeleImpressionTiers {
+  id        String                 @id @default(uuid())
+  tenantId  String
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id])
+  nature    NatureModeleImpression
+  intitule  String                 @db.VarChar(35)
+  texte     String
+  createdAt DateTime               @default(now())
+  createdBy String
+
+  tiersExtrait   Tiers[] @relation("ModeleImpressionExtrait")
+  tiersReglement Tiers[] @relation("ModeleImpressionReglement")
+  tiersRappel    Tiers[] @relation("ModeleImpressionRappel")
+
+  @@unique([tenantId, nature, intitule])
+  @@map("modeles_impression_tiers")
+}
+
+/// UN MODE DE RÈGLEMENT DU DOSSIER (ligne sage-l2, fonction 1 · Sage 100,
+/// P_REGLEMENT, trente modes au plus, chacun son intitulé, son mode de
+/// paiement et son code interbancaire). Structure du dossier, au journal
+/// d'audit · porté par la fiche du tiers, l'échéance d'un modèle de
+/// règlement, la ligne d'écriture et le règlement des tiers. Le code
+/// interbancaire est LIBRE · aucune nomenclature bancaire lue n'est
+/// applicable en RDC (décision D11 de la reproduction, normes françaises non
+/// reprises). Le journal proposé est un journal de trésorerie, choisi au
+/// règlement quand ce mode l'est.
+model ModeReglement {
+  id                String              @id @default(uuid())
+  tenantId          String
+  tenant            Tenant              @relation(fields: [tenantId], references: [id])
+  code              String
+  intitule          String
+  nature            NatureModeReglement
+  codeInterbancaire String?
+  journalId         String?
+  journal           Journal?            @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  estActif          Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  createdBy         String
+
+  tiers              Tiers[]
+  lignesEcriture     LigneEcriture[]
+  modelesReglement   ModeleReglement[]
+  echeancesReglement EcheanceReglement[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, intitule])
+  @@map("modes_reglement")
 }

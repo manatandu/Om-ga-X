@@ -116,8 +116,8 @@ ECART_VERTICAL = 0.34  # blanc signe/mot du bloc vertical, meme unite
 # signe. A 2,2 il en fait 44 %, et l'empilement tient.
 ECHELLE_SIGNE_VERTICAL = 2.2
 
-ENCRE_HEX = '#142f6b'           # le bleu de la marque · 12,74:1 sur blanc
-ENCRE_RVB = (0x14, 0x2F, 0x6B)
+ENCRE_HEX = '#2a1f5c'           # le violet du cachet · 14,49:1 sur blanc
+ENCRE_RVB = (0x2A, 0x1F, 0x5C)
 
 # L'icone · le signe en reserve dans un carre a coins arrondis.
 MARGE_ICONE = 0.155   # blanc autour du signe, en part du cote
@@ -503,7 +503,7 @@ export const BLOC_VERTICAL_BOITE = '{vb_vert}';
 export const LOGOTYPE = '{d_mot}';
 export const LOGOTYPE_BOITE = '{vb_mot}';
 
-/** Le bleu de la marque. Contraste 12,74:1 sur blanc · AAA dans les deux sens. */
+/** L'encre de cachet de la marque. Contraste 14,49:1 sur blanc · AAA dans les deux sens. */
 export const ENCRE = '{ENCRE_HEX}';
 
 /** Rayon des coins de l'icone, en part du cote. */

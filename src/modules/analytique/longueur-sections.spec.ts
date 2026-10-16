@@ -178,7 +178,7 @@ describe('longueur des codes de section · le service', () => {
   });
 
   it('la base refuse une longueur hors bornes', () => {
-    const sql = readFileSync(join(__dirname, '../../../prisma/migrations/20270181000200_longueur_sections/migration.sql'), 'utf8');
+    const sql = readFileSync(join(__dirname, '../../../prisma/migrations/20270184000200_longueur_sections/migration.sql'), 'utf8');
     expect(sql).toContain('CHECK ("longueurSections" IS NULL OR "longueurSections" BETWEEN 2 AND 13)');
   });
 });

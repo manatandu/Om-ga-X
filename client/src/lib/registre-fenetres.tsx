@@ -20,6 +20,10 @@ const BanquesPage = lazy(() => import('../pages/BanquesPage').then((m) => ({ def
 const LibellesPage = lazy(() => import('../pages/LibellesPage').then((m) => ({ default: m.LibellesPage })));
 // Ligne sage-l1, fonction 19 · les séquences de saisie.
 const SequencesSaisiePage = lazy(() => import('../pages/SequencesSaisiePage').then((m) => ({ default: m.SequencesSaisiePage })));
+// Ligne sage-l2, fonction 1 · les modes de règlement.
+const ModesReglementPage = lazy(() => import('../pages/ModesReglementPage').then((m) => ({ default: m.ModesReglementPage })));
+// Ligne sage-l2, fonction 27 · les modèles d'impression des tiers.
+const ModelesImpressionPage = lazy(() => import('../pages/ModelesImpressionPage').then((m) => ({ default: m.ModelesImpressionPage })));
 const EtatsPersonnalisesPage = lazy(() =>
   import('../pages/EtatsPersonnalisesPage').then((m) => ({ default: m.EtatsPersonnalisesPage })),
 );
@@ -75,6 +79,12 @@ const NotesAnnexesPage = lazy(() => import('../pages/NotesAnnexesPage').then((m)
 const RegistreDonateursPage = lazy(() => import('../pages/RegistreDonateursPage').then((m) => ({ default: m.RegistreDonateursPage })));
 const DocumentsObligatoiresPage = lazy(() => import('../pages/DocumentsObligatoiresPage').then((m) => ({ default: m.DocumentsObligatoiresPage })));
 const RestitutionPage = lazy(() => import('../pages/RestitutionPage').then((m) => ({ default: m.RestitutionPage })));
+const ExportModificationsPage = lazy(() =>
+  import('../pages/ExportModificationsPage').then((m) => ({ default: m.ExportModificationsPage })),
+);
+const ImpressionsDiffereesPage = lazy(() =>
+  import('../pages/ImpressionsDiffereesPage').then((m) => ({ default: m.ImpressionsDiffereesPage })),
+);
 const UtilisateursPage = lazy(() => import('../pages/UtilisateursPage').then((m) => ({ default: m.UtilisateursPage })));
 const ParametresDossierPage = lazy(() => import('../pages/ParametresDossierPage').then((m) => ({ default: m.ParametresDossierPage })));
 const PlansAnalytiquesPage = lazy(() => import('../pages/PlansAnalytiquesPage').then((m) => ({ default: m.PlansAnalytiquesPage })));
@@ -99,6 +109,13 @@ const BailleursPage = lazy(() => import('../pages/BailleursPage').then((m) => ({
 const PlateformePage = lazy(() => import('../pages/PlateformePage').then((m) => ({ default: m.PlateformePage })));
 const GroupePage = lazy(() => import('../pages/GroupePage').then((m) => ({ default: m.GroupePage })));
 const CourrierPage = lazy(() => import('../pages/CourrierPage').then((m) => ({ default: m.CourrierPage })));
+// Les pages légales et l'aide (ligne pages-legales) · le même contenu que leurs
+// pages publiques, dans une fenêtre de l'espace de travail.
+const QuestionsFrequentesFenetre = lazy(() =>
+  import('../pages/QuestionsFrequentesPage').then((m) => ({ default: m.QuestionsFrequentesFenetre })),
+);
+const ContratLicenceFenetre = lazy(() => import('../pages/ContratLicencePage').then((m) => ({ default: m.ContratLicenceFenetre })));
+const ConfidentialiteFenetre = lazy(() => import('../pages/ConfidentialitePage').then((m) => ({ default: m.ConfidentialiteFenetre })));
 
 /**
  * REGISTRE DES FENÊTRES · la seule liste qui associe un chemin à ce qui
@@ -348,6 +365,18 @@ export const FENETRES: DefinitionFenetre[] = [
     rendre: () => <SequencesSaisiePage />,
   },
   {
+    motif: /^\/modes-reglement$/,
+    titre: 'Modes de règlement',
+    titreCourt: 'Modes',
+    rendre: () => <ModesReglementPage />,
+  },
+  {
+    motif: /^\/modeles-impression$/,
+    titre: "Modèles d'impression",
+    titreCourt: 'Impression',
+    rendre: () => <ModelesImpressionPage />,
+  },
+  {
     motif: /^\/declaration-tva$/,
     titre: 'Déclaration de TVA',
     titreCourt: 'Décl. TVA',
@@ -519,6 +548,22 @@ export const FENETRES: DefinitionFenetre[] = [
     rendre: () => <RestitutionPage />,
   },
   {
+    // Ligne sage-l7, fonction 99 · AUCUN référentiel, comme la restitution ·
+    // l'AUDCIF art. 22 vaut aux deux, l'art. 3 du SYCEBNL ne l'écarte pas.
+    motif: /^\/exports-ecritures$/,
+    titre: 'Exporter les modifications',
+    titreCourt: 'Export modif.',
+    rendre: () => <ExportModificationsPage />,
+  },
+  {
+    // Ligne sage-l7, fonction 59 · aucun référentiel · AUDCIF art. 22, 7°,
+    // que l'art. 3 du SYCEBNL n'écarte pas.
+    motif: /^\/impressions-differees$/,
+    titre: 'Impressions différées',
+    titreCourt: 'Impr. différées',
+    rendre: () => <ImpressionsDiffereesPage />,
+  },
+  {
     // Notion SYCEBNL (division 46) · en SYSCOHADA le 46 porte les associés.
     motif: /^\/bailleurs$/,
     titre: 'Bailleurs de fonds',
@@ -645,6 +690,29 @@ export const FENETRES: DefinitionFenetre[] = [
     titreCourt: 'Engagements',
     referentielsApplicables: ['SYCEBNL'],
     rendre: () => <EngagementsPage />,
+  },
+  // LE MENU « ? » · comme celui de Sage 100 i7 (Rubriques d'aide, Consulter le
+  // manuel, Sage sur le Web, À propos · manuel de référence de Sage 100
+  // Immobilisations i7, p. 253). Communes aux deux référentiels, ouvertes à
+  // tous les rôles du menu · ce sont des textes, aucune route ne s'y écrit,
+  // sauf l'acceptation du contrat, que le serveur réserve à l'administrateur.
+  {
+    motif: /^\/aide\/questions-frequentes$/,
+    titre: 'Questions fréquentes',
+    titreCourt: 'Questions',
+    rendre: () => <QuestionsFrequentesFenetre />,
+  },
+  {
+    motif: /^\/aide\/contrat-de-licence$/,
+    titre: 'Contrat de licence',
+    titreCourt: 'Licence',
+    rendre: () => <ContratLicenceFenetre />,
+  },
+  {
+    motif: /^\/aide\/confidentialite$/,
+    titre: 'Politique de confidentialité',
+    titreCourt: 'Confidentialité',
+    rendre: () => <ConfidentialiteFenetre />,
   },
 ];
 

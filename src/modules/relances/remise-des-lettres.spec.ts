@@ -88,6 +88,8 @@ function service(lignes: ReturnType<typeof ligne>[], repondre: ReponseFile = san
         return { count: data.length };
       }),
     },
+    // Aucun tiers n'a de modèle d'impression (ligne sage-l2, fonction 27).
+    tiers: { findMany: jest.fn().mockResolvedValue([]) },
     // L'émission écrit sous un verrou par dossier, dans une transaction
     // (audit final F241) · la doublure joue la transaction sur elle-même.
     $executeRaw: jest.fn(async () => 0),

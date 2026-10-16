@@ -3,6 +3,7 @@ import { nomDeDisposition } from './disposition';
 import { adresseApi } from './adresse-api';
 import { motifDeSessionPerdue, signalerSessionPerdue } from './session-perdue';
 import { CHEMINS_CACHES, cheminsAViderApres } from './cache-referentiels';
+import { messageDuRefus } from './message-refus';
 
 const API_URL = adresseApi(import.meta.env.VITE_API_URL);
 
@@ -60,16 +61,17 @@ export function synchroniserCsrf(token: string | undefined): void {
  * à la connexion.
  */
 async function refus(res: Response): Promise<ApiError> {
-  let message = res.statusText;
+  let body: unknown = null;
   try {
-    const body = await res.json();
-    message = Array.isArray(body.message) ? body.message.join(', ') : body.message ?? message;
+    body = await res.json();
     const motif = motifDeSessionPerdue(res.status, body);
     if (motif) signalerSessionPerdue(motif);
   } catch {
-    // corps non-JSON (erreur réseau, 502, etc.) · on garde statusText
+    // corps non-JSON (erreur réseau, 502, 504 du relais…) · le message se
+    // rabat sur la phrase d'état, VIDE en HTTP/2, puis sur le code
+    // (`messageDuRefus`, relecture M1 de sage-l7).
   }
-  return new ApiError(res.status, message);
+  return new ApiError(res.status, messageDuRefus(res.status, res.statusText, body));
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {

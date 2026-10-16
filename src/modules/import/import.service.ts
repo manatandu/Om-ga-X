@@ -9,6 +9,7 @@ import { PLAN_COMPTES_SYCEBNL } from '../comptes/compte-seed';
 import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
 import { AnalyserImportDto, ExecuterImportDto, TypeImport } from './dto/import.dto';
 import { lireDate, lireFichier, lireMontant, type Tableau } from './lecture-fichier';
+import { motifEnvoiNonRelu } from '../exports/modifications/export-modifications';
 import { classeDuNumero } from '../comptes/classe-du-numero';
 import { coursDeLaLigne, motifRefusLigneEnDevise } from '../comptabilite/ligne-en-devise';
 import { horsDuReport } from '../exercice/report-a-nouveau';
@@ -834,6 +835,12 @@ export class ImportService {
     tableau: Tableau,
     dto: ExecuterImportDto,
   ): Promise<RapportImport> {
+    // UN EXPORT DES MODIFICATIONS QUI REMPLACE OU RETIRE UNE PIÈCE NE SE
+    // RELIT PAS ICI (relecture « échecs silencieux » de sage-l7, M3) · la
+    // pièce « Modifiée » serait créée une seconde fois, la « Supprimée »
+    // resterait. Refusé ENTIER, avant toute lecture, en le nommant.
+    const nonRelu = motifEnvoiNonRelu(tableau.colonnes, tableau.lignes, tableau.lignesSupprimees ?? 0);
+    if (nonRelu) throw new BadRequestException(nonRelu);
     const { exercice, journal, comptes, journaux } = await this.contexte(tenantId, dto);
 
     const iDate = this.indexDe(tableau, dto.mapping, 'date');

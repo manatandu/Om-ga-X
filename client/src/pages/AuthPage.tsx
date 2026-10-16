@@ -183,8 +183,8 @@ export function AuthPage() {
             Panneau de marque · le pendant du bandeau de Sage, À L'ENCRE de la
             marque et jamais au vert de Sage (CLAUDE.md § 9 ter). La marque y
             passe en BLANC EN RÉSERVE, l'un des quatre rendus de la charte
-            (§ 7.2), sur l'encre qui lui donne 12,74:1 (§ 7.3). Les deux
-            lignes de texte sont en `--chrome-text-dim` · MESURÉ à 5,78:1 sur
+            (§ 7.2), sur l'encre qui lui donne 14,49:1 (§ 7.3). Les deux
+            lignes de texte sont en `--chrome-text-dim` · MESURÉ à 6,76:1 sur
             l'encre, au-dessus du plancher AA de 4,5:1.
           */}
           <div
@@ -302,7 +302,7 @@ export function AuthPage() {
             </label>
             <Aide
               titre="Rester connecté sur cet appareil"
-              texte="Case décochée, la session se ferme avec le navigateur, et au plus tard huit heures après la connexion. Cochée, elle reste ouverte sur cet appareil trente jours au plus, et se ferme après sept jours sans utilisation. Ne la cochez pas sur un poste partagé. La console de l'éditeur redemande le mot de passe et le code huit heures après la dernière connexion. « Mon compte » déconnecte à tout moment vos autres appareils."
+              texte="Case décochée, la session se ferme avec le navigateur, et au plus tard au terme de la durée de session du service, huit heures par défaut, après la connexion. Cochée, elle reste ouverte sur cet appareil trente jours au plus, et se ferme après sept jours sans utilisation. Ne la cochez pas sur un poste partagé. La console de l'éditeur redemande le mot de passe et le code huit heures après la dernière connexion. « Mon compte » déconnecte à tout moment vos autres appareils."
               source="Règle d'OmegaX (audit final F270)."
             />
           </div>
@@ -352,7 +352,17 @@ export function AuthPage() {
           l'espace de travail n'est atteignable que par ceux qui ont déjà
           accepté, ce qui est exactement l'inverse de ce qu'on veut.
         */}
-        <div className="mt-2 text-[11px] text-text-dim">
+        {/* Même raison pour le contrat de licence, que le Code du numérique
+            veut mis à la disposition de la clientèle (art. 53, al. 1er), et
+            pour les questions fréquentes · « comment obtenir un accès » se lit
+            avant d'en avoir un. */}
+        <div className="mt-2 text-[11px] text-text-dim flex flex-wrap gap-x-3 gap-y-1">
+          <a href="#/questions-frequentes" className="underline">
+            Questions fréquentes
+          </a>
+          <a href="#/contrat-de-licence" className="underline">
+            Contrat de licence
+          </a>
           <a href="#/confidentialite" className="underline">
             Politique de confidentialité
           </a>

@@ -111,10 +111,20 @@ describe('l’inventaire couvre le schéma, sans trou ni surplus', () => {
     // lignes, bornées par leur tenantId (même ligne, fonction 88), 168 avec
     // les impressions du journal, bornées par leur tenantId (ligne sage-l1,
     // fonction 60), 169 avec les séquences de saisie, bornées par leur
-    // tenantId (ligne sage-l1, fonction 19), 173 avec les pièces jointes aux
-    // écritures, aux sections, aux biens et aux salariés, chacune bornée par
-    // son tenantId (ligne sage-l6, fonction 22).
-    expect(modeles).toHaveLength(173);
+    // tenantId (ligne sage-l1, fonction 19), 170 avec les modes de
+    // règlement, bornés par leur tenantId (ligne sage-l2, fonction 1), 171
+    // avec les lieux de livraison, bornés par leur tenantId (même ligne,
+    // fonction 31), 172 avec les modèles d'impression des tiers, bornés par
+    // leur tenantId (même ligne, fonction 27) ; 174 avec les exports des
+    // écritures et leur registre, bornés par leur tenantId (ligne sage-l7,
+    // fonction 99) ; 175 avec les impressions différées, bornées par leur
+    // tenantId (même ligne, fonction 59), 176 avec les sélections
+    // enregistrées des éditions, bornées par leur tenantId (même fonction),
+    // 177 avec les modèles d'édition, bornés par leur tenantId (même
+    // fonction) ; 181 avec les pièces jointes aux écritures, aux sections,
+    // aux biens et aux salariés, chacune bornée par son tenantId (ligne
+    // sage-l6, fonction 22).
+    expect(modeles).toHaveLength(181);
     expect([...TABLES_RESTITUEES].sort()).toEqual(modeles.filter((m) => m !== 'Tenant' && !(m in MODELES_HORS_DOSSIER)).sort());
     for (const m of Object.keys(MODELES_HORS_DOSSIER)) {
       expect(modeles).toContain(m);

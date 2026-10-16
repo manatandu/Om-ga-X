@@ -109,6 +109,8 @@ function service(lignes: ReturnType<typeof ligne>[], niveaux: Niveau[], relances
       ),
     },
     relance: { findMany: relanceFindMany, createMany: jest.fn(async ({ data }: { data: unknown[] }) => ({ count: data.length })) },
+    // Aucun tiers n'a de modèle d'impression (ligne sage-l2, fonction 27).
+    tiers: { findMany: jest.fn().mockResolvedValue([]) },
     compte: {
       findMany: jest.fn(async (args: { where: { id: { in: string[] } } }) =>
         args.where.id.in.map((id) => ({ id, numero: id.replace('c-', ''), intitule: `Client ${id.replace('c-', '')}` })),

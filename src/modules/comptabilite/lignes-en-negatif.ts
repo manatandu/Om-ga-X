@@ -23,6 +23,8 @@ export function lignesEnNegatif(lignes: Array<Prisma.LigneEcritureGetPayload<{ i
     // par le MÊME mois qu'elle y est entrée, sans quoi elle
     // creuserait un mois et en gonflerait un autre.
     dateVersement: l.dateVersement,
+    // Le mode de règlement suit, comme les dates (ligne sage-l2, fonction 1).
+    modeReglementId: l.modeReglementId,
     // LA DEVISE ET L'ANALYTIQUE SUIVENT (audit final F1). Sans
     // elles, le grand livre revenait à zéro pendant que le réalisé
     // par section et la position en devise gardaient l'opération
