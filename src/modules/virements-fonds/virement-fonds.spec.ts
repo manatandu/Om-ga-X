@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { BadRequestException, ConflictException } from '@nestjs/common';
-import { SensVirementFonds, StatutEcriture, StatutExercice } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException, ValidationPipe } from '@nestjs/common';
+import { Prisma, SensVirementFonds, StatutEcriture, StatutExercice } from '@prisma/client';
 import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
 import { PLAN_COMPTES_SYCEBNL } from '../comptes/compte-seed';
 import { comptesDuPlanSubdivises, estCompteDePassage } from '../comptes/subdivisions-du-plan';
@@ -12,11 +12,13 @@ import {
   RACINES_TRESORERIE_EN_DEVISES,
   estAuCentime,
   estTresorerieEnDevises,
+  estUnJour,
   lignesDuVirement,
   motifRefusVirement,
   sensDuVirement,
   type JournalDeTresorerie,
 } from './virement-fonds';
+import { CreerVirementDto } from './virements-fonds.dto';
 import { VirementsFondsService } from './virements-fonds.service';
 
 const banque = (id: string, numero: string, extra: Partial<JournalDeTresorerie> = {}): JournalDeTresorerie => ({
@@ -27,7 +29,13 @@ const banque = (id: string, numero: string, extra: Partial<JournalDeTresorerie> 
   compteTresorerie: { id: `c-${numero}`, numero, intitule: `Compte ${numero}` },
   ...extra,
 });
-const DEMANDE = { montant: 500_000, objet: 'Alimentation de la caisse', referencePiece: 'CHQ 0042', porteur: 'Kalala' };
+const DEMANDE = {
+  montant: 500_000,
+  objet: 'Alimentation de la caisse',
+  sortie: { nature: 'CHEQUE', reference: 'CHQ 0042', date: '2026-03-14' },
+  entree: { nature: 'BON_CAISSE', reference: 'PC 118', date: '2026-03-14' },
+  porteur: 'Kalala',
+};
 
 describe('Le compte de passage est le 585, semé par les deux plans', () => {
   // AUDCIF Titre VII, compte 58 · 581 « Régies d'avance », 585 « Virements de
@@ -86,9 +94,57 @@ describe('Les refus qui ne lisent rien', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, montant: 10.005 })).toMatch(/centime/);
     expect(motifRefusVirement(o, d, { ...DEMANDE, montant: 10.05 })).toBeNull();
   });
-  it('exige l’objet et la référence de la pièce (AUDCIF art. 17, 5°)', () => {
+  it('exige l’objet et la référence de la pièce de CHAQUE opération (AUDCIF art. 17, 5°)', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, objet: '  ' })).toMatch(/objet/);
-    expect(motifRefusVirement(o, d, { ...DEMANDE, referencePiece: '' })).toMatch(/art\. 17, 5°/);
+    expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: { ...DEMANDE.sortie, reference: '' } })).toMatch(/pièce de la sortie.*art\. 17, 5°/);
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, reference: ' ' } })).toMatch(/pièce de l'entrée des fonds.*art\. 17, 5°/);
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, reference: 'x'.repeat(101) } })).toBe(
+      "La référence de la pièce de l'entrée des fonds se saisit en 100 caractères au plus.",
+    );
+  });
+
+  it('la nature et le jour de chaque pièce se jugent ici, l’opération nommée (jamais un préfixe « sortie. »)', () => {
+    const [o, d] = [banque('bq', '52110000'), banque('ca', '57110000')];
+    for (const nature of ['', 'VIREMENT', 'cheque']) {
+      expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: { ...DEMANDE.sortie, nature } })).toBe('Choisissez la nature de la pièce de la sortie des fonds.');
+    }
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, nature: '' } })).toBe("Choisissez la nature de la pièce de l'entrée des fonds.");
+    for (const date of ['2026', '2026-03', '2026-W11', '2026-03-15T10:00', '2026-02-30', '2026-13-01']) {
+      expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, date } })).toBe(
+        "La date de la pièce de l'entrée des fonds se donne au jour (AAAA-MM-JJ).",
+      );
+    }
+    expect(estUnJour('2028-02-29')).toBe(true);
+    expect(estUnJour('2026-02-29')).toBe(false);
+    // Un champ absent, ou qui n'est pas un texte, se refuse nommé, jamais en 500.
+    const recue = (p: Record<string, unknown>) => p as never;
+    expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: recue({ reference: 'CHQ 1', date: '2026-03-14' }) })).toBe('Choisissez la nature de la pièce de la sortie des fonds.');
+    expect(motifRefusVirement(o, d, { ...DEMANDE, sortie: recue({ nature: 'CHEQUE', reference: 42, date: '2026-03-14' }) })).toMatch(/^La référence de la pièce de la sortie des fonds est exigée/);
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: recue({ nature: 'BON_CAISSE', reference: 'BC 1' }) })).toBe("La date de la pièce de l'entrée des fonds se donne au jour (AAAA-MM-JJ).");
+  });
+
+  it('la porte ne juge que l’objet de chaque pièce · ses refus ne portent jamais le préfixe « sortie. »', async () => {
+    const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+    const corps = {
+      exerciceId: '7f3c3e9e-2b8a-4d2a-9c41-1f1f8e6f0a11',
+      journalOrigineId: '7f3c3e9e-2b8a-4d2a-9c41-1f1f8e6f0a12',
+      journalDestinationId: '7f3c3e9e-2b8a-4d2a-9c41-1f1f8e6f0a13',
+      montant: 1000,
+      objet: 'Alimentation',
+      sortie: { reference: 'CHQ 1', date: '2026-03-14' },
+      entree: { nature: 'BON_CAISSE', reference: 'BC 1', date: '2026-03-14' },
+    };
+    // Nature absente · la porte laisse passer, la règle la refuse en la nommant.
+    await expect(pipe.transform(corps, { type: 'body', metatype: CreerVirementDto })).resolves.toBeInstanceOf(CreerVirementDto);
+    // Absente, nulle, un texte ou un tableau · UN message, jamais deux (relecture TypeScript, mineur 5).
+    for (const entree of [undefined, null, 'BC 1', []]) {
+      const refus = await pipe.transform({ ...corps, entree }, { type: 'body', metatype: CreerVirementDto }).catch((e: BadRequestException) => e.getResponse());
+      expect(refus).toMatchObject({ message: ["La pièce de l'entrée des fonds se donne avec sa nature, sa référence et sa date."] });
+    }
+  });
+  it('l’entrée suit la sortie, le même jour ou après, jamais avant (AUDCIF art. 16, al. 2)', () => {
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, date: '2026-03-16' } })).toBeNull();
+    expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, date: '2026-03-13' } })).toMatch(/entrée des fonds est datée avant leur sortie.*art\. 16, al\. 2/);
   });
   it('exige le porteur dès qu’une caisse est en jeu, jamais entre deux banques', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, porteur: '' })).toMatch(/porteur/);
@@ -194,7 +250,12 @@ describe('VirementsFondsService.creer', () => {
   function monter(
     journaux: JournalDeTresorerie[],
     ribs: Array<{ devise: string | null; journal: { code: string } }> = [],
-    opts: { referentiel?: 'SYSCOHADA' | 'SYCEBNL'; compteEnDevise?: string } = {},
+    opts: {
+      referentiel?: 'SYSCOHADA' | 'SYCEBNL';
+      compteEnDevise?: string;
+      periodeClose?: { journalId: string; message: string; premierJourOuvert?: string };
+      exerciceClos?: boolean;
+    } = {},
   ) {
     const creerPlusieursAvec = jest.fn(async (_t: string, _u: string, dtos: unknown[], suite: (tx: unknown, e: unknown[]) => unknown) => {
       const tx = {
@@ -206,6 +267,17 @@ describe('VirementsFondsService.creer', () => {
     });
     const prisma = {
       journal: { findMany: async () => journaux },
+      // LA DOUBLURE HONORE SA REQUÊTE · l'exercice d'un autre dossier n'existe pas.
+      exercice: {
+        findFirst: async ({ where }: { where: { id: string; tenantId: string } }) =>
+          where.id === 'x1' && where.tenantId === 't1'
+            ? {
+                dateDebut: new Date('2026-01-01T00:00:00.000Z'),
+                dateFin: new Date('2026-12-31T00:00:00.000Z'),
+                statut: opts.exerciceClos ? 'CLOTURE' : 'OUVERT',
+              }
+            : null,
+      },
       ribBanque: { findMany: async () => ribs },
       tenant: { findUniqueOrThrow: async () => ({ referentiel: opts.referentiel ?? 'SYSCOHADA' }) },
       ligneEcriture: { findMany: async () => (opts.compteEnDevise ? [{ compteId: opts.compteEnDevise }] : []) },
@@ -213,17 +285,25 @@ describe('VirementsFondsService.creer', () => {
       $executeRaw: async () => 0,
       $transaction: async (fn: (tx: unknown) => unknown) => fn(prisma),
     };
-    return { service: new VirementsFondsService(prisma as never, { creerPlusieursAvec } as never), creerPlusieursAvec };
+    const verifierEcritureAutorisee = jest.fn(async (_t: string, journalId: string) => {
+      if (opts.periodeClose?.journalId === journalId) throw new ForbiddenException(opts.periodeClose.message);
+    });
+    // Le premier jour ouvert que la saisie proposerait · le lendemain de la
+    // période close par défaut, la date fournie quand le test la donne.
+    const premierJourOuvert = jest.fn(async () => new Date(`${opts.periodeClose?.premierJourOuvert ?? '2026-04-01'}T00:00:00.000Z`));
+    return {
+      service: new VirementsFondsService(prisma as never, { creerPlusieursAvec } as never, { verifierEcritureAutorisee, premierJourOuvert } as never),
+      creerPlusieursAvec,
+      verifierEcritureAutorisee,
+    };
   }
   const dto = {
     exerciceId: 'x1',
     journalOrigineId: 'ca',
     journalDestinationId: 'bq',
-    date: '2026-03-14',
     montant: 1_200_000,
-    naturePiece: 'BORDEREAU_VERSEMENT' as const,
-    referencePiece: ' BV-118 ',
-    datePiece: '2026-03-14',
+    sortie: { nature: 'BON_CAISSE' as const, reference: ' BC-77 ', date: '2026-03-14' },
+    entree: { nature: 'BORDEREAU_VERSEMENT' as const, reference: ' BV-118 ', date: '2026-03-16' },
     objet: 'Versement de la recette',
     porteur: 'Mbuyi',
   };
@@ -241,8 +321,82 @@ describe('VirementsFondsService.creer', () => {
       expect.objectContaining({ compteId: 'c-52110000', debit: 1_200_000, credit: 0 }),
       expect.objectContaining({ compteId: 'p-CAISSE_BANQUE', debit: 0, credit: 1_200_000 }),
     ]);
-    expect(pieces[0].reference).toBe('Bordereau de versement BV-118');
-    expect(r).toMatchObject({ sens: 'CAISSE_BANQUE', referencePiece: 'BV-118', piecesPassees: 'CA n° 7 · BQ n° 3', porteur: 'Mbuyi', montant: 1_200_000 });
+    expect(r).toMatchObject({ sens: 'CAISSE_BANQUE', piecesPassees: 'CA n° 7 · BQ n° 3', porteur: 'Mbuyi', montant: 1_200_000 });
+  });
+
+  it('chaque écriture porte la référence et la date de SA pièce, la fiche garde les deux (demande du 2026-10-16)', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    const r = (await service.creer('t1', 'u1', dto as never)) as Record<string, unknown>;
+    const [, , pieces] = creerPlusieursAvec.mock.calls[0] as unknown as [string, string, Array<{ date: string; reference: string; libelle: string }>];
+    expect(pieces.map((p) => [p.date, p.reference])).toEqual([
+      ['2026-03-14', 'Bon de caisse BC-77'],
+      ['2026-03-16', 'Bordereau de versement BV-118'],
+    ]);
+    // Le sens et le compte de passage ne chargent plus le libellé.
+    expect(pieces[0].libelle).toBe('Virement de fonds · Versement de la recette');
+    expect(r).toMatchObject({ naturePiece: 'BON_CAISSE', referencePiece: 'BC-77', naturePieceEntree: 'BORDEREAU_VERSEMENT', referencePieceEntree: 'BV-118' });
+    expect([r.date, r.datePiece, r.datePieceEntree].map((d) => (d as Date).toISOString().slice(0, 10))).toEqual(['2026-03-14', '2026-03-14', '2026-03-16']);
+  });
+
+  it('refuse AVANT toute pièce une opération datée hors de l’exercice · le 585 se solde à la fin de l’exercice', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    await expect(service.creer('t1', 'u1', { ...dto, sortie: { ...dto.sortie, date: '2026-12-31' }, entree: { ...dto.entree, date: '2027-01-02' } } as never)).rejects.toThrow(
+      /La date de l'entrée des fonds \(02\/01\/2027\) tombe hors de l'exercice.*compte 58\)\. Une entrée qui tombe sur l'exercice suivant se passe à la main\.$/,
+    );
+    // La phrase sur l'entrée ne se dit qu'à elle · une sortie d'avant l'exercice n'en a que faire.
+    await expect(service.creer('t1', 'u1', { ...dto, sortie: { ...dto.sortie, date: '2025-12-31' } } as never)).rejects.toThrow(
+      /^La date de la sortie des fonds \(31\/12\/2025\) tombe hors de l'exercice · le compte de passage se solde à la fin de l'exercice \(fiche du compte 58\)\.$/,
+    );
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('refuse AVANT toute pièce une entrée datée avant la sortie', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    await expect(service.creer('t1', 'u1', { ...dto, entree: { ...dto.entree, date: '2026-03-10' } } as never)).rejects.toThrow(/datée avant leur sortie/);
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('un exercice d’un autre dossier est introuvable · lu avec le dossier de la session', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    await expect(service.creer('t2', 'u1', dto as never)).rejects.toThrow('Exercice introuvable pour ce dossier.');
+    await expect(service.creer('t1', 'u1', { ...dto, exerciceId: 'x9' } as never)).rejects.toThrow('Exercice introuvable pour ce dossier.');
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('une clé de trop dans une pièce est refusée, nommée, avant toute écriture (relecture TypeScript, mineur 3)', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    await expect(service.creer('t1', 'u1', { ...dto, sortie: { ...dto.sortie, tenantId: 'autre' } } as never)).rejects.toThrow(
+      "La pièce de la sortie des fonds ne porte que sa nature, sa référence et sa date · tenantId n'y est pas admis.",
+    );
+    await expect(service.creer('t1', 'u1', { ...dto, entree: { ...dto.entree, reférence: 'x' } } as never)).rejects.toThrow(/de l'entrée des fonds .* reférence n'y est pas admis/);
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('une période close se dit par son opération, avant toute écriture, avec l’issue de la saisie (relecture « échecs silencieux », M4)', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')], [], {
+      periodeClose: { journalId: 'bq', message: "La période jusqu'au 2026-03-31 est clôturée pour tous les journaux." },
+    });
+    await expect(service.creer('t1', 'u1', dto as never)).rejects.toThrow(
+      /^Pièce de l'entrée des fonds au journal BQ · La période jusqu'au 2026-03-31 est clôturée pour tous les journaux\. Ce formulaire ne reporte pas une opération · passez ce virement à la main dans la saisie, où le report se demande\.$/,
+    );
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('une période close jusqu’à la fin de l’exercice ne renvoie pas à la saisie, qui refuserait le report (second tour, 3)', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')], [], {
+      periodeClose: { journalId: 'bq', message: "La période jusqu'au 2026-12-31 est clôturée pour tous les journaux.", premierJourOuvert: '2027-01-01' },
+    });
+    await expect(service.creer('t1', 'u1', dto as never)).rejects.toThrow(
+      /^Pièce de l'entrée des fonds au journal BQ · La période jusqu'au 2026-12-31 est clôturée pour tous les journaux\. Aucun jour de cet exercice n'est plus ouvert au journal BQ · plus rien ne s'y inscrit à cette date\.$/,
+    );
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('un exercice clôturé refuse le virement avant tout autre contrôle de date (second tour, 3)', async () => {
+    const { service, creerPlusieursAvec, verifierEcritureAutorisee } = monter([banque('ca', '57110000'), banque('bq', '52110000')], [], { exerciceClos: true });
+    await expect(service.creer('t1', 'u1', dto as never)).rejects.toThrow(/^Cet exercice est clôturé · aucun virement ne s'y passe/);
+    expect(verifierEcritureAutorisee).not.toHaveBeenCalled();
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
   });
 
   it('refuse AVANT toute pièce un journal qui n’est pas de trésorerie', async () => {
@@ -271,9 +425,9 @@ describe('VirementsFondsService.creer', () => {
     expect(m.creerPlusieursAvec).not.toHaveBeenCalled();
   });
 
-  it('les deux pièces et la fiche prennent le même jour, même pour une date à heure (relecture m5)', async () => {
+  it('une sortie et une entrée du même jour donnent deux écritures à ce jour, la fiche aussi (relecture m5)', async () => {
     const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
-    const r = await service.creer('t1', 'u1', { ...dto, date: '2026-03-14' } as never);
+    const r = await service.creer('t1', 'u1', { ...dto, entree: { ...dto.entree, date: '2026-03-14' } } as never);
     const [, , pieces] = creerPlusieursAvec.mock.calls[0] as unknown as [string, string, Array<{ date: string }>];
     expect(pieces.map((p) => p.date)).toEqual(['2026-03-14', '2026-03-14']);
     expect((r as { date: Date }).date.toISOString().slice(0, 10)).toBe('2026-03-14');
@@ -335,7 +489,7 @@ describe('VirementsFondsService.annuler', () => {
       },
     };
     prisma.$transaction = async (fn: (tx: unknown) => unknown) => fn(prisma);
-    const service = new VirementsFondsService(prisma as never, { inscrireEnNegatifPourAnnulation } as never);
+    const service = new VirementsFondsService(prisma as never, { inscrireEnNegatifPourAnnulation } as never, {} as never);
     return { service, updates, supprimes, inscrireEnNegatifPourAnnulation };
   }
 
@@ -401,6 +555,71 @@ describe('VirementsFondsService.annuler', () => {
     const validees = monter({ statuts: { e1: StatutEcriture.VALIDEE, e2: StatutEcriture.VALIDEE } });
     await validees.service.annuler('t1', 'u1', 'v1', { motif: 'Doublon' });
     expect(validees.updates.at(-1)!.piecesPassees).toBe('BQ n° 12 · CA n° 7 · inscrites en négatif (n° N-neg-e1, n° N-neg-e2)');
+  });
+});
+
+describe('VirementsFondsService.deposerPiece', () => {
+  const PDF = Buffer.from('%PDF-1.4\n% e2e\n%%EOF\n', 'latin1');
+  function monter(ancien: { nomFichier: string } | null = null) {
+    const crees: Array<Record<string, unknown>> = [];
+    const lus: unknown[] = [];
+    const prisma = {
+      virementFonds: { findFirst: async () => ({ id: 'v1' }) },
+      pieceVirementFonds: {
+        findFirst: async (args: unknown) => {
+          lus.push(args);
+          return ancien;
+        },
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          crees.push(data);
+          return { id: 'p1', operation: data.operation, nomFichier: data.nomFichier, taille: data.taille };
+        },
+      },
+    };
+    return { service: new VirementsFondsService(prisma as never, {} as never, {} as never), crees, lus };
+  }
+
+  it('un scan se joint à UNE opération, nommée', async () => {
+    const m = monter();
+    await m.service.deposerPiece('t1', 'v1', 'ENTREE', { originalname: 'bordereau.pdf', buffer: PDF }, 'a@b.cd');
+    expect(m.crees[0]).toMatchObject({ virementId: 'v1', operation: 'ENTREE', nomFichier: 'bordereau.pdf' });
+  });
+
+  it('sans opération, ou avec une autre, le refus le dit et rien n’est déposé', async () => {
+    const m = monter();
+    for (const operation of [undefined, 'VIREMENT']) {
+      await expect(m.service.deposerPiece('t1', 'v1', operation, { originalname: 'b.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(/sortie des fonds \(SORTIE\) ou leur entrée \(ENTREE\)/);
+    }
+    expect(m.crees).toEqual([]);
+  });
+
+  it('un scan déjà joint au virement entier (avant la distinction) ne se rejoint pas à une opération · 409 qui le nomme', async () => {
+    const m = monter({ nomFichier: 'ordre-001.pdf' });
+    await expect(m.service.deposerPiece('t1', 'v1', 'SORTIE', { originalname: 'ordre.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(
+      'Ce scan est déjà joint au virement entier (« ordre-001.pdf »).',
+    );
+    expect(m.crees).toEqual([]);
+    // Cherché par son empreinte, sur le seul virement et le seul dossier, parmi les scans sans opération.
+    expect(m.lus[0]).toMatchObject({ where: { tenantId: 't1', virementId: 'v1', operation: null, empreinte: expect.any(String) } });
+  });
+
+  it('le même scan joint deux fois à l’entrée est refusé en le disant, article élidé', async () => {
+    const prisma = {
+      virementFonds: { findFirst: async () => ({ id: 'v1' }) },
+      pieceVirementFonds: {
+        findFirst: async () => null,
+        create: async () => {
+          throw new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'x' });
+        },
+      },
+    };
+    const service = new VirementsFondsService(prisma as never, {} as never, {} as never);
+    await expect(service.deposerPiece('t1', 'v1', 'ENTREE', { originalname: 'b.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(
+      "Cette pièce est déjà jointe à l'entrée des fonds.",
+    );
+    await expect(service.deposerPiece('t1', 'v1', 'SORTIE', { originalname: 'b.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(
+      'Cette pièce est déjà jointe à la sortie des fonds.',
+    );
   });
 });
 

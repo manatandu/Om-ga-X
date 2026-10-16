@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { LIBELLES_NATURE_PIECE, NATURES_PIECE, caisseEnJeu, sensDuVirement } from './virement-fonds';
+import { LIBELLES_NATURE_PIECE, LIBELLES_OPERATION, NATURES_PIECE, caisseEnJeu, sensDuVirement } from './virement-fonds';
 
 // Aucun import de « vitest » (globales) · convention du dépôt.
 
@@ -34,5 +34,10 @@ describe('virement de fonds · le sens, comme au serveur', () => {
     for (const n of NATURES_PIECE) expect(serveur).toContain(`${n}: '${LIBELLES_NATURE_PIECE[n]}'`);
     const naturesServeur = [...serveur.matchAll(/^\s{2}([A-Z_]+): '[^']+',$/gm)].map((m) => m[1]).filter((n) => n in LIBELLES_NATURE_PIECE);
     expect([...NATURES_PIECE].sort()).toEqual([...new Set(naturesServeur)].sort());
+  });
+
+  it('les deux opérations, sortie et entrée, portent le libellé du serveur', () => {
+    expect(Object.keys(LIBELLES_OPERATION)).toEqual(['SORTIE', 'ENTREE']);
+    for (const [o, l] of Object.entries(LIBELLES_OPERATION)) expect(serveur).toContain(`${o}: '${l}'`);
   });
 });
