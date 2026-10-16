@@ -44,6 +44,11 @@ describe('la période demandée · bornée à l’exercice, sinon l’exercice e
     expect(() => periodeDeLExtrait(EXERCICE, { du: '2026-02-30' })).toThrow(/AAAA-MM-JJ/);
     expect(() => periodeDeLExtrait(EXERCICE, { du: '2026-06-30', au: '2026-04-01' })).toThrow(/dépasse sa date de fin/);
   });
+
+  it('une seule borne hors de l’exercice se dit HORS de l’exercice, jamais « à l’envers »', () => {
+    expect(() => periodeDeLExtrait(EXERCICE, { du: '2027-02-01' })).toThrow(/doit tenir dans l'exercice/);
+    expect(() => periodeDeLExtrait(EXERCICE, { au: '2025-12-31' })).toThrow(/doit tenir dans l'exercice/);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -119,6 +124,7 @@ const ECRITURES: Record<string, EcritureEssai> = {
   apres: ecr('2026-07-01'),
   // Un dossier repris en cours d'année · son bilan d'ouverture porte le drapeau du report.
   repriseMai: ecr('2026-05-10', { estGenereeParCloture: true }),
+  reprisePremierJour: ecr('2026-04-01', { estGenereeParCloture: true }),
   virementResultat: ecr('2026-12-31', { estGenereeParCloture: true }),
   soldeGestion: ecr('2026-12-31', { estGenereeParCloture: true, estSoldeDesComptesDeGestion: true }),
   simulation: ecr('2026-04-15', { statut: 'SITUATION' }),
@@ -129,7 +135,7 @@ describe('les trois colonnes d’une période · chaque ligne dans une colonne, 
   const colonnesDe = (f: ReturnType<typeof filtresDesTroisColonnes>) => (e: EcritureEssai) =>
     (['reports', 'mouvements', 'clotures'] as const).filter((c) => repond(e as never, f[c] as never));
 
-  it('du 1er avril au 30 juin · le report garde à-nouveau, janvier à mars et la reprise ; la période ses jours ; rien après', () => {
+  it('du 1er avril au 30 juin · le report garde ce qui précède et l’ouverture du premier jour ; la période ses jours ; rien après', () => {
     const periode = periodeDeLExtrait(EXERCICE, { du: '2026-04-01', au: '2026-06-30' })!;
     const de = colonnesDe(filtresDesTroisColonnesDeLaPeriode(base, periode) as never);
     expect(Object.fromEntries(Object.entries(ECRITURES).map(([k, e]) => [k, de(e)]))).toEqual({
@@ -139,27 +145,56 @@ describe('les trois colonnes d’une période · chaque ligne dans une colonne, 
       premierJour: ['mouvements'],
       dernierJour: ['mouvements'],
       apres: [],
-      repriseMai: ['reports'],
+      // Le bilan d'ouverture du 10 mai est un mouvement DE la période · au
+      // report, la colonne « au 31/03 » porterait ce qui n'existait pas le
+      // 31 mars, et le grand livre du même classeur la contredirait.
+      repriseMai: ['mouvements'],
+      // Celui du 1er avril est la position de la veille au soir.
+      reprisePremierJour: ['reports'],
       virementResultat: [],
       soldeGestion: [],
       simulation: [],
     });
   });
 
-  it('jusqu’à la fin de l’exercice · le solde des comptes de gestion tombe dans sa colonne', () => {
+  it('jusqu’à la fin de l’exercice · le virement du résultat est un mouvement, le solde des comptes de gestion a sa colonne', () => {
     const periode = periodeDeLExtrait(EXERCICE, { du: '2026-04-01' })!;
     const de = colonnesDe(filtresDesTroisColonnesDeLaPeriode(base, periode) as never);
     expect(de(ECRITURES.soldeGestion)).toEqual(['clotures']);
-    expect(de(ECRITURES.virementResultat)).toEqual(['reports']);
+    expect(de(ECRITURES.virementResultat)).toEqual(['mouvements']);
     expect(de(ECRITURES.apres)).toEqual(['mouvements']);
   });
 
-  it('UNE PÉRIODE ÉGALE À L’EXERCICE REND LA BALANCE DE L’EXERCICE, ligne pour ligne', () => {
-    const exercice = colonnesDe(filtresDesTroisColonnes(base) as never);
-    const entier = colonnesDe(
-      filtresDesTroisColonnesDeLaPeriode(base, { du: jour('2026-01-01'), finExclue: jour('2027-01-01') }) as never,
-    );
-    for (const e of Object.values(ECRITURES)) expect(entier(e)).toEqual(exercice(e));
+  it('du premier jour de l’exercice · l’à-nouveau reste au report, janvier est un mouvement', () => {
+    const periode = periodeDeLExtrait(EXERCICE, { du: '2026-01-01', au: '2026-03-31' })!;
+    const de = colonnesDe(filtresDesTroisColonnesDeLaPeriode(base, periode) as never);
+    expect(de(ECRITURES.aNouveau)).toEqual(['reports']);
+    expect(de(ECRITURES.janvier)).toEqual(['mouvements']);
+    expect(de(ECRITURES.finMars)).toEqual(['mouvements']);
+    expect(de(ECRITURES.premierJour)).toEqual([]);
+  });
+
+  it('le dernier jour seul · le virement du résultat, daté de ce jour, n’est jamais une ouverture', () => {
+    const periode = periodeDeLExtrait(EXERCICE, { du: '2026-12-31', au: '2026-12-31' })!;
+    const de = colonnesDe(filtresDesTroisColonnesDeLaPeriode(base, periode) as never);
+    expect(de(ECRITURES.virementResultat)).toEqual(['mouvements']);
+    expect(de(ECRITURES.soldeGestion)).toEqual(['clotures']);
+    expect(de(ECRITURES.apres)).toEqual(['reports']);
+  });
+
+  it('CHAQUE LIGNE DANS UNE COLONNE ET UNE SEULE, quelle que soit la période', () => {
+    const jours = ['2026-01-01', '2026-01-15', '2026-03-31', '2026-04-01', '2026-05-10', '2026-06-30', '2026-12-31'];
+    for (const du of jours) {
+      for (const au of jours.filter((j) => j >= du)) {
+        const periode = periodeDeLExtrait(EXERCICE, { du, au });
+        if (!periode) continue;
+        const de = colonnesDe(filtresDesTroisColonnesDeLaPeriode(base, periode) as never);
+        for (const [cle, e] of Object.entries(ECRITURES)) {
+          const attendu = e.statut === 'SITUATION' || e.date.getTime() > periode.au.getTime() ? 0 : 1;
+          expect([du, au, cle, de(e).length]).toEqual([du, au, cle, attendu]);
+        }
+      }
+    }
   });
 
   it('le livre-journal seul, quand l’appelant le demande · le brouillard n’entre dans aucune colonne', () => {
@@ -278,6 +313,41 @@ describe('le grand livre de l’écran sur une période · le solde de départ n
     const r = await serviceAvec(LIGNES).grandLivre('t1', 'banque', 'ex', undefined, periode);
     expect(r.report).toEqual({ au: jour('2026-03-31'), debit: 1000, credit: 250 });
     expect(r.soldeFinal).toBe(450);
+  });
+
+  it('LA BALANCE ET LE LIVRE DISENT LE MÊME REPORT ET LES MÊMES MOUVEMENTS, compte par compte', async () => {
+    // Une reprise au premier jour, une autre en cours de période, le virement
+    // du résultat au dernier jour · les écritures de clôture qui ne sont pas
+    // l'à-nouveau de l'exercice.
+    const lignes = [
+      ...LIGNES,
+      l('o1', 'banque', 5, 0, ECRITURES.reprisePremierJour),
+      l('o2', 'dotation', 0, 5, ECRITURES.reprisePremierJour),
+      l('r1', 'caisse', 40, 0, ECRITURES.repriseMai),
+      l('r2', 'dotation', 0, 40, ECRITURES.repriseMai),
+      l('v1', 'dotation', 9, 0, ECRITURES.virementResultat),
+      l('v2', 'banque', 0, 9, ECRITURES.virementResultat),
+    ];
+    const base = { tenantId: 't1', exerciceId: 'ex' };
+    for (const [du, au] of [['2026-04-01', '2026-06-30'], ['2026-05-10', '2026-12-31'], ['2026-01-01', '2026-03-31'], ['2026-12-31', '2026-12-31']]) {
+      const p = periodeDeLExtrait(EXERCICE, { du, au })!;
+      const colonnes = filtresDesTroisColonnesDeLaPeriode(base, p);
+      const livre = await serviceAvec(lignes).grandLivreComplet('t1', 'ex', p);
+      for (const compte of Object.keys(COMPTES)) {
+        const somme = (f: Prisma.EcritureWhereInput) =>
+          lignes
+            .filter((x) => x.compteId === compte && repond(x.ecriture as never, f as never))
+            .reduce((a, x) => [a[0] + x.debit, a[1] + x.credit], [0, 0]);
+        const [rd, rc] = somme(colonnes.reports);
+        const [md, mc] = somme(colonnes.mouvements);
+        const [cd, cc] = somme(colonnes.clotures);
+        const section = livre.find((s) => s.compte.id === compte);
+        const reportLivre = section?.report ? [section.report.debit, section.report.credit] : [0, 0];
+        const periodeLivre = section ? [section.totalDebit, section.totalCredit] : [0, 0];
+        expect([du, compte, reportLivre]).toEqual([du, compte, [rd, rc]]);
+        expect([du, compte, periodeLivre]).toEqual([du, compte, [md + cd, mc + cc]]);
+      }
+    }
   });
 
   it('sans période, le livre de l’exercice ne change pas · aucun report, toutes les lignes', async () => {

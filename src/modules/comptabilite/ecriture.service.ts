@@ -37,7 +37,14 @@ import { groupesLusAPlusieurs, groupesLusLigneALigne, poidsDesLignesLues, poidsO
 import { ancienneteJours, brouillardInvalidable, enRetardDeCentralisation, JOURS_CENTRALISATION } from './centralisation-brouillard';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { agregatsParCompte, filtresDesTroisColonnes, filtresDesTroisColonnesDeLaPeriode, lignesDeBalance, totauxDeBalance } from './balance-trois-colonnes';
-import { periodeDeLExtrait, type PeriodeExtrait, type ReportALaVeille, veilleDe } from './periode-extrait';
+import {
+  ecrituresAvantLaPeriode,
+  ecrituresDansLaPeriode,
+  periodeDeLExtrait,
+  type PeriodeExtrait,
+  type ReportALaVeille,
+  veilleDe,
+} from './periode-extrait';
 import {
   HORS_SITUATION,
   ISSUE_TRANSFERT,
@@ -4043,7 +4050,7 @@ export class EcritureService {
     const perimetreExercice = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
     // SUR UNE PÉRIODE (ligne export-periode), les lignes de la période seules ·
     // ce qui la précède entre au report, jamais perdu (condition 1).
-    const perimetreEcriture = periode ? { ...perimetreExercice, date: { gte: periode.du, lt: periode.finExclue } } : perimetreExercice;
+    const perimetreEcriture = periode ? { ...perimetreExercice, AND: [ecrituresDansLaPeriode(periode)] } : perimetreExercice;
 
     // LA FENÊTRE EST BORNÉE (ligne FPM, second tour, relevé E) · le grand
     // livre d'UN compte s'ouvre à l'écran quand le livre complet y est refusé,
@@ -4098,8 +4105,8 @@ export class EcritureService {
 
   /**
    * LE REPORT À LA VEILLE DE LA PÉRIODE, par compte (ligne export-periode,
-   * condition 1) · les sommes BRUTES des lignes de l'exercice datées avant le
-   * premier jour, à-nouveau compris, demandées à la base (`groupBy`), jamais
+   * condition 1) · les sommes BRUTES des lignes de l'exercice qui précèdent la
+   * période (`ecrituresAvantLaPeriode`, la règle de la balance), demandées à la base (`groupBy`), jamais
    * des lignes rapatriées (§ 8 bis). Un compte sans rien avant la période
    * n'a pas de report. `compteIds` borne la lecture, `null` la laisse au
    * dossier.
@@ -4114,7 +4121,7 @@ export class EcritureService {
       where: {
         ...(compteIds ? { compteId: { in: compteIds } } : {}),
         // Le statut de l'appelant prime (livre-journal seul), à défaut jamais une simulation.
-        ecriture: { ...HORS_SITUATION, ...perimetreExercice, date: { lt: periode.du } },
+        ecriture: { ...HORS_SITUATION, ...perimetreExercice, AND: [ecrituresAvantLaPeriode(periode)] },
       },
       _sum: { debit: true, credit: true },
     });
@@ -4148,7 +4155,7 @@ export class EcritureService {
     const perimetreExercice = { tenantId, ...(exerciceId ? { exerciceId } : {}), ...HORS_SITUATION };
     // SUR UNE PÉRIODE (ligne export-periode), les lignes de la période seules,
     // et le report de chaque compte à la veille · jamais perdu (condition 1).
-    const perimetreEcriture = periode ? { ...perimetreExercice, date: { gte: periode.du, lt: periode.finExclue } } : perimetreExercice;
+    const perimetreEcriture = periode ? { ...perimetreExercice, AND: [ecrituresDansLaPeriode(periode)] } : perimetreExercice;
 
     // UN GRAND LIVRE NE SE TRONQUE PAS · c'est un livre obligatoire, et un
     // livre amputé en silence est un document faux. Au-delà du plafond on

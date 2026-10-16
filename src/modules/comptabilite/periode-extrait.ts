@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { jourUtc } from '../../common/echeance';
 import { lirePeriodeDeListe } from '../../common/periode-de-liste';
 
@@ -37,6 +38,8 @@ export interface PeriodeExtrait {
   au: Date;
   /** Le lendemain de `au` · borne EXCLUE des lectures (un jour se compte entier). */
   finExclue: Date;
+  /** Le dernier jour de l'exercice · celui du virement du résultat non affecté (`ecrituresAvantLaPeriode`). */
+  finExercice: Date;
 }
 
 /**
@@ -92,16 +95,51 @@ export function periodeDeLExtrait(
   const fin = jourUtc(exercice.dateFin);
   const du = lue.du !== null ? new Date(`${lue.du}T00:00:00.000Z`) : debut;
   const au = lue.au !== null ? new Date(`${lue.au}T00:00:00.000Z`) : fin;
-  if (du.getTime() < debut.getTime() || au.getTime() > fin.getTime()) {
+  // `du` seul après la fin de l'exercice, ou `au` seul avant son début, sont
+  // HORS de l'exercice (relecture du 2026-10-16) · complétés par sa borne, ils
+  // finiraient avant de commencer, et le refus parlerait de dates à l'envers.
+  if (du.getTime() < debut.getTime() || au.getTime() > fin.getTime() || du.getTime() > fin.getTime() || au.getTime() < debut.getTime()) {
     throw new BadRequestException(motifPeriodeHorsExercice(exercice));
   }
-  // `du` seul après la fin de l'exercice, ou `au` seul avant son début · la
-  // borne complétée par l'exercice finit avant de commencer.
   if (du.getTime() > au.getTime()) {
     throw new BadRequestException('La date de début de la période dépasse sa date de fin.');
   }
   if (du.getTime() === debut.getTime() && au.getTime() === fin.getTime()) return null;
-  return { du, au, finExclue: new Date(au.getTime() + UN_JOUR_MS) };
+  return { du, au, finExclue: new Date(au.getTime() + UN_JOUR_MS), finExercice: fin };
+}
+
+/**
+ * AVANT LA PÉRIODE, OU DEDANS · UNE règle pour la balance, le grand livre de
+ * l'écran et les classeurs (relecture du 2026-10-16). La colonne « Mouvements
+ * au <veille> » et la ligne « Report au <veille> » sont DATÉES · elles portent
+ * ce qui est daté avant le premier jour, et l'à-nouveau DU premier jour même
+ * (report de clôture au premier jour de l'exercice, bilan d'ouverture importé
+ * au jour où la tenue reprend), qui EST la position de la veille au soir.
+ * Une écriture de clôture datée PLUS LOIN (bilan d'ouverture importé en cours
+ * de période, virement du résultat non affecté au dernier jour) est un
+ * mouvement de la période · la balance la rangeait au report, quand le grand
+ * livre du même classeur la montrait en ligne, et le solde de départ affiché
+ * était faux à sa date sans qu'aucun total ne le dise. Le virement du
+ * résultat, daté du dernier jour de l'exercice, n'est jamais une ouverture,
+ * même sur une période d'un seul jour.
+ */
+export function ecrituresAvantLaPeriode(p: Pick<PeriodeExtrait, 'du' | 'finExercice'>): Prisma.EcritureWhereInput {
+  const ouverture = ouvertureDuPremierJour(p);
+  return ouverture ? { OR: [{ date: { lt: p.du } }, ouverture] } : { date: { lt: p.du } };
+}
+
+/** Le complément exact de `ecrituresAvantLaPeriode`, jusqu'au dernier jour compris. */
+export function ecrituresDansLaPeriode(p: PeriodeExtrait): Prisma.EcritureWhereInput {
+  const dates: Prisma.EcritureWhereInput = { date: { gte: p.du, lt: p.finExclue } };
+  if (!ouvertureDuPremierJour(p)) return dates;
+  const lendemain = new Date(p.du.getTime() + UN_JOUR_MS);
+  return { AND: [dates, { OR: [{ date: { gte: lendemain } }, { estGenereeParCloture: false }, { estSoldeDesComptesDeGestion: true }] }] };
+}
+
+function ouvertureDuPremierJour(p: Pick<PeriodeExtrait, 'du' | 'finExercice'>): Prisma.EcritureWhereInput | null {
+  if (p.du.getTime() >= jourUtc(p.finExercice).getTime()) return null;
+  const lendemain = new Date(p.du.getTime() + UN_JOUR_MS);
+  return { estGenereeParCloture: true, estSoldeDesComptesDeGestion: false, date: { gte: p.du, lt: lendemain } };
 }
 
 /** La période telle qu'un écran la reçoit · ses jours, ou `null` pour l'exercice entier. */
