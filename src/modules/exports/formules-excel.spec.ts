@@ -200,4 +200,42 @@ describe('exports · les totaux sont des formules Excel', () => {
     expect((cellule(f, 'F8') as ExcelJS.CellFormulaValue).formula).toBe('F7');
   });
 
+  it('les tableaux des immobilisations sortent en UN classeur à trois feuilles (demande de Manasse du 2026-10-16)', async () => {
+    const immos = {
+      tableauImmobilisations: jest.fn().mockResolvedValue({
+        dateArret: '2025-12-31',
+        groupes: [],
+        sortis: [],
+        totaux: { brut: 0, amortissements: 0, depreciations: 0, net: 0 },
+      }),
+      tableauAmortissements: jest.fn().mockResolvedValue({
+        exercice: { dateDebut: '2025-01-01', dateFin: '2025-12-31' },
+        mois: Array.from({ length: 12 }, (_, i) => ({ cle: `2025-${i + 1}`, libelle: `M${i + 1}` })),
+        groupes: [],
+        totaux: { parMois: Array.from({ length: 12 }, () => 0), dotation: 0, cumulN1: 0, cumulN: 0, depreciations: 0, net: 0 },
+      }),
+    } as unknown as ImmobilisationService;
+    const reevaluationBilan = { findFirst: jest.fn().mockResolvedValue(null) };
+    const prisma = {
+      tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue(TENANT) },
+      exercice: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'ex', dateDebut: new Date('2025-01-01'), dateFin: new Date('2025-12-31') }),
+      },
+      reevaluationBilan,
+    } as unknown as PrismaService;
+    const vide = {} as never;
+    const service = new ExportService(prisma, vide, vide, vide, vide, vide, vide, vide, vide, vide, undefined, undefined, immos);
+    const classeur = await classeurDepuis((await service.tableauxImmobilisationsExcel('tn', 'ex')).buffer);
+
+    expect(classeur.worksheets.map((f) => f.name)).toEqual(['Immobilisations', 'Amortissements', 'Réévaluations']);
+    // Sans date demandée, l'arrêté est la fin de l'exercice, non le jour.
+    expect((immos.tableauImmobilisations as jest.Mock).mock.calls[0][1]).toEqual({ dateArret: '2025-12-31' });
+    // La réévaluation se lit dans le dossier ET l'exercice de la session.
+    expect(reevaluationBilan.findFirst.mock.calls[0][0].where).toEqual({ tenantId: 'tn', exerciceId: 'ex' });
+    // Aucune réévaluation : la feuille le DIT, elle ne reste pas muette.
+    const r = classeur.getWorksheet('Réévaluations')!;
+    const textes: string[] = [];
+    r.eachRow((ligne) => textes.push(String(ligne.getCell(1).value ?? '')));
+    expect(textes).toContain("Aucune réévaluation n'est passée dans cet exercice.");
+  });
 });
