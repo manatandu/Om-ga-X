@@ -10,20 +10,24 @@ import { Aide } from '../components/chrome/Aide';
 import { PortailModale } from '../components/PortailModale';
 import {
   LIBELLES_NATURE_PIECE,
+  LIBELLES_OPERATION,
   NATURES_PIECE,
   caisseEnJeu,
-  libelleSens,
   sensDuVirement,
   type NaturePieceVirement,
-  type SensVirementFonds,
+  type OperationVirementFonds,
 } from '../lib/virement-fonds';
 
 /**
  * VIREMENT DE FONDS · Traitement > Tiers et trésorerie (demande de Manasse du
  * 2026-10-09). D'une banque ou d'une caisse vers une autre, chaque côté dans
- * son journal · deux pièces passées ensemble par le 585 « Virements de fonds »
- * (le 581 est la régie d'avance, AUDCIF Titre VII, compte 58), au sous-compte
- * du sens. Règles au serveur (src/modules/virements-fonds/), l'écran ne les
+ * son journal · deux pièces passées par le 585 « Virements de fonds » (le 581
+ * est la régie d'avance, AUDCIF Titre VII, compte 58), au sous-compte du sens.
+ * DEUX OPÉRATIONS, DEUX PIÈCES (demande du 2026-10-16) · la sortie des fonds et
+ * leur entrée ont chacune leur pièce justificative, qui date leur écriture
+ * (AUDCIF art. 16, al. 2). Le sens et le compte de passage ne s'affichent plus
+ * (« T'es pas obligé de le mentionner ») · ils restent au journal et au plan
+ * comptable. Règles au serveur (src/modules/virements-fonds/), l'écran ne les
  * refait pas · il propose, le serveur juge.
  */
 
@@ -35,14 +39,24 @@ interface JournalServi {
   compteTresorerie: { id: string; numero: string; intitule: string } | null;
 }
 
+interface PieceJointe {
+  id: string;
+  // null · jointe avant que la pièce de l'entrée ne se distingue de celle de la sortie.
+  operation: OperationVirementFonds | null;
+  nomFichier: string;
+  taille: number;
+}
+
 interface VirementServi {
   id: string;
   date: string;
   montant: number;
-  sens: SensVirementFonds;
   naturePiece: NaturePieceVirement;
   referencePiece: string;
   datePiece: string;
+  naturePieceEntree: NaturePieceVirement;
+  referencePieceEntree: string;
+  datePieceEntree: string;
   objet: string;
   porteur: string | null;
   observations: string | null;
@@ -51,20 +65,32 @@ interface VirementServi {
   motifAnnulation: string | null;
   journalOrigine: { code: string };
   journalDestination: { code: string };
-  pieces: Array<{ id: string; nomFichier: string; taille: number }>;
+  pieces: PieceJointe[];
 }
 
 interface Liste {
   journaux: JournalServi[];
-  comptesDePassage: Array<{ sens: SensVirementFonds; libelle: string; compte: { numero: string; intitule: string } | null }>;
   virements: VirementServi[];
   total: number;
   tronque: boolean;
 }
 
+/** Ce que l'écran tient pour la pièce d'une opération · aucune nature par défaut. */
+interface PieceSaisie {
+  nature: NaturePieceVirement | '';
+  reference: string;
+  date: string;
+}
+
+const PIECE_VIDE: PieceSaisie = { nature: '', reference: '', date: '' };
+const OPERATIONS: readonly OperationVirementFonds[] = ['SORTIE', 'ENTREE'];
 const TAILLE_MAX = 5 * 1024 * 1024;
 const FORMATS = '.pdf,.png,.jpg,.jpeg,.docx,.xlsx,.doc,.xls';
 const date = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
+// « de la sortie des fonds », « de l'entrée des fonds ».
+const deLa = (o: OperationVirementFonds) => (o === 'SORTIE' ? 'de la ' : 'de l’') + LIBELLES_OPERATION[o];
+const aLa = (o: OperationVirementFonds) => (o === 'SORTIE' ? 'à la ' : 'à l’') + LIBELLES_OPERATION[o];
+const majuscule = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export function VirementsFondsPage() {
   const { peutEcrire, peutValider } = useAuth();
@@ -73,8 +99,8 @@ export function VirementsFondsPage() {
   const [liste, setListe] = useState<Liste | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  // Le virement est passé, mais quelque chose n'a pas suivi (la pièce jointe) ·
-  // dit à part du succès, jamais noyé dans le bandeau vert.
+  // Le virement est passé, mais quelque chose n'a pas suivi (un scan) · dit à
+  // part du succès, jamais noyé dans le bandeau vert.
   const [avertissement, setAvertissement] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [envoiJoindre, setEnvoiJoindre] = useState<string | null>(null);
@@ -82,17 +108,18 @@ export function VirementsFondsPage() {
 
   const [origineId, setOrigineId] = useState('');
   const [destinationId, setDestinationId] = useState('');
-  const [jour, setJour] = useState('');
   const [somme, setSomme] = useState('');
-  const [nature, setNature] = useState<NaturePieceVirement>('ORDRE_VIREMENT');
-  const [reference, setReference] = useState('');
-  const [datePiece, setDatePiece] = useState('');
+  const [pieces, setPieces] = useState<Record<OperationVirementFonds, PieceSaisie>>({ SORTIE: PIECE_VIDE, ENTREE: PIECE_VIDE });
   const [objet, setObjet] = useState('');
   const [porteur, setPorteur] = useState('');
   const [observations, setObservations] = useState('');
-  const champFichier = useRef<HTMLInputElement>(null);
+  const champScanSortie = useRef<HTMLInputElement>(null);
+  const champScanEntree = useRef<HTMLInputElement>(null);
+  const champScan: Record<OperationVirementFonds, typeof champScanSortie> = { SORTIE: champScanSortie, ENTREE: champScanEntree };
   const champJoindre = useRef<HTMLInputElement>(null);
-  const [joindreA, setJoindreA] = useState<string | null>(null);
+  const [joindreA, setJoindreA] = useState<{ id: string; operation: OperationVirementFonds } | null>(null);
+
+  const modifierPiece = (o: OperationVirementFonds, champ: Partial<PieceSaisie>) => setPieces((p) => ({ ...p, [o]: { ...p[o], ...champ } }));
 
   // Une réponse d'un exercice quitté est jetée · elle afficherait les virements
   // d'un autre exercice sous le sélecteur de celui-ci. Le jeton seul ne suffit
@@ -131,32 +158,41 @@ export function VirementsFondsPage() {
   const origine = journaux.find((j) => j.id === origineId) ?? null;
   const destination = journaux.find((j) => j.id === destinationId) ?? null;
   const sens = origine?.compteTresorerie && destination?.compteTresorerie ? sensDuVirement(origine.compteTresorerie.numero, destination.compteTresorerie.numero) : null;
-  const passage = sens ? liste?.comptesDePassage.find((c) => c.sens === sens)?.compte ?? null : null;
   const porteurExige = sens !== null && caisseEnJeu(sens);
   const valeur = montantSaisi(somme);
   const exerciceClos = exerciceCourant?.statut === 'CLOTURE';
+  const debutExercice = exerciceCourant?.dateDebut.slice(0, 10);
+  const finExercice = exerciceCourant?.dateFin.slice(0, 10);
   // CE QUI MANQUE, dit · un bouton grisé ne disait pas quoi corriger.
   const manque = (): string | null => {
     if (!origine) return 'Choisissez la banque ou la caisse d’origine.';
     if (!destination) return 'Choisissez la banque ou la caisse de destination.';
-    if (!jour) return 'La date du virement est exigée.';
     if (valeur === null || valeur <= 0) return 'Le montant doit être un nombre positif.';
     if (Math.round(valeur * 100) / 100 !== valeur) return 'Le montant se saisit au centime près.';
-    if (!reference.trim()) return 'La référence de la pièce justificative est exigée.';
-    if (!datePiece) return 'La date de la pièce justificative est exigée.';
     if (objet.trim().length < 3) return 'L’objet est exigé · trois caractères au moins.';
+    for (const o of OPERATIONS) {
+      const p = pieces[o];
+      if (!p.nature) return `Choisissez la nature de la pièce ${deLa(o)}.`;
+      if (!p.reference.trim()) return `La référence de la pièce ${deLa(o)} est exigée.`;
+      if (!p.date) return `La date de la pièce ${deLa(o)} est exigée.`;
+      if ((debutExercice && p.date < debutExercice) || (finExercice && p.date > finExercice)) {
+        return `La date ${deLa(o)} tombe hors de l’exercice · une entrée qui tombe sur l’exercice suivant se passe à la main.`;
+      }
+    }
+    // Le jour s'écrit AAAA-MM-JJ · l'ordre des chaînes est celui des dates.
+    if (pieces.ENTREE.date < pieces.SORTIE.date) return 'L’entrée des fonds est datée avant leur sortie.';
     if (porteurExige && !porteur.trim()) return 'Une caisse est en jeu · nommez le porteur des espèces.';
     return null;
   };
-  const formulaireEntame = !!(somme || reference || objet || porteur || observations);
+  const formulaireEntame = !!(somme || objet || porteur || observations || pieces.SORTIE.reference || pieces.ENTREE.reference);
   useGardeFermeture(formulaireEntame ? 'Un virement est en cours de saisie et n’est pas passé.' : null);
 
-  const joindre = async (virementId: string, fichier: File) => {
+  const joindre = async (virementId: string, operation: OperationVirementFonds, fichier: File) => {
     // Refus immédiat · le serveur refuse de toute façon au-delà de 5 Mo.
     if (fichier.size > TAILLE_MAX) throw new ApiError(400, 'Le fichier dépasse 5 Mo · réduisez-le ou numérisez-le en plus basse définition.');
     const corps = new FormData();
     corps.append('fichier', fichier);
-    await api.envoyerFichier(`/virements-fonds/${virementId}/pieces`, corps);
+    await api.envoyerFichier(`/virements-fonds/${virementId}/pieces?operation=${operation}`, corps);
   };
 
   const passer = async (e: FormEvent) => {
@@ -167,50 +203,52 @@ export function VirementsFondsPage() {
       setErreur(motif ?? 'Le montant doit être un nombre positif.');
       return;
     }
-    // LE SCAN SE JUGE AVANT LE VIREMENT · refusé après, il laissait un
+    // LES SCANS SE JUGENT AVANT LE VIREMENT · refusés après, ils laissaient un
     // virement passé sans sa pièce.
-    const fichierChoisi = champFichier.current?.files?.[0];
-    if (fichierChoisi && fichierChoisi.size > TAILLE_MAX) {
-      setErreur('Le scan dépasse 5 Mo · réduisez-le ou numérisez-le en plus basse définition. Rien n’est passé.');
+    const scans = OPERATIONS.map((o) => ({ o, fichier: champScan[o].current?.files?.[0] })).filter(
+      (s): s is { o: OperationVirementFonds; fichier: File } => !!s.fichier,
+    );
+    const tropLourd = scans.find((s) => s.fichier.size > TAILLE_MAX);
+    if (tropLourd) {
+      setErreur(`Le scan ${deLa(tropLourd.o)} dépasse 5 Mo · réduisez-le ou numérisez-le en plus basse définition. Rien n’est passé.`);
       return;
     }
+    const pieceDe = (o: OperationVirementFonds) => ({ nature: pieces[o].nature, reference: pieces[o].reference.trim(), date: pieces[o].date });
     setErreur(null);
     setInfo(null);
     setAvertissement(null);
     setEnvoi(true);
     try {
-      const v = await api.post<VirementServi & { comptePassage: { numero: string } }>('/virements-fonds', {
+      const v = await api.post<VirementServi>('/virements-fonds', {
         exerciceId: exerciceCourant.id,
         journalOrigineId: origineId,
         journalDestinationId: destinationId,
-        date: jour,
         montant: valeur,
-        naturePiece: nature,
-        referencePiece: reference.trim(),
-        datePiece,
+        sortie: pieceDe('SORTIE'),
+        entree: pieceDe('ENTREE'),
         objet: objet.trim(),
         ...(porteur.trim() ? { porteur: porteur.trim() } : {}),
         ...(observations.trim() ? { observations: observations.trim() } : {}),
       });
-      let message = `Virement passé · ${v.piecesPassees ?? 'deux pièces'}, au compte ${v.comptePassage.numero}.`;
-      if (fichierChoisi) {
+      let message = `Virement passé · ${v.piecesPassees ?? 'deux pièces'}.`;
+      const manques: string[] = [];
+      for (const s of scans) {
         try {
-          await joindre(v.id, fichierChoisi);
-          message += ' Pièce jointe.';
+          await joindre(v.id, s.o, s.fichier);
+          message += ` Scan joint ${aLa(s.o)}.`;
         } catch (err) {
-          // Le virement EST passé · le dire, et dire ce qui manque, à part.
-          setAvertissement(
-            `La pièce n'est pas jointe (${err instanceof ApiError ? err.message.replace(/\.$/, '') : 'envoi impossible'}) · joignez-la depuis la liste.`,
-          );
+          manques.push(`${deLa(s.o)} (${err instanceof ApiError ? err.message.replace(/\.$/, '') : 'envoi impossible'})`);
         }
       }
+      // Le virement EST passé · le dire, et dire ce qui manque, à part.
+      if (manques.length) setAvertissement(`Scan non joint · ${manques.join(' ; ')} · joignez-le depuis la liste.`);
       setInfo(message);
       setSomme('');
-      setReference('');
+      setPieces({ SORTIE: PIECE_VIDE, ENTREE: PIECE_VIDE });
       setObjet('');
       setPorteur('');
       setObservations('');
-      if (champFichier.current) champFichier.current.value = '';
+      for (const o of OPERATIONS) if (champScan[o].current) champScan[o].current!.value = '';
       await charger();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Virement non passé');
@@ -220,16 +258,16 @@ export function VirementsFondsPage() {
   };
 
   const joindreDepuisLaListe = async (fichier: File | undefined) => {
-    const id = joindreA;
+    const cible = joindreA;
     setJoindreA(null);
-    if (!fichier || !id) return;
+    if (!fichier || !cible) return;
     setErreur(null);
     setInfo(null);
     setAvertissement(null);
-    setEnvoiJoindre(id);
+    setEnvoiJoindre(`${cible.id}:${cible.operation}`);
     try {
-      await joindre(id, fichier);
-      setInfo('Pièce jointe au virement.');
+      await joindre(cible.id, cible.operation, fichier);
+      setInfo(`Scan joint ${aLa(cible.operation)}.`);
       await charger();
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Pièce non jointe');
@@ -258,6 +296,114 @@ export function VirementsFondsPage() {
         </option>
       ));
 
+  // Le bloc d'une opération · son journal, sa pièce, sa date, son scan.
+  const blocOperation = (o: OperationVirementFonds) => {
+    const p = pieces[o];
+    const sortie = o === 'SORTIE';
+    const titre = majuscule(LIBELLES_OPERATION[o]);
+    return (
+      <fieldset className="border border-border p-2 flex flex-wrap items-end gap-3 min-w-0">
+        <legend className="px-1 font-semibold">{titre}</legend>
+        <label className="flex flex-col gap-0.5 min-w-[220px] flex-1">
+          <span className="text-text-dim">{sortie ? 'De (banque ou caisse)' : 'Vers (banque ou caisse)'}</span>
+          <select
+            value={sortie ? origineId : destinationId}
+            onChange={(e) => (sortie ? setOrigineId : setDestinationId)(e.target.value)}
+            className="border border-border px-2 py-[3px] bg-surface"
+          >
+            <option value="">Choisir…</option>
+            {listeOptions(sortie ? destinationId : origineId)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-text-dim">Pièce justificative</span>
+          <select
+            required
+            value={p.nature}
+            onChange={(e) => modifierPiece(o, { nature: e.target.value as NaturePieceVirement | '' })}
+            className="border border-border px-2 py-[3px] bg-surface"
+          >
+            <option value="">Choisir…</option>
+            {NATURES_PIECE.map((n) => (
+              <option key={n} value={n}>
+                {LIBELLES_NATURE_PIECE[n]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-text-dim">Référence de la pièce</span>
+          <input
+            required
+            maxLength={100}
+            value={p.reference}
+            onChange={(e) => modifierPiece(o, { reference: e.target.value })}
+            className="w-[160px] border border-border px-2 py-[2px]"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-text-dim">Date de la pièce</span>
+          <input
+            type="date"
+            required
+            value={p.date}
+            min={sortie ? debutExercice : pieces.SORTIE.date || debutExercice}
+            max={finExercice}
+            onChange={(e) => modifierPiece(o, { date: e.target.value })}
+            className="border border-border px-2 py-[2px]"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-text-dim">Scan de la pièce (facultatif)</span>
+          <input ref={champScan[o]} type="file" accept={FORMATS} className="text-[11px]" />
+        </label>
+      </fieldset>
+    );
+  };
+
+  // La pièce d'une opération dans la liste · nature, référence, date, scans.
+  const pieceDansLaListe = (v: VirementServi, o: OperationVirementFonds) => {
+    const [nature, reference, jourPiece] =
+      o === 'SORTIE' ? [v.naturePiece, v.referencePiece, v.datePiece] : [v.naturePieceEntree, v.referencePieceEntree, v.datePieceEntree];
+    // Un scan joint avant la distinction des deux pièces n'a pas d'opération · il
+    // est montré sous la sortie, le seul côté qu'avait alors le virement.
+    const scans = v.pieces.filter((p) => p.operation === o || (o === 'SORTIE' && p.operation === null));
+    const cle = `${v.id}:${o}`;
+    return (
+      <>
+        {LIBELLES_NATURE_PIECE[nature]} {reference} du {date(jourPiece)}
+        {scans.map((p) => (
+          <div key={p.id}>
+            <button
+              type="button"
+              onClick={() => telecharger(p)}
+              className="text-sel hover:underline"
+              title={p.operation === null ? 'Jointe au virement sans désigner l’opération' : 'Télécharger'}
+            >
+              {p.nomFichier}
+            </button>
+          </div>
+        ))}
+        {peutEcrire && !v.annuleLe && (
+          <div>
+            <button
+              type="button"
+              disabled={envoiJoindre !== null}
+              aria-label={`Joindre un scan ${aLa(o)} du virement du ${date(v.date)}`}
+              onClick={() => {
+                setJoindreA({ id: v.id, operation: o });
+                champJoindre.current?.click();
+              }}
+              className="text-sel hover:underline disabled:opacity-40"
+            >
+              {envoiJoindre === cle ? 'Envoi…' : 'Joindre'}
+            </button>
+          </div>
+        )}
+      </>
+    );
+  };
+
   return (
     <div className="p-3 space-y-3 text-[11.5px]">
       {erreur && (
@@ -284,32 +430,6 @@ export function VirementsFondsPage() {
       {peutEcrire && liste && journaux.length >= 2 && !exerciceClos && (
         <form onSubmit={passer} className="border border-border bg-surface p-3 space-y-2">
           <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-0.5 min-w-[220px] flex-1">
-              <span className="text-text-dim">De (banque ou caisse)</span>
-              <select value={origineId} onChange={(e) => setOrigineId(e.target.value)} className="border border-border px-2 py-[3px] bg-surface">
-                <option value="">Choisir…</option>
-                {listeOptions(destinationId)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-0.5 min-w-[220px] flex-1">
-              <span className="text-text-dim">Vers (banque ou caisse)</span>
-              <select value={destinationId} onChange={(e) => setDestinationId(e.target.value)} className="border border-border px-2 py-[3px] bg-surface">
-                <option value="">Choisir…</option>
-                {listeOptions(origineId)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-0.5">
-              <span className="text-text-dim">Date du virement</span>
-              <input
-                type="date"
-                required
-                value={jour}
-                min={exerciceCourant?.dateDebut.slice(0, 10)}
-                max={exerciceCourant?.dateFin.slice(0, 10)}
-                onChange={(e) => setJour(e.target.value)}
-                className="border border-border px-2 py-[2px]"
-              />
-            </label>
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Montant</span>
               <input
@@ -320,48 +440,18 @@ export function VirementsFondsPage() {
                 className="w-[150px] border border-border px-2 py-[2px] text-right"
               />
             </label>
-            <Aide
-              titre="Virement de fonds"
-              texte="Les fonds quittent une banque ou une caisse pour une autre. Deux pièces naissent ensemble, chacune dans son journal · au journal d'origine, débit du compte de passage et crédit de sa trésorerie ; au journal de destination, débit de sa trésorerie et crédit du compte de passage, qui revient à zéro. Le compte de passage est le sous-compte du 585 propre au sens du virement. La nature, la référence et la date de la pièce justificative sont exigées ; le porteur des espèces l'est dès qu'une caisse est en jeu (exigence d'OmegaX). Un virement s'annule avec son motif · au brouillard ses pièces sont retirées, validées elles sont inscrites en négatif."
-              source="AUDCIF Titre VII, compte 58 (585 « Virements de fonds ») et art. 17 ; SYCEBNL Partie 2 ch. 3, compte 58 ; AUDCIF art. 20, al. 2"
-            />
-          </div>
-          {sens && (
-            <div className="text-text-dim">
-              Virement {libelleSens(sens)} ·{' '}
-              {passage ? (
-                <>
-                  compte de passage {passage.numero} · {passage.intitule}
-                </>
-              ) : (
-                'le compte de passage de ce sens sera ouvert sous le 58500000'
-              )}
-            </div>
-          )}
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-0.5">
-              <span className="text-text-dim">Pièce justificative</span>
-              <select value={nature} onChange={(e) => setNature(e.target.value as NaturePieceVirement)} className="border border-border px-2 py-[3px] bg-surface">
-                {NATURES_PIECE.map((n) => (
-                  <option key={n} value={n}>
-                    {LIBELLES_NATURE_PIECE[n]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-0.5">
-              <span className="text-text-dim">Référence de la pièce</span>
-              <input required maxLength={100} value={reference} onChange={(e) => setReference(e.target.value)} className="w-[160px] border border-border px-2 py-[2px]" />
-            </label>
-            <label className="flex flex-col gap-0.5">
-              <span className="text-text-dim">Date de la pièce</span>
-              <input type="date" required value={datePiece} onChange={(e) => setDatePiece(e.target.value)} className="border border-border px-2 py-[2px]" />
-            </label>
             <label className="flex flex-col gap-0.5 min-w-[220px] flex-1">
               <span className="text-text-dim">Objet</span>
               <input required minLength={3} maxLength={200} value={objet} onChange={(e) => setObjet(e.target.value)} className="border border-border px-2 py-[2px]" />
             </label>
+            <Aide
+              titre="Virement de fonds"
+              texte="Les fonds quittent une banque ou une caisse pour une autre. Le virement compte deux opérations, chacune avec sa pièce justificative · la sortie des fonds au journal d'origine (chèque, ordre de virement, bon de caisse…), leur entrée au journal de destination (bordereau de versement, avis de crédit…). Chaque écriture prend la date de sa pièce ; l'entrée ne précède jamais la sortie et tombe dans le même exercice. Entre les deux, les fonds attendent au compte de passage, sous-compte du 585 propre au sens du virement, qui revient à zéro à l'entrée. Une même pièce peut appuyer les deux opérations, sa référence portée des deux côtés. Le porteur des espèces est exigé dès qu'une caisse est en jeu (exigence d'OmegaX). Un virement s'annule avec son motif · au brouillard ses pièces sont retirées, validées elles sont inscrites en négatif."
+              source="AUDCIF art. 16, al. 2, art. 17, 3° et 5°, art. 22, 7°, Titre VII, compte 58 (585 « Virements de fonds ») ; SYCEBNL Partie 2 ch. 3, compte 58 ; AUDCIF art. 20, al. 2"
+            />
           </div>
+          {blocOperation('SORTIE')}
+          {blocOperation('ENTREE')}
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-0.5 min-w-[200px]">
               <span className="text-text-dim">Porteur des espèces{porteurExige ? ' (exigé)' : ' (facultatif)'}</span>
@@ -370,10 +460,6 @@ export function VirementsFondsPage() {
             <label className="flex flex-col gap-0.5 min-w-[220px] flex-1">
               <span className="text-text-dim">Observations (facultatif)</span>
               <input maxLength={500} value={observations} onChange={(e) => setObservations(e.target.value)} className="border border-border px-2 py-[2px]" />
-            </label>
-            <label className="flex flex-col gap-0.5">
-              <span className="text-text-dim">Scan de la pièce (facultatif)</span>
-              <input ref={champFichier} type="file" accept={FORMATS} className="text-[11px]" aria-label="Scan de la pièce" />
             </label>
             <button type="submit" disabled={envoi} className="ml-auto bg-sel text-white font-semibold px-4 py-1.5 disabled:opacity-40">
               {envoi ? '…' : 'Passer le virement'}
@@ -390,16 +476,16 @@ export function VirementsFondsPage() {
       {liste && liste.virements.length === 0 && <p className="text-text-dim">Aucun virement de fonds sur cet exercice.</p>}
       {liste && liste.virements.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px]">
+          <table className="w-full min-w-[960px]">
             <thead>
               <tr>
-                <th className="text-left px-2 py-1 w-[84px]">Date</th>
                 <th className="text-left px-2 py-1">De · vers</th>
-                <th className="text-left px-2 py-1">Pièce justificative</th>
+                <th className="text-left px-2 py-1">Sortie des fonds</th>
+                <th className="text-left px-2 py-1">Entrée des fonds</th>
                 <th className="text-left px-2 py-1">Objet</th>
                 <th className="text-left px-2 py-1">Pièces passées</th>
                 <th className="text-right px-2 py-1 w-[120px]">Montant</th>
-                <th className="text-left px-2 py-1 w-[150px]">
+                <th className="text-left px-2 py-1 w-[120px]">
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
@@ -407,22 +493,12 @@ export function VirementsFondsPage() {
             <tbody>
               {liste.virements.map((v) => (
                 <tr key={v.id} className={v.annuleLe ? 'text-text-dim' : undefined}>
-                  <td className="px-2 py-1">{date(v.date)}</td>
                   <td className="px-2 py-1">
                     {v.journalOrigine.code} · {v.journalDestination.code}
-                    <div className="text-text-dim">{libelleSens(v.sens)}</div>
-                  </td>
-                  <td className="px-2 py-1">
-                    {LIBELLES_NATURE_PIECE[v.naturePiece]} {v.referencePiece} du {date(v.datePiece)}
                     {v.porteur && <div className="text-text-dim">Porteur · {v.porteur}</div>}
-                    {v.pieces.map((p) => (
-                      <div key={p.id}>
-                        <button type="button" onClick={() => telecharger(p)} className="text-sel hover:underline" title="Télécharger">
-                          {p.nomFichier}
-                        </button>
-                      </div>
-                    ))}
                   </td>
+                  <td className="px-2 py-1">{pieceDansLaListe(v, 'SORTIE')}</td>
+                  <td className="px-2 py-1">{pieceDansLaListe(v, 'ENTREE')}</td>
                   <td className="px-2 py-1">
                     {v.objet}
                     {v.observations && <div className="text-text-dim">{v.observations}</div>}
@@ -436,32 +512,17 @@ export function VirementsFondsPage() {
                         {v.motifAnnulation && <div className="text-text-dim">{v.motifAnnulation}</div>}
                       </span>
                     ) : (
-                      <span className="flex gap-2.5">
-                        {peutEcrire && (
-                          <button
-                            type="button"
-                            disabled={envoiJoindre !== null}
-                            aria-label={`Joindre une pièce au virement du ${date(v.date)}`}
-                            onClick={() => {
-                              setJoindreA(v.id);
-                              champJoindre.current?.click();
-                            }}
-                            className="text-sel hover:underline disabled:opacity-40"
-                          >
-                            {envoiJoindre === v.id ? 'Envoi…' : 'Joindre'}
-                          </button>
-                        )}
-                        {peutValider && !exerciceClos && (
-                          <button
-                            type="button"
-                            aria-label={`Annuler le virement du ${date(v.date)}`}
-                            onClick={() => setAAnnuler(v)}
-                            className="text-danger hover:underline"
-                          >
-                            Annuler
-                          </button>
-                        )}
-                      </span>
+                      peutValider &&
+                      !exerciceClos && (
+                        <button
+                          type="button"
+                          aria-label={`Annuler le virement du ${date(v.date)}`}
+                          onClick={() => setAAnnuler(v)}
+                          className="text-danger hover:underline"
+                        >
+                          Annuler
+                        </button>
+                      )
                     )}
                   </td>
                 </tr>
@@ -475,7 +536,7 @@ export function VirementsFondsPage() {
         type="file"
         accept={FORMATS}
         className="hidden"
-        aria-label="Pièce à joindre au virement"
+        aria-label="Scan à joindre au virement"
         onChange={(e) => void joindreDepuisLaListe(e.target.files?.[0])}
       />
 

@@ -3280,12 +3280,23 @@ caisse), personnalisés, nés avec le dossier (`seedPlan`), migrés pour les
 autres (`20270165000000_virements_de_fonds`), rouverts au premier virement s'il
 en manque, au premier numéro libre si le rang est pris (`assurerComptesDePassage`).
 DEUX PIÈCES NÉES ENSEMBLE (`creerPlusieursAvec`) · origine D 585 / C sa
-trésorerie, destination D sa trésorerie / C 585, même date · le 585 revient à
-zéro au virement même. La fiche `VirementFonds` retient les deux (détenteurs).
-PIÈCE JUSTIFICATIVE EXIGÉE · nature, référence, date, objet (AUDCIF art. 17,
-3° et 5°) ; PORTEUR des espèces dès qu'une caisse est en jeu, exigence
-d'OmegaX ; scan facultatif (`PieceVirementFonds`, mêmes règles que les documents
-des tiers, binaire hors du journal d'audit, restitué à part). Refus · journal
+trésorerie, destination D sa trésorerie / C 585 · le 585 revient à zéro à
+l'entrée. La fiche `VirementFonds` retient les deux (détenteurs). DEUX
+OPÉRATIONS, DEUX PIÈCES JUSTIFICATIVES (demande de Manasse du 2026-10-16) ·
+la SORTIE des fonds au journal d'origine, leur ENTRÉE au journal de
+destination, chacune sa nature (aucune par défaut), sa référence et sa date
+(AUDCIF art. 17, 3° et 5° ; art. 22, 7°), la même référence admise quand un
+seul document appuie les deux ; chaque écriture DATÉE PAR SA PIÈCE (art. 16,
+al. 2), l'entrée jamais avant la sortie, les deux dans l'exercice (fiche du
+compte 58, « soldés à la fin de l'exercice » · une entrée sur l'exercice
+suivant se passe à la main), la fiche datée par la sortie ; objet commun ;
+PORTEUR des espèces dès qu'une caisse est en jeu, exigence d'OmegaX ; scan
+facultatif PAR OPÉRATION (`PieceVirementFonds.operation`, `?operation=SORTIE`
+ou `ENTREE` exigé au dépôt, un scan d'avant sans opération montré sous la
+sortie ; mêmes règles que les documents des tiers, binaire hors du journal
+d'audit, restitué à part). Le sens et le compte de passage ne s'affichent
+plus à l'écran (demande de Manasse), ils restent au journal, au plan et dans
+la bulle d'aide. Refus · journal
 hors trésorerie, en sommeil, sans compte, même journal ou même compte, montant
 au-delà du centime (jugé sans seuil, `estAuCentime` · un écart fixe refusait
 des montants justes au-delà de cent millions), TRÉSORERIE EN DEVISE (le change
@@ -3299,8 +3310,7 @@ pièces sont retirées (lettrage et pointage RELUS dans la transaction,
 `deleteMany` filtré sur le statut, sinon 409), validées inscrites en négatif,
 la fiche MARQUÉE, jamais supprimée, sa trace disant les pièces retirées ou les
 numéros des négatifs ; refus · ligne lettrée ou pointée, exercice clôturé. Dates
-au jour (AAAA-MM-JJ), la même pour les deux pièces et la fiche ; comptes de
-passage ouverts sous verrou du dossier. Un scan déposé reste (pièce
+au jour (AAAA-MM-JJ) ; comptes de passage ouverts sous verrou du dossier. Un scan déposé reste (pièce
 justificative conservée, AUDCIF art. 24), aucune route de retrait. LE 585 ET
 LE 588 RESTENT OUVERTS À LA SAISIE (`estCompteDePassage`) · sans quoi les
 quatre sous-comptes fermaient le 58500000 aux transferts du groupe SYCEBNL

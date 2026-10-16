@@ -11,13 +11,17 @@ import { appelApi, creerDossier, seConnecter, surveiller } from './outils';
  * brouillard (pièces retirées) et une après validation (inscription en
  * négatif). Chaque compte de passage revient à zéro, la clôture ne reporte
  * rien sur lui, et l'annulation d'un virement d'un exercice clôturé est
- * refusée.
+ * refusée. DEUX OPÉRATIONS, DEUX PIÈCES (demande du 2026-10-16) · la sortie et
+ * l'entrée ont chacune leur pièce, qui date leur écriture (AUDCIF art. 16,
+ * al. 2) ; l'entrée ne précède pas la sortie et ne tombe pas sur l'exercice
+ * suivant, le 585 se soldant à la clôture (fiche du compte 58).
  */
 interface Exercice { id: string; dateDebut: string; dateFin: string }
 interface Journal { id: string; code: string; type: string; compteTresorerie: { numero: string } | null }
 interface Compte { id: string; numero: string }
 interface LigneBalance { numero: string; reportDebit: number; reportCredit: number; mouvementDebit: number; mouvementCredit: number }
-interface Virement { id: string; sens: string; piecesPassees: string | null; annuleLe: string | null; comptePassage?: { numero: string }; pieces: { nomFichier: string }[] }
+interface Virement { id: string; sens: string; piecesPassees: string | null; annuleLe: string | null; comptePassage?: { numero: string }; pieces: { nomFichier: string; operation: string | null }[] }
+interface Ecriture { date: string; reference: string | null }
 interface Liste { comptesDePassage: { sens: string; compte: { numero: string } | null }[]; virements: Virement[] }
 
 const jour = (iso: string) => iso.slice(0, 10);
@@ -61,7 +65,12 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
     return l ? Math.round((l.reportDebit - l.reportCredit + l.mouvementDebit - l.mouvementCredit) * 100) / 100 : 0;
   };
   const banqueAvant = await solde(exercice.id, '52110000');
-  const base = (date: string) => ({ exerciceId: exercice.id, date, datePiece: date, naturePiece: 'ORDRE_VIREMENT', referencePiece: 'OV-001' });
+  const piece = (nature: string, reference: string, date: string) => ({ nature, reference, date });
+  const base = (date: string, entree = date) => ({
+    exerciceId: exercice.id,
+    sortie: piece('ORDRE_VIREMENT', 'OV-001', date),
+    entree: piece('AVIS_DEBIT_CREDIT', 'AC-001', entree),
+  });
 
   // Une caisse en devises (5712) ne reçoit pas un virement en francs · la
   // réévaluation de clôture ne lit que les lignes en devise (relecture B1).
@@ -102,8 +111,7 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   // Banque vers banque, au brouillard, puis annulé · ses pièces sont retirées.
   const v2 = await appelApi<Virement>(page, 'POST', '/virements-fonds', {
     ...base(juillet),
-    naturePiece: 'CHEQUE',
-    referencePiece: 'CHQ 0042',
+    sortie: piece('CHEQUE', 'CHQ 0042', juillet),
     journalOrigineId: bq.id,
     journalDestinationId: bq2.id,
     montant: 300_000,
@@ -117,7 +125,7 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   const aout = `${an}-08-05`;
   const v4 = await appelApi<Virement>(page, 'POST', '/virements-fonds', {
     ...base(aout),
-    referencePiece: 'OV-002',
+    sortie: piece('ORDRE_VIREMENT', 'OV-002', aout),
     journalOrigineId: bq.id,
     journalDestinationId: bq2.id,
     montant: 100_000,
@@ -126,22 +134,48 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   await appelApi(page, 'POST', '/ecritures/valider-jusqua', { exerciceId: exercice.id, dateLimite: aout });
   await appelApi(page, 'POST', `/virements-fonds/${v4.id}/annuler`, { motif: 'Virement non exécuté par la banque' });
 
-  // À l'écran · caisse vers banque, avec le bordereau joint.
+  // L'entrée ne précède pas la sortie, et ne tombe pas sur l'exercice suivant.
+  await expect(
+    appelApi(page, 'POST', '/virements-fonds', { ...base(`${an}-09-02`, `${an}-09-01`), journalOrigineId: bq.id, journalDestinationId: bq2.id, montant: 10_000, objet: 'Ordre inversé' }),
+  ).rejects.toThrow(/datée avant leur sortie/);
+  await expect(
+    appelApi(page, 'POST', '/virements-fonds', {
+      ...base(jour(exercice.dateFin), lendemain(exercice.dateFin)),
+      journalOrigineId: bq.id,
+      journalDestinationId: bq2.id,
+      montant: 10_000,
+      objet: 'Entrée sur l’exercice suivant',
+    }),
+  ).rejects.toThrow(/hors de l'exercice/);
+
+  // À l'écran · caisse vers banque, la sortie le 15 sur bon de caisse, l'entrée
+  // le 16 sur le bordereau de versement, scanné et joint à l'entrée.
   await page.goto('/#/virements-fonds');
-  await page.getByLabel('De (banque ou caisse)').selectOption(ca.id);
-  await page.getByLabel('Vers (banque ou caisse)').selectOption(bq.id);
-  await expect(page.getByText('58500003')).toBeVisible();
-  await page.getByLabel('Date du virement').fill(`${an}-09-15`);
+  const sortie = page.getByRole('group', { name: 'Sortie des fonds' });
+  const entree = page.getByRole('group', { name: 'Entrée des fonds' });
   await page.getByLabel('Montant').fill('150 000');
-  await page.getByLabel('Pièce justificative').selectOption('BORDEREAU_VERSEMENT');
-  await page.getByLabel('Référence de la pièce').fill('BV-118');
-  await page.getByLabel('Date de la pièce').fill(`${an}-09-15`);
   await page.getByLabel('Objet').fill('Versement de la recette');
+  await sortie.getByLabel('De (banque ou caisse)').selectOption(ca.id);
+  await sortie.getByLabel('Pièce justificative').selectOption('BON_CAISSE');
+  await sortie.getByLabel('Référence de la pièce').fill('BC-41');
+  await sortie.getByLabel('Date de la pièce').fill(`${an}-09-15`);
+  await entree.getByLabel('Vers (banque ou caisse)').selectOption(bq.id);
+  await entree.getByLabel('Pièce justificative').selectOption('BORDEREAU_VERSEMENT');
+  await entree.getByLabel('Référence de la pièce').fill('BV-118');
+  await entree.getByLabel('Date de la pièce').fill(`${an}-09-16`);
+  await entree.getByLabel('Scan de la pièce').setInputFiles({ name: 'bordereau-118.pdf', mimeType: 'application/pdf', buffer: PDF });
   await page.getByLabel('Porteur des espèces').fill('Mbuyi');
-  await page.getByLabel('Scan de la pièce').setInputFiles({ name: 'bordereau-118.pdf', mimeType: 'application/pdf', buffer: PDF });
   await page.getByRole('button', { name: 'Passer le virement' }).click();
-  await expect(page.getByText(/Virement passé · CA n° \S+ · BQ n° \S+, au compte 58500003\. Pièce jointe\./)).toBeVisible();
+  await expect(page.getByText(/Virement passé · CA n° \S+ · BQ n° \S+\. Scan joint à l’entrée des fonds\./)).toBeVisible();
   await expect(page.getByRole('button', { name: 'bordereau-118.pdf' })).toBeVisible();
+  // Chaque écriture porte et prend la date de SA pièce.
+  const ecrituresDe = async (journalId: string) =>
+    (await appelApi<{ ecritures: Ecriture[] }>(page, 'GET', `/ecritures?exerciceId=${exercice.id}&journalId=${journalId}`)).ecritures;
+  const ecritureSortie = (await ecrituresDe(ca.id)).find((e) => e.reference === 'Bon de caisse BC-41');
+  const ecritureEntree = (await ecrituresDe(bq.id)).find((e) => e.reference === 'Bordereau de versement BV-118');
+  expect([ecritureSortie && jour(ecritureSortie.date), ecritureEntree && jour(ecritureEntree.date)]).toEqual([`${an}-09-15`, `${an}-09-16`]);
+  const v3 = (await appelApi<Liste>(page, 'GET', `/virements-fonds?exerciceId=${exercice.id}`)).virements.find((x) => x.sens === 'CAISSE_BANQUE')!;
+  expect(v3.pieces).toEqual([expect.objectContaining({ nomFichier: 'bordereau-118.pdf', operation: 'ENTREE' })]);
 
   // Les comptes de passage sont soldés, les trésoreries portent le net.
   for (const n of ['58500001', '58500002', '58500003', '58500004']) expect(await solde(exercice.id, n)).toBe(0);
@@ -163,10 +197,8 @@ test('SYSCOHADA · virements de fonds par le 585, pièce jointe, annulations, à
   const dateN1 = `${debutSuivant.slice(0, 4)}-01-20`;
   const v5 = await appelApi<Virement>(page, 'POST', '/virements-fonds', {
     exerciceId: suivant.id,
-    date: dateN1,
-    datePiece: dateN1,
-    naturePiece: 'BON_CAISSE',
-    referencePiece: 'BC-7',
+    sortie: { nature: 'BON_CAISSE', reference: 'BC-7', date: dateN1 },
+    entree: { nature: 'BORDEREAU_VERSEMENT', reference: 'BV-9', date: dateN1 },
     journalOrigineId: ca.id,
     journalDestinationId: bq.id,
     montant: 50_000,
@@ -198,10 +230,8 @@ test('SYCEBNL · banque vers caisse par le 58500002, la clôture passe et ne rep
   const date = `${exercice.dateDebut.slice(0, 4)}-10-02`;
   const v = await appelApi<Virement>(page, 'POST', '/virements-fonds', {
     exerciceId: exercice.id,
-    date,
-    datePiece: date,
-    naturePiece: 'CHEQUE',
-    referencePiece: 'CHQ 1187',
+    sortie: { nature: 'CHEQUE', reference: 'CHQ 1187', date },
+    entree: { nature: 'BON_CAISSE', reference: 'BC-3', date },
     journalOrigineId: bq.id,
     journalDestinationId: ca.id,
     montant: 120_000,

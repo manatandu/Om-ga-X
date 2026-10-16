@@ -22,16 +22,19 @@ export function caisseEnJeu(sens: SensVirementFonds): boolean {
   return sens !== 'BANQUE_BANQUE';
 }
 
-const LIBELLES_SENS: Readonly<Record<SensVirementFonds, string>> = {
-  BANQUE_BANQUE: 'banque vers banque',
-  BANQUE_CAISSE: 'banque vers caisse',
-  CAISSE_BANQUE: 'caisse vers banque',
-  CAISSE_CAISSE: 'caisse vers caisse',
-};
+/**
+ * DEUX OPÉRATIONS, DEUX PIÈCES (demande de Manasse du 2026-10-16) · la sortie
+ * des fonds au journal d'origine, leur entrée au journal de destination,
+ * chacune appuyée et datée par SA pièce (AUDCIF art. 16, al. 2 ; art. 17, 3°
+ * et 5°). Le sens et le compte de passage ne s'affichent plus · ils restent
+ * au journal et au plan comptable.
+ */
+export type OperationVirementFonds = 'SORTIE' | 'ENTREE';
 
-export function libelleSens(sens: SensVirementFonds): string {
-  return LIBELLES_SENS[sens] ?? sens;
-}
+export const LIBELLES_OPERATION: Readonly<Record<OperationVirementFonds, string>> = {
+  SORTIE: 'sortie des fonds',
+  ENTREE: 'entrée des fonds',
+};
 
 export const NATURES_PIECE: readonly NaturePieceVirement[] = [
   'ORDRE_VIREMENT',
