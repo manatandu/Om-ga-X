@@ -37,14 +37,30 @@ Branche de sauvegarde · `travail/virement-pieces` (partie de `main` d461c28).
 
 ## Fait
 
-- (en cours) schéma, migration, DTO, règles, service, écran, specs, e2e.
+- Schéma et migration `20270186000100` (colonnes de l'entrée recopiées de la
+  pièce unique des virements anciens, `operation` des scans, unicité par
+  opération) · `prisma migrate diff` sans écart ; migration rejouée sur une
+  base à l'état d'avant avec un virement et un scan existants.
+- Règle (`motifRefusVirement`) · nature, référence, jour (`estUnJour`) de
+  chaque pièce jugés là, l'opération nommée ; la porte ne vérifie que l'objet
+  (plus de préfixe « sortie. »). Service · chaque écriture datée par sa pièce,
+  dates hors exercice refusées, la phrase sur l'exercice suivant propre à
+  l'entrée ; scans par opération (`?operation=`), messages élidés.
+- Écran · deux cadres « Sortie des fonds » et « Entrée des fonds », texte de
+  sens et de compte de passage retiré, liste par opération, « Joindre » de
+  chaque côté. CLAUDE.md, specs serveur et client, e2e à jour.
+- Scénario sur vraie base (`vp-scenario.mjs`, serveur compilé, port 8083) ·
+  refus, sortie le 30 et entrée le 31 décembre (le 585 débité le 30, crédité
+  le 31, soldé), même référence admise des deux côtés, scans par opération,
+  clôture de N, à-nouveau, refus d'annuler en N clos, V3 de N+1 à deux dates
+  (sortie validée, entrée au brouillard) annulé · tout VERT.
 
 ## Reste
 
-- Scénario sur vraie base à travers une clôture (sortie et entrée à deux
-  dates, entrée le lendemain, entrée refusée sur N+1).
-- Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer).
-- Bloc § 3, e2e local, intégration sur `main` après l'export par période.
+- Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer) et
+  leurs corrections, deux tours au plus.
+- Bloc § 3, e2e local, intégration sur `main` après l'export par période
+  (fusion de `main` d'abord).
 
 ## Vérification
 
