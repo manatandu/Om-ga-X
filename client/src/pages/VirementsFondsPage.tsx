@@ -113,11 +113,27 @@ export function VirementsFondsPage() {
   const [objet, setObjet] = useState('');
   const [porteur, setPorteur] = useState('');
   const [observations, setObservations] = useState('');
+  // LE SCAN CHOISI SE GARDE DANS L'ÉTAT (relecture de l'écran, majeur) · un
+  // champ de fichier n'est pas piloté par React, et le formulaire démonté au
+  // changement d'exercice le vidait en silence, le reste de la saisie gardé ·
+  // le virement passait sans son scan, sans un mot.
+  const [scansChoisis, setScansChoisis] = useState<Record<OperationVirementFonds, File | null>>({ SORTIE: null, ENTREE: null });
   const champScanSortie = useRef<HTMLInputElement>(null);
   const champScanEntree = useRef<HTMLInputElement>(null);
   const champScan: Record<OperationVirementFonds, typeof champScanSortie> = { SORTIE: champScanSortie, ENTREE: champScanEntree };
   const champJoindre = useRef<HTMLInputElement>(null);
-  const [joindreA, setJoindreA] = useState<{ id: string; operation: OperationVirementFonds } | null>(null);
+  // La cible de « Joindre » dans une ref · lue au choix du fichier, vidée si la
+  // boîte de sélection est annulée.
+  const joindreA = useRef<{ id: string; operation: OperationVirementFonds } | null>(null);
+  useEffect(() => {
+    const champ = champJoindre.current;
+    if (!champ) return;
+    const annuler = () => {
+      joindreA.current = null;
+    };
+    champ.addEventListener('cancel', annuler);
+    return () => champ.removeEventListener('cancel', annuler);
+  });
 
   const modifierPiece = (o: OperationVirementFonds, champ: Partial<PieceSaisie>) => setPieces((p) => ({ ...p, [o]: { ...p[o], ...champ } }));
 
@@ -176,7 +192,9 @@ export function VirementsFondsPage() {
       if (!p.reference.trim()) return `La référence de la pièce ${deLa(o)} est exigée.`;
       if (!p.date) return `La date de la pièce ${deLa(o)} est exigée.`;
       if ((debutExercice && p.date < debutExercice) || (finExercice && p.date > finExercice)) {
-        return `La date ${deLa(o)} tombe hors de l’exercice · une entrée qui tombe sur l’exercice suivant se passe à la main.`;
+        // La voie de rechange ne vaut que pour une entrée sur l'exercice suivant, comme au serveur.
+        const suite = o === 'ENTREE' && finExercice && p.date > finExercice ? ' Une entrée qui tombe sur l’exercice suivant se passe à la main.' : '';
+        return `La date ${deLa(o)} tombe hors de l’exercice.${suite}`;
       }
     }
     // Le jour s'écrit AAAA-MM-JJ · l'ordre des chaînes est celui des dates.
@@ -184,7 +202,11 @@ export function VirementsFondsPage() {
     if (porteurExige && !porteur.trim()) return 'Une caisse est en jeu · nommez le porteur des espèces.';
     return null;
   };
-  const formulaireEntame = !!(somme || objet || porteur || observations || pieces.SORTIE.reference || pieces.ENTREE.reference);
+  // TOUT CE QUI SE SAISIT COMPTE · une saisie commencée par un journal, une
+  // nature, une date ou un scan se perdait à la fermeture sans être demandée.
+  const formulaireEntame =
+    !!(somme || objet || porteur || observations || origineId || destinationId) ||
+    OPERATIONS.some((o) => !!(pieces[o].nature || pieces[o].reference || pieces[o].date || scansChoisis[o]));
   useGardeFermeture(formulaireEntame ? 'Un virement est en cours de saisie et n’est pas passé.' : null);
 
   const joindre = async (virementId: string, operation: OperationVirementFonds, fichier: File) => {
@@ -205,7 +227,7 @@ export function VirementsFondsPage() {
     }
     // LES SCANS SE JUGENT AVANT LE VIREMENT · refusés après, ils laissaient un
     // virement passé sans sa pièce.
-    const scans = OPERATIONS.map((o) => ({ o, fichier: champScan[o].current?.files?.[0] })).filter(
+    const scans = OPERATIONS.map((o) => ({ o, fichier: scansChoisis[o] })).filter(
       (s): s is { o: OperationVirementFonds; fichier: File } => !!s.fichier,
     );
     const tropLourd = scans.find((s) => s.fichier.size > TAILLE_MAX);
@@ -248,6 +270,7 @@ export function VirementsFondsPage() {
       setObjet('');
       setPorteur('');
       setObservations('');
+      setScansChoisis({ SORTIE: null, ENTREE: null });
       for (const o of OPERATIONS) if (champScan[o].current) champScan[o].current!.value = '';
       await charger();
     } catch (err) {
@@ -258,12 +281,12 @@ export function VirementsFondsPage() {
   };
 
   const joindreDepuisLaListe = async (fichier: File | undefined) => {
-    const cible = joindreA;
-    setJoindreA(null);
+    const cible = joindreA.current;
+    joindreA.current = null;
     if (!fichier || !cible) return;
+    // L'avertissement reste · il peut rappeler l'autre scan non joint.
     setErreur(null);
     setInfo(null);
-    setAvertissement(null);
     setEnvoiJoindre(`${cible.id}:${cible.operation}`);
     try {
       await joindre(cible.id, cible.operation, fichier);
@@ -355,8 +378,33 @@ export function VirementsFondsPage() {
         </label>
         <label className="flex flex-col gap-0.5">
           <span className="text-text-dim">Scan de la pièce (facultatif)</span>
-          <input ref={champScan[o]} type="file" accept={FORMATS} className="text-[11px]" />
+          <input
+            ref={champScan[o]}
+            type="file"
+            accept={FORMATS}
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setScansChoisis((s) => ({ ...s, [o]: f }));
+            }}
+            className="text-[11px]"
+          />
         </label>
+        {scansChoisis[o] && (
+          <span className="flex items-center gap-2 text-[11px]">
+            Retenu · {scansChoisis[o]!.name}
+            <button
+              type="button"
+              onClick={() => {
+                setScansChoisis((s) => ({ ...s, [o]: null }));
+                if (champScan[o].current) champScan[o].current!.value = '';
+              }}
+              className="text-sel hover:underline"
+              aria-label={`Retirer le scan retenu ${deLa(o)}`}
+            >
+              Retirer
+            </button>
+          </span>
+        )}
       </fieldset>
     );
   };
@@ -365,23 +413,25 @@ export function VirementsFondsPage() {
   const pieceDansLaListe = (v: VirementServi, o: OperationVirementFonds) => {
     const [nature, reference, jourPiece] =
       o === 'SORTIE' ? [v.naturePiece, v.referencePiece, v.datePiece] : [v.naturePieceEntree, v.referencePieceEntree, v.datePieceEntree];
-    // Un scan joint avant la distinction des deux pièces n'a pas d'opération · il
-    // est montré sous la sortie, le seul côté qu'avait alors le virement.
-    const scans = v.pieces.filter((p) => p.operation === o || (o === 'SORTIE' && p.operation === null));
+    // Un scan joint avant la distinction des deux pièces n'a pas d'opération ·
+    // il valait pour le virement entier, montré des deux côtés et dit tel. Un
+    // serveur d'avant, qui ne sert pas le champ, rend `undefined` · lu comme
+    // nul, jamais comme un scan qui disparaît.
+    const scans = v.pieces.filter((p) => p.operation === o || p.operation == null);
     const cle = `${v.id}:${o}`;
+    // UN ANCIEN VIREMENT PEUT AVOIR SES ÉCRITURES À UNE AUTRE DATE QUE SA PIÈCE ·
+    // passées à la date du virement, avant la séparation des deux pièces.
+    const jourEcriture = o === 'SORTIE' ? v.date : null;
     return (
       <>
         {LIBELLES_NATURE_PIECE[nature]} {reference} du {date(jourPiece)}
+        {jourEcriture && jourEcriture.slice(0, 10) !== jourPiece.slice(0, 10) && <span className="text-text-dim"> · écritures du {date(jourEcriture)}</span>}
         {scans.map((p) => (
           <div key={p.id}>
-            <button
-              type="button"
-              onClick={() => telecharger(p)}
-              className="text-sel hover:underline"
-              title={p.operation === null ? 'Jointe au virement sans désigner l’opération' : 'Télécharger'}
-            >
+            <button type="button" onClick={() => telecharger(p)} className="text-sel hover:underline" title="Télécharger">
               {p.nomFichier}
             </button>
+            {p.operation == null && <span className="text-text-dim"> (virement entier)</span>}
           </div>
         ))}
         {peutEcrire && !v.annuleLe && (
@@ -389,9 +439,10 @@ export function VirementsFondsPage() {
             <button
               type="button"
               disabled={envoiJoindre !== null}
-              aria-label={`Joindre un scan ${aLa(o)} du virement du ${date(v.date)}`}
+              aria-busy={envoiJoindre === cle}
+              aria-label={`Joindre un scan ${aLa(o)} du virement du ${date(v.date)}, pièce ${reference}`}
               onClick={() => {
-                setJoindreA({ id: v.id, operation: o });
+                joindreA.current = { id: v.id, operation: o };
                 champJoindre.current?.click();
               }}
               className="text-sel hover:underline disabled:opacity-40"
@@ -411,7 +462,11 @@ export function VirementsFondsPage() {
           {erreur}
         </div>
       )}
-      {info && <div className="text-positive bg-positive-soft border border-positive/30 px-3 py-2">{info}</div>}
+      {info && (
+        <div role="status" className="text-positive bg-positive-soft border border-positive/30 px-3 py-2">
+          {info}
+        </div>
+      )}
       {avertissement && (
         <div role="alert" className="text-warning bg-warning-soft border border-warning/30 px-3 py-2">
           {avertissement}
@@ -428,7 +483,9 @@ export function VirementsFondsPage() {
       {liste && exerciceClos && <p className="text-text-dim">Exercice clôturé · ses virements se consultent, aucun ne se passe ni ne s'annule.</p>}
 
       {peutEcrire && liste && journaux.length >= 2 && !exerciceClos && (
-        <form onSubmit={passer} className="border border-border bg-surface p-3 space-y-2">
+        // `noValidate` · l'écran dit lui-même ce qui manque (`manque`), dans
+        // l'ordre du formulaire, au lieu que le navigateur parle le premier.
+        <form noValidate onSubmit={passer} className="border border-border bg-surface p-3 space-y-2">
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-0.5">
               <span className="text-text-dim">Montant</span>

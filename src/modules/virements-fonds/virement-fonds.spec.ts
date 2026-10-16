@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { BadRequestException, ConflictException, ValidationPipe } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, ValidationPipe } from '@nestjs/common';
 import { Prisma, SensVirementFonds, StatutEcriture, StatutExercice } from '@prisma/client';
 import { PLAN_COMPTES_SYSCOHADA } from '../comptes/compte-seed-syscohada';
 import { PLAN_COMPTES_SYCEBNL } from '../comptes/compte-seed';
@@ -136,8 +136,11 @@ describe('Les refus qui ne lisent rien', () => {
     };
     // Nature absente · la porte laisse passer, la règle la refuse en la nommant.
     await expect(pipe.transform(corps, { type: 'body', metatype: CreerVirementDto })).resolves.toBeInstanceOf(CreerVirementDto);
-    const refus = await pipe.transform({ ...corps, entree: 'BC 1' }, { type: 'body', metatype: CreerVirementDto }).catch((e: BadRequestException) => e.getResponse());
-    expect(refus).toMatchObject({ message: ["La pièce de l'entrée des fonds se donne avec sa nature, sa référence et sa date."] });
+    // Absente, nulle, un texte ou un tableau · UN message, jamais deux (relecture TypeScript, mineur 5).
+    for (const entree of [undefined, null, 'BC 1', []]) {
+      const refus = await pipe.transform({ ...corps, entree }, { type: 'body', metatype: CreerVirementDto }).catch((e: BadRequestException) => e.getResponse());
+      expect(refus).toMatchObject({ message: ["La pièce de l'entrée des fonds se donne avec sa nature, sa référence et sa date."] });
+    }
   });
   it('l’entrée suit la sortie, le même jour ou après, jamais avant (AUDCIF art. 16, al. 2)', () => {
     expect(motifRefusVirement(o, d, { ...DEMANDE, entree: { ...DEMANDE.entree, date: '2026-03-16' } })).toBeNull();
@@ -247,7 +250,7 @@ describe('VirementsFondsService.creer', () => {
   function monter(
     journaux: JournalDeTresorerie[],
     ribs: Array<{ devise: string | null; journal: { code: string } }> = [],
-    opts: { referentiel?: 'SYSCOHADA' | 'SYCEBNL'; compteEnDevise?: string } = {},
+    opts: { referentiel?: 'SYSCOHADA' | 'SYCEBNL'; compteEnDevise?: string; periodeClose?: { journalId: string; message: string } } = {},
   ) {
     const creerPlusieursAvec = jest.fn(async (_t: string, _u: string, dtos: unknown[], suite: (tx: unknown, e: unknown[]) => unknown) => {
       const tx = {
@@ -259,7 +262,13 @@ describe('VirementsFondsService.creer', () => {
     });
     const prisma = {
       journal: { findMany: async () => journaux },
-      exercice: { findFirst: async () => ({ dateDebut: new Date('2026-01-01T00:00:00.000Z'), dateFin: new Date('2026-12-31T00:00:00.000Z') }) },
+      // LA DOUBLURE HONORE SA REQUÊTE · l'exercice d'un autre dossier n'existe pas.
+      exercice: {
+        findFirst: async ({ where }: { where: { id: string; tenantId: string } }) =>
+          where.id === 'x1' && where.tenantId === 't1'
+            ? { dateDebut: new Date('2026-01-01T00:00:00.000Z'), dateFin: new Date('2026-12-31T00:00:00.000Z') }
+            : null,
+      },
       ribBanque: { findMany: async () => ribs },
       tenant: { findUniqueOrThrow: async () => ({ referentiel: opts.referentiel ?? 'SYSCOHADA' }) },
       ligneEcriture: { findMany: async () => (opts.compteEnDevise ? [{ compteId: opts.compteEnDevise }] : []) },
@@ -267,7 +276,14 @@ describe('VirementsFondsService.creer', () => {
       $executeRaw: async () => 0,
       $transaction: async (fn: (tx: unknown) => unknown) => fn(prisma),
     };
-    return { service: new VirementsFondsService(prisma as never, { creerPlusieursAvec } as never), creerPlusieursAvec };
+    const verifierEcritureAutorisee = jest.fn(async (_t: string, journalId: string) => {
+      if (opts.periodeClose?.journalId === journalId) throw new ForbiddenException(opts.periodeClose.message);
+    });
+    return {
+      service: new VirementsFondsService(prisma as never, { creerPlusieursAvec } as never, { verifierEcritureAutorisee } as never),
+      creerPlusieursAvec,
+      verifierEcritureAutorisee,
+    };
   }
   const dto = {
     exerciceId: 'x1',
@@ -325,6 +341,32 @@ describe('VirementsFondsService.creer', () => {
   it('refuse AVANT toute pièce une entrée datée avant la sortie', async () => {
     const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
     await expect(service.creer('t1', 'u1', { ...dto, entree: { ...dto.entree, date: '2026-03-10' } } as never)).rejects.toThrow(/datée avant leur sortie/);
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('un exercice d’un autre dossier est introuvable · lu avec le dossier de la session', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    await expect(service.creer('t2', 'u1', dto as never)).rejects.toThrow('Exercice introuvable pour ce dossier.');
+    await expect(service.creer('t1', 'u1', { ...dto, exerciceId: 'x9' } as never)).rejects.toThrow('Exercice introuvable pour ce dossier.');
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('une clé de trop dans une pièce est refusée, nommée, avant toute écriture (relecture TypeScript, mineur 3)', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')]);
+    await expect(service.creer('t1', 'u1', { ...dto, sortie: { ...dto.sortie, tenantId: 'autre' } } as never)).rejects.toThrow(
+      "La pièce de la sortie des fonds ne porte que sa nature, sa référence et sa date · tenantId n'y est pas admis.",
+    );
+    await expect(service.creer('t1', 'u1', { ...dto, entree: { ...dto.entree, reférence: 'x' } } as never)).rejects.toThrow(/de l'entrée des fonds .* reférence n'y est pas admis/);
+    expect(creerPlusieursAvec).not.toHaveBeenCalled();
+  });
+
+  it('une période close se dit par son opération, avant toute écriture, avec l’issue de la saisie (relecture « échecs silencieux », M4)', async () => {
+    const { service, creerPlusieursAvec } = monter([banque('ca', '57110000'), banque('bq', '52110000')], [], {
+      periodeClose: { journalId: 'bq', message: "La période jusqu'au 2026-03-31 est clôturée pour tous les journaux." },
+    });
+    await expect(service.creer('t1', 'u1', dto as never)).rejects.toThrow(
+      /^Pièce de l'entrée des fonds au journal BQ · La période jusqu'au 2026-03-31 est clôturée pour tous les journaux\. Ce formulaire ne reporte pas une opération · passez ce virement à la main dans la saisie, où le report se demande\.$/,
+    );
     expect(creerPlusieursAvec).not.toHaveBeenCalled();
   });
 
@@ -418,7 +460,7 @@ describe('VirementsFondsService.annuler', () => {
       },
     };
     prisma.$transaction = async (fn: (tx: unknown) => unknown) => fn(prisma);
-    const service = new VirementsFondsService(prisma as never, { inscrireEnNegatifPourAnnulation } as never);
+    const service = new VirementsFondsService(prisma as never, { inscrireEnNegatifPourAnnulation } as never, {} as never);
     return { service, updates, supprimes, inscrireEnNegatifPourAnnulation };
   }
 
@@ -489,18 +531,23 @@ describe('VirementsFondsService.annuler', () => {
 
 describe('VirementsFondsService.deposerPiece', () => {
   const PDF = Buffer.from('%PDF-1.4\n% e2e\n%%EOF\n', 'latin1');
-  function monter() {
+  function monter(ancien: { nomFichier: string } | null = null) {
     const crees: Array<Record<string, unknown>> = [];
+    const lus: unknown[] = [];
     const prisma = {
       virementFonds: { findFirst: async () => ({ id: 'v1' }) },
       pieceVirementFonds: {
+        findFirst: async (args: unknown) => {
+          lus.push(args);
+          return ancien;
+        },
         create: async ({ data }: { data: Record<string, unknown> }) => {
           crees.push(data);
           return { id: 'p1', operation: data.operation, nomFichier: data.nomFichier, taille: data.taille };
         },
       },
     };
-    return { service: new VirementsFondsService(prisma as never, {} as never), crees };
+    return { service: new VirementsFondsService(prisma as never, {} as never, {} as never), crees, lus };
   }
 
   it('un scan se joint à UNE opération, nommée', async () => {
@@ -517,16 +564,27 @@ describe('VirementsFondsService.deposerPiece', () => {
     expect(m.crees).toEqual([]);
   });
 
+  it('un scan déjà joint au virement entier (avant la distinction) ne se rejoint pas à une opération · 409 qui le nomme', async () => {
+    const m = monter({ nomFichier: 'ordre-001.pdf' });
+    await expect(m.service.deposerPiece('t1', 'v1', 'SORTIE', { originalname: 'ordre.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(
+      'Ce scan est déjà joint au virement entier (« ordre-001.pdf »).',
+    );
+    expect(m.crees).toEqual([]);
+    // Cherché par son empreinte, sur le seul virement et le seul dossier, parmi les scans sans opération.
+    expect(m.lus[0]).toMatchObject({ where: { tenantId: 't1', virementId: 'v1', operation: null, empreinte: expect.any(String) } });
+  });
+
   it('le même scan joint deux fois à l’entrée est refusé en le disant, article élidé', async () => {
     const prisma = {
       virementFonds: { findFirst: async () => ({ id: 'v1' }) },
       pieceVirementFonds: {
+        findFirst: async () => null,
         create: async () => {
           throw new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'x' });
         },
       },
     };
-    const service = new VirementsFondsService(prisma as never, {} as never);
+    const service = new VirementsFondsService(prisma as never, {} as never, {} as never);
     await expect(service.deposerPiece('t1', 'v1', 'ENTREE', { originalname: 'b.pdf', buffer: PDF }, 'a@b.cd')).rejects.toThrow(
       "Cette pièce est déjà jointe à l'entrée des fonds.",
     );

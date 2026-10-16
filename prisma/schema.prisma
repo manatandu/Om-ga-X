@@ -10355,7 +10355,10 @@ model VirementFonds {
   tenant                       Tenant               @relation(fields: [tenantId], references: [id])
   exerciceId                   String
   exercice                     Exercice             @relation(fields: [exerciceId], references: [id], onDelete: Restrict)
-  /// Date de la SORTIE, celle de la pièce d'origine · la liste se range sur elle.
+  /// Date de la SORTIE, celle de la pièce d'origine · la liste se range sur
+  /// elle. Un virement passé avant la séparation des deux pièces porte ici la
+  /// date de ses deux écritures, qui pouvait différer de `datePiece` · l'écran
+  /// la dit alors à part.
   date                         DateTime             @db.Date
   montant                      Decimal              @db.Decimal(18, 2)
   sens                         SensVirementFonds

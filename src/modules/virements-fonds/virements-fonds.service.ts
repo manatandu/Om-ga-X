@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { NaturePieceVirement, OperationVirementFonds, Prisma, SensVirementFonds, StatutEcriture, StatutExercice, TypeJournal } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import { transactionJournalisee } from '../../common/audit/transaction-journalisee';
 import { MONNAIE_DE_TENUE } from '../../common/monnaie-de-tenue';
 import { EcritureService } from '../comptabilite/ecriture.service';
+import { ExerciceService } from '../exercice/exercice.service';
 import { motifLignesTenues } from '../comptabilite/lignes-tenues';
 import { HORS_SITUATION } from '../comptabilite/ecritures-de-situation';
 import { assurerComptesDePassage } from './comptes-de-passage';
@@ -18,8 +19,11 @@ import {
   estUneCaisse,
   lignesDuVirement,
   motifRefusVirement,
+  pieceJugee,
   sensDuVirement,
   type JournalDeTresorerie,
+  type PieceOperation,
+  type PieceRecue,
 } from './virement-fonds';
 import type { AnnulerVirementDto, CreerVirementDto } from './virements-fonds.dto';
 
@@ -31,6 +35,7 @@ export class VirementsFondsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ecritures: EcritureService,
+    private readonly exercices: ExerciceService,
   ) {}
 
   private async journaux(tenantId: string, ids: string[]): Promise<JournalDeTresorerie[]> {
@@ -95,26 +100,21 @@ export class VirementsFondsService {
     const origine = lus.find((j) => j.id === dto.journalOrigineId) ?? null;
     const destination = lus.find((j) => j.id === dto.journalDestinationId) ?? null;
     // LE JOUR TEL QUE REÇU · `motifRefusVirement` refuse ce qui n'est pas un
-    // jour (« 2026-03-15T10:00 » ne se tronque pas en silence).
-    // Les trois champs SEULS, la référence rognée quand c'est un texte · un
-    // champ absent ou d'un autre type est refusé, nommé, par la règle.
-    const lue = (p: CreerVirementDto['sortie']) => ({
-      nature: p.nature,
-      reference: typeof p.reference === 'string' ? p.reference.trim() : p.reference,
-      date: p.date,
-    });
-    const sortie = lue(dto.sortie);
-    const entree = lue(dto.entree);
+    // jour (« 2026-03-15T10:00 » ne se tronque pas en silence), un champ
+    // absent ou d'un autre type, et toute clé de trop, nommés.
     const motif = motifRefusVirement(origine, destination, {
       montant: dto.montant,
       objet: dto.objet,
-      sortie,
-      entree,
+      sortie: dto.sortie as PieceRecue,
+      entree: dto.entree as PieceRecue,
       porteur: dto.porteur,
     });
     if (motif) throw new BadRequestException(motif);
-    // Nature jugée par `motifRefusVirement` · admise, elle est une des valeurs du schéma.
-    const natureDe = (p: typeof sortie) => p.nature as NaturePieceVirement;
+    // Les pièces jugées, typées par la même garde que la règle, la référence
+    // rognée · jamais un cast (relecture TypeScript, mineur 2).
+    const sortie = pieceJugee(dto.sortie as PieceRecue);
+    const entree = pieceJugee(dto.entree as PieceRecue);
+    if (!sortie || !entree) throw new BadRequestException('Les pièces du virement sont illisibles · reprenez leur nature, leur référence et leur date.');
     // LES DEUX OPÉRATIONS DANS L'EXERCICE · le compte de passage attend
     // l'entrée entre les deux dates, et il est « soldé à la fin de
     // l'exercice » (fiche du compte 58 des deux plans). Une entrée sur
@@ -175,6 +175,25 @@ export class VirementsFondsService {
           'Passez ce virement à la main, avec le montant en devise et le cours de chaque ligne.',
       );
     }
+    // UNE PÉRIODE CLOSE SE DIT PAR SON OPÉRATION (relecture « échecs
+    // silencieux », M4) · jugée par le verrou de la saisie, jamais refaite ;
+    // la saisie la rejoue dans sa transaction. Sans ce préalable, le refus ne
+    // disait ni la sortie ni l'entrée, et renvoyait à un report que ce
+    // formulaire n'offre pas (AUDCIF art. 22, 4°).
+    for (const [journal, piece, operation] of [
+      [origine!, sortie, OperationVirementFonds.SORTIE],
+      [destination!, entree, OperationVirementFonds.ENTREE],
+    ] as const) {
+      try {
+        await this.exercices.verifierEcritureAutorisee(tenantId, journal.id, new Date(`${piece.date}T00:00:00.000Z`));
+      } catch (e) {
+        if (!(e instanceof ForbiddenException)) throw e;
+        throw new ForbiddenException(
+          `Pièce ${deLOperation(operation)} au journal ${journal.code} · ${e.message} ` +
+            'Ce formulaire ne reporte pas une opération · passez ce virement à la main dans la saisie, où le report se demande.',
+        );
+      }
+    }
     const sens = sensDuVirement(origine!.compteTresorerie!.numero, destination!.compteTresorerie!.numero);
     const passage = (
       await transactionJournalisee(this.prisma, async (tx) => {
@@ -185,7 +204,7 @@ export class VirementsFondsService {
       })
     )[sens];
     // CHAQUE ÉCRITURE PORTE LA RÉFÉRENCE DE SA PIÈCE (AUDCIF art. 17, 5°).
-    const reference = (p: typeof sortie) => `${LIBELLES_NATURE_PIECE[natureDe(p)]} ${p.reference}`.slice(0, 190);
+    const reference = (p: PieceOperation) => `${LIBELLES_NATURE_PIECE[p.nature]} ${p.reference}`.slice(0, 190);
     const libelle = `Virement de fonds · ${dto.objet.trim()}`.slice(0, 190);
     const lignes = lignesDuVirement({
       compteOrigineId: origine!.compteTresorerie!.id,
@@ -194,7 +213,7 @@ export class VirementsFondsService {
       montant: dto.montant,
       libelle,
     });
-    const ecriture = (journalId: string, p: typeof sortie, l: typeof lignes.origine) => ({
+    const ecriture = (journalId: string, p: PieceOperation, l: typeof lignes.origine) => ({
       exerciceId: dto.exerciceId,
       journalId,
       date: p.date,
@@ -218,10 +237,10 @@ export class VirementsFondsService {
             sens,
             journalOrigineId: origine!.id,
             journalDestinationId: destination!.id,
-            naturePiece: natureDe(sortie),
+            naturePiece: sortie.nature,
             referencePiece: sortie.reference,
             datePiece: new Date(`${sortie.date}T00:00:00.000Z`),
-            naturePieceEntree: natureDe(entree),
+            naturePieceEntree: entree.nature,
             referencePieceEntree: entree.reference,
             datePieceEntree: new Date(`${entree.date}T00:00:00.000Z`),
             objet: dto.objet.trim(),
@@ -357,6 +376,16 @@ export class VirementsFondsService {
     if (refus) throw new BadRequestException(refus);
     const type = identifierType(fichier.buffer, nom);
     if ('refus' in type) throw new BadRequestException(type.refus);
+    const empreinte = empreinteDocument(fichier.buffer);
+    // UN SCAN JOINT AVANT LA DISTINCTION DES DEUX PIÈCES VAUT POUR LE VIREMENT
+    // ENTIER (`operation` nul) · l'index unique tient NULL pour distinct, et le
+    // même fichier rejoint à une opération passait sans refus, montré deux
+    // fois (relectures TypeScript, mineur 4, et « échecs silencieux », M2).
+    const ancien = await this.prisma.pieceVirementFonds.findFirst({
+      where: { tenantId, virementId: v.id, empreinte, operation: null },
+      select: { nomFichier: true },
+    });
+    if (ancien) throw new ConflictException(`Ce scan est déjà joint au virement entier (« ${ancien.nomFichier} »).`);
     try {
       return await this.prisma.pieceVirementFonds.create({
         data: {
@@ -366,7 +395,7 @@ export class VirementsFondsService {
           nomFichier: nom,
           typeMime: type.typeMime,
           taille: fichier.buffer.length,
-          empreinte: empreinteDocument(fichier.buffer),
+          empreinte,
           contenu: fichier.buffer,
           deposePar: email,
         },

@@ -55,10 +55,23 @@ Branche de sauvegarde · `travail/virement-pieces` (partie de `main` d461c28).
   clôture de N, à-nouveau, refus d'annuler en N clos, V3 de N+1 à deux dates
   (sortie validée, entrée au brouillard) annulé · tout VERT.
 
+- Premier tour de relecture (échecs silencieux, TypeScript, React) · aucun
+  BLOQUANT. Corrigé · la pièce ne porte que nature, référence et date (clé en
+  trop refusée, nommée) ; la porte ne descend plus dans les objets, la règle
+  juge chaque champ (un seul message pour une pièce absente, nulle ou
+  illisible) ; une PÉRIODE CLOSE du journal d'une opération est refusée AVANT
+  toute écriture, l'opération et le journal nommés, l'issue dite (saisie à la
+  main, où le report se demande · AUDCIF art. 22, 4°) ; un scan déjà joint au
+  virement entier (ancien, sans opération) est refusé en 409 au lieu d'un
+  doublon ; écran · scans choisis tenus en état, retenus avant l'envoi et
+  retirables, formulaire entamé compté champ par champ, ancien scan montré
+  « (virement entier) », date des écritures dite quand elle diffère de la
+  pièce, `noValidate` sur le formulaire (le refus vient du serveur, nommé),
+  libellés accessibles des boutons « Joindre ».
+
 ## Reste
 
-- Relectures (silent-failure-hunter, typescript-reviewer, react-reviewer) et
-  leurs corrections, deux tours au plus.
+- Second tour de relecture, puis ses corrections s'il y a un BLOQUANT.
 - Bloc § 3, e2e local, intégration sur `main` après l'export par période
   (fusion de `main` d'abord).
 

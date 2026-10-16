@@ -134,16 +134,28 @@ export interface JournalDeTresorerie {
 }
 
 /**
- * La pièce d'une opération TELLE QUE REÇUE · jugée ici, où le refus nomme
- * l'opération ; la porte n'en vérifie que l'objet, un champ peut manquer ou
- * ne pas être un texte.
+ * La pièce d'une opération TELLE QUE REÇUE · rien n'en est jugé à la porte, un
+ * champ peut manquer ou ne pas être un texte, une clé de trop s'y glisser. Ses
+ * champs sont donc `unknown` · un `.trim()` posé ailleurs sur un nombre reçu
+ * tomberait en 500 (relecture TypeScript, mineur 1). La règle les juge ici,
+ * où le refus nomme l'opération.
  */
+export interface PieceRecue {
+  nature?: unknown;
+  reference?: unknown;
+  date?: unknown;
+}
+
+/** La pièce d'une opération JUGÉE · ce qui s'écrit. */
 export interface PieceOperation {
-  nature: string;
+  nature: NaturePieceVirement;
   reference: string;
   /** Le jour, AAAA-MM-JJ. */
   date: string;
 }
+
+/** Les seules clés d'une pièce · une autre est refusée, nommée, jamais ignorée en silence. */
+const CHAMPS_PIECE: readonly string[] = ['nature', 'reference', 'date'];
 
 const JOUR = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -157,13 +169,29 @@ export function estUnJour(texte: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === texte;
 }
 
-const NATURES_ADMISES: readonly string[] = Object.values(NaturePieceVirement);
+const NATURES_ADMISES: readonly unknown[] = Object.values(NaturePieceVirement);
+
+/** Une nature du schéma · la garde que la règle et le service partagent, jamais un cast. */
+export function estNaturePiece(v: unknown): v is NaturePieceVirement {
+  return NATURES_ADMISES.includes(v);
+}
+
+/**
+ * La pièce typée, ou `null` si un de ses champs n'est pas ce qu'il doit être ·
+ * la référence rognée. Le refus nommé vient de `motifRefusVirement`.
+ */
+export function pieceJugee(p: PieceRecue): PieceOperation | null {
+  if (!estNaturePiece(p.nature) || typeof p.reference !== 'string' || typeof p.date !== 'string') return null;
+  const reference = p.reference.trim();
+  if (!reference || reference.length > 100 || !estUnJour(p.date)) return null;
+  return { nature: p.nature, reference, date: p.date };
+}
 
 export interface DemandeVirement {
   montant: number;
   objet: string;
-  sortie: PieceOperation;
-  entree: PieceOperation;
+  sortie: PieceRecue;
+  entree: PieceRecue;
   porteur: string | null | undefined;
 }
 
@@ -200,15 +228,25 @@ export function motifRefusVirement(
     [demande.sortie, OperationVirementFonds.SORTIE],
     [demande.entree, OperationVirementFonds.ENTREE],
   ] as const) {
-    if (typeof piece.nature !== 'string' || !NATURES_ADMISES.includes(piece.nature)) return `Choisissez la nature de la pièce ${deLOperation(operation)}.`;
+    // UNE CLÉ DE TROP SE DIT (relecture TypeScript, mineur 3) · la porte ne
+    // descend pas dans l'objet, et une faute de frappe (« reférence ») passait
+    // pour une clé ignorée.
+    const deTrop = Object.keys(piece).filter((cle) => !CHAMPS_PIECE.includes(cle));
+    if (deTrop.length) {
+      return `La pièce ${deLOperation(operation)} ne porte que sa nature, sa référence et sa date · ${deTrop.join(', ')} n'y est pas admis.`;
+    }
+    if (!estNaturePiece(piece.nature)) return `Choisissez la nature de la pièce ${deLOperation(operation)}.`;
     if (typeof piece.reference !== 'string' || !piece.reference.trim()) {
       return `La référence de la pièce ${deLOperation(operation)} est exigée · chaque écriture porte les références de la pièce qui l’appuie (AUDCIF art. 17, 5°).`;
     }
     if (piece.reference.trim().length > 100) return `La référence de la pièce ${deLOperation(operation)} se saisit en 100 caractères au plus.`;
     if (typeof piece.date !== 'string' || !estUnJour(piece.date)) return `La date de la pièce ${deLOperation(operation)} se donne au jour (AAAA-MM-JJ).`;
   }
+  // Toutes deux jugées · `pieceJugee` les rend typées.
+  const sortie = pieceJugee(demande.sortie)!;
+  const entree = pieceJugee(demande.entree)!;
   // Le jour s'écrit AAAA-MM-JJ · l'ordre des chaînes est celui des dates.
-  if (demande.entree.date < demande.sortie.date) {
+  if (entree.date < sortie.date) {
     return "L'entrée des fonds est datée avant leur sortie · chaque écriture prend la date de sa pièce (AUDCIF art. 16, al. 2), et les fonds n'arrivent pas avant d'être partis.";
   }
   const sens = sensDuVirement(origine.compteTresorerie!.numero, destination.compteTresorerie!.numero);

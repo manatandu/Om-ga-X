@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsDefined, IsNumber, IsObject, IsString, IsUUID, Length, MaxLength, Min } from 'class-validator';
+import { IsNumber, IsObject, IsString, IsUUID, Length, MaxLength, Min } from 'class-validator';
 import { FacultatifNonNul } from '../../common/facultatif-non-nul';
 
 /**
@@ -18,9 +18,11 @@ import { FacultatifNonNul } from '../../common/facultatif-non-nul';
  * ou une heure à décalage (`estUnJour`).
  */
 export class PieceOperationDto {
-  nature!: string;
-  reference!: string;
-  date!: string;
+  // `unknown` · non jugés à la porte, ils ne se lisent pas comme des textes
+  // ailleurs que dans la règle (relecture TypeScript, mineur 1).
+  nature?: unknown;
+  reference?: unknown;
+  date?: unknown;
 }
 
 /** Un virement de fonds · deux journaux de trésorerie, un montant, une pièce par opération. */
@@ -41,13 +43,12 @@ export class CreerVirementDto {
   montant!: number;
 
   /** La pièce de la SORTIE · elle appuie et date l'écriture du journal d'origine. */
-  @IsDefined({ message: 'La pièce de la sortie des fonds est exigée.' })
+  // `IsObject` refuse aussi l'absence et `null` · un seul message, jamais deux.
   @IsObject({ message: 'La pièce de la sortie des fonds se donne avec sa nature, sa référence et sa date.' })
   @Type(() => PieceOperationDto)
   sortie!: PieceOperationDto;
 
   /** La pièce de l'ENTRÉE · elle appuie et date l'écriture du journal de destination. */
-  @IsDefined({ message: "La pièce de l'entrée des fonds est exigée." })
   @IsObject({ message: "La pièce de l'entrée des fonds se donne avec sa nature, sa référence et sa date." })
   @Type(() => PieceOperationDto)
   entree!: PieceOperationDto;
