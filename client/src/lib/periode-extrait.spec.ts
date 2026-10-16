@@ -99,7 +99,14 @@ describe('ce que l’écran montre et imprime · lu pour la période affichée, 
     // L'impression passe par la règle, et la section seule par `sectionVisible`.
     expect(page).toContain('const imprimable = extraitImprimable({');
     expect(page).toContain('disabled={impressionExtraitEnCours || !imprimable}');
-    expect(page.match(/sectionVisible\(sectionSeule\)/g)?.length).toBe(2);
-    expect(page).not.toMatch(/sectionSeule\.lignes\.length/);
+    // La section seule passe par `sectionVisible`, au tri des sections comme au message vide ·
+    // le corps de `sectionsAffichees` est découpé, jamais lu à distance.
+    const debut = page.indexOf('const sectionsAffichees = useMemo(');
+    const corps = page.slice(debut, page.indexOf('[grandLivre, compteGrandLivreId, refusGrandLivre, sectionSeule]', debut));
+    expect(debut).toBeGreaterThan(-1);
+    expect(corps).toContain('sectionSeule && sectionVisible(sectionSeule)');
+    expect(page).toContain('(sectionSeule && !sectionVisible(sectionSeule))');
+    // L'écran relu après l'enregistrement · un numéro ne s'imprime pas sur un autre écran.
+    expect(page).toContain('if (ecranCourant.current !== ecranDemande) {');
   });
 });

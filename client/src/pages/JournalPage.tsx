@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { api, ApiError } from '../lib/api';
 import { useExercice } from '../lib/exercice';
@@ -183,6 +183,10 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   const [formatGrandLivre, setFormatGrandLivre] = useState<FormatGrandLivre>('fpm');
   const [balanceSeule, setBalanceSeule] = useState(false);
   const [grandLivreLu, setGrandLivreLu] = useState<Lu<SectionGrandLivre[]> | null>(null);
+  // La clé d'une lecture tombée · l'écran dit « Lecture impossible » pour
+  // elle, jamais un « Chargement… » sans fin une fois le bandeau fermé.
+  const [echecBalance, setEchecBalance] = useState<string | null>(null);
+  const [echecGrandLivre, setEchecGrandLivre] = useState<string | null>(null);
   // LA PÉRIODE DE LA BALANCE ET DU GRAND LIVRE (ligne export-periode) · la
   // saisie, puis ce qui est appliqué (comme les filtres du journal), chacune
   // rangée avec son exercice (`periodePourLExercice`) · celle d'un autre
@@ -194,10 +198,13 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     du: null,
     au: null,
   });
-  const saisie = saisieDates.exerciceId === (exerciceCourant?.id ?? null) ? saisieDates : { du: null, au: null };
-  const periodeSaisie: PeriodeSaisie = { du: saisie.du ?? '', au: saisie.au ?? '' };
   const [periodeAppliquee, setPeriodeAppliquee] = useState<PeriodeDeLExercice>({ exerciceId: null, ...PERIODE_EXERCICE });
   const periode = periodePourLExercice(periodeAppliquee, exerciceCourant?.id);
+  // Une saisie faite dans un autre exercice ne vaut pas ici · les champs
+  // montrent alors la période appliquée à celui-ci, celle que l'écran affiche.
+  const saisie =
+    saisieDates.exerciceId === (exerciceCourant?.id ?? null) ? saisieDates : { du: periode.du || null, au: periode.au || null };
+  const periodeSaisie: PeriodeSaisie = { du: saisie.du ?? '', au: saisie.au ?? '' };
   const appliquerPeriode = (p: PeriodeSaisie) => setPeriodeAppliquee({ exerciceId: exerciceCourant?.id ?? null, ...p });
   const extrait = exerciceCourant ? estUnExtrait(exerciceCourant, periode) : false;
   const motifPeriode = exerciceCourant ? motifPeriodeSaisie(exerciceCourant, periodeSaisie) : null;
@@ -337,7 +344,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       )
       .then(
         (r) => !annule && setBalanceLue({ cle, donnees: r.lignes }),
-        (e) => !annule && setErreur(e instanceof Error ? e.message : 'Chargement impossible'),
+        (e) => {
+          if (annule) return;
+          setEchecBalance(cle);
+          setErreur(e instanceof Error ? e.message : 'Chargement impossible');
+        },
       );
     return () => {
       annule = true;
@@ -363,7 +374,10 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
         // double-clic d'une balance (second tour, relevé E). Toute autre
         // panne reste une erreur.
         if (e instanceof ApiError && e.status === 400) setRefusGrandLivre(e.message);
-        else setErreur(e instanceof Error ? e.message : 'Chargement impossible');
+        else {
+          setEchecGrandLivre(cle);
+          setErreur(e instanceof Error ? e.message : 'Chargement impossible');
+        }
       },
     );
     return () => {
@@ -535,33 +549,6 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
     window.addEventListener('afterprint', retirer);
     return () => window.removeEventListener('afterprint', retirer);
   }, []);
-  const imprimerExtrait = async () => {
-    if (!exerciceCourant || !extrait) return;
-    setErreur(null);
-    setInfo(null);
-    setImpressionExtraitEnCours(true);
-    try {
-      const r = await api.post<{ numero: number; etabliLe: string; etabliLeJour: string; libelle: string }>('/extraits-periode/impression', {
-        exerciceId: exerciceCourant.id,
-        nature: onglet === 'balance' ? 'BALANCE' : 'GRAND_LIVRE',
-        ...(periode.du ? { du: periode.du } : {}),
-        ...(periode.au ? { au: periode.au } : {}),
-        ...(onglet === 'grand-livre' && compteGrandLivreId ? { compteId: compteGrandLivreId } : {}),
-        ...(onglet === 'balance' && regrouperTiers ? { regrouperTiers: true } : {}),
-      });
-      // Un seul numéro sur la page · celui du journal, s'il traînait, s'efface.
-      flushSync(() => {
-        setImpressionNumerotee(null);
-        setExtraitImprime(r);
-      });
-      setInfo(`Extrait n° ${r.numero} enregistré · ${r.libelle}.`);
-      window.print();
-    } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "Impression de l'extrait impossible");
-    } finally {
-      setImpressionExtraitEnCours(false);
-    }
-  };
   // Une fenêtre qui ne montre rien du livre n'atteste rien · ni pendant un
   // chargement, ni après un échec, ni sur des chiffres d'une autre période ;
   // le grand livre refusé par son volume s'imprime par le compte qu'il montre.
@@ -579,6 +566,49 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
   useEffect(() => {
     setExtraitImprime(null);
   }, [periode.du, periode.au, onglet, compteGrandLivreId, regrouperTiers, exerciceCourant?.id]);
+  // CE QUE L'ÉCRAN MONTRE, relu après l'enregistrement (second tour, MAJEUR
+  // 1) · un changement de période, d'onglet, de compte ou d'exercice pendant
+  // la requête aurait fait imprimer le numéro au-dessus d'autres chiffres.
+  const signatureEcran = [onglet, cleBalance, cleGrandLivre, compteGrandLivreId, String(imprimable)].join('#');
+  const ecranCourant = useRef(signatureEcran);
+  useEffect(() => {
+    ecranCourant.current = signatureEcran;
+  });
+  const imprimerExtrait = async () => {
+    if (!exerciceCourant || !extrait) return;
+    setErreur(null);
+    setInfo(null);
+    setImpressionExtraitEnCours(true);
+    const ecranDemande = signatureEcran;
+    try {
+      const r = await api.post<{ numero: number; etabliLe: string; etabliLeJour: string; libelle: string }>('/extraits-periode/impression', {
+        exerciceId: exerciceCourant.id,
+        nature: onglet === 'balance' ? 'BALANCE' : 'GRAND_LIVRE',
+        ...(periode.du ? { du: periode.du } : {}),
+        ...(periode.au ? { au: periode.au } : {}),
+        ...(onglet === 'grand-livre' && compteGrandLivreId ? { compteId: compteGrandLivreId } : {}),
+        ...(onglet === 'balance' && regrouperTiers ? { regrouperTiers: true } : {}),
+      });
+      if (ecranCourant.current !== ecranDemande) {
+        setInfo(
+          `Extrait n° ${r.numero} enregistré, mais l'écran a changé pendant l'enregistrement · ` +
+            "la page ne s'imprime pas sous ce numéro. Relancez l'impression sur l'écran voulu.",
+        );
+        return;
+      }
+      // Un seul numéro sur la page · celui du journal, s'il traînait, s'efface.
+      flushSync(() => {
+        setImpressionNumerotee(null);
+        setExtraitImprime(r);
+      });
+      setInfo(`Extrait n° ${r.numero} enregistré · ${r.libelle}.`);
+      window.print();
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : "Impression de l'extrait impossible");
+    } finally {
+      setImpressionExtraitEnCours(false);
+    }
+  };
 
   const lignesJournal = useMemo(() => ecritures.flatMap((e) =>
     e.lignes.map((l, indexLigne) => ({
@@ -738,6 +768,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               aria-invalid={motifPeriode !== null}
               aria-describedby={motifPeriode ? 'motif-periode' : undefined}
               onChange={(e) => setSaisieDates({ exerciceId: exerciceCourant.id, du: e.target.value, au: saisie.au })}
+              disabled={impressionExtraitEnCours}
               className="border border-border bg-surface px-2 py-1 text-[11.5px]"
             />
           </label>
@@ -751,12 +782,13 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
               aria-invalid={motifPeriode !== null}
               aria-describedby={motifPeriode ? 'motif-periode' : undefined}
               onChange={(e) => setSaisieDates({ exerciceId: exerciceCourant.id, du: saisie.du, au: e.target.value })}
+              disabled={impressionExtraitEnCours}
               className="border border-border bg-surface px-2 py-1 text-[11.5px]"
             />
           </label>
           <button
             type="submit"
-            disabled={motifPeriode !== null}
+            disabled={motifPeriode !== null || impressionExtraitEnCours}
             title={saisieNonAppliquee ? "Les dates saisies ne sont pas encore celles de l'écran" : undefined}
             className={`border px-3 py-1 font-bold hover:bg-surface-alt disabled:opacity-50 ${
               saisieNonAppliquee ? 'border-sel text-sel bg-surface' : 'border-border bg-surface'
@@ -767,6 +799,7 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           {extrait && (
             <button
               type="button"
+              disabled={impressionExtraitEnCours}
               onClick={() => {
                 setSaisieDates({ exerciceId: exerciceCourant.id, du: null, au: null });
                 appliquerPeriode(PERIODE_EXERCICE);
@@ -904,7 +937,9 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
                   ? "Enregistre l'extrait (numéro, date, auteur, période), puis ouvre la boîte d'impression"
                   : onglet === 'grand-livre' && refusGrandLivre && !compteGrandLivreId
                     ? 'La fenêtre ne montre aucun compte · choisissez un compte, ou exportez l’extrait en Excel'
-                    : 'La fenêtre n’a pas encore lu cette période · attendez la fin du chargement'
+                    : refusSectionSeule || echecBalance === cleBalance || echecGrandLivre === cleGrandLivre
+                      ? 'La fenêtre n’a pas pu lire cette période · exportez l’extrait en Excel'
+                      : 'La fenêtre n’a pas encore lu cette période · attendez la fin du chargement'
               }
               className="ecran-seul flex items-center gap-1.5 border border-border bg-surface px-3 py-1.5 text-[11.5px] font-bold hover:bg-surface-alt disabled:opacity-50"
             >
@@ -1071,18 +1106,21 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
       <div className="flex bg-chrome border border-border border-b-0 rounded-t-[10px] overflow-hidden">
         <button
           onClick={() => setOnglet('journal')}
+          disabled={impressionExtraitEnCours}
           className={`px-4 py-1.5 text-[11.5px] font-bold ${onglet === 'journal' ? 'bg-surface border-r border-border' : 'text-text-dim'}`}
         >
           Journal
         </button>
         <button
           onClick={() => setOnglet('grand-livre')}
+          disabled={impressionExtraitEnCours}
           className={`px-4 py-1.5 text-[11.5px] font-bold ${onglet === 'grand-livre' ? 'bg-surface border-r border-l border-border' : 'text-text-dim'}`}
         >
           Grand livre
         </button>
         <button
           onClick={() => setOnglet('balance')}
+          disabled={impressionExtraitEnCours}
           className={`px-4 py-1.5 text-[11.5px] font-bold ${onglet === 'balance' ? 'bg-surface border-r border-l border-border' : 'text-text-dim'}`}
         >
           Balance
@@ -1225,7 +1263,12 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             <label className="text-[11px] font-bold text-text-dim">Filtrer sur un compte</label>
             <select
               value={compteGrandLivreId}
-              onChange={(e) => setCompteGrandLivreId(e.target.value)}
+              onChange={(e) => {
+                const choisi = optionsGrandLivre.find((c) => c.compte.id === e.target.value);
+                if (choisi) setLibellesComptes((m) => ({ ...m, [choisi.compte.id]: `${choisi.compte.numero} · ${choisi.compte.intitule}` }));
+                setCompteGrandLivreId(e.target.value);
+              }}
+              disabled={impressionExtraitEnCours}
               className="border border-border rounded-[3px] bg-surface px-2 py-[2px] text-[11.5px] font-mono"
             >
               <option value="">{refusGrandLivre ? 'aucun compte choisi' : 'tous les comptes mouvementés'}</option>
@@ -1259,7 +1302,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
           {refusSectionSeule && (
             <div className="px-3.5 py-2 text-[11.5px] text-danger border-b border-border">{refusSectionSeule}</div>
           )}
-          {!grandLivre && !refusGrandLivre && <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {!grandLivre && !refusGrandLivre && (
+            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
+              {echecGrandLivre === cleGrandLivre ? 'Lecture impossible du grand livre de cette période.' : 'Chargement…'}
+            </div>
+          )}
           {refusGrandLivre && compteGrandLivreId && !sectionSeule && !refusSectionSeule && (
             <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Chargement…</div>
           )}
@@ -1407,7 +1454,11 @@ export function JournalPage({ adresse }: { adresse?: string } = {}) {
             <span className="text-right">Débit</span>
             <span className="text-right">Crédit</span>
           </div>
-          {balance === null && <div className="px-3.5 py-4 text-[11.5px] text-text-dim">Chargement…</div>}
+          {balance === null && (
+            <div className="px-3.5 py-4 text-[11.5px] text-text-dim">
+              {echecBalance === cleBalance ? 'Lecture impossible de la balance de cette période.' : 'Chargement…'}
+            </div>
+          )}
           {(balance ?? []).map((l) => (
             <div
               key={l.compteId}
