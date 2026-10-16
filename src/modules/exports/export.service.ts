@@ -1,6 +1,6 @@
 import { HORS_SITUATION, avecStatut, estJournalDeSituation, libelleDuStatut } from '../comptabilite/ecritures-de-situation';
 import { nombreSaisi } from '../notes-annexes/controles-saisie-notes';
-import { Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { type ImpressionAEnregistrer, enregistrerImpression, estUneRecherche, periodeCouverte } from '../journaux/impressions-journal';
 import { immatriculationDesLivres, numeroRegistreLiasse } from '../tenant/mentions-immatriculation';
 import { REFS_DE_SOLDE } from '../etats-financiers/correspondance-projet-emplois-ressources';
@@ -19,11 +19,16 @@ import {
 } from './classeur-en-flux';
 import {
   COLONNES_PISTE_REVISION,
+  compterStatut,
+  criteresEnClair,
   estHorsLivreJournal,
   etatDeCorrection,
   formatDuJour,
   libelleDeLaLigne,
+  motifBlocChange,
+  motifPieceDeplacee,
   ouvrirJournalEdition,
+  signatureDeLecture,
   type StatutsDuBloc,
   tiersDeLaLigne,
 } from './journal-edition';
@@ -421,6 +426,17 @@ function refuserAuDelaDuPlafond(nb: number, quoi: string): void {
   }
 }
 
+/**
+ * CE QU'UN JOURNAL EXPORTÉ A LU · l'instant d'avant la lecture et le nombre
+ * d'écritures que le fichier porte (relecture « échecs silencieux » de la
+ * ligne journal-sage, M2). L'impression enregistrée les reprend, jamais un
+ * instant ni un décompte pris après coup.
+ */
+export interface LectureDuJournal {
+  instantLecture: Date;
+  nombreEcritures: number;
+}
+
 @Injectable()
 export class ExportService {
   private readonly logger = new Logger(ExportService.name);
@@ -778,7 +794,14 @@ export class ExportService {
     // L'auteur de l'export · le journal entier d'un exercice exporté est une
     // impression du journal, enregistrée (ligne sage-l1, fonction 60).
     imprimePar?: string,
-  ): Promise<{ lignes: number }> {
+  ): Promise<{ lignes: number; lecture: LectureDuJournal }> {
+    // L'INSTANT DE LECTURE, PRIS AVANT LE PREMIER DÉCOMPTE (relecture « échecs
+    // silencieux », M2 · le pendant de `instantLecture` des liquidations de
+    // TVA). L'impression s'enregistre à CET instant, jamais à la fin de la
+    // production · une écriture validée pendant les dizaines de secondes d'un
+    // gros export, lue au brouillard ou pas lue du tout, passait « imprimée ».
+    // L'erreur ne peut plus aller que dans le sens prudent · « non imprimé ».
+    const instantLecture = new Date();
     const where = perimetreJournal(tenantId, filtres);
     // LES DÉCOMPTES DE DÉPART, SUR LE FILTRE MÊME DE LA LECTURE (relecture
     // TypeScript, M2) · celui des lignes borne le volume, et le journal écrit
@@ -801,9 +824,7 @@ export class ExportService {
     const statuts = new Map<string, StatutsDuBloc>();
     for (const g of parJournal) {
       const s = statuts.get(g.journalId) ?? { validees: 0, brouillard: 0, situation: 0 };
-      if (g.statut === 'VALIDEE') s.validees += g._count._all;
-      else if (g.statut === 'SITUATION') s.situation += g._count._all;
-      else s.brouillard += g._count._all;
+      compterStatut(s, g.statut, g._count._all);
       statuts.set(g.journalId, s);
     }
     const journaux = statuts.size
@@ -813,6 +834,25 @@ export class ExportService {
           orderBy: [{ code: 'asc' }, { id: 'asc' }],
         })
       : [];
+    // UN JOURNAL QUI PORTE DES ÉCRITURES ET NE SE LIT PAS (donnée incohérente,
+    // relecture m2) · ses lignes auraient manqué, et le refus du décompte
+    // aurait dit de relancer, ce qui échouerait à chaque essai. Il se nomme ici.
+    if (journaux.length !== statuts.size) {
+      const lus = new Set(journaux.map((j) => j.id));
+      const manquants = [...statuts.keys()].filter((id) => !lus.has(id));
+      throw new ConflictException(
+        `Des écritures du périmètre portent un journal introuvable dans ce dossier (${manquants.join(', ')}) · ` +
+          'le journal ne s’exporte pas amputé de leurs lignes. Signalez-le au support.',
+      );
+    }
+    // Un export filtré sur un journal sans écriture le nomme (relecture m3).
+    const journalFiltre =
+      journaux.length === 0 && filtres.journalId
+        ? await this.prisma.journal.findFirst({
+            where: { id: filtres.journalId, tenantId },
+            select: { code: true, intitule: true, type: true },
+          })
+        : null;
     const identite = await this.identiteEtat(tenantId, filtres);
     const formatJour = formatDuJour(await this.bornesDuJournal(tenantId, filtres));
 
@@ -825,12 +865,18 @@ export class ExportService {
       id ? (courrielParId.get(id) ?? 'utilisateur retiré du dossier') : '';
 
     const sortie = ouvrir(`journal${await this.suffixeExercice(tenantId, filtres.exerciceId)}.xlsx`);
-    const edition = ouvrirJournalEdition({ sortie, identite, formatJour });
+    const edition = ouvrirJournalEdition({ sortie, identite, formatJour, selection: criteresEnClair(filtres) });
 
     let nbLignes = 0;
-    if (journaux.length === 0) await edition.aucuneEcriture();
+    // CE QUE LA FEUILLE JOURNAL A LU, ÉCRITURE PAR ÉCRITURE ET DANS L'ORDRE ·
+    // la piste, relue ensuite, doit retrouver chacune à sa place sous la même
+    // signature (relecture M1).
+    const signatures: string[] = [];
+    if (journaux.length === 0) await edition.aucuneEcriture(journalFiltre);
     for (const journal of journaux) {
-      await edition.ouvrirBloc(journal, statuts.get(journal.id)!);
+      const comptes = statuts.get(journal.id)!;
+      await edition.ouvrirBloc(journal, comptes);
+      const lus: StatutsDuBloc = { validees: 0, brouillard: 0, situation: 0 };
       for await (const lot of this.ecrituresDuJournal(tenantId, where, journal.id, {
         lignes: {
           include: {
@@ -845,6 +891,8 @@ export class ExportService {
         },
       })) {
         for (const e of lot) {
+          compterStatut(lus, e.statut);
+          signatures.push(signatureDeLecture(e, e.lignes.length));
           for (const l of e.lignes) {
             nbLignes++;
             await edition.ajouterLigne({
@@ -860,6 +908,10 @@ export class ExportService {
           }
         }
       }
+      // Le titre et la mention du bloc sont déjà écrits, d'après le décompte
+      // · un bloc qui a changé en route ne reçoit pas ses totaux (M1).
+      const motif = motifBlocChange(journal.code, comptes, lus);
+      if (motif) throw new ConflictException(motif);
       await edition.fermerBloc();
     }
     // Un livre amputé ou gonflé en route ne reçoit pas les totaux de la
@@ -883,8 +935,17 @@ export class ExportService {
         for await (const lot of this.ecrituresDuJournal(tenantId, where, journal.id, {
           correction: { select: { numeroPiece: true } },
           corrigeEcriture: { select: { numeroPiece: true } },
+          _count: { select: { lignes: true } },
         })) {
           for (const e of lot) {
+            // LA MÊME ÉCRITURE, À LA MÊME PLACE (relecture M1) · validée,
+            // redatée, renumérotée ou retouchée entre les deux passages, ou
+            // précédée d'une pièce ajoutée ou retirée, elle ferait dire à la
+            // piste un autre livre que la feuille Journal · le classeur ne
+            // part pas.
+            if (signatures[nbEcritures] !== signatureDeLecture(e, e._count.lignes)) {
+              throw new ConflictException(motifPieceDeplacee(journal.code, e));
+            }
             nbEcritures++;
             await piste.ajouter({
               journal: journal.code,
@@ -907,8 +968,11 @@ export class ExportService {
       confronterAuDecompte(nbEcritures, ecrituresComptees, 'Piste de révision du journal');
       piste.fermer();
     });
-    await this.marquerJournalImprime(tenantId, filtres, imprimePar);
-    return { lignes: nbLignes };
+    // Ce que le fichier porte · le nombre d'écritures relu deux fois, à
+    // l'instant d'avant la lecture.
+    const lecture: LectureDuJournal = { instantLecture, nombreEcritures: ecrituresComptees };
+    await this.marquerJournalImprime(tenantId, filtres, imprimePar, lecture);
+    return { lignes: nbLignes, lecture };
   }
 
   /**
@@ -996,10 +1060,11 @@ export class ExportService {
     tenantId: string,
     filtres: { exerciceId?: string; journalId?: string; dateDebut?: string; dateFin?: string } & CriteresRecherche,
     imprimePar?: string,
+    lecture?: LectureDuJournal,
   ) {
     if (!imprimePar) return;
     try {
-      const impression = await this.impressionDuJournal(this.prisma, tenantId, filtres, imprimePar);
+      const impression = await this.impressionDuJournal(this.prisma, tenantId, filtres, imprimePar, lecture);
       if (impression) await enregistrerImpression(this.prisma, impression);
     } catch (erreur) {
       this.logger.error(
@@ -1013,13 +1078,24 @@ export class ExportService {
    * L'IMPRESSION QUE LE JOURNAL EXPORTÉ ATTESTE, ou `null` quand il n'atteste
    * rien · une recherche, un journal de situation, un journal sans pièce.
    * Lue par `client` · le serveur, ou la transaction de l'impression différée
-   * qui la range avec son fichier (relecture M4 de sage-l7).
+   * qui la range avec son fichier (relecture M4 de sage-l7). `lecture` dit ce
+   * que le fichier porte et à quel instant il a été lu (relecture M2 de
+   * journal-sage) · l'impression est datée de CET instant et compte CES
+   * écritures ; à défaut, elle recompte sur le périmètre du fichier, brouillard
+   * compris ou non comme lui.
    */
   async impressionDuJournal(
     client: Pick<Prisma.TransactionClient, 'exercice' | 'journal' | 'ecriture'>,
     tenantId: string,
-    filtres: { exerciceId?: string; journalId?: string; dateDebut?: string; dateFin?: string } & CriteresRecherche,
+    filtres: {
+      exerciceId?: string;
+      journalId?: string;
+      dateDebut?: string;
+      dateFin?: string;
+      inclureBrouillard?: boolean;
+    } & CriteresRecherche,
     imprimePar: string,
+    lecture?: { instantLecture: Date; nombreEcritures?: number },
   ): Promise<ImpressionAEnregistrer | null> {
     if (!filtres.exerciceId || estUneRecherche(filtres)) return null;
     const exercice = await client.exercice.findFirst({
@@ -1034,14 +1110,17 @@ export class ExportService {
       if (!journal || estJournalDeSituation(journal)) return null;
     }
     const periode = periodeCouverte(exercice, filtres);
-    const nombreEcritures = await client.ecriture.count({
-      where: perimetreJournal(tenantId, {
-        exerciceId: exercice.id,
-        ...(filtres.journalId ? { journalId: filtres.journalId } : {}),
-        dateDebut: periode.dateDebut.toISOString().slice(0, 10),
-        dateFin: periode.dateFin.toISOString().slice(0, 10),
-      }),
-    });
+    const nombreEcritures =
+      lecture?.nombreEcritures ??
+      (await client.ecriture.count({
+        where: perimetreJournal(tenantId, {
+          exerciceId: exercice.id,
+          ...(filtres.journalId ? { journalId: filtres.journalId } : {}),
+          dateDebut: periode.dateDebut.toISOString().slice(0, 10),
+          dateFin: periode.dateFin.toISOString().slice(0, 10),
+          ...(filtres.inclureBrouillard === false ? { inclureBrouillard: false } : {}),
+        }),
+      }));
     // UN JOURNAL SANS PIÈCE N'A RIEN À ATTESTER (relecture M6 de sage-l1) ·
     // enregistrée, l'impression d'un journal vide le retenait (clé vers le
     // journal) et tenait son exercice, sans rien prouver.
@@ -1055,6 +1134,7 @@ export class ExportService {
       forme: FormeImpressionJournal.EXPORT,
       nombreEcritures,
       imprimePar,
+      ...(lecture ? { imprimeAt: lecture.instantLecture } : {}),
     };
   }
 

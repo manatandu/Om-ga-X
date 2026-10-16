@@ -152,21 +152,39 @@ function nouveauFaux(comportement: Comportement = { contenu: 'CLASSEUR-COMPLET' 
         throw new Error('connexion à la base perdue');
       }
       sortie.end(Buffer.from(comportement.contenu));
-      return { lignes: 3 };
+      // Le moteur du journal rend ce qu'il a lu, et quand (relecture M2 de
+      // journal-sage) · les autres moteurs ne rendent que leurs lignes.
+      return nom === 'journal' ? { lignes: 3, lecture: { instantLecture: INSTANT_LECTURE, nombreEcritures: 2 } } : { lignes: 3 };
     };
   const exportService = {
     journalExcelEnFlux: moteur('journal'),
     grandLivreCompletExcelEnFlux: moteur('grand-livre-plat'),
     // Ce que le journal produit atteste · lu par la transaction qui range.
-    impressionDuJournal: async (client: unknown, tenantId: string, filtres: { exerciceId: string; journalId?: string }, imprimePar: string) => {
+    impressionDuJournal: async (
+      client: unknown,
+      tenantId: string,
+      filtres: { exerciceId: string; journalId?: string },
+      imprimePar: string,
+      lecture?: { instantLecture: Date; nombreEcritures?: number },
+    ) => {
       expect(client).toBe(prisma);
-      return { tenantId, exerciceId: filtres.exerciceId, journalId: filtres.journalId ?? null, imprimePar, nombreEcritures: 3 };
+      return {
+        tenantId,
+        exerciceId: filtres.exerciceId,
+        journalId: filtres.journalId ?? null,
+        imprimePar,
+        nombreEcritures: lecture?.nombreEcritures ?? 3,
+        imprimeAt: lecture?.instantLecture,
+      };
     },
   };
   const exportFpm = { grandLivreEnFlux: moteur('grand-livre-fpm'), balanceGeneraleEnFlux: moteur('balance') };
   const service = new ImpressionDiffereeService(prisma as never, exportService as never, exportFpm as never);
   return { service, demandes, appels, impressionsJournal };
 }
+
+/** L'instant que le moteur du journal rend de sa lecture · antérieur à toute production. */
+const INSTANT_LECTURE = new Date('2026-10-16T08:00:00Z');
 
 describe('impression différée · demande, production, fichier', () => {
   it('la demande prend le numéro suivant du dossier, EN ATTENTE, son libellé figé · rien n’est produit', async () => {
@@ -228,6 +246,16 @@ describe('impression différée · demande, production, fichier', () => {
     expect(f.appels[0].args).toHaveLength(3);
     expect(f.demandes[0].etat).toBe(EtatImpressionDifferee.PRETE);
     expect(f.impressionsJournal).toEqual([expect.objectContaining({ tenantId: DOSSIER, numero: 1, exerciceId: EXERCICE, imprimePar: 'u1' })]);
+  });
+
+  it('l’impression rangée est datée d’avant la lecture et compte ce que le fichier porte, jamais l’instant du rangement (relecture M2 de journal-sage)', async () => {
+    // Rangée jusqu'à trente minutes après le début de la production, datée
+    // du rangement, elle couvrait les écritures validées pendant la lecture,
+    // absentes du fichier ou lues au brouillard.
+    const f = nouveauFaux();
+    await f.service.demander(DOSSIER, 'u1', NatureImpressionDifferee.JOURNAL, { exerciceId: EXERCICE });
+    await f.service.traiter(DOSSIER);
+    expect(f.impressionsJournal).toEqual([expect.objectContaining({ imprimeAt: INSTANT_LECTURE, nombreEcritures: 2 })]);
   });
 
   it('une panne en production ne marque pas le journal imprimé (M4)', async () => {

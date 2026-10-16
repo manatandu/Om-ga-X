@@ -252,7 +252,9 @@ describe('la piste d’audit, restituée · AUDCIF art. 22, 1°', () => {
       },
     });
     await exportService([
-      { ...ORDINAIRE, lignes: ORDINAIRE.lignes, correction: null, corrigeEcriture: null },
+      // Le second passage relit le NOMBRE de lignes (`_count`) pour signer
+      // l'écriture comme le premier l'a lue (relecture M1).
+      { ...ORDINAIRE, lignes: ORDINAIRE.lignes, _count: { lignes: ORDINAIRE.lignes.length }, correction: null, corrigeEcriture: null },
     ]).journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie);
     const classeur = new ExcelJS.Workbook();
     await classeur.xlsx.load(Buffer.concat(morceaux) as never);

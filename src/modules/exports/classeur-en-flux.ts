@@ -188,6 +188,40 @@ export interface ParametresFeuilleEnFlux {
   titre: string;
   identite: IdentiteEtat;
   colonnes: Partial<ExcelJS.Column>[];
+  /**
+   * Le jour d'édition, jj/mm/aaaa · donné par le classeur qui en date déjà
+   * une autre feuille, pour qu'il ne porte pas deux dates (le journal le
+   * prend au jour de Kinshasa, comme son tirage). À défaut, le jour du serveur.
+   */
+  editeLe?: string;
+}
+
+/** La longueur d'un en-tête ou d'un pied d'impression qu'Excel accepte, codes compris. */
+export const LONGUEUR_MAX_ENTETE_IMPRESSION = 255;
+
+/**
+ * UN EN-TÊTE OU UN PIED D'IMPRESSION, TEXTE ÉCHAPPÉ ET BORNÉ (relecture
+ * « échecs silencieux » de la ligne journal-sage, m5). Dans ces chaînes,
+ * « & » ouvre un code d'Excel · « H&P » imprimait le numéro de page à la
+ * place du P, « Kin&Co » basculait le reste en section centrale. Le texte du
+ * dossier se double donc (« && » imprime un « & »), et la partie de gauche se
+ * raccourcit, jamais au milieu d'un « && », quand le tout dépasserait ce
+ * qu'Excel accepte. La partie de droite porte les codes (`&P`, `&N`) et un
+ * texte d'OmegaX · elle passe telle quelle.
+ */
+export function enTeteImpression(gauche: string, centre: string | null, droiteCodee: string): string {
+  const echapper = (t: string) => t.replace(/&/g, '&&');
+  const reste = `${centre ? `&C${echapper(centre)}` : ''}&R${droiteCodee}`;
+  let g = echapper(gauche);
+  const place = LONGUEUR_MAX_ENTETE_IMPRESSION - 2 - reste.length;
+  if (g.length > place) {
+    g = g.slice(0, Math.max(0, place - 1));
+    // Un nombre impair de « & » en fin ouvrirait un code · on en retire un.
+    const finale = /&+$/.exec(g)?.[0].length ?? 0;
+    if (finale % 2 === 1) g = g.slice(0, -1);
+    g += '…';
+  }
+  return `&L${g}${reste}`;
 }
 
 /**
@@ -204,16 +238,19 @@ export function poserFeuille(
   params: ParametresFeuilleEnFlux,
 ) {
   const nbColonnes = params.colonnes.length;
+  const edite = params.editeLe ?? new Date().toLocaleDateString('fr-FR');
   const feuille = classeur.addWorksheet(params.nomFeuille, {
     // Les vues et l'auto-filtre se posent À LA CRÉATION · une feuille en flux
     // ne se relit pas. La ligne d'en-tête est connue d'avance puisque la
     // coiffe a une hauteur fixe.
     views: [{ state: 'frozen', ySplit: LIGNE_ENTETE }],
     headerFooter: {
-      oddFooter:
-        `&L${params.identite.entite}${segmentIdentification(params.identite) ? ` · ${segmentIdentification(params.identite)}` : ''} · ` +
-        `${params.identite.periode} · montants en ${params.identite.devise}` +
-        `&RPage &P / &N · édité le ${new Date().toLocaleDateString('fr-FR')}`,
+      oddFooter: enTeteImpression(
+        `${params.identite.entite}${segmentIdentification(params.identite) ? ` · ${segmentIdentification(params.identite)}` : ''} · ` +
+          `${params.identite.periode} · montants en ${params.identite.devise}`,
+        null,
+        `Page &P / &N · édité le ${edite}`,
+      ),
     },
   });
   // LES COLONNES SANS LEUR EN-TÊTE · `columns` muni de `header` écrit d'office
@@ -224,7 +261,6 @@ export function poserFeuille(
   // s'écrit une fois, sous la coiffe.
   feuille.columns = params.colonnes.map((c) => ({ key: c.key, width: c.width, style: c.style }));
 
-  const edite = new Date().toLocaleDateString('fr-FR');
   const titreFeuille = feuille.getRow(1);
   titreFeuille.getCell(1).value = `${params.titre} · ${params.identite.entite}`;
   titreFeuille.getCell(1).font = { bold: true, size: 12 };

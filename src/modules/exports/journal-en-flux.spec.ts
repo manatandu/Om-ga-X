@@ -6,8 +6,8 @@ import * as JSZip from 'jszip';
 import { ExportService } from './export.service';
 import { PrismaService } from '../../common/prisma.service';
 import { PLAFOND_ECRITURES_PAR_FENETRE, perimetreJournal } from '../comptabilite/ecriture.service';
-import { LIGNE_ENTETE, PREMIERE_LIGNE_DONNEES, OPTIONS_CLASSEUR_EN_FLUX } from './classeur-en-flux';
-import { TITRES_COLONNES_JOURNAL } from './journal-edition';
+import { LIGNE_ENTETE, PREMIERE_LIGNE_DONNEES, OPTIONS_CLASSEUR_EN_FLUX, enTeteImpression } from './classeur-en-flux';
+import { COLONNES_PISTE_REVISION, TITRES_COLONNES_JOURNAL, ouvrirJournalEdition } from './journal-edition';
 
 // Chaque cas écrit puis relit un classeur en flux · sous une suite chargée l'un
 // d'eux a dépassé les cinq secondes par défaut de Jest (2026-10-04), sans
@@ -89,6 +89,11 @@ const ecriture = (i: number, journal: Journal = ACHATS) => ({
       compte: { numero: '40110001', tiersCompte: { tiers: { code: 'F-KINPAP' } }, _count: { individuels: 0 } },
     },
   ],
+  // Le nombre de lignes que la base compterait · la piste le relit pour
+  // retrouver l'écriture telle que la feuille Journal l'a lue (relecture M1).
+  get _count() {
+    return { lignes: this.lignes.length };
+  },
 });
 type Ecriture = ReturnType<typeof ecriture>;
 
@@ -162,6 +167,7 @@ function service(depart: number | Ecriture[], journaux: Journal[] = [ACHATS]) {
       findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
         journaux.filter((j) => where.id.in.includes(j.id)).sort((a, b) => a.code.localeCompare(b.code)),
       ),
+      findFirst: jest.fn(async ({ where }: { where: { id: string } }) => journaux.find((j) => j.id === where.id) ?? null),
     },
     user: { findMany: jest.fn().mockResolvedValue([{ id: 'u-1', email: 'comptable@vmg.cd' }]) },
     tenant: { findUniqueOrThrow: jest.fn().mockResolvedValue({ nom: 'Dossier', numeroImpot: 'A1', devise: 'CDF' }) },
@@ -293,12 +299,33 @@ describe('Journal exporté en flux', () => {
       return rendues;
     });
     const { sortie } = tampon();
+    // La piste ne retrouve plus, à la place de la pièce 500, que la 501 · le
+    // refus nomme la pièce où les deux feuilles divergent (relecture M1).
+    await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
+      /La pièce n° 501 du 01\/03\/2026 au journal ACH n'est plus celle que la feuille Journal a lue/,
+    );
+  });
+
+  it('la DERNIÈRE pièce retirée entre les deux passages · la piste, courte d’une écriture, est refusée (relecture M6)', async () => {
+    const { svc, findMany, toutes } = service(1200);
+    const lire = findMany.getMockImplementation()!;
+    findMany.mockImplementation(async (a) => {
+      const rendues = await lire(a);
+      // Le premier passage fini (trois tranches), la dernière pièce part.
+      if (findMany.mock.calls.length === 3) toutes.splice(toutes.findIndex((e) => e.id === 'e-001200'), 1);
+      return rendues;
+    });
+    const { sortie } = tampon();
     await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
       /Piste de révision du journal : 1\s199 lignes lues sur 1\s200 comptées au départ/,
     );
   });
 
-  it('une pièce dont la date AVANCE pendant l’export ne s’écrit qu’une fois, et les totaux restent justes (relecture TypeScript, M2)', async () => {
+  it('une pièce dont la date AVANCE pendant l’export ne s’écrit qu’une fois, et le classeur qui la dirait à deux dates est refusé (M2, relecture M1)', async () => {
+    // Lue le 01/03 par la feuille Journal, relue le 31/12 par la piste · le
+    // classeur aurait daté la même pièce de deux jours. Le premier passage ne
+    // l'écrit qu'une fois (sans quoi « Journal : 2 402 lignes » tomberait), et
+    // le second la trouve ailleurs qu'à sa place · refus nommé.
     const { svc, findMany, toutes } = service(1200);
     const lire = findMany.getMockImplementation()!;
     let deplacee: string | undefined;
@@ -312,15 +339,45 @@ describe('Journal exporté en flux', () => {
       }
       return rendues;
     });
-    const { sortie, octets } = tampon();
-    await svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie);
-    const classeur = new ExcelJS.Workbook();
-    await classeur.xlsx.load(octets() as never);
-    const feuille = classeur.getWorksheet('Journal')!;
-    // Écrite deux fois, la pièce portait quatre lignes et le total 120 100.
-    expect(feuille.rowCount).toBe(TITRES_DU_BLOC + 2400 + 3);
-    const debit = feuille.getRow(DONNEES + 2400).getCell(DEBIT).value as ExcelJS.CellFormulaValue;
-    expect(debit.result).toBe(1200 * 100);
+    const { sortie } = tampon();
+    await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
+      /La pièce n° 2 du 01\/03\/2026 au journal ACH n'est plus celle que la feuille Journal a lue/,
+    );
+  });
+
+  it('une écriture VALIDÉE entre les deux passages · la piste la dirait validée, la feuille au brouillard · refusé (relecture M1)', async () => {
+    const ecritures = [1, 2, 3].map((i) => ({ ...ecriture(i), statut: 'BROUILLARD', valideeAt: null as Date | null, valideeBy: null as string | null }));
+    const { svc, findMany, toutes } = service(ecritures);
+    const lire = findMany.getMockImplementation()!;
+    findMany.mockImplementation(async (a) => {
+      // Une COPIE de la tranche, comme la base rend des lignes et non des
+      // références · la validation qui suit ne touche que la relecture.
+      const rendues = (await lire(a)).map((e) => ({ ...e }));
+      // Le premier passage (une tranche) fini, un autre poste valide le mois.
+      if (findMany.mock.calls.length === 1) {
+        for (const e of toutes) Object.assign(e, { statut: 'VALIDEE', valideeAt: new Date('2026-03-31'), valideeBy: 'u-1' });
+      }
+      return rendues;
+    });
+    const { sortie } = tampon();
+    await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
+      /La pièce n° 1 du 01\/03\/2026 au journal ACH n'est plus celle que la feuille Journal a lue/,
+    );
+  });
+
+  it('une écriture VALIDÉE entre le décompte et la lecture · le bloc titré « BROUILLARD » ne reçoit pas ses totaux (relecture M1)', async () => {
+    const ecritures = [1, 2].map((i) => ({ ...ecriture(i), statut: 'BROUILLARD', valideeAt: null as Date | null, valideeBy: null as string | null }));
+    const { svc, findMany, toutes } = service(ecritures);
+    const lire = findMany.getMockImplementation()!;
+    findMany.mockImplementation(async (a) => {
+      // Avant la première tranche · le décompte a vu deux brouillards.
+      if (findMany.mock.calls.length === 1) toutes[0].statut = 'VALIDEE';
+      return lire(a);
+    });
+    const { sortie } = tampon();
+    await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
+      /Le journal ACH a changé pendant la production · 1 écritures validées et 1 hors livre-journal lues, contre 0 et 2 comptées au départ/,
+    );
   });
 
   it('une pièce dont la date RECULE pendant l’export n’est jamais relue · le livre est refusé avant ses totaux, jamais remis amputé (M2)', async () => {
@@ -338,8 +395,9 @@ describe('Journal exporté en flux', () => {
       return rendues;
     });
     const sortie = new Writable({ write: (_m, _e, cb) => cb() });
+    // Le bloc lu est court d'une écriture · refusé avant ses totaux (relecture M1).
     await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
-      /Journal : 2\s398 lignes lues sur 2\s400 comptées au départ/,
+      /Le journal ACH a changé pendant la production · 1\s199 écritures validées et 0 hors livre-journal lues, contre 1\s200 et 0/,
     );
   });
 
@@ -406,6 +464,19 @@ describe('Journal exporté en flux', () => {
     expect(feuille.getRow(DONNEES + 1).getCell(TIERS).value ?? null).toBeNull();
   });
 
+  it('le collectif rattaché à un tiers sans aucun compte individuel ne désigne pas ce tiers (relecture M3)', async () => {
+    // Un dossier d'avant la panoplie, jamais complété · le 40110000 reste le
+    // compte principal du premier fournisseur, et chaque paiement passé au
+    // collectif, pour n'importe qui, sortait à son nom.
+    const e = ecriture(1);
+    e.lignes[1].compte = { numero: '40110000', tiersCompte: { tiers: { code: 'F-PREMIER' } }, _count: { individuels: 0 } };
+    const client = ecriture(2);
+    client.lignes[1].compte = { numero: '41110000', tiersCompte: { tiers: { code: 'C-PREMIER' } }, _count: { individuels: 0 } };
+    const { feuille } = await exporter([e, client]);
+    expect(feuille.getRow(DONNEES + 1).getCell(TIERS).value ?? null).toBeNull();
+    expect(feuille.getRow(DONNEES + 3).getCell(TIERS).value ?? null).toBeNull();
+  });
+
   it('la date de valeur reste mentionnée distinctement · dans le libellé de la ligne (AUDCIF art. 22, 4°)', async () => {
     const e = ecriture(1);
     e.dateValeur = new Date('2026-02-27');
@@ -465,6 +536,64 @@ describe('Journal exporté en flux', () => {
     expect(seconde.getCell(12).value).toBe('Annule la pièce n° 1');
     expect(seconde.getCell(13).value).toBe('Facture saisie deux fois');
     expect(piste.rowCount).toBe(LIGNE_ENTETE + 2);
+  });
+
+  it('un journal filtré sans écriture se nomme · jamais « Tous journaux » (relecture m3)', async () => {
+    const SITUATION: Journal = { id: 'j-sit', code: 'SIT', intitule: 'Situation', type: 'SITUATION' };
+    const { feuille } = await exporter([], { exerciceId: 'ex', journalId: 'j-sit' }, [ACHATS, SITUATION]);
+    expect(feuille.getRow(1).getCell(1).value).toBe('JOURNAL DE SITUATION · HORS LIVRE-JOURNAL · Dossier');
+    expect(feuille.getRow(2).getCell(1).value).toBe('SIT · Situation');
+  });
+
+  it('un journal de situation aux écritures validées héritées ne se dit pas hors du livre-journal (relecture m1)', async () => {
+    const SITUATION: Journal = { id: 'j-sit', code: 'SIT', intitule: 'Situation', type: 'SITUATION' };
+    const { feuille } = await exporter([ecriture(1, SITUATION)], { exerciceId: 'ex', journalId: 'j-sit' }, [SITUATION]);
+    expect(feuille.getRow(1).getCell(1).value).toBe('JOURNAL DE SITUATION · ÉCRITURES VALIDÉES AU LIVRE-JOURNAL · Dossier');
+  });
+
+  it('une écriture porte un journal introuvable · le refus le nomme, jamais « relancez » (relecture m2)', async () => {
+    const FANTOME: Journal = { id: 'j-fantome', code: 'X', intitule: 'X', type: 'ACHATS' };
+    const { svc } = service([ecriture(1), ecriture(2, FANTOME)], [ACHATS]);
+    const { sortie } = tampon();
+    await expect(svc.journalExcelEnFlux('t1', { exerciceId: 'ex' }, () => sortie)).rejects.toThrow(
+      /journal introuvable dans ce dossier \(j-fantome\)/,
+    );
+  });
+
+  it('une recherche exportée se titre comme une sélection · critères dits, totaux de la sélection (relecture m4)', async () => {
+    const { feuille } = await exporter(2, { exerciceId: 'ex', compte: '401', montantMin: 100 });
+    expect(feuille.getRow(1).getCell(1).value).toBe("SÉLECTION D'ÉCRITURES · JOURNAL · Dossier");
+    expect(feuille.getRow(4).getCell(1).value).toBe('Sélection · compte 401, montant 100');
+    expect(rangsDe(feuille, 'Totaux de la sélection, journal ACH')).toHaveLength(1);
+    expect(rangsDe(feuille, 'Totaux de la sélection')).toHaveLength(1);
+    expect(rangsDe(feuille, 'Totaux de la période')).toHaveLength(0);
+  });
+
+  it('un « & » du dossier s’imprime, jamais pris pour un code d’Excel, et l’en-tête reste sous 255 caractères (relecture m5)', () => {
+    expect(enTeteImpression('H&P', 'Exercice 2026', 'Page &P / &N')).toBe('&LH&&P&CExercice 2026&RPage &P / &N');
+    const long = enTeteImpression('&'.repeat(400), null, 'Tiré le 16/10/26');
+    expect(long.length).toBeLessThanOrEqual(255);
+    // Jamais un « & » isolé en fin de texte · il ouvrirait un code.
+    expect(/(^|[^&])(&&)*&…/.test(long)).toBe(false);
+  });
+
+  it('la piste est datée du jour de Kinshasa, comme le tirage · un classeur, une date (relecture m6)', async () => {
+    const { sortie, octets } = tampon();
+    const edition = ouvrirJournalEdition({
+      sortie,
+      identite: { entite: 'Dossier', periode: 'Exercice 2026', devise: 'CDF' } as never,
+      formatJour: 'DD/MM',
+      // 23 h 30 UTC · déjà le lendemain à Kinshasa.
+      tire: new Date('2026-10-16T23:30:00Z'),
+    });
+    await edition.aucuneEcriture();
+    await edition.terminer(async (ajouter) => {
+      ajouter({ nomFeuille: 'Piste de révision', titre: 'PISTE', identite: { entite: 'Dossier', periode: 'Exercice 2026', devise: 'CDF' } as never, colonnes: COLONNES_PISTE_REVISION }).fermer();
+    });
+    const classeur = new ExcelJS.Workbook();
+    await classeur.xlsx.load(octets() as never);
+    expect(String(classeur.getWorksheet('Journal')!.getRow(3).getCell(1).value)).toMatch(/^Tiré le 17\/10\/26/);
+    expect(String(classeur.getWorksheet('Piste de révision')!.getRow(2).getCell(1).value)).toContain('édité le 17/10/2026');
   });
 
   it('un journal sans écriture le dit · jamais un fichier vide', async () => {

@@ -1,9 +1,13 @@
 import type { Writable } from 'stream';
+import { createHash } from 'crypto';
 import * as ExcelJS from 'exceljs';
 import { StatutEcriture, TypeJournal } from '@prisma/client';
+import type { CriteresRecherche } from '../comptabilite/recherche-ecritures';
+import { PANOPLIES_TIERS } from '../tiers/collectifs-tiers';
 import {
   OPTIONS_CLASSEUR_EN_FLUX,
   attendreLeTuyau,
+  enTeteImpression,
   poserFeuille,
   segmentIdentification,
   type FeuilleEnFlux,
@@ -65,16 +69,94 @@ export interface StatutsDuBloc {
   situation: number;
 }
 
+/** Range une écriture dans les statuts de son bloc · un statut inconnu compte au brouillard, hors livre. */
+export function compterStatut(s: StatutsDuBloc, statut: StatutEcriture | string, n = 1): void {
+  if (statut === StatutEcriture.VALIDEE) s.validees += n;
+  else if (statut === StatutEcriture.SITUATION) s.situation += n;
+  else s.brouillard += n;
+}
+
+/**
+ * LE BLOC LU N'EST PAS LE BLOC COMPTÉ (relecture « échecs silencieux » de la
+ * ligne journal-sage, M1) · son titre et sa mention sont écrits d'après les
+ * statuts comptés AVANT le premier octet. Une validation passée entre le
+ * décompte et la lecture laissait un bloc titré « BROUILLARD » dont toutes
+ * les lignes étaient droites · le motif du refus, ou `null` quand le bloc lu
+ * est celui qu'on a titré.
+ */
+export function motifBlocChange(code: string, comptes: StatutsDuBloc, lus: StatutsDuBloc): string | null {
+  if (comptes.validees === lus.validees && comptes.brouillard === lus.brouillard && comptes.situation === lus.situation) {
+    return null;
+  }
+  const hors = (s: StatutsDuBloc) => (s.brouillard + s.situation).toLocaleString('fr-FR');
+  const val = (s: StatutsDuBloc) => s.validees.toLocaleString('fr-FR');
+  return (
+    `Le journal ${code} a changé pendant la production · ${val(lus)} écritures validées et ${hors(lus)} hors ` +
+    `livre-journal lues, contre ${val(comptes)} et ${hors(comptes)} comptées au départ (une validation, une ` +
+    "saisie ou un retrait en cours). Relancez l'export une fois le geste fini."
+  );
+}
+
+/**
+ * LA SIGNATURE D'UNE ÉCRITURE TELLE QUE LA FEUILLE JOURNAL L'A LUE · ce que
+ * les deux feuilles disent toutes deux d'elle (place, statut, date, date de
+ * valeur, pièce, libellé, nombre de lignes). La piste, relue en second
+ * passage, doit retrouver chaque écriture à la même place et sous la même
+ * signature · sinon le classeur dirait deux livres (relecture M1). Une
+ * empreinte tronquée, pas la chaîne · cent mille écritures au plafond tiennent
+ * en quelques mégaoctets, sous le tas mesuré (CLAUDE.md, § 8 bis).
+ */
+export function signatureDeLecture(
+  e: {
+    id: string;
+    journalId: string;
+    statut: StatutEcriture | string;
+    date: Date;
+    dateValeur: Date | null;
+    numeroPiece: number | null;
+    libelle: string;
+  },
+  nombreDeLignes: number,
+): string {
+  return createHash('sha256')
+    .update(
+      [e.id, e.journalId, e.statut, e.date.toISOString(), e.dateValeur?.toISOString() ?? '', e.numeroPiece ?? '', e.libelle, nombreDeLignes].join('\u0000'),
+    )
+    .digest('base64url')
+    .slice(0, 16);
+}
+
+/**
+ * Le refus d'une écriture que la piste ne retrouve pas à sa place · elle a
+ * changé, ou une autre a été ajoutée ou retirée avant elle, entre les deux
+ * passages (relecture M1).
+ */
+export function motifPieceDeplacee(code: string, e: { numeroPiece: number | null; date: Date }): string {
+  return (
+    `La pièce n° ${e.numeroPiece ?? '·'} du ${jourEnClair(e.date)} au journal ${code} n'est plus celle que la feuille ` +
+    'Journal a lue à cette place (écriture modifiée, validée, ajoutée ou retirée pendant la production) · la piste ' +
+    "de révision dirait un autre livre. Relancez l'export une fois la saisie ou la validation finie."
+  );
+}
+
 /**
  * LE TITRE DU BLOC DIT CE QUE LE BLOC EST · seule l'écriture VALIDÉE est au
  * livre-journal (AUDCIF art. 22, 2°). Un journal entièrement validé est le
  * JOURNAL, un journal entièrement au brouillard est le BROUILLARD, un mélange
- * le dit, et les écritures d'un journal de situation n'y entrent jamais
- * (ligne sage-l1, fonction 12).
+ * le dit, et les écritures de situation n'y entrent jamais (ligne sage-l1,
+ * fonction 12). UN JOURNAL DE SITUATION PEUT PORTER DES ÉCRITURES VALIDÉES
+ * HÉRITÉES (`JOURNAL_DE_SITUATION_AU_LIVRE_JOURNAL`) · celles-là sont au
+ * livre-journal et dans les totaux, et le titre ne les dit plus hors du livre
+ * (relecture M1, m1).
  */
 export function titreDuBloc(journal: { type: TypeJournal }, statuts: StatutsDuBloc): string {
-  if (journal.type === TypeJournal.SITUATION) return 'JOURNAL DE SITUATION · HORS LIVRE-JOURNAL';
   const auBrouillard = statuts.brouillard + statuts.situation;
+  if (journal.type === TypeJournal.SITUATION) {
+    if (statuts.validees === 0) return 'JOURNAL DE SITUATION · HORS LIVRE-JOURNAL';
+    return auBrouillard === 0
+      ? 'JOURNAL DE SITUATION · ÉCRITURES VALIDÉES AU LIVRE-JOURNAL'
+      : 'JOURNAL DE SITUATION · EN PARTIE HORS LIVRE-JOURNAL';
+  }
   if (statuts.validees > 0 && auBrouillard === 0) return 'JOURNAL';
   if (statuts.validees === 0) return 'BROUILLARD';
   return 'JOURNAL ET BROUILLARD';
@@ -105,19 +187,56 @@ export function libelleDeLaLigne(
 }
 
 /**
+ * LES COLLECTIFS DE TIERS DES DEUX PLANS · ceux sous lesquels naissent les
+ * comptes des tiers (`PANOPLIES_TIERS`, principal et autres rôles). Réunis
+ * sans égard au référentiel · un numéro tout-à-zéro n'est jamais le compte
+ * individuel d'un tiers (`prochainNumeroIndividuel`), si bien que la réunion
+ * ne retire le tiers d'aucune ligne qui le porte vraiment.
+ */
+const COLLECTIFS_DE_TIERS: ReadonlySet<string> = new Set(
+  Object.values(PANOPLIES_TIERS).flatMap((parType) =>
+    Object.values(parType).flatMap((panoplie) => (panoplie ?? []).map((c) => c.collectif)),
+  ),
+);
+
+/**
  * LE N° TIERS D'UNE LIGNE · celui du tiers que le compte de la ligne désigne
- * (`TiersCompte`, un compte pour un tiers). UN COLLECTIF QUI PORTE DES
- * COMPTES INDIVIDUELS N'EN DÉSIGNE AUCUN · il peut rester rattaché au tiers
- * qui l'a reçu le premier (point 13), et une ligne passée au collectif avant
- * l'ouverture des comptes individuels ne se lirait pas comme sienne.
+ * (`TiersCompte`, un compte pour un tiers). UN COLLECTIF N'EN DÉSIGNE AUCUN ·
+ * il peut rester rattaché au tiers qui l'a reçu le premier (point 13), et une
+ * ligne passée au collectif, pour n'importe quel tiers, ne se lirait pas
+ * comme sienne. Le collectif se reconnaît à son NUMÉRO, et pas seulement à
+ * ses comptes individuels · un dossier d'avant la panoplie, jamais complété,
+ * n'en a aucun, et tous les paiements du 40110000 sortaient au nom du
+ * premier fournisseur (relecture « échecs silencieux », M3).
  */
 export function tiersDeLaLigne(compte: {
+  numero: string;
   tiersCompte?: { tiers: { code: string } } | null;
   _count?: { individuels: number };
 }): string {
   if (!compte.tiersCompte) return '';
+  if (COLLECTIFS_DE_TIERS.has(compte.numero)) return '';
   if ((compte._count?.individuels ?? 0) > 0) return '';
   return compte.tiersCompte.tiers.code;
+}
+
+/**
+ * LES CRITÈRES D'UNE RECHERCHE, EN CLAIR · une sélection exportée se titre
+ * comme telle, ses critères dits, et ses totaux ne se lisent pas comme ceux
+ * du journal (relecture M1, m4). `null` pour le journal entier.
+ */
+export function criteresEnClair(c: CriteresRecherche): string | null {
+  const morceaux: string[] = [];
+  if (c.compte) morceaux.push(`compte ${c.compte}`);
+  if (c.montantMin !== undefined) {
+    morceaux.push(c.montantMax !== undefined && c.montantMax !== c.montantMin
+      ? `montant de ${c.montantMin} à ${c.montantMax}`
+      : `montant ${c.montantMin}`);
+  }
+  if (c.numeroPiece !== undefined) morceaux.push(`pièce n° ${c.numeroPiece}`);
+  if (c.reference) morceaux.push(`référence « ${c.reference} »`);
+  if (c.recherche) morceaux.push(`libellé « ${c.recherche} »`);
+  return morceaux.length ? `Sélection · ${morceaux.join(', ')}` : null;
 }
 
 /**
@@ -192,23 +311,38 @@ export function ouvrirJournalEdition(params: {
   formatJour: string;
   /** L'instant du tirage · le même sur chaque en-tête de bloc et au pied. */
   tire?: Date;
+  /**
+   * Les critères d'une recherche exportée, en clair (`criteresEnClair`) ·
+   * la sélection se titre comme telle et ses totaux ne se lisent pas comme
+   * ceux du journal (relecture M1, m4). Absent pour le journal entier.
+   */
+  selection?: string | null;
 }) {
   const { sortie, identite } = params;
-  const tire = tirageAKinshasa(params.tire ?? new Date());
+  const selection = params.selection ?? null;
+  const instant = params.tire ?? new Date();
+  const tire = tirageAKinshasa(instant);
+  // Le jour de Kinshasa, comme le tirage · la piste ne porte pas la date du
+  // serveur quand le journal porte celle de Kinshasa (relecture m6).
+  const editeLe = jourEnClair(new Date(instant.getTime() + 60 * 60 * 1000));
   const identification = segmentIdentification(identite);
   const classeur = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: sortie, ...OPTIONS_CLASSEUR_EN_FLUX });
   classeur.creator = 'OmegaX';
-  classeur.created = params.tire ?? new Date();
+  classeur.created = instant;
   const feuille = classeur.addWorksheet('Journal', {
     // Posés À LA CRÉATION · une feuille en flux ne se relit pas. Le journal
     // s'imprime sur la largeur d'une page, comme l'édition de Sage ; la page
     // et son total se lisent à l'en-tête d'impression, que chaque page porte.
     pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    // Le texte du dossier s'échappe (« & » est un code d'Excel) et se borne ·
+    // `enTeteImpression`, relecture m5.
     headerFooter: {
-      oddHeader: `&L${identite.entite}&C${identite.periode}&RPage &P / &N`,
-      oddFooter:
-        `&L${identite.entite}${identification ? ` · ${identification}` : ''} · ` +
-        `${identite.periode} · montants en ${identite.devise}&RTiré le ${tire}`,
+      oddHeader: enTeteImpression(identite.entite, identite.periode, 'Page &P / &N'),
+      oddFooter: enTeteImpression(
+        `${identite.entite}${identification ? ` · ${identification}` : ''} · ${identite.periode} · montants en ${identite.devise}`,
+        null,
+        `Tiré le ${tire}`,
+      ),
     },
   });
   feuille.columns = [
@@ -238,8 +372,9 @@ export function ouvrirJournalEdition(params: {
   let creditPeriode = 0;
 
   const enTete = async (titre: string, journal: string, mention: string | null) => {
+    const ligneMention = [selection, mention].filter(Boolean).join(' · ') || null;
     await ecrire((l) => {
-      l.getCell(1).value = `${titre} · ${identite.entite}`;
+      l.getCell(1).value = `${selection ? `SÉLECTION D'ÉCRITURES · ${titre}` : titre} · ${identite.entite}`;
       l.getCell(1).font = { bold: true, size: 12 };
       l.getCell(NB_COLONNES_JOURNAL).value = identite.periode;
       l.getCell(NB_COLONNES_JOURNAL).alignment = { horizontal: 'right' };
@@ -255,8 +390,8 @@ export function ouvrirJournalEdition(params: {
       l.getCell(1).font = { size: 9, italic: true };
     });
     await ecrire((l) => {
-      if (mention) {
-        l.getCell(1).value = mention;
+      if (ligneMention) {
+        l.getCell(1).value = ligneMention;
         l.getCell(1).font = { size: 9, italic: true };
       }
     });
@@ -315,7 +450,7 @@ export function ouvrirJournalEdition(params: {
       if (!bloc) throw new Error("Aucun bloc de journal n'est ouvert.");
       const courant = bloc;
       const total = await ecrire((r) => {
-        r.getCell(5).value = `Totaux du journal ${courant.code}`;
+        r.getCell(5).value = selection ? `Totaux de la sélection, journal ${courant.code}` : `Totaux du journal ${courant.code}`;
         for (const [rang, valeur] of [
           [6, courant.debit],
           [7, courant.credit],
@@ -337,10 +472,15 @@ export function ouvrirJournalEdition(params: {
 
     /**
      * Un dossier sans écriture sur la période rend un journal vide qui le DIT ·
-     * un fichier sans en-tête se lirait comme un export échoué.
+     * un fichier sans en-tête se lirait comme un export échoué. Un export
+     * filtré sur un journal le nomme, de situation compris (relecture m3).
      */
-    async aucuneEcriture(): Promise<void> {
-      await enTete('JOURNAL', 'Tous journaux', null);
+    async aucuneEcriture(journal?: { code: string; intitule: string; type: TypeJournal } | null): Promise<void> {
+      await enTete(
+        journal?.type === TypeJournal.SITUATION ? 'JOURNAL DE SITUATION · HORS LIVRE-JOURNAL' : 'JOURNAL',
+        journal ? `${journal.code} · ${journal.intitule}` : 'Tous journaux',
+        null,
+      );
       await ecrire((l) => {
         l.getCell(1).value = 'Aucune écriture sur la période.';
         l.getCell(1).font = { italic: true };
@@ -359,7 +499,7 @@ export function ouvrirJournalEdition(params: {
       if (bloc) throw new Error(`Le bloc du journal ${bloc.code} n'est pas fermé.`);
       await ecrire(() => undefined);
       await ecrire((r) => {
-        r.getCell(5).value = 'Totaux de la période';
+        r.getCell(5).value = selection ? 'Totaux de la sélection' : 'Totaux de la période';
         for (const [rang, valeur] of [
           [6, debitPeriode],
           [7, creditPeriode],
@@ -374,7 +514,7 @@ export function ouvrirJournalEdition(params: {
         for (let c = 1; c <= NB_COLONNES_JOURNAL; c++) r.getCell(c).border = { top: { style: 'double' } };
       });
       feuille.commit();
-      if (suivantes) await suivantes((p) => poserFeuille(classeur, sortie, p));
+      if (suivantes) await suivantes((p) => poserFeuille(classeur, sortie, { editeLe, ...p }));
       await classeur.commit();
     },
 

@@ -211,6 +211,12 @@ export interface ImpressionAEnregistrer {
   forme: FormeImpressionJournal;
   nombreEcritures: number;
   imprimePar: string;
+  /**
+   * L'instant que l'impression atteste · celui d'avant la lecture du journal
+   * exporté (relecture « échecs silencieux » de la ligne journal-sage, M2).
+   * À défaut, l'instant de l'enregistrement (`@default(now())`).
+   */
+  imprimeAt?: Date;
 }
 
 export async function enregistrerImpression(prisma: ClientTransactionnel, p: ImpressionAEnregistrer) {
@@ -237,6 +243,7 @@ export async function enregistrerImpressionDans(tx: Prisma.TransactionClient, p:
       forme: p.forme,
       nombreEcritures: p.nombreEcritures,
       imprimePar: p.imprimePar,
+      ...(p.imprimeAt ? { imprimeAt: p.imprimeAt } : {}),
     },
   });
 }

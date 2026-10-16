@@ -61,7 +61,7 @@ describe('exports périodiques · identification de l’état', () => {
     expect(edition).toContain('oddFooter:');
     expect(edition).toContain('Page &P / &N');
     expect(edition).toContain('identite.entite');
-    expect(service).toContain('ouvrirJournalEdition({ sortie, identite, formatJour })');
+    expect(service).toContain('ouvrirJournalEdition({ sortie, identite, formatJour, selection: criteresEnClair(filtres) })');
     // Chaque pose passe une identité résolue par `identiteEtat`, jamais un
     // littéral bricolé sur place · une nouvelle feuille exportable doit être
     // identifiée de la même façon que les trois autres. Le compte n'est pas

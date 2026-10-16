@@ -4,7 +4,7 @@ import { EtatImpressionDifferee, NatureImpressionDifferee, Prisma } from '@prism
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../../../common/prisma.service';
 import { transactionJournalisee } from '../../../common/audit/transaction-journalisee';
-import { ExportService } from '../export.service';
+import { ExportService, type LectureDuJournal } from '../export.service';
 import { ExportFpmService } from '../export-fpm.service';
 import { produireEnMemoire } from '../fichier-en-memoire';
 import { pageDeNumeros } from '../pagination-par-numero';
@@ -44,6 +44,20 @@ const RESUME = {
 
 /** Une production rangée ou refusée prend au plus ce temps pour s'écrire. */
 const DELAI_RANGEMENT_MS = 120_000;
+
+/** Le résultat d'une production · le fichier rangé et ce que le journal a lu, ou le motif de l'échec. */
+type ResultatProduction =
+  | { etat: 'PRETE'; nomFichier: string; contenu: Buffer; lecture?: LectureDuJournal }
+  | { etat: 'ECHOUEE'; motif: string };
+
+/** Ce que le moteur du journal rend de sa lecture · les autres moteurs n'en rendent pas. */
+function lectureRendue(rendu: unknown): LectureDuJournal | undefined {
+  if (typeof rendu !== 'object' || rendu === null || !('lecture' in rendu)) return undefined;
+  const l = (rendu as { lecture?: Partial<LectureDuJournal> }).lecture;
+  return l?.instantLecture instanceof Date && typeof l.nombreEcritures === 'number'
+    ? { instantLecture: l.instantLecture, nombreEcritures: l.nombreEcritures }
+    : undefined;
+}
 
 /**
  * L'IMPRESSION DIFFÉRÉE (ligne sage-l7, fonction 59) · règles dans
@@ -140,7 +154,7 @@ export class ImpressionDiffereeService {
 
     let traitee = null;
     if (prise) {
-      let resultat: { etat: 'PRETE'; nomFichier: string; contenu: Buffer } | { etat: 'ECHOUEE'; motif: string };
+      let resultat: ResultatProduction;
       // LES CRITÈRES GARDÉS SE RELISENT PAR LA RÈGLE QUI LES A ADMIS
       // (relecture TypeScript, mineur 7) · une conversion de type les prenait
       // pour sûrs ; une demande dont les critères ne se relisent plus échoue,
@@ -149,8 +163,17 @@ export class ImpressionDiffereeService {
       const criteres = 'criteres' in relus ? relus.criteres : null;
       try {
         if (!criteres) throw new BadRequestException(`Critères de la demande illisibles · ${'motif' in relus ? relus.motif : ''}`);
-        const { nomFichier, contenu } = await produireEnMemoire((ouvrir) => this.produire(tenantId, prise.nature, criteres, ouvrir));
-        resultat = { etat: 'PRETE', nomFichier, contenu };
+        // CE QUE LE JOURNAL A LU, ET QUAND (relecture « échecs silencieux » de
+        // la ligne journal-sage, M2) · l'impression rangée avec le fichier est
+        // datée d'avant la lecture et compte les écritures que le fichier porte,
+        // jamais l'instant du rangement, jusqu'à trente minutes plus tard.
+        let lecture: LectureDuJournal | undefined;
+        const { nomFichier, contenu } = await produireEnMemoire(async (ouvrir) => {
+          const rendu = await this.produire(tenantId, prise.nature, criteres, ouvrir);
+          lecture = lectureRendue(rendu);
+          return rendu;
+        });
+        resultat = { etat: 'PRETE', nomFichier, contenu, lecture };
       } catch (erreur) {
         // Le refus nommé du moteur est une réponse (plafond, exercice) ; une
         // panne se consigne ici, son détail ne part pas à l'écran.
@@ -283,7 +306,7 @@ export class ImpressionDiffereeService {
   private async ranger(
     tenantId: string,
     prise: { id: string; commenceLe: Date; nature: NatureImpressionDifferee; criteres: CriteresImpression | null; demandePar: string },
-    resultat: { etat: 'PRETE'; nomFichier: string; contenu: Buffer } | { etat: 'ECHOUEE'; motif: string },
+    resultat: ResultatProduction,
   ) {
     const { id, commenceLe } = prise;
     return transactionJournalisee(
@@ -321,6 +344,9 @@ export class ImpressionDiffereeService {
             tenantId,
             filtresDuJournal(prise.criteres as CriteresJournal),
             prise.demandePar,
+            // Sans lecture rendue par le moteur, l'instant où la production a
+            // commencé · il précède toute lecture, le sens prudent.
+            resultat.lecture ?? { instantLecture: prise.commenceLe },
           );
           if (impression) await enregistrerImpressionDans(tx, impression);
         }
