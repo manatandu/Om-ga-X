@@ -507,7 +507,9 @@ export class ExportService {
     // écritures RESTENT au journal · « sans blanc ni altération d'aucune
     // sorte » (AUDCIF art. 20, repris par le SYCEBNL Partie 2 ch. 2) · mais
     // chacune se nomme.
-    { header: 'Correction (art. 20 AUDCIF)', key: 'correction', width: 30 },
+    // Titre formel, la référence reste ici (§ 9 ter du règlement intérieur ·
+    // jamais un article dans un en-tête de colonne).
+    { header: 'Correction', key: 'correction', width: 30 },
     { header: 'Motif de la correction', key: 'motifCorrection', width: 46 },
     // LA PISTE, RESTITUÉE · AUDCIF art. 22, 1° : les données « comprennent,
     // lors de leur entrée, l'indication de l'ORIGINE, du contenu et de
@@ -3267,7 +3269,7 @@ export class ExportService {
       { header: 'Écriture comptable', key: 'ecriture', width: 24 },
       { header: 'Annulée', key: 'annulee', width: 9 },
       { header: 'Motif d’annulation', key: 'motifAnnulation', width: 34 },
-      { header: 'Mentions manquantes (art. 17)', key: 'manquements', width: 34 },
+      { header: 'Mentions manquantes', key: 'manquements', width: 34 },
     ];
 
     for (const d of lignes) {
@@ -4988,9 +4990,11 @@ export class ExportService {
     const e = await this.etatsFinanciersSmtService.eligibilite(tenantId, exerciceId);
     const classeur = this.nouveauClasseur();
 
-    const f = classeur.addWorksheet('Éligibilité (art. 6)');
+    // Titres formels, sans article (§ 9 ter) · l'art. 6 reste cité par la
+    // feuille de méthode, plus bas.
+    const f = classeur.addWorksheet('Éligibilité');
     f.columns = [
-      { header: 'Catégorie de ressources (art. 6)', key: 'libelle', width: 52 },
+      { header: 'Catégorie de ressources', key: 'libelle', width: 52 },
       { header: 'Exercice N', key: 'montant', width: 20 },
       { header: 'Seuil légal', key: 'seuil', width: 22 },
       { header: 'Comptes', key: 'comptes', width: 46 },
