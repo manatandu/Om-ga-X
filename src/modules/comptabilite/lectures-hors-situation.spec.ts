@@ -43,6 +43,7 @@ const RACINE = path.resolve(__dirname, '../../..');
 const FILTRES_NOMMES: Record<string, string> = {
   avecStatut: 'src/modules/comptabilite/ecritures-de-situation.ts',
   filtresDesTroisColonnes: 'src/modules/comptabilite/balance-trois-colonnes.ts',
+  filtresDesTroisColonnesDeLaPeriode: 'src/modules/comptabilite/balance-trois-colonnes.ts',
   perimetreJournal: 'src/modules/comptabilite/ecriture.service.ts',
   filtreEcrituresDeTresorerie: 'src/modules/etats-financiers/etats-financiers-smt.service.ts',
   lignesReporteesAuDetail: 'src/modules/exercice/lignes-reportees-au-detail.ts',

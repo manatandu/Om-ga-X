@@ -200,6 +200,8 @@ const ROUTES_A_JOURNAL_EN_FILTRE = [
  * figurer, avec son motif, dans la liste fermée qui suit.
  */
 const ROUTES_A_COMPTE_EN_FILTRE = [
+  // Ligne export-periode · le grand livre d'UN compte, extrait ou exercice.
+  'modules/exports/export.controller.ts grandLivreComplet',
   'modules/rapprochement/rapprochement.controller.ts lister',
   'modules/relances/relances.controller.ts historique',
 ];

@@ -516,7 +516,8 @@ describe('les routes', () => {
   it('le grand livre sort dans la présentation du cabinet PAR DÉFAUT, à plat sur demande, un format inconnu refusé', async () => {
     const exports = { grandLivreCompletExcelEnFlux: jest.fn().mockResolvedValue({ lignes: 0 }) };
     const fpm = { grandLivreEnFlux: jest.fn().mockResolvedValue({ lignes: 0 }) };
-    const ctl = new ExportController(exports as never, fpm as never);
+    const ecritures = { periodeDemandee: jest.fn().mockResolvedValue(null) };
+    const ctl = new ExportController(exports as never, fpm as never, ecritures as never, {} as never);
     await ctl.grandLivreComplet(user, res(), 'ex');
     expect(fpm.grandLivreEnFlux).toHaveBeenCalledTimes(1);
     await ctl.grandLivreComplet(user, res(), 'ex', 'plat');
@@ -532,7 +533,8 @@ describe('les routes', () => {
 
   it('la balance passe la demande « balance seule » au service', async () => {
     const fpm = { balanceGeneraleEnFlux: jest.fn().mockResolvedValue({ lignes: 0 }) };
-    const ctl = new ExportController({} as never, fpm as never);
+    const ecritures = { periodeDemandee: jest.fn().mockResolvedValue(null) };
+    const ctl = new ExportController({} as never, fpm as never, ecritures as never, {} as never);
     await ctl.balance(user, res(), 'ex', 'non');
     await ctl.balance(user, res(), 'ex');
     expect(fpm.balanceGeneraleEnFlux.mock.calls.map((c) => c[2])).toEqual([false, true]);
